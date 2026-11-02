@@ -10,6 +10,7 @@ publication cannot replace a successful receipt.
 | Psionic | Not recorded; no real publication performed for the runner change. |
 | Aethyr | Not recorded; no real publication performed for the runner change. |
 | Nostr | Not recorded; no real publication performed for the runner change. |
+| Coder | [`coder.json`](coder.json): first publication, from commit `7ba66df968`. |
 
 This table says nothing about whether an older live book exists. Existing
 publication inventory checks and retained historical records keep their stated

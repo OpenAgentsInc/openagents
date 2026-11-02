@@ -1,0 +1,945 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/OpenAgentsInc/openagents.git",
+  "book": "coder",
+  "space_id": "lS8V6TGnz1ifNhKVV3hN",
+  "public_url": "https://openagents.gitbook.io/coder-coding-agents-from-scratch",
+  "published_at": "2026-11-02T19:18:07Z",
+  "source": {
+    "commit": "7ba66df96826df38f2fd338092c04b2781d80bac",
+    "directory": "coder/book",
+    "summary": {
+      "path": "coder/book/SUMMARY.md",
+      "bytes": 3067,
+      "sha256": "f2a596b21ca1932e4928af9d16e5811984bb5ecd384102dbefe6ea52a8848be9"
+    },
+    "pages": [
+      {
+        "path": "coder/book/README.md",
+        "bytes": 7599,
+        "sha256": "fb8d2f49171aae4a240cb48b84808217e8dcd0278ffd8bee82d05e7815daf41b",
+        "file": "README.md",
+        "title": "Introduction",
+        "group": null
+      },
+      {
+        "path": "coder/book/PLAN.md",
+        "bytes": 12684,
+        "sha256": "7fc3b385bd53a0662004dd82e1ab06493d027c19c6e898879d6a605dba36ead3",
+        "file": "PLAN.md",
+        "title": "Plan",
+        "group": null
+      },
+      {
+        "path": "coder/book/ch001-the-simplest-loop.md",
+        "bytes": 28758,
+        "sha256": "0be5b5dae139e54e91a9c3d34874287fb3aea68131d36ea64cb464e100f1ed42",
+        "file": "ch001-the-simplest-loop.md",
+        "title": "1. The simplest loop",
+        "group": "I. The loop"
+      },
+      {
+        "path": "coder/book/ch002-model-visible-means-logged.md",
+        "bytes": 38084,
+        "sha256": "14a95e75db56a25f626e9302a1925a32b03ce346964fbd71eba8f6bad94c7e7c",
+        "file": "ch002-model-visible-means-logged.md",
+        "title": "2. Model-visible means logged",
+        "group": "I. The loop"
+      },
+      {
+        "path": "coder/book/ch003-keep-the-prefix-stable.md",
+        "bytes": 34029,
+        "sha256": "d0091e5cd5aef558ee983380e0b0316f6ab95c4b090167987f971f3f146df58f",
+        "file": "ch003-keep-the-prefix-stable.md",
+        "title": "3. Keep the prefix stable",
+        "group": "I. The loop"
+      },
+      {
+        "path": "coder/book/ch004-tools-as-typed-capabilities.md",
+        "bytes": 32551,
+        "sha256": "4d543ff5101cdfdd9ce69fc7ec07548448a400beb56e1baebaca75ce4c5dad55",
+        "file": "ch004-tools-as-typed-capabilities.md",
+        "title": "4. Tools as typed capabilities",
+        "group": "I. The loop"
+      },
+      {
+        "path": "coder/book/ch005-a-sandbox-and-approvals.md",
+        "bytes": 29023,
+        "sha256": "5a8f89611cf8bc508a09e81cf93bf96b77457adb9f1f6f5ece1216150cea9511",
+        "file": "ch005-a-sandbox-and-approvals.md",
+        "title": "5. A sandbox and approvals",
+        "group": "I. The loop"
+      },
+      {
+        "path": "coder/book/ch006-a-document-tries-to-become-the-system-prompt.md",
+        "bytes": 50763,
+        "sha256": "f140bdd3dd4717e92b8843e2ccfac3f409a0308a7fdd7886fb95eba65b85c11d",
+        "file": "ch006-a-document-tries-to-become-the-system-prompt.md",
+        "title": "6. A document tries to become the system prompt",
+        "group": "I. The loop"
+      },
+      {
+        "path": "coder/book/ch007-condense-the-history.md",
+        "bytes": 42310,
+        "sha256": "20be62a74145839391ba429be63df74f6b1318290d4b80c151e0e5cbd46a679f",
+        "file": "ch007-condense-the-history.md",
+        "title": "7. Condense the history",
+        "group": "I. The loop"
+      },
+      {
+        "path": "coder/book/ch008-programs-as-tool-calls.md",
+        "bytes": 38619,
+        "sha256": "a77b64e651f257f475845d4ad242cc67383b16dc4dc7c2ed0c1c189e8c61c9fd",
+        "file": "ch008-programs-as-tool-calls.md",
+        "title": "8. Programs as tool calls",
+        "group": "I. The loop"
+      },
+      {
+        "path": "coder/book/ch009-microcoder.md",
+        "bytes": 7280,
+        "sha256": "0d41f3adba53add6141acd3b47976e90aab2767e090d5c428293e9413adee63f",
+        "file": "ch009-microcoder.md",
+        "title": "9. Microcoder",
+        "group": "II. Engines"
+      },
+      {
+        "path": "coder/book/ch010-drive-claude-code.md",
+        "bytes": 6993,
+        "sha256": "def0791e5b70234094616395ee3881acb4308790010f5ce410134619e8e59a14",
+        "file": "ch010-drive-claude-code.md",
+        "title": "10. Drive Claude Code",
+        "group": "II. Engines"
+      },
+      {
+        "path": "coder/book/ch011-drive-codex.md",
+        "bytes": 4192,
+        "sha256": "51c5166b0ada3ea5ec5a81b980cb0daefafefea32c05103d57e297bb200d2b52",
+        "file": "ch011-drive-codex.md",
+        "title": "11. Drive Codex",
+        "group": "II. Engines"
+      },
+      {
+        "path": "coder/book/ch012-a-psionic-served-model.md",
+        "bytes": 4236,
+        "sha256": "da657baee415b8b251a05cbbee3bbd2d01a403c37914fc296d4cc75273eb9848",
+        "file": "ch012-a-psionic-served-model.md",
+        "title": "12. A Psionic-served model as an engine",
+        "group": "II. Engines"
+      },
+      {
+        "path": "coder/book/ch013-choose-an-engine.md",
+        "bytes": 6914,
+        "sha256": "c937fdbad0530258d1f2e1852a3f737d9cc7a6e7772846e947da8598439b53cf",
+        "file": "ch013-choose-an-engine.md",
+        "title": "13. Choose an engine",
+        "group": "II. Engines"
+      },
+      {
+        "path": "coder/book/ch014-forks-subagents-and-jobs.md",
+        "bytes": 12247,
+        "sha256": "7ec7c3c2a48b3e73fa823d65e4a7d91eb5fbfb6248dce55371c49ecb9b232edb",
+        "file": "ch014-forks-subagents-and-jobs.md",
+        "title": "14. Forks, subagents and jobs",
+        "group": "III. Many tasks"
+      },
+      {
+        "path": "coder/book/ch015-plugins-with-owned-lifecycles.md",
+        "bytes": 12170,
+        "sha256": "a4c6b4f59954fcc8cd375e45b5f67cb02a8809b75d43bee1dc69deed61a71835",
+        "file": "ch015-plugins-with-owned-lifecycles.md",
+        "title": "15. Plugins with owned lifecycles",
+        "group": "III. Many tasks"
+      },
+      {
+        "path": "coder/book/ch016-speak-the-protocols.md",
+        "bytes": 48512,
+        "sha256": "8df88489f05537ea8bbaadde6d79f05d59343eb8bdda677c411102ed6bc709a0",
+        "file": "ch016-speak-the-protocols.md",
+        "title": "16. Speak the protocols",
+        "group": "III. Many tasks"
+      },
+      {
+        "path": "coder/book/ch017-one-agent-many-tasks.md",
+        "bytes": 21701,
+        "sha256": "ad28601532af1c0581459826b9b04551d995017102b5c654995f7277fb573506",
+        "file": "ch017-one-agent-many-tasks.md",
+        "title": "17. One agent, many tasks",
+        "group": "III. Many tasks"
+      },
+      {
+        "path": "coder/book/ch018-consent-before-sharing.md",
+        "bytes": 41294,
+        "sha256": "89d3439401951737959db3046cc3673b122053894afb0824c1aa85fdab2e9ba5",
+        "file": "ch018-consent-before-sharing.md",
+        "title": "18. Consent before sharing",
+        "group": "III. Many tasks"
+      },
+      {
+        "path": "coder/book/ch019-remember-a-fact-then-revise-it.md",
+        "bytes": 39164,
+        "sha256": "87410f8e2069dc8f7516f687766f180fcba1338f6ddceab132c19bf1e15c5308",
+        "file": "ch019-remember-a-fact-then-revise-it.md",
+        "title": "19. Remember a fact, then revise it",
+        "group": "III. Many tasks"
+      },
+      {
+        "path": "coder/book/ch020-an-agent-that-stays-online.md",
+        "bytes": 30067,
+        "sha256": "a156b022d328111064bcf0a15c78e2142591fc69d1ad9310e0341ebb9dd9f83f",
+        "file": "ch020-an-agent-that-stays-online.md",
+        "title": "20. An agent that stays online",
+        "group": "IV. Staying online"
+      },
+      {
+        "path": "coder/book/ch021-measure-the-harness.md",
+        "bytes": 36858,
+        "sha256": "d56b4e7cf92280bf0e0f9f22662f867c56d25b591ea27f65b04545e33d012463",
+        "file": "ch021-measure-the-harness.md",
+        "title": "21. Measure the harness",
+        "group": "V. Measure"
+      },
+      {
+        "path": "coder/book/ch022-generate-candidates-then-check-them.md",
+        "bytes": 27687,
+        "sha256": "bcbc74fc0946516ee1866b3ddcd5870b34538650a89b65da51ac2c78e867724f",
+        "file": "ch022-generate-candidates-then-check-them.md",
+        "title": "22. Generate candidates, then check them",
+        "group": "V. Measure"
+      },
+      {
+        "path": "coder/book/ch023-openagents-coder.md",
+        "bytes": 11630,
+        "sha256": "8c7382c89a1fd2d88a6b445b6ea2b1d61732b38a314518aa879cd1ca609b8068",
+        "file": "ch023-openagents-coder.md",
+        "title": "23. `openagents coder`",
+        "group": "VI. The command line"
+      },
+      {
+        "path": "coder/book/ch024-deepseek-harness.md",
+        "bytes": 14765,
+        "sha256": "3f3f80ff078840d52cf987a3e303f414871cadda28d70a0b0f5496acd0cb335b",
+        "file": "ch024-deepseek-harness.md",
+        "title": "24. DeepSeek Harness",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch025-claude-code.md",
+        "bytes": 14561,
+        "sha256": "6e4cb89406f985b1d1a004fd0ac7c3d3ded45566f18a10e8292a383be01a8733",
+        "file": "ch025-claude-code.md",
+        "title": "25. Claude Code",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch026-codex.md",
+        "bytes": 16454,
+        "sha256": "55480b46e918d201a1da29802112ca6b29756faab4623ac24c76daa99d15639a",
+        "file": "ch026-codex.md",
+        "title": "26. Codex",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch027-opencode.md",
+        "bytes": 17814,
+        "sha256": "c0f6f24f5a95e43dc830c524f6338d71b9a984c4cb702abbf8fde3fb35e78ad1",
+        "file": "ch027-opencode.md",
+        "title": "27. OpenCode",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch028-goose.md",
+        "bytes": 17586,
+        "sha256": "544f81980bd04a95d1d9d7419820b8a7a05044e52f1df9e3978dcb69152c232b",
+        "file": "ch028-goose.md",
+        "title": "28. Goose",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch029-aider.md",
+        "bytes": 15308,
+        "sha256": "710f0943ac705753f38daebcc8bcd9776f7e3b08725bda6e6b9401723ce37bd1",
+        "file": "ch029-aider.md",
+        "title": "29. Aider",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch030-mini-swe-agent.md",
+        "bytes": 18801,
+        "sha256": "8753635a23866695e3764135fb7eb5b6f938e673f1866dcf694bb64657d246c1",
+        "file": "ch030-mini-swe-agent.md",
+        "title": "30. mini-SWE-agent",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch031-openhands-sdk.md",
+        "bytes": 19771,
+        "sha256": "0ba97e5590e43b3bc4d15141ae9d06ee1657bb2c73baddc7f8c6e8e6a759f6b4",
+        "file": "ch031-openhands-sdk.md",
+        "title": "31. OpenHands Software Agent SDK",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch032-hermes-agent.md",
+        "bytes": 16997,
+        "sha256": "3e22f8ec692c7acfc0da602338bc61a0fab5498feef6b17b35f55eb3728fdf17",
+        "file": "ch032-hermes-agent.md",
+        "title": "32. Hermes Agent",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch033-toad.md",
+        "bytes": 13480,
+        "sha256": "caf9dd3756b6b7acc7ec5c360e737a1592f6a3b98394ca96a7f07000805d6410",
+        "file": "ch033-toad.md",
+        "title": "33. Toad",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch034-background-agents.md",
+        "bytes": 16208,
+        "sha256": "178c958e0f4088b28e977a0f36c0ce14f2b6f63edcc1a3b03b83cc93984382ad",
+        "file": "ch034-background-agents.md",
+        "title": "34. Background Agents",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch035-flue-and-agent-os.md",
+        "bytes": 19327,
+        "sha256": "2c0bbd55c4c25d377a7ffaaef790e35feef4fc7d8406e85cc8a27756a3911357",
+        "file": "ch035-flue-and-agent-os.md",
+        "title": "35. Flue and Agent OS",
+        "group": "VII. What other coding agents teach"
+      },
+      {
+        "path": "coder/book/ch036-a-terminal-ui.md",
+        "bytes": 11501,
+        "sha256": "ee74a424a8ad75a704abd3f66e58a2e012475fc483ade9e74fdec2926af2e9b6",
+        "file": "ch036-a-terminal-ui.md",
+        "title": "36. A terminal UI",
+        "group": "VIII. The terminal"
+      },
+      {
+        "path": "coder/book/ch037-a-terminal-inside-the-agent.md",
+        "bytes": 7104,
+        "sha256": "77fbef13419c026d84d4e838d011eec98b7b2d37231e1a3064196583f98b70e5",
+        "file": "ch037-a-terminal-inside-the-agent.md",
+        "title": "37. A terminal inside the agent",
+        "group": "VIII. The terminal"
+      }
+    ],
+    "sha256": "cd379b465be1c62d6544a7f85afe5ee811692eb19d9e52f8ef42124614ea70a6"
+  },
+  "change_request": "a2LulMeR37cdUZRSBJ4X",
+  "submitted_markdown": [
+    {
+      "path": "README.md",
+      "bytes": 7949,
+      "sha256": "07b4eeae7e2b93f146bb01c0650a824356a5a0dc189d640b223179f143189946",
+      "file": "README.md",
+      "page_id": "83xWUlspIldc8fNgOYup",
+      "title": "Introduction"
+    },
+    {
+      "path": "PLAN.md",
+      "bytes": 13249,
+      "sha256": "f35aeb5dc41474204a4a3bf2dd4d51e18b50fec0e39927fd1689cde5b29d3b63",
+      "file": "PLAN.md",
+      "page_id": "9nPWAXwsbR9UQpcAK5HU",
+      "title": "Plan"
+    },
+    {
+      "path": "ch001-the-simplest-loop.md",
+      "bytes": 29199,
+      "sha256": "b2b6b9c2d67aab38913c51c031e850efcb46995c4513f7e1f7f5721ecdc56db8",
+      "file": "ch001-the-simplest-loop.md",
+      "page_id": "Rvvo1KKR3fsMuVLWgLLd",
+      "title": "1. The simplest loop"
+    },
+    {
+      "path": "ch002-model-visible-means-logged.md",
+      "bytes": 38852,
+      "sha256": "509d2c0ad6cadad22a0a4672a1e2691aec5c405091685ebb2737f48619176c16",
+      "file": "ch002-model-visible-means-logged.md",
+      "page_id": "cC03BH4CaB2uOxaCH0JC",
+      "title": "2. Model-visible means logged"
+    },
+    {
+      "path": "ch003-keep-the-prefix-stable.md",
+      "bytes": 34379,
+      "sha256": "af08369ea44dd43cd59e1b64212022cc99a2c9a2856a91a3c274d05e42d3a9e1",
+      "file": "ch003-keep-the-prefix-stable.md",
+      "page_id": "CKzmrh9ZP5KxXYHBv48h",
+      "title": "3. Keep the prefix stable"
+    },
+    {
+      "path": "ch004-tools-as-typed-capabilities.md",
+      "bytes": 33067,
+      "sha256": "7c9b64f6e35bc1a66615ed7a0e0b597148e623bc14328a819b4192b271fba181",
+      "file": "ch004-tools-as-typed-capabilities.md",
+      "page_id": "2Opr5Pj4FdxGrmR2b68x",
+      "title": "4. Tools as typed capabilities"
+    },
+    {
+      "path": "ch005-a-sandbox-and-approvals.md",
+      "bytes": 29357,
+      "sha256": "078ad9f06dd5113c1514ccb2411d6fa3e5ccd07dc8d3ba14648d103306b8c75c",
+      "file": "ch005-a-sandbox-and-approvals.md",
+      "page_id": "dJo4UML7KnXgJADnMDb0",
+      "title": "5. A sandbox and approvals"
+    },
+    {
+      "path": "ch006-a-document-tries-to-become-the-system-prompt.md",
+      "bytes": 51645,
+      "sha256": "dad51bc5e0a3c09859cb0b5fbb2c3c03d2b78f31e84ddf46cce55d601a622996",
+      "file": "ch006-a-document-tries-to-become-the-system-prompt.md",
+      "page_id": "tkpTj9Rtl6n9diSszmre",
+      "title": "6. A document tries to become the system prompt"
+    },
+    {
+      "path": "ch007-condense-the-history.md",
+      "bytes": 42660,
+      "sha256": "99ad9c76a75ba71a055a3146dd55526becb406644b72c83e0afbf2bd30d09458",
+      "file": "ch007-condense-the-history.md",
+      "page_id": "jTpICUZfoeAKWdDMRsgE",
+      "title": "7. Condense the history"
+    },
+    {
+      "path": "ch008-programs-as-tool-calls.md",
+      "bytes": 39285,
+      "sha256": "483d23af25f3f7158960d728c020212d0fd8a226b6b7dd55956949687cccdc7e",
+      "file": "ch008-programs-as-tool-calls.md",
+      "page_id": "8fKLFtA14zG6V72CmggT",
+      "title": "8. Programs as tool calls"
+    },
+    {
+      "path": "ch009-microcoder.md",
+      "bytes": 8227,
+      "sha256": "d2fc67bdaeb5101a6a890cd7e4ddc93ac36766943c9a22ded0ef565eb000af2a",
+      "file": "ch009-microcoder.md",
+      "page_id": "SOVdtzeZr7SvV882dPaU",
+      "title": "9. Microcoder"
+    },
+    {
+      "path": "ch010-drive-claude-code.md",
+      "bytes": 7458,
+      "sha256": "1c2db9ac3c5e69e995aee3fa719eb94ca29515ff09cf714b69a32ab9294b2566",
+      "file": "ch010-drive-claude-code.md",
+      "page_id": "UnD6fzn32p7jUZaCYaCs",
+      "title": "10. Drive Claude Code"
+    },
+    {
+      "path": "ch011-drive-codex.md",
+      "bytes": 4634,
+      "sha256": "633263997a8547c7707724dc2b772cf343e3f1dbe437e0013d43e58b75484fd3",
+      "file": "ch011-drive-codex.md",
+      "page_id": "axFiaDjvhlKy8Cm2ss6N",
+      "title": "11. Drive Codex"
+    },
+    {
+      "path": "ch012-a-psionic-served-model.md",
+      "bytes": 4725,
+      "sha256": "1eeeaa4a359b3214f207606245fd59c5ee29d3c8c97790ac0e87fea6294a8d86",
+      "file": "ch012-a-psionic-served-model.md",
+      "page_id": "Mm2cf9wU7OB4CYQQrg4b",
+      "title": "12. A Psionic-served model as an engine"
+    },
+    {
+      "path": "ch013-choose-an-engine.md",
+      "bytes": 7098,
+      "sha256": "72b237026dec98f0be88958479d56990ec97fa32bf6d5bd78eecaaf5faaf8ec7",
+      "file": "ch013-choose-an-engine.md",
+      "page_id": "7SmxkeznO64k4XQo1ILz",
+      "title": "13. Choose an engine"
+    },
+    {
+      "path": "ch014-forks-subagents-and-jobs.md",
+      "bytes": 12666,
+      "sha256": "87cccd209465d211b52da351493c408ecddc111c0badd0b4ce45c1e365e1ad18",
+      "file": "ch014-forks-subagents-and-jobs.md",
+      "page_id": "RoMTTMEf44wqJCtI0SWn",
+      "title": "14. Forks, subagents and jobs"
+    },
+    {
+      "path": "ch015-plugins-with-owned-lifecycles.md",
+      "bytes": 12688,
+      "sha256": "a85cffcdc35d4aed80e6078318924f4c51cdd13bfecee9ec6fee14b76baf4451",
+      "file": "ch015-plugins-with-owned-lifecycles.md",
+      "page_id": "P7EPSZaHZBGNhRgk4Wt4",
+      "title": "15. Plugins with owned lifecycles"
+    },
+    {
+      "path": "ch016-speak-the-protocols.md",
+      "bytes": 49356,
+      "sha256": "dbff3b02de29cfaaac696fb4823ac817e116feceec20eac14d6b89fa15350a28",
+      "file": "ch016-speak-the-protocols.md",
+      "page_id": "vC4tcHNiaO1st3DjjTvX",
+      "title": "16. Speak the protocols"
+    },
+    {
+      "path": "ch017-one-agent-many-tasks.md",
+      "bytes": 21986,
+      "sha256": "188594033917ed4ff0103e0f96b4a281547ee727d7a82d530eb0c494a1cd6cca",
+      "file": "ch017-one-agent-many-tasks.md",
+      "page_id": "AxOdz3IMdnNt0fhzOINU",
+      "title": "17. One agent, many tasks"
+    },
+    {
+      "path": "ch018-consent-before-sharing.md",
+      "bytes": 42111,
+      "sha256": "ff73d960d9990528de8f4b8e2da44bc5a1eddfa6c175f4b198d51eb017fc0797",
+      "file": "ch018-consent-before-sharing.md",
+      "page_id": "847z8rEQlTizB8QqtstE",
+      "title": "18. Consent before sharing"
+    },
+    {
+      "path": "ch019-remember-a-fact-then-revise-it.md",
+      "bytes": 40184,
+      "sha256": "6f9439230f66dd58b27b781ed3a5cc9be1c5209fb8d28e7ec3982e0ad86eb4aa",
+      "file": "ch019-remember-a-fact-then-revise-it.md",
+      "page_id": "mnhV2yx3afRZ3BpJQ2JI",
+      "title": "19. Remember a fact, then revise it"
+    },
+    {
+      "path": "ch020-an-agent-that-stays-online.md",
+      "bytes": 30435,
+      "sha256": "4468e89d70eac52b6f5e4bfd20816d957e749dedb61106309d95a2924a497ea8",
+      "file": "ch020-an-agent-that-stays-online.md",
+      "page_id": "DBHDAHLgCmdXokdoW6Vf",
+      "title": "20. An agent that stays online"
+    },
+    {
+      "path": "ch021-measure-the-harness.md",
+      "bytes": 37795,
+      "sha256": "42193ace4c3af5d3093d82ea2dce50cd8a3348a0b7e1cd016e244ceeda07ce9f",
+      "file": "ch021-measure-the-harness.md",
+      "page_id": "na36zkTi8nm99pgFqyFD",
+      "title": "21. Measure the harness"
+    },
+    {
+      "path": "ch022-generate-candidates-then-check-them.md",
+      "bytes": 28608,
+      "sha256": "dec07ae7195ef91cdc13ad4b4d792f4934f40040c04058b0a456225c2c6e6f32",
+      "file": "ch022-generate-candidates-then-check-them.md",
+      "page_id": "m04y8xV2LpLQCb2EGFxf",
+      "title": "22. Generate candidates, then check them"
+    },
+    {
+      "path": "ch023-openagents-coder.md",
+      "bytes": 12024,
+      "sha256": "30b7f292b45f71c2a68d8533d25fcc799f530743239ab3312ee370abac3f7369",
+      "file": "ch023-openagents-coder.md",
+      "page_id": "dRfkywgtlrMYBZErE7Fx",
+      "title": "23. `openagents coder`"
+    },
+    {
+      "path": "ch024-deepseek-harness.md",
+      "bytes": 14820,
+      "sha256": "819e22a0696945039e1231d269f2751338a8eb6704749c33d5cbef637579815a",
+      "file": "ch024-deepseek-harness.md",
+      "page_id": "qO4hT0OKCBtMiksQZgIB",
+      "title": "24. DeepSeek Harness"
+    },
+    {
+      "path": "ch025-claude-code.md",
+      "bytes": 14630,
+      "sha256": "d191ccab4bc1ed8122d79f8dd9f03efe7bc3d266f939843f61629b1ad726f05f",
+      "file": "ch025-claude-code.md",
+      "page_id": "RFKvYNKzc5SQiBNGMyBE",
+      "title": "25. Claude Code"
+    },
+    {
+      "path": "ch026-codex.md",
+      "bytes": 16646,
+      "sha256": "b77ee2cfbb5d89c9c2ca37bd7a4f6d042b97a857a246cb8e447af960f04a2520",
+      "file": "ch026-codex.md",
+      "page_id": "2tzgSvOlOlILaIPkEIik",
+      "title": "26. Codex"
+    },
+    {
+      "path": "ch027-opencode.md",
+      "bytes": 17759,
+      "sha256": "5c4f18947e24ba6170d634ddb005f5be8c3be38a302658758ab038526fd5fa60",
+      "file": "ch027-opencode.md",
+      "page_id": "2E6CgDhWR8lXOLIsYCXB",
+      "title": "27. OpenCode"
+    },
+    {
+      "path": "ch028-goose.md",
+      "bytes": 18235,
+      "sha256": "fccae0a092d2d82ac3591378373b00080307eb13893365921234b983452411ad",
+      "file": "ch028-goose.md",
+      "page_id": "zJRCNKbsZyBXXUdjXAsV",
+      "title": "28. Goose"
+    },
+    {
+      "path": "ch029-aider.md",
+      "bytes": 15584,
+      "sha256": "b40664b7320db022f0734db2349cc82db0cd619dea20d0d1d23b5d4a6de17683",
+      "file": "ch029-aider.md",
+      "page_id": "0LDWV1zTZEp2An9uYpD2",
+      "title": "29. Aider"
+    },
+    {
+      "path": "ch030-mini-swe-agent.md",
+      "bytes": 20082,
+      "sha256": "71106317e0baf84f431822a0354b096afddbeb38b84fe565f1fc181e15f59b3d",
+      "file": "ch030-mini-swe-agent.md",
+      "page_id": "5Mu2EthGsumjyH2Tbkip",
+      "title": "30. mini-SWE-agent"
+    },
+    {
+      "path": "ch031-openhands-sdk.md",
+      "bytes": 20391,
+      "sha256": "6a1f0a120e21df51d1330f6a64c38d2dc7d66b4f7cf9bf8ddf87746bec15d4f8",
+      "file": "ch031-openhands-sdk.md",
+      "page_id": "DQ76Us3aNl20V7hXUHEG",
+      "title": "31. OpenHands Software Agent SDK"
+    },
+    {
+      "path": "ch032-hermes-agent.md",
+      "bytes": 17101,
+      "sha256": "da95390d1da04906b756dc184fe3729805ac4c63f19a9fb2d2584f56ac6fa6b5",
+      "file": "ch032-hermes-agent.md",
+      "page_id": "0IGpAQqKs8tXENLZWx2i",
+      "title": "32. Hermes Agent"
+    },
+    {
+      "path": "ch033-toad.md",
+      "bytes": 13838,
+      "sha256": "fadbf5cac32487dd05d188b6e9d34c91ee88d6908aabaa310941e50d4ad87c29",
+      "file": "ch033-toad.md",
+      "page_id": "3nXeGp7TEdrahbsHMdPT",
+      "title": "33. Toad"
+    },
+    {
+      "path": "ch034-background-agents.md",
+      "bytes": 16546,
+      "sha256": "10cf5222919094496a6273d9fbe18d165cb0340f750fab8efbe58e71e39b4c69",
+      "file": "ch034-background-agents.md",
+      "page_id": "gbo175ia7wgjvddxiJeb",
+      "title": "34. Background Agents"
+    },
+    {
+      "path": "ch035-flue-and-agent-os.md",
+      "bytes": 19594,
+      "sha256": "f79b425d6a0cb621089c08e0bd9fe15218ec5930e642165bfb4b35997cd6f2ff",
+      "file": "ch035-flue-and-agent-os.md",
+      "page_id": "L0nQw2q5m1lxTMx14dKC",
+      "title": "35. Flue and Agent OS"
+    },
+    {
+      "path": "ch036-a-terminal-ui.md",
+      "bytes": 11746,
+      "sha256": "16b521c383a2b0ea1a925a7c7c509cd7835fda3ec8273d173a985b31cc24b074",
+      "file": "ch036-a-terminal-ui.md",
+      "page_id": "tZIUToRTh14iqL5cdoBL",
+      "title": "36. A terminal UI"
+    },
+    {
+      "path": "ch037-a-terminal-inside-the-agent.md",
+      "bytes": 7439,
+      "sha256": "a116c0ea01ec5c0d6f29abb72ef2341b32c4cc8ad2919eeeb1c3db415cc29fd0",
+      "file": "ch037-a-terminal-inside-the-agent.md",
+      "page_id": "H0CPSJbTDf81AHDBm8Sj",
+      "title": "37. A terminal inside the agent"
+    }
+  ],
+  "submitted_markdown_sha256": "9bb42ec94328f7f78bc3c562565b8fb49d7591531678b34669e1e07c8c883cfc",
+  "verified_live": {
+    "revision": "LKB5R3HDkjXN41rhP8K5",
+    "inventory": [
+      {
+        "id": "83xWUlspIldc8fNgOYup",
+        "title": "Introduction",
+        "path": "readme",
+        "pages": []
+      },
+      {
+        "id": "9nPWAXwsbR9UQpcAK5HU",
+        "title": "Plan",
+        "path": "plan",
+        "pages": []
+      },
+      {
+        "id": "0UzJu7VdsBcrlhu9ROCr",
+        "title": "I. The loop",
+        "path": "i.-the-loop",
+        "pages": [
+          {
+            "id": "Rvvo1KKR3fsMuVLWgLLd",
+            "title": "1. The simplest loop",
+            "path": "i.-the-loop/ch001-the-simplest-loop",
+            "pages": []
+          },
+          {
+            "id": "cC03BH4CaB2uOxaCH0JC",
+            "title": "2. Model-visible means logged",
+            "path": "i.-the-loop/ch002-model-visible-means-logged",
+            "pages": []
+          },
+          {
+            "id": "CKzmrh9ZP5KxXYHBv48h",
+            "title": "3. Keep the prefix stable",
+            "path": "i.-the-loop/ch003-keep-the-prefix-stable",
+            "pages": []
+          },
+          {
+            "id": "2Opr5Pj4FdxGrmR2b68x",
+            "title": "4. Tools as typed capabilities",
+            "path": "i.-the-loop/ch004-tools-as-typed-capabilities",
+            "pages": []
+          },
+          {
+            "id": "dJo4UML7KnXgJADnMDb0",
+            "title": "5. A sandbox and approvals",
+            "path": "i.-the-loop/ch005-a-sandbox-and-approvals",
+            "pages": []
+          },
+          {
+            "id": "tkpTj9Rtl6n9diSszmre",
+            "title": "6. A document tries to become the system prompt",
+            "path": "i.-the-loop/ch006-a-document-tries-to-become-the-system-prompt",
+            "pages": []
+          },
+          {
+            "id": "jTpICUZfoeAKWdDMRsgE",
+            "title": "7. Condense the history",
+            "path": "i.-the-loop/ch007-condense-the-history",
+            "pages": []
+          },
+          {
+            "id": "8fKLFtA14zG6V72CmggT",
+            "title": "8. Programs as tool calls",
+            "path": "i.-the-loop/ch008-programs-as-tool-calls",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "oeyy3DK9wPlCuJWO6JnE",
+        "title": "II. Engines",
+        "path": "ii.-engines",
+        "pages": [
+          {
+            "id": "SOVdtzeZr7SvV882dPaU",
+            "title": "9. Microcoder",
+            "path": "ii.-engines/ch009-microcoder",
+            "pages": []
+          },
+          {
+            "id": "UnD6fzn32p7jUZaCYaCs",
+            "title": "10. Drive Claude Code",
+            "path": "ii.-engines/ch010-drive-claude-code",
+            "pages": []
+          },
+          {
+            "id": "axFiaDjvhlKy8Cm2ss6N",
+            "title": "11. Drive Codex",
+            "path": "ii.-engines/ch011-drive-codex",
+            "pages": []
+          },
+          {
+            "id": "Mm2cf9wU7OB4CYQQrg4b",
+            "title": "12. A Psionic-served model as an engine",
+            "path": "ii.-engines/ch012-a-psionic-served-model",
+            "pages": []
+          },
+          {
+            "id": "7SmxkeznO64k4XQo1ILz",
+            "title": "13. Choose an engine",
+            "path": "ii.-engines/ch013-choose-an-engine",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "8cxvfnilRF2pPduZJq4x",
+        "title": "III. Many tasks",
+        "path": "iii.-many-tasks",
+        "pages": [
+          {
+            "id": "RoMTTMEf44wqJCtI0SWn",
+            "title": "14. Forks, subagents and jobs",
+            "path": "iii.-many-tasks/ch014-forks-subagents-and-jobs",
+            "pages": []
+          },
+          {
+            "id": "P7EPSZaHZBGNhRgk4Wt4",
+            "title": "15. Plugins with owned lifecycles",
+            "path": "iii.-many-tasks/ch015-plugins-with-owned-lifecycles",
+            "pages": []
+          },
+          {
+            "id": "vC4tcHNiaO1st3DjjTvX",
+            "title": "16. Speak the protocols",
+            "path": "iii.-many-tasks/ch016-speak-the-protocols",
+            "pages": []
+          },
+          {
+            "id": "AxOdz3IMdnNt0fhzOINU",
+            "title": "17. One agent, many tasks",
+            "path": "iii.-many-tasks/ch017-one-agent-many-tasks",
+            "pages": []
+          },
+          {
+            "id": "847z8rEQlTizB8QqtstE",
+            "title": "18. Consent before sharing",
+            "path": "iii.-many-tasks/ch018-consent-before-sharing",
+            "pages": []
+          },
+          {
+            "id": "mnhV2yx3afRZ3BpJQ2JI",
+            "title": "19. Remember a fact, then revise it",
+            "path": "iii.-many-tasks/ch019-remember-a-fact-then-revise-it",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "wf2SHsWzV3jWDRvsvZy9",
+        "title": "IV. Staying online",
+        "path": "iv.-staying-online",
+        "pages": [
+          {
+            "id": "DBHDAHLgCmdXokdoW6Vf",
+            "title": "20. An agent that stays online",
+            "path": "iv.-staying-online/ch020-an-agent-that-stays-online",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "AelVmH7vVpQjW6OxfSkA",
+        "title": "V. Measure",
+        "path": "v.-measure",
+        "pages": [
+          {
+            "id": "na36zkTi8nm99pgFqyFD",
+            "title": "21. Measure the harness",
+            "path": "v.-measure/ch021-measure-the-harness",
+            "pages": []
+          },
+          {
+            "id": "m04y8xV2LpLQCb2EGFxf",
+            "title": "22. Generate candidates, then check them",
+            "path": "v.-measure/ch022-generate-candidates-then-check-them",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "6Z2sWp5MYBLCLMCSjjHa",
+        "title": "VI. The command line",
+        "path": "vi.-the-command-line",
+        "pages": [
+          {
+            "id": "dRfkywgtlrMYBZErE7Fx",
+            "title": "23. `openagents coder`",
+            "path": "vi.-the-command-line/ch023-openagents-coder",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "xWwTHTOcqIPfVKfw7FCw",
+        "title": "VII. What other coding agents teach",
+        "path": "vii.-what-other-coding-agents-teach",
+        "pages": [
+          {
+            "id": "qO4hT0OKCBtMiksQZgIB",
+            "title": "24. DeepSeek Harness",
+            "path": "vii.-what-other-coding-agents-teach/ch024-deepseek-harness",
+            "pages": []
+          },
+          {
+            "id": "RFKvYNKzc5SQiBNGMyBE",
+            "title": "25. Claude Code",
+            "path": "vii.-what-other-coding-agents-teach/ch025-claude-code",
+            "pages": []
+          },
+          {
+            "id": "2tzgSvOlOlILaIPkEIik",
+            "title": "26. Codex",
+            "path": "vii.-what-other-coding-agents-teach/ch026-codex",
+            "pages": []
+          },
+          {
+            "id": "2E6CgDhWR8lXOLIsYCXB",
+            "title": "27. OpenCode",
+            "path": "vii.-what-other-coding-agents-teach/ch027-opencode",
+            "pages": []
+          },
+          {
+            "id": "zJRCNKbsZyBXXUdjXAsV",
+            "title": "28. Goose",
+            "path": "vii.-what-other-coding-agents-teach/ch028-goose",
+            "pages": []
+          },
+          {
+            "id": "0LDWV1zTZEp2An9uYpD2",
+            "title": "29. Aider",
+            "path": "vii.-what-other-coding-agents-teach/ch029-aider",
+            "pages": []
+          },
+          {
+            "id": "5Mu2EthGsumjyH2Tbkip",
+            "title": "30. mini-SWE-agent",
+            "path": "vii.-what-other-coding-agents-teach/ch030-mini-swe-agent",
+            "pages": []
+          },
+          {
+            "id": "DQ76Us3aNl20V7hXUHEG",
+            "title": "31. OpenHands Software Agent SDK",
+            "path": "vii.-what-other-coding-agents-teach/ch031-openhands-sdk",
+            "pages": []
+          },
+          {
+            "id": "0IGpAQqKs8tXENLZWx2i",
+            "title": "32. Hermes Agent",
+            "path": "vii.-what-other-coding-agents-teach/ch032-hermes-agent",
+            "pages": []
+          },
+          {
+            "id": "3nXeGp7TEdrahbsHMdPT",
+            "title": "33. Toad",
+            "path": "vii.-what-other-coding-agents-teach/ch033-toad",
+            "pages": []
+          },
+          {
+            "id": "gbo175ia7wgjvddxiJeb",
+            "title": "34. Background Agents",
+            "path": "vii.-what-other-coding-agents-teach/ch034-background-agents",
+            "pages": []
+          },
+          {
+            "id": "L0nQw2q5m1lxTMx14dKC",
+            "title": "35. Flue and Agent OS",
+            "path": "vii.-what-other-coding-agents-teach/ch035-flue-and-agent-os",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "EtSw904fX7odBH1C6uU0",
+        "title": "VIII. The terminal",
+        "path": "viii.-the-terminal",
+        "pages": [
+          {
+            "id": "tZIUToRTh14iqL5cdoBL",
+            "title": "36. A terminal UI",
+            "path": "viii.-the-terminal/ch036-a-terminal-ui",
+            "pages": []
+          },
+          {
+            "id": "H0CPSJbTDf81AHDBm8Sj",
+            "title": "37. A terminal inside the agent",
+            "path": "viii.-the-terminal/ch037-a-terminal-inside-the-agent",
+            "pages": []
+          }
+        ]
+      }
+    ],
+    "sha256": "cb835010d9a949ef7af5e527030a1d1ed2c15b2debbc3c33649fe095d8adf88e"
+  },
+  "verification_scope": "Source and submitted-markdown hashes record publication provenance; live revision and page inventory were checked, not live document-body parity."
+}
