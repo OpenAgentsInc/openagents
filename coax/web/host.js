@@ -1893,6 +1893,9 @@ if (dev) {
   globalThis.coaxial.reloadRenderer = async () => { try { return await loadShaders(); } catch { return false; } };
   globalThis.coaxial.renderResources = () => gpu?.renderer ? [gpu.renderer.vertexBuffer, gpu.renderer.uniformBuffer,
     ...[...gpu.renderer.resourceRecords.values()].map((r) => r.gpu), gpu.renderer.indexRecord?.gpu, gpu.renderer.sansTexture, gpu.renderer.layerTexture] : [];
+  globalThis.coaxial.renderLedger = () => gpu?.renderer?.ready ? gpu.renderer.ledger() : null;
+  globalThis.coaxial.renderLedgerLive = (slot, generation) => engine?.exports.coaxial_render_live?.(slot, generation) ?? -1;
+  globalThis.coaxial.renderLedgerRelease = (slot, generation) => engine?.exports.coaxial_render_release?.(slot, generation) ?? -1;
   globalThis.coaxial.renderFixture = (kind) => kind === "video" ? engine?.exports.coaxial_render_fixture_video?.(arena.state) : engine?.exports.coaxial_render_fixture?.(arena.state);
   globalThis.coaxial.renderAssets = () => gpu?.renderer?.assetRows ?? [];
   globalThis.coaxial.renderMediaObjects = () => [...(gpu?.renderer?.mediaCache?.values() ?? [])];

@@ -3944,3 +3944,15 @@ or no graph. Existing gate lowering owns the compiled arithmetic; chapter
 actual weights. Readout coefficients count even when there are no hidden
 gated layers. Parsing, identity and finite-case success confer no quality or
 deployment authority. Evidence: `docs/verification/psionic-ch254-2026-11-02.md`.
+
+## A browser GPU object exists only with a live ledger handle
+
+`coax/web/render.js` creates a buffer or texture only after the Coax ledger
+(`aethyr/render/registry.coax`, `#authority`) admits its kind and size within
+512 slots and a 1 GiB word budget, and releases the handle when it destroys
+the object. A frame advances the ledger's epoch and refuses, before any GPU
+write, if any object it draws with is not live. A lost device releases every
+handle and keeps the generations, so no handle from before the loss is live
+again. Checks: the ledger's own checks and its mutation gate;
+`aethyr/tests/render-ledger.coax` on the served Grid (exact count, a released
+handle refused at use, recovery after a lost device).

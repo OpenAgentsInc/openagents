@@ -1,0 +1,121 @@
+// The GPU resource ledger (aethyr/render/registry.coax) on a served realm page,
+// in headless, muted Chrome (GitHub #12628):
+//   1. Loaded and drawing: every GPU object the renderer holds has a live ledger
+//      handle, the ledger counts exactly those objects within its word budget, and
+//      each drawn frame advances its epoch.
+//   2. Use behind admission: the Sans atlas's handle (on a page without the atlas, the
+//      uniform buffer's) is released in the ledger while the renderer still holds the
+//      object. The next frame is refused before any GPU write, every other handle stays
+//      live, and a second release is refused.
+//   3. A lost device: the host's recovery releases every object; the new renderer's
+//      objects are all live, no handle from before the loss is, and a frame draws.
+//   COAX=... coax/web/tool.sh aethyr/tests/render-ledger.coax http://127.0.0.1:PORT/realms/the-grid/
+#import "Basic";
+#load "../../coax/lib/net/cdp.coax";
+
+RL_WAIT_MS :: 120000;
+// The host's clip clock and its offscreen target, as coax/web/gpu-recovery.coax uses: headless
+// SwiftShader here lost the canvas-presenting device four times on load, with or without the
+// ledger. Console errors are kept for a failure's report.
+RL_SETUP :: "globalThis.coaxialClip=true;globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba16float';globalThis.rlErrors=[];{const e=console.error;console.error=(...a)=>{rlErrors.push(a.map((x)=>String(x?.stack??x)).join(' ').slice(0,400));e(...a);};}";
+RL_READY :: "(async()=>!!globalThis.coaxial?.ready && (await globalThis.coaxialClipStep?.(1,Infinity))===1 && coaxial.sceneReady===true)()";
+// Every held object has a live handle here, and the ledger counts exactly them.
+RL_EXACT :: "(()=>{const l=coaxial.renderLedger();return !!l && l.live>0 && l.live===l.handles.length && l.handles.every((h)=>h.here && coaxial.renderLedgerLive(h.slot,h.generation)===1) && l.words>0 && l.words<=l.budget})()";
+
+RenderLedgerRun :: struct {
+  exact_loaded: bool; epoch_advanced: bool;
+  released: bool; refused: bool; others_live: bool; second_release_refused: bool;
+  recovered: bool; exact_after_loss: bool; none_from_before: bool; drew_after_loss: bool;
+}
+rl_passed :: (r: RenderLedgerRun) -> bool {
+  return r.exact_loaded && r.epoch_advanced && r.released && r.refused && r.others_live &&
+    r.second_release_refused && r.recovered && r.exact_after_loss && r.none_from_before && r.drew_after_loss;
+}
+#test "the ledger check passes only when every observation holds" {
+  r := RenderLedgerRun.{exact_loaded=true,epoch_advanced=true,released=true,refused=true,others_live=true,
+    second_release_refused=true,recovered=true,exact_after_loss=true,none_from_before=true,drew_after_loss=true};
+  #assert rl_passed(r);
+  r.exact_loaded=false;#assert !rl_passed(r);r.exact_loaded=true;
+  r.epoch_advanced=false;#assert !rl_passed(r);r.epoch_advanced=true;
+  r.released=false;#assert !rl_passed(r);r.released=true;
+  r.refused=false;#assert !rl_passed(r);r.refused=true;
+  r.others_live=false;#assert !rl_passed(r);r.others_live=true;
+  r.second_release_refused=false;#assert !rl_passed(r);r.second_release_refused=true;
+  r.recovered=false;#assert !rl_passed(r);r.recovered=true;
+  r.exact_after_loss=false;#assert !rl_passed(r);r.exact_after_loss=true;
+  r.none_from_before=false;#assert !rl_passed(r);r.none_from_before=true;
+  r.drew_after_loss=false;#assert !rl_passed(r);
+}
+rl_local :: (url: string) -> bool {
+  return (url.count > 17 && url[0..<17] == "http://127.0.0.1:") || (url.count > 17 && url[0..<17] == "http://localhost:");
+}
+#test "the check runs only against a page served on this machine" {
+  #assert rl_local("http://127.0.0.1:8800/realms/the-grid/") && rl_local("http://localhost:8800/x");
+  #assert !rl_local("https://openagents.com/realms/the-grid/") && !rl_local("http://127.0.0.1.evil:80") && !rl_local("");
+}
+rl_param :: (c: [] Cdp, method: string, key: string, value: string) -> bool {
+  buf: [CDP_REQ] u8; o: [1] Jo;
+  jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], key); jo_str(o[..], value); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, method, jo_text(o[..]), 30000) >= 0;
+}
+rl_true :: (c: [] Cdp, expr: string) -> bool {
+  at := cdp_evaluate(c, expr); return at >= 0 && jv_raw(c[0].doc[0], at) == "true";
+}
+rl_until :: (c: [] Cdp, expr: string) -> bool {
+  until := proc_now_ms() + RL_WAIT_MS;
+  while proc_now_ms() < until {if rl_true(c, expr) {return true;} proc_sleep(50);}
+  return false;
+}
+rl_show :: (c: [] Cdp, label: string) {
+  at := cdp_evaluate(c, "JSON.stringify((({handles,...l})=>({...l,held:handles.length}))(coaxial.renderLedger()??{handles:[]}))");
+  if at >= 0 {print("render-ledger: % %\n", label, jv_raw(c[0].doc[0], at));}
+}
+rl_run :: (c: [] Cdp, url: string, r: [] RenderLedgerRun) -> bool {
+  if cdp_call(c, "Page.enable", "", 30000) < 0 || cdp_call(c, "Runtime.enable", "", 30000) < 0 {return false;}
+  if !rl_param(c, "Page.addScriptToEvaluateOnNewDocument", "source", RL_SETUP) || !rl_param(c, "Page.navigate", "url", url) {return false;}
+  print("render-ledger: open %\n", url);
+  if !rl_until(c, RL_READY) {return false;}
+  r[0].exact_loaded = rl_true(c, RL_EXACT);
+  rl_show(c, "loaded");
+  if !rl_true(c, "(globalThis.rlEpoch=coaxial.renderLedger().epoch,true)") {return false;}
+  // One epoch per drawn frame.
+  r[0].epoch_advanced = rl_true(c, "(async()=>{for(let i=0;i<3;i++)if((await coaxialClipStep(1,60))!==1)return false;return coaxial.renderStatus?.submitted===true && coaxial.renderLedger().epoch===rlEpoch+3})()");
+  // Keep every handle from before the release and the loss.
+  if !rl_true(c, "(globalThis.rlBefore=coaxial.renderLedger(),true)") {return false;}
+  r[0].released = rl_true(c, "(()=>{const s=rlBefore.named.sans??rlBefore.named.uniform;return !!s && coaxial.renderLedgerRelease(s[0],s[1])===0})()");
+  r[0].refused = rl_true(c, "coaxialClipStep(1,60).then(()=>coaxial.renderStatus?.submitted===false && coaxial.renderStatus?.refusal?.phase==='resources')");
+  r[0].others_live = rl_true(c, "(()=>{const s=rlBefore.named.sans??rlBefore.named.uniform,l=coaxial.renderLedger();return l.live===rlBefore.live-1 && rlBefore.handles.every((h)=>(h.slot===s[0])===(coaxial.renderLedgerLive(h.slot,h.generation)===0))})()");
+  r[0].second_release_refused = rl_true(c, "(()=>{const s=rlBefore.named.sans??rlBefore.named.uniform;return coaxial.renderLedgerRelease(s[0],s[1])!==0})()");
+  rl_show(c, "one handle released");
+  print("render-ledger: lose the device\n");
+  if !rl_true(c, "coaxial.loseDevice()") {return false;}
+  r[0].recovered = rl_until(c, "coaxial.gpuRecovery?.state==='recovered' && !!coaxial.renderLedger()");
+  r[0].drew_after_loss = rl_true(c, "coaxialClipStep(1,60).then((v)=>v===1 && coaxial.renderStatus?.submitted===true)");
+  r[0].exact_after_loss = rl_true(c, RL_EXACT);
+  r[0].none_from_before = rl_true(c, "rlBefore.handles.length>0 && rlBefore.handles.every((h)=>coaxial.renderLedgerLive(h.slot,h.generation)===0) && coaxial.renderLedger().epoch>rlBefore.epoch");
+  rl_show(c, "after loss");
+  return true;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  if !ok || !rl_local(url) {tool_errln("usage: coax/web/tool.sh aethyr/tests/render-ledger.coax http://127.0.0.1:PORT/realms/SLUG/"); return 2;}
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 320, 240, "coax-render-ledger-") {tool_err("render-ledger: "); tool_errln(cdp_error(c[..])); return 1;}
+  r: [1] RenderLedgerRun;
+  ran := rl_run(c[..], url, r[..]);
+  if !ran {
+    tool_err("render-ledger: the page did not get through: "); tool_errln(cdp_error(c[..]));
+    at := cdp_evaluate(c[..], "(async()=>JSON.stringify({adapter:await navigator.gpu?.requestAdapter().then((a)=>a?(a.info?.vendor+'/'+a.info?.architecture):null),url:location.href,ready:globalThis.coaxial?.ready,scene:globalThis.coaxial?.sceneReady,clip:typeof globalThis.coaxialClipStep,status:globalThis.coaxial?.renderStatus,lost:globalThis.coaxial?.renderDeviceLost,recovery:globalThis.coaxial?.gpuRecovery,ledger:globalThis.coaxial?.renderLedger?.(),note:document.querySelector('pre[role=status]')?.textContent,gpu:!!navigator.gpu,errors:globalThis.rlErrors,phase:globalThis.coaxial?.renderLifecyclePhase}))()");
+    if at >= 0 {tool_errln(jv_raw(c[0].doc[0], at));}
+  }
+  cdp_close(c[..]);
+  run := r[0];
+  print("render-ledger: exact % epoch % released % refused % others % second-release-refused % recovered % exact-after % none-from-before % drew %\n",
+    run.exact_loaded, run.epoch_advanced, run.released, run.refused, run.others_live, run.second_release_refused,
+    run.recovered, run.exact_after_loss, run.none_from_before, run.drew_after_loss);
+  passed := ran && rl_passed(run);
+  print("% the GPU resource ledger admits, refuses and recovers on a live page\n", ifx passed then "pass" else "FAIL");
+  return ifx passed then 0 else 1;
+}

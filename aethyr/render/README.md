@@ -14,6 +14,7 @@ Its development route is `/render-fixtures/galaxy/`.
 | Source | Responsibility |
 | --- | --- |
 | `frame.coax`, `geometry.coax` | Measured upload spans, the four-u32 draw ABI, actual vertex/index/instance domains and bounded admission work |
+| `registry.coax` | The GPU resource ledger: slot, generation and epoch for every object the browser renderer creates, its word budget, release, and device loss |
 | `catalog.coax`, `bindings.coax`, `binding-sources.coax` | Profile identities, shader entry pairs, logical resources, physical reflection and resource origins |
 | `passes.coax`, `resources.coax` | Pass operations, attachment state, resource extents, sampler declarations and observed buffer initialization |
 | `runtime.coax` | Atomic composition of the canonical graph, effective work counts, geometry and frame admission |
@@ -170,6 +171,40 @@ generated C/header/native bytes and before/after identities. No browser, GPU,
 dataset, network, sound, app build or unrelated gate is invoked. The native
 oracle uses independent widened-sum range equations, actual IEEE nonfinites,
 the actual Grid function, guard words and named-field refusal/cleanup checks.
+
+### The GPU resource ledger
+
+[registry.coax](registry.coax) makes the `Rf*` slot, generation and epoch
+records real for the browser renderer. `coax/web/render.js` asks the ledger
+before it creates each buffer and texture: the vertex, uniform, index and
+storage buffers, the generated bloom and media uniforms, the Sans atlas, the
+layer array, every frame target and every media texture. A refusal (an unknown
+kind, an empty or oversized extent, all 512 slots in use, or the 1 GiB word
+budget spent) creates nothing. Each object carries its slot and generation;
+destroying it releases them, and a replaced mesh placeholder or texture is
+released, not leaked.
+
+Each frame advances the ledger's epoch, then checks that every buffer, texture
+and attachment it will draw with is live (`rf_live`) before the first GPU
+write. A released or foreign handle refuses the whole frame. A lost device
+(`coaxial_render_reset` after the first) releases every object and keeps the
+generations, so no handle from before the loss is live again, even once its
+slot is reused. The ledger's table is `RfResource`, so `rf_pass` admits a pass
+over the same records. Engine replacement moves a retained object into the new
+engine's ledger. Capture-only readback buffers are created and destroyed in
+one call and are not entered.
+
+```sh
+"$COAX" test aethyr/render/registry.coax --library
+"$COAX" mutate aethyr/render/registry.coax --library --root-only
+coax/web/tool.sh aethyr/tests/render-ledger.coax http://127.0.0.1:8800/realms/the-grid/
+```
+
+The headless check loads the served Grid, matches the ledger's live count to
+the objects the renderer holds, releases the Sans atlas's handle under the
+renderer and sees the next frame refused before any GPU write, then loses the
+device and sees every new object live and no old handle live. The native
+Vulkan host (`verse/native/render-host.c`) does not use the ledger yet.
 
 ### Native projection consumer and residual adapters
 

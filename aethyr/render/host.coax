@@ -12,6 +12,7 @@
 #load "host-uploads.coax";
 #load "asset-profile.coax";
 #load "resources.coax" as host_resources;
+#load "registry.coax";
 
 RenderHostEntryBank :: struct {entries:[14]RenderPackageEntry;}
 RenderHostJsonBank :: struct {bytes:[RENDER_PACKAGE_JSON]u8;}
@@ -129,3 +130,21 @@ aethyr_render_media_text_storage :: (rh_b:[]RenderHostMediaTextBank)->[]u8 #expo
 aethyr_render_bool :: (rh_raw:int)->RenderHostBool #export_c {return render_host_bool(rh_raw);}
 aethyr_render_readiness :: (rh_raw:int)->RenderReadiness #export_c {return render_host_readiness(rh_raw);}
 aethyr_render_asset_span :: (rh_address:u64,rh_capacity:u64,rh_bytes:u64,rh_memory:u64)->RenderHostByteView #export_c {return render_host_asset_span(rh_address,rh_capacity,rh_bytes,rh_memory);}
+
+// The GPU resource ledger (registry.coax): the platform asks before it
+// creates an object and reports each release; a lost device releases all.
+RenderHostRegistryBank :: struct {registry:[1]RenderRegistry;}
+aethyr_render_registry_storage :: (rh_bank:[]RenderHostRegistryBank)->[]RenderRegistry #export_c {return rh_bank[0].registry[..];}
+aethyr_render_registry_open :: (rh_r:[]RenderRegistry)->RrStatus #export_c {return rr_open(rh_r,RrLimits.{slots=RR_SLOTS,words=RR_WORDS});}
+aethyr_render_registry_acquire :: (rh_r:[]RenderRegistry,rh_kind:int,rh_words:int)->RrGrant #export_c {return rr_acquire(rh_r,rh_kind,rh_words);}
+aethyr_render_registry_release :: (rh_r:[]RenderRegistry,rh_slot:int,rh_generation:int)->RrStatus #export_c {return rr_release(rh_r,RfHandle.{slot=rh_slot,generation=rh_generation});}
+aethyr_render_registry_live :: (rh_r:[]RenderRegistry,rh_slot:int,rh_generation:int)->bool #export_c {return rr_live(rh_r,RfHandle.{slot=rh_slot,generation=rh_generation});}
+aethyr_render_registry_advance :: (rh_r:[]RenderRegistry)->bool #export_c {return rr_advance(rh_r);}
+aethyr_render_registry_lose :: (rh_r:[]RenderRegistry) #export_c {rr_lose(rh_r);}
+aethyr_render_buffer_words :: (rh_bytes:int)->int #export_c {return rr_buffer_words(rh_bytes);}
+aethyr_render_format_words :: (rh_format:int,rh_width:int,rh_height:int,rh_layers:int,rh_mips:int)->int #export_c {return rr_format_words(rh_format,rh_width,rh_height,rh_layers,rh_mips);}
+aethyr_render_resource_kind :: (rh_index:int)->int #export_c {
+  rh_kinds:=[6]int.[RF_UNIFORM,RF_STORAGE,RF_COLOR,RR_VERTEX,RR_INDEX,RR_TEXTURE];
+  if rh_index<0 || rh_index>=6 {return -1;}
+  return rh_kinds[rh_index];
+}

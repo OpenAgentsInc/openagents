@@ -3,6 +3,9 @@
 // selectors below are renderer transport ABI1; no realm table lives here.
 const number = (x) => Number(x);
 class RenderRefusal extends Error {}
+// The ledger handle (registry.coax) of a GPU object this host created: its
+// engine's exports, slot and generation.
+const OWNED = Symbol("Coax ledger handle");
 const blendComponent = (mode, alpha) => {
   const factors = [
     ["add", "one", "zero"], ["max", "one", "one"], ["add", "zero", alpha ? "src-alpha" : "src"],
@@ -51,10 +54,13 @@ export class RenderHost {
       asset: ids(4, ["invalid", "data", "storage", "index", "layers", "sound", "loop", "particles", "mesh"]),
       readiness: ids(5, ["loading", "background", "ready", "invalid"]),
       media: ids(6, ["invalid", "image", "video"]),
+      own: ids(7, ["uniform", "storage", "color", "vertex", "index", "texture"]),
     };
     const f = this.ids.format;
     this.formats = { [f.rgba8]: "rgba8unorm", [f.bgra8]: "bgra8unorm", [f.rgba16f]: "rgba16float", [f.depth32]: "depth32float" };
     this.formatCodes = { rgba8unorm: f.rgba8, bgra8unorm: f.bgra8, rgba16float: f.rgba16f };
+    // The ledger sizes a texture by its format; an sRGB view has its linear twin's texel.
+    this.textureCodes = { ...this.formatCodes, depth32float: f.depth32, "rgba8unorm-srgb": f.rgba8, "bgra8unorm-srgb": f.bgra8 };
     if (!x.coaxial_render_initialized()) x.coaxial_render_reset();
     x.coaxial_render_device(1, 1, 0); // WebGPU core has helper discard; its integer carrier is separately bounded.
     if(this.capture)globalThis.coaxial.renderLifecyclePhase="renderer-fetch-package";
@@ -77,8 +83,8 @@ export class RenderHost {
     } else {
     this.readAssets();
     if (x.coaxial_render_buffer_sizes(arena.maxVertices, arena.floats, arena.uniformFloats, BigInt(device.limits.maxBufferSize)) !== 0) throw new RenderRefusal("Coax refused renderer buffer extents");
-    this.vertexBuffer = device.createBuffer({ size: number(x.coaxial_render_buffer_size(0)), usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
-    this.uniformBuffer = device.createBuffer({ size: number(x.coaxial_render_buffer_size(1)), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    this.vertexBuffer = this.buffer(this.ids.own.vertex, { size: number(x.coaxial_render_buffer_size(0)), usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+    this.uniformBuffer = this.buffer(this.ids.own.uniform, { size: number(x.coaxial_render_buffer_size(1)), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.prepareBuffers();
     if (this.previous) this.retainEffects(this.previous);
     }
@@ -120,7 +126,7 @@ export class RenderHost {
       Object.assign(old, declared);this.assetRows[slot] = old;
       if (old.bytes) this.acceptAsset(old);
       if (old.kindId === this.ids.asset.layers && old.texture) {
-        this.layerTexture = old.texture;this.retainedResources.add(old.texture);
+        this.layerTexture = this.adopt(old.texture);this.retainedResources.add(old.texture);
         this.textureCaptures.push(...previous.textureCaptures.filter((t) => t.name === this.sourceName(this.layerRequest.set, this.layerRequest.resource, true)));
       }
       if (old.done) this.assetComplete(old);
@@ -158,14 +164,17 @@ export class RenderHost {
     for (const record of this.resourceRecords.values()) if (record.assetRow === asset.i) {
       if (x.coaxial_render_buffer_recipe(record.set, record.resource, BigInt(data.length), BigInt(data.length), BigInt(device.limits.maxBufferSize)) !== 1) throw new RenderRefusal("Coax refused immutable buffer extent");
       const bytes = number(x.coaxial_render_buffer_view_info(1)), address = this.stage(bytes), image = new Uint8Array(bytes);image.set(data);
-      Object.assign(record, { bytes, address, image, sourceCapacity: data.length, logical: data.length, incoming: data.length,
-        gpu: device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }) });
+      const gpu = this.buffer(this.ids.own.storage, { size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      if (record.gpu !== gpu) this.free(record.gpu);   // a pending mesh's placeholder, or an earlier delivery
+      Object.assign(record, { bytes, address, image, sourceCapacity: data.length, logical: data.length, incoming: data.length, gpu });
       new Uint8Array(memory.buffer, address, bytes).set(image);
     }
     if (asset.i === this.indexAssetRow) {
       if (x.coaxial_render_index_recipe(BigInt(data.length), BigInt(device.limits.maxBufferSize)) !== 0) throw new RenderRefusal("Coax refused index allocation extent");
       const address = this.stage(data.length);new Uint8Array(memory.buffer, address, data.length).set(data);
-      this.indexRecord = { address, bytes: data.length, incoming: data.length, image: data.slice(), gpu: device.createBuffer({ size: data.length, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST }) };
+      const gpu = this.buffer(this.ids.own.index, { size: data.length, usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST });
+      this.free(this.indexRecord?.gpu);
+      this.indexRecord = { address, bytes: data.length, incoming: data.length, image: data.slice(), gpu };
     }
   }
   sourceName(set, resource, texture = false) {
@@ -190,7 +199,7 @@ export class RenderHost {
     const text = (field) => new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_render_sans_text(field), x.coaxial_render_sans_text_bytes(field)));
     const width = info(2), height = info(3), levelCount = info(1), format = text(1);
     if (x.coaxial_render_target(1, width, height, 0, this.ids.format.rgba8, device.limits.maxTextureDimension2D) !== 1) throw new RenderRefusal("Coax refused atlas device extent");
-    const texture = device.createTexture({ size: [width, height], format, mipLevelCount: levelCount,
+    const texture = this.texture(this.ids.own.texture, { size: [width, height], format, mipLevelCount: levelCount,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT | (this.capture ? GPUTextureUsage.COPY_SRC : 0) });
     const levels = [];
     for (let level = 0; level < levelCount; level++) {
@@ -242,7 +251,7 @@ export class RenderHost {
     const count = number(x.coaxial_render_mip_info(2));x.coaxial_render_layers_begin();
     const text = (field) => new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_render_layers_text(field), x.coaxial_render_layers_text_bytes(field)));
     const format = text(0), resizeQuality = text(1), premultipliedAlpha = Boolean(x.coaxial_render_layers_premultiplied());
-    const texture = device.createTexture({ size: [width, height, images.length], format, mipLevelCount: count,
+    const texture = this.texture(this.ids.own.texture, { size: [width, height, images.length], format, mipLevelCount: count,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT | (this.capture ? GPUTextureUsage.COPY_SRC : 0) });
     const levels = [];
     for (let level = 0; level < count; level++) {
@@ -253,7 +262,7 @@ export class RenderHost {
         device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer], premultipliedAlpha }, [w, h]);
       }
     }
-    this.layerTexture = texture;
+    this.free(this.layerTexture);this.layerTexture = texture;
     if (this.capture) this.textureCaptures.push(await this.captureTexture(texture, this.sourceName(this.layerRequest.set, this.layerRequest.resource, true), format, levels, images.length));
     return texture;
   }
@@ -321,7 +330,7 @@ export class RenderHost {
     if (!x.coaxial_render_media_extent(BigInt(object.kind), BigInt(width), BigInt(height))) throw new RenderRefusal("Coax refused media image extent");
     const w = number(x.coaxial_render_media_extent_info(0)), h = number(x.coaxial_render_media_extent_info(1));
     if (!x.coaxial_render_mip(w, h, 1, 0, device.limits.maxTextureDimension2D, device.limits.maxTextureArrayLayers)) throw new RenderRefusal("Coax refused media device extent");
-    object.texture?.destroy();object.texture = device.createTexture({ size: [w, h], format: this.mediaEffects.format,
+    this.free(object.texture);object.texture = null;object.texture = this.texture(this.ids.own.texture, { size: [w, h], format: this.mediaEffects.format,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT | (this.capture ? GPUTextureUsage.COPY_SRC : 0) });
     Object.assign(object, { width: w, height: h, source, ready: true });return [w, h];
   }
@@ -349,7 +358,7 @@ export class RenderHost {
     return object;
   }
   mediaClose(key, object) {
-    this.mediaCache.delete(key);object.texture?.destroy();object.source?.close?.();
+    this.mediaCache.delete(key);this.free(object.texture);object.source?.close?.();
     if (object.element) { object.element.pause();object.element.removeAttribute("src");object.element.load(); }
   }
   prepareMedia(width, height) {
@@ -409,13 +418,13 @@ export class RenderHost {
           const bytes = number(x.coaxial_render_buffer_view_info(1)), address = this.stage(bytes), image = new Uint8Array(bytes);
           new Uint8Array(this.memory.buffer, address, bytes).set(image);
           Object.assign(record, { sourceCapacity: bytes, logical: bytes, bytes, address, image,
-            gpu: device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }) });
+            gpu: this.buffer(this.ids.own.storage, { size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }) });
         } else if (source === this.ids.source.dynamic_store || source === this.ids.source.particle_emitters) {
           const capacity = source === this.ids.source.dynamic_store ? x.coaxial_store_cap(record.index) : x.coaxial_particle_cap();
           if (x.coaxial_render_buffer_recipe(set, resource, BigInt(capacity), 0n, BigInt(device.limits.maxBufferSize)) !== 1) throw new RenderRefusal("Coax refused producer buffer allocation");
           const bytes = number(x.coaxial_render_buffer_view_info(1)), address = this.stage(bytes);
           Object.assign(record, { sourceCapacity: capacity, logical: 0, bytes, address, image: new Uint8Array(bytes),
-            gpu: device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }) });
+            gpu: this.buffer(this.ids.own.storage, { size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }) });
         }
         this.resourceRecords.set(name, record);
       }
@@ -469,8 +478,9 @@ export class RenderHost {
     const width = number(x.coaxial_render_target_info(0)), height = number(x.coaxial_render_target_info(1)), format = this.formats[number(x.coaxial_render_target_info(2))];
     const previous = this.targets.get(id);
     if (previous?.width === width && previous?.height === height && previous?.format === format) return previous;
-    const texture = device.createTexture({ size: [width, height], format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
-    previous?.destroy();this.targets.set(id, texture);return texture;
+    const texture = this.texture(format === "depth32float" ? this.ids.own.texture : this.ids.own.color,
+      { size: [width, height], format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST });
+    this.free(previous);this.targets.set(id, texture);return texture;
   }
   makeGroups(index, operationIndex, media = null) {
     const { x, device, memory } = this, layouts = this.layouts.get(index), entries = layouts.map(() => []), writes = [];
@@ -483,7 +493,7 @@ export class RenderHost {
           buffer = this.generatedBuffers.get(generatedKey);
           if (!buffer) {
             if (x.coaxial_render_buffer_recipe(set, resource, 0n, 0n, BigInt(device.limits.maxBufferSize)) !== 1) throw new RenderRefusal("Coax refused generated uniform allocation");
-            buffer = device.createBuffer({ size: number(x.coaxial_render_buffer_view_info(1)), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });this.generatedBuffers.set(generatedKey, buffer);
+            buffer = this.buffer(this.ids.own.uniform, { size: number(x.coaxial_render_buffer_view_info(1)), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });this.generatedBuffers.set(generatedKey, buffer);
           }
           const address = media ? media.address : x.coaxial_render_bloom(operationIndex), bytes = media ? media.bytes : x.coaxial_render_bloom_bytes();
           if (x.coaxial_render_generated_buffer(set, resource, address, bytes, memory.buffer.byteLength, BigInt(buffer.size)) !== 1) throw new RenderRefusal("Coax refused bloom uniform view");
@@ -493,6 +503,7 @@ export class RenderHost {
           buffer = this.buffers[number(x.coaxial_render_resolved_info(0))]?.gpu;
         }
         if (!buffer) throw Error("admitted buffer has no platform allocation");
+        this.held(buffer);
         physical = { buffer, offset: number(x.coaxial_render_resolved_info(1)), size: number(x.coaxial_render_resolved_info(2)) };
       } else if (kind === this.ids.kind.sampler || kind === this.ids.kind.comparison) physical = this.makeSampler(set, resource);
       else {
@@ -505,6 +516,7 @@ export class RenderHost {
         // refusal, so a missing allocation preserves a retryable frame.
         if (x.coaxial_render_texture_shape(set, resource, texture?.depthOrArrayLayers ?? 0, texture?.format === "depth32float" ? 1 : 0, media?.line ?? -1) !== 1) throw new RenderRefusal("Coax refused actual texture shape");
         if (!texture) throw Error("admitted image has no platform allocation");
+        this.held(texture);
         physical = texture.createView({ dimension: request.viewDimension });
       }
       entries[group].push({ binding, resource: physical });
@@ -520,6 +532,7 @@ export class RenderHost {
     if (!this.ready || this.busy || this.suspended) return false;
     if (this.error) throw this.error;
     const { x, device, arena, memory } = this;
+    if (x.coaxial_render_advance() !== 1) { this.lastRefusal = { phase: "ledger" };return false; }
     const measured = (name) => x[name]?.(arena.state) ?? 0;
     this.lastRequested = count;this.width = width;this.height = height;
     const counts = { draws: measured("coaxial_draw_count"), water: measured("coaxial_water_draws"), grass: measured("coaxial_grass_instances"),
@@ -558,6 +571,12 @@ export class RenderHost {
     device.pushErrorScope("validation");this.busy = true;
     try {
       this.lastTexture = this.context.getCurrentTexture();
+      // Every object the frame draws with is live in the ledger before any write.
+      for (const object of [this.vertexBuffer, this.uniformBuffer, this.indexRecord?.gpu, ...active.map((record) => record.gpu)]) if (object) this.held(object);
+      for (let i = 0; i < this.info(1); i++) {
+        const kind = this.op(i, 0), ids = kind === 0 ? [this.op(i, 2), this.op(i, 3), this.op(i, 4)] : kind === 3 ? [this.op(i, 7), this.op(i, 8)] : [];
+        for (const id of ids) if (id) this.held(this.target(id));
+      }
       const prepared = new Map();
       for (let i = 0; i < this.info(1); i++) if (this.op(i, 0) === 2) prepared.set(i, this.makeGroups(this.op(i, 1), i));
       const mediaGroups = new Map(media.draws.map((draw) => [draw.row, this.makeGroups(13, -1, draw)]));
@@ -630,12 +649,66 @@ export class RenderHost {
       this.busy = false;device.popErrorScope().catch(() => {});throw error;
     }
   }
+  // Every GPU object goes through the Coax ledger: asked for before it is
+  // created (a refusal creates nothing), released when it is destroyed.
+  buffer(kind, descriptor) {
+    const handle = this.grant(this.x.coaxial_render_acquire(kind, BigInt(descriptor.size)));
+    return this.make(handle, () => this.device.createBuffer(descriptor));
+  }
+  texture(kind, descriptor) {
+    const [width, height, layers = 1] = descriptor.size, code = this.textureCodes[descriptor.format] ?? this.ids.format.invalid;
+    const handle = this.grant(this.x.coaxial_render_acquire_texture(kind, code, width, height, layers, descriptor.mipLevelCount ?? 1));
+    return this.make(handle, () => this.device.createTexture(descriptor));
+  }
+  grant(status) {
+    const { x } = this;
+    if (status !== 0) throw new RenderRefusal(`Coax refused a GPU allocation: ${status}`);
+    return { x, slot: number(x.coaxial_render_grant(0)), generation: number(x.coaxial_render_grant(1)) };
+  }
+  make(handle, create) {
+    let object;
+    try { object = create(); } catch (error) { handle.x.coaxial_render_release(handle.slot, handle.generation);throw error; }
+    object[OWNED] = handle;return object;
+  }
+  // A GPU object kept from an engine this one replaces moves to this ledger.
+  adopt(object) {
+    const old = object?.[OWNED];
+    if (!old || old.x === this.x) return object;
+    const handle = object.dimension ? this.grant(this.x.coaxial_render_acquire_texture(this.ids.own.texture, this.textureCodes[object.format] ?? this.ids.format.invalid,
+      object.width, object.height, object.depthOrArrayLayers, object.mipLevelCount)) : this.grant(this.x.coaxial_render_acquire(this.ids.own.storage, BigInt(object.size)));
+    old.x.coaxial_render_release(old.slot, old.generation);object[OWNED] = handle;return object;
+  }
+  free(object) {
+    if (!object) return;
+    const handle = object[OWNED];
+    if (handle) { handle.x.coaxial_render_release(handle.slot, handle.generation);delete object[OWNED]; }
+    object.destroy();
+  }
+  held(object) {
+    if (object && object === this.lastTexture) return;   // the canvas's own texture, not an allocation
+    const handle = object?.[OWNED];
+    if (handle && handle.x === this.x && this.x.coaxial_render_live(handle.slot, handle.generation) === 1) return;
+    throw new RenderRefusal("Coax refused a GPU object that is not live in the ledger");
+  }
+  // Every GPU object this host holds.
+  objects() {
+    return new Set([this.vertexBuffer,this.uniformBuffer,this.sansTexture,this.layerTexture,this.indexRecord?.gpu,
+      ...[...(this.resourceRecords?.values() ?? [])].map((r) => r.gpu),...this.generatedBuffers.values(),...this.targets.values(),
+      ...[...(this.mediaCache?.values() ?? [])].map((m) => m.texture)].filter(Boolean));
+  }
+  // The ledger as Coax keeps it, and the handles of the objects this host holds (headless checks).
+  ledger() {
+    const info = (field) => number(this.x.coaxial_render_registry_info(field));
+    const handles = [...this.objects()].map((o) => o[OWNED]).filter(Boolean).map(({ x, slot, generation }) => ({ slot, generation, here: x === this.x }));
+    const named = { sans: this.sansTexture?.[OWNED], vertex: this.vertexBuffer?.[OWNED], uniform: this.uniformBuffer?.[OWNED] };
+    for (const key of Object.keys(named)) named[key] = named[key] ? [named[key].slot, named[key].generation] : null;
+    return { epoch: info(0), live: info(1), words: info(2), slots: info(3), budget: info(4), handles, named };
+  }
   destroy(keep = new Set()) {
-    const resources = new Set([this.vertexBuffer,this.uniformBuffer,this.sansTexture,this.layerTexture,this.indexRecord?.gpu,
-      ...[...(this.resourceRecords?.values() ?? [])].map((r) => r.gpu),...this.generatedBuffers.values(),...this.targets.values()]);
-    for (const object of this.mediaCache?.values() ?? []) { object.element?.pause();resources.add(object.texture);object.source?.close?.(); }
+    const resources = this.objects();
+    for (const object of this.mediaCache?.values() ?? []) { object.element?.pause();object.source?.close?.(); }
     this.mediaCache?.clear();
-    for (const resource of resources) if (resource && !keep.has(resource)) resource.destroy();
+    for (const resource of resources) if (resource && !keep.has(resource)) this.free(resource);
     this.ready = false;
   }
 }

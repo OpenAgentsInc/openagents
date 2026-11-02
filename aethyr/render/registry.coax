@@ -1,0 +1,204 @@
+// The GPU resource ledger. A host asks it before it creates a buffer or a
+// texture and tells it when it destroys one. Each object gets a slot and a
+// generation, and its table is frame.coax's RfResource table, so rf_live and
+// rf_pass refuse a handle once its object is released or its device is lost.
+// A refusal changes nothing, and the host has created no GPU object yet.
+#module "aethyr.render.registry";
+#load "frame.coax";
+#load "resources.coax" as rr_formats;
+#authority;
+// With frame.coax's RF_UNIFORM, RF_STORAGE and RF_COLOR.
+RR_VERTEX :: 4; RR_INDEX :: 5; RR_TEXTURE :: 6;
+// 48 binding resources, 112 media lines with a texture and a uniform each,
+// the 12 targets, plus room. The budget counts four-byte words: 1 GiB.
+RR_SLOTS :: 512; RR_WORDS :: 268435456;
+RR_OPEN :: 9223372036854775807;
+RR_GENERATIONS :: 2147483647;
+RrLimits :: struct {slots:int;words:int;}
+RenderRegistry :: struct {epoch:int;limit:RrLimits;live:int;words:int;table:[RR_SLOTS]RfResource;}
+RrStatus :: enum u8 { ok; bad_limits; bad_kind; bad_words; slots; budget; stale; }
+RrGrant :: struct {status:RrStatus;handle:RfHandle;}
+
+// Checks stay in this unit so the composed realm fits the source graph budget.
+#test "a new ledger admits only declared slot and word limits" {
+  rr_t:[1]RenderRegistry;
+  #assert rr_open(rr_t[..],RrLimits.{slots=1,words=0})==RrStatus.ok && rr_t[0].epoch==1 && rr_t[0].limit.slots==1;
+  #assert rr_open(rr_t[..],RrLimits.{slots=RR_SLOTS,words=RR_WORDS})==RrStatus.ok && rr_t[0].limit.slots==RR_SLOTS;
+  for rr_l:[4]RrLimits.[RrLimits.{slots=0,words=8},RrLimits.{slots=RR_SLOTS+1,words=8},RrLimits.{slots=4,words=-1},RrLimits.{slots=-1,words=8}] {
+    rr_t[0].epoch=7;#assert rr_open(rr_t[..],rr_l)==RrStatus.bad_limits && rr_t[0].epoch==7;
+  }
+  rr_none_b:[1]RenderRegistry;rr_none:=rr_none_b[0..<0];#assert rr_open(rr_none,RrLimits.{slots=1,words=1})==RrStatus.bad_limits;
+  rr_two:[2]RenderRegistry;#assert rr_open(rr_two[..],RrLimits.{slots=1,words=1})==RrStatus.bad_limits && rr_two[0].epoch==0;
+}
+#forall "acquire refuses each bad kind or extent and changes nothing" rr_kind:-1..<9,rr_words:-1..<3 {
+  rr_t:[1]RenderRegistry;#assert rr_open(rr_t[..],RrLimits.{slots=2,words=4})==RrStatus.ok;
+  rr_g:=rr_acquire(rr_t[..],rr_kind,rr_words);
+  if rr_kind<RF_UNIFORM || rr_kind>RR_TEXTURE {#assert rr_g.status==RrStatus.bad_kind;}
+  else if rr_words<1 {#assert rr_g.status==RrStatus.bad_words;}
+  else {#assert rr_g.status==RrStatus.ok && rr_g.handle.slot==0 && rr_g.handle.generation==1 && rr_t[0].live==1 && rr_t[0].words==rr_words && rr_t[0].table[0].kind==rr_kind;}
+  if rr_g.status!=RrStatus.ok {#assert rr_g.handle.slot==-1 && rr_g.handle.generation==0 && rr_t[0].live==0 && rr_t[0].words==0 && rr_t[0].table[0].generation==0;}
+}
+#test "acquire fills the lowest free slot and refuses slot and word budgets whole" {
+  rr_t:[1]RenderRegistry;#assert rr_open(rr_t[..],RrLimits.{slots=2,words=10})==RrStatus.ok;
+  rr_a:=rr_acquire(rr_t[..],RF_UNIFORM,4);#assert rr_a.status==RrStatus.ok && rr_a.handle.slot==0;
+  rr_c:=rr_acquire(rr_t[..],RR_TEXTURE,7);#assert rr_c.status==RrStatus.budget && rr_c.handle.slot==-1 && rr_t[0].words==4 && rr_t[0].live==1 && rr_t[0].table[1].generation==0;
+  rr_b:=rr_acquire(rr_t[..],RR_TEXTURE,6);#assert rr_b.status==RrStatus.ok && rr_b.handle.slot==1 && rr_t[0].words==10;
+  rr_c=rr_acquire(rr_t[..],RR_VERTEX,1);#assert rr_c.status==RrStatus.slots && rr_c.handle.slot==-1 && rr_t[0].live==2;
+  r:=rr_t[0].table[1];#assert r.generation==1 && r.kind==RR_TEXTURE && r.words==6 && r.first==1 && r.last==RR_OPEN;
+  #assert rr_release(rr_t[..],rr_a.handle)==RrStatus.ok && rr_t[0].live==1 && rr_t[0].words==6;
+  rr_c=rr_acquire(rr_t[..],RR_INDEX,4);#assert rr_c.status==RrStatus.ok && rr_c.handle.slot==0 && rr_c.handle.generation==2;
+  rr_big:[1]RenderRegistry;#assert rr_open(rr_big[..],RrLimits.{slots=1,words=RR_WORDS})==RrStatus.ok;
+  #assert rr_acquire(rr_big[..],RF_STORAGE,RR_WORDS).status==RrStatus.ok;
+  rr_big[0].limit.slots=0;#assert rr_acquire(rr_big[..],RF_STORAGE,1).status==RrStatus.bad_limits;
+  rr_two:[2]RenderRegistry;#assert rr_acquire(rr_two[..],RF_STORAGE,1).status==RrStatus.bad_limits;
+}
+#test "a released handle is refused at use and release, and its slot's next owner is a new generation" {
+  rr_t:[1]RenderRegistry;#assert rr_open(rr_t[..],RrLimits.{slots=4,words=64})==RrStatus.ok;
+  rr_a:=rr_acquire(rr_t[..],RF_STORAGE,8).handle;
+  #assert rr_live(rr_t[..],rr_a);
+  #assert rr_release(rr_t[..],rr_a)==RrStatus.ok && !rr_live(rr_t[..],rr_a) && rr_t[0].table[0].last==0;
+  #assert rr_release(rr_t[..],rr_a)==RrStatus.stale && rr_t[0].live==0 && rr_t[0].words==0;
+  rr_b:=rr_acquire(rr_t[..],RF_STORAGE,8).handle;
+  #assert rr_b.slot==rr_a.slot && rr_b.generation==rr_a.generation+1 && rr_live(rr_t[..],rr_b) && !rr_live(rr_t[..],rr_a);
+  #assert rr_release(rr_t[..],rr_a)==RrStatus.stale && rr_live(rr_t[..],rr_b) && rr_t[0].live==1;
+  for rr_h:[4]RfHandle.[RfHandle.{slot=-1,generation=1},RfHandle.{slot=4,generation=1},RfHandle.{slot=1,generation=0},RfHandle.{slot=0,generation=0}] {
+    #assert !rr_live(rr_t[..],rr_h) && rr_release(rr_t[..],rr_h)==RrStatus.stale && rr_t[0].live==1 && rr_t[0].words==8;
+  }
+  rr_two:[2]RenderRegistry;#assert !rr_live(rr_two[..],rr_b) && rr_release(rr_two[..],rr_b)==RrStatus.stale;
+}
+#test "a lost device releases every object, and no handle from before it is live again" {
+  rr_t:[1]RenderRegistry;#assert rr_open(rr_t[..],RrLimits.{slots=3,words=64})==RrStatus.ok;
+  rr_h:[3]RfHandle;for i:0..<3 {rr_h[i]=rr_acquire(rr_t[..],RF_UNIFORM,4).handle;}
+  #assert rr_release(rr_t[..],rr_h[1])==RrStatus.ok;
+  rr_lose(rr_t[..]);
+  #assert rr_t[0].live==0 && rr_t[0].words==0 && rr_t[0].epoch==2 && rr_t[0].table[1].last==0 && rr_t[0].table[2].last==0;
+  for i:0..<3 {#assert !rr_live(rr_t[..],rr_h[i]) && rr_release(rr_t[..],rr_h[i])==RrStatus.stale;}
+  rr_n:[3]RfHandle;
+  for i:0..<3 {g:=rr_acquire(rr_t[..],RF_UNIFORM,4);#assert g.status==RrStatus.ok && g.handle.slot==i;rr_n[i]=g.handle;}
+  for i:0..<3 {#assert rr_n[i].generation==rr_h[i].generation+1 && rr_live(rr_t[..],rr_n[i]) && !rr_live(rr_t[..],rr_h[i]);}
+  rr_none_b:[1]RenderRegistry;rr_none:=rr_none_b[0..<0];rr_lose(rr_none);#assert !rr_advance(rr_none);
+  #assert !rr_live(rr_none,rr_n[0]) && rr_release(rr_none,rr_n[0])==RrStatus.stale;
+  #assert rr_acquire(rr_none,RF_UNIFORM,1).status==RrStatus.bad_limits;
+}
+#test "rf_pass reads the ledger's table: live objects admit, released and lost ones refuse whole" {
+  rr_t:[1]RenderRegistry;#assert rr_open(rr_t[..],RrLimits.{slots=4,words=64})==RrStatus.ok;
+  rr_c:=rr_acquire(rr_t[..],RF_COLOR,1).handle;rr_u:=rr_acquire(rr_t[..],RF_UNIFORM,16).handle;
+  #assert rr_advance(rr_t[..]) && rr_t[0].epoch==2 && rr_live(rr_t[..],rr_c);
+  rr_b:=[1]RfBinding.[RfBinding.{resource=rr_u,words=16}];rr_d:=[1]RfDraw.[RfDraw.{count=3,base=0x80000000,instances=1}];
+  rr_g:=RfGeometry.{vertices=3,instances=1};rr_l:=RfLimits.{passes=1,bindings=1,draws=1,words=16};
+  #assert rf_pass(rf_begin(rr_t[0].epoch,rr_l),rr_t[0].table[..],rr_c,rr_b[..],rr_d[..],rr_g).accepted;
+  #assert rr_release(rr_t[..],rr_u)==RrStatus.ok;
+  rr_r:=rf_pass(rf_begin(rr_t[0].epoch,rr_l),rr_t[0].table[..],rr_c,rr_b[..],rr_d[..],rr_g);#assert !rr_r.accepted && rr_r.frame.passes==0;
+  rr_u=rr_acquire(rr_t[..],RF_UNIFORM,16).handle;rr_b[0].resource=rr_u;
+  #assert rf_pass(rf_begin(rr_t[0].epoch,rr_l),rr_t[0].table[..],rr_c,rr_b[..],rr_d[..],rr_g).accepted;
+  rr_lose(rr_t[..]);
+  #assert !rf_pass(rf_begin(rr_t[0].epoch,rr_l),rr_t[0].table[..],rr_c,rr_b[..],rr_d[..],rr_g).accepted;
+}
+#test "the epoch stops at its last value instead of wrapping" {
+  rr_t:[1]RenderRegistry;#assert rr_open(rr_t[..],RrLimits.{slots=1,words=4})==RrStatus.ok;
+  rr_t[0].epoch=RR_OPEN-1;#assert !rr_advance(rr_t[..]) && rr_t[0].epoch==RR_OPEN-1;
+  rr_t[0].epoch=RR_OPEN-2;#assert rr_advance(rr_t[..]) && rr_t[0].epoch==RR_OPEN-1;
+  rr_h:=rr_acquire(rr_t[..],RF_UNIFORM,1).handle;rr_lose(rr_t[..]);
+  #assert rr_t[0].epoch==RR_OPEN-1 && rr_t[0].live==0 && !rr_live(rr_t[..],rr_h);
+}
+#test "a slot whose generation is spent is retired, never reused" {
+  rr_t:[1]RenderRegistry;#assert rr_open(rr_t[..],RrLimits.{slots=2,words=8})==RrStatus.ok;
+  rr_t[0].table[0].generation=RR_GENERATIONS;
+  rr_g:=rr_acquire(rr_t[..],RF_UNIFORM,1);#assert rr_g.status==RrStatus.ok && rr_g.handle.slot==1 && rr_g.handle.generation==1;
+  rr_g=rr_acquire(rr_t[..],RF_UNIFORM,1);#assert rr_g.status==RrStatus.slots && rr_t[0].live==1;
+  rr_t[0].table[0].generation=RR_GENERATIONS-1;
+  rr_g=rr_acquire(rr_t[..],RF_UNIFORM,1);#assert rr_g.status==RrStatus.ok && rr_g.handle.slot==0 && rr_g.handle.generation==RR_GENERATIONS;
+}
+#forall "texture words count every mip, layer and texel, rounded up to a word" rr_w:1..<6,rr_mips:0..<5 {
+  rr_n:=0;rr_x:=rr_w;rr_y:=3;
+  for m:0..<rr_mips {rr_n+=rr_x*rr_y*2*3;rr_x=ifx rr_x>1 then rr_x/2 else 1;rr_y=ifx rr_y>1 then rr_y/2 else 1;}
+  rr_got:=rr_texture_words(rr_w,3,2,rr_mips,3);
+  if rr_mips==0 || rr_mips>rr_mip_count(rr_w,3) {#assert rr_got==-1;} else {#assert rr_got==(rr_n+3)/4;}
+}
+#test "texture and buffer words refuse empty, oversized and overflowing descriptors" {
+  #assert rr_texture_words(1,1,1,1,1)==1 && rr_texture_words(4,4,1,3,4)==21 && rr_texture_words(16384,16384,1,1,8)==536870912;
+  #assert rr_mip_count(1,1)==1 && rr_mip_count(4,4)==3 && rr_mip_count(5,2)==3 && rr_mip_count(2,5)==3 && rr_mip_count(16384,1)==15;
+  rr_a:=[45]int.[0,1,1,1,4, 1,0,1,1,4, 1,1,0,1,4, 1,1,1,1,0, 1,1,1,1,17, 16385,1,1,1,4, 1,16385,1,1,4, 1,1,2049,1,4, 1,1,1,0,4];
+  for i:0..<9 {#assert rr_texture_words(rr_a[i*5],rr_a[i*5+1],rr_a[i*5+2],rr_a[i*5+3],rr_a[i*5+4])==-1;}
+  #assert rr_texture_words(16384,16384,2048,1,16)==2199023255552 && rr_texture_words(1,1,2048,1,16)==8192 && rr_texture_words(1,1,1,1,16)==4;
+  #assert rr_texture_words(16384,1,1,1,1)==4096 && rr_texture_words(1,16384,1,1,1)==4096;
+  #assert rr_texture_words(4,1,1,3,4)==7 && rr_texture_words(1,4,1,3,4)==7 && rr_texture_words(2,2,1,2,4)==5;
+  #assert rr_buffer_words(1)==1 && rr_buffer_words(4)==1 && rr_buffer_words(5)==2 && rr_buffer_words(4294967296)==1073741824;
+  #assert rr_buffer_words(0)==-1 && rr_buffer_words(-4)==-1 && rr_buffer_words(4294967297)==-1;
+}
+
+#test "a texture format's texel is four bytes, eight for half floats, and any other code refuses" {
+  rr_f:=[4]rr_formats.RenderTextureFormat.[rr_formats.RenderTextureFormat.rgba8,rr_formats.RenderTextureFormat.bgra8,rr_formats.RenderTextureFormat.rgba16f,rr_formats.RenderTextureFormat.depth32];
+  #assert rr_format_words(cast(int)rr_f[0],2,2,1,1)==4 && rr_format_words(cast(int)rr_f[1],2,2,1,2)==5;
+  #assert rr_format_words(cast(int)rr_f[2],2,2,1,1)==8 && rr_format_words(cast(int)rr_f[3],3,1,1,1)==3;
+  #assert rr_format_words(cast(int)rr_formats.RenderTextureFormat.invalid,2,2,1,1)==-1 && rr_format_words(-1,2,2,1,1)==-1;
+}
+
+rr_open :: (rs:[]RenderRegistry,l:RrLimits)->RrStatus {
+  if rs.count!=1 || l.slots<1 || l.slots>RR_SLOTS || l.words<0 {return RrStatus.bad_limits;}
+  rs[0]=RenderRegistry.{epoch=1,limit=l};return RrStatus.ok;
+}
+rr_live :: (rs:[]RenderRegistry,h:RfHandle)->bool {
+  if rs.count!=1 {return false;}
+  return rf_live(rs[0].table[..],h,rs[0].epoch);
+}
+rr_acquire :: (rs:[]RenderRegistry,kind:int,words:int)->RrGrant {
+  if rs.count!=1 || rs[0].limit.slots<1 {return RrGrant.{status=RrStatus.bad_limits};}
+  if kind<RF_UNIFORM || kind>RR_TEXTURE {return RrGrant.{status=RrStatus.bad_kind};}
+  if words<1 {return RrGrant.{status=RrStatus.bad_words};}
+  if rs[0].live>=rs[0].limit.slots {return RrGrant.{status=RrStatus.slots};}
+  if words>rs[0].limit.words-rs[0].words {return RrGrant.{status=RrStatus.budget};}
+  for s:0..<rs[0].limit.slots {
+    e:=rs[0].table[s];
+    if e.last!=RR_OPEN && e.generation<RR_GENERATIONS {
+      rs[0].table[s]=RfResource.{generation=e.generation+1,kind=kind,words=words,first=rs[0].epoch,last=RR_OPEN};
+      rs[0].live+=1;rs[0].words+=words;
+      return RrGrant.{status=RrStatus.ok,handle=RfHandle.{slot=s,generation=e.generation+1}};
+    }
+  }
+  return RrGrant.{status=RrStatus.slots};
+}
+// After the object's last use: its slot is dead from this epoch on.
+rr_release :: (rs:[]RenderRegistry,h:RfHandle)->RrStatus {
+  if !rr_live(rs,h) || rs[0].table[h.slot].last!=RR_OPEN {return RrStatus.stale;}
+  rs[0].table[h.slot].last=rs[0].epoch-1;rs[0].live-=1;rs[0].words-=rs[0].table[h.slot].words;
+  return RrStatus.ok;
+}
+rr_advance :: (rs:[]RenderRegistry)->bool {
+  if rs.count!=1 || rs[0].epoch>=RR_OPEN-1 {return false;}
+  rs[0].epoch+=1;return true;
+}
+// A lost device took every object with it. Generations are kept, so a handle
+// from before the loss never matches its slot's next owner.
+rr_lose :: (rs:[]RenderRegistry) {
+  if rs.count!=1 {return;}
+  for s:0..<RR_SLOTS {if rs[0].table[s].last==RR_OPEN {rs[0].table[s].last=rs[0].epoch-1;}}
+  rs[0].live=0;rs[0].words=0;_:=rr_advance(rs);
+}
+rr_mip_count :: (width:int,height:int)->int {
+  n:=1;w:=width;h:=height;
+  while w>1 || h>1 {w/=2;h/=2;n+=1;}
+  return n;
+}
+// A mip level's size: half the one above, never below one texel.
+rr_half :: (n:int)->int {return ifx n==1 then 1 else n/2;}
+// The bytes of a texture's every level and layer, in words; -1 refuses.
+rr_texture_words :: (width:int,height:int,layers:int,mips:int,texel_bytes:int)->int {
+  if width<1 || height<1 || width>16384 || height>16384 || layers<1 || layers>2048 {return -1;}
+  if texel_bytes<1 || texel_bytes>16 || mips<1 || mips>rr_mip_count(width,height) {return -1;}
+  bytes:=0;w:=width;h:=height;
+  for m:0..<mips {bytes+=w*h*layers*texel_bytes;w=rr_half(w);h=rr_half(h);}
+  return (bytes+3)/4;
+}
+// A buffer of at most 4 GiB, in words; -1 refuses.
+rr_buffer_words :: (bytes:int)->int {
+  if bytes<1 || bytes>4294967296 {return -1;}
+  return (bytes+3)/4;
+}
+// A format code as the host passes it; -1 refuses any other code.
+rr_format_words :: (format:int,width:int,height:int,layers:int,mips:int)->int {
+  if format<0 || format>=cast(int)rr_formats.RenderTextureFormat.invalid {return -1;}
+  texel:=4;
+  if format==cast(int)rr_formats.RenderTextureFormat.rgba16f {texel=8;}
+  return rr_texture_words(width,height,layers,mips,texel);
+}

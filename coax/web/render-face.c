@@ -50,19 +50,42 @@ static coax_string render_asset_text;
 static coax_t_RenderAssetReadiness render_asset_ready;
 static coax_t_RenderAssetMip render_asset_mip;
 static coax_t_RenderAssetLayers render_layer_profile;
+static coax_t_RenderHostRegistryBank render_registry;
+static coax_t_RrGrant render_grant;
 
 static coax_v_t_RenderHostPackageState package_view(void){return(coax_v_t_RenderHostPackageState){&render_package,1};}
 static coax_v_t_RenderHostPackageCandidate candidate_view(void){return(coax_v_t_RenderHostPackageCandidate){&render_candidate,1};}
 static coax_v_u8 shader_view(void){return aethyr_render_shader_storage((coax_v_t_RenderHostShaderBytes){&render_shader,1});}
+static coax_v_t_RenderRegistry registry_view(void){return aethyr_render_registry_storage((coax_v_t_RenderHostRegistryBank){&render_registry,1});}
 static coax_t_RenderOp operation(int32_t index){return aethyr_render_operation((coax_v_t_RenderRuntimeFrame){&render_frame,1},index);}
 
 RENDER_EXPORT("coaxial_render_reset") void coaxial_render_reset(void){
+  // A second reset is a new device: every object of the old one is released.
+  if(render_initialized)aethyr_render_registry_lose(registry_view());else aethyr_render_registry_open(registry_view());
+  render_grant=(coax_t_RrGrant){0};
   coax_default_t_RenderHostPackageState(&render_package);coax_default_t_RenderHostPackageCandidate(&render_candidate);render_descriptor_profile=-1;render_initialized=1;
   coax_default_t_RenderFrameLimits(&render_limits);
   coax_default_t_RenderRuntimeFrame(&render_frame);
   render_device=aethyr_render_device(0,0,0);
   render_sans=aethyr_render_sans_profile();
   coax_default_t_RenderHostUploadBank(&render_uploads);render_named_count=0;render_draw_base=0;render_draw_capacity=0;
+}
+// The GPU resource ledger: ask before creating an object, report its release.
+// Statuses are RrStatus (0 admits); the grant's slot and generation follow.
+RENDER_EXPORT("coaxial_render_acquire") uint32_t coaxial_render_acquire(int32_t kind,uint64_t bytes){
+  int64_t words=bytes>(uint64_t)INT64_MAX?-1:aethyr_render_buffer_words((int64_t)bytes);
+  render_grant=aethyr_render_registry_acquire(registry_view(),kind,words);return render_grant.status;
+}
+RENDER_EXPORT("coaxial_render_acquire_texture") uint32_t coaxial_render_acquire_texture(int32_t kind,int32_t format,int32_t width,int32_t height,int32_t layers,int32_t mips){
+  render_grant=aethyr_render_registry_acquire(registry_view(),kind,aethyr_render_format_words(format,width,height,layers,mips));return render_grant.status;
+}
+RENDER_EXPORT("coaxial_render_grant") int64_t coaxial_render_grant(int32_t field){return field==0?render_grant.handle.slot:field==1?render_grant.handle.generation:-1;}
+RENDER_EXPORT("coaxial_render_release") uint32_t coaxial_render_release(int32_t slot,int32_t generation){return aethyr_render_registry_release(registry_view(),slot,generation);}
+RENDER_EXPORT("coaxial_render_live") uint32_t coaxial_render_live(int32_t slot,int32_t generation){return aethyr_render_registry_live(registry_view(),slot,generation);}
+RENDER_EXPORT("coaxial_render_advance") uint32_t coaxial_render_advance(void){return aethyr_render_registry_advance(registry_view());}
+RENDER_EXPORT("coaxial_render_registry_info") int64_t coaxial_render_registry_info(int32_t field){
+  coax_v_t_RenderRegistry v=registry_view();
+  switch(field){case 0:return v.data[0].epoch;case 1:return v.data[0].live;case 2:return v.data[0].words;case 3:return v.data[0].limit.slots;case 4:return v.data[0].limit.words;default:return -1;}
 }
 RENDER_EXPORT("coaxial_render_initialized") uint32_t coaxial_render_initialized(void){return render_initialized;}
 // Enum projections are generated-header values, not a second host registry.
@@ -74,6 +97,7 @@ RENDER_EXPORT("coaxial_render_enum") int32_t coaxial_render_enum(int32_t family,
     case 3:switch(field){case 0:return COAX_RenderDrawKind_skip;case 1:return COAX_RenderDrawKind_indexed;case 2:return COAX_RenderDrawKind_nonindexed;case 3:return COAX_RenderDrawKind_invalid;}break;
     case 4:switch(field){case 0:return COAX_RenderAssetKind_invalid;case 1:return COAX_RenderAssetKind_data;case 2:return COAX_RenderAssetKind_storage;case 3:return COAX_RenderAssetKind_index;case 4:return COAX_RenderAssetKind_layers;case 5:return COAX_RenderAssetKind_sound;case 6:return COAX_RenderAssetKind_loop;case 7:return COAX_RenderAssetKind_particles;case 8:return COAX_RenderAssetKind_mesh;}break;
     case 6:switch(field){case 0:return COAX_RenderMediaKind_invalid;case 1:return COAX_RenderMediaKind_image;case 2:return COAX_RenderMediaKind_video;}break;
+    case 7:return (int32_t)aethyr_render_resource_kind(field);
     case 5:switch(field){case 0:return COAX_RenderReadiness_loading;case 1:return COAX_RenderReadiness_background;case 2:return COAX_RenderReadiness_ready;case 3:return COAX_RenderReadiness_invalid;}break;
   }return -1;
 }
