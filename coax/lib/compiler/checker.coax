@@ -80254,18 +80254,20 @@ CK_spatial_fixture :: (c:CK_Context) {
  else {#assert leaves[0]==65 && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==72 && errors[0].loc.column==5 && errors[0].loc.offset==725;}
 }
 
-#forall "borrow leaf counts multiply array elements, skip owned fields and stop past64" variant:0..<9 {
+#forall "borrow leaf counts multiply array elements, skip owned fields and stop past64" variant:0..<10 {
  nodes:[160]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=159,type_count=24}];work:[1]CB_State;
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};
  // 17: {int, view, string}; 18: {view, view}; 19: wide record of views.
  types[17]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=12,next=4};nodes[4]=CK_Node.{kind=CK_Tag.field,type=16,next=5};nodes[5]=CK_Node.{kind=CK_Tag.field,type=3};
  types[18]=CK_Type.{kind=CK_Kind.struct_,decl=6};nodes[6]=CK_Node.{kind=CK_Tag.struct_,head=7};nodes[7]=CK_Node.{kind=CK_Tag.field,type=16,next=8};nodes[8]=CK_Node.{kind=CK_Tag.field,type=16};
  wide:=ifx variant==7 then 65 else 66;types[19]=CK_Type.{kind=CK_Kind.struct_,decl=9};nodes[9]=CK_Node.{kind=CK_Tag.struct_,head=10};for i:0..<wide {nodes[10+i]=CK_Node.{kind=CK_Tag.field,type=16,next=ifx i==wide-1 then 0 else 11+i};}
- lengths:=[9]int.[0,0,3,64,33,32,0,0,0];elems:=[9]int.[0,0,16,16,18,18,0,0,0];types[20]=CK_Type.{kind=CK_Kind.array,elem=elems[variant],length=lengths[variant]};
- inputs:=[9]int.[3,16,20,20,20,20,17,19,19];expected:=[9]int.[1,1,3,64,128,64,2,128,128];
+ lengths:=[10]int.[0,0,3,64,33,32,0,0,0,0];elems:=[10]int.[0,0,16,16,18,18,0,0,0,0];types[20]=CK_Type.{kind=CK_Kind.array,elem=elems[variant],length=lengths[variant]};
+ inputs:=[10]int.[3,16,20,20,20,20,17,19,19,17];expected:=[10]int.[1,1,3,64,128,64,2,128,128,2];b.retain_fields=variant==9;
  #assert CB_leaf_count(b,inputs[variant])==expected[variant] && !state[0].fatal && state[0].error_count==0;
  // A wide record stops after its 65th leaf: one presence query per field read.
- if variant>=7 {#assert work[0].work==65;}
+ if variant==7 || variant==8 {#assert work[0].work==65;}
+ // In the retained-store pass each field's presence comes from the memo.
+ if variant==9 {#assert types[12].retain_presence==1 && types[16].retain_presence==2 && types[3].retain_presence==2;}
 }
 
 #forall "borrow leaves join an array that would overflow the remaining leaf budget" shape:0..<2 {

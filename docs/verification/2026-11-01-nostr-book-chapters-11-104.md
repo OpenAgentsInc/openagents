@@ -49,6 +49,19 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
    and the borrow leaves gave each array element its own leaf past the
    64-leaf budget; a wide array is now one leaf. Regression:
    `coax/tests/pass/wide_borrow_result.coax`.
+   Full checker mutation run for `724bd0c60d`
+   (`stage0 mutate lib/compiler/checker.coax`, stage0 built from that tree's
+   seeds, as `coax/bootstrap-build.sh` builds it), split into `--shard I/16`
+   shards of 262 to 612 s each and joined with `--merge`: 9489 mutants, 9488
+   killed, 1 survived. The survivor was on a changed line, in `CB_leaf_count`:
+   `CB_has_borrow(...,0)` becoming depth `1` skipped the retained-store
+   presence memo (`CR_presence`), and every leaf-count check ran with
+   `retain_fields` off. Variant 9 of the leaf-count `#forall` now counts with
+   `retain_fields` on and checks the memo; it fails on that mutant
+   (`variant = 9`) and passes on the source. All 1014 checker checks pass.
+   The checker seed (`coax/bootstrap/checker.c`) was refreshed: only its line
+   numbers changed. The whole run was not repeated on the edited file (it
+   takes about 90 minutes under load). The build's checker gate covers it.
 3. **Possible compiler aliasing difference.** A `cast(string)` of a slice is
    copied under `coax test` but aliases the buffer under `coax run`
    (chapter 17). Aliasing is correct (spec: `cast(string)` borrows); the
