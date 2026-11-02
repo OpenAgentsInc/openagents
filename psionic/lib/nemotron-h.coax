@@ -16,8 +16,8 @@
 NhShape :: struct { hidden:int; vocab:int; layers:int; ssm:SsShape; attn_heads:int; kv_heads:int; attn_dim:int; mlp:int; }
 // arithmetic: a value that is not finite or does not fit f32 (a hidden
 // value that is not finite fails the first norm). recurrence: chapter 162
-// refused; ssm holds its status.
-NhStatus :: enum u8 { ok; shape; pattern; checkpoint; capacity; arithmetic; recurrence; }
+// refused; ssm holds its status. token: a token id outside the vocabulary.
+NhStatus :: enum u8 { ok; shape; pattern; checkpoint; capacity; arithmetic; recurrence; token; }
 NhResult :: struct { status:NhStatus; written:int; ssm:SsStatus; }
 // The pinned config: hidden_size 3136, mamba_num_heads 96, mamba_head_dim
 // 80, ssm_state_size 128, n_groups 8, num_attention_heads 40,

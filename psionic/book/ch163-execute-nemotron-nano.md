@@ -1,8 +1,9 @@
 # 163. Execute Nemotron Nano
 
 > **Status: partly implemented.** The checkpoint inventory, all three layer
-> kinds and original-weight slices run. The tokenizer, the whole 42-layer
-> model and its greedy tokens do not yet; see
+> kinds, original-weight slices and the whole model with greedy decoding
+> from its cache (on a small model) run. The tokenizer and the whole model on
+> the original weights do not yet; see
 > [What this does not do yet](#what-this-does-not-do-yet).
 
 NVIDIA-Nemotron-3-Nano-4B-BF16 is a hybrid language model. Of its 42 layers,
@@ -16,10 +17,11 @@ an independent oracle.
 ```shell
 coax/bin/coax run psionic/examples/nemotron-h.coax
 coax/bin/coax test psionic/lib/nemotron-h.coax
+coax/bin/coax test psionic/lib/nemotron-model.coax
 psionic/tests/check_nemotron_slices.sh ~/models/nemotron-3-nano-4b-bf16-dfaf35de
 ```
 
-The [library](../lib/nemotron-h.coax), its [check oracle](../tests/nemotron-h-oracle.coax),
+The [library](../lib/nemotron-h.coax), the [whole model](../lib/nemotron-model.coax), its [check oracle](../tests/nemotron-h-oracle.coax),
 the [example](../examples/nemotron-h.coax), the
 [refusal example](../examples/nemotron-h-refuse.coax) and the
 [slice check](../tests/check_nemotron_slices.sh) are the implementation.
@@ -55,8 +57,8 @@ MLP.
 NhShape :: struct { hidden:int; vocab:int; layers:int; ssm:SsShape; attn_heads:int; kv_heads:int; attn_dim:int; mlp:int; }
 // arithmetic: a value that is not finite or does not fit f32 (a hidden
 // value that is not finite fails the first norm). recurrence: chapter 162
-// refused; ssm holds its status.
-NhStatus :: enum u8 { ok; shape; pattern; checkpoint; capacity; arithmetic; recurrence; }
+// refused; ssm holds its status. token: a token id outside the vocabulary.
+NhStatus :: enum u8 { ok; shape; pattern; checkpoint; capacity; arithmetic; recurrence; token; }
 NhResult :: struct { status:NhStatus; written:int; ssm:SsStatus; }
 // The pinned config: hidden_size 3136, mamba_num_heads 96, mamba_head_dim
 // 80, ssm_state_size 128, n_groups 8, num_attention_heads 40,
@@ -675,6 +677,232 @@ Nemotron slices: 78 s
 The Coax side takes 6.5 seconds, including decoding about 1.3 GB of BF16.
 A full Mamba-2 layer over six tokens takes about 1 second on one core.
 
+## The whole model
+
+`psionic/lib/nemotron-model.coax` puts the three layer kinds together. A
+model is the embedding, the 42 layers in the order the pattern names them,
+the final norm and the readout. A request's memory is every Mamba-2 layer's
+history and state and every attention layer's keys and values, one layer
+after another; layer `l` uses the slot of its kind, the number of earlier
+layers of the same kind. For the pinned pattern that is 21 histories of
+29,184 values, 21 states of 983,040 values (20.6 million values, 83 MB as
+`f32`) and 4 key and value caches of 1,024 values a position.
+
+<!-- source: psionic/lib/nemotron-model.coax model -->
+```jai
+// One layer's weights; only the view its kind names is used.
+NhLayer :: struct { kind:int; mamba:NhMamba; attention:NhAttention; mlp:NhMlp; }
+// The embedding (vocab x hidden), the layers in order, the final norm and
+// the readout (vocab x hidden, separate from the embedding), read rows rows
+// at a time, at most NH_READOUT_ROWS.
+NhModel :: struct { shape:NhShape; pattern:string; embed:[]f32; layers:[]NhLayer; norm:[]f32; head:[]f32; rows:int; }
+NH_READOUT_ROWS :: 32768;
+// One request's memory for capacity positions: every Mamba-2 layer's
+// history and state, every attention layer's keys and values, one layer
+// after another in the order the layers come.
+NhCache :: struct { capacity:int; history:[]f32; state:[]f32; keys:[]f32; values:[]f32; }
+nh_history_size :: (s:NhShape,mambas:int)->int {return mambas*3*ss_channels(s.ssm);}
+nh_state_size :: (s:NhShape,mambas:int)->int {return mambas*ss_states(s.ssm);}
+nh_keys_size :: (s:NhShape,attentions:int,capacity:int)->int {return attentions*capacity*s.kv_heads*s.attn_dim;}
+nh_model_valid :: (m:NhModel)->bool {
+    s:=m.shape;p:=nh_pattern(s,m.pattern);
+    if p.status!=NhStatus.ok || m.layers.count!=s.layers || s.vocab<1 {return false;}
+    for i:0..<s.layers {if m.layers[i].kind!=nh_kind(m.pattern,i) {return false;}}
+    if m.rows<1 || m.rows>NH_READOUT_ROWS {return false;}
+    return m.embed.count==s.vocab*s.hidden && m.norm.count==s.hidden && m.head.count==s.vocab*s.hidden;
+}
+nh_cache_valid :: (m:NhModel,c:NhCache)->bool {
+    s:=m.shape;p:=nh_pattern(s,m.pattern);
+    if c.capacity<1 || c.history.count!=nh_history_size(s,p.counts[NH_MAMBA]) || c.state.count!=nh_state_size(s,p.counts[NH_MAMBA]) {return false;}
+    return c.keys.count==nh_keys_size(s,p.counts[NH_ATTENTION],c.capacity) && c.values.count==c.keys.count;
+}
+// A new request starts from zero history, state, keys and values.
+nh_clear :: (c:NhCache) {
+    ss_clear(c.history,c.state);
+    for i:0..<c.keys.count {c.keys[i]=0;c.values[i]=0;}
+}
+// f32 and f64 work for tokens rows at once in chunks of chunk.
+// Each layer kind takes its work from the front, so the sum covers all.
+nh_model_work :: (s:NhShape,tokens:int)->int {return nh_mamba_work(s,tokens)+nh_attention_work(s)+nh_mlp_work(s);}
+nh_model_fwork :: (s:NhShape,chunk:int,capacity:int)->int {return ss_work_count(s.ssm,chunk)+capacity;}
+```
+
+Work one slot by hand. In `M-*M*-` layer 4 is attention; one attention
+layer (layer 2) comes before it, so it uses attention slot 1, the keys from
+`capacity x 8` to `2 x capacity x 8` in the small model (8 key values a
+position). Layer 3 is the second Mamba-2 layer and uses history values 60 to
+119 and state values 24 to 47.
+
+<!-- source: psionic/lib/nemotron-model.coax layer -->
+```jai
+// Layer `layer` on tokens rows of hidden at positions start, start + 1, ...
+// Its memory is the slot of its kind: the number of earlier layers of the
+// same kind.
+nh_slot :: (pattern:string,layer:int)->int {
+    n:=0;for i:0..<layer {if pattern[i]==pattern[layer] {n+=1;}}
+    return n;
+}
+nh_layer :: (m:NhModel,c:NhCache,layer:int,tokens:int,start:int,chunk:int,hidden:[]f32,work:[]f32,fwork:[]f64)->NhResult {
+    s:=m.shape;w:=m.layers[layer];k:=nh_slot(m.pattern,layer);
+    if w.kind==NH_MAMBA {
+        hs:=3*ss_channels(s.ssm);ns:=ss_states(s.ssm);
+        return nh_mamba(s,w.mamba,tokens,chunk,hidden,c.history[k*hs..<(k+1)*hs],c.state[k*ns..<(k+1)*ns],work,fwork);
+    }
+    if w.kind==NH_ATTENTION {
+        size:=c.capacity*s.kv_heads*s.attn_dim;
+        return nh_attention(s,w.attention,tokens,start,hidden,c.keys[k*size..<(k+1)*size],c.values[k*size..<(k+1)*size],work,fwork);
+    }
+    return nh_mlp(s,w.mlp,tokens,hidden,work);
+}
+```
+
+The readout has 131,072 rows. It runs `rows` rows at a time, at most
+32,768, and keeps the largest logit across the chunks, the lowest index on a
+tie. With 9 rows in chunks of 4 the chunks are rows 0 to 3, 4 to 7 and 8.
+
+<!-- source: psionic/lib/nemotron-model.coax readout -->
+```jai
+// The final norm and the whole readout for one hidden row, m.rows rows at
+// a time; the last chunk takes what is left. Returns the index of the
+// largest logit, the lowest on a tie, or -1 when the arithmetic fails.
+nh_logits :: (m:NhModel,hidden:[]f32,logits:[]f32,normed:[]f32)->int {
+    v:=m.shape.vocab;
+    if m.rows<1 || logits.count!=v {return -1;}
+    best:int;chunks:=v/m.rows;
+    if chunks*m.rows<v {chunks+=1;}
+    for k:0..<chunks {
+        first:=k*m.rows;n:=ifx k==chunks-1 then v-first else m.rows;
+        b:=nh_readout(m.norm,m.head,hidden,first,logits[first..<first+n],normed);
+        if b<0 {return -1;}
+        if k==0 || logits[first+b]>logits[best] {best=first+b;}
+    }
+    return best;
+}
+```
+
+A pass embeds its tokens, runs every layer in order on all of them and
+reads out the last token. Greedy decoding passes the prompt in chunks, then
+feeds each chosen token back alone at the next position:
+
+<!-- source: psionic/lib/nemotron-model.coax forward -->
+```jai
+// The outcome of one pass: the largest logit of the last token (best), or
+// the refusal, the layer that refused (-1 before the layers) and, for an
+// embedding refusal, the offending token's index.
+NhRun :: struct { status:NhStatus; layer:int; at:int; best:int; ssm:SsStatus; }
+// tokens at positions start, start + 1, ... through the whole model, in
+// chunks of chunk for the Mamba-2 layers. hidden holds the tokens' rows
+// (tokens x hidden) and is left as the last layer wrote it; logits holds
+// the last token's logits.
+nh_forward :: (m:NhModel,c:NhCache,tokens:[]int,start:int,chunk:int,hidden:[]f32,logits:[]f32,work:[]f32,fwork:[]f64)->NhRun {
+    if !nh_model_valid(m) || !nh_cache_valid(m,c) {return NhRun.{status=NhStatus.shape,layer=-1};}
+    s:=m.shape;h:=s.hidden;n:=tokens.count;
+    if n<1 || start<0 || start+n>c.capacity || hidden.count!=n*h || logits.count!=s.vocab {return NhRun.{status=NhStatus.capacity,layer=-1};}
+    if work.count<nh_model_work(s,n) || fwork.count<nh_model_fwork(s,chunk,c.capacity) {return NhRun.{status=NhStatus.capacity,layer=-1};}
+    for t:0..<n {
+        id:=tokens[t];
+        if id<0 || id>=s.vocab {return NhRun.{status=NhStatus.token,layer=-1,at=t};}
+        for i:0..<h {hidden[t*h+i]=m.embed[id*h+i];}
+    }
+    for layer:0..<s.layers {
+        r:=nh_layer(m,c,layer,n,start,chunk,hidden,work,fwork);
+        if r.status!=NhStatus.ok {return NhRun.{status=r.status,layer=layer,ssm=r.ssm};}
+    }
+    best:=nh_logits(m,hidden[(n-1)*h..<n*h],logits,work[0..<h]);
+    if best<0 {return NhRun.{status=NhStatus.arithmetic,layer=s.layers};}
+    return NhRun.{best=best};
+}
+```
+
+<!-- source: psionic/lib/nemotron-model.coax greedy -->
+```jai
+// Greedy decoding: the prompt at once in chunks of chunk, then each chosen
+// token fed back one at a time from the cache, steps tokens in all. The
+// cache must be cleared by the caller and hold prompt + steps - 1
+// positions. hidden holds the prompt's rows. out[i] is the i-th token chosen.
+nh_greedy :: (m:NhModel,c:NhCache,prompt:[]int,steps:int,chunk:int,out:[]int,hidden:[]f32,logits:[]f32,work:[]f32,fwork:[]f64)->NhRun {
+    p:=prompt.count;h:=m.shape.hidden;
+    if steps<1 || out.count<steps || p+steps-1>c.capacity || hidden.count!=p*h {return NhRun.{status=NhStatus.capacity,layer=-1};}
+    r:=nh_forward(m,c,prompt,0,chunk,hidden,logits,work,fwork);
+    if r.status!=NhStatus.ok {return r;}
+    out[0]=r.best;
+    for i:1..<steps {
+        r=nh_forward(m,c,out[i-1..<i],p+i-1,1,hidden[0..<h],logits,work,fwork);
+        if r.status!=NhStatus.ok {return r;}
+        out[i]=r.best;
+    }
+    return r;
+}
+```
+
+The checks run a six-layer model of the small shape, `M-*M*-`, with a
+vocabulary of 9. Its whole pass matches the oracle's layers chained in
+binary64 for every chunk size from 1 to 7. Greedy decoding chooses four
+tokens from a prompt of four; recomputing the prompt and the first three
+choices in one pass from an empty cache chooses the same fourth token, and
+with chunks of one token the two are the same arithmetic, so their last
+logits agree bit for bit. A pass resumed after 4 tokens equals the 7 tokens
+at once in chunks of 4, bit for bit, logits, keys and state:
+
+<!-- source: psionic/lib/nemotron-model.coax checks-model -->
+```jai
+#test "the whole small model matches the oracle's layers chained" #steps 200000000 {
+    for seed:0..<3 {
+        rig:[1]NhmRig;r:=rig[..];nhm_rig(r,seed);m:=nhm_model(r);c:=nhm_cache(r);
+        for chunk:1..<8 {
+            nh_clear(c);hidden:[42]f32;logits:[9]f32;work:[NHM_WORK]f32;fwork:[2000]f64;tokens:=NHM_TOKENS;
+            run:=nh_forward(m,c,tokens[..],0,chunk,hidden[..],logits[..],work[..],fwork[..]);
+            ref:=nhm_oracle(r,tokens[..]);g:=nho_gap(logits[..],ref[..]);
+            #assert run.status==NhStatus.ok && g.gap<=g.limit;
+            best:=0;for i:1..<9 {if ref[i]>ref[best] {best=i;}}
+            #assert run.best==best;
+        }
+    }
+}
+#test "greedy decoding from the cache equals recomputing the whole sequence, bit for bit" #steps 200000000 {
+    rig:[1]NhmRig;r:=rig[..];nhm_rig(r,1);m:=nhm_model(r);c:=nhm_cache(r);
+    for chunk:1..<4 {
+        // Prompt of 4 in chunks of chunk, then 4 tokens chosen one at a time.
+        nh_clear(c);prompt:=[4]int.[3,1,4,1];out:[4]int;hidden:[24]f32;logits:[9]f32;work:[NHM_WORK]f32;fwork:[2000]f64;
+        need:=nh_model_fwork(m.shape,chunk,NHM_CAPACITY);
+        run:=nh_greedy(m,c,prompt[..],4,chunk,out[..],hidden[..],logits[..],work[..],fwork[0..<need]);
+        #assert run.status==NhStatus.ok && run.best==out[3];
+        last:=logits;
+        // The first choice is the prompt's own last logits.
+        nh_clear(c);#assert nh_forward(m,c,prompt[..],0,chunk,hidden[..],logits[..],work[..],fwork[..]).best==out[0];
+        // The prompt and the first three choices, 7 tokens, in one pass from
+        // an empty cache: its last logits choose the fourth token.
+        all:=[7]int.[3,1,4,1,out[0],out[1],out[2]];whole:[42]f32;again:[9]f32;
+        nh_clear(c);run=nh_forward(m,c,all[..],0,1,whole[..],again[..],work[..],fwork[..]);
+        #assert run.status==NhStatus.ok && run.best==out[3];
+        // With chunks of one token the two are the same arithmetic.
+        if chunk==1 {#assert nho_same(last[..],again[..]);}
+        ref:=nhm_oracle(r,all[..]);g:=nho_gap(last[..],ref[..]);#assert g.gap<=g.limit;
+        // The cache holds the eighth position untouched.
+        for i:7*8..<8*8 {#assert r[0].keys[i]==0 && r[0].values[i]==0;}
+    }
+    // A pass resumed after 4 tokens equals 7 tokens at once in chunks of 4.
+    tokens:=NHM_TOKENS;work:[NHM_WORK]f32;fwork:[2000]f64;
+    nh_clear(c);whole:[42]f32;a:[9]f32;
+    #assert nh_forward(m,c,tokens[..],0,4,whole[..],a[..],work[..],fwork[..]).status==NhStatus.ok;
+    keys:=r[0].keys;state:=r[0].state;
+    nh_clear(c);split:[42]f32;b:[9]f32;
+    #assert nh_forward(m,c,tokens[0..<4],0,4,split[0..<24],b[..],work[..],fwork[..]).status==NhStatus.ok;
+    #assert nh_forward(m,c,tokens[4..<7],4,4,split[24..<42],b[..],work[..],fwork[..]).status==NhStatus.ok;
+    #assert nho_same(a[..],b[..]) && nho_same(whole[36..<42],split[36..<42]) && nho_same(keys[..],r[0].keys[..]) && nho_same(state[..],r[0].state[..]);
+    // Clearing empties all four parts of the cache.
+    nh_clear(c);
+    for i:0..<128 {#assert r[0].keys[i]==0 && r[0].values[i]==0;}
+    for i:0..<48 {#assert r[0].state[i]==0;}
+    for i:0..<120 {#assert r[0].history[i]==0;}
+}
+```
+
+Each refusal names the layer that refused, or -1 when the pass refused
+before the first layer: a token outside the vocabulary (`token`, with its
+index), a model or cache of the wrong shape, too few work values, a cache
+too short for the request, or a layer's own refusal.
+
 ## Refusals
 
 Each layer checks its weights' sizes against the shape, then its token count
@@ -829,10 +1057,11 @@ starts the request again after `ss_clear`.
 - **The tokenizer.** The pinned `tokenizer.json` is a byte-level BPE with
   131,072 entries and 269,443 merges. This chapter takes its prompt ids from
   the vocabulary directly; encoding arbitrary text in Coax is not done.
-- **The whole model.** Each layer kind runs on original weights, but the 42
-  layers have not been run end to end, so there are no full-model logits and
-  no greedy tokens, and nothing is compared with a reference run of the
-  published model.
+- **The whole model on the original weights.** The whole model and greedy
+  decoding run on the small model above, and each layer kind runs on the
+  original weights, but no whole-model run on the original weights is
+  recorded here, so there are no full-model logits or greedy tokens for the
+  pinned checkpoint, and no independent whole-model reference for them.
 - **Measured memory and time for a request.** Only the slices' times above
   are recorded.
 - **Device kernels.** Everything runs on one CPU core.
