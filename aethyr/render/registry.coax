@@ -142,17 +142,18 @@ rr_live :: (rs:[]RenderRegistry,h:RfHandle)->bool {
   if rs.count!=1 {return false;}
   return rf_live(rs[0].table[..],h,rs[0].epoch);
 }
-rr_acquire :: (rs:[]RenderRegistry,kind:int,words:int)->RrGrant {
+// rr_n is the grant's words; a local named `words` would shadow Belt's and Dead Gears' words().
+rr_acquire :: (rs:[]RenderRegistry,kind:int,rr_n:int)->RrGrant {
   if rs.count!=1 || rs[0].limit.slots<1 {return RrGrant.{status=RrStatus.bad_limits};}
   if kind<RF_UNIFORM || kind>RR_TEXTURE {return RrGrant.{status=RrStatus.bad_kind};}
-  if words<1 {return RrGrant.{status=RrStatus.bad_words};}
+  if rr_n<1 {return RrGrant.{status=RrStatus.bad_words};}
   if rs[0].live>=rs[0].limit.slots {return RrGrant.{status=RrStatus.slots};}
-  if words>rs[0].limit.words-rs[0].words {return RrGrant.{status=RrStatus.budget};}
+  if rr_n>rs[0].limit.words-rs[0].words {return RrGrant.{status=RrStatus.budget};}
   for s:0..<rs[0].limit.slots {
     e:=rs[0].table[s];
     if e.last!=RR_OPEN && e.generation<RR_GENERATIONS {
-      rs[0].table[s]=RfResource.{generation=e.generation+1,kind=kind,words=words,first=rs[0].epoch,last=RR_OPEN};
-      rs[0].live+=1;rs[0].words+=words;
+      rs[0].table[s]=RfResource.{generation=e.generation+1,kind=kind,words=rr_n,first=rs[0].epoch,last=RR_OPEN};
+      rs[0].live+=1;rs[0].words+=rr_n;
       return RrGrant.{status=RrStatus.ok,handle=RfHandle.{slot=s,generation=e.generation+1}};
     }
   }
