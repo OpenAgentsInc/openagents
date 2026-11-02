@@ -1,0 +1,46 @@
+{
+  "schema": "openagents.anime-take.rebase-binding.v1",
+  "issue": 12633,
+  "integrated_parent": "80eb4249bd",
+  "pre_rebase_source_profile": "source-qualification.json",
+  "pre_rebase_media_profile": "media-final-profile.json",
+  "current_media_profile": "media-post-rebase-profile.json",
+  "cli": {
+    "source_count": 130,
+    "source_manifest": "cli-post-rebase-sources.sha256",
+    "source_manifest_sha256": "4fd6a4fed46e027b88214ae649af8a2f23ffbbceb7ad79dada4f2dfd8f78505a",
+    "deps": "cli-post-rebase-deps.json",
+    "deps_command": "COAX_V048 deps apps/openagents-cli/main.coax --library --run-steps 250000000",
+    "artifact_sha256": "746d96d3f5bf2b53452c13bf120c7c9803c8791972f31e641b3728f5a30e4220",
+    "compiler_version": "0.48.0",
+    "compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "compiler_provenance": "cli-v048-provenance-verification.json",
+    "build_wrapper": "build.sh now respects explicit COAX; bash -n and actual explicit build passed.",
+    "native_identity_receipt": "rebase-native-cli-identities.log",
+    "changed_original_units": [
+      "apps/openagents-cli/main.coax",
+      "apps/openagents-web/project-fold.coax"
+    ],
+    "new_units": [
+      "apps/openagents-cli/mcp.coax",
+      "apps/openagents-cli/skill.coax"
+    ],
+    "qualification": "New 19/19 media profile once on this changed producer; earlier 19 remains bound to CLI876fd."
+  },
+  "unchanged_qualification": {
+    "take": "rebase-take-identities.log",
+    "api_policy": "rebase-policy-identities.log",
+    "api_native": "rebase-native-api-identities.log",
+    "page": "page-post-rebase-identities.log",
+    "browser_host": "browser-host-post-rebase-identities.log",
+    "probe": "probe-post-rebase-identities.log",
+    "meaning": "Identity checks reuse passing policy/page/API proofs for unchanged closures. No unchanged functional or mutation gate was rerun."
+  },
+  "compiler_handoff": "Existing upstream loader/seed changes 7027896698 and eda4077928 enabled the separately landed MCP source graph. This task did not edit compiler sources or raise compiler budgets. Default-budget deps was refused E0400; successful deps uses the same existing 250000000 run-step budget as build.sh.",
+  "tools_gate": {
+    "passed": true,
+    "receipt": "tools-check.log",
+    "files": 1467
+  },
+  "deployment": "No rollout claimed."
+}

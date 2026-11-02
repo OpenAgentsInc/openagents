@@ -1,0 +1,10 @@
+{
+  "command": "coax/provenance.sh verify ROOT CACHE/coax CACHE/provenance-check CACHE/provenance.record",
+  "root": "/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents",
+  "cache": "/Users/christopherdavid/.cache/coax-release/6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e",
+  "exit_code": 0,
+  "stdout_bytes": 0,
+  "compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+  "record_sha256": "698dff2800fdd87ceffed82944d1df03803a5a9cbedcc12837a647fc0b5f3783",
+  "source": "Existing checked Coax 0.48 build; no compiler build or compiler-source change in this work."
+}

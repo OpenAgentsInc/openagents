@@ -6,7 +6,7 @@
 # Network.framework on macOS, OpenSSL from Nix on Linux).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"; p="$repo/coax/platform"
-coax="$repo/coax/bin/coax"
+coax="${COAX:-$repo/coax/bin/coax}"
 [[ -x "$coax" ]] || { echo "build the compiler first: coax/build.sh" >&2; exit 2; }
 if [[ "$(uname -s)" == Darwin ]]; then cc=(/usr/bin/clang -D_DARWIN_C_SOURCE); libs=(-framework Security -framework CoreFoundation); else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); libs=(-lpthread); fi
 . "$p/tls-env.sh"

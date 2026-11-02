@@ -1,0 +1,7 @@
+FAIL #test API anime provider arrays refuse objects with otherwise valid children (10 ms)
+coax/web/api/anime-director-checks.coax:304:5: error[E0406]: assertion failed
+      #assert aapt_raw(AAP_TEST_INPUT,model,out[..])==AAP_MODEL;
+      ^
+  note: in #test API anime provider arrays refuse objects with otherwise valid children
+1 of 147 checks (--only 'provider arrays'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

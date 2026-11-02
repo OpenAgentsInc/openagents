@@ -259,7 +259,20 @@ aid_model_tests :: (t: [] Aid, body: string) {
   ready = aid_reset(t) && aid_mode(t,"selection-rows");
   aid_check(t,"private selection rows normalize to the same strict public answer",ready && aid_post(t,body) == 200 && aid_response(aid_body(t),1) && aid_answer(aid_body(t),0,"cast","play",940,true) && aid_finished(t,200));
   aid_record(t,"selection-rows.response.json",aid_body(t));
-  bad := [10] string.["malformed","duplicate","bad-second","scalar-p","embedded-nul","overlong","missing-option","wrong-sum","not-argmax","bad-envelope"];
+  creature_request: [4096] u8; cn := aid_request("A creature appears at the gate.",creature_request[..]);
+  ready = aid_reset(t) && aid_mode(t,"creature-enter"); creature_code := ifx ready then aid_post(t,cast(string)creature_request[0..<cn]) else -1;
+  creature_nodes: [512] JvNode; creature_doc: [1] Jv;
+  creature_ok := creature_code == 200 && aid_response_words(aid_body(t),"A creature appears at the gate.",1) && aid_answer(aid_body(t),0,"enter","heard",900,false) && jv_parse(creature_doc[..],aid_body(t),creature_nodes[..]);
+  creature_ok = creature_ok && jv_kind(creature_doc[0],jv_path(creature_doc[0],0,"answers[0].stock")) == JV_TRUE && jv_raw(creature_doc[0],jv_path(creature_doc[0],0,"answers[0].archetype")) == "creature";
+  aid_check(t,"in-stock creature retains confidence but unsupported entrance stays heard",creature_ok && aid_finished(t,200));
+  aid_record(t,"creature-enter.response.json",aid_body(t));
+  cn = aid_request("A creature points.",creature_request[..]);
+  ready = aid_reset(t) && aid_mode(t,"creature-act"); creature_code = ifx ready then aid_post(t,cast(string)creature_request[0..<cn]) else -1;
+  creature_ok = creature_code == 200 && aid_response_words(aid_body(t),"A creature points.",1) && aid_answer(aid_body(t),0,"act","heard",900,false) && jv_parse(creature_doc[..],aid_body(t),creature_nodes[..]);
+  creature_ok = creature_ok && jv_kind(creature_doc[0],jv_path(creature_doc[0],0,"answers[0].stock")) == JV_TRUE && jv_raw(creature_doc[0],jv_path(creature_doc[0],0,"answers[0].who")) == "creature" && jv_raw(creature_doc[0],jv_path(creature_doc[0],0,"answers[0].action")) == "point";
+  aid_check(t,"unsupported creature body action stays heard despite high confidence",creature_ok && aid_finished(t,200));
+  aid_record(t,"creature-act.response.json",aid_body(t));
+  bad := [12] string.["malformed","duplicate","bad-second","scalar-p","embedded-nul","overlong","missing-option","wrong-sum","not-argmax","bad-envelope","candidates-object","parts-object"];
   for mode: bad {
     ready = aid_reset(t) && aid_mode(t,mode);
     aid_check(t,mode,ready && aid_post(t,body) == 502 && aid_no_partial(aid_body(t)) && aid_finished(t,502));

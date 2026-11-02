@@ -1,0 +1,96 @@
+// Static support of the current Anime Lab stage and drawing implementation.
+// This does not prove that a subject is on stage or that a frame was rendered.
+// Keep the API and recorded-take holder on this one profile. No asset maker is
+// implemented here; draw_cast excludes AS_MADE and the demo dragon is not stock.
+#load "director.coax";
+#authority;
+
+#test "shared anime render profile distinguishes real poses spells transitions and beats" {
+  // stage.sg_pose_of has distinct raise/cast/point/hesitate/recoil poses.
+  // Block/fall alias recoil; run/kneel/turn/shout fall back to idle.
+  poses := [11]bool.[true,true,false,false,false,false,false,true,true,true,false];
+  for who:[5]int.[0,1,2,5,6] {for action:0..<11 {
+    d:=AnimeDirection.{kind=AD_ACT,who=who,option=action,p=1};
+    #assert anime_direction_ok(d) && anime_render_supported(d)==poses[action];
+  }}
+  // Every face emotion has a profile; the spell drawer always draws fireball.
+  spells := [6]bool.[false,true,false,false,false,false];
+  for emotion:0..<10 {#assert anime_render_supported(AnimeDirection.{kind=AD_EMOTE,who=0,option=emotion,p=1});}
+  for spell:0..<6 {#assert anime_render_supported(AnimeDirection.{kind=AD_CAST,option=spell,place=0,p=1})==spells[spell];}
+  transitions := [5]bool.[true,true,true,false,false];
+  for transition:0..<5 {#assert anime_render_supported(AnimeDirection.{kind=AD_CUT,to=0,option=transition,p=1})==transitions[transition];}
+  beats := [4]bool.[true,false,false,true];
+  for beat:0..<4 {#assert anime_render_supported(AnimeDirection.{kind=AD_BEAT,option=beat,p=1})==beats[beat];}
+  for kind:[4]int.[AD_EXIT,AD_SET,AD_SAY,AD_MAKE] {#assert !anime_render_supported(AnimeDirection.{kind=kind,who=0,p=1});}
+}
+
+#test "shared anime render profile covers entrances without inventing a creature mesh" {
+  // Walk/run/appear/land, three counts each. The stage reveals one slot or
+  // three hooded slots, and walks the lord from smoke. draw_cast skips slot6.
+  profiles := [5]string.["000000100000","000000100000","000000111000","100000100000","000000000000"];
+  archetypes := [5]int.[0,1,2,5,6];
+  // absent, gate, courtyard, wall, sky, left, right, behind, above
+  places := "100000010";
+  for a:0..<5 {for how:0..<4 {for count:1..<4 {for place:-1..<8 {
+    d:=AnimeDirection.{kind=AD_ENTER,option=archetypes[a],move=how,count=count,place=place,p=1};
+    #assert anime_direction_ok(d);
+    expected:=false;if profiles[a][how*3+count-1]=='1' {expected=places[place+1]=='1';}
+    #assert anime_render_supported(d)==expected;
+  }}}}
+}
+
+#test "shared anime render profile covers every camera subject framing place and move" {
+  subjects := [8]string.["111000","111000","111000","000000","000000","111000","111000","000000"];
+  for who:[5]int.[0,1,2,5,6] {for frame:0..<8 {for move:0..<6 {
+    d:=AnimeDirection.{kind=AD_SHOT,who=who,option=frame,move=move,p=1};
+    #assert anime_direction_ok(d) && anime_render_supported(d)==(subjects[frame][move]=='1');
+  }}}
+  // Rows are catalogue places, columns are hold/push/pull/orbit/shake/whip.
+  // Wall/other place fallback cameras do not realize those selected framings.
+  wide := [8]string.["000000","100000","000000","000000","000000","000000","111000","000000"];
+  establishing := [8]string.["000000","111000","000000","000000","000000","000000","000000","000000"];
+  for frame:0..<8 {for place:0..<8 {for move:0..<6 {
+    d:=AnimeDirection.{kind=AD_SHOT,option=frame,place=place,move=move,p=1};
+    #assert anime_direction_ok(d);expected:=false;
+    if frame==3 {expected=wide[place][move]=='1';}if frame==4 {expected=establishing[place][move]=='1';}
+    #assert anime_render_supported(d)==expected;
+  }}}
+}
+
+#test "shared anime render profile covers effect location and fixed size combinations" {
+  // Wall breach, courtyard rubble, screen flash and behind smoke are implemented.
+  // Other effects and requested sizes have no matching drawing branch.
+  profiles := [9]string.["000100000","101000000","100000000","100000010","000000000","000000000","000000000","000000000","000000000"];
+  sizes := "1010";
+  for effect:0..<9 {for place:-1..<8 {for size:-1..<3 {
+    d:=AnimeDirection.{kind=AD_FX,option=effect,place=place,size=size,p=1};
+    #assert anime_direction_ok(d);expected:=false;
+    if sizes[size+1]=='1' {expected=profiles[effect][place+1]=='1';}
+    #assert anime_render_supported(d)==expected;
+  }}}
+}
+
+anime_render_supported :: (d:AnimeDirection)->bool {
+  if d.kind==AD_ACT {return d.option==ACT_RAISE || d.option==ACT_CAST || d.option==ACT_HESITATE || d.option==ACT_RECOIL || d.option==ACT_POINT;}
+  if d.kind==AD_EMOTE {return true;}
+  if d.kind==AD_CAST {return d.option==SPELL_FIREBALL;}
+  if d.kind==AD_ENTER {
+    if d.option==AS_MADE {return false;}
+    return (d.move==HOW_APPEARS || (d.option==AS_LORD && d.move==HOW_WALKS))
+      && (d.count==1 || d.option==AS_HOODED) && (d.place<0 || d.place==PL_BEHIND);
+  }
+  if d.kind==AD_SHOT {
+    if d.move!=MOVE_HOLD && d.move!=MOVE_PUSH && d.move!=MOVE_PULL {return false;}
+    if d.who>=0 {return d.option==FR_EXTREME || d.option==FR_CLOSE || d.option==FR_MEDIUM || d.option==FR_OVER || d.option==FR_LOW;}
+    return (d.option==FR_ESTABLISHING && d.place==PL_COURTYARD)
+      || (d.option==FR_WIDE && (d.place==PL_BEHIND || (d.place==PL_COURTYARD && d.move==MOVE_HOLD)));
+  }
+  if d.kind==AD_CUT {return d.option==TR_CUT || d.option==TR_FLASH || d.option==TR_SMASH;}
+  if d.kind==AD_FX {
+    if d.size>=0 && d.size!=SIZE_LARGE {return false;}
+    return (d.option==FX_RUBBLE && (d.place<0 || d.place==PL_COURTYARD))
+      || (d.option==FX_FLASH && d.place<0) || (d.option==FX_SMOKE && (d.place<0 || d.place==PL_BEHIND))
+      || (d.option==FX_EXPLOSION && d.place==PL_WALL);
+  }
+  if d.kind==AD_BEAT {return d.option==BEAT_HOLD || d.option==BEAT_SPEED;}return false;
+}

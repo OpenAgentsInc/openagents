@@ -59,6 +59,39 @@
   #assert jv_len(d[0],jv_path(d[0],0,"answers[0].selections[0].probabilities")) == 10;
   #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].selections[0].probabilities[4]")) == "0.990";
 }
+#test "anime fake selector object envelopes retain otherwise valid content" {
+  for mode: [2] string.["candidates-object","parts-object"] {
+    out: [8192] u8; inner: [4096] u8; nodes: [128] JvNode; d: [1] Jv;
+    n := ads_body(mode,out[..]); #assert n > 0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+    candidates := jv_get(d[0],0,"candidates");
+    #assert jv_kind(d[0],candidates) == (ifx mode == "candidates-object" then JV_OBJECT else JV_ARRAY);
+    candidate := ifx mode == "candidates-object" then jv_get(d[0],candidates,"only") else jv_at(d[0],candidates,0);
+    parts := jv_path(d[0],candidate,"content.parts");
+    #assert jv_kind(d[0],parts) == (ifx mode == "parts-object" then JV_OBJECT else JV_ARRAY);
+    part := ifx mode == "parts-object" then jv_get(d[0],parts,"only") else jv_at(d[0],parts,0);
+    k := jv_str(d[0],jv_get(d[0],part,"text"),inner[..]); #assert k > 0 && jv_parse(d[..],cast(string)inner[0..<k],nodes[..]);
+    #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].kind")) == "cast";
+    #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].confidence.who.heroine")) == "0.940";
+  }
+}
+#test "anime fake selector creature entrance has complete high-confidence vectors" {
+  out: [8192] u8; inner: [4096] u8; nodes: [256] JvNode; d: [1] Jv;
+  n := ads_body("creature-enter",out[..]); #assert n > 0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  k := jv_str(d[0],jv_path(d[0],0,"candidates[0].content.parts[0].text"),inner[..]);
+  #assert k > 0 && jv_parse(d[..],cast(string)inner[0..<k],nodes[..]);
+  #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].kind")) == "enter" && jv_raw(d[0],jv_path(d[0],0,"answers[0].archetype")) == "creature";
+  #assert jv_len(d[0],jv_path(d[0],0,"answers[0].confidence.archetype")) == 5 && jv_len(d[0],jv_path(d[0],0,"answers[0].confidence.how")) == 4;
+  #assert jv_len(d[0],jv_path(d[0],0,"answers[0].confidence.count")) == 3 && jv_raw(d[0],jv_path(d[0],0,"answers[0].confidence.archetype.creature")) == "0.900";
+}
+#test "anime fake selector creature body action retains otherwise playable confidence" {
+  out: [8192] u8; inner: [4096] u8; nodes: [256] JvNode; d: [1] Jv;
+  n := ads_body("creature-act",out[..]); #assert n > 0 && jv_parse(d[..],cast(string)out[0..<n],nodes[..]);
+  k := jv_str(d[0],jv_path(d[0],0,"candidates[0].content.parts[0].text"),inner[..]);
+  #assert k > 0 && jv_parse(d[..],cast(string)inner[0..<k],nodes[..]);
+  #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].kind")) == "act" && jv_raw(d[0],jv_path(d[0],0,"answers[0].who")) == "creature";
+  #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].action")) == "point" && jv_len(d[0],jv_path(d[0],0,"answers[0].confidence.action")) == 11;
+  #assert jv_len(d[0],jv_path(d[0],0,"answers[0].confidence.who")) == 5 && jv_raw(d[0],jv_path(d[0],0,"answers[0].confidence.who.creature")) == "0.900";
+}
 
 ADS_MODES :: [11] string.["stock","multi","out","exact-play","above-play","half","below-half","empty","duplicate","bad-second","scalar-p"];
 ADS_ANSWERS :: [11] string.[
@@ -75,6 +108,8 @@ ADS_ANSWERS :: [11] string.[
   "{\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"timing\":\"now\",\"p\":0.99,\"confidence\":{\"kind\":0.99,\"who\":0.94,\"spell\":0.97,\"place\":0.96,\"timing\":0.99}}]}"
 ];
 ads_answer :: (mode: string) -> string {
+  if mode == "creature-act" { return "{\"answers\":[{\"kind\":\"act\",\"who\":\"creature\",\"action\":\"point\",\"timing\":\"now\",\"confidence\":{\"kind\":0.9,\"who\":0.9,\"action\":0.9,\"timing\":0.9}}]}"; }
+  if mode == "creature-enter" { return "{\"answers\":[{\"kind\":\"enter\",\"archetype\":\"creature\",\"count\":1,\"place\":\"gate\",\"how\":\"appears\",\"timing\":\"now\",\"confidence\":{\"kind\":0.9,\"archetype\":0.9,\"count\":0.9,\"place\":0.9,\"how\":0.9,\"timing\":0.9}}]}"; }
   for i: 0..<ADS_MODES.count { if ADS_MODES[i] == mode { return ADS_ANSWERS[i]; } }
   return "{";
 }
@@ -184,10 +219,13 @@ ads_selection_rows :: (source: string, out: [] u8) -> int {
   jo_end(o[..]); jo_end(o[..]); return ifx o[0].bad then -1 else o[0].n;
 }
 ads_body :: (mode: string, out: [] u8) -> int {
-  o: [1] Jo; jo_start(o[..],out); jo_obj(o[..]); jo_key(o[..],"candidates"); jo_arr(o[..]);
+  o: [1] Jo; jo_start(o[..],out); jo_obj(o[..]); jo_key(o[..],"candidates");
+  if mode == "candidates-object" { jo_obj(o[..]); jo_key(o[..],"only"); } else { jo_arr(o[..]); }
   if mode != "bad-envelope" {
-    jo_obj(o[..]); jo_key(o[..],"content"); jo_obj(o[..]); jo_key(o[..],"parts"); jo_arr(o[..]); jo_obj(o[..]);
-    source := ads_answer(ifx mode == "hold" || mode == "selection-rows" || mode == "missing-option" || mode == "wrong-sum" || mode == "not-argmax" then "stock" else mode);
+    jo_obj(o[..]); jo_key(o[..],"content"); jo_obj(o[..]); jo_key(o[..],"parts");
+    if mode == "parts-object" { jo_obj(o[..]); jo_key(o[..],"only"); } else { jo_arr(o[..]); }
+    jo_obj(o[..]);
+    source := ads_answer(ifx mode == "hold" || mode == "selection-rows" || mode == "missing-option" || mode == "wrong-sum" || mode == "not-argmax" || mode == "candidates-object" || mode == "parts-object" then "stock" else mode);
     converted: [8192] u8; n := ifx mode == "duplicate" then -1 else ifx mode == "selection-rows" then ads_selection_rows(source,converted[..]) else ads_vectors(source,converted[..],mode);
     jo_key(o[..],"text"); jo_str(o[..],ifx n >= 0 then cast(string)converted[0..<n] else source);
     jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);

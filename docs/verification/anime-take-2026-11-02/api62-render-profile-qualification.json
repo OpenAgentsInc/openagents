@@ -1,0 +1,45 @@
+{
+  "schema": "openagents.anime-render-profile.qualification.v1",
+  "date": "2026-11-02",
+  "source": "verse/anime/render-profile.coax",
+  "source_sha256": "4a58bc963b9713b23f63ae5e54fcf2a34418c59860c1223df0c68defd7332019",
+  "retained_source": "api62-render-profile.coax.txt",
+  "compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+  "checks_first": {
+    "command": "coax/bin/coax test verse/anime/render-profile.coax --library --only 'shared anime'",
+    "receipt": "api62-render-profile-red.log",
+    "receipt_sha256": "f6610ea61af1d9acbcdd8a39616ee97ef4b586e91117f94170a794423dbf1cb5",
+    "observation": "All four finite consumer matrices failed against a false-returning stub before implementation."
+  },
+  "checks": {
+    "command": "coax/bin/coax test verse/anime/render-profile.coax --library",
+    "receipt": "api62-render-profile-checks.log",
+    "receipt_sha256": "0a7f5674d10795321d28fcba0f6fbd3a8e0557beacb0534759e1336667fb2681",
+    "new_groups": 4,
+    "closure_checks": 15,
+    "passed": 15,
+    "failed": 0
+  },
+  "mutation": {
+    "command": "coax/bin/coax mutate verse/anime/render-profile.coax --library --root-only --jobs 4",
+    "receipt": "api62-render-profile-mutation.log",
+    "receipt_sha256": "01b585db1c09ed2421c755230ab674d2417b46dc2b12680a3a8f6f6c8051e4c1",
+    "mutants": 159,
+    "killed": 159,
+    "survived": 0,
+    "waivers": 0
+  },
+  "scope": "Exact prior API static profile, with creature entrances refused because draw_cast excludes slot6. No renderer, asset generation, subject visibility or rasterization claim.",
+  "page_probe": {
+    "source": "apps/openagents-web/animelab.coax",
+    "source_sha256": "858f03ac5f5cd9a1b9524a33374ec986bcb039476f621c4463801581bd674523",
+    "check_source": "apps/openagents-web/animelab-take-checks.coax",
+    "check_source_sha256": "4d7d1d12efa15673dcad181be91fbf8c5b2dd9daedcc475157904ace9de9271b",
+    "command": "coax/bin/coax test apps/openagents-web/animelab.coax --only 'custom take page probe'",
+    "receipt": "page-probe-checks.log",
+    "receipt_sha256": "fe67017631ccba292349d98fbd47c2202d1113c9e939d95461c63091a2960fc8",
+    "checks": 1,
+    "passed": 1,
+    "scope": "New integer observation export: accepted/retained/refused facts, exact counts and milliseconds, empty state, unknown fields. Earlier page checks are recorded separately; no old mesh gate was repeated."
+  }
+}

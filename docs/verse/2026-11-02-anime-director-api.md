@@ -189,7 +189,9 @@ camera move remains typed catalogue data but is unsupported and heard-only.
 Support covers the implemented distinct poses and emotions, fireball, selected
 entrances and camera combinations, cut/flash/smash transitions, the implemented
 effect/place/size combinations, and hold/speed-lines beats. The exact finite
-profile is checked in
+profile is owned by
+[`render-profile.coax`](../../verse/anime/render-profile.coax), shared with
+recorded takes, and checked through
 [`anime-director-render-checks.coax`](../../coax/web/api/anime-director-render-checks.coax).
 It does not certify current cast visibility, renderer availability, a rendered
 frame, or a newly generated asset. Changing that profile requires corresponding

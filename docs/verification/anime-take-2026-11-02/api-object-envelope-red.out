@@ -1,0 +1,7 @@
+FAIL #test anime fake selector object envelopes retain otherwise valid content (0 ms)
+coax/web/api/tests/anime_direct_selector.coax:67:5: error[E0406]: assertion failed
+      #assert jv_kind(d[0],candidates) == (ifx mode == "candidates-object" then JV_OBJECT else JV_ARRAY);
+      ^
+  note: in #test anime fake selector object envelopes retain otherwise valid content
+1 of 87 checks (--only 'anime fake selector object envelopes'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

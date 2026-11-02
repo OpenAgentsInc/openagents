@@ -1,0 +1,122 @@
+// Page integration checks. The strict document/parser checks live with verse/anime/take.coax.
+AL_TEST_TAKE :: "{\"schema\":\"anime.v1\",\"auto\":false,\"length\":6,\"stage\":\"courtyard\",\"lines\":[{\"said\":0,\"done\":1,\"words\":\"A spark at the gate.\",\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"p\":0.9,\"timing\":\"now\"}]},{\"said\":2,\"done\":2.5,\"words\":\"A close view.\",\"answers\":[{\"kind\":\"shot\",\"who\":\"heroine\",\"framing\":\"close-up\",\"p\":0.95}]},{\"said\":3,\"done\":3.2,\"words\":\"An ink dragon.\",\"answers\":[{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"p\":0.99,\"stock\":false,\"render_supported\":false,\"decision\":\"heard\"}]}]}";
+
+#test "custom take page owns message bytes and uses loaded caption lines" {
+  s:[1]Animelab;message:[2048]u8;for i:0..<AL_TEST_TAKE.count {message[i]=AL_TEST_TAKE[i];}
+  animelab_message(s[..],LOAD_TAKE,cast(string)message[0..<AL_TEST_TAKE.count]);
+  for i:0..<message.count {message[i]='X';}
+  #assert s[0].custom && animelab_take_status(s[..])==TAKE_LOADED && s[0].n==2 && s[0].length==6;
+  words:[600]u8;l:=animelab_line(s[..],0,words[..]);
+  #assert l.words=="A spark at the gate." && l.said==0 && l.done==1 && l.first==0 && l.count==1;
+  l=animelab_line(s[..],2,words[..]);#assert l.words=="An ink dragon." && l.first==2;
+  #assert animelab_line_count(s[..])==3 && line_at(s[..],2.2)==1 && line_at(s[..],0)==0;
+  st:=anime_stage(s[0].events[..],s[0].n,5,1);#assert st.make_at<0 && !st.who[AS_MADE].on;
+}
+
+#test "custom take F changes presentation while preserving time and timeline" {
+  s:[1]Animelab;animelab_message(s[..],LOAD_TAKE,AL_TEST_TAKE);
+  s[0].time=3.75;s[0].pinned=3.75;
+  first:=s[0].events[0];last:=s[0].events[1];
+  #assert animelab_key(s[..],'F',true) && s[0].mode==STAGE_FILM && s[0].time==3.75;
+  #assert s[0].custom && s[0].n==2 && s[0].length==6 && s[0].speed==1;
+  #assert s[0].events[0].at==first.at && s[0].events[0].d.kind==first.d.kind && s[0].events[1].at==last.at;
+  #assert animelab_key(s[..],'f',true) && s[0].mode==STAGE_DIRECT && s[0].time==3.75 && s[0].pinned==3.75;
+}
+
+#test "custom take initial refusal cannot fall back to demo or hide behind film card" {
+  s:[1]Animelab;
+  animelab_message(s[..],HOST_FACTS,"url=https://x/realms/anime-lab?stage=film&card=1&t=47&take64=e30");
+  #assert !s[0].custom && animelab_take_status(s[..])==TAKE_REFUSED && s[0].n==0;
+  #assert animelab_status_text(s[..])=="TAKE REFUSED  ·  NO TAKE IS PLAYING";
+  out:[20000]f32;u:[UNIFORM_FLOATS]f32;
+  n:=animelab_overlay(s[..],out[..],u[..],1280,720,1,Stage.{},0,DrawIn.{});
+  #assert n>0 && s[0].panels>0;
+  #assert animelab_key(s[..],'F',true) && s[0].n==0 && !s[0].custom;
+}
+
+#test "custom take invalid replacement preserves accepted document events and time atomically" {
+  s:[1]Animelab;animelab_message(s[..],LOAD_TAKE,AL_TEST_TAKE);s[0].time=2.25;
+  at:=s[0].events[1].at;animelab_message(s[..],LOAD_TAKE,"{}");
+  #assert s[0].custom && animelab_take_status(s[..])==TAKE_RETAINED && s[0].n==2 && s[0].length==6 && s[0].time==2.25;
+  #assert s[0].events[1].at==at && animelab_status_text(s[..])=="REPLACEMENT REFUSED  ·  KEEPING LOADED TAKE";
+  words:[600]u8;#assert animelab_line(s[..],1,words[..]).words=="A close view.";
+  animelab_message(s[..],LOAD_TAKE,AL_TEST_TAKE);#assert animelab_take_status(s[..])==TAKE_LOADED && s[0].time==0;
+}
+
+#test "custom take oversized raw replacement preserves the accepted source and timeline" {
+  s:[1]Animelab;animelab_message(s[..],LOAD_TAKE,AL_TEST_TAKE);s[0].time=4;
+  big:[32769]u8;for i:0..<big.count {big[i]=' ';}
+  animelab_message(s[..],LOAD_TAKE,cast(string)big[..]);
+  #assert s[0].custom && s[0].n==2 && s[0].time==4 && animelab_take_status(s[..])==TAKE_RETAINED;
+  words:[600]u8;#assert animelab_line(s[..],0,words[..]).words=="A spark at the gate.";
+}
+
+#test "custom take URL transport distinguishes absence empty duplicates and canonical data" {
+  #assert query_count("https://x/?take64=&t=1","take64")==1 && query_count("https://x/?t=1","take64")==0;
+  encoded:[4096]u8;url:[4096]u8;
+  code:=al_test_b64url(AL_TEST_TAKE,encoded[..]);n:=tput(url[..],0,"url=https://x/realms/anime-lab?take64=");n=tput(url[..],n,code);n=tput(url[..],n,"&t=2.5&card=1");
+  s:[1]Animelab;animelab_message(s[..],HOST_FACTS,cast(string)url[0..<n]);
+  #assert s[0].custom && s[0].pinned==2.5 && s[0].card && s[0].n==2;
+  for suffix:[5]string.["take64=","take64=e30=","take64=+_8","take64=Zh","take64=e30&take64=e30"] {
+    b:[1024]u8;k:=tput(b[..],0,"url=https://x/?");k=tput(b[..],k,suffix);bad:[1]Animelab;
+    animelab_message(bad[..],HOST_FACTS,cast(string)b[0..<k]);#assert animelab_take_status(bad[..])==TAKE_REFUSED && bad[0].n==0;
+  }
+}
+
+#test "custom take caption never claims arbitrary make is drawing or made and .85 remains soft" {
+  s:=[1]Animelab.[Animelab.{custom=true}];
+  tail:[128]u8;d:=AnimeDirection.{kind=AD_MAKE,p=0.99,stock=false};
+  #assert animelab_tail(s[..],d,true,1,Stage.{make_at=0},DrawIn.{made=true},tail[..])=="0.990  HEARD ONLY · NOT IN STOCK";
+  d=AnimeDirection.{kind=AD_ACT,who=0,option=ACT_POINT,p=0.85};
+  #assert animelab_tail(s[..],d,false,1,Stage.{},DrawIn.{},tail[..])=="0.850  PLAYS · DID YOU MEAN?";
+  d.p=0.851;#assert animelab_tail(s[..],d,false,1,Stage.{},DrawIn.{},tail[..])=="0.851  IN STOCK";
+  d.p=0.2;#assert animelab_tail(s[..],d,true,1,Stage.{},DrawIn.{},tail[..])=="0.200  HEARD ONLY";
+}
+
+#test "custom take paints heard-only answers even when no executable events exist" {
+  low:="{\"schema\":\"anime.v1\",\"length\":3,\"lines\":[{\"said\":0,\"done\":0,\"words\":\"Not yet.\",\"answers\":[{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.2}]}]}";
+  s:[1]Animelab;animelab_message(s[..],LOAD_TAKE,low);
+  #assert s[0].custom && s[0].n==0 && s[0].take[0].answer_n==1 && s[0].take[0].answers[0].heard;
+  out:[MAX_VERTICES*VERTEX_FLOATS]f32;u:[UNIFORM_FLOATS]f32;
+  n:=director_overlay(s[..],out[..],u[..],1280,720,1,Stage.{},1,DrawIn.{});
+  #assert n>0 && s[0].panels==4;
+  animelab_message(s[..],LOAD_TAKE,AL_TEST_TAKE);s[0].panels=0;
+  n=director_overlay(s[..],out[..],u[..],1280,720,1,Stage.{},4,DrawIn.{});
+  #assert n>0 && s[0].panels==4;
+}
+
+#test "custom take page probe exposes accepted retained and refused take facts" {
+  s:[1]Animelab;animelab_message(s[..],LOAD_TAKE,AL_TEST_TAKE);s[0].time=2.125;
+  expected:=[8]int.[1,3,3,2,6000,1,AL_TEST_TAKE.count,2125];
+  for field:0..<8 {#assert animelab_take_probe(s[..],field)==expected[field];}
+  #assert animelab_take_probe(s[..],-1)==0 && animelab_take_probe(s[..],8)==0 && animelab_take_probe(s[0..<0],0)==0;
+  animelab_message(s[..],LOAD_TAKE,"{}");#assert animelab_take_probe(s[..],0)==TAKE_RETAINED;
+  for field:1..<8 {#assert animelab_take_probe(s[..],field)==expected[field];}
+  bad:[1]Animelab;animelab_message(bad[..],LOAD_TAKE,"{}");
+  #assert animelab_take_probe(bad[..],0)==TAKE_REFUSED;
+  for field:[5]int.[1,2,3,5,6] {#assert animelab_take_probe(bad[..],field)==0;}
+  builtin:[1]Animelab;animelab_reset(builtin[..]);
+  #assert animelab_take_probe(builtin[..],0)==0 && animelab_take_probe(builtin[..],1)==DEMO_LINES_N && animelab_take_probe(builtin[..],2)==DEMO_ANSWERS_N;
+}
+
+// Fixture transport constructor. The page decoder is the separately checked codec.
+al_test_b64url :: (input:string,out:[]u8)->string {
+  alphabet:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";n:=0;at:=0;
+  while at<input.count {
+    a:=cast(int)input[at];b:=ifx at+1<input.count then cast(int)input[at+1] else 0;c:=ifx at+2<input.count then cast(int)input[at+2] else 0;
+    out[n]=alphabet[a>>2];out[n+1]=alphabet[((a&3)<<4)|(b>>4)];n+=2;
+    if at+1<input.count {out[n]=alphabet[((b&15)<<2)|(c>>6)];n+=1;}
+    if at+2<input.count {out[n]=alphabet[c&63];n+=1;}at+=3;
+  }return cast(string)out[0..<n];
+}
+#test "custom take URL fragments do not open a query or change presentation" {
+  state:[1]Animelab;
+  animelab_message(state[..],HOST_FACTS,"url=http://x/realms/anime-lab#frag?take64=!&stage=film&t=5&card=1");
+  #assert !state[0].custom && animelab_take_status(state[..])==0;
+  #assert state[0].mode==STAGE_DIRECT && !state[0].card && state[0].pinned<0;
+  other:[1]Animelab;
+  animelab_message(other[..],HOST_FACTS,"url=http://x/realms/anime-lab?stage=film&t=2&card=1#frag?take64=!");
+  #assert !other[0].custom && animelab_take_status(other[..])==0;
+  #assert other[0].mode==STAGE_FILM && other[0].card && other[0].pinned==2;
+}
+

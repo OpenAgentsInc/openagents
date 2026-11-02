@@ -1,0 +1,192 @@
+// Independent recorded-take fixtures and boundary checks. These helpers own all
+// temporary JSON; the product stores bytes and numeric records only.
+AT_TEST_TAKE :: "{\"schema\":\"anime.v1\",\"auto\":false,\"length\":6,\"stage\":\"courtyard\",\"lines\":[{\"said\":0,\"done\":1,\"words\":\"A spark at the gate.\",\"answers\":[{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"place\":\"gate\",\"p\":0.9,\"timing\":\"now\"}]},{\"said\":2,\"done\":2.5,\"words\":\"A close view.\",\"answers\":[{\"kind\":\"shot\",\"who\":\"heroine\",\"framing\":\"close-up\",\"p\":0.95}]},{\"said\":3,\"done\":3.2,\"words\":\"An ink dragon.\",\"answers\":[{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"p\":0.99,\"stock\":false,\"render_supported\":false,\"decision\":\"heard\"}]}]}";
+atk_load :: (text:string,take:[]AnimeTake)->int {b:[ANIME_TAKE_BYTES+1]u8;for i:0..<text.count {b[i]=text[i];}return anime_take_load(b[0..<text.count],take);}
+
+#test "Anime take owns captions answers and scheduled catalogue events" {
+  t:[1]AnimeTake;words:[600]u8;raw:[32768]u8;events:[32]AnimeEvent;
+  loaded:=atk_load(AT_TEST_TAKE,t[..]);wn:=anime_take_line(t[..],0,words[..]);rn:=anime_take_answer_json(t[..],2,raw[..]);d:=anime_take_answer(t[..],0);en:=anime_take_events(t[..],events[..]);
+  #assert loaded==0 && t[0].ready && t[0].line_n==3 && t[0].answer_n==3 && t[0].event_n==2 && t[0].length==6;
+  #assert wn==20 && cast(string)words[0..<wn]=="A spark at the gate.";
+  #assert rn>0 && d.kind==AD_CAST && d.p==0.9 && en==2;
+  #assert events[0].at==1+DECIDE && events[1].at==2.5+DECIDE;
+  #assert t[0].answers[2].heard && t[0].answers[2].p==0.99 && anime_take_answer(t[..],2).kind==AD_MAKE;
+  #assert t[0].answers[0].shown==1+DECIDE && t[0].answers[1].shown==2.5+DECIDE && t[0].answers[2].shown==3.2+DECIDE;
+  #assert t[0].answers[0].timing==0 && t[0].answers[1].timing==-1 && t[0].source_n==AT_TEST_TAKE.count && cast(string)t[0].source[0..<t[0].source_n]==AT_TEST_TAKE;
+}
+#test "Anime take malformed replacement is atomic and empty ownership is refused" {
+  t:[1]AnimeTake;loaded:=atk_load(AT_TEST_TAKE,t[..]);
+  #assert loaded==0;before:=t[0].length;
+  for bad:[6]string.["{}","[]","{\"schema\":\"anime.v2\",\"lines\":[]}","{\"schema\":\"anime.v1\",\"lines\":[],\"extra\":1}","{\"schema\":\"anime.v1\",\"schema\":\"anime.v1\",\"lines\":[]}","{\"schema\":\"anime.v1\",\"lines\":[{}]}"] {#assert atk_load(bad,t[..])<0 && t[0].length==before && t[0].answer_n==3;}
+  b:[1]u8;events_empty:[1]AnimeEvent;#assert anime_take_load(b[..],t[0..<0])==ANIME_TAKE_CAPACITY;
+  #assert anime_take_line(t[0..<0],0,b[..])==ANIME_TAKE_INVALID && anime_take_answer_json(t[..],-1,b[..])==ANIME_TAKE_INVALID;
+  #assert anime_take_answer(t[..],3).kind==-1 && anime_take_events(t[0..<0],events_empty[..])==ANIME_TAKE_INVALID;
+}
+
+atk_doc :: (lines:string,automatic:string,duration:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anime.v1");jo_key(o[..],"lines");jo_raw(o[..],lines);if automatic!="" {jo_key(o[..],"auto");jo_raw(o[..],automatic);}if duration!="" {jo_key(o[..],"length");jo_raw(o[..],duration);}jo_end(o[..]);return jo_text(o[..]);}
+atk_line :: (said:string,done:string,words:string,answers:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"said");jo_raw(o[..],said);jo_key(o[..],"done");jo_raw(o[..],done);jo_key(o[..],"words");jo_str(o[..],words);jo_key(o[..],"answers");jo_raw(o[..],answers);jo_end(o[..]);return jo_text(o[..]);}
+atk_list :: (a:string,b:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);jo_raw(o[..],a);if b!="" {jo_raw(o[..],b);}jo_end(o[..]);return jo_text(o[..]);}
+atk_replace :: (text:string,from:string,to:string,out:[]u8)->string {at:=-1;for i:0..<text.count-from.count+1 {if text[i..<i+from.count]==from {at=i;break;}}if at==-1 {return "";}n:=0;for c:text[0..<at] {out[n]=c;n+=1;}for c:to {out[n]=c;n+=1;}for c:text[at+from.count..<text.count] {out[n]=c;n+=1;}return cast(string)out[0..<n];}
+atk_answer :: (text:string,out:[]u8)->AtHeld {nodes:[512]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return AtHeld.{};}return at_answer(d[0],0,out);}
+
+#test "Anime take ownership survives source overwrite and output capacity refuses atomically" {
+  input:[ANIME_TAKE_BYTES]u8;for i:0..<AT_TEST_TAKE.count {input[i]=AT_TEST_TAKE[i];}t:[1]AnimeTake;#assert anime_take_load(input[0..<AT_TEST_TAKE.count],t[..])==0;
+  for i:0..<input.count {input[i]=0;}words:[600]u8;wn:=anime_take_line(t[..],2,words[..]);#assert cast(string)words[0..<wn]=="An ink dragon.";
+  raw:[32768]u8;rn:=anime_take_answer_json(t[..],2,raw[..]);nodes:[64]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)raw[0..<rn],nodes[..]) && jv_raw(d[0],jv_get(d[0],0,"what"))=="ink dragon";
+  tiny:=[2]u8.[7,8];#assert anime_take_line(t[..],0,tiny[..])==ANIME_TAKE_CAPACITY && anime_take_answer_json(t[..],0,tiny[..])==ANIME_TAKE_CAPACITY && tiny[0]==7 && tiny[1]==8;
+  events:[32]AnimeEvent;events[0].at=123;#assert anime_take_events(t[..],events[0..<1])==ANIME_TAKE_CAPACITY && events[0].at==123;
+  #assert anime_take_events(t[..],events[0..<2])==2 && events[0].d.what=="" && events[1].d.what=="";
+  t[0].answers[3].value.kind=AD_CAST;t[0].answers[3].raw_at=0;t[0].answers[3].raw_n=1;
+  #assert anime_take_line(t[..],3,words[..])==ANIME_TAKE_INVALID && anime_take_answer_json(t[0..<0],0,raw[..])==ANIME_TAKE_INVALID && anime_take_answer(t[0..<0],0).kind==-1;
+  #assert anime_take_answer_json(t[..],3,raw[..])==ANIME_TAKE_INVALID && anime_take_answer(t[..],3).kind==-1 && anime_take_answer(t[..],-1).kind==-1;
+}
+#test "Anime take confidence grid retains exact boundaries and canonical zero through every thousandth" {
+  b:[16]u8;o:[1]Jo;for p:0..<1001 {jo_start(o[..],b[..]);at_prob(o[..],p);#assert at_milli(jo_text(o[..]))==p && ad_p(jo_text(o[..]))==cast(f32)p/1000;}
+  good:=[12]string.["0","-0","1","1.000","8.5e-1","500e-3","1e+0000","1e-0003","0.001","0.999","0e9999999","1E0"];
+  expected:=[12]int.[0,0,1000,1000,850,500,1000,1,1,999,0,1000];for i:0..<good.count {#assert at_milli(good[i])==expected[i];}
+  for bad:[13]string.["","-1","nan","true","false","null","0.8500001","1.001","1e1000","1e-1000","101e-2","0.0009","9"] {#assert at_milli(bad)==-1;}
+  answer:[1024]u8;line:[2048]u8;lines:[4096]u8;doc:[8192]u8;t:[1]AnimeTake;
+  for p:[6]int.[0,499,500,850,851,1000] {jo_start(o[..],answer[..]);jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],"act");jo_key(o[..],"who");jo_str(o[..],"hero");jo_key(o[..],"action");jo_str(o[..],"point");jo_key(o[..],"p");at_prob(o[..],p);jo_end(o[..]);
+    aa:[2048]u8;text:=atk_doc(atk_list(atk_line("0","1","point",atk_list(jo_text(o[..]),"",aa[..]),line[..]),"",lines[..]),"false","5",doc[..]);#assert atk_load(text,t[..])==0 && t[0].answers[0].milli==p && t[0].answers[0].p==cast(f32)p/1000;
+    #assert t[0].event_n==(ifx p>=500 then 1 else 0);if t[0].event_n==1 {#assert t[0].events[0].p==cast(f32)p/1000;}
+  }
+}
+#test "Anime take metadata suppresses execution without shadowing scalar selections" {
+  core:="{\"confidence\":{\"kind\":\"make\",\"p\":0.01,\"who\":{\"heroine\":0.01}},\"p\":0.9,\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\"}";
+  out:[512]u8;held:=atk_answer(core,out[..]);#assert held.ok && held.answer.p==0.9 && held.answer.value.kind==AD_ACT && !held.answer.heard;
+  changed:[4096]u8;
+  for metadata:[2]string.["\"decision\":\"heard\",","\"timing\":\"after\","] {
+    x:=atk_replace(core,"{",atk_metadata_prefix(metadata,out[..]),changed[..]);answer:=atk_answer(x,out[..]);#assert answer.ok && answer.answer.p==0.9;
+    if metadata=="\"timing\":\"after\"," {#assert answer.answer.timing==1 && !answer.answer.heard;}else {#assert answer.answer.heard && anime_read(cast(string)out[0..<answer.n]).p==0;}
+  }
+  for metadata:[13]string.["\"stock\":false,","\"stock\":1,","\"render_supported\":1,","\"decision\":\"soft\",","\"decision\":\"unknown\",","\"decision\":1,","\"render_supported\":false,\"decision\":\"play\",","\"confidence\":null,","\"timing\":1,","\"timing\":\"later\",","\"unknown\":1,","\"p\":0.8501,","\"render_supported\":false,"] {
+    x:=atk_replace("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.9}","{",atk_metadata_prefix(metadata,out[..]),changed[..]);#assert !atk_answer(x,out[..]).ok;
+  }
+  for metadata:[3]string.["","\"render_supported\":false,","\"render_supported\":false,\"decision\":\"heard\","] {
+    x:=atk_replace("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"run\",\"p\":0.9}","{",atk_metadata_prefix(metadata,out[..]),changed[..]);answer:=atk_answer(x,out[..]);#assert answer.ok && answer.answer.heard;
+  }
+}
+atk_metadata_prefix :: (metadata:string,out:[]u8)->string {n:=0;out[n]='{';n+=1;for c:metadata {out[n]=c;n+=1;}return cast(string)out[0..<n];}
+
+atk_time :: (text:string)->f64 {nodes:[16]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return -1;}return at_time(d[0],0);}
+#test "Anime take finite numeric times preserve ordered intervals and exact explicit duration edges" {
+  good:=[12]string.["0","-0","0.5","600","6e2","6000000e-4","1e+0000","1e-0003","0.000001","1E1","-0e99999","1e-340"];
+  values:=[12]f64.[0,0,0.5,600,600,600,1,0.001,0.000001,10,0,0];for i:0..<good.count {#assert abs(atk_time(good[i])-values[i])<1e-12;}
+  for bad:[12]string.["-1","600.001","1e999","1e1000","1e-1000","1e-341","\"1\"","true","null","{}","[]","nan"] {#assert atk_time(bad)==-1;}
+  line_buf:[2048]u8;list_buf:[4096]u8;doc_buf:[8192]u8;t:[1]AnimeTake;
+  for pair:[6]string.["-1|0","1|0","0|-1","0|601","\"0\"|1","0|true"] {split:=0;for i:0..<pair.count {if pair[i]=='|' {split=i;break;}}text:=atk_doc(atk_list(atk_line(pair[0..<split],pair[split+1..<pair.count],"","[]",line_buf[..]),"",list_buf[..]),"false","",doc_buf[..]);#assert atk_load(text,t[..])==ANIME_TAKE_INVALID;}
+  a:="{\"said\":0,\"done\":1,\"words\":\"a\",\"answers\":[]}";
+  second_lines:=[2]string.["{\"said\":0.9,\"done\":2,\"words\":\"b\",\"answers\":[]}","{\"said\":1,\"done\":2,\"words\":\"b\",\"answers\":[]}"];
+  for i:0..<2 {text:=atk_doc(atk_list(a,second_lines[i],list_buf[..]),"false","5",doc_buf[..]);#assert (atk_load(text,t[..])==0)==(i==1);}
+  zero:="[{\"said\":0.1,\"done\":0.1,\"words\":\"\",\"answers\":[]}]";
+  #assert atk_load(atk_doc(zero,"false","0.1",doc_buf[..]),t[..])==0 && t[0].length==0.1;
+  #assert atk_load(atk_doc(zero,"false","0.099",doc_buf[..]),t[..])==ANIME_TAKE_LENGTH;
+  for duration:[5]string.["0","-1","601","true","\"5\""] {#assert atk_load(atk_doc("[]","",duration,doc_buf[..]),t[..])==ANIME_TAKE_LENGTH;}
+  #assert atk_load(atk_doc("[]","","",doc_buf[..]),t[..])==0 && t[0].length==3 && t[0].auto_camera;
+  #assert atk_load(atk_doc("[{\"said\":597,\"done\":597,\"words\":\"\",\"answers\":[]}]","false","",doc_buf[..]),t[..])==0 && t[0].length==600;
+  #assert atk_load(atk_doc("[{\"said\":598,\"done\":598,\"words\":\"\",\"answers\":[]}]","false","",doc_buf[..]),t[..])==ANIME_TAKE_LENGTH;
+}
+#test "Anime take size text and container boundaries refuse before publishing a prefix" {
+  t:[1]AnimeTake;out:[32769]u8;for i:0..<out.count {out[i]=' ';}for i:0..<AT_TEST_TAKE.count {out[i]=AT_TEST_TAKE[i];}
+  #assert anime_take_load(out[0..<32768],t[..])==0 && anime_take_load(out[..],t[..])==ANIME_TAKE_LIMIT;
+  doc_buf:[32768]u8;line_buf:[4096]u8;list_buf:[32768]u8;chars:[601]u8;for i:0..<chars.count {chars[i]='x';}
+  for count:[3]int.[0,600,601] {text:=atk_doc(atk_list(atk_line("0","0",cast(string)chars[0..<count],"[]",line_buf[..]),"",list_buf[..]),"false","5",doc_buf[..]);#assert (atk_load(text,t[..])==0)==(count<=600);}
+  control:=[1]u8.[1];for words:[3]string.["\0",cast(string)control[..],"\t\n\r😀"] {text:=atk_doc(atk_list(atk_line("0","0",words,"[]",line_buf[..]),"",list_buf[..]),"false","5",doc_buf[..]);#assert (atk_load(text,t[..])==0)==(words=="\t\n\r😀");}
+  for count:[2]int.[16,17] {o:[1]Jo;jo_start(o[..],list_buf[..]);jo_arr(o[..]);for i:0..<count {jo_raw(o[..],"{\"said\":0,\"done\":0,\"words\":\"\",\"answers\":[]}");}jo_end(o[..]);#assert atk_load(atk_doc(jo_text(o[..]),"false","5",doc_buf[..]),t[..])==(ifx count==16 then 0 else ANIME_TAKE_LIMIT);}
+  for bad_lines:[4]string.["{}","{\"line\":{\"said\":0,\"done\":0,\"words\":\"\",\"answers\":[]}}","[{\"said\":0,\"done\":0,\"words\":1,\"answers\":[]}]","[{\"said\":0,\"done\":0,\"words\":\"\",\"answers\":{\"answer\":{\"kind\":\"beat\",\"beat\":\"hold\",\"p\":1}}}]"] {#assert atk_load(atk_doc(bad_lines,"false","5",doc_buf[..]),t[..])==ANIME_TAKE_INVALID;}
+  for automatic:[3]string.["0","\"false\"","null"] {#assert atk_load(atk_doc("[]",automatic,"5",doc_buf[..]),t[..])==ANIME_TAKE_INVALID;}
+}
+#test "Anime take timeline bounds include automatic framing camera holds and every original confidence" {
+  answer_buf:[8192]u8;line_buf:[10000]u8;list_buf:[16384]u8;doc_buf:[32768]u8;t:[1]AnimeTake;o:[1]Jo;
+  for count:[2]int.[16,17] {jo_start(o[..],answer_buf[..]);jo_arr(o[..]);for i:0..<count {jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],"act");jo_key(o[..],"who");jo_str(o[..],ifx i%2==0 then "heroine" else "hero");jo_key(o[..],"action");jo_str(o[..],"point");jo_key(o[..],"p");jo_raw(o[..],"0.900");jo_end(o[..]);}jo_end(o[..]);
+    text:=atk_doc(atk_list(atk_line("0","1","point",jo_text(o[..]),line_buf[..]),"",list_buf[..]),"true","10",doc_buf[..]);loaded:=atk_load(text,t[..]);#assert loaded==(ifx count==16 then 0 else ANIME_TAKE_LIMIT);if loaded==0 {#assert t[0].event_n==32 && t[0].answer_n==16;for i:0..<32 {#assert t[0].events[i].p==(ifx i%2==0 then 1.0f32 else 0.9f32);}}
+  }
+  cameras:="[{\"kind\":\"shot\",\"who\":\"heroine\",\"framing\":\"close-up\",\"p\":0.900},{\"kind\":\"shot\",\"who\":\"hero\",\"framing\":\"close-up\",\"p\":0.950}]";
+  take_lines:=atk_list(atk_line("0","0","",cameras,line_buf[..]),"",list_buf[..]);#assert atk_load(atk_doc(take_lines,"false","",doc_buf[..]),t[..])==0 && t[0].length==CLOSE_HOLD+3 && t[0].events[1].at==CLOSE_HOLD;
+  #assert t[0].answers[0].shown==0 && t[0].answers[1].shown==STAGGER;
+  #assert atk_load(atk_doc(take_lines,"false","0.59",doc_buf[..]),t[..])==ANIME_TAKE_LENGTH && atk_load(atk_doc(take_lines,"false","0.6",doc_buf[..]),t[..])==0;
+}
+
+#test "Anime take every catalogue field has strict types and preserves its selected option" {
+  names:=[18]string.["kind","who","to","archetype","action","emotion","spell","effect","framing","move","transition","beat","how","place","size","count","like","timing"];
+  counts:=[18]int.[12,5,5,5,11,10,6,9,8,6,5,4,4,8,3,3,5,3];
+  first:=[18]string.["enter","heroine","heroine","heroine","raise-wand","calm","bolt","explosion","extreme-close-up","hold","cut","hold","walks","gate","small","1","heroine","now"];
+  last:=[18]string.["make","creature","creature","creature","shout","hesitant","light","shockwave","high-angle","whip-pan","match","speed-lines","lands","above","huge","3","creature","with"];
+  for i:0..<18 {#assert at_choices(names[i])==counts[i] && at_choice(names[i],0)==first[i] && at_choice(names[i],counts[i]-1)==last[i] && at_choice(names[i],-1)=="" && at_choice(names[i],counts[i])=="";}
+  #assert at_choices("unknown")==0 && at_choice("unknown",0)=="";
+  cores:=[13]string.[
+    "{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":1,\"how\":\"appears\",\"place\":\"behind\",\"p\":1}",
+    "{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":2,\"p\":1}",
+    "{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":3,\"p\":1}",
+    "{\"kind\":\"exit\",\"who\":\"hero\",\"how\":\"runs\",\"p\":1}",
+    "{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":1}",
+    "{\"kind\":\"emote\",\"who\":\"heroine\",\"emotion\":\"sad\",\"p\":1}",
+    "{\"kind\":\"cast\",\"who\":\"heroine\",\"spell\":\"fireball\",\"to\":\"hero\",\"size\":\"huge\",\"p\":1}",
+    "{\"kind\":\"fx\",\"effect\":\"rubble-rain\",\"place\":\"courtyard\",\"size\":\"large\",\"p\":1}",
+    "{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"hero\",\"move\":\"push-in\",\"p\":1}",
+    "{\"kind\":\"cut\",\"to\":\"hero\",\"transition\":\"flash\",\"p\":1}",
+    "{\"kind\":\"beat\",\"beat\":\"hold\",\"p\":1}",
+    "{\"kind\":\"make\",\"what\":\"ink dragon\",\"like\":\"creature\",\"place\":\"wall\",\"p\":1}",
+    "{\"kind\":\"shot\",\"framing\":\"wide\",\"place\":\"courtyard\",\"p\":1}"];
+  out:[512]u8;nodes:[128]JvNode;d:[1]Jv;
+  expected_kinds:=[13]int.[0,0,0,1,2,3,4,5,6,7,8,11,6];
+  for i:0..<cores.count {held:=atk_answer(cores[i],out[..]);#assert held.ok && held.answer.value.kind==expected_kinds[i];if i<3 {#assert jv_parse(d[..],cast(string)out[0..<held.n],nodes[..]) && jv_int(d[0],jv_get(d[0],0,"count"),0)==i+1;}}
+  original:=AnimeDirection.{kind=AD_CAST,who=1,option=1,move=2,place=3,to=5,count=3,size=2,like=6,p=0.851,stock=false,engine_framed=true};back:=at_direction(at_fields(original),original.p);
+  #assert back.kind==4 && back.who==1 && back.option==1 && back.move==2 && back.place==3 && back.to==5 && back.count==3 && back.size==2 && back.like==6 && back.p==0.851 && !back.stock && back.engine_framed && back.what=="";
+}
+#test "Anime take invalid flat directions cannot default or schedule a partial valid prefix" {
+  out:[512]u8;bad:=[18]string.["[]","{\"kind\":\"set\",\"p\":1}","{\"kind\":\"say\",\"p\":1}","{\"kind\":\"exit\",\"p\":1}","{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":4,\"p\":1}","{\"kind\":\"enter\",\"archetype\":\"hooded\",\"count\":\"1\",\"p\":1}","{\"kind\":\"enter\",\"archetype\":\"hooded\",\"how\":true,\"p\":1}","{\"kind\":\"act\",\"who\":\"hero\",\"p\":1}","{\"kind\":\"cast\",\"spell\":\"fireball\",\"p\":1}","{\"kind\":\"cast\",\"spell\":\"fireball\",\"to\":\"hero\",\"place\":\"gate\",\"p\":1}","{\"kind\":\"shot\",\"framing\":\"close-up\",\"p\":1}","{\"kind\":\"shot\",\"framing\":\"close-up\",\"who\":\"hero\",\"move\":\"bad\",\"p\":1}","{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":true}","{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\"}","{\"kind\":\"make\",\"what\":\"bad\\\"quote\",\"like\":\"creature\",\"p\":1}","{\"kind\":\"make\",\"what\":\"bad\\\\slash\",\"like\":\"creature\",\"p\":1}","{\"kind\":\"make\",\"what\":\"\",\"like\":\"creature\",\"p\":1}","{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.8501}"];
+  t:[1]AnimeTake;#assert atk_load(AT_TEST_TAKE,t[..])==0;
+  aa:[4096]u8;line_buf:[8192]u8;list_buf:[16384]u8;doc_buf:[32768]u8;
+  for text:bad {#assert !atk_answer(text,out[..]).ok;doc:=atk_doc(atk_list(atk_line("0","1","test",atk_list("{\"kind\":\"beat\",\"beat\":\"hold\",\"p\":1}",text,aa[..]),line_buf[..]),"",list_buf[..]),"false","5",doc_buf[..]);#assert atk_load(doc,t[..])==ANIME_TAKE_INVALID && t[0].answer_n==3 && t[0].length==6;}
+  for p:[2]string.["0.5","0.85"] {changed:[512]u8;core:=atk_replace("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":P,\"decision\":\"play\"}","P",p,changed[..]);#assert !atk_answer(core,out[..]).ok;}
+  #assert atk_answer("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.5,\"decision\":\"soft\"}",out[..]).ok;
+  #assert atk_answer("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.85,\"decision\":\"soft\"}",out[..]).ok;
+  #assert atk_answer("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.851,\"decision\":\"play\"}",out[..]).ok;
+  #assert !atk_answer("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\",\"p\":0.851,\"decision\":\"soft\"}",out[..]).ok;
+  #assert !atk_answer("{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"run\",\"p\":0.8,\"decision\":\"soft\"}",out[..]).ok;
+}
+
+#test "Anime take JSON name text and formatter utilities enforce their independent boundaries" {
+  nodes:[128]JvNode;d:[1]Jv;#assert at_in("a","a") && at_in("b","a|b") && !at_in("c","a|b") && !at_in("","a") && at_in("","|a") && at_in("","");
+  #assert jv_parse(d[..],"[]",nodes[..]) && !at_keys(d[0],0,"a");#assert jv_parse(d[..],"{}",nodes[..]) && at_keys(d[0],0,"");
+  for bad:[4]string.["{\"\":0}","{\"\\t\":0}","{\"\\u0000\":0}","{\"a\":0,\"\\u0061\":1}"] {#assert jv_parse(d[..],bad,nodes[..]) && !at_unique(d[0]);}
+  #assert at_utf8("\t\n\r😀",true) && !at_utf8("\t",false) && !at_utf8("\n",false) && !at_utf8("\r",false);
+  bad_byte:=[1]u8.[255];#assert !at_utf8(cast(string)bad_byte[..],true);
+  exact:=[3]u8.[7,8,9];#assert at_copy("abc",exact[..])==3 && cast(string)exact[..]=="abc" && at_copy("",exact[0..<0])==0;
+  #assert at_copy("abcd",exact[..])==ANIME_TAKE_CAPACITY && cast(string)exact[..]=="abc";
+  formatter:[512]u8;
+  for bad:[3]string.["{\"kind\":\"act\",\"action\":true}","{\"kind\":\"enter\",\"count\":4}","{\"kind\":\"make\",\"what\":1}"] {#assert jv_parse(d[..],bad,nodes[..]) && !at_flat(d[0],0,1000,formatter[..]).ok;}
+  #assert jv_parse(d[..],"{\"kind\":\"act\",\"who\":\"hero\",\"action\":\"point\"}",nodes[..]) && !at_flat(d[0],0,1000,exact[..]).ok;
+  for a:[7]f32.[0,1e-40,0.1,0.1000001,1.2345,599.99994,600] {for b:[7]f32.[0,1e-40,0.1,0.1000001,1.2345,599.99994,600] {#assert at_latest(a,b)==(ifx a>b then a else b);}}
+}
+#test "Anime take strict header and line keys preserve whitespace and reject malformed Unicode" {
+  t:[1]AnimeTake;doc_buf:[32768]u8;
+  for stage_value:[3]string.["\"film\"","1","null"] {o:[1]Jo;jo_start(o[..],doc_buf[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anime.v1");jo_key(o[..],"lines");jo_raw(o[..],"[]");jo_key(o[..],"stage");jo_raw(o[..],stage_value);jo_end(o[..]);#assert atk_load(jo_text(o[..]),t[..])==ANIME_TAKE_INVALID;}
+  #assert atk_load("{\"schema\":\"anime.v1\",\"lines\":[{\"said\":0,\"done\":0,\"words\":\"\",\"answers\":[],\"extra\":1}]}",t[..])==ANIME_TAKE_INVALID;
+  #assert atk_load("{\"schema\":\"anime.v1\",\"lines\":[]}\n",t[..])==0;
+  invalid:="{\"schema\":\"anime.v1\",\"lines\":[{\"said\":0,\"done\":1,\"words\":\"x\",\"answers\":[{\"kind\":\"beat\",\"beat\":\"hold\",\"p\":1,\"confidence\":{\"ignored\":\"X\"}}]}]}";
+  for i:0..<invalid.count {doc_buf[i]=invalid[i];if invalid[i]=='X' {doc_buf[i]=255;}}
+  #assert anime_take_load(doc_buf[0..<invalid.count],t[..])==ANIME_TAKE_INVALID;
+}
+
+#test "Anime take undrawn creature bodies remain heard even with high recorded confidence" {
+  cores:=[7]string.[
+    "{\"kind\":\"act\",\"who\":\"creature\",\"action\":\"point\",\"p\":1}",
+    "{\"kind\":\"emote\",\"who\":\"creature\",\"emotion\":\"calm\",\"p\":1}",
+    "{\"kind\":\"shot\",\"who\":\"creature\",\"framing\":\"close-up\",\"p\":1}",
+    "{\"kind\":\"cut\",\"to\":\"creature\",\"transition\":\"cut\",\"p\":1}",
+    "{\"kind\":\"cast\",\"who\":\"creature\",\"spell\":\"fireball\",\"place\":\"gate\",\"p\":1}",
+    "{\"kind\":\"cast\",\"who\":\"hero\",\"spell\":\"fireball\",\"to\":\"creature\",\"p\":1}",
+    "{\"kind\":\"enter\",\"archetype\":\"creature\",\"how\":\"appears\",\"p\":1}"];
+  canonical:[512]u8;changed:[1024]u8;prefix:[128]u8;
+  for core:cores {held:=atk_answer(core,canonical[..]);#assert held.ok && held.answer.heard && held.answer.p==1;
+    for flag:[2]string.["false","true"] {meta:[128]u8;o:[1]Jo;jo_start(o[..],meta[..]);jo_obj(o[..]);jo_key(o[..],"render_supported");jo_raw(o[..],flag);jo_end(o[..]);
+      mp:=atk_metadata_prefix(cast(string)meta[1..<o[0].n-1],prefix[..]);mp_buf:[128]u8;n:=0;for c:mp {mp_buf[n]=c;n+=1;}mp_buf[n]=',';n+=1;
+      x:=atk_replace(core,"{",cast(string)mp_buf[0..<n],changed[..]);#assert atk_answer(x,canonical[..]).ok==(flag=="false");
+    }
+  }
+  answers_buf:[8192]u8;o2:[1]Jo;jo_start(o2[..],answers_buf[..]);jo_arr(o2[..]);for core:cores {jo_raw(o2[..],core);}jo_end(o2[..]);
+  line_buf:[10000]u8;list_buf:[12000]u8;doc_buf:[16384]u8;t:[1]AnimeTake;
+  #assert atk_load(atk_doc(atk_list(atk_line("0","1","creatures",jo_text(o2[..]),line_buf[..]),"",list_buf[..]),"true","5",doc_buf[..]),t[..])==0 && t[0].answer_n==7 && t[0].event_n==0;
+}

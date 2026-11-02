@@ -295,3 +295,15 @@ aapt_model :: (selected:string,out:[]u8)->string {
     #assert jv_int(d[0],jv_get(d[0],jv_at(d[0],jv_get(d[0],0,"answers"),0),"count"),0)==count;
   }
 }
+
+#test "API anime provider arrays refuse objects with otherwise valid children" {
+  out:[AAP_RESULT_MAX]u8;for i:0..<out.count {out[i]=91;}
+  candidate_object:="{\"candidates\":{\"only\":{\"content\":{\"parts\":[{\"text\":\"{\\\"answers\\\":[]}\"}]}}}}";
+  part_object:="{\"candidates\":[{\"content\":{\"parts\":{\"only\":{\"text\":\"{\\\"answers\\\":[]}\"}}}}]}";
+  for model:[2]string.[candidate_object,part_object] {
+    #assert aapt_raw(AAP_TEST_INPUT,model,out[..])==AAP_MODEL;
+    #assert out[0]==91 && out[out.count-1]==91;
+  }
+  valid:="{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"answers\\\":[]}\"}]}}]}";
+  #assert aapt_raw(AAP_TEST_INPUT,valid,out[..])>0;
+}

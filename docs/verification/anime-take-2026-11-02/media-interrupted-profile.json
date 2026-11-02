@@ -1,0 +1,25 @@
+{
+  "schema": "openagents.anime-take.interrupted-media-profile.v1",
+  "status": "interrupted at parent request before the revised CLI; no complete media gate claim",
+  "cli_sha256": "2ce87cec8dacac94353ba5761bd33ef57b8d0d2b2d322306326bc3af151649ca",
+  "wasm_sha256": "31e9c2059b3ad8cdc4090f353905be56b504dfa5d5de5f2fac9f2765e2e7625a",
+  "probe_source_sha256": "a3daf7c1c320baf3c657b2feafcb1ffeaad9a41d782f35db663d54ba0c149e44",
+  "probe_native_sha256": "fee86c099a5fe7a3d57736adcc192866ca8069f6d3883ce6f43b94c2e0a7f936",
+  "artifacts": "media-interrupted-2ce87/",
+  "completed_checks": 8,
+  "completed": [
+    "Four initial CLI captures: supplied take twice, built-in control and no-make control, each with successful structured receipts and expected numeric facts.",
+    "Paired supplied-take RGBA equality: zero differing bytes.",
+    "Supplied take differs from built-in: 678454 differing RGBA bytes.",
+    "Heard-only paper whale does not draw an asset: supplied/no-make RGBA equality.",
+    "Heard-only caption capture completed, with three answers, two execution events, one heard-only answer, source bytes 576 and time 1200 ms."
+  ],
+  "unqualified_artifact": "The caption-control child finished and wrote its image/sidecar, but the paused parent never consumed its CLI result or ran the comparison. It is retained without a passing-check claim.",
+  "not_run": ["Clip recordings", "MP4 inspection/decode", "32768-byte transport", "Long URL cache identity", "Combined URL/eval refusal"],
+  "termination": {
+    "exit": 137,
+    "reason": "The parent requested a hold for a generic cache-fingerprint path guard. The probe was paused, its active CLI child was allowed to close Chrome and exit, then the paused probe was killed. No further capture was launched.",
+    "stdout": "Buffered stdout was not flushed on intentional termination; completed observations above are bound to the persisted structured CLI/pixel receipts and the probe's executed source order."
+  },
+  "boundary": "These eight checks remain bound to the old CLI. The changed final CLI receives its own full 19-case run; no success is promoted between producers."
+}

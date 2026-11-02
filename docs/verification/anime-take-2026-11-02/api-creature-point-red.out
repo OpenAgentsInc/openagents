@@ -1,0 +1,7 @@
+FAIL #test anime fake selector creature body action retains otherwise playable confidence (3 ms)
+coax/web/api/tests/anime_direct_selector.coax:92:3: error[E0406]: assertion failed
+    #assert jv_raw(d[0],jv_path(d[0],0,"answers[0].action")) == "point" && jv_len(d[0],jv_path(d[0],0,"answers[0].confidence.action")) == 11;
+    ^
+  note: in #test anime fake selector creature body action retains otherwise playable confidence
+1 of 89 checks (--only 'anime fake selector creature body action'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

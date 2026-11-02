@@ -1,0 +1,3 @@
+ok   #test anime fake selector object envelopes retain otherwise valid content (1 case, 445578 steps, 7 ms)
+1 of 87 checks (--only 'anime fake selector object envelopes'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

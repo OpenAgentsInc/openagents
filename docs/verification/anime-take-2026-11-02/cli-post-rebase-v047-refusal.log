@@ -1,0 +1,3 @@
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/apps/openagents-cli/main.coax:36:1: error[E0603]: source graph exceeds its unit, depth or byte budget
+  #load "mcp.coax";
+  ^

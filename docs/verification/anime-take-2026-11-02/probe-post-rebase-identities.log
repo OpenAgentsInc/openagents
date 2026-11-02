@@ -1,0 +1,13 @@
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/web/anime-take-probe.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/tool.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/args.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/proc.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/fs.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/json/json.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/text/base64.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/image/png.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/image/inflate.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/crypto/sha256_workspace.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/crypto/sha256.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/crypto/bytes.coax: OK
+/Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/crypto/sha256-kernel.coax: OK

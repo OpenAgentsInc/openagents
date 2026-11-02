@@ -128,6 +128,56 @@ lb_url :: (origin: string, target: string, out: [] u8) -> string {
   for c: lbw_text(w[..]) { if c <= ' ' || c == 127 { return ""; } }
   return ifx w[0].full then "" else lbw_text(w[..]);
 }
+#test "capture fingerprints remove only the inline take query payload" {
+  b: [256] u8;
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab?take64=ABCD&t=2&card=1#keep",b[..]) == "https://o/realms/anime-lab?t=2&card=1#keep";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab?card=1&take64=ABCD&t=2",b[..]) == "https://o/realms/anime-lab?card=1&t=2";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab/?take64=ABCD",b[..]) == "https://o/realms/anime-lab/";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab?take64=&take64=more#x",b[..]) == "https://o/realms/anime-lab#x";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab?x=take64&take64x=v",b[..]) == "https://o/realms/anime-lab?x=take64&take64x=v";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab#frag?take64=x",b[..]) == "https://o/realms/anime-lab#frag?take64=x";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab",b[..]) == "https://o/realms/anime-lab";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab?a=1&",b[..]) == "https://o/realms/anime-lab?a=1&";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab?take64=x&a=1&",b[..]) == "https://o/realms/anime-lab?a=1&";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab?",b[..]) == "https://o/realms/anime-lab?";
+  #assert lb_page_fingerprint_url("https://o/other?take64=x&t=2",b[..]) == "https://o/other?take64=x&t=2";
+  #assert lb_page_fingerprint_url("https://o/realms/anime-lab-extra?take64=x",b[..]) == "https://o/realms/anime-lab-extra?take64=x";
+  tiny: [4] u8; #assert lb_page_fingerprint_url("https://o/realms/anime-lab?take64=x",tiny[..]) == "";
+}
+// The take is decoded in the page, not in its HTML response. Fingerprint the
+// served page without these potentially large bytes; the complete URL still
+// participates in the capture input digest and output label.
+lb_page_fingerprint_url :: (url: string, out: [] u8) -> string {
+  end := url.count; query_at := -1;
+  for i: 0..<url.count {
+    if url[i] == '#' { end = i; break; }
+    if url[i] == '?' && query_at < 0 { query_at = i; }
+  }
+  w: [1] LbW; w[0].buf = out;
+  fingerprint_scheme := ifx lb_starts(url,"https://") then 8 else ifx lb_starts(url,"http://") then 7 else 0;
+  fingerprint_path_at := fingerprint_scheme;
+  while fingerprint_path_at < end && url[fingerprint_path_at] != '/' && url[fingerprint_path_at] != '?' { fingerprint_path_at += 1; }
+  fingerprint_path_to := ifx query_at < 0 then end else query_at;
+  fingerprint_anime := fingerprint_scheme > 0 && fingerprint_path_at < fingerprint_path_to
+    && (url[fingerprint_path_at..<fingerprint_path_to] == "/realms/anime-lab" || url[fingerprint_path_at..<fingerprint_path_to] == "/realms/anime-lab/");
+  if query_at < 0 || !fingerprint_anime {
+    lbw_put(w[..],url); return ifx w[0].full then "" else lbw_text(w[..]);
+  }
+  lbw_put(w[..],url[0..<query_at]);
+  at := query_at + 1; kept := false; removed := false;
+  while at <= end {
+    stop := at; while stop < end && url[stop] != '&' { stop += 1; }
+    part := url[at..<stop];
+    if part != "take64" && !lb_starts(part,"take64=") {
+      lbw_byte(w[..],ifx kept then '&' else '?'); lbw_put(w[..],part); kept = true;
+    } else { removed = true; }
+    at = stop + 1;
+  }
+  lbw_put(w[..],url[end..<url.count]);
+  if !removed { w[0].n = 0; w[0].full = false; lbw_put(w[..],url); }
+  return ifx w[0].full then "" else lbw_text(w[..]);
+}
+
 // A stage name is 1 to 32 of a-z, 0-9, - and _.
 lb_stage_ok :: (s: string) -> bool {
   if s.count < 1 || s.count > 32 { return false; }

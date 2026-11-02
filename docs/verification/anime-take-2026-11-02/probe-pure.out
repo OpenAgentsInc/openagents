@@ -1,0 +1,5 @@
+ok   #test anime take probe base64url preserves caller bytes and URL size (1 case, 45835 steps, 0 ms)
+ok   #test anime take probe video oracle requires exact decoded track metadata (1 case, 47637 steps, 1 ms)
+ok   #test anime take probe pixels distinguish equality, changes and lossy codec error (1 case, 650 steps, 0 ms)
+3 of 139 checks (--only 'anime take probe'), 3 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

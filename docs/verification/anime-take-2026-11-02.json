@@ -1,0 +1,84 @@
+{
+  "schema": "openagents.anime-take.verification.v1",
+  "issue": 12633,
+  "date": "2026-11-02",
+  "base_commit": "7ca26b6bc3700ba4375aee71c1292bf82c3015ad",
+  "status": "source, corrected native API and merged CLI headless media profiles passed; deployment separate",
+  "tools_rule": {
+    "passed": true,
+    "receipt": "anime-take-2026-11-02/tools-check.log"
+  },
+  "records": {
+    "source": "anime-take-2026-11-02/source-qualification.json",
+    "media": "anime-take-2026-11-02/media-post-rebase-profile.json",
+    "corrected_api": "anime-take-2026-11-02/api-final63-profile.json",
+    "shared_render_profile": "anime-take-2026-11-02/render-profile-v2-qualification.json",
+    "pre_rebase_media": "anime-take-2026-11-02/media-final-profile.json",
+    "rebase_binding": "anime-take-2026-11-02/rebase-binding.json"
+  },
+  "checks": {
+    "take": {
+      "passed": 123,
+      "root_mutants_killed": 720,
+      "survivors": 0
+    },
+    "shared_render_profile": {
+      "passed": 16,
+      "root_mutants_killed": 176,
+      "survivors": 0
+    },
+    "page_focused": {
+      "passed": 10
+    },
+    "capture_fingerprint": {
+      "passed": 1
+    },
+    "corrected_api": {
+      "passed": 153,
+      "root_mutants_killed": 1046,
+      "survivors": 0,
+      "native_cases_passed": 63
+    },
+    "unchanged_api_route": {
+      "mutants_killed": 152,
+      "survivors": 0,
+      "prior_qualification": "anime-direct-api-2026-11-02/policy-native-profile.json"
+    },
+    "headless_media": {
+      "passed": 19,
+      "failed": 0
+    }
+  },
+  "final_artifacts": {
+    "cli_sha256": "746d96d3f5bf2b53452c13bf120c7c9803c8791972f31e641b3728f5a30e4220",
+    "wasm_sha256": "a85b39b791c61f36643546a5c7519ba8ba82bc7fdf1d6a7f4a4abc0e795e96d9",
+    "native_api_sha256": "c8de55c9f4a60ad12a0d80d5624bd8b3a2f2dfbec5a4be5c4d789e915b1afabc",
+    "server_sha256": "289f94de1d01d5755b6d790384c209628deea9aa0bf0ef7043b8a51c80442d01",
+    "cli_compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "wasm_api_probe_compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6"
+  },
+  "media_observations": [
+    "Two fresh pinned stills have identical decoded RGBA; the authored take differs from the default scene.",
+    "A heard-only paper-whale request leaves stage RGBA identical to a take without that request, while its words remain visible.",
+    "Two independent 24-frame clips match every decoded RGBA frame after the explicit PIN700 reset.",
+    "Actual MP4 is H.264/yuv420p, 640x360 at 12 fps, 24 frames, 2 seconds, with no audio. Independent ffmpeg first-frame decode mean RGB error is 1.88719 against the PNG reference.",
+    "A 32768-byte take survives CLI, media navigation, native server and page inbox, then reports sourcebytes 32768 and the expected scene.",
+    "Different take data beyond the same first 8 KiB of URL input invalidates the cache. Oversized combined URL/eval input exits usage 2 before Chrome and output creation."
+  ],
+  "visual_qa": {
+    "files": [
+      "anime-take-2026-11-02/media-final/take-a.png",
+      "anime-take-2026-11-02/media-final/caption.png",
+      "anime-take-2026-11-02/media-final/caption-late.png"
+    ],
+    "observation": "Root inspected the actual captures. At 1600 ms the chip reads MAKE paper whale like creature \u00b7 0.990 \u00b7 HEARD ONLY \u00b7 NOT IN STOCK; the stage contains no generated whale or substituted dragon.",
+    "automated_case_count": "The supplemental 1600 ms visual shot is separate from the 19 automated media cases."
+  },
+  "boundaries": [
+    "Earlier interrupted media and API 62 profiles are retained separately and never promoted to the final artifact.",
+    "No paid provider call was repeated; the original three actual-provider cases retain their original #12632 profile identity.",
+    "Source/module ownership stays separate from AETHYR renderer/tooling and the external realm-seat owner. Shared renderer/GPU/host JavaScript were not changed.",
+    "This work changed narrow transport byte capacities without changing compiler or render budgets. The merged CLI consumes the existing upstream Coax 0.48 loader expansion needed by the separately landed MCP modules; other qualified artifacts retain their original producer.",
+    "This proves the recorded-take path on the pinned local profile, not empirical confidence calibration, live voice, asset generation or deployment."
+  ]
+}

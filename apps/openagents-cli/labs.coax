@@ -12,6 +12,8 @@
 #load "labs-rules.coax";
 #load "../../coax/lib/media/media.coax";
 
+LB_CAPTURE_URL_BYTES :: 49152; // a full 32 KiB take64 document plus page/options
+
 labs_usage :: () {
   print("%\n", "Labs (make files from pages, cut lists and games, the same way every time; nothing opens on screen):");
   print("%\n", "  labs shot URL OUT.png [--size WxH|--phone] [--wait MS] [--eval JS] [--dark] [--fresh]");
@@ -144,8 +146,10 @@ lb_file_sha :: (path: string, out: [] u8) -> string {
 // or "unreached"/"file" when it can't be fetched.
 lb_page_sha :: (url: string, out: [] u8) -> string {
   if !(lb_starts(url, "https://") || lb_starts(url, "http://")) { n := copy("file", out); return cast(string) out[0..<n]; }
+  page_url: [2048] u8; target := lb_page_fingerprint_url(url,page_url[..]);
+  if target == "" { n := copy("unreached",out); return cast(string)out[0..<n]; }
   w: [1] HttpWork; got: [HTTP_BODY_MAX] u8; hs: [1] string;
-  res := http_do(w[..], "GET", url, hs[0..<0], "", CLI_HTTP_MS, 5, got[..]);
+  res := http_do(w[..], "GET", target, hs[0..<0], "", CLI_HTTP_MS, 5, got[..]);
   if res.error != HTTP_OK || res.code < 200 || res.code >= 300 { n := copy("unreached", out); return cast(string) out[0..<n]; }
   return lb_sha(cast(string) got[0..<res.n], out);
 }
@@ -224,9 +228,10 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
   done: LbShotDone;
   lp: [4200] u8; label := lb_label_path(j.out, lp[..]);
   pg: [80] u8; page := lb_page_sha(j.url, pg[..]);
-  ib: [8192] u8; w: [1] LbW; w[0].buf = ib[..]; sz: [32] u8;
+  ib: [65536] u8; w: [1] LbW; w[0].buf = ib[..]; sz: [32] u8;
   lbi(w[..], "kind", "shot"); lbi(w[..], "url", j.url); lbi(w[..], "size", lb_size_text(j.size, sz[..])); lbi_int(w[..], "wait", j.wait);
   lbi(w[..], "eval", j.script); lbi(w[..], "dark", ifx j.dark then "1" else "0"); lbi(w[..], "page", page);
+  if w[0].full { done.code = EXIT_USAGE; lb_say("capture inputs are too long",why); return done; }
   inb: [80] u8; input := lb_input(w[..], inb[..]);
   if !j.fresh && lb_cached(j.out, label, input) { done.cached = true; return done; }
   if !ch[0].up {
@@ -257,7 +262,7 @@ labs_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
   target := positional(a, 2); out := positional(a, 3);
   if target == "" || out == "" { return fail(r, EXIT_USAGE, "labs shot URL OUT.png [--size WxH|--phone] [--wait MS] [--eval JS] [--dark] [--fresh]"); }
   if args_has(a, "--as-me") { return fail(r, EXIT_USAGE, "--as-me is not built yet: the site has no NIP-98 sign-in for a headless page, so shots are taken as a visitor"); }
-  ob: [300] u8; ub: [4096] u8;
+  ob: [300] u8; ub: [LB_CAPTURE_URL_BYTES] u8;
   url := lb_url(acct_origin(a, profile, ob[..]), target, ub[..]);
   if url == "" { return fail(r, EXIT_USAGE, "URL is https://..., http://..., file://... or a path such as /realms/SLUG"); }
   size := lb_size(args_value(a, "--size", ""), args_has(a, "--phone"), args_has(a, "--square"), args_has(a, "--vertical"), LB_DESKTOP);
@@ -304,7 +309,7 @@ labs_realm_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
 labs_clip :: (a: [] Args, r: [] Rep, profile: string) -> int {
   target := positional(a, 2); out := positional(a, 3);
   if target == "" || out == "" { return fail(r, EXIT_USAGE, "labs clip URL OUT.mp4 [--size WxH|--phone|--square|--vertical] [--seconds S] [--fps N] [--skip S] [--stage NAME] [--eval JS] [--frames DIR] [--fresh]"); }
-  ob: [300] u8; ub: [4096] u8; sb: [4200] u8;
+  ob: [300] u8; ub: [LB_CAPTURE_URL_BYTES] u8; sb: [LB_CAPTURE_URL_BYTES+64] u8;
   url := lb_url(acct_origin(a, profile, ob[..]), target, ub[..]);
   if url == "" { return fail(r, EXIT_USAGE, "URL is https://..., http://..., file://... or a path such as /realms/SLUG"); }
   stage := args_value(a, "--stage", "");
@@ -343,9 +348,10 @@ lb_clip_one :: (url: string, out: string, size: ArgsSize, seconds: int, fps: int
   done.frames = (seconds * fps + 500) / 1000;
   lp: [4200] u8; label := lb_label_path(out, lp[..]);
   pg: [80] u8; page := lb_page_sha(url, pg[..]);
-  ib: [8192] u8; w: [1] LbW; w[0].buf = ib[..]; sz: [32] u8;
+  ib: [65536] u8; w: [1] LbW; w[0].buf = ib[..]; sz: [32] u8;
   lbi(w[..], "kind", "clip"); lbi(w[..], "url", url); lbi(w[..], "size", lb_size_text(size, sz[..])); lbi_int(w[..], "fps", fps);
   lbi_int(w[..], "seconds_ms", seconds); lbi_int(w[..], "skip_ms", skip); lbi(w[..], "eval", script); lbi(w[..], "page", page);
+  if w[0].full { done.code = EXIT_USAGE; lb_say("capture inputs are too long",why); return done; }
   inb: [80] u8; input := lb_input(w[..], inb[..]);
   if !fresh && lb_cached(out, label, input) { done.cached = true; return done; }
   db: [4096] u8;

@@ -1,0 +1,7 @@
+FAIL #test capture fingerprints remove only the inline take query payload (0 ms)
+apps/openagents-cli/labs-rules.coax:134:3: error[E0406]: assertion failed
+    #assert lb_page_fingerprint_url("https://o/r?take64=ABCD&t=2&card=1#keep",b[..]) == "https://o/r?t=2&card=1#keep";
+    ^
+  note: in #test capture fingerprints remove only the inline take query payload
+1 of 103 checks (--only 'capture fingerprints'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

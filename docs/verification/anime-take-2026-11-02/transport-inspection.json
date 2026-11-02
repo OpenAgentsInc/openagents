@@ -1,0 +1,39 @@
+{
+  "schema": "openagents.anime-take.transport-inspection.v1",
+  "base_commit": "7ca26b6bc3700ba4375aee71c1292bf82c3015ad",
+  "scope": "Observed existing limits before the #12633 transport changes. Final headless results qualify the changed producer separately.",
+  "limits": {
+    "args_count": 256,
+    "args_total_bytes": 131072,
+    "cli_labs_url_bytes": 4096,
+    "cli_cache_input_bytes": 8192,
+    "cli_label_bytes": 65536,
+    "cli_report_bytes": 65536,
+    "media_navigate_json_bytes": 8192,
+    "media_navigate_ascii_url_bytes": 8182,
+    "cdp_outbound_command_bytes": 1048576,
+    "cdp_inbound_message_bytes": 33554432,
+    "media_png_bytes": 25165824,
+    "anime_face_inbox_bytes": 16384,
+    "dev_server_request_bytes_including_headers": 16383,
+    "dev_server_scanned_url_bytes": 1023,
+    "page_fingerprint_http_url_bytes": 2048
+  },
+  "findings": [
+    "A 32768-byte decoded take occupies 43691 unpadded base64url characters, before URL and browser fact overhead.",
+    "The CLI and shared media URL buffers refused earlier. host.send truncates facts to the module inbox cap. The development server closed an overfull header buffer.",
+    "The cache input writer marked overflow but still exposed the truncated prefix to its digest; a long shared-prefix URL could therefore share an input identity.",
+    "The server scans only the first 1023 target characters, but query data is not needed for resolving the static page. The browser retains its complete navigation URL.",
+    "The page fingerprint client has a smaller URL bound than capture; stripping only take64 permits an HTML fingerprint while retaining other query parameters."
+  ],
+  "determinism": [
+    "Shots pin t=5.5, clock=0.78 and card=1. Two independent fresh launches form one planned deterministic comparison.",
+    "The short clip resets the existing Anime page clock with message 700 and -1 before fixed-step recording. At 12 fps its first frame is at 1/12 second.",
+    "PNG comparisons decode RGBA with Coax. The MP4 is independently inspected and decoded by ffprobe/ffmpeg; H264 loss is measured rather than requiring PNG byte identity.",
+    "The combined URL/eval refusal child uses this Coax probe itself as a Chrome sentinel. A marker would reveal an attempted launch; no browser runs in that negative control."
+  ],
+  "boundaries": [
+    "Inspection does not qualify a deployed page or arbitrary browser URL limits.",
+    "All capture uses the existing muted headless Chrome engine; no visible window, sound, owner identity or external model call is involved."
+  ]
+}

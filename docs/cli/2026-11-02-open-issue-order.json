@@ -21,7 +21,7 @@
         12609
       ],
       "scope": "Renderer reconciliation/tooling, actual playable Grid, resource refusal/recovery and broader adoption",
-      "latest_scope": "Memory-policy/observer parity and Grid resource-refusal paths; renderer ownership retained"
+      "latest_scope": "Renderer ownership retained; Coax ports for Ice Cream/package tooling under integration."
     },
     {
       "chat": "Separate agent recorded in issue",
@@ -37,7 +37,7 @@
       ],
       "scope": "Realm seat design and made-realm scene probe; retain this lane with its current owner",
       "evidence": "https://github.com/OpenAgentsInc/openagents/issues/12637#issuecomment-6582447726",
-      "latest_commit": "4760d18e03"
+      "latest_commit": "604276ca54"
     }
   ],
   "sequence": [
@@ -51,17 +51,28 @@
     {
       "issue": 12632,
       "scope": "Anime director API using existing server typed selector; no compiler/System One changes",
-      "state": "qualified; close after push",
+      "state": "closed",
       "verification": {
         "policy_checks": 146,
         "mutants_killed": 1345,
         "api_fixture_checks": 59,
         "actual_vertex_cases": 3
-      }
+      },
+      "commit": "7ca26b6bc3700ba4375aee71c1292bf82c3015ad",
+      "followup": "Strict provider array guards and shared body-safe support profile discovered and qualified during take integration; record follows with #12633."
     },
     {
       "issue": 12633,
-      "scope": "Bounded anime.v1 ingestion and deterministic timeline; preserve AETHYR renderer interfaces"
+      "scope": "Bounded anime.v1 ingestion and deterministic timeline; preserve AETHYR renderer interfaces",
+      "state": "qualified; close after push",
+      "verification": {
+        "take_checks": 123,
+        "take_mutants_killed": 720,
+        "shared_profile_mutants_killed": 176,
+        "page_checks": 10,
+        "media_cases": 19,
+        "corrected_api_cases": 63
+      }
     },
     {
       "issue": 12634,
@@ -73,11 +84,13 @@
     },
     {
       "issue": 12636,
-      "scope": "MCP, generated skills and Coder integration from command rows",
+      "scope": "Extend the existing generated MCP and skill infrastructure with Anime commands; preserve its realm implementation.",
       "requires": [
         12635,
         12634
-      ]
+      ],
+      "state": "realm MCP and skill half externally completed; anime followup after #12634",
+      "external_commit": "167b6abe574c6f622d4db16392e835681ab100ac"
     },
     {
       "issue": 12618,
@@ -156,5 +169,5 @@
     "Close an issue only after acceptance; record external release or owner gates explicitly.",
     "Do not repeat passing gates on unchanged closures or increase compiler/resource bounds."
   ],
-  "last_chat_snapshot": "2026-11-02T16:35:00Z"
+  "last_chat_snapshot": "2026-11-02T18:05:00Z"
 }

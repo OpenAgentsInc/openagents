@@ -1,6 +1,11 @@
 {
   "schema": "openagents.anime-direct-api.verification.v1",
   "issue": 12632,
+  "subsequent_correction": {
+    "record": "anime-take-2026-11-02/api-final63-profile.json",
+    "policy": "anime-take-2026-11-02/source-qualification.json",
+    "reason": "Explicit provider array types and one shared body-safe renderer profile were tightened during take integration. This earlier profile, including its paid live cases, retains its original source/artifact identity."
+  },
   "date": "2026-11-02",
   "base_commit": "a35ff41f8550f172e1e3fe84d1f69e09dd1becb3",
   "rebase_binding": "anime-direct-api-2026-11-02/rebase-binding.json",

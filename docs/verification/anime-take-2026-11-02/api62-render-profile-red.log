@@ -1,0 +1,22 @@
+FAIL #test shared anime render profile distinguishes real poses spells transitions and beats (0 ms)
+verse/anime/render-profile.coax:14:5: error[E0406]: assertion failed
+      #assert anime_direction_ok(d) && anime_render_supported(d)==poses[action];
+      ^
+  note: in #test shared anime render profile distinguishes real poses spells transitions and beats
+FAIL #test shared anime render profile covers entrances without inventing a creature mesh (0 ms)
+verse/anime/render-profile.coax:38:5: error[E0406]: assertion failed
+      #assert anime_render_supported(d)==expected;
+      ^
+  note: in #test shared anime render profile covers entrances without inventing a creature mesh
+FAIL #test shared anime render profile covers every camera subject framing place and move (0 ms)
+verse/anime/render-profile.coax:46:5: error[E0406]: assertion failed
+      #assert anime_direction_ok(d) && anime_render_supported(d)==(subjects[frame][move]=='1');
+      ^
+  note: in #test shared anime render profile covers every camera subject framing place and move
+FAIL #test shared anime render profile covers effect location and fixed size combinations (0 ms)
+verse/anime/render-profile.coax:69:5: error[E0406]: assertion failed
+      #assert anime_render_supported(d)==expected;
+      ^
+  note: in #test shared anime render profile covers effect location and fixed size combinations
+4 of 15 checks (--only 'shared anime'), 0 passed, 4 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

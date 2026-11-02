@@ -1,0 +1,93 @@
+{
+  "schema": "openagents.anime-take.post-rebase-media-verification.v1",
+  "date": "2026-11-02",
+  "issue": 12633,
+  "base_commit": "8ad9c7460922887091a32f7532549e4b057a9fc7",
+  "status": "separate merged-CLI profile: 19 of 19 passed, exit 0",
+  "original_profile": "media-final-profile.json",
+  "source_change": {
+    "upstream_commits": ["80eb4249bd", "167b6abe57"],
+    "changed_previous_cli_source_identities": ["apps/openagents-cli/main.coax", "apps/openagents-web/project-fold.coax"],
+    "merged_cli_source_units_reported_by_parent": 130,
+    "build_wrapper": "Root made the existing CLI build.sh respect explicit COAX, matching wasm.sh; this task changed no compiler source or budget.",
+    "why_a_new_run": "The dispatcher/root dependency graph and compiler producer changed. All 19 media cases ran once against the merged CLI. Original runtime successes remain bound to their original exact producer."
+  },
+  "build_boundary": {
+    "old_compiler_version": "0.47.0",
+    "old_compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "old_result": "Expected E0603: source graph exceeds its unit, depth or byte budget at main.coax's #load mcp.coax. This is a build/loader boundary, with no runtime-result claim.",
+    "old_receipt": "cli-post-rebase-v047-refusal.log",
+    "old_receipt_sha256": "b4653772e84531f8ef46ca4463d626e7160e6e1433ef6f9205203aca6dac65f8",
+    "new_compiler_version": "0.48.0",
+    "new_compiler_sha256": "711959a2bf3104d860825f015c0630aa3f9a9e0701605d3f845b978e423a44b8",
+    "new_compiler_basis": "Existing immutable cached upstream producer, provided and selected by the parent; upstream loader/seed updates 7027896698 and eda4077928 preceded this task.",
+    "new_build_receipt": "cli-post-rebase-v048-build.log",
+    "new_build_receipt_sha256": "cadec3309dcbd11809ca2cdf71d43f2d47762052e27b10ece6c5bae3694fb755",
+    "scope": "The CLI alone uses 0.48. The unchanged probe, served Wasm and API retain their separately recorded 0.47 artifacts. Compiler/provenance qualification is recorded by the parent separately from this runtime media profile."
+  },
+  "producer": {
+    "cli_sha256": "746d96d3f5bf2b53452c13bf120c7c9803c8791972f31e641b3728f5a30e4220",
+    "served_wasm_sha256": "a85b39b791c61f36643546a5c7519ba8ba82bc7fdf1d6a7f4a4abc0e795e96d9",
+    "probe_source_sha256": "a3daf7c1c320baf3c657b2feafcb1ffeaad9a41d782f35db663d54ba0c149e44",
+    "probe_native_sha256": "fee86c099a5fe7a3d57736adcc192866ca8069f6d3883ce6f43b94c2e0a7f936",
+    "server_sha256": "289f94de1d01d5755b6d790384c209628deea9aa0bf0ef7043b8a51c80442d01",
+    "base": "http://127.0.0.1:8832",
+    "environment": "Same static server, Chrome 156.0.8078.80 headless/muted with Metal, ffmpeg 9.0.1, viewport 640x360, fixed page clock and take fixture as the original profile.",
+    "unchanged_inputs": ["probe-post-rebase-identities.log", "page-post-rebase-identities.log", "browser-host-post-rebase-identities.log"],
+    "after_run_inputs": ["page-post-rebase-after.log", "browser-host-post-rebase-after.log"],
+    "identity_scope": "All 13 probe sources, all 22 page sources and every recorded browser-host input match their original manifests. CLI, Wasm and native probe hashes were observed before and after this run."
+  },
+  "execution": {
+    "mode": "ANIME_TAKE_ONLY= (all 19)",
+    "checks": 19,
+    "passed": 19,
+    "failed": 0,
+    "exit": 0,
+    "receipt": "media-post-rebase.out",
+    "receipt_sha256": "743d87d1ebcb900361173f20c8b2192600ad53aab7d463c02c3d49ee9932ec64",
+    "receipt_identity_note": "The textual oracle outcomes equal the original run, so their stdout digests match. This is a fresh invocation with distinct artifact paths, timestamps, CLI labels and observed merged-binary identity; no prior passing result was reused.",
+    "artifacts": "media-post-rebase/",
+    "all_recorded_artifact_hashes": "media-post-rebase-all-artifacts.sha256",
+    "all_recorded_artifact_hashes_sha256": "c658114b9746c9138f805c4f682bb53412686cf85754921f1863af4b72565272",
+    "retained_artifact_hashes": "media-post-rebase-retained-artifacts.sha256",
+    "retained_artifact_hashes_sha256": "e2b7b47224dec3afc7fd1fc59c4fb8da45b65897adde25ad0268c7e9c5b4ca04",
+    "temporary_full_profile": "/tmp/openagents-anime-post-rebase.VrcXzY/media",
+    "retention": "New CLI receipts/labels, representative PNGs and one actual MP4, exact decoded-frame hashes and selected raw frames. Deliberately whitespace-padded maximum-size JSON fixtures remain byte-exact in gzip form; raw originals remain in the temporary profile."
+  },
+  "observations": {
+    "custom_frame": "media-post-rebase/take-a.png",
+    "caption_frame": "media-post-rebase/caption.png",
+    "fixed_time_pair_rgba_differences": 0,
+    "custom_vs_builtin_rgba_differences": 678454,
+    "heard_make_vs_no_make_stage_rgba_differences": 0,
+    "heard_caption_vs_control_rgba_differences": 21861,
+    "maximum_page_fields": [1, 3, 3, 2, 8000, 1, 32768, 5500],
+    "maximum_transport": "Both 43761-byte URLs admit the full 32768-byte decoded take. The maximum-size take matches the small authored take's stage pixels.",
+    "cache_identity": "The two same-prefix long URLs both report cached=false and genuine page fingerprints.",
+    "combined_input_refusal": "Usage 2, no PNG and no Chrome sentinel marker for the oversized combined URL/eval canonical input."
+  },
+  "video": {
+    "path": "media-post-rebase/take-a.mp4",
+    "sha256": "74b883edccbb9e6cd52efab9a1129d7d0f50efcaec55df10cc6eaaef5470b1d3",
+    "frames": 24,
+    "fps": 12,
+    "duration_seconds": 2,
+    "codec": "h264",
+    "pixel_format": "yuv420p",
+    "audio_streams": 0,
+    "paired_fresh_recordings": 2,
+    "matching_decoded_rgba_frames": 24,
+    "frame_hashes": "media-post-rebase/frame-pair.json",
+    "frame_hashes_sha256": "5f3f454109f19ff6b5a7d9afa53daa6f9e86e667d6aff73d604dcbbc9c004591",
+    "ffprobe": "media-post-rebase/ffprobe.json",
+    "ffprobe_sha256": "4fb06ce47d21774c304aa0eac51b4a73d326175327792953176f6c9a7a8715c2",
+    "independent_decoded_frame": "media-post-rebase/decoded-first.png",
+    "independent_ffmpeg_rgb_mean_absolute_error": 1.8871889467592593
+  },
+  "boundaries": [
+    "Original 19/19, interrupted 8 and intermediate API62 remain immutable exact-image profiles. This post-rebase run is separately identified and retains its own evidence.",
+    "No API63, take/render mutation, page gate or unchanged pure-oracle gate was repeated. Their unchanged source identities were checked as provenance observations.",
+    "No product source was edited by this lane. No visible browser, sound, production/staging write, deployment, owner identity, model call or payment.",
+    "This qualifies the merged CLI's Anime take media path. It does not qualify unrelated MCP/project operations or assert a cross-compiler, cross-browser or cross-GPU identity guarantee."
+  ]
+}

@@ -12,6 +12,8 @@
 // IN... then MADE. The bottom of the frame is the director's live caption.
 // ?stage=film plays the same stage as a ten-second short with no overlay.
 // &t=SECONDS holds one moment (stills); &card=1 leaves the overlay out.
+// ?take64=BASE64URL loads a bounded anime.v1 JSON take; message 701 replaces
+// it with raw JSON. Custom makes remain captions until a real maker exists.
 //
 // Simulated: the voice (the words and their timing are recorded) and the
 // decision model (its answers are recorded). Everything after that is the
@@ -20,16 +22,21 @@
 //   coax/bin/coax test apps/openagents-web/animelab.coax
 
 #load "../../verse/anime/stage.coax";
+#load "../../verse/anime/take.coax";
+#load "../../coax/lib/nostr/block/fi-base64url.coax";
 #load "font.coax";
 #load "../../aethyr/budget.coax";
 #load "animelab-mesh.coax";
 #load "animelab-cast.coax";
 #load "animelab-world.coax";
+#load "animelab-take-checks.coax";
 
 MAX_VERTICES :: 36000;     // the overlay's quads
 VERTEX_FLOATS :: 12;       // a stroke's or a sans glyph's corner, as aethyr/ui/draw.coax and font.coax lay them out
 HOST_FACTS :: 600;
 PIN_MOMENT :: 700;          // a page script's coaxial.send(700, "SECONDS"): hold that moment (shots; "-1" lets it run)
+LOAD_TAKE :: 701;           // raw bounded anime.v1 JSON, copied into owned take storage
+TAKE_LOADED :: 1; TAKE_REFUSED :: -1; TAKE_RETAINED :: -2;
 WORLD_VERTICES :: 150000;  // store 0: the academy
 LIVE_VERTICES :: 150000;   // store 1: the cast and the effects, every frame
 DRAWS :: 2;
@@ -56,6 +63,8 @@ Animelab :: struct {
   time: f32;
   events: [EVENTS_MAX] AnimeEvent; n: int;
   length: f32;
+  custom: bool; take_status: int;
+  take: [1] AnimeTake;       // owned bytes and offsets, never a host message view
   speed: f32 = 1;              // the maker's speed (the film's is quicker)
   variant: int = 1; clock: f32 = 0.78;
   world_n: int; live_n: int; world_built: bool;
@@ -73,6 +82,7 @@ animelab_reset :: (s: [] Animelab) {
 // Lays out the take for a stage: the demo's session or the film's written take.
 animelab_take :: (s: [] Animelab, mode: int) {
   s[0].mode = mode;
+  if s[0].custom || s[0].take_status == TAKE_REFUSED { return; }
   if mode == STAGE_FILM {
     lines := FILM_LINES; answers := FILM_ANSWERS;
     s[0].n = anime_timeline(lines[..], answers[..], false, s[0].events[..]);
@@ -82,6 +92,65 @@ animelab_take :: (s: [] Animelab, mode: int) {
     s[0].n = anime_timeline(lines[..], answers[..], true, s[0].events[..]);
     s[0].length = DEMO_LENGTH; s[0].speed = 1;
   }
+}
+
+animelab_refuse :: (s: [] Animelab) {
+  if s[0].custom { s[0].take_status = TAKE_RETAINED; return; }
+  s[0].take_status = TAKE_REFUSED; s[0].n = 0; s[0].length = 1;
+  s[0].time = 0; s[0].pinned = -1;
+}
+animelab_load :: (s: [] Animelab, body: string) -> bool {
+  if body.count > 32768 { animelab_refuse(s); return false; }
+  raw: [32768] u8; for i: 0..<body.count { raw[i] = body[i]; }
+  if anime_take_load(raw[0..<body.count], s[0].take[..]) < 0 { animelab_refuse(s); return false; }
+  // The document authority admits at most 32 events; this page owns 48 slots.
+  s[0].n = anime_take_events(s[0].take[..], s[0].events[..]);
+  s[0].custom = true; s[0].take_status = TAKE_LOADED;
+  s[0].length = s[0].take[0].length; s[0].speed = 1;
+  s[0].time = 0; s[0].pinned = -1;
+  return true;
+}
+animelab_take_status :: (s: [] Animelab) -> int #export_c { return s[0].take_status; }
+// Bounded integer facts for the page's media/capture probe; no source or words
+// cross this surface. A refused initial request reports zero take counts.
+animelab_take_probe :: (s: [] Animelab, field: int) -> int #export_c {
+  if s.count < 1 { return 0; }
+  if field == 0 { return s[0].take_status; }
+  if field == 1 { return animelab_line_count(s); }
+  if field == 2 {
+    if s[0].custom { return s[0].take[0].answer_n; }
+    if s[0].take_status == TAKE_REFUSED { return 0; }
+    return ifx s[0].mode == STAGE_FILM then FILM_ANSWERS.count else DEMO_ANSWERS_N;
+  }
+  if field == 3 { return s[0].n; }
+  if field == 4 { return cast(int)floor(s[0].length*1000+0.5); }
+  if field == 5 {
+    count := 0; if s[0].custom { for i: 0..<s[0].take[0].answer_n { if s[0].take[0].answers[i].heard { count += 1; } } }
+    return count;
+  }
+  if field == 6 { return ifx s[0].custom then s[0].take[0].source_n else 0; }
+  if field == 7 { return cast(int)floor(s[0].time*1000+0.5); }
+  return 0;
+}
+animelab_status_text :: (s: [] Animelab) -> string {
+  if s[0].take_status == TAKE_REFUSED { return "TAKE REFUSED  ·  NO TAKE IS PLAYING"; }
+  if s[0].take_status == TAKE_RETAINED { return "REPLACEMENT REFUSED  ·  KEEPING LOADED TAKE"; }
+  return "";
+}
+animelab_line_count :: (s: [] Animelab) -> int {
+  if s[0].custom { return s[0].take[0].line_n; }
+  if s[0].take_status == TAKE_REFUSED { return 0; }
+  return ifx s[0].mode == STAGE_FILM then FILM_LINES.count else DEMO_LINES_N;
+}
+// The caller owns the words buffer for a custom line's temporary string view.
+animelab_line :: (s: [] Animelab, index: int, words: [] u8) -> AnimeLine {
+  if s[0].custom {
+    n := anime_take_line(s[0].take[..], index, words); if n < 0 { return AnimeLine.{}; }
+    l := s[0].take[0].lines[index];
+    return AnimeLine.{said=l.said,done=l.done,words=cast(string)words[0..<n],first=l.first,count=l.count};
+  }
+  if s[0].mode == STAGE_FILM { return FILM_LINES[index]; }
+  return DEMO_LINES[index];
 }
 
 // ---- The camera's matrices
@@ -136,8 +205,9 @@ animelab_frame :: (s: [] Animelab, out: [] f32, u: [] f32, width: f32, height: f
     build_world(world, pen[..]);
     s[0].world_n = pen[0].n; s[0].world_built = true; s[0].over = pen[0].over;
   }
-  if s[0].pinned >= 0 { s[0].time = s[0].pinned; }
-  else if s[0].golden { s[0].time = ifx s[0].mode == STAGE_FILM then 8.0f32 else GOLDEN_AT; }
+  if s[0].take_status == TAKE_REFUSED { s[0].time = 0; }
+  else if s[0].pinned >= 0 { s[0].time = s[0].pinned; }
+  else if s[0].golden { s[0].time = ifx s[0].custom then s[0].length else ifx s[0].mode == STAGE_FILM then 8.0f32 else GOLDEN_AT; }
   else if !still { s[0].time += clamp(dt, 0, 0.1); }
   if s[0].time > s[0].length + 2 { s[0].time = 0; }
   t := s[0].time;
@@ -180,12 +250,7 @@ animelab_frame :: (s: [] Animelab, out: [] f32, u: [] f32, width: f32, height: f
   // the overlay
   s[0].panels = 0;
   n := 0;
-  if s[0].mode == STAGE_FILM {
-    if !s[0].card { n = film_bars(s, out, u, width, height); }
-  } else if !s[0].card {
-    n = director_overlay(s, out, u, width, height, dpr, st, t, din);
-  }
-  return n;
+  return animelab_overlay(s, out, u, width, height, dpr, st, t, din);
 }
 // A phone's screen (the style's phone tier): under 600 CSS pixels across.
 animelab_phone :: (width: f32, dpr: f32) -> bool #export_c { return width / hi(dpr, 0.5) < 600; }
@@ -308,6 +373,13 @@ put_p :: (buf: [] u8, at: int, p: f32) -> int {
   buf[n] = cast(u8) (48 + v / 100); buf[n + 1] = '.'; buf[n + 2] = cast(u8) (48 + (v / 10) % 10); buf[n + 3] = cast(u8) (48 + v % 10);
   return n + 4;
 }
+put_take_p :: (buf: [] u8, p: f32) -> int {
+  if buf.count < 5 { return 0; }
+  milli := cast(int)floor(clamp01(p)*1000+0.5);
+  buf[0]=cast(u8)('0'+milli/1000); buf[1]='.';
+  buf[2]=cast(u8)('0'+milli/100%10); buf[3]=cast(u8)('0'+milli/10%10); buf[4]=cast(u8)('0'+milli%10);
+  return 5;
+}
 put_clock :: (buf: [] u8, at: int, t: f32) -> int {
   n := at;
   tenths := cast(int) floor(hi(t, 0) * 10);
@@ -319,10 +391,44 @@ put_clock :: (buf: [] u8, at: int, t: f32) -> int {
 }
 
 // The line on screen at t: the last one whose words have started (-1 none yet).
-line_at :: (t: f32) -> int {
-  lines := DEMO_LINES; k := -1;
-  for i: 0..<DEMO_LINES_N { if t >= lines[i].said - 0.25 { k = i; } }
+line_at :: (s: [] Animelab, t: f32) -> int {
+  k := -1; words: [600] u8;
+  for i: 0..<animelab_line_count(s) { if t >= animelab_line(s,i,words[..]).said - 0.25 { k = i; } }
   return k;
+}
+
+// A rejection remains visible even in film/card capture. A later rejected
+// replacement keeps the accepted take playing, with an explicit status banner.
+animelab_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, st: Stage, t: f32, din: DrawIn) -> int {
+  n := 0;
+  if s[0].take_status != TAKE_REFUSED {
+    if s[0].mode == STAGE_FILM { if !s[0].card { n = film_bars(s,out,u,w,h); } }
+    else if !s[0].card { n = director_overlay(s,out,u,w,h,dpr,st,t,din); }
+  }
+  status := animelab_status_text(s);
+  if status != "" {
+    cap := lo(w/64,h/30); x := 20.0f32; y := h*0.48;
+    panel(s,u,0,y-cap*2,w,y+cap,0.12,0.015,0.015,0.96);
+    n = label(out,n,status,x,y,cap,ink_of(1,0.74,0.48,1));
+  }
+  return n;
+}
+
+animelab_tail :: (s: [] Animelab, d: AnimeDirection, heard: bool, age: f32, st: Stage, din: DrawIn, out: [] u8) -> string {
+  if d.engine_framed { n := tput(out,0,"ENGINE"); return cast(string)out[0..<n]; }
+  n := ifx s[0].custom then put_take_p(out,d.p) else put_p(out,0,d.p); n = tput(out,n,"  ");
+  if s[0].custom {
+    if !d.stock { n = tput(out,n,"HEARD ONLY · NOT IN STOCK"); }
+    else if heard { n = tput(out,n,"HEARD ONLY"); }
+    else if d.p <= P_PLAY && age < 2.4 { n = tput(out,n,"PLAYS · DID YOU MEAN?"); }
+    else { n = tput(out,n,"IN STOCK"); }
+  } else if !d.stock {
+    if st.make_at < 0 { n = tput(out,n,"NOT IN STOCK"); }
+    else if !din.made { n = tput(out,n,"DRAWING IN… "); n = tput_int(out,n,cast(int)floor((din.sketch+din.flood+din.shade)/3*100)); n = tput(out,n,"%"); }
+    else { n = tput(out,n,"MADE"); }
+  } else if d.p <= P_PLAY && age < 2.4 { n = tput(out,n,"PLAYS · DID YOU MEAN?"); }
+  else { n = tput(out,n,"IN STOCK"); }
+  return cast(string)out[0..<n];
 }
 
 director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, st: Stage, t: f32, din: DrawIn) -> int {
@@ -330,13 +436,13 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
   S := ifx portrait then w / 600 else lo(w / 1280, h / 720);
   m := 18 * S;
   n := 0;
-  buf: [160] u8;
+  buf: [700] u8;
   white := ink_of(1, 1, 1, 1);
   grey := ink_of(0.72, 0.74, 0.8, 1);
   dim := ink_of(0.5, 0.52, 0.6, 1);
   // the tag, top left: what this is
   tag_cap := 12 * S;
-  nb := tput(buf[..], 0, "TAKE 1  ");
+  nb := tput(buf[..], 0, ifx s[0].custom then "LOADED TAKE  " else "TAKE 1  ");
   nb = put_clock(buf[..], nb, t);
   tw := hi(text_w("ANIME LAB  DIRECTOR", tag_cap), text_w(cast(string) buf[0..<nb], tag_cap * 0.85));
   panel(s, u, m, m, m + tw + 24 * S, m + 50 * S, 0.02, 0.02, 0.06, 0.62);
@@ -344,7 +450,7 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
   n = label(out, n, "DIRECTOR", m + 12 * S + text_w("ANIME LAB  ", tag_cap), m + 21 * S, tag_cap, ink_of(1.0, 0.75, 0.3, 1));
   n = label(out, n, cast(string) buf[0..<nb], m + 12 * S, m + 40 * S, tag_cap * 0.85, grey);
   // honest about what is simulated, top right
-  sim := "VOICE SIMULATED  ·  ANSWERS RECORDED";
+  sim := ifx s[0].custom then "LOADED TAKE  ·  ANSWERS PROVIDED" else "VOICE SIMULATED  ·  ANSWERS RECORDED";
   sim_cap := 10 * S;
   sw := text_w(sim, sim_cap);
   if !portrait {
@@ -355,8 +461,9 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
     n = label(out, n, sim, m + 11 * S, m + 74 * S, sim_cap, ink_of(1.0, 0.78, 0.45, 1));
   }
   // the bottom bar: the line as heard, then what the director made of it
-  li := line_at(t);
-  lines := DEMO_LINES;
+  li := line_at(s,t);
+  words: [600] u8; l: AnimeLine;
+  if li >= 0 { l = animelab_line(s,li,words[..]); }
   words_cap := (ifx portrait then 25.0f32 else 25.0f32) * S;
   chip_cap := (ifx portrait then 16.0f32 else 14.5f32) * S;
   // on a phone a chip's verdict goes on a second row under its words, and the words wrap to two lines
@@ -366,7 +473,7 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
   panel(s, u, m, y0, w - m, h - m, 0.015, 0.012, 0.04, 0.72);
   // the mic: a dot, and rings while the words come
   mx := m + 26 * S; my := y0 + 12 * S + words_cap * 0.9;
-  speaking := li >= 0 && t >= lines[li].said && t < lines[li].done + 0.1;
+  speaking := li >= 0 && t >= l.said && t < l.done + 0.1;
   mr := 9 * S;
   for k: 0..<12 {
     a0 := TAU * cast(f32) k / 12.0; a1 := TAU * cast(f32) (k + 1) / 12.0;
@@ -388,7 +495,6 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
   if li < 0 {
     n = label(out, n, "Listening…  say what happens, as a director would.", wx, wy, words_cap * 0.8, dim);
   } else {
-    l := lines[li];
     heard := anime_heard(l, t);
     final := t >= l.done;
     nb = 0;
@@ -412,9 +518,25 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
     cy := wy + words_cap * 0.65 + 8 * S;
     cx := wx;
     n = label(out, n, "→", m + 22 * S, cy + chip_h * 0.68, chip_cap * 1.3, ink_of(1.0, 0.78, 0.45, 1));
-    for i: 0..<s[0].n {
-      e := s[0].events[i];
-      mine := e.line == li || (e.line < 0 && e.shown >= l.done && (li + 1 >= DEMO_LINES_N || e.shown < lines[li + 1].said));
+    count := ifx s[0].custom then s[0].take[0].answer_n else s[0].n;
+    for i: 0..<count {
+      e: AnimeEvent; heard_only := false;
+      // Raw JSON is copied only for a make's description and consumed in this
+      // paint call. Every retained event/direction remains numeric and owned.
+      raw: [32768] u8; what: [40] u8;
+      if s[0].custom {
+        if i < l.first || i >= l.first+l.count { continue; }
+        answer := s[0].take[0].answers[i]; d := anime_take_answer(s[0].take[..],i);
+        if d.kind == AD_MAKE {
+          rn := anime_take_answer_json(s[0].take[..],i,raw[..]); nodes: [256] JvNode; doc: [1] Jv;
+          if rn >= 0 && jv_parse(doc[..],cast(string)raw[0..<rn],nodes[..]) {
+            wn := jv_str(doc[0],jv_get(doc[0],0,"what"),what[..]); if wn >= 0 { d.what = cast(string)what[0..<wn]; }
+          }
+        }
+        e = AnimeEvent.{d=d,line=li,shown=answer.shown}; heard_only = answer.heard;
+      } else { e = s[0].events[i]; }
+      lines := DEMO_LINES;
+      mine := ifx s[0].custom then true else e.line == li || (e.line < 0 && e.shown >= l.done && (li + 1 >= DEMO_LINES_N || e.shown < lines[li + 1].said));
       if !mine || t < e.shown { continue; }
       d := e.d;
       age := t - e.shown;
@@ -423,18 +545,7 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
       kl := AD_KIND_LABELS[d.kind];
       says: [96] u8;
       sd := anime_says(d, says[..]);
-      tail: [48] u8; nt := 0;
-      if d.engine_framed { nt = tput(tail[..], 0, "ENGINE"); }
-      else {
-        nt = put_p(tail[..], 0, d.p);
-        nt = tput(tail[..], nt, "  ");
-        if !d.stock {
-          if st.make_at < 0 || t < st.make_at + 0.05 { nt = tput(tail[..], nt, "NOT IN STOCK"); }
-          else if !din.made { nt = tput(tail[..], nt, "DRAWING IN… "); nt = tput_int(tail[..], nt, cast(int) floor((din.sketch + din.flood + din.shade) / 3 * 100)); nt = tput(tail[..], nt, "%"); }
-          else { nt = tput(tail[..], nt, "MADE"); }
-        } else if d.p < P_PLAY && age < 2.4 { nt = tput(tail[..], nt, "PLAYS · DID YOU MEAN?"); }
-        else { nt = tput(tail[..], nt, "IN STOCK"); }
-      }
+      tail: [128] u8; verdict := animelab_tail(s,d,heard_only,age,st,din,tail[..]); nt := verdict.count;
       kw := text_w(kl, chip_cap); dw := text_w(sd, chip_cap); tw2 := text_w(cast(string) tail[0..<nt], chip_cap * 0.78);
       cw := ifx portrait then hi(kw + dw + 22 * S, tw2 + 24 * S) else kw + dw + tw2 + 46 * S;
       if cx + cw > w - m - 10 * S && cx > wx { cx = wx; cy += chip_h + 6 * S; }
@@ -446,7 +557,7 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
       n = label(out, n, sd, bx + kw + 10 * S, by, chip_cap, ink_of(1, 1, 1, a * fade));
       stock_r := 0.55f32; stock_g := 0.95f32; stock_b := 0.6f32;
       if !d.stock && !din.made { stock_r = 1.0; stock_g = 0.76; stock_b = 0.28; }
-      if d.p < P_PLAY && !d.engine_framed && age < 2.4 { stock_r = 1.0; stock_g = 0.8; stock_b = 0.4; }
+      if d.p <= P_PLAY && !d.engine_framed && age < 2.4 { stock_r = 1.0; stock_g = 0.8; stock_b = 0.4; }
       if d.engine_framed { stock_r = 0.6; stock_g = 0.62; stock_b = 0.7; }
       tx := ifx portrait then bx else bx + kw + dw + 24 * S;
       ty := ifx portrait then by + chip_cap * 1.35 else by;
@@ -458,9 +569,11 @@ director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr
   ty := y0 - 7 * S;
   n = stroke(out, n, m + 4 * S, ty, w - m - 4 * S, ty, 1.2 * S, 0.6, 0.62, 0.72, 0.35);
   span := w - 2 * m - 8 * S;
-  for i: 0..<DEMO_LINES_N {
-    x := m + 4 * S + span * lines[i].done / s[0].length;
-    n = stroke(out, n, x, ty - 3 * S, x, ty + 3 * S, 1.6 * S, 1.0, 0.78, 0.45, ifx t >= lines[i].done then 0.9f32 else 0.3f32);
+  tick_words: [600] u8;
+  for i: 0..<animelab_line_count(s) {
+    done := animelab_line(s,i,tick_words[..]).done;
+    x := m + 4 * S + span * done / s[0].length;
+    n = stroke(out, n, x, ty - 3 * S, x, ty + 3 * S, 1.6 * S, 1.0, 0.78, 0.45, ifx t >= done then 0.9f32 else 0.3f32);
   }
   hx := m + 4 * S + span * clamp01(t / s[0].length);
   n = stroke(out, n, hx, ty - 6 * S, hx, ty + 6 * S, 2.2 * S, 1, 1, 1, 1);
@@ -508,7 +621,10 @@ animelab_key :: (s: [] Animelab, key: int, down: bool) -> bool #export_c {
   if !s[0].started { animelab_reset(s); }
   if !down { return false; }
   if key == ' ' { s[0].time = 0; return true; }     // the take again from the top
-  if key == 'f' || key == 'F' { animelab_take(s, ifx s[0].mode == STAGE_FILM then STAGE_DIRECT else STAGE_FILM); s[0].time = 0; return true; }
+  if key == 'f' || key == 'F' {
+    animelab_take(s, ifx s[0].mode == STAGE_FILM then STAGE_DIRECT else STAGE_FILM);
+    if !s[0].custom { s[0].time = 0; } return true;
+  }
   if key == 'h' || key == 'H' { s[0].card = !s[0].card; return true; }
   return false;
 }
@@ -530,7 +646,7 @@ fact :: (facts: string, key: string) -> string {
 // A query's value (?key=VALUE), "" if none.
 query :: (url: string, key: string) -> string {
   i := 0;
-  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '?' && url[i] != '#' { i += 1; }
   while i < url.count && url[i] != '#' {
     i += 1;
     e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
@@ -538,6 +654,17 @@ query :: (url: string, key: string) -> string {
     i = e;
   }
   return "";
+}
+// Presence is separate from value: ?take64= is an invalid requested take,
+// and duplicate transport values must not silently select the first one.
+query_count :: (url: string, key: string) -> int {
+  i := 0; count := 0;
+  while i < url.count && url[i] != '?' && url[i] != '#' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1; e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if e-i >= key.count && url[i..<i+key.count] == key && (e-i == key.count || url[i+key.count] == '=') { count += 1; }
+    i = e;
+  } return count;
 }
 // A decimal "12.5" (no sign), -1 if it isn't one.
 decimal :: (t: string) -> f32 {
@@ -555,11 +682,19 @@ decimal :: (t: string) -> f32 {
 animelab_message :: (s: [] Animelab, kind: int, body: string) #export_c {
   if !s[0].started { animelab_reset(s); }
   if kind == PIN_MOMENT { k := decimal(body); s[0].pinned = k; if k < 0 { s[0].time = 0; } return; }
+  if kind == LOAD_TAKE { loaded := animelab_load(s,body); return; }
   if kind != HOST_FACTS || s[0].facts { return; }
   s[0].facts = true;
   url := fact(body, "url");
   stage := query(url, "stage");
   animelab_take(s, ifx stage == "film" then STAGE_FILM else STAGE_DIRECT);
+  take_values := query_count(url,"take64");
+  if take_values > 0 {
+    decoded: [32768] u8;
+    code := ifx take_values == 1 then fi_b64url_decode(query(url,"take64"),decoded[..]) else NC_Result.{error=NC_INVALID};
+    if code.error == NC_OK { loaded := animelab_load(s,cast(string)decoded[0..<code.written]); }
+    else { animelab_refuse(s); }
+  }
   s[0].card = query(url, "card") == "1";
   s[0].pinned = decimal(query(url, "t"));
   names := [4] string.["pastoral", "action", "dusk", "neon"];

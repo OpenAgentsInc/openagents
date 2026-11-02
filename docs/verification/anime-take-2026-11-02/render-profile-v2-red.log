@@ -1,0 +1,7 @@
+FAIL #test shared anime render profile refuses every body reference without a creature mesh (0 ms)
+verse/anime/render-profile.coax:76:22: error[E0406]: assertion failed
+    for action:0..<11 {#assert !anime_render_supported(AnimeDirection.{kind=AD_ACT,who=AS_MADE,option=action,p=1});}
+                       ^
+  note: in #test shared anime render profile refuses every body reference without a creature mesh
+1 of 16 checks (--only 'shared anime render profile refuses every body'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

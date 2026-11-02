@@ -41,8 +41,9 @@
 #define MAX_CLIENTS 64
 #define MAX_WATCH 256
 #define REQ_MAX 16384
+#define HTTP_REQUEST_MAX 65536 // inline take64 query; live/build messages keep REQ_MAX
 
-typedef struct { int fd; bool ws; size_t n; char buf[REQ_MAX]; } client;
+typedef struct { int fd; bool ws; size_t n; char buf[HTTP_REQUEST_MAX]; } client;
 typedef struct { char path[1024]; struct timespec mtime; } watched;
 
 static client clients[MAX_CLIENTS];

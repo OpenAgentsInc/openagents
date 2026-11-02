@@ -1,0 +1,17 @@
+apps/openagents-cli/cli-native.c: OK
+coax/platform/tool-native.c: OK
+coax/platform/process-native.c: OK
+coax/platform/store-file-native.c: OK
+coax/platform/entropy-native.c: OK
+coax/platform/entropy-foreign.c: OK
+coax/platform/socket-native.c: OK
+coax/platform/tls-native.c: OK
+coax/platform/entropy-foreign.h: OK
+coax/platform/entropy-native.h: OK
+coax/platform/socket-native.h: OK
+coax/platform/tls-native.h: OK
+coax/platform/tls-apple.inc: OK
+coax/platform/store-file-native.h: OK
+coax/platform/tool-native.h: OK
+coax/platform/process-native.h: OK
+coax/lib/crypto/entropy.coax: OK

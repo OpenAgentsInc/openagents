@@ -1,0 +1,82 @@
+{
+  "schema": "openagents.anime-direct-api.correction-profile.v1",
+  "date": "2026-11-02",
+  "issue": 12633,
+  "base_commit": "7ca26b6bc3700ba4375aee71c1292bf82c3015ad",
+  "status": "intermediate exact-image profile: 62 of 62 native fixture checks passed, exit 0; later body-slot support corrections are separate",
+  "prior_profile": "../anime-direct-api-2026-11-02.json",
+  "producer": {
+    "compiler_version": "coax0 0.47.0",
+    "compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "api_sha256": "c7372022af89a98e45b08243b045e019245262813937b01e5f7ed0ae81150db9",
+    "policy_source_sha256": "ae0fc34b9c7edf25dea8f0c3136f30e740b06c56adbf527af2360c82e048de48",
+    "policy_generated_c_sha256": "4bd3c60bba27e73df9ff898f2a6e4795602178ec1aafb0be641065d045187b42",
+    "policy_header_sha256": "2fb4a1c16f447d2f393304b68c94736aba33bb5bec9184989ddba890a88582c5",
+    "shared_render_profile_sha256": "4a58bc963b9713b23f63ae5e54fcf2a34418c59860c1223df0c68defd7332019",
+    "shared_render_qualification": "api62-render-profile-qualification.json",
+    "shared_render_source_snapshot": "api62-render-profile.coax.txt",
+    "client_source": "api-client.coax.txt",
+    "client_source_sha256": "19b411a55d5cb9ae9ebae1a474b7674ac943a772ce7ecba41a09c343f11798c3",
+    "client_generated_c_sha256": "f7504081a8a4880a21d980c53d32c250f9d5523b7d48411576eb8b6ac7683fca",
+    "client_native_sha256": "5bf892be9c903def5a9bad36a9e1f6410861bbaf558b66ce896171c7f0c62927",
+    "selector_source": "api-selector.coax.txt",
+    "selector_source_sha256": "3730865a214cac1a6c9462ee1f3539d9a9b0cad94fd29614f6661c70ec0e8933",
+    "selector_generated_c_sha256": "fd2457e68a67b9135145db286c76323e9c6de98258f42f3e829b085b9468883e",
+    "selector_native_sha256": "b62b910dfde5566b1c4b80afa56968b8e3082ba47fc5cf26867577b43510869d",
+    "api_policy_checks_reported_by_parent": 151,
+    "api_policy_root_mutants_killed_reported_by_parent": 1046,
+    "api_policy_root_mutants_survived_reported_by_parent": 0,
+    "route_policy": "Unchanged authority: earlier 152 of 152 mutants killed; not repeated."
+  },
+  "checks_first": [
+    {
+      "case": "Valid content inside object-shaped candidates or parts",
+      "red": "api-object-envelope-red.out",
+      "pass": "api-object-envelope-pure.out",
+      "new_pure_groups": 1,
+      "passed": 1,
+      "scope": "Only the new selector-envelope group ran; previous passing groups were not repeated."
+    },
+    {
+      "case": "High-confidence creature entrance with complete finite probability vectors",
+      "red": "api-creature-red.out",
+      "pass": "api-creature-pure.out",
+      "new_pure_groups": 1,
+      "passed": 1
+    }
+  ],
+  "execution": {
+    "api": "http://127.0.0.1:57434",
+    "origin": "http://127.0.0.1:57434",
+    "database": "oa_anime12632",
+    "selector": "Owned loopback Coax child on port 51392",
+    "timeout_ms_per_attempt": 500,
+    "mode": "ANIME_ONLY= (full corrected suite)",
+    "checks": 62,
+    "passed": 62,
+    "failed": 0,
+    "exit": 0,
+    "receipt": "api-corrected62.out",
+    "receipt_sha256": "43a055f2f7b30a5f7973c702b7ded66373c78de449bd9550fbfefc96b0fbbd72",
+    "api_log": "api-corrected62.log",
+    "api_log_sha256": "4fc5c3e6cc10de8fa581a2478bc6c89553c3f809e181227e97cbf4f88c4acf6f",
+    "samples": "api-corrected62-samples/",
+    "sample_manifest": "api-corrected62-samples.sha256",
+    "sample_manifest_sha256": "14a2ef42bcfa0ed99cb08b64e672ae9414c26db124280220304386f4a11b24f2",
+    "sanitizers": "No ASan, UBSan or LSan diagnostic observed in the retained native API log."
+  },
+  "new_observations": [
+    "An otherwise-valid answer inside candidates:{only:validCandidate} returns 502 invalid_model with no heard/answers prefix, and one finished charged call.",
+    "An otherwise-valid answer inside parts:{only:validPart} returns the same atomic 502 refusal.",
+    "A valid ENTER creature/appears/count=1/gate answer preserves complete confidence maps and p=0.900, stock=true, render_supported=false, decision=heard.",
+    "The reservation contention case still observes an actual waiter, zero rows before commit, exactly one after refusal, and unchanged selector count 30 to 30."
+  ],
+  "boundaries": [
+    "This 62-case image corrected ENTER creature but preceded the further exclusion of body-dependent creature ACT/EMOTE/SHOT/CUT/CAST operations. It is preserved as an intermediate profile and cannot qualify a later changed shared module.",
+    "The old #12632 development regression, corrected Origin, 59-case fixture and three live-provider profiles remain immutable evidence of their exact earlier producers.",
+    "This is one new full run for changed array-container guards and the shared render-support profile. No corrected 61-case suite ran before the additional creature case was added.",
+    "No paid live-provider call was repeated. Earlier real-provider success remains qualified to its earlier artifact; this record does not claim live execution of the corrected API.",
+    "The actual C API, generated Coax policies, PostgreSQL transaction and NIP-98 verifier run normally against an explicitly guarded owned database. Only the model is a deterministic protocol fixture.",
+    "No production/staging write, deployment, owner key, visible browser, sound or payment. Receipts omit authentication headers, cookies and signing identities."
+  ]
+}

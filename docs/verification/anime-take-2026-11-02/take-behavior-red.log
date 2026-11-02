@@ -1,0 +1,12 @@
+FAIL #test Anime take owns captions answers and scheduled catalogue events (2 ms)
+verse/anime/take-checks.coax:9:3: error[E0406]: assertion failed
+    #assert loaded==0 && t[0].ready && t[0].line_n==3 && t[0].answer_n==3 && t[0].event_n==2 && t[0].length==6;
+    ^
+  note: in #test Anime take owns captions answers and scheduled catalogue events
+FAIL #test Anime take malformed replacement is atomic and empty ownership is refused (1 ms)
+verse/anime/take-checks.coax:17:3: error[E0406]: assertion failed
+    #assert loaded==0;before:=t[0].length;
+    ^
+  note: in #test Anime take malformed replacement is atomic and empty ownership is refused
+2 of 107 checks (--only 'Anime take'), 0 passed, 2 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

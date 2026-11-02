@@ -1,0 +1,71 @@
+{
+  "schema": "openagents.anime-direct-api.final-correction-profile.v1",
+  "date": "2026-11-02",
+  "issue": 12633,
+  "base_commit": "7ca26b6bc3700ba4375aee71c1292bf82c3015ad",
+  "status": "final frozen API fixture profile: 63 of 63 passed, exit 0",
+  "earlier_profiles": ["../anime-direct-api-2026-11-02.json", "api-correction-profile.json"],
+  "producer": {
+    "compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "api_sha256": "c8de55c9f4a60ad12a0d80d5624bd8b3a2f2dfbec5a4be5c4d789e915b1afabc",
+    "policy_source_sha256": "ae0fc34b9c7edf25dea8f0c3136f30e740b06c56adbf527af2360c82e048de48",
+    "policy_generated_c_sha256": "9835171797a95ffdb5aaaa510cff8d1cce252c9509afe07a876c9c3661a2339d",
+    "policy_header_sha256": "2fb4a1c16f447d2f393304b68c94736aba33bb5bec9184989ddba890a88582c5",
+    "shared_render_source_sha256": "18b8ad7c370696ebc9216ca7e98da82895a3453bc149f29eca0c5a0669f0bf42",
+    "shared_render_qualification": "render-profile-v2-qualification.json",
+    "shared_render_qualification_sha256": "ee7d42f39cbe0a951319f55edf1b8a1a36d35d9f8cdd345b7d4a900971ab5544",
+    "client_source": "api-final63-client.coax.txt",
+    "client_source_sha256": "8216172b708d942d86dab071f08626c1abe402621f5931339d8ca29f62f185e0",
+    "client_generated_c_sha256": "f2dcd789dbd4d12803865d0b00b4651861cd29c63c94a409acbf8c7fb6b4f314",
+    "client_native_sha256": "3ec688b74b11f8f27e29871d791c2f203c88c6edeadbb4faed3316abca27a571",
+    "selector_source": "api-final63-selector.coax.txt",
+    "selector_source_sha256": "7ef7467242ae37a3a7303faf2d63c103c8f005108b7f1e3e948849e6fa0bc0ed",
+    "selector_generated_c_sha256": "50becfcc77ea225d3ac1e8ddf494e3e2a0b6151322f75842037b12c63cca86d4",
+    "selector_native_sha256": "b2b40d7500ef8a9a64dfb0491b59b72dad2ae231e8fd96d177b671e3bb974356",
+    "parent_reported_policy_checks": 153,
+    "parent_reported_policy_root_mutants_killed": 1046,
+    "parent_reported_policy_root_mutants_survived": 0,
+    "shared_render_mutants_killed": 176,
+    "shared_render_mutants_survived": 0,
+    "unchanged_route_mutation": "Earlier 152 of 152 killed; unchanged authority not repeated."
+  },
+  "execution": {
+    "api": "http://127.0.0.1:57435",
+    "origin": "http://127.0.0.1:57435",
+    "database": "oa_anime12632",
+    "model": "Owned Coax loopback selector on port 51392, 500 ms per attempt",
+    "mode": "ANIME_ONLY= (full suite)",
+    "checks": 63,
+    "passed": 63,
+    "failed": 0,
+    "exit": 0,
+    "receipt": "api-final63.out",
+    "receipt_sha256": "b0b70a651cd439e49a0b6074921b2ab4c4bc1ef8717fe4b19a8a09f865f6b25e",
+    "api_log": "api-final63.log",
+    "api_log_sha256": "9499fdb20de08118bbc4fc5549f1d7722cae6f65ca071a75c42e892123fd3c61",
+    "samples": "api-final63-samples/",
+    "sample_manifest": "api-final63-samples.sha256",
+    "sample_manifest_sha256": "8b7947182010ebc71d098b54e43fd84fa7078ac7a4879a7fa079220b924e105d",
+    "sanitizers": "No ASan, UBSan or LSan diagnostic observed in the retained native API log."
+  },
+  "additional_case": {
+    "request": "A creature points.",
+    "answer": "ACT creature/point, complete vectors, p=0.900, stock=true, render_supported=false, decision=heard",
+    "why_point": "The earlier body-blind predicate supported point. The initially considered run fixture was discarded because run was already unsupported for every actor and would miss the mesh-slot regression.",
+    "checks_first_red": "api-creature-point-red.out",
+    "checks_first_pass": "api-creature-point-pure.out",
+    "scope": "One narrow new fixture-oracle check; previous passing fixture groups were not repeated. The final native suite then exercised the corrected shared predicate."
+  },
+  "observations": [
+    "The two valid-content object envelopes still refuse atomically with 502 invalid_model and one finished charged call each.",
+    "Both creature ENTER and body-dependent ACT preserve catalogue membership and confidence while remaining heard-only.",
+    "Actual advisory-lock contention preserves zero rows before commit, one after refusal and selector calls 31 to 31.",
+    "All earlier auth, strict-input, complete-vector threshold, malformed-model byte-boundary, quota, overlap and timeout cases passed against this exact changed producer."
+  ],
+  "boundaries": [
+    "The earlier 62-case producer remains a separate intermediate image; none of its successes was silently relabeled as this image.",
+    "No paid live-provider call was repeated. Prior three-call live success remains evidence of its exact earlier producer, not live execution of this corrected image.",
+    "Real native C API, generated Coax authorities, NIP-98 and owned PostgreSQL execute normally. Only the upstream selector is a deterministic fixture.",
+    "No deployment, production/staging write, owner key, visible browser, sound or payment. Samples omit authentication headers, cookies and complete signing identities."
+  ]
+}

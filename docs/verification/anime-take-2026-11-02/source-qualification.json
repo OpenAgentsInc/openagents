@@ -1,0 +1,111 @@
+{
+  "schema": "openagents.anime-take.source-qualification.v1",
+  "issue": 12633,
+  "date": "2026-11-02",
+  "tested_base_commit": "7ca26b6bc3700ba4375aee71c1292bf82c3015ad",
+  "producer": {
+    "version": "coax0 0.47.0",
+    "binary_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+    "provenance": "../anime-direct-api-2026-11-02/producer-provenance.record",
+    "scope": "The existing pinned producer, not a newly built compiler from main. Compiler/evaluator budgets unchanged."
+  },
+  "take": {
+    "source": "verse/anime/take.coax",
+    "source_sha256": "21e07f4b9534c7274729142844761756e99d599f3d988d5fb5b3f840150f008e",
+    "checks": 123,
+    "checks_command": "coax/bin/coax test verse/anime/take.coax --library",
+    "checks_receipt": "take-final-checks.log",
+    "mutants": 720,
+    "killed": 720,
+    "survived": 0,
+    "mutation_command": "coax/bin/coax mutate verse/anime/take.coax --library --root-only --jobs 6",
+    "mutation_receipt": "take-final-mutation.log",
+    "source_manifest": "take-final-sources.sha256",
+    "source_manifest_sha256": "53e3b1ab2c728f1648d04383207b9c3290114fb9b3d951ad03f6b82fc65307ad",
+    "red_receipt": "take-behavior-red.log",
+    "red_result": "Two behavioral assertion failures against initial public stubs."
+  },
+  "render_profile": {
+    "source": "verse/anime/render-profile.coax",
+    "source_sha256": "18b8ad7c370696ebc9216ca7e98da82895a3453bc149f29eca0c5a0669f0bf42",
+    "checks": 16,
+    "mutants": 176,
+    "killed": 176,
+    "survived": 0,
+    "record": "render-profile-v2-qualification.json",
+    "scope": "Shared static profile; every body-dependent slot6 reference is unsupported. Renderer untouched."
+  },
+  "page": {
+    "source_sha256": "69b93134fad2c780d14507c0d65feec47f1a5f1cf23aa75e3154b21bad4eec78",
+    "focused_checks": 10,
+    "command": "coax/bin/coax test apps/openagents-web/animelab.coax --library --only 'custom take'",
+    "receipt": "page-final-checks.log",
+    "fragment_red_receipt": "page-fragment-behavior-red.log",
+    "wasm_sha256": "a85b39b791c61f36643546a5c7519ba8ba82bc7fdf1d6a7f4a4abc0e795e96d9",
+    "face_sha256": "60c815060d4338a353ed3ddfb86f0109ca8d4050d1147a3b960dc136bf802a25",
+    "build_command": "COAX=<pinned producer> coax/web/wasm.sh apps/openagents-web/animelab.coax apps/openagents-web/animelab-face.c apps/openagents-web/build/animelab.wasm apps/openagents-web/animelab-style.coax",
+    "scope": "Selected page behavior; full take/render authority checks and mutations are separately complete. Existing geometry gates were not repeated."
+  },
+  "transport": {
+    "cli_sha256": "876fd2ea885df4c92217307f5bd549ed715a844eb35e71c12bb4a4b4631c630d",
+    "cli_sources": "cli-final-sources.sha256",
+    "cli_source_count": 128,
+    "cli_deps": "cli-final-deps.json",
+    "cli_native_inputs": "cli-native-inputs.sha256",
+    "cli_build": "apps/openagents-cli/build.sh",
+    "cli_url_bytes": 49152,
+    "cache_input_bytes": 65536,
+    "navigation_bytes": 65536,
+    "http_request_bytes": 65536,
+    "anime_inbox_bytes": 65536,
+    "max_take_bytes": 32768,
+    "max_base64url_chars": 43691,
+    "fingerprint_checks": 1,
+    "fingerprint_command": "coax/bin/coax test apps/openagents-cli/labs-rules.coax --library --only 'capture fingerprints'",
+    "fingerprint_receipt": "fingerprint-final-checks.log",
+    "red_receipts": [
+      "fingerprint-initial-red.log",
+      "fingerprint-scope-red.log"
+    ],
+    "scope": "Full URL enters cache input/label; only this exact realm's take64 query payload is removed for its HTML fetch fingerprint. Overflow refuses before browser launch. Transport capacities changed, compiler/render budgets did not."
+  },
+  "api_followup": {
+    "issue": 12632,
+    "reason": [
+      "Restored explicit candidates/parts array types after confirming jv_at accepts object children.",
+      "Replaced duplicate support logic with the shared body-safe profile; undrawn creature directions remain typed heard-only data."
+    ],
+    "policy_source_sha256": "ae0fc34b9c7edf25dea8f0c3136f30e740b06c56adbf527af2360c82e048de48",
+    "checks": 153,
+    "mutants": 1046,
+    "killed": 1046,
+    "survived": 0,
+    "checks_receipt": "api-final-policy-checks.log",
+    "mutation_receipt": "api-final-policy-mutation.log",
+    "source_manifest": "api-final-policy-sources.sha256",
+    "deps": "api-final-policy-deps.json",
+    "red_receipt": "api-envelope-behavior-red.log",
+    "native_record": "api-final63-profile.json",
+    "native_inputs": "api-native-final-inputs.sha256",
+    "native_api_sha256": "c8de55c9f4a60ad12a0d80d5624bd8b3a2f2dfbec5a4be5c4d789e915b1afabc",
+    "generated_c_sha256": "9835171797a95ffdb5aaaa510cff8d1cce252c9509afe07a876c9c3661a2339d",
+    "native_cases": 63,
+    "reused_route": {
+      "source_sha256": "f1ac64145f49d8c82d2855ec5e0959ef6c0c58b59f7a874f6190d9d44b2227fd",
+      "mutants": 152,
+      "survived": 0,
+      "record": "../anime-direct-api-2026-11-02/policy-native-profile.json"
+    },
+    "live_calls": "The earlier three paid live cases retain their original exact producer identity in the #12632 record. They are not relabeled as executions of this corrected artifact; no paid calls were repeated."
+  },
+  "boundaries": [
+    "The optional whitespace review records one blank EOF line in animelab-take-checks.coax. That valid check source is intentionally retained byte-for-byte after final qualification; no cosmetic edit changes the qualified producer.",
+    "All owned mutation sites killed; no equivalent waivers or compiler limit changes.",
+    "The built-in demo retains its simulated draw-in. Arbitrary recorded makes remain heard-only; no asset generation is asserted.",
+    "Words never select directions through keyword rules; takes replay explicit catalogue answers.",
+    "Model confidence remains recorded data, not proof of empirical calibration.",
+    "Renderer/GPU/host JavaScript, engine adoption and model-training lanes were not changed.",
+    "Final headless media evidence is separate from the stopped intermediate profile; no intermediate success was promoted.",
+    "No deployment or production data write is claimed."
+  ]
+}

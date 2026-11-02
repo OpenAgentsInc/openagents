@@ -1,0 +1,7 @@
+FAIL #test anime take probe page oracle binds source and heard-only execution counts (0 ms)
+coax/web/anime-take-probe.coax:36:3: error[E0406]: assertion failed
+    #assert atp_page_context(good,3,3,2,1,713,5500);
+    ^
+  note: in #test anime take probe page oracle binds source and heard-only execution counts
+1 of 140 checks (--only 'anime take probe page oracle'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

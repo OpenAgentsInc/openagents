@@ -55,7 +55,7 @@ media_value :: (c: [] Cdp, script: string, out: [] u8) -> int {
 media_shot :: (c: [] Cdp, url: string, out: string, wh: ArgsSize, o: MediaShotOptions, value: [] u8, build: [] u8) -> MediaShot {
   s: MediaShot;
   if !media_size(c, wh) || !media_scheme(c, o.dark) { s.status = 1; return s; }
-  params: [8192] u8; j: [1] Jo;
+  params: [65536] u8; j: [1] Jo; // includes an inline Anime take, still below CDP_REQ
   jo_start(j[..], params[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], url); jo_end(j[..]);
   if j[0].bad { s.status = 2; return s; }
   if cdp_call(c, "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 { s.status = 1; return s; }
@@ -87,7 +87,7 @@ media_shot :: (c: [] Cdp, url: string, out: string, wh: ArgsSize, o: MediaShotOp
 // Loads the page in clip mode, waits until it draws, runs the script and the
 // skip, and writes each frame as a PNG. "" when it worked, else what failed.
 media_record :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, fr: string, skip: f64, script: string, frames: string) -> string {
-  params: [8192] u8; o: [1] Jo;
+  params: [65536] u8; o: [1] Jo;
   if !media_size(c, wh) { return cdp_error(c); }
   if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return cdp_error(c); }
   if cdp_call(c, "Runtime.enable", "", CDP_CALL_MS) < 0 { return cdp_error(c); }

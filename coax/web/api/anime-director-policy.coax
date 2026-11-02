@@ -5,6 +5,7 @@
 #load "../../lib/json/json.coax";
 #load "../../lib/nostr/json.coax";
 #load "../../../verse/anime/director.coax";
+#load "../../../verse/anime/render-profile.coax";
 #load "anime-route-policy.coax";
 #load "anime-director-checks.coax";
 #load "anime-director-render-checks.coax";
@@ -265,27 +266,7 @@ aap_vector :: (d:Jv,at:int,field:string,selected:int)->int {
 
 AapDirection :: struct {ok:bool;p:int;kind:int;timing:int;stock:bool;render_supported:bool;n:int;}
 aap_rendered :: (d:AnimeDirection)->bool {
-  if d.kind==AD_ACT {return d.option==ACT_RAISE || d.option==ACT_CAST || d.option==ACT_HESITATE || d.option==ACT_RECOIL || d.option==ACT_POINT;}
-  if d.kind==AD_EMOTE {return true;}
-  if d.kind==AD_CAST {return d.option==SPELL_FIREBALL;}
-  if d.kind==AD_ENTER {
-    return (d.move==HOW_APPEARS || (d.option==AS_LORD && d.move==HOW_WALKS))
-      && (d.count==1 || d.option==AS_HOODED) && (d.place<0 || d.place==PL_BEHIND);
-  }
-  if d.kind==AD_SHOT {
-    if d.move!=MOVE_HOLD && d.move!=MOVE_PUSH && d.move!=MOVE_PULL {return false;}
-    if d.who>=0 {return d.option==FR_EXTREME || d.option==FR_CLOSE || d.option==FR_MEDIUM || d.option==FR_OVER || d.option==FR_LOW;}
-    return (d.option==FR_ESTABLISHING && d.place==PL_COURTYARD)
-      || (d.option==FR_WIDE && (d.place==PL_BEHIND || (d.place==PL_COURTYARD && d.move==MOVE_HOLD)));
-  }
-  if d.kind==AD_CUT {return d.option==TR_CUT || d.option==TR_FLASH || d.option==TR_SMASH;}
-  if d.kind==AD_FX {
-    if d.size>=0 && d.size!=SIZE_LARGE {return false;}
-    return (d.option==FX_RUBBLE && (d.place<0 || d.place==PL_COURTYARD))
-      || (d.option==FX_FLASH && d.place<0) || (d.option==FX_SMOKE && (d.place<0 || d.place==PL_BEHIND))
-      || (d.option==FX_EXPLOSION && d.place==PL_WALL);
-  }
-  if d.kind==AD_BEAT {return d.option==BEAT_HOLD || d.option==BEAT_SPEED;}return false;
+  return anime_render_supported(d);
 }
 
 // The canonical flat projection is checked again by the existing engine reader. Extra API
@@ -411,9 +392,9 @@ aap_finish :: (input:[]u8,modelresponse:[]u8,out:[]u8)->int #export_c {
   inodes:[2048]JvNode;request:[1]Jv;if !aap_utf8(cast(string)input,true) || !jv_parse(request[..],cast(string)input,inodes[..]) || !aap_input(request[0]) {return AAP_INVALID;}
   outer_nodes:[2048]JvNode;outer:[1]Jv;
   if !aap_utf8(cast(string)modelresponse,true) || !jv_parse(outer[..],cast(string)modelresponse,outer_nodes[..]) || !aap_unique(outer[0]) || jv_kind(outer[0],0)!=JV_OBJECT {return AAP_MODEL;}
-  candidates:=jv_get(outer[0],0,"candidates");if jv_len(outer[0],candidates)!=1 {return AAP_MODEL;}
+  candidates:=jv_get(outer[0],0,"candidates");if jv_kind(outer[0],candidates)!=JV_ARRAY || jv_len(outer[0],candidates)!=1 {return AAP_MODEL;}
   candidate:=jv_at(outer[0],candidates,0);reason:=jv_get(outer[0],candidate,"finishReason");if reason!=-1 && (jv_kind(outer[0],reason)!=JV_STRING || !jv_raw_eq(jv_raw(outer[0],reason),"STOP")) {return AAP_MODEL;}
-  content:=jv_get(outer[0],candidate,"content");parts:=jv_get(outer[0],content,"parts");if jv_len(outer[0],parts)!=1 {return AAP_MODEL;}
+  content:=jv_get(outer[0],candidate,"content");parts:=jv_get(outer[0],content,"parts");if jv_kind(outer[0],parts)!=JV_ARRAY || jv_len(outer[0],parts)!=1 {return AAP_MODEL;}
   part:=jv_at(outer[0],parts,0);thought:=jv_get(outer[0],part,"thought");if thought!=-1 && jv_kind(outer[0],thought)!=JV_FALSE {return AAP_MODEL;}
   selected:[32768]u8;n:=jv_str(outer[0],jv_get(outer[0],part,"text"),selected[..]);if n==-1 {return AAP_MODEL;}
   nodes:[2048]JvNode;d:[1]Jv;if !jv_parse(d[..],cast(string)selected[0..<n],nodes[..]) || !aap_unique(d[0]) || !aap_keys(d[0],0,"answers") {return AAP_MODEL;}

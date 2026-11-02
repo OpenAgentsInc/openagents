@@ -1,0 +1,7 @@
+FAIL #test custom take URL fragments do not open a query or change presentation (6 ms)
+apps/openagents-web/animelab-take-checks.coax:115:3: error[E0406]: assertion failed
+    #assert !state[0].custom && animelab_take_status(state[..])==0;
+    ^
+  note: in #test custom take URL fragments do not open a query or change presentation
+1 of 186 checks (--only 'URL fragments'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,21 @@
+ok CLI renders a supplied take
+ok fresh paired fixed-time capture completes
+ok default control capture completes
+ok heard-only make control capture completes
+ok pinned-determinism
+ok custom-differs-from-default
+ok heard-make-does-not-draw-an-asset
+ok heard-only caption capture completes
+ok caption control capture completes
+ok heard-make-remains-visible-caption-data
+ok CLI records supplied take A
+ok CLI records supplied take B for deterministic comparison
+ok 24 decoded frames are deterministic across fresh CLI recordings
+ok actual MP4 has 24 H264 yuv420p frames at 640x360 12fps and no audio
+ok independent ffmpeg decode preserves first-frame pixels within H264 loss
+decoded first-frame RGB mean absolute error 1.8871889467592593
+ok 32768-byte take crosses actual CLI browser and page inbox
+ok max-size-transport-preserves-take
+ok long URLs sharing their first 8KB keep distinct cache identities
+ok oversized URL plus eval refuses usage2 before Chrome and output
+19 anime take media checks passed, 0 failed

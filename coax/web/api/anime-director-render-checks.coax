@@ -8,7 +8,7 @@
   // sg_pose_of has distinct raise, cast, hesitate, point and recoil poses.
   // block/fall alias recoil, while run/kneel/turn/shout fall back to idle.
   poses := [11]bool.[true,true,false,false,false,false,false,true,true,true,false];
-  slots := [5]int.[0,1,2,5,6];
+  slots := [4]int.[0,1,2,5];
   for who:slots {for action:0..<11 {
     d:=AnimeDirection.{kind=AD_ACT,who=who,option=action,p=1};
     #assert anime_direction_ok(d) && aap_rendered(d)==poses[action];
@@ -30,7 +30,8 @@
 #test "API anime render matrix covers enter archetype count how and every place" {
   // Each row is walks/runs/appears/lands, three counts per how. The stage can
   // reveal one slot, reveal the three hooded slots, or walk the lord from smoke.
-  profiles := [5]string.["000000100000","000000100000","000000111000","100000100000","000000100000"];
+  // The page's draw_cast excludes creature slot6; revealing its flag draws no mesh.
+  profiles := [5]string.["000000100000","000000100000","000000111000","100000100000","000000000000"];
   archetypes := [5]int.[0,1,2,5,6];
   // Places in order: absent, gate, courtyard, wall, sky, left, right, behind, above.
   places := "100000010";
@@ -47,7 +48,7 @@
   // Wide and establishing are place shots; high-angle and the other moves have
   // no matching camera implementation. Each row is the six catalogue moves.
   subjects := [8]string.["111000","111000","111000","000000","000000","111000","111000","000000"];
-  for who:[5]int.[0,1,2,5,6] {for frame:0..<8 {for move:0..<6 {
+  for who:[4]int.[0,1,2,5] {for frame:0..<8 {for move:0..<6 {
     d:=AnimeDirection.{kind=AD_SHOT,who=who,option=frame,move=move,p=1};
     #assert anime_direction_ok(d) && aap_rendered(d)==(subjects[frame][move]=='1');
   }}}
@@ -75,6 +76,19 @@
     d:=AnimeDirection.{kind=AD_FX,option=effect,place=place,size=size,p=1};
     #assert anime_direction_ok(d);
     expected:=false;if sizes[size+1]=='1' {expected=profiles[effect][place+1]=='1';}
+    #assert aap_rendered(d)==expected;
+  }}}
+}
+
+#test "API anime render matrix refuses body references without a creature mesh" {
+  for action:0..<11 {#assert !aap_rendered(AnimeDirection.{kind=AD_ACT,who=AS_MADE,option=action,p=1});}
+  for emotion:0..<10 {#assert !aap_rendered(AnimeDirection.{kind=AD_EMOTE,who=AS_MADE,option=emotion,p=1});}
+  for frame:0..<8 {for move:0..<6 {#assert !aap_rendered(AnimeDirection.{kind=AD_SHOT,who=AS_MADE,option=frame,move=move,p=1});}}
+  for transition:0..<5 {#assert !aap_rendered(AnimeDirection.{kind=AD_CUT,to=AS_MADE,option=transition,p=1});}
+  slots:=[6]int.[-1,0,1,2,5,6];available:="111110";spells:="010000";
+  for from:0..<6 {for to:0..<6 {for spell:0..<6 {
+    d:=AnimeDirection.{kind=AD_CAST,who=slots[from],to=slots[to],place=ifx to==0 then PL_GATE else -1,option=spell,p=1};
+    expected:=false;if available[from]=='1' && available[to]=='1' {expected=spells[spell]=='1';}
     #assert aap_rendered(d)==expected;
   }}}
 }

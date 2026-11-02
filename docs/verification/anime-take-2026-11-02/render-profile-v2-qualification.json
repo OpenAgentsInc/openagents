@@ -1,0 +1,48 @@
+{
+  "schema": "openagents.anime-render-profile.qualification.v1",
+  "date": "2026-11-02",
+  "supersedes": "render-profile-qualification.json",
+  "source": "verse/anime/render-profile.coax",
+  "source_sha256": "18b8ad7c370696ebc9216ca7e98da82895a3453bc149f29eca0c5a0669f0bf42",
+  "retained_source": "render-profile-v2.coax.txt",
+  "compiler_sha256": "69713521d6dd0540d6ff669048719d9b847955edcaa557da1eef06184d31e3b6",
+  "checks_first": {
+    "command": "coax/bin/coax test verse/anime/render-profile.coax --library --only 'shared anime render profile refuses every body'",
+    "receipt": "render-profile-v2-red.log",
+    "receipt_sha256": "39a54a620018cfd6567bc7a7a4d72ce6f60059f52e832c3836f8fb301bc1b4ef",
+    "observation": "The new negative body-reference matrix failed against the prior entrance-only correction before implementation."
+  },
+  "checks": {
+    "command": "coax/bin/coax test verse/anime/render-profile.coax --library",
+    "receipt": "render-profile-v2-checks.log",
+    "receipt_sha256": "9b3d6c31a3be568c87e91890d838e2f48d6298f2d55ffc219e4e13ede20b77a2",
+    "own_groups": 5,
+    "closure_checks": 16,
+    "passed": 16,
+    "failed": 0
+  },
+  "mutation": {
+    "command": "coax/bin/coax mutate verse/anime/render-profile.coax --library --root-only --jobs 4",
+    "receipt": "render-profile-v2-mutation.log",
+    "receipt_sha256": "88eda072fe9d473df801ebdb66948c24137a3089a27944e81be276b8cb6ee82b",
+    "mutants": 176,
+    "killed": 176,
+    "survived": 0,
+    "waivers": 0
+  },
+  "api_consumer": {
+    "check_source": "coax/web/api/anime-director-render-checks.coax",
+    "check_source_sha256": "71cd8e0ba1c3b7f6f506633e454087c04468869469eabaa63dfb70849a164d07",
+    "command": "coax/bin/coax test coax/web/api/anime-director-policy.coax --library --only 'API anime render matrix'",
+    "receipt": "render-profile-v2-api-consumers.log",
+    "receipt_sha256": "cda23e6f50691163330cfd09b8227116e77cb33f433fc0777ec1aa6cfc5f8568",
+    "checks": 5,
+    "passed": 5
+  },
+  "audit": [
+    "draw_cast draws slots0..5. The separate fixed demo dragon is parameterized by time/draw-in, not StageCast poses or emotions, and arbitrary custom makes never execute it.",
+    "The profile refuses creature ENTER; ACT/EMOTE/SHOT who; CUT to; and CAST who/to. The new matrix covers every action, emotion, framing/move, transition and all caster/target/spell combinations including absent caster/place target controls.",
+    "All remaining predicate fields were compared with stage and drawing branches. FX and BEAT have no body selectors; MAKE is always unsupported and like is caption-only. No additional body availability gap was found.",
+    "No renderer or page source changed in this qualification. No old page/mesh gate or paid call was repeated. This remains a static support profile, not proof of subject visibility or rasterization."
+  ]
+}

@@ -2,8 +2,9 @@
 
 Status, 2026-11-02: the recorded demo is on `main`. The authenticated
 [director API](2026-11-02-anime-director-api.md) is implemented and qualified
-for #12632. Arbitrary takes, the Anime CLI, live voice and asset generation
-remain distinct steps below. Source completion does not assert deployment.
+for #12632. [Recorded takes](anime-takes-v1.md) load and render through the
+page for #12633. The Anime CLI, live voice and asset generation remain distinct
+steps below. Source completion does not assert deployment.
 
 Owner request, 2026-11-02:
 
@@ -149,8 +150,10 @@ version:
 
 ### 4. The scene: a timeline that plays while it is written
 
-- **The take is a document,** `anime.v1`, plain text in the labs style, one
-  direction per line with its time:
+- **The take is a document,** `anime.v1`: UTF-8 JSON preserving the words,
+  line times and held director answers, as defined in the
+  [recorded-take format](anime-takes-v1.md). The illustration below summarizes
+  the scene as timed directions:
 
   ```
   anime 1

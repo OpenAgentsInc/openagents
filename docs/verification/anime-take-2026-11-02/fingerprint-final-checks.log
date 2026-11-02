@@ -1,0 +1,3 @@
+ok   #test capture fingerprints remove only the inline take query payload (1 case, 30019 steps, 0 ms)
+1 of 103 checks (--only 'capture fingerprints'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

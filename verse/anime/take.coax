@@ -1,0 +1,158 @@
+// Owned anime.v1 recorded takes. Admission and scheduling are Coax policy; no
+// stored descriptor borrows input/message memory. Only numeric offsets survive.
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/json.coax";
+#load "director.coax";
+#load "render-profile.coax";
+#load "take-checks.coax";
+#authority;
+
+ANIME_TAKE_BYTES :: 32768; ANIME_TAKE_LINES :: 16; ANIME_TAKE_ANSWERS :: 16;
+ANIME_TAKE_EVENTS :: 32; ANIME_TAKE_WORD_BYTES :: 600; ANIME_TAKE_SECONDS :: 600.0f32;
+ANIME_TAKE_INVALID :: -1; ANIME_TAKE_LIMIT :: -2; ANIME_TAKE_LENGTH :: -3; ANIME_TAKE_CAPACITY :: -4;
+
+AnimeTakeFields :: struct {
+  kind:int=-1; who:int=-1; option:int=-1; move:int=-1; place:int=-1; to:int=-1;
+  count:int=1; size:int=-1; like:int=-1; stock:bool=true; engine_framed:bool;
+}
+AnimeTakeLine :: struct {said:f32;done:f32;word_at:int;word_n:int;first:int;count:int;}
+AnimeTakeAnswer :: struct {
+  raw_at:int;raw_n:int;value:AnimeTakeFields;milli:int;p:f32;timing:int=-1;heard:bool;shown:f32;
+}
+AnimeTakeEvent :: struct {at:f32;shown:f32;line:int;value:AnimeTakeFields;p:f32;}
+AnimeTake :: struct {
+  ready:bool;auto_camera:bool=true;length:f32;source_n:int;word_n:int;line_n:int;answer_n:int;event_n:int;
+  source:[ANIME_TAKE_BYTES]u8;words:[ANIME_TAKE_LINES*ANIME_TAKE_WORD_BYTES]u8;
+  lines:[ANIME_TAKE_LINES]AnimeTakeLine;answers:[ANIME_TAKE_ANSWERS]AnimeTakeAnswer;events:[ANIME_TAKE_EVENTS]AnimeTakeEvent;
+}
+
+AT_FIELDS :: [17]string.["kind","who","to","archetype","action","emotion","spell","effect","framing","move","transition","beat","how","place","size","count","like"];
+AT_KIND_FIELDS :: [12]string.["kind|archetype|how|count|place","kind|who|how","kind|who|action","kind|who|emotion","kind|who|spell|place|to|size","kind|effect|place|size","kind|framing|who|place|move","kind|to|transition","kind|beat","","","kind|what|like|place"];
+AT_TIMING :: [3]string.["now","after","with"];
+AT_COUNTS :: [3]string.["1","2","3"];
+AtHeld :: struct {ok:bool;answer:AnimeTakeAnswer;n:int;}
+AtFlat :: struct {ok:bool;writer:Jo;}
+
+at_in :: (raw:string,allowed:string)->bool {start:=0;for i:0..<allowed.count+1 {if i==allowed.count || allowed[i]=='|' {if jv_raw_eq(raw,allowed[start..<i]) {return true;}start=i+1;}}return false;}
+at_keys :: (d:Jv,at:int,allowed:string)->bool {if jv_kind(d,at)!=JV_OBJECT {return false;}c:=d.nodes[at].first;while c!=-1 {if !at_in(jv_key(d,c),allowed) {return false;}c=d.nodes[c].next;}return true;}
+at_utf8 :: (text:string,space:bool)->bool {i:=0;while i<text.count {c:=text[i];if c<32 && !(space && (c==9 || c==10 || c==13)) {return false;}n:=json_utf8(text,i);if n<1 {return false;}i+=n;}return true;}
+at_unique :: (d:Jv)->bool {
+  key:[64]u8;for i:0..<d.count {if d.nodes[i].kind!=JV_OBJECT {continue;}a:=d.nodes[i].first;while a!=-1 {
+    n:=jv_unescape(jv_key(d,a),key[..]);if n<1 || !at_utf8(cast(string)key[0..<n],false) {return false;}
+    b:=d.nodes[a].next;while b!=-1 {if jv_raw_eq(jv_key(d,b),cast(string)key[0..<n]) {return false;}b=d.nodes[b].next;}a=d.nodes[a].next;
+  }}return true;
+}
+at_choices :: (field:string)->int {
+  if field=="kind" {return AD_KINDS;}if field=="who" || field=="to" || field=="archetype" || field=="like" {return AS_ARCHETYPES;}
+  if field=="action" {return ACTIONS;}if field=="emotion" {return EMOTIONS;}if field=="spell" {return SPELLS;}if field=="effect" {return EFFECTS;}
+  if field=="framing" {return FRAMINGS;}if field=="move" {return MOVES;}if field=="transition" {return TRANSITIONS;}if field=="beat" {return BEATS;}
+  if field=="how" {return HOWS;}if field=="place" {return PLACES;}if field=="size" {return SIZES;}if field=="count" {return 3;}if field=="timing" {return 3;}return 0;
+}
+at_choice :: (field:string,index:int)->string {
+  if index<0 || index>=at_choices(field) {return "";}
+  if field=="kind" {return AD_KIND_WORDS[index];}if field=="who" || field=="to" || field=="archetype" || field=="like" {return AS_ARCHETYPE_WORDS[index];}
+  if field=="action" {return ACTION_WORDS[index];}if field=="emotion" {return EMOTION_WORDS[index];}if field=="spell" {return SPELL_WORDS[index];}if field=="effect" {return EFFECT_WORDS[index];}
+  if field=="framing" {return FRAMING_WORDS[index];}if field=="move" {return MOVE_WORDS[index];}if field=="transition" {return TRANSITION_WORDS[index];}if field=="beat" {return BEAT_WORDS[index];}
+  if field=="how" {return HOW_WORDS[index];}if field=="place" {return PLACE_WORDS[index];}if field=="size" {return SIZE_WORDS[index];}if field=="count" {return AT_COUNTS[index];}return AT_TIMING[index];
+}
+at_enum :: (d:Jv,node:int,field:string)->int {if jv_kind(d,node)!=JV_STRING {return -1;}for i:0..<at_choices(field) {if jv_raw_eq(jv_raw(d,node),at_choice(field,i)) {return i;}}return -1;}
+
+// Exact recorded confidence, on the same thousandth grid as the selector API.
+at_milli :: (text:string)->int {
+  if text.count<1 {return -1;}if jv_scalar_end(text,0)!=text.count || text=="true" || text=="false" || text=="null" {return -1;}
+  negative:=text[0]=='-';from:=ifx negative then 1 else 0;exponent_at:=text.count;at_decimal_places:=0;digits:=0;at_dotted:=false;nonzero:=false;
+  for i:from..<text.count {c:=text[i];if c=='e' || c=='E' {exponent_at=i;break;}if c=='.' {at_dotted=true;continue;}digits+=1;if !at_dotted {at_decimal_places+=1;}if c!='0' {nonzero=true;}}
+  if !nonzero {return 0;}if negative {return -1;}exponent:=0;
+  if exponent_at<text.count {at:=exponent_at+1;neg:=text[at]=='-';if neg || text[at]=='+' {at+=1;}while at<text.count && text[at]=='0' {at+=1;}if at<text.count {exponent=ad_int(text[at..<text.count]);if exponent==-1 {return -1;}}if neg {exponent=-exponent;}}
+  boundary:=at_decimal_places+exponent+3;position:=0;value:=0;
+  for i:from..<exponent_at {c:=text[i];if c=='.' {continue;}if position<boundary {value=value*10+cast(int)(c-'0');if value>1000 {return -1;}}else if c!='0' {return -1;}position+=1;}
+  for i:digits..<boundary {if value>100 {return -1;}value*=10;}return value;
+}
+at_prob :: (o:[]Jo,p:int) {if p==1000 {jo_raw(o,"1.0");return;}b:=[5]u8.['0','.',cast(u8)('0'+p/100),cast(u8)('0'+p/10%10),cast(u8)('0'+p%10)];jo_raw(o,cast(string)b[..]);}
+
+// JSON numeric times become finite F64 before interval comparisons, then the existing
+// timeline's F32. A normalized mantissa stays finite even for long decimal spellings.
+at_time :: (d:Jv,node:int)->f64 {
+  if jv_kind(d,node)!=JV_NUMBER {return -1;}s:=jv_raw(d,node);negative:=s[0]=='-';from:=ifx negative then 1 else 0;
+  at_decimal_places:=0;position:=0;first:=-1;coefficient:f64=0;at_scale:f64=1;at_dotted:=false;exponent_at:=s.count;
+  for i:from..<s.count {c:=s[i];if c=='e' || c=='E' {exponent_at=i;break;}if c=='.' {at_dotted=true;continue;}
+    if !at_dotted {at_decimal_places+=1;}if first==-1 && c!='0' {first=position;}if first!=-1 {coefficient+=cast(f64)cast(int)(c-'0')*at_scale;at_scale/=10;}position+=1;
+  }
+  if first==-1 {return 0;}if negative {return -1;}exponent:=0;
+  if exponent_at<s.count {at:=exponent_at+1;neg:=s[at]=='-';if neg || s[at]=='+' {at+=1;}while at<s.count && s[at]=='0' {at+=1;}if at<s.count {exponent=ad_int(s[at..<s.count]);if exponent==-1 {return -1;}}if neg {exponent=-exponent;}}
+  power:=at_decimal_places-first-1+exponent;if power< -340 {return -1;}
+  for i:0..<-power {coefficient/=10;}for i:0..<power {coefficient*=10;}
+  return ifx coefficient<=600 then coefficient else -1.0;
+}
+
+at_fields :: (d:AnimeDirection)->AnimeTakeFields {return AnimeTakeFields.{kind=d.kind,who=d.who,option=d.option,move=d.move,place=d.place,to=d.to,count=d.count,size=d.size,like=d.like,stock=d.stock,engine_framed=d.engine_framed};}
+at_direction :: (f:AnimeTakeFields,p:f32)->AnimeDirection {return AnimeDirection.{kind=f.kind,who=f.who,option=f.option,move=f.move,place=f.place,to=f.to,count=f.count,size=f.size,like=f.like,stock=f.stock,engine_framed=f.engine_framed,p=p};}
+at_copy :: (text:string,out:[]u8)->int {if text.count>out.count {return ANIME_TAKE_CAPACITY;}for i:0..<text.count {out[i]=text[i];}return text.count;}
+
+// Only root catalogue fields enter the legacy flat reader; confidence metadata can
+// contain the same key names without shadowing a selection or its recorded p.
+at_flat :: (d:Jv,node:int,milli:int,out:[]u8)->AtFlat {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
+  for field:AT_FIELDS {v:=jv_get(d,node,field);if v==-1 {continue;}selected:=ifx field=="count" then jv_int(d,v,0)-1 else at_enum(d,v,field);
+    if selected<0 || selected>=at_choices(field) {return AtFlat.{};}
+    jo_key(o[..],field);if field=="count" {jo_int(o[..],selected+1);}else {jo_str(o[..],at_choice(field,selected));}
+  }
+  what:=jv_get(d,node,"what");if what!=-1 {text:[40]u8;n:=jv_str(d,what,text[..]);if n==-1 {return AtFlat.{};}jo_key(o[..],"what");jo_str(o[..],cast(string)text[0..<n]);}
+  jo_key(o[..],"p");at_prob(o[..],milli);jo_end(o[..]);return AtFlat.{ok=!o[0].bad,writer=o[0]};
+}
+at_answer :: (d:Jv,node:int,out:[]u8)->AtHeld {
+  result:AtHeld;kind:=at_enum(d,jv_get(d,node,"kind"),"kind");if kind<0 {return result;}
+  f:=d.nodes[node].first;while f!=-1 {key:=jv_key(d,f);if !at_in(key,"p|stock|render_supported|decision|timing|confidence") && !at_in(key,AT_KIND_FIELDS[kind]) {return result;}f=d.nodes[f].next;}
+  pnode:=jv_get(d,node,"p");if jv_kind(d,pnode)!=JV_NUMBER {return result;}milli:=at_milli(jv_raw(d,pnode));if milli==-1 {return result;}
+  timing_node:=jv_get(d,node,"timing");timing:=-1;if timing_node!=-1 {timing=at_enum(d,timing_node,"timing");if timing==-1 {return result;}}
+  confidence:=jv_get(d,node,"confidence");if confidence!=-1 && jv_kind(d,confidence)!=JV_OBJECT {return result;}
+  if kind==AD_EXIT && jv_get(d,node,"who")==-1 {return result;}
+  if kind==AD_CAST || kind==AD_SHOT {a:=jv_get(d,node,ifx kind==AD_CAST then "to" else "who")!=-1;b:=jv_get(d,node,"place")!=-1;if a==b {return result;}}
+  flat:=at_flat(d,node,milli,out);if !flat.ok {return result;}writer:=[1]Jo.[flat.writer];held:=anime_read(jo_text(writer[..]));if !anime_direction_ok(held) {return result;}
+  stock:=jv_get(d,node,"stock");if stock!=-1 && jv_kind(d,stock)!=(ifx held.stock then JV_TRUE else JV_FALSE) {return result;}
+  rendered:=anime_render_supported(held);r:=jv_get(d,node,"render_supported");if r!=-1 && jv_kind(d,r)!=(ifx rendered then JV_TRUE else JV_FALSE) {return result;}
+  heard:=!held.stock || !rendered || milli<500;decision:=jv_get(d,node,"decision");
+  if decision!=-1 {if jv_kind(d,decision)!=JV_STRING {return result;}raw:=jv_raw(d,decision);
+    if jv_raw_eq(raw,"heard") {heard=true;}else if jv_raw_eq(raw,"play") {if heard || milli<=850 {return result;}}
+    else if jv_raw_eq(raw,"soft") {if heard || milli>850 {return result;}}else {return result;}
+  }
+  a:=AnimeTakeAnswer.{raw_at=d.nodes[node].from,raw_n=d.nodes[node].to-d.nodes[node].from,value=at_fields(held),milli=milli,p=cast(f32)milli/1000,timing=timing,heard=heard};
+  if heard {flat=at_flat(d,node,0,out);if !flat.ok {return result;}}
+  return AtHeld.{ok=true,answer=a,n=flat.writer.n};
+}
+
+// F32 endpoints are promoted for the maximum identity, then narrowed back to
+// the selected endpoint. This introduces no new rounding into timeline times.
+at_latest :: (a:f32,b:f32)->f32 {aa:=cast(f64)a;bb:=cast(f64)b;return cast(f32)((aa+bb+abs(aa-bb))/2);}
+
+anime_take_load :: (input:[]u8,take:[]AnimeTake)->int {
+  if take.count<1 {return ANIME_TAKE_CAPACITY;}if input.count>ANIME_TAKE_BYTES {return ANIME_TAKE_LIMIT;}
+  nodes:[4096]JvNode;d:[1]Jv;if !at_utf8(cast(string)input,true) || !jv_parse(d[..],cast(string)input,nodes[..]) || !at_unique(d[0]) {return ANIME_TAKE_INVALID;}
+  if !at_keys(d[0],0,"schema|lines|auto|length|stage") || jv_kind(d[0],jv_get(d[0],0,"schema"))!=JV_STRING || !jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"schema")),"anime.v1") {return ANIME_TAKE_INVALID;}
+  value:AnimeTake;stage:=jv_get(d[0],0,"stage");if stage!=-1 && (jv_kind(d[0],stage)!=JV_STRING || !jv_raw_eq(jv_raw(d[0],stage),"courtyard")) {return ANIME_TAKE_INVALID;}
+  automatic:=jv_get(d[0],0,"auto");if automatic!=-1 {k:=jv_kind(d[0],automatic);if k!=JV_TRUE && k!=JV_FALSE {return ANIME_TAKE_INVALID;}value.auto_camera=k==JV_TRUE;}
+  lines:=jv_get(d[0],0,"lines");if jv_kind(d[0],lines)!=JV_ARRAY {return ANIME_TAKE_INVALID;}if jv_len(d[0],lines)>ANIME_TAKE_LINES {return ANIME_TAKE_LIMIT;}
+  transient_lines:[ANIME_TAKE_LINES]AnimeLine;transient_answers:[ANIME_TAKE_ANSWERS]string;canonical:[ANIME_TAKE_ANSWERS*512]u8;previous:f64=0;latest:f32=0;
+  for i:0..<jv_len(d[0],lines) {
+    line:=jv_at(d[0],lines,i);if !at_keys(d[0],line,"said|done|words|answers") {return ANIME_TAKE_INVALID;}
+    said:=at_time(d[0],jv_get(d[0],line,"said"));done:=at_time(d[0],jv_get(d[0],line,"done"));if said<previous || done<said || said<0 {return ANIME_TAKE_INVALID;}previous=done;
+    words_node:=jv_get(d[0],line,"words");wn:=jv_str(d[0],words_node,value.words[value.word_n..<value.word_n+ANIME_TAKE_WORD_BYTES]);if wn==-1 || !at_utf8(cast(string)value.words[value.word_n..<value.word_n+wn],true) {return ANIME_TAKE_INVALID;}
+    answers:=jv_get(d[0],line,"answers");if jv_kind(d[0],answers)!=JV_ARRAY {return ANIME_TAKE_INVALID;}count:=jv_len(d[0],answers);if value.answer_n+count>ANIME_TAKE_ANSWERS {return ANIME_TAKE_LIMIT;}
+    record:=AnimeTakeLine.{said=cast(f32)said,done=cast(f32)done,word_at=value.word_n,word_n=wn,first=value.answer_n,count=count};value.lines[i]=record;value.word_n+=wn;
+    transient_lines[i]=AnimeLine.{said=record.said,done=record.done,first=record.first,count=count};
+    for k:0..<count {index:=value.answer_n;start:=index*512;held:=at_answer(d[0],jv_at(d[0],answers,k),canonical[start..<start+512]);if !held.ok {return ANIME_TAKE_INVALID;}
+      value.answers[index]=held.answer;value.answers[index].shown=record.done+(ifx record.said<record.done then DECIDE else 0.0f32)+cast(f32)k*STAGGER;
+      transient_answers[index]=cast(string)canonical[start..<start+held.n];value.answer_n+=1;
+    }
+    value.line_n+=1;latest=record.done;
+  }
+  events:[ANIME_TAKE_EVENTS]AnimeEvent;value.event_n=anime_timeline(transient_lines[0..<value.line_n],transient_answers[0..<value.answer_n],value.auto_camera,events[..]);
+  for i:0..<value.event_n {e:=events[i];latest=at_latest(latest,e.at);value.events[i]=AnimeTakeEvent.{at=e.at,shown=e.shown,line=e.line,value=at_fields(e.d),p=e.d.p};}
+  at_length_node:=jv_get(d[0],0,"length");if at_length_node==-1 {value.length=latest+3;if value.length>ANIME_TAKE_SECONDS {return ANIME_TAKE_LENGTH;}}
+  else {seconds:=at_time(d[0],at_length_node);if seconds<=0 || seconds<previous || cast(f32)seconds<latest {return ANIME_TAKE_LENGTH;}value.length=cast(f32)seconds;}
+  for i:0..<input.count {value.source[i]=input[i];}value.source_n=input.count;value.ready=true;take[0]=value;return 0;
+}
+anime_take_line :: (take:[]AnimeTake,index:int,out:[]u8)->int {if take.count<1 {return ANIME_TAKE_INVALID;}if index<0 || index>=take[0].line_n {return ANIME_TAKE_INVALID;}l:=take[0].lines[index];return at_copy(cast(string)take[0].words[l.word_at..<l.word_at+l.word_n],out);}
+anime_take_answer_json :: (take:[]AnimeTake,index:int,out:[]u8)->int {if take.count<1 {return ANIME_TAKE_INVALID;}if index<0 || index>=take[0].answer_n {return ANIME_TAKE_INVALID;}a:=take[0].answers[index];return at_copy(cast(string)take[0].source[a.raw_at..<a.raw_at+a.raw_n],out);}
+anime_take_answer :: (take:[]AnimeTake,index:int)->AnimeDirection {if take.count<1 {return AnimeDirection.{};}if index<0 || index>=take[0].answer_n {return AnimeDirection.{};}a:=take[0].answers[index];return at_direction(a.value,a.p);}
+anime_take_events :: (take:[]AnimeTake,out:[]AnimeEvent)->int {if take.count<1 {return ANIME_TAKE_INVALID;}if out.count<take[0].event_n {return ANIME_TAKE_CAPACITY;}for i:0..<take[0].event_n {e:=take[0].events[i];out[i]=AnimeEvent.{at=e.at,shown=e.shown,line=e.line,d=at_direction(e.value,e.p)};}return take[0].event_n;}

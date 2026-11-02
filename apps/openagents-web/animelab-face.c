@@ -14,7 +14,7 @@
 
 static coax_t_Animelab *lab(uint32_t state) { return (coax_t_Animelab *)(uintptr_t)state; }
 static coax_v_t_Animelab at(uint32_t state) { return (coax_v_t_Animelab){lab(state), 1}; }
-static uint8_t inbox[16384];
+static uint8_t inbox[65536]; // full take64 URL facts; Coax admits at most 32 KiB decoded
 #define WORLD_WORDS (150000u * 6u)   /* animelab.coax WORLD_VERTICES × VERTEX_WORDS */
 #define LIVE_WORDS (150000u * 6u)    /* LIVE_VERTICES × VERTEX_WORDS */
 static uint32_t world[WORLD_WORDS];
@@ -74,4 +74,9 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) length = sizeof inbox;
   animelab_message(at(state), kind, (coax_string){(const char *)inbox, (int64_t)length});
+}
+
+EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) { return (int32_t)animelab_take_status(at(state)); }
+EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) {
+  return (int32_t)animelab_take_probe(at(state), field);
 }

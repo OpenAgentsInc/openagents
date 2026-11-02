@@ -1,0 +1,13 @@
+a3daf7c1c320baf3c657b2feafcb1ffeaad9a41d782f35db663d54ba0c149e44  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/web/anime-take-probe.coax
+abde6db3310c3df1629bb3545baa1d30d6b4fb1c6815929508e3ef7274462e70  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/tool.coax
+9432ec55610993fcd3dd772d23e9060096a1442996f471cd94fdae0509612ce3  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/args.coax
+3b187a8a24b29f003a4e4692117fd5a5fcfec12614877214f9fdef87b881ce5b  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/proc.coax
+05bb842cd742f8f22da6ab55ad119aea90159cba4eee81dbedaa134d6d65a3ea  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/sys/fs.coax
+ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/json/json.coax
+6ff3171d8b01b7ac9fc05c0229c2328b57defb0535cc4f7f0edbd77e99ae86d9  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/text/base64.coax
+5377d3f5ec8781f1d63d86c24cb7a0a96ca0103e0c83d1e518be145a2e169a1b  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/image/png.coax
+9151e5113ecb6ca43a0c14abfb62a13105e7b4921dfc7039b3ca1356a4e44a20  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/image/inflate.coax
+cdf7133f055242e3195feb21b9f4c1a84ce40168f52672f44d73e719fceb7e93  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/crypto/sha256_workspace.coax
+daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/crypto/sha256.coax
+601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/crypto/bytes.coax
+ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926  /Users/christopherdavid/.codex/worktrees/openissues-cli/openagents/coax/lib/crypto/sha256-kernel.coax

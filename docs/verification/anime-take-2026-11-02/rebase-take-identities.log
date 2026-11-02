@@ -1,0 +1,8 @@
+verse/anime/take.coax: OK
+coax/lib/json/json.coax: OK
+coax/lib/nostr/json.coax: OK
+coax/lib/nostr/fixtures/json_suite.coax: OK
+coax/lib/nostr/fixtures/coax_relay.coax: OK
+verse/anime/director.coax: OK
+verse/anime/render-profile.coax: OK
+verse/anime/take-checks.coax: OK

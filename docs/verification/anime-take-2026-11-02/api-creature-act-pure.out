@@ -1,0 +1,3 @@
+ok   #test anime fake selector creature body action retains otherwise playable confidence (1 case, 206984 steps, 3 ms)
+1 of 89 checks (--only 'anime fake selector creature body action'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

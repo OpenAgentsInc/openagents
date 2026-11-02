@@ -1,0 +1,1 @@
+{"schema":"anime.v1","stage":"courtyard","auto":false,"length":8,"lines":[{"said":0,"done":0.2,"words":"Kai casts a fireball at the gate.","answers":[{"kind":"cast","who":"hero","spell":"fireball","place":"gate","p":0.97}]},{"said":0.3,"done":0.5,"words":"Low angle on Kai.","answers":[{"kind":"shot","who":"hero","framing":"low-angle","move":"hold","p":0.99}]}]}

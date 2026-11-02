@@ -1,0 +1,250 @@
+// Independent media qualification for a supplied anime.v1 take (#12633).
+// Runs the built openagents labs shot/clip commands; Chrome stays headless and muted.
+// ANIME_TAKE_CLI=... ANIME_TAKE_BASE=http://127.0.0.1:PORT ANIME_TAKE_RECORD=DIR
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/json/json.coax";
+#load "../lib/text/base64.coax";
+#load "../lib/image/png.coax";
+#load "../lib/crypto/sha256_workspace.coax";
+
+#test "anime take probe base64url preserves caller bytes and URL size" {
+  out: [128] u8;
+  #assert atp_b64("f",out[..]) == "Zg" && atp_b64("fo",out[..]) == "Zm8" && atp_b64("foo",out[..]) == "Zm9v";
+  special := [3] u8.[251,255,255];
+  #assert atp_b64(cast(string)special[..],out[..]) == "-___";
+  #assert atp_b64("foo",out[0..<3]) == "";
+  #assert atp_url("http://127.0.0.1:8800","{}","&t=5.5&card=1",out[..]) == "http://127.0.0.1:8800/realms/anime-lab?take64=e30&t=5.5&card=1";
+}
+#test "anime take probe video oracle requires exact decoded track metadata" {
+  good := "{\"streams\":[{\"codec_type\":\"video\",\"codec_name\":\"h264\",\"pix_fmt\":\"yuv420p\",\"width\":640,\"height\":360,\"r_frame_rate\":\"12/1\",\"nb_read_frames\":\"24\"}],\"format\":{\"duration\":\"2.000000\"}}";
+  #assert atp_video(good,640,360,24);
+  #assert !atp_video(good,1280,720,24) && !atp_video(good,640,360,23) && !atp_video("{}",640,360,24);
+  audio := "{\"streams\":[{\"codec_type\":\"audio\"},{\"codec_type\":\"video\",\"codec_name\":\"h264\",\"pix_fmt\":\"yuv420p\",\"width\":640,\"height\":360,\"r_frame_rate\":\"12/1\",\"nb_read_frames\":\"24\"}],\"format\":{\"duration\":\"2.0\"}}";
+  #assert !atp_video(audio,640,360,24);
+}
+#test "anime take probe pixels distinguish equality, changes and lossy codec error" {
+  a := [8] u8.[10,20,30,255,100,110,120,255]; b := a; b[0] = 14;
+  #assert atp_changed(a[..],a[..]) == 0 && atp_changed(a[..],b[..]) == 1;
+  #assert atp_changed(a[..],b[0..<4]) == -1;
+  #assert atp_rgb_error(a[..],b[..]) > 0.66 && atp_rgb_error(a[..],b[..]) < 0.67;
+}
+#test "anime take probe page oracle binds source and heard-only execution counts" {
+  good := "{\"ready\":true,\"width\":640,\"height\":360,\"fields\":[1,3,3,2,8000,1,713,5500]}";
+  #assert atp_page_context(good,3,3,2,1,713,5500);
+  #assert !atp_page_context(good,3,3,3,1,713,5500) && !atp_page_context(good,3,3,2,0,713,5500);
+  #assert !atp_page_context(good,3,3,2,1,32768,5500) && !atp_page_context(good,3,3,2,1,713,1200);
+  #assert !atp_page_context("{}",3,3,2,1,713,5500);
+}
+atp_page_context :: (s: string, lines: int, answers: int, events: int, heard: int, source: int, time: int) -> bool {
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..],s,nodes[..]) || jv_kind(d[0],jv_get(d[0],0,"ready")) != JV_TRUE || jv_int(d[0],jv_get(d[0],0,"width"),0) != 640 || jv_int(d[0],jv_get(d[0],0,"height"),0) != 360 { return false; }
+  f := jv_get(d[0],0,"fields"); expected := [8] int.[1,lines,answers,events,8000,heard,source,time];
+  if jv_kind(d[0],f) != JV_ARRAY || jv_len(d[0],f) != 8 { return false; }
+  for i: 0..<8 { if jv_int(d[0],jv_at(d[0],f,i),-999) != expected[i] { return false; } } return true;
+}
+
+atp_b64 :: (s: string, out: [] u8) -> string {
+  n := b64_encode(s,out); if n < 0 { return ""; }
+  for i: 0..<n { if out[i] == '+' { out[i] = '-'; } else if out[i] == '/' { out[i] = '_'; } }
+  while n > 0 && out[n-1] == '=' { n -= 1; } return cast(string)out[0..<n];
+}
+atp_put :: (out: [] u8, n: int, s: string) -> int {
+  if n < 0 || n+s.count > out.count { return -1; }
+  for i: 0..<s.count { out[n+i] = s[i]; } return n+s.count;
+}
+atp_url :: (base: string, take: string, suffix: string, out: [] u8) -> string {
+  b: [43696] u8; code := atp_b64(take,b[..]);
+  if code == "" { return ""; }
+  n := atp_put(out,0,base); n = atp_put(out,n,"/realms/anime-lab?take64="); n = atp_put(out,n,code); n = atp_put(out,n,suffix);
+  return ifx n >= 0 then cast(string)out[0..<n] else "";
+}
+atp_video :: (s: string, w: int, h: int, count: int) -> bool {
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..],s,nodes[..]) { return false; }
+  streams := jv_get(d[0],0,"streams");
+  if jv_kind(d[0],streams) != JV_ARRAY || jv_len(d[0],streams) != 1 { return false; }
+  v := jv_at(d[0],streams,0); dur := args_number(jv_raw(d[0],jv_path(d[0],0,"format.duration")));
+  return jv_raw(d[0],jv_get(d[0],v,"codec_type")) == "video" && jv_raw(d[0],jv_get(d[0],v,"codec_name")) == "h264" && jv_raw(d[0],jv_get(d[0],v,"pix_fmt")) == "yuv420p" && jv_int(d[0],jv_get(d[0],v,"width"),0) == w && jv_int(d[0],jv_get(d[0],v,"height"),0) == h && jv_raw(d[0],jv_get(d[0],v,"r_frame_rate")) == "12/1" && args_whole(jv_raw(d[0],jv_get(d[0],v,"nb_read_frames"))) == count && dur.ok && dur.value > cast(f64)count/12.0-0.001 && dur.value < cast(f64)count/12.0+0.001;
+}
+atp_changed :: (a: [] u8, b: [] u8) -> int {
+  if a.count != b.count { return -1; }
+  n := 0; for i: 0..<a.count { if a[i] != b[i] { n += 1; } } return n;
+}
+atp_rgb_error :: (a: [] u8, b: [] u8) -> f64 {
+  if a.count != b.count || a.count < 4 || a.count%4 != 0 { return -1.0; }
+  sum := 0;
+  for i: 0..<a.count { if i%4 != 3 { d := cast(int)a[i]-cast(int)b[i]; sum += ifx d < 0 then -d else d; } }
+  return cast(f64)sum/cast(f64)(a.count/4*3);
+}
+
+ATP_TAKE :: "{\"schema\":\"anime.v1\",\"stage\":\"courtyard\",\"auto\":false,\"length\":8,\"lines\":[{\"said\":0,\"done\":0.2,\"words\":\"Kai casts a fireball at the gate.\",\"answers\":[{\"kind\":\"cast\",\"who\":\"hero\",\"spell\":\"fireball\",\"place\":\"gate\",\"p\":0.97}]},{\"said\":0.3,\"done\":0.5,\"words\":\"Low angle on Kai.\",\"answers\":[{\"kind\":\"shot\",\"who\":\"hero\",\"framing\":\"low-angle\",\"move\":\"hold\",\"p\":0.99}]},{\"said\":0.7,\"done\":0.9,\"words\":\"A paper whale floats overhead.\",\"answers\":[{\"kind\":\"make\",\"what\":\"paper whale\",\"like\":\"creature\",\"place\":\"sky\",\"p\":0.99,\"stock\":false,\"render_supported\":false,\"decision\":\"heard\"}]}]}";
+ATP_WITHOUT_MAKE :: "{\"schema\":\"anime.v1\",\"stage\":\"courtyard\",\"auto\":false,\"length\":8,\"lines\":[{\"said\":0,\"done\":0.2,\"words\":\"Kai casts a fireball at the gate.\",\"answers\":[{\"kind\":\"cast\",\"who\":\"hero\",\"spell\":\"fireball\",\"place\":\"gate\",\"p\":0.97}]},{\"said\":0.3,\"done\":0.5,\"words\":\"Low angle on Kai.\",\"answers\":[{\"kind\":\"shot\",\"who\":\"hero\",\"framing\":\"low-angle\",\"move\":\"hold\",\"p\":0.99}]}]}";
+ATP_SUFFIX :: "&t=5.5&card=1&clock=0.78";
+ATP_EVAL :: "JSON.stringify({ready:coaxial.ready,sceneReady:coaxial.sceneReady,probe:coaxial.probe(),fields:[0,1,2,3,4,5,6,7].map(i=>coaxial.guardProbe(i)),width:document.querySelector('canvas').width,height:document.querySelector('canvas').height})";
+Atp :: struct { cli: string; base: string; dir: string; pass: int; fail: int; end_ms: int; }
+cxproc_self_path :: (out: [] u8) -> int #foreign;
+atp_timeout :: (t: [] Atp, wanted: int) -> int { left := t[0].end_ms-proc_now_ms(); return ifx left < 1 then 1 else ifx left < wanted then left else wanted; }
+atp_path :: (t: [] Atp, name: string, out: [] u8) -> string { return fs_join(t[0].dir,name,out); }
+atp_check :: (t: [] Atp, name: string, ok: bool) {
+  if ok { t[0].pass += 1; print("ok %\n",name); } else { t[0].fail += 1; print("FAIL %\n",name); }
+}
+atp_write :: (t: [] Atp, name: string, body: string) -> bool { p: [4096] u8; return fs_write(atp_path(t,name,p[..]),body); }
+atp_run :: (t: [] Atp, a: [] Args, name: string, cached: bool) -> bool {
+  so: [131072] u8; se: [65536] u8; r := proc_run(a[0].v[0..<a[0].n],atp_timeout(t,120000),so[..],se[..]);
+  path: [128] u8; sn := atp_put(path[..],0,name); sn = atp_put(path[..],sn,".cli.json");
+  written := atp_write(t,cast(string)path[0..<sn],cast(string)so[0..<r.out_n]);
+  sn = atp_put(path[..],0,name); sn = atp_put(path[..],sn,".stderr.log"); written = atp_write(t,cast(string)path[0..<sn],cast(string)se[0..<r.err_n]) && written;
+  nodes: [256] JvNode; d: [1] Jv;
+  valid := written && r.started == 0 && r.status == 0 && !r.timed_out && jv_parse(d[..],cast(string)so[0..<r.out_n],nodes[..]) && jv_kind(d[0],jv_get(d[0],0,"ok")) == JV_TRUE && jv_kind(d[0],jv_get(d[0],0,"cached")) == (ifx cached then JV_TRUE else JV_FALSE);
+  label: [4200] u8; label_n := atp_put(label[..],0,args_at(a,5)); label_n = atp_put(label[..],label_n,".json");
+  label_bytes: [65536] u8; ln := ifx label_n > 0 then fs_read(cast(string)label[0..<label_n],label_bytes[..]) else -1;
+  label_nodes: [128] JvNode; ld: [1] Jv;
+  valid = valid && ln > 0 && jv_parse(ld[..],cast(string)label_bytes[0..<ln],label_nodes[..]);
+  if valid {
+    page := jv_raw(ld[0],jv_get(ld[0],0,"page"));
+    valid = page.count == 71 && page[0..<7] == "sha256:";
+    if valid { for c: page[7..<page.count] { valid = ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) && valid; } }
+  }
+  if !valid || args_at(a,3) != "shot" || name == "shot-default" { return valid; }
+  value: [4096] u8; vn := jv_str(d[0],jv_get(d[0],0,"eval"),value[..]); if vn < 0 { return false; }
+  without := name == "shot-without-make" || name == "shot-caption-control";
+  count := ifx without then 2 else 3; heard := ifx without then 0 else 1;
+  bytes := ifx name == "shot-max-a" || name == "shot-max-b" then 32768 else ifx without then ATP_WITHOUT_MAKE.count else ATP_TAKE.count;
+  time := ifx name == "shot-caption" || name == "shot-caption-control" then 1200 else 5500;
+  return atp_page_context(cast(string)value[0..<vn],count,count,2,heard,bytes,time);
+}
+atp_shot :: (t: [] Atp, url: string, name: string, out_name: string, fresh: bool) -> bool {
+  a: [1] Args; path: [4096] u8;
+  ok := args_add(a[..],t[0].cli) && args_add(a[..],"--json") && args_add(a[..],"labs") && args_add(a[..],"shot") && args_add(a[..],url) && args_add(a[..],atp_path(t,out_name,path[..]));
+  for arg: [6] string.["--size","640x360","--wait","5000","--eval",ATP_EVAL] { ok = args_add(a[..],arg) && ok; }
+  if fresh { ok = args_add(a[..],"--fresh") && ok; }
+  return ok && atp_run(t,a[..],name,false);
+}
+atp_clip :: (t: [] Atp, url: string, name: string, out_name: string, frames_name: string) -> bool {
+  a: [1] Args; path: [4096] u8; fp: [4096] u8;
+  ok := args_add(a[..],t[0].cli) && args_add(a[..],"--json") && args_add(a[..],"labs") && args_add(a[..],"clip") && args_add(a[..],url) && args_add(a[..],atp_path(t,out_name,path[..]));
+  for arg: [13] string.["--size","640x360","--seconds","2","--fps","12","--eval","coaxial.send(700, '-1')","--frames",atp_path(t,frames_name,fp[..]),"--fresh","--skip","0"] { ok = args_add(a[..],arg) && ok; }
+  return ok && atp_run(t,a[..],name,false);
+}
+atp_sha :: (data: [] u8, out: [] u8) -> string {
+  h: [32] u8; work: [1] ShaOwned; digits := "0123456789abcdef";
+  if out.count < 64 || !so_init(work[..]) || !so_update(work[..],data,false) || !so_finish(work[..],h[..],false) { return ""; }
+  for i: 0..<32 { out[2*i] = digits[cast(int)(h[i]>>4)]; out[2*i+1] = digits[cast(int)(h[i]&15)]; } return cast(string)out[0..<64];
+}
+atp_pixels :: (path: string, out: [] u8) -> bool {
+  file: [1048576] u8; work: [2097152] u8; n := fs_read(path,file[..]); if n < 1 { return false; }
+  info := png_info(file[0..<n]);
+  return info.status == PNG_OK && info.w == 640 && info.h == 360 && info.work <= work.count && png_decode(file[0..<n],work[..],out) == PNG_OK;
+}
+atp_pair :: (t: [] Atp, an: string, bn: string, equality: bool, name: string) {
+  a: [640*360*4] u8; b: [640*360*4] u8; ap: [4096] u8; bp: [4096] u8;
+  read := atp_pixels(atp_path(t,an,ap[..]),a[..]) && atp_pixels(atp_path(t,bn,bp[..]),b[..]);
+  changed := ifx read then atp_changed(a[..],b[..]) else -1;
+  atp_check(t,name,read && (ifx equality then changed == 0 else changed > 1000));
+  report: [1024] u8; o: [1] Jo; ah: [64] u8; bh: [64] u8;
+  jo_start(o[..],report[..]); jo_obj(o[..]); jo_key(o[..],"a"); jo_str(o[..],an); jo_key(o[..],"b"); jo_str(o[..],bn);
+  jo_key(o[..],"changed_rgba_bytes"); jo_int(o[..],changed); jo_key(o[..],"a_rgba_sha256"); jo_str(o[..],ifx read then atp_sha(a[..],ah[..]) else ""); jo_key(o[..],"b_rgba_sha256"); jo_str(o[..],ifx read then atp_sha(b[..],bh[..]) else ""); jo_end(o[..]);
+  nn: [128] u8; k := atp_put(nn[..],0,name); k = atp_put(nn[..],k,".json"); written := atp_write(t,cast(string)nn[0..<k],jo_text(o[..]));
+  if !written { t[0].fail += 1; }
+}
+atp_frame :: (i: int, out: [] u8) -> string {
+  digits := "0123456789"; n := atp_put(out,0,"f000"); n = atp_put(out,n,cast(string)digits[i/10..<i/10+1]); n = atp_put(out,n,cast(string)digits[i%10..<i%10+1]); n = atp_put(out,n,".png"); return cast(string)out[0..<n];
+}
+atp_frames :: (t: [] Atp) {
+  all := true; data: [8192] u8; o: [1] Jo; jo_start(o[..],data[..]); jo_arr(o[..]);
+  for i: 0..<24 {
+    name: [32] u8; frame := atp_frame(i,name[..]); ap: [4096] u8; bp: [4096] u8; ad: [4096] u8; bd: [4096] u8;
+    a: [640*360*4] u8; b: [640*360*4] u8;
+    read := atp_pixels(fs_join(atp_path(t,"frames-a",ad[..]),frame,ap[..]),a[..]) && atp_pixels(fs_join(atp_path(t,"frames-b",bd[..]),frame,bp[..]),b[..]);
+    equal := read && atp_changed(a[..],b[..]) == 0; all = equal && all;
+    digest: [64] u8; jo_obj(o[..]); jo_key(o[..],"frame"); jo_int(o[..],i); jo_key(o[..],"equal"); jo_bool(o[..],equal); jo_key(o[..],"rgba_sha256"); jo_str(o[..],ifx read then atp_sha(a[..],digest[..]) else ""); jo_end(o[..]);
+  }
+  jo_end(o[..]); written := atp_write(t,"frame-pair.json",jo_text(o[..])); atp_check(t,"24 decoded frames are deterministic across fresh CLI recordings",all && written && !o[0].bad);
+}
+atp_video_check :: (t: [] Atp) {
+  path: [4096] u8; so: [65536] u8; se: [4096] u8;
+  argv := [9] string.["ffprobe","-v","error","-count_frames","-show_streams","-show_format","-of","json",atp_path(t,"take-a.mp4",path[..])];
+  r := proc_run(argv[..],atp_timeout(t,15000),so[..],se[..]); written := atp_write(t,"ffprobe.json",cast(string)so[0..<r.out_n]);
+  atp_check(t,"actual MP4 has 24 H264 yuv420p frames at 640x360 12fps and no audio",written && r.status == 0 && atp_video(cast(string)so[0..<r.out_n],640,360,24));
+  decoded: [4096] u8; args := [10] string.["ffmpeg","-v","error","-y","-i",atp_path(t,"take-a.mp4",path[..]),"-frames:v","1","-update","1"];
+  a: [1] Args; ok := true; for arg: args { ok = args_add(a[..],arg) && ok; } ok = args_add(a[..],atp_path(t,"decoded-first.png",decoded[..])) && ok;
+  d := proc_run(a[0].v[0..<a[0].n],atp_timeout(t,15000),so[..],se[..]);
+  px: [640*360*4] u8; source: [640*360*4] u8; frame: [4096] u8;
+  read := d.status == 0 && atp_pixels(atp_path(t,"decoded-first.png",decoded[..]),px[..]) && atp_pixels(atp_path(t,"frames-a/f00000.png",frame[..]),source[..]);
+  error := ifx read then atp_rgb_error(source[..],px[..]) else -1.0;
+  atp_check(t,"independent ffmpeg decode preserves first-frame pixels within H264 loss",ok && read && error >= 0.0 && error < 12.0);
+  print("decoded first-frame RGB mean absolute error %\n",error);
+}
+// The probe itself is a Chrome sentinel for this one negative-control child.
+// If the CLI starts Chrome before refusing the oversized canonical cache input,
+// the sentinel records that host effect and returns immediately; no browser runs.
+atp_input_refusal :: (t: [] Atp, url: string) {
+  script: [25000] u8; for i: 0..<script.count { script[i] = 'x'; } script[0] = '"'; script[24999] = '"';
+  path: [4096] u8; marker: [4096] u8; self: [4096] u8; sn := cxproc_self_path(self[..]);
+  a: [1] Args; ok := args_add(a[..],t[0].cli) && args_add(a[..],"--json") && args_add(a[..],"labs") && args_add(a[..],"shot") && args_add(a[..],url) && args_add(a[..],atp_path(t,"refused.png",path[..]));
+  for arg: [4] string.["--eval",cast(string)script[..],"--fresh","--phone"] { ok = args_add(a[..],arg) && ok; }
+  h := proc_new(); ok = h >= 0 && sn > 0 && ok;
+  for arg: a[0].v[0..<a[0].n] { ok = proc_arg(h,arg) && ok; }
+  env: [8192] u8; n := atp_put(env[..],0,"CHROME="); n = atp_put(env[..],n,cast(string)self[0..<(ifx sn > 0 then sn else 0)]); ok = proc_env(h,cast(string)env[0..<n]) && ok;
+  n = atp_put(env[..],0,"ANIME_TAKE_CHROME_SENTINEL="); n = atp_put(env[..],n,atp_path(t,"unexpected-chrome-launch.txt",marker[..])); ok = proc_env(h,cast(string)env[0..<n]) && ok;
+  started := ok && proc_start(h) == 0; line: [4096] u8; ln := ifx started then proc_line(h,atp_timeout(t,30000),line[..]) else -1;
+  status := ifx started then proc_wait(h,1000) else -1; if h >= 0 { if status == PROC_RUNNING { killed := proc_kill(h,PROC_SIGKILL); } done := proc_release(h); }
+  nodes: [64] JvNode; d: [1] Jv;
+  refused := ln > 0 && jv_parse(d[..],cast(string)line[0..<ln],nodes[..]) && jv_kind(d[0],jv_get(d[0],0,"ok")) == JV_FALSE;
+  written := atp_write(t,"combined-input-refusal.cli.json",ifx ln > 0 then cast(string)line[0..<ln] else "{}");
+  atp_check(t,"oversized URL plus eval refuses usage2 before Chrome and output",written && started && status == 2 && refused && !fs_exists(atp_path(t,"refused.png",path[..])) && !fs_exists(atp_path(t,"unexpected-chrome-launch.txt",marker[..])));
+}
+
+tool_main :: () -> int #export_c {
+  marker: [4096] u8; sentinel := proc_getenv("ANIME_TAKE_CHROME_SENTINEL",marker[..]);
+  if sentinel != "" { wrote := fs_write(sentinel,"The CLI started Chrome before refusing its oversized input.\n"); return 99; }
+  t: [1] Atp; cli: [4096] u8; base: [512] u8; dir: [4096] u8; t[0].end_ms = proc_now_ms()+780000;
+  t[0].cli = proc_getenv("ANIME_TAKE_CLI",cli[..]); t[0].base = proc_getenv("ANIME_TAKE_BASE",base[..]); t[0].dir = proc_getenv("ANIME_TAKE_RECORD",dir[..]);
+  if t[0].cli == "" || t[0].dir == "" || t[0].base.count < 18 || t[0].base[0..<17] != "http://127.0.0.1:" { tool_errln("set ANIME_TAKE_CLI, loopback ANIME_TAKE_BASE and ANIME_TAKE_RECORD"); return 2; }
+  if !fs_mkdir(t[0].dir) { return 1; }
+  mode_buf: [32] u8; mode := proc_getenv("ANIME_TAKE_ONLY",mode_buf[..]);
+  if mode != "" && mode != "shots" && mode != "clips" && mode != "transport" && mode != "refusal" { return 2; }
+  wrote := atp_write(t[..],"take.json",ATP_TAKE) && atp_write(t[..],"take-without-make.json",ATP_WITHOUT_MAKE);
+  if !wrote { return 1; }
+  ub: [65536] u8; nb: [65536] u8; db: [1024] u8;
+  url := atp_url(t[0].base,ATP_TAKE,ATP_SUFFIX,ub[..]); no_make := atp_url(t[0].base,ATP_WITHOUT_MAKE,ATP_SUFFIX,nb[..]);
+  dn := atp_put(db[..],0,t[0].base); dn = atp_put(db[..],dn,"/realms/anime-lab?t=5.5&card=1&clock=0.78"); default_url := cast(string)db[0..<dn];
+  if mode == "" || mode == "shots" {
+  atp_check(t[..],"CLI renders a supplied take",atp_shot(t[..],url,"shot-take-a","take-a.png",true));
+  atp_check(t[..],"fresh paired fixed-time capture completes",atp_shot(t[..],url,"shot-take-b","take-b.png",true));
+  atp_check(t[..],"default control capture completes",atp_shot(t[..],default_url,"shot-default","default.png",true));
+  atp_check(t[..],"heard-only make control capture completes",atp_shot(t[..],no_make,"shot-without-make","without-make.png",true));
+  atp_pair(t[..],"take-a.png","take-b.png",true,"pinned-determinism");
+  atp_pair(t[..],"take-a.png","default.png",false,"custom-differs-from-default");
+  atp_pair(t[..],"take-a.png","without-make.png",true,"heard-make-does-not-draw-an-asset");
+  overlay: [65536] u8; overlay_no_make: [65536] u8;
+  overlay_url := atp_url(t[0].base,ATP_TAKE,"&t=1.2&clock=0.78",overlay[..]); overlay_control := atp_url(t[0].base,ATP_WITHOUT_MAKE,"&t=1.2&clock=0.78",overlay_no_make[..]);
+  atp_check(t[..],"heard-only caption capture completes",atp_shot(t[..],overlay_url,"shot-caption","caption.png",true));
+  atp_check(t[..],"caption control capture completes",atp_shot(t[..],overlay_control,"shot-caption-control","caption-control.png",true));
+  atp_pair(t[..],"caption.png","caption-control.png",false,"heard-make-remains-visible-caption-data");
+  }
+  if mode == "" || mode == "clips" {
+  cb: [65536] u8; clip_url := atp_url(t[0].base,ATP_TAKE,"&card=1&clock=0.78",cb[..]);
+  atp_check(t[..],"CLI records supplied take A",atp_clip(t[..],clip_url,"clip-a","take-a.mp4","frames-a"));
+  atp_check(t[..],"CLI records supplied take B for deterministic comparison",atp_clip(t[..],clip_url,"clip-b","take-b.mp4","frames-b"));
+  atp_frames(t[..]); atp_video_check(t[..]);
+  }
+  if mode == "" || mode == "transport" || mode == "refusal" {
+  padded: [32768] u8; for i: 0..<padded.count { padded[i] = ' '; } for i: 0..<ATP_TAKE.count { padded[i] = ATP_TAKE[i]; }
+  big: [65536] u8; big_url := atp_url(t[0].base,cast(string)padded[..],ATP_SUFFIX,big[..]);
+  wrote = atp_write(t[..],"take-max-32768.json",cast(string)padded[..]);
+  if mode != "refusal" {
+  atp_check(t[..],"32768-byte take crosses actual CLI browser and page inbox",wrote && big_url.count > 43000 && atp_shot(t[..],big_url,"shot-max-a","max.png",true));
+  atp_pair(t[..],"take-a.png","max.png",true,"max-size-transport-preserves-take");
+  padded[32767] = '\n'; big_url = atp_url(t[0].base,cast(string)padded[..],ATP_SUFFIX,big[..]);
+  wrote = atp_write(t[..],"take-max-32768-other-url.json",cast(string)padded[..]);
+  atp_check(t[..],"long URLs sharing their first 8KB keep distinct cache identities",wrote && atp_shot(t[..],big_url,"shot-max-b","max.png",false));
+  }
+  if mode == "" || mode == "refusal" { atp_input_refusal(t[..],big_url); }
+  }
+  print("% anime take media checks passed, % failed\n",t[0].pass,t[0].fail);
+  return ifx t[0].fail == 0 then 0 else 1;
+}

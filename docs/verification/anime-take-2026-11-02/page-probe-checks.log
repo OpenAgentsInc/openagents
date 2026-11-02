@@ -1,0 +1,3 @@
+ok   #test custom take page probe exposes accepted retained and refused take facts (1 case, 1114921 steps, 24 ms)
+1 of 179 checks (--only 'custom take page probe'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

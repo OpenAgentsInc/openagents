@@ -1,0 +1,7 @@
+ok   #test API anime render matrix covers every pose spell transition beat and absent implementation (1 case, 7511 steps, 0 ms)
+ok   #test API anime render matrix covers enter archetype count how and every place (1 case, 103868 steps, 2 ms)
+ok   #test API anime render matrix covers framing subject place and all six camera moves (1 case, 115702 steps, 1 ms)
+ok   #test API anime render matrix covers every effect place and explicit or absent size (1 case, 60831 steps, 1 ms)
+ok   #test API anime render matrix refuses body references without a creature mesh (1 case, 19585 steps, 0 ms)
+5 of 153 checks (--only 'API anime render matrix'), 5 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
