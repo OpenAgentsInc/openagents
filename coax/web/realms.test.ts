@@ -56,6 +56,7 @@ test("refuses a painterly realm whose WGSL has no style block", () => {
   writeFileSync(join(site, "fairy.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "waterlab.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   writeFileSync(join(site, "orbitleague.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
+  writeFileSync(join(site, "animelab.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   expect(check(() => {}, { site, styleBlock: true })).toThrow(/everglade.wgsl has no style block/)
   writeFileSync(join(site, "everglade.wgsl"), `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`)
   expect(check(() => {}, { site, styleBlock: true })).not.toThrow()
@@ -106,7 +107,7 @@ test("an anime realm, or an anime zone, needs the style block in its WGSL", () =
   const site = mkdtempSync(join(tmpdir(), "realms-site-"))
   const packs = mkdtempSync(join(tmpdir(), "realms-packs-"))
   const block = `${STYLE_BLOCK} (x) by coax wgsl; do not edit\n// ---- end generated\n`
-  for (const m of ["everglade", "villa", "fairy", "waterlab", "orbitleague"]) writeFileSync(join(site, `${m}.wgsl`), block)
+  for (const m of ["everglade", "villa", "fairy", "waterlab", "orbitleague", "animelab"]) writeFileSync(join(site, `${m}.wgsl`), block)
   const t = table()
   const fixture = t.worlds.find((w: any) => w.id === "fixture").realm.module
   writeFileSync(join(site, `${fixture}.wgsl`), "// no block\n")
