@@ -192,6 +192,26 @@
       ]
     },
     {
+      "source": "psionic/examples/ministral.coax",
+      "chapter": "psionic/book/ch081-execute-ministral-4.md",
+      "stdout": "psionic/fixtures/ministral.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/ministral-refuse.coax",
+      "chapter": "psionic/book/ch081-execute-ministral-4.md",
+      "stdout": "psionic/fixtures/ministral-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/int8-products.coax",
       "chapter": "psionic/book/ch048-integer-matrix-products.md",
       "stdout": "psionic/fixtures/int8-products.out",

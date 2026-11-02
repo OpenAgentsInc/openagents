@@ -88,7 +88,7 @@
 - [79. Serve Responses](ch079-serve-responses.md)
 - [80. Two models, one card](ch080-two-models-one-card.md)
 
-- [81. Execute Ministral 4](ch081-execute-ministral-4.md) — design draft
+- [81. Execute Ministral 4](ch081-execute-ministral-4.md) — partly implemented
 - [82. Original FP8 weights](ch082-original-fp8-weights.md) — partly implemented
 - [83. A coding agent](ch083-a-coding-agent.md) — design draft
 - [84. Attention through a latent](ch084-attention-through-a-latent.md) — partly implemented
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–57, 59–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–153, 156–159, 162, 163, 165, 167–173, 175–183, 188, 195, 196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–57, 59–73, 75, 77–82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–153, 156–159, 162, 163, 165, 167–173, 175–183, 188, 195, 196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

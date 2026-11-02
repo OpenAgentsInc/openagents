@@ -1,0 +1,33 @@
+// Chapter 81: the pinned Ministral 3 3B inventory, Tekken and the chat
+// format on fixture text, the YaRN frequencies, and greedy tokens from the
+// two-layer synthetic model with Ministral's structure.
+#import "Basic";
+#load "../lib/ministral.coax";
+
+// book:begin run
+main :: () {
+    r:=ms_inventory(MS_3B,MS_PINNED_MANIFEST);
+    print("checkpoint %: % tensors, % text parameters, % image tensors: %\n",cast(string)MS_PINNED_REVISION[0..<8],MS_PINNED_TENSORS,r.written,r.cause,r.status);
+
+    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
+    for k:0..<3 {
+        e:=ms_encode(t,MS_TEKKEN_TEXTS[k],ids[..]);print("tekken %:",k);
+        for i:0..<e.written {print(" %",ids[i]);}print("\n");
+    }
+    c:=ms_chat(t,"Hello, world!","What is the capital of France?",ids[..]);print("chat (% tokens):",c.written);
+    for i:0..<c.written {print(" %",ids[i]);}print("\n");
+
+    f:[64]f64;ms_rope_frequencies(128,f[..]);
+    print("yarn: f0 % f20 % f37*16 % f63*16 %\n",f[0],f[20],f[37]*16,f[63]*16);
+
+    s:=ms_tiny();bytes:[MS_TINY_BYTES]u8;m:=ms_tiny_weights(bytes[..]);layers:=m.layers;
+    tokens:[8]int;n:=3;tokens[0]=1;tokens[1]=3;tokens[2]=7;hidden:[128]f32;logits:[16]f32;work:[256]f32;
+    print("tiny prompt: 1 3 7, greedy:");
+    while n<8 {
+        g:=ms_forward(s,m.embed,m.norm,layers[..],tokens[0..<n],hidden[0..<2*n*8],logits[..],work[..]);
+        if g.status!=MsStatus.ok {print(" refused %\n",g.status);return;}
+        tokens[n]=ms_argmax(logits[..]);print(" %",tokens[n]);n+=1;
+    }
+    print("\n");
+}
+// book:end run

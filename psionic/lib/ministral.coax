@@ -1,0 +1,644 @@
+// Chapter 81: Ministral 3 3B (Ministral-3-3B-Instruct-2512-BF16) on the
+// CPU. The pinned checkpoint's inventory, Tekken's byte-pair encoding of
+// ASCII text over original ranks, Mistral's plain chat format, YaRN rotary
+// frequencies with Llama 4 query scaling, and one dense grouped-query
+// decoder layer and readout over original BF16 bytes.
+#load "qwen-matvec.coax";
+#load "../fixtures/ministral-manifest.coax";
+#load "../fixtures/ministral-tekken.coax";
+#load "../fixtures/ministral-tiny.coax";
+
+MsStatus :: enum u8 {ok;shape;capacity;number;unsupported;range;checkpoint;}
+MsResult :: struct {status:MsStatus;written:int;cause:int;}
+
+// book:begin shape
+// The text decoder's sizes. Ministral 3 3B: 26 layers of width 3072, 32
+// query heads and 8 key-value heads of 128, a SwiGLU block of 9216, and a
+// 131,072-entry vocabulary whose embedding is also the readout.
+MsShape :: struct {width:int;layers:int;heads:int;kv_heads:int;head_dim:int;hidden:int;vocab:int;}
+MS_3B :: MsShape.{width=3072,layers=26,heads=32,kv_heads=8,head_dim=128,hidden=9216,vocab=131072};
+// Rotary and normalization constants from params.json.
+MS_THETA :: 1000000.0;
+MS_FACTOR :: 16.0;
+MS_ORIGINAL :: 16384;
+MS_BETA_FAST :: 32.0;
+MS_BETA_SLOW :: 1.0;
+MS_LLAMA4_BETA :: 0.1;
+MS_EPSILON :: 0.00001;
+MS_SPECIALS :: 1000;
+MS_TOKENS_MAX :: 64;
+ms_shape_valid :: (s:MsShape)->bool {
+    if s.width<1 || s.width>8192 || s.layers<1 || s.hidden<1 || s.hidden>32768 || s.vocab<1 {return false;}
+    if s.kv_heads<1 || s.heads<s.kv_heads || s.heads%s.kv_heads!=0 || s.heads>128 {return false;}
+    half:=s.head_dim/2;return half*2==s.head_dim && half>=1 && half<=128;
+}
+// book:end shape
+
+#test "the pinned shape and its refusals" {
+    #assert ms_shape_valid(MS_3B) && ms_shape_valid(ms_tiny());
+    s:=MS_3B;s.heads=30;#assert !ms_shape_valid(s);
+    s=MS_3B;s.head_dim=127;#assert !ms_shape_valid(s);
+    s=MS_3B;s.head_dim=258;#assert !ms_shape_valid(s);
+    s=MS_3B;s.head_dim=256;#assert ms_shape_valid(s);
+    s=MS_3B;s.head_dim=0;#assert !ms_shape_valid(s);
+    s=MS_3B;s.kv_heads=0;#assert !ms_shape_valid(s);
+    s=MS_3B;s.kv_heads=64;#assert !ms_shape_valid(s);
+    s=MS_3B;s.width=0;#assert !ms_shape_valid(s);
+    s=MS_3B;s.width=8193;#assert !ms_shape_valid(s);
+    s=MS_3B;s.width=8192;#assert ms_shape_valid(s);
+    s=MS_3B;s.layers=0;#assert !ms_shape_valid(s);
+    s=MS_3B;s.hidden=0;#assert !ms_shape_valid(s);
+    s=MS_3B;s.hidden=32769;#assert !ms_shape_valid(s);
+    s=MS_3B;s.hidden=32768;#assert ms_shape_valid(s);
+    s=MS_3B;s.vocab=0;#assert !ms_shape_valid(s);
+    s=MS_3B;s.heads=128;s.kv_heads=1;#assert ms_shape_valid(s);
+    s.heads=129;#assert !ms_shape_valid(s);
+    one:=MsShape.{width=1,layers=1,heads=1,kv_heads=1,head_dim=2,hidden=1,vocab=1};#assert ms_shape_valid(one);
+    s=one;s.heads=0;#assert !ms_shape_valid(s);
+    s=one;s.heads=2;s.kv_heads=2;#assert ms_shape_valid(s);
+}
+
+// ---- the checkpoint --------------------------------------------------------
+
+// book:begin inventory
+// One expected text tensor: e in 0..<2+9*layers. Layer tensors come nine to
+// a layer in a fixed order; all are BF16.
+MsTensor :: struct {name:string;layer:int;rank:int;rows:int;cols:int;}
+MS_LAYER_NAMES :: [9]string.[".attention.wk.weight",".attention.wo.weight",".attention.wq.weight",".attention.wv.weight",
+    ".attention_norm.weight",".feed_forward.w1.weight",".feed_forward.w2.weight",".feed_forward.w3.weight",".ffn_norm.weight"];
+ms_expected_count :: (s:MsShape)->int {return 2+9*s.layers;}
+ms_expected :: (s:MsShape,e:int)->MsTensor {
+    if e==0 {return MsTensor.{name="norm.weight",layer=-1,rank=1,rows=s.width};}
+    if e==1 {return MsTensor.{name="tok_embeddings.weight",layer=-1,rank=2,rows=s.vocab,cols=s.width};}
+    k:=(e-2)%9;t:=MsTensor.{name=MS_LAYER_NAMES[k],layer=(e-2)/9,rank=2,rows=s.width,cols=s.width};
+    q:=s.heads*s.head_dim;kv:=s.kv_heads*s.head_dim;
+    if k==0 || k==3 {t.rows=kv;}
+    if k==1 {t.cols=q;}
+    if k==2 {t.rows=q;}
+    if k==4 || k==8 {t.rank=1;}
+    if k==5 || k==7 {t.rows=s.hidden;}
+    if k==6 {t.cols=s.hidden;}
+    return t;
+}
+ms_put :: (out:[]u8,n:int,s:string)->int {for i:0..<s.count {out[n+i]=s[i];}return n+s.count;}
+ms_put_int :: (out:[]u8,n:int,v:int)->int {
+    digits:[20]u8;k:=0;x:=v;
+    while true {digits[k]=cast(u8)('0'+x%10);k+=1;x/=10;if x==0 {break;}}
+    m:=n;while k>0 {k-=1;out[m]=digits[k];m+=1;}
+    return m;
+}
+// The manifest line for t: "layers.L.name BF16 rows[,cols]".
+ms_line :: (t:MsTensor,out:[]u8)->int {
+    n:=0;if t.layer>=0 {n=ms_put(out,n,"layers.");n=ms_put_int(out,n,t.layer);}
+    n=ms_put(out,n,t.name);n=ms_put(out,n," BF16 ");n=ms_put_int(out,n,t.rows);
+    if t.rank==2 {n=ms_put(out,n,",");n=ms_put_int(out,n,t.cols);}
+    return n;
+}
+// Every other line must belong to the image path, which this chapter does
+// not run.
+MS_IMAGE_PREFIXES :: [4]string.["vision_encoder.","vision_language_adapter.","patch_merger.","pre_mm_projector_norm."];
+ms_image_line :: (line:string)->bool {
+    for p:MS_IMAGE_PREFIXES {if line.count>p.count && line[0..<p.count]==p {return true;}}
+    return false;
+}
+// The manifest (one line a tensor) matches s when every expected text line
+// is there exactly once and every other line is an image tensor. cause names
+// the first expected tensor missing or repeated, or is -1 - lines when some
+// line is neither. written counts the text parameters.
+MS_LINES_MAX :: 1024;
+ms_inventory :: (s:MsShape,manifest:string)->MsResult {
+    if !ms_shape_valid(s) {return MsResult.{status=MsStatus.shape};}
+    ends:[1025]int;lines:=0;ends[0]=-1;
+    for i:0..<manifest.count {if manifest[i]=='\n' {
+        if lines==MS_LINES_MAX {return MsResult.{status=MsStatus.checkpoint,cause=-1-lines};}
+        lines+=1;ends[lines]=i;
+    }}
+    buf:[160]u8;text:=0;parameters:=0;
+    for e:0..<ms_expected_count(s) {
+        t:=ms_expected(s,e);n:=ms_line(t,buf[..]);line:=cast(string)buf[0..<n];found:=0;
+        for k:0..<lines {from:=ends[k]+1;if ends[k+1]-from==n && manifest[from..<ends[k+1]]==line {found+=1;}}
+        if found!=1 {return MsResult.{status=MsStatus.checkpoint,cause=e};}
+        text+=1;size:=t.rows;if t.rank==2 {size*=t.cols;}parameters+=size;
+    }
+    image:=0;for k:0..<lines {if ms_image_line(manifest[ends[k]+1..<ends[k+1]]) {image+=1;}}
+    if text+image!=lines {return MsResult.{status=MsStatus.checkpoint,cause=-1-lines};}
+    return MsResult.{written=parameters,cause=image};
+}
+// book:end inventory
+
+#test "the pinned checkpoint holds the 3B text decoder and an image path" {
+    r:=ms_inventory(MS_3B,MS_PINNED_MANIFEST);
+    #assert r.status==MsStatus.ok && r.cause==222 && MS_PINNED_TENSORS==458;
+    // 3.43 billion text parameters: the tied embedding counts once.
+    #assert r.written==3429006336;
+    #assert r.written==MS_3B.vocab*MS_3B.width+MS_3B.width+26*(2*3072+2*4096*3072+2*1024*3072+3*9216*3072);
+    d:=MS_3B;d.kv_heads=4;r=ms_inventory(d,MS_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==2;
+    d=MS_3B;d.layers=27;r=ms_inventory(d,MS_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==236;
+    d=MS_3B;d.layers=25;r=ms_inventory(d,MS_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause== -459;
+    d=MS_3B;d.hidden=9215;r=ms_inventory(d,MS_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==7;
+    d=MS_3B;d.vocab=131073;r=ms_inventory(d,MS_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==1;
+    d=MS_3B;d.width=3071;r=ms_inventory(d,MS_PINNED_MANIFEST);#assert r.status==MsStatus.checkpoint && r.cause==0;
+    d=MS_3B;d.heads=31;#assert ms_inventory(d,MS_PINNED_MANIFEST).status==MsStatus.shape;
+    // A repeated line, a stranger and too many lines.
+    buf:[28000]u8;n:=ms_put(buf[..],0,MS_PINNED_MANIFEST);
+    m:=ms_put(buf[..],n,"norm.weight BF16 3072\n");r=ms_inventory(MS_3B,cast(string)buf[0..<m]);#assert r.status==MsStatus.checkpoint && r.cause==0;
+    m=ms_put(buf[..],n,"output.weight BF16 131072,3072\n");r=ms_inventory(MS_3B,cast(string)buf[0..<m]);#assert r.status==MsStatus.checkpoint && r.cause== -460;
+    m=ms_put(buf[..],n,"layers.extra BF16 1\n");r=ms_inventory(MS_3B,cast(string)buf[0..<m]);#assert r.status==MsStatus.checkpoint && r.cause== -460;
+    m=ms_put(buf[..],n,"vision_encoder.extra BF16 1\n");r=ms_inventory(MS_3B,cast(string)buf[0..<m]);#assert r.status==MsStatus.ok && r.cause==223;
+    m=ms_put(buf[..],n,"vision_encoder. BF16 1\n");#assert ms_inventory(MS_3B,cast(string)buf[0..<m]).status==MsStatus.ok;
+    many:[1100]u8;for i:0..<1100 {many[i]='\n';}
+    r=ms_inventory(MS_3B,cast(string)many[0..<1024]);#assert r.status==MsStatus.checkpoint && r.cause==0;
+    r=ms_inventory(MS_3B,cast(string)many[0..<1025]);#assert r.status==MsStatus.checkpoint && r.cause== -1025;
+    #assert !ms_image_line("vision_encoder.") && ms_image_line("patch_merger.x") && ms_image_line("pre_mm_projector_norm.w") && ms_image_line("vision_language_adapter.w");
+    #assert !ms_image_line("norm.weight");
+}
+
+// ---- Tekken ----------------------------------------------------------------
+
+// book:begin pieces
+// Tekken splits text with one pattern before byte-pair merging. This is the
+// pattern on ASCII text, where its Unicode classes reduce to: upper A-Z,
+// lower a-z, digit 0-9, space (tab to carriage return, and ' '), and other.
+MS_UPPER :: 0; MS_LOWER :: 1; MS_DIGIT :: 2; MS_SPACE :: 3; MS_OTHER :: 4;
+ms_class :: (c:u8)->int {
+    if c>='A' && c<='Z' {return MS_UPPER;}
+    if c>='a' && c<='z' {return MS_LOWER;}
+    if c>='0' && c<='9' {return MS_DIGIT;}
+    if c==' ' || (c>=9 && c<=13) {return MS_SPACE;}
+    return MS_OTHER;
+}
+ms_newline :: (c:u8)->bool {return c==10 || c==13;}
+ms_run :: (s:string,at:int,class:int)->int {p:=at;while p<s.count && ms_class(s[p])==class {p+=1;}return p;}
+// [^\r\n\p{L}\p{N}]? then letters: upper* lower+ (first alternative) or
+// upper+ lower* (second). Both runs are greedy over disjoint classes, so
+// whenever either matches, both end at the end of the lower-case run: the
+// two together are "upper* lower*, at least one letter". The optional first
+// character is taken exactly when it is neither a letter, a digit nor a
+// newline; without it the letters could not start.
+ms_word :: (s:string,at:int)->int {
+    p:=at;c:=ms_class(s[at]);
+    if c==MS_OTHER || (c==MS_SPACE && !ms_newline(s[at])) {p+=1;}
+    lower:=ms_run(s,ms_run(s,p,MS_UPPER),MS_LOWER);
+    if lower>p {return lower;}
+    return at;
+}
+// The end of the piece that starts at `at` (at < s.count).
+ms_piece :: (s:string,at:int)->int {
+    end:=ms_word(s,at);if end>at {return end;}
+    c:=ms_class(s[at]);
+    if c==MS_DIGIT {return at+1;}
+    // " ?[^\s\p{L}\p{N}]+[\r\n/]*"
+    p:=at;if s[p]==' ' {p+=1;}
+    end=ms_run(s,p,MS_OTHER);
+    if end>p {while end<s.count && (ms_newline(s[end]) || s[end]=='/') {end+=1;}return end;}
+    // Whitespace: through the last newline of the run, else all but the last
+    // space before a non-space, else the whole run.
+    run:=ms_run(s,at,MS_SPACE);last:=at;
+    for i:at..<run {if ms_newline(s[i]) {last=i+1;}}
+    if last>at {return last;}
+    if run==s.count || run-at==1 {return run;}
+    return run-1;
+}
+// book:end pieces
+
+MsTable :: struct {bytes:[]string;ranks:[]int;}
+ms_rank :: (t:MsTable,s:string)->int {for i:0..<t.bytes.count {if t.bytes[i]==s {return t.ranks[i];}}return -1;}
+
+// book:begin bpe
+// tiktoken's rule over original ranks: a piece found whole is one token;
+// otherwise start from single bytes and repeatedly join the adjacent pair
+// whose joined bytes have the lowest rank (the leftmost on a tie) until no
+// joined pair has a rank. Token ids are ranks plus the 1000 special ids.
+MS_PIECE_MAX :: 64;
+ms_bpe :: (t:MsTable,piece:string,out:[]int)->MsResult {
+    n:=piece.count;if n<1 || n>MS_PIECE_MAX {return MsResult.{status=MsStatus.range,cause=n};}
+    whole:=ms_rank(t,piece);
+    if whole>=0 {if out.count<1 {return MsResult.{status=MsStatus.capacity};}out[0]=whole+MS_SPECIALS;return MsResult.{written=1};}
+    bounds:[65]int;for i:1..<n+1 {bounds[i]=i;}parts:=n;
+    while true {
+        best:=-1;at:int;
+        for i:0..<parts-1 {r:=ms_rank(t,piece[bounds[i]..<bounds[i+2]]);if r>=0 && (best<0 || r<best) {best=r;at=i;}}
+        if best<0 {break;}
+        for i:at+1..<parts {bounds[i]=bounds[i+1];}parts-=1;
+    }
+    if out.count<parts {return MsResult.{status=MsStatus.capacity};}
+    for i:0..<parts {r:=ms_rank(t,piece[bounds[i]..<bounds[i+1]]);if r<0 {return MsResult.{status=MsStatus.range,cause=bounds[i]};}out[i]=r+MS_SPECIALS;}
+    return MsResult.{written=parts};
+}
+// book:end bpe
+
+// book:begin encode
+// ASCII text to token ids. Text outside ASCII is refused: the Unicode
+// classes of the full pattern are not built yet. cause is the byte offset.
+ms_encode :: (t:MsTable,text:string,out:[]int)->MsResult {
+    for i:0..<text.count {if text[i]>=128 {return MsResult.{status=MsStatus.unsupported,cause=i};}}
+    at:=0;n:=0;
+    while at<text.count {
+        end:=ms_piece(text,at);
+        r:=ms_bpe(t,text[at..<end],out[n..<out.count]);
+        if r.status!=MsStatus.ok {r.cause+=at;return r;}
+        n+=r.written;at=end;
+    }
+    return MsResult.{written=n};
+}
+// Mistral's chat format for one system prompt and one user turn:
+// <s> [SYSTEM_PROMPT] system [/SYSTEM_PROMPT] [INST] user [/INST]. The
+// control tokens are ids 1, 17, 18, 3 and 4; text never produces them. An
+// empty system prompt leaves out its block.
+MS_BOS :: 1; MS_EOS :: 2; MS_INST :: 3; MS_INST_END :: 4; MS_SYSTEM :: 17; MS_SYSTEM_END :: 18;
+MS_CHAT_MAX :: 1024;
+ms_chat :: (t:MsTable,system:string,user:string,out:[]int)->MsResult {
+    a:MsResult;sys:[MS_CHAT_MAX]int;usr:[MS_CHAT_MAX]int;extra:=3;
+    if system.count>0 {a=ms_encode(t,system,sys[..]);if a.status!=MsStatus.ok {return a;}extra=5;}
+    b:=ms_encode(t,user,usr[..]);if b.status!=MsStatus.ok {return b;}
+    if out.count<a.written+b.written+extra {return MsResult.{status=MsStatus.capacity,cause=a.written+b.written+extra};}
+    n:=0;out[n]=MS_BOS;n+=1;
+    if system.count>0 {out[n]=MS_SYSTEM;n+=1;for i:0..<a.written {out[n+i]=sys[i];}n+=a.written;out[n]=MS_SYSTEM_END;n+=1;}
+    out[n]=MS_INST;n+=1;for i:0..<b.written {out[n+i]=usr[i];}n+=b.written;out[n]=MS_INST_END;
+    return MsResult.{written=n+1};
+}
+// book:end encode
+
+#test "Tekken ids match tiktoken's rule over the full table on every fixture string" {
+    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};out:[64]int;
+    for k:0..<MS_TEKKEN_TEXTS.count {
+        r:=ms_encode(t,MS_TEKKEN_TEXTS[k],out[..]);from:=MS_TEKKEN_STARTS[k];
+        #assert r.status==MsStatus.ok && r.written==MS_TEKKEN_STARTS[k+1]-from;
+        for i:0..<r.written {#assert out[i]==MS_TEKKEN_IDS[from+i];}
+    }
+    r:=ms_chat(t,MS_TEKKEN_TEXTS[0],MS_TEKKEN_TEXTS[1],out[..]);
+    #assert r.status==MsStatus.ok && r.written==MS_TEKKEN_CHAT.count;
+    for i:0..<r.written {#assert out[i]==MS_TEKKEN_CHAT[i];}
+    r=ms_chat(t,"",MS_TEKKEN_TEXTS[1],out[..]);
+    #assert r.status==MsStatus.ok && r.written==MS_TEKKEN_CHAT.count-6 && out[0]==1 && out[1]==3 && out[2]==7493 && out[r.written-1]==4;
+}
+#test "pieces follow the pattern's alternatives in order" {
+    #assert ms_piece("Hello",0)==5 && ms_piece(" world",0)==6 && ms_piece("CamelCase",0)==5 && ms_piece("IPAddress",0)==9;
+    #assert ms_piece("ABC",0)==3 && ms_piece("ABc d",0)==3 && ms_piece("'t",0)==2 && ms_piece("\tand",0)==4;
+    #assert ms_piece("\nand",0)==1 && ms_piece("\rX",0)==1 && ms_piece("2025",0)==1 && ms_piece(" 5",0)==1;
+    #assert ms_piece("!!x",0)==2 && ms_piece(" //c",0)==3 && ms_piece("?\n\nA",0)==3 && ms_piece("./x",0)==2 && ms_piece(".a",0)==2;
+    #assert ms_piece("   x",0)==2 && ms_piece("  ",0)==2 && ms_piece(" \n x",0)==2 && ms_piece(" x",0)==2 && ms_piece("\t",0)==1;
+    vt:=[2]u8.[11,120];#assert ms_piece(cast(string)vt[..],0)==2;
+    #assert ms_piece("5a",0)==1 && ms_piece(" !a",0)==2 && ms_piece("!\n/x",0)==3 && ms_piece("!\nx",0)==2 && ms_piece("Ab",0)==2 && ms_piece("A",0)==1;
+    #assert ms_piece("  \n",0)==3 && ms_piece("\t\tX",0)==1 && ms_piece("a b",1)==3 && ms_piece("ab",1)==2;
+    #assert ms_class('@')==MS_OTHER && ms_class('[')==MS_OTHER && ms_class('`')==MS_OTHER && ms_class('{')==MS_OTHER && ms_class('/')==MS_OTHER && ms_class(':')==MS_OTHER;
+    #assert ms_class(8)==MS_OTHER && ms_class(14)==MS_OTHER && ms_class(9)==MS_SPACE && ms_class(13)==MS_SPACE && ms_class(11)==MS_SPACE;
+    #assert ms_class('A')==MS_UPPER && ms_class('Z')==MS_UPPER && ms_class('a')==MS_LOWER && ms_class('z')==MS_LOWER && ms_class('0')==MS_DIGIT && ms_class('9')==MS_DIGIT;
+    #assert ms_newline(10) && ms_newline(13) && !ms_newline(11) && !ms_newline(9);
+}
+#test "byte-pair merging refusals and bounds" {
+    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};out:[70]int;
+    #assert ms_rank(t,"Hello")==21177 && ms_rank(t,"Hellp")== -1;
+    r:=ms_bpe(t,"",out[..]);#assert r.status==MsStatus.range && r.cause==0;
+    long:[65]u8;for i:0..<65 {long[i]='a';}
+    r=ms_bpe(t,cast(string)long[0..<65],out[..]);#assert r.status==MsStatus.range && r.cause==65;
+    r=ms_bpe(t,cast(string)long[0..<64],out[..]);#assert r.status==MsStatus.ok && r.written>=1;
+    r=ms_bpe(t,"Hello",out[0..<0]);#assert r.status==MsStatus.capacity;
+    r=ms_bpe(t,"Helloo",out[0..<1]);#assert r.status==MsStatus.capacity;
+    out[0]=-7;r=ms_bpe(t,"Helloo",out[0..<2]);#assert r.status==MsStatus.ok && r.written==2 && out[0]==22177 && out[1]==1111;
+    // A byte the restricted table lacks is refused at its offset.
+    r=ms_bpe(t,"Hel~",out[..]);#assert r.status==MsStatus.range && r.cause==3;
+    r=ms_encode(t,"on Q~",out[..]);#assert r.status==MsStatus.range && r.cause==3;
+    bad:=[4]u8.[0x41,0x42,0xc3,0xa9];r=ms_encode(t,cast(string)bad[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==2;
+    edge:=[2]u8.[128,0x41];r=ms_encode(t,cast(string)edge[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==0;
+    edge[0]=127;#assert ms_encode(t,cast(string)edge[0..<1],out[..]).status==MsStatus.range;
+}
+#test "merging follows ranks, takes the leftmost of equal pairs and keeps a whole piece" {
+    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};
+    // a:0, aa:1, b:2. "aaa" joins the leftmost pair: [aa, a].
+    b1:=[3]string.["a","aa","b"];r1:=[3]int.[0,1,2];u:=MsTable.{bytes=b1[..],ranks=r1[..]};out:[70]int;
+    r:=ms_bpe(u,"aaa",out[..]);#assert r.status==MsStatus.ok && r.written==2 && out[0]==1001 && out[1]==1000;
+    r=ms_bpe(u,"a",out[0..<1]);#assert r.status==MsStatus.ok && r.written==1 && out[0]==1000;
+    r=ms_bpe(u,"ba",out[..]);#assert r.status==MsStatus.ok && r.written==2 && out[0]==1002 && out[1]==1000;
+    // ab:0 merges first; a whole piece is one token even when no pair joins to it.
+    b2:=[5]string.["ab","a","b","c","abc"];r2:=[5]int.[0,1,2,3,4];u=MsTable.{bytes=b2[..],ranks=r2[..]};
+    r=ms_bpe(u,"aab",out[..]);#assert r.status==MsStatus.ok && r.written==2 && out[0]==1001 && out[1]==1000;
+    r=ms_bpe(u,"abc",out[..]);#assert r.status==MsStatus.ok && r.written==1 && out[0]==1004;
+    b3:=[4]string.["abc","a","b","c"];r3:=[4]int.[0,1,2,3];u=MsTable.{bytes=b3[..],ranks=r3[..]};
+    r=ms_bpe(u,"abc",out[..]);#assert r.status==MsStatus.ok && r.written==1 && out[0]==1000;
+    b4:=[4]string.["ab","ba","a","b"];r4:=[4]int.[0,5,1,2];u=MsTable.{bytes=b4[..],ranks=r4[..]};
+    r=ms_bpe(u,"aba",out[..]);#assert r.status==MsStatus.ok && r.written==2 && out[0]==1000 && out[1]==1001;
+    r=ms_chat(t,"H","",out[..]);#assert r.status==MsStatus.ok && r.written==6 && out[2]==1000+ms_rank(t,"H");
+    #assert ms_layer_work(MS_3B,1)==6144;
+    u=MsTable.{bytes=b3[..],ranks=r3[..]};
+    r=ms_bpe(u,"cab",out[..]);#assert r.status==MsStatus.ok && r.written==3 && out[0]==1003 && out[1]==1001 && out[2]==1002;
+    r=ms_encode(t,"Hello, world!",out[0..<3]);#assert r.status==MsStatus.capacity;
+    r=ms_chat(t,"Hello","What",out[0..<6]);#assert r.status==MsStatus.capacity && r.cause==7;
+    r=ms_chat(t,"Hello","What",out[0..<7]);#assert r.status==MsStatus.ok && r.written==7;
+    r=ms_chat(t,"","What",out[0..<3]);#assert r.status==MsStatus.capacity && r.cause==4;
+    r=ms_chat(t,"","",out[0..<3]);#assert r.status==MsStatus.ok && r.written==3 && out[0]==1 && out[1]==3 && out[2]==4;
+    r=ms_chat(t,"Hello","",out[0..<6]);#assert r.status==MsStatus.ok && r.written==6 && out[3]==18 && out[4]==3;
+    many:[2100]u8;for i:0..<2100 {many[i]='a';if i%2==1 {many[i]=' ';}}
+    r=ms_chat(t,cast(string)many[0..<2050],"",out[..]);#assert r.status==MsStatus.capacity;
+    r=ms_chat(t,"",cast(string)many[0..<2050],out[..]);#assert r.status==MsStatus.capacity;
+    r=ms_chat(t,"é","What",out[..]);#assert r.status==MsStatus.unsupported;
+    r=ms_chat(t,"Hello","é",out[..]);#assert r.status==MsStatus.unsupported;
+    r=ms_chat(t,"Hello","Hello, world!",out[0..<9]);#assert r.status==MsStatus.capacity;
+}
+
+// ---- the decoder -----------------------------------------------------------
+
+// book:begin rope
+// YaRN over theta 1e6: frequency i keeps its original value theta^(-2i/d)
+// below the low correction dimension, is divided by the factor 16 above the
+// high one, and blends linearly between. The bounds are where a frequency
+// turns 32 (fast) and 1 (slow) times over the original 16,384 positions.
+// apply_scale is false in params.json, so no magnitude scale follows.
+ms_correction :: (rotations:f64,d:int)->f64 {
+    return f64(d)*log(f64(MS_ORIGINAL)/(rotations*2*3.141592653589793))/(2*log(MS_THETA));
+}
+// For these constants both bounds lie inside 0..d-1 for every even d.
+ms_rope_frequencies :: (d:int,out:[]f64) {
+    low:=cast(int)floor(ms_correction(MS_BETA_FAST,d));high:=cast(int)(-floor(-ms_correction(MS_BETA_SLOW,d)));
+    for i:0..<low {out[i]=exp(-log(MS_THETA)*f64(2*i)/f64(d));}
+    for i:low..<high {
+        original:=exp(-log(MS_THETA)*f64(2*i)/f64(d));ramp:=f64(i-low)/f64(high-low);
+        out[i]=original/MS_FACTOR*ramp+original*(1-ramp);
+    }
+    for i:high..<d/2 {out[i]=exp(-log(MS_THETA)*f64(2*i)/f64(d))/MS_FACTOR;}
+}
+// Llama 4 query scaling: 1 + 0.1 ln(1 + floor(position / 16384)), which is
+// exactly 1 inside the original window.
+ms_query_scale :: (position:int)->f64 {return 1+MS_LLAMA4_BETA*log(f64(1+position/MS_ORIGINAL));}
+// book:end rope
+
+#test "YaRN frequencies and query scale match the float64 reference" {
+    f:[128]f64;ms_rope_frequencies(128,f[..]);
+    for k:0..<MS_ROPE_PICKS.count {#assert abs(f[MS_ROPE_PICKS[k]]-MS_ROPE_FREQS[k])<=1e-15*MS_ROPE_FREQS[k];}
+    // By hand: the low bound is floor(128 ln(16384/(64 pi))/(2 ln 1e6)) = floor(20.38) = 20
+    // and the high is ceil(128 ln(16384/(2 pi))/(2 ln 1e6)) = ceil(36.44) = 37.
+    #assert abs(ms_correction(32,128)-20.38)<0.01 && abs(ms_correction(1,128)-36.44)<0.01;
+    #assert f[20]==exp(-log(MS_THETA)*40/128) && f[37]==exp(-log(MS_THETA)*74/128)/16;
+    #assert f[21]<exp(-log(MS_THETA)*42/128) && f[21]>exp(-log(MS_THETA)*42/128)/16;
+    #assert f[0]==1 && abs(f[63]*16-exp(-log(MS_THETA)*126/128))<1e-20;
+    small:[2]f64;ms_rope_frequencies(4,small[..]);#assert small[0]==1 && abs(small[1]-0.00053125)<1e-18;
+    two:[1]f64;ms_rope_frequencies(2,two[..]);#assert two[0]==1;
+    #assert f[36]<exp(-log(MS_THETA)*72/128)/8 && f[36]>exp(-log(MS_THETA)*72/128)/16;
+    #assert ms_query_scale(0)==1 && ms_query_scale(16383)==1 && ms_query_scale(16384)==1+0.1*log(2.0) && ms_query_scale(32768)==1+0.1*log(3.0);
+}
+
+
+// book:begin norm
+// RMSNorm with a BF16 gain: x / sqrt(mean(x^2) + 1e-5) * g.
+ms_norm :: (x:[]f32,gain:[]u8,out:[]f32)->MsStatus {
+    squares:PsionicAccumulator;for v:x {squares=psionic_ops_accumulate(squares,f64(v)*f64(v));}
+    divisor:=sqrt(psionic_ops_total(squares)/f64(x.count)+MS_EPSILON);
+    for i:0..<x.count {
+        bits:=qm_bits(QmDtype.bf16,gain,i);if !psionic_tensor_finite_bits(bits) {return MsStatus.number;}
+        out[i]=f32(f64(x[i])/divisor*f64(f32_from_bits(bits)));
+    }
+    return MsStatus.ok;
+}
+// book:end norm
+
+// One layer's original BF16 tensors, as row-major bytes.
+MsLayer :: struct {attention_norm:[]u8;wq:[]u8;wk:[]u8;wv:[]u8;wo:[]u8;ffn_norm:[]u8;w1:[]u8;w2:[]u8;w3:[]u8;}
+ms_layer_sizes :: (s:MsShape,w:MsLayer)->bool {
+    q:=s.heads*s.head_dim;kv:=s.kv_heads*s.head_dim;d:=s.width;
+    return w.attention_norm.count==2*d && w.ffn_norm.count==2*d && w.wq.count==2*q*d && w.wk.count==2*kv*d && w.wv.count==2*kv*d &&
+        w.wo.count==2*d*q && w.w1.count==2*s.hidden*d && w.w3.count==2*s.hidden*d && w.w2.count==2*d*s.hidden;
+}
+// Work for one layer over `count` tokens: their queries, keys and values.
+// One token's norm, attention, projection and SwiGLU live in fixed local
+// buffers sized for the largest admitted shape.
+ms_layer_work :: (s:MsShape,count:int)->int #export_c {return count*(s.heads+2*s.kv_heads)*s.head_dim;}
+ms_project :: (w:[]u8,rows:int,cols:int,x:[]f32,out:[]f32,stage:[]f32)->MsResult {
+    r:=qm_project(QmDtype.bf16,rows,cols,w,x,out,stage,false);
+    if r.status!=QmStatus.ok {return MsResult.{status=MsStatus.number,cause=cast(int)r.status};}
+    return MsResult.{written=rows};
+}
+// Rotate each head's adjacent pairs (2i, 2i+1) by position times frequency i.
+ms_rotate :: (v:[]f32,heads:int,d:int,position:int,freqs:[]f64) {
+    for h:0..<heads {for i:0..<d/2 {
+        a:=f64(v[h*d+2*i]);b:=f64(v[h*d+2*i+1]);angle:=f64(position)*freqs[i];c:=cos(angle);n:=sin(angle);
+        v[h*d+2*i]=f32(a*c-b*n);v[h*d+2*i+1]=f32(a*n+b*c);
+    }}
+}
+
+// book:begin layer
+// One decoder layer over tokens at positions 0..<count: x (count rows of
+// width) in, the residual stream after the layer out.
+//   h = norm(x); q, k, v = wq h, wk h, wv h; rotate q and k
+//   a = softmax(q k / sqrt(d)) v over earlier positions, query head j
+//       reading key-value head j / (heads / kv_heads)
+// Positions stay below 64, inside the original window, so the Llama 4
+// query scale is exactly 1 and is not applied. Scores are exponentiated in
+// binary64 without a shift.
+//   x += wo a; x += w2 (silu(w1 norm(x)) * w3 norm(x))
+ms_layer :: (s:MsShape,w:MsLayer,x:[]f32,count:int,out:[]f32,work:[]f32)->MsResult #export_c {
+    if !ms_shape_valid(s) || !ms_layer_sizes(s,w) || count<1 || count>MS_TOKENS_MAX {return MsResult.{status=MsStatus.shape};}
+    d:=s.width;hd:=s.head_dim;q:=s.heads*hd;kv:=s.kv_heads*hd;group:=s.heads/s.kv_heads;
+    if x.count!=count*d || out.count<count*d || work.count<ms_layer_work(s,count) {return MsResult.{status=MsStatus.capacity};}
+    freqs:[128]f64;ms_rope_frequencies(hd,freqs[..]);
+    qs:=work[0..<count*q];ks:=work[count*q..<count*(q+kv)];vs:=work[count*(q+kv)..<count*(q+2*kv)];
+    hb:[8192]f32;ob:[8192]f32;ab:[16384]f32;gb:[32768]f32;ub:[32768]f32;sb:[64]f32;sg:[32768]f32;stage:=sg[..];
+    h:=hb[0..<d];o:=ob[0..<d];a:=ab[0..<q];gate:=gb[0..<s.hidden];up:=ub[0..<s.hidden];scores:=sb[0..<count];
+    for t:0..<count {
+        if ms_norm(x[t*d..<(t+1)*d],w.attention_norm,h)!=MsStatus.ok {return MsResult.{status=MsStatus.number,cause=1};}
+        r:=ms_project(w.wq,q,d,h,qs[t*q..<(t+1)*q],stage);if r.status!=MsStatus.ok {return r;}
+        r=ms_project(w.wk,kv,d,h,ks[t*kv..<(t+1)*kv],stage);if r.status!=MsStatus.ok {return r;}
+        r=ms_project(w.wv,kv,d,h,vs[t*kv..<(t+1)*kv],stage);if r.status!=MsStatus.ok {return r;}
+        ms_rotate(qs[t*q..<(t+1)*q],s.heads,hd,t,freqs[..]);ms_rotate(ks[t*kv..<(t+1)*kv],s.kv_heads,hd,t,freqs[..]);
+    }
+    for t:0..<count {
+        for head:0..<s.heads {
+            g:=head/group;
+            for u:0..<t+1 {
+                acc:PsionicAccumulator;for j:0..<hd {acc=psionic_ops_accumulate(acc,f64(qs[t*q+head*hd+j])*f64(ks[u*kv+g*hd+j]));}
+                scores[u]=f32(psionic_ops_total(acc)/sqrt(f64(hd)));
+            }
+            z:PsionicAccumulator;for u:0..<t+1 {z=psionic_ops_accumulate(z,exp(f64(scores[u])));}
+            total:=psionic_ops_total(z);
+            for j:0..<hd {
+                acc:PsionicAccumulator;for u:0..<t+1 {acc=psionic_ops_accumulate(acc,exp(f64(scores[u]))/total*f64(vs[u*kv+g*hd+j]));}
+                a[head*hd+j]=f32(psionic_ops_total(acc));
+            }
+        }
+        r:=ms_project(w.wo,d,q,a,o,stage);if r.status!=MsStatus.ok {return r;}
+        for i:0..<d {out[t*d+i]=f32(f64(x[t*d+i])+f64(o[i]));}
+        if ms_norm(out[t*d..<(t+1)*d],w.ffn_norm,h)!=MsStatus.ok {return MsResult.{status=MsStatus.number,cause=2};}
+        r=ms_project(w.w1,s.hidden,d,h,gate,stage);if r.status!=MsStatus.ok {return r;}
+        r=ms_project(w.w3,s.hidden,d,h,up,stage);if r.status!=MsStatus.ok {return r;}
+        for i:0..<s.hidden {g:=f64(gate[i]);gate[i]=f32(g/(1+exp(-g))*f64(up[i]));}
+        r=ms_project(w.w2,d,s.hidden,gate,o,stage);if r.status!=MsStatus.ok {return r;}
+        for i:0..<d {out[t*d+i]=f32(f64(out[t*d+i])+f64(o[i]));}
+    }
+    return MsResult.{written=count*d};
+}
+// book:end layer
+
+// book:begin ends
+// Embedding rows for tokens, and a readout chunk: the final norm of one
+// hidden row against `rows` rows of the tied embedding.
+ms_embed :: (s:MsShape,table:[]u8,tokens:[]int,out:[]f32)->MsResult #export_c {
+    if !ms_shape_valid(s) || table.count!=2*s.vocab*s.width {return MsResult.{status=MsStatus.shape};}
+    if out.count<tokens.count*s.width {return MsResult.{status=MsStatus.capacity};}
+    for k:0..<tokens.count {if tokens[k]<0 || tokens[k]>=s.vocab {return MsResult.{status=MsStatus.range,cause=k};}}
+    for k:0..<tokens.count {for i:0..<s.width {
+        bits:=qm_bits(QmDtype.bf16,table,tokens[k]*s.width+i);if !psionic_tensor_finite_bits(bits) {return MsResult.{status=MsStatus.number,cause=k};}
+        out[k*s.width+i]=f32_from_bits(bits);
+    }}
+    return MsResult.{written=tokens.count*s.width};
+}
+ms_readout :: (s:MsShape,head:[]u8,rows:int,norm:[]u8,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c {
+    if !ms_shape_valid(s) || rows<1 || rows>s.vocab || head.count!=2*rows*s.width || norm.count!=2*s.width || hidden.count!=s.width {return MsResult.{status=MsStatus.shape};}
+    if logits.count<rows || work.count<s.width+rows {return MsResult.{status=MsStatus.capacity};}
+    if ms_norm(hidden,norm,work[0..<s.width])!=MsStatus.ok {return MsResult.{status=MsStatus.number};}
+    return ms_project(head,rows,s.width,work[0..<s.width],logits,work[s.width..<s.width+rows]);
+}
+// book:end ends
+
+// ---- the synthetic model -----------------------------------------------------
+
+// book:begin tiny
+// Ministral's structure at width 8: 4 query heads sharing 2 key-value heads
+// of 4 (two queries a pair), SwiGLU of 12, 16 tokens and 2 layers. Weights come from a formula both
+// this file and the Python reference compute: multiples of 1/32 in
+// [-1/4, 1/4] (exact in BF16), and gains near 1.
+ms_tiny :: ()->MsShape {return MsShape.{width=8,layers=2,heads=4,kv_heads=2,head_dim=4,hidden=12,vocab=16};}
+ms_tiny_value :: (k:int,i:int)->f32 {return f32((i*7+k*5)%17-8)/32;}
+ms_tiny_norm :: (k:int,i:int)->f32 {return 1+f32((i+k)%5-2)/16;}
+MS_TINY_BYTES :: 2*(16*8+8+2*(16+2*16*8+2*8*8+3*8*12));
+ms_tiny_fill :: (bytes:[]u8,at:int,n:int,k:int,gain:bool)->int {
+    for i:0..<n {
+        v:=ifx gain then ms_tiny_norm(k,i) else ms_tiny_value(k,i);bits:=f32_bits(v)>>16;
+        bytes[at+2*i]=cast(u8)(bits&255);bytes[at+2*i+1]=cast(u8)(bits>>8);
+    }
+    return at+2*n;
+}
+MsTiny :: struct {embed:[]u8;norm:[]u8;layers:[2]MsLayer;}
+ms_tiny_weights :: (bytes:[]u8)->MsTiny {
+    s:=ms_tiny();d:=s.width;q:=s.heads*s.head_dim;kv:=s.kv_heads*s.head_dim;m:MsTiny;
+    at:=ms_tiny_fill(bytes,0,s.vocab*d,0,false);m.embed=bytes[0..<at];
+    b:=at;at=ms_tiny_fill(bytes,at,d,99,true);m.norm=bytes[b..<at];
+    for l:0..<2 {
+        k:=1+l*7;w:MsLayer;
+        b=at;at=ms_tiny_fill(bytes,at,q*d,k,false);w.wq=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,kv*d,k+1,false);w.wk=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,kv*d,k+2,false);w.wv=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,d*q,k+3,false);w.wo=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,s.hidden*d,k+4,false);w.w1=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,d*s.hidden,k+5,false);w.w2=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,s.hidden*d,k+6,false);w.w3=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,d,100+2*l,true);w.attention_norm=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,d,101+2*l,true);w.ffn_norm=bytes[b..<at];
+        m.layers[l]=w;
+    }
+    return m;
+}
+// book:end tiny
+
+// book:begin forward
+// The whole decoder over tokens; logits for the last position. hidden holds
+// two residual buffers of count x width; work is ms_layer_work.
+ms_forward :: (s:MsShape,embed:[]u8,norm:[]u8,layers:[]MsLayer,tokens:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult {
+    n:=tokens.count*s.width;
+    if layers.count!=s.layers {return MsResult.{status=MsStatus.shape};}
+    if hidden.count<2*n {return MsResult.{status=MsStatus.capacity};}
+    r:=ms_embed(s,embed,tokens,hidden[0..<n]);if r.status!=MsStatus.ok {return r;}
+    from:=0;
+    for l:0..<s.layers {
+        to:=n-from;r=ms_layer(s,layers[l],hidden[from..<from+n],tokens.count,hidden[to..<to+n],work);
+        if r.status!=MsStatus.ok {r.cause=l;return r;}
+        from=to;
+    }
+    return ms_readout(s,embed,s.vocab,norm,hidden[from+n-s.width..<from+n],logits,work);
+}
+ms_argmax :: (v:[]f32)->int {best:=0;for i:1..<v.count {if v[i]>v[best] {best=i;}}return best;}
+// book:end forward
+
+#test "the synthetic model matches the float64 reference layer by layer" {
+    s:=ms_tiny();bytes:[MS_TINY_BYTES]u8;m:=ms_tiny_weights(bytes[..]);
+    #assert m.layers[1].ffn_norm.count==16 && ms_tiny_fill(bytes[..],0,0,0,false)==0;
+    tokens:=MS_TINY_TOKENS;x:[40]f32;l0:[40]f32;l1:[40]f32;work:[400]f32;
+    #assert ms_layer_work(s,5)==160;
+    #assert ms_embed(s,m.embed,tokens[..],x[..]).status==MsStatus.ok;
+    r:=ms_layer(s,m.layers[0],x[..],5,l0[..],work[..]);#assert r.status==MsStatus.ok && r.written==40;
+    worst:=0.0;for i:0..<40 {e:=abs(f64(l0[i])-MS_TINY_LAYER0[i]);if e>worst {worst=e;}}#assert worst<2e-6;
+    r=ms_layer(s,m.layers[1],l0[..],5,l1[..],work[..]);#assert r.status==MsStatus.ok;
+    worst=0;for i:0..<40 {e:=abs(f64(l1[i])-MS_TINY_LAYER1[i]);if e>worst {worst=e;}}#assert worst<2e-6;
+    logits:[16]f32;hidden:[80]f32;layers:=m.layers;
+    r=ms_forward(s,m.embed,m.norm,layers[..],tokens[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.ok && r.written==16;
+    worst=0;for i:0..<16 {e:=abs(f64(logits[i])-MS_TINY_LOGITS[i]);if e>worst {worst=e;}}#assert worst<2e-6;
+    best:=0;for i:1..<16 {if MS_TINY_LOGITS[i]>MS_TINY_LOGITS[best] {best=i;}}#assert ms_argmax(logits[..])==best;
+    // Each position sees only itself and earlier ones: a shorter prefix gives the same rows.
+    three:[24]f32;#assert ms_layer(s,m.layers[0],x[0..<24],3,three[..],work[..]).status==MsStatus.ok;
+    for i:0..<24 {#assert three[i]==l0[i];}
+}
+#test "decoder refusals name the input" {
+    s:=ms_tiny();bytes:[MS_TINY_BYTES]u8;m:=ms_tiny_weights(bytes[..]);w:=m.layers[0];
+    x:[40]f32;out:[40]f32;work:[400]f32;tokens:=MS_TINY_TOKENS;
+    #assert ms_embed(s,m.embed,tokens[..],x[..]).status==MsStatus.ok;
+    #assert ms_layer(s,w,x[..],5,out[..],work[0..<ms_layer_work(s,5)]).status==MsStatus.ok;
+    #assert ms_layer(s,w,x[..],5,out[..],work[0..<ms_layer_work(s,5)-1]).status==MsStatus.capacity;
+    #assert ms_layer(s,w,x[..],5,out[0..<39],work[..]).status==MsStatus.capacity;
+    #assert ms_layer(s,w,x[0..<39],5,out[..],work[..]).status==MsStatus.capacity;
+    #assert ms_layer(s,w,x[..],0,out[..],work[..]).status==MsStatus.shape;
+    big:[65*8]f32;bigout:[65*8]f32;bigwork:[5000]f32;
+    #assert ms_layer(s,w,big[..],65,bigout[..],bigwork[..]).status==MsStatus.shape;
+    #assert ms_layer(s,w,big[0..<64*8],64,bigout[..],bigwork[..]).status==MsStatus.ok;
+    bad:=s;bad.head_dim=3;#assert ms_layer(bad,w,x[..],5,out[..],work[..]).status==MsStatus.shape;
+    short:=w;short.wq=w.wq[0..<62];#assert ms_layer(s,short,x[..],5,out[..],work[..]).status==MsStatus.shape;
+    for k:0..<9 {
+        v:=w;
+        if k==0 {v.attention_norm=w.wq;}if k==1 {v.wk=w.wq;}if k==2 {v.wv=w.wq;}if k==3 {v.wo=w.w1;}if k==4 {v.ffn_norm=w.wq;}
+        if k==5 {v.w1=w.wq;}if k==6 {v.w3=w.wq;}if k==7 {v.w2=w.wq;}if k==8 {v.wq=w.w1;}
+        #assert !ms_layer_sizes(s,v);
+    }
+    #assert ms_embed(s,m.embed,tokens[..],x[..]).status==MsStatus.ok;
+    // A NaN weight is refused wherever it sits.
+    names:=[9]int.[0,1,2,3,4,5,6,7,8];
+    for k:names {
+        copy:=bytes;c:=ms_tiny_weights(copy[..]);v:=c.layers[0];hit:[]u8;
+        if k==0 {hit=v.attention_norm;}if k==1 {hit=v.wq;}if k==2 {hit=v.wk;}if k==3 {hit=v.wv;}if k==4 {hit=v.wo;}
+        if k==5 {hit=v.ffn_norm;}if k==6 {hit=v.w1;}if k==7 {hit=v.w3;}if k==8 {hit=v.w2;}
+        hit[hit.count-1]=0x7f;hit[hit.count-2]=0xc0;
+        r:=ms_layer(s,v,x[..],5,out[..],work[..]);#assert r.status==MsStatus.number;
+    }
+    bad_tokens:=[2]int.[3,16];r:=ms_embed(s,m.embed,bad_tokens[..],x[..]);#assert r.status==MsStatus.range && r.cause==1;
+    bad_tokens[1]=-1;#assert ms_embed(s,m.embed,bad_tokens[..],x[..]).status==MsStatus.range;
+    #assert ms_embed(s,m.embed,tokens[..],x[0..<39]).status==MsStatus.capacity;
+    #assert ms_embed(s,m.embed[0..<254],tokens[..],x[..]).status==MsStatus.shape;
+    #assert ms_embed(bad,m.embed,tokens[..],x[..]).status==MsStatus.shape;
+    copy:=bytes;c:=ms_tiny_weights(copy[..]);c.embed[3*16+1]=0x7f;c.embed[3*16]=0xc0;
+    r=ms_embed(s,c.embed,tokens[..],x[..]);#assert r.status==MsStatus.number && r.cause==1;
+    logits:[16]f32;h:[8]f32;
+    #assert ms_readout(s,m.embed,16,m.norm,h[..],logits[..],work[0..<24]).status==MsStatus.ok;
+    #assert ms_readout(s,m.embed,16,m.norm,h[..],logits[..],work[0..<23]).status==MsStatus.capacity;
+    #assert ms_readout(s,m.embed,16,m.norm,h[..],logits[0..<15],work[..]).status==MsStatus.capacity;
+    #assert ms_readout(s,m.embed[0..<16],1,m.norm,h[..],logits[..],work[..]).status==MsStatus.ok;
+    #assert ms_readout(s,m.embed,0,m.norm,h[..],logits[..],work[..]).status==MsStatus.shape;
+    #assert ms_readout(s,m.embed,17,m.norm,h[..],logits[..],work[..]).status==MsStatus.shape;
+    #assert ms_readout(s,m.embed,15,m.norm,h[..],logits[..],work[..]).status==MsStatus.shape;
+    #assert ms_readout(s,m.embed,16,m.norm[0..<14],h[..],logits[..],work[..]).status==MsStatus.shape;
+    #assert ms_readout(s,m.embed,16,m.norm,h[0..<7],logits[..],work[..]).status==MsStatus.shape;
+    #assert ms_readout(bad,m.embed,16,m.norm,h[..],logits[..],work[..]).status==MsStatus.shape;
+    c=ms_tiny_weights(copy[..]);c.norm[1]=0x7f;c.norm[0]=0xc0;
+    #assert ms_readout(s,c.embed,16,c.norm,h[..],logits[..],work[..]).status==MsStatus.number;
+    hidden:[80]f32;layers:=m.layers;
+    #assert ms_forward(s,m.embed,m.norm,layers[0..<1],tokens[..],hidden[..],logits[..],work[..]).status==MsStatus.shape;
+    #assert ms_forward(s,m.embed,m.norm,layers[..],tokens[0..<0],hidden[..],logits[..],work[..]).status==MsStatus.shape;
+    #assert ms_forward(s,m.embed,m.norm,layers[..],tokens[..],hidden[0..<79],logits[..],work[..]).status==MsStatus.capacity;
+    #assert ms_forward(s,m.embed,m.norm,layers[..],bad_tokens[..],hidden[..],logits[..],work[..]).status==MsStatus.range;
+    layers[1].w2=c.layers[0].w2;c.layers[0].w2[0]=0xc0;c.layers[0].w2[1]=0x7f;layers[1].w2=c.layers[0].w2;
+    r=ms_forward(s,m.embed,m.norm,layers[..],tokens[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.number && r.cause==1;
+    #assert ms_argmax(logits[0..<1])==0;
+    v:=[3]f32.[1,3,3];#assert ms_argmax(v[..])==1;
+}
+#test "edges: one token, token zero, the first bad token and an image line first" {
+    s:=ms_tiny();bytes:[MS_TINY_BYTES]u8;m:=ms_tiny_weights(bytes[..]);
+    x:[8]f32;out:[8]f32;work:[32]f32;one:=[1]int.[0];
+    r:=ms_embed(s,m.embed,one[..],x[..]);#assert r.status==MsStatus.ok && r.written==8 && x[0]==ms_tiny_value(0,0);
+    r=ms_layer(s,m.layers[0],x[..],1,out[..],work[0..<ms_layer_work(s,1)]);#assert r.status==MsStatus.ok && r.written==8;
+    two:=[2]int.[16,3];xs:[16]f32;r=ms_embed(s,m.embed,two[..],xs[..]);#assert r.status==MsStatus.range && r.cause==0;
+    two[0]=2;r=ms_embed(s,m.embed,two[..],xs[..]);#assert r.status==MsStatus.ok && r.written==16;
+    logits:[16]f32;hidden:[16]f32;layers:=m.layers;
+    r=ms_forward(s,m.embed,m.norm,layers[..],one[..],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.ok && r.written==16;
+    r=ms_forward(s,m.embed,m.norm,layers[..],one[0..<0],hidden[..],logits[..],work[..]);#assert r.status==MsStatus.shape && r.cause==0;
+    for k:0..<2 {
+        copy:=bytes;c:=ms_tiny_weights(copy[..]);v:=c.layers[0];hit:=v.attention_norm;if k==1 {hit=v.ffn_norm;}
+        hit[1]=0x7f;hit[0]=0xc0;r=ms_layer(s,v,x[..],1,out[..],work[..]);#assert r.status==MsStatus.number && r.cause==k+1;
+    }
+    buf:[28000]u8;n:=ms_put(buf[..],0,"vision_encoder.x BF16 1\n");n=ms_put(buf[..],n,MS_PINNED_MANIFEST);
+    r=ms_inventory(MS_3B,cast(string)buf[0..<n]);#assert r.status==MsStatus.ok && r.cause==223;
+}

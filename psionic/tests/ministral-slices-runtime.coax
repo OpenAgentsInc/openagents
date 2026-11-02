@@ -1,0 +1,6 @@
+// Chapter 81's original-weight slice entry: the Ministral decoder functions
+// (embedding gather, one layer, readout chunk) and the safetensors inventory
+// reader, exported for psionic/tests/ministral_slices.c. C maps the file and
+// moves bytes; all arithmetic is psionic/lib/ministral.coax.
+#load "../lib/ministral.coax";
+#load "../lib/model-io/access.coax";

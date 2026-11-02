@@ -1,0 +1,28 @@
+// Chapter 81: a checkpoint that does not fit, text Tekken cannot split yet,
+// and broken decoder inputs, each refused with its status.
+#import "Basic";
+#load "../lib/ministral.coax";
+
+// book:begin refuse
+main :: () {
+    buf:[160]u8;
+    d:=MS_3B;d.kv_heads=4;r:=ms_inventory(d,MS_PINNED_MANIFEST);n:=ms_line(ms_expected(d,r.cause),buf[..]);
+    print("4 key-value heads against the pinned file: %, first missing: %\n",r.status,cast(string)buf[0..<n]);
+    d=MS_3B;d.layers=27;r=ms_inventory(d,MS_PINNED_MANIFEST);n=ms_line(ms_expected(d,r.cause),buf[..]);
+    print("27 layers: %, first missing: %\n",r.status,cast(string)buf[0..<n]);
+    d=MS_3B;d.heads=30;print("30 query heads over 8 key-value heads: %\n",ms_inventory(d,MS_PINNED_MANIFEST).status);
+
+    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
+    e:=ms_encode(t,"café",ids[..]);print("non-ASCII text: %\n",e);
+    e=ms_encode(t,"on Q~",ids[..]);print("a byte outside the fixture table: %\n",e);
+    print("chat into 6 ids: %\n",ms_chat(t,"Hello","What",ids[0..<6]));
+
+    s:=ms_tiny();bytes:[MS_TINY_BYTES]u8;m:=ms_tiny_weights(bytes[..]);
+    x:[520]f32;out:[520]f32;work:[2100]f32;
+    bad:=[2]int.[3,16];print("token 16 of 16: %\n",ms_embed(s,m.embed,bad[..],x[..]));
+    print("65 tokens: %\n",ms_layer(s,m.layers[0],x[..],65,out[..],work[..]));
+    print("work one value short: %\n",ms_layer(s,m.layers[0],x[0..<40],5,out[..],work[0..<159]));
+    w:=m.layers[0];w.wq=w.wq[0..<254];print("a short query matrix: %\n",ms_layer(s,w,x[0..<40],5,out[..],work[..]));
+    bytes[1]=0x7f;bytes[0]=0xc0;bad[0]=0;print("a NaN in token 0's embedding row: %\n",ms_embed(s,m.embed,bad[0..<1],x[..]));
+}
+// book:end refuse
