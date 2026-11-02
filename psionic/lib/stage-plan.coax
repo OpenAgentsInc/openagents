@@ -1,0 +1,386 @@
+// Chapter 186: split a decoder into pipeline stages. A stage holds a
+// contiguous range of layers; the first also holds the token embedding and
+// the last the final norm and the readout. The planner cuts the layers into
+// N such ranges so that each stage's bytes (its weights, the cache it keeps
+// for its layers over the context, and the activation buffers it
+// allocates) fit that stage's budget, and among the cuts that fit it picks
+// one whose slowest stage spends the fewest multiply-adds per token. The
+// boundary contract says what crosses between two stages (hidden-state
+// rows, nothing else) and refuses a message bound to another model, layer,
+// position, geometry or protocol version, or one damaged on the way.
+// Profile stage-plan-v1: integer bytes and multiply-adds; up to 128 layers,
+// 16 stages and 2^20 positions of context.
+#authority;
+#load "../tests/stage-plan-checks.coax";  // the checks' hand-built models, brute-force planner and messages
+
+StgStatus :: enum u8 {ok;model;stages;context;first;last;total;split;}
+
+STG_LAYERS_MAX :: 128;
+STG_STAGES_MAX :: 16;
+STG_CONTEXT_MAX :: 1048576;
+// Bytes or multiply-adds of one layer or one shared asset: at most 2^40.
+STG_BIG :: 1099511627776;
+// Bytes or multiply-adds per position: at most 2^24.
+STG_RATE :: 16777216;
+// A stage's budget: at most 2^56 bytes.
+STG_BUDGET_MAX :: 72057594037927936;
+
+// Checks come first. Ministral 3 3B's numbers are derived by hand in
+// chapter 186; the random models are checked against the brute force.
+#test "Ministral 3 3B at 4,096 positions: the hand-worked stage sizes" {
+    m:=stgx_ministral();#assert stg_valid(m);
+    // One layer: 232,796,160 weight bytes and 4,096 x 8,192 cache bytes.
+    #assert stg_bytes(m,0,1,false,false,4096)==266350592+201326592;
+    #assert stg_macs(m,0,1,false,4096)==149946368;
+    // One stage holds the tied embedding once: 7,932,815,360 bytes.
+    #assert stg_bytes(m,0,26,true,true,4096)==7932815360;
+    #assert stg_macs(m,0,26,true,4096)==4301258752;
+    // Split after 14: the first stage keeps the embedding, the second a copy as its readout.
+    #assert stg_bytes(m,0,14,true,false,4096)==4735541248 && stg_bytes(m,14,26,false,true,4096)==4203907072;
+    #assert stg_macs(m,0,14,false,4096)==2099249152 && stg_macs(m,14,26,true,4096)==2202009600;
+    u:=m;u.tied=false;#assert stg_bytes(u,0,26,true,true,4096)==7932815360+805306368;
+    #assert stg_bytes(u,14,26,false,true,4096)==4203907072 && stg_bytes(m,0,14,true,true,4096)==4735541248+6144+1060864;
+}
+#test "two stages with room: 14 and 12 layers, the readout's work weighs on the last" {
+    m:=stgx_ministral();b:=[2]int.[6000000000,6000000000];p:=stg_plan(m,b[..],4096);
+    #assert p.status==StgStatus.ok && p.stages==2 && p.cut[0]==0 && p.cut[1]==14 && p.cut[2]==26;
+    #assert p.slowest==2202009600 && p.macs[0]==2099249152 && p.macs[1]==2202009600;
+    #assert p.bytes[0]==4735541248 && p.bytes[1]==4203907072 && p.kv[0]==14*33554432 && p.kv[1]==12*33554432;
+    // 4.5 GB each: only 13 and 13 fit, and the slowest stage is slower.
+    b=[2]int.[4500000000,4500000000];p=stg_plan(m,b[..],4096);
+    #assert p.status==StgStatus.ok && p.cut[1]==13 && p.slowest==2351955968 && p.bytes[0]==4469190656 && p.bytes[1]==4470257664;
+    // Exactly the bytes needed fits; one byte less does not.
+    b=[2]int.[4469190656,4470257664];p=stg_plan(m,b[..],4096);#assert p.status==StgStatus.ok && p.cut[1]==13;
+    b[1]-=1;p=stg_plan(m,b[..],4096);#assert p.status==StgStatus.total && p.cause==1;
+    b=[2]int.[4469190655,4470257665];p=stg_plan(m,b[..],4096);#assert p.status==StgStatus.split && p.cause==0;
+    // One stage of 8 GB holds the whole model.
+    one:=[1]int.[8000000000];p=stg_plan(m,one[..],4096);
+    #assert p.status==StgStatus.ok && p.cut[0]==0 && p.cut[1]==26 && p.bytes[0]==7932815360 && p.slowest==4301258752 && p.kv[0]==26*33554432;
+}
+#test "typed refusals when no split fits" {
+    m:=stgx_ministral();
+    // 4.4 GB twice is 139,448,320 bytes short of 8,939,448,320.
+    b:=[2]int.[4400000000,4400000000];p:=stg_plan(m,b[..],4096);#assert p.status==StgStatus.total && p.cause==139448320;
+    b=[2]int.[4469724160,4469724160];p=stg_plan(m,b[..],4096);#assert p.status==StgStatus.split;
+    b=[2]int.[4469724160,4469724159];p=stg_plan(m,b[..],4096);#assert p.status==StgStatus.total && p.cause==1;
+    // Enough in total, but 13 layers fit neither side of 4.46 / 4.48 GB.
+    b=[2]int.[4460000000,4480000000];p=stg_plan(m,b[..],4096);#assert p.status==StgStatus.split;
+    // The smallest first stage: the embedding, one layer, the buffers.
+    b=[2]int.[1000000000,9000000000];p=stg_plan(m,b[..],4096);#assert p.status==StgStatus.first && p.cause==272983552;
+    b=[2]int.[1272983552,9000000000];p=stg_plan(m,b[..],4096);#assert p.status!=StgStatus.first;
+    b=[2]int.[9000000000,1000000000];p=stg_plan(m,b[..],4096);#assert p.status==StgStatus.last && p.cause==274050560;
+    b=[2]int.[9000000000,1274050560];p=stg_plan(m,b[..],4096);#assert p.status!=StgStatus.last;
+    one:=[1]int.[7932815359];p=stg_plan(m,one[..],4096);#assert p.status==StgStatus.total && p.cause==1;
+    one[0]=1274050560;p=stg_plan(m,one[..],4096);#assert p.status==StgStatus.total;
+    one[0]=1274050559;p=stg_plan(m,one[..],4096);#assert p.status==StgStatus.first && p.cause==1;
+    // The planner's own limits.
+    p=stg_plan(m,b[0..<0],4096);#assert p.status==StgStatus.stages;
+    many:[17]int;for i:0..<17 {many[i]=STG_BUDGET_MAX;}
+    p=stg_plan(m,many[..],4096);#assert p.status==StgStatus.stages && p.stages==17;
+    p=stg_plan(m,many[0..<16],4096);#assert p.status==StgStatus.ok && p.cut[15]==25 && p.cut[16]==26 && p.slowest==552599552;
+    s:=m;s.layers=3;p=stg_plan(s,many[0..<4],1);#assert p.status==StgStatus.stages;
+    p=stg_plan(s,many[0..<3],1);#assert p.status==StgStatus.ok && p.cut[1]==1 && p.cut[2]==2 && p.cut[3]==3;
+    many[2]=STG_BUDGET_MAX+1;p=stg_plan(s,many[0..<3],1);#assert p.status==StgStatus.stages;
+    many[2]=-1;p=stg_plan(s,many[0..<3],1);#assert p.status==StgStatus.stages;
+    many[2]=0;p=stg_plan(s,many[0..<3],1);#assert p.status==StgStatus.last;
+    many[2]=STG_BUDGET_MAX;
+    p=stg_plan(s,many[0..<3],0);#assert p.status==StgStatus.context;
+    p=stg_plan(s,many[0..<3],STG_CONTEXT_MAX);#assert p.status==StgStatus.ok;
+    p=stg_plan(s,many[0..<3],STG_CONTEXT_MAX+1);#assert p.status==StgStatus.context;
+    s.weight[1]=0;p=stg_plan(s,many[0..<3],1);#assert p.status==StgStatus.model;
+    #assert stg_status_name(StgStatus.split)=="no contiguous split fits" && stg_status_name(StgStatus.ok)=="ok";
+}
+#test "the model's bounds" {
+    m:=stgx_ministral();
+    s:=m;s.layers=0;#assert !stg_valid(s);
+    s=m;s.layers=128;for j:26..<128 {s.weight[j]=1;s.macs[j]=1;}#assert stg_valid(s);s.layers=129;#assert !stg_valid(s);
+    for k:0..<4 {for v:0..<4 {
+        // Values just inside and just outside each per-layer bound, at the last layer.
+        s=m;hi:=ifx k<2 then STG_BIG else STG_RATE;lo:=ifx k==0 then 1 else 0;
+        xs:=[4]int.[lo,hi,lo-1,hi+1];x:=xs[v];
+        if k==0 {s.weight[25]=x;}if k==1 {s.macs[25]=x;}if k==2 {s.kv[25]=x;}if k==3 {s.attend[25]=x;}
+        #assert stg_valid(s)==(v<2);
+        s.layers=25;#assert stg_valid(s);
+    }}
+    s=m;s.weight[0]=0;#assert !stg_valid(s);s.weight[0]=1;#assert stg_valid(s);
+    for k:0..<6 {for v:0..<4 {
+        s=m;lo:=ifx k<2 then 1 else 0;hi:=ifx k==4 then STG_RATE else STG_BIG;
+        xs:=[4]int.[lo,hi,lo-1,hi+1];x:=xs[v];
+        if k==0 {s.embed=x;}if k==1 {s.head=x;}if k==2 {s.norm=x;}if k==3 {s.head_macs=x;}if k==4 {s.act=x;}if k==5 {s.out=x;}
+        #assert stg_valid(s)==(v<2);
+    }}
+}
+#forall "the planner's split is the brute force's, on random models and budgets" seed:0..<400,n:1..<5 {
+    m:=stgx_random(seed);b:[4]int;stgx_budgets(seed*7+n,n,b[..]);context:=1+seed%3;
+    p:=stg_plan(m,b[0..<n],context);
+    if n>m.layers {#assert p.status==StgStatus.stages;}
+    else {
+        r:=stgx_brute(m,b[0..<n],context);
+        #assert (p.status==StgStatus.ok)==(r.slowest>=0);
+        if r.slowest>=0 {
+            #assert p.slowest==r.slowest;
+            worst:=0;
+            for i:0..<n {
+                #assert p.bytes[i]==stgx_bytes(m,p.cut[i],p.cut[i+1],i==0,i==n-1,context) && p.bytes[i]<=b[i];
+                #assert p.macs[i]==stgx_macs(m,p.cut[i],p.cut[i+1],i==n-1,context);
+                kv:=0;for j:p.cut[i]..<p.cut[i+1] {kv+=m.kv[j]*context;}#assert p.kv[i]==kv;
+                if p.macs[i]>worst {worst=p.macs[i];}
+            }
+            #assert worst==p.slowest;
+        }
+    }
+}
+#test "ties go to the earlier cut" {
+    // Four equal layers and a readout worth one: 2+2 costs max(2, 3) and 3+1 costs max(3, 2).
+    m:StgModel;m.layers=4;for j:0..<4 {m.weight[j]=1;m.macs[j]=1;}
+    m.embed=1;m.head=1;m.head_macs=1;
+    b:=[2]int.[100,100];p:=stg_plan(m,b[..],1);#assert p.status==StgStatus.ok && p.slowest==3 && p.cut[1]==2;
+    r:=stgx_brute(m,b[..],1);#assert r.slowest==3 && r.cut[1]==2;
+    // Three stages without a readout: 1+1+2, 1+2+1 and 2+1+1 all cost 2; the earliest cuts win.
+    m.head_macs=0;three:=[3]int.[100,100,100];p=stg_plan(m,three[..],1);
+    #assert p.status==StgStatus.ok && p.slowest==2 && p.cut[1]==1 && p.cut[2]==2;
+}
+#test "free layers, a costly first layer and the largest model" {
+    // Layers that cost nothing still need a stage; a split of them all costs 0.
+    m:StgModel;m.layers=4;for j:0..<4 {m.weight[j]=1;}m.embed=1;m.head=1;
+    one:=[1]int.[100];p:=stg_plan(m,one[..],1);#assert p.status==StgStatus.ok && p.slowest==0;
+    b:=[2]int.[100,100];p=stg_plan(m,b[..],1);#assert p.status==StgStatus.ok && p.slowest==0 && p.cut[1]==1;
+    // The last layer costs 1 and the last stage has room for one layer: the
+    // free layers split 1 + 2, the earliest cut among equals.
+    m.macs[3]=1;three:=[3]int.[100,100,2];p=stg_plan(m,three[..],1);
+    #assert p.status==StgStatus.ok && p.slowest==1 && p.cut[1]==1 && p.cut[2]==3;
+    // A first layer costing 10 is the slowest stage on its own.
+    m.layers=2;m.macs[0]=10;m.macs[1]=1;p=stg_plan(m,b[..],1);#assert p.status==StgStatus.ok && p.slowest==10 && p.cut[1]==1;
+    #assert stg_max(3,5)==5 && stg_max(5,3)==5 && stg_max(-2,-2)==-2;
+    // 128 layers over 16 stages: 8 each.
+    big:StgModel;big.layers=128;for j:0..<128 {big.weight[j]=1;big.macs[j]=1;}big.embed=1;big.head=1;
+    many:[16]int;for i:0..<16 {many[i]=STG_BUDGET_MAX;}
+    p=stg_plan(big,many[..],1);#assert p.status==StgStatus.ok && p.slowest==8 && p.cut[1]==8 && p.cut[16]==128;
+}
+#test "a boundary message carries rows bit for bit, and its exact size" {
+    // Ministral 3 3B: one token's row is 3,072 values, 12,288 bytes, plus 36 header bytes.
+    #assert stg_message_bytes(1,3072)==12324 && stg_message_bytes(10,3072)==122916;
+    rows:=[6]f32.[1.5,-0.0,0.1,-3e38,1e-45,7];digest:u64=0x0123456789abcdef;
+    wire:[16]u32;n:=stg_pack(digest,2,0,3,rows[..],wire[..]);
+    #assert n==15 && 4*n==stg_message_bytes(2,3);
+    #assert wire[0]==1 && wire[1]==0x89abcdef && wire[2]==0x01234567 && wire[3]==2 && wire[4]==0 && wire[5]==2 && wire[6]==3 && wire[7]==1;
+    #assert wire[8]==stg_sum(wire[0..<15]) && wire[10]==0x80000000 && wire[13]==1;
+    want:=StgExpect.{model=digest,layer=2,start=0,width=3};out:[6]f32;
+    r:=stg_receive(want,wire[0..<15],out[..]);#assert r.refusal==StgRefusal.none && r.count==2;
+    for k:0..<6 {#assert f32_bits(out[k])==f32_bits(rows[k]);}
+    // The hash by hand over [1, 2]: ((0*31+1+1)*31+2+1) = 65.
+    two:=[2]u32.[1,2];#assert stg_sum(two[..])==65;
+    // Word 8 is left out; a word near 2^32 wraps the hash below 2^31 - 1.
+    nine:[10]u32;nine[8]=99;nine[9]=4294967295;#assert stg_sum(nine[..])==852443420 && stg_sum(nine[0..<9])==512413837;
+    // Pack refusals.
+    #assert stg_pack(digest,2,0,3,rows[..],wire[0..<14])== -1 && stg_pack(digest,2,0,3,rows[..],wire[0..<15])==15 && stg_pack(digest,1,0,3,rows[..],wire[..])==15;
+    #assert stg_pack(digest,0,0,3,rows[..],wire[..])== -1 && stg_pack(digest,2,-1,3,rows[..],wire[..])== -1;
+    #assert stg_pack(digest,2,0,4,rows[..],wire[..])== -1 && stg_pack(digest,2,0,0,rows[..],wire[..])== -1;
+    #assert stg_pack(digest,2,0,7,rows[..],wire[..])== -1 && stg_pack(digest,2,0,6,rows[..],wire[..])==15;
+    #assert stg_pack(digest,2,0,3,rows[0..<0],wire[..])== -1 && stg_pack(digest,2,0,1,rows[0..<1],wire[..])==10;
+    big:[8193]f32;bw:[8300]u32;
+    #assert stg_pack(digest,2,0,8192,big[0..<8192],bw[..])==8201 && stg_pack(digest,2,0,8193,big[..],bw[..])== -1;
+    many:[65]f32;mw:[80]u32;
+    #assert stg_pack(digest,2,5,1,many[0..<64],mw[..])==73 && stg_pack(digest,2,5,1,many[..],mw[..])== -1;
+}
+#test "a boundary message is refused for each way it can be wrong" {
+    rows:=[6]f32.[1,2,3,4,5,6];digest:u64=0x0123456789abcdef;wire:[16]u32;
+    n:=stg_pack(digest,2,4,3,rows[..],wire[..]);want:=StgExpect.{model=digest,layer=2,start=4,width=3};
+    #assert stg_check(want,wire[0..<n])==StgRefusal.none;
+    #assert stg_check(want,wire[0..<8])==StgRefusal.partial;
+    #assert stg_check(want,wire[0..<14])==StgRefusal.partial && stg_check(want,wire[0..<16])==StgRefusal.excess;
+    w:=want;w.model=digest+1;#assert stg_check(w,wire[0..<n])==StgRefusal.model;
+    w=want;w.model=digest+(cast(u64)1<<32);#assert stg_check(w,wire[0..<n])==StgRefusal.model;
+    w=want;w.layer=3;#assert stg_check(w,wire[0..<n])==StgRefusal.layer;
+    w=want;w.start=0;#assert stg_check(w,wire[0..<n])==StgRefusal.position;
+    w=want;w.width=2;#assert stg_check(w,wire[0..<n])==StgRefusal.geometry;
+    for k:0..<9 {
+        c:=wire;c[k]+=1;got:=stg_check(want,c[0..<n]);
+        expect:=[9]StgRefusal.[StgRefusal.version,StgRefusal.model,StgRefusal.model,StgRefusal.layer,StgRefusal.position,
+            StgRefusal.partial,StgRefusal.geometry,StgRefusal.geometry,StgRefusal.checksum];
+        #assert got==expect[k];
+    }
+    one:[16]u32;#assert stg_pack(digest,2,4,6,rows[..],one[..])==15;
+    w=want;w.width=6;#assert stg_check(w,one[0..<15])==StgRefusal.none;
+    c:=wire;c[5]=0;#assert stg_check(want,c[0..<n])==StgRefusal.count && stg_check(want,c[0..<9])==StgRefusal.count;
+    c[5]=64;#assert stg_check(want,c[0..<n])==StgRefusal.partial;
+    c[5]=65;#assert stg_check(want,c[0..<n])==StgRefusal.count;
+    c=wire;c[12]^=1;#assert stg_check(want,c[0..<n])==StgRefusal.checksum;
+    c=wire;c[n-1]^=0x80000000;#assert stg_check(want,c[0..<n])==StgRefusal.checksum;
+    // A refused or roomless receive writes nothing.
+    out:=[6]f32.[9,9,9,9,9,9];
+    r:=stg_receive(want,c[0..<n],out[..]);#assert r.refusal==StgRefusal.checksum && r.count==0 && out[0]==9;
+    r=stg_receive(want,wire[0..<n],out[0..<5]);#assert r.refusal==StgRefusal.room && out[4]==9;
+    r=stg_receive(want,wire[0..<n],out[0..<6]);#assert r.refusal==StgRefusal.none && out[5]==6;
+    #assert stg_refusal_name(StgRefusal.checksum)=="checksum" && stg_refusal_name(StgRefusal.none)=="none";
+}
+
+// book:begin model
+// What the planner knows about a decoder, layer by layer: bytes of weights,
+// bytes its cache keeps per position, multiply-adds one token costs apart
+// from attention, and attention's multiply-adds per cached position. The
+// shared assets: the embedding (first stage), the readout matrix, final
+// norm and logits buffers (last stage), the readout's multiply-adds per
+// token, and the activation bytes per position every stage allocates. A
+// tied readout is the embedding itself: a stage holding both keeps one copy.
+StgModel :: struct {
+    layers:int;weight:[128]int;kv:[128]int;macs:[128]int;attend:[128]int;
+    embed:int;head:int;norm:int;head_macs:int;act:int;out:int;tied:bool;
+}
+stg_in :: (x:int,lo:int,hi:int)->bool {return x>=lo && x<=hi;}
+// The larger of two counts below 2^53, without a comparison.
+stg_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+stg_valid :: (m:StgModel)->bool {
+    if !stg_in(m.layers,1,STG_LAYERS_MAX) {return false;}
+    for j:0..<m.layers {
+        if !stg_in(m.weight[j],1,STG_BIG) || !stg_in(m.macs[j],0,STG_BIG) || !stg_in(m.kv[j],0,STG_RATE) || !stg_in(m.attend[j],0,STG_RATE) {return false;}
+    }
+    return stg_in(m.embed,1,STG_BIG) && stg_in(m.head,1,STG_BIG) && stg_in(m.norm,0,STG_BIG) && stg_in(m.head_macs,0,STG_BIG) &&
+        stg_in(m.act,0,STG_RATE) && stg_in(m.out,0,STG_BIG);
+}
+// The bytes of a stage running layers from..<to over `context` positions.
+stg_bytes :: (m:StgModel,from:int,to:int,first:bool,last:bool,context:int)->int {
+    b:=m.act*context;
+    for j:from..<to {b+=m.weight[j]+m.kv[j]*context;}
+    if first {b+=m.embed;}
+    if last {b+=m.norm+m.out;if !first || !m.tied {b+=m.head;}}
+    return b;
+}
+// Its multiply-adds for one token at the end of the context.
+stg_macs :: (m:StgModel,from:int,to:int,last:bool,context:int)->int {
+    c:=0;for j:from..<to {c+=m.macs[j]+m.attend[j]*context;}
+    if last {c+=m.head_macs;}
+    return c;
+}
+// book:end model
+
+// book:begin plan
+// Stage i runs layers cut[i]..<cut[i+1]; its bytes, the part of them its
+// cache takes, and its multiply-adds per token. slowest is the largest of
+// those multiply-adds. cause: the bytes the refused stage or total needed
+// beyond its budget.
+StgPlan :: struct {status:StgStatus;stages:int;cause:int;slowest:int;cut:[17]int;bytes:[16]int;kv:[16]int;macs:[16]int;}
+stg_plan :: (m:StgModel,budget:[]int,context:int)->StgPlan {
+    n:=budget.count;p:=StgPlan.{stages=n};
+    if !stg_valid(m) {p.status=StgStatus.model;return p;}
+    if n<1 || n>STG_STAGES_MAX || n>m.layers {p.status=StgStatus.stages;return p;}
+    for b:budget {if !stg_in(b,0,STG_BUDGET_MAX) {p.status=StgStatus.stages;return p;}}
+    if !stg_in(context,1,STG_CONTEXT_MAX) {p.status=StgStatus.context;return p;}
+    L:=m.layers;
+    // The smallest first stage and the smallest last stage must fit.
+    need:=stg_bytes(m,0,1,true,n==1,context);
+    if need>budget[0] {p.status=StgStatus.first;p.cause=need-budget[0];return p;}
+    need=stg_bytes(m,L-1,L,n==1,true,context);
+    if need>budget[n-1] {p.status=StgStatus.last;p.cause=need-budget[n-1];return p;}
+    // Every split holds every layer, each shared asset, and N activation buffers.
+    need=stg_bytes(m,0,L,true,true,context)+(n-1)*m.act*context;
+    if n>1 && m.tied {need+=m.head;}
+    room:=0;for b:budget {room+=b;}
+    if need>room {p.status=StgStatus.total;p.cause=need-room;return p;}
+    // Running sums of the layers' bytes and multiply-adds; an empty range
+    // gives a stage's shared part.
+    bytes:[129]int;macs:[129]int;
+    for j:0..<L {bytes[j+1]=bytes[j]+m.weight[j]+m.kv[j]*context;macs[j+1]=macs[j]+m.macs[j]+m.attend[j]*context;}
+    // best[i][b]: the smallest slowest stage over stages 0..i when stage i
+    // ends before layer b (-1: none fits). On a tie the earlier start wins.
+    best:[16][129]int;start:[16][129]int;
+    for i:0..<n {for b:1..<L+1 {
+        best[i][b]=-1;
+        for a:i..<b {
+            reach:=ifx i==0 then a==0 else best[i-1][a]>=0;
+            if !reach || stg_bytes(m,a,a,i==0,i==n-1,context)+bytes[b]-bytes[a]>budget[i] {continue;}
+            c:=stg_macs(m,a,a,i==n-1,context)+macs[b]-macs[a];
+            if i>0 {c=stg_max(c,best[i-1][a]);}
+            if best[i][b]<0 || c<best[i][b] {best[i][b]=c;start[i][b]=a;}
+        }
+    }}
+    if best[n-1][L]<0 {p.status=StgStatus.split;return p;}
+    p.cut[n]=L;p.slowest=best[n-1][L];
+    for k:0..<n {i:=n-1-k;p.cut[i]=start[i][p.cut[i+1]];}
+    for i:0..<n {
+        a:=p.cut[i];b:=p.cut[i+1];
+        p.bytes[i]=stg_bytes(m,a,b,i==0,i==n-1,context);
+        p.macs[i]=stg_macs(m,a,b,i==n-1,context);
+        for j:a..<b {p.kv[i]+=m.kv[j]*context;}
+    }
+    return p;
+}
+// book:end plan
+
+// ---- the boundary contract ---------------------------------------------------
+
+STG_VERSION :: 1;
+STG_HEAD :: 9;
+STG_F32 :: 1;
+STG_TOKENS_MAX :: 64;
+STG_WIDTH_MAX :: 8192;
+STG_HASH :: 2147483647;
+
+// book:begin boundary
+// What crosses from one stage to the next: the residual stream after the
+// sender's last layer, `count` rows of `width` f32 values for positions
+// start..<start+count. Nothing else crosses: each stage keeps the cache of
+// its own layers. The message is 32-bit words: version, the model's digest
+// (low and high halves), the receiver's first layer, start, count, width,
+// dtype, a checksum, then the values' bits.
+StgRefusal :: enum u8 {none;partial;version;model;layer;position;geometry;count;excess;checksum;room;}
+StgExpect :: struct {model:u64;layer:int;start:int;width:int;}
+StgReceived :: struct {refusal:StgRefusal;count:int;}
+stg_message_bytes :: (count:int,width:int)->int #export_c {return 4*(STG_HEAD+count*width);}
+// A chained hash over every word but word 8, which holds it.
+stg_sum :: (w:[]u32)->u32 {
+    h:=0;for k:0..<w.count {if k!=8 {h=(h*31+cast(int)w[k]+1)%STG_HASH;}}
+    return cast(u32)h;
+}
+// Pack rows for the stage whose first layer is `layer`. Returns the words
+// written, or -1 when the rows are not whole rows of 1 to 64 positions of a
+// width up to 8,192, the layer is not after a first stage, start is
+// negative, or out is too small.
+stg_pack :: (model:u64,layer:int,start:int,width:int,rows:[]f32,out:[]u32)->int {
+    if !stg_in(width,1,STG_WIDTH_MAX) || layer<1 || start<0 {return -1;}
+    count:=rows.count/width;n:=STG_HEAD+rows.count;
+    if !stg_in(count,1,STG_TOKENS_MAX) || count*width!=rows.count || out.count<n {return -1;}
+    head:=[8]u32.[STG_VERSION,cast(u32)(model&4294967295),cast(u32)(model>>32),cast(u32)layer,cast(u32)start,cast(u32)count,cast(u32)width,STG_F32];
+    for k:0..<8 {out[k]=head[k];}
+    for k:0..<rows.count {out[STG_HEAD+k]=f32_bits(rows[k]);}
+    out[8]=stg_sum(out[0..<n]);
+    return n;
+}
+// The receiver's checks, in order: a whole header, the version, the model,
+// its own first layer, the next position it expects, its width and f32, a
+// count of 1 to 64 rows, exactly that many values, the checksum.
+stg_check :: (want:StgExpect,wire:[]u32)->StgRefusal {
+    if wire.count<STG_HEAD {return StgRefusal.partial;}
+    if wire[0]!=STG_VERSION {return StgRefusal.version;}
+    if wire[1]!=cast(u32)(want.model&4294967295) || wire[2]!=cast(u32)(want.model>>32) {return StgRefusal.model;}
+    if cast(int)wire[3]!=want.layer {return StgRefusal.layer;}
+    if cast(int)wire[4]!=want.start {return StgRefusal.position;}
+    if cast(int)wire[6]!=want.width || wire[7]!=STG_F32 {return StgRefusal.geometry;}
+    count:=cast(int)wire[5];
+    if !stg_in(count,1,STG_TOKENS_MAX) {return StgRefusal.count;}
+    n:=STG_HEAD+count*want.width;
+    if wire.count<n {return StgRefusal.partial;}
+    if wire.count>n {return StgRefusal.excess;}
+    if wire[8]!=stg_sum(wire) {return StgRefusal.checksum;}
+    return StgRefusal.none;
+}
+// Check, then write the rows back bit for bit. Nothing is written on a
+// refusal.
+stg_receive :: (want:StgExpect,wire:[]u32,out:[]f32)->StgReceived {
+    r:=StgReceived.{refusal=stg_check(want,wire)};
+    if r.refusal!=StgRefusal.none {return r;}
+    count:=cast(int)wire[5];
+    if out.count<count*want.width {r.refusal=StgRefusal.room;return r;}
+    for k:0..<count*want.width {out[k]=f32_from_bits(wire[STG_HEAD+k]);}
+    r.count=count;return r;
+}
+// book:end boundary
+
+stg_status_name :: (s:StgStatus)->string {
+    names:=[8]string.["ok","model","stages","context","first stage does not fit","last stage does not fit","total does not fit","no contiguous split fits"];
+    return names[cast(int)s];
+}
+stg_refusal_name :: (r:StgRefusal)->string {
+    names:=[11]string.["none","partial","version","model","layer","position","geometry","count","excess","checksum","room"];
+    return names[cast(int)r];
+}

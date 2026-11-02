@@ -1,0 +1,307 @@
+// Chapter 186: run a decoder split into stages. Each logical stage owns its
+// layers, its residual buffers and its work; the first embeds the tokens,
+// the last reads out the logits. Between stages only chapter 186's boundary
+// messages move (psionic/lib/stage-plan.coax, #authority), packed by the
+// sender and checked by the receiver against the artifact it loaded, its
+// first layer, the next position and its width. Requests flow through the
+// stages as in a bucket brigade: at tick t stage k works on request t - k.
+// Every stage calls chapter 81's ms_layer, so a split run equals the
+// unsplit forward bit for bit, which the checks confirm.
+// Profile stage-run-v1: chapter 81's f32 decoder with binary64 sums over
+// BF16 bytes; stages run one after another in one process.
+#load "ministral.coax";
+#load "stage-plan.coax";
+
+// The artifact digests the boundary binds: the first 8 bytes of the pinned
+// consolidated.safetensors' SHA-256 (chapter 81), and a tag for the
+// synthetic model.
+STG_MINISTRAL_DIGEST :: cast(u64)0x722430146632596c;
+STG_TINY_DIGEST :: cast(u64)0x0186;
+STG_REQUESTS_MAX :: 8;
+STG_TICKS_MAX :: 23;
+
+// ---- Checks first ------------------------------------------------------------
+
+#test "Ministral 3 3B's planner model is the hand-worked one, and the checkpoint's size" {
+    m:=stg_ministral(MS_3B);h:=stgx_ministral();
+    #assert m.layers==h.layers && m.embed==h.embed && m.head==h.head && m.norm==h.norm && m.head_macs==h.head_macs;
+    #assert m.act==h.act && m.out==h.out && m.tied==h.tied;
+    for j:0..<26 {#assert m.weight[j]==h.weight[j] && m.kv[j]==h.kv[j] && m.macs[j]==h.macs[j] && m.attend[j]==h.attend[j];}
+    // Every text tensor of the pinned inventory, in BF16 bytes: the layers, the embedding and the final norm.
+    total:=m.embed+m.norm;for j:0..<26 {total+=m.weight[j];}
+    #assert total==2*ms_inventory(MS_3B,MS_PINNED_MANIFEST).written;
+    t:=stg_ministral(ms_tiny());#assert t.layers==2 && t.weight[1]==2*(2*16*8+2*8*8+3*12*8+2*8) && t.kv[0]==64 && t.attend[1]==32;
+    #assert t.act==4*(16+16+16) && t.out==4*(32+8) && t.embed==256 && t.head_macs==128;
+}
+#test "the synthetic model's first two layers are chapter 81's, byte for byte" {
+    a:[MS_TINY_BYTES]u8;ms:=ms_tiny_weights(a[..]);#assert ms.norm.count==16;b:[MS_TINY_BYTES]u8;t:=stg_tiny(2,b[..]);
+    #assert stg_tiny_bytes(2)==MS_TINY_BYTES && t.shape.layers==2 && t.shape.width==8;
+    for i:0..<MS_TINY_BYTES {#assert a[i]==b[i];}
+    six:[8528]u8;#assert stg_tiny_bytes(6)==8528;u:=stg_tiny(6,six[..]);
+    #assert u.layers[5].ffn_norm.count==16 && u.layers[5].ffn_norm[15]==six[8527] && u.norm.count==16;
+}
+#test "the readout in chunks is the readout whole, bit for bit" {
+    b:[MS_TINY_BYTES]u8;t:=stg_tiny(2,b[..]);s:=t.shape;row:=[8]f32.[0.5,-1,2,0.25,-0.75,1.5,-2,1];
+    whole:[16]f32;work:[24]f32;#assert ms_readout(s,t.embed,16,t.norm,row[..],whole[..],work[..]).status==MsStatus.ok;
+    for chunk:[5]int.[1,5,15,16,STG_READOUT_ROWS] {
+        got:[16]f32;r:=stg_readout(s,t.embed,t.norm,row[..],got[..],work[..],chunk);
+        #assert r.status==MsStatus.ok && r.written==16;
+        for i:0..<16 {#assert f32_bits(got[i])==f32_bits(whole[i]);}
+    }
+    got:[16]f32;
+    #assert stg_readout(s,t.embed,t.norm,row[..],got[..],work[..],0).status==MsStatus.shape;
+    #assert stg_readout(s,t.embed,t.norm,row[..],got[..],work[..],STG_READOUT_ROWS+1).status==MsStatus.shape;
+    #assert stg_readout(s,t.embed[0..<254],t.norm,row[..],got[..],work[..],5).status==MsStatus.shape;
+    #assert stg_readout(s,t.embed,t.norm,row[..],got[0..<15],work[..],5).status==MsStatus.shape;
+    // A NaN in row 12 is refused in the chunk that starts at row 10.
+    t.embed[2*12*8+1]=0x7f;t.embed[2*12*8]=0xc0;r:=stg_readout(s,t.embed,t.norm,row[..],got[..],work[..],5);
+    #assert r.status==MsStatus.number && r.cause==10;
+    #assert stg_min(3,5)==3 && stg_min(5,3)==3;
+}
+stgt_forward :: (t:StgTiny,tokens:[]int,logits:[]f32)->MsResult {
+    hidden:[1024]f32;work:[2048]f32;
+    u:=t;return ms_forward(u.shape,u.embed,u.norm,u.layers[0..<u.shape.layers],tokens,hidden[0..<2*tokens.count*8],logits,work[..]);
+}
+stgt_ok :: (r:StgRun)->bool {return r.status==StgRunStatus.ok;}
+stgt_shape :: (r:StgRun)->bool {return r.status==StgRunStatus.shape;}
+STGT_TOKENS :: [16]int.[1,3,7,12,4,5,9,2,0,15,8,8,11,6,14,10];
+STGT_STARTS :: [5]int.[0,5,8,14,16];
+StgtBuffers :: struct {logits:[64]f32;mem:[1728]f32;wire:[400]u32;}
+#test "two stages of chapter 81's synthetic model match the float64 reference" {
+    b:[MS_TINY_BYTES]u8;t:=stg_tiny(2,b[..]);x:StgtBuffers;
+    tokens:=MS_TINY_TOKENS;starts:=[2]int.[0,5];cut:=[3]int.[0,1,2];dg:=[2]u64.[STG_TINY_DIGEST,STG_TINY_DIGEST];
+    r:=stg_pipeline(t.shape,dg[..],t.embed,t.norm,t.layers[0..<2],cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]);
+    #assert r.status==StgRunStatus.ok && r.ticks==2 && r.messages==1 && r.bytes==4*(9+5*8);
+    worst:=0.0;for i:0..<16 {e:=abs(f64(x.logits[i])-MS_TINY_LOGITS[i]);if e>worst {worst=e;}}#assert worst<2e-6;
+    one:[16]f32;#assert stgt_forward(t,tokens[..],one[..]).status==MsStatus.ok;
+    for i:0..<16 {#assert f32_bits(one[i])==f32_bits(x.logits[i]);}
+}
+#test "every split of a six-layer model equals the unsplit forward bit for bit" #steps 400000000 {
+    b:[8528]u8;t:=stg_tiny(6,b[..]);tokens:=STGT_TOKENS;starts:=STGT_STARTS;
+    want:[64]f32;for r:0..<4 {#assert stgt_forward(t,tokens[starts[r]..<starts[r+1]],want[16*r..<16*r+16]).status==MsStatus.ok;}
+    dg:=[6]u64.[STG_TINY_DIGEST,STG_TINY_DIGEST,STG_TINY_DIGEST,STG_TINY_DIGEST,STG_TINY_DIGEST,STG_TINY_DIGEST];
+    // One stage, 3+3, 1+2+3, 2+2+2 and one layer a stage.
+    cuts:=[5][7]int.[[7]int.[0,6,0,0,0,0,0],[7]int.[0,3,6,0,0,0,0],[7]int.[0,1,3,6,0,0,0],[7]int.[0,2,4,6,0,0,0],[7]int.[0,1,2,3,4,5,6]];
+    stages:=[5]int.[1,2,3,3,6];
+    for c:0..<5 {
+        n:=stages[c];x:StgtBuffers;cut:=cuts[c];
+        r:=stg_pipeline(t.shape,dg[0..<n],t.embed,t.norm,t.layers[0..<6],cut[0..<n+1],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]);
+        #assert r.status==StgRunStatus.ok && r.ticks==4+n-1 && r.messages==4*(n-1) && r.bytes==(n-1)*4*(4*9+16*8);
+        for i:0..<64 {#assert f32_bits(x.logits[i])==f32_bits(want[i]);}
+        // At tick t stage k works on request t - k, when there is one.
+        for tick:0..<r.ticks {for k:0..<n {e:=tick-k;if e<0 || e>3 {e=-1;}#assert r.order[tick][k]==e;}}
+        #assert r.order[0][n]== -1 && r.order[r.ticks][0]== -1 && r.stage==0 && r.request==0;
+    }
+}
+#test "a stage refuses another artifact's rows, and the run says where" {
+    b:[8528]u8;t:=stg_tiny(6,b[..]);tokens:=STGT_TOKENS;starts:=STGT_STARTS;x:StgtBuffers;cut:=[4]int.[0,2,4,6];
+    dg:=[3]u64.[STG_TINY_DIGEST,STG_TINY_DIGEST,STG_MINISTRAL_DIGEST];
+    r:=stg_pipeline(t.shape,dg[..],t.embed,t.norm,t.layers[0..<6],cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]);
+    #assert r.status==StgRunStatus.refused && r.refusal==StgRefusal.model && r.stage==2 && r.request==0 && r.messages==3;
+    dg[2]=STG_TINY_DIGEST;dg[1]=STG_TINY_DIGEST+1;
+    r=stg_pipeline(t.shape,dg[..],t.embed,t.norm,t.layers[0..<6],cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]);
+    #assert r.status==StgRunStatus.refused && r.refusal==StgRefusal.model && r.stage==1 && r.request==0 && r.messages==1;
+    // A NaN in layer 3's weights stops stage 1 on request 0.
+    dg[1]=STG_TINY_DIGEST;bad:=b;u:=stg_tiny(6,bad[..]);w:=u.layers[3].w2;w[1]=0x7f;w[0]=0xc0;
+    r=stg_pipeline(u.shape,dg[..],u.embed,u.norm,u.layers[0..<6],cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]);
+    #assert r.status==StgRunStatus.decoder && r.decoder.status==MsStatus.number && r.decoder.cause==3 && r.stage==1 && r.request==0;
+    #assert stg_run_status_name(r.status)=="decoder" && stg_run_status_name(StgRunStatus.ok)=="ok";
+}
+#test "inputs the run refuses before it starts" #steps 400000000 {
+    b:[8528]u8;t:=stg_tiny(6,b[..]);tokens:=STGT_TOKENS;starts:=STGT_STARTS;x:StgtBuffers;cut:=[4]int.[0,2,4,6];
+    dg:=[3]u64.[STG_TINY_DIGEST,STG_TINY_DIGEST,STG_TINY_DIGEST];L:=t.layers[0..<6];s:=t.shape;
+    #assert stgt_ok(stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    // Per stage 2 x 6 x 8 residual floats and 192 of work (a 6-token layer); a mailbox of 9 + 48 words.
+    #assert stg_stage_floats(s,6)==96+192 && stg_mailbox_words(s,6)==57 && stg_stage_floats(s,1)==16+32 && stg_stage_floats(s,0)==24;
+    #assert stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[..],starts[..],x.logits[0..<63],x.mem[..],x.wire[..]).status==StgRunStatus.capacity;
+    #assert stgt_ok(stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[..],starts[..],x.logits[0..<64],x.mem[0..<864],x.wire[0..<114]));
+    #assert stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[..],starts[..],x.logits[..],x.mem[0..<863],x.wire[..]).status==StgRunStatus.capacity;
+    #assert stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[0..<113]).status==StgRunStatus.capacity;
+    bad:=s;bad.head_dim=3;#assert stgt_shape(stg_pipeline(bad,dg[..],t.embed,t.norm,L,cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    #assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L[0..<5],cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    #assert stgt_shape(stg_pipeline(s,dg[0..<2],t.embed,t.norm,L,cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    #assert stgt_shape(stg_pipeline(s,dg[0..<0],t.embed,t.norm,L,cut[0..<1],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    c:=cut;c[0]=1;#assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,c[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    c=cut;c[3]=5;#assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,c[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    c=cut;c[2]=2;#assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,c[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    c=cut;c[2]=1;#assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,c[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    c=cut;c[1]=0;#assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,c[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]));
+    // Sixteen stages of one layer each run; seventeen are refused.
+    many:[17]MsLayer;for l:0..<17 {many[l]=t.layers[l%6];}seventeen:[18]int;for k:0..<18 {seventeen[k]=k;}
+    d17:[17]u64;for k:0..<17 {d17[k]=STG_TINY_DIGEST;}s16:=s;s16.layers=16;s17:=s;s17.layers=17;
+    one16:=[2]int.[0,1];m16:[16*48]f32;w16:[15*17]u32;
+    want16:[16]f32;h16:[16]f32;wk:[48]f32;#assert ms_forward(s16,t.embed,t.norm,many[0..<16],tokens[0..<1],h16[..],want16[..],wk[..]).status==MsStatus.ok;
+    r16:=stg_pipeline(s16,d17[0..<16],t.embed,t.norm,many[0..<16],seventeen[0..<17],tokens[0..<1],one16[..],x.logits[..],m16[..],w16[..]);
+    #assert stgt_ok(r16) && r16.ticks==16 && r16.order[15][15]==0 && r16.messages==15;
+    for i:0..<16 {#assert f32_bits(x.logits[i])==f32_bits(want16[i]);}
+    #assert stgt_shape(stg_pipeline(s17,d17[..],t.embed,t.norm,many[..],seventeen[..],tokens[0..<1],one16[..],x.logits[..],m16[..],w16[..]));
+    st:=starts;st[0]=1;#assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[..],st[..],x.logits[..],x.mem[..],x.wire[..]));
+    st=starts;st[4]=15;#assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[..],st[..],x.logits[..],x.mem[..],x.wire[..]));
+    st=starts;st[2]=5;r:=stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[..],st[..],x.logits[..],x.mem[..],x.wire[..]);#assert stgt_shape(r) && r.request==1;
+    #assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[..],starts[0..<1],x.logits[..],x.mem[..],x.wire[..]));
+    // Nine requests are one too many; eight of one token each run.
+    nine:=[10]int.[0,1,2,3,4,5,6,7,8,9];
+    #assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[0..<9],nine[..],x.logits[..],x.mem[..],x.wire[..]));
+    big:[128]f32;r=stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tokens[0..<8],nine[0..<9],big[..],x.mem[..],x.wire[..]);
+    #assert stgt_ok(r) && r.ticks==10 && r.order[9][2]==7;
+    // 64 tokens run; 65 are refused.
+    long:[65]int;for i:0..<65 {long[i]=i%16;}ls:=[2]int.[0,64];lw:[3*(2*64*8+64*32)]f32;ww:[2*(9+64*8)]u32;
+    r=stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],long[0..<64],ls[..],x.logits[..],lw[..],ww[..]);
+    one:[16]f32;#assert stgt_ok(r) && stgt_forward(t,long[0..<64],one[..]).status==MsStatus.ok;
+    for i:0..<16 {#assert f32_bits(one[i])==f32_bits(x.logits[i]);}
+    ls[1]=65;#assert stgt_shape(stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],long[..],ls[..],x.logits[..],lw[..],ww[..]));
+    // A token outside the vocabulary stops stage 0; a NaN in the final norm stops the last stage.
+    tk:=tokens;tk[6]=16;r=stg_pipeline(s,dg[..],t.embed,t.norm,L,cut[..],tk[..],starts[..],x.logits[..],x.mem[..],x.wire[..]);
+    #assert r.status==StgRunStatus.decoder && r.decoder.status==MsStatus.range && r.stage==0 && r.request==1;
+    bb:=b;nn:=stg_tiny(6,bb[..]);nn.norm[1]=0x7f;nn.norm[0]=0xc0;
+    r=stg_pipeline(s,dg[..],nn.embed,nn.norm,nn.layers[0..<6],cut[..],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]);
+    #assert r.status==StgRunStatus.decoder && r.decoder.status==MsStatus.number && r.stage==2 && r.request==0;
+}
+
+// book:begin shape
+// Chapter 81's decoder as the planner sees it, per layer: BF16 weights, an
+// f32 cache of keys and values for every key-value head, the projections'
+// multiply-adds, and attention's (scores and weighted values for every
+// query head) per cached position. The runner's buffers per position: two
+// residual rows, and one layer's queries, keys and values. The readout is
+// the tied embedding; its logits and work are vocab + width + vocab f32.
+stg_ministral :: (s:MsShape)->StgModel {
+    m:StgModel;m.layers=s.layers;d:=s.width;q:=s.heads*s.head_dim;kv:=s.kv_heads*s.head_dim;
+    macs:=2*q*d+2*kv*d+3*s.hidden*d;
+    for j:0..<s.layers {m.weight[j]=2*(macs+2*d);m.kv[j]=4*2*kv;m.macs[j]=macs;m.attend[j]=2*q;}
+    m.embed=2*s.vocab*d;m.head=m.embed;m.norm=2*d;m.head_macs=s.vocab*d;
+    m.act=4*(2*d+q+2*kv);m.out=4*(2*s.vocab+d);m.tied=true;
+    return m;
+}
+// book:end shape
+
+// ---- the synthetic model -----------------------------------------------------
+
+// book:begin tiny
+// Chapter 81's synthetic model with up to six layers: the same formula, the same
+// order of tensors, so its first two layers are chapter 81's.
+StgTiny :: struct {shape:MsShape;embed:[]u8;norm:[]u8;layers:[6]MsLayer;}
+stg_tiny_bytes :: (layers:int)->int {return 2*(16*8+8+layers*(16+2*16*8+2*8*8+3*8*12));}
+stg_tiny :: (layers:int,bytes:[]u8)->StgTiny {
+    t:StgTiny;t.shape=ms_tiny();t.shape.layers=layers;s:=t.shape;d:=s.width;q:=s.heads*s.head_dim;kv:=s.kv_heads*s.head_dim;
+    at:=ms_tiny_fill(bytes,0,s.vocab*d,0,false);t.embed=bytes[0..<at];
+    b:=at;at=ms_tiny_fill(bytes,at,d,99,true);t.norm=bytes[b..<at];
+    for l:0..<layers {
+        k:=1+l*7;w:MsLayer;
+        b=at;at=ms_tiny_fill(bytes,at,q*d,k,false);w.wq=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,kv*d,k+1,false);w.wk=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,kv*d,k+2,false);w.wv=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,d*q,k+3,false);w.wo=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,s.hidden*d,k+4,false);w.w1=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,d*s.hidden,k+5,false);w.w2=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,s.hidden*d,k+6,false);w.w3=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,d,100+2*l,true);w.attention_norm=bytes[b..<at];
+        b=at;at=ms_tiny_fill(bytes,at,d,101+2*l,true);w.ffn_norm=bytes[b..<at];
+        t.layers[l]=w;
+    }
+    return t;
+}
+// book:end tiny
+
+// ---- the run -------------------------------------------------------------------
+
+// book:begin readout
+// Chapter 81's readout takes at most 32,768 rows at a time (chapter 7's
+// product's limit), so the vocabulary is read out in chunks of `chunk`
+// rows. Each logit is its own row's dot product, so the chunking changes
+// no bit.
+STG_READOUT_ROWS :: 32768;
+stg_min :: (a:int,b:int)->int {return a+b-stg_max(a,b);}
+stg_readout :: (s:MsShape,embed:[]u8,norm:[]u8,row:[]f32,logits:[]f32,work:[]f32,chunk:int)->MsResult {
+    if chunk<1 || chunk>STG_READOUT_ROWS {return MsResult.{status=MsStatus.shape};}
+    if embed.count!=2*s.vocab*s.width || logits.count<s.vocab {return MsResult.{status=MsStatus.shape};}
+    lo:=0;
+    while lo<s.vocab {
+        n:=stg_min(s.vocab-lo,chunk);
+        e:=ms_readout(s,embed[2*lo*s.width..<2*(lo+n)*s.width],n,norm,row,logits[lo..<lo+n],work);
+        if e.status!=MsStatus.ok {e.cause=lo;return e;}
+        lo+=chunk;
+    }
+    return MsResult.{written=s.vocab};
+}
+// book:end readout
+
+// book:begin run
+// Why a run stopped: its inputs, a boundary message a stage refused, or the
+// decoder (chapter 81's status). stage and request say where.
+StgRunStatus :: enum u8 {ok;shape;capacity;refused;decoder;}
+StgRun :: struct {
+    status:StgRunStatus;refusal:StgRefusal;decoder:MsResult;stage:int;request:int;
+    ticks:int;messages:int;bytes:int;order:[23][16]int;
+}
+// Floats each stage owns for requests of up to `tokens` tokens: two
+// residual buffers, and work for a layer or the readout. Words of one
+// boundary mailbox.
+stg_stage_floats :: (s:MsShape,tokens:int)->int #export_c {
+    w:=ms_layer_work(s,tokens);r:=s.width+s.vocab;
+    return 2*tokens*s.width+stg_max(w,r);
+}
+stg_mailbox_words :: (s:MsShape,tokens:int)->int #export_c {return STG_HEAD+tokens*s.width;}
+// Run requests (tokens[starts[r]..<starts[r+1]]) through stages cut[k]..<cut[k+1].
+// digests[k] is the artifact stage k loaded; the sender stamps its own.
+// logits[r*vocab..] receives request r's last-position logits.
+stg_pipeline :: (s:MsShape,digests:[]u64,embed:[]u8,norm:[]u8,layers:[]MsLayer,cut:[]int,
+                 tokens:[]int,starts:[]int,logits:[]f32,mem:[]f32,wire:[]u32)->StgRun {
+    run:StgRun;n:=cut.count-1;R:=starts.count-1;
+    for t:0..<STG_TICKS_MAX {for k:0..<16 {run.order[t][k]=-1;}}
+    if !ms_shape_valid(s) || layers.count!=s.layers || n<1 || n>STG_STAGES_MAX || digests.count!=n || cut[0]!=0 || cut[n]!=s.layers ||
+        R<1 || R>STG_REQUESTS_MAX || starts[0]!=0 || starts[R]!=tokens.count {run.status=StgRunStatus.shape;return run;}
+    for k:0..<n {if cut[k+1]<=cut[k] {run.status=StgRunStatus.shape;return run;}}
+    longest:=starts[1];
+    for r:0..<R {
+        c:=starts[r+1]-starts[r];
+        if c<1 || c>STG_TOKENS_MAX {run.status=StgRunStatus.shape;run.request=r;return run;}
+        longest=stg_max(longest,c);
+    }
+    F:=stg_stage_floats(s,longest);B:=stg_mailbox_words(s,longest);d:=s.width;
+    if logits.count<R*s.vocab || mem.count<n*F || wire.count<(n-1)*B {run.status=StgRunStatus.capacity;return run;}
+    run.ticks=R+n-1;
+    for t:0..<run.ticks {
+        // Downstream first, so a stage reads its mailbox before the stage
+        // before it writes the next request there.
+        for j:0..<n {
+            k:=n-1-j;r:=t-k;
+            if r<0 || r>=R {continue;}
+            run.order[t][k]=r;run.stage=k;run.request=r;
+            count:=starts[r+1]-starts[r];rows:=count*d;own:=mem[k*F..<(k+1)*F];
+            a:=own[0..<rows];b:=own[longest*d..<longest*d+rows];work:=own[2*longest*d..<F];x:=a;
+            if k==0 {
+                e:=ms_embed(s,embed,tokens[starts[r]..<starts[r+1]],x);
+                if e.status!=MsStatus.ok {run.status=StgRunStatus.decoder;run.decoder=e;return run;}
+            } else {
+                want:=StgExpect.{model=digests[k],layer=cut[k],start=0,width=d};
+                got:=stg_receive(want,wire[(k-1)*B..<k*B][0..<STG_HEAD+rows],x);
+                if got.refusal!=StgRefusal.none {run.status=StgRunStatus.refused;run.refusal=got.refusal;return run;}
+            }
+            // The stage's layers, back and forth between its two buffers:
+            // even steps a to b, odd steps b to a.
+            step:=0;
+            for l:cut[k]..<cut[k+1] {
+                odd:=step%2==1;step+=1;
+                e:=ms_layer(s,layers[l],ifx odd then b else a,count,ifx odd then a else b,work[0..<ms_layer_work(s,count)]);
+                if e.status!=MsStatus.ok {e.cause=l;run.status=StgRunStatus.decoder;run.decoder=e;return run;}
+            }
+            if step%2==1 {x=b;}
+            if k==n-1 {
+                e:=stg_readout(s,embed,norm,x[rows-d..<rows],logits[r*s.vocab..<(r+1)*s.vocab],work,STG_READOUT_ROWS);
+                if e.status!=MsStatus.ok {run.status=StgRunStatus.decoder;run.decoder=e;return run;}
+            } else {
+                w:=stg_pack(digests[k],cut[k+1],0,d,x,wire[k*B..<(k+1)*B]);
+                run.messages+=1;run.bytes+=4*w;
+            }
+        }
+    }
+    run.stage=0;run.request=0;
+    return run;
+}
+// book:end run
+
+stg_run_status_name :: (s:StgRunStatus)->string {
+    names:=[5]string.["ok","shape","capacity","refused","decoder"];
+    return names[cast(int)s];
+}

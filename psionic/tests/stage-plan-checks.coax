@@ -1,0 +1,69 @@
+// Chapter 186's check helpers, loaded by psionic/lib/stage-plan.coax and
+// owned by its checks: Ministral 3 3B's planner model written out by hand
+// from the arithmetic in the chapter, small models from a seed, and a
+// brute-force planner that tries every contiguous split.
+
+// Ministral 3 3B, every number derived by hand in chapter 186: BF16
+// weights, an f32 cache of 8 key-value heads of 128 (keys and values), and
+// the runner's f32 buffers.
+stgx_ministral :: ()->StgModel {
+    m:StgModel;m.layers=26;
+    for j:0..<26 {m.weight[j]=232796160;m.kv[j]=8192;m.macs[j]=116391936;m.attend[j]=8192;}
+    m.embed=805306368;m.head=805306368;m.norm=6144;m.head_macs=402653184;m.act=49152;m.out=1060864;m.tied=true;
+    return m;
+}
+stgx_next :: (x:int)->int {return (x*48271+11)%2147483647;}
+// A small model from a seed: 1 to 8 layers of uneven size and cost.
+stgx_random :: (seed:int)->StgModel {
+    m:StgModel;x:=seed*2654435761%1000003+17;
+    x=stgx_next(x);m.layers=1+x%8;
+    for j:0..<m.layers {
+        x=stgx_next(x);m.weight[j]=1+x%9;x=stgx_next(x);m.macs[j]=1+x%7;
+        x=stgx_next(x);m.kv[j]=x%3;x=stgx_next(x);m.attend[j]=x%2;
+    }
+    x=stgx_next(x);m.embed=1+x%6;x=stgx_next(x);m.head=1+x%6;x=stgx_next(x);m.norm=x%2;
+    x=stgx_next(x);m.head_macs=x%9;x=stgx_next(x);m.act=x%2;x=stgx_next(x);m.out=x%3;x=stgx_next(x);m.tied=x%2==0;
+    return m;
+}
+stgx_budgets :: (seed:int,n:int,out:[]int) {
+    x:=seed*69069+5;
+    for i:0..<n {x=(x*48271+11)%2147483647;out[i]=4+x%40;}
+}
+// Every contiguous split into n stages, by odometer over the cuts: the
+// smallest slowest stage among those that fit, and the first split in
+// lexicographic order of cuts that reaches it. -1 when none fits.
+StgxBrute :: struct {slowest:int;cut:[17]int;}
+stgx_brute :: (m:StgModel,budget:[]int,context:int)->StgxBrute {
+    n:=budget.count;L:=m.layers;r:=StgxBrute.{slowest=-1};cut:[17]int;
+    for i:0..<n+1 {cut[i]=i;}cut[n]=L;
+    while true {
+        fits:=true;slowest:=0;
+        for i:0..<n {
+            a:=cut[i];b:=cut[i+1];
+            if b<=a {fits=false;break;}
+            if stgx_bytes(m,a,b,i==0,i==n-1,context)>budget[i] {fits=false;}
+            c:=stgx_macs(m,a,b,i==n-1,context);if c>slowest {slowest=c;}
+        }
+        if fits && (r.slowest<0 || slowest<r.slowest) {r.slowest=slowest;r.cut=cut;}
+        // Advance the last movable cut; reset the ones after it.
+        k:=n-1;
+        while k>=1 && cut[k]>=L-(n-k) {k-=1;}
+        if k<1 {break;}
+        cut[k]+=1;for i:k+1..<n {cut[i]=cut[i-1]+1;}
+    }
+    return r;
+}
+// The brute force's own byte and multiply-add counts, written from the
+// chapter's rules rather than shared with the planner.
+stgx_bytes :: (m:StgModel,a:int,b:int,first:bool,last:bool,context:int)->int {
+    w:=0;kv:=0;for j:a..<b {w+=m.weight[j];kv+=m.kv[j];}
+    shared:=0;
+    if first && last {shared=m.embed+m.norm+m.out;if !m.tied {shared+=m.head;}}
+    else if first {shared=m.embed;}
+    else if last {shared=m.head+m.norm+m.out;}
+    return w+kv*context+m.act*context+shared;
+}
+stgx_macs :: (m:StgModel,a:int,b:int,last:bool,context:int)->int {
+    c:=0;for j:a..<b {c+=m.macs[j];c+=m.attend[j]*context;}
+    return c+ifx last then m.head_macs else 0;
+}

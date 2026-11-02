@@ -1,0 +1,52 @@
+// Chapter 186: plan Ministral 3 3B's stages under memory budgets, then plan
+// and run a six-layer synthetic Ministral split into stages, and compare
+// every logit with the unsplit forward.
+#import "Basic";
+#load "../lib/stage-run.coax";
+
+show :: (label:string,p:StgPlan) {
+    if p.status!=StgStatus.ok {print("%: refused, %, % bytes short\n",label,stg_status_name(p.status),p.cause);return;}
+    print("%: slowest stage % multiply-adds a token\n",label,p.slowest);
+    for i:0..<p.stages {print("  stage %: layers %..<%, % bytes (cache %), % multiply-adds\n",i,p.cut[i],p.cut[i+1],p.bytes[i],p.kv[i],p.macs[i]);}
+}
+
+// book:begin plan-example
+main :: () {
+    m:=stg_ministral(MS_3B);C:=4096;
+    print("Ministral 3 3B at % positions\n",C);
+    print("one layer: % weight bytes, % cache bytes, % multiply-adds a token\n",m.weight[0],m.kv[0]*C,m.macs[0]+m.attend[0]*C);
+    print("readout: % multiply-adds a token; buffers % bytes a stage\n",m.head_macs,m.act*C);
+    two:=[2]int.[6000000000,6000000000];show("two stages of 6 GB",stg_plan(m,two[..],C));
+    two=[2]int.[4500000000,4500000000];show("two stages of 4.5 GB",stg_plan(m,two[..],C));
+    four:=[4]int.[3000000000,3000000000,3000000000,3000000000];show("four stages of 3 GB",stg_plan(m,four[..],C));
+    one:=[1]int.[8000000000];show("one stage of 8 GB",stg_plan(m,one[..],C));
+    two=[2]int.[4400000000,4400000000];show("two stages of 4.4 GB",stg_plan(m,two[..],C));
+    two=[2]int.[4460000000,4480000000];show("4.46 GB and 4.48 GB",stg_plan(m,two[..],C));
+    two=[2]int.[1000000000,9000000000];show("1 GB and 9 GB",stg_plan(m,two[..],C));
+    print("one token crossing a boundary: % bytes; ten tokens: % bytes\n",stg_message_bytes(1,MS_3B.width),stg_message_bytes(10,MS_3B.width));
+// book:end plan-example
+
+// book:begin run-example
+    // Six synthetic layers, three stages of 6,000 bytes, four requests.
+    bytes:[8528]u8;t:=stg_tiny(6,bytes[..]);s:=t.shape;
+    budgets:=[3]int.[6000,6000,6000];p:=stg_plan(stg_ministral(s),budgets[..],6);
+    show("synthetic, three stages of 6000 bytes",p);
+    tokens:=[16]int.[1,3,7,12,4,5,9,2,0,15,8,8,11,6,14,10];starts:=[5]int.[0,5,8,14,16];
+    digests:=[3]u64.[STG_TINY_DIGEST,STG_TINY_DIGEST,STG_TINY_DIGEST];
+    logits:[64]f32;mem:[3*288]f32;wire:[2*57]u32;
+    run:=stg_pipeline(s,digests[..],t.embed,t.norm,t.layers[0..<6],p.cut[0..<4],tokens[..],starts[..],logits[..],mem[..],wire[..]);
+    print("run: %, % ticks, % messages, % bytes across boundaries\n",stg_run_status_name(run.status),run.ticks,run.messages,run.bytes);
+    for tick:0..<run.ticks {
+        print("  tick %:",tick);
+        for k:0..<3 {if run.order[tick][k]>=0 {print(" stage % request %;",k,run.order[tick][k]);}}
+        print("\n");
+    }
+    same:=0;hidden:[28*8]f32;work:[14*32]f32;whole:[16]f32;
+    for r:0..<4 {
+        f:=ms_forward(s,t.embed,t.norm,t.layers[0..<6],tokens[starts[r]..<starts[r+1]],hidden[0..<2*8*(starts[r+1]-starts[r])],whole[..],work[..]);
+        for i:0..<16 {if f.status==MsStatus.ok && f32_bits(whole[i])==f32_bits(logits[16*r+i]) {same+=1;}}
+        print("  request %: greedy token % split, % whole\n",r,ms_argmax(logits[16*r..<16*r+16]),ms_argmax(whole[..]));
+    }
+    print("logits equal to the unsplit forward bit for bit: % of 64\n",same);
+}
+// book:end run-example

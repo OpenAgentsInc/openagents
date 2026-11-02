@@ -1,0 +1,11 @@
+a whole message of 25 words: none
+protocol version 2: version
+a receiver holding Ministral 3 3B: model
+a receiver whose first layer is 3: layer
+a receiver expecting position 2: position
+a receiver of width 16: geometry
+one value's lowest bit flipped: checksum
+the last word lost: partial
+one word too many: excess
+stage 2 loaded another artifact: refused, model, at stage 2 on request 0
+stages that stop at layer 5 of 6: shape

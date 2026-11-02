@@ -1,0 +1,36 @@
+Ministral 3 3B at 4096 positions
+one layer: 232796160 weight bytes, 33554432 cache bytes, 149946368 multiply-adds a token
+readout: 402653184 multiply-adds a token; buffers 201326592 bytes a stage
+two stages of 6 GB: slowest stage 2202009600 multiply-adds a token
+  stage 0: layers 0..<14, 4735541248 bytes (cache 469762048), 2099249152 multiply-adds
+  stage 1: layers 14..<26, 4203907072 bytes (cache 402653184), 2202009600 multiply-adds
+two stages of 4.5 GB: slowest stage 2351955968 multiply-adds a token
+  stage 0: layers 0..<13, 4469190656 bytes (cache 436207616), 1949302784 multiply-adds
+  stage 1: layers 13..<26, 4470257664 bytes (cache 436207616), 2351955968 multiply-adds
+four stages of 3 GB: slowest stage 1152385024 multiply-adds a token
+  stage 0: layers 0..<7, 2871087104 bytes (cache 234881024), 1049624576 multiply-adds
+  stage 1: layers 7..<14, 2065780736 bytes (cache 234881024), 1049624576 multiply-adds
+  stage 2: layers 14..<21, 2065780736 bytes (cache 234881024), 1049624576 multiply-adds
+  stage 3: layers 21..<26, 2339452928 bytes (cache 167772160), 1152385024 multiply-adds
+one stage of 8 GB: slowest stage 4301258752 multiply-adds a token
+  stage 0: layers 0..<26, 7932815360 bytes (cache 872415232), 4301258752 multiply-adds
+two stages of 4.4 GB: refused, total does not fit, 139448320 bytes short
+4.46 GB and 4.48 GB: refused, no contiguous split fits, 0 bytes short
+1 GB and 9 GB: refused, first stage does not fit, 272983552 bytes short
+one token crossing a boundary: 12324 bytes; ten tokens: 122916 bytes
+synthetic, three stages of 6000 bytes: slowest stage 1856 multiply-adds a token
+  stage 0: layers 0..<2, 4928 bytes (cache 768), 1728 multiply-adds
+  stage 1: layers 2..<4, 4672 bytes (cache 768), 1728 multiply-adds
+  stage 2: layers 4..<6, 5104 bytes (cache 768), 1856 multiply-adds
+run: ok, 6 ticks, 8 messages, 1312 bytes across boundaries
+  tick 0: stage 0 request 0;
+  tick 1: stage 0 request 1; stage 1 request 0;
+  tick 2: stage 0 request 2; stage 1 request 1; stage 2 request 0;
+  tick 3: stage 0 request 3; stage 1 request 2; stage 2 request 1;
+  tick 4: stage 1 request 3; stage 2 request 2;
+  tick 5: stage 2 request 3;
+  request 0: greedy token 14 split, 14 whole
+  request 1: greedy token 9 split, 9 whole
+  request 2: greedy token 12 split, 12 whole
+  request 3: greedy token 7 split, 7 whole
+logits equal to the unsplit forward bit for bit: 64 of 64

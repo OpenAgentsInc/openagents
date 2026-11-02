@@ -2819,6 +2819,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/stage-split.coax",
+      "chapter": "psionic/book/ch186-split-a-model-into-stages.md",
+      "stdout": "psionic/fixtures/stage-split.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/stage-split-refuse.coax",
+      "chapter": "psionic/book/ch186-split-a-model-into-stages.md",
+      "stdout": "psionic/fixtures/stage-split-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

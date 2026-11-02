@@ -1,0 +1,30 @@
+// Chapter 186's original-weight slice entry: Ministral 3 3B's first two
+// layers run whole (chapter 81's ms_forward) and split into two stages
+// (stage-run.coax's stg_pipeline, one layer a stage), exported for
+// psionic/tests/stage_slices.c. C maps the file and moves bytes; all
+// arithmetic and every boundary check is Coax.
+#load "../lib/stage-run.coax";
+#load "../lib/model-io/access.coax";
+
+// Whole: chapter 81's embedding, both layers and the readout in chunks of
+// 4,096 rows (the split reads out in chunks of 32,768).
+stg_slice_whole :: (s:MsShape,embed:[]u8,norm:[]u8,layers:[]MsLayer,tokens:[]int,hidden:[]f32,logits:[]f32,work:[]f32)->MsResult #export_c {
+    n:=tokens.count*s.width;
+    if layers.count!=2 || hidden.count<2*n || logits.count<s.vocab {return MsResult.{status=MsStatus.capacity};}
+    a:=hidden[0..<n];b:=hidden[n..<2*n];
+    r:=ms_embed(s,embed,tokens,a);if r.status!=MsStatus.ok {return r;}
+    r=ms_layer(s,layers[0],a,tokens.count,b,work);if r.status!=MsStatus.ok {return r;}
+    r=ms_layer(s,layers[1],b,tokens.count,a,work);if r.status!=MsStatus.ok {r.cause=1;return r;}
+    for lo:0..<s.vocab/4096 {
+        r=ms_readout(s,embed[2*lo*4096*s.width..<2*(lo+1)*4096*s.width],4096,norm,a[n-s.width..<n],logits[lo*4096..<(lo+1)*4096],work);
+        if r.status!=MsStatus.ok {r.cause=lo;return r;}
+    }
+    return MsResult.{written=s.vocab};
+}
+// Stages 0..<1 and 1..<2; stage 1 loaded the artifact `second`.
+stg_slice_split :: (s:MsShape,second:u64,embed:[]u8,norm:[]u8,layers:[]MsLayer,tokens:[]int,logits:[]f32,mem:[]f32,wire:[]u32)->StgRun #export_c {
+    digests:=[2]u64.[STG_MINISTRAL_DIGEST,second];cut:=[3]int.[0,1,2];starts:=[2]int.[0,tokens.count];
+    return stg_pipeline(s,digests[..],embed,norm,layers,cut[..],tokens,starts[..],logits,mem,wire);
+}
+stg_slice_floats :: (s:MsShape,tokens:int)->int #export_c {return stg_stage_floats(s,tokens);}
+stg_slice_words :: (s:MsShape,tokens:int)->int #export_c {return stg_mailbox_words(s,tokens);}
