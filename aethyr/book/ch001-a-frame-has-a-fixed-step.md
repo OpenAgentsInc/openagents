@@ -132,8 +132,10 @@ loop_accept_ns :: (c: FrameClock, frame_ns: int) -> FrameClock {
 }
 ```
 
-The realm runs the steps that are due, then calls `loop_ran`. `loop_alpha`
-returns the value that drawing mixes by.
+The realm runs the steps that are due, then calls `loop_ran`. A lockstep
+realm that could run only some of them (Belt 2200, waiting on its partner)
+calls `loop_ran_some`, and the rest stay owed for the next frame.
+`loop_alpha` returns the value that drawing mixes by.
 
 <!-- source: aethyr/loop.coax ran -->
 ```jai
@@ -146,6 +148,20 @@ loop_ran :: (c: FrameClock) -> FrameClock {
   next.carry_ns -= c.due * c.step_ns;
   next.ticks += c.due;
   next.ran = c.due;
+  next.due = 0;
+  return next;
+}
+
+// Only n of the steps due could run (a lockstep realm waiting on a peer): those n are paid,
+// and the rest stay owed in carry_ns for the next frame, whose accept caps them at max_steps
+// as any backlog. n below 0 runs none; n past the steps due runs only those.
+loop_ran_some :: (c: FrameClock, n: int) -> FrameClock {
+  paid := 0;   // at most max_steps: counted up, so neither bound has a tie to round
+  while paid < c.due && paid < n { paid += 1; }
+  next := c;
+  next.carry_ns -= paid * c.step_ns;
+  next.ticks += paid;
+  next.ran = paid;
   next.due = 0;
   return next;
 }
