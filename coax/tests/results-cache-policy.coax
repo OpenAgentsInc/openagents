@@ -14,14 +14,14 @@
  for i:0..<4 {path.steps[0].index=i;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12 && bs_path_equal(out[0].path,path);}
  b.query_index=CB_index_begin(b);path.steps[0].index=0;warm:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && warm.count==1;
  // One original-head probe plus one selected nonhead row per completed hit.
- work[0].work=1048448;for i:0..<64 {r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].root==0 && bs_path_equal(out[0].path,path);}
- #assert work[0].work==1048576 && work[0].queries==4 && work[0].origins==4;
+ work[0].work=2097024;for i:0..<64 {r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].root==0 && bs_path_equal(out[0].path,path);}
+ #assert work[0].work==2097152 && work[0].queries==4 && work[0].origins==4;
 }
 #forall "R2 cache index initialization requires fitting workspace and funds only its admitted prefix" mode:0..<3 {
  nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=16}];queries:[4]CK_BorrowQuery;work:=[1]CB_State.[CB_State.{queries=2}];scratch:[40]int;for i:0..<40 {scratch[i]=100+i;}
- c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=ifx mode==2 then scratch[0..<39] else scratch[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..]};if mode==1 {work[0].work=1048575;}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=ifx mode==2 then scratch[0..<39] else scratch[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..]};if mode==1 {work[0].work=2097151;}
  enabled:=CB_index_begin(b);
- if mode==1 {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && work[0].work==1048577;}
+ if mode==1 {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && work[0].work==2097153;}
  else {#assert !state[0].fatal && state[0].error_count==0 && enabled==(mode==0) && work[0].work==(ifx mode==0 then 2 else 0);}
  // No private marker, abandoned row or unused tail value is asserted here.
  // Successful public lookup behavior and fuel are checked by the test above.
@@ -49,8 +49,8 @@
  nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=20};target:=0;if upper {target=8;}
  for i:0..<8 {index:=8-i;if upper {index=i;}nodes[20+i]=CK_Node.{kind=CK_Tag.field_init,name=names[index],field_index=index,a=40+index,next=ifx i==7 then 2 else 21+i};}nodes[2]=CK_Node.{kind=CK_Tag.field_init,name=names[target],field_index=target,a=40+target};
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=true};#assert CB_literal_field(b,10,target)==2 && !state[0].fatal;
- work[0].work=1048512;for i:0..<64 {#assert CB_literal_field(b,10,target)==2 && !state[0].fatal && state[0].error_count==0;}
- #assert work[0].work==1048576;
+ work[0].work=2097088;for i:0..<64 {#assert CB_literal_field(b,10,target)==2 && !state[0].fatal && state[0].error_count==0;}
+ #assert work[0].work==2097152;
 }
 #forall "R2 cache previous witness refresh does not promote FIFO insertion order" insert_third:bool {
  nodes:[96]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=95,type_count=17}];work:[1]CB_State;
@@ -58,5 +58,5 @@
  nodes[20]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=40,next=21};nodes[21]=CK_Node.{kind=CK_Tag.field_init,field_index=1,a=41};for i:0..<8 {nodes[24+i]=CK_Node.{kind=CK_Tag.field_init,field_index=i,a=48+i,next=ifx i==7 then 0 else 25+i};}nodes[32]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=56};
  c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=true};#assert CB_literal_field(b,10,0)==20 && CB_literal_field(b,11,7)==31 && CB_literal_field(b,10,1)==21 && !state[0].fatal;
  id:=10;index:=1;expected:=21;if insert_third {#assert CB_literal_field(b,12,0)==32;id=11;index=7;expected=31;}
- work[0].work=1048512;for i:0..<64 {#assert CB_literal_field(b,id,index)==expected && !state[0].fatal && state[0].error_count==0;}#assert work[0].work==1048576;
+ work[0].work=2097088;for i:0..<64 {#assert CB_literal_field(b,id,index)==expected && !state[0].fatal && state[0].error_count==0;}#assert work[0].work==2097152;
 }

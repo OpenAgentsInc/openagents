@@ -1,0 +1,1059 @@
+{
+  "source_sha256": "f12b199262be723b3ca52f8d859e5e801de91bce7e376fde6347ab6fa392a69d",
+  "groups": [
+    {
+      "name": "return borrow head preparation spends query work only on eligible declarations",
+      "line": 367,
+      "changed_lines": [
+        368
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow head preparation spends query work only on eligible declarations"
+      ]
+    },
+    {
+      "name": "return borrow malformed memo links and published prefixes are hard failures",
+      "line": 380,
+      "changed_lines": [
+        391
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow malformed memo links and published prefixes are hard failures"
+      ]
+    },
+    {
+      "name": "return borrow head preparation reports the first exhausted source witness",
+      "line": 403,
+      "changed_lines": [
+        404
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow head preparation reports the first exhausted source witness"
+      ]
+    },
+    {
+      "name": "return borrow places preserve exact checked roots wrappers and projection endpoints",
+      "line": 80178,
+      "changed_lines": [
+        80181
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow places preserve exact checked roots wrappers and projection endpoints"
+      ]
+    },
+    {
+      "name": "return borrow alias indexing validates logical owners writes and target extents",
+      "line": 80231,
+      "changed_lines": [
+        80233
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow alias indexing validates logical owners writes and target extents"
+      ]
+    },
+    {
+      "name": "return borrow place projections preserve field index and known versus wildcard elements",
+      "line": 80241,
+      "changed_lines": [
+        80243
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow place projections preserve field index and known versus wildcard elements"
+      ]
+    },
+    {
+      "name": "borrow leaves refuse exhausted work even for a scalar result",
+      "line": 80342,
+      "changed_lines": [
+        80347
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "borrow leaves refuse exhausted work even for a scalar result"
+      ]
+    },
+    {
+      "name": "return borrow file walk charges work at the current declaration source",
+      "line": 80524,
+      "changed_lines": [
+        80525
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow file walk charges work at the current declaration source"
+      ]
+    },
+    {
+      "name": "return borrow default descriptors preserve static values and work refusal inherits physical owner",
+      "line": 80557,
+      "changed_lines": [
+        80558
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow default descriptors preserve static values and work refusal inherits physical owner"
+      ]
+    },
+    {
+      "name": "return borrow linked lookup validates every traversed cell before following its link",
+      "line": 80565,
+      "changed_lines": [
+        80566
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow linked lookup validates every traversed cell before following its link"
+      ]
+    },
+    {
+      "name": "return borrow expression malformed boundaries are distinct from unknown",
+      "line": 80631,
+      "changed_lines": [
+        80633
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow expression malformed boundaries are distinct from unknown"
+      ]
+    },
+    {
+      "name": "return borrow opacity work exhaustion cannot look like a complete clear result",
+      "line": 80672,
+      "changed_lines": [
+        80673
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow opacity work exhaustion cannot look like a complete clear result"
+      ]
+    },
+    {
+      "name": "return borrow linked declaration lookup respects exact endpoints and refusals",
+      "line": 80695,
+      "changed_lines": [
+        80698
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow linked declaration lookup respects exact endpoints and refusals"
+      ]
+    },
+    {
+      "name": "return borrow discovery charges exact final work and refuses the next operation",
+      "line": 80747,
+      "changed_lines": [
+        80748,
+        80749,
+        80750
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow discovery charges exact final work and refuses the next operation"
+      ]
+    },
+    {
+      "name": "return borrow workspace capacities preserve the exact bounded profile",
+      "line": 81224,
+      "changed_lines": [
+        81226
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow workspace capacities preserve the exact bounded profile"
+      ]
+    },
+    {
+      "name": "return borrow malformed facts and resource limits are hard failures not unknown",
+      "line": 81286,
+      "changed_lines": [
+        81293
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "return borrow malformed facts and resource limits are hard failures not unknown"
+      ]
+    },
+    {
+      "name": "retained workspace caps are independently bounded",
+      "line": 84418,
+      "changed_lines": [
+        84421
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained workspace caps are independently bounded"
+      ]
+    },
+    {
+      "name": "retained plain addressed last field does not spend a second linear type walk",
+      "line": 84528,
+      "changed_lines": [
+        84529
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained plain addressed last field does not spend a second linear type walk"
+      ]
+    },
+    {
+      "name": "retained frozen field lookups reuse exact type ordinals without changing raw A1",
+      "line": 84551,
+      "changed_lines": [
+        84555,
+        84556
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained frozen field lookups reuse exact type ordinals without changing raw A1"
+      ]
+    },
+    {
+      "name": "retained field cache uses the exact last existing query slot and refuses further work",
+      "line": 84575,
+      "changed_lines": [
+        84578,
+        84579
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained field cache uses the exact last existing query slot and refuses further work"
+      ]
+    },
+    {
+      "name": "retained invocation enables shared frozen fields for source and address queries",
+      "line": 84584,
+      "changed_lines": [
+        84585
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained invocation enables shared frozen fields for source and address queries"
+      ]
+    },
+    {
+      "name": "retained presence reuse keeps raw A1 depth and failed-publication boundaries",
+      "line": 84588,
+      "changed_lines": [
+        84590,
+        84593
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained presence reuse keeps raw A1 depth and failed-publication boundaries"
+      ]
+    },
+    {
+      "name": "borrow query misses reuse the already validated projected type",
+      "line": 84595,
+      "changed_lines": [
+        84596
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "borrow query misses reuse the already validated projected type"
+      ]
+    },
+    {
+      "name": "retained cross mode candidate validation is complete before output publication",
+      "line": 84616,
+      "changed_lines": [
+        84618
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained cross mode candidate validation is complete before output publication"
+      ]
+    },
+    {
+      "name": "retained direct owned storage needs no separate origin query row or span",
+      "line": 84626,
+      "changed_lines": [
+        84629
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained direct owned storage needs no separate origin query row or span"
+      ]
+    },
+    {
+      "name": "retained mutable descriptor memo has independent predicate truth tables and both fill orders",
+      "line": 84640,
+      "changed_lines": [
+        84642
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained mutable descriptor memo has independent predicate truth tables and both fill orders"
+      ]
+    },
+    {
+      "name": "retained mutable descriptor memo preserves raw depth failure and new run scope",
+      "line": 84644,
+      "changed_lines": [
+        84648,
+        84652
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained mutable descriptor memo preserves raw depth failure and new run scope"
+      ]
+    },
+    {
+      "name": "retained pending effects freeze original formal storage classification before publication",
+      "line": 84655,
+      "changed_lines": [
+        84657
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained pending effects freeze original formal storage classification before publication"
+      ]
+    },
+    {
+      "name": "retained repeated effect applications reuse frozen formal classification within existing work",
+      "line": 84660,
+      "changed_lines": [
+        84663
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained repeated effect applications reuse frozen formal classification within existing work"
+      ]
+    },
+    {
+      "name": "retained applied effect links refuse malformed prefix and exhausted work at call",
+      "line": 84802,
+      "changed_lines": [
+        84805
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained applied effect links refuse malformed prefix and exhausted work at call"
+      ]
+    },
+    {
+      "name": "retained graph boundaries keep first diagnostics exact storage and leaf limits",
+      "line": 84845,
+      "changed_lines": [
+        84862
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained graph boundaries keep first diagnostics exact storage and leaf limits"
+      ]
+    },
+    {
+      "name": "retained canonical effect reuse validates published links and charges lookup work",
+      "line": 84939,
+      "changed_lines": [
+        84943,
+        84946
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained canonical effect reuse validates published links and charges lookup work"
+      ]
+    },
+    {
+      "name": "retained type presence memo preserves frozen type facts and fresh-run scope",
+      "line": 85139,
+      "changed_lines": [
+        85143,
+        85144,
+        85148
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained type presence memo preserves frozen type facts and fresh-run scope"
+      ]
+    },
+    {
+      "name": "retained join memo keeps complete frozen facts and resets on a fresh run",
+      "line": 85197,
+      "changed_lines": [
+        85201,
+        85204
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained join memo keeps complete frozen facts and resets on a fresh run"
+      ]
+    },
+    {
+      "name": "field predecessor ascending admission preserves both source modes and raw A1",
+      "line": 85348,
+      "changed_lines": [
+        85353
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "field predecessor ascending admission preserves both source modes and raw A1"
+      ]
+    },
+    {
+      "name": "field predecessor fills an existing full-pool slot from the nearest lower ordinal",
+      "line": 85372,
+      "changed_lines": [
+        85378
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "field predecessor fills an existing full-pool slot from the nearest lower ordinal"
+      ]
+    },
+    {
+      "name": "field predecessor validates selected cached metadata and fails atomically",
+      "line": 85384,
+      "changed_lines": [
+        85400
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "field predecessor validates selected cached metadata and fails atomically"
+      ]
+    },
+    {
+      "name": "field row hint admits one validated nonhead row in both source modes",
+      "line": 85409,
+      "changed_lines": [
+        85414
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "field row hint admits one validated nonhead row in both source modes"
+      ]
+    },
+    {
+      "name": "field row hint type block and observed head misses retain the original walk",
+      "line": 85418,
+      "changed_lines": [
+        85422,
+        85424,
+        85425
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "field row hint type block and observed head misses retain the original walk"
+      ]
+    },
+    {
+      "name": "field row hint validates the selected published row and refuses malformed metadata",
+      "line": 85428,
+      "changed_lines": [
+        85435
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "field row hint validates the selected published row and refuses malformed metadata"
+      ]
+    },
+    {
+      "name": "field row hint publishes only after requested field success",
+      "line": 85441,
+      "changed_lines": [
+        85447
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "field row hint publishes only after requested field success"
+      ]
+    },
+    {
+      "name": "retained streamed traversal exhausts shared work without visiting an unbounded tail",
+      "line": 85528,
+      "changed_lines": [
+        85529,
+        85535,
+        85536
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained streamed traversal exhausts shared work without visiting an unbounded tail"
+      ]
+    },
+    {
+      "name": "retained shape configurations preserve all layout and publication boundaries",
+      "line": 85591,
+      "changed_lines": [
+        85605,
+        85613,
+        85616
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained shape configurations preserve all layout and publication boundaries"
+      ]
+    },
+    {
+      "name": "retained shape cold admission validates the complete scalar tail before reuse",
+      "line": 85619,
+      "changed_lines": [
+        85620,
+        85622
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained shape cold admission validates the complete scalar tail before reuse"
+      ]
+    },
+    {
+      "name": "retained warm promotion preserves A across a third complete layout",
+      "line": 85666,
+      "changed_lines": [
+        85671
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "retained warm promotion preserves A across a third complete layout"
+      ]
+    },
+    {
+      "name": "B2 write query uses ordinary bounded memo workspace and preserves active unknown",
+      "line": 85701,
+      "changed_lines": [
+        85704
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "B2 write query uses ordinary bounded memo workspace and preserves active unknown"
+      ]
+    },
+    {
+      "name": "B2 collector preserves exact paths disjoint owners prefix bounds and first failures",
+      "line": 85719,
+      "changed_lines": [
+        85731
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "B2 collector preserves exact paths disjoint owners prefix bounds and first failures"
+      ]
+    },
+    {
+      "name": "R2 projection witness reuses two distant field blocks within remaining work",
+      "line": 85941,
+      "changed_lines": [
+        85947,
+        85949
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 projection witness reuses two distant field blocks within remaining work"
+      ]
+    },
+    {
+      "name": "literal projection repeated mixed fields keeps actual static roots within remaining fuel",
+      "line": 86019,
+      "changed_lines": [
+        86022
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "literal projection repeated mixed fields keeps actual static roots within remaining fuel"
+      ]
+    },
+    {
+      "name": "literal projection original invalid request and exhausted selected-work refusal stay sharp",
+      "line": 86031,
+      "changed_lines": [
+        86032
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "literal projection original invalid request and exhausted selected-work refusal stay sharp"
+      ]
+    },
+    {
+      "name": "literal projection direct supplied retained context remains cold",
+      "line": 86038,
+      "changed_lines": [
+        86039
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "literal projection direct supplied retained context remains cold"
+      ]
+    },
+    {
+      "name": "query index sixteen paths retain exact facts within fixed lookup fuel",
+      "line": 86046,
+      "changed_lines": [
+        86050,
+        86052
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "query index sixteen paths retain exact facts within fixed lookup fuel"
+      ]
+    },
+    {
+      "name": "query index warm current head and selected row metadata refuse before output",
+      "line": 86086,
+      "changed_lines": [
+        86090
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "query index warm current head and selected row metadata refuse before output"
+      ]
+    },
+    {
+      "name": "query index lazy rebuild validates complete existing origin chain before publication",
+      "line": 86093,
+      "changed_lines": [
+        86096
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "query index lazy rebuild validates complete existing origin chain before publication"
+      ]
+    },
+    {
+      "name": "query index exhausted new record commit refuses before active or origin publication",
+      "line": 86112,
+      "changed_lines": [
+        86114
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "query index exhausted new record commit refuses before active or origin publication"
+      ]
+    },
+    {
+      "name": "R2 part02 repair indexed current head is charged once before a complete cache hit",
+      "line": 86202,
+      "changed_lines": [
+        86203
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 part02 repair indexed current head is charged once before a complete cache hit"
+      ]
+    },
+    {
+      "name": "R2 part02 repair active variant queries cannot evict completed field witnesses",
+      "line": 86210,
+      "changed_lines": [
+        86215
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 part02 repair active variant queries cannot evict completed field witnesses"
+      ]
+    },
+    {
+      "name": "R2 current coverage completed source class projections reuse their admitted field witness",
+      "line": 86226,
+      "changed_lines": [
+        86230
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 current coverage completed source class projections reuse their admitted field witness"
+      ]
+    },
+    {
+      "name": "R2 current part23 new indexed heads reuse their complete snapshot without a rebuild",
+      "line": 86258,
+      "changed_lines": [
+        86260
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 current part23 new indexed heads reuse their complete snapshot without a rebuild"
+      ]
+    },
+    {
+      "name": "R2 current part23 a warm field witness refreshes the following direct layout lookup",
+      "line": 86262,
+      "changed_lines": [
+        86265
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 current part23 a warm field witness refreshes the following direct layout lookup"
+      ]
+    },
+    {
+      "name": "R2 current part23 empty projections cannot evict completed field witnesses",
+      "line": 86267,
+      "changed_lines": [
+        86271
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 current part23 empty projections cannot evict completed field witnesses"
+      ]
+    },
+    {
+      "name": "R2 current part45 saturated sum counts stop before another variant consumes work",
+      "line": 86274,
+      "changed_lines": [
+        86275
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 current part45 saturated sum counts stop before another variant consumes work"
+      ]
+    },
+    {
+      "name": "R2 current part45 separate declarations keep same path field witnesses independently",
+      "line": 86286,
+      "changed_lines": [
+        86289
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 current part45 separate declarations keep same path field witnesses independently"
+      ]
+    },
+    {
+      "name": "R2 current part67 exhausted initial index probe stops before an old cyclic head is read",
+      "line": 86312,
+      "changed_lines": [
+        86313
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 current part67 exhausted initial index probe stops before an old cyclic head is read"
+      ]
+    },
+    {
+      "name": "R2 current part67 warm field witness refreshes the observed head after another layout",
+      "line": 86316,
+      "changed_lines": [
+        86319
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 current part67 warm field witness refreshes the observed head after another layout"
+      ]
+    },
+    {
+      "name": "R2 current part67 indirect value and storage queries retain distinct same path witnesses",
+      "line": 86321,
+      "changed_lines": [
+        86323
+      ],
+      "original_filter_command": [
+        "coax/bin/coax",
+        "test",
+        "coax/lib/compiler/checker.coax",
+        "--library",
+        "--only",
+        "R2 current part67 indirect value and storage queries retain distinct same path witnesses"
+      ]
+    }
+  ],
+  "group_count": 66,
+  "changed_fixture_lines": 85,
+  "production_lines_not_checks": [
+    81341,
+    81344,
+    85051
+  ],
+  "selection_method": "Only selected check names receive BUDGET2M selected: prefix in isolated copy. Bodies and production bytes unchanged.",
+  "production_module_hashes": {
+    "borrow-summary.coax": "fa04aa299e27a7138ef3f1884c473030131356ed1e1a53b02da24a7175031101",
+    "checker.coax": "f12b199262be723b3ca52f8d859e5e801de91bce7e376fde6347ab6fa392a69d",
+    "literal-projection-cache.coax": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+    "quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+    "query-index.coax": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+    "query-projection-cache.coax": "09403bb93f2caa0b5883bb22aa3f9c566381ebe819c90ee0c12f5575de3c2135",
+    "result-flow.coax": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+    "result-handling.coax": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+    "retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+    "spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+    "spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+    "sum-layout.coax": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+    "sum-types.coax": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+    "unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+    "unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33"
+  },
+  "producer": "/tmp/dictation-compiler-fix/normal16-coax",
+  "producer_sha256": "c80416bac2b814ca876b877cd2b0165dbfed68a6084e5631c0c1009816d719ea",
+  "result": {
+    "status": "PASS",
+    "exit_status": 0,
+    "groups": 66,
+    "failed": 0,
+    "stdout_sha256": "fad1d41de989e6a26f4946f25edf3c7b7c2c188bd11154653a62c3df2235f958",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "isolated_checker_sha256": "00af25296ae5b24a72be88acb0bce08559500073924774b1ec2e6b7f5326d885",
+    "command": [
+      "/tmp/dictation-compiler-fix/normal16-coax",
+      "test",
+      "/tmp/dictation-compiler-fix/budget2m-targeted/coax/lib/compiler/checker.coax",
+      "--library",
+      "--only",
+      "BUDGET2M selected:"
+    ],
+    "scope": "Only names prefixed in isolated snapshot; all production and fixture-body bytes preserved. No full coverage or mutation claim."
+  }
+}

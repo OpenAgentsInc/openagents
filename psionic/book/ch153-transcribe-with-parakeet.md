@@ -1,10 +1,13 @@
 # 153. Transcribe with Parakeet
 
 The Mac dictation controller, native effects and recorded-audio offscreen app
-checks pass. The complete app uses an isolated 2,097,152-work compiler; the
-unchanged default cap still blocks generation in imported checks. The
-[application handoff](../../docs/verification/coder-dictation-2026-11-02/app/README.md)
-records the passing diagnostic build and the open default-budget decision.
+checks pass with the owner-approved bounded 2,097,152-work source profile and
+a focused development compiler built from current sources. The full app build,
+keyboard/mouse draft insertion, Undo and zero-send results are recorded in the
+[adoption record](../../docs/verification/coder-dictation-2026-11-02/adoption/README.md).
+The earlier [application handoff](../../docs/verification/coder-dictation-2026-11-02/app/README.md)
+retains its diagnostic producer and original 1M refusal. Normal compiler
+bootstrap/release qualification and physical microphone acceptance are separate.
 
 > **Status: implemented — bounded resident Metal profile.** The original
 > Parakeet v3 weights run through a Coax frontend, Metal encoder and CPU TDT

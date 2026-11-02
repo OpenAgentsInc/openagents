@@ -1,0 +1,3 @@
+ok   #forall R2 focused literal FIFO refresh preserves two working sets within remaining fuel (2 cases, 317918 steps, 85 ms)
+1 of 1216 checks (--only 'R2 focused literal FIFO'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

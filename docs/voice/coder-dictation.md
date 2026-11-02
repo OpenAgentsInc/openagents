@@ -1,11 +1,13 @@
 # Local dictation in Coder for Mac
 
-**Integration status:** the offscreen app passes recorded-audio keyboard hold,
-microphone hold, exact draft insertion, Undo and zero-send checks using an
-isolated 2,097,152-work compiler. The complete desktop build still exceeds the
-unchanged default 1,048,576-work cap in imported checks. Budget adoption remains
-an owner decision; the tested bundle and its exact producers are recorded in the
-[application handoff](../verification/coder-dictation-2026-11-02/app/README.md).
+**Integration status:** the owner-approved bounded 2,097,152-work source
+profile builds the current Mac app with the recorded focused development
+compiler. Recorded-audio keyboard/mouse hold, exact draft insertion, Undo and
+zero-send checks pass. The [adoption record](../verification/coder-dictation-2026-11-02/adoption/README.md)
+identifies the current producers; the [historical handoff](../verification/coder-dictation-2026-11-02/app/README.md)
+retains the earlier isolated diagnostic. Real microphone and macOS permission
+checks remain pending. This is not a normal compiler bootstrap or full release
+qualification.
 
 Coder's composer in OpenAgents for Mac accepts speech through Psionic's own
 original-weight Parakeet v3 engine. Speech becomes an editable draft at the
@@ -16,10 +18,11 @@ caret. It never presses Enter, submits a message or runs a command.
 1. Install the pinned model using [Psionic's setup guide](../../psionic/docs/parakeet.md).
    The default is `~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99`;
    `OPENAGENTS_PARAKEET_MODEL` selects another copy of those exact files.
-2. Once the default-budget blocker above is reconciled, build the current
-   compiler with `coax/build.sh`, then build with
-   `apps/openagents-desktop/build.sh` and open its
-   `build/OpenAgents.app` when ready. In the **OpenAgents** menu, turn on
+2. Use the app bundle and current-source compiler identified in the adoption
+   record. To rebuild, run `apps/openagents-desktop/build.sh` with `COAX`
+   selecting that compiler. Open
+   `apps/openagents-desktop/build/OpenAgents.app` when ready.
+   In the **OpenAgents** menu, turn on
    **Enable Local Dictation — Parakeet**, then grant macOS microphone access.
    The setting defaults off and is saved locally.
 3. Wait for the initial model load. Hold **⌘D**, speak, then release it.

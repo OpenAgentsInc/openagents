@@ -12423,7 +12423,7 @@ coax_t_CK_BorrowCaps CK_borrow_caps(int64_t l_nodes) {
   int64_t l_origins = coax_add_s64(INT64_C(1024), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 81340) ^ INT64_C(-1))))), 81340);
   l_delta = coax_sub_s64(INT64_C(65536), l_origins, 81340);
   l_origins = coax_sub_s64(INT64_C(65536), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 81340) ^ INT64_C(-1))))), 81340);
-  return ((coax_t_CK_BorrowCaps){.queries = l_queries, .origins = l_origins, .work = INT64_C(1048576)});
+  return ((coax_t_CK_BorrowCaps){.queries = l_queries, .origins = l_origins, .work = INT64_C(2097152)});
 }
 
 static _Bool coax_p_CB_tick(coax_t_CB_Context l_b, coax_t_CK_Loc l_loc) {
@@ -12432,7 +12432,7 @@ static _Bool coax_p_CB_tick(coax_t_CB_Context l_b, coax_t_CK_Loc l_loc) {
     return 0;
   }
   ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 81344))).work = coax_add_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 81344))).work, INT64_C(1), 81344);
-  if (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 81344))).work > INT64_C(1048576))
+  if (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 81344))).work > INT64_C(2097152))
   {
     coax_t_CK_Loc l_where = l_loc;
     if ((l_where).line == INT64_C(0))
@@ -14880,7 +14880,7 @@ coax_t_CK_RetainCaps CK_retain_caps(int64_t l_nodes) {
   l_reports = coax_add_s64(INT64_C(128), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85050) ^ INT64_C(-1))))), 85050);
   l_delta = coax_sub_s64(INT64_C(16384), l_reports, 85050);
   l_reports = coax_sub_s64(INT64_C(16384), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85050) ^ INT64_C(-1))))), 85050);
-  return ((coax_t_CK_RetainCaps){.effects = l_n, .reports = l_reports, .work = INT64_C(1048576)});
+  return ((coax_t_CK_RetainCaps){.effects = l_n, .reports = l_reports, .work = INT64_C(2097152)});
 }
 
 static void coax_p_CR_record(coax_t_CR_Context l_r, uint8_t l_kind, int64_t l_owner, int64_t l_site, _Bool l_complete, _Bool l_relation, int64_t l_pending) {

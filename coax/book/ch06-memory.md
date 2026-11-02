@@ -519,13 +519,16 @@ or host has stopped retaining borrowed buffers.
 By-value carriers containing mutable views, unmodeled addressed getters,
 completion/cancellation ownership, general context lifetimes, recursive fixed
 points and shorter nested-block regions remain manual. Analysis uses
-twenty-four-step paths, depth 32 and 1,048,576 work steps. The
+twenty-four-step paths, depth 32 and a shared 2,097,152-work-step cap
+(owner-approved 2026-11-02 for the full desktop app). Exhaustion still
+refuses E0381. The
 [recorded return-summary boundary](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-return-borrows.md)
 and [retained-store boundary](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-retained-stores.md) do not claim
 general lifetime safety. The
 [early-exit record](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-b2-early-exit-2026-11-01/README.md)
 binds the changed guard and matching compiler cost. The owner accepted the
-measured 4,251-step margin (0.41%); the 1,048,576-step budget is unchanged. Its focused checks do not establish normal release/bootstrap
+measured 4,251-step margin (0.41%) under that dated record's original
+1,048,576-step budget. Its focused checks do not establish normal release/bootstrap
 qualification or a full desktop application build. That dated receipt retains
 its original eight-step representation. The [2026-11-02 continuation](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coder-dictation-2026-11-02/compiler-fix/README.md)
 records the twenty-four-step representation, whole-write array precision and

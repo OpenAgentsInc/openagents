@@ -115,7 +115,7 @@
  // A predeclared five work units per lookup leaves320 for64 calls. The
  // successful raw-to-class route must retain its already validated fields;
  // repeated cold scans of both two-row chains exceed that allowance.
- work[0].work=1048256;
+ work[0].work=2096832;
  for i:0..<64 {got:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && !got.incomplete && out[0].kind==BS_STATIC && out[0].root==1 && out[0].type==12;}
- #assert work[0].work<=1048576;
+ #assert work[0].work<=2097152;
 }

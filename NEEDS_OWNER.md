@@ -530,11 +530,13 @@ opening your microphone or showing a window. The remaining hardware check is
       rearm without reloading the already-loaded model.
 - [ ] Disable the setting and confirm the microphone indicator goes away.
 
-### Desktop compiler work-budget decision
+### Desktop compiler work-budget decision — approved
 
-The default 1,048,576-work profile passes the changed dictation units and the
-compiler itself, but the full desktop entry exhausts it in imported checks.
-An isolated 2,097,152-work candidate compiles that entry successfully. The
-repository default remains unchanged while the owner's async choice is pending:
-raise the bounded cap for this larger application, or retain it and optimize
-the remaining analysis. See the dated dictation application's handoff record.
+The owner approved raising the bounded shared work cap from 1,048,576 to
+2,097,152 and finishing the Mac app. There is no remaining budget-choice
+request. The [adoption record](docs/verification/coder-dictation-2026-11-02/adoption/README.md)
+records passing source-profile adoption, focused development compiler/native
+checks, current app build and recorded-audio offscreen dictation. The earlier
+diagnostic evidence is retained separately; normal compiler bootstrap/release
+qualification is not claimed. The microphone and macOS permission checks above
+remain pending.

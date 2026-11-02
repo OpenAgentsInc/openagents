@@ -2555,10 +2555,13 @@ distinct, exact 64 writes stay exact, and 257 independent effects still refuse.
 A private type classification memo resets each pass and publishes no failed
 preflight result. Historical dated verification keeps its eight-step profile.
 
-The pass shares A1's existing 1,048,576-step work budget and memo workspace.
-Its bounded effect/report capacities do not enlarge that budget; exhaustion is
-E0381. Optional reports expose only a committed used prefix, with count zero on
-any rejected compilation, including later authority/backend rejection. Disabled
+The pass shares A1's bounded work budget and memo workspace. Owner-approved
+2026-11-02 desktop adoption raises that shared cap to 2,097,152 steps; the
+separate bounded sum scanner keeps its explicit 1,048,576-step limit. Exhaustion
+still refuses E0381 before publishing partial results. Dated B2/current24
+records above retain their original 1,048,576-step profile. Optional reports
+expose only a committed used prefix, with count zero on any rejected
+compilation, including later authority/backend rejection. Disabled
 reports add no semantic work. Private staged rows and unused tails have no
 published-value or C-padding contract.
 

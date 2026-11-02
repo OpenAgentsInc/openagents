@@ -58,6 +58,6 @@
  path.steps[0].index=1;got=CB_expr(b,10,path,false,out[..]);#assert !state[0].fatal && got.count==1 && out[0].root==41;
  id:=10;expected:=41;if third {path.steps[0].index=0;got=CB_expr(b,12,path,false,out[..]);#assert !state[0].fatal && got.count==1 && out[0].root==42;id=11;expected=55;path.steps[0].index=7;}
  // Each warmed source read costs the expression, selected witness, and payload ticks.
- work[0].work=1048384;for i:0..<64 {got=CB_expr(b,id,path,false,out[..]);#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && !got.incomplete && out[0].kind==BS_STATIC && out[0].root==expected && out[0].type==12;}
- #assert work[0].work<=1048576;
+ work[0].work=2096960;for i:0..<64 {got=CB_expr(b,id,path,false,out[..]);#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && !got.incomplete && out[0].kind==BS_STATIC && out[0].root==expected && out[0].type==12;}
+ #assert work[0].work<=2097152;
 }

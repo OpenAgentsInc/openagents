@@ -1,0 +1,3 @@
+ok   #forall projection field witnesses refuse each malformed published component atomically (31 cases, 109077 steps, 10 ms)
+1 of 1213 checks (--only 'projection field witnesses'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,3 @@
+ok   #test origin raw-to-class publication retains bounded two-field lookup admission (1 case, 412808 steps, 81 ms)
+1 of 1218 checks (--only 'origin raw-to-class'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

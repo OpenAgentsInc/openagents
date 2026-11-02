@@ -620,3 +620,12 @@ focus/timing, Verse resampling/VAD, segmentation and stale-result/insertion
 rules; the native host supplies microphone and worker effects. Recorded-audio,
 policy, sanitizer and offscreen evidence is linked from the guide. Actual
 microphone permission/hardware checks remain in `NEEDS_OWNER.md`.
+
+The owner approved the compiler's bounded 2,097,152-work source profile after
+the earlier 1,048,576-work full-entry refusal. The
+[adoption record](../verification/coder-dictation-2026-11-02/adoption/README.md)
+records the passing current app build and offscreen keyboard/mouse dictation,
+Undo and zero-send run with a current-source focused development compiler.
+It is separate from the original diagnostic executable and does not claim a
+normal compiler bootstrap or full release gate. Physical/TCC acceptance remains
+pending.

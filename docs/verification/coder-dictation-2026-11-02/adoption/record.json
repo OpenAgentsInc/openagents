@@ -1,0 +1,438 @@
+{
+  "schema": "openagents.coder.dictation-adoption.v1",
+  "status": "passed-owner-approved-2m-focused-host-and-current-app",
+  "approved_shared_work_cap": 2097152,
+  "previous_shared_work_cap": 1048576,
+  "authorization": "The owner approved raising the bounded cap and finishing the Mac app.",
+  "scope": "Owner-approved bounded 2M source profile and regenerated trusted checker seed; focused current-source development compiler, selected changed-code checks, independent native work-boundary controls, full Mac app build and real offscreen Parakeet keyboard/Undo/mouse integration pass. No normal compiler bootstrap, full authority/mutation release gate or hardware/TCC acceptance is claimed.",
+  "compiler_profile": {
+    "kind": "focused-development-host",
+    "normal_bootstrap_qualified": false,
+    "full_release_gate_run": false
+  },
+  "qualification": {
+    "adopted_source_and_seeds": "Current 2M host self-emission of the changed checker passes with byte-equal trusted C/header seeds and empty stderr. Focused host built from current authored C++ and generated adopted-profile C; see compiler/record.json.",
+    "changed_compiler_checks": "66 affected checker-fixture groups and 14 selected external-policy groups passed; no full authority coverage or mutation claim",
+    "current_app_generation_and_link": "PASS exit 0; current focused 2M compiler, full build.sh generation, native/Swift link and signature replacement; existing Swift warning only.",
+    "current_app_offscreen_dictation": "PASS exit 0; exact keyboard/mouse draft, Undo, sent=0 parts=0; 19732 ms whole fixture, not a key-release latency benchmark.",
+    "current_compiler_native_boundaries": "10 independent native cases passed at O0, O2 and ASan/UBSan with empty stderr. Sanitizer profile uses -fsanitize=address,undefined -fno-omit-frame-pointer; no fatal-recovery-option claim."
+  },
+  "historical_evidence": {
+    "app": "../app/record.json",
+    "compiler_diagnostic": "../compiler-fix/budget2m-probe/record.json",
+    "component_summary": "../README.md",
+    "rule": "Earlier records retain their original producers, profiles and failures; they are not repinned to the adopted source. Unchanged passing model/corpus/mutation gates are reused rather than repeated."
+  },
+  "hardware_acceptance": {
+    "status": "pending-owner-check",
+    "checklist": "../../../../NEEDS_OWNER.md",
+    "scope": "Recorded public PCM and injected effects do not establish physical microphone, macOS permission, focus or device-selection acceptance."
+  },
+  "focused_checks": {
+    "producer": "/tmp/dictation-compiler-fix/coax2m",
+    "groups": 14,
+    "cache_groups": 8,
+    "projection_field_groups": 1,
+    "projection_groups": 3,
+    "origin_groups": 1,
+    "borrow_groups": 1,
+    "files": {
+      "dictation-adopt-borrow.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dictation-adopt-borrow.stdout": "49f996940078572cfe8c0847b1212e521125b2a16037d9437c6fa35d86111284",
+      "dictation-adopt-cache.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dictation-adopt-cache.stdout": "0fd5668edf16369c19dc79e84b8f08b23d309b6a13787d5e346bca8c68b3f693",
+      "dictation-adopt-origin.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dictation-adopt-origin.stdout": "a403808adb1c6a1f53ed0524df7528686231683d27c365e11ad525b784a49e0f",
+      "dictation-adopt-projection-field.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dictation-adopt-projection-field.stdout": "fc1d70a49434302511fd2aa5bbbdbe8b74907748e07e9424322e5bf0a13fe8ba",
+      "dictation-adopt-projection.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "dictation-adopt-projection.stdout": "c88b33d6da078dc3d4ae922d9a6939fec25e8ef571006f47d44f7009bfed80b4"
+    }
+  },
+  "affected_fixture_checks": {
+    "groups": 66,
+    "mapping": "targeted-fixtures/check-selection.json",
+    "producer": "/tmp/dictation-compiler-fix/normal16-coax",
+    "producer_sha256": "c80416bac2b814ca876b877cd2b0165dbfed68a6084e5631c0c1009816d719ea",
+    "source_sha256": "f12b199262be723b3ca52f8d859e5e801de91bce7e376fde6347ab6fa392a69d",
+    "isolated_checker_sha256": "00af25296ae5b24a72be88acb0bce08559500073924774b1ec2e6b7f5326d885",
+    "result": "PASS",
+    "source_closure": {
+      "borrow-summary.coax": {
+        "original_sha256": "fa04aa299e27a7138ef3f1884c473030131356ed1e1a53b02da24a7175031101",
+        "archived": "borrow-summary.coax.gz",
+        "gzip_sha256": "f0acdb125a214047d58e17fcd95ff704e6bc3ea49566dc70f47c10689470a022"
+      },
+      "checker.coax": {
+        "original_sha256": "00af25296ae5b24a72be88acb0bce08559500073924774b1ec2e6b7f5326d885",
+        "archived": "checker.coax.gz",
+        "gzip_sha256": "3f3615af9813d37e0d1803feea6528d9392d1b00e165082d7e59fd69263dd80c"
+      },
+      "literal-projection-cache.coax": {
+        "original_sha256": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+        "archived": "literal-projection-cache.coax.gz",
+        "gzip_sha256": "06d45053a061e68c830652bc23a46a8f9628ccadd9efa8b3745429d8d61d9409"
+      },
+      "quantity.coax": {
+        "original_sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "archived": "quantity.coax.gz",
+        "gzip_sha256": "2e779ecb4853e0c78137d32f8d5341db026ee8f715335a77e95ab30d9d06fc2d"
+      },
+      "query-index.coax": {
+        "original_sha256": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+        "archived": "query-index.coax.gz",
+        "gzip_sha256": "2eeb01b00aa7572ca67b9389a1d0a7178307e253153039fa5e1d98ad5eb3c5d4"
+      },
+      "query-projection-cache.coax": {
+        "original_sha256": "09403bb93f2caa0b5883bb22aa3f9c566381ebe819c90ee0c12f5575de3c2135",
+        "archived": "query-projection-cache.coax.gz",
+        "gzip_sha256": "4d781cb67d389434eb5266e88327ae0cec8b9698032010fb7e0a52f087e3fbe8"
+      },
+      "result-flow.coax": {
+        "original_sha256": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+        "archived": "result-flow.coax.gz",
+        "gzip_sha256": "fde524a9f386555bd81f20291f309499c619952aece2c5d350236e615eb48b5d"
+      },
+      "result-handling.coax": {
+        "original_sha256": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+        "archived": "result-handling.coax.gz",
+        "gzip_sha256": "09a31b295cd5e447607db73a9d24d277d0b1e029ea372de384d6a8b76bc2bb25"
+      },
+      "retain-policy.coax": {
+        "original_sha256": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+        "archived": "retain-policy.coax.gz",
+        "gzip_sha256": "ad58672f71780bf5ec1e4aedd02fef9d3b5a8810a9583361aa6e6c4343f58705"
+      },
+      "spatial-mutation.coax": {
+        "original_sha256": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+        "archived": "spatial-mutation.coax.gz",
+        "gzip_sha256": "513f95f1f208e72852280e8644cf6104282484cd419acad5be8c1f720c8db27d"
+      },
+      "spatial-policy.coax": {
+        "original_sha256": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "archived": "spatial-policy.coax.gz",
+        "gzip_sha256": "ac8bf3fb6683a8ef9b6d8de91543a6ecb3a1d0ba465e147bdee662441a9e45cb"
+      },
+      "sum-layout.coax": {
+        "original_sha256": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+        "archived": "sum-layout.coax.gz",
+        "gzip_sha256": "5435a9800453d3609e9d8c2e08d492e8a8f3fdaa2b200c37050e2caaf87ba502"
+      },
+      "sum-types.coax": {
+        "original_sha256": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+        "archived": "sum-types.coax.gz",
+        "gzip_sha256": "88f10bc3243a6d0dcd43603863804a1599f3c3bdda03cd82dabafb81282c75f0"
+      },
+      "unit-algebra.coax": {
+        "original_sha256": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "archived": "unit-algebra.coax.gz",
+        "gzip_sha256": "d47bd76edaf215cfcc8425a7a362a6d8abc00695e03fbd4fe78bb220e6b6c469"
+      },
+      "unit-forms.coax": {
+        "original_sha256": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "archived": "unit-forms.coax.gz",
+        "gzip_sha256": "9c5b8be9ca6c2de19984d88eb79b6d93a9e04590a7cd58c2c1f74edd480d1aa2"
+      }
+    },
+    "scope": "Only names prefixed in isolated snapshot; all production and fixture-body bytes preserved. No full coverage or mutation claim."
+  },
+  "current_focused_host": {
+    "path": "coax/bin/.dictation-adoption/coax",
+    "sha256": "f6db173169d510219d3351edab2f5ae59e345644fb0a0f483eeced76511dd05d",
+    "scope": "Built from current main C++ and generated adopted-profile C; manual focused development build, not normal bootstrap/release."
+  },
+  "working_source_pins": {
+    "coax/lib/compiler/checker.coax": "f12b199262be723b3ca52f8d859e5e801de91bce7e376fde6347ab6fa392a69d",
+    "coax/bootstrap/checker.c": "b7f719a536d872565bc4b0dc97b6edaf4b03423f992f534b4e748d8e293344c0",
+    "coax/bootstrap/checker.h": "169296b245a685279a90dcea7831394e126df0a83772fe3ff1efbf6e1b5d628a",
+    "coax/tests/results-borrow-policy.coax": "a85720f723e0475eb47b42f1e44526b59ec01462f4efa3a1cf2fb816569b9992",
+    "coax/tests/results-cache-policy.coax": "b66d42b0f56107d9cec81cfc9b7a0253f2fa0a719871aa6a5f93e1a2326706c8",
+    "coax/tests/results-origin-policy.coax": "b5a36d629252775314745d90d06db92c4cc5dfd09ec9064ae58d5402f5dacc72",
+    "coax/tests/results-projection-policy.coax": "aeedaf7308f40be0d94c5579073fc38115faa145c8aa5d2fb2bdc2e48ae0cb26"
+  },
+  "source_pins_status": "Current source identities; parent owns final manifest sealing after audit.",
+  "observed_at_utc": "2026-11-02T23:28:21.887398+00:00",
+  "compiler_provenance": {
+    "path": "compiler/record.json",
+    "sha256": "b1f35a73008f042926f2975baafd08006c2d4ead684258c4deb8a7910e2c78ae",
+    "bytes": 9995
+  },
+  "native_provenance": {
+    "path": "native/record.json",
+    "sha256": "6a7b9b3b5fae74bb121a227b36f09e1cc620216e7cae7cb799057814a2aecf22",
+    "bytes": 1530
+  },
+  "current_app": {
+    "path": "/private/tmp/openagents-12625-complete-20261101/apps/openagents-desktop/build/OpenAgents.app/Contents/MacOS/OpenAgents",
+    "identity": {
+      "sha256": "b4ef825cbae716314663da50ad8f89983e4243162c50af2ffc927e48405cf44f",
+      "bytes": 2563424
+    },
+    "runtime_receipt": "integration/receipt.json",
+    "runtime": {
+      "schema": "openagents.coder.dictation-app-check.v1",
+      "passed": true,
+      "app": "/private/tmp/openagents-12625-complete-20261101/apps/openagents-desktop/build/OpenAgents.app/Contents/MacOS/OpenAgents",
+      "root": "/private/tmp/openagents-12625-complete-20261101",
+      "app_sha256": "b4ef825cbae716314663da50ad8f89983e4243162c50af2ffc927e48405cf44f",
+      "pcm_sha256": "caded890c7f34459729f8597df2d9fe575f199b465894b3dae852e9262b41a62",
+      "identities_unchanged": true,
+      "started": 0,
+      "exit_status": 0,
+      "timed_out": false,
+      "output_cut": false,
+      "elapsed_ms": 19732,
+      "drafts": 3,
+      "draft_states": 3,
+      "fixture_timeouts": 0,
+      "observations_ok": true,
+      "screenshot_png": true,
+      "screenshot_sha256": "92511739f1e17a1ded686992f4f4b9beedbcad113fa8a5e7eab7a7c9bb62b18e",
+      "expected_full_draft": "Please inspect I am convinced of what I say, said the Count.",
+      "scope": "Actual offscreen app, recorded audio and real local Parakeet; keyboard then Undo then mouse; no microphone, visible window or send. Synthetic 500 ms idle silence replaces pre-roll between gestures; not a latency benchmark."
+    }
+  },
+  "current_model_archive": {
+    "path": "psionic/build/parakeet/libpsionic-parakeet.a",
+    "sha256": "4b1a859659153e8821a3ca777979a0992abe6d1e7191e6a4ee4061ae81d54f8a",
+    "bytes": 599224,
+    "scope": "Dependency watcher rebuilt archive with current compiler. Model arithmetic unchanged; existing finite model/corpus qualification reused, not rerun."
+  },
+  "integration_artifacts": {
+    "dictation.png": {
+      "sha256": "92511739f1e17a1ded686992f4f4b9beedbcad113fa8a5e7eab7a7c9bb62b18e",
+      "bytes": 128626
+    },
+    "receipt.json": {
+      "sha256": "8c8c1164a71b36b35d6ae818a86480c98ebaf53c1db665363180d5aceb2dfaaf",
+      "bytes": 1021
+    },
+    "silence.pcm": {
+      "sha256": "f85f2c34eb2843d2aa5951ee6e8e76985655b2e3ae2cbdd76bdfd654ecf19997",
+      "bytes": 16000
+    },
+    "stderr.txt": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "stdout.txt": {
+      "sha256": "a51ba285c345f86650cd9b088f0643d2f774b0979d9f93b02931796c8d71f737",
+      "bytes": 241
+    },
+    "steps.txt": {
+      "sha256": "84c48339bd617a28fbad9de2597c82fccf84a889f27b88e17406c2c23c94a24b",
+      "bytes": 609
+    }
+  },
+  "receipt_logs": {
+    "dictation-adopt-app-build.stderr": {
+      "sha256": "02e245e8c20ca959edf0cf144b3876e453cc8d76f93ec3bc072c455bbc2baded",
+      "bytes": 894
+    },
+    "dictation-adopt-app-build.stdout": {
+      "sha256": "02bc7b75229c9fcf0e9e41f16166b1593e0245b26e18fa693e398c9e952b3451",
+      "bytes": 381
+    },
+    "dictation-adopt-integration.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "dictation-adopt-integration.stdout": {
+      "sha256": "78867b469017c84769370b80cd32de97d9a317eeb21d14a227f4cd5c6a2ace22",
+      "bytes": 116
+    }
+  },
+  "reused_app_oracle": {
+    "source": "apps/openagents-desktop/tests/check-dictation-app.coax",
+    "source_sha256": "922e701028ce10296d0fb8b2fc3540461b7d8be9ebaf1a6db3d522878c701cac",
+    "qualification": "../app/tool/record.json",
+    "scope": "Unchanged source and previously qualified native runner reused. App rebuilt and rerun; no unchanged oracle checks repeated."
+  },
+  "screenshot_byte_equal_historical": true,
+  "app_source_pins": {
+    "apps/openagents-desktop/Info.plist": "4fae8eb2db4f6381147aecda69be581e9e3addfd25f5ce86a15dbcd141012d61",
+    "apps/openagents-desktop/Sources/Dictation.swift": "af2b7b75b7d794a085e45dfc2971fced7f8eab26e2aa510a648bf2e16bc651ae",
+    "apps/openagents-desktop/Sources/Zeron.swift": "878d03b50cf8150e82f79642d28dbe735afd2c6f9b7e7aba308f3d036d5cfd9a",
+    "apps/openagents-desktop/Sources/main.swift": "8a7e65005c9ee104447ea03d27d03c0c898defd184d6d86d244f0dc5e5db0ab0",
+    "apps/openagents-desktop/build.sh": "48ef16f28be1b0d94ac8ce767c0402128125a26b60a17e7bf4d30c4f20f653ab",
+    "apps/openagents-desktop/dictation-build.coax": "1da7ae7767f5ca75c6157a0221ba3fb1afcbc66de5724a3e8a5597dacf1bac6a",
+    "apps/openagents-desktop/dictation-face.c": "4d9563f007f0c52d45aa819e400064145b179e28a8d4ab0a5b840e3f8e4a53fd",
+    "apps/openagents-desktop/dictation-face.h": "20e22c6290fefe930b406f28da52d6764b59141d3f08e3f50a5bc17bb1782352",
+    "apps/openagents-desktop/face.h": "63b939550410500b133f9282f96c32157cdc743a838a7824894d9f6883fca35d",
+    "apps/openagents-desktop/zeron-face.c": "e565c2959b0a60dda10b749067963daf1363bd0bc7ef9837b3f0716e51ae0b72",
+    "apps/openagents-desktop/zeron/dictation.coax": "684e7fee6c58198018d17737d8f8fe57696d47305b9d07fb3158cc27ec1eee8b",
+    "apps/openagents-desktop/zeron/dictation-labels.coax": "56f6002ae55f292a1490e08d4433bcb0096005978153e8cc0833fe9344a6a0c1",
+    "apps/openagents-desktop/zeron/dictation-ui.coax": "54944d66cb0005f95b61753faf6a6612d8b94a5c11f601955fafafc4744f0f3e",
+    "apps/openagents-desktop/zeron/desk.coax": "b11c348c40ff119cc2c0389c56d9ad685c7f81971acd21ff60a347d7ceb678f8",
+    "apps/openagents-desktop/zeron/screen.coax": "c79ab404f046d4292c30c40c9e0c279ff9573cf0fe9157a1dd446502f2c54d40",
+    "apps/openagents-desktop/zeron/settings.coax": "227d02ebe24293970686d76657c921cbc19ad159fd004bf6e230936925113427",
+    "apps/shared/dictation-policy.coax": "c7fe68bee50055426a9ee3c1f796b8b31cf3c2d1bd538e7cf3ec77c8981d6597",
+    "apps/shared/dictation.coax": "5f9e08fbeef3a8d383e6bcdf41d23e120fadb9a49ee89b3bddd4245887dfb978"
+  },
+  "app_coax_closure": {
+    "aethyr/render/sans-profile.coax": "f8256f8dbf05657b8854c545e7e1267114eb8231c9a2e52bdd15089318b10993",
+    "aethyr/render/tests/sans-profile-checks.coax": "3354d74a7b74c373993ba36c570c80da3b44665d125f48af0ea5a0e88144fcdc",
+    "apps/openagents-desktop/lab-sign.coax": "ca6a019b9d07acd36b7ca5f7e7367db020626f0a5f685f1d5d4261345fd0eebf",
+    "apps/openagents-desktop/router.coax": "fbf91ab298a38b9ee4d0502fc5ca4c144ccfa7bca921e3e6c9d1a51b2a5387a0",
+    "apps/openagents-desktop/zeron/claude.coax": "4bae1398ca5850959f1a2a5ef4bedc52e6e7bebec38fa642ee7487f6f2e2a730",
+    "apps/openagents-desktop/zeron/claude_fixture.coax": "6196953d33f5703174885e9d7242345da6dc014832a2b4320ed84aa4944ef1b4",
+    "apps/openagents-desktop/zeron/codex.coax": "c453508377923fcc398d5762121a73e6c089e4f8172217d3364b24e6f9700996",
+    "apps/openagents-desktop/zeron/desk.coax": "b11c348c40ff119cc2c0389c56d9ad685c7f81971acd21ff60a347d7ceb678f8",
+    "apps/openagents-desktop/zeron/dictation-labels.coax": "56f6002ae55f292a1490e08d4433bcb0096005978153e8cc0833fe9344a6a0c1",
+    "apps/openagents-desktop/zeron/dictation-ui.coax": "54944d66cb0005f95b61753faf6a6612d8b94a5c11f601955fafafc4744f0f3e",
+    "apps/openagents-desktop/zeron/dictation.coax": "684e7fee6c58198018d17737d8f8fe57696d47305b9d07fb3158cc27ec1eee8b",
+    "apps/openagents-desktop/zeron/gpu.coax": "05d14bea00077a5446b2bf9697e55190ca02f33dec17402fb1b76929657b654a",
+    "apps/openagents-desktop/zeron/lab.coax": "187f282ecd7481a3c9594334d768d1a988103a9019b3a78a90ea022ab49d6e4a",
+    "apps/openagents-desktop/zeron/microcoder.coax": "92f4f36ca545e31067be525696b052535821d6676939fbd7bb3fd73d60a1d228",
+    "apps/openagents-desktop/zeron/modes.coax": "ae2ec8993bbecce3264959a9e5a54bae2cfca81ff2ecd645b542f089f1b55901",
+    "apps/openagents-desktop/zeron/psionic.coax": "9a4294bf470d5deb7f629e0269fd27568daae1d4589e288e90a2cd995ecb1682",
+    "apps/openagents-desktop/zeron/psionic_fixture.coax": "59d34a96dc7be8ddf2cf15c004f0529cda0ee0232816b4b46944635ca17979ce",
+    "apps/openagents-desktop/zeron/room.coax": "95e393b41bbc9f78f082f64e8682ae7b5c1c1c1a3b9d5c773c7a4ebd94537b0c",
+    "apps/openagents-desktop/zeron/screen.coax": "c79ab404f046d4292c30c40c9e0c279ff9573cf0fe9157a1dd446502f2c54d40",
+    "apps/openagents-desktop/zeron/settings.coax": "227d02ebe24293970686d76657c921cbc19ad159fd004bf6e230936925113427",
+    "apps/openagents-desktop/zeron/store.coax": "efeaf660c6860deb9df6644b65602ae7bc7583c363350549e2ee819cbfecd86d",
+    "apps/openagents-web/analytics.coax": "61760881c5419254c175fca483fe95222981a66224ff29560be078c29d2ec74c",
+    "apps/openagents-web/chat-hud.coax": "2bf7116302a0e42e2d7970e08504123a7a1b32e02d3b221f9fc5db24c0d0d0e9",
+    "apps/openagents-web/font.coax": "4790b19c267f1155085e0eb077135aa95592117e843c36c8cf2a8facbb273ffb",
+    "apps/openagents-web/projects/list.coax": "5fe7bd8da0c9bc80fd57f8f948bc72060562da3ed0da57097c921c39538ce42a",
+    "apps/openagents-web/projects.coax": "ad2f703aae71552931becb1dd159788105397ebafdb51250fcaffb23f62ea82c",
+    "apps/openagents-web/textkeys.coax": "4ccb5901b4d04835b1faadda87efb18a5d9125aaa334d044602779d7a75673d1",
+    "apps/shared/dictation-policy.coax": "c7fe68bee50055426a9ee3c1f796b8b31cf3c2d1bd538e7cf3ec77c8981d6597",
+    "apps/shared/dictation.coax": "5f9e08fbeef3a8d383e6bcdf41d23e120fadb9a49ee89b3bddd4245887dfb978",
+    "apps/shared/zeron/attachments.coax": "9cc8b813adfab5e9a23e3484efec4d59082707dd91b853a9a8bced505a2b9144",
+    "apps/shared/zeron/composer.coax": "e1febf99aed7ffc48520aeb93f33d6ce6709f4aa40de78fa091450117512cf19",
+    "apps/shared/zeron/gpui.coax": "73edf966ba9cb05c3970fc7c1a8ce1b2157f0c740e5d84938d560b6793608eca",
+    "apps/shared/zeron/markdown.coax": "bd57c8cdb460dfae716dcaa48c43dd5ceb1fdab7f9b21e70227fd45ea766ddba",
+    "apps/shared/zeron/picker.coax": "96a417171dd2fa738c165a7501fbbfcf5247ce4620cbd18b6bf08813eb77c499",
+    "apps/shared/zeron/tools.coax": "98e45d878dc414a5b90512a4e4882f03ec45eca4198130c8d720742daf375a3e",
+    "apps/shared/zeron/transcript.coax": "3e34f9eeff009edb54387e459256c4797f67ca7de7d9bb291d0c58bdcf846dda",
+    "coax/lib/agent/claude/claude.coax": "bce2fd8804f060dbed33f81ffec822dbe668c30359484875a26d6af6320d5562",
+    "coax/lib/agent/claude/control.coax": "5b7ebabdcfab80b586ea5491e52006fd5630207c5aef4eb8366da1381511f508",
+    "coax/lib/agent/claude/fields.coax": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4",
+    "coax/lib/agent/claude/mcp.coax": "25a70c8c0e848b254aa5ca9733691837bdbb333b57ad75f7b38b39c8e47d1140",
+    "coax/lib/agent/claude/messages.coax": "2deb53691e964762d692f0c98fae01cbef100b6c54db95d936f0db41f5c3d9d3",
+    "coax/lib/agent/claude/options.coax": "f36c373f3c640a694b27603926dfefc59319c55d8a8c810c615395f02204eb13",
+    "coax/lib/agent/claude/query.coax": "f7ab119e8a0b1818043c59f0a99484cea367c070c064923643fd6d4d45df25b2",
+    "coax/lib/agent/claude/transport.coax": "fd1dfbea34aad2533da77753f19555c32b54bc7ef288b2d817a0b4d58027d33f",
+    "coax/lib/agent/codex/client.coax": "36b43c2007d3ea0595fc72477b24aa6b849977bead2550cb4feefeda64c57be5",
+    "coax/lib/agent/codex/codex.coax": "35bf0c5c3e0a92971ddb39324b4051c883638e3b29b2d41abba71cf5bb6352e0",
+    "coax/lib/agent/codex/fixture.coax": "75a2a6f9c5074be4c40892280ba67173a2bf24f43375dcc99c5c1b2cfd9d71ee",
+    "coax/lib/agent/codex/transport.coax": "e6e3b7032a58409901940c54d0f996ed74f4b826937bf759807bfb59409f793e",
+    "coax/lib/compute/apple.coax": "68507e75ba716ee13f005e917a8734986c5f487ee5fbceea143eb028bb56d4fb",
+    "coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+    "coax/lib/crypto/ecdh_fast.coax": "8247ea4a284db45d98a3b810c80e3ee80bac2ee4e5f2396174e2aabe5d6deee2",
+    "coax/lib/crypto/schnorr.coax": "aa24658ad55066148dda34075463dc8034cb03eb5eff7dbd840162d9259b952a",
+    "coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+    "coax/lib/crypto/schnorr_math_workspace.coax": "97a253083cceac10ed99c32eba15cab894534c2e4e08604cea6d3305c5aee787",
+    "coax/lib/crypto/schnorr_nonce_point.coax": "af765494a39a5c6cfa7b4ef4487f82281bdc3dd41f43d96bec86b2f9c8e2f507",
+    "coax/lib/crypto/schnorr_nonce_workspace.coax": "68812db84fab59fb5fb22fe268c9d573c44e5df2cc5a99bac008810fe8bf8ac1",
+    "coax/lib/crypto/schnorr_point_workspace.coax": "98ab2e2ab9f4f90f2ae0333e8f340705b2a99520a717efa7e6139876d5b1f69e",
+    "coax/lib/crypto/schnorr_prepare_workspace.coax": "d96f9096b132f002baf75451c6698e2ec0e9656183028380faa60e2869eac305",
+    "coax/lib/crypto/schnorr_scalar_workspace.coax": "6a5b214e6a9ac87bcd0afa34b2bf0668126fa7ce4b8fe7f69bff6e50b4ee52f9",
+    "coax/lib/crypto/schnorr_self_verify.coax": "9145f2fe3b457a982b5808bf51b8ea9d82cd99ac1fc7e8812d5e0530c78aea7d",
+    "coax/lib/crypto/schnorr_sign.coax": "3e9702566ce8892c3cb94b0a05789b332f84c8f20b44948efe1e1ec3a17139c1",
+    "coax/lib/crypto/secp_field.coax": "b9840e7ed474e4a4e8e8273b4a27145ce4b2c9d18921e89d3693c5b4451d6f77",
+    "coax/lib/crypto/secp_field32.coax": "cd1a4ecf00535aa86b5fc3764cdc2920d745d9b3660b53999f83cdefd2c54902",
+    "coax/lib/crypto/secp_field32_total.coax": "971e37ac6fe8ab4e0e7e056935f8a130d44e1bf4520e56d7605227f9cbee74ae",
+    "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+    "coax/lib/crypto/secp_group32.coax": "ae2e2e5a1cd4701e094aa2aec34280d13277807621078fcb3394d53bbca2c6d6",
+    "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+    "coax/lib/crypto/secp_mult_base.coax": "fb9b34e769cb21e9d75439369e8608c27e94f5443907bd1b5a79f1cbcc1476a0",
+    "coax/lib/crypto/secp_mult_base_web.coax": "3ca9989b48ff368d1511fe9d81e4f91ec9f8f93d4099c6cf4cf0aa31fd391220",
+    "coax/lib/crypto/secp_mult_const.coax": "aaa83e00f1fa8a1a2954e654c741e056337c1d17d6b5ec6d7e1f8285abb438e5",
+    "coax/lib/crypto/secp_scalar.coax": "80d53f77a3d3da9cd60fed42b527540c15923ec644a6a3ccb095f85d2364312d",
+    "coax/lib/crypto/sha256-kernel.coax": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+    "coax/lib/crypto/sha256.coax": "0efcf1fde0f713a878e9a03ae2d3195b33082890e8393a65e1eeba93ca9a66d2",
+    "coax/lib/crypto/sha256_workspace.coax": "cdf7133f055242e3195feb21b9f4c1a84ce40168f52672f44d73e719fceb7e93",
+    "coax/lib/gateway/anthropic.coax": "51f921d80c0e6f846075c45c5cfaf24d559f5854f5c76fd40938759181fe5f61",
+    "coax/lib/gateway/chat.coax": "da4e496d23052b6678119b16d00b1368f1ff4dcbda5f520d8d62632e05b238d1",
+    "coax/lib/gateway/fixtures.coax": "3bcce3cfdaf330663af46f31c656ed749a73952cc90bc6566be5cc1342b896c2",
+    "coax/lib/gateway/gateway.coax": "73d2e0eb6a5a81b1559052049293e9611592c772138573df96f140969e6fe87d",
+    "coax/lib/gateway/gemini.coax": "d93faa4e0b6482df628f0457898f0c7f20ce89aad7e4e9d29853af4a68dc3f97",
+    "coax/lib/gateway/openrouter.coax": "101510672893c9646666e73d274937121fba1a99035d792eac7dfec3a3a16b58",
+    "coax/lib/gateway/ours.coax": "8ae20bce97936f80ec3f887f5c1d163b7ff7651da407016e20d89b2de17bf1df",
+    "coax/lib/gateway/ours_sign.coax": "fad5a8be22dbe48085b504a930e9166265f5ad2ab4d5fc6b91c692ea539f1872",
+    "coax/lib/gateway/plan.coax": "1b9590b9dbd7d1081026a31d632dba16bcc2c55fb3bbe30bb27e9ff5d8323e1a",
+    "coax/lib/gateway/rates.coax": "292ccd06e77170180c3c9e2a00a1e58cca7264c17f5ff604ea838900eab7386f",
+    "coax/lib/gateway/sse.coax": "548ea93a60affaa3eb61264166589a4259ddd724920de95b2250b96753b65be6",
+    "coax/lib/gateway/transport.coax": "d1f1e6d8e8206859f5ab7b003e16b2ebb7f5b7f1928234dbfd668ea0a86478d0",
+    "coax/lib/gateway/vertex.coax": "7df364cd0360c4ad2486f48b82d14e05249e5ef288166af7f93b2bdbc1117dea",
+    "coax/lib/json/json.coax": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1",
+    "coax/lib/microcoder/action.coax": "9ecebad36b881b11bda2ef6e0ab3f6afbe2eb5f895fb3f25da4e6cffd015300e",
+    "coax/lib/microcoder/loop.coax": "9bea3bc5be047e3657f93ff23ec2c36c08986f4119696fa7a486fee7d59cc71e",
+    "coax/lib/microcoder/run.coax": "28a4fb637da30af4e66546b114ae04e08190b270d31821e17615b084106dafcd",
+    "coax/lib/microcoder/state.coax": "dcdaa01e2d0b63a2b035c31471d33f35fd0f03daa4570a3a7b3fe697ecb83a48",
+    "coax/lib/microcoder/text_action.coax": "1c1ed270244d52c8e738e2d773fa299b5b6a0ad5d0e9825040ea0bd804bed75f",
+    "coax/lib/microcoder/tools.coax": "e83bbf576bfd35630d4941c854a3bacd01c687224aee40ff82ce66297ee5ad31",
+    "coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+    "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+    "coax/lib/nostr/base64.coax": "aa06ce4c14a4130e540265bcc017b8ec349899e4ae12e33e451f862043f47e6c",
+    "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+    "coax/lib/nostr/event.coax": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f",
+    "coax/lib/nostr/event_sign.coax": "bf02052fb13343a31ed6fcfca6a3f3a4de1660574a5041ea2bf2b10c3cf6e098",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+    "coax/lib/nostr/json-f64.coax": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c",
+    "coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+    "coax/lib/proto/wire.coax": "bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a",
+    "coax/lib/systemone/answers.coax": "27a95b60c4c46c1756349ae245ca307aa427a5e781a4329cb610365146d8fbc0",
+    "coax/lib/systemone/call-policy.coax": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf",
+    "coax/lib/systemone/outcomes.coax": "9c71c5925d82e5cd328c3d2b254144290fadc2bd88b9787ad28441c490d1320c",
+    "coax/lib/systemone/owner-policy.coax": "3d457681de3dfbc02f1ad35336f743ae03fce1724b87ad1396d00d0fa2944720",
+    "coax/lib/systemone/owner.coax": "b3cf98fe929c57b512959e24bb6649cc5eb05691a1f07218c3ba36a6f18c6097",
+    "coax/lib/systemone/request.coax": "a44abb35e9961e4c965326f2194f8f2d57acbbee048c737c9d5d3d59131fc4a8",
+    "coax/lib/systemone/systemone.coax": "67f08489ee200071f8fc136d1f05e39a600da5bd6f2a1a92edaa3f902ed91b7b",
+    "coax/lib/systemone/transport.coax": "fa3af1f3dc8881c67d775cbf76248a85b0b4aea41ff774a77026f060cd0268a6",
+    "coax/lib/x402/x402.coax": "4245acba6bf4fe3d91504bf5ddb71de108a614d78d06e9716999e1fbb73206e9",
+    "coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+    "coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+    "coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+    "coax/tests/nostr/event_sign_vectors.coax": "767fdf6caee3a183f7014271c8407a767ecd6e1bb9396487d1c9f8184d4d2013",
+    "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+    "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+    "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+    "coax/tests/nostr/schnorr_sign_vectors.coax": "84fda6ceab714c9b5ac93ff3596003783c84a00f97fa3b8ed31f73f2b22868db",
+    "psionic/fixtures/parakeet-tdt-manifest.coax": "75ec03d06a939ea65fe5f847b318196f573e6e9140d77064758dc8d22bf4ccad",
+    "psionic/lib/conformer.coax": "4219e29528c93ab0bc2727402d1ed30ff4da218f61458731f4ded368defc1dcd",
+    "psionic/lib/counter-rng.coax": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+    "psionic/lib/ops-contract.coax": "40610524dfded7d4c7b9746ea7b2a837ebf2c0e1697414477741ead38301c52d",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/parakeet/device.coax": "eb2513f09a275772a59ab1d6f5405deef9444ce1db94a4c22fb43c864c58e82c",
+    "psionic/lib/parakeet/fast.coax": "834cd0142f6cd79a04c7a8945486d9670b2d669fe5c3291e724730a9aa16f6f0",
+    "psionic/lib/parakeet/front-plan.coax": "3ec78ba276b929f5434aea1acd92e144d3104e162dd623cf3988f5793733fb0d",
+    "psionic/lib/parakeet/front.coax": "d2e8bd96ff5cac5b28868e76733d92de7f0fb6133f0c55d697d5b34e74ff7e3c",
+    "psionic/lib/parakeet/model-policy.coax": "fbf5badd98a2b97ab5362b76cd48c1abd17167f87182a6783aef10b613f5f8b3",
+    "psionic/lib/parakeet/parallel-plan.coax": "01e753759a074340f15fb7d0c2aec6ccd48ea56cc5894e7d0da0a4d6a95e199c",
+    "psionic/lib/parakeet/parallel.coax": "6d4724261f44be988343d40667f2b4897bc8e9868b741f3ffd2bb034a9cf8151",
+    "psionic/lib/parakeet/plan.coax": "52e7078d250c790ece17d0d081b430454236ebdaf16af8c5ebb14a2146a89662",
+    "psionic/lib/parakeet/runtime.coax": "ac7c5b1f7ee4b107884475dd71653b3778a786ae13a79e5a56cf9b597aef50ab",
+    "psionic/lib/parakeet/text.coax": "59472ff6da3a897251b26ba5f7e472c6b4313e426f19a3a839d93c461f400a18",
+    "psionic/lib/parakeet.coax": "eeede0238558b34f2dc60e307800f807150100b64de1f2e815f20c2bfb44f65e",
+    "psionic/lib/pixels.coax": "851422f0e765bf8768fea0e6bf9d163cb0a995322b2611c5cadab2ff27112838",
+    "psionic/lib/spectral.coax": "338e993e5334016c6c4fa09caab7af068ba8df5e7cc7c6b4e9e124e7cdf86e13",
+    "psionic/lib/tdt.coax": "86a4472950b14a44e263a4cf14ac95c05e417be07679d5f89a3fc996e23e3549",
+    "psionic/lib/tensor-ops-contract.coax": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+    "psionic/lib/tensor-ops.coax": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+    "psionic/lib/tensor-view.coax": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/lib/whisper/device.coax": "df88e1d9dcc795a0c61f87380a058240ee3e1f349215c728b47a3d8c2940f872",
+    "psionic/lib/whisper/ggml.coax": "23316d936aa538671fac6944ec48561fd860a25ef8b2de94e6bcefae94dbf8bd",
+    "psionic/lib/whisper/wav.coax": "c3f9fbb1909aa3c9f4641eee969149870ef2c4b573148a71570ce96ebeaa7b1a",
+    "psionic/tests/conformer-checks.coax": "661d5325ba2e6ef9c888ecf73acb5ec4124a61843680c712182a75aab54a36b0",
+    "psionic/tests/parakeet-model-checks.coax": "f61bdca53f570e97b5cf8f6d7f8917b3cd5075aa9100424ee15757da2f272aff",
+    "psionic/tests/tdt-checks.coax": "e7f45be8c0d75471a89a09c4ac8d237f2ce78364609a2b16ef9de936c8ddb5e8",
+    "verse/voice.coax": "d5f6ad16804b49c441fb4fabc2f7890c58ed4e3f7f18f1e4c39ee4ff800d9d64"
+  },
+  "worktree": {
+    "root": "/private/tmp/openagents-12625-complete-20261101",
+    "main_checkout": "/Users/christopherdavid/work/openagents",
+    "policy": "Repository edits and product builds ran in this separate worktree; isolated compiler-fixture probes used owned /tmp scratch. No main-checkout source edits.",
+    "saved_unowned_patch": "Separate per-unit budget experiment left untouched; authorship not established."
+  },
+  "rebase_continuity": {
+    "onto": "52006c296874f4725d436f273c526b34892d7774",
+    "unique_build_source_pins_checked": 238,
+    "result": "PASS: compiler, app native sources and full153-file Coax closure are byte-identical to the tested inputs; no unchanged gates repeated."
+  }
+}

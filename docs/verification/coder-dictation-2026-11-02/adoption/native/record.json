@@ -1,0 +1,56 @@
+{
+  "oracle_source_sha256": "1a9e7abace189b04d6c295d3cede479ae5ff75be5c0a30045de659146908530a",
+  "checker_seed_sha256": "b7f719a536d872565bc4b0dc97b6edaf4b03423f992f534b4e748d8e293344c0",
+  "profiles": [
+    {
+      "profile": "o0",
+      "exit_status": 0,
+      "cases": 10,
+      "binary_sha256": "9300c148cd20b7b25a6060ff478c93283c5061d1fbf6b0e37f1c3566a85a2228"
+    },
+    {
+      "profile": "o2",
+      "exit_status": 0,
+      "cases": 10,
+      "binary_sha256": "5d2c2b9b8f4392782d495fce8abc7d21f85830d18bfa3d37fb64f0f5bc6db9cf"
+    },
+    {
+      "profile": "asan",
+      "exit_status": 0,
+      "cases": 10,
+      "binary_sha256": "1e604b90b26bdde722a327716b17eef0d9bd10f2f47cd6a988e2ae1133bf62fb"
+    }
+  ],
+  "compile_commands": {
+    "o0": [
+      "/usr/bin/clang",
+      "-std=c11",
+      "-O0",
+      "docs/verification/coder-dictation-2026-11-02/adoption/native-budget.c",
+      "-lm",
+      "-o",
+      "coax/bin/.dictation-adoption/native-budget-o0"
+    ],
+    "o2": [
+      "/usr/bin/clang",
+      "-std=c11",
+      "-O2",
+      "docs/verification/coder-dictation-2026-11-02/adoption/native-budget.c",
+      "-lm",
+      "-o",
+      "coax/bin/.dictation-adoption/native-budget-o2"
+    ],
+    "asan": [
+      "/usr/bin/clang",
+      "-std=c11",
+      "-O1",
+      "-g",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "docs/verification/coder-dictation-2026-11-02/adoption/native-budget.c",
+      "-lm",
+      "-o",
+      "coax/bin/.dictation-adoption/native-budget-asan"
+    ]
+  }
+}

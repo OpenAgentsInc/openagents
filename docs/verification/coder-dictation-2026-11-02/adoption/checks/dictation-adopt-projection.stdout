@@ -1,0 +1,5 @@
+ok   #test R2 projection witness reuses two distant field blocks within remaining work (1 case, 125536 steps, 14 ms)
+ok   #forall R2 projection witness preserves endpoint row prefix and mode refusals (15 cases, 231568 steps, 100 ms)
+ok   #test R2 projection witness still validates the original record head tag (1 case, 13105 steps, 6 ms)
+3 of 1213 checks (--only 'R2 projection'), 3 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
