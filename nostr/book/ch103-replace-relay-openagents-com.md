@@ -132,7 +132,7 @@ ri_line :: (s: [] RsdStore, line: string, ended: bool, now: int, scratch: [] u8)
   f := ri_frame(line, ended);
   if f != RS_ACCEPT { return f; }
   r := rs_admit_read(line, now, false, false, scratch);
-  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(line, scratch, false)); }
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
   c := ri_check(r);
   if c != RS_ACCEPT { return c; }
   return rsd_admit(s, r, line);
@@ -494,11 +494,23 @@ Nothing in this chapter has run any of them.
    replays a 3,000-event `--store` file at `--store-capacity 13000`
    (COUNT, REQ, search, a new write and a cut partial append), and shows
    the default-sized relay refusing it unchanged. Replay re-verifies every
-   signature at about 25 ms an event; extrapolating that run to 50,000
-   events gives about 20 minutes. That is an estimate, not a production
-   restart qualification. Capacity is configurable now, but the approved
-   export still needs measured count, original-byte, tombstone, memory and
-   startup budgets. A larger configured store alone does not establish them.
+   signature. It took about 25 ms an event, which would have kept a
+   50,000-event import from starting for about 20 minutes: the relay was
+   built at -O1 and checked each event by reading its text a second time
+   for chapter 11's reference verifier. Replay and live admission now
+   check admission's own read with the fast verifier (`ne_signed_fast`,
+   `event_verify_fast.coax`) and build.sh compiles at -O2, keeping Coax's
+   checked arithmetic. The first query after the replay then spent about
+   a minute sorting the store's indexes by insertion; `nsi_build` now heap
+   sorts (chapter 36). `relay_capacity.py --events 50000` (2026-11-01,
+   coderos-4080 under other agents' load): 50,000 events replay in 20.3 s,
+   COUNT, REQ, search and a write answer at once, and a restart replays
+   50,001 and cuts the partial append. No MAC or other shortcut is needed;
+   every frame is still verified on every start. That run uses synthetic
+   kind 1 notes; it is not a production restart qualification. The
+   approved export still needs measured count, original-byte, tombstone,
+   memory and startup budgets, and a larger configured store alone does
+   not establish them.
 3. An import command writes the relay's `--store` file: `ri_line` with
    `rsd_admit_saved` in place of `rsd_admit`, so the relay starts from the
    imported events and verifies them all again on its first replay.

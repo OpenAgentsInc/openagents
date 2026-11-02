@@ -141,7 +141,15 @@ admit_saved :: (st: [] Store, r: RsAdmit, text: string) -> int {
 
 On start, `rsd_replay` reads the file frame by frame and, for each whole
 frame, reads the event as admission does, verifies its signature again and
-re-admits it. Nothing in the file is trusted. Admission is order
+re-admits it. Nothing in the file is trusted. The signature check is
+`ne_signed_fast` ([event_verify_fast.coax](../../coax/lib/nostr/event_verify_fast.coax),
+`#authority`): it checks the read admission already made (its id
+recomputed from the text) with chapter 11's fast verifier instead of
+reading the text a second time for the reference verifier. Built at -O2,
+the relay replays 50,000 events in about 20 s; at -O1 with the reference
+verifier it took about 22 ms an event, about 20 minutes. No shortcut was
+needed, so the file carries no MAC and every frame is verified on every
+start. Admission is order
 independent (lowest original per ID, newest version per address), so
 replaying the whole file rebuilds the store. One rule differs from live
 admission: an event that expired since it was saved is still admitted, so
@@ -203,7 +211,7 @@ replay :: (st: [] Store) -> Replay {
     // was saved is kept.
     r := rs_admit_read(t, NOW, false, false, st[0].scratch[..]);
     r.reason = ns_file_replay_reason(r.reason);
-    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(t, st[0].scratch[..], false)); }
+    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
     reason := r.reason;
     if reason == RS_ACCEPT { reason = rsd_admit(st[0].s[..], r, t); }
     if nsr_replayed(reason) != NSR_NEXT { out.refused = true; out.at = at; out.reason = reason; return out; }
@@ -344,6 +352,7 @@ The whole program:
 #load "../../coax/lib/nostr/store_file.coax";
 #load "../../coax/lib/nostr/store_recover.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/event_verify_fast.coax";
 #import "Basic";
 
 // The relay's clock for the whole run: 2026-11-01T00:00:00Z.
@@ -394,7 +403,7 @@ admit_saved :: (st: [] Store, r: RsAdmit, text: string) -> int {
 // read, policy, signature, then the store.
 admit :: (st: [] Store, text: string) -> int {
   r := rs_admit_read(text, NOW, false, false, st[0].scratch[..]);
-  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(text, st[0].scratch[..], false)); }
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
   if r.reason != RS_ACCEPT { return r.reason; }
   return admit_saved(st, r, text);
 }
@@ -427,7 +436,7 @@ replay :: (st: [] Store) -> Replay {
     // was saved is kept.
     r := rs_admit_read(t, NOW, false, false, st[0].scratch[..]);
     r.reason = ns_file_replay_reason(r.reason);
-    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(t, st[0].scratch[..], false)); }
+    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
     reason := r.reason;
     if reason == RS_ACCEPT { reason = rsd_admit(st[0].s[..], r, t); }
     if nsr_replayed(reason) != NSR_NEXT { out.refused = true; out.at = at; out.reason = reason; return out; }

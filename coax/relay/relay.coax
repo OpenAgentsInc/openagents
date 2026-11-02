@@ -15,7 +15,9 @@
 // covered event is refused "blocked:"; a restart rebuilds the tombstones
 // from the requests in the --store file. With
 // --store FILE every stored original is appended to FILE and synced before
-// it is stored, and a restart replays FILE, verifying every event again.
+// it is stored, and a restart replays FILE, verifying every event again
+// (event_verify_fast.coax's ne_signed_fast over admission's read, as a live
+// EVENT is checked; 50,000 events in about 20 s at build.sh's -O2).
 // Without --store the store is in memory only. --store-capacity EVENTS
 // sizes the store (relay_route.coax's rr_capacity: 2,048 records and 4 MiB
 // without it, chapter 35's size; 128 to 1,048,576 records at 2 KiB each);
@@ -185,7 +187,7 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
     a := nip13_admit(event, w[0].pow, w[0].scratch[..], false);
     if a.error != N13_OK { ry_ok_reason(c, w, id[..], cast(string) w[0].out[0..<nip13_reason(a, w[0].out[..])]); return; }
   }
-  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(event, w[0].scratch[..], false)); }
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
   if r.reason == RS_ACCEPT {
     key := r.e.public_key;
     rt := rt_event(c[0].rt[..], w[0].keys[..], w[0].rate, key[..], cxsrv_now_s());

@@ -1,0 +1,54 @@
+// An event already read checked with the fast verifier (chapters 11, 35).
+// nostr_event_verify_vartime reads the text again (parse, serialize, hash)
+// and then runs the reference verifier; the relay has already read the same
+// text with nostr_event_read (rs_admit_read), so ne_signed_fast checks that
+// read's id, key and signature with schnorr_fast.coax's verifier, which
+// agrees with the reference on every input (chapter 11). The read must be
+// complete: error NE_OK and its id the one recomputed from the text. The
+// result goes to rs_admit_verified exactly like nostr_event_verify_vartime's.
+// Public data, variable time.
+#load "event.coax";
+#load "../crypto/schnorr_fast.coax";
+#load "../../tests/nostr/relay_read_fixtures.coax";
+#authority;
+
+#test "a real event's read verifies, as the full entry does" {
+  scratch: [4096] u8;
+  read := nostr_event_read(RLR_REAL, scratch[..], false);
+  #assert read.error == NE_OK && !read.verified;
+  e := ne_signed_fast(read);
+  #assert e.error == NE_OK && e.verified && e.written == read.written && e.original == RLR_REAL;
+  #assert e.id[0] == RLR_REAL_ID0 && e.id[31] == RLR_REAL_ID31 && e.created_at == RLR_REAL_AT;
+}
+#test "a changed signature bit refuses" {
+  scratch: [4096] u8;
+  read := nostr_event_read(RLR_BAD_SIG, scratch[..], false);
+  #assert read.error == NE_OK;
+  e := ne_signed_fast(read);
+  #assert e.error == NE_SIGNATURE && !e.verified && e.written == 0;
+}
+#test "an incomplete read or a wrong id is never verified" {
+  scratch: [4096] u8;
+  read := nostr_event_read(RLR_REAL, scratch[..], false);
+  bad := read; bad.error = NE_ID;
+  e := ne_signed_fast(bad);
+  #assert e.error == NE_ID && !e.verified;
+  bad = read; bad.computed_id[31] ^= 1;
+  e = ne_signed_fast(bad);
+  #assert e.error == NE_ID && !e.verified && e.written == 0;
+  bad = read; bad.computed_id[0] ^= 1;
+  #assert ne_signed_fast(bad).error == NE_ID;
+  bad.verified = true; #assert !ne_signed_fast(bad).verified;
+  // a forged verified flag on a refused read stays refused
+  bad = read; bad.error = NE_JSON; bad.verified = true;
+  #assert ne_signed_fast(bad).error == NE_JSON && !ne_signed_fast(bad).verified;
+}
+
+// event, read by nostr_event_read, with its signature checked: verified
+// only when the read was complete, its id recomputed and the signature valid.
+ne_signed_fast :: (event: NostrEvent) -> NostrEvent {
+  e := event;
+  if e.error != NE_OK { e.verified = false; return e; }
+  if !ne_same_id(e) { e.error = NE_ID; e.written = 0; e.verified = false; return e; }
+  return ne_verified(e, nostr_fast_verify_vartime(e.id[..], e.public_key[..], e.signature[..]));
+}

@@ -272,7 +272,7 @@ def main():
     if not a.relay:
         t = time.time()
         subprocess.run([str(ROOT / 'coax/relay/build.sh'), binary] + (['--sanitize'] if a.sanitize else []), check=True, stdout=subprocess.DEVNULL)
-        print('built %s in %.0f s' % ('ASan+UBSan' if a.sanitize else 'release (-O1, no sanitizers)', time.time() - t), flush=True)
+        print('built %s in %.0f s' % ('ASan+UBSan' if a.sanitize else 'release (-O2, no sanitizers)', time.time() - t), flush=True)
     s = socket.socket(); s.bind((a.listen, 0)); port = s.getsockname()[1]; s.close()
     url = 'ws://%s:%d' % (a.listen, port)
     store = out / 'flood.store'

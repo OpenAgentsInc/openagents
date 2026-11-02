@@ -3,6 +3,7 @@
 #load "../../coax/lib/nostr/store_file.coax";
 #load "../../coax/lib/nostr/store_recover.coax";
 #load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/event_verify_fast.coax";
 #import "Basic";
 
 // The relay's clock for the whole run: 2026-11-01T00:00:00Z.
@@ -53,7 +54,7 @@ admit_saved :: (st: [] Store, r: RsAdmit, text: string) -> int {
 // read, policy, signature, then the store.
 admit :: (st: [] Store, text: string) -> int {
   r := rs_admit_read(text, NOW, false, false, st[0].scratch[..]);
-  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(text, st[0].scratch[..], false)); }
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
   if r.reason != RS_ACCEPT { return r.reason; }
   return admit_saved(st, r, text);
 }
@@ -86,7 +87,7 @@ replay :: (st: [] Store) -> Replay {
     // was saved is kept.
     r := rs_admit_read(t, NOW, false, false, st[0].scratch[..]);
     r.reason = ns_file_replay_reason(r.reason);
-    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(t, st[0].scratch[..], false)); }
+    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
     reason := r.reason;
     if reason == RS_ACCEPT { reason = rsd_admit(st[0].s[..], r, t); }
     if nsr_replayed(reason) != NSR_NEXT { out.refused = true; out.at = at; out.reason = reason; return out; }

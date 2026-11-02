@@ -7,6 +7,7 @@
 // nostr/examples/checks/relay-cutover.coax, run once rather than under every
 // mutant of relay_import.coax.
 #load "relay_import.coax";
+#load "event_verify_fast.coax";
 
 // book:begin line
 // Imports one line: every id and signature checked again, then the store.
@@ -15,7 +16,7 @@ ri_line :: (s: [] RsdStore, line: string, ended: bool, now: int, scratch: [] u8)
   f := ri_frame(line, ended);
   if f != RS_ACCEPT { return f; }
   r := rs_admit_read(line, now, false, false, scratch);
-  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(line, scratch, false)); }
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
   c := ri_check(r);
   if c != RS_ACCEPT { return c; }
   return rsd_admit(s, r, line);

@@ -390,13 +390,51 @@ nsi_less :: (s: [] RsdStore, order: int, a: int, b: int) -> bool {
   if order == 2 { return ns_before(x.author, y.author) || (ns_equal32(x.author, y.author) && x.kind < y.kind); }
   return ns_store_newer(x, y);
 }
-// v[0..<n] = the record numbers 0..<n in that order, by insertion, so
-// records that tie (one author and kind) stay in record order.
-nsi_sort :: (s: [] RsdStore, order: int, v: [] int, n: int) {
-  for i: 0..<n {
-    v[i] = i; j := i;
-    while j > 0 && nsi_less(s, order, v[j], v[j - 1]) { t := v[j]; v[j] = v[j - 1]; v[j - 1] = t; j -= 1; }
+// nsi_less with ties (one author and kind) broken by record number: a total
+// order, so any correct sort gives the order a stable one would.
+nsi_before :: (s: [] RsdStore, order: int, a: int, b: int) -> bool {
+  return nsi_less(s, order, a, b) || (!nsi_less(s, order, b, a) && a < b);
+}
+// Sifts v[root] down the max-heap v[0..<n] (largest last in nsi_before's order).
+nsi_sift :: (s: [] RsdStore, order: int, v: [] int, root: int, n: int) {
+  r := root;
+  while 2 * r + 1 < n {
+    c := 2 * r + 1;
+    if c + 1 < n && nsi_before(s, order, v[c], v[c + 1]) { c += 1; }
+    if !nsi_before(s, order, v[r], v[c]) { return; }
+    t := v[r]; v[r] = v[c]; v[c] = t; r = c;
   }
+}
+// v[0..<n] = the record numbers 0..<n in that order, records that tie in
+// record order. A heap sort: n log n, where insertion took n squared (50,000
+// records: about a minute before the first query after a replay).
+nsi_sort :: (s: [] RsdStore, order: int, v: [] int, n: int) {
+  for i: 0..<n { v[i] = i; }
+  for k: 0..<n / 2 { nsi_sift(s, order, v, n / 2 - 1 - k, n); }
+  for i: 1..<n { m := n - i; t := v[0]; v[0] = v[m]; v[m] = t; nsi_sift(s, order, v, 0, m); }
+}
+// Whether tag entry a sorts before entry b: by key, then record.
+nsi_tag_before :: (ix: NsiIndex, a: int, b: int) -> bool {
+  return ix.tag_key[a] < ix.tag_key[b] || (ix.tag_key[a] == ix.tag_key[b] && ix.tag_rec[a] < ix.tag_rec[b]);
+}
+nsi_tag_swap :: (ix: NsiIndex, a: int, b: int) {
+  k := ix.tag_key[a]; ix.tag_key[a] = ix.tag_key[b]; ix.tag_key[b] = k;
+  r := ix.tag_rec[a]; ix.tag_rec[a] = ix.tag_rec[b]; ix.tag_rec[b] = r;
+}
+nsi_tag_sift :: (ix: NsiIndex, root: int, n: int) {
+  r := root;
+  while 2 * r + 1 < n {
+    c := 2 * r + 1;
+    if c + 1 < n && nsi_tag_before(ix, c, c + 1) { c += 1; }
+    if !nsi_tag_before(ix, r, c) { return; }
+    nsi_tag_swap(ix, r, c); r = c;
+  }
+}
+// Sorts the tag entries [0..<n] by key, then record: what inserting them one
+// record after another gives (equal entries are identical), in n log n.
+nsi_tag_sort :: (ix: NsiIndex, n: int) {
+  for k: 0..<n / 2 { nsi_tag_sift(ix, n / 2 - 1 - k, n); }
+  for i: 1..<n { m := n - i; nsi_tag_swap(ix, 0, m); nsi_tag_sift(ix, 0, m); }
 }
 // The key of a tag name and its decoded value.
 nsi_key :: (name: u8, value: string) -> int {
@@ -410,6 +448,22 @@ nsi_key :: (name: u8, value: string) -> int {
 // longer value can match no filter value). Entries sort by key, then
 // record. The new count, or -1 when tag_key or tag_rec is full.
 nsi_tag_add :: (ix: NsiIndex, text: string, rec: int, at: int) -> int {
+  n := nsi_tag_put(ix, text, rec, at);
+  nsi_tag_settle(ix, at, n);   // nothing when n is -1
+  return n;
+}
+// Moves each entry of [from..<to] down into the sorted entries before it,
+// after any with the same key (they are of earlier records).
+nsi_tag_settle :: (ix: NsiIndex, from: int, to: int) {
+  for i: from..<to {
+    key := ix.tag_key[i]; rec := ix.tag_rec[i]; e := i;
+    while e > 0 && ix.tag_key[e - 1] > key { ix.tag_key[e] = ix.tag_key[e - 1]; ix.tag_rec[e] = ix.tag_rec[e - 1]; e -= 1; }
+    ix.tag_key[e] = key; ix.tag_rec[e] = rec;
+  }
+}
+// nsi_tag_add's entries appended after [0..<at] unsorted: the new count, or
+// -1 when full (nsi_build sorts them all once with nsi_tag_sort).
+nsi_tag_put :: (ix: NsiIndex, text: string, rec: int, at: int) -> int {
   n := at;
   j: [1] Json; json_start(j[..], text);
   if json_next(j[..]) != JSON_ARRAY { return n; }
@@ -425,9 +479,7 @@ nsi_tag_add :: (ix: NsiIndex, text: string, rec: int, at: int) -> int {
         buf: [256] u8; k := json_unescape(json_text(j[..]), buf[..]);
         if k >= 0 {
           if n >= ix.tag_key.count || n >= ix.tag_rec.count { return -1; }
-          key := nsi_key(name, cast(string) buf[0..<k]); e := n;
-          while e > 0 && ix.tag_key[e - 1] > key { ix.tag_key[e] = ix.tag_key[e - 1]; ix.tag_rec[e] = ix.tag_rec[e - 1]; e -= 1; }
-          ix.tag_key[e] = key; ix.tag_rec[e] = rec; n += 1;
+          ix.tag_key[n] = nsi_key(name, cast(string) buf[0..<k]); ix.tag_rec[n] = rec; n += 1;
         }
       }
       index += 1; v = json_next(j[..]);
@@ -447,13 +499,40 @@ nsi_build :: (s: [] RsdStore, ix: [] NsiIndex) -> bool {
   tags := 0;
   for i: 0..<n {
     e := rsd_event(s, i);
-    tags = nsi_tag_add(ix[0], e.original[e.tags_from..<e.tags_to], i, tags);
+    tags = nsi_tag_put(ix[0], e.original[e.tags_from..<e.tags_to], i, tags);
     if tags < 0 { return false; }
   }
+  nsi_tag_sort(ix[0], tags);
   ix[0].tags = tags; ix[0].n = n; ix[0].used = s[0].used; ix[0].ok = true;
   return true;
 }
 
+#test "the heap sorts keep ties in record order and sort every size" {
+  // twelve kind 1 notes by one author, ids falling, times rising then tied
+  t: [1] NsiT; nsi_t_init(t[..]);
+  for i: 0..<12 { #assert nsi_t_add(t[..], cast(u8) (200 - i), 0, 7, 1, 100 + i % 5, -1, "[[\"t\",\"a\"],[\"p\",\"b\"]]") == NSS_ACCEPT; }
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  for i: 0..<12 { #assert t[0].by_ak[i] == i && t[0].by_id[i] == 11 - i; }
+  // newest first, then lowest id: times 104 (records 9, 4), 103 (8, 3), ...
+  want := [12] int.[9, 4, 8, 3, 7, 2, 11, 6, 1, 10, 5, 0];
+  for i: 0..<12 { #assert t[0].by_time[i] == want[i]; }
+  #assert t[0].ix[0].tags == 24;
+  for i: 1..<24 { #assert nsi_tag_before(t[0].ix[0], i - 1, i) && !nsi_tag_before(t[0].ix[0], i, i); }
+  // every size from 0 to 12 sorts, and a single record is its own order
+  for n: 0..<13 {
+    v: [16] int; nsi_sort(t[0].s[..], 2, v[..], n);
+    for i: 0..<n { #assert v[i] == i; }
+    nsi_sort(t[0].s[..], 1, v[..], n);
+    for i: 1..<n { #assert nsi_before(t[0].s[..], 1, v[i - 1], v[i]); }
+  }
+  // tag entries: by key, then record, from any order
+  k := [6] int.[5, 3, 5, 1, 3, 5]; r := [6] int.[2, 9, 0, 4, 1, 1];
+  for i: 0..<6 { t[0].tag_key[i] = k[i]; t[0].tag_rec[i] = r[i]; }
+  nsi_tag_sort(t[0].ix[0], 6);
+  wk := [6] int.[1, 3, 3, 5, 5, 5]; wr := [6] int.[4, 1, 9, 0, 1, 2];
+  for i: 0..<6 { #assert t[0].tag_key[i] == wk[i] && t[0].tag_rec[i] == wr[i]; }
+  #assert !nsi_before(t[0].s[..], 2, 3, 3) && nsi_before(t[0].s[..], 2, 2, 3) && !nsi_before(t[0].s[..], 2, 3, 2);
+}
 #test "nsi_add after each admission gives what nsi_build gives, on 300 generated stores" #steps 200000000 {
   added := 0;
   for seed: 0..<300 {
@@ -477,6 +556,19 @@ nsi_build :: (s: [] RsdStore, ix: [] NsiIndex) -> bool {
     for i: 0..<tags { #assert a[0].tag_key[i] == t[0].tag_key[i] && a[0].tag_rec[i] == t[0].tag_rec[i]; }
   }
   #assert added > 2000;
+}
+#test "nsi_add takes arrays of exactly the size, and refuses an index not built" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  for i: 0..<3 {
+    #assert nsi_t_add(t[..], cast(u8) (10 + i), 0, 1, 1, 100 + i, -1, "[]") == NSS_ACCEPT;
+    t[0].ix[0].by_id = t[0].by_id[0..<i + 1]; t[0].ix[0].by_ak = t[0].by_ak[0..<i + 1]; t[0].ix[0].by_time = t[0].by_time[0..<i + 1];
+    #assert nsi_add(t[0].s[..], t[0].ix[..], i) && t[0].ix[0].n == i + 1;
+  }
+  t[0].ix[0].by_id = t[0].by_id[..]; t[0].ix[0].by_ak = t[0].by_ak[..]; t[0].ix[0].by_time = t[0].by_time[..];
+  #assert nsi_t_add(t[..], 20, 0, 1, 1, 110, -1, "[]") == NSS_ACCEPT;
+  t[0].ix[0].ok = false;
+  #assert !nsi_add(t[0].s[..], t[0].ix[..], 3) && t[0].ix[0].n == 3;
 }
 #test "nsi_add refuses what is not the next appended record, and an index without room" {
   t: [1] NsiT; nsi_t_init(t[..]);

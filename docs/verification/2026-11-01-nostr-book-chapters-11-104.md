@@ -104,9 +104,28 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
      allocates the arrays and calls `#export_c ry_main`; `relay_route.coax`
      root-only 451 of 451. `relay_capacity.py`: 3,000 events replay at
      capacity 13,000 in 77 s (COUNT, REQ, search, a write, a cut partial
-     append); the default store refuses the file unchanged. Not run: 50,000
-     events, since replay's signature checks (~25 ms each) would take
-     ~20 minutes, past the 15-minute limit.
+     append); the default store refuses the file unchanged.
+   - Replay's ~25 ms an event had two causes, both fixed: build.sh compiled
+     at -O1, and each event was read a second time for the reference
+     verifier (`nostr_event_verify_vartime`, ~2.7 ms released, ~22 ms
+     here). Replay, live EVENT admission and `ri_line` now check
+     admission's own read with the fast verifier (`ne_signed_fast`, new
+     `event_verify_fast.coax`, `#authority`, root-only 12 of 12), and
+     build.sh compiles -O2 with checked arithmetic (`--sanitize` stays
+     -O1). The first query after a 50,000-event replay then took ~60 s:
+     `store_index.coax`'s `nsi_build` sorted by insertion (n squared); it
+     now heap sorts with ties broken by record number, and tag entries are
+     appended then sorted once (same orders; the 300-store `nsi_add`
+     against `nsi_build` check passes; root-only mutation 738 of 738).
+     Debug and release outputs of store-events, relay-cutover, search,
+     count-events, negentropy-sync, match-indexes and formal-properties
+     match their fixtures; relay_session.py (ASan/UBSan) passes;
+     relay_flood.py --sanitize passes at --events 600 (the default 2,100
+     ran past 15 minutes under ASan with the machine at load ~30).
+     `relay_capacity.py --events 50000` on coderos-4080 (load ~30): replay
+     in 20.3 s (about 20 minutes before), COUNT, REQ, search, a write and
+     the restart's cut partial append all pass. No MAC shortcut was added;
+     every frame is verified on every start.
    - Not rerun: the Rust differential (`relay_rust_differential.py`) needs
      the Rust sandbox; its expected COUNT reply and its `supported_nips`
      note are out of date.

@@ -98,9 +98,12 @@ search finds the range of records that share a key.
   by binary search, and because the range is already in answer order, the
   walk stops after `limit` matches.
 
-`nsi_build` sorts the record numbers by insertion, so records that tie in
-an order (one author and kind, or one tag key) stay in record order, and
-each order has one right answer that a check can state.
+`nsi_build` sorts the record numbers with a heap sort whose comparison
+breaks every tie by record number (`nsi_before`; tag entries by key, then
+record), so records that tie in an order (one author and kind, or one tag
+key) stay in record order, and each order has one right answer that a
+check can state. It first sorted by insertion, which took about a minute
+on the first query after a 50,000-event replay (chapter 103).
 
 The rule that keeps the answer exact: an index must return every record
 that could match (it may return more), and every record it returns goes

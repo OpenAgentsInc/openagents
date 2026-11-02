@@ -16,6 +16,7 @@
 #load "store_file.coax";
 #load "store_recover.coax";
 #load "store_delete.coax";
+#load "event_verify_fast.coax";
 
 cxstore_load :: () -> int #foreign;
 cxstore_byte :: (i: int) -> int #foreign;
@@ -127,7 +128,7 @@ rsd_replay_deleting :: (s: [] RsdStore, tb: [] NsdTombs, relay: string, work: []
     t := cast(string) text[0..<f.to - f.from];
     out.frames += 1;
     r := rsd_replay_read(t, now, scratch);
-    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(t, scratch, false)); }
+    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, ne_signed_fast(r.e)); }
     reason := r.reason;
     if reason == RS_ACCEPT { reason = ifx deleting then rsd_admit_deleting(s, tb, r, t, relay, work, false) else rsd_admit(s, r, t); }
     if nsr_replayed(reason) != NSR_NEXT { out.refused = true; out.at = at; out.reason = reason; return out; }

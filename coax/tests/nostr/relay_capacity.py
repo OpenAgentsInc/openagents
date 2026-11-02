@@ -16,9 +16,11 @@ TEST-ONLY key), writes them as chapter 35's store file (each original as a
 - a crash's partial last append (a frame header and half the bytes) is cut
   on the next start, as at the default capacity (store_recover.coax).
 
-Replay re-verifies every signature: about 25 ms an event in the -O1
-build (3,000 events in 77 s on 2026-11-01), so 50,000 would take about
-20 minutes, past the 15-minute command limit; run larger N in pieces.
+Replay re-verifies every signature with the fast verifier over
+admission's read (event_verify_fast.coax): 50,000 events replay in about
+20 s in build.sh's -O2 build (2026-11-01; it was about 25 ms an event,
+some 20 minutes, at -O1 with the reference verifier). --sanitize builds
+-O1 under ASan, much slower; keep N small there.
 
 Tooling only; nothing here ships. Never points at a public relay.
 

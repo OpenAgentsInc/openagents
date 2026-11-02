@@ -2,14 +2,17 @@
 # Builds the Coax relay (R1) to OUT (default coax/relay/bin/relay).
 #   coax/relay/build.sh [OUT] [--sanitize]     ASan+UBSan with --sanitize
 # Links tls-native.c for --tls-cert/--tls-key (OpenSSL from Nix on Linux,
-# through coax/platform/tls-env.sh).
+# through coax/platform/tls-env.sh). -O2 with Coax's checked arithmetic (an
+# overflow stops the relay rather than wrapping): replay re-verifies every
+# stored signature at about 0.4 ms an event this way, against about 22 ms
+# at -O1 with the reference verifier (chapter 35). --sanitize builds -O1.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../.." && pwd -P)"
 out="${1:-$here/bin/relay}"
 . "$root/coax/platform/tls-env.sh"
-flags=(-std=c11 -O1 -g)
-if [[ "${2:-}" == "--sanitize" ]]; then flags+=(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer); fi
+flags=(-std=c11 -O2 -g)
+if [[ "${2:-}" == "--sanitize" ]]; then flags=(-std=c11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer); fi
 mkdir -p "$(dirname "$out")"
 work="$(mktemp -d "${TMPDIR:-/tmp}/coax-relay-build.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
