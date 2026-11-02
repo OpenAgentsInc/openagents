@@ -177,4 +177,5 @@ BEGIN
   IF verse.builder_page_rev() <> 2 THEN RAISE EXCEPTION 'pages are written again'; END IF;
 END $$;
 SELECT 'ok without a bucket a publish is unpinned and the page plays today''s engine';
+SELECT 'done 6';
 ROLLBACK;

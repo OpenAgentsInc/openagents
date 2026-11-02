@@ -89,6 +89,15 @@ A made realm is a document with an identity. `GET
 - The line spec carries the document's identity: `rev N`, `published N`
   (0 when never published), `listed 0|1`, `from SLUG REV|NAME` for a fork,
   and `moved ENTITY X Z` per move.
+- `shaped` (migration
+  [0109_realm_shapes.sql](../../coax/web/api/migrations/0109_realm_shapes.sql))
+  holds each entity's turn, size and removal, and is in the document only
+  when it has an entry, so a document written before it keeps its bytes and
+  hash. The spec says `shaped ENTITY YAW SCALE 0|1` and `shapes 1`.
+- [aethyr/forge/doc.coax](../forge/doc.coax) reads a document into the edit
+  model and moves an older version forward (version 1 without `shaped` is the
+  same realm with none). It refuses a newer version, or anything out of
+  bounds, whole, so a client keeps the last document it could read.
 
 Older parts of the builder:
 
@@ -106,7 +115,7 @@ Older parts of the builder:
   (`SLOT_A`, `NEAR_A`, `owl_home`, `roofs_out`).
 - The spec is still a line protocol parsed in the module. The document's
   types live partly in SQL and partly in Coax
-  ([aethyr/forge/edit.coax](../forge/edit.coax) for moves), and only the
+  ([aethyr/forge/edit.coax](../forge/edit.coax) and [doc.coax](../forge/doc.coax)), and only the
   API tests and the page's `#test`s check that the two agree.
 
 ## What it builds

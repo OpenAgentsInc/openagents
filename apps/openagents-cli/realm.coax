@@ -122,17 +122,18 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
     else if jv_kind(d[0],base) != JV_NULL { return realm_edit_refuse(400,"the realm has no supported publication profile",rev,out); }
     if fork_publish && cli_spec_value(spec,"edit_fence") != "1" { return realm_edit_refuse(400,"built-in fork publication needs revision-fenced routes (migration 0102)",rev,out); }
   }
-  if verb != "move" && verb != "undo" && verb != "publish" && cli_spec_value(spec,"edit_fence") != "1" {
+  if realm_shape_verb(verb) && cli_spec_value(spec,"shapes") != "1" {
+    return realm_edit_refuse(400,"this server keeps no turns, sizes or removals (migration 0109)",current,out);
+  }
+  if !realm_save_verb(verb) && verb != "undo" && verb != "publish" && cli_spec_value(spec,"edit_fence") != "1" {
     return realm_edit_refuse(400,"this server needs revision-fenced edit routes (migration 0102)",current,out);
   }
   if verb == "ask" && rc_has(a,verb,"--doc") { return realm_edit_doc(a,profile,slug,rev,out); }
   buf: [API_BODY_MAX] u8;
-  if verb == "move" {
+  if realm_save_verb(verb) {
     doc: [1] ForgeDoc; forge_reset(doc[..],rev);
     if !cli_edit_read_moves(spec,doc[..]) { return realm_edit_refuse(400,"the realm's move list did not read",rev,out); }
-    key := rc_pos(a,verb,3); x := cli_edit_cm(rc_pos(a,verb,4)); z := cli_edit_cm(rc_pos(a,verb,5));
-    now := forge_where(doc[..],key);
-    if !(now.found && now.x == x && now.z == z) && !forge_move(doc[..],key,x,z) { return realm_edit_refuse(400,"the move does not fit the document",rev,out); }
+    if !realm_save_edit(a,verb,doc[..]) { return realm_edit_refuse(400,"the edit does not fit the document",rev,out); }
     n := forge_save_body(doc[..],buf[..]);
     if n < 0 { return realm_edit_refuse(400,"the move body is too large",rev,out); }
     return api_call(a,profile,"POST",realm_path(slug,"/save",path[..]),cast(string) buf[0..<n],out);
@@ -183,6 +184,26 @@ realm_edit :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   return realm_edit_answer(r,res,cast(string) out[0..<res.n]);
 }
 
+// The edits a /save carries: a move, and (0109) a turn, a size or a removal.
+realm_shape_verb :: (verb: string) -> bool { return verb == "rotate" || verb == "resize" || verb == "remove"; }
+realm_save_verb :: (verb: string) -> bool { return verb == "move" || realm_shape_verb(verb); }
+// One such edit onto the document read (aethyr/forge/edit.coax's typed operations); one already so is no change.
+realm_save_edit :: (a: [] Args, verb: string, doc: [] ForgeDoc) -> bool {
+  key := rc_pos(a,verb,3); was := forge_shape_of(doc,key);
+  if verb == "move" {
+    x := cli_edit_cm(rc_pos(a,verb,4)); z := cli_edit_cm(rc_pos(a,verb,5));
+    return (was.at && was.x == x && was.z == z) || forge_move(doc,key,x,z);
+  }
+  if verb == "rotate" {
+    y := rc_pos(a,verb,4); neg := y.count > 0 && y[0] == '-';
+    amount := cli_count(ifx neg then y[1..<y.count] else y,0,360);
+    turn := forge_turn(ifx neg then -amount else amount);
+    return amount >= 0 && (was.yaw == turn || forge_rotate(doc,key,turn));
+  }
+  if verb == "resize" { p := cli_count(rc_pos(a,verb,4),25,400); return p >= 25 && (was.scale == p || forge_resize(doc,key,p)); }
+  return was.gone || forge_remove(doc,key);
+}
+
 RealmLine :: struct { first: int; end: int; next: int; }
 realm_line :: (text: string, at: int) -> RealmLine {
   e := at; while e < text.count && text[e] != '\n' { e += 1; }
@@ -194,7 +215,7 @@ realm_line :: (text: string, at: int) -> RealmLine {
 }
 
 // Non-atomic JSON lines: only committed operations count as applied. A group
-// of adjacent moves is one /save and therefore one undo step.
+// of adjacent moves, turns, sizes and removals is one /save and therefore one undo step.
 realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
   slug := rc_pos(a,"apply",2); file := rc_pos(a,"apply",3);
   size := fs_size(file);
@@ -230,7 +251,7 @@ realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
     // The parser always emits realm, verb, slug before any flags.
     verb := args_at(b[..],1);
     res: ApiAnswer;
-    if verb == "move" {
+    if realm_save_verb(verb) {
       path: [256] u8; specbuf: [API_OUT] u8;
       read := api_call(a,profile,"GET",realm_path(slug,"",path[..]),"",specbuf[..]);
       if !api_ok(read) {
@@ -245,17 +266,20 @@ realm_apply :: (a: [] Args, r: [] Rep, profile: string) -> int {
       }
       doc: [1] ForgeDoc; forge_reset(doc[..],expected);
       if !cli_edit_read_moves(spec,doc[..]) { rep_int(r,"applied",applied); return fail(r,EXIT_FAIL,"the realm's move list did not read"); }
+      shapes := cli_spec_value(spec,"shapes") == "1";
       count := 0;
       while at < text.count && applied+count < 256 {
         span=realm_line(text,at);
         if span.first == span.end { at=span.next; line+=1; continue; }
-        if !rb_args(text[span.first..<span.end],slug,b[..]) || args_at(b[..],1) != "move" { break; }
-        key := rc_pos(b[..],"move",3); x := cli_edit_cm(rc_pos(b[..],"move",4)); z := cli_edit_cm(rc_pos(b[..],"move",5));
-        now := forge_where(doc[..],key);
-        if !(now.found && now.x == x && now.z == z) && !forge_move(doc[..],key,x,z) { break; }
+        if !rb_args(text[span.first..<span.end],slug,b[..]) || !realm_save_verb(args_at(b[..],1)) { break; }
+        if realm_shape_verb(args_at(b[..],1)) && !shapes {
+          rep_int(r,"applied",applied); rep_int(r,"line",line);
+          return fail(r,EXIT_USAGE,"this server keeps no turns, sizes or removals (migration 0109)");
+        }
+        if !realm_save_edit(b[..],args_at(b[..],1),doc[..]) { break; }
         count+=1; at=span.next; line+=1;
       }
-      if count == 0 { rep_int(r,"applied",applied); rep_int(r,"line",line); return fail(r,EXIT_USAGE,"the move group does not fit the document"); }
+      if count == 0 { rep_int(r,"applied",applied); rep_int(r,"line",line); return fail(r,EXIT_USAGE,"the move, turn, size or removal group does not fit the document"); }
       body: [API_BODY_MAX] u8; bn := forge_save_body(doc[..],body[..]);
       if bn < 0 { rep_int(r,"applied",applied); return fail(r,EXIT_USAGE,"the move group body does not fit"); }
       res=api_call(a,profile,"POST",realm_path(slug,"/save",path[..]),cast(string) body[0..<bn],out[..]);
@@ -286,7 +310,7 @@ realm_usage :: () {
   for c: REALM_COMMANDS { print("%\n", rc_help_line(c, line[..])); }
   ops: [1024] u8;
   print("%\n", "  realm apply's FILE: one JSON object a line, {\"op\":OP, ...its fields}; a revision goes in --rev, not a line:");
-  print("%\n", "    {\"op\":\"move\",\"entity\":\"trees:3\",\"x\":4.5,\"z\":-2}   {\"op\":\"switch\",\"row\":\"water\",\"on\":false}");
+  print("%\n", "    {\"op\":\"move\",\"entity\":\"trees:3\",\"x\":4.5,\"z\":-2}   {\"op\":\"rotate\",\"entity\":\"trees:3\",\"yaw\":90}   {\"op\":\"switch\",\"row\":\"water\",\"on\":false}");
   print("    ops and fields (? optional): %\n", rb_help(ops[..]));
   print("%\n", "");
 }

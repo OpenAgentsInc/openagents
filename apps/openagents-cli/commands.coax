@@ -385,7 +385,11 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool {
   for end: 0..<spec.count + 1 {
     if end < spec.count && spec[end] != '\n' { continue; }
     line := spec[at..<end]; at = end + 1;
-    if line == "moved" { return false; }
+    if line == "moved" || line == "shaped" { return false; }
+    if cli_prefix(line, "shaped ") {
+      if !forge_read_shape_line(next[..], line) { return false; }
+      continue;
+    }
     if !cli_prefix(line, "moved ") { continue; }
     p := 6;
     while p < line.count && line[p] != ' ' { p += 1; }
@@ -393,11 +397,31 @@ cli_edit_read_moves :: (spec: string, d: [] ForgeDoc) -> bool {
     key := line[6..<p]; q := cli_edit_next_space(line, p);
     if q == line.count { return false; }
     x := cli_edit_cm(line[p + 1..<q]); z := cli_edit_cm(line[q + 1..<line.count]);
-    if forge_find(next[..], key) >= 0 { return false; }
+    if forge_where(next[..], key).found { return false; }
     if !forge_read_move(next[..], key, x, z) { return false; }
   }
   d[0] = next[0];
   return true;
+}
+
+#test "shaped lines load with the moves; a malformed or repeated one refuses the whole read" {
+  d: [1] ForgeDoc; forge_reset(d[..], 4);
+  #assert cli_edit_read_moves("rev 4\nmoved trees:3 1 2\nshaped trees:3 -90 150 0\nshaped rocks:0 180 25 1\nshaped props:1 0 400 0\nshapes 1\n", d[..]);
+  s := forge_shape_of(d[..], "trees:3");
+  #assert s.at && s.x == 100 && s.yaw == -90 && s.scale == 150 && !s.gone && d[0].move_n == 3;
+  s = forge_shape_of(d[..], "rocks:0");
+  #assert !s.at && s.yaw == 180 && s.scale == 25 && s.gone && forge_shape_of(d[..], "props:1").scale == 400;
+  #assert cli_edit_read_moves("shaped trees:1 -179 100 1\nmoved trees:1 0 0", d[..]) && forge_shape_of(d[..], "trees:1").at && forge_shape_of(d[..], "trees:1").gone;
+  bad := [21] string.["shaped", "shaped ", "shaped trees:0 1 100", "shaped trees:0 1 100 0 0", "shaped trees:0 1  100 0", "shaped trees:0 -361 100 0",
+    "shaped trees:0 361 100 0", "shaped trees:0 1 24 0", "shaped trees:0 1 401 0", "shaped trees:0 1 100 2", "shaped trees:0 1.5 100 0", "shaped bad 1 100 0",
+    "shaped trees:0 1 100 0\nshaped trees:0 2 100 0", "moved trees:0 1 2\nmoved trees:0 1 2", "shaped trees:0 0 100 0", "shaped trees:0 1 100 ",
+    "shaped trees:0  100 0", "shaped trees:0 - 100 0", "shaped trees:0 1 100 0 ", "shaped  trees:0 1 100 0", "shaped trees:0 -0 100 0"];
+  for b: bad {
+    #assert !cli_edit_read_moves(b, d[..]);
+    #assert forge_shape_of(d[..], "trees:1").gone && d[0].move_n == 1;
+  }
+  e: [1] ForgeDoc; forge_reset(e[..], 1);
+  #assert cli_edit_read_moves("shaped trees:0 1 100 0\nmoved trees:0 1 2\n", e[..]) && forge_where(e[..], "trees:0").found;
 }
 
 #test "the boundary after a separator includes empty final and empty middle fields" {
@@ -431,7 +455,7 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 #load "../../coax/lib/sys/args.coax";
 
 #test "the realm catalogue covers reads and revisioned writes with unique verbs" {
-  #assert REALM_COMMANDS.count == 33;
+  #assert REALM_COMMANDS.count == 36;
   for i: 0..<REALM_COMMANDS.count {
     c := REALM_COMMANDS[i];
     #assert c.domain == "realm" && c.verb.count > 0 && c.help.count > 0;
@@ -487,9 +511,9 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 }
 
 #test "each declared argument and flag kind publishes its exact limits" {
-  kinds := [33] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script","style","time","camera","ground","turn","pitch","target","seconds","line","tool","thing"];
-  lows := [33] int.[1,1,3,-40,-360,1,1,1,0,1,1,0,0,7,3,2,6,0,0,0,0,0,4,3,3,4,-180,-60,1,1,1,3,4];
-  highs := [33] int.[48,63,24,40,360,999999999,600,2000,400,40,1024,160,100,64,29,3,8,1,1024,19,120000,131072,9,5,5,6,180,60,40,30,400,5,7];
+  kinds := [34] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script","style","time","camera","ground","turn","pitch","target","seconds","line","tool","thing","percent"];
+  lows := [34] int.[1,1,3,-40,-360,1,1,1,0,1,1,0,0,7,3,2,6,0,0,0,0,0,4,3,3,4,-180,-60,1,1,1,3,4,25];
+  highs := [34] int.[48,63,24,40,360,999999999,600,2000,400,40,1024,160,100,64,29,3,8,1,1024,19,120000,131072,9,5,5,6,180,60,40,30,400,5,7,400];
   for i: 0..<kinds.count { b := rc_bound(kinds[i]); #assert b.min == lows[i] && b.max == highs[i]; }
   for c: REALM_COMMANDS {
     fi := 0;
@@ -510,10 +534,10 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 }
 
 #test "realm routes and methods match the published command contract" {
-  routes := [33] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","batch","seat","seat","seat","seat","seat","seat","seat"];
+  routes := [36] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","batch","seat","seat","seat","seat","seat","seat","seat"];
   for i: 0..<REALM_COMMANDS.count {
     #assert REALM_COMMANDS[i].route == routes[i];
-    method := ifx i == 6 || i >= 25 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
+    method := ifx i == 6 || i >= 28 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
     #assert REALM_COMMANDS[i].method == method;
   }
   #assert REALM_COMMANDS[rc_find("new")].arguments == "newwords";
@@ -669,7 +693,7 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 CliCommand :: struct { domain: string = "realm"; verb: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; }
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
 // visitor (apps/openagents-cli/realm-play.coax, docs/verse/realm-seat.md).
-REALM_COMMANDS :: [33] CliCommand.[
+REALM_COMMANDS :: [36] CliCommand.[
   CliCommand.{verb="list",method="GET",route="/mine",help="your realms"},
   CliCommand.{verb="show",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page"},
   CliCommand.{verb="new",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan"},
@@ -688,6 +712,9 @@ REALM_COMMANDS :: [33] CliCommand.[
   CliCommand.{verb="ask-done",method="POST",route="/asks/:id/done",arguments="slug|id",flags="--rev:id|--commit:commit",usage="SLUG ID --commit HASH [--rev N]",help="an admin marks pushed code done"},
   CliCommand.{verb="row-delete",method="POST",route="/rows/:row/delete",arguments="slug|row",flags="--rev:id",usage="SLUG ROW [--rev N]",help="delete a board row"},
   CliCommand.{verb="move",method="POST",route="/save",arguments="slug|entity|metres|metres",flags="--rev:id",usage="SLUG ENTITY X Z [--rev N]",help="move a thing (FEATURE:N, such as trees:3) to X Z metres; one save"},
+  CliCommand.{verb="rotate",method="POST",route="/save",arguments="slug|entity|yaw",flags="--rev:id",usage="SLUG ENTITY DEGREES [--rev N]",help="turn a thing DEGREES from its laid-out way (0 puts it back); one save"},
+  CliCommand.{verb="resize",method="POST",route="/save",arguments="slug|entity|percent",flags="--rev:id",usage="SLUG ENTITY PERCENT [--rev N]",help="size a thing to PERCENT (25 to 400) of its laid-out size; one save"},
+  CliCommand.{verb="remove",method="POST",route="/save",arguments="slug|entity",flags="--rev:id",usage="SLUG ENTITY [--rev N]",help="take a thing away (undo brings it back); one save"},
   CliCommand.{verb="place",method="POST",route="/place",arguments="slug|row|metres|metres",flags="--rev:id|--yaw:yaw",usage="SLUG THING X Z [--yaw DEG] [--rev N]",help="place a thing at X Z metres"},
   CliCommand.{verb="settings",method="POST",route="/settings",arguments="slug",flags="--rev:id|--tools:tools",usage="SLUG --tools build,fly,jump,map,talk,voice [--rev N]",help="the tools visitors get"},
   CliCommand.{verb="lore",method="POST",route="/lore",arguments="slug|who|lore",flags="--rev:id",usage="SLUG WHO \"TEXT\" [--rev N]",help="set WHO's lore; \"\" forgets it"},
@@ -713,6 +740,7 @@ rc_bound :: (kind: string) -> CliBound {
   if kind == "entity" { return CliBound.{min=3,max=24}; }
   if kind == "metres" { return CliBound.{min=-40,max=40}; }
   if kind == "yaw" { return CliBound.{min=-360,max=360}; }
+  if kind == "percent" { return CliBound.{min=25,max=400}; }
   if kind == "id" { return CliBound.{min=1,max=999999999}; }
   if kind == "words" { return CliBound.{min=1,max=600}; }
   if kind == "newwords" { return CliBound.{min=1,max=2000}; }
@@ -753,6 +781,7 @@ rc_value :: (kind: string, value: string) -> bool {
   }
   if kind == "metres" { return cli_edit_cm(value) != 4001; }
   if kind == "id" { return cli_count(value,1,999999999) >= 1; }
+  if kind == "percent" { return cli_count(value,25,400) >= 25; }
   if kind == "onoff" { return cli_onoff(value) >= 0; }
   if kind == "visibility" { return cli_visibility_ok(value); }
   if kind == "commit" { return cli_edit_commit_ok(value); }
@@ -971,7 +1000,8 @@ rc_why :: (kind: string) -> string {
   if kind == "row" { return "ROW (or THING) is 1 to 63 of a-z, 0-9, : and -"; }
   if kind == "entity" { return "ENTITY is one thing of a board row as FEATURE:N, such as enclosure:0 or trees:3 (FEATURE at most 20 characters; realm show SLUG lists the rows)"; }
   if kind == "metres" { return "X and Z are metres from -40 to 40 with at most two decimals, such as 4.5 or -2"; }
-  if kind == "yaw" { return "--yaw is whole degrees from -360 to 360"; }
+  if kind == "yaw" { return "--yaw and DEGREES are whole degrees from -360 to 360"; }
+  if kind == "percent" { return "PERCENT is a whole number from 25 to 400"; }
   if kind == "id" { return "ID, --rev N and --from PLAN are whole numbers from 1 to 999999999"; }
   if kind == "words" { return "WORDS are 1 to 600 bytes"; }
   if kind == "newwords" { return "WORDS are 1 to 2000 bytes"; }
@@ -1225,8 +1255,11 @@ RbField :: struct { key: string; kind: int = 1; flag: string; optional: bool; }
 RbSpec :: struct { verb: string; fields: [4] RbField; }
 // kind: 1 string, 2 JSON number, 3 on/off boolean, 4 ordered string array,
 // 5 a boolean flag (false means omit it). The catalogue owns value bounds.
-RB_SPECS :: [16] RbSpec.[
+RB_SPECS :: [19] RbSpec.[
   RbSpec.{verb="move",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="x",kind=2},RbField.{key="z",kind=2},RbField.{}]},
+  RbSpec.{verb="rotate",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="yaw",kind=2},RbField.{},RbField.{}]},
+  RbSpec.{verb="resize",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="scale",kind=2},RbField.{},RbField.{}]},
+  RbSpec.{verb="remove",fields=[4] RbField.[RbField.{key="entity"},RbField.{},RbField.{},RbField.{}]},
   RbSpec.{verb="switch",fields=[4] RbField.[RbField.{key="row"},RbField.{key="on",kind=3},RbField.{},RbField.{}]},
   RbSpec.{verb="place",fields=[4] RbField.[RbField.{key="thing"},RbField.{key="x",kind=2},RbField.{key="z",kind=2},RbField.{key="yaw",kind=2,flag="--yaw",optional=true}]},
   RbSpec.{verb="revise",fields=[4] RbField.[RbField.{key="prompt"},RbField.{},RbField.{},RbField.{}]},
@@ -1271,7 +1304,7 @@ rb_emit :: (d: Jv, at: int, f: RbField, a: [] Args) -> bool {
 // Why a line is refused: field names the JSON field ("" for the whole line;
 // a slice of the line or of RB_SPECS), why says what it must be. why "" is admitted.
 RbWhy :: struct { field: string; why: string; }
-RB_OPS :: "is not an edit: move, switch, place, revise, ask, ask-delete, ask-done, row-delete, settings, lore, quest, accept, decline, undo, publish or visibility";
+RB_OPS :: "is not an edit: move, rotate, resize, remove, switch, place, revise, ask, ask-delete, ask-done, row-delete, settings, lore, quest, accept, decline, undo, publish or visibility";
 rb_kind_why :: (kind: int) -> string {
   if kind == 2 { return "must be a JSON number"; }
   if kind == 3 || kind == 5 { return "must be true or false"; }
@@ -1318,6 +1351,21 @@ rb_check :: (line: string, slug: string, a: [] Args) -> RbWhy {
   return w;
 }
 
+#test "rotate, resize and remove: a thing, whole degrees, whole percent 25 to 400" {
+  a: [1] Args;
+  ok := [5] string.["{\"op\":\"rotate\",\"entity\":\"trees:3\",\"yaw\":90}", "{\"op\":\"rotate\",\"entity\":\"placed:0\",\"yaw\":-360}",
+    "{\"op\":\"resize\",\"entity\":\"rocks:1\",\"scale\":25}", "{\"op\":\"resize\",\"entity\":\"rocks:1\",\"scale\":400}", "{\"op\":\"remove\",\"entity\":\"props:2\"}"];
+  for line: ok { #assert rb_check(line,"garden",a[..]).why == ""; }
+  #assert rb_check(ok[2],"garden",a[..]).why == "" && args_at(a[..],1) == "resize" && args_at(a[..],3) == "rocks:1" && args_at(a[..],4) == "25";
+  bad := [7] string.["{\"op\":\"rotate\",\"entity\":\"trees:3\",\"yaw\":361}", "{\"op\":\"rotate\",\"entity\":\"trees:3\",\"yaw\":1.5}",
+    "{\"op\":\"resize\",\"entity\":\"rocks:1\",\"scale\":24}", "{\"op\":\"resize\",\"entity\":\"rocks:1\",\"scale\":401}", "{\"op\":\"resize\",\"entity\":\"rocks:1\",\"scale\":\"50\"}",
+    "{\"op\":\"remove\",\"entity\":\"trees\"}", "{\"op\":\"remove\",\"entity\":\"trees:1\",\"x\":1}"];
+  whys := [7] string.[rc_why("yaw"), rc_why("yaw"), rc_why("percent"), rc_why("percent"), "must be a JSON number", rc_why("entity"), "is not a field of this op (a revision goes in --rev, not in a line)"];
+  for i: 0..<bad.count { #assert rb_check(bad[i],"garden",a[..]).why == whys[i] && a[0].n == 0; }
+  #assert rc_value("percent","25") && rc_value("percent","400") && !rc_value("percent","24") && !rc_value("percent","401") && !rc_value("percent","") && !rc_value("percent","1e2");
+  #assert rc_why("percent") == "PERCENT is a whole number from 25 to 400";
+}
+
 #test "a refused batch line names its field and what it must be" {
   a: [1] Args;
   cases := [12] string.[
@@ -1347,7 +1395,7 @@ rb_check :: (line: string, slug: string, a: [] Args) -> RbWhy {
 #test "the batch format help lists every op with its fields" {
   out: [1024] u8;
   h := rb_help(out[..]);
-  #assert cli_prefix(h, "move entity x z; switch row on; place thing x z yaw?; revise prompt; ask words?|doc?; ask-delete id; ask-done id commit; ");
+  #assert cli_prefix(h, "move entity x z; rotate entity yaw; resize entity scale; remove entity; switch row on; place thing x z yaw?; revise prompt; ask words?|doc?; ask-delete id; ask-done id commit; ");
   #assert rc_contains(h, "quest giver ask steps reward?; accept id; decline id; undo; publish listed?; visibility visibility") && !rc_contains(h, "  ");
   #assert rb_help(out[0..<10]) == "";
 }

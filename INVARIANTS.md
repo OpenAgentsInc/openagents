@@ -163,7 +163,7 @@ by a tool (`verse-automation` cookie, `X-Verse-Automation` header) is
 unlisted. Checks: `coax/web/api/test_realm_fork.py` (stale save and publish
 refused, the original byte-identical after the fork is saved, tool-made realms
 unlisted, visitors on the revision published, each edit undone as one step); `aethyr/forge/edit.coax` (an edit is refused when its entity moved
-since; apply then inverse is the identity); `apps/openagents-web/myrealm.coax`
+since, or a slot changed since; apply then inverse is the identity, for every revision path; a replayed log gives the same document); `coax/web/api/tests/realm_shapes.sql` (turns, sizes and removals, 0109: a save without them keeps them; visitors, forks and undo carry them); `apps/openagents-web/myrealm.coax`
 (a 409 keeps the changes); `coax/web/tool.sh forge-journey` end to end.
 
 CLI edits use `commands.coax` for bounded arguments and carry a revision to
@@ -197,7 +197,11 @@ its parent's pin; nothing done to it changes its parent's record. A realm
 with a published revision but no pin is pinned to the engine served when
 its page is next written. Every pin is a row of `verse.realm_publications`,
 never rewritten. Checks: `aethyr/forge/publish.coax` and
-`coax/web/api/tests/realm_engine_pin.coax` (SQL, rolled back).
+`coax/web/api/tests/realm_engine_pin.coax` (SQL, rolled back). After the
+strip, `coax/web/engine-served.coax` adds each served file's own SHA-256 to
+the engine's script (`data-served`), so a pin carries them; `engine-served
+check` holds a record to a site's bytes. `realm_walkthrough.coax` checks the
+whole route: edit, publish, reload, a later release, fork, refusals.
 
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 

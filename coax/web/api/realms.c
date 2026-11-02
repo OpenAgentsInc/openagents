@@ -30,7 +30,8 @@
 //   POST /api/playtest/realms/<fork>/publish {published?, description?}   -> 200 {published, description}; 403, 404
 // A made realm is a document with revisions (migrations/0093_realm_documents.sql, Aethyr book chapters 51-55, 82):
 //   GET  /api/playtest/realms/<slug>/doc               -> 200 {doc, sha256}; 404 (a visitor's: the revision published)
-//   POST /api/playtest/realms/<slug>/save {rev, moved} -> 200 {rev, sha256}; 400, 403, 404, 409 {error, rev} (changed since)
+//   POST /api/playtest/realms/<slug>/save {rev, moved, shaped?} -> 200 {rev, sha256}; 400, 403, 404, 409 {error, rev} (changed since;
+//        shaped: turns, sizes and removals, 0109; absent keeps them)
 //   POST /api/playtest/realms/<slug>/publish {rev, listed?}   -> 200 {published, rev, sha256, listed}; 400, 403, 404, 409
 //   POST /api/playtest/realms/<slug>/undo {rev}        -> 200 {rev, undo}; 400, 403, 404, 409 {error, rev} (0094: every edit is a step)
 //   GET  /api/playtest/realms/<slug>/published         -> 200 {slug, n, rev, sha256, engine, engine_sha256, why, ms}; 404 not pinned

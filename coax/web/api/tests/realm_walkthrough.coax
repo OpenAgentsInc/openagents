@@ -1,0 +1,259 @@
+// Aethyrforge's whole route, checked (GitHub #12629, book chapter 54): edit -> publish -> reload from
+// the pinned record -> a later release -> fork -> edits on each side stay apart -> refusals keep the
+// last valid document. Against PostgreSQL with every migration applied (no API, bucket, identity or
+// model); the edits go through aethyr/forge/edit.coax, and every digest the server states is worked
+// out again here from the bytes: the document's SHA-256, the engine manifest's, and each served
+// file's (engine-served check against a site this check stages). It cleans up what it makes.
+//   PGURL=... PSQL=psql WORK=DIR coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/sys/fs.coax";
+#load "../../../../aethyr/forge/publish.coax";
+#load "../../../../aethyr/forge/doc.coax";
+
+WK_OUT :: 131072;
+Wk :: struct { db: string; psql: string; work: string; fails: int; checks: int; }
+
+wk_ok :: (w: [] Wk, ok: bool, what: string) {
+  w[0].checks += 1;
+  if ok { print("ok   %\n", what); } else { print("FAIL %\n", what); w[0].fails += 1; }
+}
+// One statement's single value (psql -At), into out; "" on any error.
+wk_sql :: (w: [] Wk, sql: string, out: [] u8) -> string {
+  a := [8] string.[w[0].psql, "-XAt", "-v", "ON_ERROR_STOP=1", "--dbname", w[0].db, "-c", sql];
+  err: [4096] u8;
+  got := proc_run(a[..], 60000, out, err[..]);
+  if got.status != 0 || got.timed_out || got.cut { tool_err("walkthrough sql: "); tool_errln(cast(string) err[0..<got.err_n]); return ""; }
+  return cast(string) out[0..<got.out_n];
+}
+// Text joined into a buffer.
+Wb :: struct { b: [WK_OUT] u8; n: int; bad: bool; }
+wb_put :: (w: [] Wb, s: string) { if w[0].bad || w[0].n + s.count > WK_OUT { w[0].bad = true; return; } for i: 0..<s.count { w[0].b[w[0].n + i] = s[i]; } w[0].n += s.count; }
+wb_int :: (w: [] Wb, v: int) { t: [24] u8; n := forge_put_int(t[..], 0, v); wb_put(w, cast(string) t[0..<n]); }
+wb_text :: (w: [] Wb) -> string { return cast(string) w[0].b[0..<w[0].n]; }
+wb_clear :: (w: [] Wb) { w[0].n = 0; w[0].bad = false; }
+
+// A JSON answer's member as raw text (a string's: between its quotes), or "".
+wk_member :: (text: string, path: string, out: [] u8) -> string {
+  nodes: [4096] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) { return ""; }
+  at := 0; rest := path;
+  while rest.count > 0 {
+    dot := 0; while dot < rest.count && rest[dot] != '.' { dot += 1; }
+    at = jv_get(j[0], at, rest[0..<dot]);
+    rest = ifx dot < rest.count then rest[dot + 1..<rest.count] else "";
+  }
+  raw := jv_raw(j[0], at);
+  if at < 0 || raw.count > out.count { return ""; }
+  if jv_kind(j[0], at) == JV_STRING { n := jv_str(j[0], at, out); return ifx n < 0 then "" else cast(string) out[0..<n]; }
+  for i: 0..<raw.count { out[i] = raw[i]; }
+  return cast(string) out[0..<raw.count];
+}
+wk_sha :: (text: string, out: [] u8) -> string { if !S_hex(S_hash(text), out) { return ""; } return cast(string) out[0..<64]; }
+// The model of a spec: its moves and shapes (and their history: none).
+wk_model :: (w: [] Wk, slug: string, key: string, d: [] ForgeDoc) -> bool {
+  q: [1] Wb; wb_put(q[..], "SELECT verse.edit_spec('"); wb_put(q[..], slug); wb_put(q[..], "', '"); wb_put(q[..], key); wb_put(q[..], "', false)");
+  out: [WK_OUT] u8; spec := wk_sql(w, wb_text(q[..]), out[..]);
+  rev := 0; at := 0;
+  for i: 0..<spec.count + 1 {
+    if i < spec.count && spec[i] != '\n' { continue; }
+    line := spec[at..<i]; at = i + 1;
+    if line.count > 4 && line[0..<4] == "rev " { rev = forge_whole(line[4..<line.count], 1, 999999999); }
+  }
+  forge_reset(d, rev);
+  at = 0;
+  for i: 0..<spec.count + 1 {
+    if i < spec.count && spec[i] != '\n' { continue; }
+    line := spec[at..<i]; at = i + 1;
+    if line.count > 6 && line[0..<6] == "moved " {
+      p := 6; while p < line.count && line[p] != ' ' { p += 1; }
+      q2 := p + 1; while q2 < line.count && line[q2] != ' ' { q2 += 1; }
+      if q2 >= line.count || !forge_read_move(d, line[6..<p], forge_cm_of(line[p + 1..<q2]), forge_cm_of(line[q2 + 1..<line.count])) { return false; }
+    }
+    if line.count > 7 && line[0..<7] == "shaped " && !forge_read_shape_line(d, line) { return false; }
+  }
+  return rev >= 1;
+}
+// Moves and shapes only, as text (slots aside): what a spec and a document both say.
+wk_entities :: (d: [] ForgeDoc, out: [] u8) -> string {
+  c: [1] ForgeDoc; c[0] = d[0]; c[0].slot_n = 0; c[0].rev = 0;
+  n := forge_doc_text(c[..], out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+// A visitor's /doc: the document text exactly as served, its hash recomputed here.
+wk_visitor_doc :: (w: [] Wk, slug: string, doc: [] u8, sha: [] u8) -> string {
+  q: [1] Wb; wb_put(q[..], "SELECT verse.realm_doc_of('"); wb_put(q[..], slug); wb_put(q[..], "', 'walkthrough-visitor-key-0002', false)::text");
+  out: [WK_OUT] u8; text := wk_sql(w, wb_text(q[..]), out[..]);
+  nodes: [4096] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) { return ""; }
+  raw := jv_raw(j[0], jv_get(j[0], 0, "doc"));
+  stated := jv_raw(j[0], jv_get(j[0], 0, "sha256"));
+  h: [64] u8;
+  if raw.count == 0 || raw.count > doc.count || wk_sha(raw, h[..]) != stated { return ""; }
+  for i: 0..<raw.count { doc[i] = raw[i]; }
+  for i: 0..<64 { sha[i] = h[i]; }
+  return cast(string) doc[0..<raw.count];
+}
+
+// A site the check stages: the five engine files (bytes of its own) and /realms/built with the
+// live template's script; engine-served writes its data-served.
+wk_site :: (w: [] Wk, site: string, wasm_name: string) -> bool {
+  pb: [FS_PATH_MAX] u8; ok := true;
+  dirs := [5] string.["realms", "realms/built", "coaxial", "build", "build/realms"];
+  ok = fs_mkdir(site) || fs_exists(site);
+  for d: dirs { ok = (fs_mkdir(fs_join(site, d, pb[..])) || fs_exists(fs_join(site, d, pb[..]))) && ok; }
+  ok = (fs_mkdir(fs_join(site, "build/realms/fixture", pb[..])) || true) && (fs_mkdir(fs_join(site, "build/realms/fixture/assets", pb[..])) || true) && ok;
+  files := [5] string.["coaxial/host.9ca333f3d8b0.js", "build/realms/fixture/assets/fixture.df9c027378c8.pack", "build/voice.71d76f28966b.wasm", "build/myrealm.224131021ece.wgsl", ""];
+  bodies := [5] string.["host script, comments stripped\n", "PACK asset pack", "voice engine", "@vertex fn main() {}\n", "the engine's wasm for "];
+  wb: [64] u8; wn := forge_put(wb[..], 0, "build/"); wn = forge_put(wb[..], wn, wasm_name);
+  files[4] = cast(string) wb[0..<wn];
+  for i: 0..<4 { ok = fs_write(fs_join(site, files[i], pb[..]), bodies[i]) && ok; }
+  body: [1] Wb; wb_put(body[..], bodies[4]); wb_put(body[..], wasm_name);   // each release's engine its own bytes
+  ok = fs_write(fs_join(site, files[4], pb[..]), wb_text(body[..])) && ok;
+  page: [1] Wb;
+  // the fixture page, its engine wasm renamed to this release's
+  sw: [8192] u8; nm: [64] u8; nn := forge_put(nm[..], 0, wasm_name); nn = forge_put(nm[..], nn, "\" data-wgsl");
+  wb_put(page[..], engine_swap(ENGINE_FIXTURE, "myrealm.0e7b9526d8a2.wasm\" data-wgsl", cast(string) nm[0..<nn], sw[..]));
+  ok = fs_write(fs_join(site, "realms/built/index.html", pb[..]), wb_text(page[..])) && ok;
+  a := [3] string.["coax/web/tool.sh", "engine-served", "write"];
+  run := [4] string.[a[0], a[1], a[2], site];
+  out: [4096] u8; err: [8192] u8;
+  got := proc_run(run[..], 600000, out[..], err[..]);
+  if got.status != 0 { tool_errln(cast(string) err[0..<got.err_n]); }
+  return ok && got.status == 0;
+}
+wk_page :: (site: string, buf: [] u8) -> string {
+  pb: [FS_PATH_MAX] u8; n := fs_read(fs_join(site, "realms/built/index.html", pb[..]), buf);
+  return ifx n < 0 then "" else cast(string) buf[0..<n];
+}
+wk_served_check :: (w: [] Wk, manifest: string, site: string) -> bool {
+  pb: [FS_PATH_MAX] u8; mf := fs_join(w[0].work, "manifest.txt", pb[..]);
+  if !fs_write(mf, manifest) { return false; }
+  m2: [FS_PATH_MAX] u8; for i: 0..<mf.count { m2[i] = mf[i]; }
+  run := [4] string.["coax/web/tool.sh", "engine-served", "check", cast(string) m2[0..<mf.count]];
+  run2 := [5] string.[run[0], run[1], run[2], run[3], site];
+  out: [8192] u8; err: [8192] u8;
+  got := proc_run(run2[..], 600000, out[..], err[..]);
+  return got.status == 0;
+}
+wk_publish :: (w: [] Wk, slug: string, rev: int, page: string, out: [] u8) -> string {
+  q: [1] Wb;
+  wb_put(q[..], "SELECT verse.realm_publish_pinned('"); wb_put(q[..], slug); wb_put(q[..], "', '{\"rev\":"); wb_int(q[..], rev);
+  wb_put(q[..], "}', 'walkthrough-player-key-0001', false, true, $wk$"); wb_put(q[..], page); wb_put(q[..], "$wk$)::text");
+  return wk_sql(w, wb_text(q[..]), out);
+}
+wk_save :: (w: [] Wk, slug: string, key: string, d: [] ForgeDoc, out: [] u8) -> string {
+  body: [16384] u8; n := forge_save_body(d, body[..]);
+  q: [1] Wb;
+  wb_put(q[..], "SELECT verse.realm_save('"); wb_put(q[..], slug); wb_put(q[..], "', $wk$"); wb_put(q[..], cast(string) body[0..<n]);
+  wb_put(q[..], "$wk$, '"); wb_put(q[..], key); wb_put(q[..], "', false)::text");
+  return wk_sql(w, wb_text(q[..]), out);
+}
+
+tool_main :: () -> int #export_c {
+  dbb: [1024] u8; pb: [1024] u8; wb: [1024] u8;
+  wk: [1] Wk; w := wk[..];
+  w[0].db = proc_getenv("PGURL", dbb[..]); w[0].psql = proc_getenv("PSQL", pb[..]); w[0].work = proc_getenv("WORK", wb[..]);
+  if w[0].db == "" || w[0].psql == "" || w[0].work == "" { tool_errln("set PGURL, PSQL (a database with every migration applied) and WORK (a scratch directory)"); return 2; }
+  slug := "walkthrough-forge"; owner := "walkthrough-player-key-0001"; visitor := "walkthrough-visitor-key-0002";
+  out: [WK_OUT] u8; m: [512] u8; m2: [512] u8;
+  clean := "DELETE FROM verse.made_realms WHERE slug LIKE 'walkthrough-forge%' OR forked_from = 'walkthrough-forge'; DELETE FROM verse.worlds WHERE owner_player IN ('p-walkthrough','p-walkthrough-2'); DELETE FROM verse.players WHERE id IN ('p-walkthrough','p-walkthrough-2'); SELECT 1";
+  if wk_sql(w, clean, out[..]) == "" { return 1; }
+  seed := "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-walkthrough', encode(sha256(convert_to('walkthrough-player-key-0001','UTF8')),'hex'), 1), ('p-walkthrough-2', encode(sha256(convert_to('walkthrough-visitor-key-0002','UTF8')),'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-walkthrough-forge', 'p-walkthrough', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) VALUES ('walkthrough-forge', 'made-walkthrough-forge', 'Walkthrough Forge', 'lowpoly', 'meadow', 'day', '[]', '{\"fly\": false}', 1, 'public'); SELECT 1";
+  if wk_sql(w, seed, out[..]) == "" { return 1; }
+
+  // 1. A release: its site, its engine page with the served files' own hashes.
+  sb: [FS_PATH_MAX] u8; site := fs_join(w[0].work, "site-1", sb[..]);
+  wk_ok(w, wk_site(w, site, "myrealm.0e7b9526d8a2.wasm"), "release 1 staged; engine-served wrote its served hashes");
+  pageb: [65536] u8; page := wk_page(site, pageb[..]);
+  mb: [ENGINE_TEXT] u8; manifest := engine_manifest(page, mb[..]);
+  wk_ok(w, manifest.count > 0 && engine_has(manifest, "\ndata-served "), "its engine is named by content, served hashes included");
+
+  // 2. Edit through the model: move, turn, size, remove; one save.
+  d: [1] ForgeDoc;
+  wk_ok(w, wk_model(w, slug, owner, d[..]) && d[0].rev == 1, "the realm read into the edit model at revision 1");
+  edited := forge_move(d[..], "trees:1", 250, -125) && forge_rotate(d[..], "trees:1", 90) && forge_resize(d[..], "rocks:0", 150) && forge_remove(d[..], "props:2")
+         && forge_move(d[..], "trees:4", 10, 10) && forge_undo(d[..]);
+  wk_ok(w, edited && d[0].done == 4, "four edits and an undo in the model");
+  saved := wk_save(w, slug, owner, d[..], out[..]);
+  wk_ok(w, wk_member(saved, "status", m[..]) == "200" && wk_member(saved, "rev", m2[..]) == "2", "saved as revision 2");
+  ent: [8192] u8; ents := wk_entities(d[..], ent[..]);
+
+  // 3. Publish, pinned.
+  pub := wk_publish(w, slug, 2, page, out[..]);
+  esha := wk_member(pub, "engine", m[..]);
+  hb: [64] u8;
+  wk_ok(w, wk_member(pub, "status", m2[..]) == "200" && esha == wk_sha(manifest, hb[..]), "published revision 2; the engine hash stated is the manifest's, worked out here");
+
+  // 4. Reload from the pinned record, independently.
+  rec := wk_sql(w, "SELECT verse.realm_published_of('walkthrough-forge')::text", out[..]);
+  rengine: [ENGINE_TEXT] u8; re := wk_member(rec, "engine", rengine[..]);
+  rsha: [80] u8; rs := wk_member(rec, "engine_sha256", rsha[..]); dsha: [80] u8; ds := wk_member(rec, "sha256", dsha[..]);
+  rrev: [16] u8; rr := forge_whole(wk_member(rec, "rev", rrev[..]), 1, 999999999);
+  wk_ok(w, re == manifest && engine_record_ok(rr, ds, re, rs) && rr == 2, "the record: revision 2, its manifest holds by the rule, its hash is the manifest's");
+  wk_ok(w, wk_served_check(w, re, site), "every file the record names is served with the bytes it records (engine-served check)");
+  doc: [WK_OUT] u8; vsha: [64] u8; vdoc := wk_visitor_doc(w, slug, doc[..], vsha[..]);
+  wk_ok(w, vdoc.count > 0 && cast(string) vsha[..] == ds, "a visitor's document hashes, here, to the record's document hash");
+  r: [1] ForgeDoc; forge_reset(r[..], 1);
+  rd := forge_read_doc(r[..], vdoc);
+  rent: [8192] u8;
+  wk_ok(w, rd.ok && r[0].rev == 2 && wk_entities(r[..], rent[..]) == ents, "reloaded from the published document: the same moves, turns, sizes and removals the edits made");
+  pq: [1] Wb; wb_put(pq[..], "SELECT verse.builder_page('walkthrough-forge', 'https://openagents.com')");
+  realm_page := wk_sql(w, wb_text(pq[..]), out[..]);
+  attr: [1] Wb; wb_put(attr[..], " data-engine=\""); wb_put(attr[..], re); wb_put(attr[..], "\" data-engine-sha256=\""); wb_put(attr[..], rs); wb_put(attr[..], "\"");
+  wk_ok(w, engine_has(realm_page, wb_text(attr[..])) && engine_has(realm_page, "const pin = me.dataset.engine"), "the realm's page plays the pinned engine, not today's template");
+
+  // 5. A later release changes nothing published.
+  sb2: [FS_PATH_MAX] u8; site2 := fs_join(w[0].work, "site-2", sb2[..]);
+  wk_ok(w, wk_site(w, site2, "myrealm.111111111111.wasm"), "release 2 staged with a new engine");
+  page2b: [65536] u8; page2 := wk_page(site2, page2b[..]);
+  mb2: [ENGINE_TEXT] u8; manifest2 := engine_manifest(page2, mb2[..]);
+  rq: [1] Wb; wb_put(rq[..], "SELECT verse.realm_pin_first('walkthrough-forge', $wk$"); wb_put(rq[..], page2); wb_put(rq[..], "$wk$)");
+  rp: [64] u8; repin := wk_sql(w, wb_text(rq[..]), rp[..]);   // what writing its page after the release does
+  ag: [128] u8; again := wk_sql(w, "SELECT verse.realm_published_of('walkthrough-forge')->>'engine_sha256'", ag[..]);
+  realm_page2 := wk_sql(w, wb_text(pq[..]), out[..]);
+  wk_ok(w, manifest2.count > 0 && manifest2 != manifest && repin == "f" && again == rs && engine_has(realm_page2, wb_text(attr[..])),
+        "after release 2 the record and the realm's page still name release 1's engine");
+
+  // 6. Later edits by the owner stay unpublished; a visitor's fork starts from the published realm.
+  wk_ok(w, wk_model(w, slug, owner, d[..]) && forge_move(d[..], "trees:1", 0, 0), "the owner moves trees:1 again");
+  later := wk_save(w, slug, owner, d[..], out[..]);
+  wk_ok(w, wk_member(later, "rev", m[..]) == "3", "saved as revision 3, not published");
+  doc2: [WK_OUT] u8; vsha2: [64] u8; vdoc2 := wk_visitor_doc(w, slug, doc2[..], vsha2[..]);
+  wk_ok(w, vdoc2 == vdoc, "a visitor still gets revision 2's document, byte for byte");
+  fq := "SELECT verse.made_fork('walkthrough-forge', '{\"name\":\"Walkthrough Forge Fork\"}', 'walkthrough-visitor-key-0002', 12)->>'slug'";
+  fb: [128] u8;
+  fork_slug := wk_sql(w, fq, fb[..]);
+  wk_ok(w, fork_slug.count > 0, "a visitor forks it");
+  fpq: [1] Wb; wb_put(fpq[..], "SELECT verse.realm_published_of('"); wb_put(fpq[..], fork_slug); wb_put(fpq[..], "')->>'engine_sha256'");
+  fe := wk_sql(w, wb_text(fpq[..]), m[..]);
+  wk_ok(w, fe == rs, "the fork starts on its parent's pinned engine");
+  f: [1] ForgeDoc;
+  wk_ok(w, wk_model(w, fork_slug, visitor, f[..]) && wk_entities(f[..], rent[..]) == ents, "the fork's document is the published revision's moves and shapes");
+  fork_edit := forge_restore(f[..], "props:2") && forge_rotate(f[..], "trees:1", -45);
+  fsaved := wk_save(w, fork_slug, visitor, f[..], out[..]);
+  wk_ok(w, fork_edit && wk_member(fsaved, "status", m[..]) == "200", "the fork's owner restores props:2 and turns trees:1");
+  doc3: [WK_OUT] u8; vsha3: [64] u8; vdoc3 := wk_visitor_doc(w, slug, doc3[..], vsha3[..]);
+  pm: [1] ForgeDoc;
+  wk_ok(w, vdoc3 == vdoc && wk_model(w, slug, owner, pm[..]) && forge_shape_of(pm[..], "props:2").gone && forge_shape_of(pm[..], "trees:1").yaw == 90,
+        "the parent's published and current documents are untouched by the fork's edits");
+
+  // 7. Refusals keep the last valid document.
+  stale: [1] ForgeDoc; stale[0] = f[0]; stale[0].rev = 1;
+  _ := forge_move(stale[..], "trees:9", 1, 1);
+  st := wk_save(w, slug, owner, stale[..], out[..]);
+  doc4: [WK_OUT] u8; vsha4: [64] u8;
+  wk_ok(w, wk_member(st, "status", m[..]) == "409" && wk_visitor_doc(w, slug, doc4[..], vsha4[..]) == vdoc, "a save from a stale revision is refused (409); nothing changes");
+  bad := wk_publish(w, slug, 3, "<html>no engine</html>", out[..]);
+  rec3 := wk_sql(w, "SELECT verse.realm_published_of('walkthrough-forge')->>'rev'", m2[..]);
+  wk_ok(w, wk_member(bad, "status", m[..]) == "503" && rec3 == "2", "a publish whose engine can't be pinned is refused (503); revision 2 stays published");
+  newer: [1] Wb; wb_put(newer[..], engine_swap(vdoc, "\"version\": 1", "\"version\": 2", doc4[..]));
+  keep: [8192] u8; kept := wk_entities(r[..], keep[..]);
+  rn := forge_read_doc(r[..], wb_text(newer[..]));
+  wk_ok(w, !rn.ok && wk_entities(r[..], rent[..]) == kept, "a newer document version is refused by the reader; the last one read stays");
+
+  if wk_sql(w, clean, out[..]) == "" { return 1; }
+  print("% of % checks\n", w[0].checks - w[0].fails, w[0].checks);
+  return ifx w[0].fails == 0 then 0 else 1;
+}

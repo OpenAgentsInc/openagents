@@ -1,0 +1,187 @@
+// A made realm's document read into Aethyrforge's edit model (book chapters 51 and 82, GitHub
+// #12629): GET .../<slug>/doc's {"doc": ..., "sha256": ...}, or a kept revision. The reader knows
+// every version of the document this engine has written and moves an older one forward; it refuses
+// anything else whole, so a client keeps the last document it could read instead of a part of a
+// new one.
+//
+//   version 1 (migration 0093): doc "aethyr.realm", rev, setup, tools, placed, moved
+//   version 1 with "shaped" (migration 0109): turns, sizes and removals. A version 1 document
+//   without it (written before 0109) has none: it is read as the same realm.
+//
+// The server is the authority on what a document is (migrations 0093, 0109); this reader only
+// refuses what it can't hold. What it reads becomes the model's own: moves and shapes as entity overrides, the setup fields as
+// "set:" slots, the tools as "tool:" slots and each placed thing as a "place:N" slot (THING X Z YAW
+// with the document's numbers as written). Rows and lore are the server's: not in this document.
+//   coax/bin/coax test aethyr/forge/doc.coax --library
+
+#module "aethyr.forge.doc";
+#load "edit.coax";
+#load "../../coax/lib/json/json.coax";
+
+// book:begin read
+FORGE_DOC_KIND :: "aethyr.realm";
+FORGE_DOC_NEWEST :: 1;   // the newest version this reader knows
+FORGE_DOC_BYTES :: 262144;
+ForgeRead :: struct { ok: bool; why: string; version: int; }
+// book:end read
+
+// Metres with at most two decimals, as the server writes them, to whole centimetres; 4001 when not.
+forge_cm_of :: (raw: string) -> int {
+  neg := raw.count > 0 && raw[0] == '-';
+  s := ifx neg then raw[1..<raw.count] else raw;
+  dot := 0; while dot < s.count && s[dot] != '.' { dot += 1; }
+  if dot == 0 || dot > 2 || (dot < s.count && (s.count - dot - 1 < 1 || s.count - dot - 1 > 2)) { return 4001; }
+  v := 0;
+  for i: 0..<dot { if !forge_digit(s[i]) { return 4001; } v = v * 10 + cast(int) (s[i] - '0'); }
+  frac := 0; places := 0;
+  for i: dot + 1..<s.count { if !forge_digit(s[i]) { return 4001; } frac = frac * 10 + cast(int) (s[i] - '0'); places += 1; }
+  if places == 1 { frac *= 10; }
+  cm := v * 100 + frac;
+  return ifx neg then -cm else cm;
+}
+// A whole number in JSON (no fraction, no exponent) in [lo, hi], or lo - 1.
+forge_whole :: (raw: string, lo: int, hi: int) -> int {
+  neg := raw.count > 0 && raw[0] == '-';
+  s := ifx neg then raw[1..<raw.count] else raw;
+  if s.count == 0 || s.count > 9 { return lo - 1; }
+  v := 0;
+  for c: s { if !forge_digit(c) { return lo - 1; } v = v * 10 + cast(int) (c - '0'); }
+  v = ifx neg then -v else v;
+  return ifx v < lo || v > hi then lo - 1 else v;
+}
+
+forge_why :: (why: string) -> ForgeRead { return ForgeRead.{ok = false, why = why}; }
+
+// book:begin doc
+// Read a document (or /doc's answer around it) into d. Refused whole, d as it was, when it isn't an
+// aethyr.realm this reader knows or anything in it is out of bounds.
+forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
+  if text.count > FORGE_DOC_BYTES { return forge_why("too large"); }
+  nodes: [4096] JvNode; j: [1] Jv;
+  if !jv_parse(j[..], text, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return forge_why("not a JSON object"); }
+  at := 0;
+  if jv_kind(j[0], jv_get(j[0], 0, "doc")) == JV_OBJECT { at = jv_get(j[0], 0, "doc"); }   // /doc's answer
+  kind: [32] u8; kn := jv_str(j[0], jv_get(j[0], at, "doc"), kind[..]);
+  if kn < 0 || cast(string) kind[0..<kn] != FORGE_DOC_KIND { return forge_why("not a realm document"); }
+  version := forge_whole(jv_raw(j[0], jv_get(j[0], at, "version")), 1, 1000000);
+  if version < 1 { return forge_why("no version"); }
+  if version > FORGE_DOC_NEWEST { return forge_why("a newer document than this reader knows"); }
+  rev := forge_whole(jv_raw(j[0], jv_get(j[0], at, "rev")), 1, 999999999);
+  if rev < 1 { return forge_why("no revision"); }
+  next: [1] ForgeDoc; forge_reset(next[..], rev);
+  moved := jv_get(j[0], at, "moved");
+  if jv_kind(j[0], moved) != JV_ARRAY { return forge_why("no moves"); }
+  for i: 0..<jv_len(j[0], moved) {
+    e := jv_at(j[0], moved, i); key: [FORGE_KEY + 1] u8; n := jv_str(j[0], jv_get(j[0], e, "entity"), key[..]);
+    x := forge_cm_of(jv_raw(j[0], jv_get(j[0], e, "x"))); z := forge_cm_of(jv_raw(j[0], jv_get(j[0], e, "z")));
+    if n < 0 || forge_where(next[..], cast(string) key[0..<n]).found || !forge_read_move(next[..], cast(string) key[0..<n], x, z) { return forge_why("a move out of bounds"); }
+  }
+  shaped := jv_get(j[0], at, "shaped");   // absent before migration 0109: no shapes
+  if shaped >= 0 && jv_kind(j[0], shaped) != JV_ARRAY { return forge_why("shapes not a list"); }
+  for i: 0..<jv_len(j[0], shaped) {
+    e := jv_at(j[0], shaped, i); key: [FORGE_KEY + 1] u8; n := jv_str(j[0], jv_get(j[0], e, "entity"), key[..]);
+    yaw := forge_whole(jv_raw(j[0], jv_get(j[0], e, "yaw")), 1 - FORGE_TURN, FORGE_TURN);
+    scale := forge_whole(jv_raw(j[0], jv_get(j[0], e, "scale")), FORGE_SCALE_MIN, FORGE_SCALE_MAX);
+    gone := jv_kind(j[0], jv_get(j[0], e, "gone"));
+    if n < 0 || yaw < 1 - FORGE_TURN || scale < FORGE_SCALE_MIN || (gone != JV_TRUE && gone != JV_FALSE) { return forge_why("a shape out of bounds"); }
+    s := forge_shape_of(next[..], cast(string) key[0..<n]);
+    if s.yaw != 0 || s.scale != 100 || s.gone || (yaw == 0 && scale == 100 && gone == JV_FALSE) { return forge_why("a shape twice, or no shape"); }
+    if !forge_read_shape(next[..], cast(string) key[0..<n], yaw, scale, gone == JV_TRUE) { return forge_why("a shape out of bounds"); }
+  }
+  setup := jv_get(j[0], at, "setup");
+  for what: [5] string.["style", "ground", "time", "camera", "palette"] {
+    v: [64] u8; n := jv_str(j[0], jv_get(j[0], setup, what), v[..]);
+    kb: [16] u8; k := forge_put(kb[..], 0, "set:"); k = forge_put(kb[..], k, what);
+    if n > 0 && !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("a setup field out of bounds"); }
+  }
+  tools := jv_get(j[0], at, "tools");
+  for i: 0..<jv_len(j[0], tools) {
+    if jv_kind(j[0], tools) != JV_OBJECT { return forge_why("tools not an object"); }
+    t := jv_at(j[0], tools, i); name := jv_key(j[0], t);
+    kb: [48] u8; k := forge_put(kb[..], 0, "tool:"); k = forge_put(kb[..], k, name);
+    on := jv_kind(j[0], t);
+    if k < 0 || (on != JV_TRUE && on != JV_FALSE) || !forge_read_slot(next[..], cast(string) kb[0..<k], ifx on == JV_TRUE then "1" else "0") { return forge_why("a tool out of bounds"); }
+  }
+  placed := jv_get(j[0], at, "placed");
+  for i: 0..<jv_len(j[0], placed) {
+    if jv_kind(j[0], placed) != JV_ARRAY { return forge_why("placed not a list"); }
+    e := jv_at(j[0], placed, i); thing: [32] u8; n := jv_str(j[0], jv_get(j[0], e, "thing"), thing[..]);
+    v: [96] u8; m := forge_put(v[..], 0, cast(string) thing[0..<n]);
+    for f: [3] string.["x", "z", "yaw"] { m = forge_put(v[..], m, " "); m = forge_put(v[..], m, jv_raw(j[0], jv_get(j[0], e, f))); }
+    kb: [24] u8;
+    if n < 1 || m < 0 || jv_kind(j[0], jv_get(j[0], e, "x")) != JV_NUMBER || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
+  }
+  d[0] = next[0];
+  return ForgeRead.{ok = true, version = version};
+}
+// book:end doc
+
+// The document /doc answered for a realm at revision 4 before migration 0109, and the same realm
+// turned and sized after it.
+FORGE_DOC_V1 :: "{\"doc\": {\"doc\": \"aethyr.realm\", \"off\": [], \"rev\": 4, \"base\": null, \"name\": \"Lamp Cove\", \"slug\": \"lamp-cove\", \"moved\": [{\"x\": 1.25, \"z\": -2.5, \"entity\": \"trees:3\"}, {\"x\": -40, \"z\": 0.07, \"entity\": \"rocks:0\"}], \"setup\": {\"time\": \"night\", \"style\": \"lowpoly\", \"camera\": \"third\", \"ground\": \"meadow\", \"palette\": \"warm\"}, \"tools\": {\"fly\": false, \"jump\": true}, \"placed\": [{\"x\": 2, \"z\": -3.5, \"yaw\": 90, \"thing\": \"barrel\"}], \"version\": 1, \"features\": [], \"forked_from\": null}, \"sha256\": \"x\"}";
+
+#test "a version 1 document from before shapes is the same realm with none" {
+  d: [1] ForgeDoc; forge_reset(d[..], 9);
+  r := forge_read_doc(d[..], FORGE_DOC_V1);
+  #assert r.ok && r.version == 1 && d[0].rev == 4 && d[0].move_n == 2 && !forge_any_shaped(d[..]);
+  w := forge_where(d[..], "trees:3");
+  #assert w.found && w.x == 125 && w.z == -250 && forge_where(d[..], "rocks:0").x == -4000 && forge_where(d[..], "rocks:0").z == 7;
+  #assert forge_slot_text(d[..], "set:time") == "night" && forge_slot_text(d[..], "set:palette") == "warm";
+  #assert forge_slot_text(d[..], "tool:fly") == "0" && forge_slot_text(d[..], "tool:jump") == "1";
+  #assert forge_slot_text(d[..], "place:0") == "barrel 2 -3.5 90" && d[0].op_n == 0;
+}
+
+// The fixture with one piece replaced.
+forge_doc_with :: (from: string, to: string, buf: [] u8) -> string {
+  for i: 0..<FORGE_DOC_V1.count {
+    if i + from.count <= FORGE_DOC_V1.count && FORGE_DOC_V1[i..<i + from.count] == from {
+      n := forge_put(buf, 0, FORGE_DOC_V1[0..<i]); n = forge_put(buf, n, to); n = forge_put(buf, n, FORGE_DOC_V1[i + from.count..<FORGE_DOC_V1.count]);
+      return ifx n < 0 then "" else cast(string) buf[0..<n];
+    }
+  }
+  return "";
+}
+
+#test "shapes from migration 0109 are read; the bare document reads as /doc's answer does" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  b: [4096] u8;
+  t := forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": -90, \"gone\": false, \"scale\": 150, \"entity\": \"trees:3\"}, {\"yaw\": 0, \"gone\": true, \"scale\": 100, \"entity\": \"placed:0\"}],", b[..]);
+  #assert forge_read_doc(d[..], t).ok;
+  s := forge_shape_of(d[..], "trees:3");
+  #assert s.at && s.x == 125 && s.yaw == -90 && s.scale == 150 && !s.gone && forge_shape_of(d[..], "placed:0").gone;
+  bare: [4096] u8; bn := forge_put(bare[..], 0, FORGE_DOC_V1[8..<FORGE_DOC_V1.count - 16]);
+  e: [1] ForgeDoc; forge_reset(e[..], 1);
+  #assert bn > 0 && forge_read_doc(e[..], cast(string) bare[0..<bn]).ok && e[0].rev == 4 && e[0].move_n == 2;
+}
+
+#test "an unknown, newer or broken document is refused whole and the last one stays" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  #assert forge_read_doc(d[..], FORGE_DOC_V1).ok;
+  last: [8192] u8; ln := forge_doc_text(d[..], last[..]);
+  b: [4096] u8;
+  cases := [22] string.[
+    forge_doc_with("\"version\": 1", "\"version\": 2", b[..]), forge_doc_with("\"version\": 1", "\"version\": 0", b[..]),
+    forge_doc_with("\"version\": 1,", "", b[..]), forge_doc_with("\"version\": 1", "\"version\": 1.5", b[..]),
+    forge_doc_with("aethyr.realm", "aethyr.world", b[..]), forge_doc_with("\"rev\": 4", "\"rev\": 0", b[..]),
+    forge_doc_with("\"x\": 1.25", "\"x\": 40.01", b[..]), forge_doc_with("\"x\": 1.25", "\"x\": 1.255", b[..]),
+    forge_doc_with("\"x\": 1.25", "\"x\": \"1.25\"", b[..]), forge_doc_with("\"entity\": \"rocks:0\"", "\"entity\": \"trees:3\"", b[..]),
+    forge_doc_with("\"entity\": \"rocks:0\"", "\"entity\": \"Rocks\"", b[..]), forge_doc_with("\"moved\": [", "\"moved\": {\"a\": [", b[..]),
+    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 181, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]),
+    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 24, \"entity\": \"trees:1\"}],", b[..]),
+    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": 0, \"scale\": 50, \"entity\": \"trees:1\"}],", b[..]),
+    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 0, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]),
+    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": [{\"yaw\": 5, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}, {\"yaw\": 6, \"gone\": false, \"scale\": 100, \"entity\": \"trees:1\"}],", b[..]),
+    forge_doc_with("\"version\": 1,", "\"version\": 1, \"shaped\": {},", b[..]),
+    forge_doc_with("\"fly\": false", "\"fly\": 0", b[..]), forge_doc_with("\"time\": \"night\"", "\"time\": \"two\\nlines\"", b[..]),
+    forge_doc_with("\"thing\": \"barrel\"", "\"thing\": \"\"", b[..]), "[1]"];
+  for i: 0..<cases.count {
+    c: [4096] u8; cn := forge_put(c[..], 0, cases[i]);   // each case is built in one buffer: copy it before the next
+    r := forge_read_doc(d[..], cast(string) c[0..<cn]);
+    #assert cn > 2 && !r.ok && r.why != "";
+    now: [8192] u8; nn := forge_doc_text(d[..], now[..]);
+    #assert cast(string) now[0..<nn] == cast(string) last[0..<ln];
+  }
+  #assert forge_read_doc(d[..], forge_doc_with("\"version\": 1", "\"version\": 2", b[..])).why == "a newer document than this reader knows";
+  #assert forge_cm_of("40") == 4000 && forge_cm_of("-0.5") == -50 && forge_cm_of("0.07") == 7 && forge_cm_of("1.") == 4001 && forge_cm_of(".5") == 4001 && forge_cm_of("100") == 4001 && forge_cm_of("") == 4001;
+  #assert forge_whole("-179", -179, 180) == -179 && forge_whole("181", -179, 180) == -180 && forge_whole("1e2", 0, 999) == -1 && forge_whole("", 0, 9) == -1;
+}

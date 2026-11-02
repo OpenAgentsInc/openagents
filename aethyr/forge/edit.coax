@@ -1,32 +1,58 @@
-// Aethyrforge's edits to a realm document (book chapters 51, 52 and 82): a move is a typed
-// operation with its inverse, undo and redo walk a log of them, and a save names the revision
-// it was made from, so the server refuses it when the document changed since (409) instead of
-// letting the newer write win.
+// Aethyrforge's edits to a realm document (book chapters 51, 52 and 82): every change is a typed
+// operation with its inverse, undo and redo walk one log of them, replaying a log from the same
+// document gives the same document, and a save names the revision it was made from, so the
+// server refuses it when the document changed since (409) instead of letting the newer write win.
 //
-// What a made realm's page edits today is where its laid-out entities stand. An entity is named
-// by its feature and its index in that feature's layout ("trees:3"), which the seeded layout keeps
-// stable; the document keeps an override for each moved one (ForgeMove), in whole centimetres so
-// the same document is the same bytes everywhere. Nothing here reads words.
+// Two kinds of thing change (#12629):
+//   - an entity, by its override: where it stands (a move), its turn (rotate), its size (resize)
+//     and whether it is there (remove). An entity is named by its feature and its index in that
+//     feature's layout ("trees:3"), or "placed:N" for the N-th thing placed; the seeded layout
+//     keeps the names stable. Places are whole centimetres, turns whole degrees, sizes whole
+//     percent, so the same document is the same bytes everywhere.
+//   - a slot: one named value of every other revision path. "row:KEY" (a board row on or off),
+//     "tool:NAME" (a visitor tool), "set:FIELD" (style, ground, time, camera, palette),
+//     "lore:WHO", "quest:GIVER" (ASK|STEP|STEP|STEP|REWARD) and "place:N" (THING X Z YAW, the
+//     N-th thing placed). A slot absent is the realm without it.
+// An operation is refused unless what it changes is still as it says it was. Nothing here reads words.
 //   coax/bin/coax test aethyr/forge/edit.coax --library
 
 #module "aethyr.forge.edit";
 
 // book:begin doc
 FORGE_KEY :: 24;       // an entity's name: "trees:3"
-FORGE_MOVES :: 64;     // moved entities one document keeps (the server's limit too)
+FORGE_MOVES :: 64;     // entities one document overrides (the server's limit too)
 FORGE_OPS :: 64;       // undo steps kept; the oldest goes first
 FORGE_REACH :: 4000;   // centimetres from the middle an entity may stand (the server's limit too)
+FORGE_TURN :: 180;     // degrees an entity turns either way, at most
+FORGE_SCALE_MIN :: 25; // percent of its laid-out size, at least
+FORGE_SCALE_MAX :: 400;
+FORGE_SLOT_KEY :: 48;  // a slot's name: "lore:mara"
+FORGE_VAL :: 480;      // a slot's value bytes at most (lore: 400 characters)
+FORGE_SLOTS :: 96;     // slots one document keeps
+FORGE_TEXT :: 32768;   // bytes of slot values the document and its history keep together (64 steps of 400-byte lore fit)
 
-ForgeMove :: struct { key: [FORGE_KEY] u8; key_n: int; x: int; z: int; }   // where it stands instead, in cm
-// One edit: the entity, where it stood before (or `had` false: at its laid-out place) and after.
+// An entity as the document has it: where it stands instead (`at`), its turn and size, and gone.
+// The plain shape (nothing overridden) is the entity as laid out.
+ForgeShape :: struct { at: bool; x: int; z: int; yaw: int; scale: int = 100; gone: bool; }
+ForgeMove :: struct { key: [FORGE_KEY] u8; key_n: int; x: int; z: int; at: bool = true; yaw: int; scale: int = 100; gone: bool; }
+// A slot's value is a span of the document's `text`; so are an edit's before and after values.
+ForgeSlot :: struct { key: [FORGE_SLOT_KEY] u8; key_n: int; at: int; n: int; }
+FORGE_ENTITY :: 0;
+FORGE_SLOT :: 1;
+// One edit: what it changes, as it was before and after. An entity's shapes (`b`, `a`), or a
+// slot's values (`had` false: absent before; `has` false: absent after).
 ForgeOp :: struct {
-  key: [FORGE_KEY] u8; key_n: int;
-  had: bool; bx: int; bz: int;     // before
-  has: bool; ax: int; az: int;     // after
+  kind: int;
+  key: [FORGE_SLOT_KEY] u8; key_n: int;
+  b: ForgeShape; a: ForgeShape;
+  had: bool; bv: int; bv_n: int;
+  has: bool; av: int; av_n: int;
 }
 ForgeDoc :: struct {
   rev: int;                        // the revision this document was read at, or last saved as
   moves: [FORGE_MOVES] ForgeMove; move_n: int;
+  slots: [FORGE_SLOTS] ForgeSlot; slot_n: int;
+  text: [FORGE_TEXT] u8; text_n: int;   // the values slots and edits name
   ops: [FORGE_OPS] ForgeOp; op_n: int; done: int;   // the log, and how many of it are applied
   saved: int;                      // `done` when it was last read or saved; -1 when that state is gone
 }
@@ -35,84 +61,243 @@ ForgeDoc :: struct {
 ForgeSpot :: struct { found: bool; x: int; z: int; }
 
 forge_move_key :: (d: [] ForgeDoc, i: int) -> string { return cast(string) d[0].moves[i].key[0..<d[0].moves[i].key_n]; }
+forge_slot_key :: (d: [] ForgeDoc, i: int) -> string { return cast(string) d[0].slots[i].key[0..<d[0].slots[i].key_n]; }
 
+forge_lower :: (c: u8) -> bool { return c >= 'a' && c <= 'z'; }
+forge_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
 // A name the document keeps: a feature's lowercase letters, a colon, an index of one to three digits.
 forge_key_ok :: (key: string) -> bool {
   if key.count < 3 || key.count > FORGE_KEY { return false; }
   colon := -1;
   for i: 0..<key.count { if key[i] == ':' { if colon >= 0 { return false; } colon = i; } }
   if colon < 1 || key.count - colon - 1 < 1 || key.count - colon - 1 > 3 { return false; }
-  for i: 0..<colon { if key[i] < 'a' || key[i] > 'z' { return false; } }
-  for i: colon + 1..<key.count { if key[i] < '0' || key[i] > '9' { return false; } }
+  for i: 0..<colon { if !forge_lower(key[i]) { return false; } }
+  for i: colon + 1..<key.count { if !forge_digit(key[i]) { return false; } }
   return true;
 }
 forge_in_reach :: (x: int, z: int) -> bool { return x >= -FORGE_REACH && x <= FORGE_REACH && z >= -FORGE_REACH && z <= FORGE_REACH; }
+// A turn is -179..180 degrees; a size FORGE_SCALE_MIN..FORGE_SCALE_MAX percent.
+forge_turn :: (deg: int) -> int { t := deg % 360; if t > 180 { t -= 360; } if t <= -180 { t += 360; } return t; }
+forge_shape_ok :: (s: ForgeShape) -> bool {
+  return (!s.at || forge_in_reach(s.x, s.z)) && s.yaw == forge_turn(s.yaw) && s.scale >= FORGE_SCALE_MIN && s.scale <= FORGE_SCALE_MAX;
+}
+forge_plain :: (s: ForgeShape) -> bool { return !s.at && s.yaw == 0 && s.scale == 100 && !s.gone; }
+forge_same_shape :: (p: ForgeShape, q: ForgeShape) -> bool {
+  return p.at == q.at && (!p.at || (p.x == q.x && p.z == q.z)) && p.yaw == q.yaw && p.scale == q.scale && p.gone == q.gone;
+}
 
-// A document read at revision rev with no moves and no history.
+// A slot's name: one of its kinds, a colon, and a lowercase name ("row:trees", "lore:old-mara").
+FORGE_SLOT_KINDS :: [6] string.["row", "tool", "set", "lore", "quest", "place"];
+forge_slot_key_ok :: (key: string) -> bool {
+  if key.count > FORGE_SLOT_KEY { return false; }
+  colon := 0; while colon < key.count && key[colon] != ':' { colon += 1; }
+  kind := key[0..<colon];
+  known := false;
+  for k: FORGE_SLOT_KINDS { if k == kind { known = true; } }
+  if !known || colon + 1 >= key.count { return false; }
+  name := key[colon + 1..<key.count];
+  if !forge_lower(name[0]) && !forge_digit(name[0]) { return false; }
+  for c: name { if !forge_lower(c) && !forge_digit(c) && c != '-' && c != '_' { return false; } }
+  return true;
+}
+// A slot's value: one line, at most FORGE_VAL bytes.
+forge_val_ok :: (v: string) -> bool {
+  if v.count > FORGE_VAL { return false; }
+  for c: v { if c == '\n' || c == '\r' { return false; } }
+  return true;
+}
+
+// A document read at revision rev with nothing overridden, no slots and no history.
 forge_reset :: (d: [] ForgeDoc, rev: int) {
-  d[0].rev = rev; d[0].move_n = 0; d[0].op_n = 0; d[0].done = 0; d[0].saved = 0;
+  d[0].rev = rev; d[0].move_n = 0; d[0].slot_n = 0; d[0].text_n = 0; d[0].op_n = 0; d[0].done = 0; d[0].saved = 0;
 }
 
 forge_find :: (d: [] ForgeDoc, key: string) -> int {
   for i: 0..<d[0].move_n { if forge_move_key(d, i) == key { return i; } }
   return -1;
 }
-forge_where :: (d: [] ForgeDoc, key: string) -> ForgeSpot {
+// An entity's shape: its override, or the plain shape.
+forge_shape_of :: (d: [] ForgeDoc, key: string) -> ForgeShape {
   i := forge_find(d, key);
-  if i < 0 { return ForgeSpot.{found = false}; }
-  return ForgeSpot.{found = true, x = d[0].moves[i].x, z = d[0].moves[i].z};
+  if i < 0 { return ForgeShape.{}; }
+  m := d[0].moves[i];
+  return ForgeShape.{at = m.at, x = ifx m.at then m.x else 0, z = ifx m.at then m.z else 0, yaw = m.yaw, scale = m.scale, gone = m.gone};
+}
+// Where it stands instead, if it was moved.
+forge_where :: (d: [] ForgeDoc, key: string) -> ForgeSpot {
+  s := forge_shape_of(d, key);
+  return ForgeSpot.{found = s.at, x = s.x, z = s.z};
 }
 
-// Put key at (x, z), or back at its laid-out place when `at` is false. False when it can't be kept.
-forge_set :: (d: [] ForgeDoc, key: string, at: bool, x: int, z: int) -> bool {
+// Give key this shape (the plain shape takes its override away). False when it can't be kept.
+forge_set_shape :: (d: [] ForgeDoc, key: string, s: ForgeShape) -> bool {
   i := forge_find(d, key);
-  if !at {
+  if forge_plain(s) {
     if i < 0 { return true; }
     for j: i..<d[0].move_n - 1 { d[0].moves[j] = d[0].moves[j + 1]; }
     d[0].move_n -= 1;
     return true;
   }
-  if !forge_key_ok(key) || !forge_in_reach(x, z) { return false; }
+  if !forge_key_ok(key) || !forge_shape_ok(s) { return false; }
   if i < 0 {
     if d[0].move_n >= FORGE_MOVES { return false; }
     i = d[0].move_n; d[0].move_n += 1;
     for k: 0..<key.count { d[0].moves[i].key[k] = key[k]; }
     d[0].moves[i].key_n = key.count;
   }
-  d[0].moves[i].x = x; d[0].moves[i].z = z;
+  d[0].moves[i].at = s.at; d[0].moves[i].x = ifx s.at then s.x else 0; d[0].moves[i].z = ifx s.at then s.z else 0;
+  d[0].moves[i].yaw = s.yaw; d[0].moves[i].scale = s.scale; d[0].moves[i].gone = s.gone;
   return true;
+}
+// Put key at (x, z), or back at its laid-out place when `at` is false; its turn, size and gone stay.
+forge_set :: (d: [] ForgeDoc, key: string, at: bool, x: int, z: int) -> bool {
+  s := forge_shape_of(d, key);
+  s.at = at; s.x = ifx at then x else 0; s.z = ifx at then z else 0;
+  if at && (!forge_key_ok(key) || !forge_in_reach(x, z)) { return false; }
+  return forge_set_shape(d, key, s);
 }
 
 // A move read from the server's document (its "moved" lines): no history.
 forge_read_move :: (d: [] ForgeDoc, key: string, x: int, z: int) -> bool { return forge_set(d, key, true, x, z); }
+// A shape read from the server's document (its "shaped" lines): no history.
+forge_read_shape :: (d: [] ForgeDoc, key: string, yaw: int, scale: int, gone: bool) -> bool {
+  s := forge_shape_of(d, key);
+  s.yaw = yaw; s.scale = scale; s.gone = gone;
+  return forge_key_ok(key) && forge_shape_ok(s) && forge_set_shape(d, key, s);
+}
+
+forge_slot_find :: (d: [] ForgeDoc, key: string) -> int {
+  for i: 0..<d[0].slot_n { if forge_slot_key(d, i) == key { return i; } }
+  return -1;
+}
+ForgeVal :: struct { found: bool; at: int; }
+// Where a slot is, when found.
+forge_slot_at :: (d: [] ForgeDoc, key: string) -> ForgeVal {
+  i := forge_slot_find(d, key);
+  return ForgeVal.{found = i >= 0, at = i};
+}
+forge_slot_text :: (d: [] ForgeDoc, key: string) -> string {
+  v := forge_slot_at(d, key);
+  if !v.found { return ""; }
+  return forge_span(d, d[0].slots[v.at].at, d[0].slots[v.at].n);
+}
+forge_span :: (d: [] ForgeDoc, at: int, n: int) -> string { return cast(string) d[0].text[at..<at + n]; }
+// Every value still named, packed to the front of `text`: what changed or was undone past the log goes.
+forge_pack :: (d: [] ForgeDoc) {
+  t: [1] ForgePacked;
+  for i: 0..<d[0].slot_n { d[0].slots[i].at = forge_moved(d, t[..], d[0].slots[i].at, d[0].slots[i].n); }
+  for i: 0..<d[0].op_n {
+    if d[0].ops[i].kind != FORGE_SLOT { continue; }
+    d[0].ops[i].bv = forge_moved(d, t[..], d[0].ops[i].bv, d[0].ops[i].bv_n);
+    d[0].ops[i].av = forge_moved(d, t[..], d[0].ops[i].av, d[0].ops[i].av_n);
+  }
+  for k: 0..<t[0].n { d[0].text[k] = t[0].text[k]; }
+  d[0].text_n = t[0].n;
+}
+// A pack in progress: the new text, and where each span already copied went (one copy a span).
+ForgePacked :: struct { text: [FORGE_TEXT] u8; n: int; from: [FORGE_SLOTS + 2 * FORGE_OPS] int; size: [FORGE_SLOTS + 2 * FORGE_OPS] int; to: [FORGE_SLOTS + 2 * FORGE_OPS] int; seen: int; }
+forge_moved :: (d: [] ForgeDoc, t: [] ForgePacked, at: int, n: int) -> int {
+  if n == 0 { return 0; }
+  for i: 0..<t[0].seen { if t[0].from[i] == at && t[0].size[i] == n { return t[0].to[i]; } }
+  to := t[0].n;
+  for k: 0..<n { t[0].text[to + k] = d[0].text[at + k]; }
+  t[0].n += n;
+  i := t[0].seen; t[0].from[i] = at; t[0].size[i] = n; t[0].to[i] = to; t[0].seen += 1;
+  return to;
+}
+// Keep a value (never a span of `text` itself): its place, or -1 when even packed it doesn't fit.
+forge_keep :: (d: [] ForgeDoc, v: string) -> int {
+  if d[0].text_n + v.count > FORGE_TEXT { forge_pack(d); }
+  if d[0].text_n + v.count > FORGE_TEXT { return -1; }
+  at := d[0].text_n;
+  for k: 0..<v.count { d[0].text[at + k] = v[k]; }
+  d[0].text_n += v.count;
+  return at;
+}
+// Set a slot (or take it away when `on` is false) to a value from outside the document. False when it can't be kept.
+forge_set_slot :: (d: [] ForgeDoc, key: string, on: bool, val: string) -> bool {
+  if !on { return forge_put_slot(d, key, false, 0, 0); }
+  if !forge_slot_key_ok(key) || !forge_val_ok(val) { return false; }
+  at := forge_keep(d, val);
+  return at >= 0 && forge_put_slot(d, key, true, at, val.count);
+}
+// Point a slot at a span of `text` (or take it away).
+forge_put_slot :: (d: [] ForgeDoc, key: string, on: bool, at: int, n: int) -> bool {
+  i := forge_slot_find(d, key);
+  if !on {
+    if i < 0 { return true; }
+    for j: i..<d[0].slot_n - 1 { d[0].slots[j] = d[0].slots[j + 1]; }
+    d[0].slot_n -= 1;
+    return true;
+  }
+  if !forge_slot_key_ok(key) { return false; }
+  if i < 0 {
+    if d[0].slot_n >= FORGE_SLOTS { return false; }
+    i = d[0].slot_n; d[0].slot_n += 1;
+    for k: 0..<key.count { d[0].slots[i].key[k] = key[k]; }
+    d[0].slots[i].key_n = key.count;
+  }
+  d[0].slots[i].at = at; d[0].slots[i].n = n;
+  return true;
+}
+// A spec's "shaped KEY YAW SCALE 0|1" line (migration 0109; the page's and the CLI's reader): whole
+// degrees (any turn up to a full one either way, kept as -179..180), whole percent, 1 when taken away.
+// Each entity once, never the plain shape; anything else is false and changes nothing.
+forge_read_shape_line :: (d: [] ForgeDoc, line: string) -> bool {
+  if line.count < 7 || line[0..<7] != "shaped " { return false; }
+  w: [4] string; n := 0; at := 7;
+  for i: at..<line.count + 1 {
+    if i < line.count && line[i] != ' ' { continue; }
+    if n == 4 { return false; }
+    w[n] = line[at..<i]; n += 1; at = i + 1;
+  }
+  if n != 4 || (w[3] != "0" && w[3] != "1") { return false; }
+  turn := forge_number(w[1], 360); scale := forge_number(w[2], FORGE_SCALE_MAX);
+  if turn == FORGE_NO_NUMBER || scale == FORGE_NO_NUMBER { return false; }
+  s := forge_shape_of(d, w[0]);
+  if s.yaw != 0 || s.scale != 100 || s.gone || (forge_turn(turn) == 0 && scale == 100 && w[3] == "0") { return false; }   // twice, or no shape
+  return forge_read_shape(d, w[0], forge_turn(turn), scale, w[3] == "1");
+}
+FORGE_NO_NUMBER :: -1000000;
+// A whole number of at most `limit` either way, written plainly ("-90", "150"), or FORGE_NO_NUMBER.
+forge_number :: (s: string, limit: int) -> int {
+  neg := s.count > 1 && s[0] == '-';
+  digits := ifx neg then s[1..<s.count] else s;
+  if digits.count == 0 || digits.count > 6 { return FORGE_NO_NUMBER; }
+  v := 0;
+  for c: digits { if !forge_digit(c) { return FORGE_NO_NUMBER; } v = v * 10 + cast(int) (c - '0'); }
+  if v > limit { return FORGE_NO_NUMBER; }
+  return ifx neg then -v else v;
+}
+// A slot read from the server: no history.
+forge_read_slot :: (d: [] ForgeDoc, key: string, val: string) -> bool { return forge_set_slot(d, key, true, val); }
 
 // book:begin ops
-// Apply an edit: refused unless the entity still stands where the edit says it stood.
+// Apply an edit: refused unless what it changes is still as the edit says it was.
 forge_apply :: (d: [] ForgeDoc, o: [] ForgeOp) -> bool {
   key := cast(string) o[0].key[0..<o[0].key_n];
-  now := forge_where(d, key);
-  if now.found != o[0].had || (o[0].had && (now.x != o[0].bx || now.z != o[0].bz)) { return false; }
-  return forge_set(d, key, o[0].has, o[0].ax, o[0].az);
+  if o[0].kind == FORGE_ENTITY {
+    if !forge_same_shape(forge_shape_of(d, key), o[0].b) { return false; }
+    return forge_set_shape(d, key, o[0].a);
+  }
+  now := forge_slot_at(d, key);
+  if now.found != o[0].had { return false; }
+  if now.found && forge_slot_text(d, key) != forge_span(d, o[0].bv, o[0].bv_n) { return false; }
+  return forge_put_slot(d, key, o[0].has, o[0].av, o[0].av_n);
 }
 // The edit that takes it back: before and after swapped.
 forge_inverse :: (o: ForgeOp) -> ForgeOp {
   r := o;
-  r.had = o.has; r.bx = o.ax; r.bz = o.az;
-  r.has = o.had; r.ax = o.bx; r.az = o.bz;
+  r.b = o.a; r.a = o.b;
+  r.had = o.has; r.bv = o.av; r.bv_n = o.av_n;
+  r.has = o.had; r.av = o.bv; r.av_n = o.bv_n;
   return r;
 }
 // book:end ops
 
-// Move key to (x, z) as one undo step. Redo past here is gone.
-forge_move :: (d: [] ForgeDoc, key: string, x: int, z: int) -> bool {
-  if !forge_key_ok(key) || !forge_in_reach(x, z) { return false; }
-  was := forge_where(d, key);
-  if was.found && was.x == x && was.z == z { return false; }   // nothing changes
-  o: [1] ForgeOp;
-  for k: 0..<key.count { o[0].key[k] = key[k]; }
-  o[0].key_n = key.count;
-  o[0].had = was.found; o[0].bx = was.x; o[0].bz = was.z; o[0].has = true; o[0].ax = x; o[0].az = z;
-  if !forge_apply(d, o[..]) { return false; }
+// Apply o as one undo step. Redo past here is gone.
+forge_push :: (d: [] ForgeDoc, o: [] ForgeOp) -> bool {
+  if !forge_apply(d, o) { return false; }
   if d[0].saved > d[0].done { d[0].saved = -1; }   // the saved state was undone past and is now unreachable
   d[0].op_n = d[0].done;
   if d[0].op_n >= FORGE_OPS {   // the oldest step goes
@@ -123,6 +308,95 @@ forge_move :: (d: [] ForgeDoc, key: string, x: int, z: int) -> bool {
   d[0].ops[d[0].op_n] = o[0]; d[0].op_n += 1; d[0].done = d[0].op_n;
   return true;
 }
+forge_key_into :: (o: [] ForgeOp, key: string) {
+  for k: 0..<key.count { o[0].key[k] = key[k]; }
+  o[0].key_n = key.count;
+}
+// Change an entity's shape as one step. False when nothing changes or it can't be kept.
+forge_reshape :: (d: [] ForgeDoc, key: string, s: ForgeShape) -> bool {
+  if !forge_key_ok(key) || !forge_shape_ok(s) { return false; }
+  was := forge_shape_of(d, key);
+  if forge_same_shape(was, s) { return false; }   // nothing changes
+  o: [1] ForgeOp; o[0].kind = FORGE_ENTITY; forge_key_into(o[..], key);
+  o[0].b = was; o[0].a = s;
+  return forge_push(d, o[..]);
+}
+// Change a slot as one step. False when nothing changes or it can't be kept.
+forge_reslot :: (d: [] ForgeDoc, key: string, on: bool, val: string) -> bool {
+  if !forge_slot_key_ok(key) || !forge_val_ok(val) { return false; }
+  now := forge_slot_at(d, key);
+  if now.found == on && (!on || forge_slot_text(d, key) == val) { return false; }   // nothing changes
+  o: [1] ForgeOp; o[0].kind = FORGE_SLOT; forge_key_into(o[..], key);
+  o[0].has = on;
+  if on { o[0].av = forge_keep(d, val); o[0].av_n = val.count; if o[0].av < 0 { return false; } }   // kept first: it may pack
+  if now.found { sl := d[0].slots[forge_slot_find(d, key)]; o[0].bv = sl.at; o[0].bv_n = sl.n; }
+  o[0].had = now.found;
+  return forge_push(d, o[..]);
+}
+
+// book:begin edits
+// The edits a made realm has, each one step with its inverse.
+forge_move :: (d: [] ForgeDoc, key: string, x: int, z: int) -> bool {
+  s := forge_shape_of(d, key); s.at = true; s.x = x; s.z = z;
+  return forge_reshape(d, key, s);
+}
+forge_rotate :: (d: [] ForgeDoc, key: string, deg: int) -> bool {
+  s := forge_shape_of(d, key); s.yaw = forge_turn(deg);
+  return forge_reshape(d, key, s);
+}
+forge_resize :: (d: [] ForgeDoc, key: string, percent: int) -> bool {
+  s := forge_shape_of(d, key); s.scale = percent;
+  return forge_reshape(d, key, s);
+}
+forge_remove :: (d: [] ForgeDoc, key: string) -> bool {
+  s := forge_shape_of(d, key); s.gone = true;
+  return forge_reshape(d, key, s);
+}
+forge_restore :: (d: [] ForgeDoc, key: string) -> bool {
+  s := forge_shape_of(d, key); s.gone = false;
+  return forge_reshape(d, key, s);
+}
+// A board row on or off; a visitor tool on or off; one of the setup fields.
+forge_switch :: (d: [] ForgeDoc, row: string, on: bool) -> bool { return forge_slot_edit(d, "row:", row, true, ifx on then "1" else "0"); }
+forge_tool :: (d: [] ForgeDoc, tool: string, on: bool) -> bool { return forge_slot_edit(d, "tool:", tool, true, ifx on then "1" else "0"); }
+forge_setting :: (d: [] ForgeDoc, what: string, value: string) -> bool {
+  if what != "style" && what != "ground" && what != "time" && what != "camera" && what != "palette" { return false; }
+  return forge_slot_edit(d, "set:", what, true, value);
+}
+// A character's lore ("" forgets it); a giver's quest (ask "" takes it away). No bar in a quest's words.
+forge_lore :: (d: [] ForgeDoc, who: string, text: string) -> bool { return forge_slot_edit(d, "lore:", who, text.count > 0, text); }
+forge_quest :: (d: [] ForgeDoc, giver: string, asked: string, steps: [3] string, reward: string) -> bool {
+  b: [FORGE_VAL] u8; n := 0;
+  parts := [5] string.[asked, steps[0], steps[1], steps[2], reward];
+  for p: 0..<5 {
+    for c: parts[p] { if c == '|' { return false; } }
+    if p > 0 { n = forge_put(b[..], n, "|"); }
+    n = forge_put(b[..], n, parts[p]);
+  }
+  if n < 0 { return false; }
+  return forge_slot_edit(d, "quest:", giver, asked.count > 0, cast(string) b[0..<n]);
+}
+// A thing placed: the next "place:N" slot, THING X Z YAW (centimetres, degrees).
+forge_place :: (d: [] ForgeDoc, thing: string, x: int, z: int, yaw: int) -> bool {
+  if !forge_in_reach(x, z) || thing.count == 0 { return false; }
+  for c: thing { if !forge_lower(c) { return false; } }
+  kb: [24] u8; n := 0; while forge_slot_at(d, forge_place_key(n, kb[..])).found { n += 1; }
+  b: [64] u8; m := forge_put(b[..], 0, thing); m = forge_put(b[..], m, " "); m = forge_put_int(b[..], m, x);
+  m = forge_put(b[..], m, " "); m = forge_put_int(b[..], m, z); m = forge_put(b[..], m, " "); m = forge_put_int(b[..], m, forge_turn(yaw));
+  if m < 0 { return false; }
+  return forge_reslot(d, forge_place_key(n, kb[..]), true, cast(string) b[0..<m]);
+}
+// book:end edits
+forge_place_key :: (n: int, buf: [] u8) -> string {
+  m := forge_put(buf, 0, "place:"); m = forge_put_int(buf, m, n);
+  return cast(string) buf[0..<m];
+}
+forge_slot_edit :: (d: [] ForgeDoc, kind: string, name: string, on: bool, val: string) -> bool {
+  b: [FORGE_SLOT_KEY + 8] u8; n := forge_put(b[..], 0, kind); n = forge_put(b[..], n, name);
+  if n < 0 { return false; }
+  return forge_reslot(d, cast(string) b[0..<n], on, val);
+}
+
 forge_can_undo :: (d: [] ForgeDoc) -> bool { return d[0].done > 0; }
 forge_can_redo :: (d: [] ForgeDoc) -> bool { return d[0].done < d[0].op_n; }
 forge_undo :: (d: [] ForgeDoc) -> bool {
@@ -139,18 +413,33 @@ forge_redo :: (d: [] ForgeDoc) -> bool {
   d[0].done += 1;
   return true;
 }
+// book:begin replay
+// Replay: the applied steps of `from`, in order, onto `d` as steps of its own. False at the first
+// step whose before no longer matches (the document changed under it); the steps before stay.
+forge_replay :: (d: [] ForgeDoc, from: [] ForgeDoc) -> bool {
+  for i: 0..<from[0].done {
+    o: [1] ForgeOp; o[0] = from[0].ops[i];
+    if o[0].kind == FORGE_SLOT {   // its values move into this document's text
+      if o[0].has { o[0].av = forge_keep(d, forge_span(from, o[0].av, o[0].av_n)); if o[0].av < 0 { return false; } }
+      if o[0].had { o[0].bv = forge_keep(d, forge_span(from, o[0].bv, o[0].bv_n)); if o[0].bv < 0 { return false; } }
+    }
+    if !forge_push(d, o[..]) { return false; }
+  }
+  return true;
+}
+// book:end replay
 // Changes not yet saved.
 forge_dirty :: (d: [] ForgeDoc) -> bool { return d[0].done != d[0].saved; }
 // The server kept it as revision rev.
 forge_saved :: (d: [] ForgeDoc, rev: int) { d[0].rev = rev; d[0].saved = d[0].done; }
 // The server kept it as revision rev, and its undo list now holds the save as one step: the page's
-// own steps are done with (the moves stay).
+// own steps are done with (the overrides stay).
 forge_commit :: (d: [] ForgeDoc, rev: int) { d[0].rev = rev; d[0].op_n = 0; d[0].done = 0; d[0].saved = 0; }
-// The same moves, in the same order: the server's document didn't move anything since.
+// The same overrides, in the same order: the server's document didn't move anything since.
 forge_same_moves :: (a: [] ForgeDoc, b: [] ForgeDoc) -> bool {
   if a[0].move_n != b[0].move_n { return false; }
   for i: 0..<a[0].move_n {
-    if forge_move_key(a, i) != forge_move_key(b, i) || a[0].moves[i].x != b[0].moves[i].x || a[0].moves[i].z != b[0].moves[i].z { return false; }
+    if forge_move_key(a, i) != forge_move_key(b, i) || !forge_same_shape(forge_shape_of(a, forge_move_key(a, i)), forge_shape_of(b, forge_move_key(b, i))) { return false; }
   }
   return true;
 }
@@ -179,23 +468,89 @@ forge_put_cm :: (buf: [] u8, at: int, cm: int) -> int {
   if a % 100 < 10 { o = forge_put(buf, o, "0"); }
   return forge_put_int(buf, o, a % 100);
 }
+// Does any override turn, size or take away its entity (beyond moving it)?
+forge_any_shaped :: (d: [] ForgeDoc) -> bool {
+  for i: 0..<d[0].move_n { m := d[0].moves[i]; if m.yaw != 0 || m.scale != 100 || m.gone { return true; } }
+  return false;
+}
 // book:begin save
-// The body of POST /api/playtest/realms/<slug>/save: the revision read, and every move in metres.
+// The body of POST /api/playtest/realms/<slug>/save: the revision read, every move in metres, and
+// (only when there are any: a server before migration 0109 knows moves only) every turn, size and removal.
 forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
   n := forge_put(buf, 0, "{\"rev\":"); n = forge_put_int(buf, n, d[0].rev); n = forge_put(buf, n, ",\"moved\":[");
+  first := true;
   for i: 0..<d[0].move_n {
     m := d[0].moves[i];
-    if i > 0 { n = forge_put(buf, n, ","); }
+    if !m.at { continue; }
+    if !first { n = forge_put(buf, n, ","); }
+    first = false;
     n = forge_put(buf, n, "{\"entity\":\""); n = forge_put(buf, n, forge_move_key(d, i));
     n = forge_put(buf, n, "\",\"x\":"); n = forge_put_cm(buf, n, m.x);
     n = forge_put(buf, n, ",\"z\":"); n = forge_put_cm(buf, n, m.z); n = forge_put(buf, n, "}");
   }
-  return forge_put(buf, n, "]}");
+  n = forge_put(buf, n, "]");
+  if forge_any_shaped(d) {
+    n = forge_put(buf, n, ",\"shaped\":[");
+    first = true;
+    for i: 0..<d[0].move_n {
+      m := d[0].moves[i];
+      if m.yaw == 0 && m.scale == 100 && !m.gone { continue; }
+      if !first { n = forge_put(buf, n, ","); }
+      first = false;
+      n = forge_put(buf, n, "{\"entity\":\""); n = forge_put(buf, n, forge_move_key(d, i));
+      n = forge_put(buf, n, "\",\"yaw\":"); n = forge_put_int(buf, n, m.yaw);
+      n = forge_put(buf, n, ",\"scale\":"); n = forge_put_int(buf, n, m.scale);
+      n = forge_put(buf, n, ",\"gone\":"); n = forge_put(buf, n, ifx m.gone then "true" else "false"); n = forge_put(buf, n, "}");
+    }
+    n = forge_put(buf, n, "]");
+  }
+  return forge_put(buf, n, "}");
 }
 // book:end save
 
+// book:begin text
+// The whole document as text, every override and slot in name order: two documents are the same
+// realm exactly when their texts are the same bytes (replays are compared this way).
+forge_doc_text :: (d: [] ForgeDoc, buf: [] u8) -> int {
+  n := forge_put(buf, 0, "rev "); n = forge_put_int(buf, n, d[0].rev); n = forge_put(buf, n, "\n");
+  last := "";
+  for _: 0..<d[0].move_n {   // the next override after `last`, by name
+    best := -1;
+    for i: 0..<d[0].move_n {
+      k := forge_move_key(d, i);
+      if forge_after(k, last) && (best < 0 || forge_after(forge_move_key(d, best), k)) { best = i; }
+    }
+    m := d[0].moves[best]; last = forge_move_key(d, best);
+    n = forge_put(buf, n, "entity "); n = forge_put(buf, n, last);
+    if m.at { n = forge_put(buf, n, " at "); n = forge_put_int(buf, n, m.x); n = forge_put(buf, n, " "); n = forge_put_int(buf, n, m.z); }
+    n = forge_put(buf, n, " yaw "); n = forge_put_int(buf, n, m.yaw); n = forge_put(buf, n, " scale "); n = forge_put_int(buf, n, m.scale);
+    n = forge_put(buf, n, ifx m.gone then " gone\n" else "\n");
+  }
+  last = "";
+  for _: 0..<d[0].slot_n {
+    best := -1;
+    for i: 0..<d[0].slot_n {
+      k := forge_slot_key(d, i);
+      if forge_after(k, last) && (best < 0 || forge_after(forge_slot_key(d, best), k)) { best = i; }
+    }
+    last = forge_slot_key(d, best);
+    n = forge_put(buf, n, "slot "); n = forge_put(buf, n, last); n = forge_put(buf, n, " ");
+    n = forge_put(buf, n, forge_slot_text(d, last)); n = forge_put(buf, n, "\n");
+  }
+  return n;
+}
+// book:end text
+// a sorts after b (bytewise); "" is before everything.
+forge_after :: (a: string, b: string) -> bool {
+  for i: 0..<a.count {
+    if i >= b.count { return true; }
+    if a[i] != b[i] { return a[i] > b[i]; }
+  }
+  return false;
+}
+
 #test "a name is a feature, a colon and an index" {
-  #assert forge_key_ok("trees:3") && forge_key_ok("rocks:120") && forge_key_ok("a:0");
+  #assert forge_key_ok("trees:3") && forge_key_ok("rocks:120") && forge_key_ok("a:0") && forge_key_ok("placed:7");
   #assert !forge_key_ok("trees") && !forge_key_ok(":3") && !forge_key_ok("trees:") && !forge_key_ok("Trees:3");
   #assert !forge_key_ok("trees:1234") && !forge_key_ok("trees:3:4") && !forge_key_ok("tr ees:3") && !forge_key_ok("trees:x");
   #assert forge_in_reach(4000, -4000) && !forge_in_reach(4001, 0) && !forge_in_reach(0, -4001);
@@ -226,13 +581,13 @@ forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
 #test "an edit is refused when its entity no longer stands where it says" {
   d: [1] ForgeDoc; forge_reset(d[..], 1);
   #assert forge_read_move(d[..], "trees:4", 10, 20);
-  o: [1] ForgeOp; k := "trees:4"; for i: 0..<k.count { o[0].key[i] = k[i]; } o[0].key_n = k.count;
-  o[0].had = true; o[0].bx = 11; o[0].bz = 20; o[0].has = true; o[0].ax = 0; o[0].az = 0;
+  o: [1] ForgeOp; o[0].kind = FORGE_ENTITY; forge_key_into(o[..], "trees:4");
+  o[0].b = ForgeShape.{at = true, x = 11, z = 20}; o[0].a = ForgeShape.{at = true, x = 0, z = 0};
   #assert !forge_apply(d[..], o[..]) && forge_where(d[..], "trees:4").x == 10;
-  o[0].bx = 10;
+  o[0].b.x = 10;
   inv: [1] ForgeOp; inv[0] = forge_inverse(o[0]);
   #assert forge_apply(d[..], o[..]) && forge_apply(d[..], inv[..]) && forge_where(d[..], "trees:4").x == 10;
-  o[0].had = false;
+  o[0].b.at = false;
   #assert !forge_apply(d[..], o[..]);
   #assert !forge_move(d[..], "trees:4", 4001, 0) && !forge_move(d[..], "nope", 0, 0);
 }
@@ -275,6 +630,9 @@ forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
   #assert forge_read_move(b[..], "trees:1", 5, 6) && forge_same_moves(a[..], b[..]);
   #assert forge_read_move(b[..], "trees:1", 5, 7) && !forge_same_moves(a[..], b[..]);
   #assert forge_read_move(b[..], "trees:1", 5, 6) && forge_read_move(a[..], "rocks:0", 0, 0) && forge_read_move(b[..], "rocks:1", 0, 0) && !forge_same_moves(a[..], b[..]);
+  c: [1] ForgeDoc; e: [1] ForgeDoc; forge_reset(c[..], 1); forge_reset(e[..], 1);
+  #assert forge_read_move(c[..], "trees:1", 5, 6) && forge_read_move(e[..], "trees:1", 5, 6) && forge_same_moves(c[..], e[..]);
+  #assert forge_read_shape(e[..], "trees:1", 90, 100, false) && !forge_same_moves(c[..], e[..]);
 }
 
 #test "the log keeps its last FORGE_OPS steps" {
@@ -285,13 +643,14 @@ forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
   #assert !forge_undo(d[..]) && forge_where(d[..], "trees:0").x == 5;   // the five oldest steps are gone
 }
 
-#test "a document keeps at most FORGE_MOVES moved entities" {
+#test "a document keeps at most FORGE_MOVES overridden entities" {
   d: [1] ForgeDoc; forge_reset(d[..], 1);
   for i: 0..<FORGE_MOVES {
     b: [8] u8; n := forge_put(b[..], 0, "t:"); n = forge_put_int(b[..], n, i);
     #assert forge_read_move(d[..], cast(string) b[0..<n], i, i);
   }
   #assert !forge_read_move(d[..], "t:999", 0, 0) && !forge_move(d[..], "t:998", 0, 0) && forge_move(d[..], "t:5", 0, 0);
+  #assert !forge_rotate(d[..], "t:997", 90) && forge_rotate(d[..], "t:6", 90);
 }
 
 #test "the save names its revision and every move, in metres" {
@@ -304,4 +663,119 @@ forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
   #assert cast(string) b[0..<n] == "{\"rev\":12,\"moved\":[{\"entity\":\"trees:3\",\"x\":1.25,\"z\":-2.50},{\"entity\":\"rocks:0\",\"x\":-0.05,\"z\":0.07}]}";
   small: [10] u8;
   #assert forge_save_body(d[..], small[..]) < 0;
+}
+
+#test "rotate, resize and remove are overrides with inverses; moving keeps them" {
+  d: [1] ForgeDoc; forge_reset(d[..], 2);
+  #assert forge_rotate(d[..], "trees:1", 450) && forge_shape_of(d[..], "trees:1").yaw == 90 && !forge_where(d[..], "trees:1").found;
+  #assert !forge_rotate(d[..], "trees:1", 90) && forge_rotate(d[..], "trees:1", -180) && forge_shape_of(d[..], "trees:1").yaw == 180;
+  #assert forge_resize(d[..], "trees:1", 150) && !forge_resize(d[..], "trees:1", 24) && !forge_resize(d[..], "trees:1", 401) && forge_resize(d[..], "trees:1", 400);
+  #assert forge_move(d[..], "trees:1", 10, 20);
+  s := forge_shape_of(d[..], "trees:1");
+  #assert s.at && s.x == 10 && s.yaw == 180 && s.scale == 400 && !s.gone;
+  #assert forge_remove(d[..], "trees:1") && forge_shape_of(d[..], "trees:1").gone && !forge_remove(d[..], "trees:1");
+  #assert forge_restore(d[..], "trees:1") && !forge_shape_of(d[..], "trees:1").gone;
+  b: [512] u8; n := forge_save_body(d[..], b[..]);
+  #assert cast(string) b[0..<n] == "{\"rev\":2,\"moved\":[{\"entity\":\"trees:1\",\"x\":0.10,\"z\":0.20}],\"shaped\":[{\"entity\":\"trees:1\",\"yaw\":180,\"scale\":400,\"gone\":false}]}";
+  for i: 0..<7 { #assert forge_undo(d[..]); }
+  #assert d[0].move_n == 0 && !forge_undo(d[..]) && !forge_dirty(d[..]);
+  // only turned: no move in the body, a shape
+  #assert forge_remove(d[..], "rocks:2");
+  n = forge_save_body(d[..], b[..]);
+  #assert cast(string) b[0..<n] == "{\"rev\":2,\"moved\":[],\"shaped\":[{\"entity\":\"rocks:2\",\"yaw\":0,\"scale\":100,\"gone\":true}]}";
+  #assert forge_read_shape(d[..], "rocks:3", 30, 50, false) && !forge_read_shape(d[..], "rocks:4", 0, 20, false) && !forge_read_shape(d[..], "rocks:4", 200, 100, false);
+}
+
+#test "every other revision path is a slot edit with an inverse" {
+  d: [1] ForgeDoc; forge_reset(d[..], 5);
+  #assert forge_read_slot(d[..], "row:trees", "1") && forge_read_slot(d[..], "set:time", "day") && forge_read_slot(d[..], "tool:fly", "0");
+  #assert forge_switch(d[..], "trees", false) && forge_slot_text(d[..], "row:trees") == "0" && !forge_switch(d[..], "trees", false);
+  #assert forge_setting(d[..], "time", "night") && !forge_setting(d[..], "weather", "rain") && forge_tool(d[..], "fly", true);
+  #assert forge_lore(d[..], "mara", "She keeps the lighthouse.") && forge_slot_text(d[..], "lore:mara") == "She keeps the lighthouse.";
+  #assert !forge_lore(d[..], "Mara", "x") && !forge_lore(d[..], "mara", "two\nlines");
+  steps := [3] string.["Find the lamp", "", "Bring it back"];
+  #assert forge_quest(d[..], "mara", "Light the lamp", steps, "A map");
+  #assert forge_slot_text(d[..], "quest:mara") == "Light the lamp|Find the lamp||Bring it back|A map";
+  #assert !forge_quest(d[..], "mara", "a|b", steps, "");
+  #assert forge_place(d[..], "barrel", 200, -300, 450) && forge_place(d[..], "crate", 0, 0, 0);
+  #assert forge_slot_text(d[..], "place:0") == "barrel 200 -300 90" && forge_slot_text(d[..], "place:1") == "crate 0 0 0";
+  #assert !forge_place(d[..], "Barrel", 0, 0, 0) && !forge_place(d[..], "barrel", 4001, 0, 0);
+  #assert forge_lore(d[..], "mara", "") && !forge_slot_at(d[..], "lore:mara").found;
+  #assert d[0].done == 8;
+  for i: 0..<8 { #assert forge_undo(d[..]); }
+  t: [1024] u8; n := forge_doc_text(d[..], t[..]);
+  #assert cast(string) t[0..<n] == "rev 5\nslot row:trees 1\nslot set:time day\nslot tool:fly 0\n";
+  for i: 0..<8 { #assert forge_redo(d[..]); }
+  #assert forge_slot_text(d[..], "place:1") == "crate 0 0 0" && !forge_slot_at(d[..], "lore:mara").found && forge_slot_text(d[..], "set:time") == "night";
+}
+
+#test "a slot edit is refused when the slot isn't as it says" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  #assert forge_read_slot(d[..], "set:time", "day");
+  o: [1] ForgeOp; o[0].kind = FORGE_SLOT; forge_key_into(o[..], "set:time");
+  o[0].had = true; o[0].bv = forge_keep(d[..], "dug"); o[0].bv_n = 3; o[0].has = false;
+  #assert !forge_apply(d[..], o[..]) && forge_slot_text(d[..], "set:time") == "day";
+  o[0].bv = forge_keep(d[..], "day");
+  o[0].had = false;
+  #assert !forge_apply(d[..], o[..]);
+  o[0].had = true;
+  #assert forge_apply(d[..], o[..]) && !forge_slot_at(d[..], "set:time").found && !forge_apply(d[..], o[..]);
+  #assert forge_slot_key_ok("row:trees") && forge_slot_key_ok("quest:old-mara") && forge_slot_key_ok("place:12");
+  #assert !forge_slot_key_ok("rows:trees") && !forge_slot_key_ok("row:") && !forge_slot_key_ok("row:-x") && !forge_slot_key_ok("row:Trees") && !forge_slot_key_ok("trees");
+  long: [500] u8; for i: 0..<500 { long[i] = 'a'; }
+  #assert forge_val_ok(cast(string) long[0..<FORGE_VAL]) && !forge_val_ok(cast(string) long[0..<FORGE_VAL + 1]);
+}
+
+// A fixed sequence of every kind of edit, from one document.
+forge_script :: (d: [] ForgeDoc) -> bool {
+  steps := [3] string.["", "", ""];
+  return forge_move(d, "trees:0", 120, -40) && forge_rotate(d, "trees:0", 45) && forge_resize(d, "rocks:2", 75)
+      && forge_remove(d, "props:1") && forge_switch(d, "water", false) && forge_setting(d, "palette", "dusk")
+      && forge_tool(d, "build", true) && forge_lore(d, "ana", "Ana tends the herd.") && forge_quest(d, "ana", "Count the goats", steps, "Milk")
+      && forge_place(d, "lantern", 300, 300, -90) && forge_move(d, "placed:0", 310, 300) && forge_undo(d) && forge_restore(d, "props:1");
+}
+
+#test "replaying a log from the same document gives the same document" {
+  a: [1] ForgeDoc; forge_reset(a[..], 3);
+  #assert forge_read_slot(a[..], "row:water", "1") && forge_read_move(a[..], "rocks:2", 10, 10);
+  base: [1] ForgeDoc; base[0] = a[0];
+  #assert forge_script(a[..]);
+  b: [1] ForgeDoc; b[0] = base[0];
+  #assert forge_replay(b[..], a[..]);
+  ta: [4096] u8; tb: [4096] u8;
+  na := forge_doc_text(a[..], ta[..]); nb := forge_doc_text(b[..], tb[..]);
+  #assert na > 0 && cast(string) ta[0..<na] == cast(string) tb[0..<nb];
+  // and every step undone gives the document it started from
+  for i: 0..<b[0].done { #assert forge_undo(b[..]); }
+  tc: [4096] u8; nc := forge_doc_text(b[..], tc[..]); t0: [4096] u8; n0 := forge_doc_text(base[..], t0[..]);
+  #assert cast(string) tc[0..<nc] == cast(string) t0[0..<n0];
+  // a replay onto a document that changed under it stops at the first step that no longer fits
+  c: [1] ForgeDoc; c[0] = base[0];
+  #assert forge_read_move(c[..], "trees:0", 1, 1);
+  #assert !forge_replay(c[..], a[..]) && c[0].done == 0;
+}
+
+#test "slot values share the document's text: what is no longer named is packed away, and a value that can't fit is refused" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  long: [400] u8; for i: 0..<400 { long[i] = cast(u8) ('a' + i % 26); }
+  // lore rewritten many times: far more than FORGE_TEXT bytes in all, but the log keeps 64 steps
+  for i: 0..<200 {
+    long[0] = cast(u8) ('a' + i % 26); long[1] = cast(u8) ('a' + (i / 26) % 26);
+    #assert forge_lore(d[..], "mara", cast(string) long[..]);
+  }
+  #assert forge_slot_text(d[..], "lore:mara") == cast(string) long[..] && d[0].text_n <= FORGE_TEXT;
+  for i: 0..<FORGE_OPS { #assert forge_undo(d[..]); }
+  w := forge_slot_text(d[..], "lore:mara");
+  #assert w[0] == cast(u8) ('a' + 135 % 26) && w[1] == cast(u8) ('a' + (135 / 26) % 26);   // the 136th lore: before the 64 kept steps
+  for i: 0..<FORGE_OPS { #assert forge_redo(d[..]); }
+  #assert forge_slot_text(d[..], "lore:mara") == cast(string) long[..];
+  // the log's values and the slots fill the text: one more that can't fit is refused, nothing changes
+  e: [1] ForgeDoc; forge_reset(e[..], 1);
+  b: [16] u8; n := 0; ok := true; who := 0;
+  while ok && who < 90 {
+    n = forge_put(b[..], 0, "w"); n = forge_put_int(b[..], n, who);
+    ok = forge_lore(e[..], cast(string) b[0..<n], cast(string) long[..]); who += 1;
+  }
+  #assert !ok && who > FORGE_OPS && e[0].slot_n == who - 1 && e[0].done == FORGE_OPS;   // the log keeps its last 64 steps
+  #assert forge_slot_text(e[..], "lore:w0") == cast(string) long[..];
 }

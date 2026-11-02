@@ -1,0 +1,162 @@
+// The served bytes' own hashes in the made-realm engine's script (GitHub #12629). deploy.sh names
+// each file by the SHA-256 of its bytes before strip.ts takes the comments out of scripts and
+// shaders, so a name alone doesn't say what a visitor is served. After the strip, `write` adds
+//   data-served="SHA256=PATH SHA256=PATH ..."
+// to /realms/built's app script: every path the script names, with the hash of the bytes staged for
+// it. A publish pins the script whole (migration 0107), so the publish record carries these hashes,
+// and `check` holds a pinned manifest (GET .../<slug>/published's engine) to the files a site
+// serves: each path listed once, each file's bytes hashing to what the record says.
+//   coax/web/tool.sh engine-served write SITE            (deploy.sh: SITE is the staged site/)
+//   coax/web/tool.sh engine-served check MANIFEST SITE   (a manifest file against a site's files)
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/crypto/sha256-memory.coax";
+#load "../../aethyr/forge/publish.coax";
+
+SERVED_PAGE :: "realms/built/index.html";
+SERVED_TWIN :: "realms/built.page";   // deploy.sh's copy of the page at the bare path
+SERVED_PAGE_MAX :: 262144;
+SERVED_PATHS :: 32;
+
+// The i-th content-named path a manifest names outside data-served, or "".
+served_path :: (m: string, index: int) -> string {
+  seen := 0; at := 0; skip := false; line_start := true;
+  for i: 0..<m.count + 1 {
+    c := ifx i < m.count then m[i] else cast(u8) '\n';
+    if line_start { skip = engine_at(m, i, "data-served "); line_start = false; }
+    if c != ' ' && c != '\n' && c != '|' { continue; }
+    word := m[at..<i]; at = i + 1;
+    if c == '\n' { line_start = true; }
+    if skip { continue; }
+    slash := engine_upto(word, '/');
+    if slash < word.count && engine_path_ok(word[slash..<word.count]) {
+      if seen == index { return word[slash..<word.count]; }
+      seen += 1;
+    }
+  }
+  return "";
+}
+// The data-served value of a manifest, or "".
+served_value :: (m: string) -> string {
+  for i: 0..<m.count {
+    if (i == 0 || m[i - 1] == '\n') && engine_at(m, i, "data-served ") {
+      v := m[i + 12..<m.count];
+      return v[0..<engine_upto(v, '\n')];
+    }
+  }
+  return "";
+}
+// The hash data-served records for path, or "" (none, or listed twice).
+served_hash :: (served: string, path: string) -> string {
+  found := ""; count := 0; at := 0;
+  for i: 0..<served.count + 1 {
+    if i < served.count && served[i] != ' ' { continue; }
+    word := served[at..<i]; at = i + 1;
+    if word.count == 65 + path.count && word[64] == '=' && word[65..<word.count] == path { found = word[0..<64]; count += 1; }
+  }
+  return ifx count == 1 then found else "";
+}
+
+// A file's SHA-256 in hex, read in chunks; false when it can't be read.
+served_file_sha :: (path: string, out: [] u8) -> bool {
+  size := fs_size(path);
+  if size < 0 || out.count < 64 { return false; }
+  st: [SHA_STATE_BYTES] u8;
+  if sha256_init(st[..]) != SHA_OK { return false; }
+  chunk: [65536] u8; at := 0;
+  while at < size {
+    n := fs_read_at(path, at, chunk[..]);
+    if n <= 0 || sha256_update(st[..], chunk[0..<n]) != SHA_OK { return false; }
+    at += n;
+  }
+  raw: [32] u8;
+  if sha256_final(st[..], raw[..]) != SHA_OK { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<32 { out[i * 2] = digits[cast(int) (raw[i] >> 4)]; out[i * 2 + 1] = digits[cast(int) (raw[i] & 15)]; }
+  return true;
+}
+
+served_write :: (site: string) -> int {
+  pb: [FS_PATH_MAX] u8; page_path := fs_join(site, SERVED_PAGE, pb[..]);
+  page: [SERVED_PAGE_MAX] u8; n := fs_read(page_path, page[..]);
+  if n < 0 { tool_errln("engine-served: no realms/built page in the site"); return 1; }
+  text := cast(string) page[0..<n];
+  mb: [ENGINE_TEXT] u8; m := engine_manifest(text, mb[..]);
+  if m.count == 0 { tool_errln("engine-served: the page's engine is not named by content"); return 1; }
+  if served_value(m) != "" { tool_errln("engine-served: the page already says what is served"); return 1; }
+  attr: [ENGINE_TEXT] u8; a: [1] EngineAcc;
+  engine_put(attr[..], a[..], " data-served=\"");
+  count := 0;
+  while served_path(m, count) != "" {
+    p := served_path(m, count);
+    fb: [FS_PATH_MAX] u8; h: [64] u8;
+    if !served_file_sha(fs_join(site, p[1..<p.count], fb[..]), h[..]) { tool_err("engine-served: can't read "); tool_errln(p); return 1; }
+    if count > 0 { engine_put(attr[..], a[..], " "); }
+    engine_put(attr[..], a[..], cast(string) h[..]); engine_put(attr[..], a[..], "="); engine_put(attr[..], a[..], p);
+    count += 1;
+  }
+  engine_put(attr[..], a[..], "\"");
+  tag := engine_tag(text);
+  end := 0;   // where the engine's tag ends: after "<script " and the tag
+  for i: 0..<text.count { if end == 0 && engine_at(text, i, ENGINE_OPEN) && engine_at(text, i + 8, tag) { end = i + 8 + tag.count; } }
+  out: [SERVED_PAGE_MAX + ENGINE_TEXT] u8; o: [1] EngineAcc;
+  engine_put(out[..], o[..], text[0..<end]); engine_put(out[..], o[..], cast(string) attr[0..<a[0].n]); engine_put(out[..], o[..], text[end..<text.count]);
+  if a[0].bad || o[0].bad || end == 0 { tool_errln("engine-served: the page did not fit"); return 1; }
+  written := cast(string) out[0..<o[0].n];
+  check: [ENGINE_TEXT] u8;
+  if engine_manifest(written, check[..]).count == 0 { tool_errln("engine-served: the page's engine would no longer be named by content"); return 1; }
+  if !fs_write(page_path, written) { tool_errln("engine-served: can't write the page"); return 1; }
+  tb: [FS_PATH_MAX] u8; twin := fs_join(site, SERVED_TWIN, tb[..]);
+  if fs_exists(twin) && !fs_write(twin, written) { tool_errln("engine-served: can't write the page's twin"); return 1; }
+  print("engine-served: % files\n", count);
+  return 0;
+}
+
+served_check :: (manifest_path: string, site: string) -> int {
+  mb: [ENGINE_TEXT + 1] u8; n := fs_read(manifest_path, mb[..]);
+  m := ifx n < 0 then "" else cast(string) mb[0..<n];
+  if !engine_check(m) { tool_errln("engine-served: the manifest is not one this rule writes"); return 1; }
+  hb: [64] u8;
+  if !engine_sha(m, hb[..]) { return 1; }
+  print("engine %\n", cast(string) hb[..]);
+  served := served_value(m);
+  if served == "" { tool_errln("engine-served: the manifest records no served hashes (pinned before they were kept)"); return 1; }
+  count := 0; bad := 0;
+  while served_path(m, count) != "" {
+    p := served_path(m, count); want := served_hash(served, p);
+    fb: [FS_PATH_MAX] u8; h: [64] u8;
+    ok := want != "" && served_file_sha(fs_join(site, p[1..<p.count], fb[..]), h[..]) && cast(string) h[..] == want;
+    print("% %\n", ifx ok then "ok  " else "FAIL", p);
+    if !ok { bad += 1; }
+    count += 1;
+  }
+  listed := 0; at := 0;
+  for i: 0..<served.count + 1 { if i == served.count || served[i] == ' ' { if i > at { listed += 1; } at = i + 1; } }
+  if listed != count { print("FAIL data-served lists % files; the script names %\n", listed, count); bad += 1; }
+  if bad > 0 { return 1; }
+  print("ok every served file is the bytes its publish record says (% files)\n", count);
+  return 0;
+}
+
+tool_main :: () -> int #export_c {
+  args: [1] Args;
+  if !args_load(args[..]) { return 2; }
+  verb := ifx args_count(args[..]) > 0 then args_at(args[..], 0) else "";
+  if verb == "write" && args_count(args[..]) == 2 { return served_write(args_at(args[..], 1)); }
+  if verb == "check" && args_count(args[..]) == 3 { return served_check(args_at(args[..], 1), args_at(args[..], 2)); }
+  tool_errln("usage: engine-served write SITE | engine-served check MANIFEST SITE");
+  return 2;
+}
+
+#test "the paths a manifest names, and the hashes data-served gives them" {
+  m := "aethyr-engine 1\nsrc /coaxial/host.9ca333f3d8b0.js\ndata-assets pack:/a.000000000000.pack|/b.111111111111.png\ndata-served 00000000000000000000000000000000000000000000000000000000000000aa=/coaxial/host.9ca333f3d8b0.js\ndata-wasm /build/myrealm.0e7b9526d8a2.wasm\n";
+  #assert served_path(m, 0) == "/coaxial/host.9ca333f3d8b0.js" && served_path(m, 1) == "/a.000000000000.pack" && served_path(m, 2) == "/b.111111111111.png";
+  #assert served_path(m, 3) == "/build/myrealm.0e7b9526d8a2.wasm" && served_path(m, 4) == "";
+  v := served_value(m);
+  #assert v == "00000000000000000000000000000000000000000000000000000000000000aa=/coaxial/host.9ca333f3d8b0.js";
+  #assert served_hash(v, "/coaxial/host.9ca333f3d8b0.js") == "00000000000000000000000000000000000000000000000000000000000000aa";
+  #assert served_hash(v, "/build/myrealm.0e7b9526d8a2.wasm") == "" && served_value("aethyr-engine 1\n") == "";
+  twice := "00000000000000000000000000000000000000000000000000000000000000aa=/x.000000000000.js 00000000000000000000000000000000000000000000000000000000000000bb=/x.000000000000.js";
+  #assert served_hash(twice, "/x.000000000000.js") == "";
+}

@@ -194,6 +194,9 @@ like anyone's. Coder gets the realm tools (`openagents mcp`) by default.
 3. **Edits by hand in the canvas.** Select, drag, rotate, size, remove, each a typed
    op in `aethyr/forge/edit.coax` with its inverse; `realm apply` gains rotate, resize,
    remove.
+   The model, the document (migration 0109), the page's drawing and the CLI
+   (`realm rotate|resize|remove`, `realm apply`) are done (#12629); the canvas gestures
+   are not.
 4. **The change line.** Each revision's summary as chips, each undoable on its own.
 5. **Open to the public.** The invite gate becomes the per-account limits above; LOG IN
    is the only gate.
@@ -202,8 +205,9 @@ like anyone's. Coder gets the realm tools (`openagents mcp`) by default.
    asked thing.
 8. **Pin the published build** (#12629): a published realm plays the engine build and
    assets it was published with. Done for made realms (migration 0107,
-   `aethyr/forge/publish.coax`, book chapter 54); open: the served bytes' own hashes in
-   the record, built-in realms' forks, and the release gates per version.
+   `aethyr/forge/publish.coax`, `coax/web/engine-served.coax` for the served bytes'
+   hashes, book chapter 54, checked end to end by `realm_walkthrough.coax`); open:
+   built-in realms' forks and the release gates per version.
 
 Slices 1-5 are the MVP. 6 and 7 make the video's last act. 8 is what makes a link
 keep working.

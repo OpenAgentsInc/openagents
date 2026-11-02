@@ -4,8 +4,11 @@
 > its owner published, played by the engine build and assets it was
 > published with: the publish record pins the document's hash and the
 > engine's manifest (host script, wasm, shaders, voice engine, render
-> package and asset packs, each named by its content) and its hash
+> package and asset packs, each named by its content, and each served file's
+> own SHA-256) and its hash
 > ([GitHub #12629](https://github.com/OpenAgentsInc/openagents/issues/12629)).
+> The whole route (edit, publish, reload from the record, a later release,
+> fork, edits kept apart, refusals) is one checked walkthrough below.
 > Not built yet: the release gates per version (golden, 60 FPS) and the page
 > text's hash in the record. Hand-built realms are published from one table
 > (`apps/openagents-web/realms.json`) and are not pinned this way.
@@ -266,12 +269,51 @@ engine_record_ok :: (rev: int, doc_sha: string, engine: string, want: string) ->
 }
 ```
 
+A file's name is the hash of its bytes before `deploy.sh` strips the
+comments from scripts and shaders, so the bytes served for `host.*.js` and
+`*.wgsl` hash to something else (the wasm and packs match their names). After
+the strip, `coax/web/tool.sh engine-served write SITE`
+([engine-served.coax](../../coax/web/engine-served.coax)) adds the served
+bytes' own hashes to the engine's script, `data-served="SHA256=PATH ..."`,
+so the manifest a publish pins carries them and its hash covers them.
+`engine-served check MANIFEST SITE` holds a pinned record to a site's files:
+every path the script names listed once, each file's bytes hashing to what
+the record says.
+
+### The route, checked end to end
+
+`coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax` (`PGURL`, `PSQL`,
+`WORK`) runs Aethyrforge's route against PostgreSQL with every migration
+applied, and works out again from the bytes every digest the server states:
+
+1. A release is staged (its five engine files, `/realms/built`), and
+   `engine-served` writes the served hashes.
+2. The realm is read into the edit model; a move, a turn, a resize, a removal
+   and an undone move are one save (revision 2).
+3. Publish pins revision 2 and the engine; the engine hash it states is the
+   manifest's, computed here.
+4. Reload from the record: the manifest holds by the rule and hashes to the
+   record's engine hash; every served file is the bytes the record says; a
+   visitor's document hashes here to the record's document hash and reads
+   back ([doc.coax](../forge/doc.coax)) as exactly the moves, turns, sizes and
+   removals the edits made; the realm's page plays the pinned engine.
+5. A second release with a new engine: the record and the realm's page still
+   name the first.
+6. The owner saves revision 3 unpublished: a visitor's document is revision
+   2's, byte for byte. A visitor's fork starts on the parent's engine and its
+   published moves and shapes; the fork's edits leave the parent's published
+   and current documents untouched.
+7. Refusals keep the last valid document: a stale save (409), a publish whose
+   engine can't be pinned (503, revision 2 stays published), and a newer
+   document version the reader doesn't know.
+
+It ran on a fresh PostgreSQL 17 with this checkout's migrations: 24 checks.
+
 What the pin does not cover yet: the API is shared, so a pinned page talks
-to today's server (as a pinned demo does, `coax/web/pin.sh`); a name is the
-hash of a file's bytes before `deploy.sh` strips comments from scripts and
-shaders, so the served bytes of `host.*.js` and `*.wgsl` hash to something
-else (the wasm and packs match their names), and the record does not yet
-keep the served bytes' hashes; built-in realms' forks are not pinned.
+to today's server (as a pinned demo does, `coax/web/pin.sh`); a realm pinned
+before served hashes were written (an older `/realms/built`) has names only,
+and `engine-served check` says so; built-in realms' forks are not pinned; the
+walkthrough stages its own site instead of reading the production bucket.
 
 Checks: `coax/bin/coax test aethyr/forge/publish.coax --library` (the rule,
 the live page's fixture and its hash, which `sha256sum` agrees with; `coax
@@ -279,6 +321,8 @@ mutate` with no survivors), `coax/web/tool.sh
 coax/web/api/tests/realm_engine_pin.coax` (the same fixture through the SQL
 rule gives the same hash; first pin, publish, refused publishes keeping
 nothing, a fork on its parent's engine, a server without a bucket),
+`coax/bin/coax test coax/web/engine-served.coax --library`, the walkthrough
+above,
 `test_realm_fork.py` (a save leaves visitors on the revision
 published, their `/doc` is its document, a visitor's fork copies it) and
 `coax/web/tool.sh forge-journey URL` (after SAVE the owner reads "not

@@ -421,6 +421,7 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
       _ := forge_read_move(sp[..], word_of(line, 1), cm_of(x), cm_of(z));
       continue;
     }
+    if head == "shaped" { _ := forge_read_shape_line(sp[..], line); continue; }   // its turn, size and gone (0109; the CLI's reader too)
     if head == "tool" { k := tool_of(word_of(line, 1)); if k >= 0 { s[0].tools[k] = word_of(line, 2) == "1"; } continue; }
     if head == "character" && s[0].people < PEOPLE && line.count > 10 {
       rest := line[10..<line.count];
@@ -513,9 +514,9 @@ kept_text :: (s: [] MyRealm, out: [] u8) -> int {
   if !forge_dirty(s[0].fd[..]) || s[0].fd[0].saved != 0 { return n; }
   for i: 0..<s[0].fd[0].done {
     o := s[0].fd[0].ops[i];
-    if !o.has || n + FORGE_KEY + 32 > out.count { return n; }
+    if o.kind != FORGE_ENTITY || !o.a.at || n + FORGE_KEY + 32 > out.count { return n; }   // the page's own steps are moves
     n = put(out, n, "op "); n = put(out, n, cast(string) o.key[0..<o.key_n]); n = put(out, n, " ");
-    n = put_int(out, n, o.ax); n = put(out, n, " "); n = put_int(out, n, o.az); n = put(out, n, "\n");
+    n = put_int(out, n, o.a.x); n = put(out, n, " "); n = put_int(out, n, o.a.z); n = put(out, n, "\n");
   }
   return n;
 }
@@ -1187,15 +1188,38 @@ ents_moved :: (s: [] MyRealm) {
   for e: 0..<s[0].ent_n {
     if !ent_laid(s, e) { continue; }
     c := ent_at(s, e); dx := c.x - s[0].ent_x[e]; dz := c.z - s[0].ent_z[e];
-    for p: s[0].ent_p0[e]..<s[0].ent_p1[e] { s[0].piece_x[p] += dx; s[0].piece_z[p] += dz; if e == s[0].moving { s[0].piece_glow[p] = 0.7; } }
-    for k: s[0].ent_s0[e]..<s[0].ent_s1[e] { s[0].solid_x[k] += dx; s[0].solid_z[k] += dz; }
-    for k: s[0].ent_m0[e]..<s[0].ent_m1[e] { s[0].mill_x[k] += dx; s[0].mill_z[k] += dz; }
-    for k: s[0].ent_f0[e]..<s[0].ent_f1[e] { s[0].fire_x[k] += dx; s[0].fire_z[k] += dz; }
-    for k: s[0].ent_w0[e]..<s[0].ent_w1[e] { s[0].weed_x[k] += dx; s[0].weed_z[k] += dz; }
+    // its turn and size about its own middle, and gone (aethyr/forge/edit.coax shapes, 0109)
+    kb: [32] u8; sh := forge_shape_of(s[0].fd[..], ent_key(s, e, kb[..]));
+    t := ent_turn(sh); lx := s[0].ent_x[e]; lz := s[0].ent_z[e];
+    for p: s[0].ent_p0[e]..<s[0].ent_p1[e] {
+      q := ent_turned(t, s[0].piece_x[p] - lx, s[0].piece_z[p] - lz);
+      s[0].piece_x[p] = c.x + q.x; s[0].piece_z[p] = c.z + q.z; s[0].piece_yaw[p] += t.angle;
+      s[0].piece_k[p] *= ifx sh.gone then 0 else t.size; s[0].piece_y[p] *= t.size;
+      if e == s[0].moving { s[0].piece_glow[p] = 0.7; }
+    }
+    for k: s[0].ent_s0[e]..<s[0].ent_s1[e] {
+      q := ent_turned(t, s[0].solid_x[k] - lx, s[0].solid_z[k] - lz);
+      s[0].solid_x[k] = ifx sh.gone then GONE_X else c.x + q.x; s[0].solid_z[k] = c.z + q.z; s[0].solid_r[k] *= t.size;
+    }
+    for k: s[0].ent_m0[e]..<s[0].ent_m1[e] {
+      q := ent_turned(t, s[0].mill_x[k] - lx, s[0].mill_z[k] - lz);
+      s[0].mill_x[k] = ifx sh.gone then GONE_X else c.x + q.x; s[0].mill_z[k] = c.z + q.z; s[0].mill_yaw[k] += t.angle;
+    }
+    for k: s[0].ent_f0[e]..<s[0].ent_f1[e] { q := ent_turned(t, s[0].fire_x[k] - lx, s[0].fire_z[k] - lz); s[0].fire_x[k] = ifx sh.gone then GONE_X else c.x + q.x; s[0].fire_z[k] = c.z + q.z; }
+    for k: s[0].ent_w0[e]..<s[0].ent_w1[e] { q := ent_turned(t, s[0].weed_x[k] - lx, s[0].weed_z[k] - lz); s[0].weed_x[k] = ifx sh.gone then GONE_X else c.x + q.x; s[0].weed_z[k] = c.z + q.z; }
     if s[0].ent_beacon[e] { s[0].beacon_x += dx; s[0].beacon_z += dz; }
-    if s[0].ent_lamp[e] >= 0 { s[0].lantern_x[s[0].ent_lamp[e]] = c.x; s[0].lantern_z[s[0].ent_lamp[e]] = c.z; }
+    if s[0].ent_lamp[e] >= 0 { s[0].lantern_x[s[0].ent_lamp[e]] = ifx sh.gone then GONE_X else c.x; s[0].lantern_z[s[0].ent_lamp[e]] = c.z; }
   }
 }
+// An entity's turn (radians) and size (times), from its shape; a piece's offset from its middle turned
+// the way a piece's own yaw turns it (cos, sin rows as the instance matrix) and sized.
+GONE_X :: 9999.0;   // where what is taken away stands: far past every reach and light
+EntTurn :: struct { angle: f32; c: f32; s: f32; size: f32; }
+ent_turn :: (sh: ForgeShape) -> EntTurn {
+  a := cast(f32) sh.yaw * 0.017453292;
+  return EntTurn.{angle = a, c = cos(a), s = sin(a), size = cast(f32) sh.scale * 0.01};
+}
+ent_turned :: (t: EntTurn, ox: f32, oz: f32) -> Spot { return Spot.{x = t.size * (t.c * ox + t.s * oz), z = t.size * (t.c * oz - t.s * ox)}; }
 // How far from its middle a thing reaches: its solids' far edges (half a metre for one with none).
 ent_reach :: (s: [] MyRealm, e: int) -> f32 {
   far: f32 = 0.5; c := ent_at(s, e);   // its solids stand where it stands now
@@ -3604,6 +3628,38 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   s[0].spec_due = true; m = frame_of(s[..], t[..], 2560, 1600);
   realm_requested(s[..], 6); realm_message(s[..], t[..], HTTP_ANSWER_KIND + 6, "200\nrealm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\nfeature trees round 6\nrev 9\n");
   #assert forge_dirty(s[0].fd[..]) && s[0].fd[0].rev == 7 && s[0].server_rev == 9;
+}
+
+#test "a turned, resized or removed thing stands as the document's shaped lines say" #steps 40000000 {
+  s: [1] MyRealm; t: [1] Track;
+  plain := "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\nfeature trees round 6\nfeature rocks 4\nrev 7\npublished 7\nlisted 1\n";
+  opened(s[..], t[..], "forge-court", plain);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  px: [PIECES] f32; pz: [PIECES] f32; pk: [PIECES] f32; pyaw: [PIECES] f32; pn := s[0].static_n;
+  for p: 0..<pn { px[p] = s[0].piece_x[p]; pz[p] = s[0].piece_z[p]; pk[p] = s[0].piece_k[p]; pyaw[p] = s[0].piece_yaw[p]; }
+  e1 := 1; e2 := 2;   // trees:1 and trees:2 (a tree's entity is its index)
+  c1 := ent_at(s[..], e1); c2 := ent_at(s[..], e2);
+  r: [1] MyRealm; u: [1] Track;
+  opened(r[..], u[..], "forge-court", "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\nfeature trees round 6\nfeature rocks 4\nrev 7\npublished 7\nlisted 1\nshaped trees:1 90 200 0\nshaped trees:2 0 100 1\nshapes 1\n");
+  m := frame_of(r[..], u[..], 2560, 1600);
+  sh := forge_shape_of(r[0].fd[..], "trees:1");
+  #assert sh.yaw == 90 && sh.scale == 200 && !sh.gone && forge_shape_of(r[0].fd[..], "trees:2").gone && r[0].static_n == pn;
+  turned := 0; gone := 0;
+  for p: 0..<pn {
+    if p >= r[0].ent_p0[e1] && p < r[0].ent_p1[e1] {   // a quarter turn and twice the size about its middle
+      ox := px[p] - c1.x; oz := pz[p] - c1.z;
+      #assert abs(r[0].piece_x[p] - (c1.x + 2 * oz)) < 0.01 && abs(r[0].piece_z[p] - (c1.z - 2 * ox)) < 0.01;
+      #assert abs(r[0].piece_k[p] - 2 * pk[p]) < 0.001 && abs(r[0].piece_yaw[p] - (pyaw[p] + 1.5707963)) < 0.001;
+      turned += 1;
+    } else if p >= r[0].ent_p0[e2] && p < r[0].ent_p1[e2] {
+      #assert r[0].piece_k[p] == 0;   // taken away: nothing drawn
+      gone += 1;
+    } else {
+      #assert r[0].piece_x[p] == px[p] && r[0].piece_z[p] == pz[p] && r[0].piece_k[p] == pk[p];
+    }
+  }
+  #assert turned > 0 && gone > 0;
+  for k: r[0].ent_s0[e2]..<r[0].ent_s1[e2] { #assert r[0].solid_x[k] == GONE_X; }   // and nothing to walk into
 }
 
 #test "a visitor gets FORK and none of the owner's; a tap on another tree picks it to move; Esc lets it go" #steps 50000000 {
