@@ -1,0 +1,385 @@
+// Chapter 194: who can read the prompt. A pipeline split across peers
+// shows each peer part of the request: the first stage's peer gets the
+// prompt's token ids and, a step later, every sampled token fed back in;
+// every stage's peer computes or receives hidden-state rows; the last
+// stage's peer samples the output. This file computes that exposure from
+// the placement and chapter 186's stage contract, gives each peer a tier
+// computed from recorded evidence (any, vetted, owned), and turns a policy
+// per data class (chapter 213's labels) into hard constraints on chapter
+// 189's solver: a stage may not run on a peer below the tier its exposure
+// needs. It refuses any live link without a session key (chapter 188), and
+// a placement that needs more trust names the exposure and the fewest peers
+// whose tier would have to rise. Before any byte leaves this machine every
+// remote peer of the placement needs a consent grant for the label.
+// This enforces who receives what. It hides nothing: hidden-state rows can
+// be inverted back to the prompt, so activations are not secret.
+// Profile trust-v1: up to 8 peers and 8 stages, three tiers, three kinds of
+// exposure, five data classes.
+#authority;
+#load "../place.coax";
+#load "../harness/consent.coax";
+#load "../../tests/peer-trust-checks.coax";  // the checks' pipeline walk, brute-force placer and hand-worked fleet
+
+#test "a tier comes only from recorded evidence" {
+    e:=WrEvidence.{owner=true,member=true,audits=3};
+    #assert wr_tier(e,3)==WR_OWNED;
+    // Remove each piece in turn: the tier drops.
+    e.owner=false;#assert wr_tier(e,3)==WR_VETTED;
+    f:=e;f.member=false;#assert wr_tier(f,3)==WR_ANY;
+    f=e;f.audits=2;#assert wr_tier(f,3)==WR_ANY;
+    f=e;f.failed=1;#assert wr_tier(f,3)==WR_ANY;
+    #assert wr_tier(WrEvidence.{},0)==WR_ANY && wr_tier(WrEvidence.{member=true},0)==WR_VETTED;
+    #assert wr_tier_name(WR_VETTED)=="vetted" && wr_tier_name(WR_OWNED)=="owned" && wr_tier_name(WR_ANY)=="any";
+}
+#test "exposure and need, by hand" {
+    #assert wr_sees(2,0)==7 && wr_sees(2,1)==6 && wr_sees(1,0)==7 && wr_sees(3,1)==2 && wr_sees(3,2)==6;
+    a:=[2]int.[1,2];e:=wr_exposed(2,a[..]);#assert e[0]==5 && e[1]==7 && e[2]==6 && e[3]==0;
+    a=[2]int.[0,1];e=wr_exposed(2,a[..]);#assert e[0]==7 && e[1]==6 && e[2]==0;
+    p:=wrx_policy();
+    #assert wr_need(p,WRX_PROJECT,7)==WR_VETTED && wr_need(p,WRX_PROJECT,WR_ACTS)==WR_ANY;
+    #assert wr_need(p,WRX_SESSION|WRX_PROJECT,WR_ACTS)==WR_VETTED && wr_need(p,WRX_SESSION,WR_OUTPUT)==WR_OWNED;
+    #assert wr_need(p,WRX_IDENTITY,WR_ACTS)==WR_OWNED && wr_need(p,0,7)==WR_ANY && wr_need(p,CS_ALL,0)==WR_ANY;
+    #assert wr_need(p,WRX_TOOL,WR_TOKENS)==WR_VETTED && wr_need(p,WRX_USER,WR_TOKENS)==WR_OWNED;
+    #assert wr_kind_name(0)=="prompt tokens" && wr_kind_name(1)=="activations" && wr_kind_name(2)=="output tokens";
+    #assert wr_class_name(0)=="session" && wr_class_name(4)=="identity";
+}
+#forall "the exposure is the pipeline walk's, for every placement" seed:0..<300,n:1..<9 {
+    // A random choice of n distinct peers out of 8, in order.
+    order:=[8]int.[0,1,2,3,4,5,6,7];x:=seed+1;
+    for i:0..<8 {x=plcx_next(x);k:=i+x%(8-i);t:=order[i];order[i]=order[k];order[k]=t;}
+    e:=wr_exposed(n,order[0..<n]);w:=wrx_walk(n,order[0..<n]);
+    for a:0..<8 {#assert e[a]==w[a];}
+}
+#test "Ministral 3 3B on three peers: the hand-worked placements" {
+    j:=plcx_job();f:=plcx_fleet();t:=wrx_trust();p:=wrx_policy();zero:[1]int;none:=zero[0..<0];
+    // Project files only: every stage needs vetted, and every peer is.
+    r:=wr_place(j,f,t,p,WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.ok && r.placed.peer[0]==1 && r.placed.peer[1]==2 && r.placed.cost==32089922;
+    #assert r.tier[0]==WR_OWNED && r.tier[1]==WR_OWNED && r.tier[2]==WR_VETTED && r.need[0]==WR_VETTED && r.need[1]==WR_VETTED;
+    #assert r.exposed[0]==5 && r.exposed[1]==7 && r.exposed[2]==6 && r.label==WRX_PROJECT && r.tried==0 && r.fix==0;
+    #assert r.from==-1 && r.to==-1 && r.stage==-1 && r.peer==-1 && r.cls==-1 && r.kind==-1 && r.have==-1 && r.want==-1;
+    r=wr_place(j,f,t,p,WRX_PROJECT,PlcGoal.throughput,none);#assert r.status==WrStatus.ok && r.placed.cost==22007759;
+    // What the person typed: both stages need owned, so peer 2 is out.
+    r=wr_place(j,f,t,p,WRX_SESSION|WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.ok && r.placed.peer[0]==0 && r.placed.peer[1]==1 && r.placed.cost==48391507;
+    #assert r.need[0]==WR_OWNED && r.need[1]==WR_OWNED && r.exposed[0]==7 && r.exposed[1]==6 && r.exposed[2]==0;
+    // Peer 2 with two audits is not vetted: project files avoid it too.
+    u:=t;u.evidence[2].audits=2;r=wr_place(j,f,u,p,WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.ok && r.tier[2]==WR_ANY && r.placed.peer[0]==0 && r.placed.peer[1]==1;
+    // The desktop loses its owner key: only this machine is owned.
+    u=t;u.evidence[1]=WrEvidence.{member=true,audits=5};r=wr_place(j,f,u,p,WRX_SESSION|WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.exposure && r.fix==2 && r.stage==1 && r.peer==1 && r.have==WR_VETTED && r.want==WR_OWNED;
+    #assert r.cls==0 && r.kind==2 && r.placed.peer[0]==0 && r.placed.peer[1]==1 && r.exposed[1]==6 && r.tried==3 && r.from==-1 && r.to==-1;
+    // Identity data: even activations need owned, and the first class that binds is named.
+    r=wr_place(j,f,u,p,WRX_PROJECT|WRX_IDENTITY,PlcGoal.latency,none);
+    #assert r.status==WrStatus.exposure && r.fix==2 && r.cls==4 && r.kind==1 && r.want==WR_OWNED;
+    r=wr_place(j,f,u,p,WRX_USER|WRX_IDENTITY,PlcGoal.latency,none);#assert r.cls==1 && r.kind==2;
+}
+#test "the refusal table" {
+    j:=plcx_job();f:=plcx_fleet();t:=wrx_trust();p:=wrx_policy();zero:[1]int;none:=zero[0..<0];
+    // A live link with bandwidth and no session keys.
+    u:=t;u.sealed[1][2]=false;r:=wr_place(j,f,u,p,WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.plaintext && r.from==1 && r.to==2 && wr_status_name(r.status)=="plaintext link";
+    #assert r.stage==-1 && r.peer==-1 && r.cls==-1 && r.kind==-1 && r.have==-1 && r.want==-1 && r.tried==0;
+    u.sealed[2][0]=false;r=wr_place(j,f,u,p,WRX_PROJECT,PlcGoal.latency,none);#assert r.from==1 && r.to==2;
+    u=t;u.sealed[2][1]=false;u.sealed[2][0]=false;r=wr_place(j,f,u,p,WRX_PROJECT,PlcGoal.latency,none);#assert r.from==2 && r.to==0;
+    // Not a refusal: no bandwidth, a peer that left, a peer to itself.
+    g:=f;g.bw[1][2]=0;u=t;u.sealed[1][2]=false;r=wr_place(j,g,u,p,WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.ok && !(r.placed.peer[0]==1 && r.placed.peer[1]==2);
+    g=f;g.peer[2].live=false;r=wr_place(j,g,u,p,WRX_PROJECT,PlcGoal.latency,none);#assert r.status==WrStatus.ok && r.placed.peer[0]==0;
+    u=t;u.sealed[2][1]=false;r=wr_place(j,g,u,p,WRX_PROJECT,PlcGoal.latency,none);#assert r.status==WrStatus.ok && r.placed.peer[1]==1;
+    u=t;u.sealed[1][1]=false;r=wr_place(j,f,u,p,WRX_PROJECT,PlcGoal.latency,none);#assert r.status==WrStatus.ok;
+    // Exposure: the fewest peers to raise, and the lowest bits among them.
+    u=t;u.evidence[1]=WrEvidence.{};u.evidence[2]=WrEvidence.{};
+    r=wr_place(j,f,u,p,WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.exposure && r.fix==2 && r.stage==1 && r.peer==1 && r.have==WR_ANY && r.want==WR_VETTED && r.cls==2 && r.kind==2 && r.tried==3;
+    #assert wr_status_name(r.status)=="exposure";
+    // With stage 0 kept off this machine, stage 0's peer must rise; with
+    // both stages kept off it, both peers must.
+    k:=j;k.deny[0]=1;r=wr_place(k,f,u,p,WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.exposure && r.fix==2 && r.stage==0 && r.peer==1 && r.cls==2 && r.kind==0 && r.placed.peer[1]==0;
+    k.deny[1]=1;r=wr_place(k,f,u,p,WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.exposure && r.fix==6 && r.stage==0 && r.peer==1 && r.kind==0 && r.placed.peer[1]==2;
+    // Too big for any peer, however trusted: chapter 189's refusal.
+    w:=plcx_whole();r=wr_place(w,f,u,p,WRX_PROJECT,PlcGoal.latency,none);
+    #assert r.status==WrStatus.place && r.placed.status==PlcStatus.memory && r.placed.who==1 && r.placed.gap==1932815360 && r.tried==3;
+    #assert r.stage==-1 && r.peer==-1 && r.cls==-1 && r.kind==-1 && r.have==-1 && r.want==-1 && r.from==-1 && r.fix==0;
+    // Peer 2 owned too: one peer to raise, one set tried.
+    v:=u;v.evidence[2].owner=true;r=wr_place(w,f,v,p,WRX_PROJECT,PlcGoal.latency,none);#assert r.status==WrStatus.place && r.tried==1 && r.placed.who==1;
+    #assert wr_status_name(r.status)=="does not place" && wr_status_name(WrStatus.ok)=="ok" && wr_status_name(WrStatus.input)=="input";
+    // The whole model on this machine needs no trust at all.
+    g=f;g.peer[0].budget=8000000000;r=wr_place(w,g,u,p,CS_ALL,PlcGoal.latency,none);#assert r.status==WrStatus.ok && r.placed.peer[0]==0 && r.exposed[0]==7;
+}
+#test "the input's bounds" {
+    j:=plcx_job();f:=plcx_fleet();t:=wrx_trust();p:=wrx_policy();zero:[1]int;none:=zero[0..<0];
+    #assert !wrx_input(wr_place(j,f,t,p,0,PlcGoal.latency,none)) && !wrx_input(wr_place(j,f,t,p,CS_ALL,PlcGoal.latency,none));
+    #assert wrx_input(wr_place(j,f,t,p,-1,PlcGoal.latency,none)) && wrx_input(wr_place(j,f,t,p,CS_ALL+1,PlcGoal.latency,none));
+    q:=p;q.vet=-1;#assert wrx_input(wr_place(j,f,t,q,4,PlcGoal.latency,none));
+    q.vet=WR_COUNT_MAX+1;#assert wrx_input(wr_place(j,f,t,q,4,PlcGoal.latency,none));
+    q.vet=WR_COUNT_MAX;#assert !wrx_input(wr_place(j,f,t,q,4,PlcGoal.latency,none));
+    for c:0..<5 {for k:0..<3 {
+        q=p;q.need[c][k]=-1;#assert wrx_input(wr_place(j,f,t,q,4,PlcGoal.latency,none));
+        q.need[c][k]=3;#assert wrx_input(wr_place(j,f,t,q,4,PlcGoal.latency,none));
+        q.need[c][k]=2;#assert !wrx_input(wr_place(j,f,t,q,4,PlcGoal.latency,none));
+    }}
+    for v:0..<4 {
+        xs:=[4]int.[0,WR_COUNT_MAX,-1,WR_COUNT_MAX+1];
+        u:=t;u.evidence[2].audits=xs[v];#assert wrx_input(wr_place(j,f,u,p,4,PlcGoal.latency,none))==(v>=2);
+        u=t;u.evidence[2].failed=xs[v];#assert wrx_input(wr_place(j,f,u,p,4,PlcGoal.latency,none))==(v>=2);
+    }
+    // Evidence past the fleet is not read; chapter 189's checks still apply.
+    u:=t;u.evidence[3].audits=-1;#assert !wrx_input(wr_place(j,f,u,p,4,PlcGoal.latency,none));
+    // This machine's evidence is not used, but it must be well formed.
+    u=t;u.evidence[0].failed=-1;#assert wrx_input(wr_place(j,f,u,p,4,PlcGoal.latency,none));
+    g:=f;g.peers=0;#assert wrx_input(wr_place(j,g,t,p,4,PlcGoal.latency,none));
+    k:=j;k.stages=9;#assert wrx_input(wr_place(k,f,t,p,4,PlcGoal.latency,none));
+    g=f;g.bw[1][2]=-1;u=t;u.sealed[1][2]=false;#assert wrx_input(wr_place(j,g,u,p,4,PlcGoal.latency,none));
+}
+#forall "the trust-constrained solver is the brute force's, on random fleets" seed:0..<200,n:1..<5 #steps 1500000000 {
+    r:=plcx_random(seed,n);w:=wrx_random(seed,r.fleet.peers);goal:=ifx seed%2==0 then PlcGoal.latency else PlcGoal.throughput;
+    old:[8]int;moved:=seed%3==0;
+    if moved {for s:0..<n {old[s]=plcx_pick(seed*13+s,r.fleet.peers);}}
+    o:=ifx moved then old[0..<n] else old[0..<0];
+    got:=wr_place(r.work,r.fleet,w.trust,w.policy,w.label,goal,o);b:=wrx_brute(r.work,r.fleet,w.trust,w.policy,w.label,goal,o);
+    #assert cast(int)got.status==b.status;
+    if b.status==2 {#assert got.from==b.from && got.to==b.to;}
+    if b.status==0 || b.status==3 {
+        #assert got.placed.cost==b.cost && got.placed.moves==b.moves && got.fix==b.fix;
+        for s:0..<n {#assert got.placed.peer[s]==b.peer[s];}
+        e:=wrx_walk(n,b.peer[0..<n]);for a:0..<8 {#assert got.exposed[a]==e[a];}
+    }
+    want:=0;for a:1..<r.fleet.peers {if wrx_tier(w.trust.evidence[a],w.policy.vet)<2 {want=want*2+1;}}
+    if b.status==0 || b.status==2 {want=0;}
+    #assert got.tried==want;
+    if b.status==3 {#assert got.stage==b.stage && got.peer==b.who && got.have==b.have && got.want==b.want && got.cls==b.cls && got.kind==b.kind;}
+    if b.status==4 {#assert got.placed.status==plcx_refusal(r.work,r.fleet,o);}
+}
+#test "the gate: consent for every peer before the first byte" {
+    events:[16]CsEvent;grants:[8]CsGrant;texts:[8]string;own:[8]int;labels:[8]int;bytes:[256]u8;ends:[8]int;sent:[8]int;nb:[1]int;
+    lb:=[1]CsLedger.[CsLedger.{events=events[..],grants=grants[..]}];l:=lb[..];
+    gb:=[1]CsGraph.[CsGraph.{texts=texts[..],own=own[..],labels=labels[..]}];g:=gb[..];
+    kb:=[1]CsSink.[CsSink.{bytes=bytes[..],ends=ends[..],events=sent[..]}];k:=kb[..];
+    a:=cs_node(g,"Fix the flaky test in parser.rs.",WRX_SESSION,nb[0..<0]);a=cs_node(g,"fn parse(s: &str) -> Ast",WRX_PROJECT,nb[0..<0]);
+    two:=[2]int.[0,1];a=cs_node(g,"<stage 0 rows>",0,two[..]);a=cs_node(g,"editor = helix",WRX_USER,nb[0..<0]);
+    j:=plcx_job();f:=plcx_fleet();t:=wrx_trust();p:=wrx_policy();zero:[1]int;none:=zero[0..<0];
+    typed:=wr_place(j,f,t,p,WRX_SESSION|WRX_PROJECT,PlcGoal.latency,none);rows:=[1]int.[2];
+    // No grant for peer 1: nothing is logged, nothing leaves.
+    s:=wr_send(l,g[0],k,rows[..],typed,1);#assert s.gate==WrGate.consent && s.peer==1 && s.decision.why==CsWhy.none && l[0].count==0 && k[0].count==0;
+    #assert wr_gate_name(s.gate)=="no consent";
+    #assert cs_grant(l,CsDest.{kind=CsKind.peer,id=1,purpose=CsPurpose.compute},WRX_SESSION|WRX_PROJECT,2,100,1,2)==CsWhy.ok;
+    // This machine runs stage 0, so its rows go to peer 1.
+    s=wr_send(l,g[0],k,rows[..],typed,3);#assert s.gate==WrGate.ok && s.peer==1 && s.decision.why==CsWhy.ok && k[0].count==1 && k[0].used==14;
+    #assert l[0].count==2 && l[0].events[1].op==CsOp.send && l[0].events[1].dest.id==1 && l[0].events[1].classes==5;
+    // A part with a class the placement was not decided for, or no such part.
+    user:=[1]int.[3];s=wr_send(l,g[0],k,user[..],typed,4);#assert s.gate==WrGate.label && wr_gate_name(s.gate)=="label not placed";
+    // The prompt alone carries fewer classes than the placement: that is fine.
+    first:=[1]int.[0];s=wr_send(l,g[0],k,first[..],typed,4);#assert s.gate==WrGate.ok && s.peer==1 && k[0].count==2;
+    // A stale label past the graph's end is never read.
+    labels[4]=WRX_USER;bad:=[1]int.[4];s=wr_send(l,g[0],k,bad[..],typed,4);#assert s.gate==WrGate.send && s.peer==-1 && s.decision.why==CsWhy.shape;
+    bad[0]=-1;s=wr_send(l,g[0],k,bad[..],typed,4);#assert s.gate==WrGate.send && l[0].count==3;
+    // Project files only: tokens go to peer 1, but peer 2 also gets rows.
+    proj:=wr_place(j,f,t,p,WRX_PROJECT,PlcGoal.latency,none);file:=[1]int.[1];
+    s=wr_send(l,g[0],k,file[..],proj,5);#assert s.gate==WrGate.consent && s.peer==2 && s.decision.why==CsWhy.none;
+    #assert cs_grant(l,CsDest.{kind=CsKind.peer,id=2,purpose=CsPurpose.compute},WRX_PROJECT,5,50,1,5)==CsWhy.ok;
+    s=wr_send(l,g[0],k,file[..],proj,6);#assert s.gate==WrGate.ok && s.peer==1 && k[0].count==3 && l[0].events[l[0].count-1].dest.id==1;
+    // The grant to peer 2 runs out.
+    s=wr_send(l,g[0],k,file[..],proj,60);#assert s.gate==WrGate.consent && s.peer==2 && s.decision.why==CsWhy.expired;
+    // A refused placement sends nothing.
+    u:=t;u.evidence[1]=WrEvidence.{};s=wr_send(l,g[0],k,rows[..],wr_place(j,f,u,p,5,PlcGoal.latency,none),61);
+    #assert s.gate==WrGate.placement && s.peer==-1 && wr_gate_name(s.gate)=="placement refused";
+    // The whole model on this machine: nothing leaves, nothing is logged.
+    w:=plcx_whole();h:=f;h.peer[0].budget=8000000000;n:=l[0].count;
+    s=wr_send(l,g[0],k,rows[..],wr_place(w,h,t,p,5,PlcGoal.latency,none),62);#assert s.gate==WrGate.ok && s.peer==0 && s.decision.why==CsWhy.ok && l[0].count==n && k[0].count==3;
+    // The whole model on peer 1: tokens go there.
+    h=f;h.peer[1].budget=8000000000;s=wr_send(l,g[0],k,two[..],wr_place(w,h,t,p,5,PlcGoal.latency,none),63);#assert s.gate==WrGate.ok && s.peer==1 && k[0].count==4;
+    // Stage 0's peer is checked too: peer 1's grant has run out, peer 2's has not.
+    #assert cs_grant(l,CsDest.{kind=CsKind.peer,id=2,purpose=CsPurpose.compute},WRX_PROJECT,63,200,1,63)==CsWhy.ok;
+    s=wr_send(l,g[0],k,file[..],proj,150);#assert s.gate==WrGate.consent && s.peer==1 && s.decision.why==CsWhy.expired;
+    // cs_send's own refusal: the sink is full.
+    k[0].ends=ends[0..<4];s=wr_send(l,g[0],k,rows[..],typed,64);#assert s.gate==WrGate.send && s.peer==1 && s.decision.why==CsWhy.capacity;
+    #assert wr_gate_name(WrGate.ok)=="ok" && wr_gate_name(WrGate.send)=="send refused";
+    c:=wr_consent(l[0],typed,65);#assert c.gate==WrGate.ok && c.peer==-1 && c.decision.why==CsWhy.ok;
+}
+
+// book:begin tiers
+// Tiers, lowest first. any: an authenticated peer. vetted: a member of a
+// private mesh (chapter 188's invitation) with enough passed audits and
+// no failed one (chapter 195). owned: a machine whose key is the owner's.
+WR_ANY :: 0;
+WR_VETTED :: 1;
+WR_OWNED :: 2;
+WR_TIERS :: 3;
+// The evidence recorded about a peer. Nothing else raises its tier.
+WrEvidence :: struct {owner:bool;member:bool;audits:int;failed:int;}
+wr_tier :: (e:WrEvidence,vet:int)->int {
+    if e.owner {return WR_OWNED;}
+    if e.member && e.failed==0 && e.audits>=vet {return WR_VETTED;}
+    return WR_ANY;
+}
+// book:end tiers
+
+// book:begin exposure
+// What a peer sees, one bit each: the prompt's token ids, hidden-state
+// rows, and the sampled output tokens.
+WR_TOKENS :: 1;
+WR_ACTS :: 2;
+WR_OUTPUT :: 4;
+WR_KINDS :: 3;
+// The peer of stage s of n, under chapter 186's contract: it computes
+// hidden rows. Stage 0 also gets the prompt's tokens and every sampled
+// token fed back in; the last stage samples the output.
+wr_sees :: (n:int,s:int)->int {
+    x:=WR_ACTS;
+    if s==0 {x|=WR_TOKENS|WR_OUTPUT;}
+    if s==n-1 {x|=WR_OUTPUT;}
+    return x;
+}
+// Every peer's exposure under an assignment. Peer 0, this machine, holds
+// the prompt and gets the output back.
+wr_exposed :: (n:int,peer:[]int)->[8]int {
+    e:[8]int;e[0]=WR_TOKENS|WR_OUTPUT;
+    for s:0..<n {e[peer[s]]|=wr_sees(n,s);}
+    return e;
+}
+// book:end exposure
+
+// book:begin policy
+// The policy: need[class][kind] is the lowest tier that may see that kind
+// (0 tokens, 1 activations, 2 output) of that class (chapter 213's
+// session, user, project, tool, identity). vet: the passed audits that
+// make a member vetted.
+WrPolicy :: struct {need:[5][3]int;vet:int;}
+// The tier a peer needs to see `sees` of a request labelled `label`: the
+// highest the policy names for any class and kind it sees.
+wr_need :: (p:WrPolicy,label:int,sees:int)->int {
+    t:=WR_ANY;
+    for c:0..<CS_CLASSES {for k:0..<WR_KINDS {
+        x:=p.need[c][k];
+        if (label>>c)&1==1 && (sees>>k)&1==1 {t=stg_max(t,x);}
+    }}
+    return t;
+}
+// book:end policy
+
+WR_COUNT_MAX :: 1099511627776;
+
+// book:begin place
+// What the trust layer knows of the fleet: each peer's evidence, and for
+// each ordered pair whether the link has chapter 188's session keys.
+WrTrust :: struct {evidence:[8]WrEvidence;sealed:[8][8]bool;}
+WrStatus :: enum u8 {ok;input;plaintext;exposure;place;}
+// The answer. tier and need: each peer's tier and each stage's need.
+// exposed: what each peer sees under `placed`. plaintext: the live link
+// from -> to has bandwidth and no session. exposure: under `placed`, which
+// the fix would allow, stage `stage` would show `kind` of class `class` to
+// `peer`, whose tier `have` is below `want`; fix is the fewest peers (then
+// the lowest bits) whose tier must rise to owned. place: even with every
+// peer owned it does not place; placed is chapter 189's refusal. tried: the
+// sets of raised peers solved in the search for a fix.
+WrPlacement :: struct {
+    status:WrStatus;placed:PlcPlacement;label:int;tier:[8]int;need:[8]int;exposed:[8]int;
+    from:int;to:int;stage:int;peer:int;cls:int;kind:int;have:int;want:int;fix:int;tried:int;
+}
+wr_valid :: (f:PlcFleet,t:WrTrust,p:WrPolicy,label:int)->bool {
+    if label<0 || label>CS_ALL || p.vet<0 || p.vet>WR_COUNT_MAX {return false;}
+    for c:0..<CS_CLASSES {for k:0..<WR_KINDS {if p.need[c][k]<0 || p.need[c][k]>=WR_TIERS {return false;}}}
+    for a:0..<f.peers {
+        e:=t.evidence[a];
+        if e.audits<0 || e.audits>WR_COUNT_MAX || e.failed<0 || e.failed>WR_COUNT_MAX {return false;}
+    }
+    return true;
+}
+// Place with stage s denied every peer whose tier is below need[s], on top
+// of the job's own denials. Peer 0 is owned.
+wr_try :: (j:PlcJob,f:PlcFleet,tier:[8]int,need:[8]int,goal:PlcGoal,old:[]int)->PlcPlacement {
+    d:=j;
+    for s:0..<j.stages {for a:1..<f.peers {if tier[a]<need[s] {d.deny[s]|=1<<a;}}}
+    return plc_place(d,f,goal,old);
+}
+wr_place :: (j:PlcJob,f:PlcFleet,t:WrTrust,p:WrPolicy,label:int,goal:PlcGoal,old:[]int)->WrPlacement {
+    r:=WrPlacement.{status=WrStatus.input,label=label,from=-1,to=-1,stage=-1,peer=-1,cls=-1,kind=-1,have=-1,want=-1};
+    if !plc_valid(j,f,old) || !wr_valid(f,t,p,label) {return r;}
+    P:=f.peers;n:=j.stages;
+    // Every live link that carries bytes must be sealed.
+    for a:0..<P {for c:0..<P {
+        if a!=c && f.peer[a].live && f.peer[c].live && f.bw[a][c]>0 && !t.sealed[a][c] {
+            r.status=WrStatus.plaintext;r.from=a;r.to=c;return r;
+        }
+    }}
+    for a:0..<P {r.tier[a]=ifx a==0 then WR_OWNED else wr_tier(t.evidence[a],p.vet);}
+    for s:0..<n {r.need[s]=wr_need(p,label,wr_sees(n,s));}
+    r.placed=wr_try(j,f,r.tier,r.need,goal,old);
+    if r.placed.status==PlcStatus.ok {r.status=WrStatus.ok;r.exposed=wr_exposed(n,r.placed.peer[0..<n]);return r;}
+    // Raise sets of the peers below owned to this machine's tier: every set
+    // but the empty one, as bits of m in peer order, keeping the first of
+    // the fewest that places. The last set raises them all, so trust no
+    // longer binds.
+    cand:=0;
+    for a:1..<P {if r.tier[a]<WR_OWNED {cand+=1;}}
+    full:=r.placed;
+    for m:1..<(1<<cand) {
+        up:=r.tier;raise:=0;i:=0;
+        for a:1..<P {if r.tier[a]<WR_OWNED {if (m>>i)&1==1 {up[a]=r.tier[0];raise|=1<<a;}i+=1;}}
+        q:=wr_try(j,f,up,r.need,goal,old);r.tried+=1;full=q;
+        if q.status==PlcStatus.ok && (r.placed.status!=PlcStatus.ok || plc_count(raise)<plc_count(r.fix)) {r.placed=q;r.fix=raise;}
+    }
+    if r.placed.status!=PlcStatus.ok {r.status=WrStatus.place;r.placed=full;return r;}
+    // Name the first stage whose peer is below its need, and the first
+    // class and kind of its exposure that asks for that much.
+    r.status=WrStatus.exposure;r.exposed=wr_exposed(n,r.placed.peer[0..<n]);
+    s:=0;while r.tier[r.placed.peer[s]]>=r.need[s] {s+=1;}
+    r.stage=s;r.peer=r.placed.peer[s];r.have=r.tier[r.peer];r.want=r.need[s];
+    sees:=wr_sees(n,s);
+    for c:0..<CS_CLASSES {for x:0..<WR_KINDS {
+        if p.need[c][x]==r.want && r.cls<0 && (label>>c)&1==1 && (sees>>x)&1==1 {r.cls=c;r.kind=x;}
+    }}
+    return r;
+}
+// book:end place
+
+// book:begin consent
+// What the gate decided. placement: the placement was refused. label: the
+// parts carry a class the placement was not decided for. consent: a peer
+// of the placement has no active grant covering the label. send: chapter
+// 213's cs_send refused. peer: the peer refused, or the one sent to (0
+// when nothing leaves this machine).
+WrGate :: enum u8 {ok;placement;label;consent;send;}
+WrSent :: struct {gate:WrGate;peer:int;decision:CsDecision;}
+// Before any byte leaves: every remote peer of the placement gets bytes
+// derived from the request, so each needs an active grant to compute on
+// every class of the label.
+wr_consent :: (l:CsLedger,p:WrPlacement,now:int)->WrSent {
+    for s:0..<p.placed.stages {
+        a:=p.placed.peer[s];
+        if a==0 {continue;}
+        d:=cs_decide(l,CsDest.{kind=CsKind.peer,id=a,purpose=CsPurpose.compute},p.label,now);
+        if d.why!=CsWhy.ok {return WrSent.{gate=WrGate.consent,peer=a,decision=d};}
+    }
+    return WrSent.{gate=WrGate.ok,peer=-1,decision=cs_fail(CsWhy.ok)};
+}
+// This machine's message into the pipeline: the prompt's tokens to stage
+// 0's peer, or, when this machine runs stage 0, its hidden rows to stage
+// 1's peer. It goes through cs_send, which logs it before the bytes move.
+wr_send :: (l:[]CsLedger,g:CsGraph,sink:[]CsSink,parts:[]int,p:WrPlacement,now:int)->WrSent {
+    r:=WrSent.{gate=WrGate.placement,peer=-1,decision=cs_fail(CsWhy.shape)};
+    if p.status!=WrStatus.ok {return r;}
+    for q:parts {if q<0 || q>=g.count {r.gate=WrGate.send;return r;}}
+    if (cs_label(g,parts)|p.label)!=p.label {r.gate=WrGate.label;return r;}
+    c:=wr_consent(l[0],p,now);
+    if c.gate!=WrGate.ok {return c;}
+    // A one-stage placement leaves peer[1] at 0: nothing leaves.
+    to:=p.placed.peer[0];
+    if to==0 {to=p.placed.peer[1];}
+    r.peer=to;
+    if to==0 {r.gate=WrGate.ok;r.decision=c.decision;return r;}
+    r.decision=cs_send(l,g,sink,CsMessage.{dest=CsDest.{kind=CsKind.peer,id=to,purpose=CsPurpose.compute},parts=parts},now);
+    r.gate=ifx r.decision.why==CsWhy.ok then WrGate.ok else WrGate.send;
+    return r;
+}
+// book:end consent
+
+wr_tier_name :: (t:int)->string {names:=[3]string.["any","vetted","owned"];return names[t];}
+wr_kind_name :: (k:int)->string {names:=[3]string.["prompt tokens","activations","output tokens"];return names[k];}
+wr_class_name :: (c:int)->string {names:=[5]string.["session","user","project","tool","identity"];return names[c];}
+wr_status_name :: (s:WrStatus)->string {names:=[5]string.["ok","input","plaintext link","exposure","does not place"];return names[cast(int)s];}
+wr_gate_name :: (g:WrGate)->string {names:=[5]string.["ok","placement refused","label not placed","no consent","send refused"];return names[cast(int)g];}

@@ -17,7 +17,7 @@
 #load "stage-plan.coax";
 #load "../tests/place-checks.coax";  // the checks' hand-worked fleet, random fleets and brute-force placer
 
-PlcStatus :: enum u8 {ok;input;memory;deadline;peers;link;}
+PlcStatus :: enum u8 {ok;input;memory;deadline;peers;link;trust;}
 PlcGoal :: enum u8 {latency;throughput;}
 
 // Bytes, multiply-adds and nanoseconds: at most 2^44.
@@ -116,6 +116,31 @@ PLC_RATE_MAX :: 1099511627776;
     #assert plc_status_name(PlcStatus.link)=="no linked chain of peers" && plc_status_name(PlcStatus.ok)=="ok";
     #assert plc_goal_name(PlcGoal.throughput)=="throughput" && plc_goal_name(PlcGoal.latency)=="latency";
 }
+#test "denied peers: never used, never named, and trust when none is left" {
+    j:=plcx_job();f:=plcx_fleet();zero:[1]int;none:=zero[0..<0];
+    // Stage 0 may not run on peer 1: the next best is (0, 1).
+    d:=j;d.deny[0]=2;p:=plc_place(d,f,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.ok && p.peer[0]==0 && p.peer[1]==1 && p.cost==48391507;
+    // Stage 1 may not run on peer 2 either way round.
+    d=j;d.deny[1]=4;p=plc_place(d,f,PlcGoal.latency,none);#assert p.status==PlcStatus.ok && p.peer[0]==0 && p.peer[1]==1;
+    // Bits past the fleet deny nothing.
+    d=j;d.deny[0]=248;d.deny[1]=128;p=plc_place(d,f,PlcGoal.latency,none);#assert p.status==PlcStatus.ok && p.peer[0]==1 && p.peer[1]==2;
+    // No allowed peer: trust, before memory.
+    d=j;d.deny[1]=7;p=plc_place(d,f,PlcGoal.latency,none);#assert p.status==PlcStatus.trust && p.stage==1 && p.who==-1;
+    // A dead allowed peer is no peer.
+    d=j;d.deny[1]=3;g:=f;g.peer[2].live=false;p=plc_place(d,g,PlcGoal.latency,none);#assert p.status==PlcStatus.trust && p.stage==1;
+    g.peer[2].live=true;p=plc_place(d,g,PlcGoal.latency,none);#assert p.status==PlcStatus.ok && p.peer[0]==1 && p.peer[1]==2;
+    // Memory and the deadline count allowed peers only: peer 1 has the room but is denied.
+    w:=plcx_whole();w.deny[0]=2;g=f;g.peer[1].budget=8000000000;p=plc_place(w,g,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.memory && p.who==0 && p.gap==2932815360;
+    g.peer[2].budget=8000000000;g.deadline=3000000000;p=plc_place(w,g,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.deadline && p.who==2;
+    w.deny[0]=6;p=plc_place(w,g,PlcGoal.latency,none);#assert p.status==PlcStatus.memory && p.who==0;
+    // Two stages that may both run only on peer 0: one peer short.
+    d=j;d.deny[0]=6;d.deny[1]=6;g=f;g.peer[0].budget=8000000000;p=plc_place(d,g,PlcGoal.latency,none);
+    #assert p.status==PlcStatus.peers && p.set==3 && p.gap==1;
+    #assert plc_status_name(PlcStatus.trust)=="no peer is allowed";
+}
 #test "whole on this machine, then whole on a peer, then a split" {
     j:=plcx_job();f:=plcx_fleet();w:=plcx_whole();
     jobs:=[2]PlcJob.[w,j];c:=plc_choose(jobs[..],f,PlcGoal.latency);
@@ -170,6 +195,10 @@ PLC_RATE_MAX :: 1099511627776;
     g.peers=1;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.peers;
     s:=j;s.stage[0].bytes=0;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.input;
     g=f;g.peer[0].macs=0;#assert plc_place(j,g,PlcGoal.latency,none).status==PlcStatus.input;
+    s=j;s.deny[1]=-1;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.input;
+    s.deny[1]=256;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.input;
+    s.deny[1]=255;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.trust;
+    s.deny[1]=0;s.deny[2]=-1;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.ok;
     s=j;s.stages=0;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.input;
     s.stages=9;#assert plc_place(s,f,PlcGoal.latency,none).status==PlcStatus.input;
     // Eight stages on eight peers.
@@ -183,6 +212,8 @@ PLC_RATE_MAX :: 1099511627776;
 }
 #forall "the solver's placement is the brute force's, on random fleets" seed:0..<300,n:1..<5 #steps 400000000 {
     r:=plcx_random(seed,n);goal:=ifx seed%2==0 then PlcGoal.latency else PlcGoal.throughput;
+    // A third of the cases deny each stage about a quarter of the peers.
+    if seed%3==1 {for s:0..<n {d:=plcx_next(seed*31+s);r.work.deny[s]=(d%256)&((d>>8)%256);}}
     old:[8]int;moved:=seed%3==0;
     if moved {for s:0..<n {old[s]=plcx_pick(seed*13+s,r.fleet.peers);}}
     o:=ifx moved then old[0..<n] else old[0..<0];
@@ -205,9 +236,10 @@ PLC_RATE_MAX :: 1099511627776;
 // bytes, and the bytes it sends for each token: the boundary rows to the
 // next stage, or the sampled token back from the last.
 PlcStage :: struct {bytes:int;read:int;macs:int;package:int;out:int;}
-// A job: its stages in pipeline order, and the bytes this machine sends
-// the first stage for each token.
-PlcJob :: struct {stages:int;stage:[8]PlcStage;entry:int;}
+// A job: its stages in pipeline order, the bytes this machine sends the
+// first stage for each token, and for each stage a bit for every peer it
+// may not run on (chapter 194's trust rules; 0: any peer).
+PlcJob :: struct {stages:int;stage:[8]PlcStage;entry:int;deny:[8]int;}
 // A peer's advertisement: its memory budget, its rates in millions a second
 // (multiply-adds, memory bytes read, bytes downloaded, bytes hashed), and
 // a bit for each stage whose package it already holds.
@@ -276,7 +308,7 @@ plc_valid :: (j:PlcJob,f:PlcFleet,old:[]int)->bool {
     for s:0..<j.stages {
         t:=j.stage[s];
         if !plc_in(t.bytes,1,PLC_AMOUNT_MAX) || !plc_in(t.read,0,PLC_AMOUNT_MAX) || !plc_in(t.macs,0,PLC_AMOUNT_MAX) ||
-            !plc_in(t.package,0,PLC_AMOUNT_MAX) || !plc_in(t.out,0,PLC_AMOUNT_MAX) {return false;}
+            !plc_in(t.package,0,PLC_AMOUNT_MAX) || !plc_in(t.out,0,PLC_AMOUNT_MAX) || !plc_in(j.deny[s],0,255) {return false;}
     }
     for a:0..<f.peers {
         p:=f.peer[a];
@@ -298,18 +330,20 @@ plc_valid :: (j:PlcJob,f:PlcFleet,old:[]int)->bool {
 // deadline: `stage` fits on no peer, and `who` is the peer it misses by the
 // least, by `gap` bytes or nanoseconds. peers: the stages in the bit set
 // `set` fit on `gap` fewer peers than they number. link: every stage has
-// a peer of its own, but no chain of them is linked.
+// a peer of its own, but no chain of them is linked. trust: `stage` may run
+// on no live peer at all.
 PlcPlacement :: struct {
     status:PlcStatus;goal:PlcGoal;stages:int;peer:[8]int;cost:int;moves:int;
     latency:int;period:int;ready:int;compute:[8]int;hop:[9]int;
     stage:int;who:int;gap:int;set:int;
 }
 plc_count :: (mask:int)->int {n:=0;m:=mask;while m!=0 {n+=m&1;m=m>>1;}return n;}
-// May stage s run on peer a? It must be live and fit; unless it stays where
-// it was, it must be ready by the deadline.
+// May stage s run on peer a? It must be live and allowed; it must fit and,
+// unless it stays where it was, be ready by the deadline.
+plc_allowed :: (j:PlcJob,f:PlcFleet,s:int,a:int)->bool {return f.peer[a].live && (j.deny[s]>>a)&1==0;}
 plc_fits :: (j:PlcJob,f:PlcFleet,old:[]int,s:int,a:int)->bool {
     p:=f.peer[a];
-    if !p.live || j.stage[s].bytes>p.budget {return false;}
+    if !plc_allowed(j,f,s,a) || j.stage[s].bytes>p.budget {return false;}
     return (old.count>0 && old[s]==a) || plc_ready(j.stage[s],p,s)<=f.deadline;
 }
 // Is (m, c) better than the best so far (bm, bc)? Fewer moves, then lower
@@ -323,13 +357,16 @@ plc_place :: (j:PlcJob,f:PlcFleet,goal:PlcGoal,old:[]int)->PlcPlacement {
     for s:0..<n {
         for a:0..<P {if plc_fits(j,f,old,s,a) {hosts[s]|=1<<a;}}
         if hosts[s]!=0 {continue;}
-        // Memory binds unless some live peer has the bytes; then the deadline does.
-        room:=false;
-        for a:0..<P {if f.peer[a].live && j.stage[s].bytes<=f.peer[a].budget {room=true;}}
-        r.status=ifx room then PlcStatus.deadline else PlcStatus.memory;r.stage=s;r.who=-1;
+        // Trust binds when no live peer is allowed; memory unless an allowed
+        // peer has the bytes; then the deadline does.
+        allowed:=false;room:=false;
+        for a:0..<P {if plc_allowed(j,f,s,a) {allowed=true;if j.stage[s].bytes<=f.peer[a].budget {room=true;}}}
+        r.stage=s;r.who=-1;
+        if !allowed {r.status=PlcStatus.trust;return r;}
+        r.status=ifx room then PlcStatus.deadline else PlcStatus.memory;
         for a:0..<P {
             p:=f.peer[a];
-            if !p.live || (room && j.stage[s].bytes>p.budget) {continue;}
+            if !plc_allowed(j,f,s,a) || (room && j.stage[s].bytes>p.budget) {continue;}
             over:=ifx room then plc_ready(j.stage[s],p,s)-f.deadline else j.stage[s].bytes-p.budget;
             if r.who<0 || over<r.gap {r.gap=over;r.who=a;}
         }
@@ -420,7 +457,7 @@ plc_choose :: (jobs:[]PlcJob,f:PlcFleet,goal:PlcGoal)->PlcChoice {
 // book:end choose
 
 plc_status_name :: (s:PlcStatus)->string {
-    names:=[6]string.["ok","input","no peer has the memory","no peer is ready in time","too few peers","no linked chain of peers"];
+    names:=[7]string.["ok","input","no peer has the memory","no peer is ready in time","too few peers","no linked chain of peers","no peer is allowed"];
     return names[cast(int)s];
 }
 plc_goal_name :: (g:PlcGoal)->string {names:=[2]string.["latency","throughput"];return names[cast(int)g];}

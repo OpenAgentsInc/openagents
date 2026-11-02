@@ -72,7 +72,7 @@ plcx_ready :: (j:PlcJob,f:PlcFleet,s:int,a:int)->int {
 }
 plcx_stays :: (old:[]int,s:int,a:int)->bool {return old.count>0 && old[s]==a;}
 plcx_fits :: (j:PlcJob,f:PlcFleet,old:[]int,s:int,a:int)->bool {
-    if !f.peer[a].live || f.peer[a].budget<j.stage[s].bytes {return false;}
+    if !f.peer[a].live || (j.deny[s] & (1<<a))!=0 || f.peer[a].budget<j.stage[s].bytes {return false;}
     if plcx_stays(old,s,a) {return true;}
     return plcx_ready(j,f,s,a)<=f.deadline;
 }
@@ -142,18 +142,22 @@ plcx_brute :: (j:PlcJob,f:PlcFleet,goal:PlcGoal,old:[]int)->PlcxBest {
     }
     return b;
 }
-// Why nothing places, found by enumeration: a stage with no peer (memory if
-// no live peer has its bytes, else the deadline), no way to give each stage
-// its own peer, or else the links.
+// Why nothing places, found by enumeration: a stage with no peer (trust if
+// it may run on no live peer, memory if no allowed live peer has its bytes,
+// else the deadline), no way to give each stage its own peer, or else the
+// links.
 plcx_refusal :: (j:PlcJob,f:PlcFleet,old:[]int)->PlcStatus {
     n:=j.stages;P:=f.peers;fits:[8][8]bool;
     for s:0..<n {
-        any:=false;bytes:=false;
+        any:=false;bytes:=false;may:=false;
         for a:0..<P {
             fits[s][a]=plcx_fits(j,f,old,s,a);
             if fits[s][a] {any=true;}
-            if f.peer[a].live && f.peer[a].budget>=j.stage[s].bytes {bytes=true;}
+            ok:=f.peer[a].live && (j.deny[s] & (1<<a))==0;
+            if ok {may=true;}
+            if ok && f.peer[a].budget>=j.stage[s].bytes {bytes=true;}
         }
+        if !may {return PlcStatus.trust;}
         if !any {return ifx bytes then PlcStatus.deadline else PlcStatus.memory;}
     }
     digit:[8]int;total:=1;for s:0..<n {total*=P;}

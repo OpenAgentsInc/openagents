@@ -1,0 +1,173 @@
+// Chapter 194's check helpers, loaded by psionic/lib/peer/trust.coax and
+// owned by its checks: a walk of the pipeline message by message, the
+// hand-worked policy and fleet, random trust, and a brute-force placer that
+// tries every assignment and every set of raised peers with its own rules.
+// Nothing here is used by the trust layer itself.
+
+// book:begin walk
+// Two tokens through the pipeline, message by message: what each peer
+// ends up holding. This machine holds the prompt; each message into stage
+// 0 carries the prompt's tokens, then the token sampled last; each stage
+// computes hidden rows from what it got and sends them on; the last stage
+// samples a token and sends it home.
+wrx_walk :: (n:int,peer:[]int)->[8]int {
+    seen:[8]int;seen[0]=WR_TOKENS;carry:=WR_TOKENS;
+    for step:0..<2 {
+        what:=carry;at:=0;
+        for s:0..<n {
+            seen[peer[s]]|=what;seen[peer[s]]|=WR_ACTS;
+            what=WR_ACTS;at=peer[s];
+        }
+        seen[at]|=WR_OUTPUT;seen[0]|=WR_OUTPUT;carry=WR_OUTPUT;
+    }
+    return seen;
+}
+// book:end walk
+
+// book:begin fixture
+// The chapter's policy. Rows are classes (session, user, project, tool,
+// identity); columns are prompt tokens, activations, output tokens.
+wrx_policy :: ()->WrPolicy {
+    p:=WrPolicy.{vet=3};
+    p.need[0]=[3]int.[WR_OWNED,WR_VETTED,WR_OWNED];
+    p.need[1]=[3]int.[WR_OWNED,WR_VETTED,WR_OWNED];
+    p.need[2]=[3]int.[WR_VETTED,WR_ANY,WR_VETTED];
+    p.need[3]=[3]int.[WR_VETTED,WR_ANY,WR_VETTED];
+    p.need[4]=[3]int.[WR_OWNED,WR_OWNED,WR_OWNED];
+    return p;
+}
+// Chapter 189's three peers: this machine (no evidence needed), the
+// owner's desktop, and a friend's machine in the private mesh with five
+// passed audits. Every link has session keys.
+wrx_trust :: ()->WrTrust {
+    t:WrTrust;
+    t.evidence[1]=WrEvidence.{owner=true};
+    t.evidence[2]=WrEvidence.{member=true,audits=5};
+    for a:0..<8 {for c:0..<8 {t.sealed[a][c]=true;}}
+    return t;
+}
+// book:end fixture
+WRX_SESSION :: 1; WRX_USER :: 2; WRX_PROJECT :: 4; WRX_TOOL :: 8; WRX_IDENTITY :: 16;
+
+// The brute force's tier, written from the chapter's table.
+wrx_tier :: (e:WrEvidence,vet:int)->int {
+    if e.owner {return 2;}
+    if !e.member || e.failed>0 || e.audits<vet {return 0;}
+    return 1;
+}
+// What a peer that holds `seen` of `label` needs, by the brute force.
+wrx_need :: (p:WrPolicy,label:int,seen:int)->int {
+    t:=0;
+    for c:0..<5 {if (label & (1<<c))!=0 {for k:0..<3 {if (seen & (1<<k))!=0 && p.need[c][k]>t {t=p.need[c][k];}}}}
+    return t;
+}
+// The brute force's answer: status as an int (0 ok, 2 plaintext, 3
+// exposure, 4 does not place), the assignment, its cost and moves, the
+// raised set, the plaintext link and the named exposure.
+WrxBest :: struct {status:int;peer:[8]int;cost:int;moves:int;fix:int;from:int;to:int;stage:int;who:int;cls:int;kind:int;have:int;want:int;}
+// Every assignment of stages to distinct peers, in lexicographic order of
+// peers, with its moves, its cost (-1: it does not fit or a hop has no
+// link) and the tier its walk exposure needs on each stage's peer. At most
+// 5 peers and 4 stages.
+WrxAll :: struct {count:int;cost:[1024]int;moves:[1024]int;need:[1024][4]int;}
+wrx_all :: (w:[]WrxAll,j:PlcJob,f:PlcFleet,p:WrPolicy,label:int,goal:PlcGoal,old:[]int) {
+    n:=j.stages;P:=f.peers;digit:[8]int;
+    fits:[8][8]bool;time:[8][8]int;hops:[9][8][8]int;
+    for s:0..<n {for a:0..<P {
+        fits[s][a]=plcx_fits(j,f,old,s,a);q:=f.peer[a];
+        ta:=plcx_ns(j.stage[s].macs,q.macs);tm:=plcx_ns(j.stage[s].read,q.read);
+        time[s][a]=tm;if ta>tm {time[s][a]=ta;}
+    }}
+    for k:0..<n+1 {
+        sent:=j.entry;if k>0 {sent=j.stage[k-1].out;}
+        for a:0..<P {for c:0..<P {hops[k][a][c]=plcx_hop(f,a,c,sent);}}
+    }
+    w[0].count=1;for s:0..<n {w[0].count*=P;}
+    for code:0..<w[0].count {
+        x:=code;for k:0..<n {digit[n-1-k]=x%P;x/=P;}
+        ok:=true;moves:=0;w[0].cost[code]=-1;
+        for s:0..<n {
+            if !fits[s][digit[s]] {ok=false;}
+            for t:0..<s {if digit[t]==digit[s] {ok=false;}}
+            if old.count>0 && old[s]!=digit[s] {moves+=1;}
+        }
+        if !ok {continue;}
+        seen:=wrx_walk(n,digit[0..<n]);
+        for s:0..<n {w[0].need[code][s]=ifx digit[s]==0 then 0 else wrx_need(p,label,seen[digit[s]]);}
+        latency:=0;period:=0;at:=0;
+        for k:0..<n+1 {
+            to:=0;if k<n {to=digit[k];}
+            h:=hops[k][at][to];
+            if h<0 {ok=false;break;}
+            step:=h;if k>0 {step+=time[k-1][at];}
+            latency+=step;if step>period {period=step;}
+            at=to;
+        }
+        if !ok {continue;}
+        w[0].cost[code]=latency;if goal==PlcGoal.throughput {w[0].cost[code]=period;}
+        w[0].moves[code]=moves;
+    }
+}
+// The best assignment whose every peer's tier covers its need: the first
+// with the fewest moves and then the lowest cost. cost -1: none.
+wrx_best :: (w:[]WrxAll,n:int,P:int,tier:[8]int)->PlcxBest {
+    b:=PlcxBest.{cost=-1};
+    for code:0..<w[0].count {
+        if w[0].cost[code]<0 {continue;}
+        x:=code;ok:=true;digit:[8]int;for k:0..<n {digit[n-1-k]=x%P;x/=P;}
+        for s:0..<n {if w[0].need[code][s]>tier[digit[s]] {ok=false;}}
+        if !ok {continue;}
+        m:=w[0].moves[code];c:=w[0].cost[code];
+        if b.cost<0 || m<b.moves || (m==b.moves && c<b.cost) {b.cost=c;b.moves=m;b.peer=digit;}
+    }
+    return b;
+}
+wrx_bits :: (m:int)->int {c:=0;for i:0..<8 {if (m & (1<<i))!=0 {c+=1;}}return c;}
+wrx_brute :: (j:PlcJob,f:PlcFleet,t:WrTrust,p:WrPolicy,label:int,goal:PlcGoal,old:[]int)->WrxBest {
+    r:=WrxBest.{status=4,from=-1,to=-1,stage=-1,who=-1,cls=-1,kind=-1,have=-1,want=-1};P:=f.peers;n:=j.stages;
+    for a:0..<P {for c:0..<P {
+        if a!=c && f.peer[a].live && f.peer[c].live && f.bw[a][c]>=1 && !t.sealed[a][c] && r.from<0 {r.status=2;r.from=a;r.to=c;}
+    }}
+    if r.status==2 {return r;}
+    tier:[8]int;for a:1..<P {tier[a]=wrx_tier(t.evidence[a],p.vet);}tier[0]=2;
+    // Each assignment's cost and needs once; the zero-filled rest is never read.
+    all:[1]WrxAll;wrx_all(all[..],j,f,p,label,goal,old);
+    // Sets of raised peers: none, then by size, then by bits.
+    for k:0..<P+1 {for m:0..<(1<<P) {
+        if wrx_bits(m)!=k {continue;}
+        up:=tier;for a:0..<P {if (m & (1<<a))!=0 {up[a]=2;}}
+        b:=wrx_best(all[..],n,P,up);
+        if b.cost<0 {continue;}
+        r.peer=b.peer;r.cost=b.cost;r.moves=b.moves;r.fix=m;r.status=ifx k==0 then 0 else 3;
+        if k==0 {return r;}
+        seen:=wrx_walk(n,b.peer[0..<n]);
+        for s:0..<n {
+            a:=b.peer[s];w:=wrx_need(p,label,seen[a]);
+            if r.stage<0 && a!=0 && w>tier[a] {r.stage=s;r.who=a;r.have=tier[a];r.want=w;}
+        }
+        for c:0..<5 {for x:0..<3 {
+            if r.cls<0 && (label & (1<<c))!=0 && (seen[r.who] & (1<<x))!=0 && p.need[c][x]==r.want {r.cls=c;r.kind=x;}
+        }}
+        return r;
+    }}
+    return r;
+}
+wrx_input :: (r:WrPlacement)->bool {return r.status==WrStatus.input;}
+// Random evidence, policy, label and seals for a random fleet.
+WrxCase :: struct {trust:WrTrust;policy:WrPolicy;label:int;}
+wrx_random :: (seed:int,peers:int)->WrxCase {
+    c:WrxCase;x:=seed*40503%999983+17;
+    x=plcx_next(x);c.label=x%32;x=plcx_next(x);c.policy.vet=x%4;
+    for k:0..<5 {for v:0..<3 {x=plcx_next(x);c.policy.need[k][v]=x%3;}}
+    for a:0..<8 {
+        e:WrEvidence;
+        x=plcx_next(x);e.owner=x%4==0;x=plcx_next(x);e.member=x%2==0;
+        x=plcx_next(x);e.audits=x%5;x=plcx_next(x);e.failed=ifx x%4==0 then 1 else 0;
+        c.trust.evidence[a]=e;
+        for b:0..<8 {c.trust.sealed[a][b]=true;}
+    }
+    // One case in seven leaves one link without keys.
+    x=plcx_next(x);
+    if x%7==0 {x=plcx_next(x);a:=x%peers;x=plcx_next(x);b:=x%peers;c.trust.sealed[a][b]=false;}
+    return c;
+}

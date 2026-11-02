@@ -1,0 +1,41 @@
+// Chapter 194: place Ministral 3 3B's two stages on chapter 189's three
+// peers under a trust policy, print what each peer would see, then pass the
+// consent gate before the first byte leaves this machine.
+#import "Basic";
+#load "../lib/peer/trust.coax";
+
+trust_sees :: (x:int) {
+    if x==0 {print("nothing");return;}
+    first:=true;
+    for k:0..<WR_KINDS {if (x>>k)&1==1 {if !first {print(", ");}print("%",wr_kind_name(k));first=false;}}
+}
+trust_show :: (name:string,r:WrPlacement) {
+    print("%: %\n",name,wr_status_name(r.status));
+    print("  tiers:");for a:0..<3 {print(" peer % %",a,wr_tier_name(r.tier[a]));}print("\n");
+    print("  needs:");for s:0..<r.placed.stages {print(" stage % %",s,wr_tier_name(r.need[s]));}print("\n");
+    print("  stages on peers");for s:0..<r.placed.stages {print(" %",r.placed.peer[s]);}print(", latency % ns\n",r.placed.cost);
+    for a:0..<3 {print("  peer % sees ",a);trust_sees(r.exposed[a]);print("\n");}
+}
+
+// book:begin run
+main :: () {
+    j:=plcx_job();f:=plcx_fleet();t:=wrx_trust();p:=wrx_policy();zero:[1]int;none:=zero[0..<0];
+    proj:=wr_place(j,f,t,p,WRX_PROJECT,PlcGoal.latency,none);
+    trust_show("project files",proj);
+    typed:=wr_place(j,f,t,p,WRX_SESSION|WRX_PROJECT,PlcGoal.latency,none);
+    trust_show("typed in the session, with project files",typed);
+    // The consent gate: a prompt, a project file, and stage 0's rows made from both.
+    events:[16]CsEvent;grants:[8]CsGrant;texts:[8]string;own:[8]int;labels:[8]int;bytes:[256]u8;ends:[8]int;sent:[8]int;nb:[1]int;
+    lb:=[1]CsLedger.[CsLedger.{events=events[..],grants=grants[..]}];l:=lb[..];
+    gb:=[1]CsGraph.[CsGraph.{texts=texts[..],own=own[..],labels=labels[..]}];g:=gb[..];
+    kb:=[1]CsSink.[CsSink.{bytes=bytes[..],ends=ends[..],events=sent[..]}];k:=kb[..];
+    a:=cs_node(g,"Fix the flaky test in parser.rs.",WRX_SESSION,nb[0..<0]);a=cs_node(g,"fn parse(s: &str) -> Ast",WRX_PROJECT,nb[0..<0]);
+    two:=[2]int.[0,1];rows:=[1]int.[cs_node(g,"<stage 0 rows>",0,two[..])];
+    s:=wr_send(l,g[0],k,rows[..],typed,1);
+    print("send stage 0's rows at tick 1: %, peer %, %\n",wr_gate_name(s.gate),s.peer,ifx s.decision.why==CsWhy.none then "no grant" else "?");
+    w:=cs_grant(l,CsDest.{kind=CsKind.peer,id=1,purpose=CsPurpose.compute},WRX_SESSION|WRX_PROJECT,2,100,1,2);
+    print("grant peer 1 compute on session and project, ticks 2 to 100: %\n",ifx w==CsWhy.ok then "ok" else "refused");
+    s=wr_send(l,g[0],k,rows[..],typed,3);
+    print("send stage 0's rows at tick 3: %, peer %, % bytes out, % events logged\n",wr_gate_name(s.gate),s.peer,k[0].used,l[0].count);
+}
+// book:end run

@@ -2949,6 +2949,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/prompt-trust.coax",
+      "chapter": "psionic/book/ch194-who-can-read-the-prompt.md",
+      "stdout": "psionic/fixtures/prompt-trust.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/prompt-trust-refuse.coax",
+      "chapter": "psionic/book/ch194-who-can-read-the-prompt.md",
+      "stdout": "psionic/fixtures/prompt-trust-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

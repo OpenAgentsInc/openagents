@@ -1,0 +1,45 @@
+// Chapter 194: requests the trust layer refuses, each with what it names:
+// the plaintext link, the exposure and the fewest peers to raise, the
+// placement that fails however trusted, the peer without consent, the part
+// whose class was not placed, and a malformed label.
+#import "Basic";
+#load "../lib/peer/trust.coax";
+
+trust_why :: (name:string,r:WrPlacement) {
+    print("%: %",name,wr_status_name(r.status));
+    if r.status==WrStatus.plaintext {print(": link % -> % has no session keys",r.from,r.to);}
+    if r.status==WrStatus.exposure {
+        print(": stage % would show % % to peer % (%), which needs %",r.stage,wr_class_name(r.cls),wr_kind_name(r.kind),r.peer,wr_tier_name(r.have),wr_tier_name(r.want));
+        print("; raise peers");for a:0..<8 {if (r.fix>>a)&1==1 {print(" %",a);}}
+        print(" to owned (% sets tried), then stages on",r.tried);for s:0..<r.placed.stages {print(" %",r.placed.peer[s]);}
+    }
+    if r.status==WrStatus.place {print(": %, stage % misses peer % by % bytes",plc_status_name(r.placed.status),r.placed.stage,r.placed.who,r.placed.gap);}
+    print("\n");
+}
+
+// book:begin refuse
+main :: () {
+    j:=plcx_job();f:=plcx_fleet();t:=wrx_trust();p:=wrx_policy();zero:[1]int;none:=zero[0..<0];
+    u:=t;u.sealed[1][2]=false;
+    trust_why("peer 1 to peer 2 without keys",wr_place(j,f,u,p,WRX_PROJECT,PlcGoal.latency,none));
+    u=t;u.evidence[1]=WrEvidence.{member=true,audits=5};
+    trust_why("the desktop without its owner key",wr_place(j,f,u,p,WRX_SESSION|WRX_PROJECT,PlcGoal.latency,none));
+    trust_why("identity data",wr_place(j,f,u,p,WRX_PROJECT|WRX_IDENTITY,PlcGoal.latency,none));
+    trust_why("the whole model",wr_place(plcx_whole(),f,u,p,WRX_PROJECT,PlcGoal.latency,none));
+    trust_why("label 32",wr_place(j,f,t,p,32,PlcGoal.latency,none));
+    // The gate: a grant for peer 1 only.
+    events:[16]CsEvent;grants:[8]CsGrant;texts:[8]string;own:[8]int;labels:[8]int;bytes:[256]u8;ends:[8]int;sent:[8]int;nb:[1]int;
+    lb:=[1]CsLedger.[CsLedger.{events=events[..],grants=grants[..]}];l:=lb[..];
+    gb:=[1]CsGraph.[CsGraph.{texts=texts[..],own=own[..],labels=labels[..]}];g:=gb[..];
+    kb:=[1]CsSink.[CsSink.{bytes=bytes[..],ends=ends[..],events=sent[..]}];k:=kb[..];
+    file:=[1]int.[cs_node(g,"fn parse(s: &str) -> Ast",WRX_PROJECT,nb[0..<0])];
+    fact:=[1]int.[cs_node(g,"editor = helix",WRX_USER,nb[0..<0])];
+    w:=cs_grant(l,CsDest.{kind=CsKind.peer,id=1,purpose=CsPurpose.compute},WRX_SESSION|WRX_PROJECT,1,100,1,1);
+    proj:=wr_place(j,f,t,p,WRX_PROJECT,PlcGoal.latency,none);
+    s:=wr_send(l,g[0],k,file[..],proj,2);
+    print("send a project file through peers 1 and 2: %, peer %\n",wr_gate_name(s.gate),s.peer);
+    s=wr_send(l,g[0],k,fact[..],proj,2);
+    print("send a fact about the user to the same placement: %\n",wr_gate_name(s.gate));
+    print("bytes out: %, events logged: %\n",k[0].used,l[0].count);
+}
+// book:end refuse

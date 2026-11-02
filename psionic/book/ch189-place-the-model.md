@@ -45,9 +45,10 @@ plan for one model at one context length.
 // bytes, and the bytes it sends for each token: the boundary rows to the
 // next stage, or the sampled token back from the last.
 PlcStage :: struct {bytes:int;read:int;macs:int;package:int;out:int;}
-// A job: its stages in pipeline order, and the bytes this machine sends
-// the first stage for each token.
-PlcJob :: struct {stages:int;stage:[8]PlcStage;entry:int;}
+// A job: its stages in pipeline order, the bytes this machine sends the
+// first stage for each token, and for each stage a bit for every peer it
+// may not run on (chapter 194's trust rules; 0: any peer).
+PlcJob :: struct {stages:int;stage:[8]PlcStage;entry:int;deny:[8]int;}
 // A peer's advertisement: its memory budget, its rates in millions a second
 // (multiply-adds, memory bytes read, bytes downloaded, bytes hashed), and
 // a bit for each stage whose package it already holds.
@@ -248,18 +249,20 @@ the best tail for a set and a peer is also part of the best whole.
 // deadline: `stage` fits on no peer, and `who` is the peer it misses by the
 // least, by `gap` bytes or nanoseconds. peers: the stages in the bit set
 // `set` fit on `gap` fewer peers than they number. link: every stage has
-// a peer of its own, but no chain of them is linked.
+// a peer of its own, but no chain of them is linked. trust: `stage` may run
+// on no live peer at all.
 PlcPlacement :: struct {
     status:PlcStatus;goal:PlcGoal;stages:int;peer:[8]int;cost:int;moves:int;
     latency:int;period:int;ready:int;compute:[8]int;hop:[9]int;
     stage:int;who:int;gap:int;set:int;
 }
 plc_count :: (mask:int)->int {n:=0;m:=mask;while m!=0 {n+=m&1;m=m>>1;}return n;}
-// May stage s run on peer a? It must be live and fit; unless it stays where
-// it was, it must be ready by the deadline.
+// May stage s run on peer a? It must be live and allowed; it must fit and,
+// unless it stays where it was, be ready by the deadline.
+plc_allowed :: (j:PlcJob,f:PlcFleet,s:int,a:int)->bool {return f.peer[a].live && (j.deny[s]>>a)&1==0;}
 plc_fits :: (j:PlcJob,f:PlcFleet,old:[]int,s:int,a:int)->bool {
     p:=f.peer[a];
-    if !p.live || j.stage[s].bytes>p.budget {return false;}
+    if !plc_allowed(j,f,s,a) || j.stage[s].bytes>p.budget {return false;}
     return (old.count>0 && old[s]==a) || plc_ready(j.stage[s],p,s)<=f.deadline;
 }
 // Is (m, c) better than the best so far (bm, bc)? Fewer moves, then lower
@@ -273,13 +276,16 @@ plc_place :: (j:PlcJob,f:PlcFleet,goal:PlcGoal,old:[]int)->PlcPlacement {
     for s:0..<n {
         for a:0..<P {if plc_fits(j,f,old,s,a) {hosts[s]|=1<<a;}}
         if hosts[s]!=0 {continue;}
-        // Memory binds unless some live peer has the bytes; then the deadline does.
-        room:=false;
-        for a:0..<P {if f.peer[a].live && j.stage[s].bytes<=f.peer[a].budget {room=true;}}
-        r.status=ifx room then PlcStatus.deadline else PlcStatus.memory;r.stage=s;r.who=-1;
+        // Trust binds when no live peer is allowed; memory unless an allowed
+        // peer has the bytes; then the deadline does.
+        allowed:=false;room:=false;
+        for a:0..<P {if plc_allowed(j,f,s,a) {allowed=true;if j.stage[s].bytes<=f.peer[a].budget {room=true;}}}
+        r.stage=s;r.who=-1;
+        if !allowed {r.status=PlcStatus.trust;return r;}
+        r.status=ifx room then PlcStatus.deadline else PlcStatus.memory;
         for a:0..<P {
             p:=f.peer[a];
-            if !p.live || (room && j.stage[s].bytes>p.budget) {continue;}
+            if !plc_allowed(j,f,s,a) || (room && j.stage[s].bytes>p.budget) {continue;}
             over:=ifx room then plc_ready(j.stage[s],p,s)-f.deadline else j.stage[s].bytes-p.budget;
             if r.who<0 || over<r.gap {r.gap=over;r.who=a;}
         }
@@ -351,13 +357,17 @@ plc_place :: (j:PlcJob,f:PlcFleet,goal:PlcGoal,old:[]int)->PlcPlacement {
 Three rules make the answer deterministic and explainable:
 
 - **Hard limits first.** A stage may run on a peer only if the peer is
-  live, has the bytes, and can have the stage ready by the deadline. Cost
-  never trades against these.
+  live, the job does not deny the stage that peer, the peer has the bytes,
+  and it can have the stage ready by the deadline. Cost never trades
+  against these. The denials are a bit mask per stage;
+  [chapter 194](ch194-who-can-read-the-prompt.md) fills them from a trust
+  policy.
 - **Ties go to the lower peer number.** The program keeps the first best
   entry it finds, in peer order. So among equal-cost assignments, the
   answer is the first in lexicographic order of peers.
 - **Refusals in a fixed order.** First a stage that fits on no peer
-  (memory, or the deadline if some peer has the bytes). Then Hall's
+  (trust if it is allowed on no live peer, then memory, or the deadline
+  if some allowed peer has the bytes). Then Hall's
   condition: if some set of stages can use fewer peers than it has
   stages, no assignment gives each stage its own peer. Only then the
   links.
@@ -480,8 +490,9 @@ would remove it:
 
 | Status | Binding constraint | Smallest change reported |
 | --- | --- | --- |
-| `memory` | `stage` fits on no live peer | `who`, the peer it misses by the fewest bytes, and `gap`, those bytes |
-| `deadline` | some peer has the bytes, but none has the stage ready in time | `who` and `gap`, the fewest nanoseconds over the deadline |
+| `trust` | `stage` is denied every live peer | nothing here; chapter 194 names the peers to trust |
+| `memory` | `stage` fits on no allowed live peer | `who`, the allowed peer it misses by the fewest bytes, and `gap`, those bytes |
+| `deadline` | some allowed peer has the bytes, but none has the stage ready in time | `who` and `gap`, the fewest nanoseconds over the deadline |
 | `peers` | the stages in bit set `set` fit on fewer peers than they number | `gap`, the number of peers to add |
 | `link` | every stage has its own peer, but no assignment has every hop linked | a link; no single number |
 | `input` | a count, rate or amount out of bounds, or this machine missing | nothing to place |
@@ -535,6 +546,9 @@ it.
     named, a peer with exactly the bytes is a candidate, two sets equally
     short keep the set of all stages, and each missing hop (in, between,
     out) refuses with `link`.
+  - Denied peers: never used, never named in a memory or deadline
+    refusal, bits past the fleet ignored, and `trust` when a stage has no
+    allowed live peer.
   - Whole on this machine, whole on a peer, then the split; a deadline
     that forces the split; an invalid whole job that falls through to the
     split; and the last job's refusal when none places.
@@ -543,13 +557,14 @@ it.
     peers that fit only one way.
   - A `#forall` over 1,200 random fleets (1 to 5 peers, 1 to 4 stages,
     missing links, peers that have left, small numbers so that ties are
-    common, both objectives, with and without an old assignment). An
+    common, both objectives, with and without an old assignment, and a
+    third of them with random denials). An
     independent brute force tries every assignment of stages to distinct
     peers with its own arithmetic. The solver's peers, cost and moves
     equal its first best assignment; latency, period and readiness equal
     its evaluation. When nothing places, the refusal kind equals the one
     found by enumeration.
-  - `coax mutate --root-only` leaves no survivors (401 mutants).
+  - `coax mutate --root-only` leaves no survivors (415 mutants).
 
 ## What remains
 

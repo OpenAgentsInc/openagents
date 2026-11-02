@@ -1,0 +1,17 @@
+project files: ok
+  tiers: peer 0 owned peer 1 owned peer 2 vetted
+  needs: stage 0 vetted stage 1 vetted
+  stages on peers 1 2, latency 32089922 ns
+  peer 0 sees prompt tokens, output tokens
+  peer 1 sees prompt tokens, activations, output tokens
+  peer 2 sees activations, output tokens
+typed in the session, with project files: ok
+  tiers: peer 0 owned peer 1 owned peer 2 vetted
+  needs: stage 0 owned stage 1 owned
+  stages on peers 0 1, latency 48391507 ns
+  peer 0 sees prompt tokens, activations, output tokens
+  peer 1 sees activations, output tokens
+  peer 2 sees nothing
+send stage 0's rows at tick 1: no consent, peer 1, no grant
+grant peer 1 compute on session and project, ticks 2 to 100: ok
+send stage 0's rows at tick 3: ok, peer 1, 14 bytes out, 2 events logged

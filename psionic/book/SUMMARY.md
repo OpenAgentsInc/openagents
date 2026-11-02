@@ -213,7 +213,7 @@
 - [191. Experts across machines and from disk](ch191-experts-across-machines-and-from-disk.md) — design draft
 - [192. Route by saved work](ch192-route-by-saved-work.md) — design draft
 - [193. Compress activations exactly](ch193-compress-activations-exactly.md) — partly implemented
-- [194. Who can read the prompt](ch194-who-can-read-the-prompt.md) — design draft
+- [194. Who can read the prompt](ch194-who-can-read-the-prompt.md) — partly implemented
 - [195. Check a peer's work](ch195-check-a-peers-work.md) — partly implemented
 - [196. Work with Mesh-LLM](ch196-work-with-mesh-llm.md) — partly implemented
 - [197. DeepSeek V4.1 Flash across stages](ch197-deepseek-v41-flash-across-stages.md) — design draft
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75, 77–82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–153, 156–159, 161–163, 165, 167–173, 175–183, 186–190, 193, 195, 196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75, 77–82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–153, 156–159, 161–163, 165, 167–173, 175–183, 186–190, 193–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

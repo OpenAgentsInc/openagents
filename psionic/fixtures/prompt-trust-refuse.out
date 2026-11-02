@@ -1,0 +1,8 @@
+peer 1 to peer 2 without keys: plaintext link: link 1 -> 2 has no session keys
+the desktop without its owner key: exposure: stage 1 would show session output tokens to peer 1 (vetted), which needs owned; raise peers 1 to owned (3 sets tried), then stages on 0 1
+identity data: exposure: stage 1 would show identity activations to peer 1 (vetted), which needs owned; raise peers 1 to owned (3 sets tried), then stages on 0 1
+the whole model: does not place: no peer has the memory, stage 0 misses peer 1 by 1932815360 bytes
+label 32: input
+send a project file through peers 1 and 2: no consent, peer 2
+send a fact about the user to the same placement: label not placed
+bytes out: 0, events logged: 1
