@@ -67,6 +67,10 @@ are synthetic. Build it with
 `coax/web/tool.sh apps/openagents-web/demos/hud/build.coax`; its focused dev
 server runs on port 8815. The [visual study](../../docs/verse/2026-11-01-hud-library.md)
 records the Expanse image analysis and the Aethyr/Coax book boundaries.
+The sixth tab adds [ARWES ports](../../docs/verse/2026-11-01-arwes-coax.md):
+nine frame families, 31 easing curves, lifecycle/text animation, backgrounds,
+pointer lighting, style/theme arithmetic and a silent cue model, with pinned
+source hashes and the upstream MIT notice.
 
 ## NIP implementation guides
 

@@ -4,6 +4,7 @@
 // coax/bin/coax test apps/openagents-web/demos/hud/projects.coax --library
 #load "../../../../aethyr/ui/draw.coax";
 #load "../../analytics.coax";
+#load "arwes-demo.coax";
 
 ProjectsState :: struct {
   time:f32; frames:int; ready:bool; width:f32; height:f32; d:f32;
@@ -14,6 +15,11 @@ ProjectsState :: struct {
   field:[4]f32; viewer:[64]u8; inbox:[65536]u8;
   outbox:[256]u8; out_n:int; action:int;
   command:int; range:int;
+  aw_group:int;aw_easing:int;aw_seed:int;aw_manager:int;aw_category:int;aw_dots:int;
+  aw_motion:[1]ArMotion;aw_bleep:[1]AxBleep;aw_timers:[8]AxTimer;
+  aw_active:bool;aw_loop:bool;still:bool;aw_started:f32;aw_gain:f32;aw_last_cue:f32;
+  aw_cues:int;aw_timer_done:int;pointer_x:f32;pointer_y:f32;
+  aw_family:bool;
 }
 
 DEMO_NAMES :: [18]string.["ORBITAL PLOT","TELEMETRY TRACE","TARGET ACQUISITION","ATTITUDE LADDER","CAPACITY BANK","SYSTEMS SCHEMATIC","CONTACT REGISTER","COMMS / WAVEFORM","DIAGNOSTIC TERMINAL","ROUTE SEQUENCE","ALERT / ACKNOWLEDGE","COMMAND SURFACE","SPECTRUM ANALYSER","HEADING TAPE","DOCKING ALIGNMENT","RESOURCE MANIFEST","HAND TERMINAL","WORLD ANCHOR"];
@@ -74,22 +80,25 @@ demo_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
 demo_limit :: (v:f32,a:f32,b:f32)->f32 {return demo_min(b,demo_max(a,v));}
 demo_box :: (x:f32,y:f32,w:f32,h:f32)->HudBox {return HudBox.{x=x,y=y,width=w,height=h};}
 demo_shift :: (b:HudBox,y:f32)->HudBox {r:=b;r.y-=y;return r;}
-demo_pen :: (s:[]ProjectsState)->HdPen {return HdPen.{d=s[0].d,cyan=s[0].cyan,top=168,bottom=s[0].height-44};}
+demo_body_offset :: (width:f32)->f32 {return ifx width<700 then 54.0f32 else 0.0f32;}
+demo_pen :: (s:[]ProjectsState)->HdPen {return HdPen.{d=s[0].d,cyan=s[0].cyan,top=168+demo_body_offset(s[0].width),bottom=s[0].height-44};}
 
 demo_apply :: (s:[]ProjectsState,id:int) {
   if id>=1 && id<=5 {s[0].scene=id-1;s[0].scroll=0;s[0].focus=-1;s[0].inspected=0;}
   else if id==6 {s[0].cyan=!s[0].cyan;}
   else if id==7 {s[0].paused=!s[0].paused;}
-  else if id==8 {s[0].time=0;s[0].acknowledged=false;s[0].route=false;s[0].contact=0;s[0].command=0;s[0].range=0;}
+  else if id==8 {s[0].time=0;s[0].acknowledged=false;s[0].route=false;s[0].contact=0;s[0].command=0;s[0].range=0;demo_arwes_reset(s);}
   else if id==9 {s[0].contact=(s[0].contact+1)%3;}
   else if id==10 {s[0].acknowledged=!s[0].acknowledged;}
   else if id==11 {s[0].route=!s[0].route;}
   else if id==12 {s[0].range=(s[0].range+1)%3;}
   else if id>=60 && id<66 {s[0].command=id-59;}
+  else if id==19 {s[0].scene=5;s[0].scroll=0;s[0].focus=-1;s[0].inspected=0;demo_arwes_replay(s);}
   else if id==20 {s[0].scroll=demo_max(0,s[0].scroll-484);}
   else if id==21 {s[0].scroll=demo_min(s[0].scroll_max,s[0].scroll+484);}
   else if id==50 {s[0].inspected=0;s[0].focus=-1;}
   else if id>=100 && id<118 {s[0].inspected=id-99;s[0].focus=-1;}
+  else if id>=200 && id<325 {demo_arwes_apply(s,id);}
 }
 demo_control :: (s:[]ProjectsState,b:HudBox,id:int,label:string) {
   if s[0].control_n>=48 || b.y<0 || b.y+b.height>s[0].height-36 {return;}
@@ -103,15 +112,15 @@ demo_button :: (s:[]ProjectsState,out:[]f32,at:int,b:HudBox,id:int,label:string,
 }
 demo_glass :: (u:[]f32,b:HudBox,d:f32) {
   n:=cast(int)u[5];if n>=10{return;}o:=8+n*8;
-  u[o]=b.x*d;u[o+1]=demo_max(168,b.y)*d;u[o+2]=(b.x+b.width)*d;u[o+3]=demo_min(u[1]-44*d,(b.y+b.height)*d);
+  u[o]=b.x*d;u[o+1]=demo_max(168+demo_body_offset(u[0]/d),b.y)*d;u[o+2]=(b.x+b.width)*d;u[o+3]=demo_min(u[1]-44*d,(b.y+b.height)*d);
   u[o+4]=10*d;u[o+5]=0.96;u[o+6]=0;u[o+7]=0;u[5]=cast(f32)(n+1);
 }
 
 // Central working surface with two instrument rails. Phones keep one column.
 demo_scene_box :: (w:f32,h:f32,i:int)->HudBox {
   if w<1000 {
-    if i==0 {return demo_box(24,180,w-48,360);}
-    return demo_box(24,558+cast(f32)(i-1)*242,w-48,224);
+    if i==0 {return demo_box(24,180+demo_body_offset(w),w-48,360);}
+    return demo_box(24,558+demo_body_offset(w)+cast(f32)(i-1)*242,w-48,224);
   }
   side:=demo_min(280,w*0.22);gap:=18.0f32;high:=demo_max(460,h-236);
   if i==0 {return demo_box(24+side+gap,180,w-48-side*2-gap*2,high);}
@@ -173,24 +182,26 @@ demo_header :: (s:[]ProjectsState,out:[]f32,at:int)->int {
   v=hd_diamond(out,v,29,29,4,p,2);
   v=hd_text(out,v,ifx w<400 then "AETHYR" else ifx w<700 then "AETHYR / HUD LAB" else "OPENAGENTS / AETHYR",43,33,10,p,0);
   v=hd_text(out,v,ifx w<700 then "HUD / FIELD SYSTEMS" else "HUD / COMPONENT SYSTEM",24,76,ifx w<700 then 18.0f32 else 26.0f32,p,0);
-  v=hd_text(out,v,ifx w<700 then "EXPANSE STUDY / 18 COMPONENTS" else "EXPANSE STUDY     /     18 COMPONENTS     /     COAX + WEBGPU     /     SYNTHETIC DEMO",24,96,8,p,1);
+  v=hd_text(out,v,ifx w<700 then "EXPANSE + ARWES / COAX NATIVE" else "EXPANSE + ARWES     /     43 SPECIMENS     /     COAX + WEBGPU     /     SYNTHETIC DEMO",24,96,8,p,1);
   small:=w<700;bw:=ifx small then 62.0f32 else 104.0f32;
   v=demo_button(s,out,v,demo_box(w-24-bw*2-10,14,bw,36),6,ifx s[0].cyan then "CYAN" else "MONO",p,s[0].cyan);
   v=demo_button(s,out,v,demo_box(w-24-bw,14,bw,36),7,ifx small then (ifx s[0].paused then "PLAY" else "HOLD") else (ifx s[0].paused then "RESUME" else "FREEZE"),p,s[0].paused);
-  full:=[5]string.["01 / LIBRARY","02 / THE GRID","03 / FLIGHT","04 / SYSTEMS","05 / COMMS"];
-  short:=[5]string.["LIB","GRID","NAV","SYS","COM"];
-  tw:=(w-48)/5;
-  for i:0..<5 {
-    v=demo_button(s,out,v,demo_box(24+cast(f32)i*tw,112,tw-6,44),i+1,ifx small then short[i] else full[i],p,s[0].scene==i);
+  full:=[6]string.["01 / LIBRARY","02 / THE GRID","03 / FLIGHT","04 / SYSTEMS","05 / COMMS","06 / ARWES"];
+  short:=[6]string.["LIBRARY","GRID","FLIGHT","SYSTEMS","COMMS","ARWES"];
+  columns:=ifx small then 3 else 6;tw:=(w-48)/cast(f32)columns;
+  for i:0..<6 {
+    v=demo_button(s,out,v,demo_box(24+cast(f32)(i%columns)*tw,112+cast(f32)(i/columns)*48,tw-6,44),ifx i==5 then 19 else i+1,ifx small then short[i] else full[i],p,s[0].scene==i);
   }
   return v;
 }
 demo_catalog :: (s:[]ProjectsState,out:[]f32,u:[]f32,at:int,p:HdPen)->int {
   last:=hud_grid_cell(s[0].width,s[0].height,0,17,18);
+  last.y+=demo_body_offset(s[0].width);
   s[0].scroll_max=demo_max(0,last.y+last.height+24-(s[0].height-44));
   s[0].scroll=demo_limit(s[0].scroll,0,s[0].scroll_max);v:=at;
   for i:0..<18 {
     b:=demo_shift(hud_grid_cell(s[0].width,s[0].height,0,i,18),s[0].scroll);
+    b.y+=demo_body_offset(s[0].width);
     if b.y+b.height<=p.top || b.y>=p.bottom {continue;}
     demo_glass(u,b,p.d);v=hd_panel(out,v,b,p,s[0].hot==100+i);
     v=hd_text_fit(out,v,DEMO_NAMES[i],b.x+18,b.y+27,10,b.width-60,p,0);
@@ -199,7 +210,8 @@ demo_catalog :: (s:[]ProjectsState,out:[]f32,u:[]f32,at:int,p:HdPen)->int {
     v=hd_component(out,v,i,content,p,s[0].time,0.72);
     v=hd_text(out,v,DEMO_FAMILIES[i],b.x+18,b.y+b.height-15,7,p,1);
     v=hd_text(out,v,"+",b.x+b.width-24,b.y+28,12,p,2);
-    if b.y>=p.top && b.y+b.height<=p.bottom {demo_control(s,b,100+i,DEMO_NAMES[i]);}
+    visible:=b;visible.y=demo_max(b.y,p.top);visible.height=demo_min(b.y+b.height,p.bottom)-visible.y;
+    if visible.height>=44 {demo_control(s,visible,100+i,DEMO_NAMES[i]);}
   }
   return v;
 }
@@ -299,23 +311,23 @@ demo_inspector :: (s:[]ProjectsState,out:[]f32,u:[]f32,at:int,p:HdPen)->int {
   // The inspector is a focus-trapping composition. Background controls are
   // removed from the action tree before its one close action is published.
   s[0].control_n=0;u[5]=0;
-  b:=demo_box(24,180,s[0].width-48,s[0].height-236);
-  demo_glass(u,b,p.d);v:=hd_panel(out,at,b,p,true);i:=s[0].inspected-1;
-  v=hd_text_fit(out,v,DEMO_NAMES[i],b.x+20,b.y+34,16,b.width-40,p,0);
-  v=hd_text(out,v,DEMO_FAMILIES[i],b.x+20,b.y+58,8,p,1);
+  offset:=demo_body_offset(s[0].width);b:=demo_box(24,180+offset,s[0].width-48,s[0].height-236-offset);
+  demo_glass(u,b,p.d);v:=hd_panel(out,at,b,p,true);arwes:=s[0].inspected>=1000;i:=ifx arwes then s[0].inspected-1000 else s[0].inspected-1;
+  v=hd_text_fit(out,v,ifx arwes then AW_NAMES[i] else DEMO_NAMES[i],b.x+20,b.y+34,16,b.width-40,p,0);
+  v=hd_text(out,v,ifx arwes then "ARWES / COAX PORT / MIT" else DEMO_FAMILIES[i],b.x+20,b.y+58,8,p,1);
   content:=demo_box(b.x+24,b.y+84,b.width-48,demo_max(80,b.height-168));
-  v=hd_component(out,v,i,content,p,s[0].time,0.72);
+  if arwes {v=demo_arwes_spec(s,out,v,i,content,p);}else {v=hd_component(out,v,i,content,p,s[0].time,0.72);}
   v=demo_button(s,out,v,demo_box(b.x+20,b.y+b.height-60,demo_min(280,b.width-40),40),50,"CLOSE COMPONENT / ESC",p,false);
   return v;
 }
 demo_footer :: (s:[]ProjectsState,out:[]f32,at:int)->int {
   p:=HdPen.{d=s[0].d,cyan=s[0].cyan,top=0,bottom=s[0].height};y:=s[0].height-35;v:=at;
   v=hd_line(out,v,24,y,s[0].width-24,y,p,1,0.35);
-  hint:=ifx s[0].width<700 then "1-5 SCENES / TAB + ENTER / SCROLL" else "1-5 SCENES    TAB + ENTER SELECT    M ACCENT    SPACE FREEZE    ESC CLOSE    SCROLL TO EXPLORE";
+  hint:=ifx s[0].width<700 then "1-6 SCENES / TAB + ENTER / SCROLL" else "1-6 SCENES    TAB + ENTER SELECT    M ACCENT    SPACE FREEZE    ESC CLOSE    SCROLL TO EXPLORE";
   v=hd_text_fit(out,v,hint,24,y+22,7,s[0].width-48,p,1);
   if s[0].width>=1100 {v=hd_text(out,v,"AETHYR / HUD LAB 001",s[0].width-210,y+22,8,p,0);}
   if s[0].scroll_max>0 {
-    x:=s[0].width-10;top:=180.0f32;range:=s[0].height-244;
+    x:=s[0].width-10;top:=180.0f32+demo_body_offset(s[0].width);range:=s[0].height-244-demo_body_offset(s[0].width);
     v=hd_line(out,v,x,top,x,top+range,p,1,0.2);
     yy:=top+(range-40)*s[0].scroll/s[0].scroll_max;v=hd_line(out,v,x,yy,x,yy+40,p,2,0.85);
   }
@@ -324,14 +336,17 @@ demo_footer :: (s:[]ProjectsState,out:[]f32,at:int)->int {
 
 coaxial_projects_frame :: (s:[]ProjectsState,out:[]f32,u:[]f32,width:f32,height:f32,dpr:f32,dt:f32,still:bool)->int #export_c {
   if s.count<1 || u.count<88 || out.count<12 || !(dpr>0 && width>0 && height>0) {return 0;}
-  if !s[0].ready {s[0].focus=-1;s[0].ready=true;}
+  if !s[0].ready {s[0].focus=-1;s[0].ready=true;demo_arwes_reset(s);}
   s[0].width=width/dpr;s[0].height=height/dpr;s[0].d=dpr;
-  if !s[0].paused && !still && dt>0 && dt<1 {s[0].time+=dt;}
+  s[0].still=still;
+  if !s[0].paused && !still && dt>0 && dt<1 {s[0].time+=dt;ar_motion_tick(s[0].aw_motion[..],dt);}
+  due:=ax_take_due(s[0].aw_timers[..],s[0].time);if due>0 {s[0].aw_timer_done=due;}
   s[0].frames+=1;s[0].control_n=0;
   for i:0..<88 {u[i]=0;}u[0]=width;u[1]=height;u[2]=0;u[3]=1;u[4]=1;
   p:=demo_pen(s);v:=demo_header(s,out,0);
   if s[0].inspected>0 {v=demo_inspector(s,out,u,v,p);}
   else if s[0].scene==0 {v=demo_catalog(s,out,u,v,p);}
+  else if s[0].scene==5 {v=demo_arwes_page(s,out,u,v,p);}
   else {v=demo_scene(s,out,u,v,p);}
   v=demo_footer(s,out,v);
   if s[0].focus>=0 && s[0].focus<s[0].control_n {
@@ -344,7 +359,8 @@ coaxial_projects_frame :: (s:[]ProjectsState,out:[]f32,u:[]f32,width:f32,height:
 }
 coaxial_projects_key :: (s:[]ProjectsState,key:int,mods:int)->bool #export_c {
   if key==-1 && s[0].inspected>0 {demo_apply(s,50);return true;}
-  if s[0].inspected>0 && key>=49 && key<=53 {return true;}
+  if s[0].inspected>0 && key>=49 && key<=54 {return true;}
+  if key==54 {demo_apply(s,19);return true;}
   if key>=49 && key<=53 {demo_apply(s,key-48);return true;}
   if key=='m' || key=='M' {demo_apply(s,6);return true;}
   if key==32 {demo_apply(s,7);return true;}
@@ -358,6 +374,7 @@ coaxial_projects_key :: (s:[]ProjectsState,key:int,mods:int)->bool #export_c {
 coaxial_projects_pointer :: (s:[]ProjectsState,x:f32,y:f32,phase:int,kind:int)->bool #export_c {
   if !(s[0].d>0) {return false;}
   point_x:=x/s[0].d;yy:=y/s[0].d;
+  s[0].pointer_x=point_x;s[0].pointer_y=yy;
   id:=hud_hit(s[0].controls[0..<s[0].control_n],point_x,yy);s[0].hot=id;
   if phase==3 {s[0].press=0;s[0].dragged=false;return false;}
   if phase==0 {s[0].press=id;s[0].drag_y=yy;s[0].drag_start=yy;s[0].dragged=false;return id>0;}

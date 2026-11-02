@@ -1,0 +1,567 @@
+// Port of @arwes/frames, arwes/arwes bdbaa0324900ee978d42036d1304a053c1fe54b5.
+// Copyright (c) 2014 - 2024 Romel Perez (romelperez.dev), MIT.
+// Full license: arwes/LICENSE. Source paths: packages/frames/src/createFrame*Settings,
+// styleFrameClip{Octagon,Kranox}, animateFrameAssembler; animateDraw length semantics.
+// All dimensions are resolved screen points. No SVG/DOM, CSS parser or effects.
+// Ellipses are tessellated into 64 segments; layer=0 background,1 line,2 deco.
+// Output polygons repeat their first point. fill identifies upstream filled paths.
+// af_frame_settings applies the shared assembler timeline. af_frame_family
+// applies each family's own numeric transitions, including its inherited groups.
+// coax/bin/coax test aethyr/ui/arwes-frames.coax --library
+#load "hud.coax";
+
+AfPoint :: struct { x:f32; y:f32; move:bool; layer:int; fill:bool; alpha:f32; stroke:f32; role:int; }
+AfSettings :: struct {
+  padding:f32; stroke:f32=1; square:f32=16;
+  corner_length:f32=16; corner_width:f32=2;
+  large_line_width:f32=1; small_line_width:f32=1;
+  small_line_length:f32=16; large_line_length:f32=64;
+  bg_stroke:f32; deco_width:f32=4; content_length:f32;
+  vertical:bool; reverse:bool; separation:f32; side_width:f32=24;
+  corners:int=15; // 1 left top, 2 right top, 4 right bottom, 8 left bottom.
+}
+AfBuild :: struct { points:[256]AfPoint; count:int; overflow:bool; role:int; }
+AfTransform :: struct { x:f32; y:f32; scale:f32=1; rotate:f32; alpha:f32=1; draw:f32=1; stroke:f32; }
+
+#test "nine frame families match independently resolved upstream default points" {
+  b:=HudBox.{x=10,y=20,width=300,height=200};out:[256]AfPoint;
+  n:=af_frame(0,b,0,1,1,out[..]);
+  #assert n==9 && out[6].x==10.5 && out[6].y==219.5 && out[8].x==309.5 && out[8].y==204.5;
+  n=af_frame(1,b,0,1,1,out[..]);
+  #assert n==21 && out[5].x==10 && out[5].y==20.5 && abs(out[6].x-160.1)<0.001;
+  n=af_frame(2,b,0,1,1,out[..]);
+  #assert n==21 && out[0].x==11 && out[0].y==21 && out[5].x==10.5 && out[6].y==36;
+  n=af_frame(3,b,0,1,1,out[..]);
+  #assert n==19 && out[0].x==10.5 && out[0].y==36.5 && out[1].x==26.5 && out[1].y==20.5;
+  n=af_frame(4,b,0,1,1,out[..]);
+  #assert n==37 && out[5].x==10 && out[6].x==34 && out[7].x==32 && out[7].y==22;
+  n=af_frame(5,b,0,1,1,out[..]);
+  #assert n==19 && out[0].x==10.5 && out[0].y==52.5 && out[11].x==10.5 && out[14].x==90.5;
+  n=af_frame(6,b,0,2,1,out[..]);
+  #assert n==26 && out[0].x==42 && out[0].y==216 && out[18].x==23 && out[18].y==53;
+  n=af_frame(7,b,0,1,1,out[..]);
+  #assert n==23 && out[0].x==10 && out[0].y==20.5 && out[4].x==34 && out[6].x==110;
+  n=af_frame(8,b,0,1,1,out[..]);
+  #assert n>150 && out[0].x==306 && out[0].y==120 && out[65].x==306.5;
+}
+
+#test "short frame output refuses atomically and custom corners are literal" {
+  out:[256]AfPoint;out[0].x=777;b:=HudBox.{width=300,height=200};
+  #assert af_frame(8,b,0,1,1,out[0..<2])==0 && out[0].x==777;
+  s:=af_settings(3);s.corners=0;s.padding=3;s.stroke=2;
+  n:=af_frame_settings(3,b,s,1,out[..]);
+  #assert n==11 && out[0].x==4 && out[0].y==4 && out[1].x==296;
+  #assert af_frame(-1,b,0,1,1,out[..])==0;
+  #assert af_frame(0,HudBox.{width=0,height=200},0,1,1,out[..])==0;
+}
+
+#test "assembler draws each line by length and stages background and decoration" {
+  #assert af_assembly(0,0)==0 && af_assembly(0.5,0)==1;
+  #assert af_assembly(0.5,2)==0 && af_assembly(1,2)==1;
+  out:[256]AfPoint;b:=HudBox.{width=300,height=200};
+  n:=af_frame(0,b,0,1,0.1,out[..]);
+  #assert n==8 && out[6].move && out[7].x<100 && out[7].y==199.5;
+  #assert af_frame(0,b,0,1,0,out[..])==6 && out[0].alpha==0;
+}
+
+#test "clip polygons match upstream octagon and Kranox and answer containment" {
+  out:[32]HudCoord;b:=HudBox.{width=300,height=200};s:=af_settings(3);
+  n:=af_clip(0,b,s,out[..]);
+  #assert n==8 && out[0].x==0 && out[0].y==16 && out[1].x==16 && out[1].y==0;
+  #assert af_clip_contains(out[0..<n],150,100) && !af_clip_contains(out[0..<n],1,1);
+  s=af_settings(6);s.stroke=1;n=af_clip(1,b,s,out[..]);
+  #assert n==16 && out[0].x==32.5 && out[0].y==199.5 && out[7].x==32.5 && out[7].y==0.5;
+  out[0].x=777;#assert af_clip(1,b,s,out[0..<2])==0 && out[0].x==777;
+}
+
+#test "header orientation and content length preserve resolved upstream commands" {
+  b:=HudBox.{width=300,height=200};out:[256]AfPoint;s:=af_settings(7);
+  s.content_length=40;n:=af_frame_settings(7,b,s,1,out[..]);
+  #assert n==23 && out[4].x==24 && out[4].y==199.5 && out[5].x==40;
+  #assert out[6].x==140 && out[6].y==100 && out[7].x==274;
+  s=af_settings(7);s.vertical=true;n=af_frame_settings(7,b,s,1,out[..]);
+  #assert out[4].x==0.5 && out[4].y==24 && out[6].x==0.5 && out[6].y==150;
+  s.reverse=true;n=af_frame_settings(7,b,s,1,out[..]);
+  #assert out[4].x==0.5 && out[4].y==176;
+}
+
+#forall "default frame paths remain inside a sufficiently sized square" kind:0..<9 {
+  b:=HudBox.{x=13,y=29,width=400,height=400};out:[256]AfPoint;s:=af_settings(kind);
+  n:=af_frame_settings(kind,b,s,1,out[..]);#assert n>0 && n<=256;
+  for i:0..<n {#assert out[i].x>=12.99 && out[i].x<=413.01 && out[i].y>=28.99 && out[i].y<=429.01;}
+}
+
+#test "family transitions preserve source offsets delays and easing curves" {
+  b:=HudBox.{width=300,height=200};p:=AfPoint.{layer=2,role=0};s:=af_settings(4);
+  t:=af_family_transition(4,p,0,true,b,s);#assert t.x==12 && t.y==12 && t.alpha==0;
+  t=af_family_transition(4,p,0.5,true,b,s);#assert abs(t.x-0.375)<0.0001 && t.alpha==1;
+  p.role=2;t=af_family_transition(4,p,0.5,false,b,s);#assert abs(t.x+11.625)<0.0001 && abs(t.y+11.625)<0.0001;
+  p.layer=0;s=af_settings(5);t=af_family_transition(5,p,0.25,true,b,s);#assert t.alpha==0;
+  t=af_family_transition(5,p,0.75,true,b,s);#assert abs(t.alpha-0.8024)<0.001;
+  t=af_family_transition(5,p,0.25,false,b,s);#assert abs(t.alpha-0.03125)<0.0001;
+  p.layer=1;p.role=0;t=af_family_transition(5,p,0.5,true,b,s);
+  #assert abs(t.x-0.5)<0.0001 && abs(t.draw-0.96875)<0.0001;
+  t=af_family_transition(5,p,0.5,false,b,s);#assert abs(t.draw-0.2928932)<0.0001;
+}
+
+#test "circle group rotation scale and header tracks retain source phases" {
+  b:=HudBox.{width=200,height=200};p:=AfPoint.{layer=2};s:=af_settings(8);
+  t:=af_family_transition(8,p,0,true,b,s);
+  #assert abs(t.rotate+0.78539816)<0.0001 && t.scale==0.9 && t.alpha==0;
+  t=af_family_transition(8,p,1,false,b,s);
+  #assert abs(t.rotate-0.78539816)<0.0001 && t.scale==0.9 && t.alpha==0;
+  s=af_settings(7);p.role=0;t=af_family_transition(7,p,0.4,true,b,s);#assert t.alpha==1;
+  p.role=1;t=af_family_transition(7,p,0.4,true,b,s);#assert t.alpha==0;
+  #assert abs(af_assembly(0.75,2)-0.5606602)<0.0001;
+}
+
+#test "family geometry composes transforms and refuses short output atomically" {
+  b:=HudBox.{width=300,height=200};s:=af_settings(4);out:[256]AfPoint;
+  n:=af_frame_family(4,b,s,0,true,out[..]);
+  #assert n==37 && out[5].x==12 && out[5].y==12 && out[5].role==0;
+  n=af_frame_family(4,b,s,1,true,out[..]);#assert n==37 && out[5].x==0 && out[5].alpha==1;
+  out[0].x=777;#assert af_frame_family(4,b,s,0.5,true,out[0..<2])==0 && out[0].x==777;
+}
+
+af_settings :: (kind:int)->AfSettings {
+  s:AfSettings;
+  if kind==4 {s.corner_length=24;}
+  if kind==5 {s.corners=5;}
+  if kind==6 {s.stroke=2;}
+  return s;
+}
+
+af_unit :: (p:f32)->f32 {if !(p>0) {return 0;}if p>=1 {return 1;}return p;}
+af_sine :: (p:f32)->f32 {return sin(af_unit(p)*1.5707963267948966);}
+
+// animateFrameAssembler's easing.outSine and [0,1,.5,1] decoration track.
+af_assembly :: (progress:f32,layer:int)->f32 {
+  p:=af_unit(progress);
+  if layer==0 {return af_sine(p*2);}
+  if layer==1 {return af_sine(p);}
+  return af_flicker_value(af_sine((p-0.5)*2));
+}
+
+af_put :: (a:[]AfBuild,x:f32,y:f32,move:bool,layer:int,fill:bool) {
+  if a[0].count>=256 {a[0].overflow=true;return;}
+  a[0].points[a[0].count]=AfPoint.{x=x,y=y,move=move,layer=layer,fill=fill,alpha=1,stroke=1,role=a[0].role};
+  a[0].count+=1;
+}
+af_poly :: (a:[]AfBuild,coords:[]f32,layer:int,fill:bool,close:bool) {
+  for i:0..<coords.count/2 {af_put(a,coords[i*2],coords[i*2+1],i==0,layer,fill);}
+  if close && coords.count>=2 {af_put(a,coords[0],coords[1],false,layer,fill);}
+}
+af_rect :: (a:[]AfBuild,x:f32,y:f32,w:f32,h:f32,layer:int,fill:bool) {
+  c:=[8]f32.[x,y,x+w,y,x+w,y+h,x,y+h];af_poly(a,c[..],layer,fill,true);
+}
+af_ellipse :: (a:[]AfBuild,cx:f32,cy:f32,rx:f32,ry:f32,layer:int,fill:bool) {
+  for i:0..<65 {angle:=cast(f32)i*6.283185307179586/64;
+    af_put(a,cx+rx*cos(angle),cy+ry*sin(angle),i==0,layer,fill);}
+}
+
+af_underline :: (a:[]AfBuild,w:f32,h:f32,s:AfSettings) {
+  p:=s.padding;ss:=s.square;so:=s.stroke/2;
+  bg:=[10]f32.[p,p,p,h-p,w-ss-p,h-p,w-p,h-ss-p,w-p,p];af_poly(a,bg[..],0,true,true);
+  line:=[6]f32.[so+p,h-so-p,w-ss-p,h-so-p,w-so-p,h-(ss-so)-p];af_poly(a,line[..],1,false,false);
+}
+
+af_lines :: (a:[]AfBuild,w:f32,h:f32,s:AfSettings) {
+  p:=s.padding;lw:=s.large_line_width;sw:=s.small_line_width;small:=s.small_line_length;
+  af_rect(a,p,p,w-p*2,h-p*2,0,true);
+  large:=[16]f32.[p,p+lw/2,w*0.5+0.1,p+lw/2,
+    w-p-lw/2,p+lw/2,w*0.5-0.1,p+lw/2,
+    p+lw/2,h-p-lw/2,w*0.5+0.1,h-p-lw/2,
+    w-p-lw/2,h-p-lw/2,w*0.5-0.1,h-p-lw/2];
+  short:=[16]f32.[p,p+sw/2,p+small,p+sw/2,w-p,p+sw/2,w-p-small,p+sw/2,
+    p,h-p-sw/2,p+small,h-p-sw/2,w-p,h-p-sw/2,w-p-small,h-p-sw/2];
+  for i:0..<4 {af_poly(a,large[i*4..<(i+1)*4],1,false,false);}
+  for i:0..<4 {af_poly(a,short[i*4..<(i+1)*4],2,false,false);}
+}
+
+af_corners :: (a:[]AfBuild,w:f32,h:f32,s:AfSettings) {
+  p:=s.padding;cw:=s.stroke;co:=cw/2;cl:=s.corner_length;
+  af_rect(a,p+cw,p+cw,w-(p+cw)*2,h-(p+cw)*2,0,true);
+  c:=[32]f32.[p+co,p+co,p+co,p+cl,p+co,p+co,p+cl,p+co,
+    w-co-p,co+p,w-cl-p,co+p,w-co-p,co+p,w-co-p,cl+p,
+    w-co-p,h-co-p,w-co-p,h-cl-p,w-co-p,h-co-p,w-cl-p,h-co-p,
+    co+p,h-co-p,cl+p,h-co-p,co+p,h-co-p,co+p,h-cl-p];
+  for i:0..<8 {af_poly(a,c[i*4..<(i+1)*4],1,false,false);}
+}
+
+// Resolved octagon points. The no-cut corner occupies one point instead of two.
+af_octagon_points :: (w:f32,h:f32,p:f32,ss:f32,corners:int,out:[]HudCoord)->int {
+  n:=0;
+  for corner:0..<4 {
+    cut:=(corners & (1<<corner))!=0;
+    if corner==0 {
+      out[n]=HudCoord.{x=p,y=p+(ifx cut then ss else 0)};n+=1;
+      if cut {out[n]=HudCoord.{x=p+ss,y=p};n+=1;}
+    } else if corner==1 {
+      out[n]=HudCoord.{x=w-p-(ifx cut then ss else 0),y=p};n+=1;
+      if cut {out[n]=HudCoord.{x=w-p,y=p+ss};n+=1;}
+    } else if corner==2 {
+      out[n]=HudCoord.{x=w-p,y=h-p-(ifx cut then ss else 0)};n+=1;
+      if cut {out[n]=HudCoord.{x=w-p-ss,y=h-p};n+=1;}
+    } else {
+      out[n]=HudCoord.{x=p+(ifx cut then ss else 0),y=h-p};n+=1;
+      if cut {out[n]=HudCoord.{x=p,y=h-p-ss};n+=1;}
+    }
+  }
+  return n;
+}
+
+af_octagon :: (a:[]AfBuild,w:f32,h:f32,s:AfSettings) {
+  c:[8]HudCoord;p:=s.padding+s.stroke/2;
+  n:=af_octagon_points(w,h,p,s.square,s.corners,c[..]);
+  for i:0..<n {af_put(a,c[i].x,c[i].y,i==0,0,true);}
+  af_put(a,c[0].x,c[0].y,false,0,true);
+  // Two independently drawn paths meet at the lower-right/upper-left cuts.
+  first_count:=(ifx (s.corners&1)!=0 then 2 else 1)+(ifx (s.corners&2)!=0 then 2 else 1)+1;
+  for i:0..<first_count {af_put(a,c[i].x,c[i].y,i==0,1,false);}
+  for i:first_count-1..<n {af_put(a,c[i].x,c[i].y,i==first_count-1,1,false);}
+  af_put(a,c[0].x,c[0].y,false,1,false);
+}
+
+af_nero :: (a:[]AfBuild,w:f32,h:f32,s:AfSettings) {
+  p:=s.padding;cl:=s.corner_length;cw:=s.corner_width;half:=cl/2;inside:=half-cw*2;
+  af_rect(a,p,p,w-p*2,h-p*2,0,true);
+  c:=[14]f32.[0,0,cl,0,cl-cw,cw,half-cw,cw,cw,half-cw,cw,cl-cw,0,cl];
+  // These are exactly the relative M/h/l/h/l/v/l commands, resolved once.
+  for corner:0..<4 {
+    a[0].role=corner;
+    for i:0..<8 {
+      index:=ifx i==7 then 0 else i;x:=c[index*2];y:=c[index*2+1];px:=p+x;py:=p+y;
+      if corner==1 {px=w-p-y;py=p+x;}
+      if corner==2 {px=w-p-x;py=h-p-y;}
+      if corner==3 {px=p+x;py=h-p-y;}
+      af_put(a,px,py,i==0,2,true);
+    }
+  }
+  a[0].role=0;
+}
+
+af_nefrex :: (a:[]AfBuild,w:f32,h:f32,s:AfSettings) {
+  p:=s.padding+s.stroke/2;ss:=s.square;small:=s.small_line_length;large:=s.large_line_length;
+  // Background concatenation follows upstream's LT,RT,RB,LB path arrays.
+  for corner:0..<4 {
+    cut:=(s.corners&(1<<corner))!=0;
+    if corner==0 {
+      if cut {c:=[8]f32.[p,p+ss+small,p,p+ss,p+ss,p,p+ss+large,p];af_poly(a,c[..],0,true,false);}
+      else {af_put(a,p,p,true,0,true);}
+    } else if corner==1 {
+      if cut {af_put(a,w-p-ss-large,p,false,0,true);af_put(a,w-p-ss,p,false,0,true);
+        af_put(a,w-p,p+ss,false,0,true);af_put(a,w-p,p+ss+small,false,0,true);}
+      else {af_put(a,w-p,p,false,0,true);}
+    } else if corner==2 {
+      if cut {af_put(a,w-p,h-p-ss-small,false,0,true);af_put(a,w-p,h-p-ss,false,0,true);
+        af_put(a,w-p-ss,h-p,false,0,true);af_put(a,w-p-ss-large,h-p,false,0,true);}
+      else {af_put(a,w-p,h-p,false,0,true);}
+    } else {
+      if cut {af_put(a,p+ss+large,h-p,false,0,true);af_put(a,p+ss,h-p,false,0,true);
+        af_put(a,p,h-p-ss,false,0,true);af_put(a,p,h-p-ss-small,false,0,true);}
+      else {af_put(a,p,h-p,false,0,true);}
+    }
+  }
+  af_put(a,a[0].points[0].x,a[0].points[0].y,false,0,true);
+  // Line groups are LT,LB,RT,RB, independently revealed from their long leg.
+  order:=[4]int.[0,3,1,2];
+  for i:0..<4 {
+    corner:=order[i];if (s.corners&(1<<corner))==0 {continue;}
+    a[0].role=corner;
+    c:=[8]f32.[p,p+ss+small,p,p+ss,p+ss,p,p+ss+large,p];
+    for j:0..<4 {
+      x:=c[j*2];y:=c[j*2+1];
+      if corner==1 || corner==2 {x=w-x;}
+      if corner==2 || corner==3 {y=h-y;}
+      af_put(a,x,y,j==0,1,false);
+    }
+  }
+  a[0].role=0;
+}
+
+af_kranox :: (a:[]AfBuild,w:f32,h:f32,s:AfSettings) {
+  p:=s.padding;sw:=s.stroke;bs:=s.bg_stroke/2;so:=sw/2;ss:=s.square;small:=s.small_line_length;large:=s.large_line_length;
+  c:=[36]f32.[p+bs+ss*2,h-(p+bs+sw*2),p+bs+ss,h-(p+bs+sw*2+ss),
+    p+bs+ss,p+bs+sw*2+large+ss*3+small,p+bs,p+bs+sw*2+large+ss*2+small,
+    p+bs,p+bs+sw*2+ss*2+small,p+bs+ss,p+bs+sw*2+small+ss,
+    p+bs+ss,p+bs+sw+ss,p+bs+ss*2-sw,p+bs+sw*2,w-(p+bs+ss*2),p+bs+sw*2,
+    w-(p+bs+ss*2),p+bs+sw*2,w-(p+bs+ss),p+bs+sw*2+ss,
+    w-(p+bs+ss),h-(p+bs+sw*2+ss*3+small+large),w-(p+bs),h-(p+bs+sw*2+ss*2+small+large),
+    w-(p+bs),h-(p+bs+sw*2+ss*2+small),w-(p+bs+ss),h-(p+bs+sw*2+ss+small),
+    w-(p+bs+ss),h-(p+bs+sw+ss),w-(p+bs+ss*2-sw),h-(p+bs+sw*2),p+bs+ss*2,h-(p+bs+sw*2)];
+  af_poly(a,c[..],0,true,false);
+  left:=[8]f32.[p+so-sw*2+ss,p+so+ss+small,p+so-sw*2+ss,p+so+ss,
+    p+so-sw*2+ss*2,p+so,p+so-sw*2+ss*2+large,p+so];af_poly(a,left[..],1,false,false);
+  right:=[8]f32.[w-(p+so+ss)+sw*2,h-(p+so+ss+small),w-(p+so+ss)+sw*2,h-(p+so+ss),
+    w-(p+so+ss*2)+sw*2,h-(p+so),w-(p+so+ss*2+large)+sw*2,h-(p+so)];af_poly(a,right[..],1,false,false);
+}
+
+af_header :: (a:[]AfBuild,width:f32,height:f32,s:AfSettings) {
+  // Transposing the canonical horizontal/left coordinates yields vertical;
+  // reflecting its long axis yields right/bottom. This also transforms the
+  // three skewed decoration rectangles and their viewport transform origin.
+  w:=ifx s.vertical then height else width;h:=ifx s.vertical then width else height;
+  p:=s.padding;d:=s.deco_width;so:=s.stroke/2;content:=s.content_length;
+  yy:=ifx content!=0 then h-p-so else p+so;
+  dash:=[8]f32.[p,yy,p+d*2,yy,p+d*3,yy,p+d*5,yy];
+  af_poly(a,dash[0..<4],2,false,false);af_poly(a,dash[4..<8],2,false,false);
+  length:=content-d*6;if length<0 {length=0;}
+  line:=[8]f32.[p+d*6,yy,p+d*6+length,yy,p+content+h*0.5,
+    ifx content!=0 then h*0.5 else p+so,w-(p+d*6.5),ifx content!=0 then h*0.5 else p+so];
+  af_poly(a,line[..],1,false,false);
+  bx:=w-(p+d*7);by:=ifx content!=0 then h*0.5-so else p;
+  origin_y:=ifx content!=0 then h*0.5 else 0.0f32;
+  a[0].role=1;
+  for i:0..<3 {
+    x0:=bx+cast(f32)i*d*2;y0:=by;x1:=x0+d;y1:=by+d*2;
+    // skewX(45deg): x' = x + (y - transformOrigin.y).
+    box:=[8]f32.[x0+y0-origin_y,y0,x1+y0-origin_y,y0,x1+y1-origin_y,y1,x0+y1-origin_y,y1];
+    af_poly(a,box[..],2,true,true);
+  }
+  a[0].role=0;
+  for i:0..<a[0].count {
+    x:=a[0].points[i].x;y:=a[0].points[i].y;
+    if s.reverse {x=w-x;}
+    if s.vertical {a[0].points[i].x=y;a[0].points[i].y=x;}
+    else {a[0].points[i].x=x;a[0].points[i].y=y;}
+  }
+}
+
+af_circle :: (a:[]AfBuild,w:f32,h:f32,s:AfSettings) {
+  p:=s.padding;sw:=s.stroke;so:=sw/2;side:=s.side_width;cx:=w/2;cy:=h/2;
+  af_ellipse(a,cx,cy,cx-(p+sw*4+s.separation),cy-(p+sw*4+s.separation),0,true);
+  rx:=cx-(p+so+sw*3);ry:=cy-(p+so+sw*3);
+  af_ellipse(a,cx,cy,rx,ry,1,false);
+  // Upstream dash length is based on rx, even for a non-circular ellipse.
+  // Resolve stroke-dasharray on the tessellated unrotated ellipse, then
+  // apply the upstream -360/16 degree decoration rotation to every point.
+  dash:=rx*6.283185307179586/8;dash_index:=0;dash_used:=0.0f32;
+  rotation:=-0.39269908169872414f32;co:=cos(rotation);si:=sin(rotation);
+  previous:=HudCoord.{x=rx,y=0};open:=false;
+  for i:1..<65 {
+    angle:=cast(f32)i*6.283185307179586/64;next:=HudCoord.{x=rx*cos(angle),y=ry*sin(angle)};
+    dx:=next.x-previous.x;dy:=next.y-previous.y;length:=sqrt(dx*dx+dy*dy);used:=0.0f32;
+    attempts:=0;
+    while used<length && dash>0 {
+      attempts+=1;if attempts>256 {a[0].overflow=true;break;}
+      limit:=dash-dash_used;
+      if limit>length-used {limit=length-used;}
+      if limit<=0 {dash_index+=1;dash_used=0;continue;}
+      if dash_index%2==0 {
+        x0:=previous.x+dx*used/length;y0:=previous.y+dy*used/length;
+        x1:=previous.x+dx*(used+limit)/length;y1:=previous.y+dy*(used+limit)/length;
+        if !open {af_put(a,cx+x0*co-y0*si,cy+x0*si+y0*co,true,2,false);}
+        af_put(a,cx+x1*co-y1*si,cy+x1*si+y1*co,false,2,false);open=true;
+      } else {open=false;}
+      used+=limit;dash_used+=limit;
+      if dash_used>=dash-0.00001 {dash_index+=1;dash_used=0;}
+    }
+    previous=next;
+  }
+  left:=[12]f32.[p,cy-side*0.2,p+sw*2,cy-side*0.5,p+sw*4,cy-side*0.5,
+    p+sw*4,cy+side*0.5,p+sw*2,cy+side*0.5,p,cy+side*0.2];
+  af_poly(a,left[..],2,true,true);
+  right:=[12]f32.[w-p,cy-side*0.2,w-p-sw*2,cy-side*0.5,w-p-sw*4,cy-side*0.5,
+    w-p-sw*4,cy+side*0.5,w-p-sw*2,cy+side*0.5,w-p,cy+side*0.2];
+  af_poly(a,right[..],2,true,true);
+  top:=[12]f32.[cx+side*0.2,p,cx+side*0.5,p+sw*2,cx+side*0.5,p+sw*4,
+    cx-side*0.5,p+sw*4,cx-side*0.5,p+sw*2,cx-side*0.2,p];af_poly(a,top[..],2,true,true);
+  bottom:=[12]f32.[cx+side*0.2,h-p,cx+side*0.5,h-p-sw*2,cx+side*0.5,h-p-sw*4,
+    cx-side*0.5,h-p-sw*4,cx-side*0.5,h-p-sw*2,cx-side*0.2,h-p];af_poly(a,bottom[..],2,true,true);
+}
+
+// Copy complete non-line paths with timeline alpha; reveal every line path
+// independently by its measured length, as SVG stroke-dashoffset does.
+af_publish :: (a:[]AfBuild,b:HudBox,progress:f32,out:[]AfPoint)->int {
+  if a[0].overflow {return 0;}
+  ready:[256]AfPoint;n:=0;start:=0;draw:=af_assembly(progress,1);
+  while start<a[0].count {
+    end:=start+1;while end<a[0].count && !a[0].points[end].move {end+=1;}
+    layer:=a[0].points[start].layer;
+    if layer!=1 || draw>=1 {
+      for i:start..<end {ready[n]=a[0].points[i];ready[n].alpha=af_assembly(progress,layer);n+=1;}
+    } else if draw>0 {
+      length:=0.0f32;
+      for i:start+1..<end {dx:=a[0].points[i].x-a[0].points[i-1].x;dy:=a[0].points[i].y-a[0].points[i-1].y;length+=sqrt(dx*dx+dy*dy);}
+      remaining:=length*draw;ready[n]=a[0].points[start];n+=1;
+      for i:start+1..<end {
+        prior:=a[0].points[i-1];next:=a[0].points[i];dx:=next.x-prior.x;dy:=next.y-prior.y;segment:=sqrt(dx*dx+dy*dy);
+        if remaining>=segment {ready[n]=next;n+=1;remaining-=segment;}
+        else {if segment>0 {next.x=prior.x+dx*remaining/segment;next.y=prior.y+dy*remaining/segment;ready[n]=next;n+=1;}break;}
+      }
+    }
+    start=end;
+  }
+  if n>out.count {return 0;}
+  for i:0..<n {out[i]=ready[i];out[i].x+=b.x;out[i].y+=b.y;}
+  return n;
+}
+
+af_frame_settings :: (kind:int,b:HudBox,s:AfSettings,progress:f32,out:[]AfPoint)->int {
+  if kind<0 || kind>8 || !(b.width>0 && b.width<1000000 && b.height>0 && b.height<1000000) {return 0;}
+  a:[1]AfBuild;
+  if kind==0 {af_underline(a[..],b.width,b.height,s);}
+  if kind==1 {af_lines(a[..],b.width,b.height,s);}
+  if kind==2 {af_corners(a[..],b.width,b.height,s);}
+  if kind==3 {af_octagon(a[..],b.width,b.height,s);}
+  if kind==4 {af_nero(a[..],b.width,b.height,s);}
+  if kind==5 {af_nefrex(a[..],b.width,b.height,s);}
+  if kind==6 {af_kranox(a[..],b.width,b.height,s);}
+  if kind==7 {af_header(a[..],b.width,b.height,s);}
+  if kind==8 {af_circle(a[..],b.width,b.height,s);}
+  for i:0..<a[0].count {
+    point:=a[0].points[i];width:=s.stroke;
+    if point.layer==0 {width=ifx kind==6 then s.bg_stroke else 0;}
+    if kind==1 {width=ifx point.layer==1 then s.large_line_width else s.small_line_width;
+      if point.layer==0 {width=0;}}
+    if point.fill && point.layer==2 {width=0;}
+    a[0].points[i].stroke=width;
+  }
+  return af_publish(a[..],b,progress,out);
+}
+
+af_frame :: (kind:int,b:HudBox,padding:f32,stroke:f32,progress:f32,out:[]AfPoint)->int {
+  s:=af_settings(kind);s.padding=padding;s.stroke=stroke;s.large_line_width=stroke;s.small_line_width=stroke;
+  return af_frame_settings(kind,b,s,progress,out);
+}
+
+// Family settings omit easing on several opacity/scale tracks. Their pinned
+// Motion 10.18.0 dependency supplies CSS ease = cubic-bezier(.25,.1,.25,1),
+// not Arwes's createAnimation default. Values were read, never executed, from
+// @motionone/utils defaults and @motionone/animation utils/easing (MIT).
+af_cubic :: (t:f32,a:f32,b:f32)->f32 {return (((1-3*b+3*a)*t+(3*b-6*a))*t+3*a)*t;}
+af_motion_ease :: (progress:f32)->f32 {
+  p:=af_unit(progress);if p==0 || p==1 {return p;}
+  low:=0.0f32;high:=1.0f32;t:=0.5f32;
+  // Motion's cubic-bezier solver uses twelve bisections and 1e-7 precision.
+  for i:0..<12 {
+    t=low+(high-low)*0.5;error:=af_cubic(t,0.25,0.25)-p;
+    if abs(error)<=0.0000001 {break;}
+    if error>0 {high=t;}else {low=t;}
+  }
+  return af_cubic(t,0.1,1);
+}
+af_expo :: (progress:f32)->f32 {
+  p:=af_unit(progress);if p==1 {return 1;}return 1-pow(2.0f32,-10*p);
+}
+af_flicker_value :: (eased:f32)->f32 {
+  t:=af_unit(eased)*3;
+  if t<1 {return t;}
+  if t<2 {return 1-(t-1)*0.5;}
+  return 0.5+(t-2)*0.5;
+}
+af_flicker :: (progress:f32,entering:bool)->f32 {
+  value:=af_flicker_value(af_motion_ease(progress));return ifx entering then value else 1-value;
+}
+af_fade :: (progress:f32,entering:bool)->f32 {
+  value:=af_motion_ease(progress);return ifx entering then value else 1-value;
+}
+
+// role is source identity, not an inferred screen quadrant: Nero and Nefrex
+// corners are 0 LT,1 RT,2 RB,3 LB; Header deco uses 0 dashes and 1 boxes.
+// Progress always goes 0→1 through the requested entering/exiting transition.
+// Header's fixed ±45° skew is already in the geometry from af_header.
+af_family_transition :: (kind:int,point:AfPoint,progress:f32,entering:bool,b:HudBox,s:AfSettings)->AfTransform {
+  p:=af_unit(progress);t:=AfTransform.{stroke=point.stroke};layer:=point.layer;
+  if layer==0 {t.alpha=af_fade(p,entering);}
+  if layer==1 {t.draw=ifx entering then af_expo(p) else 1-af_sine(p);}
+  if kind==1 && layer==2 {t.alpha=af_flicker(p*2,entering);}
+  if kind==4 {
+    if layer==0 {t.alpha=ifx entering then af_fade((p-0.5)*2,true) else af_fade(p*2,false);}
+    if layer==2 {
+      t.alpha=af_flicker(ifx entering then p*2 else (p-0.5)*2,entering);
+      offset:=s.corner_length*0.5*(ifx entering then 1-af_expo(p) else af_expo(p));
+      t.x=ifx point.role==1 || point.role==2 then -offset else offset;
+      t.y=ifx point.role==2 || point.role==3 then -offset else offset;
+    }
+  }
+  if kind==5 {
+    if layer==0 {t.alpha=ifx entering then af_fade((p-0.5)*2,true) else 1-af_expo(p*2);}
+    if layer==1 {
+      offset:=s.square*(ifx entering then 1-af_expo(p) else af_expo(p));
+      t.x=ifx point.role==1 || point.role==2 then -offset else offset;
+    }
+  }
+  if kind==7 && layer==2 {
+    if point.role==0 {t.alpha=af_flicker(ifx entering then p/0.4 else (p-0.6)/0.4,entering);}
+    else {t.alpha=af_flicker(ifx entering then (p-0.6)/0.4 else p,entering);}
+  }
+  if kind==8 {
+    t.draw=1;
+    t.rotate=0.7853981633974483*(ifx entering then af_expo(p)-1 else af_expo(p));
+    if layer==0 || layer==1 {t.alpha=ifx entering then af_fade((p-0.5)*2,true) else af_fade(p*2,false);}
+    if layer==2 {
+      phase:=ifx entering then p*2 else (p-0.5)*2;
+      t.alpha=af_flicker(phase,entering);
+      t.scale=ifx entering then 0.9+0.1*af_motion_ease(phase) else 1-0.1*af_motion_ease(phase);
+      t.stroke=point.stroke*t.scale;
+    }
+  }
+  return t;
+}
+
+af_family_point :: (kind:int,point:AfPoint,progress:f32,entering:bool,b:HudBox,s:AfSettings)->AfPoint {
+  t:=af_family_transition(kind,point,progress,entering,b,s);next:=point;
+  cx:=b.x+b.width*0.5;cy:=b.y+b.height*0.5;dx:=(point.x-cx)*t.scale;dy:=(point.y-cy)*t.scale;
+  co:=cos(t.rotate);si:=sin(t.rotate);
+  next.x=cx+dx*co-dy*si+t.x;next.y=cy+dx*si+dy*co+t.y;
+  next.alpha=point.alpha*t.alpha;next.stroke=t.stroke;
+  return next;
+}
+
+// Family animations and the assembler are separate upstream APIs. This path
+// composes original family tracks without also applying the assembler track.
+af_frame_family :: (kind:int,b:HudBox,s:AfSettings,progress:f32,entering:bool,out:[]AfPoint)->int {
+  full:[256]AfPoint;nfull:=af_frame_settings(kind,b,s,1,full[..]);
+  if nfull==0 {return 0;}
+  ready:[256]AfPoint;n:=0;start:=0;
+  while start<nfull {
+    end:=start+1;while end<nfull && !full[end].move {end+=1;}
+    t:=af_family_transition(kind,full[start],progress,entering,b,s);
+    if t.draw>=1 {
+      for i:start..<end {ready[n]=af_family_point(kind,full[i],progress,entering,b,s);n+=1;}
+    } else if t.draw>0 {
+      length:=0.0f32;
+      for i:start+1..<end {dx:=full[i].x-full[i-1].x;dy:=full[i].y-full[i-1].y;length+=sqrt(dx*dx+dy*dy);}
+      remaining:=length*t.draw;ready[n]=af_family_point(kind,full[start],progress,entering,b,s);n+=1;
+      for i:start+1..<end {
+        prior:=full[i-1];next:=full[i];dx:=next.x-prior.x;dy:=next.y-prior.y;segment:=sqrt(dx*dx+dy*dy);
+        if remaining>=segment {ready[n]=af_family_point(kind,next,progress,entering,b,s);n+=1;remaining-=segment;}
+        else {if segment>0 {next.x=prior.x+dx*remaining/segment;next.y=prior.y+dy*remaining/segment;
+            ready[n]=af_family_point(kind,next,progress,entering,b,s);n+=1;}break;}
+      }
+    }
+    start=end;
+  }
+  if n>out.count {return 0;}
+  for i:0..<n {out[i]=ready[i];}
+  return n;
+}
+
+af_clip :: (kind:int,b:HudBox,s:AfSettings,out:[]HudCoord)->int {
+  points:[16]HudCoord;n:=0;
+  if kind==0 {n=af_octagon_points(b.width,b.height,0,s.square,s.corners,points[..]);}
+  else if kind==1 {
+    p:=s.padding+s.stroke/2;ss:=s.square;small:=s.small_line_length;large:=s.large_line_length;w:=b.width;h:=b.height;
+    c:=[32]f32.[p+ss*2,h-p,p+ss,h-p-ss,p+ss,p+large+ss*3+small,p,p+large+ss*2+small,
+      p,p+ss*2+small,p+ss,p+small+ss,p+ss,p+ss,p+ss*2,p,
+      w-p-ss*2,p,w-p-ss,p+ss,w-p-ss,h-p-ss*3-small-large,w-p,h-p-ss*2-small-large,
+      w-p,h-p-ss*2-small,w-p-ss,h-p-ss-small,w-p-ss,h-p-ss,w-p-ss*2,h-p];
+    n=16;for i:0..<16 {points[i]=HudCoord.{x=c[i*2],y=c[i*2+1]};}
+  } else {return 0;}
+  if out.count<n {return 0;}
+  for i:0..<n {out[i]=HudCoord.{x=b.x+points[i].x,y=b.y+points[i].y};}
+  return n;
+}
+
+// Even-odd polygon containment for consumers that clip their HUD content.
+af_clip_contains :: (points:[]HudCoord,x:f32,y:f32)->bool {
+  if points.count<3 {return false;}
+  inside:=false;j:=points.count-1;
+  for i:0..<points.count {
+    a:=points[i];b:=points[j];
+    if (a.y>y)!=(b.y>y) && x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x {inside=!inside;}
+    j=i;
+  }
+  return inside;
+}

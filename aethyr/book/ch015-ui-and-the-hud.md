@@ -6,6 +6,8 @@
 > responsive catalog layout; `aethyr/ui/draw.coax` adds eighteen HUD drawing
 > components and consumer-supplied rows, meters, messages and advisories.
 > The standalone HUD laboratory composes them into five local demo scenes.
+> Its sixth tab adapts ARWES frame, motion/text, background and theme/effect
+> algorithms into 25 more specimens, with a pinned source ledger and MIT notice.
 > The full screen-space UI tree, typed-step integration, semantic platform
 > mirror and complete accessibility journey below remain a design draft.
 
@@ -64,6 +66,12 @@ rectangle comes from the same function that placed the drawing.
   previews, event acknowledgment and command feedback. The
   [reference study and reuse contract](../../docs/verse/2026-11-01-hud-library.md)
   distinguish these foundations from the full UI tree planned here.
+- The [ARWES Coax ports](../ui/arwes/SOURCES.md): all nine frame families,
+  31 easing curves, lifecycle and child timing, text reveal/decipher, typed
+  theme/style patterns, backgrounds, pointer lighting and a silent cue model.
+  The [porting report](../../docs/verse/2026-11-01-arwes-coax.md) records exact
+  sources, the MIT notice and the boundary between reusable algorithms and
+  DOM/framework/audio effects owned by hosts.
 - [verse/light.coax](../../verse/light.coax): the slot and bar shading
   (`verse_slot_light`, `verse_slot_cover`, `verse_bar`, `verse_slot_icon`).
 - Filament, the stroke font in `apps/openagents-web/font.coax`

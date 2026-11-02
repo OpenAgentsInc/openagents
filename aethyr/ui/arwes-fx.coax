@@ -1,0 +1,275 @@
+// Coax value ports of ARWES theme/styles/tools/bgs/effects/bleeps.
+// Copyright (c) 2014 - 2024 Romel Perez (romelperez.dev), MIT.
+// Source: arwes/arwes bdbaa0324900ee978d42036d1304a053c1fe54b5.
+// Exact paths and intentional host/numeric adaptations: arwes/SOURCES.md.
+// No browser effects, random global, wall clock, allocation or audio playback.
+// coax/bin/coax test aethyr/ui/arwes-fx.coax --library
+#load "hud.coax";
+
+AxColor :: struct {r:f32;g:f32;b:f32;a:f32;}
+AxDot :: struct {x:f32;y:f32;alpha:f32;}
+AxPuff :: struct {x:f32;y:f32;radius:f32;alpha:f32;}
+AxPuffSettings :: struct {padding:f32=50;radius:f32=4;x_fixed:f32;x_var:f32;y_fixed:f32= -10;y_var:f32= -100;r_fixed:f32=4;r_var:f32=40;sets:int=5;}
+AxLine :: struct {a:HudCoord;b:HudCoord;}
+AxTimer :: struct {key:int;due:f32;action:int;pending:bool;order:int;}
+AxBleepConfig :: struct {volume:f32;volume_set:bool;muted:bool;muted_set:bool;loop:bool;loop_set:bool;disabled:bool;disabled_set:bool;}
+AxBleep :: struct {callers:int;playing:bool;pending:bool;requested:f32;generation:int;loaded:bool;gain:f32;loop:bool;disabled:bool;load_ticket:int;}
+
+#test "theme values retain upstream rounded series multiplier and pixel breakpoints" {
+  values:=[3]f32.[4,8,16];
+  #assert ax_series(values[..],0.49)==4 && ax_series(values[..],0.5)==8 && ax_series(values[..],9)==16;
+  #assert ax_multiplier(4,2.5)==10 && ax_series(values[..],-2)==0;
+  #assert ax_breakpoint(600,600,900) && ax_breakpoint(899,600,900);
+  #assert !ax_breakpoint(899.5,600,900) && !ax_breakpoint(900,600,900);
+  c:=ax_hsl(180,100,50,0.5,0.4);
+  #assert abs(c.r)<0.0001 && abs(c.g-1)<0.0001 && abs(c.b-1)<0.0001 && abs(c.a-0.2)<0.0001;
+  d:=ax_rgb(120,-5,50,2,0.5);#assert d.r==1 && d.g==0 && d.b==0.5 && d.a==0.5;
+}
+#test "CSS steps strip and separator become numeric masks with the same stops" {
+  #assert ax_steps_mask(0.1,3)==1 && ax_steps_mask(0.25,3)==0 && ax_steps_mask(0.5,3)==1;
+  #assert ax_steps_mask(1,3)==1 && ax_steps_mask(0.5,1)==1;
+  stops:=[3]f32.[4,6,10];inks:=[3]f32.[1,0,0.4];
+  #assert ax_strip(2,stops[..],inks[..])==1 && ax_strip(5,stops[..],inks[..])==0;
+  #assert ax_strip(7,stops[..],inks[..])==0.4 && ax_strip(12,stops[..],inks[..])==1;
+  #assert ax_separator(2,100,8,4,true,true)==1 && ax_separator(9,100,8,4,true,true)==0;
+  #assert ax_separator(50,100,8,4,true,true)==0.35 && ax_separator(99,100,8,4,true,true)==1;
+}
+#test "background grid and directional reveal match independent point vectors" {
+  b:=HudBox.{x=10,y=20,width=100,height=80};
+  #assert ax_dot_count(b,30)==12;
+  d:=ax_dot(b,30,0,0.5,4,false,true);#assert d.x==15 && d.y==30;
+  #assert abs(ax_origin(b,60,60,4,0.5,0.5))<0.0001;
+  #assert ax_origin(b,10,20,0,0,0)==0 && ax_origin(b,110,20,0,0,0)==1;
+  #assert ax_dot_alpha(0.5,0.25,true,false)==1 && ax_dot_alpha(0.25,0.5,true,false)==0.5;
+  #assert ax_dot_alpha(0,0,true,false)==0 && ax_dot_alpha(1,0,true,false)==1;
+  #assert ax_dot_alpha(0.25,0.5,false,false)==0.5;
+}
+#test "puff interpolation and illuminator fade preserve their source equations" {
+  p:=ax_puff_sample(10,20,4,8,-12,40,0.25);
+  #assert p.x==12 && p.y==17 && p.radius==14 && p.alpha==0.5;
+  q:=ax_puff_sample(10,20,4,8,-12,40,0.75);#assert q.alpha==0.5;
+  b:=HudBox.{width=100,height=80};
+  #assert ax_illuminator_visible(b,-20,10,40) && !ax_illuminator_visible(b,-21,10,40);
+  #assert ax_illuminator(10,10,10,10,40)==1 && ax_illuminator(30,10,10,10,40)==0;
+  #assert ax_wrap(1)==1 && abs(ax_wrap(1.25)-0.25)<0.001;
+}
+#test "seeded shuffle is a deterministic permutation and moving lines publish whole" {
+  a:=[6]int.[0,1,2,3,4,5];b:=[6]int.[0,1,2,3,4,5];
+  ax_shuffle(a[..],7);ax_shuffle(b[..],7);
+  for i:0..<6 {#assert a[i]==b[i];hits:=0;for j:0..<6 {if a[j]==i {hits+=1;}}#assert hits==1;}
+  lines:[128]AxLine;box:=HudBox.{width=120,height=80};
+  n:=ax_moving_lines(box,30,3,7,0.5,lines[..]);#assert n>0 && n<=128;
+  short:[1]AxLine;short[0].a.x=123;
+  #assert ax_moving_lines(box,30,3,7,0.5,short[0..<0])== -1 && short[0].a.x==123;
+}
+#test "keyed timeout replaces a pending action and removes it before dispatch" {
+  timers:[3]AxTimer;
+  #assert ax_schedule(timers[..],4,10,2,99) && ax_schedule(timers[..],4,10,3,100);
+  #assert ax_pending(timers[..],4) && ax_take_due(timers[..],12)==0;
+  #assert ax_take_due(timers[..],13)==100 && !ax_pending(timers[..],4);
+  #assert ax_schedule(timers[..],1,13,1,7);ax_stop_timer(timers[..],1);#assert ax_take_due(timers[..],20)==0;
+  #assert ax_schedule(timers[..],1,0,5,1) && ax_schedule(timers[..],2,0,10,2);
+  #assert ax_take_due(timers[..],5)==1;
+  #assert ax_schedule(timers[..],3,5,5,3) && ax_take_due(timers[..],10)==2 && ax_take_due(timers[..],10)==3;
+  #assert !ax_schedule(timers[..],4,1.0f32/0.0f32,1,7) && ax_take_due(timers[..],1.0f32/0.0f32)==0;
+  #assert !ax_schedule(timers[..],4,999999936,128,7);
+}
+#test "bleep inheritance caller accounting and delayed load are explicit values" {
+  common:=AxBleepConfig.{volume=0.8,volume_set=true,loop=true,loop_set=true};
+  category:=AxBleepConfig.{volume=0.5,volume_set=true};named:=AxBleepConfig.{volume=0.25,volume_set=true};
+  merged:=ax_bleep_config(common,category,named);s:[1]AxBleep;
+  ax_bleep_update(s[..],merged,0.8,false);#assert abs(s[0].gain-0.2)<0.001 && s[0].loop;
+  s[0].loaded=true;#assert ax_bleep_play(s[..],1,0)==1 && ax_bleep_play(s[..],2,0)==0;
+  #assert !ax_bleep_stop(s[..],1) && s[0].playing;
+  #assert ax_bleep_stop(s[..],2) && !s[0].playing;
+  s[0].loaded=false;#assert ax_bleep_play(s[..],1,1)==0 && s[0].pending;
+  #assert ax_bleep_loaded(s[..],1.5,0.25)==0 && !s[0].playing;
+  s[0].loaded=false;play:=ax_bleep_play(s[..],1,2);
+  #assert ax_bleep_loaded(s[..],2.1,0.25)==1;
+  ax_bleep_update(s[..],AxBleepConfig.{disabled=true,disabled_set=true},1,false);
+  #assert !s[0].playing && s[0].gain==0;
+  #assert ax_bleep_loaded(s[..],2.1,0.25)==0 && !s[0].loaded;
+  s[0].disabled=false;s[0].pending=true;
+  #assert ax_bleep_loaded(s[..],0.0f32/0.0f32,0.25)==0 && !s[0].playing;
+  s[0].pending=false;old:=ax_bleep_play(s[..],1,3);ticket:=s[0].load_ticket;
+  ax_bleep_unload(s[..]);old=ax_bleep_play(s[..],2,3.1);
+  #assert ax_bleep_loaded_for(s[..],ticket,3.2,0.25)==0 && !s[0].loaded;
+  #assert ax_bleep_loaded_for(s[..],s[0].load_ticket,3.2,0.25)==1;
+}
+
+#test "background invalid inputs publish empty values instead of nonfinite vertices" {
+  bad:=HudBox.{width=120,height=1.0f32/0.0f32};lines:[128]AxLine;
+  #assert ax_moving_lines(bad,30,3,7,0.5,lines[..])== -1;
+  #assert ax_puff(bad,AxPuffSettings.{},7,0,0.5).radius==0;
+  #assert ax_puff(HudBox.{width=100,height=100},AxPuffSettings.{},7,-1,0.5).radius==0;
+  #assert ax_wrap(-0.25)==0 && ax_wrap(0.0f32/0.0f32)==0;
+}
+
+ax_min :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
+ax_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+ax_clamp :: (v:f32,low:f32,high:f32)->f32 {if v!=v {return low;}return ax_min(high,ax_max(low,v));}
+ax_wrap :: (p:f32)->f32 {if !(p>=0 && p<1000000000) {return 0;}if p==1 {return 1;}return ax_clamp(p-floor(p),0,1);}
+ax_box_valid :: (b:HudBox)->bool {return b.x>= -1000000 && b.x<=1000000 && b.y>= -1000000 && b.y<=1000000 && b.width>0 && b.width<100000 && b.height>0 && b.height<100000;}
+ax_clock_valid :: (now:f32)->bool {return now>=0 && now<1000000000;}
+ax_multiplier :: (base:f32,index:f32)->f32 {return base*index;}
+ax_series :: (values:[]f32,index:f32)->f32 {
+  if values.count==0 || !(index>= -0.5 && index<1000000) {return 0;}
+  i:=cast(int)floor(index+0.5);if i>=values.count {i=values.count-1;}return values[i];
+}
+ax_breakpoint :: (width:f32,minimum:f32,maximum:f32)->bool {return width>=minimum && width<=maximum-1;}
+ax_rgb :: (r:f32,g:f32,b:f32,alpha:f32,multiplier:f32)->AxColor {
+  return AxColor.{r=ax_clamp(r,0,100)/100,g=ax_clamp(g,0,100)/100,b=ax_clamp(b,0,100)/100,a=ax_clamp(alpha,0,1)*ax_clamp(multiplier,0,1)};
+}
+ax_hsl :: (h:f32,s:f32,l:f32,alpha:f32,multiplier:f32)->AxColor {
+  hue:=ax_clamp(h,0,360)/60;sat:=ax_clamp(s,0,100)/100;light:=ax_clamp(l,0,100)/100;
+  chroma:=(1-abs(2*light-1))*sat;x:=chroma*(1-abs(hue-2*floor(hue/2)-1));m:=light-chroma*0.5;
+  r:=0.0f32;g:=0.0f32;b:=0.0f32;
+  if hue<1 {r=chroma;g=x;}else if hue<2 {r=x;g=chroma;}else if hue<3 {g=chroma;b=x;}
+  else if hue<4 {g=x;b=chroma;}else if hue<5 {r=x;b=chroma;}else {r=chroma;b=x;}
+  return AxColor.{r=r+m,g=g+m,b=b+m,a=ax_clamp(alpha,0,1)*ax_clamp(multiplier,0,1)};
+}
+ax_hwb :: (h:f32,w:f32,b:f32,alpha:f32,multiplier:f32)->AxColor {
+  white:=ax_clamp(w,0,100)/100;black:=ax_clamp(b,0,100)/100;total:=white+black;
+  c:=ax_hsl(h,100,50,alpha,multiplier);
+  if total>=1 {c.r=white/total;c.g=c.r;c.b=c.r;return c;}
+  c.r=c.r*(1-total)+white;c.g=c.g*(1-total)+white;c.b=c.b*(1-total)+white;return c;
+}
+ax_steps_mask :: (position:f32,count:int)->f32 {
+  if count<2 {return 1;}if count>10000 {return 0;}total:=count*2-1;
+  i:=cast(int)floor(ax_clamp(position,0,1)*cast(f32)total);if i>=total {i=total-1;}
+  return ifx i%2==0 then 1.0f32 else 0.0f32;
+}
+ax_strip :: (position:f32,stops:[]f32,inks:[]f32)->f32 {
+  if stops.count==0 || stops.count!=inks.count || !(stops[stops.count-1]>0) {return 0;}
+  period:=stops[stops.count-1];p:=position-floor(position/period)*period;
+  for i:0..<stops.count {if p<stops[i] {return inks[i];}}return inks[inks.count-1];
+}
+ax_separator :: (position:f32,length:f32,width:f32,space:f32,left:bool,right:bool)->f32 {
+  if !(length>0 && width>0 && space>=0) {return 0;}p:=ax_clamp(position,0,length);edge:=2*width+2*space;
+  if left && p<edge {if p<width || (p>=width+space && p<2*width+space) {return 1;}return 0;}
+  if right && p>=length-edge {q:=length-p;if q<=width || (q>width+space && q<=2*width+space) {return 1;}return 0;}
+  return 0.35;
+}
+// Deliberately replaces Math.random with an explicit seed: same specimen on
+// native and browser, unaffected by unrelated calls or render order.
+ax_random :: (seed:int,index:int)->f32 {
+  state:=seed%2147483646+1;if state<1 {state+=2147483646;}
+  step:=index%32768;if step<0 {step+=32768;}
+  state=((state+step*104729)*48271)%2147483647;
+  return ax_min(0.99999988,cast(f32)state/2147483647.0);
+}
+ax_shuffle :: (values:[]int,seed:int) {
+  i:=values.count-1;
+  while i>0 {j:=cast(int)floor(ax_random(seed,i)*cast(f32)(i+1));a:=values[i];values[i]=values[j];values[j]=a;i-=1;}
+}
+ax_dot_count :: (b:HudBox,distance:f32)->int {
+  if !(distance>=2 && distance<100000 && ax_box_valid(b)) {return 0;}
+  x:=1+cast(int)floor(b.width/distance);y:=1+cast(int)floor(b.height/distance);
+  if x*y>4096 {return 0;}return x*y;
+}
+// Origin: 0left 1right 2top 3bottom 4center 5custom normalized point.
+ax_origin :: (b:HudBox,x:f32,y:f32,origin:int,origin_x:f32,origin_y:f32)->f32 {
+  if !(b.width>0 && b.height>0) {return 0;}
+  px:=x-b.x;py:=y-b.y;
+  if origin==0 {return px/b.width;}if origin==1 {return 1-px/b.width;}
+  if origin==2 {return py/b.height;}if origin==3 {return 1-py/b.height;}
+  ox:=ifx origin==4 then b.width*0.5 else b.width*origin_x;oy:=ifx origin==4 then b.height*0.5 else b.height*origin_y;
+  far_x:=ifx ox<b.width*0.5 then b.width else 0.0f32;far_y:=ifx oy<b.height*0.5 then b.height else 0.0f32;
+  maxd:=sqrt((far_x-ox)*(far_x-ox)+(far_y-oy)*(far_y-oy));if maxd<=0 {return 0;}
+  return sqrt((px-ox)*(px-ox)+(py-oy)*(py-oy))/maxd;
+}
+ax_dot_alpha :: (progress:f32,distance:f32,entering:bool,inverted:bool)->f32 {
+  d:=distance;if (entering && inverted) || (!entering && !inverted) {d=1-d;}
+  alpha:=ifx d<=0 then (ifx progress>0 then 1.0f32 else 0.0f32) else ax_clamp(progress/d,0,1);
+  return ifx entering then alpha else 1-alpha;
+}
+ax_dot :: (b:HudBox,distance:f32,index:int,progress:f32,origin:int,inverted:bool,entering:bool)->AxDot {
+  out:AxDot;n:=ax_dot_count(b,distance);if index<0 || index>=n {return out;}
+  cols:=1+cast(int)floor(b.width/distance);
+  out.x=b.x+(b.width-floor(b.width/distance)*distance)*0.5+cast(f32)(index%cols)*distance;
+  out.y=b.y+(b.height-floor(b.height/distance)*distance)*0.5+cast(f32)(index/cols)*distance;
+  out.alpha=ax_dot_alpha(progress,ax_origin(b,out.x,out.y,origin,0.5,0.5),entering,inverted);return out;
+}
+ax_puff_sample :: (x:f32,y:f32,r:f32,xo:f32,yo:f32,ro:f32,progress:f32)->AxPuff {
+  empty:AxPuff;if !(x>= -1000000 && x<=1000000 && y>= -1000000 && y<=1000000 && r>=0 && r<100000 && xo>= -100000 && xo<100000 && yo>= -100000 && yo<100000 && ro>=0 && ro<100000 && progress==progress) {return empty;}
+  p:=ax_clamp(progress,0,1);return AxPuff.{x=x+p*xo,y=y+p*yo,radius=r+p*ro,alpha=ifx p<=0.5 then p*2 else 2-p*2};
+}
+ax_puff :: (b:HudBox,s:AxPuffSettings,seed:int,index:int,progress:f32)->AxPuff {
+  empty:AxPuff;if !ax_box_valid(b) || index<0 || index>=4096 || s.sets<1 || s.sets>64 || !(s.padding>=0 && s.padding<100000 && s.radius>=0 && s.radius<100000) {return empty;}
+  sets:=ifx s.sets>0 then s.sets else 1;phase:=ax_wrap(progress+cast(f32)(index%sets)/cast(f32)sets);
+  p:=sin(phase*1.57079632679);pad:=ax_min(s.padding,ax_min(b.width,b.height)*0.4);
+  return ax_puff_sample(b.x+pad+ax_random(seed,index*5)*(b.width-2*pad),b.y+pad+ax_random(seed,index*5+1)*(b.height-2*pad),s.radius,
+    s.x_fixed+ax_random(seed,index*5+2)*s.x_var,s.y_fixed+ax_random(seed,index*5+3)*s.y_var,s.r_fixed+ax_random(seed,index*5+4)*s.r_var,p);
+}
+ax_moving_lines :: (b:HudBox,distance:f32,sets:int,seed:int,progress:f32,out:[]AxLine)->int {
+  if !(distance>=2 && ax_box_valid(b) && b.width/distance<256 && progress>=0 && progress<1000000000) || sets<1 || sets>16 {return -1;}
+  positions:=1+cast(int)floor(b.width/distance);counts:[16]int;total:=0;
+  for i:0..<sets {counts[i]=cast(int)floor(ax_random(seed,i)*0.4*cast(f32)positions);total+=counts[i];}
+  if total>out.count {return -1;}n:=0;margin:=b.width-floor(b.width/distance)*distance;
+  for set:0..<sets {
+    indexes:[256]int;for i:0..<positions {indexes[i]=i;}ax_shuffle(indexes[0..<positions],seed+set*19);
+    phase:=ax_wrap(progress+cast(f32)set/cast(f32)sets);
+    ease:=ifx phase<0.5 then 4*phase*phase*phase else 1-pow(-2*phase+2,3)*0.5;
+    move:=b.height*(2*ease-1);
+    for i:0..<counts[set] {
+      initial:=ax_random(seed+set,i+23)*b.height*0.5;length:=floor(ax_random(seed+set,i+87)*0.4*b.height);
+      x:=b.x+margin*0.5+cast(f32)indexes[i]*distance;
+      out[n]=AxLine.{a=HudCoord.{x=x,y=b.y+b.height-initial-move},b=HudCoord.{x=x,y=b.y+b.height-initial-length-move}};n+=1;
+    }
+  }return n;
+}
+ax_illuminator_visible :: (b:HudBox,x:f32,y:f32,size:f32)->bool {return size>0 && x>=b.x-size*0.5 && x<=b.x+b.width+size*0.5 && y>=b.y-size*0.5 && y<=b.y+b.height+size*0.5;}
+ax_illuminator :: (x:f32,y:f32,pointer_x:f32,pointer_y:f32,size:f32)->f32 {
+  if !(size>0) {return 0;}dx:=x-pointer_x;dy:=y-pointer_y;return ax_clamp(1-sqrt(dx*dx+dy*dy)/(size*0.5),0,1);
+}
+ax_schedule :: (timers:[]AxTimer,key:int,now:f32,delay:f32,action:int)->bool {
+  if !(ax_clock_valid(now) && delay>=0 && delay<1000000 && ax_clock_valid(now+delay)) || action<=0 {return false;}
+  slot:= -1;for i:0..<timers.count {if timers[i].pending && timers[i].key==key {slot=i;break;}if !timers[i].pending && slot<0 {slot=i;}}
+  if slot<0 {return false;}order:=0;for t:timers {if t.order>order {order=t.order;}}
+  timers[slot]=AxTimer.{key=key,due=now+delay,action=action,pending=true,order=order+1};return true;
+}
+ax_pending :: (timers:[]AxTimer,key:int)->bool {for t:timers {if t.pending && t.key==key {return true;}}return false;}
+ax_stop_timer :: (timers:[]AxTimer,key:int) {for i:0..<timers.count {if timers[i].key==key {timers[i].pending=false;}}}
+ax_stop_all :: (timers:[]AxTimer) {for i:0..<timers.count {timers[i].pending=false;}}
+ax_take_due :: (timers:[]AxTimer,now:f32)->int {
+  if !ax_clock_valid(now) {return 0;}
+  first:= -1;for i:0..<timers.count {if timers[i].pending && timers[i].due<=now && (first<0 || timers[i].due<timers[first].due || (timers[i].due==timers[first].due && timers[i].order<timers[first].order)) {first=i;}}
+  if first<0 {return 0;}action:=timers[first].action;timers[first].pending=false;return action;
+}
+ax_bleep_merge :: (base:AxBleepConfig,over:AxBleepConfig)->AxBleepConfig {
+  out:=base;if over.volume_set {out.volume=over.volume;out.volume_set=true;}
+  if over.muted_set {out.muted=over.muted;out.muted_set=true;}if over.loop_set {out.loop=over.loop;out.loop_set=true;}
+  if over.disabled_set {out.disabled=over.disabled;out.disabled_set=true;}return out;
+}
+ax_bleep_config :: (common:AxBleepConfig,category:AxBleepConfig,named:AxBleepConfig)->AxBleepConfig {return ax_bleep_merge(ax_bleep_merge(common,category),named);}
+ax_bleep_update :: (s:[]AxBleep,config:AxBleepConfig,master:f32,external_mute:bool) {
+  if s.count<1 {return;}s[0].loop=config.loop;s[0].disabled=config.disabled;
+  volume:=ifx config.volume_set then config.volume else 1.0f32;s[0].gain=ax_clamp(volume,0,1)*ax_clamp(master,0,1);
+  if config.muted || external_mute || config.disabled {s[0].gain=0;}
+  if config.disabled {s[0].playing=false;s[0].pending=false;s[0].loaded=false;s[0].callers=0;s[0].load_ticket+=1;}
+}
+ax_caller_bit :: (caller:int)->int {if caller<0 || caller>=16 {return 0;}n:=1;for i:0..<caller {n*=2;}return n;}
+// Return 0=no source request, 1=start, 2=restart. The native/browser audio
+// adapter may consume this value; the HUD lab visualizes it silently.
+ax_bleep_play :: (s:[]AxBleep,caller:int,now:f32)->int {
+  if s.count<1 || s[0].disabled || ax_caller_bit(caller)==0 || !ax_clock_valid(now) {return 0;}
+  s[0].requested=now;s[0].callers=s[0].callers|ax_caller_bit(caller);
+  if !s[0].loaded {if !s[0].pending {s[0].load_ticket+=1;}s[0].pending=true;return 0;}if s[0].loop && s[0].playing {return 0;}
+  restart:=s[0].playing;s[0].playing=true;s[0].pending=false;s[0].generation+=1;return ifx restart then 2 else 1;
+}
+ax_bleep_loaded :: (s:[]AxBleep,now:f32,max_delay:f32)->int {
+  if s.count<1 {return 0;}return ax_bleep_loaded_for(s,s[0].load_ticket,now,max_delay);
+}
+// Asynchronous host adapters retain the load ticket when requesting bytes;
+// a completion from an unloaded/disabled/replaced request cannot start a cue.
+ax_bleep_loaded_for :: (s:[]AxBleep,ticket:int,now:f32,max_delay:f32)->int {
+  if s.count<1 || s[0].disabled || ticket!=s[0].load_ticket || !ax_clock_valid(now) || !(max_delay>=0 && max_delay<=60) {return 0;}s[0].loaded=true;if !s[0].pending {return 0;}s[0].pending=false;
+  if now>s[0].requested+ax_max(0,max_delay) {s[0].callers=0;return 0;}
+  s[0].playing=true;s[0].generation+=1;return 1;
+}
+ax_bleep_stop :: (s:[]AxBleep,caller:int)->bool {
+  if s.count<1 {return false;}bit:=ax_caller_bit(caller);if bit==0 {return false;}
+  s[0].callers=s[0].callers&(65535-bit);if s[0].loop && s[0].callers>0 {return false;}
+  was:=s[0].playing;s[0].playing=false;s[0].pending=false;s[0].load_ticket+=1;return was;
+}
+ax_bleep_unload :: (s:[]AxBleep) {if s.count>0 {s[0].playing=false;s[0].pending=false;s[0].loaded=false;s[0].callers=0;s[0].load_ticket+=1;}}

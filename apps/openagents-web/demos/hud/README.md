@@ -4,6 +4,15 @@ A reusable Coax HUD library with a component catalog and Grid command,
 flight navigation, engineering and communications compositions. Its synthetic
 fixtures are independent of the homepage's verified live observations.
 
+The sixth tab adds **25 ARWES specimens**, making 43 in total. Nine source
+frame families, all 31 easing curves, lifecycle/child timing, sequence and
+decipher text, patterned backgrounds, pointer lighting, theme/style arithmetic
+and a silent cue-state model are adapted to the same Coax/WebGPU system.
+The [source report](../../../../docs/verse/2026-11-01-arwes-coax.md) inventories
+all upstream packages; the [ledger and MIT notice](../../../../aethyr/ui/arwes/SOURCES.md)
+retain the exact revision and source hashes. No upstream scripts or runtime
+packages are installed.
+
 Run from the repository root:
 
 ```sh
@@ -18,8 +27,8 @@ review is finished.
 
 The tool generates an ignored standalone app under
 `apps/openagents-web/build/hud`. It compiles the demonstration with the existing
-unmodified `projects-face.c`, generates the projects shader from its existing
-Coax source, and writes the minimal Coaxial canvas shell and accessible text
+unmodified `projects-face.c`, extends the existing projects shader with Coax
+radial/solid primitives, and writes the minimal Coaxial canvas shell and accessible text
 twin. All new application and build logic is Coax. No film images or footage
 are bundled. The shell reuses the standard browser host's platform behavior.
 
@@ -35,6 +44,7 @@ tool and restart the server so the watcher discovers it.
 | `3` | Flight navigation |
 | `4` | Engineering |
 | `5` | Communications |
+| `6` | ARWES collection: Frames, Motion, Fields, Tokens |
 | `M` | Monochrome or cyan accents |
 | `Space` | Pause or resume the demonstration clock |
 | `Tab`, `Shift Tab` | Move focus |
@@ -43,11 +53,20 @@ tool and restart the server so the watcher discovers it.
 | `R` | Reset local demo readings and selections |
 | Wheel, `Page Up`, `Page Down` | Scroll the component catalog |
 
-Click any fully visible component card to inspect it. The Grid's contact
+Click any visible component card to inspect it. The Grid's contact
 selection updates its drawing and register together. Flight supports contact
 selection, range modes and an armed route preview. Engineering links the
 selected subsystem to its matrix. Communications command tiles update the
 local transcript and message state; no external commands are sent.
+
+The ARWES toolbar provides replay, enter/exit, next easing,
+parallel/sequence/stagger manager selection, reseeding and dot shape. Frames
+switches between the shared ASSEMBLY timeline and source FAMILY timelines;
+the pure `ArMotion` controller separately preserves value continuity on reversal. Tokens
+provides category/cue/loop controls for a silent model of source ownership and
+gain. There is no audio playback. Partially visible cards remain actionable
+when at least 44 points of their drawn surface are visible, so short landscape
+viewports can inspect every component. On phones, navigation uses two rows.
 
 Run the focused checks against the running server:
 

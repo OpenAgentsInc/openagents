@@ -1,5 +1,20 @@
 # Owner actions
 
+## ARWES Coax HUD extension: visual review (2026-11-01)
+
+At `http://127.0.0.1:8815/`, press **6** for the ARWES collection. Its four
+groups cover nine frames, motion/text, four backgrounds plus pointer lighting,
+and styles/theme/silent cues. Click a card for its enlarged inspector. Use
+REPLAY and ENTER/EXIT to compare transitions; ASSEMBLY/FAMILY selects the
+shared or per-family frame timelines; EASING and MANAGER cycle the
+motion models; RESEED and DOT TYPE change the fields; CATEGORY/CUE/LOOP inspect
+the silent cue model. M retains the monochrome/cyan comparison.
+
+Review the new primitives alongside the existing Grid scenes before choosing
+which ones should become production defaults. Source, license and exact port
+boundaries: `docs/verse/2026-11-01-arwes-coax.md` and
+`aethyr/ui/arwes/SOURCES.md`. The full upstream MIT notice is retained.
+
 ## Aethyr HUD component library: visual review (2026-11-01)
 
 Review the running local demo at `http://127.0.0.1:8815/` (the isolated

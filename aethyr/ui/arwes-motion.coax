@@ -1,0 +1,421 @@
+// Deterministic value adaptation of arwes/arwes, MIT, snapshot
+// bdbaa0324900ee978d42036d1304a053c1fe54b5.
+// Sources: packages/animated/src/{easing,easeSteps,easeAmong,animateDraw,
+// createAnimation,transitions}; packages/animator/src/internal/
+// {createAnimatorMachine,createAnimatorManager}; packages/text/src/
+// {animateTextSequence,animateTextDecipher,getAnimationTextDuration};
+// packages/tools/src/randomizeList. No upstream scripts are executed.
+// See arwes/LICENSE and arwes/SOURCES.md for the MIT notice and provenance.
+// No DOM, promises, audio, wall clock or allocation. Drawing math only.
+// Time is caller-supplied seconds. The bounded text profile counts Unicode
+// scalars (not JS UTF-16 code units), refuses malformed UTF-8 and publishes
+// complete output. Decipher uses the upstream Fisher-Yates algorithm with
+// an explicit seed/frame in place of Math.random. Grapheme shaping is not
+// provided. Animator conditions are caller-provided booleans.
+// coax/bin/coax test aethyr/ui/arwes-motion.coax --library
+
+AM_EXITED :: 0; AM_ENTERING :: 1; AM_ENTERED :: 2; AM_EXITING :: 3;
+AM_LINEAR :: 0;
+AM_IN_QUAD :: 1; AM_OUT_QUAD :: 2; AM_IN_OUT_QUAD :: 3;
+AM_IN_CUBIC :: 4; AM_OUT_CUBIC :: 5; AM_IN_OUT_CUBIC :: 6;
+AM_IN_QUART :: 7; AM_OUT_QUART :: 8; AM_IN_OUT_QUART :: 9;
+AM_IN_QUINT :: 10; AM_OUT_QUINT :: 11; AM_IN_OUT_QUINT :: 12;
+AM_IN_SINE :: 13; AM_OUT_SINE :: 14; AM_IN_OUT_SINE :: 15;
+AM_IN_EXPO :: 16; AM_OUT_EXPO :: 17; AM_IN_OUT_EXPO :: 18;
+AM_IN_CIRC :: 19; AM_OUT_CIRC :: 20; AM_IN_OUT_CIRC :: 21;
+AM_IN_BACK :: 22; AM_OUT_BACK :: 23; AM_IN_OUT_BACK :: 24;
+AM_IN_ELASTIC :: 25; AM_OUT_ELASTIC :: 26; AM_IN_OUT_ELASTIC :: 27;
+AM_IN_BOUNCE :: 28; AM_OUT_BOUNCE :: 29; AM_IN_OUT_BOUNCE :: 30;
+AM_PARALLEL :: 0; AM_SEQUENCE :: 1; AM_STAGGER :: 2;
+AM_SEQUENCE_REVERSE :: 3; AM_STAGGER_REVERSE :: 4;
+AM_MAX_CHILDREN :: 64; AM_MAX_TEXT :: 256; AM_MAX_TEXT_BYTES :: 1024;
+AM_PI :: 3.14159265358979323846f32;
+
+ArMotion :: struct {
+  phase:int; value:f32; from:f32; to:f32; elapsed:f32; duration:f32; easing:int;
+}
+ArDraw :: struct {length:f32;offset:f32;share:f32;}
+ArAnimationSample :: struct {progress:f32;iteration:int;finished:bool;}
+ArChild :: struct {enter:f32=0.4;exit:f32=0.4;delay:f32;offset:f32;allowed:bool=true;}
+ArTiming :: struct {start:f32;end:f32;valid:bool;}
+ArTimelineItem :: struct {key:int;start:f32;offset:f32;enter:f32;active:bool;}
+ArTimeline :: struct {items:[AM_MAX_CHILDREN]ArTimelineItem;n:int;}
+ArSwitch :: struct {visible:int=-1;pending:int=-1;hiding:bool;exit:int=-1;enter:int=-1;}
+
+// The following vectors are transcribed from upstream easeSteps/easeAmong
+// tests and independent analytic values of the published easing formulas.
+#test "Arwes easing vectors endpoints and intentional overshoot" {
+  quarter:=[31]f32.[0.25,0.0625,0.4375,0.125,0.015625,0.578125,0.0625,0.00390625,0.68359375,0.03125,0.0009765625,0.7626953125,0.015625,0.0761204675,0.3826834324,0.1464466094,0.005524271728,0.8232233047,0.015625,0.0317541634,0.6614378278,0.0669872981,-0.0641365625,0.8174096875,-0.09968184375,-0.005524271728,0.9116116524,0.01196944442,0.02734375,0.47265625,0.1171875];
+  for kind:0..<31 {
+    #assert abs(ar_ease(kind,0))<0.00001 && abs(ar_ease(kind,1)-1)<0.00001;
+    #assert abs(ar_ease(kind,0.25)-quarter[kind])<0.00001;
+  }
+  for family:0..<10 {inside:=family*3+1;#assert abs(ar_ease(inside,0.25)-(1-ar_ease(inside+1,0.75)))<0.00001;#assert abs(ar_ease(inside+2,0.25)-(1-ar_ease(inside+2,0.75)))<0.00001;}
+  #assert ar_ease(AM_IN_QUAD,0.25)==0.0625;
+  #assert ar_ease(AM_OUT_QUAD,0.25)==0.4375;
+  #assert ar_ease(AM_IN_OUT_CUBIC,0.25)==0.0625;
+  #assert ar_ease(AM_OUT_QUART,0.5)==0.9375;
+  #assert ar_ease(AM_IN_QUINT,0.5)==0.03125;
+  #assert abs(ar_ease(AM_OUT_SINE,0.5)-0.70710678)<0.00001;
+  #assert ar_ease(AM_IN_EXPO,0.5)==0.03125 && ar_ease(AM_OUT_EXPO,0.5)==0.96875;
+  #assert abs(ar_ease(AM_IN_CIRC,0.5)-0.133974596)<0.00001;
+  #assert ar_ease(AM_IN_BACK,0.25)<0 && ar_ease(AM_OUT_BACK,0.75)>1;
+  #assert ar_ease(AM_OUT_ELASTIC,0.1)>1 && ar_ease(AM_IN_ELASTIC,0.9)<0;
+  #assert abs(ar_ease(AM_OUT_BOUNCE,0.5)-0.765625)<0.000001;
+  #assert ar_ease(99,0.3)==0.3 && ar_ease(AM_LINEAR,-1)==0;
+  #assert ar_ease(AM_LINEAR,0.0f32/0.0f32)==0;
+}
+#test "upstream step start end and breakpoint vectors" {
+  ps:=[10]f32.[0,0.01,0.2,0.249,0.25,0.49,0.5,0.51,0.99,1];
+  ends:=[10]f32.[0,0,0,0,0.25,0.25,0.5,0.5,0.75,1];
+  starts:=[10]f32.[0,0.25,0.25,0.25,0.25,0.5,0.5,0.75,1,1];
+  for i:0..<10 {#assert ar_steps(ps[i],4,false)==ends[i] && ar_steps(ps[i],4,true)==starts[i];}
+  #assert ar_steps(0.4,0,false)==0;
+  points:=[3]f32.[4,10,2];
+  #assert abs(ar_among(points[..],0.2)-6.4)<0.00001;
+  #assert ar_among(points[..],0.25)==7 && ar_among(points[..],0.5)==10;
+  #assert abs(ar_among(points[..],0.6)-8.4)<0.00001 && ar_among(points[..],0.75)==6;
+  one:=[1]f32.[5];#assert ar_among(one[..],0.5)==2.5;
+  #assert ar_among(one[0..<0],0.5)==0;
+}
+#test "draw defaults use outExpo entering and outSine exiting after delay" {
+  a:=ar_draw(100,0.6,1,0.1,true);b:=ar_draw(100,0.6,1,0.1,false);
+  #assert abs(a.offset-3.125)<0.00001 && abs(a.share-0.96875)<0.00001;
+  #assert abs(b.offset-70.710678)<0.0001;
+  #assert ar_draw(100,0,1,0.1,true).offset==100;
+  #assert ar_draw(100,2,1,0,true).offset==0;
+  #assert ar_draw(100,0,0,0,true).share==1 && ar_draw(-1,0,1,0,true).length==0;
+}
+#test "enter exit state transitions retain visual continuity through reversal" {
+  s:[1]ArMotion;ar_motion_to(s[..],true,1,AM_IN_QUAD);
+  #assert s[0].phase==AM_ENTERING && ar_motion_value(s[..])==0;
+  ar_motion_tick(s[..],0.5);#assert ar_motion_value(s[..])==0.25;
+  ar_motion_to(s[..],false,1,AM_LINEAR);#assert ar_motion_value(s[..])==0.25 && s[0].phase==AM_EXITING;
+  ar_motion_tick(s[..],0.5);#assert ar_motion_value(s[..])==0.125;
+  ar_motion_to(s[..],true,0.5,AM_LINEAR);#assert ar_motion_value(s[..])==0.125;
+  ar_motion_tick(s[..],0.5);#assert s[0].phase==AM_ENTERED && ar_motion_value(s[..])==1;
+  ar_motion_to(s[..],false,0,AM_LINEAR);#assert s[0].phase==AM_EXITED && ar_motion_value(s[..])==0;
+  ar_motion_tick(s[..],0.0f32/0.0f32);#assert ar_motion_value(s[..])==0;
+}
+#test "animation samples cover normal reverse repetitions and zero duration" {
+  a:=ar_animation_sample(0.25,1,AM_IN_QUAD,false,0);
+  b:=ar_animation_sample(0.25,1,AM_IN_QUAD,true,0);
+  #assert a.progress==0.0625 && b.progress==0.9375 && !a.finished;
+  c:=ar_animation_sample(2.5,1,AM_LINEAR,false,2);
+  #assert c.iteration==2 && c.progress==0.5 && !c.finished;
+  d:=ar_animation_sample(3,1,AM_LINEAR,false,2);#assert d.finished && d.progress==1;
+  #assert ar_animation_sample(0,0,AM_LINEAR,true,0).progress==0;
+}
+#test "transition flicker and empty records are bounded value operations" {
+  #assert ar_transition(10,20,5,0.5,true,AM_LINEAR)==15;
+  #assert ar_transition(10,20,5,0.5,false,AM_LINEAR)==12.5;
+  #assert ar_flicker(0,true)==0 && ar_flicker(1,true)==1;
+  #assert ar_flicker(0,false)==1 && ar_flicker(1,false)==0;
+  m:[1]ArMotion;ar_motion_to(m[0..<0],true,1,AM_LINEAR);ar_motion_tick(m[0..<0],1);
+  #assert ar_motion_value(m[0..<0])==0;
+  ar_motion_to(m[..],true,1,AM_LINEAR);ar_motion_tick(m[..],0.25);
+  ar_motion_to(m[..],true,1,AM_LINEAR);#assert m[0].elapsed==0.25;
+}
+#test "parallel sequence stagger reverse and limit use source timeline arithmetic" {
+  c:=[3]ArChild.[ArChild.{enter=0.4,delay=0.1,offset=0.02},ArChild.{enter=0.2,delay=0.05,offset=0.03},ArChild.{enter=0.3,delay=0,offset=0.04}];
+  #assert abs(ar_child_timing(c[..],1,AM_PARALLEL,0.04,false).start-0.05)<0.00001;
+  #assert abs(ar_child_timing(c[..],1,AM_SEQUENCE,0.04,false).start-0.50)<0.00001;
+  #assert abs(ar_child_timing(c[..],2,AM_SEQUENCE,0.04,false).start-0.69)<0.00001;
+  #assert abs(ar_child_timing(c[..],2,AM_STAGGER,0.04,false).start-0.17)<0.00001;
+  #assert abs(ar_child_timing(c[..],0,AM_SEQUENCE_REVERSE,0.04,false).start-0.69)<0.00001;
+  #assert ar_child_timing(c[..],1,AM_STAGGER,0.04,true).start==0;
+  t:[1]ArTimeline;
+  a:=ar_schedule_offer(t[..],0,10,c[0],AM_STAGGER,0.04,0);
+  b:=ar_schedule_offer(t[..],0,11,c[1],AM_STAGGER,0.04,0);
+  #assert abs(a.start-0.1)<0.00001 && abs(b.start-0.05)<0.00001;
+  ar_schedule_remove(t[..],10);#assert !t[0].items[0].active;
+  #assert !ar_child_timing(c[..],3,AM_SEQUENCE,0,false).valid;
+  #assert abs(ar_child_timing(c[..],1,99,0.04,false).start-0.05)<0.00001;
+  #assert abs(ar_children_duration(c[..],AM_SEQUENCE,0.04)-0.99)<0.00001;
+}
+#test "live sequence fills a removed gap and switch waits for old exit" {
+  t:[1]ArTimeline;c:=ArChild.{enter=1};
+  a:=ar_schedule_offer(t[..],0,1,c,AM_SEQUENCE,0.04,-1);
+  b:=ar_schedule_offer(t[..],0,2,c,AM_SEQUENCE,0.04,-1);
+  d:=ar_schedule_offer(t[..],0,3,c,AM_SEQUENCE,0.04,-1);
+  #assert a.start==0 && b.start==1 && d.start==2;
+  ar_schedule_remove(t[..],2);
+  e:=ar_schedule_offer(t[..],0,4,c,AM_SEQUENCE,0.04,-1);#assert e.start==1;
+  sw:[1]ArSwitch;sw[0].visible=-1;sw[0].pending=-1;
+  ar_switch_select(sw[..],2,false);#assert sw[0].enter==2 && sw[0].visible==2;
+  ar_switch_select(sw[..],4,false);#assert sw[0].exit==2 && sw[0].enter== -1 && sw[0].hiding;
+  ar_switch_select(sw[..],3,false);#assert sw[0].pending==3 && sw[0].enter== -1;
+  ar_switch_select(sw[..],3,true);#assert sw[0].enter==3 && sw[0].visible==3 && !sw[0].hiding;
+}
+#test "text durations sequence and blinking preserve source rounding with UTF8 scalars" {
+  #assert ar_text_duration(50,4,100)==0.5 && ar_text_duration(1000,4,100)==4;
+  #assert ar_text_duration(-1,4,100)==0 && ar_text_duration(10,4,0)==0;
+  out:[128]u8;
+  n:=ar_text_sequence("Aé🙂Z",0.5,true,out[..]);#assert n==3 && cast(string)out[0..<n]=="Aé";
+  n=ar_text_sequence("Aé🙂Z",0.5,false,out[..]);#assert n==3 && cast(string)out[0..<n]=="Aé";
+  n=ar_text_sequence("ABCD",0.125,true,out[..]);#assert n==1 && out[0]=='A';
+  #assert !ar_text_blink(0,0.1) && ar_text_blink(0.05,0.1) && !ar_text_blink(0.09,0.1);
+  out[0]=99;#assert ar_text_sequence("AB",1,true,out[0..<1])== -1 && out[0]==99;
+}
+#test "seeded decipher is replayable ends exactly and refuses malformed text atomically" {
+  a:[128]u8;b:[128]u8;
+  n:=ar_text_decipher("Aé 🙂Z",0.4,true,17,3,a[..]);
+  m:=ar_text_decipher("Aé 🙂Z",0.4,true,17,3,b[..]);
+  #assert n==m && cast(string)a[0..<n]==cast(string)b[0..<m];
+  n=ar_text_decipher("Aé 🙂Z",1,true,17,3,a[..]);#assert cast(string)a[0..<n]=="Aé 🙂Z";
+  n=ar_text_decipher("Aé 🙂Z",0,false,17,3,a[..]);#assert cast(string)a[0..<n]=="Aé 🙂Z";
+  n=ar_text_decipher("A B",0,true,17,3,a[..]);#assert n==3 && a[1]==' ';
+  bad:=[2]u8.[0xC0,0xAF];a[0]=42;
+  #assert ar_text_sequence(cast(string)bad[..],1,true,a[..])== -1 && a[0]==42;
+  #assert ar_text_decipher("ABC",1,true,0,0,a[0..<2])== -1 && a[0]==42;
+}
+#test "UTF8 boundaries scalar and byte budgets refuse before writing" {
+  surrogate:=[3]u8.[0xED,0xA0,0x80];above:=[4]u8.[0xF4,0x90,0x80,0x80];short:=[2]u8.[0xF0,0x9F];
+  #assert ar_text_length(cast(string)surrogate[..])== -1 && ar_text_length(cast(string)above[..])== -1;
+  #assert ar_text_length(cast(string)short[..])== -1;
+  max_scalar:=[4]u8.[0xF4,0x8F,0xBF,0xBF];#assert ar_text_length(cast(string)max_scalar[..])==1;
+  text:[1025]u8;for i:0..<1025 {text[i]='A';}
+  #assert ar_text_length(cast(string)text[0..<256])==256;
+  #assert ar_text_length(cast(string)text[0..<257])== -1 && ar_text_length(cast(string)text[..])== -1;
+  out:[1]u8;out[0]=77;#assert ar_text_decipher(cast(string)text[0..<257],1,true,0,0,out[..])== -1 && out[0]==77;
+}
+
+am_lo :: (a:f32,b:f32)->f32 {return ifx a<b then a else b;}
+am_hi :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+am_unit :: (v:f32)->f32 {if !(v>0) {return 0;}return ifx v<1 then v else 1.0f32;}
+am_time :: (v:f32)->f32 {return ifx v>=0 && v<=1000000000 then v else 0.0f32;}
+am_pow :: (v:f32,n:int)->f32 {r:=1.0f32;for i:0..<n {r*=v;}return r;}
+am_bounce :: (x:f32)->f32 {
+  y:=x;if y<1/2.75 {return 7.5625*y*y;}
+  if y<2/2.75 {y-=1.5/2.75;return 7.5625*y*y+0.75;}
+  if y<2.5/2.75 {y-=2.25/2.75;return 7.5625*y*y+0.9375;}
+  y-=2.625/2.75;return 7.5625*y*y+0.984375;
+}
+
+// Kind order is the source easing object: linear, then in/out/inOut for
+// Quad/Cubic/Quart/Quint/Sine/Expo/Circ/Back/Elastic/Bounce. Input is clamped;
+// Back and Elastic output deliberately retains its source overshoot.
+ar_ease :: (kind:int,progress:f32)->f32 {
+  x:=am_unit(progress);
+  if kind>=1 && kind<=12 {
+    n:=2+(kind-1)/3;mode:=(kind-1)%3;
+    if mode==0 {return am_pow(x,n);}
+    if mode==1 {return 1-am_pow(1-x,n);}
+    if x<0.5 {return am_pow(2*x,n)*0.5;}
+    return 1-am_pow(-2*x+2,n)*0.5;
+  }
+  if kind==13 {return 1-cos(x*AM_PI*0.5);}
+  if kind==14 {return sin(x*AM_PI*0.5);}
+  if kind==15 {return (1-cos(AM_PI*x))*0.5;}
+  if kind==16 {return ifx x==0 then 0.0f32 else pow(2.0f32,10*x-10);}
+  if kind==17 {return ifx x==1 then 1.0f32 else 1-pow(2.0f32,-10*x);}
+  if kind==18 {
+    if x==0 || x==1 {return x;}
+    return ifx x<0.5 then pow(2.0f32,20*x-10)*0.5 else (2-pow(2.0f32,-20*x+10))*0.5;
+  }
+  if kind==19 {return 1-sqrt(am_hi(0,1-x*x));}
+  if kind==20 {return sqrt(am_hi(0,1-(x-1)*(x-1)));}
+  if kind==21 {
+    if x<0.5 {return (1-sqrt(am_hi(0,1-4*x*x)))*0.5;}
+    return (sqrt(am_hi(0,1-(-2*x+2)*(-2*x+2)))+1)*0.5;
+  }
+  c1:=1.70158f32;c2:=c1*1.525;c3:=c1+1;
+  if kind==22 {return c3*x*x*x-c1*x*x;}
+  if kind==23 {y:=x-1;return 1+c3*y*y*y+c1*y*y;}
+  if kind==24 {
+    if x<0.5 {return (4*x*x*((c2+1)*2*x-c2))*0.5;}
+    y:=2*x-2;return (y*y*((c2+1)*y+c2)+2)*0.5;
+  }
+  if kind>=25 && kind<=27 {
+    if x==0 || x==1 {return x;}
+    if kind==25 {return -pow(2.0f32,10*x-10)*sin((x*10-10.75)*(2*AM_PI/3));}
+    if kind==26 {return pow(2.0f32,-10*x)*sin((x*10-0.75)*(2*AM_PI/3))+1;}
+    wave:=sin((20*x-11.125)*(2*AM_PI/4.5));
+    return ifx x<0.5 then -pow(2.0f32,20*x-10)*wave*0.5 else pow(2.0f32,-20*x+10)*wave*0.5+1;
+  }
+  if kind==28 {return 1-am_bounce(1-x);}
+  if kind==29 {return am_bounce(x);}
+  if kind==30 {return ifx x<0.5 then (1-am_bounce(1-2*x))*0.5 else (1+am_bounce(2*x-1))*0.5;}
+  return x;
+}
+ar_steps :: (progress:f32,steps:int,start:bool)->f32 {
+  x:=am_unit(progress);if steps<1 || steps>1000000 {return 0;}
+  if x==0 || x==1 {return x;}
+  x=ifx start then am_hi(x,0.001) else am_lo(x,0.999);
+  expanded:=x*cast(f32)steps;
+  return am_unit((ifx start then -floor(-expanded) else floor(expanded))/cast(f32)steps);
+}
+ar_among :: (breakpoints:[]f32,progress:f32)->f32 {
+  if breakpoints.count==0 || breakpoints.count>256 {return 0;}
+  x:=am_unit(progress);if breakpoints.count==1 {return x*breakpoints[0];}
+  if x==1 {return breakpoints[breakpoints.count-1];}
+  expanded:=x*cast(f32)(breakpoints.count-1);i:=cast(int)floor(expanded);
+  return breakpoints[i]+(breakpoints[i+1]-breakpoints[i])*(expanded-cast(f32)i);
+}
+am_progress :: (elapsed:f32,duration:f32,delay:f32)->f32 {
+  t:=am_time(elapsed);wait:=am_time(delay);if t<wait {return 0;}
+  d:=am_time(duration);return ifx d==0 then 1.0f32 else am_unit((t-wait)/d);
+}
+ar_draw :: (length:f32,elapsed:f32,duration:f32,delay:f32,entering:bool)->ArDraw {
+  l:=am_time(length);p:=am_progress(elapsed,duration,delay);
+  eased:=ar_ease(ifx entering then AM_OUT_EXPO else AM_OUT_SINE,p);
+  share:=ifx entering then eased else 1-eased;
+  return ArDraw.{length=l,offset=l*(1-share),share=share};
+}
+ar_transition :: (from:f32,to:f32,back:f32,progress:f32,entering:bool,easing:int)->f32 {
+  t:=ar_ease(easing,progress);return ifx entering then from+(to-from)*t else to+(back-to)*t;
+}
+ar_flicker :: (progress:f32,entering:bool)->f32 {
+  ins:=[4]f32.[0,1,0.5,1];outs:=[4]f32.[1,0,0.5,0];
+  p:=ar_ease(AM_OUT_SINE,progress);return ifx entering then ar_among(ins[..],p) else ar_among(outs[..],p);
+}
+ar_motion_value :: (m:[]ArMotion)->f32 {return ifx m.count>0 then m[0].value else 0.0f32;}
+ar_motion_to :: (m:[]ArMotion,entering:bool,duration:f32,easing:int) {
+  if m.count==0 {return;}target:=ifx entering then 1.0f32 else 0.0f32;
+  if m[0].to==target && (m[0].phase==AM_ENTERING || m[0].phase==AM_EXITING) {return;}
+  m[0].from=m[0].value;m[0].to=target;m[0].elapsed=0;m[0].duration=am_time(duration);m[0].easing=easing;
+  m[0].phase=ifx entering then AM_ENTERING else AM_EXITING;
+  if m[0].duration==0 || m[0].value==target {m[0].value=target;m[0].phase=ifx entering then AM_ENTERED else AM_EXITED;}
+}
+ar_motion_tick :: (m:[]ArMotion,dt:f32) {
+  if m.count==0 || (m[0].phase!=AM_ENTERING && m[0].phase!=AM_EXITING) || !(dt>=0 && dt<=1000000000) {return;}
+  m[0].elapsed=am_lo(m[0].duration,m[0].elapsed+dt);
+  p:=am_progress(m[0].elapsed,m[0].duration,0);
+  m[0].value=m[0].from+(m[0].to-m[0].from)*ar_ease(m[0].easing,p);
+  if p==1 {m[0].value=m[0].to;m[0].phase=ifx m[0].to==1 then AM_ENTERED else AM_EXITED;}
+}
+// A pure elapsed-time sample; repeat=-1 means unbounded repetition. Unlike
+// requestAnimationFrame's source wrapper, no overshoot is lost between caller
+// samples: the timeline is independent of the display frame partition.
+ar_animation_sample :: (elapsed:f32,duration:f32,easing:int,reverse:bool,repeat:int)->ArAnimationSample {
+  d:=am_time(duration);t:=am_time(elapsed);r:=repeat;if r< -1 {r=0;}if r>1000000 {r=1000000;}
+  out:ArAnimationSample;
+  if d==0 {out.finished=true;out.progress=ifx reverse then 0.0f32 else 1.0f32;return out;}
+  total:=cast(int)floor(am_lo(t/d,1000000000));out.iteration=ifx r>=0 && total>r then r else total;
+  out.finished=r>=0 && t>=d*cast(f32)(r+1);
+  p:=ifx out.finished then 1.0f32 else (t-d*cast(f32)total)/d;
+  value:=ar_ease(easing,p);out.progress=ifx reverse then 1-value else value;return out;
+}
+
+// The timeline is caller-owned and supports live insertion, duplicate keys,
+// expiry, removed gaps and the source sequence/stagger limit arithmetic.
+// Records are kept in ascending start order; full storage refuses admission.
+ar_schedule_remove :: (timeline:[]ArTimeline,key:int) {
+  if timeline.count==0 {return;}
+  for i:0..<timeline[0].n {if timeline[0].items[i].key==key {timeline[0].items[i].active=false;}}
+}
+ar_schedule_offer :: (timeline:[]ArTimeline,now:f32,key:int,child:ArChild,manager:int,stagger:f32,limit:int)->ArTiming {
+  out:ArTiming;if timeline.count==0 || !child.allowed || !(now>=0 && now<=1000000000) {return out;}
+  if timeline[0].n<0 || timeline[0].n>AM_MAX_CHILDREN {return out;}
+  sequence:=manager==AM_SEQUENCE || manager==AM_SEQUENCE_REVERSE;
+  delayed:=am_time(child.delay);offset:=am_time(child.offset);enter:=am_time(child.enter);
+  if manager==AM_PARALLEL || manager<0 || manager>AM_STAGGER_REVERSE {return ArTiming.{start=now+delayed,end=now+delayed+enter,valid=true};}
+  for i:0..<timeline[0].n {
+    a:=timeline[0].items[i];if a.active && a.key==key {out.start=a.start+delayed+(ifx sequence then offset else 0.0f32);out.end=out.start+enter;out.valid=true;return out;}
+  }
+  kept:=0;
+  for i:0..<timeline[0].n {
+    a:=timeline[0].items[i];if a.active && a.start+a.enter>=now {timeline[0].items[kept]=a;kept+=1;}
+  }
+  timeline[0].n=kept;if kept>=AM_MAX_CHILDREN {return out;}
+  // Stable insertion order is sufficient for ties, exactly as JS's stable sort.
+  for i:1..<kept {j:=i;while j>0 && timeline[0].items[j].start<timeline[0].items[j-1].start {a:=timeline[0].items[j];timeline[0].items[j]=timeline[0].items[j-1];timeline[0].items[j-1]=a;j-=1;}}
+  step:=am_time(stagger);start:=ifx sequence then 0.0f32 else offset;occupancy:=enter+offset;
+  for i:0..<kept {
+    a:=timeline[0].items[i];end:=a.start+a.enter;
+    if i==kept-1 {start=am_hi(0,(ifx sequence then end else a.start+step+offset)-now);break;}
+    next:=timeline[0].items[i+1];gap:=ifx sequence then next.start-end else next.start-a.start-next.offset;
+    needed:=ifx sequence then occupancy else step*2+offset;
+    if gap>=needed {start=am_hi(0,(ifx sequence then end else a.start+step+offset)-now);break;}
+  }
+  if sequence && limit>0 && kept>=limit {start=timeline[0].items[limit-1].start-now;}
+  if !sequence && limit>=0 {start=am_lo(start,cast(f32)limit*step);}
+  timeline[0].items[kept]=ArTimelineItem.{key=key,start=now+start,offset=offset,enter=occupancy,active=true};timeline[0].n=kept+1;
+  out.start=now+start+delayed+(ifx sequence then offset else 0.0f32);out.end=out.start+enter;out.valid=true;return out;
+}
+ar_child_timing :: (children:[]ArChild,index:int,manager:int,stagger:f32,exiting:bool)->ArTiming {
+  out:ArTiming;if children.count>AM_MAX_CHILDREN || index<0 || index>=children.count || !children[index].allowed {return out;}
+  if exiting {return ArTiming.{start=0,end=am_time(children[index].exit),valid=true};}
+  timeline:[1]ArTimeline;reverse:=manager==AM_SEQUENCE_REVERSE || manager==AM_STAGGER_REVERSE;
+  for j:0..<children.count {
+    i:=ifx reverse then children.count-1-j else j;
+    t:=ar_schedule_offer(timeline[..],0,i,children[i],manager,stagger,-1);
+    if i==index {return t;}
+  }return out;
+}
+ar_children_duration :: (children:[]ArChild,manager:int,stagger:f32)->f32 {
+  if children.count>AM_MAX_CHILDREN {return 0;}
+  total:=0.0f32;for i:0..<children.count {t:=ar_child_timing(children,i,manager,stagger,false);if t.valid {total=am_hi(total,t.end);}}
+  return total;
+}
+// Desired is the first allowed child's index, or -1. A switch always exits
+// the old child before entering the latest desired child. The caller supplies
+// the old child's exited observation instead of a browser subscription.
+ar_switch_select :: (s:[]ArSwitch,desired:int,old_exited:bool) {
+  if s.count==0 {return;}s[0].exit=-1;s[0].enter=-1;s[0].pending=desired;
+  if s[0].hiding && !old_exited {return;}
+  if s[0].hiding {s[0].hiding=false;s[0].visible=-1;}
+  if s[0].visible==desired {return;}
+  if s[0].visible>=0 {s[0].exit=s[0].visible;s[0].hiding=true;return;}
+  s[0].visible=desired;if desired>=0 {s[0].enter=desired;}
+}
+
+ar_text_duration :: (length:int,maximum:f32,characters_per_second:f32)->f32 {
+  if length<0 || length>1000000000 || !(characters_per_second>0 && characters_per_second<=1000000000) {return 0;}
+  return am_lo(cast(f32)length/characters_per_second,am_time(maximum));
+}
+// A strict complete scalar span, zero for malformed UTF-8.
+am_utf8_span :: (text:string,at:int)->int {
+  if at<0 || at>=text.count {return 0;}b:=text[at];if b<0x80 {return 1;}
+  n:=0;if b>=0xC2 && b<=0xDF {n=2;}else if b>=0xE0 && b<=0xEF {n=3;}else if b>=0xF0 && b<=0xF4 {n=4;}
+  if n==0 || at+n>text.count {return 0;}
+  for i:1..<n {if text[at+i]<0x80 || text[at+i]>0xBF {return 0;}}
+  if b==0xE0 && text[at+1]<0xA0 {return 0;}if b==0xED && text[at+1]>0x9F {return 0;}
+  if b==0xF0 && text[at+1]<0x90 {return 0;}if b==0xF4 && text[at+1]>0x8F {return 0;}
+  return n;
+}
+ar_text_length :: (text:string)->int {
+  if text.count>AM_MAX_TEXT_BYTES {return -1;}at:=0;count:=0;
+  while at<text.count {n:=am_utf8_span(text,at);if n==0 || count>=AM_MAX_TEXT {return -1;}at+=n;count+=1;}
+  return count;
+}
+ar_text_sequence :: (text:string,progress:f32,entering:bool,out:[]u8)->int {
+  count:=ar_text_length(text);if count<0 {return -1;}
+  p:=am_unit(progress);if !entering {p=1-p;}
+  visible:=cast(int)floor(cast(f32)count*p+0.5);bytes:=0;
+  for i:0..<visible {bytes+=am_utf8_span(text,bytes);}
+  if bytes>out.count {return -1;}
+  for i:0..<bytes {out[i]=text[i];}return bytes;
+}
+// Source cursor colors round(easeAmong([0,1,2])(phase)): only index 1 is lit.
+ar_text_blink :: (elapsed:f32,duration:f32)->bool {
+  d:=am_time(duration);if d==0 {return false;}p:=am_time(elapsed)/d;p-=floor(p);
+  return cast(int)floor(p*2+0.5)==1;
+}
+am_random :: (state:int)->int {return (((state&0x7FFFFFFF)*1103515245)+12345)&0x7FFFFFFF;}
+AM_CIPHER :: "    ----____abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+ar_text_decipher :: (text:string,progress:f32,entering:bool,seed:int,frame:int,out:[]u8)->int {
+  count:=ar_text_length(text);if count<0 {return -1;}
+  order:[AM_MAX_TEXT]int;visible:[AM_MAX_TEXT]bool;
+  for i:0..<count {order[i]=i;}
+  random:=seed&0x7FFFFFFF;i:=count-1;
+  while i>0 {random=am_random(random);j:=random%(i+1);v:=order[i];order[i]=order[j];order[j]=v;i-=1;}
+  p:=am_unit(progress);if !entering {p=1-p;}revealed:=cast(int)floor(cast(f32)count*p+0.5);
+  for k:0..<revealed {visible[order[k]]=true;}
+  temp:[AM_MAX_TEXT_BYTES]u8;bytes:=0;at:=0;
+  random=am_random(random+(frame&0x7FFFFFFF));
+  for k:0..<count {
+    span:=am_utf8_span(text,at);
+    if visible[k] || text[at]==' ' {for j:0..<span {temp[bytes]=text[at+j];bytes+=1;}}
+    else {
+      random=am_random(random);
+      // round(random * (characters.length-1)), matching the source's
+      // endpoint-weighted character selection, with a seeded 31-bit draw.
+      u:=cast(f64)random/2147483648.0f64;
+      pick:=cast(int)floor(u*cast(f64)(AM_CIPHER.count-1)+0.5f64);
+      temp[bytes]=AM_CIPHER[pick];bytes+=1;
+    }
+    at+=span;
+  }
+  if bytes>out.count {return -1;}for k:0..<bytes {out[k]=temp[k];}return bytes;
+}

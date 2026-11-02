@@ -1,0 +1,22 @@
+// The same Coaxial projects passes, plus Coax-authored radial/solid primitives
+// for the ARWES canvas background and illuminator value ports. No CSS canvas.
+#load "../../gpu/projects.coax";
+
+#test "radial gradients have the upstream center edge and midpoint opacity" {
+  #assert lab_radial(0,20)==1 && lab_radial(20,20)==0;
+  #assert lab_radial(10,20)==0.5 && lab_radial(50,20)==0;
+  #assert lab_radial(1,0)==0;
+}
+lab_radial :: (distance:f32,radius:f32)->f32 {if radius<=0 {return 0;}return clampf(1-distance/radius,0,1);}
+lab_bg_vs :: (i:u32,instance:u32)->V4 {return projects_bg_vs(i,instance);}
+lab_bg_fs :: (pos:V4,u:[]f32)->V4 {return projects_bg_fs(pos,u);}
+lab_fx_vs :: (vertex:u32,instance:u32,in_:projects_fx_vs_in,u:[]f32)->ProjectsV {return projects_fx_vs(vertex,instance,in_,u);}
+lab_fx_fs :: (v:ProjectsV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if v.tint.w>4.5f32 {
+    alpha:f32=v.shape.z*u[3];
+    if v.tint.w<5.5f32 {alpha*=lab_radial(wg_length2(v.place),v.shape.x);}
+    else if v.tint.w>6.5f32 {alpha*=1-smoothstep(v.shape.x-0.5f32,v.shape.x+0.5f32,wg_length2(v.place));}
+    return v4(v.tint.x*alpha,v.tint.y*alpha,v.tint.z*alpha,1.0f32);
+  }
+  return projects_fx_fs(v,u,sans_atlas,sans_sampler);
+}

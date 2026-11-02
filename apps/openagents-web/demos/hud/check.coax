@@ -1,6 +1,6 @@
 // Native frame/action checks plus the actual Wasm/WebGPU input journey in
 // headless muted Chrome. The browser observer exists only in this QA tool.
-// coax/web/tool.sh apps/openagents-web/demos/hud/check.coax [--native|--browser] [BASE_URL]
+// coax/web/tool.sh apps/openagents-web/demos/hud/check.coax [--native|--arwes|--browser] [BASE_URL]
 #import "Basic";
 #load "projects.coax";
 #load "../../../../coax/lib/net/cdp.coax";
@@ -10,6 +10,10 @@
   s[0].controls[0]=HudControl.{action=6,label="Accent",enabled=true};
   #assert hq_control(s[..],6)==0 && hq_control(s[..],7)== -1;
 }
+#test "QA frame validation rejects invalid GPU words" {
+  out:[72]f32;u:[88]f32;#assert hq_vertices(out[..],6,u[..]);
+  out[17]=0.0f32/0.0f32;#assert !hq_vertices(out[..],6,u[..]);
+}
 
 hq_control :: (s:[]ProjectsState,id:int)->int {
   for i:0..<s[0].control_n {if s[0].controls[i].action==id {return i;}}
@@ -18,9 +22,79 @@ hq_control :: (s:[]ProjectsState,id:int)->int {
 hq_need :: (ok:bool,label:string)->bool {
   print("% %\n",ifx ok then "ok" else "FAIL",label);return ok;
 }
+hq_vertices :: (out:[]f32,n:int,u:[]f32)->bool {
+  if n<0 || n%6!=0 || n*12>out.count {return false;}
+  for i:0..<n*12 {if !(out[i]>= -1000000 && out[i]<=1000000) {return false;}}
+  for value:u {if !(value>= -1000000 && value<=1000000) {return false;}}
+  return true;
+}
+hq_press :: (s:[]ProjectsState,id:int)->bool {
+  i:=hq_control(s,id);if i<0 {return false;}b:=s[0].controls[i].box;d:=s[0].d;
+  used:=coaxial_projects_pointer(s,(b.x+b.width*0.5)*d,(b.y+b.height*0.5)*d,0,0);
+  return coaxial_projects_pointer(s,(b.x+b.width*0.5)*d,(b.y+b.height*0.5)*d,2,0);
+}
 
-hq_native :: (frames:bool)->bool {
+hq_arwes :: (out:[]f32,u:[]f32)->bool {
+  s:[1]ProjectsState;peak:=0;modes:[8]int;
+  widths:=[5]f32.[320,390,900,1440,1920];heights:=[5]f32.[700,844,420,900,1080];dprs:=[5]f32.[2,3,2,1,2];
+  for view:0..<5 {
+    w:=widths[view];h:=heights[view];d:=dprs[view];demo_apply(s[..],19);
+    for group:0..<4 {
+      demo_apply(s[..],200+group);
+      n:=coaxial_projects_frame(s[..],out,u,w*d,h*d,d,0,true);
+      if !hq_vertices(out,n,u) || n<=0 || n>=coaxial_projects_max_vertices()*9/10 {return hq_need(false,"Arwes group fits finite frame budget");}
+      if n>peak {peak=n;}
+      for card:0..<demo_arwes_count(group) {
+        b:=demo_arwes_cell(s[..],card,demo_arwes_count(group));top:=276.0f32+demo_body_offset(w);
+        s[0].scroll=demo_limit(b.y-top,0,s[0].scroll_max);
+        n=coaxial_projects_frame(s[..],out,u,w*d,h*d,d,0,true);
+        if !hq_vertices(out,n,u) {return hq_need(false,"scrolled Arwes card finite");}
+        kind:=demo_arwes_kind(group,card);
+        if !hq_press(s[..],300+kind) || s[0].inspected!=1000+kind {
+          print("FAIL Arwes card action viewport %x% group % kind % scroll %\n",w,h,group,kind,s[0].scroll);return false;
+        }
+        n=coaxial_projects_frame(s[..],out,u,w*d,h*d,d,0,true);
+        if !hq_vertices(out,n,u) || n<=0 || n>=coaxial_projects_max_vertices()*9/10 || s[0].control_n!=1 || s[0].controls[0].action!=50 {return hq_need(false,"Arwes inspector finite bounded and focus trapped");}
+        if n>peak {peak=n;}
+        for vertex:0..<n {mode:=cast(int)out[vertex*12+11];if mode>=0 && mode<8 {modes[mode]+=1;}}
+        if kind<9 {
+          demo_apply(s[..],224);s[0].time=s[0].aw_started+0.6;ar_motion_tick(s[0].aw_motion[..],0.6);
+          for direction:0..<2 {
+            if direction==1 {demo_apply(s[..],213);ar_motion_tick(s[0].aw_motion[..],0.6);}
+            n=coaxial_projects_frame(s[..],out,u,w*d,h*d,d,0,false);
+            if !s[0].aw_family || !hq_vertices(out,n,u) || n<=0 || n>=coaxial_projects_max_vertices()*9/10 {return hq_need(false,"family enter and exit inspector finite and bounded");}
+            if n>peak {peak=n;}
+          }
+          demo_apply(s[..],224);
+        }
+        if !hq_press(s[..],50) || s[0].inspected!=0 {return hq_need(false,"Arwes inspector closes via its actual rectangle");}
+      }
+    }
+  }
+  if modes[5]==0 || modes[6]==0 || modes[7]==0 {return hq_need(false,"all new radial rectangle and disc GPU modes observed");}
+  print("ok 4 Arwes groups and 25 inspectors across five viewports; peak % / % vertices\n",peak,coaxial_projects_max_vertices());
+  demo_apply(s[..],19);demo_apply(s[..],200);n:=coaxial_projects_frame(s[..],out,u,1440,900,1,0,true);
+  family:=s[0].aw_family;if !hq_press(s[..],224) || s[0].aw_family==family {return hq_need(false,"Arwes assembly family toolbar control");}
+  if !hq_press(s[..],224) || s[0].aw_family!=family {return hq_need(false,"Arwes assembly family toolbar reverses");}
+  group_ids:=[4]int.[200,201,202,203];
+  for i:0..<4 {if !hq_press(s[..],group_ids[i]) || s[0].aw_group!=i {return hq_need(false,"Arwes group buttons share native pointer transitions");}n=coaxial_projects_frame(s[..],out,u,1440,900,1,0,true);}
+  demo_apply(s[..],201);n=coaxial_projects_frame(s[..],out,u,1440,900,1,0,false);
+  ease:=s[0].aw_easing;if !hq_press(s[..],212) || s[0].aw_easing!=(ease+1)%31 {return hq_need(false,"Arwes easing control");}
+  manager:=s[0].aw_manager;if !hq_press(s[..],216) || s[0].aw_manager!=(manager+1)%5 {return hq_need(false,"Arwes manager control");}
+  value:=ar_motion_value(s[0].aw_motion[..]);active:=s[0].aw_active;
+  if !hq_press(s[..],213) || s[0].aw_active==active || ar_motion_value(s[0].aw_motion[..])!=value {return hq_need(false,"Arwes reversal keeps the current visual value");}
+  demo_apply(s[..],202);n=coaxial_projects_frame(s[..],out,u,1440,900,1,0,true);
+  seed:=s[0].aw_seed;if !hq_press(s[..],215) || s[0].aw_seed!=seed+1 {return hq_need(false,"Arwes reseed control");}
+  dots:=s[0].aw_dots;if !hq_press(s[..],222) || s[0].aw_dots!=(dots+1)%3 {return hq_need(false,"Arwes dot type control");}
+  demo_apply(s[..],203);n=coaxial_projects_frame(s[..],out,u,1440,900,1,0,true);
+  category:=s[0].aw_category;if !hq_press(s[..],217) || s[0].aw_category!=(category+1)%5 {return hq_need(false,"Arwes category control");}
+  cues:=s[0].aw_cues;if !hq_press(s[..],218) || s[0].aw_cues!=cues+1 || !s[0].aw_bleep[0].playing {return hq_need(false,"Arwes cue control updates silent value model");}
+  return hq_need(true,"Arwes state controls use their rendered pointer rectangles");
+}
+
+hq_native :: (frames:bool,arwes_only:bool)->bool {
   out:[2880000]f32;u:[88]f32;s:[1]ProjectsState;
+  if arwes_only {return hq_arwes(out[..],u[..]);}
   widths:=[5]f32.[320,390,900,1440,1920];heights:=[5]f32.[700,844,420,900,1080];dprs:=[5]f32.[2,3,2,1,2];
   peak:=0;
   if frames {for view:0..<5 {
@@ -69,7 +143,7 @@ hq_native :: (frames:bool)->bool {
   if s[0].cyan!=before {return hq_need(false,"cancelled press cannot activate");}
   demo_apply(s[..],2);s[0].scroll=350;
   n=coaxial_projects_frame(s[..],out[..],u[..],390,844,1,0.016,false);
-  for k:0..<s[0].control_n {c:=s[0].controls[k];if c.action>=9 && c.action<100 && c.box.y<168 {return hq_need(false,"clipped body actions cannot take focus");}}
+  for k:0..<s[0].control_n {c:=s[0].controls[k];if c.action>=9 && c.action<100 && c.action!=19 && c.box.y<222 {return hq_need(false,"clipped body actions cannot take focus");}}
   demo_apply(s[..],5);s[0].scroll=100000;
   n=coaxial_projects_frame(s[..],out[..],u[..],390,844,1,0.016,false);
   for id:60..<66 {
@@ -79,7 +153,8 @@ hq_native :: (frames:bool)->bool {
     used=coaxial_projects_pointer(s[..],b.x+b.width*0.5,b.y+b.height*0.5,2,0);
     if s[0].command!=id-59 {return hq_need(false,"communication command updates transcript state");}
   }
-  return hq_need(true,"cancel clipping and communications action regressions");
+  if !hq_need(true,"cancel clipping and communications action regressions") {return false;}
+  return hq_arwes(out[..],u[..]);
 }
 
 // Observe the actual imported Wasm memory and its initial arena base without
@@ -139,22 +214,38 @@ hq_browser_run :: (c:[]Cdp,url:string)->bool {
   if !hq_eval(c,"(async()=>{const t=__hqState().time;await new Promise(r=>setTimeout(r,250));return __hqState().time===t})()","paused WebGPU frames retain demo time") {return false;}
   if !hq_key(c," ",32,0) || !hq_key(c,"3",51,0) {return false;}
   if !hq_click(c,700,820) || !hq_eval(c,"__hqState().route","real pointer arms demo route") {return false;}
+  if !hq_key(c,"6",54,0) || !hq_eval(c,"__hqState().scene===5","sixth scene key opens the ARWES atlas") {return false;}
+  centers:=[4]int.[198,546,894,1242];expected:=[4]string.["__hqState().inspected===1000","__hqState().inspected===1014","__hqState().inspected===1009","__hqState().inspected===1019"];
+  for group:0..<4 {
+    if !hq_click(c,centers[group],200) || !hq_click(c,100,340) || !hq_eval(c,expected[group],"real group and specimen pointers select the expected port") {return false;}
+    if !hq_key(c,"Tab",9,0) || !hq_eval(c,"__hqState().focus===0","ARWES inspector traps keyboard focus") || !hq_key(c,"Enter",13,0) || !hq_eval(c,"__hqState().inspected===0","ARWES inspector closes through Enter") {return false;}
+  }
+  // Current generated layout ends in aw_family:bool and seven padding bytes.
+  // Update this QA-only tail observation if fields are appended after it.
+  if !hq_click(c,198,200) || !hq_click(c,1242,248) || !hq_eval(c,"new DataView(__hq.m.buffer,__hq.base).getUint8(__hq.x.coaxial_state_size()-8)===1","family toolbar toggles the appended state flag") {return false;}
+  if !hq_click(c,100,340) || !hq_eval(c,"__hqState().inspected===1000","family mode opens a ported inspector") || !hq_key(c,"Escape",27,0) {return false;}
+  if !hq_eval(c,"fetch('/arwes-license.txt').then(r=>r.ok?r.text():'').then(t=>t.includes('Copyright (c) 2014 - 2024 Romel Perez')&&t.includes('The MIT License'))","served derivative includes the upstream MIT notice") {return false;}
   if !hq_eval(c,"__hqErrors.length===0","desktop has no browser exceptions or console errors") {return false;}
   if !hq_call(c,"Emulation.setEmulatedMedia","{\"features\":[{\"name\":\"prefers-reduced-motion\",\"value\":\"reduce\"}]}") || !hq_navigate(c,url) {return false;}
   if !hq_eval(c,"(async()=>{const t=__hqState().time;await new Promise(r=>setTimeout(r,250));return matchMedia('(prefers-reduced-motion: reduce)').matches&&__hqState().time===t})()","reduced motion freezes the actual page clock") {return false;}
+  if !hq_key(c,"6",54,0) || !hq_eval(c,"__hqState().scene===5&&__hqErrors.length===0","ARWES WebGPU specimens draw with reduced motion") {return false;}
   if !hq_call(c,"Emulation.setDeviceMetricsOverride","{\"width\":390,\"height\":844,\"deviceScaleFactor\":2,\"mobile\":true}") || !hq_navigate(c,url) {return false;}
   if !hq_key(c,"5",53,0) || !hq_eval(c,"__hqState().scene===4&&__hqState().max>0","phone scene has reachable scroll content") {return false;}
   if !hq_key(c,"PageDown",34,0) || !hq_eval(c,"__hqState().scroll>0","phone keyboard scrolls content") {return false;}
+  if !hq_key(c,"6",54,0) || !hq_eval(c,"__hqState().scene===5&&__hqState().max>0","phone two-row header opens scrollable ARWES atlas") {return false;}
+  if !hq_click(c,100,390) || !hq_eval(c,"__hqState().inspected===1000","phone pointer opens a ported frame") || !hq_key(c,"Escape",27,0) {return false;}
+  if !hq_key(c,"PageDown",34,0) || !hq_eval(c,"__hqState().scroll>0","phone keyboard scrolls ARWES specimens") {return false;}
   return hq_eval(c,"__hqErrors.length===0","no browser exceptions or console errors");
 }
 
 tool_main :: ()->int #export_c {
-  a:[1]Args;if !args_load(a[..]) || args_count(a[..])>2 {tool_errln("usage: hud-check [--native|--browser] [BASE_URL]");return 2;}
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])>2 {tool_errln("usage: hud-check [--native|--arwes|--browser] [BASE_URL]");return 2;}
   browser:=args_count(a[..])>0 && args_at(a[..],0)=="--browser";
   native:=args_count(a[..])>0 && args_at(a[..],0)=="--native";
   regressions:=args_count(a[..])>0 && args_at(a[..],0)=="--regressions";
-  if !browser && !hq_native(!regressions) {return 1;}
-  if native || regressions {return 0;}
+  arwes:=args_count(a[..])>0 && args_at(a[..],0)=="--arwes";
+  if !browser && !hq_native(!regressions,arwes) {return 1;}
+  if native || regressions || arwes {return 0;}
   at:=ifx browser then 1 else 0;
   url:=ifx args_count(a[..])>at then args_at(a[..],at) else "http://127.0.0.1:8815/";
   c:[1]Cdp;if !cdp_launch(c[..],1440,900,"aethyr-hud-check-") {tool_errln(cdp_error(c[..]));return 1;}
