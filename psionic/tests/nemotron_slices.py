@@ -4,6 +4,12 @@ comparison with the Coax slices.
 
     python3 -I psionic/tests/nemotron_slices.py ranges MODEL_DIRECTORY OUT_DIR
     python3 -I psionic/tests/nemotron_slices.py compare MODEL_DIRECTORY OUT_DIR
+    python3 -I psionic/tests/nemotron_slices.py model MODEL_DIRECTORY OUT_DIR
+
+model recomputes the whole 42-layer model in binary64 over the prompt and the
+greedy tokens the Coax run chose (psionic/tests/nemotron_run.c writes them),
+on every core, and compares every layer's hidden rows for the prompt, the
+prompt's logits and the last step's logits, and every greedy choice.
 
 ranges reads the safetensors header (JSON only) and writes each tensor's byte
 range and the prompt's token ids. compare recomputes every slice from the
@@ -13,11 +19,16 @@ the download is imported or run. Tooling only.
 import array
 import json
 import math
+import multiprocessing
 import operator
 import pathlib
 import struct
 import sys
 
+# The whole model, frozen before its first comparison: every layer's rows
+# and the logits may differ by at most MODEL_TOLERANCE * (1 + the largest
+# |oracle value| of that layer or of those logits).
+MODEL_TOLERANCE = 1e-3
 # Profile nemotron-h-cpu-f64-v1 on original weights, frozen before the first
 # comparison: every value may differ from this oracle by at most
 # TOLERANCE * (1 + the largest |oracle value| of that slice).
@@ -186,6 +197,8 @@ def gap(name, got, ref):
 
 
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "model":
+        return whole(sys.argv[2], sys.argv[3])
     if len(sys.argv) != 4 or sys.argv[1] not in ("ranges", "compare"):
         print(__doc__.strip().splitlines()[3].strip(), file=sys.stderr)
         return 2
@@ -218,6 +231,158 @@ def main():
     best = max(range(READOUT), key=lambda i: (logits[i], -i))
     print(f"largest logit in rows 0..8191: oracle {best}, Coax {max(range(READOUT), key=lambda i: (got[i], -i))}")
     return 0 if ok else 1
+
+
+# ---- the whole model, on every core ---------------------------------------
+
+_W = None
+
+
+def _open(directory):
+    global _W
+    _W = Weights(directory)
+
+
+def _rows(name, cols, r0, r1, xs):
+    t = _W.header[name]
+    w = bf16(_W.f, _W.base + t["data_offsets"][0] + 2 * r0 * cols, (r1 - r0) * cols)
+    return [[sum(map(operator.mul, w[r * cols:(r + 1) * cols], x)) for x in xs] for r in range(r1 - r0)]
+
+
+def pmatvec(pool, name, rows, xs):
+    """Every x in xs times the named rows x len(x) matrix, rows split across workers."""
+    cols = len(xs[0])
+    step = max(1, rows // 208)
+    parts = pool.starmap(_rows, [(name, cols, r, min(rows, r + step), xs) for r in range(0, rows, step)])
+    out = [[0.0] * rows for _ in xs]
+    r = 0
+    for part in parts:
+        for row in part:
+            for t, v in enumerate(row):
+                out[t][r] = v
+            r += 1
+    return out
+
+
+def _scan(head, dts, keep, xs, bs, cs, d, zs):
+    state = [[0.0] * N for _ in range(P)]
+    ys = []
+    for t in range(len(dts)):
+        y = []
+        for q in range(P):
+            u = dts[t] * xs[t][q]
+            row = [keep[t] * state[q][k] + u * bs[t][k] for k in range(N)]
+            state[q] = row
+            yy = sum(map(operator.mul, row, cs[t])) + d * xs[t][q]
+            y.append(yy * silu(zs[t][q]))
+        ys.append(y)
+    return ys
+
+
+def model_mamba(pool, wt, layer, hidden):
+    p = f"backbone.layers.{layer}."
+    norm, conv, cb = wt.get(p + "norm.weight"), wt.get(p + "mixer.conv1d.weight"), wt.get(p + "mixer.conv1d.bias")
+    alog, dtb, dd, gn = wt.get(p + "mixer.A_log"), wt.get(p + "mixer.dt_bias"), wt.get(p + "mixer.D"), wt.get(p + "mixer.norm.weight")
+    proj = pmatvec(pool, p + "mixer.in_proj.weight", V + C + HEADS, [rms(h, norm) for h in hidden])
+    T = len(hidden)
+    raw = [pr[V:V + C] for pr in proj]
+    cv = []
+    for t in range(T):
+        row = []
+        for ch in range(C):
+            s = cb[ch]
+            for back in range(4):
+                if t >= back:
+                    s += raw[t - back][ch] * conv[ch * 4 + 3 - back]
+            row.append(silu(s))
+        cv.append(row)
+    jobs = []
+    for head in range(HEADS):
+        g = head // (HEADS // GROUPS)
+        dts = [softplus(proj[t][V + C + head] + dtb[head]) for t in range(T)]
+        keep = [math.exp(-math.exp(alog[head]) * dt) for dt in dts]
+        jobs.append((head, dts, keep, [cv[t][head * P:(head + 1) * P] for t in range(T)],
+                     [cv[t][V + g * N:V + (g + 1) * N] for t in range(T)],
+                     [cv[t][V + GROUPS * N + g * N:V + GROUPS * N + (g + 1) * N] for t in range(T)],
+                     dd[head], [proj[t][head * P:(head + 1) * P] for t in range(T)]))
+    heads = pool.starmap(_scan, jobs)
+    w = V // GROUPS
+    gated = []
+    for t in range(T):
+        y = [v for head in range(HEADS) for v in heads[head][t]]
+        gt = []
+        for g in range(GROUPS):
+            gt += rms(y[g * w:(g + 1) * w], gn[g * w:(g + 1) * w])
+        gated.append(gt)
+    upd = pmatvec(pool, p + "mixer.out_proj.weight", H, gated)
+    return [[a + b for a, b in zip(h, u)] for h, u in zip(hidden, upd)]
+
+
+def model_mlp(pool, wt, layer, hidden):
+    p = f"backbone.layers.{layer}."
+    norm = wt.get(p + "norm.weight")
+    up = pmatvec(pool, p + "mixer.up_proj.weight", 12544, [rms(h, norm) for h in hidden])
+    down = pmatvec(pool, p + "mixer.down_proj.weight", H, [[max(v, 0.0) ** 2 for v in u] for u in up])
+    return [[a + b for a, b in zip(h, u)] for h, u in zip(hidden, down)]
+
+
+def model_attention(pool, wt, layer, hidden):
+    p = f"backbone.layers.{layer}."
+    xs = [rms(h, wt.get(p + "norm.weight")) for h in hidden]
+    q = pmatvec(pool, p + "mixer.q_proj.weight", 5120, xs)
+    keys = pmatvec(pool, p + "mixer.k_proj.weight", 1024, xs)
+    values = pmatvec(pool, p + "mixer.v_proj.weight", 1024, xs)
+    mixed = []
+    for t in range(len(hidden)):
+        m = []
+        for head in range(40):
+            kv = (head // 5) * 128
+            qh = q[t][head * 128:(head + 1) * 128]
+            scores = [sum(map(operator.mul, qh, keys[j][kv:kv + 128])) / math.sqrt(128) for j in range(t + 1)]
+            top = max(scores)
+            e = [math.exp(x - top) for x in scores]
+            total = sum(e)
+            m += [sum(e[j] * values[j][kv + d] for j in range(t + 1)) / total for d in range(128)]
+        mixed.append(m)
+    o = pmatvec(pool, p + "mixer.o_proj.weight", H, mixed)
+    return [[a + b for a, b in zip(h, u)] for h, u in zip(hidden, o)]
+
+
+PATTERN = "M-M-M-MM-M-M*-M-M*-M-M-M*-M-M-MM*-MMM-M-M-"
+
+
+def whole(directory, out):
+    lines = (pathlib.Path(out) / "run-tokens.txt").read_text().split("\n")
+    prompt, chosen = list(map(int, lines[0].split())), list(map(int, lines[1].split()))
+    seq = prompt + chosen[:-1]
+    n, T = len(prompt), len(seq)
+    wt = Weights(directory)
+    trace = load(out, "trace.f32", 42 * n * H)
+    ok = True
+    with multiprocessing.Pool(initializer=_open, initargs=(directory,)) as pool:
+        hidden = [list(wt.row("backbone.embeddings.weight", t, H)) for t in seq]
+        worst = 0.0
+        for layer, kind in enumerate(PATTERN):
+            f = model_mamba if kind == "M" else model_attention if kind == "*" else model_mlp
+            hidden = f(pool, wt, layer, hidden)
+            got = trace[layer * n * H:(layer + 1) * n * H]
+            ref = [v for r in hidden[:n] for v in r]
+            d = max(abs(a - b) for a, b in zip(got, ref))
+            limit = MODEL_TOLERANCE * (1 + max(abs(v) for v in ref))
+            worst = max(worst, d / limit)
+            if d > limit:
+                print(f"layer {layer} ({kind}): largest difference {d:.3g}, limit {limit:.3g}, OUTSIDE")
+                ok = False
+        print(f"42 layers, the prompt's rows: largest difference {worst:.3g} of each layer's limit, {'within' if ok else 'OUTSIDE'}")
+        norm = wt.get("backbone.norm_f.weight")
+        xs = [rms(h, norm) for h in hidden[n - 1:]]
+        logits = pmatvec(pool, "lm_head.weight", 131072, xs)
+    ok = gap("logits after the prompt", load(out, "logits-prompt.f32", 131072), logits[0]) and ok
+    ok = gap("logits after the last step", load(out, "logits-last.f32", 131072), logits[-1]) and ok
+    picks = [max(range(131072), key=lambda i: (row[i], -i)) for row in logits]
+    same = picks == chosen
+    print(f"greedy choices: oracle {picks}, Coax {chosen}, {'same' if same else 'DIFFERENT'}")
+    return 0 if ok and same else 1
 
 
 if __name__ == "__main__":

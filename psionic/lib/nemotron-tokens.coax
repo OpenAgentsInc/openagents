@@ -1,0 +1,662 @@
+// Chapter 163: Nemotron Nano's tokenizer, read from the pinned
+// tokenizer.json. A bounded pass over the JSON (coax/lib/nostr/json.coax)
+// checks the parts this encoder implements (no normalizer, the Split
+// pattern, byte-level BPE with ignore_merges) and builds two hash tables in
+// the caller's storage: byte strings to vocabulary entries, and merge pairs
+// to ranks. Encoding takes ASCII text: added tokens are split out first,
+// then the pattern cuts pieces, then each piece is one entry if it is one
+// (ignore_merges) or the lowest-ranked adjacent pair is merged until none
+// is left. The same pattern and family as chapter 81's Tekken, written for
+// this file's own vocabulary and merge list.
+#load "../../coax/lib/nostr/json.coax";
+#load "../fixtures/nemotron-tokens.coax";
+
+// book:begin types
+// json: not JSON within the limits. format: a part this encoder needs is
+// missing or not what it implements. capacity: the caller's storage is too
+// small. vocabulary: a repeated entry, or a byte with no entry. merge: a
+// merge whose parts are not entries, or a repeated merge. unsupported: text
+// outside printable ASCII, tab, line feed and carriage return. range: a
+// piece or text longer than its limit.
+NtStatus :: enum u8 { ok; json; format; capacity; vocabulary; merge; unsupported; range; }
+NtResult :: struct { status:NtStatus; written:int; cause:int; }
+// The caller's storage. Entry e has the id ids[e] and the bytes
+// bytes[at[e] ..< at[e] + count[e]]; slots and pairs are hash tables (a
+// power of two each) holding entry + 1 and rank + 1; merge r joins entries
+// left[r] and right[r] into joined[r]. specials holds the added tokens'
+// entries and texts.
+NtStore :: struct { bytes:[]u8; ids:[]int; at:[]int; count:[]int; slots:[]int; left:[]int; right:[]int; joined:[]int; pairs:[]int;
+    specials:[]int; special_text:[]string; }
+NtTable :: struct { status:NtStatus; cause:int; store:NtStore; entries:int; merges:int; specials:int; used:int; }
+// A file may hold up to 256 bytes for each entry the storage holds.
+NT_JSON_PER_ENTRY :: 256;
+NT_STRING_MAX :: 4096;
+NT_ENTRY_MAX :: 256;
+NT_PIECE_MAX :: 256;
+NT_TEXT_MAX :: 4096;
+// book:end types
+
+// book:begin bytes
+// ByteLevel writes each byte as a character: the 188 printable bytes
+// (33..126, 161..172, 174..255) as themselves, the other 68 as U+0100 and
+// up, in byte order. This is the way back.
+nt_printable :: (b:int)->bool {return (b>=33 && b<=126) || (b>=161 && b<=172) || (b>=174 && b<=255);}
+nt_char_byte :: (cp:int)->int #export_c {
+    if cp<256 {if nt_printable(cp) {return cp;}return -1;}
+    k:=cp-256;
+    if k<33 {return k;}
+    if k<67 {return k+94;}
+    if k==67 {return 173;}
+    return -1;
+}
+// A JSON string's raw bytes (escapes undone) as byte-level characters back
+// to bytes, into out: the length, or -1 when it does not fit or a
+// character is not one ByteLevel writes.
+nt_key :: (raw:string,out:[]u8)->int {
+    text:[NT_STRING_MAX]u8;n:=json_unescape(raw,text[..]);
+    if n<0 {return -1;}
+    i:=0;m:=0;
+    while i<n {
+        // Byte-level characters are below U+0800: one UTF-8 byte below
+        // 0x80, else two.
+        c:=cast(int)text[i];
+        if c>=0xE0 {return -1;}
+        cp:=c;size:=1+(c>>7);
+        if size==2 {cp=((c&0x1F)<<6)|(cast(int)text[i+1]&0x3F);}
+        b:=nt_char_byte(cp);
+        if b<0 || m>=out.count {return -1;}
+        out[m]=cast(u8)b;m+=1;i+=size;
+    }
+    return m;
+}
+// book:end bytes
+
+// book:begin tables
+// A 30-bit hash: h = h * 131 + byte + 1 for each byte.
+nt_hash :: (s:string)->int {h:=0;for b:s {h=(h*131+cast(int)b+1)&0x3FFFFFFF;}return h;}
+nt_pair_hash :: (a:int,b:int)->int {return (a*131071+b)&0x3FFFFFFF;}
+nt_entry :: (t:NtTable,e:int)->[]u8 {return t.store.bytes[t.store.at[e]..<t.store.at[e]+t.store.count[e]];}
+// The entry with exactly these bytes, or -1. Linear probing; the table
+// always keeps an empty slot.
+nt_find :: (t:NtTable,s:string)->int {
+    mask:=t.store.slots.count-1;i:=nt_hash(s)&mask;
+    while t.store.slots[i]!=0 {
+        e:=t.store.slots[i]-1;
+        if cast(string)nt_entry(t,e)==s {return e;}
+        i=(i+1)&mask;
+    }
+    return -1;
+}
+// The rank of the merge of entries a and b, or -1.
+nt_rank :: (t:NtTable,a:int,b:int)->int {
+    mask:=t.store.pairs.count-1;i:=nt_pair_hash(a,b)&mask;
+    while t.store.pairs[i]!=0 {
+        r:=t.store.pairs[i]-1;
+        if t.store.left[r]==a && t.store.right[r]==b {return r;}
+        i=(i+1)&mask;
+    }
+    return -1;
+}
+nt_power :: (n:int)->bool {p:=2;while p<n {p*=2;}return p==n;}
+// book:end tables
+
+// book:begin read
+// The pattern of the pinned pre-tokenizer's Split step.
+NT_PATTERN :: "[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+|[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*|\\p{N}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+";
+nt_fail :: (t:[]NtTable,status:NtStatus,cause:int)->bool {t[0].status=status;t[0].cause=cause;return false;}
+nt_is :: (j:[]Json,tok:int,text:string)->bool {return j[0].tok==tok && json_text(j)==text;}
+nt_stop :: (t:[]NtTable,status:NtStatus,cause:int)->NtTable {t[0].status=status;t[0].cause=cause;return t[0];}
+// The value after a key, skipped whole.
+nt_skip :: (j:[]Json)->bool {first:=json_next(j);return json_skip(j);}
+// One vocabulary entry: its key was just read.
+nt_add_entry :: (j:[]Json,t:[]NtTable)->bool {
+    s:=t[0].store;e:=t[0].entries;
+    if e>=s.ids.count || e+1>=s.slots.count {return nt_fail(t,NtStatus.capacity,e);}
+    n:=nt_key(json_text(j),s.bytes[t[0].used..<s.bytes.count]);
+    if n<1 || n>NT_ENTRY_MAX {return nt_fail(t,NtStatus.format,e);}
+    bytes:=s.bytes[t[0].used..<t[0].used+n];
+    if json_next(j)!=JSON_NUMBER {return nt_fail(t,NtStatus.format,e);}
+    id:=json_int(json_text(j));
+    if !id.ok || id.value<0 {return nt_fail(t,NtStatus.format,e);}
+    if nt_find(t[0],cast(string)bytes)>=0 {return nt_fail(t,NtStatus.vocabulary,e);}
+    s.ids[e]=id.value;s.at[e]=t[0].used;s.count[e]=n;
+    mask:=s.slots.count-1;i:=nt_hash(cast(string)bytes)&mask;
+    while s.slots[i]!=0 {i=(i+1)&mask;}
+    s.slots[i]=e+1;t[0].entries=e+1;t[0].used+=n;
+    return true;
+}
+// One merge, [left, right]: the array was just opened.
+nt_add_merge :: (j:[]Json,t:[]NtTable)->bool {
+    s:=t[0].store;r:=t[0].merges;
+    if r>=s.left.count || r+1>=s.pairs.count {return nt_fail(t,NtStatus.capacity,r);}
+    joint:[2*NT_ENTRY_MAX]u8;parts:[2]int;n:=0;
+    for k:0..<2 {
+        if json_next(j)!=JSON_STRING {return nt_fail(t,NtStatus.format,r);}
+        m:=nt_key(json_text(j),joint[n..<joint.count]);
+        if m<0 {return nt_fail(t,NtStatus.format,r);}
+        parts[k]=nt_find(t[0],cast(string)joint[n..<n+m]);n+=m;
+    }
+    if json_next(j)!=JSON_ARRAY_END {return nt_fail(t,NtStatus.format,r);}
+    whole:=nt_find(t[0],cast(string)joint[0..<n]);
+    if parts[0]<0 || parts[1]<0 || whole<0 || nt_rank(t[0],parts[0],parts[1])>=0 {return nt_fail(t,NtStatus.merge,r);}
+    s.left[r]=parts[0];s.right[r]=parts[1];s.joined[r]=whole;
+    mask:=s.pairs.count-1;i:=nt_pair_hash(parts[0],parts[1])&mask;
+    while s.pairs[i]!=0 {i=(i+1)&mask;}
+    s.pairs[i]=r+1;t[0].merges=r+1;
+    return true;
+}
+// "model": type BPE, ignore_merges true, the vocabulary, then the merges.
+nt_model :: (j:[]Json,t:[]NtTable)->bool {
+    if json_next(j)!=JSON_OBJECT {return nt_fail(t,NtStatus.format,0);}
+    bpe:=false;ignore:=false;
+    while json_next(j)==JSON_STRING {
+        if nt_is(j,JSON_STRING,"type") {bpe=json_next(j)==JSON_STRING && json_text(j)=="BPE";}
+        else if nt_is(j,JSON_STRING,"ignore_merges") {ignore=json_next(j)==JSON_TRUE;}
+        else if nt_is(j,JSON_STRING,"vocab") {
+            if json_next(j)!=JSON_OBJECT {return nt_fail(t,NtStatus.format,0);}
+            while json_next(j)==JSON_STRING {if !nt_add_entry(j,t) {return false;}}
+        }
+        else if nt_is(j,JSON_STRING,"merges") {
+            if t[0].entries==0 || json_next(j)!=JSON_ARRAY {return nt_fail(t,NtStatus.format,0);}
+            while json_next(j)==JSON_ARRAY {if !nt_add_merge(j,t) {return false;}}
+        }
+        else if !nt_skip(j) {return nt_fail(t,NtStatus.json,j[0].error_at);}
+    }
+    if j[0].tok!=JSON_OBJECT_END {return nt_fail(t,NtStatus.json,j[0].error_at);}
+    if !bpe || !ignore || t[0].entries==0 {return nt_fail(t,NtStatus.format,0);}
+    return true;
+}
+// "added_tokens": each object's id and content; content must have no escapes.
+nt_added :: (j:[]Json,t:[]NtTable)->bool {
+    if json_next(j)!=JSON_ARRAY {return nt_fail(t,NtStatus.format,0);}
+    while json_next(j)==JSON_OBJECT {
+        k:=t[0].specials;
+        if k>=t[0].store.specials.count {return nt_fail(t,NtStatus.capacity,k);}
+        id:=-1;text:="";
+        while json_next(j)==JSON_STRING {
+            if nt_is(j,JSON_STRING,"id") {if json_next(j)==JSON_NUMBER {v:=json_int(json_text(j));if v.ok {id=v.value;}}}
+            else if nt_is(j,JSON_STRING,"content") {if json_next(j)==JSON_STRING {text=json_text(j);}}
+            else if !nt_skip(j) {return nt_fail(t,NtStatus.json,j[0].error_at);}
+        }
+        if id<0 || text.count==0 {return nt_fail(t,NtStatus.format,k);}
+        for c:text {if c=='\\' {return nt_fail(t,NtStatus.format,k);}}
+        t[0].store.specials[k]=id;t[0].store.special_text[k]=text;t[0].specials=k+1;
+    }
+    return true;
+}
+// "pre_tokenizer": every "Regex" in it must be NT_PATTERN, and there must be one.
+nt_pre :: (j:[]Json,t:[]NtTable)->bool {
+    if json_next(j)!=JSON_OBJECT {return nt_fail(t,NtStatus.format,0);}
+    depth:=j[0].depth-1;found:=0;
+    while j[0].depth>depth {
+        tok:=json_next(j);
+        if tok==JSON_ERROR {return nt_fail(t,NtStatus.json,j[0].error_at);}
+        if nt_is(j,JSON_STRING,"Regex") && j[0].key {
+            if json_next(j)!=JSON_STRING {return nt_fail(t,NtStatus.format,1);}
+            if !json_is(json_text(j),NT_PATTERN) {return nt_fail(t,NtStatus.format,1);}
+            found+=1;
+        }
+    }
+    if found!=1 {return nt_fail(t,NtStatus.format,1);}
+    return true;
+}
+// Whether one of a and b begins the other (or they are the same).
+nt_begins :: (a:string,b:string)->bool {
+    for i:0..<a.count {
+        if i>=b.count {return true;}
+        if a[i]!=b[i] {return false;}
+    }
+    return true;
+}
+// The whole file. Added tokens are matched to their entries at the end.
+nt_read :: (text:string,store:NtStore)->NtTable {
+    tb:[1]NtTable;t:=tb[..];t[0].store=store;
+    if !nt_power(store.slots.count) || !nt_power(store.pairs.count) || store.ids.count!=store.at.count || store.ids.count!=store.count.count
+        || store.left.count!=store.right.count || store.left.count!=store.joined.count || store.specials.count!=store.special_text.count {
+        return nt_stop(t,NtStatus.capacity,0);
+    }
+    for i:0..<store.slots.count {store.slots[i]=0;}
+    for i:0..<store.pairs.count {store.pairs[i]=0;}
+    j:[1]Json;json_start_bounded(j[..],text,NT_JSON_PER_ENTRY*store.ids.count,NT_STRING_MAX);
+    if json_next(j[..])!=JSON_OBJECT {return nt_stop(t,NtStatus.json,j[0].error_at);}
+    model:=false;pre:=false;
+    while json_next(j[..])==JSON_STRING {
+        ok:=true;
+        if nt_is(j[..],JSON_STRING,"model") {ok=nt_model(j[..],t);model=true;}
+        else if nt_is(j[..],JSON_STRING,"added_tokens") {ok=nt_added(j[..],t);}
+        else if nt_is(j[..],JSON_STRING,"pre_tokenizer") {ok=nt_pre(j[..],t);pre=true;}
+        else if nt_is(j[..],JSON_STRING,"normalizer") {if json_next(j[..])!=JSON_NULL {ok=nt_fail(t,NtStatus.format,2);}}
+        else {skipped:=nt_skip(j[..]);}
+        if !ok {return t[0];}
+    }
+    if j[0].tok!=JSON_OBJECT_END || json_next(j[..])!=JSON_END {return nt_stop(t,NtStatus.json,j[0].error_at);}
+    if !model || !pre {return nt_stop(t,NtStatus.format,3);}
+    // At most one added token may match at a place: none may begin another.
+    for k:0..<t[0].specials {
+        for o:0..<k {if nt_begins(store.special_text[o],store.special_text[k]) {return nt_stop(t,NtStatus.format,k);}}
+        e:=nt_find(t[0],store.special_text[k]);
+        if e<0 || store.ids[e]!=store.specials[k] {return nt_stop(t,NtStatus.format,k);}
+        store.specials[k]=e;
+    }
+    return t[0];
+}
+// book:end read
+
+// book:begin pieces
+// The pattern on ASCII text, where its Unicode classes reduce to upper
+// A-Z, lower a-z, digit 0-9, space (tab, line feed, carriage return, ' ')
+// and other. In order:
+//   [^\r\n L N]? upper* lower+ | [^\r\n L N]? upper+ lower*
+//       together: an optional first character that is neither a letter, a
+//       digit nor a newline, then the upper-case run, then the lower-case
+//       run, with at least one letter
+//   \p{N}                       one digit
+//   " ?[^\s L N]+[\r\n/]*"       an optional space, other characters, then
+//                                newlines and slashes
+//   \s*[\r\n]+                  whitespace through its last newline
+//   \s+(?!\S) | \s+             whitespace, all but the last before a
+//                                non-space, else all of it
+NT_UPPER :: 0; NT_LOWER :: 1; NT_DIGIT :: 2; NT_SPACE :: 3; NT_OTHER :: 4;
+nt_class :: (c:u8)->int {
+    if c>='A' && c<='Z' {return NT_UPPER;}
+    if c>='a' && c<='z' {return NT_LOWER;}
+    if c>='0' && c<='9' {return NT_DIGIT;}
+    if c==' ' || c=='\t' || c=='\n' || c=='\r' {return NT_SPACE;}
+    return NT_OTHER;
+}
+nt_newline :: (c:u8)->bool {return c=='\n' || c=='\r';}
+nt_run :: (s:string,at:int,class:int)->int {p:=at;while p<s.count && nt_class(s[p])==class {p+=1;}return p;}
+// The end of the piece that starts at at (at < s.count).
+nt_piece :: (s:string,at:int)->int {
+    c:=nt_class(s[at]);p:=at;
+    if c==NT_OTHER || (c==NT_SPACE && !nt_newline(s[at])) {p+=1;}
+    end:=nt_run(s,nt_run(s,p,NT_UPPER),NT_LOWER);
+    if end>p {return end;}
+    if c==NT_DIGIT {return at+1;}
+    p=at;if s[at]==' ' {p+=1;}
+    end=nt_run(s,p,NT_OTHER);
+    if end>p {while end<s.count && (nt_newline(s[end]) || s[end]=='/') {end+=1;}return end;}
+    run:=nt_run(s,at,NT_SPACE);last:=at;
+    for i:at..<run {if nt_newline(s[i]) {last=i+1;}}
+    if last>at {return last;}
+    if run==s.count || run-at==1 {return run;}
+    return run-1;
+}
+// book:end pieces
+
+// book:begin bpe
+// One piece to ids: the whole piece if it is an entry (ignore_merges);
+// otherwise its bytes, then repeatedly the adjacent pair with the lowest
+// rank (the leftmost on a tie) joined, until no adjacent pair is a merge.
+nt_bpe :: (t:NtTable,piece:string,out:[]int)->NtResult {
+    n:=piece.count;
+    if n<1 || n>NT_PIECE_MAX {return NtResult.{status=NtStatus.range,cause=n};}
+    whole:=nt_find(t,piece);
+    if whole>=0 {
+        if out.count<1 {return NtResult.{status=NtStatus.capacity};}
+        out[0]=t.store.ids[whole];return NtResult.{written=1};
+    }
+    parts:[NT_PIECE_MAX]int;
+    for i:0..<n {
+        parts[i]=nt_find(t,piece[i..<i+1]);
+        if parts[i]<0 {return NtResult.{status=NtStatus.vocabulary,cause=i};}
+    }
+    while true {
+        best:=-1;at:int;
+        for i:0..<n-1 {r:=nt_rank(t,parts[i],parts[i+1]);if r>=0 && (best<0 || r<best) {best=r;at=i;}}
+        if best<0 {break;}
+        parts[at]=t.store.joined[best];n-=1;
+        for i:at+1..<n {parts[i]=parts[i+1];}
+    }
+    if out.count<n {return NtResult.{status=NtStatus.capacity};}
+    for i:0..<n {out[i]=t.store.ids[parts[i]];}
+    return NtResult.{written=n};
+}
+// book:end bpe
+
+// book:begin encode
+// The added token whose text starts at at (at < text.count), or -1. No
+// added token begins another (nt_read refuses that), so at most one matches.
+nt_special :: (t:NtTable,text:string,at:int)->int {
+    first:=text[at];
+    for k:0..<t.specials {
+        s:=t.store.special_text[k];
+        if s[0]==first && at+s.count<=text.count && text[at..<at+s.count]==s {return k;}
+    }
+    return -1;
+}
+// Text between added tokens: pieces, then byte-pair merging.
+nt_segment :: (t:NtTable,text:string,out:[]int)->NtResult {
+    at:=0;n:=0;
+    while at<text.count {
+        end:=nt_piece(text,at);
+        r:=nt_bpe(t,text[at..<end],out[n..<out.count]);
+        if r.status!=NtStatus.ok {r.cause+=at;return r;}
+        n+=r.written;at=end;
+    }
+    return NtResult.{written=n};
+}
+// ASCII text to ids. cause is a byte offset into text.
+nt_encode :: (t:NtTable,text:string,out:[]int)->NtResult {
+    if t.status!=NtStatus.ok {return NtResult.{status=NtStatus.format};}
+    if text.count>NT_TEXT_MAX {return NtResult.{status=NtStatus.range,cause=text.count};}
+    for i:0..<text.count {
+        c:=text[i];
+        if (c<32 && c!='\t' && c!='\n' && c!='\r') || c>126 {return NtResult.{status=NtStatus.unsupported,cause=i};}
+    }
+    from:=0;at:=0;n:=0;
+    while at<text.count {
+        k:=nt_special(t,text,at);
+        if k<0 {at+=1;continue;}
+        r:=nt_segment(t,text[from..<at],out[n..<out.count]);
+        if r.status!=NtStatus.ok {r.cause+=from;return r;}
+        n+=r.written;
+        if n>=out.count {return NtResult.{status=NtStatus.capacity,cause=at};}
+        out[n]=t.store.ids[t.store.specials[k]];n+=1;
+        at+=t.store.special_text[k].count;from=at;
+    }
+    r:=nt_segment(t,text[from..<text.count],out[n..<out.count]);
+    if r.status!=NtStatus.ok {r.cause+=from;return r;}
+    return NtResult.{written=n+r.written};
+}
+// book:end encode
+
+// The bytes of id's entry, appended to out at n: the new length, or -1.
+nt_decode :: (t:NtTable,id:int,out:[]u8,n:int)->int {
+    for e:0..<t.entries {
+        if t.store.ids[e]==id {
+            b:=nt_entry(t,e);
+            if n+b.count>out.count {return -1;}
+            for i:0..<b.count {out[n+i]=b[i];}
+            return n+b.count;
+        }
+    }
+    return -1;
+}
+
+// ---- checks ----------------------------------------------------------------
+
+// Storage for the checks' tables.
+NtRig :: struct { bytes:[8192]u8; ids:[512]int; at:[512]int; count:[512]int; slots:[1024]int; left:[128]int; right:[128]int; joined:[128]int; pairs:[256]int;
+    specials:[8]int; texts:[8]string; }
+nt_rig_store :: (r:[]NtRig)->NtStore {
+    return NtStore.{bytes=r[0].bytes[..],ids=r[0].ids[..],at=r[0].at[..],count=r[0].count[..],slots=r[0].slots[..],left=r[0].left[..],right=r[0].right[..],
+        joined=r[0].joined[..],pairs=r[0].pairs[..],specials=r[0].specials[..],special_text=r[0].texts[..]};
+}
+// A small tokenizer.json: "Ġ" is the space, U+010A the line feed.
+NT_SMALL_HEAD :: "{\"added_tokens\":[{\"id\":9,\"content\":\"<x>\",\"special\":true},{\"id\":10,\"content\":\"<xy>\"}],\"normalizer\":null,\"pre_tokenizer\":{\"type\":\"Sequence\",\"pretokenizers\":[{\"type\":\"Split\",\"pattern\":{\"Regex\":\"";
+NT_SMALL_TAIL :: "\"}},{\"type\":\"ByteLevel\"}]},\"decoder\":null,\"model\":{\"type\":\"BPE\",\"dropout\":null,\"ignore_merges\":true,\"vocab\":{\"a\":0,\"b\":1,\"c\":2,\"ab\":3,\"bc\":4,\"abc\":5,\"Ġ\":6,\"Ġa\":7,\"\\u010a\":8,\"<x>\":9,\"<xy>\":10,\"<\":11,\"x\":12,\">\":13,\"y\":14,\"\\\\\":15,\"bcb\":16,\"ca\":17,\"cc\":18},\"merges\":[[\"b\",\"c\"],[\"a\",\"b\"],[\"Ġ\",\"a\"],[\"ab\",\"c\"],[\"bc\",\"b\"],[\"c\",\"a\"],[\"c\",\"c\"]]}}";
+nt_small :: (out:[]u8)->string {
+    // The pattern goes in as a JSON string: each backslash doubled.
+    n:=0;
+    for c:NT_SMALL_HEAD {out[n]=c;n+=1;}
+    for c:NT_PATTERN {if c=='\\' {out[n]=c;n+=1;}out[n]=c;n+=1;}
+    for c:NT_SMALL_TAIL {out[n]=c;n+=1;}
+    return cast(string)out[0..<n];
+}
+nt_ids :: (r:NtResult,out:[]int,want:[]int)->bool {
+    if r.status!=NtStatus.ok || r.written!=want.count {return false;}
+    for i:0..<want.count {if out[i]!=want[i] {return false;}}
+    return true;
+}
+// good with the first occurrence of from replaced by to, into out.
+nt_swap :: (good:string,from:string,to:string,out:[]u8)->int {
+    at:=0;while good[at..<at+from.count]!=from {at+=1;}
+    n:=0;
+    for i:0..<at {out[n]=good[i];n+=1;}
+    for c:to {out[n]=c;n+=1;}
+    for i:at+from.count..<good.count {out[n]=good[i];n+=1;}
+    return n;
+}
+// A file of only a vocabulary and merges, with the pinned pattern.
+nt_file :: (model:string,out:[]u8)->string {
+    n:=0;head:="{\"pre_tokenizer\":{\"Regex\":\"";
+    for c:head {out[n]=c;n+=1;}
+    for c:NT_PATTERN {if c=='\\' {out[n]=c;n+=1;}out[n]=c;n+=1;}
+    mid:="\"},\"model\":{\"type\":\"BPE\",\"ignore_merges\":true,";
+    for c:mid {out[n]=c;n+=1;}
+    for c:model {out[n]=c;n+=1;}
+    out[n]='}';out[n+1]='}';
+    return cast(string)out[0..<n+2];
+}
+nt_nonzero :: (a:[]int)->int {n:=0;for v:a {if v!=0 {n+=1;}}return n;}
+
+// book:begin checks-fixture
+#test "the fixture texts encode to the ids of the full pinned file" #steps 400000000 {
+    rig:[1]NtRig;r:=rig[..];json:=NT_EXCERPT;
+    t:=nt_read(cast(string)json[..],nt_rig_store(r));
+    #assert t.status==NtStatus.ok && t.entries==398 && t.merges==93 && t.specials==3;
+    out:[64]int;
+    for k:0..<NT_TEXTS.count {
+        res:=nt_encode(t,NT_TEXTS[k],out[..]);ids:=NT_IDS;
+        #assert nt_ids(res,out[..],ids[NT_STARTS[k]..<NT_STARTS[k+1]]);
+    }
+}
+// book:end checks-fixture
+// book:begin checks-small
+#test "a small file: whole entries, merges by rank, added tokens, bytes" #steps 100000000 {
+    rig:[1]NtRig;r:=rig[..];buf:[2048]u8;
+    t:=nt_read(nt_small(buf[..]),nt_rig_store(r));
+    #assert t.status==NtStatus.ok && t.entries==19 && t.merges==7 && t.specials==2 && t.used==33;
+    // The tables hold one slot per entry and per merge, nothing else.
+    #assert nt_nonzero(r[0].slots[..])==19 && nt_nonzero(r[0].pairs[..])==7;
+    out:[16]int;
+    // "abc" is an entry: one id, whatever the merges say.
+    w1:=[1]int.[5];#assert nt_ids(nt_encode(t,"abc",out[..]),out[..],w1[..]);
+    // "abcb": b c (rank 0) first, then bc b (rank 4): a, bcb.
+    w2:=[2]int.[0,16];#assert nt_ids(nt_encode(t,"abcb",out[..]),out[..],w2[..]);
+    // "cab": a b (rank 1); nothing joins c and ab: c, ab.
+    w3:=[2]int.[2,3];#assert nt_ids(nt_encode(t,"cab",out[..]),out[..],w3[..]);
+    // "bca": b c (rank 0) before c a (rank 5), though c a comes later.
+    w9:=[2]int.[4,0];#assert nt_ids(nt_encode(t,"bca",out[..]),out[..],w9[..]);
+    // "ccc": the same pair twice; the leftmost is joined first.
+    w10:=[2]int.[18,2];#assert nt_ids(nt_encode(t,"ccc",out[..]),out[..],w10[..]);
+    // " ab": a b (rank 1) comes before Ġ a (rank 2): Ġ, ab.
+    w4:=[2]int.[6,3];#assert nt_ids(nt_encode(t," ab",out[..]),out[..],w4[..]);
+    w5:=[2]int.[2,7];#assert nt_ids(nt_encode(t,"c a",out[..]),out[..],w5[..]);
+    // Added tokens anywhere in the text, at its end too; "<y>" is plain text.
+    w6:=[4]int.[0,10,1,9];#assert nt_ids(nt_encode(t,"a<xy>b<x>",out[..]),out[..],w6[..]);
+    w7:=[3]int.[11,14,13];#assert nt_ids(nt_encode(t,"<y>",out[..]),out[..],w7[..]);
+    // A line feed is the byte-level character U+010A; a backslash escapes in JSON.
+    w8:=[2]int.[8,15];#assert nt_ids(nt_encode(t,"\n\\",out[..]),out[..],w8[..]);
+    #assert nt_encode(t,"",out[..]).written==0;
+    // Decoding an id gives its bytes back.
+    d:[8]u8;n:=nt_decode(t,8,d[..],0);n=nt_decode(t,5,d[..],n);#assert n==4 && d[0]==10 && cast(string)d[1..<4]=="abc";
+    #assert nt_decode(t,99,d[..],0)==-1 && nt_decode(t,5,d[0..<2],0)==-1 && nt_decode(t,5,d[0..<3],0)==3 && nt_decode(t,0,d[..],0)==1 && d[0]=='a';
+    // The checks' own helper refuses a wrong status, count or id.
+    out[0]=5;#assert !nt_ids(NtResult.{status=NtStatus.range,written=1},out[..],w1[..]) && !nt_ids(NtResult.{written=2},out[..],w1[..]);#assert nt_ids(NtResult.{written=1},out[..],w1[..]);out[0]=4;#assert !nt_ids(NtResult.{written=1},out[..],w1[..]);
+}
+// book:end checks-small
+#test "a whole piece that is an entry is taken whole, and merges may make entry 0" #steps 100000000 {
+    rig:[1]NtRig;r:=rig[..];buf:[1024]u8;out:[300]int;
+    // "ab" is entry 0 and there are no merges: "ab" is one id, "aab" three.
+    t:=nt_read(nt_file("\"vocab\":{\"ab\":7,\"a\":8,\"b\":9},\"merges\":[]",buf[..]),nt_rig_store(r));
+    #assert t.status==NtStatus.ok && t.entries==3 && t.merges==0;
+    w1:=[1]int.[7];#assert nt_ids(nt_encode(t,"ab",out[..]),out[..],w1[..]);
+    w2:=[3]int.[8,8,9];#assert nt_ids(nt_encode(t,"aab",out[..]),out[..],w2[..]);
+    // A merge whose result is entry 0.
+    t=nt_read(nt_file("\"vocab\":{\"ab\":7,\"a\":8,\"b\":9},\"merges\":[[\"a\",\"b\"]]",buf[..]),nt_rig_store(r));
+    #assert t.status==NtStatus.ok && t.merges==1;
+    w3:=[2]int.[8,7];#assert nt_ids(nt_encode(t,"aab",out[..]),out[..],w3[..]);
+    // 256 merges of one pair: c c joined from the left, one entry a pair.
+    t=nt_read(nt_file("\"vocab\":{\"c\":0,\"cc\":1},\"merges\":[[\"c\",\"c\"]]",buf[..]),nt_rig_store(r));
+    long:[256]u8;for i:0..<256 {long[i]='c';}
+    res:=nt_encode(t,cast(string)long[..],out[..]);#assert res.status==NtStatus.ok && res.written==128 && out[0]==1 && out[127]==1;
+    res=nt_encode(t,cast(string)long[0..<255],out[..]);#assert res.status==NtStatus.ok && res.written==128 && out[126]==1 && out[127]==0;
+}
+#test "ByteLevel characters map back to every byte once" {
+    seen:[256]bool;
+    for cp:0..<400 {
+        b:=nt_char_byte(cp);
+        if b>=0 {#assert !seen[b];seen[b]=true;}
+        // Printable bytes are themselves; the rest count up from U+0100.
+        if cp<256 {#assert (b==cp)==nt_printable(cp) && (b<0)==!nt_printable(cp);}
+    }
+    for b:0..<256 {#assert seen[b];}
+    #assert !nt_printable(256) && !nt_printable(32) && nt_printable(255);
+    #assert nt_char_byte(256)==0 && nt_char_byte(288)==32 && nt_char_byte(289)==127 && nt_char_byte(322)==160 && nt_char_byte(323)==173 && nt_char_byte(324)==-1;
+    #assert nt_char_byte(32)==-1 && nt_char_byte(33)==33 && nt_char_byte(126)==126 && nt_char_byte(127)==-1 && nt_char_byte(161)==161;
+    #assert nt_char_byte(172)==172 && nt_char_byte(173)==-1 && nt_char_byte(174)==174 && nt_char_byte(255)==255 && nt_char_byte(160)==-1;
+    out:[4]u8;
+    #assert nt_key("\\u0120a",out[..])==2 && out[0]==32 && out[1]=='a';
+    #assert nt_key("Ġ",out[..])==1 && out[0]==32 && nt_key("",out[..])==0;
+    #assert nt_key("ab",out[0..<1])==-1 && nt_key("\\u0100",out[..])==1 && out[0]==0;
+    #assert nt_key("\\u0800",out[..])==-1 && nt_key("\\u0861",out[..])==-1 && nt_key("\\u0144",out[..])==-1 && nt_key(" ",out[..])==-1;
+    #assert nt_key("\\u07ff",out[..])==-1 && nt_key("\\u00ff",out[..])==1 && out[0]==255;
+    #assert nt_key("\\ud800",out[..])==-1;
+}
+#test "hashes and table sizes" {
+    a:=[2]u8.[1,2];
+    #assert nt_hash("")==0 && nt_hash(cast(string)a[0..<1])==2 && nt_hash(cast(string)a[..])==2*131+3;
+    big:[5]u8;for i:0..<5 {big[i]=255;}
+    h:=0;for i:0..<5 {h=(h*131+256)%1073741824;}#assert nt_hash(cast(string)big[..])==h;
+    #assert nt_pair_hash(0,0)==0 && nt_pair_hash(1,2)==131073 && nt_pair_hash(8192,1)==(8192*131071+1)%1073741824;
+    #assert nt_power(2) && nt_power(4) && nt_power(1024) && !nt_power(1) && !nt_power(0) && !nt_power(3) && !nt_power(6) && !nt_power(12) && !nt_power(-4);
+}
+#test "pieces follow the pattern's alternatives in order" {
+    #assert nt_piece("'s",0)==2 && nt_piece("'S x",0)==2 && nt_piece("Hello",0)==5 && nt_piece("HTMLParser",0)==10 && nt_piece("ABc",0)==3;
+    #assert nt_piece("aB",0)==1 && nt_piece("CamelCase",0)==5 && nt_piece(" world",0)==6 && nt_piece("\tand",0)==4 && nt_piece(",x",0)==2;
+    #assert nt_piece("\nand",0)==1 && nt_piece("1234",0)==1 && nt_piece(" 5",0)==1 && nt_piece("!!x",0)==2 && nt_piece(" //c",0)==3;
+    #assert nt_piece("?\n\nA",0)==3 && nt_piece("!\n/x",0)==3 && nt_piece("./x",0)==2 && nt_piece("!\r\n",0)==3;
+    #assert nt_piece("   x",0)==2 && nt_piece("  ",0)==2 && nt_piece(" \n x",0)==2 && nt_piece("\t",0)==1 && nt_piece("  \n",0)==3;
+    #assert nt_piece("a b",1)==3 && nt_piece("ab",1)==2 && nt_piece("Zz",0)==2 && nt_piece("aZ",0)==1 && nt_piece("\r\n\r",0)==3;
+    #assert nt_piece("@",0)==1 && nt_piece("[a",0)==2 && nt_piece("`a",0)==2 && nt_piece("{a",0)==2 && nt_piece("/a",0)==2 && nt_piece("\ra",0)==1;
+    #assert nt_class('A')==NT_UPPER && nt_class('Z')==NT_UPPER && nt_class('a')==NT_LOWER && nt_class('z')==NT_LOWER && nt_class('\t')==NT_SPACE;
+    #assert nt_class('0')==NT_DIGIT && nt_class('9')==NT_DIGIT && nt_class('@')==NT_OTHER && nt_class('[')==NT_OTHER && nt_class('`')==NT_OTHER;
+    #assert nt_class('{')==NT_OTHER && nt_class('/')==NT_OTHER && nt_class(':')==NT_OTHER && nt_class(11)==NT_OTHER && nt_class('\r')==NT_SPACE;
+}
+// book:begin checks-refusals
+#test "refusals name their cause" #steps 400000000 {
+    rig:[1]NtRig;r:=rig[..];buf:[2048]u8;good:=nt_small(buf[..]);
+    t:=nt_read(good,nt_rig_store(r));out:[16]int;
+    // Text: a byte outside printable ASCII, a byte with no entry, too long.
+    odd:=[4]u8.['a','b',1,'c'];
+    res:=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==2;
+    res=nt_encode(t,"ab~",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==2;
+    odd[2]=127;res=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==2;
+    odd[2]=31;res=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==2;
+    odd[2]=0;res=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==2;
+    odd[0]=0;res=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==0;
+    res=nt_encode(t," \t\n\r~",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==1;
+    long:[4097]u8;for i:0..<4097 {long[i]='a';}
+    res=nt_encode(t,cast(string)long[..],out[..]);#assert res.status==NtStatus.range && res.cause==4097;
+    res=nt_encode(t,cast(string)long[0..<257],out[..]);#assert res.status==NtStatus.range && res.cause==257;
+    res=nt_encode(t,cast(string)long[0..<256],out[0..<1]);#assert res.status==NtStatus.capacity;
+    for i:0..<4096 {if i%2==1 {long[i]=' ';}}
+    res=nt_encode(t,cast(string)long[0..<4096],out[..]);#assert res.status==NtStatus.capacity;
+    res=nt_encode(t,cast(string)long[..],out[..]);#assert res.status==NtStatus.range && res.cause==4097;
+    res=nt_encode(t,"abc",out[0..<0]);#assert res.status==NtStatus.capacity;
+    res=nt_encode(t,"cab",out[0..<1]);#assert res.status==NtStatus.capacity;
+    res=nt_encode(t,"cab",out[0..<2]);#assert res.status==NtStatus.ok && res.written==2;
+    res=nt_encode(t,"c<x>",out[0..<1]);#assert res.status==NtStatus.capacity && res.cause==1;
+    res=nt_encode(t,"c<x>",out[0..<2]);#assert res.status==NtStatus.ok && res.written==2;
+    res=nt_encode(t,"<x>~",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==3;
+    res=nt_encode(t,"~<x>",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==0;
+    res=nt_encode(t,"<x>~<x>",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==3;
+    bad:=t;bad.status=NtStatus.json;#assert nt_encode(bad,"a",out[..]).status==NtStatus.format;
+    // The file: each change below is refused with its status and cause.
+    edits:=[16]string.["\"BPE\"","\"ignore_merges\":true","\"bc\":4","[\"bc\",\"b\"]","\"normalizer\":null","\"Regex\"","\"<xy>\"}","\"vocab\"","[\"b\",\"c\"]","\"id\":10","{\"added","\"model\"","\"c\":2","\"a\":0","[\"c\",\"a\"]","\"content\":\"<xy>\""];
+    swaps:=[16]string.["\"WordPiece\"","\"ignore_merges\":false","\"bc\":4,\"bc\":7","[\"bc\",\"b\"],[\"b\",\"c\"]","\"normalizer\":{}","\"regex\"","\"<xy>\"},{\"content\":\"<z>\"}","\"vocabulary\"","[\"b\",\"q\"]","\"id\":11","[{\"added","\"modal\"","\"c\":-2","\"a\":0,\"a\":1","[\"c\",\"b\"]","\"content\":\"<x>y\""];
+    wants:=[16]NtStatus.[NtStatus.format,NtStatus.format,NtStatus.vocabulary,NtStatus.merge,NtStatus.format,NtStatus.format,NtStatus.format,NtStatus.format,NtStatus.merge,NtStatus.format,NtStatus.json,NtStatus.format,NtStatus.format,NtStatus.vocabulary,NtStatus.merge,NtStatus.format];
+    causes:=[16]int.[0,0,5,5,2,1,2,0,0,1,-1,3,2,1,5,1];
+    for k:0..<16 {
+        edited:[2100]u8;n:=nt_swap(good,edits[k],swaps[k],edited[..]);
+        e:=nt_read(cast(string)edited[0..<n],nt_rig_store(r));
+        #assert e.status==wants[k] && e.cause==causes[k];
+    }
+    // Storage: too few entries, slots, merges, pairs, specials, mismatched views.
+    for k:0..<9 {
+        s:=nt_rig_store(r);
+        if k==0 {s.ids=r[0].ids[0..<16];s.at=r[0].at[0..<16];s.count=r[0].count[0..<16];}
+        if k==1 {s.slots=r[0].slots[0..<16];}
+        if k==2 {s.left=r[0].left[0..<4];s.right=r[0].right[0..<4];s.joined=r[0].joined[0..<4];}
+        if k==3 {s.pairs=r[0].pairs[0..<4];}
+        if k==4 {s.specials=r[0].specials[0..<1];s.special_text=r[0].texts[0..<1];}
+        if k==5 {s.slots=r[0].slots[0..<1000];}
+        if k==6 {s.at=r[0].at[0..<16];}
+        if k==7 {s.joined=r[0].joined[0..<4];}
+        if k==8 {s.special_text=r[0].texts[0..<1];}
+        e:=nt_read(good,s);#assert e.status==NtStatus.capacity;
+        causes2:=[9]int.[16,15,4,3,1,0,0,0,0];#assert e.cause==causes2[k];
+    }
+    s:=nt_rig_store(r);s.ids=r[0].ids[0..<19];s.at=r[0].at[0..<19];s.count=r[0].count[0..<19];s.slots=r[0].slots[0..<32];s.left=r[0].left[0..<7];s.right=r[0].right[0..<7];s.joined=r[0].joined[0..<7];s.pairs=r[0].pairs[0..<8];s.specials=r[0].specials[0..<2];s.special_text=r[0].texts[0..<2];
+    #assert nt_read(good,s).status==NtStatus.ok;
+    s.slots=r[0].slots[0..<16];#assert nt_read(good,s).status==NtStatus.capacity;
+    s.slots=r[0].slots[0..<32];s.pairs=r[0].pairs[0..<4];#assert nt_read(good,s).status==NtStatus.capacity;
+    s.pairs=r[0].pairs[0..<8];s.bytes=r[0].bytes[0..<32];#assert nt_read(good,s).status==NtStatus.format;
+    s.bytes=r[0].bytes[0..<33];#assert nt_read(good,s).status==NtStatus.ok;
+    // Not JSON, trailing bytes, parts in the wrong place or of the wrong kind.
+    e:=nt_read("{",nt_rig_store(r));#assert e.status==NtStatus.json && nt_read("[]",nt_rig_store(r)).status==NtStatus.json;
+    #assert nt_read("{} x",nt_rig_store(r)).status==NtStatus.json;
+    e=nt_read("{}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==3;
+    #assert nt_read("{\"x\":[1,}",nt_rig_store(r)).status==NtStatus.json;
+    f:[1024]u8;
+    e=nt_read(nt_file("\"vocab\":{}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read(nt_file("\"merges\":[],\"vocab\":{\"a\":0}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0},\"x\":[1,}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.json && e.cause==345;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0} x",f[..]),nt_rig_store(r));#assert e.status==NtStatus.json && e.cause==338;
+    e=nt_read(nt_file("\"vocab\":[]",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read(nt_file("\"vocab\":{\"a\":\"0\"}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0.5}",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\" \":0}",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0,\"\":1}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":{}",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":[[\"a\"]]",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":[[\"a\",\"a\",\"a\"]]",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":[[\"a\",\" \"]]",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":[[\"a\",1]]",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    // Merge parts: a left or right that is no entry, an empty part, a join that is no entry.
+    e=nt_read(nt_file("\"vocab\":{\"a\":0,\"b\":1,\"ab\":2},\"merges\":[[\"q\",\"b\"]]",f[..]),nt_rig_store(r));#assert e.status==NtStatus.merge && e.cause==0;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0,\"b\":1,\"ab\":2},\"merges\":[[\"a\",\"b\"],[\"\",\"a\"]]",f[..]),nt_rig_store(r));#assert e.status==NtStatus.merge && e.cause==1;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0,\"b\":1,\"ab\":2},\"merges\":[[\"b\",\"a\"]]",f[..]),nt_rig_store(r));#assert e.status==NtStatus.merge && e.cause==0;
+    // An entry of 256 bytes is the longest allowed; 4096 raw bytes the longest string.
+    v:[4200]u8;head:="\"vocab\":{\"";n:=0;for c:head {v[n]=c;n+=1;}
+    for i:0..<256 {v[n]='a';n+=1;}
+    tail:="\":0}";
+    big:[4800]u8;
+    #assert nt_read(nt_file(nt_with(v[..],n,tail),big[..]),nt_rig_store(r)).status==NtStatus.ok;
+    v[n]='a';e=nt_read(nt_file(nt_with(v[..],n+1,tail),big[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    for i:n..<head.count+4097 {v[i]=0x61;}
+    e=nt_read(nt_file(nt_with(v[..],head.count+4096,tail),big[..]),nt_rig_store(r));#assert e.status==NtStatus.format;
+    v[head.count+4096]='a';e=nt_read(nt_file(nt_with(v[..],head.count+4097,tail),big[..]),nt_rig_store(r));#assert e.status==NtStatus.json && e.cause==4429;
+    // Added tokens: the wrong kinds, no id, no content, an escape, a token that begins another.
+    e=nt_read("{\"added_tokens\":{}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"id\":1}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"content\":\"a\"}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"id\":1,\"content\":\"a\\\\\"}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"id\":1,\"content\":\"\"}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"id\":0,\"content\":\"]\"}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==3;
+    #assert nt_read("{\"added_tokens\":[{\"id\":\"1\",\"content\":\"a\"}]}",nt_rig_store(r)).cause==0;
+    #assert nt_read("{\"added_tokens\":[{\"id\":1,\"content\":2}]}",nt_rig_store(r)).cause==0;
+    #assert nt_read("{\"added_tokens\":[{\"id\":1,\"x\":[}]}",nt_rig_store(r)).status==NtStatus.json;
+    #assert nt_begins("<x>","<x>y") && nt_begins("<x>y","<x>") && nt_begins("ab","ab") && !nt_begins("ab","ac") && !nt_begins("b","ab") && nt_begins("","a");
+    // The pre-tokenizer: the wrong kind, a pattern that is not a string, none, two.
+    e=nt_read("{\"model\":[]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    // A different pattern; two added tokens where one begins the other.
+    g2:[2100]u8;m2:=nt_swap(good,"(?!","(?=",g2[..]);e=nt_read(cast(string)g2[0..<m2],nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    g3:[2100]u8;m2=nt_swap(good,"\"content\":\"<xy>\"","\"content\":\"<x>y\"",g2[..]);m2=nt_swap(cast(string)g2[0..<m2],"\"<xy>\":10","\"<x>y\":10",g3[..]);
+    e=nt_read(cast(string)g3[0..<m2],nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    m2=nt_swap(good,"\"content\":\"<xy>\"","\"content\":\"<xz>\"",g2[..]);m2=nt_swap(cast(string)g2[0..<m2],"\"<xy>\":10","\"<xz>\":10",g3[..]);
+    #assert nt_read(cast(string)g3[0..<m2],nt_rig_store(r)).status==NtStatus.ok;
+    e=nt_read("{\"pre_tokenizer\":[]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    #assert nt_read("{\"pre_tokenizer\":{\"a\":[}}",nt_rig_store(r)).status==NtStatus.json;
+    e=nt_read("{\"pre_tokenizer\":{\"Regex\":1}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    e=nt_read("{\"pre_tokenizer\":{\"a\":\"Regex\"}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    e=nt_read("{\"pre_tokenizer\":{\"a\":{\"b\":1}},\"model\":{}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    // A model without its type or without ignore_merges.
+    ff:=nt_file("\"vocab\":{\"a\":0}",f[..]);g:[1100]u8;
+    m:=nt_swap(ff,"\"type\"","\"kind\"",g[..]);e=nt_read(cast(string)g[0..<m],nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    m=nt_swap(ff,"\"ignore_merges\"","\"ignore\"",g[..]);e=nt_read(cast(string)g[0..<m],nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    // A model and no pre-tokenizer.
+    e=nt_read("{\"model\":{\"type\":\"BPE\",\"ignore_merges\":true,\"vocab\":{\"a\":0}}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==3;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0}",f[..]),nt_rig_store(r)).status==NtStatus.ok;
+    // A file over 256 bytes an entry of storage is refused before it is read;
+    // trailing spaces count.
+    pad:[4097]u8;small:=nt_file("\"vocab\":{\"a\":0}",f[..]);for i:0..<4097 {pad[i]=' ';}for i:0..<small.count {pad[i]=small[i];}
+    s=nt_rig_store(r);s.ids=r[0].ids[0..<16];s.at=r[0].at[0..<16];s.count=r[0].count[0..<16];
+    #assert nt_read(cast(string)pad[0..<4096],s).status==NtStatus.ok;
+    e=nt_read(cast(string)pad[..],s);#assert e.status==NtStatus.json && e.cause==0;
+}
+// book:end checks-refusals
+// v[0..<n] with tail after it, in place.
+nt_with :: (v:[]u8,n:int,tail:string)->string {for i:0..<tail.count {v[n+i]=tail[i];}return cast(string)v[0..<n+tail.count];}

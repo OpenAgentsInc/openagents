@@ -1,0 +1,111 @@
+// Chapter 163's whole-model entry: the C harness (psionic/tests/nemotron_run.c)
+// maps the checkpoint, reads tokenizer.json and moves bytes; every decode,
+// every layer, the readout and the tokenizer are chapter 163's Coax.
+// The weights live in one f32 arena, tensor after tensor in the inventory's
+// order (nh_expected): the embedding, the final norm, the readout, then each
+// layer's tensors in name order.
+#load "../lib/nemotron-model.coax";
+#load "../lib/nemotron-tokens.coax";
+
+nhr_tensors :: ()->int #export_c {return nh_expected_count(nh_nano(),NH_NANO_PATTERN);}
+nhr_size :: (t:NhTensor)->int {n:=1;for k:0..<t.rank {n*=t.dims[k];}return n;}
+nhr_tensor_size :: (i:int)->int #export_c {return nhr_size(nh_expected(nh_nano(),NH_NANO_PATTERN,i));}
+// The tensor's checkpoint name, into out: its length.
+nhr_tensor_name :: (i:int,out:[]u8)->int #export_c {
+    t:=nh_expected(nh_nano(),NH_NANO_PATTERN,i);n:=0;
+    if t.layer>=0 {n=nh_put(out,n,"backbone.layers.");n=nh_put_int(out,n,t.layer);}
+    return nh_put(out,n,t.suffix);
+}
+nhr_arena_size :: ()->int #export_c {n:=0;for i:0..<nhr_tensors() {n+=nhr_tensor_size(i);}return n;}
+nhr_decode :: (bytes:[]u8,out:[]f32)->bool #export_c {return nh_bf16(bytes,out);}
+nhr_history_size :: ()->int #export_c {return nh_history_size(nh_nano(),21);}
+nhr_state_size :: ()->int #export_c {return nh_state_size(nh_nano(),21);}
+nhr_keys_size :: (capacity:int)->int #export_c {return nh_keys_size(nh_nano(),4,capacity);}
+nhr_work :: (tokens:int)->int #export_c {return nh_model_work(nh_nano(),tokens);}
+nhr_fwork :: (chunk:int,capacity:int)->int #export_c {return nh_model_fwork(nh_nano(),chunk,capacity);}
+
+// The model's views into the arena.
+nhr_model :: (arena:[]f32,layers:[]NhLayer)->NhModel {
+    s:=nh_nano();at:=0;m:=NhModel.{shape=s,pattern=NH_NANO_PATTERN,layers=layers,rows=NH_READOUT_ROWS};
+    for l:0..<s.layers {layers[l].kind=nh_kind(NH_NANO_PATTERN,l);}
+    k:=0;last:=-1;
+    for i:0..<nhr_tensors() {
+        t:=nh_expected(s,NH_NANO_PATTERN,i);v:=arena[at..<at+nhr_size(t)];at+=v.count;
+        if i==0 {m.embed=v;}
+        if i==1 {m.norm=v;}
+        if i==2 {m.head=v;}
+        if i<3 {continue;}
+        if t.layer!=last {k=0;last=t.layer;}
+        w:=layers[t.layer];
+        if w.kind==NH_MAMBA {
+            if k==0 {w.mamba.a_log=v;} if k==1 {w.mamba.d=v;} if k==2 {w.mamba.conv_bias=v;} if k==3 {w.mamba.conv=v;}
+            if k==4 {w.mamba.dt_bias=v;} if k==5 {w.mamba.in_proj=v;} if k==6 {w.mamba.gate_norm=v;} if k==7 {w.mamba.out_proj=v;}
+            if k==8 {w.mamba.norm=v;}
+        }
+        if w.kind==NH_ATTENTION {
+            if k==0 {w.attention.k=v;} if k==1 {w.attention.o=v;} if k==2 {w.attention.q=v;} if k==3 {w.attention.v=v;}
+            if k==4 {w.attention.norm=v;}
+        }
+        if w.kind==NH_MLP {if k==0 {w.mlp.down=v;} if k==1 {w.mlp.up=v;} if k==2 {w.mlp.norm=v;}}
+        layers[t.layer]=w;k+=1;
+    }
+    return m;
+}
+nhr_cache :: (capacity:int,history:[]f32,state:[]f32,keys:[]f32,values:[]f32)->NhCache {
+    return NhCache.{capacity=capacity,history=history,state=state,keys=keys,values=values};
+}
+nhr_clear :: (capacity:int,history:[]f32,state:[]f32,keys:[]f32,values:[]f32) #export_c {nh_clear(nhr_cache(capacity,history,state,keys,values));}
+// Returns the largest logit's index, or -(1 + status * 100 + layer + 1).
+nhr_code :: (r:NhRun)->int {if r.status==NhStatus.ok {return r.best;}return -(1+cast(int)r.status*100+r.layer+1);}
+nhr_forward :: (arena:[]f32,tokens:[]int,start:int,chunk:int,capacity:int,history:[]f32,state:[]f32,keys:[]f32,values:[]f32,
+                hidden:[]f32,logits:[]f32,work:[]f32,fwork:[]f64)->int #export_c {
+    layers:[42]NhLayer;m:=nhr_model(arena,layers[..]);
+    return nhr_code(nh_forward(m,nhr_cache(capacity,history,state,keys,values),tokens,start,chunk,hidden,logits,work,fwork));
+}
+// The prompt layer by layer: trace holds the hidden rows after each layer.
+nhr_trace :: (arena:[]f32,tokens:[]int,chunk:int,capacity:int,history:[]f32,state:[]f32,keys:[]f32,values:[]f32,
+              hidden:[]f32,trace:[]f32,work:[]f32,fwork:[]f64)->int #export_c {
+    layers:[42]NhLayer;m:=nhr_model(arena,layers[..]);c:=nhr_cache(capacity,history,state,keys,values);
+    n:=tokens.count;h:=m.shape.hidden;
+    if trace.count!=42*n*h || hidden.count!=n*h {return -1;}
+    for t:0..<n {for i:0..<h {hidden[t*h+i]=m.embed[tokens[t]*h+i];}}
+    for l:0..<42 {
+        r:=nh_layer(m,c,l,n,0,chunk,hidden,work,fwork);
+        if r.status!=NhStatus.ok {return -(2+l);}
+        for i:0..<n*h {trace[l*n*h+i]=hidden[i];}
+    }
+    return 0;
+}
+nhr_greedy :: (arena:[]f32,prompt:[]int,steps:int,chunk:int,out:[]int,capacity:int,history:[]f32,state:[]f32,keys:[]f32,values:[]f32,
+               hidden:[]f32,logits:[]f32,work:[]f32,fwork:[]f64)->int #export_c {
+    layers:[42]NhLayer;m:=nhr_model(arena,layers[..]);
+    return nhr_code(nh_greedy(m,nhr_cache(capacity,history,state,keys,values),prompt,steps,chunk,out,hidden,logits,work,fwork));
+}
+
+// The tokenizer: the table is read from the file's bytes at each call.
+nhr_store :: (bytes:[]u8,ids:[]int,at:[]int,count:[]int,slots:[]int,left:[]int,right:[]int,joined:[]int,pairs:[]int,specials:[]int,texts:[]string)->NtStore {
+    return NtStore.{bytes=bytes,ids=ids,at=at,count=count,slots=slots,left=left,right=right,joined=joined,pairs=pairs,specials=specials,special_text=texts};
+}
+// texts: NUL-separated. ids: every text's ids in turn; ends[k]: where text
+// k's ids end. Returns the number of texts, or -(1 + status) on a refusal.
+nhr_encode :: (json:[]u8,texts:[]u8,bytes:[]u8,ids:[]int,at:[]int,count:[]int,slots:[]int,left:[]int,right:[]int,joined:[]int,pairs:[]int,
+               specials:[]int,special_texts:[]string,out:[]int,ends:[]int)->int #export_c {
+    t:=nt_read(cast(string)json,nhr_store(bytes,ids,at,count,slots,left,right,joined,pairs,specials,special_texts));
+    if t.status!=NtStatus.ok {return -(1+cast(int)t.status);}
+    from:=0;n:=0;k:=0;
+    for i:0..<texts.count {
+        if texts[i]!=0 {continue;}
+        r:=nt_encode(t,cast(string)texts[from..<i],out[n..<out.count]);
+        if r.status!=NtStatus.ok {return -(1+cast(int)r.status);}
+        n+=r.written;ends[k]=n;k+=1;from=i+1;
+    }
+    return k;
+}
+// ids back to bytes: the length written, or -1.
+nhr_text :: (json:[]u8,tokens:[]int,bytes:[]u8,ids:[]int,at:[]int,count:[]int,slots:[]int,left:[]int,right:[]int,joined:[]int,pairs:[]int,
+             specials:[]int,special_texts:[]string,out:[]u8)->int #export_c {
+    t:=nt_read(cast(string)json,nhr_store(bytes,ids,at,count,slots,left,right,joined,pairs,specials,special_texts));
+    if t.status!=NtStatus.ok {return -1;}
+    n:=0;for id:tokens {n=nt_decode(t,id,out,n);if n<0 {return -1;}}
+    return n;
+}

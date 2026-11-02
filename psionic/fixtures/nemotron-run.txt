@@ -1,0 +1,21 @@
+# Chapter 163's whole-model run of NVIDIA-Nemotron-3-Nano-4B-BF16 at dfaf35de, recorded once with
+# psionic/tests/check_nemotron_run.sh on a 28-core Linux host (one thread for Coax, every core for
+# the oracle), gcc -O2, 2026-11-02. Not a routine check: it needs the 7.9 GB download, and the
+# Coax run takes about 2 minutes and 22 GB, the oracle about 3.5 minutes. A second run with the
+# committed tokenizer, on a busier host (450 s), wrote the same ids, layer rows and logits, bit for bit.
+tokenizer: 12 texts encoded over the full file, 0.4 s
+prompt tokens 1 1784 8961 1307 5498 1395
+weights: 3973556832 values decoded from BF16, 12.0 s
+prompt through 42 layers, layer by layer: 17.7 s
+prefill of 6 tokens: 17.9 s; greedy, prefill and 7 steps: 41.2 s (3.3 s a step)
+greedy tokens 6993 2613 1093 4848 1058 44642 29896 1010
+first choice equals the prompt pass: true
+recomputed 13 tokens in one pass: 38.3 s; last logits differ by at most 2.15e-06 (largest |logit| 27); choice 1010, cached 1010, same
+continuation: " Paris."] output: ```python|" (line feeds shown as |)
+whole run: 128.0 s, peak resident memory 22.2 GB
+tokenizer over the full file: 138 ids, Coax and Python agree
+42 layers, the prompt's rows: largest difference 0.000333 of each layer's limit, within
+logits after the prompt: largest difference 1.95e-06, limit 0.00194, within
+logits after the last step: largest difference 2.68e-06, limit 0.0028, within
+greedy choices: oracle [6993, 2613, 1093, 4848, 1058, 44642, 29896, 1010], Coax [6993, 2613, 1093, 4848, 1058, 44642, 29896, 1010], same
+oracle: 3 min 24 s on 28 cores

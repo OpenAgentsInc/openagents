@@ -1,9 +1,9 @@
 # 163. Execute Nemotron Nano
 
-> **Status: partly implemented.** The checkpoint inventory, all three layer
-> kinds, original-weight slices and the whole model with greedy decoding
-> from its cache (on a small model) run. The tokenizer and the whole model on
-> the original weights do not yet; see
+> **Status: partly implemented.** The checkpoint inventory, the tokenizer on
+> ASCII text, all three layer kinds and the whole model with greedy decoding
+> from its cache run, and one whole-model run on the original weights is
+> recorded. Text outside ASCII and device kernels do not yet; see
 > [What this does not do yet](#what-this-does-not-do-yet).
 
 NVIDIA-Nemotron-3-Nano-4B-BF16 is a hybrid language model. Of its 42 layers,
@@ -12,16 +12,20 @@ MLP layers. This chapter checks that a pinned download of the checkpoint holds
 exactly the tensors its config describes, builds each of the three layer
 kinds in Coax on top of [chapter 162](ch162-a-recurrence-you-can-inspect.md)'s
 recurrence, and runs one layer of each kind on the original weights against
-an independent oracle.
+an independent oracle. It then reads the pinned tokenizer, puts the 42 layers
+together with greedy decoding from a cache, and records one whole-model run
+on the original weights against an independent binary64 reference.
 
 ```shell
 coax/bin/coax run psionic/examples/nemotron-h.coax
 coax/bin/coax test psionic/lib/nemotron-h.coax
 coax/bin/coax test psionic/lib/nemotron-model.coax
+coax/bin/coax test psionic/lib/nemotron-tokens.coax
 psionic/tests/check_nemotron_slices.sh ~/models/nemotron-3-nano-4b-bf16-dfaf35de
+psionic/tests/check_nemotron_run.sh ~/models/nemotron-3-nano-4b-bf16-dfaf35de
 ```
 
-The [library](../lib/nemotron-h.coax), the [whole model](../lib/nemotron-model.coax), its [check oracle](../tests/nemotron-h-oracle.coax),
+The [library](../lib/nemotron-h.coax), the [whole model](../lib/nemotron-model.coax), the [tokenizer](../lib/nemotron-tokens.coax), its [check oracle](../tests/nemotron-h-oracle.coax),
 the [example](../examples/nemotron-h.coax), the
 [refusal example](../examples/nemotron-h-refuse.coax) and the
 [slice check](../tests/check_nemotron_slices.sh) are the implementation.
@@ -629,6 +633,624 @@ layer narrows the recurrence's output to `f32` before the gate norm and
 `out_proj`; the chunked and stepped recurrences differ by less than that
 rounding here.
 
+## The tokenizer
+
+The pinned `tokenizer.json` (17 MB) holds a byte-level BPE: 131,072
+entries, 269,443 merges and 1,000 added tokens such as `<s>` and
+`<|im_start|>`. `psionic/lib/nemotron-tokens.coax` reads it with the bounded
+JSON pull parser of `coax/lib/nostr/json.coax` and encodes ASCII text with it.
+It shares the pattern of chapter 81's Tekken but is written for this file.
+
+<!-- source: psionic/lib/nemotron-tokens.coax types -->
+```jai
+// json: not JSON within the limits. format: a part this encoder needs is
+// missing or not what it implements. capacity: the caller's storage is too
+// small. vocabulary: a repeated entry, or a byte with no entry. merge: a
+// merge whose parts are not entries, or a repeated merge. unsupported: text
+// outside printable ASCII, tab, line feed and carriage return. range: a
+// piece or text longer than its limit.
+NtStatus :: enum u8 { ok; json; format; capacity; vocabulary; merge; unsupported; range; }
+NtResult :: struct { status:NtStatus; written:int; cause:int; }
+// The caller's storage. Entry e has the id ids[e] and the bytes
+// bytes[at[e] ..< at[e] + count[e]]; slots and pairs are hash tables (a
+// power of two each) holding entry + 1 and rank + 1; merge r joins entries
+// left[r] and right[r] into joined[r]. specials holds the added tokens'
+// entries and texts.
+NtStore :: struct { bytes:[]u8; ids:[]int; at:[]int; count:[]int; slots:[]int; left:[]int; right:[]int; joined:[]int; pairs:[]int;
+    specials:[]int; special_text:[]string; }
+NtTable :: struct { status:NtStatus; cause:int; store:NtStore; entries:int; merges:int; specials:int; used:int; }
+// A file may hold up to 256 bytes for each entry the storage holds.
+NT_JSON_PER_ENTRY :: 256;
+NT_STRING_MAX :: 4096;
+NT_ENTRY_MAX :: 256;
+NT_PIECE_MAX :: 256;
+NT_TEXT_MAX :: 4096;
+```
+
+ByteLevel writes every byte as one character, so that each entry is
+printable text. The 188 printable bytes stand for themselves; the other 68,
+in byte order, become U+0100 and up. The space, byte 32, is the 33rd of
+those (bytes 0 to 32 come first), so it is written U+0100 + 32 = U+0120,
+`Ġ`; the line feed, byte 10, is U+010A, `Ċ`. Reading the file undoes this:
+
+<!-- source: psionic/lib/nemotron-tokens.coax bytes -->
+```jai
+// ByteLevel writes each byte as a character: the 188 printable bytes
+// (33..126, 161..172, 174..255) as themselves, the other 68 as U+0100 and
+// up, in byte order. This is the way back.
+nt_printable :: (b:int)->bool {return (b>=33 && b<=126) || (b>=161 && b<=172) || (b>=174 && b<=255);}
+nt_char_byte :: (cp:int)->int #export_c {
+    if cp<256 {if nt_printable(cp) {return cp;}return -1;}
+    k:=cp-256;
+    if k<33 {return k;}
+    if k<67 {return k+94;}
+    if k==67 {return 173;}
+    return -1;
+}
+// A JSON string's raw bytes (escapes undone) as byte-level characters back
+// to bytes, into out: the length, or -1 when it does not fit or a
+// character is not one ByteLevel writes.
+nt_key :: (raw:string,out:[]u8)->int {
+    text:[NT_STRING_MAX]u8;n:=json_unescape(raw,text[..]);
+    if n<0 {return -1;}
+    i:=0;m:=0;
+    while i<n {
+        // Byte-level characters are below U+0800: one UTF-8 byte below
+        // 0x80, else two.
+        c:=cast(int)text[i];
+        if c>=0xE0 {return -1;}
+        cp:=c;size:=1+(c>>7);
+        if size==2 {cp=((c&0x1F)<<6)|(cast(int)text[i+1]&0x3F);}
+        b:=nt_char_byte(cp);
+        if b<0 || m>=out.count {return -1;}
+        out[m]=cast(u8)b;m+=1;i+=size;
+    }
+    return m;
+}
+```
+
+Entries and merges go into two hash tables in the caller's storage, with
+linear probing. An entry is found by its bytes; a merge by its two entries,
+and it gives its rank (its place in the merge list) and the entry it makes.
+
+<!-- source: psionic/lib/nemotron-tokens.coax tables -->
+```jai
+// A 30-bit hash: h = h * 131 + byte + 1 for each byte.
+nt_hash :: (s:string)->int {h:=0;for b:s {h=(h*131+cast(int)b+1)&0x3FFFFFFF;}return h;}
+nt_pair_hash :: (a:int,b:int)->int {return (a*131071+b)&0x3FFFFFFF;}
+nt_entry :: (t:NtTable,e:int)->[]u8 {return t.store.bytes[t.store.at[e]..<t.store.at[e]+t.store.count[e]];}
+// The entry with exactly these bytes, or -1. Linear probing; the table
+// always keeps an empty slot.
+nt_find :: (t:NtTable,s:string)->int {
+    mask:=t.store.slots.count-1;i:=nt_hash(s)&mask;
+    while t.store.slots[i]!=0 {
+        e:=t.store.slots[i]-1;
+        if cast(string)nt_entry(t,e)==s {return e;}
+        i=(i+1)&mask;
+    }
+    return -1;
+}
+// The rank of the merge of entries a and b, or -1.
+nt_rank :: (t:NtTable,a:int,b:int)->int {
+    mask:=t.store.pairs.count-1;i:=nt_pair_hash(a,b)&mask;
+    while t.store.pairs[i]!=0 {
+        r:=t.store.pairs[i]-1;
+        if t.store.left[r]==a && t.store.right[r]==b {return r;}
+        i=(i+1)&mask;
+    }
+    return -1;
+}
+nt_power :: (n:int)->bool {p:=2;while p<n {p*=2;}return p==n;}
+```
+
+The reader checks what the encoder relies on and refuses anything else: no
+normalizer, exactly one Split pattern and that it is the pinned one, a BPE
+model with `ignore_merges`, every merge's two parts and their join in the
+vocabulary, and no added token that begins another. The pinned file's 1,000
+added tokens pass that last rule, so at most one can match at a place in
+the text.
+
+<!-- source: psionic/lib/nemotron-tokens.coax read -->
+```jai
+// The pattern of the pinned pre-tokenizer's Split step.
+NT_PATTERN :: "[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]*[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]+|[^\\r\\n\\p{L}\\p{N}]?[\\p{Lu}\\p{Lt}\\p{Lm}\\p{Lo}\\p{M}]+[\\p{Ll}\\p{Lm}\\p{Lo}\\p{M}]*|\\p{N}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n/]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+";
+nt_fail :: (t:[]NtTable,status:NtStatus,cause:int)->bool {t[0].status=status;t[0].cause=cause;return false;}
+nt_is :: (j:[]Json,tok:int,text:string)->bool {return j[0].tok==tok && json_text(j)==text;}
+nt_stop :: (t:[]NtTable,status:NtStatus,cause:int)->NtTable {t[0].status=status;t[0].cause=cause;return t[0];}
+// The value after a key, skipped whole.
+nt_skip :: (j:[]Json)->bool {first:=json_next(j);return json_skip(j);}
+// One vocabulary entry: its key was just read.
+nt_add_entry :: (j:[]Json,t:[]NtTable)->bool {
+    s:=t[0].store;e:=t[0].entries;
+    if e>=s.ids.count || e+1>=s.slots.count {return nt_fail(t,NtStatus.capacity,e);}
+    n:=nt_key(json_text(j),s.bytes[t[0].used..<s.bytes.count]);
+    if n<1 || n>NT_ENTRY_MAX {return nt_fail(t,NtStatus.format,e);}
+    bytes:=s.bytes[t[0].used..<t[0].used+n];
+    if json_next(j)!=JSON_NUMBER {return nt_fail(t,NtStatus.format,e);}
+    id:=json_int(json_text(j));
+    if !id.ok || id.value<0 {return nt_fail(t,NtStatus.format,e);}
+    if nt_find(t[0],cast(string)bytes)>=0 {return nt_fail(t,NtStatus.vocabulary,e);}
+    s.ids[e]=id.value;s.at[e]=t[0].used;s.count[e]=n;
+    mask:=s.slots.count-1;i:=nt_hash(cast(string)bytes)&mask;
+    while s.slots[i]!=0 {i=(i+1)&mask;}
+    s.slots[i]=e+1;t[0].entries=e+1;t[0].used+=n;
+    return true;
+}
+// One merge, [left, right]: the array was just opened.
+nt_add_merge :: (j:[]Json,t:[]NtTable)->bool {
+    s:=t[0].store;r:=t[0].merges;
+    if r>=s.left.count || r+1>=s.pairs.count {return nt_fail(t,NtStatus.capacity,r);}
+    joint:[2*NT_ENTRY_MAX]u8;parts:[2]int;n:=0;
+    for k:0..<2 {
+        if json_next(j)!=JSON_STRING {return nt_fail(t,NtStatus.format,r);}
+        m:=nt_key(json_text(j),joint[n..<joint.count]);
+        if m<0 {return nt_fail(t,NtStatus.format,r);}
+        parts[k]=nt_find(t[0],cast(string)joint[n..<n+m]);n+=m;
+    }
+    if json_next(j)!=JSON_ARRAY_END {return nt_fail(t,NtStatus.format,r);}
+    whole:=nt_find(t[0],cast(string)joint[0..<n]);
+    if parts[0]<0 || parts[1]<0 || whole<0 || nt_rank(t[0],parts[0],parts[1])>=0 {return nt_fail(t,NtStatus.merge,r);}
+    s.left[r]=parts[0];s.right[r]=parts[1];s.joined[r]=whole;
+    mask:=s.pairs.count-1;i:=nt_pair_hash(parts[0],parts[1])&mask;
+    while s.pairs[i]!=0 {i=(i+1)&mask;}
+    s.pairs[i]=r+1;t[0].merges=r+1;
+    return true;
+}
+// "model": type BPE, ignore_merges true, the vocabulary, then the merges.
+nt_model :: (j:[]Json,t:[]NtTable)->bool {
+    if json_next(j)!=JSON_OBJECT {return nt_fail(t,NtStatus.format,0);}
+    bpe:=false;ignore:=false;
+    while json_next(j)==JSON_STRING {
+        if nt_is(j,JSON_STRING,"type") {bpe=json_next(j)==JSON_STRING && json_text(j)=="BPE";}
+        else if nt_is(j,JSON_STRING,"ignore_merges") {ignore=json_next(j)==JSON_TRUE;}
+        else if nt_is(j,JSON_STRING,"vocab") {
+            if json_next(j)!=JSON_OBJECT {return nt_fail(t,NtStatus.format,0);}
+            while json_next(j)==JSON_STRING {if !nt_add_entry(j,t) {return false;}}
+        }
+        else if nt_is(j,JSON_STRING,"merges") {
+            if t[0].entries==0 || json_next(j)!=JSON_ARRAY {return nt_fail(t,NtStatus.format,0);}
+            while json_next(j)==JSON_ARRAY {if !nt_add_merge(j,t) {return false;}}
+        }
+        else if !nt_skip(j) {return nt_fail(t,NtStatus.json,j[0].error_at);}
+    }
+    if j[0].tok!=JSON_OBJECT_END {return nt_fail(t,NtStatus.json,j[0].error_at);}
+    if !bpe || !ignore || t[0].entries==0 {return nt_fail(t,NtStatus.format,0);}
+    return true;
+}
+// "added_tokens": each object's id and content; content must have no escapes.
+nt_added :: (j:[]Json,t:[]NtTable)->bool {
+    if json_next(j)!=JSON_ARRAY {return nt_fail(t,NtStatus.format,0);}
+    while json_next(j)==JSON_OBJECT {
+        k:=t[0].specials;
+        if k>=t[0].store.specials.count {return nt_fail(t,NtStatus.capacity,k);}
+        id:=-1;text:="";
+        while json_next(j)==JSON_STRING {
+            if nt_is(j,JSON_STRING,"id") {if json_next(j)==JSON_NUMBER {v:=json_int(json_text(j));if v.ok {id=v.value;}}}
+            else if nt_is(j,JSON_STRING,"content") {if json_next(j)==JSON_STRING {text=json_text(j);}}
+            else if !nt_skip(j) {return nt_fail(t,NtStatus.json,j[0].error_at);}
+        }
+        if id<0 || text.count==0 {return nt_fail(t,NtStatus.format,k);}
+        for c:text {if c=='\\' {return nt_fail(t,NtStatus.format,k);}}
+        t[0].store.specials[k]=id;t[0].store.special_text[k]=text;t[0].specials=k+1;
+    }
+    return true;
+}
+// "pre_tokenizer": every "Regex" in it must be NT_PATTERN, and there must be one.
+nt_pre :: (j:[]Json,t:[]NtTable)->bool {
+    if json_next(j)!=JSON_OBJECT {return nt_fail(t,NtStatus.format,0);}
+    depth:=j[0].depth-1;found:=0;
+    while j[0].depth>depth {
+        tok:=json_next(j);
+        if tok==JSON_ERROR {return nt_fail(t,NtStatus.json,j[0].error_at);}
+        if nt_is(j,JSON_STRING,"Regex") && j[0].key {
+            if json_next(j)!=JSON_STRING {return nt_fail(t,NtStatus.format,1);}
+            if !json_is(json_text(j),NT_PATTERN) {return nt_fail(t,NtStatus.format,1);}
+            found+=1;
+        }
+    }
+    if found!=1 {return nt_fail(t,NtStatus.format,1);}
+    return true;
+}
+// Whether one of a and b begins the other (or they are the same).
+nt_begins :: (a:string,b:string)->bool {
+    for i:0..<a.count {
+        if i>=b.count {return true;}
+        if a[i]!=b[i] {return false;}
+    }
+    return true;
+}
+// The whole file. Added tokens are matched to their entries at the end.
+nt_read :: (text:string,store:NtStore)->NtTable {
+    tb:[1]NtTable;t:=tb[..];t[0].store=store;
+    if !nt_power(store.slots.count) || !nt_power(store.pairs.count) || store.ids.count!=store.at.count || store.ids.count!=store.count.count
+        || store.left.count!=store.right.count || store.left.count!=store.joined.count || store.specials.count!=store.special_text.count {
+        return nt_stop(t,NtStatus.capacity,0);
+    }
+    for i:0..<store.slots.count {store.slots[i]=0;}
+    for i:0..<store.pairs.count {store.pairs[i]=0;}
+    j:[1]Json;json_start_bounded(j[..],text,NT_JSON_PER_ENTRY*store.ids.count,NT_STRING_MAX);
+    if json_next(j[..])!=JSON_OBJECT {return nt_stop(t,NtStatus.json,j[0].error_at);}
+    model:=false;pre:=false;
+    while json_next(j[..])==JSON_STRING {
+        ok:=true;
+        if nt_is(j[..],JSON_STRING,"model") {ok=nt_model(j[..],t);model=true;}
+        else if nt_is(j[..],JSON_STRING,"added_tokens") {ok=nt_added(j[..],t);}
+        else if nt_is(j[..],JSON_STRING,"pre_tokenizer") {ok=nt_pre(j[..],t);pre=true;}
+        else if nt_is(j[..],JSON_STRING,"normalizer") {if json_next(j[..])!=JSON_NULL {ok=nt_fail(t,NtStatus.format,2);}}
+        else {skipped:=nt_skip(j[..]);}
+        if !ok {return t[0];}
+    }
+    if j[0].tok!=JSON_OBJECT_END || json_next(j[..])!=JSON_END {return nt_stop(t,NtStatus.json,j[0].error_at);}
+    if !model || !pre {return nt_stop(t,NtStatus.format,3);}
+    // At most one added token may match at a place: none may begin another.
+    for k:0..<t[0].specials {
+        for o:0..<k {if nt_begins(store.special_text[o],store.special_text[k]) {return nt_stop(t,NtStatus.format,k);}}
+        e:=nt_find(t[0],store.special_text[k]);
+        if e<0 || store.ids[e]!=store.specials[k] {return nt_stop(t,NtStatus.format,k);}
+        store.specials[k]=e;
+    }
+    return t[0];
+}
+```
+
+Encoding splits out added tokens first, then cuts the text between them
+into pieces with the pattern. On ASCII its Unicode classes reduce to five:
+
+<!-- source: psionic/lib/nemotron-tokens.coax pieces -->
+```jai
+// The pattern on ASCII text, where its Unicode classes reduce to upper
+// A-Z, lower a-z, digit 0-9, space (tab, line feed, carriage return, ' ')
+// and other. In order:
+//   [^\r\n L N]? upper* lower+ | [^\r\n L N]? upper+ lower*
+//       together: an optional first character that is neither a letter, a
+//       digit nor a newline, then the upper-case run, then the lower-case
+//       run, with at least one letter
+//   \p{N}                       one digit
+//   " ?[^\s L N]+[\r\n/]*"       an optional space, other characters, then
+//                                newlines and slashes
+//   \s*[\r\n]+                  whitespace through its last newline
+//   \s+(?!\S) | \s+             whitespace, all but the last before a
+//                                non-space, else all of it
+NT_UPPER :: 0; NT_LOWER :: 1; NT_DIGIT :: 2; NT_SPACE :: 3; NT_OTHER :: 4;
+nt_class :: (c:u8)->int {
+    if c>='A' && c<='Z' {return NT_UPPER;}
+    if c>='a' && c<='z' {return NT_LOWER;}
+    if c>='0' && c<='9' {return NT_DIGIT;}
+    if c==' ' || c=='\t' || c=='\n' || c=='\r' {return NT_SPACE;}
+    return NT_OTHER;
+}
+nt_newline :: (c:u8)->bool {return c=='\n' || c=='\r';}
+nt_run :: (s:string,at:int,class:int)->int {p:=at;while p<s.count && nt_class(s[p])==class {p+=1;}return p;}
+// The end of the piece that starts at at (at < s.count).
+nt_piece :: (s:string,at:int)->int {
+    c:=nt_class(s[at]);p:=at;
+    if c==NT_OTHER || (c==NT_SPACE && !nt_newline(s[at])) {p+=1;}
+    end:=nt_run(s,nt_run(s,p,NT_UPPER),NT_LOWER);
+    if end>p {return end;}
+    if c==NT_DIGIT {return at+1;}
+    p=at;if s[at]==' ' {p+=1;}
+    end=nt_run(s,p,NT_OTHER);
+    if end>p {while end<s.count && (nt_newline(s[end]) || s[end]=='/') {end+=1;}return end;}
+    run:=nt_run(s,at,NT_SPACE);last:=at;
+    for i:at..<run {if nt_newline(s[i]) {last=i+1;}}
+    if last>at {return last;}
+    if run==s.count || run-at==1 {return run;}
+    return run-1;
+}
+```
+
+Each piece then becomes ids. Work one by hand with the checks' small file,
+whose merges in rank order are `b c`, `a b`, `Ġ a`, `ab c`, `bc b`, `c a`
+and `c c`. The piece `abcb` is not an entry, so it starts as bytes
+`a b c b`. The adjacent pairs are `a b` (rank 1), `b c` (rank 0) and `c b`
+(none); rank 0 wins: `a bc b`. Now `a bc` has no rank and `bc b` has rank
+4: `a bcb`. Nothing joins `a` and `bcb`, so the ids are those of `a` and
+`bcb`, 0 and 16. The piece `abc` is an entry, so with `ignore_merges` it is
+one id, 5, without merging.
+
+<!-- source: psionic/lib/nemotron-tokens.coax bpe -->
+```jai
+// One piece to ids: the whole piece if it is an entry (ignore_merges);
+// otherwise its bytes, then repeatedly the adjacent pair with the lowest
+// rank (the leftmost on a tie) joined, until no adjacent pair is a merge.
+nt_bpe :: (t:NtTable,piece:string,out:[]int)->NtResult {
+    n:=piece.count;
+    if n<1 || n>NT_PIECE_MAX {return NtResult.{status=NtStatus.range,cause=n};}
+    whole:=nt_find(t,piece);
+    if whole>=0 {
+        if out.count<1 {return NtResult.{status=NtStatus.capacity};}
+        out[0]=t.store.ids[whole];return NtResult.{written=1};
+    }
+    parts:[NT_PIECE_MAX]int;
+    for i:0..<n {
+        parts[i]=nt_find(t,piece[i..<i+1]);
+        if parts[i]<0 {return NtResult.{status=NtStatus.vocabulary,cause=i};}
+    }
+    while true {
+        best:=-1;at:int;
+        for i:0..<n-1 {r:=nt_rank(t,parts[i],parts[i+1]);if r>=0 && (best<0 || r<best) {best=r;at=i;}}
+        if best<0 {break;}
+        parts[at]=t.store.joined[best];n-=1;
+        for i:at+1..<n {parts[i]=parts[i+1];}
+    }
+    if out.count<n {return NtResult.{status=NtStatus.capacity};}
+    for i:0..<n {out[i]=t.store.ids[parts[i]];}
+    return NtResult.{written=n};
+}
+```
+
+<!-- source: psionic/lib/nemotron-tokens.coax encode -->
+```jai
+// The added token whose text starts at at (at < text.count), or -1. No
+// added token begins another (nt_read refuses that), so at most one matches.
+nt_special :: (t:NtTable,text:string,at:int)->int {
+    first:=text[at];
+    for k:0..<t.specials {
+        s:=t.store.special_text[k];
+        if s[0]==first && at+s.count<=text.count && text[at..<at+s.count]==s {return k;}
+    }
+    return -1;
+}
+// Text between added tokens: pieces, then byte-pair merging.
+nt_segment :: (t:NtTable,text:string,out:[]int)->NtResult {
+    at:=0;n:=0;
+    while at<text.count {
+        end:=nt_piece(text,at);
+        r:=nt_bpe(t,text[at..<end],out[n..<out.count]);
+        if r.status!=NtStatus.ok {r.cause+=at;return r;}
+        n+=r.written;at=end;
+    }
+    return NtResult.{written=n};
+}
+// ASCII text to ids. cause is a byte offset into text.
+nt_encode :: (t:NtTable,text:string,out:[]int)->NtResult {
+    if t.status!=NtStatus.ok {return NtResult.{status=NtStatus.format};}
+    if text.count>NT_TEXT_MAX {return NtResult.{status=NtStatus.range,cause=text.count};}
+    for i:0..<text.count {
+        c:=text[i];
+        if (c<32 && c!='\t' && c!='\n' && c!='\r') || c>126 {return NtResult.{status=NtStatus.unsupported,cause=i};}
+    }
+    from:=0;at:=0;n:=0;
+    while at<text.count {
+        k:=nt_special(t,text,at);
+        if k<0 {at+=1;continue;}
+        r:=nt_segment(t,text[from..<at],out[n..<out.count]);
+        if r.status!=NtStatus.ok {r.cause+=from;return r;}
+        n+=r.written;
+        if n>=out.count {return NtResult.{status=NtStatus.capacity,cause=at};}
+        out[n]=t.store.ids[t.store.specials[k]];n+=1;
+        at+=t.store.special_text[k].count;from=at;
+    }
+    r:=nt_segment(t,text[from..<text.count],out[n..<out.count]);
+    if r.status!=NtStatus.ok {r.cause+=from;return r;}
+    return NtResult.{written=n+r.written};
+}
+```
+
+The checks read an excerpt of the pinned file: the same structure, cut by
+`psionic/tests/nemotron_tokens.py` to the 398 entries and 93 merges that 12
+fixture texts touch. The expected ids are what that script's encoder gives
+over the full file. It is independent of the Coax encoder: it runs the
+file's own pattern through Python's `re` with the Unicode classes rewritten
+for ASCII, builds the byte characters GPT-2's way, and merges GPT-2's way
+(every occurrence of the best pair in a round). The script also checks that
+the excerpt gives the full file's ids.
+
+<!-- source: psionic/lib/nemotron-tokens.coax checks-fixture -->
+```jai
+#test "the fixture texts encode to the ids of the full pinned file" #steps 400000000 {
+    rig:[1]NtRig;r:=rig[..];json:=NT_EXCERPT;
+    t:=nt_read(cast(string)json[..],nt_rig_store(r));
+    #assert t.status==NtStatus.ok && t.entries==398 && t.merges==93 && t.specials==3;
+    out:[64]int;
+    for k:0..<NT_TEXTS.count {
+        res:=nt_encode(t,NT_TEXTS[k],out[..]);ids:=NT_IDS;
+        #assert nt_ids(res,out[..],ids[NT_STARTS[k]..<NT_STARTS[k+1]]);
+    }
+}
+```
+
+<!-- source: psionic/lib/nemotron-tokens.coax checks-small -->
+```jai
+#test "a small file: whole entries, merges by rank, added tokens, bytes" #steps 100000000 {
+    rig:[1]NtRig;r:=rig[..];buf:[2048]u8;
+    t:=nt_read(nt_small(buf[..]),nt_rig_store(r));
+    #assert t.status==NtStatus.ok && t.entries==19 && t.merges==7 && t.specials==2 && t.used==33;
+    // The tables hold one slot per entry and per merge, nothing else.
+    #assert nt_nonzero(r[0].slots[..])==19 && nt_nonzero(r[0].pairs[..])==7;
+    out:[16]int;
+    // "abc" is an entry: one id, whatever the merges say.
+    w1:=[1]int.[5];#assert nt_ids(nt_encode(t,"abc",out[..]),out[..],w1[..]);
+    // "abcb": b c (rank 0) first, then bc b (rank 4): a, bcb.
+    w2:=[2]int.[0,16];#assert nt_ids(nt_encode(t,"abcb",out[..]),out[..],w2[..]);
+    // "cab": a b (rank 1); nothing joins c and ab: c, ab.
+    w3:=[2]int.[2,3];#assert nt_ids(nt_encode(t,"cab",out[..]),out[..],w3[..]);
+    // "bca": b c (rank 0) before c a (rank 5), though c a comes later.
+    w9:=[2]int.[4,0];#assert nt_ids(nt_encode(t,"bca",out[..]),out[..],w9[..]);
+    // "ccc": the same pair twice; the leftmost is joined first.
+    w10:=[2]int.[18,2];#assert nt_ids(nt_encode(t,"ccc",out[..]),out[..],w10[..]);
+    // " ab": a b (rank 1) comes before Ġ a (rank 2): Ġ, ab.
+    w4:=[2]int.[6,3];#assert nt_ids(nt_encode(t," ab",out[..]),out[..],w4[..]);
+    w5:=[2]int.[2,7];#assert nt_ids(nt_encode(t,"c a",out[..]),out[..],w5[..]);
+    // Added tokens anywhere in the text, at its end too; "<y>" is plain text.
+    w6:=[4]int.[0,10,1,9];#assert nt_ids(nt_encode(t,"a<xy>b<x>",out[..]),out[..],w6[..]);
+    w7:=[3]int.[11,14,13];#assert nt_ids(nt_encode(t,"<y>",out[..]),out[..],w7[..]);
+    // A line feed is the byte-level character U+010A; a backslash escapes in JSON.
+    w8:=[2]int.[8,15];#assert nt_ids(nt_encode(t,"\n\\",out[..]),out[..],w8[..]);
+    #assert nt_encode(t,"",out[..]).written==0;
+    // Decoding an id gives its bytes back.
+    d:[8]u8;n:=nt_decode(t,8,d[..],0);n=nt_decode(t,5,d[..],n);#assert n==4 && d[0]==10 && cast(string)d[1..<4]=="abc";
+    #assert nt_decode(t,99,d[..],0)==-1 && nt_decode(t,5,d[0..<2],0)==-1 && nt_decode(t,5,d[0..<3],0)==3 && nt_decode(t,0,d[..],0)==1 && d[0]=='a';
+    // The checks' own helper refuses a wrong status, count or id.
+    out[0]=5;#assert !nt_ids(NtResult.{status=NtStatus.range,written=1},out[..],w1[..]) && !nt_ids(NtResult.{written=2},out[..],w1[..]);#assert nt_ids(NtResult.{written=1},out[..],w1[..]);out[0]=4;#assert !nt_ids(NtResult.{written=1},out[..],w1[..]);
+}
+```
+
+The original-weight run below reads the whole pinned file in Coax (0.4 s)
+and encodes the same 12 texts; the script compares them with its own
+encoder over the full file:
+
+```text
+same   5 ids  'The capital of France is'
+same  12 ids  'Hello, world! HTMLParser camelCase ABc aB'
+same  32 ids  '2024-11-02: pi is 3.14159, e is 2.71828'
+same  10 ids  '  leading spaces\n\n  and\ttabs \n'
+same  11 ids  "don't won't I'm they're WE'LL"
+same   9 ids  '<s>special <|im_start|>user\nhi<|im_end|>\n'
+same  10 ids  'a//b /* comment */ x/y\n/z'
+same  15 ids  'https://example.com/path?q=1&r=two#frag'
+same   4 ids  'trailing space '
+same  14 ids  'MixedCASEwords and UPPER lower\r\nCRLF'
+same  16 ids  '\t\tindented()\n\treturn {x: [1, 2]};'
+same   0 ids  ''
+tokenizer over the full file: 138 ids, Coax and Python agree
+```
+
+| Status | When |
+| --- | --- |
+| `json` | not JSON, or longer than 256 bytes for each entry the storage holds, or a string over 4,096 bytes |
+| `format` | no model or pre-tokenizer, a normalizer, another pattern, not BPE, no `ignore_merges`, an empty or over-long entry, an entry that is not ByteLevel, an added token that begins another or has no matching entry |
+| `capacity` | the caller's storage is too small, or its tables are not a power of two |
+| `vocabulary` | a repeated entry, or a byte in the text with no entry |
+| `merge` | a merge whose parts or join are not entries, or a repeated merge |
+| `unsupported` | a byte that is not printable ASCII, tab, line feed or carriage return |
+| `range` | a text over 4,096 bytes or a piece over 256 |
+
+<!-- source: psionic/lib/nemotron-tokens.coax checks-refusals -->
+```jai
+#test "refusals name their cause" #steps 400000000 {
+    rig:[1]NtRig;r:=rig[..];buf:[2048]u8;good:=nt_small(buf[..]);
+    t:=nt_read(good,nt_rig_store(r));out:[16]int;
+    // Text: a byte outside printable ASCII, a byte with no entry, too long.
+    odd:=[4]u8.['a','b',1,'c'];
+    res:=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==2;
+    res=nt_encode(t,"ab~",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==2;
+    odd[2]=127;res=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==2;
+    odd[2]=31;res=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==2;
+    odd[2]=0;res=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==2;
+    odd[0]=0;res=nt_encode(t,cast(string)odd[..],out[..]);#assert res.status==NtStatus.unsupported && res.cause==0;
+    res=nt_encode(t," \t\n\r~",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==1;
+    long:[4097]u8;for i:0..<4097 {long[i]='a';}
+    res=nt_encode(t,cast(string)long[..],out[..]);#assert res.status==NtStatus.range && res.cause==4097;
+    res=nt_encode(t,cast(string)long[0..<257],out[..]);#assert res.status==NtStatus.range && res.cause==257;
+    res=nt_encode(t,cast(string)long[0..<256],out[0..<1]);#assert res.status==NtStatus.capacity;
+    for i:0..<4096 {if i%2==1 {long[i]=' ';}}
+    res=nt_encode(t,cast(string)long[0..<4096],out[..]);#assert res.status==NtStatus.capacity;
+    res=nt_encode(t,cast(string)long[..],out[..]);#assert res.status==NtStatus.range && res.cause==4097;
+    res=nt_encode(t,"abc",out[0..<0]);#assert res.status==NtStatus.capacity;
+    res=nt_encode(t,"cab",out[0..<1]);#assert res.status==NtStatus.capacity;
+    res=nt_encode(t,"cab",out[0..<2]);#assert res.status==NtStatus.ok && res.written==2;
+    res=nt_encode(t,"c<x>",out[0..<1]);#assert res.status==NtStatus.capacity && res.cause==1;
+    res=nt_encode(t,"c<x>",out[0..<2]);#assert res.status==NtStatus.ok && res.written==2;
+    res=nt_encode(t,"<x>~",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==3;
+    res=nt_encode(t,"~<x>",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==0;
+    res=nt_encode(t,"<x>~<x>",out[..]);#assert res.status==NtStatus.vocabulary && res.cause==3;
+    bad:=t;bad.status=NtStatus.json;#assert nt_encode(bad,"a",out[..]).status==NtStatus.format;
+    // The file: each change below is refused with its status and cause.
+    edits:=[16]string.["\"BPE\"","\"ignore_merges\":true","\"bc\":4","[\"bc\",\"b\"]","\"normalizer\":null","\"Regex\"","\"<xy>\"}","\"vocab\"","[\"b\",\"c\"]","\"id\":10","{\"added","\"model\"","\"c\":2","\"a\":0","[\"c\",\"a\"]","\"content\":\"<xy>\""];
+    swaps:=[16]string.["\"WordPiece\"","\"ignore_merges\":false","\"bc\":4,\"bc\":7","[\"bc\",\"b\"],[\"b\",\"c\"]","\"normalizer\":{}","\"regex\"","\"<xy>\"},{\"content\":\"<z>\"}","\"vocabulary\"","[\"b\",\"q\"]","\"id\":11","[{\"added","\"modal\"","\"c\":-2","\"a\":0,\"a\":1","[\"c\",\"b\"]","\"content\":\"<x>y\""];
+    wants:=[16]NtStatus.[NtStatus.format,NtStatus.format,NtStatus.vocabulary,NtStatus.merge,NtStatus.format,NtStatus.format,NtStatus.format,NtStatus.format,NtStatus.merge,NtStatus.format,NtStatus.json,NtStatus.format,NtStatus.format,NtStatus.vocabulary,NtStatus.merge,NtStatus.format];
+    causes:=[16]int.[0,0,5,5,2,1,2,0,0,1,-1,3,2,1,5,1];
+    for k:0..<16 {
+        edited:[2100]u8;n:=nt_swap(good,edits[k],swaps[k],edited[..]);
+        e:=nt_read(cast(string)edited[0..<n],nt_rig_store(r));
+        #assert e.status==wants[k] && e.cause==causes[k];
+    }
+    // Storage: too few entries, slots, merges, pairs, specials, mismatched views.
+    for k:0..<9 {
+        s:=nt_rig_store(r);
+        if k==0 {s.ids=r[0].ids[0..<16];s.at=r[0].at[0..<16];s.count=r[0].count[0..<16];}
+        if k==1 {s.slots=r[0].slots[0..<16];}
+        if k==2 {s.left=r[0].left[0..<4];s.right=r[0].right[0..<4];s.joined=r[0].joined[0..<4];}
+        if k==3 {s.pairs=r[0].pairs[0..<4];}
+        if k==4 {s.specials=r[0].specials[0..<1];s.special_text=r[0].texts[0..<1];}
+        if k==5 {s.slots=r[0].slots[0..<1000];}
+        if k==6 {s.at=r[0].at[0..<16];}
+        if k==7 {s.joined=r[0].joined[0..<4];}
+        if k==8 {s.special_text=r[0].texts[0..<1];}
+        e:=nt_read(good,s);#assert e.status==NtStatus.capacity;
+        causes2:=[9]int.[16,15,4,3,1,0,0,0,0];#assert e.cause==causes2[k];
+    }
+    s:=nt_rig_store(r);s.ids=r[0].ids[0..<19];s.at=r[0].at[0..<19];s.count=r[0].count[0..<19];s.slots=r[0].slots[0..<32];s.left=r[0].left[0..<7];s.right=r[0].right[0..<7];s.joined=r[0].joined[0..<7];s.pairs=r[0].pairs[0..<8];s.specials=r[0].specials[0..<2];s.special_text=r[0].texts[0..<2];
+    #assert nt_read(good,s).status==NtStatus.ok;
+    s.slots=r[0].slots[0..<16];#assert nt_read(good,s).status==NtStatus.capacity;
+    s.slots=r[0].slots[0..<32];s.pairs=r[0].pairs[0..<4];#assert nt_read(good,s).status==NtStatus.capacity;
+    s.pairs=r[0].pairs[0..<8];s.bytes=r[0].bytes[0..<32];#assert nt_read(good,s).status==NtStatus.format;
+    s.bytes=r[0].bytes[0..<33];#assert nt_read(good,s).status==NtStatus.ok;
+    // Not JSON, trailing bytes, parts in the wrong place or of the wrong kind.
+    e:=nt_read("{",nt_rig_store(r));#assert e.status==NtStatus.json && nt_read("[]",nt_rig_store(r)).status==NtStatus.json;
+    #assert nt_read("{} x",nt_rig_store(r)).status==NtStatus.json;
+    e=nt_read("{}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==3;
+    #assert nt_read("{\"x\":[1,}",nt_rig_store(r)).status==NtStatus.json;
+    f:[1024]u8;
+    e=nt_read(nt_file("\"vocab\":{}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read(nt_file("\"merges\":[],\"vocab\":{\"a\":0}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0},\"x\":[1,}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.json && e.cause==345;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0} x",f[..]),nt_rig_store(r));#assert e.status==NtStatus.json && e.cause==338;
+    e=nt_read(nt_file("\"vocab\":[]",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read(nt_file("\"vocab\":{\"a\":\"0\"}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0.5}",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\" \":0}",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0,\"\":1}",f[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":{}",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":[[\"a\"]]",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":[[\"a\",\"a\",\"a\"]]",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":[[\"a\",\" \"]]",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0},\"merges\":[[\"a\",1]]",f[..]),nt_rig_store(r)).status==NtStatus.format;
+    // Merge parts: a left or right that is no entry, an empty part, a join that is no entry.
+    e=nt_read(nt_file("\"vocab\":{\"a\":0,\"b\":1,\"ab\":2},\"merges\":[[\"q\",\"b\"]]",f[..]),nt_rig_store(r));#assert e.status==NtStatus.merge && e.cause==0;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0,\"b\":1,\"ab\":2},\"merges\":[[\"a\",\"b\"],[\"\",\"a\"]]",f[..]),nt_rig_store(r));#assert e.status==NtStatus.merge && e.cause==1;
+    e=nt_read(nt_file("\"vocab\":{\"a\":0,\"b\":1,\"ab\":2},\"merges\":[[\"b\",\"a\"]]",f[..]),nt_rig_store(r));#assert e.status==NtStatus.merge && e.cause==0;
+    // An entry of 256 bytes is the longest allowed; 4096 raw bytes the longest string.
+    v:[4200]u8;head:="\"vocab\":{\"";n:=0;for c:head {v[n]=c;n+=1;}
+    for i:0..<256 {v[n]='a';n+=1;}
+    tail:="\":0}";
+    big:[4800]u8;
+    #assert nt_read(nt_file(nt_with(v[..],n,tail),big[..]),nt_rig_store(r)).status==NtStatus.ok;
+    v[n]='a';e=nt_read(nt_file(nt_with(v[..],n+1,tail),big[..]),nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    for i:n..<head.count+4097 {v[i]=0x61;}
+    e=nt_read(nt_file(nt_with(v[..],head.count+4096,tail),big[..]),nt_rig_store(r));#assert e.status==NtStatus.format;
+    v[head.count+4096]='a';e=nt_read(nt_file(nt_with(v[..],head.count+4097,tail),big[..]),nt_rig_store(r));#assert e.status==NtStatus.json && e.cause==4429;
+    // Added tokens: the wrong kinds, no id, no content, an escape, a token that begins another.
+    e=nt_read("{\"added_tokens\":{}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"id\":1}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"content\":\"a\"}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"id\":1,\"content\":\"a\\\\\"}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"id\":1,\"content\":\"\"}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    e=nt_read("{\"added_tokens\":[{\"id\":0,\"content\":\"]\"}]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==3;
+    #assert nt_read("{\"added_tokens\":[{\"id\":\"1\",\"content\":\"a\"}]}",nt_rig_store(r)).cause==0;
+    #assert nt_read("{\"added_tokens\":[{\"id\":1,\"content\":2}]}",nt_rig_store(r)).cause==0;
+    #assert nt_read("{\"added_tokens\":[{\"id\":1,\"x\":[}]}",nt_rig_store(r)).status==NtStatus.json;
+    #assert nt_begins("<x>","<x>y") && nt_begins("<x>y","<x>") && nt_begins("ab","ab") && !nt_begins("ab","ac") && !nt_begins("b","ab") && nt_begins("","a");
+    // The pre-tokenizer: the wrong kind, a pattern that is not a string, none, two.
+    e=nt_read("{\"model\":[]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    // A different pattern; two added tokens where one begins the other.
+    g2:[2100]u8;m2:=nt_swap(good,"(?!","(?=",g2[..]);e=nt_read(cast(string)g2[0..<m2],nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    g3:[2100]u8;m2=nt_swap(good,"\"content\":\"<xy>\"","\"content\":\"<x>y\"",g2[..]);m2=nt_swap(cast(string)g2[0..<m2],"\"<xy>\":10","\"<x>y\":10",g3[..]);
+    e=nt_read(cast(string)g3[0..<m2],nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    m2=nt_swap(good,"\"content\":\"<xy>\"","\"content\":\"<xz>\"",g2[..]);m2=nt_swap(cast(string)g2[0..<m2],"\"<xy>\":10","\"<xz>\":10",g3[..]);
+    #assert nt_read(cast(string)g3[0..<m2],nt_rig_store(r)).status==NtStatus.ok;
+    e=nt_read("{\"pre_tokenizer\":[]}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    #assert nt_read("{\"pre_tokenizer\":{\"a\":[}}",nt_rig_store(r)).status==NtStatus.json;
+    e=nt_read("{\"pre_tokenizer\":{\"Regex\":1}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    e=nt_read("{\"pre_tokenizer\":{\"a\":\"Regex\"}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    e=nt_read("{\"pre_tokenizer\":{\"a\":{\"b\":1}},\"model\":{}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==1;
+    // A model without its type or without ignore_merges.
+    ff:=nt_file("\"vocab\":{\"a\":0}",f[..]);g:[1100]u8;
+    m:=nt_swap(ff,"\"type\"","\"kind\"",g[..]);e=nt_read(cast(string)g[0..<m],nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    m=nt_swap(ff,"\"ignore_merges\"","\"ignore\"",g[..]);e=nt_read(cast(string)g[0..<m],nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==0;
+    // A model and no pre-tokenizer.
+    e=nt_read("{\"model\":{\"type\":\"BPE\",\"ignore_merges\":true,\"vocab\":{\"a\":0}}}",nt_rig_store(r));#assert e.status==NtStatus.format && e.cause==3;
+    #assert nt_read(nt_file("\"vocab\":{\"a\":0}",f[..]),nt_rig_store(r)).status==NtStatus.ok;
+    // A file over 256 bytes an entry of storage is refused before it is read;
+    // trailing spaces count.
+    pad:[4097]u8;small:=nt_file("\"vocab\":{\"a\":0}",f[..]);for i:0..<4097 {pad[i]=' ';}for i:0..<small.count {pad[i]=small[i];}
+    s=nt_rig_store(r);s.ids=r[0].ids[0..<16];s.at=r[0].at[0..<16];s.count=r[0].count[0..<16];
+    #assert nt_read(cast(string)pad[0..<4096],s).status==NtStatus.ok;
+    e=nt_read(cast(string)pad[..],s);#assert e.status==NtStatus.json && e.cause==0;
+}
+```
+
 ## Original weights
 
 `psionic/tests/check_nemotron_slices.sh` checks one layer of each kind on
@@ -643,8 +1265,7 @@ The prompt is "The capital of France is" after the `<s>` token: ids 1, 1784,
 8961, 1307, 5498, 1395. Each word is one entry of the pinned vocabulary, and
 the pinned tokenizer takes a pre-token that is a whole entry as that entry
 (`ignore_merges`), so these are the tokenizer's ids for this prompt; the
-script looks each one up. A Coax tokenizer for this vocabulary is not part of
-this chapter.
+script looks each one up, and the Coax tokenizer above gives the same ids.
 
 The slices chain: the six embedding rows, Mamba-2 layer 0 on them, MLP
 layer 1 on that, attention layer 12 on that (the first attention layer,
@@ -903,6 +1524,65 @@ before the first layer: a token outside the vocabulary (`token`, with its
 index), a model or cache of the wrong shape, too few work values, a cache
 too short for the request, or a layer's own refusal.
 
+## The whole model on the original weights
+
+`psionic/tests/check_nemotron_run.sh` runs the pinned checkpoint end to end
+once. A small C harness (`psionic/tests/nemotron_run.c`) maps the file and
+reads `tokenizer.json`; the Coax entry
+(`psionic/tests/nemotron-run-runtime.coax`) decodes all 3,973,556,832 BF16
+values into one `f32` arena (15.9 GB), reads the tokenizer, and runs this
+chapter's model. The run:
+
+1. encodes the 12 fixture texts over the full tokenizer file, and the prompt
+   "The capital of France is" after `<s>`;
+2. runs the prompt layer by layer and keeps every layer's rows;
+3. decodes 8 tokens greedily: the prompt at once, then 7 steps from the
+   cache;
+4. recomputes the prompt and the first 7 choices, 13 tokens, in one pass
+   from an empty cache and compares its last logits with the last step's.
+
+Then `psionic/tests/nemotron_slices.py model` recomputes the whole model in
+plain-Python binary64 over the same 13 tokens, its matrix products spread
+over every core, and compares every layer's rows for the prompt, the
+logits after the prompt and after the last step, and each of the 8 choices.
+Its tolerance, frozen before its first comparison, is 1e-3 × (1 + the
+largest |oracle value|) for each layer and for each set of logits. The run
+is recorded in `psionic/fixtures/nemotron-run.txt`, not run as a routine
+check:
+
+```text
+tokenizer: 12 texts encoded over the full file, 0.4 s
+prompt tokens 1 1784 8961 1307 5498 1395
+weights: 3973556832 values decoded from BF16, 12.0 s
+prompt through 42 layers, layer by layer: 17.7 s
+prefill of 6 tokens: 17.9 s; greedy, prefill and 7 steps: 41.2 s (3.3 s a step)
+greedy tokens 6993 2613 1093 4848 1058 44642 29896 1010
+first choice equals the prompt pass: true
+recomputed 13 tokens in one pass: 38.3 s; last logits differ by at most 2.15e-06 (largest |logit| 27); choice 1010, cached 1010, same
+whole run: 128.0 s, peak resident memory 22.2 GB
+tokenizer over the full file: 138 ids, Coax and Python agree
+42 layers, the prompt's rows: largest difference 0.000333 of each layer's limit, within
+logits after the prompt: largest difference 1.95e-06, limit 0.00194, within
+logits after the last step: largest difference 2.68e-06, limit 0.0028, within
+greedy choices: oracle [6993, 2613, 1093, 4848, 1058, 44642, 29896, 1010], Coax [6993, 2613, 1093, 4848, 1058, 44642, 29896, 1010], same
+oracle: 3 min 24 s on 28 cores
+```
+
+The fixture also records the continuation as text: " Paris." followed by
+`"] output:`, three backticks, `python` and a line feed. The first token is
+" Paris" (6993), then "."; after that this checkpoint,
+tuned for chat, drifts into code-like text without its chat template. The
+cached run and the one-pass recompute choose the same last token and their
+logits differ by about 2e-6: the recompute runs the Mamba-2 recurrence in
+one chunk of 13 and the cached run in a chunk of 6 then single steps, which
+chapter 162 shows agree within its tolerance rather than bit for bit.
+
+A request costs the weights (15.9 GB as `f32`), plus 85 MB of Mamba-2 state
+and history and 8 KB a position for each attention layer's keys and values.
+The peak of 22.2 GB also holds the decode buffers, the tokenizer tables and
+the per-layer trace. On one core a token costs about 3.3 s; the prefill of
+6 tokens about 18 s.
+
 ## Refusals
 
 Each layer checks its weights' sizes against the shape, then its token count
@@ -1054,16 +1734,12 @@ starts the request again after `ss_clear`.
 
 ## What this does not do yet
 
-- **The tokenizer.** The pinned `tokenizer.json` is a byte-level BPE with
-  131,072 entries and 269,443 merges. This chapter takes its prompt ids from
-  the vocabulary directly; encoding arbitrary text in Coax is not done.
-- **The whole model on the original weights.** The whole model and greedy
-  decoding run on the small model above, and each layer kind runs on the
-  original weights, but no whole-model run on the original weights is
-  recorded here, so there are no full-model logits or greedy tokens for the
-  pinned checkpoint, and no independent whole-model reference for them.
-- **Measured memory and time for a request.** Only the slices' times above
-  are recorded.
+- **Text outside ASCII.** The tokenizer refuses any other byte: the
+  pattern's Unicode letter, number and mark classes are not built, so text
+  with accents, other scripts or emoji is not encoded.
+- **A routine whole-model check.** The original-weight run takes about two
+  minutes and 22 GB, and its oracle several more; it is a recorded fixture,
+  not part of `psionic/check.sh`.
 - **Device kernels.** Everything runs on one CPU core.
 
 ## Sources
