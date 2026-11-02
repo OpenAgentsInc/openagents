@@ -41,10 +41,18 @@
     {
       "path": "aethyr/render/tests/check_build.py",
       "original_sha256": "46a3239d74957f9d7dd67c546d603d7ea5e9b5deffa10aa50c54a3e7316e386b",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "Coax owns builder/native/JSON/catalog/source/cache/publication orchestration and verdicts. Only the unchanged independent spirv(data) decoder remains as the narrowly scoped spirv_inventory_oracle.py. Policy384/384 root mutants killed;18 current-source package reports,58 exact fact outputs,22 product poisons,8 parser refusals and7 exact compiler-fault fixtures match the retained reference. Evidence: data/aethyr-ch11-2026-11-02/build-tool-port/qualification.json. Strict default refusal and explicit exploratory receipts remain."
+    },
+    {
+      "path": "aethyr/render/tests/spirv_inventory_oracle.py",
+      "original_sha256": "4eaffe0a1f770e7a5da9eb5b3e7c255cc4c0b164a155d224aa481c6d0f148868",
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "Unchanged independent SPIR-V byte/type/decorations/interface/capability/reflection decoder, with only file input and JSON facts output; no compiler/product parser or orchestration/verdict logic.",
+      "note": "The spirv(data) function is byte-for-byte identical to original check_build.py lines29\u2013109 (SHA256 b9354fb47dc6349131c3042455d293a7de5143ce576ec18164153c80ca808797).58 exact fact responses and8 malformed exception outcomes match the retained reference. The final file hash78c77a48a49ca22458fc6ab3db2ca6aa29a664af74c986602abaa8c9a8731d61 differs only by removing a surplus EOF blank after qualification; the exact source epoch is retained. This is the approved narrow extraction; all other build-driver logic is Coax."
     },
     {
       "path": "aethyr/render/tests/check_catalog.py",
@@ -121,10 +129,10 @@
     {
       "path": "aethyr/render/tests/check_reference_frame.py",
       "original_sha256": "0afd820dd9069fbe0e1b94c6b34086b719eb61c83de8fe4b8c558f29aed6509a",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "Coax now owns capture/config snapshots, current compiler/default gate, exact source/artifact/backend admission, all5 native modes, provenance, execution and measurement. Policy336/336 root mutants killed; same17-row snapshot and14 legacy backend failures match; all5 modes produce the same complete2x2 receipt and64-byte image. New renderer_source_sha256 separates product dependencies from observer Coax, with legacy fallback and descriptor drift refusal. Evidence: data/aethyr-ch11-2026-11-02/reference-frame-tool-port/qualification.json. Original Python archived/read back before retirement; no huge realm CPU/raster/geometry run."
     },
     {
       "path": "aethyr/render/tests/check_spirv_modules.py",
@@ -163,18 +171,19 @@
     {
       "path": "aethyr/render/tests/profile_reference_frame.py",
       "original_sha256": "ec901bfc674078f371101db3557c4bcd0599e26ea5aae88bf0cbb92b9a00ec33",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "Exact Coax instrumentation in all6 modes;281/281 root mutants killed;20 same-input transformations,2 driver byte comparisons,3 original unit methods and strict immutable/default-source/driver controls. Fresh2x2 plus frozen Galaxy retain identical result/pixels. Watchtower remains a missing-driver refusal. Original archive-readback verified before retirement. Evidence: data/aethyr-ch11-2026-11-02/reference-profiler-tool-port/qualification.json.",
+      "replacement": "aethyr/render/tests/profile-reference-frame.coax"
     },
     {
       "path": "aethyr/render/tests/test_build_tooling.py",
       "original_sha256": "a919aaab27db8db78537296d50193c39fbf0ae5f28a81504c5c310c580f7a23c",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "Retired after the original seven reference test methods passed and the Coax harness independently constructed all22 product/metadata/rehashed controls, with both actual verifiers refusing the same candidate bytes. Same proof archive as check_build.py."
     },
     {
       "path": "aethyr/render/tests/test_catalog_tooling.py",
@@ -211,18 +220,19 @@
     {
       "path": "aethyr/render/tests/test_frame_input.py",
       "original_sha256": "da88ad42150bbe06a89db1e34b11beb10b0f39d033b410dc0d51766eb250ffe9",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "All10 original methods passed first. Coax runs the same20 fixtures with byte-identical original C probe/configuration/expected-output/mode inputs, preserving embedded NUL media bytes. Actual default source gate refuses after6 identity files before fixture emission. C parser/header unchanged; no renderer gate. Original archive-readback verified. Evidence: data/aethyr-ch11-2026-11-02/frame-input-tool-port/qualification.json.",
+      "replacement": "aethyr/render/tests/check-frame-input.coax"
     },
     {
       "path": "aethyr/render/tests/test_frame_tooling.py",
       "original_sha256": "80e0d05f959e73171c700b0aa75ddfea228456e7a3d723797d2700ac45098a60",
-      "action": "port_to_coax",
-      "reason": null,
-      "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "action": "split_oracle_and_coax",
+      "reason": 2,
+      "scope": "Only three unchanged unbounded-integer endpoint oracle assertions remain in Python. ABI/protocol tooling moved to check-frame-tooling.coax.",
+      "note": "Original3 test methods passed before splitting. Coax rejects the identical48 missing-field and1 extra-field header controls and compares the raw1891-case oracle binary protocol byte-for-byte, including NUL bytes. Initial JSON/ASCII transport assumptions failed and are retained. Evidence: data/aethyr-ch11-2026-11-02/frame-tooling-port/qualification.json. No frame/CPU/raster/geometry rerun."
     },
     {
       "path": "aethyr/render/tests/test_geometry_tooling.py",
@@ -251,26 +261,27 @@
     {
       "path": "aethyr/render/tests/test_reference_frame_tool.py",
       "original_sha256": "c65f53d52969a5d254db88a5c6798dd2accd1ce520375c07303b66ddd17aaf3e",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "Retired after all10 original reference methods passed; Coax independently checks transport framing, exact file copies, backend/compiler/source/artifact drift, checked/wrapping and native-mode reuse, real/default stale ordering, both preparation paths and8 CLI refusals. Same proof archive as check_reference_frame.py; equations and native renderer code were not changed."
     },
     {
       "path": "aethyr/render/tests/test_reference_profiler.py",
       "original_sha256": "e20813f9076987ad2adb475ee9b858afe5be0eb7f082880acb9e6a387bd4e8c4",
-      "action": "port_to_coax",
+      "action": "ported_to_coax",
       "reason": null,
       "scope": "Build/catalog/validation or own-code tooling orchestration has no independent numerical oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "note": "Exact Coax instrumentation in all6 modes;281/281 root mutants killed;20 same-input transformations,2 driver byte comparisons,3 original unit methods and strict immutable/default-source/driver controls. Fresh2x2 plus frozen Galaxy retain identical result/pixels. Watchtower remains a missing-driver refusal. Original archive-readback verified before retirement. Evidence: data/aethyr-ch11-2026-11-02/reference-profiler-tool-port/qualification.json.",
+      "replacement": "aethyr/render/tests/check-reference-profiler.coax"
     },
     {
       "path": "aethyr/render/tests/test_sans_filter_fixture.py",
       "original_sha256": "38c1a1f481b3ef5236f677fba5f3bda6d551890a0512aaf0b817394e36e84ee9",
-      "action": "port_to_coax",
-      "reason": null,
-      "scope": "Unit harness for independent math oracle; move orchestration into Coax, rather than label a Python test harness as an independent product oracle.",
-      "note": "Keep until the Coax replacement matches the same inputs/observations and callers switch."
+      "action": "retain_independent_oracle",
+      "reason": 2,
+      "scope": "Hand-pinned authored texel/channel values, endpoint/clamp samples and independent closed-form bilinear/mip/binary32 expectations; no product or process execution.",
+      "note": "Read-only equation-level reassessment found only independent mathematical reference assertions. Added a precise reason2 header; equations, fixtures and tolerances are unchanged and a numerical gate was not repeated for the comment."
     }
   ],
   "first_port": "compare_frames.py and test_compare_frames.py -> Coax policy, CLI and checks; preserve the finite all-channel no-mask contract, input hashes and receipt schema.",

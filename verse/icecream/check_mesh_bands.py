@@ -186,6 +186,14 @@ def main():
     print(json.dumps(dict(status=receipt['status'],work_dir=str(work),profiles=[m['mode']for m in modes])))
 
 if __name__=='__main__':
-    os.environ['ASAN_OPTIONS']='detect_leaks=0:halt_on_error=1'
-    os.environ['UBSAN_OPTIONS']='halt_on_error=1'
-    main()
+    # Expose the existing reference-runner functions to the Coax test driver.
+    # Fixtures, mutations, process bounds and pass/fail assertions are Coax.
+    if len(sys.argv)==4 and sys.argv[1]=='--check-reused':
+        expected=json.loads(Path(sys.argv[3]).read_text())
+        print(json.dumps(admit_reused_checks(Path(sys.argv[2]),expected['source_sha256'],expected['compiler_sha256'],expected['command'])))
+    elif len(sys.argv)==4 and sys.argv[1]=='--repair-source':
+        Path(sys.argv[3]).write_text(repaired_cpp(Path(sys.argv[2]).read_text()))
+    else:
+        os.environ['ASAN_OPTIONS']='detect_leaks=0:halt_on_error=1'
+        os.environ['UBSAN_OPTIONS']='halt_on_error=1'
+        main()

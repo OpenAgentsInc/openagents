@@ -1,0 +1,46 @@
+#test "producer loss needs ordinary successful emission before the intended verifier rejects" {
+  good:=ProcRun.{started=0,status=0};failed:=ProcRun.{started=0,status=1};aborted:=ProcRun.{started=0,status=134};
+  #assert mbc_caught(0,false,good,good,failed,"FAIL house0");
+  #assert !mbc_caught(0,false,good,good,failed,"FAIL house0:0 failures");
+  #assert !mbc_caught(0,false,good,good,failed,"0 failures;FAIL house0");
+  #assert !mbc_caught(0,false,good,good,failed,"FAIL other");
+  #assert mbc_caught(1,false,good,good,failed,"band check failed");
+  #assert !mbc_caught(1,false,good,good,failed,"other failure");
+  #assert mbc_caught(1,true,good,good,aborted,"index out of bounds");
+  #assert mbc_caught(1,true,good,good,failed,"index out of bounds");
+  #assert !mbc_caught(1,true,good,good,failed,"band check failed");
+  #assert !mbc_caught(1,false,good,good,aborted,"band check failed");
+  #assert mbc_caught(2,false,good,failed,failed,"error[E0406]: assertion failed");
+  #assert !mbc_caught(2,false,good,good,failed,"error[E0400]: budget;error[E0406]: assertion failed");
+  #assert !mbc_caught(2,false,good,good,failed,"error[E0336]: no main");
+  #assert !mbc_caught(0,false,failed,good,failed,"FAIL house0");
+  #assert !mbc_caught(1,false,good,failed,failed,"band check failed");
+  for kind:[3]int.[-1,3,4] {#assert !mbc_caught(kind,true,good,good,failed,"index out of bounds;band check failed;FAIL house;error[E0406]: assertion failed");}
+}
+#test "a missing process, timeout, output truncation and unknown status are never caught controls" {
+  good:=ProcRun.{started=0,status=0};failed:=ProcRun.{started=0,status=1};
+  for kind:0..<3 {
+    text:=ifx kind==0 then "FAIL house" else ifx kind==1 then "band check failed" else "error[E0406]: assertion failed";
+    #assert mbc_caught(kind,false,good,good,failed,text);
+    for phase:0..<3 {for fault:0..<4 {
+      emit:=good;compile:=good;run:=failed;bad:=ifx phase==2 then failed else good;
+      if fault==0 {bad.started=2;}if fault==1 {bad.timed_out=true;}if fault==2 {bad.cut=true;}if fault==3 {bad.status= -1;}
+      if phase==0 {emit=bad;}if phase==1 {compile=bad;}if phase==2 {run=bad;}
+      if phase!=1 || kind!=2 {#assert !mbc_caught(kind,false,emit,compile,run,text);}
+    }}
+    for status:[5]int.[0,-6,124,139,255] {bad:=failed;bad.status=status;#assert !mbc_caught(kind,false,good,good,bad,text);}
+  }
+}
+#test "cached commands bind every ordered decoded argument including focused-check ownership" {
+  nodes:[64]JvNode;doc:[1]Jv;
+  #assert jv_parse(doc[..],"{\"args\":[\"cc\",\"a\\\"b\"]}",nodes[..]);
+  expected:=[2]string.["cc","a\"b"];#assert mbc_args_match(doc[0],0,expected[..]);
+  #assert !mbc_args_match(doc[0],0,expected[0..<1]);
+  wrong:=[2]string.["other","a\"b"];#assert !mbc_args_match(doc[0],0,wrong[..]);
+  wrong[0]="cc";wrong[1]="different focus";#assert !mbc_args_match(doc[0],0,wrong[..]);
+  #assert jv_parse(doc[..],"{\"args\":[1,\"a\\\"b\"]}",nodes[..]);#assert !mbc_args_match(doc[0],0,expected[..]);
+  #assert jv_parse(doc[..],"{\"args\":[\"cc\",true]}",nodes[..]);#assert !mbc_args_match(doc[0],0,expected[..]);
+  #assert jv_parse(doc[..],"{\"args\":{}}",nodes[..]);#assert !mbc_args_match(doc[0],0,expected[..]);
+  #assert jv_parse(doc[..],"{}",nodes[..]);#assert !mbc_args_match(doc[0],0,expected[..]);
+  empty:=[1]string.[""];#assert jv_parse(doc[..],"{\"args\":[\"\"]}",nodes[..]);#assert mbc_args_match(doc[0],0,empty[..]);
+}

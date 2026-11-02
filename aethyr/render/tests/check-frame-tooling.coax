@@ -1,0 +1,19 @@
+// ABI-loss and deterministic oracle-protocol transport controls. No frame run.
+#import "Basic";
+#load "qualification-files.coax";
+RFT_NAMES :: [7]string.["FrameCounts","RenderFrameLimits","RenderDirectDomains","RenderUpload","RenderDrawDomain","RenderFrameResult","RenderDecodedDraw"];
+RFT_FIELDS :: [7]string.["width height hud_vertices vertex_stride draw_count water_draws grass_instances particle_instances surface_vertices caster_vertices caster_instances","max_width max_height max_draws max_uploads max_vertex_stride index_work","hud_vertices grass_instances particle_instances surface_vertices caster_vertices caster_instances","source_address source_base source_bytes bytes gpu_offset gpu_bytes alignment","vertex_begin vertices vertex_alt_begin vertex_alt_end instance_begin instances indices","status bad_upload bad_draw bad_direct checked_indices admitted_draws","kind first count base_instance instances"];
+#test "frame tooling ABI-loss corpus has every declared field" {#assert rft_header_controls()>0;}
+rft_abi :: (text:string)->bool {for name,i:RFT_NAMES {if !rtq_fields(text,name,RFT_FIELDS[i]) {return false;}}return true;}
+rft_header :: (missing:string,extra:bool,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);removed:=false;added:=false;
+  for name,i:RFT_NAMES {if i>0 {jo_put(o[..],"\n");}jo_put(o[..],"struct coax_t_");jo_put(o[..],name);jo_put(o[..]," { ");k:=0;while true {field:=rtq_word(RFT_FIELDS[i],k);if field.count==0 {break;}k+=1;if !removed && missing==field {removed=true;continue;}jo_put(o[..],"uint64_t ");jo_put(o[..],field);jo_put(o[..],"; ");if extra && !added && field=="width" {jo_put(o[..],"uint64_t surprise; ");added=true;}}jo_put(o[..],"};");}return ifx o[0].bad then "" else jo_text(o[..]);
+}
+rft_header_controls :: ()->int {
+  bytes:[16384]u8;if !rft_abi(rft_header("",false,bytes[..])) || rft_abi(rft_header("",true,bytes[..])) {return -1;}count:=0;for fields:RFT_FIELDS {k:=0;while true {field:=rtq_word(fields,k);if field.count==0 {break;}k+=1;if rft_abi(rft_header(field,false,bytes[..])) {return -1;}count+=1;}}return count;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 || !fs_mkdir(args_at(a[..],0)) {return 2;}out:=args_at(a[..],0);headers:=rft_header_controls();if headers<1 {return 1;}script:="import sys;sys.path.insert(0,sys.argv[1]);import check_frame;cases=check_frame.cases();sys.stdout.buffer.write(str(len(cases)).encode()+bytes([10])+check_frame.encode(cases))";argv:=[4]string.["python3","-c",script,"aethyr/render/tests"];bytes:[1048576]u8;err:[65536]u8;env:[]string;expected:[1048576]u8;en:=0;
+  for i:0..<2 {label:=ifx i==0 then "protocol-first" else "protocol-second";r:=rtq_run_raw(argv[..],env,180000,bytes[..],err[..]);if !rtq_record_run(out,label,argv[..],r,cast(string)bytes[0..<r.out_n],cast(string)err[0..<r.err_n]) || !rtq_ok(r) {return 1;}if i==0 {en=r.out_n;for k:0..<en {expected[k]=bytes[k];}}else {if en!=r.out_n || cast(string)expected[0..<en]!=cast(string)bytes[0..<r.out_n] {return 1;}}}
+  if en<5 || cast(string)bytes[0..<5]!="1891\n" {return 1;}record:[1024]u8;w:[1]Jo;jo_start(w[..],record[..]);jo_obj(w[..]);jo_key(w[..],"abi_field_loss_controls");jo_int(w[..],headers);jo_key(w[..],"extra_field_controls");jo_int(w[..],1);jo_key(w[..],"deterministic_protocol_cases");jo_int(w[..],1891);jo_end(w[..]);path:[4096]u8;if !fs_write(fs_join(out,"qualification.json",path[..]),jo_text(w[..])) {return 1;}print("frame tooling: % missing fields +1 extra field refuse;1891 oracle cases encode identically\n",headers);return 0;
+}

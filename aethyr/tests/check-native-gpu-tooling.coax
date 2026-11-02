@@ -1,0 +1,36 @@
+// Actual CLI losses against retained GPU observations and historical emissions.
+// No GPU calls occur: every native loss must refuse before remote-mkdir.
+#load "../render/tests/qualification-files.coax";
+#load "native-gpu-parity-policy.coax";
+ngt_copy :: (source:string,dest:string)->bool {b:[1048576]u8;n:=fs_read(source,b[..]);return n>=0 && fs_write(dest,cast(string)b[0..<n]);}
+ngt_name :: (prefix:string,i:int,suffix:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],prefix);jo_int(o[..],i);jo_put(o[..],suffix);return jo_text(o[..]);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}base:=args_value(a[..],"--base","");work:=args_value(a[..],"--work-dir","");native:=args_value(a[..],"--native-tool","");parity:=args_value(a[..],"--parity-tool","");compiler:=args_value(a[..],"--coax","");receipt:=args_value(a[..],"--receipt","");
+  if base=="" || work=="" || native=="" || parity=="" || compiler=="" || receipt=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
+  deadline:=proc_deadline(810000,proc_now_ms());out:[1048576]u8;err:[65536]u8;env:[]string;paths:[12][4096]u8;inputs:[1]RtqInputs;
+  if !rtq_input_add(inputs[..],native) || !rtq_input_add(inputs[..],parity) || !rtq_input_add(inputs[..],compiler) {return 1;}
+  result:[1048576]u8;o:[1]Jo;jo_start(o[..],result[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.native-gpu-tooling.v1");jo_key(o[..],"offline_losses");jo_arr(o[..]);
+  for index:0..<8 {
+    helper:=index>=3;faults:=[8]string.["wrong-lane","validation","shader","wrong-lane","validation","shader","view","feature"];prefix:=ifx helper then "helper" else "sampling";
+    p:[1]Jo;name_buf:[128]u8;jo_start(p[..],name_buf[..]);jo_put(p[..],prefix);jo_put(p[..],"-first");dir:=fs_join(base,jo_text(p[..]),paths[0][..]);jo_put(p[..],".json");run_receipt:=fs_join(base,jo_text(p[..]),paths[1][..]);
+    label:[128]u8;name:=ngt_name("loss-",index,"-receipt.json",label[..]);output:=fs_join(work,name,paths[2][..]);executed:=fs_join(base,"executed-source",paths[3][..]);
+    argv:=[13]string.[parity,"--profile",prefix,"--work-dir",dir,"--run-receipt",run_receipt,"--executed-source",executed,"--receipt",output,"--fault",faults[index]];
+    r:=rtq_command(argv[..],env,deadline,work,ngt_name("loss-",index,"",label[..]),out[..],err[..]);
+    b:[1048576]u8;nodes:[32768]JvNode;d:[1]Jv;
+    if r.started!=0 || r.status!=1 || r.timed_out || r.cut || !rtq_json_file(output,b[..],nodes[..],d[..]) || !np_text(d[0],rtq_member(d[0],0,"status"),"refused") {return 1;}
+    jo_obj(o[..]);jo_key(o[..],"profile");jo_str(o[..],prefix);jo_key(o[..],"fault");jo_str(o[..],faults[index]);jo_key(o[..],"exit");jo_int(o[..],r.status);jo_end(o[..]);
+  }jo_end(o[..]);
+  emissions:=fs_join(work,"emissions",paths[0][..]);if !fs_mkdir(emissions) {return 1;}
+  reference:="docs/verification/data/aethyr-ch11-2026-11-01/sampling-vulkan-308/artifacts";
+  files:=[19]string.["qualification.json","filtered.spv","invalid.spv","array.spv","invalid-array.spv","fault.spv","fault-array.spv","filtered.reflection","invalid.reflection","array.reflection","invalid-array.reflection","fault.reflection","fault-array.reflection","RenderCaps.c","RenderCaps.h","sampling-fault.coax","fault-source.coax","sampling-fault-array.coax","fault-array-source.coax"];
+  for name:files {source:=fs_join(reference,name,paths[1][..]);if !rtq_input_add(inputs[..],source) || !ngt_copy(source,fs_join(emissions,name,paths[2][..])) {return 1;}}
+  jo_key(o[..],"artifact_losses");jo_arr(o[..]);
+  for index:0..<18 {
+    bytes:[1048576]u8;file:=fs_join(emissions,files[index+1],paths[1][..]);n:=fs_read(file,bytes[..]);if n<1 {return 1;}bytes[0]^=1;if !fs_write(file,cast(string)bytes[0..<n]) {return 1;}
+    label:[128]u8;case_work:=fs_join(work,ngt_name("artifact-",index,"",label[..]),paths[2][..]);case_receipt:=fs_join(work,ngt_name("artifact-",index,".json",label[..]),paths[3][..]);root:[4096]u8;cwd:=fs_cwd(root[..]);sources:=fs_join(cwd,"docs/verification/data/aethyr-ch11-2026-11-01/sampling-vulkan-308/inputs",paths[4][..]);
+    argv:=[17]string.[native,"--profile","sampling","--work-dir",case_work,"--receipt",case_receipt,"--emissions",emissions,"--source-root",sources,"--coax",compiler,"--historical-emissions","--explore-stale-compiler","--host","coderos-4080"];
+    r:=rtq_command(argv[..],env,deadline,work,ngt_name("artifact-loss-",index,"",label[..]),out[..],err[..]);remote_created:=fs_exists(fs_join(case_work,"remote-mkdir.json",paths[5][..]));
+    if r.started!=0 || r.status!=1 || r.timed_out || r.cut || remote_created || fs_exists(case_receipt) {return 1;}
+    jo_obj(o[..]);jo_key(o[..],"file");jo_str(o[..],files[index+1]);jo_key(o[..],"exit");jo_int(o[..],r.status);jo_key(o[..],"remote_created");jo_bool(o[..],remote_created);jo_end(o[..]);bytes[0]^=1;if !fs_write(file,cast(string)bytes[0..<n]) {return 1;}
+  }jo_end(o[..]);jo_key(o[..],"status");jo_str(o[..],"passed");jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);if !rtq_inputs_match(inputs[..]) || o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}return 0;
+}

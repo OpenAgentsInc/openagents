@@ -1,0 +1,91 @@
+{
+  "schema": "aethyr.build.qualification.tool-port.v1",
+  "date": "2026-11-02",
+  "status": "port qualified; native observations use an explicitly identified older qualified compiler",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_matches_current_sources": false,
+  "native_receipt": "native-receipt.json",
+  "native_receipt_sha256": "8b6f9394432b01d9b27d694f76180d6fa0a4a56ce72205cbbd3e1f658e04aac3",
+  "qualifier_source_sha256": "389468574cf33faa3ad486500e3fc5dc344d772a1e51b0fc347342690733a50b",
+  "qualifier_executable_sha256": "c86ff3d09caecdee901c6681076629a94cffe28e5112de7dbeba4b509efcc84c",
+  "source_sha256": {
+    "aethyr/render/tests/build-tool-policy.coax": "14ff497fe1a8a5c14fa6f7ad907f503f4ae8a95a9e6a99e3fa48f3efe05fab8b",
+    "aethyr/render/tests/build-tool-checks.coax": "035448748f4fcfd1044b78beafffee28af3a328e964bcaea2d5a5d7d6dd1d22d",
+    "aethyr/render/tests/build-qualification.coax": "200ff1f53e61e943b60a7312671a3d42073b0a71ce18f62e3659d5d0cfe96924",
+    "aethyr/render/tests/check-build.coax": "389468574cf33faa3ad486500e3fc5dc344d772a1e51b0fc347342690733a50b",
+    "aethyr/render/tests/build-fault-compiler.coax": "7ae6ccad9867d00339e481cc70cac75ec0ed10dea88f1a9e085087a7f1734b28",
+    "aethyr/render/tests/check-build-tooling.coax": "472c7ff1328664cfa82f486471e9df8c51c959e6b25a66550acbf38c8b1fc6c0",
+    "aethyr/render/tests/check-build-fault-parity.coax": "4279981e859ddbbfdef4f87a6d4baaeeb5608994a5c76826c0ced8e389087333",
+    "aethyr/render/tests/spirv_inventory_oracle.py": "4eaffe0a1f770e7a5da9eb5b3e7c255cc4c0b164a155d224aa481c6d0f148868",
+    "aethyr/render/tests/native-qualification.coax": "45c82940e9b19bf543c001a76946beccb029b364770036a26a040a7f464bdc27"
+  },
+  "checks_first": "Catalog/text/reflection checks were authored before the stub predicates were implemented. The initial test commands omitted --library and failed for missing main; those usage failures are retained and are not claimed as behavioral red tests. Subsequent baseline assertion failures and all survivor-bearing mutation runs are also retained.",
+  "authority": {
+    "file": "aethyr/render/tests/build-tool-policy.coax",
+    "scope": "root-only; dependency checks retained",
+    "mutants": 384,
+    "killed": 384,
+    "survived": 0,
+    "equivalent_waivers_added": 0,
+    "earlier_iterations": ["441/322/119", "430/397/33", "385/378/7", "386/385/1"],
+    "resolution": "Added independent media, declaration range, duplicate identity, malformed type, exact lexical/numeric/layout and decoded fact controls. Removed redundant bounds whose failure was already enforced by checked JSON writers; centralized checked resource indexing and eliminated unreachable scanning branches. No mutant was marked equivalent."
+  },
+  "native": {
+    "profile": "the-grid",
+    "elapsed_seconds": 28.941,
+    "enumerated_profiles": 18,
+    "tables": ["profiles", "profile-table", "app-table"],
+    "cache_reuse": "Exact manifest bytes and nanosecond modification time remain identical; reused is present.",
+    "cache_product_controls": ["wgsl", "spirv", "tree"],
+    "repair": "Every corrupt product forces a fresh build and returns the original product and manifest bytes; reused is absent.",
+    "failure_controls": ["name", "target", "generic", "framing", "source", "compiler", "exit"],
+    "atomic_publication": "All seven compiler faults refuse and retain the exact prior manifest. Source and compiler controls also prove the intended input/image changed.",
+    "provenance": "Builder and fault fixture compiled from current Coax/native inputs, including upstream read-file-native.c; independently checked compiler/source-bound receipts allow reuse without rebuilding unchanged tools.",
+    "fences": "Selected compiler, qualifier image, complete qualifier/product/native source closures, builder/fixture images and their receipts match before/after. Final source/product verification runs without rebuilding."
+  },
+  "same_input_parity": {
+    "receipt": "parity-receipt.json",
+    "profiles": 18,
+    "unique_spirv_fact_inputs": 58,
+    "reports": "Every complete package report equals the unchanged retained Python verify_package result on identical current-source package bytes.",
+    "facts": "Every raw sorted JSON fact response matches the unchanged original spirv(data) function exactly, including final newline.",
+    "product_poison_controls": 22,
+    "poisons": "Coax constructs the original metadata, vertex offset, rehashed Int64 capability/WGSL entry/tree, reflection and product/source hash poisons. The actual new CLI and original verifier both refuse each identical candidate; all seven original unit test methods also pass.",
+    "malformed_spirv_controls": 8,
+    "parser_refusals": "Short bytes, partial word, wrong magic/version/bound/schema, zero instruction count and overflowing instruction range preserve exact old exception outcomes.",
+    "image_binding": "The native receipt and final parity record bind the identical qualifier image; existing v1 fields and qualifier_sha256 source-hash semantics are checked."
+  },
+  "fault_fixture_parity": {
+    "receipt": "fault-parity-receipt.json",
+    "faults": 7,
+    "fixture_executable_sha256": "f4bcf5e9e4f7e7e47cbfdf99f4de632f9140c0f5c2893079ec8ad24403c8877c",
+    "result": "The retired fixture generator and new Coax fixture delegate identical real compiler arguments. Raw stdout/stderr, exit, emitted product and dependency mutation bytes match; dependency JSON inventories agree semantically. Both fixtures change self identity only for the compiler fault; template and real compiler images remain unchanged."
+  },
+  "strict_default": "Both a controlled stale compiler and the actual selected older compiler refuse after only version/source-digest observations: six command-record files, no dependency scan, native compilation, emission or final receipt.",
+  "stale_input_trial": "The retained pre-integration package set refuses its source fence for build.coax, sys/fs.coax, render/frame.coax and render-frame-checks.coax. That failed trial is retained. Fresh bounded packages were emitted from current inputs for all18 profiles, reusing the already qualified current Grid bytes. Old metadata and declared hashes were not rewritten.",
+  "independent_oracle_boundary": {
+    "path": "aethyr/render/tests/spirv_inventory_oracle.py",
+    "reason": 2,
+    "function_original_lines": "check_build.py:29–109",
+    "function_current_lines": "spirv_inventory_oracle.py:14–94",
+    "function_source_sha256": "b9354fb47dc6349131c3042455d293a7de5143ce576ec18164153c80ca808797",
+    "scope": "Byte-for-byte unchanged independent SPIRV word/type/decorations/interface/capability/reflection decoder plus minimal file-input/facts-output CLI. All orchestration, expected values, capacity/identity checks, timeouts and verdicts are Coax."
+  },
+  "post_qualification_whitespace": {
+    "path": "aethyr/render/tests/spirv_inventory_oracle.py",
+    "qualified_file_sha256": "4eaffe0a1f770e7a5da9eb5b3e7c255cc4c0b164a155d224aa481c6d0f148868",
+    "current_file_sha256": "78c77a48a49ca22458fc6ab3db2ca6aa29a664af74c986602abaa8c9a8731d61",
+    "change": "Removed one surplus blank line at EOF after qualification to satisfy git diff --check. Function lines14–94 retain the exact b9354fb4 source hash. CLI bytes and equations are unchanged. Existing passing observations are retained at their exact qualified source epoch, without repeating a math/oracle gate for whitespace."
+  },
+  "retired_reference_inputs": {
+    "check_build.py": "46a3239d74957f9d7dd67c546d603d7ea5e9b5deffa10aa50c54a3e7316e386b",
+    "test_build_tooling.py": "a919aaab27db8db78537296d50193c39fbf0ae5f28a81504c5c310c580f7a23c",
+    "retention": "Original bytes archived and read back with matching SHA256 before deletion; no runnable current orchestration Python copies retained."
+  },
+  "archive": {
+    "path": "artifacts-and-reference.tar.gz",
+    "bytes": 4702529,
+    "sha256": "5e0b0c4061856e206780bc206b61520005c5fa3a022faad2f0a2a71f660f092b"
+  },
+  "limits": "Products are bounded at4MiB and layouts at the existing32-attribute reflection capacity. Tree words are decimal uint32. Explicit --explore-stale-compiler retains status exploratory and compiler_current_sources_match=false; these observations do not satisfy final current-source/compiler or release gates. No GPU arithmetic/image or complete playable-realm qualification is inferred."
+}

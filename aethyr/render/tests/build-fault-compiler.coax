@@ -1,0 +1,24 @@
+// Deliberate producer-loss fixture. Coax delegates the real compiler, then
+// changes only the selected observation/input, matching the retired fixture.
+#import "Basic";
+#load "qualification-files.coax";
+bfc_replace :: (text:string,needle:string,replacement:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);at:=0;while at<text.count {found:=rtq_find(text,needle,at);if found<0 {jo_put(o[..],text[at..<text.count]);break;}jo_put(o[..],text[at..<found]);jo_put(o[..],replacement);at=found+needle.count;}return ifx o[0].bad then "" else jo_text(o[..]);
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}config:[4][4096]u8;compiler:=proc_getenv("AETHYR_BUILD_REAL_COAX",config[0][..]);fault:=proc_getenv("AETHYR_BUILD_FAULT",config[1][..]);dependency:=proc_getenv("AETHYR_BUILD_DEPENDENCY",config[2][..]);self:=proc_getenv("AETHYR_BUILD_SELF",config[3][..]);if compiler.count==0 || fault.count==0 || dependency.count==0 || self.count==0 || args_count(a[..])<1 {return 2;}
+  argv:[256]string;argv[0]=compiler;count:=args_count(a[..]);if count>=256 {return 2;}for i:0..<count {argv[i+1]=args_at(a[..],i);}stdout:[RTQ_FILE]u8;stderr:[65536]u8;env:[]string;r:=rtq_run_raw(argv[0..<count+1],env,RTQ_DEADLINE_MS,stdout[..],stderr[..]);if r.started!=0 || r.cut || r.timed_out {return 30;}out:=cast(string)stdout[0..<r.out_n];err:=cast(string)stderr[0..<r.err_n];changed:[1048576]u8;other:[1048576]u8;
+  command:=args_at(a[..],0);if command=="deps" {
+    nodes:[8192]JvNode;doc:[1]Jv;if !jv_parse(doc[..],out,nodes[..]) {return 30;}d:=doc[0];o:[1]Jo;jo_start(o[..],changed[..]);jo_obj(o[..]);child:=d.nodes[0].first;while child!=-1 {key:=jv_key(d,child);jo_key(o[..],key);if key=="sources" {jo_arr(o[..]);for i:0..<jv_len(d,child) {jv_write(d,jv_at(d,child,i),o[..]);}jo_str(o[..],dependency);jo_end(o[..]);}else {jv_write(d,child,o[..]);}child=d.nodes[child].next;}jo_end(o[..]);if o[0].bad {return 30;}out=jo_text(o[..]);
+  }
+  if command=="spirv" && r.status==0 {
+    if fault=="name" {err=bfc_replace(err," 2 u\n"," 2 changed\n",changed[..]);err=bfc_replace(err," 3 u\n"," 3 changed\n",other[..]);}
+    if fault=="target" {err=bfc_replace(err,"fragment-targets 1","fragment-targets 2",changed[..]);}
+    if fault=="generic" {err=bfc_replace(err,"derivatives 1 0","derivatives 1 1",changed[..]);}
+    if fault=="framing" {path:=args_value(a[..],"-o","");bytes:[4194304]u8;n:=fs_read(path,bytes[..]);if n<24 {return 30;}for i:20..<24 {bytes[i]=0;}if !fs_write(path,cast(string)bytes[0..<n]) {return 30;}}
+    if fault=="source" {if !fs_append(dependency,"changed\n") {return 30;}}
+    if fault=="compiler" {if !fs_append(self,"\n# changed\n") {return 30;}}
+    if fault=="exit" {return 31;}
+  }
+  print("%",out);tool_err(err);return r.status;
+}

@@ -1,0 +1,91 @@
+{
+  "schema": "aethyr.render-test-origin.post-retention.commands.v1",
+  "date": "2026-11-02",
+  "status": "passed",
+  "repository_head": "88a89f8ddf343b1a519121b8b3de96adef048ded",
+  "scope": "Add explicit binary POST sinks to the existing Coax fixture origin. No browser, GPU, shader, producer or unchanged lifecycle gate was run for this slice.",
+  "compiler": {
+    "path": "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "provenance": "Explicit previously qualified historical compiler, retained under executed-tools/compiler. No current-main compiler or product-emission qualification."
+  },
+  "commands": {
+    "policy": "/tmp/aethyr-authority-budget-qualified-1fac/coax test aethyr/tests/render-test-sink-policy.coax --library",
+    "mutation": "/tmp/aethyr-authority-budget-qualified-1fac/coax mutate aethyr/tests/render-test-sink-policy.coax --library --root-only --jobs 4",
+    "actual": "COAX=/tmp/aethyr-authority-budget-qualified-1fac/coax coax/web/tool.sh aethyr/tests/render-test-sink-tool-checks.coax /tmp/aethyr-post-sinks-20261102-retained",
+    "actual_exit": 0
+  },
+  "qualified_epoch": {
+    "directory": "aethyr-post-sinks-20261102-retained",
+    "actual_observer_sha256": "f30b6cc890c1061d9b4a40f77f68e76b357edc39c5b33fea668f03d2b2218a0a",
+    "actual_observer_copy": "aethyr-post-sinks-20261102-retained/observer-image",
+    "cases": 27,
+    "passed": 27,
+    "elapsed_ms": 904,
+    "source_fence_unchanged": true,
+    "policy_checks": 90,
+    "policy_passed": 90,
+    "root_mutants": 81,
+    "killed": 81,
+    "survived": 0,
+    "waivers": 0,
+    "policy_logs": ["checks/aethyr-post-sink-policy-green-reviewed.log", "checks/aethyr-post-sink-policy-mutation-reviewed.log"],
+    "primary_origin": {"requests":18,"post_attempts":10,"published":2,"exit":0,"source_files_unchanged":true,"outputs_unchanged":true,"ledger_complete":true,"staging_removed":true},
+    "journal_failure_origin": {"requests":2,"post_attempts":1,"published":1,"http_ack":200,"exit":1,"expected_refusal_of_final_qualification":true,"source_files_unchanged":true,"outputs_unchanged":true,"ledger_complete":false,"staging_removed":true}
+  },
+  "actual_retained_body": {
+    "file": "aethyr-post-sinks-20261102-retained/accepted-binary.bin",
+    "bytes": 131329,
+    "sha256": "61c0c0466fcd918bb0f0bd8b284104bad17a1ff70f98540abdc05232f0fa53ff",
+    "provenance": "Read from the actual complete published sink before the later deliberate journal-fault test reused its destination. The checker compared the observed file hash to the deterministic submitted bytes and retained this exact readback.",
+    "empty_file": "aethyr-post-sinks-20261102-retained/owned/empty.bin",
+    "empty_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "controls": [
+    "Existing GET fixture still returns its pinned source",
+    "Expired monotonic deadline refuses queued NUL bytes before reading or storage writes",
+    "131329-byte exact-cap multi-chunk binary upload; old output stays complete while a partial body is staged; exact ACK and readback hash",
+    "Zero-byte exact-zero-cap output with exact ACK",
+    "Nine actual malformed, duplicate/missing/negative/oversized/chunked length, path, surplus and capacity refusals preserve previous output",
+    "Unknown route and query alias return404 without output writes",
+    "Unknown route truncated across multiple reads reports all three consumed bytes",
+    "Declared route truncation preserves previous valid output",
+    "Actual midstream staging-file chmod failure returns503 and preserves previous output",
+    "All ten upload ledger rows assert complete declared/received/stored counts, hashes, publication and cleanup facts",
+    "Root escape, pinned source overlap, GET source tree overlap, invalid URL and negative cap refuse before readiness",
+    "Accepted bytes retained before deliberate destination reuse",
+    "Actual post-publication ledger write failure preserves a truthful complete ACK; final qualification fails separately from source/output equality"
+  ],
+  "review": {
+    "agent": "/root/realm_workflow_assessment/post_sink_review",
+    "mode": "Read-only, no edits or reruns",
+    "findings": [
+      "Expired socket timeout could become a nonblocking read of queued data: explicit monotonic gates now precede read/write and publication after hashing/source checks.",
+      "A multi-read truncated unknown route underreported consumed bytes: the bounded drain now returns the exact consumed count on every path.",
+      "The old checker did not directly assert ACK/ledger count and hash fields: the final checker parses both and checks all ten ledger rows."
+    ],
+    "resolution": "Reviewer re-read the changed lines and confirmed all findings addressed; no further actionable issue in that scope."
+  },
+  "earlier_epochs": {
+    "red": "Initial22 passing preliminary controls, before the post-publication journal boundary and later review. Receipts/logs retained; the historical executed image was not copied, so this epoch is not the final image/source qualification.",
+    "qualified": "23 passing controls with complete-publication journal ACK, before separate final source/output/ledger facts.",
+    "final": "23 passing controls with separate final facts, before the checker preserved absolute external receipt keys.",
+    "release": "23 passing controls with corrected absolute external source keys, before the review findings were fixed.",
+    "reviewed": "26 passing review controls, before the checker retained the actual initial published binary ahead of destination reuse.",
+    "retained": "27 final passing controls. Only this epoch is joined to the complete current source closure and final executed image."
+  },
+  "immutable_prior_helper": {
+    "record": "docs/verification/aethyr-render-lifecycle-tool-port-2026-11-02.json",
+    "archive_sha256": "6ea3b718bf724cf6a6bfbba3a9a267c0f1ecf2f34b66866992a881e5228b5765",
+    "scope": "Earlier no-sink helper epoch and five same-input browser lifecycle comparisons remain unchanged. Their browser observations and v2 window/CDP diagnostic boundary were not rerun or rebound to the new helper image."
+  },
+  "capabilities_and_limits": {
+    "configuration": "Optional post_sinks array of exact url/root/file/max_bytes mappings; no request URL-derived output path.",
+    "publication": "Exclusive same-parent mktemp staging, bounded NUL-safe chunks, exact count/SHA256 and source/path/deadline admission before atomic rename.",
+    "body_deadline": "30-second monotonic admission includes body reception, hashing and source/path checks through publication admission. Queued transport data cannot waive expiry. Individual platform filesystem effects are not preempted.",
+    "HTTP": "One request per connection, Content-Length framing, immediate read-ahead surplus refused, no accepted pipelines. Future bytes outside Content-Length are not part of the declared upload.",
+    "filesystem": "Caller-owned fixture trees. No hostile local filesystem race sandbox or filesystem crash durability claim.",
+    "ledger": "Complete ACK remains truthful after successful atomic publication if a later ledger append fails. Final origin qualification then fails. No transaction across output+ledger.",
+    "platform_effects": "Existing bounded direct /usr/bin/mktemp and /bin/chmod effects have exact image hashes in the receipt. No new native effects, shell/Python/TypeScript orchestration or product policy."
+  }
+}

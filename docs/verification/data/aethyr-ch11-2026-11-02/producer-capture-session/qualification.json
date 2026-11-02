@@ -1,0 +1,67 @@
+{
+  "schema": "aethyr.producer-capture-session-qualification.v1",
+  "status": "passed_sdk_prerequisite_full_capture_port_pending",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "observer_sha256": "ba6ff9e0f3a78905bb080e8138589c855fdd28d5e947e4dd3991892b72715682",
+  "prior_refusal_epoch_observer_sha256": "7bbe820a9705ec28f580411619f8e2616275ef4195b214ab362096999051da27",
+  "policy_sha256": "8cbdc8abbed0927eaca7d2b2de07bd0696229bdbe6702217795a3e08c7dd50fe",
+  "wasm_sha256": "2af335c88be062782ada00ba59fd4327178262cf070d67c355efb5ece9ca89cf",
+  "checks": {
+    "tests_written_before_implementation": true,
+    "final_release_passed": 168,
+    "final_release_failed": 0,
+    "final_policy_root_mutants_killed": 211,
+    "final_policy_root_mutants_survived": 0,
+    "waivers": 0,
+    "initial_boundary_findings": 43,
+    "allocation_pack_store_only_checkpoint_mutants_killed": 174
+  },
+  "actual_browser": {
+    "archive": "ownership-artifacts.tar.gz",
+    "receipt": "actual/qualification.json",
+    "refusal_controls": "actual/sdk-refusal-controls.json",
+    "headless_muted": true,
+    "exact_compiled_wasm_buffer_join": true,
+    "arena_memory_bytes": 65601536,
+    "arena_base": 45678592,
+    "binary_write_read_bytes": [0, 1, 127, 128, 254, 255, 10, 13],
+    "absent_optional_export_observed": true,
+    "out_of_memory_write_refused": true,
+    "out_of_memory_read_refused": true,
+    "previous_valid_bytes_preserved": true,
+    "origin_requested_finalization_passed": true,
+    "source_inventory_before_after_unchanged": 51,
+    "retained_source_hash_readback_passed": true,
+    "producer_frames_advanced": 0
+  },
+  "output_ownership_control": {
+    "existing_directory_refused_exit": 2,
+    "producer_inside_output_with_observer_output_filename": "last-sdk-response.json",
+    "producer_sha256_preserved": "2af335c88be062782ada00ba59fd4327178262cf070d67c355efb5ece9ca89cf",
+    "producer_size_and_second_resolution_mtime_unchanged": true,
+    "new_positive_epoch_passed_after_fresh_directory_guard": true
+  },
+  "retention": {
+    "archive": "artifacts.tar.gz",
+    "bytes": 1752923,
+    "sha256": "ffb796238761242b5b5f12515406b2e7af234dcbc0d22ad47e4cf0754c04da7e",
+    "whole_extracted_directory_diff_exit": 0,
+    "includes": ["final exact Coax/native source inventory", "final observer and compiler images", "exact producer Wasm", "actual first and final receipts with origin ledgers", "refused SDK raw responses", "check-first failures, mutation sharpening and release logs"]
+  },
+  "ownership_retention": {
+    "archive": "ownership-artifacts.tar.gz",
+    "bytes": 302665,
+    "sha256": "169c512a564454c0dca9c3bf2d83592d7d72a77be8b1077a4885936b55e4900c",
+    "whole_extracted_directory_diff_exit": 0,
+    "compiler_and_producer_images": "identical images retained in artifacts.tar.gz; all51 current source/observer identities rechecked"
+  },
+  "scope": [
+    "Coax owns allocation, count/span/pack bounds, retained-store policy, offline import choices and operation scheduling.",
+    "JavaScript performs WebAssembly, fetch, digest and typed byte transport SDK effects. Coax passes floating arguments as exact low/high words.",
+    "The actual qualifier initializes producer defaults but advances no producer frame and performs no GPU work.",
+    "The current acceptance epoch adds refusal of every pre-existing output directory to the two genuine typed-array refusal controls. Earlier complete source/image evidence remains in artifacts.tar.gz. The first positive-only observer image was overwritten before retention; its source and raw receipt are history, not a complete reproducible acceptance epoch.",
+    "The system Chrome executable is hash-bound and version-observed but not copied into the archive.",
+    "The selected older compiler does not match current main. This does not qualify final integrated product source or replace the existing Grid render/stack evidence.",
+    "The full capture-render-frame.ts CLI, frame sequence, pack/event handling and captured-output parity remain to be ported; that driver is retained."
+  ]
+}

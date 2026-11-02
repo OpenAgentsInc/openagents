@@ -1,0 +1,98 @@
+{
+  "schema": "aethyr.native-gpu-port-qualification.v1",
+  "status": "passed-bounded-historical-and-offline-policy-slice",
+  "scope": "Coax native sampling/helper orchestration over explicit historical emissions; exact same-input legacy/new offscreen Vulkan observations; final pure admission and local refusal controls",
+  "fresh_emission_orchestration": "pending separate epoch; original Python/shell tools and C references remain unchanged until fresh branch parity",
+  "book_status": "chapter 11 remains partial",
+  "worker_compiler": {
+    "version": "coax0 0.47.0",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "qualified_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "observed_current_source_digest": "c455456f3096f111b1bf1e2e959f09feda4dbce66337893e014d237f0e0dd9a0",
+    "matches_current_sources": false,
+    "scope": "explicit older exploratory worker/tool compiler; no default compiler replaced",
+    "emitted_worker_c_sha256": "bb7c411179460e9ca00fd3e6ac0bae5529de7c47d85728cf6085f0c9db513926"
+  },
+  "remote_sdk": {
+    "host": "coderos-4080",
+    "platform": "Linux x86_64",
+    "coax_on_path": false,
+    "gpu": "NVIDIA GeForce RTX 4080",
+    "driver_version": "595.71.05",
+    "driver_integer": 2496774464,
+    "vendor": 4318,
+    "device_id": 9988,
+    "gcc_version": "15.2.0",
+    "gcc_wrapper": "/nix/store/hbsz2ngi9ixbhd9na1xagh2yc8qnmj7y-gcc-wrapper-15.2.0/bin/gcc",
+    "gcc_wrapper_sha256": "de18d4626aecd4386163e674e3c40937427ac1deb18653c049edcf03994af9b6",
+    "spirv_validator_sha256": "9da466349d444d870111c4240a290d8b5b6f18ae48f982a6a34206792aecffcc",
+    "execution": "offscreen Vulkan only, validation layer enabled; each SSH/SCP call at most 360 seconds, controller budget 810 seconds; no remote scripts or environment dump"
+  },
+  "sampling": {
+    "shader_compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+    "original_emissions": "docs/verification/data/aethyr-ch11-2026-11-01/sampling-vulkan-308/artifacts",
+    "source_snapshot": "docs/verification/data/aethyr-ch11-2026-11-01/sampling-vulkan-308/inputs",
+    "admitted_emission_artifacts": 18,
+    "transferred_files_before_after_hash_joined": 33,
+    "raw_words_equal": 192,
+    "cases": [
+      {"variant": "normal", "exit": 0, "wrong": 0, "words": 64},
+      {"variant": "fault", "exit": 1, "wrong": 16, "words": 64},
+      {"variant": "array-fault", "exit": 1, "wrong": 16, "words": 64}
+    ],
+    "validation_errors": 0,
+    "validation_warnings": 0,
+    "worker_image_sha256": "887a6e07af3b982ecb245a4fb14d540791673561b261a7682ce188b246f1fa63",
+    "legacy_reference_image_sha256": "309ab9f4bc90bd476e5540f2b37928a09c3f0c8578822c4ec8bd5199c65c4c6d",
+    "owned_remote_cleanup_exit": 0
+  },
+  "helper": {
+    "shader_compiler_sha256": "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",
+    "original_emissions": "docs/verification/data/aethyr-ch11-2026-11-01/native-helper",
+    "source_snapshot": "docs/verification/data/aethyr-ch11-2026-11-01/native-helper/source",
+    "transferred_files_before_after_hash_joined": 21,
+    "raw_words_equal": 100,
+    "exit": 0,
+    "wrong": 0,
+    "helper_refusal_before_pipeline": 4,
+    "int64_refusal_before_pipeline": 5,
+    "views_status_offset_bytes_elements": [[1,0,112,28],[1,0,9200,2300],[1,256,112,28],[1,0,112,28]],
+    "fourth_binding_retains_trusted_legacy_whole_buffer_range_zero": true,
+    "validation_errors": 0,
+    "validation_warnings": 0,
+    "worker_image_sha256": "98c447a7c6f11cd020cc9da7c60eec13d49717ebd3e02c33edbaea7c17c4da08",
+    "legacy_reference_image_sha256": "63fd773402c5bab41552316f1f16fa7416929bd96bc5a3d4f6941b0675bc6171",
+    "owned_remote_cleanup_exit": 0
+  },
+  "final_admission_epoch": {
+    "fixture_policy": {"root_mutants": 286, "killed": 286, "survivors": 0, "sha256": "36c1865f733addb6f8f40a1520ca2ee518f35f1e215800114e0d7bccda402a3a"},
+    "tool_policy": {"root_mutants": 147, "killed": 147, "survivors": 0, "sha256": "5567a80b18dbdc99850b3b200e19253e50d99ef39dad0a6647c31055e6569248"},
+    "complete_receipt_policy": {"root_mutants": 164, "killed": 164, "survivors": 0, "sha256": "feffbe5dfa68e97d84d58bbabcee23c199ecc4779643913f94d94a73e0fead9c"},
+    "combined_owned_root_mutants": 597,
+    "release_checks_in_complete_policy_closure": {"passed": 132, "failed": 0},
+    "retained_real_positive_results_admitted_offline": 2,
+    "actual_offline_cli_losses_refused": 8,
+    "individual_artifact_corruption_cli_losses_refused_before_remote_creation": 18,
+    "equivalent_waivers": 0,
+    "gpu_repeated_for_final_policy": false,
+    "compiler_string_format_repair": "Original executed controller summary JSON contained an unquoted shader compiler hash. Original malformed bytes are retained. Final offline qualifier quotes only the known historical field, parses it, verifies the saved executed source closure, and re-admits retained raw GPU data under the final pure policy. Worker and command JSON remained valid.",
+    "retained_failed_development_attempts": "Initial syntax and check-budget failures, surviving-mutant reports, malformed original summary receipts, and an offline loss-driver receipt/command filename collision remain in the archive. The collision was fixed in a new directory before all26 CLI controls passed."
+  },
+  "identity_limits": [
+    "Shader/bridge emission compilers and the worker/tool compiler are distinct identities; historical shader emissions do not establish current-source compilation.",
+    "Remote payload files have before/after SHA joins. Compiled native images were hashed and downloaded before execution only; no after-execution image hashes were captured.",
+    "Worker shader identities fence files before and after reads; the exact uploaded read buffer is not independently hashed. Restored concurrent rewrites are outside this evidence.",
+    "Local files and SSH observations are qualification records, not remote execution attestation.",
+    "No production shader re-emission, Grid producer rebuild, unchanged raster rerun or numerical tolerance change occurred. The legacy 0.00001 native comparison remains unchanged, with no precision mask.",
+    "Fresh shader/fault/bridge emission orchestration and retirement of the old drivers are still pending in a separate source epoch."
+  ],
+  "retention": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/native-gpu-port/artifacts.tar.gz",
+    "bytes": 2270753,
+    "sha256": "b098e3115f00e3d8fa095d7d0927835b9fa2e22a327fda69f29e467ac6b74409",
+    "payload_sha256_entries_verified_after_extraction": 1152,
+    "files_including_manifest": 1153,
+    "whole_directory_diff_exit": 0,
+    "contents": "Full raw GPU files and empty command streams, original and normalized receipts, original reference programs and observer changes, executed and final source epochs, emitted worker C, actual remote reference/worker images, qualified older Coax compiler image/source digest, local host tool images, all unit/mutation/loss logs and all18 corrupted artifact controls."
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "schema": "aethyr.render.lifecycle-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "passed",
+  "repository_head": "88a89f8ddf343b1a519121b8b3de96adef048ded",
+  "change": "Engine-generation and media-retirement observers now run in Coax. Coax owns fixture origins, scheduling, bounded waits, source fences, verdicts and receipts; the small reason-1 JavaScript file performs browser SDK hooks and effects.",
+  "entrypoints": [
+    "aethyr/tests/check-render-engine-generations.coax",
+    "aethyr/tests/check-render-media-retirement.coax"
+  ],
+  "browser_effects": "aethyr/tests/render-lifecycle-effects.js",
+  "origin_api": "aethyr/tests/RENDER_TEST_ORIGIN.md",
+  "legacy_drivers_removed_after_parity": [
+    "aethyr/tests/check_render_engine_generations.ts",
+    "aethyr/tests/check_render_media_retirement.ts"
+  ],
+  "qualification": {
+    "cases": ["engine before", "engine during", "engine overlap", "media positive", "media keep-cache expected refusal"],
+    "stable_observations_equal": "All nine engine or seven media stable fields, including browser/status and actual validation availability, agree with the same-input legacy results.",
+    "shared_original_served_sources": "20 of 20 source hashes agree in every case. All five final origin ledgers finalized successfully with unchanged originals; all five observer source fences remained unchanged.",
+    "engine": "The before case instantiates no obsolete engine and keeps the initial marker. The during case instantiates one held replacement but leaves its binding stopped after the later fetch failure. Overlap instantiates two replacements, refuses the obsolete completion and ends on the coherent initial marker.",
+    "media": "The actual delayed bitmap is closed once after retirement, with zero late media allocations or textures. Retaining the retired media cache produces one late allocation/texture and no close; both old and new drivers refuse that planted fault with exit 1.",
+    "origin_policy": {"checks":85,"passed":85,"mutants":369,"killed":369,"survivors":0,"waivers":0},
+    "lifecycle_policy": {"checks":85,"passed":85,"mutants":100,"killed":100,"survivors":0,"waivers":0},
+    "policy_scope": "Root-only mutation for each owned authority module, retaining dependency checks. The origin's later POST-framing and stale-preflight additions were independently qualified; lifecycle decision source remained unchanged.",
+    "typed_parity_driver": "aethyr/tests/render-lifecycle-tool-checks.coax"
+  },
+  "receipt_versioning": {
+    "engine": "aethyr.render.engine-generations.v2",
+    "media": "aethyr.render.media-retirement.v2",
+    "window_events": "Actual window errors/unhandled rejections are named accurately.",
+    "raw_CDP_events_available": false,
+    "cdp_event_count_each_case": 11,
+    "scope": "The client counts but does not retain full CDP execution-context, console or exception event objects. Archived v1 raw diagnostics remain intact. Stable lifecycle/source parity does not assert raw diagnostic-array or schema identity."
+  },
+  "provenance": {
+    "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "compiler_scope": "Explicit previously qualified historical compiler, retained with the actual observer images; no matching-main compiler or product-emission claim.",
+    "engine_observer_sha256": "6f15b26cc9c785155d63a50645c547a6f60f9c0d890be71a04cba2f9807eff0f",
+    "media_observer_sha256": "8601082d391e20d7476bbc883d66c607a5f14ef6d49f9af995fad81d2e0cac0b",
+    "parity_observer_sha256": "7c0a13d713058591701ae3abf6faa11c14442cadd7a69ae854de14a7bfecf834",
+    "host_sha256": "82a0a7624c31653b02039b6643692203b41086ce0694c13b9413635f3d111343",
+    "render_sha256": "c524e3f88b955c0721807e9b996c30c00d94c378682ca68fca64679b514b97d6",
+    "frozen_producer_scope": "Previously retained current/marked initial+alternate and seeded video Wasm, plus the exact Hecate package. No product or shader emission and no unchanged Grid or math gate rerun."
+  },
+  "limits": [
+    "Safe muted/headless Coax Chrome lacks two legacy background-throttling flags. Explicit clip steps and controlled release points qualify these lifecycle observations; no browser argv identity or performance parity is claimed.",
+    "The final origin supports source-fenced GET fixtures and controlled variants. Bounded POST bodies are drained and refused with the legacy 404; accepted byte sinks are a later additive capability.",
+    "No current-main compiler/product qualification, normal-stack bound, or new Grid/raster/math coverage is claimed."
+  ],
+  "retained_failures": "The initial during observer failure on JavaScript undefined, preliminary diagnostic/schema epochs and policy red/survivor logs are retained and labeled separately from final runs. No failure was overwritten or mutant waived.",
+  "evidence": "docs/verification/data/aethyr-ch11-2026-11-02/render-lifecycle-tool-port/qualification.json",
+  "commands": "docs/verification/data/aethyr-ch11-2026-11-02/render-lifecycle-tool-port/commands-and-scope.json",
+  "archive_sha256": "6ea3b718bf724cf6a6bfbba3a9a267c0f1ecf2f34b66866992a881e5228b5765",
+  "archive_bytes": 3647855,
+  "archive_whole_directory_readback": "passed"
+}

@@ -1,0 +1,57 @@
+{
+  "schema": "aethyr.native-transport-tool-port.v1",
+  "status": "passed_declared_transport_profile",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "observer_sha256": "614fbd0aea68f3a63eac333cbac30065d9373c9e6554ef84da7852880dd6ca71",
+  "entry": "aethyr/tests/check-native-gpu-transport.coax",
+  "implementation": "aethyr/tests/native-gpu-transport.coax",
+  "policy": "aethyr/tests/native-gpu-transport-policy.coax",
+  "checks": {
+    "release_passed": 77,
+    "release_failed": 0,
+    "root_mutants_killed": 170,
+    "root_mutants_survived": 0,
+    "waivers": 0
+  },
+  "actual_effects": {
+    "receipt": "actual/receipt.json",
+    "literal_words_local_and_ssh": true,
+    "word_cases": ["ordinary", "empty", "single quote", "dollar, substitution and backticks", "LF and CR", "bytes 128 and 255"],
+    "raw_stdout_contains_nul_separators": true,
+    "scp_upload_download_exact_bytes": 4096,
+    "all_byte_values": true,
+    "absolute_local_colon_filenames": true,
+    "owned_remote_mkdir_exit": 0,
+    "owned_remote_cleanup_exit": 0,
+    "local_namespace_token_removed": true,
+    "invalid_host_path_timeout_refused_before_spawn": true,
+    "source_inventory_unchanged": true,
+    "retained_inventory_rechecked": true
+  },
+  "bounds": {
+    "ssh_arguments": 128,
+    "one_argument_bytes": 16384,
+    "quoted_command_buffer_bytes": 65536,
+    "host_bytes": 255,
+    "one_child_timeout_ms_max": 360000,
+    "remote_prefix": "/tmp/aethyr-native-gpu-",
+    "remote_lowercase_hex_namespace_bytes_min": 16,
+    "remote_lowercase_hex_namespace_bytes_max": 64,
+    "scp_local_requires_absolute_path": true
+  },
+  "retention": {
+    "archive": "artifacts.tar.gz",
+    "bytes": 1136232,
+    "sha256": "b03d6a2f18dd75cc3896d3a35e15ff768c90c836cb35c8b9f27270c0874da009",
+    "readback": "system tar extraction followed by whole-directory diff -rq; exit 0, including empty stdout/stderr files",
+    "contents": ["exact observer/compiler images", "observed Coax source inventory", "native/tool wrapper snapshots at retention", "all actual command receipts and raw streams", "4096-byte source and returned files", "mutation sharpening, final mutation, release and initial/final qualifier logs"]
+  },
+  "limitations": [
+    "This is a bounded SSH/SCP transport qualification, with no GPU, shader, product or release execution.",
+    "The explicitly selected older compiler is not represented as matching current main.",
+    "The qualifier fenced its compiler and Coax dependency inventory. Native C/header and wrapper files were retained separately; no before/after native closure fence was recorded for this epoch.",
+    "The remote host alias and full top-level invocation were not serialized by the qualifier. Per-operation argument records and actual raw results are retained.",
+    "Cleanup is the observed successful owned rm command and removed local token, not a separately observed remote absence probe.",
+    "The initial qualifier compile failure affected four array-to-slice calls in the qualifier only. Its failed log is retained; the transport source did not change."
+  ]
+}

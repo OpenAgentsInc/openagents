@@ -1,0 +1,42 @@
+// First bounded SDK qualification for the producer capture port. No producer
+// frame is advanced here. The full legacy capture driver remains available.
+#load "producer-capture-session.coax";
+PCS_DRIVER :: "aethyr/tests/check-producer-capture-session.coax";
+PCS_EFFECTS :: "aethyr/tests/producer-capture-effects.js";
+pcs_input :: (inputs:[]RtqInputs,path:string)->bool {p:[4096]u8;absolute:=fs_realpath(path,p[..]);return absolute!="" && rtq_input_add(inputs,absolute);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}
+  if args_count(a[..])!=2 {tool_errln("usage: check-producer-capture-session WASM NEW_OUTPUT_DIRECTORY");return 2;}
+  file_buf:[4096]u8;work_buf:[4096]u8;wasm:=fs_realpath(args_at(a[..],0),file_buf[..]);if wasm=="" || fs_exists(args_at(a[..],1)) || !fs_mkdir(args_at(a[..],1)) {return 2;}work:=fs_realpath(args_at(a[..],1),work_buf[..]);paths:[8][4096]u8;receipt:=fs_join(work,"qualification.json",paths[0][..]);config:=fs_join(work,"origin-config.json",paths[1][..]);port_file:=fs_join(work,"origin-port",paths[2][..]);ledger:=fs_join(work,"origin",paths[3][..]);if fs_exists(receipt) || fs_exists(config) {return 2;}
+  wasm_bytes:[67108864]u8;wn:=fs_size(wasm);if wn<8 || wn>wasm_bytes.count || fs_read_at(wasm,0,wasm_bytes[0..<wn])!=wn {return 2;}
+  description:=gm_describe(wasm_bytes[0..<wn]);expected:[64]u8;if !description.valid || description.maximum!=1024 || !S_hex(S_hash(cast(string)wasm_bytes[0..<wn]),expected[..]) {return 2;}
+  deadline:=proc_now_ms()+180000;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}inputs:[1]RtqInputs;
+  if !pcs_input(inputs[..],wasm) || !pcs_input(inputs[..],compiler) || !pcs_input(inputs[..],PCS_EFFECTS) || !pcs_input(inputs[..],"coax/web/tool.sh") || !rtq_deps(inputs[..],compiler,PCS_DRIVER,deadline,work,"tool-dependencies") || !rtq_deps(inputs[..],compiler,"coax/lib/crypto/entropy.coax",deadline,work,"entropy-dependencies") {return 2;}
+  for name:[7]string.["tool-native","process-native","store-file-native","read-file-native","socket-native","entropy-native","entropy-foreign"] {for ext:[2]string.[".c",".h"] {text:[4096]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],"coax/platform/");jo_put(o[..],name);jo_put(o[..],ext);if !pcs_input(inputs[..],jo_text(o[..])) {return 2;}}}
+  self:[4096]u8;image:=gp_self(self[..]);chrome:[4096]u8;chrome_path:=cdp_chrome(chrome[..]);if image=="" || chrome_path=="" || !pcs_input(inputs[..],image) || !pcs_input(inputs[..],chrome_path) {return 2;}
+  text:[16384]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render-test-origin.v1");jo_key(o[..],"lifetime_ms");jo_int(o[..],180000);jo_key(o[..],"routes");jo_arr(o[..]);
+  jo_raw(o[..],"{\"url\":\"/\",\"text\":\"<!doctype html><title>Producer SDK</title>\",\"mime\":\"text/html\"}");jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/producer.wasm");jo_key(o[..],"file");jo_str(o[..],wasm);jo_key(o[..],"mime");jo_str(o[..],"application/wasm");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad || !fs_write(config,jo_text(o[..])) || !pcs_input(inputs[..],config) {return 2;}
+  server:=rto_start(port_file,config,ledger);if server<0 {return 1;}port_text:[32]u8;pn:=-1;for attempt:0..<100 {pn=fs_read(port_file,port_text[..]);if pn>0 {break;}proc_sleep(50);}port:=ifx pn>0 then args_whole(cast(string)port_text[0..<pn]) else -1;
+  c:[1]Cdp;s:[1]PcSession;browser:[65536]u8;bn:=-1;glue:[65536]u8;gn:=fs_read(PCS_EFFECTS,glue[..]);okay:=false;writes:=false;optional:=false;invalid_write:=false;invalid_read:=false;preserved:=false;
+  if port>0 && gn>0 {url_buf:[128]u8;jo_start(o[..],url_buf[..]);jo_put(o[..],"http://127.0.0.1:");jo_int(o[..],port);jo_put(o[..],"/");bn=wp_open(c[..],jo_text(o[..]),cast(string)glue[0..<gn],browser[..]);
+    if bn>0 {okay=pc_open(c[..],s[..],description,wn,cast(string)expected[..],1234567890);}
+    if okay {
+      // Only unused bytes at the end of the allocated arena are touched.
+      sample:=[8]u8.[0,1,127,128,254,255,10,13];pointer:=s[0].memory-32;writes=pc_write(c[..],s[..],pointer,cast(string)sample[..]);
+      request:[4096]u8;pc_operation(o[..],request[..],"read");jo_key(o[..],"pointer");jo_int(o[..],pointer);jo_key(o[..],"bytes");jo_int(o[..],8);at:=pc_run(c[..],o[..]);hash:[64]u8;
+      writes=writes && at>=0 && S_hex(S_hash(cast(string)sample[..]),hash[..]) && jv_raw(c[0].doc[0],jv_get(c[0].doc[0],at,"sha256"))==cast(string)hash[..];
+      empty:[]f64;r:=pc_call(c[..],"__producer_capture_intentionally_absent",empty);optional=r.ok && !r.defined;
+      // Bypass the Coax span precheck only to exercise actual SDK refusal.
+      pc_operation(o[..],request[..],"write");jo_key(o[..],"pointer");jo_int(o[..],s[0].memory);jo_key(o[..],"base64");jo_str(o[..],"AA==");bad:=pc_run(c[..],o[..]);invalid_write=bad<0;
+      failure_saved:=rto_saved(work,"refused-write.json",cast(string)c[0].msg[0..<c[0].msg_n]);invalid_write=invalid_write && failure_saved;
+      pc_operation(o[..],request[..],"read");jo_key(o[..],"pointer");jo_int(o[..],s[0].memory-1);jo_key(o[..],"bytes");jo_int(o[..],2);bad=pc_run(c[..],o[..]);invalid_read=bad<0;
+      failure_saved=rto_saved(work,"refused-read.json",cast(string)c[0].msg[0..<c[0].msg_n]);invalid_read=invalid_read && failure_saved;
+      pc_operation(o[..],request[..],"read");jo_key(o[..],"pointer");jo_int(o[..],pointer);jo_key(o[..],"bytes");jo_int(o[..],8);at=pc_run(c[..],o[..]);preserved=at>=0 && jv_raw(c[0].doc[0],jv_get(c[0].doc[0],at,"sha256"))==cast(string)hash[..];
+    }
+  }
+  saved:=rto_saved(work,"last-sdk-response.json",cast(string)c[0].msg[0..<c[0].msg_n]);cdp_close(c[..]);finalized:=port>0 && rto_finalize(port);status:=proc_wait(server,5000);if status==PROC_RUNNING {killed:=proc_kill(server,PROC_SIGKILL);status=proc_wait(server,5000);}released:=proc_release(server);
+  stable:=finalized && status==0 && rto_add_inputs(ledger,inputs[..]) && rtq_inputs_match(inputs[..]);passed:=okay && writes && optional && invalid_write && invalid_read && preserved && saved && stable && !s[0].failed;
+  jo_start(o[..],text[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.producer-capture-session.v1");jo_key(o[..],"status");jo_str(o[..],ifx passed then "passed" else "failed");jo_key(o[..],"wasm_sha256");jo_str(o[..],cast(string)expected[..]);jo_key(o[..],"raw_wasm_bytes_joined");jo_bool(o[..],okay);jo_key(o[..],"binary_nul_high_byte_write_read_joined");jo_bool(o[..],writes);jo_key(o[..],"absent_optional_export_observed");jo_bool(o[..],optional);jo_key(o[..],"producer_frames_advanced");jo_int(o[..],0);jo_key(o[..],"memory_bytes");jo_int(o[..],s[0].memory);jo_key(o[..],"heap_arena_base");jo_int(o[..],s[0].arena.base);jo_key(o[..],"origin_finalized");jo_bool(o[..],finalized && status==0);jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],stable);jo_key(o[..],"browser");if bn>0 {jo_raw(o[..],cast(string)browser[0..<bn]);}else {jo_null(o[..]);}jo_key(o[..],"sources");rtq_inputs_json(o[..],inputs[..],".");jo_end(o[..]);if o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}
+  controls:[4096]u8;cw:[1]Jo;jo_start(cw[..],controls[..]);jo_obj(cw[..]);jo_key(cw[..],"invalid_sdk_write_refused");jo_bool(cw[..],invalid_write);jo_key(cw[..],"invalid_sdk_read_refused");jo_bool(cw[..],invalid_read);jo_key(cw[..],"prior_valid_bytes_preserved");jo_bool(cw[..],preserved);jo_end(cw[..]);if cw[0].bad || !rto_saved(work,"sdk-refusal-controls.json",jo_text(cw[..])) {return 1;}
+  print("producer SDK source, memory, binary transport, optional export and refusal preservation: %\n",passed);return ifx passed then 0 else 1;
+}

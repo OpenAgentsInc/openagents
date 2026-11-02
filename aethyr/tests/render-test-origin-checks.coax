@@ -1,0 +1,60 @@
+#test "fixture origin paths retain literal safe siblings and exclude traversal or encoded separators" {
+  #assert rto_path("/")=="/" && rto_path("/coaxial/host.js?cache=1")=="/coaxial/host.js" && rto_path("/a-b_c.0")=="/a-b_c.0" && rto_path("/a?x=$")=="/a";
+  for bad:[11]string.["", "relative", "//host/x", "/../x", "/a/./x", "/a//x", "/a/", "/a%2fb", "/a\\b", "/a b", "/a#b"] {#assert rto_path(bad)=="";}
+  alphabet:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.";
+  for v:0..<256 {c:=cast(u8)v;name:=[3]u8.['a',c,'b'];yes:=false;for a:alphabet {if c==a {yes=true;}}#assert rto_component(cast(string)name[..])==yes;}
+  #assert !rto_component("") && !rto_component(".") && !rto_component("..");
+}
+#test "fixture origin MIME and engine sequence are explicit bounded facts" {
+  #assert rto_mime("host.js")=="text/javascript" && rto_mime("x.wasm")=="application/wasm" && rto_mime("render.json")=="application/json";
+  #assert rto_mime("x.jpg")=="application/octet-stream" && rto_mime("")=="application/octet-stream";
+  #assert rto_mime(".js")=="text/javascript" && rto_mime(".wasm")=="application/wasm" && rto_mime(".json")=="application/json";
+  #assert rto_reason(200)=="OK" && rto_reason(400)=="Bad Request" && rto_reason(404)=="Not Found" && rto_reason(405)=="Method Not Allowed" && rto_reason(503)=="Service Unavailable" && rto_reason(500)=="Fixture";
+  #assert rto_sequence(1,4)==0 && rto_sequence(2,4)==1 && rto_sequence(4,4)==3 && rto_sequence(5,4)==3 && rto_sequence(1,1)==0;
+  #assert rto_sequence(0,4)== -1 && rto_sequence(1,0)== -1 && rto_sequence(257,4)== -1 && rto_sequence(1,257)== -1 && rto_sequence(256,256)==255;
+}
+#test "fixture source controls replace exactly one site and refuse before partial output" {
+  out:[128]u8;#assert rto_replace("abc needle xyz","needle","NEW",out[..])==11 && cast(string)out[0..<11]=="abc NEW xyz";
+  #assert rto_replace("needle","needle","",out[..])==0 && rto_replace("x","x","y",out[0..<1])==1 && out[0]=='y';
+  #assert rto_replace("none","needle","NEW",out[..])== -1 && rto_replace("needle needle","needle","x",out[..])== -1 && rto_replace("aaa","aa","x",out[..])== -1;
+  #assert rto_replace("x","","y",out[..])== -1 && rto_replace("x","x","long",out[0..<3])== -1;
+  page:="<script data-app=\"villa\" data-render=\"old\"></script>";
+  n:=rto_page(page,"/test.wasm","/package/render.json",out[..]);
+  #assert n>0 && cast(string)out[0..<n]=="<script data-app=\"villa\" data-wasm=\"/test.wasm\" data-render=\"/package/render.json\"></script>";
+  #assert rto_page("<script>","/test.wasm","/package/render.json",out[..])== -1;
+  #assert rto_page("data-app=\"\" data-render=\"\"","x","y",out[..])>0 && cast(string)out[0..<41]=="data-app=\"\" data-wasm=\"x\" data-render=\"y\"";
+  #assert rto_page("data-render=\"\" data-app=\"\"","x","y",out[..])>0;
+  #assert rto_page("data-app=\"x\"","x","y",out[..])== -1 && rto_page("data-render=\"x\"","x","y",out[..])== -1;
+  #assert rto_page("data-app=\"x\" data-render=\"","x","y",out[..])== -1;
+  #assert rto_page("data-render=\"x\" data-app=\"","x","y",out[..])== -1;
+  long:[65536]u8;for i:0..<long.count {long[i]='x';}
+  #assert rto_page(page,cast(string)long[0..<4096],"y",out[..])== -1 && rto_page(page,"x",cast(string)long[0..<4096],out[..])== -1;
+  for c,i:page {long[i]=c;}#assert rto_page(cast(string)long[..],"x","y",out[..])== -1;
+}
+#test "fixture lexical and HTTP byte boundaries include zero lengths tabs full headers and malformed lines" {
+  #assert rto_ci("AZaz09","azaz09") && rto_ci("","") && !rto_ci("a","b") && !rto_ci("a","");
+  #assert rto_trim("")=="" && rto_trim(" \t ")=="" && rto_trim("\tx \t")=="x" && rto_trim("x")=="x";
+  #assert rto_decimal("0")==0 && rto_decimal("9")==9 && rto_decimal("67108864")==67108864 && rto_decimal("67108865")== -1 && rto_decimal("")== -1 && rto_decimal("/")== -1 && rto_decimal(":")== -1;
+  for v:0..<256 {c:=cast(u8)v;#assert rto_lower(c)==(ifx v>=65 && v<=90 then cast(u8)(v+32) else c) && rto_header_byte(c)==(v==9 || (v>=32 && v<127));}
+  z:=rto_head("GET / HTTP/1.0\r\nContent-Length:0\r\n\r\n");#assert z.complete && z.valid && z.length==0;
+  #assert rto_head("POST / HTTP/1.1\r\ncontent-length:\t0\t\r\n\r\n").valid;
+  empty:=rto_head("\r\n\r\n");#assert empty.complete && !empty.valid;
+  for bad:[10]string.["GET / HTTP/1.1 extra\r\n\r\n", " GET / HTTP/1.1\r\n\r\n", "GET  / HTTP/1.1\r\n\r\n", "GET / HTTP/1.1 \r\n\r\n", "GET /\r\n\r\n", "POST / HTTP/1.1\r\n\r\n", "GET / HTTP/1.1\r\n:x\r\n\r\n", "GET / HTTP/1.1\r\nContent-Length:\r\n\r\n", "GET / HTTP/1.1\r\nContent-Length:0\r\nContent-Length:0\r\n\r\n", "GET / HTTP/1.1\rX: y\r\n\r\n"] {h:=rto_head(bad);#assert h.complete && !h.valid;}
+  huge:[16385]u8;prefix:="GET / HTTP/1.1\r\nX:";for c,i:prefix {huge[i]=c;}for i:prefix.count..<huge.count {huge[i]='a';}
+  huge[16380]=13;huge[16381]=10;huge[16382]=13;huge[16383]=10;#assert rto_head(cast(string)huge[0..<16384]).valid;
+  huge[16380]='a';huge[16381]=13;huge[16382]=10;huge[16383]=13;huge[16384]=10;#assert !rto_head(cast(string)huge[..]).valid;
+}
+#test "refused fixture POST bodies are completely framed without overflow or surplus bytes" {
+  #assert rto_body_span(0,0,0) && rto_body_span(0,1,1) && rto_body_span(2,3,5) && rto_body_span(5,0,5) && rto_body_span(67108864,0,67108864);
+  #assert !rto_body_span(-1,0,0) && !rto_body_span(0,-1,0) && !rto_body_span(0,0,-1) && !rto_body_span(0,0,67108865);
+  #assert !rto_body_span(6,0,5) && !rto_body_span(2,4,5) && !rto_body_span(0,1,0) && !rto_body_span(9223372036854775807,1,67108864);
+}
+#test "a fixture origin refuses every stale readiness port or ledger before spawning" {
+  for mask:0..<16 {#assert rto_fresh((mask&1)!=0,(mask&2)!=0,(mask&4)!=0,(mask&8)!=0)==(mask==0);}
+}
+#test "fixture HTTP headers are complete bounded requests with one decimal length and no chunk framing" {
+  h:=rto_head("GET /x?probe HTTP/1.1\r\nHost: x\r\n\r\n");#assert h.complete && h.valid && h.method=="GET" && h.path=="/x" && h.length==0;
+  p:=rto_head("POST /capture/layers.bin HTTP/1.1\r\nContent-Length: 12\r\n\r\nabc");#assert p.complete && p.valid && p.method=="POST" && p.length==12 && p.body_from==57;
+  #assert !rto_head("GET / HTTP/1.1\r\n").complete;
+  for bad:[8]string.["GET / HTTP/2\r\n\r\n", "BAD / HTTP/1.1\r\n\r\n", "GET /../x HTTP/1.1\r\n\r\n", "GET / HTTP/1.1\r\nContent-Length: -1\r\n\r\n", "POST /x HTTP/1.1\r\nContent-Length: 1\r\ncontent-length: 1\r\n\r\n", "POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n", "POST /x HTTP/1.1\r\nContent-Length: 67108865\r\n\r\n", "GET / HTTP/1.1\r\nmalformed\r\n\r\n"] {r:=rto_head(bad);#assert r.complete && !r.valid;}
+}

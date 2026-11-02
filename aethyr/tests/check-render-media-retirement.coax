@@ -1,0 +1,3 @@
+#import "Basic";
+#load "render-lifecycle-tools.coax";
+tool_main :: ()->int #export_c {return rl_main(true,"aethyr/tests/check-render-media-retirement.coax");}

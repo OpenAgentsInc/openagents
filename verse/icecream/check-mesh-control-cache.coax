@@ -1,0 +1,50 @@
+// Actual cache corruption refusals. Preserve/restore the owned cache manifest;
+// hash and nanosecond-mtime fences prove no producer artifact was rewritten.
+// IMAGE WORKDIR QUALIFICATION_DIR SOURCE_ROOT PRODUCER_COMPILER OUTDIR
+#import "Basic";
+#load "../../aethyr/render/tests/qualification-files.coax";
+mbcc_write :: (d:Jv,node:int,target:int,replacement:string,o:[]Jo) {
+  if node==target {jo_raw(o,replacement);return;}
+  kind:=jv_kind(d,node);
+  if kind==JV_OBJECT || kind==JV_ARRAY {
+    if kind==JV_OBJECT {jo_obj(o);}else {jo_arr(o);}child:=d.nodes[node].first;
+    while child!=-1 {if kind==JV_OBJECT {jo_key(o,jv_key(d,child));}mbcc_write(d,child,target,replacement,o);child=d.nodes[child].next;}jo_end(o);
+  }else {jv_write(d,node,o);}
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=6 {return 2;}
+  image:=args_at(a[..],0);work:=args_at(a[..],1);qdir:=args_at(a[..],2);root:=args_at(a[..],3);compiler:=args_at(a[..],4);directory:=args_at(a[..],5);
+  if !fs_mkdir(directory) {return 2;}
+  manifest_buf:[4096]u8;manifest:=fs_join(work,"controls.json",manifest_buf[..]);baseline:[1048576]u8;nodes:[16384]JvNode;doc:[1]Jv;
+  if !rtq_json_file(manifest,baseline[..],nodes[..],doc[..]) || jv_raw(doc[0],jv_get(doc[0],0,"status"))!="pass" {return 2;}
+  length:=fs_size(manifest);path_buf:[4096]u8;if !fs_write(fs_join(directory,"baseline.json",path_buf[..]),cast(string)baseline[0..<length]) {return 2;}
+  inputs:[1]RtqInputs;times:[512]int;rows:=jv_get(doc[0],0,"controls");if jv_len(doc[0],rows)!=13 {return 2;}
+  for index:0..<13 {
+    row:=jv_at(doc[0],rows,index);name:=jv_raw(doc[0],jv_get(doc[0],row,"name"));dir_buf:[4096]u8;dir:=fs_join(work,name,dir_buf[..]);
+    for file:[5]string.["verse/icecream/mesh.coax","IceCream.c","IceCream.h","execution.log","control"] {
+      if file=="control" && jv_kind(doc[0],jv_get(doc[0],row,"executable_sha256"))==JV_NULL {continue;}
+      artifact_buf:[4096]u8;artifact:=fs_join(dir,file,artifact_buf[..]);if !rtq_input_add(inputs[..],artifact) {return 2;}
+      times[inputs[0].count-1]=fs_mtime_ns(artifact);
+    }
+  }
+  targets:=[10]string.["controls[0].generated_c_sha256","controls[0].executable_sha256","controls[0].verifier","controls[0].commands[2].args[0]","controls[0].commands[0].args[0]","controls[12].commands[1].args[5]","controls[12].verifier","controls[0].commands","compiler_sha256","qualified_receipt_sha256"];
+  deadline:=proc_now_ms()+810000;
+  for control:0..<targets.count {
+    target:=jv_path(doc[0],0,targets[control]);if target<0 {return 2;}
+    mutated:[1048576]u8;o:[1]Jo;jo_start(o[..],mutated[..]);mbcc_write(doc[0],0,target,ifx control==7 then "[]" else "\"wrong\"",o[..]);
+    label:[128]u8;lo:[1]Jo;jo_start(lo[..],label[..]);jo_put(lo[..],"control-");jo_int(lo[..],control);dir_buf:[4096]u8;dir:=fs_join(directory,jo_text(lo[..]),dir_buf[..]);
+    if !fs_mkdir(dir) || o[0].bad || !fs_write(fs_join(dir,"poisoned.json",path_buf[..]),jo_text(o[..])) || !fs_write(manifest,jo_text(o[..])) {return 2;}
+    command:=[9]string.[image,"--qualification-dir",qdir,"--work-dir",work,"--source-root",root,"--coax",compiler];env:[]string;stdout:[1048576]u8;stderr:[1048576]u8;
+    bound:=proc_now_ms()+140000;r:=rtq_run(command[..],env,ifx bound<deadline then bound else deadline,stdout[..],stderr[..]);
+    recorded:=rtq_record_run(dir,"controller",command[..],r,cast(string)stdout[0..<r.out_n],cast(string)stderr[0..<r.err_n]);
+    failed_record:[1048576]u8;failed_size:=fs_size(manifest);if failed_size>=0 && failed_size<=failed_record.count && fs_read(manifest,failed_record[..])==failed_size {
+      recorded=recorded && fs_write(fs_join(dir,"result.json",path_buf[..]),cast(string)failed_record[0..<failed_size]);
+    }
+    restored:=fs_write(manifest,cast(string)baseline[0..<length]);unchanged:=rtq_inputs_match(inputs[..]);
+    for i:0..<inputs[0].count {row:=inputs[0].rows[i];if fs_mtime_ns(cast(string)row.path[0..<row.count])!=times[i] {unchanged=false;}}
+    expected:=ifx control>=8 then 2 else 1;
+    print("mesh cache poison%: status%, expected%, producer bytes/mtimes unchanged%\n",control,r.status,expected,unchanged);
+    if !recorded || !restored || !unchanged || r.started!=0 || r.status!=expected || r.timed_out || r.cut {return 1;}
+  }
+  return 0;
+}

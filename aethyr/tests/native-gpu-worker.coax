@@ -1,0 +1,108 @@
+// Coax owns fixture uploads, pass descriptors, feature admission and verdicts.
+// The foreign calls only move typed values through the Vulkan C SDK.
+#load "native-gpu-policy.coax";
+#load "../render/tests/qualification-files.coax";
+ngfx_open :: ()->int #foreign;
+ngfx_info :: (field:int)->int #foreign;
+ngfx_name :: (index:int)->int #foreign;
+ngfx_features :: (version:int,derivatives:int,control:int,int64_required:int,helper:int,int64_enabled:int)->int #foreign;
+ngfx_view :: (vec4s:int,physical:int,offset:int)->int #foreign;
+ngfx_view_field :: (field:int)->int #foreign;
+ngfx_blob :: (bytes:int)->int #foreign;
+ngfx_blob_put :: (blob:int,offset:int,byte:int)->int #foreign;
+ngfx_blob_word :: (blob:int,index:int)->int #foreign;
+ngfx_buffer :: (bytes:int)->int #foreign;
+ngfx_buffer_word :: (buffer:int,index:int,word:int)->int #foreign;
+ngfx_image :: (w:int,h:int,layers:int,array:int,format:int,use:int)->int #foreign;
+ngfx_upload :: (image:int,blob:int)->int #foreign;
+ngfx_sampler :: (filter:int,repeat:int,compare:int,op:int,mip:int)->int #foreign;
+ngfx_begin :: (words_handle:int)->int #foreign;
+ngfx_binding :: (slot:int,kind:int,resource:int,offset:int,range:int)->int #foreign;
+ngfx_target :: (slot:int,image:int)->int #foreign;
+ngfx_attribute :: (slot:int,location:int,binding:int,format:int,offset:int)->int #foreign;
+ngfx_clear :: (lane:int,word:int)->int #foreign;
+ngfx_draw :: (index:int,word:int)->int #foreign;
+ngfx_field :: (field:int,value:int)->int #foreign;
+ngfx_pipe_open :: ()->int #foreign;
+ngfx_submit :: ()->int #foreign;
+ngfx_pipe_close :: ()->int #foreign;
+ngfx_read :: (image:int,bytes:int)->int #foreign;
+ngfx_close :: ()->int #foreign;
+
+nw_shader :: (path:string)->int {
+  bytes:[1048576]u8;n:=fs_size(path);if n<20 || n>bytes.count || n%4!=0 || fs_read_at(path,0,bytes[0..<n])!=n {return -1;}
+  if bytes[0]!=3 || bytes[1]!=2 || bytes[2]!=35 || bytes[3]!=7 {return -1;}
+  blob:=ngfx_blob(n);if blob<0 {return -1;}for i:0..<n {if ngfx_blob_put(blob,i,cast(int)bytes[i])!=0 {return -1;}}return blob;
+}
+nw_read :: (o:[]NVObservations,row:int,image:int,lanes:int)->bool {
+  blob:=ngfx_read(image,lanes*4);if blob<0 {return false;}
+  o[0].rows[row].count=lanes;for k:0..<lanes {word:=ngfx_blob_word(blob,k);if word<0 {return false;}o[0].rows[row].words[k]=cast(u32)word;}return true;
+}
+nw_clear :: ()->bool {
+  values:=[4]f32.[0.125,0.25,0.5,0.75];for k:0..<4 {if ngfx_clear(k,cast(int)f32_bits(values[k]))!=0 {return false;}}return true;
+}
+nw_sampling :: (shaders:[]int,o:[]NVObservations)->bool {
+  images:[2]int;
+  for layer:0..<2 {
+    words:=32*(layer+1);blob:=ngfx_blob(words*2);if blob<0 {return false;}
+    for i:0..<words {word:=nv_half_word(i);if ngfx_blob_put(blob,i*2,cast(int)(word&255))!=0 || ngfx_blob_put(blob,i*2+1,cast(int)(word>>8))!=0 {return false;}}
+    images[layer]=ngfx_image(8,1,layer+1,layer,1,1);if images[layer]<0 || ngfx_upload(images[layer],blob)!=0 {return false;}
+  }
+  sampler:=ngfx_sampler(1,1,0,7,1);if sampler<0 {return false;}o[0].count=4;
+  for row:0..<4 {
+    target:=ngfx_image(2,2,1,0,2,2);if target<0 || ngfx_begin(shaders[row])!=0 {return false;}
+    if ngfx_binding(0,2,images[row/2],0,0)!=0 || ngfx_binding(1,3,sampler,0,0)!=0 || ngfx_field(0,2)!=0 || ngfx_field(1,3)!=0 || ngfx_target(0,target)!=0 || ngfx_field(2,1)!=0 || !nw_clear() {return false;}
+    if ngfx_pipe_open()!=0 || ngfx_submit()!=0 || !nw_read(o,row,target,16) || ngfx_pipe_close()!=0 {return false;}
+  }return true;
+}
+nw_helper :: (shaders:[]int,o:[]NVObservations,views:[]int)->bool {
+  vb:=ngfx_buffer(144);ub:=ngfx_buffer(16);if vb<0 || ub<0 {return false;}
+  for vertex:0..<6 {for lane:0..<6 {if ngfx_buffer_word(vb,vertex*6+lane,cast(int)nv_attribute_word(vertex,lane))!=0 {return false;}}}
+  if ngfx_buffer_word(ub,0,cast(int)f32_bits(1.0))!=0 {return false;}
+  colour:=ngfx_image(2,2,1,0,2,2);aux:=ngfx_image(2,2,1,0,2,2);depth:=ngfx_image(2,2,1,0,3,2);
+  if colour<0 || aux<0 || depth<0 || ngfx_begin(shaders[0])!=0 || ngfx_binding(0,1,ub,0,4)!=0 || ngfx_field(0,1)!=0 {return false;}
+  if ngfx_field(6,vb)!=0 || ngfx_field(7,24)!=0 || ngfx_field(8,3)!=0 {return false;}
+  if ngfx_attribute(0,0,0,2,0)!=0 || ngfx_attribute(1,1,0,4,16)!=0 || ngfx_attribute(2,2,0,5,20)!=0 {return false;}
+  for i:0..<4 {if ngfx_draw(i,cast(int)nv_draw_word(i))!=0 {return false;}}
+  if ngfx_field(9,1)!=0 || ngfx_target(0,colour)!=0 || ngfx_target(1,aux)!=0 || ngfx_field(2,2)!=0 || ngfx_field(3,depth)!=0 || ngfx_field(4,1)!=0 || ngfx_field(5,1)!=0 || !nw_clear() {return false;}
+  o[0].count=7;
+  if ngfx_pipe_open()!=0 || ngfx_submit()!=0 || !nw_read(o,0,colour,16) || !nw_read(o,1,aux,16) || !nw_read(o,2,depth,4) || ngfx_pipe_close()!=0 {return false;}
+  physical:=ngfx_buffer(9200);if physical<0 {return false;}
+  for i:0..<3 {if ngfx_buffer_word(physical,nv_written_index(i),cast(int)nv_written_word(i))!=0 {return false;}}
+  for view:0..<4 {
+    status:=ngfx_view(nv_view_vec4s(view),9200,nv_view_offset(view));
+    for field:0..<4 {views[view*4+field]=ngfx_view_field(field);}
+    bytes:=views[view*4+2];if status!=1 || bytes<=0 {return false;}
+    target:=ngfx_image(2,2,1,0,2,2);
+    if target<0 || ngfx_begin(shaders[1])!=0 || ngfx_binding(0,1,physical,views[view*4+1],ifx view==3 then 0 else bytes)!=0 {return false;}
+    if ngfx_field(0,1)!=0 || ngfx_field(1,3)!=0 || ngfx_target(0,target)!=0 || ngfx_field(2,1)!=0 {return false;}
+    if ngfx_pipe_open()!=0 || ngfx_submit()!=0 || !nw_read(o,view+3,target,16) || ngfx_pipe_close()!=0 {return false;}
+  }return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}profile:=nv_profile(args_at(a[..],0));variant:=nv_variant(args_at(a[..],1));
+  count:=ifx profile==0 then 4 else 2;output:=args_at(a[..],2);
+  if profile<0 || variant<0 || (profile==1 && variant!=0) || args_count(a[..])!=count+3 || output=="" {tool_errln("usage: native-gpu-worker sampling|helper normal|fault|array-fault OUTPUT.json SPV...");return 2;}
+  inputs:[1]RtqInputs;shaders:[4]int;for i:0..<count {path:=args_at(a[..],i+3);if !rtq_input_add(inputs[..],path) {return 2;}shaders[i]=nw_shader(path);if shaders[i]<0 {return 2;}}
+  if ngfx_open()!=0 {return 2;}helper:=ngfx_info(1);int64_enabled:=ngfx_info(2);
+  helper_refusal:=0;int64_refusal:=0;range:=0;
+  if profile==1 {helper_refusal=ngfx_features(3,2,2,0,0,int64_enabled);int64_refusal=ngfx_features(2,0,0,1,helper,0);range=ngfx_features(2,0,0,1,helper,int64_enabled);}
+  admitted:=ngfx_features(3,2,2,ifx profile==0 then 1 else 0,helper,int64_enabled);pipelines_before:=ngfx_info(8);
+  if !nv_feature_gate(profile,helper_refusal,int64_refusal,admitted,range,pipelines_before) || ngfx_info(9)!=1 {closed:=ngfx_close();tool_errln("feature or validation-layer admission refused before pipeline creation");return 2;}
+  observations:[1]NVObservations;views:[16]int;
+  ok:=ifx profile==0 then nw_sampling(shaders[0..<count],observations[..]) else nw_helper(shaders[0..<count],observations[..],views[..]);
+  if !ok {closed:=ngfx_close();tool_errln("native GPU effect refused");return 2;}
+  facts:[10]int;for i:0..<10 {facts[i]=ngfx_info(i);}name:[256]u8;n:=0;while n<name.count {byte:=ngfx_name(n);if byte<=0 {break;}name[n]=cast(u8)byte;n+=1;}
+  closed:=ngfx_close();if closed!=0 {return 2;}facts[6]=ngfx_info(6);facts[7]=ngfx_info(7);
+  r:=nv_evaluate(profile,observations[0]);errors:=facts[6];warnings:=facts[7];status:=ifx r.wrong!=0 || errors!=0 || warnings!=0 || !r.finite then 1 else 0;
+  bytes:[65536]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.native-gpu-worker.v1");jo_key(o[..],"profile");jo_str(o[..],args_at(a[..],0));jo_key(o[..],"variant");jo_str(o[..],args_at(a[..],1));
+  jo_key(o[..],"exit");jo_int(o[..],status);jo_key(o[..],"wrong");jo_int(o[..],r.wrong);jo_key(o[..],"finite");jo_bool(o[..],r.finite);
+  jo_key(o[..],"device");jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],cast(string)name[0..<n]);
+  keys:=[10]string.["helper_supported","helper_enabled","int64_enabled","vendor","device_id","driver","validation_errors","validation_warnings","pipelines","validating"];
+  for i:0..<10 {jo_key(o[..],keys[i]);jo_int(o[..],facts[i]);}jo_end(o[..]);
+  jo_key(o[..],"features");jo_arr(o[..]);for v:[5]int.[helper_refusal,int64_refusal,admitted,range,pipelines_before] {jo_int(o[..],v);}jo_end(o[..]);
+  jo_key(o[..],"views");jo_arr(o[..]);if profile==1 {for view:0..<4 {jo_arr(o[..]);for field:0..<4 {jo_int(o[..],views[view*4+field]);}jo_end(o[..]);}}jo_end(o[..]);
+  jo_key(o[..],"rows");jo_arr(o[..]);for row:0..<observations[0].count {jo_arr(o[..]);for k:0..<observations[0].rows[row].count {jo_int(o[..],cast(int)observations[0].rows[row].words[k]);}jo_end(o[..]);}jo_end(o[..]);
+  jo_key(o[..],"shader_inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);
+  if !r.valid || !nv_case_admit(profile,variant,status,r.wrong,r.finite,errors,warnings) || !rtq_inputs_match(inputs[..]) || o[0].bad || !fs_write(output,jo_text(o[..])) {return 2;}return status;
+}

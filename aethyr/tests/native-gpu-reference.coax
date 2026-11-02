@@ -1,0 +1,34 @@
+// Frozen legacy harness instrumentation. Only observation writes are inserted;
+// the original fixture, GPU calls, expected arithmetic and exit verdict remain.
+#load "../render/tests/qualification-files.coax";
+nr_replace :: (text:string,needle:string,replacement:string,out:[]u8)->string {
+  at:=rtq_find(text,needle,0);if at<0 || rtq_find(text,needle,at+needle.count)>=0 {return "";}
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<at]);jo_put(o[..],replacement);jo_put(o[..],text[at+needle.count..<text.count]);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+nr_observer :: (profile:int,text:string,out:[]u8)->string {
+  a:[65536]u8;b:[65536]u8;
+  entry:="int main(int argc,char **argv){";
+  opened:="int main(int argc,char **argv){\n  FILE *observer=fopen(getenv(\"AETHYR_REFERENCE_OUT\"),\"wb\");if(!observer)return 2;\n";
+  s:=nr_replace(text,entry,opened,a[..]);if s=="" {return "";}
+  device:="vkc_open(&v);fprintf(stderr,\"observer_device=%u,%u,%u,%d,%d,%d,%d\\n\",v.props.vendorID,v.props.deviceID,v.props.driverVersion,v.demote_helper_supported,v.demote_helper_enabled,v.shader_int64_enabled,v.validating);";
+  s=nr_replace(s,"vkc_open(&v);",device,b[..]);if s=="" {return "";}
+  copied:[65536]u8;copy_o:[1]Jo;jo_start(copy_o[..],copied[..]);jo_put(copy_o[..],s);s=jo_text(copy_o[..]);
+  if profile==0 {
+    needle:="vks_read(&v,&target,actual,sizeof actual);";
+    s=nr_replace(s,needle,"vks_read(&v,&target,actual,sizeof actual);if(fwrite(actual,1,sizeof actual,observer)!=sizeof actual)return 2;",b[..]);
+  }else {
+    needle:="vks_read(&v,&depth,z,sizeof z);";
+    s=nr_replace(s,needle,"vks_read(&v,&depth,z,sizeof z);if(fwrite(pixels,1,sizeof pixels,observer)!=sizeof pixels||fwrite(others,1,sizeof others,observer)!=sizeof others||fwrite(z,1,sizeof z,observer)!=sizeof z)return 2;",b[..]);
+    if s=="" {return "";}
+    s=nr_replace(s,"vks_read(&v,&target,pixels,sizeof pixels);","vks_read(&v,&target,pixels,sizeof pixels);if(fwrite(pixels,1,sizeof pixels,observer)!=sizeof pixels)return 2;",a[..]);
+    if s=="" {return "";}
+    s=nr_replace(s,"if(!view.bytes)","fprintf(stderr,\"observer_view=%u,%llu,%llu,%llu\\n\",(unsigned)view.status,(unsigned long long)view.offset,(unsigned long long)view.bytes,(unsigned long long)view.elements);if(!view.bytes)",b[..]);
+  }
+  if s=="" {return "";}
+  // No GPU operation or original comparison changes. Flush failure is a
+  // transport failure, never a successful numerical observation.
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"/* Firm reason: 3 (frozen legacy reference with raw readback instrumentation). */\n");
+  closed:[65536]u8;needle:=ifx profile==0 then "printf(\"eight taps" else "printf(\"mixed helper";
+  insertion:[256]u8;w:[1]Jo;jo_start(w[..],insertion[..]);jo_put(w[..],"if(fclose(observer)!=0)return 2;");jo_put(w[..],needle);
+  s=nr_replace(s,needle,jo_text(w[..]),closed[..]);if s=="" {return "";}jo_put(o[..],s);return ifx o[0].bad then "" else jo_text(o[..]);
+}

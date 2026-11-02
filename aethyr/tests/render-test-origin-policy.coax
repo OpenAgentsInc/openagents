@@ -1,0 +1,72 @@
+// Literal fixture route, byte mutation and bounded HTTP framing decisions.
+// No product admission or host behavior is implemented here.
+#load "../render/tests/tooling-policy.coax";
+#authority;
+#load "render-test-origin-checks.coax";
+RtoHead :: struct {complete:bool;valid:bool;method:string;path:string;body_from:int;length:int;}
+rto_component :: (text:string)->bool {
+  if text.count==0 || text=="." || text==".." {return false;}
+  for c:text {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='-' || c=='_' || c=='.') {return false;}}return true;
+}
+rto_path :: (target:string)->string {
+  if target.count<1 || target[0]!='/' {return "";}
+  end:=target.count;for c,i:target {if c=='#' {return "";}if c=='?' && end==target.count {end=i;}}
+  path:=target[0..<end];if path=="/" {return path;}
+  at:=1;cursor:=at;while cursor<path.count {if path[cursor]=='/' {if !rto_component(path[at..<cursor]) {return "";}at=cursor+1;}cursor+=1;}
+  return ifx rto_component(path[at..<cursor]) then path else "";
+}
+rto_mime :: (file:string)->string {
+  if file.count>=3 && file[file.count-3..<file.count]==".js" {return "text/javascript";}
+  if file.count>=5 && file[file.count-5..<file.count]==".wasm" {return "application/wasm";}
+  if file.count>=5 && file[file.count-5..<file.count]==".json" {return "application/json";}
+  return "application/octet-stream";
+}
+rto_reason :: (status:int)->string {
+  if status==200 {return "OK";}if status==400 {return "Bad Request";}if status==404 {return "Not Found";}if status==405 {return "Method Not Allowed";}if status==503 {return "Service Unavailable";}return "Fixture";
+}
+rto_sequence :: (count:int,entries:int)->int {
+  if count<1 || count>256 || entries<1 || entries>256 {return -1;}
+  index:=0;for i:1..<count {if index+1<entries {index+=1;}}return index;
+}
+rto_replace :: (source:string,needle:string,replacement:string,out:[]u8)->int {
+  if needle.count==0 {return -1;}at:=rtq_find(source,needle,0);
+  if at<0 || rtq_find(source,needle,at+1)!= -1 || source.count-needle.count+replacement.count>out.count {return -1;}
+  // The checked sum is exactly the three writes below; no partial output occurs.
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],source[0..<at]);jo_put(o[..],replacement);jo_put(o[..],source[at+needle.count..<source.count]);return o[0].n;
+}
+rto_page :: (source:string,wasm:string,package:string,out:[]u8)->int {
+  app:=rtq_find(source,"data-app=\"",0);render:=rtq_find(source,"data-render=\"",0);if app<0 || render<0 {return -1;}
+  app_end:=rtq_find(source,"\"",app+10);render_end:=rtq_find(source,"\"",render+13);if app_end== -1 || render_end== -1 {return -1;}
+  replacement:[4096]u8;o:[1]Jo;jo_start(o[..],replacement[..]);jo_put(o[..],source[app..<app_end+1]);jo_put(o[..]," data-wasm=\"");jo_put(o[..],wasm);jo_put(o[..],"\"");if o[0].bad {return -1;}
+  interim:[65536]u8;n:=rto_replace(source,source[app..<app_end+1],jo_text(o[..]),interim[..]);if n== -1 {return -1;}
+  jo_start(o[..],replacement[..]);jo_put(o[..],"data-render=\"");jo_put(o[..],package);jo_put(o[..],"\"");if o[0].bad {return -1;}
+  return rto_replace(cast(string)interim[0..<n],source[render..<render_end+1],jo_text(o[..]),out);
+}
+rto_lower :: (c:u8)->u8 {return ifx c>='A' && c<='Z' then c+32 else c;}
+rto_ci :: (a:string,b:string)->bool {if a.count!=b.count {return false;}for c,i:a {if rto_lower(c)!=b[i] {return false;}}return true;}
+rto_decimal :: (text:string)->int {
+  if text.count==0 {return -1;}n:=0;for c:text {if c<'0' || c>'9' {return -1;}n=n*10+cast(int)c-48;if n>67108864 {return -1;}}return n;
+}
+rto_trim :: (text:string)->string {
+  begin:=0;end:=text.count;while begin<end && (text[begin]==' ' || text[begin]==9) {begin+=1;}
+  while end>begin && (text[end-1]==' ' || text[end-1]==9) {end-=1;}return text[begin..<end];
+}
+rto_header_byte :: (c:u8)->bool {return c==9 || (c>=32 && c<127);}
+rto_head :: (text:string)->RtoHead {
+  h:RtoHead;end:=rtq_find(text,"\r\n\r\n",0);if end<0 {return h;}h.complete=true;h.body_from=end+4;if h.body_from>16384 {return h;}
+  first:=0;for c:text[0..<h.body_from] {if c==13 {break;}first+=1;}
+  if text[first+1]!=10 {return h;}line_text:=text[0..<first];h.method=rtq_word(line_text,0);target:=rtq_word(line_text,1);version:=rtq_word(line_text,2);
+  if h.method!="GET" && h.method!="POST" {return h;}h.path=rto_path(target);if h.path.count==0 || (version!="HTTP/1.1" && version!="HTTP/1.0") {return h;}
+  request_line:[16384]u8;w:[1]Jo;jo_start(w[..],request_line[..]);jo_put(w[..],h.method);jo_put(w[..]," ");jo_put(w[..],target);jo_put(w[..]," ");jo_put(w[..],version);if jo_text(w[..])!=line_text {return h;}
+  headers:=text[first+2..<h.body_from-2];at:=0;declared:=false;
+  while at<headers.count {
+    line:=rtq_find(headers,"\r\n",at);row:=headers[at..<line];key_bytes:[16384]u8;colon:=0;for c:row {if c==':' {break;}key_bytes[colon]=c;colon+=1;}if colon<1 || colon>=row.count {return h;}
+    key:=cast(string)key_bytes[0..<colon];raw_value:=row[colon+1..<row.count];if !rto_component(key) {return h;}for c:raw_value {if !rto_header_byte(c) {return h;}}value:=rto_trim(raw_value);
+    if rto_ci(key,"transfer-encoding") {return h;}
+    if rto_ci(key,"content-length") {if declared {return h;}declared=true;h.length=rto_decimal(value);if h.length<0 {return h;}}
+    at=line+2;
+  }
+  if h.method=="POST" && !declared {return h;}h.valid=true;return h;
+}
+rto_body_span :: (have:int,more:int,total:int)->bool {return have>=0 && more>=0 && total>=0 && total<=67108864 && have<=total && more<=total-have;}
+rto_fresh :: (port:bool,ready:bool,requests:bool,final:bool)->bool {return !port && !ready && !requests && !final;}

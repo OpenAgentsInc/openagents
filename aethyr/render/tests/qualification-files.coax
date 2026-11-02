@@ -59,9 +59,14 @@ rtq_inputs_match :: (inputs:[]RtqInputs)->bool {
 rtq_inputs_json :: (o:[]Jo,inputs:[]RtqInputs,root:string) {
   jo_obj(o);for i:0..<inputs[0].count {
     row:=inputs[0].rows[i];path:=cast(string)row.path[0..<row.count];label:=path;
-    if path.count>root.count && path[0..<root.count]==root && path[root.count]=='/' {label=path[root.count+1..<path.count];}
+    if root.count>0 && path.count>root.count && path[0..<root.count]==root && path[root.count]=='/' {label=path[root.count+1..<path.count];}
     jo_key(o,label);jo_str(o,cast(string)row.hash[..]);
   }jo_end(o);
+}
+#test "qualification inventories preserve absolute paths when no root is requested" {
+  inputs:[1]RtqInputs;path:="/private/tmp/input.bin";inputs[0].count=1;inputs[0].rows[0].count=path.count;for c,i:path {inputs[0].rows[0].path[i]=c;}for i:0..<64 {inputs[0].rows[0].hash[i]='a';}bytes:[512]u8;o:[1]Jo;jo_start(o[..],bytes[..]);rtq_inputs_json(o[..],inputs[..],"");nodes:[8]JvNode;doc:[1]Jv;#assert jv_parse(doc[..],jo_text(o[..]),nodes[..]);#assert jv_get(doc[0],0,path)>=0 && jv_get(doc[0],0,"private/tmp/input.bin")== -1;
+  jo_start(o[..],bytes[..]);rtq_inputs_json(o[..],inputs[..],"/private/tmp");#assert jv_parse(doc[..],jo_text(o[..]),nodes[..]);#assert jv_get(doc[0],0,"input.bin")>=0;
+  jo_start(o[..],bytes[..]);rtq_inputs_json(o[..],inputs[..],"/private/t");#assert jv_parse(doc[..],jo_text(o[..]),nodes[..]);#assert jv_get(doc[0],0,path)>=0;
 }
 rtq_deps :: (inputs:[]RtqInputs,compiler:string,source:string,deadline:int,directory:string,label:string)->bool {
   stdout:[1048576]u8;stderr:[65536]u8;argv:=[4]string.[compiler,"deps",source,"--library"];env:[]string;r:=rtq_run(argv[..],env,deadline,stdout[..],stderr[..]);

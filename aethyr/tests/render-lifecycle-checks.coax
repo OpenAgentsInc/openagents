@@ -1,0 +1,25 @@
+// The finite engine/media ownership contract, independent of SDK hooks.
+rl_engine_case :: (which:int)->string {
+  if which==0 {return "{\"mode\":\"before\",\"before\":{\"marker\":324508639,\"binding\":{\"coherent\":true}},\"held\":{\"phase\":\"held\"},\"first\":{\"value\":false},\"second\":{\"error\":\"fetch refused\"},\"after\":{\"marker\":324508639,\"binding\":{\"coherent\":true},\"nativeInstantiations\":0},\"validation\":{\"ok\":true}}";}
+  if which==1 {return "{\"mode\":\"during\",\"before\":{\"marker\":324508639,\"binding\":{\"coherent\":true}},\"held\":{\"phase\":\"held\",\"binding\":{\"stopped\":true}},\"first\":{\"value\":false},\"second\":{\"error\":\"fetch refused\"},\"after\":{\"marker\":null,\"binding\":{\"stopped\":true,\"coherent\":false}}}";}
+  return "{\"mode\":\"overlap\",\"before\":{\"marker\":324508639,\"binding\":{\"coherent\":true}},\"held\":{\"phase\":\"held\",\"binding\":{\"stopped\":true}},\"first\":{\"value\":false},\"second\":{\"value\":true},\"after\":{\"marker\":324508639,\"binding\":{\"coherent\":true},\"overlapping\":false,\"nativeInstantiations\":2},\"validation\":{\"ok\":true}}";
+}
+#test "engine replacement admits each declared physical boundary and refuses every lost ownership fact" {
+  #assert rl_mode("before")==0 && rl_mode("during")==1 && rl_mode("overlap")==2 && rl_mode("")== -1;
+  for mode:0..<3 {
+    nodes:[512]JvNode;d:[1]Jv;#assert jv_parse(d[..],rl_engine_case(mode),nodes[..]) && rl_engine(d[0],false) && !rl_engine(d[0],true);
+    for key:[4]string.["before.marker","before.binding.coherent","held.phase","first.value"] {at:=jv_path(d[0],0,key);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=JV_NULL;#assert !rl_engine(d[0],false);d[0].nodes[at].kind=old;}
+    after:=jv_path(d[0],0,"after.marker");if mode!=1 {old:=d[0].nodes[after].from;d[0].nodes[after].from+=1;#assert !rl_engine(d[0],false);d[0].nodes[after].from=old;}
+    if mode==1 {for key:[4]string.["held.binding.stopped","after.binding.stopped","after.binding.coherent","after.marker"] {at:=jv_path(d[0],0,key);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=JV_STRING;#assert !rl_engine(d[0],false);d[0].nodes[at].kind=old;}}
+    else {for key:[2]string.["after.binding.coherent","validation.ok"] {at:=jv_path(d[0],0,key);d[0].nodes[at].kind=JV_FALSE;#assert !rl_engine(d[0],false);d[0].nodes[at].kind=JV_TRUE;}}
+    if mode!=2 {at:=jv_path(d[0],0,"second.error");old:=d[0].nodes[at].to;d[0].nodes[at].to=d[0].nodes[at].from;#assert !rl_engine(d[0],false);d[0].nodes[at].to=d[0].nodes[at].from+1;#assert rl_engine(d[0],false);d[0].nodes[at].to=old;}
+    else {for key:[3]string.["held.binding.stopped","second.value","after.overlapping"] {at:=jv_path(d[0],0,key);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=JV_NULL;#assert !rl_engine(d[0],false);d[0].nodes[at].kind=old;}}
+    if mode!=1 {at:=jv_path(d[0],0,"after.nativeInstantiations");d[0].nodes[at].kind=JV_NULL;#assert !rl_engine(d[0],false);}
+    #assert jv_parse(d[..],rl_engine_case(mode),nodes[..]);at_mode:=jv_get(d[0],0,"mode");d[0].nodes[at_mode].to=d[0].nodes[at_mode].from;#assert !rl_engine(d[0],false);
+  }
+}
+#test "retired media completion closes the actual bitmap and creates no late GPU owner" {
+  text:="{\"waiting\":{\"present\":true,\"ready\":false,\"decoded\":0},\"replacement\":{\"retired\":true},\"stopped\":{\"stopped\":true,\"coherent\":false},\"after\":{\"decoded\":1,\"closed\":1,\"allocations\":0,\"textures\":0,\"ready\":false,\"hasTexture\":false,\"current\":0,\"binding\":{\"stopped\":true,\"coherent\":false}}}";
+  nodes:[512]JvNode;d:[1]Jv;#assert jv_parse(d[..],text,nodes[..]) && rl_media(d[0],false) && !rl_media(d[0],true);
+  for key:[15]string.["waiting.present","waiting.ready","waiting.decoded","replacement.retired","stopped.stopped","stopped.coherent","after.decoded","after.closed","after.allocations","after.textures","after.ready","after.hasTexture","after.current","after.binding.stopped","after.binding.coherent"] {at:=jv_path(d[0],0,key);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=JV_NULL;#assert !rl_media(d[0],false);d[0].nodes[at].kind=old;}
+}

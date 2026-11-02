@@ -1,0 +1,60 @@
+// Authored native GPU fixture/verdict policy; all actual Vulkan work is effects.
+#module "aethyr.test.native.gpu";
+#authority;
+#load "native-gpu-checks.coax";
+NVRow :: struct {count:int;words:[16]u32;}
+NVObservations :: struct {count:int;rows:[7]NVRow;}
+NVResult :: struct {valid:bool;finite:bool;wrong:int;}
+nv_profile :: (name:string)->int {if name=="sampling" {return 0;}if name=="helper" {return 1;}return -1;}
+nv_variant :: (name:string)->int {if name=="normal" {return 0;}if name=="fault" {return 1;}if name=="array-fault" {return 2;}return -1;}
+nv_rows :: (profile:int)->int {return ifx profile==0 then 4 else ifx profile==1 then 7 else 0;}
+nv_lanes :: (profile:int,row:int)->int {return ifx profile==1 && row==2 then 4 else 16;}
+nv_view_offset :: (view:int)->int {return ifx view==2 then 256 else 0;}
+nv_view_vec4s :: (view:int)->int {return ifx view==1 then 575 else 7;}
+nv_half_word :: (index:int)->u32 {
+  half:=[32]u32.[0,0,0x3400,0x3c00,0,0x3000,0x3400,0x3c00,0,0x3400,0x3400,0x3c00,0x3c00,0x3600,0x3400,0x3c00,0x3c00,0x3800,0x3400,0x3c00,0,0x3900,0x3400,0x3c00,0,0x3a00,0x3400,0x3c00,0,0x3b00,0x3400,0x3c00];
+  layer:=[4]u32.[0x3a00,0x3800,0x3000,0x3c00];return ifx index<32 then half[index] else layer[index%4];
+}
+nv_attribute_word :: (vertex:int,lane:int)->u32 {
+  positions:=[24]f32.[-1,1,0.5,1,1,1,0.5,1,-1,-1,0.5,1,1,1,0.5,1,1,-1,0.5,1,-1,-1,0.5,1];
+  values:=[6]f32.[0,4,8,4,12,8];tags:=[6]u32.[9,77,88,19,55,66];
+  return ifx lane<4 then f32_bits(positions[vertex*4+lane]) else ifx lane==4 then f32_bits(values[vertex]) else tags[vertex];
+}
+nv_draw_word :: (index:int)->u32 {draws:=[4]u32.[0,6,0x80000002,1];return draws[index];}
+nv_written_index :: (index:int)->int {indices:=[3]int.[27,91,2299];return indices[index];}
+nv_written_word :: (index:int)->u32 {values:=[3]f32.[7,17,575];return f32_bits(values[index]);}
+nv_expected :: (profile:int,row:int,lane:int)->f64 {
+  clear:=[4]f64.[0.125,0.25,0.5,0.75];k:=lane%4;pixel:=lane/4;
+  if profile==0 {
+    stripe:=[4]f64.[0.25,0.4375,0.25,1];array:=[4]f64.[0.75,0.5,0.125,1];
+    return ifx row==0 then stripe[k] else ifx row==2 then array[k] else clear[k];
+  }
+  if row>=3 {
+    counts:=[4]f64.[28,2300,28,2300];last:=[4]f64.[7,575,17,575];values:=[4]f64.[counts[row-3],last[row-3],cast(f64)(pixel%2)+0.5,1];return values[k];
+  }
+  if row==2 {return ifx lane%2==0 then 0.5 else 1;}
+  if pixel%2==1 {return clear[k];}
+  colour:=[4]f64.[10,4,cast(f64)(pixel*2+4),1];aux:=[4]f64.[ifx pixel==0 then 11 else 21,0.5,cast(f64)(pixel/2)+0.5,1];return ifx row==0 then colour[k] else aux[k];
+}
+nv_close :: (word:u32,expected:f64)->bool {return ((word>>23)&255)!=255 && abs(cast(f64)f32_from_bits(word)-expected)<=0.00001;}
+nv_evaluate :: (profile:int,o:NVObservations)->NVResult {
+  r:NVResult;rows:=nv_rows(profile);if rows==0 || o.count!=rows {return r;}
+  for row:0..<rows {if o.rows[row].count!=nv_lanes(profile,row) {return r;}}
+  r.valid=true;r.finite=true;
+  for row:0..<rows {for k:0..<o.rows[row].count {if ((o.rows[row].words[k]>>23)&255)==255 {r.finite=false;}}}
+  if profile==0 {for row:0..<4 {for k:0..<16 {if !nv_close(o.rows[row].words[k],nv_expected(0,row,k)) {r.wrong+=1;}}}return r;}
+  for pixel:0..<4 {
+    for k:0..<4 {lane:=pixel*4+k;if !nv_close(o.rows[0].words[lane],nv_expected(profile,0,lane)) || !nv_close(o.rows[1].words[lane],nv_expected(profile,1,lane)) {r.wrong+=1;}}
+    if !nv_close(o.rows[2].words[pixel],nv_expected(profile,2,pixel)) {r.wrong+=1;}
+  }
+  for row:3..<7 {for pixel:0..<4 {bad:=false;for k:0..<4 {lane:=pixel*4+k;if !nv_close(o.rows[row].words[lane],nv_expected(profile,row,lane)) {bad=true;}}if bad {r.wrong+=1;}}}return r;
+}
+nv_case_admit :: (profile:int,variant:int,status:int,wrong:int,finite:bool,errors:int,warnings:int)->bool {
+  if profile<0 || profile>1 || variant<0 || variant>2 || (profile==1 && variant!=0) {return false;}
+  expected:=ifx profile==0 && variant>0 then 16 else 0;exit_status:=ifx expected==0 then 0 else 1;
+  return finite && errors==0 && warnings==0 && wrong==expected && status==exit_status;
+}
+nv_feature_gate :: (profile:int,helper_refusal:int,int64_refusal:int,admitted:int,range:int,pipelines:int)->bool {
+  if profile<0 || profile>1 || admitted!=0 || pipelines!=0 {return false;}
+  if profile==0 {return true;}return helper_refusal!=0 && int64_refusal!=0 && range==0;
+}

@@ -1,0 +1,76 @@
+{
+  "schema":"aethyr.vertex-webgpu-port.v1",
+  "date":"2026-11-02",
+  "status":"qualified-two-driver-switch-on-exact-retained-inputs",
+  "scope":"Coax-owned clip-output and DeadGears VS diagnostic orchestration, fixtures/descriptors, typed preflight, original metadata, source/resource fences and verdicts. All raw u32 channels match frozen legacy executors before their maintained TypeScript files are deleted. No WGSL emission, producer rebuild, application image gate, Grid raster/journey repeat, numerical tolerance change or precision mask.",
+  "implementation":{
+    "entry":"COAX=/qualified/coax coax/web/tool.sh aethyr/tests/primitive-webgpu.coax clip-output|deadgears-vs PROBE.wgsl RESULT.json CASES.json",
+    "historical_VS_entry":"... deadgears-vs PROBE.wgsl RESULT.json CASES.json --source-root SNAPSHOT_ROOT",
+    "new_request":"aethyr/tests/primitive-vertex-request.coax",
+    "policy":"aethyr/tests/primitive-webgpu-policy.coax",
+    "loss_driver":"aethyr/tests/primitive-vertex-loss-checks.coax",
+    "parity_driver":"aethyr/tests/primitive-webgpu-parity.coax",
+    "browser_effects":"aethyr/tests/primitive-webgpu-effects.js is unchanged SHA685b34a8295468db843cd58fa170ee2a699daff4fc807ecccf19ec2076cdb49f; it only applies the Coax-supplied resource request and reads raw values/words.",
+    "shared_session":"aethyr/tests/webgpu-session.coax is unchanged SHA5da3261090d22be0d246410b1a9ddd9ae4ec78dc076c9a787fcb551a4a38fcac; Chrome remains headless/muted with bounded CDP/polls, private origin and cleanup.",
+    "host_link_fence":"The new GPU receipts also fence upstream coax/web/tool.sh and read-file-native.c. No host effect code was edited for this slice.",
+    "maintained_callers":"Outside historical records, only the two old usage strings named their maintained executors. The new loss harness names the explicitly retained reference executor under its supplied snapshot root, not a maintained TypeScript dependency."
+  },
+  "datasets":[
+    {"name":"DeadGears exact CPU clips","mode":"clip-output","jobs":8,"raw_u32_channels":32,"source_hash_joins":4,"fixture_sha256":"2183091f2d11e72e686308eac8693edb1d09d9118ce8d1c632862fa283752c52","WGSL_sha256":"5326338611b33f70bcc4c2d419a6bbe0573170c673ecfb510ac80f2bf4f5078c","legacy":"raw/clip-old-raw.json","current":"raw/clip-new-second.json","parity":"raw/clip-parity.json"},
+    {"name":"Existing IceCream exact CPU clips, read-only","mode":"clip-output","jobs":8,"raw_u32_channels":32,"source_hash_joins":4,"fixture_sha256":"949413ae5be1f685dbd05edbd434f4263a88912e9951b801c59bba416aa04447","WGSL_sha256":"5326338611b33f70bcc4c2d419a6bbe0573170c673ecfb510ac80f2bf4f5078c","legacy":"raw/icecream-clip-old-raw.json","current":"raw/icecream-clip-new.json","parity":"raw/icecream-clip-parity.json"},
+    {"name":"Retained DeadGears VS diagnostic","mode":"deadgears-vs","jobs":96,"raw_u32_channels":384,"source_hash_joins":10,"fixture_sha256":"8d1f78a5e719ac8eded51476e381160e95f1aeb29e2a4fcf6bf742e93bc4fb30","WGSL_sha256":"a18ea3f81941bf5cf47667cf91e62e0ea2aae30183f5ad77b661bb0339c4d4e0","legacy":"raw/vs-old-raw.json","current":"raw/vs-new.json","parity":"raw/vs-parity.json"}
+  ],
+  "totals":{"authored_jobs":112,"exact_raw_u32_channels":448,"matching_original_hash_joins":18},
+  "preserved_inputs":[
+    "Clip: every48-byte uniform is the exact authored three-by-four clip matrix; original rectangular dimensions, pixel origins, IDs, instances, clear(-1,-1,-1,-1), triangle count, entry pair, layouts and rgba32float target are preserved.",
+    "VS: the exact2736-byte u blob and384000-byte objects blob, layouts/minimum sizes, uniform/storage/probe buffers, both bind groups, original per-job uniforms, selectors/IDs, readback pixel and four finite lanes are preserved.",
+    "No expected numerical image rule is introduced: these diagnostic outputs retain their original all-finite checks. Driver parity is exact in all448raw u32 lanes, every original observation field, browser/device/format/extent metadata and each source/resource hash.",
+    "The independent IEEE754 oracle now recursively recodes clip/ID/selector metadata into exact binary64 words. It still performs numerical decoding only; Coax invokes it and owns the comparison."
+  ],
+  "VS_source_epoch":{
+    "expected_historical_deadgears_sha256":"1065de3da810b5bc8205a6026aff3cb7a743d83cccd9394551802fb9d4377da3",
+    "current_deadgears_sha256":"fc2c77948ba78e4ab380c8f398e5f235c86b97a1f3a2f74c95e1a2195a39ca38",
+    "difference":"Current source adds canonical capsule directions, corrected box winding and their checks. The frozen96-job WGSL/fixture predates those changes.",
+    "historical_source":"docs/verification/data/aethyr-ch11-2026-11-01/catalog-packages-308/inputs/apps/openagents-web/gpu/deadgears.coax",
+    "snapshot":"raw/historical-source; historical production source copied there, never restored over current production.",
+    "other_source_hashes":{"aethyr/render/noise.coax":"4a6cd03a97af0a546e110439145814c5ffc6c27dd90d1bc5a7cff7a705764346","verse/gpu/shader.coax":"9688942c90063b6a8f162d79f19332dde17dbb4d7cbeb8885ee13d899c0e1813","verse/gpu/wgsl.coax":"89fe38e7cade18f6804f4d785ab90866784be86128a26be26ab103348d3f47eb"},
+    "resource_hashes":{"u.bin":{"bytes":2736,"sha256":"60bab0ae95b768ac1fcee1b80c4dc6d03f077a111be6a991d5802ca2ec4cf575"},"s0.bin":{"bytes":384000,"sha256":"f837e11b94fe44e63e352fedcf0cc8f2a9d13888374a11f5426b198ae76f050c"}},
+    "current_default_refusal":{"legacy_exit":1,"Coax_exit":2,"before_Chrome":true,"output_receipts":false,"logs":["raw/current-source-refusal-old.stderr","raw/current-source-refusal-new.stderr"]},
+    "explicit_snapshot_behavior":"--source-root selects which actual files are checked against every unchanged declared source hash. It does not rewrite expected hashes. The Coax result explicitly records the canonical source_root and exact input hashes.",
+    "claim":"This proves the executor switch on the exact historical inputs. It does not qualify current production VS output, an application image or a newly built producer."
+  },
+  "checks":{
+    "authority_root_mutants":339,"killed":339,"survivors":0,"equivalence_waivers":0,
+    "mutation_log":"raw/policy-mutation-second.log",
+    "release_total":110,"release_passed":110,"release_log":"raw/policy-release.log",
+    "debug":"The final mutation baseline passed all checks.",
+    "fixture_bounds":"Typed complete clip/VS arrays, exact job counts, finite original metadata/uniforms, integer in-range pixels, positive fixture dimensions<=16384 and bounded typed uniform/storage byte lengths. Actual resource file length must equal its declared size before upload.",
+    "raw_reference":"Frozen old executors retain original arithmetic, descriptors, fixture values and verdicts. Their separate observer copies add only provenance headers and Uint32 reads of already-mapped memory. Originals are byte-retained under raw/original.",
+    "refusal_controls":{"directory":"raw/loss-controls","parity_exit1":["one raw-word bit changed","clip-vector metadata changed","VS selector metadata changed"],"native_exit2_before_Chrome":["resource hash changed","production source hash changed","declared object bytes differ by one","clip pixel origin exceeds width"],"legacy_hash_refusal_exit1_before_Chrome":["resource hash changed","production source hash changed"],"receipts_written":false},
+    "previous_four_families":"Their unchanged browser effects/transport and earlier exact-input evidence are reused. No earlier texture/ring/sampling GPU gate reran. The current110-check/339-mutant policy qualification includes all six modes.",
+    "history":["First mutation346/318/28 is retained. Targeted same-length object/array losses, poisoned final jobs, independent source/resource refusals and dynamic rectangular descriptors exposed missing checks. Redundant extent guards implied by mandatory integer-pixel checks were removed; explicit refused-value sentinels replace unreachable zero-bound comparisons. No mutant was waived.","One CLI local name shadowed an existing extra array; renamed source_root_args before the first successful new capture. Its failed compile is retained."]
+  },
+  "source_sha256":{
+    "aethyr/tests/primitive-webgpu.coax":"bd775f2821181c00681afb29da60b50f17dad975c7d66cb981c31e3e1eb5ab89",
+    "aethyr/tests/primitive-webgpu-policy.coax":"8b51df159bfe3e65f801407daa12653746f1683760d4f68123501825c6d9d559",
+    "aethyr/tests/primitive-webgpu-checks.coax":"65624d01042e988ad9ee1052e3e447f95def3b62da176850cf0094c7f532a638",
+    "aethyr/tests/primitive-vertex-checks.coax":"53822f13e49d39b9970e879dd2b7e654d77d7d05305a1b7cde4451a75b17df6b",
+    "aethyr/tests/primitive-vertex-request.coax":"63dd86c2c0405f1227f7a624abfe128b5ce23431160b3d5fe8d2646f056fa808",
+    "aethyr/tests/primitive-vertex-loss-checks.coax":"fe27a4cca71a32bba383c9d126a310b7b0e293ba48e495d354085518ac54f2df",
+    "aethyr/tests/primitive-webgpu-parity.coax":"99c96aac98250b23a470df95c3ca66a69878c878ecc3642e4007cf80d7c28cb6",
+    "aethyr/tests/raw_float_oracle.py":"20dcb80ab721b46f887111235036cdef87aeed6ff6043403521fa790054617dc",
+    "coax/web/tool.sh":"63e825645c86375a1445505c89468ae5b51148b9747e66df39dba9bbaa9887e1",
+    "coax/platform/read-file-native.c":"31e69b66eab2b28baaca50d3e168a209fc8c27e3640ac623c20b6562ca81cbdc"
+  },
+  "original_executor_sha256":{"check_clip_output_webgpu.ts":"be2bc4a7894f66765b8ccd7c33178867af7405f682303bb6e563c7aaf9cebd3a","check_deadgears_vs_webgpu.ts":"4cd215d352a95cb09d66bd7af1f769b5d6482b7d6486f7f55a11efd55d116adf"},
+  "compiler":{
+    "explicit_qualified_older":"/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "sha256":"1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "qualified_older_source_digest":"b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "matching_current_main":false,"scope":"exploratory exact-input diagnostic executor qualification",
+    "native_GPU_tool_sha256":"d178afb2641afe6365e43b6d8481d16261b9e2c3eb845022a7e04f626302506e",
+    "native_parity_tool_sha256":"ed562681ee6461868c9d05230ce535ac81c7e08408bf7e0d558a5482433c407a",
+    "native_loss_tool_sha256":"4c06bfe41fa357bc1ac3d884de80e0a80112e6a290aca7e3dfde3c54c5e22d50"
+  },
+  "retention":"docs/verification/data/aethyr-ch11-2026-11-02/vertex-webgpu-port/retention.json"
+}

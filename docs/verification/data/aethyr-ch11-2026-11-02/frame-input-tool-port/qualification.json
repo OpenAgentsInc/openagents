@@ -1,0 +1,41 @@
+{
+  "schema": "aethyr.render.frame-input-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "pass",
+  "release_qualification": false,
+  "scope": "Coax owns the native frame-input effects fixture, compilation, raw-byte process transport and every expected status/output check; existing frame-input.h and exact C probe are unchanged. No renderer, geometry or GPU gate.",
+  "checks_first": "All10 original small C transport test methods passed before the new Coax runner was written.",
+  "same_input_parity": {
+    "original_methods": 10,
+    "native_cases": 20,
+    "exact_probe_bytes": true,
+    "exact_configuration_expected_output_and_mode_fixtures": 20,
+    "includes_embedded_nul_media": true,
+    "default_source_mismatch_identity_files": 6,
+    "default_source_mismatch_stops_before_fixture_emission": true
+  },
+  "compiler": {
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "current_sources_match": false,
+    "explicit_exploration": true,
+    "qualifier_executable_sha256": "de445284ef942cfa80d60e4d48b4b2e6c0dd0cfa62cdbec938055d800a8210ea"
+  },
+  "original_sha256": "da88ad42150bbe06a89db1e34b11beb10b0f39d033b410dc0d51766eb250ffe9",
+  "source_sha256": {
+    "aethyr/render/tests/frame-input-cases.coax": "791edb1c21c410890ee7bcad09d660d6e8b162376123d1d02d0e099bd119fb90",
+    "aethyr/render/tests/check-frame-input.coax": "88a418ef071ec89c1ae200376ee79698856758c6a0ea3811cc155de598df7554",
+    "aethyr/render/tests/check-frame-input-tooling.coax": "202ced7bb23bcc23cc22144dd0d2a526eacfdd27195367e96e9efcec7043e7fe",
+    "aethyr/render/tests/frame-input.h": "d716cb91d7c2a3add14393ed4c7f2a2f0d4c53ad775ea35401a47d83e06d65e7"
+  },
+  "archive": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-02/frame-input-tool-port/artifacts-and-reference.tar.gz",
+    "sha256": "176ef3f358f0e0890a78e3578ffa326609946b3f2296ee29d6871c7e543dfcb3",
+    "bytes": 1240671,
+    "original_readback_verified": true
+  },
+  "limitations": [
+    "Only unchanged native C input effects and raw transport are qualified here.",
+    "The older observer compiler is explicitly exploratory and does not qualify current compiler sources or release.",
+    "No new authority policy was added; this is the unchanged20-case contract port, using existing qualified identity/process/hash helpers."
+  ]
+}

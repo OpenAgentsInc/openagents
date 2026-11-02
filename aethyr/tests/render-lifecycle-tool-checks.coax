@@ -1,0 +1,37 @@
+// Join stable lifecycle facts and every shared served-source hash between the
+// retained v1 and Coax v2 observers. Raw diagnostic arrays have different SDK
+// boundaries and are explicitly outside equality, rather than fabricated.
+#import "Basic";
+#load "../render/tests/qualification-files.coax";
+#test "lifecycle receipt families preserve versioned diagnostic identities" {
+  #assert rlt_family("aethyr.render.engine-generations.v1","aethyr.render.engine-generations.v2")==0;
+  #assert rlt_family("aethyr.render.media-retirement.v1","aethyr.render.media-retirement.v2")==1;
+  #assert rlt_family("aethyr.render.engine-generations.v1","aethyr.render.media-retirement.v2")== -1 && rlt_family("","")== -1;
+}
+rlt_family :: (old:string,current:string)->int {
+  if old=="aethyr.render.engine-generations.v1" && current=="aethyr.render.engine-generations.v2" {return 0;}
+  if old=="aethyr.render.media-retirement.v1" && current=="aethyr.render.media-retirement.v2" {return 1;}return -1;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: render-lifecycle-tool-checks LEGACY.json COAX.json LEGACY_SOURCE.ts OUT.json");return 2;}
+  old_bytes:[4194304]u8;new_bytes:[4194304]u8;old_nodes:[32768]JvNode;new_nodes:[32768]JvNode;old:[1]Jv;current:[1]Jv;
+  if !rtq_json_file(args_at(a[..],0),old_bytes[..],old_nodes[..],old[..]) || !rtq_json_file(args_at(a[..],1),new_bytes[..],new_nodes[..],current[..]) {return 2;}
+  family:=rlt_family(jv_raw(old[0],jv_get(old[0],0,"schema")),jv_raw(current[0],jv_get(current[0],0,"schema")));if family<0 {return 1;}
+  engine_keys:=[9]string.["mode","before","held","first","second","after","validation","browser","status"];media_keys:=[7]string.["fault","waiting","replacement","stopped","after","browser","status"];keys:=ifx family==0 then engine_keys[..] else media_keys[..];fields:=true;
+  for key:keys {left:=jv_get(old[0],0,key);right:=jv_get(current[0],0,key);if key=="validation" && left== -1 && right== -1 {continue;}if !rtq_equal(old[0],left,current[0],right) {tool_err("stable lifecycle field differs: ");tool_errln(key);fields=false;}}
+  for doc:[2]Jv.[old[0],current[0]] {changes:=jv_get(doc,0,"source_changes");if jv_kind(doc,changes)!=JV_ARRAY || jv_len(doc,changes)!=0 {fields=false;}}
+  if jv_kind(current[0],jv_get(current[0],0,"origin_finalized"))!=JV_TRUE || jv_kind(current[0],jv_get(current[0],0,"stable_reference_equal"))!=JV_TRUE || jv_kind(current[0],jv_get(current[0],0,"raw_CDP_events_available"))!=JV_FALSE || jv_kind(current[0],jv_get(current[0],0,"window_events"))!=JV_ARRAY {fields=false;}
+  cwd:[4096]u8;root:=fs_cwd(cwd[..]);old_map:=jv_get(old[0],0,"inputs");new_map:=jv_get(current[0],0,"inputs");if jv_kind(old[0],old_map)!=JV_OBJECT || jv_kind(current[0],new_map)!=JV_OBJECT {return 1;}
+  rows:[1048576]u8;o:[1]Jo;jo_start(o[..],rows[..]);jo_arr(o[..]);shared:=0;sources:=true;legacy_hash:[64]u8;if !rtq_hash_file(args_at(a[..],2),legacy_hash[..]) {return 1;}legacy_found:=false;child:=old[0].nodes[old_map].first;
+  while child!=-1 {
+    path:=jv_key(old[0],child);base:=fs_base(path);
+    if base=="check_render_engine_generations.ts" || base=="check_render_media_retirement.ts" {legacy_found=true;if jv_raw(old[0],child)!=cast(string)legacy_hash[..] {sources=false;}}
+    else {
+      absolute:[4096]u8;canonical:=fs_realpath(path,absolute[..]);key:=canonical;if canonical.count>root.count && canonical[0..<root.count]==root && canonical[root.count]=='/' {key=canonical[root.count+1..<canonical.count];}
+      found:=rtq_member(current[0],new_map,key);equal:=found>=0 && rtq_equal(old[0],child,current[0],found);if !equal {tool_err("served-source identity differs or missing: ");tool_errln(path);sources=false;}
+      jo_obj(o[..]);jo_key(o[..],"legacy_path");jo_str(o[..],path);jo_key(o[..],"current_key");jo_str(o[..],key);jo_key(o[..],"sha256");jv_write(old[0],child,o[..]);jo_key(o[..],"equal");jo_bool(o[..],equal);jo_end(o[..]);shared+=1;
+    }child=old[0].nodes[child].next;
+  }jo_end(o[..]);okay:=fields && sources && legacy_found && shared>0 && !o[0].bad;
+  output:[2097152]u8;w:[1]Jo;jo_start(w[..],output[..]);jo_obj(w[..]);jo_key(w[..],"schema");jo_str(w[..],"aethyr.render.lifecycle-port-parity.v1");jo_key(w[..],"status");jo_str(w[..],ifx okay then "passed" else "failed");jo_key(w[..],"stable_lifecycle_fields_equal");jo_bool(w[..],fields);jo_key(w[..],"shared_source_hashes_equal");jo_bool(w[..],sources);jo_key(w[..],"shared_sources");jo_int(w[..],shared);jo_key(w[..],"legacy_driver_sha256");jo_str(w[..],cast(string)legacy_hash[..]);jo_key(w[..],"source_rows");jo_raw(w[..],jo_text(o[..]));jo_key(w[..],"raw_diagnostic_schema_equal");jo_bool(w[..],false);jo_key(w[..],"scope");jo_str(w[..],"Every stable ownership/validation/browser/status field and every shared original served-source hash agree. v1 raw CDP events, v2 window events/CDP count, observer images, request ordering and Chrome background flags are distinct, not claimed equal.");jo_end(w[..]);
+  if w[0].bad || !fs_write(args_at(a[..],3),jo_text(w[..])) {return 1;}print("lifecycle parity: % stable fields; % shared sources; %\n",keys.count,shared,ifx okay then "passed" else "FAILED");return ifx okay then 0 else 1;
+}

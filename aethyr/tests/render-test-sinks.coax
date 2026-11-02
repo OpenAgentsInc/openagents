@@ -1,0 +1,90 @@
+// Declared loopback upload effects. Paths never come from the request URL.
+// Coax chooses bounded chunks, observes exact storage, and admits publication.
+#load "render-test-sink-policy.coax";
+RtoSink :: struct {url:[4096]u8;un:int;root:[4096]u8;rn:int;file:[4096]u8;fn:int;parent:[4096]u8;pn:int;cap:int;published:bool;bytes:int;hash:[64]u8;}
+RtoPosts :: struct {sinks:[32]RtoSink;n:int;attempts:int;published:int;clean:bool=true;ledger_complete:bool=true;}
+RtoPostResult :: struct {status:int;body_n:int;}
+RtoPostDrain :: struct {bytes:int;complete:bool;}
+RtoPostBody :: struct {received:int;written:bool;framed:bool;reason:string;}
+rps_drain :: (h:int,head:RtoHead,received:int)->RtoPostDrain {
+  r:=RtoPostDrain.{bytes=received-head.body_from};if !rto_body_span(0,r.bytes,head.length) {return r;}deadline:=proc_now_ms()+5000;
+  while r.bytes<head.length {if !rps_time(proc_now_ms(),deadline) {return r;}n:=cxsock_read(h,proc_left(deadline,proc_now_ms()));if n<1 {return r;}valid:=rto_body_span(r.bytes,n,head.length);r.bytes+=n;if !valid || !rps_time(proc_now_ms(),deadline) {return r;}}
+  extra:=cxsock_read(h,0);if extra>0 {r.bytes+=extra;return r;}r.complete=extra== -1 || extra== -2;return r;
+}
+rps_receive :: (h:int,total:int,initial:string,file:string,deadline:int)->RtoPostBody {
+  r:=RtoPostBody.{received=initial.count,reason="body-deadline"};if !rps_time(proc_now_ms(),deadline) {return r;}
+  r.reason="write";r.written=fs_write(file,"");r.framed=true;
+  if r.written {if !rps_time(proc_now_ms(),deadline) {r.framed=false;r.reason="body-deadline";}else {r.written=fs_append(file,initial);}}
+  chunk:[65536]u8;while r.written && r.framed && r.received<total {
+    if !rps_time(proc_now_ms(),deadline) {r.framed=false;r.reason="body-deadline";break;}
+    n:=cxsock_read(h,proc_left(deadline,proc_now_ms()));if n<1 {r.framed=false;r.reason="truncated-or-surplus";break;}valid:=rto_body_span(r.received,n,total);r.received+=n;
+    if !valid {r.framed=false;r.reason="truncated-or-surplus";break;}if !rps_time(proc_now_ms(),deadline) {r.framed=false;r.reason="body-deadline";break;}
+    for k:0..<n {chunk[k]=cast,trunc(u8)cxsock_byte(h,k);}r.written=fs_append(file,cast(string)chunk[0..<n]);
+  }
+  if r.written && r.framed && r.received==total {extra:=cxsock_read(h,0);if extra!= -1 && extra!= -2 {if extra>0 {r.received+=extra;}r.framed=false;r.reason="surplus-or-transport";}}
+  if !rps_time(proc_now_ms(),deadline) {r.framed=false;r.reason="body-deadline";}return r;
+}
+rps_sources :: (s:[]RtoState)->bool {
+  for k:0..<s[0].n {row:=s[0].files[k];hash:[64]u8;if !rtq_hash_file(cast(string)row.path[0..<row.n],hash[..]) || cast(string)hash[..]!=cast(string)row.hash[..] {return false;}}return !s[0].changed;
+}
+rps_overlap :: (s:[]RtoState,d:Jv,file:string,ledger:string,port_file:string)->bool {
+  canonical:[4096]u8;if rps_within(file,fs_realpath(ledger,canonical[..])) {return true;}
+  parent:[4096]u8;joined:[4096]u8;p:=fs_realpath(fs_dir(port_file),parent[..]);if p!="" && file==fs_join(p,fs_base(port_file),joined[..]) {return true;}
+  for k:0..<s[0].n {row:=s[0].files[k];if file==fs_realpath(cast(string)row.path[0..<row.n],canonical[..]) {return true;}}
+  routes:=jv_get(d,0,"routes");for k:0..<jv_len(d,routes) {row:=jv_at(d,routes,k);raw:[4096]u8;name:=rto_string(d,jv_get(d,row,"file"),raw[..]);if name!="" && file==fs_realpath(name,canonical[..]) {return true;}
+    directory:[4096]u8;name=rto_string(d,jv_get(d,row,"directory"),directory[..]);if name!="" && rps_within(file,fs_realpath(name,canonical[..])) {return true;}
+    sequence:=jv_get(d,row,"sequence");for at:0..<jv_len(d,sequence) {name=rto_string(d,jv_get(d,jv_at(d,sequence,at),"file"),raw[..]);if name!="" && file==fs_realpath(name,canonical[..]) {return true;}}
+  }return false;
+}
+rps_safe :: (sink:RtoSink,s:[]RtoState,d:Jv,ledger:string,port_file:string)->bool {
+  row:=sink;root:[4096]u8;parent:[4096]u8;canonical:[4096]u8;file:=cast(string)row.file[0..<row.fn];r:=cast(string)row.root[0..<row.rn];p:=cast(string)row.parent[0..<row.pn];
+  return fs_realpath(r,root[..])==r && fs_realpath(p,parent[..])==p && rps_target(r,p,file,fs_realpath(file,canonical[..]),fs_kind(file),rps_overlap(s,d,file,ledger,port_file));
+}
+rps_init :: (posts:[]RtoPosts,s:[]RtoState,d:Jv,ledger:string,port_file:string)->bool {
+  list:=jv_get(d,0,"post_sinks");if list<0 {return true;}if jv_kind(d,list)!=JV_ARRAY || !rps_count(jv_len(d,list)) {return false;}
+  for k:0..<jv_len(d,list) {row:=jv_at(d,list,k);sink:RtoSink;raw:[4096]u8;root:[4096]u8;target:[4096]u8;parent:[4096]u8;
+    sink.un=jv_str(d,jv_get(d,row,"url"),sink.url[..]);if sink.un<0 || !rps_route(cast(string)sink.url[0..<sink.un],cast(string)sink.url[0..<sink.un]) {return false;}
+    r:=rto_string(d,jv_get(d,row,"root"),raw[..]);canonical_root:=fs_realpath(r,root[..]);f:=rto_string(d,jv_get(d,row,"file"),target[..]);p:=fs_realpath(fs_dir(f),parent[..]);
+    if canonical_root=="" || fs_kind(canonical_root)!=FS_DIR || p=="" || fs_kind(p)!=FS_DIR || f.count<1 || f[0]!='/' || !rto_component(fs_base(f)) {return false;}
+    sink.rn=canonical_root.count;for c,i:canonical_root {sink.root[i]=c;}sink.pn=p.count;for c,i:p {sink.parent[i]=c;}resolved:=fs_join(p,fs_base(f),sink.file[..]);sink.fn=resolved.count;
+    cap_node:=jv_get(d,row,"max_bytes");if jv_kind(d,cap_node)!=JV_NUMBER {return false;}sink.cap=jv_int(d,cap_node,-1);if !rps_budget(0,sink.cap) || !rps_safe(sink,s,d,ledger,port_file) {return false;}
+    for at:0..<posts[0].n {old:=posts[0].sinks[at];if cast(string)old.url[0..<old.un]==cast(string)sink.url[0..<sink.un] || cast(string)old.file[0..<old.fn]==resolved {return false;}}
+    posts[0].sinks[k]=sink;posts[0].n+=1;
+  }
+  if posts[0].n>0 {hash:[64]u8;if !rtq_hash_file("/usr/bin/mktemp",hash[..]) || !rto_pin(s,"/usr/bin/mktemp",cast(string)hash[..]) || !rto_saved(ledger,"post-sinks.jsonl","") {return false;}}
+  return true;
+}
+rps_temp :: (parent:string,out:[]u8)->string {
+  pattern:[4096]u8;p:=fs_join(parent,".rto-post.XXXXXX",pattern[..]);stdout:[4096]u8;stderr:[4096]u8;env:[1]string;argv:=[3]string.["/usr/bin/mktemp","-d",p];r:=rtq_run_raw(argv[..],env[0..<0],5000,stdout[..],stderr[..]);
+  if !rtq_ok(r) || r.out_n<2 || stdout[r.out_n-1]!=10 {return "";}name:=cast(string)stdout[0..<r.out_n-1];canonical:=fs_realpath(name,out);if canonical!=name || fs_dir(canonical)!=parent || !rto_prefix(fs_base(canonical),".rto-post.") {return "";}return canonical;
+}
+rps_post :: (posts:[]RtoPosts,s:[]RtoState,d:Jv,ledger:string,port_file:string,h:int,head:RtoHead,request:string,out:[]u8)->RtoPostResult {
+  posts[0].attempts+=1;index:=-1;target:=rtq_word(request,1);for k:0..<posts[0].n {sink:=posts[0].sinks[k];if rps_route(cast(string)sink.url[0..<sink.un],target) {index=k;break;}}
+  status:=400;reason:="undeclared-route";received:=request.count-head.body_from;stored:=-1;published:=false;hash:[64]u8;hash_known:=false;file:="";temp:[4096]u8;body_path:[4096]u8;staging:="";staging_body:="";clean:=true;
+  if index<0 {drain:=rps_drain(h,head,request.count);received=drain.bytes;status=ifx drain.complete then 404 else 400;}
+  else {
+    sink:=posts[0].sinks[index];file=cast(string)sink.file[0..<sink.fn];reason="capacity-or-path";
+    if rps_budget(head.length,sink.cap) && rto_body_span(0,received,head.length) && rps_safe(sink,s,d,ledger,port_file) && rps_sources(s) {
+      deadline:=proc_now_ms()+30000;staging=rps_temp(cast(string)sink.parent[0..<sink.pn],temp[..]);staging_body=ifx staging=="" then "" else fs_join(staging,"body.pending",body_path[..]);body:=RtoPostBody.{received=received,reason="write"};if staging_body!="" {body=rps_receive(h,head.length,request[head.body_from..<request.count],staging_body,deadline);}received=body.received;written:=body.written;framed:=body.framed;reason=body.reason;
+      if written && framed && rps_time(proc_now_ms(),deadline) {stored=fs_size(staging_body);hash_known=rtq_hash_file(staging_body,hash[..]);}
+      safe:=rps_safe(sink,s,d,ledger,port_file) && rps_sources(s) && rps_time(proc_now_ms(),deadline);
+      if !rps_time(proc_now_ms(),deadline) {framed=false;reason="body-deadline";}else if written && framed && !safe {reason="source-or-path";}else if written && framed && (!hash_known || stored!=head.length) {reason="hash-or-storage";}
+      if rps_publish(received,head.length,stored,framed,written,hash_known,safe) {published=fs_rename(staging_body,file);reason=ifx published then "complete" else "rename";}
+      status=ifx published then 200 else ifx reason=="body-deadline" then 400 else ifx !written || reason=="rename" || reason=="hash-or-storage" then 503 else 400;
+      if published {sink.published=true;sink.bytes=received;sink.hash=hash;posts[0].sinks[index]=sink;posts[0].published+=1;}
+    }
+  }
+  if staging!="" {clean=fs_remove(staging);}posts[0].clean=posts[0].clean && clean;
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render-test-origin.post.v1");jo_key(o[..],"attempt");jo_int(o[..],posts[0].attempts);jo_key(o[..],"path");jo_str(o[..],target);jo_key(o[..],"file");jo_str(o[..],file);jo_key(o[..],"declared_bytes");jo_int(o[..],head.length);jo_key(o[..],"received_bytes");jo_int(o[..],received);jo_key(o[..],"stored_bytes");jo_int(o[..],stored);jo_key(o[..],"sha256");jo_str(o[..],ifx hash_known then cast(string)hash[..] else "");jo_key(o[..],"published");jo_bool(o[..],published);jo_key(o[..],"reason");jo_str(o[..],reason);jo_key(o[..],"status");jo_int(o[..],status);jo_key(o[..],"staging_removed");jo_bool(o[..],clean);jo_end(o[..]);
+  // A ledger failure cannot retroactively turn a complete publication into
+  // an HTTP refusal. The exact ACK remains truthful; final qualification
+  // fails because the ledger is incomplete. No multi-file transaction claim.
+  if o[0].bad {posts[0].ledger_complete=false;return RtoPostResult.{status=503};}
+  if !rto_append(ledger,"post-sinks.jsonl",jo_text(o[..])) {posts[0].ledger_complete=false;if !published {return RtoPostResult.{status=503,body_n=o[0].n};}}
+  return RtoPostResult.{status=status,body_n=o[0].n};
+}
+rps_final :: (posts:[]RtoPosts,o:[]Jo)->bool {
+  same:=true;jo_arr(o);for k:0..<posts[0].n {sink:=posts[0].sinks[k];if !sink.published {continue;}file:=cast(string)sink.file[0..<sink.fn];hash:[64]u8;unchanged:=fs_size(file)==sink.bytes && rtq_hash_file(file,hash[..]) && cast(string)hash[..]==cast(string)sink.hash[..];same=same && unchanged;
+    jo_obj(o);jo_key(o,"file");jo_str(o,file);jo_key(o,"bytes");jo_int(o,sink.bytes);jo_key(o,"sha256");jo_str(o,cast(string)sink.hash[..]);jo_key(o,"unchanged");jo_bool(o,unchanged);jo_end(o);
+  }jo_end(o);return same;
+}

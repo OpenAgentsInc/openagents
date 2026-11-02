@@ -1,0 +1,60 @@
+#load "grid-memory-policy.coax";
+#authority;
+#load "producer-capture-checks.coax";
+PcLayout :: struct {valid:bool;base:int;state:int;vertices:int;uniforms:int;need:int;pages:int;}
+PcStore :: struct {valid:bool;capacity:int;version_known:bool;version:string;last_update:int;last_positive:int;highwater:int;}
+PcPackEntry :: struct {valid:bool;kind:int;begin:int;bytes:int;}
+pc_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(cast(f64)(a-b)))/2;}
+pc_span :: (at:int,n:int,capacity:int)->bool {return at>=0 && n>=0 && at<=capacity && n<=capacity-at;}
+pc_count :: (n:int,capacity:int)->bool {return n>=0 && n<=capacity;}
+pc_physical :: (n:int)->int {
+  if n<0 || n>67108864 {return -1;}return (pc_max(n,16)+15)/16*16;
+}
+pc_scalars :: (heap:int,state:int,vertices:int,stride:int,uniforms:int,minimum:int,maximum:int)->bool {
+  return pc_count(heap,67108864) && pc_count(state,67108864) && pc_count(vertices,16777216) && stride>=1 && stride<=16777216 && pc_count(uniforms,16777216) && minimum>=0 && minimum<=maximum && maximum==1024;
+}
+pc_layout :: (heap:int,state:int,vertices:int,stride:int,uniforms:int,minimum:int,maximum:int)->PcLayout {
+  p:PcLayout;if !pc_scalars(heap,state,vertices,stride,uniforms,minimum,maximum) {return p;}
+  p.base=(pc_max(heap,pc_max(minimum,128)*65536)+65535)/65536*65536;
+  p.state=(pc_max(state,1024)+15)/16*16;p.vertices=p.base+p.state;
+  p.uniforms=p.vertices+vertices*stride*4;p.need=p.uniforms+uniforms*4+64;
+  p.pages=(p.need+65535)/65536;p.valid=p.pages<=maximum;return p;
+}
+pc_store_due :: (s:PcStore,known:bool,version:string)->bool {return !known || !s.version_known || s.version!=version;}
+pc_store_observe :: (prior:PcStore,bytes:int,known:bool,version:string)->PcStore {
+  s:=prior;s.valid=false;
+  if !pc_count(bytes,s.capacity) {return s;}
+  s.valid=true;s.last_update=bytes;
+  if bytes>0 {s.last_positive=bytes;s.highwater=pc_max(s.highwater,bytes);s.version_known=known;s.version=version;}
+  return s;
+}
+pc_u32 :: (bytes:[]u8,at:int)->int {
+  return cast(int)bytes[at]+(cast(int)bytes[at+1]<<8)+(cast(int)bytes[at+2]<<16)+(cast(int)bytes[at+3]<<24);
+}
+pc_pack_count :: (bytes:[]u8)->int {
+  if bytes.count<32 {return -1;}count:=pc_u32(bytes,4);table:=pc_u32(bytes,16);
+  if !pc_span(table,count*48,bytes.count) {return -1;}return count;
+}
+pc_pack_entry :: (bytes:[]u8,index:int)->PcPackEntry {
+  e:PcPackEntry;count:=pc_pack_count(bytes);if index<0 || index>=count {return e;}
+  at:=pc_u32(bytes,16)+index*48;e.kind=cast(int)bytes[at];e.begin=pc_u32(bytes,at+4);e.bytes=pc_u32(bytes,at+8);
+  e.valid=pc_span(e.begin,e.bytes,bytes.count);return e;
+}
+pc_controls :: (frames:int,every:int,width:int,height:int,scale:f64)->bool {
+  return frames>=1 && frames<=600 && every>=1 && width>=1 && width<=8192 && height>=1 && height<=8192 && scale>0.0 && scale<=4.0;
+}
+pc_import :: (module:string,name:string,kind:string)->int {
+  if kind=="memory" {return ifx module=="env" && name=="memory" then 0 else -1;}
+  if kind!="function" {return -1;}
+  if module=="env" {
+    if name=="coaxial_now_ms" {return 1;}if name=="coaxial_now_seconds" {return 2;}
+    if name=="coaxial_http" || name=="coaxial_http_bounded" || name=="coaxial_socket_open" {return 3;}
+    if name=="coaxial_http_cancel" || name=="coaxial_storage_cancel" {return 4;}
+    if name=="host_line" || name=="host_dot" || name=="host_slot" || name=="coaxial_socket_send" || name=="coaxial_socket_close" {return 5;}
+    if name=="coaxial_storage_put" || name=="coaxial_storage_get" || name=="coaxial_storage_delete" {return 6;}
+  }
+  if module=="wasi_snapshot_preview1" {
+    if name=="fd_write" {return 4;}
+    if name=="fd_fdstat_get" || name=="fd_seek" || name=="fd_close" || name=="clock_time_get" {return 7;}
+  }return 8;
+}

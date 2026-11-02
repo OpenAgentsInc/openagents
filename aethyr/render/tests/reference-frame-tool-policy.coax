@@ -1,0 +1,58 @@
+// Tool transport/cache admission, independent of renderer admission/pixels.
+#load "tooling-policy.coax";
+#authority;
+RFR_TOKENS :: 4096; RFR_ROWS :: 2048; RFR_REFS :: 1024; RFR_TREES :: 32;
+RfrNumber :: struct {ok:bool;value:int;}
+RfrRow :: struct {first:int;count:int;}
+RfrRef :: struct {row:int;column:int;}
+RfrConfig :: struct {token_count:int;tokens:[RFR_TOKENS]string;cursor:int;row_count:int;rows:[RFR_ROWS]RfrRow;ref_count:int;refs:[RFR_REFS]RfrRef;tree_count:int;tree_rows:[RFR_TREES]int;counts:[13]int;}
+#load "reference-frame-tool-checks.coax";
+rfr_number :: (text:string)->RfrNumber {
+  if text.count==0 {return RfrNumber.{};}negative:=text[0]=='-';at:=ifx negative || text[0]=='+' then 1 else 0;if at==text.count {return RfrNumber.{};}limit:u64=cast(u64)9223372036854775807;if negative {limit+=1;}value:u64=0;
+  for i:at..<text.count {c:=text[i];if c<'0' || c>'9' {return RfrNumber.{};}digit:=cast(u64)(c-'0');if value>(limit-digit)/10 {return RfrNumber.{};}value=value*10+digit;}
+  if negative {if value==cast(u64)9223372036854775807+1 {return RfrNumber.{ok=true,value=-9223372036854775808};}return RfrNumber.{ok=true,value= -cast(int)value};}return RfrNumber.{ok=true,value=cast(int)value};
+}
+rfr_white :: (c:u8)->bool {return c==' ' || (c>=9 && c<=13);}
+rfr_take :: (p:[]RfrConfig,count:int)->int {
+  if count<0 || count>p[0].token_count-p[0].cursor || p[0].row_count==RFR_ROWS {return -1;}index:=p[0].row_count;p[0].rows[index]=RfrRow.{first=p[0].cursor,count=count};p[0].row_count+=1;p[0].cursor+=count;return index;
+}
+rfr_take_ok :: (p:[]RfrConfig,count:int)->bool {return rfr_take(p,count)>=0;}
+rfr_token :: (p:[]RfrConfig,row:int,column:int)->string {if row<0 || row>=p[0].row_count {return "";}r:=p[0].rows[row];if column<0 || column>=r.count {return "";}return p[0].tokens[r.first+column];}
+rfr_count :: (p:[]RfrConfig,row:int,column:int)->int {n:=rfr_number(rfr_token(p,row,column));return ifx n.ok && n.value>=0 && n.value<=p[0].token_count then n.value else -1;}
+rfr_ref :: (p:[]RfrConfig,row:int,column:int,tree:bool)->bool {
+  if row<0 || p[0].ref_count==RFR_REFS {return false;}p[0].refs[p[0].ref_count]=RfrRef.{row=row,column=column};p[0].ref_count+=1;if tree {if p[0].tree_count==RFR_TREES {return false;}p[0].tree_rows[p[0].tree_count]=row;p[0].tree_count+=1;}return true;
+}
+rfr_tokenize :: (text:string,out:[]RfrConfig)->bool {
+  out[0].token_count=0;begin:=-1;
+  for c,i:text {if rfr_white(c) {if begin>=0 {if out[0].token_count==RFR_TOKENS {return false;}out[0].tokens[out[0].token_count]=text[begin..<i];out[0].token_count+=1;begin= -1;}}else {if begin<0 {begin=i;}}}
+  if begin>=0 {if out[0].token_count==RFR_TOKENS {return false;}out[0].tokens[out[0].token_count]=text[begin..<text.count];out[0].token_count+=1;}
+  return true;
+}
+rfr_parse :: (text:string,out:[]RfrConfig)->bool {
+  if !rfr_tokenize(text,out) {return false;}out[0].cursor=0;out[0].row_count=0;out[0].ref_count=0;out[0].tree_count=0;
+  row:=rfr_take(out,13);if row<0 {return false;}for i:0..<13 {n:=rfr_number(rfr_token(out,row,i));if !n.ok {return false;}out[0].counts[i]=n.value;}
+  for i:0..<5 {if !rfr_ref(out,rfr_take(out,1),0,false) {return false;}}
+  trees:=rfr_count(out,rfr_take(out,1),0);if trees<0 {return false;}for i:0..<trees {if !rfr_ref(out,rfr_take(out,2),1,true) {return false;}}
+  buffers:=rfr_count(out,rfr_take(out,1),0);if buffers<0 {return false;}for i:0..<buffers {if !rfr_ref(out,rfr_take(out,8),1,false) {return false;}}
+  while out[0].cursor<out[0].token_count {
+    label:=out[0].tokens[out[0].cursor];
+    if label=="textures" {count:=rfr_count(out,rfr_take(out,2),1);if count<0 {return false;}for i:0..<count {r:=rfr_take(out,5);levels:=rfr_count(out,r,3);if levels<0 || !rfr_ref(out,r,4,false) {return false;}for k:0..<levels {if !rfr_take_ok(out,5) {return false;}}}}
+    else if label=="media_images" {count:=rfr_count(out,rfr_take(out,2),1);if count<0 {return false;}for i:0..<count {if !rfr_take_ok(out,5) {return false;}}}
+    else if label=="media_text" {if !rfr_ref(out,rfr_take(out,2),1,false) {return false;}}
+    else {return false;}
+  }return true;
+}
+rfr_literal :: (d:Jv,node:int,value:string)->bool {bytes:[4096]u8;n:=jv_str(d,node,bytes[..]);return n>=0 && cast(string)bytes[0..<n]==value;}
+rfr_default :: (d:Jv,node:int,def:string,value:string)->bool {return ifx node== -1 then def==value else rfr_literal(d,node,value);}
+rfr_empty_change :: (d:Jv,node:int)->bool {return node== -1 || (jv_kind(d,node)==JV_ARRAY && jv_len(d,node)==0);}
+rfr_backend_sources :: (d:Jv)->int {node:=jv_get(d,0,"renderer_source_sha256");return ifx node== -1 then jv_get(d,0,"source_sha256") else node;}
+rfr_backend :: (d:Jv,compiler:string,digest:string)->bool {
+  if !rfr_literal(d,jv_get(d,0,"status"),"rendered") && !rfr_literal(d,jv_get(d,0,"status"),"refused") {return false;}for key:[3]string.["source_changes","artifact_changes","input_changes"] {if !rfr_empty_change(d,jv_get(d,0,key)) {return false;}}
+  if jv_kind(d,jv_get(d,0,"compiler_changed"))==JV_TRUE || jv_kind(d,jv_get(d,0,"compiler_sources_match"))!=JV_TRUE || !rfr_literal(d,jv_get(d,0,"compiler_sha256"),compiler) || !rfr_literal(d,jv_get(d,0,"compiler_source_digest"),digest) {return false;}
+  sources:=rfr_backend_sources(d);return jv_kind(d,sources)==JV_OBJECT && jv_kind(d,jv_get(d,sources,"aethyr/render/tests/reference-frame-native.coax"))==JV_STRING;
+}
+rfr_reuse :: (d:Jv,mode:string,before:Jv)->int {
+  wrapping:=rfr_default(d,jv_get(d,0,"c_mode"),"checked","wrapping");if wrapping!=(mode=="release") {return -1;}if !rfr_default(d,jv_get(d,0,"native_mode"),"checked-o2",mode) {return 0;}sources:=jv_get(d,0,"source_sha256");for name:[2]string.["aethyr/render/tests/reference-frame-native.c","aethyr/render/tests/frame-input.h"] {if !rtq_equal(d,jv_get(d,sources,name),before,jv_get(before,0,name)) {return 0;}}return 1;
+}
+rfr_mode :: (mode:string)->bool {return mode=="checked-o2" || mode=="debug" || mode=="release" || mode=="sanitized" || mode=="sanitized-o1";}
+rfr_compiler_gate :: (matching:bool,explore:bool)->bool {return matching || explore;}

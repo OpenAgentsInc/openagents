@@ -1,0 +1,80 @@
+// Own-code receipt/repair controls in Coax. Python is only the existing
+// independently repaired C++ reference runner under test; no geometry runs.
+// coax/web/tool.sh verse/icecream/check-mesh-band-tooling.coax OUTDIR
+#import "Basic";
+#load "../../aethyr/render/tests/qualification-files.coax";
+MB_REFERENCE :: "verse/icecream/check_mesh_bands.py";
+mb_path :: (directory:string,name:string,out:[]u8)->string {return fs_join(directory,name,out);}
+mb_command :: (o:[]Jo,extra:bool) {
+  jo_arr(o);for s:[6]string.["coax/bin/coax","test","verse/icecream/mesh.coax","--library","--steps","4000000000"] {jo_str(o,s);}
+  if extra {jo_str(o,"--only");jo_str(o,"alpha");}jo_end(o);
+}
+mb_sources :: (o:[]Jo,kind:int) {
+  jo_obj(o);if kind!=1 {jo_key(o,"/frozen/mesh.coax");jo_str(o,"a");}
+  if kind!=1 && kind!=2 {jo_key(o,"/frozen/rules.coax");jo_str(o,"b");}jo_end(o);
+}
+mb_reuse_cases :: (directory:string,deadline:int)->bool {
+  for control:0..<11 {
+    name:[128]u8;no:[1]Jo;jo_start(no[..],name[..]);jo_put(no[..],"reuse-");jo_int(no[..],control);
+    dir_buf:[4096]u8;dir:=mb_path(directory,jo_text(no[..]),dir_buf[..]);if !fs_mkdir(dir) {return false;}
+    log_buf:[4096]u8;log_path:=mb_path(dir,"checks.log",log_buf[..]);
+    text:="ok #test alpha\n21 checks, 21 passed, 0 failed\n";
+    if control==8 {text="1 of 21 checks, 1 passed, 0 failed\n";}
+    if control==9 {text="21 checks, 20 passed, 0 failed\n";}
+    if control==10 {text="FAIL #test alpha\n21 checks, 21 passed, 0 failed\n";}
+    if !fs_write(log_path,text) {return false;}hash:[64]u8;if !rtq_hash_file(log_path,hash[..]) {return false;}
+    expected:[4096]u8;eo:[1]Jo;jo_start(eo[..],expected[..]);jo_obj(eo[..]);jo_key(eo[..],"source_sha256");mb_sources(eo[..],0);
+    jo_key(eo[..],"compiler_sha256");jo_str(eo[..],"compiler");jo_key(eo[..],"command");mb_command(eo[..],false);jo_end(eo[..]);
+    expected_buf:[4096]u8;expected_path:=mb_path(dir,"expected.json",expected_buf[..]);if !fs_write(expected_path,jo_text(eo[..])) {return false;}
+    receipt:[8192]u8;o:[1]Jo;jo_start(o[..],receipt[..]);jo_obj(o[..]);
+    jo_key(o[..],"schema");jo_str(o[..],ifx control==7 then "other" else "aethyr.icecream.mesh.checks.v1");
+    jo_key(o[..],"exit");jo_int(o[..],ifx control==5 then 1 else 0);
+    jo_key(o[..],"compiler_sha256");jo_str(o[..],ifx control==4 then "other" else "compiler");
+    jo_key(o[..],"source_sha256");mb_sources(o[..],ifx control==1 || control==2 then control else 0);
+    jo_key(o[..],"command");mb_command(o[..],control==3);
+    jo_key(o[..],"log_file");jo_str(o[..],log_path);jo_key(o[..],"log_sha256");jo_str(o[..],ifx control==6 then "wrong" else cast(string)hash[..]);jo_end(o[..]);
+    receipt_buf:[4096]u8;receipt_path:=mb_path(dir,"receipt.json",receipt_buf[..]);if o[0].bad || !fs_write(receipt_path,jo_text(o[..])) {return false;}
+    command:=[5]string.["python3",MB_REFERENCE,"--check-reused",receipt_path,expected_path];env:[]string;stdout:[65536]u8;stderr:[65536]u8;
+    r:=rtq_run(command[..],env,deadline,stdout[..],stderr[..]);
+    if !rtq_record_run(dir,"reference-command",command[..],r,cast(string)stdout[0..<r.out_n],cast(string)stderr[0..<r.err_n]) ||
+      r.started!=0 || r.timed_out || r.cut || r.status!=(ifx control==0 then 0 else 1) {return false;}
+    if control!=0 && rtq_find(cast(string)stderr[0..<r.err_n],"ValueError:",0)<0 {return false;}
+    print("mesh receipt control%: exit%\n",control,r.status);
+  }return true;
+}
+MB_SPANS :: "    std::vector<std::pair<float, float>> spans;";
+MB_BAND :: "      piece(s0, s1, 0, kWallHeight, colour, 0);\n      piece(s0, s1, 0, 0.28f, trim, 0.05f);\n      piece(s0, s1, kWallHeight - 0.22f, kWallHeight, trim, 0.05f);";
+MB_POST :: "      piece(mid - gap, mid + gap, kDoorHeight, kWallHeight, colour, 0);\n      piece(mid - gap - 0.12f, mid - gap, 0, kDoorHeight, frame, 0.06f);\n      piece(mid + gap, mid + gap + 0.12f, 0, kDoorHeight, frame, 0.06f);\n      piece(mid - gap - 0.12f, mid + gap + 0.12f, kDoorHeight - 0.12f, kDoorHeight, frame, 0.06f);";
+mb_repair_cases :: (directory:string,deadline:int)->bool {
+  base:[8192]u8;bo:[1]Jo;jo_start(bo[..],base[..]);jo_put(bo[..],"prefix\n");jo_put(bo[..],MB_SPANS);jo_put(bo[..],"\n");jo_put(bo[..],MB_BAND);jo_put(bo[..],"\n");jo_put(bo[..],MB_POST);jo_put(bo[..],"\nsuffix");source:=jo_text(bo[..]);
+  for control:0..<7 {
+    name:[128]u8;no:[1]Jo;jo_start(no[..],name[..]);jo_put(no[..],"repair-");jo_int(no[..],control);
+    dir_buf:[4096]u8;dir:=mb_path(directory,jo_text(no[..]),dir_buf[..]);if !fs_mkdir(dir) {return false;}
+    text:[8192]u8;o:[1]Jo;jo_start(o[..],text[..]);
+    if control==0 {jo_put(o[..],source);} else {
+      anchors:=[3]string.[MB_SPANS,MB_BAND,MB_POST];needle:=anchors[(control-1)/2];at:=rtq_find(source,needle,0);if at<0 {return false;}
+      if control%2==1 {jo_put(o[..],source[0..<at]);jo_put(o[..],source[at+needle.count..<source.count]);}
+      else {jo_put(o[..],source);jo_put(o[..],"\n");jo_put(o[..],needle);}
+    }
+    input_buf:[4096]u8;input:=mb_path(dir,"source.cpp",input_buf[..]);output_buf:[4096]u8;output:=mb_path(dir,"repaired.cpp",output_buf[..]);
+    if o[0].bad || !fs_write(input,jo_text(o[..])) {return false;}
+    command:=[5]string.["python3",MB_REFERENCE,"--repair-source",input,output];env:[]string;stdout:[65536]u8;stderr:[65536]u8;
+    r:=rtq_run(command[..],env,deadline,stdout[..],stderr[..]);
+    if !rtq_record_run(dir,"reference-command",command[..],r,cast(string)stdout[0..<r.out_n],cast(string)stderr[0..<r.err_n]) ||
+      r.started!=0 || r.timed_out || r.cut || r.status!=(ifx control==0 then 0 else 1) {return false;}
+    if control==0 {
+      got:[65536]u8;n:=fs_read(output,got[..]);if n<14 {return false;}s:=cast(string)got[0..<n];
+      if s[0..<7]!="prefix\n" || s[n-7..<n]!="\nsuffix" || rtq_find(s,"for (size_t j=lowerBegin;j<upperBegin;++j)",0)<0 || rtq_find(s,"trimCovered(capBands[0]",0)<0 {return false;}
+    }else if rtq_find(cast(string)stderr[0..<r.err_n],"ValueError:",0)<0 {return false;}
+    print("mesh reference repair control%: exit%\n",control,r.status);
+  }return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}directory:=args_at(a[..],0);if !fs_mkdir(directory) {return 2;}
+  deadline:=proc_now_ms()+120000;inputs:[1]RtqInputs;
+  for path:[5]string.[MB_REFERENCE,"verse/icecream/check-mesh-band-tooling.coax","coax/web/tool.sh","coax/platform/read-file-native.c","coax/platform/read-file-native.h"] {if !rtq_input_add(inputs[..],path) {return 2;}}
+  compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}
+  if !rtq_input_add(inputs[..],compiler) || !rtq_deps(inputs[..],compiler,"verse/icecream/check-mesh-band-tooling.coax",deadline,directory,"tool-deps") {return 2;}
+  if !mb_reuse_cases(directory,deadline) || !mb_repair_cases(directory,deadline) || !rtq_inputs_match(inputs[..]) {return 1;}
+  print("mesh tooling:11receipt cases and7independent-reference patch cases pass; no mesh generation or geometry gate repeated\n");return 0;
+}

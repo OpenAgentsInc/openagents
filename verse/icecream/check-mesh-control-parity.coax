@@ -1,0 +1,50 @@
+// Compare declared compiler/source/control observations, keeping raw native
+// diagnostics apart from the focused evaluator's wall-time transcript.
+// OLD.json OLD_DIRECTORY NEW.json NEW_DIRECTORY OUT.json
+#import "Basic";
+#load "../../aethyr/render/tests/qualification-files.coax";
+mbp_normalize :: (source:string,root:string,out:[]u8)->string {
+  at:=0;written:=0;
+  while at<source.count {
+    found:=rtq_find(source,root,at);end:=ifx found<0 then source.count else found;
+    if end-at>out.count-written {return "";}
+    for i:at..<end {out[written]=source[i];written+=1;}
+    if found<0 {break;}
+    token:="<control-root>";if token.count>out.count-written {return "";}
+    for byte:token {out[written]=byte;written+=1;}at=found+root.count;
+  }return cast(string)out[0..<written];
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=5 {return 2;}
+  left_bytes:[1048576]u8;right_bytes:[1048576]u8;left_nodes:[16384]JvNode;right_nodes:[16384]JvNode;left:[1]Jv;right:[1]Jv;
+  if !rtq_json_file(args_at(a[..],0),left_bytes[..],left_nodes[..],left[..]) || !rtq_json_file(args_at(a[..],2),right_bytes[..],right_nodes[..],right[..]) {return 2;}
+  old_buf:[4096]u8;new_buf:[4096]u8;old_root:=fs_realpath(args_at(a[..],1),old_buf[..]);new_root:=fs_realpath(args_at(a[..],3),new_buf[..]);if old_root=="" || new_root=="" {return 2;}
+  for key:[4]string.["schema","status","compiler_sha256","qualified_receipt_sha256"] {if jv_raw(left[0],jv_get(left[0],0,key))!=jv_raw(right[0],jv_get(right[0],0,key)) {return 1;}}
+  lrows:=jv_get(left[0],0,"controls");rrows:=jv_get(right[0],0,"controls");if jv_len(left[0],lrows)!=13 || jv_len(right[0],rrows)!=13 {return 1;}
+  native_matches:=0;focused:=0;
+  for index:0..<13 {
+    l:=jv_at(left[0],lrows,index);r:=jv_at(right[0],rrows,index);
+    for key:[4]string.["name","status","verifier","source_sha256"] {if jv_raw(left[0],jv_get(left[0],l,key))!=jv_raw(right[0],jv_get(right[0],r,key)) {tool_errln(key);return 1;}}
+    lc:=jv_get(left[0],l,"commands");rc:=jv_get(right[0],r,"commands");count:=jv_len(left[0],lc);if count!=jv_len(right[0],rc) {return 1;}
+    for command:0..<count {
+      ls:=jv_int(left[0],jv_get(left[0],jv_at(left[0],lc,command),"exit"),-999);rs:=jv_int(right[0],jv_get(right[0],jv_at(right[0],rc,command),"exit"),-999);
+      if (ifx ls== -6 then 134 else ls)!=(ifx rs== -6 then 134 else rs) {return 1;}
+    }
+    name:=jv_raw(left[0],jv_get(left[0],l,"name"));lcase_buf:[4096]u8;rcase_buf:[4096]u8;
+    lcase:=fs_join(old_root,name,lcase_buf[..]);rcase:=fs_join(new_root,name,rcase_buf[..]);
+    lpath:[4096]u8;rpath:[4096]u8;ld:[1048576]u8;rd:[1048576]u8;
+    ln:=fs_read(fs_join(lcase,"execution.log",lpath[..]),ld[..]);rn:=fs_read(fs_join(rcase,"execution.log",rpath[..]),rd[..]);if ln<0 || rn<0 {return 1;}
+    verifier:=jv_raw(left[0],jv_get(left[0],l,"verifier"));
+    if verifier.count>=5 && verifier[0..<5]=="coax:" {
+      if rtq_find(cast(string)ld[0..<ln],"error[E0406]: assertion failed",0)<0 || rtq_find(cast(string)rd[0..<rn],"error[E0406]: assertion failed",0)<0 ||
+        rtq_find(cast(string)ld[0..<ln],"error[E0400]",0)>=0 || rtq_find(cast(string)rd[0..<rn],"error[E0400]",0)>=0 {return 1;}focused+=1;
+    }else {
+      lo:[1048576]u8;ro:[1048576]u8;ls:=mbp_normalize(cast(string)ld[0..<ln],old_root,lo[..]);rs:=mbp_normalize(cast(string)rd[0..<rn],new_root,ro[..]);
+      if ls!=rs {tool_err("native diagnostic differs: ");tool_errln(name);return 1;}native_matches+=1;
+    }
+  }
+  result:[4096]u8;o:[1]Jo;jo_start(o[..],result[..]);jo_obj(o[..]);jo_key(o[..],"status");jo_str(o[..],"pass");
+  jo_key(o[..],"control_sources_verifiers_statuses");jo_int(o[..],13);jo_key(o[..],"native_logs_exact_after_owned_path_relabel");jo_int(o[..],native_matches);
+  jo_key(o[..],"focused_assertion_controls");jo_int(o[..],focused);jo_key(o[..],"generated_C_header_executable_identity");jo_str(o[..],"Separate raw artifacts: owned absolute source/header paths differ; no raw byte identity is claimed.");jo_end(o[..]);
+  if o[0].bad || !fs_write(args_at(a[..],4),jo_text(o[..])) {return 1;}print("%\n",jo_text(o[..]));return 0;
+}

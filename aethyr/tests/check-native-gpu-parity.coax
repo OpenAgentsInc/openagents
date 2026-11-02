@@ -1,0 +1,65 @@
+// Re-admit retained real GPU observations under the final pure policy without
+// another GPU run. Preserve the malformed original receipt; its normalization
+// quotes only the known historical shader compiler string, then parses JSON.
+#load "native-gpu-parity-policy.coax";
+#load "native-gpu-transport-policy.coax";
+nc_read :: (path:string,out:[]u8)->string {n:=fs_read(path,out);return ifx n>=0 then cast(string)out[0..<n] else "";}
+nc_hash :: (path:string,want:string,inputs:[]RtqInputs)->bool {hash:[64]u8;return rtq_hash_file(path,hash[..]) && cast(string)hash[..]==want && rtq_input_add(inputs,path);}
+nc_command :: (path:string,status:int,inputs:[]RtqInputs)->bool {
+  b:[65536]u8;nodes:[256]JvNode;d:[1]Jv;if !rtq_input_add(inputs,path) || !rtq_json_file(path,b[..],nodes[..],d[..]) {return false;}
+  return jv_int(d[0],rtq_member(d[0],0,"started"),-1)==0 && jv_int(d[0],rtq_member(d[0],0,"exit"),-1)==status && jv_kind(d[0],rtq_member(d[0],0,"timed_out"))==JV_FALSE && jv_kind(d[0],rtq_member(d[0],0,"cut"))==JV_FALSE;
+}
+nc_label :: (prefix:string,i:int,suffix:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],prefix);jo_int(o[..],i);jo_put(o[..],suffix);return jo_text(o[..]);}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}profile:=nv_profile(args_value(a[..],"--profile",""));work_arg:=args_value(a[..],"--work-dir","");run_receipt:=args_value(a[..],"--run-receipt","");receipt:=args_value(a[..],"--receipt","");executed:=args_value(a[..],"--executed-source","");fault:=args_value(a[..],"--fault","");
+  if profile<0 || work_arg=="" || run_receipt=="" || receipt=="" || executed=="" || fs_exists(receipt) || (fault!="" && fault!="wrong-lane" && fault!="validation" && fault!="shader" && fault!="view" && fault!="feature") {return 2;}
+  root_buf:[4096]u8;work_buf:[4096]u8;root:=fs_cwd(root_buf[..]);work:=fs_realpath(work_arg,work_buf[..]);if work=="" {return 2;}
+  original:[1048576]u8;normalized:[1048576]u8;original_text:=nc_read(run_receipt,original[..]);if original_text=="" {return 1;}
+  expected:=ifx profile==0 then "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980" else "693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6";
+  old_key:[128]u8;new_key:[128]u8;o:[1]Jo;jo_start(o[..],old_key[..]);jo_put(o[..],"\"shader_compiler_sha256\":");jo_put(o[..],expected);needle:=jo_text(o[..]);jo_start(o[..],new_key[..]);jo_put(o[..],"\"shader_compiler_sha256\":");jo_str(o[..],expected);replacement:=jo_text(o[..]);
+  nodes:[32768]JvNode;d:[1]Jv;text:=original_text;repaired:=false;
+  if !jv_parse(d[..],text,nodes[..]) {text=nr_replace(original_text,needle,replacement,normalized[..]);repaired=true;if text=="" || !jv_parse(d[..],text,nodes[..]) {return 1;}}
+  if !np_text(d[0],rtq_member(d[0],0,"schema"),"aethyr.native-gpu-tool.v1") || !np_text(d[0],rtq_member(d[0],0,"profile"),ifx profile==0 then "sampling" else "helper") || !np_text(d[0],rtq_member(d[0],0,"status"),"passed") || !np_text(d[0],rtq_member(d[0],0,"shader_compiler_sha256"),expected) || jv_kind(d[0],rtq_member(d[0],0,"cleanup"))!=JV_TRUE {return 1;}
+  inputs:[1]RtqInputs;if !rtq_input_add(inputs[..],run_receipt) {return 1;}paths:[8][4096]u8;
+  map:=rtq_member(d[0],0,"source_inputs");if jv_kind(d[0],map)!=JV_OBJECT {return 1;}child:=d[0].nodes[map].first;
+  while child!=-1 {
+    label:=jv_key(d[0],child);hash:[64]u8;n:=jv_str(d[0],child,hash[..]);if n!=64 {return 1;}
+    source:=ifx label.count>0 && label[0]=='/' then label else fs_join(root,label,paths[0][..]);
+    // The exact executed controller/policy/worker source epoch was copied
+    // before the final policy extraction and JSON-format fix.
+    saved:=fs_join(executed,fs_base(label),paths[1][..]);if fs_kind(saved)==FS_FILE && label.count>13 && label[0..<13]=="aethyr/tests/" {source=saved;}
+    if !nc_hash(source,cast(string)hash[..],inputs[..]) {tool_err("executed source mismatch: ");tool_errln(source);return 1;}child=d[0].nodes[child].next;
+  }
+  transferred:=rtq_member(d[0],0,"transferred_inputs");if jv_kind(d[0],transferred)!=JV_OBJECT {return 1;}child=d[0].nodes[transferred].first;i:=0;payload:=fs_join(work,"payload",paths[2][..]);
+  while child!=-1 {
+    name:=jv_key(d[0],child);hash:[64]u8;n:=jv_str(d[0],child,hash[..]);if n!=64 || !ng_segment(name) || !nc_hash(fs_join(payload,name,paths[3][..]),cast(string)hash[..],inputs[..]) {return 1;}
+    for prefix:[2]string.["before-","after-"] {label:[128]u8;if !nc_command(fs_join(work,nc_label(prefix,i,".json",label[..]),paths[3][..]),0,inputs[..]) {return 1;}line:[65536]u8;s:=nc_read(fs_join(work,nc_label(prefix,i,".stdout",label[..]),paths[3][..]),line[..]);if rtq_word(s,0)!=cast(string)hash[..] {return 1;}if !rtq_input_add(inputs[..],cast(string)paths[3][0..<fs_join(work,nc_label(prefix,i,".stdout",label[..]),paths[3][..]).count]) {return 1;}}
+    i+=1;child=d[0].nodes[child].next;
+  }
+  if i!=(ifx profile==0 then 33 else 21) || !nc_command(fs_join(work,"remote-cleanup.json",paths[3][..]),0,inputs[..]) {return 1;}
+  result:[1048576]u8;jo_start(o[..],result[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.native-gpu-final-parity.v1");jo_key(o[..],"profile");jo_str(o[..],ifx profile==0 then "sampling" else "helper");jo_key(o[..],"receipt_format_repair");jo_bool(o[..],repaired);jo_key(o[..],"original_receipt");jo_str(o[..],run_receipt);jo_key(o[..],"normalized_executed_receipt");jo_raw(o[..],text);jo_key(o[..],"image_fence");jo_str(o[..],"compiled images downloaded and SHA-joined before execution only; payload inputs before and after");jo_key(o[..],"cases");jo_arr(o[..]);
+  ok:=true;words:=0;fault_applied:=false;
+  for variant:0..<(ifx profile==0 then 3 else 1) {
+    label:[128]u8;name:=ifx variant==0 then "normal" else ifx variant==1 then "fault" else "array-fault";json_name:[128]u8;raw_name:[128]u8;w:[1]Jo;jo_start(w[..],json_name[..]);jo_put(w[..],name);jo_put(w[..],".json");jo_start(w[..],raw_name[..]);jo_put(w[..],name);jo_put(w[..],".raw");
+    b:[65536]u8;case_nodes:[2048]JvNode;case_doc:[1]Jv;case_path:=fs_join(work,cast(string)json_name[0..<name.count+5],paths[3][..]);if !rtq_input_add(inputs[..],case_path) || !rtq_json_file(case_path,b[..],case_nodes[..],case_doc[..]) {return 1;}
+    raw:[400]u8;raw_path:=fs_join(work,cast(string)raw_name[0..<name.count+4],paths[3][..]);raw_n:=fs_read(raw_path,raw[..]);if raw_n<0 || !rtq_input_add(inputs[..],raw_path) {return 1;}
+    stdout:[65536]u8;stderr:[65536]u8;reference_out:=nc_read(fs_join(work,nc_label("case-",variant,"-reference.stdout",label[..]),paths[3][..]),stdout[..]);if !rtq_input_add(inputs[..],cast(string)paths[3][0..<fs_join(work,nc_label("case-",variant,"-reference.stdout",label[..]),paths[3][..]).count]) {return 1;}
+    reference_err:=nc_read(fs_join(work,nc_label("case-",variant,"-reference.stderr",label[..]),paths[3][..]),stderr[..]);if !rtq_input_add(inputs[..],cast(string)paths[3][0..<fs_join(work,nc_label("case-",variant,"-reference.stderr",label[..]),paths[3][..]).count]) {return 1;}
+    status:=ifx variant==0 then 0 else 1;for who:[2]string.["-reference.json","-worker.json"] {if !nc_command(fs_join(work,nc_label("case-",variant,who,label[..]),paths[3][..]),status,inputs[..]) {return 1;}}
+    hashes:[4]string;hash_bytes:[4][64]u8;count:=ifx profile==0 then 4 else 2;
+    for k:0..<count {shader_path:=fs_join(payload,np_shader(profile,variant,k),paths[3][..]);if !rtq_hash_file(shader_path,hash_bytes[k][..]) {return 1;}hashes[k]=cast(string)hash_bytes[k][..];}
+    changed:[65536]u8;if variant==0 && fault!="" {
+      if fault=="wrong-lane" {raw[0]^=1;fault_applied=true;}
+      if fault=="shader" {hashes[0]="wrong";fault_applied=true;}
+      change:="";replace:="";if fault=="validation" {change="\"validation_errors\":0";replace="\"validation_errors\":1";}
+      if profile==1 && fault=="view" {change="\"views\":[[1,0,112,28]";replace="\"views\":[[1,0,113,28]";}
+      if profile==1 && fault=="feature" {change="\"features\":[4,5,0,0,0]";replace="\"features\":[0,5,0,0,0]";}
+      if change!="" {modified:=nr_replace(case_doc[0].text,change,replace,changed[..]);if modified=="" || !jv_parse(case_doc[..],modified,case_nodes[..]) {return 1;}fault_applied=true;}
+    }
+    accepted:=np_admit(profile,variant,status,case_doc[0],raw[0..<raw_n],reference_out,reference_err,hashes[0..<count]);ok=ok && accepted;words+=raw_n/4;
+    jo_obj(o[..]);jo_key(o[..],"variant");jo_str(o[..],name);jo_key(o[..],"accepted");jo_bool(o[..],accepted);jo_key(o[..],"words");jo_int(o[..],raw_n/4);jo_end(o[..]);
+  }jo_end(o[..]);
+  for name:[2]string.["worker","reference"] {path:=fs_join(work,name,paths[3][..]);if !rtq_input_add(inputs[..],path) {return 1;}hash:[64]u8;if !rtq_hash_file(path,hash[..]) {return 1;}jo_key(o[..],ifx name=="worker" then "worker_image_sha256" else "reference_image_sha256");jo_str(o[..],cast(string)hash[..]);}
+  if fault!="" && !fault_applied {return 2;}if !rtq_inputs_match(inputs[..]) {return 1;}
+  jo_key(o[..],"fault");jo_str(o[..],fault);jo_key(o[..],"raw_words");jo_int(o[..],words);jo_key(o[..],"status");jo_str(o[..],ifx ok then "passed" else "refused");jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],root);jo_end(o[..]);if o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}return ifx ok then 0 else 1;
+}

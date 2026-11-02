@@ -1,0 +1,35 @@
+// Coax-owned descriptors/jobs for the direct-clip and retained VS diagnostics.
+// The shared browser adapter only applies this typed resource request.
+pv_buffer :: (o:[]Jo,size:int,usage:int,url:string) {
+  jo_obj(o);jo_key(o,"descriptor");jo_obj(o);jo_key(o,"size");jo_int(o,size);jo_key(o,"usage");jo_int(o,usage);jo_end(o);
+  if url!="" {jo_key(o,"upload");jo_obj(o);jo_key(o,"url");jo_str(o,url);jo_end(o);}jo_end(o);
+}
+pv_layout :: (o:[]Jo,mode:int,u_bytes:int) {
+  jo_arr(o);jo_arr(o);
+  jo_obj(o);jo_key(o,"binding");jo_int(o,0);jo_key(o,"visibility");jo_int(o,1);jo_key(o,"buffer");jo_obj(o);jo_key(o,"type");jo_str(o,"uniform");jo_key(o,"minBindingSize");jo_int(o,ifx mode==4 then 48 else u_bytes);jo_end(o);jo_end(o);
+  if mode==5 {jo_raw(o,"{\"binding\":1,\"visibility\":3,\"buffer\":{\"type\":\"uniform\",\"minBindingSize\":16}}");}
+  jo_end(o);if mode==5 {jo_raw(o,"[{\"binding\":0,\"visibility\":1,\"buffer\":{\"type\":\"read-only-storage\",\"minBindingSize\":64}}]");}jo_end(o);
+}
+pp_vertex_request :: (o:[]Jo,mode:int,d:Jv,shaders:[]PPShaders) {
+  jo_obj(o);jo_key(o,"format");jo_str(o,"rgba32float");jo_key(o,"width");jo_int(o,pp_fixture_extent(d,"width"));jo_key(o,"height");jo_int(o,pp_fixture_extent(d,"height"));
+  jo_key(o,"vertices");jo_int(o,3);jo_key(o,"topology");jo_str(o,"triangle-list");jo_key(o,"target_usage");jo_int(o,17);jo_key(o,"readback_usage");jo_int(o,9);
+  jo_key(o,"readback_bytes");jo_int(o,256);jo_key(o,"readback_row_bytes");jo_int(o,256);jo_key(o,"readback_width");jo_int(o,1);jo_key(o,"readback_height");jo_int(o,1);jo_key(o,"clear");jo_raw(o,"{\"r\":-1,\"g\":-1,\"b\":-1,\"a\":-1}");
+  u_bytes:=pp_resource_size(d,"u");object_bytes:=pp_resource_size(d,"objects");
+  jo_key(o,"buffers");jo_arr(o);
+  if mode==4 {pv_buffer(o,48,72,"");}else {pv_buffer(o,u_bytes,72,"/r/0");pv_buffer(o,object_bytes,136,"/r/1");pv_buffer(o,16,72,"");}jo_end(o);
+  jo_key(o,"images");jo_raw(o,"[]");jo_key(o,"samplers");jo_raw(o,"[]");jo_key(o,"programs");jo_arr(o);jo_obj(o);jo_key(o,"code");jo_str(o,cast(string)shaders[0].bytes[0][0..<shaders[0].n[0]]);
+  jo_key(o,"vertex");jo_str(o,ifx mode==4 then "render_clip_output_probe_vs" else "render_deadgears_vs_probe_vs");jo_key(o,"fragment");jo_str(o,ifx mode==4 then "render_clip_output_probe_fs" else "render_deadgears_vs_probe_fs");jo_key(o,"layouts");pv_layout(o,mode,u_bytes);jo_end(o);jo_end(o);
+  jo_key(o,"groups");jo_arr(o);jo_obj(o);jo_key(o,"program");jo_int(o,0);jo_key(o,"index");jo_int(o,0);jo_key(o,"entries");jo_arr(o);
+  pp_entry(o,0,"buffer",0,ifx mode==4 then 48 else u_bytes,false);if mode==5 {pp_entry(o,1,"buffer",2,16,false);}jo_end(o);jo_end(o);
+  if mode==5 {jo_obj(o);jo_key(o,"program");jo_int(o,0);jo_key(o,"index");jo_int(o,1);jo_key(o,"entries");jo_arr(o);pp_entry(o,0,"buffer",1,object_bytes,false);jo_end(o);jo_end(o);}jo_end(o);
+  jo_key(o,"cases");jo_arr(o);cases:=jv_get(d,0,"cases");row:=jv_at(d,cases,0);
+  for i:0..<pp_count(mode) {
+    jo_obj(o);jo_key(o,"program");jo_int(o,0);jo_key(o,"writes");jo_arr(o);jo_obj(o);jo_key(o,"buffer");jo_int(o,ifx mode==4 then 0 else 2);jo_key(o,"offset");jo_int(o,0);jo_key(o,"values");
+    if mode==4 {jo_arr(o);clips:=jv_get(d,row,"clips");for vertex:0..<3 {clip:=jv_at(d,clips,vertex);for lane:0..<4 {jv_write(d,jv_at(d,clip,lane),o);}}jo_end(o);}else {jv_write(d,jv_get(d,row,"uniform"),o);}jo_end(o);jo_end(o);
+    jo_key(o,"groups");jo_arr(o);jo_raw(o,"{\"index\":0,\"id\":0}");if mode==5 {jo_raw(o,"{\"index\":1,\"id\":1}");}jo_end(o);
+    jo_key(o,"origin");
+    if mode==4 {pp_arr(o,json_int(jv_raw(d,jv_get(d,row,"x"))).value,json_int(jv_raw(d,jv_get(d,row,"y"))).value,0);}
+    else {pixel:=jv_get(d,0,"pixel");pp_arr(o,json_int(jv_raw(d,jv_at(d,pixel,0))).value,json_int(jv_raw(d,jv_at(d,pixel,1))).value,0);}
+    jo_end(o);row=d.nodes[row].next;
+  }jo_end(o);jo_end(o);
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "aethyr.render.lifecycle-tool-port.retention.v1",
+  "status": "passed",
+  "archive": "artifacts-and-reference.tar.gz",
+  "sha256": "6ea3b718bf724cf6a6bfbba3a9a267c0f1ecf2f34b66866992a881e5228b5765",
+  "bytes": 3647855,
+  "readback": {
+    "status": "passed",
+    "extract_exit": 0,
+    "whole_directory_diff_exit": 0,
+    "log": "readback.log",
+    "empty_files_included": true,
+    "command": "diff -qr /tmp/aethyr-lifecycle-port-20261102 /tmp/aethyr-lifecycle-port-20261102-readback/aethyr-lifecycle-port-20261102"
+  },
+  "inventory": "archive-members.txt",
+  "contents": [
+    "Five fresh legacy baselines and logs, including the expected keep-cache refusal",
+    "Five final Coax runs with exact executed observer images, full ready/request/final origin ledgers and source fences",
+    "Five typed stable-observation and all-shared-served-source parity receipts",
+    "Frozen historical marked/seeded Wasm and exact shader package",
+    "Full current Coax dependency/native adapter/served-source closure and immutable legacy driver copies",
+    "Exact historical compiler and executed parity checker images",
+    "Policy red/green/mutation logs and earlier failed/preliminary observer epochs",
+    "Historical fixture marker source and prior receipts, retained without execution"
+  ],
+  "commands_and_scope": "commands-and-scope.json",
+  "claim": "The retained complete source/artifact tree was extracted and compared byte-for-byte, including empty files. This is a lifecycle observer port and same-input stable-observation qualification; it does not qualify current-main product emission or new GPU math."
+}

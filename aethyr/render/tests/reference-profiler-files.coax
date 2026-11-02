@@ -1,0 +1,14 @@
+#load "native-qualification.coax";
+#load "reference-profiler-policy.coax";
+rfp_admitted_driver :: (path:string,m:Jv)->bool {hash:[64]u8;return rtq_hash_file(path,hash[..]) && rfr_literal(m,jv_get(m,jv_get(m,0,"source_sha256"),"aethyr/render/tests/reference-frame-native.c"),cast(string)hash[..]);}
+rfp_render_command :: (m:Jv,exe:string,out:[]string,storage:[]u8)->int {
+  commands:=jv_get(m,0,"commands");if jv_kind(m,commands)!=JV_ARRAY {return -1;}canonical:[4096]u8;target:=fs_realpath(exe,canonical[..]);if target.count==0 {return -1;}found:=-1;
+  for i:0..<jv_len(m,commands) {row:=jv_at(m,commands,i);if jv_kind(m,row)!=JV_ARRAY || jv_len(m,row)==0 {return -1;}bytes:[4096]u8;n:=jv_str(m,jv_at(m,row,0),bytes[..]);if n<1 {return -1;}real:[4096]u8;path:=fs_realpath(cast(string)bytes[0..<n],real[..]);if path.count>0 && path==target {if found>=0 {return -1;}found=row;}}
+  if found<0 {return -1;}count:=jv_len(m,found);if count<4 || count>out.count {return -1;}at:=0;for i:0..<count {n:=jv_str(m,jv_at(m,found,i),storage[at..<storage.count]);if n<0 {return -1;}out[i]=cast(string)storage[at..<at+n];at+=n;}return count;
+}
+rfp_hash_map :: (m:Jv,node:int,held:[]RtqInputs)->bool {
+  if jv_kind(m,node)!=JV_OBJECT {return false;}row:=m.nodes[node].first;while row!=-1 {path:=jv_key(m,row);hash:[64]u8;if !rtq_hash_file(path,hash[..]) || !rfr_literal(m,row,cast(string)hash[..]) || !rtq_input_add(held,path) {return false;}row=m.nodes[row].next;}return true;
+}
+rfp_records :: (text:string,prefix:string,other:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);at:=0;while at<text.count {end:=rtq_find(text,"\n",at);if end<0 {end=text.count;}line:=text[at..<end];skip:=-1;if line.count>=prefix.count && line[0..<prefix.count]==prefix {skip=prefix.count;}if other.count>0 && line.count>=other.count && line[0..<other.count]==other {skip=other.count;}if skip>=0 {nodes:[4096]JvNode;doc:[1]Jv;if !jv_parse(doc[..],line[skip..<line.count],nodes[..]) || jv_kind(doc[0],0)!=JV_OBJECT {return "";}jv_write(doc[0],0,o[..]);}at=end+1;}jo_end(o[..]);return ifx o[0].bad then "" else jo_text(o[..]);
+}

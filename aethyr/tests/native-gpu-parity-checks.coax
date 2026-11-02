@@ -1,0 +1,77 @@
+#load "native-gpu-parity-fixtures.coax";
+np_test :: (index:int,doc:string,raw:[]u8,out:string,err:string,status:int)->bool {
+  nodes:[2048]JvNode;d:[1]Jv;if !jv_parse(d[..],doc,nodes[..]) {return false;}
+  hashes:[4]string;n:=np_hashes(index,hashes[..]);return np_admit(ifx index==3 then 1 else 0,ifx index==3 then 0 else index,status,d[0],raw,out,err,hashes[0..<n]);
+}
+#test "all four actual reference observations are admitted with exact raw words" {
+  raw:[400]u8;for i:0..<4 {n:=np_raw(i,raw[..]);status:=ifx i==1 || i==2 then 1 else 0;
+    #assert np_test(i,np_doc(i),raw[0..<n],np_out(i),np_err(i),status);
+    #assert !np_test(i,np_doc(i),raw[0..<n],np_out(i),np_err(i),1-status);
+    #assert !np_test(i,np_doc(i),raw[0..<n-1],np_out(i),np_err(i),status);
+  }
+}
+#test "actual receipt loss controls refuse validation metadata shader and shape changes" {
+  raw:[400]u8;changed:[65536]u8;
+  for i:0..<4 {n:=np_raw(i,raw[..]);status:=ifx i==1 || i==2 then 1 else 0;
+    needles:=[10]string.["\"schema\":\"aethyr.native-gpu-worker.v1\"","\"validation_errors\":0","\"validation_warnings\":0","\"finite\":true","\"vendor\":4318","\"device_id\":9988","\"driver\":2496774464","\"validating\":1","\"name\":\"NVIDIA GeForce RTX 4080\"","\"rows\":["];
+    replacements:=[10]string.["\"schema\":\"unknown\"","\"validation_errors\":1","\"validation_warnings\":1","\"finite\":false","\"vendor\":4319","\"device_id\":9989","\"driver\":2496774465","\"validating\":0","\"name\":\"another device\"","\"rows\":[] ,\"lost\":["];
+    for k:0..<10 {text:=nr_replace(np_doc(i),needles[k],replacements[k],changed[..]);#assert text!="" && !np_test(i,text,raw[0..<n],np_out(i),np_err(i),status);}
+  }
+}
+
+#forall "every one of the 292 actual reference words is compared bit for bit" i:0..<4,lane:0..<100 #steps 80000000 {
+  raw:[400]u8;n:=np_raw(i,raw[..]);if lane<n/4 {status:=ifx i==1 || i==2 then 1 else 0;raw[lane*4]^=1;#assert !np_test(i,np_doc(i),raw[0..<n],np_out(i),np_err(i),status);}
+}
+#test "native text identity covers empty unequal same-size and missing fields" {
+  nodes:[16]JvNode;d:[1]Jv;#assert jv_parse(d[..],"[\"\",\"ab\",7]",nodes[..]);
+  #assert np_text(d[0],jv_at(d[0],0,0),"") && np_text(d[0],jv_at(d[0],0,1),"ab");
+  #assert !np_text(d[0],jv_at(d[0],0,1),"ac") && !np_text(d[0],jv_at(d[0],0,1),"a") && !np_text(d[0],jv_at(d[0],0,2),"");
+  #assert np_int(d[0],-1)==NP_MISSING && np_int(d[0],jv_at(d[0],0,2))==7;
+}
+#forall "native parsed receipt fields cannot be missing extra malformed or individually changed" change:0..<33 #steps 40000000 {
+  raw:[400]u8;n:=np_raw(3,raw[..]);changed:[65536]u8;
+  needles:=[33]string.["\"wrong\":0","\"exit\":0","\"validation_errors\":0","\"validation_warnings\":0","\"pipelines\":5","\"validating\":1","\"features\":[4,5,0,0,0]","\"features\":[4,5,0,0,0]","\"features\":[4,5,0,0,0]","\"features\":[4,5,0,0,0]","\"features\":[4,5,0,0,0]","\"features\":[4,5,0,0,0]","\"features\":[4,5,0,0,0]","\"features\":[4,5,0,0,0]","\"views\":[[1,0,112,28]","\"views\":[[1,0,112,28]","\"views\":[[1,0,112,28]","\"views\":[[1,0,112,28]","\"views\":[[1,0,112,28]","\"views\":[[1,0,112,28]","\"views\":[[1,0,112,28]","\"views\":[[1,0,112,28]","\"views\":[[1,0,112,28]","\"shader_inputs\":{","\"shader_inputs\":{","\"shader_inputs\":{","121014c743aa5be84e69c0a0ebe922347ece680b2a85d8b5117504fa13705b09","19b1e6ee4a4ff8463ea509f213ac7db3df505522ed6773d27d27cc2ae2dfb801","\"vendor\":4318","\"helper_enabled\":1","\"int64_enabled\":1","\"profile\":\"helper\"","\"variant\":\"normal\""];
+  replacements:=[33]string.["\"lost_wrong\":0","\"lost_exit\":0","\"lost_errors\":0","\"lost_warnings\":0","\"pipelines\":4","\"lost_validating\":1","\"features\":[0,5,0,0,0]","\"features\":[4,0,0,0,0]","\"features\":[4,5,1,0,0]","\"features\":[4,5,0,1,0]","\"features\":[4,5,0,0,1]","\"features\":[4,5,0,0]","\"features\":[4,5,0,0,0,0]","\"features\":{\"a\":4,\"b\":5,\"c\":0,\"d\":0,\"e\":0}","\"views\":[[2,0,112,28]","\"views\":[[1,1,112,28]","\"views\":[[1,0,113,28]","\"views\":[[1,0,112,29]","\"views\":[[-1,0,112,28]","\"views\":[[1,0,112]","\"views\":[[1,0,112,28,0]","\"views\":[{\"a\":1,\"b\":0,\"c\":112,\"d\":28}","\"views\":[[1,0,112,null]","\"shader_inputs\":{\"extra\":\"hash\",","\"shader_inputs\":{\"helper.spv\":\"duplicate\",","\"shader_inputs\":[],\"lost\":{","021014c743aa5be84e69c0a0ebe922347ece680b2a85d8b5117504fa13705b09","09b1e6ee4a4ff8463ea509f213ac7db3df505522ed6773d27d27cc2ae2dfb801","\"vendor\":null","\"helper_enabled\":null","\"int64_enabled\":null","\"profile\":\"sampling\"","\"variant\":\"fault\""];
+  text:=nr_replace(np_doc(3),needles[change],replacements[change],changed[..]);#assert text!="" && !np_test(3,text,raw[0..<n],np_out(3),np_err(3),0);
+}
+#forall "native legacy summaries negatives and every joined device view field are required" change:0..<13 #steps 40000000 {
+  raw:[400]u8;n:=np_raw(3,raw[..]);changed:[65536]u8;
+  needles:=[13]string.["wrong=0","validation_errors=0","validation_warnings=0","unsupported helper feature refused before pipeline creation: 4","unsupported Int64 feature refused before pipeline creation: 5","device="," vendor=","observer_device=","observer_view=1,0,112,28","observer_view=1,0,9200,2300","observer_view=1,256,112,28","observer_view=1,0,112,28","observer_device=4318,9988,2496774464,1,1,1,1"];
+  replacements:=[13]string.["wrong=1","validation_errors=1","validation_warnings=1","unsupported helper feature refused before pipeline creation: 7","unsupported Int64 feature refused before pipeline creation: 8","lost="," missing=","lost_device=","observer_view=2,0,112,28","observer_view=1,0,9201,2300","observer_view=1,257,112,28","lost_view=1,0,112,28","observer_device=4319,9988,2496774464,1,1,1,1"];
+  if change<7 {text:=nr_replace(np_out(3),needles[change],replacements[change],changed[..]);#assert text!="" && !np_test(3,np_doc(3),raw[0..<n],text,np_err(3),0);}
+  else {text:=np_err(3);if change==8 || change==11 {at:=rtq_find(text,needles[change],0);o:[1]Jo;jo_start(o[..],changed[..]);jo_put(o[..],text[0..<at]);jo_put(o[..],replacements[change]);jo_put(o[..],text[at+needles[change].count..<text.count]);text=jo_text(o[..]);}else {text=nr_replace(text,needles[change],replacements[change],changed[..]);}#assert text!="" && !np_test(3,np_doc(3),raw[0..<n],np_out(3),text,0);}
+}
+np_first :: (text:string,needle:string,replacement:string,out:[]u8)->string {
+  at:=rtq_find(text,needle,0);if at<0 {return "";}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<at]);jo_put(o[..],replacement);jo_put(o[..],text[at+needle.count..<text.count]);return jo_text(o[..]);
+}
+#test "native zero-valued numeric device metadata stays an exact joined observation" {
+  raw:[400]u8;n:=np_raw(3,raw[..]);a:[65536]u8;b:[65536]u8;
+  doc:=nr_replace(np_doc(3),"\"vendor\":4318","\"vendor\":0",a[..]);err:=nr_replace(np_err(3),"observer_device=4318,","observer_device=0,",b[..]);
+  #assert np_test(3,doc,raw[0..<n],np_out(3),err,0);
+}
+#test "native device name must be present even when both transports report empty" {
+  raw:[400]u8;n:=np_raw(3,raw[..]);a:[65536]u8;b:[65536]u8;
+  doc:=nr_replace(np_doc(3),"\"name\":\"NVIDIA GeForce RTX 4080\"","\"name\":\"\"",a[..]);out:=nr_replace(np_out(3),"device=NVIDIA GeForce RTX 4080 vendor=","device= vendor=",b[..]);
+  #assert !np_test(3,doc,raw[0..<n],out,np_err(3),0);
+}
+#test "native negative feature gate cannot borrow the other nonzero refusal" {
+  raw:[400]u8;n:=np_raw(3,raw[..]);a:[65536]u8;b:[65536]u8;
+  doc:=nr_replace(np_doc(3),"\"features\":[4,5,0,0,0]","\"features\":[0,5,0,0,0]",a[..]);out:=nr_replace(np_out(3),"unsupported helper feature refused before pipeline creation: 4","unsupported helper feature refused before pipeline creation: 0",b[..]);
+  #assert !np_test(3,doc,raw[0..<n],out,np_err(3),0);
+}
+#test "native reference view records may start at byte zero and use exact leading-zero integers" {
+  raw:[400]u8;n:=np_raw(3,raw[..]);a:[65536]u8;b:[65536]u8;o:[1]Jo;newline:=rtq_find(np_err(3),"\n",0)+1;
+  jo_start(o[..],a[..]);jo_put(o[..],np_err(3)[newline..<np_err(3).count]);jo_put(o[..],np_err(3)[0..<newline]);
+  #assert np_test(3,np_doc(3),raw[0..<n],np_out(3),jo_text(o[..]),0);
+  err:=np_first(np_err(3),"observer_view=1,0,112,28","observer_view=0000000001,0000000000,0000000112,0000000028",b[..]);
+  #assert np_test(3,np_doc(3),raw[0..<n],np_out(3),err,0);
+  last:="observer_view=1,0,112,28\n";#assert !np_test(3,np_doc(3),raw[0..<n],np_out(3),np_err(3)[0..<np_err(3).count-last.count],0);
+}
+#test "native view inventory and caller shader hashes must have exact kinds and counts" {
+  raw:[400]u8;n:=np_raw(0,raw[..]);a:[65536]u8;doc:=nr_replace(np_doc(0),"\"views\":[]","\"views\":{}",a[..]);#assert !np_test(0,doc,raw[0..<n],np_out(0),np_err(0),0);
+  n=np_raw(3,raw[..]);views:="\"views\":[[1,0,112,28],[1,0,9200,2300],[1,256,112,28],[1,0,112,28]]";
+  doc=nr_replace(np_doc(3),views,"\"views\":[[1,0,112,28],[1,0,9200,2300],[1,256,112,28],[1,0,112,28],[1,0,112,28]]",a[..]);#assert !np_test(3,doc,raw[0..<n],np_out(3),np_err(3),0);
+  nodes:[2048]JvNode;d:[1]Jv;#assert jv_parse(d[..],np_doc(3),nodes[..]);hashes:[5]string;hn:=np_hashes(3,hashes[..]);
+  #assert !np_admit(1,0,0,d[0],raw[0..<n],np_out(3),np_err(3),hashes[0..<hn-1]);hashes[hn]="extra";
+  #assert !np_admit(1,0,0,d[0],raw[0..<n],np_out(3),np_err(3),hashes[0..<hn+1]);
+}

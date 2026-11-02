@@ -1,0 +1,191 @@
+// Scoped producer-loss orchestration in Coax. No full nominal geometry check.
+// --qualification-dir Q --work-dir W [--coax COMPILER] [--source-root ROOT]
+#load "mesh-control-policy.coax";
+#load "mesh-control-cases.coax";
+#load "../../aethyr/render/tests/qualification-files.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+MBC_SOURCE :: "verse/icecream/mesh.coax";
+MbcCommands :: struct {text:[262144]u8;o:[1]Jo;}
+mbc_run :: (argv:[]string,env:[]string,deadline:int,out:[]u8,err:[]u8)->ProcRun {
+  bound:=proc_now_ms()+180000;return rtq_run(argv,env,ifx deadline<bound then deadline else bound,out,err);
+}
+mbc_hash_oracle :: (path:string,out:[]u8,deadline:int)->bool {
+  size:=fs_size(path);if size<0 || size>1073741824 {return false;}
+  state:[112]u8;digest:[32]u8;data:[1048576]u8;if sha256_init(state[..])!=SHA_OK {return false;}
+  at:=0;
+  while at<size {
+    if proc_left(deadline,proc_now_ms())==0 {return false;}
+    count:=ifx size-at<data.count then size-at else data.count;
+    if fs_read_at(path,at,data[0..<count])!=count || sha256_update_checked(state[..],data[0..<count],false)!=SHA_OK {return false;}
+    at+=count;
+  }
+  if fs_size(path)!=size || sha256_final_checked(state[..],digest[..],false)!=SHA_OK {return false;}
+  value:S_Digest;for i:0..<8 {value.words[i]=cb_load_be32(digest[..],i*4).value;}return S_hex(value,out);
+}
+mbc_start_commands :: (c:[]MbcCommands) {jo_start(c[0].o[..],c[0].text[..]);jo_arr(c[0].o[..]);}
+mbc_command :: (c:[]MbcCommands,dir:string,label:string,log_name:string,argv:[]string,r:ProcRun,stdout:string,stderr:string)->bool {
+  if !rtq_record_run(dir,label,argv,r,stdout,stderr) {return false;}
+  log_buf:[4096]u8;path:=fs_join(dir,log_name,log_buf[..]);joined:[67108864]u8;
+  if stdout.count+stderr.count>joined.count {return false;}
+  at:=0;for byte:stdout {joined[at]=byte;at+=1;}for byte:stderr {joined[at]=byte;at+=1;}
+  if !fs_write(path,cast(string)joined[0..<at]) {return false;}hash:[64]u8;if !rtq_hash_file(path,hash[..]) {return false;}
+  jo_obj(c[0].o[..]);jo_key(c[0].o[..],"args");jo_arr(c[0].o[..]);for arg:argv {jo_str(c[0].o[..],arg);}jo_end(c[0].o[..]);
+  jo_key(c[0].o[..],"exit");jo_int(c[0].o[..],r.status);jo_key(c[0].o[..],"started");jo_int(c[0].o[..],r.started);
+  jo_key(c[0].o[..],"timed_out");jo_bool(c[0].o[..],r.timed_out);jo_key(c[0].o[..],"cut");jo_bool(c[0].o[..],r.cut);
+  jo_key(c[0].o[..],"log");jo_str(c[0].o[..],log_name);jo_key(c[0].o[..],"log_sha256");jo_str(c[0].o[..],cast(string)hash[..]);jo_end(c[0].o[..]);return !c[0].o[0].bad;
+}
+mbc_parent :: (path:string,root:string)->bool {return path.count>root.count && path[0..<root.count]==root && path[root.count]=='/';}
+mbc_copy_coax :: (doc:Jv,sources:int,root:string,dir:string)->bool {
+  row:=doc.nodes[sources].first;
+  while row!=-1 {
+    source:=jv_key(doc,row);if !mbc_parent(source,root) {return false;}
+    if source.count>=5 && source[source.count-5..<source.count]==".coax" {
+      dest_buf:[4096]u8;dest:=fs_join(dir,source[root.count+1..<source.count],dest_buf[..]);
+      data:[67108864]u8;size:=fs_size(source);if size<0 || size>data.count || fs_read_at(source,0,data[0..<size])!=size ||
+        !fs_mkdir(fs_dir(dest)) || !fs_write(dest,cast(string)data[0..<size]) {return false;}
+    }
+    row=doc.nodes[row].next;
+  }return true;
+}
+mbc_cached :: (doc:Jv,row:int,dir:string,source_hash:string,c:MbcCase,compiler:string,oracle:string,root:string)->bool {
+  if jv_raw(doc,jv_get(doc,row,"status"))!="caught" || jv_raw(doc,jv_get(doc,row,"source_sha256"))!=source_hash {return false;}
+  hash:[64]u8;path:[4096]u8;
+  names:=[3]string.["verse/icecream/mesh.coax","IceCream.c","IceCream.h"];
+  fields:=[3]string.["source_sha256","generated_c_sha256","header_sha256"];
+  for index:0..<3 {if !rtq_hash_file(fs_join(dir,names[index],path[..]),hash[..]) || cast(string)hash[..]!=jv_raw(doc,jv_get(doc,row,fields[index])) {return false;}}
+  exe:=jv_get(doc,row,"executable_sha256");
+  if c.kind==2 {if jv_kind(doc,exe)!=JV_NULL {return false;}}
+  else if !rtq_hash_file(fs_join(dir,"control",path[..]),hash[..]) || cast(string)hash[..]!=jv_raw(doc,exe) {return false;}
+  commands:=jv_get(doc,row,"commands");expected:=ifx c.kind==2 then 2 else 3;
+  if jv_kind(doc,commands)!=JV_ARRAY || jv_len(doc,commands)!=expected {return false;}
+  verifier:[256]u8;vo:[1]Jo;jo_start(vo[..],verifier[..]);
+  if c.kind==2 {jo_put(vo[..],"coax:");jo_put(vo[..],c.focus);}else {jo_put(vo[..],ifx c.kind==0 then "mesh" else "bands");}
+  if jv_raw(doc,jv_get(doc,row,"verifier"))!=jo_text(vo[..]) {return false;}
+  entry_buf:[4096]u8;entry:=fs_join(dir,"verse/icecream/mesh-band-native.coax",entry_buf[..]);header_buf:[4096]u8;header:=fs_join(dir,"IceCream.h",header_buf[..]);
+  source_buf:[4096]u8;source:=fs_join(dir,MBC_SOURCE,source_buf[..]);generated_buf:[4096]u8;generated:=fs_join(dir,"IceCream.c",generated_buf[..]);
+  exe_buf:[4096]u8;exe_path:=fs_join(dir,"control",exe_buf[..]);driver_buf:[4096]u8;driver:=fs_join(root,ifx c.kind==0 then "verse/icecream/mesh-check.c" else "verse/icecream/mesh-band-native.c",driver_buf[..]);
+  cc_buf:[4096]u8;cc:=proc_getenv("CC",cc_buf[..]);if cc=="" {cc="/usr/bin/clang";}
+  emit:=[6]string.[compiler,"c",entry,"--library","--header",header];if !mbc_args_match(doc,jv_at(doc,commands,0),emit[..]) {return false;}
+  if c.kind==2 {focused:=[6]string.[compiler,"test",source,"--library","--only",c.focus];if !mbc_args_match(doc,jv_at(doc,commands,1),focused[..]) {return false;}}
+  else {
+    native:=[11]string.[cc,"-std=c11","-O2","-ffp-contract=off","-I",dir,generated,driver,"-lm","-o",exe_path];
+    execute:=[2]string.[exe_path,oracle];if !mbc_args_match(doc,jv_at(doc,commands,1),native[..]) || !mbc_args_match(doc,jv_at(doc,commands,2),execute[0..<(ifx c.kind==0 then 2 else 1)]) {return false;}
+  }
+  text:[1048576]u8;n:= -1;run_status:= -1;
+  for index:0..<expected {
+    command:=jv_at(doc,commands,index);name:=jv_raw(doc,jv_get(doc,command,"log"));
+    if name!="IceCream.c" && name!="compile.log" && name!="execution.log" {return false;}
+    file:=fs_join(dir,name,path[..]);if !rtq_hash_file(file,hash[..]) || cast(string)hash[..]!=jv_raw(doc,jv_get(doc,command,"log_sha256")) {return false;}
+    status:=jv_int(doc,jv_get(doc,command,"exit"),-999);
+    if index<expected-1 {if status!=0 {return false;}}else {run_status=ifx status== -6 then 134 else status;n=fs_read(file,text[..]);}
+  }
+  good:=ProcRun.{started=0,status=0};run:=ProcRun.{started=0,status=run_status};
+  return n>=0 && mbc_caught(c.kind,c.bounds,good,good,run,cast(string)text[0..<n]);
+}
+mbc_execute :: (c:MbcCase,doc:Jv,sources:int,root:string,dir:string,mutant:string,compiler:string,oracle:string,deadline:int,o:[]Jo)->bool {
+  if !mbc_copy_coax(doc,sources,root,dir) {return false;}
+  file_buf:[4096]u8;file:=fs_join(dir,MBC_SOURCE,file_buf[..]);if !fs_write(file,mutant) {return false;}
+  entry_buf:[4096]u8;entry:=fs_join(dir,"verse/icecream/mesh-band-native.coax",entry_buf[..]);
+  header_buf:[4096]u8;header:=fs_join(dir,"IceCream.h",header_buf[..]);c_buf:[4096]u8;generated:=fs_join(dir,"IceCream.c",c_buf[..]);
+  env:[]string;stdout:[67108864]u8;stderr:[1048576]u8;commands:[1]MbcCommands;mbc_start_commands(commands[..]);
+  emit_args:=[6]string.[compiler,"c",entry,"--library","--header",header];emit:=mbc_run(emit_args[..],env,deadline,stdout[..],stderr[..]);
+  if !mbc_command(commands[..],dir,"emission","IceCream.c",emit_args[..],emit,cast(string)stdout[0..<emit.out_n],cast(string)stderr[0..<emit.err_n]) || !rtq_ok(emit) {return false;}
+  // Compiler stdout is the C source. A successful emission cannot have hidden
+  // diagnostic bytes joined into the source used by the native verifier.
+  if emit.err_n!=0 || !fs_write(generated,cast(string)stdout[0..<emit.out_n]) {return false;}
+  compile:=ProcRun.{started=0,status=0};run:ProcRun;exe_buf:[4096]u8;exe:=fs_join(dir,"control",exe_buf[..]);
+  if c.kind==2 {
+    args:=[6]string.[compiler,"test",file,"--library","--only",c.focus];run=mbc_run(args[..],env,deadline,stdout[..],stderr[..]);
+    if !mbc_command(commands[..],dir,"execution","execution.log",args[..],run,cast(string)stdout[0..<run.out_n],cast(string)stderr[0..<run.err_n]) {return false;}
+  }else {
+    driver_buf:[4096]u8;driver:=fs_join(root,ifx c.kind==0 then "verse/icecream/mesh-check.c" else "verse/icecream/mesh-band-native.c",driver_buf[..]);
+    cc_buf:[4096]u8;cc:=proc_getenv("CC",cc_buf[..]);if cc=="" {cc="/usr/bin/clang";}
+    args:=[11]string.[cc,"-std=c11","-O2","-ffp-contract=off","-I",dir,generated,driver,"-lm","-o",exe];compile=mbc_run(args[..],env,deadline,stdout[..],stderr[..]);
+    if !mbc_command(commands[..],dir,"compile","compile.log",args[..],compile,cast(string)stdout[0..<compile.out_n],cast(string)stderr[0..<compile.err_n]) || !rtq_ok(compile) {return false;}
+    args_run:=[2]string.[exe,oracle];run=mbc_run(args_run[0..<(ifx c.kind==0 then 2 else 1)],env,deadline,stdout[..],stderr[..]);
+    if !mbc_command(commands[..],dir,"execution","execution.log",args_run[0..<(ifx c.kind==0 then 2 else 1)],run,cast(string)stdout[0..<run.out_n],cast(string)stderr[0..<run.err_n]) {return false;}
+  }
+  execution_text:[1048576]u8;log_buf:[4096]u8;n:=fs_read(fs_join(dir,"execution.log",log_buf[..]),execution_text[..]);
+  if n<0 || !mbc_caught(c.kind,c.bounds,emit,compile,run,cast(string)execution_text[0..<n]) {return false;}
+  jo_end(commands[0].o[..]);hash:[64]u8;jo_obj(o);jo_key(o,"name");jo_str(o,c.name);jo_key(o,"status");jo_str(o,"caught");
+  jo_key(o,"verifier");if c.kind==2 {v:[256]u8;vo:[1]Jo;jo_start(vo[..],v[..]);jo_put(vo[..],"coax:");jo_put(vo[..],c.focus);jo_str(o,jo_text(vo[..]));}else {jo_str(o,ifx c.kind==0 then "mesh" else "bands");}
+  for index:0..<3 {
+    names:=[3]string.[file,generated,header];keys:=[3]string.["source_sha256","generated_c_sha256","header_sha256"];
+    if !rtq_hash_file(names[index],hash[..]) {return false;}jo_key(o,keys[index]);jo_str(o,cast(string)hash[..]);
+  }
+  jo_key(o,"executable_sha256");if c.kind==2 {jo_null(o);}else {if !rtq_hash_file(exe,hash[..]) {return false;}jo_str(o,cast(string)hash[..]);}
+  jo_key(o,"commands");jo_raw(o,jo_text(commands[0].o[..]));jo_end(o);return !o[0].bad;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  for i:0..<args_count(a[..])/2 {
+    key:=args_at(a[..],i*2);if key!="--qualification-dir" && key!="--work-dir" && key!="--coax" && key!="--source-root" {return 2;}
+  }
+  if args_count(a[..])%2!=0 {return 2;}
+  qarg:=args_value(a[..],"--qualification-dir","");warg:=args_value(a[..],"--work-dir","");
+  compiler_env:[4096]u8;default_compiler:=proc_getenv("COAX",compiler_env[..]);if default_compiler=="" {default_compiler="coax/bin/coax";}
+  compiler_buf:[4096]u8;compiler:=fs_realpath(args_value(a[..],"--coax",default_compiler),compiler_buf[..]);
+  root_buf:[4096]u8;root:=fs_realpath(args_value(a[..],"--source-root","."),root_buf[..]);
+  qdir_buf:[4096]u8;qdir:=fs_realpath(qarg,qdir_buf[..]);work_buf:[4096]u8;
+  if qarg=="" || warg=="" || compiler=="" || root=="" || qdir=="" || !fs_mkdir(warg) {return 2;}
+  work:=fs_realpath(warg,work_buf[..]);if work=="" {return 2;}
+  began:=proc_now_ms();deadline:=began+810000;
+  qfile_buf:[4096]u8;qfile:=fs_join(qdir,"qualification.json",qfile_buf[..]);qbytes:[1048576]u8;qnodes:[16384]JvNode;q:[1]Jv;
+  if !rtq_json_file(qfile,qbytes[..],qnodes[..],q[..]) || jv_raw(q[0],jv_get(q[0],0,"status"))!="pass" {return 2;}
+  compiler_hash:[64]u8;qhash:[64]u8;if !rtq_hash_file(compiler,compiler_hash[..]) || cast(string)compiler_hash[..]!=jv_raw(q[0],jv_get(q[0],0,"compiler_sha256")) || !rtq_hash_file(qfile,qhash[..]) {tool_errln("qualified producer compiler identity refused");return 2;}
+  oracle_buf:[4096]u8;oracle:=fs_join(qdir,"oracle.bin",oracle_buf[..]);hash:[64]u8;oracle_hash:[64]u8;
+  if !mbc_hash_oracle(oracle,oracle_hash[..],deadline) || cast(string)oracle_hash[..]!=jv_raw(q[0],jv_get(q[0],0,"oracle_sha256")) {tool_errln("qualified independent oracle bytes refused");return 2;}
+  inputs:[1]RtqInputs;if !rtq_input_add(inputs[..],qfile) || !rtq_input_add(inputs[..],compiler) {return 2;}
+  sources:=jv_get(q[0],0,"source_sha256");if jv_kind(q[0],sources)!=JV_OBJECT {return 2;}
+  for suffix:[11]string.["verse/icecream/mesh-band-native.coax",MBC_SOURCE,"verse/icecream/rules.coax","verse/icecream/tuning.coax","verse/icecream/fixtures/mesh-oracle.coax","verse/icecream/fixtures/mesh-band-oracle.coax","verse/icecream/mesh-band-native.c","verse/icecream/mesh-check.c","verse/icecream/mesh-oracle.cpp","verse/icecream/check_mesh_bands.py","verse/icecream/test-mesh.sh"] {
+    path_buf:[4096]u8;name:=fs_join(root,suffix,path_buf[..]);
+    if jv_kind(q[0],jv_get(q[0],sources,name))!=JV_STRING {tool_errln("qualified source closure is incomplete");return 2;}
+  }
+  source_row:=q[0].nodes[sources].first;
+  while source_row!=-1 {
+    path:=jv_key(q[0],source_row);if !mbc_parent(path,root) || !rtq_hash_file(path,hash[..]) || cast(string)hash[..]!=jv_raw(q[0],source_row) || !rtq_input_add(inputs[..],path) {tool_errln("qualified source bytes refused");return 2;}
+    source_row=q[0].nodes[source_row].next;
+  }
+  if !rtq_input_add(inputs[..],default_compiler) || !rtq_deps(inputs[..],default_compiler,"verse/icecream/check-mesh-band-controls.coax",deadline,work,"observer-deps") {return 2;}
+  if !rtq_deps(inputs[..],default_compiler,"coax/lib/crypto/entropy.coax",deadline,work,"observer-entropy-deps") {return 2;}
+  for path:[15]string.["coax/web/tool.sh","coax/platform/tool-native.c","coax/platform/tool-native.h","coax/platform/process-native.c","coax/platform/process-native.h","coax/platform/store-file-native.c","coax/platform/store-file-native.h","coax/platform/read-file-native.c","coax/platform/read-file-native.h","coax/platform/socket-native.c","coax/platform/socket-native.h","coax/platform/entropy-native.c","coax/platform/entropy-native.h","coax/platform/entropy-foreign.c","coax/platform/entropy-foreign.h"] {if !rtq_input_add(inputs[..],path) {return 2;}}
+  self_buf:[4096]u8;self_n:=cxproc_self_path(self_buf[..]);if self_n<1 || self_n>self_buf.count || !rtq_input_add(inputs[..],cast(string)self_buf[0..<self_n]) {return 2;}
+  original_buf:[1048576]u8;source_file_buf:[4096]u8;source_file:=fs_join(root,MBC_SOURCE,source_file_buf[..]);n:=fs_read(source_file,original_buf[..]);if n<1 {return 2;}original:=cast(string)original_buf[0..<n];
+  loop_start:=rtq_find(original,"  for iwbt:0..<(middle-n0)/3 {",0);loop_end:=rtq_find(original,"  lower:=piece(v,middle,w,s0,s1,0,bottom,trim,0.05f32);",0);
+  if loop_start<0 || loop_end<=loop_start {return 2;}
+  prior_buf:[4096]u8;prior_file:=fs_join(work,"controls.json",prior_buf[..]);prior_data:[1048576]u8;prior_nodes:[16384]JvNode;prior:[1]Jv;has_prior:=fs_size(prior_file)>=0;
+  if has_prior {
+    if !rtq_json_file(prior_file,prior_data[..],prior_nodes[..],prior[..]) || jv_raw(prior[0],jv_get(prior[0],0,"compiler_sha256"))!=cast(string)compiler_hash[..] ||
+      jv_raw(prior[0],jv_get(prior[0],0,"qualified_receipt_sha256"))!=cast(string)qhash[..] {return 2;}
+    prior_hash:[64]u8;if !rtq_hash_file(prior_file,prior_hash[..]) {return 2;}
+    label:[128]u8;lo:[1]Jo;jo_start(lo[..],label[..]);jo_put(lo[..],"prior-");jo_put(lo[..],cast(string)prior_hash[..]);jo_put(lo[..],".json");
+    path:[4096]u8;pn:=fs_size(prior_file);if pn<0 || pn>prior_data.count || !fs_write(fs_join(work,jo_text(lo[..]),path[..]),cast(string)prior_data[0..<pn]) {return 2;}
+  }
+  record:[1048576]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.icecream.mesh-bands.controls.v1");
+  jo_key(o[..],"compiler_sha256");jo_str(o[..],cast(string)compiler_hash[..]);jo_key(o[..],"qualified_receipt_sha256");jo_str(o[..],cast(string)qhash[..]);
+  jo_key(o[..],"tool_sha256");if !rtq_hash_file("verse/icecream/check-mesh-band-controls.coax",hash[..]) {return 2;}jo_str(o[..],cast(string)hash[..]);
+  jo_key(o[..],"oracle_sha256");jo_str(o[..],cast(string)oracle_hash[..]);jo_key(o[..],"oracle_file");jo_str(o[..],oracle);jo_key(o[..],"oracle_bytes");jo_int(o[..],fs_size(oracle));
+  jo_key(o[..],"source_root");jo_str(o[..],root);jo_key(o[..],"scope");jo_str(o[..],"13 named actual-Coax producer losses; ordinary emission before intended native/focused-check refusal, with exact compiler/source/oracle binding. Not whole-file mutation or current-toolchain qualification.");
+  jo_key(o[..],"controls");jo_arr(o[..]);caught:=0;reused:=0;
+  for c:MBC_CASES {
+    dir_buf:[4096]u8;dir:=fs_join(work,c.name,dir_buf[..]);if !fs_mkdir(dir) {break;}
+    changed:[1048576]u8;needle:=ifx c.loop then original[loop_start..<loop_end] else c.old_text;
+    mutant:=rw_replace(original,needle,c.new_text,changed[..]);if mutant=="" || !S_hex(S_hash(mutant),hash[..]) {tool_errln("producer control source site drift");break;}
+    reused_row:= -1;
+    if has_prior {
+      rows:=jv_get(prior[0],0,"controls");for i:0..<jv_len(prior[0],rows) {candidate:=jv_at(prior[0],rows,i);if jv_raw(prior[0],jv_get(prior[0],candidate,"name"))==c.name && jv_raw(prior[0],jv_get(prior[0],candidate,"status"))=="caught" && jv_raw(prior[0],jv_get(prior[0],candidate,"source_sha256"))==cast(string)hash[..] {reused_row=candidate;}}
+    }
+    if reused_row>=0 {
+      if !mbc_cached(prior[0],reused_row,dir,cast(string)hash[..],c,compiler,oracle,root) {tool_errln("cached producer-control artifact or verifier profile changed");break;}
+      jv_write(prior[0],reused_row,o[..]);reused+=1;
+    }
+    else if !mbc_execute(c,q[0],sources,root,dir,mutant,compiler,oracle,deadline,o[..]) {tool_err("producer control not caught: ");tool_errln(c.name);break;}
+    caught+=1;print("mesh producer control%/13: % (%reused)\n",caught,c.name,reused);
+  }
+  jo_end(o[..]);stable:=rtq_inputs_match(inputs[..]) && mbc_hash_oracle(oracle,hash[..],deadline) && cast(string)hash[..]==cast(string)oracle_hash[..];passed:=caught==13 && stable && !o[0].bad;
+  jo_key(o[..],"status");jo_str(o[..],ifx passed then "pass" else "failed");jo_key(o[..],"reused");jo_int(o[..],reused);
+  jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],".");jo_key(o[..],"source_changes");jo_arr(o[..]);if !stable {jo_str(o[..],"source/compiler/oracle changed");}jo_end(o[..]);
+  jo_key(o[..],"whole_deadline_seconds");jo_int(o[..],810);jo_key(o[..],"child_deadline_seconds");jo_int(o[..],180);
+  elapsed:=proc_now_ms()-began;jo_key(o[..],"elapsed_seconds");jo_int(o[..],elapsed/1000);jo_key(o[..],"elapsed_ms");jo_int(o[..],elapsed);jo_end(o[..]);
+  if o[0].bad || !fs_write(prior_file,jo_text(o[..])) {return 1;}return ifx passed then 0 else 1;
+}

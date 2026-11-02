@@ -1,0 +1,25 @@
+// Actual loopback transport/ledger control for the reusable fixture origin.
+// No browser, producer, shader compiler or product code runs.
+#import "Basic";
+#load "render-test-origin.coax";
+rto_tool_ledger :: (directory:string)->bool {
+  bytes:[65536]u8;path:[4096]u8;n:=fs_read(fs_join(directory,"requests.jsonl",path[..]),bytes[..]);if n<1 {return false;}text:=cast(string)bytes[0..<n];at:=0;row:=0;expected:=[8]int.[200,200,404,200,200,200,200,200];
+  while at<text.count {end:=rtq_find(text,"\n",at);if end<0 || row>=8 {return false;}d:[1]Jv;nodes:[256]JvNode;if !jv_parse(d[..],text[at..<end],nodes[..]) || jv_int(d[0],jv_get(d[0],0,"status"),-1)!=expected[row] {return false;}
+    if row==4 || row==6 {hash:[64]u8;want:=ifx row==4 then "needle" else "changed";if !S_hex(S_hash(want),hash[..]) || jv_raw(d[0],jv_get(d[0],0,"served_sha256"))!=cast(string)hash[..] {return false;}}
+    row+=1;at=end+1;
+  }return row==8;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}if args_count(a[..])!=1 {tool_errln("usage: render-test-origin-tool-checks NEW_OUTDIR");return 2;}
+  directory:=args_at(a[..],0);if !fs_mkdir(directory) {return 2;}absolute:[4096]u8;dir:=fs_realpath(directory,absolute[..]);paths:[4][4096]u8;source:=fs_join(dir,"source.js",paths[0][..]);config:=fs_join(dir,"config.json",paths[1][..]);port_file:=fs_join(dir,"port",paths[2][..]);ledger:=fs_join(dir,"ledger",paths[3][..]);
+  if !fs_write(source,"needle") {return 1;}bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render-test-origin.v1");jo_key(o[..],"lifetime_ms");jo_int(o[..],30000);jo_key(o[..],"routes");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/test.wasm");jo_key(o[..],"sequence");jo_arr(o[..]);
+  for i:0..<4 {jo_obj(o[..]);jo_key(o[..],"text");jo_str(o[..],ifx i==1 then "new" else "old");jo_key(o[..],"status");jo_int(o[..],ifx i==2 then 404 else 200);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/script.js");jo_key(o[..],"file");jo_str(o[..],source);jo_end(o[..]);jo_end(o[..]);
+  jo_key(o[..],"variants");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],"source-change");jo_key(o[..],"url");jo_str(o[..],"/script.js");jo_key(o[..],"kind");jo_str(o[..],"replace");jo_key(o[..],"needle");jo_str(o[..],"needle");jo_key(o[..],"replacement");jo_str(o[..],"changed");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);if o[0].bad || !fs_write(config,jo_text(o[..])) {return 1;}
+  h:=rto_start(port_file,config,ledger);if h<0 {return 1;}port_text:[32]u8;pn:=-1;for attempt:0..<100 {pn=fs_read(port_file,port_text[..]);if pn>0 {break;}proc_sleep(20);}port:=ifx pn>0 then args_whole(cast(string)port_text[0..<pn]) else -1;
+  okay:=port>0;
+  if okay {okay=rto_get(port,"/test.wasm") && rto_get(port,"/test.wasm") && !rto_get(port,"/test.wasm") && rto_get(port,"/test.wasm") && rto_get(port,"/script.js") && rto_control(port,"source-change",true) && rto_get(port,"/script.js") && rto_finalize(port);}
+  status:=proc_wait(h,5000);if status==PROC_RUNNING {killed:=proc_kill(h,PROC_SIGKILL);status=proc_wait(h,5000);}released:=proc_release(h);
+  inputs:[1]RtqInputs;okay=okay && status==0 && rto_add_inputs(ledger,inputs[..]) && rtq_inputs_match(inputs[..]) && rto_tool_ledger(ledger);
+  print("fixture origin actual sequence/control/served hashes/finalization: %\n",okay);return ifx okay then 0 else 1;
+}

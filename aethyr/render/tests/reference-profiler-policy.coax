@@ -1,0 +1,36 @@
+// Profiler transformation and receipt policy. Every wrapper returns the exact
+// generated Coax value; this observer never substitutes renderer decisions.
+#load "reference-frame-tool-policy.coax";
+#load "../../../coax/lib/crypto/sha256-kernel.coax";
+#authority;
+RfpDef :: struct {ok:bool;start:int;end:int;args:string;}
+RfpPoint :: struct {x:int;y:int;}
+#load "reference-profiler-checks.coax";
+
+#load "reference-profiler-templates.coax";
+rfp_definition :: (text:string,tag:string,name:string)->RfpDef {
+ bytes:[256]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_put(o[..],"static coax_t_");jo_put(o[..],tag);jo_put(o[..]," coax_p_");jo_put(o[..],name);jo_put(o[..],"(");prefix:=jo_text(o[..]);if o[0].bad {return RfpDef.{};}found:RfpDef;count:=0;close_text:=") {";
+ for c,at:text {if at>0 && text[at-1]!='\n' {continue;}end:=rtq_find(text,"\n",at);if end== -1 {end=text.count;}line:=text[at..<end];if rtq_find(line,prefix,0)!=0 {continue;}close:=-1;seek:=prefix.count;while true {next:=rtq_find(line,close_text,seek);if next== -1 {break;}close=next;seek=next+close_text.count;}if close== -1 {continue;}count+=1;found=RfpDef.{ok=true,start=at,end=at+close+close_text.count,args=line[prefix.count..<close]};}
+ if count!=1 {return RfpDef.{};}return found;
+}
+
+rfp_names :: (args:string,out:[]u8)->string {
+ o:[1]Jo;jo_start(o[..],out);at:=0;first_arg:=true;while true {finish:=rtq_find(args,",",at);if finish== -1 {finish=args.count;}begin:=at;end:=finish;while begin!=end && rtq_space(args[begin]) {begin+=1;}while end!=begin && rtq_space(args[end-1]) {end-=1;}part:=args[begin..<end];if part.count==0 {return "";}last:=part.count;while last>0 && !rtq_space(part[last-1]) {last-=1;}if !first_arg {jo_put(o[..],",");}jo_put(o[..],part[last..<part.count]);first_arg=false;if finish==args.count {break;}at=finish+1;}return ifx o[0].bad then "" else jo_text(o[..]);
+}
+rfp_expand :: (o:[]Jo,template:string,args:string,names:string,points:[]RfpPoint,probe:string) {
+ at:=0;while true {next:=rtq_find(template,"RFP_",at);if next<0 {jo_put(o,template[at..<template.count]);return;}jo_put(o,template[at..<next]);matched:=false;for token,i:[5]string.["RFP_ARGS_TOKEN","RFP_NAMES_TOKEN","RFP_COUNT_TOKEN","RFP_POINTS_TOKEN","RFP_PROBE_TOKEN"] {if next+token.count<=template.count && template[next..<next+token.count]==token {if i==0 {jo_put(o,args);}if i==1 {jo_put(o,names);}if i==2 {jo_int(o,points.count);}if i==3 {for p,k:points {if k!=0 {jo_put(o,",");}jo_put(o,"{");jo_int(o,p.x);jo_put(o,",");jo_int(o,p.y);jo_put(o,"}");}}if i==4 {jo_put(o,probe);}at=next+token.count;matched=true;break;}}if !matched {o[0].bad=true;return;}}
+}
+rfp_instrument :: (text:string,points:[]RfpPoint,fragments:bool,extent:bool,probe:string,out:[]u8,scratch:[]u8)->string {
+ if fragments && points.count==0 {return "";}for p:points {if p.x<0 || p.y<0 {return "";}}defs:[5]RfpDef;tags:=[5]string.["RRVertices","RRShaded","RFResult","RRStored","RRTriangle"];names:=[5]string.["rr_vertices","rr_shade","rf_execute_draw","rr_store","rr_triangle_profile"];selected:=[5]bool.[true,true,points.count>0,fragments,extent];
+ for i:0..<defs.count {if selected[i] {defs[i]=rfp_definition(text,tags[i],names[i]);if !defs[i].ok {return "";}}}
+ o:[1]Jo;jo_start(o[..],scratch);skip:=0;for c,position:text {if position<skip {continue;}selected_def:=-1;for d,i:defs {if selected[i] && d.start==position {selected_def=i;break;}}if selected_def== -1 {jo_put(o[..],text[position..<position+1]);continue;}d:=defs[selected_def];jo_put(o[..],"static coax_t_");jo_put(o[..],tags[selected_def]);jo_put(o[..]," rfc_original_");jo_put(o[..],names[selected_def]);jo_put(o[..],"(");jo_put(o[..],d.args);jo_put(o[..],") {");skip=d.end;}if o[0].bad {return "";}
+ w:[1]Jo;jo_start(w[..],out);jo_put(w[..],jo_text(o[..]));jo_put(w[..],"\n#include <assert.h>\n#include <stdio.h>\n");mode:=(ifx points.count>0 then 2 else 0)+(ifx fragments then 2 else 0)+(ifx extent then 1 else 0);template:=[6]string.[RFP_TRAILER_0,RFP_TRAILER_1,RFP_TRAILER_2,RFP_TRAILER_3,RFP_TRAILER_4,RFP_TRAILER_5][mode];rfp_expand(w[..],template,"","",points,probe);jo_put(w[..],"\n");
+ wrappers_plain:=[5]string.[RFP_WRAP_RR_VERTICES_0,RFP_WRAP_RR_SHADE_0,RFP_WRAP_RF_EXECUTE_DRAW_0,RFP_WRAP_RR_STORE_1,RFP_WRAP_RR_TRIANGLE_PROFILE_0];wrappers_frag:=[5]string.[RFP_WRAP_RR_VERTICES_1,RFP_WRAP_RR_SHADE_1,RFP_WRAP_RF_EXECUTE_DRAW_1,RFP_WRAP_RR_STORE_1,RFP_WRAP_RR_TRIANGLE_PROFILE_1];first_wrapper:=true;
+ for i:0..<defs.count {if selected[i] {if !first_wrapper {jo_put(w[..],"\n");}arg_bytes:[4096]u8;forward:=rfp_names(defs[i].args,arg_bytes[..]);if forward.count==0 {return "";}rfp_expand(w[..],ifx fragments then wrappers_frag[i] else wrappers_plain[i],defs[i].args,forward,points,probe);first_wrapper=false;}}jo_put(w[..],"\n");return ifx w[0].bad then "" else jo_text(w[..]);
+}
+rfp_driver :: (text:string,out:[]u8)->string {
+ first:=" coax_t_RFRequirements req=";second:=" assert(out[pixels].r==91";a:=rtq_find(text,first,0);b:=rtq_find(text,second,0);if a== -1 || b== -1 || rtq_find(text,first,a+first.count)!= -1 || rtq_find(text,second,b+second.count)!= -1 {return "";}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"#include <stdint.h>\nvoid rfc_register(const uint32_t *,int64_t);\nvoid rfc_report(void);\n");for c,i:text {if i==a {jo_put(o[..]," for(int64_t k=0;k<programs_count;k++)rfc_register(programs[k].tree.data,programs[k].index);\n");}if i==b {jo_put(o[..]," rfc_report();\n");}jo_put(o[..],text[i..<i+1]);}return ifx o[0].bad then "" else jo_text(o[..]);
+}
+rfp_measurement :: (d:Jv)->bool {if !rfr_literal(d,jv_get(d,0,"status"),"rendered") && !rfr_literal(d,jv_get(d,0,"status"),"refused") {return false;}for key:[3]string.["source_changes","artifact_changes","input_changes"] {node:=jv_get(d,0,key);if jv_kind(d,node)!=JV_ARRAY || jv_len(d,node)!=0 {return false;}}return true;}
+rfp_steps :: (stages:Jv,result:Jv)->int {budget:=jv_int(result,jv_get(result,0,"shader_steps"),0);if jv_kind(stages,0)!=JV_ARRAY {return -1;}observed:=0;for i:0..<jv_len(stages,0) {row:=jv_at(stages,0,i);for key:[2]string.["vertex_steps","fragment_steps"] {value:=jv_int(stages,jv_get(stages,row,key),-1);if value<0 || value>budget-observed {return -1;}observed+=value;}}return ifx observed>0 then observed else -1;}
+rfp_compiler_gate :: (matching:bool,explore:bool)->bool {return matching || explore;}

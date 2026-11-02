@@ -1,0 +1,17 @@
+{
+  "schema": "aethyr.render.strip-check-port.v1",
+  "date": "2026-11-02",
+  "status": "passed_same_fixture_controls",
+  "driver": "coax/web/strip-render-checks.coax",
+  "driver_sha256": "5aca85f545386bd88b220caa76377f2b29e175a027054f8a403cbf82a0e281fb",
+  "executed_image_sha256": "ff03a25af75ec0f753adca00da4bf8e4b01440192a545997d94be6bb66bbd062",
+  "old_test_sha256": "21994a1673b6f55533aabcb87634ea37022308e9666f5632dce8028bf9f2f1ea",
+  "subject_sha256": "2da1d93b724916c7b0f094d87731e93cfd8fd74902cb7255b497538d833dbb77",
+  "change": "Coax owns package fixtures, process deadlines, exact-byte comparison and control verdicts; invoke the existing grandfathered strip.ts CLI. The strip tool itself is unchanged and remains on the shrinking port list. No blanket exception was added.",
+  "legacy": "Original Bun1.4.0 test file:2tests/4assertions pass. Exact canonical assets/build/render shader bytes survive, and a comment-bearing site/build/render shader refuses without overwriting bytes.",
+  "new": "Both original fixture cases pass through the actual CLI. Add the complementary canonical-site and comment-bearing-assets cases; all4statuses/stdout/error-diagnostic/unchanged-file checks pass. All enumerated source/compiler inputs remain unchanged. Successful CLI reports exactly one visited file.",
+  "caller": "Old test file had no named callers; its replacement is the documented manual Coax qualification command in aethyr/render/tests/QUALIFICATION.md. Existing production strip/deployment callers remain unchanged.",
+  "compiler": {"sha256":"1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa","matching_current_main":false,"scope":"Explicit older compiler for test orchestration, not a product/toolchain release qualification"},
+  "upstream_integration": "The observer links main's new read-file-native effect as well as existing effects. Those new C/header inputs are fenced; no prior package or model gate was repeated merely because main changed.",
+  "retention": {"archive":"artifacts.tar.gz","bytes":45696,"sha256":"28f8f42a4f4aeb6d2396b2eb5a0aabd928b376da755036af8c599876457e80ee","readback":"Complete extracted inventory and every byte compared with original payload, including zero-byte stderr; original test/source, current tool image, all fixture artifacts, source-fenced receipt and raw command logs retained."}
+}

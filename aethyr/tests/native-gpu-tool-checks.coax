@@ -1,0 +1,59 @@
+#test "native reuse separates historical shader compiler from worker compiler" {
+  #assert nt_reuse_header(0,"passed","30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",7);
+  #assert nt_reuse_header(1,"passed","693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",3);
+  #assert !nt_reuse_header(0,"failed","30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",7);
+  #assert !nt_reuse_header(0,"passed","1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",7);
+  #assert !nt_reuse_header(0,"passed","30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",6);
+  #assert !nt_reuse_header(-1,"passed","30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",7);
+  #assert !nt_reuse_header(2,"passed","693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",3);
+  #assert !nt_reuse_header(1,"passed","30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",3);
+  #assert !nt_reuse_header(1,"passed","693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6",4);
+}
+#test "native log fields preserve exact integer words and delimiters" {
+  #assert nt_field("wrong=16 validation_errors=0\n","wrong=")=="16" && nt_field("x=1,2\nx=3\n","x=")=="1,2";
+  #assert nt_field("abc","x=")=="" && nt_csv("1,2,3",0)==1 && nt_csv("1,2,3",2)==3 && nt_csv("1,2,3",3)==-1;
+  #assert nt_csv("1,no,3",1)==-1;
+}
+#test "native raw observation byte equality includes high bits and rejects truncation" {
+  nodes:[128]JvNode;d:[1]Jv;#assert jv_parse(d[..],"[[0,2147483648,4294967295,1065353216]]",nodes[..]);
+  raw:=[16]u8.[0,0,0,0,0,0,0,128,255,255,255,255,0,0,128,63];
+  #assert nt_raw_equal(d[0],0,raw[..]) && !nt_raw_equal(d[0],0,raw[0..<15]);
+  raw[15]=62;#assert !nt_raw_equal(d[0],0,raw[..]);
+  #assert jv_parse(d[..],"[[4294967296]]",nodes[..]) && !nt_raw_equal(d[0],0,raw[0..<4]);
+  #assert jv_parse(d[..],"[[-1]]",nodes[..]) && !nt_raw_equal(d[0],0,raw[0..<4]);
+  #assert jv_parse(d[..],"[[0.0]]",nodes[..]) && !nt_raw_equal(d[0],0,raw[0..<4]);
+}
+nt_test_rows :: (profile:int,short_row:int,bad_word:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);for row:0..<nv_rows(profile) {jo_arr(o[..]);for lane:0..<nv_lanes(profile,row)-(ifx row==short_row then 1 else 0) {jo_raw(o[..],bad_word);}jo_end(o[..]);}jo_end(o[..]);return jo_text(o[..]);
+}
+#test "native parsed rows require every authored row lane and uint32 word" {
+  bytes:[16384]u8;nodes:[256]JvNode;d:[1]Jv;o:[1]NVObservations;
+  for profile:0..<2 {
+    #assert jv_parse(d[..],nt_test_rows(profile,-1,"4294967295",bytes[..]),nodes[..]) && nt_rows(profile,d[0],0,o[..]);
+    #assert o[0].count==nv_rows(profile);for row:0..<o[0].count {#assert o[0].rows[row].count==nv_lanes(profile,row);for k:0..<o[0].rows[row].count {#assert o[0].rows[row].words[k]==0xffffffff;}}
+    for row:0..<nv_rows(profile) {#assert jv_parse(d[..],nt_test_rows(profile,row,"0",bytes[..]),nodes[..]) && !nt_rows(profile,d[0],0,o[..]);}
+    for bad:[3]string.["-1","4294967296","0.0"] {#assert jv_parse(d[..],nt_test_rows(profile,-1,bad,bytes[..]),nodes[..]) && !nt_rows(profile,d[0],0,o[..]);}
+  }
+  for bad:[4]string.["null","[]","[1,2,3,4]","[[0]]"] {#assert jv_parse(d[..],bad,nodes[..]) && !nt_rows(0,d[0],0,o[..]);}
+  #assert !nt_rows(-1,d[0],0,o[..]) && !nt_rows(2,d[0],0,o[..]);
+}
+
+#test "native field and CSV boundaries include zero nine CR and ten-digit driver IDs" {
+  #assert nt_field("x=end","x=")=="end" && nt_field("x=7\rrest","x=")=="7";
+  #assert nt_csv("0,9,4294967295",0)==0 && nt_csv("0,9,4294967295",1)==9 && nt_csv("0,9,4294967295",2)==4294967295;
+  #assert nt_csv("",0)==-1 && nt_csv(",",0)==-1 && nt_csv("12345678901",0)==-1 && nt_csv("/",0)==-1 && nt_csv(":",0)==-1;
+  #assert nt_csv(",0",1)==0;
+}
+#test "native raw shape refuses scalar rows and the first byte alone can fail" {
+  nodes:[128]JvNode;d:[1]Jv;raw:=[4]u8.[1,0,0,0];
+  #assert jv_parse(d[..],"null",nodes[..]) && !nt_raw_equal(d[0],0,raw[0..<0]);
+  #assert jv_parse(d[..],"[0]",nodes[..]) && !nt_raw_equal(d[0],0,raw[0..<0]);
+  #assert jv_parse(d[..],"[[0]]",nodes[..]) && !nt_raw_equal(d[0],0,raw[..]);
+  o:[1]NVObservations;#assert jv_parse(d[..],"[]",nodes[..]) && !nt_rows(-1,d[0],0,o[..]) && !nt_rows(2,d[0],0,o[..]);
+  bytes:[16384]u8;#assert jv_parse(d[..],nt_test_rows(0,-1,"0",bytes[..]),nodes[..]) && nt_rows(0,d[0],0,o[..]);
+  #assert jv_parse(d[..],"{\"a\":0,\"b\":0,\"c\":0,\"d\":0}",nodes[..]) && !nt_rows(0,d[0],0,o[..]);
+}
+#test "native row parsing refuses surplus lanes even when every prefix word is valid" {
+  bytes:[16384]u8;nodes:[256]JvNode;d:[1]Jv;o:[1]NVObservations;
+  #assert jv_parse(d[..],nt_test_rows(0,-1,"0,0",bytes[..]),nodes[..]) && !nt_rows(0,d[0],0,o[..]);
+}

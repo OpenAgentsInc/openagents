@@ -1,0 +1,20 @@
+// Verdicts over actual imported-memory and decoded-bitmap observations.
+#load "render-test-origin-policy.coax";
+#authority;
+#load "render-lifecycle-checks.coax";
+rl_mode :: (text:string)->int {if text=="before" {return 0;}if text=="during" {return 1;}if text=="overlap" {return 2;}return -1;}
+rl_kind :: (d:Jv,path:string,kind:int)->bool {return jv_kind(d,jv_path(d,0,path))==kind;}
+rl_number :: (d:Jv,path:string,value:int)->bool {return jv_int(d,jv_path(d,0,path),-1)==value;}
+rl_error :: (d:Jv,path:string)->bool {at:=jv_path(d,0,path);return jv_kind(d,at)==JV_STRING && jv_raw(d,at).count>0;}
+rl_engine :: (d:Jv,changed:bool)->bool {
+  if changed || !rl_number(d,"before.marker",324508639) || !rl_kind(d,"before.binding.coherent",JV_TRUE) || !rl_kind(d,"held.phase",JV_STRING) || jv_raw(d,jv_path(d,0,"held.phase"))!="held" || !rl_kind(d,"first.value",JV_FALSE) {return false;}
+  mode:=rl_mode(jv_raw(d,jv_get(d,0,"mode")));
+  if mode==0 {return rl_error(d,"second.error") && rl_number(d,"after.nativeInstantiations",0) && rl_number(d,"after.marker",324508639) && rl_kind(d,"after.binding.coherent",JV_TRUE) && rl_kind(d,"validation.ok",JV_TRUE);}
+  if mode==1 {return rl_kind(d,"held.binding.stopped",JV_TRUE) && rl_error(d,"second.error") && rl_kind(d,"after.binding.stopped",JV_TRUE) && rl_kind(d,"after.binding.coherent",JV_FALSE) && rl_kind(d,"after.marker",JV_NULL);}
+  if mode==2 {return rl_kind(d,"held.binding.stopped",JV_TRUE) && rl_kind(d,"second.value",JV_TRUE) && rl_kind(d,"after.overlapping",JV_FALSE) && rl_number(d,"after.nativeInstantiations",2) && rl_number(d,"after.marker",324508639) && rl_kind(d,"after.binding.coherent",JV_TRUE) && rl_kind(d,"validation.ok",JV_TRUE);}
+  return false;
+}
+rl_media :: (d:Jv,changed:bool)->bool {
+  return !changed && rl_kind(d,"waiting.present",JV_TRUE) && rl_kind(d,"waiting.ready",JV_FALSE) && rl_number(d,"waiting.decoded",0) && rl_kind(d,"replacement.retired",JV_TRUE) && rl_kind(d,"stopped.stopped",JV_TRUE) && rl_kind(d,"stopped.coherent",JV_FALSE) &&
+    rl_number(d,"after.decoded",1) && rl_number(d,"after.closed",1) && rl_number(d,"after.allocations",0) && rl_number(d,"after.textures",0) && rl_kind(d,"after.ready",JV_FALSE) && rl_kind(d,"after.hasTexture",JV_FALSE) && rl_number(d,"after.current",0) && rl_kind(d,"after.binding.stopped",JV_TRUE) && rl_kind(d,"after.binding.coherent",JV_FALSE);
+}

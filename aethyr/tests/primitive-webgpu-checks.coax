@@ -1,11 +1,13 @@
 // Acceptance checks written before the primitive WebGPU policy.
+#load "primitive-vertex-checks.coax";
 pp_test_parse :: (text:string,doc:[]Jv,nodes:[]JvNode)->bool {return jv_parse(doc,text,nodes);}
 #test "primitive modes and complete authored cardinalities are closed" {
-  names:=[4]string.["filter-format","ring8","sans-filter","sampling"];
-  counts:=[4]int.[40,728,40,6];
-  for i:0..<4 {#assert pp_mode(names[i])==i && pp_count(i)==counts[i];}
-  #assert pp_mode("unknown")==-1 && pp_count(-1)==0 && pp_count(4)==0;
+  names:=[6]string.["filter-format","ring8","sans-filter","sampling","clip-output","deadgears-vs"];
+  counts:=[6]int.[40,728,40,6,8,96];
+  for i:0..<6 {#assert pp_mode(names[i])==i && pp_count(i)==counts[i];}
+  #assert pp_mode("unknown")==-1 && pp_count(-1)==0 && pp_count(6)==0;
   #assert pp_width(0)==64 && pp_width(1)==8 && pp_width(2)==64 && pp_width(3)==2;
+  #assert pp_width(4)==320 && pp_height(4)==180 && pp_width(5)==64 && pp_height(5)==64 && pp_height(0)==64;
 }
 #test "primitive numeric transport requires finite words and their original f32 values" {
   doc:[1]Jv;nodes:[128]JvNode;
@@ -24,7 +26,8 @@ pp_test_parse :: (text:string,doc:[]Jv,nodes:[]JvNode)->bool {return jv_parse(do
   #assert pp_numeric_match(2,-0.000001,0.0) && !pp_numeric_match(2,-0.0000010000000001,0.0);
   #assert pp_numeric_match(3,0.00001,0.0) && !pp_numeric_match(3,0.000010000000001,0.0);
   #assert pp_numeric_match(3,-0.00001,0.0) && !pp_numeric_match(3,-0.000010000000001,0.0);
-  #assert !pp_numeric_match(-1,0.0,0.0) && !pp_numeric_match(4,0.0,0.0);
+  #assert pp_numeric_match(4,100.0,-50.0) && pp_numeric_match(5,100.0,-50.0);
+  #assert !pp_numeric_match(-1,0.0,0.0) && !pp_numeric_match(6,0.0,0.0);
   #assert pp_max(0.0,0.125)==0.125 && pp_max(0.125,0.0)==0.125 && pp_max(0.25,0.125)==0.25 && pp_max(0.125,0.25)==0.25;
   tiny:=f64_from_bits(0x3ff0000000000001);#assert f64_bits(pp_max(0.0,tiny))==0x3ff0000000000001 && f64_bits(pp_max(tiny,0.0))==0x3ff0000000000001;
 }
@@ -37,7 +40,7 @@ pp_test_parse :: (text:string,doc:[]Jv,nodes:[]JvNode)->bool {return jv_parse(do
 }
 pp_test_document :: (mode:int,change:int,out:[]u8) ->string {
   o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"format");jo_str(o[..],ifx change==1 then "rgba16float" else "rgba32float");
-  jo_key(o[..],"width");jo_int(o[..],pp_width(mode)+(ifx change==2 then 1 else 0));jo_key(o[..],"height");jo_int(o[..],pp_width(mode));
+  jo_key(o[..],"width");jo_int(o[..],pp_width(mode)+(ifx change==2 then 1 else 0));jo_key(o[..],"height");jo_int(o[..],pp_height(mode));
   jo_key(o[..],"messages");jo_arr(o[..]);if change==3 {jo_str(o[..],"warning");}jo_end(o[..]);
   jo_key(o[..],"errors");jo_arr(o[..]);if change==4 {jo_str(o[..],"error");}jo_end(o[..]);
   jo_key(o[..],"results");jo_arr(o[..]);
@@ -56,8 +59,8 @@ pp_test_document :: (mode:int,change:int,out:[]u8) ->string {
   jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
 }
 pp_test_fixture :: (mode:int,out:[]u8)->string {
-  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"cases");jo_arr(o[..]);
-  for row:0..< (ifx mode==1 then 728 else 20) {jo_obj(o[..]);jo_key(o[..],"expected");jo_raw(o[..],ifx row==0 then "[0.125,0.125,0.125,0.125]" else ifx row==1 then "[0.25,0.25,0.25,0.25]" else "[0,0,0,0]");jo_end(o[..]);}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"width");jo_int(o[..],pp_width(mode));jo_key(o[..],"height");jo_int(o[..],pp_height(mode));jo_key(o[..],"cases");jo_arr(o[..]);
+  for row:0..< (ifx mode==1 then 728 else ifx mode>=4 then pp_count(mode) else 20) {jo_obj(o[..]);jo_key(o[..],"expected");jo_raw(o[..],ifx row==0 then "[0.125,0.125,0.125,0.125]" else ifx row==1 then "[0.25,0.25,0.25,0.25]" else "[0,0,0,0]");jo_end(o[..]);}
   jo_end(o[..]);jo_key(o[..],"expected");jo_arr(o[..]);for row:0..<40 {jo_raw(o[..],ifx row==0 then "[0.125,0.125,0.125,0.125]" else ifx row==1 then "[0.25,0.25,0.25,0.25]" else "[0,0,0,0]");}jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
 }
 pp_test_replace :: (text:string,from:string,to:string,out:[]u8)->string {
@@ -73,12 +76,12 @@ pp_test_replace :: (text:string,from:string,to:string,out:[]u8)->string {
   from:=[11]string.["\"height\":64","\"messages\":[]","\"errors\":[]","\"values\":[0,0,0,0]","\"values\":[0,0,0,0]","\"words\":[0,0,0,0]","\"words\":[0,0,0,0]","\"values\":[0,0,0,0]","\"words\":[0,0,0,0]","\"width\":64","\"height\":64"];
   to:=[11]string.["\"height\":63","\"messages\":{}","\"errors\":{}","\"values\":[0,0,0]","\"values\":{\"a\":0,\"b\":0,\"c\":0,\"d\":0}","\"words\":[0,0,0]","\"words\":{\"a\":0,\"b\":0,\"c\":0,\"d\":0}","\"values\":[null,0,0,0]","\"words\":[2139095040,0,0,0]","\"width\":\"64\"","\"height\":\"64\""];
   for i:0..<11 {text:=pp_test_replace(valid,from[i],to[i],changed[..]);#assert text!="" && jv_parse(doc[..],text,nodes[..]) && !pp_evaluate(doc[0],0,fd[0],0).ok;}
-  #assert jv_parse(doc[..],valid,nodes[..]) && !pp_evaluate(doc[0],0,fd[0],-1).ok && !pp_evaluate(doc[0],0,fd[0],4).ok;
+  #assert jv_parse(doc[..],valid,nodes[..]) && !pp_evaluate(doc[0],0,fd[0],-1).ok && !pp_evaluate(doc[0],0,fd[0],6).ok;
   valid=pp_test_document(2,0,raw[..]);text:=pp_test_replace(valid,"\"values\":[0.125,0.125,0.125,0.125],\"words\":[1040187392,1040187392,1040187392,1040187392]","\"values\":[0.25,0.125,0.125,0.125],\"words\":[1048576000,1040187392,1040187392,1040187392]",changed[..]);
   #assert text!="" && jv_parse(doc[..],text,nodes[..]) && jv_parse(fd[..],pp_test_fixture(2,fraw[..]),fnodes[..]);
   r:=pp_evaluate(doc[0],0,fd[0],2);#assert !r.ok && r.discrepancies==1 && r.max_error==0.125;
   #assert jv_parse(fd[..],"{\"expected\":[[null,0,0,0]]}",fnodes[..]) && !pp_evaluate(doc[0],0,fd[0],2).ok;
-  #assert jv_parse(doc[..],"{\"format\":\"rgba32float\",\"width\":64,\"height\":64,\"messages\":[],\"errors\":[],\"results\":[]}",nodes[..]) && !pp_evaluate(doc[0],0,fd[0],-1).ok && !pp_evaluate(doc[0],0,fd[0],4).ok;
+  #assert jv_parse(doc[..],"{\"format\":\"rgba32float\",\"width\":64,\"height\":64,\"messages\":[],\"errors\":[],\"results\":[]}",nodes[..]) && !pp_evaluate(doc[0],0,fd[0],-1).ok && !pp_evaluate(doc[0],0,fd[0],6).ok;
 }
 #forall "every sampling normal and planted-control case must keep its individual verdict" loss:6..<12 {
   text:[32768]u8;doc:[1]Jv;nodes:[4096]JvNode;fd:Jv;
@@ -94,10 +97,27 @@ pp_test_replace :: (text:string,from:string,to:string,out:[]u8)->string {
     #assert jv_parse(fd[..],jo_text(o[..]),fnodes[..]);r:=pp_evaluate(doc[0],0,fd[0],2);#assert !r.ok && r.discrepancies==0 && r.max_error==0;
   }
 }
-#forall "primitive outcomes require every case and all finite raw lanes" mode:0..<4,change:0..<6 #steps 100000000 {
+#forall "primitive outcomes require every case and all finite raw lanes" mode:0..<6,change:0..<6 #steps 100000000 {
   text:[131072]u8;fixture:[32768]u8;doc:[1]Jv;fd:[1]Jv;nodes:[16384]JvNode;fnodes:[8192]JvNode;
   #assert jv_parse(doc[..],pp_test_document(mode,change,text[..]),nodes[..]) && jv_parse(fd[..],pp_test_fixture(mode,fixture[..]),fnodes[..]);
   result:=pp_evaluate(doc[0],0,fd[0],mode);
   #assert result.ok==(change==0);
   if change==0 {#assert result.discrepancies==0 && result.max_error==0;}
+}
+#test "vertex diagnostic fixture extents retain rectangular data and refuse invalid limits" {
+  d:[1]Jv;nodes:[128]JvNode;
+  good:=[3]string.["{\"width\":320,\"height\":180}","{\"width\":1,\"height\":16384}","{\"width\":16384,\"height\":1}"];
+  widths:=[3]int.[320,1,16384];heights:=[3]int.[180,16384,1];
+  for i:0..<3 {#assert jv_parse(d[..],good[i],nodes[..]) && pp_fixture_extent(d[0],"width")==widths[i] && pp_fixture_extent(d[0],"height")==heights[i];}
+  bad:=[8]string.["{}","{\"width\":0}","{\"width\":-1}","{\"width\":16385}","{\"width\":\"320\"}","{\"width\":320.5}","{\"width\":null}","{\"width\":1e999}"];
+  for text:bad {#assert jv_parse(d[..],text,nodes[..]) && pp_fixture_extent(d[0],"width")==-1;}
+  raw:[131072]u8;fixture:[32768]u8;fd:[1]Jv;fnodes:[8192]JvNode;large_nodes:[16384]JvNode;
+  #assert jv_parse(d[..],pp_test_document(4,0,raw[..]),large_nodes[..]) && jv_parse(fd[..],"{}",fnodes[..]) && !pp_evaluate(d[0],0,fd[0],4).ok;
+  #assert jv_parse(fd[..],"{\"width\":320}",fnodes[..]) && !pp_evaluate(d[0],0,fd[0],4).ok;
+}
+#test "source and resource digest fences require actual string equality" {
+  d:[1]Jv;nodes:[128]JvNode;
+  #assert jv_parse(d[..],"{\"sha256\":\"abc\"}",nodes[..]) && pp_digest_admit(d[0],jv_get(d[0],0,"sha256"),"abc") && !pp_digest_admit(d[0],jv_get(d[0],0,"sha256"),"abd");
+  #assert jv_parse(d[..],"{\"sha256\":111}",nodes[..]) && !pp_digest_admit(d[0],jv_get(d[0],0,"sha256"),"111");
+  #assert !pp_digest_admit(d[0],-1,"");
 }

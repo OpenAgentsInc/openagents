@@ -1,0 +1,61 @@
+// Current clip/VS native/parity refusal controls, with no shader emission.
+// --data DIR --binary GPU_TOOL --parity PARITY_TOOL --source-root SNAPSHOT
+// --vs-wgsl FILE --vs-cases FILE --clip-wgsl FILE --clip-cases FILE --out NEW_DIR
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#test "vertex loss injection preserves the original JSON around one selected token" {
+  out:[64]u8;#assert vl_splice("prefix42suffix",6,8,"43",out[..])=="prefix43suffix";
+  #assert vl_splice("abc",-1,1,"x",out[..])=="" && vl_splice("abc",1,4,"x",out[..])=="";
+}
+vl_splice :: (raw:string,at:int,end:int,replacement:string,out:[]u8)->string {
+  n:=raw.count-(end-at)+replacement.count;if at<0 || end<at || end>raw.count || n>out.count {return "";}
+  for i:0..<at {out[i]=raw[i];}for i:0..<replacement.count {out[at+i]=replacement[i];}
+  for i:end..<raw.count {out[i-(end-at)+replacement.count]=raw[i];}return cast(string)out[0..<n];
+}
+vl_cat :: (a:string,b:string,out:[]u8)->string {
+  if a.count+b.count>out.count {return "";}for i:0..<a.count {out[i]=a[i];}for i:0..<b.count {out[a.count+i]=b[i];}return cast(string)out[0..<a.count+b.count];
+}
+vl_run :: (argv:[]string,expected:int,output:string)->bool {
+  stdout:[65536]u8;stderr:[65536]u8;r:=proc_run(argv,20000,stdout[..],stderr[..]);
+  a:[4096]u8;b:[4096]u8;okay:=fs_write(vl_cat(output,".stdout",a[..]),cast(string)stdout[0..<r.out_n]) && fs_write(vl_cat(output,".stderr",b[..]),cast(string)stderr[0..<r.err_n]);
+  return okay && r.started==0 && !r.cut && !r.timed_out && r.status==expected;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}
+  data:=args_value(a[..],"--data","");binary:=args_value(a[..],"--binary","");parity:=args_value(a[..],"--parity","");root:=args_value(a[..],"--source-root","");dir:=args_value(a[..],"--out","");
+  vs_wgsl:=args_value(a[..],"--vs-wgsl","");vs_cases:=args_value(a[..],"--vs-cases","");clip_wgsl:=args_value(a[..],"--clip-wgsl","");clip_cases:=args_value(a[..],"--clip-cases","");
+  if data=="" || binary=="" || parity=="" || root=="" || dir=="" || vs_wgsl=="" || vs_cases=="" || clip_wgsl=="" || clip_cases=="" || fs_exists(dir) || !fs_mkdir(dir) {return 2;}
+  raw:[1048576]u8;changed:[1048576]u8;nodes:[65536]JvNode;doc:[1]Jv;
+  for loss:0..<3 {
+    current_name:[4096]u8;current:=fs_join(data,ifx loss==2 then "vs-new.json" else "clip-new-second.json",current_name[..]);n:=fs_read(current,raw[..]);
+    if n<1 || !jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]) {return 1;}d:=doc[0];node:=-1;replacement:="";number:[32]u8;
+    if loss==0 {node=jv_at(d,jv_at(d,jv_get(d,0,"raw_words"),0),0);o:[1]Jo;jo_start(o[..],number[..]);jo_int(o[..],jv_int(d,node,-1)^1);replacement=jo_text(o[..]);}
+    if loss==1 {node=jv_at(d,jv_at(d,jv_get(d,jv_at(d,jv_get(d,0,"results"),0),"clips"),0),0);replacement=ifx jv_raw(d,node)=="0" then "1" else "0";}
+    if loss==2 {node=jv_get(d,jv_at(d,jv_get(d,0,"results"),0),"selector");o:[1]Jo;jo_start(o[..],number[..]);jo_int(o[..],jv_int(d,node,-1)+1);replacement=jo_text(o[..]);}
+    if !jv_ok(d,node) {return 1;}span:=d.nodes[node];text:=vl_splice(cast(string)raw[0..<n],span.from,span.to,replacement,changed[..]);
+    names:=[3]string.["raw-word-loss","clip-vector-metadata-loss","VS-selector-metadata-loss"];input_name:[4096]u8;input:=fs_join(dir,names[loss],input_name[..]);output_name:[4096]u8;output:=vl_cat(input,".receipt.json",output_name[..]);old_name:[4096]u8;old:=fs_join(data,ifx loss==2 then "vs-old-raw.json" else "clip-old-raw.json",old_name[..]);
+    if text=="" || !fs_write(input,text) {return 1;}argv:=[5]string.[parity,ifx loss==2 then "deadgears-vs" else "clip-output",old,input,output];
+    if !vl_run(argv[..],1,input) || fs_exists(output) {return 1;}print("vertex observation loss % refused\n",names[loss]);
+  }
+  for loss:0..<4 {
+    n:=fs_read(ifx loss==3 then clip_cases else vs_cases,raw[..]);if n<1 || !jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]) {return 1;}d:=doc[0];node:=-1;replacement:="";
+    if loss==0 {node=jv_path(d,0,"resources.objects.sha256");replacement="0000000000000000000000000000000000000000000000000000000000000000";}
+    if loss==1 {node=jv_get(d,jv_at(d,jv_get(d,0,"source_inputs"),0),"sha256");replacement="0000000000000000000000000000000000000000000000000000000000000000";}
+    if loss==2 {node=jv_path(d,0,"resources.objects.bytes");replacement="384001";}
+    if loss==3 {node=jv_get(d,jv_at(d,jv_get(d,0,"cases"),0),"x");replacement="320";}
+    if !jv_ok(d,node) {return 1;}span:=d.nodes[node];text:=vl_splice(cast(string)raw[0..<n],span.from,span.to,replacement,changed[..]);
+    names:=[4]string.["resource-hash-loss","source-hash-loss","resource-byte-count-loss","clip-origin-loss"];input_name:[4096]u8;input:=fs_join(dir,names[loss],input_name[..]);output_name:[4096]u8;output:=vl_cat(input,".unwritten.json",output_name[..]);
+    if text=="" || !fs_write(input,text) {return 1;}
+    if loss==3 {argv:=[5]string.[binary,"clip-output",clip_wgsl,output,input];if !vl_run(argv[..],2,input) {return 1;}}
+    else {argv:=[7]string.[binary,"deadgears-vs",vs_wgsl,output,input,"--source-root",root];if !vl_run(argv[..],2,input) {return 1;}}
+    if fs_exists(output) {return 1;}
+    if loss<2 {
+      script_name:[4096]u8;script:=fs_join(root,"aethyr/tests/check_deadgears_vs_webgpu.ts",script_name[..]);old_output_name:[4096]u8;old_output:=vl_cat(output,".legacy",old_output_name[..]);old_args:=[5]string.["bun",script,vs_wgsl,old_output,input];log_name:[4096]u8;log_path:=vl_cat(input,".legacy",log_name[..]);
+      if !vl_run(old_args[..],1,log_path) || fs_exists(old_output) {return 1;}
+    }print("vertex preflight loss % refused before Chrome\n",names[loss]);
+  }
+  print("vertex diagnostics: seven planted losses refused; original source/resource hash failures agree with the legacy boundary\n");return 0;
+}

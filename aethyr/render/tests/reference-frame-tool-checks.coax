@@ -1,0 +1,53 @@
+RFR_TEST_CONFIG :: "17 320 180 8070 16 0 0 0 0 0 0 0 0\nu.bin\nhud.bin\ndraws.bin\n-\nrender.json\n1\n12 stage.tree\n1\nu.bin u.bin 4 4 4 0 4 1\ntextures 1\nsans_atlas rgba8unorm 1 2 texture.bin\n2 2 0 8 16\n1 1 16 4 4\nmedia_text media.txt\nmedia_images 1\n1 /same 1 2 2\n";
+RFR_TEST_BACKEND :: "{\"status\":\"rendered\",\"compiler_sha256\":\"compiler\",\"compiler_source_digest\":\"digest\",\"compiler_changed\":false,\"compiler_sources_match\":true,\"source_changes\":[],\"artifact_changes\":[],\"source_sha256\":{\"aethyr/render/tests/reference-frame-native.coax\":\"source\",\"aethyr/render/tests/reference-frame-native.c\":\"driver\",\"aethyr/render/tests/frame-input.h\":\"loader\",\"tool.py\":\"old-tool\"},\"native_mode\":\"debug\",\"c_mode\":\"checked\"}";
+rfr_test_edit :: (text:string,needle:string,replacement:string,out:[]u8)->string {at:=rtq_find(text,needle,0);#assert at>=0;o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<at]);jo_put(o[..],replacement);jo_put(o[..],text[at+needle.count..<text.count]);return jo_text(o[..]);}
+#test "reference transport inventories every raw texture media and path field" {
+  p:[1]RfrConfig;#assert rfr_parse(RFR_TEST_CONFIG,p[..]);#assert p[0].row_count==17 && p[0].ref_count==9 && p[0].tree_count==1 && p[0].tree_rows[0]==7 && p[0].counts[0]==17 && p[0].counts[3]==8070;
+  #assert rfr_token(p[..],9,0)=="u.bin" && rfr_token(p[..],11,0)=="sans_atlas" && rfr_token(p[..],11,3)=="2" && rfr_token(p[..],12,4)=="16" && rfr_token(p[..],16,1)=="/same";
+  #assert p[0].refs[5].row==7 && p[0].refs[5].column==1 && p[0].refs[7].row==11 && p[0].refs[7].column==4 && p[0].refs[8].row==14 && p[0].refs[8].column==1;
+  for i:0..<5 {#assert p[0].refs[i].row==i+1 && p[0].refs[i].column==0;}#assert p[0].refs[6].row==9 && p[0].refs[6].column==1 && rfr_token(p[..],0,13)=="";
+  text:[4096]u8;for i:0..<RFR_TEST_CONFIG.count {text[i]=ifx RFR_TEST_CONFIG[i]=='\n' then ' ' else RFR_TEST_CONFIG[i];}#assert rfr_parse(cast(string)text[0..<RFR_TEST_CONFIG.count],p[..]) && p[0].row_count==17 && p[0].ref_count==9 && p[0].tree_count==1 && p[0].counts[3]==8070;
+  for bad:[6]string.["0 1 2","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 unknown value","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 textures 1","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - -1","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 media_images -1","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 media_text"] {#assert !rfr_parse(bad,p[..]);}
+}
+#test "reference transport helpers honor zero exact ends and full capacities" {
+  for c:0..<256 {#assert rfr_white(cast(u8)c)==(c==32 || c==9 || c==10 || c==11 || c==12 || c==13);}#assert !rfr_number(":").ok;
+  p:[1]RfrConfig;p[0].token_count=3;p[0].tokens[0]="0";p[0].tokens[1]="3";p[0].tokens[2]="-1";
+  #assert rfr_take(p[..],-1)== -1 && rfr_take(p[..],0)==0 && p[0].cursor==0 && rfr_take(p[..],3)==1 && p[0].cursor==3 && rfr_take(p[..],1)== -1;
+  #assert rfr_token(p[..],1,0)=="0" && rfr_token(p[..],1,2)=="-1" && rfr_token(p[..],1,3)=="" && rfr_token(p[..],-1,0)=="" && rfr_token(p[..],2,0)=="" && rfr_token(p[..],0,-1)=="";
+  #assert rfr_count(p[..],1,0)==0 && rfr_count(p[..],1,1)==3 && rfr_count(p[..],1,2)== -1 && rfr_count(p[..],1,3)== -1;p[0].tokens[1]="4";#assert rfr_count(p[..],1,1)== -1;
+  p[0].rows[2]=RfrRow.{first=0,count=3};p[0].tokens[3]="outside";#assert rfr_token(p[..],2,0)=="" && rfr_token(p[..],1,3)=="";p[0].row_count=0;p[0].cursor=0;#assert rfr_take_ok(p[..],0) && !rfr_take_ok(p[..],4);
+  p[0].row_count=RFR_ROWS;#assert rfr_take(p[..],0)== -1;p[0].ref_count=0;p[0].tree_count=0;#assert !rfr_ref(p[..],-1,0,false) && rfr_ref(p[..],0,0,false);p[0].ref_count=RFR_REFS;#assert !rfr_ref(p[..],0,0,false);p[0].ref_count=0;p[0].tree_count=RFR_TREES;#assert !rfr_ref(p[..],0,0,true);
+  text:[8194]u8;for i:0..<4097 {text[i*2]='x';text[i*2+1]=' ';}#assert rfr_tokenize(cast(string)text[0..<8192],p[..]) && p[0].token_count==4096 && rfr_tokenize(cast(string)text[0..<8191],p[..]) && p[0].token_count==4096 && !rfr_tokenize(cast(string)text[..],p[..]) && !rfr_tokenize(cast(string)text[0..<8193],p[..]) && !rfr_parse(cast(string)text[..],p[..]);
+  #assert rfr_tokenize("x",p[..]) && p[0].token_count==1 && p[0].tokens[0]=="x" && rfr_tokenize(" x",p[..]) && p[0].token_count==1 && p[0].tokens[0]=="x" && rfr_tokenize("",p[..]) && p[0].token_count==0;
+}
+#test "reference raw inventory accepts zero suffix observations and rejects every truncation" {
+  p:[1]RfrConfig;base:="0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0";#assert rfr_parse(base,p[..]);#assert rfr_parse("0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 textures 0 media_images 0",p[..]);
+  #assert rfr_parse("0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 textures 1 name rgba8 1 0 file",p[..]);
+  for text:[13]string.["x 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0","0 2 2 0 16 0 0 0 0 0 0 0 0","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - -","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - -","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 1 0","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 -1","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 1 n f 1 1 1 0 1","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 textures -1","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 textures 1 name rgba8 1 -1 file","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 textures 1 name rgba8 1 1 file 1 1 0 4","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 media_images -1","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 media_images 1 1 /url 1 4","0 2 2 0 16 0 0 0 0 0 0 0 0 - - - - - 0 0 media_images"] {#assert !rfr_parse(text,p[..]);}
+}
+#test "reference backend modes retain historical defaults and changed native inputs" {
+  nodes:[1024]JvNode;d:[1]Jv;bn:[64]JvNode;b:[1]Jv;out:[8192]u8;other:[8192]u8;
+  #assert jv_parse(d[..],"[\"\",1]",nodes[..]) && rfr_literal(d[0],jv_at(d[0],0,0),"") && !rfr_literal(d[0],jv_at(d[0],0,1),"");
+  text:=rfr_test_edit(RFR_TEST_BACKEND,"\"native_mode\":\"debug\",\"c_mode\":\"checked\"","\"old\":0",out[..]);#assert jv_parse(d[..],text,nodes[..]) && jv_parse(b[..],"{\"aethyr/render/tests/reference-frame-native.c\":\"driver\",\"aethyr/render/tests/frame-input.h\":\"loader\"}",bn[..]) && rfr_reuse(d[0],"checked-o2",b[0])==1;
+  #assert jv_parse(b[..],"{\"aethyr/render/tests/reference-frame-native.c\":\"changed\",\"aethyr/render/tests/frame-input.h\":\"loader\"}",bn[..]) && rfr_reuse(d[0],"checked-o2",b[0])==0;#assert jv_parse(b[..],"{\"aethyr/render/tests/frame-input.h\":\"loader\"}",bn[..]) && rfr_reuse(d[0],"checked-o2",b[0])==0;
+  text=rfr_test_edit(RFR_TEST_BACKEND,"\"native_mode\":\"debug\",\"c_mode\":\"checked\"","\"native_mode\":\"release\",\"c_mode\":\"wrapping\"",out[..]);#assert jv_parse(d[..],text,nodes[..]) && jv_parse(b[..],"{\"aethyr/render/tests/reference-frame-native.c\":\"driver\",\"aethyr/render/tests/frame-input.h\":\"loader\"}",bn[..]) && rfr_reuse(d[0],"release",b[0])==1 && rfr_reuse(d[0],"debug",b[0])== -1;
+  text=rfr_test_edit(RFR_TEST_BACKEND,"aethyr/render/tests/reference-frame-native.coax","other.coax",out[..]);#assert jv_parse(d[..],text,nodes[..]) && !rfr_backend(d[0],"compiler","digest");
+  for value:[3]string.["{}","[]","null"] {text=rfr_test_edit(RFR_TEST_BACKEND,"\"source_changes\":[]", "\"source_changes\":null",out[..]);text=rfr_test_edit(text,"null",value,other[..]);#assert jv_parse(d[..],text,nodes[..]) && rfr_backend(d[0],"compiler","digest")== (value=="[]");}
+  text=rfr_test_edit(RFR_TEST_BACKEND,"\"rendered\"","\"refused\"",out[..]);#assert jv_parse(d[..],text,nodes[..]) && rfr_backend(d[0],"compiler","digest");
+}
+#test "reference backend separates rendered Coax from changed observer Coax" {
+  nodes:[1024]JvNode;d:[1]Jv;#assert jv_parse(d[..],RFR_TEST_BACKEND,nodes[..]) && rfr_backend_sources(d[0])==jv_get(d[0],0,"source_sha256");
+  text:[8192]u8;changed:=rfr_test_edit(RFR_TEST_BACKEND,"\"source_sha256\":{","\"renderer_source_sha256\":{\"aethyr/render/tests/reference-frame-native.coax\":\"product\"},\"source_sha256\":{",text[..]);#assert jv_parse(d[..],changed,nodes[..]) && rfr_backend_sources(d[0])==jv_get(d[0],0,"renderer_source_sha256");
+  #assert jv_parse(d[..],"{}",nodes[..]) && rfr_backend_sources(d[0])== -1;
+  other:[8192]u8;changed=rfr_test_edit(RFR_TEST_BACKEND,"\"source_sha256\":{","\"renderer_source_sha256\":{},\"source_sha256\":{",other[..]);#assert jv_parse(d[..],changed,nodes[..]) && !rfr_backend(d[0],"compiler","digest");
+}
+#test "reference transport numeric words preserve int64 endpoints and refuse overflow" {
+  for word,i:[6]string.["0","+1","-1","0009","9223372036854775807","-9223372036854775808"] {n:=rfr_number(word);#assert n.ok && n.value==[6]int.[0,1,-1,9,9223372036854775807,-9223372036854775808][i];}
+  for word:[9]string.["","+","-","1.0"," 1","1 ","9223372036854775808","-9223372036854775809","1_0"] {#assert !rfr_number(word).ok;}
+}
+#test "reference backend admission preserves complete compiler source and mode boundaries" {
+  nodes:[1024]JvNode;d:[1]Jv;#assert jv_parse(d[..],RFR_TEST_BACKEND,nodes[..]);#assert rfr_backend(d[0],"compiler","digest") && !rfr_backend(d[0],"other","digest") && !rfr_backend(d[0],"compiler","other");
+  before_nodes:[64]JvNode;before:[1]Jv;#assert jv_parse(before[..],"{\"aethyr/render/tests/reference-frame-native.c\":\"driver\",\"aethyr/render/tests/frame-input.h\":\"loader\"}",before_nodes[..]);#assert rfr_reuse(d[0],"debug",before[0])==1 && rfr_reuse(d[0],"release",before[0])== -1;for mode:[3]string.["sanitized","sanitized-o1","checked-o2"] {#assert rfr_reuse(d[0],mode,before[0])==0;}
+  changed:[8192]u8;for needle,i:[6]string.["\"rendered\"","\"compiler_changed\":false","\"compiler_sources_match\":true","\"source_changes\":[]","\"artifact_changes\":[]","\"reference-frame-native.coax\""] {replacement:=[6]string.["\"prepared\"","\"compiler_changed\":true","\"compiler_sources_match\":false","\"source_changes\":[\"changed\"]","\"artifact_changes\":[\"changed\"]","\"other.coax\""][i];if i==5 {continue;}#assert jv_parse(d[..],rfr_test_edit(RFR_TEST_BACKEND,needle,replacement,changed[..]),nodes[..]) && !rfr_backend(d[0],"compiler","digest");}
+  for mode:[5]string.["checked-o2","debug","release","sanitized","sanitized-o1"] {#assert rfr_mode(mode);}#assert !rfr_mode("other");#assert rfr_compiler_gate(true,false) && rfr_compiler_gate(true,true) && rfr_compiler_gate(false,true) && !rfr_compiler_gate(false,false);
+}

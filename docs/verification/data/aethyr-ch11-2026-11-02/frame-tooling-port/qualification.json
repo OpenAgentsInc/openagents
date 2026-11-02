@@ -1,0 +1,34 @@
+{
+  "schema": "aethyr.frame.tooling-split.v1",
+  "date": "2026-11-02",
+  "status": "pass",
+  "coax_tool": "aethyr/render/tests/check-frame-tooling.coax",
+  "coax_source_sha256": "735ab2f0d3fe18bb0aed155b1522c4b206e98a2ba319b88a5f90bbc25bb47b55",
+  "coax_executable_sha256": "a0bbe4a6d46fc4e027509cd439f59c6256697525c83e815c6b7ab599abb56144",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "checks_first": "Authored ABI corpus check failed against its stub with E0406 before implementation; retained log.",
+  "reference": {
+    "original_test_frame_tooling_sha256": "80e0d05f959e73171c700b0aa75ddfea228456e7a3d723797d2700ac45098a60",
+    "original_methods": 3,
+    "result": "Original independent mathematical endpoints, ABI losses and deterministic protocol tests passed before splitting. Original bytes archived and read back with matching SHA256."
+  },
+  "coax_controls": {
+    "missing_field_controls": 48,
+    "extra_field_controls": 1,
+    "schema": "Same seven record names and every original field; checked with the already qualified generic ABI predicate.",
+    "deterministic_binary_protocol_cases": 1891,
+    "two_exact_protocol_observations": {"bytes": 676541, "sha256": "9bdd8683acaede3eceb80cf70470376531048d1151387e094edd8f047a2098c3"},
+    "transport": "The Python reference emits only its case count and existing encode(cases()) bytes. Coax owns invocation, exact raw byte comparison, bounds and verdicts, preserving NUL and non-ASCII bytes.",
+    "failed_trials": "Initial JSON serialization and ASCII decoding assumptions failed; a newline literal framing error also failed. Every raw command/error is retained. The final binary transport passes."
+  },
+  "retained_math": {
+    "test_frame_tooling.py": "Only the three unchanged hand-pinned unbounded-integer endpoint assertions remain, with precise reason2 header; its ABI/protocol test methods moved into Coax.",
+    "test_sans_filter_fixture.py": "Inspection found only hand-pinned texels/channels, endpoint clamps and independent closed-form bilinear/mip/binary32 equations. A precise reason2 header was added; no arithmetic, fixture or tolerance changed. Numerical gates were not rerun for the comments."
+  },
+  "archive": {
+    "path": "artifacts-and-reference.tar.gz",
+    "bytes": 117626,
+    "sha256": "ab4795e147e847fb268c769140cb16855af88b999f80b791e97bb2dcd25c17b1"
+  },
+  "limits": "Tooling/oracle transport only; no product frame, native renderer, Grid CPU, raster or geometry gate was repeated and no current-compiler/release qualification is claimed."
+}

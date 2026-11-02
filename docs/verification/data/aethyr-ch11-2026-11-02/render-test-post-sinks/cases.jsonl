@@ -1,0 +1,27 @@
+{"case":"GET fixture preserved","passed":true}
+{"case":"expired deadline refuses queued bytes before any storage write","passed":true}
+{"case":"multi-chunk NUL-safe exact-cap upload and atomic replacement","passed":true}
+{"case":"zero-byte exact-zero-cap sink and exact ACK","passed":true}
+{"case":"framing/capacity refusal 0","passed":true}
+{"case":"framing/capacity refusal 1","passed":true}
+{"case":"framing/capacity refusal 2","passed":true}
+{"case":"framing/capacity refusal 3","passed":true}
+{"case":"framing/capacity refusal 4","passed":true}
+{"case":"framing/capacity refusal 5","passed":true}
+{"case":"framing/capacity refusal 6","passed":true}
+{"case":"framing/capacity refusal 7","passed":true}
+{"case":"framing/capacity refusal 8","passed":true}
+{"case":"/unknown.bin","passed":true}
+{"case":"/capture/layers.bin?alias","passed":true}
+{"case":"undeclared multi-read truncation preserves output and records consumed bytes","passed":true}
+{"case":"truncated body preserves previous valid output","passed":true}
+{"case":"actual partial storage failure preserves prior output","passed":true}
+{"case":"finalized sources and published output hashes","passed":true}
+{"case":"all ten upload receipts retain exact counts hashes publication and cleanup facts","passed":true}
+{"case":"root escape refused before readiness","passed":true}
+{"case":"pinned source overlap refused before readiness","passed":true}
+{"case":"served source directory overlap refused before readiness","passed":true}
+{"case":"invalid URL refused before readiness","passed":true}
+{"case":"negative cap refused before readiness","passed":true}
+{"case":"actual accepted binary retained before journal-fault destination reuse","passed":true}
+{"case":"complete publication ACK stays truthful when ledger storage fails; final qualification fails","passed":true}

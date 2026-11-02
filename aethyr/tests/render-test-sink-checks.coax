@@ -1,0 +1,35 @@
+#test "declared POST sinks require exact literal URLs and bounded declared byte counts" {
+  #assert rps_route("/capture/layers.bin","/capture/layers.bin") && rps_route("/a","/a");
+  for bad:[9]string.["", "capture/x", "/", "/capture/../x", "/capture/x?x", "/capture/x#x", "/capture/%2f", "/__rto/finalize", "/__rto/control/x/1"] {#assert !rps_route(bad,bad);}
+  #assert !rps_route("/capture/a","/capture/b") && !rps_route("/capture/a","/capture/a?x");
+  #assert rps_budget(0,0) && rps_budget(1,1) && rps_budget(67108864,67108864) && rps_budget(0,67108864);
+  #assert !rps_budget(-1,1) && !rps_budget(0,-1) && !rps_budget(0,67108865) && !rps_budget(2,1);
+  #assert rps_count(0) && rps_count(32) && !rps_count(-1) && !rps_count(33);
+}
+#test "sink targets use canonical parents inside an explicit root and exclude every source overlap" {
+  #assert rps_within("/owned","/owned") && rps_within("/owned/sub","/owned") && rps_within("/x","/") && rps_within("/","/");
+  #assert !rps_within("/owned-other","/owned") && !rps_within("/elsewhere","/owned") && !rps_within("","/owned") && !rps_within("/owned","");
+  #assert rps_target("/owned","/owned/sub","/owned/sub/layers.bin","",0,false);
+  #assert rps_target("/owned","/owned","/owned/x","/owned/x",1,false);
+  #assert !rps_target("/owned","/owned-other","/owned-other/x","",0,false);
+  #assert !rps_target("/owned","/owned","/owned/x","/outside/x",1,false);
+  #assert !rps_target("/owned","/owned","/owned/x","",1,false);
+  #assert !rps_target("/owned","/owned","/owned/x","/owned/x",0,false);
+  #assert !rps_target("/owned","/owned","/owned/x","/owned/x",2,false);
+  #assert !rps_target("/owned","/owned","/owned/x","/owned/x",-1,false);
+  #assert !rps_target("/owned","/owned","/owned/x","/owned/x",1,true);
+  #assert !rps_target("/","/","/x","",0,false);
+  for file:[7]string.["/owned/../x","/owned/x/y","/owned/.","/owned/..","/owned/","x","/owned"] {#assert !rps_target("/owned","/owned",file,"",0,false);}
+}
+#test "POST publication requires complete exact storage source and target observations together" {
+  #assert rps_publish(3,3,3,true,true,true,true);
+  #assert rps_publish(0,0,0,true,true,true,true);
+  #assert !rps_publish(-1,-1,-1,true,true,true,true) && !rps_publish(1,2,2,true,true,true,true) && !rps_publish(2,2,1,true,true,true,true);
+  for mask:0..<16 {#assert rps_publish(3,3,3,(mask&1)!=0,(mask&2)!=0,(mask&4)!=0,(mask&8)!=0)==(mask==15);}
+}
+#test "origin qualification distinguishes source output staging ledger and requested finalization facts" {
+  for mask:0..<32 {#assert rps_complete((mask&1)!=0,(mask&2)!=0,(mask&4)!=0,(mask&8)!=0,(mask&16)!=0)==(mask==31);}
+}
+#test "POST deadlines refuse at the boundary even when transport data is already queued" {
+  #assert rps_time(0,1) && rps_time(999,1000) && !rps_time(0,0) && !rps_time(1000,1000) && !rps_time(1001,1000);
+}

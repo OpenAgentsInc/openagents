@@ -1,0 +1,143 @@
+{
+  "schema": "aethyr.render.reference-profiler-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "pass",
+  "release_qualification": false,
+  "scope": "Coax owns exact C observer transformation, mode/command selection, compiler gate, immutable receipt/artifact/input fences, process deadlines, diagnostics, byte/result comparison and every verdict. No new shader, geometry, GPU or current-compiler qualification.",
+  "compiler": {
+    "observer_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "current_sources_match": false,
+    "explicit_exploration": true,
+    "qualifier_executable_sha256": "20de816529cb22d85f71b110271e642678d593a3dc0bc3a6c55e3ab0bfb000e0",
+    "frozen_galaxy_renderer_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+    "current_compiler_publication": "External #12638; the old observer pin is not release qualification."
+  },
+  "checks": {
+    "checks_first_failure_log": "trials/aethyr-reference-profiler-stubs-20261102.log",
+    "authority_root_mutants": 281,
+    "killed": 281,
+    "survivors": 0,
+    "waivers": 0,
+    "mutation_log": "trials/aethyr-reference-profiler-mutation-fourth-20261102.log",
+    "earlier_mutation_rounds": [
+      [
+        297,
+        232,
+        65
+      ],
+      [
+        291,
+        271,
+        20
+      ],
+      [
+        286,
+        285,
+        1
+      ]
+    ],
+    "cli_shape_checks": 1,
+    "empty_root_inventory_checks": 1
+  },
+  "parity": {
+    "original_unit_methods": 3,
+    "same_input_instrumentation_cases": 20,
+    "synthetic": 6,
+    "current_generated_c": 7,
+    "frozen_galaxy_generated_c": 7,
+    "definition_refusals": 5,
+    "exact_driver_source_comparisons": 2,
+    "render_command_missing_duplicate_refusals": 2,
+    "exact_changed_driver_outcomes": 2,
+    "cli_refusals": 7,
+    "immutable_receipt_refusals_before_profiled_c": 5,
+    "diagnostic_comparison": "Exact raw JSON token fields retain numeric spelling, with no tolerance or fixture normalization; old Python loads/dumps formatting is not claimed byte-identical.",
+    "resumption": "First parity epoch passed3 original unit methods and synthetic modes0\u20133, then stopped because the copied reference lacked its probe header. Corrected harness copied the unchanged header and resumed at mode4; passing cases were not re-executed. Both source images and failed logs are archived."
+  },
+  "native": {
+    "tiny": {
+      "profile_seconds": 2.152,
+      "result_and_image_identity": true,
+      "profiled_c_sha256": "33e8b25571add1b0094aec08b00ebd77f100b856f33bd5d797357d63f21dafc1",
+      "diagnostic_counts": {
+        "stages": 2,
+        "pixel_records": 2,
+        "fragment_records": 2,
+        "extent_records": 1,
+        "error_records": 0
+      }
+    },
+    "galaxy": {
+      "profile_seconds": 4.598,
+      "result_and_image_identity": true,
+      "profiled_c_sha256": "c684b9f953147506b27044069dfe3142db3cb0c413f5d69cbe3354f6953b1785",
+      "diagnostic_counts": {
+        "stages": 2,
+        "pixel_records": 4,
+        "fragment_records": 2,
+        "extent_records": 1,
+        "error_records": 0
+      },
+      "retained_original_render_seconds": 7.618782,
+      "exact_frozen_driver_sha256": "523db2b4a77f179cef46078baaa23e02ca5ad38f46143c6627b30fe03112b3b9"
+    }
+  },
+  "watchtower": {
+    "measurement_sha256": "4d9d3e97259bb8c4384c7767788f45dce5b00ea69f8fcfb938889878ce0a4218",
+    "required_missing_driver_sha256": "041a2f145098222d7e453c6ba91b5b5f24e32426be2031502828b24c11fc0714",
+    "substitute_driver_refused": true,
+    "limitation": "Exact historical driver was absent from retained snapshots/archives searched; no reconstruction/substitution and no Watchtower profile claim."
+  },
+  "inventory_path_correction": {
+    "file": "aethyr/render/tests/qualification-files.coax",
+    "sha256": "a2767400d5a25e59de2cbc073e6fc4eaf858f2778f590f4b482d335f9acbbe6a",
+    "bug": "An empty root stripped the leading slash from absolute inventory keys. Added root.count>0 and empty/full/partial-root checks.",
+    "historical_epochs": "Earlier build/package/catalog/reference-frame artifacts/hashes remain unchanged; old empty-root receipt keys may lack a slash. They are not admitted as valid profiler input inventories.",
+    "fresh_bounded_replacement": "A new2x2 measurement preserves all absolute paths and matches the prior complete result and64-byte image; no unrelated producer gate repeated."
+  },
+  "source_sha256": {
+    "aethyr/render/tests/reference-profiler-policy.coax": "9ad988dfb13b213b3ceac4a860f1e12a2850adeaf1f8b04d30b9d43cf4537d78",
+    "aethyr/render/tests/reference-profiler-checks.coax": "31620b53563fe696516341d9468424a75afff25ed1b0a683c79a28fa8937bad6",
+    "aethyr/render/tests/reference-profiler-templates.coax": "148c37725e36cd41520df2c2dfc4ec023648bcd602857212cc6b3412713d1447",
+    "aethyr/render/tests/reference-profiler-files.coax": "62e34dfac6ec573e2e5cd103011930e70082181c014580a4db92aadf5a3de209",
+    "aethyr/render/tests/profile-reference-frame.coax": "7606a0d80d4b7708a4a102a4041973349f9c65eced9f06dc8c5856b752413f29",
+    "aethyr/render/tests/check-reference-profiler.coax": "6177716c72cc04f5e7f8194feb898e54f6769fd79f6044a11e095453b5c06737",
+    "aethyr/render/tests/check-reference-profiler-controls.coax": "230475d75ecbe08ff16a11acb82af39270c146b061d98ca1feeed9f92f2aa57f",
+    "aethyr/render/tests/qualification-files.coax": "a2767400d5a25e59de2cbc073e6fc4eaf858f2778f590f4b482d335f9acbbe6a"
+  },
+  "original_sha256": {
+    "profile_reference_frame.py": "ec901bfc674078f371101db3557c4bcd0599e26ea5aae88bf0cbb92b9a00ec33",
+    "test_reference_profiler.py": "e20813f9076987ad2adb475ee9b858afe5be0eb7f082880acb9e6a387bd4e8c4"
+  },
+  "frozen_input_sha256": {
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/frame.config": "e6c30c4deb42343aad4780d7b9765ef80e1a514a5012760593260e7003d6120d",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/0e99ad362a71db63-hud.bin": "0e99ad362a71db634cbf83a1935334fefd97337a0c8470acb9f69c192025b337",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/23e566d0a0d92162-pipeline-12-23e566d0a0d92162cf026018e80991cd39393078f799fc8df9c1d9125a67dec6.tree": "23e566d0a0d92162cf026018e80991cd39393078f799fc8df9c1d9125a67dec6",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/557f249313820731-pipeline-0-557f249313820731861b5143b0eb62211c826afbe8c6b124b3163c0463cd40c9.tree": "557f249313820731861b5143b0eb62211c826afbe8c6b124b3163c0463cd40c9",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/cf50c65c72be07ea-render.json": "cf50c65c72be07ea664fe3bad75f530709426eb02c7e57adc0d51eb1a59de0c0",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/d5587d767be24f41-u.bin": "d5587d767be24f41607cb6c95a22eb4acfdab2fecb6f68c5129ecd630ed270b2",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/e3b0c44298fc1c14-draws.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/e3b0c44298fc1c14-indices.bin": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/e3b0c44298fc1c14-media.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/f34aab09d2b1fc7b-texture-0.bin": "f34aab09d2b1fc7bbadcafad86d5e53c36a86bc77a0c1d9ba526427e45273dc6",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/frame-provenance.json": "427b2fb7a68d3aebc0587cd8453c2a6167636d7ab851b2c2f6c86bda92f1029c",
+    "/private/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/inputs/original-frame.config": "a85150a7789c66dc7c67268f98b839b65fbf2c76a1cd86d6aa4f5494f0ab4abb",
+    "/private/tmp/aethyr-ch11-reference-grid-owned-sans-native-308/reference-frame": "aefdc677697aeb41c3630b766123d3366efc86ab9e6a470d4430e8ab500b957f",
+    "/private/tmp/aethyr-ch11-reference-grid-owned-sans-native-308/reference-frame.c": "b55b3495fe91b403676b9fcb15f883d61f70724ea533472684c8c4dd521ea706",
+    "/private/tmp/aethyr-ch11-reference-grid-owned-sans-native-308/reference-frame.h": "ebc569713a35a34cc21ea2936b53616b2fb9fa4f4aa3ecc6f10772f35a5b7f8f",
+    "/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/frame.json": "8cc43258adcf66a2523630254095bd44799be352e8ce7ef65aa96b3c826b9da2",
+    "/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/measurement.json": "7fa04532d1c814354b7f0d098177f10e84714dfcefc0f4254df5384473fa02eb",
+    "/tmp/aethyr-ch11-reference-galaxy-owned-sans-native-308/screen.rgba32f": "db30dfd5bd3a9270cc21f252e71fdebe3148abc5e0f3541352c3a7132383801d"
+  },
+  "archive": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-02/reference-profiler-tool-port/artifacts-and-reference.tar.gz",
+    "sha256": "098ebce221235598bbae88e0e4310c6e00e62479c123926c8274231512471bbd",
+    "bytes": 3643729,
+    "original_readback_verified": true
+  },
+  "limitations": [
+    "All native observation is explicit exploration under the older qualified compiler; final source/current-compiler/release remains pending.",
+    "Synthetic2x2 plus exact frozen Galaxy only; no huge Grid/full nominal geometry/full model gate.",
+    "Failed prototype logs are retained; the final observer closure and executable are completely snapshotted."
+  ]
+}

@@ -33,7 +33,7 @@ rtn_link :: (source:string,header_dir:string,driver:string,executable:string,mod
 }
 rtn_tool_sources :: (inputs:[]RtqInputs,compiler:string,entry:string,work:string,deadline:int)->bool {
   if !rtq_deps(inputs,compiler,entry,deadline,work,"qualifier-dependencies") || !rtq_deps(inputs,compiler,"coax/lib/crypto/entropy.coax",deadline,work,"qualifier-entropy-dependencies") {return false;}
-  for name:[6]string.["tool-native","process-native","store-file-native","socket-native","entropy-native","entropy-foreign"] {for ext:[2]string.[".c",".h"] {
+  for name:[7]string.["tool-native","process-native","store-file-native","read-file-native","socket-native","entropy-native","entropy-foreign"] {for ext:[2]string.[".c",".h"] {
     path:[4096]u8;o:[1]Jo;jo_start(o[..],path[..]);jo_put(o[..],"coax/platform/");jo_put(o[..],name);jo_put(o[..],ext);if !rtq_input_add(inputs,jo_text(o[..])) {return false;}
   }}return rtq_input_add(inputs,"coax/web/tool.sh");
 }

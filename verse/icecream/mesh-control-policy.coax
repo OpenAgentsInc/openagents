@@ -1,0 +1,28 @@
+// Qualification policy only. Fixture selection/data and process effects are
+// separate; a broken compiler/runner never counts as a killed geometry loss.
+#import "Basic";
+#authority;
+#load "../../coax/lib/sys/proc.coax";
+#load "../../aethyr/render/tests/tooling-policy.coax";
+#load "../../aethyr/tests/render-wire-policy.coax";
+#load "mesh-control-checks.coax";
+mbc_caught :: (kind:int,bounds:bool,emission:ProcRun,compile:ProcRun,run:ProcRun,text:string)->bool {
+  if !rw_outcome(emission.started,emission.status,emission.timed_out,emission.cut,false) ||
+    !rw_outcome(run.started,run.status,run.timed_out,run.cut,true) {return false;}
+  if kind==2 {
+    return run.status==1 && rtq_find(text,"error[E0406]: assertion failed",0)>=0 && rtq_find(text,"error[E0400]",0)<0;
+  }
+  if kind!=0 && kind!=1 {return false;}
+  if !rw_outcome(compile.started,compile.status,compile.timed_out,compile.cut,false) {return false;}
+  if bounds {return (run.status==1 || run.status==134) && rtq_find(text,"index out of bounds",0)>=0;}
+  if run.status!=1 {return false;}
+  if kind==1 {return rtq_find(text,"band check failed",0)>=0;}
+  return rtq_find(text,"0 failures",0)<0 && rtq_find(text,"FAIL house",0)>=0;
+}
+mbc_args_match :: (doc:Jv,command:int,expected:[]string)->bool {
+  args:=jv_get(doc,command,"args");if jv_kind(doc,args)!=JV_ARRAY || jv_len(doc,args)!=expected.count {return false;}
+  for index:0..<expected.count {
+    item:=jv_at(doc,args,index);if jv_kind(doc,item)!=JV_STRING {return false;}
+    bytes:[4096]u8;count:=jv_str(doc,item,bytes[..]);if count<0 || cast(string)bytes[0..<count]!=expected[index] {return false;}
+  }return true;
+}

@@ -1,0 +1,29 @@
+#load "native-gpu-policy.coax";
+#load "../render/tests/tooling-policy.coax";
+#authority;
+#load "native-gpu-tool-checks.coax";
+nt_reuse_header :: (profile:int,status:string,compiler:string,commands:int)->bool {
+  if profile<0 || profile>1 || status!="passed" {return false;}
+  if profile==0 {return compiler=="30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980" && commands==7;}
+  return compiler=="693c3f3782d69a9b06903c001d21f92e4d9ba4d5e43621f585b806ba8e1862c6" && commands==3;
+}
+nt_field :: (text:string,key:string)->string {
+  at:=rtq_find(text,key,0);if at<0 {return "";}at+=key.count;end:=at;while end<text.count && text[end]!=' ' && text[end]!='\n' && text[end]!='\r' {end+=1;}return text[at..<end];
+}
+nt_csv :: (text:string,index:int)->int {
+  at:=0;part:=0;for i:0..<text.count+1 {if i==text.count || text[i]==',' {if part==index {s:=text[at..<i];if s.count<1 || s.count>10 {return -1;}v:=0;for c:s {if c<'0' || c>'9' {return -1;}v=v*10+cast(int)(c-'0');}return v;}at=i+1;part+=1;}}return -1;
+}
+nt_raw_equal :: (d:Jv,rows:int,raw:[]u8)->bool {
+  if jv_kind(d,rows)!=JV_ARRAY {return false;}at:=0;
+  for row:0..<jv_len(d,rows) {r:=jv_at(d,rows,row);if jv_kind(d,r)!=JV_ARRAY {return false;}
+    for lane:0..<jv_len(d,r) {word:=jv_int(d,jv_at(d,r,lane),-1);if word<0 || word>4294967295 || at+4>raw.count {return false;}
+      for k:0..<4 {if raw[at+k]!=cast(u8)((cast(u64)word>>(k*8))&255) {return false;}}at+=4;
+    }
+  }return at==raw.count;
+}
+nt_rows :: (profile:int,d:Jv,node:int,o:[]NVObservations)->bool {
+  count:=nv_rows(profile);if count==0 || jv_kind(d,node)!=JV_ARRAY || jv_len(d,node)!=count {return false;}o[0].count=count;
+  for row:0..<count {r:=jv_at(d,node,row);n:=nv_lanes(profile,row);if jv_kind(d,r)!=JV_ARRAY || jv_len(d,r)!=n {return false;}o[0].rows[row].count=n;
+    for lane:0..<n {word:=jv_int(d,jv_at(d,r,lane),-1);if word<0 || word>4294967295 {return false;}o[0].rows[row].words[lane]=cast(u32)word;}
+  }return true;
+}

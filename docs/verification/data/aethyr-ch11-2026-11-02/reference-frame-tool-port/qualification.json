@@ -1,0 +1,81 @@
+{
+  "schema": "aethyr.reference-frame.tool-port.v1",
+  "date": "2026-11-02",
+  "status": "tool port qualified; native measurements remain explicit older-compiler observations",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_matches_current_sources": false,
+  "qualifier_executable_sha256": "ff311b8b23cdc4c20f7666411855d7519c40cceea7451bec2193a45f1c41c376",
+  "source_sha256": {
+    "aethyr/render/tests/reference-frame-tool-policy.coax": "c02759a1b68e05829bcda1186c49ee52244bddb04261c4a9f992da8f500a7e8c",
+    "aethyr/render/tests/reference-frame-tool-checks.coax": "04826e83d80fd1a61334b02c41b0022e19a35de1530ceaa1e5fc03b3a53af84e",
+    "aethyr/render/tests/reference-frame-tool-files.coax": "03adbddb0d393b9076e27fdd26b53cf577543763ee38dbbc738af70d3bf7af18",
+    "aethyr/render/tests/check-reference-frame.coax": "969e756f20d9960ed7b42892b2be1a525df0a78d2e9f77d7ab48473d9bd42902",
+    "aethyr/render/tests/reference-frame-small-fixture.coax": "faec4833b13220014efc9360c3080a2b84e021adf1d761641d4be5fd68ec5409",
+    "aethyr/render/tests/check-reference-frame-tooling.coax": "0089285e0d477990196970679440e12aa6129898ad15d75c41bf6363e7a73ad9",
+    "aethyr/render/tests/check-reference-frame-cli-controls.coax": "2d27c5f9e620d9120aafe6bf610f661f0ca08413e8703226306384975f4043b9"
+  },
+  "checks_first": "Transport, numeric endpoint, backend and mode checks failed against authored stubs before implementation. The explicit renderer-source selector and CLI flag-shape checks also failed against their stubs before implementation. Raw failures are retained.",
+  "authority": {
+    "file": "aethyr/render/tests/reference-frame-tool-policy.coax",
+    "scope": "root-only; dependency checks retained",
+    "mutants": 336,
+    "killed": 336,
+    "survived": 0,
+    "equivalent_waivers_added": 0,
+    "earlier_iterations": ["332/267/65", "335/323/12", "333/333/0"],
+    "resolution": "Added signed64, whitespace, exact token/row/reference/tree capacity, reused parser state, absent/zero, truncation, native profile and historical-default controls. Factored checked row acquisition and source selection without waivers. The final336 result includes the new renderer/observer source distinction."
+  },
+  "retained_function_parity": {
+    "receipt": "parity-receipt.json",
+    "original_reference_tests": 10,
+    "transport_rows": 17,
+    "referenced_files": 7,
+    "result": "Every row/token/reference/count/tree inventory matches the original Python frame_config_paths result. Snapshot config bytes, full copied-file map, package/tree/capture paths and counts match on identical inputs and destination paths.",
+    "legacy_backend_refusals": 14,
+    "backend_controls": "Changed/incomplete receipt statuses; source/artifact/input changes; wrong compiler/digest; stale Coax source; other entry; each of generated C/header/executable changed. The actual new effects and unchanged legacy function refuse the same candidates.",
+    "modes": "Pure checks preserve checked-o2/debug/release/sanitized/sanitized-o1, historical checked defaults, native input drift, rebuild versus reuse, and checked/wrapping refusal."
+  },
+  "renderer_closure": {
+    "field": "renderer_source_sha256",
+    "current_dependencies": 110,
+    "reason": "A Coax observer tool is not a renderer dependency. New receipts retain a separate complete compiler-declared renderer closure, including descriptors, while the complete observer/source/image ledger remains fenced independently.",
+    "compatibility": "Legacy receipts keep the original Coax-only source fallback. An explicit incomplete new renderer closure refuses rather than falling back.",
+    "controls": "A changed observer.coax does not invalidate unchanged emitted renderer artifacts; changed renderer.pbdesc refuses. Existing native driver/loader identity rules still decide executable reuse."
+  },
+  "native": {
+    "fixture": "Synthetic2x2 dimensions/counts using exact retained Grid uniform bytes and authenticated current-source package; not an actual realm screenshot.",
+    "uniform_bytes": 448,
+    "modes": ["checked-o2", "debug", "release", "sanitized", "sanitized-o1"],
+    "receipts": ["native-checked-o2.json", "native-debug.json", "native-release.json", "native-sanitized.json", "native-sanitized-o1.json"],
+    "result": "Every complete native frame result is identical: status0, geometry/frame0,4 written pixels,97425 shader steps and16 pixel steps. Every image is byte-identical.",
+    "image_bytes": 64,
+    "image_sha256": "9ba3b531624710dece54456c2e5cb1cb31d7df8cfb6fee2b1180d0cb791ea049",
+    "transport_paths": "Captured producer JSON and recorded frame.config both execute the same tiny values; checked and wrapping emissions remain distinct, as do O0/O1/O2/sanitizer native flags.",
+    "provenance": "Relative frame/raster/filter provenance paths become exact canonical paths and hashes. The test provenance file explicitly says it is path/hash transport evidence, not a measured raster/filter model.",
+    "fences": "Selected compiler and current source fingerprint, qualifier executable, observer and complete renderer/native source closures, generated C/header/executable, immutable copied inputs and provenance remain unchanged. Each native receipt binds the same qualifier image.",
+    "failed_trials": "Missing retained uniform filename refused. Two initial synthetic fixtures used the wrong FrameCounts stride (literal16, then reflected48 bytes); actual workspace admission refused before rendering. The fixture now explicitly converts reflected bytes to uint32 words48/4=12. Earlier source epochs, outputs and failures remain archived."
+  },
+  "actual_cli_controls": {
+    "receipt": "cli-controls-receipt.json",
+    "preparation_paths": 2,
+    "preparations": "Recorded config and coarse producer-capture preparation preserve authenticated2x2 data, never emit/execute renderer C, retain qualification=false and explicitly report the older compiler.",
+    "refusal_controls": 8,
+    "controls": ["real older compiler without exploratory opt-in", "wrong requested package with matching compiler identity", "coarse cannot alter recorded config", "unknown mode", "unknown flag", "measured filter without provenance", "missing raster selection", "exploratory backend cannot authorize normal reuse"],
+    "legacy_wrong_package": "The unchanged original snapshot function also refuses the identical wrong requested package.",
+    "strict_default": "Both the controlled stale compiler and actual selected older compiler stop after only version/source-digest: six identity-record files and no preparation receipt, dependency scan or emission.",
+    "initial_order_trial": "An earlier stale-order fixture named a nonexistent package and refused before identity; that failed test is retained. The final ordering control uses a real package and observes the intended six identity files.",
+    "renderer_executions": 0
+  },
+  "receipt_continuity": "Existing cpu-frame-measurement.v1/preparation.v1 fields, named modes and raster/screen/work/filter/provenance options are retained. Renderer source closure, exact observer/compiler/image identity and explicit exploratory status are added. Timing retains seconds with the tool's millisecond clock resolution; render_ms/elapsed_ms are explicit.",
+  "retired_reference_inputs": {
+    "check_reference_frame.py": "0afd820dd9069fbe0e1b94c6b34086b719eb61c83de8fe4b8c558f29aed6509a",
+    "test_reference_frame_tool.py": "c65f53d52969a5d254db88a5c6798dd2accd1ce520375c07303b66ddd17aaf3e",
+    "retention": "Original bytes archived and read back with matching SHA256 before deletion; no runnable maintained Python orchestration copies remain."
+  },
+  "archive": {
+    "path": "artifacts-and-reference.tar.gz",
+    "bytes": 12918428,
+    "sha256": "c89be2f57b3817e4d7026b5699d5f861bf3833648ca352b0500ebb110e3f62b9"
+  },
+  "limits": "Only the bounded synthetic2x2 native frame was executed. No large realm CPU, raster, geometry or GPU-image gate was repeated. Measurement qualification remains false; explicit older-compiler receipts remain exploratory, cannot authorize normal backend reuse and do not satisfy final current-source/compiler or release gates."
+}

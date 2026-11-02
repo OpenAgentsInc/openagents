@@ -1,0 +1,49 @@
+// Real POSIX-word and binary SCP roundtrip. No GPU or product execution.
+// check-native-gpu-transport HOST OUTDIR
+#import "Basic";
+#load "native-gpu-transport.coax";
+ngq_run :: (dir:string,label:string,argv:[]string,host:string,remote:bool,out:[]u8,err:[]u8)->ProcRun {
+  env:[]string;r:=ifx remote then ng_ssh(host,argv,30000,out,err) else rtq_run_raw(argv,env,30000,out,err);
+  if !rtq_record_run(dir,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {r.cut=true;}return r;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}host:=args_at(a[..],0);directory:=args_at(a[..],1);
+  if !ng_host(host) || !fs_mkdir(directory) {return 2;}
+  inputs:[1]RtqInputs;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}
+  deadline:=proc_now_ms()+180000;
+  if !rtq_input_add(inputs[..],compiler) || !rtq_deps(inputs[..],compiler,"aethyr/tests/check-native-gpu-transport.coax",deadline,directory,"tool-deps") {return 2;}
+  stdout:[65536]u8;stderr:[65536]u8;
+  harmless:=[1]string.["printf"];bad:=ng_ssh("-bad",harmless[..],1000,stdout[..],stderr[..]);if bad.started==0 {return 1;}
+  bad=ng_scp(host,"relative:could-be-remote","/tmp/not-owned/a",false,1000,stdout[..],stderr[..]);if bad.started==0 {return 1;}
+  bad=ng_ssh(host,harmless[..],0,stdout[..],stderr[..]);if bad.started==0 {return 1;}
+  high:=[2]u8.[128,255];values:=[6]string.["plain","","a'b","$literal $(printf expanded);`printf expanded`\\\"","line1\nline2\r",cast(string)high[..]];
+  argv:=[8]string.["printf","%s\\000",values[0],values[1],values[2],values[3],values[4],values[5]];
+  expected:[4096]u8;o:[1]Jo;jo_start(o[..],expected[..]);for value:values {jo_put(o[..],value);jo_byte(o[..],0);}wanted:=jo_text(o[..]);
+  command_buf:[65536]u8;command:=ng_command(argv[..],command_buf[..]);local:=[3]string.["/bin/sh","-c",command];
+  r:=ngq_run(directory,"local-words",local[..],host,false,stdout[..],stderr[..]);
+  if !rtq_ok(r) || cast(string)stdout[0..<r.out_n]!=wanted {return 1;}
+  r=ngq_run(directory,"remote-words",argv[..],host,true,stdout[..],stderr[..]);
+  if !rtq_ok(r) || cast(string)stdout[0..<r.out_n]!=wanted {return 1;}
+  temp:[4096]u8;token:=fs_temp("aethyr-native-transport-",temp[..]);if token=="" {return 1;}
+  digest:[64]u8;if !S_hex(S_hash(token),digest[..]) {return 1;}
+  root_buf:[128]u8;ro:[1]Jo;jo_start(ro[..],root_buf[..]);jo_put(ro[..],"/tmp/aethyr-native-gpu-");jo_put(ro[..],cast(string)digest[0..<24]);root:=jo_text(ro[..]);
+  if !ng_remote(root) {return 1;}
+  mkdir:=[3]string.["mkdir","--",root];r=ngq_run(directory,"mkdir",mkdir[..],host,true,stdout[..],stderr[..]);owned:=rtq_ok(r);passed:=owned;
+  if owned {
+    source_buf:[4096]u8;source:=fs_join(directory,"source:bytes.bin",source_buf[..]);destination_buf:[4096]u8;destination:=fs_join(directory,"returned:bytes.bin",destination_buf[..]);
+    full_source_buf:[4096]u8;full_source:="";remote_buf:[4096]u8;remote:=fs_join(root,"roundtrip.bin",remote_buf[..]);
+    bytes:[4096]u8;for i:0..<4096 {bytes[i]=cast,trunc(u8)i;}
+    passed=fs_write(source,cast(string)bytes[..]);if passed {full_source=fs_realpath(source,full_source_buf[..]);passed=full_source!="";}
+    if passed {r=ng_scp(host,full_source,remote,false,30000,stdout[..],stderr[..]);passed=rtq_ok(r);copy:=[2]string.[full_source,remote];recorded:=rtq_record_run(directory,"upload",copy[..],r,cast(string)stdout[0..<r.out_n],cast(string)stderr[0..<r.err_n]);passed=passed && recorded;}
+    // Absolute local targets avoid SCP's host:path interpretation of colons.
+    destination_absolute:[4096]u8;parent:[4096]u8;full_parent:=fs_realpath(directory,parent[..]);target:=fs_join(full_parent,"returned:bytes.bin",destination_absolute[..]);
+    if passed {r=ng_scp(host,target,remote,true,30000,stdout[..],stderr[..]);passed=rtq_ok(r);copy:=[2]string.[remote,target];recorded:=rtq_record_run(directory,"download",copy[..],r,cast(string)stdout[0..<r.out_n],cast(string)stderr[0..<r.err_n]);passed=passed && recorded;}
+    got:[4096]u8;if passed {n:=fs_read(destination,got[..]);passed=n==4096 && cast(string)got[..]==cast(string)bytes[..];}
+    cleanup:=[4]string.["rm","-rf","--",root];r=ngq_run(directory,"cleanup",cleanup[..],host,true,stdout[..],stderr[..]);passed=passed && rtq_ok(r);
+  }
+  removed:=fs_remove(token);passed=passed && removed && rtq_inputs_match(inputs[..]);
+  result:[262144]u8;rr:[1]Jo;jo_start(rr[..],result[..]);jo_obj(rr[..]);jo_key(rr[..],"status");jo_str(rr[..],ifx passed then "passed" else "failed");
+  jo_key(rr[..],"remote_owned");jo_bool(rr[..],owned);jo_key(rr[..],"workspace");jo_str(rr[..],root);jo_key(rr[..],"binary_bytes");jo_int(rr[..],4096);
+  jo_key(rr[..],"sources");rtq_inputs_json(rr[..],inputs[..],".");jo_end(rr[..]);path:[4096]u8;if rr[0].bad || !fs_write(fs_join(directory,"receipt.json",path[..]),jo_text(rr[..])) {return 1;}
+  print("native transport: literal POSIX words and4096binary SCP bytes pass%, owned workspace cleaned\n",passed);return ifx passed then 0 else 1;
+}

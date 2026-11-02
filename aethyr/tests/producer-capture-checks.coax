@@ -1,0 +1,81 @@
+#test "producer arena uses actual scalar capacities and refuses a 64MiB overrun" {
+  p:=pc_layout(123,17,3,12,4,128,1024);
+  #assert p.valid && p.base==8388608 && p.state==1024 && p.vertices==8389632 && p.uniforms==8389776 && p.need==8389856 && p.pages==129;
+  p=pc_layout(45629776,667760,400000,12,112,697,1024);
+  #assert p.valid && p.base==45678592 && p.state==667760 && p.pages==1001;
+  #assert !pc_layout(67108864,0,1,1,1,128,1024).valid;
+  #assert !pc_layout(-1,1,1,1,1,128,1024).valid && !pc_layout(0,-1,1,1,1,128,1024).valid;
+  #assert !pc_layout(0,1,-1,1,1,128,1024).valid && !pc_layout(0,1,1,0,1,128,1024).valid;
+  #assert !pc_layout(0,1,1,1,-1,128,1024).valid;
+  #assert !pc_layout(0,1,1,1,1,1025,1024).valid && !pc_layout(0,1,1,1,1,128,1025).valid;
+}
+#test "scalar and allocation boundaries distinguish byte alignment from page rounding" {
+  #assert pc_scalars(67108864,67108864,16777216,16777216,16777216,1024,1024);
+  #assert pc_scalars(0,0,0,1,0,0,1024);
+  #assert !pc_scalars(67108865,0,0,1,0,0,1024) && !pc_scalars(0,67108865,0,1,0,0,1024);
+  #assert !pc_scalars(0,0,16777217,1,0,0,1024) && !pc_scalars(0,0,0,16777217,0,0,1024) && !pc_scalars(0,0,0,1,16777217,0,1024);
+  p:=pc_layout(8388609,0,0,1,0,0,1024);#assert p.valid && p.base==8454144;
+  p=pc_layout(0,0,16112,1,0,128,1024);#assert p.valid && p.need==8454144 && p.pages==129;
+  p=pc_layout(0,0,16112,1,1,128,1024);#assert p.valid && p.need==8454148 && p.pages==130;
+  p=pc_layout(0,0,16112,1,0,1023,1024);#assert p.valid && p.pages==1024 && p.need==67108864;
+  #assert pc_physical(67108864)==67108864;
+}
+#test "raw output bounds refuse clipping and overflowing pointer arithmetic" {
+  #assert pc_span(16,0,16) && pc_span(0,16,16) && pc_span(4,12,16);
+  #assert !pc_span(-1,0,16) && !pc_span(0,-1,16) && !pc_span(17,0,16) && !pc_span(4,13,16);
+  #assert pc_count(0,0) && pc_count(7,7) && !pc_count(-1,7) && !pc_count(8,7);
+  #assert pc_physical(0)==16 && pc_physical(17)==32 && pc_physical(32)==32 && pc_physical(-1)== -1 && pc_physical(67108865)== -1;
+}
+#test "store scheduling retains bytes and version after a zero update" {
+  s:PcStore;s.capacity=32;s.version="7";s.version_known=true;
+  #assert !pc_store_due(s,true,"7") && pc_store_due(s,true,"8") && pc_store_due(s,false,"7");
+  n:=pc_store_observe(s,0,true,"8");
+  #assert n.valid && n.last_update==0 && n.version=="7" && n.version_known && n.highwater==0 && n.last_positive==0;
+  #assert pc_store_due(n,true,"8");
+  n=pc_store_observe(n,17,true,"8");
+  #assert n.valid && n.version=="8" && n.last_update==17 && n.last_positive==17 && n.highwater==17;
+  n=pc_store_observe(n,4,false,"");
+  #assert n.valid && !n.version_known && n.last_positive==4 && n.highwater==17;
+  n=pc_store_observe(n,1,true,"18446744073709551615");
+  #assert n.valid && n.version_known && n.version=="18446744073709551615" && n.last_positive==1 && n.highwater==17;
+  #assert !pc_store_observe(n,-1,false,"").valid && !pc_store_observe(n,33,false,"").valid;
+}
+#test "pack words are little endian at nonzero offsets and every entry has a full 48byte row" {
+  word:=[6]u8.[255,120,86,52,18,255];#assert pc_u32(word[..],1)==305419896;
+  empty:[32]u8;#assert pc_pack_count(empty[..])==0;
+  bytes:[128]u8;bytes[4]=2;bytes[16]=32;bytes[32]=1;bytes[36]=128;bytes[80]=4;bytes[84]=128;
+  #assert pc_pack_count(bytes[..])==2;
+  e:=pc_pack_entry(bytes[..],1);#assert e.valid && e.kind==4 && e.begin==128 && e.bytes==0;
+}
+#test "pack table and payload extents are admitted before host memory copies" {
+  bytes:[96]u8;bytes[4]=1;bytes[16]=32;bytes[32]=4;bytes[36]=80;bytes[40]=16;
+  #assert pc_pack_count(bytes[..])==1;
+  e:=pc_pack_entry(bytes[..],0);#assert e.valid && e.kind==4 && e.begin==80 && e.bytes==16;
+  #assert !pc_pack_entry(bytes[..],-1).valid && !pc_pack_entry(bytes[..],1).valid;
+  bytes[40]=17;#assert !pc_pack_entry(bytes[..],0).valid;
+  bytes[40]=16;bytes[16]=49;#assert pc_pack_count(bytes[..])== -1;
+  bytes[16]=32;bytes[4]=2;#assert pc_pack_count(bytes[..])== -1;
+  #assert pc_pack_count(bytes[0..<31])== -1;
+}
+#test "capture controls bound fixed steps, dimensions and deterministic scalar inputs" {
+  #assert pc_controls(1,1,1,1,1.0) && pc_controls(600,600,8192,8192,4.0);
+  #assert !pc_controls(0,1,1,1,1.0) && !pc_controls(601,1,1,1,1.0) && !pc_controls(1,0,1,1,1.0);
+  #assert !pc_controls(1,1,0,1,1.0) && !pc_controls(1,1,1,8193,1.0) && !pc_controls(1,1,1,1,0.0) && !pc_controls(1,1,1,1,4.01);
+  #assert !pc_controls(1,1,8193,1,1.0);
+}
+#test "offline capture gives only declared platform refusals and deterministic clock imports" {
+  #assert pc_import("env","memory","memory")==0;
+  #assert pc_import("env","coaxial_now_ms","function")==1 && pc_import("env","coaxial_now_seconds","function")==2;
+  #assert pc_import("env","coaxial_http","function")==3 && pc_import("env","coaxial_socket_open","function")==3;
+  #assert pc_import("env","coaxial_storage_put","function")==6 && pc_import("env","coaxial_storage_cancel","function")==4;
+  #assert pc_import("env","host_line","function")==5;
+  #assert pc_import("wasi_snapshot_preview1","fd_fdstat_get","function")==7 && pc_import("wasi_snapshot_preview1","fd_write","function")==4;
+  #assert pc_import("foreign","coaxial_now_ms","function")==8 && pc_import("env","new_network_effect","function")==8;
+  #assert pc_import("env","table","table")== -1 && pc_import("foreign","memory","memory")== -1;
+  for name:[3]string.["coaxial_http","coaxial_http_bounded","coaxial_socket_open"] {#assert pc_import("env",name,"function")==3;}
+  for name:[2]string.["coaxial_http_cancel","coaxial_storage_cancel"] {#assert pc_import("env",name,"function")==4;}
+  for name:[5]string.["host_line","host_dot","host_slot","coaxial_socket_send","coaxial_socket_close"] {#assert pc_import("env",name,"function")==5;}
+  for name:[3]string.["coaxial_storage_put","coaxial_storage_get","coaxial_storage_delete"] {#assert pc_import("env",name,"function")==6;}
+  for name:[4]string.["fd_fdstat_get","fd_seek","fd_close","clock_time_get"] {#assert pc_import("wasi_snapshot_preview1",name,"function")==7;}
+  #assert pc_import("env","not_memory","memory")== -1 && pc_import("wasi_snapshot_preview1","not_known","function")==8;
+}

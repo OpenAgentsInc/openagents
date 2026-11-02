@@ -23,6 +23,10 @@ def word64(value):
     return f"{struct.unpack('<Q', struct.pack('<d', value))[0]:016x}"
 
 
+def numeric_words(value):
+    return [numeric_words(item) for item in value] if isinstance(value, list) else word64(value)
+
+
 def observe(path):
     raw = path.read_bytes()
     document = json.loads(raw)
@@ -47,10 +51,9 @@ def observe(path):
         # and equality decisions to the Coax caller. Zero signs remain numeric
         # zeros here; observed GPU signs remain in the raw u32 lanes above.
         item = {}
-        for key in ("x", "y", "lod", "pixel", "index", "wrong"):
+        for key in ("x", "y", "lod", "pixel", "index", "wrong", "instance", "ids", "clips", "triangle", "vertex", "selector"):
             if key in row:
-                value = row[key]
-                item[key] = [word64(v) for v in value] if isinstance(value, list) else word64(value)
+                item[key] = numeric_words(row[key])
         metadata.append(item)
     result = {"schema": "aethyr.independent.ieee754-observations.v1",
               "input_sha256": hashlib.sha256(raw).hexdigest(),

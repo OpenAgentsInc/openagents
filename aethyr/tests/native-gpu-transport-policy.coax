@@ -1,0 +1,48 @@
+// SSH argv transport and SCP workspace syntax, not remote effect authorization.
+// The calling Coax controller chooses every allowed SDK/filesystem operation.
+#authority;
+#load "../../coax/lib/json/json.coax";
+#load "native-gpu-transport-checks.coax";
+ng_alnum :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9');}
+ng_host :: (host:string)->bool {
+  if host.count<1 || host.count>255 || !ng_alnum(host[0]) {return false;}
+  for c:host {if !ng_alnum(c) && c!='-' && c!='.' && c!='_' {return false;}}return true;
+}
+ng_timeout :: (milliseconds:int)->bool {return milliseconds>0 && milliseconds<=360000;}
+ng_local :: (path:string)->bool {
+  if path.count<1 || path.count>4096 || path[0]!='/' {return false;}
+  for c:path {if c==0 {return false;}}return true;
+}
+ng_segment :: (part:string)->bool {
+  if part=="" || part=="." || part==".." {return false;}
+  for c:part {if !ng_alnum(c) && c!='-' && c!='_' && c!='.' {return false;}}return true;
+}
+ng_remote :: (path:string)->bool {
+  prefix:="/tmp/aethyr-native-gpu-";
+  if path.count>4096 {return false;}
+  at:=0;for byte:prefix {if at==path.count || path[at]!=byte {return false;}at+=1;}
+  while at<path.count && path[at]!='/' {c:=path[at];if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}at+=1;}
+  count:=at-prefix.count;if count<16 || count>64 {return false;}
+  while at<path.count {
+    at+=1;begin:=at;while at<path.count && path[at]!='/' {at+=1;}
+    if !ng_segment(path[begin..<at]) {return false;}
+  }return true;
+}
+ng_append_word :: (o:[]Jo,arg:string) {
+  if arg.count>16384 {o[0].bad=true;return;}
+  jo_put(o,"'");
+  for c:arg {
+    if c==0 {o[0].bad=true;return;}
+    if c==39 {jo_put(o,"'\"'\"'");}else {jo_byte(o,c);}
+  }
+  jo_put(o,"'");
+}
+ng_quote :: (arg:string,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);ng_append_word(o[..],arg);return ifx o[0].bad then "" else jo_text(o[..]);
+}
+ng_command :: (argv:[]string,out:[]u8)->string {
+  if argv.count<1 || argv.count>128 || argv[0]=="" {return "";}
+  o:[1]Jo;jo_start(o[..],out);
+  for arg,index:argv {if index>0 {jo_put(o[..]," ");}ng_append_word(o[..],arg);}
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}

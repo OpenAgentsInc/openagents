@@ -1,0 +1,53 @@
+{
+  "schema": "aethyr.icecream.producer-control-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "passed_declared_frozen_producer_profile_and_cache_refusals",
+  "driver": "verse/icecream/check-mesh-band-controls.coax",
+  "final_driver_sha256": "8feec0c8e9a630e1fc7f9ba05f4a7c4f0e559648715adfe91c57103e87be1a08",
+  "final_image_sha256": "cba83b3876d8a6e07a9053408ea2dd31618c32ca2be5426b1c1bae24a23354ae",
+  "old_driver_sha256": "82e1f84ba431846c7243989c876ece0cb96458232ac0becc9aacf32a3b7eb053",
+  "policy_sha256": "04a57d304570a885b40f71b1bb127d3fdf5538e2dce3c6761e365918fef48f4a",
+  "change": "Replace Python producer-loss orchestration with Coax: exact source edits, source/compiler/oracle binding, ordinary emission, bounded native/focused verifier execution, cached artifact/argv ownership, refusal and receipts. Existing v1 fields including elapsed_seconds remain; exact elapsed_ms, source fences and reuse counts are additive.",
+  "toolchains": {
+    "observer_compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "producer_compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+    "matching_current_main_claimed": false,
+    "source_root": "/Users/christopherdavid/work/openagents-aethyr-book",
+    "source_root_scope": "Explicit frozen, read-only historical checkout. Only owned /tmp control copies are edited. The exact mesh.coax bytes also equal the active checkout at this checkpoint (bf84af4711650e3f8db1a72e2177f4cad222165d1244703ce3de2b56df386d46); no broader current-source compiler/renderer qualification follows.",
+    "qualified_receipt_sha256": "06d89fc988a71cfb04dde26ed358d8955389f67cec5d69ca7a1d1e132973c618",
+    "independent_oracle": {"bytes":658713607,"sha256":"7c03127e4e8bd35f9d2868ae67723d542223a9441499efb2274bbfb69f66d51e","hashing":"Existing Coax streaming SHA256 API, at most1MiB per chunk, before and after the gate; no giant input-sized hash buffer or digest weakening","retention":"Not duplicated in the new archive. Existing qualified oracle.bin remains a local dependency; its generating independent C++ source/toolchain observations are retained in the earlier icecream-doorway-caps evidence."}
+  },
+  "fresh_producer_run": {
+    "scope": "Thirteen deliberate source losses, not a repetition of the unchanged full nominal geometry gate.",
+    "executed_driver_sha256": "2010f7aca2f4d1aa8f4a48ce7eb5456a664412fed43a940b25a064b5c83215f6",
+    "executed_image_sha256": "50d1c1b2ee67c7ef0479c0dab441933183186852112ab9412ba1fdbc59a7fa4a",
+    "result": "All13ordinary Coax C emissions succeed. Eleven native O2 geometry/bounds verifiers and two specifically selected authored Coax checks reject their intended losses. Compiler errors, budget exhaustion, unknown process statuses, timeout and truncated output never count as caught.",
+    "same_input_parity": "All13names, exact mutated-source hashes, verifier identities, command counts and exit outcomes match the original retained run. All11native logs match byte-for-byte after replacing only the two owned control-directory prefixes with one explicit token. Both focused checks retain their specific E0406 assertion and exclude E0400; their wall-time transcripts are retained separately.",
+    "exit_representation": "Original subprocess SIGABRT=-6 and Coax native wait134 are explicitly the same signal outcome; raw receipts preserve each representation.",
+    "generated_artifacts": "Raw new C/header/executable hashes differ with their owned absolute source/header paths. Every artifact is retained separately; no raw generated-artifact identity is claimed.",
+    "epoch_limit": "This fresh run precedes the final cached-argv/report/source-inventory refinements. Its exact source/image snapshots are preserved. The intended ordinary-emission/verification flow and mbc_caught body are unchanged; final cache-path qualification reuses these exact producer artifacts."
+  },
+  "final_cache_run": {
+    "reused": 13,
+    "producer_reexecution": false,
+    "ownership": "Cached verifier label and every ordered emission/compile/execution argv must match the current declared profile, including the focused --only name. Hashes, normal emission exits, successful native compile, intended execution outcome and exact source/oracle/compiler/qualification identity are also checked.",
+    "corrupt_cache_behavior": "A matching cached source with changed artifacts or verifier profile refuses; it does not silently execute the producer again.",
+    "actual_poison_controls": 10,
+    "poisons": ["generated C digest", "executable digest", "native verifier label", "native execution argv", "ordinary emission compiler argv", "focused check selector argv", "focused verifier label", "missing command inventory", "producer compiler identity", "qualified receipt identity"],
+    "poison_result": "All10refuse with the expected1/2status, no timeout/truncation. Every producer source/C/header/executable/execution-log byte hash and nanosecond mtime is unchanged; the owned cache manifest is restored after each test.",
+    "source_fences": "Final receipts fence actual observer image, full dependency closure, separately emitted entropy source dependencies, every linked native C/header input and all declared producer sources. The large independent oracle receives a separate complete streaming before/after hash."
+  },
+  "checks": {
+    "authored_groups": 3,
+    "release_with_dependencies": "85/85pass",
+    "root_mutants": 73,
+    "killed": 73,
+    "survivors": 0,
+    "waivers": 0,
+    "red_runs": "Initial55sites had3survivors, killed by the missing leading-zero-failures diagnostic case. Cached-argv extension initially had2survivors, killed by the valid empty argument case. All failures are retained; no equivalent labels or contract weakening."
+  },
+  "independent_review": "Read-only review identified corrupt-cache fallback, unbound focused verifier argv, omitted elapsed_seconds and incomplete observer native-source inventory. All were corrected and the final cache/refusal paths qualified without repeating successful producer gates.",
+  "deadlines": {"whole_seconds":810,"child_seconds":180,"cache_poison_child_seconds":140,"note":"Whole bound is slightly stricter than the old820s gate. Every control process remains below15minutes."},
+  "retention": {"archive":"artifacts.tar.gz","bytes":8486347,"sha256":"1b08d18ec5c082105858e2c1fa90f7a00ac309585911c15835aad2f8f72cd022","readback":"Whole archive extracted into a new owned directory; complete inventory and every byte compared with source payload, including empty files. Includes original Python and receipts, fresh/final source/image epochs, actual mutant/generated/native artifacts, all cache poisons, parity output and raw failed/final checks."},
+  "chapter11_complete": false
+}

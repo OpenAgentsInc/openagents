@@ -1,0 +1,149 @@
+// Offscreen Vulkan qualification. Coax owns all staging, source/artifact joins,
+// bounded SSH/SCP calls, raw readback parity, feature gates and final verdicts.
+// Historical emissions are explicit inputs, separate from the worker compiler.
+// Usage is documented in NATIVE_GPU.md; no remote shell/Python decision loops.
+#load "native-gpu-transport.coax";
+#load "native-gpu-parity-policy.coax";
+#load "native-gpu-reference.coax";
+NT_MAX :: 48;
+NtFiles :: struct {count:int;names:[NT_MAX][128]u8;lengths:[NT_MAX]int;hashes:[NT_MAX][64]u8;}
+nt_text :: (d:Jv,node:int,want:string)->bool {b:[4096]u8;n:=jv_str(d,node,b[..]);return n>=0 && n==want.count && cast(string)b[0..<n]==want;}
+nt_copy :: (source:string,dest:string,inputs:[]RtqInputs)->bool {
+  b:[RTQ_FILE]u8;n:=fs_size(source);return n>=0 && n<=b.count && rtq_input_add(inputs,source) && fs_read_at(source,0,b[0..<n])==n && fs_write(dest,cast(string)b[0..<n]);
+}
+nt_file :: (files:[]NtFiles,dir:string,name:string)->bool {
+  if files[0].count>=NT_MAX || name.count>128 || !ng_segment(name) {return false;}i:=files[0].count;path:[4096]u8;
+  full:=fs_join(dir,name,path[..]);if fs_kind(full)!=FS_FILE || !rtq_hash_file(full,files[0].hashes[i][..]) {return false;}
+  for k:0..<name.count {files[0].names[i][k]=name[k];}files[0].lengths[i]=name.count;files[0].count+=1;return true;
+}
+nt_filename :: (files:[]NtFiles,index:int)->string {return cast(string)files[0].names[index][0..<files[0].lengths[index]];}
+nt_label :: (prefix:string,index:int,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],prefix);jo_int(o[..],index);return jo_text(o[..]);}
+nt_ssh :: (host:string,argv:[]string,deadline:int,work:string,label:string,out:[]u8,err:[]u8)->ProcRun {
+  left:=proc_left(deadline,proc_now_ms());r:=ng_ssh(host,argv,ifx left<360000 then left else 360000,out,err);
+  if !rtq_record_run(work,label,argv,r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) {r.cut=true;}return r;
+}
+nt_sdk :: (host:string,remote:string,argv:[]string,deadline:int,work:string,label:string,out:[]u8,err:[]u8)->ProcRun {
+  command:[65536]u8;text:=ng_command(argv,command[..]);
+  args:=[12]string.["env","-C",remote,"nix-shell","-p","gcc","vulkan-headers","vulkan-loader","vulkan-validation-layers","spirv-tools","--run",text];
+  return nt_ssh(host,args[..],deadline,work,label,out,err);
+}
+nt_transfer :: (host:string,local:string,remote:string,download:bool,deadline:int,work:string,label:string)->bool {
+  out:[65536]u8;err:[65536]u8;r:=ng_scp(host,local,remote,download,ifx proc_left(deadline,proc_now_ms())<360000 then proc_left(deadline,proc_now_ms()) else 360000,out[..],err[..]);args:=[4]string.[ifx download then "download" else "upload",host,local,remote];
+  return rtq_record_run(work,label,args[..],r,cast(string)out[0..<r.out_n],cast(string)err[0..<r.err_n]) && rtq_ok(r);
+}
+nt_remote_hash :: (host:string,path:string,want:string,deadline:int,work:string,label:string)->bool {
+  out:[65536]u8;err:[65536]u8;args:=[2]string.["sha256sum",path];r:=nt_ssh(host,args[..],deadline,work,label,out[..],err[..]);return rtq_ok(r) && rtq_word(cast(string)out[0..<r.out_n],0)==want;
+}
+nt_remote_files :: (files:[]NtFiles,host:string,remote:string,deadline:int,work:string,label:string)->bool {
+  for i:0..<files[0].count {path:[4096]u8;name:[128]u8;tag:[256]u8;o:[1]Jo;jo_start(o[..],tag[..]);jo_put(o[..],label);jo_put(o[..],"-");jo_int(o[..],i);
+    if !nt_remote_hash(host,fs_join(remote,nt_filename(files,i),path[..]),cast(string)files[0].hashes[i][..],deadline,work,jo_text(o[..])) {return false;}}
+  return true;
+}
+nt_get :: (host:string,remote:string,local:string,deadline:int,work:string,label:string)->bool {
+  out:[65536]u8;err:[65536]u8;args:=[2]string.["sha256sum",remote];tag:[256]u8;o:[1]Jo;jo_start(o[..],tag[..]);jo_put(o[..],label);jo_put(o[..],"-hash-before");
+  r:=nt_ssh(host,args[..],deadline,work,jo_text(o[..]),out[..],err[..]);if !rtq_ok(r) {return false;}word:=rtq_word(cast(string)out[0..<r.out_n],0);hash:[64]u8;if word.count!=64 {return false;}for k:0..<64 {hash[k]=word[k];}
+  if !nt_transfer(host,local,remote,true,deadline,work,label) {return false;}actual:[64]u8;if !rtq_hash_file(local,actual[..]) || cast(string)actual[..]!=cast(string)hash[..] {return false;}
+  jo_start(o[..],tag[..]);jo_put(o[..],label);jo_put(o[..],"-hash-after");return nt_remote_hash(host,remote,cast(string)hash[..],deadline,work,jo_text(o[..]));
+}
+nt_old_hash :: (profile:int,d:Jv,name:string)->string {
+  if profile==0 {node:=rtq_member(d,jv_get(d,0,"artifacts"),name);return jv_raw(d,node);}
+  rows:=jv_get(d,0,"files");found:=-1;for i:0..<jv_len(d,rows) {row:=jv_at(d,rows,i);if nt_text(d,jv_get(d,row,"path"),name) {if found!=-1 {return "";}found=jv_get(d,row,"sha256");}}return jv_raw(d,found);
+}
+nt_artifact :: (profile:int,d:Jv,dir:string,payload:string,name:string,inputs:[]RtqInputs,files:[]NtFiles)->bool {
+  paths:[2][4096]u8;source:=fs_join(dir,name,paths[0][..]);hash:[64]u8;
+  return rtq_hash_file(source,hash[..]) && cast(string)hash[..]==nt_old_hash(profile,d,name) && nt_copy(source,fs_join(payload,name,paths[1][..]),inputs) && nt_file(files,payload,name);
+}
+nt_relative :: (path:string)->string {
+  a:=rtq_find(path,"/aethyr/",0);v:=rtq_find(path,"/verse/",0);at:=ifx a>=0 then a else v;
+  if at<0 {return "";}return path[at+1..<path.count];
+}
+nt_sources :: (profile:int,d:Jv,source_root:string,root:string,inputs:[]RtqInputs)->bool {
+  map:=jv_get(d,0,ifx profile==0 then "source_inputs" else "sources");count:=jv_len(d,map);if count<1 {return false;}
+  node:=d.nodes[map].first;
+  for i:0..<count {
+    row:=ifx profile==0 then node else jv_at(d,map,i);old_path:[4096]u8;hn:[64]u8;path:="";want:="";
+    if profile==0 {path=jv_key(d,row);n:=jv_str(d,row,hn[..]);if n!=64 {return false;}want=cast(string)hn[..];node=d.nodes[row].next;}
+    else {n:=jv_str(d,jv_get(d,row,"path"),old_path[..]);h:=jv_str(d,jv_get(d,row,"sha256"),hn[..]);if n<1 || h!=64 {return false;}path=cast(string)old_path[0..<n];want=cast(string)hn[..];}
+    relative:=ifx profile==0 then nt_relative(path) else path;if relative=="" {return false;}
+    full:[4096]u8;source:=fs_join(source_root,relative,full[..]);
+    // The legacy tool was not an emission dependency in its own reuse gate.
+    // Its hash stays in the retained original receipt; it is never executed.
+    if relative=="aethyr/tests/check_render_sampling_gpu.py" || relative=="aethyr/tests/check_render_helper_gpu.sh" {continue;}
+    actual:[64]u8;if !rtq_hash_file(source,actual[..]) || cast(string)actual[..]!=want || !rtq_input_add(inputs,source) {tool_err("historical source mismatch: ");tool_errln(source);return false;}
+  }return true;
+}
+nt_prepare :: (profile:int,d:Jv,emissions:string,sources:string,root:string,payload:string,inputs:[]RtqInputs,files:[]NtFiles)->bool {
+  status:[32]u8;compiler:[64]u8;sn:=jv_str(d,jv_get(d,0,"status"),status[..]);cn:=jv_str(d,jv_get(d,0,"compiler_sha256"),compiler[..]);if sn<1 || cn!=64 {return false;}
+  commands:=0;if profile==0 {rows:=jv_get(d,0,"commands");for i:0..<jv_len(d,rows) {row:=jv_at(d,rows,i);args:=jv_get(d,row,"command");if nt_text(d,jv_at(d,args,1),"spirv") || nt_text(d,jv_at(d,args,1),"c") {if jv_int(d,jv_get(d,row,"exit_code"),-1)!=0 {return false;}commands+=1;}}}else {commands=3;}
+  if !nt_reuse_header(profile,cast(string)status[0..<sn],cast(string)compiler[..],commands) || !nt_sources(profile,d,sources,root,inputs) {return false;}
+  if profile==0 {
+    for name:[18]string.["filtered.spv","invalid.spv","array.spv","invalid-array.spv","fault.spv","fault-array.spv","filtered.reflection","invalid.reflection","array.reflection","invalid-array.reflection","fault.reflection","fault-array.reflection","RenderCaps.c","RenderCaps.h","sampling-fault.coax","fault-source.coax","sampling-fault-array.coax","fault-array-source.coax"] {if !nt_artifact(profile,d,emissions,payload,name,inputs,files) {tool_err("artifact mismatch: ");tool_errln(name);return false;}}
+  }else {for name:[6]string.["helper.spv","range.spv","helper.reflection","range.reflection","RenderCaps.c","RenderCaps.h"] {if !nt_artifact(profile,d,emissions,payload,name,inputs,files) {return false;}}}
+  for name:[4]string.["vks.c","vks.h","vkc.c","vkc.h"] {paths:[3][4096]u8;relative:=fs_join("verse/gpu",name,paths[0][..]);source:=fs_join(sources,relative,paths[1][..]);if profile==1 {source=fs_join(emissions,name,paths[1][..]);if !nt_artifact(profile,d,emissions,payload,name,inputs,files) {return false;}}else {if !nt_copy(source,fs_join(payload,name,paths[2][..]),inputs) || !nt_file(files,payload,name) {return false;}}}
+  old_name:=ifx profile==0 then "render-sampling-gpu.c" else "render-helper-gpu.c";paths:[3][4096]u8;
+  reference:=ifx profile==0 then fs_join(sources,"aethyr/tests/render-sampling-gpu.c",paths[0][..]) else fs_join(emissions,old_name,paths[0][..]);
+  text:[65536]u8;n:=fs_read(reference,text[..]);instrumented:[65536]u8;if n<1 || !rtq_input_add(inputs,reference) {return false;}
+  result:=nr_observer(profile,cast(string)text[0..<n],instrumented[..]);if result=="" || !fs_write(fs_join(payload,"reference.c",paths[1][..]),result) || !nt_file(files,payload,"reference.c") {return false;}
+  return true;
+}
+nt_case :: (profile:int,variant:int,host:string,remote:string,work:string,layer:string,deadline:int,o:[]Jo)->bool {
+  names:=[3]string.["normal","fault","array-fault"];paths:[12][4096]u8;label:[128]u8;tag:=nt_label("case-",variant,label[..]);
+  prefix:[256]u8;p:[1]Jo;jo_start(p[..],prefix[..]);jo_put(p[..],names[variant]);jo_put(p[..],".json");json_name:=jo_text(p[..]);remote_json:=fs_join(remote,json_name,paths[0][..]);local_json:=fs_join(work,json_name,paths[1][..]);
+  raw_name_buf:[256]u8;jo_start(p[..],raw_name_buf[..]);jo_put(p[..],names[variant]);jo_put(p[..],".raw");raw_name:=jo_text(p[..]);remote_raw:=fs_join(remote,raw_name,paths[2][..]);local_raw:=fs_join(work,raw_name,paths[3][..]);
+  layer_env:[4096]u8;jo_start(p[..],layer_env[..]);jo_put(p[..],"VK_ADD_LAYER_PATH=");jo_put(p[..],layer);
+  out_env:[4096]u8;w:[1]Jo;jo_start(w[..],out_env[..]);jo_put(w[..],"AETHYR_REFERENCE_OUT=");jo_put(w[..],remote_raw);
+  shaders:[4]string;if profile==0 {shaders=[4]string.["filtered.spv",ifx variant==1 then "fault.spv" else "invalid.spv","array.spv",ifx variant==2 then "fault-array.spv" else "invalid-array.spv"];}else {shaders[0]="helper.spv";shaders[1]="range.spv";}
+  count:=ifx profile==0 then 4 else 2;
+  stdout:[65536]u8;stderr:[65536]u8;args:[24]string;n:=0;for v:[7]string.["env","VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json",jo_text(p[..]),"VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation",jo_text(w[..]),"timeout","240"] {args[n]=v;n+=1;}args[n]="./reference";n+=1;for i:0..<count {args[n]=shaders[i];n+=1;}
+  ref_label:[128]u8;t:[1]Jo;jo_start(t[..],ref_label[..]);jo_put(t[..],tag);jo_put(t[..],"-reference");r:=nt_sdk(host,remote,args[0..<n],deadline,work,jo_text(t[..]),stdout[..],stderr[..]);
+  expected_status:=ifx variant==0 then 0 else 1;
+  if r.started!=0 || r.timed_out || r.cut || r.status!=expected_status {tool_errln("legacy native case execution failed");return false;}
+  original_out:[65536]u8;original_err:[65536]u8;on:=r.out_n;en:=r.err_n;for i:0..<on {original_out[i]=stdout[i];}for i:0..<en {original_err[i]=stderr[i];}
+  jo_start(t[..],ref_label[..]);jo_put(t[..],tag);jo_put(t[..],"-raw");if !nt_get(host,remote_raw,local_raw,deadline,work,jo_text(t[..])) {return false;}
+  n=0;for v:[6]string.["env","VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json",jo_text(p[..]),"VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation","timeout","240"] {args[n]=v;n+=1;}args[n]="./worker";n+=1;args[n]=ifx profile==0 then "sampling" else "helper";n+=1;args[n]=names[variant];n+=1;args[n]=remote_json;n+=1;for i:0..<count {args[n]=shaders[i];n+=1;}
+  jo_start(t[..],ref_label[..]);jo_put(t[..],tag);jo_put(t[..],"-worker");r=nt_sdk(host,remote,args[0..<n],deadline,work,jo_text(t[..]),stdout[..],stderr[..]);
+  if r.started!=0 || r.timed_out || r.cut || r.status!=expected_status {tool_err(cast(string)stderr[0..<r.err_n]);tool_errln("Coax native worker execution failed");return false;}
+  jo_start(t[..],ref_label[..]);jo_put(t[..],tag);jo_put(t[..],"-json");if !nt_get(host,remote_json,local_json,deadline,work,jo_text(t[..])) {return false;}
+  bytes:[65536]u8;nodes:[2048]JvNode;d:[1]Jv;raw:[4096]u8;raw_n:=fs_read(local_raw,raw[..]);observations:[1]NVObservations;
+  if raw_n<0 || !rtq_json_file(local_json,bytes[..],nodes[..],d[..]) || !nt_text(d[0],rtq_member(d[0],0,"schema"),"aethyr.native-gpu-worker.v1") || !nt_text(d[0],rtq_member(d[0],0,"profile"),ifx profile==0 then "sampling" else "helper") || !nt_text(d[0],rtq_member(d[0],0,"variant"),names[variant]) {return false;}
+  hashes:[4]string;hash_bytes:[4][64]u8;local_payload:=fs_join(work,"payload",paths[4][..]);
+  for i:0..<count {file:=fs_join(local_payload,shaders[i],paths[5][..]);if !rtq_hash_file(file,hash_bytes[i][..]) {return false;}hashes[i]=cast(string)hash_bytes[i][..];}
+  if !np_admit(profile,variant,r.status,d[0],raw[0..<raw_n],cast(string)original_out[0..<on],cast(string)original_err[0..<en],hashes[0..<count]) {tool_errln("native receipt authority refused");return false;}
+  rows:=rtq_member(d[0],0,"rows");if !nt_rows(profile,d[0],rows,observations[..]) {return false;}
+  evaluated:=nv_evaluate(profile,observations[0]);device:=rtq_member(d[0],0,"device");features:=rtq_member(d[0],0,"features");
+  jo_obj(o);jo_key(o,"variant");jo_str(o,names[variant]);jo_key(o,"raw_words");jo_int(o,raw_n/4);jo_key(o,"wrong");jo_int(o,evaluated.wrong);jo_key(o,"exit");jo_int(o,r.status);jo_key(o,"device");jo_raw(o,jv_raw(d[0],device));jo_key(o,"features");jo_raw(o,jv_raw(d[0],features));jo_key(o,"views");jo_raw(o,jv_raw(d[0],rtq_member(d[0],0,"views")));jo_end(o);return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}profile:=nv_profile(args_value(a[..],"--profile",""));host:=args_value(a[..],"--host","coderos-4080");work_arg:=args_value(a[..],"--work-dir","");receipt:=args_value(a[..],"--receipt","");emissions_arg:=args_value(a[..],"--emissions","");sources_arg:=args_value(a[..],"--source-root","");compiler:=args_value(a[..],"--coax","");
+  if profile<0 || !ng_host(host) || work_arg=="" || receipt=="" || emissions_arg=="" || sources_arg=="" || compiler=="" || !args_has(a[..],"--historical-emissions") || !args_has(a[..],"--explore-stale-compiler") || fs_exists(work_arg) || fs_exists(receipt) || !fs_mkdir(work_arg) {tool_errln("native GPU requires explicit profile, historical emissions/source root, compiler, new work dir/receipt and exploration flags; see NATIVE_GPU.md");return 2;}
+  p:[16][4096]u8;root:=fs_cwd(p[0][..]);work:=fs_realpath(work_arg,p[1][..]);emissions:=fs_realpath(emissions_arg,p[2][..]);sources:=fs_realpath(sources_arg,p[3][..]);if work=="" || emissions=="" || sources=="" {return 2;}payload:=fs_join(work,"payload",p[4][..]);if !fs_mkdir(payload) {return 2;}
+  deadline:=proc_deadline(RTQ_DEADLINE_MS,proc_now_ms());inputs:[1]RtqInputs;files:[1]NtFiles;compiler_hash:[64]u8;if !rtq_hash_file(compiler,compiler_hash[..]) || !rtq_input_add(inputs[..],compiler) {return 1;}
+  original_receipt:=fs_join(emissions,"qualification.json",p[5][..]);original_bytes:[1048576]u8;original_nodes:[8192]JvNode;old:[1]Jv;
+  if !rtq_input_add(inputs[..],original_receipt) || !rtq_json_file(original_receipt,original_bytes[..],original_nodes[..],old[..]) || !nt_prepare(profile,old[0],emissions,sources,root,payload,inputs[..],files[..]) {tool_errln("historical emission identity refused");return 1;}
+  for name:[8]string.["tool-native.c","tool-native.h","process-native.c","process-native.h","store-file-native.c","store-file-native.h","read-file-native.c","read-file-native.h"] {source:=fs_join("coax/platform",name,p[6][..]);if !nt_copy(source,fs_join(payload,name,p[7][..]),inputs[..]) || !nt_file(files[..],payload,name) {return 1;}}
+  if !nt_copy("aethyr/tests/native-gpu-effects.c",fs_join(payload,"native-gpu-effects.c",p[6][..]),inputs[..]) || !nt_file(files[..],payload,"native-gpu-effects.c") {return 1;}
+  if !rtq_deps(inputs[..],compiler,"aethyr/tests/native-gpu-worker.coax",deadline,work,"worker-deps") || !rtq_deps(inputs[..],compiler,"aethyr/tests/check-render-native-gpu.coax",deadline,work,"controller-deps") {return 1;}
+  out:[RTQ_FILE]u8;err:[65536]u8;env:[]string;emit:=[4]string.[compiler,"c","aethyr/tests/native-gpu-worker.coax","--library"];r:=rtq_command(emit[..],env,deadline,work,"worker-emission",out[..],err[..]);if !rtq_ok(r) || !fs_write(fs_join(payload,"worker.c",p[6][..]),cast(string)out[0..<r.out_n]) || !nt_file(files[..],payload,"worker.c") {return 1;}
+  // A unique owned name is derived from an actual local temporary directory.
+  temp_buf:[4096]u8;temp:=fs_temp("aethyr-native-gpu-",temp_buf[..]);if temp=="" {return 1;}suffix:[64]u8;if !S_hex(S_hash(temp),suffix[..]) {return 1;}remote_buf:[256]u8;o:[1]Jo;jo_start(o[..],remote_buf[..]);jo_put(o[..],"/tmp/aethyr-native-gpu-");jo_put(o[..],cast(string)suffix[0..<24]);remote:=jo_text(o[..]);removed:=fs_remove(temp);
+  mkdir_args:=[2]string.["mkdir",remote];r=nt_ssh(host,mkdir_args[..],deadline,work,"remote-mkdir",out[..],err[..]);if !rtq_ok(r) {return 1;}
+  // From this point every exit is through the cleanup below.
+  ok:=true;
+  for i:0..<files[0].count {local_buf:[4096]u8;remote_file:[4096]u8;label:[128]u8;if ok {ok=nt_transfer(host,fs_join(payload,nt_filename(files[..],i),local_buf[..]),fs_join(remote,nt_filename(files[..],i),remote_file[..]),false,deadline,work,nt_label("upload-",i,label[..]));}}
+  if ok {ok=nt_remote_files(files[..],host,remote,deadline,work,"before");}
+  // Keep the chosen SDK identities as direct command observations, not a dump.
+  for which:[2]string.["gcc","spirv-val"] {if ok {args:=[2]string.["which",which];label:[128]u8;w:[1]Jo;jo_start(w[..],label[..]);jo_put(w[..],which);jo_put(w[..],"-path");r=nt_sdk(host,remote,args[..],deadline,work,jo_text(w[..]),out[..],err[..]);ok=rtq_ok(r);if ok {path:=rtq_trim(cast(string)out[0..<r.out_n]);chosen:[4096]u8;n:=path.count;if n<1 || n>chosen.count {ok=false;}else {for k:0..<n {chosen[k]=path[k];}hash_args:=[2]string.["sha256sum",cast(string)chosen[0..<n]];jo_start(w[..],label[..]);jo_put(w[..],which);jo_put(w[..],"-hash");r=nt_ssh(host,hash_args[..],deadline,work,jo_text(w[..]),out[..],err[..]);ok=rtq_ok(r);}}}}
+  if ok {args:=[2]string.["gcc","--version"];r=nt_sdk(host,remote,args[..],deadline,work,"gcc-version",out[..],err[..]);ok=rtq_ok(r);}
+  layer_buf:[4096]u8;layer_n:=0;
+  if ok {find_args:=[8]string.["find","/nix/store","-maxdepth","6","-name","VkLayer_khronos_validation.json","-path","*validation-layers*"];r=nt_ssh(host,find_args[..],deadline,work,"validation-layer-paths",out[..],err[..]);ok=rtq_ok(r);if ok {line:=rtq_word(cast(string)out[0..<r.out_n],0);directory:=fs_dir(line);if directory.count<12 || directory.count>layer_buf.count || directory[0..<11]!="/nix/store/" {ok=false;}else {layer_n=directory.count;for k:0..<layer_n {layer_buf[k]=directory[k];}}}}
+  if ok {args:=[17]string.["gcc","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unknown-pragmas","-I.","reference.c","vks.c","vkc.c","RenderCaps.c","-lvulkan","-lm","-o","reference","-pthread","-D_DEFAULT_SOURCE"];r=nt_sdk(host,remote,args[..],deadline,work,"reference-build",out[..],err[..]);ok=rtq_ok(r);}
+  if ok {args:=[24]string.["gcc","-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-Wno-unknown-pragmas","-I.","worker.c","native-gpu-effects.c","tool-native.c","process-native.c","store-file-native.c","read-file-native.c","vks.c","vkc.c","RenderCaps.c","-lvulkan","-lm","-pthread","-D_DEFAULT_SOURCE","-o","worker","-Wno-unused-function","-Wno-unused-variable"];r=nt_sdk(host,remote,args[..],deadline,work,"worker-build",out[..],err[..]);ok=rtq_ok(r);}
+  if ok {for i:0..<files[0].count {name:=nt_filename(files[..],i);if name.count>4 && name[name.count-4..<name.count]==".spv" && ok {args:=[4]string.["spirv-val","--target-env","vulkan1.1",name];label:[128]u8;r=nt_sdk(host,remote,args[..],deadline,work,nt_label("validate-",i,label[..]),out[..],err[..]);ok=rtq_ok(r);}}}
+  for image:[2]string.["worker","reference"] {if ok {remote_file:[4096]u8;local_file:[4096]u8;ok=nt_get(host,fs_join(remote,image,remote_file[..]),fs_join(work,image,local_file[..]),deadline,work,image);}}
+  receipt_bytes:[1048576]u8;jo_start(o[..],receipt_bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.native-gpu-tool.v1");jo_key(o[..],"profile");jo_str(o[..],ifx profile==0 then "sampling" else "helper");jo_key(o[..],"scope");jo_str(o[..],"historical exact shader/bridge emissions; current Coax worker under explicitly older exploratory compiler; offscreen Vulkan only");jo_key(o[..],"host");jo_str(o[..],host);jo_key(o[..],"worker_compiler_sha256");jo_str(o[..],cast(string)compiler_hash[..]);jo_key(o[..],"shader_compiler_sha256");old_compiler:[64]u8;old_compiler_n:=jv_str(old[0],jv_get(old[0],0,"compiler_sha256"),old_compiler[..]);jo_str(o[..],cast(string)old_compiler[0..<old_compiler_n]);jo_key(o[..],"historical_receipt");jo_str(o[..],original_receipt);jo_key(o[..],"source_root");jo_str(o[..],sources);jo_key(o[..],"remote_workspace");jo_str(o[..],remote);jo_key(o[..],"cases");jo_arr(o[..]);
+  for variant:0..<(ifx profile==0 then 3 else 1) {if ok {ok=nt_case(profile,variant,host,remote,work,cast(string)layer_buf[0..<layer_n],deadline,o[..]);}}jo_end(o[..]);
+  if ok {ok=nt_remote_files(files[..],host,remote,deadline,work,"after");}
+  cleanup_args:=[4]string.["rm","-rf","--",remote];cleanup:=nt_ssh(host,cleanup_args[..],proc_deadline(30000,proc_now_ms()),work,"remote-cleanup",out[..],err[..]);ok=ok && rtq_ok(cleanup) && rtq_inputs_match(inputs[..]);
+  jo_key(o[..],"status");jo_str(o[..],ifx ok then "passed" else "failed");jo_key(o[..],"cleanup");jo_bool(o[..],rtq_ok(cleanup));jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],root);jo_key(o[..],"transferred_inputs");jo_obj(o[..]);for i:0..<files[0].count {jo_key(o[..],nt_filename(files[..],i));jo_str(o[..],cast(string)files[0].hashes[i][..]);}jo_end(o[..]);jo_end(o[..]);
+  if o[0].bad || !fs_write(receipt,jo_text(o[..])) {return 1;}if !ok {tool_errln("native GPU qualification failed; retained commands and inputs identify its first failure");return 1;}return 0;
+}

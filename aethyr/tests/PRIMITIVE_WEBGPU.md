@@ -1,4 +1,4 @@
-Four maintained diagnostic drivers now run in Coax:
+Six maintained diagnostic drivers now run in Coax:
 
 | Mode | Authored jobs | Readback words | Preserved rule |
 | --- | ---: | ---: | --- |
@@ -6,6 +6,8 @@ Four maintained diagnostic drivers now run in Coax:
 | `ring8` | 728 | 2,912 | Exact numeric f32 references; signed zeros compare numerically |
 | `sans-filter` | 40 | 160 | Existing `abs(actual-expected) <= 0.000001` |
 | `sampling` | 6 | 96 | Existing `0.00001` bound; four normal jobs have zero wrong lanes and each planted control has 16 |
+| `clip-output` | 8 | 32 | Every raw finite lane and all original clip/ID metadata retained |
+| `deadgears-vs` | 96 | 384 | Every raw finite lane, source/resource hash and selector retained |
 
 ```sh
 COAX=/qualified/coax coax/web/tool.sh aethyr/tests/primitive-webgpu.coax \
@@ -15,10 +17,11 @@ COAX=/qualified/coax coax/web/tool.sh aethyr/tests/primitive-webgpu.coax \
   sampling NORMAL.wgsl RESULT.json FAULT.wgsl ARRAY-FAULT.wgsl
 ```
 
-The four old executors are retained with observer-only word reads in the
+The old executors are retained with observer-only word reads in each slice's
 qualification archive. They were removed from the maintained tree only after
 same-input parity. No production shader, numerical tolerance or backend profile
-changed. Clip-output and Dead Gears VS diagnostics remain a separate next slice.
+changed. `VERTEX_WEBGPU.md` explains the clip/VS source-epoch boundary and its
+explicit historical-source option.
 
 Coax owns every fixture, GPU descriptor, program pair, job order, source hash,
 finite check, expected result and verdict. `primitive-webgpu-effects.js` runs

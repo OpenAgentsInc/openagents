@@ -31,11 +31,11 @@ ppp_numeric_oracle :: (observation:string,receipt:string)->bool {
 tool_main :: ()->int #export_c {
   a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {return 2;}
   mode:=args_at(a[..],0);old_path:=args_at(a[..],1);new_path:=args_at(a[..],2);output:=args_at(a[..],3);
-  index:=-1;names:=[5]string.["filter-format","ring8","sans-filter","sampling","session-raster"];for i:0..<5 {if mode==names[i] {index=i;}}if index<0 {return 2;}
+  index:=-1;names:=[7]string.["filter-format","ring8","sans-filter","sampling","session-raster","clip-output","deadgears-vs"];for i:0..<7 {if mode==names[i] {index=i;}}if index<0 {return 2;}
   old_raw:[1048576]u8;new_raw:[1048576]u8;old_nodes:[65536]JvNode;new_nodes:[65536]JvNode;od:[1]Jv;nd:[1]Jv;
   on:=fs_read(old_path,old_raw[..]);nn:=fs_read(new_path,new_raw[..]);
   if on<1 || nn<1 || !jv_parse(od[..],cast(string)old_raw[0..<on],old_nodes[..]) || !jv_parse(nd[..],cast(string)new_raw[0..<nn],new_nodes[..]) {return 2;}
-  old:=od[0];current:=nd[0];count:=[5]int.[40,728,40,6,6];rows:=jv_get(old,0,"results");fresh:=jv_get(current,0,"results");
+  old:=od[0];current:=nd[0];count:=[7]int.[40,728,40,6,6,8,96];rows:=jv_get(old,0,"results");fresh:=jv_get(current,0,"results");
   if jv_len(old,rows)!=count[index] || jv_len(current,fresh)!=count[index] {return 1;}
   metadata:=[5]string.["device","browser","messages","errors","source_changes"];
   for key:metadata {if !ppp_equal(old,jv_get(old,0,key),current,jv_get(current,0,key)) {tool_errln(key);return 1;}}
@@ -53,6 +53,8 @@ tool_main :: ()->int #export_c {
     if index==1 {if !ppp_equal(old,jv_get(old,oo,"index"),current,jv_get(current,nc,"index")) || !ppp_equal(old,old_words,current,jv_get(current,nc,"words")) {return 1;}}
     if index==3 {for key:[2]string.["entry","wrong"] {if !ppp_equal(old,jv_get(old,oo,key),current,jv_get(current,nc,key)) {tool_errln(key);return 1;}}}
     if index==4 && !ppp_equal(old,oo,current,nc) {return 1;}
+    if index==5 {for key:[5]string.["x","y","instance","ids","clips"] {if !ppp_equal(old,jv_get(old,oo,key),current,jv_get(current,nc,key)) {tool_errln(key);return 1;}}}
+    if index==6 {for key:[4]string.["triangle","vertex","instance","selector"] {if !ppp_equal(old,jv_get(old,oo,key),current,jv_get(current,nc,key)) {tool_errln(key);return 1;}}}
     channels+=lanes;oo=old.nodes[oo].next;nc=current.nodes[nc].next;nw=current.nodes[nw].next;
   }
   if index==1 {for key:[3]string.["discrepancies","comparison","cases_sha256"] {if !ppp_equal(old,jv_get(old,0,key),current,jv_get(current,0,key)) {tool_errln(key);return 1;}}}

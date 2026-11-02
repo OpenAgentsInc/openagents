@@ -1,0 +1,35 @@
+// Complete receipt admission, independently qualified against frozen actual
+// legacy readbacks. CLI orchestration supplies independently hashed shaders.
+#load "native-gpu-tool-policy.coax";
+#load "native-gpu-reference.coax";
+#authority;
+#load "native-gpu-parity-checks.coax";
+np_text :: (d:Jv,node:int,want:string)->bool {b:[256]u8;n:=jv_str(d,node,b[..]);return n==want.count && cast(string)b[0..<n]==want;}
+NP_MISSING :: -9223372036854775807;
+np_int :: (d:Jv,node:int)->int {return jv_int(d,node,NP_MISSING);}
+np_shader :: (profile:int,variant:int,index:int)->string {
+  if profile==1 {return ifx index==0 then "helper.spv" else "range.spv";}
+  names:=[4]string.["filtered.spv",ifx variant==1 then "fault.spv" else "invalid.spv","array.spv",ifx variant==2 then "fault-array.spv" else "invalid-array.spv"];return names[index];
+}
+np_admit :: (profile:int,variant:int,status:int,d:Jv,raw:[]u8,legacy:string,legacy_err:string,hashes:[]string)->bool {
+  variant_name:=ifx variant==0 then "normal" else ifx variant==1 then "fault" else ifx variant==2 then "array-fault" else "";
+  if !np_text(d,rtq_member(d,0,"schema"),"aethyr.native-gpu-worker.v1") || !np_text(d,rtq_member(d,0,"profile"),ifx profile==0 then "sampling" else "helper") || !np_text(d,rtq_member(d,0,"variant"),variant_name) {return false;}
+  rows:=rtq_member(d,0,"rows");observations:[1]NVObservations;
+  if !nt_rows(profile,d,rows,observations[..]) || !nt_raw_equal(d,rows,raw) {return false;}
+  r:=nv_evaluate(profile,observations[0]);device:=rtq_member(d,0,"device");errors:=np_int(d,rtq_member(d,device,"validation_errors"));warnings:=np_int(d,rtq_member(d,device,"validation_warnings"));
+  if !r.valid || !nv_case_admit(profile,variant,status,r.wrong,r.finite,errors,warnings) || np_int(d,rtq_member(d,0,"wrong"))!=r.wrong || np_int(d,rtq_member(d,0,"exit"))!=status || jv_kind(d,rtq_member(d,0,"finite"))!=JV_TRUE {return false;}
+  if nt_csv(nt_field(legacy,"wrong="),0)!=r.wrong || nt_field(legacy,"validation_errors=")!="0" || nt_field(legacy,"validation_warnings=")!="0" {return false;}
+  physical:=nt_field(legacy_err,"observer_device=");keys:=[7]string.["vendor","device_id","driver","helper_supported","helper_enabled","int64_enabled","validating"];
+  for i:0..<7 {value:=np_int(d,rtq_member(d,device,keys[i]));if value<0 || nt_csv(physical,i)!=value {return false;}}
+  if np_int(d,rtq_member(d,device,"pipelines"))!=(ifx profile==0 then 4 else 5) || np_int(d,rtq_member(d,device,"validating"))!=1 {return false;}
+  begin:=rtq_find(legacy,"device=",0);if begin<0 {return false;}begin+=7;end:=rtq_find(legacy,ifx profile==0 then " helper=" else " vendor=",begin);if end<=begin || !np_text(d,rtq_member(d,device,"name"),legacy[begin..<end]) {return false;}
+  features:=rtq_member(d,0,"features");if jv_kind(d,features)!=JV_ARRAY || jv_len(d,features)!=5 || !nv_feature_gate(profile,np_int(d,jv_at(d,features,0)),np_int(d,jv_at(d,features,1)),np_int(d,jv_at(d,features,2)),np_int(d,jv_at(d,features,3)),np_int(d,jv_at(d,features,4))) {return false;}
+  views:=rtq_member(d,0,"views");if jv_kind(d,views)!=JV_ARRAY || jv_len(d,views)!=(ifx profile==1 then 4 else 0) {return false;}
+  if profile==1 {
+    if nt_csv(nt_field(legacy,"unsupported helper feature refused before pipeline creation: "),0)!=np_int(d,jv_at(d,features,0)) || nt_csv(nt_field(legacy,"unsupported Int64 feature refused before pipeline creation: "),0)!=np_int(d,jv_at(d,features,1)) {return false;}
+    offset:=0;for view:0..<4 {at:=rtq_find(legacy_err,"observer_view=",offset);if at<0 {return false;}value:=nt_field(legacy_err[at..<legacy_err.count],"observer_view=");offset=at+"observer_view=".count+value.count;row:=jv_at(d,views,view);if jv_kind(d,row)!=JV_ARRAY || jv_len(d,row)!=4 {return false;}for field:0..<4 {v:=np_int(d,jv_at(d,row,field));if v<0 || nt_csv(value,field)!=v {return false;}}}
+  }
+  count:=ifx profile==0 then 4 else 2;shader_inputs:=rtq_member(d,0,"shader_inputs");if hashes.count!=count || jv_kind(d,shader_inputs)!=JV_OBJECT || jv_len(d,shader_inputs)!=count {return false;}
+  for i:0..<count {if !np_text(d,rtq_member(d,shader_inputs,np_shader(profile,variant,i)),hashes[i]) {return false;}}
+  return true;
+}

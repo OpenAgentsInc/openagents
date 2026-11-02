@@ -1,0 +1,17 @@
+// Bounded native SSH/SCP effects. All workspace actions, archive admission and
+// GPU verdicts belong to the caller. No scripts, decisions or env dump sent.
+// stderr is the existing bounded process tail; stdout preserves raw bytes.
+#load "native-gpu-transport-policy.coax";
+#load "../render/tests/qualification-files.coax";
+ng_ssh :: (host:string,argv:[]string,timeout_ms:int,out:[]u8,err:[]u8)->ProcRun {
+  if !ng_host(host) || !ng_timeout(timeout_ms) {return ProcRun.{started=PROC_ERROR};}
+  text:[65536]u8;command:=ng_command(argv,text[..]);if command=="" {return ProcRun.{started=PROC_ERROR};}
+  args:=[12]string.["ssh","-o","BatchMode=yes","-o","ConnectTimeout=15","-o","ServerAliveInterval=15","-o","ServerAliveCountMax=2","--",host,command];
+  env:[]string;return rtq_run_raw(args[..],env,timeout_ms,out,err);
+}
+ng_scp :: (host:string,local:string,remote:string,download:bool,timeout_ms:int,out:[]u8,err:[]u8)->ProcRun {
+  if !ng_host(host) || !ng_local(local) || !ng_remote(remote) || !ng_timeout(timeout_ms) {return ProcRun.{started=PROC_ERROR};}
+  text:[8192]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],host);jo_put(o[..],":");jo_put(o[..],remote);if o[0].bad {return ProcRun.{started=PROC_ERROR};}
+  specification:=jo_text(o[..]);args:=[13]string.["scp","-q","-o","BatchMode=yes","-o","ConnectTimeout=15","-o","ServerAliveInterval=15","-o","ServerAliveCountMax=2","--",ifx download then specification else local,ifx download then local else specification];
+  env:[]string;return rtq_run_raw(args[..],env,timeout_ms,out,err);
+}

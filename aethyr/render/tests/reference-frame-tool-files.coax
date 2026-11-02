@@ -1,0 +1,34 @@
+// Files and identities for CPU-frame tooling; no renderer decisions or math.
+#load "native-qualification.coax";
+#load "reference-frame-tool-policy.coax";
+RffCopy :: struct {path:[4096]u8;path_count:int;dest:[4096]u8;dest_count:int;hash:[64]u8;}
+RffCopies :: struct {count:int;rows:[RFR_REFS]RffCopy;ref_indices:[RFR_REFS]int;}
+RffBackend :: struct {paths:[3][4096]u8;counts:[3]int;}
+rff_path :: (base:string,name:string,out:[]u8)->string {joined:[4096]u8;path:=ifx name.count>0 && name[0]=='/' then name else fs_join(base,name,joined[..]);return fs_realpath(path,out);}
+rff_copy :: (source:string,dest:string)->bool {bytes:[RTQ_FILE]u8;n:=fs_size(source);return n>=0 && n<=bytes.count && fs_read_at(source,0,bytes[0..<n])==n && fs_mkdir(fs_dir(dest)) && fs_write(dest,cast(string)bytes[0..<n]);}
+rff_copies_stable :: (copies:[]RffCopies)->bool {hash:[64]u8;for i:0..<copies[0].count {row:=copies[0].rows[i];if !rtq_hash_file(cast(string)row.path[0..<row.path_count],hash[..]) || cast(string)hash[..]!=cast(string)row.hash[..] || !rtq_hash_file(cast(string)row.dest[0..<row.dest_count],hash[..]) || cast(string)hash[..]!=cast(string)row.hash[..] {return false;}}return true;}
+rff_write_config :: (p:[]RfrConfig,config:string)->bool {bytes:[4194304]u8;o:[1]Jo;jo_start(o[..],bytes[..]);for i:0..<p[0].row_count {row:=p[0].rows[i];for k:0..<row.count {if k>0 {jo_put(o[..]," ");}jo_put(o[..],p[0].tokens[row.first+k]);}jo_put(o[..],"\n");}return !o[0].bad && fs_write(config,jo_text(o[..]));}
+rff_write_snapshot :: (p:[]RfrConfig,copies:[]RffCopies,config:string)->bool {bytes:[4194304]u8;o:[1]Jo;jo_start(o[..],bytes[..]);for i:0..<p[0].row_count {row:=p[0].rows[i];for k:0..<row.count {if k>0 {jo_put(o[..]," ");}pick:=-1;for r:0..<p[0].ref_count {ref:=p[0].refs[r];if ref.row==i && ref.column==k {pick=copies[0].ref_indices[r];}}if pick>=0 {copy:=copies[0].rows[pick];jo_put(o[..],cast(string)copy.dest[0..<copy.dest_count]);}else {jo_put(o[..],p[0].tokens[row.first+k]);}}jo_put(o[..],"\n");}return !o[0].bad && fs_write(config,jo_text(o[..]));}
+rff_snapshot_config :: (source:string,package:string,inputs:string,config:string,text:[]u8,p:[]RfrConfig,copies:[]RffCopies)->bool {
+  n:=fs_read(source,text);if n<0 || !rfr_parse(cast(string)text[0..<n],p) || !fs_mkdir(inputs) {return false;}canonical:[4096]u8;source_path:=fs_realpath(source,canonical[..]);if source_path.count==0 {return false;}base:=fs_dir(source_path);original_package:[4096]u8;package_path:=rff_path(base,rfr_token(p,5,0),original_package[..]);hash:[64]u8;requested:[64]u8;if package_path.count==0 || !rtq_hash_file(package_path,hash[..]) || !rtq_hash_file(package,requested[..]) || cast(string)hash[..]!=cast(string)requested[..] {tool_errln("recorded package differs from requested package");return false;}
+  copies[0].count=0;for i:0..<p[0].ref_count {
+    ref:=p[0].refs[i];token:=rfr_token(p,ref.row,ref.column);copies[0].ref_indices[i]= -1;if token=="-" {continue;}path:[4096]u8;original:=rff_path(base,token,path[..]);if original.count==0 {return false;}found:=-1;for k:0..<copies[0].count {old:=copies[0].rows[k];if cast(string)old.path[0..<old.path_count]==original {found=k;}}
+    if found<0 {
+      if copies[0].count==RFR_REFS || !rtq_hash_file(original,hash[..]) {return false;}row:RffCopy;row.path_count=rtn_text(row.path[..],original);row.hash=hash;name:[8192]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],cast(string)hash[0..<16]);jo_put(o[..],"-");jo_put(o[..],fs_base(original));dest:[4096]u8;target:=fs_join(inputs,jo_text(o[..]),dest[..]);row.dest_count=rtn_text(row.dest[..],target);if o[0].bad || row.path_count<0 || row.dest_count<0 || !rff_copy(original,target) || !rtq_hash_file(target,hash[..]) || cast(string)hash[..]!=cast(string)row.hash[..] || !rtq_hash_file(original,hash[..]) || cast(string)hash[..]!=cast(string)row.hash[..] {return false;}found=copies[0].count;copies[0].rows[found]=row;copies[0].count+=1;
+    }
+    copies[0].ref_indices[i]=found;
+  }
+  capture:[4096]u8;if !rff_copies_stable(copies) || !fs_write(fs_join(inputs,"original-frame.config",capture[..]),cast(string)text[0..<n]) || !rff_write_snapshot(p,copies,config) {return false;}staged:=fs_read(config,text);return staged>=0 && rfr_parse(cast(string)text[0..<staged],p);
+}
+rff_backend :: (directory:string,compiler_hash:string,digest:string,root:string,bytes:[]u8,nodes:[]JvNode,doc:[]Jv,inputs:[]RtqInputs,renderer_inputs:[]RtqInputs,artifacts:[]RffBackend)->bool {
+  path:[4096]u8;receipt:=fs_join(directory,"measurement.json",path[..]);if !rtq_json_file(receipt,bytes,nodes,doc) || !rfr_backend(doc[0],compiler_hash,digest) || !rtq_input_add(inputs,receipt) {tool_errln("backend receipt/compiler did not finish with stable inputs");return false;}d:=doc[0];sources:=rfr_backend_sources(d);explicit:=jv_get(d,0,"renderer_source_sha256")!= -1;child:=d.nodes[sources].first;
+  while child!=-1 {
+    name:=jv_key(d,child);if explicit || (name.count>=5 && name[name.count-5..<name.count]==".coax") {joined:[4096]u8;full:=ifx name.count>0 && name[0]=='/' then name else fs_join(root,name,joined[..]);hash:[64]u8;if !rtq_hash_file(full,hash[..]) || !rfr_literal(d,child,cast(string)hash[..]) || !rtq_input_add(inputs,full) || !rtq_input_add(renderer_inputs,full) {tool_err("backend renderer source changed: ");tool_errln(name);return false;}}
+    child=d.nodes[child].next;
+  }
+  for kind,i:[3]string.["generated_c","generated_header","executable"] {
+    key:[256]u8;w:[1]Jo;jo_start(w[..],key[..]);jo_put(w[..],kind);jo_put(w[..],"_path");node:=jv_get(d,0,jo_text(w[..]));declared:[4096]u8;canonical:[4096]u8;
+    if node== -1 {filename:=[3]string.["reference-frame.c","reference-frame.h","reference-frame"][i];name:=fs_join(directory,filename,declared[..]);resolved:=fs_realpath(name,canonical[..]);artifacts[0].counts[i]=rtn_text(artifacts[0].paths[i][..],resolved);}else {n:=jv_str(d,node,declared[..]);if n<1 {return false;}resolved:=fs_realpath(cast(string)declared[0..<n],canonical[..]);artifacts[0].counts[i]=rtn_text(artifacts[0].paths[i][..],resolved);}
+    count:=artifacts[0].counts[i];if count<1 {return false;}full:=cast(string)artifacts[0].paths[i][0..<count];hash:[64]u8;jo_start(w[..],key[..]);jo_put(w[..],kind);jo_put(w[..],"_sha256");if !rtq_hash_file(full,hash[..]) || !rfr_literal(d,jv_get(d,0,jo_text(w[..])),cast(string)hash[..]) || !rtq_input_add(inputs,full) {tool_err("backend artifact changed: ");tool_errln(kind);return false;}
+  }return true;
+}

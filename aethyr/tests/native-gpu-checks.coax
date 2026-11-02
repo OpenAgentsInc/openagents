@@ -1,0 +1,87 @@
+// Independent authored fixture values and failure-count semantics, before code.
+#test "native GPU profiles variants and observation shapes are closed" {
+  #assert nv_profile("sampling")==0 && nv_profile("helper")==1 && nv_profile("unknown")==-1;
+  #assert nv_rows(0)==4 && nv_rows(1)==7 && nv_rows(-1)==0 && nv_rows(2)==0;
+  #assert nv_lanes(0,0)==16 && nv_lanes(1,2)==4 && nv_lanes(1,0)==16 && nv_lanes(1,6)==16;
+  #assert nv_variant("normal")==0 && nv_variant("fault")==1 && nv_variant("array-fault")==2 && nv_variant("unknown")==-1;
+}
+#test "native sampler references are the independently authored stripe and layer averages" {
+  stripe:=[4]f64.[0.25,0.4375,0.25,1];array:=[4]f64.[0.75,0.5,0.125,1];clear:=[4]f64.[0.125,0.25,0.5,0.75];
+  for pixel:0..<4 {for k:0..<4 {
+    #assert nv_expected(0,0,pixel*4+k)==stripe[k] && nv_expected(0,2,pixel*4+k)==array[k];
+    #assert nv_expected(0,1,pixel*4+k)==clear[k] && nv_expected(0,3,pixel*4+k)==clear[k];
+  }}
+}
+#test "native uploads preserve every authored half word attribute draw and physical write" {
+  half:=[32]u32.[0,0,0x3400,0x3c00,0,0x3000,0x3400,0x3c00,0,0x3400,0x3400,0x3c00,0x3c00,0x3600,0x3400,0x3c00,0x3c00,0x3800,0x3400,0x3c00,0,0x3900,0x3400,0x3c00,0,0x3a00,0x3400,0x3c00,0,0x3b00,0x3400,0x3c00];
+  layer:=[4]u32.[0x3a00,0x3800,0x3000,0x3c00];for i:0..<32 {#assert nv_half_word(i)==half[i] && nv_half_word(i+32)==layer[i%4];}
+  positions:=[24]f32.[-1,1,0.5,1,1,1,0.5,1,-1,-1,0.5,1,1,1,0.5,1,1,-1,0.5,1,-1,-1,0.5,1];
+  values:=[6]f32.[0,4,8,4,12,8];tags:=[6]u32.[9,77,88,19,55,66];
+  for vertex:0..<6 {for lane:0..<4 {#assert nv_attribute_word(vertex,lane)==f32_bits(positions[vertex*4+lane]);}#assert nv_attribute_word(vertex,4)==f32_bits(values[vertex]) && nv_attribute_word(vertex,5)==tags[vertex];}
+  draws:=[4]u32.[0,6,0x80000002,1];for i:0..<4 {#assert nv_draw_word(i)==draws[i];}
+  indices:=[3]int.[27,91,2299];physical:=[3]f32.[7,17,575];for i:0..<3 {#assert nv_written_index(i)==indices[i] && nv_written_word(i)==f32_bits(physical[i]);}
+}
+#test "native helper references preserve both attachments depth and four byte views" {
+  colour:=[16]f64.[10,4,4,1,0.125,0.25,0.5,0.75,10,4,8,1,0.125,0.25,0.5,0.75];
+  aux:=[16]f64.[11,0.5,0.5,1,0.125,0.25,0.5,0.75,21,0.5,1.5,1,0.125,0.25,0.5,0.75];
+  depth:=[4]f64.[0.5,1,0.5,1];counts:=[4]f64.[28,2300,28,2300];last:=[4]f64.[7,575,17,575];
+  for k:0..<16 {#assert nv_expected(1,0,k)==colour[k] && nv_expected(1,1,k)==aux[k];}
+  for k:0..<4 {#assert nv_expected(1,2,k)==depth[k];}
+  for view:0..<4 {for pixel:0..<4 {
+    #assert nv_expected(1,view+3,pixel*4)==counts[view] && nv_expected(1,view+3,pixel*4+1)==last[view];
+    #assert nv_expected(1,view+3,pixel*4+2)==cast(f64)(pixel%2)+0.5 && nv_expected(1,view+3,pixel*4+3)==1;
+  }}
+  #assert nv_view_offset(0)==0 && nv_view_offset(1)==0 && nv_view_offset(2)==256 && nv_view_offset(3)==0;
+  #assert nv_view_vec4s(0)==7 && nv_view_vec4s(1)==575 && nv_view_vec4s(2)==7 && nv_view_vec4s(3)==7;
+}
+nv_test_observations :: (profile:int)->NVObservations {
+  o:NVObservations;o.count=nv_rows(profile);
+  for row:0..<o.count {o.rows[row].count=nv_lanes(profile,row);for k:0..<o.rows[row].count {o.rows[row].words[k]=f32_bits(cast(f32)nv_expected(profile,row,k));}}return o;
+}
+#test "native wrong counts retain the original per-lane pair and per-pixel rules" {
+  sampler:=nv_test_observations(0);helper:=nv_test_observations(1);
+  #assert nv_evaluate(0,sampler).valid && nv_evaluate(0,sampler).finite && nv_evaluate(0,sampler).wrong==0;
+  #assert nv_evaluate(1,helper).valid && nv_evaluate(1,helper).finite && nv_evaluate(1,helper).wrong==0;
+  sampler.rows[1].words[0]=0;#assert nv_evaluate(0,sampler).wrong==1;
+  for k:0..<16 {sampler.rows[1].words[k]=0;}#assert nv_evaluate(0,sampler).wrong==16;
+  helper.rows[0].words[0]=0;helper.rows[1].words[0]=0;#assert nv_evaluate(1,helper).wrong==1;
+  helper.rows[2].words[0]=0;#assert nv_evaluate(1,helper).wrong==2;
+  helper=nv_test_observations(1);for k:0..<4 {helper.rows[3].words[k]=0;}#assert nv_evaluate(1,helper).wrong==1;
+  helper.rows[6].words[15]=0;#assert nv_evaluate(1,helper).wrong==2;
+}
+#forall "every native readback row is complete and every lane is finite" profile:0..<2,row:0..<7 {
+  if row<nv_rows(profile) {
+    o:=nv_test_observations(profile);o.rows[row].count-=1;#assert !nv_evaluate(profile,o).valid;
+    o=nv_test_observations(profile);o.rows[row].words[o.rows[row].count-1]=0x7f800000;#assert nv_evaluate(profile,o).valid && !nv_evaluate(profile,o).finite && nv_evaluate(profile,o).wrong>0;
+  }
+}
+#test "native close retains finite checks and the unchanged one-e-minus-five bound" {
+  #assert nv_close(0,0.00001) && !nv_close(0,0.000010000000001);
+  #assert nv_close(0,-0.00001) && !nv_close(0,-0.000010000000001);
+  #assert !nv_close(0x7fc00000,0) && !nv_close(0x7f800000,0) && nv_close(0x80000000,0);
+}
+#forall "native positive and distinct fault verdicts require exact counts and clean validation" profile:0..<2,variant:0..<3 {
+  expected:=profile==0 || variant==0;wrong:=ifx profile==0 && variant>0 then 16 else 0;status:=ifx wrong>0 then 1 else 0;
+  #assert nv_case_admit(profile,variant,status,wrong,true,0,0)==expected;
+  #assert !nv_case_admit(profile,variant,status,wrong,false,0,0) && !nv_case_admit(profile,variant,status,wrong,true,1,0) && !nv_case_admit(profile,variant,status,wrong,true,0,1);
+  #assert !nv_case_admit(profile,variant,1-status,wrong,true,0,0) && !nv_case_admit(profile,variant,status,wrong+1,true,0,0);
+}
+#test "native feature refusals happen before any pipeline is created" {
+  #assert nv_feature_gate(0,0,0,0,0,0) && nv_feature_gate(1,7,8,0,0,0);
+  #assert !nv_feature_gate(0,0,0,1,0,0) && !nv_feature_gate(1,0,8,0,0,0) && !nv_feature_gate(1,7,0,0,0,0);
+  #assert !nv_feature_gate(1,7,8,1,0,0) && !nv_feature_gate(1,7,8,0,1,0) && !nv_feature_gate(1,7,8,0,0,1);
+  #assert !nv_feature_gate(-1,0,0,0,0,0) && !nv_feature_gate(2,0,0,0,0,0);
+}
+
+#test "native invalid top-level counts and closed case feature indices refuse" {
+  o:NVObservations;#assert !nv_evaluate(-1,o).valid && !nv_evaluate(2,o).valid;
+  for profile:0..<2 {o=nv_test_observations(profile);o.count-=1;#assert !nv_evaluate(profile,o).valid;}
+  for profile:[4]int.[-1,2,-8,9] {#assert !nv_case_admit(profile,0,0,0,true,0,0) && !nv_feature_gate(profile,1,1,0,0,0);}
+  for variant:[4]int.[-1,3,-8,9] {#assert !nv_case_admit(0,variant,1,16,true,0,0);}
+}
+#forall "each individual lane independently contributes and NaN invalidates finite" profile:0..<2,row:0..<7,lane:0..<16 {
+  if row<nv_rows(profile) && lane<nv_lanes(profile,row) {
+    o:=nv_test_observations(profile);o.rows[row].words[lane]=0x7fc00000;
+    r:=nv_evaluate(profile,o);#assert r.valid && !r.finite && r.wrong==1;
+  }
+}

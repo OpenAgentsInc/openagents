@@ -1,0 +1,40 @@
+// Coax owns canonical package fixtures, CLI invocation and exact-byte checks.
+// The existing strip.ts remains on the shrinking legacy tool port list.
+// coax/web/tool.sh coax/web/strip-render-checks.coax OUTDIR
+#import "Basic";
+#load "../../aethyr/render/tests/qualification-files.coax";
+tool_main :: () -> int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
+  directory:=args_at(a[..],0);if !fs_mkdir(directory) {return 2;}
+  inputs:[1]RtqInputs;
+  for path:[9]string.["coax/web/strip.ts","coax/web/strip-render-checks.coax","coax/web/tool.sh","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/read-file-native.c","coax/platform/read-file-native.h","coax/platform/tool-native.c","coax/platform/socket-native.c"] {
+    if !rtq_input_add(inputs[..],path) {return 2;}
+  }
+  deadline:=proc_now_ms()+120000;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}
+  if !rtq_input_add(inputs[..],compiler) || !rtq_deps(inputs[..],compiler,"coax/web/strip-render-checks.coax",deadline,directory,"tool-deps") {return 2;}
+  for control:0..<4 {
+    name_buf:[128]u8;no:[1]Jo;jo_start(no[..],name_buf[..]);jo_put(no[..],"control-");jo_int(no[..],control);
+    dir_buf:[4096]u8;dir:=fs_join(directory,jo_text(no[..]),dir_buf[..]);if !fs_mkdir(dir) {return 2;}
+    package_buf:[4096]u8;po:[1]Jo;jo_start(po[..],package_buf[..]);jo_put(po[..],dir);
+    jo_put(po[..],ifx control%2==0 then "/assets/build/render/" else "/site/build/render/");
+    for i:0..<64 {jo_put(po[..],ifx control%2==0 then "a" else "b");}
+    if !fs_mkdir(jo_text(po[..])) {return 2;}
+    file_buf:[4096]u8;file:=fs_join(jo_text(po[..]),"m.wgsl",file_buf[..]);
+    canonical:=control<2;source:=ifx canonical then "fn shader() {}\n" else "// a comment\nfn shader() {}\n";
+    if !fs_write(file,source) {return 2;}
+    command:=[3]string.["bun","coax/web/strip.ts",dir];env:[]string;stdout:[65536]u8;stderr:[65536]u8;
+    r:=rtq_run(command[..],env,deadline,stdout[..],stderr[..]);
+    if !rtq_record_run(dir,"strip-command",command[..],r,cast(string)stdout[0..<r.out_n],cast(string)stderr[0..<r.err_n]) {return 1;}
+    unchanged:[65536]u8;n:=fs_read(file,unchanged[..]);same:=n==source.count && cast(string)unchanged[0..<n]==source;
+    command_ok:=r.started==0 && !r.timed_out && !r.cut && r.status==(ifx canonical then 0 else 1);
+    if canonical {command_ok=command_ok && cast(string)stdout[0..<r.out_n]=="  strip    1 files without comments\n";}
+    else {command_ok=command_ok && rtq_find(cast(string)stderr[0..<r.err_n],"would invalidate a render package hash",0)>=0;}
+    print("strip package control%: expected exit%, actual%, bytes unchanged%\n",control,ifx canonical then 0 else 1,r.status,same);
+    if !command_ok || !same {return 1;}
+  }
+  if !rtq_inputs_match(inputs[..]) {return 1;}
+  record:[262144]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.strip-tool-check.v1");
+  jo_key(o[..],"status");jo_str(o[..],"passed");jo_key(o[..],"controls");jo_int(o[..],4);
+  jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],".");jo_key(o[..],"source_changes");jo_arr(o[..]);jo_end(o[..]);jo_end(o[..]);
+  path_buf:[4096]u8;return ifx !o[0].bad && fs_write(fs_join(directory,"receipt.json",path_buf[..]),jo_text(o[..])) then 0 else 1;
+}

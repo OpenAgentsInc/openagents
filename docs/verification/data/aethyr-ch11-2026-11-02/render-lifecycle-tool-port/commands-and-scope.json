@@ -1,0 +1,83 @@
+{
+  "schema": "aethyr.render.lifecycle-tool-port.commands.v1",
+  "date": "2026-11-02",
+  "repository_head": "88a89f8ddf343b1a519121b8b3de96adef048ded",
+  "status": "passed",
+  "scope": "Port two lifecycle observers to Coax on the same frozen historical producers, package and current host epoch. Stable ownership, validation, browser, status and all shared original served-source observations agree. No producer or shader was emitted for this port.",
+  "compiler": {
+    "path": "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "provenance": "Previously retained qualified historical compiler, explicitly selected through COAX. Not a current-main compiler or product-emission qualification. A copy of this exact compiler is retained under executed-tools/compiler."
+  },
+  "executed_images": {
+    "engine": "6f15b26cc9c785155d63a50645c547a6f60f9c0d890be71a04cba2f9807eff0f",
+    "media": "8601082d391e20d7476bbc883d66c607a5f14ef6d49f9af995fad81d2e0cac0b",
+    "parity_checker": "7c0a13d713058591701ae3abf6faa11c14442cadd7a69ae854de14a7bfecf834",
+    "note": "Every actual observer image was copied into its case directory immediately after execution. Later cache recompilation is not substituted for an earlier executed image."
+  },
+  "fixture_origins": {
+    "initial": "/tmp/aethyr-ch11-reload-marker/current/initial.wasm",
+    "initial_sha256": "d032cf1538951ede13f92c6655cc92ac957922e8d97afdb2006df0991954a197",
+    "alternate": "/tmp/aethyr-ch11-reload-marker/current/alternate.wasm",
+    "alternate_sha256": "480b582b8d9b8a7538dc178247d5c49228a03b192f1e04be6803694f660aaab4",
+    "video": "/tmp/aethyr-ch11-reload-marker/current/video.wasm",
+    "video_sha256": "e4ab7bee419997dc57242dca3505d4cc3517efb5ffc3e14625456c9ef8ed8fc4",
+    "package": "/tmp/aethyr-ch11-packages-current/hecates-cemetery",
+    "manifest_sha256": "9e880903d4678b88af83e11f0cab6032a25f029898e3f1c77e268d0e981ef6c0",
+    "retained_copies": "inputs/",
+    "historical_context": "historical-marker/ retains the earlier fixture receipts and marker source as historical provenance, not newly executed code."
+  },
+  "host_epoch": {
+    "host_sha256": "82a0a7624c31653b02039b6643692203b41086ce0694c13b9413635f3d111343",
+    "render_sha256": "c524e3f88b955c0721807e9b996c30c00d94c378682ca68fca64679b514b97d6",
+    "shared_session_sha256": "5da3261090d22be0d246410b1a9ddd9ae4ec78dc076c9a787fcb551a4a38fcac",
+    "fresh_legacy_observations": "The five legacy baselines were run once on this current host epoch, because the older retained host/render epoch differs. Those passing observations were reused for the final Coax comparisons."
+  },
+  "legacy_commands": {
+    "runtime": "Bun 1.4.0",
+    "engine_template": "bun aethyr/tests/check_render_engine_generations.ts /tmp/aethyr-lifecycle-port-20261102/inputs/initial.wasm /tmp/aethyr-lifecycle-port-20261102/inputs/alternate.wasm /tmp/aethyr-lifecycle-port-20261102/inputs/package /tmp/aethyr-lifecycle-port-20261102/legacy-MODE MODE",
+    "engine_modes": ["before", "during", "overlap"],
+    "media": "bun aethyr/tests/check_render_media_retirement.ts /tmp/aethyr-lifecycle-port-20261102/inputs/video.wasm /tmp/aethyr-lifecycle-port-20261102/inputs/package /tmp/aethyr-lifecycle-port-20261102/legacy-media",
+    "media_fault": "bun aethyr/tests/check_render_media_retirement.ts /tmp/aethyr-lifecycle-port-20261102/inputs/video.wasm /tmp/aethyr-lifecycle-port-20261102/inputs/package /tmp/aethyr-lifecycle-port-20261102/legacy-media-keep-cache keep-cache"
+  },
+  "coax_commands": {
+    "environment": "COAX=/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "engine_template": "coax/web/tool.sh aethyr/tests/check-render-engine-generations.coax --initial /tmp/aethyr-lifecycle-port-20261102/inputs/initial.wasm --alternate /tmp/aethyr-lifecycle-port-20261102/inputs/alternate.wasm --package /tmp/aethyr-lifecycle-port-20261102/inputs/package --work-dir /tmp/aethyr-lifecycle-port-20261102/coax-MODE-qualified --mode MODE --reference /tmp/aethyr-lifecycle-port-20261102/legacy-MODE/qualification.json",
+    "engine_modes": ["before", "during", "overlap"],
+    "media": "coax/web/tool.sh aethyr/tests/check-render-media-retirement.coax --wasm /tmp/aethyr-lifecycle-port-20261102/inputs/video.wasm --package /tmp/aethyr-lifecycle-port-20261102/inputs/package --work-dir /tmp/aethyr-lifecycle-port-20261102/coax-media-qualified --reference /tmp/aethyr-lifecycle-port-20261102/legacy-media/qualification.json",
+    "media_fault": "coax/web/tool.sh aethyr/tests/check-render-media-retirement.coax --wasm /tmp/aethyr-lifecycle-port-20261102/inputs/video.wasm --package /tmp/aethyr-lifecycle-port-20261102/inputs/package --work-dir /tmp/aethyr-lifecycle-port-20261102/coax-media-keep-cache-qualified --fault keep-cache --reference /tmp/aethyr-lifecycle-port-20261102/legacy-media-keep-cache/qualification.json",
+    "parity_template": "coax/web/tool.sh aethyr/tests/render-lifecycle-tool-checks.coax LEGACY_QUALIFICATION COAX_QUALIFICATION LEGACY_SOURCE_COPY PARITY_OUT"
+  },
+  "cases": [
+    {"name":"before","legacy_exit":0,"coax_exit":0,"parity_exit":0,"stable_fields":9,"shared_sources":20,"elapsed_ms":13087,"origin_requests":29},
+    {"name":"during","legacy_exit":0,"coax_exit":0,"parity_exit":0,"stable_fields":9,"shared_sources":20,"elapsed_ms":5025,"origin_requests":27},
+    {"name":"overlap","legacy_exit":0,"coax_exit":0,"parity_exit":0,"stable_fields":9,"shared_sources":20,"elapsed_ms":8857,"origin_requests":35},
+    {"name":"media","legacy_exit":0,"coax_exit":0,"parity_exit":0,"stable_fields":7,"shared_sources":20,"elapsed_ms":2012,"origin_requests":26},
+    {"name":"media-keep-cache","legacy_exit":1,"coax_exit":1,"parity_exit":0,"expected_refusal":true,"stable_fields":7,"shared_sources":20,"elapsed_ms":11752,"origin_requests":35}
+  ],
+  "policy_checks": {
+    "origin": {"checks":85,"passed":85,"mutants":369,"killed":369,"survivors":0,"scope":"root-only; dependency checks retained","logs":["checks/aethyr-render-origin-policy-green-qualified.log","checks/aethyr-render-origin-policy-mutation-qualified.log"]},
+    "lifecycle": {"checks":85,"passed":85,"mutants":100,"killed":100,"survivors":0,"scope":"root-only; dependency checks retained","logs":["checks/aethyr-render-lifecycle-policy-green-final.log","checks/aethyr-render-lifecycle-policy-mutation-final.log"],"dependency_epoch":"Origin later gained separately qualified POST framing and stale-preflight checks; lifecycle decision procedures and their checks were unchanged."},
+    "parity_family": {"selected_checks":1,"passed":1,"total_discovered":104,"log":"checks/aethyr-render-lifecycle-tool-checks.log","scope":"Focused receipt-family test only; no full authority execution-coverage claim for this nonauthority observation tool."}
+  },
+  "retained_earlier_attempts": {
+    "coax-before": "Passed preliminary v1 diagnostic epoch; not the final v2 qualification.",
+    "coax-during": "Retained harness failure: all physical observations were present, but undefined renderSettled() had been confused with missing CDP value. The fixed observer carries {defined,value} and omits validation only when actually undefined, matching legacy.",
+    "coax-during-v2": "Passed explicit undefined handling and v2 diagnostics before later origin framing/preflight safeguards.",
+    "coax-before-final/coax-during-final/coax-overlap-final": "Passed v2 and legacy POST404 framing before final stale-output preflight guard.",
+    "origin-foundation-earlier-epoch": "Passing real-loopback sequence/variant/hash/finalization control from an earlier origin epoch. Final actual browser cases qualify the final origin; this older pass is not silently rebound to the final source.",
+    "policy_red_and_mutation_logs": "Earlier failures and survivors are retained in checks. No mutant was waived or declared equivalent."
+  },
+  "observer_boundaries": {
+    "schemas": ["aethyr.render.engine-generations.v2","aethyr.render.media-retirement.v2"],
+    "raw_CDP_events_available": false,
+    "cdp_event_count_each_final_case": 11,
+    "window_events": "Actual window error and unhandledrejection observations, named separately from legacy raw CDP event objects.",
+    "unretained_raw_events": "The current Coax CDP client counts but does not retain the full execution-context, console and exception event objects. Archived v1 raw diagnostics remain intact. No raw diagnostic-array or schema identity claim.",
+    "chrome_profile_difference": "Both profiles are headless, audio-muted WebGPU. The Coax launcher lacks the legacy --disable-background-timer-throttling and --disable-renderer-backgrounding flags. Explicit clip steps and controlled release points preserve these scoped lifecycle observations; no Chrome argv identity or performance parity claim.",
+    "deadlines": "810s whole observer, 840s origin, 120s per CDP request and replacement completion, 60s warmup/held boundaries, 10s media completion, 5s socket operations; all actual final commands completed in seconds.",
+    "origin_capabilities": "Finalized source-fenced loopback GET fixtures, deterministic response sequences and explicit one-site variants. POST bodies are bounded and completely drained before the legacy 404 refusal. Version1 has no accepted POST sinks or arbitrary URL-to-write mapping.",
+    "unclaimed": ["current-main compiler qualification","new product or shader emission","Grid journey or pixel/math requalification","normal-stack bound","browser performance parity","accepted capture sinks"]
+  }
+}

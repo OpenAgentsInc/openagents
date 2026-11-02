@@ -1,0 +1,25 @@
+{
+  "schema":"aethyr.vertex-webgpu-retention.v1",
+  "archive":"artifacts.tar.gz",
+  "sha256":"f64ff7f772e22fe3ce52d4e40dad4d1c8099f884c596c49c6b1775da830f2776",
+  "bytes":489692,
+  "regular_payload_files_including_manifest":142,
+  "manifest":"sha256.txt (inside archive)",
+  "manifest_sha256":"0f154f1ecd6dbe1ffb3d0abfb444f1f7eb160e1b6aa5b2de8cd9e64ff9f0a475",
+  "manifest_hash_checked_payloads":141,
+  "readback":"A fresh extraction passed every141manifest byte/hash check, followed by a full142-file diff -qr readback with exit0. readback.log retains each path.",
+  "contents":[
+    "qualification.json: full dataset/source-epoch/compiler/mutation/control scope and identities",
+    "raw/original/: both deleted legacy executors, byte-for-byte",
+    "raw/historical-source/: matching1065de3d… DeadGears source and its other exact declared source inputs, probe/binding source snapshots, Chrome helper and observer-only frozen executor copies",
+    "raw/*-old-raw.json and *-new*.json:112jobs/448exact raw u32 channels across DeadGears clips, existing IceCream clips and retained96-job VS inputs",
+    "raw/*-parity.json and independent IEEE754 receipts: all original scalar/nested metadata, browser/device/format/extent fields, raw words and18shared hash joins",
+    "raw/current-source-refusal-*.stderr: both tools refusing the unchanged old fixture against current fc2c7794… production source before Chrome",
+    "raw/loss-controls/: seven exact observed refusals, including legacy agreement for declared source/resource hash failures",
+    "raw/policy-mutation-second.log:339/339rootmutants killed, zero survivors/waivers; raw/policy-release.log:110/110checks passed; earlier gaps and compile failure retained",
+    "inputs/: exact WGSL and all three original case fixtures,2736-byte u.bin and384000-byte s0.bin",
+    "sources/: current Coax request/policy/checks/harness/README and independent IEEE codec, unchanged browser/session sources, compiler-reported dependency closure and current native effect/link sources",
+    "executables/: exact exploratory1fac-compiler native GPU, parity and loss harness images"
+  ],
+  "historical_source_boundary":"Historical code inside this hash-bound archive is immutable evidence, not another maintained driver or a replacement for current production. The retained VS qualification remains explicitly historical; default current-source refusal is preserved."
+}

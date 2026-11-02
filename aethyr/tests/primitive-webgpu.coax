@@ -1,6 +1,7 @@
 // Coax fixtures, source fences, receipts and verdicts for primitive WebGPU probes.
 // primitive-webgpu MODE PROBE.wgsl RESULT.json CASES.json
 // primitive-webgpu sampling NORMAL.wgsl RESULT.json FAULT.wgsl ARRAY-FAULT.wgsl
+// deadgears-vs optionally names --source-root SNAPSHOT; the default is this checkout.
 #import "Basic";
 #load "primitive-webgpu-policy.coax";
 #load "webgpu-session.coax";
@@ -10,6 +11,7 @@ PP_EFFECTS :: "aethyr/tests/primitive-webgpu-effects.js";
 PPInput :: struct {path:[4096]u8;n:int;hash:[64]u8;}
 PPFence :: struct {inputs:[48]PPInput;count:int;}
 PPShaders :: struct {bytes:[3][262144]u8;n:[3]int;}
+#load "primitive-vertex-request.coax";
 pp_path :: (f:[]PPFence,i:int)->string {return cast(string)f[0].inputs[i].path[0..<f[0].inputs[i].n];}
 pp_hash :: (path:string,out:[]u8)->bool {
   length:=fs_size(path);if length<0 || length>134217728 {return false;}state:[112]u8;data:[65536]u8;
@@ -79,6 +81,7 @@ pp_images :: (o:[]Jo,mode:int,d:Jv) {
   jo_end(o);
 }
 pp_request :: (o:[]Jo,mode:int,d:Jv,shaders:[]PPShaders) {
+  if mode>=4 {pp_vertex_request(o,mode,d,shaders);return;}
   jo_obj(o);jo_key(o,"format");jo_str(o,"rgba32float");jo_key(o,"width");jo_int(o,pp_width(mode));jo_key(o,"height");jo_int(o,pp_width(mode));
   jo_key(o,"vertices");jo_int(o,3);jo_key(o,"topology");jo_str(o,"triangle-list");jo_key(o,"target_usage");jo_int(o,17);jo_key(o,"readback_usage");jo_int(o,9);
   jo_key(o,"readback_bytes");jo_int(o,ifx mode==3 then 512 else 256);jo_key(o,"readback_row_bytes");jo_int(o,256);jo_key(o,"readback_width");jo_int(o,ifx mode==3 then 2 else 1);jo_key(o,"readback_height");jo_int(o,ifx mode==3 then 2 else 1);
@@ -134,7 +137,10 @@ pp_results :: (o:[]Jo,d:Jv,root:int,fixture:Jv,mode:int,r:PPResult) {
       texture:=jv_at(fixture,jv_get(fixture,0,"textures"),i/20);jo_key(o,"format");jv_write(fixture,jv_get(fixture,texture,"format"),o);
       fields:=[3]string.["x","y","lod"];for field:fields {jo_key(o,field);jv_write(fixture,jv_get(fixture,authored,field),o);}jo_key(o,"pixel");jv_write(fixture,jv_get(fixture,0,"pixel"),o);
     }else if mode==1 {jo_key(o,"index");jo_int(o,i);jo_key(o,"words");jv_write(d,jv_get(d,current,"words"),o);}
-    else {entries:=[6]string.["render_sampling_fs","render_sampling_invalid_fs","render_sampling_array_fs","render_sampling_invalid_array_fs","render_sampling_invalid_fs","render_sampling_invalid_array_fs"];jo_key(o,"entry");jo_str(o,entries[i]);jo_key(o,"wrong");jo_int(o,r.wrong[i]);}
+    else if mode>=4 {
+      if mode==4 {for field:[5]string.["x","y","instance","ids","clips"] {jo_key(o,field);jv_write(fixture,jv_get(fixture,authored,field),o);}}
+      else {for field:[4]string.["triangle","vertex","instance","selector"] {jo_key(o,field);jv_write(fixture,jv_get(fixture,authored,field),o);}}
+    }else {entries:=[6]string.["render_sampling_fs","render_sampling_invalid_fs","render_sampling_array_fs","render_sampling_invalid_array_fs","render_sampling_invalid_fs","render_sampling_invalid_array_fs"];jo_key(o,"entry");jo_str(o,entries[i]);jo_key(o,"wrong");jo_int(o,r.wrong[i]);}
     jo_key(o,ifx mode==3 then "actual" else "rgba");jv_write(d,jv_get(d,current,"values"),o);jo_end(o);
     current=d.nodes[current].next;if mode!=3 {authored=fixture.nodes[authored].next;}
   }jo_end(o);
@@ -157,7 +163,7 @@ pp_discrepancies :: (o:[]Jo,d:Jv,root:int,fixture:Jv,mode:int) {
     current=d.nodes[current].next;if jv_ok(fixture,expected_row) {expected_row=fixture.nodes[expected_row].next;}
   }jo_end(o);
 }
-pp_capture :: (c:[]Cdp,url:string,mode:int,fixture:Jv,shaders:[]PPShaders,fence:[]PPFence,output:string,cases_path:string)->int {
+pp_capture :: (c:[]Cdp,url:string,mode:int,fixture:Jv,shaders:[]PPShaders,fence:[]PPFence,output:string,cases_path:string,source_root:string)->int {
   effects:[65536]u8;en:=fs_read(PP_EFFECTS,effects[..]);if en<1 {return 2;}browser:[65536]u8;bn:=wp_open(c,url,cast(string)effects[0..<en],browser[..]);if bn<1 {return 1;}
   request:[1048576]u8;o:[1]Jo;jo_start(o[..],request[..]);pp_request(o[..],mode,fixture,shaders);if o[0].bad {return 2;}
   value:=wp_run(c,"aethyrPrimitiveStart","aethyrPrimitivePoll()",jo_text(o[..]));if value<0 {return 1;}
@@ -168,6 +174,7 @@ pp_capture :: (c:[]Cdp,url:string,mode:int,fixture:Jv,shaders:[]PPShaders,fence:
   if mode==1 || mode==2 {jo_key(ro[..],"discrepancies");pp_discrepancies(ro[..],d,value,fixture,mode);}
   if mode==1 {jo_key(ro[..],"comparison");jv_write(fixture,jv_get(fixture,0,"comparison"),ro[..]);hash:[64]u8;if !pp_hash(cases_path,hash[..]) {return 2;}jo_key(ro[..],"cases_sha256");jo_str(ro[..],cast(string)hash[..]);}
   if mode==2 {jo_key(ro[..],"max_error");pp_json_number(ro[..],r.max_error);}
+  if mode==5 {jo_key(ro[..],"source_root");jo_str(ro[..],source_root);}
   jo_key(ro[..],"browser");jo_raw(ro[..],cast(string)browser[0..<bn]);jo_key(ro[..],ifx mode==3 then "source_inputs" else "inputs");jo_obj(ro[..]);
   for i:0..<fence[0].count {jo_key(ro[..],pp_path(fence,i));jo_str(ro[..],cast(string)fence[0].inputs[i].hash[..]);}jo_end(ro[..]);
   jo_key(ro[..],"source_changes");jo_arr(ro[..]);changed:=false;again:[64]u8;
@@ -180,7 +187,10 @@ tool_main :: ()->int #export_c {
   a:[1]Args;if !args_load(a[..]) {return 2;}
   if args_has(a[..],"--serve") {return wp_serve(args_value(a[..],"--serve",""),args_value(a[..],"--resources",""));}
   mode:=pp_mode(args_at(a[..],0));source:=args_at(a[..],1);output:=args_at(a[..],2);cases_path:=args_at(a[..],3);
-  if mode<0 || source=="" || output=="" || cases_path=="" || args_count(a[..])!=(ifx mode==3 then 5 else 4) {tool_errln("usage: primitive-webgpu MODE WGSL OUT CASES; sampling NORMAL OUT FAULT ARRAY-FAULT");return 2;}
+  source_root_args:=ifx mode==5 && args_has(a[..],"--source-root") then 2 else 0;
+  if mode<0 || source=="" || output=="" || cases_path=="" || args_count(a[..])!=(ifx mode==3 then 5 else 4)+source_root_args {tool_errln("usage: primitive-webgpu MODE WGSL OUT CASES; sampling NORMAL OUT FAULT ARRAY-FAULT; deadgears-vs accepts --source-root DIR");return 2;}
+  source_root_buffer:[4096]u8;source_root:="";
+  if mode==5 {source_root=fs_realpath(args_value(a[..],"--source-root","."),source_root_buffer[..]);if source_root=="" {return 2;}}
   shaders:[1]PPShaders;shader_paths:=[3]string.[source,ifx mode==3 then cases_path else "",ifx mode==3 then args_at(a[..],4) else ""];
   fence:[1]PPFence;
   for i:0..<(ifx mode==3 then 3 else 1) {shaders[0].n[i]=fs_read(shader_paths[i],shaders[0].bytes[i][..]);if shaders[0].n[i]<1 || pp_add(fence[..],shader_paths[i])<0 {return 2;}}
@@ -188,16 +198,25 @@ tool_main :: ()->int #export_c {
   if mode!=3 {
     n:=fs_read(cases_path,raw[..]);if n<1 || !jv_parse(doc[..],cast(string)raw[0..<n],nodes[..]) || pp_add(fence[..],cases_path)<0 {return 2;}
     d:=doc[0];cases:=jv_get(d,0,"cases");
-    if jv_kind(d,cases)!=JV_ARRAY || jv_len(d,cases)!=(ifx mode==1 then 728 else 20) {return 2;}
+    if mode>=4 {if !pp_vertex_fixture(d,mode) {tool_errln("primitive probe: vertex fixture shape refused");return 2;}}
+    else if jv_kind(d,cases)!=JV_ARRAY || jv_len(d,cases)!=(ifx mode==1 then 728 else 20) {return 2;}
     if mode==1 {
       if jv_raw(d,jv_get(d,0,"schema"))!="aethyr.render.ring8-primitive-cases.v1" || jv_int(d,jv_get(d,0,"total_cases"),0)!=728 || jv_int(d,jv_get(d,0,"width"),0)!=8 || jv_int(d,jv_get(d,0,"height"),0)!=8 || jv_raw(d,jv_at(d,jv_get(d,0,"pixel"),0))!="1" || jv_raw(d,jv_at(d,jv_get(d,0,"pixel"),1))!="1" {return 2;}
-    }else if jv_raw(d,jv_get(d,0,"schema"))!="1" || jv_len(d,jv_get(d,0,"textures"))!=2 {return 2;}
+    }else if mode<4 && (jv_raw(d,jv_get(d,0,"schema"))!="1" || jv_len(d,jv_get(d,0,"textures"))!=2) {return 2;}
   }
-  common:=[14]string.[PP_SOURCE,PP_EFFECTS,"aethyr/tests/primitive-webgpu-policy.coax","aethyr/tests/primitive-webgpu-checks.coax","aethyr/tests/webgpu-session.coax","coax/lib/net/cdp.coax","coax/lib/sys/fs.coax","coax/lib/sys/proc.coax","coax/lib/crypto/sha256.coax","coax/lib/crypto/sha256-kernel.coax","coax/platform/store-file-native.c","coax/platform/socket-native.c","coax/platform/process-native.c","coax/platform/tool-native.c"];
+  common:=[18]string.[PP_SOURCE,PP_EFFECTS,"aethyr/tests/primitive-webgpu-policy.coax","aethyr/tests/primitive-webgpu-checks.coax","aethyr/tests/webgpu-session.coax","coax/lib/net/cdp.coax","coax/lib/sys/fs.coax","coax/lib/sys/proc.coax","coax/lib/crypto/sha256.coax","coax/lib/crypto/sha256-kernel.coax","coax/platform/store-file-native.c","coax/platform/socket-native.c","coax/platform/process-native.c","coax/platform/tool-native.c","aethyr/tests/primitive-vertex-request.coax","aethyr/tests/primitive-vertex-checks.coax","coax/web/tool.sh","coax/platform/read-file-native.c"];
   for path:common {if pp_add(fence[..],path)<0 {return 2;}}
   if mode==0 {if pp_add(fence[..],"aethyr/tests/render-filter-format-probe.coax")<0 || pp_add(fence[..],"aethyr/tests/render-filter-format-probe.bindings")<0 {return 2;}}
   if mode==1 {extra:=[4]string.["aethyr/tests/render-ring8-probe.coax","aethyr/render/ring8.coax","apps/openagents-web/gpu/deadgears.coax","verse/gpu/wgsl.coax"];for path:extra {if pp_add(fence[..],path)<0 {return 2;}}}
   if mode==2 {extra:=[6]string.["aethyr/tests/render-sans-filter-probe.coax","aethyr/tests/render-sans-filter-probe.bindings","aethyr/render/sans-filter.coax","aethyr/render/sans-filter-core.coax","aethyr/render/sans-profile.coax","verse/gpu/shader.coax"];for path:extra {if pp_add(fence[..],path)<0 {return 2;}}}
+  if mode==4 {if pp_add(fence[..],"aethyr/tests/render-clip-output-probe.coax")<0 || pp_add(fence[..],"aethyr/tests/render-clip-output-probe.bindings")<0 {return 2;}}
+  if mode==5 {
+    if pp_add(fence[..],"aethyr/tests/render-deadgears-vs-probe.coax")<0 || pp_add(fence[..],"aethyr/tests/render-deadgears-vs-probe.bindings")<0 {return 2;}
+    refs:=jv_get(doc[0],0,"source_inputs");
+    for i:0..<jv_len(doc[0],refs) {ref:=jv_at(doc[0],refs,i);path:[4096]u8;n:=jv_str(doc[0],jv_get(doc[0],ref,"path"),path[..]);if n<1 {return 2;}joined:[4096]u8;full:=fs_join(source_root,cast(string)path[0..<n],joined[..]);
+      index:=pp_add(fence[..],full);if index<0 || !pp_digest_admit(doc[0],jv_get(doc[0],ref,"sha256"),cast(string)fence[0].inputs[index].hash[..]) {tool_errln("primitive probe: production source differs from retained package");return 2;}
+    }
+  }
   temp:[4096]u8;dir:=fs_temp("aethyr-primitive-origin-",temp[..]);if dir=="" {return 1;}
   manifest:[65536]u8;mo:[1]Jo;jo_start(mo[..],manifest[..]);jo_obj(mo[..]);jo_key(mo[..],"resources");jo_arr(mo[..]);
   if mode==2 {
@@ -205,12 +224,19 @@ tool_main :: ()->int #export_c {
       index:=pp_add(fence[..],cast(string)path[0..<n]);if index<0 || cast(string)fence[0].inputs[index].hash[..]!=jv_raw(doc[0],jv_get(doc[0],texture,"sha256")) {removed:=fs_remove(dir);tool_errln("primitive probe: texture source changed");return 2;}
       jo_obj(mo[..]);jo_key(mo[..],"url");jo_str(mo[..],ifx i==0 then "/r/0" else "/r/1");jo_key(mo[..],"file");jo_str(mo[..],pp_path(fence[..],index));jo_end(mo[..]);
     }
+  }
+  if mode==5 {
+    names:=[2]string.["u","objects"];resources:=jv_get(doc[0],0,"resources");
+    for i:0..<2 {item:=jv_get(doc[0],resources,names[i]);path:[4096]u8;n:=jv_str(doc[0],jv_get(doc[0],item,"file"),path[..]);if n<1 {removed:=fs_remove(dir);return 2;}
+      index:=pp_add(fence[..],cast(string)path[0..<n]);if index<0 || !pp_digest_admit(doc[0],jv_get(doc[0],item,"sha256"),cast(string)fence[0].inputs[index].hash[..]) || fs_size(pp_path(fence[..],index))!=pp_resource_size(doc[0],names[i]) {removed:=fs_remove(dir);tool_errln("primitive probe: original resource changed");return 2;}
+      jo_obj(mo[..]);jo_key(mo[..],"url");jo_str(mo[..],ifx i==0 then "/r/0" else "/r/1");jo_key(mo[..],"file");jo_str(mo[..],pp_path(fence[..],index));jo_end(mo[..]);
+    }
   }jo_end(mo[..]);jo_end(mo[..]);
   manifest_name:[4096]u8;mf:=fs_join(dir,"resources.json",manifest_name[..]);port_name:[4096]u8;pf:=fs_join(dir,"port",port_name[..]);
   status:=1;if !mo[0].bad && fs_write(mf,jo_text(mo[..])) {
     server:=wp_start_origin(pf,mf);if server>=0 {
       port:[32]u8;pn:=-1;for attempt:0..<100 {pn=fs_read(pf,port[..]);if pn>0 {break;}proc_sleep(50);}
-      if pn>0 {url:[128]u8;base:=cdp_cat2("http://127.0.0.1:",cast(string)port[0..<pn],url[..]);target:[128]u8;u:=cdp_cat2(base,"/",target[..]);c:[1]Cdp;status=pp_capture(c[..],u,mode,doc[0],shaders[..],fence[..],output,cases_path);cdp_close(c[..]);}
+      if pn>0 {url:[128]u8;base:=cdp_cat2("http://127.0.0.1:",cast(string)port[0..<pn],url[..]);target:[128]u8;u:=cdp_cat2(base,"/",target[..]);c:[1]Cdp;status=pp_capture(c[..],u,mode,doc[0],shaders[..],fence[..],output,cases_path,source_root);cdp_close(c[..]);}
       killed:=proc_kill(server,PROC_SIGKILL);waited:=proc_wait(server,5000);released:=proc_release(server);
     }
   }removed:=fs_remove(dir);return ifx removed then status else 1;

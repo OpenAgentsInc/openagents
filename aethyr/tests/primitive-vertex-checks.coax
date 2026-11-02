@@ -1,0 +1,64 @@
+// Authored checks precede the clip/VS descriptor and preflight implementations.
+pv_test_fixture :: (mode:int,change:int,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_int(o[..],ifx change==1 then 0 else 1);
+  jo_key(o[..],"width");jo_int(o[..],pp_width(mode));jo_key(o[..],"height");jo_int(o[..],pp_height(mode));
+  jo_key(o[..],"pixel");if mode==5 && change==6 {jo_raw(o[..],"{\"x\":9,\"y\":9}");}else {jo_arr(o[..]);jo_int(o[..],ifx change==3 then 64 else 9);jo_int(o[..],9);jo_end(o[..]);}
+  jo_key(o[..],"source_inputs");jo_raw(o[..],ifx change==11 then "{}" else "[]");jo_key(o[..],"resources");jo_raw(o[..],ifx change==9 then "{\"u\":{\"bytes\":15},\"objects\":{\"bytes\":384000}}" else ifx change==10 then "{\"u\":{\"bytes\":2736},\"objects\":{\"bytes\":63}}" else "{\"u\":{\"bytes\":2736},\"objects\":{\"bytes\":384000}}");
+  jo_key(o[..],"cases");if change==5 {jo_obj(o[..]);}else {jo_arr(o[..]);}
+  for row:0..<pp_count(mode)-(ifx change==2 then 1 else 0) {
+    if change==5 {key:[24]u8;ko:[1]Jo;jo_start(ko[..],key[..]);jo_int(ko[..],row);jo_key(o[..],jo_text(ko[..]));}
+    jo_obj(o[..]);
+    if mode==4 {
+      jo_key(o[..],"x");jo_int(o[..],ifx change==3 then 320 else 42);jo_key(o[..],"y");jo_int(o[..],76);jo_key(o[..],"instance");jo_int(o[..],129);jo_key(o[..],"ids");jo_raw(o[..],"[9,10,11]");
+      jo_key(o[..],"clips");if change==6 {jo_obj(o[..]);}else {jo_arr(o[..]);}
+      for vertex:0..<(ifx change==7 then 2 else 3) {
+        if change==6 {key:[24]u8;ko:[1]Jo;jo_start(ko[..],key[..]);jo_int(ko[..],vertex);jo_key(o[..],jo_text(ko[..]));}
+        jo_arr(o[..]);jo_raw(o[..],ifx (change==4 && row==0 && vertex==0) || (change==8 && row==pp_count(mode)-1 && vertex==2) then "1e999" else "0");jo_int(o[..],0);jo_raw(o[..],"0.5");jo_int(o[..],1);jo_end(o[..]);
+      }jo_end(o[..]);
+    }else {
+      jo_key(o[..],"triangle");jo_int(o[..],row/3);jo_key(o[..],"vertex");jo_int(o[..],row%3);jo_key(o[..],"instance");jo_int(o[..],129);jo_key(o[..],"selector");if change==7 {jo_str(o[..],"0");}else {jo_int(o[..],row%4);}
+      jo_key(o[..],"uniform");jo_arr(o[..]);jo_raw(o[..],ifx (change==4 && row==0) || (change==8 && row==pp_count(mode)-1) then "1e999" else "0");jo_int(o[..],0);jo_int(o[..],0);jo_int(o[..],0);jo_end(o[..]);
+    }jo_end(o[..]);
+  }jo_end(o[..]);jo_end(o[..]);return jo_text(o[..]);
+}
+#forall "clip and VS preflight retains all jobs and refuses fixture losses" mode:4..<6,change:0..<9 #steps 40000000 {
+  text:[65536]u8;d:[1]Jv;nodes:[16384]JvNode;
+  #assert jv_parse(d[..],pv_test_fixture(mode,change,text[..]),nodes[..]) && pp_vertex_fixture(d[0],mode)==(change==0);
+  if change==0 {#assert !pp_vertex_fixture(d[0],0) && !pp_vertex_fixture(d[0],6);}
+}
+#forall "VS source-reference and each resource refusal are independent" change:9..<12 {
+  text:[65536]u8;d:[1]Jv;nodes:[16384]JvNode;
+  #assert jv_parse(d[..],pv_test_fixture(5,change,text[..]),nodes[..]) && !pp_vertex_fixture(d[0],5);
+}
+#test "vertex input arrays and integer pixels have exact complete shapes" {
+  d:[1]Jv;nodes:[128]JvNode;
+  good:="{\"a\":[-1,0,0.5,1],\"p\":0,\"last\":319}";
+  #assert jv_parse(d[..],good,nodes[..]) && pp_finite_array(d[0],jv_get(d[0],0,"a"),4) && pp_pixel(d[0],jv_get(d[0],0,"p"),320) && pp_pixel(d[0],jv_get(d[0],0,"last"),320);
+  bad:=[7]string.["{\"a\":[0,0,0]}","{\"a\":{\"a\":0,\"b\":0,\"c\":0,\"d\":0}}","{\"a\":[null,0,0,0]}","{\"a\":[1e999,0,0,0]}","{\"a\":[1.8e308,0,0,0]}","{\"a\":[\"0\",0,0,0]}","{}"];
+  for text:bad {#assert jv_parse(d[..],text,nodes[..]) && !pp_finite_array(d[0],jv_get(d[0],0,"a"),4);}
+  pixels:=[5]string.["{\"p\":-1}","{\"p\":320}","{\"p\":0.5}","{\"p\":\"0\"}","{}"];
+  for text:pixels {#assert jv_parse(d[..],text,nodes[..]) && !pp_pixel(d[0],jv_get(d[0],0,"p"),320);}
+}
+#test "clip observation admission takes fixture dimensions and rejects matching invalid descriptors" {
+  raw:[131072]u8;changed:[131072]u8;changed2:[131072]u8;fraw:[32768]u8;fchanged:[32768]u8;fchanged2:[32768]u8;d:[1]Jv;fd:[1]Jv;nodes:[16384]JvNode;fnodes:[8192]JvNode;
+  valid:=pp_test_document(4,0,raw[..]);fixture:=pp_test_fixture(4,fraw[..]);
+  observed:=pp_test_replace(valid,"\"width\":320","\"width\":100",changed[..]);observed=pp_test_replace(observed,"\"height\":180","\"height\":100",changed2[..]);
+  expected:=pp_test_replace(fixture,"\"width\":320","\"width\":100",fchanged[..]);expected=pp_test_replace(expected,"\"height\":180","\"height\":100",fchanged2[..]);
+  #assert jv_parse(d[..],observed,nodes[..]) && jv_parse(fd[..],expected,fnodes[..]) && pp_evaluate(d[0],0,fd[0],4).ok;
+  for key:[2]string.["width","height"] {
+    from:=ifx key=="width" then "\"width\":320" else "\"height\":180";to:=ifx key=="width" then "\"width\":-1" else "\"height\":-1";
+    observed=pp_test_replace(valid,from,to,changed[..]);expected=pp_test_replace(fixture,from,to,fchanged[..]);
+    #assert jv_parse(d[..],observed,nodes[..]) && jv_parse(fd[..],expected,fnodes[..]) && !pp_evaluate(d[0],0,fd[0],4).ok;
+  }
+}
+#test "VS buffer resource sizes remain bounded typed and exact" {
+  d:[1]Jv;nodes:[128]JvNode;
+  #assert jv_parse(d[..],"{\"resources\":{\"u\":{\"bytes\":16},\"objects\":{\"bytes\":64}}}",nodes[..]);
+  #assert pp_resource_size(d[0],"u")==16 && pp_resource_size(d[0],"objects")==64;
+  #assert jv_parse(d[..],"{\"resources\":{\"u\":{\"bytes\":65536},\"objects\":{\"bytes\":134217728}}}",nodes[..]);
+  #assert pp_resource_size(d[0],"u")==65536 && pp_resource_size(d[0],"objects")==134217728;
+  bad:=[6]string.["{}","{\"resources\":{\"u\":{\"bytes\":15}}}","{\"resources\":{\"u\":{\"bytes\":65537}}}","{\"resources\":{\"u\":{\"bytes\":\"16\"}}}","{\"resources\":{\"u\":{\"bytes\":16.5}}}","{\"resources\":{\"u\":{\"bytes\":1e999}}}"];
+  for text:bad {#assert jv_parse(d[..],text,nodes[..]) && pp_resource_size(d[0],"u")==-1;}
+  #assert jv_parse(d[..],"{\"resources\":{\"objects\":{\"bytes\":63}}}",nodes[..]) && pp_resource_size(d[0],"objects")==-1;
+  #assert jv_parse(d[..],"{\"resources\":{\"objects\":{\"bytes\":134217729}}}",nodes[..]) && pp_resource_size(d[0],"objects")==-1;
+}

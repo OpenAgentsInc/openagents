@@ -1,0 +1,27 @@
+{
+  "schema": "aethyr.render-test-origin.post-retention.v1",
+  "status": "passed",
+  "archive": "artifacts.tar.gz",
+  "sha256": "d5ef7da0744bee0e773f8a1afe52e5fed305c3b8f0057bd53b57511c54dcf007",
+  "bytes": 1694622,
+  "readback": {
+    "status": "passed",
+    "extract_exit": 0,
+    "whole_directory_diff_exit": 0,
+    "empty_files_included": true,
+    "log": "readback.log",
+    "command": "diff -qr /tmp/aethyr-post-sink-port-retention-20261102 /tmp/aethyr-post-sink-port-readback-20261102/aethyr-post-sink-port-retention-20261102"
+  },
+  "inventory": "archive-members.txt",
+  "qualified_observation": "aethyr-post-sinks-20261102-retained/qualification.json",
+  "actual_observer_sha256": "f30b6cc890c1061d9b4a40f77f68e76b357edc39c5b33fea668f03d2b2218a0a",
+  "contents": [
+    "Final27 actual loopback controls with source fences, ready/request/POST/final ledgers, actual executed image and accepted131329-byte receiver readback",
+    "Complete current Coax/native-adapter source closure and explicit historical compiler image",
+    "Policy red/green/mutation logs, bounded compiler/SDK observations and read-only review findings/resolution",
+    "Earlier preliminary control epochs, clearly separated from the final current source/image qualification"
+  ],
+  "commands_and_scope": "commands-and-scope.json",
+  "previous_helper_archive_unchanged": "6ea3b718bf724cf6a6bfbba3a9a267c0f1ecf2f34b66866992a881e5228b5765",
+  "claim": "Complete archive extraction and whole-directory byte comparison pass. This proves the additive fixture POST slice; no unchanged browser lifecycle, GPU or product-emission gate was rerun."
+}

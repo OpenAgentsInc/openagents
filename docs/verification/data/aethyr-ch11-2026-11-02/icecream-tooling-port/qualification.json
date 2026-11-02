@@ -1,0 +1,25 @@
+{
+  "schema": "aethyr.icecream.tooling-test-port.v1",
+  "date": "2026-11-02",
+  "status": "passed_same_input_test_port",
+  "driver": "verse/icecream/check-mesh-band-tooling.coax",
+  "driver_sha256": "767524f0ff5365e18f22f1148006a71d241da7d334732aaaf5c77e368cfcbd96",
+  "executed_image_sha256": "939947cb5334a3763bb96ec39308bf601e9317414cef7b745a29c7770e3c0448",
+  "old_test_sha256": "65dbdf6316b5f84350c5bb10978044da115083e1bf2ab052e9a985b17ef1d49a",
+  "reference_runner_sha256": "253eb373e5b05824848caf0baccc5dae95a83f4e6825e709a0c81ed57f41a307",
+  "change": "Own-code fixture construction, mutations, bounded invocation and assertions move from unittest to Coax. The genuine independent C++ reference runner keeps reason3. Two CLI branches expose its existing receipt-admission and independent-source-repair functions; their bodies and geometry/reference arithmetic are unchanged. No new Python test orchestration remains.",
+  "legacy": "Original two unittest groups pass unchanged: exact full-check receipt binding and independent reference-patch source drift.",
+  "same_input_cases": {
+    "receipt": "11cases: accepted whole receipt; missing/partial source closure, sliced command, compiler mismatch, nonzero exit, wrong log hash, schema mismatch, sliced log summary, inconsistent totals, and a failure line with a passing final summary all refuse.",
+    "reference_patch": "7cases: original synthetic prefix/three exact C++ anchors/suffix is repaired; absent and duplicated forms of each of three original anchors refuse. Accepted output retains prefix/suffix and both independent seam/post-repair markers.",
+    "actual_invocations": 18,
+    "result": "All success/refusal statuses and specific ValueError controls match the original tests. Each exact argv, stdout, stderr, timeout and truncation flag is retained.",
+    "red_first": "Before exposing the existing functions, the Coax test's first CLI request failed with argparse exit2. That red command and diagnostic remain in the archive. The completed18case run has no timeout or truncated output."
+  },
+  "source_fence": "The Coax driver hashes its enumerated reference/tool/compiler/native inputs and dependency closure before the run and requires unchanged bytes afterward. This driver did not serialize that entire map; the archived exact subject/tool/image snapshots and command records identify this observed run. No whole-repository product-build fence is claimed.",
+  "compiler": {"sha256":"1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa","matching_current_main":false,"scope":"Explicit older compiler used only for test orchestration"},
+  "no_geometry_repetition": "No complete mesh check, independent134-million-float geometry comparison, compiler product emission, renderer or model gate was run by this test port.",
+  "caller": "No named caller of the retired unittest file existed. Replacement command is documented in verse/icecream/TOOLING.md; the independent test-mesh.sh entry remains unchanged.",
+  "remaining": "check_mesh_band_controls.py is a separate13loss producer harness and still needs its own Coax port.",
+  "retention": {"archive":"artifacts.tar.gz","bytes":59940,"sha256":"e25569e1e5d9b91aff75944e02b6d247807b7b08d8c060805c0786dd7d11422c","readback":"Whole extracted directory/inventory compared byte-for-byte, including empty outputs. Includes old/new tests, independent reference runner, actual Coax image, all18fixtures/command receipts, original unittest output and first failed CLI attempt."}
+}

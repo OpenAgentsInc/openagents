@@ -1,0 +1,18 @@
+// Immutable names/edits from the thirteen historical producer-loss fixtures.
+// kind0=independent mesh reference,1=band geometry,2=focused authored check.
+MbcCase :: struct {name:string;old_text:string;new_text:string;kind:int;bounds:bool;focus:string;loop:bool;}
+MBC_CASES :: [13] MbcCase.[
+  MbcCase.{name="caller-restores-overlap",old_text="      if open {\n        ijpost:=ifx k==0 then ijposts[0..<ijleft] else ijposts[ijleft..<ijright];\n        n=room_open_wall_bands(v,n,w,s0,s1,colour,trim,k==0,ijpost);\n      } else {n = room_wall_bands(v, n, w, s0, s1, colour, trim);}",new_text="      n = piece(v,n,w,s0,s1,0,WALL_HEIGHT,colour,0);\n      n = piece(v,n,w,s0,s1,0,0.28f32,trim,0.05f32);\n      n = piece(v,n,w,s0,s1,WALL_HEIGHT-0.22f32,WALL_HEIGHT,trim,0.05f32);",kind=0},
+  MbcCase.{name="seam-snap-omitted",loop=true,kind=1},
+  MbcCase.{name="partial-triangle-guard",old_text="if iwbat+3<=v.count {",new_text="if iwbat<v.count {",kind=1,bounds=true},
+  MbcCase.{name="upper-trim-colour",old_text="return piece(v,lower,w,s0,s1,top,WALL_HEIGHT,trim,0.05f32);",new_text="return piece(v,lower,w,s0,s1,top,WALL_HEIGHT,colour,0.05f32);",kind=1},
+  MbcCase.{name="lower-trim-omitted",old_text="lower:=piece(v,middle,w,s0,s1,0,bottom,trim,0.05f32);",new_text="lower:=middle;",kind=1},
+  MbcCase.{name="middle-extent-restored",old_text="middle:=piece(v,n0,w,s0,s1,bottom,top,colour,0);",new_text="middle:=piece(v,n0,w,s0,s1,0,WALL_HEIGHT,colour,0);",kind=1},
+  MbcCase.{name="jamb-culling-omitted",old_text="  room_clip_jamb_caps(ijbands[0..<ijcount],w.horizontal,at_end,room_door_box(post));",kind=1},
+  MbcCase.{name="jamb-exposed-top-lowered",old_text="ijface[ijv].p.y=box.hi.y;",new_text="ijface[ijv].p.y=box.hi.y-0.01f32;",kind=1},
+  MbcCase.{name="hidden-cap-retained",old_text="for ijv:0..<6 {ijface[ijv].p=ijpoint;}",new_text="for ijv:0..<6 {ijface[ijv].p=ijface[ijv].p;}",kind=1},
+  MbcCase.{name="open-publish-partial-triangle",old_text="if ijn+3<=v.count {",new_text="if ijn<v.count {",kind=1,bounds=true},
+  MbcCase.{name="wrong-actual-post-published",old_text="n = room_publish_triangles(v,n,ijposts[0..<ijleft]);",new_text="n = room_publish_triangles(v,n,ijposts[ijleft..<ijright]);",kind=0},
+  MbcCase.{name="exposed-overhang-culled",old_text="|| room_component(ijrect.hi,ijcross)>room_component(box.hi,ijcross)",new_text="|| false",kind=2,focus="actual donor bounds preserve exposed trim overhang"},
+  MbcCase.{name="closed-box-winding-unchecked",old_text="if ijdet!=(ifx positive then 1 else -1) {return RoomDoorFace.{};}",kind=2,focus="emitted closed boxes and malformed donors"}
+];

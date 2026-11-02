@@ -1,0 +1,52 @@
+// Coax schedules each WebAssembly SDK operation. No render or model execution
+// is hidden inside the SDK adapter.
+#load "producer-capture-policy.coax";
+#load "render-test-origin.coax";
+PcResult :: struct {ok:bool;defined:bool;integer:int;text:[128]u8;text_n:int;}
+PcSession :: struct {arena:PcLayout;memory:int;stride:int;uniforms:int;max_vertices:int;failed:bool;}
+pc_operation :: (o:[]Jo,bytes:[]u8,name:string) {jo_start(o,bytes);jo_obj(o);jo_key(o,"operation");jo_str(o,name);}
+pc_run :: (c:[]Cdp,o:[]Jo)->int {jo_end(o);if o[0].bad {return -1;}return wp_run(c,"producerCaptureStart","producerCapturePoll()",jo_text(o));}
+pc_call :: (c:[]Cdp,name:string,args:[]f64)->PcResult {
+  r:PcResult;bytes:[8192]u8;o:[1]Jo;pc_operation(o[..],bytes[..],"call");jo_key(o[..],"name");jo_str(o[..],name);jo_key(o[..],"args");jo_arr(o[..]);for v:args {word:=f64_bits(v);jo_arr(o[..]);jo_int(o[..],cast(int)(word&4294967295));jo_int(o[..],cast(int)(word>>32));jo_end(o[..]);}jo_end(o[..]);
+  at:=pc_run(c,o[..]);if at<0 {return r;}d:=c[0].doc[0];r.ok=true;r.defined=jv_kind(d,jv_get(d,at,"defined"))==JV_TRUE;
+  v:=jv_get(d,at,"value");r.integer=0;if jv_kind(d,v)==JV_STRING {r.text_n=jv_str(d,v,r.text[..]);}else if jv_kind(d,v)==JV_NUMBER {r.integer=jv_int(d,v,-9223372036854775808);if r.integer== -9223372036854775808 {r.ok=false;}value:=jv_raw(d,v);if value.count<=r.text.count {r.text_n=value.count;for byte,k:value {r.text[k]=byte;}}}return r;
+}
+pc_get :: (c:[]Cdp,s:[]PcSession,name:string,args:[]f64,required:bool)->int {
+  r:=pc_call(c,name,args);if !r.ok || (required && !r.defined) {s[0].failed=true;return 0;}return r.integer;
+}
+pc_after :: (c:[]Cdp,s:[]PcSession) {
+  args:=[1]f64.[cast(f64)s[0].arena.base];if pc_get(c,s,"coaxial_action",args[..],false)!=0 {done:=pc_get(c,s,"coaxial_action_done",args[..],true);}
+}
+pc_open :: (c:[]Cdp,s:[]PcSession,description:GmDescription,expected_bytes:int,expected_hash:string,clock:int)->bool {
+  bytes:[65536]u8;o:[1]Jo;pc_operation(o[..],bytes[..],"compile");jo_key(o[..],"url");jo_str(o[..],"/producer.wasm");at:=pc_run(c,o[..]);if at<0 {return false;}
+  d:=c[0].doc[0];if !gm_source_matches(jv_int(d,jv_get(d,at,"bytes"),-1),jv_raw(d,jv_get(d,at,"sha256")),expected_bytes,expected_hash) {return false;}
+  imports:=jv_get(d,at,"imports");if jv_kind(d,imports)!=JV_ARRAY {return false;}
+  pc_operation(o[..],bytes[..],"instantiate");jo_key(o[..],"initial");jo_int(o[..],pc_max(description.minimum,128));jo_key(o[..],"maximum");jo_int(o[..],description.maximum);jo_key(o[..],"imports");jo_arr(o[..]);
+  for k:0..<jv_len(d,imports) {
+    row:=jv_at(d,imports,k);mb:[256]u8;nb:[256]u8;kb:[32]u8;
+    m:=rto_string(d,jv_get(d,row,"module"),mb[..]);n:=rto_string(d,jv_get(d,row,"name"),nb[..]);kind:=rto_string(d,jv_get(d,row,"kind"),kb[..]);effect:=pc_import(m,n,kind);if effect<0 {return false;}
+    jo_obj(o[..]);jo_key(o[..],"module");jo_str(o[..],m);jo_key(o[..],"name");jo_str(o[..],n);jo_key(o[..],"kind");jo_str(o[..],kind);
+    if effect!=0 {
+      jo_key(o[..],"effect");jo_str(o[..],ifx effect==1 || effect==2 then "bigint" else ifx effect==5 then "void" else ifx effect==8 then "throw" else "number");
+      jo_key(o[..],"value");if effect==1 || effect==2 {number:[32]u8;no:[1]Jo;jo_start(no[..],number[..]);jo_int(no[..],ifx effect==1 then clock else clock/1000);jo_str(o[..],jo_text(no[..]));}else {jo_int(o[..],ifx effect==3 then -1 else ifx effect==6 then 2 else ifx effect==7 then 52 else 0);}
+    }jo_end(o[..]);
+  }jo_end(o[..]);at=pc_run(c,o[..]);if at<0 {return false;}
+  d=c[0].doc[0];heap:=jv_int(d,jv_get(d,at,"heap_base"),-1);s[0].memory=jv_int(d,jv_get(d,at,"memory_bytes"),-1);
+  empty:[]f64;initialized:=pc_get(c,s,"_initialize",empty,false);
+  state:=pc_get(c,s,"coaxial_state_size",empty,true);s[0].stride=pc_get(c,s,"coaxial_vertex_floats",empty,true);s[0].uniforms=pc_get(c,s,"coaxial_uniform_floats",empty,true);s[0].max_vertices=pc_get(c,s,"coaxial_max_vertices",empty,true);
+  s[0].arena=pc_layout(heap,state,s[0].max_vertices,s[0].stride,s[0].uniforms,description.minimum,description.maximum);
+  if s[0].failed || !s[0].arena.valid || s[0].memory!=pc_max(description.minimum,128)*65536 {return false;}
+  pc_operation(o[..],bytes[..],"grow");jo_key(o[..],"pages");jo_int(o[..],pc_max(0,s[0].arena.pages-s[0].memory/65536));at=pc_run(c,o[..]);if at<0 {return false;}
+  d=c[0].doc[0];s[0].memory=jv_int(d,jv_get(d,at,"after"),-1);if s[0].memory!=s[0].arena.pages*65536 {return false;}
+  args:=[1]f64.[cast(f64)s[0].arena.base];defaults:=pc_get(c,s,"coaxial_state_init",args[..],false);return !s[0].failed;
+}
+pc_write :: (c:[]Cdp,s:[]PcSession,pointer:int,bytes:string)->bool {
+  if !pc_span(pointer,bytes.count,s[0].memory) {return false;}encoded:[262144]u8;n:=b64_encode(bytes,encoded[..]);if n<0 {return false;}
+  request:[524288]u8;o:[1]Jo;pc_operation(o[..],request[..],"write");jo_key(o[..],"pointer");jo_int(o[..],pointer);jo_key(o[..],"base64");jo_str(o[..],cast(string)encoded[0..<n]);at:=pc_run(c,o[..]);hash:[64]u8;
+  return at>=0 && S_hex(S_hash(bytes),hash[..]) && jv_int(c[0].doc[0],jv_get(c[0].doc[0],at,"bytes"),-1)==bytes.count && jv_raw(c[0].doc[0],jv_get(c[0].doc[0],at,"sha256"))==cast(string)hash[..];
+}
+pc_send :: (c:[]Cdp,s:[]PcSession,kind:int,bytes:string)->bool {
+  state:=[1]f64.[cast(f64)s[0].arena.base];empty:[]f64;cap:=pc_get(c,s,"coaxial_inbox_cap",empty,true);pointer:=pc_get(c,s,"coaxial_inbox",state[..],true);
+  if s[0].failed || !pc_count(bytes.count,cap) || !pc_write(c,s,pointer,bytes) {return false;}
+  args:=[3]f64.[state[0],cast(f64)kind,cast(f64)bytes.count];sent:=pc_get(c,s,"coaxial_message",args[..],true);pc_after(c,s);return !s[0].failed;
+}

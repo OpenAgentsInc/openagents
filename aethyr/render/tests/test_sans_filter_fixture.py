@@ -1,3 +1,4 @@
+# Firm reason: 2 (hand-pinned texels, independent closed-form bilinear/mip interpolation and binary32 quantization; no product execution)
 import unittest
 from make_sans_filter_fixture import byte,expected,f,sample_level
 class SansOracle(unittest.TestCase):

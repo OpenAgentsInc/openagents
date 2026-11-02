@@ -1,0 +1,109 @@
+// Shared Coax orchestration for actual engine-generation and media-retirement
+// observations. The origin and browser JS perform only named platform effects.
+#load "render-test-origin.coax";
+#load "render-lifecycle-policy.coax";
+RL_EFFECTS :: "aethyr/tests/render-lifecycle-effects.js";
+RlObserved :: struct {values:[8][262144]u8;n:[8]int;browser:[65536]u8;browser_n:int;cdp_events:int;}
+rl_input :: (inputs:[]RtqInputs,path:string)->bool {absolute:[4096]u8;name:=fs_realpath(path,absolute[..]);return name!="" && rtq_input_add(inputs,name);}
+rl_eval :: (c:[]Cdp,expression:string,deadline:int)->int {
+  left:=proc_left(deadline,proc_now_ms());if left<=0 {return -1;}params:[CDP_REQ]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"expression");jo_str(o[..],expression);jo_key(o[..],"awaitPromise");jo_bool(o[..],true);jo_key(o[..],"returnByValue");jo_bool(o[..],true);jo_end(o[..]);if o[0].bad {return -1;}
+  result:=cdp_call(c,"Runtime.evaluate",jo_text(o[..]),ifx left<120000 then left else 120000);if result<0 || jv_get(c[0].doc[0],result,"exceptionDetails")>=0 {return -1;}return jv_path(c[0].doc[0],result,"result.value");
+}
+rl_save :: (c:[]Cdp,expression:string,deadline:int,work:string,label:string,out:[]u8)->int {
+  value:=rl_eval(c,expression,deadline);path:[4096]u8;name:[256]u8;o:[1]Jo;jo_start(o[..],name[..]);jo_put(o[..],label);jo_put(o[..],".json");file:=fs_join(work,jo_text(o[..]),path[..]);
+  if value<0 {saved:=fs_write(file,cast(string)c[0].msg[0..<c[0].msg_n]);return -1;}w:[1]Jo;jo_start(w[..],out);jv_write(c[0].doc[0],value,w[..]);if w[0].bad || !fs_write(file,jo_text(w[..])) {return -1;}return w[0].n;
+}
+rl_wait :: (c:[]Cdp,condition:string,deadline:int,draw:bool)->bool {
+  while proc_now_ms()<deadline {
+    if draw && rl_eval(c,"renderLifecycleStep(60)",deadline)<0 {return false;}
+    at:=rl_eval(c,condition,deadline);if at<0 {return false;}if jv_kind(c[0].doc[0],at)==JV_TRUE {return true;}proc_sleep(30);
+  }return false;
+}
+rl_bound :: (deadline:int,period:int)->int {next:=proc_now_ms()+period;return ifx next<deadline then next else deadline;}
+rl_open :: (c:[]Cdp,url:string,media:bool,observed:[]RlObserved,deadline:int)->bool {
+  if !cdp_launch(c,ifx media then 320 else 160,ifx media then 240 else 120,"aethyr-lifecycle-coax-") {return false;}
+  version:=cdp_call(c,"Browser.getVersion","{}",120000);o:[1]Jo;jo_start(o[..],observed[0].browser[..]);if version<0 {return false;}jv_write(c[0].doc[0],version,o[..]);if o[0].bad {return false;}observed[0].browser_n=o[0].n;
+  page:=cdp_call(c,"Page.enable","{}",120000);runtime:=cdp_call(c,"Runtime.enable","{}",120000);if page<0 || runtime<0 {return false;}
+  params:[CDP_REQ]u8;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"width");jo_int(o[..],ifx media then 320 else 160);jo_key(o[..],"height");jo_int(o[..],ifx media then 240 else 120);jo_key(o[..],"deviceScaleFactor");jo_int(o[..],1);jo_key(o[..],"mobile");jo_bool(o[..],false);jo_end(o[..]);metrics:=cdp_call(c,"Emulation.setDeviceMetricsOverride",jo_text(o[..]),120000);if metrics<0 {return false;}
+  glue:[131072]u8;gn:=fs_read(RL_EFFECTS,glue[..]);if gn<1 {return false;}source:[262144]u8;w:[1]Jo;jo_start(w[..],source[..]);jo_put(w[..],cast(string)glue[0..<gn]);if media {jo_put(w[..],";renderLifecycleArmMedia();");}
+  jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"source");jo_str(o[..],jo_text(w[..]));jo_end(o[..]);installed:=cdp_call(c,"Page.addScriptToEvaluateOnNewDocument",jo_text(o[..]),120000);if installed<0 {return false;}
+  jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);navigated:=cdp_call(c,"Page.navigate",jo_text(o[..]),120000);if navigated<0 {return false;}
+  until:=rl_bound(deadline,60000);if !rl_wait(c,"!!globalThis.coaxial?.renderStatus",until,true) {return false;}
+  for kind:[2]string.["keyDown","keyUp"] {jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],kind);jo_key(o[..],"key");jo_str(o[..],"Enter");jo_key(o[..],"code");jo_str(o[..],"Enter");jo_key(o[..],"windowsVirtualKeyCode");jo_int(o[..],13);jo_key(o[..],"nativeVirtualKeyCode");jo_int(o[..],13);jo_end(o[..]);pressed:=cdp_call(c,"Input.dispatchKeyEvent",jo_text(o[..]),120000);if pressed<0 {return false;}}
+  if media {return rl_eval(c,"renderLifecycleFixture()",deadline)>=0 && rl_wait(c,"coaxial.renderMediaObjects().length>0",until,true);}
+  return rl_wait(c,"coaxial.renderStatus?.submitted&&coaxial.renderStatus.readiness===2",until,true);
+}
+rl_engine_observe :: (c:[]Cdp,mode:string,work:string,deadline:int,observed:[]RlObserved)->bool {
+  observed[0].n[0]=rl_save(c,"renderLifecycleEngineBefore()",deadline,work,"before",observed[0].values[0][..]);
+  if observed[0].n[0]<1 || rl_eval(c,ifx mode=="before" then "renderLifecycleArmEngine('compile')" else "renderLifecycleArmEngine('instantiate')",deadline)<0 || rl_eval(c,"renderLifecycleReload('first')",deadline)<0 || !rl_wait(c,"renderLifecycleEngineHeld().phase==='held'",rl_bound(deadline,60000),false) {return false;}
+  observed[0].n[1]=rl_save(c,"renderLifecycleEngineHeld()",deadline,work,"held",observed[0].values[1][..]);if observed[0].n[1]<1 || rl_eval(c,"renderLifecycleReload('second')",deadline)<0 {return false;}
+  if mode=="overlap" {proc_sleep(500);}else if !rl_wait(c,"renderLifecycleReloadResult('second').done",rl_bound(deadline,120000),false) {return false;}
+  if rl_eval(c,"renderLifecycleReleaseEngine()",deadline)<0 || !rl_wait(c,"renderLifecycleReloadResult('first').done",rl_bound(deadline,120000),false) || !rl_wait(c,"renderLifecycleReloadResult('second').done",rl_bound(deadline,120000),false) {return false;}
+  observed[0].n[2]=rl_save(c,"renderLifecycleReloadResult('first').result",deadline,work,"first",observed[0].values[2][..]);observed[0].n[3]=rl_save(c,"renderLifecycleReloadResult('second').result",deadline,work,"second",observed[0].values[3][..]);
+  if rl_eval(c,"renderLifecycleStep(Infinity)",deadline)<0 {return false;}
+  observed[0].n[4]=rl_save(c,"renderLifecycleEngineAfter()",deadline,work,"after",observed[0].values[4][..]);
+  validation:[65536]u8;vn:=rl_save(c,"renderLifecycleValidation()",deadline,work,"validation-observation",validation[..]);vd:[1]Jv;v_nodes:[1024]JvNode;
+  if vn<1 || !jv_parse(vd[..],cast(string)validation[0..<vn],v_nodes[..]) {return false;}defined:=jv_kind(vd[0],jv_get(vd[0],0,"defined"));
+  if defined==JV_TRUE {v:[1]Jo;jo_start(v[..],observed[0].values[5][..]);jv_write(vd[0],jv_get(vd[0],0,"value"),v[..]);if v[0].bad {return false;}observed[0].n[5]=v[0].n;}else if defined!=JV_FALSE {return false;}
+  observed[0].n[6]=rl_save(c,"renderLifecycleEvents()",deadline,work,"window-events",observed[0].values[6][..]);
+  for k:0..<7 {if k!=5 && observed[0].n[k]<1 {return false;}}return true;
+}
+rl_media_observe :: (c:[]Cdp,work:string,deadline:int,observed:[]RlObserved)->bool {
+  observed[0].n[0]=rl_save(c,"renderLifecycleMediaWaiting()",deadline,work,"waiting",observed[0].values[0][..]);if observed[0].n[0]<1 {return false;}
+  d:[1]Jv;nodes:[256]JvNode;if !jv_parse(d[..],cast(string)observed[0].values[0][0..<observed[0].n[0]],nodes[..]) || !rl_kind(d[0],"present",JV_TRUE) || !rl_kind(d[0],"ready",JV_FALSE) || !rl_number(d[0],"decoded",0) {return false;}
+  observed[0].n[1]=rl_save(c,"renderLifecycleRetire()",deadline,work,"replacement",observed[0].values[1][..]);observed[0].n[2]=rl_save(c,"coaxial.renderBindingState()",deadline,work,"stopped",observed[0].values[2][..]);if observed[0].n[1]<1 || observed[0].n[2]<1 || rl_eval(c,"renderLifecycleReleaseMedia()",deadline)<0 {return false;}
+  until:=rl_bound(deadline,10000);
+  while true {observed[0].n[3]=rl_save(c,"renderLifecycleMediaAfter()",deadline,work,"after",observed[0].values[3][..]);if observed[0].n[3]<1 {return false;}if !jv_parse(d[..],cast(string)observed[0].values[3][0..<observed[0].n[3]],nodes[..]) {return false;}if jv_int(d[0],jv_get(d[0],0,"closed"),0)>0 || proc_now_ms()>=until {break;}proc_sleep(50);}
+  observed[0].n[4]=rl_save(c,"renderLifecycleEvents()",deadline,work,"window-events",observed[0].values[4][..]);return observed[0].n[4]>0;
+}
+rl_pin_row :: (o:[]Jo,inputs:[]RtqInputs,path:string)->bool {hash:[64]u8;if !rl_input(inputs,path) || !rtq_hash_file(path,hash[..]) {return false;}jo_obj(o);jo_key(o,"file");jo_str(o,path);jo_key(o,"sha256");jo_str(o,cast(string)hash[..]);jo_end(o);return true;}
+rl_config :: (root:string,initial:string,alternate:string,package:string,work:string,media:bool,mode:string,inputs:[]RtqInputs)->bool {
+  paths:[8][4096]u8;html_path:=fs_join(root,"apps/openagents-web/realms/hecates-cemetery/index.html",paths[0][..]);html:[65536]u8;prepared:[65536]u8;hn:=fs_read(html_path,html[..]);if hn<1 {return false;}pn:=rto_page(cast(string)html[0..<hn],"/test.wasm","/package/render.json",prepared[..]);prepared_path:=fs_join(work,"page.html",paths[1][..]);if pn<1 || !fs_write(prepared_path,cast(string)prepared[0..<pn]) {return false;}
+  web:=fs_join(root,"coax/web",paths[2][..]);app:=fs_join(root,"apps/openagents-web",paths[3][..]);image:=fs_join(root,"apps/openagents-web/og/default.jpg",paths[4][..]);config:[65536]u8;o:[1]Jo;jo_start(o[..],config[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render-test-origin.v1");jo_key(o[..],"lifetime_ms");jo_int(o[..],840000);jo_key(o[..],"routes");jo_arr(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/");jo_key(o[..],"file");jo_str(o[..],prepared_path);jo_key(o[..],"mime");jo_str(o[..],"text/html");jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/api/auth/viewer");jo_key(o[..],"text");jo_str(o[..],"");jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/test.wasm");jo_key(o[..],"sequence");jo_arr(o[..]);for k:0..<4 {jo_obj(o[..]);if !media && k==2 && mode!="overlap" {jo_key(o[..],"status");jo_int(o[..],404);jo_key(o[..],"text");jo_str(o[..],"planted replacement fetch failure");}else {jo_key(o[..],"file");jo_str(o[..],ifx !media && k==1 then alternate else initial);}jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);
+  if media {jo_obj(o[..]);jo_key(o[..],"prefix");jo_str(o[..],"/api/villa/memorial/fixture0/media/");jo_key(o[..],"file");jo_str(o[..],image);jo_end(o[..]);}
+  for prefix,k:[3]string.["/package/","/coaxial/","/"] {jo_obj(o[..]);jo_key(o[..],"prefix");jo_str(o[..],prefix);jo_key(o[..],"directory");jo_str(o[..],ifx k==0 then package else ifx k==1 then web else app);jo_end(o[..]);}jo_end(o[..]);
+  jo_key(o[..],"variants");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],"keep-cache");jo_key(o[..],"url");jo_str(o[..],"/coaxial/render.js");jo_key(o[..],"kind");jo_str(o[..],"replace");jo_key(o[..],"needle");jo_str(o[..],"this.mediaCache?.clear();");jo_key(o[..],"replacement");jo_str(o[..],"/* planted: retained retired cache */");jo_key(o[..],"enabled");jo_bool(o[..],media && mode=="keep-cache");jo_end(o[..]);
+  jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],"reject-shader");jo_key(o[..],"prefix");jo_str(o[..],"/package/");jo_key(o[..],"extension");jo_str(o[..],".wgsl");jo_key(o[..],"kind");jo_str(o[..],"append");jo_key(o[..],"replacement");jo_str(o[..],"\n// planted replacement digest mismatch\n");jo_key(o[..],"enabled");jo_bool(o[..],false);jo_end(o[..]);jo_end(o[..]);
+  jo_key(o[..],"pins");jo_arr(o[..]);for file:[4]string.[html_path,prepared_path,initial,alternate] {if file!="" && !rl_pin_row(o[..],inputs,file) {return false;}}
+  for name:[2]string.["host.js","render.js"] {p:=fs_join(web,name,paths[5][..]);if !rl_pin_row(o[..],inputs,p) {return false;}}
+  manifest:=fs_join(package,"render.json",paths[5][..]);if !rl_pin_row(o[..],inputs,manifest) {return false;}if media && !rl_pin_row(o[..],inputs,image) {return false;}jo_end(o[..]);jo_end(o[..]);
+  return !o[0].bad && fs_write(fs_join(work,"origin-config.json",paths[6][..]),jo_text(o[..]));
+}
+rl_reference :: (file:string,d:Jv,media:bool,passed:bool)->bool {
+  if file=="" {return true;}bytes:[1048576]u8;nodes:[32768]JvNode;old:[1]Jv;if !rtq_json_file(file,bytes[..],nodes[..],old[..]) {return false;}
+  if jv_raw(old[0],jv_get(old[0],0,"status"))!=(ifx passed then "passed" else "failed") {return false;}
+  keys:=[8]string.["mode","before","held","first","second","after","validation","browser"];
+  media_keys:=[6]string.["fault","waiting","replacement","stopped","after","browser"];
+  compare:=ifx media then media_keys[..] else keys[..];for key:compare {left:=jv_get(old[0],0,key);right:=jv_get(d,0,key);if key=="validation" && left== -1 && right== -1 {continue;}if !rtq_equal(old[0],left,d,right) {tool_err("lifecycle reference differs: ");tool_errln(key);return false;}}return true;
+}
+rl_main :: (media:bool,driver:string)->int {
+  a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}
+  initial_arg:=args_value(a[..],ifx media then "--wasm" else "--initial","");alternate_arg:=args_value(a[..],"--alternate","");package_arg:=args_value(a[..],"--package","");work_arg:=args_value(a[..],"--work-dir","");mode:=args_value(a[..],ifx media then "--fault" else "--mode",ifx media then "" else "before");
+  if initial_arg=="" || package_arg=="" || work_arg=="" || (!media && (alternate_arg=="" || rl_mode(mode)<0)) || (media && mode!="" && mode!="keep-cache") || !fs_mkdir(work_arg) {tool_errln("usage: lifecycle --initial/--wasm FILE [--alternate FILE] --package DIR --work-dir NEW_DIR [--mode before|during|overlap / --fault keep-cache] [--reference LEGACY.json]");return 2;}
+  initial_buf:[4096]u8;alternate_buf:[4096]u8;package_buf:[4096]u8;work_buf:[4096]u8;root_buf:[4096]u8;initial:=fs_realpath(initial_arg,initial_buf[..]);alternate:=ifx media then "" else fs_realpath(alternate_arg,alternate_buf[..]);package:=fs_realpath(package_arg,package_buf[..]);work:=fs_realpath(work_arg,work_buf[..]);root:=fs_cwd(root_buf[..]);if initial=="" || package=="" || work=="" || (!media && alternate=="") {return 2;}
+  paths:[6][4096]u8;receipt:=fs_join(work,"qualification.json",paths[0][..]);if fs_exists(receipt) || fs_exists(fs_join(work,"origin-config.json",paths[1][..])) {tool_errln("refuse to replace retained lifecycle attempt; use a new work directory");return 2;}
+  start:=proc_now_ms();deadline:=start+810000;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}inputs:[1]RtqInputs;
+  if !rl_input(inputs[..],compiler) || !rtq_deps(inputs[..],compiler,driver,deadline,work,"tool-dependencies") || !rl_input(inputs[..],RL_EFFECTS) || !rl_input(inputs[..],"coax/web/tool.sh") {return 1;}
+  for name:[7]string.["tool-native","process-native","store-file-native","read-file-native","socket-native","entropy-native","entropy-foreign"] {for ext:[2]string.[".c",".h"] {p:[4096]u8;o:[1]Jo;jo_start(o[..],p[..]);jo_put(o[..],"coax/platform/");jo_put(o[..],name);jo_put(o[..],ext);if !rl_input(inputs[..],jo_text(o[..])) {return 1;}}}
+  self:[4096]u8;self_n:=cxproc_self_path(self[..]);image_hash:[64]u8;compiler_hash:[64]u8;if self_n<1 || !rl_input(inputs[..],cast(string)self[0..<self_n]) || !rtq_hash_file(cast(string)self[0..<self_n],image_hash[..]) || !rtq_hash_file(compiler,compiler_hash[..]) {return 1;}
+  chrome:[4096]u8;chrome_name:=cdp_chrome(chrome[..]);if chrome_name=="" || !rl_input(inputs[..],chrome_name) || !rl_config(root,initial,alternate,package,work,media,mode,inputs[..]) {return 1;}
+  config:=fs_join(work,"origin-config.json",paths[1][..]);if !rl_input(inputs[..],config) {return 1;}reference:=args_value(a[..],"--reference","");if reference!="" && !rl_input(inputs[..],reference) {return 1;}
+  port_file:=fs_join(work,"origin-port",paths[2][..]);ledger:=fs_join(work,"origin",paths[3][..]);server:=rto_start(port_file,config,ledger);if server<0 {return 1;}
+  port_text:[32]u8;pn:=-1;for attempt:0..<100 {pn=fs_read(port_file,port_text[..]);if pn>0 {break;}proc_sleep(50);}port:=ifx pn>0 then args_whole(cast(string)port_text[0..<pn]) else -1;
+  observed:[1]RlObserved;c:[1]Cdp;okay:=false;
+  if port>0 {url:[256]u8;o:[1]Jo;jo_start(o[..],url[..]);jo_put(o[..],"http://127.0.0.1:");jo_int(o[..],port);jo_put(o[..],"/?probe&golden&probe-manual");okay=rl_open(c[..],jo_text(o[..]),media,observed[..],deadline);
+    if okay {okay=ifx media then rl_media_observe(c[..],work,deadline,observed[..]) else rl_engine_observe(c[..],mode,work,deadline,observed[..]);}
+  }
+  if !okay {saved:=rto_saved(work,"failure-cdp.json",cast(string)c[0].msg[0..<c[0].msg_n]);}observed[0].cdp_events=c[0].events;cdp_close(c[..]);finalized:=port>0 && rto_finalize(port);status:=proc_wait(server,5000);if status==PROC_RUNNING {killed:=proc_kill(server,PROC_SIGKILL);status=proc_wait(server,5000);}released:=proc_release(server);
+  if !okay || !finalized || status!=0 || !rto_add_inputs(ledger,inputs[..]) {tool_errln("lifecycle native observations or origin finalization failed");return 1;}
+  record:[4194304]u8;writer:[1]Jo;jo_start(writer[..],record[..]);jo_obj(writer[..]);jo_key(writer[..],"schema");jo_str(writer[..],ifx media then "aethyr.render.media-retirement.v2" else "aethyr.render.engine-generations.v2");jo_key(writer[..],ifx media then "fault" else "mode");jo_str(writer[..],mode);jo_key(writer[..],"browser");jo_raw(writer[..],cast(string)observed[0].browser[0..<observed[0].browser_n]);
+  engine_names:=[7]string.["before","held","first","second","after","validation","window_events"];media_names:=[5]string.["waiting","replacement","stopped","after","window_events"];names:=ifx media then media_names[..] else engine_names[..];for name,k:names {if observed[0].n[k]>0 {jo_key(writer[..],name);jo_raw(writer[..],cast(string)observed[0].values[k][0..<observed[0].n[k]]);}}
+  body_nodes:[32768]JvNode;body:[1]Jv;jo_end(writer[..]);if writer[0].bad || !jv_parse(body[..],jo_text(writer[..]),body_nodes[..]) {return 1;}unchanged:=rtq_inputs_match(inputs[..]);passed:=ifx media then rl_media(body[0],!unchanged) else rl_engine(body[0],!unchanged);
+  parity:=rl_reference(reference,body[0],media,passed);
+  final:[4194304]u8;o:[1]Jo;jo_start(o[..],final[..]);jo_obj(o[..]);node:=body[0].nodes[0].first;while node!=-1 {jo_key(o[..],jv_key(body[0],node));jv_write(body[0],node,o[..]);node=body[0].nodes[node].next;}jo_key(o[..],"status");jo_str(o[..],ifx passed then "passed" else "failed");jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],root);jo_key(o[..],"source_changes");jo_arr(o[..]);if !unchanged {jo_str(o[..],"source fence changed");}jo_end(o[..]);jo_key(o[..],"compiler_sha256");jo_str(o[..],cast(string)compiler_hash[..]);jo_key(o[..],"observer_image_sha256");jo_str(o[..],cast(string)image_hash[..]);jo_key(o[..],"origin_finalized");jo_bool(o[..],finalized && status==0);jo_key(o[..],"legacy_reference");jo_str(o[..],reference);jo_key(o[..],"stable_reference_equal");jo_bool(o[..],reference!="" && parity);jo_key(o[..],"cdp_event_count");jo_int(o[..],observed[0].cdp_events);jo_key(o[..],"raw_CDP_events_available");jo_bool(o[..],false);jo_key(o[..],"elapsed_ms");jo_int(o[..],proc_now_ms()-start);jo_key(o[..],"observer_profile");jo_str(o[..],"Safe Coax muted/headless launcher; explicit clip steps and controlled release points. The legacy two background-throttling flags are absent. No Chrome argv identity, raw diagnostic-array identity or performance parity claim. window_events records native window error/unhandledrejection facts; CDP execution-context/console/exception event objects are counted by the client but not retained.");jo_end(o[..]);
+  if o[0].bad || !fs_write(receipt,jo_text(o[..])) || !parity {return 1;}
+  print("lifecycle % %: %\n",ifx media then "media" else "engine",mode,ifx passed then "passed" else "failed");return ifx passed then 0 else 1;
+}

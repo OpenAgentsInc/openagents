@@ -1,0 +1,65 @@
+#test "SSH arguments use literal POSIX words, including empty, quoted and shell-looking values" {
+  out:[65536]u8;
+  #assert ng_quote("",out[..])=="''";
+  #assert ng_quote("abc",out[..])=="'abc'";
+  #assert ng_quote("a'b",out[..])=="'a'\"'\"'b'";
+  #assert ng_quote("$(touch x);`id`\n\\\"",out[..])=="'$(touch x);`id`\n\\\"'";
+  args:=[3]string.["printf","%s",""];#assert ng_command(args[..],out[..])=="'printf' '%s' ''";
+  none:[]string;#assert ng_command(none,out[..])=="";
+  args[0]="";#assert ng_command(args[..],out[..])=="";
+  nul:=[3]u8.[97,0,98];#assert ng_quote(cast(string)nul[..],out[..])=="";
+  args[0]="printf";args[2]=cast(string)nul[..];#assert ng_command(args[..],out[..])=="";
+  #assert ng_quote("x",out[0..<2])=="" && ng_quote("x",out[0..<3])=="'x'";
+  #assert ng_command(args[0..<1],out[0..<7])=="" && ng_command(args[0..<1],out[0..<8])=="'printf'";
+  many:[129]string;for i:0..<129 {many[i]="x";}
+  #assert ng_command(many[0..<128],out[..])!="" && ng_command(many[..],out[..])=="";
+  long:[16385]u8;for i:0..<16385 {long[i]='a';}
+  #assert ng_quote(cast(string)long[0..<16384],out[..]).count==16386;
+  #assert ng_quote(cast(string)long[..],out[..])=="";
+  large:=[2]string.["printf",cast(string)long[..]];#assert ng_command(large[..],out[..])=="";
+}
+#test "remote host is a bounded option-free alias and owns no argument syntax" {
+  #assert ng_host("coderos-4080") && ng_host("a-b.c_d") && ng_host("0");
+  for name:[8]string.["","-bad","user@host","host:path","a b","a\nb","a\tb","a/b"] {#assert !ng_host(name);}
+  long:[256]u8;for i:0..<256 {long[i]='a';}
+  #assert ng_host(cast(string)long[0..<255]) && !ng_host(cast(string)long[..]);
+  alnum:="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  tail:="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._";
+  for code:0..<256 {
+    one:=[1]u8.[cast,trunc(u8)code];two:=[2]u8.[97,cast,trunc(u8)code];first:=false;second:=false;
+    for c:alnum {if c==one[0] {first=true;}}for c:tail {if c==one[0] {second=true;}}
+    #assert ng_host(cast(string)one[..])==first && ng_host(cast(string)two[..])==second;
+  }
+}
+#test "SCP writes only named files inside an owned lowercase-hex workspace" {
+  base:="/tmp/aethyr-native-gpu-0123456789abcdef01234567";
+  #assert !ng_remote("");
+  #assert ng_remote(base) && ng_remote("/tmp/aethyr-native-gpu-0123456789abcdef/send.tar");
+  #assert ng_remote("/tmp/aethyr-native-gpu-0123456789abcdef01234567/sub/file-a_1.tar.gz");
+  for path:[8]string.["/tmp/aethyr-native-gpu-/a","/tmp/other-0123456789abcdef/a","/tmp/aethyr-native-gpu-0123456789abcdef/../a","/tmp/aethyr-native-gpu-0123456789abcdef/./a","/tmp/aethyr-native-gpu-0123456789abcdef//a","/tmp/aethyr-native-gpu-0123456789abcdef/","/tmp/aethyr-native-gpu-0123456789abcdeF/a","/tmp/aethyr-native-gpu-0123456789abcdef/a b"] {#assert !ng_remote(path);}
+  data:[128]u8;prefix:="/tmp/aethyr-native-gpu-";for i:0..<prefix.count {data[i]=prefix[i];}for i:0..<65 {data[prefix.count+i]='a';}
+  for at:0..<prefix.count {wrong:[128]u8;for i:0..<base.count {wrong[i]=base[i];}wrong[at]^=1;#assert !ng_remote(cast(string)wrong[0..<base.count]);}
+  #assert !ng_remote(cast(string)data[0..<prefix.count+15]);
+  #assert ng_remote(cast(string)data[0..<prefix.count+16]) && ng_remote(cast(string)data[0..<prefix.count+64]);
+  #assert !ng_remote(cast(string)data[0..<prefix.count+65]);
+  #assert ng_local("/tmp/file:with-colon") && ng_local("/tmp/a b");
+  #assert ng_local("/");
+  #assert !ng_local("file:remote") && !ng_local("-option") && !ng_local("");
+  length:[4097]u8;for i:0..<4097 {length[i]='a';}length[0]='/';
+  #assert ng_local(cast(string)length[0..<4096]) && !ng_local(cast(string)length[..]);
+  for i:0..<base.count {length[i]=base[i];}length[base.count]='/';
+  #assert ng_remote(cast(string)length[0..<4096]) && !ng_remote(cast(string)length[..]);
+  short:[128]u8;for i:0..<prefix.count+15 {short[i]=data[i];}short[prefix.count+15]='/';short[prefix.count+16]='a';
+  #assert !ng_remote(cast(string)short[0..<prefix.count+17]);
+  hexes:="0123456789abcdef";leaf:="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._";
+  for code:0..<256 {
+    local:=[3]u8.[47,cast,trunc(u8)code,97];#assert ng_local(cast(string)local[..])==(code!=0);
+    candidate:[128]u8;for i:0..<base.count {candidate[i]=base[i];}candidate[prefix.count+3]=cast,trunc(u8)code;
+    valid_hex:=false;for c:hexes {if c==cast,trunc(u8)code {valid_hex=true;}}
+    #assert ng_remote(cast(string)candidate[0..<base.count])==valid_hex;
+    for i:0..<base.count {candidate[i]=base[i];}candidate[base.count]='/';candidate[base.count+1]=cast,trunc(u8)code;candidate[base.count+2]='a';
+    valid_leaf:=false;for c:leaf {if c==cast,trunc(u8)code {valid_leaf=true;}}
+    #assert ng_remote(cast(string)candidate[0..<base.count+3])==valid_leaf;
+  }
+  #assert ng_timeout(1) && ng_timeout(360000) && !ng_timeout(0) && !ng_timeout(-1) && !ng_timeout(360001);
+}
