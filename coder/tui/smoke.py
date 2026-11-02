@@ -200,6 +200,27 @@ def verbs(check):
         jobs = [l["ending"] for l in plines if l["kind"] == "job"]
         check("--report-to: the parent's log holds both jobs' endings", sorted(jobs) == ["expired", "finished"])
         check("--report-to: the running parent takes a report as its next turn", any(l["kind"] == "user" and l["text"].startswith("Job ") and "child says hi" in l["text"] for l in plines))
+        # a redirect (chapter 20): ID.turnstop ends the current turn as redirected, and the inbox message is the next turn
+        rj = subprocess.run([coder, "run", "$ sleep 20", "--engine", "echo", "--detach"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout.strip()
+        sd = os.path.join(home, ".openagents", "coder", "sessions")
+        for _ in range(50):
+            if os.path.exists(os.path.join(sd, rj + ".jsonl")):
+                break
+            time.sleep(0.1)
+        time.sleep(0.5)
+        os.makedirs(os.path.join(sd, rj + ".inbox"), exist_ok=True)
+        with open(os.path.join(sd, rj + ".inbox", "1.msg"), "w") as f:
+            f.write('{"text":"watchdog says try again"}\n')
+        with open(os.path.join(sd, rj + ".turnstop"), "w") as f:
+            f.write("redirect\n")
+        for _ in range(100):
+            st = subprocess.run([coder, "status", rj, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+            if json.loads(st.stdout).get("state") == "finished":
+                break
+            time.sleep(0.2)
+        rl = [json.loads(l) for l in subprocess.run([coder, "log", rj, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout.splitlines() if l.startswith("{")]
+        check("a redirect ends the turn as redirected, and the message is the next turn",
+              [l["ending"] for l in rl if l["kind"] == "end"] == ["redirected", "finished"] and any(l["kind"] == "user" and l["text"] == "watchdog says try again" for l in rl))
         # a progress bar and colors read back as a terminal shows them (chapter 37)
         bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]
@@ -315,7 +336,7 @@ def verbs(check):
         st = subprocess.run([coder, "status", w2, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("watchdog: a worker whose process died ends as lost", any(l["fate"] == "worker lost: ended" for l in r3)
               and st.returncode == 0 and json.loads(st.stdout)["state"] == "lost")
-        # the watchdog: a worker that repeats one step is stopped; a quiet one with no System One key is reported
+        # the watchdog: a worker that repeats one step is redirected, then stopped; a quiet one with no System One key is reported
         sdir = os.path.join(home, ".openagents", "coder", "sessions")
         nokey = dict(env)
         nokey.pop("BASETEN_API_KEY", None)
@@ -334,7 +355,12 @@ def verbs(check):
                 f.write("loop\t20261102-000000-001\tlocal\nquiet\t20261102-000000-002\tlocal\n")
             r = subprocess.run([coder, "router", "--once", "--json", "--stuck", "60"], cwd=REPO, env=nokey, capture_output=True, text=True, timeout=120)
             rw = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
-            check("watchdog: a worker repeating one step is stopped", any(l["fate"] == "worker stopped: looping" and l.get("session") == "20261102-000000-001" for l in rw)
+            check("watchdog: a worker repeating one step is redirected first", any(l["fate"] == "worker redirected: looping" and l.get("session") == "20261102-000000-001" for l in rw)
+                  and os.path.exists(os.path.join(sdir, "20261102-000000-001.turnstop")) and not os.path.exists(os.path.join(sdir, "20261102-000000-001.stop"))
+                  and any(n.endswith(".msg") for n in os.listdir(os.path.join(sdir, "20261102-000000-001.inbox"))))
+            r = subprocess.run([coder, "router", "--once", "--json", "--stuck", "60"], cwd=REPO, env=nokey, capture_output=True, text=True, timeout=120)
+            rw2 = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+            check("watchdog: still repeating after a redirect, it is stopped", any(l["fate"] == "worker stopped: looping" and l.get("session") == "20261102-000000-001" for l in rw2)
                   and os.path.exists(os.path.join(sdir, "20261102-000000-001.stop")))
             check("watchdog: a quiet worker with no decision is reported as stuck", any(l["fate"] == "worker stuck" and "System One key" in l.get("note", "") for l in rw))
         finally:

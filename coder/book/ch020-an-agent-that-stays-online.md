@@ -2,14 +2,14 @@
 
 > **Status: partly implemented.** `coder router` runs as a long-lived loop
 > that keeps its state in files and resumes from them after a restart. Its
-> watchdog ends Workers whose process died as `lost`, stops Workers that
-> repeat one step, and asks System One whether a quiet Worker is still making
-> progress, stopping it when it isn't. Replies follow per-channel rules: at
+> watchdog ends Workers whose process died as `lost`, redirects a Worker
+> that repeats one step or, by System One's judgment, isn't making progress,
+> and stops it if that happens again. Replies follow per-channel rules: at
 > most 100 words for chat, structured for issues. Long work runs as
 > background jobs (chapter14). Still to come: compute apart from execution
-> environments (machine daemons and credential handles), a watchdog that
-> redirects a Worker instead of only stopping it, rules for pull requests,
-> mail and documents, and the restart and fault-injection measurements.
+> environments (machine daemons and credential handles), rules for pull
+> requests, mail and documents, and the restart and fault-injection
+> measurements.
 
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
@@ -108,16 +108,27 @@ log has no end line:
   line with the ending `lost` and logs `worker lost: ended`. On the next
   pass the Thread gets a reply saying so.
 - **Looping.** If the last turn ran the same step five times in a row, the
-  watchdog stops the Worker (`worker stopped: looping`). This compares the
-  logged tool labels for equality; it doesn't read intent.
+  watchdog redirects the Worker (`worker redirected: looping`). This
+  compares the logged tool labels for equality; it doesn't read intent.
 - **Quiet.** If the Worker's log hasn't grown for `--stuck` seconds (1,800
   by default), System One reads the task and the end of the log and answers
   whether the Worker is still making real progress. If it isn't, the
-  watchdog stops it. If it is, the watchdog logs that once and leaves it.
-  With no System One key, it logs `worker stuck` with the reason.
+  watchdog redirects it. If it is, the watchdog logs that once and leaves
+  it. With no System One key, it logs `worker stuck` with the reason.
 
-A Worker stops the same way as with `coder stop`: the watchdog writes the
-session's stop file, and the Worker ends its turn as `stopped`.
+A redirect gives the Worker one more chance:
+
+1. The watchdog leaves a message in the Worker's inbox: for a loop, "you ran
+   the same step 5 times in a row. Stop repeating it. Try a different
+   approach, or say what blocks you and end the turn"; for no progress, the
+   task again.
+2. It writes `ID.turnstop`. The job ends its current turn as `redirected`
+   and takes the message as its next turn. The conversation goes on.
+3. It adds the ID to `router/redirected`.
+
+A Worker that loops or stalls again after a redirect is stopped, the same
+way as with `coder stop`: the watchdog writes the session's stop file, and
+the Worker ends its turn as `stopped`.
 
 ### Channel rules
 

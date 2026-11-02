@@ -53,7 +53,8 @@ CODER_VERSION :: "0.1.0";
 ENGINE_ECHO :: 0; ENGINE_CLAUDE :: 1; ENGINE_CODEX :: 2; ENGINE_MICRO :: 3; ENGINE_PSIONIC :: 4;
 // Microcoder's worker runs both: psionic is Microcoder on a model served on this machine (chapter 12).
 cd_is_micro :: (e: int) -> bool { return e == ENGINE_MICRO || e == ENGINE_PSIONIC; }
-END_FINISHED :: 0; END_STOPPED :: 1; END_FAILED :: 2; END_EXPIRED :: 3;   // expired: stopped at --deadline (chapter 14)
+END_FINISHED :: 0; END_STOPPED :: 1; END_FAILED :: 2; END_EXPIRED :: 3; END_REDIRECTED :: 4;   // redirected: the watchdog interrupted the turn with a message (chapter 20)
+   // expired: stopped at --deadline (chapter 14)
 COMMAND_MS :: 120000;      // a "$ " command is stopped after two minutes
 SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -71,7 +72,8 @@ App :: struct {
   model_engine: int;             // --model is for the engine it came with
   ask_first: bool;               // --ask: permission prompts instead of skipping them
   deadline_ms: int;              // --deadline: when the job expires (0: never)
-  expiring: bool;                // the job passed its deadline: its stop ends as expired
+  expiring: bool;
+  redirecting: bool;             // the watchdog left ID.turnstop: this turn's stop ends as redirected                // the job passed its deadline: its stop ends as expired
   next_inbox_ms: int;            // the terminal UI looks for job reports this often
   coder_tools: bool;              // --coder-tools: Coder's own verbs as an in-process MCP server in Claude Code (chapter 10)
   pol: [1] CdPolicy;              // --allow, --ceiling, --root: approvals answered by policy (chapters 10 and 11)
@@ -299,10 +301,11 @@ cd_reply_commit :: (a: [] App, all: bool) {
   }
 }
 
-cd_end_word :: (e: int) -> string { return ifx e == END_STOPPED then "stopped" else ifx e == END_FAILED then "failed" else ifx e == END_EXPIRED then "expired" else "finished"; }
+cd_end_word :: (e: int) -> string { return ifx e == END_STOPPED then "stopped" else ifx e == END_FAILED then "failed" else ifx e == END_EXPIRED then "expired" else ifx e == END_REDIRECTED then "redirected" else "finished"; }
 
 cd_finish :: (a: [] App, ending_in: int, text: string) {
-  ending := ifx ending_in == END_STOPPED && a[0].expiring then END_EXPIRED else ending_in;
+  ending := ifx ending_in == END_STOPPED && a[0].expiring then END_EXPIRED else ifx ending_in == END_STOPPED && a[0].redirecting then END_REDIRECTED else ending_in;
+  a[0].redirecting = false;
   cd_reply_commit(a, true);
   if text.count > 0 && ending == END_FAILED { cd_commit_prefixed(a, TUI_RED, "● ", "  ", text); }
   sb: [256] u8; n := 0; tb: [32] u8;
@@ -1731,6 +1734,7 @@ tool_main :: () -> int #export_c {
     if routed && !json { rb: [700] u8; cd_commit(a, TUI_FAINT, cd_route_line(a, rt[..], rb[..])); }
     // `coder stop ID` leaves ID.stop: the run stops as if Esc was pressed
     stb: [1300] u8; stop_file := cs_sibling(a[0].log, ".stop", stb[..]);
+    tsb: [1300] u8; turnstop_file := cs_sibling(a[0].log, ".turnstop", tsb[..]);
     next_look := cd_now(a); stopped := false;
     pfb0: [1300] u8; job_pid_file := cs_sibling(a[0].log, ".pid", pfb0[..]);
     for guard: 0..<100000000 {
@@ -1756,6 +1760,8 @@ tool_main :: () -> int #export_c {
       if !stopped && stop_file.count > 0 && cd_now(a) >= next_look {
         next_look = cd_now(a) + 200;
         if fs_exists(stop_file) { stopped = true; cd_stop(a); }
+        // the watchdog's redirect: end this turn only; its message in the inbox is the next one
+        else if !a[0].redirecting && fs_exists(turnstop_file) { x := fs_remove(turnstop_file); a[0].redirecting = true; cd_stop(a); }
       }
       if !cd_poll(a) { x := cxproc_sleep_ms(5); }
     }

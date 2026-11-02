@@ -596,6 +596,22 @@ rt_report :: (p: [] RtPaths, th: [] RtThreads, i: int, text: string, s: [] CsSum
 // as lost; one that repeats a step RT_REPEATS times stops; one whose log is
 // older than stuck_s seconds is judged by System One and stopped when it
 // isn't making progress (reported once when there is no decision).
+// The first time: a message in the Worker's inbox, then ID.turnstop, which
+// ends its current turn so it takes the message next. The ID goes in
+// router/redirected. A Worker already redirected once isn't again: false.
+rt_redirect :: (p: [] RtPaths, id: string, msg: string) -> bool {
+  b: [1300] u8; rb: [65536] u8;
+  path := rt_path(p, "/router/redirected", b[..]);
+  rn := fs_read(path, rb[..]);
+  if rn > 0 && rt_has_line(cast(string) rb[0..<rn], id) { return false; }
+  qb: [1400] u8; put := cd_msg_put(id, msg, qb[..]);
+  if put.count == 0 { return false; }
+  lb: [64] u8; ln := cd_cat(lb[..], 0, id); ln = cd_cat(lb[..], ln, "\n");
+  x := fs_append(path, cast(string) lb[0..<ln]);
+  pb: [1300] u8; y := fs_write(cd_sibling(id, ".turnstop", pb[..]), "redirect\n");
+  return true;
+}
+
 rt_tend :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warned: [] bool, json: bool) {
   b: [1300] u8; rpb: [65536] u8;
   rn := fs_read(rt_path(p, "/router/reported", b[..]), rpb[..]);
@@ -609,7 +625,9 @@ rt_tend :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warn
     s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
     cs_read(text, s[..], ar[..]);
     t: RtTrigger; t.id = "watchdog"; t.source = cast(string) th[0].source[i][0..<th[0].nsource[i]]; t.thread = cast(string) th[0].thread[i][0..<th[0].nthread[i]];
-    if cast(string) s[0].ending[0..<s[0].nending] != "running" { rt_report(p, th, i, text, s[..], sources, json); continue; }
+    ending := cast(string) s[0].ending[0..<s[0].nending];
+    if ending == "redirected" { continue; }        // between the interrupted turn and the watchdog's message
+    if ending != "running" { rt_report(p, th, i, text, s[..], sources, json); continue; }
     pid := cd_job_pid(id);
     pb: [1300] u8;
     if pid > 0 && cxproc_pid_alive(pid) == 0 {
@@ -623,8 +641,11 @@ rt_tend :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warn
     rar: [1] ClArena; rab: [16384] u8; rar[0] = ClArena.{buf = rab[..]};
     reps := rt_repeats(text, rar[..]);
     if reps >= RT_REPEATS {
-      x := fs_write(cd_sibling(id, ".stop", pb[..]), "stop\n");
       tb: [16] u8; nb: [96] u8; nn := cd_cat(nb[..], 0, "the same step "); nn = cd_cat(nb[..], nn, cd_itoa(reps, tb[..])); nn = cd_cat(nb[..], nn, " times in a row");
+      mb: [1024] u8; mn := cd_cat(mb[..], 0, "Coder's watchdog: you ran the same step ");
+      mn = cd_cat(mb[..], mn, cd_itoa(reps, tb[..])); mn = cd_cat(mb[..], mn, " times in a row. Stop repeating it. Try a different approach, or say what blocks you and end the turn.");
+      if rt_redirect(p, id, cast(string) mb[0..<mn]) { rt_log(p, t, "worker redirected: looping", id, cast(string) nb[0..<nn], json); continue; }
+      x := fs_write(cd_sibling(id, ".stop", pb[..]), "stop\n");
       rt_log(p, t, "worker stopped: looping", id, cast(string) nb[0..<nn], json);
       continue;
     }
@@ -635,8 +656,16 @@ rt_tend :: (p: [] RtPaths, th: [] RtThreads, sources: string, stuck_s: int, warn
       d := rt_progress(cast(string) s[0].task[0..<s[0].ntask], text, wb[..], nw[..]);
       tb: [16] u8; nb: [1200] u8; nn := cd_cat(nb[..], 0, "no new log line for "); nn = cd_cat(nb[..], nn, cd_itoa(age_s, tb[..])); nn = cd_cat(nb[..], nn, " s");
       if d == 0 {
-        x := fs_write(cd_sibling(id, ".stop", pb[..]), "stop\n");
-        rt_log(p, t, "worker stopped: System One judged it not making progress", id, cast(string) nb[0..<nn], json);
+        mb: [2048] u8; mn := cd_cat(mb[..], 0, "Coder's watchdog: your recent steps aren't moving the task forward. Get back to the task: ");
+        mn = cd_cat(mb[..], mn, cast(string) s[0].task[0..<ifx s[0].ntask > 1500 then 1500 else s[0].ntask]);
+        mn = cd_cat(mb[..], mn, " If something blocks you, say what and end the turn.");
+        if rt_redirect(p, id, cast(string) mb[0..<mn]) {
+          warned[i] = false;      // judged again later; a second verdict stops it
+          rt_log(p, t, "worker redirected: System One judged it not making progress", id, cast(string) nb[0..<nn], json);
+        } else {
+          x := fs_write(cd_sibling(id, ".stop", pb[..]), "stop\n");
+          rt_log(p, t, "worker stopped: System One judged it not making progress", id, cast(string) nb[0..<nn], json);
+        }
       } else if d == 1 {
         rt_log(p, t, "worker quiet: System One judged it still making progress", id, cast(string) nb[0..<nn], json);
       } else {
