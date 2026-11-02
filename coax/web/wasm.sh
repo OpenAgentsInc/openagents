@@ -39,6 +39,19 @@ carrier="aethyr/render/carriers/$name.coax"
 if [[ "$render" == auto ]]; then
   render=0
   if [[ "$coax_file" == "apps/openagents-web/$name.coax" && -f "$repo/$carrier" ]]; then render=1; fi
+  # Each unit is its own C library, so a file with an #export_c procedure that
+  # the carrier and a library both load is defined twice at the link (#12661:
+  # the renderer and YOUR COMPUTER's wire both load sha256-kernel.coax, for
+  # S_hash and S_hex). One load graph can't own both while page and library
+  # names share one namespace, so such an app builds without its carrier, and
+  # says so; COAXIAL_RENDER=1 asks for the carrier and fails, naming the units.
+  if [[ "$render" == 1 && ${#libraries[@]} -gt 0 ]]; then
+    if ! twice="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size exports "$carrier" "${libraries[@]}" 2>&1 > /dev/null)"; then
+      render=0
+      echo "wasm.sh: $(basename "$out"): built without its renderer carrier:" >&2
+      grep '^wasm-size: ' <<< "$twice" | sed 's/^wasm-size: /  /' >&2 || true
+    fi
+  fi
 fi
 case "$render" in 0|1) ;; *) echo "COAXIAL_RENDER must be auto,0 or1" >&2; exit 2 ;; esac
 if [[ "$render" == 1 && "$coax_file" != "apps/openagents-web/$name.coax" ]]; then
@@ -87,6 +100,12 @@ for library in ${libraries[@]+"${libraries[@]}"}; do
   base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
   units+=("$library:$base")
 done
+# Each unit is its own C library, so an #export_c procedure two units load is
+# a duplicate symbol at the link. Say which, before any C is compiled.
+unit_paths=(); for unit in "${units[@]}"; do unit_paths+=("${unit%%:*}"); done
+if [[ ${#unit_paths[@]} -gt 1 ]]; then
+  (cd "$repo" && "$repo/coax/web/tool.sh" wasm-size exports "${unit_paths[@]}") || { echo "wasm.sh: $(basename "$out"): the same #export_c symbol in two units" >&2; exit 1; }
+fi
 # The cache: a unit's C, header and object are kept under the SHA-256 of the
 # compiler binary, the options, the unit's path and every file in its #load
 # closure (coax/web/tool.sh wasm-size sources), so a unit whose closure didn't

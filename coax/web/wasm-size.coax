@@ -5,6 +5,14 @@
 //     key of its C cache, so a unit whose closure is unchanged isn't compiled
 //     again. Exit 3 when a unit has an #import_proto (its descriptors are inputs
 //     this doesn't follow: no cache), 1 when a file can't be read.
+//   coax/web/tool.sh wasm-size exports UNIT.coax...   (from the repo root)
+//     the units wasm.sh compiles into one module, each its own C library. Every
+//     #export_c procedure in a unit's #load closure is a global C symbol of that
+//     unit's object, so a file with one that two units both load gives wasm-ld
+//     a duplicate symbol (#12661: S_hash and S_hex, when myrealm's renderer
+//     carrier and YOUR COMPUTER's wire both loaded sha256-kernel.coax). Names
+//     each such symbol, its file and both units before any C is compiled; exit
+//     1 when there is one, 0 when there is none (a file not there yet is skipped).
 //   coax/web/tool.sh wasm-size report FILE.wasm [N]
 //     the module's sections by size and its N biggest functions (default 25),
 //     by name when the module has a name section: what wasm.sh prints when a
@@ -135,6 +143,118 @@ ws_sources :: (a: [] Args) -> int {
   return ifx c[0].proto then 3 else 0;
 }
 
+// #export_c symbols, by unit: what each unit's C library defines globally.
+WS_EXPORTS :: 16384;
+Exports :: struct {
+  arena: [WS_ARENA] u8; used: int;
+  name_at: [WS_EXPORTS] int; name_len: [WS_EXPORTS] int;
+  file_at: [WS_EXPORTS] int; file_len: [WS_EXPORTS] int;
+  unit: [WS_EXPORTS] int; n: int;
+}
+ws_ex_name :: (e: [] Exports, i: int) -> string { return cast(string) e[0].arena[e[0].name_at[i]..<e[0].name_at[i] + e[0].name_len[i]]; }
+ws_ex_file :: (e: [] Exports, i: int) -> string { return cast(string) e[0].arena[e[0].file_at[i]..<e[0].file_at[i] + e[0].file_len[i]]; }
+ws_ex_keep :: (e: [] Exports, s: string) -> int {
+  if e[0].used + s.count > WS_ARENA { return -1; }
+  at := e[0].used;
+  for k: 0..<s.count { e[0].arena[at + k] = s[k]; }
+  e[0].used = at + s.count;
+  return at;
+}
+// Records unit's symbol name, from file, once a unit; false only when full.
+ws_ex_add :: (e: [] Exports, name: string, unit: int, file: string) -> bool {
+  for i: 0..<e[0].n { if e[0].unit[i] == unit && ws_ex_name(e, i) == name { return true; } }
+  if e[0].n >= WS_EXPORTS { return false; }
+  na := ws_ex_keep(e, name); fa := ws_ex_keep(e, file);
+  if na < 0 || fa < 0 { return false; }
+  i := e[0].n;
+  e[0].name_at[i] = na; e[0].name_len[i] = name.count; e[0].file_at[i] = fa; e[0].file_len[i] = file.count;
+  e[0].unit[i] = unit; e[0].n = i + 1;
+  return true;
+}
+// The earlier entry in which another unit defines entry i's symbol, or -1.
+ws_ex_dup :: (e: [] Exports, i: int) -> int {
+  for j: 0..<i { if e[0].unit[j] != e[0].unit[i] && ws_ex_name(e, j) == ws_ex_name(e, i) { return j; } }
+  return -1;
+}
+ws_ident :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+// One file's #export_c procedures, as unit's: a declaration (NAME :: at the
+// start of its line) whose signature, on that line or a later one, carries
+// #export_c outside a comment and a string.
+ws_ex_scan :: (e: [] Exports, unit: int, file: string, text: string) -> bool {
+  name := "";
+  i := 0;
+  while i < text.count {
+    eol := i;
+    while eol < text.count && text[eol] != '\n' { eol += 1; }
+    line := text[i..<eol]; i = eol + 1;
+    code := line; quotes := 0;
+    for k: 0..<line.count {
+      if line[k] == '"' { quotes += 1; }
+      if quotes % 2 == 0 && k + 1 < line.count && line[k] == '/' && line[k + 1] == '/' { code = line[0..<k]; break; }
+    }
+    mark := -1; quotes = 0;
+    for k: 0..<code.count {
+      if code[k] == '"' { quotes += 1; }
+      if mark < 0 && quotes % 2 == 0 && k + 9 <= code.count && code[k..<k + 9] == "#export_c" && (k + 9 == code.count || !ws_ident(code[k + 9])) { mark = k; }
+    }
+    s := 0;
+    while s < code.count && (code[s] == ' ' || code[s] == '\t') { s += 1; }
+    t := s;
+    while t < code.count && ws_ident(code[t]) { t += 1; }
+    u := t;
+    while u < code.count && code[u] == ' ' { u += 1; }
+    if t > s && u + 1 < code.count && code[u] == ':' && code[u + 1] == ':' { name = code[s..<t]; }
+    if mark >= 0 && name.count > 0 && !ws_ex_add(e, name, unit, file) { return false; }
+  }
+  return true;
+}
+#test "#export_c procedures, by name, outside comments and strings" {
+  e: [1] Exports;
+  t := "S_seed :: (n: int) -> int { return n; }\nS_hash :: (input: string) -> S_Digest #export_c {\n  x :: 3;\n}\nwalk :: (a: int,\n         b: int) -> int #export_c { return a; }\n// old :: () #export_c {}\nnote :: () { s := \"y :: () #export_c\"; }\nquiet :: () -> int { return 0; } // #export_c later\nnear :: () -> int #export_cx;\n";
+  #assert ws_ex_scan(e[..], 0, "k.coax", t) && e[0].n == 2;
+  #assert ws_ex_name(e[..], 0) == "S_hash" && ws_ex_name(e[..], 1) == "walk" && ws_ex_file(e[..], 1) == "k.coax";
+}
+#test "a symbol two units define names both units; one unit's, loaded twice, is once" {
+  e: [1] Exports;
+  k := "S_hex :: (d: int) -> bool #export_c { return true; }\n";
+  #assert ws_ex_scan(e[..], 0, "sha.coax", k) && ws_ex_scan(e[..], 0, "sha.coax", k) && e[0].n == 1;
+  #assert ws_ex_scan(e[..], 1, "wire.coax", "wire_open :: () -> int #export_c { return 1; }\n") && e[0].n == 2;
+  #assert ws_ex_dup(e[..], 0) == -1 && ws_ex_dup(e[..], 1) == -1;
+  #assert ws_ex_scan(e[..], 2, "sha.coax", k) && e[0].n == 3;
+  #assert ws_ex_dup(e[..], 2) == 0 && ws_ex_file(e[..], 2) == "sha.coax";
+}
+
+// Each unit's closure and its #export_c symbols; every symbol two units define, named.
+ws_exports :: (a: [] Args) -> int {
+  units: [1] Closure; e: [1] Exports; c: [1] Closure;
+  for k: 1..<args_count(a) { if !ws_add(units[..], args_at(a, k)) { tool_errln("wasm-size: too many units"); return 2; } }
+  body: [WS_FILE] u8;
+  for u: 0..<units[0].n {
+    c[0].used = 0; c[0].n = 0; c[0].proto = false; c[0].full = false;
+    if !ws_add(c[..], ws_path(units[..], u)) { return 2; }
+    i := 0;
+    while i < c[0].n {
+      file := ws_path(c[..], i);
+      n := fs_read(file, body[..]);
+      if n < 0 { i += 1; continue; }   // not there yet (a generated file): the compiler says so, this names only duplicates
+      text := cast(string) body[0..<n];
+      if !ws_scan(c[..], file, text) { tool_errln("wasm-size: the closure is too large"); return 2; }
+      if !ws_ex_scan(e[..], u, file, text) { tool_errln("wasm-size: too many #export_c symbols"); return 2; }
+      i += 1;
+    }
+  }
+  twice := 0;
+  for i: 0..<e[0].n {
+    j := ws_ex_dup(e[..], i);
+    if j < 0 { continue; }
+    twice += 1;
+    tool_err("wasm-size: "); tool_err(ws_ex_name(e[..], i)); tool_err(" is #export_c in "); tool_err(ws_ex_file(e[..], i));
+    tool_err(", which units "); tool_err(ws_path(units[..], e[0].unit[j])); tool_err(" and "); tool_err(ws_path(units[..], e[0].unit[i]));
+    tool_errln(" both load: wasm-ld would find it twice. Load it in one unit (a carrier that #loads the other, as aethyr/render/carriers/ do).");
+  }
+  return ifx twice > 0 then 1 else 0;
+}
+
 // An unsigned LEB128 at at[0] in m, moving at[0] past it; -1 when it runs off the end.
 ws_leb :: (m: string, at: [] int) -> int {
   v := 0; shift := 0;
@@ -259,7 +379,8 @@ tool_main :: () -> int #export_c {
   ok := args_load(a[..]);
   verb := args_at(a[..], 0);
   if ok && verb == "sources" && args_count(a[..]) >= 2 { return ws_sources(a[..]); }
+  if ok && verb == "exports" && args_count(a[..]) >= 2 { return ws_exports(a[..]); }
   if ok && verb == "report" && args_count(a[..]) >= 2 { return ws_report(a[..]); }
-  tool_errln("usage: wasm-size sources UNIT.coax... | wasm-size report FILE.wasm [N]");
+  tool_errln("usage: wasm-size sources UNIT.coax... | wasm-size exports UNIT.coax... | wasm-size report FILE.wasm [N]");
   return 2;
 }

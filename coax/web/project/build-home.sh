@@ -19,6 +19,11 @@ out="$1"; mkdir -p "$(dirname "$out")"
 # see docs/verification/aethyr-grid-final-stack-2026-11-02.json for scope.
 grid_stack_bytes=4194304
 work="$(mktemp -d)";trap 'rm -rf "$work"' EXIT
+# Each unit below is its own C library: an #export_c procedure two of them load would be
+# defined twice at the link (#12661). wasm-size names the symbol and both units first.
+browser_unit=coax/web/project/landing-browser.coax; [[ "$render" != 1 ]] || browser_unit=aethyr/render/carriers/landing-browser.coax
+(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size exports apps/openagents-web/newland.coax "$browser_unit" \
+  coax/web/project/landing-fold.coax verse/gridwalk.coax) || { echo "build-home.sh: the same #export_c symbol in two units" >&2; exit 1; }
 objects=(); units=()
 for unit in newland landing-browser landing-fold; do
   directory=coax/web/project; [[ "$unit" != newland ]] || directory=apps/openagents-web
