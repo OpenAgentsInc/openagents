@@ -44,6 +44,8 @@ cxterm_write :: (s: [] u8) -> int #foreign;
 cxterm_watch :: () -> int #foreign;
 cxterm_stopped :: () -> int #foreign;
 cxterm_resized :: () -> int #foreign;
+cxproc_pty :: (h: int, cols: int, rows: int) -> int #foreign;
+cxproc_pty_resize :: (h: int, cols: int, rows: int) -> int #foreign;
 
 CODER_VERSION :: "0.1.0";
 ENGINE_ECHO :: 0; ENGINE_CLAUDE :: 1; ENGINE_CODEX :: 2; ENGINE_MICRO :: 3; ENGINE_PSIONIC :: 4;
@@ -380,9 +382,21 @@ cd_command_start :: (a: [] App, cmd: string) {
   wb: [8300] u8; wn := cd_cat(wb[..], 0, "exec 2>&1; "); wn = cd_cat(wb[..], wn, cmd);
   ok := cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, cast(string) wb[0..<wn]);
   if a[0].cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, a[0].cwd); }
+  // on a pseudo-terminal the width of the screen, so programs that draw only for a terminal draw (chapter 37)
+  ok = ok && cl_push(h, CL_FIELD_ENV, "TERM=xterm-256color") && cxproc_pty(h, ifx a[0].cols > 8 then a[0].cols - 4 else 80, CD_PTY_ROWS) == 0;
   if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); cd_finish(a, END_FAILED, "The command could not start."); return; }
-  c := cxproc_close_stdin(h);
   a[0].cmd_h = h;
+  // with no one to type, end of input at once, as a closed stdin was
+  if a[0].plain { eot: [1] u8; eot[0] = 4; cd_command_keys(a, cast(string) eot[..]); }
+}
+
+CD_PTY_ROWS :: 24;
+
+// Keystrokes to the running command's terminal; the line discipline echoes them.
+cd_command_keys :: (a: [] App, keys: string) {
+  if a[0].cmd_h < 0 { return; }
+  for c: keys { x := cxproc_write(a[0].cmd_h, cast(int) c); }
+  y := cxproc_flush(a[0].cmd_h);
 }
 
 // Takes the lines the command has written; true when something changed.
@@ -825,11 +839,21 @@ cd_key :: (a: [] App, k: TuiKey) {
     if a[0].ed[0].n > 0 { tui_ed_clear(a[0].ed[..]); return; }
     a[0].quit = true; return;
   }
+  if k.kind == TUI_K_CTRL_D && a[0].running && a[0].cmd_h >= 0 && a[0].ed[0].n == 0 { eot: [1] u8; eot[0] = 4; cd_command_keys(a, cast(string) eot[..]); return; }
   if k.kind == TUI_K_CTRL_D { if a[0].ed[0].n == 0 && !a[0].running { a[0].quit = true; } else { x := tui_ed_key(a[0].ed[..], TuiKey.{kind = TUI_K_DELETE}); } return; }
   if k.kind == TUI_K_ESC { if a[0].running { cd_stop(a); } return; }
   if k.kind == TUI_K_CLEAR { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); tui_live_cleared(a[0].lv[..]); return; }
   r := tui_ed_key(a[0].ed[..], k);
   if r == TUI_ED_SUBMIT {
+    if a[0].running && a[0].cmd_h >= 0 {
+      // a running command takes the line as typed input, through its terminal
+      line := tui_ed_text(a[0].ed[..]);
+      lb: [16384] u8; ln := cd_cat(lb[..], 0, line); ln = cd_cat(lb[..], ln, "\r");
+      cd_command_keys(a, cast(string) lb[0..<ln]);
+      cs_text(a, "keys", "text", line);
+      tui_ed_clear(a[0].ed[..]);
+      return;
+    }
     if a[0].running { return; }      // one task at a time for now; the text stays
     cd_submit(a);
   }
@@ -1618,7 +1642,10 @@ tool_main :: () -> int #export_c {
   while !a[0].quit {
     if cxterm_stopped() != 0 { break; }
     dirty := false;
-    if cxterm_resized() != 0 { cd_size(a); tui_live_resize(a[0].lv[..], a[0].rows); tui_live_width(a[0].lv[..], a[0].cols); dirty = true; }
+    if cxterm_resized() != 0 {
+      cd_size(a); tui_live_resize(a[0].lv[..], a[0].rows); tui_live_width(a[0].lv[..], a[0].cols); dirty = true;
+      if a[0].cmd_h >= 0 { pr := cxproc_pty_resize(a[0].cmd_h, ifx a[0].cols > 8 then a[0].cols - 4 else 80, CD_PTY_ROWS); }
+    }
     wait := ifx a[0].running then 10 else 40;
     if cd_read_keys(a, wait) { dirty = true; }
     if a[0].quit { break; }

@@ -3,12 +3,14 @@
 > **Status: partly implemented.** The emulator's core runs in Coax: a
 > parser state machine, a cell grid with history, scroll regions, the
 > alternate screen, wide characters and a text snapshot, in
-> `coax/lib/tui/vt.coax` with 8 checks. Coder reads every command's output
-> and tool result through it, so a progress bar reads as its last state and
-> colors leave no bytes behind. Still to come: running programs in a
-> pseudo-terminal, so tools that only draw for a terminal draw at all;
-> keystrokes sent back as tool calls; and checking the emulator against
-> libghostty on recorded sessions.
+> `coax/lib/tui/vt.coax` with 8 checks. Coder runs `$ ` commands in a
+> pseudo-terminal the width of the screen and reads their output through
+> the emulator, so a program that checks for a terminal draws, a progress
+> bar reads as its last state, and colors leave no bytes behind. While a
+> command runs, the person's typed lines go to it as keystrokes. Still to
+> come: keystrokes sent by an agent as tool calls, Claude Code's and Codex's
+> own commands in a pseudo-terminal (they run them themselves), and checking
+> the emulator against libghostty on recorded sessions.
 
 The other direction: Coder runs programs that expect a terminal (test
 runners with progress bars, interactive prompts, editors) and needs to read
@@ -72,16 +74,53 @@ coder run "$ printf '10%%\r100%%\n\033[32mok\033[0m\n'" --engine echo --json
 {"kind":"result","text":"100%\nok","error":false}
 ```
 
-Commands still run with their output on a pipe, so a program that checks
-for a terminal draws its plain form. Running them in a pseudo-terminal is
-the next step. Chapter 33 found the pattern in Toad: a persistent shell in
-a pseudo-terminal that reports its working directory after each command.
+### A pseudo-terminal for each command
+
+A `$ ` command runs on a pseudo-terminal, not on pipes. `cxproc_pty(h,
+cols, rows)` in
+[process-native.c](../../coax/platform/process-native.c) asks for one
+before the spawn:
+
+- The child starts a session of its own, with the terminal's slave side as
+  its controlling terminal and as its standard input, output and error.
+- The terminal is the screen's width less the transcript's indent, and 24
+  rows. `TERM` is `xterm-256color`. A resized window resizes it
+  (`cxproc_pty_resize`), and the kernel sends the program `SIGWINCH`.
+- Coder reads the master side line by line, as it read the pipe. When the
+  program exits, the master read fails with `EIO`, which counts as the end
+  of output.
+- Typed text is echoed, but control keys such as `^D` draw nothing.
+
+```sh
+coder run '$ test -t 1 && echo on-a-terminal; stty size; cat; echo after' --engine echo --json
+```
+
+```json
+{"kind":"result","text":"on-a-terminal\n24 96\nafter","error":false}
+```
+
+In `coder run`, no one types, so Coder sends end-of-input (`^D`) at once,
+and `cat` returns at once as it did with a closed pipe. In the terminal UI,
+a running command takes the composer's lines instead. Enter sends the line
+and a carriage return, and Ctrl-D on an empty composer sends end-of-input.
+Each line goes into the session log as a `keys` line:
+
+```text
+› $ read -r x; echo got-$x
+  $ read -r x; echo got-$x · exit 0
+    typed-in
+    got-typed-in
+```
+
+Chapter 33 found a further step in Toad: one persistent shell in a
+pseudo-terminal that reports its working directory after each command, so
+`cd` carries over between commands.
 
 ## Checks
 
 ```sh
 coax test coax/lib/tui/vt.coax --library    # 18 checks: tui.coax's 10 and vt.coax's 8
-python3 coder/tui/smoke.py                  # "output reads as the screen shows it"
+python3 coder/tui/smoke.py                  # output as the screen shows it; a command on a terminal; typed input
 ```
 
 The checks cover a progress bar and colors, erasing, cursor addressing,

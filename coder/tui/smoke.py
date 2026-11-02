@@ -134,13 +134,16 @@ def verbs(check):
         bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]
         check("output reads as the screen shows it", len(res) == 1 and res[0]["text"] == "100%\nok")
+        tty = subprocess.run([coder, "run", "$ test -t 1 && echo on-a-terminal; stty size; cat; echo after", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        tres = [json.loads(l) for l in tty.stdout.splitlines() if '"kind":"result"' in l]
+        check("a command runs on a terminal the screen's width, with input already ended", len(tres) == 1 and tres[0]["text"] == "on-a-terminal\n24 96\nafter")
         # a plugin's command runs; disabled, nothing it registered remains (chapter 15)
         plugdir = os.path.join(home, ".openagents", "coder", "plugins")
         os.makedirs(plugdir, exist_ok=True)
         with open(os.path.join(plugdir, "demo.json"), "w") as f:
             f.write('{"name":"demo","commands":[{"name":"hello","run":"echo plugin-ok"}]}')
         ran = subprocess.run([coder, "run", "/hello", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
-        check("a plugin's command runs", any(json.loads(l).get("text") == "plugin-ok\n" for l in ran.stdout.splitlines() if '"kind":"result"' in l))
+        check("a plugin's command runs", any(json.loads(l).get("text") == "plugin-ok" for l in ran.stdout.splitlines() if '"kind":"result"' in l))
         subprocess.run([coder, "run", "/plugin disable demo", "--engine", "echo"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         pl = json.loads(subprocess.run([coder, "plugins", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
         check("a disabled plugin keeps no command", pl == [{"name": "demo", "state": "disabled", "signed": False, "commands": []}])
@@ -395,6 +398,13 @@ def main():
     while out.count("└ finished".encode()) < 4 and time.time() < end:
         read_until("\x00never", 0.2)
     check("paste turn ended", out.count("└ finished".encode()) >= 4)
+    send(b"$ read -r x; echo got-$x\r")   # a command on a terminal reads what the person types (chapter 37)
+    time.sleep(1.0)
+    send(b"typed-in\r")
+    check("a running command takes typed input", read_until("got-typed-in", 10))
+    end = time.time() + 10
+    while out.count("└ finished".encode()) < 5 and time.time() < end:
+        read_until("\x00never", 0.2)
     send(b"/find SMOKE-ok\r")          # search the transcript, any case
     check("/find shows the transcript's matching lines", read_until("⌕     smoke-ok", 5) and read_until("3 lines", 5))
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 60, 0, 0))   # the kernel sends SIGWINCH

@@ -33,6 +33,8 @@ extern "C" {
 int64_t cxproc_new(void);
 int64_t cxproc_push(int64_t h, int64_t field, int64_t byte);
 int64_t cxproc_end(int64_t h, int64_t field);
+int64_t cxproc_pty(int64_t h, int64_t cols, int64_t rows);
+int64_t cxproc_pty_resize(int64_t h, int64_t cols, int64_t rows);
 int64_t cxproc_spawn(int64_t h);
 int64_t cxproc_read_line(int64_t h, int64_t timeout_ms);
 int64_t cxproc_line_byte(int64_t h, int64_t i);

@@ -15,6 +15,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/ioctl.h>
+#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 #if defined(__APPLE__)
@@ -30,6 +32,7 @@ typedef struct { Bytes *items; size_t count, cap; Bytes open; } List;
 
 typedef struct {
   int used, started, reaped, status, quiet, detach, outnull;
+  int pty, cols, rows; /* run on a pseudo-terminal of cols x rows instead of pipes */
   pid_t pid;
   int in, out, err;
   List args, env, unset;
@@ -229,6 +232,81 @@ static char *resolve(const char *name, char *out, size_t cap) {
   return NULL;
 }
 
+/* Before cxproc_spawn: the child runs on a pseudo-terminal of cols x rows, in a session of its
+   own with the terminal as its controlling terminal, so a program that draws only for a terminal
+   draws. Its stdin, stdout and stderr are the terminal: what it writes is read with
+   cxproc_read_line, and cxproc_write sends it keystrokes. */
+int64_t cxproc_pty(int64_t h, int64_t cols, int64_t rows) {
+  Proc *p = get(h);
+  if (!p || p->started || cols <= 0 || rows <= 0 || cols > 1000 || rows > 1000) return -1;
+  p->pty = 1; p->cols = (int)cols; p->rows = (int)rows;
+  return 0;
+}
+
+/* A running pty child's new size; the kernel sends it SIGWINCH. */
+int64_t cxproc_pty_resize(int64_t h, int64_t cols, int64_t rows) {
+  Proc *p = get(h);
+  if (!p || !p->started || !p->pty || p->out < 0) return -1;
+  struct winsize ws = {(unsigned short)rows, (unsigned short)cols, 0, 0};
+  return ioctl(p->out, TIOCSWINSZ, &ws) == 0 ? 0 : -1;
+}
+
+static int64_t spawn_pty(Proc *p, const char *path, char **argv, char *cwd) {
+  int master = posix_openpt(O_RDWR | O_NOCTTY);
+  if (master < 0) return errno;
+  if (grantpt(master) || unlockpt(master)) { int e = errno; close(master); return e; }
+  char *name = ptsname(master);
+  if (!name) { int e = errno; close(master); return e; }
+  char slave_name[256];
+  snprintf(slave_name, sizeof slave_name, "%s", name);
+  struct winsize ws = {(unsigned short)p->rows, (unsigned short)p->cols, 0, 0};
+  ioctl(master, TIOCSWINSZ, &ws);
+  signal(SIGPIPE, SIG_IGN);
+  int report[2];
+  if (pipe(report)) { int e = errno; close(master); return e; }
+  fcntl(report[1], F_SETFD, FD_CLOEXEC);
+  pid_t pid = fork();
+  if (pid < 0) { int e = errno; close(master); close(report[0]); close(report[1]); return e; }
+  if (pid == 0) {
+    setsid();
+    int slave = open(slave_name, O_RDWR);
+    int e = 0;
+    if (slave < 0) e = errno;
+#if defined(TIOCSCTTY)
+    if (!e) ioctl(slave, TIOCSCTTY, 0);
+#endif
+    if (!e) ioctl(slave, TIOCSWINSZ, &ws);
+    /* typed text is echoed, but control keys such as the end-of-input ^D draw nothing */
+    struct termios t;
+    if (!e && tcgetattr(slave, &t) == 0) { t.c_lflag &= ~(tcflag_t)ECHOCTL; tcsetattr(slave, TCSANOW, &t); }
+    if (!e) { dup2(slave, 0); dup2(slave, 1); dup2(slave, 2); if (slave > 2) close(slave); }
+    close(master); close(report[0]);
+#if defined(__linux__)
+    prctl(PR_SET_PDEATHSIG, SIGKILL);
+#endif
+    signal(SIGPIPE, SIG_DFL); signal(SIGINT, SIG_DFL); signal(SIGTERM, SIG_DFL); signal(SIGHUP, SIG_DFL);
+    for (size_t i = 0; i < p->unset.count; i++) unsetenv(p->unset.items[i].data);
+    for (size_t i = 0; i < p->env.count; i++) {
+      char *kv = p->env.items[i].data, *eq = strchr(kv, '=');
+      if (eq && eq != kv) { *eq = 0; setenv(kv, eq + 1, 1); }
+    }
+    if (!e && cwd && chdir(cwd)) e = errno;
+    if (!e) { execve(path, argv, environ); e = errno; }
+    ssize_t w = write(report[1], &e, sizeof e); (void)w;
+    _exit(127);
+  }
+  guard_children();
+  close(report[1]);
+  int e = 0;
+  ssize_t got;
+  do got = read(report[0], &e, sizeof e); while (got < 0 && errno == EINTR);
+  close(report[0]);
+  p->started = 1; p->pid = pid; p->out = master; p->in = dup(master); p->err = -1;
+  fcntl(p->in, F_SETFD, FD_CLOEXEC); fcntl(p->out, F_SETFD, FD_CLOEXEC);
+  if (got == (ssize_t)sizeof e && e) { waitpid(pid, &p->status, 0); p->reaped = 1; return e; }
+  return 0;
+}
+
 int64_t cxproc_spawn(int64_t h) {
   Proc *p = get(h);
   if (!p || p->started || p->args.count == 0) return EINVAL;
@@ -238,6 +316,7 @@ int64_t cxproc_spawn(int64_t h) {
   if (!argv) return ENOMEM;
   for (size_t i = 0; i < p->args.count; i++) argv[i] = p->args.items[i].data;
   char *cwd = p->cwd.count ? cstr(&p->cwd) : NULL;
+  if (p->pty) { int64_t e = spawn_pty(p, path, argv, cwd); free(argv); return e; }
   int in[2], out[2], err[2];
   if (pipe(in)) { free(argv); return errno; }
   if (pipe(out)) { int e = errno; close(in[0]); close(in[1]); free(argv); return e; }
@@ -383,6 +462,7 @@ int64_t cxproc_read_line(int64_t h, int64_t timeout_ms) {
     if (fds[0].revents & (POLLIN | POLLHUP | POLLERR)) {
       char d[65536];
       ssize_t n = read(p->out, d, sizeof d);
+      if (n < 0 && errno == EIO && p->pty) n = 0; /* a pty's child has closed it: the end */
       if (n < 0) { if (errno == EINTR) continue; return CXPROC_ERROR; }
       if (n == 0) { p->eof = 1; continue; }
       for (ssize_t i = 0; i < n; i++) if (put(&p->buf, d[i])) return CXPROC_ERROR;
