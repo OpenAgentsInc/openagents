@@ -1,0 +1,40 @@
+sign chapter 17's event
+call 1, key: pubkey: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+call 2, id: ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3
+calls: 8, result: 372
+event: {"id":"ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3","pubkey":"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659","created_at":1761686400,"kind":1,"tags":[["t","nostr"]],"content":"hi\n\"x\"\\\u0001","sig":"434d7839f0efb03875c96af21ea07b0428860602ad04729cf57d78f336902ef31e3e4b743b49aec045db97a91b8c70012da8fa21679ee701b88572dc05079494"}
+read it back
+read: ok, verified false
+preimage (119 bytes): [0,"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",1761686400,1,[["t","nostr"]],"hi\n\"x\"\\\u0001"]
+computed id: ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3
+verify: ok, id ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3
+verified: true, kind 1, created_at 1761686400, tags 1
+sig: 434d7839f0efb03875c96af21ea07b0428860602ad04729cf57d78f336902ef31e3e4b743b49aec045db97a91b8c70012da8fa21679ee701b88572dc05079494
+refusals
+id first digit e -> f: id
+content h -> H: id
+kind 1 -> 2: id
+sig first digit 4 -> 5: signature
+sig last digit 4 -> 5: signature
+pubkey in uppercase hex: hex
+kind missing: shape
+kind twice: json (duplicate key)
+created_at -1: shape
+created_at 2^53 - 1: id
+created_at 2^53: json (number)
+kind 65536: shape
+tag value 1: shape
+accepted
+extra field relay: ok, id ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3
+spaces between tokens: ok, id ef9fc293e97c60875a6af22b70820a645a9d7dabeaba2e221ba32d96dc50a1a3
+a captured event
+relay.openagents.com, 2026-10-28: ok, id 813d9fb02bd78ce24200ba986b62ef727f0c032f712cff82241bd465f4bc9d21
+bytes 681, kind 30617, created_at 1793214821, tags 7, preimage bytes 428
+id first digit 8 -> 9: id
+content "" -> "x": id
+sig last bit flipped: signature
+kind 30617 -> 99999: shape
+NIP-70's example event
+NIP-70: id
+claimed id : cb8feca582979d91fe90455867b34dbf4d65e4b86e86b3c68c368ca9f9eef6f2
+computed id: f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6

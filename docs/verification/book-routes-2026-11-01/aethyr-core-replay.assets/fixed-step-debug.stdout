@@ -1,0 +1,6 @@
+30 FPS: 150 frames, 319 steps, at most 3 a frame, drawn at 4.999999949708581 s
+60 FPS: 300 frames, 320 steps, at most 2 a frame, drawn at 5.000000100000001 s
+120 FPS: 600 frames, 319 steps, at most 1 a frame, drawn at 4.9999997997656465 s
+144 FPS: 720 frames, 319 steps, at most 1 a frame, drawn at 4.999999679625034 s
+a 3 s stall: 8 steps, 125000000 ns dropped, overlong 1, stalls 1
+the next frame: 1 step

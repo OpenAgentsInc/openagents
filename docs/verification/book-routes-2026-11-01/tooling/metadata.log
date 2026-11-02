@@ -1,0 +1,10 @@
+...........
+----------------------------------------------------------------------
+Ran 11 tests in 0.030s
+
+OK
+book navigation, local links, checked excerpts and the chapter registry pass
+psionic book structure: 252 programs, 1244 source-linked listings, local links pass
+aethyr book structure: 19 programs, 107 source-linked listings, local links pass
+nostr book structure: 104 programs, 825 source-linked listings, local links pass
+book routes: 4 profiles, 12 steps; metadata valid

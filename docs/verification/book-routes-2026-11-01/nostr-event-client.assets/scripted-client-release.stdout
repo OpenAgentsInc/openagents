@@ -1,0 +1,54 @@
+t=0 subscribed slot 0, publish slot 0: IDLE gen 0 attempt 0
+  a NOTICE before any connection -> RL_NOT_OPEN, rl_next RL_OUT_NONE
+t=0 rl_start: CONNECTING gen 1 attempt 0 deadline 5000
+t=30 handshake answer "HTTP/1.1 503...": WS_HELLO_STATUS -> close, rl_dropped
+t=30 dropped: BACKOFF gen 1 attempt 1 deadline 530
+  rl_opened(gen 1) now: false
+t=529 rl_tick: RL_DO_NONE
+t=530 rl_tick: RL_DO_CONNECT
+t=530 rl_start: CONNECTING gen 2 attempt 1 deadline 5530
+  a frame before the handshake -> RL_NOT_OPEN, rl_next RL_OUT_NONE, rl_start again -1
+t=5529 rl_tick: RL_DO_NONE
+t=5530 rl_tick: RL_DO_TIMEOUT
+t=5530 connect timed out, jitter 7: BACKOFF gen 2 attempt 2 deadline 6537
+t=6537 rl_tick: RL_DO_CONNECT
+t=6537 rl_start: CONNECTING gen 3 attempt 2 deadline 11537
+t=6600 handshake answer "HTTP/1.1 101...": WS_HELLO_OK -> rl_opened
+t=6600 opened: OPEN gen 3 attempt 0
+  a NOTICE reported for gen 2 -> RL_STALE, rl_dropped(gen 2) false
+  send ["REQ","s0.1",{"kinds":[30617]}]
+  send ["EVENT",{"id":"813d9fb0...}] (publish slot 0, OK due by t=16600)
+t=6700 the relay sends 4920 bytes:
+  recv ["EVENT","s0.1",{"id":"813d9fb02bd78ce24200b... (698 bytes) -> RL_DELIVER
+  recv ["EVENT","s0.1",{"id":"813d9fb02bd78ce24200b... (698 bytes) -> RL_FORGED
+  recv ["EVENT","s0.1",{"id":"813d9fb02bd78ce24200b... (698 bytes) -> RL_DUPLICATE
+  recv ["EOSE","s0.1"] -> RL_EOSE
+  recv ["NOTICE","rate limits apply"] -> RL_NOTICE
+  recv ["EVENT","s0.9",{"id":"813d9fb02bd78ce24200b... (698 bytes) -> RL_UNKNOWN
+  recv ["EOSE"] -> RL_BAD
+  frame refused -> send close 1009, RC_FAIL
+t=6700 dropped: BACKOFF gen 3 attempt 1 deadline 7200
+  subscription 0: 1 event, newest created_at 1793214821; forged 1, notices 1
+t=7199 rl_tick: RL_DO_NONE
+t=7200 rl_tick: RL_DO_CONNECT
+t=7200 rl_start: CONNECTING gen 4 attempt 1 deadline 12200
+t=7250 handshake answer "HTTP/1.1 101...": WS_HELLO_OK -> rl_opened
+t=7250 opened: OPEN gen 4 attempt 0
+  send ["REQ","s0.1",{"kinds":[30617],"since":1793214821}]
+  send ["EVENT",{"id":"813d9fb0...}] (publish slot 0, OK due by t=17250)
+t=7300 the relay sends 1551 bytes:
+  recv ["EVENT","s0.1",{"id":"813d9fb02bd78ce24200b... (698 bytes) -> RL_DUPLICATE
+  recv ["OK","813d9fb02bd78ce24200ba986b62ef727f0c0... (81 bytes) -> RL_ACK
+  recv ["CLOSED","s0.1","error: shutting down idle ... (58 bytes) -> RL_CLOSED
+  recv ["EVENT","s0.1",{"id":"813d9fb02bd78ce24200b... (698 bytes) -> RL_UNKNOWN
+  recv close 1001 -> echo close 1001, RC_CLOSED
+t=7300 dropped: BACKOFF gen 4 attempt 1 deadline 7800
+  publish slot 0: state 3 (3 is ACCEPTED); subscription 0: state 5 (5 is REFUSED)
+t=7300 rl_shutdown: SHUT gen 4 attempt 1
+  rl_start -1, rl_tick at t=99999 RL_DO_NONE
+states: 013131231234
+decisions: kkcaebfidlbghd
+deadlines: 5000 530 5530 6537 11537 7200 12200 7800
+backoff, jitter 0: 500 1000 2000 4000 8000 16000 30000 30000
+attempt 0, jitter 0, 250, 251, 252: 500 750 500 501
+attempt 6, jitter 15000 and 15001: 45000 30000

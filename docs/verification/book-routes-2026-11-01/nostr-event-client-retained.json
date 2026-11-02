@@ -1,0 +1,676 @@
+{
+  "schema_version": 1,
+  "kind": "book-route-observation",
+  "route": {
+    "id": "nostr-event-client",
+    "book": "nostr",
+    "title": "Sign and verify an event, then replay a client connection",
+    "scope": "Sign a complete event with a published BIP-340 test key, verify its ID/signature and altered-field refusals, then drive the pure client connection through scripted handshakes, reconnects, verified events, duplicate/stale reports, acknowledgments and shutdown.",
+    "limitations": [
+      "Signing material is a committed public test vector. No user key, Keychain, wallet, entropy source or external signer is opened.",
+      "Transport bytes and times are scripted in memory. No socket is opened or relay contacted; native TLS, browser secret handling, durable storage, live interoperability and deployed relays are separate profiles.",
+      "The Pylon consumes the shared signer and relay state machine through its own real transport and admission paths. This offline route does not establish that consumer or production relay readiness."
+    ]
+  },
+  "status": "passed",
+  "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca",
+  "started_at": "2026-11-02T02:57:38.986030+00:00",
+  "steps": [
+    {
+      "key": "event-sign-verify:debug",
+      "fingerprint": {
+        "recipe_sha256": "ca84aef5ee9b4ccda72135b6f115040d52560473f83ff5f293400111bdbc9cee",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+          "coax/lib/crypto/ecdh_fast.coax": "8247ea4a284db45d98a3b810c80e3ee80bac2ee4e5f2396174e2aabe5d6deee2",
+          "coax/lib/crypto/schnorr.coax": "aa24658ad55066148dda34075463dc8034cb03eb5eff7dbd840162d9259b952a",
+          "coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+          "coax/lib/crypto/schnorr_math_workspace.coax": "97a253083cceac10ed99c32eba15cab894534c2e4e08604cea6d3305c5aee787",
+          "coax/lib/crypto/schnorr_nonce_point.coax": "af765494a39a5c6cfa7b4ef4487f82281bdc3dd41f43d96bec86b2f9c8e2f507",
+          "coax/lib/crypto/schnorr_nonce_workspace.coax": "68812db84fab59fb5fb22fe268c9d573c44e5df2cc5a99bac008810fe8bf8ac1",
+          "coax/lib/crypto/schnorr_point_workspace.coax": "98ab2e2ab9f4f90f2ae0333e8f340705b2a99520a717efa7e6139876d5b1f69e",
+          "coax/lib/crypto/schnorr_prepare_workspace.coax": "d96f9096b132f002baf75451c6698e2ec0e9656183028380faa60e2869eac305",
+          "coax/lib/crypto/schnorr_scalar_workspace.coax": "6a5b214e6a9ac87bcd0afa34b2bf0668126fa7ce4b8fe7f69bff6e50b4ee52f9",
+          "coax/lib/crypto/schnorr_self_verify.coax": "9145f2fe3b457a982b5808bf51b8ea9d82cd99ac1fc7e8812d5e0530c78aea7d",
+          "coax/lib/crypto/schnorr_sign.coax": "3e9702566ce8892c3cb94b0a05789b332f84c8f20b44948efe1e1ec3a17139c1",
+          "coax/lib/crypto/secp_field.coax": "b9840e7ed474e4a4e8e8273b4a27145ce4b2c9d18921e89d3693c5b4451d6f77",
+          "coax/lib/crypto/secp_field32.coax": "cd1a4ecf00535aa86b5fc3764cdc2920d745d9b3660b53999f83cdefd2c54902",
+          "coax/lib/crypto/secp_field32_total.coax": "971e37ac6fe8ab4e0e7e056935f8a130d44e1bf4520e56d7605227f9cbee74ae",
+          "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+          "coax/lib/crypto/secp_group32.coax": "ae2e2e5a1cd4701e094aa2aec34280d13277807621078fcb3394d53bbca2c6d6",
+          "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+          "coax/lib/crypto/secp_mult_base.coax": "fb9b34e769cb21e9d75439369e8608c27e94f5443907bd1b5a79f1cbcc1476a0",
+          "coax/lib/crypto/secp_mult_base_web.coax": "3ca9989b48ff368d1511fe9d81e4f91ec9f8f93d4099c6cf4cf0aa31fd391220",
+          "coax/lib/crypto/secp_mult_const.coax": "aaa83e00f1fa8a1a2954e654c741e056337c1d17d6b5ec6d7e1f8285abb438e5",
+          "coax/lib/crypto/secp_scalar.coax": "80d53f77a3d3da9cd60fed42b527540c15923ec644a6a3ccb095f85d2364312d",
+          "coax/lib/crypto/sha256-kernel.coax": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+          "coax/lib/crypto/sha256.coax": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+          "coax/lib/crypto/sha256_workspace.coax": "cdf7133f055242e3195feb21b9f4c1a84ce40168f52672f44d73e719fceb7e93",
+          "coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+          "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+          "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+          "coax/lib/nostr/event.coax": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f",
+          "coax/lib/nostr/event_sign.coax": "bf02052fb13343a31ed6fcfca6a3f3a4de1660574a5041ea2bf2b10c3cf6e098",
+          "coax/lib/nostr/fixtures/coax_relay.coax": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+          "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+          "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+          "coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+          "coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+          "coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+          "coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+          "coax/tests/nostr/event_sign_vectors.coax": "767fdf6caee3a183f7014271c8407a767ecd6e1bb9396487d1c9f8184d4d2013",
+          "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+          "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+          "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+          "coax/tests/nostr/schnorr_sign_vectors.coax": "84fda6ceab714c9b5ac93ff3596003783c84a00f97fa3b8ed31f73f2b22868db",
+          "nostr/examples/events.coax": "7ac54dd411b46e9c472bde793dba2bafce8aa04d4213aaa041cd1338d59f8b4d",
+          "nostr/fixtures/events.out": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c"
+        },
+        "resolutions": {
+          "coax/lib/crypto/bytes.coax": "coax/lib/crypto/bytes.coax",
+          "coax/lib/crypto/ecdh_fast.coax": "coax/lib/crypto/ecdh_fast.coax",
+          "coax/lib/crypto/schnorr.coax": "coax/lib/crypto/schnorr.coax",
+          "coax/lib/crypto/schnorr_fast.coax": "coax/lib/crypto/schnorr_fast.coax",
+          "coax/lib/crypto/schnorr_math_workspace.coax": "coax/lib/crypto/schnorr_math_workspace.coax",
+          "coax/lib/crypto/schnorr_nonce_point.coax": "coax/lib/crypto/schnorr_nonce_point.coax",
+          "coax/lib/crypto/schnorr_nonce_workspace.coax": "coax/lib/crypto/schnorr_nonce_workspace.coax",
+          "coax/lib/crypto/schnorr_point_workspace.coax": "coax/lib/crypto/schnorr_point_workspace.coax",
+          "coax/lib/crypto/schnorr_prepare_workspace.coax": "coax/lib/crypto/schnorr_prepare_workspace.coax",
+          "coax/lib/crypto/schnorr_scalar_workspace.coax": "coax/lib/crypto/schnorr_scalar_workspace.coax",
+          "coax/lib/crypto/schnorr_self_verify.coax": "coax/lib/crypto/schnorr_self_verify.coax",
+          "coax/lib/crypto/schnorr_sign.coax": "coax/lib/crypto/schnorr_sign.coax",
+          "coax/lib/crypto/secp_field.coax": "coax/lib/crypto/secp_field.coax",
+          "coax/lib/crypto/secp_field32.coax": "coax/lib/crypto/secp_field32.coax",
+          "coax/lib/crypto/secp_field32_total.coax": "coax/lib/crypto/secp_field32_total.coax",
+          "coax/lib/crypto/secp_group.coax": "coax/lib/crypto/secp_group.coax",
+          "coax/lib/crypto/secp_group32.coax": "coax/lib/crypto/secp_group32.coax",
+          "coax/lib/crypto/secp_mult.coax": "coax/lib/crypto/secp_mult.coax",
+          "coax/lib/crypto/secp_mult_base.coax": "coax/lib/crypto/secp_mult_base.coax",
+          "coax/lib/crypto/secp_mult_base_web.coax": "coax/lib/crypto/secp_mult_base_web.coax",
+          "coax/lib/crypto/secp_mult_const.coax": "coax/lib/crypto/secp_mult_const.coax",
+          "coax/lib/crypto/secp_scalar.coax": "coax/lib/crypto/secp_scalar.coax",
+          "coax/lib/crypto/sha256-kernel.coax": "coax/lib/crypto/sha256-kernel.coax",
+          "coax/lib/crypto/sha256.coax": "coax/lib/crypto/sha256.coax",
+          "coax/lib/crypto/sha256_workspace.coax": "coax/lib/crypto/sha256_workspace.coax",
+          "coax/lib/nostr/adapters/json-admission.coax": "coax/lib/nostr/adapters/json-admission.coax",
+          "coax/lib/nostr/adapters/json-policy.coax": "coax/lib/nostr/adapters/json-policy.coax",
+          "coax/lib/nostr/codecs-common.coax": "coax/lib/nostr/codecs-common.coax",
+          "coax/lib/nostr/event.coax": "coax/lib/nostr/event.coax",
+          "coax/lib/nostr/event_sign.coax": "coax/lib/nostr/event_sign.coax",
+          "coax/lib/nostr/fixtures/coax_relay.coax": "coax/lib/nostr/fixtures/coax_relay.coax",
+          "coax/lib/nostr/fixtures/json_suite.coax": "coax/lib/nostr/fixtures/json_suite.coax",
+          "coax/lib/nostr/hex.coax": "coax/lib/nostr/hex.coax",
+          "coax/lib/nostr/json.coax": "coax/lib/nostr/json.coax",
+          "coax/tests/nostr/event_checks.coax": "coax/tests/nostr/event_checks.coax",
+          "coax/tests/nostr/event_fast_checks.coax": "coax/tests/nostr/event_fast_checks.coax",
+          "coax/tests/nostr/event_fixtures.coax": "coax/tests/nostr/event_fixtures.coax",
+          "coax/tests/nostr/event_sign_vectors.coax": "coax/tests/nostr/event_sign_vectors.coax",
+          "coax/tests/nostr/scalar_fixtures.coax": "coax/tests/nostr/scalar_fixtures.coax",
+          "coax/tests/nostr/schnorr_checks.coax": "coax/tests/nostr/schnorr_checks.coax",
+          "coax/tests/nostr/schnorr_fixtures.coax": "coax/tests/nostr/schnorr_fixtures.coax",
+          "coax/tests/nostr/schnorr_sign_vectors.coax": "coax/tests/nostr/schnorr_sign_vectors.coax",
+          "nostr/examples/events.coax": "nostr/examples/events.coax",
+          "nostr/fixtures/events.out": "nostr/fixtures/events.out"
+        },
+        "closure_sha256": "85acee1fdda25c9e6bb2245cbf4db299d3622470e07157cd42099e452baa7832",
+        "expected": {
+          "stdout": "nostr/fixtures/events.out",
+          "sha256": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c",
+          "exit_status": 0
+        }
+      },
+      "mode": "debug",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "83563d8e2429e63f8c8e1114ef727a28e588d12060d58268daae8aa8ff36aeee",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "nostr-event-client-retained.assets/event-sign-verify-debug.stdout",
+        "sha256": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c",
+        "bytes": 2135
+      },
+      "stderr": {
+        "path": "nostr-event-client-retained.assets/event-sign-verify-debug.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "event-sign-verify:release",
+      "fingerprint": {
+        "recipe_sha256": "b8bef8ec26cf84fad3b869ec656bfda7b476e0b2113dd676e8190d699bf99b1c",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+          "coax/lib/crypto/ecdh_fast.coax": "8247ea4a284db45d98a3b810c80e3ee80bac2ee4e5f2396174e2aabe5d6deee2",
+          "coax/lib/crypto/schnorr.coax": "aa24658ad55066148dda34075463dc8034cb03eb5eff7dbd840162d9259b952a",
+          "coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+          "coax/lib/crypto/schnorr_math_workspace.coax": "97a253083cceac10ed99c32eba15cab894534c2e4e08604cea6d3305c5aee787",
+          "coax/lib/crypto/schnorr_nonce_point.coax": "af765494a39a5c6cfa7b4ef4487f82281bdc3dd41f43d96bec86b2f9c8e2f507",
+          "coax/lib/crypto/schnorr_nonce_workspace.coax": "68812db84fab59fb5fb22fe268c9d573c44e5df2cc5a99bac008810fe8bf8ac1",
+          "coax/lib/crypto/schnorr_point_workspace.coax": "98ab2e2ab9f4f90f2ae0333e8f340705b2a99520a717efa7e6139876d5b1f69e",
+          "coax/lib/crypto/schnorr_prepare_workspace.coax": "d96f9096b132f002baf75451c6698e2ec0e9656183028380faa60e2869eac305",
+          "coax/lib/crypto/schnorr_scalar_workspace.coax": "6a5b214e6a9ac87bcd0afa34b2bf0668126fa7ce4b8fe7f69bff6e50b4ee52f9",
+          "coax/lib/crypto/schnorr_self_verify.coax": "9145f2fe3b457a982b5808bf51b8ea9d82cd99ac1fc7e8812d5e0530c78aea7d",
+          "coax/lib/crypto/schnorr_sign.coax": "3e9702566ce8892c3cb94b0a05789b332f84c8f20b44948efe1e1ec3a17139c1",
+          "coax/lib/crypto/secp_field.coax": "b9840e7ed474e4a4e8e8273b4a27145ce4b2c9d18921e89d3693c5b4451d6f77",
+          "coax/lib/crypto/secp_field32.coax": "cd1a4ecf00535aa86b5fc3764cdc2920d745d9b3660b53999f83cdefd2c54902",
+          "coax/lib/crypto/secp_field32_total.coax": "971e37ac6fe8ab4e0e7e056935f8a130d44e1bf4520e56d7605227f9cbee74ae",
+          "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+          "coax/lib/crypto/secp_group32.coax": "ae2e2e5a1cd4701e094aa2aec34280d13277807621078fcb3394d53bbca2c6d6",
+          "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+          "coax/lib/crypto/secp_mult_base.coax": "fb9b34e769cb21e9d75439369e8608c27e94f5443907bd1b5a79f1cbcc1476a0",
+          "coax/lib/crypto/secp_mult_base_web.coax": "3ca9989b48ff368d1511fe9d81e4f91ec9f8f93d4099c6cf4cf0aa31fd391220",
+          "coax/lib/crypto/secp_mult_const.coax": "aaa83e00f1fa8a1a2954e654c741e056337c1d17d6b5ec6d7e1f8285abb438e5",
+          "coax/lib/crypto/secp_scalar.coax": "80d53f77a3d3da9cd60fed42b527540c15923ec644a6a3ccb095f85d2364312d",
+          "coax/lib/crypto/sha256-kernel.coax": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+          "coax/lib/crypto/sha256.coax": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+          "coax/lib/crypto/sha256_workspace.coax": "cdf7133f055242e3195feb21b9f4c1a84ce40168f52672f44d73e719fceb7e93",
+          "coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+          "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+          "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+          "coax/lib/nostr/event.coax": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f",
+          "coax/lib/nostr/event_sign.coax": "bf02052fb13343a31ed6fcfca6a3f3a4de1660574a5041ea2bf2b10c3cf6e098",
+          "coax/lib/nostr/fixtures/coax_relay.coax": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+          "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+          "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+          "coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+          "coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+          "coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+          "coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+          "coax/tests/nostr/event_sign_vectors.coax": "767fdf6caee3a183f7014271c8407a767ecd6e1bb9396487d1c9f8184d4d2013",
+          "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+          "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+          "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+          "coax/tests/nostr/schnorr_sign_vectors.coax": "84fda6ceab714c9b5ac93ff3596003783c84a00f97fa3b8ed31f73f2b22868db",
+          "nostr/examples/events.coax": "7ac54dd411b46e9c472bde793dba2bafce8aa04d4213aaa041cd1338d59f8b4d",
+          "nostr/fixtures/events.out": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c"
+        },
+        "resolutions": {
+          "coax/lib/crypto/bytes.coax": "coax/lib/crypto/bytes.coax",
+          "coax/lib/crypto/ecdh_fast.coax": "coax/lib/crypto/ecdh_fast.coax",
+          "coax/lib/crypto/schnorr.coax": "coax/lib/crypto/schnorr.coax",
+          "coax/lib/crypto/schnorr_fast.coax": "coax/lib/crypto/schnorr_fast.coax",
+          "coax/lib/crypto/schnorr_math_workspace.coax": "coax/lib/crypto/schnorr_math_workspace.coax",
+          "coax/lib/crypto/schnorr_nonce_point.coax": "coax/lib/crypto/schnorr_nonce_point.coax",
+          "coax/lib/crypto/schnorr_nonce_workspace.coax": "coax/lib/crypto/schnorr_nonce_workspace.coax",
+          "coax/lib/crypto/schnorr_point_workspace.coax": "coax/lib/crypto/schnorr_point_workspace.coax",
+          "coax/lib/crypto/schnorr_prepare_workspace.coax": "coax/lib/crypto/schnorr_prepare_workspace.coax",
+          "coax/lib/crypto/schnorr_scalar_workspace.coax": "coax/lib/crypto/schnorr_scalar_workspace.coax",
+          "coax/lib/crypto/schnorr_self_verify.coax": "coax/lib/crypto/schnorr_self_verify.coax",
+          "coax/lib/crypto/schnorr_sign.coax": "coax/lib/crypto/schnorr_sign.coax",
+          "coax/lib/crypto/secp_field.coax": "coax/lib/crypto/secp_field.coax",
+          "coax/lib/crypto/secp_field32.coax": "coax/lib/crypto/secp_field32.coax",
+          "coax/lib/crypto/secp_field32_total.coax": "coax/lib/crypto/secp_field32_total.coax",
+          "coax/lib/crypto/secp_group.coax": "coax/lib/crypto/secp_group.coax",
+          "coax/lib/crypto/secp_group32.coax": "coax/lib/crypto/secp_group32.coax",
+          "coax/lib/crypto/secp_mult.coax": "coax/lib/crypto/secp_mult.coax",
+          "coax/lib/crypto/secp_mult_base.coax": "coax/lib/crypto/secp_mult_base.coax",
+          "coax/lib/crypto/secp_mult_base_web.coax": "coax/lib/crypto/secp_mult_base_web.coax",
+          "coax/lib/crypto/secp_mult_const.coax": "coax/lib/crypto/secp_mult_const.coax",
+          "coax/lib/crypto/secp_scalar.coax": "coax/lib/crypto/secp_scalar.coax",
+          "coax/lib/crypto/sha256-kernel.coax": "coax/lib/crypto/sha256-kernel.coax",
+          "coax/lib/crypto/sha256.coax": "coax/lib/crypto/sha256.coax",
+          "coax/lib/crypto/sha256_workspace.coax": "coax/lib/crypto/sha256_workspace.coax",
+          "coax/lib/nostr/adapters/json-admission.coax": "coax/lib/nostr/adapters/json-admission.coax",
+          "coax/lib/nostr/adapters/json-policy.coax": "coax/lib/nostr/adapters/json-policy.coax",
+          "coax/lib/nostr/codecs-common.coax": "coax/lib/nostr/codecs-common.coax",
+          "coax/lib/nostr/event.coax": "coax/lib/nostr/event.coax",
+          "coax/lib/nostr/event_sign.coax": "coax/lib/nostr/event_sign.coax",
+          "coax/lib/nostr/fixtures/coax_relay.coax": "coax/lib/nostr/fixtures/coax_relay.coax",
+          "coax/lib/nostr/fixtures/json_suite.coax": "coax/lib/nostr/fixtures/json_suite.coax",
+          "coax/lib/nostr/hex.coax": "coax/lib/nostr/hex.coax",
+          "coax/lib/nostr/json.coax": "coax/lib/nostr/json.coax",
+          "coax/tests/nostr/event_checks.coax": "coax/tests/nostr/event_checks.coax",
+          "coax/tests/nostr/event_fast_checks.coax": "coax/tests/nostr/event_fast_checks.coax",
+          "coax/tests/nostr/event_fixtures.coax": "coax/tests/nostr/event_fixtures.coax",
+          "coax/tests/nostr/event_sign_vectors.coax": "coax/tests/nostr/event_sign_vectors.coax",
+          "coax/tests/nostr/scalar_fixtures.coax": "coax/tests/nostr/scalar_fixtures.coax",
+          "coax/tests/nostr/schnorr_checks.coax": "coax/tests/nostr/schnorr_checks.coax",
+          "coax/tests/nostr/schnorr_fixtures.coax": "coax/tests/nostr/schnorr_fixtures.coax",
+          "coax/tests/nostr/schnorr_sign_vectors.coax": "coax/tests/nostr/schnorr_sign_vectors.coax",
+          "nostr/examples/events.coax": "nostr/examples/events.coax",
+          "nostr/fixtures/events.out": "nostr/fixtures/events.out"
+        },
+        "closure_sha256": "85acee1fdda25c9e6bb2245cbf4db299d3622470e07157cd42099e452baa7832",
+        "expected": {
+          "stdout": "nostr/fixtures/events.out",
+          "sha256": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c",
+          "exit_status": 0
+        }
+      },
+      "mode": "release",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "83563d8e2429e63f8c8e1114ef727a28e588d12060d58268daae8aa8ff36aeee",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "nostr-event-client-retained.assets/event-sign-verify-release.stdout",
+        "sha256": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c",
+        "bytes": 2135
+      },
+      "stderr": {
+        "path": "nostr-event-client-retained.assets/event-sign-verify-release.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "scripted-client:debug",
+      "fingerprint": {
+        "recipe_sha256": "e836409ddd362f1617dc85ec2e331f69962575ee1d8c11d5d1decef996b1cb7b",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+          "coax/lib/crypto/ecdh_fast.coax": "8247ea4a284db45d98a3b810c80e3ee80bac2ee4e5f2396174e2aabe5d6deee2",
+          "coax/lib/crypto/schnorr.coax": "aa24658ad55066148dda34075463dc8034cb03eb5eff7dbd840162d9259b952a",
+          "coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+          "coax/lib/crypto/secp_field.coax": "b9840e7ed474e4a4e8e8273b4a27145ce4b2c9d18921e89d3693c5b4451d6f77",
+          "coax/lib/crypto/secp_field32.coax": "cd1a4ecf00535aa86b5fc3764cdc2920d745d9b3660b53999f83cdefd2c54902",
+          "coax/lib/crypto/secp_field32_total.coax": "971e37ac6fe8ab4e0e7e056935f8a130d44e1bf4520e56d7605227f9cbee74ae",
+          "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+          "coax/lib/crypto/secp_group32.coax": "ae2e2e5a1cd4701e094aa2aec34280d13277807621078fcb3394d53bbca2c6d6",
+          "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+          "coax/lib/crypto/secp_scalar.coax": "80d53f77a3d3da9cd60fed42b527540c15923ec644a6a3ccb095f85d2364312d",
+          "coax/lib/crypto/sha1.coax": "b668ce0c73e20fdf3f2ba26460ac0c92eaa75cfd5f86d0372186d106f294aa3d",
+          "coax/lib/crypto/sha256-kernel.coax": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+          "coax/lib/crypto/sha256.coax": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+          "coax/lib/net/relay_conn_rules.coax": "924b71b6f3201ac0a88aed3f4d4c3318ea1e3a3987be68344cd8c9c2ef4b7659",
+          "coax/lib/net/ws.coax": "63516fa8fc61e7e04c13db36af37f85f5651a86731db3b5c6ff264f990e13e1f",
+          "coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+          "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+          "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+          "coax/lib/nostr/event.coax": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f",
+          "coax/lib/nostr/filter.coax": "e364258615344efc147ad8a5de596893e2e75ebfdadd483c902782c3dd804cf2",
+          "coax/lib/nostr/fixtures/coax_relay.coax": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+          "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+          "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+          "coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+          "coax/lib/nostr/message.coax": "26fcce23387737c607bd06ea8b24731cfb4c5cf7f7b2a350af53f931c2980e0b",
+          "coax/lib/nostr/relay.coax": "94db9b8d007dc184aed5077d56e40915d2bf6110a25c8f6b6106d7575d31508e",
+          "coax/lib/nostr/relay_read.coax": "a4deda45a3ca20ffe3f7d5b25d3f8a7087d978477fe9eb8b98c38e53ae296536",
+          "coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+          "coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+          "coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+          "coax/tests/nostr/relay_read_fixtures.coax": "b4a5e61e93c6be9793e8f2107d8fb59014ef74ea2b76d0b1c5f8712699db4d13",
+          "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+          "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+          "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+          "nostr/examples/relay-connection.coax": "7a904ba2036569d925dbb07899c60008c53eabe1bcd76420b98a3396520b9236",
+          "nostr/fixtures/relay-connection.out": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02"
+        },
+        "resolutions": {
+          "coax/lib/crypto/bytes.coax": "coax/lib/crypto/bytes.coax",
+          "coax/lib/crypto/ecdh_fast.coax": "coax/lib/crypto/ecdh_fast.coax",
+          "coax/lib/crypto/schnorr.coax": "coax/lib/crypto/schnorr.coax",
+          "coax/lib/crypto/schnorr_fast.coax": "coax/lib/crypto/schnorr_fast.coax",
+          "coax/lib/crypto/secp_field.coax": "coax/lib/crypto/secp_field.coax",
+          "coax/lib/crypto/secp_field32.coax": "coax/lib/crypto/secp_field32.coax",
+          "coax/lib/crypto/secp_field32_total.coax": "coax/lib/crypto/secp_field32_total.coax",
+          "coax/lib/crypto/secp_group.coax": "coax/lib/crypto/secp_group.coax",
+          "coax/lib/crypto/secp_group32.coax": "coax/lib/crypto/secp_group32.coax",
+          "coax/lib/crypto/secp_mult.coax": "coax/lib/crypto/secp_mult.coax",
+          "coax/lib/crypto/secp_scalar.coax": "coax/lib/crypto/secp_scalar.coax",
+          "coax/lib/crypto/sha1.coax": "coax/lib/crypto/sha1.coax",
+          "coax/lib/crypto/sha256-kernel.coax": "coax/lib/crypto/sha256-kernel.coax",
+          "coax/lib/crypto/sha256.coax": "coax/lib/crypto/sha256.coax",
+          "coax/lib/net/relay_conn_rules.coax": "coax/lib/net/relay_conn_rules.coax",
+          "coax/lib/net/ws.coax": "coax/lib/net/ws.coax",
+          "coax/lib/nostr/adapters/json-admission.coax": "coax/lib/nostr/adapters/json-admission.coax",
+          "coax/lib/nostr/adapters/json-policy.coax": "coax/lib/nostr/adapters/json-policy.coax",
+          "coax/lib/nostr/codecs-common.coax": "coax/lib/nostr/codecs-common.coax",
+          "coax/lib/nostr/event.coax": "coax/lib/nostr/event.coax",
+          "coax/lib/nostr/filter.coax": "coax/lib/nostr/filter.coax",
+          "coax/lib/nostr/fixtures/coax_relay.coax": "coax/lib/nostr/fixtures/coax_relay.coax",
+          "coax/lib/nostr/fixtures/json_suite.coax": "coax/lib/nostr/fixtures/json_suite.coax",
+          "coax/lib/nostr/hex.coax": "coax/lib/nostr/hex.coax",
+          "coax/lib/nostr/json.coax": "coax/lib/nostr/json.coax",
+          "coax/lib/nostr/message.coax": "coax/lib/nostr/message.coax",
+          "coax/lib/nostr/relay.coax": "coax/lib/nostr/relay.coax",
+          "coax/lib/nostr/relay_read.coax": "coax/lib/nostr/relay_read.coax",
+          "coax/tests/nostr/event_checks.coax": "coax/tests/nostr/event_checks.coax",
+          "coax/tests/nostr/event_fast_checks.coax": "coax/tests/nostr/event_fast_checks.coax",
+          "coax/tests/nostr/event_fixtures.coax": "coax/tests/nostr/event_fixtures.coax",
+          "coax/tests/nostr/relay_read_fixtures.coax": "coax/tests/nostr/relay_read_fixtures.coax",
+          "coax/tests/nostr/scalar_fixtures.coax": "coax/tests/nostr/scalar_fixtures.coax",
+          "coax/tests/nostr/schnorr_checks.coax": "coax/tests/nostr/schnorr_checks.coax",
+          "coax/tests/nostr/schnorr_fixtures.coax": "coax/tests/nostr/schnorr_fixtures.coax",
+          "nostr/examples/relay-connection.coax": "nostr/examples/relay-connection.coax",
+          "nostr/fixtures/relay-connection.out": "nostr/fixtures/relay-connection.out"
+        },
+        "closure_sha256": "8ce51473d186d95f39f45843a639604fa78f2c7ad681cb38d4ae5787ea33f515",
+        "expected": {
+          "stdout": "nostr/fixtures/relay-connection.out",
+          "sha256": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02",
+          "exit_status": 0
+        }
+      },
+      "mode": "debug",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "83563d8e2429e63f8c8e1114ef727a28e588d12060d58268daae8aa8ff36aeee",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "nostr-event-client-retained.assets/scripted-client-debug.stdout",
+        "sha256": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02",
+        "bytes": 2926
+      },
+      "stderr": {
+        "path": "nostr-event-client-retained.assets/scripted-client-debug.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "scripted-client:release",
+      "fingerprint": {
+        "recipe_sha256": "2914e535160be624285d0ba764d1a0b66053918d3e9127f12845fe2a790229fe",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+          "coax/lib/crypto/ecdh_fast.coax": "8247ea4a284db45d98a3b810c80e3ee80bac2ee4e5f2396174e2aabe5d6deee2",
+          "coax/lib/crypto/schnorr.coax": "aa24658ad55066148dda34075463dc8034cb03eb5eff7dbd840162d9259b952a",
+          "coax/lib/crypto/schnorr_fast.coax": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c",
+          "coax/lib/crypto/secp_field.coax": "b9840e7ed474e4a4e8e8273b4a27145ce4b2c9d18921e89d3693c5b4451d6f77",
+          "coax/lib/crypto/secp_field32.coax": "cd1a4ecf00535aa86b5fc3764cdc2920d745d9b3660b53999f83cdefd2c54902",
+          "coax/lib/crypto/secp_field32_total.coax": "971e37ac6fe8ab4e0e7e056935f8a130d44e1bf4520e56d7605227f9cbee74ae",
+          "coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+          "coax/lib/crypto/secp_group32.coax": "ae2e2e5a1cd4701e094aa2aec34280d13277807621078fcb3394d53bbca2c6d6",
+          "coax/lib/crypto/secp_mult.coax": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195",
+          "coax/lib/crypto/secp_scalar.coax": "80d53f77a3d3da9cd60fed42b527540c15923ec644a6a3ccb095f85d2364312d",
+          "coax/lib/crypto/sha1.coax": "b668ce0c73e20fdf3f2ba26460ac0c92eaa75cfd5f86d0372186d106f294aa3d",
+          "coax/lib/crypto/sha256-kernel.coax": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+          "coax/lib/crypto/sha256.coax": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+          "coax/lib/net/relay_conn_rules.coax": "924b71b6f3201ac0a88aed3f4d4c3318ea1e3a3987be68344cd8c9c2ef4b7659",
+          "coax/lib/net/ws.coax": "63516fa8fc61e7e04c13db36af37f85f5651a86731db3b5c6ff264f990e13e1f",
+          "coax/lib/nostr/adapters/json-admission.coax": "7b520fb5a24b259d5daaa68064823f05c60ea8f1cb4d5c19418f12eccd487824",
+          "coax/lib/nostr/adapters/json-policy.coax": "1ab2715cb86e662cae28ad7bb56e9e2aeaa01a05101a0bdfb1a2381eca6d237c",
+          "coax/lib/nostr/codecs-common.coax": "8e670742b1affa5478e323b443d446dfed35e9e3886e5ed403623ca7a8400377",
+          "coax/lib/nostr/event.coax": "3b0c0feca25959ecd4a4138a3e74a795c65258198fcb1510c0f9e5b2d3e5419f",
+          "coax/lib/nostr/filter.coax": "e364258615344efc147ad8a5de596893e2e75ebfdadd483c902782c3dd804cf2",
+          "coax/lib/nostr/fixtures/coax_relay.coax": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+          "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+          "coax/lib/nostr/hex.coax": "cbd92ac6a15eeb6629d1fde130f230f15e0f8711273005e789a762bdb9ac02c5",
+          "coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+          "coax/lib/nostr/message.coax": "26fcce23387737c607bd06ea8b24731cfb4c5cf7f7b2a350af53f931c2980e0b",
+          "coax/lib/nostr/relay.coax": "94db9b8d007dc184aed5077d56e40915d2bf6110a25c8f6b6106d7575d31508e",
+          "coax/lib/nostr/relay_read.coax": "a4deda45a3ca20ffe3f7d5b25d3f8a7087d978477fe9eb8b98c38e53ae296536",
+          "coax/tests/nostr/event_checks.coax": "b8663ffe4d5289ff62e43a02c302ce831aba6ea3383f1bc5f21721bfdffe9225",
+          "coax/tests/nostr/event_fast_checks.coax": "f3fdb0d59e3666987f3ceb0adeaad66fc576c20f92fd8c6cd85fb4a861e53ded",
+          "coax/tests/nostr/event_fixtures.coax": "fcc3347dc54dfe1fb1361ab23ab0b76b7641f9691e280dec71526c0bcec78a67",
+          "coax/tests/nostr/relay_read_fixtures.coax": "b4a5e61e93c6be9793e8f2107d8fb59014ef74ea2b76d0b1c5f8712699db4d13",
+          "coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+          "coax/tests/nostr/schnorr_checks.coax": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc",
+          "coax/tests/nostr/schnorr_fixtures.coax": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756",
+          "nostr/examples/relay-connection.coax": "7a904ba2036569d925dbb07899c60008c53eabe1bcd76420b98a3396520b9236",
+          "nostr/fixtures/relay-connection.out": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02"
+        },
+        "resolutions": {
+          "coax/lib/crypto/bytes.coax": "coax/lib/crypto/bytes.coax",
+          "coax/lib/crypto/ecdh_fast.coax": "coax/lib/crypto/ecdh_fast.coax",
+          "coax/lib/crypto/schnorr.coax": "coax/lib/crypto/schnorr.coax",
+          "coax/lib/crypto/schnorr_fast.coax": "coax/lib/crypto/schnorr_fast.coax",
+          "coax/lib/crypto/secp_field.coax": "coax/lib/crypto/secp_field.coax",
+          "coax/lib/crypto/secp_field32.coax": "coax/lib/crypto/secp_field32.coax",
+          "coax/lib/crypto/secp_field32_total.coax": "coax/lib/crypto/secp_field32_total.coax",
+          "coax/lib/crypto/secp_group.coax": "coax/lib/crypto/secp_group.coax",
+          "coax/lib/crypto/secp_group32.coax": "coax/lib/crypto/secp_group32.coax",
+          "coax/lib/crypto/secp_mult.coax": "coax/lib/crypto/secp_mult.coax",
+          "coax/lib/crypto/secp_scalar.coax": "coax/lib/crypto/secp_scalar.coax",
+          "coax/lib/crypto/sha1.coax": "coax/lib/crypto/sha1.coax",
+          "coax/lib/crypto/sha256-kernel.coax": "coax/lib/crypto/sha256-kernel.coax",
+          "coax/lib/crypto/sha256.coax": "coax/lib/crypto/sha256.coax",
+          "coax/lib/net/relay_conn_rules.coax": "coax/lib/net/relay_conn_rules.coax",
+          "coax/lib/net/ws.coax": "coax/lib/net/ws.coax",
+          "coax/lib/nostr/adapters/json-admission.coax": "coax/lib/nostr/adapters/json-admission.coax",
+          "coax/lib/nostr/adapters/json-policy.coax": "coax/lib/nostr/adapters/json-policy.coax",
+          "coax/lib/nostr/codecs-common.coax": "coax/lib/nostr/codecs-common.coax",
+          "coax/lib/nostr/event.coax": "coax/lib/nostr/event.coax",
+          "coax/lib/nostr/filter.coax": "coax/lib/nostr/filter.coax",
+          "coax/lib/nostr/fixtures/coax_relay.coax": "coax/lib/nostr/fixtures/coax_relay.coax",
+          "coax/lib/nostr/fixtures/json_suite.coax": "coax/lib/nostr/fixtures/json_suite.coax",
+          "coax/lib/nostr/hex.coax": "coax/lib/nostr/hex.coax",
+          "coax/lib/nostr/json.coax": "coax/lib/nostr/json.coax",
+          "coax/lib/nostr/message.coax": "coax/lib/nostr/message.coax",
+          "coax/lib/nostr/relay.coax": "coax/lib/nostr/relay.coax",
+          "coax/lib/nostr/relay_read.coax": "coax/lib/nostr/relay_read.coax",
+          "coax/tests/nostr/event_checks.coax": "coax/tests/nostr/event_checks.coax",
+          "coax/tests/nostr/event_fast_checks.coax": "coax/tests/nostr/event_fast_checks.coax",
+          "coax/tests/nostr/event_fixtures.coax": "coax/tests/nostr/event_fixtures.coax",
+          "coax/tests/nostr/relay_read_fixtures.coax": "coax/tests/nostr/relay_read_fixtures.coax",
+          "coax/tests/nostr/scalar_fixtures.coax": "coax/tests/nostr/scalar_fixtures.coax",
+          "coax/tests/nostr/schnorr_checks.coax": "coax/tests/nostr/schnorr_checks.coax",
+          "coax/tests/nostr/schnorr_fixtures.coax": "coax/tests/nostr/schnorr_fixtures.coax",
+          "nostr/examples/relay-connection.coax": "nostr/examples/relay-connection.coax",
+          "nostr/fixtures/relay-connection.out": "nostr/fixtures/relay-connection.out"
+        },
+        "closure_sha256": "8ce51473d186d95f39f45843a639604fa78f2c7ad681cb38d4ae5787ea33f515",
+        "expected": {
+          "stdout": "nostr/fixtures/relay-connection.out",
+          "sha256": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02",
+          "exit_status": 0
+        }
+      },
+      "mode": "release",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "83563d8e2429e63f8c8e1114ef727a28e588d12060d58268daae8aa8ff36aeee",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "nostr-event-client-retained.assets/scripted-client-release.stdout",
+        "sha256": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02",
+        "bytes": 2926
+      },
+      "stderr": {
+        "path": "nostr-event-client-retained.assets/scripted-client-release.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    }
+  ],
+  "route_definition": {
+    "id": "nostr-event-client",
+    "title": "Sign and verify an event, then replay a client connection",
+    "book": "nostr",
+    "scope": "Sign a complete event with a published BIP-340 test key, verify its ID/signature and altered-field refusals, then drive the pure client connection through scripted handshakes, reconnects, verified events, duplicate/stale reports, acknowledgments and shutdown.",
+    "limitations": [
+      "Signing material is a committed public test vector. No user key, Keychain, wallet, entropy source or external signer is opened.",
+      "Transport bytes and times are scripted in memory. No socket is opened or relay contacted; native TLS, browser secret handling, durable storage, live interoperability and deployed relays are separate profiles.",
+      "The Pylon consumes the shared signer and relay state machine through its own real transport and admission paths. This offline route does not establish that consumer or production relay readiness."
+    ],
+    "prerequisites": {
+      "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+      "commands": [
+        "python3",
+        "cc"
+      ],
+      "hardware": "CPU terminal; retained observations are Apple silicon/macOS. Another host requires its own matching receipt. No GPU or browser is required.",
+      "data": [],
+      "network": false
+    },
+    "chapters": [
+      "nostr/book/ch011-verify-a-schnorr-signature.md",
+      "nostr/book/ch013-sign-with-schnorr.md",
+      "nostr/book/ch017-json-you-can-sign.md",
+      "nostr/book/ch021-events-ids-and-signatures.md",
+      "nostr/book/ch024-relay-messages.md",
+      "nostr/book/ch029-a-relay-connection.md"
+    ],
+    "evidence": [
+      "nostr/book/examples.json",
+      "docs/verification/coax-nostr-event-2026-10-28.md",
+      "psionic/lib/pylon/run.coax"
+    ],
+    "steps": [
+      {
+        "id": "event-sign-verify",
+        "kind": "coax-run",
+        "source": "nostr/examples/events.coax",
+        "stdout": "nostr/fixtures/events.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ],
+        "timeout": 240,
+        "run_steps": 250000000
+      },
+      {
+        "id": "scripted-client",
+        "kind": "coax-run",
+        "source": "nostr/examples/relay-connection.coax",
+        "stdout": "nostr/fixtures/relay-connection.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ],
+        "timeout": 120
+      }
+    ]
+  },
+  "route_definition_sha256": "dc35fa80f491ce22a308fc25c2b3cebcd3a8e3fc487b04fde0f6b656ab2c7d56",
+  "revision_scope": "Git HEAD at observation; source hashes, not a claim that the worktree is clean or published.",
+  "scope": "Exact selected native examples and declared workflow, not all book capabilities, product adoption, live transport, browser rendering or production deployment.",
+  "previous_receipt": {
+    "path": "/private/tmp/openagents-book-routes-20261101/docs/verification/book-routes-2026-11-01/nostr-event-client.json",
+    "sha256": "83563d8e2429e63f8c8e1114ef727a28e588d12060d58268daae8aa8ff36aeee"
+  },
+  "integrity_sha256": "14bdee25504c8d3955f7bdf89a892d1e19bbbce50cbe935860df9ddd35e589d6",
+  "executed_runs": 0,
+  "retained_runs": 4,
+  "finished_at": "2026-11-02T02:57:39.820850+00:00"
+}

@@ -1,0 +1,312 @@
+{
+  "schema_version": 1,
+  "routes": [
+    {
+      "id": "coax-current-ffi",
+      "title": "Current Coax and a local C boundary",
+      "book": "coax",
+      "scope": "Run current strings, explicit error results and shared source identities, then call emitted Coax from C through a local-file/protobuf workflow. The capstone checks stale completion, failure and timeout paths in C debug and optimized builds.",
+      "limitations": [
+        "Selected current-language examples do not qualify every Coax feature or chapter. Generic constraints, ownership and other targets retain their own evidence.",
+        "The file effect is temporary and local. Decoded protobuf bytes do not authorize a HUD action. General fallible foreign results and asynchronous ownership remain separate completion work.",
+        "Teaching examples do not record new product adoption or qualify an app, browser, deployment or full compiler."
+      ],
+      "prerequisites": {
+        "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+        "commands": [
+          "python3",
+          "bash",
+          "cc"
+        ],
+        "hardware": "CPU terminal; retained observations are Apple silicon/macOS. Another host requires its own matching receipt. No GPU or browser is required.",
+        "data": [],
+        "network": false
+      },
+      "chapters": [
+        "coax/book/ch01-getting-started.md",
+        "coax/book/ch07-errors.md",
+        "coax/book/ch10-organizing-programs.md",
+        "coax/book/ch20-interop.md",
+        "coax/book/ch24-a-complete-boundary.md"
+      ],
+      "evidence": [
+        "coax/book-maintenance.md",
+        "coax/verification-retained-stores.md"
+      ],
+      "steps": [
+        {
+          "id": "hello",
+          "kind": "coax-run",
+          "source": "coax/book/examples/ch01_hello_name.coax",
+          "stdout": "coax/book/examples/ch01_hello_name.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "error-results",
+          "kind": "coax-run",
+          "source": "coax/book/examples/ch07_ports3.coax",
+          "stdout": "coax/book/examples/ch07_ports3.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "source-modules",
+          "kind": "coax-run",
+          "source": "coax/book/examples/ch10_sources.coax",
+          "stdout": "coax/book/examples/ch10_sources.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "local-c-workflow",
+          "kind": "command",
+          "argv": [
+            "bash",
+            "coax/book/examples/ch24_workflow/run.sh"
+          ],
+          "sources": [
+            "coax/book/examples/ch24_workflow/workflow.coax"
+          ],
+          "inputs": [
+            "coax/book/examples/ch24_workflow/host.c",
+            "coax/book/examples/ch24_workflow/run.sh",
+            "proto/descriptors/ios-home.pb"
+          ],
+          "stdout": "coax/book/examples/ch24_workflow/run.out",
+          "exit_status": 0,
+          "modes": [
+            "native"
+          ],
+          "env": {
+            "PROTOC": "",
+            "BOOK_MUTATE": "0",
+            "BOOK_SANITIZE": "0"
+          },
+          "timeout": 180
+        }
+      ]
+    },
+    {
+      "id": "aethyr-core-replay",
+      "title": "Aethyr fixed steps, input and replay",
+      "book": "aethyr",
+      "scope": "Run CPU engine-core examples for fixed-step scheduling at four frame rates, one queued press consumed once, and a recorded walk replayed to the same digest with an identified planted divergence.",
+      "limitations": [
+        "The small teaching session does not qualify a rendered or playable full realm, general rigid-body simulation or Forge artifacts.",
+        "Browser/Wasm parity belongs to a separate retained harness. This CPU route starts no server, WebGPU page or audio playback.",
+        "Existing component consumers such as verse/gridwalk.coax keep their recorded adoption scope. These examples neither migrate a whole realm nor add an adopted_by relationship."
+      ],
+      "prerequisites": {
+        "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+        "commands": [
+          "python3",
+          "cc"
+        ],
+        "hardware": "CPU terminal; retained observations are Apple silicon/macOS. Another host requires its own matching receipt. No GPU or browser is required.",
+        "data": [],
+        "network": false
+      },
+      "chapters": [
+        "coax/book/ch11-writing-checks.md",
+        "coax/book/ch16-determinism.md",
+        "aethyr/book/ch001-a-frame-has-a-fixed-step.md",
+        "aethyr/book/ch003-state-starts-from-its-defaults.md",
+        "aethyr/book/ch004-input-becomes-typed-actions.md",
+        "aethyr/book/ch005-replay-a-session-exactly.md"
+      ],
+      "evidence": [
+        "aethyr/book/examples.json",
+        "aethyr/tests/book-chapter9-qualification.json",
+        "verse/gridwalk.coax"
+      ],
+      "steps": [
+        {
+          "id": "fixed-step",
+          "kind": "coax-run",
+          "source": "aethyr/examples/frame-rates.coax",
+          "stdout": "aethyr/fixtures/frame-rates.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "one-press",
+          "kind": "coax-run",
+          "source": "aethyr/examples/one-press.coax",
+          "stdout": "aethyr/fixtures/one-press.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        },
+        {
+          "id": "replay-walk",
+          "kind": "coax-run",
+          "source": "aethyr/examples/replay-a-walk.coax",
+          "stdout": "aethyr/fixtures/replay-a-walk.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        }
+      ]
+    },
+    {
+      "id": "psionic-public-models",
+      "title": "Train and resume a tiny module, then inspect MLP and CNN models",
+      "book": "psionic",
+      "scope": "Actually train the existing 76-parameter public module for 400 tiny SGD steps, compare every loss and saved float with its reference loop, and resume from step 200. Then construct the public 3322-parameter MLP and 2910-parameter CNN, execute synthetic zero-model gradients and demonstrate atomic refusal of unrepresentable compute weights.",
+      "limitations": [
+        "Only the tiny fixed module is trained here. The MLP and CNN steps are dataset-free API/refusal examples and do not rerun the frozen MNIST learning experiments.",
+        "Retained MLP/CNN quality, independent gradients, replay and export records remain separate. Exact example output does not requalify those experiments on this compiler or host.",
+        "Convolution is CPU f32 NCHW/OIHW valid stride one with formal first-order f64 tape derivatives. GPU convolution, compiled convolution backward, higher-order transforms, pooling and broader architecture acceptance remain outside this route.",
+        "Examples do not count as product adoption. The native mnist-experiment.coax and cnn-experiment.coax consumers retain separate workload and quality gates."
+      ],
+      "prerequisites": {
+        "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+        "commands": [
+          "python3",
+          "cc"
+        ],
+        "hardware": "CPU terminal; retained observations are Apple silicon/macOS. Another host requires its own matching receipt. No GPU or browser is required.",
+        "data": [],
+        "network": false
+      },
+      "chapters": [
+        "psionic/book/ch003-a-tensor-is-a-view-of-memory.md",
+        "psionic/book/ch038-a-tensor-program-becomes-an-execution-plan.md",
+        "psionic/book/ch106-differentiate-any-tensor-program.md",
+        "psionic/book/ch117-models-are-compositions-of-modules.md",
+        "psionic/book/ch118-one-trainer-for-every-model.md",
+        "psionic/book/ch122-a-checkpoint-holds-the-whole-experiment.md",
+        "psionic/book/ch124-adamw-and-explicit-precision.md"
+      ],
+      "evidence": [
+        "psionic/book/examples.json",
+        "docs/verification/psionic-mnist-framework-2026-11-01.json",
+        "docs/verification/psionic-cnn-framework-2026-11-01.json",
+        "psionic/fixtures/cnn-core/qualification.json",
+        "psionic/fixtures/cnn/mlp-compatibility.json"
+      ],
+      "steps": [
+        {
+          "id": "tiny-training-resume",
+          "kind": "coax-run",
+          "source": "psionic/examples/one-trainer-module.coax",
+          "stdout": "psionic/fixtures/one-trainer-module.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 180
+        },
+        {
+          "id": "public-mlp",
+          "kind": "coax-run",
+          "source": "psionic/examples/mnist-classifier.coax",
+          "stdout": "psionic/fixtures/mnist-classifier.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 180
+        },
+        {
+          "id": "public-cnn",
+          "kind": "coax-run",
+          "source": "psionic/examples/cnn-classifier.coax",
+          "stdout": "psionic/fixtures/cnn-classifier.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 180
+        }
+      ]
+    },
+    {
+      "id": "nostr-event-client",
+      "title": "Sign and verify an event, then replay a client connection",
+      "book": "nostr",
+      "scope": "Sign a complete event with a published BIP-340 test key, verify its ID/signature and altered-field refusals, then drive the pure client connection through scripted handshakes, reconnects, verified events, duplicate/stale reports, acknowledgments and shutdown.",
+      "limitations": [
+        "Signing material is a committed public test vector. No user key, Keychain, wallet, entropy source or external signer is opened.",
+        "Transport bytes and times are scripted in memory. No socket is opened or relay contacted; native TLS, browser secret handling, durable storage, live interoperability and deployed relays are separate profiles.",
+        "The Pylon consumes the shared signer and relay state machine through its own real transport and admission paths. This offline route does not establish that consumer or production relay readiness."
+      ],
+      "prerequisites": {
+        "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+        "commands": [
+          "python3",
+          "cc"
+        ],
+        "hardware": "CPU terminal; retained observations are Apple silicon/macOS. Another host requires its own matching receipt. No GPU or browser is required.",
+        "data": [],
+        "network": false
+      },
+      "chapters": [
+        "nostr/book/ch011-verify-a-schnorr-signature.md",
+        "nostr/book/ch013-sign-with-schnorr.md",
+        "nostr/book/ch017-json-you-can-sign.md",
+        "nostr/book/ch021-events-ids-and-signatures.md",
+        "nostr/book/ch024-relay-messages.md",
+        "nostr/book/ch029-a-relay-connection.md"
+      ],
+      "evidence": [
+        "nostr/book/examples.json",
+        "docs/verification/coax-nostr-event-2026-10-28.md",
+        "psionic/lib/pylon/run.coax"
+      ],
+      "steps": [
+        {
+          "id": "event-sign-verify",
+          "kind": "coax-run",
+          "source": "nostr/examples/events.coax",
+          "stdout": "nostr/fixtures/events.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 240,
+          "run_steps": 250000000
+        },
+        {
+          "id": "scripted-client",
+          "kind": "coax-run",
+          "source": "nostr/examples/relay-connection.coax",
+          "stdout": "nostr/fixtures/relay-connection.out",
+          "exit_status": 0,
+          "modes": [
+            "debug",
+            "release"
+          ],
+          "timeout": 120
+        }
+      ]
+    }
+  ]
+}

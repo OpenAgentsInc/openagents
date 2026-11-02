@@ -6,9 +6,15 @@ Existing pages keep their IDs/URLs. New SUMMARY sections become overview pages.
 Pages that SUMMARY no longer lists are deleted, and their old URLs redirect to
 the current page with the same name, or to the book's first page.
 After the merge, the live page inventory must equal SUMMARY (`--check-live`
-runs only that comparison).
+runs that read-only comparison). A successful publication writes an atomic
+source/revision receipt. `--check-receipt` validates its local source provenance
+without credentials or network; `--check-live --require-receipt` also requires
+the recorded live revision and page identities. Live document bodies are not
+independently fetched or hashed by these checks.
 """
 import argparse
+from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,6 +22,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from urllib.parse import unquote, urlsplit
@@ -24,6 +31,9 @@ ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "https://github.com/OpenAgentsInc/openagents.git"
 BLOB = "https://github.com/OpenAgentsInc/openagents/blob/"
 BATCH = 50  # changes per atomic content request
+RECEIPT_SCHEMA = 1
+VERIFICATION_SCOPE = ("Source and submitted-markdown hashes record publication provenance; "
+                      "live revision and page inventory were checked, not live document-body parity.")
 
 
 def coax_gate():
@@ -64,6 +74,166 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def git(*args):
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+
+
+def git_bytes(*args):
+    """Read exact Git blob bytes, including trailing newlines."""
+    try:
+        return subprocess.check_output(["git", *args], cwd=ROOT, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        raise SystemExit("Publication source is missing from the recorded Git commit") from None
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
+                                    separators=(",", ":")).encode()).hexdigest()
+
+
+def file_identity(path, raw):
+    return {"path": path, "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def source_snapshot(book, commit):
+    """Bind SUMMARY and every listed file to exact bytes in an immutable commit.
+
+    This is local source provenance, not a claim about server document bytes.
+    Checking an older receipt permits unrelated later repository commits.
+    """
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+        raise SystemExit("Publication source requires a full Git commit ID")
+    if git_bytes("rev-parse", "--verify", commit + "^{commit}").decode().strip() != commit:
+        raise SystemExit("Publication source commit is not an exact commit identity")
+    directory = BOOKS[book][0]
+    result = {"commit": commit, "directory": directory}
+    seen = set()
+
+    def source_file(name):
+        candidate = Path(os.path.normpath(ROOT.resolve() / directory / name))
+        path = candidate.resolve()
+        try:
+            relative = path.relative_to(ROOT.resolve()).as_posix()
+        except ValueError:
+            raise SystemExit("Publication source escapes the repository") from None
+        if candidate != path:
+            raise SystemExit("Publication source must not traverse symlinks")
+        if relative in seen:
+            raise SystemExit("Publication source contains duplicate file paths")
+        seen.add(relative)
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            raise SystemExit("Publication source file cannot be read") from None
+        if git_bytes("show", commit + ":" + relative) != raw:
+            raise SystemExit("Publication source bytes differ from the recorded commit: " + relative)
+        return file_identity(relative, raw)
+
+    result["summary"] = source_file("SUMMARY.md")
+    result["pages"] = [dict(source_file(name), file=name, title=title, group=group)
+                       for name, title, group in inventory(directory)]
+    result["sha256"] = digest(result)
+    return result
+
+
+def live_inventory(tree):
+    """Retain observed tree order, page identities, titles and public paths only."""
+    seen = set()
+
+    def page(item):
+        page_id, title, path = item["id"], item["title"], item.get("path")
+        if (not isinstance(page_id, str) or not page_id or page_id in seen or
+                not isinstance(title, str) or not title or
+                (path is not None and not isinstance(path, str))):
+            raise SystemExit("Invalid live page identity in publication evidence")
+        seen.add(page_id)
+        return {"id": page_id, "title": title, "path": path,
+                "pages": [page(child) for child in item.get("pages", [])]}
+    return [page(item) for item in tree]
+
+
+def publication_receipt(book, source, draft_id, content, submitted_markdown):
+    entries = [(p["file"], p["title"], p["group"]) for p in source["pages"]]
+    if live_problems(content["pages"], entries):
+        raise SystemExit("Cannot record a publication whose live inventory differs from source")
+    observed = live_inventory(content["pages"])
+    return {"schema": RECEIPT_SCHEMA, "repository": REPOSITORY, "book": book,
+            "space_id": BOOKS[book][1], "public_url": BOOKS[book][3],
+            "published_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "source": source, "change_request": draft_id,
+            "submitted_markdown": submitted_markdown,
+            "submitted_markdown_sha256": digest(submitted_markdown),
+            "verified_live": {"revision": content["id"], "inventory": observed,
+                              "sha256": digest(observed)},
+            "verification_scope": VERIFICATION_SCOPE}
+
+
+def write_receipt(path, receipt):
+    """Replace a success receipt atomically; a failed write preserves its predecessor."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix="." + path.name + ".", delete=False) as out:
+            temporary = Path(out.name)
+            json.dump(receipt, out, indent=2, ensure_ascii=False)
+            out.write("\n")
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def check_receipt(book, path, content=None):
+    """Check local source identity and optionally the observed live revision/tree.
+
+    This never authenticates or accesses the network. A receipt is retained
+    maintenance evidence, not a server signature or proof of live body parity.
+    """
+    try:
+        receipt = json.loads(Path(path).read_text())
+        if (receipt["schema"] != RECEIPT_SCHEMA or receipt["repository"] != REPOSITORY or
+                receipt["book"] != book or receipt["space_id"] != BOOKS[book][1] or
+                receipt["public_url"] != BOOKS[book][3] or
+                receipt["verification_scope"] != VERIFICATION_SCOPE):
+            raise ValueError("identity")
+        when = datetime.fromisoformat(receipt["published_at"].replace("Z", "+00:00"))
+        if when.utcoffset() != timezone.utc.utcoffset(when):
+            raise ValueError("timestamp")
+        if not isinstance(receipt["change_request"], str) or not receipt["change_request"]:
+            raise ValueError("change request")
+        source = receipt["source"]
+        if source_snapshot(book, source["commit"]) != source:
+            raise ValueError("source digest")
+        observed = receipt["verified_live"]
+        if not isinstance(observed["revision"], str) or not observed["revision"]:
+            raise ValueError("revision")
+        normalized = live_inventory(observed["inventory"])
+        if normalized != observed["inventory"] or digest(normalized) != observed["sha256"]:
+            raise ValueError("live inventory digest")
+        entries = [(p["file"], p["title"], p["group"]) for p in source["pages"]]
+        if live_problems(normalized, entries):
+            raise ValueError("live inventory")
+        submitted = receipt["submitted_markdown"]
+        if (not isinstance(submitted, list) or len(submitted) != len(source["pages"]) or
+                digest(submitted) != receipt["submitted_markdown_sha256"]):
+            raise ValueError("submitted markdown digest")
+        live_pages = list(pages(normalized))
+        for document, original in zip(submitted, source["pages"]):
+            matching = [p for p in live_pages if p["id"] == document["page_id"]]
+            if (document["file"] != original["file"] or document["path"] != original["file"] or
+                    document["title"] != original["title"] or len(matching) != 1 or
+                    matching[0]["title"] != original["title"] or
+                    type(document["bytes"]) is not int or document["bytes"] < 0 or
+                    not re.fullmatch(r"[0-9a-f]{64}", document["sha256"])):
+                raise ValueError("submitted markdown identity")
+        if content is not None and (content["id"] != observed["revision"] or
+                                   live_inventory(content["pages"]) != normalized):
+            raise ValueError("live revision or page identities differ from receipt")
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        raise SystemExit("Invalid or stale publication receipt: " + str(path)) from None
+    return receipt
 
 
 def token_from_file(path):
@@ -167,28 +337,51 @@ def main():
     parser.add_argument("--book", choices=sorted(BOOKS), default="coax")
     parser.add_argument("--token-file", type=Path, help="local env file defining GITBOOK_TOKEN")
     parser.add_argument("--change-request", help="resume a previously printed draft ID")
-    parser.add_argument("--check-live", action="store_true",
-                        help="only compare the live page inventory with SUMMARY; change nothing")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--check-live", action="store_true",
+                       help="compare live inventory and any existing receipt; change nothing")
+    modes.add_argument("--check-receipt", action="store_true",
+                       help="validate local publication source receipt; no credentials or network")
+    parser.add_argument("--receipt", type=Path,
+                        help="receipt file (default: docs/books/publications/BOOK.json)")
+    parser.add_argument("--require-receipt", action="store_true",
+                        help="require a valid source/revision receipt with --check-live")
     args = parser.parse_args()
     directory, space_id, space_title, public, gate, prune = BOOKS[args.book]
-    if not args.check_live:
+    receipt_path = args.receipt or ROOT / "docs/books/publications" / (args.book + ".json")
+    if args.require_receipt and not args.check_live:
+        parser.error("--require-receipt requires --check-live")
+    if args.check_receipt:
+        receipt = check_receipt(args.book, receipt_path)
+        print(f"{args.book}: local publication source matches receipt at {receipt_path}; "
+              f"commit {receipt['source']['commit']}, recorded revision {receipt['verified_live']['revision']}")
+        print("No network check performed; live document-body parity is not verified.")
+        return
+    if args.check_live:
+        if args.require_receipt or args.receipt is not None or receipt_path.exists():
+            check_receipt(args.book, receipt_path)  # fail locally before credentials/network
+        else:
+            receipt_path = None
+    else:
         gate()
+        if git("remote", "get-url", "origin") != REPOSITORY:
+            raise SystemExit("Refusing to publish from an unexpected origin")
+        if git("status", "--porcelain", "--untracked-files=all"):
+            raise SystemExit("Commit the worktree before publishing")
+        commit = git("rev-parse", "HEAD")
+        if commit != git("ls-remote", "origin", "refs/heads/main").split()[0]:
+            raise SystemExit("HEAD must equal the pushed origin/main")
+        source = source_snapshot(args.book, commit)
+        entries = [(p["file"], p["title"], p["group"]) for p in source["pages"]]
+        # Upload bytes from the immutable recorded commit, not a later worktree edit.
+        sources = {p["file"]: git_bytes("show", commit + ":" + p["path"]).decode("utf-8")
+                   for p in source["pages"]}
     token = token_from_file(args.token_file) if args.token_file else os.environ.get("GITBOOK_TOKEN")
     if not token:
         parser.error("set GITBOOK_TOKEN or supply --token-file")
     if args.check_live:
-        check_live(args.book, token)
+        check_live(args.book, token, receipt_path)
         return
-    if git("remote", "get-url", "origin") != REPOSITORY:
-        raise SystemExit("Refusing to publish from an unexpected origin")
-    if git("status", "--porcelain", "--untracked-files=all"):
-        raise SystemExit("Commit the worktree before publishing")
-    commit = git("rev-parse", "HEAD")
-    if commit != git("ls-remote", "origin", "refs/heads/main").split()[0]:
-        raise SystemExit("HEAD must equal the pushed origin/main")
-    entries = inventory(directory)
-    # Read all source before making any remote mutations.
-    sources = {name: (ROOT / directory / name).read_text() for name, _, _ in entries}
     readmes = {BOOKS[b][0] + "/README.md": BOOKS[b][3] for b in BOOKS}
     opener = urllib.request.build_opener(NoRedirect())
 
@@ -290,7 +483,7 @@ def main():
         return re.sub(r"\]\(([^)]+)\)", link, text)
 
     # Move every page into SUMMARY order: each section's overview precedes its chapters.
-    changes, position, placed = [], {}, set()
+    changes, position, placed, submitted_markdown = [], {}, set(), []
     def place(page, parent, **extra):
         at = position.get(parent, 0)
         position[parent] = at + 1
@@ -299,8 +492,11 @@ def main():
         if group and group not in placed:
             placed.add(group)
             place(group_ids[group], None, title=group)
+        body = markdown(name)
+        submitted_markdown.append(dict(file_identity(name, body.encode("utf-8")),
+                                       file=name, page_id=resolved[name]["id"], title=title))
         place(resolved[name]["id"], group_ids[group] if group else None,
-              title=title, document={"markdown": markdown(name)})
+              title=title, document={"markdown": body})
     keep = {page["id"] for page in resolved.values()} | set(group_ids.values())
     tree = apply(changes)
     # Every kept page is now in place; delete the topmost pages SUMMARY doesn't list.
@@ -350,7 +546,14 @@ def main():
     if problems:
         print("\n".join(problems), file=sys.stderr)
         raise SystemExit("The live page inventory differs from SUMMARY.md")
+    # Never replace prior success evidence after a failed merge, redirect or check.
+    # Refuse a concurrent local source edit even though the upload used Git blobs.
+    if source_snapshot(args.book, commit) != source:
+        raise SystemExit("Publication source changed while publishing; no receipt written")
+    receipt = publication_receipt(args.book, source, draft_id, content, submitted_markdown)
+    write_receipt(receipt_path, receipt)
     print(f"Live page inventory matches SUMMARY.md: {sum(1 for _ in pages(content['pages']))} pages")
+    print(f"Publication receipt: {receipt_path}; live document-body parity is not independently verified")
     print(public)
 
 
@@ -361,8 +564,8 @@ def find_site(api, organization, public):
     raise SystemExit("No published site matches the book; pages merged, redirects not created")
 
 
-def check_live(book, token):
-    """Compare a book's live page inventory with SUMMARY; read-only."""
+def check_live(book, token, receipt_path=None):
+    """Compare live inventory and optionally a prior receipt; never writes evidence."""
     directory, space_id, _, public, _, _ = BOOKS[book]
     req = urllib.request.Request(f"https://api.gitbook.com/v1/spaces/{space_id}/content",
                                  headers={"Authorization": "Bearer " + token})
@@ -375,8 +578,13 @@ def check_live(book, token):
     if problems:
         print("\n".join(problems), file=sys.stderr)
         raise SystemExit(f"{book}: the live page inventory differs from SUMMARY.md")
+    if receipt_path is not None:
+        check_receipt(book, receipt_path, content)
+        scope = "source receipt and live revision/page identities match; live body parity not verified"
+    else:
+        scope = "inventory only; no source receipt or live body parity verified"
     print(f"{book}: live page inventory matches SUMMARY.md "
-          f"({sum(1 for _ in pages(content['pages']))} pages, revision {content['id']}) at {public}")
+          f"({sum(1 for _ in pages(content['pages']))} pages, revision {content['id']}) at {public}; {scope}")
 
 
 if __name__ == "__main__":

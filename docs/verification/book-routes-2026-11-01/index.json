@@ -1,0 +1,717 @@
+{
+  "schema": 1,
+  "issue": 12624,
+  "date": "2026-11-01",
+  "implementation_base": "8f36568370916ad063ee8119e472ddd74df6acca",
+  "passed": true,
+  "profiles": 4,
+  "fresh_step_mode_executions": 23,
+  "retained_step_mode_observations": 23,
+  "example_executions_during_retention": 0,
+  "route_receipts": [
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.json",
+      "sha256": "15e7fe9423bf0987e97aceac23e5d26596499970bb05e49f617e7f27dfe3c1de",
+      "executed": 0,
+      "retained": 6
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.json",
+      "sha256": "88229a7026eca1cb7262a2cd5dac5a5383716cc4b5717e481240f993ab82f352",
+      "executed": 6,
+      "retained": 0
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.json",
+      "sha256": "2687a76f680b1afbd5d1a21a5ae1a9a036eee2c5a5834381606173103f8fd74f",
+      "executed": 0,
+      "retained": 7
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.json",
+      "sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e",
+      "executed": 7,
+      "retained": 0
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.json",
+      "sha256": "042c0791b08fb459718ee037463ea862e1ee06a754906dd60e17bf2f86f86880",
+      "executed": 0,
+      "retained": 4
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.json",
+      "sha256": "83563d8e2429e63f8c8e1114ef727a28e588d12060d58268daae8aa8ff36aeee",
+      "executed": 4,
+      "retained": 0
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.json",
+      "sha256": "217b2e00d4673865b0cfbc4bf68a2bbf9432c5892f2da44be0abcb9e4258dad7",
+      "executed": 0,
+      "retained": 6
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.json",
+      "sha256": "49aa2f66ad950f57277d6729c5e38d844c1b3dc2e7936a006d0521fbef635aea",
+      "executed": 6,
+      "retained": 0
+    }
+  ],
+  "runner_tests": {
+    "passed": 27,
+    "failed": 0,
+    "source_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+    "test_sha256": "462860d671a700d5268378a9e1358cbdbddd4058a4f4acb9dba6ae35faf30d67",
+    "receipt": "tooling/final-qualification.json",
+    "copied_log_directory": "docs/verification/book-routes-2026-11-01/tooling"
+  },
+  "publisher_tests": {
+    "passed": 15,
+    "scope": "attributed earlier agent/tool observation; no raw standalone transcript",
+    "observation": "tooling/publisher-tests-observation.json",
+    "legacy_gate_regressions": 2
+  },
+  "release_hook": "coax/tests/run.sh: metadata-only catalog and focused runner/publisher tests; scripts/check-books.sh for metadata or one bounded route",
+  "real_gitbook_publication_performed": false,
+  "live_body_parity_claimed": false,
+  "limits": [
+    "Supported bounded native examples and local file/ABI workflow; no whole-book/application/deployment promotion.",
+    "Only tiny synthetic module training; no MNIST/original-weight training repeated.",
+    "Host script inputs are declared and reviewed; not general host-file tracing or all SDK/system internals.",
+    "Explicit prior trusted receipts with integrity checks, not signatures or execution attestation.",
+    "Git HEAD at observation is not a claim of a clean source tree; file hashes identify the actual inputs."
+  ],
+  "inventory": [
+    {
+      "path": "coax/book/examples/ch24_workflow/run.sh",
+      "bytes": 1394,
+      "sha256": "5d77f0b834a70fe060e671c9976677340d36595bc63b5fc2f4784fa48ff0c59a"
+    },
+    {
+      "path": "coax/tests/run.sh",
+      "bytes": 9976,
+      "sha256": "0a65f7276608cc161879f933430910fb67e835d68e24328b37c7c9496b0305a2"
+    },
+    {
+      "path": "docs/books/DELIVERY.md",
+      "bytes": 5883,
+      "sha256": "c13ed1782079ac91dd61695e7d40e4b705c1688bfebafb0f15dcf83a05b076c4"
+    },
+    {
+      "path": "docs/books/completion.md",
+      "bytes": 17608,
+      "sha256": "e9c3eb9d67be384a7463419bfe75616c68b1fcebd61cfe302b55c621dc1a08a9"
+    },
+    {
+      "path": "docs/books/paths.md",
+      "bytes": 12654,
+      "sha256": "469a670bc023848adc13c52912716ee683ca82da98cf533bcd218688e54aab0f"
+    },
+    {
+      "path": "docs/books/publications/README.md",
+      "bytes": 934,
+      "sha256": "89790b5b82f9ac3ccfed2ed0889be4516668e770a62812291e90a1968118d6b0"
+    },
+    {
+      "path": "docs/books/routes.json",
+      "bytes": 12756,
+      "sha256": "6d0077f33a7798e173d6e45279ac6e14cc053a34c83e4bfec80f775c64943eb3"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/README.md",
+      "bytes": 3329,
+      "sha256": "450739cd370d9afba66c5c0ba42d4771267b823a7822636f6f307e19459d5401"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/fixed-step-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/fixed-step-debug.stdout",
+      "bytes": 407,
+      "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/fixed-step-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/fixed-step-release.stdout",
+      "bytes": 407,
+      "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/one-press-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/one-press-debug.stdout",
+      "bytes": 292,
+      "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/one-press-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/one-press-release.stdout",
+      "bytes": 292,
+      "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/replay-walk-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/replay-walk-debug.stdout",
+      "bytes": 152,
+      "sha256": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/replay-walk-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.assets/replay-walk-release.stdout",
+      "bytes": 152,
+      "sha256": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay-retained.json",
+      "bytes": 42547,
+      "sha256": "15e7fe9423bf0987e97aceac23e5d26596499970bb05e49f617e7f27dfe3c1de"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/fixed-step-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/fixed-step-debug.stdout",
+      "bytes": 407,
+      "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/fixed-step-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/fixed-step-release.stdout",
+      "bytes": 407,
+      "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/one-press-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/one-press-debug.stdout",
+      "bytes": 292,
+      "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/one-press-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/one-press-release.stdout",
+      "bytes": 292,
+      "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/replay-walk-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/replay-walk-debug.stdout",
+      "bytes": 152,
+      "sha256": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/replay-walk-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.assets/replay-walk-release.stdout",
+      "bytes": 152,
+      "sha256": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/aethyr-core-replay.json",
+      "bytes": 42314,
+      "sha256": "88229a7026eca1cb7262a2cd5dac5a5383716cc4b5717e481240f993ab82f352"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/error-results-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/error-results-debug.stdout",
+      "bytes": 86,
+      "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/error-results-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/error-results-release.stdout",
+      "bytes": 86,
+      "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/hello-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/hello-debug.stdout",
+      "bytes": 13,
+      "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/hello-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/hello-release.stdout",
+      "bytes": 13,
+      "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/local-c-workflow-native.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/local-c-workflow-native.stdout",
+      "bytes": 164,
+      "sha256": "71e8f259d44444bd24c6c798f44c5aee4c99800db87de20c688f4b60318dd771"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/source-modules-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/source-modules-debug.stdout",
+      "bytes": 3,
+      "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/source-modules-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.assets/source-modules-release.stdout",
+      "bytes": 3,
+      "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi-retained.json",
+      "bytes": 39008,
+      "sha256": "2687a76f680b1afbd5d1a21a5ae1a9a036eee2c5a5834381606173103f8fd74f"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/error-results-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/error-results-debug.stdout",
+      "bytes": 86,
+      "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/error-results-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/error-results-release.stdout",
+      "bytes": 86,
+      "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/hello-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/hello-debug.stdout",
+      "bytes": 13,
+      "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/hello-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/hello-release.stdout",
+      "bytes": 13,
+      "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/local-c-workflow-native.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/local-c-workflow-native.stdout",
+      "bytes": 164,
+      "sha256": "71e8f259d44444bd24c6c798f44c5aee4c99800db87de20c688f4b60318dd771"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/source-modules-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/source-modules-debug.stdout",
+      "bytes": 3,
+      "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/source-modules-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.assets/source-modules-release.stdout",
+      "bytes": 3,
+      "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/coax-current-ffi.json",
+      "bytes": 38728,
+      "sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.assets/event-sign-verify-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.assets/event-sign-verify-debug.stdout",
+      "bytes": 2135,
+      "sha256": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.assets/event-sign-verify-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.assets/event-sign-verify-release.stdout",
+      "bytes": 2135,
+      "sha256": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.assets/scripted-client-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.assets/scripted-client-debug.stdout",
+      "bytes": 2926,
+      "sha256": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.assets/scripted-client-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.assets/scripted-client-release.stdout",
+      "bytes": 2926,
+      "sha256": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client-retained.json",
+      "bytes": 53553,
+      "sha256": "042c0791b08fb459718ee037463ea862e1ee06a754906dd60e17bf2f86f86880"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.assets/event-sign-verify-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.assets/event-sign-verify-debug.stdout",
+      "bytes": 2135,
+      "sha256": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.assets/event-sign-verify-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.assets/event-sign-verify-release.stdout",
+      "bytes": 2135,
+      "sha256": "ca781f6cccd4997b475f47173793e529a9c6f6795ad22da62872cea561f0832c"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.assets/scripted-client-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.assets/scripted-client-debug.stdout",
+      "bytes": 2926,
+      "sha256": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.assets/scripted-client-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.assets/scripted-client-release.stdout",
+      "bytes": 2926,
+      "sha256": "1e3034818bde8a2c9520b2f887d057d7d254574f95d1fe6d7e0ca376a4463a02"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/nostr-event-client.json",
+      "bytes": 53402,
+      "sha256": "83563d8e2429e63f8c8e1114ef727a28e588d12060d58268daae8aa8ff36aeee"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/public-cnn-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/public-cnn-debug.stdout",
+      "bytes": 308,
+      "sha256": "f495e70270a94e7bad02139ad7a780897a2c4b7fed2db5ceba82222d62be5335"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/public-cnn-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/public-cnn-release.stdout",
+      "bytes": 308,
+      "sha256": "f495e70270a94e7bad02139ad7a780897a2c4b7fed2db5ceba82222d62be5335"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/public-mlp-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/public-mlp-debug.stdout",
+      "bytes": 394,
+      "sha256": "f9ef099ee68f1f9823ceef5c2d952b629e3390d57a0976784e742daa9eca39be"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/public-mlp-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/public-mlp-release.stdout",
+      "bytes": 394,
+      "sha256": "f9ef099ee68f1f9823ceef5c2d952b629e3390d57a0976784e742daa9eca39be"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/tiny-training-resume-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/tiny-training-resume-debug.stdout",
+      "bytes": 552,
+      "sha256": "41b0608f1ce9728f0c9193fb10f3901834b20c9a28e71cfba065bdaa9972e631"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/tiny-training-resume-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.assets/tiny-training-resume-release.stdout",
+      "bytes": 552,
+      "sha256": "41b0608f1ce9728f0c9193fb10f3901834b20c9a28e71cfba065bdaa9972e631"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models-retained.json",
+      "bytes": 80654,
+      "sha256": "217b2e00d4673865b0cfbc4bf68a2bbf9432c5892f2da44be0abcb9e4258dad7"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/public-cnn-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/public-cnn-debug.stdout",
+      "bytes": 308,
+      "sha256": "f495e70270a94e7bad02139ad7a780897a2c4b7fed2db5ceba82222d62be5335"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/public-cnn-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/public-cnn-release.stdout",
+      "bytes": 308,
+      "sha256": "f495e70270a94e7bad02139ad7a780897a2c4b7fed2db5ceba82222d62be5335"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/public-mlp-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/public-mlp-debug.stdout",
+      "bytes": 394,
+      "sha256": "f9ef099ee68f1f9823ceef5c2d952b629e3390d57a0976784e742daa9eca39be"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/public-mlp-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/public-mlp-release.stdout",
+      "bytes": 394,
+      "sha256": "f9ef099ee68f1f9823ceef5c2d952b629e3390d57a0976784e742daa9eca39be"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/tiny-training-resume-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/tiny-training-resume-debug.stdout",
+      "bytes": 552,
+      "sha256": "41b0608f1ce9728f0c9193fb10f3901834b20c9a28e71cfba065bdaa9972e631"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/tiny-training-resume-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.assets/tiny-training-resume-release.stdout",
+      "bytes": 552,
+      "sha256": "41b0608f1ce9728f0c9193fb10f3901834b20c9a28e71cfba065bdaa9972e631"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/psionic-public-models.json",
+      "bytes": 80452,
+      "sha256": "49aa2f66ad950f57277d6729c5e38d844c1b3dc2e7936a006d0521fbef635aea"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/bash-input-red.stderr.log",
+      "bytes": 8743,
+      "sha256": "ed52a55775e7b27cd75aa13451ada0a57ebae1daf277b9b3eba67a5855f3ca55"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/bash-input-red.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/expanded-01.stderr.log",
+      "bytes": 3149,
+      "sha256": "b1bf40a0ce9bf39f883c876a3e1c69cb402028816590bc4b38e222067e5cd8c3"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/expanded-01.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/expanded-02.stderr.log",
+      "bytes": 4079,
+      "sha256": "de3a87f2b5ca61ffbfb806070aa522912befece393e48d0a6db7a9cf829de094"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/expanded-02.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/final-27.stderr.log",
+      "bytes": 4385,
+      "sha256": "521c81075875e1d906accc5eb35c3a16d4a17efd5ace9b11f4938366313e1a19"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/final-27.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/final-qualification.json",
+      "bytes": 3572,
+      "sha256": "a1a1f97bf544a5cec812c05aa2d1d61731d4c0117cfcdd42f4d87ebd78b8432f"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/metadata.log",
+      "bytes": 483,
+      "sha256": "f6180e43a587ca6ac99dd66022c95d0e589f93fbfc1215cd0a80aabf3482b935"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/publisher-legacy-tests.log",
+      "bytes": 406,
+      "sha256": "b32a859f2c40520fe0c4454c79c716d1f46ec20b14354cce84ee95808591d9dd"
+    },
+    {
+      "path": "docs/verification/book-routes-2026-11-01/tooling/publisher-tests-observation.json",
+      "bytes": 656,
+      "sha256": "051b7533ae48d5948e80b7a333ab79417d833eb70329cea8a5d1d5ca0163d6f0"
+    },
+    {
+      "path": "nostr/book/COMPLETION.md",
+      "bytes": 8781,
+      "sha256": "258bbd1dec427107d50555b7877fd300bf883964a26b0a938774d1903039bbbf"
+    },
+    {
+      "path": "scripts/book_routes.py",
+      "bytes": 25927,
+      "sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580"
+    },
+    {
+      "path": "scripts/check-books.sh",
+      "bytes": 599,
+      "sha256": "d2273c26f45e32f4ef7ad747643d66fa8d25652daf6fe0345ea21284f8c3ab4c"
+    },
+    {
+      "path": "scripts/publish-coax-book.py",
+      "bytes": 29991,
+      "sha256": "a389e9d8aa0811d02959d49286fff7a8bd5594d439d1493485068d6dd68e6b11"
+    },
+    {
+      "path": "scripts/test_publish_coax_book.py",
+      "bytes": 14831,
+      "sha256": "2f41730073cc4a665994e72c1ea58aaba6d71054617e953cda48af5adb1c52f0"
+    },
+    {
+      "path": "scripts/tests/test_book_routes.py",
+      "bytes": 24921,
+      "sha256": "462860d671a700d5268378a9e1358cbdbddd4058a4f4acb9dba6ae35faf30d67"
+    }
+  ]
+}

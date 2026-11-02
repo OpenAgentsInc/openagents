@@ -1,0 +1,13 @@
+{
+  "scope": "Attributed earlier agent/tool observation; no standalone raw stdout file saved for this run",
+  "command": "PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_publish_coax_book.py",
+  "passed": 15,
+  "failed": 0,
+  "seconds_reported": 6.235,
+  "network_or_token_access": false,
+  "observed_sources": {
+    "scripts/publish-coax-book.py": "a389e9d8aa0811d02959d49286fff7a8bd5594d439d1493485068d6dd68e6b11",
+    "scripts/test_publish_coax_book.py": "2f41730073cc4a665994e72c1ea58aaba6d71054617e953cda48af5adb1c52f0"
+  },
+  "note": "Sources remained unchanged after that passing observation; tests were not repeated merely to obtain another log."
+}

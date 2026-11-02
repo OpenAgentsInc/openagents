@@ -1,0 +1,660 @@
+{
+  "schema_version": 1,
+  "kind": "book-route-observation",
+  "route": {
+    "id": "aethyr-core-replay",
+    "book": "aethyr",
+    "title": "Aethyr fixed steps, input and replay",
+    "scope": "Run CPU engine-core examples for fixed-step scheduling at four frame rates, one queued press consumed once, and a recorded walk replayed to the same digest with an identified planted divergence.",
+    "limitations": [
+      "The small teaching session does not qualify a rendered or playable full realm, general rigid-body simulation or Forge artifacts.",
+      "Browser/Wasm parity belongs to a separate retained harness. This CPU route starts no server, WebGPU page or audio playback.",
+      "Existing component consumers such as verse/gridwalk.coax keep their recorded adoption scope. These examples neither migrate a whole realm nor add an adopted_by relationship."
+    ]
+  },
+  "status": "passed",
+  "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca",
+  "started_at": "2026-11-02T02:50:00.384775+00:00",
+  "steps": [
+    {
+      "key": "fixed-step:debug",
+      "fingerprint": {
+        "recipe_sha256": "366494a17e0cc3657a7e5598be06827005116332c64dcb2d9a9c591480631991",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "aethyr/examples/frame-rates.coax": "4c06404b539c362e8ac6451fe73fb4861eee3c882f41f001bea25caa6fcbc807",
+          "aethyr/fixtures/frame-rates.out": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+          "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b"
+        },
+        "resolutions": {
+          "aethyr/examples/frame-rates.coax": "aethyr/examples/frame-rates.coax",
+          "aethyr/fixtures/frame-rates.out": "aethyr/fixtures/frame-rates.out",
+          "aethyr/loop.coax": "aethyr/loop.coax"
+        },
+        "closure_sha256": "bb375162763debfd9d8eefe242223d3cb6bc52d6734090872b1e0180beaec13e",
+        "expected": {
+          "stdout": "aethyr/fixtures/frame-rates.out",
+          "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+          "exit_status": 0
+        }
+      },
+      "mode": "debug",
+      "status": "passed",
+      "action": "execute",
+      "command": [
+        "/private/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "run",
+        "aethyr/examples/frame-rates.coax"
+      ],
+      "retained": false,
+      "exit_status": 0,
+      "seconds": 0.5308409159770235,
+      "stdout": {
+        "path": "aethyr-core-replay.assets/fixed-step-debug.stdout",
+        "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+        "bytes": 407
+      },
+      "stderr": {
+        "path": "aethyr-core-replay.assets/fixed-step-debug.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "fixed-step:release",
+      "fingerprint": {
+        "recipe_sha256": "b7471fce7c724d58bcbf0391ec39c3762e0d54fd1c004343f46f9b22991482d0",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "aethyr/examples/frame-rates.coax": "4c06404b539c362e8ac6451fe73fb4861eee3c882f41f001bea25caa6fcbc807",
+          "aethyr/fixtures/frame-rates.out": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+          "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b"
+        },
+        "resolutions": {
+          "aethyr/examples/frame-rates.coax": "aethyr/examples/frame-rates.coax",
+          "aethyr/fixtures/frame-rates.out": "aethyr/fixtures/frame-rates.out",
+          "aethyr/loop.coax": "aethyr/loop.coax"
+        },
+        "closure_sha256": "bb375162763debfd9d8eefe242223d3cb6bc52d6734090872b1e0180beaec13e",
+        "expected": {
+          "stdout": "aethyr/fixtures/frame-rates.out",
+          "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+          "exit_status": 0
+        }
+      },
+      "mode": "release",
+      "status": "passed",
+      "action": "execute",
+      "command": [
+        "/private/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "run",
+        "aethyr/examples/frame-rates.coax",
+        "--release"
+      ],
+      "retained": false,
+      "exit_status": 0,
+      "seconds": 0.3852160000242293,
+      "stdout": {
+        "path": "aethyr-core-replay.assets/fixed-step-release.stdout",
+        "sha256": "92b8b623c10f907ed6ac4f30870e027d65e0d3a81c81bab7a536928aa396bb0a",
+        "bytes": 407
+      },
+      "stderr": {
+        "path": "aethyr-core-replay.assets/fixed-step-release.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "one-press:debug",
+      "fingerprint": {
+        "recipe_sha256": "fef2ad78348d2fc9270dd56a22c04a24621b5d80cd9a7e21ce4665cb6a494a9f",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "aethyr/examples/one-press.coax": "5902fa98b69bd3d334e9dc9f9d511defd618d0728d69a89f10998cdd761e030b",
+          "aethyr/fixtures/one-press.out": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+          "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974"
+        },
+        "resolutions": {
+          "aethyr/examples/one-press.coax": "aethyr/examples/one-press.coax",
+          "aethyr/fixtures/one-press.out": "aethyr/fixtures/one-press.out",
+          "aethyr/input.coax": "aethyr/input.coax"
+        },
+        "closure_sha256": "60d96e430f44a24023408b510a421189647e409b5ac9b4d8d2b583c3375b1429",
+        "expected": {
+          "stdout": "aethyr/fixtures/one-press.out",
+          "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+          "exit_status": 0
+        }
+      },
+      "mode": "debug",
+      "status": "passed",
+      "action": "execute",
+      "command": [
+        "/private/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "run",
+        "aethyr/examples/one-press.coax"
+      ],
+      "retained": false,
+      "exit_status": 0,
+      "seconds": 0.4138652910478413,
+      "stdout": {
+        "path": "aethyr-core-replay.assets/one-press-debug.stdout",
+        "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+        "bytes": 292
+      },
+      "stderr": {
+        "path": "aethyr-core-replay.assets/one-press-debug.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "one-press:release",
+      "fingerprint": {
+        "recipe_sha256": "bae2b696762daef23b05049e0c00d623cc2aec2d6e8bddbd906cce0fb2f73428",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "aethyr/examples/one-press.coax": "5902fa98b69bd3d334e9dc9f9d511defd618d0728d69a89f10998cdd761e030b",
+          "aethyr/fixtures/one-press.out": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+          "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974"
+        },
+        "resolutions": {
+          "aethyr/examples/one-press.coax": "aethyr/examples/one-press.coax",
+          "aethyr/fixtures/one-press.out": "aethyr/fixtures/one-press.out",
+          "aethyr/input.coax": "aethyr/input.coax"
+        },
+        "closure_sha256": "60d96e430f44a24023408b510a421189647e409b5ac9b4d8d2b583c3375b1429",
+        "expected": {
+          "stdout": "aethyr/fixtures/one-press.out",
+          "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+          "exit_status": 0
+        }
+      },
+      "mode": "release",
+      "status": "passed",
+      "action": "execute",
+      "command": [
+        "/private/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "run",
+        "aethyr/examples/one-press.coax",
+        "--release"
+      ],
+      "retained": false,
+      "exit_status": 0,
+      "seconds": 0.4423380841035396,
+      "stdout": {
+        "path": "aethyr-core-replay.assets/one-press-release.stdout",
+        "sha256": "04e5e648bc34160fabacaf67708b5fc92284f185d121c023b49aea6b1e4edfff",
+        "bytes": 292
+      },
+      "stderr": {
+        "path": "aethyr-core-replay.assets/one-press-release.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "replay-walk:debug",
+      "fingerprint": {
+        "recipe_sha256": "9245032ec622131648886d42a63d90779498e499efa6c4f1eada0733c758c841",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+          "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+          "aethyr/examples/replay-a-walk.coax": "9fd7a941c3efb743054109f5d1ed41b0dd15df6d41c36e0f57f19e8edcdc1260",
+          "aethyr/fixtures/replay-a-walk.out": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7",
+          "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+          "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+          "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+          "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+          "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+          "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+          "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+          "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+          "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+          "aethyr/rand.coax": "1310b9ab2b93af376bf4ce5b567aa51c866d05d72f858fa00da0a61759f26ce3",
+          "aethyr/replay.coax": "312ef9e9eacdf2a28c8f838b0ae79e9ec39b617f526018f91478a3c6eba24dcf",
+          "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+          "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+          "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+          "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+          "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+          "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+          "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+          "aethyr/tests/player-collision-checks.coax": "c46a9ec337d624a6158e6852de4490a6e8e431c2f0cfcaa8255923c22e67e8c9",
+          "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+          "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+          "aethyr/tests/replay-oracle.coax": "718c9bbfb571c5cd41a130f567d3e5a89afda2d985674ce9ead7b57dba645f38",
+          "aethyr/tests/replay-walk.coax": "9418368f8c60808ab5f651aeb847435b50c42faacac19631af79bf6b3bbe3249",
+          "aethyr/tests/walk-tuning-checks.coax": "6dfc14aeadde94c4f650c54bf98808ece32c9fe626f7ff9db4312656cca48f39",
+          "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
+          "aethyr/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
+          "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+          "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+          "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+        },
+        "resolutions": {
+          "aethyr/collide.coax": "aethyr/collide.coax",
+          "aethyr/collision-profiles.coax": "aethyr/collision-profiles.coax",
+          "aethyr/examples/replay-a-walk.coax": "aethyr/examples/replay-a-walk.coax",
+          "aethyr/fixtures/replay-a-walk.out": "aethyr/fixtures/replay-a-walk.out",
+          "aethyr/follow.coax": "aethyr/follow.coax",
+          "aethyr/ground-contact.coax": "aethyr/ground-contact.coax",
+          "aethyr/ground-query.coax": "aethyr/ground-query.coax",
+          "aethyr/ground.coax": "aethyr/ground.coax",
+          "aethyr/input.coax": "aethyr/input.coax",
+          "aethyr/locomotion.coax": "aethyr/locomotion.coax",
+          "aethyr/loop.coax": "aethyr/loop.coax",
+          "aethyr/math.coax": "aethyr/math.coax",
+          "aethyr/query.coax": "aethyr/query.coax",
+          "aethyr/rand.coax": "aethyr/rand.coax",
+          "aethyr/replay.coax": "aethyr/replay.coax",
+          "aethyr/shot.coax": "aethyr/shot.coax",
+          "aethyr/space.coax": "aethyr/space.coax",
+          "aethyr/tests/collide-oracle.coax": "aethyr/tests/collide-oracle.coax",
+          "aethyr/tests/ground-contact-oracle.coax": "aethyr/tests/ground-contact-oracle.coax",
+          "aethyr/tests/ground-oracle.coax": "aethyr/tests/ground-oracle.coax",
+          "aethyr/tests/ground-ray-oracle.coax": "aethyr/tests/ground-ray-oracle.coax",
+          "aethyr/tests/math-oracle.coax": "aethyr/tests/math-oracle.coax",
+          "aethyr/tests/player-collision-checks.coax": "aethyr/tests/player-collision-checks.coax",
+          "aethyr/tests/query-heightfield.coax": "aethyr/tests/query-heightfield.coax",
+          "aethyr/tests/query-oracle.coax": "aethyr/tests/query-oracle.coax",
+          "aethyr/tests/replay-oracle.coax": "aethyr/tests/replay-oracle.coax",
+          "aethyr/tests/replay-walk.coax": "aethyr/tests/replay-walk.coax",
+          "aethyr/tests/walk-tuning-checks.coax": "aethyr/tests/walk-tuning-checks.coax",
+          "aethyr/walk-frame.coax": "aethyr/walk-frame.coax",
+          "aethyr/walk.coax": "aethyr/walk.coax",
+          "coax/lib/quantity.coax": "coax/lib/quantity.coax",
+          "verse/player.coax": "verse/player.coax",
+          "verse/stand.coax": "verse/stand.coax"
+        },
+        "closure_sha256": "014ad176de28ffde6370c290dbc2f21820715b50acead433716f0a6d21c3e412",
+        "expected": {
+          "stdout": "aethyr/fixtures/replay-a-walk.out",
+          "sha256": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7",
+          "exit_status": 0
+        }
+      },
+      "mode": "debug",
+      "status": "passed",
+      "action": "execute",
+      "command": [
+        "/private/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "run",
+        "aethyr/examples/replay-a-walk.coax"
+      ],
+      "retained": false,
+      "exit_status": 0,
+      "seconds": 18.609347915975377,
+      "stdout": {
+        "path": "aethyr-core-replay.assets/replay-walk-debug.stdout",
+        "sha256": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7",
+        "bytes": 152
+      },
+      "stderr": {
+        "path": "aethyr-core-replay.assets/replay-walk-debug.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "replay-walk:release",
+      "fingerprint": {
+        "recipe_sha256": "404eaa10d962270666b827b615854781e9ce06bf15f2bf98b2a1282342cee557",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+          "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+          "aethyr/examples/replay-a-walk.coax": "9fd7a941c3efb743054109f5d1ed41b0dd15df6d41c36e0f57f19e8edcdc1260",
+          "aethyr/fixtures/replay-a-walk.out": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7",
+          "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+          "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+          "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+          "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+          "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+          "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+          "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+          "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+          "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+          "aethyr/rand.coax": "1310b9ab2b93af376bf4ce5b567aa51c866d05d72f858fa00da0a61759f26ce3",
+          "aethyr/replay.coax": "312ef9e9eacdf2a28c8f838b0ae79e9ec39b617f526018f91478a3c6eba24dcf",
+          "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+          "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+          "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+          "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+          "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+          "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+          "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+          "aethyr/tests/player-collision-checks.coax": "c46a9ec337d624a6158e6852de4490a6e8e431c2f0cfcaa8255923c22e67e8c9",
+          "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+          "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+          "aethyr/tests/replay-oracle.coax": "718c9bbfb571c5cd41a130f567d3e5a89afda2d985674ce9ead7b57dba645f38",
+          "aethyr/tests/replay-walk.coax": "9418368f8c60808ab5f651aeb847435b50c42faacac19631af79bf6b3bbe3249",
+          "aethyr/tests/walk-tuning-checks.coax": "6dfc14aeadde94c4f650c54bf98808ece32c9fe626f7ff9db4312656cca48f39",
+          "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
+          "aethyr/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
+          "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+          "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+          "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+        },
+        "resolutions": {
+          "aethyr/collide.coax": "aethyr/collide.coax",
+          "aethyr/collision-profiles.coax": "aethyr/collision-profiles.coax",
+          "aethyr/examples/replay-a-walk.coax": "aethyr/examples/replay-a-walk.coax",
+          "aethyr/fixtures/replay-a-walk.out": "aethyr/fixtures/replay-a-walk.out",
+          "aethyr/follow.coax": "aethyr/follow.coax",
+          "aethyr/ground-contact.coax": "aethyr/ground-contact.coax",
+          "aethyr/ground-query.coax": "aethyr/ground-query.coax",
+          "aethyr/ground.coax": "aethyr/ground.coax",
+          "aethyr/input.coax": "aethyr/input.coax",
+          "aethyr/locomotion.coax": "aethyr/locomotion.coax",
+          "aethyr/loop.coax": "aethyr/loop.coax",
+          "aethyr/math.coax": "aethyr/math.coax",
+          "aethyr/query.coax": "aethyr/query.coax",
+          "aethyr/rand.coax": "aethyr/rand.coax",
+          "aethyr/replay.coax": "aethyr/replay.coax",
+          "aethyr/shot.coax": "aethyr/shot.coax",
+          "aethyr/space.coax": "aethyr/space.coax",
+          "aethyr/tests/collide-oracle.coax": "aethyr/tests/collide-oracle.coax",
+          "aethyr/tests/ground-contact-oracle.coax": "aethyr/tests/ground-contact-oracle.coax",
+          "aethyr/tests/ground-oracle.coax": "aethyr/tests/ground-oracle.coax",
+          "aethyr/tests/ground-ray-oracle.coax": "aethyr/tests/ground-ray-oracle.coax",
+          "aethyr/tests/math-oracle.coax": "aethyr/tests/math-oracle.coax",
+          "aethyr/tests/player-collision-checks.coax": "aethyr/tests/player-collision-checks.coax",
+          "aethyr/tests/query-heightfield.coax": "aethyr/tests/query-heightfield.coax",
+          "aethyr/tests/query-oracle.coax": "aethyr/tests/query-oracle.coax",
+          "aethyr/tests/replay-oracle.coax": "aethyr/tests/replay-oracle.coax",
+          "aethyr/tests/replay-walk.coax": "aethyr/tests/replay-walk.coax",
+          "aethyr/tests/walk-tuning-checks.coax": "aethyr/tests/walk-tuning-checks.coax",
+          "aethyr/walk-frame.coax": "aethyr/walk-frame.coax",
+          "aethyr/walk.coax": "aethyr/walk.coax",
+          "coax/lib/quantity.coax": "coax/lib/quantity.coax",
+          "verse/player.coax": "verse/player.coax",
+          "verse/stand.coax": "verse/stand.coax"
+        },
+        "closure_sha256": "014ad176de28ffde6370c290dbc2f21820715b50acead433716f0a6d21c3e412",
+        "expected": {
+          "stdout": "aethyr/fixtures/replay-a-walk.out",
+          "sha256": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7",
+          "exit_status": 0
+        }
+      },
+      "mode": "release",
+      "status": "passed",
+      "action": "execute",
+      "command": [
+        "/private/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "run",
+        "aethyr/examples/replay-a-walk.coax",
+        "--release"
+      ],
+      "retained": false,
+      "exit_status": 0,
+      "seconds": 19.60093987500295,
+      "stdout": {
+        "path": "aethyr-core-replay.assets/replay-walk-release.stdout",
+        "sha256": "a75a8dda4620a66de274e0cd79d4d875a1ff01c773693bf751462ea719d096d7",
+        "bytes": 152
+      },
+      "stderr": {
+        "path": "aethyr-core-replay.assets/replay-walk-release.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    }
+  ],
+  "route_definition": {
+    "id": "aethyr-core-replay",
+    "title": "Aethyr fixed steps, input and replay",
+    "book": "aethyr",
+    "scope": "Run CPU engine-core examples for fixed-step scheduling at four frame rates, one queued press consumed once, and a recorded walk replayed to the same digest with an identified planted divergence.",
+    "limitations": [
+      "The small teaching session does not qualify a rendered or playable full realm, general rigid-body simulation or Forge artifacts.",
+      "Browser/Wasm parity belongs to a separate retained harness. This CPU route starts no server, WebGPU page or audio playback.",
+      "Existing component consumers such as verse/gridwalk.coax keep their recorded adoption scope. These examples neither migrate a whole realm nor add an adopted_by relationship."
+    ],
+    "prerequisites": {
+      "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+      "commands": [
+        "python3",
+        "cc"
+      ],
+      "hardware": "CPU terminal; retained observations are Apple silicon/macOS. Another host requires its own matching receipt. No GPU or browser is required.",
+      "data": [],
+      "network": false
+    },
+    "chapters": [
+      "coax/book/ch11-writing-checks.md",
+      "coax/book/ch16-determinism.md",
+      "aethyr/book/ch001-a-frame-has-a-fixed-step.md",
+      "aethyr/book/ch003-state-starts-from-its-defaults.md",
+      "aethyr/book/ch004-input-becomes-typed-actions.md",
+      "aethyr/book/ch005-replay-a-session-exactly.md"
+    ],
+    "evidence": [
+      "aethyr/book/examples.json",
+      "aethyr/tests/book-chapter9-qualification.json",
+      "verse/gridwalk.coax"
+    ],
+    "steps": [
+      {
+        "id": "fixed-step",
+        "kind": "coax-run",
+        "source": "aethyr/examples/frame-rates.coax",
+        "stdout": "aethyr/fixtures/frame-rates.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ],
+        "timeout": 120
+      },
+      {
+        "id": "one-press",
+        "kind": "coax-run",
+        "source": "aethyr/examples/one-press.coax",
+        "stdout": "aethyr/fixtures/one-press.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ],
+        "timeout": 120
+      },
+      {
+        "id": "replay-walk",
+        "kind": "coax-run",
+        "source": "aethyr/examples/replay-a-walk.coax",
+        "stdout": "aethyr/fixtures/replay-a-walk.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ],
+        "timeout": 120
+      }
+    ]
+  },
+  "route_definition_sha256": "2bb55a27f4958efcba9ce27e072fff3ba95c1e80351528467342cb50a78973f1",
+  "revision_scope": "Git HEAD at observation; source hashes, not a claim that the worktree is clean or published.",
+  "scope": "Exact selected native examples and declared workflow, not all book capabilities, product adoption, live transport, browser rendering or production deployment.",
+  "integrity_sha256": "8c845e547f7fda30e638c2d8fb81c02979e6d68f845002e69394dde724329b4f",
+  "executed_runs": 6,
+  "retained_runs": 0,
+  "finished_at": "2026-11-02T02:51:18.334794+00:00"
+}

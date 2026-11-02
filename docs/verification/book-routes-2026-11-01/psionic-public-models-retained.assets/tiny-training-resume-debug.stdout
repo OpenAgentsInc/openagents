@@ -1,0 +1,11 @@
+chapter 117: 76 trained floats (norm frozen), SGD at rate 0.019999999552965164, binary32 storage
+  step 0: eval loss 9.122487
+  step 100: eval loss 1.054721
+  step 200: eval loss 1.211376
+  step 300: eval loss 0.850827
+  step 400: eval loss 0.903775
+  done, 400 steps; mdl_sgd's loop: 400 of 400 losses and every saved float the same bits: true
+  resumed at step 200 from 2164 bytes: ok; 200 steps, weights the same bits: true
+  resume as a 399-step run: optimizer
+  the step-200 record with the finished run's pointer: stale
+  a run at rate 0: config

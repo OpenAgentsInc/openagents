@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 root=$(cd ../../../.. && pwd)
-compiler="$root/coax/bin/coax"
+compiler=${COAX:-$root/coax/bin/coax}
 out=$(mktemp -d)
 trap 'find "$out" -depth -delete' EXIT
 "$compiler" test workflow.coax > "$out/checks.log"

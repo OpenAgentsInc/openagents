@@ -1,0 +1,635 @@
+{
+  "schema_version": 1,
+  "kind": "book-route-observation",
+  "route": {
+    "id": "coax-current-ffi",
+    "book": "coax",
+    "title": "Current Coax and a local C boundary",
+    "scope": "Run current strings, explicit error results and shared source identities, then call emitted Coax from C through a local-file/protobuf workflow. The capstone checks stale completion, failure and timeout paths in C debug and optimized builds.",
+    "limitations": [
+      "Selected current-language examples do not qualify every Coax feature or chapter. Generic constraints, ownership and other targets retain their own evidence.",
+      "The file effect is temporary and local. Decoded protobuf bytes do not authorize a HUD action. General fallible foreign results and asynchronous ownership remain separate completion work.",
+      "Teaching examples do not record new product adoption or qualify an app, browser, deployment or full compiler."
+    ]
+  },
+  "status": "passed",
+  "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca",
+  "started_at": "2026-11-02T02:55:05.845074+00:00",
+  "steps": [
+    {
+      "key": "hello:debug",
+      "fingerprint": {
+        "recipe_sha256": "9a2029170c9d091cc95485162e27f6dc3b29e7da3225fce01a6d1ecc67f852da",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/book/examples/ch01_hello_name.coax": "27ae8de57888be74620fec1e4670db76a25cbcd72ff13e2c18f60c1b8bf006a0",
+          "coax/book/examples/ch01_hello_name.out": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee"
+        },
+        "resolutions": {
+          "coax/book/examples/ch01_hello_name.coax": "coax/book/examples/ch01_hello_name.coax",
+          "coax/book/examples/ch01_hello_name.out": "coax/book/examples/ch01_hello_name.out"
+        },
+        "closure_sha256": "bdbb9db5c0f27351c33d493d998b50ec4a1b5d17912983d507c162f255ae0852",
+        "expected": {
+          "stdout": "coax/book/examples/ch01_hello_name.out",
+          "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee",
+          "exit_status": 0
+        }
+      },
+      "mode": "debug",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "coax-current-ffi-retained.assets/hello-debug.stdout",
+        "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee",
+        "bytes": 13
+      },
+      "stderr": {
+        "path": "coax-current-ffi-retained.assets/hello-debug.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "hello:release",
+      "fingerprint": {
+        "recipe_sha256": "2df1e375ae161c73e49be53b0f4f743447f8dd2aabf267f608a5fa0eb2c4487e",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/book/examples/ch01_hello_name.coax": "27ae8de57888be74620fec1e4670db76a25cbcd72ff13e2c18f60c1b8bf006a0",
+          "coax/book/examples/ch01_hello_name.out": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee"
+        },
+        "resolutions": {
+          "coax/book/examples/ch01_hello_name.coax": "coax/book/examples/ch01_hello_name.coax",
+          "coax/book/examples/ch01_hello_name.out": "coax/book/examples/ch01_hello_name.out"
+        },
+        "closure_sha256": "bdbb9db5c0f27351c33d493d998b50ec4a1b5d17912983d507c162f255ae0852",
+        "expected": {
+          "stdout": "coax/book/examples/ch01_hello_name.out",
+          "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee",
+          "exit_status": 0
+        }
+      },
+      "mode": "release",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "coax-current-ffi-retained.assets/hello-release.stdout",
+        "sha256": "02b2e75e5f638fd1fdcd423b70d62448c5c06e40b67efc27eeb1a4d60caa48ee",
+        "bytes": 13
+      },
+      "stderr": {
+        "path": "coax-current-ffi-retained.assets/hello-release.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "error-results:debug",
+      "fingerprint": {
+        "recipe_sha256": "c6f188dfb416f2757322d93ae6161b3aa2100864182d64c48f7f8f4a5308bb89",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/book/examples/ch07_ports3.coax": "8b0553ac08aabbcd183aa2cae6738f3794f5f3e05724f2ed4a10671d56c8e411",
+          "coax/book/examples/ch07_ports3.out": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a"
+        },
+        "resolutions": {
+          "coax/book/examples/ch07_ports3.coax": "coax/book/examples/ch07_ports3.coax",
+          "coax/book/examples/ch07_ports3.out": "coax/book/examples/ch07_ports3.out"
+        },
+        "closure_sha256": "579bbd1b8dd8f48e43544303d2ab8213cc86cb7814bac66d4f170de78b00cf17",
+        "expected": {
+          "stdout": "coax/book/examples/ch07_ports3.out",
+          "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a",
+          "exit_status": 0
+        }
+      },
+      "mode": "debug",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "coax-current-ffi-retained.assets/error-results-debug.stdout",
+        "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a",
+        "bytes": 86
+      },
+      "stderr": {
+        "path": "coax-current-ffi-retained.assets/error-results-debug.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "error-results:release",
+      "fingerprint": {
+        "recipe_sha256": "9066cfda5ed65c2d7befaf337aac8e2f1bc43602c756118b208365495c3ea455",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/book/examples/ch07_ports3.coax": "8b0553ac08aabbcd183aa2cae6738f3794f5f3e05724f2ed4a10671d56c8e411",
+          "coax/book/examples/ch07_ports3.out": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a"
+        },
+        "resolutions": {
+          "coax/book/examples/ch07_ports3.coax": "coax/book/examples/ch07_ports3.coax",
+          "coax/book/examples/ch07_ports3.out": "coax/book/examples/ch07_ports3.out"
+        },
+        "closure_sha256": "579bbd1b8dd8f48e43544303d2ab8213cc86cb7814bac66d4f170de78b00cf17",
+        "expected": {
+          "stdout": "coax/book/examples/ch07_ports3.out",
+          "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a",
+          "exit_status": 0
+        }
+      },
+      "mode": "release",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "coax-current-ffi-retained.assets/error-results-release.stdout",
+        "sha256": "b426dbd444756d08af423ecba7d0c1ae3b1f0daa2777e034b8cff75b2388286a",
+        "bytes": 86
+      },
+      "stderr": {
+        "path": "coax-current-ffi-retained.assets/error-results-release.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "source-modules:debug",
+      "fingerprint": {
+        "recipe_sha256": "24ca2ed8920386b490667dc3982c0f8fb3c456e2c9ca5fdfabce24269392a189",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/book/examples/ch10_sources.coax": "2371d24ad95d42f4608c0a5916e6c98d8d489cd7ef1258695ac5f02365c3b469",
+          "coax/book/examples/ch10_sources.out": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+          "coax/book/examples/lib/ch10_numbers.coax": "460f36d4405b1538d2e1105780b767838b52e61550fc17546fe7fffb364b2e7c",
+          "coax/book/examples/lib/ch10_types.coax": "8c9f635a7bc70ee9c4409dea93594665275490c2d3d54726a06e59621eca702d"
+        },
+        "resolutions": {
+          "coax/book/examples/ch10_sources.coax": "coax/book/examples/ch10_sources.coax",
+          "coax/book/examples/ch10_sources.out": "coax/book/examples/ch10_sources.out",
+          "coax/book/examples/lib/ch10_numbers.coax": "coax/book/examples/lib/ch10_numbers.coax",
+          "coax/book/examples/lib/ch10_types.coax": "coax/book/examples/lib/ch10_types.coax"
+        },
+        "closure_sha256": "ddcd884dbba7fa58a45215f8840ffd752399fc264ef8ef7046d9c2d27b8e440a",
+        "expected": {
+          "stdout": "coax/book/examples/ch10_sources.out",
+          "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+          "exit_status": 0
+        }
+      },
+      "mode": "debug",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "coax-current-ffi-retained.assets/source-modules-debug.stdout",
+        "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+        "bytes": 3
+      },
+      "stderr": {
+        "path": "coax-current-ffi-retained.assets/source-modules-debug.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "source-modules:release",
+      "fingerprint": {
+        "recipe_sha256": "e432e7ec6510e626ad80d5f554f4c1a1b6c0e8578bfd0aa59ce5906d23b44342",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>"
+        },
+        "inputs": {
+          "coax/book/examples/ch10_sources.coax": "2371d24ad95d42f4608c0a5916e6c98d8d489cd7ef1258695ac5f02365c3b469",
+          "coax/book/examples/ch10_sources.out": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+          "coax/book/examples/lib/ch10_numbers.coax": "460f36d4405b1538d2e1105780b767838b52e61550fc17546fe7fffb364b2e7c",
+          "coax/book/examples/lib/ch10_types.coax": "8c9f635a7bc70ee9c4409dea93594665275490c2d3d54726a06e59621eca702d"
+        },
+        "resolutions": {
+          "coax/book/examples/ch10_sources.coax": "coax/book/examples/ch10_sources.coax",
+          "coax/book/examples/ch10_sources.out": "coax/book/examples/ch10_sources.out",
+          "coax/book/examples/lib/ch10_numbers.coax": "coax/book/examples/lib/ch10_numbers.coax",
+          "coax/book/examples/lib/ch10_types.coax": "coax/book/examples/lib/ch10_types.coax"
+        },
+        "closure_sha256": "ddcd884dbba7fa58a45215f8840ffd752399fc264ef8ef7046d9c2d27b8e440a",
+        "expected": {
+          "stdout": "coax/book/examples/ch10_sources.out",
+          "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+          "exit_status": 0
+        }
+      },
+      "mode": "release",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "coax-current-ffi-retained.assets/source-modules-release.stdout",
+        "sha256": "084c799cd551dd1d8d5c5f9a5d593b2e931f5e36122ee5c793c1d08a19839cc0",
+        "bytes": 3
+      },
+      "stderr": {
+        "path": "coax-current-ffi-retained.assets/source-modules-release.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "key": "local-c-workflow:native",
+      "fingerprint": {
+        "recipe_sha256": "29c0f719de9d97df1a755587d218d233647ac383425a3f5bd119c2f1b76b2258",
+        "runner_sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580",
+        "tools": {
+          "coax": {
+            "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+            "version": "coax0 0.47.0"
+          },
+          "cc": {
+            "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+            "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          },
+          "python": {
+            "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+            "executable_sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+          },
+          "command": {
+            "sha256": "2c9bd30bc768f8ee44742705071558e81365487b4c8e00cd79519a8c2d83f9d6",
+            "version": "GNU bash, version 5.3.20(1)-release (aarch64-apple-darwin25.6.0)\nCopyright (C) 2025 Free Software Foundation, Inc.\nLicense GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n\nThis is free software; you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law."
+          }
+        },
+        "target": {
+          "system": "Darwin",
+          "release": "25.4.0",
+          "machine": "arm64",
+          "SDKROOT": "",
+          "MACOSX_DEPLOYMENT_TARGET": ""
+        },
+        "environment": {
+          "PATH": "/Users/christopherdavid/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/christopherdavid/.codex/tmp/arg0-macos/codex-arg0p1nIMF:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/christopherdavid/.local/bin:/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home/bin:/Users/christopherdavid/.openagents/bin:/Users/christopherdavid/.codeium/windsurf/bin:/Users/christopherdavid/Library/pnpm/bin:/Users/christopherdavid/.grok/bin:/Users/christopherdavid/.opencode/bin:/Users/christopherdavid/.bun/bin:/Users/christopherdavid/.config/herd-lite/bin:/Users/christopherdavid/google-cloud-sdk/bin:/Users/christopherdavid/.nvm/versions/node/v24.13.1/bin:/opt/homebrew/sbin:/Users/christopherdavid/.cargo/bin:/Users/christopherdavid/.lmstudio/bin:/Users/christopherdavid/.maestro/bin:/Users/christopherdavid/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS",
+          "HOME": "/Users/christopherdavid",
+          "LC_ALL": "C",
+          "LANG": "C",
+          "COAX": "<selected-coax>",
+          "COAX_CC": "<selected-cc>",
+          "PROTOC": "",
+          "BOOK_MUTATE": "0",
+          "BOOK_SANITIZE": "0"
+        },
+        "inputs": {
+          "coax/book/examples/ch24_workflow/host.c": "35673a0cc2fb6569249f32f9afd5355906dafc09f0d359324820a3beff49be9f",
+          "coax/book/examples/ch24_workflow/run.out": "71e8f259d44444bd24c6c798f44c5aee4c99800db87de20c688f4b60318dd771",
+          "coax/book/examples/ch24_workflow/run.sh": "5d77f0b834a70fe060e671c9976677340d36595bc63b5fc2f4784fa48ff0c59a",
+          "coax/book/examples/ch24_workflow/workflow.coax": "6a43f6babaf71d48c9886d2f383d220acbe96c3c0ba18425b20f464815c4d31f",
+          "coax/book/examples/lib/ch15_request_policy.coax": "99725638a45886eff1378d50a171e94f32c56465decd315189bd5628560d2368",
+          "proto/descriptors/ios-home.pb": "9ced28885e6dcb2c970d05ce084ee0afa4ce539d4f79d6d3d0b2396fb74bb899"
+        },
+        "resolutions": {
+          "coax/book/examples/ch24_workflow/host.c": "coax/book/examples/ch24_workflow/host.c",
+          "coax/book/examples/ch24_workflow/run.out": "coax/book/examples/ch24_workflow/run.out",
+          "coax/book/examples/ch24_workflow/run.sh": "coax/book/examples/ch24_workflow/run.sh",
+          "coax/book/examples/ch24_workflow/workflow.coax": "coax/book/examples/ch24_workflow/workflow.coax",
+          "coax/book/examples/lib/ch15_request_policy.coax": "coax/book/examples/lib/ch15_request_policy.coax",
+          "proto/descriptors/ios-home.pb": "proto/descriptors/ios-home.pb"
+        },
+        "closure_sha256": "2a7b36a07530111f4ae2c88efd347394158b18c16d18b2476b64a5beda92fadc",
+        "expected": {
+          "stdout": "coax/book/examples/ch24_workflow/run.out",
+          "sha256": "71e8f259d44444bd24c6c798f44c5aee4c99800db87de20c688f4b60318dd771",
+          "exit_status": 0
+        }
+      },
+      "mode": "native",
+      "status": "passed",
+      "action": "retain",
+      "exit_status": 0,
+      "retained": true,
+      "origin": {
+        "receipt_sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e",
+        "observed_revision": "8f36568370916ad063ee8119e472ddd74df6acca"
+      },
+      "stdout": {
+        "path": "coax-current-ffi-retained.assets/local-c-workflow-native.stdout",
+        "sha256": "71e8f259d44444bd24c6c798f44c5aee4c99800db87de20c688f4b60318dd771",
+        "bytes": 164
+      },
+      "stderr": {
+        "path": "coax-current-ffi-retained.assets/local-c-workflow-native.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    }
+  ],
+  "route_definition": {
+    "id": "coax-current-ffi",
+    "title": "Current Coax and a local C boundary",
+    "book": "coax",
+    "scope": "Run current strings, explicit error results and shared source identities, then call emitted Coax from C through a local-file/protobuf workflow. The capstone checks stale completion, failure and timeout paths in C debug and optimized builds.",
+    "limitations": [
+      "Selected current-language examples do not qualify every Coax feature or chapter. Generic constraints, ownership and other targets retain their own evidence.",
+      "The file effect is temporary and local. Decoded protobuf bytes do not authorize a HUD action. General fallible foreign results and asynchronous ownership remain separate completion work.",
+      "Teaching examples do not record new product adoption or qualify an app, browser, deployment or full compiler."
+    ],
+    "prerequisites": {
+      "compiler": "An existing Coax executable with native C emission, supplied with --coax. Receipts bind its actual bytes and options; the runner does not build it.",
+      "commands": [
+        "python3",
+        "bash",
+        "cc"
+      ],
+      "hardware": "CPU terminal; retained observations are Apple silicon/macOS. Another host requires its own matching receipt. No GPU or browser is required.",
+      "data": [],
+      "network": false
+    },
+    "chapters": [
+      "coax/book/ch01-getting-started.md",
+      "coax/book/ch07-errors.md",
+      "coax/book/ch10-organizing-programs.md",
+      "coax/book/ch20-interop.md",
+      "coax/book/ch24-a-complete-boundary.md"
+    ],
+    "evidence": [
+      "coax/book-maintenance.md",
+      "coax/verification-retained-stores.md"
+    ],
+    "steps": [
+      {
+        "id": "hello",
+        "kind": "coax-run",
+        "source": "coax/book/examples/ch01_hello_name.coax",
+        "stdout": "coax/book/examples/ch01_hello_name.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ],
+        "timeout": 120
+      },
+      {
+        "id": "error-results",
+        "kind": "coax-run",
+        "source": "coax/book/examples/ch07_ports3.coax",
+        "stdout": "coax/book/examples/ch07_ports3.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ],
+        "timeout": 120
+      },
+      {
+        "id": "source-modules",
+        "kind": "coax-run",
+        "source": "coax/book/examples/ch10_sources.coax",
+        "stdout": "coax/book/examples/ch10_sources.out",
+        "exit_status": 0,
+        "modes": [
+          "debug",
+          "release"
+        ],
+        "timeout": 120
+      },
+      {
+        "id": "local-c-workflow",
+        "kind": "command",
+        "argv": [
+          "bash",
+          "coax/book/examples/ch24_workflow/run.sh"
+        ],
+        "sources": [
+          "coax/book/examples/ch24_workflow/workflow.coax"
+        ],
+        "inputs": [
+          "coax/book/examples/ch24_workflow/host.c",
+          "coax/book/examples/ch24_workflow/run.sh",
+          "proto/descriptors/ios-home.pb"
+        ],
+        "stdout": "coax/book/examples/ch24_workflow/run.out",
+        "exit_status": 0,
+        "modes": [
+          "native"
+        ],
+        "env": {
+          "PROTOC": "",
+          "BOOK_MUTATE": "0",
+          "BOOK_SANITIZE": "0"
+        },
+        "timeout": 180
+      }
+    ]
+  },
+  "route_definition_sha256": "87a2b1a892977570fad3b27d2cbda7cde723eec1441127c91147545856ac58cd",
+  "revision_scope": "Git HEAD at observation; source hashes, not a claim that the worktree is clean or published.",
+  "scope": "Exact selected native examples and declared workflow, not all book capabilities, product adoption, live transport, browser rendering or production deployment.",
+  "previous_receipt": {
+    "path": "/private/tmp/openagents-book-routes-20261101/docs/verification/book-routes-2026-11-01/coax-current-ffi.json",
+    "sha256": "fc4a25de3eb40fa0c04c9632a5c4b69ca842871fa614d20dcbe1f696adc79e5e"
+  },
+  "integrity_sha256": "124542c7c579a26d46c796f4fdfa2847175933dadb43c3b31951c1588a2fa1b9",
+  "executed_runs": 0,
+  "retained_runs": 7,
+  "finished_at": "2026-11-02T02:55:06.729031+00:00"
+}

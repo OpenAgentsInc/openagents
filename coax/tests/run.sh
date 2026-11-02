@@ -92,7 +92,10 @@ sources_rc=$?
 python3 tests/reflection.py
 reflection_rc=$?
 # Book maintenance and bounded shared-library adoption, without model/network effects.
-python3 tests/book_claims.py && python3 tests/book_selection.py && python3 tests/library_recipes.py
+python3 tests/book_claims.py && python3 tests/book_selection.py && python3 tests/library_recipes.py && \
+   python3 ../scripts/book_routes.py --check && \
+   PYTHONDONTWRITEBYTECODE=1 python3 ../scripts/tests/test_book_routes.py && \
+   PYTHONDONTWRITEBYTECODE=1 python3 ../scripts/test_publish_coax_book.py
 library_tools_rc=$?
 sequence_output=$(mktemp -d)
 if [[ -n "$sequence_output" ]] && "$COAX" test lib/sequence.coax --library && "$COAX" mutate lib/sequence.coax --library && \

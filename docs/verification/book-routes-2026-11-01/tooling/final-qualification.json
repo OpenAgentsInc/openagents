@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-02T02:49:14.006132+00:00",
+  "command": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "-I",
+    "-B",
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "scripts/tests",
+    "-p",
+    "test_book_routes.py",
+    "-v"
+  ],
+  "cwd": "/private/tmp/openagents-book-routes-20261101",
+  "interpreter": {
+    "version": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+    "executable": {
+      "path": "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/bin/python3.15",
+      "bytes": 34640,
+      "sha256": "db158111cfa3108809eb1c09ea40efc976b9dfec1f194067efe20e74cc399dac"
+    }
+  },
+  "target": {
+    "system": "Darwin",
+    "machine": "arm64"
+  },
+  "source_inputs_before": [
+    {
+      "path": "/private/tmp/openagents-book-routes-20261101/scripts/tests/test_book_routes.py",
+      "bytes": 24921,
+      "sha256": "462860d671a700d5268378a9e1358cbdbddd4058a4f4acb9dba6ae35faf30d67"
+    },
+    {
+      "path": "/private/tmp/openagents-book-routes-20261101/scripts/book_routes.py",
+      "bytes": 25927,
+      "sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580"
+    }
+  ],
+  "source_inputs_after": [
+    {
+      "path": "/private/tmp/openagents-book-routes-20261101/scripts/tests/test_book_routes.py",
+      "bytes": 24921,
+      "sha256": "462860d671a700d5268378a9e1358cbdbddd4058a4f4acb9dba6ae35faf30d67"
+    },
+    {
+      "path": "/private/tmp/openagents-book-routes-20261101/scripts/book_routes.py",
+      "bytes": 25927,
+      "sha256": "df110b628421370b5f2a0f881a67ecbc04327501bd0e4d2e5e0ebf41db3f9580"
+    }
+  ],
+  "source_inputs_unchanged": true,
+  "exit_status": 0,
+  "tests_expected": 27,
+  "stdout": {
+    "path": "/tmp/book-route-tests-20261101/final-27.stdout.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stderr": {
+    "path": "/tmp/book-route-tests-20261101/final-27.stderr.log",
+    "bytes": 4385,
+    "sha256": "521c81075875e1d906accc5eb35c3a16d4a17efd5ace9b11f4938366313e1a19"
+  },
+  "red_observations": [
+    {
+      "tests": 3,
+      "failures": 1,
+      "cause": "Non-list descriptors in dependency metadata accepted.",
+      "scope": "Earlier tool output only; no standalone initial raw log."
+    },
+    {
+      "tests": 27,
+      "failing_methods": 1,
+      "failed_subcases": 5,
+      "cause": "Bash undeclared/missing/escaping script or shell-code entry accepted.",
+      "stdout": {
+        "path": "/tmp/book-route-tests-20261101/bash-input-red.stdout.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "/tmp/book-route-tests-20261101/bash-input-red.stderr.log",
+        "bytes": 8743,
+        "sha256": "ed52a55775e7b27cd75aa13451ada0a57ebae1daf277b9b3eba67a5855f3ca55"
+      }
+    }
+  ],
+  "scope": "Temporary inert checkout fixtures and mock compiler/CC/deps/model commands; actual tiny Python literal argv and0.2-second timeout subprocess checks. No real compiler, numerical gate, browser, network or training run.",
+  "fixture_identity": "Deterministic file contents, mocked fixture-cpu target and mutated variants are authored in scripts/tests/test_book_routes.py; per-test TemporaryDirectory roots removed.",
+  "limitations": [
+    "Tooling correctness evidence only, not execution attestation or proof against maliciously forged trusted-local receipt state.",
+    "Real supported route qualification is separate."
+  ]
+}

@@ -24,7 +24,7 @@ tracks; the CNN work does not wait for all compiler or relay work to finish.
 
 | Priority and issue | Independently reviewable tasks | Exit |
 | --- | --- | --- |
-| P1: [Supported reader routes and delivery evidence, #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) | Give each book a clean-checkout entry command and observable application exit; bind evidence to source/compiler/target; run quick metadata checks; record published revision. | A reader can reproduce a named supported route, and a changed dependency invalidates only its affected evidence. |
+| Delivered infrastructure: [Supported reader routes and delivery evidence, #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) | Give each book a clean-checkout entry command and observable application exit; bind evidence to source/compiler/target; run quick metadata checks; record published revision. | A reader can reproduce a named supported route, and a changed dependency invalidates only its affected evidence. |
 | P1: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Reuse existing result-language, analysis-cost, B2 and B3 task identities; qualify a synchronous fallible adapter, then the real polling/cancel lifecycle; teach the resulting contract. | Handled outcomes, cleanup and buffer lifetime survive success, refusal and cancellation within measured analysis bounds. |
 | P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. The tiny CNN is a step toward ResNet/CIFAR, not that project's completion. |
 | P2: [Useful single-GPU training, #12627](https://github.com/OpenAgentsInc/openagents/issues/12627) | Cooperative backward and resident whole-step state, precision/overflow/resume, then a frozen 10–50M decoder with independent baseline. | Quality, tokens/s, memory and startup are measured together on the 4080. Distributed scaling follows this useful baseline. |
@@ -32,6 +32,14 @@ tracks; the CNN work does not wait for all compiler or relay work to finish.
 | P2: [Reproducible Forge artifacts, #12629](https://github.com/OpenAgentsInc/openagents/issues/12629) | Common invertible edits, stale-revision refusal, pinned document/engine/assets, reload, migration and isolated forks. | A later engine release cannot silently change a published world's pinned artifact. |
 | P1: [Nostr live consumers and evidence debt, #12630](https://github.com/OpenAgentsInc/openagents/issues/12630) | Close recorded pin/regression/settlement decisions, qualify complete signer/storage/transport profiles, migrate remaining actual consumers and connect applications individually. | Real consumer evidence covers its actual target and key boundary; offline traces and test keys retain their narrower claims. |
 | P1: [Production relay qualification, #12631](https://github.com/OpenAgentsInc/openagents/issues/12631) | Freeze required parity, qualify durable import/restart and production budgets, refresh differentials, shadow traffic and rehearse rollback. | Every production exit is evidenced before a separate owner-operated cutover. |
+
+[Issue #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) now has
+[executable bounded routes](routes.json), [delivery instructions](DELIVERY.md)
+and [retained qualification](../verification/book-routes-2026-11-01/README.md):
+23 native step/mode executions passed, then all 23 were retained with zero
+example executions. Publication identity tracking is implemented and tested;
+no real GitBook publication was performed for this change. These exits do
+not promote the separate application milestones below.
 
 Each issue has a task checklist and acceptance criteria. Execute it in bounded
 slices and retain failed results; do not mark an umbrella complete because one
@@ -44,7 +52,7 @@ realm shaders, API NIP-98 verification and the relay's wired operations already
 exist. The qualified analysis-cost candidate in the existing
 `book30-analysis-cost` task reports 1,010,708 steps; B1's older 1,047,475-step
 observation is historical, not a measurement of current main. Measure the exact
-current compiler before adding analysis. Forge currently pins the document
+current compiler before adding analysis. The later [delivered wide-store H qualification](../verification/coax-wide-retained-stores-2026-11-01/README.md) reports 1,035,932 steps, leaving 12,644; a lower in-flight R2 measurement is not a delivered/current-main qualification. Forge currently pins the document
 revision but still plays it with the current engine, which is the concrete
 artifact gap for #12629. Nostr's frozen conformance example must not be relabeled
 as a current operational report.

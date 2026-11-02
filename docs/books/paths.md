@@ -3,125 +3,122 @@
 The four books are [The Coax Programming Language](../../coax/book/README.md),
 [Psionic: ML From Scratch](../../psionic/book/README.md),
 [Building Aethyr, World Engine](../../aethyr/book/README.md) and
-[Nostr From Scratch](../../nostr/book/README.md). Each route below
-lists what you need and the chapters to read, in order, across the books.
-Chapter numbers are each book's own.
+[Nostr From Scratch](../../nostr/book/README.md). Chapter numbers below are
+each book's own.
 
-Every command on this page runs from the root of the openagents repository.
-The original command observations are from 2026-10-31 on a Mac with an Apple
-M5 Max, 128 GB of memory and macOS 26.4, with compiler `coax0 0.45.0`, except
-where a step names later evidence. The 2026-11-01 reconciliation updates the
-reading routes from the current chapter registries; it does not rerun these
-commands or qualify a later compiler or another host. Times below are retained
-observations, not current performance guarantees. Retain a passing result only
-while its source, compiler and options still match; rerun the affected examples
-when that closure changes.
+The [supported-route catalog](routes.json) declares four bounded CPU routes.
+The [delivery process](DELIVERY.md) explains clean-checkout execution, selective
+reuse and source-bound publication receipts.
+Each names its prerequisites, commands, exact stdout fixture, expected exit,
+source/evidence inputs and remaining limits. Existing examples make a route
+available to run; a matching receipt establishes what actually passed for a
+particular compiler, source closure, options and host. A matching transcript
+is not whole-book completion, product adoption or deployment readiness.
 
-A chapter marked *(design draft)* or *(planned)* describes work that doesn't
-run yet. The [chapter registries](../../coax/book/chapters.json) of the
-[four](../../psionic/book/chapters.json)
-[books](../../aethyr/book/chapters.json)
-([Nostr](../../nostr/book/chapters.json)) record every chapter's status.
-An implemented chapter qualifies its named profile, not every capability in
-its title. See [completion milestones](completion.md) for the remaining
-integration, quality, target and adoption gates.
-
-## Write current Coax
-
-| What you need | |
-| --- | --- |
-| Revision | `main` with compiler `coax0 0.45.0` or later. `coax/bin/coax version` prints it. |
-| Hardware | A Mac with Apple silicon. The compiler needs a C and C++20 compiler (Xcode's command line tools) and Python 3. |
-| Downloads | None. |
-| Time | `coax/build.sh` takes about 10 seconds when it reuses a cached build, and about 12 minutes the first time on the tested Mac. |
-
-First successful command:
+Run these commands from the repository root with an existing compiler:
 
 ```shell
-coax/build.sh
-coax/bin/coax run coax/book/examples/ch01_hello_name.coax
+python3 scripts/book_routes.py --check
+python3 scripts/book_routes.py --route coax-current-ffi --plan
+python3 scripts/book_routes.py --route coax-current-ffi \
+  --coax /absolute/path/to/coax --receipt /tmp/coax-current-ffi.json
 ```
 
-It prints `Hello, Coax!`.
+`--check` validates metadata only. `--plan` discovers dependencies when needed and describes the selected work
+without executing route examples (compiler front-end checks can run). `--route` with `--receipt` runs only the declared route steps and
+records their actual producer identities and results. Supply `--previous FILE`
+to offer an earlier receipt for reuse; a prior pass applies only when its full
+required closure matches. The runner does not build a compiler, download data,
+start a browser or contact a service. The Psionic route performs its declared
+tiny synthetic training run; it does not retrain MNIST.
 
-Chapters, all in the Coax book:
+The terminal routes require Python 3, a native C compiler and the chosen Coax
+executable; the C boundary also needs Bash. Retained observations use Apple
+silicon/macOS. Another compiler or host requires its own matching evidence.
+All four routes need no GPU, external data, network access or user secrets.
+The route receipt, rather than an old compiler version or duration printed on
+this page, records the executed profile. Every declared exit is zero and
+stdout must match the linked fixture bytes. Standalone Coax examples run in
+debug and release. The C workflow runs once and itself executes two C builds.
 
-1. Chapters 1–4: getting started, a first project, common concepts and
-   reading errors.
-2. Chapters 5–12: structs and enums, memory (partly implemented), errors,
-   generics (partly implemented), compile time, larger programs, checks, and
-   debugging.
-3. Chapters 13 (partly implemented), 16 (partly implemented) and 18: data
-   layout, determinism and the protocol boundary.
-4. Chapters 20 and 24: interop with C and Swift, and a complete boundary.
-5. Chapter 29's section "Points and vectors in a frame (runs today)". The
-   rest of chapter 29 is planned.
+A chapter marked *(design draft)* or *(planned)* describes work that does not
+run yet. The chapter registries for [Coax](../../coax/book/chapters.json),
+[Psionic](../../psionic/book/chapters.json),
+[Aethyr](../../aethyr/book/chapters.json) and
+[Nostr](../../nostr/book/chapters.json) retain each named teaching scope,
+qualified targets and reviewed component adoption. See
+[completion milestones](completion.md) for the remaining integration, quality,
+target and application gates. The optional original-model route below retains
+its older, separately dated measurements and is outside this four-route catalog.
+Those original-model command observations are from 2026-10-31 on an Apple
+M5 Max with 128 GB memory and macOS 26.4, using `coax0 0.45.0`. They were not
+rerun for this catalog and are not current performance guarantees.
 
-To check your copy of the book's examples:
+## Write current Coax and cross a local C boundary
+
+Route: `coax-current-ffi`. It runs the existing
+[hello](../../coax/book/examples/ch01_hello_name.coax),
+[explicit error results](../../coax/book/examples/ch07_ports3.coax) and
+[shared source identity](../../coax/book/examples/ch10_sources.coax) examples.
+Their same-stem `.out` files are the exact expected transcripts. The first
+prints `Hello, Coax!`; the error example accepts ports 8080 and 443 while
+reporting `not_a_digit`, `empty` and `out_of_range`; the loaded modules print 42.
 
 ```shell
-coax/book/check-examples.sh
+python3 scripts/book_routes.py --route coax-current-ffi \
+  --coax /absolute/path/to/coax --receipt /tmp/coax-current-ffi.json
 ```
 
-It ends with `all book examples pass` and takes about 2 minutes on the
-tested Mac.
+The final step runs the existing
+[C workflow](../../coax/book/examples/ch24_workflow/run.sh): emitted Coax reads
+and writes a protobuf packet through a C host and a temporary local file. Its
+[fixture](../../coax/book/examples/ch24_workflow/run.out) reports revision 2,
+result 42, a stale completion ignored, and failure/timeout paths checked, once
+for each C build. The route disables optional protoc comparison, mutation and
+sanitizers so those separate gates cannot silently change its transcript. It
+requires neither Swift nor a network service. Temporary build/file effects do
+not change an app or publish anything.
 
-## Build a playable realm
+Read Coax chapters 1–4, 7, 10, 20 and 24 for this route. Chapters 5–9, 11,
+13, 16, 18 and chapter 29's runnable affine section explain related supported
+forms and their explicit limits. This selected route does not exercise every
+generic constraint, memory boundary, target or compiler feature. General
+fallible foreign results, asynchronous ownership and remaining language work
+keep their own [completion gates](completion.md#coax-a-dependable-language-and-supported-consumers).
 
-| What you need | |
-| --- | --- |
-| Revision | `main`, qualified with compiler `coax0 0.46.0`. |
-| Hardware | A Mac with Apple silicon and Chrome, or another browser with WebGPU. |
-| Downloads | LLVM for the WebAssembly build: `brew install llvm lld wasi-libc wasi-runtimes`. |
-| Time | The dev server's first build takes about 2 minutes. |
+## Replay the Aethyr engine core
 
-First successful command, which runs the Aethyr book's examples in debug and
-release:
+Route: `aethyr-core-replay`. The three existing examples run a fixed-step clock
+at four frame rates, consume a queued press exactly once, then record and
+replay a small walk. They use the CPU and terminal only.
 
 ```shell
-coax/build.sh
-python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax
+python3 scripts/book_routes.py --route aethyr-core-replay \
+  --coax /absolute/path/to/coax --receipt /tmp/aethyr-core-replay.json
 ```
 
-It ends with `book execution: 38 runs match output and exit status`. The
-2026-11-01 chapter 9 qualification uses `coax0 0.46.0`: 16 changed-closure
-runs pass freshly, and 22 identical runs retain their passing evidence from
-`bd73544a7e`. The [record](../../aethyr/tests/book-chapter9-qualification.json)
-binds the compiler's source inventories, fixtures and run options. The new
-example calculates an overridden run and jump, shows a carried fixed step,
-and refuses zero gravity without losing the queued jump. Other commands on
-this page retain their original qualification above.
+Exact expected outputs are
+[frame-rates](../../aethyr/fixtures/frame-rates.out),
+[one-press](../../aethyr/fixtures/one-press.out) and
+[replay-a-walk](../../aethyr/fixtures/replay-a-walk.out). The replay prints
+`662099296` for both recorded and replayed session digests, and reports the
+planted fault's first divergence at step 150. The clock fixture also shows
+an eight-step stall cap; the input fixture shows one press consumed over
+frames containing zero, two and one simulation steps.
 
-To play a realm in the browser:
+Read Coax chapters 11 and 16, then Aethyr chapters 1–5. Continue through
+Aethyr 6–10 for entities, queries, ground/collision, walking and camera
+composition. Existing consumers such as
+[Grid walking](../../verse/gridwalk.coax) adopt particular shared components;
+these terminal examples do not migrate a whole realm.
 
-```shell
-coax/web/serve.sh apps/openagents-web
-```
-
-When the server prints `coax serve: http://127.0.0.1:8800/`, open
-`http://127.0.0.1:8800/verse`, choose **ENTER** to play as a guest, and the
-Haunted House opens. The dev server rewrites generated content
-files under `apps/openagents-web/`, so don't commit them by accident.
-
-Chapters, in order:
-
-1. Coax chapters 1–11, then 17 (GPU programs, partly implemented) and 19
-   (builds and hot reload, partly implemented).
-2. Aethyr chapters 1–5: the fixed step, spaces and units (native f32 spatial
-   boundaries), defaults, typed input and replay.
-3. Aethyr chapters 6–10: entities, spatial queries, ground/collision, walking
-   and camera composition. These are implemented within their stated profiles;
-   they do not supply a general rigid-body/contact solver.
-4. Aethyr chapters 65–67: offline synthesized sound, sequencing, mixing and
-   WAV output. Live playback and spatial/voice integration in 68–69 remain
-   design drafts.
-5. Aethyr chapters 11–15 (design drafts) and 16 (partly implemented): shared
-   rendering, materials, light, figures, HUD and asset budgets. Existing realm
-   shaders already emit from Coax; consolidating their shared renderer and
-   independent references remains.
-6. Aethyr chapters 56 and 64 (design drafts): the complete Grid capstone and
-   whole-realm migration. Existing use of shared clocks, walking and queries
-   is adoption of those components, not completion of either capstone.
+This route does not start the browser or qualify a rendered/playable Grid,
+general rigid-body solver, live audio or Forge artifact. Existing native/Wasm
+replay parity has a separate harness and retained evidence, including the
+[chapter 9 record](../../aethyr/tests/book-chapter9-qualification.json).
+Follow the [playable-engine milestones](completion.md#aethyr-a-complete-playable-engine-route)
+and the [web app guide](../../apps/openagents-web/README.md) for those distinct
+integrations; a CPU replay pass does not promote them.
 
 ## Run an original model
 
@@ -174,94 +171,72 @@ Chapters, in order:
 5. Psionic chapters 16 and 17: whether the probabilities are good, and how
    to qualify the result.
 
-## Train a small model
+## Use public models and a trainer
 
-| What you need | |
-| --- | --- |
-| Revision | `main` with compiler `coax0 0.45.0` or later. |
-| Hardware | The CPU path. No GPU. |
-| Downloads | None. |
-
-First successful command:
-
-```shell
-coax/bin/coax run psionic/examples/learn-number.coax
-```
-
-It ends with `held-out: x = 3, prediction = 5.999999, target = 6`. Each
-later chapter has its own example, which runs in a few seconds:
+Route: `psionic-public-models`. Its first example actually trains a tiny
+76-parameter public module for 400 SGD steps with frozen normalization and
+deterministic dropout, then resumes from step 200. It compares all 400 losses
+and every saved float with its reference loop, and refuses a mismatched
+configuration and stale checkpoint pointer. Its
+[exact transcript](../../psionic/fixtures/one-trainer-module.out) records both
+the successful resume and those refusals.
 
 ```shell
-coax/bin/coax run psionic/examples/deadline-predictor.coax
-coax/bin/coax run psionic/examples/gradient-tape.coax
-coax/bin/coax run psionic/examples/byte-lm.coax
-coax/bin/coax run psionic/examples/causal-decoder.coax
-coax/bin/coax run psionic/examples/resume.coax
-coax/bin/coax run psionic/examples/adamw.coax
+python3 scripts/book_routes.py --route psionic-public-models \
+  --coax /absolute/path/to/coax --receipt /tmp/psionic-public-models.json
 ```
 
-Chapters, in order:
+The next two steps construct and execute the public
+[MLP](../../psionic/examples/mnist-classifier.coax) and
+[CNN](../../psionic/examples/cnn-classifier.coax) models. Their fixtures
+([MLP](../../psionic/fixtures/mnist-classifier.out),
+[CNN](../../psionic/fixtures/cnn-classifier.out)) show 3,322 and 2,910 parameters,
+a synthetic zero-model loss of 1, a bias derivative of -2, and numerical
+refusal preserving the published gradient. These two steps use no dataset and
+perform no MNIST learning experiment.
 
-1. Coax chapters 1–4 and 11 (writing checks).
-2. Psionic chapters 1–4.
-3. Psionic chapters 103 and 104: learning with arrays, then gradients as a
-   program.
-4. Psionic chapters 112 and 113: a byte-level language model, then a
-   differentiated decoder.
-5. Psionic chapters 122 and 124: checkpoints that resume exactly, and AdamW
-   with explicit precision.
-6. Psionic chapter 115: the implemented end-to-end tiny-decoder CPU run.
-   Chapters 114 and 116 are partly implemented: compiled backward and
-   memory-budgeted training retain their named CPU profiles and open work.
-7. Psionic chapters 123 and 125–128: learned tokenization, nanochat forward
-   and backward, then the partly implemented complete CPU pretraining run.
-   This is a small measured run, not a nanochat GPU speedrun reproduction.
-8. Psionic chapters 129–131 are partly implemented: actual GPU decoder
-   training, profiling and eager/compiled comparisons. Efficient cooperative
-   kernels, mixed precision and the larger training acceptance projects remain.
+Read Psionic chapters 3, 38, 106, 117–118, 122 and 124. The ordinary model APIs
+connect views, explicit tensor IR, first-order autodiff, named modules,
+training state and checkpointing. Retained
+[MLP](../verification/psionic-mnist-framework-2026-11-01.json) and
+[CNN](../verification/psionic-cnn-framework-2026-11-01.json) records separately
+cover their frozen original-data gradients, training quality, checkpoint replay
+and export. The route's exact output does not requalify those experiments on
+a new compiler or host, and does not retrain them.
 
-## Sign and verify a Nostr event
+This CNN profile uses CPU f32 NCHW/OIHW valid stride-one convolution and formal
+first-order f64 tape derivatives. GPU convolution, compiled convolution
+backward and higher-order convolution transforms refuse; pooling, additional
+options, residual models and broader architecture acceptance remain work.
+Tests and teaching examples do not count as product adoption. Native experiment
+consumers and the broader [framework acceptance projects](../../psionic/book/PLAN.md#a-framework-not-only-engines)
+keep their own workload, target and quality gates.
 
-| What you need | |
-| --- | --- |
-| Revision | `main` with compiler `coax0 0.45.0` or later. |
-| Hardware | Any Mac that builds the compiler. |
-| Downloads | None. The BIP-340 vectors are pinned in `coax/tests/vectors/`. |
-| Time | About 15 seconds after the compiler is built. |
+## Sign and verify an event, then replay a client
 
-First successful command, which checks BIP-340 verification against the 19
-official vectors:
+Route: `nostr-event-client`. The first step signs a whole event with a published
+BIP-340 test key, reads it back, verifies the ID/signature and demonstrates
+altered-field refusals. The second drives the client connection state machine
+through scripted handshakes, timeout/backoff, reconnects, verified events,
+duplicate/stale reports, acknowledgments and shutdown.
 
 ```shell
-coax/build.sh
-coax/bin/coax test coax/lib/crypto/schnorr.coax
+python3 scripts/book_routes.py --route nostr-event-client \
+  --coax /absolute/path/to/coax --receipt /tmp/nostr-event-client.json
 ```
 
-It ends with `127 checks, 127 passed, 0 failed`. Then sign and verify whole
-events, including one signed independently in Python and matched byte for
-byte:
+Exact expected transcripts are [events](../../nostr/fixtures/events.out) and
+[relay-connection](../../nostr/fixtures/relay-connection.out). The event step
+retains its declared 250,000,000-step evaluator budget and 240-second command
+timeout; the connection step has a 120-second timeout. No socket, relay,
+Keychain, user key or wallet is opened. The connection's bytes and clock are
+scripted in memory, and signing material is a committed public test vector.
 
-```shell
-coax/bin/coax test coax/lib/nostr/event.coax
-coax/bin/coax test coax/lib/nostr/event_sign.coax --run-steps 250000000
-```
-
-They end with `183 checks, 183 passed, 0 failed` and
-`332 checks, 332 passed, 0 failed`.
-
-Chapters, in order:
-
-1. Coax chapters 1–4, 11 (writing checks) and 18 (the protocol boundary).
-2. Nostr chapters 1–4: bytes and hex, big integers in
-   limbs, constant-time rules and SHA-256.
-3. Nostr chapters 7–13: the field, scalars, the group
-   law, scalar multiplication, verification, keys and signing.
-4. Nostr chapters 17 and 21: the exact JSON an event ID
-   hashes, then events, IDs and signatures.
-5. Nostr chapters 22–24: kinds and tags, filters and
-   relay messages, before a client (Part VIII) or a relay (Part IX).
-
-These chapters are implemented within their declared profiles. Native/Wasm
-qualification varies by chapter; a native result does not qualify a browser
-secret-handling path. Chapters 103 and 104 remain partly implemented: production
-relay migration/rollback and treasury signing/recovery have separate gates.
+Read Coax chapters 1–4, 11 and 18, then Nostr chapters 1–4, 7–13, 17, 21–24 and
+29. The cryptographic and client components have actual consumers, including
+[the Pylon](../../psionic/lib/pylon/run.coax), whose real transports and
+admission paths retain their own evidence. This offline route does not qualify
+native TLS, browser secret handling, durable storage, live interoperability or
+production relay operation. Chapters 103–104 and the
+[Nostr completion milestones](completion.md#nostr-finish-real-consumers-and-operational-qualification)
+keep migration, cutover and treasury signing/recovery separate.

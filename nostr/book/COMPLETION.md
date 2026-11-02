@@ -85,8 +85,12 @@ module merely because its chapter is implemented.
 `--store-capacity EVENTS` now selects host-allocated arrays. The default is
 still 2,048 records and 4 MiB; it is no longer a hard maximum. The recorded
 3,000-event replay at capacity 13,000 checks that allocation and replay path.
-It does not qualify the production event set, total original bytes,
-tombstones, memory use, restart time or traffic. Select and measure those
+[Chapter 103](ch103-replace-relay-openagents-com.md) now also records the later
+synthetic 50,000-event profile: 20.3 seconds to replay and 32.3 seconds to
+restart (`fae56496a0`). Preserve that bounded improvement rather than treating
+the earlier 3,000-event example as the latest measurement. Neither profile
+qualifies the production event set, total original bytes, tombstones,
+production memory/restart budgets or traffic. Select and measure those
 budgets against an approved restored-backup export. Replay verification time,
 the durable import command and a rollback-resistant freshness checkpoint
 remain separate work.

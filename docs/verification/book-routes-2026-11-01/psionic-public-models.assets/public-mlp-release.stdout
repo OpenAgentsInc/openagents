@@ -1,0 +1,6 @@
+MNIST MLP: 196 -> 16 -> 10; 3322 parameters, 17 nodes
+caller arenas: 3529 inputs, 62 values, 3338 adjoints, 16 flags; largest entry 3136
+AdamW: 12 epochs, 4096 rows, 16 rows per update, 3072 updates
+synthetic zero model: loss 1.0, bias[7] gradient -2.0, master unchanged true
+unrepresentable compute weight: number, gradient unchanged true
+No dataset downloaded and no training experiment run.
