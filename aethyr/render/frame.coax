@@ -171,7 +171,7 @@ rf_pass :: (f:RfFrame,resources:[]RfResource,target:RfHandle,bindings:[]RfBindin
     if !f.active || f.passes>=f.limit.passes || bindings.count>f.limit.bindings-f.bindings || draws.count>f.limit.draws-f.draws {return no;}
     if !rf_live(resources,target,f.epoch) {return no;}
     if resources[target.slot].kind!=RF_COLOR {return no;}
-    words:=f.words;
+    used:=f.words;
     for i:0..<bindings.count {
         b:=bindings[i];
         if b.group<0 || b.group>=4 || b.binding<0 || b.binding>=8 || !rf_live(resources,b.resource,f.epoch) {return no;}
@@ -180,7 +180,7 @@ rf_pass :: (f:RfFrame,resources:[]RfResource,target:RfHandle,bindings:[]RfBindin
         if r.kind!=RF_UNIFORM && r.kind!=RF_STORAGE {return no;}
         if b.offset<0 || b.words<1 || b.words>r.words {return no;}
         if !render_span_fits(cast(u64)b.offset,cast(u64)b.words,0,cast(u64)r.words) {return no;}
-        if b.words>f.limit.words-words {return no;}words+=b.words;
+        if b.words>f.limit.words-used {return no;}used+=b.words;
     }
     for d:draws {
         cap:=g.indices;if (d.base&0x80000000)!=0 {cap=g.vertices;}
@@ -188,7 +188,7 @@ rf_pass :: (f:RfFrame,resources:[]RfResource,target:RfHandle,bindings:[]RfBindin
         if !render_span_fits(cast(u64)d.first,cast(u64)d.count,0,cast(u64)cap)
             || !render_span_fits(cast(u64)base,cast(u64)d.instances,0,cast(u64)g.instances) {return no;}
     }
-    next:=f;next.passes+=1;next.bindings+=bindings.count;next.draws+=draws.count;next.words=words;
+    next:=f;next.passes+=1;next.bindings+=bindings.count;next.draws+=draws.count;next.words=used;
     return RfResult.{accepted=true,frame=next};
 }
 
