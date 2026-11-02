@@ -673,6 +673,39 @@ def verbs(check):
             check("watchdog: a quiet worker with no decision is reported as stuck", any(l["fate"] == "worker stuck" and "System One key" in l.get("note", "") for l in rw))
         finally:
             sleeper.kill()
+        # a log cut at any byte (chapter 2): readers read the complete lines and report the rest; a line appended after a crash starts clean
+        cr = subprocess.run([coder, "run", "$ echo cut-é-check", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        cid = next(json.loads(l)["id"] for l in cr.stdout.splitlines() if l.startswith('{"kind":"session"'))
+        cpath = os.path.join(sdir, cid + ".jsonl"); cdata = open(cpath, "rb").read()
+        cbad = []
+        for cut in range(0, len(cdata) + 1):
+            open(cpath, "wb").write(cdata[:cut])
+            whole = cdata[:cut].rfind(b"\n") + 1
+            st = subprocess.run([coder, "status", cid, "--json"], cwd=REPO, env=env, capture_output=True, timeout=60)
+            lg = subprocess.run([coder, "log", cid, "--json"], cwd=REPO, env=env, capture_output=True, timeout=60)
+            if whole == 0:
+                if st.returncode != 6: cbad.append((cut, "status", st.returncode))
+                continue
+            try:
+                sj = json.loads(st.stdout)
+                ok = st.returncode == 0 and sj.get("cut", 0) == cut - whole and lg.returncode == 0 and lg.stdout == cdata[:whole] \
+                     and all(json.loads(l) for l in lg.stdout.decode().splitlines())
+            except Exception as e:
+                ok = False
+            if not ok: cbad.append((cut, st.stdout[:80], lg.returncode))
+        mid = cdata.rfind(b"\n", 0, len(cdata) - 1) + 10          # inside the end line
+        open(cpath, "wb").write(cdata[:mid])
+        with open(os.path.join(sdir, cid + ".pid"), "w") as f:
+            f.write("999999")
+        with open(os.path.join(rdir, "threads"), "a") as f:
+            f.write("cutlog\t%s\tlocal\n" % cid)
+        subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=nokey, capture_output=True, timeout=120)
+        after = open(cpath, "rb").read()
+        check("a log cut at any byte: status and log read the complete lines and report the rest; the lost line after a crash starts on its own line",
+              not cbad and after.startswith(cdata[:cdata.rfind(b"\n", 0, len(cdata) - 1) + 1])
+              and json.loads(after.decode().splitlines()[-1])["ending"] == "lost"
+              and open(cpath + ".cut", "rb").read() == cdata[cdata.rfind(b"\n", 0, len(cdata) - 1) + 1:mid] + b"\n")
+        if cbad: print("     cut failures:", cbad[:5])
         # rechecks (chapter 20): a Worker whose model provider did not answer waits, then continues in a fork the Thread follows
         fsid = "20261102-000000-003"
         with open(os.path.join(sdir, fsid + ".jsonl"), "w") as f:

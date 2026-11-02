@@ -8,8 +8,9 @@
 > request they do not explain, redaction keeps the chain, and a rebuilt turn
 > replays through chapter1's `hl_replay`. Still to come: the event
 > schemas in `proto/`, a byte format on disk with readers kept for older
-> versions, recovery of a log cut at any byte offset, and a write that is
-> durable before its effect is reported.
+> versions, and a write that is durable before its effect is reported.
+> Coder's session logs recover from a cut at any byte offset (see
+> [In Coder](#in-coder)); this chapter's hash-chained log does not yet.
 
 The model sees only what the harness sends it. Chapter1's loop already
 keeps that small: step `k`'s request is a prefix of one token array. This
@@ -603,15 +604,50 @@ script.
 
 Mutation of `harness/log.coax` leaves no survivors.
 
+## In Coder
+
+Coder's session log, `~/.openagents/coder/sessions/ID.jsonl`, is one JSON
+event a line, appended by the session's own process
+([session.coax](../../coder/tui/session.coax)). It isn't hash-chained
+like this chapter's log, but it has the same problem at its end: a crash
+during an append, or a reader that looks during one, finds a last line with
+no newline.
+
+- **Readers take complete lines.** `cd_session_file`, which `coder status`,
+  `log`, `replay`, `fork`, `attach` and the Router all read through, stops
+  at the last newline. The partial line is never parsed.
+- **The cut is reported.** `coder status` shows "log ends in a partial line
+  of N bytes, not read", and `--json` adds `"cut":N`. `coder log` says the
+  same on stderr, and `coder log --json` prints only complete lines, so its
+  output is always valid JSON lines.
+- **A line after a crash starts clean.** Two lines are written by a process
+  other than the session's: the watchdog's `lost` end when the session's
+  process is gone (chapter 20), and `coder stop`'s `stopped` end after it
+  kills the process. Both go through `cs_append_after`, which first moves a
+  partial last line to `ID.jsonl.cut` and rewrites the log to its complete
+  lines, so the new line is never glued to half of an old one.
+
+The smoke runs a session whose log holds a two-byte character, cuts the
+log at every byte offset from 0 to its length, and checks that `status`
+reports the right cut, `log --json` returns exactly the complete prefix as
+valid JSON, and a cut inside the first line reads as no session. It then
+cuts the log inside its end line, leaves a dead process ID, and checks that
+the watchdog's `lost` line follows the last complete line and the cut bytes
+are in `ID.jsonl.cut`.
+
+Durability is still open in Coder too: an append is not followed by
+`fsync`, so a power loss can lose lines the session already reported.
+
 ## What remains
 
 - Event schemas in `proto/`, each a versioned message, and the log's
   content as protobuf rather than this chapter's fixed encoding.
 - A byte format on disk, with a version, and readers kept for older
   versions so an old session still opens.
-- Recovery of a log truncated at any byte offset to its last complete
-  event, with the truncation reported. Here a log can be cut only between
-  events, where it verifies with its last turn open.
+- Recovery of this chapter's hash-chained log truncated at any byte offset
+  to its last complete event, with the truncation reported. Here a log can
+  be cut only between events, where it verifies with its last turn open.
+  Coder's session logs already do this (see [In Coder](#in-coder)).
 - Durability: each event written to storage before its effect is reported,
   so a crash leaves a log that ends at a known boundary.
 - Text added inside a turn (a user interjecting, or context injected

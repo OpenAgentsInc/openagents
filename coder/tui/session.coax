@@ -223,6 +223,27 @@ cs_hide :: (l: [] CsLog, buf: [] u8, n0: int) -> int {
   return n;
 }
 
+// Another process's line for a log whose writer is gone (the watchdog's lost,
+// coder stop's stopped). A partial last line that writer left is moved to
+// PATH.cut first, so the new line starts on its own line.
+// The length of text's complete lines: up to and including its last newline.
+cs_complete :: (text: string) -> int {
+  k := text.count; while k > 0 && text[k - 1] != 10 { k -= 1; }
+  return k;
+}
+
+cs_append_after :: (path: string, line: string) -> bool {
+  fb: [4194304] u8; m := fs_read(path, fb[..]);
+  if m > 0 && fb[m - 1] != 10 {
+    k := cs_complete(cast(string) fb[0..<m]);
+    cb: [1400] u8; cn := cd_cat(cb[..], cd_cat(cb[..], 0, path), ".cut");
+    nb: [1400] u8; nn := cd_cat(nb[..], cd_cat(nb[..], 0, path), ".new");
+    x := fs_append(cast(string) cb[0..<cn], cast(string) fb[k..<m]); y := fs_append(cast(string) cb[0..<cn], "\n");
+    if !fs_write(cast(string) nb[0..<nn], cast(string) fb[0..<k]) || !fs_rename(cast(string) nb[0..<nn], path) { return false; }
+  }
+  return fs_append(path, line);
+}
+
 cs_text :: (a: [] App, kind: string, key: string, text: string) {
   o := a[0].log[0].line[..];
   n := json_raw(o, 0, "{\"kind\":"); n = json_write_string(o, n, kind);
@@ -386,4 +407,11 @@ cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
   for i: 0..<t.count { b[i] = t[i]; }
   n := cs_hide(l[..], b[..], t.count);
   #assert cast(string) b[0..<n] == "token [credential] and [credential].";
+}
+
+#test "session: a log's complete part ends at its last newline" {
+  #assert cs_complete("{\"a\":1}\n{\"b\":") == 8;
+  #assert cs_complete("{\"a\":1}\n") == 8;
+  #assert cs_complete("{\"a") == 0;
+  #assert cs_complete("") == 0;
 }

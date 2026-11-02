@@ -1108,7 +1108,16 @@ cd_session_file :: (id: string, buf: [] u8, idout: [] u8) -> string {
   pb: [1400] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, name);
   m := fs_read(cast(string) pb[0..<pn], buf);
   if m < 0 { return ""; }
+  m = cs_complete(cast(string) buf[0..<m]);      // complete lines only: a write in progress, or one a crash cut, ends without a newline
   return cast(string) buf[0..<m];
+}
+
+// How many bytes past the last complete line session id's log holds (full ID; text from cd_session_file).
+cd_session_cut :: (id: string, text: string) -> int {
+  db: [1100] u8; dir := cs_dir(db[..]);
+  pb: [1400] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, id); pn = cd_cat(pb[..], pn, ".jsonl");
+  z := fs_size(cast(string) pb[0..<pn]);
+  return ifx z > text.count then z - text.count else 0;
 }
 
 cd_summary_line :: (id: string, s: [] CsSummary, json: bool, out: [] u8) -> string {
@@ -1180,7 +1189,14 @@ cd_cmd_status :: (id: string, json: bool) -> int {
   k := 0; while k < ib.count && ib[k] != 0 { k += 1; }
   full = cast(string) ib[0..<k];
   ob: [4096] u8;
-  if json { cd_outln(cd_summary_line(full, s[..], true, ob[..])); return 0; }
+  cut := cd_session_cut(full, text);
+  if json {
+    line := cd_summary_line(full, s[..], true, ob[..]);
+    if cut == 0 { cd_outln(line); return 0; }
+    jb: [4200] u8; jn := cd_cat(jb[..], 0, cast(string) line[0..<line.count - 1]); jn = cd_cat(jb[..], jn, ",\"cut\":");
+    tc: [24] u8; jn = cd_cat(jb[..], jn, cd_itoa(cut, tc[..])); jn = cd_cat(jb[..], jn, "}");
+    cd_outln(cast(string) jb[0..<jn]); return 0;
+  }
   tb: [16] u8;
   cd_out("id      "); cd_outln(full);
   cd_out("engine  "); cd_outln(cast(string) s[0].engine[0..<s[0].nengine]);
@@ -1189,6 +1205,7 @@ cd_cmd_status :: (id: string, json: bool) -> int {
   cd_out("turns   "); cd_outln(cd_itoa(s[0].turns, tb[..]));
   cd_out("steps   "); cd_outln(cd_itoa(s[0].steps, tb[..]));
   ab2: [32] u8; cd_out("started "); cd_outln(cd_age(s[0].started_us, ab2[..]));
+  if cut > 0 { cd_out("log     ends in a partial line of "); cd_out(cd_itoa(cut, tb[..])); cd_outln(" bytes, not read: a write in progress, or one a crash cut"); }
   return 0;
 }
 
@@ -1197,6 +1214,9 @@ cd_cmd_log :: (id: string, json: bool) -> int {
   fb: [4194304] u8; ib: [128] u8;
   text := cd_session_file(id, fb[..], ib[..]);
   if text.count == 0 { tool_err("coder: no session "); tool_errln(id); return 6; }
+  k := 0; while k < ib.count && ib[k] != 0 { k += 1; }
+  cut := cd_session_cut(cast(string) ib[0..<k], text);
+  if cut > 0 { tb: [24] u8; tool_err("coder log: the log ends in a partial line of "); tool_err(cd_itoa(cut, tb[..])); tool_errln(" bytes, left out"); }
   if json { cd_out(text); return 0; }
   cd_render(text);
   return 0;
@@ -1708,7 +1728,7 @@ cd_cmd_stop :: (id_in: string, json: bool) -> int {
     x := cxproc_pid_signal(pid, 9);
     pb: [1300] u8; lb: [256] u8;
     n := json_raw(lb[..], 0, "{\"kind\":\"end\",\"ending\":\"stopped\",\"ms\":0,\"steps\":0,\"text\":\"coder stop ended the job's process\"}\n");
-    y := fs_append(cd_sibling(id, ".jsonl", pb[..]), cast(string) lb[0..<n]);
+    y := cs_append_after(cd_sibling(id, ".jsonl", pb[..]), cast(string) lb[0..<n]);
     z := fs_remove(stop_file);
     cd_outln(ifx json then "{\"stopped\":true,\"killed\":true}" else "Stopped (the job's process was ended).");
     return 0;
