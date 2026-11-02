@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "profile": "mnist-idx-pool-v1",
+  "scope": "MNIST data adapter authored checks and entry-source mutation; synthetic bytes only",
+  "source": {
+    "path": "psionic/lib/data/mnist.coax",
+    "sha256": "2a2ce156bd67f8edffeb169a4dbaf7f1e868f02cf7f12ffae20ad12c603bfaa6",
+    "dependencies": []
+  },
+  "compiler": {
+    "path": "coax/bin/coax",
+    "version": "coax0 0.47.0",
+    "input_fingerprint": "3325db45fae565ab13644ce9f65550a908113586f7d3db2ea5287ff41b990d72",
+    "source_digest": "82cbed49f74f0e090e63edf7d36385bd89d4389dd0294c28a287e6ba1925e1d5",
+    "binary_sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+    "host": {
+      "system": "Darwin",
+      "machine": "arm64"
+    }
+  },
+  "checks": [
+    "MNIST big-endian words and bounded counts include their exact endpoints",
+    "MNIST admits exact image and label records and scans the last label",
+    "MNIST refuses short headers wrong magic shape counts and extra bytes",
+    "MNIST pools every cell with an independent affine pixel calculation",
+    "MNIST pooling refuses before writing and does not trust a plain descriptor",
+    "MNIST targets cover every class preserve tails and refuse atomically",
+    "MNIST argmax validates every score then retains the first tie"
+  ],
+  "passed_runs": [
+    {
+      "command": "coax/bin/coax test psionic/lib/data/mnist.coax --library",
+      "mode": "debug",
+      "execution": "Coax check evaluator",
+      "checks": 7,
+      "passed": 7,
+      "failed": 0,
+      "exit_status": 0
+    },
+    {
+      "command": "coax/bin/coax test psionic/lib/data/mnist.coax --library --release",
+      "mode": "release",
+      "execution": "Coax check evaluator under release source/arithmetic profile",
+      "checks": 7,
+      "passed": 7,
+      "failed": 0,
+      "exit_status": 0
+    },
+    {
+      "command": "coax/bin/coax mutate psionic/lib/data/mnist.coax --root-only --jobs 2",
+      "scope": "entry-source procedures; all baseline checks retained; no imported dependencies",
+      "mutants": 147,
+      "killed": 147,
+      "survived": 0,
+      "exit_status": 0
+    }
+  ],
+  "covered": [
+    "Big-endian words, including nonzero high bytes and all-ones u32; count endpoints 1 and 100000",
+    "Exact IDX images/labels, 28x28 shape, count agreement, all-label admission and bad last label",
+    "Short/wrong headers, missing/trailing payload bytes, zero/over-bound counts and altered descriptor metadata",
+    "Every pooled feature on two affine pixel grids against an independent closed-form expression; zero/one/fractional endpoints",
+    "Unchanged pooling/one-hot outputs on refusal and untouched output tails",
+    "Every one-hot class; exact 10-score shape; NaN and both infinities; first-index tie behavior"
+  ],
+  "development_failures_resolved": [
+    "Initial explicit non-finite bit construction refused by the Coax evaluator; checks now generate non-finites through supported arithmetic",
+    "Initial mutation run: 147 mutants: 134 killed, 13 survived. Added missing boundary/high-byte/tie cases and separated header format errors from payload capacity errors; no equivalent-site annotations"
+  ],
+  "limits": [
+    "No original MNIST data, network request, training or accuracy result was accessed or executed for this receipt",
+    "No native machine-code, sanitizer, alias-validity or cross-target qualification is claimed by these evaluator checks",
+    "Caller retains valid pairwise-disjoint spans and immutable admitted labels; plain MnDataset metadata is not a certificate",
+    "Image header/extent/descriptor are rechecked per pool call; admission does not bind a cryptographic identity to future bytes",
+    "The 100000 count endpoint is checked as count admission without allocating 100000 images in the evaluator; native dataset preflight remains separate"
+  ]
+}

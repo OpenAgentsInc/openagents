@@ -1,0 +1,22 @@
+#import "Basic";
+#load "../lib/mnist-classifier.coax";
+
+// book:begin example
+main :: () {
+    m:=mc_model();q:=mtr_plan(m);c:=mc_config();
+    #assert q.status==MtrStatus.ok;
+    print("MNIST MLP: 196 -> 16 -> 10; % parameters, % nodes\n",q.parameters,m.program.count);
+    print("caller arenas: % inputs, % values, % adjoints, % flags; largest entry %\n",q.inputs,q.values,q.adjoints,q.flags,q.largest);
+    print("AdamW: % epochs, % rows, % rows per update, % updates\n",c.epochs,c.examples,c.accumulate,tr_steps(c));
+    // This hand-worked zero model is a synthetic API example, not MNIST
+    // accuracy. Its only nonzero derivative is bias[7]: -2 at zero.
+    p:[3322]f64;w:[1]McWork;#assert mn_target(7,w[0].inputs[196..<206])==MnStatus.ok;
+    r:=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    #assert r.status==MtrStatus.ok && r.loss==1 && w[0].gradient[3319]== -2;
+    print("synthetic zero model: loss %, bias[7] gradient %, master unchanged %\n",r.loss,w[0].gradient[3319],p[3319]==0);
+    p[0]=1e100;w[0].gradient[0]=123;
+    r=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    print("unrepresentable compute weight: %, gradient unchanged %\n",r.status,w[0].gradient[0]==123);
+    print("No dataset downloaded and no training experiment run.\n");
+}
+// book:end example

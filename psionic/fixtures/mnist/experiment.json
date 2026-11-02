@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "profile": "psionic-mnist-mlp-frozen-v1",
+  "status": "frozen before learning; no outcome claimed",
+  "frozen_at": "2026-11-02T00:42:32.101440+00:00",
+  "freeze_confirmation": "root confirmed this exact profile before any optimizer step",
+  "dataset_manifest": "dataset.json",
+  "splits": {
+    "train": {
+      "source": "official train",
+      "first": 0,
+      "rows": 4096
+    },
+    "validation": {
+      "source": "official train",
+      "first": 4096,
+      "rows": 1024
+    },
+    "test": {
+      "source": "official test",
+      "first": 0,
+      "rows": 2048
+    }
+  },
+  "model": {
+    "shape": [
+      196,
+      16,
+      10
+    ],
+    "activation": "ReLU",
+    "trainable_parameters": 3322,
+    "program_nodes": 17,
+    "prediction_node": 10,
+    "loss_node": 16,
+    "inputs_f32": 3529,
+    "registration_order": [
+      "x",
+      "target",
+      "fc1.weight",
+      "fc1.bias",
+      "fc2.weight",
+      "fc2.bias",
+      "loss.neg"
+    ],
+    "parameter_entries": [
+      {
+        "name": "fc1.weight",
+        "base": 206,
+        "count": 3136,
+        "shape": [
+          196,
+          16
+        ]
+      },
+      {
+        "name": "fc1.bias",
+        "base": 3342,
+        "count": 16,
+        "shape": [
+          16
+        ]
+      },
+      {
+        "name": "fc2.weight",
+        "base": 3358,
+        "count": 160,
+        "shape": [
+          16,
+          10
+        ]
+      },
+      {
+        "name": "fc2.bias",
+        "base": 3518,
+        "count": 10,
+        "shape": [
+          10
+        ]
+      }
+    ],
+    "initializer": {
+      "seed": 11801,
+      "generator": "splitmix64-top53-v1",
+      "counter": "registered entry base + element index",
+      "bound": "f32(1/sqrt(inputwidth))",
+      "formula": "f32(f64(bound) * (2 * ((cr_bits(seed,counter)>>11)/2^53) - 1))",
+      "bias": "same uniform initializer and bound as its layer weight"
+    }
+  },
+  "training": {
+    "engine": "public mdl/autodiff/trainer/AdamW path; Coax owns arithmetic",
+    "optimizer": "AdamW",
+    "master_parameters": "binary64",
+    "moments": "binary64",
+    "compute_parameters": "binary32",
+    "published_row_gradients": "binary32 rounded after f64 reverse accumulation",
+    "loss": "SUM over ten one-hot squared errors per row, not mean over classes",
+    "microbatch": 1,
+    "accumulate": 16,
+    "gradient_reduction": "mean over sixteen rows",
+    "learning_rate": 0.003,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "epsilon": 1e-08,
+    "decay": 0.0,
+    "clip": 1.0,
+    "parameter_bound": 16.0,
+    "epochs": 12,
+    "shuffle": true,
+    "shuffle_seed": 11802,
+    "shuffle_algorithm": "descending Fisher-Yates using cr_bits(seed,counter)%(i+1); each epoch continues the previous permutation, counter starts at epoch*(rows-1)",
+    "schedule": "constant",
+    "every": 0,
+    "early_stopping": false
+  },
+  "evaluation": {
+    "validation": "initial and at fixed epoch boundaries; no selection or tuning",
+    "official_test": "initial and final only, fixed by this profile; never feeds gradients or selection",
+    "baseline": "constant classifier choosing the most frequent TRAINING label; lowest label on a tie; score on the same official test slice",
+    "selection": "one fixed model; no search, tuning or retries chosen by test results"
+  },
+  "acceptance": {
+    "final_test_accuracy_min": 0.8,
+    "final_test_accuracy_above_majority_baseline_min": 0.5,
+    "final_test_mean_sse_less_than_initial_test_mean_sse": true,
+    "require_every_condition": true
+  },
+  "reproduction": {
+    "canonical_learning_runs": 1,
+    "checkpoint": "end of epoch6",
+    "resume": "replay exactly the next optimizer UPDATE (same16rows) from checkpoint; compare all master parameters, first/second moments, order and cursor bits to the canonical next update; do not rerun six epochs",
+    "export_reload": "final state dictionary reload reproduces predictions on all2048testrows",
+    "source_binding": "before learning, root writes separate freeze record with source closure, config/preprocess/dataset identities, native C/header and binary hashes"
+  },
+  "prohibited": [
+    "Python training or optimizer steps",
+    "tuning after validation or test observations",
+    "changing sample splits, seeds, epochs or thresholds to obtain a pass",
+    "counting tooling math as a product runtime"
+  ]
+}

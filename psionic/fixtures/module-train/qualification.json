@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "unit": "psionic/lib/module-train.coax",
+  "recorded_utc": "2026-11-02T01:02:42.683614+00:00",
+  "standing": "qualified within the declared adapter profile",
+  "profile": {
+    "target": "native Apple arm64 CPU",
+    "compute": "f32 built-in tensor IR and first-order public autodiff",
+    "master": "f64, narrowed only for module execution",
+    "gradient": "one f32 rounding per entry derivative, carried in f64",
+    "parameter_order": "registration order excluding frozen entries",
+    "unused_trainable": "zero derivative; optimizer decay is the optimizer policy"
+  },
+  "sources": {
+    "psionic/lib/module-train.coax": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+    "psionic/tests/module-train-checks.coax": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71",
+    "psionic/tests/module-train-native.coax": "59df8ea20274d2f87273679a95f0a8b3e68861ea6166e34d0ad58fef69e68108",
+    "psionic/tests/module-train-native.c": "c5d7244d41301d526c404852ed0ad2566286b9570dd761656f8bd1970b47d716",
+    "psionic/tests/check_module_train_native.sh": "a482b9adbc588eda45e40767efb5a8c5927e2f0a684ca87281242badd2a8727d"
+  },
+  "compiler": {
+    "version": "coax0 0.47.0",
+    "binary_sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+    "build_record": [
+      "coax-provenance-v1",
+      "3325db45fae565ab13644ce9f65550a908113586f7d3db2ea5287ff41b990d72",
+      "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+      "ba5d65690f6f493c335d45597eae75931bb8e46ef7702b87679fb985dd03d297"
+    ],
+    "scope": "Exact-matching cached compiler supplied by the parent task. Adapter gates do not establish a new compiler qualification or clear its inherited unchanged survivor."
+  },
+  "native_toolchain": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+  "check_first": {
+    "command": "coax/bin/coax test psionic/lib/module-train.coax --only 'module training:' --run-steps 250000000",
+    "observed_exit_status": 1,
+    "observed_red": "18 E0315 undeclared mtr_plan/mtr_run diagnostics before implementation; observation is in the task tool transcript, not a retained standalone receipt."
+  },
+  "mutation_rounds": [
+    {
+      "receipt": "initial-mutation.json",
+      "source_sha256": "ae3d9c512e51e5376dc9ceed514020dd188e536d9704438cd26e510f4734058a",
+      "checks_sha256": "d737e4670012e442a3466d23d913548f7e6f5057aed4c59663d533efc2525ee4",
+      "mutants": 183,
+      "killed": 131,
+      "survived": 52,
+      "marked_equivalent": 0,
+      "exit_status": 1,
+      "verdict": "counterexample",
+      "baseline_checks_passed": 216,
+      "authority": "passed"
+    },
+    {
+      "receipt": "refined-mutation.json",
+      "source_sha256": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+      "checks_sha256": "44f4c4c38099617be1c96a84130865b89885423e0bb08d2f4151601ea38bc596",
+      "mutants": 160,
+      "killed": 159,
+      "survived": 1,
+      "marked_equivalent": 0,
+      "exit_status": 1,
+      "verdict": "counterexample",
+      "baseline_checks_passed": 220,
+      "authority": "passed"
+    },
+    {
+      "receipt": "final-mutation.json",
+      "source_sha256": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+      "checks_sha256": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71",
+      "mutants": 160,
+      "killed": 160,
+      "survived": 0,
+      "marked_equivalent": 0,
+      "exit_status": 0,
+      "verdict": "passed",
+      "baseline_checks_passed": 220,
+      "authority": "passed"
+    }
+  ],
+  "mutation_commands": [
+    "coax/bin/coax mutate psionic/lib/module-train.coax --root-only --jobs 8 --run-steps 250000000 --evidence FILE"
+  ],
+  "mutation_scope": "Only this new unit has mutation sites; original dependency checks remain in every baseline. First and refined inventories differ after production refactoring. The last two rounds have the same 160 production sites; only the padding regression was added after the one-survivor round.",
+  "release_checks": {
+    "command": "coax/bin/coax test psionic/lib/module-train.coax --release --only 'module training:' --run-steps 250000000 --evidence FILE",
+    "exit_status": 0,
+    "selected_checks_passed": 13,
+    "overall_evidence_verdict": "not-checked",
+    "scope": "13 adapter checks only; dependency checks and authority coverage are not checked by this --only command. The final mutation baseline separately passes all 220 checks and authority coverage."
+  },
+  "native": {
+    "command": "COAX=coax/bin/coax psionic/tests/check_module_train_native.sh",
+    "exit_status": 0,
+    "modes": [
+      "checked C -O0 plain",
+      "checked C -O0 ASan+UBSan",
+      "release C -O2 plain",
+      "release C -O2 ASan+UBSan"
+    ],
+    "flags": [
+      "-std=c11",
+      "-ffp-contract=off",
+      "-fno-fast-math"
+    ],
+    "cases": [
+      "independent literal scalar loss and both derivatives",
+      "all 1100 derivatives and unchanged master values",
+      "native quiet NaN and both infinities in master, data and metadata",
+      "late derivative overflow preserves the complete public gradient"
+    ],
+    "receipt": "native.log"
+  },
+  "limits": [
+    "Use an unchanged plan returned by mtr_plan and models built with public module constructors; naming and initialization remain constructor contracts.",
+    "Caller supplies valid live pairwise-disjoint storage. No alias or general lifetime check is claimed.",
+    "Inputs, values, adjoints, flags, entry gradients and private gradient staging may change on numerical refusal; master and public gradient remain governed by the adapter contract.",
+    "Built-in CPU scalar computed losses only; registered/external operations are refused. No GPU, dataset learning, checkpoint, model-quality or broad target qualification follows from this adapter gate."
+  ],
+  "receipts": {
+    "initial-mutation.json": "5ba2379de7f292e492bb78447111d723ae52445ff566a5d7d7fa8549acd6b62a",
+    "initial-mutation.log": "2dfebd9e6333cce40229ad6f009e144bd72ecdfe1ea26423c382600d4fe67b24",
+    "refined-mutation.json": "35a5f3222d70895420f2bc005bc257a03934123a9c06e6cedb4e1cfb4a25b2fb",
+    "refined-mutation.log": "09d830b389855ad559f1b68e6c1517c2cba92f6f182b6534d8b73a88e17359d3",
+    "final-mutation.json": "45da07ed773043d1a36fdd26494ee8d839e4b10ac97966b6c5fac3bc3700e85e",
+    "final-mutation.log": "c160ce5d15240524d4c0600f7d33c774e10ebe41d495befc48e0762124f88f7f",
+    "release-checks.json": "b68d4ff22196f3c5e2fa4b839684d5d761576a50b0f3f2728a7cdf1e66b26e93",
+    "release-checks.log": "623b847e35bfe58d2d5ccf8d979504cd4d9418ca12e334ad93099dee0d53d8df",
+    "native.log": "a5f06b7cc84672309ace095088902164e4b9cb54bc54d9dad5f279145d9541ab",
+    "padding-check.json": "801172d2f0d4d935bca1eb98c975d6e45c4cb33d3bb4ce88807e6b7daa028a71"
+  }
+}

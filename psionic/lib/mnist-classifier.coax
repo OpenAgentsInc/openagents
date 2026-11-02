@@ -1,0 +1,148 @@
+// A real image-classifier consumer of public modules, tape, trainer and state
+// dictionaries. This file adds no tensor operator or optimizer implementation.
+#load "module-train.coax";
+#load "trainer.coax";
+#load "data/mnist.coax";
+#load "mnist-policy.coax";
+#load "../fixtures/mnist/artifacts.coax";
+
+McStatus :: enum u8 {ok;data;identity;capacity;model;training;checkpoint;artifact;quality;}
+McFirst :: struct {status:McStatus;loss:f64;parameters:int;inputs:int;values:int;adjoints:int;flags:int;}
+McEval :: struct {loss:f64;correct:int;baseline:int;}
+McReport :: struct {
+    status:McStatus;steps:int;train_rows:int;test_rows:int;baseline_class:int;
+    initial_loss:f64;final_loss:f64;initial_correct:int;final_correct:int;baseline_correct:int;
+    checkpoint_bytes:int;export_bytes:int;replay_equal:bool;export_equal:bool;
+}
+// These are this APPLICATION's admitted capacities, not adapter constants.
+McWork :: struct {inputs:[3529]f32;values:[16384]f32;adjoints:[16384]f64;flags:[4096]u8;entry:[3322]f32;staging:[3322]f64;gradient:[3322]f64;}
+McWeights :: struct {p:[3322]f64;m:[3322]f64;v:[3322]f64;}
+
+
+// Checks precede the consumer's implementation. Every expected derivative is
+// independent arithmetic: a zero network has only its last-bias derivative.
+#test "MNIST classifier is an ordinary named module with a large first weight" #steps 4000000000 {
+    m:=mc_model();q:=mtr_plan(m);
+    #assert m.status==MdlStatus.ok && m.program.count==17 && m.program.output==16;
+    #assert q.status==MtrStatus.ok && q.parameters==3322 && q.inputs==3529 && q.largest==3136;
+    #assert m.entries[2].base==206 && m.entries[4].base==3358 && m.entries[5].base==3518;
+    c:=mc_config();#assert c.optimizer==TrOptimizer.adamw && c.storage==TrStorage.binary64;
+    #assert c.examples==4096 && c.accumulate==16 && c.epochs==12 && tr_steps(c)==3072;
+    #assert c.seed==11802 && c.rate==0.003 && c.clip==1 && c.every==0 && tr_size(3322)==80068;
+}
+#test "MNIST zero network has the hand-derived full gradient and scalar loss" #steps 4000000000 {
+    m:=mc_model();q:=mtr_plan(m);w:[1]McWork;p:[3322]f64;
+    #assert mn_target(7,w[0].inputs[196..<206])==MnStatus.ok;
+    r:=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    #assert r.status==MtrStatus.ok && r.loss==1;
+    for i:0..<3322 {expected:=0.0;if i==3319 {expected=-2;}#assert w[0].gradient[i]==expected && p[i]==0;}
+    p[3319]=0.5;
+    r=mtr_run(q,1,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    #assert r.status==MtrStatus.ok && r.loss==0.25 && w[0].gradient[3319]== -1 && p[3319]==0.5;
+}
+
+// book:begin model
+mc_model :: ()->MdlModel {
+    m:=mdl_model();m=mdl_data(m,"x",mdl_shape(2,1,196));x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc1",x,16);m=mdl_relu(m,m.node);
+    m=mdl_linear(m,MDL_ROOT,"fc2",m.node,10);prediction:=m.node;
+    return mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+}
+mc_config :: ()->TrConfig {
+    return TrConfig.{optimizer=TrOptimizer.adamw,storage=TrStorage.binary64,
+        rate=0.003,beta1=0.9,beta2=0.999,eps=0.00000001,clip=1,bound=16,
+        examples=4096,batch=1,accumulate=16,epochs=12,shuffle=true,seed=11802};
+}
+// book:end model
+
+// A master copy is binary64. The public module computes from binary32 copies.
+mc_move :: (m:MdlModel,p:[]f64,inputs:[]f32,into:bool) {
+    at:=0;
+    for i:0..<m.count {e:=m.entries[i];if e.kind!=MdlKind.parameter || e.frozen {continue;}
+        for j:0..<e.size {if into {inputs[e.base+j]=f32(p[at+j]);} else {p[at+j]=f64(inputs[e.base+j]);}}
+        at+=e.size;
+    }
+}
+mc_inference :: (m:MdlModel)->AdTape {
+    f:=mdl_output(m,10);mode:=AdMode.{enabled=false};
+    return ad_tape(f.program,mode,OrRegistry.{});
+}
+mc_fit :: (q:MtrPlan,w:[]McWork)->bool {
+    // The application's fixed arenas match the checked policy capacities.
+    return mc_workspace(q.status==MtrStatus.ok,q.parameters,q.inputs,q.values,q.adjoints,q.flags,q.largest);
+}
+
+mc_digest :: (bytes:[]u8)->[32]u8 {
+    state:[112]u8;out:[32]u8;#assert sha256_init(state[..])==SHA_OK;
+    at:=0;while at<bytes.count {n:=bytes.count-at;if n>1048576 {n=1048576;}
+        #assert sha256_update_checked(state[..],bytes[at..<at+n],false)==SHA_OK;at+=n;}
+    #assert sha256_final_checked(state[..],out[..],false)==SHA_OK;return out;
+}
+mc_ids :: (c:TrConfig,manifest:[]u8,initial:[]f64,a:[32]u8,b:[32]u8,d:[32]u8,e:[32]u8)->CkIds {
+    data:[128]u8;for j:0..<32 {data[j]=a[j];data[32+j]=b[j];data[64+j]=d[j];data[96+j]=e[j];}
+    text:="mnist-idx-pool-v1:28x28;2x2-average;sum/1020;f32;first4096;next1024;official-test-first2048";
+    prep:[128]u8;for j:0..<text.count {prep[j]=text[j];}
+    model:[26608]u8;at:=ck_put(model[..],0,mc_digest(manifest));
+    for value:initial {at=ck_put64(model[..],at,f64_bits(value));}
+    return tr_ids(c,ck_digest("psionic.mnist-initial-model.v1",model[0..<at]),mc_digest(prep[0..<text.count]),mc_digest(data[..]));
+}
+mc_batch :: (q:MtrPlan,c:TrConfig,run:TrRun,weights:[]McWeights,w:[]McWork,images:[]u8,labels:[]u8,d:MnDataset,order:[]int,total:[]f64,stage:[]f64)->TrStep {
+    none:[1]PkDoc;nothing:[1]u8;
+    batch:=tr_next(c,run,none[0..<0],nothing[0..<0],nothing[0..<0]);sum:TrSum;
+    #assert batch.status==TrStatus.ok;
+    for k:0..<batch.micro {
+        rows:=tr_rows(c,batch,k);#assert rows.count==1;row:=order[rows.first];
+        #assert mn_pool(d,images,row,w[0].inputs[0..<196])==MnStatus.ok;
+        #assert mn_target(cast(int)labels[8+row],w[0].inputs[196..<206])==MnStatus.ok;
+        part:=mtr_run(q,cast(u64)run.revision,weights[0].p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+        #assert part.status==MtrStatus.ok;
+        sum=tr_add(batch,sum,part.loss,w[0].gradient[..],total);
+    }
+    return tr_apply(c,run,batch,sum,weights[0].p[..],weights[0].m[..],weights[0].v[..],total,stage,order);
+}
+mc_eval :: (m:MdlModel,t:AdTape,p:[]f64,w:[]McWork,images:[]u8,labels:[]u8,d:MnDataset,first:int,count:int,baseline:int,capture:[]f32)->McEval {
+    #assert capture.count==0 || capture.count==count*10;
+    mc_move(m,p,w[0].inputs[..],true);#assert mdl_refresh(mdl_train(m,false),0,w[0].inputs[..])==MdlStatus.ok;
+    r:McEval;scores:[10]f32;
+    for k:0..<count {
+        row:=first+k;#assert mn_pool(d,images,row,w[0].inputs[0..<196])==MnStatus.ok;
+        run:=ad_run(t,AdCursor.{},w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..]);
+        #assert run.status==AdStatus.ok && ad_value(t,run.cursor,10,w[0].inputs[..],w[0].values[..],scores[..])==AdStatus.ok;
+        pick:=mn_argmax(scores[..]);#assert pick.status==MnStatus.ok;label:=cast(int)labels[8+row];
+        if pick.index==label {r.correct+=1;}if baseline==label {r.baseline+=1;}
+        loss:f32=0;for j:0..<10 {target:f32=0;if j==label {target=1;}error:=scores[j]-target;loss+=error*error;
+            if capture.count>0 {capture[k*10+j]=scores[j];}}
+        r.loss+=f64(loss)/f64(count);
+    }
+    return r;
+}
+
+mc_oracle :: (images:[]u8,labels:[]u8,params:[]f64,gradient:[]f64,scores:[]f32,features:[]f32)->McFirst #export_c {
+    d:=mn_admit(images,labels);if d.status!=MnStatus.ok {return McFirst.{status=McStatus.data};}
+    m:=mc_model();q:=mtr_plan(m);w:[1]McWork;
+    if !mc_capture(params.count,gradient.count,scores.count,features.count) || !mc_fit(q,w[..]) {return McFirst.{status=McStatus.capacity};}
+    #assert mdl_init(m,11801,w[0].inputs[..])==MdlStatus.ok;mc_move(m,params,w[0].inputs[..],false);
+    #assert mn_pool(d,images,0,w[0].inputs[0..<196])==MnStatus.ok;
+    for j:0..<196 {features[j]=w[0].inputs[j];}
+    #assert mn_target(cast(int)labels[8],w[0].inputs[196..<206])==MnStatus.ok;
+    step:=mtr_run(q,0,params,w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],gradient);
+    #assert step.status==MtrStatus.ok;
+    t:=mc_inference(m);run:=ad_run(t,AdCursor.{},w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..]);
+    #assert run.status==AdStatus.ok && ad_value(t,run.cursor,10,w[0].inputs[..],w[0].values[..],scores)==AdStatus.ok;
+    return McFirst.{loss=step.loss,parameters=q.parameters,inputs=q.inputs,values=q.values,adjoints=q.adjoints,flags=q.flags};
+}
+
+mc_synthetic :: ()->bool #export_c {
+    m:=mc_model();q:=mtr_plan(m);w:[1]McWork;p:[3322]f64;
+    if !mc_fit(q,w[..]) {return false;}
+    #assert mn_target(7,w[0].inputs[196..<206])==MnStatus.ok;
+    part:=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    if part.status!=MtrStatus.ok || part.loss!=1 {return false;}
+    for j:0..<3322 {expected:=0.0;if j==3319 {expected=-2;}if w[0].gradient[j]!=expected || p[j]!=0 {return false;}}
+    // Actual native non-finite admission, without evaluator bit conversion.
+    p[0]=f64_from_bits(0x7ff8000000000001);w[0].gradient[0]=123;
+    bad:=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    if bad.status!=MtrStatus.number || w[0].gradient[0]!=123 {return false;}
+    return !mc_accept(2048,1700,200,f64_from_bits(0x7ff0000000000000),0,true,true);
+}

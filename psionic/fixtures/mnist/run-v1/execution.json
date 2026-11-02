@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/usr/bin/time",
+    "-l",
+    "/tmp/mnist-qualified/release/mnist",
+    "--train",
+    "/tmp/psionic-mnist-data",
+    "psionic/fixtures/mnist/experiment.json",
+    "/tmp/mnist-canonical-learning-20261101/run"
+  ],
+  "started_at": "2026-11-02T01:05:14.748365+00:00",
+  "seconds": 17.125577667029575,
+  "exit_status": 0,
+  "maximum_child_rss_bytes": 58425344
+}

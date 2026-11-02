@@ -102,6 +102,14 @@ incremental SSE and SDK checks. [Serve it](docs/serving/responses.md) with
 `psionic/serve-gptoss.sh`; run `psionic/tests/check_responses.sh` for focused
 owned HTTP checks.
 
+[Chapter 118](book/ch118-one-trainer-for-every-model.md) now includes a real
+MNIST MLP built through public modules, caller-sized autodiff arenas and the
+shared AdamW trainer. Its single bounded CPU run reaches 85.6934% on 2,048
+held-out images, with independently audited metrics, one exact next-update
+resume and a named-tensor export/reload. The original tensor/optimizer engines
+are unchanged. The chapter states the remaining CNN, dataset-scale and GPU
+limits; the normal focused gate never repeats training.
+
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch001-learning-a-number.md), then
 [Chapter 2: Shapes and storage](book/ch002-shapes-and-storage.md) and

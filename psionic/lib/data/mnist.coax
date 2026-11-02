@@ -1,0 +1,201 @@
+// Fixed MNIST IDX admission and 28x28 -> 14x14 preprocessing.
+// Profile mnist-idx-pool-v1: 1..100,000 grayscale images, exact IDX bytes,
+// labels 0..9, non-overlapping caller-owned input/output spans. Callers own
+// span validity and lifetime. Admission checks all labels once; retain the
+// admitted label bytes unchanged while using that admission. MnDataset is
+// plain metadata, not a certificate for arbitrary or subsequently changed
+// bytes. Pooling rechecks its image header, extent and metadata on each call.
+#authority;
+
+MnStatus :: enum u8 {ok;format;shape;capacity;label;index;number;}
+MnDataset :: struct {status:MnStatus;count:int;rows:int;cols:int;}
+MnPick :: struct {status:MnStatus;index:int=-1;}
+MN_MAX_IMAGES :: 100000;
+MN_SIDE :: 28;
+MN_PIXELS :: 784;
+MN_FEATURES :: 196;
+MN_CLASSES :: 10;
+
+// Checks first: headers are authored as bytes, independent of the reader.
+#test "MNIST big-endian words and bounded counts include their exact endpoints" {
+    bytes:=[8]u8.[1,2,3,4,255,255,255,255];
+    #assert mn_be32(bytes[..],0)==16909060 && mn_be32(bytes[..],4)==4294967295;
+    #assert !mn_count(-1) && !mn_count(0) && mn_count(1) && mn_count(100000);
+    #assert !mn_count(100001) && !mn_count(4294967295);
+}
+#test "MNIST admits exact image and label records and scans the last label" {
+    images:[1584]u8;labels:[10]u8;
+    images[2]=8;images[3]=3;images[7]=2;images[11]=28;images[15]=28;
+    labels[2]=8;labels[3]=1;labels[7]=2;labels[8]=0;labels[9]=9;
+    d:=mn_admit(images[..],labels[..]);
+    #assert d.status==MnStatus.ok && d.count==2 && d.rows==28 && d.cols==28;
+    labels[9]=10;#assert mn_admit(images[..],labels[..]).status==MnStatus.label;
+    labels[9]=255;#assert mn_admit(images[..],labels[..]).status==MnStatus.label;
+    labels[9]=8;labels[8]=10;#assert mn_admit(images[..],labels[..]).status==MnStatus.label;
+    labels[8]=3;images[7]=1;labels[7]=1;
+    d=mn_admit(images[0..<800],labels[0..<9]);
+    #assert d.status==MnStatus.ok && d.count==1 && d.rows==28 && d.cols==28;
+}
+
+#test "MNIST refuses short headers wrong magic shape counts and extra bytes" {
+    images:[1585]u8;labels:[11]u8;
+    images[2]=8;images[3]=3;images[7]=2;images[11]=28;images[15]=28;
+    labels[2]=8;labels[3]=1;labels[7]=2;
+    #assert mn_admit(images[0..<0],labels[0..<10]).status==MnStatus.format;
+    #assert mn_admit(images[0..<15],labels[0..<10]).status==MnStatus.format;
+    #assert mn_admit(images[0..<1584],labels[0..<0]).status==MnStatus.format;
+    #assert mn_admit(images[0..<1584],labels[0..<7]).status==MnStatus.format;
+    #assert mn_admit(images[0..<16],labels[0..<10]).status==MnStatus.capacity;
+    #assert mn_admit(images[0..<1584],labels[0..<8]).status==MnStatus.capacity;
+    images[3]=1;#assert mn_admit(images[0..<1584],labels[0..<10]).status==MnStatus.format;images[3]=3;
+    labels[3]=3;#assert mn_admit(images[0..<1584],labels[0..<10]).status==MnStatus.format;labels[3]=1;
+    images[0]=1;#assert mn_admit(images[0..<1584],labels[0..<10]).status==MnStatus.format;images[0]=0;
+    labels[0]=1;#assert mn_admit(images[0..<1584],labels[0..<10]).status==MnStatus.format;labels[0]=0;
+    images[11]=27;#assert mn_admit(images[0..<1584],labels[0..<10]).status==MnStatus.shape;images[11]=28;
+    images[15]=29;#assert mn_admit(images[0..<1584],labels[0..<10]).status==MnStatus.shape;images[15]=28;
+    images[7]=0;#assert mn_admit(images[0..<1584],labels[0..<10]).status==MnStatus.shape;images[7]=2;
+    images[4]=255;images[5]=255;images[6]=255;images[7]=255;
+    #assert mn_admit(images[0..<1584],labels[0..<10]).status==MnStatus.shape;
+    images[4]=0;images[5]=0;images[6]=0;images[7]=2;
+    labels[7]=1;#assert mn_admit(images[0..<1584],labels[0..<10]).status==MnStatus.shape;labels[7]=2;
+    #assert mn_admit(images[0..<1583],labels[0..<10]).status==MnStatus.capacity;
+    #assert mn_admit(images[..],labels[0..<10]).status==MnStatus.capacity;
+    #assert mn_admit(images[0..<1584],labels[0..<9]).status==MnStatus.capacity;
+    #assert mn_admit(images[0..<1584],labels[..]).status==MnStatus.capacity;
+}
+
+#test "MNIST pools every cell with an independent affine pixel calculation" {
+    images:[1584]u8;labels:[10]u8;
+    images[2]=8;images[3]=3;images[7]=2;images[11]=28;images[15]=28;
+    labels[2]=8;labels[3]=1;labels[7]=2;
+    for row:0..<28 {for col:0..<28 {
+        v:=row*5+col*3;images[16+row*28+col]=cast(u8)v;
+        images[800+row*28+col]=cast(u8)(255-v);
+    }}
+    d:=mn_admit(images[..],labels[..]);out:[198]f32;
+    for i:0..<198 {out[i]=7;}
+    #assert mn_pool(d,images[..],0,out[1..<197])==MnStatus.ok;
+    for row:0..<14 {for col:0..<14 {
+        expected:=f32(f64(10*row+6*col+4)/255);
+        #assert f32_bits(out[1+row*14+col])==f32_bits(expected);
+    }}
+    #assert out[0]==7 && out[197]==7;
+    #assert mn_pool(d,images[..],1,out[1..<197])==MnStatus.ok;
+    for row:0..<14 {for col:0..<14 {
+        expected:=f32(f64(251-10*row-6*col)/255);
+        #assert f32_bits(out[1+row*14+col])==f32_bits(expected);
+    }}
+    #assert out[0]==7 && out[197]==7;
+    // A fractional average must survive: (0+1+254+255)/1020 = 1/2.
+    images[16]=0;images[17]=1;images[44]=254;images[45]=255;
+    #assert mn_pool(d,images[..],0,out[..])==MnStatus.ok && out[0]==0.5;
+    images[16]=255;images[17]=255;images[44]=255;images[45]=255;
+    #assert mn_pool(d,images[..],0,out[..])==MnStatus.ok && out[0]==1;
+    images[16]=0;images[17]=0;images[44]=0;images[45]=0;
+    #assert mn_pool(d,images[..],0,out[..])==MnStatus.ok && out[0]==0;
+}
+
+#test "MNIST pooling refuses before writing and does not trust a plain descriptor" {
+    images:[1585]u8;labels:[10]u8;out:[196]f32;
+    images[2]=8;images[3]=3;images[7]=2;images[11]=28;images[15]=28;
+    labels[2]=8;labels[3]=1;labels[7]=2;
+    d:=mn_admit(images[0..<1584],labels[..]);for i:0..<196 {out[i]=7;}
+    #assert mn_pool(d,images[0..<1584],-1,out[..])==MnStatus.index;
+    #assert mn_pool(d,images[0..<1584],2,out[..])==MnStatus.index;
+    #assert mn_pool(d,images[0..<1584],0,out[0..<195])==MnStatus.capacity;
+    #assert mn_pool(d,images[0..<15],0,out[..])==MnStatus.format;
+    #assert mn_pool(d,images[..],0,out[..])==MnStatus.capacity;
+    bad:=d;bad.count=1;#assert mn_pool(bad,images[0..<1584],0,out[..])==MnStatus.shape;
+    bad=d;bad.rows=27;#assert mn_pool(bad,images[0..<1584],0,out[..])==MnStatus.shape;
+    bad=d;bad.cols=29;#assert mn_pool(bad,images[0..<1584],0,out[..])==MnStatus.shape;
+    bad=d;bad.status=MnStatus.label;#assert mn_pool(bad,images[0..<1584],0,out[..])==MnStatus.label;
+    images[3]=4;#assert mn_pool(d,images[0..<1584],0,out[..])==MnStatus.format;
+    for i:0..<196 {#assert out[i]==7;}
+}
+
+#test "MNIST targets cover every class preserve tails and refuse atomically" {
+    out:[11]f32;
+    for label:0..<10 {
+        for i:0..<11 {out[i]=7;}
+        #assert mn_target(label,out[0..<10])==MnStatus.ok;
+        for i:0..<10 {#assert out[i]==(ifx i==label then 1.0f32 else 0.0f32);}
+        #assert out[10]==7;
+    }
+    #assert mn_target(2,out[..])==MnStatus.ok && out[10]==7;
+    for i:0..<11 {out[i]=7;}
+    #assert mn_target(-1,out[..])==MnStatus.label;
+    #assert mn_target(10,out[..])==MnStatus.label;
+    #assert mn_target(3,out[0..<9])==MnStatus.capacity;
+    for i:0..<11 {#assert out[i]==7;}
+}
+
+#test "MNIST argmax validates every score then retains the first tie" {
+    scores:=[10]f32.[-5,-4,-3,-2,-1,0,1,2,3,4];
+    p:=mn_argmax(scores[..]);#assert p.status==MnStatus.ok && p.index==9;
+    scores[0]=5;p=mn_argmax(scores[..]);#assert p.status==MnStatus.ok && p.index==0;
+    scores[4]=6;scores[7]=6;p=mn_argmax(scores[..]);#assert p.status==MnStatus.ok && p.index==4;
+    for i:0..<10 {scores[i]=-1;}p=mn_argmax(scores[..]);#assert p.status==MnStatus.ok && p.index==0;
+    scores[1]=2;p=mn_argmax(scores[..]);#assert p.status==MnStatus.ok && p.index==1;scores[1]=-1;
+    scores[0]=f32_from_bits(0x80000000);scores[1]=0;p=mn_argmax(scores[..]);#assert p.status==MnStatus.ok && p.index==0;
+    p=mn_argmax(scores[0..<9]);#assert p.status==MnStatus.shape && p.index==-1;
+    wide:[11]f32;p=mn_argmax(wide[..]);#assert p.status==MnStatus.shape && p.index==-1;
+    huge:=f32_from_bits(0x7f7fffff);infinite:=huge*2;
+    scores[9]=infinite-infinite;p=mn_argmax(scores[..]);#assert p.status==MnStatus.number && p.index==-1;
+    scores[9]=infinite;p=mn_argmax(scores[..]);#assert p.status==MnStatus.number && p.index==-1;
+    scores[9]=-infinite;p=mn_argmax(scores[..]);#assert p.status==MnStatus.number && p.index==-1;
+    scores[9]=0;scores[0]=infinite-infinite;p=mn_argmax(scores[..]);#assert p.status==MnStatus.number && p.index==-1;
+}
+
+// Internal: the caller has already established four readable header bytes.
+mn_be32 :: (bytes:[]u8,at:int)->int {
+    return int(bytes[at])*16777216+int(bytes[at+1])*65536+int(bytes[at+2])*256+int(bytes[at+3]);
+}
+mn_count :: (count:int)->bool {return count>=1 && count<=MN_MAX_IMAGES;}
+mn_images :: (images:[]u8)->MnDataset {
+    if images.count<16 || mn_be32(images,0)!=2051 {return MnDataset.{status=MnStatus.format};}
+    n:=mn_be32(images,4);rows:=mn_be32(images,8);cols:=mn_be32(images,12);
+    if !mn_count(n) || rows!=MN_SIDE || cols!=MN_SIDE {return MnDataset.{status=MnStatus.shape};}
+    // n is bounded before multiplication, including an all-ones u32 count.
+    if images.count!=16+n*MN_PIXELS {return MnDataset.{status=MnStatus.capacity};}
+    return MnDataset.{count=n,rows=rows,cols=cols};
+}
+mn_admit :: (images:[]u8,labels:[]u8)->MnDataset #export_c {
+    d:=mn_images(images);if d.status!=MnStatus.ok {return d;}
+    if labels.count<8 || mn_be32(labels,0)!=2049 {return MnDataset.{status=MnStatus.format};}
+    if mn_be32(labels,4)!=d.count {return MnDataset.{status=MnStatus.shape};}
+    if labels.count!=8+d.count {return MnDataset.{status=MnStatus.capacity};}
+    for i:0..<d.count {if labels[8+i]>=MN_CLASSES {return MnDataset.{status=MnStatus.label};}}
+    return d;
+}
+
+// Writes exactly 196 row-major features, leaving any output tail alone.
+// Each feature is the 2x2 byte sum / (4*255), rounded once from f64 to f32.
+mn_pool :: (dataset:MnDataset,images:[]u8,index:int,out:[]f32)->MnStatus #export_c {
+    if dataset.status!=MnStatus.ok {return dataset.status;}
+    d:=mn_images(images);if d.status!=MnStatus.ok {return d.status;}
+    if dataset.count!=d.count || dataset.rows!=d.rows || dataset.cols!=d.cols {return MnStatus.shape;}
+    if index<0 || index>=d.count {return MnStatus.index;}
+    if out.count<MN_FEATURES {return MnStatus.capacity;}
+    stage:[196]f32;first:=16+index*MN_PIXELS;
+    for row:0..<14 {for col:0..<14 {
+        at:=first+2*row*MN_SIDE+2*col;
+        sum:=int(images[at])+int(images[at+1])+int(images[at+MN_SIDE])+int(images[at+MN_SIDE+1]);
+        stage[row*14+col]=f32(f64(sum)/1020);
+    }}
+    for i:0..<MN_FEATURES {out[i]=stage[i];}
+    return MnStatus.ok;
+}
+mn_target :: (label:int,out:[]f32)->MnStatus #export_c {
+    if label<0 || label>=MN_CLASSES {return MnStatus.label;}
+    if out.count<MN_CLASSES {return MnStatus.capacity;}
+    for i:0..<MN_CLASSES {out[i]=ifx i==label then 1.0f32 else 0.0f32;}
+    return MnStatus.ok;
+}
+mn_argmax :: (scores:[]f32)->MnPick #export_c {
+    if scores.count!=MN_CLASSES {return MnPick.{status=MnStatus.shape};}
+    for i:0..<MN_CLASSES {
+        if (f32_bits(scores[i])&0x7fffffff)>=0x7f800000 {return MnPick.{status=MnStatus.number};}
+    }
+    best:=0;for i:1..<MN_CLASSES {if scores[i]>scores[best] {best=i;}}
+    return MnPick.{index=best};
+}

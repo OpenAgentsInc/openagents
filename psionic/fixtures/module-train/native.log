@@ -1,0 +1,8 @@
+module-train native debug plain:
+module-train native: analytic loss/gradients, 1100-element entry, IEEE refusals and complete publication pass
+module-train native debug sanitized:
+module-train native: analytic loss/gradients, 1100-element entry, IEEE refusals and complete publication pass
+module-train native release plain:
+module-train native: analytic loss/gradients, 1100-element entry, IEEE refusals and complete publication pass
+module-train native release sanitized:
+module-train native: analytic loss/gradients, 1100-element entry, IEEE refusals and complete publication pass

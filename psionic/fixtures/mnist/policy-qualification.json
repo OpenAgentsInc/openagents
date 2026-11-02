@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "source": "psionic/lib/mnist-policy.coax",
+  "source_sha256": "5fd3bde7fcdbaf3758571fe7d9f7025409e959eb7fcb5612abcc98e0d74eb845",
+  "compiler_input_fingerprint": "3325db45fae565ab13644ce9f65550a908113586f7d3db2ea5287ff41b990d72",
+  "compiler_binary_sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+  "checks": {
+    "earlier_profile_quality_groups": 4,
+    "earlier_groups_debug_release_passed": true,
+    "new_memory_workspace_capture_identity_groups": 4,
+    "new_groups_debug_release_passed": true,
+    "final_mutation_baseline_groups": 8
+  },
+  "mutation": {
+    "scope": "root-only; imported artifact constants are data only",
+    "sites": 117,
+    "killed": 117,
+    "survived": 0,
+    "equivalent_waivers": 0,
+    "command": "coax/bin/coax mutate psionic/lib/mnist-policy.coax --library --root-only --jobs 2"
+  },
+  "earlier_observations": [
+    {
+      "sites": 46,
+      "killed": 38,
+      "survived": 8,
+      "resolution": "Replace redundant guards and the fractional integer-accuracy test with necessary predicates and the exact ceiling threshold; no equivalence waivers."
+    },
+    {
+      "sites": 35,
+      "killed": 35,
+      "survived": 0,
+      "scope": "Original four-group profile/quality root before admission APIs were added."
+    }
+  ],
+  "scope": "Pure fixed-profile, output-capacity, workspace, original-artifact identity and quality decisions; no model execution or training."
+}

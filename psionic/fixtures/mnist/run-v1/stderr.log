@@ -1,0 +1,31 @@
+MNIST validation: phase 0, step 0, loss 1.29080435, correct 78/1024
+MNIST validation: phase 1, step 256, loss 0.395550011, correct 873/1024
+MNIST validation: phase 1, step 512, loss 0.347303356, correct 876/1024
+MNIST validation: phase 1, step 768, loss 0.316654055, correct 889/1024
+MNIST validation: phase 1, step 1024, loss 0.295020744, correct 903/1024
+MNIST validation: phase 1, step 1280, loss 0.287434692, correct 900/1024
+MNIST validation: phase 1, step 1536, loss 0.273124069, correct 906/1024
+MNIST validation: phase 1, step 1792, loss 0.273467448, correct 911/1024
+MNIST validation: phase 1, step 2048, loss 0.27014887, correct 909/1024
+MNIST validation: phase 1, step 2304, loss 0.253975625, correct 915/1024
+MNIST validation: phase 1, step 2560, loss 0.249321973, correct 909/1024
+MNIST validation: phase 1, step 2816, loss 0.241568294, correct 913/1024
+MNIST validation: phase 1, step 3072, loss 0.237390912, correct 910/1024
+       17.08 real         6.99 user         0.05 sys
+            58425344  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                3739  page reclaims
+                   1  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                   2  voluntary context switches
+                7875  involuntary context switches
+        104136301488  instructions retired
+         20331502418  cycles elapsed
+            57885080  peak memory footprint

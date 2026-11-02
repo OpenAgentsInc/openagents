@@ -1,0 +1,471 @@
+{
+  "schema": 1,
+  "date": "2026-11-01",
+  "profile": "psionic-mnist-mlp-frozen-v1",
+  "passed": true,
+  "book": "psionic",
+  "chapter": 118,
+  "source_freeze": "psionic/fixtures/mnist/source-freeze.json",
+  "experiment_manifest": "psionic/fixtures/mnist/experiment.json",
+  "actual_learning_runs": 1,
+  "repeated_training_prefixes": 0,
+  "next_update_replays": 1,
+  "outcome": {
+    "status": 0,
+    "steps": 3072,
+    "train_rows": 49152,
+    "test_rows": 2048,
+    "baseline_class": 1,
+    "initial_loss": 1.276122591283638,
+    "final_loss": 0.28320420931240164,
+    "initial_correct": 171,
+    "final_correct": 1755,
+    "baseline_correct": 242,
+    "checkpoint_bytes": 80068,
+    "export_bytes": 13632,
+    "replay_equal": true,
+    "export_equal": true,
+    "seconds": 17.036464
+  },
+  "independent_audit": "psionic/fixtures/mnist/run-v1/audit.json",
+  "authority_mutations": {
+    "scope": "new entry-source sites only; original dependency math not mutation-qualified again",
+    "sites": 424,
+    "killed": 424,
+    "survived": 0,
+    "equivalent_waivers": 0,
+    "units": {
+      "module-train": 160,
+      "data/mnist": 147,
+      "mnist-policy": 117
+    }
+  },
+  "authored_checks": {
+    "new_adapter_groups": 13,
+    "adapter_full_baseline_groups": 220,
+    "data_groups": 7,
+    "policy_groups": 8,
+    "classifier_consumer_groups": 2,
+    "debug_and_release": "passed; unchanged profile/quality functions retain earlier passing checks; final changed-policy mutation runs all8baseline groups"
+  },
+  "native_checks": {
+    "module_adapter": "checked and release C, each plain and ASan/UBSan; complete publication, large entry, IEEE refusals",
+    "classifier": "checked C, release C and checked ASan/UBSan; all native initial captures byte-identical",
+    "initial_numerical_comparison": {
+      "master_parameters": 3322,
+      "features": 196,
+      "scores": 10,
+      "parameter_gradients": 3322,
+      "loss_values": 1,
+      "observed_max_absolute_error": 0,
+      "reference": "Independent stdlib Python equations, not shared Coax code; declared tolerances retained in reference.json"
+    },
+    "full_learning": "one release run only; no full debug/sanitized repeat"
+  },
+  "book_checks": {
+    "new_example_debug": "exact stdout and exit status passed",
+    "new_example_release": "exact stdout and exit status passed",
+    "structure_before_rebase": "242programs,1185source-linked listings, local links pass",
+    "structure_after_rebase": "246 programs, 1211 source-linked listings, local links pass"
+  },
+  "tooling_checks": {
+    "independent_reference_tests": 15,
+    "focused_dispatch_aliases": 3,
+    "dispatch_effects": "stub-only; no compiler, dataset or training calls",
+    "shell_syntax": "passed"
+  },
+  "runtime": {
+    "backend": "CPU",
+    "framework": "Coax modules, autodiff, shared AdamW trainer, checkpoint and named-tensor APIs",
+    "precision": "f64master/moments, f32module forward and published gradients",
+    "python_training_or_runtime": false,
+    "model_sdk_or_pytorch_runtime": false,
+    "new_tensor_or_optimizer_kernel": false
+  },
+  "limits": [
+    "4096training images,1024validation images,2048official test images; one seed and one fixed12epoch run, not full MNIST or a statistical robustness study.",
+    "The caller retains immutable valid model plans and live disjoint spans; no general alias/lifetime proof.",
+    "No CNN, larger dataset/trainer limit, efficient GPU training, PyTorch quality baseline or general frontend graduation is claimed.",
+    "The host publishes artifacts after completion; incremental durable checkpointing and crash/restart recovery are not tested.",
+    "One next optimizer update is replayed; the complete six-epoch suffix or training curve is not rerun.",
+    "Workflow wall time is one observation on a shared host, not an isolated performance comparison.",
+    "Original shared engines and their full mutation/native gates were not changed or rerun; new mutation scores have explicit entry-source scope.",
+    "The retained compiler was reused at its exact original fingerprint; one inherited unrelated compiler survivor was recorded there. Incoming main later added the missing checker test without changing production checker logic."
+  ],
+  "inventory": [
+    {
+      "path": "coax/book/capability-claims.json",
+      "bytes": 19156,
+      "sha256": "74fda6396f895f8eb130c22dde61427fa70651687b95a87ddda1ca7170b3a819"
+    },
+    {
+      "path": "docs/books/completion.md",
+      "bytes": 10957,
+      "sha256": "1c2534ddd923501316db12ba552e8588091629f682e046c2cbf6d98e5277d21e"
+    },
+    {
+      "path": "psionic/README.md",
+      "bytes": 35197,
+      "sha256": "5611b0b2f2f9a508dad11d47e811a10e22ed7f1b7b841596e3a6c19f2a48943a"
+    },
+    {
+      "path": "psionic/book/PLAN.md",
+      "bytes": 187899,
+      "sha256": "113574adfb1fe130c73a4dcaf34f66b9099f9d0b593606752911bf03de4a3d02"
+    },
+    {
+      "path": "psionic/book/README.md",
+      "bytes": 103556,
+      "sha256": "e4b816ace979ed89a6329c9e42c164944b3403ab7b0932019e383e8daf4650bf"
+    },
+    {
+      "path": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "bytes": 57217,
+      "sha256": "6679ab0bd026e86d97b73bf171005ea37be498ffa55c5af917830f9e1cbd9236"
+    },
+    {
+      "path": "psionic/book/chapters.json",
+      "bytes": 96899,
+      "sha256": "317c29f485b435f7197f13be5ac6cf75283a9e211f7080804087ac9896f6a2eb"
+    },
+    {
+      "path": "psionic/book/examples.json",
+      "bytes": 69185,
+      "sha256": "62f4f5a8c2b588d2b34a163f43f42ad501350d6c3cf2c1bfab9dbeb3e81b4d8b"
+    },
+    {
+      "path": "psionic/check.sh",
+      "bytes": 57567,
+      "sha256": "931c5fe5ecf614f2b3e65b1e1d38f97375af4b74c81de1b4ebaccf4c30740aa6"
+    },
+    {
+      "path": "psionic/examples/mnist-classifier.coax",
+      "bytes": 1464,
+      "sha256": "b7ac91d2f46625150aa6ff9a49a6e171a7c90d42fc8c7ee9e0250d99ef8b1c06"
+    },
+    {
+      "path": "psionic/fixtures/mnist-classifier.out",
+      "bytes": 394,
+      "sha256": "f9ef099ee68f1f9823ceef5c2d952b629e3390d57a0976784e742daa9eca39be"
+    },
+    {
+      "path": "psionic/fixtures/mnist/README.md",
+      "bytes": 5159,
+      "sha256": "ec410039195cb8cde16f67e7bbd24e4b4001c82cb3a2da9a8e39d931b5dad851"
+    },
+    {
+      "path": "psionic/fixtures/mnist/acquisition.json",
+      "bytes": 3682,
+      "sha256": "0248f19cd44fd1f989926a8a4278fd76b0e16d395ce25b9c619d95fdb8d9c105"
+    },
+    {
+      "path": "psionic/fixtures/mnist/artifacts.coax",
+      "bytes": 738,
+      "sha256": "ea9608786e6f315f72f0dd23df8795c87bb75cb343b6a58a181cc39a614b8a44"
+    },
+    {
+      "path": "psionic/fixtures/mnist/data-qualification.json",
+      "bytes": 3838,
+      "sha256": "57dab561be5dc8676c75f8edfc9a686a1473362ac38524edf890d201a9048bcf"
+    },
+    {
+      "path": "psionic/fixtures/mnist/dataset.json",
+      "bytes": 4265,
+      "sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd"
+    },
+    {
+      "path": "psionic/fixtures/mnist/experiment.json",
+      "bytes": 4338,
+      "sha256": "72e9b74333bc55dd78f98bc226bd08670c52e5a78a1ab98a54dc7fb5725a62f1"
+    },
+    {
+      "path": "psionic/fixtures/mnist/initial-capture/features.f32",
+      "bytes": 784,
+      "sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a"
+    },
+    {
+      "path": "psionic/fixtures/mnist/initial-capture/gradient.f64",
+      "bytes": 26576,
+      "sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0"
+    },
+    {
+      "path": "psionic/fixtures/mnist/initial-capture/oracle.json",
+      "bytes": 109,
+      "sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8"
+    },
+    {
+      "path": "psionic/fixtures/mnist/initial-capture/params.f64",
+      "bytes": 26576,
+      "sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5"
+    },
+    {
+      "path": "psionic/fixtures/mnist/initial-capture/scores.f32",
+      "bytes": 40,
+      "sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa"
+    },
+    {
+      "path": "psionic/fixtures/mnist/oracle-debug.json",
+      "bytes": 1193,
+      "sha256": "af41edb1a43bdc61c0090b1e820703d1254b7203ff2941a7d3848dd2033c2909"
+    },
+    {
+      "path": "psionic/fixtures/mnist/oracle-release.json",
+      "bytes": 1193,
+      "sha256": "af41edb1a43bdc61c0090b1e820703d1254b7203ff2941a7d3848dd2033c2909"
+    },
+    {
+      "path": "psionic/fixtures/mnist/oracle-sanitized.json",
+      "bytes": 1193,
+      "sha256": "af41edb1a43bdc61c0090b1e820703d1254b7203ff2941a7d3848dd2033c2909"
+    },
+    {
+      "path": "psionic/fixtures/mnist/policy-qualification.json",
+      "bytes": 1454,
+      "sha256": "8da71c6d89b88996937b8cda15784bd9bd5083b1f674a202b8b597d4551885ff"
+    },
+    {
+      "path": "psionic/fixtures/mnist/reference.json",
+      "bytes": 6034,
+      "sha256": "9223c31c9e97089e6aade42c3746d5791a1be25899c00b93a7fe200bee40ca49"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/audit.json",
+      "bytes": 1440,
+      "sha256": "30f4bee5acc26e9612e8a1543957e931b06294e3a6308df2119105a7c71abba9"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/canonical-next.psck",
+      "bytes": 80068,
+      "sha256": "1bdde38c11fcc2597e467be0efcf506c68b3d38003a65232cdb50ebfdc7ce9b8"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/canonical-order.i64",
+      "bytes": 32768,
+      "sha256": "058827cb0dcdd7d480fe53ee991a7b76d7b4e14d2fbc501d8c7f9ec71b21a43a"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/epoch6.psck",
+      "bytes": 80068,
+      "sha256": "a632501481cb387bcf9705647d96cee7226f2ed578701ceb8a673f5572e4ae51"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/epoch6.pscp",
+      "bytes": 80,
+      "sha256": "cb26432c57953c7b07698acc734da1019370185f61ea970640da172cf6260ddd"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/execution.json",
+      "bytes": 381,
+      "sha256": "dbc13ef85c3397a4bb207c7aa6c15852d5971992bc721f78a74ec82946807395"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/final.psck",
+      "bytes": 80068,
+      "sha256": "a9da2287f520cf8eb9dc61ec0488c32aa32467f04294c49f185adafaa1f0a9d0"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/final.pscp",
+      "bytes": 80,
+      "sha256": "2926b897723d5caeea3b6ef6416d6178800675ed05fb43267a54940cb6480b50"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/initial-test-scores.f32",
+      "bytes": 81920,
+      "sha256": "1d2fe03ca504fe3e9a3576fe7923a0b74f1822437086b8c9ff9646b12a72cd93"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/model.safetensors",
+      "bytes": 13632,
+      "sha256": "76203f028cb095a5de9e56e01293a0870ccd15b2e9ea7a656041ef92b56f508b"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/replayed-next.psck",
+      "bytes": 80068,
+      "sha256": "1bdde38c11fcc2597e467be0efcf506c68b3d38003a65232cdb50ebfdc7ce9b8"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/replayed-order.i64",
+      "bytes": 32768,
+      "sha256": "058827cb0dcdd7d480fe53ee991a7b76d7b4e14d2fbc501d8c7f9ec71b21a43a"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/result.json",
+      "bytes": 322,
+      "sha256": "5bb67fd33eb9dec5f6321d90751aab0ceefae5a73e134689d9ce99a78254d8b2"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/stderr.log",
+      "bytes": 1717,
+      "sha256": "60b612f220587c4ec9bc904ab26b1927bfb3eebf428119c7bc3f1b1988213d44"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/test-scores.f32",
+      "bytes": 81920,
+      "sha256": "4505722bdaca06f0235cef9c86542a484b1f02389d9640371560c8b744b259cf"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/validation.csv",
+      "bytes": 726,
+      "sha256": "f57ac23ce718cde7fc02a5c76bac085ad1030169cddd14a7e38f7dda51e63f50"
+    },
+    {
+      "path": "psionic/fixtures/mnist/run-v1/validation.f64",
+      "bytes": 416,
+      "sha256": "b0f723d6cf926a49d4f14b7a415fb4583c7f700a9d6e2a3afb3d7d90a56ff30b"
+    },
+    {
+      "path": "psionic/fixtures/mnist/source-freeze.json",
+      "bytes": 11253,
+      "sha256": "20e16baf7a80846389555f88e870468be60944922b38ee62f7198e97f15b0306"
+    },
+    {
+      "path": "psionic/fixtures/module-train/final-mutation.json",
+      "bytes": 48383,
+      "sha256": "45da07ed773043d1a36fdd26494ee8d839e4b10ac97966b6c5fac3bc3700e85e"
+    },
+    {
+      "path": "psionic/fixtures/module-train/final-mutation.log",
+      "bytes": 116,
+      "sha256": "c160ce5d15240524d4c0600f7d33c774e10ebe41d495befc48e0762124f88f7f"
+    },
+    {
+      "path": "psionic/fixtures/module-train/initial-mutation.json",
+      "bytes": 52024,
+      "sha256": "5ba2379de7f292e492bb78447111d723ae52445ff566a5d7d7fa8549acd6b62a"
+    },
+    {
+      "path": "psionic/fixtures/module-train/initial-mutation.log",
+      "bytes": 13146,
+      "sha256": "2dfebd9e6333cce40229ad6f009e144bd72ecdfe1ea26423c382600d4fe67b24"
+    },
+    {
+      "path": "psionic/fixtures/module-train/native.log",
+      "bytes": 584,
+      "sha256": "a5f06b7cc84672309ace095088902164e4b9cb54bc54d9dad5f279145d9541ab"
+    },
+    {
+      "path": "psionic/fixtures/module-train/padding-check.json",
+      "bytes": 55256,
+      "sha256": "801172d2f0d4d935bca1eb98c975d6e45c4cb33d3bb4ce88807e6b7daa028a71"
+    },
+    {
+      "path": "psionic/fixtures/module-train/qualification.json",
+      "bytes": 6978,
+      "sha256": "6c553f18990a4117c1a585839a726fdd443a5a7347f4fac3245f8a207834d646"
+    },
+    {
+      "path": "psionic/fixtures/module-train/refined-mutation.json",
+      "bytes": 48480,
+      "sha256": "35a5f3222d70895420f2bc005bc257a03934123a9c06e6cedb4e1cfb4a25b2fb"
+    },
+    {
+      "path": "psionic/fixtures/module-train/refined-mutation.log",
+      "bytes": 345,
+      "sha256": "09d830b389855ad559f1b68e6c1517c2cba92f6f182b6534d8b73a88e17359d3"
+    },
+    {
+      "path": "psionic/fixtures/module-train/release-checks.json",
+      "bytes": 54863,
+      "sha256": "b68d4ff22196f3c5e2fa4b839684d5d761576a50b0f3f2728a7cdf1e66b26e93"
+    },
+    {
+      "path": "psionic/fixtures/module-train/release-checks.log",
+      "bytes": 1732,
+      "sha256": "623b847e35bfe58d2d5ccf8d979504cd4d9418ca12e334ad93099dee0d53d8df"
+    },
+    {
+      "path": "psionic/lib/data/mnist.coax",
+      "bytes": 11427,
+      "sha256": "2a2ce156bd67f8edffeb169a4dbaf7f1e868f02cf7f12ffae20ad12c603bfaa6"
+    },
+    {
+      "path": "psionic/lib/mnist-classifier.coax",
+      "bytes": 9358,
+      "sha256": "509b79062f0238954c8d37f41efeacd25fee774836faf7ff4d0753e0e9a68c54"
+    },
+    {
+      "path": "psionic/lib/mnist-experiment.coax",
+      "bytes": 6203,
+      "sha256": "f94ca5cb73963162f1d06fd7a2d14576624802b6a190161dd52042af20c8ce14"
+    },
+    {
+      "path": "psionic/lib/mnist-policy.coax",
+      "bytes": 7966,
+      "sha256": "5fd3bde7fcdbaf3758571fe7d9f7025409e959eb7fcb5612abcc98e0d74eb845"
+    },
+    {
+      "path": "psionic/lib/module-train.coax",
+      "bytes": 6173,
+      "sha256": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f"
+    },
+    {
+      "path": "psionic/platform/mnist-build.sh",
+      "bytes": 988,
+      "sha256": "ce991d1bc6db9115a4b48c0b3658ade5add06e5bc8ae68bf35adda3f064bd888"
+    },
+    {
+      "path": "psionic/platform/mnist-host.c",
+      "bytes": 7912,
+      "sha256": "8dfe72f2fa163f8effcfbd774b9b9fe6204f65f114f9b7509b25009f16905905"
+    },
+    {
+      "path": "psionic/run-mnist.sh",
+      "bytes": 664,
+      "sha256": "96eb4a1ce57e0437c2e9139d897bd20c6060e81b0b033c4026c2debd38ebca4e"
+    },
+    {
+      "path": "psionic/tests/check_mnist.sh",
+      "bytes": 3082,
+      "sha256": "27bd17ee2778f7793a54093ee33646f3935e146ea3ebd6398088d6bc3039db0f"
+    },
+    {
+      "path": "psionic/tests/check_module_train_native.sh",
+      "bytes": 1209,
+      "sha256": "a482b9adbc588eda45e40767efb5a8c5927e2f0a684ca87281242badd2a8727d"
+    },
+    {
+      "path": "psionic/tests/mnist/test_reference.py",
+      "bytes": 9653,
+      "sha256": "235085901142db82fe9e2a0a9d6d68eb0fc6f0447980e5af1a9bde5e7ed07bdc"
+    },
+    {
+      "path": "psionic/tests/mnist_reference.py",
+      "bytes": 28940,
+      "sha256": "df56a0ac38b247a4b8dd85f8ffabb1786e77c308be8ba8423dc8fc5ed15ff427"
+    },
+    {
+      "path": "psionic/tests/module-train-checks.coax",
+      "bytes": 12713,
+      "sha256": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71"
+    },
+    {
+      "path": "psionic/tests/module-train-native.c",
+      "bytes": 2314,
+      "sha256": "c5d7244d41301d526c404852ed0ad2566286b9570dd761656f8bd1970b47d716"
+    },
+    {
+      "path": "psionic/tests/module-train-native.coax",
+      "bytes": 1741,
+      "sha256": "59df8ea20274d2f87273679a95f0a8b3e68861ea6166e34d0ad58fef69e68108"
+    }
+  ],
+  "publication_reconciliation": {
+    "original_implementation_base": "1ca82e0986",
+    "rebased_onto": "121b2f1149146ec2df3957580e62f4741df9f4c6",
+    "upstream_preserved": [
+      "chapter181 failure handling",
+      "chapter200 simplest loop",
+      "all upstream examples and focused units",
+      "test-only compiler checker coverage",
+      "chapter203 typed tool capabilities"
+    ],
+    "consumer_source_freeze_preserved": true,
+    "compiler_scope": "Original measured image retained; upstream cf84463171 adds a checker test and regenerates its bootstrap C, without a production checker procedure change. No training or unchanged component gate rerun.",
+    "shared_files": "Merged both example inventories and mutation selectors; refreshed the two existing reviewed example-inventory bindings only."
+  }
+}

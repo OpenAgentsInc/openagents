@@ -2479,6 +2479,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/mnist-classifier.coax",
+      "chapter": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "stdout": "psionic/fixtures/mnist-classifier.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

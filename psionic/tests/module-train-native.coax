@@ -1,0 +1,31 @@
+// Verification-only exports. C supplies actual IEEE nonfinite bit patterns
+// which the compile-time evaluator deliberately refuses to construct.
+#load "../lib/module-train.coax";
+
+mtr_native_linear :: (master:[]f64,inputs:[]f32,gradient:[]f64,loss:[]f64)->MtrStatus #export_c {
+    #assert master.count==2 && inputs.count==4 && gradient.count==2 && loss.count==1;
+    plan:=mtr_plan(mtr_fixture(2));values:[16]f32;adjoints:[16]f64;flags:[4]u8;entry:[2]f32;stage:[2]f64;
+    r:=mtr_run(plan,0,master,inputs,values[..],adjoints[..],flags[..],entry[..],stage[..],gradient);
+    if r.status==MtrStatus.ok {loss[0]=r.loss;}
+    return r.status;
+}
+
+mtr_native_late :: (inputs:[]f32,gradient:[]f64)->MtrStatus #export_c {
+    #assert inputs.count==7 && gradient.count==3;
+    plan:=mtr_plan(mtr_fixture_late_gradient());master:[3]f64;values:[32]f32;adjoints:[32]f64;flags:[2]u8;entry:[2]f32;stage:[3]f64;
+    return mtr_run(plan,0,master[..],inputs,values[..],adjoints[..],flags[..],entry[..],stage[..],gradient).status;
+}
+
+mtr_native_metadata_value :: (value:f32)->MtrStatus #export_c {
+    m:=mtr_fixture(1);m.entries[0].value=value;
+    return mtr_plan(m).status;
+}
+
+mtr_native_large :: ()->bool #export_c {
+    plan:=mtr_plan(mtr_fixture(1100));master:[1100]f64;inputs:[2200]f32;values:[4096]f32;adjoints:[4096]f64;flags:[1100]u8;entry:[1100]f32;stage:[1100]f64;gradient:[1100]f64;
+    for j:0..<1100 {master[j]=2;inputs[j]=1;}
+    r:=mtr_run(plan,0,master[..],inputs[..],values[0..<plan.values],adjoints[0..<plan.adjoints],flags[..],entry[..],stage[..],gradient[..]);
+    if r.status!=MtrStatus.ok || r.loss!=2200 {return false;}
+    for j:0..<1100 {if gradient[j]!=1 || master[j]!=2 || inputs[1100+j]!=2 {return false;}}
+    return true;
+}

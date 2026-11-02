@@ -55,6 +55,13 @@ the [current boundary](../../coax/verification-retained-stores.md) records them.
 | 4. Prove a low-pressure game use | 24–32, 215–225, 239–241 | A Pylon consumer preserves local play on timeout/cancel, measures quality and latency against a strong local rule, and enables remote-selected behavior only after its own usefulness gate. Existing Directions remains local-first with optional shadow calls. |
 | 5. Expand robotics and distribution from real consumers | 132–135, 167–171; Aethyr 17–37 | Neural actor/critic training uses a pinned real physical environment; batched contact/reset/sensor/replay behavior is checked before gait claims. Distributed training uses actual devices/interconnects and demonstrates failure recovery. |
 
+The first bounded CPU MNIST MLP consumer is now measured in
+[chapter 118](../../psionic/book/ch118-one-trainer-for-every-model.md): public
+module/autodiff/trainer composition, caller-sized buffers, AdamW, a checked
+checkpoint replay and named inference export, with a frozen held-out quality
+rule. This advances the first milestone; CNN integration, larger datasets,
+GPU efficiency and the broader projects below remain open.
+
 The [framework acceptance projects](../../psionic/book/PLAN.md#a-framework-not-only-engines)
 remain the graduation gates. Original model inference, a tiny GPU training run,
 a simulated scheduler and a passing scalar LQR experiment are useful delivered

@@ -1,0 +1,158 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/module-train.coax:28:49: mutant survived: '<' became '<='
+      if model.status!=MdlStatus.ok || model.count<1 || model.count>TI_NODES || model.module_count<1 || model.module_count>MDL_MODULES {return fail;}
+                                                  ^
+psionic/lib/module-train.coax:28:50: mutant survived: 1 became 2
+      if model.status!=MdlStatus.ok || model.count<1 || model.count>TI_NODES || model.module_count<1 || model.module_count>MDL_MODULES {return fail;}
+                                                   ^
+psionic/lib/module-train.coax:28:66: mutant survived: '>' became '>='
+      if model.status!=MdlStatus.ok || model.count<1 || model.count>TI_NODES || model.module_count<1 || model.module_count>MDL_MODULES {return fail;}
+                                                                   ^
+psionic/lib/module-train.coax:28:67: mutant survived: 32 became 33
+      if model.status!=MdlStatus.ok || model.count<1 || model.count>TI_NODES || model.module_count<1 || model.module_count>MDL_MODULES {return fail;}
+                                                                    ^
+psionic/lib/module-train.coax:28:121: mutant survived: '>' became '>='
+      if model.status!=MdlStatus.ok || model.count<1 || model.count>TI_NODES || model.module_count<1 || model.module_count>MDL_MODULES {return fail;}
+                                                                                                                          ^
+psionic/lib/module-train.coax:30:18: mutant survived: '||' became '&&'
+      if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return fail;}
+                   ^
+psionic/lib/module-train.coax:30:15: mutant survived: '<' became '<='
+      if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return fail;}
+                ^
+psionic/lib/module-train.coax:30:16: mutant survived: 1 became 2
+      if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return fail;}
+                 ^
+psionic/lib/module-train.coax:30:28: mutant survived: '>' became '>='
+      if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return fail;}
+                             ^
+psionic/lib/module-train.coax:30:29: mutant survived: 32 became 33
+      if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return fail;}
+                              ^
+psionic/lib/module-train.coax:30:49: mutant survived: '<' became '<='
+      if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return fail;}
+                                                  ^
+psionic/lib/module-train.coax:30:50: mutant survived: 0 became 1
+      if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return fail;}
+                                                   ^
+psionic/lib/module-train.coax:30:63: mutant survived: '>=' became '>'
+      if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return fail;}
+                                                                ^
+psionic/lib/module-train.coax:31:49: mutant survived: 0 became 1
+      seen:[32]bool;top:=0;parameters:=0;largest:=0;
+                                                  ^
+psionic/lib/module-train.coax:34:30: mutant survived: '>=' became '>'
+          if e.node<0 || e.node>=p.count || e.owner<0 || e.owner>=model.module_count {return fail;}
+                               ^
+psionic/lib/module-train.coax:36:126: mutant survived: '||' became '&&'
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                                                                                               ^
+psionic/lib/module-train.coax:36:114: mutant survived: '||' became '&&'
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                                                                                   ^
+psionic/lib/module-train.coax:36:72: mutant survived: '||' became '&&'
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                                         ^
+psionic/lib/module-train.coax:36:49: mutant survived: '||' became '&&'
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                  ^
+psionic/lib/module-train.coax:36:29: mutant survived: '||' became '&&'
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                              ^
+psionic/lib/module-train.coax:36:27: mutant survived: 3 became 4
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                            ^
+psionic/lib/module-train.coax:36:46: mutant survived: '>' became '>='
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                               ^
+psionic/lib/module-train.coax:36:47: mutant survived: 1 became 2
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                ^
+psionic/lib/module-train.coax:36:100: mutant survived: '&&' became '||'
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                                                                     ^
+psionic/lib/module-train.coax:36:82: mutant survived: '==' became '!='
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                                                   ^
+psionic/lib/module-train.coax:36:110: mutant survived: '<' became '<='
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                                                                               ^
+psionic/lib/module-train.coax:36:135: mutant survived: '>' became '>='
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                                                                                                        ^
+psionic/lib/module-train.coax:36:136: mutant survived: 255 became 256
+          if cast(u8)e.kind>3 || cast(u8)e.init>1 || !tv_finite(e.value) || (e.init==MdlInit.uniform && e.value<0) || e.drop<0 || e.drop>255 {return fail;}
+                                                                                                                                         ^
+psionic/lib/module-train.coax:38:89: mutant survived: '||' became '&&'
+          if size.status!=TvStatus.ok || e.size<1 || e.size!=size.elements || e.base!=top || e.size>TV_LIMIT-top {return fail;}
+                                                                                          ^
+psionic/lib/module-train.coax:38:74: mutant survived: '||' became '&&'
+          if size.status!=TvStatus.ok || e.size<1 || e.size!=size.elements || e.base!=top || e.size>TV_LIMIT-top {return fail;}
+                                                                           ^
+psionic/lib/module-train.coax:38:49: mutant survived: '||' became '&&'
+          if size.status!=TvStatus.ok || e.size<1 || e.size!=size.elements || e.base!=top || e.size>TV_LIMIT-top {return fail;}
+                                                  ^
+psionic/lib/module-train.coax:38:37: mutant survived: '||' became '&&'
+          if size.status!=TvStatus.ok || e.size<1 || e.size!=size.elements || e.base!=top || e.size>TV_LIMIT-top {return fail;}
+                                      ^
+psionic/lib/module-train.coax:38:98: mutant survived: '>' became '>='
+          if size.status!=TvStatus.ok || e.size<1 || e.size!=size.elements || e.base!=top || e.size>TV_LIMIT-top {return fail;}
+                                                                                                   ^
+psionic/lib/module-train.coax:38:107: mutant survived: '-' became '+'
+          if size.status!=TvStatus.ok || e.size<1 || e.size!=size.elements || e.base!=top || e.size>TV_LIMIT-top {return fail;}
+                                                                                                            ^
+psionic/lib/module-train.coax:38:99: mutant survived: 1048576 became 1048577
+          if size.status!=TvStatus.ok || e.size<1 || e.size!=size.elements || e.base!=top || e.size>TV_LIMIT-top {return fail;}
+                                                                                                    ^
+psionic/lib/module-train.coax:40:110: mutant survived: '||' became '&&'
+          if n.op!=TiOp.input || n.input_base!=e.base || n.storage!=e.size || !ti_shape_equal(n.shape,e.shape) || !ti_shape_equal(model.shapes[e.node],e.shape) {return fail;}
+                                                                                                               ^
+psionic/lib/module-train.coax:40:74: mutant survived: '||' became '&&'
+          if n.op!=TiOp.input || n.input_base!=e.base || n.storage!=e.size || !ti_shape_equal(n.shape,e.shape) || !ti_shape_equal(model.shapes[e.node],e.shape) {return fail;}
+                                                                           ^
+psionic/lib/module-train.coax:40:53: mutant survived: '||' became '&&'
+          if n.op!=TiOp.input || n.input_base!=e.base || n.storage!=e.size || !ti_shape_equal(n.shape,e.shape) || !ti_shape_equal(model.shapes[e.node],e.shape) {return fail;}
+                                                      ^
+psionic/lib/module-train.coax:40:29: mutant survived: '||' became '&&'
+          if n.op!=TiOp.input || n.input_base!=e.base || n.storage!=e.size || !ti_shape_equal(n.shape,e.shape) || !ti_shape_equal(model.shapes[e.node],e.shape) {return fail;}
+                              ^
+psionic/lib/module-train.coax:43:41: mutant survived: '>' became '>='
+              parameters+=e.size;if e.size>largest {largest=e.size;}
+                                          ^
+psionic/lib/module-train.coax:47:11: mutant survived: 0 became 1
+      for i:0..<p.count {
+            ^
+psionic/lib/module-train.coax:49:33: mutant survived: '>' became '>='
+          if cast(u8)p.nodes[i].op>9 {return MtrPlan.{status=MtrStatus.execution};}
+                                  ^
+psionic/lib/module-train.coax:49:34: mutant survived: 9 became 10
+          if cast(u8)p.nodes[i].op>9 {return MtrPlan.{status=MtrStatus.execution};}
+                                   ^
+psionic/lib/module-train.coax:55:12: mutant survived: 0 became 1
+      flags:=0;
+             ^
+psionic/lib/module-train.coax:56:11: mutant survived: 0 became 1
+      for s:0..<tape.count {n:=tape.plan.values[tape.steps[s].node].storage;if n>flags {flags=n;}}
+            ^
+psionic/lib/module-train.coax:56:79: mutant survived: '>' became '>='
+      for s:0..<tape.count {n:=tape.plan.values[tape.steps[s].node].storage;if n>flags {flags=n;}}
+                                                                                ^
+psionic/lib/module-train.coax:68:11: mutant survived: 0 became 1
+      for i:0..<plan.model.count {
+            ^
+psionic/lib/module-train.coax:70:65: mutant survived: the assignment was removed
+          for j:0..<e.size {inputs[e.base+j]=f32(master[at+j]);}at+=e.size;
+                                                                  ^
+psionic/lib/module-train.coax:75:48: mutant survived: '||' became '&&'
+      if run.status!=AdStatus.ok || run.external || run.cursor.next!=plan.tape.count {return MtrStep.{status=MtrStatus.execution};}
+                                                 ^
+psionic/lib/module-train.coax:75:32: mutant survived: '||' became '&&'
+      if run.status!=AdStatus.ok || run.external || run.cursor.next!=plan.tape.count {return MtrStep.{status=MtrStatus.execution};}
+                                 ^
+psionic/lib/module-train.coax:83:19: mutant survived: 0 became 1
+              for j:0..<e.size {gradient_stage[at+j]=0;}
+                    ^
+psionic/lib/module-train.coax:83:51: mutant survived: the assignment was removed
+              for j:0..<e.size {gradient_stage[at+j]=0;}
+                                                    ^
+183 mutants, 131 killed, 52 survived

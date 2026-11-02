@@ -3,7 +3,8 @@
 > **Status: partly implemented.** One trainer runs on the CPU and trains
 > three existing models (chapter 103's tabular models, chapter 115's tiny
 > decoder and chapter 117's module block) to the same bits as their own
-> training loops. An image classifier, SGD with momentum and Muon behind
+> training loops. A new MNIST MLP composes the public module, autodiff and
+> trainer APIs. A convolutional classifier, SGD with momentum and Muon behind
 > the same interface, and the trainers of chapters 104, 116 and 157 remain.
 
 Each earlier chapter that trains something writes its own loop. Chapter
@@ -675,12 +676,226 @@ after step 2, and chapter 117's block for four steps with evaluations, a
 cut and a resume into a rebuilt buffer. Losses, weights and moments are
 compared bit for bit. Both files' mutants are all killed as well.
 
+## A new model: an MLP on real MNIST
+
+The classifier is a new consumer of the framework. It uses chapter 117's
+public module constructors, chapter 106's autodiff and this chapter's
+trainer protocol; it does not add a model-specific tensor operator or change
+the engine to recognize MNIST. Its caller-owned execution adapter is
+[module-train.coax](../lib/module-train.coax). The older `tm_module_step`
+helper remains a bounded adapter for chapter 117's small residual fixture.
+
+### Data and the model
+
+The [portable example](../examples/mnist-classifier.coax) exercises the complete
+3,322-value gradient interface on a hand-worked zero network, and refuses an
+unrepresentable compute weight.
+It downloads no data and does not claim classifier accuracy.
+
+At zero weights the hidden values and all scores are zero. For label 7,
+the squared error is `(0 - 1)^2 = 1`; the derivative for `fc2.bias[7]` is
+`2 * (0 - 1) = -2`. The other last-bias derivatives are zero, and the earlier
+derivatives vanish because the second layer's weights are zero. That gives
+an independent expected value for every one of the 3,322 gradients below.
+
+<!-- source: psionic/examples/mnist-classifier.coax example -->
+```jai
+main :: () {
+    m:=mc_model();q:=mtr_plan(m);c:=mc_config();
+    #assert q.status==MtrStatus.ok;
+    print("MNIST MLP: 196 -> 16 -> 10; % parameters, % nodes\n",q.parameters,m.program.count);
+    print("caller arenas: % inputs, % values, % adjoints, % flags; largest entry %\n",q.inputs,q.values,q.adjoints,q.flags,q.largest);
+    print("AdamW: % epochs, % rows, % rows per update, % updates\n",c.epochs,c.examples,c.accumulate,tr_steps(c));
+    // This hand-worked zero model is a synthetic API example, not MNIST
+    // accuracy. Its only nonzero derivative is bias[7]: -2 at zero.
+    p:[3322]f64;w:[1]McWork;#assert mn_target(7,w[0].inputs[196..<206])==MnStatus.ok;
+    r:=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    #assert r.status==MtrStatus.ok && r.loss==1 && w[0].gradient[3319]== -2;
+    print("synthetic zero model: loss %, bias[7] gradient %, master unchanged %\n",r.loss,w[0].gradient[3319],p[3319]==0);
+    p[0]=1e100;w[0].gradient[0]=123;
+    r=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    print("unrepresentable compute weight: %, gradient unchanged %\n",r.status,w[0].gradient[0]==123);
+    print("No dataset downloaded and no training experiment run.\n");
+}
+```
+
+```shell
+coax/bin/coax run psionic/examples/mnist-classifier.coax
+```
+
+
+[mnist.coax](../lib/data/mnist.coax) admits the original IDX image and label
+records: the big-endian magic, matching counts, 28 by 28 shape, exact byte
+extents and every label in 0–9. It averages each non-overlapping 2 by 2 block
+into one feature as the integer byte sum divided by 1,020, rounded once from
+binary64 to binary32. The result is 196 row-major values in `[0, 1]`.
+This fixed preprocessing fits no statistics on validation or test data.
+
+The model is two affine layers, `196 → 16 → 10`, with ReLU between them:
+
+```jai
+h = relu(x * fc1.weight + fc1.bias)
+scores = h * fc2.weight + fc2.bias
+loss = sum((scores - one_hot(label)) * (scores - one_hot(label)))
+```
+
+<!-- source: psionic/lib/mnist-classifier.coax model -->
+```jai
+mc_model :: ()->MdlModel {
+    m:=mdl_model();m=mdl_data(m,"x",mdl_shape(2,1,196));x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc1",x,16);m=mdl_relu(m,m.node);
+    m=mdl_linear(m,MDL_ROOT,"fc2",m.node,10);prediction:=m.node;
+    return mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+}
+mc_config :: ()->TrConfig {
+    return TrConfig.{optimizer=TrOptimizer.adamw,storage=TrStorage.binary64,
+        rate=0.003,beta1=0.9,beta2=0.999,eps=0.00000001,clip=1,bound=16,
+        examples=4096,batch=1,accumulate=16,epochs=12,shuffle=true,seed=11802};
+}
+```
+
+There are `196*16 + 16 + 16*10 + 10 = 3,322` trainable values, below the
+trainer/checkpoint limit of 4,096. The graph uses existing matrix products,
+broadcasts, ReLU, multiplication and reductions. Classification takes the
+largest finite score, keeping the first class on a tie. It needs neither a
+softmax nor a convolution. The eager tensor library already has those
+operations and their derivatives; wiring them into the module/IR path is
+separate work.
+
+One micro-batch is one image. `tr_add` averages sixteen row losses and
+gradients before AdamW updates the binary64 master parameters and moments.
+Each module evaluation narrows the parameters to binary32; its forward
+products and sums use the existing tensor IR's binary32 rules. The reverse
+pass accumulates in binary64 and publishes each parameter gradient rounded
+to binary32. The loss is a sum over ten classes, averaged over the sixteen
+images, not a mean over all 160 class scores. That normalization is part of
+the experiment identity.
+
+### Frozen experiment and qualification
+
+The [dataset manifest](../fixtures/mnist/dataset.json) pins the four original
+MNIST objects and their decompressed identities. Acquisition and the
+independent numerical oracle are tooling; Python performs no optimizer
+step and is not part of the runtime. Original images stay outside the
+repository.
+
+The [experiment manifest](../fixtures/mnist/experiment.json) fixes the split
+before learning: 4,096 official training images, the next 1,024 for validation,
+and the first 2,048 official test images. It also fixes initialization,
+shuffle order, optimizer settings, twelve epochs and the acceptance rule.
+The run must reach at least 80% test accuracy, beat the training-majority
+baseline by at least 50 percentage points and reduce mean test squared
+error. These gates were fixed before learning. The official test
+slice never supplies gradients or chooses a model, seed or stopping point.
+
+The independent oracle checks preprocessing, initial predictions and all
+initial parameter gradients with its own dense formulas and declared
+tolerances. It models binary32 products and sequential sums independently
+of the tensor IR implementation. A small dyadic fixture also has an exact arithmetic
+calculation. Saving the final module state dictionary must reproduce every
+test prediction when loaded into fresh storage. A trainer checkpoint must
+restore parameters, moments, cursor and shuffle order; comparing the next
+update after the frozen interruption point checks resume without repeating
+the completed training prefix. These numerical, persistence, resume and
+quality claims require their own result records.
+
+### The first original-data run
+
+The [retained run](../fixtures/mnist/run-v1/result.json) passes every frozen
+gate on the first canonical attempt. The
+[independent audit](../fixtures/mnist/run-v1/audit.json) recomputes initial and
+final metrics from the captured score words and the original official labels.
+
+| Observation | Result |
+| --- | --- |
+| Initial held-out accuracy | 171 / 2,048 = 8.3496% |
+| Training-majority baseline on held-out data | 242 / 2,048 = 11.8164% (class 1, chosen from training only) |
+| Final held-out accuracy | 1,755 / 2,048 = **85.6934%** |
+| Initial → final mean held-out squared error | 1.2761225913 → **0.2832042093** |
+| Canonical learning | 3,072 AdamW updates; 49,152 training-row visits over twelve epochs |
+| Native workflow time | 17.036464 seconds on the recorded CPU context, including admission, evaluations, replay and export/reload |
+| Process maximum resident size | 58,425,344 bytes |
+| One next-update replay from epoch six | All 80,068 checkpoint bytes and all 4,096 shuffle entries match |
+| Named inference export | Four tensors, 3,322 F32 words, 13,632 bytes |
+| Reloaded inference | All 20,480 held-out score words match in Coax |
+
+These scores are regression outputs, not calibrated probabilities. This is a
+bounded CPU experiment on 4,096 training images and a 2,048-image test slice,
+not full-dataset MNIST, a CNN, a GPU throughput result or a PyTorch comparison.
+The [complete validation trace](../fixtures/mnist/run-v1/validation.csv) retains
+all thirteen scheduled observations; none selected a checkpoint or stopping
+point. No seed, data split or setting was changed to get a pass.
+
+The reusable adapter's [qualification](../fixtures/module-train/qualification.json)
+retains its earlier mutation failures and final 160/160 killed sites. Together
+with the data adapter's 147 sites and application policy's 117, the three new
+authority roots have **424 killed mutants and zero survivors**. These are
+entry-source scores; existing tensor, autodiff, trainer and optimizer mutations
+were not repeated or represented as new proof. The application integration
+is exercised by native checks and the recorded learning run, rather than a
+claim of exhaustive mutation coverage of the whole training driver.
+
+The numerical preflight checks all 3,322 initial gradients against separate
+dense equations. Checked C, release C and ASan/UBSan captures are identical and
+match the independent reference without observed numerical error. The full
+learning run was performed once in release; it was not repeated under each
+instrumented build. The independent audit checks checkpoint hashes, identities,
+counts and replay bytes, and every exported F32 word. Inference-score equality
+after reload is an additional Coax observation, not a Python model execution.
+
+The data adapter's retained
+[qualification](../fixtures/mnist/data-qualification.json) records seven
+authored checks in debug and release and 147 killed root-source mutants,
+with no survivors. It covers synthetic IDX boundaries and independently
+calculated pooling, not the quality of a trained classifier or the full
+image data-loader goal of chapter 121. Callers retain valid, disjoint spans
+and immutable admitted label bytes; a plain `MnDataset` is not a certificate
+for arbitrary bytes.
+
+The focused native gate runs synthetic guards in debug, release and sanitized
+builds. An explicitly supplied dataset adds only the numerical preflight:
+
+```shell
+psionic/tests/check_mnist.sh
+psionic/tests/check_mnist.sh --data-dir /tmp/psionic-mnist-data --out /tmp/psionic-mnist-check
+```
+
+Neither command downloads data or trains. Canonical learning is an explicit
+separate run under the frozen manifest. Passing a synthetic gate, a numerical
+preflight or a saved-file round trip alone does not establish the quality gate.
+
+The manifest is an identity input; it does not configure the executable.
+The actual model and optimizer settings are the Coax constructors above.
+Changing a JSON field alone cannot change that program. Checkpoints bind the
+manifest and initial parameter bytes, preprocessing, all four original data
+files and the trainer configuration. The experiment also records its exact
+source closure, compiler and generated native artifacts before learning.
+
+This first consumer checks one next-update resume and inference export/reload.
+Its host writes the retained artifacts after the run; it does not demonstrate
+incremental durable checkpoint publication or crash-and-restart recovery.
+
+To acquire the pinned data and run this fixed experiment in a new directory:
+
+```shell
+python3 psionic/tests/mnist_reference.py acquire --data-dir /tmp/psionic-mnist-data
+psionic/run-mnist.sh --train /tmp/psionic-mnist-data /tmp/my-mnist-run
+python3 psionic/tests/mnist_reference.py verify-run /tmp/my-mnist-run/run --out /tmp/my-mnist-run/audit.json
+```
+
+Acquisition and the audit are tooling. The compiled training executable needs
+neither Python nor a model SDK. Use the retained result for unchanged checks;
+running the command above starts another explicit experiment and preserves the
+existing one. The focused gate is `psionic/check.sh --only mnist` and never
+downloads data or starts canonical learning.
+
 ## What is not here yet
 
-- **An image classifier.** Chapter 117 cannot build a convolution yet, so
-  the draft's image classifier waits for chapter 38's IR to gain one. The
-  three models here are a tabular classifier, a language model and a
-  residual block.
+- **A convolutional classifier.** The MNIST MLP above needs only the existing
+  public operations. A CNN still needs convolution and its gradients wired
+  into chapter 38's IR and chapter 117's module layer; the eager convolution
+  alone does not complete that path.
 - **More optimizers behind the same interface.** SGD with momentum and
   chapter 124's Muon are not options yet; the trainer has plain SGD and
   AdamW.
@@ -706,3 +921,5 @@ compared bit for bit. Both files' mutants are all killed as well.
 | `tr_save(ids, run, p, m, v, bytes, pointer)`, `tr_resume(c, ids, pointer, bytes, docs, tokens, p, m, v, order)` | Writes and restores a run. |
 | `tm_tabular`, `tm_decoder`, `tm_module` | Chapters 103, 115 and 117's training as configurations. |
 | `tm_tabular_step`, `tm_decoder_step`, `tm_module_step` | Those models' micro-batch loss and gradient. |
+| `mtr_plan(model)` | Checks the supported CPU scalar-loss module and reports parameter and caller-owned arena counts. |
+| `mtr_run(plan, seed, master, inputs, values, adjoints, flags, entry_gradient, staging, gradient)` | Runs the built-in tape and publishes the complete gradient; compute and published entry derivatives are binary32, while master storage remains unchanged binary64. |

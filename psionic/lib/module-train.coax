@@ -1,0 +1,101 @@
+// Built-in CPU module training adapter. The caller retains an unchanged plan
+// returned by mtr_plan and owns all live, pairwise-disjoint input, value,
+// adjoint, flag, entry-gradient, staging, output-gradient and master storage.
+// No native alias or general lifetime checking is implied. Master parameters
+// are binary64; module execution and published entry derivatives are binary32.
+// Parameter order is registration order, excluding frozen entries. An unused
+// trainable parameter has derivative zero; optimizer decay remains its policy.
+// Inputs and arenas are scratch and can change on numerical refusal. The
+// master vector never changes; gradient publishes only after complete success.
+#load "module.coax";
+#authority;
+
+MtrStatus :: enum u8 {ok;model;shape;capacity;number;execution;}
+MtrPlan :: struct {
+    status:MtrStatus;model:MdlModel;tape:AdTape;
+    parameters:int;largest:int;inputs:int;values:int;adjoints:int;flags:int;
+}
+MtrStep :: struct {status:MtrStatus;loss:f64;}
+
+// Checks and independent arithmetic expectations precede the implementation.
+#load "../tests/module-train-checks.coax";
+
+// Counts and spans stay below TV_LIMIT, so this integer maximum is exact.
+mtr_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+
+// Accept models built with the public constructors. Naming and initialization
+// semantics remain those constructors' contract. Capacity refusal precedes
+// graph/shape refusal; execution descriptors are checked before mdl_mode or
+// mdl_refresh uses them. This is not an arbitrary forged-model/tape parser.
+mtr_plan :: (model:MdlModel)->MtrPlan {
+    fail:=MtrPlan.{status=MtrStatus.model};
+    if model.status!=MdlStatus.ok {return fail;}
+    if model.count<1 || model.count>TI_NODES || model.module_count<1 || model.module_count>MDL_MODULES {return MtrPlan.{status=MtrStatus.capacity};}
+    p:=model.program;
+    if p.count<1 || p.count>TI_NODES {return MtrPlan.{status=MtrStatus.capacity};}
+    if p.output<0 || p.output>=p.count {return MtrPlan.{status=MtrStatus.shape};}
+    seen:[32]bool;top:=0;parameters:=0;largest:int;
+    for i:0..<model.count {
+        e:=model.entries[i];
+        if e.node<0 || e.node>=p.count || e.owner<0 || e.owner>=model.module_count {return MtrPlan.{status=MtrStatus.capacity};}
+        if seen[e.node] {return fail;}
+        if !tv_finite(e.value) {return MtrPlan.{status=MtrStatus.number};}
+        if e.drop<0 || e.drop>255 {return fail;}
+        if e.base!=top || e.size<1 {return MtrPlan.{status=MtrStatus.capacity};}
+        if e.size>TV_LIMIT-top {return MtrPlan.{status=MtrStatus.capacity};}
+        n:=p.nodes[e.node];
+        if n.op!=TiOp.input || n.input_base!=e.base || n.storage!=e.size || !ti_shape_equal(n.shape,e.shape) {return fail;}
+        seen[e.node]=true;top+=e.size;
+        if e.kind==MdlKind.parameter && !e.frozen {
+            parameters+=e.size;largest=mtr_max(largest,e.size);
+        }
+    }
+    if model.top!=top {return MtrPlan.{status=MtrStatus.capacity};}
+    for i:0..<p.count {
+        if p.nodes[i].op==TiOp.input && !seen[i] {return fail;}
+        if p.nodes[i].op==TiOp.registered {return MtrPlan.{status=MtrStatus.execution};}
+    }
+    tape:=ad_tape(p,mdl_mode(model),OrRegistry.{});
+    if tape.status!=AdStatus.ok {return MtrPlan.{status=MtrStatus.execution};}
+    for i:0..<model.count {e:=model.entries[i];if e.size!=ad_count(tape.plan.values[e.node].view.shape) {return MtrPlan.{status=MtrStatus.shape};}}
+    if tape.plan.values[p.output].view.shape.rank!=0 || parameters<1 {return MtrPlan.{status=MtrStatus.shape};}
+    if p.nodes[tape.root[p.output]].op==TiOp.input {return fail;}
+    flags:int;
+    for s:0..<tape.count {flags=mtr_max(flags,tape.plan.values[tape.steps[s].node].storage);}
+    return MtrPlan.{model=model,tape=tape,parameters=parameters,largest=largest,inputs=top,values=tape.values.top,adjoints=tape.grads.top,flags=flags};
+}
+
+mtr_run :: (plan:MtrPlan,seed:u64,master:[]f64,inputs:[]f32,values:[]f32,adjoints:[]f64,flags:[]u8,entry_gradient:[]f32,gradient_stage:[]f64,gradient:[]f64)->MtrStep {
+    if plan.status!=MtrStatus.ok {return MtrStep.{status=plan.status};}
+    if master.count!=plan.parameters {return MtrStep.{status=MtrStatus.shape};}
+    if inputs.count<plan.inputs || values.count<plan.values || adjoints.count<plan.adjoints || flags.count<plan.flags || entry_gradient.count<plan.largest || gradient_stage.count<plan.parameters || gradient.count<plan.parameters {return MtrStep.{status=MtrStatus.capacity};}
+    // Admit the entire master before the first write, including an unused
+    // trainable entry. to_fits rejects NaN, infinities and binary32 overflow.
+    for x:master {if !to_fits(x) {return MtrStep.{status=MtrStatus.number};}}
+    at:=0;
+    for i:0..<plan.model.count {
+        e:=plan.model.entries[i];if e.kind!=MdlKind.parameter || e.frozen {continue;}
+        for j:0..<e.size {inputs[e.base+j]=f32(master[at+j]);}at+=e.size;
+    }
+    if mdl_refresh(plan.model,seed,inputs)!=MdlStatus.ok {return MtrStep.{status=MtrStatus.execution};}
+    run:=ad_run(plan.tape,AdCursor.{},inputs,values,adjoints,flags);
+    if run.status==AdStatus.number {return MtrStep.{status=MtrStatus.number};}
+    // An unchanged builtin-only tape returns ok only after its complete run.
+    if run.status!=AdStatus.ok {return MtrStep.{status=MtrStatus.execution};}
+    loss:[1]f32;
+    if ad_value(plan.tape,run.cursor,plan.model.program.output,inputs,values,loss[..])!=AdStatus.ok {return MtrStep.{status=MtrStatus.execution};}
+    if !tv_finite(loss[0]) {return MtrStep.{status=MtrStatus.number};}
+    at=0;
+    for i:0..<plan.model.count {
+        e:=plan.model.entries[i];if e.kind!=MdlKind.parameter || e.frozen {continue;}
+        if !plan.tape.reaches[e.node] {
+            for j:0..<e.size {gradient_stage[at+j]=0;}
+        } else {
+            if ad_gradient(plan.tape,run.cursor,e.node,adjoints,entry_gradient)!=AdStatus.ok {return MtrStep.{status=MtrStatus.number};}
+            for j:0..<e.size {gradient_stage[at+j]=f64(entry_gradient[j]);}
+        }
+        at+=e.size;
+    }
+    for j:0..<plan.parameters {gradient[j]=gradient_stage[j];}
+    return MtrStep.{loss=f64(loss[0])};
+}

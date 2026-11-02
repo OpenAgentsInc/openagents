@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "dataset": "MNIST original IDX",
+  "source_page": "https://github.com/cvdfoundation/mnist",
+  "original_source": "http://yann.lecun.com/exdb/mnist/",
+  "mirror_authorization": "CVDF README acknowledges Yann LeCun permission and links all four Google-hosted objects",
+  "checksum_provenance": "Google object x-goog-hash MD5 over HTTPS matched downloaded gzip; SHA256 and decompressed SHA256 computed independently on acquired bytes",
+  "objects": [
+    {
+      "name": "train-images-idx3-ubyte.gz",
+      "url": "https://storage.googleapis.com/cvdf-datasets/mnist/train-images-idx3-ubyte.gz",
+      "gzip_bytes": 9912422,
+      "gzip_md5": "f68b3c2dcbeaaa9fbdd348bbdeb94873",
+      "gzip_sha256": "440fcabf73cc546fa21475e81ea370265605f56be210a4024d2ca8f203523609",
+      "decompressed_bytes": 47040016,
+      "decompressed_sha256": "ba891046e6505d7aadcbbe25680a0738ad16aec93bde7f9b65e87a2fc25776db",
+      "role": "train_images",
+      "kind": "images",
+      "records": 60000
+    },
+    {
+      "name": "train-labels-idx1-ubyte.gz",
+      "url": "https://storage.googleapis.com/cvdf-datasets/mnist/train-labels-idx1-ubyte.gz",
+      "gzip_bytes": 28881,
+      "gzip_md5": "d53e105ee54ea40749a09fcbcd1e9432",
+      "gzip_sha256": "3552534a0a558bbed6aed32b30c495cca23d567ec52cac8be1a0730e8010255c",
+      "decompressed_bytes": 60008,
+      "decompressed_sha256": "65a50cbbf4e906d70832878ad85ccda5333a97f0f4c3dd2ef09a8a9eef7101c5",
+      "role": "train_labels",
+      "kind": "labels",
+      "records": 60000
+    },
+    {
+      "name": "t10k-images-idx3-ubyte.gz",
+      "url": "https://storage.googleapis.com/cvdf-datasets/mnist/t10k-images-idx3-ubyte.gz",
+      "gzip_bytes": 1648877,
+      "gzip_md5": "9fb629c4189551a2d022fa330f9573f3",
+      "gzip_sha256": "8d422c7b0a1c1c79245a5bcf07fe86e33eeafee792b84584aec276f5a2dbc4e6",
+      "decompressed_bytes": 7840016,
+      "decompressed_sha256": "0fa7898d509279e482958e8ce81c8e77db3f2f8254e26661ceb7762c4d494ce7",
+      "role": "test_images",
+      "kind": "images",
+      "records": 10000
+    },
+    {
+      "name": "t10k-labels-idx1-ubyte.gz",
+      "url": "https://storage.googleapis.com/cvdf-datasets/mnist/t10k-labels-idx1-ubyte.gz",
+      "gzip_bytes": 4542,
+      "gzip_md5": "ec29112dd5afa0611ce80d1b7f02629c",
+      "gzip_sha256": "f7ae60f92e00ec6debd23a6088c31dbd2371eca3ffa0defaefb259924204aec6",
+      "decompressed_bytes": 10008,
+      "decompressed_sha256": "ff7bcfd416de33731a308c3f266cc351222c34898ecbeaf847f06e48f7ec33f2",
+      "role": "test_labels",
+      "kind": "labels",
+      "records": 10000
+    }
+  ],
+  "splits": [
+    {
+      "name": "train",
+      "first": 0,
+      "rows": 4096,
+      "indices": "zero-based original IDX order; end excluded",
+      "images_role": "train_images",
+      "labels_role": "train_labels",
+      "image_payload_sha256": "0b4fd4c8b1772cc9c3b67cdb85355811b7a4a83ab3610ca905884256690bf512",
+      "label_payload_sha256": "805e340208d16356080206d91e958e739cebea35f93fccdf337fcec6a6fd66f9"
+    },
+    {
+      "name": "validation",
+      "first": 4096,
+      "rows": 1024,
+      "indices": "zero-based original IDX order; end excluded",
+      "images_role": "train_images",
+      "labels_role": "train_labels",
+      "image_payload_sha256": "9e267bd4fb2b1167028086be18d5a52a31cae51e7b0c5e3befd1be87ed403b0a",
+      "label_payload_sha256": "87fb7e8c94ecbde370f3def7fca701878249189a4c2b05bcc2b6971391ca3ce2"
+    },
+    {
+      "name": "test",
+      "first": 0,
+      "rows": 2048,
+      "indices": "zero-based original IDX order; end excluded",
+      "images_role": "test_images",
+      "labels_role": "test_labels",
+      "image_payload_sha256": "311d55dc2d4c9b3024450f61827bcec8c63825bbae9e06e2772d32757bf0ddd3",
+      "label_payload_sha256": "7b9a71c2726003b463d8886eae38f8f433db94de0c82c29762589fea1e8567e0"
+    }
+  ],
+  "preprocessing": {
+    "profile": "mnist-2x2-average-14-v1",
+    "input": [
+      28,
+      28
+    ],
+    "output": [
+      14,
+      14
+    ],
+    "order": "row-major",
+    "formula": "f32(f64(sum of four uint8 pixels in each nonoverlapping 2x2 cell) / 1020.0)",
+    "augmentation": "none",
+    "labels": "one-hot float32 width10; no smoothing",
+    "prediction": "argmax over ten finite logits; lowest index on a tie"
+  }
+}

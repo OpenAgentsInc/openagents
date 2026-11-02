@@ -1,0 +1,180 @@
+// Literal analytic oracles for the public module training adapter. No trainer
+// internals, downloaded data or model-specific arithmetic enters the adapter.
+mtr_fixture :: (width:int)->MdlModel {
+    m:=mdl_data(mdl_model(),"x",mdl_shape(2,1,width));x:=m.node;
+    m=mdl_parameter(m,0,"w",mdl_shape(2,1,width),MdlInit.constant,0);w:=m.node;
+    m=mdl_op(m,TiOp.multiply,x,w);m=mdl_op(m,TiOp.sum,m.node,1);
+    return mdl_op(m,TiOp.sum,m.node,0);
+}
+mtr_fixture_mixed :: ()->MdlModel {
+    m:=mdl_data(mdl_model(),"x",mdl_shape(1,2,0));x:=m.node;
+    m=mdl_parameter(m,0,"w",mdl_shape(1,2,0),MdlInit.constant,0);w:=m.node;
+    m=mdl_parameter(m,0,"fixed",mdl_shape(1,2,0),MdlInit.constant,0);fixed:=m.node;
+    m=mdl_parameter(m,0,"unused",mdl_shape(1,3,0),MdlInit.constant,0);
+    m=mdl_buffer(m,0,"buffer",mdl_shape(1,2,0),MdlInit.constant,0);b:=m.node;
+    m=mdl_transient(m,0,"scale",mdl_shape(1,2,0),3);scale:=m.node;
+    m=mdl_op(m,TiOp.multiply,x,w);m=mdl_op(m,TiOp.add,m.node,fixed);
+    m=mdl_op(m,TiOp.add,m.node,b);m=mdl_op(m,TiOp.multiply,m.node,scale);
+    return mdl_freeze(mdl_op(m,TiOp.sum,m.node,0),"fixed",true);
+}
+mtr_fixture_late_gradient :: ()->MdlModel {
+    m:=mdl_parameter(mdl_model(),0,"first",TvShape.{},MdlInit.constant,0);first:=m.node;
+    m=mdl_data(m,"x",mdl_shape(1,2,0));x:=m.node;
+    m=mdl_parameter(m,0,"later",mdl_shape(1,2,0),MdlInit.constant,0);later:=m.node;
+    m=mdl_transient(m,0,"scale",mdl_shape(1,2,0),10);scale:=m.node;
+    m=mdl_op(m,TiOp.multiply,x,later);m=mdl_op(m,TiOp.multiply,m.node,scale);
+    m=mdl_op(m,TiOp.sum,m.node,0);return mdl_op(m,TiOp.add,m.node,first);
+}
+
+#test "module training: analytic scalar loss and every gradient, preserving master and tails" {
+    p:=mtr_plan(mtr_fixture(3));
+    #assert p.status==MtrStatus.ok && p.parameters==3 && p.largest==3 && p.inputs==6 && p.flags==3;
+    master:=[3]f64.[-2,0.5,4];inputs:=[8]f32.[3,-2,0.25,99,99,99,71,72];
+    values:[32]f32;adjoints:[32]f64;flags:[8]u8;entry:[3]f32;stage:[4]f64;gradient:=[5]f64.[19,19,19,81,82];
+    r:=mtr_run(p,17,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],stage[..],gradient[..]);
+    #assert r.status==MtrStatus.ok && r.loss==-6;
+    #assert gradient[0]==3 && gradient[1]==-2 && gradient[2]==0.25 && gradient[3]==81 && gradient[4]==82;
+    #assert inputs[3]==-2 && inputs[4]==0.5 && inputs[5]==4 && inputs[6]==71 && inputs[7]==72;
+    #assert master[0]==-2 && master[1]==0.5 && master[2]==4;
+}
+
+#test "module training: caller-sized arenas and a 1100-element parameter entry" #steps 200000000 {
+    p:=mtr_plan(mtr_fixture(1100));
+    #assert p.status==MtrStatus.ok && p.parameters==1100 && p.largest==1100 && p.inputs==2200 && p.values>1024 && p.flags==1100;
+    master:[1100]f64;inputs:[2200]f32;values:[4096]f32;adjoints:[4096]f64;flags:[1100]u8;entry:[1100]f32;stage:[1100]f64;gradient:[1100]f64;
+    for j:0..<1100 {master[j]=2;inputs[j]=1;}
+    r:=mtr_run(p,0,master[..],inputs[..],values[0..<p.values],adjoints[0..<p.adjoints],flags[..],entry[..],stage[..],gradient[..]);
+    #assert r.status==MtrStatus.ok && r.loss==2200;
+    for j:0..<1100 {#assert gradient[j]==1 && master[j]==2 && inputs[1100+j]==2;}
+}
+
+#test "module training: frozen buffers and unused trainable entries retain their explicit roles" {
+    p:=mtr_plan(mtr_fixture_mixed());#assert p.status==MtrStatus.ok && p.parameters==5 && p.largest==3 && p.inputs==13;
+    master:=[5]f64.[2,3,11,12,13];inputs:=[13]f32.[1,2,0,0,7,8,0,0,0,10,20,99,99];
+    values:[64]f32;adjoints:[64]f64;flags:[8]u8;entry:[3]f32;stage:=[5]f64.[91,92,93,94,95];gradient:[5]f64;
+    r:=mtr_run(p,123,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],stage[..],gradient[..]);
+    #assert r.status==MtrStatus.ok && r.loss==159;
+    #assert gradient[0]==3 && gradient[1]==6 && gradient[2]==0 && gradient[3]==0 && gradient[4]==0;
+    #assert inputs[4]==7 && inputs[5]==8 && inputs[9]==10 && inputs[10]==20 && inputs[11]==3 && inputs[12]==3;
+    #assert inputs[6]==11 && inputs[7]==12 && inputs[8]==13;
+}
+
+#test "module training: one parameter and fractional master values round only for compute" {
+    p:=mtr_plan(mtr_fixture(1));#assert p.status==MtrStatus.ok && p.parameters==1 && p.largest==1;
+    master:=[1]f64.[1.0000000000000002];inputs:=[2]f32.[2,0];values:[8]f32;adjoints:[8]f64;flags:[2]u8;entry:[1]f32;stage:[1]f64;gradient:[1]f64;
+    r:=mtr_run(p,1,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],stage[..],gradient[..]);
+    #assert r.status==MtrStatus.ok && r.loss==2 && gradient[0]==2 && inputs[1]==1;
+    #assert f64_bits(master[0])==f64_bits(1.0000000000000002);
+}
+
+#test "module training: every short arena and wrong master shape refuse before publication" {
+    p:=mtr_plan(mtr_fixture(2));master:=[3]f64.[2,3,4];inputs:=[4]f32.[1,2,71,72];values:[16]f32;adjoints:[16]f64;flags:[4]u8;entry:[2]f32;stage:[2]f64;gradient:=[2]f64.[91,92];
+    #assert mtr_run(p,0,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],stage[..],gradient[..]).status==MtrStatus.shape;
+    for k:0..<7 {
+        ni:=p.inputs;nv:=p.values;na:=p.adjoints;nf:=p.flags;ne:=p.largest;ns:=p.parameters;ng:=p.parameters;
+        if k==0 {ni-=1;}else if k==1 {nv-=1;}else if k==2 {na-=1;}else if k==3 {nf-=1;}else if k==4 {ne-=1;}else if k==5 {ns-=1;}else {ng-=1;}
+        #assert mtr_run(p,0,master[0..<2],inputs[0..<ni],values[0..<nv],adjoints[0..<na],flags[0..<nf],entry[0..<ne],stage[0..<ns],gradient[0..<ng]).status==MtrStatus.capacity;
+        #assert gradient[0]==91 && gradient[1]==92 && inputs[2]==71 && inputs[3]==72;
+    }
+}
+
+#test "module training: unrepresentable masters refuse without input writes" {
+    p:=mtr_plan(mtr_fixture(2));master:=[2]f64.[1,2];inputs:=[4]f32.[1,2,71,72];values:[16]f32;adjoints:[16]f64;flags:[4]u8;entry:[2]f32;stage:[2]f64;gradient:=[2]f64.[91,92];
+    // The evaluator refuses construction of NaN/Inf. Native verification
+    // supplies those bit patterns; finite binary32 overflow is checked here.
+    bad:=[2]f64.[1e100,-1e100];
+    for x:bad {master[1]=x;#assert mtr_run(p,0,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],stage[..],gradient[..]).status==MtrStatus.number;
+        #assert inputs[2]==71 && inputs[3]==72 && gradient[0]==91 && gradient[1]==92;}
+}
+
+#test "module training: numerical execution refusal never publishes a partial gradient" {
+    p:=mtr_plan(mtr_fixture(2));master:=[2]f64.[2,2];inputs:=[4]f32.[3e38,2,0,0];values:[16]f32;adjoints:[16]f64;flags:[4]u8;entry:[2]f32;stage:[2]f64;gradient:=[2]f64.[91,92];
+    #assert mtr_run(p,0,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],stage[..],gradient[..]).status==MtrStatus.number;
+    #assert gradient[0]==91 && gradient[1]==92;
+}
+
+#test "module training: a late derivative refusal preserves the entire gradient after earlier staging" {
+    p:=mtr_plan(mtr_fixture_late_gradient());#assert p.status==MtrStatus.ok && p.parameters==3;
+    master:[3]f64;inputs:=[7]f32.[0,1,1e38,0,0,0,0];values:[32]f32;adjoints:[32]f64;flags:[2]u8;entry:[2]f32;stage:=[3]f64.[71,72,73];gradient:=[3]f64.[91,92,93];
+    #assert mtr_run(p,0,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],stage[..],gradient[..]).status==MtrStatus.number;
+    #assert stage[0]==1 && gradient[0]==91 && gradient[1]==92 && gradient[2]==93;
+}
+
+#test "module training: invalid model metadata is refused before descriptor indexing" {
+    good:=mtr_fixture(2);
+    for k:0..<21 {
+        m:=good;
+        if k==0 {m.status=MdlStatus.state;}else if k==1 {m.count=0;}else if k==2 {m.count=33;}
+        else if k==3 {m.program.count=0;}else if k==4 {m.program.count=33;}else if k==5 {m.program.output=-1;}
+        else if k==6 {m.program.output=32;}else if k==7 {m.module_count=0;}else if k==8 {m.module_count=17;}
+        else if k==9 {m.entries[0].node=-1;}else if k==10 {m.entries[1].node=32;}else if k==11 {m.entries[1].node=0;}
+        else if k==12 {m.entries[0].owner=-1;}else if k==13 {m.entries[0].owner=1;}else if k==14 {m.entries[0].base=-1;}
+        else if k==15 {m.entries[1].base=1;}else if k==16 {m.entries[0].size=0;}else if k==17 {m.entries[0].size=3;}
+        else if k==18 {m.top=3;}else if k==19 {m.entries[0].shape.rank=5;}else {m.entries[0].shape.dims[1]=3;}
+        want:=MtrStatus.model;
+        if k>=1 && k<=4 || k>=7 && k<=10 || k>=12 && k<=16 || k==18 {want=MtrStatus.capacity;}
+        if k==5 || k==6 {want=MtrStatus.shape;}
+        #assert mtr_plan(m).status==want;
+    }
+    #assert mtr_plan(mdl_freeze(good,"",true)).status==MtrStatus.shape;
+    m:=good;m.program.output=2;#assert mtr_plan(m).status==MtrStatus.shape;
+}
+
+#test "module training: refusal precedence distinguishes capacity, graph, shape and constructor contracts" {
+    m:=mtr_fixture(2);m.program.output=m.program.count;#assert mtr_plan(m).status==MtrStatus.shape;
+    m=mtr_fixture(2);m.entries[0].node=m.program.count;#assert mtr_plan(m).status==MtrStatus.capacity;
+    // One entry and two nodes is a useful scalar loss, with no data entry.
+    m=mdl_parameter(mdl_model(),0,"w",TvShape.{},MdlInit.constant,0);m=mdl_relu(m,m.node);
+    #assert m.status==MdlStatus.ok && mtr_plan(m).status==MtrStatus.ok;
+    while m.program.count<32 {m=mdl_relu(m,m.node);}
+    #assert mtr_plan(m).status==MtrStatus.ok;
+    // A single input is in capacity, but is not a computed scalar loss.
+    m=mdl_parameter(mdl_model(),0,"w",TvShape.{},MdlInit.constant,0);
+    #assert mtr_plan(m).status==MtrStatus.model;
+    // Thirty-two entries fit metadata, but leave no node for a computed loss.
+    for j:1..<32 {name:=[2]u8.[cast(u8)(48+j/10),cast(u8)(48+j%10)];m=mdl_parameter(m,0,cast(string)name[..],TvShape.{},MdlInit.constant,0);}
+    #assert m.count==32 && m.status==MdlStatus.ok && mtr_plan(m).status==MtrStatus.model;
+    m=mdl_model();for j:0..<15 {letter:=[1]u8.[cast(u8)(97+j)];m=mdl_child(m,0,cast(string)letter[..]);}
+    m=mdl_parameter(m,15,"w",TvShape.{},MdlInit.constant,0);m=mdl_relu(m,m.node);
+    #assert m.module_count==16 && mtr_plan(m).status==MtrStatus.ok;
+}
+
+#test "module training: descriptor spans and node binding use inclusive limits" {
+    m:=mdl_parameter(mdl_model(),0,"w",mdl_shape(1,TV_LIMIT,0),MdlInit.constant,0);m=mdl_op(m,TiOp.sum,m.node,0);
+    p:=mtr_plan(m);#assert p.status==MtrStatus.ok && p.parameters==TV_LIMIT && p.inputs==TV_LIMIT;
+    m=mdl_parameter(m,0,"extra",TvShape.{},MdlInit.constant,0);
+    #assert mtr_plan(m).status==MtrStatus.capacity;
+    for k:0..<5 {
+        q:=mtr_fixture(2);
+        if k==0 {q.program.nodes[0].input_base=1;}else if k==1 {q.program.nodes[0].storage=3;}
+        else if k==2 {q.program.nodes[0].shape.dims[1]=1;}else if k==3 {q.program.nodes[0].op=TiOp.relu;}else {q.entries[0].shape.dims[1]=1;}
+        #assert mtr_plan(q).status==MtrStatus.model;
+    }
+    // Tensor IR may have padded input storage. A module entry still counts
+    // logical values: overclaiming its first entry would publish stale scratch
+    // as an additional parameter derivative if that entry were skipped.
+    q:=mtr_fixture(2);q.entries[0].size=3;q.program.nodes[0].storage=3;
+    q.entries[1].base=3;q.program.nodes[1].input_base=3;q.top=5;
+    #assert mtr_plan(q).status==MtrStatus.shape;
+    q=mtr_fixture(2);q.entries[0]=q.entries[1];q.entries[0].base=0;q.program.nodes[1].input_base=0;
+    q.program.nodes[0].input_base=2;q.count=1;q.top=2;
+    #assert mtr_plan(q).status==MtrStatus.model; // an unnamed first input
+}
+
+#test "module training: public dropout bounds and external operation refusals" {
+    m:=mdl_test_block(255);#assert mtr_plan(m).status==MtrStatus.ok;
+    m.entries[6].drop=256;#assert mtr_plan(m).status==MtrStatus.model;
+    m.entries[6].drop=-1;#assert mtr_plan(m).status==MtrStatus.model;
+    m=mdl_parameter(mdl_model(),0,"w",TvShape.{},MdlInit.constant,0);m=mdl_relu(m,m.node);
+    m.program.nodes[1].op=TiOp.registered;m.program.nodes[1].axis=-1;
+    #assert mtr_plan(m).status==MtrStatus.execution;
+}
+
+#test "module training: parameter-first success and first-only flag maximum" {
+    p:=mtr_plan(mtr_fixture_late_gradient());master:=[3]f64.[4,2,3];inputs:=[7]f32.[0,1,2,0,0,0,0];values:[32]f32;adjoints:[32]f64;flags:[2]u8;entry:[2]f32;stage:[3]f64;gradient:[3]f64;
+    r:=mtr_run(p,0,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],stage[..],gradient[..]);
+    #assert r.status==MtrStatus.ok && r.loss==84 && gradient[0]==1 && gradient[1]==10 && gradient[2]==20 && inputs[0]==4;
+    m:=mdl_data(mdl_model(),"x",mdl_shape(1,80,0));x:=m.node;
+    m=mdl_parameter(m,0,"unused",TvShape.{},MdlInit.constant,0);m=mdl_relu(m,x);m=mdl_op(m,TiOp.sum,m.node,0);
+    q:=mtr_plan(m);#assert q.status==MtrStatus.ok && q.flags==80 && q.largest==1 && q.adjoints==0;
+}

@@ -1,0 +1,5 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/module-train.coax:60:11: mutant survived: 0 became 1
+      for i:0..<model.count {e:=model.entries[i];if e.size!=ad_count(tape.plan.values[e.node].view.shape) {return MtrPlan.{status=MtrStatus.shape};}}
+            ^
+160 mutants, 159 killed, 1 survived
