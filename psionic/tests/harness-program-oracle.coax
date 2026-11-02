@@ -1,0 +1,112 @@
+// Chapter 207's independent checks, kept apart from
+// psionic/lib/harness/program.coax: a generator of random programs as
+// statements, a writer that turns statements into program text and calls
+// into call text, and a small-step reference interpreter. The reference is
+// a machine of program counter, open block and iterations left; each step
+// does one thing. It renders every call with its own writer and sends it to
+// chapter 204's sandbox. Nothing here is used by the program runner itself.
+
+// Text by appending, digit by digit.
+PoText :: struct {b:[PG_TEXT_MAX]u8;n:int;}
+po_add :: (t:[]PoText,s:string) {for c:s {t[0].b[t[0].n]=c;t[0].n+=1;}}
+po_num :: (t:[]PoText,v:int) {
+    d:=1;while d*10<=v {d*=10;}
+    while d>0 {t[0].b[t[0].n]='0'+cast(u8)((v/d)%10);t[0].n+=1;d/=10;}
+}
+po_string :: (t:[]PoText)->string {return cast(string)t[0].b[0..<t[0].n];}
+// A call: its name, then each field and value. names writes a variable as
+// x and its digit (program text); otherwise its value is written.
+po_call :: (t:[]PoText,x:HtTool,st:PgStmt,vals:[PG_VARS]int,names:bool) {
+    po_add(t,x.name);po_add(t,"{");
+    for f,i:x.fields {
+        if i>0 {po_add(t,",");}
+        po_add(t,"\"");po_add(t,f.name);po_add(t,"\":");
+        if st.refs[i]>0 && names {po_add(t,"x");po_num(t,st.refs[i]-1);continue;}
+        v:=st.args[i];if st.refs[i]>0 {v=vals[st.refs[i]-1];}
+        if f.type.kind==HtKind.integer {po_num(t,v);}
+        else if f.type.kind==HtKind.boolean {if v==1 {po_add(t,"true");} else {po_add(t,"false");}}
+        else {po_add(t,"\"");po_add(t,f.type.choices[v]);po_add(t,"\"");}
+    }
+    po_add(t,"}");
+}
+// A program's text, statement by statement.
+po_write :: (tools:[]HtTool,p:PgProgram,t:[]PoText) {
+    end:=-1;vals:[PG_VARS]int;
+    for k:0..<p.count {
+        st:=p.stmts[k];
+        if st.kind==PgKind.when {po_add(t,"if x");po_num(t,st.var);po_add(t,"{");end=k+st.body;}
+        else if st.kind==PgKind.repeat {po_add(t,"for ");po_num(t,st.count);po_add(t,"{");end=k+st.body;}
+        else {po_add(t,"x");po_num(t,st.var);po_add(t,"=");po_call(t,tools[st.tool],st,vals,true);po_add(t,";");}
+        if k==end {po_add(t,"}");}
+    }
+}
+// A random program over chapter 203's registry. Integer results go to x0
+// to x3 and booleans to x4 to x7, so a variable keeps one type. Unless
+// noisy, a variable is read only where it is surely bound: after a bind at
+// the top or in a loop, and inside a block after a bind earlier in it.
+// Noisy programs read any variable and name any room.
+po_program :: (seed:u64,tools:[]HtTool,noisy:bool)->PgProgram {
+    p:=PgProgram.{};total:=1+so_draw(seed,0,10);mask:=0;sure:=0;left:=0;keep:=false;
+    while p.count<total {
+        k:=p.count;st:=PgStmt.{};c:=so_draw(seed,100+k,6);bools:=(mask>>4)&15;
+        if left==0 && c>=4 && k+1<total {
+            st.body=1+so_draw(seed,200+k,nx_min(3,total-k-1));st.kind=PgKind.repeat;st.count=1+so_draw(seed,300+k,4);
+            if c==5 && (bools!=0 || noisy) {
+                st.kind=PgKind.when;st.count=0;st.var=4+so_draw(seed,400+k,4);
+                while !noisy && ((bools>>(st.var-4))&1)==0 {st.var=4+(st.var-3)%4;}
+            }
+            sure=mask;keep=st.kind==PgKind.repeat;left=st.body;
+        } else {
+            st.tool=so_draw(seed,500+k,tools.count);x:=tools[st.tool];
+            st.var=so_draw(seed,600+k,4);if x.result.kind==HtKind.boolean {st.var+=4;}
+            if noisy {st.var=so_draw(seed,700+k,8);}
+            for f,i:x.fields {
+                d:=so_draw(seed,1000+10*k+i,40);
+                if f.type.kind==HtKind.choice {st.args[i]=d%(ifx noisy then 3 else 2);continue;}
+                if f.type.kind==HtKind.boolean {st.args[i]=d%2;} else {st.args[i]=ifx d<30 then d%13 else 960+d;}
+                v:=d%4;if f.type.kind==HtKind.boolean {v+=4;}if noisy {v=d%8;}
+                if d%3==0 && (noisy || ((mask>>v)&1)==1) {st.refs[i]=v+1;}
+            }
+            mask|=1<<st.var;
+            if left>0 {left-=1;if left==0 && !keep {mask=sure;}}
+        }
+        p.stmts[k]=st;p.count+=1;
+    }
+    return p;
+}
+// The reference's outcome: the stop as PgStop's index, the statement it
+// stopped at, steps, calls sent, the variables and which were bound.
+PoOut :: struct {stop:int;at:int=-1;steps:int;calls:int;defined:int;vals:[PG_VARS]int;}
+// One small step at a time: close a finished block (repeat it or leave it),
+// stop at the end, stop when the steps reach fuel, open a block, or send one
+// call. Stops: done 1, fuel 2, asked 3, failed 4, stopped 5.
+po_run :: (env:SbTools,s:[]SbSession,p:PgProgram,world:[]int,l:[]LgLog,fuel:int)->PoOut {
+    o:=PoOut.{};pc:=0;head:=-1;left:=0;
+    while true {
+        if head>=0 && pc==head+1+p.stmts[head].body {left-=1;if left>0 {pc=head+1;} else {head=-1;}continue;}
+        if pc>=p.count {o.stop=1;return o;}
+        st:=p.stmts[pc];
+        if o.steps==fuel {o.stop=2;o.at=pc;return o;}
+        o.steps+=1;
+        if st.kind!=PgKind.bind {
+            left=st.count;if st.kind==PgKind.when {left=0;if o.vals[st.var]!=0 {left=1;}}
+            if left==0 {pc+=1+st.body;} else {head=pc;pc+=1;}
+            continue;
+        }
+        t:[1]PoText;po_call(t[..],env.tools[st.tool],st,o.vals,false);
+        e:=sb_call(env,s,po_string(t[..]),world,l);o.calls+=1;
+        if e.verdict==SbVerdict.ask {o.stop=3;}
+        else if e.verdict==SbVerdict.refuse {o.stop=5;}
+        else if e.call.why!=HtWhy.none {o.stop=4;}
+        if o.stop!=0 {o.at=pc;return o;}
+        o.vals[st.var]=e.call.value;o.defined|=1<<st.var;pc+=1;
+    }
+    return o;
+}
+// Two statements the same, field for field, for the fields a tool has.
+po_same :: (tools:[]HtTool,a:PgStmt,b:PgStmt)->bool {
+    if a.kind!=b.kind || a.var!=b.var || a.count!=b.count || a.body!=b.body || a.tool!=b.tool {return false;}
+    if a.kind!=PgKind.bind {return true;}
+    for i:0..<tools[a.tool].fields.count {if a.args[i]!=b.args[i] && a.refs[i]==0 || a.refs[i]!=b.refs[i] {return false;}}
+    return true;
+}

@@ -1,0 +1,705 @@
+// Chapter 207: programs as tool calls. Instead of one call per model
+// request, the model writes one small program: bindings of call results to
+// variables, conditionals on a boolean variable and loops a fixed number of
+// times, over chapter 203's tools. A byte grammar built from the granted
+// tools constrains the decoder, so it can only write well-formed programs
+// that call granted tools. Before anything runs the program is parsed
+// against the registry and checked against the grant, the session's policy
+// and the log's room: every variable surely bound and of the field's type,
+// every call inside the ceiling and its rooms, and the worst case of calls,
+// bytes, ticks, budgets and log room inside what is left. An interpreter
+// then sends each call to chapter 204's sandbox, with a step limit (fuel),
+// and stops at the exact statement where a call asks, fails or is refused.
+// The program, every call and its result, and the outcome are events in
+// chapter 201's log, and a replay that feeds the logged programs and answers
+// to a fresh session rebuilds the same log and the same world.
+// Profile cpu-harness-program-v1: chapter 204's sandbox over chapter 203's
+// four tools; up to 12 statements, 8 variables x0 to x7, 384 bytes of
+// program text; blocks one level deep, loops 1 to 9 times.
+#load "sandbox.coax";
+#load "../../tests/harness-program-oracle.coax";
+#authority;
+
+PG_STMTS :: 12;
+PG_VARS :: 8;
+PG_TEXT_MAX :: 384;
+// Grammar buffers: states and edges.
+PG_STATES :: 384;
+PG_EDGES :: 512;
+// The first token of a program event and of an outcome event.
+PG_PROGRAM :: 4;
+PG_RESULT :: 5;
+// Tokens before a program's text, and in an outcome.
+PG_HEAD :: 5;
+PG_RESULT_SIZE :: 8+PG_VARS;
+
+// A statement. bind: var gets the result of tool called with args, where
+// refs[i] is 1 + the variable that field i reads, or 0 for the literal
+// args[i] (integers, booleans as 0 and 1, choices as indices). when: the
+// body statements that follow run once if var is true. repeat: they run
+// count times.
+PgKind :: enum u8 {bind;when;repeat;}
+PgStmt :: struct {kind:PgKind;var:int;tool:int=-1;args:[HT_FIELDS_MAX]int;refs:[HT_FIELDS_MAX]int;count:int;body:int;}
+PgProgram :: struct {count:int;stmts:[PG_STMTS]PgStmt;}
+// Why a program was refused before it ran.
+PgWhy :: enum u8 {none;shape;syntax;incomplete;statements;policy;paused;grant;ungranted;undefined;type;effect;scope;timeout;calls;budget;cost;bytes;time;log;}
+// How it ended: refused before running, done, out of fuel, stopped at a
+// call that asks, at a call whose body or result failed, or at a call the
+// sandbox refused.
+PgStop :: enum u8 {refused;done;fuel;asked;failed;stopped;}
+// The worst case: calls, steps, call bytes, ticks, cost, calls per grant
+// entry, and the events and tokens the log must hold.
+PgBound :: struct {calls:int;steps:int;bytes:int;ticks:int;cost:int;uses:[HT_TOOLS_MAX]int;events:int;tokens:int;}
+PgParse :: struct {why:PgWhy;at:int=-1;program:PgProgram;}
+PgCheck :: struct {why:PgWhy;at:int=-1;bound:PgBound;}
+// One run. at is the byte of a syntax refusal, else the statement where it
+// stopped. event is the sandbox's outcome for the last call sent.
+PgRun :: struct {stop:PgStop;why:PgWhy;at:int=-1;steps:int;calls:int;event:SbEvent;defined:int;vars:[PG_VARS]int;bound:PgBound;}
+PgDecode :: struct {status:NxStatus;tokens:int;count:int;done:bool;}
+
+// Checks first.
+// Every buffer a session needs, and an environment over them.
+// Chapter 203's buffers for one tool's grammar, then the program grammar's.
+PgBox :: struct {rooms:[3]string;fields:[5]HtField;tools:[4]HtTool;grant:[4]int;calls:[4]int;
+    edges:[256]NxEdge;owner:[128]int;next:[128*256]int;accept:[128]u8;live:[128]u8;
+    gedges:[PG_EDGES]NxEdge;gowner:[PG_STATES]int;gnext:[PG_STATES*256]int;gaccept:[PG_STATES]u8;glive:[PG_STATES]u8;}
+pg_fill :: (x:[]PgBox) {x[0].rooms=HT_ROOMS;x[0].tools=ht_registry(x[0].rooms[..],x[0].fields[..]);x[0].grant=[4]int.[0,1,2,3];x[0].calls=[4]int.[9,9,9,9];}
+pg_box :: (x:[]PgBox,cost:int)->SbTools {
+    pg_fill(x);
+    return SbTools.{tools=x[0].tools[..],grant=HtGrant.{tools=x[0].grant[..],calls=x[0].calls[..],cost=cost,effects=HtEffect.write},
+        work=HtWork.{edges=x[0].edges[..],owner=x[0].owner[..],next=x[0].next[..],accept=x[0].accept[..],live=x[0].live[..]}};
+}
+pg_gwork :: (x:[]PgBox)->HtWork {return HtWork.{edges=x[0].gedges[..],owner=x[0].gowner[..],next=x[0].gnext[..],accept=x[0].gaccept[..],live=x[0].glive[..]};}
+PG_ALL :: [4]int.[0,1,2,3];
+PgLogs :: struct {ev:[64]LgEvent;tk:[4096]int;}
+pg_logs :: (b:[]PgLogs)->[1]LgLog {return [1]LgLog.[LgLog.{events=b[0].ev[..],tokens=b[0].tk[..]}];}
+// The chapter's policy: write at most, hall and den only; reads there run
+// freely; cost 1; 10 calls, 300 bytes, 40 ticks, 3 ticks a call, wait 5.
+PG_POLICY :: SbPolicy.{ceiling=HtEffect.write,reach=3,allow=HtEffect.read,open=3,cost=1,calls=10,bytes=300,ticks=40,timeout=3,wait=5};
+PG_ONE :: "x1=add{\"a\":1,\"b\":2};for 3{x1=add{\"a\":x1,\"b\":x1};}x0=get{\"room\":\"den\"};if x0{x2=div{\"a\":x1,\"b\":4};}";
+PG_TWO :: "x4=get{\"room\":\"hall\"};x5=set{\"room\":\"den\",\"on\":true};x6=get{\"room\":\"den\"};";
+pg_is :: (r:PgRun,stop:PgStop,why:PgWhy,at:int,steps:int,calls:int)->bool {return r.stop==stop && r.why==why && r.at==at && r.steps==steps && r.calls==calls;}
+pg_parsed :: (env:SbTools,g:NxGrammar,text:string)->PgParse {return pg_parse(env.tools,g,text);}
+// A statement by its fields, for the checks.
+pg_bind_is :: (s:PgStmt,var:int,tool:int,a:int,r:int,b:int,q:int)->bool {
+    return s.kind==PgKind.bind && s.var==var && s.tool==tool && s.args[0]==a && s.refs[0]==r && s.args[1]==b && s.refs[1]==q && s.body==0 && s.count==0;
+}
+#test "the checks' own helpers say no to a near miss" {
+    r:=PgRun.{stop=PgStop.fuel,why=PgWhy.none,at=3,steps=4,calls=2};#assert pg_is(r,PgStop.fuel,PgWhy.none,3,4,2);
+    #assert !pg_is(r,PgStop.done,PgWhy.none,3,4,2) && !pg_is(r,PgStop.fuel,PgWhy.type,3,4,2) && !pg_is(r,PgStop.fuel,PgWhy.none,2,4,2) && !pg_is(r,PgStop.fuel,PgWhy.none,3,5,2) && !pg_is(r,PgStop.fuel,PgWhy.none,3,4,1);
+    s:=PgStmt.{var=1,tool=2,args=[4]int.[3,0,5,0],refs=[4]int.[0,2,0,0]};#assert pg_bind_is(s,1,2,3,0,0,2);
+    #assert !pg_bind_is(s,0,2,3,0,0,2) && !pg_bind_is(s,1,1,3,0,0,2) && !pg_bind_is(s,1,2,4,0,0,2) && !pg_bind_is(s,1,2,3,1,0,2) && !pg_bind_is(s,1,2,3,0,1,2) && !pg_bind_is(s,1,2,3,0,0,1);
+    bx:[1]PgBox;env:=pg_box(bx[..],5);
+    #assert env.tools.count==4 && env.grant.cost==5 && env.grant.effects==HtEffect.write && env.tools[3].name=="get" && env.work.next.count==128*256;
+    for i:0..<4 {#assert env.grant.tools[i]==i && env.grant.calls[i]==9;}
+    s.body=1;#assert !pg_bind_is(s,1,2,3,0,0,2);s.body=0;s.count=1;#assert !pg_bind_is(s,1,2,3,0,0,2);s.count=0;s.kind=PgKind.when;#assert !pg_bind_is(s,1,2,3,0,0,2);
+}
+
+#test "the grammar: the hand-checked programs, every byte where one goes wrong" #steps 2000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);all:=PG_ALL;gw:=pg_gwork(bx[..]);
+    c:=pg_grammar(env.tools,all[..],gw);#assert c.why==HtWhy.none && c.grammar.states==262;
+    g:=c.grammar;
+    #assert nx_accepts(g,PG_ONE) && nx_accepts(g,PG_TWO) && nx_accepts(g,"x7=div{\"a\":x0,\"b\":999};") && nx_accepts(g,"for 9{x0=get{\"room\":\"study\"};x1=add{\"a\":0,\"b\":x3};}");
+    #assert nx_accepts(g,"if x7{x0=set{\"room\":\"hall\",\"on\":x6};}if x0{x1=add{\"a\":1,\"b\":1};}");
+    // Not programs: empty, an empty block, nesting, a loop of 0 or 10, x8, a variable room, a missing ';', a leading zero, four digits.
+    bad:=[13]string.["","for 3{}","for 2{for 2{x0=get{\"room\":\"den\"};}}","for 0{x0=get{\"room\":\"den\"};}","for 10{x0=get{\"room\":\"den\"};}",
+        "x8=get{\"room\":\"den\"};","x0=get{\"room\":x1};","x0=get{\"room\":\"den\"}","x0=add{\"a\":01,\"b\":1};","x0=add{\"a\":1000,\"b\":1};",
+        "if x0{x1=get{\"room\":\"den\"};","x0=get{\"room\":\"den\"};}","x0=mul{\"a\":1,\"b\":1};"];
+    for x:bad {#assert !nx_accepts(g,x);}
+    // Only the offered tools: get and add.
+    two:=[2]int.[3,0];c=pg_grammar(env.tools,two[..],gw);#assert c.why==HtWhy.none;
+    #assert nx_accepts(c.grammar,"x0=get{\"room\":\"den\"};x1=add{\"a\":1,\"b\":2};") && !nx_accepts(c.grammar,"x0=div{\"a\":1,\"b\":2};") && !nx_accepts(c.grammar,PG_TWO);
+    // Too small for the grammar: one state or one edge short.
+    w:=gw;w.owner=bx[0].gowner[0..<261];#assert pg_grammar(env.tools,all[..],w).why==HtWhy.capacity;
+    w=gw;w.edges=bx[0].gedges[0..<PG_TEST_EDGES-1];#assert pg_grammar(env.tools,all[..],w).why==HtWhy.capacity;
+    w=gw;w.edges=bx[0].gedges[0..<PG_TEST_EDGES];#assert pg_grammar(env.tools,all[..],w).why==HtWhy.none;
+    w=gw;w.owner=bx[0].gowner[0..<262];#assert pg_grammar(env.tools,all[..],w).why==HtWhy.none;
+    #assert !nx_accepts(g,"x0=add{\"a\":x8,\"b\":1};") && !nx_accepts(g,"x0=set{\"room\":\"den\",\"on\":x8};") && !nx_accepts(g,"x0=get{\"room\":\"den\"}<");
+    #assert !nx_accepts(g,"for 2{x8=get{\"room\":\"den\"};}") && !nx_accepts(g,"if x8{x0=get{\"room\":\"den\"};}") && !nx_accepts(g,"for 2{x0=get{\"room\":\"den\"};~");
+    #assert !nx_accepts(g,"if x0|x1=get{\"room\":\"den\"};}") && !nx_accepts(g,"for 3|x1=get{\"room\":\"den\"};}") && !nx_accepts(g,"for :{x1=get{\"room\":\"den\"};}");
+    w=gw;w.next=bx[0].gnext[0..<262*256-1];#assert pg_grammar(env.tools,all[..],w).why==HtWhy.capacity;
+    // No tool offered: no program can be written.
+    #assert pg_grammar(env.tools,all[0..<0],gw).why==HtWhy.capacity;
+    // A tool with no fields is called with {}.
+    fs:[1]HtField;ping:=[1]HtTool.[HtTool.{name="ping",fields=fs[0..<0],result=ht_bool(),effect=HtEffect.read,cost=1,body=HtBody.get}];one:=[1]int.[0];
+    c=pg_grammar(ping[..],one[..],gw);#assert c.why==HtWhy.none && nx_accepts(c.grammar,"x0=ping{};") && !nx_accepts(c.grammar,"x0=ping{");
+    p:=pg_parse(ping[..],c.grammar,"x3=ping{};x1=ping{};");#assert p.why==PgWhy.none && p.program.count==2 && p.program.stmts[1].var==1 && p.program.stmts[0].tool==0;
+    // A boolean before another field: the parser steps over true and false.
+    pf:=[2]HtField.[HtField.{name="on",type=ht_bool()},HtField.{name="a",type=ht_int(3)}];
+    pair:=[1]HtTool.[HtTool.{name="pair",fields=pf[..],result=ht_bool(),effect=HtEffect.read,cost=1,body=HtBody.get}];
+    c=pg_grammar(pair[..],one[..],gw);p=pg_parse(pair[..],c.grammar,"x0=pair{\"on\":false,\"a\":12};x1=pair{\"on\":true,\"a\":7};");
+    #assert p.why==PgWhy.none && pg_bind_is(p.program.stmts[0],0,0,0,0,12,0) && pg_bind_is(p.program.stmts[1],1,0,1,0,7,0);
+}
+
+#test "parsing: the hand-traced statements and each refusal's byte" #steps 2000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],pg_gwork(bx[..])).grammar;
+    p:=pg_parsed(env,gm,PG_ONE);#assert p.why==PgWhy.none && p.at== -1 && p.program.count==6;
+    s:=p.program.stmts;
+    #assert pg_bind_is(s[0],1,0,1,0,2,0) && s[1].kind==PgKind.repeat && s[1].count==3 && s[1].body==1 && s[1].tool== -1 && s[1].var==0;
+    #assert pg_bind_is(s[2],1,0,0,2,0,2) && pg_bind_is(s[3],0,3,1,0,0,0) && s[4].kind==PgKind.when && s[4].var==0 && s[4].body==1 && s[4].count==0;
+    #assert pg_bind_is(s[5],2,1,0,2,4,0);
+    p=pg_parsed(env,gm,PG_TWO);s=p.program.stmts;
+    #assert p.program.count==3 && pg_bind_is(s[0],4,3,0,0,0,0) && pg_bind_is(s[1],5,2,1,0,1,0) && pg_bind_is(s[2],6,3,1,0,0,0);
+    p=pg_parsed(env,gm,"x0=set{\"room\":\"study\",\"on\":false};x7=set{\"room\":\"hall\",\"on\":x4};x3=add{\"a\":905,\"b\":60};");s=p.program.stmts;
+    #assert pg_bind_is(s[0],0,2,2,0,0,0) && pg_bind_is(s[1],7,2,0,0,0,5) && pg_bind_is(s[2],3,0,905,0,60,0);
+    // Two blocks: each head counts only its own body.
+    p=pg_parsed(env,gm,"for 2{x0=get{\"room\":\"den\"};x1=get{\"room\":\"den\"};}x2=get{\"room\":\"den\"};if x0{x3=get{\"room\":\"den\"};}");s=p.program.stmts;
+    #assert p.program.count==6 && s[0].body==2 && s[0].count==2 && s[4].body==1 && s[4].kind==PgKind.when && s[3].var==2;
+    // Refusals: the byte where the text stops being a program, or its end.
+    #assert pg_parsed(env,gm,"x0=get{\"room\":\"attic\"};").why==PgWhy.syntax && pg_parsed(env,gm,"x0=get{\"room\":\"attic\"};").at==15;
+    #assert pg_parsed(env,gm,"x0=mul{\"a\":1};").at==3 && pg_parsed(env,gm,"x0=get{\"room\":\"den\"}").why==PgWhy.incomplete && pg_parsed(env,gm,"x0=get{\"room\":\"den\"}").at==20;
+    #assert pg_parsed(env,gm,"").why==PgWhy.incomplete && pg_parsed(env,gm,"").at==0;
+    // Twelve statements fit; the thirteenth is refused at its first byte.
+    t:[1]PoText;for k:0..<12 {po_add(t[..],"x0=get{\"room\":\"den\"};");}
+    #assert pg_parsed(env,gm,po_string(t[..])).why==PgWhy.none && pg_parsed(env,gm,po_string(t[..])).program.count==12;
+    po_add(t[..],"x1=get{\"room\":\"den\"};");p=pg_parsed(env,gm,po_string(t[..]));#assert p.why==PgWhy.statements && p.at==12*21 && p.program.count==12;
+    // A block head counts as a statement.
+    t[0].n=0;for k:0..<11 {po_add(t[..],"x0=get{\"room\":\"den\"};");}po_add(t[..],"for 2{x1=get{\"room\":\"den\"};}");
+    p=pg_parsed(env,gm,po_string(t[..]));#assert p.why==PgWhy.statements && p.at==11*21+6;
+    // Longer than a program may be, or a registry chapter 203 refuses.
+    long:[385]u8;for i:0..<385 {long[i]='x';}
+    #assert pg_parsed(env,gm,cast(string)long[..]).why==PgWhy.shape && pg_parsed(env,gm,cast(string)long[0..<384]).why==PgWhy.syntax;
+    r:=bx[0].tools;r[1].name="add";#assert pg_parse(r[..],gm,PG_TWO).why==PgWhy.shape;
+}
+
+// A session opened under p with the chapter's grant.
+pg_session :: (p:SbPolicy,s:[]SbSession,l:[]LgLog) {#assert sb_open(1,p,s,l)==SbWhy.none;}
+pg_checked :: (env:SbTools,g:NxGrammar,s:SbSession,text:string,l:LgLog)->PgCheck {return pg_check(env,s,pg_parse(env.tools,g,text).program,text.count,l);}
+#test "checking: the hand-traced bound, and every reason a program is refused before it runs" #steps 2000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],pg_gwork(bx[..])).grammar;b:[1]PgLogs;l:=pg_logs(b[..]);s:[1]SbSession;pg_session(PG_POLICY,s[..],l[..]);
+    c:=pg_checked(env,gm,s[0],PG_ONE,l[0]);d:=c.bound;
+    #assert c.why==PgWhy.none && c.at== -1 && d.calls==6 && d.steps==8 && d.bytes==111 && d.ticks==7 && d.cost==6 && d.uses[0]==4 && d.uses[1]==1 && d.uses[2]==0 && d.uses[3]==1;
+    #assert d.events==8 && d.tokens==PG_HEAD+PG_ONE.count+PG_RESULT_SIZE+6*SB_CALL_HEAD+111;
+    // Types: a boolean into an integer field, a retyped variable, a non-boolean condition, a variable not surely bound.
+    why:=[17]string.["x0=get{\"room\":\"hall\"};if x0{x1=add{\"a\":1,\"b\":1};}x2=set{\"room\":\"hall\",\"on\":x0};","x0=get{\"room\":\"hall\"};x1=add{\"a\":x0,\"b\":1};","x0=get{\"room\":\"hall\"};x0=add{\"a\":1,\"b\":1};",
+        "x0=add{\"a\":1,\"b\":1};if x0{x1=get{\"room\":\"hall\"};}","x1=add{\"a\":x2,\"b\":1};",
+        "x0=get{\"room\":\"hall\"};if x0{x3=add{\"a\":1,\"b\":1};}x2=add{\"a\":x3,\"b\":1};","if x4{x3=add{\"a\":1,\"b\":1};}",
+        "x0=add{\"a\":1,\"b\":x0};","x0=get{\"room\":\"hall\"};x1=set{\"room\":\"den\",\"on\":x2};",
+        "x0=set{\"room\":\"study\",\"on\":true};","for 9{x0=add{\"a\":1,\"b\":1};}x1=get{\"room\":\"hall\"};x2=get{\"room\":\"hall\"};",
+        "x0=get{\"room\":\"hall\"};x2=add{\"a\":1,\"b\":1};x1=set{\"room\":\"den\",\"on\":x0};",
+        "for 2{x2=add{\"a\":1,\"b\":x2};}","for 2{x0=get{\"room\":\"hall\"};}if x0{x2=add{\"a\":1,\"b\":1};}x3=add{\"a\":x2,\"b\":1};",
+        "x0=add{\"a\":1,\"b\":1};x0=div{\"a\":x0,\"b\":2};","if x0{x0=get{\"room\":\"hall\"};}","x0=get{\"room\":\"hall\"};if x0{x0=get{\"room\":\"den\"};x1=add{\"a\":1,\"b\":1};}x2=add{\"a\":x1,\"b\":1};"];
+    want:=[17][2]int.[[2]int.[0,-1],[2]int.[10,1],[2]int.[10,1],[2]int.[10,1],[2]int.[9,0],[2]int.[9,3],[2]int.[9,0],[2]int.[9,0],[2]int.[9,1],
+        [2]int.[12,0],[2]int.[14,3],[2]int.[0,-1],[2]int.[9,1],[2]int.[9,4],[2]int.[0,-1],[2]int.[9,0],[2]int.[9,4]];
+    for x,k:why {c=pg_checked(env,gm,s[0],x,l[0]);#assert cast(int)c.why==want[k][0] && c.at==want[k][1];}
+    // Each limit, one over and exactly at: the session has spent some of each already.
+    x:=s[0];x.calls=4;#assert pg_checked(env,gm,x,PG_ONE,l[0]).why==PgWhy.none;x.calls=5;c=pg_checked(env,gm,x,PG_ONE,l[0]);#assert c.why==PgWhy.calls && c.at==5;
+    x=s[0];x.bytes=189;#assert pg_checked(env,gm,x,PG_ONE,l[0]).why==PgWhy.none;x.bytes=190;c=pg_checked(env,gm,x,PG_ONE,l[0]);#assert c.why==PgWhy.bytes && c.at==5;
+    x=s[0];x.clock=33;#assert pg_checked(env,gm,x,PG_ONE,l[0]).why==PgWhy.none;x.clock=34;c=pg_checked(env,gm,x,PG_ONE,l[0]);#assert c.why==PgWhy.time && c.at==5;
+    x=s[0];x.usage.calls[0]=5;#assert pg_checked(env,gm,x,PG_ONE,l[0]).why==PgWhy.none;x.usage.calls[0]=6;c=pg_checked(env,gm,x,PG_ONE,l[0]);#assert c.why==PgWhy.budget && c.at==2;
+    x=s[0];x.usage.calls[3]=8;#assert pg_checked(env,gm,x,PG_ONE,l[0]).why==PgWhy.none;x.usage.calls[3]=9;c=pg_checked(env,gm,x,PG_ONE,l[0]);#assert c.why==PgWhy.budget && c.at==3;
+    x=s[0];x.usage.cost=93;#assert pg_checked(env,gm,x,PG_ONE,l[0]).why==PgWhy.none;x.usage.cost=94;c=pg_checked(env,gm,x,PG_ONE,l[0]);#assert c.why==PgWhy.cost && c.at==5;
+    x=s[0];x.pending=true;c=pg_checked(env,gm,x,PG_ONE,l[0]);#assert c.why==PgWhy.paused && c.at== -1;
+    x=s[0];x.policy.open=4;c=pg_checked(env,gm,x,PG_ONE,l[0]);#assert c.why==PgWhy.policy && c.at== -1;
+    x=s[0];x.policy.ceiling=HtEffect.read;x.policy.allow=HtEffect.read;#assert pg_checked(env,gm,x,PG_TWO,l[0]).why==PgWhy.effect && pg_checked(env,gm,x,PG_TWO,l[0]).at==1;
+    x=s[0];x.policy.timeout=2;#assert pg_checked(env,gm,x,PG_ONE,l[0]).why==PgWhy.none;c=pg_checked(env,gm,x,PG_TWO,l[0]);#assert c.why==PgWhy.timeout && c.at==1;
+    x.policy.timeout=1;c=pg_checked(env,gm,x,PG_ONE,l[0]);#assert c.why==PgWhy.timeout && c.at==5;
+    // A variable keeps one type, digits included; an integer variable fits only a field as wide.
+    r:=bx[0].tools;r[1].result=ht_int(2);rt:=env;rt.tools=r[..];c=pg_checked(rt,gm,s[0],"x0=add{\"a\":1,\"b\":1};x0=div{\"a\":4,\"b\":2};",l[0]);#assert c.why==PgWhy.type && c.at==1;
+    c=pg_checked(rt,gm,s[0],"x0=div{\"a\":4,\"b\":2};x1=add{\"a\":x0,\"b\":2};",l[0]);#assert c.why==PgWhy.none && c.bound.bytes==16+17;
+    r[1].result=ht_int(4);c=pg_checked(rt,gm,s[0],"x0=div{\"a\":4,\"b\":2};x1=add{\"a\":x0,\"b\":2};",l[0]);#assert c.why==PgWhy.type && c.at==1;
+    x=s[0];x.policy.reach=2;x.policy.open=2;#assert pg_checked(env,gm,x,PG_ONE,l[0]).why==PgWhy.none;c=pg_checked(env,gm,x,PG_TWO,l[0]);#assert c.why==PgWhy.scope && c.at==0;
+    // The grant: a tool not granted, and a grant chapter 203 refuses.
+    ng:=env;ng.grant.tools=bx[0].grant[0..<1];ng.grant.calls=bx[0].calls[0..<1];c=pg_checked(ng,gm,s[0],PG_ONE,l[0]);#assert c.why==PgWhy.ungranted && c.at==3;
+    ng.grant.tools=bx[0].grant[2..<4];ng.grant.calls=bx[0].calls[2..<4];#assert pg_checked(ng,gm,s[0],PG_TWO,l[0]).why==PgWhy.none;
+    ng=env;ng.grant.cost= -1;c=pg_checked(ng,gm,s[0],PG_ONE,l[0]);#assert c.why==PgWhy.grant && c.at== -1;
+    // The log: room for exactly the worst case, and one event or one token less.
+    h:=l[0];h.events=b[0].ev[0..<1+8];#assert pg_checked(env,gm,s[0],PG_ONE,h).why==PgWhy.none;h.events=b[0].ev[0..<8];c=pg_checked(env,gm,s[0],PG_ONE,h);#assert c.why==PgWhy.log && c.at==5;
+    h=l[0];h.tokens=b[0].tk[0..<h.used+d.tokens];#assert pg_checked(env,gm,s[0],PG_ONE,h).why==PgWhy.none;h.tokens=b[0].tk[0..<h.used+d.tokens-1];#assert pg_checked(env,gm,s[0],PG_ONE,h).why==PgWhy.log;
+    // A when block's worst case counts its body once; a loop's, count times.
+    c=pg_checked(env,gm,s[0],"x0=get{\"room\":\"hall\"};if x0{x1=add{\"a\":1,\"b\":1};x2=add{\"a\":1,\"b\":1};}for 3{x3=add{\"a\":1,\"b\":1};}x4=get{\"room\":\"hall\"};",l[0]);
+    #assert c.why==PgWhy.none && c.bound.calls==7 && c.bound.steps==9 && c.bound.ticks==7 && c.bound.cost==7 && c.bound.uses[0]==5 && c.bound.uses[3]==2 && c.bound.bytes==5*16+2*18;
+    // An integer variable is bounded by its type's digits; a boolean by false.
+    c=pg_checked(env,gm,s[0],"x0=get{\"room\":\"hall\"};x1=set{\"room\":\"hall\",\"on\":x0};x2=add{\"a\":0,\"b\":0};x3=add{\"a\":x2,\"b\":7};",l[0]);
+    #assert c.bound.bytes==18+29+16+18;
+}
+
+#test "the hand trace: two programs, an approval, and refusals before running" #steps 4000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],pg_gwork(bx[..])).grammar;b:[1]PgLogs;l:=pg_logs(b[..]);s:[1]SbSession;w:[8]int;pg_session(PG_POLICY,s[..],l[..]);
+    r:=pg_program(env,gm,s[..],PG_ONE,20,w[..],l[..]);
+    #assert pg_is(r,PgStop.done,PgWhy.none,-1,7,5) && r.defined==3 && r.vars[0]==0 && r.vars[1]==24 && r.vars[2]==0 && r.bound.calls==6;
+    #assert s[0].clock==5 && s[0].calls==5 && s[0].bytes==83 && l[0].count==8 && w[1]==0 && r.event.call.value==0;
+    // The events: the program, five calls with their results, the outcome.
+    #assert sb_head(sb_tokens(l[0],1),[9]int.[4,1,20,0,-1,'x','1','=','a']) && sb_tokens(l[0],1).count==PG_HEAD+PG_ONE.count;
+    vals:=[5]int.[3,6,12,24,0];
+    for k:0..<5 {t:=sb_tokens(l[0],2+k);#assert t[0]==SB_CALL && t[2]==1 && t[7]==vals[k];}
+    #assert sb_tokens(l[0],5).count==SB_CALL_HEAD+18 && sb_tokens(l[0],5)[SB_CALL_HEAD+8]=='1';
+    o1:=[16]int.[5,1,1,0,-1,7,5,3,0,24,0,0,0,0,0,0];#assert sb_same_tokens(sb_tokens(l[0],7),o1[..]);
+    // The second stops at the call that asks; the approval runs it.
+    r=pg_program(env,gm,s[..],PG_TWO,20,w[..],l[..]);
+    #assert pg_is(r,PgStop.asked,PgWhy.none,1,2,2) && r.event.request==0 && r.event.why==SbWhy.effect && r.defined==16 && s[0].pending && s[0].clock==6 && s[0].calls==6 && s[0].bytes==101;
+    o2:=[16]int.[5,1,3,10,1,2,2,16,0,0,0,0,0,0,0,0];#assert sb_same_tokens(sb_tokens(l[0],11),o2[..]) && l[0].count==12;
+    // While the request waits, a program is refused; the approval runs the call.
+    r=pg_program(env,gm,s[..],"x0=get{\"room\":\"hall\"};",20,w[..],l[..]);#assert r.why==PgWhy.paused && r.at== -1 && l[0].count==13 && s[0].calls==6;
+    x:=sb_answer(env,s[..],sb_yes(1,0,8),w[..],l[..]);#assert x.verdict==SbVerdict.run && w[1]==1 && s[0].clock==11 && s[0].calls==7 && s[0].bytes==128;
+    // Refusals run nothing and log one event.
+    texts:=[5]string.["x0=set{\"room\":\"study\",\"on\":true};","x7=get{\"room\":\"hall\"};for 3{x3=add{\"a\":1,\"b\":1};}",
+        "x0=get{\"room\":\"hall\"};x1=add{\"a\":x0,\"b\":1};","x0=get{\"room\":\"hall\"};if x0{x3=add{\"a\":1,\"b\":1};}x2=add{\"a\":x3,\"b\":1};","x0=get{\"room\":\"attic\"};"];
+    want:=[5][2]int.[[2]int.[12,0],[2]int.[14,2],[2]int.[10,1],[2]int.[9,3],[2]int.[2,15]];
+    before:=s[0];
+    for t,k:texts {
+        r=pg_program(env,gm,s[..],t,20,w[..],l[..]);#assert r.stop==PgStop.refused && cast(int)r.why==want[k][0] && r.at==want[k][1] && r.steps==0 && r.calls==0 && l[0].count==15+k;
+        e:=sb_tokens(l[0],14+k);#assert e[0]==PG_PROGRAM && e[3]==want[k][0] && e[4]==want[k][1] && e.count==PG_HEAD+t.count;
+        #assert s[0].clock==before.clock && s[0].calls==before.calls && w[1]==1 && w[0]==0 && w[2]==0;
+    }
+    #assert lg_verify(l[0]).status==LgStatus.ok && lg_verify(l[0]).index==19;
+    // Replay: a fresh session fed the logged programs and the answer rebuilds every event and the world.
+    b2:[1]PgLogs;l2:=pg_logs(b2[..]);s2:[1]SbSession;w2:[8]int;k:=pg_replay(env,gm,l[0],s2[..],w2[..],l2[..]);
+    #assert k.status==SbReplay.ok && k.index==19 && l2[0].count==19 && su_same(lg_verify(l2[0]).head,lg_verify(l[0]).head);
+    for i:0..<8 {#assert w2[i]==w[i];}
+    #assert s2[0].clock==11 && s2[0].calls==7 && s2[0].bytes==128;
+    // Refused before the program enters the log: too long, negative fuel, a small world, a full log.
+    long:[385]u8;for i:0..<385 {long[i]='x';}
+    #assert pg_program(env,gm,s[..],cast(string)long[..],20,w[..],l[..]).why==PgWhy.shape && pg_program(env,gm,s[..],PG_ONE,-1,w[..],l[..]).why==PgWhy.shape;
+    #assert pg_program(env,gm,s[..],PG_ONE,20,w[0..<7],l[..]).why==PgWhy.shape && l[0].count==19;
+    #assert pg_program(env,gm,s[..],cast(string)long[0..<384],20,w[..],l[..]).why==PgWhy.syntax && l[0].count==20;
+    h:=l;h[0].tokens=b[0].tk[0..<h[0].used+PG_HEAD+PG_ONE.count-1];#assert pg_program(env,gm,s[..],PG_ONE,20,w[..],h[..]).why==PgWhy.log && h[0].count==20;
+    h[0].tokens=b[0].tk[0..<h[0].used+PG_HEAD+PG_ONE.count];#assert pg_program(env,gm,s[..],PG_ONE,20,w[..],h[..]).why==PgWhy.log && h[0].count==21;
+}
+
+#test "fuel: a program stops exactly when its steps reach the limit" #steps 4000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],pg_gwork(bx[..])).grammar;
+    // PG_ONE takes 7 steps: bind, loop head, three binds, bind, condition.
+    stops:=[7]int.[0,1,2,2,2,3,4];
+    for fuel:0..<9 {
+        b:[1]PgLogs;l:=pg_logs(b[..]);s:[1]SbSession;w:[8]int;pg_session(PG_POLICY,s[..],l[..]);
+        r:=pg_program(env,gm,s[..],PG_ONE,fuel,w[..],l[..]);n:=nx_min(fuel,7);
+        calls:=[8]int.[0,1,1,2,3,4,5,5];
+        if fuel<7 {#assert pg_is(r,PgStop.fuel,PgWhy.none,stops[fuel],fuel,calls[fuel]);} else {#assert pg_is(r,PgStop.done,PgWhy.none,-1,7,5);}
+        #assert s[0].calls==calls[n] && l[0].count==3+calls[n];
+    }
+    // A loop stops inside its body; a skipped block costs its condition only.
+    b:[1]PgLogs;l:=pg_logs(b[..]);s:[1]SbSession;w:[8]int;pg_session(PG_POLICY,s[..],l[..]);
+    r:=pg_program(env,gm,s[..],"for 4{x0=add{\"a\":1,\"b\":1};x1=add{\"a\":2,\"b\":2};}x2=add{\"a\":3,\"b\":3};",8,w[..],l[..]);
+    #assert pg_is(r,PgStop.fuel,PgWhy.none,2,8,7) && r.vars[0]==2 && r.vars[1]==4 && r.defined==3;
+}
+
+#test "running unchecked: the sandbox stops the program at the exact call" #steps 4000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],pg_gwork(bx[..])).grammar;b:[1]PgLogs;l:=pg_logs(b[..]);s:[1]SbSession;w:[8]int;pg_session(PG_POLICY,s[..],l[..]);
+    // Not checked: the third call names a room outside reach. Two calls run, the third is refused, the fourth never sent.
+    p:=pg_parsed(env,gm,"x0=get{\"room\":\"hall\"};x1=add{\"a\":4,\"b\":5};x2=set{\"room\":\"study\",\"on\":true};x3=get{\"room\":\"hall\"};").program;
+    r:=pg_exec(env,s[..],p,w[..],l[..],99);
+    #assert pg_is(r,PgStop.stopped,PgWhy.none,2,3,3) && r.event.why==SbWhy.scope && r.vars[1]==9 && r.defined==3 && w[2]==0 && s[0].calls==2 && l[0].count==4;
+    // A body that fails: division by zero runs, is charged, and stops the program; a result past its type too.
+    r=pg_exec(env,s[..],pg_parsed(env,gm,"x0=div{\"a\":9,\"b\":3};x1=div{\"a\":9,\"b\":0};x2=div{\"a\":9,\"b\":1};").program,w[..],l[..],99);
+    #assert pg_is(r,PgStop.failed,PgWhy.none,1,2,2) && r.event.call.why==HtWhy.run && r.vars[0]==3 && r.defined==1 && s[0].calls==4;
+    r=pg_exec(env,s[..],pg_parsed(env,gm,"x0=add{\"a\":999,\"b\":1};").program,w[..],l[..],99);#assert pg_is(r,PgStop.failed,PgWhy.none,0,1,1) && r.event.call.why==HtWhy.result && r.defined==0;
+    // A when block on a true variable runs; a full log stops the program with nothing logged.
+    w[0]=1;r=pg_exec(env,s[..],pg_parsed(env,gm,"x4=get{\"room\":\"hall\"};if x4{x0=add{\"a\":1,\"b\":1};}").program,w[..],l[..],99);
+    #assert pg_is(r,PgStop.done,PgWhy.none,-1,3,2) && r.vars[0]==2 && r.vars[4]==1 && r.defined==17;
+    h:=l;h[0].events=b[0].ev[0..<l[0].count];r=pg_exec(env,s[..],pg_parsed(env,gm,"x0=add{\"a\":1,\"b\":1};").program,w[..],h[..],99);
+    #assert pg_is(r,PgStop.stopped,PgWhy.none,0,1,1) && r.event.why==SbWhy.log && h[0].count==l[0].count;
+}
+
+// The stand-in model's pieces: every byte a program uses, some longer pieces, and the end piece last.
+PG_TEST_EDGES :: 317;
+PG_PIECES :: [59]string.["0","1","2","3","4","5","6","7","8","9","=",";","{","}","\"",":",","," ",
+    "a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z",
+    "{\"","\":","true","false","room","hall","den","study","if x","for ","add{","get{","set{","div{",""];
+PG_END :: 58;
+#test "decoding: the grammar writes the script when it may, and never an ungranted call" #steps 4000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);pc:=PG_PIECES;all:=PG_ALL;gw:=pg_gwork(bx[..]);
+    lg:[59]f32;m:[59]u8;pr:[59]f64;st:[59]f64;od:[59]int;tm:[59]int;tx:[400]u8;sm:=ht_sampler(lg[..],m[..],pr[..],st[..],od[..],tm[..],tx[..]);
+    d:=pg_decode(env.tools,all[..],PG_ONE,pc[..],PG_END,200,gw,sm);
+    #assert d.status==NxStatus.ok && d.done && d.count==PG_ONE.count && cast(string)tx[0..<d.count]==PG_ONE && d.tokens==69;
+    // add and get only: the script's div cannot be written. The lost model takes the lowest allowed piece and ends as soon as it may.
+    two:=[2]int.[0,3];d=pg_decode(env.tools,two[..],PG_ONE,pc[..],PG_END,200,gw,sm);
+    #assert d.status==NxStatus.ok && d.done && d.count==97 && cast(string)tx[0..<79]==PG_ONE[0..<79] && cast(string)tx[79..<97]=="add{\"a\":0,\"b\":0};}";
+    // A script cut inside a call: its last piece, ending exactly at the script's end, is still written.
+    d=pg_decode(env.tools,all[..],"x0=add{\"a\":1",pc[..],PG_END,20,gw,sm);#assert d.status==NxStatus.ok && d.done && cast(string)tx[0..<d.count]=="x0=add{\"a\":100,\"b\":0};";
+    // The limit: one piece short of the script stops before the end.
+    d=pg_decode(env.tools,all[..],PG_ONE,pc[..],PG_END,68,gw,sm);#assert d.status==NxStatus.ok && !d.done && d.tokens==68 && d.count==98;
+    // Too little room for the text, a grammar that cannot be built, logits of the wrong size.
+    sm2:=sm;sm2.text=tx[0..<PG_ONE.count-1];#assert pg_decode(env.tools,all[..],PG_ONE,pc[..],PG_END,200,gw,sm2).status==NxStatus.capacity;
+    sm2.text=tx[0..<PG_ONE.count];#assert pg_decode(env.tools,all[..],PG_ONE,pc[..],PG_END,200,gw,sm2).done;
+    #assert pg_decode(env.tools,all[0..<0],PG_ONE,pc[..],PG_END,200,gw,sm).status==NxStatus.grammar;
+    sm2=sm;sm2.logits=lg[0..<58];#assert pg_decode(env.tools,all[..],PG_ONE,pc[..],PG_END,200,gw,sm2).status==NxStatus.shape;
+}
+// The replay's refusals: forged logs, each rechained.
+#test "replay: a changed outcome, a malformed event, a redaction, each refused at its event" #steps 4000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],pg_gwork(bx[..])).grammar;b:[1]PgLogs;l:=pg_logs(b[..]);s:[1]SbSession;w:[8]int;pg_session(PG_POLICY,s[..],l[..]);
+    r:=pg_program(env,gm,s[..],PG_TWO,20,w[..],l[..]);x:=sb_answer(env,s[..],sb_yes(1,0,3),w[..],l[..]);#assert x.verdict==SbVerdict.run;
+    r=pg_program(env,gm,s[..],"x0=mul{};",20,w[..],l[..]);#assert l[0].count==7;
+    // index, token, value, keep, user kind; then the status and the event it names.
+    cases:=[23][7]int.[[7]int.[1,0,3,-1,0,2,1],[7]int.[1,2,19,-1,0,0,7],[7]int.[1,2,1,-1,0,3,3],[7]int.[1,2,-1,-1,0,3,1],[7]int.[1,5,256,-1,0,2,1],
+        [7]int.[1,5,-1,-1,0,2,1],[7]int.[1,5,255,-1,0,3,1],[7]int.[1,-1,0,4,0,2,1],[7]int.[1,-1,0,5,0,3,1],[7]int.[1,4,0,-1,0,3,1],
+        [7]int.[5,3,4,-1,0,2,5],[7]int.[5,3,-1,-1,0,2,5],[7]int.[5,3,3,-1,0,3,5],[7]int.[5,-1,0,10,0,2,5],[7]int.[5,0,9,-1,0,2,5],
+        [7]int.[5,-1,0,-1,1,2,5],[7]int.[0,1,5,-1,0,3,1],[7]int.[0,0,9,-1,0,2,0],[7]int.[1,2,0,-1,0,3,2],[7]int.[5,4,1,-1,0,0,7],[7]int.[6,4,2,-1,0,3,6],[7]int.[1,5,0,-1,0,3,1],[7]int.[5,3,0,-1,0,3,5]];
+    for c:cases {
+        f:[1]PgLogs;lf:=pg_logs(f[..]);sb_forge(l[0],c[0],c[1],c[2],c[3],ifx c[4]==1 then LgKind.user else LgKind.context,lf[..]);
+        q:[1]PgLogs;lq:=pg_logs(q[..]);sq:[1]SbSession;wq:[8]int;k:=pg_replay(env,gm,lf[0],sq[..],wq[..],lq[..]);
+        #assert cast(int)k.status==c[5] && k.index==c[6];
+    }
+    // Edited without rechaining, into a log already used, a redacted program, a stray call.
+    q:[1]PgLogs;lq:=pg_logs(q[..]);sq:[1]SbSession;wq:[8]int;
+    t:=b[0];t.tk[20]+=1;bad:=LgLog.{events=t.ev[..],tokens=t.tk[..],count=l[0].count,used=l[0].used};
+    #assert pg_replay(env,gm,bad,sq[..],wq[..],lq[..]).status==SbReplay.log && lq[0].count==0;
+    #assert pg_replay(env,gm,l[0],sq[..],wq[..],lq[..]).status==SbReplay.ok && pg_replay(env,gm,l[0],sq[..],wq[..],lq[..]).status==SbReplay.log;
+    f:[1]PgLogs;lf:=pg_logs(f[..]);sb_forge(l[0],-1,0,0,-1,LgKind.context,lf[..]);#assert lg_redact(lf[..],1)==LgStatus.ok;
+    q2:[1]PgLogs;lq2:=pg_logs(q2[..]);k:=pg_replay(env,gm,lf[0],sq[..],wq[..],lq2[..]);#assert k.status==SbReplay.event && k.index==1;
+    b4:[1]PgLogs;l4:=pg_logs(b4[..]);s4:[1]SbSession;w4:[8]int;pg_session(PG_POLICY,s4[..],l4[..]);x=sb_call(env,s4[..],"get{\"room\":\"hall\"}",w4[..],l4[..]);
+    q3:[1]PgLogs;lq3:=pg_logs(q3[..]);k=pg_replay(env,gm,l4[0],sq[..],wq[..],lq3[..]);#assert k.status==SbReplay.event && k.index==1;
+    // A log cut after a program's calls: the replay logs the outcome the original lacks.
+    pre:=l[0];pre.count=4;pre.used=lg_offset(l[0],4);k=pg_replay(env,gm,pre,sq[..],wq[..],lq3[..]);#assert k.status==SbReplay.log;
+    q6:[1]PgLogs;lq6:=pg_logs(q6[..]);k=pg_replay(env,gm,pre,sq[..],wq[..],lq6[..]);#assert k.status==SbReplay.differs && k.index==1;
+    // A program event as long as one may be replays; one token longer is refused.
+    b7:[1]PgLogs;l7:=pg_logs(b7[..]);s7:[1]SbSession;pg_session(PG_POLICY,s7[..],l7[..]);ev:[PG_HEAD+PG_TEXT_MAX+1]int;ev[0]=PG_PROGRAM;ev[1]=1;ev[2]=20;ev[3]=2;ev[4]=1;
+    for i:PG_HEAD..<PG_HEAD+PG_TEXT_MAX+1 {ev[i]='x';}
+    sb_say(l7[..],ev[0..<PG_HEAD+PG_TEXT_MAX]);q7:[1]PgLogs;lq7:=pg_logs(q7[..]);k=pg_replay(env,gm,l7[0],sq[..],wq[..],lq7[..]);#assert k.status==SbReplay.ok && k.index==2;
+    l7[0].count=1;l7[0].used=12;sb_say(l7[..],ev[..]);q8:[1]PgLogs;lq8:=pg_logs(q8[..]);k=pg_replay(env,gm,l7[0],sq[..],wq[..],lq8[..]);#assert k.status==SbReplay.event && k.index==1;
+    // A replay whose log has room for less than the original differs where it runs out.
+    q4:[1]PgLogs;lq4:=pg_logs(q4[..]);lq4[0].events=q4[0].ev[0..<3];k=pg_replay(env,gm,l[0],sq[..],wq[..],lq4[..]);#assert k.status==SbReplay.differs && k.index==1;
+    q5:[1]PgLogs;lq5:=pg_logs(q5[..]);lq5[0].events=q5[0].ev[0..<0];k=pg_replay(env,gm,l[0],sq[..],wq[..],lq5[..]);#assert k.status==SbReplay.event && k.index==0;
+}
+
+// The random checks last: the targeted ones above kill most mutants first.
+#forall "the interpreter agrees with the small-step reference on random programs" seed:0..<10 #steps 4000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],999);al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],pg_gwork(bx[..])).grammar;sd:=cast(u64)seed;
+    p:=po_program(sd,env.tools,false);t:[1]PoText;po_write(env.tools,p,t[..]);
+    // The parser reads back the statements the text was written from.
+    q:=pg_parsed(env,gm,po_string(t[..]));#assert q.why==PgWhy.none && q.program.count==p.count;
+    for k:0..<p.count {#assert po_same(env.tools,q.program.stmts[k],p.stmts[k]);}
+    // Every call runs freely, or under a stricter policy every set asks.
+    pol:=SbPolicy.{ceiling=HtEffect.write,reach=7,allow=HtEffect.write,open=7,cost=9,calls=99,bytes=9999,ticks=999,timeout=3,wait=5};
+    if so_draw(sd,1,3)==0 {pol.allow=HtEffect.read;}
+    fuel:=so_draw(sd,2,30);for i:0..<4 {bx[0].calls[i]=99;}
+    b1:[1]PgLogs;l1:=pg_logs(b1[..]);s1:[1]SbSession;w1:[8]int;pg_session(pol,s1[..],l1[..]);
+    b2:[1]PgLogs;l2:=pg_logs(b2[..]);s2:[1]SbSession;w2:[8]int;pg_session(pol,s2[..],l2[..]);
+    for i:0..<3 {w1[i]=so_draw(sd,3+i,2);w2[i]=w1[i];}
+    r:=pg_program(env,gm,s1[..],po_string(t[..]),fuel,w1[..],l1[..]);o:=po_run(env,s2[..],p,w2[..],l2[..],fuel);
+    #assert r.why==PgWhy.none && cast(int)r.stop==o.stop && r.at==o.at && r.steps==o.steps && r.calls==o.calls && r.defined==o.defined;
+    for i:0..<PG_VARS {#assert r.vars[i]==o.vals[i];}
+    for i:0..<8 {#assert w1[i]==w2[i];}
+    // The same calls, token for token, and an outcome event after them.
+    #assert l1[0].count==o.calls+3 && l2[0].count==o.calls+1 && sb_tokens(l1[0],l1[0].count-1)[0]==PG_RESULT;
+    for k:0..<o.calls {#assert su_same(l1[0].events[2+k].content,l2[0].events[1+k].content);}
+    // The log replays to the same world.
+    b3:[1]PgLogs;l3:=pg_logs(b3[..]);s3:[1]SbSession;w3:[8]int;for i:0..<3 {w3[i]=w1[i];}
+    for i:0..<3 {w3[i]=so_draw(sd,3+i,2);}
+    k:=pg_replay(env,gm,l1[0],s3[..],w3[..],l3[..]);#assert k.status==SbReplay.ok && k.index==l1[0].count;
+    for i:0..<8 {#assert w3[i]==w1[i];}
+}
+
+#forall "the checker never admits a program the sandbox would refuse" seed:0..<16 #steps 4000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],so_draw(cast(u64)seed,50,30));al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],pg_gwork(bx[..])).grammar;sd:=cast(u64)seed;
+    for i:0..<4 {bx[0].calls[i]=so_draw(sd,51+i,6);}
+    ce:=so_draw(sd,40,3);reach:=so_draw(sd,41,8);
+    pol:=SbPolicy.{ceiling=cast(HtEffect)cast(u8)ce,reach=reach,allow=cast(HtEffect)cast(u8)so_draw(sd,42,ce+1),open=reach&so_draw(sd,43,8),cost=so_draw(sd,44,3),
+        calls=so_draw(sd,45,14),bytes=so_draw(sd,46,300),ticks=so_draw(sd,47,30),timeout=1+so_draw(sd,48,3),wait=5};
+    p:=po_program(sd,env.tools,so_draw(sd,49,2)==0);t:[1]PoText;po_write(env.tools,p,t[..]);
+    b:[1]PgLogs;l:=pg_logs(b[..]);s:[1]SbSession;w:[8]int;pg_session(pol,s[..],l[..]);
+    // Spend some of the session first, by single calls.
+    for k:0..<so_draw(sd,60,4) {x:=sb_call(env,s[..],SO_CALLS[so_draw(sd,61+k,12)],w[..],l[..]);if s[0].pending {x=sb_answer(env,s[..],SbAnswer.{session=1,request=s[0].request.id,decision=SbDecision.deny,at=s[0].clock},w[..],l[..]);}}
+    before:=s[0];world:=w;n:=l[0].count;
+    r:=pg_program(env,gm,s[..],po_string(t[..]),99,w[..],l[..]);
+    if r.why!=PgWhy.none {
+        #assert r.stop==PgStop.refused && l[0].count==n+1 && s[0].clock==before.clock && s[0].calls==before.calls && s[0].bytes==before.bytes;
+        for i:0..<8 {#assert w[i]==world[i];}
+    } else {
+        // Admitted: no call is refused, and the worst case holds.
+        #assert r.stop!=PgStop.stopped && r.stop!=PgStop.refused && r.calls<=r.bound.calls && r.steps<=r.bound.steps;
+        #assert s[0].calls-before.calls<=r.bound.calls && s[0].bytes-before.bytes<=r.bound.bytes && s[0].clock-before.clock<=r.bound.ticks && s[0].usage.cost-before.usage.cost<=r.bound.cost;
+        #assert l[0].count-n<=r.bound.events && l[0].used-lg_offset(l[0],n)<=r.bound.tokens;
+        for k:n+1..<l[0].count-1 {e:=sb_tokens(l[0],k);#assert e[0]==SB_CALL && e[2]!=cast(int)SbVerdict.refuse;}
+    }
+}
+#test "the checker is not vacuous: random programs are both admitted and refused" #steps 4000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],pg_gwork(bx[..])).grammar;ok:=0;no:=0;
+    for seed:0..<40 {
+        p:=po_program(cast(u64)seed,env.tools,seed%2==0);t:[1]PoText;po_write(env.tools,p,t[..]);
+        b:[1]PgLogs;l:=pg_logs(b[..]);s:[1]SbSession;pg_session(PG_POLICY,s[..],l[..]);
+        c:=pg_checked(env,gm,s[0],po_string(t[..]),l[0]);if c.why==PgWhy.none {ok+=1;} else {no+=1;}
+    }
+    #assert ok>=10 && no>=10;
+}
+
+#forall "constrained decoding writes only programs over the offered tools" seed:0..<4 #steps 4000000000 {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);pc:=PG_PIECES;sd:=cast(u64)seed;gw:=pg_gwork(bx[..]);
+    lg:[59]f32;m:[59]u8;pr:[59]f64;st:[59]f64;od:[59]int;tm:[59]int;tx:[400]u8;sm:=ht_sampler(lg[..],m[..],pr[..],st[..],od[..],tm[..],tx[..]);
+    offer:[4]int;n:=0;mask:=1+so_draw(sd,7,15);for i:0..<4 {if ((mask>>i)&1)==1 {offer[n]=i;n+=1;}}
+    p:=po_program(sd,env.tools,false);t:[1]PoText;po_write(env.tools,p,t[..]);
+    d:=pg_decode(env.tools,offer[0..<n],po_string(t[..]),pc[..],PG_END,120,gw,sm);#assert d.status==NxStatus.ok;
+    if d.done {
+        al:=PG_ALL;gm:=pg_grammar(env.tools,al[..],gw).grammar;q:=pg_parsed(env,gm,cast(string)tx[0..<d.count]);#assert q.why==PgWhy.none;
+        for k:0..<q.program.count {x:=q.program.stmts[k];if x.kind==PgKind.bind {#assert ((mask>>x.tool)&1)==1;}}
+    }
+}
+
+// book:begin grammar
+// A value of type t after s, or a variable for an integer or a boolean:
+// x and one digit.
+pg_value :: (b:[]HtBuild,w:HtWork,s:int,t:HtType,ends:[]int)->int {
+    n:=ht_value(b,w,s,t,ends);
+    if t.kind!=HtKind.choice {d:=ht_state(b,w);ht_edge(b,w,ht_bytes(b,w,s,"x"),'0','7',d);ends[n]=d;n+=1;}
+    return n;
+}
+// After s, a call of any offered tool, then ";" into the state to.
+pg_calls :: (b:[]HtBuild,w:HtWork,s:int,tools:[]HtTool,offered:[]int,to:int) {
+    for t:offered {
+        ends:[HT_DIGITS_MAX+2]int;ends[0]=ht_bytes(b,w,s,tools[t].name);ne:=1;intro:="{\"";
+        for f:tools[t].fields {
+            x:=ht_join(b,w,ends[0..<ne],intro[0]);x=ht_bytes(b,w,ht_bytes(b,w,x,intro[1..<2]),f.name);
+            ne=pg_value(b,w,ht_bytes(b,w,x,"\":"),f.type,ends[..]);intro=",\"";
+        }
+        if tools[t].fields.count==0 {ends[0]=ht_bytes(b,w,ends[0],"{");}
+        ht_edge(b,w,ht_join(b,w,ends[0..<ne],'}'),';',';',to);
+    }
+}
+// Programs over the offered tools. Four states hold the shape: before the
+// first statement (top), after a statement (done, the only accepting one),
+// after a block opens (open) and after a statement inside it (inner).
+// "x0=" call ";" from top or done returns to done; from open or inner, to
+// inner. "if x0{" and "for 3{" open a block; "}" closes it from inner.
+pg_grammar :: (tools:[]HtTool,offered:[]int,w:HtWork)->HtGrammar {
+    b:[1]HtBuild;top:=ht_state(b[..],w);done:=ht_state(b[..],w);open:=ht_state(b[..],w);inner:=ht_state(b[..],w);
+    out:=[2]int.[top,done];inside:=[2]int.[open,inner];
+    d:=ht_state(b[..],w);ht_edge(b[..],w,ht_join(b[..],w,out[..],'x'),'0','7',d);pg_calls(b[..],w,ht_bytes(b[..],w,d,"="),tools,offered,done);
+    d=ht_state(b[..],w);ht_edge(b[..],w,ht_join(b[..],w,inside[..],'x'),'0','7',d);pg_calls(b[..],w,ht_bytes(b[..],w,d,"="),tools,offered,inner);
+    d=ht_state(b[..],w);ht_edge(b[..],w,ht_bytes(b[..],w,ht_join(b[..],w,out[..],'i'),"f x"),'0','7',d);ht_edge(b[..],w,d,'{','{',open);
+    d=ht_state(b[..],w);ht_edge(b[..],w,ht_bytes(b[..],w,ht_join(b[..],w,out[..],'f'),"or "),'1','9',d);ht_edge(b[..],w,d,'{','{',open);
+    ht_edge(b[..],w,inner,'}','}',done);
+    if b[0].states>w.owner.count || b[0].edges>w.edges.count {return HtGrammar.{why=HtWhy.capacity};}
+    // As in chapter 203, state k is stored as last-k (top, state 0, becomes
+    // last), so nearly every edge
+    // points down and the liveness sweep settles in a few passes.
+    last:=b[0].states-1;
+    for i:0..<b[0].edges {x:=w.edges[i];w.edges[i]=NxEdge.{from=last-x.from,low=x.low,high=x.high,to=last-x.to};}
+    final:=[1]int.[last-done];
+    c:=nx_compile(b[0].states,last,w.edges[0..<b[0].edges],final[..],w.next,w.accept,w.live,false);
+    if c.status!=NxStatus.ok {return HtGrammar.{why=HtWhy.capacity};}
+    return HtGrammar.{grammar=c.grammar};
+}
+// book:end grammar
+
+// book:begin decode
+// The stand-in model writes a script: a piece that continues the script
+// scores its length, and every other piece 0. The end piece scores the
+// script's length once the script is written, or once the model has
+// written a piece the script did not have, after which no other piece
+// scores. The grammar of the offered tools masks every draw, and the draw
+// is greedy, so the lowest allowed piece wins a tie.
+pg_decode :: (tools:[]HtTool,offered:[]int,script:string,pieces:[]string,end:int,limit:int,w:HtWork,sm:HtSampler)->PgDecode {
+    c:=pg_grammar(tools,offered,w);if c.why!=HtWhy.none {return PgDecode.{status=NxStatus.grammar};}
+    run:=NxRun.{limit=limit};state:=c.grammar.start;n:=0;on:=true;
+    while run.stop==NxStop.running {
+        for x,i:pieces {
+            v:=0;
+            if on && n+x.count<=script.count && x==script[n..<n+x.count] {v=x.count;}
+            if i==end && (n==script.count || !on) {v=script.count;}
+            sm.logits[nx_min(i,sm.logits.count-1)]=cast(f32)v;
+        }
+        d:=nx_guided(sm.logits,c.grammar,state,pieces,end,NxOptions.{temperature=0},run,false,sm.mask,sm.out,sm.work,false);
+        if d.status!=NxStatus.ok {return PgDecode.{status=d.status};}
+        if d.token!=end {
+            x:=pieces[d.token];if n+x.count>sm.text.count {return PgDecode.{status=NxStatus.capacity};}
+            on=on && sm.logits[d.token]>0;for y:x {sm.text[n]=y;n+=1;}
+        }
+        run=d.run;state=d.state;
+    }
+    return PgDecode.{tokens=run.emitted,count=n,done=run.stop==NxStop.stop_token};
+}
+// book:end decode
+
+// book:begin parse
+// A bind's statement from the byte after its "x": the variable, the tool by
+// name, then each field's literal or variable. The grammar has already
+// accepted the text, so each piece is where the grammar put it.
+pg_bind :: (tools:[]HtTool,text:string,at:int)->PgStmt {
+    st:=PgStmt.{var=cast(int)(text[at]-'0')};p:=at+2;e:=p;while text[e]!='{' {e+=1;}
+    for x,i:tools {if x.name==text[p..<e] {st.tool=i;}}
+    p=e+1;
+    for f,i:tools[st.tool].fields {
+        p+=f.name.count+3;
+        if text[p]=='x' {st.refs[i]=cast(int)(text[p+1]-'0')+1;p+=2;}
+        else if f.type.kind==HtKind.integer {while text[p]!=',' && text[p]!='}' {st.args[i]=st.args[i]*10+cast(int)(text[p]-'0');p+=1;}}
+        else if f.type.kind==HtKind.boolean {st.args[i]=ifx text[p]=='t' then 1 else 0;p+=5-st.args[i];}
+        else {q:=p;while text[q+1]!='"' {q+=1;}for x,k:f.type.choices {if x==text[p+1..<q+1] {st.args[i]=k;}}p=q+2;}
+        p+=1;
+    }
+    return st;
+}
+// Parse a program: chapter 203's registry must be valid, then g, the
+// program grammar over the registry's tools, accepts the text or names the
+// byte where it stops being a program; then statements are read off in order,
+// at most PG_STMTS of them. A block head records how many binds follow it.
+pg_parse :: (tools:[]HtTool,g:NxGrammar,text:string)->PgParse {
+    r:=PgParse.{};
+    if text.count>PG_TEXT_MAX || ht_check(tools).why!=HtWhy.none {r.why=PgWhy.shape;return r;}
+    s:=g.start;
+    for x,i:text {n:=g.next[s*256+cast(int)x];if n<0 {r.why=PgWhy.syntax;r.at=i;return r;}s=n;}
+    if g.accepting[s]!=1 {r.why=PgWhy.incomplete;r.at=text.count;return r;}
+    p:=0;head:=-1;
+    while p<text.count {
+        if text[p]=='}' {p+=1;head= -1;continue;}
+        k:=r.program.count;if k==PG_STMTS {r.why=PgWhy.statements;r.at=p;return r;}
+        if text[p]=='x' {
+            r.program.stmts[k]=pg_bind(tools,text,p+1);while text[p]!=';' {p+=1;}p+=1;
+            if head>=0 {r.program.stmts[head].body+=1;}
+        }
+        else if text[p]=='i' {r.program.stmts[k]=PgStmt.{kind=PgKind.when,var=cast(int)(text[p+4]-'0')};head=k;p+=6;}
+        else {r.program.stmts[k]=PgStmt.{kind=PgKind.repeat,count=cast(int)(text[p+4]-'0')};head=k;p+=6;}
+        r.program.count=k+1;
+    }
+    return r;
+}
+// book:end parse
+
+// book:begin render
+// A call's text, as chapter 203 reads it, with each variable's value.
+pg_render :: (t:HtTool,st:PgStmt,vals:[PG_VARS]int,out:[]u8)->int {
+    n:=ht_put(out,ht_put(out,0,t.name),"{");
+    for f,i:t.fields {
+        if i>0 {n=ht_put(out,n,",");}
+        n=ht_put(out,ht_put(out,ht_put(out,n,"\""),f.name),"\":");
+        v:=st.args[i];if st.refs[i]>0 {v=vals[st.refs[i]-1];}
+        if f.type.kind==HtKind.integer {n=ht_put_int(out,n,v);}
+        else if f.type.kind==HtKind.boolean {n=ht_put(out,n,ifx v==1 then "true" else "false");}
+        else {n=ht_put(out,ht_put(out,ht_put(out,n,"\""),f.type.choices[v]),"\"");}
+    }
+    return ht_put(out,n,"}");
+}
+// book:end render
+
+// book:begin check
+// A variable of type got may fill a field of type want: the same kind, and
+// an integer no wider. (The grammar has no variables in choice fields.)
+pg_fits :: (want:HtType,got:HtType)->bool {return want.kind==got.kind && got.digits<=want.digits;}
+pg_no :: (why:PgWhy,at:int,b:PgBound)->PgCheck {return PgCheck.{why=why,at=at,bound=b};}
+// Check a parsed program of n bytes against the session before it runs.
+// Each bind, in order: its tool granted, its effect and ticks inside the
+// policy, its room in reach, each variable it reads surely bound and of the
+// field's type, and its variable keeping one type. Then the worst case so
+// far, with every block taken and every loop run in full, must fit what the
+// session, the grant and the log have left. A variable bound inside an if
+// block is surely bound only inside it; one bound in a loop, after it too.
+pg_check :: (env:SbTools,s:SbSession,p:PgProgram,n:int,g:LgLog)->PgCheck {
+    q:=s.policy;tools:=env.tools;gr:=env.grant;b:=PgBound.{events=2,tokens=PG_HEAD+n+PG_RESULT_SIZE};
+    if !sb_valid(q) {return pg_no(PgWhy.policy,-1,b);}
+    if s.pending {return pg_no(PgWhy.paused,-1,b);}
+    if ht_grant(tools,gr).why!=HtWhy.none {return pg_no(PgWhy.grant,-1,b);}
+    typed:[PG_VARS]int;worst:[PG_VARS]int;mask:=0;sure:int;times:=1;left:=0;keep:bool;
+    for k:0..<p.count {
+        st:=p.stmts[k];
+        if st.kind!=PgKind.bind {
+            if st.kind==PgKind.when {
+                if ((mask>>st.var)&1)==0 {return pg_no(PgWhy.undefined,k,b);}
+                if tools[typed[st.var]-1].result.kind!=HtKind.boolean {return pg_no(PgWhy.type,k,b);}
+            }
+            b.steps+=1;times=ifx st.kind==PgKind.repeat then st.count else 1;left=st.body;keep=st.kind==PgKind.repeat;sure=mask;
+            continue;
+        }
+        t:=tools[st.tool];j:=-1;for x,i:gr.tools {if x==st.tool {j=i;}}
+        if j<0 {return pg_no(PgWhy.ungranted,k,b);}
+        if cast(u8)t.effect>cast(u8)q.ceiling {return pg_no(PgWhy.effect,k,b);}
+        if SB_TICKS[cast(int)t.body]>q.timeout {return pg_no(PgWhy.timeout,k,b);}
+        if !sb_in(q.reach,sb_room(tools,HtEvent.{tool=st.tool,values=st.args})) {return pg_no(PgWhy.scope,k,b);}
+        for f,i:t.fields {
+            v:=st.refs[i]-1;if v<0 {continue;}
+            if ((mask>>v)&1)==0 {return pg_no(PgWhy.undefined,k,b);}
+            if !pg_fits(f.type,tools[typed[v]-1].result) {return pg_no(PgWhy.type,k,b);}
+        }
+        if typed[st.var]!=0 && tools[typed[st.var]-1].result.kind!=t.result.kind {return pg_no(PgWhy.type,k,b);}
+        if typed[st.var]!=0 && tools[typed[st.var]-1].result.digits!=t.result.digits {return pg_no(PgWhy.type,k,b);}
+        out:[HT_TEXT_MAX]u8;most:=pg_render(t,st,worst,out[..]);
+        typed[st.var]=st.tool+1;mask|=1<<st.var;worst[st.var]=0;for d:0..<t.result.digits {worst[st.var]=worst[st.var]*10+9;}
+        b.calls+=times;b.steps+=times;b.uses[j]+=times;b.cost+=t.cost*times;b.ticks+=SB_TICKS[cast(int)t.body]*times;
+        b.bytes+=most*times;b.events+=times;b.tokens+=(SB_CALL_HEAD+most)*times;
+        if s.calls+b.calls>q.calls {return pg_no(PgWhy.calls,k,b);}
+        if s.usage.calls[j]+b.uses[j]>gr.calls[j] {return pg_no(PgWhy.budget,k,b);}
+        if s.usage.cost+b.cost>gr.cost {return pg_no(PgWhy.cost,k,b);}
+        if s.bytes+b.bytes>q.bytes {return pg_no(PgWhy.bytes,k,b);}
+        if s.clock+b.ticks>q.ticks {return pg_no(PgWhy.time,k,b);}
+        if b.events>g.events.count-g.count || b.tokens>g.tokens.count-g.used {return pg_no(PgWhy.log,k,b);}
+        left-=1;if left==0 {times=1;if !keep {mask=sure;}}
+    }
+    return pg_no(PgWhy.none,-1,b);
+}
+// book:end check
+
+// book:begin run
+// One statement instance: stop if the steps have reached fuel; a block head
+// is a step and nothing else; a bind renders its call with the variables'
+// values and sends it to the sandbox. A call that runs binds its variable;
+// one that asks, fails in its body or is refused stops the program there.
+pg_step :: (env:SbTools,s:[]SbSession,st:PgStmt,k:int,world:[]int,l:[]LgLog,fuel:int,r:PgRun)->PgRun {
+    x:=r;
+    if x.steps==fuel {x.stop=PgStop.fuel;x.at=k;return x;}
+    x.steps+=1;if st.kind!=PgKind.bind {return x;}
+    b:[HT_TEXT_MAX]u8;n:=pg_render(env.tools[st.tool],st,x.vars,b[..]);
+    e:=sb_call(env,s,cast(string)b[0..<n],world,l);x.event=e;x.calls+=1;
+    if e.verdict==SbVerdict.ask {x.stop=PgStop.asked;}
+    else if e.verdict==SbVerdict.refuse {x.stop=PgStop.stopped;}
+    else if e.call.why!=HtWhy.none {x.stop=PgStop.failed;}
+    else {x.vars[st.var]=e.call.value;x.defined|=1<<st.var;return x;}
+    x.at=k;return x;
+}
+// Run a program statement by statement. A when block's body runs once if
+// its variable is true; a repeat block's body runs count times.
+pg_exec :: (env:SbTools,s:[]SbSession,p:PgProgram,world:[]int,l:[]LgLog,fuel:int)->PgRun {
+    r:=PgRun.{stop=PgStop.done};k:=0;
+    while k<p.count && r.stop==PgStop.done {
+        st:=p.stmts[k];r=pg_step(env,s,st,k,world,l,fuel,r);
+        if st.kind==PgKind.bind {k+=1;continue;}
+        times:=st.count;if st.kind==PgKind.when {times=ifx r.vars[st.var]!=0 then 1 else 0;}
+        for i:0..<times {for j:k+1..<k+1+st.body {if r.stop==PgStop.done {r=pg_step(env,s,p.stmts[j],j,world,l,fuel,r);}}}
+        k+=1+st.body;
+    }
+    return r;
+}
+// A program from its text. Refused before it enters the log when it is too
+// long, fuel is negative, the world is too small or the log has no room for
+// it. Otherwise it is logged with the reason it was refused, if any: its
+// text, the fuel, and the byte or statement. An admitted program runs, and
+// its outcome is logged after its calls: the stop, the sandbox's reason,
+// the statement, the steps, the calls, which variables are bound and their
+// values.
+pg_program :: (env:SbTools,g:NxGrammar,s:[]SbSession,text:string,fuel:int,world:[]int,l:[]LgLog)->PgRun {
+    r:=PgRun.{};
+    if text.count>PG_TEXT_MAX || fuel<0 || world.count<HT_CHOICES_MAX {r.why=PgWhy.shape;return r;}
+    if !sb_fits(l,PG_HEAD+text.count) {r.why=PgWhy.log;return r;}
+    q:=pg_parse(env.tools,g,text);r.why=q.why;r.at=q.at;
+    if q.why==PgWhy.none {c:=pg_check(env,s[0],q.program,text.count,l[0]);r.why=c.why;r.at=c.at;r.bound=c.bound;}
+    t:[PG_HEAD+PG_TEXT_MAX]int;head:=[PG_HEAD]int.[PG_PROGRAM,s[0].id,fuel,cast(int)r.why,r.at];
+    for x,i:head {t[i]=x;}for c,i:text {t[PG_HEAD+i]=cast(int)c;}
+    sb_say(l,t[0..<PG_HEAD+text.count]);
+    if r.why!=PgWhy.none {return r;}
+    x:=pg_exec(env,s,q.program,world,l,fuel);x.bound=r.bound;
+    o:[PG_RESULT_SIZE]int;head2:=[8]int.[PG_RESULT,s[0].id,cast(int)x.stop,cast(int)x.event.why,x.at,x.steps,x.calls,x.defined];
+    for v,i:head2 {o[i]=v;}for v,i:x.vars {o[8+i]=v;}
+    sb_say(l,o[..]);return x;
+}
+// book:end run
+
+// book:begin replay
+// Replay a session's log: verify the chain; open a fresh session from its
+// first event, as chapter 204's replay does; then feed it each logged
+// program, with its fuel, and each answer. Every event the fresh session
+// logs must have the original's digest, so a program's calls and outcome
+// are compared too. The world the replay leaves is the world the session
+// left.
+pg_replay :: (env:SbTools,gm:NxGrammar,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck {
+    if lg_verify(g).status!=LgStatus.ok || l[0].count!=0 {return SbCheck.{status=SbReplay.log};}
+    i:=0;
+    while i<g.count {
+        e:=g.events[i];t:=sb_tokens(g,i);
+        if e.kind!=LgKind.context || e.redacted {return SbCheck.{status=SbReplay.event,index=i};}
+        if i==0 {
+            one:=g;one.count=1;one.used=e.count;k:=sb_replay(env,one,s,world,l);
+            if k.status!=SbReplay.ok {return k;}
+        }
+        else if t.count>=PG_HEAD && t.count<=PG_HEAD+PG_TEXT_MAX && t[0]==PG_PROGRAM {
+            b:[PG_TEXT_MAX]u8;n:=t.count-PG_HEAD;
+            for x,j:t[PG_HEAD..<t.count] {if x<0 || x>255 {return SbCheck.{status=SbReplay.event,index=i};}b[j]=cast(u8)x;}
+            r:=pg_program(env,gm,s,cast(string)b[0..<n],t[2],world,l);
+        }
+        else if t.count==SB_ANSWER_SIZE && t[0]==SB_ANSWER && t[3]>=0 && t[3]<=3 {
+            a:=sb_answer(env,s,SbAnswer.{session=t[1],request=t[2],decision=cast(SbDecision)cast(u8)t[3],pattern=t[4]==1,at=t[5]},world,l);
+        }
+        else {return SbCheck.{status=SbReplay.event,index=i};}
+        if l[0].count<=i || l[0].count>g.count {return SbCheck.{status=SbReplay.differs,index=i};}
+        for j:i..<l[0].count {if !su_same(l[0].events[j].digest,g.events[j].digest) {return SbCheck.{status=SbReplay.differs,index=j};}}
+        i=l[0].count;
+    }
+    return SbCheck.{index=g.count};
+}
+// book:end replay

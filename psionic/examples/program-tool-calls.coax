@@ -1,0 +1,72 @@
+#import "Basic";
+#load "../lib/harness/program.coax";
+// Chapter 207's example: a program decoded under the grant's grammar; the
+// hand trace's session, program by program, with every call read back from
+// the log; a program that stops at a call that asks, and the approval;
+// programs refused before they run; fuel; an unchecked program stopped by
+// the sandbox; the log verified and replayed; a forged log.
+ex_calls :: (g:LgLog,from:int,to:int) {
+    for i:from..<to {
+        t:=sb_tokens(g,i);if t[0]!=SB_CALL {continue;}
+        b:[HT_TEXT_MAX]u8;for x,j:t[SB_CALL_HEAD..<t.count] {b[j]=cast(u8)x;}
+        print("  call %: % %",cast(string)b[0..<t.count-SB_CALL_HEAD],cast(SbVerdict)cast(u8)t[2],cast(SbWhy)cast(u8)t[3]);
+        if t[2]==1 {print(", result %",t[7]);}
+        if t[2]==2 {print(", request %",t[8]);}
+        print("\n");
+    }
+}
+ex_run :: (env:SbTools,g:NxGrammar,s:[]SbSession,text:string,fuel:int,w:[]int,l:[]LgLog)->PgRun {
+    print("program %\n",text);n:=l[0].count;
+    r:=pg_program(env,g,s,text,fuel,w,l);
+    if r.why!=PgWhy.none {print("  refused % at %, logged as event %\n",r.why,r.at,n);return r;}
+    b:=r.bound;print("  admitted: at most % calls, % steps, % bytes, % ticks, cost %\n",b.calls,b.steps,b.bytes,b.ticks,b.cost);
+    ex_calls(l[0],n+1,l[0].count-1);
+    print("  %",r.stop);if r.at>=0 {print(" at statement %",r.at);}print(" after % steps, % calls; bound",r.steps,r.calls);
+    for v:0..<PG_VARS {if ((r.defined>>v)&1)==1 {print(" x% %",v,r.vars[v]);}}
+    print("  [clock %, calls %, bytes %]\n",s[0].clock,s[0].calls,s[0].bytes);
+    return r;
+}
+// book:begin example
+main :: () {
+    bx:[1]PgBox;env:=pg_box(bx[..],99);p:=PG_POLICY;all:=PG_ALL;two:=[2]int.[0,3];pc:=PG_PIECES;gw:=pg_gwork(bx[..]);
+    print("policy: ceiling %, reach %, allow %, open %, cost %, calls %, bytes %, ticks %, timeout %, wait %\n",
+        p.ceiling,p.reach,p.allow,p.open,p.cost,p.calls,p.bytes,p.ticks,p.timeout,p.wait);
+    // The stand-in model writes the hand trace's program under the grant's grammar.
+    lg:[59]f32;m:[59]u8;pr:[59]f64;st:[59]f64;od:[59]int;tm:[59]int;tx:[400]u8;sm:=ht_sampler(lg[..],m[..],pr[..],st[..],od[..],tm[..],tx[..]);
+    d:=pg_decode(env.tools,all[..],PG_ONE,pc[..],PG_END,200,gw,sm);
+    print("decoded with every tool granted: % pieces, % bytes, complete %, same as the script %\n",d.tokens,d.count,d.done,cast(string)tx[0..<d.count]==PG_ONE);
+    d=pg_decode(env.tools,two[..],PG_ONE,pc[..],PG_END,200,gw,sm);
+    print("decoded with add and get granted: byte 79 is '%' where the script has 'd' (div is not offered)\n",cast(string)tx[79..<80]);
+    // The program grammar over every tool, which the parser walks.
+    gm:=pg_grammar(env.tools,all[..],gw).grammar;print("program grammar: % states\n",gm.states);
+    // The hand trace: one session, two programs, an approval, then refusals.
+    b:[1]PgLogs;l:=pg_logs(b[..]);s:[1]SbSession;w:[8]int;
+    print("open session 1: %\n",sb_open(1,p,s[..],l[..]));
+    r:=ex_run(env,gm,s[..],PG_ONE,20,w[..],l[..]);
+    r=ex_run(env,gm,s[..],PG_TWO,20,w[..],l[..]);
+    r=ex_run(env,gm,s[..],"x0=get{\"room\":\"hall\"};",20,w[..],l[..]);
+    x:=sb_answer(env,s[..],sb_yes(1,0,8),w[..],l[..]);
+    print("answer request 0, approve at 8: % %, den %  [clock %, calls %, bytes %]\n",x.verdict,x.why,w[1],s[0].clock,s[0].calls,s[0].bytes);
+    bad:=[5]string.["x0=set{\"room\":\"study\",\"on\":true};","x7=get{\"room\":\"hall\"};for 3{x3=add{\"a\":1,\"b\":1};}",
+        "x0=get{\"room\":\"hall\"};x1=add{\"a\":x0,\"b\":1};","x0=get{\"room\":\"hall\"};if x0{x3=add{\"a\":1,\"b\":1};}x2=add{\"a\":x3,\"b\":1};","x0=get{\"room\":\"attic\"};"];
+    for t:bad {r=ex_run(env,gm,s[..],t,20,w[..],l[..]);}
+    print("world: hall %, den %, study %\n",w[0],w[1],w[2]);
+    v:=lg_verify(l[0]);print("log: % events, % tokens, verify %\n",l[0].count,l[0].used,v.status);
+    b2:[1]PgLogs;l2:=pg_logs(b2[..]);s2:[1]SbSession;w2:[8]int;k:=pg_replay(env,gm,l[0],s2[..],w2[..],l2[..]);
+    print("replay: % through event %, same head %, world hall %, den %, study %, clock %\n",k.status,k.index,su_same(lg_verify(l2[0]).head,v.head),w2[0],w2[1],w2[2],s2[0].clock);
+    // Fuel: the first program takes 7 steps.
+    for fuel:6..<8 {
+        b3:[1]PgLogs;l3:=pg_logs(b3[..]);s3:[1]SbSession;w3:[8]int;x2:=sb_open(2,p,s3[..],l3[..]);r=pg_program(env,gm,s3[..],PG_ONE,fuel,w3[..],l3[..]);
+        print("fuel %: %",fuel,r.stop);if r.at>=0 {print(" at statement %",r.at);}print(" after % steps, % calls\n",r.steps,r.calls);
+    }
+    // Unchecked, a program reaches the sandbox, which stops it at the call it refuses.
+    b4:[1]PgLogs;l4:=pg_logs(b4[..]);s4:[1]SbSession;w4:[8]int;x3:=sb_open(3,p,s4[..],l4[..]);
+    q:=pg_parse(env.tools,gm,"x0=get{\"room\":\"hall\"};x1=set{\"room\":\"study\",\"on\":true};x2=get{\"room\":\"hall\"};");
+    r=pg_exec(env,s4[..],q.program,w4[..],l4[..],20);
+    print("unchecked: % at statement %, sandbox %, % calls sent, study %\n",r.stop,r.at,r.event.why,r.calls,w4[2]);
+    // A forged log: the first program's fuel lowered to 1 and the chain rebuilt.
+    f:[1]PgLogs;lf:=pg_logs(f[..]);sb_forge(l[0],1,2,1,-1,LgKind.context,lf[..]);
+    b5:[1]PgLogs;l5:=pg_logs(b5[..]);s5:[1]SbSession;w5:[8]int;k=pg_replay(env,gm,lf[0],s5[..],w5[..],l5[..]);
+    print("event 1's fuel rewritten from 20 to 1, rechained: verify %, replay % at event %\n",lg_verify(lf[0]).status,k.status,k.index);
+}
+// book:end example

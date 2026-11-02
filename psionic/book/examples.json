@@ -2509,6 +2509,18 @@
       "stack_kib": 65536
     },
     {
+      "source": "psionic/examples/program-tool-calls.coax",
+      "chapter": "psionic/book/ch207-programs-as-tool-calls.md",
+      "stdout": "psionic/fixtures/program-tool-calls.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600,
+      "stack_kib": 65536
+    },
+    {
       "source": "psionic/examples/start-fast.coax",
       "chapter": "psionic/book/ch178-start-fast.md",
       "stdout": "psionic/fixtures/start-fast.out",

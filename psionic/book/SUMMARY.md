@@ -227,7 +227,7 @@
 - [204. A sandbox and approvals](ch204-a-sandbox-and-approvals.md) — partly implemented
 - [205. A document tries to become the system prompt](ch205-a-document-tries-to-become-the-system-prompt.md) — design draft
 - [206. Condense the history](ch206-condense-the-history.md) — partly implemented
-- [207. Programs as tool calls](ch207-programs-as-tool-calls.md) — design draft
+- [207. Programs as tool calls](ch207-programs-as-tool-calls.md) — partly implemented
 - [208. Forks, subagents and jobs](ch208-forks-subagents-and-jobs.md) — design draft
 - [209. Plugins with owned lifecycles](ch209-plugins-with-owned-lifecycles.md) — design draft
 - [210. Speak the protocols](ch210-speak-the-protocols.md) — design draft
@@ -282,7 +282,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200–204, 206, 212, 215–237, 239–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200–204, 206, 207, 212, 215–237, 239–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

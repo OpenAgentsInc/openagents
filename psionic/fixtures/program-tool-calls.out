@@ -1,0 +1,38 @@
+policy: ceiling write, reach 3, allow read, open 3, cost 1, calls 10, bytes 300, ticks 40, timeout 3, wait 5
+decoded with every tool granted: 69 pieces, 98 bytes, complete true, same as the script true
+decoded with add and get granted: byte 79 is 'a' where the script has 'd' (div is not offered)
+program grammar: 262 states
+open session 1: none
+program x1=add{"a":1,"b":2};for 3{x1=add{"a":x1,"b":x1};}x0=get{"room":"den"};if x0{x2=div{"a":x1,"b":4};}
+  admitted: at most 6 calls, 8 steps, 111 bytes, 7 ticks, cost 6
+  call add{"a":1,"b":2}: run none, result 3
+  call add{"a":3,"b":3}: run none, result 6
+  call add{"a":6,"b":6}: run none, result 12
+  call add{"a":12,"b":12}: run none, result 24
+  call get{"room":"den"}: run none, result 0
+  done after 7 steps, 5 calls; bound x0 0 x1 24  [clock 5, calls 5, bytes 83]
+program x4=get{"room":"hall"};x5=set{"room":"den","on":true};x6=get{"room":"den"};
+  admitted: at most 3 calls, 3 steps, 62 bytes, 5 ticks, cost 4
+  call get{"room":"hall"}: run none, result 0
+  call set{"room":"den","on":true}: ask effect, request 0
+  asked at statement 1 after 2 steps, 2 calls; bound x4 0  [clock 6, calls 6, bytes 101]
+program x0=get{"room":"hall"};
+  refused paused at -1, logged as event 12
+answer request 0, approve at 8: run none, den 1  [clock 11, calls 7, bytes 128]
+program x0=set{"room":"study","on":true};
+  refused scope at 0, logged as event 14
+program x7=get{"room":"hall"};for 3{x3=add{"a":1,"b":1};}
+  refused calls at 2, logged as event 15
+program x0=get{"room":"hall"};x1=add{"a":x0,"b":1};
+  refused type at 1, logged as event 16
+program x0=get{"room":"hall"};if x0{x3=add{"a":1,"b":1};}x2=add{"a":x3,"b":1};
+  refused undefined at 3, logged as event 17
+program x0=get{"room":"attic"};
+  refused syntax at 15, logged as event 18
+world: hall 0, den 1, study 0
+log: 19 events, 698 tokens, verify ok
+replay: ok through event 19, same head true, world hall 0, den 1, study 0, clock 11
+fuel 6: fuel at statement 4 after 6 steps, 5 calls
+fuel 7: done after 7 steps, 5 calls
+unchecked: stopped at statement 1, sandbox scope, 2 calls sent, study 0
+event 1's fuel rewritten from 20 to 1, rechained: verify ok, replay differs at event 3
