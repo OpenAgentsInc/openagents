@@ -10,8 +10,9 @@
 > removed history; and three schedules measured on Psionic chapter 176's cache with
 > a hand-worked break-even. Still to come: a model as the summarizer, task
 > success on held-out long sessions with and without condensation,
-> rule-based pruning of tool results, and time to first token measured on a
-> named host rather than modeled.
+> rule-based pruning of tool results as a logged event, and time to first
+> token measured on a named host rather than modeled. Microcoder already
+> prunes by rule (see [In Coder](#in-coder)).
 
 A long session fills the model's context. When the next request would not
 fit, the harness has to send less: it replaces older history with a short
@@ -712,14 +713,33 @@ Every number matches the hand work above.
 
 Mutation of `harness/condense.coax` leaves no survivors.
 
+## In Coder
+
+Microcoder ([chapter 9](ch009-microcoder.md)) doesn't send a growing
+transcript. Each step's prompt is built from its state
+([coax/lib/microcoder/state.coax](../../coax/lib/microcoder/state.coax)),
+which prunes tool results by fixed rules:
+
+- Only the last 12 actions stay in the state (`MC_RECENT`). Older ones
+  leave it.
+- A command's output keeps its first 6,000 bytes and its last 6,000 bytes
+  (`MC_OUTPUT_HEAD`, `MC_OUTPUT_TAIL`). An action's JSON is at most 16,384
+  bytes (`MC_SLOT`).
+
+The rules are fixed, so the same steps always give the same state. They
+aren't logged as an event, though, so chapter 2's log doesn't say which
+bytes a step's model call didn't see. Claude Code and Codex condense their
+own transcripts, which Coder doesn't see or control.
+
 ## What remains
 
 - A model as the summarizer, logged and replayed like any other model
   call, and task success on held-out long sessions with and without
   condensation.
 - Rule-based pruning of tool results (keep the last N results of a tool,
-  or truncate a large output to a stated size), which would be another
-  logged event of the same shape.
+  or truncate a large output to a stated size) as another logged event of
+  the same shape. Microcoder prunes by these rules today without logging
+  them.
 - Time to first token measured on a named host and model rather than
   modeled from Psionic chapter 175's step cost, and sessions longer than chapter
   176's bounds of 16 requests of 32 tokens.
