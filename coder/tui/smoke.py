@@ -33,7 +33,7 @@ def spawn(engine):
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(REPO)
-        env = dict(os.environ, TERM="xterm-256color", BROWSER="/usr/bin/true", NO_OPEN_BROWSER="1")
+        env = dict(os.environ, TERM="xterm-256color", BROWSER="/usr/bin/true", NO_OPEN_BROWSER="1", CODER_USAGE_KEYCHAIN="0")
         os.execve(os.path.join(HERE, "coder.sh"), [os.path.join(HERE, "coder.sh"), "--engine", engine], env)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
     return pid, fd
@@ -130,7 +130,7 @@ def verbs(check):
     server = subprocess.Popen([sys.executable, os.path.join(HERE, "local_model.py")], stdout=subprocess.PIPE, text=True)
     try:
         port = server.stdout.readline().strip()
-        env = dict(os.environ, HOME=home, PSIONIC_BASE_URL="http://127.0.0.1:" + port, BROWSER="/usr/bin/true")
+        env = dict(os.environ, HOME=home, PSIONIC_BASE_URL="http://127.0.0.1:" + port, BROWSER="/usr/bin/true", CODER_USAGE_KEYCHAIN="0")
         coder = os.path.join(HERE, "coder.sh")
         run = subprocess.run([coder, "run", "say ok", "--engine", "psionic", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=600)
         lines = [json.loads(l) for l in run.stdout.splitlines() if l.startswith("{")]
@@ -190,6 +190,43 @@ def verbs(check):
               and len(fargs) == 3 and "--resume=stub" in fargs[1] and "--fork-session" in fargs[1]
               and not any(x.startswith("--resume") for x in fargs[0] + fargs[2]) and "1 of 1 requests rebuilt with the same bytes" in frep.stdout
               and ft and "resume" not in ft[0] and any(l["kind"] == "request" and l["bytes"] > len("third turn") for l in ft))
+        # coder usage (chapter 36): Zeron's endpoints, read with a stand-in login from files only, never the Keychain
+        import http.server
+        seen_auth = []
+        class UsageStub(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a): pass
+            def do_GET(self):
+                seen_auth.append((self.path, self.headers.get("Authorization"), self.headers.get("anthropic-beta"), self.headers.get("chatgpt-account-id")))
+                if self.path == "/api/oauth/usage":
+                    body = {"five_hour": {"utilization": 12.0, "resets_at": "2026-11-02T15:00:00Z"}, "seven_day": {"utilization": 84.0, "resets_at": "2026-11-07T10:00:00Z"}}
+                elif self.path == "/backend-api/wham/usage":
+                    body = {"plan_type": "pro", "rate_limit": {"primary_window": {"used_percent": 3, "limit_window_seconds": 18000, "reset_at": 1793000000},
+                            "secondary_window": {"used_percent": 4, "limit_window_seconds": 604800, "reset_at": 1793500000}}}
+                else:
+                    self.send_response(404); self.end_headers(); return
+                b = json.dumps(body).encode()
+                self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+        usrv = http.server.HTTPServer(("127.0.0.1", 0), UsageStub)
+        threading.Thread(target=usrv.serve_forever, daemon=True).start()
+        ubase = "http://127.0.0.1:%d" % usrv.server_address[1]
+        ucl = tempfile.mkdtemp(prefix="coder-usage-claude-"); ucx = tempfile.mkdtemp(prefix="coder-usage-codex-")
+        json.dump({"claudeAiOauth": {"accessToken": "tok-claude", "subscriptionType": "max"}}, open(os.path.join(ucl, ".credentials.json"), "w"))
+        json.dump({"tokens": {"access_token": "tok-codex", "account_id": "acct-1"}}, open(os.path.join(ucx, "auth.json"), "w"))
+        uenv = dict(env, CODER_USAGE_KEYCHAIN="0", CLAUDE_CONFIG_DIR=ucl, CODEX_HOME=ucx,
+                    CODER_USAGE_CLAUDE_URL=ubase + "/api/oauth/usage", CODER_USAGE_CODEX_URL=ubase + "/backend-api/wham/usage")
+        uj = subprocess.run([coder, "usage", "--json"], cwd=REPO, env=uenv, capture_output=True, text=True, timeout=120)
+        ut = subprocess.run([coder, "usage"], cwd=REPO, env=uenv, capture_output=True, text=True, timeout=120)
+        try: urows = json.loads(uj.stdout)
+        except ValueError: urows = []
+        un = subprocess.run([coder, "usage", "--json"], cwd=REPO, env=dict(uenv, CLAUDE_CONFIG_DIR=tempfile.mkdtemp(), CODEX_HOME=tempfile.mkdtemp()), capture_output=True, text=True, timeout=120)
+        usrv.shutdown()
+        check("usage: Claude's and Codex's plan windows from Zeron's endpoints, with each login's headers; no login says so and exits 1",
+              len(urows) == 2 and [w["used_percent"] for w in urows[0]["windows"]] == [12, 84] and [w["label"] for w in urows[0]["windows"]] == ["Session", "Week"]
+              and [w["used_percent"] for w in urows[1]["windows"]] == [3, 4] and [w["label"] for w in urows[1]["windows"]] == ["Session", "Week"]
+              and ("/api/oauth/usage", "Bearer tok-claude", "oauth-2025-04-20", None) in seen_auth
+              and ("/backend-api/wham/usage", "Bearer tok-codex", None, "acct-1") in seen_auth
+              and "Week" in ut.stdout and "84%" in ut.stdout and "tok-" not in uj.stdout + ut.stdout + uj.stderr + ut.stderr
+              and un.returncode == 1 and '"error"' in un.stdout)
         # coder import claude, then coder resume (chapter 14): a Claude Code log of this folder becomes a Coder
         # session; the terminal UI shows its turns, and the next message continues it on Claude Code's own session
         iwork = os.path.realpath(tempfile.mkdtemp(prefix="coder-import-"))
@@ -1336,7 +1373,7 @@ def main():
     if pid == 0:
         os.chdir(REPO)
         env = dict(os.environ, TERM="xterm-256color", OPENAGENTS_SECRETS="/nonexistent", CODER_APPLE_FM_BRIDGE=AFM_STUB,
-                   CODER_HOME=tempfile.mkdtemp(prefix="coder-smoke-tui-"))      # its sessions stay out of the person's own
+                   CODER_HOME=tempfile.mkdtemp(prefix="coder-smoke-tui-"), CODER_USAGE_KEYCHAIN="0")      # its sessions stay out of the person's own
         for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "VERTEX_ACCESS_TOKEN"):
             env.pop(k, None)
         os.execve(os.path.join(HERE, "coder.sh"), [os.path.join(HERE, "coder.sh"), "--engine", "echo"], env)

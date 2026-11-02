@@ -95,6 +95,32 @@ continues one, and `/resume claude` this folder's newest Claude Code
 session, imported first. [Chapter 14](ch014-forks-subagents-and-jobs.md#resume-and-import)
 covers what a resume carries.
 
+**Usage.** On Claude Code and Codex, the right end of the hint row shows
+how much of the plan you have used: a ring that fills by quarters, the
+window closest to its limit, and the percent, such as `◕ Week 84%`. It
+turns amber at 80% and red at 95%. `/usage` and `coder usage [--json]`
+list every window with a bar and its reset time:
+
+```
+  Claude Code · Claude Max · read just now
+    Week     ████████░░  84%  resets in 4d 17h
+```
+
+Coder reads usage the way Zeron does. Claude's comes from
+`api.anthropic.com/api/oauth/usage` (the five-hour Session and the
+seven-day Week), with the token in `.credentials.json` under
+`CLAUDE_CONFIG_DIR` (default `~/.claude`), or on macOS the Keychain item
+`Claude Code-credentials`. Codex's comes from
+`chatgpt.com/backend-api/wham/usage`, with the token in `auth.json` under
+`CODEX_HOME` (default `~/.codex`). The token goes only to `curl`'s
+standard input and is wiped after the call. Coder asks every 5 minutes,
+or at most every 30 seconds when you switch agents or type `/usage`. After
+a failure it waits: Retry-After for a 429 (30 s to 1 h, default 5 min), 60 s
+for a server error, 15 min for another error, 30 s for a network error,
+and 10 min with no login. The last reading is kept beside the sessions, so
+the row fills at once on the next start. `CODER_USAGE=0` turns it off, and
+`CODER_USAGE_KEYCHAIN=0` keeps it to the files.
+
 **Status.** While a turn runs, the row above the composer shows a spinner,
 the step number, the time so far, how to stop, and the step running now:
 
