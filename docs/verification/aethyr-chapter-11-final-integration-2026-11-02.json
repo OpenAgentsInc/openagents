@@ -1,0 +1,40 @@
+{
+  "schema": "aethyr.render.chapter11-final-integration.v1",
+  "date": "2026-11-02",
+  "status": "chapter_profile_passed_with_separate_preexisting_global_tools_failure",
+  "implementation_checkpoint": "e08898a43e19ac37700f975e8da1fa236ea1575a",
+  "rebased_onto_main": "55099680e93994c1e5a9ac768689746c42f6cf41",
+  "rebase": "Seventeen private commits integrated. The only conflict was tool.sh: preserve upstream per-tool run-steps directives in both deps/C calls, explicit selected compiler, compiler-SHA cache namespace and dependency-list invalidation. Upstream host frame-JPEG/HTTP work and unrelated projects remain intact.",
+  "compiler_source_digest": "b6bda9bc453f58602bb64e5e2ec599e1dd4d4f1eff8c6318aba9771c46a28643",
+  "compiler_source_digest_unchanged": true,
+  "renderer_product_source_diff_after_rebase": "Empty for aethyr/render, aethyr/book, verse/native, verse/gpu and apps/openagents-web/gpu. Existing numerical/mutation results therefore keep their exact source identities.",
+  "book_gate": {"command": "python3 psionic/tests/book.py --book aethyr", "exit": 0, "programs": 20, "native_libraries": 0, "source_linked_listings": 108, "local_links": "pass"},
+  "metadata": {"implemented": 14, "partly_implemented": 4, "design_drafts": 68, "chapter12_started": false},
+  "fresh_integrated_Grid": {
+    "reason": "Upstream host.js added an HTTP-triggered JPEG snapshot path; this new integration combination received its own actual headless route check.",
+    "host_js_sha256": "ed524d8d1cc8acd731f32e2a8d1edfbaeea3aa72f322534a8526b240fae17b0e",
+    "producer_wasm_sha256": "a06c704a8308b336946ee4344f7b720fcad270ebb59eacb222b63fd9bf0b0246",
+    "route": "Homepage, actual WALK AROUND entry, normal960x540 Grid,240input frames/two jumps/landing/camera/replay/missing-Sans refusal and same-object recovery; then measured zero-time320x180 capture",
+    "exit": 0,
+    "origin_final_status": "passed",
+    "original_files_unchanged": true,
+    "finalized": true,
+    "uniforms_HUD_and_raw_GPU_image": "Each cmp is byte-identical to the already-qualified final Grid frame. Raw GPU SHA remainsc5520f750dde14fbb394d8cf95b239ddbc61dbc8c9b35c9b8579a85acad5ac2c. No unchanged passing colour comparator was rerun.",
+    "retained": "Actual executed drivers/glue, producer/RFI/package/resource bytes, served source bodies and the finalized source/hash ledger"
+  },
+  "global_tools_gate": {
+    "command": "COAX=SELECTED coax/web/tool.sh tools-check",
+    "exit": 1,
+    "tracked_tool_files": 1515,
+    "missing_reasons": 1,
+    "file": "coax/web/api/computer-flow.ts",
+    "introduced_upstream": "04f5e701d4",
+    "file_sha256_on_incoming_main_and_this_tree": "bb05217c0d15298bbde5133b56e2ce9a38bbc19ca0ace82c3bcb8eb1af74bb84",
+    "chapter_patch_changes_to_that_file": false,
+    "disposition": "Pre-existing incoming-main release-gate failure, retained and handed off. Its test orchestration needs a real Coax port or an applicable owner exception; no invented Firm reason or growing port-list waiver was added. This is separate from chapter11's completed profile and is not reported as a passing repository-wide gate.",
+    "earlier_chapter_port_scan": "The actual pre-integration scan at source base8c9027ad9c passed1506tracked files with zero missing reasons; that log remains in final-artifacts."
+  },
+  "other_checks": "Merged tool.sh/deepseek wrapper bash syntax and owned diff whitespace pass. The initial metadata gate rejected unsupported webgpu/vulkan registry enums; corrected to the existing cpu/wasm vocabulary while exact GPU profiles remain in prose/evidence. Both failure and successful logs are retained.",
+  "cleanup": "All subagents and their children stopped. Both native namespaces removed after complete output retention. Final loopback origin finalized; old owned server8817/PID44086 terminated and no longer present. No later-chapter job remains.",
+  "retention": "data/aethyr-ch11-2026-11-02/final-integration/retention.json"
+}

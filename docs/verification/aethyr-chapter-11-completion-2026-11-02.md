@@ -7,6 +7,10 @@ reference. Its named numerical teaching profile is the moving Grid's recorded
 [completion contract](../books/completion.md#what-completion-means): chapter,
 target, consumer and application completion are separate facts.
 
+The [final main integration](aethyr-chapter-11-final-integration-2026-11-02.json)
+retains the merged-host route and metadata checks, and separately records an
+unrelated pre-existing global tools-gate failure from incoming main.
+
 The shared registry's existing target vocabulary records `cpu` and `wasm`.
 The precise WebGPU/Vulkan devices, formats and raster profiles are named here
 and in the evidence; no global target enum was expanded for this chapter.

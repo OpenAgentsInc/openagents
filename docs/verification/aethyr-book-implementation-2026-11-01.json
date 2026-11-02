@@ -13,6 +13,8 @@
   "status": "chapter_11_named_profile_complete_final_integration",
   "final_completion_matrix": "docs/verification/aethyr-chapter-11-completion-2026-11-02.md",
   "final_CPU_and_target_scope": "docs/verification/aethyr-cpu-reference-final-2026-11-02.json",
+  "final_main_integration": "docs/verification/aethyr-chapter-11-final-integration-2026-11-02.json",
+  "final_handoff": "docs/verification/aethyr-chapter-11-handoff-2026-11-02.md",
   "historical_ledger_scope": "The dated checkpoints and failed/partial results below retain their original identities. The final matrix is authoritative for the completed named profile; it does not promote older incomplete target or workload observations.",
   "resumed_2026_11_02": {
     "latest_main_integrated": "681cf6ba2cbcd62e0648b6b0039df8934a18975c",
