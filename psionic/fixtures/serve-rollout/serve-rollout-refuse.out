@@ -1,0 +1,15 @@
+begin version 8 whose document names gpt-oss-120b: refused, capability document does not match; still idle, version 7 published
+begin version 8 under profile rr-route-v2: refused, capability document does not match; still idle, version 7 published
+begin version 8 whose replicas load digest 8009: refused, capability document does not match; still idle, version 7 published
+begin version 6: refused, version not newer than the stable one; still idle, version 7 published
+promote with no rollout: refused, not in this phase; still idle, version 7 published
+begin version 8: accepted, warming now
+promote while warming: refused, no passing verdict at every step; still warming, version 7 published
+two replicas warm: accepted, canary now
+promote in the canary, before its verdict: refused, no passing verdict at every step; still canary, version 7 published
+a window with 6 errors in 5 requests: refused, plan or observation out of bounds; still canary, version 7 published
+roll back to version 5: refused, rollback target is not the stable version; still canary, version 7 published
+roll back to version 8: refused, rollback target is not the stable version; still canary, version 7 published
+roll back to version 7: accepted, revert now
+begin with steps of 10 and 10 percent: refused, plan or observation out of bounds; still idle, version 7 published
+simulate 1 old and 8 new replicas: configuration or traffic out of bounds

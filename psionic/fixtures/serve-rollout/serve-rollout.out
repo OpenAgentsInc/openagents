@@ -1,0 +1,49 @@
+hand trace (ro-rollout-v1):
+  request 0: version 7, start 0 us, finish 45799 us
+  request 1: version 7, start 150000 us, finish 195799 us
+  request 2: version 8, start 160000 us, finish 297397 us
+  request 3: version 7, start 195799 us, finish 241598 us
+  request 4: version 8, start 297397 us, finish 434794 us
+  request 5: version 7, start 320000 us, finish 365799 us
+hand trace: 6 served, 0 refused, 2 on version 8; latency P95 144.7 ms; stable version 7, document version 7
+  0.0 ms begin -> warming
+  100.0 ms warm -> canary, share 50 percent
+  300.0 ms window -> revert, verdict P95 over the objective
+  434.7 ms drained -> idle, verdict P95 over the objective
+synthetic, mean gap 60 ms, 160 requests; no rollout on 3 replicas: latency P95 211.9 ms
+good build: 160 served, 0 refused, 107 on version 8; latency P95 187.5 ms; stable version 8, document version 8
+  500.0 ms begin -> warming
+  1020.7 ms warm -> warming
+  1020.7 ms warm -> warming
+  1020.7 ms warm -> canary, share 20 percent
+  2520.7 ms window -> canary, share 50 percent, verdict pass
+  4020.7 ms window -> verified, share 50 percent, verdict pass
+  4020.7 ms promote -> retire, verdict pass
+  4161.8 ms drained -> idle, verdict pass
+slow build (3 times the step model): 160 served, 0 refused, 5 on version 8; latency P95 212.6 ms; stable version 7, document version 7
+  500.0 ms begin -> warming
+  1020.7 ms warm -> warming
+  1020.7 ms warm -> warming
+  1020.7 ms warm -> canary, share 20 percent
+  2520.7 ms window -> revert, verdict P95 over the objective
+  3042.8 ms drained -> idle, verdict P95 over the objective
+wrong build (golden warm-up differs): 160 served, 0 refused, 0 on version 8; latency P95 211.9 ms; stable version 7, document version 7
+  500.0 ms begin -> warming
+  1020.7 ms warm -> revert, verdict golden mismatch
+  1020.7 ms drained -> idle, verdict golden mismatch
+build answering every 8th request with an error: 160 served, 0 refused, 5 on version 8; latency P95 187.5 ms; stable version 7, document version 7
+  500.0 ms begin -> warming
+  1020.7 ms warm -> warming
+  1020.7 ms warm -> warming
+  1020.7 ms warm -> canary, share 20 percent
+  2520.7 ms window -> revert, verdict error budget spent
+  2667.6 ms drained -> idle, verdict error budget spent
+recorded (chapter 172, 8 requests at 10 times speed), 2 replicas per build, one step of 50 percent:
+good build: 8 served, 0 refused, 4 on version 8; latency P95 614.5 ms; stable version 8, document version 8
+  0.0 ms begin -> warming
+  520.7 ms warm -> warming
+  520.7 ms warm -> canary, share 50 percent
+  1120.7 ms window -> canary, share 50 percent, verdict wait
+  1720.7 ms window -> verified, share 50 percent, verdict pass
+  1720.7 ms promote -> retire, verdict pass
+  1830.5 ms drained -> idle, verdict pass

@@ -1,0 +1,245 @@
+// Chapter 179's check helpers, loaded by psionic/lib/serve-rollout.coax and
+// owned by its checks: the hand-traced rollout, a brute-force controller
+// written as a table of which events each phase accepts, random walks
+// through it, random rollouts, and the invariants a finished rollout must
+// keep, recomputed from its requests alone.
+
+// Builds of one model under chapter 177's profile; the digest is the
+// version times 1001.
+rox_doc :: (v:int)->RoDoc {return RoDoc.{version=v,model="gpt-oss-20b",profile="rr-route-v1",digest=v*1001};}
+rox_build :: (v:int)->RoBuild {return RoBuild.{doc=rox_doc(v),digest=v*1001,golden_ok=true,slow_pct=100};}
+// Two steps of 10 and 50 percent, two new replicas, 5 samples a window, a
+// P95 objective of 250 ms, a 5 percent error budget, windows of 1 s.
+rox_plan :: ()->RoPlan {return RoPlan.{nsteps=2,steps=[4]int.[10,50,0,0],replicas=2,samples=5,p95_us=250000,error_pct=5,window_us=1000000};}
+rox_same :: (a:RoState,b:RoState)->bool {
+    return a.phase==b.phase && a.stable.version==b.stable.version && a.other.version==b.other.version && a.doc.version==b.doc.version
+        && a.share==b.share && a.step==b.step && a.warm==b.warm && a.served==b.served && a.errors==b.errors
+        && a.seen==b.seen && a.sent==b.sent && a.verdict==b.verdict && a.doc.digest==b.doc.digest && a.other.digest==b.other.digest;
+}
+rox_log :: (l:RoLog,at:int,e:RoEvent,r:RoRefusal,p:RoPhase,share:int,v:RoVerdict)->bool {
+    return l.at==at && l.event==e && l.refusal==r && l.phase==p && l.share==share && l.verdict==v;
+}
+
+// The hand-traced rollout: one old replica, one new one that starts in
+// 100 ms and runs 3 times as slow as modeled, one step of 50 percent, one
+// sample a window, a P95 objective of 100 ms, a window of 200 ms. Six
+// requests of 8 prompt tokens and 2 output tokens, none sharing a prefix.
+rox_hand_run :: ()->RoRun {
+    c:=rrx_sim_config();c.replicas=1;
+    p:=RoPlan.{nsteps=1,steps=[4]int.[50,0,0,0],replicas=1,samples=1,p95_us=100000,error_pct=5,window_us=200000};
+    n:=rox_build(8);n.slow_pct=300;
+    return RoRun.{cfg=c,plan=p,stable=rox_build(7),cand=n,begin_us=0,cold_us=100000};
+}
+rox_hand_requests :: ()->[6]RrRequest {
+    q:[6]RrRequest;at:=[6]int.[0,150000,160000,170000,290000,320000];
+    for i:0..<6 {q[i]=RrRequest.{arrive=at[i],prompt=8,output=2};}
+    return q;
+}
+rox_tok :: ()->[192]int {t:[192]int;for i:0..<192 {t[i]=i/32*100+i%32+1;}return t;}
+
+// The chapter's runs: 3 old replicas and 3 new ones on chapter 177's fleet,
+// the rollout beginning at 500 ms, a cold start from chapter 178's receipt,
+// steps of 20 and 50 percent, 3 samples a window, windows of 1.5 s.
+rox_good :: ()->RoBuild {return rox_build(8);}
+rox_run :: (n:RoBuild)->RoRun {
+    c:=rrx_fleet_config(RrPolicy.affinity);c.replicas=3;
+    p:=RoPlan.{nsteps=2,steps=[4]int.[20,50,0,0],replicas=3,samples=3,p95_us=250000,error_pct=5,window_us=1500000};
+    return RoRun.{cfg=c,plan=p,stable=rox_build(7),cand=n,begin_us=500000,cold_us=RR_COLD_RECORD_US};
+}
+rox_world :: (gap:int)->RrxRequests {return rrx_requests(gap);}
+rox_recorded :: ()->RrxRequests {
+    w:RrxRequests;rec:=RRX_RECORDED;
+    #assert rr_recorded(rec[..],1000,8,w.req[..],w.tok[..])==BnStatus.ok;
+    return w;
+}
+// Frozen from the runs shown in chapter 179: the stable version at the
+// end, requests served by the new build, refused requests, the latency
+// P95 over every request, and the last event's time.
+rox_frozen :: (s:RoSim,reqs:[]RrRequest,stable:int,on_new:int,refused:int,l95:int,end:int)->bool {
+    p:=rr_report(s.run,reqs);n:=0;
+    for i:0..<reqs.count {if s.ver[i]==8 {n+=1;}}
+    return s.status==RrStatus.ok && s.state.phase==RoPhase.idle && s.state.stable.version==stable && s.state.doc.version==stable
+        && n==on_new && p.refused==refused && p.latency.p[2]==l95 && s.run.end==end;
+}
+
+// The brute-force controller. Which events each phase accepts, as a table
+// (rows: idle, warming, canary, verified, retire, revert; columns: begin,
+// warm, window, promote, rollback, drained). 1 accepts; 2 refuses a
+// promotion for want of a verdict; 0 refuses for the phase.
+ROX_TABLE :: [36]int.[
+    1,0,0,0,0,0,
+    0,1,0,2,1,0,
+    0,0,1,2,1,0,
+    0,0,0,1,1,0,
+    0,0,0,0,0,1,
+    0,0,0,0,0,1];
+rox_step :: (p:RoPlan,s:RoState,x:RoInput)->RoStep {
+    cell:=ROX_TABLE[cast(int)s.phase*6+cast(int)x.event];
+    if cell==0 {return RoStep.{state=s,refusal=RoRefusal.phase};}
+    if cell==2 {return RoStep.{state=s,refusal=RoRefusal.verdict};}
+    n:=s;
+    // Reverting: share 0, counters cleared, the reason kept.
+    back:=s;back.phase=RoPhase.revert;back.share=0;back.seen=0;back.sent=0;
+    if x.event==RoEvent.begin {
+        good:=p.nsteps>=1 && p.nsteps<=4 && p.replicas>=1 && p.replicas<=8 && p.samples>=1 && p.p95_us>=1 && p.error_pct>=0 && p.error_pct<=100 && p.window_us>=1;
+        for k:0..<4 {if k<p.nsteps && (p.steps[k]<1 || p.steps[k]>99 || (k>0 && p.steps[k]<=p.steps[k-1])) {good=false;}}
+        if !good {return RoStep.{state=s,refusal=RoRefusal.shape};}
+        if x.doc.model!=s.stable.model || x.doc.profile!=s.stable.profile || x.doc.digest!=x.digest {return RoStep.{state=s,refusal=RoRefusal.capability};}
+        if !(x.doc.version>s.stable.version) {return RoStep.{state=s,refusal=RoRefusal.stale};}
+        n=RoState.{};n.phase=RoPhase.warming;n.stable=s.stable;n.doc=s.stable;n.other=x.doc;
+    }
+    if x.event==RoEvent.warm {
+        if !x.ok {n=back;n.verdict=RoVerdict.golden;}
+        else if s.warm+1<p.replicas {n.warm=s.warm+1;}
+        else {n.warm=s.warm+1;n.phase=RoPhase.canary;n.share=p.steps[0];}
+    }
+    if x.event==RoEvent.window {
+        o:=x.obs;
+        if o.served<0 || o.errors<0 || o.errors>o.served || o.p95_us<0 || o.golden_bad<0 {return RoStep.{state=s,refusal=RoRefusal.shape};}
+        n.served=s.served+o.served;n.errors=s.errors+o.errors;
+        // Fractions as rationals: errors / served over error_pct / 100.
+        v:=RoVerdict.pass;
+        if o.p95_us>p.p95_us {v=RoVerdict.slow;}
+        if n.served>0 && n.errors*100>n.served*p.error_pct {v=RoVerdict.errors;}
+        if n.served==0 && n.errors>0 {v=RoVerdict.errors;}
+        if o.served<p.samples {v=RoVerdict.wait;}
+        if o.golden_bad>0 {v=RoVerdict.golden;}
+        n.verdict=v;
+        if v==RoVerdict.pass {
+            n.step=s.step+1;n.seen=0;n.sent=0;
+            if n.step==p.nsteps {n.phase=RoPhase.verified;} else {n.share=p.steps[n.step];}
+        } else if v!=RoVerdict.wait {
+            back.served=n.served;back.errors=n.errors;n=back;n.verdict=v;
+        }
+    }
+    if x.event==RoEvent.promote {
+        n=RoState.{};n.phase=RoPhase.retire;n.stable=s.other;n.doc=s.other;n.other=s.stable;n.verdict=s.verdict;n.served=s.served;n.errors=s.errors;
+    }
+    if x.event==RoEvent.rollback {
+        if x.to!=s.stable.version {return RoStep.{state=s,refusal=RoRefusal.unknown};}
+        n=back;n.verdict=RoVerdict.none;
+    }
+    if x.event==RoEvent.drained {
+        n=RoState.{};n.phase=RoPhase.idle;n.stable=s.stable;n.doc=s.stable;n.verdict=s.verdict;
+    }
+    return RoStep.{state=n};
+}
+
+// A random walk of 16 inputs from version 7, with plans, documents and
+// observations that are sometimes out of bounds; every step must match the
+// table and keep the invariants.
+rox_walk :: (seed:int) {
+    h:=pgx_next(seed*48271+11);
+    p:=rox_plan();p.nsteps=1+h/65536%3;h=pgx_next(h);p.steps=[4]int.[5+h/65536%10,30,60,0];h=pgx_next(h);
+    p.replicas=1+h/65536%3;h=pgx_next(h);p.samples=1+h/65536%4;h=pgx_next(h);p.error_pct=h/65536%11;h=pgx_next(h);
+    if h/65536%10==0 {p.steps[1]=p.steps[0];}
+    h=pgx_next(h);
+    s:=ro_init(rox_doc(7));
+    for t:0..<16 {
+        x:=RoInput.{event=cast(RoEvent)cast(u8)(h/65536%6)};h=pgx_next(h);
+        // Mostly the events the phase expects, so walks reach every phase.
+        if h/65536%3>0 {
+            if s.phase==RoPhase.idle {x.event=RoEvent.begin;}
+            if s.phase==RoPhase.warming {x.event=RoEvent.warm;}
+            if s.phase==RoPhase.canary {x.event=RoEvent.window;}
+            if s.phase==RoPhase.verified {x.event=RoEvent.promote;}
+            if s.phase==RoPhase.retire || s.phase==RoPhase.revert {x.event=RoEvent.drained;}
+        }
+        h=pgx_next(h);
+        x.doc=rox_doc(s.stable.version-1+h/65536%4);h=pgx_next(h);x.digest=x.doc.digest;
+        k:=h/65536%16;h=pgx_next(h);
+        if k==0 {x.doc.model="gpt-oss-120b";}if k==1 {x.doc.profile="rr-route-v2";}if k==2 {x.digest+=1;}
+        x.ok=h/65536%8>0;h=pgx_next(h);
+        x.obs=RoObs.{served=h/65536%12,errors=h/65536/13%3,p95_us=200000+h/65536/7%100000,golden_bad=ifx h/65536%17==0 then 1 else 0};h=pgx_next(h);
+        if h/65536%19==0 {x.obs.served=-1;}if h/65536%23==0 {x.obs.p95_us=-1;}if h/65536%29==0 {x.obs.golden_bad=-1;}
+        h=pgx_next(h);
+        x.to=ifx h/65536%4>0 then s.stable.version else s.stable.version+1;h=pgx_next(h);
+        r:=ro_step(p,s,x);b:=rox_step(p,s,x);
+        #assert r.refusal==b.refusal && rox_same(r.state,b.state);
+        n:=r.state;
+        // A refusal changes nothing. The published document is always the stable build's.
+        if r.refusal!=RoRefusal.none {#assert rox_same(n,s);}
+        #assert n.doc.version==n.stable.version && n.doc.digest==n.stable.digest && n.doc.model==n.stable.model;
+        // Traffic goes to the other build only in a canary or after its verdict, at a planned share.
+        if n.phase==RoPhase.canary {#assert n.share==p.steps[n.step] && n.step<p.nsteps;}
+        else if n.phase==RoPhase.verified {#assert n.share==p.steps[p.nsteps-1];}
+        else {#assert n.share==0;}
+        if n.phase==RoPhase.idle {#assert n.other.version==0;} else {#assert n.other.version!=n.stable.version;}
+        // The stable build changes only by promotion, to a newer version.
+        if n.stable.version!=s.stable.version {#assert x.event==RoEvent.promote && s.phase==RoPhase.verified && n.stable.version>s.stable.version && n.other.version==s.stable.version;}
+        s=n;
+    }
+}
+
+// What a finished rollout must keep, recomputed from its requests.
+run_page :: (ro:RoRun)->int {return ro.cfg.pages.page;}
+rox_check :: (s:RoSim,ro:RoRun,reqs:[]RrRequest) {
+    #assert s.status==RrStatus.ok;
+    v0:=ro.stable.doc.version;v1:=ro.cand.doc.version;
+    // When the canary took traffic: from the log's first canary to the
+    // input that left canary or verified.
+    from:=RR_NEVER;until:=RR_NEVER;promoted:=RR_NEVER;
+    for j:0..<cb_min(s.inputs,32) {
+        l:=s.log[j];
+        if l.refusal!=RoRefusal.none {continue;}
+        if l.phase==RoPhase.canary && from==RR_NEVER {from=l.at;}
+        if (l.phase==RoPhase.revert || l.phase==RoPhase.retire) && until==RR_NEVER {until=l.at;}
+        if l.event==RoEvent.promote {promoted=l.at;}
+    }
+    #assert s.inputs<=32;
+    for i:0..<reqs.count {
+        f:=s.run.fate[i];r:=reqs[i];
+        // The client's requests in flight at its arrival (finishes at that instant come first).
+        held:=0;
+        for j:0..<i {g:=s.run.fate[j];if g.refusal==RrRefusal.none && reqs[j].client==r.client && g.finish>r.arrive {held+=1;}}
+        if f.refusal==RrRefusal.client {#assert held>=ro.cfg.share;}
+        if f.refusal==RrRefusal.none {#assert held<ro.cfg.share;}
+        if f.refusal!=RrRefusal.none {#assert s.ver[i]== -1 && s.served_by[i]== -1 && f.finish== -1 && f.start== -1 && f.first== -1;continue;}
+        // Nothing dropped; served on the build it was routed to.
+        #assert f.finish>=f.first && f.first>f.start && f.start>=r.arrive && s.served_by[i]==s.ver[i];
+        #assert s.ver[i]==v0 || s.ver[i]==v1;
+        // Its build's time: chapter 175's step model, stretched by the build's speed.
+        b:=ifx s.ver[i]==v1 then ro.cand else ro.stable;
+        rows:=r.prompt-f.reused*ro.cfg.pages.page;
+        #assert f.finish-f.start==(17792472+(rows-1)*1459182+(r.output-1)*17792472)/1000*b.slow_pct/100;
+        #assert f.first-f.start==(17792472+(rows-1)*1459182)/1000*b.slow_pct/100;
+        // Its predicted cost when routed counted some whole number of cached blocks.
+        priced:=false;
+        for c:0..<8 {if c*run_page(ro)<r.prompt && f.pred==(17792472+(r.prompt-c*run_page(ro)-1)*1459182+(r.output-1)*17792472)/1000 {priced=true;}}
+        #assert priced;
+        #assert s.err[i]==(b.err_every>0 && (i+1)%b.err_every==0);
+        // The published document at its arrival, and the build that served it.
+        if s.doc[i]==v1 {#assert s.ver[i]==v1 && r.arrive>=promoted;}
+        else {#assert s.doc[i]==v0 && r.arrive<=promoted;}
+        if s.ver[i]==v1 && s.doc[i]==v0 {#assert r.arrive>=from && r.arrive<until;}
+        // One request at a time on a replica, in the order they were routed.
+        for j:0..<i {
+            g:=s.run.fate[j];
+            if g.refusal==RrRefusal.none && g.replica==f.replica && s.ver[j]==s.ver[i] {#assert g.finish<=f.start || g.start>=f.finish;}
+        }
+    }
+    n:=0;for k:1..<5 {n+=s.run.refused[k];}
+    m:=0;for i:0..<reqs.count {if s.run.fate[i].refusal!=RrRefusal.none {m+=1;}}
+    hit:=0;for i:0..<reqs.count {if s.run.fate[i].refusal==RrRefusal.none {hit+=s.run.fate[i].reused;}}
+    #assert n==m && s.run.refused[0]==0 && s.run.hit==hit;
+    // Replicas stopped: the losing build's, once the rollout is over; none while it runs.
+    stopped:=0;
+    if s.state.phase==RoPhase.idle && s.inputs>1 {stopped=ifx s.state.stable.version==v1 then ro.cfg.replicas else ro.plan.replicas;}
+    #assert s.run.downs==stopped;
+    // Every request is done before the rollout's last input or the end.
+    for i:0..<reqs.count {#assert s.run.fate[i].finish<=s.run.end;}
+}
+
+// Random rollouts: 8 to 40 requests from chapter 172's schedule, 1 to 4
+// old replicas, 1 to 4 new ones, random plans, starts, speeds and errors.
+RoxWorld :: struct {ro:RoRun;n:int;req:[40]RrRequest;tok:[1280]int;}
+rox_random :: (seed:int)->RoxWorld {
+    w:RoxWorld;h:=pgx_next(seed*7907+29);
+    t:=rrx_traffic(seed);w.n=t.n;w.req=t.req;w.tok=t.tok;
+    c:=t.cfg;c.replicas=1+h/65536%4;h=pgx_next(h);
+    p:=RoPlan.{nsteps=1+h/65536%3,steps=[4]int.[10,40,70,0],replicas=1+h/65536/5%4,samples=1+h/65536/9%3,p95_us=150000+h/65536%400000,error_pct=h/65536%20,window_us=100000+h/65536%400000};h=pgx_next(h);
+    n:=rox_build(8);n.golden_ok=h/65536%5>0;n.slow_pct=100+h/65536/7%3*100;n.err_every=[4]int.[0,1,3,8][h/65536/11%4];h=pgx_next(h);
+    o:=rox_build(7);o.err_every=[3]int.[0,1,5][h/65536%3];h=pgx_next(h);
+    w.ro=RoRun.{cfg=c,plan=p,stable=o,cand=n,begin_us=h/65536%800000,cold_us=h/65536/3%300000};
+    return w;
+}

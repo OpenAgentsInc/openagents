@@ -1932,6 +1932,26 @@
       ]
     },
     {
+      "source": "psionic/examples/serve-rollout.coax",
+      "chapter": "psionic/book/ch179-ship-without-downtime.md",
+      "stdout": "psionic/fixtures/serve-rollout/serve-rollout.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/serve-rollout-refuse.coax",
+      "chapter": "psionic/book/ch179-ship-without-downtime.md",
+      "stdout": "psionic/fixtures/serve-rollout/serve-rollout-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-meter.coax",
       "chapter": "psionic/book/ch180-observe-meter-and-price.md",
       "stdout": "psionic/fixtures/serve-meter/serve-meter.out",

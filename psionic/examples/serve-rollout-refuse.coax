@@ -1,0 +1,37 @@
+// Chapter 179: what the rollout controller refuses. Each refused input
+// leaves the state as it was: version 7 stays stable and published.
+#import "Basic";
+#load "../lib/serve-rollout.coax";
+
+say :: (what:string,r:RoStep) {
+    print("%: ",what);
+    if r.refusal==RoRefusal.none {print("accepted, % now\n",ro_phase_name(r.state.phase));}
+    else {print("refused, %; still %, version % published\n",ro_refusal_name(r.refusal),ro_phase_name(r.state.phase),r.state.doc.version);}
+}
+
+// book:begin main
+main :: () {
+    p:=rox_plan();s:=ro_init(rox_doc(7));
+    d:=rox_doc(8);d.model="gpt-oss-120b";
+    say("begin version 8 whose document names gpt-oss-120b",ro_step(p,s,RoInput.{event=RoEvent.begin,doc=d,digest=8008}));
+    d=rox_doc(8);d.profile="rr-route-v2";
+    say("begin version 8 under profile rr-route-v2",ro_step(p,s,RoInput.{event=RoEvent.begin,doc=d,digest=8008}));
+    say("begin version 8 whose replicas load digest 8009",ro_step(p,s,RoInput.{event=RoEvent.begin,doc=rox_doc(8),digest=8009}));
+    say("begin version 6",ro_step(p,s,RoInput.{event=RoEvent.begin,doc=rox_doc(6),digest=6006}));
+    say("promote with no rollout",ro_step(p,s,RoInput.{event=RoEvent.promote}));
+    w:=ro_step(p,s,RoInput.{event=RoEvent.begin,doc=rox_doc(8),digest=8008});
+    say("begin version 8",w);
+    say("promote while warming",ro_step(p,w.state,RoInput.{event=RoEvent.promote}));
+    c:=ro_step(p,ro_step(p,w.state,RoInput.{event=RoEvent.warm,ok=true}).state,RoInput.{event=RoEvent.warm,ok=true});
+    say("two replicas warm",c);
+    say("promote in the canary, before its verdict",ro_step(p,c.state,RoInput.{event=RoEvent.promote}));
+    say("a window with 6 errors in 5 requests",ro_step(p,c.state,RoInput.{event=RoEvent.window,obs=RoObs.{served=5,errors=6}}));
+    say("roll back to version 5",ro_step(p,c.state,RoInput.{event=RoEvent.rollback,to=5}));
+    say("roll back to version 8",ro_step(p,c.state,RoInput.{event=RoEvent.rollback,to=8}));
+    say("roll back to version 7",ro_step(p,c.state,RoInput.{event=RoEvent.rollback,to=7}));
+    x:=p;x.steps[1]=10;
+    say("begin with steps of 10 and 10 percent",ro_step(x,s,RoInput.{event=RoEvent.begin,doc=rox_doc(8),digest=8008}));
+    q:=rox_hand_requests();t:=rox_tok();ro:=rox_hand_run();ro.plan.replicas=8;
+    print("simulate 1 old and 8 new replicas: %\n",rr_status_name(ro_sim(ro,q[..],t[..]).status));
+}
+// book:end main

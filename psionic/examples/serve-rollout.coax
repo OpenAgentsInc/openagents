@@ -1,0 +1,46 @@
+// Chapter 179: the hand-traced canary, then four rollouts of version 8
+// over version 7 on chapter 177's synthetic traffic (a good build, a slow
+// one, a wrong one and one that errors), then one on chapter 172's
+// recorded schedule.
+#import "Basic";
+#load "../lib/serve-rollout.coax";
+
+// Microseconds as milliseconds with one decimal.
+ms :: (us:int) {print("%.%",us/1000,us/100%10);}
+show :: (name:string,s:RoSim,reqs:[]RrRequest) {
+    p:=rr_report(s.run,reqs);moved:=0;
+    for i:0..<reqs.count {if s.ver[i]==8 {moved+=1;}}
+    print("%: % served, % refused, % on version 8; latency P95 ",name,p.served,p.refused,moved);ms(p.latency.p[2]);
+    print(" ms; stable version %, document version %\n",s.state.stable.version,s.state.doc.version);
+    for j:0..<s.inputs {
+        l:=s.log[j];
+        print("  ");ms(l.at);print(" ms % -> %",ro_event_name(l.event),ro_phase_name(l.phase));
+        if l.share>0 {print(", share % percent",l.share);}
+        if l.verdict!=RoVerdict.none {print(", verdict %",ro_verdict_name(l.verdict));}
+        if l.refusal!=RoRefusal.none {print(", refused: %",ro_refusal_name(l.refusal));}
+        print("\n");
+    }
+}
+
+// book:begin main
+main :: () {
+    q:=rox_hand_requests();t:=rox_tok();
+    s:=ro_sim(rox_hand_run(),q[..],t[..]);
+    print("hand trace (%):\n",RO_PROFILE);
+    for i:0..<6 {f:=s.run.fate[i];print("  request %: version %, start % us, finish % us\n",i,s.ver[i],f.start,f.finish);}
+    show("hand trace",s,q[..]);
+
+    w:=rox_world(60000);off:RrScaler;c:=rrx_fleet_config(RrPolicy.affinity);c.replicas=3;
+    p:=rr_report(rr_sim(c,off,w.req[..],w.tok[..]),w.req[..]);
+    print("synthetic, mean gap 60 ms, 160 requests; no rollout on 3 replicas: latency P95 ");ms(p.latency.p[2]);print(" ms\n");
+    show("good build",ro_sim(rox_run(rox_good()),w.req[..],w.tok[..]),w.req[..]);
+    b:=rox_good();b.slow_pct=300;show("slow build (3 times the step model)",ro_sim(rox_run(b),w.req[..],w.tok[..]),w.req[..]);
+    b=rox_good();b.golden_ok=false;show("wrong build (golden warm-up differs)",ro_sim(rox_run(b),w.req[..],w.tok[..]),w.req[..]);
+    b=rox_good();b.err_every=8;show("build answering every 8th request with an error",ro_sim(rox_run(b),w.req[..],w.tok[..]),w.req[..]);
+
+    r:=rox_recorded();ro:=rox_run(rox_good());ro.cfg.replicas=2;ro.plan.replicas=2;ro.plan.samples=1;
+    ro.plan.nsteps=1;ro.plan.steps[0]=50;ro.plan.window_us=600000;ro.plan.p95_us=700000;ro.begin_us=0;
+    print("recorded (chapter 172, 8 requests at 10 times speed), 2 replicas per build, one step of 50 percent:\n");
+    show("good build",ro_sim(ro,r.req[0..<8],r.tok[..]),r.req[0..<8]);
+}
+// book:end main
