@@ -8,9 +8,10 @@
 > Worker, and when a Worker ends the Router writes its reply to the outbox
 > and, for a GitHub source that asks for it, posts it on the issue. The
 > offline smoke, a live System One check and a live read-only GitHub poll
-> cover it. Still to come: chat sources, a Router model for replies
-> that need more than the Worker's result, batching, inline and spill, chain
-> of recall, acting ahead, many-to-many subscriptions, and the ablation.
+> cover it. The candidates of one pass are decided together, in one System
+> One request. Still to come: chat sources, a Router model for replies that
+> need more than the Worker's result, inline and spill, chain of recall,
+> acting ahead, many-to-many subscriptions, and the ablation.
 
 Chapters1–19 build one session well. A person can follow only three to
 five active sessions at once, so past that point the limit is their attention,
@@ -166,6 +167,24 @@ In the live check, with the `chat` policy above, "the build on main is
 failing in the parser tests, can someone fix it?" started a Worker, and
 "anyone want lunch at noon?" was dropped.
 
+### Batching
+
+The candidates that arrive between two passes enter one request together
+(`rt_batch` in [router.coax](../../coder/tui/router.coax)). The state is
+`{"events":[{"n":0,"event":{...},"policy":...},...]}`, each event's text cut
+to 1,500 bytes, with one yes-or-no question per event, `e0`, `e1` and so on.
+A batch holds at most eight events, and the rest wait for the next pass,
+two seconds later. Each pass writes a `batch` line to the Router's log with
+the number of events, the request's time and whether System One answered.
+
+In the live check, one request decided six events from a `candidate`
+source in 506 ms. It started Workers for "can you fix the flaky parser
+test", "please review the change to router.coax for races" and "the build
+fails on linux, investigate why", and dropped "thanks, that looks great!",
+"good morning all" and "lol". A request for one event took 209 to 249 ms,
+and one for eight took 252 to 319 ms: about 36 ms a decision instead of
+about 227.
+
 ### Workers and subscription
 
 A Worker is a background Coder session (chapter14): the Router runs `coder
@@ -252,7 +271,9 @@ replying twice.
   floor. The DeepSeek team's indicative result was 12.4 and 15.7 minutes
   against 13.8 and 29.0 minutes, with pass-through cutting Router
   cache-read tokens by about 37%; Psionic records its own numbers.
-- **Batching.** With a real Psionic-served Router model and mock Workers, raise
+- **Batching.** Batches of up to eight decisions run on mammoth-1 (see
+  [Batching](#batching)). Still to measure: with a real Psionic-served
+  Router model and mock Workers, raise
   the arrival rate of Triggers that need a decision from 1 to 40 per minute.
   Report mean batch size, time per request and amortized time per decision at
   each rate, and the rate where decision accuracy on a labelled set first

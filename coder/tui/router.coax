@@ -306,18 +306,6 @@ rt_ask :: (state: string, question: string, why: [] u8, nwhy: [] int) -> int {
   return ifx p.value >= 0.5 then 1 else 0;
 }
 
-// Whether a candidate asks for work, under the source's written policy.
-rt_decide :: (t: RtTrigger, policy: string, why: [] u8, nwhy: [] int) -> int {
-  sb: [32768] u8;
-  n := json_raw(sb[..], 0, "{\"event\":{\"source\":"); n = json_write_string(sb[..], n, t.source);
-  n = json_raw(sb[..], n, ",\"thread\":"); n = json_write_string(sb[..], n, t.thread);
-  n = json_raw(sb[..], n, ",\"author\":"); n = json_write_string(sb[..], n, t.author);
-  n = json_raw(sb[..], n, ",\"text\":"); n = json_write_string(sb[..], n, t.text);
-  n = json_raw(sb[..], n, "},\"policy\":"); n = json_write_string(sb[..], n, policy);
-  n = json_raw(sb[..], n, "}");
-  if n < 0 { nwhy[0] = cd_cat(why, 0, "the event is too long to decide"); return -1; }
-  return rt_ask(cast(string) sb[0..<n], "Under the policy, does this event ask the coding agent to do work now (a change, a fix, a review, an answer only the agent can give)?", why, nwhy);
-}
 
 // Whether a quiet Worker is still making progress toward its task, from the end of its log.
 rt_progress :: (task: string, wlog: string, why: [] u8, nwhy: [] int) -> int {
@@ -502,12 +490,131 @@ rt_deliver_github :: (repo: string, number: string, body: string, out: [] u8) ->
 // ---------------------------------------------------------------- the loop
 
 // One pass over the inbox: every event's fate, oldest file first. How many events.
+// ---------------------------------------------------------------- batching
+// The events of one pass that need a System One decision enter one request
+// together, one yes-or-no question each (e0, e1, ...), up to RT_BATCH; the
+// rest wait for the next pass. Prefill reads the shared state once, so the
+// time per decision falls as the batch grows.
+
+RT_BATCH :: 8;
+RT_BATCH_TEXT :: 1500;      // each event's text in the state, cut to this many bytes
+RT_BATCH_NAMES :: [8] string.["e0", "e1", "e2", "e3", "e4", "e5", "e6", "e7"];
+
+RtBatch :: struct {
+  n: int;
+  names: [RT_BATCH] [128] u8; nnames: [RT_BATCH] int;    // inbox file names
+  d: [RT_BATCH] int;                                      // 1 work, 0 no work, -1 no decision
+  why: [1024] u8; nwhy: int;
+  ms: int;
+}
+
+// One candidate into the batch's state: {"n":K,"event":{...},"policy":P}.
+rt_batch_add :: (sb: [] u8, n0: int, k: int, t: RtTrigger, policy: string) -> int {
+  n := json_raw(sb, n0, ifx k > 0 then ",{\"n\":" else "{\"n\":"); n = json_write_int(sb, n, k);
+  n = json_raw(sb, n, ",\"event\":{\"source\":"); n = json_write_string(sb, n, t.source);
+  n = json_raw(sb, n, ",\"thread\":"); n = json_write_string(sb, n, t.thread);
+  n = json_raw(sb, n, ",\"author\":"); n = json_write_string(sb, n, t.author);
+  n = json_raw(sb, n, ",\"text\":"); n = json_write_string(sb, n, cast(string) t.text[0..<ifx t.text.count > RT_BATCH_TEXT then RT_BATCH_TEXT else t.text.count]);
+  n = json_raw(sb, n, "},\"policy\":"); n = json_write_string(sb, n, policy);
+  return json_raw(sb, n, "}");
+}
+
+// Decides the batch's events in one System One request.
+rt_batch_decide :: (bt: [] RtBatch, state: string) {
+  for i: 0..<bt[0].n { bt[0].d[i] = -1; }
+  cb: [1] SoClient; kb: [512] u8;
+  w := cd_so_keyed(cb[..], kb[..]);
+  if w.count > 0 { bt[0].nwhy = cd_cat(bt[0].why[..], 0, w); return; }
+  buf: [65536] u8; b: [1] SoBody;
+  so_begin(b[..], buf[..], SO_MAMMOTH, "");
+  so_state_json(b[..], state);
+  names := RT_BATCH_NAMES;
+  for i: 0..<bt[0].n {
+    qb: [256] u8; tb: [16] u8;
+    q := cd_cat(qb[..], 0, "Under its policy, does event n="); q = cd_cat(qb[..], q, cd_itoa(i, tb[..]));
+    q = cd_cat(qb[..], q, " ask the coding agent to do work now (a change, a fix, a review, an answer only the agent can give)?");
+    so_noul(b[..], names[i], cast(string) qb[0..<q]);
+  }
+  out: [65536] u8; err: [4096] u8;
+  t0 := cxproc_wall_us();
+  res := so_decide(cb[0], b[..], out[..], err[..]);
+  bt[0].ms = (cxproc_wall_us() - t0) / 1000;
+  for i: 0..<kb.count { kb[i] = 0; }
+  if res.problem.count > 0 { bt[0].nwhy = cd_cat(bt[0].why[..], 0, ifx res.stderr.count > 0 then res.stderr else res.problem); return; }
+  for i: 0..<bt[0].n {
+    pv := so_noul_of(res.body, names[i]);
+    bt[0].d[i] = ifx !pv.ok then -1 else (ifx pv.value >= 0.5 then 1 else 0);
+  }
+}
+
+// The batch index of inbox file name, or -1.
+rt_batch_find :: (bt: [] RtBatch, name: string) -> int {
+  for i: 0..<bt[0].n { if cast(string) bt[0].names[i][0..<bt[0].nnames[i]] == name { return i; } }
+  return -1;
+}
+
+// The trigger in an inbox file's text.
+rt_trigger_of :: (ar: [] ClArena, text: string, name: string) -> RtTrigger {
+  t: RtTrigger;
+  t.id = cl_str(ar, text, "id"); t.source = cl_str(ar, text, "source"); t.thread = cl_str(ar, text, "thread");
+  t.author = cl_str(ar, text, "author"); t.text = cl_str(ar, text, "text");
+  ta := cl_bool(text, "to_agent"); t.to_agent = ta.ok && ta.value;
+  if t.id.count == 0 { t.id = cast(string) name[0..<name.count - 5]; }
+  return t;
+}
+
+// Gathers this pass's candidates and decides them in one request.
+rt_batch :: (p: [] RtPaths, th: [] RtThreads, sources: string, watched: string, bt: [] RtBatch, json: bool) {
+  bt[0].n = 0; bt[0].nwhy = 0; bt[0].ms = 0;
+  l_b: [1] FsList; l := l_b[..];
+  ib: [1300] u8; inbox := rt_path(p, "/inbox", ib[..]);
+  n := fs_list(inbox, l);
+  sb: [16384] u8; sn := json_raw(sb[..], 0, "{\"events\":[");
+  for i: 0..<n {
+    if bt[0].n == RT_BATCH { break; }
+    name := fs_entry(l, i);
+    if name.count < 6 || name.count > 128 || cast(string) name[name.count - 5..<name.count] != ".json" { continue; }
+    pb: [1500] u8; pn := cd_cat(pb[..], 0, inbox); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, name);
+    tb: [65536] u8; tn := fs_read(cast(string) pb[0..<pn], tb[..]);
+    if tn <= 0 { continue; }
+    ab: [131072] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    t := rt_trigger_of(ar[..], cast(string) tb[0..<tn], name);
+    policy := rt_source(ar[..], sources, t.source);
+    mode := ifx policy.count > 0 then cl_str(ar[..], policy, "mode") else "";
+    if t.thread.count > 0 && rt_has_line(watched, t.thread) { t.to_agent = true; }
+    if rt_fast(t, mode, policy.count > 0 && rt_author_ok(ar[..], policy, t.author), rt_thread_find(th, t.thread) >= 0) != RT_ASK { continue; }
+    m := rt_batch_add(sb[..], sn, bt[0].n, t, cl_str(ar[..], policy, "policy"));
+    if m < 0 || m > sb.count - 4 { break; }      // the state is full: the rest wait
+    sn = m;
+    bt[0].nnames[bt[0].n] = cd_cat(bt[0].names[bt[0].n][..], 0, name);
+    bt[0].n += 1;
+  }
+  if bt[0].n == 0 { return; }
+  sn = json_raw(sb[..], sn, "]}");
+  rt_batch_decide(bt, cast(string) sb[0..<sn]);
+  ob: [512] u8; tb2: [24] u8;
+  k := json_raw(ob[..], 0, "{\"kind\":\"batch\",\"events\":"); k = json_write_int(ob[..], k, bt[0].n);
+  k = json_raw(ob[..], k, ",\"ms\":"); k = json_write_int(ob[..], k, bt[0].ms);
+  k = json_raw(ob[..], k, ",\"decided\":"); k = json_raw(ob[..], k, ifx bt[0].nwhy == 0 then "true" else "false");
+  k = json_raw(ob[..], k, ",\"at_us\":"); k = json_write_int(ob[..], k, cxproc_wall_us()); k = json_raw(ob[..], k, "}\n");
+  b: [1300] u8; x := fs_append(rt_path(p, "/router/log.jsonl", b[..]), cast(string) ob[0..<k]);
+  if json { cd_out(cast(string) ob[0..<k]); }
+  else if bt[0].nwhy == 0 {
+    lb: [256] u8; m := cd_cat(lb[..], 0, "System One decided "); m = cd_cat(lb[..], m, cd_itoa(bt[0].n, tb2[..]));
+    m = cd_cat(lb[..], m, ifx bt[0].n == 1 then " event in one request (" else " events in one request (");
+    m = cd_cat(lb[..], m, cd_itoa(bt[0].ms, tb2[..])); m = cd_cat(lb[..], m, " ms)");
+    cd_outln(cast(string) lb[0..<m]);
+  }
+}
+
 rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int {
   b: [1300] u8;
   l_b: [1] FsList; l := l_b[..];
   ib: [1300] u8; inbox := rt_path(p, "/inbox", ib[..]);
   wlb: [65536] u8; wn := fs_read(rt_path(p, "/router/watched", b[..]), wlb[..]);
   watched := cast(string) wlb[0..<ifx wn > 0 then wn else 0];
+  bt: [1] RtBatch;
+  rt_batch(p, th, sources, watched, bt[..], json);
   n := fs_list(inbox, l);
   done := 0;
   for i: 0..<n {
@@ -520,11 +627,7 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
     if tn <= 0 { continue; }
     text := cast(string) tb[0..<tn];
     ab: [131072] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-    t: RtTrigger;
-    t.id = cl_str(ar[..], text, "id"); t.source = cl_str(ar[..], text, "source"); t.thread = cl_str(ar[..], text, "thread");
-    t.author = cl_str(ar[..], text, "author"); t.text = cl_str(ar[..], text, "text");
-    ta := cl_bool(text, "to_agent"); t.to_agent = ta.ok && ta.value;
-    if t.id.count == 0 { t.id = cast(string) name[0..<name.count - 5]; }
+    t := rt_trigger_of(ar[..], text, name);
     policy := rt_source(ar[..], sources, t.source);
     mode := ifx policy.count > 0 then cl_str(ar[..], policy, "mode") else "";
     k := rt_thread_find(th, t.thread);
@@ -534,9 +637,10 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
     engine := ifx policy.count > 0 then cl_str(ar[..], policy, "engine") else "";
     decided := false;
     if fate == RT_ASK {
-      wb: [1024] u8; nw: [1] int;
-      d := rt_decide(t, cl_str(ar[..], policy, "policy"), wb[..], nw[..]);
-      if d < 0 { rt_log(p, t, "dropped: no decision", "", cast(string) wb[0..<nw[0]], json); }
+      bi := rt_batch_find(bt[..], name);
+      if bi < 0 { continue; }                 // past this pass's batch: the next pass decides it
+      d := bt[0].d[bi];
+      if d < 0 { rt_log(p, t, "dropped: no decision", "", ifx bt[0].nwhy > 0 then cast(string) bt[0].why[0..<bt[0].nwhy] else "System One gave no answer for it", json); }
       else if d == 0 { rt_log(p, t, "dropped: System One said it asks for no work", "", "", json); }
       else { fate = RT_START; decided = true; }
     }

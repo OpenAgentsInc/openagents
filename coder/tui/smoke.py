@@ -489,6 +489,21 @@ def verbs(check):
         st = subprocess.run([coder, "status", w2, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("watchdog: a worker whose process died ends as lost", any(l["fate"] == "worker lost: ended" for l in r3)
               and st.returncode == 0 and json.loads(st.stdout)["state"] == "lost")
+        # batching (chapter 17): a pass's candidates go to System One in one request, at most 8; the rest wait for the next pass
+        with open(os.path.join(rdir, "sources.json"), "w") as f:
+            f.write('{"sources":{"local":{"mode":"explicit_requests_only","authors":["me"],"engine":"echo"},"spam":{"mode":"ignore","authors":["*"]},'
+                    '"team":{"mode":"candidate","authors":["*"],"engine":"echo","policy":"work on requests for changes"}}}')
+        for i in range(10):
+            trigger("message %d" % i, "--source", "team", "--author", "kim")
+        nk = dict(env); nk.pop("BASETEN_API_KEY", None)
+        def rpass():
+            r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=nk, capture_output=True, text=True, timeout=300)
+            return [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        b1, b2 = rpass(), rpass()
+        def counts(ls):
+            return ([l["events"] for l in ls if l.get("kind") == "batch"], sum(1 for l in ls if l.get("fate") == "dropped: no decision"))
+        check("router batching: eight candidates in one System One request, the other two in the next pass",
+              counts(b1) == ([8], 8) and counts(b2) == ([2], 2) and all(not l["decided"] for l in b1 + b2 if l.get("kind") == "batch"))
         # the watchdog: a worker that repeats one step is redirected, then stopped; a quiet one with no System One key is reported
         sdir = os.path.join(home, ".openagents", "coder", "sessions")
         nokey = dict(env)
