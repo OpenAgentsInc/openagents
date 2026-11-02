@@ -249,7 +249,7 @@ severity, code, message, source span, notes and proposed fixes.
 | `E0600` | invalid source load | Use #load "part.coax"; at file scope with a nonempty, NUL-free path, or #load "part.coax" as name; to bind its module to an alias. Loads are literal source inputs, never compile-time effects. |
 | `E0601` | source unit cannot be read | The resolved source must be a readable regular file. Relative paths are resolved beside the unit containing #load. |
 | `E0602` | source load cycle | A source unit loaded a canonical path that is still active. Break the cycle; completed shared dependencies load only once. |
-| `E0603` | source graph budget exceeded | One compilation admits at most 128 distinct source units, 32 active units, 16 MiB of source bytes and 512 loads per unit. Source I/O is bounded before allocation and while reading. |
+| `E0603` | source graph budget exceeded | One compilation admits at most 4096 distinct source units, 32 active units, 64 MiB of source bytes and 512 loads per unit. Source I/O is bounded before allocation and while reading. |
 | `E0604` | unbalanced source unit | In a composed program every physical source must balance its own parentheses, brackets and braces within depth 128. Declarations cannot cross a source boundary. |
 | `E0605` | invalid logical module | Write #module "engine.hud"; once per source unit, at file scope. An ID is 1 to 128 bytes of lowercase dotted segments; each segment starts with a-z and continues with a-z, 0-9 or _. |
 | `E0606` | logical module claimed twice | Two different canonical source units claimed one logical module ID. A module has one authored owner unit; its other files are #load members of it. |
