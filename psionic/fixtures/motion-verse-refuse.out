@@ -1,0 +1,8 @@
+ankle without a target: unmapped, source joint 3
+ankle to joint 65: range, source joint 3
+knee to the thigh again: twice, source joint 2
+knee to the right knee: parent, source joint 2
+8 tokens (32 frames) for a 30-frame slot: length; 8 steps and a decode for 8 passes: deadline
+splice of the refused scene: shape, the dance unchanged: true
+28 frames into a 20-frame dance: length
+a Cast with a damaged magic number: admission

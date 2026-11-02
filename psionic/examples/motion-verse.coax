@@ -1,0 +1,78 @@
+// Chapter 150: generated motion toward a destination, retargeted onto the
+// Verse character's skeleton, written into a Cast's dance slot and played
+// by verse/cast.coax, fading in from the idle and out to the walk.
+#import "Basic";
+#load "../lib/motion-verse.coax";
+
+MVX_BYTES :: 131072;
+mvx_mm :: (x:f64)->int {return cast(int)floor(x*1000+0.5);}
+mvx_v :: (p:Vec3)->[3]f64 {return [3]f64.[f64(p.x),f64(p.y),f64(p.z)];}
+mvx_far :: (a:[3]f64,b:[3]f64)->f64 {return mb_larger(abs(a[0]-b[0]),mb_larger(abs(a[1]-b[1]),abs(a[2]-b[2])));}
+
+// Verse poses the character at the origin facing +Z, or says why not.
+mvx_pose :: (b:[]u8,c:Cast,a:Anim,now:f64,out:[]Joint) {if !verse_cast_pose(b,c,a,now,0,0,0,0,out) {print("pose refused\n");}}
+
+// A front view, 4 cm a character: '#' a joint, '.' empty.
+mvx_draw :: (label:string,out:[]Joint,rig:MvRig) {
+    print("%\n",label);
+    grid:[48][24]u8;for r:0..<48 {for c:0..<24 {grid[r][c]='.';}}
+    for k:0..<rig.count {
+        p:=moved(out[k],v3(f32(rig.bind[k][0]),f32(rig.bind[k][1]),f32(rig.bind[k][2])));
+        c:=cast(int)floor(f64(p.x)/0.04+12);r:=47-cast(int)floor(f64(p.y)/0.04);
+        if r>=0 && r<48 && c>=0 && c<24 {grid[r][c]='#';}
+    }
+    for r:0..<48 {if r%2==0 {line:[24]u8;for c:0..<24 {line[c]=ifx grid[r][c]=='#' || grid[r+1][c]=='#' then '#' else '.';}print("  %\n",cast(string)line[..]);}}
+}
+
+main :: () {
+// book:begin map
+    rig:=mv_verse_rig();leg:=mv_leg();map:=mv_leg_map();
+    print("Verse skeleton: % joints; hips at % mm up, left thigh %, knee %, ankle % at % mm up\n",rig.count,mvx_mm(rig.bind[1][1]),
+        rig.parent[56],rig.parent[57],57,mvx_mm(rig.bind[57][1]));
+    check:=mv_map_check(map,leg,rig);part:=mv_sub(map,leg,rig);
+    print("map pelvis 1, hip 55, knee 56, ankle 57: %\n",check.status);
+    for j:1..<4 {print("bone %: (% % %) mm\n",j,mvx_mm(part.offset[j][0]),mvx_mm(part.offset[j][1]),mvx_mm(part.offset[j][2]));}
+    print("chains to the ankle (mm): source %, Verse %\n",mvx_mm(pose_chain_length(leg,3)),mvx_mm(pose_chain_length(part,3)));
+// book:end map
+// book:begin scene
+    s:=mv_shape();predictor:[MB_WEIGHTS_MAX]f64;decoder:[MB_WEIGHTS_MAX]f64;
+    mb_synthetic(predictor[..],mb_predictor_plan(s).count,1,1);mb_synthetic_decoder(s,decoder[..],3,0.0625);
+    budget:=MvBudget.{frames=30,passes=8};
+    scene:=mv_scene(s,predictor[..],decoder[..],7,4,0,1,budget,leg,map,rig,3);h:=scene.handoff;
+    print("scene toward (0, 1) m, 7 tokens, 4 steps: %, % frames at % fps\n",scene.status,h.frames,h.clip.convention.rate);
+    print("frame 27: generated root (mm) % % %, Verse hips height %, travel % %\n",mvx_mm(scene.clip.clip.frame[27].root[0]),
+        mvx_mm(scene.clip.clip.frame[27].root[1]),mvx_mm(scene.clip.clip.frame[27].root[2]),mvx_mm(h.clip.frame[27].root[1]),
+        mvx_mm(h.travel[27][0]),mvx_mm(h.travel[27][1]));
+    worst:=0.0;
+    for f:0..<h.frames {w:=pose_forward(h.sub,h.clip,f);for j:0..<4 {worst=mb_larger(worst,mvx_far(mv_world(h.q[f][map.target[j]],h.t[f][map.target[j]],rig.bind[map.target[j]]),w.position[j]));}}
+    print("Verse joints against chapter 147's forward kinematics: every frame within 1 nm: %\n",worst<=0.000000001);
+    jump:=mt_continuity(h.clip,h.sub,10*POSE_PI/180,0.1);
+    print("continuity: %, worst turn (millidegrees) % at frame %\n",jump.status,mvx_mm(jump.angle*180/POSE_PI),jump.turn_frame);
+    foot:=mv_contact(h,rig,57,rig.bind[57][1],0.05,0.02);
+    print("left ankle: %, touching % of % frames, lowest % mm, worst slide % mm at frame %\n",foot.status,foot.touching,h.frames,
+        mvx_mm(foot.lowest),mvx_mm(foot.slid),foot.slid_frame);
+// book:end scene
+// book:begin play
+    bytes:[MVX_BYTES]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];
+    before:=mv_digest(b);put:=mv_splice(b,h);c:=verse_cast_open(b);
+    print("Cast of % bytes: splice %, admitted %, dance % frames, digest % (was %)\n",n,put,c.ok,frames_of(b,c,Move.dancing),mv_digest(b),before);
+    again:=mv_scene(s,predictor[..],decoder[..],7,4,0,1,budget,leg,map,rig,3);copy:[MVX_BYTES]u8;m:=mv_cast_build(copy[..],30);
+    copied:=mv_splice(copy[0..<m],again.handoff);
+    print("the same destination and weights again: %, digest %\n",copied,mv_digest(copy[0..<m]));
+    a:Anim;a=verse_cast_update(b,c,a,0,false,0);a=verse_cast_dance(a);a=verse_cast_update(b,c,a,0,false,1);
+    print("at 1 s: %, fading from %\n",a.move,a.from);
+    out:[MV_JOINTS]Joint;mvx_pose(b,c,a,1.5,out[..]);
+    far:=0.0;for k:0..<rig.count {far=mb_larger(far,mvx_far(mvx_v(moved(out[k],v3(f32(rig.bind[k][0]),f32(rig.bind[k][1]),f32(rig.bind[k][2])))),mv_world(h.q[15][k],h.t[15][k],rig.bind[k])));}
+    print("at 1.5 s Verse draws dance frame 15: every joint within 10 um of the handoff: %\n",far<=0.00001);
+    hips:[3]f64;
+    for i:0..<3 {mvx_pose(b,c,a,1+0.09*f64(i),out[..]);hips[i]=f64(moved(out[1],v3(f32(rig.bind[1][0]),f32(rig.bind[1][1]),f32(rig.bind[1][2]))).y);}
+    print("hips height (mm) at 1, 1.09 and 1.18 s, into, halfway and out of the fade: % % %\n",mvx_mm(hips[0]),mvx_mm(hips[1]),mvx_mm(hips[2]));
+    a=verse_cast_update(b,c,a,1,false,2);
+    print("walking at 2 s: %, fading from %\n",a.move,a.from);
+// book:end play
+// book:begin render
+    a0:Anim;mvx_pose(b,c,a0,0,out[..]);mvx_draw("idle, front view:",out[..],rig);
+    d:=Anim.{move=Move.dancing,start=0,from=Move.idle,from_start=0,fade_start= -1};
+    mvx_pose(b,c,d,0.5,out[..]);mvx_draw("dance frame 15, front view:",out[..],rig);
+// book:end render
+}

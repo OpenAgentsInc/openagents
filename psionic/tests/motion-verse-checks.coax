@@ -1,0 +1,31 @@
+// Chapter 150's check helpers: hand-built clips, handoffs and maps, and
+// small vector helpers, kept out of the library so mutation testing
+// covers only psionic/lib/motion-verse.coax.
+
+mvt_near3 :: (a:[3]f64,b:[3]f64,tolerance:f64)->bool {return pose_near(a[0],b[0],tolerance) && pose_near(a[1],b[1],tolerance) && pose_near(a[2],b[2],tolerance);}
+mvt_minus :: (a:[3]f64,b:[3]f64)->[3]f64 {return [3]f64.[a[0]-b[0],a[1]-b[1],a[2]-b[2]];}
+mvt_bind :: (rig:MvRig,k:int)->Vec3 {return v3(f32(rig.bind[k][0]),f32(rig.bind[k][1]),f32(rig.bind[k][2]));}
+mvt_at :: (j:Joint,rig:MvRig,k:int)->[3]f64 {p:=moved(j,mvt_bind(rig,k));return [3]f64.[f64(p.x),f64(p.y),f64(p.z)];}
+// A leg clip of `frames` frames in convention `conv`: each joint turned
+// about one of chapter 147's fixed axes by an angle that grows with the
+// frame, the root drifting.
+mvt_clip :: (frames:int,conv:PoseConvention,seed:int)->PoseClip {
+    c:PoseClip;c.convention=conv;c.frames=frames;
+    for f:0..<frames {
+        c.frame[f].root=[3]f64.[0.01*f64(f+seed),0.9+0.002*f64(f),-0.02*f64(f)];
+        for j:0..<4 {c.frame[f].rotation[j]=pose_write(conv.order,pose_axis_angle(pose_fixed_axis((j+seed+f)%7),0.05*f64(f+j+1)));}
+    }
+    return c;
+}
+// A handoff written by hand: identity rotations, translation t[f] on
+// every joint, travel tr[f].
+mvt_still :: (frames:int,t:[]f64,tr:[]f64)->MvHandoff {
+    h:MvHandoff;h.joints=MV_CAST_JOINTS;h.frames=frames;
+    for f:0..<frames {
+        h.travel[f]=[2]f64.[tr[2*f],tr[2*f+1]];
+        for k:0..<h.joints {h.q[f][k]=[4]f64.[1,0,0,0];h.t[f][k]=[3]f64.[t[3*f],t[3*f+1],t[3*f+2]];}
+    }
+    return h;
+}
+// The right leg: pelvis to the hips, then 60, 61, 62.
+mvt_right_map :: ()->MvMap {m:=mv_leg_map();m.target[1]=60;m.target[2]=61;m.target[3]=62;return m;}

@@ -562,7 +562,7 @@ need; it does not qualify their architectures.
 | [147. Poses have conventions](ch147-poses-have-conventions.md) — runnable rotation forms, declared conventions, forward kinematics, resampling and same-skeleton retargeting | Rotation representations, skeleton hierarchy, root coordinates, units, timing and retargeting fixtures. |
 | [148. Motion tokens become poses](ch148-motion-tokens-become-poses.md) — partly implemented: runnable pose-segment codebook, nearest-code encoder, lookup decoder, continuity check and counted masked-token filling | A tiny codebook/VQ decoder and masked-token generation; known token-to-pose and pose-continuity checks. |
 | [149. Execute MotionBricks](ch149-execute-motionbricks.md) — partly implemented: pinned SOMA inventory, real codebook tokenizer, synthetic-weight decoder, masked pose transformer and schedule | One pinned SOMA package: root timing/trajectory, masked motion-token transformer and VQ-VAE decoder, with full trajectory references. |
-| [150. Put generated motion in Verse](ch150-put-generated-motion-in-verse.md) — design draft | An explicit skeleton/target interface, bounded generation and animation handoff; a reproducible destination-to-pose scene. |
+| [150. Put generated motion in Verse](ch150-put-generated-motion-in-verse.md) — partly implemented: checked joint map onto Verse's Cast skeleton, synthetic-weight motion played and cross-faded in the dance slot | An explicit skeleton/target interface, bounded generation and animation handoff; a reproducible destination-to-pose scene. |
 
 This is the preferred first major Verse ML demonstration after useful vision
 features. It reuses attention, common image/codebook operators where required,

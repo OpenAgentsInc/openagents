@@ -611,7 +611,7 @@ vertex_out :: (b: [] u8, at: int, joint: int, slot: int) {
   b[at + 52] = 200; b[at + 53] = 201; b[at + 54] = 202;   // its tint
   b[at + 55] = cast(u8) slot;
 }
-turn :: (angle: f32) -> Quat { return Quat.{x = 0, y = sin(angle / 2), z = 0, w = cos(angle / 2)}; }   // about +Y
+yaw_turn :: (angle: f32) -> Quat { return Quat.{x = 0, y = sin(angle / 2), z = 0, w = cos(angle / 2)}; }   // about +Y
 bend :: (angle: f32) -> Quat { return Quat.{x = sin(angle / 2), y = 0, z = 0, w = cos(angle / 2)}; }  // about +X
 // A turn of `angle` about a unit axis.
 about :: (axis: Vec3, angle: f32) -> Quat {
@@ -626,7 +626,7 @@ B :: Vec3.{x = 0.1, y = 1, z = 0};   // the child's bind position
 
 // Pose frame f: the root turns f / 10 about +Y and walks f / 8 along +Z;
 // the child bends f / 20 about +X about B.
-root_at :: (f: f32) -> Rigid { return Rigid.{q = turn(f / 10), t = v3(0, 0, f / 8)}; }
+root_at :: (f: f32) -> Rigid { return Rigid.{q = yaw_turn(f / 10), t = v3(0, 0, f / 8)}; }
 child_at :: (f: f32) -> Rigid {
   q := bend(f / 20);
   return Rigid.{q = q, t = sub(B, rotate(q, B))};
@@ -682,7 +682,7 @@ small :: (b: [] u8) -> Layout {
   // quarter about +Y. Idle: bone 0 still, then 0.5 m up; bone 1 still.
   for i: 0..<8 { rigid_out(b, l.robot_frames + i * 32, Rigid.{}); }
   rigid_out(b, l.robot_frames + 2 * 32, Rigid.{q = Quat.{}, t = v3(1, 0, 0)});
-  rigid_out(b, l.robot_frames + 3 * 32, Rigid.{q = turn(f32(PI / 2)), t = v3(0, 0, 0)});
+  rigid_out(b, l.robot_frames + 3 * 32, Rigid.{q = yaw_turn(f32(PI / 2)), t = v3(0, 0, 0)});
   rigid_out(b, l.robot_frames + 6 * 32, Rigid.{q = Quat.{}, t = v3(0, 0.5, 0)});
   // Patrol 0 walks from (0, 0) along x and z to (2, 1) and back over 4
   // samples (2 s), its clip time from 1 s; patrol 1 stands at (5, 5) in its
@@ -910,7 +910,7 @@ small :: (b: [] u8) -> Layout {
   n := nlerp(Quat.{x = 0, y = 0.8, z = 0, w = 0.6}, Quat.{x = 0, y = -0.8, z = 0, w = 0.6}, 0.5);
   #assert n.y == 1 && n.w == 0;
   // Halfway between no turn and a quarter turn is an eighth.
-  e := nlerp(Quat.{}, turn(f32(PI / 2)), 0.5);
+  e := nlerp(Quat.{}, yaw_turn(f32(PI / 2)), 0.5);
   #assert near(e.y, sin(f32(PI / 8)), 0.000001) && near(e.w, cos(f32(PI / 8)), 0.000001);
 }
 
@@ -1098,7 +1098,7 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   #assert verse_cast_pose(b, c, a, f64(FADE / 2), 0, 0, 0, 0, out[..]);
   // The walk at 0.09 s is frame 4.32; idle at 0.09 s is frame 2.7.
   walk := 4.32f32; idle := 2.7f32;
-  root := Rigid.{q = nlerp(turn(idle / 10), turn(walk / 10), 0.5), t = v3(0, 0, (idle + walk) / 16)};
+  root := Rigid.{q = nlerp(yaw_turn(idle / 10), yaw_turn(walk / 10), 0.5), t = v3(0, 0, (idle + walk) / 16)};
   child := Rigid.{q = nlerp(bend(idle / 20), bend(walk / 20), 0.5), t = v3(0, 0, 0)};
   child.t = sub(B, rotate(child.q, B));
   #assert close(moved(out[1], TIP), apply(chain(root, child), TIP), 0.0002);
@@ -1124,7 +1124,7 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
   // (0.5, 0.25); its clip time 1.25 s: walk frame 0.5 (wrapped from 2.5).
   #assert verse_cast_robots_pose(b, c, 0.25, out[..]);
   #assert close(moved(out[2], v3(0, 0, 0)), v3(0.5 + 1, 0, 0.25), 0.0001);
-  half := turn(f32(PI / 4));
+  half := yaw_turn(f32(PI / 4));
   #assert close(moved(out[3], v3(0, 0, 0.5)), add(v3(0.5, 0, 0.25), times(rotate(half, v3(0, 0, 0.5)), 2)), 0.0001);
   // Patrol 1 stands at (5, 5), its idle halfway between frames 0 and 1.
   #assert close(moved(out[4], v3(0, 0, 0)), v3(5, 0.5, 5), 0.0001);
@@ -1265,7 +1265,7 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
 
 
 #test "an exact interpolated frame still normalizes its relative rotation" {
-  bytes:[4096]u8;l:=small(bytes[..]);q:=turn(0.25);
+  bytes:[4096]u8;l:=small(bytes[..]);q:=yaw_turn(0.25);
   rigid_out(bytes[..],l.poses,Rigid.{q=Quat.{x=q.x*2,y=q.y*2,z=q.z*2,w=q.w*2}});
   b:=bytes[0..<l.size];c:=opened(b);plan:=pose_frames(b,c,Move.idle,0,0);
   bones:[65]PoseBone;pose_skeleton(b,c,bones[..]);
@@ -1291,7 +1291,7 @@ TIP :: Vec3.{x = 0.3, y = 2, z = -0.2};   // a point on the child, off its axis
 
 
 #test "rotation normalization preserves its explicit degenerate fallback" {
-  fallback:=turn(0.3);zero:=Quat.{w=0};
+  fallback:=yaw_turn(0.3);zero:=Quat.{w=0};
   same:=normalize_rotation(zero,fallback);
   #assert same.y==fallback.y && same.w==fallback.w;
   q:=normalize_rotation(Quat.{x=0.6,y=0,z=0,w=0.8},zero);

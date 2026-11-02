@@ -163,7 +163,7 @@
 - [147. Poses have conventions](ch147-poses-have-conventions.md)
 - [148. Motion tokens become poses](ch148-motion-tokens-become-poses.md) — partly implemented
 - [149. Execute MotionBricks](ch149-execute-motionbricks.md) — partly implemented
-- [150. Put generated motion in Verse](ch150-put-generated-motion-in-verse.md) — design draft
+- [150. Put generated motion in Verse](ch150-put-generated-motion-in-verse.md) — partly implemented
 
 - [151. Waveforms and spectral features](ch151-waveforms-and-spectral-features.md) — partly implemented
 - [152. A speech encoder](ch152-a-speech-encoder.md) — partly implemented
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–149, 151–159, 161–164, 165, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 83, 84, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–159, 161–164, 165, 167–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

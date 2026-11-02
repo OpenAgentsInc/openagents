@@ -192,6 +192,26 @@
       ]
     },
     {
+      "source": "psionic/examples/motion-verse.coax",
+      "chapter": "psionic/book/ch150-put-generated-motion-in-verse.md",
+      "stdout": "psionic/fixtures/motion-verse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/motion-verse-refuse.coax",
+      "chapter": "psionic/book/ch150-put-generated-motion-in-verse.md",
+      "stdout": "psionic/fixtures/motion-verse-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/transcribe-tdt.coax",
       "chapter": "psionic/book/ch153-transcribe-with-parakeet.md",
       "stdout": "psionic/fixtures/transcribe-tdt.out",

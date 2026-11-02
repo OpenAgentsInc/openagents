@@ -1,0 +1,574 @@
+// Chapter 150: put generated motion in Verse. Chapter 149's generator
+// (synthetic weights) makes a four-joint leg clip toward a destination;
+// chapter 147 converts it to the Verse character's convention and retargets
+// it through an explicit joint map onto the 65-joint skeleton of Verse's
+// Cast.bin (psionic/fixtures/verse-cast-skeleton.coax); the result becomes
+// Cast.bin pose rows (a skinning rotation and translation a joint a frame)
+// that verse/cast.coax plays in the dance slot, fading in and out of the
+// other clips. Profile cpu-f64-motion-verse-v1: binary64 until the rows are
+// written as Cast.bin's F32, at most 32 frames and 65 joints.
+
+#load "motionbricks.coax";
+#load "../../verse/cast.coax";
+#load "../fixtures/verse-cast-skeleton.coax";
+
+MvStatus :: enum u8 {ok;shape;pose;unmapped;range;twice;parent;length;deadline;admission;slide;below;}
+
+MV_JOINTS :: 65;   // the most joints Verse's character has (MAX_JOINTS)
+MV_FRAMES :: 32;   // the most frames one handed-off clip has
+
+// ---- The Verse side ----
+
+// book:begin rig
+// The Verse character's skeleton, read exactly from the fixture: each
+// joint's parent and its bind position, in metres, Y up, facing +Z.
+MvRig :: struct {count:int;parent:[MV_JOINTS]int;bind:[MV_JOINTS][3]f64;}
+mv_verse_rig :: ()->MvRig {
+    r:MvRig;r.count=MV_CAST_JOINTS;
+    for j:0..<MV_CAST_JOINTS {
+        r.parent[j]=MV_CAST_PARENT[j];
+        for i:0..<3 {r.bind[j][i]=f64(f32_from_bits(MV_CAST_BIND_BITS[3*j+i]));}
+    }
+    return r;
+}
+// Cast.bin's clips: Y up, +Z forward, right-handed, quaternions x, y, z, w,
+// metres, absolute roots, 30 frames a second (verse/cast.coax's FPS).
+mv_verse :: ()->PoseConvention {
+    return PoseConvention.{up=PoseAxis.pos_y,forward=PoseAxis.pos_z,hand=PoseHand.right,order=PoseOrder.xyzw,unit=PoseUnit.metre,root=PoseRoot.absolute,rate=30};
+}
+// book:end rig
+
+// ---- The joint map ----
+
+// book:begin map
+// Source joint j drives Verse joint target[j]; -1 is no target. Every
+// source joint needs one, no two share one, and a joint's parent must map
+// to its target's parent, so local rotations carry over unchanged. Verse
+// joints no source joint maps to keep their bind pose.
+MvMap :: struct {count:int;target:[POSE_JOINTS]int;}
+MvCheck :: struct {status:MvStatus;joint:int;}
+mv_map_check :: (m:MvMap,from:PoseSkeleton,rig:MvRig)->MvCheck {
+    out:MvCheck;out.joint= -1;
+    if pose_skeleton_check(from)!=PoseStatus.ok || rig.count<1 || rig.count>MV_JOINTS || m.count!=from.count {out.status=MvStatus.shape;return out;}
+    for j:0..<from.count {
+        t:=m.target[j];out.joint=j;
+        if t== -1 {out.status=MvStatus.unmapped;return out;}
+        if t<0 || t>=rig.count {out.status=MvStatus.range;return out;}
+        for i:0..<j {if m.target[i]==t {out.status=MvStatus.twice;return out;}}
+        if j>0 && rig.parent[t]!=m.target[from.parent[j]] {out.status=MvStatus.parent;return out;}
+    }
+    out.joint= -1;
+    return out;
+}
+// The mapped part of the Verse skeleton as a chapter 147 skeleton: the
+// source's joints and parents with Verse's bone offsets. The root's offset
+// is zero: the clip's root translation is the root joint itself.
+mv_sub :: (m:MvMap,from:PoseSkeleton,rig:MvRig)->PoseSkeleton {
+    k:=from;k.offset[0]=[3]f64.[0,0,0];
+    for j:1..<from.count {t:=m.target[j];p:=rig.parent[t];for i:0..<3 {k.offset[j][i]=rig.bind[t][i]-rig.bind[p][i];}}
+    return k;
+}
+// book:end map
+
+// ---- The handoff ----
+
+// book:begin handoff
+// A generated clip handed to Verse: the clip in Verse's convention,
+// retargeted and in place; the ground travel taken out of it; and per
+// frame and Verse joint the skinning transform Cast.bin stores, rotation
+// q (w, x, y, z) and translation t, so that a bind-pose point v moves to
+// q v + t.
+MvHandoff :: struct {
+    status:MvStatus;detail:PoseStatus;joint:int;
+    sub:PoseSkeleton;clip:PoseClip;joints:int;frames:int;
+    travel:[MV_FRAMES][2]f64;q:[MV_FRAMES][MV_JOINTS][4]f64;t:[MV_FRAMES][MV_JOINTS][3]f64;
+}
+// 1. Check the map. 2. Convert the clip and the source skeleton to
+// Verse's convention (chapter 147). 3. Retarget the clip onto the mapped
+// Verse bones, scaling the root by the
+// chain lengths up from `foot`. 4. Put it in place: the root keeps its
+// height, its ground position goes to `travel` and it stands over its
+// target's bind position. 5. Pose every Verse joint, parents first:
+//   R_k = R_parent L_k,  P_k = P_parent + R_parent (bind_k - bind_parent),
+// with L_k the mapped joint's rotation or the identity, the root target at
+// the clip's root, and a joint without a parent at its bind position.
+// Cast.bin's row is then q = R_k and t = P_k - R_k bind_k.
+mv_handoff :: (c:PoseClip,from:PoseSkeleton,m:MvMap,rig:MvRig,foot:int)->MvHandoff {
+    out:MvHandoff;check:=mv_map_check(m,from,rig);out.status=check.status;out.joint=check.joint;
+    if check.status!=MvStatus.ok {return out;}
+    converted:=pose_convert(c,from,mv_verse());out.detail=converted.status;
+    if converted.status==PoseStatus.ok && converted.clip.frames>MV_FRAMES {out.status=MvStatus.length;return out;}
+    out.sub=mv_sub(m,from,rig);
+    if converted.status==PoseStatus.ok {
+        bones:=pose_convert_skeleton(from,c.convention,mv_verse());
+        retargeted:=pose_retarget(converted.clip,bones.skeleton,out.sub,foot);out.detail=retargeted.status;out.clip=retargeted.clip;
+    }
+    if out.detail!=PoseStatus.ok {out.status=MvStatus.pose;return out;}
+    root:=m.target[0];out.joints=rig.count;out.frames=out.clip.frames;
+    for f:0..<out.frames {
+        out.travel[f]=[2]f64.[out.clip.frame[f].root[0],out.clip.frame[f].root[2]];
+        out.clip.frame[f].root[0]=rig.bind[root][0];out.clip.frame[f].root[2]=rig.bind[root][2];
+    }
+    work:=pose_internal(out.clip,from.count);
+    for f:0..<out.frames {
+        local:[MV_JOINTS][4]f64;for k:0..<rig.count {local[k]=[4]f64.[1,0,0,0];}
+        for j:0..<from.count {local[m.target[j]]=work.frame[f].rotation[j];}
+        r:[MV_JOINTS][4]f64;p:[MV_JOINTS][3]f64;
+        for k:0..<rig.count {
+            up:=rig.parent[k];
+            if k==root {r[k]=local[k];p[k]=work.frame[f].root;}
+            else if up<0 {r[k]=local[k];p[k]=rig.bind[k];}
+            else {
+                d:=pose_rotate(r[up],[3]f64.[rig.bind[k][0]-rig.bind[up][0],rig.bind[k][1]-rig.bind[up][1],rig.bind[k][2]-rig.bind[up][2]]);
+                r[k]=pfk_multiply(r[up],local[k]);for i:0..<3 {p[k][i]=p[up][i]+d[i];}
+            }
+            b:=pose_rotate(r[k],rig.bind[k]);
+            out.q[f][k]=r[k];for i:0..<3 {out.t[f][k][i]=p[k][i]-b[i];}
+        }
+    }
+    return out;
+}
+// Where a joint is: its skinning transform (q, t) applied to its bind
+// position.
+mv_world :: (q:[4]f64,t:[3]f64,bind:[3]f64)->[3]f64 {
+    b:=pose_rotate(q,bind);
+    return [3]f64.[b[0]+t[0],b[1]+t[1],b[2]+t[2]];
+}
+// book:end handoff
+
+// ---- Into Cast.bin ----
+
+// book:begin splice
+// Write the handoff into the dance slot of an admitted Cast, in place: its
+// rows over the dance's first frames (F32, x, y, z, w then the
+// translation), then the dance's frame count. A Cast that is not admitted,
+// a different joint count or more frames than the slot holds is refused
+// and the bytes are left as they were.
+mv_splice :: (b:[]u8,h:MvHandoff)->MvStatus {
+    c:=verse_cast_open(b);
+    if !c.ok {return MvStatus.admission;}
+    if h.status!=MvStatus.ok || h.joints!=c.joints {return MvStatus.shape;}
+    if h.frames>frames_of(b,c,Move.dancing) {return MvStatus.length;}
+    first:=first_of(b,c,Move.dancing);
+    for f:0..<h.frames {for k:0..<h.joints {
+        at:=c.poses.offset+((first+f)*c.joints+k)*32;q:=h.q[f][k];
+        putf(b,at,f32(q[1]));putf(b,at+4,f32(q[2]));putf(b,at+8,f32(q[3]));putf(b,at+12,f32(q[0]));
+        for i:0..<3 {putf(b,at+16+4*i,f32(h.t[f][k][i]));}
+    }}
+    put32(b,c.clips.offset+cast(int)cast(u8)Move.dancing*8+4,h.frames);
+    return MvStatus.ok;
+}
+// book:end splice
+
+// FNV-1a over the dance slot's rows: one number for "the same poses".
+mv_digest :: (b:[]u8)->u64 {
+    c:=verse_cast_open(b);h:u64=0xcbf29ce484222325;
+    if !c.ok {return 0;}
+    from:=c.poses.offset+first_of(b,c,Move.dancing)*c.joints*32;to:=from+frames_of(b,c,Move.dancing)*c.joints*32;
+    for i:from..<to {h=mul_wrap(h^cast(u64)b[i],cast(u64)0x100000001b3);}
+    return h;
+}
+
+// ---- A Cast to play it in ----
+
+// The program cannot open files, so it builds a Cast around the real
+// skeleton: every clip but the dance is the real idle's first frame, the
+// dance `dance` frames of it; then the least admission takes: one body
+// triangle of zero vertices, one robot bone with two one-frame clips of
+// 1 s, one patrol of one sample and one capsule 0.25 m wide. Returns the
+// bytes used.
+mv_cast_build :: (b:[]u8,dance:int)->int {
+    j:=MV_CAST_JOINTS;frames:=6+dance;
+    put32(b,0,MAGIC);put32(b,4,1);put32(b,8,BUFFERS);
+    at:=16+BUFFERS*32;skeleton:=at;at=table(b,0,"skeleton",16,j,at);
+    clips:=at;at=table(b,1,"clips",8,CLIPS,at);
+    poses:=at;at=table(b,2,"poses",32,frames*j,at);
+    at=table(b,3,"body_vertices",64,1,at);
+    at=table(b,4,"body_indices",4,3,at);
+    setup:=at;at=table(b,5,"robot_setup",16,1,at);
+    at=table(b,6,"robot_vertices",64,1,at);
+    at=table(b,7,"robot_faces",4,3,at);
+    at=table(b,8,"robot_lines",4,2,at);
+    robot_clips:=at;at=table(b,9,"robot_clips",16,2,at);
+    at=table(b,10,"robot_frames",32,1,at);
+    patrols:=at;at=table(b,11,"patrols",8,1,at);
+    at=table(b,12,"patrol_samples",20,1,at);
+    bodies:=at;at=table(b,13,"robot_bodies",32,1,at);
+    for k:0..<j {
+        put32(b,skeleton+16*k,MV_CAST_PARENT[k]);
+        for i:0..<3 {put32(b,skeleton+16*k+4+4*i,cast(int)MV_CAST_BIND_BITS[3*k+i]);}
+    }
+    put32(b,clips+48,6);put32(b,clips+52,dance);
+    for i:0..<6 {put32(b,clips+8*i,i);put32(b,clips+8*i+4,1);}
+    for f:0..<frames {for k:0..<j {for i:0..<7 {put32(b,poses+(f*j+k)*32+4*i,cast(int)MV_CAST_IDLE_BITS[7*k+i]);}}}
+    put32(b,setup,1);putf(b,setup+4,30);putf(b,setup+8,1);
+    put32(b,robot_clips+4,1);putf(b,robot_clips+8,1);put32(b,robot_clips+20,1);putf(b,robot_clips+24,1);
+    put32(b,patrols+4,1);
+    putf(b,bodies+12,0.25);
+    return at;
+}
+
+// ---- Generation under a budget ----
+
+// book:begin scene
+// A destination becomes chapter 149's condition: standing poses at both
+// ends, as mb_walk; the root path a straight line from the origin to
+// (x, z), facing along it, and the matching ground velocity.
+mv_toward :: (s:MbShape,n:int,x:f64,z:f64)->MbCond {
+    c:=mb_walk(s,n,0);frames:=n*MB_FPT;d:=sqrt(x*x+z*z);
+    for t:0..<frames {
+        u:=f64(t)/f64(frames);
+        c.root[t]=[4]f64.[x*u,z*u,ifx d>0 then z/d else 1,ifx d>0 then x/d else 0];
+        c.velocity[t]=[2]f64.[x/f64(frames),z/f64(frames)];
+    }
+    return c;
+}
+// The most frames the clip may have and the most network passes (one a
+// confidence step, and one decoder pass) generation may take before its
+// deadline. Both are checked before any work: a refused scene changes
+// nothing, so the character keeps the clip it plays.
+MvBudget :: struct {frames:int;passes:int;}
+MvScene :: struct {status:MvStatus;tokens:MbTokens;clip:MbClip;handoff:MvHandoff;}
+mv_scene :: (s:MbShape,predictor:[]f64,decoder:[]f64,n:int,steps:int,x:f64,z:f64,budget:MvBudget,from:PoseSkeleton,m:MvMap,rig:MvRig,foot:int)->MvScene {
+    out:MvScene;
+    if n*MB_FPT>budget.frames {out.status=MvStatus.length;return out;}
+    if steps+1>budget.passes {out.status=MvStatus.deadline;return out;}
+    c:=mv_toward(s,n,x,z);g:=mb_generate(s,predictor,n,c,steps);out.tokens=g.tokens;
+    out.clip=mb_clip(s,mb_decode(s,decoder,mb_small_codebook(s),g.tokens,c));
+    if g.status!=MbStatus.ok || out.clip.status!=MbStatus.ok {out.status=MvStatus.shape;return out;}
+    out.handoff=mv_handoff(out.clip.clip,from,m,rig,foot);out.status=out.handoff.status;
+    return out;
+}
+// book:end scene
+
+// ---- Feet ----
+
+// book:begin contact
+// A foot joint touches the ground in a frame when it is at most `band`
+// above `level`. It is refused below level - band, and when it moves more
+// than `slide` over the ground between two touching frames; ground
+// positions add the travel taken out of the clip back in.
+MvContact :: struct {status:MvStatus;frame:int;touching:int;lowest:f64;lowest_frame:int;slid:f64;slid_frame:int;}
+mv_contact :: (h:MvHandoff,rig:MvRig,joint:int,level:f64,band:f64,slide:f64)->MvContact {
+    out:MvContact;out.frame= -1;out.slid_frame= -1;out.lowest_frame= -1;out.lowest=POSE_LENGTH_MAX;
+    if h.status!=MvStatus.ok || joint<0 || joint>=h.joints {out.status=MvStatus.shape;return out;}
+    last:[3]f64;was:=false;
+    for f:0..<h.frames {
+        p:=mv_world(h.q[f][joint],h.t[f][joint],rig.bind[joint]);p[0]+=h.travel[f][0];p[2]+=h.travel[f][1];
+        if p[1]<out.lowest {out.lowest=p[1];out.lowest_frame=f;}
+        if p[1]<level-band && out.frame== -1 {out.status=MvStatus.below;out.frame=f;}
+        on:=p[1]<=level+band;
+        if on {out.touching+=1;}
+        if on && was {
+            d:=sqrt((p[0]-last[0])*(p[0]-last[0])+(p[2]-last[2])*(p[2]-last[2]));
+            if d>out.slid {out.slid=d;out.slid_frame=f;}
+            if d>slide && out.frame== -1 {out.status=MvStatus.slide;out.frame=f;}
+        }
+        last=p;was=on;
+    }
+    return out;
+}
+// book:end contact
+
+// ---- The chapter's leg ----
+
+// A four-joint leg, as chapter 149's generator makes it: pelvis, hip,
+// knee, ankle; 0.1 m to the hip, 0.4 m to the knee, 0.42 m to the ankle.
+mv_leg :: ()->PoseSkeleton {
+    k:PoseSkeleton;k.count=4;k.parent[0]= -1;k.parent[2]=1;k.parent[3]=2;  // parent[1] is 0
+    k.offset[1]=[3]f64.[0.1,0,0];k.offset[2]=[3]f64.[0,-0.4,0];k.offset[3]=[3]f64.[0,-0.42,0];
+    return k;
+}
+// Pelvis to the Verse hips (1), hip to the left thigh (55), knee (56),
+// ankle (57).
+mv_leg_map :: ()->MvMap {m:MvMap;m.count=4;m.target[0]=1;m.target[1]=55;m.target[2]=56;m.target[3]=57;return m;}
+// Chapter 149's small shape with four joints' 6D rotations decoded.
+mv_shape :: ()->MbShape {s:=mb_small();s.decoded=28;return s;}
+
+
+// ---- Checks. Expected values are derived in chapter 150. ----
+#load "../tests/motion-verse-checks.coax";
+
+
+#test "the Verse skeleton: 65 joints, parents first, the left leg where Cast.bin has it" {
+    rig:=mv_verse_rig();#assert rig.count==65 && rig.parent[0]== -1;
+    for k:1..<rig.count {#assert rig.parent[k]>=0 && rig.parent[k]<k;}
+    #assert rig.parent[1]==0 && rig.parent[55]==1 && rig.parent[56]==55 && rig.parent[57]==56 && rig.parent[58]==57 && rig.parent[60]==1 && rig.parent[61]==60;
+    // Read off Cast.bin to the millimetre: the root on the ground, the hips
+    // 0.949 m up, the left hip 0.114 m to +X, the knee at 0.542, the ankle at 0.086.
+    #assert mvt_near3(rig.bind[0],[3]f64.[0,0,0],0) && mvt_near3(rig.bind[1],[3]f64.[0,0.949,-0.043],0.0005);
+    #assert mvt_near3(rig.bind[55],[3]f64.[0.114,0.971,-0.036],0.0005) && mvt_near3(rig.bind[56],[3]f64.[0.114,0.542,-0.036],0.0005);
+    #assert mvt_near3(rig.bind[57],[3]f64.[0.114,0.086,-0.087],0.0005) && mvt_near3(rig.bind[60],[3]f64.[-0.114,0.971,-0.036],0.0005);
+    v:=mv_verse();#assert pose_convention_check(v)==PoseStatus.ok && v.order==PoseOrder.xyzw && v.rate==30 && f64(v.rate)==f64(FPS);
+    #assert v.up==PoseAxis.pos_y && v.forward==PoseAxis.pos_z && v.hand==PoseHand.right && v.unit==PoseUnit.metre && v.root==PoseRoot.absolute;
+}
+
+#test "a joint map is refused at its first bad joint" {
+    rig:=mv_verse_rig();leg:=mv_leg();
+    r:=mv_map_check(mv_leg_map(),leg,rig);#assert r.status==MvStatus.ok && r.joint== -1;
+    m:=mv_leg_map();m.target[3]= -1;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.unmapped && r.joint==3;
+    m=mv_leg_map();m.target[0]= -1;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.unmapped && r.joint==0;
+    m=mv_leg_map();m.target[3]=65;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.range && r.joint==3;
+    m=mv_leg_map();m.target[1]= -2;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.range && r.joint==1;
+    m=mv_leg_map();m.target[3]=64;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.parent && r.joint==3;
+    m=mv_leg_map();m.target[2]=55;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.twice && r.joint==2;
+    m=mv_leg_map();m.target[1]=1;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.twice && r.joint==1;
+    m=mv_leg_map();m.target[2]=61;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.parent && r.joint==2;
+    // The root may land anywhere; its children must follow.
+    m=mv_leg_map();m.target[0]=0;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.parent && r.joint==1;
+    r=mv_map_check(mvt_right_map(),leg,rig);#assert r.status==MvStatus.ok;
+    // Shapes: a count that is not the source's, a rig of 0 or 66 joints, a bad source.
+    m=mv_leg_map();m.count=3;r=mv_map_check(m,leg,rig);#assert r.status==MvStatus.shape && r.joint== -1;
+    few:=rig;few.count=0;#assert mv_map_check(mv_leg_map(),leg,few).status==MvStatus.shape;
+    few.count=66;#assert mv_map_check(mv_leg_map(),leg,few).status==MvStatus.shape;
+    few.count=58;#assert mv_map_check(mv_leg_map(),leg,few).status==MvStatus.ok;
+    few.count=57;r=mv_map_check(mv_leg_map(),leg,few);#assert r.status==MvStatus.range && r.joint==3;
+    few.count=1;r=mv_map_check(mv_leg_map(),leg,few);#assert r.status==MvStatus.range && r.joint==0;
+    bad:=leg;bad.parent[2]=2;#assert mv_map_check(mv_leg_map(),bad,rig).status==MvStatus.shape;
+}
+
+#test "the mapped bones are Verse's, the root's offset zero" {
+    rig:=mv_verse_rig();leg:=mv_leg();leg.offset[0]=[3]f64.[1,2,3];
+    k:=mv_sub(mv_leg_map(),leg,rig);
+    #assert k.count==4 && k.parent[3]==2 && mvt_near3(k.offset[0],[3]f64.[0,0,0],0);
+    #assert mvt_near3(k.offset[1],mvt_minus(rig.bind[55],rig.bind[1]),0) && mvt_near3(k.offset[3],mvt_minus(rig.bind[57],rig.bind[56]),0);
+    // By hand: 0.114 to +X and 0.022 up to the hip, 0.429 down to the knee, 0.456 down and 0.051 back to the ankle.
+    #assert mvt_near3(k.offset[1],[3]f64.[0.114,0.022,0.007],0.001) && mvt_near3(k.offset[2],[3]f64.[0,-0.429,0],0.001) && mvt_near3(k.offset[3],[3]f64.[0,-0.456,-0.051],0.001);
+    #assert pose_near(pose_chain_length(k,3),1.004,0.001) && pose_near(pose_chain_length(mv_leg(),3),0.92,0.0000001);
+}
+
+#test "a clip at rest hands Verse identity rotations and one shared lift" {
+    rig:=mv_verse_rig();leg:=mv_leg();c:PoseClip;c.convention=pose_gltf();c.frames=2;
+    for f:0..<2 {c.frame[f].root=[3]f64.[0.3*f64(f),0.9,-0.2];for j:0..<4 {c.frame[f].rotation[j]=[4]f64.[1,0,0,0];}}
+    h:=mv_handoff(c,leg,mv_leg_map(),rig,3);
+    #assert h.status==MvStatus.ok && h.detail==PoseStatus.ok && h.joint== -1 && h.frames==2 && h.joints==65;
+    r:=pose_chain_length(h.sub,3)/0.92;
+    #assert pose_near(h.travel[1][0],0.3*r,0.000000001) && pose_near(h.travel[1][1],-0.2*r,0.000000001) && pose_near(h.travel[0][0],0,0);
+    // In place over the hips' bind position, at the scaled height.
+    #assert pose_near(h.clip.frame[1].root[0],rig.bind[1][0],0) && pose_near(h.clip.frame[1].root[2],rig.bind[1][2],0) && pose_near(h.clip.frame[1].root[1],0.9*r,0.000000001);
+    lift:=0.9*r-rig.bind[1][1];
+    for f:0..<2 {for k:0..<65 {
+        #assert pose_same_rotation(h.q[f][k],[4]f64.[1,0,0,0],0);
+        want:=ifx k==0 then 0.0 else lift;
+        #assert mvt_near3(h.t[f][k],[3]f64.[0,want,0],0.000000001);
+    }}
+    // The clip comes back in Verse's convention: x, y, z, w.
+    #assert h.clip.convention.order==PoseOrder.xyzw && pose_near(h.clip.frame[0].rotation[0][3],1,0);
+}
+
+#test "a knee bent a quarter turn, by hand" {
+    rig:=mv_verse_rig();leg:=mv_leg();c:PoseClip;c.convention=pose_gltf();c.frames=1;
+    c.frame[0].root=[3]f64.[0,0.9,0];for j:0..<4 {c.frame[0].rotation[j]=[4]f64.[1,0,0,0];}
+    c.frame[0].rotation[2]=pose_axis_angle([3]f64.[1,0,0],POSE_PI/2);
+    h:=mv_handoff(c,leg,mv_leg_map(),rig,3);#assert h.status==MvStatus.ok;
+    knee:=mv_world(h.q[0][56],h.t[0][56],rig.bind[56]);ankle:=mv_world(h.q[0][57],h.t[0][57],rig.bind[57]);toe:=mv_world(h.q[0][58],h.t[0][58],rig.bind[58]);
+    // A quarter turn about +X sends (x, y, z) to (x, -z, y).
+    d:=mvt_minus(rig.bind[57],rig.bind[56]);#assert mvt_near3(mvt_minus(ankle,knee),[3]f64.[d[0],-d[2],d[1]],0.000000001);
+    e:=mvt_minus(rig.bind[58],rig.bind[57]);#assert mvt_near3(mvt_minus(toe,ankle),[3]f64.[e[0],-e[2],e[1]],0.000000001);
+    // The other leg and the spine keep their bind offsets from the hips.
+    hips:=mv_world(h.q[0][1],h.t[0][1],rig.bind[1]);
+    for k:[3]int.[6,62,64] {#assert mvt_near3(mvt_minus(mv_world(h.q[0][k],h.t[0][k],rig.bind[k]),hips),mvt_minus(rig.bind[k],rig.bind[1]),0.000000001);}
+    #assert mvt_near3(mv_world(h.q[0][0],h.t[0][0],rig.bind[0]),rig.bind[0],0);
+    #assert pose_same_rotation(h.q[0][57],c.frame[0].rotation[2],0.000000001) && pose_same_rotation(h.q[0][62],[4]f64.[1,0,0,0],0);
+}
+
+#forall "Verse's joints are chapter 147's forward kinematics, and the rest follow rigidly" seed:0..<4,zup:0..<2 {
+    rig:=mv_verse_rig();leg:=mv_leg();conv:=ifx zup==1 then pose_zup() else pose_gltf();
+    frames:=ifx zup==1 then 9 else 5;
+    from:=leg;if zup==1 {from=pose_convert_skeleton(leg,pose_gltf(),pose_zup()).skeleton;}
+    h:=mv_handoff(mvt_clip(frames,conv,seed),from,mv_leg_map(),rig,3);
+    #assert h.status==MvStatus.ok && h.frames==5;
+    for f:0..<h.frames {
+        w:=pose_forward(h.sub,h.clip,f);#assert w.status==PoseStatus.ok;
+        for j:0..<4 {
+            k:=mv_leg_map().target[j];
+            #assert mvt_near3(mv_world(h.q[f][k],h.t[f][k],rig.bind[k]),w.position[j],0.000000001);
+            #assert pose_same_rotation(h.q[f][k],w.rotation[j],0.000000001);
+        }
+        for k:2..<65 {
+            p:=rig.parent[k];
+            #assert pose_near(pose_norm3(mvt_minus(mv_world(h.q[f][k],h.t[f][k],rig.bind[k]),mv_world(h.q[f][p],h.t[f][p],rig.bind[p]))),pose_norm3(mvt_minus(rig.bind[k],rig.bind[p])),0.000000001);
+            if k!=57 && k!=56 && k!=55 && k!=1 {#assert pose_same_rotation(h.q[f][k],h.q[f][p],0.000000001);}
+        }
+    }
+    // The glTF clip changes only its quaternions' order; its rotations stay.
+    if zup==0 {g:=mvt_clip(frames,conv,seed);#assert pose_same_rotation(pose_read(PoseOrder.xyzw,h.clip.frame[2].rotation[3]),g.frame[2].rotation[3],0.000000001);}
+}
+
+#test "a root on the ground root moves the hips; an unmoved ground root stays at its bind position" {
+    rig:=mv_verse_rig();rig.bind[0]=[3]f64.[0.25,0.5,-0.25];leg:=mv_leg();c:=mvt_clip(3,pose_gltf(),1);
+    h:=mv_handoff(c,leg,mv_leg_map(),rig,3);#assert h.status==MvStatus.ok;
+    for f:0..<3 {#assert mvt_near3(mv_world(h.q[f][0],h.t[f][0],rig.bind[0]),rig.bind[0],0.000000001) && mvt_near3(h.t[f][0],[3]f64.[0,0,0],0);}
+    // Pelvis to the ground root, hip to the hips, knee to the thigh, ankle to the knee.
+    m:MvMap;m.count=4;m.target[0]=0;m.target[1]=1;m.target[2]=55;m.target[3]=56;
+    h=mv_handoff(c,leg,m,rig,3);#assert h.status==MvStatus.ok;
+    for f:0..<3 {w:=pose_forward(h.sub,h.clip,f);for j:0..<4 {#assert mvt_near3(mv_world(h.q[f][m.target[j]],h.t[f][m.target[j]],rig.bind[m.target[j]]),w.position[j],0.000000001);}}
+}
+
+#test "a clip the conversion or retarget refuses is a pose refusal" {
+    rig:=mv_verse_rig();leg:=mv_leg();c:=mvt_clip(3,pose_gltf(),0);
+    bad:=c;bad.frame[1].rotation[2]=[4]f64.[2,0,0,0];h:=mv_handoff(bad,leg,mv_leg_map(),rig,3);
+    #assert h.status==MvStatus.pose && h.detail==PoseStatus.not_unit && h.frames==0;
+    h=mv_handoff(c,leg,mv_leg_map(),rig,0);#assert h.status==MvStatus.pose && h.detail==PoseStatus.joint;
+    h=mv_handoff(c,leg,mv_leg_map(),rig,4);#assert h.status==MvStatus.pose && h.detail==PoseStatus.joint;
+    m:=mv_leg_map();m.target[3]=99;h=mv_handoff(c,leg,m,rig,3);#assert h.status==MvStatus.range && h.joint==3 && h.detail==PoseStatus.ok;
+    // 32 frames fit; 33 do not; 33 at 60 fps become 17 at 30.
+    long:=mvt_clip(33,pose_gltf(),0);#assert mv_handoff(long,leg,mv_leg_map(),rig,3).status==MvStatus.length;
+    long.frames=32;#assert mv_handoff(long,leg,mv_leg_map(),rig,3).status==MvStatus.ok;
+    fast:=mvt_clip(33,pose_zup(),0);#assert mv_handoff(fast,pose_convert_skeleton(leg,pose_gltf(),pose_zup()).skeleton,mv_leg_map(),rig,3).frames==17;
+}
+
+#test "the built Cast is admitted, its clips the real idle's first frame" {
+    bytes:[131072]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];c:=verse_cast_open(b);
+    #assert c.ok && c.joints==65 && c.poses.count==36*65 && frames_of(b,c,Move.dancing)==30 && first_of(b,c,Move.dancing)==6;
+    #assert frames_of(b,c,Move.walking)==1 && first_of(b,c,Move.walking)==1 && first_of(b,c,Move.idle)==0;
+    for k:0..<65 {#assert u32_at(b,c.poses.offset+(35*65+k)*32+12)==MV_CAST_IDLE_BITS[7*k+3] && u32_at(b,c.poses.offset+k*32+24)==MV_CAST_IDLE_BITS[7*k+6];}
+    for k:0..<65 {#assert s32_at(b,c.skeleton.offset+16*k)==MV_CAST_PARENT[k] && u32_at(b,c.skeleton.offset+16*k+8)==MV_CAST_BIND_BITS[3*k+1];}
+    #assert verse_cast_robots(c)==2 && c.bones==1 && c.rate==30 && c.scale==1;
+    // The least admission takes, laid out by hand: 464 bytes of header and
+    // table, then each buffer on a 16-byte boundary, 76,784 bytes in all.
+    #assert n==76784 && c.skeleton.offset==464 && c.clips.offset==1504 && c.poses.offset==1568 && c.body_vertices.offset==76448;
+    #assert c.body_vertices.count==1 && c.body_indices.count==3 && c.robot_setup.count==1 && c.robot_vertices.count==1 && c.robot_faces.count==3;
+    #assert c.robot_lines.count==2 && c.robot_clips.count==2 && c.robot_frames.count==1 && c.patrols.count==1 && c.patrol_samples.count==1 && c.robot_bodies.count==1;
+    #assert int_at(b,c.robot_clips.offset+4)==1 && f32_at(b,c.robot_clips.offset+8)==1 && int_at(b,c.robot_clips.offset+20)==1 && f32_at(b,c.robot_clips.offset+24)==1;
+    #assert f32_at(b,c.robot_bodies.offset+12)==0.25 && int_at(b,c.patrols.offset+4)==1;
+    short:[131072]u8;m:=mv_cast_build(short[..],20);#assert verse_cast_open(short[0..<m]).ok && m==n-10*65*32;
+}
+
+#test "a splice writes x, y, z, w and the translation, and the dance plays it" {
+    rig:=mv_verse_rig();h:=mv_handoff(mvt_clip(6,pose_gltf(),1),mv_leg(),mv_leg_map(),rig,3);
+    bytes:[131072]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];
+    // Scribble over every row of the dance first, so each row the splice writes shows.
+    for i:0..<30*65 {rigid_out(b,1568+(6*65+i)*32,Rigid.{q=yaw_turn(1),t=v3(1,2,3)});}
+    #assert mv_splice(b,h)==MvStatus.ok;c:=verse_cast_open(b);
+    #assert c.ok && frames_of(b,c,Move.dancing)==6;
+    for f:0..<6 {for k:0..<65 {
+        r:=rigid_at(b,c.poses.offset+((6+f)*65+k)*32);
+        #assert r.q.w==f32(h.q[f][k][0]) && r.q.x==f32(h.q[f][k][1]) && r.t.y==f32(h.t[f][k][1]);
+    }}
+    at:=c.poses.offset+((6+4)*65+57)*32;r:=rigid_at(b,at);
+    #assert r.q.x==f32(h.q[4][57][1]) && r.q.y==f32(h.q[4][57][2]) && r.q.z==f32(h.q[4][57][3]) && r.q.w==f32(h.q[4][57][0]);
+    #assert r.t.x==f32(h.t[4][57][0]) && r.t.y==f32(h.t[4][57][1]) && r.t.z==f32(h.t[4][57][2]);
+    // Played: each dance frame, on the frame, is the handoff's pose.
+    out:[65]Joint;d:=Anim.{move=Move.dancing,start=0,from=Move.idle,from_start=0,fade_start= -1};
+    for f:0..<6 {
+        #assert verse_cast_pose(b,c,d,f64(f)/30,0,0,0,0,out[..]);
+        for k:0..<65 {#assert mvt_near3(mvt_at(out[k],rig,k),mv_world(h.q[f][k],h.t[f][k],rig.bind[k]),0.00001);}
+    }
+}
+
+#test "the dance fades in from the idle and out to the walk" {
+    rig:=mv_verse_rig();h:=mv_handoff(mvt_clip(8,pose_gltf(),2),mv_leg(),mv_leg_map(),rig,3);
+    bytes:[131072]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];#assert mv_splice(b,h)==MvStatus.ok;c:=verse_cast_open(b);
+    a:Anim;a=verse_cast_update(b,c,a,0,false,0);a=verse_cast_dance(a);a=verse_cast_update(b,c,a,0,false,1);
+    #assert a.move==Move.dancing && a.from==Move.idle && a.fade_start==1;
+    out:[65]Joint;idle:[65]Joint;#assert verse_cast_pose(b,c,Anim.{},0,0,0,0,0,idle[..]);
+    // At the fade's start the idle shows; after it, the dance's frame.
+    #assert verse_cast_pose(b,c,a,1,0,0,0,0,out[..]);
+    for k:0..<65 {#assert mvt_near3(mvt_at(out[k],rig,k),mvt_at(idle[k],rig,k),0.00001);}
+    #assert verse_cast_pose(b,c,a,1+7.0/30,0,0,0,0,out[..]);
+    for k:0..<65 {#assert mvt_near3(mvt_at(out[k],rig,k),mv_world(h.q[7][k],h.t[7][k],rig.bind[k]),0.00001);}
+    // Halfway, each joint blends relative to its parent, so every bone's
+    // length lies between the idle's (its half-float rows stretch a finger
+    // bone by 2 mm) and the dance's, which are the bind lengths.
+    #assert verse_cast_pose(b,c,a,1+FADE/2,0,0,0,0,out[..]);
+    for k:2..<65 {
+        p:=rig.parent[k];mid:=pose_norm3(mvt_minus(mvt_at(out[k],rig,k),mvt_at(out[p],rig,p)));
+        from:=pose_norm3(mvt_minus(mvt_at(idle[k],rig,k),mvt_at(idle[p],rig,p)));to:=pose_norm3(mvt_minus(rig.bind[k],rig.bind[p]));
+        high:=mb_larger(from,to);low:=from+to-high;
+        #assert mid>=low-0.00001 && mid<=high+0.00001;
+    }
+    // Walking ends it: the dance fades out into the walk.
+    a=verse_cast_update(b,c,a,1,false,2);#assert a.move==Move.walking && a.from==Move.dancing && !a.dance;
+    #assert verse_cast_pose(b,c,a,2+FADE,0,0,0,0,out[..]);
+    for k:0..<65 {#assert mvt_near3(mvt_at(out[k],rig,k),mvt_at(idle[k],rig,k),0.00001);}
+}
+
+#test "a splice the Cast cannot take leaves the bytes as they were" {
+    rig:=mv_verse_rig();h:=mv_handoff(mvt_clip(6,pose_gltf(),0),mv_leg(),mv_leg_map(),rig,3);
+    bytes:[131072]u8;n:=mv_cast_build(bytes[..],5);b:=bytes[0..<n];before:=mv_digest(b);
+    #assert mv_splice(b,h)==MvStatus.length && mv_digest(b)==before && frames_of(b,verse_cast_open(b),Move.dancing)==5;
+    bad:=h;bad.status=MvStatus.pose;#assert mv_splice(b,bad)==MvStatus.shape && mv_digest(b)==before;
+    bad=h;bad.joints=64;#assert mv_splice(b,bad)==MvStatus.shape && mv_digest(b)==before;
+    h.frames=5;#assert mv_splice(b,h)==MvStatus.ok && mv_digest(b)!=before;
+    bytes[4]=2;#assert mv_splice(b,h)==MvStatus.admission;
+}
+
+#test "the digest covers the dance's rows and only them" {
+    bytes:[131072]u8;n:=mv_cast_build(bytes[..],2);b:=bytes[0..<n];c:=verse_cast_open(b);
+    from:=c.poses.offset+6*65*32;want:u64=0xcbf29ce484222325;
+    for i:from..<from+2*65*32 {want=mul_wrap(want^cast(u64)b[i],cast(u64)1099511628211);}
+    #assert mv_digest(b)==want;
+    bytes[from-1]^=1;#assert mv_digest(b)==want;bytes[from-1]^=1;
+    bytes[from]^=1;#assert mv_digest(b)!=want;bytes[from]^=1;
+    bytes[from+2*65*32-1]^=1;#assert mv_digest(b)!=want;bytes[from+2*65*32-1]^=1;
+    bytes[from+2*65*32]^=1;#assert mv_digest(b)==want;
+    bytes[0]=0;#assert mv_digest(b)==0;
+}
+
+#test "a destination becomes a straight root path, by hand" {
+    s:=mv_shape();c:=mv_toward(s,6,3,4);
+    #assert c.root[0][0]==0 && c.root[0][2]==0.8 && c.velocity[0][0]==0.125 && c.root[12][0]==1.5 && c.root[12][1]==2 && c.root[12][2]==0.8 && c.root[12][3]==0.6;
+    #assert c.velocity[5][0]==0.125 && c.velocity[5][1]==1.0/6 && c.has[0] && c.has[23] && !c.has[4] && c.pose[0][1]==1;
+    z:=mv_toward(s,6,0,0);#assert z.root[7][2]==1 && z.root[7][3]==0 && z.root[7][0]==0 && z.velocity[7][1]==0;
+    w:=mv_toward(s,6,-2,0);#assert w.root[7][2]==0 && w.root[7][3]== -1;
+}
+
+#test "a scene is refused before any work, and the same request gives the same poses" #steps 2000000000 {
+    rig:=mv_verse_rig();leg:=mv_leg();s:=mv_shape();
+    predictor:[MB_WEIGHTS_MAX]f64;decoder:[MB_WEIGHTS_MAX]f64;
+    mb_synthetic(predictor[..],mb_predictor_plan(s).count,1,1);mb_synthetic_decoder(s,decoder[..],3,0.0625);
+    tight:=MvBudget.{frames=24,passes=3};
+    r:=mv_scene(s,predictor[..],decoder[..],7,2,0,1,tight,leg,mv_leg_map(),rig,3);#assert r.status==MvStatus.length && r.tokens.count==0;
+    r=mv_scene(s,predictor[..],decoder[..],6,3,0,1,tight,leg,mv_leg_map(),rig,3);#assert r.status==MvStatus.deadline && r.tokens.count==0;
+    a:=mv_scene(s,predictor[..],decoder[..],6,2,0,1,tight,leg,mv_leg_map(),rig,3);#assert a.status==MvStatus.ok && a.handoff.frames==24 && a.tokens.count==6;
+    b:=mv_scene(s,predictor[..],decoder[..],6,2,0,1,tight,leg,mv_leg_map(),rig,3);
+    for f:0..<24 {for k:0..<65 {#assert a.handoff.q[f][k][0]==b.handoff.q[f][k][0] && a.handoff.q[f][k][3]==b.handoff.q[f][k][3] && mvt_near3(a.handoff.t[f][k],b.handoff.t[f][k],0);}}
+    // The handoff is of the decoded clip.
+    #assert mvt_near3(mv_handoff(a.clip.clip,leg,mv_leg_map(),rig,3).t[9][57],a.handoff.t[9][57],0);
+    other:[MB_WEIGHTS_MAX]f64;mb_synthetic_decoder(s,other[..],4,0.0625);
+    c:=mv_scene(s,predictor[..],other[..],6,2,0,1,tight,leg,mv_leg_map(),rig,3);#assert c.status==MvStatus.ok && !mvt_near3(c.handoff.t[9][57],a.handoff.t[9][57],0.001);
+    // Zero decoder weights decode zero 6D pairs, which are no rotation.
+    zero:[MB_WEIGHTS_MAX]f64;#assert mv_scene(s,predictor[..],zero[..],6,2,0,1,tight,leg,mv_leg_map(),rig,3).status==MvStatus.shape;
+    bad:=s;bad.heads=0;#assert mv_scene(bad,predictor[..],decoder[..],6,2,0,1,tight,leg,mv_leg_map(),rig,3).status==MvStatus.shape;
+    m:=mv_leg_map();m.target[2]=61;#assert mv_scene(s,predictor[..],decoder[..],6,2,0,1,tight,leg,m,rig,3).status==MvStatus.parent;
+}
+
+#test "feet: touching, sliding and below the ground, by hand" {
+    rig:=mv_verse_rig();y:=rig.bind[57][1];
+    // A foot 1 cm up, then 3 cm, 6 cm and back to 2 cm: touching in 3 of 4 frames with a 5 cm band.
+    t:=[12]f64.[0,0.01,0, 0,0.03,0, 0,0.06,0.02, 0,0.02,0.02];tr:[8]f64;
+    h:=mvt_still(4,t[..],tr[..]);r:=mv_contact(h,rig,57,y,0.05,0.005);
+    #assert r.status==MvStatus.ok && r.touching==3 && r.frame== -1 && pose_near(r.lowest,y+0.01,0.000000001) && r.lowest_frame==0 && r.slid==0 && r.slid_frame== -1;
+    // The lowest frame is the first of equals.
+    t0:=[12]f64.[0,0.02,0, 0,0.01,0, 0,0.01,0, 0,0.03,0];h=mvt_still(4,t0[..],tr[..]);r=mv_contact(h,rig,57,y,0.05,1);#assert r.lowest_frame==1;
+    // A foot moving +X while the travel taken out moves -X stands still.
+    t8:=[6]f64.[0,0.01,0, 0.01,0.01,0];tr8:=[4]f64.[0,0, -0.01,0];h=mvt_still(2,t8[..],tr8[..]);r=mv_contact(h,rig,57,y,0.05,0.001);
+    #assert r.status==MvStatus.ok && pose_near(r.slid,0,0.000000001);
+    // Sliding 1 cm while touching (frames 1 then 2), against a 5 mm limit.
+    t2:=[12]f64.[0,0.01,0, 0,0.01,0, 0,0.01,0.01, 0,0.01,0.01];h=mvt_still(4,t2[..],tr[..]);r=mv_contact(h,rig,57,y,0.05,0.005);
+    #assert r.status==MvStatus.slide && r.frame==2 && pose_near(r.slid,0.01,0.000000001) && r.slid_frame==2;
+    r=mv_contact(h,rig,57,y,0.05,0.01);#assert r.status==MvStatus.ok;
+    // Walking back by the travel taken out keeps the foot planted.
+    tr2:=[8]f64.[0,0, 0,0, 0,-0.01, 0,-0.01];h=mvt_still(4,t2[..],tr2[..]);r=mv_contact(h,rig,57,y,0.05,0.005);
+    #assert r.status==MvStatus.ok && r.slid==0;
+    // 4 mm across x and 3 mm along z is 5 mm.
+    tr3:=[8]f64.[0,0, 0.004,0.003, 0.004,0.003, 0.004,0.003];h=mvt_still(4,t2[..],tr3[..]);r=mv_contact(h,rig,57,y,0.05,0.006);
+    #assert r.status==MvStatus.slide && r.frame==2 && pose_near(r.slid,0.01,0.000000001);
+    t5:=[12]f64.[0,0.01,0, 0,0.01,0, 0,0.01,0, 0,0.01,0];h=mvt_still(4,t5[..],tr3[..]);r=mv_contact(h,rig,57,y,0.05,0.0051);
+    #assert r.status==MvStatus.ok && pose_near(r.slid,0.005,0.000000001) && r.slid_frame==1;
+    r=mv_contact(h,rig,57,y,0.05,0.0049);#assert r.status==MvStatus.slide && r.frame==1;
+    // On the limit is not over it; at the band's top the foot still touches.
+    e:=mv_contact(h,rig,57,y,0.05,1).slid;#assert mv_contact(h,rig,57,y,0.05,e).status==MvStatus.ok;
+    t7:=[3]f64.[0,0.05,0];h=mvt_still(1,t7[..],tr[..]);#assert mv_contact(h,rig,57,y,0.05,1).touching==1 && mv_contact(h,rig,57,y,0.0499,1).touching==0;
+    // 6 cm under the ground with a 5 cm band is below; 5 cm is not.
+    t3:=[6]f64.[0,-0.05,0, 0,-0.06,0];h=mvt_still(2,t3[..],tr[..]);r=mv_contact(h,rig,57,y,0.05,1);
+    #assert r.status==MvStatus.below && r.frame==1 && pose_near(r.lowest,y-0.06,0.000000001) && r.touching==2;
+    // The first refusal stands: frame 1 slides before frame 2 is below.
+    t4:=[9]f64.[0,0,0, 0.1,0,0, 0.1,-0.2,0];h=mvt_still(3,t4[..],tr[..]);r=mv_contact(h,rig,57,y,0.05,0.01);
+    #assert r.status==MvStatus.slide && r.frame==1;
+    t6:=[9]f64.[0,-0.2,0, 0.1,0,0, 0.1,0,0];h=mvt_still(3,t6[..],tr[..]);r=mv_contact(h,rig,57,y,0.05,0.01);
+    #assert r.status==MvStatus.below && r.frame==0;
+    bad:=h;bad.status=MvStatus.pose;#assert mv_contact(bad,rig,57,y,0.05,1).status==MvStatus.shape && mv_contact(bad,rig,57,y,0.05,1).lowest_frame== -1;
+    #assert mv_contact(h,rig,0,0,0.05,1).status!=MvStatus.shape && mv_contact(h,rig,65,y,0.05,1).status==MvStatus.shape && mv_contact(h,rig,-1,y,0.05,1).status==MvStatus.shape && mv_contact(h,rig,64,y,0.05,1).status!=MvStatus.shape;
+}

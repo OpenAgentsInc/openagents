@@ -1,0 +1,30 @@
+// Chapter 150: joint maps that leave a joint out, reach past the skeleton,
+// use a joint twice or break a parent; a scene too long for the slot and
+// one past its deadline, which leave the character as it was; and splices
+// the Cast cannot take.
+#import "Basic";
+#load "../lib/motion-verse.coax";
+
+MVR_BYTES :: 131072;
+
+// book:begin refuse
+main :: () {
+    rig:=mv_verse_rig();leg:=mv_leg();
+    m:=mv_leg_map();m.target[3]= -1;r:=mv_map_check(m,leg,rig);print("ankle without a target: %, source joint %\n",r.status,r.joint);
+    m=mv_leg_map();m.target[3]=65;r=mv_map_check(m,leg,rig);print("ankle to joint 65: %, source joint %\n",r.status,r.joint);
+    m=mv_leg_map();m.target[2]=55;r=mv_map_check(m,leg,rig);print("knee to the thigh again: %, source joint %\n",r.status,r.joint);
+    m=mv_leg_map();m.target[2]=61;r=mv_map_check(m,leg,rig);print("knee to the right knee: %, source joint %\n",r.status,r.joint);
+    s:=mv_shape();predictor:[MB_WEIGHTS_MAX]f64;decoder:[MB_WEIGHTS_MAX]f64;
+    mb_synthetic(predictor[..],mb_predictor_plan(s).count,1,1);mb_synthetic_decoder(s,decoder[..],3,0.0625);
+    bytes:[MVR_BYTES]u8;n:=mv_cast_build(bytes[..],30);b:=bytes[0..<n];before:=mv_digest(b);
+    budget:=MvBudget.{frames=30,passes=8};
+    long:=mv_scene(s,predictor[..],decoder[..],8,4,0,1,budget,leg,mv_leg_map(),rig,3);
+    late:=mv_scene(s,predictor[..],decoder[..],7,8,0,1,budget,leg,mv_leg_map(),rig,3);
+    print("8 tokens (32 frames) for a 30-frame slot: %; 8 steps and a decode for 8 passes: %\n",long.status,late.status);
+    print("splice of the refused scene: %, the dance unchanged: %\n",mv_splice(b,late.handoff),mv_digest(b)==before);
+    ok:=mv_scene(s,predictor[..],decoder[..],7,4,0,1,budget,leg,mv_leg_map(),rig,3);
+    short:[MVR_BYTES]u8;k:=mv_cast_build(short[..],20);
+    print("28 frames into a 20-frame dance: %\n",mv_splice(short[0..<k],ok.handoff));
+    bytes[0]=0;print("a Cast with a damaged magic number: %\n",mv_splice(b,ok.handoff));
+}
+// book:end refuse
