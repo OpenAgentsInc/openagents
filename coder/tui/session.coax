@@ -1,0 +1,226 @@
+// Coder's session log (Coder book chapters 2, 14 and 23): every session,
+// in the terminal UI or `coder run`, appends one JSON object a line to
+// ~/.openagents/coder/sessions/ID.jsonl as it happens. `coder ls`,
+// `coder status ID` and `coder log ID` read these files, and `--json` on
+// `coder run` prints the same lines to stdout as they are written.
+//
+// The events:
+//   {"kind":"session","id":ID,"version":V,"engine":E,"cwd":DIR,"started_us":T}
+//   {"kind":"user","text":T}                  a message the person sent
+//   {"kind":"agent","engine":E}               the person switched agent
+//   {"kind":"tool","label":"Bash(ls)"}        a tool call, as the transcript shows it
+//   {"kind":"result","text":T,"error":B}      its result's first line and size
+//   {"kind":"diff","path":P,"adds":N,"dels":N}
+//   {"kind":"reply","text":T}                 the turn's reply, whole
+//   {"kind":"end","ending":E,"ms":N,"steps":N,"text":T}
+//
+// The ID is the UTC start time and milliseconds (20261102-153012-417): it
+// sorts by time. Nothing here leaves the machine (chapter 18's rule).
+
+cxproc_wall_us :: () -> int #foreign;
+
+CS_DIR :: "/.openagents/coder/sessions";      // under $HOME
+CS_LINE :: 262144;
+
+CsLog :: struct {
+  on: bool;                      // the session has a file
+  json: bool;                    // also print each line to stdout (coder run --json)
+  id: [32] u8; nid: int;
+  path: [1200] u8; npath: int;
+  line: [CS_LINE] u8;
+  reply: [65536] u8; nreply: int;   // the turn's reply so far
+}
+
+cs_id :: (l: [] CsLog) -> string { return cast(string) l[0].id[0..<l[0].nid]; }
+
+// The sessions directory under $HOME, made when missing: "" when there is no $HOME.
+cs_dir :: (out: [] u8) -> string {
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { return ""; }
+  n := cd_cat(out, 0, home);
+  n = cd_cat(out, n, "/.openagents"); m := fs_mkdir(cast(string) out[0..<n]);
+  n = cd_cat(out, n, "/coder"); m = fs_mkdir(cast(string) out[0..<n]);
+  n = cd_cat(out, n, "/sessions"); m = fs_mkdir(cast(string) out[0..<n]);
+  return cast(string) out[0..<n];
+}
+
+// Days since 1970-01-01 to a civil date (Howard Hinnant's algorithm).
+// The civil date of a day count, as y*10000 + m*100 + d.
+cs_civil :: (days: int) -> int {
+  z := days + 719468;
+  era := (ifx z >= 0 then z else z - 146096) / 146097;
+  doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400;
+  doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153;
+  d := doy - (153 * mp + 2) / 5 + 1;
+  m := ifx mp < 10 then mp + 3 else mp - 9;
+  return (ifx m <= 2 then y + 1 else y) * 10000 + m * 100 + d;
+}
+
+cs_two :: (out: [] u8, n: int, v: int) -> int { k := cd_cat(out, n, ifx v < 10 then "0" else ""); tb: [16] u8; return cd_cat(out, k, cd_itoa(v, tb[..])); }
+
+// An ID for a session started at us (microseconds since the epoch).
+cs_make_id :: (us: int, out: [] u8) -> string {
+  s := us / 1000000; ms := (us / 1000) % 1000;
+  ymd := cs_civil(s / 86400); y := ymd / 10000; mo := (ymd / 100) % 100; d := ymd % 100;
+  t := s % 86400;
+  tb: [16] u8;
+  n := cd_cat(out, 0, cd_itoa(y, tb[..]));
+  n = cs_two(out, n, mo); n = cs_two(out, n, d); n = cd_cat(out, n, "-");
+  n = cs_two(out, n, t / 3600); n = cs_two(out, n, (t / 60) % 60); n = cs_two(out, n, t % 60); n = cd_cat(out, n, "-");
+  n = cd_cat(out, n, ifx ms < 100 then (ifx ms < 10 then "00" else "0") else ""); n = cd_cat(out, n, cd_itoa(ms, tb[..]));
+  return cast(string) out[0..<n];
+}
+
+// Starts the session's file with its header line.
+cs_open :: (a: [] App) {
+  l := a[0].log;
+  db: [1100] u8; dir := cs_dir(db[..]);
+  us := cxproc_wall_us();
+  ib: [32] u8; id := cs_make_id(us, ib[..]);
+  l[0].nid = cd_cat(l[0].id[..], 0, id);
+  if dir.count > 0 {
+    l[0].npath = cd_cat(l[0].path[..], 0, dir); l[0].npath = cd_cat(l[0].path[..], l[0].npath, "/");
+    l[0].npath = cd_cat(l[0].path[..], l[0].npath, id); l[0].npath = cd_cat(l[0].path[..], l[0].npath, ".jsonl");
+    l[0].on = true;
+  }
+  o := l[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"session\",\"id\":"); n = json_write_string(o, n, id);
+  n = json_raw(o, n, ",\"version\":"); n = json_write_string(o, n, CODER_VERSION);
+  n = json_raw(o, n, ",\"engine\":"); n = json_write_string(o, n, cd_engine_name(a[0].engine));
+  n = json_raw(o, n, ",\"cwd\":"); n = json_write_string(o, n, a[0].cwd);
+  n = json_raw(o, n, ",\"started_us\":"); n = json_write_int(o, n, us);
+  n = json_raw(o, n, "}");
+  cs_put(a, n);
+}
+
+// Appends the line built in l.line[0..<n] (and prints it with --json).
+cs_put :: (a: [] App, n: int) {
+  l := a[0].log;
+  if n < 0 || n >= l[0].line.count { return; }
+  l[0].line[n] = 10;
+  line := cast(string) l[0].line[0..<n + 1];
+  if l[0].on { x := fs_append(cast(string) l[0].path[0..<l[0].npath], line); }
+  if l[0].json { r := cxterm_write(l[0].line[0..<n + 1]); }
+}
+
+cs_text :: (a: [] App, kind: string, key: string, text: string) {
+  o := a[0].log[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":"); n = json_write_string(o, n, kind);
+  n = json_raw(o, n, ",\""); n = json_raw(o, n, key); n = json_raw(o, n, "\":"); n = json_write_string(o, n, text);
+  n = json_raw(o, n, "}");
+  cs_put(a, n);
+}
+
+cs_user :: (a: [] App, text: string) { a[0].log[0].nreply = 0; cs_text(a, "user", "text", text); }
+cs_agent :: (a: [] App, engine: int) { cs_text(a, "agent", "engine", cd_engine_name(engine)); }
+cs_tool :: (a: [] App, label: string) { cs_reply_flush(a); cs_text(a, "tool", "label", label); }
+
+cs_result :: (a: [] App, text: string, bad: bool) {
+  o := a[0].log[0].line[..];
+  cut := ifx text.count > 4000 then 4000 else text.count;
+  while cut > 0 && cut < text.count && (text[cut] & 0xC0) == 0x80 { cut -= 1; }
+  n := json_raw(o, 0, "{\"kind\":\"result\",\"text\":"); n = json_write_string(o, n, cast(string) text[0..<cut]);
+  n = json_raw(o, n, ifx bad then ",\"error\":true" else ",\"error\":false");
+  if cut < text.count { n = json_raw(o, n, ",\"bytes\":"); n = json_write_int(o, n, text.count); }
+  n = json_raw(o, n, "}");
+  cs_put(a, n);
+}
+
+cs_diff :: (a: [] App, path: string, adds: int, dels: int) {
+  o := a[0].log[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"diff\",\"path\":"); n = json_write_string(o, n, path);
+  n = json_raw(o, n, ",\"adds\":"); n = json_write_int(o, n, adds);
+  n = json_raw(o, n, ",\"dels\":"); n = json_write_int(o, n, dels);
+  n = json_raw(o, n, "}");
+  cs_put(a, n);
+}
+
+// The reply streams in pieces; it is logged whole, before the next tool and at the end.
+cs_reply_add :: (a: [] App, s: string) { l := a[0].log; for c: s { if l[0].nreply < l[0].reply.count { l[0].reply[l[0].nreply] = c; l[0].nreply += 1; } } }
+cs_reply_flush :: (a: [] App) {
+  l := a[0].log;
+  if l[0].nreply == 0 { return; }
+  cs_text(a, "reply", "text", cast(string) l[0].reply[0..<l[0].nreply]);
+  l[0].nreply = 0;
+}
+
+cs_end :: (a: [] App, ending: string, ms: int, steps: int, text: string) {
+  cs_reply_flush(a);
+  o := a[0].log[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"end\",\"ending\":"); n = json_write_string(o, n, ending);
+  n = json_raw(o, n, ",\"ms\":"); n = json_write_int(o, n, ms);
+  n = json_raw(o, n, ",\"steps\":"); n = json_write_int(o, n, steps);
+  if text.count > 0 { n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text); }
+  n = json_raw(o, n, "}");
+  cs_put(a, n);
+}
+
+// ---------------------------------------------------------------- reading sessions back
+
+// What `coder ls` and `coder status` show of one session file.
+CsSummary :: struct {
+  ok: bool;
+  engine: [32] u8; nengine: int;
+  cwd: [1024] u8; ncwd: int;
+  task: [512] u8; ntask: int;      // the first message
+  ending: [32] u8; nending: int;   // the last turn's ending ("running" when a turn has no end yet)
+  turns: int;
+  steps: int;
+  started_us: int;
+  last: [512] u8; nlast: int;      // the last event's kind and text, for status
+}
+
+cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
+  s[0] = CsSummary.{};
+  open := false;
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    if line.count == 0 { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := cl_str(ar, line, "kind");
+    if kind == "session" {
+      s[0].ok = true;
+      s[0].nengine = cd_cat(s[0].engine[..], 0, cl_str(ar, line, "engine"));
+      s[0].ncwd = cd_cat(s[0].cwd[..], 0, cl_str(ar, line, "cwd"));
+      st := cl_int(line, "started_us"); if st.ok { s[0].started_us = st.value; }
+    } else if kind == "user" {
+      s[0].turns += 1; open = true;
+      if s[0].ntask == 0 { s[0].ntask = cd_cat(s[0].task[..], 0, cl_str(ar, line, "text")); }
+    } else if kind == "agent" {
+      s[0].nengine = cd_cat(s[0].engine[..], 0, cl_str(ar, line, "engine"));
+    } else if kind == "end" {
+      open = false;
+      s[0].nending = cd_cat(s[0].ending[..], 0, cl_str(ar, line, "ending"));
+      st := cl_int(line, "steps"); if st.ok { s[0].steps += st.value; }
+    }
+    if kind != "session" {
+      t := cl_str(ar, line, ifx kind == "tool" then "label" else ifx kind == "agent" || kind == "end" then (ifx kind == "end" then "ending" else "engine") else "text");
+      s[0].nlast = cd_cat(s[0].last[..], 0, kind); s[0].nlast = cd_cat(s[0].last[..], s[0].nlast, ": ");
+      e2 := 0; while e2 < t.count && t[e2] != 10 { e2 += 1; }
+      s[0].nlast = cd_cat(s[0].last[..], s[0].nlast, cast(string) t[0..<e2]);
+    }
+  }
+  if open { s[0].nending = cd_cat(s[0].ending[..], 0, "running"); }
+}
+
+#test "session IDs sort by time: UTC date, time and milliseconds" {
+  b: [32] u8;
+  #assert cs_make_id(0, b[..]) == "19700101-000000-000";
+  #assert cs_make_id(1793630412417000, b[..]) == "20261102-144012-417";
+  #assert cs_make_id(951782400005000, b[..]) == "20000229-000000-005";
+}
+
+#test "a session file reads back as its engine, first message, turns, steps and ending" {
+  text := "{\"kind\":\"session\",\"id\":\"x\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":5}\n{\"kind\":\"user\",\"text\":\"fix it\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n{\"kind\":\"end\",\"ending\":\"finished\",\"ms\":10,\"steps\":2}\n{\"kind\":\"agent\",\"engine\":\"codex\"}\n{\"kind\":\"user\",\"text\":\"again\"}\n";
+  s: [1] CsSummary; ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  cs_read(text, s[..], ar[..]);
+  #assert s[0].ok && cast(string) s[0].engine[0..<s[0].nengine] == "codex" && cast(string) s[0].task[0..<s[0].ntask] == "fix it";
+  #assert s[0].turns == 2 && s[0].steps == 2 && cast(string) s[0].ending[0..<s[0].nending] == "running" && s[0].started_us == 5;
+  #assert cast(string) s[0].last[0..<s[0].nlast] == "user: again";
+}

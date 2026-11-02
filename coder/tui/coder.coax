@@ -30,6 +30,7 @@
 #load "diff.coax";
 #load "codex.coax";
 #load "microcoder.coax";
+#load "session.coax";
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -96,6 +97,8 @@ App :: struct {
   mc_h: int = -1;
   mc_line: [] u8;
   mc_ar: [1] ClArena;
+  log: [] CsLog;                  // the session's log file (session.coax)
+  exit: int;                      // coder run's exit code: the last turn's ending
   turns: int;
   cost: f64;
 }
@@ -110,6 +113,7 @@ cd_flush :: (a: [] App) {
 
 // Finished text into the scrollback (or stdout, plain).
 cd_commit :: (a: [] App, style: int, s: string) {
+  if a[0].log[0].json { return; }          // coder run --json: the log's lines are the output
   if a[0].plain { tui_put(a[0].o[..], s); tui_put(a[0].o[..], "\n"); cd_flush(a); return; }
   tui_live_commit(a[0].o[..], a[0].lv[..], style, s);
 }
@@ -189,7 +193,7 @@ cd_now :: (a: [] App) -> int { return cxproc_now_ms(); }
 
 // ---------------------------------------------------------------- the reply
 
-cd_reply_add :: (a: [] App, s: string) { for c: s { if a[0].nrep < a[0].rep.count { a[0].rep[a[0].nrep] = c; a[0].nrep += 1; } } }
+cd_reply_add :: (a: [] App, s: string) { cs_reply_add(a, s); for c: s { if a[0].nrep < a[0].rep.count { a[0].rep[a[0].nrep] = c; a[0].nrep += 1; } } }
 
 // Commits whole lines of the reply; with all, the rest too.
 // A reply line as the terminal shows it: Markdown rendered to styles, or
@@ -226,6 +230,8 @@ cd_finish :: (a: [] App, ending: int, text: string) {
   n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(cd_now(a) - a[0].started_ms, tb[..]));
   if a[0].steps > 0 { n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_itoa(a[0].steps, tb[..])); n = cd_cat(sb[..], n, ifx a[0].steps == 1 then " step" else " steps"); }
   cd_commit(a, ifx ending == END_FINISHED then TUI_FAINT else TUI_RED, cast(string) sb[0..<n]);
+  cs_end(a, ifx ending == END_STOPPED then "stopped" else ifx ending == END_FAILED then "failed" else "finished", cd_now(a) - a[0].started_ms, a[0].steps, text);
+  a[0].exit = ifx ending == END_FINISHED then 0 else ifx ending == END_STOPPED then 130 else 1;
   a[0].running = false; a[0].ask = false;
 }
 
@@ -235,6 +241,8 @@ cd_command_event :: (a: [] App, cmd: string, exit: int, timed_out: bool, output:
   n = cd_cat(sb[..], n, "  $ "); n = cd_cat(sb[..], n, cmd);
   n = cd_cat(sb[..], n, ifx timed_out then " · timed out" else " · exit ");
   if !timed_out { n = cd_cat(sb[..], n, cd_itoa(exit, tb[..])); }
+  cs_tool(a, cast(string) sb[2..<n]);
+  cs_result(a, output, timed_out || exit != 0);
   cd_commit(a, ifx exit == 0 && !timed_out then TUI_DIM else TUI_RED, cast(string) sb[0..<n]);
   // the first lines of output
   shown := 0; at := 0; total := 0;
@@ -415,7 +423,7 @@ cd_claude_message :: (a: [] App, m: ClMessage) {
       cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0;
       lb: [1024] u8;
       label := cd_tool_label(a, cl_str(q[0].ar[..], item, "name"), cl_raw(item, "input"), lb[..]);
-      cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", label);
+      cd_tool_row(a, label);
       a[0].steps += 1;
       name := cl_str(q[0].ar[..], item, "name");
       if name == "Edit" || name == "Write" {
@@ -459,8 +467,15 @@ cd_claude_message :: (a: [] App, m: ClMessage) {
   }
 }
 
+// A tool call's row, logged.
+cd_tool_row :: (a: [] App, label: string) {
+  cs_tool(a, label);
+  cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", label);
+}
+
 // A tool's result in one row: its first line and how many more.
 cd_result_line :: (a: [] App, text: string, bad: bool) {
+  cs_result(a, text, bad);
   lines := 0; for c: text { if c == 10 { lines += 1; } }
   if text.count > 0 && text[text.count - 1] == 10 { lines -= 1; }
   e := 0; while e < text.count && text[e] != 10 { e += 1; }
@@ -600,6 +615,7 @@ cd_submit :: (a: [] App) {
     if msg == "/clear" {
       cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
       if !a[0].plain { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); tui_live_cleared(a[0].lv[..]); }
+      a[0].log[0].nid = 0; a[0].log[0].on = false;     // the next message opens a new session file
       cd_commit(a, TUI_FAINT, "  The conversation is cleared; the next message starts a new session.");
       return;
     }
@@ -611,12 +627,15 @@ cd_submit :: (a: [] App) {
     return;
   }
   cd_commit_prefixed(a, TUI_BRIGHT, "› ", "  ", msg);
+  if a[0].log[0].nid == 0 { cs_open(a); }
+  cs_user(a, msg);
   cd_start(a, msg);
 }
 
 // Switches the agent. Each agent's session stays open with its own conversation.
 cd_switch :: (a: [] App, e: int) {
   a[0].engine = e;
+  if a[0].log[0].nid > 0 { cs_agent(a, e); }
   cd_commit(a, TUI_DIM, ifx e == ENGINE_CODEX then "  Agent: Codex" else ifx e == ENGINE_MICRO then "  Agent: Microcoder" else "  Agent: Claude Code");
 }
 
@@ -681,14 +700,208 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines\n       coder ls [--json]                         sessions, newest first\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|echo  --model M  --ask  --cwd DIR";
+
+// Flags that take a value: their value is not a positional argument.
+CD_VALUE_FLAGS :: [5] string.["--engine", "--model", "--cwd", "--print", "--on"];
+
+// Positional argument k (0 is the verb), skipping flags and their values.
+cd_positional :: (args: [] Args, k: int) -> string {
+  seen := 0; i := 0;
+  flags := CD_VALUE_FLAGS;
+  while i < args_count(args) {
+    v := args_at(args, i);
+    if v.count > 0 && v[0] == '-' {
+      takes := false; for f: flags { if v == f { takes = true; } }
+      i += ifx takes then 2 else 1;
+      continue;
+    }
+    if seen == k { return v; }
+    seen += 1; i += 1;
+  }
+  return "";
+}
+
+// Writes s to stdout, any length.
+cd_out :: (s: string) {
+  ob: [8192] u8; n := 0;
+  for c: s { ob[n] = c; n += 1; if n == ob.count { r := cxterm_write(ob[0..<n]); n = 0; } }
+  if n > 0 { r := cxterm_write(ob[0..<n]); }
+}
+cd_outln :: (s: string) { cd_out(s); cd_out("\n"); }
+
+// "3m ago" from a start time in microseconds.
+cd_age :: (us: int, out: [] u8) -> string {
+  if us <= 0 { return "?"; }
+  s := (cxproc_wall_us() - us) / 1000000;
+  tb: [16] u8; n := 0;
+  if s < 60 { n = cd_cat(out, 0, cd_itoa(s, tb[..])); n = cd_cat(out, n, "s ago"); }
+  else if s < 3600 { n = cd_cat(out, 0, cd_itoa(s / 60, tb[..])); n = cd_cat(out, n, "m ago"); }
+  else if s < 86400 { n = cd_cat(out, 0, cd_itoa(s / 3600, tb[..])); n = cd_cat(out, n, "h ago"); }
+  else { n = cd_cat(out, 0, cd_itoa(s / 86400, tb[..])); n = cd_cat(out, n, "d ago"); }
+  return cast(string) out[0..<n];
+}
+
+// A session file's text: "" when there is none. ID may be a prefix of one.
+cd_session_file :: (id: string, buf: [] u8, idout: [] u8) -> string {
+  db: [1100] u8; dir := cs_dir(db[..]);
+  if dir.count == 0 || id.count == 0 { return ""; }
+  l_b: [1] FsList; l := l_b[..];
+  n := fs_list(dir, l);
+  found := -1;
+  for i: 0..<n {
+    name := fs_entry(l, i);
+    if name.count > id.count && cast(string) name[0..<id.count] == id { found = i; }    // the newest match
+  }
+  if found < 0 { return ""; }
+  name := fs_entry(l, found);
+  k := cd_cat(idout, 0, cast(string) name[0..<name.count - 6]);
+  pb: [1400] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, name);
+  m := fs_read(cast(string) pb[0..<pn], buf);
+  if m < 0 { return ""; }
+  return cast(string) buf[0..<m];
+}
+
+cd_summary_line :: (id: string, s: [] CsSummary, json: bool, out: [] u8) -> string {
+  n := 0;
+  if json {
+    n = json_raw(out, 0, "{\"id\":"); n = json_write_string(out, n, id);
+    n = json_raw(out, n, ",\"engine\":"); n = json_write_string(out, n, cast(string) s[0].engine[0..<s[0].nengine]);
+    n = json_raw(out, n, ",\"state\":"); n = json_write_string(out, n, cast(string) s[0].ending[0..<s[0].nending]);
+    n = json_raw(out, n, ",\"turns\":"); n = json_write_int(out, n, s[0].turns);
+    n = json_raw(out, n, ",\"steps\":"); n = json_write_int(out, n, s[0].steps);
+    n = json_raw(out, n, ",\"started_us\":"); n = json_write_int(out, n, s[0].started_us);
+    n = json_raw(out, n, ",\"cwd\":"); n = json_write_string(out, n, cast(string) s[0].cwd[0..<s[0].ncwd]);
+    n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, cast(string) s[0].task[0..<s[0].ntask]);
+    n = json_raw(out, n, "}");
+    return ifx n < 0 then "" else cast(string) out[0..<n];
+  }
+  ab: [32] u8; tb: [16] u8;
+  n = cd_cat(out, 0, id); n = cd_cat(out, n, "  ");
+  n = cd_cat(out, n, cast(string) s[0].engine[0..<s[0].nengine]); for i: s[0].nengine..<11 { n = cd_cat(out, n, " "); }
+  st := cast(string) s[0].ending[0..<s[0].nending]; if st.count == 0 { st = "empty"; }
+  n = cd_cat(out, n, st); for i: st.count..<10 { n = cd_cat(out, n, " "); }
+  ag := cd_age(s[0].started_us, ab[..]); n = cd_cat(out, n, ag); for i: ag.count..<9 { n = cd_cat(out, n, " "); }
+  task := cast(string) s[0].task[0..<s[0].ntask];
+  e := 0; while e < task.count && task[e] != 10 { e += 1; }
+  task = cast(string) task[0..<e];
+  n = cd_cat(out, n, cast(string) task[0..<tui_fit(task, 60)]);
+  if tui_fit(task, 60) < task.count { n = cd_cat(out, n, "…"); }
+  return cast(string) out[0..<n];
+}
+
+CD_LS_MAX :: 50;
+
+cd_cmd_ls :: (json: bool) -> int {
+  db: [1100] u8; dir := cs_dir(db[..]);
+  if dir.count == 0 { tool_errln("coder: no $HOME"); return 1; }
+  l_b: [1] FsList; l := l_b[..];
+  n := fs_list(dir, l);
+  if n <= 0 { if json { cd_outln("[]"); } else { cd_outln("No sessions yet: coder run \"TASK\" or coder starts one."); } return 0; }
+  fb: [4194304] u8; s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  shown := 0;
+  if json { cd_out("["); }
+  i := n - 1;
+  while i >= 0 && shown < CD_LS_MAX {
+    name := fs_entry(l, i);
+    i -= 1;
+    if name.count < 7 || cast(string) name[name.count - 6..<name.count] != ".jsonl" { continue; }
+    pb: [1400] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, name);
+    m := fs_read(cast(string) pb[0..<pn], fb[..]);
+    if m < 0 { continue; }
+    cs_read(cast(string) fb[0..<m], s[..], ar[..]);
+    if !s[0].ok { continue; }
+    ob: [4096] u8;
+    line := cd_summary_line(cast(string) name[0..<name.count - 6], s[..], json, ob[..]);
+    if json && shown > 0 { cd_out(","); }
+    if json { cd_out(line); } else { cd_outln(line); }
+    shown += 1;
+  }
+  if json { cd_outln("]"); }
+  return 0;
+}
+
+cd_cmd_status :: (id: string, json: bool) -> int {
+  fb: [4194304] u8; ib: [128] u8;
+  text := cd_session_file(id, fb[..], ib[..]);
+  if text.count == 0 { tool_err("coder: no session "); tool_errln(id); return 6; }
+  s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  cs_read(text, s[..], ar[..]);
+  full := cast(string) ib[0..<ifx id.count > 0 then cd_cat(ib[..], 0, "") else 0];
+  k := 0; while k < ib.count && ib[k] != 0 { k += 1; }
+  full = cast(string) ib[0..<k];
+  ob: [4096] u8;
+  if json { cd_outln(cd_summary_line(full, s[..], true, ob[..])); return 0; }
+  tb: [16] u8;
+  cd_out("id      "); cd_outln(full);
+  cd_out("engine  "); cd_outln(cast(string) s[0].engine[0..<s[0].nengine]);
+  cd_out("state   "); cd_outln(ifx s[0].nending > 0 then cast(string) s[0].ending[0..<s[0].nending] else "empty");
+  cd_out("cwd     "); cd_outln(cast(string) s[0].cwd[0..<s[0].ncwd]);
+  cd_out("turns   "); cd_outln(cd_itoa(s[0].turns, tb[..]));
+  cd_out("steps   "); cd_outln(cd_itoa(s[0].steps, tb[..]));
+  ab2: [32] u8; cd_out("started "); cd_outln(cd_age(s[0].started_us, ab2[..]));
+  return 0;
+}
+
+// The log as the transcript showed it, or its JSON lines.
+cd_cmd_log :: (id: string, json: bool) -> int {
+  fb: [4194304] u8; ib: [128] u8;
+  text := cd_session_file(id, fb[..], ib[..]);
+  if text.count == 0 { tool_err("coder: no session "); tool_errln(id); return 6; }
+  if json { cd_out(text); return 0; }
+  ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    at = e + 1;
+    ar[0].at = 0; ar[0].full = false;
+    kind := cl_str(ar[..], line, "kind");
+    ob: [8192] u8; n := 0;
+    if kind == "session" { n = cd_cat(ob[..], 0, "Coder "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "version")); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "engine")); n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "cwd")); }
+    else if kind == "user" { n = cd_cat(ob[..], 0, "› "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "text")); }
+    else if kind == "agent" { n = cd_cat(ob[..], 0, "  Agent: "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "engine")); }
+    else if kind == "tool" { n = cd_cat(ob[..], 0, "  ⏺ "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "label")); }
+    else if kind == "result" {
+      t := cl_str(ar[..], line, "text"); f := 0; while f < t.count && t[f] != 10 { f += 1; }
+      n = cd_cat(ob[..], 0, "    └ "); n = cd_cat(ob[..], n, cast(string) t[0..<f]);
+      bad := cl_bool(line, "error"); if bad.ok && bad.value { n = cd_cat(ob[..], n, "  (error)"); }
+    }
+    else if kind == "diff" {
+      tb: [16] u8;
+      n = cd_cat(ob[..], 0, "    └ "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "path"));
+      n = cd_cat(ob[..], n, " (+"); ad := cl_int(line, "adds"); n = cd_cat(ob[..], n, cd_itoa(ad.value, tb[..]));
+      n = cd_cat(ob[..], n, " -"); de := cl_int(line, "dels"); n = cd_cat(ob[..], n, cd_itoa(de.value, tb[..])); n = cd_cat(ob[..], n, ")");
+    }
+    else if kind == "reply" {
+      t := cl_str(ar[..], line, "text");
+      n = cd_cat(ob[..], 0, "● ");
+      for c: t { n = cd_cat(ob[..], n, ifx c == 10 then "\n  " else ""); if c != 10 && n < ob.count { ob[n] = c; n += 1; } }
+    }
+    else if kind == "end" {
+      tb: [32] u8;
+      ms := cl_int(line, "ms"); st := cl_int(line, "steps");
+      n = cd_cat(ob[..], 0, "  └ "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "ending"));
+      n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cd_seconds_text(ms.value, tb[..]));
+      if st.value > 0 { n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, cd_itoa(st.value, tb[..])); n = cd_cat(ob[..], n, ifx st.value == 1 then " step" else " steps"); }
+      why := cl_str(ar[..], line, "text"); if why.count > 0 { n = cd_cat(ob[..], n, " · "); n = cd_cat(ob[..], n, why); }
+    }
+    if n > 0 { cd_outln(cast(string) ob[0..<n]); }
+  }
+  return 0;
+}
+
 tool_main :: () -> int #export_c {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
-  if args_has(args, "--help") || args_has(args, "-h") {
-    tool_errln("usage: coder [--engine claude|codex|microcoder|echo] [--model M] [--ask] [--cwd DIR]\n       coder --print \"TASK\" [--engine claude|codex|microcoder|echo]");
-    return 0;
-  }
-  if args_has(args, "--version") { tool_errln(CODER_VERSION); return 0; }
+  verb := cd_positional(args, 0);
+  if args_has(args, "--help") || args_has(args, "-h") || verb == "help" { tool_errln(USAGE); return 0; }
+  if args_has(args, "--version") || verb == "version" { tool_errln(CODER_VERSION); return 0; }
+  json := args_has(args, "--json");
+  if verb == "ls" { return cd_cmd_ls(json); }
+  if verb == "status" { return cd_cmd_status(cd_positional(args, 1), json); }
+  if verb == "log" { return cd_cmd_log(cd_positional(args, 1), json); }
+  if verb.count > 0 && verb != "run" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }
   a_b: [1] App; a := a_b[..];
   q: [1] ClQuery; p: [1] ClProcess;
   dft: [1] DfTable; a[0].df_table = dft[..];
@@ -708,19 +921,23 @@ tool_main :: () -> int #export_c {
   want := args_value(args, "--engine", "");
   if want == "echo" { a[0].engine = ENGINE_ECHO; }
   else if want == "codex" { a[0].engine = ENGINE_CODEX; }
-  else if want == "microcoder" { a[0].engine = ENGINE_MICRO; }
-  else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex, microcoder or echo"); return 2; }
+  else if want == "microcoder" || want == "micro" { a[0].engine = ENGINE_MICRO; }
+  else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex, micro or echo"); return 2; }
   a[0].model_engine = a[0].engine;
 
+  log_b: [1] CsLog; a[0].log = log_b[..];
   task := args_value(args, "--print", "");
-  if task.count > 0 || args_has(args, "--print") {
+  if verb == "run" { task = cd_positional(args, 1); }
+  if verb == "run" || task.count > 0 || args_has(args, "--print") {
     a[0].plain = true; a[0].cols = 100; a[0].rows = 40;
-    if task.count == 0 { tool_errln("coder: --print needs a task"); return 2; }
+    a[0].log[0].json = json;
+    if task.count == 0 { tool_errln("coder run: needs a task: coder run \"TASK\""); return 2; }
     tui_ed_set(a[0].ed[..], task);
     cd_submit(a);
+    if !json { tb: [64] u8; tn := cd_cat(tb[..], 0, "  session "); tn = cd_cat(tb[..], tn, cs_id(a[0].log)); cd_commit(a, TUI_FAINT, cast(string) tb[0..<tn]); }
     for guard: 0..<100000000 { if !a[0].running { break; } if a[0].ask { cd_claude_answer(a, 'n'); } if !cd_poll(a) { x := cxproc_sleep_ms(5); } }
     cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
-    return 0;
+    return a[0].exit;
   }
 
   if cxterm_size() < 0 { tool_errln("coder: needs a terminal; use --print \"TASK\" for plain output"); return 2; }

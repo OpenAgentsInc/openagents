@@ -96,7 +96,7 @@ cd_micro_line :: (a: [] App, line: string) {
     lb: [1024] u8;
     // copies: each lookup reuses the arena
     pb: [1024] u8; pn := cd_cat(pb[..], 0, cd_mc_str(a, line, ifx kind == "view" then "path" else "command"));
-    cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", cd_label(a, ifx kind == "view" then "Read" else "Bash", cast(string) pb[0..<pn], lb[..]));
+    cd_tool_row(a, cd_label(a, ifx kind == "view" then "Read" else "Bash", cast(string) pb[0..<pn], lb[..]));
     a[0].steps += 1;
     if kind == "view" {
       found := cl_bool(line, "found");

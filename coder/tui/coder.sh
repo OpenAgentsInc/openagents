@@ -7,7 +7,7 @@
 # only. No credential is exported from here. Shift-Tab
 # switches agent.
 #   coder/tui/coder.sh [--engine claude|codex|microcoder|echo] [--model M] [--ask] [--cwd DIR]
-#   coder/tui/coder.sh --print "TASK"
+#   coder/tui/coder.sh run "TASK" [--json] | ls | status ID | log ID   (sessions in ~/.openagents/coder/sessions)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
 export PWD="$(pwd)" CODER_REPO="$repo"
