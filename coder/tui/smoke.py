@@ -679,6 +679,15 @@ def verbs(check):
             return ([l["events"] for l in ls if l.get("kind") == "batch"], sum(1 for l in ls if l.get("fate") == "dropped: no decision"))
         check("router batching: eight candidates in one System One request, the other two in the next pass",
               counts(b1) == ([8], 8) and counts(b2) == ([2], 2) and all(not l["decided"] for l in b1 + b2 if l.get("kind") == "batch"))
+        # consent (chapter 18): with a key but no grant, neither the events nor a task go to System One
+        trigger("message gated", "--source", "team", "--author", "kim")
+        r = subprocess.run([coder, "router", "--once", "--json"], cwd=REPO, env=dict(nk, BASETEN_API_KEY="not-a-key"), capture_output=True, text=True, timeout=300)
+        bg = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+        rr = subprocess.run([coder, "route", "fix the parser", "--json"], cwd=REPO, env=dict(nk, BASETEN_API_KEY="not-a-key"), capture_output=True, text=True, timeout=120)
+        rj = json.loads(rr.stdout) if rr.stdout.startswith("{") else {}
+        check("consent: without a grant the Router's events and a task to route stay here, and the reason names the grant",
+              any(l.get("fate") == "dropped: no decision" and "no consent to send the events" in l.get("note", "") for l in bg)
+              and rj.get("ok") is False and "no consent to send the task" in rj.get("text", "") and "coder consent grant system-one" in rj.get("text", ""))
         # the watchdog: a worker that repeats one step is redirected, then stopped; a quiet one with no System One key is reported
         sdir = os.path.join(home, ".openagents", "coder", "sessions")
         nokey = dict(env)

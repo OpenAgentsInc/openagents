@@ -204,7 +204,7 @@ cd_cmd_consent :: (sub: string, what: string, classes: string, days: int, json: 
 
 // The gate on one message of session content to System One: logs the
 // decision and returns true when a grant covers it. why gets the refusal.
-gt_session_to_so :: (text: string, why: [] u8, nwhy: [] int) -> bool {
+gt_session_to_so :: (text: string, what: string, why: [] u8, nwhy: [] int) -> bool {
   pb: [1400] u8; path := gt_path(pb[..]);
   if path.count == 0 { nwhy[0] = cd_cat(why, 0, "no $HOME for the consent ledger"); return false; }
   st: [1] GtStore; l: [1] CsLedger; file: [GT_FILE] u8;
@@ -222,7 +222,8 @@ gt_session_to_so :: (text: string, why: [] u8, nwhy: [] int) -> bool {
   saved := gt_save(path, l[0], before);
   if r.why == CsWhy.ok && saved { return true; }
   if !saved { nwhy[0] = cd_cat(why, 0, "the consent ledger could not be written"); return false; }
-  nwhy[0] = cd_cat(why, 0, "no consent to send its log to System One. To allow it: coder consent grant system-one --classes session");
+  n := cd_cat(why, 0, "no consent to send "); n = cd_cat(why, n, what);
+  nwhy[0] = cd_cat(why, n, " to System One. To allow it: coder consent grant system-one --classes session");
   return false;
 }
 

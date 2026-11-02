@@ -11,8 +11,9 @@
 > [chapter 19](ch019-remember-a-fact-then-revise-it.md)'s remembered facts
 > and every engine, with `coder consent` to grant and revoke and a ledger
 > on disk that each process replays. It also stands between a quiet
-> Worker's log and System One, which the watchdog asks about it. Still to
-> come: the gate on System One's routing calls,
+> Worker's log and System One, which the watchdog asks about it, and
+> between System One and the text that routing and the Router's batch
+> decisions send. Still to come:
 > [chapter 16](ch016-speak-the-protocols.md)'s outbound calls, mesh peer
 > links and [Psionic chapter 247](../../psionic/book/ch247-outcomes-become-training-rows.md)'s
 > export, and labels for [chapter 2](ch002-model-visible-means-logged.md)'s
@@ -769,13 +770,25 @@ System One judged two such Workers as still making progress, and the
 grant listed `2 sends, 792 bytes`. The smoke checks the refusal offline,
 with a key that is never used.
 
+The same grant covers System One's other two calls that carry session
+content:
+
+- **Routing.** `--engine auto` and `coder route` send the task's text so
+  System One can pick an engine (chapter 13). With no grant, routing has no
+  decision: the default engine runs, and the route line says "no consent to
+  send the task to System One" with the grant command.
+- **The Router's batch.** The Router sends the text of each candidate event
+  so System One can decide whether it asks for work (chapter 17). With no
+  grant, each candidate is dropped with "no consent to send the events".
+
+`coder decide` is not gated. It's an explicit request to send the question
+and its state to System One.
+
 ## What this does not do yet
 
-- **The gate guards two paths.** Remembered facts to engines, and the
-  watchdog's log excerpts to System One, go through it. Other calls to
-  System One are not gated yet: routing sends the task's text to pick an
-  engine (chapter 13), and the Router sends an event's text to decide
-  whether it asks for work (chapter 17). Chapter 16's `tools/call`
+- **The gate guards two destinations.** Remembered facts go to engines,
+  and session content (the watchdog's log excerpts, routing's task text
+  and the Router's event text) goes to System One. Chapter 16's `tools/call`
   requests, mesh peer links and Psionic chapter 247's training-row export
   still need to build a `CsMessage` and go through `cs_send`.
 - **Labels come only from facts.** Coder labels each chapter 19 fact by

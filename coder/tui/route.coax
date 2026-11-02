@@ -118,6 +118,9 @@ cd_route :: (task: string, local: bool, r: [] CdRoute) {
   cb: [1] SoClient; kb: [512] u8;
   why := cd_so_keyed(cb[..], kb[..]);
   if why.count > 0 { cd_route_fail(r, why); return; }
+  // the task leaves only under a grant (chapter 18)
+  gn: [1] int;
+  if !gt_session_to_so(state, "the task", r[0].why[..], gn[..]) { for i: 0..<kb.count { kb[i] = 0; } r[0].ok = false; r[0].nwhy = gn[0]; return; }
   c := cb[0];
   buf: [16384] u8; b: [1] SoBody;
   cd_route_body(b[..], buf[..], state);

@@ -480,7 +480,7 @@ rt_progress :: (task: string, wlog: string, why: [] u8, nwhy: [] int) -> int {
   // session content leaves only under a grant (chapter 18), decided once a send could happen at all
   cb: [1] SoClient; kb: [512] u8; nokey := cd_so_keyed(cb[..], kb[..]);
   for i: 0..<kb.count { kb[i] = 0; }
-  if nokey.count == 0 && !gt_session_to_so(cast(string) sb[0..<n], why, nwhy) { return -1; }
+  if nokey.count == 0 && !gt_session_to_so(cast(string) sb[0..<n], "its log", why, nwhy) { return -1; }
   return rt_ask(cast(string) sb[0..<n], "The agent's log has not grown for a while. Judging by its recent steps, is it still making real progress toward its task (not looping, stalled or working on something else)?", why, nwhy);
 }
 
@@ -706,6 +706,9 @@ rt_batch_decide :: (bt: [] RtBatch, state: string) {
   cb: [1] SoClient; kb: [512] u8;
   w := cd_so_keyed(cb[..], kb[..]);
   if w.count > 0 { bt[0].nwhy = cd_cat(bt[0].why[..], 0, w); return; }
+  // the events' text leaves only under a grant (chapter 18)
+  gn: [1] int;
+  if !gt_session_to_so(state, "the events", bt[0].why[..], gn[..]) { for i: 0..<kb.count { kb[i] = 0; } bt[0].nwhy = gn[0]; return; }
   buf: [65536] u8; b: [1] SoBody;
   so_begin(b[..], buf[..], SO_MAMMOTH, "");
   so_state_json(b[..], state);
