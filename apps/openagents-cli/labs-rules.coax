@@ -10,6 +10,27 @@
 
 EXIT_MISSING :: 8;   // a program Labs needs is missing (Chrome, ffmpeg, the transcribe backend)
 
+// ---- shots are a visitor's ------------------------------------------------------
+
+// `--as-me` is not built (the site has no NIP-98 sign-in for a headless page),
+// so a shot sees what a visitor sees: a private realm is 404 to it. Both
+// refusals say how to show the realm: make it unlisted (or public).
+LB_AS_ME :: "--as-me is not built yet: shots are taken as a visitor, so a realm must be unlisted or public for a shot: openagents realm visibility SLUG unlisted";
+#test "a shot's refusals say the realm must be unlisted or public, and how" {
+  out: [300] u8;
+  said := lb_private_shot("walled-garden", out[..]);
+  #assert said == "walled-garden is private, and a shot is taken as a visitor: make it unlisted or public first: openagents realm visibility walled-garden unlisted";
+  #assert lb_private_shot("walled-garden", out[0..<20]) == "" && lb_private_shot("", out[..]) == "";
+  #assert lb_has(LB_AS_ME, "unlisted or public") && lb_has(LB_AS_ME, "openagents realm visibility SLUG unlisted");
+}
+lb_private_shot :: (slug: string, out: [] u8) -> string {
+  if slug.count == 0 { return ""; }
+  w: [1] LbW; w[0].buf = out;
+  lbw_put(w[..], slug); lbw_put(w[..], " is private, and a shot is taken as a visitor: make it unlisted or public first: openagents realm visibility ");
+  lbw_put(w[..], slug); lbw_put(w[..], " unlisted");
+  return ifx w[0].full then "" else lbw_text(w[..]);
+}
+
 // ---- a small writer ----------------------------------------------------------
 
 LbW :: struct { buf: [] u8; n: int; full: bool; }

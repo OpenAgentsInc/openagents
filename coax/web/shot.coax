@@ -1,7 +1,10 @@
 // Screenshot a Coaxial page with WebGPU in headless Chrome: no window opens and
 // nothing takes focus. Agents never open a visible browser for checks.
 //   coax/web/tool.sh shot URL OUT.png [WIDTHxHEIGHT] [WAIT_MS] [--eval JS]   (prints what JS returns)
-// It waits WAIT_MS of real time (the pages animate in), then captures. A
+// It waits for the page to be ready (a Coaxial page: its first scene drawn and
+// its loading card gone; media.coax's media_ready_step), then WAIT_MS more of
+// real time (the pages animate in), then captures. A page never ready writes
+// no picture. A
 // value the script returns is printed: a string as it is, anything else as
 // compact JSON. Then OUT is printed. The capture is coax/lib/media/media.coax,
 // which `openagents labs shot` uses too.
@@ -33,6 +36,8 @@ tool_main :: () -> int #export_c {
   cdp_close(c[..]);
   if s.status == 2 { tool_errln("shot: the URL is too long"); return 2; }
   if s.status == 3 { tool_err("shot: could not write "); tool_errln(out); return 1; }
+  if s.status == 4 { tool_errln("shot: the page never reported its scene ready; no shot taken"); return 1; }
+  if s.status == 5 { tool_err("shot: the page failed to load; no shot taken: "); tool_errln(cast(string) value[0..<s.value_n]); return 1; }
   if s.status != 0 { return 1; }
   if s.value_n >= 0 { print("%\n", cast(string) value[0..<s.value_n]); }
   print("%\n", out);

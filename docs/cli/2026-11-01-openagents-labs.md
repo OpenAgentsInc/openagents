@@ -152,8 +152,15 @@ openagents labs shot URL OUT.png [--size WxH | --phone] [--wait MS] [--eval JS]
                                  [--as-me] [--dark] [--fresh]
 ```
 
-- Takes `URL` in headless Chrome with WebGPU after `--wait` milliseconds
-  (default 4000).
+- Takes `URL` in headless Chrome with WebGPU once the page is ready, then
+  `--wait` milliseconds more to settle (default 4000). Ready is what
+  `media_ready_step` (`coax/lib/media/media.coax`) says: a Coaxial page's
+  `globalThis.coaxial.ready` and `sceneReady` (host.js sets it when the first
+  scene is drawn) with its loading card gone, or any other page loaded. A page
+  not ready within 180 seconds, or whose loading card says it failed, is not
+  taken: the command fails saying so, and writes no picture and no label, so
+  a loading screen is never shot or cached. Labels from before this rule never
+  match, so their pictures are taken again.
 - `--size` defaults to 1440x900; `--phone` is 390x844. `--dark` asks the
   page for its dark theme (**new**: `shot.coax` takes no theme today).
 - `--eval JS` runs once before the capture and prints what it returns as
@@ -396,6 +403,9 @@ Where the build differs from the text above:
   `coax/lib/image/png.coax`.
 - `--square` and `--vertical` are sizes for one run, not crops from one run.
 - `--as-me` refuses: the site has no NIP-98 sign-in for a headless page yet.
+  A shot is a visitor's, so a realm must be unlisted or public for one
+  (`openagents realm visibility SLUG unlisted`); `realm shot` of your private
+  realm says so before starting Chrome.
 - `deck` remakes the PDF each run and reuses its scene pictures from
   `DECK.captures/`.
 - Titles and captions are drawn in Filament as SVG, taken as transparent

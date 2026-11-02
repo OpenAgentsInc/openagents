@@ -8,9 +8,13 @@
 //   c: [1] Cdp; cdp_launch(c[..], 1440, 900, "coax-shot-");
 //   o: MediaShotOptions; o.wait = 4000;
 //   s := media_shot(c[..], url, "out.png", ArgsSize.{ok = true, w = 1440, h = 900}, o, value[..], build[..]);
-// It waits o.wait ms of real time (the pages animate in), runs o.script once
-// and keeps what it returns in value (a string as it is, anything else as
-// compact JSON), then captures. o.dark asks the page for its dark theme
+// It waits until the page is ready (media_ready_step: a Coaxial page's
+// host.js reports globalThis.coaxial.ready and sceneReady, its loading card
+// gone; any other page has loaded), then o.wait ms more of real time (the
+// pages animate in), runs o.script once and keeps what it returns in value
+// (a string as it is, anything else as compact JSON), then captures. A page
+// not ready within o.ready_ms, or whose loading card says it failed, is not
+// captured: no file is written (status 4 or 5). o.dark asks the page for its dark theme
 // (prefers-color-scheme: dark). The page's build (the hashed Wasm name of a
 // Coaxial page, or "") goes in build.
 #load "../net/cdp.coax";
@@ -18,11 +22,51 @@
 
 MEDIA_PNG :: 25165824;   // the largest screenshot, 24 MiB
 
-MediaShotOptions :: struct { wait: int = 4000; script: string; dark: bool; }
+MediaShotOptions :: struct { wait: int = 4000; script: string; dark: bool; ready_ms: int = MEDIA_READY_MS; }
 // status 0 when the PNG was written, 1 when Chrome failed (cdp_error says
-// why), 2 for a URL too long, 3 when the file could not be written.
-// value_n: bytes of the script's value (-1 when none).
-MediaShot :: struct { status: int; value_n: int = -1; build_n: int; }
+// why), 2 for a URL too long, 3 when the file could not be written, 4 when
+// the page was not ready in time, 5 when its loading card says it failed.
+// value_n: bytes of the script's value (-1 when none); with status 5 it is
+// the bytes of the card's words in value.
+MediaShot :: struct { status: int; value_n: int = -1; build_n: int; waited_ms: int; }
+
+// ---- when a page is ready to shoot (pure) ------------------------------------
+
+MEDIA_READY_MS :: 180000;   // the most a shot waits for its page: SwiftShader WebGPU is slow
+MEDIA_IDLE_MS :: 10000;     // a Coaxial page started, its card gone, but no indexed scene: accepted after this long
+MEDIA_POLL_MS :: 250;
+MEDIA_WAIT :: 0; MEDIA_READY :: 1; MEDIA_TIMEOUT :: 2; MEDIA_FAILED :: 3;
+// What the page says, one word (and, for "failed", its loading card's words after a space):
+//   loading  the previous document, or this one still loading (a Coaxial page: until host.js
+//            reports ready and sceneReady and its loading card is gone)
+//   scene    a Coaxial page drew its first complete scene, the card gone (host.js, loader.js)
+//   idle     a Coaxial page started and its card is gone, but it reports no scene
+//   plain    not a Coaxial page, and its document has loaded
+//   failed   the loading card says the page failed (no WebGPU, an asset)
+MEDIA_READY_JS :: "(() => { if (globalThis.coaxShotPrev) return 'loading'; const c = globalThis.coaxial, w = !!document.querySelector('script[data-wasm]'), card = document.getElementById('coaxial-load'); if (card && card.dataset.state === 'fail') return 'failed ' + (card.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 200); if (!w && !c) return document.readyState === 'complete' && location.href !== 'about:blank' ? 'plain' : 'loading'; if (!c || c.ready !== true || (card && !card.classList.contains('gone'))) return 'loading'; return c.sceneReady === true ? 'scene' : 'idle'; })()";
+// Marks the document a shot leaves, so the next shot in the same tab never takes it for the new one.
+MEDIA_PREV_JS :: "globalThis.coaxShotPrev = true";
+
+#test "a shot waits for the scene, accepts a plain page, and never shoots a loading screen" {
+  #assert media_ready_step("scene", 0, 0, 1000) == MEDIA_READY && media_ready_step("plain", 5, 0, 1000) == MEDIA_READY;
+  #assert media_ready_step("loading", 0, 0, 1000) == MEDIA_WAIT && media_ready_step("loading", 999, 0, 1000) == MEDIA_WAIT;
+  #assert media_ready_step("loading", 1000, 0, 1000) == MEDIA_TIMEOUT && media_ready_step("", 1000, 0, 1000) == MEDIA_TIMEOUT;
+  #assert media_ready_step("failed no WebGPU", 0, 0, 1000) == MEDIA_FAILED && media_ready_step("failed", 0, 0, 1000) == MEDIA_FAILED;
+  #assert media_ready_step("failedx", 0, 0, 1000) == MEDIA_WAIT;
+  // a started page that draws no indexed scene: only after it has stayed so for MEDIA_IDLE_MS
+  #assert media_ready_step("idle", 0, MEDIA_IDLE_MS - 1, 999999) == MEDIA_WAIT && media_ready_step("idle", 0, MEDIA_IDLE_MS, 999999) == MEDIA_READY;
+  #assert media_ready_step("idle", 5000, 100, 5000) == MEDIA_TIMEOUT;
+  // anything else (a loading screen's words, a script error) is not ready
+  #assert media_ready_step("SHADERS 3/5", 0, 0, 1000) == MEDIA_WAIT && media_ready_step("Scene", 0, 0, 1000) == MEDIA_WAIT;
+  #assert MEDIA_READY_MS >= 120000 && MEDIA_POLL_MS > 0 && MEDIA_POLL_MS <= 1000;
+}
+media_ready_step :: (status: string, waited_ms: int, idle_ms: int, limit_ms: int) -> int {
+  if status == "scene" || status == "plain" { return MEDIA_READY; }
+  if status == "failed" || (status.count > 7 && status[0..<7] == "failed ") { return MEDIA_FAILED; }
+  if status == "idle" && idle_ms >= MEDIA_IDLE_MS { return MEDIA_READY; }
+  if waited_ms >= limit_ms { return MEDIA_TIMEOUT; }
+  return MEDIA_WAIT;
+}
 
 // The page's built program, from its script tag: "newland.1f7cafcf955e" for
 // "/build/newland.1f7cafcf955e.wasm"; "" when it names none.
@@ -58,7 +102,28 @@ media_shot :: (c: [] Cdp, url: string, out: string, wh: ArgsSize, o: MediaShotOp
   params: [65536] u8; j: [1] Jo; // includes an inline Anime take, still below CDP_REQ
   jo_start(j[..], params[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], url); jo_end(j[..]);
   if j[0].bad { s.status = 2; return s; }
+  prev := cdp_evaluate(c, MEDIA_PREV_JS);
   if cdp_call(c, "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 { s.status = 1; return s; }
+  // Ready first; only then the settle time. Never a picture of a loading screen.
+  start := proc_now_ms(); idle_from := -1;
+  word: [512] u8;
+  while true {
+    n := media_value(c, MEDIA_READY_JS, word[..]);
+    status := ifx n > 0 then cast(string) word[0..<n] else "";
+    now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - start, ifx idle_from < 0 then 0 else now - idle_from, o.ready_ms);
+    s.waited_ms = now - start;
+    if step == MEDIA_READY { break; }
+    if step == MEDIA_TIMEOUT { s.status = 4; return s; }
+    if step == MEDIA_FAILED {
+      said := ifx status.count > 7 then status[7..<status.count] else "";
+      s.value_n = ifx said.count <= value.count then said.count else value.count;
+      for i: 0..<s.value_n { value[i] = said[i]; }
+      s.status = 5; return s;
+    }
+    proc_sleep(MEDIA_POLL_MS);
+  }
   proc_sleep(o.wait);
   if o.script.count > 0 {
     s.value_n = media_value(c, o.script, value);

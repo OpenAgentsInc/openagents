@@ -314,7 +314,12 @@ chapters 51 to 55 and 82.
 | `realm shot SLUG OUT.png [--phone]` | the page in headless Chrome (`coax/web/shot.coax`, muted, never a visible window), 1440x900 or 390x844, as the owner when the profile owns it |
 
 `realm shot` is how an agent sees what it did. It's the one command that needs
-Chrome on the machine.
+Chrome on the machine. As built, it is a visitor's picture (`--as-me` is not
+built), so a private realm is refused before Chrome starts with the command
+that shows it: `openagents realm visibility SLUG unlisted`. It waits for the
+page to report its scene drawn (`globalThis.coaxial.sceneReady`), then
+`--wait` milliseconds more; a page still loading after 180 seconds fails and
+nothing is written or cached.
 
 ### Edit a realm
 

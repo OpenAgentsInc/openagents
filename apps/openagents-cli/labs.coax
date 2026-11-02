@@ -231,6 +231,9 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
   ib: [65536] u8; w: [1] LbW; w[0].buf = ib[..]; sz: [32] u8;
   lbi(w[..], "kind", "shot"); lbi(w[..], "url", j.url); lbi(w[..], "size", lb_size_text(j.size, sz[..])); lbi_int(w[..], "wait", j.wait);
   lbi(w[..], "eval", j.script); lbi(w[..], "dark", ifx j.dark then "1" else "0"); lbi(w[..], "page", page);
+  // Taken only once the page reports it is ready (media_ready_step): a label from before that rule
+  // may sit beside a loading screen, so it never matches.
+  lbi(w[..], "ready", "scene");
   if w[0].full { done.code = EXIT_USAGE; lb_say("capture inputs are too long",why); return done; }
   inb: [80] u8; input := lb_input(w[..], inb[..]);
   if !j.fresh && lb_cached(j.out, label, input) { done.cached = true; return done; }
@@ -242,9 +245,13 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
   build: [256] u8;
   s := media_shot(ch[0].c[..], j.url, j.out, j.size, o, value, build[..]);
   if s.status != 0 {
+    // Not ready, failed or not written: no picture and no label, so nothing is cached.
     done.code = ifx s.status == 2 then EXIT_USAGE else EXIT_FAIL;
-    msg := ifx s.status == 1 then cdp_error(ch[0].c[..]) else ifx s.status == 2 then "the URL is too long" else "could not write the picture";
+    msg := ifx s.status == 1 then cdp_error(ch[0].c[..]) else ifx s.status == 2 then "the URL is too long"
+           else ifx s.status == 4 then "the page never reported its scene ready (still loading after 180 s: a slow machine, or no WebGPU); no shot taken"
+           else ifx s.status == 5 then "the page failed to load; no shot taken: " else "could not write the picture";
     n := copy(msg, why); if n < 0 { lb_say("Chrome failed", why); }
+    if s.status == 5 && n >= 0 && s.value_n > 0 { m := copy(cast(string) value[0..<s.value_n], why[n..<why.count]); }
     return done;
   }
   done.value_n = s.value_n;
@@ -261,7 +268,7 @@ lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] 
 labs_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
   target := positional(a, 2); out := positional(a, 3);
   if target == "" || out == "" { return fail(r, EXIT_USAGE, "labs shot URL OUT.png [--size WxH|--phone] [--wait MS] [--eval JS] [--dark] [--fresh]"); }
-  if args_has(a, "--as-me") { return fail(r, EXIT_USAGE, "--as-me is not built yet: the site has no NIP-98 sign-in for a headless page, so shots are taken as a visitor"); }
+  if args_has(a, "--as-me") { return fail(r, EXIT_USAGE, LB_AS_ME); }
   ob: [300] u8; ub: [LB_CAPTURE_URL_BYTES] u8;
   url := lb_url(acct_origin(a, profile, ob[..]), target, ub[..]);
   if url == "" { return fail(r, EXIT_USAGE, "URL is https://..., http://..., file://... or a path such as /realms/SLUG"); }
@@ -294,6 +301,13 @@ labs_realm_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
   path: [128] u8; n := copy("/realms/", path[..]); n += copy(slug, path[n..<path.count]);
   name: [128] u8; m := copy(slug, name[..]); m += copy(".png", name[m..<name.count]);
   out := positional(a, 3);
+  // A shot is a visitor's: a private realm is 404 to one, so say how to show it instead.
+  sb: [API_OUT] u8; sp: [128] u8;
+  seen := api_call(a, profile, "GET", realm_path(slug, "", sp[..]), "", sb[..]);
+  if api_ok(seen) && cli_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {
+    said: [300] u8;
+    return fail(r, EXIT_USAGE, lb_private_shot(slug, said[..]));
+  }
   b: [1] Args;
   ok := args_add(b[..], "labs") && args_add(b[..], "shot") && args_add(b[..], cast(string) path[0..<n]) && args_add(b[..], ifx out != "" then out else cast(string) name[0..<m]);
   for i: 0..<args_count(a) {
