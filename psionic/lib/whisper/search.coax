@@ -192,20 +192,52 @@ we_rules :: (net: WeNet, logits: [] f32, d: WeDec, temperature: f64, bias: WeBia
   // timestamps never go back
   if d.has_ts { for i: sp.beg..<sp.beg + d.seek_delta / 2 { lp[i] = WE_NEG; } }
   // log-softmax, with the text and timestamp maxima and the timestamps'
-  // share of the sum taken on the way
-  text := -1.0e300; tmax := -1.0e300;
-  for i: 0..<sp.beg { if !we_dead(lp[i]) && cast(f64) lp[i] > text { text = cast(f64) lp[i]; } }
-  for i: sp.beg..<V { if !we_dead(lp[i]) && cast(f64) lp[i] > tmax { tmax = cast(f64) lp[i]; } }
+  // share of the sum taken on the way. A dead token is below every live
+  // one and its exponential is exactly 0, so no loop tests for it, and the
+  // loops keep four lanes (we_lanes) so the optimized C vectorizes them.
+  mx := we_max4(lp, 0, sp.beg); mt := we_max4(lp, sp.beg, V);
+  text := ifx we_dead(mx) then -1.0e300 else cast(f64) mx;
+  tmax := ifx we_dead(mt) then -1.0e300 else cast(f64) mt;
   best := ifx text > tmax then text else tmax;
-  bf := cast(f32) best;
-  zx := 0.0; for i: 0..<sp.beg { if !we_dead(lp[i]) { zx += cast(f64) we_expf(lp[i] - bf); } }
-  zt := 0.0; for i: sp.beg..<V { if !we_dead(lp[i]) { zt += cast(f64) we_expf(lp[i] - bf); } }
+  bf := ifx best > -1.0e299 then cast(f32) best else 0;
+  zx := we_sum4(lp, 0, sp.beg, bf); zt := we_sum4(lp, sp.beg, V, bf);
   lz := best + log(zx + zt);
   for i: 0..<V { if !we_dead(lp[i]) { lp[i] = cast(f32) (cast(f64) lp[i] - lz); } }
   // when the timestamps together are likelier than any text token, only a
   // timestamp may follow: log(sum of e^lp over timestamps) against the best text
   ts := ifx zt > 0 then best + log(zt) else -1.0e300;
   if ts > text { for i: 0..<sp.beg { lp[i] = WE_NEG; } }
+}
+// The largest of v[a..<b] (at least -3e38), and the sum in f64 of
+// we_expv(v[i] - m) over it. Four lanes: lane l takes a + 4 k + l in order,
+// the lanes combine as (l0 + l1) + (l2 + l3), then the tail in order.
+we_max4 :: (v: [] f32, a: int, b: int) -> f32 {
+  m: [4] f32; for l: 0..<4 { m[l] = -3.0e38; }
+  n := (b - a) / 4;
+  for k: 0..<n { for l: 0..<4 { x := v[a + k * 4 + l]; if x > m[l] { m[l] = x; } } }
+  r := m[0]; for l: 1..<4 { if m[l] > r { r = m[l]; } }
+  for i: a + n * 4..<b { if v[i] > r { r = v[i]; } }
+  return r;
+}
+we_sum4 :: (v: [] f32, a: int, b: int, m: f32) -> f64 {
+  z: [4] f64;
+  n := (b - a) / 4;
+  for k: 0..<n { for l: 0..<4 { z[l] += cast(f64) we_expv(v[a + k * 4 + l] - m); } }
+  r := (z[0] + z[1]) + (z[2] + z[3]);
+  for i: a + n * 4..<b { r += cast(f64) we_expv(v[i] - m); }
+  return r;
+}
+// e^x in f32 as we_expf, with no branch or conversion so a loop of it
+// vectorizes: n = round(x log2(e)) from the low bits of x log2(e) + 1.5 2^23
+// (ties to even), 2^n from the exponent bits; below -87 it is 0.
+we_expv :: (x: f32) -> f32 {
+  y := x; if y < -87 { y = -87; } if y > 88 { y = 88; }
+  k := y * 1.442695041 + 12582912.0;
+  fn := k - 12582912.0;
+  r := (y - fn * 0.693145752) - fn * 0.00000142860677;
+  p := 1 + r * (1 + r * (0.5 + r * (0.1666666667 + r * (0.04166666667 + r * (0.008333333333 + r * 0.001388888889)))));
+  e := p * f32_from_bits((f32_bits(k) - 0x4B3FFF81) << 23);
+  return ifx x < -87 then 0 else e;
 }
 we_argmax :: (lp: [] f32) -> int { a := 0; for i: 1..<lp.count { if lp[i] > lp[a] { a = i; } } return a; }
 // The k likeliest tokens (best first) into ids; how many there are.
@@ -508,6 +540,16 @@ psionic_whisper_language_code :: (net: WeNet, token: int) -> string #export_c { 
 #test "top k and scores" {
   lp := [6] f32.[-3, -1, WE_NEG, -0.5, -2, -1];
   ids: [3] int;
+  for i: 0..<2000 {
+    x := cast(f32) (i - 1000) * 0.0913;
+    #assert abs(cast(f64) we_expv(x) - cast(f64) we_expf(x)) <= 0.0000003 * cast(f64) we_expf(x);
+  }
+  #assert we_expv(-90) == 0 && we_expv(0) == 1 && we_expv(-1.0e30) == 0;
+  w: [11] f32; for i: 0..<11 { w[i] = cast(f32) ((i * 7) % 5) - 2; }
+  w[3] = WE_NEG;
+  #assert we_max4(w[..], 1, 11) == 2 && we_max4(w[..], 3, 4) == WE_NEG;
+  s := 0.0; for i: 1..<11 { s += cast(f64) we_expf(w[i] - 1); }
+  #assert abs(we_sum4(w[..], 1, 11, 1) - s) < 0.000001;
   #assert we_topk(lp[..], 3, ids[..]) == 3 && ids[0] == 3 && ids[1] == 1 && ids[2] == 5;
   #assert we_argmax(lp[..]) == 3;
   d: [1] WeDec;

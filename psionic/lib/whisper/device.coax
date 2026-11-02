@@ -1,7 +1,9 @@
-// Psionic Whisper's encoder kernels for an Apple GPU (coax metal-compute).
-// The host (psionic/platform/whisper-face.c with --gpu) runs the encoder's
-// projections and attention here and everything else on the CPU, on the
-// same shared buffers. The C build of this file is the CPU meaning the
+// Psionic Whisper's kernels for an Apple GPU (coax metal-compute). The host
+// (psionic/platform/whisper-face.c with --gpu) runs the encoder's
+// projections and attention here, and each decoder step as one batch of
+// these kernels (norms, products, attention, residual adds and the
+// self-attention cache stores); the mel, the prompt and the search run on
+// the CPU, on the same shared buffers. The C build of this file is the CPU meaning the
 // tests check; the device adds each 32-wide slice of a product in an order
 // the hardware chooses, so device results match within a tolerance, not bit
 // for bit (see coax/lib/compute/apple.coax).
@@ -95,35 +97,242 @@ wd_attend :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] 
   for i: 0..<WD_HEAD { out[t * d + hd + i] = acc[i] / sum; }
 }
 
-// The same product for at most 8 rows (the decoder's beams): item o is one
-// output, read once by a group of 32 threads that each take every 32nd
-// input; thread r then adds the 32 partial sums of row r.
-wd_rows :: (item: int, rows: int, n_in: int, n_out: int, bias: int, x: [] f32, w: [] f32, b: [] f32, y: [] f32) #export_c {
-  part: [256] f32;
-  o := item;
-  for thread: 0..<32 {
-    a0: f32 = 0; a1: f32 = 0; a2: f32 = 0; a3: f32 = 0; a4: f32 = 0; a5: f32 = 0; a6: f32 = 0; a7: f32 = 0;
-    for u: 0..<(n_in + 31) / 32 {
-      i := thread + 32 * u;
+// The same product for at most 8 rows (the decoder's beams), as ggml-metal's
+// matrix-vector kernels do it: item i is outputs WD_ROWS_OUT i onward, read
+// once by a group of WD_RT threads that each take every WD_RT-th input and
+// load each input of every row once for all the group's outputs; thread
+// 8 o + r then adds the WD_RT partial sums of output o, row r, the bias,
+// and GELU when act is 1.
+WD_ROWS_OUT :: 4;
+WD_RT :: 128;
+wd_rows_items :: (n_out: int) -> int { return (n_out + WD_ROWS_OUT - 1) / WD_ROWS_OUT; }
+wd_rows :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] f32, b: [] f32, y: [] f32) #export_c {
+  part: [WD_RT * 8 * WD_ROWS_OUT] f32;
+  o0 := item * WD_ROWS_OUT;
+  for thread: 0..<WD_RT {
+    a: [8 * WD_ROWS_OUT] f32;
+    for u: 0..<(n_in + WD_RT - 1) / WD_RT {
+      i := thread + WD_RT * u;
       if i < n_in {
-        wv := w[o * n_in + i];
-        a0 += wv * x[i];
-        if rows > 1 { a1 += wv * x[n_in + i]; } if rows > 2 { a2 += wv * x[2 * n_in + i]; } if rows > 3 { a3 += wv * x[3 * n_in + i]; }
-        if rows > 4 { a4 += wv * x[4 * n_in + i]; } if rows > 5 { a5 += wv * x[5 * n_in + i]; } if rows > 6 { a6 += wv * x[6 * n_in + i]; } if rows > 7 { a7 += wv * x[7 * n_in + i]; }
+        xr: [8] f32;
+        for r: 0..<8 { if r < rows { xr[r] = x[r * n_in + i]; } }
+        for oo: 0..<WD_ROWS_OUT {
+          if o0 + oo < n_out {
+            wv := w[(o0 + oo) * n_in + i];
+            for r: 0..<8 { a[oo * 8 + r] += wv * xr[r]; }
+          }
+        }
       }
     }
-    part[thread * 8] = a0; part[thread * 8 + 1] = a1; part[thread * 8 + 2] = a2; part[thread * 8 + 3] = a3;
-    part[thread * 8 + 4] = a4; part[thread * 8 + 5] = a5; part[thread * 8 + 6] = a6; part[thread * 8 + 7] = a7;
+    for e: 0..<8 * WD_ROWS_OUT { part[thread + WD_RT * e] = a[e]; }
   }
-  for thread: 0..<32 {
-    if thread < rows {
+  for thread: 0..<WD_RT {
+    oo := thread / 8; r := thread % 8;
+    if thread < 8 * WD_ROWS_OUT && r < rows && o0 + oo < n_out {
       v: f32 = 0;
-      for t: 0..<32 { v += part[t * 8 + thread]; }
-      if bias == 1 { v += b[o]; }
-      y[thread * n_out + o] = v;
+      for t: 0..<WD_RT { v += part[t + WD_RT * thread]; }
+      if bias == 1 { v += b[o0 + oo]; }
+      if act == 1 { v = wd_gelu(v); }
+      y[r * n_out + o0 + oo] = v;
     }
   }
 }
+// The IEEE half in the low (high false) or high 16 bits of word as f32,
+// exactly, as engine.coax's we_half; the host keeps no infinities or NaN.
+wd_half :: (word: u32, high: bool) -> f32 {
+  h := word & 0xffff; if high { h = word >> 16; }
+  e := (h >> 10) & 31; m := h & 1023;
+  v: f32 = 0;
+  if e == 0 { v = cast(f32) m * f32_from_bits(0x33800000); }
+  else { v = f32_from_bits(((e + 112) << 23) | (m << 13)); }
+  if (h >> 15) == 1 { v = -v; }
+  return v;
+}
+// wd_rows with the weights as halves, two to a word (the low half first):
+// the model's own f16 values, so the product reads half the bytes. n_in is
+// even; thread i takes the inputs 2 i and 2 i + 1 of every WD_RT-th word.
+wd_rowsh :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] u32, b: [] f32, y: [] f32) #export_c {
+  part: [WD_RT * 8 * WD_ROWS_OUT] f32;
+  o0 := item * WD_ROWS_OUT; nw := n_in / 2;
+  for thread: 0..<WD_RT {
+    a: [8 * WD_ROWS_OUT] f32;
+    for u: 0..<(nw + WD_RT - 1) / WD_RT {
+      i := thread + WD_RT * u;
+      if i < nw {
+        x0: [8] f32; x1: [8] f32;
+        for r: 0..<8 { if r < rows { x0[r] = x[r * n_in + 2 * i]; x1[r] = x[r * n_in + 2 * i + 1]; } }
+        for oo: 0..<WD_ROWS_OUT {
+          if o0 + oo < n_out {
+            word := w[(o0 + oo) * nw + i];
+            wa := wd_half(word, false); wb := wd_half(word, true);
+            for r: 0..<8 { a[oo * 8 + r] += wa * x0[r] + wb * x1[r]; }
+          }
+        }
+      }
+    }
+    for e: 0..<8 * WD_ROWS_OUT { part[thread + WD_RT * e] = a[e]; }
+  }
+  for thread: 0..<WD_RT {
+    oo := thread / 8; r := thread % 8;
+    if thread < 8 * WD_ROWS_OUT && r < rows && o0 + oo < n_out {
+      v: f32 = 0;
+      for t: 0..<WD_RT { v += part[t + WD_RT * thread]; }
+      if bias == 1 { v += b[o0 + oo]; }
+      if act == 1 { v = wd_gelu(v); }
+      y[r * n_out + o0 + oo] = v;
+    }
+  }
+}
+// LayerNorm of row item of x (d values) into y, as engine.coax's we_norm
+// but in f32: (x - mean) / sqrt(var + 1e-5) * g + b.
+wd_norm :: (item: int, d: int, x: [] f32, g: [] f32, b: [] f32, y: [] f32) #export_c {
+  part: [128] f32;
+  base := item * d; per := (d + WD_THREADS - 1) / WD_THREADS;
+  for thread: 0..<WD_THREADS {
+    z: f32 = 0;
+    for u: 0..<per { i := thread + WD_THREADS * u; if i < d { z += x[base + i]; } }
+    part[thread] = z;
+  }
+  total: f32 = 0;
+  for i: 0..<WD_THREADS { total += part[i]; }
+  mean := total / cast(f32) d;
+  for thread: 0..<WD_THREADS {
+    z: f32 = 0;
+    for u: 0..<per { i := thread + WD_THREADS * u; if i < d { e := x[base + i] - mean; z += e * e; } }
+    part[thread] = z;
+  }
+  sq: f32 = 0;
+  for i: 0..<WD_THREADS { sq += part[i]; }
+  inv := 1 / sqrt(sq / cast(f32) d + 0.00001);
+  for thread: 0..<WD_THREADS {
+    for u: 0..<per { i := thread + WD_THREADS * u; if i < d { y[base + i] = (x[base + i] - mean) * inv * g[i] + b[i]; } }
+  }
+}
+// x[i] += h[i], one thread per element: the decoder's residual adds.
+wd_add :: (item: int, x: [] f32, h: [] f32) #export_c { x[item] = x[item] + h[item]; }
+// ka[i] and va[i] into kb[i] and vb[i]: a row's keys and values into its
+// self-attention cache slot.
+wd_store :: (item: int, ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) #export_c { kb[item] = ka[item]; vb[item] = va[item]; }
+
+// Attention for a few queries (the decoder's rows) in two launches, as
+// ggml-metal's vector flash attention splits the keys. Not causal (causal
+// 0): every query sees all nk keys, rows 0..nk of k and v. Causal: query t
+// reads its own self-attention cache slot, positions 0..p of slot s, the
+// rows s ctx.. of k and v, where s and p are packed in 12 bits of sp per
+// query: wd_slot_pos(sp, t) = 512 s + p (so at most five queries, eight
+// slots and 512 positions). wd_part: item i is head and query i / C (head
+// (i / C) / nq, query (i / C) % nq) and the chunk c = i % C of 128 keys
+// (C = wd_chunks(nk), nk above every query's count); its 128 threads score
+// a key each, and it leaves at part[66 i] the chunk's largest score, the
+// sum of its exponentials and its 64 weighted sums of values.
+WD_CHUNK :: 128;
+WD_PART :: 66;
+wd_chunks :: (nk: int) -> int { return (nk + WD_CHUNK - 1) / WD_CHUNK; }
+wd_slot_pos :: (sp: int, t: int) -> int { return (sp >> (12 * t)) & 4095; }
+wd_part :: (item: int, nq: int, nk: int, d: int, heads: int, ctx: int, sp: int, causal: int, q: [] f32, k: [] f32, v: [] f32, part: [] f32) #export_c {
+  C := wd_chunks(nk); qi := item / C; j0 := item % C * WD_CHUNK;
+  h := qi / nq; t := qi % nq; hd := h * WD_HEAD;
+  n := nk; base := 0;
+  if causal == 1 { e := wd_slot_pos(sp, t); base = (e >> 9) * ctx; if (e & 511) + 1 < nk { n = (e & 511) + 1; } }
+  qr: [64] f32; s: [128] f32; red: [128] f32;
+  for thread: 0..<WD_THREADS { if thread < WD_HEAD { qr[thread] = q[t * d + hd + thread] * 0.125; } }
+  for thread: 0..<WD_THREADS {
+    a: f32 = -3.0e38;
+    if j0 + thread < n {
+      a = 0;
+      for i: 0..<WD_HEAD { a += qr[i] * k[(base + j0 + thread) * d + hd + i]; }
+    }
+    s[thread] = a;
+  }
+  best: f32 = -3.0e38;
+  for i: 0..<WD_THREADS { if s[i] > best { best = s[i]; } }
+  for thread: 0..<WD_THREADS {
+    e: f32 = 0;
+    if j0 + thread < n { e = wd_expf(s[thread] - best); }
+    s[thread] = e;
+  }
+  total: f32 = 0;
+  for i: 0..<WD_THREADS { total += s[i]; }
+  for thread: 0..<WD_THREADS {
+    c := thread % WD_HEAD; par := thread / WD_HEAD;
+    a: f32 = 0;
+    for u: 0..<WD_CHUNK / 2 { j := par + 2 * u; if j0 + j < n { a += s[j] * v[(base + j0 + j) * d + hd + c]; } }
+    red[thread] = a;
+  }
+  for thread: 0..<WD_THREADS {
+    if thread < WD_HEAD { part[item * WD_PART + 2 + thread] = red[thread] + red[thread + WD_HEAD]; }
+    if thread == 0 { part[item * WD_PART] = best; part[item * WD_PART + 1] = total; }
+  }
+}
+// wd_cross: the same parts when every query sees all nk keys (the
+// cross-attention of the decoder's rows, at most 8): item i is head i / C
+// and chunk i % C, and its 128 threads score their key for every query, so
+// each key and value is read once for all the queries.
+wd_cross :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f32, v: [] f32, part: [] f32) #export_c {
+  C := wd_chunks(nk); h := item / C; c0 := item % C; j0 := c0 * WD_CHUNK; hd := h * WD_HEAD;
+  qr: [512] f32; s: [1024] f32; red: [8] f32; tot: [8] f32; acc: [1024] f32;
+  for thread: 0..<WD_THREADS {
+    for e: 0..<4 {
+      if (thread + WD_THREADS * e) / WD_HEAD < nq { qr[thread + WD_THREADS * e] = q[(thread + WD_THREADS * e) / WD_HEAD * d + hd + (thread + WD_THREADS * e) % WD_HEAD] * 0.125; }
+    }
+  }
+  for thread: 0..<WD_THREADS {
+    a: [8] f32;
+    if j0 + thread < nk {
+      for i: 0..<WD_HEAD {
+        kv := k[(j0 + thread) * d + hd + i];
+        for t: 0..<8 { a[t] += qr[t * WD_HEAD + i] * kv; }
+      }
+    }
+    for t: 0..<8 { e: f32 = -3.0e38; if j0 + thread < nk { e = a[t]; } s[thread + WD_THREADS * t] = e; }
+  }
+  for thread: 0..<WD_THREADS {
+    if thread < nq { m: f32 = -3.0e38; for j: 0..<WD_CHUNK { if s[thread * WD_CHUNK + j] > m { m = s[thread * WD_CHUNK + j]; } } red[thread] = m; }
+  }
+  for thread: 0..<WD_THREADS {
+    for t: 0..<8 { e: f32 = 0; if j0 + thread < nk && t < nq { e = wd_expf(s[thread + WD_THREADS * t] - red[t]); } s[thread + WD_THREADS * t] = e; }
+  }
+  for thread: 0..<WD_THREADS {
+    if thread < nq { z: f32 = 0; for j: 0..<WD_CHUNK { z += s[thread * WD_CHUNK + j]; } tot[thread] = z; }
+  }
+  for thread: 0..<WD_THREADS {
+    c := thread % WD_HEAD; par := thread / WD_HEAD;
+    a: [8] f32;
+    for u: 0..<WD_CHUNK / 2 {
+      j := par + 2 * u;
+      if j0 + j < nk {
+        vv := v[(j0 + j) * d + hd + c];
+        for t: 0..<8 { a[t] += s[t * WD_CHUNK + j] * vv; }
+      }
+    }
+    for t: 0..<8 { acc[thread + WD_THREADS * t] = a[t]; }
+  }
+  for thread: 0..<WD_THREADS {
+    for e: 0..<4 {
+      t := (thread + WD_THREADS * e) / WD_HEAD; c := (thread + WD_THREADS * e) % WD_HEAD;
+      if t < nq { part[((h * nq + t) * C + c0) * WD_PART + 2 + c] = acc[c + WD_THREADS * t] + acc[c + WD_HEAD + WD_THREADS * t]; }
+    }
+    if thread < nq { part[((h * nq + thread) * C + c0) * WD_PART] = red[thread]; part[((h * nq + thread) * C + c0) * WD_PART + 1] = tot[thread]; }
+  }
+}
+// wd_join: item i is head i / nq and query i % nq; its 64 threads rescale
+// the chunks to their largest score and write dimension thread of out.
+wd_join :: (item: int, nq: int, nk: int, d: int, part: [] f32, out: [] f32) #export_c {
+  C := wd_chunks(nk); h := item / nq; t := item % nq;
+  for thread: 0..<WD_HEAD {
+    m: f32 = -3.0e38;
+    for c: 0..<C { if part[(item * C + c) * WD_PART] > m { m = part[(item * C + c) * WD_PART]; } }
+    acc: f32 = 0; tot: f32 = 0;
+    for c: 0..<C {
+      at := (item * C + c) * WD_PART;
+      e := wd_expf(part[at] - m);
+      tot += e * part[at + 1];
+      acc += e * part[at + 2 + thread];
+    }
+    out[t * d + h * WD_HEAD + thread] = acc / tot;
+  }
+}
+
 // Attention as three launches over every head at once, through a score
 // buffer s of heads * nq * nk values. wd_scores: item i is head i / (qt kt)
 // and the 64-query by 32-key tile i % (qt kt) (qt = ceil(nq / 64), kt =
@@ -262,9 +471,68 @@ wd_values :: (item: int, nq: int, nk: int, d: int, heads: int, s: [] f32, v: [] 
   for i: 0..<350 { x[i] = cast(f32) ((i * 7) % 11) * 0.1 - 0.5; }
   for i: 0..<630 { w[i] = cast(f32) ((i * 5) % 13) * 0.05 - 0.3; }
   for i: 0..<9 { b[i] = cast(f32) i * 0.01; }
-  for o: 0..<n_out { wd_rows(o, rows, n_in, n_out, 1, x[..], w[..], b[..], y[..]); }
-  for r: 0..<rows { for o: 0..<n_out {
-    s := 0.0; for i: 0..<n_in { s += cast(f64) x[r * n_in + i] * cast(f64) w[o * n_in + i]; }
-    #assert abs(cast(f64) y[r * n_out + o] - (s + cast(f64) b[o])) < 0.00001;
-  } }
+  for act: 0..<2 {
+    for o: 0..<wd_rows_items(n_out) { wd_rows(o, rows, n_in, n_out, act, 1, x[..], w[..], b[..], y[..]); }
+    for r: 0..<rows { for o: 0..<n_out {
+      s := 0.0; for i: 0..<n_in { s += cast(f64) x[r * n_in + i] * cast(f64) w[o * n_in + i]; }
+      want := cast(f32) s + b[o];
+      if act == 1 { want = wd_gelu(want); }
+      #assert abs(cast(f64) (y[r * n_out + o] - want)) < 0.00001;
+    } }
+  }
+}
+#test "halves decode exactly, and the half product matches the f32 one" {
+  #assert wd_half(0x3c00, false) == 1 && wd_half(0xc0000000, true) == -2 && wd_half(0x0001, false) == f32_from_bits(0x33800000);
+  #assert wd_half(0x7bff, false) == 65504 && wd_half(0x3555, false) == f32_from_bits(0x3eaaa000);
+  rows := 5; n_in := 70; n_out := 9;
+  x: [350] f32; w: [630] f32; wh: [315] u32; b: [9] f32; y: [45] f32; z: [45] f32;
+  for i: 0..<350 { x[i] = cast(f32) ((i * 7) % 11) * 0.125 - 0.5; }
+  for i: 0..<315 { wh[i] = cast(u32) (0x3000 + (i * 37) % 2048) | (cast(u32) (0xb000 + (i * 53) % 2048) << 16); }
+  for i: 0..<630 { w[i] = wd_half(wh[i / 2], i % 2 == 1); }
+  for i: 0..<9 { b[i] = cast(f32) i * 0.01; }
+  for o: 0..<wd_rows_items(n_out) { wd_rows(o, rows, n_in, n_out, 1, 1, x[..], w[..], b[..], y[..]); wd_rowsh(o, rows, n_in, n_out, 1, 1, x[..], wh[..], b[..], z[..]); }
+  for i: 0..<45 { #assert abs(cast(f64) (y[i] - z[i])) < 0.00001; }
+}
+#test "the row norm matches LayerNorm in f64" {
+  d := 300; x: [600] f32; g: [300] f32; b: [300] f32; y: [600] f32;
+  for i: 0..<600 { x[i] = cast(f32) ((i * 7) % 23) * 0.13 - 1.1; }
+  for i: 0..<300 { g[i] = cast(f32) (i % 5) * 0.2 + 0.5; b[i] = cast(f32) (i % 3) * 0.1 - 0.1; }
+  for r: 0..<2 { wd_norm(r, d, x[..], g[..], b[..], y[..]); }
+  for r: 0..<2 {
+    m := 0.0; for i: 0..<d { m += cast(f64) x[r * d + i]; } m = m / cast(f64) d;
+    q := 0.0; for i: 0..<d { e := cast(f64) x[r * d + i] - m; q += e * e; }
+    inv := 1 / sqrt(q / cast(f64) d + 0.00001);
+    for i: 0..<d { #assert abs(cast(f64) y[r * d + i] - ((cast(f64) x[r * d + i] - m) * inv * cast(f64) g[i] + cast(f64) b[i])) < 0.00001; }
+  }
+  h: [600] f32; for i: 0..<600 { h[i] = 1; }
+  for i: 0..<600 { wd_add(i, y[..], h[..]); }
+  kb: [600] f32; vb: [600] f32;
+  for i: 0..<600 { wd_store(i, x[..], y[..], kb[..], vb[..]); }
+  for i: 0..<600 { #assert kb[i] == x[i] && vb[i] == y[i]; }
+}
+#test "split-key attention matches the one-pass kernel, and masks causally" #steps 400000000 {
+  d := 128; heads := 2; nq := 3; nk := 300;
+  q: [384] f32; k: [38400] f32; v: [38400] f32; o: [384] f32; r: [384] f32; part: [1188] f32;
+  for i: 0..<384 { q[i] = cast(f32) ((i * 7) % 11) * 0.1 - 0.5; }
+  for i: 0..<38400 { k[i] = cast(f32) ((i * 5) % 13) * 0.1 - 0.6; v[i] = cast(f32) ((i * 3) % 7) - 3; }
+  C := wd_chunks(nk);
+  #assert C == 3;
+  for i: 0..<heads * nq * C { wd_part(i, nq, nk, d, heads, 0, 0, 0, q[..], k[..], v[..], part[..]); }
+  for i: 0..<heads * nq { wd_join(i, nq, nk, d, part[..], o[..]); wd_attend(i, nq, nk, d, heads, q[..], k[..], v[..], r[..]); }
+  for i: 0..<384 { #assert abs(cast(f64) (o[i] - r[i])) < 0.0001; }
+  for i: 0..<heads * C { wd_cross(i, nq, nk, d, heads, q[..], k[..], v[..], part[..]); }
+  for i: 0..<heads * nq { wd_join(i, nq, nk, d, part[..], o[..]); }
+  for i: 0..<384 { #assert abs(cast(f64) (o[i] - r[i])) < 0.0001; }
+  // causal: query t in slot 2 - t (slots of 100 rows) at position 40 + t sees
+  // that slot's first 41 + t rows, as the one-pass kernel over them
+  sp := 0;
+  for t: 0..<nq { sp = sp | (((2 - t) * 512 + 40 + t) << (12 * t)); }
+  #assert wd_slot_pos(sp, 1) == 512 + 41;
+  for i: 0..<heads * nq * wd_chunks(44) { wd_part(i, nq, 44, d, heads, 100, sp, 1, q[..], k[..], v[..], part[..]); }
+  for i: 0..<heads * nq { wd_join(i, nq, 44, d, part[..], o[..]); }
+  for t: 0..<nq {
+    at := (2 - t) * 100 * d;
+    for h: 0..<heads { wd_attend(h * nq + t, nq, 41 + t, d, heads, q[..], k[at..<at + 100 * d], v[at..<at + 100 * d], r[..]); }
+    for i: 0..<d { #assert abs(cast(f64) (o[t * d + i] - r[t * d + i])) < 0.0001; }
+  }
 }

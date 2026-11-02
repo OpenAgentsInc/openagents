@@ -213,6 +213,18 @@ we_whole :: (f: [] WeFind, name: string, elements: int) -> int {
 cxwh_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, act: int) -> int #foreign;
 cxwh_attend :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32) -> int #foreign;
 cxwh_mel :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, frames: int) -> int #foreign;
+// A decoder step's batch on a GPU host: cxwh_step(1) opens it (1 when the
+// host has one), cxwh_step(0) runs it. While it is open the host takes the
+// step's calls into it, and these return 1 when it took the call; 0 means
+// the engine does it here.
+cxwh_step :: (begin: int) -> int #foreign;
+cxwh_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) -> int #foreign;
+cxwh_add :: (x: [] f32, h: [] f32) -> int #foreign;
+cxwh_store :: (ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) -> int #foreign;
+// Self-attention of rows decoders at once: row r is query q[r] in cache
+// slot s at position p, sp holding 512 s + p in its bits 12 r..12 r + 11;
+// ks and vs are a layer's slots of ctx rows each, nk is above every p.
+cxwh_slots :: (q: [] f32, rows: int, ks: [] f32, vs: [] f32, ctx: int, d: int, heads: int, sp: int, nk: int, out: [] f32) -> int #foreign;
 
 WE_KEYS_MAX :: 1500;
 
@@ -279,6 +291,10 @@ we_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) {
     for i: 0..<d { y[r * d + i] = cast(f32) ((cast(f64) xr[i] - mean) * inv) * g[i] + b[i]; }
   }
 }
+// we_norm, x += h and the cache store, through the host when it takes them.
+we_ln :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) { if cxwh_norm(x, rows, d, g, b, y) == 0 { we_norm(x, rows, d, g, b, y); } }
+we_add :: (x: [] f32, h: [] f32) { if cxwh_add(x, h) == 0 { for i: 0..<x.count { x[i] += h[i]; } } }
+we_store :: (ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) { if cxwh_store(ka, va, kb, vb) == 0 { for i: 0..<ka.count { kb[i] = ka[i]; vb[i] = va[i]; } } }
 // e^x in f32: n = round(x log2(e)), r = x - n ln(2) in two parts (Cody and
 // Waite) so |r| <= ln(2)/2 stays exact, e^r from its degree-6 Taylor
 // polynomial (relative error under 2e-7) and 2^n from the exponent bits.
@@ -523,12 +539,23 @@ we_slot_copy :: (net: WeNet, work: [] f32, from: int, to: int, n: int) {
   }
 }
 
+// Self-attention of a step's rows in one call when the host takes it (up to
+// five rows, positions below 512).
+we_slots :: (net: WeNet, work: [] f32, l: int, q: [] f32, rows: int, pos: [] int, slots: [] int, a: [] f32) -> bool {
+  C := net.params.n_text_ctx; d := net.params.n_text_state;
+  if rows > 5 || C > 512 { return false; }
+  sp := 0; nk := 0;
+  for r: 0..<rows { sp = sp | ((slots[r] * 512 + pos[r]) << (12 * r)); if pos[r] + 1 > nk { nk = pos[r] + 1; } }
+  at := net.work.sk + l * WE_SLOTS * C * d; av := net.work.sv + l * WE_SLOTS * C * d;
+  return cxwh_slots(q, rows, work[at..<at + WE_SLOTS * C * d], work[av..<av + WE_SLOTS * C * d], C, d, net.params.n_text_head, sp, nk, a) == 1;
+}
 // The decoder over rows tokens. prefill: the rows are one sequence at
 // positions pos[0], pos[0] + 1, ... in slot slots[0], and only the last row's
 // logits are made (at logits row 0). Otherwise row r is one decoder's next
 // token at position pos[r] in its slot slots[r], and every row's logits are
 // made (logits row r). Self-attention keys and values of the rows go into
-// the slots first, so a row sees itself and everything before it.
+// the slots first, so a row sees itself and everything before it. A step
+// that is not a prefill runs as one batch on a GPU host.
 we_forward :: (net: WeNet, W: [] f32, work: [] f32, toks: [] int, rows: int, pos: [] int, slots: [] int, prefill: bool) {
   p := net.params; d := p.n_text_state; k := net.work; T := net.ctx; V := p.n_vocab;
   x := work[k.dx..<k.dx + rows * d]; h := work[k.dh..<k.dh + rows * d]; q := work[k.dq..<k.dq + rows * d];
@@ -540,39 +567,41 @@ we_forward :: (net: WeNet, W: [] f32, work: [] f32, toks: [] int, rows: int, pos
     for i: 0..<d { x[r * d + i] = emb[toks[r] * d + i] + dpos[at * d + i]; }
   }
   none: [1] f32;
+  step := !prefill && cxwh_step(1) == 1;
   for l: 0..<p.n_text_layer {
     bl := net.dec[l];
-    we_norm(x, rows, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
+    we_ln(x, rows, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
     we_mm(h, rows, d, W[bl.q_w..<bl.q_w + d * d], W[bl.q_b..<bl.q_b + d], d, q);
     we_mm(h, rows, d, W[bl.k_w..<bl.k_w + d * d], none[0..<0], d, kn);
     we_mm(h, rows, d, W[bl.v_w..<bl.v_w + d * d], W[bl.v_b..<bl.v_b + d], d, vn);
     for r: 0..<rows {
       s := ifx prefill then slots[0] else slots[r]; at := ifx prefill then pos[0] + r else pos[r];
       sk := we_slot_k(net, work, l, s); sv := we_slot_v(net, work, l, s);
-      for i: 0..<d { sk[at * d + i] = kn[r * d + i]; sv[at * d + i] = vn[r * d + i]; }
+      we_store(kn[r * d..<(r + 1) * d], vn[r * d..<(r + 1) * d], sk[at * d..<(at + 1) * d], sv[at * d..<(at + 1) * d]);
     }
     if prefill {
       we_att(q, rows, we_slot_k(net, work, l, slots[0]), we_slot_v(net, work, l, slots[0]), pos[0] + rows, d, p.n_text_head, pos[0], true, a);
-    } else {
+    } else if !we_slots(net, work, l, q, rows, pos, slots, a) {
       for r: 0..<rows {
         we_att(q[r * d..<(r + 1) * d], 1, we_slot_k(net, work, l, slots[r]), we_slot_v(net, work, l, slots[r]), pos[r] + 1, d, p.n_text_head, pos[r], true, a[r * d..<(r + 1) * d]);
       }
     }
     we_mm(a, rows, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, h);
-    for i: 0..<rows * d { x[i] += h[i]; }
-    we_norm(x, rows, d, W[bl.lnx_w..<bl.lnx_w + d], W[bl.lnx_b..<bl.lnx_b + d], h);
+    we_add(x, h);
+    we_ln(x, rows, d, W[bl.lnx_w..<bl.lnx_w + d], W[bl.lnx_b..<bl.lnx_b + d], h);
     we_mm(h, rows, d, W[bl.xq_w..<bl.xq_w + d * d], W[bl.xq_b..<bl.xq_b + d], d, q);
     we_att(q, rows, work[k.ck + l * T * d..<k.ck + (l + 1) * T * d], work[k.cv + l * T * d..<k.cv + (l + 1) * T * d], T, d, p.n_text_head, 0, false, a);
     we_mm(a, rows, d, W[bl.xo_w..<bl.xo_w + d * d], W[bl.xo_b..<bl.xo_b + d], d, h);
-    for i: 0..<rows * d { x[i] += h[i]; }
-    we_norm(x, rows, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
+    we_add(x, h);
+    we_ln(x, rows, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
     we_mm_gelu(h, rows, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
     we_mm(mm, rows, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, h);
-    for i: 0..<rows * d { x[i] += h[i]; }
+    we_add(x, h);
   }
   r0 := ifx prefill then rows - 1 else 0; n := ifx prefill then 1 else rows;
-  we_norm(x[r0 * d..<(r0 + n) * d], n, d, W[net.d_ln_w..<net.d_ln_w + d], W[net.d_ln_b..<net.d_ln_b + d], h[0..<n * d]);
+  we_ln(x[r0 * d..<(r0 + n) * d], n, d, W[net.d_ln_w..<net.d_ln_w + d], W[net.d_ln_b..<net.d_ln_b + d], h[0..<n * d]);
   we_mm(h[0..<n * d], n, d, emb, none[0..<0], V, work[k.logits..<k.logits + n * V]);
+  if step { done := cxwh_step(0); }
 }
 
 // ---- the host's entry points ----------------------------------------------------
