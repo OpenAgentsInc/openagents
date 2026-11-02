@@ -194,6 +194,8 @@ machine downloads it.
   not the publisher. A tree whose compiler sources differ from every published
   build always bootstraps.
 
+Setting up a release host (the Mac's launchd agent, CoderOS's systemd service): `coax/published-builds-handoff.md`.
+
 Check: `coax/tests/published-build.sh` (a build's manifest, names and hashes
 are checked, and a wrong source, platform, hash or extra file is refused).
 
