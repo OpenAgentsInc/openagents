@@ -367,6 +367,51 @@ separately test the shader arithmetic, while the recorded unorm failures
 still need their format and golden-image evidence. A passing float run
 does not rename an earlier byte-image failure as a pass.
 
+### State exactly which pixels were checked
+
+A depth difference can change which face is visible. Comparing the resulting
+colors cannot tell us the rasterizer's depth arithmetic. Independent probes
+with authored triangles rejected three proposed depth models on both hosts.
+Another probe kept the same eight-bit coverage coordinates while moving the
+original vertices inside their cells; its observations also rejected changing
+the CPU reference to interpolate from the original, unsnapped coordinates.
+Those rejected models remain diagnostic results.
+
+The separate [shared-edge envelope](../render/tests/SHARED_EDGE_ENVELOPE.md)
+defines a narrower comparison scope. A snapped coordinate with eight fractional
+bits represents a cell with half-width `1 / 512` pixel. Around each eligible
+shared mesh edge, the envelope is the finite segment plus that axis-aligned
+square. For a pixel center `P`, membership asks whether one `t` in `[0, 1]`
+satisfies both coordinate intervals:
+
+```text
+P.x - 1/512 <= A.x + t * (B.x - A.x) <= P.x + 1/512
+P.y - 1/512 <= A.y + t * (B.y - A.y) <= P.y + 1/512
+```
+
+Intersecting those rational intervals checks the finite segment, rather than
+its infinite supporting line. Exact endpoint identities join the incident
+triangles. Coplanar, degenerate and unsupported geometry is counted explicitly;
+it cannot acquire a guessed edge band. The generator reads geometry and the
+declared profile, with no color or depth image input. An independent Coax
+calculation reconstructs its complete mask and checks its witnesses.
+
+For the retained 320×180 Dead Gears input, this declared envelope contains 159
+of 57,600 pixels. All 636 RGBA channels in those packets remain **unqualified**,
+including channels that happen to agree. The region can include occluded
+edges; it is not a proved visible-edge set or a universal hardware error bound.
+In particular, coordinate quantization does not grant the hardware arbitrary
+post-snap movement or establish a depth-error tolerance.
+
+The [interior comparison policy](../render/tests/compare-interiors-policy.coax)
+keeps the original complete comparison, including its failures. It separately
+checks every unmasked RGBA packet under the same finite color rule. Nonfinite
+values still fail everywhere, including inside the envelope. A malformed mask
+or an entirely excluded image refuses qualification. The certificate's shape,
+source, profile and file identities must be joined before reading target
+images; the enclosing host record must also establish matching frame and
+resource inputs. A geometric exclusion cannot supply those missing joins.
+
 The CPU pass driver joins those layers to the same pass and resource
 plan. It refuses malformed trees, unsupported operations, unavailable
 resources and exhausted budgets. It does not replace an unsupported

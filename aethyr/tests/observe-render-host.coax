@@ -1,0 +1,6 @@
+// Read-only attachment to an already-owned headless page for loader diagnosis.
+#import "Basic";
+#load "render-host-session.coax";
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}c:[1]Cdp;if !cdp_connect(c[..],args_at(a[..],0)) {return 1;}at:=rh_direct(c[..],"({url:location.href,diag:document.querySelector('#coaxial-diag')?.textContent,loader:document.querySelector('#coaxial-load')?.textContent,phase:globalThis.coaxial?.renderLifecyclePhase,assets:globalThis.coaxial?.renderAssets?.().map(a=>({kind:a.kind,pack:!!a.pack,done:!!a.done,failed:!!a.failed})),engineReady:globalThis.coaxial?.ready,render:globalThis.coaxial?.renderStatus,body:document.body.innerText.slice(-1600)})",proc_now_ms()+30000,30000);bytes:[65536]u8;n:=rh_save_value(c[..],at,bytes[..]);cdp_close(c[..]);return ifx n>0 && fs_write(args_at(a[..],1),cast(string)bytes[0..<n]) then 0 else 1;
+}

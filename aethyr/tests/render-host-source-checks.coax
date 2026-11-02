@@ -1,0 +1,23 @@
+// Explicit archive-body joins for the nine qualified host profiles. Historical
+// controller epochs are named, not inferred from the final source or image.
+#import "Basic";
+#load "render-host-session.coax";
+rh_retained_path :: (original:string,epoch:string,out:[]u8)->string {
+  repo:="/Users/christopherdavid/work/openagents-aethyr-book-main/";private_prefix:="/private/tmp/aethyr-host-port-20261102/";tmp_prefix:="/tmp/aethyr-host-port-20261102/";key:=ifx rto_prefix(original,repo) then original[repo.count..<original.count] else original;o:[1]Jo;jo_start(o[..],out);
+  if original=="/tmp/aethyr-authority-budget-qualified-1fac/coax" {jo_put(o[..],"images/compiler-1fac");}
+  else if original=="/usr/bin/mktemp" {jo_put(o[..],"images/mktemp");}
+  else if original==CDP_MAC_CHROME {jo_put(o[..],"images/chrome-main");}
+  else if rto_suffix(original,"/coax/web/build/tools/check-render-host-1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa") {jo_put(o[..],"images/");jo_put(o[..],ifx epoch=="pre-status-reparse" then "observer-fcb" else ifx epoch=="post-status-reparse" then "observer-b033" else "observer-final");}
+  else if rto_prefix(original,private_prefix) {jo_put(o[..],"evidence/");jo_put(o[..],original[private_prefix.count..<original.count]);}
+  else if rto_prefix(original,tmp_prefix) {jo_put(o[..],"evidence/");jo_put(o[..],original[tmp_prefix.count..<original.count]);}
+  else if epoch!="current" && (rto_prefix(key,"aethyr/tests/render-host-") || key=="aethyr/tests/check-render-host.coax") {jo_put(o[..],"evidence/epochs/");jo_put(o[..],epoch);jo_put(o[..],"/");jo_put(o[..],fs_base(key));}
+  else if rto_prefix(key,"coax/") || rto_prefix(key,"aethyr/") {jo_put(o[..],"source/");jo_put(o[..],key);}
+  else {return "";}return ifx o[0].bad then "" else jo_text(o[..]);
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}root:=args_at(a[..],0);target:=args_at(a[..],1);cases:=[9]string.["actual-device-controls","image-reloads","video-reloads","pending-index-measured","pending-pack-fixture","pending-layer-fixture","default-nonstream","half-nostart","gamma-start"];new_cases:=[9]string.["actual-device-controls","image-reloads-fixed","video-reloads-fixed","pending-index-measured","pending-pack-fixture","pending-layer-fixture","default-nonstream","half-nostart","gamma-start"];record:[1048576]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"profiles");jo_arr(o[..]);same:=true;count:=0;
+  for label,i:cases {for side:0..<2 {name:[4096]u8;w:[1]Jo;jo_start(w[..],name[..]);jo_put(w[..],"evidence/");jo_put(w[..],ifx side==0 then "legacy-" else "coax-");jo_put(w[..],ifx side==0 then label else new_cases[i]);jo_put(w[..],"/receipt.json");paths:[2][4096]u8;file:=fs_join(root,jo_text(w[..]),paths[0][..]);bytes:[8388608]u8;nodes:[131072]JvNode;d:[1]Jv;if !rtq_json_file(file,bytes[..],nodes[..],d[..]) {return 1;}epoch:=ifx i==0 then "pre-status-reparse" else ifx i<3 then "post-status-reparse" else "current";jo_obj(o[..]);jo_key(o[..],"profile");jo_str(o[..],label);jo_key(o[..],"side");jo_str(o[..],ifx side==0 then "legacy" else "coax");jo_key(o[..],"epoch");jo_str(o[..],epoch);jo_key(o[..],"rows");jo_arr(o[..]);inputs:=jv_get(d[0],0,"inputs");row:=d[0].nodes[inputs].first;
+    while row!= -1 {key:=jv_key(d[0],row);mapped:[8192]u8;relative:=rh_retained_path(key,epoch,mapped[..]);hash:[64]u8;path:=fs_join(root,relative,paths[1][..]);okay:=relative!="" && rtq_hash_file(path,hash[..]) && cast(string)hash[..]==jv_raw(d[0],row);same=same && okay;jo_obj(o[..]);jo_key(o[..],"input");jo_str(o[..],key);jo_key(o[..],"body");jo_str(o[..],relative);jo_key(o[..],"sha256");jo_str(o[..],jv_raw(d[0],row));jo_key(o[..],"equal");jo_bool(o[..],okay);jo_end(o[..]);count+=1;row=d[0].nodes[row].next;
+    }jo_end(o[..]);jo_end(o[..]);}}
+  jo_end(o[..]);jo_key(o[..],"status");jo_str(o[..],ifx same then "passed" else "failed");jo_key(o[..],"input_bodies_checked");jo_int(o[..],count);self:[4096]u8;image:=gp_self(self[..]);hash:[64]u8;if !rtq_hash_file(image,hash[..]) {return 1;}jo_key(o[..],"observer_image_sha256");jo_str(o[..],cast(string)hash[..]);if !rtq_hash_file("aethyr/tests/render-host-source-checks.coax",hash[..]) {return 1;}jo_key(o[..],"observer_source_sha256");jo_str(o[..],cast(string)hash[..]);jo_end(o[..]);print("retained host source inventory: % (% bodies)\n",same,count);return ifx !o[0].bad && fs_write(target,jo_text(o[..])) && same then 0 else 1;
+}

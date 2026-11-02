@@ -1,0 +1,78 @@
+{
+  "schema": "aethyr.render.host-tool-port.v1",
+  "status": "passed",
+  "replacement": "aethyr/tests/check-render-host.coax",
+  "retired_after_qualification": "aethyr/tests/check_render_host.ts",
+  "scope": "Production DOM-host observer/controller port. No new producer, shader package or numerical math gate is emitted. Every legacy flag and callable lifecycle branch remains represented; actual profiles and diagnostic boundaries are explicit below.",
+  "ownership": {
+    "coax": "Options and exact Number-style DPR admission; operation order and all waits/deadlines; original ownership/refusal/recovery verdicts; filenames/chunks/counts/hashes/ACK/storage/source gates; complete native frame configuration and receipts.",
+    "browser_effects": "Reason1 DOM/WebGPU/MediaRecorder methods, explicit injected SDK failures, retained object/byte handles, source-byte digest and HTTP effects. No product renderer policy is introduced.",
+    "launcher": "Always muted/headless; original three background flags and no Chrome window-size override; actual viewport set by Emulation.",
+    "output": "A fresh/empty directory is required before observation writes. Existing artifacts, input-page overlap and empty sentinel files are preserved on refusal."
+  },
+  "checks": {
+    "baseline_checks": 143,
+    "root_authority_mutants": 403,
+    "killed": 403,
+    "survived": 0,
+    "waivers": 0,
+    "actual_old_new_profile_pairs": 9,
+    "comparisons_passed": 9,
+    "actual_output_preservation_controls": 3,
+    "whole_input_inventories": 18,
+    "input_entries_with_retained_body_and_exact_digest": 945,
+    "source_join": "data/aethyr-ch11-2026-11-02/render-host-tool-port/source-join.json",
+    "output_controls": "data/aethyr-ch11-2026-11-02/render-host-tool-port/output-preservation.json"
+  },
+  "profiles": [
+    {"name":"controls","comparison":"comparisons/controls.json","coverage":"All six renderer bank trials; media refusal preserves pending work and makes zero queue effects, then recovers; parallel renderer/engine replacement; failed engine replacement retires binding.","raw_artifacts_equal":false,"scope":"Every stable lifecycle/control observation, capture metadata, physical resource, source digest, browser-byte transport and complete config agrees. Animated producer uniforms/pixels differ with readiness-loop clip counts; no identical simulation-input or numerical closure claim."},
+    {"name":"image-reloads","comparison":"comparisons/image-reloads.json","coverage":"Ready image ownership across shader/engine replacement, recapture and retirement; late callback allocates nothing.","raw_artifacts_equal":true},
+    {"name":"video-reloads","comparison":"comparisons/video-reloads.json","coverage":"Actual silent MediaRecorder video, production decoder dimensions/mute state, replacement/recapture/retirement.","raw_artifacts_equal":true,"scope":"Generated WebM container bytes differ and both are retained. The actual decoded GPU texture and every captured renderer input/output artifact agree exactly."},
+    {"name":"pending-index","comparison":"comparisons/pending-index.json","coverage":"Actual retained index fetch, two engine replacements and byte/binding ownership.","raw_artifacts_equal":true},
+    {"name":"pending-pack","comparison":"comparisons/pending-pack.json","coverage":"Actual packed resource fetch, shared part identities, texture ownership and exactly one held pack fetch.","raw_artifacts_equal":true},
+    {"name":"pending-layer","comparison":"comparisons/pending-layer.json","coverage":"Actual ImageBitmap decode gate and retained ready layer texture across two replacements.","raw_artifacts_equal":true},
+    {"name":"default-nonstream","comparison":"comparisons/default-nonstream.json","coverage":"No Start/half/stream flag; base-spelled DPR, automatic background capture and complete non-streamed byte transport.","raw_artifacts_equal":false,"scope":"Original background acceptance decision, capture ABI/dimensions/source contract, each config header and exact per-capture browser-byte transport agree. Loading HUD counts/progress/render state and raw frames differ explicitly; this is not a ready-scene or same-input numerical qualification."},
+    {"name":"half-nostart","comparison":"comparisons/half-nostart.json","coverage":"Half capture without Start, fractional DPR and non-streamed resource arrays.","raw_artifacts_equal":false,"scope":"The same declared background-only acceptance/transport qualification applies; all metadata, resource-initialization and raw differences are retained."},
+    {"name":"gamma-start","comparison":"comparisons/gamma-start.json","coverage":"Actual Start, require-draws, normal capture format and complete non-streamed resource arrays.","raw_artifacts_equal":true}
+  ],
+  "diagnostic_schema": {
+    "receipt": "aethyr.render.browser-capture.v2",
+    "preserved": "Literal status, DOM loader/body, render.observed callback flag, window errors/rejections and every raw artifact remain retained. Comparisons report both diagnostic values and their inequalities.",
+    "boundary": "Servicing a texture-stream callback can publish capture within one clip step rather than the next readiness-loop step which hides the loader. These temporal DOM/callback facts are not asserted equal. The original loader FAILED condition and every original acceptance/ownership/refusal verdict remain checked.",
+    "cdp": "Raw CDP event objects are unavailable in this client; actual count and window_events are named accurately. No empty raw event array is fabricated.",
+    "arm_result": "The actual SDK return value replaces the old raw Runtime.evaluate envelope.",
+    "numerical": "No tolerance or mask is introduced. Six fully ready profiles have byte-identical complete raw captures. The other scopes explicitly decline identical-frame numerical claims."
+  },
+  "retained_failures_and_repairs": [
+    "The initial safe default launcher captured the CSS extent before the physical ResizeObserver observation. The explicit combined legacy background/no-window profile restores the observed physical extent; flags-alone causality is not claimed.",
+    "The untouched legacy prototype pipeline hook is shadowed by an actual device's own method: installed prototype hook, zero calls/blocks, actual own-method observations retained. Both independent reference and Coax fixtures hook the actual device method. The qualified pipeline trial records one actual call and one planted rejection; all original bank/identity/submission assertions remain unchanged.",
+    "A stale Coax node view after media recapture was repaired by reparsing the updated status. Earlier failure retained; unchanged legacy positive observations reused.",
+    "Pending controls wait at most60seconds for an actual selected asset row. They do not invent a row/readiness and retain every original pending assertion. The independent reference has the same bounded read-only fixture adaptation.",
+    "An older raw-bool Garden artifact lacks the measured draw-source facade, and Garden profile16 has no packed layer. Their explicit failed attempts are retained. Qualified profiles reuse measured Garden10e4021e… and fixture869cc748… artifacts already qualified elsewhere; no replacement producer is emitted.",
+    "Early exploratory diagnostic attempts retain raw observations/source hashes but are not reused as qualified native/source-emission proofs. The nine promoted profiles have all945 input entries joined to exact retained bodies and all three actual controller executable epochs retained."
+  ],
+  "source_epochs": {
+    "controls": {"image_sha256":"fcb0105054d747e83ba4f9bc79024789e1a054ee2313bd99a7128d13b0242f65","body":"evidence/epochs/pre-status-reparse","scope":"Actual controls under this historical observer source; not final-source emission."},
+    "media_reload_reparse_fix": {"image_sha256":"b033820f56fb03d15d7fc6b2270db144a03a3a9b075354ecf43592a397e3a59b","body":"evidence/epochs/post-status-reparse","scope":"Owned source snapshot reconstructed from its exact authored reparse patch; every input digest independently matches the actual receipts."},
+    "final_pending_background_and_gamma": {"image_sha256":"3a43ae484a9957c3c0279b3b9a02ca3bb1100f800103d594789b82674516a109","body":"source","scope":"Final source epoch, including fresh-output guard, bounded asset presence, synchronized fact sampling and accurate observer profile."},
+    "comparison_image_sha256":"c5e4a9fbbbd1b5676dd23b15b952351083d624a2d36d75235ff8f048c597ae18"
+  },
+  "compiler": {
+    "sha256":"1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "source_digest":"b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "scope":"Explicit historical qualified compiler for observer tools. No matching-main compiler or fresh product emission is claimed."
+  },
+  "final_owned_sources": {
+    "aethyr/tests/check-render-host.coax":"141d3d4a63066956678c36c6900b9b37cb1342cd9e806f870406d2e31a04419c",
+    "aethyr/tests/render-host-effects.js":"6322937eaf3bce866348349f9f4d5f86a958de56dae6e765e9970a6793cb96c4",
+    "aethyr/tests/render-host-policy.coax":"159dc8287891cd041b24167d0dc54d6ddca311c824978743a043eb2217bd2627",
+    "aethyr/tests/render-host-tool-checks.coax":"d678180b110f5b8616dde77c4ba3288136b86be8d2c25c6f3df17b046e6e3d9a"
+  },
+  "retention": {
+    "archive":"data/aethyr-ch11-2026-11-02/render-host-tool-port/artifacts-and-reference.tar.xz",
+    "bytes":33973312,
+    "sha256":"c5595c59234e00969a3a6afa3bc240497defaeb4c64aaa55a6cc2b97a0aeb67f",
+    "scope":"Complete source/SDK/compiler and actual controller/checker executable bodies, frozen independent references, all positive/negative attempts, full raw artifacts including differing frames, operation/POST/origin ledgers, empty files, complete source joins and comparison records.",
+    "readback":"Fresh stock tar extraction followed by /usr/bin/diff -qr --no-dereference over the complete owned retention tree: exit0, empty stdout/stderr. Regular files, empty files, directory inventory and symbolic-link values agree. The earlier dereferencing comparison warned on eight unrelated dangling public-surface links; its empty stdout alone was not treated as complete verification. All945 qualified input entries independently join to retained actual file bodies."
+  }
+}

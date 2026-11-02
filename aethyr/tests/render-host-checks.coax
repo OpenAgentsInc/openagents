@@ -1,0 +1,122 @@
+#test "host dimensions retain strict decimal pair and first equals option" {
+  #assert rh_dimension("0008192")==8192 && rh_dimension("1")==1;
+  for s:[9]string.["","0","8193","-1","+1","1e0"," 1","1.0","999999999999999999999"] {#assert rh_dimension(s)== -1;}
+  a:[1]Args;for s:[8]string.["a","b","c","d","--size=64x32","--size=1x1","--start","--unknown"] {#assert args_add(a[..],s);}
+  o:=rh_options(a[..]);#assert o.valid && o.width==64 && o.height==32 && o.start && !o.half && !o.mediaFixture;
+  #assert rh_pair("8192x1").valid && !rh_pair("1x2x3").valid && !rh_pair("1X2").valid;
+}
+#test "host flags preserve independent callable branches" {
+  a:[1]Args;for s:[17]string.["a","b","c","d","--media-video","--media-reloads","--texture-stream","--pending-layer","--pending-pack","--pending-index","--engine-failure","--engine-reload","--media-controls","--reload-check","--half","--require-draws","--physical=640x360"] {#assert args_add(a[..],s);}
+  o:=rh_options(a[..]);#assert o.valid && o.mediaVideo && o.mediaFixture && o.mediaReload && o.textureStream && o.pendingLayer && o.pendingPack && o.pendingIndex && o.engineFailure && o.engineReload && o.mediaControls && o.reloadCheck && o.half && o.requireDraws && !o.start && o.physical && o.pw==640 && o.ph==360;
+  #assert rh_pending_kind(o)=="pack";o.pendingPack=false;#assert rh_pending_kind(o)=="layers";o.pendingLayer=false;#assert rh_pending_kind(o)=="index";
+  for k:0..<6 {#assert rh_reload_mode(k)==(ifx k==0 then "json" else ifx k==1 || k==4 then "hash" else ifx k==2 then "pipeline" else "success");}
+  #assert rh_reload_mode(-1)=="" && rh_reload_mode(6)=="";
+}
+#test "host DPR keeps Number decimal exponents bases whitespace and IEEE endpoint rounding" #steps 200000000 {
+  out:[131072]u8;
+  for s:[13]string.["1",".5","  +2.5  ","1e-300","0x4","0B10","0o3","4.0000000000000001","\t1\n"," .5﻿","5e-324","2.4703282292062328e-324",".0000000000000000000000000000001"] {#assert rh_dpr(s,out[..])>0;}
+  for s:[16]string.[""," ","0","-0","-1","4.000000000000001","NaN","Infinity","1e309","1e-9999","0x5","+0x1","1x",".","2.4703282292062327e-324","0b"] {#assert rh_dpr(s,out[..])== -1;}
+}
+#test "host lifecycle verdicts require every legacy ownership observation" {
+  source:="{\"waiting\":{\"done\":false,\"fetching\":true},\"first\":true,\"same\":true,\"ready\":{\"done\":true,\"bytes\":0,\"size\":7,\"failed\":false},\"second\":true,\"validation\":{\"ok\":true},\"final\":{\"same\":true,\"done\":true,\"bytes\":0,\"textureSame\":true,\"binding\":{\"coherent\":true}},\"heldAssets\":1}";
+  d:[1]Jv;nodes:[128]JvNode;#assert jv_parse(d[..],source,nodes[..]) && rh_pending(d[0],0,false);
+  for field:[13]string.["waiting.done","waiting.fetching","first","same","ready.done","ready.failed","second","validation.ok","final.same","final.done","final.textureSame","final.binding.coherent","heldAssets"] {
+    at:=jv_path(d[0],0,field);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=ifx old==JV_TRUE then JV_FALSE else JV_TRUE;#assert !rh_pending(d[0],0,false);d[0].nodes[at].kind=old;
+  }
+  #assert !rh_pending(d[0],-1,false);
+}
+#test "host reload and failure decisions retain exact success toggles" {
+  source:="{\"swapped\":true,\"bank\":1,\"same\":true,\"validation\":{\"ok\":true},\"render\":{\"submitted\":true},\"failure\":{\"failed\":true},\"binding\":{\"stopped\":true,\"coherent\":false},\"parallel\":[true,true],\"state\":{\"render\":{\"submitted\":true}}}";
+  d:[1]Jv;nodes:[128]JvNode;#assert jv_parse(d[..],source,nodes[..]);#assert rh_reload(d[0],0,true,1) && !rh_reload(d[0],0,false,1) && !rh_reload(d[0],0,true,0) && rh_engine(d[0],0) && rh_failed_engine(d[0],0);
+  for key:[3]string.["failure.failed","binding.stopped","binding.coherent"] {at:=jv_path(d[0],0,key);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=ifx old==JV_TRUE then JV_FALSE else JV_TRUE;#assert !rh_failed_engine(d[0],0);d[0].nodes[at].kind=old;}
+}
+#test "host ready media requires real decoder dimensions mute and every reload retirement fact" {
+  source:="{\"before\":{\"ready\":true,\"kind\":2,\"width\":64,\"height\":32},\"shader\":true,\"shaderValidation\":{\"ok\":true},\"shaderState\":{\"same\":true,\"textureSame\":true,\"bound\":true,\"render\":{\"submitted\":true}},\"engine\":true,\"engineValidation\":{\"ok\":true},\"engineState\":{\"ready\":true,\"kind\":2,\"width\":64,\"height\":32,\"bound\":true,\"coherent\":true,\"oldClosed\":true,\"render\":{\"submitted\":true}},\"recaptured\":true,\"retired\":{\"binding\":{\"stopped\":true,\"coherent\":false},\"cache\":0,\"lateAllocations\":0,\"closed\":true}}";
+  d:[1]Jv;nodes:[256]JvNode;#assert jv_parse(d[..],source,nodes[..]) && rh_media_reload(d[0],0);
+  for field:[20]string.["before.ready","shader","shaderValidation.ok","shaderState.same","shaderState.textureSame","shaderState.bound","shaderState.render.submitted","engine","engineValidation.ok","engineState.ready","engineState.bound","engineState.coherent","engineState.oldClosed","engineState.render.submitted","recaptured","retired.binding.stopped","retired.binding.coherent","retired.closed","retired.cache","retired.lateAllocations"] {at:=jv_path(d[0],0,field);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=ifx old==JV_TRUE then JV_FALSE else JV_TRUE;#assert !rh_media_reload(d[0],0);d[0].nodes[at].kind=old;}
+  for key:[3]string.["kind","width","height"] {at:=jv_get(d[0],jv_get(d[0],0,"engineState"),key);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=JV_NULL;#assert !rh_media_reload(d[0],0);d[0].nodes[at].kind=old;}
+  video:="[{\"kind\":2,\"ready\":true,\"muted\":true,\"defaultMuted\":true,\"videoWidth\":64,\"videoHeight\":32}]";#assert jv_parse(d[..],video,nodes[..]) && rh_video(d[0],0);for key:[6]string.["kind","ready","muted","defaultMuted","videoWidth","videoHeight"] {at:=jv_get(d[0],jv_at(d[0],0,0),key);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=JV_NULL;#assert !rh_video(d[0],0);d[0].nodes[at].kind=old;}
+}
+#test "host page replaces the first old attribute and inserts only when wasm is absent" {
+  out:[4096]u8;n:=rh_page("<s data-app=\"a\" data-render=\"old\" data-render=\"later\">",out[..]);#assert n>0 && cast(string)out[0..<n]=="<s data-app=\"a\" data-wasm=\"/test.wasm\" data-render=\"/package/render.json\" data-render=\"later\">";
+  n=rh_page("<s data-wasm=\"old\" data-app=\"a\" data-wasm=\"later\">",out[..]);#assert n>0 && cast(string)out[0..<n]=="<s data-wasm=\"/test.wasm\" data-app=\"a\" data-wasm=\"later\">";
+  n=rh_page("<s data-wasm=\"broken",out[..]);#assert n>0 && cast(string)out[0..<n]=="<s data-wasm=\"broken";
+  tiny:[1]u8;#assert rh_page("<script data-app=\"a\">",tiny[..])== -1;
+}
+#test "host completion preserves capture draw and source gates" {
+  #assert rh_complete(true,true,true,false,0) && rh_complete(true,true,true,true,1);
+  #assert !rh_complete(false,true,true,false,1) && !rh_complete(true,false,true,false,1) && !rh_complete(true,true,false,false,1) && !rh_complete(true,true,true,true,0);
+  d:[1]Jv;nodes:[128]JvNode;#assert jv_parse(d[..],"{\"coarse\":true}",nodes[..]) && rh_coarse(d[0],0)==1;#assert jv_parse(d[..],"{\"coarse\":1}",nodes[..]) && rh_coarse(d[0],0)==1;#assert jv_parse(d[..],"{\"coarse\":false}",nodes[..]) && rh_coarse(d[0],0)==0;
+}
+#forall "host media refusal preserves exact upload arrays and zero queue calls then recovery" change:0..<11 {
+  source:="{\"before\":[{\"pending\":4}],\"refused\":{\"status\":{\"submitted\":false,\"refusal\":{\"phase\":\"resources\"}},\"pending\":[{\"pending\":4}],\"calls\":{\"submit\":0,\"writeBuffer\":0,\"copyExternalImageToTexture\":0}},\"recovered\":{\"status\":{\"submitted\":true},\"pending\":[{\"pending\":0}],\"calls\":{\"submit\":1}},\"validation\":{\"ok\":true}}";
+  d:[1]Jv;nodes:[256]JvNode;#assert jv_parse(d[..],source,nodes[..]) && rh_media_control(d[0]);
+  keys:=[11]string.["before","refused.pending","refused.status.submitted","refused.status.refusal.phase","refused.calls.submit","refused.calls.writeBuffer","refused.calls.copyExternalImageToTexture","recovered.status.submitted","recovered.pending","recovered.calls.submit","validation.ok"];at:=jv_path(d[0],0,keys[change]);d[0].nodes[at].kind=JV_NULL;#assert !rh_media_control(d[0]);
+}
+#test "host option invalid boundaries never reach browser geometry" {
+  #assert rh_dimension(":")== -1 && !rh_pair("x1").valid && rh_pair("x1").height==1 && rh_pair("x1").width== -1 && rh_pair("1x1").width==1 && rh_pair("1x1").height==1;
+  a:[1]Args;for s:[4]string.["a","b","c","d"] {#assert args_add(a[..],s);}o:=rh_options(a[..]);#assert o.valid && o.width==320 && o.height==180 && o.dpr=="1" && !o.physicalPresent;
+  a[0].full=true;#assert !rh_options(a[..]).valid;a[0].full=false;a[0].n=3;#assert !rh_options(a[..]).valid;a[0].n=4;
+  #assert args_add(a[..],"--size=");#assert !rh_options(a[..]).valid;a[0].n=4;#assert args_add(a[..],"--physical=");o=rh_options(a[..]);#assert o.valid && o.physicalPresent && o.physicalSize=="" && !o.physical;
+  a[0].n=4;#assert args_add(a[..],"--physical=00001x00002");o=rh_options(a[..]);#assert o.valid && o.physicalPresent && o.physical && o.physicalSize=="00001x00002" && o.pw==1 && o.ph==2;
+  a[0].n=4;#assert args_add(a[..],"--physical=1x0");#assert !rh_options(a[..]).valid;a[0].n=4;#assert args_add(a[..],"--dpr=+0.25");#assert rh_options(a[..]).dpr=="+0.25";
+}
+#test "host DPR serializes exact normalized JSON instead of merely accepting a value" {
+  out:[131072]u8;inputs:=[9]string.["1.5","+1","0x1","0X4","0b10","0B11","0o3","0O4","000.12500"];expected:=[9]string.["15e-1","1e0","1","4","2","3","3","4","125e-3"];
+  for text,k:inputs {n:=rh_dpr(text,out[..]);#assert n==expected[k].count && cast(string)out[0..<n]==expected[k];}
+  for text:[6]string.["+","0x0","0b2","0o8","0xg","0b000"] {#assert rh_dpr(text,out[..])== -1;}
+  tiny:[1]u8;#assert rh_dpr("0x1",tiny[..])==1 && tiny[0]=='1';#assert rh_dpr("0x1",tiny[0..<0])== -1 && rh_dpr("1.5",tiny[..])== -1;
+  bound:[80]u8;b:=gg_bound(4,true,bound[..]);tie:[128]u8;w:[1]Jo;jo_start(w[..],tie[..]);jo_put(w[..],b.digits);jo_put(w[..],"e");jo_int(w[..],b.shift);#assert rh_dpr(jo_text(w[..]),out[..])>0;
+}
+#test "host engine and media verdicts cover false arrays and individual status losses" {
+  d:[1]Jv;nodes:[256]JvNode;source:="{\"parallel\":[true,true],\"swapped\":true,\"validation\":{\"ok\":true},\"state\":{\"render\":{\"submitted\":true}}}";#assert jv_parse(d[..],source,nodes[..]) && rh_engine(d[0],0);
+  for key:[4]string.["parallel","swapped","validation.ok","state.render.submitted"] {at:=jv_path(d[0],0,key);old:=d[0].nodes[at].kind;d[0].nodes[at].kind=JV_NULL;#assert !rh_engine(d[0],0);d[0].nodes[at].kind=old;}
+  at:=jv_at(d[0],jv_get(d[0],0,"parallel"),0);d[0].nodes[at].kind=JV_FALSE;#assert !rh_engine(d[0],0);
+  #assert jv_parse(d[..],"{}",nodes[..]) && !rh_video(d[0],0) && rh_coarse(d[0],0)==0;
+}
+#test "host literal first-match HTML includes offset zero empty text and capacity refusals" {
+  out:[65536]u8;n:=rh_page("data-wasm=\"old\" data-app=\"a\"",out[..]);#assert n>0 && cast(string)out[0..<n]=="data-wasm=\"/test.wasm\" data-app=\"a\"";
+  n=rh_page("",out[..]);#assert n==0;n=rh_page("plain",out[..]);#assert n==5 && cast(string)out[0..<n]=="plain";
+  huge:[65537]u8;for k:0..<huge.count {huge[k]='a';}#assert rh_page(cast(string)huge[..],out[..])== -1;
+}
+#test "host byte-ordered upload comparison retains object field order in nested arrays" {
+  d:[1]Jv;nodes:[128]JvNode;#assert jv_parse(d[..],"{\"a\":[{\"x\":{\"a\":1,\"b\":2}},{\"z\":[{\"a\":1,\"b\":2}]}],\"b\":[{\"x\":{\"a\":1,\"b\":2}},{\"z\":[{\"a\":1,\"b\":2}]}],\"c\":[{\"x\":{\"b\":2,\"a\":1}},{\"z\":[{\"a\":1,\"b\":2}]}],\"d\":[{\"x\":{\"a\":1,\"b\":2}},{\"z\":[{\"b\":2,\"a\":1}]}]}",nodes[..]);
+  a:=jv_get(d[0],0,"a");#assert rh_member_order(d[0],a,jv_get(d[0],0,"b")) && !rh_member_order(d[0],a,jv_get(d[0],0,"c")) && !rh_member_order(d[0],a,jv_get(d[0],0,"d"));
+}
+#test "host smallest DPR midpoint is refused exactly and one decimal unit above is admitted" {
+  // Exact integer oracle: /usr/bin/bc, 5^1075 (retained with tool qualification).
+  text:="24703282292062327208828439643411068618252990130716238221279284125033775363510437593264991818081799618989828234772285886546332835517796989819938739800539093906315035659515570226392290858392449105184435931802849936536152500319370457678249219365623669863658480757001585769269903706311928279558551332927834338409351978015531246597263579574622766465272827220056374006485499977096599470454020828166226237857393450736339007967761930577506740176324673600968951340535537458516661134223766678604162159680461914467291840300530057530849048765391711386591646239524912623653881879636239373280423891018672348497668235089863388587925628302755995657524455507255189313690836254779186948667994968324049705821028513185451396213837722826145437693412532098591327667236328125e-1075";
+  bytes:[1024]u8;for c,k:text {bytes[k]=c;}out:[2048]u8;#assert rh_dpr(text,out[..])== -1;bytes[text.count-7]='6';#assert rh_dpr(cast(string)bytes[0..<text.count],out[..])>0;
+}
+rh_pending_test :: (bytes:int,size:int,out:[]u8)->string {
+  o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"{\"waiting\":{\"done\":false,\"fetching\":true},\"first\":true,\"same\":true,\"ready\":{\"done\":true,\"bytes\":");jo_int(o[..],bytes);jo_put(o[..],",\"size\":");jo_int(o[..],size);jo_put(o[..],",\"failed\":false},\"second\":true,\"validation\":{\"ok\":true},\"final\":{\"same\":true,\"done\":true,\"bytes\":");jo_int(o[..],bytes);jo_put(o[..],",\"textureSame\":true,\"binding\":{\"coherent\":true}},\"heldAssets\":1}");return jo_text(o[..]);
+}
+#test "host pending byte or layer count one admits while both zero refuses" {
+  d:[1]Jv;nodes:[128]JvNode;source:[2048]u8;
+  #assert jv_parse(d[..],rh_pending_test(1,0,source[..]),nodes[..]) && rh_pending(d[0],0,false);
+  #assert jv_parse(d[..],rh_pending_test(0,1,source[..]),nodes[..]) && rh_pending(d[0],0,false);
+  #assert jv_parse(d[..],rh_pending_test(0,0,source[..]),nodes[..]) && !rh_pending(d[0],0,false);
+}
+#forall "host media atomicity refuses changed order counts and queue effects" change:0..<7 {
+  source:="{\"before\":[{\"pending\":1,\"cap\":3}],\"refused\":{\"status\":{\"submitted\":false,\"refusal\":{\"phase\":\"resources\"}},\"pending\":[{\"pending\":1,\"cap\":3}],\"calls\":{\"submit\":0,\"writeBuffer\":0,\"copyExternalImageToTexture\":0}},\"recovered\":{\"status\":{\"submitted\":true},\"pending\":[{\"pending\":0}],\"calls\":{\"submit\":1}},\"validation\":{\"ok\":true}}";
+  d:[1]Jv;nodes:[256]JvNode;#assert jv_parse(d[..],source,nodes[..]) && rh_media_control(d[0]);
+  if change==0 {before:=jv_get(d[0],0,"before");refused:=jv_path(d[0],0,"refused.pending");a:=jv_get(d[0],jv_at(d[0],before,0),"pending");b:=jv_get(d[0],jv_at(d[0],refused,0),"pending");zero:=jv_get(d[0],jv_at(d[0],jv_path(d[0],0,"recovered.pending"),0),"pending");d[0].nodes[a].from=d[0].nodes[zero].from;d[0].nodes[a].to=d[0].nodes[zero].to;d[0].nodes[b].from=d[0].nodes[zero].from;d[0].nodes[b].to=d[0].nodes[zero].to;}
+  if change==1 {row:=jv_at(d[0],jv_path(d[0],0,"refused.pending"),0);first:=d[0].nodes[row].first;second:=d[0].nodes[first].next;d[0].nodes[row].first=second;d[0].nodes[second].next=first;d[0].nodes[first].next= -1;}
+  if change==2 {d[0].nodes[jv_path(d[0],0,"refused.calls")].kind=JV_NULL;}
+  if change==3 {row:=jv_at(d[0],jv_path(d[0],0,"recovered.pending"),0);at:=jv_get(d[0],row,"pending");one:=jv_path(d[0],0,"recovered.calls.submit");d[0].nodes[at].from=d[0].nodes[one].from;d[0].nodes[at].to=d[0].nodes[one].to;}
+  if change==4 {at:=jv_get(d[0],jv_at(d[0],jv_path(d[0],0,"refused.pending"),0),"cap");one:=jv_path(d[0],0,"recovered.calls.submit");d[0].nodes[at].from=d[0].nodes[one].from;d[0].nodes[at].to=d[0].nodes[one].to;}
+  if change==5 {at:=jv_path(d[0],0,"refused.calls.submit");one:=jv_path(d[0],0,"recovered.calls.submit");d[0].nodes[at].from=d[0].nodes[one].from;d[0].nodes[at].to=d[0].nodes[one].to;}
+  if change==6 {at:=jv_get(d[0],0,"before");b:=jv_path(d[0],0,"refused.pending");d[0].nodes[at].first= -1;d[0].nodes[at].count=0;d[0].nodes[b].first= -1;d[0].nodes[b].count=0;}
+  #assert !rh_media_control(d[0]);
+}
+#test "host planted pipeline rejection requires actual observed invocation and block" {
+  for source,k:[5]string.["{\"calls\":1,\"blocks\":1,\"devices\":[{\"matches\":true}]}","{\"calls\":0,\"blocks\":1,\"devices\":[{\"matches\":true}]}","{\"calls\":1,\"blocks\":0,\"devices\":[{\"matches\":true}]}","{\"calls\":1,\"blocks\":1,\"devices\":[{\"matches\":false}]}","{\"calls\":1,\"blocks\":1,\"devices\":[]}"] {d:[1]Jv;nodes:[64]JvNode;#assert jv_parse(d[..],source,nodes[..]) && rh_pipeline_hook(d[0])==(k==0);}
+}
+#test "host pending bootstrap waits for a real asset row and never manufactures readiness" {
+  d:[1]Jv;nodes:[128]JvNode;#assert jv_parse(d[..],"[]",nodes[..]) && !rh_asset_present(d[0],"index");#assert jv_parse(d[..],"{}",nodes[..]) && !rh_asset_present(d[0],"index");
+  #assert jv_parse(d[..],"[{\"kind\":\"index\",\"pack\":false},{\"kind\":\"layers\",\"pack\":true}]",nodes[..]) && rh_asset_present(d[0],"index") && rh_asset_present(d[0],"layers") && rh_asset_present(d[0],"pack") && !rh_asset_present(d[0],"other");
+  #assert jv_parse(d[..],"[{\"kind\":\"index\",\"pack\":false}]",nodes[..]) && !rh_asset_present(d[0],"pack") && !rh_asset_present(d[0],"layers");
+  #assert jv_parse(d[..],"[{\"kind\":\"index\"},{\"kind\":\"layers\"}]",nodes[..]) && rh_asset_present(d[0],"layers");
+  #assert jv_parse(d[..],"[{\"kind\":\"pack\",\"pack\":false}]",nodes[..]) && !rh_asset_present(d[0],"pack");
+}
+#test "host observation admits a successfully inventoried empty output directory only" {#assert rh_output_fresh(0) && !rh_output_fresh(-1) && !rh_output_fresh(1) && !rh_output_fresh(8192);}

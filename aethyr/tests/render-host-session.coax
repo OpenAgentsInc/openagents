@@ -1,0 +1,48 @@
+// Coax owns every browser operation, bounded wait and declared byte transfer.
+#load "render-layer-tools.coax";
+#load "render-host-policy.coax";
+RH_EFFECTS :: "aethyr/tests/render-host-effects.js";
+RhSession :: struct {work:string;ledger:string;port:int;deadline:int;operation:int;streams:int;error:[4096]u8;error_n:int;}
+rh_error :: (s:[]RhSession,message:string)->bool {s[0].error_n=ifx message.count<s[0].error.count then message.count else s[0].error.count;for k:0..<s[0].error_n {s[0].error[k]=message[k];}tool_errln(message);return false;}
+rh_direct :: (c:[]Cdp,expression:string,deadline:int,timeout:int)->int {
+  left:=proc_left(deadline,proc_now_ms());if left<=0 {return -1;}data:[CDP_REQ]u8;o:[1]Jo;jo_start(o[..],data[..]);jo_obj(o[..]);jo_key(o[..],"expression");jo_str(o[..],expression);jo_key(o[..],"awaitPromise");jo_bool(o[..],true);jo_key(o[..],"returnByValue");jo_bool(o[..],true);jo_end(o[..]);if o[0].bad {return -1;}
+  result:=cdp_call(c,"Runtime.evaluate",jo_text(o[..]),ifx left<timeout then left else timeout);if result<0 || jv_get(c[0].doc[0],result,"exceptionDetails")>=0 {return -1;}return jv_path(c[0].doc[0],result,"result.value");
+}
+rh_invoke :: (c:[]Cdp,name:string,request:string,deadline:int)->int {data:[CDP_REQ]u8;o:[1]Jo;jo_start(o[..],data[..]);jo_put(o[..],name);jo_put(o[..],"(");jo_put(o[..],request);jo_put(o[..],")");return ifx o[0].bad then -1 else rh_direct(c,jo_text(o[..]),deadline,30000);}
+rh_save_value :: (c:[]Cdp,value:int,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);if value<0 {return -1;}jv_write(c[0].doc[0],value,o[..]);return ifx o[0].bad then -1 else o[0].n;}
+rh_transfer :: (c:[]Cdp,s:[]RhSession,d:Jv,row:int,name:string)->bool {
+  n:=rlay_int(d,row,"bytes");slot:=rlay_int(d,row,"slot");hash:=jv_raw(d,jv_get(d,row,"sha256"));if rlay_parts(n)<0 || slot<0 || !rlay_hash(hash) || !rto_component(name) {return rh_error(s,"host byte descriptor refused");}
+  expected:[64]u8;for k:0..<64 {expected[k]=hash[k];}paths:[4][4096]u8;target:=fs_join(s[0].work,name,paths[0][..]);staging_name:[512]u8;w:[1]Jo;jo_start(w[..],staging_name[..]);jo_put(w[..],name);jo_put(w[..],".host-pending");pending:=fs_join(s[0].work,jo_text(w[..]),paths[1][..]);if !fs_write(pending,"") {return false;}
+  for k:0..<rlay_parts(n) {
+    take:=rlay_chunk(n,k);request:[4096]u8;o:[1]Jo;jo_start(o[..],request[..]);jo_obj(o[..]);jo_key(o[..],"slot");jo_int(o[..],slot);jo_key(o[..],"from");jo_int(o[..],k*67108864);jo_key(o[..],"to");jo_int(o[..],k*67108864+take);jo_key(o[..],"url");jo_str(o[..],"/capture/transport.bin");jo_end(o[..]);
+    at:=rh_invoke(c,"renderHostPost",jo_text(o[..]),s[0].deadline);if at<0 {return rh_error(s,"host POST effect failed");}body:[65536]u8;bn:=rh_save_value(c,at,body[..]);doc:[1]Jv;nodes:[2048]JvNode;hash_part:[64]u8;part:=fs_join(s[0].work,"capture/transport.bin",paths[2][..]);
+    if bn<1 || !jv_parse(doc[..],cast(string)body[0..<bn],nodes[..]) || fs_size(part)!=take || !rlay_hash_file(part,hash_part[..]) || !rlay_ack(doc[0],"/capture/transport.bin",part,take,cast(string)hash_part[..]) {return rh_error(s,"host POST count/hash/ack refused");}
+    bytes:[65536]u8;at_byte:=0;while at_byte<take {amount:=ifx take-at_byte<bytes.count then take-at_byte else bytes.count;if fs_read_at(part,at_byte,bytes[0..<amount])!=amount || !fs_append(pending,cast(string)bytes[0..<amount]) {return false;}at_byte+=amount;}
+  }
+  actual:[64]u8;return fs_size(pending)==n && rlay_hash_file(pending,actual[..]) && cast(string)actual[..]==cast(string)expected[..] && fs_rename(pending,target);
+}
+rh_service_stream :: (c:[]Cdp,s:[]RhSession)->bool {
+  at:=rh_direct(c,"renderHostStream()",s[0].deadline,30000);if at<0 {return rh_error(s,"host streaming observation failed");}if jv_kind(c[0].doc[0],at)==JV_NULL {return true;}
+  bytes:[65536]u8;n:=rh_save_value(c,at,bytes[..]);nodes:[2048]JvNode;d:[1]Jv;if n<1 || !jv_parse(d[..],cast(string)bytes[0..<n],nodes[..]) || rh_number(d[0],0,"index")!=s[0].streams {return rh_error(s,"host stream ordering refused");}
+  file:[128]u8;o:[1]Jo;jo_start(o[..],file[..]);jo_put(o[..],"texture-");jo_int(o[..],s[0].streams);jo_put(o[..],".bin");if !rh_transfer(c,s,d[0],0,jo_text(o[..])) {return false;}
+  request:[512]u8;w:[1]Jo;jo_start(w[..],request[..]);jo_obj(w[..]);jo_key(w[..],"index");jo_int(w[..],s[0].streams);jo_key(w[..],"file");jo_str(w[..],jo_text(o[..]));jo_end(w[..]);released:=rh_invoke(c,"renderHostStreamAck",jo_text(w[..]),s[0].deadline);if released<0 {return false;}s[0].streams+=1;return true;
+}
+rh_effect :: (c:[]Cdp,s:[]RhSession,name:string,request:string,budget:int,out:[]u8)->int {
+  until:=proc_now_ms()+budget;if until>s[0].deadline {until=s[0].deadline;}args:[CDP_REQ]u8;w:[1]Jo;jo_start(w[..],args[..]);jo_str(w[..],name);jo_put(w[..],",");jo_put(w[..],request);at:=rh_invoke(c,"renderHostBegin",jo_text(w[..]),until);if at<0 || jv_raw(c[0].doc[0],at)!="started" {failed:=rh_error(s,"host operation did not start");return -1;}
+  while proc_now_ms()<until {
+    if !rh_service_stream(c,s) {return -1;}at=rh_direct(c,"renderHostPoll()",until,30000);if at<0 {failed:=rh_error(s,"host operation poll failed");return -1;}d:=c[0].doc[0];if rh_true(d,at,"done") {
+      if jv_kind(d,jv_get(d,at,"error"))!=JV_NULL {message:[4096]u8;mn:=jv_str(d,jv_get(d,at,"error"),message[..]);failed:=rh_error(s,ifx mn>0 then cast(string)message[0..<mn] else "host operation exception");return -1;}
+      n:=rh_save_value(c,jv_get(d,at,"value"),out);record:[1048576]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"operation");jo_int(o[..],s[0].operation);jo_key(o[..],"effect");jo_str(o[..],name);jo_key(o[..],"request");jo_raw(o[..],request);jo_key(o[..],"value");if n>0 {jo_raw(o[..],cast(string)out[0..<n]);}else {jo_null(o[..]);}jo_end(o[..]);s[0].operation+=1;if n<1 || o[0].bad || !rto_append(s[0].work,"operations.jsonl",jo_text(o[..])) {return -1;}return n;
+    }proc_sleep(20);
+  }failed:=rh_error(s,"host operation exceeded declared deadline");return -1;
+}
+rh_call :: (c:[]Cdp,s:[]RhSession,name:string,out:[]u8)->int {return rh_effect(c,s,name,"{}",ifx name=="reloadEngine" || name=="engineFailure" then 120000 else 30000,out);}
+rh_void :: (c:[]Cdp,s:[]RhSession,name:string)->bool {out:[65536]u8;return rh_call(c,s,name,out[..])>0;}
+rh_step :: (c:[]Cdp,s:[]RhSession,infinite:bool)->bool {out:[65536]u8;return rh_effect(c,s,"step",ifx infinite then "{\"count\":1,\"infinite\":true}" else "{\"count\":1,\"fps\":60}",30000,out[..])>0;}
+rh_wait :: (c:[]Cdp,s:[]RhSession,effect:string,budget:int,sleep:int,step:bool,infinite:bool)->bool {
+  until:=proc_now_ms()+budget;if until>s[0].deadline {until=s[0].deadline;}out:[65536]u8;while proc_now_ms()<until {if step && !rh_step(c,s,infinite) {return false;}n:=rh_call(c,s,effect,out[..]);if n<1 {return false;}if cast(string)out[0..<n]=="true" {return true;}proc_sleep(sleep);}return false;
+}
+rh_held_count :: (ledger:string,o:RhOptions)->int {
+  path:[4096]u8;file:=fs_join(ledger,"requests.jsonl",path[..]);bytes:[1048576]u8;n:=fs_read(file,bytes[..]);if n<0 {return -1;}source:=cast(string)bytes[0..<n];at:=0;count:=0;
+  while at<source.count {end:=rtq_find(source,"\n",at);if end<0 {return -1;}d:[1]Jv;nodes:[128]JvNode;if !jv_parse(d[..],source[at..<end],nodes[..]) {return -1;}url:=jv_raw(d[0],jv_get(d[0],0,"path"));if (o.pendingIndex && rto_suffix(url,"Garden.indices")) || (o.pendingPack && rto_suffix(url,".pack")) {count+=1;}at=end+1;}return count;
+}

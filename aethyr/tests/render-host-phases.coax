@@ -1,0 +1,43 @@
+#load "render-host-session.coax";
+RhParts :: struct {v:[16][262144]u8;n:[16]int;}
+rh_part :: (c:[]Cdp,s:[]RhSession,p:[]RhParts,k:int,name:string)->bool {p[0].n[k]=rh_call(c,s,name,p[0].v[k][..]);return p[0].n[k]>0;}
+rh_parts :: (p:[]RhParts,keys:[]string,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);for key,k:keys {if p[0].n[k]<1 {return -1;}jo_key(o[..],key);jo_raw(o[..],cast(string)p[0].v[k][0..<p[0].n[k]]);}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;}
+rh_one :: (source:string,out:[]u8)->int {o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);jo_raw(o[..],source);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;}
+rh_pending_phase :: (c:[]Cdp,s:[]RhSession,options:RhOptions,out:[]u8)->int {
+  until:=proc_now_ms()+60000;present:=false;assets:[65536]u8;an:=-1;while proc_now_ms()<until {an=rh_call(c,s,"pendingAssets",assets[..]);ad:[1]Jv;a_nodes:[4096]JvNode;if an<1 || !jv_parse(ad[..],cast(string)assets[0..<an],a_nodes[..]) {return -1;}if rh_asset_present(ad[0],rh_pending_kind(options)) {present=true;break;}if !rh_step(c,s,true) {return -1;}proc_sleep(20);}if !present || !rto_saved(s[0].work,"pending-assets-before.json",cast(string)assets[0..<an]) {failed:=rh_error(s,"pending asset row did not become present");return -1;}
+  p:[1]RhParts;request:[256]u8;o:[1]Jo;jo_start(o[..],request[..]);jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],rh_pending_kind(options));jo_end(o[..]);p[0].n[0]=rh_effect(c,s,"pendingWaiting",jo_text(o[..]),30000,p[0].v[0][..]);
+  if p[0].n[0]<1 || !rh_part(c,s,p[..],1,"reloadEngine") || !rh_part(c,s,p[..],2,"pendingSame") || !rh_void(c,s,"pendingRelease") || !rh_wait(c,s,"pendingDone",180000,20,true,true) || !rh_part(c,s,p[..],3,"pendingReady") || !rh_part(c,s,p[..],4,"reloadEngine") || !rh_step(c,s,true) || !rh_part(c,s,p[..],5,"settled") || !rh_part(c,s,p[..],6,"pendingFinal") {return -1;}
+  jo_start(o[..],p[0].v[7][..]);jo_int(o[..],rh_held_count(s[0].ledger,options));p[0].n[7]=o[0].n;record:[1048576]u8;keys:=[8]string.["waiting","first","same","ready","second","validation","final","heldAssets"];n:=rh_parts(p[..],keys[..],record[..]);d:[1]Jv;nodes:[8192]JvNode;
+  if n<1 || !jv_parse(d[..],cast(string)record[0..<n],nodes[..]) || !rh_pending(d[0],0,options.pendingLayer) {failed:=rh_error(s,"pending replacement control failed");return -1;}return rh_one(cast(string)record[0..<n],out);
+}
+rh_reload_phase :: (c:[]Cdp,s:[]RhSession,out:[]u8)->int {
+  initial:[65536]u8;n:=rh_call(c,s,"reloadInitial",initial[..]);d:[1]Jv;nodes:[8192]JvNode;if n<1 || !jv_parse(d[..],cast(string)initial[0..<n],nodes[..]) {return -1;}bank:=jv_int(d[0],0,-1);o:[1]Jo;jo_start(o[..],out);jo_arr(o[..]);
+  for k:0..<6 {mode:=rh_reload_mode(k);if !rto_control(s[0].port,"bad-json",mode=="json") || !rto_control(s[0].port,"bad-hash",mode=="hash") {return -1;}p:[1]RhParts;request:=ifx mode=="pipeline" then "{\"enabled\":true}" else "{\"enabled\":false}";scratch:[65536]u8;
+    if rh_effect(c,s,"pipelineFailure",request,30000,scratch[..])<1 || !rh_part(c,s,p[..],0,"reloadRenderer") {return -1;}if !rto_control(s[0].port,"bad-json",false) || !rto_control(s[0].port,"bad-hash",false) || rh_effect(c,s,"pipelineFailure","{\"enabled\":false}",30000,scratch[..])<1 || !rh_step(c,s,true) || !rh_part(c,s,p[..],1,"settled") || !rh_part(c,s,p[..],2,"reloadObserved") {return -1;}
+    if mode=="pipeline" {diagnostic:[65536]u8;dn:=rh_call(c,s,"pipelineHook",diagnostic[..]);hd:[1]Jv;h_nodes:[4096]JvNode;if dn<1 || !rto_saved(s[0].work,"pipeline-hook-observation.json",cast(string)diagnostic[0..<dn]) || !jv_parse(hd[..],cast(string)diagnostic[0..<dn],h_nodes[..]) || !rh_pipeline_hook(hd[0]) {failed:=rh_error(s,"planted pipeline SDK hook was not invoked");return -1;}}
+    wanted:=mode=="success";if wanted {bank=1-bank;}row:[524288]u8;w:[1]Jo;jo_start(w[..],row[..]);jo_obj(w[..]);jo_key(w[..],"mode");jo_str(w[..],mode);jo_key(w[..],"swapped");jo_raw(w[..],cast(string)p[0].v[0][0..<p[0].n[0]]);jo_key(w[..],"validation");jo_raw(w[..],cast(string)p[0].v[1][0..<p[0].n[1]]);
+    if !jv_parse(d[..],cast(string)p[0].v[2][0..<p[0].n[2]],nodes[..]) {return -1;}child:=d[0].nodes[0].first;while child!=-1 {jo_key(w[..],jv_key(d[0],child));jv_write(d[0],child,w[..]);child=d[0].nodes[child].next;}jo_end(w[..]);if w[0].bad || !jv_parse(d[..],jo_text(w[..]),nodes[..]) || !rh_reload(d[0],0,wanted,bank) {diagnostic:[65536]u8;dn:=rh_call(c,s,"pipelineHook",diagnostic[..]);if dn>0 {saved:=rto_saved(s[0].work,"pipeline-hook-diagnostic.json",cast(string)diagnostic[0..<dn]);}failed:=rh_error(s,"reload atomicity control failed");return -1;}jo_raw(o[..],jo_text(w[..]));
+  }jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+rh_engine_phase :: (c:[]Cdp,s:[]RhSession,failure:bool,out:[]u8)->int {
+  p:[1]RhParts;record:[1048576]u8;n:=-1;
+  if failure {
+    if !rto_control(s[0].port,"bad-hash",true) {return -1;}observed:=rh_part(c,s,p[..],0,"engineFailure");cleared:=rto_control(s[0].port,"bad-hash",false);if !observed || !cleared || !rh_step(c,s,true) || !rh_part(c,s,p[..],1,"binding") {return -1;}keys:=[2]string.["failure","binding"];n=rh_parts(p[..],keys[..],record[..]);
+  }else {if !rh_part(c,s,p[..],0,"parallelReload") || !rh_part(c,s,p[..],1,"reloadEngine") || !rh_step(c,s,true) || !rh_part(c,s,p[..],2,"settled") || !rh_part(c,s,p[..],3,"engineState") {return -1;}keys:=[4]string.["parallel","swapped","validation","state"];n=rh_parts(p[..],keys[..],record[..]);}
+  d:[1]Jv;nodes:[8192]JvNode;if n<1 || !jv_parse(d[..],cast(string)record[0..<n],nodes[..]) || !(ifx failure then rh_failed_engine(d[0],0) else rh_engine(d[0],0)) {failed:=rh_error(s,"engine replacement control failed");return -1;}return rh_one(cast(string)record[0..<n],out);
+}
+rh_media_phase :: (c:[]Cdp,s:[]RhSession,out:[]u8)->int {
+  p:[1]RhParts;if !rh_part(c,s,p[..],0,"mediaStage") || !rh_step(c,s,true) || !rh_part(c,s,p[..],1,"mediaUpload") || !rh_void(c,s,"mediaRestore") || !rh_step(c,s,true) || !rh_part(c,s,p[..],3,"settled") || !rh_part(c,s,p[..],2,"mediaUpload") {return -1;}
+  record:[1048576]u8;keys:=[4]string.["before","refused","recovered","validation"];n:=rh_parts(p[..],keys[..],record[..]);d:[1]Jv;nodes:[16384]JvNode;if n<1 || !jv_parse(d[..],cast(string)record[0..<n],nodes[..]) {return -1;}
+  if !rh_media_control(d[0]) {failed:=rh_error(s,"media refusal/recovery control failed");return -1;}return rh_one(cast(string)record[0..<n],out);
+}
+rh_merge :: (old:string,fresh:string,out:[]u8)->int {
+  a:[1]Jv;b:[1]Jv;na:[16384]JvNode;nb:[16384]JvNode;if !jv_parse(a[..],old,na[..]) || !jv_parse(b[..],fresh,nb[..]) {return -1;}o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);child:=a[0].nodes[0].first;while child!=-1 {key:=jv_key(a[0],child);if jv_get(b[0],0,key)<0 {jo_key(o[..],key);jv_write(a[0],child,o[..]);}child=a[0].nodes[child].next;}child=b[0].nodes[0].first;while child!=-1 {jo_key(o[..],jv_key(b[0],child));jv_write(b[0],child,o[..]);child=b[0].nodes[child].next;}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+rh_media_reload_phase :: (c:[]Cdp,s:[]RhSession,status:[]u8,status_n:int,out:[]u8)->int {
+  p:[1]RhParts;if !rh_part(c,s,p[..],0,"mediaBefore") || !rh_part(c,s,p[..],1,"reloadRenderer") || !rh_step(c,s,true) || !rh_part(c,s,p[..],2,"settled") || !rh_part(c,s,p[..],3,"mediaShader") || !rh_void(c,s,"mediaClear") || !rh_part(c,s,p[..],4,"reloadEngine") || !rh_wait(c,s,"readyMedia",60000,50,true,false) || !rh_step(c,s,true) || !rh_part(c,s,p[..],5,"settled") || !rh_part(c,s,p[..],6,"mediaEngine") || !rh_void(c,s,"recapture") || !rh_wait(c,s,"recaptured",60000,30,true,true) {return -1;}
+  p[0].v[7][0]='t';p[0].v[7][1]='r';p[0].v[7][2]='u';p[0].v[7][3]='e';p[0].n[7]=4;fresh:[524288]u8;fn:=rh_call(c,s,"mediaFresh",fresh[..]);merged:[524288]u8;mn:=ifx fn>0 then rh_merge(cast(string)status[0..<status_n],cast(string)fresh[0..<fn],merged[..]) else -1;if mn<1 || mn>status.count {return -1;}for k:0..<mn {status[k]=merged[k];}if !rh_part(c,s,p[..],8,"mediaRetire") {return -1;}
+  record:[2097152]u8;keys:=[9]string.["before","shader","shaderValidation","shaderState","engine","engineValidation","engineState","recaptured","retired"];n:=rh_parts(p[..],keys[..],record[..]);d:[1]Jv;nodes:[16384]JvNode;if n<1 || !jv_parse(d[..],cast(string)record[0..<n],nodes[..]) || !rh_media_reload(d[0],0) {failed:=rh_error(s,"ready media reload/retirement failed");return -1;}
+  // The caller obtains the new status extent separately from this owned file.
+  saved:=rto_saved(s[0].work,"status-after-media.json",cast(string)status[0..<mn]);if !saved {return -1;}return rh_one(cast(string)record[0..<n],out);
+}

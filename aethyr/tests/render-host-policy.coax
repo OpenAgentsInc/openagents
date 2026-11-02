@@ -1,0 +1,67 @@
+// Host observer options and lifecycle verdicts. No renderer policy is changed.
+#load "render-test-origin-policy.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "render-golden-numbers.coax";
+#authority;
+RhOptions :: struct {valid:bool;width:int;height:int;physical:bool;physicalPresent:bool;physicalSize:string;pw:int;ph:int;dpr:string;mediaReload:bool;mediaVideo:bool;textureStream:bool;pendingLayer:bool;pendingPack:bool;pendingIndex:bool;engineFailure:bool;engineReload:bool;mediaControls:bool;mediaFixture:bool;reloadCheck:bool;half:bool;start:bool;requireDraws:bool;}
+RhPair :: struct {valid:bool;width:int;height:int;}
+#load "render-host-checks.coax";
+rh_dimension :: (text:string)->int {if text.count==0 {return -1;}n:=0;for c:text {if c<'0' || c>'9' {return -1;}n=n*10+cast(int)(c-'0');if n>8192 {return -1;}}return ifx n>0 then n else -1;}
+rh_pair :: (text:string)->RhPair {at:=rtq_find(text,"x",0);if at== -1 {return RhPair.{};}w:=rh_dimension(text[0..<at]);h:=rh_dimension(text[at+1..<text.count]);return RhPair.{valid=w!= -1 && h!= -1,width=w,height=h};}
+rh_equals :: (a:[]Args,key:string,fallback:string)->string {for k:4..<args_count(a) {s:=args_at(a,k);if s.count>=key.count && s[0..<key.count]==key {return s[key.count..<s.count];}}return fallback;}
+rh_flag :: (a:[]Args,key:string)->bool {for k:4..<args_count(a) {if args_at(a,k)==key {return true;}}return false;}
+rh_options :: (a:[]Args)->RhOptions {
+  o:RhOptions;size:=rh_pair(rh_equals(a,"--size=","320x180"));o.width=size.width;o.height=size.height;o.valid=size.valid && args_count(a)>=4 && !a[0].full;
+  physical:=rh_equals(a,"--physical=","");o.physicalSize=physical;o.physicalPresent=rh_equals(a,"--physical=","<absent>")!="<absent>";o.physical=physical!="";if o.physical {p:=rh_pair(physical);o.valid=o.valid && p.valid;o.pw=p.width;o.ph=p.height;}
+  o.dpr=rh_equals(a,"--dpr=","1");o.mediaReload=rh_flag(a,"--media-reloads");o.mediaVideo=rh_flag(a,"--media-video");o.textureStream=rh_flag(a,"--texture-stream");o.pendingLayer=rh_flag(a,"--pending-layer");o.pendingPack=rh_flag(a,"--pending-pack");o.pendingIndex=rh_flag(a,"--pending-index");o.engineFailure=rh_flag(a,"--engine-failure");o.engineReload=rh_flag(a,"--engine-reload");o.mediaControls=rh_flag(a,"--media-controls");o.mediaFixture=o.mediaVideo || rh_flag(a,"--media-fixture");o.reloadCheck=rh_flag(a,"--reload-check");o.half=rh_flag(a,"--half");o.start=rh_flag(a,"--start");o.requireDraws=rh_flag(a,"--require-draws");return o;
+}
+// Decimal Number() is transported as an equivalent JSON decimal, leaving the
+// browser's actual f64 conversion observable. Admission compares exact decimal
+// values to IEEE64's zero/4 rounding boundaries, including subnormal ties.
+rh_dpr :: (text:string,out:[]u8)->int {
+  s:=gg_trim_space(text);if s.count==0 {return -1;}if s[0]=='+' {s=s[1..<s.count];}
+  base:=uri_prefix(s,"0x") || uri_prefix(s,"0X") || uri_prefix(s,"0b") || uri_prefix(s,"0B") || uri_prefix(s,"0o") || uri_prefix(s,"0O");
+  if base {n:=gg_integer(text,8192);if n<1 || n>4 {return -1;}w:[1]Jo;jo_start(w[..],out);jo_int(w[..],n);return ifx w[0].bad then -1 else w[0].n;}
+  digits:[131072]u8;d:=gg_decimal(s,digits[..]);if !d.valid {return -1;}upper:[80]u8;bound:=gg_bound(4,true,upper[..]);if gg_decimal_compare(d,bound)>0 {return -1;}
+  // Exact 2^-1075, independently evaluated as 5^1075 *10^-1075 by bc;
+  // the tie rounds to zero. This fixed IEEE64 constant carries no host math.
+  bottom:=GgDecimal.{digits="24703282292062327208828439643411068618252990130716238221279284125033775363510437593264991818081799618989828234772285886546332835517796989819938739800539093906315035659515570226392290858392449105184435931802849936536152500319370457678249219365623669863658480757001585769269903706311928279558551332927834338409351978015531246597263579574622766465272827220056374006485499977096599470454020828166226237857393450736339007967761930577506740176324673600968951340535537458516661134223766678604162159680461914467291840300530057530849048765391711386591646239524912623653881879636239373280423891018672348497668235089863388587925628302755995657524455507255189313690836254779186948667994968324049705821028513185451396213837722826145437693412532098591327667236328125",shift= -1075};if gg_decimal_compare(d,bottom)<=0 {return -1;}
+  w:[1]Jo;jo_start(w[..],out);jo_put(w[..],d.digits);jo_put(w[..],"e");jo_int(w[..],d.shift);return ifx w[0].bad then -1 else w[0].n;
+}
+rh_pending_kind :: (o:RhOptions)->string {return ifx o.pendingPack then "pack" else ifx o.pendingLayer then "layers" else "index";}
+rh_reload_mode :: (k:int)->string {if k<0 || k>=6 {return "";}return ifx k==0 then "json" else ifx k==1 || k==4 then "hash" else ifx k==2 then "pipeline" else "success";}
+rh_true :: (d:Jv,row:int,key:string)->bool {return jv_kind(d,jv_path(d,row,key))==JV_TRUE;}
+rh_false :: (d:Jv,row:int,key:string)->bool {return jv_kind(d,jv_path(d,row,key))==JV_FALSE;}
+rh_number :: (d:Jv,row:int,key:string)->int {return jv_int(d,jv_path(d,row,key),-1);}
+rh_pending :: (d:Jv,row:int,layer:bool)->bool {
+  return rh_false(d,row,"waiting.done") && rh_true(d,row,"waiting.fetching") && rh_true(d,row,"first") && rh_true(d,row,"same") && rh_true(d,row,"ready.done") && rh_false(d,row,"ready.failed") && (rh_number(d,row,"ready.bytes")>0 || rh_number(d,row,"ready.size")>0) && rh_true(d,row,"second") && rh_true(d,row,"validation.ok") && rh_true(d,row,"final.same") && rh_true(d,row,"final.done") && rh_number(d,row,"final.bytes")==rh_number(d,row,"ready.bytes") && rh_true(d,row,"final.binding.coherent") && rh_true(d,row,"final.textureSame") && (layer || rh_number(d,row,"heldAssets")==1);
+}
+rh_reload :: (d:Jv,row:int,wanted:bool,bank:int)->bool {return (ifx wanted then rh_true(d,row,"swapped") else rh_false(d,row,"swapped")) && rh_number(d,row,"bank")==bank && rh_true(d,row,"same") && rh_true(d,row,"validation.ok") && rh_true(d,row,"render.submitted");}
+rh_engine :: (d:Jv,row:int)->bool {parallel:=jv_get(d,row,"parallel");if jv_kind(d,parallel)!=JV_ARRAY {return false;}for k:0..<jv_len(d,parallel) {if jv_kind(d,jv_at(d,parallel,k))!=JV_TRUE {return false;}}return rh_true(d,row,"swapped") && rh_true(d,row,"validation.ok") && rh_true(d,row,"state.render.submitted");}
+rh_failed_engine :: (d:Jv,row:int)->bool {return rh_true(d,row,"failure.failed") && rh_true(d,row,"binding.stopped") && rh_false(d,row,"binding.coherent");}
+rh_video :: (d:Jv,array:int)->bool {if jv_kind(d,array)!=JV_ARRAY {return false;}for k:0..<jv_len(d,array) {r:=jv_at(d,array,k);if rh_number(d,r,"kind")==2 && rh_true(d,r,"ready") && rh_true(d,r,"muted") && rh_true(d,r,"defaultMuted") && rh_number(d,r,"videoWidth")==64 && rh_number(d,r,"videoHeight")==32 {return true;}}return false;}
+rh_media_reload :: (d:Jv,r:int)->bool {
+  if !(rh_true(d,r,"before.ready") && rh_true(d,r,"shader") && rh_true(d,r,"shaderValidation.ok") && rh_true(d,r,"shaderState.same") && rh_true(d,r,"shaderState.textureSame") && rh_true(d,r,"shaderState.bound") && rh_true(d,r,"shaderState.render.submitted") && rh_true(d,r,"engine") && rh_true(d,r,"engineValidation.ok") && rh_true(d,r,"engineState.ready") && rh_true(d,r,"engineState.bound") && rh_true(d,r,"engineState.coherent") && rh_true(d,r,"engineState.oldClosed") && rh_true(d,r,"engineState.render.submitted") && rh_true(d,r,"recaptured") && rh_true(d,r,"retired.binding.stopped") && rh_false(d,r,"retired.binding.coherent") && rh_number(d,r,"retired.cache")==0 && rh_number(d,r,"retired.lateAllocations")==0 && rh_true(d,r,"retired.closed")) {return false;}
+  for key:[3]string.["kind","width","height"] {if rh_number(d,jv_get(d,r,"engineState"),key)!=rh_number(d,jv_get(d,r,"before"),key) {return false;}}return true;
+}
+rh_complete :: (capture:bool,same:bool,joined:bool,require_draws:bool,draws:int)->bool {return capture && same && joined && (!require_draws || draws>0);}
+rh_coarse :: (d:Jv,row:int)->int {node:=jv_get(d,row,"coarse");return ifx jv_kind(d,node)==JV_TRUE then 1 else jv_int(d,node,0);}
+rh_attribute :: (source:string,key:string,replacement:string,insert:bool,out:[]u8)->int {
+  needle:[128]u8;w:[1]Jo;jo_start(w[..],needle[..]);jo_put(w[..],key);jo_put(w[..],"=\"");first:=rtq_find(source,jo_text(w[..]),0);o:[1]Jo;jo_start(o[..],out);if first== -1 {jo_put(o[..],source);return ifx o[0].bad then -1 else o[0].n;}last:=rtq_find(source,"\"",first+w[0].n);
+  if last== -1 {jo_put(o[..],source);}else {jo_put(o[..],source[0..<ifx insert then last+1 else first]);if insert {jo_put(o[..]," ");}jo_put(o[..],replacement);jo_put(o[..],source[last+1..<source.count]);}return ifx o[0].bad then -1 else o[0].n;
+}
+rh_page :: (source:string,out:[]u8)->int {a:[65536]u8;n:=rh_attribute(source,"data-render","data-render=\"/package/render.json\"",false,a[..]);if n<0 {return -1;}text:=cast(string)a[0..<n];return rh_attribute(text,ifx rtq_find(text,"data-wasm=\"",0)>=0 then "data-wasm" else "data-app","data-wasm=\"/test.wasm\"",rtq_find(text,"data-wasm=\"",0)<0,out);}
+rh_media_control :: (d:Jv)->bool {
+  before:=jv_get(d,0,"before");pending:=jv_path(d,0,"refused.pending");some:=false;if jv_kind(d,before)!=JV_ARRAY {return false;}for k:0..<jv_len(d,before) {if rh_number(d,jv_at(d,before,k),"pending")>0 {some=true;}}
+  unchanged:=rtq_equal(d,before,d,pending) && rh_member_order(d,before,pending);
+  phase:=jv_path(d,0,"refused.status.refusal.phase");if !some || !rh_false(d,0,"refused.status.submitted") || jv_kind(d,phase)!=JV_STRING || jv_raw(d,phase)!="resources" || !unchanged || !rh_true(d,0,"recovered.status.submitted") || !rh_true(d,0,"validation.ok") || rh_number(d,0,"recovered.calls.submit")<1 {return false;}
+  calls:=jv_path(d,0,"refused.calls");if jv_kind(d,calls)!=JV_OBJECT {return false;}child:=d.nodes[calls].first;while child!=-1 {if jv_int(d,child,-1)!=0 {return false;}child=d.nodes[child].next;}
+  recovered:=jv_path(d,0,"recovered.pending");if jv_kind(d,recovered)!=JV_ARRAY {return false;}for k:0..<jv_len(d,recovered) {if rh_number(d,jv_at(d,recovered,k),"pending")!=0 {return false;}}return true;
+}
+rh_member_order :: (d:Jv,a:int,b:int)->bool {
+  if jv_kind(d,a)==JV_OBJECT {left:=d.nodes[a].first;right:=d.nodes[b].first;while left!= -1 {if jv_key(d,left)!=jv_key(d,right) || !rh_member_order(d,left,right) {return false;}left=d.nodes[left].next;right=d.nodes[right].next;}}
+  if jv_kind(d,a)==JV_ARRAY {for k:0..<jv_len(d,a) {if !rh_member_order(d,jv_at(d,a,k),jv_at(d,b,k)) {return false;}}}return true;
+}
+rh_pipeline_hook :: (d:Jv)->bool {devices:=jv_get(d,0,"devices");if rh_number(d,0,"calls")<1 || rh_number(d,0,"blocks")<1 || jv_kind(d,devices)!=JV_ARRAY || jv_len(d,devices)<1 {return false;}for k:0..<jv_len(d,devices) {if !rh_true(d,jv_at(d,devices,k),"matches") {return false;}}return true;}
+rh_asset_present :: (d:Jv,kind:string)->bool {if jv_kind(d,0)!=JV_ARRAY {return false;}for k:0..<jv_len(d,0) {row:=jv_at(d,0,k);if (kind=="pack" && rh_true(d,row,"pack")) || (kind!="pack" && jv_kind(d,jv_get(d,row,"kind"))==JV_STRING && jv_raw(d,jv_get(d,row,"kind"))==kind) {return true;}}return false;}
+rh_output_fresh :: (count:int)->bool {return count==0;}
