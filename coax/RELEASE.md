@@ -223,12 +223,15 @@ procedure no check reaches) still stops the build.
 | Build | Base | Survivors that stop it |
 | --- | --- | --- |
 | `coax/build.sh` | `COAX_MUTATION_BASE`, or else where the checkout left `origin/main` | Those the checkout's changes caused, including untracked `.coax` files |
-| `coax/web/release.sh` | Production's release commit (`releases/<time>/PASSED`), for the commit the release builds | Those the changes since production caused |
+| `coax/web/release.sh` | None: it builds with `COAX_MUTATION=0` | None. No mutation gate runs, and a cached or published build's survivors are reported in `releases/<time>/MUTATION` |
+| `COAX_MUTATION=0 coax/build.sh` | None | None. No mutation gate runs |
 | `COAX_MUTATION_FULL=1 coax/build.sh` (the full check) | None | Every survivor |
 | No Git history and no base | None | Every survivor |
 
-A release that changes no compiler line since production is never stopped by a
-survivor. It lists any it finds in `releases/<time>/MUTATION`. A cached build
+A release never waits on mutation (owner, 2026-11-02). It builds the compiler
+with `COAX_MUTATION=0`, which skips every mutation gate, and keeps that build
+in its own cache (`~/.cache/coax-release-fast`), so it never stands in for a
+gated build. No survivor stops a release. It lists any it finds in `releases/<time>/MUTATION`. A cached build
 records the survivors it tolerated, and a build or release reuses it only when
 none of them gates for that build's changes.
 

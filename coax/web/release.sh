@@ -87,8 +87,8 @@
 # keeps checked builds in a cache keyed by that fingerprint
 # ($COAX_RELEASE_CACHE, default ~/.cache/coax-release/<fingerprint>/), takes
 # the checkout's coax/bin when it matches, and otherwise builds one with
-# coax/build.sh (the full bootstrap and all its gates, mutation included:
-# ~11-15 min) from the commit's coax/, before queueing for the lock so no
+# coax/build.sh (the bootstrap and its gates, with COAX_MUTATION=0: no
+# mutation gate runs, so a release never waits hours on one) from the commit's coax/, before queueing for the lock so no
 # release waits behind a bootstrap; build.sh takes one builder per
 # fingerprint at a time and keeps what it builds in the same cache.
 # The cached record is the bootstrap's own, verified again on the release's
@@ -175,7 +175,9 @@ compiler_env() {
     -u CPATH -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH -u LIBRARY_PATH \
     CC="${COAX_RELEASE_CC:-cc}" CXX="${COAX_RELEASE_CXX:-c++}" "$@"
 }
-cache_root="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
+# Its own cache: builds made without mutation gates never stand in for a
+# gated build (coax/build.sh's cache is ~/.cache/coax-release).
+cache_root="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release-fast}"
 # compiler ROOT TARGET: ROOT holds coax/ and scripts/ at the commit; the
 # checked build is installed into TARGET/coax/bin (verified against TARGET).
 compiler() {
@@ -197,25 +199,20 @@ compiler() {
   if install_from "$repo/coax/bin"; then keep "$target/coax/bin"; echo "  compiler   the checkout's build ${fingerprint:0:12}, now cached"; return; fi
   # coax/build.sh takes one builder per fingerprint, keeps the checked build
   # in the cache, and installs one already there instead of building again.
-  echo "  compiler   no checked build for these compiler inputs (${fingerprint:0:12}); bootstrapping one (coax/build.sh, about 15 min)"
-  if ! compiler_env COAX_RELEASE_CACHE="$cache_root" COAX_MUTATION_CHANGED="$mutation_changed" "$root/coax/build.sh" > "$cache_root/$fingerprint.log" 2>&1 ||
+  echo "  compiler   no checked build for these compiler inputs (${fingerprint:0:12}); bootstrapping one (coax/build.sh, no mutation gates)"
+  if ! compiler_env COAX_RELEASE_CACHE="$cache_root" COAX_MUTATION=0 "$root/coax/build.sh" > "$cache_root/$fingerprint.log" 2>&1 ||
      ! { install_from "$cache" || { keep "$root/coax/bin" && install_from "$cache"; }; }; then
     echo "release: coax/build.sh failed (log: $cache_root/$fingerprint.log)" >&2
     grep -A20 'surviving mutants' "$cache_root/$fingerprint.log" | sed 's/^/release: /' >&2 || true
     return 1
   fi
 }
-# Surviving mutants stop a release only on compiler lines changed since
-# production's release (coax/mutation-gate.sh). Others are reported in
-# releases/<time>/MUTATION; the full check (COAX_MUTATION_FULL=1 coax/build.sh)
-# gates on all of them, outside releases. Without a production commit, or for
-# a commit older than this rule, every survivor gates.
+# Surviving mutants never stop a release (owner, 2026-11-02: a release never
+# waits hours on mutation). A build's survivors are reported in
+# releases/<time>/MUTATION; the publisher and the full check
+# (COAX_MUTATION_FULL=1 coax/build.sh) run mutation outside releases.
 mutation_changed=strict
-survivors_allowed() {   # the survivors a cached build tolerated ("GATE: PATH:LINE") must not gate
-  [[ -s "$1/mutation-survivors" ]] || return 0
-  [[ "$mutation_changed" != strict && -x "$repo/coax/mutation-gate.sh" ]] || return 1
-  "$repo/coax/mutation-gate.sh" verdict "$mutation_changed" "$1/mutation-survivors" > /dev/null
-}
+survivors_allowed() { return 0; }
 # changed_since_production COMMIT: the lines changed since production's
 # release, for the commit this release builds (the default ref can move
 # while a release waits for the lock, so it is computed again for the
@@ -313,7 +310,7 @@ changed_since_production "$full"
 compiler "$tree" "$tree" || exit 1
 lap compiler "$t"
 if [[ -s "$tree/coax/bin/mutation-survivors" ]]; then
-  echo "  mutation   $(wc -l < "$tree/coax/bin/mutation-survivors" | tr -d ' ') surviving mutant(s) that no change since production caused: reported in releases/<time>/MUTATION, not gating"
+  echo "  mutation   $(wc -l < "$tree/coax/bin/mutation-survivors" | tr -d ' ') surviving mutant(s) from the compiler build: reported in releases/<time>/MUTATION, not gating"
 fi
 compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-release.sh" --check --binary "$tree/coax/bin/coax"
 # The tools-in-Coax rule (coax/tools-in-coax.md): a non-Coax tool without its reason

@@ -154,6 +154,9 @@ invoke_gate() {
 }
 gate() {
   local start=$SECONDS label="${*//"$work"\//}" key=""
+  # COAX_MUTATION=0 (release.sh): no mutation gate runs. Mutation is a
+  # report, never a wait: the publisher and the full check run it.
+  if [[ "$2" == mutate && "${COAX_MUTATION:-1}" == 0 ]]; then echo "coax bootstrap: skipped  $label (COAX_MUTATION=0)"; return 0; fi
   if [[ -n "$gate_cache" && "$1" == "$work/stage0" && ( "$2" == test || "$2" == mutate ) ]]; then
     gate_key "$@"
     if [[ -n "$key" && -f "$gate_cache/$key" ]]; then

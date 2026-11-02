@@ -45,7 +45,7 @@ fi
 export COAX_MUTATION_CHANGED="$mutation_changed"
 # The survivors a cached build tolerated ("GATE: PATH:LINE") must not gate here.
 survivors_allowed() {
-  [[ -s "$1/mutation-survivors" ]] || return 0
+  [[ -s "$1/mutation-survivors" && "${COAX_MUTATION:-1}" != 0 ]] || return 0
   ./mutation-gate.sh verdict "$mutation_changed" "$1/mutation-survivors" > /dev/null
 }
 report_survivors() {
