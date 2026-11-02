@@ -1,0 +1,172 @@
+// Chapter 250: can a PyTorch user train this model with Psionic's public
+// CPU trainer? A model is described as the PyTorch layers it uses, in
+// order, plus its dtype, device, trainable parameter count, graph node count
+// and training rows. The audit reads only that description. It allocates
+// nothing, so a model that cannot run is refused before any tensor, arena or
+// device memory exists.
+//
+// The operator table lists 32 PyTorch operators that the three standard
+// tutorials (a classifier, a CNN, a transformer language model) use. Each
+// row names how far Psionic supports it today, the chapter that supplies
+// it and the Psionic name of that support:
+//   trained  the module constructor ran in a recorded learning run (chapter 118)
+//   graph    a module constructor or tensor-IR operation with derivatives,
+//            so chapter 118's generic trainer can compose it
+//   eager    only chapter 5's eager CPU operator library has it
+//   none     Psionic has no public operator for it
+// psionic/tests/pytorch_matrix.py checks every row against the registry and
+// the code it names, and that the limits below equal the trainer's own.
+// Profile pytorch-audit-v1: CPU, f32 module execution.
+#authority;
+
+PaStatus :: enum u8 {ok;layers;op;graph;dtype;device;parameters;nodes;rows;}
+PaDtype :: enum u8 {f32;f64;f16;bf16;}
+PaDevice :: enum u8 {cpu;cuda;metal;}
+
+PA_OPS :: 32;
+PA_LAYERS :: 32;
+// Equal to CK_VALUES (checkpoint/record.coax), TI_NODES (tensor-ir.coax) and
+// TR_EXAMPLES (trainer.coax); the book check compares them.
+PA_PARAMETERS :: 4096;
+PA_NODES :: 32;
+PA_ROWS :: 4096;
+// Levels: 0 none, 1 eager, 2 graph, 3 trained.
+PA_GRAPH :: 2;
+
+// book:begin table
+PA_NAME :: [PA_OPS]string.[
+    "nn.Linear","nn.ReLU","nn.Conv2d","nn.Flatten","nn.MSELoss",
+    "torch.matmul","torch.add","torch.mul","torch.sum","torch.reshape","nn.LayerNorm","nn.Dropout",
+    "torch.sub","torch.div","torch.exp","torch.log","torch.mean","torch.amax","torch.cat","torch.topk",
+    "nn.Softmax","nn.CrossEntropyLoss","nn.MaxPool2d","nn.AvgPool2d","nn.Embedding",
+    "nn.MultiheadAttention","nn.TransformerEncoderLayer","nn.GELU","torch.tanh","torch.sigmoid","torch.sin","nn.BatchNorm2d"];
+PA_LEVEL :: [PA_OPS]int.[
+    3,3,3,3,3,
+    2,2,2,2,2,2,2,
+    1,1,1,1,1,1,1,1,
+    1,1,1,1,1,
+    0,0,0,0,0,0,0];
+PA_CHAPTER :: [PA_OPS]int.[
+    118,118,118,118,118,
+    38,38,38,38,38,117,117,
+    5,5,5,5,5,5,5,5,
+    5,5,5,5,5,
+    0,0,0,0,0,0,0];
+PA_PSIONIC :: [PA_OPS]string.[
+    "mdl_linear","mdl_relu","mdl_conv2d","mdl_flatten","mdl_squared_error",
+    "matmul","add","multiply","sum","reshape","mdl_layernorm","mdl_dropout",
+    "subtract","divide","exponential","logarithm","mean","maximum","concat","topk",
+    "softmax","cross_entropy","maxpool2d","avgpool2d","take",
+    "","","","","","",""];
+// book:end table
+PA_LEVEL_NAME :: [4]string.["none","eager","graph","trained"];
+
+PaModel :: struct {ops:[PA_LAYERS]int;count:int;parameters:int;nodes:int;rows:int;dtype:PaDtype;device:PaDevice;}
+// at: the refused layer's position, or -1 when no single layer is at fault.
+PaAudit :: struct {status:PaStatus;at:int;}
+PaCount :: struct {trained:int;graph:int;eager:int;none:int;}
+
+// Checks precede the implementation. Expected values are derived by hand in
+// chapter 250 from the tutorials' published layer lists.
+#load "../tests/pytorch-audit-checks.coax";  // the five models, described by hand
+
+#test "the table: 32 operators, 5 trained, 7 graph, 13 eager-only, 7 absent" {
+    c:=pa_count();#assert c.trained==5 && c.graph==7 && c.eager==13 && c.none==7;
+    for i:0..<PA_OPS {
+        l:=PA_LEVEL[i];
+        #assert (l==0)==(PA_CHAPTER[i]==0) && (l==0)==(PA_PSIONIC[i].count==0);
+    }
+    #assert PA_NAME[21]=="nn.CrossEntropyLoss" && PA_LEVEL[21]==1 && PA_PSIONIC[21]=="cross_entropy";
+}
+#test "levels: out-of-range ids are none" {
+    #assert pa_level(-1)==0 && pa_level(PA_OPS)==0 && pa_level(0)==3 && pa_level(31)==0 && pa_level(5)==2 && pa_level(24)==1;
+}
+#test "chapter 118's two models pass; the published tutorials stop at their first missing operator" {
+    a:=pa_audit(pa_mlp());#assert a.status==PaStatus.ok && a.at== -1;
+    a=pa_audit(pa_cnn());#assert a.status==PaStatus.ok && a.at== -1;
+    a=pa_audit(pa_quickstart());#assert a.status==PaStatus.graph && a.at==6;
+    a=pa_audit(pa_cifar());#assert a.status==PaStatus.graph && a.at==2;
+    a=pa_audit(pa_transformer());#assert a.status==PaStatus.graph && a.at==0;
+}
+#test "the quickstart with MSELoss is refused by size, then by rows" {
+    m:=pa_quickstart();m.ops[6]=4;a:=pa_audit(m);#assert a.status==PaStatus.parameters && a.at== -1;
+    m.parameters=4096;a=pa_audit(m);#assert a.status==PaStatus.rows && a.at== -1;
+    m.rows=4096;#assert pa_audit(m).status==PaStatus.ok;
+}
+#test "refusal order: layers, operators, dtype, device, parameters, nodes, rows" {
+    m:=pa_mlp();m.count=0;#assert pa_audit(m).status==PaStatus.layers && pa_audit(m).at== -1;
+    m=pa_mlp();m.count=PA_LAYERS+1;#assert pa_audit(m).status==PaStatus.layers;
+    m=pa_mlp();m.ops[1]=27;m.ops[2]=21;m.dtype=PaDtype.bf16;
+    a:=pa_audit(m);#assert a.status==PaStatus.op && a.at==1;
+    m.ops[1]=1;a=pa_audit(m);#assert a.status==PaStatus.graph && a.at==2;
+    m.ops[2]=0;m.device=PaDevice.cuda;m.parameters=0;#assert pa_audit(m).status==PaStatus.dtype;
+    m.dtype=PaDtype.f64;#assert pa_audit(m).status==PaStatus.dtype;
+    m.dtype=PaDtype.f16;#assert pa_audit(m).status==PaStatus.dtype;
+    m.dtype=PaDtype.f32;a=pa_audit(m);#assert a.status==PaStatus.device && a.at== -1;
+    m.device=PaDevice.metal;#assert pa_audit(m).status==PaStatus.device;
+    m.device=PaDevice.cpu;m.nodes=0;#assert pa_audit(m).status==PaStatus.parameters;
+    m.parameters=1;m.rows=0;#assert pa_audit(m).status==PaStatus.nodes;
+    m.nodes=1;#assert pa_audit(m).status==PaStatus.rows;
+    m.rows=1;#assert pa_audit(m).status==PaStatus.ok;
+}
+#test "a full 32-layer description is admitted" {
+    m:=pa_mlp();m.count=PA_LAYERS;for i:0..<PA_LAYERS {m.ops[i]=0;}
+    #assert pa_audit(m).status==PaStatus.ok;
+    m.ops[PA_LAYERS-1]=31;a:=pa_audit(m);#assert a.status==PaStatus.op && a.at==PA_LAYERS-1;
+}
+#forall "one layer passes exactly when its operator reaches the graph level" op:-2..<PA_OPS+2 {
+    o:=[1]int.[op];a:=pa_audit(pa_model(o[..],1,1,1));l:=pa_level(op);
+    #assert (a.status==PaStatus.ok)==(l>=PA_GRAPH);
+    #assert (a.status==PaStatus.op)==(l==0) && (a.status==PaStatus.graph)==(l==1);
+    #assert (a.at==0)==(l<PA_GRAPH) && (a.at== -1)==(l>=PA_GRAPH);
+}
+#forall "each limit admits its bound and refuses one past it and zero" k:0..<3 {
+    m:=pa_mlp();
+    if k==0 {m.parameters=PA_PARAMETERS;}
+    if k==1 {m.nodes=PA_NODES;}
+    if k==2 {m.rows=PA_ROWS;}
+    #assert pa_audit(m).status==PaStatus.ok;
+    want:=PaStatus.parameters;
+    if k==1 {want=PaStatus.nodes;}
+    if k==2 {want=PaStatus.rows;}
+    if k==0 {m.parameters=PA_PARAMETERS+1;}
+    if k==1 {m.nodes=PA_NODES+1;}
+    if k==2 {m.rows=PA_ROWS+1;}
+    a:=pa_audit(m);#assert a.status==want && a.at== -1;
+    if k==0 {m.parameters=0;}
+    if k==1 {m.nodes=0;}
+    if k==2 {m.rows=0;}
+    #assert pa_audit(m).status==want;
+}
+
+// book:begin audit
+pa_level :: (op:int)->int #export_c {
+    if op<0 || op>=PA_OPS {return 0;}
+    return PA_LEVEL[op];
+}
+pa_count :: ()->PaCount {
+    c:PaCount;
+    for i:0..<PA_OPS {
+        l:=PA_LEVEL[i];
+        if l==3 {c.trained+=1;} else if l==2 {c.graph+=1;} else if l==1 {c.eager+=1;} else {c.none+=1;}
+    }
+    return c;
+}
+// The first refusal, in a fixed order: the description itself, each layer
+// in order, dtype, device, then the trainer's three capacities.
+pa_audit :: (m:PaModel)->PaAudit {
+    if m.count<1 || m.count>PA_LAYERS {return PaAudit.{status=PaStatus.layers,at= -1};}
+    for i:0..<m.count {
+        l:=pa_level(m.ops[i]);
+        if l==0 {return PaAudit.{status=PaStatus.op,at=i};}
+        if l<PA_GRAPH {return PaAudit.{status=PaStatus.graph,at=i};}
+    }
+    no:=PaAudit.{at= -1};
+    if m.dtype!=PaDtype.f32 {no.status=PaStatus.dtype;return no;}
+    if m.device!=PaDevice.cpu {no.status=PaStatus.device;return no;}
+    if m.parameters<1 || m.parameters>PA_PARAMETERS {no.status=PaStatus.parameters;return no;}
+    if m.nodes<1 || m.nodes>PA_NODES {no.status=PaStatus.nodes;return no;}
+    if m.rows<1 || m.rows>PA_ROWS {no.status=PaStatus.rows;return no;}
+    return no;
+}
+// book:end audit

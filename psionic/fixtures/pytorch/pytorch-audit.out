@@ -1,0 +1,18 @@
+32 PyTorch operators: 5 trained, 7 graph, 13 eager only, 7 absent
+  trained: nn.Linear nn.ReLU nn.Conv2d nn.Flatten nn.MSELoss
+  graph: torch.matmul torch.add torch.mul torch.sum torch.reshape nn.LayerNorm nn.Dropout
+  eager: torch.sub torch.div torch.exp torch.log torch.mean torch.amax torch.cat torch.topk nn.Softmax nn.CrossEntropyLoss nn.MaxPool2d nn.AvgPool2d nn.Embedding
+  none: nn.MultiheadAttention nn.TransformerEncoderLayer nn.GELU torch.tanh torch.sigmoid torch.sin nn.BatchNorm2d
+chapter 118 MNIST MLP: ok
+chapter 118 MNIST CNN: ok
+PyTorch quickstart classifier: graph at layer 6 (nn.CrossEntropyLoss, eager)
+PyTorch CIFAR-10 CNN: graph at layer 2 (nn.MaxPool2d, eager)
+PyTorch nn.Transformer language model: graph at layer 0 (nn.Embedding, eager)
+quickstart with MSELoss: parameters
+  and 3322 parameters: rows
+  and 4096 rows: ok
+MNIST MLP in bf16: dtype
+MNIST MLP on CUDA: device
+MNIST MLP with GELU: op at layer 1 (nn.GELU, none)
+MNIST MLP with operator 99: op at layer 1 (operator 99, not in the table)
+an empty model: layers

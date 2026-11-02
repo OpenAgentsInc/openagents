@@ -1,0 +1,135 @@
+Chapters chapter 250 depends on (psionic/book/chapters.json): 23
+    3  implemented         cpu             bounded CPU f32 views
+    5  implemented         cpu             CPU-f32-wide-views-v1
+    6  implemented         cpu,cuda,metal  bounded CPU, CUDA and Metal
+    8  implemented         cpu             interchange
+   38  implemented         cpu,cuda,metal  tensor-ir-f32-v1, CPU/CUDA/Metal
+   39  implemented         cpu             tensor-template
+   40  implemented         cpu             operator-registry
+  106  implemented         cpu             autodiff-f32-v1, bounded CPU
+  114  partly implemented  cpu             compiled-backward-f32-v1, bounded CPU
+  115  implemented         cpu             tiny-train-cpu-f64-v1, bounded CPU
+  117  partly implemented  cpu             module-f32-v1, bounded CPU
+  118  partly implemented  cpu             trainer-cpu-f64-v1, bounded CPU
+  121  partly implemented  cpu             psionic-feed-v1 on psionic-pack-v1, bounded CPU
+  122  implemented         cpu             psionic-resume-v1, bounded CPU
+  124  implemented         cpu             cpu-adamw-v1, cpu-muon-v1
+  129  partly implemented  cpu,cuda        gpu-train-f64-v1, CPU and CUDA
+  130  partly implemented  cpu,cuda        tp-step-v1, CPU and CUDA
+  131  partly implemented  cpu             train-compare-v1, bounded CPU
+  133  partly implemented  cpu             shard-v1, bounded CPU logical devices
+  134  partly implemented  cpu             data-parallel-v1, bounded CPU ranks
+  135  partly implemented  cpu             fully-sharded-v1, bounded CPU logical ranks
+  220  implemented         cpu             onnx-17-v1, bounded CPU
+  221  implemented         cpu             onnx-17-write-v1, bounded CPU
+  implemented 13, partly implemented 10, design draft 0
+
+Limits in the capability claims ledger (coax/book/capability-claims.json):
+  psionic.autodiff.current: Bounded CPU scalar/tensor autodiff and permanent-IR function transforms through order two; recorded tiny-decoder CUDA backward/optimizer/resume. No arbitrary Coax transforms, general GPU backward coverage, efficient cooperative training or mixed-precision qualification.
+  psionic.execution.current: Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified.
+  psionic.gpu.current: Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open.
+
+PyTorch operators (psionic/lib/pytorch-audit.coax): 32; trained 5, graph 7, eager only 13, absent 7
+  nn.Linear                     trained  chapter 118, mdl_linear
+  nn.ReLU                       trained  chapter 118, mdl_relu
+  nn.Conv2d                     trained  chapter 118, mdl_conv2d
+  nn.Flatten                    trained  chapter 118, mdl_flatten
+  nn.MSELoss                    trained  chapter 118, mdl_squared_error
+  torch.matmul                  graph    chapter 38, matmul
+  torch.add                     graph    chapter 38, add
+  torch.mul                     graph    chapter 38, multiply
+  torch.sum                     graph    chapter 38, sum
+  torch.reshape                 graph    chapter 38, reshape
+  nn.LayerNorm                  graph    chapter 117, mdl_layernorm
+  nn.Dropout                    graph    chapter 117, mdl_dropout
+  torch.sub                     eager    chapter 5, subtract
+  torch.div                     eager    chapter 5, divide
+  torch.exp                     eager    chapter 5, exponential
+  torch.log                     eager    chapter 5, logarithm
+  torch.mean                    eager    chapter 5, mean
+  torch.amax                    eager    chapter 5, maximum
+  torch.cat                     eager    chapter 5, concat
+  torch.topk                    eager    chapter 5, topk
+  nn.Softmax                    eager    chapter 5, softmax
+  nn.CrossEntropyLoss           eager    chapter 5, cross_entropy
+  nn.MaxPool2d                  eager    chapter 5, maxpool2d
+  nn.AvgPool2d                  eager    chapter 5, avgpool2d
+  nn.Embedding                  eager    chapter 5, take
+  nn.MultiheadAttention         none     -
+  nn.TransformerEncoderLayer    none     -
+  nn.GELU                       none     -
+  torch.tanh                    none     -
+  torch.sigmoid                 none     -
+  torch.sin                     none     -
+  nn.BatchNorm2d                none     -
+
+Workflows (psionic/fixtures/pytorch/workflows.json): 9
+1. MLP classifier on MNIST
+   PyTorch: nn.Sequential(nn.Linear, nn.ReLU, nn.Linear), an optimizer and a training loop
+   chapters: 106 implemented, 117 partly implemented, 118 partly implemented, 124 implemented; targets: cpu
+   psionic/fixtures/mnist-classifier.out: MNIST MLP: 196 -> 16 -> 10; 3322 parameters, 17 nodes
+   psionic/fixtures/mnist/run-v1/result.json: final_correct = 1755
+   psionic/fixtures/mnist/run-v1/result.json: test_rows = 2048
+   psionic/fixtures/mnist/run-v1/result.json: seconds = 17.036464
+   PyTorch parity: 2048 of 2048 predictions agree, largest score gap 5.36e-07
+   not yet: the loss is squared error: cross-entropy is eager only, not in the module graph
+   not yet: at most 4,096 trainable values, 4,096 training rows and 32 graph nodes
+   not yet: 4,096 training images and a 2,048-image test slice, not the full dataset
+   not yet: CPU only
+2. CNN classifier on MNIST
+   PyTorch: nn.Conv2d, nn.ReLU, nn.Flatten, nn.Linear and a training loop
+   chapters: 117 partly implemented, 118 partly implemented; targets: cpu
+   psionic/fixtures/cnn-classifier.out: input [1,1,14,14], conv [2,1,3,3], activation [1,2,12,12], flatten [1,288], scores [1,10]
+   psionic/fixtures/cnn/run-v1/result.json: final_correct = 1814
+   psionic/fixtures/cnn/run-v1/result.json: seconds = 13.895613
+   PyTorch parity: 2048 of 2048 predictions agree, largest score gap 2.98e-07
+   not yet: convolution is stride 1, no padding, one group
+   not yet: no pooling or batch normalization in the module graph
+   not yet: CPU only: convolution gradients do not run on a GPU
+3. Tiny decoder language model
+   PyTorch: a small decoder-only transformer trained on text, sampled and resumed
+   chapters: 115 implemented; targets: cpu
+   psionic/fixtures/tiny-train.out: held-out: decoder 2.1320579221135967, bigram 2.245995271590946, decoder better by 0.11393734947734924 (frozen margin 0.05)
+   psionic/fixtures/tiny-train.out: resumed from step 350 (75908 bytes): 50 of 50 losses identical, weights and moments identical: true
+   not yet: the decoder is written by hand for this chapter: attention and embedding are not public modules
+   not yet: 3,152 parameters and a 4,080-symbol corpus
+4. The same decoder on one GPU
+   PyTorch: model.to("cuda") and the same training loop
+   chapters: 129 partly implemented; targets: cpu, cuda
+   psionic/fixtures/gpu-train.out: losses, parameters and moments equal chapter 118's run bit for bit: true
+   psionic/book/ch129-train-a-whole-model-on-one-gpu.md: chapter 129 on CUDA: the decoder trains on the device within the frozen tolerance of chapter 118's CPU run, and resumes bit for bit
+   psionic/book/ch129-train-a-whole-model-on-one-gpu.md: receipt, 64 rows a step (16114648 bytes on the device): device 54.88 ms/step (37320 tokens/s), CPU 17.14 ms/step (119462 tokens/s); parameters 0 past the tolerance
+   not yet: one recorded device, an RTX 4080; the device step is slower than the CPU step
+   not yet: only chapter 115's decoder trains on the device; no Metal training
+5. Safetensors and DLPack exchange
+   PyTorch: safetensors.torch.save_file, load_file and torch.from_dlpack
+   chapters: 8 implemented; targets: cpu
+   psionic/fixtures/model-interchange.out: Portable parameter: scale.weight, F32 [1], 4 bytes
+   psionic/fixtures/model-interchange.out: Reloaded prediction at x=3: 5.999999
+   psionic/fixtures/interchange-profile.json: dlpack.device = CPU:0
+   not yet: Safetensors: F32 and BF16, at most 16 tensors of rank 4 or less
+   not yet: DLPack: contiguous CPU f32 tensors only
+6. ONNX in
+   PyTorch: a model exported with torch.onnx.export, then run
+   chapters: 220 implemented; targets: cpu
+   psionic/fixtures/onnx-read.out: classifier.onnx: 1175 bytes, IR 8, opset 17: 5 nodes, 4 weights, 257 floats of arena
+   psionic/fixtures/onnx-read.out: image 0 -> 0.715006 0.081689 0.203305
+   not yet: opset 17 only, seven operators: Gather, ReduceMean, Conv, Relu, Flatten, Gemm, Softmax
+   not yet: static shapes only: a symbolic dimension is refused
+7. ONNX out
+   PyTorch: torch.onnx.export
+   chapters: 221 implemented; targets: cpu
+   psionic/fixtures/onnx-write.out: deadline.onnx: Gemm, then Softmax over [0, z]
+   psionic/fixtures/onnx-write.out: chapter 103's MLP: op, tanh is outside the subset
+   not yet: Gemm and Softmax only: a model with tanh is refused
+8. Checkpoint and resume
+   PyTorch: torch.save and torch.load of the model, optimizer and data order
+   chapters: 122 implemented; targets: cpu
+   psionic/fixtures/resume.out: loss 2.772588722239781 -> 1.4089266754480803; after resuming at 5, 7 of 7 losses and all 768 values are identical
+   not yet: 4,096 values at most
+9. Data-parallel and fully sharded training
+   PyTorch: DistributedDataParallel and FullyShardedDataParallel
+   chapters: 133 partly implemented, 134 partly implemented, 135 partly implemented; targets: cpu
+   psionic/fixtures/data-parallel.out: hand example, 2 ranks: rank 0 sends 0.375 -0.5 2.25; the sum is 0.875 4.0 1.75, loss 5.0; equal to tr_add bit for bit: true
+   psionic/fixtures/fully-sharded.out: 1 ranks: parameters, moments and losses equal bit for bit: true; 0 bytes moved a step (gather 0, reduce-scatter 0)
+   not yet: logical ranks in one CPU process: no second GPU, no second machine, no failure recovery

@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "workflows": [
+    {
+      "name": "MLP classifier on MNIST",
+      "pytorch": "nn.Sequential(nn.Linear, nn.ReLU, nn.Linear), an optimizer and a training loop",
+      "chapters": [106, 117, 118, 124],
+      "targets": ["cpu"],
+      "evidence": [
+        {"path": "psionic/fixtures/mnist-classifier.out", "line": "MNIST MLP: 196 -> 16 -> 10; 3322 parameters, 17 nodes"},
+        {"path": "psionic/fixtures/mnist/run-v1/result.json", "key": "final_correct", "value": 1755},
+        {"path": "psionic/fixtures/mnist/run-v1/result.json", "key": "test_rows", "value": 2048},
+        {"path": "psionic/fixtures/mnist/run-v1/result.json", "key": "seconds", "value": 17.036464}
+      ],
+      "parity": "chapter 118 MNIST MLP",
+      "gaps": [
+        "the loss is squared error: cross-entropy is eager only, not in the module graph",
+        "at most 4,096 trainable values, 4,096 training rows and 32 graph nodes",
+        "4,096 training images and a 2,048-image test slice, not the full dataset",
+        "CPU only"
+      ]
+    },
+    {
+      "name": "CNN classifier on MNIST",
+      "pytorch": "nn.Conv2d, nn.ReLU, nn.Flatten, nn.Linear and a training loop",
+      "chapters": [117, 118],
+      "targets": ["cpu"],
+      "evidence": [
+        {"path": "psionic/fixtures/cnn-classifier.out", "line": "input [1,1,14,14], conv [2,1,3,3], activation [1,2,12,12], flatten [1,288], scores [1,10]"},
+        {"path": "psionic/fixtures/cnn/run-v1/result.json", "key": "final_correct", "value": 1814},
+        {"path": "psionic/fixtures/cnn/run-v1/result.json", "key": "seconds", "value": 13.895613}
+      ],
+      "parity": "chapter 118 MNIST CNN",
+      "gaps": [
+        "convolution is stride 1, no padding, one group",
+        "no pooling or batch normalization in the module graph",
+        "CPU only: convolution gradients do not run on a GPU"
+      ]
+    },
+    {
+      "name": "Tiny decoder language model",
+      "pytorch": "a small decoder-only transformer trained on text, sampled and resumed",
+      "chapters": [115],
+      "targets": ["cpu"],
+      "evidence": [
+        {"path": "psionic/fixtures/tiny-train.out", "line": "held-out: decoder 2.1320579221135967, bigram 2.245995271590946, decoder better by 0.11393734947734924 (frozen margin 0.05)"},
+        {"path": "psionic/fixtures/tiny-train.out", "line": "resumed from step 350 (75908 bytes): 50 of 50 losses identical, weights and moments identical: true"}
+      ],
+      "gaps": [
+        "the decoder is written by hand for this chapter: attention and embedding are not public modules",
+        "3,152 parameters and a 4,080-symbol corpus"
+      ]
+    },
+    {
+      "name": "The same decoder on one GPU",
+      "pytorch": "model.to(\"cuda\") and the same training loop",
+      "chapters": [129],
+      "targets": ["cpu", "cuda"],
+      "evidence": [
+        {"path": "psionic/fixtures/gpu-train.out", "line": "  losses, parameters and moments equal chapter 118's run bit for bit: true"},
+        {"path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md", "line": "chapter 129 on CUDA: the decoder trains on the device within the frozen tolerance of chapter 118's CPU run, and resumes bit for bit"},
+        {"path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md", "line": "receipt, 64 rows a step (16114648 bytes on the device): device 54.88 ms/step (37320 tokens/s), CPU 17.14 ms/step (119462 tokens/s); parameters 0 past the tolerance"}
+      ],
+      "gaps": [
+        "one recorded device, an RTX 4080; the device step is slower than the CPU step",
+        "only chapter 115's decoder trains on the device; no Metal training"
+      ]
+    },
+    {
+      "name": "Safetensors and DLPack exchange",
+      "pytorch": "safetensors.torch.save_file, load_file and torch.from_dlpack",
+      "chapters": [8],
+      "targets": ["cpu"],
+      "evidence": [
+        {"path": "psionic/fixtures/model-interchange.out", "line": "Portable parameter: scale.weight, F32 [1], 4 bytes"},
+        {"path": "psionic/fixtures/model-interchange.out", "line": "Reloaded prediction at x=3: 5.999999"},
+        {"path": "psionic/fixtures/interchange-profile.json", "key": "dlpack.device", "value": "CPU:0"}
+      ],
+      "gaps": [
+        "Safetensors: F32 and BF16, at most 16 tensors of rank 4 or less",
+        "DLPack: contiguous CPU f32 tensors only"
+      ]
+    },
+    {
+      "name": "ONNX in",
+      "pytorch": "a model exported with torch.onnx.export, then run",
+      "chapters": [220],
+      "targets": ["cpu"],
+      "evidence": [
+        {"path": "psionic/fixtures/onnx-read.out", "line": "classifier.onnx: 1175 bytes, IR 8, opset 17: 5 nodes, 4 weights, 257 floats of arena"},
+        {"path": "psionic/fixtures/onnx-read.out", "line": "  image 0 -> 0.715006 0.081689 0.203305"}
+      ],
+      "gaps": [
+        "opset 17 only, seven operators: Gather, ReduceMean, Conv, Relu, Flatten, Gemm, Softmax",
+        "static shapes only: a symbolic dimension is refused"
+      ]
+    },
+    {
+      "name": "ONNX out",
+      "pytorch": "torch.onnx.export",
+      "chapters": [221],
+      "targets": ["cpu"],
+      "evidence": [
+        {"path": "psionic/fixtures/onnx-write.out", "line": "deadline.onnx: Gemm, then Softmax over [0, z]"},
+        {"path": "psionic/fixtures/onnx-write.out", "line": "chapter 103's MLP: op, tanh is outside the subset"}
+      ],
+      "gaps": [
+        "Gemm and Softmax only: a model with tanh is refused"
+      ]
+    },
+    {
+      "name": "Checkpoint and resume",
+      "pytorch": "torch.save and torch.load of the model, optimizer and data order",
+      "chapters": [122],
+      "targets": ["cpu"],
+      "evidence": [
+        {"path": "psionic/fixtures/resume.out", "line": "loss 2.772588722239781 -> 1.4089266754480803; after resuming at 5, 7 of 7 losses and all 768 values are identical"}
+      ],
+      "gaps": [
+        "4,096 values at most"
+      ]
+    },
+    {
+      "name": "Data-parallel and fully sharded training",
+      "pytorch": "DistributedDataParallel and FullyShardedDataParallel",
+      "chapters": [133, 134, 135],
+      "targets": ["cpu"],
+      "evidence": [
+        {"path": "psionic/fixtures/data-parallel.out", "line": "hand example, 2 ranks: rank 0 sends 0.375 -0.5 2.25; the sum is 0.875 4.0 1.75, loss 5.0; equal to tr_add bit for bit: true"},
+        {"path": "psionic/fixtures/fully-sharded.out", "line": "  1 ranks: parameters, moments and losses equal bit for bit: true; 0 bytes moved a step (gather 0, reduce-scatter 0)"}
+      ],
+      "gaps": [
+        "logical ranks in one CPU process: no second GPU, no second machine, no failure recovery"
+      ]
+    }
+  ]
+}

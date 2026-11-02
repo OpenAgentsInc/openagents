@@ -2,6 +2,16 @@
   "schema": 1,
   "examples": [
     {
+      "source": "psionic/examples/pytorch-audit.coax",
+      "chapter": "psionic/book/ch250-can-someone-use-psionic-instead-of-pytorch.md",
+      "stdout": "psionic/fixtures/pytorch/pytorch-audit.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/learn-number.coax",
       "chapter": "psionic/book/ch001-learning-a-number.md",
       "stdout": "psionic/fixtures/learn-number.out",

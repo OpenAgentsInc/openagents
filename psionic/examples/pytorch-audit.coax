@@ -1,0 +1,39 @@
+// Chapter 250: audit five models, described by their PyTorch layers, against
+// what Psionic's public CPU trainer can run. Nothing is allocated for a model.
+#import "Basic";
+#load "../lib/pytorch-audit.coax";
+
+// book:begin example
+show :: (name:string,m:PaModel) {
+    a:=pa_audit(m);
+    if a.at<0 {print("%: %\n",name,a.status);return;}
+    if pa_level(m.ops[a.at])==0 && (m.ops[a.at]<0 || m.ops[a.at]>=PA_OPS) {print("%: % at layer % (operator %, not in the table)\n",name,a.status,a.at,m.ops[a.at]);return;}
+    print("%: % at layer % (%, %)\n",name,a.status,a.at,PA_NAME[m.ops[a.at]],PA_LEVEL_NAME[pa_level(m.ops[a.at])]);
+}
+main :: () {
+    c:=pa_count();
+    print("% PyTorch operators: % trained, % graph, % eager only, % absent\n",PA_OPS,c.trained,c.graph,c.eager,c.none);
+    for l:0..<4 {
+        print("  %:",PA_LEVEL_NAME[3-l]);
+        for i:0..<PA_OPS {if PA_LEVEL[i]==3-l {print(" %",PA_NAME[i]);}}
+        print("\n");
+    }
+    show("chapter 118 MNIST MLP",pa_mlp());
+    show("chapter 118 MNIST CNN",pa_cnn());
+    show("PyTorch quickstart classifier",pa_quickstart());
+    show("PyTorch CIFAR-10 CNN",pa_cifar());
+    show("PyTorch nn.Transformer language model",pa_transformer());
+    m:=pa_quickstart();m.ops[6]=4;
+    show("quickstart with MSELoss",m);
+    m.parameters=3322;
+    show("  and 3322 parameters",m);
+    m.rows=4096;
+    show("  and 4096 rows",m);
+    // Deliberately broken descriptions: each is refused before any storage exists.
+    m=pa_mlp();m.dtype=PaDtype.bf16;show("MNIST MLP in bf16",m);
+    m=pa_mlp();m.device=PaDevice.cuda;show("MNIST MLP on CUDA",m);
+    m=pa_mlp();m.ops[1]=27;show("MNIST MLP with GELU",m);
+    m=pa_mlp();m.ops[1]=99;show("MNIST MLP with operator 99",m);
+    m=pa_mlp();m.count=0;show("an empty model",m);
+}
+// book:end example

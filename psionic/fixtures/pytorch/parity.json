@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "comparator": "PyTorch 2.11.0, CPU float32, 1 thread, deterministic",
+  "inputs": "official MNIST test images 0-2047, chapter 118's 2x2 pooling",
+  "results": [
+    {
+      "model": "chapter 118 MNIST MLP",
+      "rows": 2048,
+      "max_abs_gap": 5.364418029785156e-07,
+      "exact_scores": 6114,
+      "scores": 20480,
+      "argmax_agree": 2048,
+      "torch_correct": 1755,
+      "psionic_correct": 1755
+    },
+    {
+      "model": "chapter 118 MNIST CNN",
+      "rows": 2048,
+      "max_abs_gap": 2.980232238769531e-07,
+      "exact_scores": 4301,
+      "scores": 20480,
+      "argmax_agree": 2048,
+      "torch_correct": 1814,
+      "psionic_correct": 1814
+    }
+  ]
+}

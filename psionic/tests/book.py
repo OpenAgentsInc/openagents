@@ -85,6 +85,13 @@ def check(name="psionic"):
     spec.loader.exec_module(registry)
     errors = registry.registry_problems(name, ROOT)
     assert not errors, f"chapter registry ({book}/chapters.json): " + "; ".join(errors)
+    if name == "psionic":
+        # Chapter 250's capability matrix is generated from the registry; its prose claims are bound to it.
+        spec = importlib.util.spec_from_file_location("psionic_pytorch_matrix", ROOT / "psionic/tests/pytorch_matrix.py")
+        matrix = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(matrix)
+        errors = matrix.problems()
+        assert not errors, "chapter 250 capability matrix: " + "; ".join(errors)
     manifest = json.loads(path(f"{book}/examples.json").read_text())
     assert manifest["schema"] == 1
     actual = {str(p.relative_to(ROOT)) for p in (ROOT / programs).glob("*.coax")}
