@@ -212,6 +212,26 @@
       ]
     },
     {
+      "source": "psionic/examples/speak.coax",
+      "chapter": "psionic/book/ch155-speak-the-answer.md",
+      "stdout": "psionic/fixtures/speak.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/speak-refuse.coax",
+      "chapter": "psionic/book/ch155-speak-the-answer.md",
+      "stdout": "psionic/fixtures/speak-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/ministral.coax",
       "chapter": "psionic/book/ch081-execute-ministral-4.md",
       "stdout": "psionic/fixtures/ministral.out",

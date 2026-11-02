@@ -1,0 +1,17 @@
+"call 5551234 now" in 64 bytes: number at byte 5
+"50 € off" in 64 bytes: symbol at byte 3
+"..." in 64 bytes: empty at byte 0
+"" in 64 bytes: empty at byte 0
+"a very long answer" in 8 bytes: capacity at byte 8
+phonemize "Hello": symbol
+next before open: closed
+FFT of 384: shape
+hop of 16 (16 frames over a sample): shape
+blocks of 33: shape
+work one value short: capacity
+room for 511 of 512 samples: capacity
+room for 23 of 24 distances: capacity
+then the block: 512 samples
+barge-in: ok, 512 samples emitted
+next after barge-in: cancelled
+barge-in again: cancelled

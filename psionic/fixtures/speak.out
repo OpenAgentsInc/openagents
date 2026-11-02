@@ -1,0 +1,16 @@
+text: The answer is 42.
+normalized: the answer is forty two
+20 phones in 5 words: _ th e a n s w e r i s f o r t i t w o _
+204 frames, 13248 samples (1656 ms); context 3 frames, work 13192 values
+first audio: 512 samples (64 ms) after 8 frames and 392 transforms
+block 4 (frames 32 to 39): distance 0.4577088631412432 after 1 iteration, 0.3755840448696475 after 24
+last block: 4 frames, 448 samples; 26 blocks, 13248 samples, 11871 transforms in all
+then: finished
+peak amplitude 0.7833820100678568
+stream equals its blocks solved offline, bit for bit: true
+meant: th e a n s w e r i s f o r t i t w o
+heard: th e a n z s z i w e r i z s f o r d i y t i w o w
+8 phone errors in 18 (template recognizer)
+barge-in after 10 blocks: 5120 samples emitted (640 ms), 192 pending dropped, 7936 never made
+  stopped in phone 'e' of word 1 (answer); words heard to their end: 1
+  next block: cancelled

@@ -1,0 +1,29 @@
+// Chapter 155: text and streams that are refused, each with its status
+// (and, for text, the byte it points at), the stream left as it was.
+#import "Basic";
+#load "../lib/speak.coax";
+
+// book:begin refuse
+main :: () {
+    out:[64]u8;
+    texts:=[5]string.["call 5551234 now","50 € off","...","","a very long answer"];
+    caps:=[5]int.[64,64,64,64,8];
+    for i:0..<5 {r:=spk_normalize(texts[i],out[0..<caps[i]]);print("\"%\" in % bytes: % at byte %\n",texts[i],caps[i],r.status,r.at);}
+    u:[1]SpkUtterance;
+    print("phonemize \"Hello\": %\n",spk_phonemize("Hello",u[..]));
+    #assert spk_phonemize("hi",u[..])==SpkStatus.ok;
+    sh:=SpkShape.{rate=8000,n=256,hop=64,block=8,iters=24};work:[20000]f64;st:[1]SpkStream;audio:[2000]f64;curve:[24]f64;
+    print("next before open: %\n",spk_next(st[..],u[..],work[..],audio[..],curve[..]).status);
+    print("FFT of 384: %\n",spk_open(SpkShape.{rate=8000,n=384,hop=96,block=8,iters=24},u[..],work[..],st[..]));
+    print("hop of 16 (16 frames over a sample): %\n",spk_open(SpkShape.{rate=8000,n=256,hop=16,block=8,iters=24},u[..],work[..],st[..]));
+    print("blocks of 33: %\n",spk_open(SpkShape.{rate=8000,n=256,hop=64,block=33,iters=24},u[..],work[..],st[..]));
+    print("work one value short: %\n",spk_open(sh,u[..],work[0..<spk_plan(sh).work-1],st[..]));
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok;
+    print("room for 511 of 512 samples: %\n",spk_next(st[..],u[..],work[..],audio[0..<511],curve[..]).status);
+    print("room for 23 of 24 distances: %\n",spk_next(st[..],u[..],work[..],audio[..],curve[0..<23]).status);
+    print("then the block: % samples\n",spk_next(st[..],u[..],work[..],audio[..],curve[..]).samples);
+    s:=spk_cancel(st[..],u[..]);print("barge-in: %, % samples emitted\n",s.status,s.emitted);
+    print("next after barge-in: %\n",spk_next(st[..],u[..],work[..],audio[..],curve[..]).status);
+    print("barge-in again: %\n",spk_cancel(st[..],u[..]).status);
+}
+// book:end refuse

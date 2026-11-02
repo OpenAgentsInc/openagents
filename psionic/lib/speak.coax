@@ -1,0 +1,845 @@
+// Chapter 155: speak the answer. Text to audio on the CPU, streamed in
+// blocks: fixed rules write numbers and symbols out as words, a
+// letter-to-sound table turns the words into phones with fixed durations, a
+// rule-based acoustic model gives every frame its magnitude spectrum
+// (formant peaks on a harmonic comb for voicing, a noise band for friction),
+// and Griffin-Lim recovers a phase for each block of frames, holding the
+// frames before the block fixed. The least-squares inverse STFT adds the
+// frames up as they are made; samples that no later frame can touch are
+// emitted at once. Barge-in stops the stream and reports exactly what was
+// heard. Profile psionic-speak-v1: binary64 throughout, chapter 151's FFT
+// and a Hann window sampled half a sample off the grid; FFT sizes 8 to 512 with 2 to 8 frames over each
+// sample, blocks of 1 to 32 frames, at most 64 iterations, 512 bytes of
+// text, 256 phones and 2,048 frames.
+#load "spectral.coax";
+#load "tdt.coax";
+#load "../tests/speak-checks.coax";   // the checks' references
+
+// book:begin types
+SpkStatus :: enum u8 {ok;shape;empty;symbol;number;length;capacity;closed;cancelled;finished;}
+// rate in Hz; n the FFT size; hop the samples between frames; block the
+// frames Griffin-Lim solves at a time; iters its iterations per block.
+SpkShape :: struct {rate:int;n:int;hop:int;block:int;iters:int;}
+// Normalized text: status, bytes written, and the byte a refusal points at.
+SpkText :: struct {status:SpkStatus;count:int;at:int;}
+// Phones in order, the frame each starts on (start[phones] is the total),
+// and the word each belongs to (-1 for silence and pauses).
+SpkUtterance :: struct {status:SpkStatus;phones:int;words:int;id:[SPK_PHONES_MAX]int;start:[SPK_PHONES_MAX+1]int;word:[SPK_PHONES_MAX]int;}
+// Offsets into the caller's work array: the context frames and the samples
+// not yet final keep their values between blocks; the rest is scratch.
+SpkPlan :: struct {status:SpkStatus;context:int;span:int;pending:int;at_cre:int;at_cim:int;at_num:int;at_den:int;
+    at_re:int;at_im:int;at_mag:int;at_x:int;at_xden:int;at_base:int;at_w:int;at_tr:int;at_ti:int;work:int;}
+SpkStream :: struct {open:bool;stopped:bool;shape:SpkShape;plan:SpkPlan;next:int;emitted:int;
+    ffts:int;first_ffts:int;first_samples:int;}
+// One call's audio: samples written to out, the stream's first sample
+// index for them, and whether the utterance is complete.
+SpkChunk :: struct {status:SpkStatus;samples:int;at:int;frames:int;ffts:int;final:bool;}
+// Barge-in: samples emitted, samples begun but not final, samples never
+// started; the phone and word under the last emitted sample (-1 for none
+// or silence) and the words heard to their end.
+SpkStop :: struct {status:SpkStatus;emitted:int;pending:int;unmade:int;phone:int;word:int;heard:int;}
+// book:end types
+
+SPK_PHONES_MAX :: 256;
+SPK_FRAMES_MAX :: 2048;
+SPK_TEXT_MAX :: 512;
+SPK_N_MAX :: 512;
+SPK_BLOCK_MAX :: 32;
+SPK_ITERS_MAX :: 64;
+SPK_GAIN :: 0.06;
+
+// Checks precede the implementation. References are in
+// psionic/tests/speak-checks.coax.
+#test "the tables are pinned" {
+    #assert spk_weighted(SPK_F1)==65600 && spk_weighted(SPK_F2)==301880 && spk_weighted(SPK_F3)==501630;
+    #assert spk_weighted(SPK_LO)==414800 && spk_weighted(SPK_HI)==894500;
+    #assert abs(spk_weighted(SPK_VOICE)-83.2)<1e-12 && abs(spk_weighted(SPK_NOISE)-53.92)<1e-12;
+    t:=0;for i:0..<26 {t+=(i+1)*SPK_FRAMES[i];}#assert t==2924;
+    #assert spk_phone("sh")==15 && spk_phone("g")==25 && spk_phone("_")==0 && spk_phone("x")== -1;
+    #assert SPK_UNITS[13]=="thirteen" && SPK_UNITS[19]=="nineteen" && SPK_TENS[2]=="twenty" && SPK_TENS[9]=="ninety";
+}
+#test "numbers and symbols are written out by hand" {
+    #assert spk_text_is("The answer is 42, & 7% more!","the answer is forty two | and seven percent more");
+    #assert spk_text_is("0 13 100 115 999 007 20 61","zero thirteen one hundred one hundred fifteen nine hundred ninety nine seven twenty sixty one");
+    #assert spk_text_is("don't stop-now; ok. ,hi..","dont stop now | ok | hi");
+    #assert spk_text_is("A+b:c?d","a plus b | c | d") && spk_text_is("x","x") && spk_text_is("12ab","twelve ab");
+    #assert spk_text_is("Zz","zz") && spk_text_is("1:2","one | two") && spk_text_is("a, b","a | b") && spk_text_is(" hi","hi");
+    out:[256]u8;
+    r:=spk_normalize("call 1000 now",out[..]);#assert r.status==SpkStatus.number && r.at==5;
+    r=spk_normalize("a#b",out[..]);#assert r.status==SpkStatus.symbol && r.at==1;
+    r=spk_normalize("[",out[..]);#assert r.status==SpkStatus.symbol && r.at==0;
+    r=spk_normalize("@",out[..]);#assert r.status==SpkStatus.symbol && r.at==0;
+    r=spk_normalize("{",out[..]);#assert r.status==SpkStatus.symbol && r.at==0;
+    r=spk_normalize("café",out[..]);#assert r.status==SpkStatus.symbol && r.at==3;
+    r=spk_normalize("...",out[..]);#assert r.status==SpkStatus.empty;
+    r=spk_normalize("",out[..]);#assert r.status==SpkStatus.empty;
+    r=spk_normalize("hello",out[0..<5]);#assert r.status==SpkStatus.capacity && r.at==5;
+    r=spk_normalize("hello",out[0..<6]);#assert r.status==SpkStatus.ok && r.count==5;
+    r=spk_normalize("hi 5",out[0..<6]);#assert r.status==SpkStatus.capacity && r.at==3;
+    r=spk_normalize("hi 5",out[0..<8]);#assert r.status==SpkStatus.ok && r.count==7;
+    r=spk_normalize("hi%",out[0..<10]);#assert r.status==SpkStatus.capacity && r.at==2;
+    long:[513]u8;for i:0..<513 {long[i]='a';}
+    r=spk_normalize(cast(string)long[..],out[..]);#assert r.status==SpkStatus.length && r.at==512;
+    r=spk_normalize(cast(string)long[0..<255],out[..]);#assert r.status==SpkStatus.ok && r.count==255;
+    big:[600]u8;r=spk_normalize(cast(string)long[0..<512],big[..]);#assert r.status==SpkStatus.ok && r.count==512;
+}
+#test "letters to phones by hand" {
+    #assert spk_names_are("speak","_ s p i k _") && spk_names_are("the","_ th e _") && spk_names_are("five","_ f i v _");
+    #assert spk_names_are("hello","_ h e l o _") && spk_names_are("check","_ sh e k _") && spk_names_are("quick box","_ k w i k b o k s _");
+    #assert spk_names_are("city yes one","_ s i t i y e s o n e _") && spk_names_are("phone sing","_ f o n s i n _");
+    #assert spk_names_are("rain day moon jog","_ r e n d e m u n z o g _") && spk_names_are("cab cyan","_ k a b s i a n _");
+    #assert spk_names_are("hi | ok","_ h i | o k _") && spk_names_are("ss s","_ s s _") && spk_names_are("eel queen","_ i l k w i n _");
+    #assert spk_names_are("movie canoe argue algae beee","_ m o v i e k a n o e a r g u e a l g a e b i e _");
+    #assert spk_names_are("qat hmm zoo","_ k a t h m z u _");
+    u:[1]SpkUtterance;
+    #assert spk_phonemize("hi | ok",u[..])==SpkStatus.ok && u[0].phones==7 && u[0].words==2;
+    #assert u[0].start[1]==6 && u[0].start[2]==16 && u[0].start[3]==30 && u[0].start[4]==50 && spk_frames(u[..])==6+10+14+20+14+7+6;
+    #assert u[0].word[0]== -1 && u[0].word[1]==0 && u[0].word[2]==0 && u[0].word[3]== -1 && u[0].word[4]==1 && u[0].word[6]== -1;
+    #assert spk_phonemize("Hi",u[..])==SpkStatus.symbol && u[0].status==SpkStatus.symbol && spk_phonemize("{",u[..])==SpkStatus.symbol;
+    // A reused utterance starts over.
+    #assert spk_phonemize("hello",u[..])==SpkStatus.ok && spk_phonemize("hi",u[..])==SpkStatus.ok && spk_frames(u[..])==36 && u[0].words==1;
+    #assert spk_phonemize("",u[..])==SpkStatus.empty && spk_phonemize("|",u[..])==SpkStatus.empty;
+    many:[600]u8;for i:0..<300 {many[2*i]='b';many[2*i+1]=' ';}
+    #assert spk_phonemize(cast(string)many[0..<508],u[..])==SpkStatus.ok && u[0].phones==256 && spk_frames(u[..])==12+254*6;
+    #assert spk_phonemize(cast(string)many[0..<510],u[..])==SpkStatus.length && u[0].phones==256;
+    for i:0..<300 {many[2*i]='a';}
+    #assert spk_phonemize(cast(string)many[0..<2*145],u[..])==SpkStatus.ok && spk_frames(u[..])==12+145*14;
+    #assert spk_phonemize(cast(string)many[0..<2*146],u[..])==SpkStatus.length;
+    // 145 vowels and a 6-frame b make exactly 2,048 frames; a 7-frame p, 2,049.
+    many[290]='b';#assert spk_phonemize(cast(string)many[0..<291],u[..])==SpkStatus.ok && spk_frames(u[..])==2048;
+    many[290]='p';#assert spk_phonemize(cast(string)many[0..<291],u[..])==SpkStatus.length;
+}
+#test "the acoustic model by hand" {
+    #assert abs(spk_peak(830,730,90)-1/(1+(100.0/90)*(100.0/90)))<1e-15 && spk_peak(730,730,90)==1;
+    #assert spk_comb(0)==1 && spk_comb(1)==1 && abs(spk_comb(0.5))<1e-30 && abs(spk_comb(0.25)-0.0625)<1e-15;
+    #assert spk_band(3500,3000,4000)==1 && spk_band(3000,3000,4000)==1 && spk_band(4000,3000,4000)==1;
+    #assert spk_band(2700,3000,4000)==0.5 && spk_band(4300,3000,4000)==0.5;
+    // 'a' at 840 Hz with pitch 140 Hz: the sixth harmonic.
+    e:=1/(1+(110.0/90)*(110.0/90))+0.5/(1+(250.0/110)*(250.0/110))+0.25/(1+(1600.0/170)*(1600.0/170));
+    #assert abs(spk_envelope(2,840)-e)<1e-15 && abs(spk_level(2,false,140,840)-e)<1e-15;
+    // 's' is noise only; 'z' both; 'p' is silent until its burst; 'b' voices its closure.
+    #assert spk_level(14,false,140,3500)==0.25 && abs(spk_level(14,false,140,2700)-0.125)<1e-15;
+    #assert abs(spk_level(19,false,100,3500)-(0.3*spk_envelope(19,3500)*spk_comb(35)+0.15))<1e-15;
+    #assert spk_level(20,true,140,1000)==0 && spk_level(20,false,140,1000)==0.3 && spk_level(20,false,140,2800)==0.15 && spk_level(20,false,140,200)==0.15;
+    #assert spk_level(23,true,100,300)==0.2*spk_envelope(23,300);
+    #assert abs(spk_level(23,false,100,300)-(0.2*spk_envelope(23,300)+0.2*spk_peak(300,500,300)))<1e-15;
+    #assert spk_level(0,false,140,500)==0 && spk_level(1,false,140,500)==0;
+    // "pa": 'a' starts at frame 13; its first two frames blend in p's burst.
+    u:[1]SpkUtterance;#assert spk_phonemize("pa",u[..])==SpkStatus.ok && spk_frames(u[..])==33;
+    sh:=spk_tiny();mag:[9]f64;scale:=0.06*16.0/4;
+    // 'p' is frames 6 to 12: closed through frame 10, then the burst.
+    for t:6..<17 {
+        spk_frame(sh,u[..],t,mag[..]);f0:=140-40*f64(t)/33;
+        for b:0..<9 {
+            f:=f64(b)*500;a:=spk_level(2,false,f0,f);
+            want:=scale*spk_level(20,t<11,f0,f);
+            if t==13 {want=scale*(a/3+(2.0/3)*spk_level(20,false,f0,f));}
+            if t==14 {want=scale*((2.0/3)*a+(1.0/3)*spk_level(20,false,f0,f));}
+            if t>14 {want=scale*a;}
+            #assert abs(mag[b]-want)<1e-14;
+        }
+    }
+    spk_frame(sh,u[..],0,mag[..]);for b:0..<9 {#assert mag[b]==0;}
+    // "a" alone: its first frame is a third of itself, after silence.
+    #assert spk_phonemize("a",u[..])==SpkStatus.ok;spk_frame(sh,u[..],6,mag[..]);
+    for b:0..<9 {#assert abs(mag[b]-scale*spk_level(2,false,140-40*6.0/26,f64(b)*500)/3)<1e-14;}
+}
+#test "Hann windows overlap to 3/2 by hand" {
+    // n = 8, hop = 2: w = .038, .309, .691, .962, .962, .691, .309, .038, and
+    // the squares of every second sum to 1.5. n = 4, hop = 2: w = .146,
+    // .854, .854, .146 and .021 + .729 = .75 everywhere.
+    w:[8]f64;spk_window(w[..]);den:[14]f64;
+    #assert abs(w[0]-(0.5-0.5*cos(SF_PI/8)))<1e-15 && abs(w[3]-(0.5-0.5*cos(7*SF_PI/8)))<1e-15 && w[0]==w[7] && w[3]==w[4];
+    for f:0..<4 {spk_window_add(w[..],den[..],2*f);}
+    #assert den[0]==w[0]*w[0] && abs(den[1]-w[1]*w[1])<1e-15;
+    for s:6..<8 {#assert abs(den[s]-1.5)<1e-15;}
+    w4:[4]f64;spk_window(w4[..]);d4:[8]f64;
+    for f:0..<3 {spk_window_add(w4[..],d4[..],2*f);}
+    for s:0..<6 {#assert abs(d4[s]-0.75)<1e-15 || s<2;}
+    #assert d4[0]==w4[0]*w4[0] && d4[7]==w4[3]*w4[3];
+    num:=[3]f64.[3,1.5,2];dd:=[3]f64.[1.5,0.75,1];x:[3]f64;spk_divide(num[..],dd[..],x[..]);
+    #assert x[0]==2 && x[1]==2 && x[2]==2;
+}
+#forall "an STFT and its least-squares inverse give the signal back" lg:3..<7, r:1..<4 #steps 400000000 {
+    n:=1;for i:0..<lg {n*=2;}h:=n;for i:0..<r {h/=2;}
+    T:=5;L:=(T-1)*h+n;x:[512]f64;spk_noise(lg*10+r,x[0..<L]);
+    w:[64]f64;spk_window(w[0..<n]);
+    re:[64]f64;im:[64]f64;tr:[64]f64;ti:[64]f64;num:[512]f64;den:[512]f64;y:[512]f64;
+    for t:0..<T {
+        spk_ref_frame(x[..],t*h,w[0..<n],re[0..<n],im[0..<n]);
+        spk_synthesize(re[0..<n],im[0..<n],w[0..<n],tr[0..<n],ti[0..<n],num[..],t*h);spk_window_add(w[0..<n],den[..],t*h);
+        // The analysis matches the DFT reference.
+        spk_analyze(x[..],t*h,w[0..<n],tr[0..<n],ti[0..<n]);
+        for k:0..<n {#assert abs(tr[k]-re[k])<1e-12 && abs(ti[k]-im[k])<1e-12;}
+    }
+    spk_divide(num[..],den[..],y[0..<L]);
+    for s:0..<L {#assert abs(y[s]-x[s])<1e-12;}
+}
+#forall "Griffin-Lim's distance never rises" seed:0..<4, c:0..<4, kind:0..<2 #steps 400000000 {
+    consistent:=kind==1;
+    sh:=SpkShape.{rate=8000,n=16,hop=4,block=5,iters=12};work:[4000]f64;curve:[12]f64;
+    p:=spk_test_block(sh,c,5,seed,consistent,work[..]);
+    #assert p.context==3 && spk_solve(sh,p,c,5,work[..],curve[..])==c+12*(10+c);
+    for i:1..<12 {#assert curve[i]<=curve[i-1]*(1+1e-12);}
+    #assert curve[11]<curve[0] && curve[0]>0;
+    // Every free frame has its target magnitudes at the end.
+    for f:c..<c+5 {for k:0..<16 {
+        m:=work[p.at_mag+(f-c)*9+spk_fold(k,16)];a:=sqrt(work[p.at_re+f*16+k]*work[p.at_re+f*16+k]+work[p.at_im+f*16+k]*work[p.at_im+f*16+k]);
+        #assert abs(a-m)<=1e-12*(1+m);
+    }}
+}
+#test "Griffin-Lim by hand: no iterations, one frame, a consistent block" {
+    sh:=SpkShape.{rate=8000,n=8,hop=2,block=2,iters=0};work:[2000]f64;curve:[1]f64;
+    for i:0..<2000 {work[i]=7;}
+    p:=spk_test_block(sh,0,2,5,true,work[..]);
+    before:[16]f64;for i:0..<16 {before[i]=work[p.at_re+i];}
+    #assert spk_solve(sh,p,0,2,work[..],curve[..])==0;
+    for i:0..<16 {#assert work[p.at_re+i]==before[i];}
+    // The first estimate: frame 1's phase is frame 0's turned by a quarter
+    // turn per bin (2 pi k 2/8), here from phase 0.
+    for k:0..<8 {
+        m:=work[p.at_mag+spk_fold(k,8)];m1:=work[p.at_mag+5+spk_fold(k,8)];
+        #assert work[p.at_re+k]==m && work[p.at_im+k]==0;
+        t:=sf_turn((4-k%4)%4,4);
+        if m>0 {#assert work[p.at_re+8+k]==m1*t.re && work[p.at_im+8+k]==m1*t.im;}
+    }
+    // A consistent target from the true phases converges to distance 0.
+    sh.iters=40;sh.block=4;curve2:[40]f64;
+    p=spk_test_block(sh,3,4,6,true,work[..]);
+    #assert spk_solve(sh,p,3,4,work[..],curve2[..])==3+40*11 && curve2[39]<0.6*curve2[0];
+    // n = 16, hop = 2: frame 1 turns frame 0's phase by an eighth turn per bin.
+    s16:=SpkShape.{rate=8000,n=16,hop=2,block=1,iters=0};
+    p=spk_test_block(s16,1,1,8,true,work[..]);
+    for k:0..<16 {
+        r0:=work[p.at_re+k];i0:=work[p.at_im+k];a0:=sqrt(r0*r0+i0*i0);m1:=work[p.at_mag+spk_fold(k,16)];
+        ph:=2*SF_PI*f64(k)*2/16;
+        #assert abs(work[p.at_re+16+k]-m1*(r0*cos(ph)-i0*sin(ph))/a0)<1e-12 && abs(work[p.at_im+16+k]-m1*(r0*sin(ph)+i0*cos(ph))/a0)<1e-12;
+    }
+    // One iteration against the references: the least-squares signal of
+    // the frames, their DFTs, the distance over the norm.
+    s1:=SpkShape.{rate=8000,n=16,hop=4,block=3,iters=1};
+    p=spk_test_block(s1,2,3,9,false,work[..]);
+    fr:[80]f64;fi:[80]f64;x:[32]f64;cr:[16]f64;ci:[16]f64;w:[16]f64;spk_window(w[..]);
+    for i:0..<80 {fr[i]=work[p.at_re+i];fi[i]=work[p.at_im+i];}
+    #assert spk_ref_istft(s1,fr[..],fi[..],5,x[..])==32;
+    d:=0.0;norm:=0.0;
+    for f:0..<5 {
+        spk_ref_frame(x[..],f*4,w[..],cr[..],ci[..]);
+        for k:0..<16 {
+            if f<2 {X:=work[p.at_re+f*16+k];Y:=work[p.at_im+f*16+k];d+=(X-cr[k])*(X-cr[k])+(Y-ci[k])*(Y-ci[k]);norm+=X*X+Y*Y;continue;}
+            m:=work[p.at_mag+(f-2)*9+spk_fold(k,16)];a:=sqrt(cr[k]*cr[k]+ci[k]*ci[k]);d+=(a-m)*(a-m);norm+=m*m;
+        }
+    }
+    c1:[1]f64;#assert spk_solve(s1,p,2,3,work[..],c1[..])==2+8 && abs(c1[0]-sqrt(d/norm))<1e-12 && c1[0]>0.1;
+    // A silent block: distance 0, and the frames stay 0.
+    for i:0..<2000 {work[i]=0;}
+    p=spk_plan(s1);spk_window(work[p.at_w..<p.at_w+16]);c1[0]=7;
+    for f:0..<3 {spk_guess(s1,work[p.at_re..<p.at_re+48],work[p.at_im..<p.at_im+48],f,work[p.at_mag+9*f..<p.at_mag+9*f+9]);}
+    #assert spk_solve(s1,p,0,3,work[..],c1[..])==6 && c1[0]==0;
+    for i:0..<48 {#assert work[p.at_re+i]==0 && work[p.at_im+i]==0;}
+}
+#test "a stream with one block is textbook Griffin-Lim, bit for bit" #steps 2000000000 {
+    u:[1]SpkUtterance;spk_test_utterance("hi",u[..]);sh:=spk_tiny();sh.block=32;
+    T:=spk_frames(u[..]);#assert T==36;L:=35*4+16;
+    re:[576]f64;im:[576]f64;mag:[324]f64;x:[156]f64;den:[156]f64;want:[156]f64;
+    #assert spk_ref_whole(sh,u[..],re[..],im[..],mag[..],x[..],den[..],want[..])==L;
+    work:[8000]f64;st:[1]SpkStream;got:[200]f64;
+    // 36 frames: blocks of 32 and 4.
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok && spk_ref_stream(st[..],u[..],work[..],got[..])==2;
+    #assert !spk_same(got[0..<L],want[..]);
+    sh.block=36-32+32;   // not allowed: more than 32
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.shape;
+    // A shorter utterance fits one block.
+    spk_test_utterance("a",u[..]);T=spk_frames(u[..]);#assert T==26;L=25*4+16;sh.block=26;
+    #assert spk_ref_whole(sh,u[..],re[..],im[..],mag[..],x[..],den[..],want[0..<L])==L;
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok && spk_ref_stream(st[..],u[..],work[..],got[..])==1;
+    #assert spk_same(got[0..<L],want[0..<L]) && st[0].emitted==L;
+    big:=0.0;for s:0..<L {big+=abs(got[s]);}#assert big>0.25;
+}
+#forall "a stream equals its blocks solved offline, bit for bit" block:1..<8 #steps 2000000000 {
+    u:[1]SpkUtterance;spk_test_utterance("hi",u[..]);sh:=spk_tiny();sh.block=block;
+    L:=35*4+16;re:[576]f64;im:[576]f64;want:[156]f64;work:[8000]f64;work2:[8000]f64;
+    #assert spk_ref_blocks(sh,u[..],work2[..],re[..],im[..],want[..])==L;
+    st:[1]SpkStream;got:[200]f64;
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok && spk_ref_stream(st[..],u[..],work[..],got[..])==(36+block-1)/block;
+    #assert spk_same(got[0..<L],want[..]) && st[0].emitted==L && st[0].next==36;
+}
+#test "first audio and transforms by hand" #steps 1000000000 {
+    // Blocks of 3 frames, 4 iterations, 3 frames of context, 36 frames.
+    // Block 0: 4 x (2 x 3) transforms and 3 to add its frames: 27, and 3
+    // hops (12 samples) are final. Block 1: 3 + 4 x (6 + 3) + 3 = 42.
+    // The last block ends the utterance: 2 hops + 16 samples.
+    u:[1]SpkUtterance;spk_test_utterance("hi",u[..]);sh:=spk_tiny();
+    work:[8000]f64;st:[1]SpkStream;out:[200]f64;curve:[4]f64;
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok && st[0].first_ffts==0 && st[0].first_samples==0;
+    r:=spk_next(st[..],u[..],work[..],out[..],curve[..]);
+    #assert r.status==SpkStatus.ok && r.samples==12 && r.at==0 && r.frames==3 && r.ffts==27 && !r.final;
+    #assert st[0].first_ffts==27 && st[0].first_samples==12;
+    r=spk_next(st[..],u[..],work[..],out[..],curve[..]);
+    #assert r.samples==12 && r.at==12 && r.ffts==42 && st[0].ffts==69 && st[0].first_ffts==27;
+    for k:2..<11 {r=spk_next(st[..],u[..],work[..],out[..],curve[..]);#assert r.ffts==42 && !r.final;}
+    r=spk_next(st[..],u[..],work[..],out[..],curve[..]);
+    #assert r.samples==2*4+16 && r.final && r.at==132 && st[0].emitted==156 && st[0].ffts==27+11*42;
+    #assert spk_next(st[..],u[..],work[..],out[..],curve[..]).status==SpkStatus.finished;
+    // No iterations: only the frames are added.
+    sh.iters=0;#assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok;
+    #assert spk_next(st[..],u[..],work[..],out[..],curve[0..<0]).ffts==3;
+}
+#test "stream refusals leave the stream as it was" #steps 1000000000 {
+    u:[1]SpkUtterance;spk_test_utterance("hi",u[..]);sh:=spk_tiny();
+    work:[8000]f64;st:[1]SpkStream;out:[200]f64;curve:[4]f64;
+    #assert spk_next(st[..],u[..],work[..],out[..],curve[..]).status==SpkStatus.closed;
+    #assert spk_cancel(st[..],u[..]).status==SpkStatus.closed;
+    bad:=[9]SpkShape.[SpkShape.{rate=7999,n=16,hop=4,block=3,iters=4},SpkShape.{rate=48001,n=16,hop=4,block=3,iters=4},
+        SpkShape.{rate=8000,n=12,hop=4,block=3,iters=4},SpkShape.{rate=8000,n=4,hop=2,block=3,iters=4},
+        SpkShape.{rate=8000,n=1024,hop=256,block=3,iters=4},SpkShape.{rate=8000,n=16,hop=16,block=3,iters=4},
+        SpkShape.{rate=8000,n=16,hop=0,block=3,iters=4},SpkShape.{rate=8000,n=16,hop=4,block=0,iters=4},
+        SpkShape.{rate=8000,n=16,hop=4,block=3,iters=65}];
+    for i:0..<9 {#assert spk_open(bad[i],u[..],work[..],st[..])==SpkStatus.shape;}
+    #assert spk_shape_ok(SpkShape.{rate=8000,n=64,hop=6,block=3,iters=4})==SpkStatus.shape;
+    #assert spk_shape_ok(SpkShape.{rate=8000,n=64,hop=4,block=3,iters=4})==SpkStatus.shape;
+    #assert spk_shape_ok(SpkShape.{rate=8000,n=16,hop=4,block=33,iters=4})==SpkStatus.shape;
+    #assert spk_shape_ok(SpkShape.{rate=8000,n=16,hop=4,block=3,iters= -1})==SpkStatus.shape;
+    #assert spk_shape_ok(SpkShape.{rate=48000,n=512,hop=64,block=32,iters=64})==SpkStatus.ok;
+    #assert spk_shape_ok(SpkShape.{rate=8000,n=8,hop=4,block=1,iters=0})==SpkStatus.ok;
+    #assert spk_shape_ok(SpkShape.{rate=8000,n=8,hop=1,block=1,iters=0})==SpkStatus.ok;
+    p:=spk_plan(sh);#assert p.work==2*3*16+2*28+2*6*16+3*9+3*(5*4+16)+3*16;
+    #assert spk_open(sh,u[..],work[0..<p.work-1],st[..])==SpkStatus.capacity;
+    v:[1]SpkUtterance;#assert spk_open(sh,v[..],work[..],st[..])==SpkStatus.empty;
+    #assert spk_phonemize("Hi",v[..])==SpkStatus.symbol && spk_open(sh,v[..],work[..],st[..])==SpkStatus.empty;
+    #assert spk_open(sh,u[..],work[0..<p.work],st[..])==SpkStatus.ok;
+    #assert spk_next(st[..],u[..],work[..],out[0..<11],curve[..]).status==SpkStatus.capacity;
+    #assert spk_next(st[..],u[..],work[..],out[..],curve[0..<3]).status==SpkStatus.capacity;
+    #assert st[0].next==0 && st[0].emitted==0 && st[0].ffts==0 && st[0].first_samples==0;
+    #assert spk_next(st[..],u[..],work[..],out[0..<12],curve[..]).status==SpkStatus.ok;
+    // The block after the refusals is the block a fresh stream makes.
+    work2:[8000]f64;st2:[1]SpkStream;out2:[12]f64;
+    #assert spk_open(sh,u[..],work2[..],st2[..])==SpkStatus.ok && spk_next(st2[..],u[..],work2[..],out2[..],curve[..]).ffts==27;
+    #assert spk_same(out[0..<12],out2[..]) && st[0].emitted==12 && st[0].ffts==27;
+}
+#test "barge-in reports exactly what was heard" #steps 2000000000 {
+    u:[1]SpkUtterance;spk_test_utterance("hi | ok",u[..]);sh:=spk_tiny();
+    T:=spk_frames(u[..]);L:=(T-1)*4+16;#assert T==77;
+    work:[8000]f64;st:[1]SpkStream;full:[400]f64;part:[400]f64;curve:[4]f64;
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok;
+    chunks:=spk_ref_stream(st[..],u[..],work[..],full[..]);#assert chunks==26;
+    points:=[10]int.[0,1,2,9,10,11,17,23,25,26];
+    for q:0..<10 {
+        k:=points[q];
+        #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok;
+        at:=0;for i:0..<k {r:=spk_next(st[..],u[..],work[..],part[at..<400],curve[..]);at+=r.samples;}
+        s:=spk_cancel(st[..],u[..]);
+        // Recount: frames added, samples they reach, the frame and phone
+        // under the last sample heard, the words that ended.
+        added:=tdt_min(3*k,T);reach:=0;if added>0 {reach=(added-1)*4+16;}
+        #assert s.status==SpkStatus.ok && s.emitted==at && s.pending==reach-at && s.unmade==L-reach;
+        #assert spk_same(part[0..<at],full[0..<at]);
+        phone:=-1;word:=-1;
+        if at>0 {f:=0;while f+1<T && (f+1)*4<=at-1 {f+=1;}k2:=0;while u[0].start[k2+1]<=f {k2+=1;}phone=u[0].id[k2];word=u[0].word[k2];}
+        heard:=0;if at>=30*4 {heard=1;}if at>=71*4 {heard=2;}
+        #assert s.phone==phone && s.word==word && s.heard==heard;
+        #assert spk_next(st[..],u[..],work[..],part[..],curve[..]).status==SpkStatus.cancelled;
+        #assert spk_cancel(st[..],u[..]).status==SpkStatus.cancelled;
+    }
+    // Blocks of one frame: after one block, frame 0 (silence) is heard and
+    // n - hop samples are pending. "a b": nothing heard of a one-phone word.
+    sh.block=1;spk_test_utterance("a b",u[..]);
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok && spk_cancel(st[..],u[..]).heard==0;
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok && spk_next(st[..],u[..],work[..],part[..],curve[..]).samples==4;
+    s:=spk_cancel(st[..],u[..]);#assert s.emitted==4 && s.pending==12 && s.phone==0 && s.word== -1 && s.heard==0;
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok;
+    for i:0..<7 {#assert spk_next(st[..],u[..],work[..],part[..],curve[..]).samples==4;}
+    s=spk_cancel(st[..],u[..]);#assert s.phone==2 && s.word==0 && s.heard==0;
+    // Eight frames over a sample: a stream reopened after a barge-in in the
+    // middle of a vowel equals a fresh one.
+    s8:=SpkShape.{rate=8000,n=16,hop=2,block=7,iters=2};spk_test_utterance("a",u[..]);
+    w2:[8000]f64;st2:[1]SpkStream;fresh:[200]f64;
+    #assert spk_open(s8,u[..],w2[..],st2[..])==SpkStatus.ok && spk_ref_stream(st2[..],u[..],w2[..],fresh[..])==4;
+    #assert spk_open(s8,u[..],work[..],st[..])==SpkStatus.ok && spk_next(st[..],u[..],work[..],part[..],curve[0..<2]).samples==14;
+    #assert spk_cancel(st[..],u[..]).pending==16-2;
+    #assert spk_open(s8,u[..],work[..],st[..])==SpkStatus.ok && spk_ref_stream(st[..],u[..],work[..],part[..])==4;
+    #assert spk_same(part[0..<66],fresh[0..<66]);
+}
+#test "the template recognizer by hand" {
+    labels:=[14]int.[0,0,2,2,2,3,4,4,0,0,4,4,1,1];out:[14]int;
+    n:=spk_runs(labels[..],out[..]);#assert n==2 && out[0]==2 && out[1]==4;
+    l2:=[5]int.[7,7,5,5,5];#assert spk_runs(l2[..],out[..])==2 && out[0]==7 && out[1]==5;
+    l3:=[5]int.[3,2,2,0,0];#assert spk_runs(l3[..],out[..])==1 && out[0]==2;
+    u:[1]SpkUtterance;spk_test_utterance("hello oh a",u[..]);meant:[8]int;
+    #assert spk_meant(u[..],meant[..])==6 && meant[0]==17 && meant[3]==5 && meant[4]==17 && meant[5]==2;
+    heard:=[4]int.[17,3,9,5];
+    #assert spk_phone_errors(meant[0..<5],heard[..])==1 && spk_phone_errors(meant[0..<5],meant[0..<5])==0;
+    // n = 64 at 8 kHz: 33 bins of 125 Hz, 8 mels.
+    sh:=SpkShape.{rate=8000,n=64,hop=16,block=3,iters=4};bank:[8*33]f64;tmpl:[26*8]f64;
+    #assert spk_templates(sh,bank[0..<8*33-1],tmpl[..])== -1 && spk_templates(sh,bank[..],tmpl[..])==8;
+    s:=spk_mel_spec(sh);#assert spk_mel_spec(SpkShape.{rate=8000,n=256,hop=64,block=1,iters=0}).mels==24 && s.mels==8 && s.fmax==4000 && s.n_fft==64 && s.periodic && !s.center && spk_mel_spec(spk_tiny()).mels==2;
+    for i:0..<16 {#assert tmpl[i]==log(0.0001);}
+    // 's' is noise only: 0.25 inside 3,000 to 4,000 Hz, falling off below.
+    for i:0..<8 {
+        v:=0.0;for k:0..<33 {l:=0.96*spk_level(14,false,120,f64(k)*125);v+=bank[i*33+k]*l*l;}
+        #assert tmpl[14*8+i]==log(v+0.0001);
+    }
+    // Silence is silence; a frame made from a phone's spectrum with zero
+    // phase is heard as that phone.
+    audio:[64]f64;lab:[5]int;spk_label(sh,audio[..],1,bank[..],tmpl[..],lab[..]);#assert lab[0]==0;
+    re:[64]f64;im:[64]f64;
+    for p:2..<26 {
+        for k:0..<64 {re[k]=0.96*spk_level(p,false,120,f64(spk_fold(k,64))*125);im[k]=0;}
+        #assert sf_fft(re[..],im[..],true)==SfStatus.ok;
+        for m:0..<64 {audio[m]=re[(m+32)%64];}
+        spk_label(sh,audio[..],1,bank[..],tmpl[..],lab[..]);
+        #assert lab[0]==p;
+    }
+    // Features against chapter 151's direct DFT and the bank by hand.
+    noise:[112]f64;spk_noise(4,noise[..]);w:[64]f64;spk_window(w[..]);fe:[8]f64;
+    for t:0..<4 {
+        spk_features(sh,noise[..],t,bank[..],fe[..]);spk_ref_frame(noise[..],16*t,w[..],re[..],im[..]);
+        for i:0..<8 {v:=0.0;for k:0..<33 {v+=bank[i*33+k]*(re[k]*re[k]+im[k]*im[k]);}#assert abs(fe[i]-log(v+0.0001))<1e-9;}
+    }
+    // Ties go to the lower phone: templates 2 and 3 both match silence exactly.
+    tie:[26*8]f64;for i:0..<26*8 {tie[i]=50;}
+    for i:0..<8 {tie[i]=0;tie[16+i]=log(0.0001);tie[24+i]=log(0.0001);}
+    for m:0..<64 {audio[m]=0;}
+    spk_label(sh,audio[..],1,bank[..],tie[..],lab[..]);#assert lab[0]==2;
+}
+
+// book:begin phones
+// Phones 0 and 1 are silence (6 frames) and a pause (20); 2-6 vowels, 7-12
+// sonorants, 13-17 fricatives, 18-19 voiced fricatives, 20-22 stops,
+// 23-25 voiced stops. Formants in Hz, voicing and noise gains, the noise
+// band in Hz, and the frames each lasts.
+SPK_NAMES :: [26]string.["_","|","a","e","i","o","u","m","n","l","r","w","y","f","s","sh","th","h","v","z","p","t","k","b","d","g"];
+SPK_F1 :: [26]f64.[0,0,730,530,270,570,300,280,280,360,420,300,280,0,0,0,0,0,300,300,0,0,0,300,300,300];
+SPK_F2 :: [26]f64.[0,0,1090,1840,2290,840,870,1300,1700,1300,1300,610,2250,0,0,0,0,0,1400,1700,0,0,0,1000,1700,2000];
+SPK_F3 :: [26]f64.[0,0,2440,2480,3010,2410,2240,2500,2600,2700,1600,2200,2900,0,0,0,0,0,2500,2600,0,0,0,2400,2600,2500];
+SPK_VOICE :: [26]f64.[0,0,1,1,1,1,1,0.5,0.5,0.5,0.5,0.5,0.5,0,0,0,0,0,0.3,0.3,0,0,0,0.2,0.2,0.2];
+SPK_NOISE :: [26]f64.[0,0,0,0,0,0,0,0,0,0,0,0,0,0.08,0.25,0.25,0.06,0.08,0.06,0.15,0.3,0.35,0.3,0.2,0.25,0.25];
+SPK_LO :: [26]f64.[0,0,0,0,0,0,0,0,0,0,0,0,0,1000,3000,1800,1500,500,1000,3000,500,2500,1500,500,2500,1500];
+SPK_HI :: [26]f64.[0,0,0,0,0,0,0,0,0,0,0,0,0,4000,4000,3500,4000,3500,4000,4000,2500,4000,3000,2000,4000,3000];
+SPK_FRAMES :: [26]int.[6,20,14,14,14,14,14,8,8,8,8,8,8,10,10,10,10,10,8,8,7,7,7,6,6,6];
+// book:end phones
+
+// book:begin normalize
+SPK_UNITS :: [20]string.["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve",
+    "thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen"];
+SPK_TENS :: [10]string.["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
+// The words for 0 to 999, each followed by a space.
+spk_number :: (v:int,out:[]u8,n:int)->int {
+    m:=n;
+    if v>=100 {m=spk_put(out,m,SPK_UNITS[v/100]);m=spk_put(out,m,"hundred");if v%100==0 {return m;}}
+    r:=v%100;
+    if r<20 {return spk_put(out,m,SPK_UNITS[r]);}
+    m=spk_put(out,m,SPK_TENS[r/10]);
+    if r%10==0 {return m;}
+    return spk_put(out,m,SPK_UNITS[r%10]);
+}
+// Append a word and a space; -1 when out is full or already failed.
+spk_put :: (out:[]u8,n:int,s:string)->int {
+    if n<0 || n+s.count+1>out.count {return -1;}
+    for i:0..<s.count {out[n+i]=s[i];}
+    out[n+s.count]=' ';return n+s.count+1;
+}
+// Letters are lowercased, apostrophes dropped, digit runs of up to three
+// written as words, % & + as words, , . ! ? ; : as a pause "|" and - as a
+// space. Words end with one space; pauses never repeat or start or end the
+// text. Anything else is refused at its byte.
+spk_normalize :: (text:string,out:[]u8)->SpkText {
+    if text.count>SPK_TEXT_MAX {return SpkText.{status=SpkStatus.length,at=SPK_TEXT_MAX};}
+    n:=0;i:=0;word:=false;
+    // The end of the text reads as a space: it ends the last word.
+    while i<=text.count {
+        c:u8=' ';if i<text.count {c=text[i];}
+        // Setting bit 5 lowercases a letter (A is 65, a is 97).
+        if (c|32)>='a' && (c|32)<='z' {
+            if n==out.count {return SpkText.{status=SpkStatus.capacity,at=i};}
+            out[n]=c|32;n+=1;word=true;i+=1;continue;
+        }
+        if c==39 {i+=1;continue;}
+        if word {n=spk_put(out,n,"");word=false;}
+        start:=i;
+        if c>='0' && c<='9' {
+            v:=0;while i<text.count && text[i]>='0' && text[i]<='9' {v=v*10+cast(int)(text[i]-'0');i+=1;if i-start>3 {return SpkText.{status=SpkStatus.number,at=start};}}
+            n=spk_number(v,out,n);
+        } else {
+            i+=1;
+            if c=='%' {n=spk_put(out,n,"percent");}
+            else if c=='&' {n=spk_put(out,n,"and");}
+            else if c=='+' {n=spk_put(out,n,"plus");}
+            else if c==',' || c=='.' || c=='!' || c=='?' || c==';' || c==':' {if n>=2 && out[n-2]!='|' {n=spk_put(out,n,"|");}}
+            else if c!=' ' && c!='-' {return SpkText.{status=SpkStatus.symbol,at=start};}
+        }
+        if n<0 {return SpkText.{status=SpkStatus.capacity,at=start};}
+    }
+    if n==0 {return SpkText.{status=SpkStatus.empty};}
+    // Drop a closing pause and the last space.
+    if out[n-2]=='|' {n-=2;}
+    return SpkText.{count=n-1};
+}
+// book:end normalize
+
+// book:begin letters
+spk_vowel_letter :: (c:u8)->bool {return c=='a' || c=='e' || c=='i' || c=='o' || c=='u';}
+// The phone index of a name in SPK_NAMES, or -1.
+spk_phone :: (name:string)->int {for p:0..<26 {if SPK_NAMES[p]==name {return p;}}return -1;}
+// Letter-to-sound for one word, digraphs before single letters. c is s
+// before e, i or y and k elsewhere; x is k s; y is a vowel after the first
+// letter; a final e after a consonant is silent in words of four letters or
+// more. Wrong for much of English spelling, and meant only to be fixed and
+// checkable.
+spk_word :: (w:string,u:[]SpkUtterance,index:int)->SpkStatus {
+    i:=0;n:=w.count;
+    while i<n {
+        c:=w[i];two:="";if i+1<n {two=w[i..<i+2];}
+        a:=w[i..<i+1];b:="";step:=2;
+        if two=="sh" || two=="ch" {a="sh";}
+        else if two=="th" {a="th";}
+        else if two=="ph" {a="f";}
+        else if two=="ng" {}   // n: a is already the first letter
+        else if two=="ck" {a="k";}
+        else if two=="qu" {a="k";b="w";}
+        else if two=="ee" || two=="ea" {a="i";}
+        else if two=="oo" {a="u";}
+        else if two=="ai" || two=="ay" {a="e";}
+        else {
+            step=1;
+            if c=='e' && i==n-1 && n>=4 && !spk_vowel_letter(w[i-1]) {break;}
+            if c=='c' {a="k";if two=="ce" || two=="ci" || two=="cy" {a="s";}}
+            if c=='x' {a="k";b="s";}
+            if c=='q' {a="k";}
+            if c=='j' {a="z";}
+            if c=='y' && i>0 {a="i";}
+        }
+        i+=step;
+        st:=spk_add(u,spk_phone(a),index);
+        if st==SpkStatus.ok && b.count>0 {st=spk_add(u,spk_phone(b),index);}
+        if st!=SpkStatus.ok {return st;}
+    }
+    return SpkStatus.ok;
+}
+// Append phone p of word w. A consonant does not repeat inside a word (ll,
+// ss); a phone past 256 or a frame past 2,048 is refused. The opening
+// silence is always phone 0.
+spk_add :: (u:[]SpkUtterance,p:int,w:int)->SpkStatus {
+    k:=u[0].phones;
+    if p>=7 && u[0].id[k-1]==p && u[0].word[k-1]==w {return SpkStatus.ok;}
+    if k==SPK_PHONES_MAX {return SpkStatus.length;}
+    t:=u[0].start[k]+SPK_FRAMES[p];
+    if t>SPK_FRAMES_MAX {return SpkStatus.length;}
+    u[0].id[k]=p;u[0].word[k]=w;u[0].start[k+1]=t;u[0].phones=k+1;
+    return SpkStatus.ok;
+}
+// Normalized text to phones: silence, each word's phones, a pause for each
+// "|", silence. Words must be lowercase letters.
+spk_phonemize :: (text:string,u:[]SpkUtterance)->SpkStatus {
+    u[0]=SpkUtterance.{};
+    st:=spk_add(u,0,-1);i:=0;
+    while i<text.count && st==SpkStatus.ok {
+        start:=i;while i<text.count && text[i]!=' ' {i+=1;}
+        w:=text[start..<i];i+=1;
+        if w=="|" {st=spk_add(u,1,-1);continue;}
+        for k:0..<w.count {if !(w[k]>='a' && w[k]<='z') {st=SpkStatus.symbol;}}
+        if st==SpkStatus.ok {st=spk_word(w,u,u[0].words);u[0].words+=1;}
+    }
+    if st==SpkStatus.ok {st=spk_add(u,0,-1);}
+    if st==SpkStatus.ok && u[0].words==0 {st=SpkStatus.empty;}
+    u[0].status=st;
+    return st;
+}
+spk_frames :: (u:[]SpkUtterance)->int {return u[0].start[u[0].phones];}
+// book:end letters
+
+// book:begin acoustic
+spk_peak :: (f:f64,center:f64,width:f64)->f64 {d:=(f-center)/width;return 1/(1+d*d);}
+// Three formant resonances: widths 90, 110 and 170 Hz, gains 1, 1/2, 1/4.
+spk_envelope :: (p:int,f:f64)->f64 {
+    return spk_peak(f,SPK_F1[p],90)+0.5*spk_peak(f,SPK_F2[p],110)+0.25*spk_peak(f,SPK_F3[p],170);
+}
+// Harmonics of the pitch: 1 at each multiple of f0, 0 halfway between.
+spk_comb :: (x:f64)->f64 {c:=(1+cos(2*SF_PI*x))/2;c*=c;return c*c;}
+// 1 inside the noise band, falling off over 300 Hz outside it: a peak
+// centred on f clamped into [lo, hi], max and min written with abs.
+spk_band :: (f:f64,lo:f64,hi:f64)->f64 {
+    up:=(f+lo+abs(f-lo))/2;
+    return spk_peak(f,(up+hi-abs(up-hi))/2,300);
+}
+// Phone p at frequency f, pitch f0: voicing shaped by the formants on the
+// comb, plus the noise band unless the phone is a stop still closed.
+spk_level :: (p:int,closed:bool,f0:f64,f:f64)->f64 {
+    v:=SPK_VOICE[p]*spk_envelope(p,f)*spk_comb(f/f0);
+    if closed {return v;}
+    return v+SPK_NOISE[p]*spk_band(f,SPK_LO[p],SPK_HI[p]);
+}
+// The phone that frame t falls in.
+spk_phone_at :: (u:[]SpkUtterance,t:int)->int {k:=0;while u[0].start[k+1]<=t {k+=1;}return k;}
+// Frame t's magnitudes, bins 0 to n/2 (bin b is b rate/n Hz). The pitch
+// falls from 140 to 100 Hz over the utterance. A stop is closed (only its
+// voicing) until its last two frames, the burst. Frame j of a phone is
+// (j + 1)/3 of itself, at most all of it, and the rest the phone before as
+// it ended: 2/3, then 1/3, then nothing. A level of 1 is a sinusoid of
+// amplitude SPK_GAIN: n/4 under the window.
+spk_frame :: (sh:SpkShape,u:[]SpkUtterance,t:int,mag:[]f64) {
+    k:=spk_phone_at(u,t);p:=u[0].id[k];j:=t-u[0].start[k];
+    f0:=140-40*f64(t)/f64(spk_frames(u));scale:=SPK_GAIN*f64(sh.n)/4;
+    closed:=p>=20 && j<SPK_FRAMES[p]-2;a:=f64(tdt_min(j+1,3))/3;
+    for b:0..<sh.n/2+1 {
+        f:=f64(b*sh.rate)/f64(sh.n);v:=spk_level(p,closed,f0,f);
+        if k>0 {v=a*v+(1-a)*spk_level(u[0].id[k-1],false,f0,f);}
+        mag[b]=scale*v;
+    }
+}
+// book:end acoustic
+
+// book:begin stft
+// FFT sizes are powers of two from 8 to 512; hop divides n with 2 to 8
+// frames over each sample; the context is the n/hop - 1 frames before a
+// block that still overlap it.
+spk_shape_ok :: (sh:SpkShape)->SpkStatus {
+    if sh.rate<SF_RATE_MIN || sh.rate>SF_RATE_MAX || sh.hop<1 {return SpkStatus.shape;}
+    // n is 8 doubled until it reaches n or 512; n/hop is 2 doubled until it
+    // reaches n/hop or 8.
+    m:=8;while m<sh.n && m<SPK_N_MAX {m*=2;}
+    r:=2;while r<sh.n/sh.hop && r<8 {r*=2;}
+    if m!=sh.n || r*sh.hop!=sh.n {return SpkStatus.shape;}
+    if sh.block<1 || sh.block>SPK_BLOCK_MAX || sh.iters<0 || sh.iters>SPK_ITERS_MAX {return SpkStatus.shape;}
+    return SpkStatus.ok;
+}
+spk_plan :: (sh:SpkShape)->SpkPlan {
+    p:SpkPlan;p.status=spk_shape_ok(sh);if p.status!=SpkStatus.ok {return p;}
+    n:=sh.n;c:=n/sh.hop-1;f:=c+sh.block;p.context=c;p.span=(f-1)*sh.hop+n;p.pending=sh.block*sh.hop+n;
+    p.at_cim=c*n;p.at_num=2*c*n;p.at_den=p.at_num+p.pending;p.at_re=p.at_den+p.pending;p.at_im=p.at_re+f*n;
+    p.at_mag=p.at_im+f*n;p.at_x=p.at_mag+sh.block*(n/2+1);p.at_xden=p.at_x+p.span;p.at_base=p.at_xden+p.span;
+    p.at_w=p.at_base+p.span;p.at_tr=p.at_w+n;p.at_ti=p.at_tr+n;p.work=p.at_ti+n;
+    return p;
+}
+spk_part :: (a:[]f64,at:int,n:int)->[]f64 {return a[at..<at+n];}
+// A Hann window sampled half a sample off the grid: w[m] = 0.5 - 0.5
+// cos(2 pi (m + 1/2)/n). No sample is 0, so every sample of a span is
+// reached; with 3 or more frames over a sample the squares add to 3n/(8 hop).
+spk_window :: (w:[]f64) {n:=w.count;for m:0..<n {w[m]=0.5-0.5*sf_turn(2*m+1,2*n).re;}}
+// Add the windowed inverse transform of spectrum (re, im) to num at at.
+spk_synthesize :: (re:[]f64,im:[]f64,w:[]f64,tr:[]f64,ti:[]f64,num:[]f64,at:int) {
+    n:=w.count;for m:0..<n {tr[m]=re[m];ti[m]=im[m];}
+    spk_inverse(tr,ti);
+    for m:0..<n {num[at+m]+=w[m]*tr[m];}
+}
+spk_inverse :: (re:[]f64,im:[]f64) {#assert sf_fft(re,im,true)==SfStatus.ok;}
+spk_window_add :: (w:[]f64,den:[]f64,at:int) {for m:0..<w.count {den[at+m]+=w[m]*w[m];}}
+// The transform of the windowed n samples of x from at.
+spk_analyze :: (x:[]f64,at:int,w:[]f64,tr:[]f64,ti:[]f64) {
+    for m:0..<w.count {tr[m]=x[at+m]*w[m];ti[m]=0;}
+    #assert sf_fft(tr,ti,false)==SfStatus.ok;
+}
+// The least-squares signal: num / den.
+spk_divide :: (num:[]f64,den:[]f64,x:[]f64) {for s:0..<x.count {x[s]=num[s]/den[s];}}
+// book:end stft
+
+// book:begin solve
+spk_fold :: (k:int,n:int)->int {return tdt_min(k,n-k);}
+// First estimate of block frame f from target magnitudes mag: phase 0 for
+// the block's first frame; otherwise frame f - 1's phase (0 where it has no
+// energy) turned by 2 pi k hop/n at bin k, as a sinusoid at bin k turns in
+// one hop.
+spk_guess :: (sh:SpkShape,re:[]f64,im:[]f64,f:int,mag:[]f64) {
+    n:=sh.n;
+    for k:0..<n {
+        m:=mag[spk_fold(k,n)];re[f*n+k]=m;im[f*n+k]=0;
+        if f==0 {continue;}
+        ur:=1.0;ui:=0.0;pr:=re[(f-1)*n+k];pi:=im[(f-1)*n+k];a:=sqrt(pr*pr+pi*pi);if a>0 {ur=pr/a;ui=pi/a;}
+        t:=sf_turn((k*(n-sh.hop))%n,n);
+        re[f*n+k]=m*(ur*t.re-ui*t.im);im[f*n+k]=m*(ur*t.im+ui*t.re);
+    }
+}
+// Griffin-Lim on one block. Frames 0 .. c - 1 of the block are fixed
+// context; frames c .. c + b - 1 hold first estimates and have target
+// magnitudes mag (b rows of n/2 + 1). Each iteration makes the
+// least-squares signal of all c + b frames, transforms it again, and gives
+// each free frame its target magnitude with the new phase (keeping the old
+// one at a bin where the new transform is exactly 0). curve[i] is the
+// distance from iteration i's frames to the transform of their signal, over
+// the frames' norm; Griffin and Lim's argument makes it non-increasing.
+// Returns the transforms done.
+spk_solve :: (sh:SpkShape,p:SpkPlan,c:int,b:int,work:[]f64,curve:[]f64)->int {
+    n:=sh.n;h:=sh.hop;span:=(c+b-1)*h+n;bins:=n/2+1;
+    re:=spk_part(work,p.at_re,(c+b)*n);im:=spk_part(work,p.at_im,(c+b)*n);mag:=spk_part(work,p.at_mag,b*bins);
+    x:=spk_part(work,p.at_x,span);den:=spk_part(work,p.at_xden,span);base:=spk_part(work,p.at_base,span);
+    w:=spk_part(work,p.at_w,n);tr:=spk_part(work,p.at_tr,n);ti:=spk_part(work,p.at_ti,n);
+    if sh.iters==0 {return 0;}
+    norm:=0.0;
+    for s:0..<span {base[s]=0;den[s]=0;}
+    for f:0..<c+b {spk_window_add(w,den,f*h);}
+    for f:0..<c {
+        spk_synthesize(spk_part(re,f*n,n),spk_part(im,f*n,n),w,tr,ti,base,f*h);
+        for k:0..<n {norm+=re[f*n+k]*re[f*n+k]+im[f*n+k]*im[f*n+k];}
+    }
+    for f:0..<b {for k:0..<n {m:=mag[f*bins+spk_fold(k,n)];norm+=m*m;}}
+    for i:0..<sh.iters {
+        for s:0..<span {x[s]=base[s];}
+        for f:c..<c+b {spk_synthesize(spk_part(re,f*n,n),spk_part(im,f*n,n),w,tr,ti,x,f*h);}
+        spk_divide(x,den,x);
+        d:=0.0;
+        for f:0..<c+b {
+            spk_analyze(x,f*h,w,tr,ti);
+            for k:0..<n {
+                at:=f*n+k;
+                if f<c {dr:=re[at]-tr[k];di:=im[at]-ti[k];d+=dr*dr+di*di;continue;}
+                m:=mag[(f-c)*bins+spk_fold(k,n)];a:=sqrt(tr[k]*tr[k]+ti[k]*ti[k]);d+=(a-m)*(a-m);
+                if a>0 {re[at]=m*(tr[k]/a);im[at]=m*(ti[k]/a);}
+            }
+        }
+        curve[i]=0;if norm>0 {curve[i]=sqrt(d/norm);}
+    }
+    return c+sh.iters*(2*b+c);
+}
+// book:end solve
+
+// book:begin stream
+spk_open :: (sh:SpkShape,u:[]SpkUtterance,work:[]f64,st:[]SpkStream)->SpkStatus {
+    p:=spk_plan(sh);if p.status!=SpkStatus.ok {return p.status;}
+    if u[0].status!=SpkStatus.ok || u[0].phones==0 {return SpkStatus.empty;}
+    if work.count<p.work {return SpkStatus.capacity;}
+    st[0]=SpkStream.{open=true,shape=sh,plan=p};
+    for i:0..<p.pending {work[p.at_num+i]=0;work[p.at_den+i]=0;}
+    spk_window(spk_part(work,p.at_w,sh.n));
+    return SpkStatus.ok;
+}
+// The next block of the utterance spk_open was given (the caller keeps it
+// unchanged): its frames from the acoustic model, Griffin-Lim with the
+// kept context, its frames added to the samples not yet final, and every
+// sample no later frame reaches written to out. Refused with nothing
+// changed when out or curve is too small.
+spk_next :: (st:[]SpkStream,u:[]SpkUtterance,work:[]f64,out:[]f64,curve:[]f64)->SpkChunk {
+    if !st[0].open {return SpkChunk.{status=SpkStatus.closed};}
+    if st[0].stopped {return SpkChunk.{status=SpkStatus.cancelled};}
+    sh:=st[0].shape;p:=st[0].plan;n:=sh.n;h:=sh.hop;bins:=n/2+1;
+    T:=spk_frames(u);next:=st[0].next;
+    if next==T {return SpkChunk.{status=SpkStatus.finished};}
+    b:=tdt_min(sh.block,T-next);end:=next+b==T;
+    count:=b*h;if end {count=(b-1)*h+n;}
+    if out.count<count || curve.count<sh.iters {return SpkChunk.{status=SpkStatus.capacity};}
+    c:=tdt_min(p.context,next);
+    for i:0..<c*n {work[p.at_re+i]=work[i];work[p.at_im+i]=work[p.at_cim+i];}
+    re:=spk_part(work,p.at_re,(c+b)*n);im:=spk_part(work,p.at_im,(c+b)*n);
+    for j:0..<b {
+        mag:=spk_part(work,p.at_mag+j*bins,bins);
+        spk_frame(sh,u,next+j,mag);spk_guess(sh,re,im,c+j,mag);
+    }
+    ffts:=spk_solve(sh,p,c,b,work,curve)+b;
+    num:=spk_part(work,p.at_num,p.pending);den:=spk_part(work,p.at_den,p.pending);
+    w:=spk_part(work,p.at_w,n);tr:=spk_part(work,p.at_tr,n);ti:=spk_part(work,p.at_ti,n);
+    for j:0..<b {
+        spk_synthesize(spk_part(re,(c+j)*n,n),spk_part(im,(c+j)*n,n),w,tr,ti,num,j*h);spk_window_add(w,den,j*h);
+    }
+    spk_divide(num,den,out[0..<count]);
+    for i:0..<p.pending {
+        num[i]=0;den[i]=0;
+        if i+count<p.pending {num[i]=num[i+count];den[i]=den[i+count];}
+    }
+    // Keep the last frames as the next block's context.
+    k:=tdt_min(p.context,c+b);
+    for i:0..<k*n {work[i]=re[(c+b-k)*n+i];work[p.at_cim+i]=im[(c+b-k)*n+i];}
+    r:=SpkChunk.{samples=count,at=st[0].emitted,frames=b,ffts=ffts,final=end};
+    st[0].next+=b;st[0].emitted+=count;st[0].ffts+=ffts;
+    if st[0].first_samples==0 {st[0].first_ffts=st[0].ffts;st[0].first_samples=count;}
+    return r;
+}
+// book:end stream
+
+// book:begin cancel
+// Barge-in: stop now. Of the utterance's (T - 1) hop + n samples, emitted
+// were handed out; pending have some frames added but are not final and
+// are dropped; unmade were never started. The phone and word under the
+// last emitted sample (the last frame added: emitted samples end at its
+// hop, or at the end), and the words heard to their end: all words but
+// those with a phone whose last hop is not emitted. Phone 0 is silence.
+spk_cancel :: (st:[]SpkStream,u:[]SpkUtterance)->SpkStop {
+    if !st[0].open {return SpkStop.{status=SpkStatus.closed};}
+    if st[0].stopped {return SpkStop.{status=SpkStatus.cancelled};}
+    st[0].stopped=true;
+    h:=st[0].shape.hop;T:=spk_frames(u);E:=st[0].emitted;next:=st[0].next;
+    total:=(T-1)*h+st[0].shape.n;pending:=0;
+    if next>0 {pending=(next-1)*h+st[0].shape.n-E;}
+    r:=SpkStop.{emitted=E,pending=pending,unmade=total-E-pending,phone=-1,word=-1};
+    if next>0 {k:=spk_phone_at(u,next-1);r.phone=u[0].id[k];r.word=u[0].word[k];}
+    r.heard=u[0].words;
+    for k:1..<u[0].phones {w:=u[0].word[k];if w>=0 && u[0].start[k+1]*h>E {r.heard=tdt_min(r.heard,w);}}
+    return r;
+}
+// book:end cancel
+
+// book:begin hear
+// A template recognizer, to check that the spectra survive the vocoder.
+// Features are chapter 151's log-mel energies: n/8 Slaney mels (at most
+// 24) from 0 Hz to half the rate, on the power of a frame, log(v + 1e-4).
+// A phone's template is its spectrum at 120 Hz (a stop's burst); each frame of audio takes the nearest template, silence
+// standing for the pause too. It knows nothing the acoustic model does
+// not; it is not a speech recognizer.
+spk_mel_spec :: (sh:SpkShape)->SfSpec {
+    return SfSpec.{rate=sh.rate,n_fft=sh.n,win_length=sh.n,hop=sh.hop,window=SfWindow.hann,periodic=true,center=false,pad=SfPad.zero,
+        preemphasis=0,mels=tdt_min(24,sh.n/8),fmin=0,fmax=f64(sh.rate)/2,scale=SfScale.slaney,norm=SfNorm.none,log=SfLog.add,
+        guard=0.0001,normalize=SfNormalize.none};
+}
+// Log-mel features of one frame's power spectrum (bins 0 to n/2). Every
+// filter is 0 at 0 Hz, so bin 0 is skipped.
+spk_mel :: (s:SfSpec,bank:[]f64,power:[]f64,out:[]f64) {
+    bins:=power.count;
+    for i:0..<s.mels {v:=0.0;for k:1..<bins {v+=bank[i*bins+k]*power[k];}out[i]=sf_log(v,s.log,s.guard);}
+}
+// The bank and the 26 templates; the mels, or -1 if the bank is refused.
+spk_templates :: (sh:SpkShape,bank:[]f64,tmpl:[]f64)->int {
+    s:=spk_mel_spec(sh);if sf_mel_bank(s,bank).status!=SfStatus.ok {return -1;}
+    bins:=sh.n/2+1;scale:=SPK_GAIN*f64(sh.n)/4;power:[SPK_N_MAX/2+1]f64;
+    for p:0..<26 {
+        for b:1..<bins {v:=scale*spk_level(p,false,120,f64(b*sh.rate)/f64(sh.n));power[b]=v*v;}
+        spk_mel(s,bank,power[0..<bins],tmpl[p*s.mels..<(p+1)*s.mels]);
+    }
+    return s.mels;
+}
+// Frame t's log-mel features (the mels of spk_mel_spec).
+spk_features :: (sh:SpkShape,audio:[]f64,t:int,bank:[]f64,out:[]f64) {
+    n:=sh.n;bins:=n/2+1;w:[SPK_N_MAX]f64;tr:[SPK_N_MAX]f64;ti:[SPK_N_MAX]f64;power:[SPK_N_MAX/2+1]f64;
+    spk_window(w[0..<n]);spk_analyze(audio,t*sh.hop,w[0..<n],tr[0..<n],ti[0..<n]);
+    for k:1..<bins {power[k]=tr[k]*tr[k]+ti[k]*ti[k];}
+    spk_mel(spk_mel_spec(sh),bank,power[0..<bins],out);
+}
+// Label frames 0 .. frames - 1 of audio (at least (frames - 1) hop + n
+// samples) with the nearest template, skipping the pause's; ties go to the
+// lower phone.
+spk_label :: (sh:SpkShape,audio:[]f64,frames:int,bank:[]f64,tmpl:[]f64,labels:[]int) {
+    m:=spk_mel_spec(sh).mels;f:[24]f64;
+    for t:0..<frames {
+        spk_features(sh,audio,t,bank,f[0..<m]);
+        best:=-1;bd:=0.0;
+        for p:0..<26 {
+            if p==1 {continue;}
+            d:=spk_distance(f[0..<m],tmpl,p);
+            if best<0 || d<bd {best=p;bd=d;}
+        }
+        labels[t]=best;
+    }
+}
+spk_distance :: (f:[]f64,tmpl:[]f64,p:int)->f64 {d:=0.0;for i:0..<f.count {e:=f[i]-tmpl[p*f.count+i];d+=e*e;}return d;}
+// Phones as heard: runs of one label at least two frames long, silence
+// dropped, repeats merged. Phones as meant: the utterance's, the same way.
+// Each written to out as indices; the counts.
+spk_runs :: (labels:[]int,out:[]int)->int {
+    m:=0;t:=0;
+    while t<labels.count {
+        s:=t;while t<labels.count && labels[t]==labels[s] {t+=1;}
+        p:=labels[s];
+        if t-s>=2 && p>=2 && (m==0 || out[m-1]!=p) {out[m]=p;m+=1;}
+    }
+    return m;
+}
+spk_meant :: (u:[]SpkUtterance,out:[]int)->int {
+    m:=0;
+    for k:1..<u[0].phones {p:=u[0].id[k];if p>=2 && (m==0 || out[m-1]!=p) {out[m]=p;m+=1;}}
+    return m;
+}
+// Phone error rate's numerator: chapter 153's edit distance over the names.
+spk_phone_errors :: (meant:[]int,heard:[]int)->int {
+    a:[SPK_PHONES_MAX]string;b:[SPK_FRAMES_MAX]string;row:[SPK_FRAMES_MAX+1]int;
+    for i:0..<meant.count {a[i]=SPK_NAMES[meant[i]];}
+    for i:0..<heard.count {b[i]=SPK_NAMES[heard[i]];}
+    return tdt_distance(a[0..<meant.count],b[0..<heard.count],row[..]);
+}
+// book:end hear

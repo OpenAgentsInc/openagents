@@ -1,0 +1,70 @@
+// Chapter 155: speak the answer. One sentence through every stage: text
+// normalized, phones, the stream of audio blocks with the first audio's
+// cost, the check against the same blocks solved offline, the template
+// recognizer's phone errors, and a barge-in partway through.
+#import "Basic";
+#load "../lib/speak.coax";
+
+TEXT :: "The answer is 42.";
+show :: (u:[]SpkUtterance) {for k:0..<u[0].phones {print(" %",SPK_NAMES[u[0].id[k]]);}print("\n");}
+// Word i of normalized text.
+word_at :: (text:string,i:int)->string {
+    k:=0;at:=0;
+    for j:0..<text.count+1 {if j==text.count || text[j]==' ' {if k==i {return text[at..<j];}k+=1;at=j+1;}}
+    return "";
+}
+showp :: (p:[]int) {for k:0..<p.count {print(" %",SPK_NAMES[p[k]]);}print("\n");}
+
+main :: () {
+// book:begin text
+    out:[256]u8;r:=spk_normalize(TEXT,out[..]);#assert r.status==SpkStatus.ok;
+    text:=cast(string)out[0..<r.count];
+    print("text: %\nnormalized: %\n",TEXT,text);
+    u:[1]SpkUtterance;#assert spk_phonemize(text,u[..])==SpkStatus.ok;
+    T:=spk_frames(u[..]);
+    print("% phones in % words:",u[0].phones,u[0].words);show(u[..]);
+// book:end text
+
+// book:begin stream
+    // 8 kHz, 256-point frames every 64 samples (8 ms), blocks of 8 frames
+    // (64 ms), 24 Griffin-Lim iterations a block.
+    sh:=SpkShape.{rate=8000,n=256,hop=64,block=8,iters=24};p:=spk_plan(sh);L:=(T-1)*64+256;
+    print("% frames, % samples (% ms); context % frames, work % values\n",T,L,L/8,p.context,p.work);
+    work:[40000]f64;st:[1]SpkStream;audio:[40000]f64;curve:[24]f64;
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok;
+    at:=0;chunks:=0;
+    while true {
+        c:=spk_next(st[..],u[..],work[..],audio[at..<40000],curve[..]);
+        if c.status!=SpkStatus.ok {print("then: %\n",c.status);break;}
+        if chunks==0 {print("first audio: % samples (% ms) after % frames and % transforms\n",c.samples,c.samples/8,c.frames,c.ffts);}
+        if chunks==4 {print("block 4 (frames 32 to 39): distance % after 1 iteration, % after 24\n",curve[0],curve[23]);}
+        at+=c.samples;chunks+=1;
+        if c.final {print("last block: % frames, % samples; % blocks, % samples, % transforms in all\n",c.frames,c.samples,chunks,at,st[0].ffts);}
+    }
+    peak:=0.0;for s:0..<at {if abs(audio[s])>peak {peak=abs(audio[s]);}}
+    print("peak amplitude %\n",peak);
+// book:end stream
+
+// book:begin offline
+    work2:[40000]f64;re:[100000]f64;im:[100000]f64;want:[40000]f64;
+    #assert spk_ref_blocks(sh,u[..],work2[..],re[..],im[..],want[..])==L;
+    print("stream equals its blocks solved offline, bit for bit: %\n",spk_same(audio[0..<at],want[0..<L]));
+// book:end offline
+
+// book:begin hear
+    bank:[24*129]f64;tmpl:[26*24]f64;#assert spk_templates(sh,bank[..],tmpl[..])==24;
+    labels:[600]int;spk_label(sh,audio[0..<at],T,bank[..],tmpl[..],labels[0..<T]);
+    meant:[256]int;heard:[600]int;m:=spk_meant(u[..],meant[..]);h:=spk_runs(labels[0..<T],heard[..]);
+    print("meant:");showp(meant[0..<m]);print("heard:");showp(heard[0..<h]);
+    print("% phone errors in % (template recognizer)\n",spk_phone_errors(meant[0..<m],heard[0..<h]),m);
+// book:end hear
+
+// book:begin barge
+    #assert spk_open(sh,u[..],work[..],st[..])==SpkStatus.ok;
+    at=0;for i:0..<10 {at+=spk_next(st[..],u[..],work[..],audio[at..<40000],curve[..]).samples;}
+    s:=spk_cancel(st[..],u[..]);
+    print("barge-in after 10 blocks: % samples emitted (% ms), % pending dropped, % never made\n",s.emitted,s.emitted/8,s.pending,s.unmade);
+    print("  stopped in phone '%' of word % (%); words heard to their end: %\n",SPK_NAMES[s.phone],s.word,word_at(text,s.word),s.heard);
+    print("  next block: %\n",spk_next(st[..],u[..],work[..],audio[..],curve[..]).status);
+// book:end barge
+}
