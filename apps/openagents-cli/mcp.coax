@@ -1,0 +1,385 @@
+// openagents mcp: the realm commands as MCP tools, over stdio (#12636).
+//   openagents mcp [--read-only] [--domains realm] [--profile NAME] [--origin URL]
+//   claude mcp add openagents -- openagents mcp
+// Requests and answers are JSON-RPC 2.0, one JSON object a line. Each tool is
+// one row of REALM_COMMANDS (commands.coax): its name is realm_VERB, its
+// input schema comes from the row's argument and flag kinds and their bounds.
+// A call runs this same program as a child, `openagents realm VERB ... --json`,
+// so a tool does exactly what the command does, with the same checks, key and
+// exit codes. realm_shot also answers with the PNG as an image.
+// skill.coax writes the same table as a Claude skill.
+// Not here: Anime Lab tools (#12634), resources, prompts and paging.
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign;
+
+MCP_LINE :: 1048576;
+MCP_OUT :: 8388608;
+MCP_PNG :: 4194304;
+MCP_CHILD :: 262144;
+MCP_PROTOCOL :: "2025-06-18";
+
+McpCfg :: struct { read_only: bool; profile: string; origin: string; exe: string; }
+
+// ---- the tools, from the command table -------------------------------------------
+
+mcp_offered :: (c: CliCommand, read_only: bool) -> bool {
+  if !read_only { return true; }
+  return c.method == "GET" || c.verb == "shot";
+}
+// The property a positional argument becomes: metres are x then z.
+mcp_arg_name :: (kind: string, index_of_kind: int) -> string {
+  if kind == "newwords" || kind == "words" { return "words"; }
+  if kind == "metres" { return ifx index_of_kind == 0 then "x" else "z"; }
+  if kind == "onoff" { return "on"; }
+  if kind == "lore" { return "text"; }
+  if kind == "shotfile" { return "out"; }
+  return kind;
+}
+// The property a flag becomes: --as-me is as_me.
+mcp_flag_name :: (flag: string, out: [] u8) -> string {
+  n := 0;
+  for i: 2..<flag.count { if n < out.count { out[n] = ifx flag[i] == '-' then '_' else flag[i]; n += 1; } }
+  return cast(string) out[0..<n];
+}
+mcp_tool_name :: (verb: string, out: [] u8) -> string {
+  n := copy("realm_", out);
+  for c: verb { if n < out.count { out[n] = ifx c == '-' then '_' else c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// How many earlier positionals of the row share this kind (the second metres is z).
+mcp_kind_index :: (c: CliCommand, at: int) -> int {
+  kind := cli_field(c.arguments, at); k := 0;
+  for j: 0..<at { if cli_field(c.arguments, j) == kind { k += 1; } }
+  return k;
+}
+mcp_schema_kind :: (o: [] Jo, kind: string) {
+  jo_obj(o);
+  b := rc_bound(kind);
+  if kind == "bool" { jo_key(o, "type"); jo_str(o, "boolean"); }
+  else if kind == "id" || kind == "waitms" {
+    jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
+  } else if kind == "metres" || kind == "yaw" {
+    jo_key(o, "type"); jo_str(o, "number"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
+  } else if kind == "onoff" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); jo_str(o, "on"); jo_str(o, "off"); jo_end(o);
+  } else if kind == "visibility" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); jo_str(o, "private"); jo_str(o, "unlisted"); jo_str(o, "public"); jo_end(o);
+  } else if kind == "step" {
+    jo_key(o, "type"); jo_str(o, "array"); jo_key(o, "maxItems"); jo_int(o, 3);
+    jo_key(o, "items"); jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "maxLength"); jo_int(o, b.max); jo_end(o);
+  } else {
+    jo_key(o, "type"); jo_str(o, "string");
+    if b.min > 0 { jo_key(o, "minLength"); jo_int(o, b.min); }
+    if b.max > 0 { jo_key(o, "maxLength"); jo_int(o, b.max); }
+  }
+  jo_end(o);
+}
+// A positional the caller may leave out: shot's file, new's words with --from, ask's words with --doc.
+mcp_optional_at :: (c: CliCommand, at: int, count: int) -> bool {
+  if at >= count - c.optional { return true; }
+  return (c.verb == "new" || c.verb == "ask") && at == 0;
+}
+mcp_tool :: (o: [] Jo, c: CliCommand) {
+  nm: [64] u8; fl: [64] u8;
+  jo_obj(o);
+  jo_key(o, "name"); jo_str(o, mcp_tool_name(c.verb, nm[..]));
+  jo_key(o, "description"); jo_str(o, c.help);
+  jo_key(o, "inputSchema"); jo_obj(o);
+  jo_key(o, "type"); jo_str(o, "object");
+  jo_key(o, "properties"); jo_obj(o);
+  count := 0; while cli_field(c.arguments, count) != "" { count += 1; }
+  for i: 0..<count { kind := cli_field(c.arguments, i); jo_key(o, mcp_arg_name(kind, mcp_kind_index(c, i))); mcp_schema_kind(o, kind); }
+  i := 0;
+  while cli_field(c.flags, i) != "" {
+    f := cli_field(c.flags, i); colon := 0;
+    while colon < f.count && f[colon] != ':' { colon += 1; }
+    jo_key(o, mcp_flag_name(f[0..<colon], fl[..]));
+    mcp_schema_kind(o, ifx colon < f.count then f[colon+1..<f.count] else "bool");
+    i += 1;
+  }
+  jo_end(o);
+  jo_key(o, "required"); jo_arr(o);
+  for j: 0..<count { if !mcp_optional_at(c, j, count) { jo_str(o, mcp_arg_name(cli_field(c.arguments, j), mcp_kind_index(c, j))); } }
+  jo_end(o);
+  jo_key(o, "additionalProperties"); jo_bool(o, false);
+  jo_end(o);
+  if c.method == "GET" { jo_key(o, "annotations"); jo_obj(o); jo_key(o, "readOnlyHint"); jo_bool(o, true); jo_end(o); }
+  jo_end(o);
+}
+mcp_find_tool :: (name: string) -> int {
+  nm: [64] u8;
+  for i: 0..<REALM_COMMANDS.count { if mcp_tool_name(REALM_COMMANDS[i].verb, nm[..]) == name { return i; } }
+  return -1;
+}
+
+// ---- a call becomes the command's argv ---------------------------------------------
+
+McpArgv :: struct { words: [64] string; n: int; buf: [65536] u8; used: int; err: string; }
+mcp_push :: (v: [] McpArgv, s: string) {
+  if v[0].n >= v[0].words.count { v[0].err = "too many arguments"; return; }
+  v[0].words[v[0].n] = s; v[0].n += 1;
+}
+// A JSON value as the command-line word it stands for: strings unescaped, numbers as written.
+mcp_word :: (v: [] McpArgv, d: Jv, at: int) -> bool {
+  k := jv_kind(d, at);
+  if k == JV_STRING {
+    n := jv_str(d, at, v[0].buf[v[0].used..<v[0].buf.count]);
+    if n < 0 { v[0].err = "arguments are too long"; return false; }
+    mcp_push(v, cast(string) v[0].buf[v[0].used..<v[0].used+n]); v[0].used += n; return true;
+  }
+  if k == JV_NUMBER { mcp_push(v, jv_raw(d, at)); return true; }
+  v[0].err = "an argument has the wrong type"; return false;
+}
+// Builds `EXE realm VERB POSITIONALS... FLAGS... --json [--profile P] [--origin O]`.
+// shot_out is used for shot's file when the call names none.
+mcp_argv :: (v: [] McpArgv, cfg: McpCfg, c: CliCommand, d: Jv, args: int, shot_out: string) {
+  nm: [64] u8;
+  v[0].n = 0; v[0].used = 0; v[0].err = "";
+  if args >= 0 && jv_kind(d, args) != JV_OBJECT { v[0].err = "arguments must be an object"; return; }
+  // every given key must be one of the tool's properties
+  m := ifx args >= 0 then d.nodes[args].first else -1;
+  while m >= 0 {
+    key := jv_key(d, m); known := false;
+    ai := 0; while cli_field(c.arguments, ai) != "" { if mcp_arg_name(cli_field(c.arguments, ai), mcp_kind_index(c, ai)) == key { known = true; } ai += 1; }
+    fi := 0;
+    while cli_field(c.flags, fi) != "" {
+      f := cli_field(c.flags, fi); colon := 0; while colon < f.count && f[colon] != ':' { colon += 1; }
+      if mcp_flag_name(f[0..<colon], nm[..]) == key { known = true; }
+      fi += 1;
+    }
+    if !known { v[0].err = "unknown argument"; return; }
+    m = d.nodes[m].next;
+  }
+  mcp_push(v, cfg.exe); mcp_push(v, "realm"); mcp_push(v, c.verb);
+  count := 0; while cli_field(c.arguments, count) != "" { count += 1; }
+  for i: 0..<count {
+    kind := cli_field(c.arguments, i);
+    at := jv_get(d, args, mcp_arg_name(kind, mcp_kind_index(c, i)));
+    if at < 0 {
+      if kind == "shotfile" && shot_out != "" { mcp_push(v, shot_out); continue; }
+      if mcp_optional_at(c, i, count) { continue; }
+      v[0].err = "a required argument is missing"; return;
+    }
+    if !mcp_word(v, d, at) { return; }
+  }
+  fi := 0;
+  while cli_field(c.flags, fi) != "" {
+    f := cli_field(c.flags, fi); colon := 0; while colon < f.count && f[colon] != ':' { colon += 1; }
+    flag := f[0..<colon]; kind := ifx colon < f.count then f[colon+1..<f.count] else "bool";
+    at := jv_get(d, args, mcp_flag_name(flag, nm[..]));
+    fi += 1;
+    if at < 0 { continue; }
+    if kind == "bool" {
+      if jv_kind(d, at) != JV_TRUE && jv_kind(d, at) != JV_FALSE { v[0].err = "a flag has the wrong type"; return; }
+      if jv_bool(d, at) { mcp_push(v, flag); }
+      continue;
+    }
+    if jv_kind(d, at) == JV_ARRAY {
+      for k: 0..<jv_len(d, at) { mcp_push(v, flag); if !mcp_word(v, d, jv_at(d, at, k)) { return; } }
+      continue;
+    }
+    mcp_push(v, flag);
+    if !mcp_word(v, d, at) { return; }
+  }
+  mcp_push(v, "--json");
+  if cfg.profile != "" { mcp_push(v, "--profile"); mcp_push(v, cfg.profile); }
+  if cfg.origin != "" { mcp_push(v, "--origin"); mcp_push(v, cfg.origin); }
+}
+
+// ---- JSON-RPC ------------------------------------------------------------------------
+
+mcp_id :: (o: [] Jo, d: Jv, id: int) {
+  if jv_kind(d, id) == JV_STRING { jo_requote(o, jv_raw(d, id)); }
+  else if jv_kind(d, id) == JV_NUMBER { jo_raw(o, jv_raw(d, id)); }
+  else { jo_null(o); }
+}
+mcp_error :: (o: [] Jo, d: Jv, id: int, code: int, message: string) {
+  jo_obj(o); jo_key(o, "jsonrpc"); jo_str(o, "2.0"); jo_key(o, "id"); mcp_id(o, d, id);
+  jo_key(o, "error"); jo_obj(o); jo_key(o, "code"); jo_int(o, code); jo_key(o, "message"); jo_str(o, message); jo_end(o);
+  jo_end(o);
+}
+mcp_result_start :: (o: [] Jo, d: Jv, id: int) {
+  jo_obj(o); jo_key(o, "jsonrpc"); jo_str(o, "2.0"); jo_key(o, "id"); mcp_id(o, d, id); jo_key(o, "result");
+}
+mcp_text_result :: (o: [] Jo, d: Jv, id: int, text: string, is_error: bool) {
+  mcp_result_start(o, d, id);
+  jo_obj(o); jo_key(o, "content"); jo_arr(o);
+  jo_obj(o); jo_key(o, "type"); jo_str(o, "text"); jo_key(o, "text"); jo_str(o, text); jo_end(o);
+  jo_end(o); jo_key(o, "isError"); jo_bool(o, is_error); jo_end(o);
+  jo_end(o);
+}
+
+// Answers one request line into out; "" when it needs no answer (a notification).
+// run is false in checks: tools/call then answers with the argv it would run.
+mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
+  nodes: [4096] JvNode; dd: [1] Jv; o: [1] Jo;
+  jo_start(o[..], out);
+  if !jv_parse(dd[..], line, nodes[..]) || jv_kind(dd[0], 0) != JV_OBJECT {
+    mcp_error(o[..], dd[0], -1, -32700, "parse error"); return jo_text(o[..]);
+  }
+  d := dd[0];
+  id := jv_get(d, 0, "id");
+  method_at := jv_get(d, 0, "method");
+  mb: [64] u8; mn := jv_str(d, method_at, mb[..]);
+  method := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  if id < 0 { return ""; }   // a notification (initialized, cancelled): no answer
+  if method == "" { mcp_error(o[..], d, id, -32600, "invalid request"); return jo_text(o[..]); }
+  if method == "initialize" {
+    pv: [32] u8; pn := jv_str(d, jv_path(d, 0, "params.protocolVersion"), pv[..]);
+    mcp_result_start(o[..], d, id);
+    jo_obj(o[..]);
+    jo_key(o[..], "protocolVersion"); jo_str(o[..], ifx pn > 0 then cast(string) pv[0..<pn] else MCP_PROTOCOL);
+    jo_key(o[..], "capabilities"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]);
+    jo_key(o[..], "serverInfo"); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "openagents"); jo_key(o[..], "version"); jo_str(o[..], CLI_VERSION); jo_end(o[..]);
+    jo_key(o[..], "instructions"); jo_str(o[..], "Make and edit realms on openagents.com. A new realm is private; realm_visibility makes it unlisted or public. Edits take rev (the revision you read) and fail with a conflict when the realm changed since.");
+    jo_end(o[..]); jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+  if method == "ping" { mcp_result_start(o[..], d, id); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]); return jo_text(o[..]); }
+  if method == "tools/list" {
+    mcp_result_start(o[..], d, id);
+    jo_obj(o[..]); jo_key(o[..], "tools"); jo_arr(o[..]);
+    for c: REALM_COMMANDS { if mcp_offered(c, cfg.read_only) { mcp_tool(o[..], c); } }
+    jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+  if method == "tools/call" {
+    nb: [64] u8; nn := jv_str(d, jv_path(d, 0, "params.name"), nb[..]);
+    ci := ifx nn > 0 then mcp_find_tool(cast(string) nb[0..<nn]) else -1;
+    if ci < 0 || !mcp_offered(REALM_COMMANDS[ci], cfg.read_only) { mcp_error(o[..], d, id, -32602, "unknown tool"); return jo_text(o[..]); }
+    c := REALM_COMMANDS[ci];
+    v: [1] McpArgv;
+    // shot with no file: a new temporary folder, removed with what the shot wrote there
+    temp: [512] u8; tn := 0; shot_dir := ""; shot_out := "";
+    if c.verb == "shot" && jv_path(d, 0, "params.arguments.out") < 0 {
+      if run {
+        shot_dir = fs_temp("openagents-mcp-shot", temp[..]);
+        if shot_dir == "" { mcp_text_result(o[..], d, id, "could not make a temporary folder for the shot", true); return jo_text(o[..]); }
+        tn = shot_dir.count;
+      } else { tn = copy("/tmp", temp[..]); }
+      tn += copy("/shot.png", temp[tn..<temp.count]);
+      shot_out = cast(string) temp[0..<tn];
+    }
+    mcp_argv(v[..], cfg, c, d, jv_path(d, 0, "params.arguments"), shot_out);
+    if v[0].err != "" { mcp_text_result(o[..], d, id, v[0].err, true); return jo_text(o[..]); }
+    if !run {
+      j: [4096] u8; jn := 0;
+      for k: 0..<v[0].n { if k > 0 { jn += copy(" ", j[jn..<j.count]); } jn += copy(v[0].words[k], j[jn..<j.count]); }
+      mcp_text_result(o[..], d, id, cast(string) j[0..<jn], false); return jo_text(o[..]);
+    }
+    child: [MCP_CHILD] u8; err: [4096] u8;
+    pr := proc_run(v[0].words[0..<v[0].n], 180000, child[..], err[..]);
+    text := cast(string) child[0..<pr.out_n];
+    if text == "" { text = cast(string) err[0..<pr.err_n]; }
+    if pr.started != 0 { text = "could not run openagents"; }
+    if pr.timed_out { text = "the command took longer than 3 minutes"; }
+    failed := pr.started != 0 || pr.timed_out || pr.status != 0;
+    // shot: answer with the picture too
+    file := "";
+    if c.verb == "shot" && !failed {
+      fb: [1024] u8; at := jv_path(d, 0, "params.arguments.out");
+      fl := ifx at >= 0 then jv_str(d, at, fb[..]) else -1;
+      file = ifx fl > 0 then cast(string) fb[0..<fl] else shot_out;
+    }
+    png: [MCP_PNG] u8; pn := -1;
+    if file != "" { pn = fs_read(file, png[..]); }
+    mcp_result_start(o[..], d, id);
+    jo_obj(o[..]); jo_key(o[..], "content"); jo_arr(o[..]);
+    jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "text"); jo_key(o[..], "text"); jo_str(o[..], text); jo_end(o[..]);
+    if pn > 0 {
+      b64: [MCP_PNG / 3 * 4 + 8] u8;
+      e := base64_encode_checked(cast(string) png[0..<pn], b64[..], false);
+      if e.error == NC_OK {
+        jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "image");
+        jo_key(o[..], "data"); jo_str(o[..], cast(string) b64[0..<e.written]);
+        jo_key(o[..], "mimeType"); jo_str(o[..], "image/png"); jo_end(o[..]);
+      }
+    }
+    jo_end(o[..]); jo_key(o[..], "isError"); jo_bool(o[..], failed); jo_end(o[..]);
+    jo_end(o[..]);
+    if shot_dir != "" { gone := fs_remove(cast(string) temp[0..<shot_dir.count]); }
+    return jo_text(o[..]);
+  }
+  mcp_error(o[..], d, id, -32601, "method not found");
+  return jo_text(o[..]);
+}
+
+#test "mcp: initialize, ping, notifications and unknown methods" {
+  out: [65536] u8; cfg := McpCfg.{exe="openagents"};
+  s := mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\"}}", cfg, out[..], false);
+  #assert acct_has(s, "\"protocolVersion\":\"2025-03-26\"") && acct_has(s, "\"tools\":{}") && acct_has(s, "\"id\":1");
+  #assert mcp_handle("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", cfg, out[..], false) == "";
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":\"a\",\"method\":\"ping\"}", cfg, out[..], false);
+  #assert acct_has(s, "\"id\":\"a\"") && acct_has(s, "\"result\":{}");
+  #assert acct_has(mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"nope\"}", cfg, out[..], false), "-32601");
+  #assert acct_has(mcp_handle("not json", cfg, out[..], false), "-32700");
+}
+#test "mcp: one tool a row, with required arguments and bounds; read-only offers GET rows and shot" {
+  out: [262144] u8; cfg := McpCfg.{exe="openagents"};
+  s := mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], false);
+  #assert acct_has(s, "\"name\":\"realm_ask_delete\"") && acct_has(s, "\"name\":\"realm_apply\"");
+  #assert acct_has(s, "\"x\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40}");
+  #assert acct_has(s, "\"required\":[\"slug\",\"entity\",\"x\",\"z\"]");
+  #assert acct_has(s, "\"on\":{\"type\":\"string\",\"enum\":[\"on\",\"off\"]}");
+  #assert acct_has(s, "\"step\":{\"type\":\"array\"");
+  cfg.read_only = true;
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], false);
+  #assert acct_has(s, "\"name\":\"realm_show\"") && acct_has(s, "\"name\":\"realm_shot\"") && !acct_has(s, "\"name\":\"realm_move\"") && !acct_has(s, "realm_apply");
+  #assert acct_has(mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_move\",\"arguments\":{}}}", cfg, out[..], false), "unknown tool");
+}
+#test "mcp: a call becomes the command's own argv" {
+  out: [65536] u8; cfg := McpCfg.{exe="openagents", profile="work"};
+  s := mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_move\",\"arguments\":{\"slug\":\"garden\",\"entity\":\"trees:3\",\"x\":4.5,\"z\":-2,\"rev\":7}}}", cfg, out[..], false);
+  #assert acct_has(s, "openagents realm move garden trees:3 4.5 -2 --rev 7 --json --profile work") && acct_has(s, "\"isError\":false");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_quest\",\"arguments\":{\"slug\":\"g\",\"who\":\"Bram\",\"ask\":\"find the well\",\"step\":[\"walk\",\"drink\"]}}}", cfg, out[..], false);
+  #assert acct_has(s, "realm quest g Bram --ask find the well --step walk --step drink --json");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_publish\",\"arguments\":{\"slug\":\"g\",\"yes\":true,\"listed\":false}}}", cfg, out[..], false);
+  #assert acct_has(s, "realm publish g --yes --json");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_show\",\"arguments\":{}}}", cfg, out[..], false);
+  #assert acct_has(s, "a required argument is missing") && acct_has(s, "\"isError\":true");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_show\",\"arguments\":{\"slug\":\"g\",\"bogus\":1}}}", cfg, out[..], false);
+  #assert acct_has(s, "unknown argument");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_shot\",\"arguments\":{\"slug\":\"g\",\"phone\":true}}}", cfg, out[..], false);
+  #assert acct_has(s, "realm shot g /tmp/shot.png --phone --json");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_new\",\"arguments\":{\"from\":12}}}", cfg, out[..], false);
+  #assert acct_has(s, "realm new --from 12 --json");
+}
+
+// The server: one request a line on stdin, one answer a line on stdout, until stdin ends.
+mcp_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  domains := args_value(a, "--domains", "realm");
+  if domains != "realm" { return fail(r, EXIT_USAGE, "mcp --domains realm (labs tools come with #12634)"); }
+  exe: [4096] u8; en := cxcli_exe_path(exe[..]);
+  if en <= 0 { return fail(r, EXIT_FAIL, "could not find this program's own path"); }
+  cfg := McpCfg.{read_only = args_has(a, "--read-only"), exe = cast(string) exe[0..<en], origin = args_value(a, "--origin", "")};
+  if args_has(a, "--profile") || profile != "default" { cfg.profile = profile; }
+  line: [MCP_LINE] u8; out: [MCP_OUT] u8; wb: [MCP_OUT + 1] u8;
+  n := 0; quiet := 0; long := false;
+  while true {
+    b := cxterm_byte(-1);
+    if b == -2 { break; }
+    if b == -1 { quiet += 1; if quiet > 1000 { break; } continue; }
+    quiet = 0;
+    if b != '\n' {
+      if n < line.count { line[n] = cast(u8) b; n += 1; } else { long = true; }
+      continue;
+    }
+    text := cast(string) line[0..<n];
+    answer := ifx long then "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"request too long\"}}" else mcp_handle(text, cfg, out[..], true);
+    n = 0; long = false;
+    if answer == "" { continue; }
+    m := copy(answer, wb[..]);
+    if m >= wb.count { continue; }
+    wb[m] = '\n';
+    if cxterm_write(wb[0..<m+1]) != 0 { break; }
+  }
+  return EXIT_OK;
+}
+
+mcp_usage :: () {
+  print("%\n", "Agents:");
+  print("%\n", "  mcp [--read-only] [--domains realm] [--origin URL]  the realm commands as MCP tools on stdio");
+  print("%\n", "  skill realm [--install]                             the realm commands as a Claude skill (.claude/skills)");
+  print("%\n", "");
+}

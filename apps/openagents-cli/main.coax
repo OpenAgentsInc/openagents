@@ -33,6 +33,8 @@
 #load "transcribe.coax";
 #load "labs.coax";
 #load "coder.coax";
+#load "mcp.coax";
+#load "skill.coax";
 
 CLI_VERSION :: "1.0.0-dev";
 
@@ -64,6 +66,7 @@ usage :: () {
   transcribe_usage();
   labs_usage();
   coder_usage();
+  mcp_usage();
   print("%\n", "Other:");
   print("%\n", "  version, help");
   print("%\n", "");
@@ -107,5 +110,7 @@ tool_main :: () -> int #export_c {
   if domain == "transcribe" { return transcribe_main(a[..], r[..], verb); }
   if domain == "coder" { return coder_main(a[..], r[..]); }
   if domain == "labs" { return labs_main(a[..], r[..], profile, verb); }
+  if domain == "mcp" { return mcp_main(a[..], r[..], profile); }
+  if domain == "skill" { return skill_main(a[..], r[..], verb); }
   return fail(r[..], EXIT_USAGE, "unknown command (openagents help)");
 }

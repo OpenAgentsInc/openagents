@@ -381,7 +381,7 @@ not atomic; a server-side `POST /<slug>/apply {rev, ops}` that is (one
 revision, one undo step) comes with chapter 52's "Still to do": every edit
 as an operation in one log.
 
-## Connecting Claude Code and other agents
+## Connecting Claude Code and other agents (built, 2026-11-02)
 
 Three ways, all on the same binary and the same login:
 
@@ -405,6 +405,14 @@ Three ways, all on the same binary and the same login:
    are the `--json` output. `realm_shot` returns the PNG as an image.
    `--domains realm` limits the tools offered; `--read-only` offers only
    reads.
+
+   A call runs the same binary as a child (`openagents realm VERB ... --json`,
+   with the server's `--profile` and `--origin`), so a tool makes the same
+   checks, uses the same key and fails with the same exit codes as the
+   command. A tool's input is checked against its row before anything runs:
+   unknown or missing arguments are tool errors. `realm_shot` without `out`
+   shoots into a temporary folder and removes it after. Anime Lab tools come
+   with #12634.
 
 The loop an agent runs:
 
