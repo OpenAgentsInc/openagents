@@ -1,0 +1,212 @@
+// The codex engine: the installed Codex CLI on its own ChatGPT login,
+// driven as `codex app-server` over JSON-RPC by coax/lib/agent/codex, one
+// thread for the conversation. Like the claude engine it streams the reply,
+// shows each command and its output, and shows file changes as diffs.
+// Commands run without asking (approval policy never, full access); with
+// --ask each approval comes to the y/a/n prompt instead.
+
+#load "../../coax/lib/agent/codex/codex.coax";
+
+// The thread and its turns: no approvals and full access by default.
+cd_codex_settings :: (a: [] App) -> CxSettings {
+  st: CxSettings;
+  st.cwd = a[0].cwd;
+  if a[0].model_engine == ENGINE_CODEX { st.model = a[0].model; }
+  if a[0].ask_first { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
+  else { st.approval_policy = "never"; st.sandbox = "danger-full-access"; }
+  return st;
+}
+
+// Starts the server on the first message; later messages are turns on the same thread.
+cd_codex_send :: (a: [] App, msg: string) {
+  none: [1] string;
+  if a[0].cx_live && a[0].cx_ready {
+    r := cx_turn_start(a[0].cx, msg, none[0..<0], cd_codex_settings(a));
+    return;
+  }
+  a[0].npending = cd_cat(a[0].pending[..], 0, msg);
+  if a[0].cx_live { return; }      // the thread is starting; the message goes once it is there
+  fresh: CxClient; a[0].cx[0] = fresh;
+  cx_init(a[0].cx, a[0].cx_line, a[0].cx_arena, a[0].cx_outb);
+  l: [1] CxLaunch; l[0].cwd = a[0].cwd;
+  why := cx_start(a[0].cx, a[0].cxp, l[0]);
+  if why.count > 0 { cd_finish(a, END_FAILED, why); return; }
+  a[0].cx_live = true; a[0].cx_ready = false;
+  r := cx_initialize(a[0].cx, "openagents-coder", "Coder", CODER_VERSION);
+  r = cx_thread_start(a[0].cx, cd_codex_settings(a));
+}
+
+cd_codex_close :: (a: [] App) {
+  if !a[0].cx_live { return; }
+  cx_close_process(a[0].cxp);
+  a[0].cx_live = false; a[0].cx_ready = false;
+}
+
+cd_cx_str :: (a: [] App, json: string, path: string) -> string { return cl_str(a[0].cx[0].ar[..], json, path); }
+
+// A command as the person would type it: the first command action's text,
+// else the command without its "/bin/zsh -lc" wrapper.
+cd_codex_command :: (a: [] App, item: string) -> string {
+  cmd := cd_cx_str(a, item, "commandActions.0.command");
+  if cmd.count > 0 { return cmd; }
+  return cd_cx_str(a, item, "command");
+}
+
+cd_codex_started :: (a: [] App, item: string) {
+  ty := cd_cx_str(a, item, "type");
+  lb: [1024] u8; label := "";
+  if ty == "agentMessage" {
+    // a new message after earlier text or tools: its own paragraph
+    if a[0].nrep > 0 { cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0; }
+    return;
+  }
+  if ty == "commandExecution" { label = cd_label(a, "Bash", cd_codex_command(a, item), lb[..]); }
+  else if ty == "fileChange" {
+    changes := cl_raw(item, "changes");
+    n := cl_count(changes);
+    path := cd_cx_str(a, item, "changes.0.path");
+    kind := cd_cx_str(a, item, "changes.0.kind.type");
+    label = cd_label(a, ifx kind == "add" then "Write" else ifx kind == "delete" then "Delete" else "Edit", path, lb[..]);
+    if n > 1 { tb: [16] u8; ln := label.count; ln = cd_cat(lb[..], ln, " and "); ln = cd_cat(lb[..], ln, cd_itoa(n - 1, tb[..])); ln = cd_cat(lb[..], ln, " more"); label = cast(string) lb[0..<ln]; }
+  }
+  else if ty == "mcpToolCall" {
+    nb: [256] u8; nn := cd_cat(nb[..], 0, cd_cx_str(a, item, "server")); nn = cd_cat(nb[..], nn, "."); nn = cd_cat(nb[..], nn, cd_cx_str(a, item, "tool"));
+    label = cd_label(a, cast(string) nb[0..<nn], "", lb[..]);
+  }
+  else if ty == "dynamicToolCall" { label = cd_label(a, cd_cx_str(a, item, "tool"), "", lb[..]); }
+  else if ty == "webSearch" { label = cd_label(a, "Search", cd_cx_str(a, item, "query"), lb[..]); }
+  else if ty == "imageView" { label = cd_label(a, "View", cd_cx_str(a, item, "path"), lb[..]); }
+  else { return; }
+  cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0;
+  cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", label);
+  a[0].steps += 1;
+}
+
+cd_codex_completed :: (a: [] App, item: string) {
+  ty := cd_cx_str(a, item, "type");
+  status := cd_cx_str(a, item, "status");
+  if ty == "commandExecution" {
+    out := cd_cx_str(a, item, "aggregatedOutput");
+    exit := cl_int(item, "exitCode");
+    bad := status == "failed" || status == "declined" || (exit.ok && exit.value != 0);
+    if status == "declined" { out = "declined"; }
+    cd_result_line(a, out, bad);
+    return;
+  }
+  if ty == "fileChange" {
+    if status != "completed" { cd_result_line(a, ifx status == "declined" then "declined" else "the change did not apply", true); return; }
+    changes := cl_raw(item, "changes");
+    n := cl_count(changes);
+    for i: 0..<n {
+      ch := cl_json(changes, cl_item(changes, i));
+      // copies: the arena is reused by each lookup
+      pb: [1024] u8; pn := cd_cat(pb[..], 0, cd_cx_str(a, ch, "path"));
+      kb: [16] u8; kn := cd_cat(kb[..], 0, cd_cx_str(a, ch, "kind.type"));
+      df_unified(a, cast(string) pb[0..<pn], cast(string) kb[0..<kn], cd_cx_str(a, ch, "diff"));
+    }
+    return;
+  }
+  if ty == "mcpToolCall" || ty == "dynamicToolCall" {
+    cd_result_line(a, ifx status == "failed" then cd_cx_str(a, item, "error.message") else status, status == "failed");
+  }
+}
+
+// One poll of the server; true when something changed.
+cd_codex_poll :: (a: [] App) -> bool {
+  if !a[0].cx_live || a[0].ask { return false; }
+  c := a[0].cx; p := a[0].cxp;
+  changed := false;
+  none: [1] string;
+  for guard: 0..<64 {
+    ev := cx_poll(c, p, 0);
+    if ev.kind == CxEventKind.idle { break; }
+    changed = true;
+    if ev.kind == CxEventKind.end || ev.kind == CxEventKind.failed {
+      eb: [2048] u8; why := cx_error(c);
+      if why.count == 0 { why = cl_stderr(p, eb[..]); }
+      if why.count == 0 { why = "Codex exited."; }
+      wb: [2600] u8; wn := cd_cat(wb[..], 0, why);
+      cd_codex_close(a);
+      if a[0].running && a[0].engine == ENGINE_CODEX { cd_finish(a, END_FAILED, cast(string) wb[0..<wn]); }
+      return true;
+    }
+    if ev.kind == CxEventKind.answered && ev.of == CX_THREAD_START {
+      a[0].cx_ready = true;
+      if a[0].npending > 0 && a[0].running {
+        r := cx_turn_start(c, cast(string) a[0].pending[0..<a[0].npending], none[0..<0], cd_codex_settings(a));
+        a[0].npending = 0;
+      }
+      continue;
+    }
+    if ev.kind == CxEventKind.refused {
+      mb: [1024] u8; mn := cd_cat(mb[..], 0, ev.message);
+      if ev.of == CX_THREAD_START { cd_codex_close(a); }
+      if a[0].running && ev.of != CX_TURN_INTERRUPT { cd_finish(a, END_FAILED, cast(string) mb[0..<mn]); a[0].stopping = false; }
+      if !a[0].cx_live { return true; }
+      continue;
+    }
+    if ev.kind == CxEventKind.approval {
+      a[0].nask = cd_cat(a[0].ask_text[..], 0, "Allow ");
+      lb: [1024] u8;
+      if ev.of == CX_ASK_EXEC || ev.of == CX_ASK_EXEC_V1 {
+        cmd := cd_cx_str(a, ev.params, "command");
+        if cmd.count == 0 { cmd = cd_cx_str(a, ev.params, "command.0"); }
+        a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, cd_label(a, "Bash", cmd, lb[..]));
+      } else if ev.of == CX_ASK_PATCH || ev.of == CX_ASK_PATCH_V1 {
+        a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "these file changes");
+      } else {
+        a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "more permissions for this turn");
+      }
+      a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "?");
+      a[0].ask = true;
+      return true;      // no more polls until answered: a poll would decline it
+    }
+    if ev.kind != CxEventKind.notification { continue; }
+    if a[0].engine != ENGINE_CODEX || !a[0].running { continue; }   // late lines after a stop
+    m := ev.method;
+    if m == "item/agentMessage/delta" {
+      cd_reply_add(a, cd_cx_str(a, ev.params, "delta"));
+      cd_reply_commit(a, false);
+      continue;
+    }
+    if m == "item/started" { cd_codex_started(a, cl_raw(ev.params, "item")); continue; }
+    if m == "item/completed" { cd_codex_completed(a, cl_raw(ev.params, "item")); continue; }
+    if m == "error" {
+      retry := cl_bool(ev.params, "willRetry");
+      if !(retry.ok && retry.value) { a[0].nerr = cd_cat(a[0].err[..], 0, cd_cx_str(a, ev.params, "error.message")); }
+      continue;
+    }
+    if m == "turn/completed" {
+      st := cd_cx_str(a, ev.params, "turn.status");
+      if st == "completed" { cd_finish(a, END_FINISHED, ""); }
+      else if st == "interrupted" { cd_finish(a, END_STOPPED, ""); }
+      else {
+        why := cd_cx_str(a, ev.params, "turn.error.message");
+        if why.count == 0 && a[0].nerr > 0 { why = cast(string) a[0].err[0..<a[0].nerr]; }
+        if why.count == 0 { why = "Codex ended the turn with an error."; }
+        wb: [1024] u8; wn := cd_cat(wb[..], 0, why);
+        cd_finish(a, END_FAILED, cast(string) wb[0..<wn]);
+      }
+      a[0].stopping = false; a[0].nerr = 0;
+      continue;
+    }
+  }
+  return changed;
+}
+
+cd_codex_answer :: (a: [] App, c: int) {
+  cx_approve(a[0].cx, c == 'y' || c == 'Y' || c == 'a' || c == 'A');
+}
+
+// Esc: interrupt the turn; asked twice, or no turn to interrupt, end the session.
+cd_codex_stop :: (a: [] App) {
+  if a[0].ask { cx_approve(a[0].cx, false); a[0].ask = false; }
+  if a[0].cx_live && a[0].cx_ready && !a[0].stopping && cx_interrupt(a[0].cx) != 0 {
+    a[0].stopping = true;
+    a[0].stop_ms = cd_now(a);
+    return;           // the turn ends with turn/completed, status interrupted
+  }
+  cd_codex_close(a);
+  a[0].stopping = false;
+  cd_finish(a, END_STOPPED, "");
+}

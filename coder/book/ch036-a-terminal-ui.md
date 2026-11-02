@@ -25,6 +25,10 @@ takeover and no widget toolkit. The rendering library is
   languages, used in code blocks and in diffs.
 - Edits shown as diffs: line numbers from the file, removed and added lines
   on red and green, and context around each change.
+- Two agents behind one composer: Claude Code over stream-json and Codex as
+  `codex app-server` over JSON-RPC, each on its own login with its own
+  conversation, and Shift-Tab to switch between them. Codex reports file
+  changes as unified diffs, shown the same way.
 - A pseudo-terminal smoke test that types, pastes, runs a command and quits,
   and checks the terminal is restored.
 - The `openagents coder` verb: running it with no task opens this UI.

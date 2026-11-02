@@ -2,10 +2,12 @@
 """Drives coder/tui/coder.sh in a real pseudo-terminal (100x30) on the
 offline echo engine: types a message and checks the streamed reply, runs
 "$ echo ..." and checks the command row, pastes two lines with bracketed
-paste, walks history with Up, then quits with Ctrl-C and checks the exit.
+paste, walks history with Up, switches agent with Shift-Tab (legacy and
+kitty), then quits with Ctrl-C and checks the exit.
 
-    python3 coder/tui/smoke.py          # offline, echo engine
-    python3 coder/tui/smoke.py --live   # two turns on the claude engine (your Claude Code login)
+    python3 coder/tui/smoke.py                # offline, echo engine
+    python3 coder/tui/smoke.py --live         # two turns on the claude engine (your Claude Code login)
+    python3 coder/tui/smoke.py --live codex   # the same on the codex engine (your Codex login)
 
 Test-only harness; the program under test is Coax.
 """
@@ -31,9 +33,9 @@ def spawn(engine):
     return pid, fd
 
 
-def live():
-    """Two turns in one Claude Code session: the second needs the first."""
-    pid, fd = spawn("claude")
+def live(engine):
+    """Two turns in one session: the second needs the first."""
+    pid, fd = spawn(engine)
     out = bytearray()
 
     def read_until(needle, seconds):
@@ -56,6 +58,8 @@ def live():
     while out.count("└ finished".encode()) < 2 and time.time() < end:
         read_until("\x00never", 0.2)
     steps.append(("second turn ended", out.count("└ finished".encode()) >= 2))
+    os.write(fd, b"\x1b[Z")                 # Shift-Tab: the other agent
+    steps.append(("Shift-Tab switches agent", read_until("Agent: Claude Code" if engine == "codex" else "Agent: Codex", 5)))
     for _ in range(3):                      # stop, clear, quit: whichever applies
         os.write(fd, b"\x03")
         time.sleep(0.5)
@@ -79,8 +83,8 @@ def live():
 
 
 def main():
-    if sys.argv[1:] == ["--live"]:
-        return live()
+    if sys.argv[1:2] == ["--live"]:
+        return live(sys.argv[2] if len(sys.argv) > 2 else "claude")
     pid, fd = pty.fork()
     if pid == 0:
         os.chdir(REPO)
@@ -139,6 +143,11 @@ def main():
     while out.count("└ finished".encode()) < 4 and time.time() < end:
         read_until("\x00never", 0.2)
     check("paste turn ended", out.count("└ finished".encode()) >= 4)
+    send(b"\x1b[Z")                    # Shift-Tab, legacy
+    check("Shift-Tab to Claude Code", read_until("Agent: Claude Code", 5))
+    send(b"\x1b[9;2u")                 # Shift-Tab, kitty
+    check("Shift-Tab to Codex", read_until("Agent: Codex", 5))
+    check("hint names the agent", read_until("codex · Enter send", 5))
     send(b"\x1b[A")
     time.sleep(0.3)
     send(b"\x03")            # clears the recalled entry

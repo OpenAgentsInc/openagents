@@ -104,7 +104,7 @@ tui_fit :: (s: string, cols: int) -> int {
 TUI_K_NONE :: 0; TUI_K_CHAR :: 1; TUI_K_ENTER :: 2; TUI_K_NEWLINE :: 3; TUI_K_BACKSPACE :: 4; TUI_K_DELETE :: 5;
 TUI_K_LEFT :: 6; TUI_K_RIGHT :: 7; TUI_K_UP :: 8; TUI_K_DOWN :: 9; TUI_K_HOME :: 10; TUI_K_END :: 11;
 TUI_K_CTRL_C :: 12; TUI_K_CTRL_D :: 13; TUI_K_KILL_LINE :: 14; TUI_K_KILL_END :: 15; TUI_K_KILL_WORD :: 16;
-TUI_K_ESC :: 17; TUI_K_WORD_LEFT :: 18; TUI_K_WORD_RIGHT :: 19; TUI_K_TAB :: 20; TUI_K_CLEAR :: 21; TUI_K_PASTE :: 22;
+TUI_K_ESC :: 17; TUI_K_WORD_LEFT :: 18; TUI_K_WORD_RIGHT :: 19; TUI_K_TAB :: 20; TUI_K_CLEAR :: 21; TUI_K_PASTE :: 22; TUI_K_BACKTAB :: 23;
 
 // A key; for TUI_K_CHAR, cp; for TUI_K_PASTE, text (into the decoder's paste buffer).
 TuiKey :: struct { kind: int; cp: int; text: string; }
@@ -162,7 +162,7 @@ tui_csi_u :: (p: string, used: int) -> TuiKeyRead {
   shift := (mods & 1) != 0; alt := (mods & 2) != 0; ctrl := (mods & 4) != 0;
   if cp == 13 { return tui_named(ifx shift || alt || ctrl then TUI_K_NEWLINE else TUI_K_ENTER, used); }
   if cp == 27 { return tui_named(TUI_K_ESC, used); }
-  if cp == 9 { return tui_named(TUI_K_TAB, used); }
+  if cp == 9 { return tui_named(ifx shift then TUI_K_BACKTAB else TUI_K_TAB, used); }
   if cp == 127 || cp == 8 { return tui_named(ifx alt || ctrl then TUI_K_KILL_WORD else TUI_K_BACKSPACE, used); }
   if ctrl && cp >= 'a' && cp <= 'z' { r := tui_ctrl(cp - 'a' + 1, used); if r.used > 0 { return r; } return tui_named(TUI_K_NONE, used); }
   if alt && cp == 'b' { return tui_named(TUI_K_WORD_LEFT, used); }
@@ -237,6 +237,7 @@ tui_key :: (k: [] TuiKeys, b: string, at: int, more: bool) -> TuiKeyRead {
     if f == 'D' { return tui_named(ifx alt then TUI_K_WORD_LEFT else TUI_K_LEFT, used); }
     if f == 'H' { return tui_named(TUI_K_HOME, used); }
     if f == 'F' { return tui_named(TUI_K_END, used); }
+    if f == 'Z' { return tui_named(TUI_K_BACKTAB, used); }   // Shift-Tab
     return tui_named(TUI_K_NONE, used);
   }
   if c < 32 { return tui_named(TUI_K_NONE, 1); }
@@ -944,7 +945,7 @@ tui_tb :: (s: string, out: [] u8) -> string {
   bad_b: [1] u8; bad := bad_b[..]; bad[0] = 0xff; #assert tui_rune(cast(string) bad[..], 0).cp == 0xfffd;
 }
 
-#test "keys: control bytes, CSI and SS3 arrows, Alt-Enter, kitty Shift-Enter, UTF-8" {
+#test "keys: control bytes, CSI and SS3 arrows, Alt-Enter, kitty Shift-Enter, Shift-Tab, UTF-8" {
   tb1: [64] u8; tb2: [64] u8; tb3: [64] u8; tb4: [64] u8; tb5: [64] u8; tb6: [64] u8; tb7: [64] u8; tb8: [64] u8; tb9: [64] u8; tb10: [64] u8; tb11: [64] u8;
   k_b: [1] TuiKeys; k := k_b[..];
   #assert tui_key(k, "\r", 0, false).key.kind == TUI_K_ENTER;
@@ -962,6 +963,10 @@ tui_tb :: (s: string, out: [] u8) -> string {
   #assert tui_key(k, tui_tb("`[127;3u", ku[..]), 0, false).key.kind == TUI_K_KILL_WORD;
   sh := tui_key(k, tui_tb("`[65;2u", ku[..]), 0, false); #assert sh.key.kind == TUI_K_CHAR && sh.key.cp == 'A' && sh.used == 7;
   #assert tui_key(k, tui_tb("`[27;2;13~", ku[..]), 0, false).key.kind == TUI_K_NEWLINE;
+  // Shift-Tab: legacy CSI Z and kitty 9;2u; plain Tab stays Tab
+  #assert tui_key(k, tui_tb("`[Z", ku[..]), 0, false).key.kind == TUI_K_BACKTAB;
+  #assert tui_key(k, tui_tb("`[9;2u", ku[..]), 0, false).key.kind == TUI_K_BACKTAB;
+  #assert tui_key(k, tui_tb("`[9u", ku[..]), 0, false).key.kind == TUI_K_TAB;
   #assert tui_key(k, tui_tb("`[3~", tb8[..]), 0, false).key.kind == TUI_K_DELETE;
   #assert tui_key(k, tui_tb("`", tb9[..]), 0, false).key.kind == TUI_K_ESC;
   #assert tui_key(k, tui_tb("`", tb10[..]), 0, true).used == 0;
