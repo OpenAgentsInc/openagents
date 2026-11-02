@@ -8,8 +8,8 @@
 DF_MAX_LINES :: 400;       // lines per side the diff compares
 DF_SHOWN :: 40;            // rows shown before "… N more lines"
 DF_CONTEXT :: 3;
-DF_ADD_BG :: ";48;2;28;66;36";
-DF_DEL_BG :: ";48;2;92;30;34";
+DF_ADD_BG :: ";48;2;47;59;42";             // Coder Noir: success #9fd08a at 25% over #0a0a0a
+DF_DEL_BG :: ";48;2;71;27;24";             // danger #ff4d42 at 25% over #0a0a0a
 DF_ADD_BG_LIGHT :: ";48;2;218;245;222";        // the same on a light background
 DF_DEL_BG_LIGHT :: ";48;2;252;224;226";
 
@@ -49,9 +49,9 @@ df_row :: (a: [] App, num: int, sign: u8, code: string, lang: int, hl: [] TuiHl)
   th := a[0].o[0].theme; o[0].theme = th;
   light := th == TUI_THEME_LIGHT; none := th == TUI_THEME_NONE;
   bg := ifx none then "" else ifx sign == '+' then (ifx light then DF_ADD_BG_LIGHT else DF_ADD_BG) else ifx sign == '-' then (ifx light then DF_DEL_BG_LIGHT else DF_DEL_BG) else "";
-  add_fg := ifx none then "[0;1" else ifx light then "[0;38;2;30;130;60" else "[0;38;2;120;210;140";
-  del_fg := ifx none then "[0;1" else ifx light then "[0;38;2;190;40;40" else "[0;38;2;235;110;110";
-  ctx_fg := ifx none then "[0" else ifx light then "[0;38;2;140;141;147" else "[0;38;2;110;118;129";
+  add_fg := ifx none then "[0;1" else ifx light then "[0;38;2;30;130;60" else "[0;38;2;159;208;138";
+  del_fg := ifx none then "[0;1" else ifx light then "[0;38;2;190;40;40" else "[0;38;2;255;77;66";
+  ctx_fg := ifx none then "[0" else ifx light then "[0;38;2;140;141;147" else "[0;38;2;129;129;129";
   tui_put(o, "      ");
   // the number in the row's color on a changed line, grey on context
   tui_byte(o, 27);

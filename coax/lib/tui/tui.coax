@@ -42,12 +42,14 @@ tui_style :: (o: [] TuiOut, s: int) {
     else if s == TUI_GREEN { tui_csi(o, "0;38;2;30;130;60m"); }
     else if s == TUI_AMBER { tui_csi(o, "0;38;2;150;100;0m"); }
   }
-  else if s == TUI_BRIGHT { tui_csi(o, "0;1;38;2;255;255;255m"); }
-  else if s == TUI_DIM { tui_csi(o, "0;38;2;150;150;150m"); }
-  else if s == TUI_FAINT { tui_csi(o, "0;38;2;90;90;90m"); }
-  else if s == TUI_RED { tui_csi(o, "0;38;2;235;100;100m"); }
-  else if s == TUI_GREEN { tui_csi(o, "0;38;2;120;210;140m"); }
-  else if s == TUI_AMBER { tui_csi(o, "0;38;2;235;185;80m"); }
+  // Coder Noir (the desktop app's dark theme): text #ededed, muted #818181,
+  // faint #656565, danger #ff4d42, success #9fd08a, warning #e6c15c
+  else if s == TUI_BRIGHT { tui_csi(o, "0;1;38;2;237;237;237m"); }
+  else if s == TUI_DIM { tui_csi(o, "0;38;2;129;129;129m"); }
+  else if s == TUI_FAINT { tui_csi(o, "0;38;2;101;101;101m"); }
+  else if s == TUI_RED { tui_csi(o, "0;38;2;255;77;66m"); }
+  else if s == TUI_GREEN { tui_csi(o, "0;38;2;159;208;138m"); }
+  else if s == TUI_AMBER { tui_csi(o, "0;38;2;230;193;92m"); }
 }
 
 // The theme a name means, or -1.
@@ -655,16 +657,17 @@ tui_hl_sgr :: (o: [] TuiOut, kind: int, bg: string) {
     else { tui_put(o, ";38;2;56;58;66"); }
     tui_put(o, bg); tui_put(o, "m"); return;
   }
-  if kind == TUI_HL_KEYWORD { tui_put(o, ";38;2;198;120;221"); }
-  else if kind == TUI_HL_DIRECTIVE { tui_put(o, ";38;2;229;192;123"); }
-  else if kind == TUI_HL_TYPE { tui_put(o, ";38;2;86;182;194"); }
-  else if kind == TUI_HL_DEF { tui_put(o, ";1;38;2;97;175;239"); }
-  else if kind == TUI_HL_CALL { tui_put(o, ";38;2;97;175;239"); }
-  else if kind == TUI_HL_CONST || kind == TUI_HL_NUMBER { tui_put(o, ";38;2;209;154;102"); }
-  else if kind == TUI_HL_STRING { tui_put(o, ";38;2;152;195;121"); }
-  else if kind == TUI_HL_COMMENT { tui_put(o, ";3;38;2;110;118;129"); }
-  else if kind == TUI_HL_PUNCT { tui_put(o, ";38;2;150;156;168"); }
-  else { tui_put(o, ";38;2;220;223;228"); }
+  // Coder Noir's syntax colors
+  if kind == TUI_HL_KEYWORD { tui_put(o, ";38;2;208;147;208"); }
+  else if kind == TUI_HL_DIRECTIVE { tui_put(o, ";1;38;2;230;193;92"); }   // bold: a number shares the color
+  else if kind == TUI_HL_TYPE { tui_put(o, ";38;2;116;207;209"); }
+  else if kind == TUI_HL_DEF { tui_put(o, ";1;38;2;127;178;232"); }
+  else if kind == TUI_HL_CALL { tui_put(o, ";38;2;127;178;232"); }
+  else if kind == TUI_HL_CONST || kind == TUI_HL_NUMBER { tui_put(o, ";38;2;230;193;92"); }
+  else if kind == TUI_HL_STRING { tui_put(o, ";38;2;159;208;138"); }
+  else if kind == TUI_HL_COMMENT { tui_put(o, ";3;38;2;129;129;129"); }
+  else if kind == TUI_HL_PUNCT { tui_put(o, ";38;2;201;201;201"); }
+  else { tui_put(o, ";38;2;237;237;237"); }
   tui_put(o, bg); tui_put(o, "m");
 }
 
@@ -809,13 +812,13 @@ tui_md_sgr :: (o: [] TuiOut, f: int) {
     else if light && (f & TUI_MD_DIM) != 0 { tui_put(o, ";38;2;95;95;95"); }
     tui_put(o, "m"); return;
   }
-  if (f & TUI_MD_HEAD) != 0 { tui_put(o, ";1;38;2;255;255;255"); }
+  if (f & TUI_MD_HEAD) != 0 { tui_put(o, ";1;38;2;237;237;237"); }
   if (f & TUI_MD_BOLD) != 0 { tui_put(o, ";1"); }
   if (f & TUI_MD_ITALIC) != 0 { tui_put(o, ";3"); }
   if (f & TUI_MD_STRIKE) != 0 { tui_put(o, ";9"); }
-  if (f & TUI_MD_LINK) != 0 { tui_put(o, ";4;38;2;130;180;255"); }
-  if (f & TUI_MD_CODE) != 0 { tui_put(o, ";38;2;220;170;120"); }
-  else if (f & TUI_MD_DIM) != 0 { tui_put(o, ";38;2;150;150;150"); }
+  if (f & TUI_MD_LINK) != 0 { tui_put(o, ";4;38;2;127;178;232"); }
+  if (f & TUI_MD_CODE) != 0 { tui_put(o, ";38;2;116;207;209"); }
+  else if (f & TUI_MD_DIM) != 0 { tui_put(o, ";38;2;129;129;129"); }
   tui_put(o, "m");
 }
 
@@ -1343,7 +1346,7 @@ tui_hl_kinds :: (st: [] TuiHl, lang: int, line: string, out: [] u8) -> string {
 
 #test "themes: light darkens the ladder, none leaves only bold" {
   ob: [256] u8; o_b: [1] TuiOut; o := o_b[..]; o[0].b = ob[..];
-  tui_style(o, TUI_BRIGHT); #assert ob[0] == 27 && cast(string) ob[1..<o[0].n] == "[0;1;38;2;255;255;255m";
+  tui_style(o, TUI_BRIGHT); #assert ob[0] == 27 && cast(string) ob[1..<o[0].n] == "[0;1;38;2;237;237;237m";
   o[0].n = 0; o[0].theme = TUI_THEME_LIGHT; tui_style(o, TUI_BRIGHT); #assert cast(string) ob[1..<o[0].n] == "[0;1;38;2;20;20;20m";
   o[0].n = 0; o[0].theme = TUI_THEME_NONE; tui_style(o, TUI_DIM); #assert cast(string) ob[1..<o[0].n] == "[0m";
   o[0].n = 0; tui_hl_sgr(o, TUI_HL_STRING, ";48;2;1;2;3"); #assert cast(string) ob[1..<o[0].n] == "[0m";

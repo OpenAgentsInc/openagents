@@ -140,7 +140,7 @@ claude · 2 jobs running · Enter send · Shift-Enter newline · Shift-Tab agent
 
 | Theme | For |
 | --- | --- |
-| `dark` | The default: white text on a dark background. |
+| `dark` | The default, Coder Noir (the desktop app's dark theme): `#ededed` text, `#818181` and `#656565` for muted and faint lines, `#ff4d42` for errors, `#9fd08a` for success, `#e6c15c` for warnings, and its syntax colors. |
 | `light` | A light background: near-black text, darker code colors, pale diff backgrounds. |
 | `none` | No colors: bold, italic and underline only. |
 
