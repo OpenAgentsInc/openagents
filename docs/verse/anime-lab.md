@@ -1,8 +1,8 @@
 # Anime Lab: direct an anime with your voice
 
-Status: spec, 2026-11-02. A demo is built (below: [The demo](#the-demo)).
-Nothing else here is built. The style it draws in is the anime style in
-[art-styles.md](art-styles.md).
+Status: spec, 2026-11-02. Nothing here is built yet. The demo
+([below](#the-demo)) and the anime style it draws in (art-styles.md, Anime)
+are in progress on branch `anime-lab` and not on `main`.
 
 Owner request, 2026-11-02:
 
@@ -215,7 +215,7 @@ prop, a costume), never blocks the scene.
 
 ## The demo
 
-`/realms/anime-lab?stage=direct` plays a simulated directing session: a
+In progress, not yet built. `/realms/anime-lab?stage=direct` will play a simulated directing session: a
 recorded list of spoken lines, each arriving at the time a person would
 have said it (the voice is simulated; the words, their timing and the
 directions they become are what the live path produces). The bottom of
