@@ -1,0 +1,312 @@
+// Plugins with owned lifecycles (Coder book chapter 15). A plugin is a
+// manifest in ~/.openagents/coder/plugins: NAME.json, either the manifest
+// itself (a file the person put there) or a signed Nostr event (NIP-78
+// application data, kind 30078, d tag coder-plugin:NAME) whose content is
+// the manifest. A signed one installs only when its signature verifies and
+// its key is in the plugins directory's `trusted` file, one hex public key a
+// line.
+//
+//   {"name":"tests","commands":[{"name":"test","run":"cargo test -q"}],
+//    "hooks":[{"on":"turn_end","run":"git status --short"}]}
+//
+// Every command and hook a plugin registers is owned by it: disabling the
+// plugin removes each one, and nothing it registered remains. A plugin's
+// state is visible (/plugins, coder plugins) and changes only through the
+// transitions in PL_MOVES.
+//
+// A command runs as a "$ " command in the session's folder, so it is in the
+// transcript and the log. Hooks are registered and listed; running them on
+// their events is still to come.
+
+#load "../../coax/lib/nostr/event.coax";
+
+PL_DIR :: "/.openagents/coder/plugins";     // under $HOME
+PL_MAX :: 16; PL_CMDS :: 64; PL_HOOKS :: 32;
+
+PL_INSTALLED :: 0; PL_ENABLED :: 1; PL_ADMITTED :: 2; PL_ACTIVE :: 3; PL_FAILED :: 4; PL_DISABLED :: 5;
+PL_STATE_NAMES :: [6] string.["installed", "enabled", "admitted", "active", "failed", "disabled"];
+
+// The transitions a plugin may take, from → to. Nothing else changes a state.
+PL_MOVES :: [9] int.[
+  PL_INSTALLED * 8 + PL_ENABLED,     // found, and not on the disabled list
+  PL_INSTALLED * 8 + PL_DISABLED,    // found, and on it
+  PL_ENABLED * 8 + PL_ADMITTED,      // the manifest reads, a signature verifies, no name collides
+  PL_ENABLED * 8 + PL_FAILED,        // it doesn't: the reason is kept
+  PL_ADMITTED * 8 + PL_ACTIVE,       // its registrations are made
+  PL_ACTIVE * 8 + PL_DISABLED,       // the person disabled it: its registrations go
+  PL_FAILED * 8 + PL_DISABLED,
+  PL_DISABLED * 8 + PL_ENABLED,      // enabled again: admitted afresh
+  PL_FAILED * 8 + PL_ENABLED];
+
+PlPlugin :: struct {
+  name: [64] u8; nname: int;
+  state: int;
+  sealed: bool;                  // it came as a signed event
+  why: [256] u8; nwhy: int;      // a failed plugin's reason
+  text: [16384] u8; ntext: int;  // the manifest
+}
+PlCmd :: struct { owner: int; name: [32] u8; nname: int; run: [1024] u8; nrun: int; }
+PlHook :: struct { owner: int; on: [32] u8; non: int; run: [1024] u8; nrun: int; }
+
+PlRegistry :: struct {
+  p: [PL_MAX] PlPlugin; n: int;
+  cmds: [PL_CMDS] PlCmd; ncmds: int;
+  hooks: [PL_HOOKS] PlHook; nhooks: int;
+  ar: [1] ClArena; arb: [65536] u8;
+}
+
+pl_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+pl_name :: (r: [] PlRegistry, k: int) -> string { return cast(string) r[0].p[k].name[0..<r[0].p[k].nname]; }
+pl_state_name :: (s: int) -> string { names := PL_STATE_NAMES; return ifx s >= 0 && s < 6 then names[s] else "?"; }
+
+// Moves plugin k to state to; false, and no change, when that isn't a listed transition.
+pl_move :: (r: [] PlRegistry, k: int, to: int) -> bool {
+  moves := PL_MOVES;
+  for m: moves { if m == r[0].p[k].state * 8 + to { r[0].p[k].state = to; return true; } }
+  return false;
+}
+
+pl_fail :: (r: [] PlRegistry, k: int, why: string) { r[0].p[k].nwhy = pl_cat(r[0].p[k].why[..], 0, why); x := pl_move(r, k, PL_FAILED); }
+
+// Removes every registration plugin k made.
+pl_unregister :: (r: [] PlRegistry, k: int) {
+  j := 0;
+  for i: 0..<r[0].ncmds { if r[0].cmds[i].owner != k { r[0].cmds[j] = r[0].cmds[i]; j += 1; } }
+  r[0].ncmds = j;
+  j = 0;
+  for i: 0..<r[0].nhooks { if r[0].hooks[i].owner != k { r[0].hooks[j] = r[0].hooks[i]; j += 1; } }
+  r[0].nhooks = j;
+}
+
+pl_find_cmd :: (r: [] PlRegistry, name: string) -> int {
+  for i: 0..<r[0].ncmds { if cast(string) r[0].cmds[i].name[0..<r[0].cmds[i].nname] == name { return i; } }
+  return -1;
+}
+
+PL_BUILTIN :: [6] string.["help", "clear", "engine", "quit", "exit", "plugins"];
+
+pl_name_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > 31 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return false; } }
+  return true;
+}
+
+// Admits plugin k (state enabled) and makes its registrations: active, or failed with the reason.
+pl_admit :: (r: [] PlRegistry, k: int, trusted: string) {
+  ar := r[0].ar[..];
+  ar[0].at = 0; ar[0].full = false;
+  text := cast(string) r[0].p[k].text[0..<r[0].p[k].ntext];
+  manifest := text;
+  mb: [16384] u8;
+  if cl_raw(text, "sig").count > 0 {
+    r[0].p[k].sealed = true;
+    out: [32768] u8;
+    e := nostr_event_verify_vartime(text, out[..], false);
+    if e.error != NE_OK || !e.verified { pl_fail(r, k, "its signature doesn't verify"); return; }
+    if e.kind != 30078 { pl_fail(r, k, "a signed plugin is a kind 30078 event"); return; }
+    pk := cl_str(ar, text, "pubkey");
+    if pk.count != 64 || !pl_trusted(trusted, pk) { pl_fail(r, k, "its key isn't in plugins/trusted"); return; }
+    c := cl_str(ar, text, "content");
+    mn := pl_cat(mb[..], 0, c);
+    manifest = cast(string) mb[0..<mn];
+  }
+  name := cl_str(ar, manifest, "name");
+  if name != pl_name(r, k) { pl_fail(r, k, "its name doesn't match its file"); return; }
+  x := pl_move(r, k, PL_ADMITTED);
+  cmds := cl_raw(manifest, "commands");
+  nc := cl_count(cmds);
+  builtin := PL_BUILTIN;
+  // check every name before registering any, so a refusal leaves nothing behind
+  for i: 0..<nc {
+    one := cl_json(cmds, cl_item(cmds, i));
+    cn := cl_str(ar, one, "name"); run := cl_str(ar, one, "run");
+    if !pl_name_ok(cn) || run.count == 0 || run.count > 1024 { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a command needs a name of a-z, 0-9, - and _ and a run of at most 1024 bytes"); return; }
+    for b: builtin { if cn == b { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a command takes a built-in name"); return; } }
+    if pl_find_cmd(r, cn) >= 0 { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a command's name is another plugin's"); return; }
+  }
+  for i: 0..<nc {
+    if r[0].ncmds == PL_CMDS { break; }
+    one := cl_json(cmds, cl_item(cmds, i));
+    c := r[0].cmds[r[0].ncmds..<r[0].ncmds + 1];
+    c[0].owner = k;
+    c[0].nname = pl_cat(c[0].name[..], 0, cl_str(ar, one, "name"));
+    c[0].nrun = pl_cat(c[0].run[..], 0, cl_str(ar, one, "run"));
+    r[0].ncmds += 1;
+  }
+  hooks := cl_raw(manifest, "hooks");
+  for i: 0..<cl_count(hooks) {
+    if r[0].nhooks == PL_HOOKS { break; }
+    one := cl_json(hooks, cl_item(hooks, i));
+    h := r[0].hooks[r[0].nhooks..<r[0].nhooks + 1];
+    h[0].owner = k;
+    h[0].non = pl_cat(h[0].on[..], 0, cl_str(ar, one, "on"));
+    h[0].nrun = pl_cat(h[0].run[..], 0, cl_str(ar, one, "run"));
+    r[0].nhooks += 1;
+  }
+  y := pl_move(r, k, PL_ACTIVE);
+}
+
+pl_trusted :: (trusted: string, pk: string) -> bool {
+  at := 0;
+  while at < trusted.count {
+    e := at; while e < trusted.count && trusted[e] != 10 { e += 1; }
+    line := cast(string) trusted[at..<e];
+    while line.count > 0 && (line[line.count - 1] == ' ' || line[line.count - 1] == 13) { line = cast(string) line[0..<line.count - 1]; }
+    if line == pk { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+
+pl_listed :: (list: string, name: string) -> bool { return pl_trusted(list, name); }
+
+// Adds a plugin by name and manifest text; its first transitions follow the disabled list.
+pl_add :: (r: [] PlRegistry, name: string, text: string, disabled: string, trusted: string) -> int {
+  if r[0].n == PL_MAX { return -1; }
+  k := r[0].n; r[0].n += 1;
+  r[0].p[k] = PlPlugin.{};
+  r[0].p[k].nname = pl_cat(r[0].p[k].name[..], 0, name);
+  if text.count > r[0].p[k].text.count { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "its manifest is over 16 KB"); return k; }
+  r[0].p[k].ntext = pl_cat(r[0].p[k].text[..], 0, text);
+  if pl_listed(disabled, name) { x := pl_move(r, k, PL_DISABLED); return k; }
+  y := pl_move(r, k, PL_ENABLED);
+  pl_admit(r, k, trusted);
+  return k;
+}
+
+// Disables plugin k: its registrations go. False when it can't be disabled from its state.
+pl_disable :: (r: [] PlRegistry, k: int) -> bool {
+  if !pl_move(r, k, PL_DISABLED) { return false; }
+  pl_unregister(r, k);
+  return true;
+}
+
+pl_enable :: (r: [] PlRegistry, k: int, trusted: string) -> bool {
+  if !pl_move(r, k, PL_ENABLED) { return false; }
+  r[0].p[k].nwhy = 0; r[0].p[k].sealed = false;
+  pl_admit(r, k, trusted);
+  return true;
+}
+
+pl_index :: (r: [] PlRegistry, name: string) -> int { for k: 0..<r[0].n { if pl_name(r, k) == name { return k; } } return -1; }
+
+// The plugins directory under $HOME ("" without one); made when missing.
+pl_dir :: (out: [] u8) -> string {
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { return ""; }
+  n := pl_cat(out, 0, home); n = pl_cat(out, n, "/.openagents"); m := fs_mkdir(cast(string) out[0..<n]);
+  n = pl_cat(out, n, "/coder"); m = fs_mkdir(cast(string) out[0..<n]);
+  n = pl_cat(out, n, "/plugins"); m = fs_mkdir(cast(string) out[0..<n]);
+  return cast(string) out[0..<n];
+}
+
+pl_read_small :: (dir: string, name: string, out: [] u8) -> string {
+  pb: [1400] u8; pn := pl_cat(pb[..], 0, dir); pn = pl_cat(pb[..], pn, "/"); pn = pl_cat(pb[..], pn, name);
+  n := fs_read(cast(string) pb[0..<pn], out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+
+// Loads every NAME.json in the plugins directory.
+pl_load :: (r: [] PlRegistry) {
+  r[0].n = 0; r[0].ncmds = 0; r[0].nhooks = 0;
+  r[0].ar[0] = ClArena.{buf = r[0].arb[..]};
+  db: [1100] u8; dir := pl_dir(db[..]);
+  if dir.count == 0 { return; }
+  disb: [8192] u8; disabled := pl_read_small(dir, "disabled", disb[..]);
+  trb: [16384] u8; trusted := pl_read_small(dir, "trusted", trb[..]);
+  l_b: [1] FsList; l := l_b[..];
+  n := fs_list(dir, l);
+  for i: 0..<n {
+    name := fs_entry(l, i);
+    if name.count < 6 || cast(string) name[name.count - 5..<name.count] != ".json" { continue; }
+    tb: [16384] u8; text := pl_read_small(dir, name, tb[..]);
+    k := pl_add(r, cast(string) name[0..<name.count - 5], text, disabled, trusted);
+  }
+}
+
+// Writes the disabled list from the registry's states.
+pl_save_disabled :: (r: [] PlRegistry) -> bool {
+  db: [1100] u8; dir := pl_dir(db[..]);
+  if dir.count == 0 { return false; }
+  ob: [8192] u8; n := 0;
+  for k: 0..<r[0].n { if r[0].p[k].state == PL_DISABLED { n = pl_cat(ob[..], n, pl_name(r, k)); n = pl_cat(ob[..], n, "\n"); } }
+  pb: [1400] u8; pn := pl_cat(pb[..], 0, dir); pn = pl_cat(pb[..], pn, "/disabled");
+  return fs_write(cast(string) pb[0..<pn], cast(string) ob[0..<n]);
+}
+
+// One plugin as a line: "tests  active  /test" or "bad  failed  its signature doesn't verify".
+pl_line :: (r: [] PlRegistry, k: int, out: [] u8) -> string {
+  n := pl_cat(out, 0, pl_name(r, k)); for i: r[0].p[k].nname..<14 { n = pl_cat(out, n, " "); }
+  st := pl_state_name(r[0].p[k].state); n = pl_cat(out, n, st); for i: st.count..<10 { n = pl_cat(out, n, " "); }
+  if r[0].p[k].state == PL_FAILED { n = pl_cat(out, n, cast(string) r[0].p[k].why[0..<r[0].p[k].nwhy]); }
+  else {
+    for i: 0..<r[0].ncmds { if r[0].cmds[i].owner == k { n = pl_cat(out, n, "/"); n = pl_cat(out, n, cast(string) r[0].cmds[i].name[0..<r[0].cmds[i].nname]); n = pl_cat(out, n, " "); } }
+    for i: 0..<r[0].nhooks { if r[0].hooks[i].owner == k { n = pl_cat(out, n, "on "); n = pl_cat(out, n, cast(string) r[0].hooks[i].on[0..<r[0].hooks[i].non]); n = pl_cat(out, n, " "); } }
+    if r[0].p[k].sealed { n = pl_cat(out, n, "(signed)"); }
+  }
+  while n > 0 && out[n - 1] == ' ' { n -= 1; }
+  return cast(string) out[0..<n];
+}
+
+pl_json :: (r: [] PlRegistry, k: int, out: [] u8) -> string {
+  n := json_raw(out, 0, "{\"name\":"); n = json_write_string(out, n, pl_name(r, k));
+  n = json_raw(out, n, ",\"state\":"); n = json_write_string(out, n, pl_state_name(r[0].p[k].state));
+  n = json_raw(out, n, ifx r[0].p[k].sealed then ",\"signed\":true" else ",\"signed\":false");
+  if r[0].p[k].state == PL_FAILED { n = json_raw(out, n, ",\"why\":"); n = json_write_string(out, n, cast(string) r[0].p[k].why[0..<r[0].p[k].nwhy]); }
+  n = json_raw(out, n, ",\"commands\":[");
+  first := true;
+  for i: 0..<r[0].ncmds { if r[0].cmds[i].owner == k { if !first { n = json_raw(out, n, ","); } first = false; n = json_write_string(out, n, cast(string) r[0].cmds[i].name[0..<r[0].cmds[i].nname]); } }
+  n = json_raw(out, n, "]}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// ---------------------------------------------------------------- checks
+
+// Signed with the throwaway test key 0303…03 (public on purpose, never a real identity).
+PL_SIGNED :: "{\"id\":\"f3ae432e0e55da0df10987254c9e1419a2a053b7f575090a5ccac8fc8536a734\",\"pubkey\":\"531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337\",\"created_at\":1793604252,\"kind\":30078,\"tags\":[[\"d\",\"coder-plugin:signed-demo\"]],\"content\":\"{\\\"name\\\":\\\"signed-demo\\\",\\\"commands\\\":[{\\\"name\\\":\\\"hi\\\",\\\"run\\\":\\\"echo signed-ok\\\"}]}\",\"sig\":\"a976d9330687f3f2a4fec2d6542811b66f1066b602cccd82f31d5a0cf2be60f4c667bbd4d4394e3121a4908034d9d0b22a8785fd2a14b6b4419ab8c5c940a845\"}";
+PL_TEST_KEY :: "531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337";
+
+pl_test_registry :: (r: [] PlRegistry) { r[0].n = 0; r[0].ncmds = 0; r[0].nhooks = 0; r[0].ar[0] = ClArena.{buf = r[0].arb[..]}; }
+
+#test "a plugin's commands and hooks are its own: disabling it leaves none behind" {
+  r: [1] PlRegistry; pl_test_registry(r[..]);
+  a := pl_add(r[..], "tests", "{\"name\":\"tests\",\"commands\":[{\"name\":\"test\",\"run\":\"cargo test\"},{\"name\":\"lint\",\"run\":\"cargo clippy\"}],\"hooks\":[{\"on\":\"turn_end\",\"run\":\"git status\"}]}", "", "");
+  b := pl_add(r[..], "docs", "{\"name\":\"docs\",\"commands\":[{\"name\":\"docs\",\"run\":\"make docs\"}]}", "", "");
+  #assert r[0].p[a].state == PL_ACTIVE && r[0].p[b].state == PL_ACTIVE && r[0].ncmds == 3 && r[0].nhooks == 1;
+  #assert pl_disable(r[..], a);
+  #assert r[0].ncmds == 1 && r[0].nhooks == 0 && pl_find_cmd(r[..], "test") < 0 && pl_find_cmd(r[..], "docs") == 0;
+  for i: 0..<r[0].ncmds { #assert r[0].cmds[i].owner != a; }
+  #assert pl_enable(r[..], a, "") && r[0].ncmds == 3 && r[0].p[a].state == PL_ACTIVE;
+}
+
+#test "states change only through the listed transitions" {
+  r: [1] PlRegistry; pl_test_registry(r[..]);
+  k := pl_add(r[..], "x", "{\"name\":\"x\"}", "x\n", "");
+  #assert r[0].p[k].state == PL_DISABLED;
+  #assert !pl_move(r[..], k, PL_ACTIVE) && r[0].p[k].state == PL_DISABLED;     // not without being admitted
+  #assert !pl_disable(r[..], k);                                               // already disabled
+  #assert pl_enable(r[..], k, "") && r[0].p[k].state == PL_ACTIVE;
+  #assert !pl_move(r[..], k, PL_INSTALLED) && !pl_move(r[..], k, PL_ADMITTED);
+}
+
+#test "a refused plugin registers nothing: a taken name, a built-in name, a bad command" {
+  r: [1] PlRegistry; pl_test_registry(r[..]);
+  a := pl_add(r[..], "one", "{\"name\":\"one\",\"commands\":[{\"name\":\"go\",\"run\":\"true\"}]}", "", "");
+  b := pl_add(r[..], "two", "{\"name\":\"two\",\"commands\":[{\"name\":\"ok\",\"run\":\"true\"},{\"name\":\"go\",\"run\":\"false\"}]}", "", "");
+  c := pl_add(r[..], "three", "{\"name\":\"three\",\"commands\":[{\"name\":\"clear\",\"run\":\"true\"}]}", "", "");
+  d := pl_add(r[..], "four", "{\"name\":\"other\"}", "", "");
+  #assert r[0].p[b].state == PL_FAILED && r[0].p[c].state == PL_FAILED && r[0].p[d].state == PL_FAILED;
+  #assert r[0].ncmds == 1 && pl_find_cmd(r[..], "ok") < 0;
+}
+
+#test "a signed plugin installs when it verifies and its key is trusted; a changed byte refuses it" #steps 2000000000 {
+  r: [1] PlRegistry; pl_test_registry(r[..]);
+  k := pl_add(r[..], "signed-demo", PL_SIGNED, "", PL_TEST_KEY);
+  #assert r[0].p[k].state == PL_ACTIVE && r[0].p[k].sealed && pl_find_cmd(r[..], "hi") >= 0;
+  u := pl_add(r[..], "signed-demo", PL_SIGNED, "", "");
+  #assert r[0].p[u].state == PL_FAILED && cast(string) r[0].p[u].why[0..<r[0].p[u].nwhy] == "its key isn't in plugins/trusted";
+  bad: [2048] u8; n := pl_cat(bad[..], 0, PL_SIGNED);
+  for i: 0..<n - 8 { if bad[i] == 's' && bad[i + 1] == 'i' && bad[i + 2] == 'g' && bad[i + 3] == 'n' && bad[i + 4] == 'e' && bad[i + 5] == 'd' && bad[i + 6] == '-' && bad[i + 7] == 'o' { bad[i + 7] = 'O'; } }
+  t := pl_add(r[..], "signed-demo", cast(string) bad[0..<n], "", PL_TEST_KEY);
+  #assert r[0].p[t].state == PL_FAILED && cast(string) r[0].p[t].why[0..<r[0].p[t].nwhy] == "its signature doesn't verify";
+}

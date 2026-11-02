@@ -6,7 +6,7 @@ paste, walks history with Up, switches agent with Shift-Tab (legacy and
 kitty), then quits with Ctrl-C and checks the exit. Then the verbs without a
 terminal, in a fresh HOME: coder run --json on the psionic engine against a
 stand-in local model server (local_model.py), coder ls --json, coder log and
-coder status on an unknown ID, a progress bar's output, coder fork, coder run --detach then coder
+coder status on an unknown ID, a progress bar's output, a plugin's command, coder fork, coder run --detach then coder
 stop, and coder run without --engine or a System
 One key (the default engine, with the reason in the log).
 
@@ -113,6 +113,16 @@ def verbs(check):
         bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]
         check("output reads as the screen shows it", len(res) == 1 and res[0]["text"] == "100%\nok")
+        # a plugin's command runs; disabled, nothing it registered remains (chapter 15)
+        plugdir = os.path.join(home, ".openagents", "coder", "plugins")
+        os.makedirs(plugdir, exist_ok=True)
+        with open(os.path.join(plugdir, "demo.json"), "w") as f:
+            f.write('{"name":"demo","commands":[{"name":"hello","run":"echo plugin-ok"}]}')
+        ran = subprocess.run([coder, "run", "/hello", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        check("a plugin's command runs", any(json.loads(l).get("text") == "plugin-ok\n" for l in ran.stdout.splitlines() if '"kind":"result"' in l))
+        subprocess.run([coder, "run", "/plugin disable demo", "--engine", "echo"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        pl = json.loads(subprocess.run([coder, "plugins", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
+        check("a disabled plugin keeps no command", pl == [{"name": "demo", "state": "disabled", "signed": False, "commands": []}])
         # fork: the new session carries the parent's turns, and its header names the parent
         first = subprocess.run([coder, "run", "remember heliotrope", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         pid_ = json.loads(first.stdout.splitlines()[0])["id"]

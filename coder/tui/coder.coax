@@ -33,6 +33,7 @@
 #load "microcoder.coax";
 #load "session.coax";
 #load "route.coax";
+#load "plugins.coax";
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -55,6 +56,7 @@ App :: struct {
   plain: bool;                   // --print: no TUI, plain lines
   pre: string;                   // a fork's earlier turns, sent ahead of its first message
   vt: [1] Vt;                    // reads a tool's output as a terminal would show it (chapter 37)
+  pl: [] PlRegistry;             // plugins: their commands and hooks (chapter 15)
   vt_out: [131072] u8;
   engine: int;
   model: string;
@@ -624,7 +626,7 @@ cd_poll :: (a: [] App) -> bool {
 
 // ---------------------------------------------------------------- input
 
-HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine) or echo (offline)\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
+HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine) or echo (offline)\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
 
 cd_submit :: (a: [] App) {
   text := tui_ed_text(a[0].ed[..]);
@@ -653,6 +655,20 @@ cd_submit :: (a: [] App) {
     if msg == "/engine codex" { cd_switch(a, ENGINE_CODEX); return; }
     if msg == "/engine microcoder" { cd_switch(a, ENGINE_MICRO); return; }
     if msg == "/engine psionic" { cd_switch(a, ENGINE_PSIONIC); return; }
+    if msg == "/plugins" { cd_plugins_show(a); return; }
+    if msg.count > 16 && (cast(string) msg[0..<16] == "/plugin disable " || cast(string) msg[0..<15] == "/plugin enable ") { cd_plugin_toggle(a, msg); return; }
+    // a plugin's command: /NAME [ARGS] runs its command with ARGS, as a "$ " command
+    w := 1; while w < msg.count && msg[w] != ' ' { w += 1; }
+    ci := pl_find_cmd(a[0].pl, cast(string) msg[1..<w]);
+    if ci >= 0 {
+      rb: [2400] u8; rn := cd_cat(rb[..], 0, "$ ");
+      rn = cd_cat(rb[..], rn, cast(string) a[0].pl[0].cmds[ci].run[0..<a[0].pl[0].cmds[ci].nrun]);
+      rn = cd_cat(rb[..], rn, cast(string) msg[w..<msg.count]);
+      if a[0].log[0].nid == 0 { cs_open(a); }
+      cs_user(a, msg);
+      cd_start(a, cast(string) rb[0..<rn]);
+      return;
+    }
     cd_commit(a, TUI_RED, "  Unknown command. /help lists them.");
     return;
   }
@@ -660,6 +676,35 @@ cd_submit :: (a: [] App) {
   if a[0].log[0].nid == 0 { cs_open(a); }
   cs_user(a, msg);
   cd_start(a, msg);
+}
+
+cd_plugins_show :: (a: [] App) {
+  if a[0].pl[0].n == 0 { cd_commit(a, TUI_FAINT, "  No plugins: add NAME.json to ~/.openagents/coder/plugins (Coder book chapter 15)."); return; }
+  for k: 0..<a[0].pl[0].n { lb: [1024] u8; tb: [1100] u8; n := cd_cat(tb[..], 0, "  "); n = cd_cat(tb[..], n, pl_line(a[0].pl, k, lb[..])); cd_commit(a, ifx a[0].pl[0].p[k].state == PL_FAILED then TUI_RED else TUI_DIM, cast(string) tb[0..<n]); }
+}
+
+// /plugin enable NAME, /plugin disable NAME: the disabled list on disk follows.
+cd_plugin_toggle :: (a: [] App, msg: string) {
+  enable := cast(string) msg[0..<15] == "/plugin enable ";
+  name := cast(string) msg[ifx enable then 15 else 16..<msg.count];
+  k := pl_index(a[0].pl, name);
+  if k < 0 { cd_commit(a, TUI_RED, "  No such plugin. /plugins lists them."); return; }
+  db: [1100] u8; dir := pl_dir(db[..]); trb: [16384] u8; trusted := pl_read_small(dir, "trusted", trb[..]);
+  ok := ifx enable then pl_enable(a[0].pl, k, trusted) else pl_disable(a[0].pl, k);
+  if !ok { cd_commit(a, TUI_RED, ifx enable then "  It isn't disabled." else "  It isn't active or failed."); return; }
+  x := pl_save_disabled(a[0].pl);
+  lb: [1024] u8; tb: [1100] u8; n := cd_cat(tb[..], 0, "  "); n = cd_cat(tb[..], n, pl_line(a[0].pl, k, lb[..]));
+  cd_commit(a, TUI_DIM, cast(string) tb[0..<n]);
+}
+
+cd_cmd_plugins :: (r: [] PlRegistry, json: bool) -> int {
+  if json { cd_out("["); }
+  for k: 0..<r[0].n {
+    ob: [2048] u8;
+    if json { if k > 0 { cd_out(","); } cd_out(pl_json(r, k, ob[..])); } else { cd_outln(pl_line(r, k, ob[..])); }
+  }
+  if json { cd_outln("]"); } else if r[0].n == 0 { cd_outln("No plugins: add NAME.json to ~/.openagents/coder/plugins."); }
+  return 0;
 }
 
 // Switches the agent. Each agent's session stays open with its own conversation.
@@ -730,7 +775,7 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder ls [--json]                         sessions, newest first\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
 
 // Flags that take a value: their value is not a positional argument.
 CD_VALUE_FLAGS :: [7] string.["--engine", "--model", "--cwd", "--print", "--on", "--session", "--at"];
@@ -1080,6 +1125,8 @@ tool_main :: () -> int #export_c {
   if verb == "log" { return cd_cmd_log(cd_positional(args, 1), json); }
   if verb == "route" { return cd_cmd_route(cd_positional(args, 1), json); }
   if verb == "stop" { return cd_cmd_stop(cd_positional(args, 1), json); }
+  pl_b: [1] PlRegistry; pl_load(pl_b[..]);
+  if verb == "plugins" { return cd_cmd_plugins(pl_b[..], json); }
   if (verb == "run" || verb == "fork") && args_has(args, "--detach") { return cd_detach(args, json); }
   if verb.count > 0 && verb != "run" && verb != "fork" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }
   a_b: [1] App; a := a_b[..];
@@ -1107,6 +1154,7 @@ tool_main :: () -> int #export_c {
   a[0].model_engine = a[0].engine;
 
   log_b: [1] CsLog; a[0].log = log_b[..];
+  a[0].pl = pl_b[..];
   task := args_value(args, "--print", "");
   if verb == "run" { task = cd_positional(args, 1); }
   // fork ID "TASK": the parent's turns ride ahead of the first message (chapter 14)

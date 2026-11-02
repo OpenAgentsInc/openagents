@@ -91,7 +91,7 @@ grow together:
 | Chapter | What we build and check |
 | --- | --- |
 | [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) — partly implemented | Forks at a turn boundary, scoped subagents, background jobs and goals. |
-| [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — design draft | Ordered profiles, owned registrations, visible states and third-party plugins in bounded Wasm signed as Nostr events. |
+| [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — partly implemented | Ordered profiles, owned registrations, visible states and third-party plugins in bounded Wasm signed as Nostr events. |
 | [16. Speak the protocols](ch016-speak-the-protocols.md) — partly implemented | MCP, ACP, Open Responses function tools and System One decisions as a tool. |
 | [17. One agent, many tasks](ch017-one-agent-many-tasks.md) — design draft | OpenAgents as the Router and Coder as Workers: Triggers, two-stage filtering, Thread subscription, batching, inline and spill, chain of recall and acting ahead. |
 | [18. Consent before sharing](ch018-consent-before-sharing.md) — partly implemented | No session content leaves the machine without a per-session, revocable opt-in. |

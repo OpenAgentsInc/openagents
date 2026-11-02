@@ -28,8 +28,8 @@ built. The [plan](PLAN.md#the-cli-is-the-spine) lists them.
 
 ## Status
 
-Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 22 are
-partly implemented, 12 are written surveys and 3 are design drafts; none is fully implemented yet. Chapters 1–8
+Written 2026-11-01; counts as of 2026-11-02. Of the 37 chapters, 23 are
+partly implemented, 12 are written surveys and 2 are design drafts; none is fully implemented yet. Chapters 1–8
 and 14–22 moved here from Part XXI of the Psionic book on 2026-11-01. Their
 code is still under `psionic/lib/harness/`, and the [registry](chapters.json)
 names it.
@@ -60,7 +60,7 @@ names it.
 | [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) | Partly implemented: `--engine psionic` on a local Chat Completions server |
 | [13. Choose an engine](ch013-choose-an-engine.md) | Partly implemented: mammoth-1 routes 22/22 held out |
 | [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) | Partly implemented: forks and background jobs |
-| [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) | Unimplemented: design draft |
+| [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) | Partly implemented: owned commands, states, signed installs |
 | [16. Speak the protocols](ch016-speak-the-protocols.md) | Partly implemented: cpu-mcp-2025-06-18-subset-v1, bounded CPU |
 | [17. One agent, many tasks](ch017-one-agent-many-tasks.md) | Unimplemented: design draft |
 | [18. Consent before sharing](ch018-consent-before-sharing.md) | Partly implemented: cs-consent-v1, bounded CPU, SHA-256 hash-chained consent ledger |

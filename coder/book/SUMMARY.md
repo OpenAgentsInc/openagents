@@ -25,7 +25,7 @@
 ## III. Many tasks
 
 - [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) — partly implemented
-- [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — design draft
+- [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — partly implemented
 - [16. Speak the protocols](ch016-speak-the-protocols.md) — partly implemented
 - [17. One agent, many tasks](ch017-one-agent-many-tasks.md) — design draft
 - [18. Consent before sharing](ch018-consent-before-sharing.md) — partly implemented
