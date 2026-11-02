@@ -1,0 +1,118 @@
+// Which OpenSSL coax/platform/tls-env.sh links on Linux: the system's OpenSSL
+// 3 when its headers and libssl.so are there (so a binary built on Ubuntu
+// starts there, without nix's glibc), nix only when there is none or on
+// NixOS, and the OPENSSL_DEV/OPENSSL_LIB and CXTLS_* overrides as given.
+// Each case sources the script in bash under a fake system root
+// (CXTLS_SYSROOT) with a fake `nix` first on PATH that logs each call.
+//   coax/web/tool.sh coax/tests/net/tls-env.coax [SCRIPT]   (from the repo root, on Linux)
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+
+FAKE_NIX :: "#!/bin/sh\necho nix >> \"$FAKE_NIX_LOG\"\n[ -n \"$FAKE_NIX_FAIL\" ] && exit 1\necho \"$FAKE_NIX_DEV\"\necho \"$FAKE_NIX_OUT\"\n";
+// $1 the script, $2 a scratch directory. Clean of the caller's TLS settings, then the case's lines.
+SETUP :: "e=$1; t=$2; unset CXTLS_CFLAGS CXTLS_LIBS OPENSSL_DEV OPENSSL_LIB FAKE_NIX_FAIL; r=$t/root; rm -rf \"$r\" \"$t/nix.log\" \"$t/nix-dev\" \"$t/nix-out\"; mkdir -p \"$r\" \"$t/nix-dev/include/openssl\" \"$t/nix-out/lib\"; touch \"$t/nix-dev/include/openssl/ssl.h\" \"$t/nix-out/lib/libssl.so\"; chmod +x \"$t/bin/nix\"; export PATH=\"$t/bin:$PATH\" CXTLS_SYSROOT=\"$r\" FAKE_NIX_LOG=\"$t/nix.log\" FAKE_NIX_DEV=\"$t/nix-dev\" FAKE_NIX_OUT=\"$t/nix-out\"; ";
+SYSTEM3 :: "mkdir -p \"$r/usr/include/openssl\" \"$r/usr/lib64\"; touch \"$r/usr/include/openssl/ssl.h\" \"$r/usr/lib64/libssl.so\" \"$r/usr/lib64/libcrypto.so\"; printf '# define OPENSSL_VERSION_MAJOR 3\\n' > \"$r/usr/include/openssl/opensslv.h\"; ";
+REPORT :: ". \"$e\"; rc=$?; echo \"rc $rc\"; echo \"cflags ${CXTLS_CFLAGS:-}\"; echo \"libs ${CXTLS_LIBS:-}\"; echo \"nix $(cat \"$t/nix.log\" 2>/dev/null | wc -l | tr -d ' ')\"";
+
+#test "a case's report lines" {
+  #assert te_line("rc 0\ncflags -Ix\nlibs -L/y -lssl\nnix 0", "cflags") == "-Ix" && te_line("rc 0\nnix 1", "nix") == "1";
+  #assert te_line("rc 0\nlibs \n", "libs") == "" && te_line("", "rc") == "" && te_line("xrc 1\nrc 2", "rc") == "2";
+}
+te_line :: (text: string, key: string) -> string {
+  at := 0;
+  for end: 0..<text.count + 1 {
+    if end < text.count && text[end] != '\n' { continue; }
+    line := text[at..<end]; at = end + 1;
+    if line.count > key.count && line[0..<key.count] == key && line[key.count] == ' ' { return line[key.count + 1..<line.count]; }
+  }
+  return "";
+}
+te_cat :: (parts: [] string, out: [] u8) -> string {
+  n := 0;
+  for p: parts { for c: p { if n < out.count { out[n] = c; n += 1; } } }
+  return cast(string) out[0..<n];
+}
+
+Te :: struct { script: string; dir: string; root: [1100] u8; root_n: int; out: [16384] u8; n: int; passed: int; failed: int; }
+// Runs SETUP, the case's lines and REPORT; the report into t.out.
+te_run :: (t: [] Te, lines: string) -> string {
+  sb: [8192] u8;
+  parts := [3] string.[SETUP, lines, REPORT];
+  argv := [6] string.["bash", "-c", te_cat(parts[..], sb[..]), "tls-env", t[0].script, t[0].dir];
+  err: [4096] u8;
+  r := proc_run(argv[..], 30000, t[0].out[..], err[..]);
+  t[0].n = ifx r.started == 0 then r.out_n else 0;
+  return cast(string) t[0].out[0..<t[0].n];
+}
+te_check :: (t: [] Te, name: string, ok: bool, got: string) {
+  if ok { t[0].passed += 1; print("ok   %\n", name); return; }
+  t[0].failed += 1; print("FAIL %\n%\n", name, got);
+}
+te_root :: (t: [] Te, tail: string, out: [] u8) -> string {
+  parts := [3] string.[t[0].dir, "/root", tail];
+  return te_cat(parts[..], out);
+}
+te_dir :: (t: [] Te, tail: string, out: [] u8) -> string {
+  parts := [2] string.[t[0].dir, tail];
+  return te_cat(parts[..], out);
+}
+
+tool_main :: () -> int #export_c {
+  if tool_os() == TOOL_MAC { print("%\n", "tls-env: Linux only (macOS uses Network.framework)"); return 0; }
+  t: [1] Te;
+  args: [1] Args; loaded := args_load(args[..]);
+  t[0].script = ifx args_at(args[..], 0).count > 0 then args_at(args[..], 0) else "coax/platform/tls-env.sh";
+  if fs_kind(t[0].script) != FS_FILE { tool_errln("tls-env: run from the repository root"); return 2; }
+  db: [1024] u8; dir := fs_temp("coax-tls-env-", db[..]);
+  if dir.count == 0 { tool_errln("tls-env: no temporary directory"); return 1; }
+  t[0].dir = dir;
+  bin: [1100] u8; nix: [1100] u8;
+  mk := [3] string.["mkdir", "-p", te_dir(t[..], "/bin", bin[..])];
+  made := proc_run(mk[..], 5000, t[0].out[..], t[0].out[..]);
+  if !fs_write(te_dir(t[..], "/bin/nix", nix[..]), FAKE_NIX) { tool_errln("tls-env: could not write the fake nix"); return 1; }
+  a: [1100] u8; b: [1100] u8; c: [1100] u8; d: [1100] u8;
+
+  got := te_run(t[..], SYSTEM3);
+  inc := te_root(t[..], "/usr/include", a[..]);
+  ia := [2] string.["-I", inc]; want_c := te_cat(ia[..], b[..]);
+  la := [3] string.["-L", te_root(t[..], "/usr/lib64", c[..]), " -lssl -lcrypto"]; want_l := te_cat(la[..], d[..]);
+  te_check(t[..], "the system's OpenSSL 3 is used without asking nix", te_line(got, "rc") == "0" && te_line(got, "cflags") == want_c && te_line(got, "libs") == want_l && te_line(got, "nix") == "0", got);
+
+  got = te_run(t[..], "mkdir -p \"$r/usr/include/openssl\" \"$r/usr/lib/x86_64-linux-gnu\" \"$r/usr/lib/aarch64-linux-gnu\"; touch \"$r/usr/include/openssl/ssl.h\"; for m in x86_64 aarch64; do touch \"$r/usr/lib/$m-linux-gnu/libssl.so\" \"$r/usr/lib/$m-linux-gnu/libcrypto.so\"; done; printf '#  define OPENSSL_VERSION_MAJOR 3\\n' > \"$r/usr/include/openssl/opensslv.h\"; ");
+  te_check(t[..], "a multiarch library directory is found", te_line(got, "rc") == "0" && te_line(got, "nix") == "0" && te_line(got, "libs").count > 0 && te_line(got, "cflags") == want_c, got);
+
+  nd: [1100] u8; no: [1100] u8;
+  nc := [2] string.["-I", te_dir(t[..], "/nix-dev/include", nd[..])]; nix_c := te_cat(nc[..], a[..]);
+  got = te_run(t[..], "mkdir -p \"$r/etc\"; touch \"$r/etc/NIXOS\"; " );
+  te_check(t[..], "no system OpenSSL: nix", te_line(got, "rc") == "0" && te_line(got, "cflags") == nix_c && te_line(got, "nix") == "1", got);
+  got = te_run(t[..], "touch \"$r/etc_none\"; mkdir -p \"$r/etc\"; touch \"$r/etc/NIXOS\"; mkdir -p \"$r/usr/include/openssl\" \"$r/usr/lib64\"; touch \"$r/usr/include/openssl/ssl.h\" \"$r/usr/lib64/libssl.so\" \"$r/usr/lib64/libcrypto.so\"; printf '# define OPENSSL_VERSION_MAJOR 3\\n' > \"$r/usr/include/openssl/opensslv.h\"; ");
+  te_check(t[..], "NixOS uses nix even with OpenSSL files under /usr", te_line(got, "cflags") == nix_c && te_line(got, "nix") == "1", got);
+  got = te_run(t[..], "mkdir -p \"$r/usr/include/openssl\" \"$r/usr/lib64\"; touch \"$r/usr/include/openssl/ssl.h\" \"$r/usr/lib64/libssl.so\" \"$r/usr/lib64/libcrypto.so\"; printf '# define OPENSSL_VERSION_NUMBER 0x1010100fL\\n' > \"$r/usr/include/openssl/opensslv.h\"; ");
+  te_check(t[..], "OpenSSL 1.1 headers are not OpenSSL 3: nix", te_line(got, "cflags") == nix_c && te_line(got, "nix") == "1", got);
+  got = te_run(t[..], "mkdir -p \"$r/usr/include/openssl\" \"$r/usr/lib64\"; touch \"$r/usr/include/openssl/ssl.h\" \"$r/usr/lib64/libssl.so.3\" \"$r/usr/lib64/libcrypto.so.3\"; printf '# define OPENSSL_VERSION_MAJOR 3\\n' > \"$r/usr/include/openssl/opensslv.h\"; ");
+  te_check(t[..], "a runtime libssl.so.3 without the link-time libssl.so: nix", te_line(got, "cflags") == nix_c && te_line(got, "nix") == "1", got);
+  got = te_run(t[..], "mkdir -p \"$r/usr/lib64\"; touch \"$r/usr/lib64/libssl.so\" \"$r/usr/lib64/libcrypto.so\"; ");
+  te_check(t[..], "libraries without headers: nix", te_line(got, "cflags") == nix_c && te_line(got, "nix") == "1", got);
+
+  got = te_run(t[..], "export FAKE_NIX_FAIL=1; ");
+  te_check(t[..], "no system OpenSSL and no nix: the script fails, saying what to install", te_line(got, "rc") == "1" && te_line(got, "cflags") == "", got);
+
+  got = te_run(t[..], "mkdir -p \"$t/o/include/openssl\" \"$t/o/lib\"; touch \"$t/o/include/openssl/ssl.h\" \"$t/o/lib/libssl.so\"; export OPENSSL_DEV=\"$t/o\" OPENSSL_LIB=\"$t/o\"; " );
+  od: [1100] u8; oc := [2] string.["-I", te_dir(t[..], "/o/include", od[..])];
+  te_check(t[..], "OPENSSL_DEV and OPENSSL_LIB are used as given", te_line(got, "rc") == "0" && te_line(got, "cflags") == te_cat(oc[..], c[..]) && te_line(got, "nix") == "0", got);
+  got = te_run(t[..], "mkdir -p \"$t/o/include/openssl\" \"$t/o/lib\"; touch \"$t/o/include/openssl/ssl.h\" \"$t/o/lib/libssl.so\"; export OPENSSL_DEV=\"$t/o\" OPENSSL_LIB=\"$t/o\"; mkdir -p \"$r/usr/include/openssl\" \"$r/usr/lib64\"; touch \"$r/usr/include/openssl/ssl.h\" \"$r/usr/lib64/libssl.so\" \"$r/usr/lib64/libcrypto.so\"; printf '# define OPENSSL_VERSION_MAJOR 3\\n' > \"$r/usr/include/openssl/opensslv.h\"; ");
+  te_check(t[..], "OPENSSL_DEV and OPENSSL_LIB win over the system's", te_line(got, "cflags") == te_cat(oc[..], d[..]) && te_line(got, "nix") == "0", got);
+
+  got = te_run(t[..], "export CXTLS_CFLAGS=-Imine CXTLS_LIBS='-lmine'; ");
+  te_check(t[..], "CXTLS_CFLAGS and CXTLS_LIBS are kept", te_line(got, "cflags") == "-Imine" && te_line(got, "libs") == "-lmine" && te_line(got, "nix") == "0", got);
+  got = te_run(t[..], "export CXTLS_LIBS='-lmine'; " );
+  ib := [3] string.["-I", te_dir(t[..], "/nix-dev/include", nd[..]), ""];
+  te_check(t[..], "CXTLS_LIBS alone is kept, and the flags it lacks are found", te_line(got, "libs") == "-lmine" && te_line(got, "cflags") == te_cat(ib[..], a[..]), got);
+
+  rmv := [3] string.["rm", "-rf", dir];
+  rm := proc_run(rmv[..], 10000, t[0].out[..], t[0].out[..]);
+  print("% passed, % failed\n", t[0].passed, t[0].failed);
+  return ifx t[0].failed == 0 then 0 else 1;
+}

@@ -3,7 +3,7 @@
 # Builds the openagents CLI into apps/openagents-cli/build/openagents.
 #   apps/openagents-cli/build.sh            then: apps/openagents-cli/build/openagents help
 # Links sockets and TLS for the relay client (coax/platform/tls-env.sh:
-# Network.framework on macOS, OpenSSL from Nix on Linux).
+# Network.framework on macOS; on Linux the system's OpenSSL 3, else OpenSSL from Nix).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"; p="$repo/coax/platform"
 coax="${COAX:-$repo/coax/bin/coax}"

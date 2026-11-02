@@ -17,8 +17,12 @@ ln -sf "$PWD/apps/openagents-cli/build/openagents" ~/.local/bin/openagents
 ```
 
 macOS and Linux. The build needs the Coax compiler and the system C
-compiler; on Linux, TLS comes from OpenSSL through Nix
-([coax/platform/tls-env.sh](../../coax/platform/tls-env.sh)).
+compiler; on Linux, TLS comes from the system's OpenSSL 3 (on Ubuntu and
+Debian, `apt install libssl-dev`), or from OpenSSL through Nix where there is
+none and on NixOS ([coax/platform/tls-env.sh](../../coax/platform/tls-env.sh);
+`coax/web/tool.sh coax/tests/net/tls-env.coax` checks which it picks). A binary
+linked with Nix's OpenSSL carries Nix's glibc and does not start on an ordinary
+distribution.
 
 ## Identity
 
