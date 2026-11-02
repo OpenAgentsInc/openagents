@@ -1,0 +1,129 @@
+// Chapter 254's exploratory tasks and metrics. Public admission lives in
+// construct.coax/construct-program.coax; this does not promote a model.
+#load "construct.coax";
+#load "construct-program.coax";
+#load "weight-module.coax";
+#load "gridworld.coax";
+CsCandidate :: struct {valid:bool;mode:int;task:int;reason:int;count:int;p:[4096]f64;plan:GgPlan;digest:[32]u8;nodes:[100]GgNode;nnodes:int;out:[4]int;}
+CsScore :: struct {total:int;exact:int;close:int;refused:int;forwards:int;error:f64;worst:f64;failed:bool;first:[4]int;want:f64;got:f64;}
+CsWalk :: struct {starts:int;reached:int;optimal:int;steps:int;collisions:int;forwards:int;refused:int;}
+
+#test "construction hand networks and compiled programs agree at held-out boundaries" #steps 200000000 {
+    for task:0..<3 {
+        p:=cs_hand(task);s:=cs_shape(task);c:=cs_parse(task,1,cs_program(task));#assert c.valid;
+        for a:-2..<3 {for b:-2..<3 {for bit:0..<2 {x:=[4]int.[a*32,b*32,bit,0];v:=[3]f64.[f64(x[0]),f64(x[1]),f64(bit)];
+            #assert cn_compute(s,p[0..<24],v[..])[0]==f64(cs_truth(task,x));#assert cs_predict(c,x)[0]==f64(cs_truth(task,x));
+        }}}
+    }
+}
+#test "grid distances expose an action reference with exact optimal walks" #steps 400000000 {
+    c:=cs_parse(3,1,cs_program(3));#assert c.valid && c.plan.layers==0 && c.count==0;
+    for map:0..<4 {m:=cs_map(map);d:=cs_distances(m);#assert d[m.goal]==0 && d[m.start]>0;
+        r:=cs_walks(c,m);#assert r.starts>0 && r.reached==r.starts && r.optimal==r.starts && r.collisions==0 && r.forwards==r.steps;
+    }
+}
+#test "an almost-correct conditional fails the boundary and empty work is refused" {
+    p:=cs_hand(2);p[2]=64;p[5]=64;p[12]=-64;p[13]=-64;x:=[3]f64.[64,-64,0];
+    #assert cn_compute(cs_shape(2),p[0..<24],x[..])[0]!=-64;
+    #assert !cs_parse(0,0,"[]").valid && !cs_parse(0,1,"[[]]").valid;
+    #assert !cs_parse(0,1,"[[0,1,16]]").valid;
+}
+#test "a structurally valid overflowing program is refused before weight execution" #steps 200000000 {
+    c:=cs_parse(0,1,"[[0,0,14,0,0,14,14,0,0,14,0,0,14,14,14]]");#assert c.valid;
+    #assert !cs_safe(c,[4]int.[64,0,0,0]) && cs_safe(c,[4]int.[1,0,0,0]);
+    r:=cs_score(c,true);#assert r.total==1936 && r.refused>0 && r.forwards+r.refused==r.total;
+}
+
+cs_shape :: (task:int)->CnShape {return ifx task==3 then CnShape.{inputs=4,outputs=4} else CnShape.{inputs=3,outputs=1};}
+cs_truth :: (task:int,x:[4]int)->int {
+    if task==0 {return ifx x[0]>x[1] then x[0] else x[1];}
+    if task==1 {return cast(int)abs(f64(x[0]));}
+    return ifx x[2]==1 then x[0] else x[1];
+}
+// book:begin hand
+cs_hand :: (task:int)->[56]f64 {
+    p:[56]f64;
+    if task==0 {p[0]=1;p[1]=-1;p[16]=1;p[21]=1;}
+    if task==1 {p[0]=1;p[3]=-1;p[16]=1;p[17]=1;}
+    if task==2 {p[0]=1;p[1]=-1;p[2]=128;p[3]=-1;p[4]=1;p[5]=128;p[12]=-128;p[13]=-128;p[16]=1;p[17]=-1;p[21]=1;}
+    if task==3 {for a:0..<4 {p[36+a*4+a]=-1;}}
+    return p;
+}
+// book:end hand
+cs_program :: (task:int)->string {
+    programs:=[4]string.["[[0,1,11,12,1,10]]","[[0,12,0,13,12,10]]","[[2,15,0,1,16]]","[[0,13],[1,13],[2,13],[3,13]]"];return programs[task];
+}
+cs_parse :: (task:int,mode:int,text:string)->CsCandidate {
+    c:=CsCandidate.{mode=mode,task=task};s:=cs_shape(task);
+    if mode==0 {
+        r:=cn_parse(s,text);c.reason=cast(int)r.status;
+        if r.status==CnStatus.ok {c.valid=true;c.count=r.count;c.digest=r.digest;for i:0..<r.count {c.p[i]=r.values[i];}}
+    }else {
+        g:=cp_parse(s.inputs,s.outputs,text);c.reason=100+cast(int)g.status;
+        if g.status!=CpStatus.ok {return c;}
+        c.nodes=g.nodes;c.nnodes=g.count;c.out=g.out;
+        c.plan=gg_compile(g.nodes[0..<g.count],g.out[0..<g.outputs],c.p[..]);c.reason=200+cast(int)c.plan.status;
+        if c.plan.status==GgStatus.ok {c.valid=true;c.count=c.plan.weights;c.digest=wm_digest(wm_module(c.plan,WmLabel.tests),c.p[..]);c.reason=0;}
+    }return c;
+}
+cs_safe :: (c:CsCandidate,x:[4]int)->bool {
+    if c.mode==0 {return true;}nodes:=c.nodes;outs:=c.out;inputs:=x;values:[4]int;s:=cs_shape(c.task);
+    return gg_eval(nodes[0..<c.nnodes],inputs[0..<s.inputs],outs[0..<s.outputs],values[0..<s.outputs]).status==GgStatus.ok;
+}
+cs_predict :: (c:CsCandidate,x:[4]int)->[4]f64 {
+    #assert c.valid;s:=cs_shape(c.task);out:[4]f64;p:=c.p;
+    if c.mode==0 {v:[4]f64;for j:0..<s.inputs {v[j]=f64(x[j]);}out=cn_compute(s,p[0..<c.count],v[0..<s.inputs]);}
+    else {v:=x;#assert gg_run(c.plan,p[..],v[0..<s.inputs],out[0..<s.outputs],false,false)==GgStatus.ok;}
+    return out;
+}
+cs_accumulate :: (score:CsScore,c:CsCandidate,x:[4]int)->CsScore {
+    r:=score;r.total+=1;if !cs_safe(c,x) {r.refused+=1;return r;}r.forwards+=1;
+    value:=cs_predict(c,x)[0];truth:=f64(cs_truth(c.task,x));e:=abs(value-truth);r.error+=e;
+    if e<=1e-9 {r.exact+=1;}if e<=0.01 {r.close+=1;}if e>r.worst {r.worst=e;}
+    if !r.failed && e>1e-9 {r.failed=true;r.first=x;r.want=truth;r.got=value;}return r;
+}
+// book:begin score
+cs_score :: (c:CsCandidate,held:bool)->CsScore {
+    r:CsScore;#assert c.valid;
+    if !held {
+        for a:-6..<7 {for b:-6..<7 {if a< -4 || a>4 || b< -4 || b>4 {for bit:0..<2 {r=cs_accumulate(r,c,[4]int.[a,b,bit,0]);}}}}
+    }else {
+        for a:-16..<17 {for b:-16..<17 {if a< -6 || a>6 || b< -6 || b>6 {for bit:0..<2 {r=cs_accumulate(r,c,[4]int.[a,b,bit,0]);}}}}
+        edge:=[7]int.[-64,-63,-32,0,32,63,64];for a:edge {for b:edge {if a!=0 || b!=0 {for bit:0..<2 {r=cs_accumulate(r,c,[4]int.[a,b,bit,0]);}}}}
+    }
+    return r;
+}
+// book:end score
+cs_development :: (c:CsCandidate)->CsScore {
+    if c.task<3 {return cs_score(c,false);}r:CsScore;
+    for map:0..<2 {m:=cs_map(map);dist:=cs_distances(m);
+        for s:0..<64 {if s/8>=m.height || s%8>=m.width || m.wall[s] || s==m.goal || dist[s]==64 {continue;}
+            x:=cs_observation(m,dist,s);r.total+=1;if !cs_safe(c,x) {r.refused+=1;continue;}out:=cs_predict(c,x);r.forwards+=1;
+            right:=0;for a:1..<4 {if x[a]<x[right] {right=a;}}if td_greedy4(out)==right {r.exact+=1;}
+            e:=0.0;for a:0..<4 {e+=abs(out[a]+f64(x[a]))/4;}r.error+=e;if e>r.worst {r.worst=e;}
+        }
+    }return r;
+}
+cs_map :: (which:int)->GwMap {
+    maps:=[4]string.[MAP_A,"S#G/.../...",MAP_B,MAP_C];return gw_parse(maps[which]);
+}
+cs_distances :: (m:GwMap)->[64]int {
+    d:[64]int;for i:0..<64 {d[i]=64;}d[m.goal]=0;
+    for pass:0..<64 {old:=d;for s:0..<64 {if s/8>=m.height || s%8>=m.width || m.wall[s] || s==m.goal {continue;}
+        for a:0..<4 {t:=gw_move(m,s,a);if old[t]+1<d[s] {d[s]=old[t]+1;}}
+    }}return d;
+}
+cs_observation :: (m:GwMap,d:[64]int,s:int)->[4]int {
+    x:[4]int;for a:0..<4 {t:=gw_move(m,s,a);x[a]=ifx t==s then 64 else d[t];}return x;
+}
+cs_walks :: (c:CsCandidate,m:GwMap)->CsWalk {
+    r:CsWalk;d:=cs_distances(m);
+    for start:0..<64 {if start/8>=m.height || start%8>=m.width || m.wall[start] || start==m.goal || d[start]==64 {continue;}
+        r.starts+=1;at:=start;steps:=0;
+        for frame:0..<128 {if at==m.goal {break;}x:=cs_observation(m,d,at);if !cs_safe(c,x) {r.refused+=1;break;}out:=cs_predict(c,x);a:=td_greedy4(out);t:=gw_move(m,at,a);
+            r.forwards+=1;r.steps+=1;steps+=1;if t==at {r.collisions+=1;}at=t;
+        }
+        if at==m.goal {r.reached+=1;if steps==d[start] {r.optimal+=1;}}
+    }return r;
+}
+td_greedy4 :: (v:[4]f64)->int {best:=0;for i:1..<4 {if v[i]>v[best] {best=i;}}return best;}

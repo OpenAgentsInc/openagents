@@ -1,0 +1,6 @@
+case,task,mode,turn,valid,reason,selected,weights,readout_coefficients,dev_exact,dev_total,held_exact,held_total,held_close,held_refused,mae,worst
+16,2,0,0,true,0,true,24,0,176,176,1936,1936,1936,0,0.0,0.0
+17,2,0,1,true,0,false,24,0,176,176,1936,1936,1936,0,0.0,0.0
+20,2,1,0,false,105,false,0,0,0,0,0,0,0,0,0.0,0.0
+21,2,1,1,true,0,false,96,1,176,176,1936,1936,1936,0,0.0,0.0
+22,2,1,2,true,0,true,48,2,176,176,1936,1936,1936,0,0.0,0.0

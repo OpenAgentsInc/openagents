@@ -77,8 +77,10 @@ milestones](../../docs/books/completion.md) distinguish runnable teaching
 profiles from complete training, serving, game and robotics workflows.
 
 The new [weight-space programming branch](ch253-read-and-repair-a-models-weights.md)
-adds a bounded parameter-editing interface and recorded experiments. Chapters
-254–255 are design drafts; no original-model editing capability is claimed.
+adds a bounded parameter-editing interface and recorded experiments. Chapter
+254 constructs small networks directly and through the exact compiler against
+native and trained baselines. Chapter 255 remains a design draft; no
+original-model editing capability is claimed.
 
 ## Recorded adoption and remaining integration
 
@@ -343,7 +345,7 @@ run examples directly without the check command.
 | [249. An agent optimizes a Psionic kernel](ch249-an-agent-optimizes-a-psionic-kernel.md) | Runnable: DEVICE-F32-CHUNKED-v1 norm, recorded on an NVIDIA L4; CPU checks anywhere | A bounded tuner and then an agent search chapter 37's compute subset for Elephant's offset RMS norm under a declared contract, with held-out cases, bounds traps and bit-for-bit device checks outside the agent's reach: the tuner is 1.73 times faster than chapter 44's kernels, the agent's winner 2.85 times faster than the tuner, and every evaluation, failures included, is kept in a ledger. |
 | [250. Can someone use Psionic instead of PyTorch?](ch250-can-someone-use-psionic-instead-of-pytorch.md) | Partly implemented: pytorch-audit-v1, bounded CPU (a model audit over 32 PyTorch operators, a capability matrix generated from the registry, nine recorded workflows and a PyTorch parity check of two MNIST models; a package for outside users, the three tutorials rebuilt and the four acceptance projects remain) | An honest, checked answer: which PyTorch workflows Psionic runs today, and what each one still lacks. |
 | [253. Read and repair a model's weights](ch253-read-and-repair-a-models-weights.md) | Runnable: weight-edit-f64-v1, bounded CPU and recorded local proposer trials | Immutable named-tensor patches with SHA-256 base binding, expected old values, exact reversal and zero-survivor authority checks; 180 decoder metric rows, five-seed controls, fine-tuning and 32 actual local GPT-OSS trials, including harmful edits and failed proposals. |
-| [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) | Unimplemented: design draft | Direct and compiler-assisted weight construction, then headless control against strong references, with held-out evaluation and full costs. |
+| [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) | Runnable: construct-relu4-f64-v1 (bounded CPU) | Direct ReLU4 construction and postfix-to-gated-weight compilation: 19 saved calls, 16 admitted artifacts, exact held-out arithmetic and distance-informed shortest walks from 25 starts. Three-seed AdamW and frozen/online Q baselines, failed admissions, a development-perfect boundary failure, timing/cost ledgers and offline replay; native references match and execute more cheaply. |
 | [255. Edit an original language model](ch255-edit-an-original-language-model.md) | Unimplemented: design draft | Versioned original-tensor editing, reproducible failures, retained-capability floors and independent qualification; no original-model edit is implemented. |
 
 The learning route starts with chapters 103–104, then the tensor/function

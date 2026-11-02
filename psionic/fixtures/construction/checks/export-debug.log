@@ -1,0 +1,3 @@
+ok   #test raw export preserves the normalized network, including skips and biases (1 case, 10533 steps, 0 ms)
+1 of 209 checks (--only 'raw export'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

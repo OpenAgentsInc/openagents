@@ -1,0 +1,22 @@
+#import "Basic";
+#load "../lib/construction-study.coax";
+
+// book:begin example
+main :: () {
+    s:=cs_shape(0);p:=cs_hand(0);x:=[3]f64.[-7,3,1];r:=cn_forward(s,p[0..<24],x[..]);
+    print("max(-7,3): %, weights %\n",r.values[0],cn_count(s));
+    graph:=cs_parse(0,1,cs_program(0));y:=cs_predict(graph,[4]int.[-7,3,1,0]);
+    print("compiled max: %, gated weights %, readout terms %\n",y[0],graph.count,graph.plan.out[0].count);
+    conditional:=cs_parse(2,1,cs_program(2));good:=cs_score(conditional,true);
+    print("compiled conditional held-out: %/%, refused %\n",good.exact,good.total,good.refused);
+    broken:=CsCandidate.{valid=true,task=2,count=24};q:=cs_hand(2);q[2]=64;q[5]=64;q[12]=-64;q[13]=-64;
+    for i:0..<24 {broken.p[i]=q[i];}dev:=cs_development(broken);held:=cs_score(broken,true);
+    print("broken M64 conditional: development %/%, held-out %/%, worst error %\n",dev.exact,dev.total,held.exact,held.total,held.worst);
+    invalid:=cn_parse(s,"[0]");bad:=cp_parse(3,1,"[[2,0,1,16]]");
+    print("incomplete weights: %, count %; untyped select: %\n",invalid.status,invalid.count,bad.status);
+    policy:=cs_parse(3,1,cs_program(3));starts:=0;reached:=0;optimal:=0;steps:=0;
+    for map:2..<4 {walk:=cs_walks(policy,cs_map(map));starts+=walk.starts;reached+=walk.reached;optimal+=walk.optimal;steps+=walk.steps;}
+    print("distance-informed policy: %/% reached, % shortest, % forwards; gated weights %, readout terms %\n",reached,starts,optimal,steps,policy.count,policy.plan.outputs);
+    #assert good.exact==1936 && held.exact==1920 && reached==25 && optimal==25 && steps==122;
+}
+// book:end example

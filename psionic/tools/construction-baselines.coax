@@ -1,0 +1,75 @@
+// Saved baselines only: no model calls and no repeated neural training.
+#import "Basic";
+#load "construction-artifact.coax";
+#load "../fixtures/construction/trained.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+cb_weights :: (task:int,p:[]f64)->CsCandidate {
+    c:=CsCandidate.{valid=true,task=task,count=cn_count(cs_shape(task))};
+    x:[4]f64;s:=cs_shape(task);#assert cn_forward(s,p,x[0..<s.inputs]).status==CnStatus.ok;
+    for i:0..<p.count {c.p[i]=p[i];}ts:=cn_tensors(s);c.digest=we_identity("construct-relu4-f64-v1",ts[..],p).digest;return c;
+}
+cb_row :: (task:int,method:string,seed:int,c:CsCandidate) {
+    kind:=0;if method=="hand" {kind=1;}if method=="compiler-reference" {kind=2;}if method=="trained" {kind=3+seed-254;}if method=="planted-M64" {kind=6;}
+    id:=task*7+kind;path:[1024]u8;ca_save(ca_path("psionic/fixtures/construction/baseline-",id,".json",path[..]),c);
+    dev:=cs_development(c);held:CsScore;
+    if task<3 {held=cs_score(c,true);}else {for map:2..<4 {r:=cs_walks(c,cs_map(map));held.total+=r.starts;held.exact+=r.reached;held.close+=r.optimal;held.refused+=r.refused;}}
+    coefficients:=0;if c.mode==1 {for o:0..<c.plan.outputs {coefficients+=c.plan.out[o].count;}}
+    denom:=held.total-held.refused;mae:=ifx denom>0 then held.error/f64(denom) else 0.0;
+    print("%,%,%,%,%,%,%,%,%,%,%,%,%,%\n",task,method,seed,c.count,coefficients,dev.exact,dev.total,held.exact,held.total,held.close,held.refused,mae,held.worst,c.plan.layers);
+}
+cb_qwalk :: (m:GwMap,q:[256]f64)->CsWalk {
+    r:CsWalk;d:=cs_distances(m);
+    for start:0..<64 {if start/8>=m.height || start%8>=m.width || m.wall[start] || start==m.goal || d[start]==64 {continue;}
+        world:=m;world.start=start;walk:=gw_follow(world,q,128);r.starts+=1;r.steps+=walk.steps;r.collisions+=walk.collisions;
+        if walk.reached {r.reached+=1;if walk.steps==d[start] {r.optimal+=1;}}
+    }return r;
+}
+cb_grid :: () {
+    print("map,method,seed,starts,reached,optimal,steps,collisions,training_transitions,policy_forwards\n");
+    frozen:[3]GwLearn;empty:[256]f64;
+    for seed:254..<257 {config:=GwSettings.{gamma=0.9,alpha=1,explore=4,seed=cast(u64)seed,episodes=512,episode_steps=128,tol=1e-9};a:=cs_map(0);frozen[seed-254]=gw_learn(a,empty,gw_prior(a),config);#assert frozen[seed-254].status==GwStatus.ok;}
+    for map:2..<4 {m:=cs_map(map);s:=cs_shape(3);
+        for kind:0..<5 {p:[56]f64;name:="zero";seed:=-1;
+            if kind==1 {p=cs_hand(3);name="hand";}
+            if kind>=2 {bits:=CT_WEIGHTS[9+kind-2];for i:0..<56 {p[i]=f64_from_bits(bits[i]);}name="trained";seed=254+kind-2;}
+            c:=cb_weights(3,p[..]);r:=cs_walks(c,m);print("%,%,%,%,%,%,%,%,0,%\n",map,name,seed,r.starts,r.reached,r.optimal,r.steps,r.collisions,r.forwards);
+        }
+        truth:=gw_truth(m);plan:=gw_plan(truth,0.9,1e-12,4096);next:=truth.next;q:[256]f64;
+        for state:0..<64 {for action:0..<4 {q[4*state+action]=-1+0.9*plan.value[next[4*state+action]];}}
+        exact:=cb_qwalk(m,q);print("%,exact-planner,-1,%,%,%,%,%,0,0\n",map,exact.starts,exact.reached,exact.optimal,exact.steps,exact.collisions);
+        for seed:254..<257 {
+            config:=GwSettings.{gamma=0.9,alpha=1,explore=4,seed=cast(u64)seed,episodes=512,episode_steps=128,tol=1e-9};prior:=frozen[seed-254];r:=cb_qwalk(m,prior.q);
+            print("%,q-frozen-A,%,%,%,%,%,%,%,0\n",map,seed,r.starts,r.reached,r.optimal,r.steps,r.collisions,prior.steps);
+            online:=gw_learn(m,empty,gw_prior(m),config);#assert online.status==GwStatus.ok;r=cb_qwalk(m,online.q);
+            print("%,q-trained-on-map,%,%,%,%,%,%,%,0\n",map,seed,r.starts,r.reached,r.optimal,r.steps,r.collisions,online.steps);
+        }
+    }
+}
+cb_bench :: () {
+    print("task,kind,trial,calls,milliseconds,checksum\n");
+    for task:0..<4 {p:=cs_hand(task);c:=cs_parse(task,1,cs_program(task));weights:=c.p;s:=cs_shape(task);
+        for kind:0..<3 {for trial:0..<3 {sum:=0.0;start:=proc_now_ms();
+            for iteration:0..<200000 {x:=[4]int.[iteration%65-32,(iteration*7)%65-32,iteration%2,(iteration*3)%65];
+                if task==3 {for i:0..<4 {x[i]=cast(int)abs(f64(x[i]));}}
+                if kind==0 {if task<3 {sum+=f64(cs_truth(task,x));}else {best:=0;for i:1..<4 {if x[i]<x[best] {best=i;}}sum+=f64(best);}}
+                if kind==1 {v:[4]f64;for j:0..<s.inputs {v[j]=f64(x[j]);}out:=cn_compute(s,p[0..<cn_count(s)],v[0..<s.inputs]);sum+=ifx task<3 then out[0] else f64(td_greedy4(out));}
+                if kind==2 {out:[4]f64;#assert gg_run(c.plan,weights[..],x[0..<s.inputs],out[0..<s.outputs],false,false)==GgStatus.ok;sum+=ifx task<3 then out[0] else f64(td_greedy4(out));}
+            }elapsed:=proc_now_ms()-start;print("%,%,%,200000,%,%\n",task,kind,trial,elapsed,sum);
+        }}
+    }
+    print("preprocess_map,repeats,milliseconds,checksum\n");for map:0..<4 {sum:=0;start:=proc_now_ms();for i:0..<1000 {d:=cs_distances(cs_map(map));sum+=d[cs_map(map).start];}print("%,1000,%,%\n",map,proc_now_ms()-start,sum);}
+}
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}mode:=args_at(a[..],0);
+    if mode=="grid" {cb_grid();return 0;}if mode=="bench" {cb_bench();return 0;}
+    if mode!="arithmetic" {return 2;}
+    print("task,method,seed,weights,readout_coefficients,dev_exact,dev_total,held_exact,held_total,held_close,refused,mae,worst,layers\n");
+    for task:0..<4 {s:=cs_shape(task);p:[56]f64;cb_row(task,"zero",-1,cb_weights(task,p[0..<cn_count(s)]));
+        p=cs_hand(task);cb_row(task,"hand",-1,cb_weights(task,p[0..<cn_count(s)]));cb_row(task,"compiler-reference",-1,cs_parse(task,1,cs_program(task)));
+        for seed:0..<3 {bits:=CT_WEIGHTS[task*3+seed];for i:0..<56 {p[i]=f64_from_bits(bits[i]);}cb_row(task,"trained",seed+254,cb_weights(task,p[0..<cn_count(s)]));}
+        if task==2 {p=cs_hand(2);p[2]=64;p[5]=64;p[12]=-64;p[13]=-64;cb_row(task,"planted-M64",-1,cb_weights(task,p[0..<24]));}
+    }return 0;
+}

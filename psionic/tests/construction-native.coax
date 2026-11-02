@@ -1,0 +1,14 @@
+// Native-only nonfinite values. All assertions remain in Coax.
+#load "../lib/construction-study.coax";
+construction_native_checks :: ()->int #export_c {
+    s:=CnShape.{inputs=4,outputs=4};p:[56]f64;x:=[4]f64.[64,-64,0,1];
+    #assert cn_forward(s,p[..],x[..]).status==CnStatus.ok;
+    bad:=[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001,0x7ff0000000000001,0xfff8000000000001];
+    for bits:bad {
+        for index:0..<56 {q:=p;q[index]=f64_from_bits(bits);r:=cn_forward(s,q[..],x[..]);#assert r.status==CnStatus.number && r.count==0;for v:r.values {#assert f64_bits(v)==0;}}
+        for index:0..<4 {v:=x;v[index]=f64_from_bits(bits);#assert cn_forward(s,p[..],v[..]).status==CnStatus.number;}
+    }
+    long:="[[0,0,14,0,0,14,14,0,0,14,0,0,14,14,14]]";c:=cs_parse(0,1,long);#assert c.valid && !cs_safe(c,[4]int.[64,0,0,0]);
+    for task:0..<4 {p=cs_hand(task);shape:=cs_shape(task);r:=cn_forward(shape,p[0..<cn_count(shape)],x[0..<shape.inputs]);#assert r.status==CnStatus.ok;}
+    return 0;
+}

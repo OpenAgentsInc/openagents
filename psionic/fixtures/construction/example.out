@@ -1,0 +1,6 @@
+max(-7,3): 3.0, weights 24
+compiled max: 3.0, gated weights 24, readout terms 2
+compiled conditional held-out: 1936/1936, refused 0
+broken M64 conditional: development 176/176, held-out 1920/1936, worst error 64.0
+incomplete weights: json, count 0; untyped select: type
+distance-informed policy: 25/25 reached, 25 shortest, 122 forwards; gated weights 0, readout terms 4

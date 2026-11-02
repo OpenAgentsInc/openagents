@@ -3819,3 +3819,21 @@ under debug/release plain/ASan/UBSan. Recorded model proposals are exploratory
 measurements, never deployment permissions; likelihood gains alone have
 counterexamples with zero recovered answers. Evidence is in
 `docs/verification/psionic-ch253-2026-11-02.md`.
+
+## Constructed networks publish only complete bounded artifacts
+
+`psionic/lib/construct.coax` owns `construct-relu4-f64-v1`: 1–4 inputs and
+outputs, four ReLU units and an affine skip, row-major W,b,V,D,e. Checked
+forward admits exact lengths, finite input within ±64 and finite weights
+within ±2^20 before publishing owned output. The proposal parser admits only
+a complete integer JSON array with coefficients within ±1024. Its five
+named tensors use the immutable weight-edit identity. Refusals return zero
+count and payload. The arithmetic core requires admitted immutable views.
+
+`construct-program.coax` admits 1–24 postfix tokens per output, with explicit
+stack arity and a step-produced bit for select. It returns a complete graph
+or no graph. Existing gate lowering owns the compiled arithmetic; chapter
+254's study preflights every integer intermediate within ±2^26 before running
+actual weights. Readout coefficients count even when there are no hidden
+gated layers. Parsing, identity and finite-case success confer no quality or
+deployment authority. Evidence: `docs/verification/psionic-ch254-2026-11-02.md`.

@@ -3585,6 +3585,14 @@
         "release"
       ],
       "timeout": 180
+    },
+    {
+      "source": "psionic/examples/construct-network.coax",
+      "chapter": "psionic/book/ch254-write-a-network-from-a-specification.md",
+      "stdout": "psionic/fixtures/construction/example.out",
+      "exit_status": 0,
+      "modes": ["debug", "release"],
+      "timeout": 180
     }
   ],
   "libraries": [

@@ -262,7 +262,7 @@
 - [250. Can someone use Psionic instead of PyTorch?](ch250-can-someone-use-psionic-instead-of-pytorch.md) — partly implemented
 
 - [253. Read and repair a model's weights](ch253-read-and-repair-a-models-weights.md)
-- [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) — design draft
+- [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md)
 - [255. Edit an original language model](ch255-edit-an-original-language-model.md) — design draft
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
@@ -271,6 +271,6 @@ pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
 Chapters 1–53, 55–82, 83, 84, 85, 86, 87, 88–102, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–197, 198, 199, 215–250 have runnable code; the [introduction](README.md)
-table gives each one's exact status. Chapters 254–255 are design drafts. Every other
+table gives each one's exact status. Chapter 255 is a design draft. Every other
 chapter has runnable code, in full or in part. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

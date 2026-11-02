@@ -1,0 +1,4 @@
+ok   #test a structurally valid overflowing program is refused before weight execution (1 case, 25386029 steps, 1391 ms)
+ok   #test span limits refuse unbounded or overflowing metadata (1 case, 162 steps, 0 ms)
+2 of 199 checks (--only 'overflowing'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

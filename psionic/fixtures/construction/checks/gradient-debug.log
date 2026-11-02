@@ -1,0 +1,3 @@
+ok   #test construction MSE derivatives agree with central differences for all parameters (1 case, 321831 steps, 5 ms)
+1 of 209 checks (--only 'construction MSE'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

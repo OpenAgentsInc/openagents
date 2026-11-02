@@ -1,0 +1,109 @@
+// Chapter 254: construct-relu4-f64-v1. Four ReLU units plus an affine skip.
+// Public checked forward returns owned output. Inputs/weights are borrowed
+// immutable valid views for the call. No deployment or quality authority.
+#load "weight-edit.coax";
+#load "../../coax/lib/json/json.coax";
+#authority;
+// book:begin types
+CnShape :: struct {inputs:int;outputs:int;}
+CnStatus :: enum u8 {ok;shape;number;json;}
+CnWeights :: struct {status:CnStatus;count:int;values:[56]f64;digest:[32]u8;}
+CnOutput :: struct {status:CnStatus;count:int;values:[4]f64;}
+// book:end types
+
+#test "the architecture has hand-derived scalar and four-output layouts" {
+    a:=CnShape.{inputs=3,outputs=1};b:=CnShape.{inputs=4,outputs=4};
+    #assert cn_count(a)==24 && cn_count(b)==56;
+    ts:=cn_tensors(a);#assert ts[1].first==12 && ts[2].first==16 && ts[3].first==20 && ts[4].first==23;
+    #assert cn_valid(CnShape.{inputs=1,outputs=1}) && cn_valid(b);
+    #assert !cn_valid(CnShape.{inputs=0,outputs=1}) && !cn_valid(CnShape.{inputs=5,outputs=1});
+    #assert !cn_valid(CnShape.{inputs=1,outputs=0}) && !cn_valid(CnShape.{inputs=1,outputs=5});
+}
+#test "all layers and every skip output participate in forward arithmetic" {
+    s:=CnShape.{inputs=4,outputs=4};p:[56]f64;for i:0..<56 {p[i]=f64(i%7-3)/4;}
+    x:=[4]f64.[2,-3,4,-5];r:=cn_forward(s,p[..],x[..]);#assert r.status==CnStatus.ok && r.count==4;
+    // Independent scalar expansion, values from the equations.
+    #assert r.values[0]==-5.8125 && r.values[1]==-0.0625 && r.values[2]==-4.375 && r.values[3]==6.625;
+    one:=CnShape.{inputs=1,outputs=1};q:[14]f64;#assert cn_count(one)==14;
+    q[0]=2;q[4]=1;q[8]=3;q[12]=4;q[13]=5;y:=[1]f64.[2];v:=cn_forward(one,q[..],y[..]);
+    #assert v.status==CnStatus.ok && v.values[0]==28;
+    q[0]=-2;#assert cn_forward(one,q[..],y[..]).values[0]==13;
+}
+#test "each of the 56 parameters has its independently derived linear effect" {
+    s:=CnShape.{inputs=4,outputs=4};p:[56]f64;for i:0..<56 {p[i]=1;}x:=[4]f64.[1,2,3,4];
+    for i:0..<56 {q:=p;q[i]+=1;r:=cn_forward(s,q[..],x[..]);
+        for o:0..<4 {
+            delta:=0.0;
+            if i<16 {delta=x[i%4];}else if i<20 {delta=1;}
+            else if i<36 {if (i-20)/4==o {delta=11;}}
+            else if i<52 {if (i-36)/4==o {delta=x[(i-36)%4];}}
+            else {if i-52==o {delta=1;}}
+            #assert r.values[o]==55+delta;
+        }
+    }
+}
+#test "forward refuses before returning any payload" {
+    s:=CnShape.{inputs=3,outputs=1};p:[25]f64;x:[4]f64;
+    #assert cn_forward(CnShape.{},p[0..<24],x[0..<3]).status==CnStatus.shape;
+    #assert cn_forward(s,p[..],x[0..<3]).status==CnStatus.shape;
+    #assert cn_forward(s,p[0..<24],x[..]).status==CnStatus.shape;
+    p[23]=1048577;#assert cn_forward(s,p[0..<24],x[0..<3]).status==CnStatus.number;p[23]=0;
+    x[2]=65;r:=cn_forward(s,p[0..<24],x[0..<3]);#assert r.status==CnStatus.number && r.count==0;
+    for v:r.values {#assert v==0;}
+    x[2]=-65;#assert cn_forward(s,p[0..<24],x[0..<3]).status==CnStatus.number;
+    x[2]=-64;p[0]=-1048576;#assert cn_forward(s,p[0..<24],x[0..<3]).status==CnStatus.ok;
+    x[2]=64;p[0]=1048576;#assert cn_forward(s,p[0..<24],x[0..<3]).status==CnStatus.ok;
+}
+#test "direct JSON proposals are complete integer arrays, never executable code" {
+    s:=CnShape.{inputs=1,outputs=1};good:="[0,0,0,0,0,0,0,0,0,0,0,0,-1024,1024]";
+    r:=cn_parse(s,good);#assert r.status==CnStatus.ok && r.count==14 && r.values[12]==-1024 && r.values[13]==1024;
+    ts:=cn_tensors(s);#assert we_same(r.digest,we_identity("construct-relu4-f64-v1",ts[..],r.values[0..<14]).digest);
+    bad:=[8]string.["[]","{}","[0]","[1.0,0,0,0,0,0,0,0,0,0,0,0,0,0]","[true,0,0,0,0,0,0,0,0,0,0,0,0,0]","[1025,0,0,0,0,0,0,0,0,0,0,0,0,0]","[-1025,0,0,0,0,0,0,0,0,0,0,0,0,0]","[0,0,0,0,0,0,0,0,0,0,0,0,0,0] extra"];
+    for b:bad {q:=cn_parse(s,b);#assert q.status!=CnStatus.ok && q.count==0;for v:q.values {#assert v==0;}}
+    #assert cn_parse(CnShape.{},good).status==CnStatus.shape;
+    obj:="{\"a\":0,\"b\":0,\"c\":0,\"d\":0,\"e\":0,\"f\":0,\"g\":0,\"h\":0,\"i\":0,\"j\":0,\"k\":0,\"l\":0,\"m\":0,\"n\":0}";
+    #assert cn_parse(s,obj).status==CnStatus.json;
+    #assert cn_parse(s,"[9,0,0,0,0,0,0,0,0,0,0,0,0,0]").values[0]==9;
+    #assert cn_parse(s,"[\"1\",0,0,0,0,0,0,0,0,0,0,0,0,0]").status==CnStatus.number;
+    #assert cn_parse(s,"[1e0,0,0,0,0,0,0,0,0,0,0,0,0,0]").status==CnStatus.number;
+    #assert cn_parse(s,"[1E0,0,0,0,0,0,0,0,0,0,0,0,0,0]").status==CnStatus.number;
+}
+
+cn_valid :: (s:CnShape)->bool {return s.inputs>=1 && s.inputs<=4 && s.outputs>=1 && s.outputs<=4;}
+cn_count :: (s:CnShape)->int {return 4*s.inputs+4+4*s.outputs+s.outputs*s.inputs+s.outputs;}
+cn_tensors :: (s:CnShape)->[5]WeTensor {
+    a:=4*s.inputs;b:=a+4;c:=b+4*s.outputs;d:=c+s.outputs*s.inputs;
+    return [5]WeTensor.[WeTensor.{name="hidden.weight",rank=2,dims=[4]int.[4,s.inputs,0,0]},WeTensor.{name="hidden.bias",first=a,rank=1,dims=[4]int.[4,0,0,0]},WeTensor.{name="output.weight",first=b,rank=2,dims=[4]int.[s.outputs,4,0,0]},WeTensor.{name="skip.weight",first=c,rank=2,dims=[4]int.[s.outputs,s.inputs,0,0]},WeTensor.{name="output.bias",first=d,rank=1,dims=[4]int.[s.outputs,0,0,0]}];
+}
+// book:begin compute
+// Arithmetic core: caller has admitted shape, complete weights and inputs.
+cn_compute :: (s:CnShape,p:[]f64,x:[]f64)->[4]f64 {
+    h:[4]f64;a:=4*s.inputs;b:=a+4;c:=b+4*s.outputs;d:=c+s.outputs*s.inputs;
+    for k:0..<4 {z:=p[a+k];for j:0..<s.inputs {z+=p[k*s.inputs+j]*x[j];}h[k]=(z+abs(z))/2;}
+    out:[4]f64;
+    for o:0..<s.outputs {out[o]=p[d+o];for j:0..<s.inputs {out[o]+=p[c+o*s.inputs+j]*x[j];}for k:0..<4 {out[o]+=p[b+o*4+k]*h[k];}}
+    return out;
+}
+// book:end compute
+cn_forward :: (s:CnShape,p:[]f64,x:[]f64)->CnOutput {
+    r:CnOutput;if !cn_valid(s) || p.count!=cn_count(s) || x.count!=s.inputs {r.status=CnStatus.shape;return r;}
+    for v:p {if !we_number(v) {r.status=CnStatus.number;return r;}}
+    for v:x {if !(v>=-64 && v<=64) {r.status=CnStatus.number;return r;}}
+    r.values=cn_compute(s,p,x);r.count=s.outputs;return r;
+}
+cn_parse :: (s:CnShape,text:string)->CnWeights {
+    r:CnWeights;if !cn_valid(s) {r.status=CnStatus.shape;return r;}
+    d:[1]Jv;nodes:[128]JvNode;
+    if !jv_parse(d[..],text,nodes[..]) || jv_kind(d[0],0)!=JV_ARRAY || jv_len(d[0],0)!=cn_count(s) {r.status=CnStatus.json;return r;}
+    stage:[56]f64;
+    for i:0..<cn_count(s) {
+        at:=jv_at(d[0],0,i);if jv_kind(d[0],at)!=JV_NUMBER {r.status=CnStatus.number;return r;}
+        token:=jv_raw(d[0],at);v:=0;negative:=false;
+        // JSON has already proved numeric syntax. The only nondigit forms
+        // remaining besides the leading minus are fraction/exponent markers.
+        for c:token {if c=='-' {negative=true;continue;}if c=='.' || c=='e' || c=='E' {r.status=CnStatus.number;return r;}v=v*10+cast(int)(c-'0');if v>1024 {r.status=CnStatus.number;return r;}}
+        stage[i]=ifx negative then -f64(v) else f64(v);
+    }
+    ts:=cn_tensors(s);id:=we_identity("construct-relu4-f64-v1",ts[..],stage[0..<cn_count(s)]);#assert id.status==WeStatus.ok;
+    r.count=cn_count(s);r.values=stage;r.digest=id.digest;return r;
+}

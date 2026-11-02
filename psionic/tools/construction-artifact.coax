@@ -1,0 +1,17 @@
+// Shared inert artifact export for the chapter 254 experiment tools.
+#load "../lib/construction-study.coax";
+#load "../../coax/lib/sys/fs.coax";
+ca_path :: (prefix:string,id:int,suffix:string,out:[]u8)->string {
+    b:[64]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_int(j[..],id);digits:=jo_text(j[..]);n:=0;
+    for c:prefix {out[n]=c;n+=1;}for c:digits {out[n]=c;n+=1;}for c:suffix {out[n]=c;n+=1;}return cast(string)out[0..<n];
+}
+ca_save :: (name:string,c:CsCandidate) {
+    if !c.valid {return;}buf:[131072]u8;j:[1]Jo;jo_start(j[..],buf[..]);jo_obj(j[..]);
+    jo_key(j[..],"task");jo_int(j[..],c.task);jo_key(j[..],"mode");jo_int(j[..],c.mode);jo_key(j[..],"count");jo_int(j[..],c.count);
+    hex:="0123456789abcdef";digest:[64]u8;for i:0..<32 {digest[2*i]=hex[c.digest[i]>>4];digest[2*i+1]=hex[c.digest[i]&15];}
+    jo_key(j[..],"digest");jo_str(j[..],cast(string)digest[..]);jo_key(j[..],"weights_hex");jo_arr(j[..]);
+    for i:0..<c.count {bits:=f64_bits(c.p[i]);b:[16]u8;for k:0..<16 {b[k]=hex[cast(int)((bits>>cast(u64)(60-4*k))&15)];}jo_str(j[..],cast(string)b[..]);}jo_end(j[..]);
+    jo_key(j[..],"layers");jo_int(j[..],c.plan.layers);jo_key(j[..],"width");jo_int(j[..],c.plan.width);jo_key(j[..],"units");jo_arr(j[..]);for i:0..<c.plan.layers {jo_int(j[..],c.plan.units[i]);}jo_end(j[..]);
+    jo_key(j[..],"readout");jo_arr(j[..]);for o:0..<c.plan.outputs {f:=c.plan.out[o];jo_obj(j[..]);jo_key(j[..],"slots");jo_arr(j[..]);for k:0..<f.count {jo_int(j[..],f.slots[k]);}jo_end(j[..]);jo_key(j[..],"coeffs");jo_arr(j[..]);for k:0..<f.count {jo_int(j[..],f.coefs[k]);}jo_end(j[..]);jo_end(j[..]);}jo_end(j[..]);jo_end(j[..]);#assert !j[0].bad;
+    if fs_exists(name) {old:[131072]u8;n:=fs_read(name,old[..]);#assert n>=0 && cast(string)old[0..<n]==jo_text(j[..]);}else {#assert fs_write(name,jo_text(j[..]));}
+}

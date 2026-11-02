@@ -1,0 +1,3 @@
+construction oracle: 25 baselines, grid/Q-learning rows, 19 proposals, artifact digests and compiled weight execution agree
+proposals: 16 admitted; failures [0, 20, 24]; small-domain post-selection audit: [(1, 338, 338), (2, 338, 338), (4, 338, 338), (5, 338, 338), (8, 338, 338), (9, 338, 338), (12, 338, 338), (13, 338, 338), (16, 338, 338), (17, 338, 338), (21, 338, 338), (22, 338, 338)]
+model usage: {'input_tokens': 38, 'cache_creation_input_tokens': 16545, 'cache_read_input_tokens': 0, 'output_tokens': 3271}; reported list USD 0.197932; serial wall seconds 129.549; ledger forwards 25924, selection forwards 1102, total 27026book: oracle, four offline replays, exact debug/release example, inventory and links: passed

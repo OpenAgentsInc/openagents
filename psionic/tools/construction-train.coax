@@ -1,0 +1,33 @@
+// Prepare the chapter 254 baselines once. No held-out evaluation in this tool.
+#import "Basic";
+#load "../lib/construction-learn.coax";
+#load "../../coax/lib/sys/tool.coax";
+
+ct_train :: (task:int,seed:u64)->[56]f64 {
+    s:=cs_shape(task);n:=cn_count(s);p:[56]f64;
+    for i:0..<4*s.inputs {p[i]=0.5*(2*f64(cr_bits(seed,cast(u64)i)>>11)/9007199254740992.0-1);}
+    for i:4*s.inputs+4..<4*s.inputs+4+4*s.outputs {p[i]=0.1*(2*f64(cr_bits(seed,cast(u64)i)>>11)/9007199254740992.0-1);}
+    m:[56]f64;v:[56]f64;grad:[56]f64;clear:[56]f64;state:AwState;none:[1]f32;
+    groups:=[1]AwGroup.[AwGroup.{first=0,count=n,lr=0.01,beta1=0.9,beta2=0.99,eps=1e-8}];
+    for step:0..<1000 {
+        grad=clear;rows:=0;
+        if task<3 {
+            for a:-4..<5 {for b:-4..<5 {for bit:0..<2 {x:=[4]f64.[f64(a)/4,f64(b)/4,f64(bit),0];y:[4]f64;y[0]=f64(cs_truth(task,[4]int.[a,b,bit,0]))/4;
+                loss:=cl_gradient(s,p[0..<n],x,y,grad[0..<n]);rows+=1;
+            }}}
+        }else {
+            for row:0..<64 {x:[4]f64;y:[4]f64;for j:0..<4 {x[j]=f64(cr_bits(25400,cast(u64)(row*4+j))%7)/4;y[j]=-x[j];}
+                loss:=cl_gradient(s,p[0..<n],x,y,grad[0..<n]);rows+=1;
+            }
+        }
+        for i:0..<n {grad[i]/=f64(rows);}
+        r:=aw_step(groups[..],AwPolicy.{},state,p[0..<n],grad[0..<n],m[0..<n],v[0..<n],none[0..<0],false);#assert r.status==AwStatus.ok;state=r.state;
+    }
+    return cl_export(s,p[0..<n],task);
+}
+tool_main :: ()->int #export_c {
+    print("// construction-train.coax: 1000 AdamW steps; task-major, seeds 254..256.\nCT_WEIGHTS :: [12][56]u64.[\n");
+    for task:0..<4 {for seed:254..<257 {tool_errln("preparing one construction baseline");p:=ct_train(task,cast(u64)seed);
+        print("[56]u64.[");for i:0..<56 {if i>0 {print(",");}print("%",f64_bits(p[i]));}print("]");if task!=3 || seed!=256 {print(",");}print("\n");
+    }}print("];\n");return 0;
+}

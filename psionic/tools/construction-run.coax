@@ -1,0 +1,111 @@
+// Bounded, serial LLM construction trials. Each invocation handles one task.
+// coax/web/tool.sh psionic/tools/construction-run.coax live|replay TASK(0..3)
+#import "Basic";
+#load "construction-artifact.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+CxText :: struct {b:[16384]u8;n:int;}
+cx_add :: (t:[]CxText,s:string) {#assert t[0].n+s.count<=16384;for c:s {t[0].b[t[0].n]=c;t[0].n+=1;}}
+cx_int :: (t:[]CxText,n:int) {b:[64]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_int(j[..],n);cx_add(t,jo_text(j[..]));}
+cx_text :: (t:[]CxText)->string {return cast(string)t[0].b[0..<t[0].n];}
+cx_path :: (id:int,suffix:string,b:[]u8)->string {
+    t:[1]CxText;cx_add(t[..],"psionic/fixtures/construction/llm/");cx_int(t[..],id);cx_add(t[..],suffix);s:=cx_text(t[..]);for i:0..<s.count {b[i]=s[i];}return cast(string)b[0..<s.count];
+}
+cx_final :: (text:string,out:[]u8)->string {
+    j:[1]Jv;nodes:[2048]JvNode;tmp:[64]u8;if !jv_parse(j[..],text,nodes[..]) {return "INVALID";}
+    n:=jv_str(j[0],jv_get(j[0],0,"subtype"),tmp[..]);
+    if n!=7 || cast(string)tmp[0..<n]!="success" || jv_kind(j[0],jv_get(j[0],0,"is_error"))!=JV_FALSE {return "INVALID";}
+    k:=jv_str(j[0],jv_get(j[0],0,"result"),out);return ifx k>0 then cast(string)out[0..<k] else "INVALID";
+}
+// An inference subject with tools disabled, never a delegated coding task.
+cx_client :: (prompt:string,out:[]u8,err:[]u8)->ProcRun {
+    args:=[25]string.["claude","--print","--no-session-persistence","--no-chrome","--tools","","--strict-mcp-config","--mcp-config","{\"mcpServers\":{}}","--disable-slash-commands","--setting-sources","","--settings","{\"disableAllHooks\":true}","--system-prompt","You construct neural weights. Return only the requested JSON. Do not use tools.","--output-format","json","--max-budget-usd","1","--effort","low","--model","claude-opus-5-5",prompt];
+    path:[1024]u8;dir:=fs_temp("construction-text-only-",path[..]);#assert dir.count>0;
+    h:=proc_new();#assert h>=0 && proc_cwd(h,dir) && proc_unset(h,"CLAUDECODE");
+    for arg:args {#assert proc_arg(h,arg);}
+    r:ProcRun;r.started=proc_start(h);#assert r.started==0;
+    deadline:=proc_deadline(100000,proc_now_ms());line:[65536]u8;
+    while true {
+        n:=proc_line(h,proc_left(deadline,proc_now_ms()),line[..]);
+        if n==PROC_EOF || n==PROC_ERROR {break;}
+        if n==PROC_TIMEOUT {r.timed_out=true;break;}
+        if n<0 {r.cut=true;break;}
+        if r.out_n>0 {#assert r.out_n<out.count;out[r.out_n]='\n';r.out_n+=1;}
+        for i:0..<n {if r.out_n>=out.count {r.cut=true;break;}out[r.out_n]=line[i];r.out_n+=1;}
+        if r.cut {break;}
+    }
+    if r.timed_out || r.cut {k:=proc_kill(h,9);}
+    r.status=proc_wait(h,proc_left(deadline,proc_now_ms()));
+    if r.status==PROC_RUNNING {r.timed_out=true;k:=proc_kill(h,9);r.status=proc_wait(h,2000);}
+    r.err_n=proc_stderr(h,err).count;done:=proc_release(h);#assert fs_remove(dir);return r;
+}
+cx_query :: (id:int,prompt:string,replay:bool,out:[]u8)->string {
+    buf:[32768]u8;j:[1]Jo;jo_start(j[..],buf[..]);jo_obj(j[..]);jo_key(j[..],"model");jo_str(j[..],"claude-opus-5-5");jo_key(j[..],"input");jo_str(j[..],prompt);
+    jo_key(j[..],"max_budget_usd");jo_int(j[..],1);jo_key(j[..],"timeout_ms");jo_int(j[..],100000);jo_key(j[..],"effort");jo_str(j[..],"low");jo_key(j[..],"tools");jo_arr(j[..]);jo_end(j[..]);jo_end(j[..]);#assert !j[0].bad;
+    path:[1024]u8;req:=cx_path(id,".request.json",path[..]);raw:[65536]u8;
+    if replay {old:[32768]u8;n:=fs_read(req,old[..]);#assert n>=0 && cast(string)old[0..<n]==jo_text(j[..]);res:=cx_path(id,".response.json",path[..]);k:=fs_read(res,raw[..]);#assert k>=0;return cx_final(cast(string)raw[0..<k],out);}
+    #assert fs_write(req,jo_text(j[..]));err:[4096]u8;start:=proc_now_ms();r:=cx_client(prompt,raw[..],err[..]);elapsed:=proc_now_ms()-start;
+    if r.err_n>0 {errorpath:=cx_path(id,".stderr",path[..]);#assert fs_write(errorpath,cast(string)err[0..<r.err_n]);}
+    res:=cx_path(id,".response.json",path[..]);#assert fs_write(res,cast(string)raw[0..<r.out_n]);
+    timing:[1]CxText;cx_int(timing[..],elapsed);res=cx_path(id,".milliseconds",path[..]);#assert fs_write(res,cx_text(timing[..]));
+    if r.status!=0 || r.timed_out || r.cut {return "INVALID";}return cx_final(cast(string)raw[0..<r.out_n],out);
+}
+cx_prompt :: (task:int,mode:int,variant:int,t:[]CxText) {
+    names:=[4]string.["max(a,b)","abs(a)","a if c=1, else b","four outputs [-d0,-d1,-d2,-d3]"];
+    cx_add(t,"Construct a complete neural artifact for ");cx_add(t,names[task]);cx_add(t,". Reply ONLY JSON, no prose or code fences. You have no tools. Use integer coefficients. ");
+    if task<3 {cx_add(t,"Inputs [a,b,c], integers a,b in [-64,64], c is 0 or1. One scalar output. ");}
+    else {cx_add(t,"Inputs [d0,d1,d2,d3] are true neighboring shortest-path distances 0..64, 64 means blocked. Four logits, argmax uses lowest-index tie. Path distances are provided, no planning is required. ");}
+    if mode==0 {
+        cx_add(t,"Architecture: h=ReLU(Wx+b), y=Vh+Dx+e, 4 hidden units. Return one flat array, row major, order W,b,V,D,e. ");
+        if task<3 {cx_add(t,"Shapes W4x3,b4,V1x4,D1x3,e1: exactly24 integers. ");}else {cx_add(t,"Shapes W4x4,b4,V4x4,D4x4,e4: exactly56 integers. ");}
+        cx_add(t,"Each coefficient [-1024,1024]. Unused units must be zero. ");
+    }else {
+        cx_add(t,"Return one postfix token array PER OUTPUT inside a JSON array. Inputs are tokens0,1,2");if task==3 {cx_add(t,",3");}
+        cx_add(t,". Operators: 10 pops a,b pushes a+b; 11 a-b; 12 ReLU(top); 13 negates top; 14 a*b; 15 step(top) is1 iff integer>=1. 16 pops condition,a,b and pushes a if condition=1 else b; condition must come from15. At most24 tokens per output. Existing compiler turns these programs into gated neural weights. No output computation may be left to Python or tools. ");
+    }
+    if variant==1 {cx_add(t,"Prefer a sparse construction with small coefficients. ");}
+    cx_add(t,"Give the final JSON immediately.");
+}
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {tool_errln("usage: construction-run live|replay TASK");return 2;}
+    modearg:=args_at(args[..],0);task:=args_whole(args_at(args[..],1));if (modearg!="live" && modearg!="replay") || task<0 || task>3 {return 2;}
+    replay:=modearg=="replay";#assert fs_mkdir("psionic/fixtures/construction/llm");
+    if !replay {
+        // Refuse to overwrite a recorded trial, including a transport failure.
+        b:[1024]u8;for i:0..<8 {#assert !fs_exists(cx_path(task*8+i,".request.json",b[..]));}
+    }
+    candidates:[8]CsCandidate;seen:[8]bool;chosen:[2]int;chosen[0]=-1;chosen[1]=-1;start:=proc_now_ms();
+    // Both independent prompt variants precede feedback refinements. The
+    // first chain is selected using development measurements only.
+    for mode:0..<2 {
+        best:=-1;bestscore:CsScore;prior:[8192]u8;prior_n:=0;
+        for turn:0..<4 {
+            if turn>=2 && best>=0 && bestscore.exact==bestscore.total && bestscore.refused==0 {break;}
+            #assert proc_now_ms()-start<800000;
+            prompt:[1]CxText;cx_prompt(task,mode,ifx turn==1 then 1 else 0,prompt[..]);
+            if turn>=2 {
+                cx_add(prompt[..],"\nPrevious artifact: ");cx_add(prompt[..],cast(string)prior[0..<prior_n]);
+                if best<0 {cx_add(prompt[..],"\nIt failed structural admission. Return a complete artifact matching the declared format.");}
+                else {cx_add(prompt[..],"\nDevelopment exact ");cx_int(prompt[..],bestscore.exact);cx_add(prompt[..],"/");cx_int(prompt[..],bestscore.total);cx_add(prompt[..],", refused ");cx_int(prompt[..],bestscore.refused);
+                    if bestscore.failed {cx_add(prompt[..],". First failing [a,b,c]=[");for j:0..<3 {if j>0 {cx_add(prompt[..],",");}cx_int(prompt[..],bestscore.first[j]);}cx_add(prompt[..],"], target ");cx_int(prompt[..],cast(int)bestscore.want);cx_add(prompt[..],", got ");cx_int(prompt[..],cast(int)bestscore.got);}
+                    cx_add(prompt[..],". Return a complete improved artifact.");
+                }
+            }
+            text:[8192]u8;id:=task*8+mode*4+turn;answer:=cx_query(id,cx_text(prompt[..]),replay,text[..]);c:=cs_parse(task,mode,answer);artifactpath:[1024]u8;ca_save(cx_path(id,".artifact.json",artifactpath[..]),c);candidates[mode*4+turn]=c;seen[mode*4+turn]=true;
+            if turn!=1 {
+                keep:=best<0;
+                if c.valid {score:=cs_development(c);if score.refused==0 && (best<0 || score.exact>bestscore.exact || (score.exact==bestscore.exact && score.error<bestscore.error)) {best=mode*4+turn;bestscore=score;keep=true;}}
+                if keep {prior_n=answer.count;for i:0..<answer.count {prior[i]=answer[i];}}
+            }
+        }chosen[mode]=best;
+    }
+    // Held-out reads begin only after all proposals for this task are saved.
+    print("case,task,mode,turn,valid,reason,selected,weights,readout_coefficients,dev_exact,dev_total,held_exact,held_total,held_close,held_refused,mae,worst\n");
+    for slot:0..<8 {if !seen[slot] {continue;}c:=candidates[slot];dev:CsScore;held:CsScore;
+        if c.valid {dev=cs_development(c);if task<3 {held=cs_score(c,true);}else {for map:2..<4 {walk:=cs_walks(c,cs_map(map));held.total+=walk.starts;held.exact+=walk.reached;held.close+=walk.optimal;held.refused+=walk.refused;}}}
+        denom:=held.total-held.refused;mae:=ifx denom>0 then held.error/f64(denom) else 0.0;
+        coefficients:=0;if c.valid && c.mode==1 {for o:0..<c.plan.outputs {coefficients+=c.plan.out[o].count;}}
+        print("%,%,%,%,%,%,%,%,%,%,%,%,%,%,%,%,%\n",task*8+slot,task,slot/4,slot%4,c.valid,c.reason,chosen[slot/4]==slot,c.count,coefficients,dev.exact,dev.total,held.exact,held.total,held.close,held.refused,mae,held.worst);
+    }return 0;
+}

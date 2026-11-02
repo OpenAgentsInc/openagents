@@ -1,0 +1,68 @@
+// Bounded postfix proposal front end for chapter 229's existing compiler.
+#load "gate-graph.coax";
+#load "../../coax/lib/json/json.coax";
+#authority;
+CpStatus :: enum u8 {ok;shape;json;token;stack;type;}
+CpGraph :: struct {status:CpStatus;count:int;outputs:int;nodes:[100]GgNode;out:[4]int;}
+
+#test "postfix maximum and conditional use existing gate semantics" {
+    r:=cp_parse(3,1,"[[0,1,11,12,1,10]]");#assert r.status==CpStatus.ok && r.count==6 && r.outputs==1 && r.out[0]==5;
+    x:=[3]int.[-7,3,1];v:[1]int;#assert gg_eval(r.nodes[0..<r.count],x[..],r.out[0..<1],v[..]).status==GgStatus.ok && v[0]==3;
+    r=cp_parse(3,1,"[[2,15,0,1,16]]");#assert r.status==CpStatus.ok;
+    #assert gg_eval(r.nodes[0..<r.count],x[..],r.out[0..<1],v[..]).status==GgStatus.ok && v[0]==-7;
+    x[2]=0;#assert gg_eval(r.nodes[0..<r.count],x[..],r.out[0..<1],v[..]).status==GgStatus.ok && v[0]==3;
+    r=cp_parse(3,1,"[[2,15,1,0,16]]");x[2]=1;
+    #assert gg_eval(r.nodes[0..<r.count],x[..],r.out[0..<1],v[..]).status==GgStatus.ok && v[0]==3;
+}
+#test "all postfix operations and four outputs are mapped explicitly" {
+    r:=cp_parse(4,4,"[[0,13],[1,2,10],[2,3,14],[3,12]]");#assert r.status==CpStatus.ok && r.count==8;
+    x:=[4]int.[2,3,4,-5];v:[4]int;#assert gg_eval(r.nodes[0..<r.count],x[..],r.out[..],v[..]).status==GgStatus.ok;
+    #assert v[0]==-2 && v[1]==7 && v[2]==-20 && v[3]==0;
+    #assert cp_parse(1,1,"[[0]]").status==CpStatus.ok;
+}
+#test "malformed programs never publish partial graphs" {
+    bad:=[10]string.["[]","{}","[[4]]","[[17]]","[[1.0]]","[[10]]","[[0,1]]","[[]]","[[0,0,0,16]]","[[0]] extra"];
+    for s:bad {r:=cp_parse(3,1,s);#assert r.status!=CpStatus.ok && r.count==0 && r.outputs==0;for o:r.out {#assert o==0;}}
+    #assert cp_parse(0,1,"[[0]]").status==CpStatus.shape && cp_parse(5,1,"[[0]]").status==CpStatus.shape;
+    #assert cp_parse(1,0,"[[0]]").status==CpStatus.shape && cp_parse(1,5,"[[0]]").status==CpStatus.shape;
+    #assert cp_parse(1,1,"[[1]]").status==CpStatus.token;
+    #assert cp_parse(3,1,"[[17]]").status==CpStatus.token;
+    #assert cp_parse(3,1,"{\"x\":[0]}").status==CpStatus.json;
+    #assert cp_parse(3,1,"[0]").status==CpStatus.shape;
+    #assert cp_parse(3,1,"[{\"x\":0}]").status==CpStatus.shape;
+    #assert cp_parse(3,1,"[[0,1,16]]").status==CpStatus.stack;
+    #assert cp_parse(1,1,"[[0,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13]]").status==CpStatus.shape;
+    #assert cp_parse(1,1,"[[0,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13,13]]").status==CpStatus.ok;
+}
+
+// book:begin parser
+// Each output has 1..24 postfix tokens. 0..inputs-1 push an input;
+// 10 add, 11 subtract, 12 ReLU, 13 negate, 14 multiply, 15 integer step,
+// 16 select. Select consumes condition,a,b and requires a step-produced bit.
+cp_parse :: (inputs:int,outputs:int,text:string)->CpGraph {
+    r:CpGraph;if inputs<1 || inputs>4 || outputs<1 || outputs>4 {r.status=CpStatus.shape;return r;}
+    d:[1]Jv;json:[128]JvNode;
+    if !jv_parse(d[..],text,json[..]) || jv_kind(d[0],0)!=JV_ARRAY || jv_len(d[0],0)!=outputs {r.status=CpStatus.json;return r;}
+    // Node zero already is input 0 under Coax's declared zero defaults.
+    g:CpGraph;g.outputs=outputs;g.count=inputs;for i:1..<inputs {g.nodes[i]=GgNode.{op=GgOp.input,k=i};}
+    for o:0..<outputs {
+        a:=jv_at(d[0],0,o);length:=jv_len(d[0],a);
+        if jv_kind(d[0],a)!=JV_ARRAY || length<1 || length>24 {r.status=CpStatus.shape;return r;}
+        stack:[24]int;top:=0;
+        for i:0..<length {
+            t:=jv_int(d[0],jv_at(d[0],a,i),-1);
+            if t>=0 && t<inputs {stack[top]=t;top+=1;continue;}
+            if t<10 || t>16 {r.status=CpStatus.token;return r;}
+            n:GgNode;arity:=1;if t==10 || t==11 || t==14 {arity=2;}if t==16 {arity=3;}
+            if top<arity {r.status=CpStatus.stack;return r;}
+            if arity==1 {n.a=stack[top-1];}
+            if arity==2 {n.a=stack[top-2];n.b=stack[top-1];}
+            if arity==3 {n.c=stack[top-3];n.a=stack[top-2];n.b=stack[top-1];if !gg_bit(g.nodes[n.c].op) {r.status=CpStatus.type;return r;}}
+            ops:=[7]GgOp.[GgOp.add,GgOp.sub,GgOp.relu,GgOp.scale,GgOp.mul,GgOp.step,GgOp.select];n.op=ops[t-10];if t==13 {n.k=-1;}
+            g.nodes[g.count]=n;top-=arity;stack[top]=g.count;top+=1;g.count+=1;
+        }
+        if top!=1 {r.status=CpStatus.stack;return r;}g.out[o]=stack[0];
+    }
+    return g;
+}
+// book:end parser

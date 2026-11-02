@@ -118,8 +118,11 @@ of its spend.
 [Chapter 225](ch225-learn-which-model-to-call.md) uses chapter 103's trainer
 to choose among three simulated models and to judge a new router from an old
 one's logs.
-Chapters 254–255 are new *design drafts* (written chapters whose first
-line says *Status: unimplemented — design draft*, with no runnable code).
+[Chapter 254](ch254-write-a-network-from-a-specification.md) constructs small
+networks directly and through the gate compiler, with recorded proposals,
+same-architecture trained baselines and distance-informed control. Chapter
+255 is a *design draft* (its first line says
+*Status: unimplemented — design draft*, with no runnable code).
 The other chapters have runnable profiles, complete or partial. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -890,7 +893,7 @@ targeted sparse changes do not establish preserved behavior by their size.
 | Chapter | What we build and check |
 | --- | --- |
 | [253. Read and repair a model's weights](ch253-read-and-repair-a-models-weights.md) — runnable: weight-edit-f64-v1, bounded CPU and recorded local proposer trials | Named rank-0–4 binary64 tensors, SHA-256 base binding, sparse expected-old/replacement edits with whole-result publication and exact reversal; a trained decoder's permanent edits checked against activation interventions, five saved seeds, no-op/random/permuted/untrained/erased controls, separate fine-tuning and 32 fresh GPT-OSS trials. The chapter records failed proposals, harmful edits and a descriptive criterion's false positives. |
-| [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) — design draft | Direct weight construction and compiler-assisted construction as separate conditions, arithmetic against exact references, then a headless control task with sufficient observations, strong native/planner/trained baselines, held-out inputs/maps and a full compute ledger. |
+| [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) — runnable bounded CPU | Direct ReLU4 weights and postfix-to-gated-weight compilation: 19 recorded calls, 16 admitted artifacts, exact arithmetic on 1936 held-out rows per task and shortest walks from 25 starts given oracle distances. Native/hand/planner references match and native arithmetic is cheaper; three-seed AdamW and frozen/online Q baselines, three admission failures, planted boundary failure, costs and offline replay are recorded. No learned-navigation or original-model claim. |
 | [255. Edit an original language model](ch255-edit-an-original-language-model.md) — design draft | A reproducible original-model failure, versioned bounded window/overlay editing beyond chapter 253's small profile, intervention controls, sampling-only and fine-tuning baselines, retained-capability floors and independent qualification before any shadow promotion. Qwen3.5-0.8B generation support and a reproduction of the blog remain unimplemented. |
 
 ## A framework, not only engines
