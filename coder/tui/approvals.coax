@@ -59,7 +59,7 @@ cd_effect_index :: (name: string) -> int {
 
 // The effect of a Claude Code tool, by its exact name.
 cd_effect_of :: (tool: string) -> int {
-  reads := [8] string.["Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite", "TodoRead", "Task"];
+  reads := [9] string.["Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite", "TodoRead", "Task", "ToolSearch"];   // ToolSearch only loads a tool's schema
   for r: reads { if r == tool { return CD_EFFECT_READ; } }
   if tool == "WebFetch" || tool == "WebSearch" { return CD_EFFECT_NETWORK; }
   writes := [4] string.["Edit", "Write", "MultiEdit", "NotebookEdit"];
@@ -170,6 +170,7 @@ CD_PATH_FIELDS :: [4] string.["file_path", "path", "notebook_path", "cwd"];
 
 #test "effects come from exact tool names; unknown tools take the strongest" {
   #assert cd_effect_of("Read") == CD_EFFECT_READ && cd_effect_of("Grep") == CD_EFFECT_READ;
+  #assert cd_effect_of("ToolSearch") == CD_EFFECT_READ;
   #assert cd_effect_of("WebFetch") == CD_EFFECT_NETWORK;
   #assert cd_effect_of("Edit") == CD_EFFECT_WRITE && cd_effect_of("Write") == CD_EFFECT_WRITE;
   #assert cd_effect_of("Bash") == CD_EFFECT_RUN && cd_effect_of("mcp__x__y") == CD_EFFECT_RUN;
