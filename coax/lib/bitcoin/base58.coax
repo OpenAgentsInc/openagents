@@ -1,0 +1,495 @@
+// Base58 and Base58Check (Bitcoin chapter 26): the encoding of legacy
+// addresses, WIF private keys and BIP-32 extended keys.
+//
+// - base58_encode_vartime and base58_decode_vartime: bytes to and from
+//   base-58 text, one '1' per leading zero byte.
+// - base58check_encode_vartime and base58check_decode_vartime: the same with
+//   a 4-byte SHA-256d checksum (chapter 5) after the payload.
+// - base58_address_encode_vartime and base58_address_decode_vartime: the
+//   version byte table for P2PKH and P2SH on mainnet and the test networks.
+// - wif_encode_ct and wif_decode_ct: WIF private keys, in constant time,
+//   because the text and the key are secret (chapter 3).
+//
+// Every procedure that writes takes a caller-owned buffer and returns the
+// number of bytes written, a kind, or one negative B58_* refusal. A refusal
+// writes nothing. The _vartime procedures read only public data and may
+// branch and index on it; never give them a WIF or an extended private key.
+#load "hash.coax";
+#authority;
+
+B58_ALPHABET :: "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+B58_MAX_BYTES :: 1024;      // the longest decoded value, and the longest input to encode
+B58_MAX_TEXT :: 1400;       // the longest text: 1,024 nonzero bytes take 1,399 digits
+
+// Refusals.
+B58_BAD_CHAR :: -1;         // a character outside the alphabet
+B58_BAD_CHECKSUM :: -2;     // the last 4 bytes are not the payload's SHA-256d checksum
+B58_BAD_LENGTH :: -3;       // too short for a checksum, or the wrong size for its version
+B58_UNKNOWN_VERSION :: -4;  // a version byte this table doesn't name
+B58_BAD_FLAG :: -5;         // a compressed WIF whose last payload byte is not 0x01
+B58_CAPACITY :: -6;         // the output buffer is too small
+B58_TOO_LONG :: -7;         // over B58_MAX_BYTES or B58_MAX_TEXT
+
+// book:begin versions
+// The kinds of Base58Check payload, with their version byte and payload
+// size (the version byte included). Testnet, signet and regtest share the
+// test versions. Kind 0 is unused.
+B58_MAIN_P2PKH :: 1; B58_MAIN_P2SH :: 2; B58_TEST_P2PKH :: 3; B58_TEST_P2SH :: 4;
+B58_MAIN_WIF :: 5; B58_MAIN_WIF_COMPRESSED :: 6; B58_TEST_WIF :: 7; B58_TEST_WIF_COMPRESSED :: 8;
+B58_VERSIONS :: [9] int.[-1, 0x00, 0x05, 0x6f, 0xc4, 0x80, 0x80, 0xef, 0xef];
+B58_SIZES :: [9] int.[0, 21, 21, 21, 21, 33, 34, 33, 34];
+// The address kind (1 to 4) for a version byte, or B58_UNKNOWN_VERSION.
+b58_address_kind :: (version: int) -> int {
+  for kind: B58_MAIN_P2PKH..<B58_MAIN_WIF { if B58_VERSIONS[kind] == version { return kind; } }
+  return B58_UNKNOWN_VERSION;
+}
+// book:end versions
+
+// ---- checks
+// Hex into bytes, and a string into bytes, for the checks below only.
+b58_unhex :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (b58_nibble(text[2*i])*16 + b58_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+b58_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+b58_same :: (a: [] u8, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+#test "the alphabet: 58 characters in ASCII order, without 0, O, I and l" {
+  #assert B58_ALPHABET.count == 58;
+  for i: 1..<58 { #assert B58_ALPHABET[i-1] < B58_ALPHABET[i]; }
+  for i: 0..<58 { c := B58_ALPHABET[i]; #assert c != '0' && c != 'O' && c != 'I' && c != 'l'; }
+  #assert b58_digit_vartime('1') == 0 && b58_digit_vartime('9') == 8 && b58_digit_vartime('A') == 9;
+  #assert b58_digit_vartime('H') == 16 && b58_digit_vartime('J') == 17 && b58_digit_vartime('N') == 21 && b58_digit_vartime('P') == 22;
+  #assert b58_digit_vartime('a') == 33 && b58_digit_vartime('k') == 43 && b58_digit_vartime('z') == 57;
+  #assert b58_digit_vartime('0') < 0 && b58_digit_vartime('O') < 0 && b58_digit_vartime('I') < 0 && b58_digit_vartime('l') < 0;
+  #assert b58_digit_vartime(' ') < 0 && b58_digit_vartime(0) < 0 && b58_digit_vartime(255) < 0;
+}
+#forall "the constant-time digit and character agree with the table" c: 0..<256 {
+  d := b58_digit_ct(cast(u8) c); v := b58_digit_vartime(cast(u8) c);
+  #assert (d >> 8) == (ifx v < 0 then cast(u64) 1 else cast(u64) 0);
+  if v >= 0 { #assert cast(int) d == v && b58_char_ct(cast(u64) v) == cast(u8) c; }
+  else { #assert (d & 255) == 0; }
+}
+#forall "multiplying by 565 and shifting by 15 divides by 58" x: 0..<14848 {
+  #assert (mul_wrap(cast(u64) x, 565) >> 15) == cast(u64) (x / 58);
+}
+#test "encode: Bitcoin Core's short vectors, leading zeros and capacity" {
+  b: [32] u8; out: [40] u8;
+  #assert base58_encode_vartime(b[0..<0], out[..]) == 0;
+  #assert b58_same(out[0..<base58_encode_vartime(b58_unhex("61", b[..]), out[..])], "2g");
+  #assert b58_same(out[0..<base58_encode_vartime(b58_unhex("626262", b[..]), out[..])], "a3gV");
+  #assert b58_same(out[0..<base58_encode_vartime(b58_unhex("271f359f", b[..]), out[..])], "zzzzz");
+  #assert b58_same(out[0..<base58_encode_vartime(b58_unhex("271f35a0", b[..]), out[..])], "211111");
+  #assert b58_same(out[0..<base58_encode_vartime(b58_unhex("0000", b[..]), out[..])], "11");
+  #assert b58_same(out[0..<base58_encode_vartime(b58_unhex("000001", b[..]), out[..])], "112");
+  #assert b58_same(out[0..<base58_encode_vartime(b58_unhex("0100", b[..]), out[..])], "5R");
+  for i: 0..<40 { out[i] = 7; }
+  #assert base58_encode_vartime(b58_unhex("271f35a0", b[..]), out[0..<5]) == B58_CAPACITY && out[0] == 7;
+  #assert base58_encode_vartime(b58_unhex("0000", b[..]), out[0..<1]) == B58_CAPACITY && out[0] == 7;
+  #assert base58_encode_vartime(b58_unhex("271f35a0", b[..]), out[0..<6]) == 6;
+  big: [1025] u8;
+  #assert base58_encode_vartime(big[..], out[..]) == B58_TOO_LONG && base58_encode_vartime(big[0..<1024], out[..]) == B58_CAPACITY;
+}
+#test "decode: the same vectors back, and every refusal" {
+  out: [32] u8; want: [32] u8;
+  #assert base58_decode_vartime("", out[..]) == 0;
+  n := base58_decode_vartime("211111", out[..]);
+  #assert n == 4 && out[0] == 0x27 && out[1] == 0x1f && out[2] == 0x35 && out[3] == 0xa0;
+  #assert base58_decode_vartime("112", out[..]) == 3 && out[0] == 0 && out[1] == 0 && out[2] == 1;
+  #assert base58_decode_vartime("5R", out[..]) == 2 && out[0] == 1 && out[1] == 0;
+  #assert base58_decode_vartime("zzzzz", out[..]) == 4 && out[3] == 0x9f;
+  for i: 0..<32 { out[i] = 7; }
+  #assert base58_decode_vartime("21111O", out[..]) == B58_BAD_CHAR && base58_decode_vartime("0", out[..]) == B58_BAD_CHAR;
+  #assert base58_decode_vartime("1l", out[..]) == B58_BAD_CHAR && base58_decode_vartime(" 2g", out[..]) == B58_BAD_CHAR;
+  #assert base58_decode_vartime("211111", out[0..<3]) == B58_CAPACITY && base58_decode_vartime("111", out[0..<2]) == B58_CAPACITY;
+  #assert out[0] == 7;
+  #assert base58_decode_vartime("211111", out[0..<4]) == 4 && base58_decode_vartime("111", out[0..<3]) == 3;
+}
+#test "decode: the length limits" {
+  long: [1401] u8; out: [1024] u8;
+  for i: 0..<1401 { long[i] = '1'; }
+  #assert base58_decode_vartime(cast(string) long[0..<1024], out[..]) == 1024;
+  #assert base58_decode_vartime(cast(string) long[0..<1025], out[..]) == B58_TOO_LONG;
+  #assert base58_decode_vartime(cast(string) long[..], out[..]) == B58_TOO_LONG;
+  // 1,400 digits '2' are a value of more than 1,024 bytes.
+  for i: 0..<1400 { long[i] = '2'; }
+  #assert base58_decode_vartime(cast(string) long[0..<1400], out[..]) == B58_TOO_LONG;
+  // 1,000 ones and a value of 25 bytes: 1,025 in all.
+  for i: 0..<1000 { long[i] = '1'; }
+  #assert base58_decode_vartime(cast(string) long[0..<1034], out[..]) == B58_TOO_LONG;
+  #assert base58_decode_vartime(cast(string) long[0..<1033], out[..]) > 1000;
+}
+// 1FsSia9r...N2mo is the first address in Bitcoin Core's key_io_valid.json.
+#test "Base58Check: Bitcoin Core's P2PKH vector and each refusal" {
+  b: [32] u8; out: [64] u8; text: [40] u8;
+  payload := b58_unhex("00a31c06bd463e3923bc1aadbde48b16976c080717", b[..]);
+  n := base58check_encode_vartime(payload, text[..]);
+  #assert b58_same(text[0..<n], "1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo");
+  #assert base58check_decode_vartime("1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo", out[..]) == 21;
+  for i: 0..<21 { #assert out[i] == payload[i]; }
+  for i: 0..<64 { out[i] = 7; }
+  #assert base58check_decode_vartime("1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mp", out[..]) == B58_BAD_CHECKSUM;
+  #assert base58check_decode_vartime("1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2m0", out[..]) == B58_BAD_CHAR;
+  #assert base58check_decode_vartime("1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo", out[0..<20]) == B58_CAPACITY;
+  #assert out[0] == 7;
+  #assert base58check_decode_vartime("1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo", out[0..<21]) == 21 && out[20] == 0x17 && out[21] == 7;
+  for i: 0..<64 { out[i] = 7; }
+  #assert base58check_decode_vartime("", out[..]) == B58_BAD_LENGTH && base58check_decode_vartime("zzzz", out[..]) == B58_BAD_LENGTH;
+  #assert base58check_decode_vartime("zzzzy", out[..]) == B58_BAD_CHECKSUM;   // 4 bytes: an empty payload and a wrong checksum
+  #assert out[0] == 7;
+  // The empty payload's checksum is 5df6e0e2: four bytes, a valid string.
+  #assert base58check_encode_vartime(payload[0..<0], text[..]) == 6;
+  #assert base58check_decode_vartime(cast(string) text[0..<6], out[..]) == 0;
+  #assert base58check_encode_vartime(payload, text[0..<33]) == B58_CAPACITY && base58check_encode_vartime(payload, text[0..<34]) == 34;
+  big: [1021] u8;
+  #assert base58check_encode_vartime(big[..], text[..]) == B58_TOO_LONG && base58check_encode_vartime(big[0..<1020], text[..]) == B58_CAPACITY;
+  long: [1400] u8; for i: 0..<1400 { long[i] = '2'; }
+  #assert base58check_decode_vartime(cast(string) long[..], out[..]) == B58_TOO_LONG;
+}
+#test "addresses: each version, and the refusals" {
+  hash: [20] u8; text: [40] u8; out: [20] u8;
+  for i: 0..<20 { hash[i] = cast(u8) (i + 1); }
+  texts := [5] string.["", "16L5yRNPTuciSgXGHqYwn9N6NeoKqopAu", "31nM1WuowNDzocNxPPW9NQWJEtwWpjfcLj", "mfcHP2WMCVLsVZA8yrovmhMgxNFW9r98xw", "2MsLZ5FqqYpjM1Q1W4X81zMVZTF9gdbhVwd"];
+  for kind: 1..<5 {
+    n := base58_address_encode_vartime(kind, hash[..], text[..]);
+    #assert b58_same(text[0..<n], texts[kind]);
+    for i: 0..<20 { out[i] = 0; }
+    #assert base58_address_decode_vartime(cast(string) text[0..<n], out[..]) == kind;
+    for i: 0..<20 { #assert out[i] == hash[i]; }
+  }
+  #assert b58_address_kind(0x00) == B58_MAIN_P2PKH && b58_address_kind(0xc4) == B58_TEST_P2SH;
+  #assert b58_address_kind(0x80) == B58_UNKNOWN_VERSION && b58_address_kind(-1) == B58_UNKNOWN_VERSION;
+  #assert base58_address_encode_vartime(0, hash[..], text[..]) == B58_UNKNOWN_VERSION;
+  #assert base58_address_encode_vartime(B58_MAIN_WIF, hash[..], text[..]) == B58_UNKNOWN_VERSION;
+  #assert base58_address_encode_vartime(9, hash[..], text[..]) == B58_UNKNOWN_VERSION;
+  #assert base58_address_encode_vartime(-1, hash[..], text[..]) == B58_UNKNOWN_VERSION;
+  #assert base58_address_encode_vartime(1, hash[0..<19], text[..]) == B58_BAD_LENGTH;
+  #assert base58_address_encode_vartime(1, hash[..], text[0..<32]) == B58_CAPACITY;
+  #assert base58_address_encode_vartime(1, hash[..], text[0..<33]) == 33;
+  #assert base58_address_decode_vartime("1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo", out[0..<19]) == B58_CAPACITY;
+  #assert base58_address_decode_vartime("1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mp", out[..]) == B58_BAD_CHECKSUM;
+  // A 20-byte payload with version 0, and a 22-byte one.
+  b: [32] u8;
+  n := base58check_encode_vartime(b58_unhex("00eb15231dfceb60925886b67d065299925915ae", b[..]), text[..]);
+  #assert base58_address_decode_vartime(cast(string) text[0..<n], out[..]) == B58_BAD_LENGTH;
+  n = base58check_encode_vartime(b58_unhex("05eb15231dfceb60925886b67d065299925915aeb1b1", b[..]), text[..]);
+  #assert base58_address_decode_vartime(cast(string) text[0..<n], out[..]) == B58_BAD_LENGTH;
+  // Version 0x80 (a WIF) and 0x01, each with 20 bytes after it.
+  n = base58check_encode_vartime(b58_unhex("80eb15231dfceb60925886b67d065299925915aeb1", b[..]), text[..]);
+  #assert base58_address_decode_vartime(cast(string) text[0..<n], out[..]) == B58_UNKNOWN_VERSION;
+  n = base58check_encode_vartime(b58_unhex("01eb15231dfceb60925886b67d065299925915aeb1", b[..]), text[..]);
+  #assert base58_address_decode_vartime(cast(string) text[0..<n], out[..]) == B58_UNKNOWN_VERSION;
+  // A payload of just the version byte 0x00, and one with no version byte.
+  b[0] = 0; n = base58check_encode_vartime(b[0..<1], text[..]);
+  #assert base58_address_decode_vartime(cast(string) text[0..<n], out[..]) == B58_BAD_LENGTH;
+  n = base58check_encode_vartime(b[0..<0], text[..]);
+  #assert base58_address_decode_vartime(cast(string) text[0..<n], out[..]) == B58_UNKNOWN_VERSION;
+}
+#test "b58_same notices a change at either end and a different length" {
+  t := [3] u8.['5', 'H', 'p'];
+  #assert b58_same(t[..], "5Hp") && !b58_same(t[..], "5Hq") && !b58_same(t[..], "6Hp");
+  #assert !b58_same(t[..], "5H") && !b58_same(t[0..<2], "5Hp");
+}
+// The private key 1 in WIF, from Python's integers and hashlib.
+WIF_ONE :: "5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuDf";
+WIF_ONE_COMPRESSED :: "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn";
+WIF_ONE_TEST :: "91avARGdfge8E4tZfYLoxeJ5sGBdNJQH4kvjJoQFacbgwmaKkrx";
+WIF_ONE_TEST_COMPRESSED :: "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
+// True when the work buffer's first n bytes are zero and the rest still
+// hold the 0xa5 the checks fill it with.
+b58_wiped :: (work: [] u8, n: int) -> bool {
+  for i: 0..<work.count { if work[i] != (ifx i < n then cast(u8) 0 else cast(u8) 0xa5) { return false; } }
+  return true;
+}
+#test "b58_wiped checks both parts of the buffer" {
+  w: [4] u8; w[2] = 0xa5; w[3] = 0xa5;
+  #assert b58_wiped(w[..], 2) && !b58_wiped(w[..], 1) && !b58_wiped(w[..], 3);
+  w[0] = 1; #assert !b58_wiped(w[..], 2);
+}
+#test "WIF: the key 1 in all four forms, both ways, with the work erased" {
+  key: [32] u8; key[31] = 1; text: [52] u8; out: [32] u8; work: [43] u8;
+  forms := [4] string.[WIF_ONE, WIF_ONE_COMPRESSED, WIF_ONE_TEST, WIF_ONE_TEST_COMPRESSED];
+  for i: 0..<4 {
+    compressed := i % 2 == 1; testnet := i >= 2; size := 37 + i % 2;
+    for k: 0..<43 { work[k] = 0xa5; }
+    n := wif_encode_ct(key[..], compressed, testnet, work[..], text[..]);
+    #assert n == forms[i].count && b58_same(text[0..<n], forms[i]) && b58_wiped(work[..], size);
+    for k: 0..<32 { out[k] = 7; }
+    for k: 0..<43 { work[k] = 0xa5; }
+    #assert wif_decode_ct(forms[i], work[..], out[..]) == B58_MAIN_WIF + i && b58_wiped(work[..], size + 4);
+    for k: 0..<32 { #assert out[k] == key[k]; }
+  }
+  // The largest key, n - 1, in compressed testnet form, from Python.
+  top := b58_unhex("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140", key[..]);
+  #assert b58_same(text[0..<wif_encode_ct(top, true, true, work[..], text[..])], "cWALDjUu1tszsCBMjBjL4mhYj2wHUWYDR8Q8aSjLKzjkW5eBtpzu");
+  #assert wif_decode_ct("cWALDjUu1tszsCBMjBjL4mhYj2wHUWYDR8Q8aSjLKzjkW5eBtpzu", work[..], out[..]) == B58_TEST_WIF_COMPRESSED;
+  for k: 0..<32 { #assert out[k] == top[k]; }
+  #assert b58_same(text[0..<wif_encode_ct(top, false, false, work[..], text[..])], "5Km2kuu7vtFDPpxywn4u3NLpbr5jKpTB3jsuDU2KYEqetqj84qw");
+  // A work buffer left dirty by an earlier call does not change the result.
+  for k: 0..<43 { work[k] = 0xa5; }
+  #assert wif_decode_ct(WIF_ONE, work[..], out[..]) == B58_MAIN_WIF && out[0] == 0 && out[31] == 1;
+}
+#test "WIF: the refusals, with nothing written and the work erased" {
+  key: [32] u8; key[31] = 1; out: [32] u8; text: [52] u8; w: [42] u8;
+  work := w[..];
+  for k: 0..<32 { out[k] = 7; }
+  #assert wif_decode_ct(WIF_ONE, work, out[0..<31]) == B58_CAPACITY && wif_decode_ct(WIF_ONE, work[0..<41], out[..]) == B58_CAPACITY;
+  #assert wif_decode_ct("5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuD", work, out[..]) == B58_BAD_LENGTH;     // 50 characters
+  #assert wif_decode_ct("KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWnn", work, out[..]) == B58_BAD_LENGTH; // 53
+  #assert wif_decode_ct("5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuD0", work, out[..]) == B58_BAD_CHAR;
+  #assert wif_decode_ct("0HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuDf", work, out[..]) == B58_BAD_CHAR;
+  #assert wif_decode_ct("5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuDg", work, out[..]) == B58_BAD_CHECKSUM;
+  #assert wif_decode_ct("6HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuDf", work, out[..]) == B58_BAD_CHECKSUM;
+  #assert wif_decode_ct(WIF_SUM_0, work, out[..]) == B58_BAD_CHECKSUM;
+  // 52 'z's are more than 38 bytes hold; 51 'z's more than 37.
+  #assert wif_decode_ct("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", work, out[..]) == B58_BAD_LENGTH;
+  #assert wif_decode_ct("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", work, out[..]) == B58_BAD_LENGTH;
+  // A character error is reported before an overflow.
+  #assert wif_decode_ct("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz0", work, out[..]) == B58_BAD_CHAR;
+  #assert out[0] == 7;
+  // Versions 0x81, 0x00 and 0xee, each with a good checksum, and
+  // compressed keys whose flag is 0x02 or 0x00.
+  #assert wif_decode_ct(WIF_81, work, out[..]) == B58_UNKNOWN_VERSION && wif_decode_ct(WIF_00, work, out[..]) == B58_UNKNOWN_VERSION;
+  #assert wif_decode_ct(WIF_EE_COMPRESSED, work, out[..]) == B58_UNKNOWN_VERSION;
+  #assert wif_decode_ct(WIF_FLAG_2, work, out[..]) == B58_BAD_FLAG;
+  for k: 0..<42 { w[k] = 0xa5; }
+  #assert wif_decode_ct(WIF_FLAG_0, work, out[..]) == B58_BAD_FLAG && b58_wiped(work, 42);
+  #assert out[0] == 7;
+  #assert wif_encode_ct(key[0..<31], false, false, work, text[..]) == B58_BAD_LENGTH;
+  #assert wif_encode_ct(key[..], false, false, work, text[0..<50]) == B58_CAPACITY;
+  #assert wif_encode_ct(key[..], true, false, work, text[0..<51]) == B58_CAPACITY;
+  #assert wif_encode_ct(key[..], false, false, work[0..<41], text[..]) == B58_CAPACITY;
+  #assert wif_encode_ct(key[..], false, false, work, text[0..<51]) == 51;
+}
+// Base58Check strings of payloads that are not WIFs, from Python:
+// 81 || key 1; 00 || 32 bytes 0xff (51 characters, the first '1');
+// ee || key 1 || 01; 80 || key 1 || 02; 80 || key 1 || 00; and 80 || key 1
+// with the first checksum byte changed.
+WIF_SUM_0 :: "5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAneBtW1";
+WIF_81 :: "5Km2kuu7vtFDPpxywn4u3NLu8iSdrqhxWT8tUKjeEXs2fPgNpLf";
+WIF_00 :: "12wkBET2rRgE8pahuaczxKbmv7ciehqsne57F9gtzf1PVawbBMp";
+WIF_EE_COMPRESSED :: "cD155Qm6fb3ivA9pd2wYURWvEQpFgbY1k9G2B7TXrtNQ2HPd4zXy";
+WIF_FLAG_2 :: "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sfZr2ym";
+WIF_FLAG_0 :: "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sMvhksF";
+
+// ---- public data: variable time
+
+// The digit of one character, or B58_BAD_CHAR.
+b58_digit_vartime :: (c: u8) -> int {
+  for k: 0..<58 { if B58_ALPHABET[k] == c { return k; } }
+  return B58_BAD_CHAR;
+}
+
+// book:begin encode
+// Base58 of data into out: one '1' for each leading zero byte, then the
+// rest of data as a base-58 number, most significant digit first. Returns
+// the number of characters written.
+base58_encode_vartime :: (data: [] u8, out: [] u8) -> int #export_c {
+  if data.count > B58_MAX_BYTES { return B58_TOO_LONG; }
+  zeros := 0;
+  while zeros < data.count && data[zeros] == 0 { zeros += 1; }
+  digits: [B58_MAX_TEXT] u8; used := 0;           // base-58 digits, least significant first
+  for i: zeros..<data.count {
+    carry := cast(int) data[i];                   // digits = digits * 256 + data[i]
+    for k: 0..<used {
+      carry += cast(int) digits[k] * 256;
+      digits[k] = cast(u8) (carry % 58);
+      carry /= 58;
+    }
+    while carry > 0 { digits[used] = cast(u8) (carry % 58); used += 1; carry /= 58; }
+  }
+  if out.count < zeros + used { return B58_CAPACITY; }
+  for i: 0..<zeros { out[i] = '1'; }
+  for k: 0..<used { out[zeros + k] = B58_ALPHABET[digits[used - 1 - k]]; }
+  return zeros + used;
+}
+// book:end encode
+
+// book:begin decode
+// The bytes that the Base58 text names into out: one zero byte for each
+// leading '1', then the rest of text as a base-58 number in as few bytes
+// as it needs. Every text has exactly one decoding and re-encodes to itself.
+// Returns the number of bytes written. Work stops once the value passes
+// B58_MAX_BYTES, so a long text costs no more than a short one.
+base58_decode_vartime :: (text: string, out: [] u8) -> int #export_c {
+  ones := 0;
+  while ones < text.count && text[ones] == '1' { ones += 1; }
+  bytes: [B58_MAX_BYTES] u8; used := 0;           // the value, least significant byte first
+  for i: ones..<text.count {
+    carry := b58_digit_vartime(text[i]);          // bytes = bytes * 58 + digit
+    if carry < 0 { return B58_BAD_CHAR; }
+    for k: 0..<used {
+      carry += cast(int) bytes[k] * 58;
+      bytes[k] = cast(u8) (carry & 255);
+      carry >>= 8;
+    }
+    if carry > 0 {                                // below 58: one new byte at most
+      if used == B58_MAX_BYTES { return B58_TOO_LONG; }
+      bytes[used] = cast(u8) carry; used += 1;
+    }
+  }
+  if ones + used > B58_MAX_BYTES { return B58_TOO_LONG; }
+  if out.count < ones + used { return B58_CAPACITY; }
+  for i: 0..<ones { out[i] = 0; }
+  for k: 0..<used { out[ones + k] = bytes[used - 1 - k]; }
+  return ones + used;
+}
+// book:end decode
+
+// book:begin check
+// Base58Check: payload, then the first 4 bytes of its SHA-256d, in Base58.
+base58check_encode_vartime :: (payload: [] u8, out: [] u8) -> int #export_c {
+  if payload.count > B58_MAX_BYTES - 4 { return B58_TOO_LONG; }
+  data: [B58_MAX_BYTES] u8;
+  for i: 0..<payload.count { data[i] = payload[i]; }
+  #assert bitcoin_checksum_checked(payload, data[payload.count..<payload.count + 4], false) == SHA_OK;
+  return base58_encode_vartime(data[0..<payload.count + 4], out);
+}
+// The payload of a Base58Check text into out, after the checksum matches.
+// Returns the payload's length.
+base58check_decode_vartime :: (text: string, out: [] u8) -> int #export_c {
+  data: [B58_MAX_BYTES] u8;
+  n := base58_decode_vartime(text, data[..]);
+  if n < 0 { return n; }
+  if n < 4 { return B58_BAD_LENGTH; }
+  if !bitcoin_checksum_matches(data[0..<n - 4], data[n - 4..<n]) { return B58_BAD_CHECKSUM; }
+  if out.count < n - 4 { return B58_CAPACITY; }
+  for i: 0..<n - 4 { out[i] = data[i]; }
+  return n - 4;
+}
+// book:end check
+
+// book:begin address
+// A P2PKH or P2SH address of kind 1 to 4 for a 20-byte hash. Returns the
+// number of characters written.
+base58_address_encode_vartime :: (kind: int, hash: [] u8, out: [] u8) -> int #export_c {
+  if kind < B58_MAIN_P2PKH || kind > B58_TEST_P2SH { return B58_UNKNOWN_VERSION; }
+  if hash.count != 20 { return B58_BAD_LENGTH; }
+  payload: [21] u8;
+  payload[0] = cast(u8) B58_VERSIONS[kind];
+  for i: 0..<20 { payload[1 + i] = hash[i]; }
+  return base58check_encode_vartime(payload[..], out);
+}
+// The 20-byte hash of a P2PKH or P2SH address into hash_out. Returns its
+// kind, 1 to 4. The version byte decides the kind; the payload must then be
+// 21 bytes.
+base58_address_decode_vartime :: (text: string, hash_out: [] u8) -> int #export_c {
+  if hash_out.count != 20 { return B58_CAPACITY; }
+  payload: [B58_MAX_BYTES] u8;
+  n := base58check_decode_vartime(text, payload[..]);
+  if n < 0 { return n; }
+  kind := b58_address_kind(ifx n > 0 then cast(int) payload[0] else -1);   // empty: no version
+  if kind == B58_UNKNOWN_VERSION { return kind; }
+  if n != B58_SIZES[kind] { return B58_BAD_LENGTH; }
+  for i: 0..<20 { hash_out[i] = payload[1 + i]; }
+  return kind;
+}
+// book:end address
+
+// ---- secret data: constant time (chapter 3)
+
+// book:begin ct
+// All ones when a == b, else 0. a and b are below 256, so a ^ b is at most
+// 255 and (x + 255) >> 8 is 1 exactly when x is not 0.
+b58_eq_mask :: (a: u64, b: u64) -> u64 {
+  x := a ^ b;
+  return value_barrier(sub_wrap(cast(u64) 0, ((x + 255) >> 8) ^ 1));
+}
+// The digit of c in the low 8 bits, and bit 8 set when c is not in the
+// alphabet. It reads all 58 entries and never branches on c.
+b58_digit_ct :: (c: u8) -> u64 {
+  digit: u64 = 0; found: u64 = 0;
+  for k: 0..<58 {
+    m := b58_eq_mask(cast(u64) c, cast(u64) B58_ALPHABET[k]);
+    digit |= m & cast(u64) k; found |= m;
+  }
+  return digit | (((found & 1) ^ 1) << 8);
+}
+// The character of a digit below 58, reading all 58 entries.
+b58_char_ct :: (digit: u64) -> u8 {
+  c: u64 = 0;
+  for k: 0..<58 { c |= b58_eq_mask(digit, cast(u64) k) & cast(u64) B58_ALPHABET[k]; }
+  return cast(u8) c;
+}
+// book:end ct
+
+// book:begin wif
+// A WIF private key: Base58Check of a version byte (0x80 mainnet, 0xef the
+// test networks), the 32-byte key and, for a key whose public key is
+// compressed, 0x01. The payload is 33 or 34 bytes with a first byte of at
+// least 0x80, so the text is always 51 or 52 characters and never starts
+// with '1'. Every loop runs a fixed number of times and every lookup reads
+// the whole table; only the key's length and the two flags, which are
+// public, choose a path. The secret intermediates live in work, which the
+// caller owns, can register for erasure, and gets back as zeros.
+WIF_WORK_BYTES :: 42;
+wif_encode_ct :: (key: [] u8, compressed: bool, testnet: bool, work: [] u8, out: [] u8) -> int #export_c {
+  if key.count != 32 { return B58_BAD_LENGTH; }
+  size := ifx compressed then 38 else 37;         // payload and checksum
+  chars := size + 14;                             // 51 or 52
+  if out.count < chars || work.count < WIF_WORK_BYTES { return B58_CAPACITY; }
+  b := work[0..<size];
+  b[0] = ifx testnet then 0xef else 0x80;
+  for i: 0..<32 { b[1 + i] = key[i]; }
+  if compressed { b[33] = 1; }
+  #assert bitcoin_checksum_checked(b[0..<size - 4], b[size - 4..<size], false) == SHA_OK;
+  // chars divisions by 58, each over every byte, q = cur / 58 by multiply
+  // and shift. The remainders are the digits, least significant first; the
+  // last division leaves b all zeros, because the value is below 58^chars.
+  for j: 0..<chars {
+    rem: u64 = 0;
+    for i: 0..<size {
+      cur := add_wrap(mul_wrap(rem, 256), cast(u64) b[i]);
+      q := mul_wrap(cur, 565) >> 15;
+      rem = sub_wrap(cur, mul_wrap(q, 58));
+      b[i] = cast(u8) q;
+    }
+    out[chars - 1 - j] = cast(u8) rem;
+  }
+  for j: 0..<chars { out[j] = b58_char_ct(cast(u64) out[j]); }
+  return chars;
+}
+// The 32-byte key of a WIF into key_out. Returns its kind, 5 to 8:
+// B58_MAIN_WIF, B58_MAIN_WIF_COMPRESSED, B58_TEST_WIF or
+// B58_TEST_WIF_COMPRESSED. The text's length (51 or 52) is public and
+// decides the payload size. Each check becomes a mask; the procedure
+// branches once, at the end, on the result.
+wif_decode_ct :: (text: string, work: [] u8, key_out: [] u8) -> int #export_c {
+  if key_out.count != 32 || work.count < WIF_WORK_BYTES { return B58_CAPACITY; }
+  if text.count != 51 && text.count != 52 { return B58_BAD_LENGTH; }
+  size := text.count - 14;
+  b := work[0..<size]; sum := work[size..<size + 4];
+  for i: 0..<size { b[i] = 0; }
+  bad: u64 = 0; over: u64 = 0;
+  for i: 0..<text.count {
+    d := b58_digit_ct(text[i]);
+    bad |= d >> 8;
+    carry := d & 255;                             // b = b * 58 + digit
+    for k: 0..<size {
+      j := size - 1 - k;
+      carry = add_wrap(carry, mul_wrap(cast(u64) b[j], 58));
+      b[j] = cast(u8) (carry & 255);
+      carry = carry >> 8;
+    }
+    over |= carry;                                // more than size bytes
+  }
+  #assert bitcoin_checksum_checked(b[0..<size - 4], sum, false) == SHA_OK;
+  diff: u64 = 0;
+  for i: 0..<4 { diff |= cast(u64) (sum[i] ^ b[size - 4 + i]); }
+  mainnet := b58_eq_mask(cast(u64) b[0], 0x80); test := b58_eq_mask(cast(u64) b[0], 0xef);
+  bad_flag: u64 = 0;                              // 1 when a compressed key's flag is not 0x01
+  if size == 38 { bad_flag = (b58_eq_mask(cast(u64) b[33], 1) & 1) ^ 1; }
+  result := B58_MAIN_WIF + (size - 37) + 2 * cast(int) (test & 1);
+  if bad != 0 { result = B58_BAD_CHAR; }
+  else if over != 0 { result = B58_BAD_LENGTH; }
+  else if diff != 0 { result = B58_BAD_CHECKSUM; }
+  else if (mainnet | test) == 0 { result = B58_UNKNOWN_VERSION; }
+  else if bad_flag != 0 { result = B58_BAD_FLAG; }
+  if result >= B58_MAIN_WIF { for i: 0..<32 { key_out[i] = b[1 + i]; } }
+  for i: 0..<size + 4 { work[i] = 0; }
+  return result;
+}
+// book:end wif

@@ -1,0 +1,163 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/base58.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/base58_vectors.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [2100] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector table is valid lowercase hex, so an error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+equal_bytes :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+// The name of a refusal.
+REASONS :: [7] string.["bad character", "bad checksum", "bad length", "unknown version", "bad flag", "capacity", "too long"];
+reason :: (status: int) -> string { return ifx status < 0 && status >= -7 then REASONS[-status - 1] else "accepted"; }
+KINDS :: [9] string.["", "P2PKH", "P2SH", "testnet P2PKH", "testnet P2SH",
+  "WIF", "WIF, compressed", "testnet WIF", "testnet WIF, compressed"];
+
+main :: () {
+  // Base58 by hand: 0x0100 is 256 = 4 * 58 + 24, the digits 4 and 24.
+  print("Base58 by hand\n");
+  bytes: [1024] u8; text: [1400] u8;
+  n := base58_encode_vartime(decode("0100", bytes[..]), text[..]);
+  print("0100 = 256 = 4 * 58 + 24 -> '%' '%' -> %\n", cast(string) B58_ALPHABET[4..<5], cast(string) B58_ALPHABET[24..<25], cast(string) text[0..<n]);
+  n = base58_encode_vartime(decode("000001", bytes[..]), text[..]);
+  print("000001: two zero bytes, then 1 -> %\n", cast(string) text[0..<n]);
+
+  // Base58Check by hand: the first address in key_io_valid.json.
+  print("Base58Check by hand\n");
+  payload: [21] u8; digest: [32] u8;
+  payload[0] = 0x00;
+  hash := decode("a31c06bd463e3923bc1aadbde48b16976c080717", payload[1..<21]);
+  show("version || hash", payload[..]);
+  #assert sha256d_checked(payload[..], digest[..], false) == SHA_OK;
+  show("SHA-256d", digest[..]);
+  show("checksum", digest[0..<4]);
+  n = base58check_encode_vartime(payload[..], text[..]);
+  print("Base58Check: %\n", cast(string) text[0..<n]);
+  out: [20] u8;
+  kind := base58_address_decode_vartime(cast(string) text[0..<n], out[..]);
+  print("decodes to: %, hash equal: %\n", KINDS[kind], equal_bytes(out[..], hash));
+
+  // The version table, each kind with the hash or key of all 0x00 or all 0xff.
+  print("version bytes\n");
+  zeros: [32] u8; ones: [32] u8; work: [WIF_WORK_BYTES] u8;
+  for i: 0..<32 { ones[i] = 0xff; }
+  for k: 1..<9 {
+    a: int; b: int;
+    if k < B58_MAIN_WIF {
+      a = base58_address_encode_vartime(k, zeros[0..<20], text[..]);
+      b = base58_address_encode_vartime(k, ones[0..<20], text[700..<800]);
+    } else {
+      compressed := k % 2 == 0; testnet := k >= B58_TEST_WIF;
+      a = wif_encode_ct(zeros[..], compressed, testnet, work[..], text[..]);
+      b = wif_encode_ct(ones[..], compressed, testnet, work[..], text[700..<800]);
+    }
+    v := B58_VERSIONS[k]; digits := "0123456789abcdef"; vh: [2] u8; vh[0] = digits[v / 16]; vh[1] = digits[v % 16];
+    print("0x% %: % bytes, % to %\n", cast(string) vh[..], KINDS[k], B58_SIZES[k],
+      cast(string) text[0..<a], cast(string) text[700..<700 + b]);
+  }
+
+  // Bitcoin Core's base58_encode_decode.json, both ways.
+  print("Bitcoin Core base58_encode_decode.json\n");
+  agree := 0;
+  for i: 0..<B58_CODEC.count {
+    c := B58_CODEC[i];
+    data := decode(c.hex, bytes[..]);
+    e := base58_encode_vartime(data, text[..]);
+    back: [1024] u8;
+    d := base58_decode_vartime(c.text, back[..]);
+    if e >= 0 && cast(string) text[0..<e] == c.text && d >= 0 && equal_bytes(back[0..<d], data) { agree += 1; }
+  }
+  print("% of % encode and decode exactly\n", agree, B58_CODEC.count);
+
+  // key_io_valid.json: every P2PKH and P2SH address and every WIF.
+  print("Bitcoin Core key_io_valid.json, Base58 entries\n");
+  by_kind: [9] int; good: [9] int;
+  for i: 0..<B58_VALID.count {
+    v := B58_VALID[i]; test := v.chain != "main";
+    want: [64] u8; got: [32] u8; ok := false; kind = 0;
+    data := decode(v.data, want[..]);
+    if v.key {
+      kind = wif_decode_ct(v.text, work[..], got[..]);
+      e := wif_encode_ct(got[..], v.compressed, test, work[..], text[..]);
+      expected := B58_MAIN_WIF + ifx v.compressed then 1 else 0;
+      if test { expected += 2; }
+      ok = kind == expected && equal_bytes(got[..], data) && e > 0 && cast(string) text[0..<e] == v.text;
+    } else {
+      // A P2PKH script is 76 a9 14 <hash> 88 ac, a P2SH script a9 14 <hash> 87 (chapter 29).
+      p2pkh := data.count == 25;
+      script_hash := ifx p2pkh then data[3..<23] else data[2..<22];
+      kind = base58_address_decode_vartime(v.text, got[0..<20]);
+      expected := ifx p2pkh then B58_MAIN_P2PKH else B58_MAIN_P2SH;
+      if test { expected += 2; }
+      e := base58_address_encode_vartime(expected, script_hash, text[..]);
+      ok = kind == expected && equal_bytes(got[0..<20], script_hash) && e > 0 && cast(string) text[0..<e] == v.text;
+    }
+    if kind > 0 { by_kind[kind] += 1; if ok { good[kind] += 1; } }
+  }
+  for k: 1..<9 { print("%: % of % decode and re-encode exactly\n", KINDS[k], good[k], by_kind[k]); }
+
+  // key_io_invalid.json: every string refuses as an address and as a WIF.
+  print("Bitcoin Core key_io_invalid.json\n");
+  as_address: [8] int; as_wif: [8] int; refused := 0;
+  for i: 0..<B58_INVALID.count {
+    s := B58_INVALID[i]; got: [32] u8;
+    a := base58_address_decode_vartime(s, got[0..<20]);
+    w := wif_decode_ct(s, work[..], got[..]);
+    if a < 0 && w < 0 { refused += 1; as_address[-a] += 1; as_wif[-w] += 1; }
+  }
+  for r: 1..<6 { print("%: % as an address, % as a WIF\n", REASONS[r - 1], as_address[r], as_wif[r]); }
+  print("% of % refused by both decoders\n", refused, B58_INVALID.count);
+
+  // BIP-32 extended public keys: 78-byte payloads, version 0488b21e.
+  print("BIP-32 extended public keys\n");
+  xpubs := 0;
+  for i: 0..<B58_XPUBS.count {
+    m := base58check_decode_vartime(B58_XPUBS[i], bytes[..]);
+    e := base58check_encode_vartime(bytes[0..<78], text[..]);
+    if m == 78 && bytes[0] == 0x04 && bytes[1] == 0x88 && bytes[2] == 0xb2 && bytes[3] == 0x1e && cast(string) text[0..<e] == B58_XPUBS[i] { xpubs += 1; }
+  }
+  print("% of % decode to 78 bytes with version 0488b21e and re-encode exactly\n", xpubs, B58_XPUBS.count);
+
+  // One changed character anywhere in the address of the worked example.
+  address := "1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo";
+  changed: [8] int;
+  for at: 0..<address.count {
+    copy: [34] u8;
+    for i: 0..<34 { copy[i] = address[i]; }
+    d := b58_digit_vartime(copy[at]);
+    copy[at] = B58_ALPHABET[(d + 1) % 58];
+    changed[-base58_address_decode_vartime(cast(string) copy[..], out[..])] += 1;
+  }
+  print("one character changed, at each of % places: % bad checksum, % bad length\n", address.count, changed[2], changed[3]);
+
+  // Refusals.
+  print("refusals\n");
+  print("0 in place of o: %\n", reason(base58_address_decode_vartime("1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2m0", out[..])));
+  print("l in place of 1: %\n", reason(base58_address_decode_vartime("lFsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo", out[..])));
+  print("last character changed: %\n", reason(base58_address_decode_vartime("1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mp", out[..])));
+  print("first character dropped: %\n", reason(base58_address_decode_vartime("FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo", out[..])));
+  print("a 3-byte value, too short for a checksum: %\n", reason(base58check_decode_vartime("zzzz", bytes[..])));
+  print("an xpub as an address: %\n", reason(base58_address_decode_vartime(B58_XPUBS[0], out[..])));
+  print("a WIF as an address: %\n", reason(base58_address_decode_vartime(WIF_ONE, out[..])));
+  key: [32] u8;
+  print("an address as a WIF: %\n", reason(wif_decode_ct(address, work[..], key[..])));
+  print("version 0x81: %\n", reason(wif_decode_ct(WIF_81, work[..], key[..])));
+  print("compressed flag 0x02: %\n", reason(wif_decode_ct(WIF_FLAG_2, work[..], key[..])));
+  print("34 characters into a 33-character buffer: %\n", reason(base58_address_encode_vartime(1, hash, text[0..<33])));
+}
+// book:end example

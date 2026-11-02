@@ -42,4 +42,5 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 **V. Encodings and addresses**
 
+- [26. Base58Check](ch026-base58check.md) — implemented
 - [27. Bech32](ch027-bech32.md) — implemented

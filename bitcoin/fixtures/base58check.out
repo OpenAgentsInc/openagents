@@ -1,0 +1,51 @@
+Base58 by hand
+0100 = 256 = 4 * 58 + 24 -> '5' 'R' -> 5R
+000001: two zero bytes, then 1 -> 112
+Base58Check by hand
+version || hash: 00a31c06bd463e3923bc1aadbde48b16976c080717
+SHA-256d: b874721228faecff56d7aea9498ea767498ae08530fa2748ff5c0b9cb65164fd
+checksum: b8747212
+Base58Check: 1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo
+decodes to: P2PKH, hash equal: true
+version bytes
+0x00 P2PKH: 21 bytes, 1111111111111111111114oLvT2 to 1QLbz7JHiBTspS962RLKV8GndWFwi5j6Qr
+0x05 P2SH: 21 bytes, 31h1vYVSYuKP6AhS86fbRdMw9XHieotbST to 3R2cuenjG5nFubqX9Wzuukdin2YfBbQ6Kw
+0x6f testnet P2PKH: 21 bytes, mfWxJ45yp2SFn7UciZyNpvDKrzbhyfKrY8 to n4rZHAPGXCu8bYchjzJhK3V7VVreascJxe
+0xc4 testnet P2SH: 21 bytes, 2MsFDzHRUAMpjHxKyoEHU3aMCMsVtMqs1PV to 2NGapyPiksYHc7PU4pecnXhcyzNkq1wvz5p
+0x80 WIF: 33 bytes, 5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAbuatmU to 5Km2kuu7vtFDPpxywn4u3NLu8iSdrqhxWT8tUKjeEXs2f9yxoWz
+0x80 WIF, compressed: 34 bytes, KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73Nd2Mcv1 to L5oLkpV3aqBjhki6LmvChTCq73v9gyymzzMpBbhDLjDpKCuAXpsi
+0xef testnet WIF: 33 bytes, 91avARGdfge8E4tZfYLoxeJ5sGBdNJQH4kvjJoQFacbgwi1C2GD to 93XfLeifX7KMMtUGa7xouxtrnNoM21F9rPzqYx69aGc5SDGXUKD
+0xef testnet WIF, compressed: 34 bytes, cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87J7g8rY9t to cWALDjUu1tszsCBMjBjL4mhtjHDZMS5U52WHJ29iqqspZx2Er6J2
+Bitcoin Core base58_encode_decode.json
+21 of 21 encode and decode exactly
+Bitcoin Core key_io_valid.json, Base58 entries
+P2PKH: 3 of 3 decode and re-encode exactly
+P2SH: 3 of 3 decode and re-encode exactly
+testnet P2PKH: 8 of 8 decode and re-encode exactly
+testnet P2SH: 8 of 8 decode and re-encode exactly
+WIF: 2 of 2 decode and re-encode exactly
+WIF, compressed: 2 of 2 decode and re-encode exactly
+testnet WIF: 6 of 6 decode and re-encode exactly
+testnet WIF, compressed: 6 of 6 decode and re-encode exactly
+Bitcoin Core key_io_invalid.json
+bad character: 35 as an address, 0 as a WIF
+bad checksum: 12 as an address, 1 as a WIF
+bad length: 7 as an address, 63 as a WIF
+unknown version: 16 as an address, 3 as a WIF
+bad flag: 0 as an address, 3 as a WIF
+70 of 70 refused by both decoders
+BIP-32 extended public keys
+17 of 17 decode to 78 bytes with version 0488b21e and re-encode exactly
+one character changed, at each of 34 places: 34 bad checksum, 0 bad length
+refusals
+0 in place of o: bad character
+l in place of 1: bad character
+last character changed: bad checksum
+first character dropped: bad checksum
+a 3-byte value, too short for a checksum: bad length
+an xpub as an address: unknown version
+a WIF as an address: unknown version
+an address as a WIF: bad length
+version 0x81: unknown version
+compressed flag 0x02: bad flag
+34 characters into a 33-character buffer: capacity

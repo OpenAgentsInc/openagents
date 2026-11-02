@@ -1,0 +1,107 @@
+// The checks of base58check.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/base58check.coax
+#load "../base58check.coax";
+
+// book:begin check
+// Every pair in Bitcoin Core's base58_encode_decode.json encodes and
+// decodes exactly, and decoding writes nothing past the value.
+#forall "Bitcoin Core's Base58 pairs, both ways" i: 0..<21 #steps 200000000 {
+  c := B58_CODEC[i]; data: [256] u8; text: [400] u8; back: [257] u8;
+  d := decode(c.hex, data[..]);
+  e := base58_encode_vartime(d, text[..]);
+  #assert e == c.text.count && cast(string) text[0..<e] == c.text;
+  back[d.count] = 7;
+  #assert base58_decode_vartime(c.text, back[..]) == d.count && equal_bytes(back[0..<d.count], d) && back[d.count] == 7;
+}
+// The kind a key_io_valid.json entry must decode to, from its chain, its
+// key flag and, for an address, its script's length.
+expected_kind :: (v: B58Valid, script_bytes: int) -> int {
+  test := ifx v.chain == "main" then 0 else 2;
+  if v.key { return B58_MAIN_WIF + test + ifx v.compressed then 1 else 0; }
+  return test + ifx script_bytes == 25 then B58_MAIN_P2PKH else B58_MAIN_P2SH;
+}
+#test "expected_kind maps chains, flags and scripts" {
+  v := B58Valid.{chain="main"};
+  #assert expected_kind(v, 25) == B58_MAIN_P2PKH && expected_kind(v, 23) == B58_MAIN_P2SH;
+  v.chain = "signet"; #assert expected_kind(v, 25) == B58_TEST_P2PKH && expected_kind(v, 23) == B58_TEST_P2SH;
+  v.key = true; #assert expected_kind(v, 0) == B58_TEST_WIF;
+  v.compressed = true; #assert expected_kind(v, 0) == B58_TEST_WIF_COMPRESSED;
+  v.chain = "main"; #assert expected_kind(v, 0) == B58_MAIN_WIF_COMPRESSED;
+  v.compressed = false; #assert expected_kind(v, 0) == B58_MAIN_WIF;
+}
+// Every Base58 entry of key_io_valid.json decodes to its kind and its
+// script's hash or its key, and re-encodes exactly. Each WIF also decodes
+// through the public Base58Check path to the same payload, so the
+// constant-time decoder and the variable-time one agree.
+#forall "Bitcoin Core's valid addresses and keys" i: 0..<38 #steps 200000000 {
+  v := B58_VALID[i]; want: [64] u8; got: [32] u8; text: [60] u8; work: [WIF_WORK_BYTES] u8;
+  data := decode(v.data, want[..]);
+  kind := expected_kind(v, data.count);
+  if v.key {
+    #assert wif_decode_ct(v.text, work[..], got[..]) == kind && equal_bytes(got[..], data);
+    e := wif_encode_ct(got[..], v.compressed, kind >= B58_TEST_WIF, work[..], text[..]);
+    #assert cast(string) text[0..<e] == v.text;
+    payload: [64] u8;
+    #assert base58check_decode_vartime(v.text, payload[..]) == B58_SIZES[kind];
+    #assert cast(int) payload[0] == B58_VERSIONS[kind] && equal_bytes(payload[1..<33], data);
+  } else {
+    hash := ifx kind % 2 == 1 then data[3..<23] else data[2..<22];
+    #assert base58_address_decode_vartime(v.text, got[0..<20]) == kind && equal_bytes(got[0..<20], hash);
+    e := base58_address_encode_vartime(kind, hash, text[..]);
+    #assert cast(string) text[0..<e] == v.text;
+  }
+}
+// Every string in key_io_invalid.json refuses as an address and as a WIF,
+// and neither decoder writes its output.
+#forall "Bitcoin Core's invalid strings refuse" i: 0..<70 #steps 200000000 {
+  out: [32] u8; work: [WIF_WORK_BYTES] u8;
+  for k: 0..<32 { out[k] = 7; }
+  #assert base58_address_decode_vartime(B58_INVALID[i], out[0..<20]) < 0;
+  #assert wif_decode_ct(B58_INVALID[i], work[..], out[..]) < 0;
+  for k: 0..<32 { #assert out[k] == 7; }
+}
+// Every BIP-32 extended public key is a 78-byte Base58Check payload with
+// version 0488b21e, and re-encodes exactly.
+#forall "BIP-32 xpubs" i: 0..<17 #steps 200000000 {
+  payload: [80] u8; text: [120] u8;
+  #assert base58check_decode_vartime(B58_XPUBS[i], payload[..]) == 78;
+  #assert payload[0] == 0x04 && payload[1] == 0x88 && payload[2] == 0xb2 && payload[3] == 0x1e;
+  e := base58check_encode_vartime(payload[0..<78], text[..]);
+  #assert cast(string) text[0..<e] == B58_XPUBS[i];
+}
+// Each character of the worked example's address, replaced by every other
+// character of the alphabet, fails: with 4 checksum bytes, a random change
+// passes with probability 2^-32, and none of these 1,938 does.
+#forall "every one-character change refuses" at: 0..<34 #steps 400000000 {
+  address := "1FsSia9rv4NeEwvJ2GvXrX7LyxYspbN2mo"; copy: [34] u8; out: [20] u8;
+  for i: 0..<34 { copy[i] = address[i]; }
+  for d: 0..<58 {
+    if B58_ALPHABET[d] == address[at] { continue; }
+    copy[at] = B58_ALPHABET[d];
+    #assert base58_address_decode_vartime(cast(string) copy[..], out[..]) < 0;
+  }
+}
+// The worked example's SHA-256d, computed with Python's hashlib.
+#test "the worked example's checksum" {
+  payload: [21] u8; digest: [32] u8; want: [32] u8;
+  #assert sha256d_checked(decode("00a31c06bd463e3923bc1aadbde48b16976c080717", payload[..]), digest[..], false) == SHA_OK;
+  #assert equal_bytes(digest[..], decode("b874721228faecff56d7aea9498ea767498ae08530fa2748ff5c0b9cb65164fd", want[..]));
+}
+// Every byte value, after zero to three zero bytes, round-trips, and the
+// text starts with one '1' per zero byte and no more.
+#forall "single bytes after leading zeros round-trip" value: 0..<256, zeros: 0..<4 {
+  data: [4] u8; text: [8] u8; back: [4] u8;
+  data[zeros] = cast(u8) value;
+  e := base58_encode_vartime(data[0..<zeros + 1], text[..]);
+  ones := 0; while ones < e && text[ones] == '1' { ones += 1; }
+  #assert ones == ifx value == 0 then zeros + 1 else zeros;
+  #assert base58_decode_vartime(cast(string) text[0..<e], back[..]) == zeros + 1 && equal_bytes(back[0..<zeros + 1], data[0..<zeros + 1]);
+}
+#test "equal_bytes notices a change at either end and a different length" {
+  a := [3] u8.[1, 2, 3]; b := a;
+  #assert equal_bytes(a[..], b[..]) && !equal_bytes(a[..], b[0..<2]) && !equal_bytes(a[0..<2], b[..]);
+  b[0] = 9; #assert !equal_bytes(a[..], b[..]);
+  b = a; b[2] = 9; #assert !equal_bytes(a[..], b[..]);
+}
+// book:end check

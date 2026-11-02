@@ -125,6 +125,14 @@ that a maliciously replaced manifest is authentic.
   valid uncompressed points, one compressed, and the off-curve,
   invalid-compressed, twist and empty points), and the keys in BIP-32,
   BIP-340 and BIP-341's files. The ECDH results themselves stay unadapted.
+- **Base58Check (Bitcoin chapter 26):** Bitcoin Core's
+  `base58_encode_decode.json`, `key_io_valid.json` and `key_io_invalid.json`
+  at the same revision as `tx_valid.json`, retrieved 2026-11-02. All 21
+  Base58 pairs are used both ways. Of the 70 valid entries, the 38 that are
+  Base58 (P2PKH and P2SH addresses and WIF keys on mainnet, testnet4, signet
+  and regtest) are used; the 32 Bech32 and Bech32m addresses are left to
+  chapters 27–29. All 70 invalid strings must refuse as an address and as a
+  WIF. Chapter 26 also reads the 17 extended public keys in BIP-32's text.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -211,6 +219,9 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/tx_valid.json`](upstream/bitcoin-core/tx_valid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/tx_valid.json) | `0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011` |
 | [`upstream/bitcoin-core/chainparams.cpp`](upstream/bitcoin-core/chainparams.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/chainparams.cpp) | `cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1` |
 | [`upstream/bitcoin-core/script_tests.json`](upstream/bitcoin-core/script_tests.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/script_tests.json) | `ccfadc13f9b06888faf57a4a2f86dd8feff35c80aa710cbf3eb421f326b8d8b7` |
+| [`upstream/bitcoin-core/base58_encode_decode.json`](upstream/bitcoin-core/base58_encode_decode.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/base58_encode_decode.json) | `20d51011f49339714c28b9244cc5238f4c78bb9206dc8fc61500aed6fc2682ca` |
+| [`upstream/bitcoin-core/key_io_valid.json`](upstream/bitcoin-core/key_io_valid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/key_io_valid.json) | `90bd1d35d12763e0d00c5400b2c9fe551e532a821e1e466c20cad3aced70a7fe` |
+| [`upstream/bitcoin-core/key_io_invalid.json`](upstream/bitcoin-core/key_io_invalid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/key_io_invalid.json) | `c3ca74ddad7c01faaca7c26063537feb73ff2be03eb7fc83a42a655d2979261d` |
 | [`upstream/bitcoin-core/COPYING`](upstream/bitcoin-core/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING) | `b028769f3852a9368ab10bd754ff01ebb741f84a2fa658c9aff82a631bc6ecfc` |
 | [`upstream/btcd/genesis_test.go`](upstream/btcd/genesis_test.go) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/chaincfg/genesis_test.go) | `e188c4fb27cccec22a0853be80f5c9b308e88045baccbf81a2058b01c7155452` |
 | [`upstream/btcd/LICENSE`](upstream/btcd/LICENSE) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/LICENSE) | `10db068dbe11e2b3d652a3d4ae3cdd7998b84b12cdefe3d8083a2b63c295c13f` |

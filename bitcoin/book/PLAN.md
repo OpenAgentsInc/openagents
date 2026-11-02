@@ -156,8 +156,8 @@ there is a need.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| 26. Base58Check — planned | 5 | BIP-32 extended keys and pinned P2PKH and P2SH addresses decode and re-encode exactly. A one-character change fails the checksum. | Bitcoin Core `base58.cpp` |
-| [27. Bech32](ch027-bech32.md) — implemented | 1 | Every valid and invalid BIP-173 Bech32 vector in `coax/tests/vectors/upstream/bip173/bip-0173.mediawiki` gives its expected result. A Bech32m string refuses (BIP-350's strings, not yet pinned in the corpus). | BIP-173 |
+| [26. Base58Check](ch026-base58check.md) — implemented | 5 | BIP-32 extended keys and pinned P2PKH and P2SH addresses decode and re-encode exactly. A one-character change fails the checksum. | Bitcoin Core `base58.cpp` |
+| [27. Bech32](ch027-bech32.md) — implemented | 1 | Every valid and invalid BIP-173 Bech32 vector in `coax/tests/vectors/upstream/bip173/bip-0173.mediawiki` gives its expected result. A Bech32m string refuses (BIP-350's strings, not yet pinned in the corpus). | — |
 | 28. Bech32m — planned | 27 | Every valid and invalid BIP-350 vector gives its expected result, including the witness-version rules. | BIP-350 |
 | 29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR — planned | 6, 17, 26, 28 | Every BIP-173 and BIP-350 segwit address vector and pinned P2PKH and P2SH addresses map to their scriptPubKeys and back. | BIP-13, BIP-141, BIP-173, BIP-341, BIP-350 |
 | 30. Output descriptors and their checksum — planned | 29, 32 | The BIP-380 checksum vectors and the BIP-381–386 examples parse and give their stated scripts. | BIP-380 to BIP-386 |

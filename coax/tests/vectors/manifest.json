@@ -574,6 +574,45 @@
       "bytes": 238752
     },
     {
+      "path": "upstream/bitcoin-core/base58_encode_decode.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/base58_encode_decode.json",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "base58"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "20d51011f49339714c28b9244cc5238f4c78bb9206dc8fc61500aed6fc2682ca",
+      "bytes": 2125
+    },
+    {
+      "path": "upstream/bitcoin-core/key_io_valid.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/key_io_valid.json",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "base58check-key-io"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "90bd1d35d12763e0d00c5400b2c9fe551e532a821e1e466c20cad3aced70a7fe",
+      "bytes": 17149
+    },
+    {
+      "path": "upstream/bitcoin-core/key_io_invalid.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/key_io_invalid.json",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "base58check-key-io"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "c3ca74ddad7c01faaca7c26063537feb73ff2be03eb7fc83a42a655d2979261d",
+      "bytes": 5193
+    },
+    {
       "path": "upstream/bitcoin-core/COPYING",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING",

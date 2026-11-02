@@ -231,6 +231,16 @@
       "timeout": 240
     },
     {
+      "source": "bitcoin/examples/base58check.coax",
+      "chapter": "bitcoin/book/ch026-base58check.md",
+      "stdout": "bitcoin/fixtures/base58check.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/bech32.coax",
       "chapter": "bitcoin/book/ch027-bech32.md",
       "stdout": "bitcoin/fixtures/bech32.out",

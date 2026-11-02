@@ -570,14 +570,21 @@
   {
    "number": 26,
    "title": "Base58Check",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch026-base58check.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     5
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/base58.coax",
+    "bitcoin/examples/base58check.coax",
+    "bitcoin/examples/checks/base58check.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

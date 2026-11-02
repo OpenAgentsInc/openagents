@@ -43,10 +43,10 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 23 are implemented and 101 are planned. The 23
-implemented chapters have runnable examples, qualified on native CPU, and 18
+Of the 124 chapters, 24 are implemented and 100 are planned. The 24
+implemented chapters have runnable examples, qualified on native CPU, and 19
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10, 12, 17, 19 and 20 are new.
+chapters 5, 6, 7, 10, 12, 17, 19, 20 and 26 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -155,7 +155,7 @@ Base58Check, Bech32 and Bech32m, addresses and output descriptors.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 26. Base58Check | Planned | BIP-32 extended keys and pinned P2PKH and P2SH addresses decode and re-encode exactly. A one-character change fails the checksum. |
+| [26. Base58Check](ch026-base58check.md) | Runnable: native C and wasm | Base58 and Base58Check with the P2PKH, P2SH and WIF version bytes, checked against all of Bitcoin Core's `base58_encode_decode.json`, the Base58 entries of `key_io_valid.json` and `key_io_invalid.json`, BIP-32's extended public keys and a Python implementation, natively and in Wasm. WIF keys encode and decode in constant time. A one-character change fails the checksum. |
 | [27. Bech32](ch027-bech32.md) | Runnable: native C | BIP-173 Bech32 (checksum constant 1, never Bech32m) with the pinned vectors and canonical lowercase re-encoding. |
 | 28. Bech32m | Planned | Every valid and invalid BIP-350 vector gives its expected result, including the witness-version rules. |
 | 29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR | Planned | Every BIP-173 and BIP-350 segwit address vector and pinned P2PKH and P2SH addresses map to their scriptPubKeys and back. |
