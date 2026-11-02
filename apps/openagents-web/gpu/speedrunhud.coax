@@ -12,7 +12,7 @@
 //   fade 3
 //   still 4
 //   count 5 (panels)
-//   vignette 6
+//   vignette 6 (below 0: no background, black, for the frame overlays)
 //   scale 7
 //   panels 8
 // per panel: x0, y0, x1, y1 (device pixels), then cut, alpha, tint, 0 (speedrunhud.coax PANELS)
@@ -47,6 +47,10 @@ speedrunhud_fbm :: (q:V2)->f32 {
 SPEEDRUNHUD_GREY_WHITE :: ()->V3 {return v3(0.94f32,0.94f32,0.94f32);}
 SPEEDRUNHUD_GREY_LIGHT :: ()->V3 {return v3(0.78f32,0.78f32,0.78f32);}
 speedrunhud_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  if (u[6]<0.0f32) {
+    // an overlay for footage (labs cut over=): black, so a screen blend leaves the shot clear
+    return v4(0.0f32,0.0f32,0.0f32,1.0f32);
+  }
   uv:V2=wg_div_f2f(wg_sub_f2f2(v2(pos.x,pos.y),wg_mul_ff2(0.5f32,wg_at2(u,0))),u[1]);
   t:f32=u[2]*0.032f32;
   w:V2=v2(speedrunhud_fbm(wg_add_f2f2(wg_mul_f2f(uv,1.5f32),v2(t,-t))),speedrunhud_fbm(wg_add_f2f(wg_add_f2f2(wg_mul_f2f(uv,1.5f32),v2(-t,t*0.7f32)),4.0f32)));
@@ -124,7 +128,13 @@ speedrunhud_fx_vs :: (_vid2:u32,_iid3:u32,in_:speedrunhud_fx_vs_in,u:[]f32)->Spe
   o.px=v2(a.x,a.y);
   return o;
 }
-speedrunhud_fx_fs :: (v:SpeedrunhudV,u:[]f32)->V4 {
+speedrunhud_fx_fs :: (v:SpeedrunhudV,u:[]f32,sans_atlas:Tex2D,sans_sampler:Sampler)->V4 {
+  if ((v.tint.w>3.5f32)&&(v.tint.w<4.5f32)) {
+    // A sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels.
+    lod:f32=clampf(wg_log2(64.0f32/fmax(v.shape.x,1.0f32)),0.0f32,4.0f32);
+    sa:f32=pow(gpu_sample_level(sans_atlas,sans_sampler,v.place,lod).w,0.85f32);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),sa),fmin(v.shape.z*1.15f32,1.0f32)),u[3]),1.0f32);
+  }
   along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
   d:f32=wg_length2(v2(along,v.place.y));
   mode:f32=v.tint.w;

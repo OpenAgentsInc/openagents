@@ -1,0 +1,395 @@
+// The Speedrun HUD's console (speedrunhud.coax loads this): every stage reads
+// as an Expanse-style console (docs/verse/2026-11-01-hud-library.md), one
+// primary view in the middle and instruments round it:
+//   - the top band: the brand and the stage's number, a heading tape off the
+//     camera's own heading under a curved arc, the stage clock, a status chip
+//     (SIMULATED where the numbers are made up);
+//   - slim rails: an orbit plot, telemetry traces and segmented meters on the
+//     left, a spectrum, an arc gauge (the stage's progress), bars and a pitch
+//     ladder on the right, all from aethyr/ui/draw.coax with a quiet pen;
+//   - the log strip: the stage's own words streaming into a terminal, the
+//     voice's waveform, and the stage's progress on a timeline;
+//   - a faint coordinate lattice under the view, and target brackets that
+//     close on the stage's subject.
+// The words are the stage's own (plain labels and the founder's phrases);
+// the instruments draw without their specimen captions.
+//
+// The pass-1 stages draw into a view 0.86 the size (view/unview), so the
+// rails have room; the new stages draw in screen space inside the same box.
+// frame_* stages are overlays for footage (labs cut over=): black, no floor,
+// dim rails and brackets round the edges, the middle 60% left clear.
+
+VIEW_S :: 0.86f32; VIEW_X :: 94.08f32; VIEW_Y :: 37.9f32;
+// The primary view's box on screen (design px): the rails sit outside it.
+VIEW_LEFT :: 124.0f32; VIEW_RIGHT :: 1220.0f32; VIEW_TOP :: 136.0f32; VIEW_LOW :: 804.0f32;
+LOG_LINES :: 4;
+
+// ---- the view a stage draws into
+
+// Stage space to screen design px (what the checks measure).
+scr_x :: (s: [] SpeedrunHud, x: f32) -> f32 { return (x * s[0].k + s[0].ox - s[0].ox0) / s[0].k0; }
+scr_y :: (s: [] SpeedrunHud, y: f32) -> f32 { return (y * s[0].k + s[0].oy - s[0].oy0) / s[0].k0; }
+sr_view :: (s: [] SpeedrunHud, scale: f32, x: f32, y: f32) {
+  s[0].k = s[0].k0 * scale; s[0].ox = s[0].ox0 + s[0].k0 * x; s[0].oy = s[0].oy0 + s[0].k0 * y;
+}
+sr_unview :: (s: [] SpeedrunHud) { s[0].k = s[0].k0; s[0].ox = s[0].ox0; s[0].oy = s[0].oy0; }
+
+// ---- the HUD library in this page's space
+//
+// draw.coax's components draw in their own units times the pen's d. Here a
+// component is drawn at `scale` (its units are design px / scale), then
+// hd_done moves it onto the canvas, lights it at a and the HUD's fade, and
+// counts where it went.
+
+hpen :: (s: [] SpeedrunHud, scale: f32, quiet: bool) -> HdPen {
+  return HdPen.{d = s[0].k * scale, cyan = true, top = -100000, bottom = 100000, quiet = quiet};
+}
+// The same pen, its strokes cut to rows down to `low` (design px): a wipe that reveals a component.
+hpen_to :: (s: [] SpeedrunHud, scale: f32, quiet: bool, low: f32) -> HdPen {
+  p := hpen(s, scale, quiet); p.bottom = low / scale; return p;
+}
+hbox :: (x: f32, y: f32, w: f32, h: f32, scale: f32) -> HudBox {
+  return HudBox.{x = x / scale, y = y / scale, width = w / scale, height = h / scale};
+}
+hd_done :: (s: [] SpeedrunHud, out: [] f32, at: int, v: int, a: f32) -> int {
+  light := clamp01(a) * s[0].fade;
+  if light <= 0.003 { return at; }
+  for i: at..<v {
+    o := i * VERTEX_FLOATS;
+    out[o] += s[0].ox; out[o + 1] += s[0].oy; out[o + 6] *= light;
+  }
+  // where each quad's middle went (its corners include the glow round it)
+  q := at;
+  while q + 6 <= v {
+    x := 0.0f32; y := 0.0f32;
+    for c: 0..<6 { x += out[(q + c) * VERTEX_FLOATS]; y += out[(q + c) * VERTEX_FLOATS + 1]; }
+    x = (x / 6 - s[0].ox0) / s[0].k0; y = (y / 6 - s[0].oy0) / s[0].k0;
+    s[0].hud_left = lo(s[0].hud_left, x); s[0].hud_right = hi(s[0].hud_right, x);
+    s[0].hud_top = lo(s[0].hud_top, y); s[0].hud_low = hi(s[0].hud_low, y);
+    q += 6;
+  }
+  return v;
+}
+
+// ---- small instruments of this page's own (screen design px)
+
+// A chip: a small frame with a word in it, cyan.
+cn_chip :: (s: [] SpeedrunHud, out: [] f32, at: int, text: string, right: f32, y: f32, a: f32, k: int, t: f32) -> int {
+  if a <= 0 { return at; }
+  w := text_width(text, 12, 2) + 26;
+  v := sr_frame(s, out, at, SrBox.{x = right - w, y = y, width = w, height = 26}, a, 6, k, 0, 8);
+  v = sr_square(s, out, v, right - w + 9, y + 13, 5, k, flicker(a) * (0.6 + 0.4 * step01(frac(t * 1.1) - 0.5)));
+  return sr_label(s, out, v, text, right - w + 17, y + 13, 12, k, a, 300, A_LEFT, 2);
+}
+step01 :: (x: f32) -> f32 { return ifx x > 0 then 1.0f32 else 0.0f32; }
+
+// A vertical segmented meter: n cells from the bottom up, `value` of them lit.
+cn_column :: (s: [] SpeedrunHud, out: [] f32, at: int, x: f32, y: f32, w: f32, h: f32, n: int, value: f32, a: f32) -> int {
+  v := at; cell := h / f32(n);
+  lit_n := cast(int) floor(clamp01(value) * f32(n) + 0.5);
+  for i: 0..<n {
+    yy := y + h - f32(i + 1) * cell;
+    on := i < lit_n;
+    v = sr_line(s, out, v, x, yy + cell * 0.5, x + w, yy + cell * 0.5, ifx on then (ifx i >= n - 2 then T_WHITE else T_CYAN) else T_FAINT, a * (ifx on then 0.7f32 else 0.3f32), 2.2);
+  }
+  return v;
+}
+
+// An arc gauge: a 240° track, its share `value` lit, a readout in the middle.
+cn_arc :: (s: [] SpeedrunHud, out: [] f32, at: int, cx: f32, cy: f32, r: f32, value: f32, readout: string, a: f32) -> int {
+  if a <= 0 { return at; }
+  v := at; steps := 40;
+  a0 := PI * 0.75; span := PI * 1.5;
+  for i: 0..<steps {
+    u0 := f32(i) / f32(steps); u1 := f32(i + 1) / f32(steps);
+    p0 := a0 + span * u0; p1 := a0 + span * u1;
+    on := u1 <= clamp01(value) + 0.001;
+    v = sr_line(s, out, v, cx + r * cos(p0), cy + r * sin(p0), cx + r * cos(p1), cy + r * sin(p1), ifx on then T_CYAN else T_FAINT, a * (ifx on then 1.0f32 else 0.6f32), ifx on then 2.2f32 else 1.0f32);
+  }
+  for i: 0..<9 {
+    p := a0 + span * f32(i) / 8;
+    v = sr_line(s, out, v, cx + (r + 4) * cos(p), cy + (r + 4) * sin(p), cx + (r + 9) * cos(p), cy + (r + 9) * sin(p), T_DIM, a, 1);
+  }
+  return sr_label(s, out, v, readout, cx, cy, 15, T_WHITE, a, 301, A_CENTRE, 1.5);
+}
+
+// A heading tape: ticks every 5° scrolling under a fixed caret, the heading's
+// number over it, under a curved arc. heading in degrees.
+cn_heading :: (s: [] SpeedrunHud, out: [] f32, at: int, cx: f32, y: f32, w: f32, heading: f32, a: f32) -> int {
+  if a <= 0 { return at; }
+  v := at; px := w / 60;   // 60° across the tape
+  first := floor((heading - 30) / 5) * 5;
+  for i: 0..<14 {
+    deg := first + f32(i) * 5;
+    x := cx + (deg - heading) * px;
+    if x < cx - w * 0.5 || x > cx + w * 0.5 { continue; }
+    major := (cast(int) deg % 30 + 30) % 30 == 0;
+    edge := 1 - abs(x - cx) / (w * 0.5);
+    v = sr_line(s, out, v, x, y, x, y - (ifx major then 14.0f32 else 6.0f32), ifx major then T_LIGHT else T_DIM, a * (0.3 + 0.7 * edge), 1);
+    if major {
+      b: [8] u8; d := (cast(int) deg % 360 + 360) % 360;
+      n := 0; if d < 100 { b[n] = '0'; n += 1; } if d < 10 { b[n] = '0'; n += 1; }
+      n = digits(d, b[..], n);
+      v = sr_text(s, out, v, cast(string) b[0..<n], x, y - 24, 10, T_MID, a * edge, A_CENTRE, 1);
+    }
+  }
+  v = sr_line(s, out, v, cx - w * 0.5, y, cx + w * 0.5, y, T_DIM, a * 0.7, 1);
+  // the caret, and the arc over the tape (draw.coax's ring through this page's pen)
+  v = sr_line(s, out, v, cx - 7, y + 12, cx, y + 3, T_CYAN, a, 1.6);
+  v = sr_line(s, out, v, cx, y + 3, cx + 7, y + 12, T_CYAN, a, 1.6);
+  h := v;
+  v = hd_ring(out, v, cx, y + 70, w * 0.56, 108, 4.02, 5.4, hpen(s, 1, true), 3);
+  v = hd_done(s, out, h, v, a * 0.8);
+  b: [16] u8; n := put_text(b[..], 0, "HDG ");
+  hd := (cast(int) floor(heading * 10 + 0.5) % 3600 + 3600) % 3600;
+  if hd < 1000 { b[n] = '0'; n += 1; } if hd < 100 { b[n] = '0'; n += 1; }
+  n = digits(hd / 10, b[..], n); b[n] = '.'; n += 1; b[n] = cast(u8) ('0' + hd % 10); n += 1;
+  return sr_label(s, out, v, cast(string) b[0..<n], cx, y + 26, 12, T_CYAN, a, 302, A_CENTRE, 2);
+}
+
+// A clock: T+ 00:03.2 at seconds t.
+clock_text :: (t: f32, b: [] u8, plus: bool) -> string {
+  n := put_text(b, 0, ifx plus then "T+ " else "");
+  tenths := cast(int) floor(hi(t, 0) * 10);
+  m := tenths / 600; sec := (tenths / 10) % 60;
+  b[n] = cast(u8) ('0' + (m / 10) % 10); b[n + 1] = cast(u8) ('0' + m % 10); b[n + 2] = ':';
+  b[n + 3] = cast(u8) ('0' + sec / 10); b[n + 4] = cast(u8) ('0' + sec % 10); b[n + 5] = '.';
+  b[n + 6] = cast(u8) ('0' + tenths % 10);
+  return cast(string) b[0..<n + 7];
+}
+
+// The coordinate lattice: faint crosses on a 68 px grid, fading in from the middle.
+cn_lattice :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32, a: f32) -> int {
+  if a <= 0 { return at; }
+  v := at; cx := (VIEW_LEFT + VIEW_RIGHT) * 0.5; cy := (VIEW_TOP + VIEW_LOW) * 0.5;
+  for i: 0..<17 {
+    for j: 0..<10 {
+      x := VIEW_LEFT + 20 + f32(i) * 66; y := VIEW_TOP + 26 + f32(j) * 68;
+      if x > VIEW_RIGHT - 10 || y > VIEW_LOW - 10 { continue; }
+      d := sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / 640;
+      l := ease(t * 1.4 - d) * a * 0.28;
+      if l <= 0.01 { continue; }
+      v = sr_line(s, out, v, x - 4, y, x + 4, y, T_FAINT, l, 0.8);
+      v = sr_line(s, out, v, x, y - 4, x, y + 4, T_FAINT, l, 0.8);
+    }
+  }
+  // ruler ticks along the view's top and left edges
+  for i: 0..<34 {
+    x := VIEW_LEFT + f32(i) * 33;
+    v = sr_line(s, out, v, x, VIEW_TOP - 4, x, VIEW_TOP - (ifx i % 4 == 0 then 12.0f32 else 7.0f32), T_DIM, a * 0.5, 0.8);
+  }
+  for i: 0..<21 {
+    y := VIEW_TOP + f32(i) * 33;
+    v = sr_line(s, out, v, VIEW_LEFT - 4, y, VIEW_LEFT - (ifx i % 4 == 0 then 12.0f32 else 7.0f32), y, T_DIM, a * 0.5, 0.8);
+  }
+  return v;
+}
+
+// Target brackets closing on a box (the stage's subject, in the stage's space).
+cn_target :: (s: [] SpeedrunHud, out: [] f32, at: int, b: SrBox, t: f32, start: f32) -> int {
+  p := rmp(t, start, 0.7);
+  if p <= 0 || b.width <= 0 { return at; }
+  grow := 1 + 0.25 * (1 - p) + 0.012 * sin(t * 2.2);
+  cx := b.x + b.width * 0.5; cy := b.y + b.height * 0.5;
+  hw := b.width * 0.5 * grow; hh := b.height * 0.5 * grow;
+  arm := lo(28, lo(hw, hh) * 0.5);
+  l := flicker(p) * 0.95;
+  v := at;
+  for c: 0..<4 {
+    sxn := ifx c % 2 == 0 then -1.0f32 else 1.0f32; syn := ifx c < 2 then -1.0f32 else 1.0f32;
+    x := cx + sxn * hw; y := cy + syn * hh;
+    v = sr_line(s, out, v, x, y, x - sxn * arm, y, T_CYAN, l, 1.8);
+    v = sr_line(s, out, v, x, y, x, y - syn * arm, T_CYAN, l, 1.8);
+  }
+  // range ticks on the box's left and right
+  for i: 0..<5 {
+    y := cy - hh * 0.5 + f32(i) * hh * 0.25;
+    v = sr_line(s, out, v, cx - hw - 10, y, cx - hw - (ifx i == 2 then 20.0f32 else 14.0f32), y, T_CYAN, l * 0.6, 1);
+    v = sr_line(s, out, v, cx + hw + 10, y, cx + hw + (ifx i == 2 then 20.0f32 else 14.0f32), y, T_CYAN, l * 0.6, 1);
+  }
+  return v;
+}
+
+// The terminal: the stage's log lines up to `shown`, the last LOG_LINES of
+// them, and a cursor (draw.coax's hd_terminal_lines, at 1.3).
+cn_log :: (s: [] SpeedrunHud, out: [] f32, at: int, stage: int, shown: int, x: f32, y: f32, w: f32, h: f32, t: f32, a: f32) -> int {
+  rows: [6] string; n := 0;
+  real := 0;
+  for i: 0..<LOG_PER { if STAGE_LOG[stage * LOG_PER + i].count > 0 { real += 1; } }
+  upto := lo_i(shown, real);
+  from := hi_i(0, upto - (LOG_LINES - 1));
+  for i: from..<upto { line := STAGE_LOG[stage * LOG_PER + i]; if line.count > 0 && n < LOG_LINES - 1 { rows[n] = line; n += 1; } }
+  rows[n] = ifx frac(t * 1.6) < 0.5 then "> _" else ">"; n += 1;
+  sc := 1.3f32;
+  v := hd_terminal_lines(out, at, rows[0..<n], hbox(x, y, w, h, sc), hpen(s, sc, false));
+  return hd_done(s, out, at, v, a);
+}
+
+// ---- the console round a stage
+
+Chrome :: struct { sim: bool; heading: f32; pitch: f32; zoom: f32; }
+
+// The stage's log: its own words, LOG_PER a stage (blank: none).
+LOG_PER :: 5;
+STAGE_LOG :: [100] string.[
+  "> OPENAGENTS", "FOUNDER", "CHRISTOPHER DAVID", "", "",
+  "> CODING", "> GAMING", "1996", "2026", "30 YEARS",
+  "> COAX", "CUSTOM PROGRAMMING LANGUAGE", "COMPILER", "C", "WEBGPU · METAL",
+  "> BITCOIN WALLETS", "LIGHTNING", "WAVELENGTH", "SETTLED", "SIMULATED",
+  "> SPARE COMPUTE", "PYLONS ONLINE", "AMBIENT AI", "EVERGLADE", "BELT 2200",
+  "> CREATION COSTS HAVE FALLEN", "SOFTWARE", "GAMES", "AGENTS", "",
+  "> CREATION  SOLVED", "DISTRIBUTION  UNSOLVED", "DEPLOYMENT  UNSOLVED", "PRODUCTION  UNSOLVED", "AT SCALE  UNSOLVED",
+  "> SOLVED CENTRALLY", "GAMERS", "INDIE GAME DEVS", "OPENAGENTS PLATFORM", "",
+  "> CONNECTED WORLDS", "8 REALMS", "GROUPS  2^8 = 256", "ONE PLATFORM", "",
+  "> THE VERSE", "ONE PORTABLE IDENTITY", "ONE WALLET", "21,000 SATS", "",
+  "> OPEN SOURCE", "BITCOIN · LIGHTNING", "NOSTR  OPEN PROTOCOL", "PLUGGABLE · EXTENSIBLE", "ONE BRAND",
+  "> BITCOIN  2011", "NOSTR  2021", "OPENAGENTS  2023", "OPENAGENTS.COM  2025", "",
+  "> D&D RULE SET", "FIREBALL  LEVEL 3", "DAMAGE  8D6 FIRE", "3D WORLD", "",
+  "> OPENAGENTS", "OPENAGENTS.COM", "", "", "",
+  "> LIGHTNING", "WAVELENGTH", "1 / S", "10,000 / S", "SIMULATED",
+  "> METCALFE  N^2", "REED  2^N", "DUNBAR 150", "AGENTS", "",
+  "> COPILOTS", "AUTOPILOTS", "RECEIPTS", "ROYALTIES", "SIMULATED",
+  "> EVERGLADE", "", "", "", "",
+  "> THE GRID", "", "", "", "",
+  "> THE VERSE", "", "", "", ""
+];
+
+// Which stages' numbers are made up (a SIMULATED chip).
+simulated :: (stage: int) -> bool {
+  return stage == S_WALLET || stage == S_COMPUTE || stage == S_PAYMENTS || stage == S_REED || stage == S_FLEET;
+}
+
+// The furniture under the stage: the lattice.
+chrome_under :: (s: [] SpeedrunHud, out: [] f32, at: int, stage: int, t: f32) -> int {
+  return cn_lattice(s, out, at, t, rmp(t, 0, 0.8));
+}
+
+// Everything round the view (screen space), lit in as the console wakes.
+chrome :: (s: [] SpeedrunHud, out: [] f32, at: int, stage: int, t: f32, dur: f32, c: Chrome) -> int {
+  v := at;
+  a := rmp(t, 0.05, 0.5);
+  if a <= 0 { return v; }
+  wipe := 120 + 820 * eout(t / 0.9);   // the rails reveal top to bottom
+  b: [32] u8;
+
+  // the top band
+  v = sr_label(s, out, v, "OPENAGENTS", 24, 36, 14, T_LIGHT, rmp(t, 0.1, 0.6), 310, A_LEFT, 3);
+  n := put_text(b[..], 0, "SPEEDRUN  ");
+  if stage + 1 < 10 { b[n] = '0'; n += 1; }
+  n = digits(stage + 1, b[..], n);
+  v = sr_label(s, out, v, cast(string) b[0..<n], 24, 60, 11, T_DIM, rmp(t, 0.2, 0.6), 311, A_LEFT, 2);
+  v = sr_line(s, out, v, 24, 78, 24 + 260 * eout(t / 0.8), 78, T_DIM, a * 0.8, 1);
+  v = cn_heading(s, out, v, 672, 64, 420, c.heading, rmp(t, 0.1, 0.6));
+  v = sr_label(s, out, v, clock_text(t, b[..], true), DESIGN_W - 24, 36, 14, T_LIGHT, rmp(t, 0.1, 0.6), 312, A_RIGHT, 2);
+  if simulated(stage) { v = cn_chip(s, out, v, "SIMULATED", DESIGN_W - 24, 56, rmp(t, 0.4, 0.5), T_CYAN, t); }
+  else { v = sr_line(s, out, v, DESIGN_W - 24 - 200 * eout(t / 0.8), 78, DESIGN_W - 24, 78, T_DIM, a * 0.8, 1); }
+
+  // the left rail: an orbit plot, traces, two meters (the camera's zoom and pitch)
+  h := v;
+  v = hd_orbits(out, v, hbox(12, 142, 100, 100, 1), hpen_to(s, 1, true, wipe), t);
+  v = hd_telemetry(out, v, hbox(10, 262, 104, 170, 1), hpen_to(s, 1, true, wipe), t);
+  v = hd_done(s, out, h, v, a * 0.9);
+  v = sr_line(s, out, v, 12, 254, 112, 254, T_DIM, a * 0.6, 1);
+  v = sr_line(s, out, v, 12, 444, 112, 444, T_DIM, a * 0.6, 1);
+  v = cn_column(s, out, v, 22, 470, 30, 290, 26, c.zoom * rmp(t, 0.3, 1.2), a);
+  v = cn_column(s, out, v, 70, 470, 30, 290, 26, (0.4 + 0.5 * c.pitch) * rmp(t, 0.4, 1.2), a);
+  v = sr_text(s, out, v, "ZOOM", 37, 782, 9, T_DIM, a, A_CENTRE, 0.5);
+  v = sr_text(s, out, v, "PITCH", 85, 782, 9, T_DIM, a, A_CENTRE, 0.5);
+
+  // the right rail: a spectrum, the progress arc, bars, a pitch ladder
+  h = v;
+  v = hd_spectrum(out, v, hbox(1230, 140, 106, 120, 1), hpen_to(s, 1, true, wipe), t);
+  v = hd_attitude(out, v, hbox(1196, 610, 176, 170, 0.6), hpen_to(s, 0.6, true, wipe), t);
+  v = hd_done(s, out, h, v, a * 0.9);
+  share := clamp01(t / dur);
+  pc := cast(int) floor(share * 100);
+  n = digits(pc, b[..], 0); b[n] = '%'; n += 1;
+  v = cn_arc(s, out, v, 1283, 340, 40, share, cast(string) b[0..<n], rmp(t, 0.3, 0.6));
+  for i: 0..<6 {
+    y := 420 + f32(i) * 26;
+    val := 0.35 + 0.55 * abs(sin(t * (0.5 + 0.13 * f32(i)) + f32(i) * 1.7));
+    v = sr_line(s, out, v, 1234, y, 1334, y, T_FAINT, a * 0.5, 4);
+    v = sr_line(s, out, v, 1234, y, 1234 + 100 * val * rmp(t, 0.4 + 0.08 * f32(i), 0.5), y, ifx i == 2 then T_CYAN else T_MID, a * 0.85, 4);
+  }
+
+  // the log strip: the terminal, the voice, the progress
+  v = sr_line(s, out, v, 10, 812, 10 + (DESIGN_W - 20) * eout(t / 0.7), 812, T_DIM, a * 0.7, 1);
+  shown := 1 + cast(int) floor(t / hi(dur * 0.16, 0.3));
+  v = cn_log(s, out, v, stage, shown, 14, 818, 560, 82, t, a);
+  h = v;
+  v = hd_waveform(out, v, hbox(600, 818, 300, 78, 1), hpen(s, 1, true), t * 3);
+  v = hd_done(s, out, h, v, a * 0.75);
+  x0 := 930.0f32; x1 := DESIGN_W - 24; y := 856.0f32;
+  v = sr_line(s, out, v, x0, y, x1, y, T_DIM, a * 0.8, 1);
+  v = sr_line(s, out, v, x0, y, x0 + (x1 - x0) * share, y, T_CYAN, a, 2);
+  for i: 0..<11 {
+    x := x0 + (x1 - x0) * f32(i) / 10;
+    v = sr_line(s, out, v, x, y - 4, x, y - (ifx i % 5 == 0 then 12.0f32 else 7.0f32), T_DIM, a, 1);
+  }
+  v = sr_square(s, out, v, x0 + (x1 - x0) * share, y, 7, T_CYAN, a);
+  v = sr_text(s, out, v, "00:00.0", x0, y + 24, 10, T_DIM, a, A_LEFT, 1);
+  v = sr_text(s, out, v, clock_text(dur, b[..], false), x1, y + 24, 10, T_DIM, a, A_RIGHT, 1);
+  return v;
+}
+
+// ---- the overlays for footage (frame_meteor, frame_grid, frame_play)
+//
+// Dim rails and brackets round the edges, a heading tape, telemetry and a
+// terminal down the left, target brackets near the middle, the place's name.
+// The middle 60% (x 269..1075, y 216..864) stays clear for the gameplay.
+
+frame_place :: (stage: int) -> string {
+  if stage == S_FRAME_METEOR { return "EVERGLADE"; }
+  if stage == S_FRAME_GRID { return "THE GRID"; }
+  return "THE VERSE";
+}
+
+frame_overlay :: (s: [] SpeedrunHud, out: [] f32, at: int, stage: int, t: f32, dur: f32) -> int {
+  v := at; a := rmp(t, 0, 0.6) * 0.75;
+  b: [32] u8;
+  // the outer brackets, the screen's corners
+  arm := 64.0f32;
+  for c: 0..<4 {
+    sxn := ifx c % 2 == 0 then 1.0f32 else -1.0f32; syn := ifx c < 2 then 1.0f32 else -1.0f32;
+    x := ifx c % 2 == 0 then 18.0f32 else DESIGN_W - 18; y := ifx c < 2 then 18.0f32 else 892.0f32;
+    p := rmp(t, 0.05 * f32(c), 0.5);
+    v = sr_line(s, out, v, x, y, x + sxn * arm * eout(p), y, T_LIGHT, a * flicker(p), 2);
+    v = sr_line(s, out, v, x, y, x, y + syn * arm * eout(p), T_LIGHT, a * flicker(p), 2);
+  }
+  // the heading tape over the top
+  v = cn_heading(s, out, v, 672, 70, 460, 212 + 9 * t + 3 * sin(t * 0.7), a);
+  // the place, top left; the clock, top right
+  v = sr_label(s, out, v, frame_place(stage), 44, 52, 22, T_WHITE, rmp(t, 0.2, 0.8), 320, A_LEFT, 4);
+  v = sr_line(s, out, v, 44, 76, 44 + 200 * eout((t - 0.2) / 0.8), 76, T_CYAN, a, 1.2);
+  v = sr_label(s, out, v, clock_text(t, b[..], true), DESIGN_W - 44, 52, 14, T_LIGHT, rmp(t, 0.2, 0.8), 321, A_RIGHT, 2);
+  // the left rail: traces, an orbit plot, a meter, the terminal
+  wipe := 100 + 800 * eout(t / 1.0);
+  h := v;
+  v = hd_telemetry(out, v, hbox(30, 150, 200, 150, 1), hpen_to(s, 1, true, wipe), t);
+  v = hd_orbits(out, v, hbox(40, 330, 180, 130, 1), hpen_to(s, 1, true, wipe), t);
+  v = hd_done(s, out, h, v, a * 0.8);
+  v = sr_line(s, out, v, 34, 316, 230, 316, T_DIM, a * 0.6, 1);
+  v = cn_column(s, out, v, 40, 490, 22, 200, 14, 0.55 + 0.3 * sin(t * 0.8), a);
+  v = cn_column(s, out, v, 72, 490, 22, 200, 14, 0.7 + 0.2 * sin(t * 1.3 + 1), a);
+  v = cn_log(s, out, v, stage, 1, 30, 730, 230, 150, t, a);
+  // the right rail: spectrum, arc gauge, bars
+  h = v;
+  v = hd_spectrum(out, v, hbox(1110, 150, 206, 120, 1), hpen_to(s, 1, true, wipe), t);
+  v = hd_done(s, out, h, v, a * 0.8);
+  share := clamp01(t / dur);
+  n := digits(cast(int) floor(share * 100), b[..], 0); b[n] = '%'; n += 1;
+  v = cn_arc(s, out, v, 1213, 380, 54, share, cast(string) b[0..<n], a);
+  for i: 0..<8 {
+    y := 500 + f32(i) * 26;
+    val := 0.3 + 0.6 * abs(sin(t * (0.4 + 0.11 * f32(i)) + f32(i) * 1.3));
+    v = sr_line(s, out, v, 1110, y, 1310, y, T_FAINT, a * 0.5, 3);
+    v = sr_line(s, out, v, 1110, y, 1110 + 200 * val, y, ifx i == 3 then T_CYAN else T_MID, a * 0.8, 3);
+  }
+  // target brackets near the middle, drifting a little
+  tb := SrBox.{x = 672 - 150 + 18 * sin(t * 0.5), y = 520 - 100 + 10 * cos(t * 0.4), width = 300, height = 200};
+  v = cn_target(s, out, v, tb, t, 0.6);
+  // edge rules
+  v = sr_line(s, out, v, 18, 120, 18, 780, T_DIM, a * 0.5, 1);
+  v = sr_line(s, out, v, DESIGN_W - 18, 120, DESIGN_W - 18, 780, T_DIM, a * 0.5, 1);
+  return v;
+}

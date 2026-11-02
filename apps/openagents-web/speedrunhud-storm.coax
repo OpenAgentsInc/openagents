@@ -1,0 +1,261 @@
+// The payment storm (speedrunhud.coax loads this): a simulated Lightning
+// network of a few hundred nodes and a Wavelength operator with its users,
+// the payment rate ramping 1, 10, 100, 1,000, 10,000 a second. The look is
+// the Payment Network demo's (aethyr-cpp src/paynet/render.cpp) and the
+// splash's comets (graph.coax): a capsule with a white-hot head and a fading
+// tail, Lightning in Bitcoin orange, Wavelength in cyan; a landing payment
+// warms its node. Beside the map: the rate, SETTLED / FAILED / ROUTED, a
+// sats-volume trace and channel liquidity.
+//
+// Everything is a closed form of the stage's time: the rate R(t), the count
+// C(t) = the integral of R, and its inverse, so payment j launches at
+// Cinv(j) and any frame can be drawn on its own. Every payment's route,
+// size and fate come from dice(STORM_SEED, j, ...). It is labelled SIMULATED.
+
+STORM_SEED :: 21000;
+LN_NODES :: 190;          // Lightning nodes, on a golden-angle spiral
+WL_USERS :: 36;           // Wavelength users round their operator
+LN_HUBS :: 15;            // every 15th Lightning node has a channel to the operator
+STORM_MAX :: 520;         // comets drawn at most; above it, every stride-th
+FLIGHT_LN :: 0.85f32; FLIGHT_WL :: 0.6f32;
+FAIL_SHARE :: 0.004f32;
+AVG_SATS :: 505.0f32;
+LN10 :: 2.30258509f32;
+
+// The map's box (screen design px).
+MAP_X :: 486.0f32; MAP_Y :: 478.0f32; MAP_RX :: 318.0f32; MAP_RY :: 292.0f32;
+
+// ---- the rate and the count
+
+StormClock :: struct { t0: f32; t1: f32; a: f32; c1: f32; }
+storm_clock :: (dur: f32) -> StormClock {
+  t0 := lo(1.0, dur * 0.08); t1 := dur * 0.8;
+  a := 4 / (t1 - t0);
+  c1 := t0 + (exp(a * (t1 - t0) * LN10) - 1) / (a * LN10);
+  return StormClock.{t0 = t0, t1 = t1, a = a, c1 = c1};
+}
+storm_rate :: (k: StormClock, t: f32) -> f32 {
+  if t < k.t0 { return 1; }
+  if t > k.t1 { return 10000; }
+  return exp(k.a * (t - k.t0) * LN10);
+}
+storm_count :: (k: StormClock, t: f32) -> f32 {
+  if t < k.t0 { return t; }
+  if t < k.t1 { return k.t0 + (exp(k.a * (t - k.t0) * LN10) - 1) / (k.a * LN10); }
+  return k.c1 + 10000 * (t - k.t1);
+}
+storm_launch :: (k: StormClock, c: f32) -> f32 {
+  if c < k.t0 { return c; }
+  if c < k.c1 { return k.t0 + log(1 + (c - k.t0) * k.a * LN10) / (k.a * LN10); }
+  return k.t1 + (c - k.c1) / 10000;
+}
+
+// ---- the network
+
+ln_node :: (i: int) -> Pt {
+  r := sqrt(0.09 + 0.91 * (f32(i) + 0.5) / f32(LN_NODES));
+  a := f32(i) * 2.39996323 + 0.4;
+  j := 1 + 0.05 * (dice(STORM_SEED, i, 1) - 0.5);
+  return Pt.{x = MAP_X + MAP_RX * r * j * cos(a), y = MAP_Y + MAP_RY * r * j * sin(a)};
+}
+wl_user :: (i: int) -> Pt {
+  a := f32(i) * 2 * PI / f32(WL_USERS) + 0.3 * dice(STORM_SEED, 500 + i, 2);
+  r := 0.12 + 0.08 * dice(STORM_SEED, 500 + i, 3);
+  return Pt.{x = MAP_X + MAP_RX * r * cos(a), y = MAP_Y + MAP_RY * r * sin(a)};
+}
+// A Lightning node's channel partners: 21 and 34 along the spiral are its neighbours.
+ln_step :: (i: int, roll: f32) -> int {
+  steps := [4] int.[21, -21, 34, -34];
+  k := cast(int) floor(roll * 4) % 4;
+  for tries: 0..<4 {
+    n := i + steps[(k + tries) % 4];
+    if n >= 0 && n < LN_NODES { return n; }
+  }
+  return i;
+}
+
+// Payment j's route as a path; its kind (true: Wavelength) and flight time.
+Route :: struct { wavelength: bool; flight: f32; dst: Pt; }
+storm_route :: (j: int, pa: [] Path) -> Route {
+  path_clear(pa);
+  wl := dice(STORM_SEED, j, 0) < 0.4;
+  if wl {
+    a := cast(int) floor(dice(STORM_SEED, j, 1) * f32(WL_USERS)) % WL_USERS;
+    p := wl_user(a); path_add(pa, p.x, p.y); path_add(pa, MAP_X, MAP_Y);
+    if dice(STORM_SEED, j, 2) < 0.5 {
+      b := cast(int) floor(dice(STORM_SEED, j, 3) * f32(WL_USERS)) % WL_USERS;
+      q := wl_user(b); path_add(pa, q.x, q.y);
+    } else {
+      h := (cast(int) floor(dice(STORM_SEED, j, 3) * f32(LN_NODES / LN_HUBS)) % (LN_NODES / LN_HUBS)) * LN_HUBS;
+      q := ln_node(h); path_add(pa, q.x, q.y);
+      n := ln_step(h, dice(STORM_SEED, j, 4)); r := ln_node(n); path_add(pa, r.x, r.y);
+    }
+  } else {
+    cur := cast(int) floor(dice(STORM_SEED, j, 1) * f32(LN_NODES)) % LN_NODES;
+    p := ln_node(cur); path_add(pa, p.x, p.y);
+    hops := 2 + cast(int) floor(dice(STORM_SEED, j, 2) * 3);
+    for h: 0..<hops {
+      cur = ln_step(cur, dice(STORM_SEED, j, 10 + h));
+      q := ln_node(cur); path_add(pa, q.x, q.y);
+    }
+  }
+  n := pa[0].n;
+  return Route.{wavelength = wl, flight = ifx wl then FLIGHT_WL else FLIGHT_LN, dst = Pt.{x = pa[0].x[n - 1], y = pa[0].y[n - 1]}};
+}
+
+// A comet: a capsule from tail to head (the shader's pulse mode), screen design px.
+comet :: (s: [] SpeedrunHud, out: [] f32, at: int, tail: Pt, head: Pt, k: int, a: f32, size: f32) -> int {
+  light := clamp01(a) * s[0].fade;
+  if light <= 0.003 || (head.x == tail.x && head.y == tail.y) { return at; }
+  d := s[0].k; c := tone(k);
+  if lit(out, at, tail.x * d + s[0].ox, tail.y * d + s[0].oy, head.x * d + s[0].ox, head.y * d + s[0].oy, 0.9, light, size * d, c.r, c.g, c.b, MODE_PULSE) {
+    cover(s, tail.x, tail.y, head.x, head.y);
+    return at + 6;
+  }
+  return at;
+}
+
+// ---- the stage
+
+storm :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32, dur: f32, title: string) -> int {
+  k := storm_clock(dur);
+  b: [40] u8;
+  v := sr_frame(s, out, at, SrBox.{x = 130, y = 140, width = 730, height = 662}, rmp(t, 0, 0.7), 16, -1, 0.7, 22);
+  v = sr_header(s, out, v, 160, 166, 670, title, rmp(t, 0.15, 0.5), "", 400);
+
+  // the channels, then the nodes
+  na := rmp(t, 0.2, 0.9);
+  for i: 0..<LN_NODES {
+    p := ln_node(i);
+    for c: 0..<2 {
+      n := i + (ifx c == 0 then 21 else 34);
+      if n >= LN_NODES { continue; }
+      q := ln_node(n);
+      v = sr_line(s, out, v, p.x, p.y, q.x, q.y, T_FAINT, na * 0.55 * ease(na * 2 - dice(STORM_SEED, i, 7)), 0.8);
+    }
+    if i % LN_HUBS == 0 { v = sr_line(s, out, v, p.x, p.y, MAP_X, MAP_Y, T_CYAN, na * 0.22, 0.8); }
+  }
+  for i: 0..<WL_USERS {
+    p := wl_user(i);
+    v = sr_line(s, out, v, p.x, p.y, MAP_X, MAP_Y, T_CYAN, na * 0.18, 0.8);
+  }
+  for i: 0..<LN_NODES {
+    p := ln_node(i);
+    v = sr_square(s, out, v, p.x, p.y, ifx i % LN_HUBS == 0 then 5.0f32 else 3.4f32, ifx i % LN_HUBS == 0 then T_LIGHT else T_MID, na * ease(na * 3 - 1 - dice(STORM_SEED, i, 8)));
+  }
+  for i: 0..<WL_USERS { p := wl_user(i); v = sr_square(s, out, v, p.x, p.y, 3.4, T_CYAN, na * 0.9); }
+
+  // the payments in flight, and the ones landing
+  rate := storm_rate(k, t);
+  hi_c := storm_count(k, t); lo_c := hi(0, storm_count(k, t - FLIGHT_LN - 0.45));
+  seen := hi_c - lo_c;
+  stride := 1;
+  while f32(stride) * f32(STORM_MAX) < seen { stride *= 2; }
+  j := (cast(int) floor(lo_c / f32(stride))) * stride;
+  pa: [1] Path; floats := 0;
+  pa_on := rmp(t, 0.5, 0.3);
+  while f32(j) < hi_c {
+    launch := storm_launch(k, f32(j));
+    r := storm_route(j, pa[..]);
+    u := (t - launch) / r.flight;
+    failed := dice(STORM_SEED, j, 30) < FAIL_SHARE;
+    tone_k := ifx r.wavelength then T_CYAN else T_ORANGE;
+    total := path_length(pa[..]);
+    if u >= 0 && u < 1 && total > 1 {
+      uu := ifx failed then lo(u, 0.55) else u;
+      head := path_at(pa[..], uu); tail := path_at(pa[..], hi(0, uu - 34 / total));
+      fade := ifx failed && u > 0.55 then 1 - (u - 0.55) / 0.45 else 1.0f32;
+      v = comet(s, out, v, tail, head, ifx failed && u > 0.55 then T_DIM else tone_k, pa_on * fade * clamp01(uu * total / 8), 3.6);
+    } else if u >= 1 && !failed {
+      // landed: the node warms, a ring opens, and (while it is slow) its amount floats up
+      w := (u - 1) * r.flight / 0.45;
+      if w < 1 {
+        v = sr_square(s, out, v, r.dst.x, r.dst.y, 5 + 5 * w, tone_k, pa_on * (1 - w));
+        if stride <= 2 { v = sr_ring(s, out, v, r.dst.x, r.dst.y, 4 + 16 * w, 4 + 16 * w, 1, tone_k, pa_on * 0.6 * (1 - w), 1); }
+        if rate < 40 && floats < 10 {
+          amount := 10 + cast(int) floor(dice(STORM_SEED, j, 31) * 990);
+          n := put_text(b[..], 0, "+"); n = digits(amount, b[..], n);
+          v = sr_text(s, out, v, cast(string) b[0..<n], r.dst.x + 8, r.dst.y - 10 - 22 * w, 11, tone_k, pa_on * (1 - w), A_LEFT, 1);
+          floats += 1;
+        }
+      }
+    }
+    j += stride;
+  }
+  // the operator
+  // the operator, and the legend
+  v = sr_frame(s, out, v, SrBox.{x = MAP_X - 16, y = MAP_Y - 16, width = 32, height = 32}, rmp(t, 0.4, 0.6), 6, T_CYAN, 0.85, 8);
+  la := rmp(t, 0.6, 0.6);
+  v = sr_line(s, out, v, 160, 778, 190, 778, T_ORANGE, la, 3);
+  v = sr_label(s, out, v, "LIGHTNING", 200, 778, 12, T_ORANGE, la, 402, A_LEFT, 2);
+  v = sr_line(s, out, v, 360, 778, 390, 778, T_CYAN, la, 3);
+  v = sr_label(s, out, v, "WAVELENGTH", 400, 778, 12, T_CYAN, la, 401, A_LEFT, 2);
+
+  // the rate
+  x := 884.0f32; w := 332.0f32;
+  v = sr_frame(s, out, v, SrBox.{x = x, y = 140, width = w, height = 196}, rmp(t, 0.1, 0.7), 12, -1, 0.75, 16);
+  v = sr_label(s, out, v, "PAYMENTS / S", x + 20, 166, 13, T_MID, rmp(t, 0.2, 0.6), 403, A_LEFT, 2);
+  n := digits(cast(int) floor(rate + 0.5), b[..], 0);
+  v = sr_text(s, out, v, cast(string) b[0..<n], x + w - 20, 226, 50, T_WHITE, rmp(t, 0.3, 0.5), A_RIGHT, 4);
+  ladder := [5] string.["1", "10", "100", "1,000", "10,000"];
+  for i: 0..<5 {
+    lx := x + 18 + f32(i) * 60;
+    on := rate >= pow(10.0f32, f32(i)) * 0.98;
+    v = sr_bar(s, out, v, lx, 272, 54, 6, ifx on then T_ORANGE else T_FAINT, rmp(t, 0.3, 0.5) * (ifx on then 0.95f32 else 0.4f32));
+    v = sr_text(s, out, v, ladder[i], lx + 27, 300, 11, ifx on then T_LIGHT else T_DIM, rmp(t, 0.3, 0.5), A_CENTRE, 1);
+  }
+
+  // the counters (draw.coax's rows, at 1.5)
+  done := hi(0, storm_count(k, t - FLIGHT_LN));
+  settled := cast(int) floor(done * (1 - FAIL_SHARE));
+  failed_n := cast(int) floor(done * FAIL_SHARE);
+  routed := cast(int) floor(done * 2.6);
+  sats := cast(int) floor(done * AVG_SATS);
+  vals: [4][24] u8; lens: [4] int;
+  lens[0] = digits(settled, vals[0][..], 0); lens[1] = digits(failed_n, vals[1][..], 0);
+  lens[2] = digits(routed, vals[2][..], 0); lens[3] = digits(sats, vals[3][..], 0);
+  rows := [4] HdRow.[
+    HdRow.{label = "SETTLED", value = cast(string) vals[0][0..<lens[0]], status = 2},
+    HdRow.{label = "FAILED", value = cast(string) vals[1][0..<lens[1]], status = 1},
+    HdRow.{label = "ROUTED", value = cast(string) vals[2][0..<lens[2]], status = 1},
+    HdRow.{label = "SATS", value = cast(string) vals[3][0..<lens[3]], status = 0}];
+  ra := rmp(t, 0.4, 0.6);
+  v = sr_frame(s, out, v, SrBox.{x = x, y = 352, width = w, height = 150}, rmp(t, 0.3, 0.7), 12, -1, 0.75, 16);
+  h := v;
+  v = hd_rows(out, v, rows[..], hbox(x + 14, 362, w - 28, 132, 1.5), hpen_to(s, 1.5, false, 362 + 160 * ra));
+  v = hd_done(s, out, h, v, ra);
+
+  // the sats-volume trace: the last four seconds, log scale
+  ty := 518.0f32; th := 128.0f32;
+  v = sr_frame(s, out, v, SrBox.{x = x, y = ty, width = w, height = th}, rmp(t, 0.5, 0.7), 12, -1, 0.75, 16);
+  v = sr_label(s, out, v, "SATS / S", x + 18, ty + 20, 12, T_MID, rmp(t, 0.6, 0.6), 404, A_LEFT, 2);
+  ga := rmp(t, 0.6, 0.6);
+  for i: 0..<4 { gy := ty + 36 + f32(i) * 26; v = sr_line(s, out, v, x + 16, gy, x + w - 16, gy, T_FAINT, ga * 0.4, 0.8); }
+  last := Pt.{x = 0, y = 0};
+  for i: 0..<64 {
+    u := f32(i) / 63;
+    tt := t - 4 + 4 * u;
+    vol := ifx tt < 0 then 0.0f32 else log(storm_rate(k, tt) * AVG_SATS) / LN10;   // 2.7 .. 6.7
+    px := x + 16 + (w - 32) * u; py := ty + th - 14 - (th - 52) * clamp01((vol - 2) / 5.2);
+    if i > 0 { v = sr_line(s, out, v, last.x, last.y, px, py, T_ORANGE, ga, 1.6); }
+    last = Pt.{x = px, y = py};
+  }
+  v = sr_square(s, out, v, last.x, last.y, 6, T_ORANGE, ga);
+
+  // channel liquidity (draw.coax's meters, at 1.3): each channel's outbound share, sloshing with the load
+  busy := clamp01(log(rate) / (4 * LN10));
+  mv: [4][8] u8; ml: [4] int; vals_m: [4] f32;
+  for i: 0..<4 {
+    vals_m[i] = clamp01(0.5 + (0.2 + 0.25 * busy) * sin(t * (0.8 + 0.5 * f32(i)) * (0.4 + busy) + f32(i) * 1.9));
+    ml[i] = digits(cast(int) floor(vals_m[i] * 100), mv[i][..], 0); mv[i][ml[i]] = '%'; ml[i] += 1;
+  }
+  meters := [3] HdMeter.[
+    HdMeter.{label = "CHANNEL 1", value = vals_m[0], readout = cast(string) mv[0][0..<ml[0]]},
+    HdMeter.{label = "CHANNEL 2", value = vals_m[1], readout = cast(string) mv[1][0..<ml[1]]},
+    HdMeter.{label = "CHANNEL 3", value = vals_m[2], readout = cast(string) mv[2][0..<ml[2]]}];
+  v = sr_frame(s, out, v, SrBox.{x = x, y = 662, width = w, height = 140}, rmp(t, 0.6, 0.7), 12, -1, 0.75, 16);
+  ma := rmp(t, 0.7, 0.6);
+  h = v;
+  v = hd_meters(out, v, meters[..], hbox(x + 14, 670, w - 28, 126, 1.25), hpen_to(s, 1.25, false, 670 + 140 * ma));
+  return hd_done(s, out, h, v, ma);
+}

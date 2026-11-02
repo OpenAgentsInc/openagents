@@ -25,14 +25,16 @@
 // The clock counts 1/1200 s ticks: a frame's dt rounds to ticks, so the clip
 // recorder's microsecond loading steps add nothing.
 //   ?stage=NAME     ident years coax wallet compute cost pipeline hub realms
-//                   identity open timeline rules end (none: the Grid alone)
+//                   identity open timeline rules end payments reed fleet
+//                   frame_meteor frame_grid frame_play (none: the Grid alone)
 //   &at=MS          start that many milliseconds into the stage (stills)
 //   coax/bin/coax test apps/openagents-web/speedrunhud.coax
 
-#load "font.coax";
-#load "../../verse/hud/frame.coax";
+#load "../../aethyr/ui/draw.coax";   // the HUD library: hd_* instruments, lit, font.coax and verse/hud/frame.coax
+#load "speedrunhud-console.coax";   // the console round each stage, and the overlays for footage
+#load "speedrunhud-storm.coax";     // the payment storm (Lightning and Wavelength, simulated)
+#load "speedrunhud-ep200.coax";     // Episode 200: Reed's law and coalitions, the fleet
 
-VERTEX_FLOATS :: 12;     // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 160000;
 PANELS :: 16;            // glass panels a frame can fill (gpu/speedrunhud.coax reads as many)
 UNIFORM_FLOATS :: 8 + PANELS * 8;   // width, height, time, fade, still, panels, vignette, scale; the panels
@@ -46,12 +48,22 @@ GAP :: 0.3f32; SPACE :: 0.95f32;
 
 GLYPHS :: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&*+=<>/";
 
-STAGES :: 14;
+STAGES :: 20;
 S_IDENT :: 0; S_YEARS :: 1; S_COAX :: 2; S_WALLET :: 3; S_COMPUTE :: 4; S_COST :: 5; S_PIPELINE :: 6;
 S_HUB :: 7; S_REALMS :: 8; S_IDENTITY :: 9; S_OPEN :: 10; S_TIMELINE :: 11; S_RULES :: 12; S_END :: 13;
-STAGE_NAMES :: [14] string.["ident", "years", "coax", "wallet", "compute", "cost", "pipeline",
-                            "hub", "realms", "identity", "open", "timeline", "rules", "end"];
-STAGE_SECONDS :: [14] f32.[4.0, 6.86, 3.05, 4.82, 8.98, 6.72, 12.18, 8.51, 8.10, 5.68, 5.94, 16.74, 7.71, 4.08];
+S_PAYMENTS :: 14; S_REED :: 15; S_FLEET :: 16; S_FRAME_METEOR :: 17; S_FRAME_GRID :: 18; S_FRAME_PLAY :: 19;
+STAGE_NAMES :: [20] string.["ident", "years", "coax", "wallet", "compute", "cost", "pipeline",
+                            "hub", "realms", "identity", "open", "timeline", "rules", "end",
+                            "payments", "reed", "fleet", "frame_meteor", "frame_grid", "frame_play"];
+STAGE_SECONDS :: [20] f32.[4.0, 6.86, 3.05, 4.82, 8.98, 6.72, 12.18, 8.51, 8.10, 5.68, 5.94, 16.74, 7.71, 4.08,
+                            12.0, 10.0, 10.0, 5.11, 11.90, 8.0];
+// Each stage's subject, which target brackets close on: x, y, width, height in its own space (0 wide: none).
+STAGE_SUBJECT :: [80] f32.[
+  78, 700, 642, 180,   170, 462, 1004, 126,   412, 202, 520, 96,   MAP_X - 92, MAP_Y - 34, 184, 68,
+  560, 474, 228, 112,  640, 380, 300, 250,  90, 460, 212, 120,  552, 408, 240, 240,
+  522, 460, 300, 110,  540, 428, 264, 124,  249, 234, 843, 102,  885, 384, 252, 82,
+  850, 470, 300, 250,  312, 394, 720, 240,  MAP_X - 92, MAP_Y - 34, 184, 68,  616, 250, 134, 480,
+  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0];
 
 // The tones: aethyr/ui/draw.coax's greys, a fainter fifth for grid rules, the cyan and Bitcoin orange.
 T_WHITE :: 0; T_LIGHT :: 1; T_MID :: 2; T_DIM :: 3; T_FAINT :: 4; T_CYAN :: 5; T_ORANGE :: 6;
@@ -70,7 +82,8 @@ Path :: struct { n: int; x: [PATH_MAX] f32; y: [PATH_MAX] f32; }
 SpeedrunHud :: struct {
   started: bool; asked: bool;
   stage: int; ticks: int; offset: int;
-  k: f32; ox: f32; oy: f32;       // design px to device px: x * k + ox
+  k: f32; ox: f32; oy: f32;       // design px to device px: x * k + ox (a stage's view, speedrunhud-console.coax)
+  k0: f32; ox0: f32; oy0: f32;    // the screen's: the design space fitted to the canvas
   fade: f32;                      // the HUD's light this frame (its fade out at a stage's end)
   panels: int; panel: [PANELS * 8] f32;
   // what this frame's HUD covered, design px (the checks)
@@ -128,32 +141,9 @@ tone :: (k: int) -> Rgb {
 // The accents glow wider than the greys.
 bright :: (k: int) -> bool { return k == T_CYAN || k == T_ORANGE || k == T_WHITE; }
 
-// ---- the stroke quad (font.coax draws its glyphs with it)
-
-lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
-        red: f32, green: f32, blue: f32, mode: f32) -> bool {
-  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0.003 { return false; }
-  dx := bx - ax; dy := by - ay;
-  length := sqrt(dx * dx + dy * dy);
-  if !(length > 0) { return false; }
-  ux := dx / length; uy := dy / length;
-  nx := -uy; ny := ux;
-  r := glow + core;
-  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
-  c := [6] f32.[-r, -r, r, -r, r, r];
-  for v: 0..<6 {
-    o := (at + v) * VERTEX_FLOATS;
-    out[o] = ax + ux * a[v] + nx * c[v];
-    out[o + 1] = ay + uy * a[v] + ny * c[v];
-    out[o + 2] = a[v]; out[o + 3] = c[v]; out[o + 4] = length;
-    out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
-    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
-  }
-  return true;
-}
-
 // Where a HUD stroke went, for the checks.
-cover :: (s: [] SpeedrunHud, x0: f32, y0: f32, x1: f32, y1: f32) {
+cover :: (s: [] SpeedrunHud, ax: f32, ay: f32, bx: f32, by: f32) {
+  x0 := scr_x(s, ax); y0 := scr_y(s, ay); x1 := scr_x(s, bx); y1 := scr_y(s, by);
   s[0].hud_left = lo(s[0].hud_left, lo(x0, x1)); s[0].hud_right = hi(s[0].hud_right, hi(x0, x1));
   s[0].hud_top = lo(s[0].hud_top, lo(y0, y1)); s[0].hud_low = hi(s[0].hud_low, hi(y0, y1));
 }
@@ -401,7 +391,7 @@ sr_label :: (s: [] SpeedrunHud, out: [] f32, at: int, text: string, x: f32, y: f
   }
   if s[0].fade > 0.003 {
     cover(s, x0, y - cap * 0.5, x0 + width, base);
-    s[0].text_low = hi(s[0].text_low, base);
+    s[0].text_low = hi(s[0].text_low, scr_y(s, base));
   }
   return v;
 }
@@ -575,25 +565,6 @@ st_coax :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
     }
   }
   return v;
-}
-
-st_wallet :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
-  v := sr_frame(s, out, at, SrBox.{x = 90, y = 300, width = 1164, height = 460}, rmp(t, 0, 0.7), 16, -1, 0.72, 22);
-  v = sr_header(s, out, v, 126, 330, 1092, "BITCOIN WALLETS", rmp(t, 0.2, 0.5), "", 4);
-  y := 530.0f32; xs := [3] f32.[290, 672, 1054];
-  v = sr_node(s, out, v, xs[0], y, 260, 110, "PLAYER", rmp(t, 0.3, 0.5), "", -1, 1, true);
-  v = sr_node(s, out, v, xs[1], y, 260, 110, "WALLET", rmp(t, 0.7, 0.5), "LIGHTNING", T_ORANGE, 2, true);
-  v = sr_node(s, out, v, xs[2], y, 260, 110, "REALM", rmp(t, 1.1, 0.5), "", -1, 3, true);
-  pa: [1] Path;
-  for i: 0..<2 {
-    d := 0.6 + 0.4 * f32(i);
-    two(pa[..], xs[i] + 130, y, xs[i + 1] - 130, y);
-    v = sr_link(s, out, v, pa[..], rmp(t, d, 0.5), T_LIGHT, 1, 1.6, true);
-    v = sr_packets(s, out, v, pa[..], t, 4, 0.8, T_ORANGE, rmp(t, d + 0.4, 0.5), 5, 0);
-  }
-  sats := cast(int) floor(21000 * eout((t - 1.2) / 3.0) + 0.5);
-  b: [32] u8; n := digits(sats, b[..], 0); n = put_text(b[..], n, " SATS");
-  return sr_text(s, out, v, cast(string) b[0..<n], 672, 680, 26, T_ORANGE, rmp(t, 1.2, 0.5), A_CENTRE, 2);
 }
 
 st_compute :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
@@ -770,10 +741,28 @@ st_realms :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
     v = sr_link(s, out, v, pa[..], rmp(t, 2.4 + f32(i) * 0.08, 0.5), T_CYAN, 0.4, 1, false);
     v = sr_packets(s, out, v, pa[..], t, 1, 0.5, T_CYAN, rmp(t, 3.0, 0.5), 4, f32(i) * 0.13);
   }
+  // Reed's group-forming network over the realms: groups of neighbours form,
+  // light up and dissolve (8 realms: 2^8 = 256 possible groups)
+  lit_by: [8] f32;
+  for g: 0..<7 {
+    ts := 3.6 + f32(g) * 0.62; w := (t - ts) / 1.5;
+    if w < 0 || w >= 1 { continue; }
+    env := clamp01(w * 6) * clamp01((1 - w) * 4);
+    first := cast(int) floor(dice(88, g, 0) * 8) % 8;
+    m := 2 + cast(int) floor(dice(88, g, 1) * 2);
+    for k: 0..<m {
+      a := (first + k) % 8; z := (first + k + 1) % 8;
+      p := ring_pos(a); q := ring_pos(z);
+      e0 := edge_toward(p.x, p.y, NODE_HW, NODE_HH, q.x, q.y); e1 := edge_toward(q.x, q.y, NODE_HW, NODE_HH, p.x, p.y);
+      v = sr_line(s, out, v, e0.x, e0.y, e0.x + (e1.x - e0.x) * eout(w * 3), e0.y + (e1.y - e0.y) * eout(w * 3), T_CYAN, env, 2.4);
+      lit_by[a] = hi(lit_by[a], env); lit_by[z] = hi(lit_by[z], env);
+    }
+  }
   for i: 0..<8 {
     q := ring_pos(i);
-    v = sr_node(s, out, v, q.x, q.y, NODE_HW * 2, NODE_HH * 2, REALM_NAMES[i], rmp(t, 0.3 + f32(i) * 0.12, 0.5), "", -1, 70 + i, false);
+    v = sr_node(s, out, v, q.x, q.y, NODE_HW * 2, NODE_HH * 2, REALM_NAMES[i], rmp(t, 0.3 + f32(i) * 0.12, 0.5), "", ifx lit_by[i] > 0.3 then T_CYAN else -1, 70 + i, false);
   }
+  v = sr_label(s, out, v, "GROUPS  2^8 = 256", 76, 858, 14, T_CYAN, rmp(t, 3.6, 0.6), 98, A_LEFT, 2);
   return sr_node(s, out, v, RING_X, RING_Y, 300, 110, "ONE PLATFORM", rmp(t, 3.0, 0.7), "OPENAGENTS", T_CYAN, 99, true);
 }
 
@@ -793,7 +782,7 @@ st_identity :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32, dur: f32) -> in
   me := path_at(route[..], u);
   tx := RING_X; ty := RING_Y + 112;
   v = sr_frame(s, out, v, SrBox.{x = tx - 100, y = ty - 35, width = 200, height = 70}, 1, 8, T_CYAN, 0.92, 12);
-  v = sr_text(s, out, v, "npub1chris…", tx, ty - 12, 15, T_WHITE, 1, A_CENTRE, 1);
+  v = sr_text(s, out, v, "PLAYER", tx, ty - 12, 15, T_WHITE, 1, A_CENTRE, 1);
   v = sr_text(s, out, v, "21,000 SATS", tx, ty + 14, 15, T_ORANGE, 1, A_CENTRE, 1);
   v = sr_square(s, out, v, me.x, me.y, 12, T_CYAN, 1);
   v = sr_label(s, out, v, "ONE PORTABLE", RING_X, RING_Y - 52, 17, T_WHITE, rmp(t, 0.6, 0.6), 3, A_CENTRE, 2);
@@ -921,10 +910,31 @@ st_end :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
 }
 
 draw_stage :: (s: [] SpeedrunHud, out: [] f32, at: int, stage: int, t: f32, dur: f32) -> int {
+  if stage >= S_FRAME_METEOR { return frame_overlay(s, out, at, stage, t, dur); }
+  v := chrome_under(s, out, at, stage, t);
+  // the pass-1 stages draw into the view; the console's own stages draw in screen space
+  viewed := stage != S_WALLET && stage < S_PAYMENTS;
+  if viewed { sr_view(s, VIEW_S, VIEW_X, VIEW_Y); }
+  v = draw_primary(s, out, v, stage, t, dur);
+  o := stage * 4;
+  v = cn_target(s, out, v, SrBox.{x = STAGE_SUBJECT[o], y = STAGE_SUBJECT[o + 1], width = STAGE_SUBJECT[o + 2], height = STAGE_SUBJECT[o + 3]}, t, 0.9);
+  sr_unview(s);
+  return chrome(s, out, v, stage, t, dur, chrome_of(stage, t, dur));
+}
+// The console's instruments read the page's own camera: its heading, pitch and zoom.
+chrome_of :: (stage: int, t: f32, dur: f32) -> Chrome {
+  k := f32(hi_i(stage, 0)); u := clamp01(t / hi(dur, 0.1));
+  yaw := 0.55 + 0.47 * k + 0.11 * u;
+  return Chrome.{sim = simulated(stage), heading = yaw * 180 / PI, pitch = 1 - 0.3 * ease(u), zoom = 0.45 + 0.5 * ease(u)};
+}
+draw_primary :: (s: [] SpeedrunHud, out: [] f32, at: int, stage: int, t: f32, dur: f32) -> int {
+  if stage == S_PAYMENTS { return storm(s, out, at, t, dur, "LIGHTNING · WAVELENGTH"); }
+  if stage == S_REED { return st_reed(s, out, at, t); }
+  if stage == S_FLEET { return st_fleet(s, out, at, t, dur); }
   if stage == S_IDENT { return st_ident(s, out, at, t); }
   if stage == S_YEARS { return st_years(s, out, at, t); }
   if stage == S_COAX { return st_coax(s, out, at, t); }
-  if stage == S_WALLET { return st_wallet(s, out, at, t); }
+  if stage == S_WALLET { return storm(s, out, at, t, dur, "BITCOIN WALLETS"); }
   if stage == S_COMPUTE { return st_compute(s, out, at, t); }
   if stage == S_COST { return st_cost(s, out, at, t); }
   if stage == S_PIPELINE { return st_pipeline(s, out, at, t); }
@@ -1044,7 +1054,7 @@ coaxial_speedrunhud_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS;
 coaxial_speedrunhud_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 speedrunhud_start :: (s: [] SpeedrunHud) {
-  s[0].started = true; s[0].stage = -1; s[0].k = 1; s[0].fade = 1;
+  s[0].started = true; s[0].stage = -1; s[0].k = 1; s[0].fade = 1; s[0].k0 = 1;
 }
 
 // key=VALUE in the URL's query, VALUE as written ("" when it isn't there).
@@ -1105,6 +1115,7 @@ speedrunhud_frame :: (s: [] SpeedrunHud, out: [] f32, u: [] f32, width: f32, hei
   if s[0].asked { s[0].ticks += cast(int) floor(step * f32(TICKS) + 0.5); }
   k := lo(width / DESIGN_W, height / DESIGN_H);
   s[0].k = k; s[0].ox = (width - DESIGN_W * k) * 0.5; s[0].oy = (height - DESIGN_H * k) * 0.5;
+  s[0].k0 = s[0].k; s[0].ox0 = s[0].ox; s[0].oy0 = s[0].oy;
   s[0].panels = 0; s[0].scrambled = 0;
   s[0].hud_top = 1000000; s[0].hud_left = 1000000; s[0].hud_low = -1000000; s[0].hud_right = -1000000; s[0].text_low = -1000000;
   stage := s[0].stage;
@@ -1116,10 +1127,11 @@ speedrunhud_frame :: (s: [] SpeedrunHud, out: [] f32, u: [] f32, width: f32, hei
     v = draw_stage(s, out, v, stage, t, dur);
   }
   s[0].fade = 1;
-  if !s[0].bare { v = floor_grid(s, out, v, cam_at(stage, t, dur)); }
+  overlay := stage >= S_FRAME_METEOR;
+  if !s[0].bare && !overlay { v = floor_grid(s, out, v, cam_at(stage, t, dur)); }
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   u[0] = width; u[1] = height; u[2] = t; u[3] = page_fade(stage, t, dur); u[4] = ifx still then 1.0f32 else 0.0f32;
-  u[5] = f32(s[0].panels); u[6] = 1; u[7] = k;
+  u[5] = f32(s[0].panels); u[6] = ifx overlay then -1.0f32 else 1.0f32; u[7] = k;
   for i: 0..<s[0].panels * 8 { u[8 + i] = s[0].panel[i]; }
   return v;
 }
@@ -1204,7 +1216,8 @@ frame_at_bare :: (s: [] SpeedrunHud, out: [] f32, u: [] f32, t: f32) -> int {
       if f == samples { #assert s[0].scrambled == 0; }
     }
     grid := frame_at(s[..], out[..], u[..], dur * 0.5) - frame_at_bare(s[..], out[..], u[..], dur * 0.5);
-    #assert most > 0 && grid > 0 && most + grid < TEST_VERTICES - 2000;
+    // the overlays for footage have no floor
+    #assert most > 0 && (grid > 0) == (st < S_FRAME_METEOR) && most + grid < TEST_VERTICES - 2000;
     #assert low <= CAPTIONS && text_low <= CAPTIONS;
     #assert left >= 0 && right <= DESIGN_W && top >= 0;
   }
@@ -1231,4 +1244,43 @@ frame_at_bare :: (s: [] SpeedrunHud, out: [] f32, u: [] f32, t: f32) -> int {
   #assert abs(a.look.x - b.look.x) > 1 && abs(a.look.x - b.look.x) < 5;
   near := spot(a, a.look);
   #assert near.ok && abs(near.x - CAM_CX) < 1 && near.y > 400 && near.y < 700;
+}
+
+#test "the payment storm: the rate ramps 1 to 10,000 a second, and a payment's launch inverts the count" #steps 50000000 {
+  for which: 0..<2 {
+    dur := ifx which == 0 then STAGE_SECONDS[S_WALLET] else STAGE_SECONDS[S_PAYMENTS];
+    k := storm_clock(dur);
+    #assert storm_rate(k, 0) == 1 && abs(storm_rate(k, dur) - 10000) < 0.5;
+    #assert abs(storm_rate(k, (k.t0 + k.t1) * 0.5) - 100) < 0.5;
+    last := -1.0f32;
+    for i: 0..<40 {
+      c := f32(i * i * 37);
+      t := storm_launch(k, c);
+      #assert t > last && abs(storm_count(k, t) - c) < 0.02 * hi(1, c * 0.001);
+      last = t;
+    }
+  }
+  // the same payment takes the same route every time
+  a: [1] Path; b: [1] Path;
+  ra := storm_route(4242, a[..]); rb := storm_route(4242, b[..]);
+  #assert a[0].n == b[0].n && a[0].n >= 3 && ra.wavelength == rb.wavelength && ra.dst.x == rb.dst.x;
+}
+
+#test "the overlays for footage: black behind, no floor, no glass, the middle left to the gameplay" #steps 400000000 {
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for st: S_FRAME_METEOR..<STAGES {
+    s: [1] SpeedrunHud; staged(s[..], STAGE_NAMES[st]);
+    n := frame_at(s[..], out[..], u[..], STAGE_SECONDS[st] * 0.6);
+    #assert n > 0 && u[6] < 0 && u[5] == 0;
+    // nothing in the middle 60% but the target brackets round its centre
+    inside := 0; q := 0;
+    while q + 6 <= n {
+      x := 0.0f32; y := 0.0f32;
+      for c: 0..<6 { x += out[(q + c) * VERTEX_FLOATS]; y += out[(q + c) * VERTEX_FLOATS + 1]; }
+      x = x / 12; y = y / 12;
+      if x > 269 && x < 1075 && y > 216 && y < 864 && (abs(x - 672) > 200 || abs(y - 520) > 140) { inside += 1; }
+      q += 6;
+    }
+    #assert inside == 0;
+  }
 }

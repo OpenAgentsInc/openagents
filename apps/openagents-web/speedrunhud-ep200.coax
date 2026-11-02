@@ -1,0 +1,239 @@
+// Episode 200's ideas as consoles (speedrunhud.coax loads this;
+// docs/transcripts/200.md). The words on screen are plain labels and the
+// founder's own lines: Reed's law ("the network value of a group forming
+// network is two to the nth power"), "copilots" to "autopilots", and
+// "it should feel more like StarCraft managing all your agents" (Episode 189).
+//   reed:  network value on a log scale, Metcalfe's n^2 under Reed's 2^n, the
+//          Dunbar limit at 150 with agents running past it; beside it, agents
+//          forming coalitions that light up and dissolve.
+//   fleet: a fleet console: the roster, a task graph, budgets as segmented
+//          meters, receipts streaming in, a skill's calls paying sats in.
+// The coalitions, receipts and calls are simulated, from dice and the clock.
+
+EP_SEED :: 200;
+
+// ---- reed
+
+REED_X0 :: 214.0f32; REED_X1 :: 742.0f32; REED_Y0 :: 236.0f32; REED_Y1 :: 736.0f32;
+reed_x :: (n: f32) -> f32 { return REED_X0 + (REED_X1 - REED_X0) * n / 200; }
+reed_y :: (decades: f32) -> f32 { return REED_Y1 - (REED_Y1 - REED_Y0) * clamp01(decades / 60); }
+
+AGENTS_N :: 24;
+agent_at :: (i: int) -> Pt {
+  a := f32(i) * 2 * PI / f32(AGENTS_N) + 0.35 * (dice(EP_SEED, i, 1) - 0.5);
+  r := 0.62 + 0.38 * dice(EP_SEED, i, 2);
+  return Pt.{x = 1003 + 170 * r * cos(a), y = 344 + 130 * r * sin(a)};
+}
+COALITIONS :: 16;
+coalition_start :: (e: int) -> f32 { return 1.3 + f32(e) * 0.5; }
+coalition_size :: (e: int) -> int { return 3 + cast(int) floor(dice(EP_SEED, 100 + e, 0) * 4); }
+coalition_member :: (e: int, m: int) -> int {
+  first := cast(int) floor(dice(EP_SEED, 100 + e, 1) * f32(AGENTS_N));
+  return (first + m * (1 + cast(int) floor(dice(EP_SEED, 100 + e, 2) * 3))) % AGENTS_N;
+}
+
+st_reed :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32) -> int {
+  v := sr_frame(s, out, at, SrBox.{x = 130, y = 140, width = 640, height = 662}, rmp(t, 0, 0.7), 16, -1, 0.72, 22);
+  v = sr_header(s, out, v, 160, 166, 580, "REED'S LAW", rmp(t, 0.15, 0.5), "NETWORK VALUE", 500);
+  ga := rmp(t, 0.3, 0.6);
+  // the axes: decades up the side, group size along the bottom
+  ylab := [4] string.["1", "10^20", "10^40", "10^60"];
+  for i: 0..<4 {
+    y := reed_y(f32(i) * 20);
+    v = sr_line(s, out, v, REED_X0, y, REED_X1, y, ifx i == 0 then T_DIM else T_FAINT, ga * (ifx i == 0 then 1.0f32 else 0.5f32), 0.8);
+    v = sr_text(s, out, v, ylab[i], REED_X0 - 12, y, 11, T_DIM, ga, A_RIGHT, 1);
+  }
+  b: [16] u8;
+  for i: 0..<5 {
+    x := reed_x(f32(i) * 50);
+    v = sr_line(s, out, v, x, REED_Y1, x, REED_Y1 + 8, T_DIM, ga, 1);
+    n := digits(i * 50, b[..], 0);
+    v = sr_text(s, out, v, cast(string) b[0..<n], x, REED_Y1 + 24, 11, T_DIM, ga, A_CENTRE, 1);
+  }
+  v = sr_label(s, out, v, "GROUP SIZE", REED_X1, REED_Y1 + 48, 11, T_MID, ga, 501, A_RIGHT, 2);
+  // Metcalfe's n^2 hugs the floor; Reed's 2^n climbs straight up the decades
+  pm: [1] Path; path_clear(pm[..]);
+  pr: [1] Path; path_clear(pr[..]);
+  for i: 0..<41 {
+    n := 200 * f32(i) / 40;
+    path_add(pm[..], reed_x(n), reed_y(log(hi(1, n * n)) / LN10));
+    path_add(pr[..], reed_x(n), reed_y(0.30103 * n));
+  }
+  v = sr_path(s, out, v, pm[..], rmp(t, 0.6, 1.4), T_LIGHT, 0.9, 1.6);
+  v = sr_path(s, out, v, pr[..], rmp(t, 1.2, 1.8), T_CYAN, 1, 2.2);
+  v = sr_label(s, out, v, "METCALFE  N^2", reed_x(142), reed_y(4.4) - 18, 13, T_LIGHT, rmp(t, 1.8, 0.6), 502, A_RIGHT, 2);
+  v = sr_label(s, out, v, "REED  2^N", reed_x(122), reed_y(0.30103 * 122) - 24, 15, T_CYAN, rmp(t, 2.6, 0.6), 503, A_RIGHT, 2);
+  // the Dunbar limit: people keep about 150 relationships; agents don't stop there
+  dx := reed_x(150); da := rmp(t, 3.2, 0.6);
+  for i: 0..<25 {
+    y0 := REED_Y0 + f32(i) * 20;
+    v = sr_line(s, out, v, dx, y0, dx, lo(y0 + 11, REED_Y1), T_WHITE, da * 0.8, 1.4);
+  }
+  v = sr_label(s, out, v, "DUNBAR 150", dx - 16, REED_Y0 + 10, 13, T_WHITE, da, 504, A_RIGHT, 2);
+  v = sr_label(s, out, v, "HUMANS", reed_x(104), reed_y(12), 13, T_MID, rmp(t, 3.5, 0.6), 505, A_CENTRE, 2);
+  v = sr_label(s, out, v, "AGENTS", reed_x(178), reed_y(22), 13, T_CYAN, rmp(t, 3.7, 0.6), 506, A_CENTRE, 2);
+  ra := rmp(t, 3.8, 0.6);
+  for i: 0..<5 {
+    u := frac(t * 0.22 + f32(i) * 0.2);
+    n := 110 + 90 * u; n0 := hi(110, n - 9);
+    head := Pt.{x = reed_x(n), y = reed_y(0.30103 * n)}; tail := Pt.{x = reed_x(n0), y = reed_y(0.30103 * n0)};
+    v = comet(s, out, v, tail, head, T_CYAN, ra * clamp01(lo(u, 1 - u) * 10), 5);
+  }
+
+  // coalitions: agents grouping, the groups lighting up and dissolving
+  v = sr_frame(s, out, v, SrBox.{x = 786, y = 140, width = 430, height = 406}, rmp(t, 0.3, 0.7), 14, -1, 0.72, 18);
+  v = sr_header(s, out, v, 812, 164, 380, "COALITIONS", rmp(t, 0.45, 0.5), "", 507);
+  na := rmp(t, 0.6, 0.8);
+  for i: 0..<AGENTS_N {
+    p := agent_at(i); q := agent_at((i + 1) % AGENTS_N); r := agent_at((i + 5) % AGENTS_N);
+    v = sr_line(s, out, v, p.x, p.y, q.x, q.y, T_FAINT, na * 0.5, 0.8);
+    v = sr_line(s, out, v, p.x, p.y, r.x, r.y, T_FAINT, na * 0.3, 0.8);
+  }
+  formed := 0;
+  lit_by: [24] f32;
+  for e: 0..<COALITIONS {
+    ts := coalition_start(e); life := 1.8f32;
+    if t < ts { continue; }
+    formed += 1;
+    w := (t - ts) / life;
+    if w >= 1 { continue; }
+    env := clamp01(w * 6) * clamp01((1 - w) * 4);
+    m := coalition_size(e);
+    cx := 0.0f32; cy := 0.0f32;
+    for k: 0..<m { p := agent_at(coalition_member(e, k)); cx += p.x; cy += p.y; }
+    cx /= f32(m); cy /= f32(m);
+    for k: 0..<m {
+      a := coalition_member(e, k); p := agent_at(a);
+      v = sr_line(s, out, v, cx, cy, cx + (p.x - cx) * eout(w * 4), cy + (p.y - cy) * eout(w * 4), T_CYAN, env * 0.8, 1.3);
+      lit_by[a] = hi(lit_by[a], env);
+    }
+    v = sr_square(s, out, v, cx, cy, 7, T_CYAN, env);
+  }
+  for i: 0..<AGENTS_N {
+    p := agent_at(i);
+    v = sr_square(s, out, v, p.x, p.y, 6 + 3 * lit_by[i], ifx lit_by[i] > 0.05 then T_CYAN else T_MID, na * (0.6 + 0.4 * lit_by[i]));
+  }
+  ca := rmp(t, 0.9, 0.6);
+  n := put_text(b[..], 0, "FORMED  "); n = digits(formed, b[..], n);
+  v = sr_text(s, out, v, cast(string) b[0..<n], 812, 520, 12, T_LIGHT, ca, A_LEFT, 2);
+  v = sr_text(s, out, v, "AGENTS  24", 1192, 520, 12, T_MID, ca, A_RIGHT, 2);
+
+  // his line (draw.coax's message card, at 1.45, its body set larger here)
+  ma := rmp(t, 1.0, 0.6);
+  h := v;
+  v = hd_message(out, v, hbox(780, 560, 442, 242, 1.45), hpen_to(s, 1.45, false, 560 + 260 * ma),
+    HdMessage.{channel = "EPISODE 200", title = "CHRISTOPHER DAVID", line1 = "", line2 = "", footer = "OPENAGENTS"});
+  v = hd_done(s, out, h, v, ma);
+  v = sr_label(s, out, v, "THE NETWORK VALUE OF A", 815, 672, 14, T_WHITE, rmp(t, 1.4, 0.8), 508, A_LEFT, 2);
+  v = sr_label(s, out, v, "GROUP FORMING NETWORK IS", 815, 698, 14, T_WHITE, rmp(t, 1.6, 0.8), 509, A_LEFT, 2);
+  return sr_label(s, out, v, "TWO TO THE NTH POWER", 815, 724, 14, T_CYAN, rmp(t, 1.8, 0.8), 510, A_LEFT, 2);
+}
+
+// ---- fleet
+
+FLEET_NAMES :: [8] string.["CODER 01", "CODER 02", "SOLVER 03", "PYLON 04", "CODER 05", "PYLON 06", "CODER 07", "PYLON 08"];
+FLEET_JOBS :: [8] string.["CODE", "TESTS", "PLAN", "SERVE", "REVIEW", "SERVE", "DEPLOY", "IDLE"];
+TASKS :: [7] string.["ISSUE", "PLAN", "CODE", "TESTS", "REVIEW", "MERGE", "DEPLOY"];
+TASK_X :: [7] f32.[700, 700, 610, 790, 700, 700, 700];
+TASK_Y :: [7] f32.[296, 366, 446, 446, 526, 606, 686];
+TASK_DONE :: [7] f32.[1.2, 2.2, 3.6, 4.0, 5.4, 6.4, 7.6];
+
+st_fleet :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32, dur: f32) -> int {
+  b: [40] u8;
+  // the title: copilots, an arrow, autopilots; his StarCraft line under it
+  v := sr_frame(s, out, at, SrBox.{x = 130, y = 140, width = 1086, height = 100}, rmp(t, 0, 0.6), 14, -1, 0.72, 18);
+  v = sr_label(s, out, v, "COPILOTS", 160, 178, 26, T_MID, rmp(t, 0.15, 0.6), 600, A_LEFT, 4);
+  aw := text_width("COPILOTS", 26, 4);
+  ax0 := 160 + aw + 22; ax1 := ax0 + 64 * eout((t - 0.6) / 0.5);
+  v = sr_line(s, out, v, ax0, 178, ax1, 178, T_CYAN, rmp(t, 0.6, 0.3), 2);
+  if t > 1.0 { v = sr_arrow(s, out, v, ax0 + 64, 178, 1, 0, 10, T_CYAN, rmp(t, 1.0, 0.3)); }
+  v = sr_label(s, out, v, "AUTOPILOTS", ax0 + 86, 178, 26, T_WHITE, rmp(t, 0.9, 0.6), 601, A_LEFT, 4);
+  v = sr_label(s, out, v, "IT SHOULD FEEL MORE LIKE STARCRAFT MANAGING ALL YOUR AGENTS", 160, 218, 12, T_DIM, rmp(t, 1.4, 0.9), 602, A_LEFT, 1.5);
+
+  // the roster (draw.coax's rows): the selection walks the fleet as a player clicks through it
+  v = sr_frame(s, out, v, SrBox.{x = 130, y = 256, width = 350, height = 330}, rmp(t, 0.2, 0.7), 12, -1, 0.72, 16);
+  v = sr_label(s, out, v, "FLEET", 150, 278, 13, T_LIGHT, rmp(t, 0.3, 0.5), 603, A_LEFT, 2);
+  sel := (cast(int) floor(t / 1.1)) % 8;
+  rows: [8] HdRow;
+  for i: 0..<8 { rows[i] = HdRow.{label = FLEET_NAMES[i], value = FLEET_JOBS[i], status = ifx i == sel then 2 else (ifx FLEET_JOBS[i] == "IDLE" then 3 else 1)}; }
+  ra := rmp(t, 0.4, 0.8);
+  h := v;
+  v = hd_rows(out, v, rows[..], hbox(146, 292, 320, 280, 1.4), hpen_to(s, 1.4, false, 292 + 300 * ra));
+  v = hd_done(s, out, h, v, ra);
+  sy0 := 292 + f32(sel) * 35 - 2;
+  v = cn_target(s, out, v, SrBox.{x = 146, y = sy0, width = 318, height = 26}, t - f32(sel) * 0.0, 0.5);
+
+  // budgets (draw.coax's segmented meters)
+  v = sr_frame(s, out, v, SrBox.{x = 130, y = 602, width = 350, height = 200}, rmp(t, 0.4, 0.7), 12, -1, 0.72, 16);
+  v = sr_label(s, out, v, "BUDGETS", 150, 624, 13, T_LIGHT, rmp(t, 0.5, 0.5), 604, A_LEFT, 2);
+  spend: [3] f32; rd: [3][16] u8; rl: [3] int;
+  limit := [3] int.[5000, 3000, 2000];
+  for i: 0..<3 {
+    spend[i] = clamp01(0.12 + 0.11 * f32(i) + t / dur * (0.55 - 0.12 * f32(i)));
+    rl[i] = digits(cast(int) floor(spend[i] * f32(limit[i])), rd[i][..], 0);
+  }
+  meters := [3] HdMeter.[
+    HdMeter.{label = "CODER 01  SATS", value = spend[0], readout = cast(string) rd[0][0..<rl[0]]},
+    HdMeter.{label = "SOLVER 03  SATS", value = spend[1], readout = cast(string) rd[1][0..<rl[1]]},
+    HdMeter.{label = "PYLON 04  SATS", value = spend[2], readout = cast(string) rd[2][0..<rl[2]]}];
+  ma := rmp(t, 0.6, 0.6);
+  h = v;
+  v = hd_meters(out, v, meters[..], hbox(146, 640, 318, 150, 1.25), hpen_to(s, 1.25, false, 640 + 170 * ma));
+  v = hd_done(s, out, h, v, ma);
+
+  // the task graph: an issue to a deploy, each task lit as it finishes
+  v = sr_frame(s, out, v, SrBox.{x = 496, y = 256, width = 404, height = 546}, rmp(t, 0.3, 0.7), 12, -1, 0.72, 16);
+  v = sr_label(s, out, v, "TASKS", 516, 278, 13, T_LIGHT, rmp(t, 0.4, 0.5), 605, A_LEFT, 2);
+  from := [7] int.[0, 1, 1, 2, 3, 4, 5];
+  to := [7] int.[1, 2, 3, 4, 4, 5, 6];
+  pa: [1] Path;
+  for e: 0..<7 {
+    a := from[e]; z := to[e];
+    two(pa[..], TASK_X[a], TASK_Y[a] + 20, TASK_X[z], TASK_Y[z] - 20);
+    done := t > TASK_DONE[a];
+    v = sr_link(s, out, v, pa[..], rmp(t, 0.5 + 0.1 * f32(e), 0.5), ifx done then T_CYAN else T_DIM, 0.8, 1.2, true);
+    if done && t < TASK_DONE[z] { v = sr_packets(s, out, v, pa[..], t, 2, 1.1, T_CYAN, 1, 4, 0); }
+  }
+  for i: 0..<7 {
+    done := t > TASK_DONE[i];
+    active := !done && (i == 0 || t > TASK_DONE[ifx i == 4 then 3 else (ifx i == 3 then 1 else i - 1)]);
+    v = sr_node(s, out, v, TASK_X[i], TASK_Y[i], 150, 40, TASKS[i], rmp(t, 0.5 + 0.08 * f32(i), 0.6), "", ifx done then T_CYAN else (ifx active then T_WHITE else -1), 610 + i, false);
+    if active { v = sr_square(s, out, v, TASK_X[i] + 62, TASK_Y[i] - 11, 5, T_CYAN, 0.5 + 0.5 * step01(frac(t * 2) - 0.5)); }
+  }
+
+  // receipts streaming in (draw.coax's terminal)
+  v = sr_frame(s, out, v, SrBox.{x = 916, y = 256, width = 300, height = 300}, rmp(t, 0.4, 0.7), 12, -1, 0.72, 16);
+  v = sr_label(s, out, v, "RECEIPTS", 936, 278, 13, T_LIGHT, rmp(t, 0.5, 0.5), 606, A_LEFT, 2);
+  lines: [8][32] u8; ll: [8] int; strs: [8] string;
+  count := cast(int) floor(hi(0, t - 0.8) / 0.45);
+  shown := lo_i(count, 8);
+  for i: 0..<shown {
+    r := count - shown + i;
+    who := FLEET_NAMES[cast(int) floor(dice(EP_SEED, 900 + r, 0) * 8) % 8];
+    n := put_text(lines[i][..], 0, who); n = put_text(lines[i][..], n, "  +");
+    n = digits(20 + cast(int) floor(dice(EP_SEED, 900 + r, 1) * 480), lines[i][..], n);
+    ll[i] = n; strs[i] = cast(string) lines[i][0..<n];
+  }
+  if shown > 0 {
+    h = v;
+    v = hd_terminal_lines(out, v, strs[0..<shown], hbox(926, 292, 280, 30 * f32(shown) + 10, 1.35), hpen(s, 1.35, false));
+    v = hd_done(s, out, h, v, rmp(t, 0.8, 0.3));
+  }
+
+  // royalties: a skill called all day, sats flowing in
+  v = sr_frame(s, out, v, SrBox.{x = 916, y = 572, width = 300, height = 230}, rmp(t, 0.5, 0.7), 12, -1, 0.72, 16);
+  v = sr_label(s, out, v, "ROYALTIES", 936, 594, 13, T_LIGHT, rmp(t, 0.6, 0.5), 607, A_LEFT, 2);
+  v = sr_node(s, out, v, 1066, 660, 130, 40, "SKILL", rmp(t, 0.8, 0.6), "", T_CYAN, 620, false);
+  for i: 0..<6 {
+    y := 630 + f32(i) * 12;
+    two(pa[..], 936, y, 1000, 660);
+    v = sr_packets(s, out, v, pa[..], t, 1, 1.4 + 0.2 * f32(i), T_CYAN, rmp(t, 1.0, 0.5) * 0.8, 3, f32(i) * 0.17);
+  }
+  two(pa[..], 1132, 660, 1196, 660);
+  v = sr_packets(s, out, v, pa[..], t, 3, 1.6, T_ORANGE, rmp(t, 1.2, 0.5), 4, 0);
+  calls := cast(int) floor(10000 * ease(hi(0, t - 1.0) / (dur - 2)));
+  n := put_text(b[..], 0, "CALLS TODAY  "); n = digits(calls, b[..], n);
+  v = sr_text(s, out, v, cast(string) b[0..<n], 936, 726, 13, T_LIGHT, rmp(t, 1.0, 0.5), A_LEFT, 2);
+  n = put_text(b[..], 0, "SATS IN  "); n = digits(calls * 2, b[..], n);
+  return sr_text(s, out, v, cast(string) b[0..<n], 936, 760, 15, T_ORANGE, rmp(t, 1.2, 0.5), A_LEFT, 2);
+}
