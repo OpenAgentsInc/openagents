@@ -1,6 +1,45 @@
 cia_fixture :: ()->string {return "{\"schema\":\"aethyr.render.shared-edge-envelope.v1\",\"algorithm_version\":\"exact-shared-world-fold-linf-cell-v1\",\"scope\":\"declared_conservative_geometry_boundary_not_hardware_error_bound\",\"eligibility\":\"exact_clip_world_shared_noncoplanar_edges_of_positive_w_in_depth_nondegenerate_guard_valid_original_triangles\",\"width\":4,\"height\":4,\"profile\":{\"rounding\":\"nearest-even\",\"subpixel_bits\":8,\"xy\":\"guard-band\",\"guard_pixels\":65536},\"radius\":{\"numerator\":1,\"denominator\":512},\"geometry\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"bytes\":336,\"triangles\":2,\"vertex_stride_bytes\":56},\"mask\":{\"file\":\"mask.bin\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"bytes\":16,\"pixels\":2},\"zero_radius_control\":{\"file\":\"zero-radius-mask.bin\",\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"bytes\":16,\"pixels\":0},\"zero_mask_control\":{\"file\":\"zero-mask.bin\",\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"bytes\":16,\"pixels\":0},\"edges\":{\"file\":\"edges.jsonl\",\"sha256\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"bytes\":12,\"records\":1},\"witnesses\":{\"file\":\"witnesses.jsonl\",\"sha256\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"bytes\":20,\"records\":2,\"pixels\":2},\"census\":{\"triangles\":2,\"edge_occurrences\":6,\"unique_endpoint_edges\":5,\"exact_shared_edges\":1,\"unmatched_edges\":4,\"shared_edges_with_ineligible_owners\":0,\"eligible_shared_coplanar_edges\":0,\"eligible_shared_fold_edges\":1,\"degenerate_endpoint_edges\":0,\"projected_degenerate_shared_edges\":0,\"triangle_eligibility\":{\"eligible\":2},\"masked_pixels\":2,\"zero_radius_centerline_pixels\":0,\"witness_records\":2},\"oracle_source\":{\"path\":\"/repo/oracle.py\",\"sha256\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"},\"coordinate_model\":\"exact_stored_f32_rationals_perspective_divide_then_declared_nearest_grid\",\"geometry_scope\":\"All original triangles and exact endpoint edge occurrences are censused. Eligible shared noncoplanar groups only; no synthetic clipping edges. Ineligible and unmatched geometry remains strict. Occluded eligible edges may be conservatively included without claiming visibility.\",\"unchecked\":\"Whole RGBA packets at mask pixels are UNQUALIFIED; no color/depth/hardware-legality conclusion. Nonfinite values remain fatal outside this oracle too.\",\"image_inputs\":[],\"admitted\":false}";}
 cia_test_read :: (text:string)->bool {nodes:[512]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return false;}return cia_read(d[0]).valid;}
 cia_replace :: (text:string,needle:string,replacement:string,out:[]u8)->string {at:=rtq_find(text,needle,0);if at<0 {return "";}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<at]);jo_put(o[..],replacement);jo_put(o[..],text[at+needle.count..<text.count]);return jo_text(o[..]);}
+cia_test_set :: (text:string,path:string,value:string,out:[]u8)->string {nodes:[512]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]) {return "";}node:=jv_path(d[0],0,path);if node== -1 {return "";}first:=nodes[node].from;last:=nodes[node].to;if nodes[node].kind==JV_STRING {first-=1;last+=1;}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<first]);jo_put(o[..],value);jo_put(o[..],text[last..<text.count]);return jo_text(o[..]);}
+cia_test_edits :: (text:string,paths:[]string,values:[]string,out:[]u8)->string {scratch:[32768]u8;current:=text;for i:0..<paths.count {if i%2==0 {current=cia_test_set(current,paths[i],values[i],out);}else {current=cia_test_set(current,paths[i],values[i],scratch[..]);}}if paths.count%2==0 {for i:0..<current.count {out[i]=current[i];}}return cast(string)out[0..<current.count];}
+#test "interior certificate refuses impossible shared-edge and eligible-owner censuses" {
+ text:=cia_fixture();out:[32768]u8;
+ p0:=[3]string.["edges.records","edges.bytes","census.eligible_shared_fold_edges"];v0:=[3]string.["0","0","0"];#assert !cia_test_read(cia_test_edits(text,p0[..],v0[..],out[..]));
+ #assert !cia_test_read(cia_test_set(text,"census.triangle_eligibility","{\"world_degenerate\":2}",out[..]));
+ #assert !cia_test_read(cia_test_set(text,"census.triangle_eligibility","{\"eligible\":1,\"world_degenerate\":1}",out[..]));
+ p1:=[2]string.["census.exact_shared_edges","census.unmatched_edges"];v1:=[2]string.["3","2"];#assert !cia_test_read(cia_test_edits(text,p1[..],v1[..],out[..]));
+}
+#test "interior certificate accepts empty offscreen witnesses and omitted eligible zero buckets" {
+ text:=cia_fixture();zero:[32768]u8;out:[32768]u8;
+ paths:=[7]string.["mask.pixels","witnesses.pixels","witnesses.records","witnesses.bytes","census.masked_pixels","census.witness_records","zero_radius_control.pixels"];
+ values:=[7]string.["0","0","0","0","0","0","0"];z:=cia_test_edits(text,paths[..],values[..],zero[..]);#assert cia_test_read(z);
+ p0:=[4]string.["edges.records","edges.bytes","census.eligible_shared_fold_edges","census.triangle_eligibility"];v0:=[4]string.["0","0","0","{\"world_degenerate\":2}"];#assert cia_test_read(cia_test_edits(z,p0[..],v0[..],out[..]));
+ #assert cia_test_read(cia_test_set(text,"census.triangle_eligibility","{\"world_degenerate\":0,\"eligible\":2}",out[..]));
+}
+#test "interior histogram and path helpers expose exact failure sentinels independently" {
+ nodes:[64]JvNode;d:[1]Jv;
+ for raw:[6]string.["null","{}","{\"unknown\":2}","{\"eligible\":-1,\"world_degenerate\":3}","{\"eligible\":2,\"eligible\":2}","{\"eligible\":1}"] {#assert jv_parse(d[..],raw,nodes[..]);#assert cia_eligibility(d[0],0,2)== -1;}
+ for raw:[2]string.["{\"world_degenerate\":2}","{\"world_degenerate\":2,\"eligible\":0}"] {#assert jv_parse(d[..],raw,nodes[..]);#assert cia_eligibility(d[0],0,2)==0;}
+ #assert jv_parse(d[..],"{\"world_degenerate\":1,\"eligible\":1}",nodes[..]);#assert cia_eligibility(d[0],0,2)==1;
+ #assert cia_path_matches("/repo/\\u0061.py","/repo/a.py") && !cia_path_matches("\\q","") && !cia_path_matches("","");
+ #assert jv_parse(d[..],"{\"sha256\":1234567890123456789012345678901234567890123456789012345678901234}",nodes[..]);#assert cia_hash(d[0],0,"sha256")=="";
+}
+#test "interior census empty and equality boundaries preserve honest zero exclusions" {
+ text:=cia_fixture();zbuf:[32768]u8;work:[32768]u8;out:[32768]u8;
+ zp:=[6]string.["mask.pixels","witnesses.pixels","witnesses.records","witnesses.bytes","census.masked_pixels","census.witness_records"];zv:=[6]string.["0","0","0","0","0","0"];z:=cia_test_edits(text,zp[..],zv[..],zbuf[..]);
+ #assert !cia_test_read(cia_test_set(z,"witnesses.records","1",out[..]));
+ wp:=[2]string.["witnesses.records","census.witness_records"];wv:=[2]string.["1","1"];#assert !cia_test_read(cia_test_edits(z,wp[..],wv[..],out[..]));#assert !cia_test_read(cia_test_edits(text,wp[..],wv[..],out[..]));
+ #assert !cia_test_read(cia_test_set(text,"oracle_source.path","123",out[..]));
+ p:=[4]string.["edges.records","edges.bytes","census.eligible_shared_fold_edges","census.triangle_eligibility"];v:=[4]string.["0","0","0","{\"world_degenerate\":2}"];empty:=cia_test_edits(z,p[..],v[..],work[..]);#assert cia_test_read(empty);
+ #assert cia_test_read(cia_test_set(empty,"census.shared_edges_with_ineligible_owners","1",out[..]));
+ #assert cia_test_read(cia_test_set(empty,"census.degenerate_endpoint_edges","1",out[..]));
+ #assert !cia_test_read(cia_test_set(empty,"census.degenerate_endpoint_edges","2",out[..]));
+ #assert !cia_test_read(cia_test_set(empty,"census.shared_edges_with_ineligible_owners","2",out[..]));
+ #assert !cia_test_read(cia_test_set(text,"census.eligible_shared_coplanar_edges","1",out[..]));
+ mp:=[4]string.["mask.pixels","witnesses.pixels","witnesses.records","census.masked_pixels"];mv:=[4]string.["16","16","16","16"];all:=cia_test_edits(text,mp[..],mv[..],work[..]);#assert !cia_test_read(cia_test_set(all,"census.witness_records","16",out[..]));
+ ep:=[8]string.["mask.pixels","witnesses.pixels","witnesses.records","census.masked_pixels","census.witness_records","edges.records","edges.bytes","census.eligible_shared_fold_edges"];ev:=[8]string.["1","1","1","1","1","0","0","0"];#assert !cia_test_read(cia_test_edits(text,ep[..],ev[..],out[..]));
+}
 #test "interior certificate locks the declared algorithm scope coordinate model and profile" {
   text:=cia_fixture();#assert cia_test_read(text);changed:[8192]u8;
   for key:[10]string.["aethyr.render.shared-edge-envelope.v1","exact-shared-world-fold-linf-cell-v1","declared_conservative_geometry_boundary_not_hardware_error_bound","exact_clip_world_shared_noncoplanar_edges_of_positive_w_in_depth_nondegenerate_guard_valid_original_triangles","exact_stored_f32_rationals_perspective_divide_then_declared_nearest_grid","Whole RGBA packets","UNQUALIFIED","Nonfinite values remain fatal","All original triangles","no synthetic clipping edges"] {#assert !cia_test_read(cia_replace(text,key,"wrong",changed[..]));}
@@ -16,6 +55,8 @@ cia_replace :: (text:string,needle:string,replacement:string,out:[]u8)->string {
 }
 #test "interior file admission joins caller shape profile and each observed source hash before images" {
  nodes:[512]JvNode;d:[1]Jv;#assert jv_parse(d[..],cia_fixture(),nodes[..]);c:=cia_read(d[0]);
+ #assert c.valid && c.geometry_hash=="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" && c.mask_hash=="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" && c.oracle_hash=="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" && c.edges_hash=="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" && c.witness_hash=="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+ #assert c.mask_bytes==16 && c.mask_pixels==2 && c.edges_bytes==12 && c.witness_bytes==20 && c.oracle_path=="/repo/oracle.py";
  good:=CiObserved.{width=4,height=4,profile="nearest-even",geometry_bytes=336,mask_bytes=16,mask_pixels=2,edges_bytes=12,witness_bytes=20,geometry_hash=c.geometry_hash,mask_hash=c.mask_hash,oracle_hash=c.oracle_hash,oracle_path=c.oracle_path,edges_hash=c.edges_hash,witness_hash=c.witness_hash};#assert cia_bind(c,good);
  bad:=good;bad.width=3;#assert !cia_bind(c,bad);bad=good;bad.height=3;#assert !cia_bind(c,bad);bad=good;bad.profile="nearest-positive";#assert !cia_bind(c,bad);
  bad=good;bad.geometry_bytes=335;#assert !cia_bind(c,bad);bad=good;bad.mask_bytes=15;#assert !cia_bind(c,bad);bad=good;bad.mask_pixels=1;#assert !cia_bind(c,bad);bad=good;bad.edges_bytes=11;#assert !cia_bind(c,bad);bad=good;bad.witness_bytes=19;#assert !cia_bind(c,bad);
@@ -25,4 +66,6 @@ cia_replace :: (text:string,needle:string,replacement:string,out:[]u8)->string {
  mask:=[4]u8.[0,1,1,0];#assert cia_mask_count(mask[..])==2;mask[3]=2;#assert cia_mask_count(mask[..])== -1;
  bytes:[168]u8;#assert cia_geometry(bytes[..]);#assert !cia_geometry(bytes[0..<167]);
  for lane:0..<42 {for word:[3]u32.[0x7f800000,0xff800000,0x7f800001] {for k:0..<168 {bytes[k]=0;}for k:0..<4 {bytes[lane*4+k]=cast,trunc(u8)(word>>cast(u32)(k*8));}#assert !cia_geometry(bytes[..]);}}
+ for word:[8]u32.[0x80000000,0x00000001,0x007fffff,0x00800000,0x7e800000,0x7f7fffff,0xff7fffff,0x3f800000] {for k:0..<168 {bytes[k]=0;}for k:0..<4 {bytes[k]=cast,trunc(u8)(word>>cast(u32)(k*8));}#assert cia_geometry(bytes[..]);}
+ #assert !cia_geometry(bytes[0..<0]);
 }

@@ -1,0 +1,12 @@
+// This is artifact authentication of one independently qualified finite
+// geometry envelope. Caller-supplied matching hashes are not signatures.
+#module "aethyr.render.tool.interiors.profile";
+#load "compare-frame-interiors-admission.coax";
+#authority;
+#load "compare-frame-interiors-tool-checks.coax";
+CiOptions :: struct {valid:bool;values:[15]string;}
+cip_option :: (key:string)->int {keys:=[15]string.["--cpu","--gpu","--gpu-format","--width","--height","--profile","--certificate","--geometry","--mask","--oracle-source","--edges","--witnesses","--zero-mask","--zero-radius","--receipt"];for value,i:keys {if value==key {return i;}}return -1;}
+cip_parse :: (argv:[]string)->CiOptions {r:CiOptions;if argv.count!=30 {return r;}for i:0..<15 {slot:=cip_option(argv[i*2]);value:=argv[i*2+1];if slot== -1 || value.count==0 || value.count>4096 {return r;}if r.values[slot]!="" {return r;}r.values[slot]=value;}r.valid=true;return r;}
+cip_pinned :: (c:CiCertificate)->bool {return c.valid && c.width==320 && c.height==180 && (c.profile=="nearest-even" || c.profile=="nearest-positive") && c.geometry_bytes==1155168 && c.triangles==6876 && c.mask_bytes==57600 && c.mask_pixels==159 && c.edges_bytes==6897043 && c.witness_bytes==14188 && c.geometry_hash=="62823c676088a5296d1ca46bc265aafe93b1946dec1f60268ee05818474d3302" && c.mask_hash=="fe53de8772f0ea5d9ebcf5343247bf385a1691781b19c4de0807af10f951198c" && c.oracle_hash=="61f2004d8653e7bd84f79b8cec25263445798feb31856e6376ea37903735fc31" && c.edges_hash=="dbefbfa2383aba6880baf031689f72747fe2cb0c36fdb89ca47ae78b29a16b41" && c.witness_hash=="9e2830eefd4f8526223b0274337f4f4aa87f5bc649488bd30a85d32aa7b3b5c2";}
+cip_control_hashes :: (center:string,zero:string)->bool {return center=="a63a250b3638d01e873b63335575f0920bc4ba82f6bd3646ac556a8939146e07" && zero=="c72274a22cba2dcef62e0f62834446ee39b0cd95ad0faa27a89b3b49f48aa390";}
+cip_subset :: (center:[]u8,mask:[]u8)->bool {if center.count!=mask.count {return false;}for byte,i:center {if byte>mask[i] {return false;}}return true;}

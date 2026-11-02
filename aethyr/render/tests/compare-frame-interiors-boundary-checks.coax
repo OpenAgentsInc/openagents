@@ -1,0 +1,70 @@
+// Focused certificate parser boundaries; no image or GPU inputs.
+#test "interior extent helpers admit independent axis and exact pixel product endpoints" {
+ #assert cia_extent(1,1) && cia_extent(8192,1) && cia_extent(1,8192) && cia_extent(8192,128) && cia_extent(128,8192);
+ #assert !cia_extent(0,1) && !cia_extent(1,0) && !cia_extent(-1,1) && !cia_extent(1,-1);
+ #assert !cia_extent(8193,1) && !cia_extent(1,8193) && !cia_extent(8192,129) && !cia_extent(129,8192);
+ #assert cia_extent(1024,1024) && !cia_extent(1024,1025);
+ #assert cia_pixel_budget(0) && cia_pixel_budget(1) && cia_pixel_budget(1048576);
+ #assert !cia_pixel_budget(-1) && !cia_pixel_budget(1048577);
+}
+#test "interior geometry shape binds complete packets and exact triangle endpoints" {
+ #assert cia_geometry_shape(168,1) && cia_geometry_shape(336,2) && cia_geometry_shape(3360000,20000);
+ #assert !cia_geometry_shape(0,0) && !cia_geometry_shape(0,1) && !cia_geometry_shape(167,1) && !cia_geometry_shape(169,1);
+ #assert !cia_geometry_shape(168,-1) && !cia_geometry_shape(3360168,20001) && !cia_geometry_shape(168,20000);
+}
+#test "interior typed scalar reader refuses missing negative wrong kind and oversized fields" {
+ nodes:[128]JvNode;d:[1]Jv;
+ #assert jv_parse(d[..],"{\"negative\":-2,\"zero\":0,\"one\":1,\"max\":67108864,\"over\":67108865,\"text\":\"0\",\"null\":null}",nodes[..]);
+ #assert cia_int(d[0],0,"missing")== -1 && cia_int(d[0],0,"negative")== -1 && cia_int(d[0],0,"text")== -1 && cia_int(d[0],0,"null")== -1;
+ #assert cia_int(d[0],0,"zero")==0 && cia_int(d[0],0,"one")==1 && cia_int(d[0],0,"max")==67108864 && cia_int(d[0],0,"over")== -1;
+ #assert cia_int(d[0],-1,"zero")== -1;
+}
+#test "interior exact key inventory refuses wrong containers extras omissions and duplicates" {
+ nodes:[64]JvNode;d:[1]Jv;keys:=[2]string.["a","b"];
+ #assert jv_parse(d[..],"{\"b\":2,\"a\":1}",nodes[..]) && cia_keys(d[0],0,keys[..]);
+ for raw:[5]string.["{\"a\":1}","{\"a\":1,\"b\":2,\"extra\":3}","{\"a\":1,\"a\":2}","[1,2]","null"] {
+  #assert jv_parse(d[..],raw,nodes[..]) && !cia_keys(d[0],0,keys[..]);
+ }
+ #assert jv_parse(d[..],"{\"a\":1,\"a\":2}",nodes[..]) && cia_member(d[0],0,"a")== -1;
+}
+#test "interior hashes retain distinct parsed identities and every lowercase hex endpoint" {
+ nodes:[64]JvNode;d:[1]Jv;raw:[1024]u8;o:[1]Jo;
+ for hash:[3]string.["e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","fe53de8772f0ea5d9ebcf5343247bf385a1691781b19c4de0807af10f951198c"] {
+  jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"sha256");jo_str(o[..],hash);jo_end(o[..]);
+  #assert jv_parse(d[..],jo_text(o[..]),nodes[..]) && cia_hash(d[0],0,"sha256")==hash;
+ }
+ for byte,k:[10]u8.[48,57,97,102,47,58,96,103,65,70] {
+  for position:[2]int.[0,63] {hash:[64]u8;for i:0..<64 {hash[i]='a';}hash[position]=byte;
+   jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"sha256");jo_str(o[..],cast(string)hash[..]);jo_end(o[..]);
+   #assert jv_parse(d[..],jo_text(o[..]),nodes[..]) && (cia_hash(d[0],0,"sha256")!="")==(k<4);
+  }
+ }
+ for value:[4]string.["\"\"","\"short\"","0","null"] {
+  jo_start(o[..],raw[..]);jo_put(o[..],"{\"sha256\":");jo_put(o[..],value);jo_put(o[..],"}");
+  #assert jv_parse(d[..],jo_text(o[..]),nodes[..]) && cia_hash(d[0],0,"sha256")=="";
+ }
+}
+#test "interior artifact descriptors admit explicit zero bytes pixels and records in every shape" {
+ nodes:[128]JvNode;d:[1]Jv;raw:[2048]u8;o:[1]Jo;
+ for pixels:0..<2 {for records:0..<2 {
+  jo_start(o[..],raw[..]);jo_obj(o[..]);jo_key(o[..],"file");jo_str(o[..],"mask.bin");jo_key(o[..],"sha256");jo_str(o[..],"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");jo_key(o[..],"bytes");jo_int(o[..],0);
+  if pixels==1 {jo_key(o[..],"pixels");jo_int(o[..],0);}if records==1 {jo_key(o[..],"records");jo_int(o[..],0);}jo_end(o[..]);
+  #assert jv_parse(d[..],jo_text(o[..]),nodes[..]) && cia_artifact(d[0],0,"mask.bin",pixels==1,records==1);
+  #assert !cia_artifact(d[0],0,"other.bin",pixels==1,records==1);
+ }}
+ #assert jv_parse(d[..],"{\"file\":\"mask.bin\",\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"bytes\":0,\"pixels\":-1}",nodes[..]) && !cia_artifact(d[0],0,"mask.bin",true,false);
+ #assert jv_parse(d[..],"{\"file\":\"mask.bin\",\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"bytes\":0,\"records\":-1}",nodes[..]) && !cia_artifact(d[0],0,"mask.bin",false,true);
+}
+#test "interior decoded oracle paths preserve JSON escapes Unicode and exact output capacity" {
+ out:[128]u8;#assert cia_path_decode("/tmp/oracle.py",out[..])==14 && cast(string)out[0..<14]=="/tmp/oracle.py";
+ #assert cia_path_decode("\\/tmp\\/\\u0061.py",out[..])==9 && cast(string)out[0..<9]=="/tmp/a.py";
+ #assert cia_path_decode("/tmp/a\\\\b.py",out[..])==11 && cast(string)out[0..<11]=="/tmp/a\\b.py";
+ #assert cia_path_decode("/tmp/a\\\"b.py",out[..])==11 && cast(string)out[0..<11]=="/tmp/a\"b.py";
+ exact:[5]u8;exact[4]=165;#assert cia_path_decode("\\ud83d\\ude80",exact[0..<4])==4 && cast(string)exact[0..<4]=="🚀" && exact[4]==165;
+ #assert cia_path_decode("\\ud83d\\ude80",exact[0..<3])== -1;
+ #assert cia_path_decode("x",exact[0..<1])==1 && cia_path_decode("x",exact[0..<0])== -1;
+}
+#test "interior decoded paths refuse empty NUL and malformed escape payloads" {
+ out:[128]u8;for raw:[5]string.["","\\u0000","/tmp/\\u0000.py","\\q","\\"] {#assert cia_path_decode(raw,out[..])== -1;}
+ raw:=[3]u8.['a',0,'b'];#assert cia_path_decode(cast(string)raw[..],out[..])== -1;
+}

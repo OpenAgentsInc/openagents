@@ -1,0 +1,18 @@
+cip_fixture :: ()->CiCertificate {return CiCertificate.{valid=true,width=320,height=180,profile="nearest-even",geometry_bytes=1155168,triangles=6876,mask_bytes=57600,mask_pixels=159,edges_bytes=6897043,witness_bytes=14188,geometry_hash="62823c676088a5296d1ca46bc265aafe93b1946dec1f60268ee05818474d3302",mask_hash="fe53de8772f0ea5d9ebcf5343247bf385a1691781b19c4de0807af10f951198c",oracle_hash="61f2004d8653e7bd84f79b8cec25263445798feb31856e6376ea37903735fc31",edges_hash="dbefbfa2383aba6880baf031689f72747fe2cb0c36fdb89ca47ae78b29a16b41",witness_hash="9e2830eefd4f8526223b0274337f4f4aa87f5bc649488bd30a85d32aa7b3b5c2"};}
+#test "interior comparison authenticates the independently frozen finite DG geometry envelope" {
+ c:=cip_fixture();#assert cip_pinned(c);c.profile="nearest-positive";#assert cip_pinned(c);
+ for loss:0..<15 {b:=cip_fixture();if loss==0 {b.valid=false;}if loss==1 {b.width=319;}if loss==2 {b.height=179;}if loss==3 {b.profile="analytic";}if loss==4 {b.geometry_bytes-=1;}if loss==5 {b.triangles-=1;}if loss==6 {b.mask_bytes-=1;}if loss==7 {b.mask_pixels-=1;}if loss==8 {b.edges_bytes-=1;}if loss==9 {b.witness_bytes-=1;}if loss==10 {b.geometry_hash=b.mask_hash;}if loss==11 {b.mask_hash=b.geometry_hash;}if loss==12 {b.oracle_hash=b.edges_hash;}if loss==13 {b.edges_hash=b.witness_hash;}if loss==14 {b.witness_hash=b.edges_hash;}#assert !cip_pinned(b);}
+}
+#test "interior finite profile authenticates zero controls and exact centerline inclusion" {
+ center:="a63a250b3638d01e873b63335575f0920bc4ba82f6bd3646ac556a8939146e07";zero:="c72274a22cba2dcef62e0f62834446ee39b0cd95ad0faa27a89b3b49f48aa390";
+ #assert cip_control_hashes(center,zero) && !cip_control_hashes(zero,zero) && !cip_control_hashes(center,center);
+ a:=[3]u8.[0,1,0];b:=[3]u8.[1,1,0];#assert cip_subset(a[..],b[..]) && !cip_subset(b[..],a[..]) && !cip_subset(a[0..<2],b[..]);
+}
+#test "interior CLI requires each closed option exactly once and preserves every raw operand" {
+ argv:=[30]string.["--cpu","cpu.raw","--gpu","gpu.raw","--gpu-format","rgba16f","--width","320","--height","180","--profile","nearest-even","--certificate","facts.json","--geometry","vertices.bin","--mask","mask.bin","--oracle-source","oracle.py","--edges","edges.jsonl","--witnesses","witnesses.jsonl","--zero-mask","zero.bin","--zero-radius","center.bin","--receipt","new.json"];
+ good:=cip_parse(argv[..]);#assert good.valid;for i:0..<15 {#assert good.values[i]==argv[i*2+1];}
+ #assert !cip_parse(argv[0..<29]).valid;extra:[31]string;for i:0..<30 {extra[i]=argv[i];}extra[30]="extra";#assert !cip_parse(extra[..]).valid;
+ for i:0..<15 {bad:=argv;bad[i*2]="--unknown";#assert !cip_parse(bad[..]).valid;bad=argv;bad[i*2+1]="";#assert !cip_parse(bad[..]).valid;}
+ bad:=argv;bad[2]="--cpu";#assert !cip_parse(bad[..]).valid;
+ large:[4097]u8;for i:0..<large.count {large[i]='a';}bad=argv;bad[1]=cast(string)large[0..<4096];#assert cip_parse(bad[..]).valid;bad[1]=cast(string)large[..];#assert !cip_parse(bad[..]).valid;
+}

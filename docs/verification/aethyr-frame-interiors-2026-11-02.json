@@ -1,0 +1,77 @@
+{
+  "schema": "aethyr.render.pinned-interiors-qualification.v1",
+  "status": "qualified_pinned_DG_interiors_only",
+  "scope": "Separate CLI and finite artifact profile. The published strict compare-frames v1 contract is unchanged. Both actual retained complete images still fail their raw full strict comparison. The declared geometry boundary excludes159 complete finite RGBA packets from colour qualification; all636 channels in those packets remain UNQUALIFIED. Every original nonfinite value is fatal everywhere. This is neither full-image parity nor a legal hardware-depth, visible-edge or actual GPU-VS bit-identity theorem.",
+  "trust_boundary": {
+    "policy": "The CLI authenticates the independently derived finite DG profile by fixed geometry, mask, oracle-source, edge/witness and zero-control SHA-256 identities plus exact dimensions/profile/counts. It does not accept an arbitrary caller's self-consistent certificate as a mask-truth proof.",
+    "geometry_sha256": "62823c676088a5296d1ca46bc265aafe93b1946dec1f60268ee05818474d3302",
+    "mask_sha256": "fe53de8772f0ea5d9ebcf5343247bf385a1691781b19c4de0807af10f951198c",
+    "oracle_source_sha256": "61f2004d8653e7bd84f79b8cec25263445798feb31856e6376ea37903735fc31",
+    "oracle_record": "docs/verification/aethyr-shared-edge-envelope-2026-11-02.json",
+    "enclosing_frame_resource_source_join": "docs/verification/aethyr-deadgears-retained-frame-join-2026-11-02.md",
+    "frame_join_limit": "The CLI verifies supplied file joins, not the enclosing producer/frame/shader/resource relation. The separate read-only join record establishes that relation for these exact retained images and nominal vertex packets.",
+    "profiles": ["nearest-even", "nearest-positive"],
+    "width": 320,
+    "height": 180,
+    "subpixel_bits": 8,
+    "guard_pixels": 65536,
+    "radius": "1/512 pixel",
+    "geometry_triangles": 6876,
+    "masked_pixels": 159,
+    "strict_interior_pixels": 57441,
+    "strict_interior_channels": 229764,
+    "unqualified_channels": 636
+  },
+  "implementation": {
+    "cli": "aethyr/render/tests/compare-frame-interiors.coax",
+    "cli_source_sha256": "90d0734a14124f2e73d3e602ab86e0366d5deb3d6976a6844cabeffef85f5ee3",
+    "frozen_cli_image_sha256": "47932fb99eb4120b417418c4a11b90bf7ce977d0e5d7ea48d416e8d3fdbf3863",
+    "admission_source_sha256": "619fef35e56e260687cb630109a4587d65b7bb6af25640d4bac485cceaf976b9",
+    "profile_policy_sha256": "85a4b6e0efd634d27daf77db0dbf114a66918c53359e6116eac1142afdcb5543",
+    "compiler": "/tmp/aethyr-current-main-compiler-6bd-20261102/coax",
+    "compiler_sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+    "native_compiler": "Apple clang21.0.0 (clang-2100.1.1.101), arm64-apple-darwin25.4.0; explicit tool.sh normal C emission and host C compilation",
+    "admission_order": "Closed argv and new receipt entry; compiler/source/image inventory; certificate and all8 artifact identities; fixed independent profile pins; consumed finite geometry/mask/zero-control checks and canonical oracle path; exact sidecar row joins; only then image paths/shape/contents. Consumed image streams are hashed and reread; every artifact/source/image fence must match before publication.",
+    "receipt_freshness_limit": "Existing files, symlinks, hardlinks, dangling symlinks and input aliases refuse before writes. Directory-entry freshness is checked again before fs_write; this does not assert atomic O_EXCL publication against a concurrent writer.",
+    "diagnostics": "Counts are JSON integers. Finite diagnostic values retain exact16-digit IEEE754 binary64 hexadecimal words; nonfinite diagnostics are explicit nan/+inf/-inf labels. No numeric tolerance changed."
+  },
+  "authority_checks": {
+    "certificate_admission": { "baseline": "95/95", "root_mutation": "368/368 killed", "survivors": 0, "waivers": 0 },
+    "finite_profile_and_closed_cli": { "baseline": "98/98 including dependencies", "root_mutation": "65/65 killed", "survivors": 0, "waivers": 0 },
+    "reused_unchanged_streaming_comparison_policy": "docs/verification/data/aethyr-ch11-2026-11-02/interior-comparison-policy/qualification.json: root-qualified82/82 mutation, not rerun on unchanged bodies",
+    "new_cli_serializer": "One focused exact-finite-word/signed-zero/nonfinite-label check passes; the focused selection explicitly skips authority coverage and is not substituted for either full authority gate.",
+    "development": "The earlier72-survivor WIP remains retained in its original record/archive. Stronger tests first exposed zero-edge/nonzero-mask acceptance; final policy also enforces shared-edge occurrence conservation and eligible-owner consistency. Subsequent17- and2-survivor development logs, compile/test fixes and the final zero reports are retained. No equivalent-mutant waiver was used."
+  },
+  "software_controls": {
+    "record": "docs/verification/data/aethyr-ch11-2026-11-02/frame-interiors/software-controls.json",
+    "passed": 23,
+    "total": 23,
+    "source_changes": [],
+    "cases": ["finite zero baseline", "all four masked finite RGBA channels remain unqualified while raw comparison fails", "outside alpha loss", "masked and outside GPU NaN", "masked CPU NaN", "masked GPU infinity", "shape/profile/format/short image", "bad certificate", "nonfinite geometry", "nonbinary mask", "changed oracle", "translated mask with rehashed internally joined certificate", "missing edge/zero-control artifact", "existing/symlink/hardlink/dangling/input-as-receipt refusal"],
+    "scope": "Authored zero images at the fixed320x180 extent test the software CLI and admission only. They are not renderer/GPU measurements.",
+    "retained_failed_controller_epochs": [
+      "First: same-named command logs overwrote CLI receipts/link aliases. Original CLI JSON stdout and errors retained; harness failed.",
+      "Second: all23 individual case verdicts passed, but the final source fence caught a same-named bad-certificate command log overwriting that fixture. Harness failed. Final run uses disjoint run-* logs and *-comparison.json receipts in a fresh owned directory."
+    ]
+  },
+  "actual_retained_images": {
+    "native_receipt": "docs/verification/data/aethyr-ch11-2026-11-02/frame-interiors/native.json",
+    "browser_receipt": "docs/verification/data/aethyr-ch11-2026-11-02/frame-interiors/browser.json",
+    "cpu_sha256": "c4825c7daaccb36b839b637b143c9d677bf7afa8069f6afa21c766632d510ccc",
+    "vulkan_sha256": "08fe3735b8646336168abe0d0c035efb72a7e23a98dfc05c734bac44832765e0",
+    "webgpu_sha256": "eea19f17c7756c4880d63995deee07aa6781d36de19a46aeea203b128247ac59",
+    "raw_full_each": { "status": "fail", "channels": 230400, "colour_failures": 3, "nonfinite_failures": 0 },
+    "strict_interior_each": { "status": "pass", "channels": 229764, "colour_failures": 0, "nonfinite_failures": 0 },
+    "masked_each": { "pixels": 159, "unqualified_channels": 636, "excluded_finite_colour_failures": 3 },
+    "original_unmasked_record": "docs/verification/data/aethyr-ch11-2026-11-01/canonical-box36/runtime/qualification.json",
+    "epoch_limit": "Original CPU/reference artifacts keep their older308 compiler/reference-geometry scope. The nominal packet remains input-only native VS data, not measured GPU VS output. New comparison evidence does not promote either to current-main emission or attribute unrelated later repairs. No producer, shader, CPU frame or GPU readback was regenerated."
+  },
+  "retention": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/frame-interiors/artifacts.tar.gz",
+    "bytes": 4888967,
+    "sha256": "722e1197344ea1027d3341505fb9f6b1ccfcec94cfbf85f2d0900d79843d67eb",
+    "contents": "Exact frozen CLI/controller source closures, native build inputs, executed tool images/compiler, compiler observations, authority/development logs, all3 software-control epochs with literal symlinks and hardlink groups, actual CPU/GPU bytes and old/new raw comparison receipts, exact invocations, both independent certificates/masks/sidecars, nominal geometry and enclosing join observations.",
+    "source_copy_readback": "Checksum-only rsync comparisons of both source closures and native build inputs returned exit0 with empty output; both copied tool/compiler images compared equal.",
+    "archive_readback": "System tar extraction succeeded. rsync -rlHnc --delete --itemize-changes over the complete payload and extracted tree returned exit0 with0 output bytes, comparing regular-file contents, literal symlinks and hardlink groups without following dangling aliases."
+  }
+}
