@@ -38,10 +38,10 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 85 chapters, 21 are implemented and 64 are planned. The 21
-implemented chapters have runnable examples, qualified on native CPU, and 16
+Of the 85 chapters, 22 are implemented and 63 are planned. The 22
+implemented chapters have runnable examples, qualified on native CPU, and 17
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7, 10, 12 and 17 are new.
+chapters 5, 6, 7, 10, 12, 17 and 19 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -137,7 +137,7 @@ ECDSA as Bitcoin uses it, BIP-340 Schnorr signatures and batch verification.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 19. Verify ECDSA | Planned | Every case in Wycheproof's `ecdsa_secp256k1_sha256_bitcoin_test.json` gives its expected result. A high-S signature refuses under the low-S rule. |
+| [19. Verify ECDSA](ch019-verify-ecdsa.md) | Runnable: native C and wasm | ECDSA verification over a 32-byte hash with the low-S rule as the caller's choice and one strict DER reader, checked against all 464 Wycheproof `ecdsa_secp256k1_sha256_bitcoin_test.json` cases, Python integers and libsecp256k1, natively and in Wasm. A high-S signature refuses under the low-S rule. |
 | 20. Sign with ECDSA | Planned | RFC 6979 nonces match published secp256k1 vectors. Every signature is low-S and verifies in an independent library. A secret-probe run finds no secret-dependent branch. |
 | 21. Strict DER | Planned | Every DER case in Bitcoin Core's `script_tests.json` that BIP-66 decides gives its expected result. |
 | 22. Public key recovery and signed messages | Planned | Bitcoin Core `signmessage` signatures for pinned keys verify, and recovery returns the signing key. A recovery ID out of range refuses. |

@@ -58,7 +58,7 @@ existing code named in the [plan](book/PLAN.md).
 
 Everything Nostr used is built. Bitcoin and Lightning also need:
 
-- ECDSA verification, public key recovery, strict DER and low-S.
+- Public key recovery and strict DER (BIP-66).
 - Base58Check and Bech32m.
 - Batch Schnorr verification, Taproot script trees and tapscript.
 - MuHash3072, Merkle trees with the duplicate-leaf flaw, compact targets and

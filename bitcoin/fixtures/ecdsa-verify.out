@@ -1,0 +1,53 @@
+toy curve y^2 = x^3 + 7 mod 43, n = 31, G = (2, 12)
+Q = 7G = (25, 18), R = 10G = (42, 7)
+r = 42 mod 31 = 11, s = (5 + r*7) / 10 mod 31 = 2
+w = 16, u1 = 18, u2 = 21, u1*G + u2*Q = (42, 7)
+verify (r, s): true
+verify (r, n - s) = (11, 29): true, under low-S: false
+hash 6: false, key 6G: false
+secp256k1, key 1, SHA-256("Satoshi Nakamoto")
+z: a0dc65ffca799873cbea0ac274015b9526505daaaed385155425f7337704883e
+r and s in [1, n-1]: true, s low: true
+w = 1/s: fab47032eeb0b7ec2328dfae35b7d11bd087d516840ecd98bbd6a8be3a324a0f
+u1 = z*w: 5f5aa92cdd8788480fc88a00e9bdccece7b4c4a3f7a3e748d597da03af5520ce
+u2 = r*w: 111b2f67088463219984f59cf80ca643ae04231d752d9260fbd17e4dabefc35e
+x(R): 934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d8
+r: 934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d8
+ecdsa_verify_vartime: true
+Wycheproof ecdsa_secp256k1_sha256_bitcoin_test.json
+ValidSignature: 5 of 5 as expected
+SignatureMalleabilityBitcoin: 1 of 1 as expected
+BerEncodedSignature: 7 of 7 as expected
+InvalidEncoding: 89 of 89 as expected
+InvalidTypesInSignature: 63 of 63 as expected
+ModifiedInteger: 5 of 5 as expected
+IntegerOverflow: 5 of 5 as expected
+RangeCheck: 6 of 6 as expected
+InvalidSignature: 64 of 64 as expected
+ModifiedSignature: 49 of 49 as expected
+ArithmeticError: 69 of 69 as expected
+SmallRandS,ArithmeticError: 6 of 6 as expected
+ModularInverse,ArithmeticError: 15 of 15 as expected
+PointDuplication: 6 of 6 as expected
+PointDuplication,ArithmeticError: 1 of 1 as expected
+EdgeCaseShamirMultiplication: 1 of 1 as expected
+SpecialCaseHash: 54 of 54 as expected
+EdgeCasePublicKey: 18 of 18 as expected
+refused at DER: 232
+refused at range: 50
+refused at low-S: 4
+refused at equation: 16
+accepted: 162
+464 of 464 cases give the expected result
+refusals
+r = 0: false
+r = n: false
+s = n: false
+s replaced by n - s, low-S rule: false, without it: true
+wrong key, 2G: false
+hash with one bit changed: false
+31-byte hash: false
+63-byte signature: false
+key off the curve: false
+DER with a trailing byte: false
+DER with a needless zero: false

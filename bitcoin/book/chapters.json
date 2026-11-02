@@ -426,17 +426,24 @@
   {
    "number": 19,
    "title": "Verify ECDSA",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch019-verify-ecdsa.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     5,
     14,
     16,
     17
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/crypto/ecdsa_verify.coax",
+    "bitcoin/examples/ecdsa-verify.coax",
+    "bitcoin/examples/checks/ecdsa-verify.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

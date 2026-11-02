@@ -1,0 +1,169 @@
+// book:begin example
+#load "../../coax/lib/crypto/ecdsa_verify.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/ecdsa_vectors.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+show_scalar :: (label: string, s: ScScalar) {
+  b: [32] u8;
+  if sc_store(s, b[..]) { show(label, b[..]); }
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector table is valid hex, so a decoding error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+
+// ---- a toy curve: y^2 = x^3 + 7 over F_43, whose 31 points form a group
+// of prime order. Points are (x, y) with infinity as (-1, -1).
+TOY_P :: 43;
+TOY_N :: 31;
+Toy :: struct { x: int; y: int; }
+TOY_G :: Toy.{x=2,y=12};
+TOY_INFINITY :: Toy.{x=-1,y=-1};
+// a mod m in [0, m).
+toy_mod :: (a: int, m: int) -> int { r := a % m; return ifx r < 0 then r + m else r; }
+// The inverse of a mod a prime m, by Fermat: a^(m-2).
+toy_inverse :: (a: int, m: int) -> int {
+  r := 1;
+  for i: 0..<m-2 { r = toy_mod(r * a, m); }
+  return r;
+}
+toy_add :: (a: Toy, b: Toy) -> Toy {
+  if a.x < 0 { return b; }
+  if b.x < 0 { return a; }
+  if a.x == b.x && toy_mod(a.y + b.y, TOY_P) == 0 { return TOY_INFINITY; }
+  slope := ifx a.x == b.x then toy_mod(3 * a.x * a.x * toy_inverse(2 * a.y, TOY_P), TOY_P)
+           else toy_mod((b.y - a.y) * toy_inverse(toy_mod(b.x - a.x, TOY_P), TOY_P), TOY_P);
+  x := toy_mod(slope * slope - a.x - b.x, TOY_P);
+  return Toy.{x=x,y=toy_mod(slope * (a.x - x) - a.y, TOY_P)};
+}
+// k·P by repeated addition: k is small.
+toy_times :: (k: int, p: Toy) -> Toy {
+  r := TOY_INFINITY;
+  for i: 0..<k { r = toy_add(r, p); }
+  return r;
+}
+// Toy verification of (r, s) on the hash z under Q, with or without low-S.
+toy_verify :: (z: int, q: Toy, r: int, s: int, low_s: bool) -> bool {
+  if r < 1 || r >= TOY_N || s < 1 || s >= TOY_N { return false; }
+  if low_s && s > (TOY_N - 1) / 2 { return false; }
+  w := toy_inverse(s, TOY_N);
+  point := toy_add(toy_times(toy_mod(z * w, TOY_N), TOY_G), toy_times(toy_mod(r * w, TOY_N), q));
+  return point.x >= 0 && point.x % TOY_N == r;
+}
+
+// ---- a Wycheproof case through the stages of the verifier
+// Where the case is decided: "DER", "range", "low-S", "equation" or
+// "accepted". The first three stages are the steps ecdsa_verify_der_vartime
+// takes before the multiplication; the complete entry decides the rest.
+stage :: (c: EvCase) -> string {
+  key: [65] u8; msg: [32] u8; der: [4200] u8; hash: [32] u8; sig: [64] u8;
+  #assert sha256_hash_checked(decode(c.msg, msg[..]), hash[..], false) == SHA_OK;
+  encoded := decode(c.sig, der[..]);
+  if !ecdsa_der_read_vartime(encoded, sig[..]) { return "DER"; }
+  scalars := ev_scalars_vartime(sig[..]);
+  if !scalars.ok { return "range"; }
+  if ev_high_s_vartime(scalars.s) { return "low-S"; }
+  if !ecdsa_verify_der_vartime(hash[..], decode(EV_KEYS[c.key], key[..]), encoded, true) { return "equation"; }
+  return "accepted";
+}
+STAGES :: [5] string.["DER", "range", "low-S", "equation", "accepted"];
+FLAGS :: [18] string.["ValidSignature", "SignatureMalleabilityBitcoin", "BerEncodedSignature",
+  "InvalidEncoding", "InvalidTypesInSignature", "ModifiedInteger", "IntegerOverflow", "RangeCheck",
+  "InvalidSignature", "ModifiedSignature", "ArithmeticError", "SmallRandS,ArithmeticError",
+  "ModularInverse,ArithmeticError", "PointDuplication", "PointDuplication,ArithmeticError",
+  "EdgeCaseShamirMultiplication", "SpecialCaseHash", "EdgeCasePublicKey"];
+
+// A real signature: libsecp256k1's, for the key 1 and SHA-256("Satoshi Nakamoto").
+KEY_1 :: "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
+KEY_2 :: "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+SIG_1 :: "934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d82442ce9d2b916064108014783e923ec36b49743e2ffa1c4496f01a512aafd9e5";
+N_HEX :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
+
+main :: () {
+  // The toy curve by hand: key d = 7, nonce k = 10, hash z = 5.
+  print("toy curve y^2 = x^3 + 7 mod 43, n = 31, G = (2, 12)\n");
+  q := toy_times(7, TOY_G); big_r := toy_times(10, TOY_G);
+  r := big_r.x % TOY_N;
+  s := toy_mod(toy_inverse(10, TOY_N) * (5 + r * 7), TOY_N);
+  print("Q = 7G = (%, %), R = 10G = (%, %)\n", q.x, q.y, big_r.x, big_r.y);
+  print("r = % mod 31 = %, s = (5 + r*7) / 10 mod 31 = %\n", big_r.x, r, s);
+  w := toy_inverse(s, TOY_N); u1 := toy_mod(5 * w, TOY_N); u2 := toy_mod(r * w, TOY_N);
+  sum := toy_add(toy_times(u1, TOY_G), toy_times(u2, q));
+  print("w = %, u1 = %, u2 = %, u1*G + u2*Q = (%, %)\n", w, u1, u2, sum.x, sum.y);
+  print("verify (r, s): %\n", toy_verify(5, q, r, s, true));
+  print("verify (r, n - s) = (%, %): %, under low-S: %\n", r, TOY_N - s, toy_verify(5, q, r, TOY_N - s, false), toy_verify(5, q, r, TOY_N - s, true));
+  print("hash 6: %, key 6G: %\n", toy_verify(6, q, r, s, true), toy_verify(5, toy_times(6, TOY_G), r, s, true));
+
+  // The same steps on secp256k1, for libsecp256k1's signature of
+  // SHA-256("Satoshi Nakamoto") under the key 1, so Q = G.
+  print("secp256k1, key 1, SHA-256(\"Satoshi Nakamoto\")\n");
+  key: [65] u8; sig: [64] u8; hash: [32] u8; text := "Satoshi Nakamoto"; message: [16] u8;
+  for i: 0..<16 { message[i] = text[i]; }
+  #assert sha256_hash_checked(message[..], hash[..], false) == SHA_OK;
+  public_key := decode(KEY_1, key[..]); signature := decode(SIG_1, sig[..]);
+  show("z", hash[..]);
+  scalars := ev_scalars_vartime(signature);
+  print("r and s in [1, n-1]: %, s low: %\n", scalars.ok, !ev_high_s_vartime(scalars.s));
+  prepared := ev_prepare_vartime(hash[..], sg_generator(), signature, true);   // Q = 1·G
+  show_scalar("w = 1/s", sc_inverse(scalars.s).value);
+  show_scalar("u1 = z*w", prepared.u1);
+  show_scalar("u2 = r*w", prepared.u2);
+  sum_r := sg_to_affine(ecmult_vartime(prepared.u1, prepared.point, prepared.u2).value).value;
+  x: [32] u8; #assert sf_store(sum_r.x, x[..]);
+  show("x(R)", x[..]);
+  show("r", signature[0..<32]);
+  print("ecdsa_verify_vartime: %\n", ecdsa_verify_vartime(hash[..], public_key, signature, true));
+
+  // All 464 Wycheproof cases, by flag, with the stage that decides each.
+  print("Wycheproof ecdsa_secp256k1_sha256_bitcoin_test.json\n");
+  agree := 0; at_stage: [5] int; by_flag: [18] int; flag_agree: [18] int;
+  for i: 0..<EV_CASES.count {
+    c := EV_CASES[i]; where := stage(c);
+    for k: 0..<5 { if where == STAGES[k] { at_stage[k] += 1; } }
+    ok := (where == "accepted") == c.valid;
+    if ok { agree += 1; }
+    matched := 0;
+    for f: 0..<18 { if c.flags == FLAGS[f] { matched += 1; by_flag[f] += 1; if ok { flag_agree[f] += 1; } } }
+    #assert matched == 1;
+  }
+  for f: 0..<18 { print("%: % of % as expected\n", FLAGS[f], flag_agree[f], by_flag[f]); }
+  for k: 0..<4 { print("refused at %: %\n", STAGES[k], at_stage[k]); }
+  print("accepted: %\n", at_stage[4]);
+  print("% of % cases give the expected result\n", agree, EV_CASES.count);
+
+  // Refusals, each from the real signature above.
+  print("refusals\n");
+  bad := sig;
+  for i: 0..<32 { bad[i] = 0; }
+  print("r = 0: %\n", ecdsa_verify_vartime(hash[..], public_key, bad[..], true));
+  #assert decode(N_HEX, bad[0..<32]).count == 32;
+  print("r = n: %\n", ecdsa_verify_vartime(hash[..], public_key, bad[..], true));
+  bad = sig; #assert decode(N_HEX, bad[32..<64]).count == 32;
+  print("s = n: %\n", ecdsa_verify_vartime(hash[..], public_key, bad[..], true));
+  high := sig; high_s := sc_negate(scalars.s); #assert sc_store(high_s, high[32..<64]);
+  print("s replaced by n - s, low-S rule: %, without it: %\n",
+    ecdsa_verify_vartime(hash[..], public_key, high[..], true), ecdsa_verify_vartime(hash[..], public_key, high[..], false));
+  other: [33] u8;
+  print("wrong key, 2G: %\n", ecdsa_verify_vartime(hash[..], decode(KEY_2, other[..]), signature, true));
+  changed := hash; changed[0] ^= 1;
+  print("hash with one bit changed: %\n", ecdsa_verify_vartime(changed[..], public_key, signature, true));
+  print("31-byte hash: %\n", ecdsa_verify_vartime(hash[0..<31], public_key, signature, true));
+  print("63-byte signature: %\n", ecdsa_verify_vartime(hash[..], public_key, signature[0..<63], true));
+  off := key; off[64] ^= 1;
+  print("key off the curve: %\n", ecdsa_verify_vartime(hash[..], off[..], signature, true));
+  der: [80] u8; out: [64] u8;
+  print("DER with a trailing byte: %\n", ecdsa_der_read_vartime(decode("300602010102010200", der[..]), out[..]));
+  print("DER with a needless zero: %\n", ecdsa_der_read_vartime(decode("300702020001020102", der[..]), out[..]));
+}
+// book:end example

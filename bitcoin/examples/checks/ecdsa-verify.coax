@@ -1,0 +1,91 @@
+// The checks of ecdsa-verify.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/ecdsa-verify.coax
+#load "../ecdsa-verify.coax";
+
+// book:begin check
+// On the toy curve, every key d and nonce k give a signature that
+// verifies; its other half (r, n - s) verifies only without the low-S rule
+// (s is never n/2 for odd n); the next hash or the next key refuses unless
+// it happens to give the same x.
+#forall "toy signatures verify for every key and nonce" d: 1..<TOY_N #steps 400000000 {
+  q := toy_times(d, TOY_G); refused := 0;
+  for k: 1..<TOY_N {
+    r := toy_times(k, TOY_G).x % TOY_N;
+    s := toy_mod(toy_inverse(k, TOY_N) * (5 + r * d), TOY_N);
+    if s == 0 { continue; }
+    #assert toy_verify(5, q, r, s, false) && toy_verify(5, q, r, TOY_N - s, false);
+    #assert toy_verify(5, q, r, s, true) != toy_verify(5, q, r, TOY_N - s, true);
+    if !toy_verify(6, q, r, s, false) { refused += 1; }
+  }
+  #assert refused > 20;
+}
+equal32 :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != 32 || b.count != 32 { return false; }
+  for i: 0..<32 { if a[i] != b[i] { return false; } }
+  return true;
+}
+#test "equal32 notices a change in the first or last byte and a short view" {
+  a: [32] u8; b := a;
+  #assert equal32(a[..], b[..]) && !equal32(a[0..<31], b[0..<31]) && !equal32(a[..], b[0..<31]) && !equal32(a[0..<31], b[..]);
+  b[0] = 1; #assert !equal32(a[..], b[..]);
+  b = a; b[31] = 1; #assert !equal32(a[..], b[..]);
+}
+// The worked example's values, computed with Python integers, which share
+// no code with the Coax field, scalar or point arithmetic.
+#test "the worked example matches hand-computed values" #steps 1000000000 {
+  sig: [64] u8; hash: [32] u8; got: [32] u8; want: [32] u8;
+  signature := decode(SIG_1, sig[..]);
+  z := decode("a0dc65ffca799873cbea0ac274015b9526505daaaed385155425f7337704883e", hash[..]);
+  prepared := ev_prepare_vartime(z, sg_generator(), signature, true);
+  #assert prepared.ready;
+  #assert sc_store(sc_inverse(ev_scalars_vartime(signature).s).value, got[..]) && equal32(got[..], decode("fab47032eeb0b7ec2328dfae35b7d11bd087d516840ecd98bbd6a8be3a324a0f", want[..]));
+  #assert sc_store(prepared.u1, got[..]) && equal32(got[..], decode("5f5aa92cdd8788480fc88a00e9bdccece7b4c4a3f7a3e748d597da03af5520ce", want[..]));
+  #assert sc_store(prepared.u2, got[..]) && equal32(got[..], decode("111b2f67088463219984f59cf80ca643ae04231d752d9260fbd17e4dabefc35e", want[..]));
+  #assert ev_prepared_matches_vartime(prepared);
+}
+// Every Wycheproof case refused before the equation (DER, range or low-S)
+// is one the file expects to fail, and there are 286 of them: no stage
+// before the multiplication refuses a valid signature.
+#test "the early stages refuse 286 cases, all expected to fail" #steps 2000000000 {
+  early := 0;
+  for i: 0..<EV_CASES.count {
+    c := EV_CASES[i]; der: [4200] u8; sig: [64] u8;
+    d := decode(c.sig, der[..]);
+    refused := !ecdsa_der_read_vartime(d, sig[..]);
+    if !refused { scalars := ev_scalars_vartime(sig[..]); refused = !scalars.ok || ev_high_s_vartime(scalars.s); }
+    if refused { #assert !c.valid; early += 1; }
+  }
+  #assert early == 286;
+}
+// The five ValidSignature cases verify through the complete DER entry, and
+// four cases that only the equation refuses are refused: tcId 386 (infinity
+// during verification), 425 (comparison with infinity), 438 (a key that
+// shares x with G) and 464 (r = p - n + 1, where r + n is not below p).
+EQUATION :: [9] int.[1, 441, 442, 443, 444, 385, 424, 437, 463];
+#forall "Wycheproof cases through the complete entry" i: 0..<9 #steps 4000000000 {
+  c := EV_CASES[EQUATION[i]];
+  key: [65] u8; msg: [32] u8; der: [128] u8; hash: [32] u8;
+  #assert sha256_hash_checked(decode(c.msg, msg[..]), hash[..], false) == SHA_OK;
+  #assert ecdsa_verify_der_vartime(hash[..], decode(EV_KEYS[c.key], key[..]), decode(c.sig, der[..]), true) == c.valid;
+  #assert (i < 5) == c.valid;
+}
+// The four signatures ecdsa_sign.coax's own checks pin (each equal to
+// libsecp256k1's, byte for byte) verify under compressed keys computed with
+// Python integers, and refuse under the next key in the list.
+SIGNED :: [12] string.[
+  "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "a0dc65ffca799873cbea0ac274015b9526505daaaed385155425f7337704883e",
+  "934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d82442ce9d2b916064108014783e923ec36b49743e2ffa1c4496f01a512aafd9e5",
+  "0379be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "a0dc65ffca799873cbea0ac274015b9526505daaaed385155425f7337704883e",
+  "fd567d121db66e382991534ada77a6bd3106f0a1098c231e47993447cd6af2d06b39cd0eb1bc8603e159ef5c20a5c8ad685a45b06ce9bebed3f153d10d93bed5",
+  "031b38903a43f7f114ed4500b4eac7083fdefece1cf29c63528d563446f972c180", "0000000000000000000000000000000000000000000000000000000000000000",
+  "db2767ec4312c496a057e4501efbd4cafbb5451a708e1027f35c83e254c6567b0531cba6e4b09efb2fcb072a4ea5f2bc4334a841d01504e7249a19fdd98c6823",
+  "025476c2e83188368da1ff3e292e7acafcdb3566bb0ad253f62fc70f07aeee6357", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "9b550d9f13d80d2fd8b82ef12c67af7a0bbd413366dd462b96e530ced8bbced36a1b31f281e336c497dcee0a187f6d5bfe165c34ecbdb91ac72da934f32a1441"];
+#forall "signatures from ecdsa_sign.coax verify and refuse the wrong key" i: 0..<4 #steps 4000000000 {
+  key: [33] u8; other: [33] u8; hash: [32] u8; sig: [64] u8;
+  k := decode(SIGNED[3*i], key[..]); h := decode(SIGNED[3*i+1], hash[..]); s := decode(SIGNED[3*i+2], sig[..]);
+  #assert ecdsa_verify_vartime(h, k, s, true);
+  #assert !ecdsa_verify_vartime(h, decode(SIGNED[3*((i+1)%4)], other[..]), s, true);
+}
+// book:end check

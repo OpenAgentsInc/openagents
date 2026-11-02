@@ -78,7 +78,7 @@ otherwise. Nostr From Scratch needs Parts I–V.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| 19. Verify ECDSA — planned | 5, 14, 16, 17 | Every case in Wycheproof's `ecdsa_secp256k1_sha256_bitcoin_test.json` gives its expected result. A high-S signature refuses under the low-S rule. | SEC 1, BIP-146 |
+| [19. Verify ECDSA](ch019-verify-ecdsa.md) — implemented | 5, 14, 16, 17 | Every case in Wycheproof's `ecdsa_secp256k1_sha256_bitcoin_test.json` gives its expected result. A high-S signature refuses under the low-S rule. | SEC 1, BIP-146 |
 | 20. Sign with ECDSA — planned | 19, 8, 18, 3 | RFC 6979 nonces match published secp256k1 vectors. Every signature is low-S and verifies in an independent library. A secret-probe run finds no secret-dependent branch. | RFC 6979, BIP-62, BIP-146 |
 | 21. Strict DER — planned | 19 | Every DER case in Bitcoin Core's `script_tests.json` that BIP-66 decides gives its expected result. | BIP-66 |
 | 22. Public key recovery and signed messages — planned | 19 | Bitcoin Core `signmessage` signatures for pinned keys verify, and recovery returns the signing key. A recovery ID out of range refuses. | Bitcoin Core `signmessage` |

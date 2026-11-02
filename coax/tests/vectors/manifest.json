@@ -186,6 +186,19 @@
       "bytes": 241127
     },
     {
+      "path": "upstream/wycheproof/ecdsa_secp256k1_sha256_bitcoin_test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdsa_secp256k1_sha256_bitcoin_test.json",
+      "revision": "git:d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "license": "Apache-2.0",
+      "covers": [
+        "ecdsa-secp256k1-verify"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "d3729ce83ff9740c45e74921009a4061eff6c09185b8dd1225ccd06ac57048a4",
+      "bytes": 305419
+    },
+    {
       "path": "upstream/wycheproof/LICENSE",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/LICENSE",

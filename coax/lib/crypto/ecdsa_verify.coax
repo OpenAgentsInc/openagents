@@ -1,0 +1,232 @@
+// Public ECDSA verification on secp256k1 (Bitcoin chapter 19): the
+// signature (r, s) of a 32-byte message hash under a SEC 1 public key, with
+// the low-S rule of BIP-146 when the caller asks for it, and one strict DER
+// reader for a signature without a sighash byte. Verification reads only
+// public data, so it runs in variable time and every name ends in _vartime
+// (Bitcoin chapter 3). Prepared records are internal: only the complete
+// entries below decide that a signature is valid.
+//
+// Bitcoin script's BIP-66 rules (the sighash byte, the size bounds and the
+// history) are chapter 21's. This file reads exactly one DER signature and
+// refuses every encoding that is not the single canonical one.
+#load "secp_mult.coax";
+#load "secp_encode.coax";
+
+EvScalars :: struct { r: ScScalar; s: ScScalar; ok: bool; }
+EvPrepared :: struct { u1: ScScalar; u2: ScScalar; point: SgPoint; r: ScScalar; ready: bool; }
+EvInteger :: struct { end: int; ok: bool; }
+
+// ---- checks
+// Hex into bytes, for the checks below only.
+ev_unhex :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (ev_nibble(text[2*i])*16 + ev_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+ev_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+EV_N_HEX :: "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
+#test "r and s must each be in [1, n-1]" {
+  sig: [64] u8;
+  #assert !ev_scalars_vartime(sig[..]).ok;                       // r = s = 0
+  sig[31] = 1; #assert !ev_scalars_vartime(sig[..]).ok;           // s = 0
+  sig[63] = 1; #assert ev_scalars_vartime(sig[..]).ok;            // r = s = 1
+  sig[31] = 0; #assert !ev_scalars_vartime(sig[..]).ok;           // r = 0
+  n := ev_unhex(EV_N_HEX, sig[0..<32]);
+  #assert !ev_scalars_vartime(sig[..]).ok;                        // r = n
+  sig[31] = 0x40; #assert ev_scalars_vartime(sig[..]).ok;          // r = n - 1
+  m := ev_unhex(EV_N_HEX, sig[32..<64]);
+  #assert !ev_scalars_vartime(sig[..]).ok;                        // s = n
+  #assert !ev_scalars_vartime(sig[0..<63]).ok && !ev_scalars_vartime(sig[0..<0]).ok;
+}
+#test "low-S: (n-1)/2 passes, (n+1)/2 and n - 1 are high" {
+  half := ScScalar.{limbs=[8]u32.[0x681b20a0,0xdfe92f46,0x57a4501d,0x5d576e73,0xffffffff,0xffffffff,0xffffffff,0x7fffffff]};
+  #assert sc_equal(sc_add(sc_add(half, half), sc_small(1)), ScScalar.{});   // 2 * half + 1 = n
+  #assert !ev_high_s_vartime(half) && !ev_high_s_vartime(sc_small(1));
+  #assert ev_high_s_vartime(sc_add(half, sc_small(1))) && ev_high_s_vartime(sc_negate(sc_small(1)));
+  // A difference in the lowest limb alone decides, and a top bit alone.
+  below := half; below.limbs[0] -= 1; #assert !ev_high_s_vartime(below);
+  top: ScScalar; top.limbs[7] = 0x80000000; #assert ev_high_s_vartime(top);
+  carry: ScScalar; carry.limbs[3] = 0x80000000; #assert !ev_high_s_vartime(carry);
+}
+#test "DER: the canonical form reads, every other form refuses" {
+  b: [80] u8; out: [64] u8;
+  #assert ecdsa_der_read_vartime(ev_unhex("3006020101020102", b[..]), out[..]) && out[31] == 1 && out[63] == 2 && out[0] == 0;
+  // r = 0 is canonical DER; the range check refuses it later.
+  #assert ecdsa_der_read_vartime(ev_unhex("3006020100020101", b[..]), out[..]) && out[31] == 0 && out[63] == 1;
+  // A sign byte in front of a high first byte, both integers.
+  #assert ecdsa_der_read_vartime(ev_unhex("30080202008002020081", b[..]), out[..]) && out[31] == 0x80 && out[63] == 0x81;
+  t := "3044022000000000000000000000000000000000000000000000000000000000000000010220ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f";
+  #assert !ecdsa_der_read_vartime(ev_unhex(t, b[..]), out[..]);  // r has needless zeros, s is negative
+  u := "3045022100ff000000000000000000000000000000000000000000000000000000000000010220007fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+  #assert !ecdsa_der_read_vartime(ev_unhex(u, b[..]), out[..]);  // s has a needless zero
+  // 33 bytes with the sign byte read as 32.
+  v := "3045022100ff0000000000000000000000000000000000000000000000000000000000000102207fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+  #assert ecdsa_der_read_vartime(ev_unhex(v, b[..]), out[..]) && out[0] == 0xff && out[31] == 1 && out[32] == 0x7f && out[63] == 0xff;
+  // Each fault alone, from 3006020101020102.
+  out[0] = 9;
+  #assert !ecdsa_der_read_vartime(ev_unhex("3106020101020102", b[..]), out[..]);   // not a SEQUENCE
+  #assert !ecdsa_der_read_vartime(ev_unhex("3007020101020102", b[..]), out[..]);   // length too long
+  #assert !ecdsa_der_read_vartime(ev_unhex("3005020101020102", b[..]), out[..]);   // length too short
+  #assert !ecdsa_der_read_vartime(ev_unhex("300602010102010200", b[..]), out[..]); // a trailing byte
+  #assert !ecdsa_der_read_vartime(ev_unhex("300702010102010200", b[..]), out[..]); // the same, counted in the length
+  #assert !ecdsa_der_read_vartime(ev_unhex("3006030101020102", b[..]), out[..]);   // r not an INTEGER
+  #assert !ecdsa_der_read_vartime(ev_unhex("3006020101030102", b[..]), out[..]);   // s not an INTEGER
+  #assert !ecdsa_der_read_vartime(ev_unhex("3006020001020102", b[..]), out[..]);   // r of length 0
+  #assert !ecdsa_der_read_vartime(ev_unhex("3006020002020101", b[..]), out[..]);   // r of length 0, then a good s
+  #assert !ecdsa_der_read_vartime(ev_unhex("3006020201020102", b[..]), out[..]);   // r runs into s
+  #assert !ecdsa_der_read_vartime(ev_unhex("3006020101020202", b[..]), out[..]);   // s runs past the end
+  #assert !ecdsa_der_read_vartime(ev_unhex("300702050101010101", b[..]), out[..]); // r takes every byte
+  #assert !ecdsa_der_read_vartime(ev_unhex("3006020181020102", b[..]), out[..]);   // r negative
+  #assert !ecdsa_der_read_vartime(ev_unhex("3006020101020180", b[..]), out[..]);   // s negative
+  #assert !ecdsa_der_read_vartime(ev_unhex("300702020001020102", b[..]), out[..]); // r with a needless zero
+  #assert !ecdsa_der_read_vartime(ev_unhex("300702010102020002", b[..]), out[..]); // s with a needless zero
+  #assert !ecdsa_der_read_vartime(ev_unhex("30810602010102010200", b[..]), out[..]);  // long-form length
+  #assert !ecdsa_der_read_vartime(ev_unhex("3006020101020102", b[..]), out[0..<63]);  // short output
+  #assert !ecdsa_der_read_vartime(ev_unhex("30050201010201", b[..]), out[..]);     // 7 bytes
+  #assert !ecdsa_der_read_vartime(b[0..<1], out[..]) && !ecdsa_der_read_vartime(b[0..<0], out[..]);
+  #assert out[0] == 9;                                                             // refusals write nothing
+  // r of 34 bytes, 00 80 then 32 more: past every scalar.
+  w := "3027022200800000000000000000000000000000000000000000000000000000000000000000020101";
+  #assert !ecdsa_der_read_vartime(ev_unhex(w, b[..]), out[..]);
+  // 33 bytes whose first byte is not the sign byte: at least 2^256.
+  x := "30260221010000000000000000000000000000000000000000000000000000000000000000020101";
+  #assert !ecdsa_der_read_vartime(ev_unhex(x, b[..]), out[..]);
+}
+// libsecp256k1's signature of SHA-256("Satoshi Nakamoto") under the key 1,
+// and two Wycheproof cases (ecdsa_secp256k1_sha256_bitcoin_test.json): tcId
+// 346, valid, whose x(R) is at least n, and tcId 386, invalid, whose R is
+// infinity. Hashes are SHA-256 of the messages, from Python's hashlib.
+EV_T_KEY :: "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
+EV_T_HASH :: "a0dc65ffca799873cbea0ac274015b9526505daaaed385155425f7337704883e";
+EV_T_SIG :: "934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d82442ce9d2b916064108014783e923ec36b49743e2ffa1c4496f01a512aafd9e5";
+EV_T_HIGH :: "dbbd3162d46e9f9bef7feb87c16dc13b4f6568a87f4e83f728e2443ba586675c";   // n - s
+EV_T_W_HASH :: "bb5a52f42f9c9261ed4361f59422a1e30036e7c32b270c8807a419feca605023";
+EV_T_346_KEY :: "0407310f90a9eae149a08402f54194a0f7b4ac427bf8d9bd6c7681071dc47dc36226a6d37ac46d61fd600c0bf1bff87689ed117dda6b0e59318ae010a197a26ca0";
+EV_T_346_SIG :: "30160211014551231950b75fc4402da1722fc9baeb020103";
+EV_T_386_KEY :: "04d533b789a4af890fa7a82a1fae58c404f9a62a50b49adafab349c513b415087401b4171b803e76b34a9861e10f7bc289a066fd01bd29f84c987a10a5fb18c2d4";
+EV_T_386_SIG :: "304402207fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0022055555555555555555555555555555554e8e4f44ce51835693ff0ca2ef01215c0";
+#test "verification accepts, refuses and applies low-S" #steps 2000000000 {
+  k: [65] u8; h: [32] u8; s: [64] u8; d: [80] u8;
+  key := ev_unhex(EV_T_KEY, k[..]); hash := ev_unhex(EV_T_HASH, h[..]); sig := ev_unhex(EV_T_SIG, s[..]);
+  #assert ecdsa_verify_vartime(hash, key, sig, true);
+  h[31] ^= 1; #assert !ecdsa_verify_vartime(hash, key, sig, true); h[31] ^= 1;
+  #assert !ecdsa_verify_vartime(hash[0..<31], key, sig, true) && !ecdsa_verify_vartime(hash, key[0..<64], sig, true);
+  high := ev_unhex(EV_T_HIGH, s[32..<64]);
+  #assert !ecdsa_verify_vartime(hash, key, sig, true) && ecdsa_verify_vartime(hash, key, sig, false);
+  ww := ev_unhex(EV_T_W_HASH, h[..]);
+  #assert ecdsa_verify_der_vartime(ww, ev_unhex(EV_T_346_KEY, k[..]), ev_unhex(EV_T_346_SIG, d[..]), true);
+  #assert !ecdsa_verify_der_vartime(ww, ev_unhex(EV_T_386_KEY, k[..]), ev_unhex(EV_T_386_SIG, d[..]), true);
+  #assert !ecdsa_verify_der_vartime(ww, ev_unhex(EV_T_346_KEY, k[..]), ev_unhex(EV_T_346_SIG, d[..])[0..<23], true);
+}
+#test "a prepared record is refused for infinity and when not ready" #steps 1000000000 {
+  h: [32] u8; s: [64] u8;
+  hash := ev_unhex(EV_T_HASH, h[..]); sig := ev_unhex(EV_T_SIG, s[..]);
+  prepared := ev_prepare_vartime(hash, sg_generator(), sig, true);
+  #assert prepared.ready && ev_prepared_matches_vartime(prepared);
+  // With Q = infinity and u1 + u2 in place of u1, u1·G alone is R: only the
+  // infinity check refuses it.
+  forged := prepared; forged.u1 = sc_add(prepared.u1, prepared.u2); forged.point = sg_infinity();
+  #assert !ev_prepared_matches_vartime(forged);
+  forged = prepared; forged.ready = false; #assert !ev_prepared_matches_vartime(forged);
+  #assert !ev_prepare_vartime(hash[0..<31], sg_generator(), sig, true).ready;
+}
+
+// ---- the scalars
+// r and s from a compact r || s. Each must be in [1, n-1]; neither is
+// reduced, so one signature has one pair of values. sc_load gives zero for
+// a value at least n, so the zero test covers both ends.
+ev_scalars_vartime :: (signature: [] u8) -> EvScalars {
+  if signature.count != 64 { return EvScalars.{}; }
+  r := sc_load(signature[0..<32]).value; s := sc_load(signature[32..<64]).value;
+  if sc_is_zero(r) || sc_is_zero(s) { return EvScalars.{}; }
+  return EvScalars.{r=r,s=s,ok=true};
+}
+// True when s > (n-1)/2, the high half that BIP-146's low-S rule refuses:
+// for s < n, exactly when 2s >= n. The same test as ecdsa_sign.coax's ec_low.
+ev_high_s_vartime :: (s: ScScalar) -> bool {
+  wide: [9] u32; carry: u32;
+  for i: 0..<8 { wide[i] = (s.limbs[i] << 1) | carry; carry = s.limbs[i] >> 31; }
+  wide[8] = carry;
+  return sc_subtract_n(wide).borrow == 0;
+}
+
+// ---- the equation
+// book:begin prepare
+// u1 = z/s and u2 = r/s for the hash z, after the range and low-S checks.
+// ready means only that preparation succeeded, not that the signature is valid.
+ev_prepare_vartime :: (hash: [] u8, point: SgPoint, signature: [] u8, low_s: bool) -> EvPrepared {
+  result: EvPrepared;
+  if hash.count != 32 { return result; }
+  scalars := ev_scalars_vartime(signature);
+  if !scalars.ok { return result; }
+  if low_s && ev_high_s_vartime(scalars.s) { return result; }
+  z := sc_reduce_bytes(hash).value;                  // a hash at least n is reduced
+  w := sc_inverse(scalars.s).value;                  // s is nonzero, so w exists
+  return EvPrepared.{u1=sc_mul(z,w),u2=sc_mul(scalars.r,w),point=point,r=scalars.r,ready=true};
+}
+// book:end prepare
+// book:begin matches
+// R = u1·G + u2·Q. Accept only a finite R with x(R) mod n = r. Q must not
+// be infinity: then R = u1·G, which anyone can match without a key.
+ev_prepared_matches_vartime :: (prepared: EvPrepared) -> bool {
+  zero: SecpField;
+  if !prepared.ready || sf_equal_mask(prepared.point.z, zero) != 0 { return false; }
+  // An invalid Q gives a refused result, which is canonical infinity.
+  affine := sg_to_affine(ecmult_vartime(prepared.u1, prepared.point, prepared.u2).value).value;
+  if affine.infinity != 0 { return false; }
+  x: [32] u8;
+  #assert sf_store(affine.x, x[..]);
+  return sc_equal(sc_reduce_bytes(x[..]).value, prepared.r);   // x is below p; n < p
+}
+// book:end matches
+
+// ---- the entries
+// book:begin verify
+// The signature r || s (32 bytes each) of a 32-byte hash under a public key
+// in SEC 1 form (33 bytes compressed or 65 uncompressed; chapter 17). With
+// low_s, an s above (n-1)/2 refuses, as BIP-146 and Wycheproof's Bitcoin
+// variant require; without it, both halves verify, as consensus allows.
+ecdsa_verify_vartime :: (hash: [] u8, public_key: [] u8, signature: [] u8, low_s: bool) -> bool #export_c {
+  key := se_decode(public_key);
+  if !key.ok { return false; }
+  return ev_prepared_matches_vartime(ev_prepare_vartime(hash, key.value, signature, low_s));
+}
+// The same for a strict DER signature (no sighash byte).
+ecdsa_verify_der_vartime :: (hash: [] u8, public_key: [] u8, der: [] u8, low_s: bool) -> bool #export_c {
+  signature: [64] u8;
+  if !ecdsa_der_read_vartime(der, signature[..]) { return false; }
+  return ecdsa_verify_vartime(hash, public_key, signature[..], low_s);
+}
+// book:end verify
+
+// ---- DER
+// book:begin der
+// One INTEGER at der[at..]: 0x02, a length from 1 to 33, then the value,
+// big-endian, not negative and with no needless leading zero. It is copied
+// right-aligned into the 32 bytes of out. Returns the index after it.
+ev_der_integer_vartime :: (der: [] u8, at: int, out: [] u8) -> EvInteger {
+  if der.count - at < 3 || der[at] != 0x02 { return EvInteger.{}; }
+  length := cast(int) der[at+1]; start := at + 2;
+  if length < 1 || length > 33 || der.count - start < length { return EvInteger.{}; }
+  if der[start] >= 0x80 { return EvInteger.{}; }                                     // negative
+  if length > 1 && der[start] == 0 && der[start+1] < 0x80 { return EvInteger.{}; }  // a needless zero
+  if length == 33 && der[start] != 0 { return EvInteger.{}; }                       // at least 2^256
+  skip := ifx length == 33 then 1 else 0;
+  for i: skip..<length { out[out.count-length+i] = der[start+i]; }
+  return EvInteger.{end=start+length,ok=true};
+}
+// A DER signature, SEQUENCE { INTEGER r, INTEGER s } with nothing after it,
+// read into the compact r || s. out is written only when the result is true.
+// The range of r and s is checked later, by the verifier. The shortest
+// signature is 8 bytes; two 33-byte integers make the longest, 72.
+ecdsa_der_read_vartime :: (der: [] u8, out: [] u8) -> bool #export_c {
+  if out.count != 64 || der.count < 8 { return false; }
+  if der[0] != 0x30 || cast(int) der[1] != der.count - 2 { return false; }   // short-form length only
+  compact: [64] u8;
+  r := ev_der_integer_vartime(der, 2, compact[0..<32]);
+  if !r.ok { return false; }
+  s := ev_der_integer_vartime(der, r.end, compact[32..<64]);
+  if !s.ok || s.end != der.count { return false; }
+  for i: 0..<64 { out[i] = compact[i]; }
+  return true;
+}
+// book:end der
