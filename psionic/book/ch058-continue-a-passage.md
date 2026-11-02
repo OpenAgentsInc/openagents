@@ -305,11 +305,20 @@ over every cached position up to its own:
 //       max(a, b) = (a + b + |a - b|) / 2, before exponentiating, since
 //       layer 1 of the real model has scores that overflow exp unshifted
 //   x += wo a; x += w2 (silu(w1 norm(x)) * w3 norm(x))
+// The rotation is Llama 3's here; chapter 81's Ministral runs the same step
+// with its YaRN frequencies and adjacent pairs (LmRope.yarn).
+LmRope :: enum u8 {llama3;yarn;}
 lm_layer_step :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:int,out:[]f32,work:[]f32)->MsResult #export_c {
+    return lm_layer_rope(s,w,c,layer,start,x,n,out,work,LmRope.llama3);
+}
+lm_turn :: (rope:LmRope,v:[]f32,heads:int,d:int,position:int,freqs:[]f64) {
+    if rope==LmRope.yarn {ms_rotate(v,heads,d,position,freqs);} else {lm_rotate(v,heads,d,position,freqs);}
+}
+lm_layer_rope :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:int,out:[]f32,work:[]f32,rope:LmRope)->MsResult #export_c {
     if !ms_shape_valid(s) || !ms_layer_sizes(s,w) || !lm_cache_fits(s,c) || layer<0 || layer>=s.layers || n<1 || start<0 || start+n>c.capacity {return MsResult.{status=MsStatus.shape};}
     d:=s.width;hd:=s.head_dim;q:=s.heads*hd;kv:=s.kv_heads*hd;group:=s.heads/s.kv_heads;base:=layer*c.capacity*kv;
     if x.count!=n*d || out.count<n*d || work.count<n*q {return MsResult.{status=MsStatus.capacity};}
-    freqs:[128]f64;lm_rope_frequencies(hd,freqs[..]);
+    freqs:[128]f64;if rope==LmRope.yarn {ms_rope_frequencies(hd,freqs[..]);} else {lm_rope_frequencies(hd,freqs[..]);}
     hb:[8192]f32;ob:[8192]f32;ab:[16384]f32;gb:[32768]f32;ub:[32768]f32;sb:[64]f64;sg:[32768]f32;stage:=sg[..];
     h:=hb[0..<d];o:=ob[0..<d];a:=ab[0..<q];gate:=gb[0..<s.hidden];up:=ub[0..<s.hidden];
     for t:0..<n {
@@ -318,7 +327,7 @@ lm_layer_step :: (s:MsShape,w:MsLayer,c:LmCache,layer:int,start:int,x:[]f32,n:in
         r:=ms_project(w.wq,q,d,h,qs,stage);if r.status!=MsStatus.ok {return r;}
         r=ms_project(w.wk,kv,d,h,ks,stage);if r.status!=MsStatus.ok {return r;}
         r=ms_project(w.wv,kv,d,h,vs,stage);if r.status!=MsStatus.ok {return r;}
-        lm_rotate(qs,s.heads,hd,p,freqs[..]);lm_rotate(ks,s.kv_heads,hd,p,freqs[..]);
+        lm_turn(rope,qs,s.heads,hd,p,freqs[..]);lm_turn(rope,ks,s.kv_heads,hd,p,freqs[..]);
     }
     for t:0..<n {
         p:=start+t;
@@ -373,7 +382,7 @@ showed here, when the first whole-model run refused at the readout:
 // is read in chunks of `rows`, at most that limit: three of 32,768 and one
 // of 29,952. cause names the first row of a refused chunk.
 LM_READOUT_ROWS :: 32768;
-lm_readout :: (s:MsShape,head:[]u8,norm:[]u8,hidden:[]f32,logits:[]f32,work:[]f32,rows:int)->MsResult {
+lm_readout :: (s:MsShape,head:[]u8,norm:[]u8,hidden:[]f32,logits:[]f32,work:[]f32,rows:int)->MsResult #export_c {
     if !qm_valid(1,rows,s.width) || head.count!=2*s.vocab*s.width || logits.count<s.vocab {return MsResult.{status=MsStatus.shape};}
     first:=0;
     while first<s.vocab {
@@ -396,8 +405,9 @@ through the final norm and the separate head:
 ```jai
 // The whole decoder over new tokens at positions start..<start+tokens.count,
 // and the logits of the last one through the final norm and the untied head.
-// hidden holds two residual buffers of count x width; work is lm_work.
-LmModel :: struct {embed:[]u8;norm:[]u8;head:[]u8;layers:[]MsLayer;}
+// hidden holds two residual buffers of count x width; work is lm_work. rope
+// picks the layers' rotation (Llama 3's unless set).
+LmModel :: struct {embed:[]u8;norm:[]u8;head:[]u8;layers:[]MsLayer;rope:LmRope;}
 lm_work :: (s:MsShape,count:int)->int #export_c {
     a:=count*s.heads*s.head_dim;b:=s.width+s.vocab;return a+b-nx_min(a,b);
 }
@@ -408,7 +418,7 @@ lm_decode :: (s:MsShape,m:LmModel,c:LmCache,start:int,tokens:[]int,hidden:[]f32,
     r:=ms_embed(s,m.embed,tokens,hidden[0..<n]);if r.status!=MsStatus.ok {return r;}
     from:=0;
     for l:0..<s.layers {
-        to:=n-from;r=lm_layer_step(s,m.layers[l],c,l,start,hidden[from..<from+n],tokens.count,hidden[to..<to+n],work);
+        to:=n-from;r=lm_layer_rope(s,m.layers[l],c,l,start,hidden[from..<from+n],tokens.count,hidden[to..<to+n],work,m.rope);
         if r.status!=MsStatus.ok {r.cause=l;return r;}
         from=to;
     }

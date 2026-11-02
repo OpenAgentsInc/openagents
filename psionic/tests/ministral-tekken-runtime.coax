@@ -1,0 +1,18 @@
+// Chapter 81's whole-tokenizer entry: the bounded tekken.json reader, the
+// hash index and Tekken's encoder, exported for psionic/tests/ministral_tekken.c.
+// C reads the file and writes the ids; all parsing and encoding is
+// psionic/lib/ministral.coax.
+#load "../lib/ministral.coax";
+
+// Read every ordinary entry of tekken.json into caller storage and index it.
+mt_load :: (json:string,store:[]u8,bytes:[]string,ranks:[]int,slots:[]int)->MsResult #export_c {
+    r:=ms_tekken_read(json,MS_3B.vocab,MS_SPECIALS,store,bytes,ranks);if r.status!=MsStatus.ok {return r;}
+    x:=ms_index(MsTable.{bytes=bytes[0..<r.written],ranks=ranks[0..<r.written],slots=slots});
+    if x.status!=MsStatus.ok {return x;}
+    return r;
+}
+mt_texts :: ()->int #export_c {return MS_TEKKEN_TEXTS.count;}
+// Fixture string k encoded over the loaded table.
+mt_encode :: (bytes:[]string,ranks:[]int,slots:[]int,k:int,out:[]int)->MsResult #export_c {
+    return ms_encode(MsTable.{bytes=bytes,ranks=ranks,slots=slots},MS_TEKKEN_TEXTS[k],out);
+}

@@ -1,7 +1,7 @@
 4 key-value heads against the pinned file: checkpoint, first missing: layers.0.attention.wk.weight BF16 512,3072
 27 layers: checkpoint, first missing: layers.26.attention.wk.weight BF16 1024,3072
 30 query heads over 8 key-value heads: shape
-non-ASCII text: MsResult.{status = unsupported, written = 0, cause = 3}
+a broken UTF-8 sequence: MsResult.{status = unsupported, written = 0, cause = 3}
 a byte outside the fixture table: MsResult.{status = range, written = 0, cause = 3}
 chat into 6 ids: MsResult.{status = capacity, written = 0, cause = 7}
 token 16 of 16: MsResult.{status = range, written = 0, cause = 1}

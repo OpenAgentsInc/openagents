@@ -9,8 +9,9 @@ main :: () {
     r:=ms_inventory(MS_3B,MS_PINNED_MANIFEST);
     print("checkpoint %: % tensors, % text parameters, % image tensors: %\n",cast(string)MS_PINNED_REVISION[0..<8],MS_PINNED_TENSORS,r.written,r.cause,r.status);
 
-    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
-    for k:0..<3 {
+    rig:MsTekkenRig;t:=ms_tekken_fixture(rig.data[..],rig.bytes[..],rig.ranks[..],rig.slots[..]);ids:[64]int;
+    picks:=[5]int.[0,1,2,9,11];
+    for k:picks {
         e:=ms_encode(t,MS_TEKKEN_TEXTS[k],ids[..]);print("tekken %:",k);
         for i:0..<e.written {print(" %",ids[i]);}print("\n");
     }

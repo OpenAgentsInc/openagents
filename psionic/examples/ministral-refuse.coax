@@ -1,4 +1,4 @@
-// Chapter 81: a checkpoint that does not fit, text Tekken cannot split yet,
+// Chapter 81: a checkpoint that does not fit, text that is not UTF-8,
 // and broken decoder inputs, each refused with its status.
 #import "Basic";
 #load "../lib/ministral.coax";
@@ -12,8 +12,8 @@ main :: () {
     print("27 layers: %, first missing: %\n",r.status,cast(string)buf[0..<n]);
     d=MS_3B;d.heads=30;print("30 query heads over 8 key-value heads: %\n",ms_inventory(d,MS_PINNED_MANIFEST).status);
 
-    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
-    e:=ms_encode(t,"café",ids[..]);print("non-ASCII text: %\n",e);
+    rig:MsTekkenRig;t:=ms_tekken_fixture(rig.data[..],rig.bytes[..],rig.ranks[..],rig.slots[..]);ids:[64]int;
+    cut:=[5]u8.[0x63,0x61,0x66,0xc3,0x28];e:=ms_encode(t,cast(string)cut[..],ids[..]);print("a broken UTF-8 sequence: %\n",e);
     e=ms_encode(t,"on Q~",ids[..]);print("a byte outside the fixture table: %\n",e);
     print("chat into 6 ids: %\n",ms_chat(t,"Hello","What",ids[0..<6]));
 

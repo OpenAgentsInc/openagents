@@ -128,7 +128,7 @@ static int run(const char *dir, const char *tokpath, int steps, double temperatu
     coax_t_MsLayer layers[LAYERS];
     for (int l = 0; l < LAYERS; l++) layers[l] = layer(l);
     coax_t_LmModel m = {tensor("model.embed_tokens.weight", VOCAB, D), tensor("model.norm.weight", D, 0),
-                        tensor("lm_head.weight", VOCAB, D), {layers, LAYERS}};
+                        tensor("lm_head.weight", VOCAB, D), {layers, LAYERS}, COAX_LmRope_llama3};
     int64_t cache_n = lm_cache_size(S, CAPACITY), work_n = lm_work(S, CAPACITY);
     float *keys = calloc(cache_n, 4), *values = calloc(cache_n, 4), *hidden = calloc(2 * CAPACITY * D, 4);
     float *work = calloc(work_n, 4), *logits = calloc(VOCAB, 4), *again = calloc(VOCAB, 4);

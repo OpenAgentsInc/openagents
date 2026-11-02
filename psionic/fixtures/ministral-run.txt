@@ -1,0 +1,36 @@
+# Chapter 81's recorded whole-model run of Ministral-3-3B-Instruct-2512-BF16 (revision b6d637be),
+# from psionic/tests/check_ministral_slices.sh --run on 2026-11-02: the Coax run on one CPU thread,
+# then psionic/tests/ministral_run_oracle.py in float64 on 20 processes. Recorded, not a routine check.
+prompt (10 tokens): 1 3 7493 1395 1278 8961 1307 5498 1063 4
+greedy, all 26 layers through the cache: 8 tokens, cache length 17, 151.6 s: 1784 8961 1307 5498 1395 1603 42572 12617
+full recompute over 17 tokens, 136.1 s: last logits identical bits to the cached run
+layer  0: 17 positions: max |difference| 1.717e-07, largest |value| 3.535e+00
+layer  1: 17 positions: max |difference| 2.971e-07, largest |value| 4.084e+00
+layer  2: 17 positions: max |difference| 9.620e-05, largest |value| 5.357e+02
+layer  3: 17 positions: max |difference| 8.375e-05, largest |value| 5.358e+02
+layer  4: 17 positions: max |difference| 1.089e-04, largest |value| 5.360e+02
+layer  5: 17 positions: max |difference| 9.338e-05, largest |value| 5.362e+02
+layer  6: 17 positions: max |difference| 9.673e-05, largest |value| 5.363e+02
+layer  7: 17 positions: max |difference| 1.133e-04, largest |value| 5.364e+02
+layer  8: 17 positions: max |difference| 8.838e-05, largest |value| 5.366e+02
+layer  9: 17 positions: max |difference| 5.475e-05, largest |value| 5.368e+02
+layer 10: 17 positions: max |difference| 3.119e-05, largest |value| 5.370e+02
+layer 11: 17 positions: max |difference| 2.495e-05, largest |value| 5.376e+02
+layer 12: 17 positions: max |difference| 1.994e-05, largest |value| 5.379e+02
+layer 13: 17 positions: max |difference| 4.872e-05, largest |value| 5.382e+02
+layer 14: 17 positions: max |difference| 5.088e-05, largest |value| 5.384e+02
+layer 15: 17 positions: max |difference| 7.391e-05, largest |value| 5.386e+02
+layer 16: 17 positions: max |difference| 1.056e-04, largest |value| 5.388e+02
+layer 17: 17 positions: max |difference| 1.158e-04, largest |value| 5.409e+02
+layer 18: 17 positions: max |difference| 1.559e-04, largest |value| 5.411e+02
+layer 19: 17 positions: max |difference| 1.462e-04, largest |value| 5.412e+02
+layer 20: 17 positions: max |difference| 1.537e-04, largest |value| 5.416e+02
+layer 21: 17 positions: max |difference| 1.482e-04, largest |value| 5.417e+02
+layer 22: 17 positions: max |difference| 1.666e-04, largest |value| 5.416e+02
+layer 23: 17 positions: max |difference| 1.555e-04, largest |value| 5.412e+02
+layer 24: 17 positions: max |difference| 1.534e-04, largest |value| 5.414e+02
+layer 25: 17 positions: max |difference| 1.247e-04, largest |value| 4.624e+01
+last logits: max |difference| 1.223e-06, largest |value| 2.245e+01
+reference greedy at positions 9..16: [1784, 8961, 1307, 5498, 1395, 1603, 42572, 12617] (the tokens the Coax run emitted)
+emitted text: 'The capital of France is **Paris**.'
+reference: 227 s on 20 processes

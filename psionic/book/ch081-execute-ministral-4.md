@@ -1,11 +1,11 @@
 # 81. Execute Ministral 4
 
 > **Status: partly implemented.** The pinned checkpoint's inventory, Tekken
-> and the chat format on ASCII text, the YaRN frequencies, and one decoder
-> layer and a readout chunk on the original weights run on the CPU and match
-> independent references. Tekken's full Unicode pattern, all 26 layers on the
-> original weights with a recorded reference, greedy tokens from the real
-> model, positions past 16,384 and the reasoning format remain.
+> over the whole of `tekken.json` with its Unicode pattern, the chat format,
+> the YaRN frequencies, and all 26 layers with a key-value cache run on the
+> CPU. A recorded greedy run on the original weights matches a float64
+> reference at every layer and in its tokens. Positions past 64, the
+> reasoning and tool formats and the image path remain.
 
 This chapter opens the Mistral ladder with its smallest model. The plan names
 the chapter "Ministral 4"; the pinned target is
@@ -152,17 +152,26 @@ The pattern is the one in `tekken.json`:
 ```
 
 Unlike gpt-oss's pattern (chapter 63), it has no contraction branch and
-splits digits one at a time. On ASCII text its Unicode classes reduce to five:
-upper case, lower case, digit, space (tab to carriage return, and the space)
-and other. This chapter implements the pattern for ASCII text only and refuses
-anything else.
+splits numbers one code point at a time.
 
-<!-- source: psionic/lib/ministral.coax pieces -->
+### Classes of code point
+
+The pattern names Unicode general categories. Call the set
+`[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]` A and `[\p{Ll}\p{Lm}\p{Lo}\p{M}]` B. Every
+code point then falls in one of seven classes: upper (Lu, Lt; in A only),
+lower (Ll; in B only), both (Lm, Lo; in A and in B), mark (M; in A and B, but
+not a letter), number (N), space (Unicode White_Space) and other. The
+classes come from a table, `psionic/fixtures/ministral-unicode.coax`, that
+the reference script writes from Python's `unicodedata` (Unicode 15.1.0):
+3,123 ranges, each a first code point and a class. Text is UTF-8, so a
+decoder comes first, and it refuses anything that is not well-formed.
+
+<!-- source: psionic/lib/ministral.coax classes -->
 ```jai
-// Tekken splits text with one pattern before byte-pair merging. This is the
-// pattern on ASCII text, where its Unicode classes reduce to: upper A-Z,
-// lower a-z, digit 0-9, space (tab to carriage return, and ' '), and other.
-MS_UPPER :: 0; MS_LOWER :: 1; MS_DIGIT :: 2; MS_SPACE :: 3; MS_OTHER :: 4;
+// Tekken's pattern sees seven classes of code point. ms_class is the class
+// of one ASCII byte; ms_point_class looks any code point up in a table of
+// 3,123 ranges written from Unicode 15.1.0's general categories.
+MS_UPPER :: 0; MS_LOWER :: 1; MS_DIGIT :: 2; MS_SPACE :: 3; MS_OTHER :: 4; MS_BOTH :: 5; MS_MARK :: 6;
 ms_class :: (c:u8)->int {
     if c>='A' && c<='Z' {return MS_UPPER;}
     if c>='a' && c<='z' {return MS_LOWER;}
@@ -170,37 +179,98 @@ ms_class :: (c:u8)->int {
     if c==' ' || (c>=9 && c<=13) {return MS_SPACE;}
     return MS_OTHER;
 }
+ms_point_class :: (code:int)->int {
+    lo:=0;hi:=MS_UNICODE_RANGES;
+    while hi-lo>1 {mid:=(lo+hi)/2;if MS_UNICODE_STARTS[mid]<=code {lo=mid;} else {hi=mid;}}
+    return cast(int)MS_UNICODE_CLASSES[lo];
+}
+// One UTF-8 sequence at s[at]: its code point and the offset after it, or
+// code -1 when the bytes are not well-formed UTF-8 (a stray continuation
+// byte, a cut-off sequence, an overlong form, a surrogate, or past U+10FFFF).
+// A stray continuation byte (0x80-0xbf) starts below zero and a lead of 0xf8
+// or more lands past U+10FFFF, so the range checks at the end refuse both.
+MsPoint :: struct {code:int;next:int;}
+ms_utf8 :: (s:string,at:int)->MsPoint {
+    lead:=cast(int)s[at];bad:=MsPoint.{code=-1,next=at};
+    if lead<0x80 {return MsPoint.{code=lead,next=at+1};}
+    n:=3;code:=lead-0xf0;least:=0x10000;
+    if lead<0xe0 {n=1;code=lead-0xc0;least=0x80;} else if lead<0xf0 {n=2;code=lead-0xe0;least=0x800;}
+    if at+n>=s.count {return bad;}
+    for i:1..<n+1 {c:=cast(int)s[at+i];if c<0x80 || c>=0xc0 {return bad;}code=code*64+c-0x80;}
+    if code<least || code>0x10ffff || (code>=0xd800 && code<0xe000) {return bad;}
+    return MsPoint.{code=code,next=at+n+1};
+}
+ms_class_at :: (s:string,at:int)->int {return ms_point_class(ms_utf8(s,at).code);}
+// The pattern's sets as masks of classes: A = Lu Lt Lm Lo M, B = Ll Lm Lo M,
+// and the punctuation run [^\s\p{L}\p{N}] = other and marks.
+MS_SET_A :: 0x61; MS_SET_B :: 0x62; MS_SET_PUNCT :: 0x50;
+ms_in :: (s:string,at:int,set:int)->bool {return (set>>ms_class_at(s,at))&1==1;}
+ms_span :: (s:string,at:int,set:int)->int {p:=at;while p<s.count && ms_in(s,p,set) {p=ms_utf8(s,p).next;}return p;}
+```
+
+### Pieces
+
+A regular-expression engine tries the alternatives in order and, inside one,
+backtracks: a greedy run gives back one code point at a time until the rest
+matches. Because A and B overlap, the first alternative is the subtle one.
+`[A]*` first takes the whole A run. If the code point after the run is in B
+(it can only be lower case, since it is not in A), `[B]+` continues from
+there. Otherwise `[A]*` gives back code points until the next one is in B,
+which is the last both-class or mark code point inside the run, and `[B]+`
+continues from it. The optional first code point is tried taken and then not
+taken, in each alternative before the next. On ASCII text there are no
+both-class or mark code points, and the split is the same as before: upper
+case then lower case, at least one letter.
+
+<!-- source: psionic/lib/ministral.coax pieces -->
+```jai
+// Tekken splits text with one pattern before byte-pair merging:
+//   [^\r\n\p{L}\p{N}]?[A]*[B]+ | [^\r\n\p{L}\p{N}]?[A]+[B]* | \p{N}
+//   | " ?[^\s\p{L}\p{N}]+[\r\n/]*" | \s*[\r\n]+ | \s+(?!\S) | \s+
+// A regex engine tries the alternatives in order and backtracks inside each.
+// [A]*[B]+ from p: A* first takes the whole A run up to e. If the code point
+// at e is lower case (in B; it is not in A), B+ runs on from e. Otherwise A*
+// gives back code points until the one after it is in B: the last code point
+// of the run that is in B (an Lm, Lo or mark). B+ takes it and stops, since
+// what follows it in the run is not in B. Each alternative returns p when
+// it fails.
+ms_alt1 :: (s:string,p:int)->int {
+    e:=ms_span(s,p,MS_SET_A);
+    if e<s.count && ms_class_at(s,e)==MS_LOWER {return ms_span(s,e,MS_SET_B);}
+    last:=p;q:=p;while q<e {if ms_in(s,q,MS_SET_B) {last=ms_utf8(s,q).next;}q=ms_utf8(s,q).next;}
+    return last;
+}
+// [A]+[B]*, tried only after [A]*[B]+ failed from the same p: then the code
+// point after the A run is not lower case, so [B]* adds nothing.
+ms_alt2 :: (s:string,p:int)->int {return ms_span(s,p,MS_SET_A);}
+// The optional first code point may be other, a mark, or a space that is
+// not \r or \n. A mark is in A and in B, so taking it as the first code
+// point or as the start of the letters gives the same piece; only other and
+// space make a difference, and with them taken the letters start after them.
 ms_newline :: (c:u8)->bool {return c==10 || c==13;}
 ms_run :: (s:string,at:int,class:int)->int {p:=at;while p<s.count && ms_class(s[p])==class {p+=1;}return p;}
-// [^\r\n\p{L}\p{N}]? then letters: upper* lower+ (first alternative) or
-// upper+ lower* (second). Both runs are greedy over disjoint classes, so
-// whenever either matches, both end at the end of the lower-case run: the
-// two together are "upper* lower*, at least one letter". The optional first
-// character is taken exactly when it is neither a letter, a digit nor a
-// newline; without it the letters could not start.
 ms_word :: (s:string,at:int)->int {
-    p:=at;c:=ms_class(s[at]);
-    if c==MS_OTHER || (c==MS_SPACE && !ms_newline(s[at])) {p+=1;}
-    lower:=ms_run(s,ms_run(s,p,MS_UPPER),MS_LOWER);
-    if lower>p {return lower;}
+    k:=ms_class_at(s,at);p:=at;
+    if k==MS_OTHER || (k==MS_SPACE && !ms_newline(s[at])) {p=ms_utf8(s,at).next;}
+    e:=ms_alt1(s,p);if e>p {return e;}
+    e=ms_alt2(s,p);if e>p {return e;}
     return at;
 }
-// The end of the piece that starts at `at` (at < s.count).
+// The end of the piece that starts at `at` (at < s.count, s valid UTF-8).
 ms_piece :: (s:string,at:int)->int {
     end:=ms_word(s,at);if end>at {return end;}
-    c:=ms_class(s[at]);
-    if c==MS_DIGIT {return at+1;}
+    if ms_class_at(s,at)==MS_DIGIT {return ms_utf8(s,at).next;}
     // " ?[^\s\p{L}\p{N}]+[\r\n/]*"
     p:=at;if s[p]==' ' {p+=1;}
-    end=ms_run(s,p,MS_OTHER);
+    end=ms_span(s,p,MS_SET_PUNCT);
     if end>p {while end<s.count && (ms_newline(s[end]) || s[end]=='/') {end+=1;}return end;}
     // Whitespace: through the last newline of the run, else all but the last
     // space before a non-space, else the whole run.
-    run:=ms_run(s,at,MS_SPACE);last:=at;
-    for i:at..<run {if ms_newline(s[i]) {last=i+1;}}
+    run:=at;last:=at;final:=at;
+    while run<s.count && ms_class_at(s,run)==MS_SPACE {final=run;if ms_newline(s[run]) {last=run+1;}run=ms_utf8(s,run).next;}
     if last>at {return last;}
-    if run==s.count || run-at==1 {return run;}
-    return run-1;
+    if run==s.count || final==at {return run;}
+    return final;
 }
 ```
 
@@ -210,10 +280,29 @@ is the optional first character, so ` is`, ` the`, ` capital`, ` of` and
 ` France` follow. At `?` no letter follows, so the fourth alternative takes
 the punctuation run: `?`. Seven pieces.
 
+Now trace `Ça coûte 5 €`, 16 bytes. `Ç` (U+00C7) is upper case and `a` lower
+case, so the first piece is `Ça`. At the space, the space is the optional
+first code point and `coûte` is one lower-case run (`û` is lower case):
+` coûte`. The next space is followed by `5`, a number, so no letter
+alternative matches and no punctuation follows; the whitespace rules leave a
+single space as its own piece ` `. Then `5` is one number, and ` €` is a
+space and a run of one non-letter, non-number code point (`€` is a currency
+symbol). Five pieces: `Ça`, ` coûte`, ` `, `5`, ` €`.
+
+Backtracking shows in `A中B`, where `中` (U+4E2D) is Lo, in both sets. `[A]*`
+takes all three code points, but nothing in B follows. It gives back `B`
+(not in B) and then tries `[B]+` at `B`, which fails; it gives back `中`, and
+`[B]+` matches `中`. The pieces are `A中` and `B`. The check compares these
+splits with Python's regular-expression engine over the same pattern, for
+26 such strings: marks first, after a space or after a newline, title-case
+letters, letter-number code points, no-break spaces and ideographic spaces.
+
+### Ranks
+
 Each piece then merges by rank, the rule tiktoken uses: a piece found whole
 in the table is one token; otherwise start from single bytes and repeatedly
 join the adjacent pair whose joined bytes have the lowest rank, the leftmost
-on a tie.
+on a tie. Pieces work on bytes, so `Ç`, two bytes, can be one token or two.
 
 <!-- source: psionic/lib/ministral.coax bpe -->
 ```jai
@@ -243,21 +332,69 @@ A small table shows the tie rule. With `a` at rank 0, `aa` at rank 1 and `b`
 at rank 2, the piece `aaa` has two equal pairs, `aa` at 0 and `aa` at 1. The
 leftmost joins, giving `aa a`, ids 1001 and 1000.
 
-The Coax side does not load all of `tekken.json`. The fixture
-`psionic/fixtures/ministral-tekken.coax` holds Tekken restricted to the
-fixture strings: every entry whose bytes occur inside one of their pieces,
-282 entries with their original ranks. Merging a piece only ever forms
-substrings of that piece, so the restricted table encodes the fixture strings
-exactly as the full one does. A byte the restricted table lacks is refused,
-not guessed.
+Merging looks up many byte strings, so the full table needs more than a scan.
+`MsTable` keeps an optional hash index: a power-of-two array of slots, at
+least twice the number of entries, where slot h holds entry + 1 or 0 when
+empty. A lookup hashes the bytes and steps forward to the next slot until it
+finds the string or an empty slot. A table without slots is still scanned,
+so the small tables in the checks need no index.
+
+<!-- source: psionic/lib/ministral.coax table -->
+```jai
+// A table of byte strings and their ranks. With no slots, a lookup scans
+// every entry. With slots (a power of two, at least twice the entries) it
+// is an open-addressing hash index: slot h holds entry + 1, or 0 when empty.
+MsTable :: struct {bytes:[]string;ranks:[]int;slots:[]int;}
+ms_hash :: (s:string)->int {h:=0;for i:0..<s.count {h=(h*131+cast(int)s[i]+1)%16777213;}return h;}
+ms_rank :: (t:MsTable,s:string)->int {
+    if t.slots.count==0 {for i:0..<t.bytes.count {if t.bytes[i]==s {return t.ranks[i];}}return -1;}
+    mask:=t.slots.count-1;h:=ms_hash(s)&mask;
+    while t.slots[h]!=0 {i:=t.slots[h]-1;if t.bytes[i]==s {return t.ranks[i];}h=(h+1)&mask;}
+    return -1;
+}
+// Fill t's slots. A repeated byte string is refused with its entry.
+ms_index :: (t:MsTable)->MsResult {
+    m:=t.slots.count;
+    if m<2*t.bytes.count || m&(m-1)!=0 || t.ranks.count!=t.bytes.count {return MsResult.{status=MsStatus.capacity,cause=m};}
+    for i:0..<m {t.slots[i]=0;}
+    for i:0..<t.bytes.count {
+        if ms_rank(t,t.bytes[i])>=0 {return MsResult.{status=MsStatus.checkpoint,cause=i};}
+        h:=ms_hash(t.bytes[i])&(m-1);while t.slots[h]!=0 {h=(h+1)&(m-1);}
+        t.slots[h]=i+1;
+    }
+    return MsResult.{written=t.bytes.count};
+}
+// The fixture's restricted table, copied into caller storage and indexed
+// when slots are given.
+ms_tekken_fixture :: (data:[]u8,bytes:[]string,ranks:[]int,slots:[]int)->MsTable {
+    for i:0..<MS_TEKKEN_DATA_BYTES {data[i]=MS_TEKKEN_DATA[i];}
+    for k:0..<MS_TEKKEN_ENTRIES {bytes[k]=cast(string)data[MS_TEKKEN_ENDS[k]..<MS_TEKKEN_ENDS[k+1]];ranks[k]=MS_TEKKEN_RANKS[k];}
+    t:=MsTable.{bytes=bytes[0..<MS_TEKKEN_ENTRIES],ranks=ranks[0..<MS_TEKKEN_ENTRIES],slots=slots};
+    if ms_index(t).status!=MsStatus.ok {t.slots=slots[0..<0];}
+    return t;
+}
+MsTekkenRig :: struct {data:[MS_TEKKEN_DATA_BYTES]u8;bytes:[MS_TEKKEN_ENTRIES]string;ranks:[MS_TEKKEN_ENTRIES]int;slots:[1024]int;}
+```
+
+`ms_tekken_read` reads `tekken.json` itself. It is a bounded reader for this
+one layout, not a general JSON parser: it checks the config (the pattern
+exactly as the file spells it, 131,072 ids and 1,000 control ids), then reads
+the first 130,072 entries of `"vocab"`. Entry k must say `"rank": k`; its
+`"token_bytes"` are base64, decoded into one caller-supplied byte store that
+the entries view. Other members (`token_str`, `special_tokens`, `image`) are
+skipped by counting brackets outside strings. It refuses malformed JSON or
+base64 (`range`), a config, rank or entry count that differs (`checkpoint`)
+and storage that is too small (`capacity`), each with the byte offset where
+it stopped. On the pinned file it reads 130,072 entries and 878,258 token
+bytes in about 0.05 s, and the index takes 2^18 slots.
 
 <!-- source: psionic/lib/ministral.coax encode -->
 ```jai
-// ASCII text to token ids. Text outside ASCII is refused: the Unicode
-// classes of the full pattern are not built yet. cause is the byte offset.
+// UTF-8 text to token ids. Text that is not well-formed UTF-8 is refused
+// (unsupported); cause is the byte offset.
 ms_encode :: (t:MsTable,text:string,out:[]int)->MsResult {
-    for i:0..<text.count {if text[i]>=128 {return MsResult.{status=MsStatus.unsupported,cause=i};}}
-    at:=0;n:=0;
+    at:=0;while at<text.count {p:=ms_utf8(text,at);if p.code<0 {return MsResult.{status=MsStatus.unsupported,cause=at};}at=p.next;}
+    at=0;n:=0;
     while at<text.count {
         end:=ms_piece(text,at);
         r:=ms_bpe(t,text[at..<end],out[n..<out.count]);
@@ -284,10 +421,24 @@ ms_chat :: (t:MsTable,system:string,user:string,out:[]int)->MsResult {
 }
 ```
 
-The independent check is the Python script: it applies the same pattern
-with Python's regular expressions and tiktoken's merge rule over the full
-130,072-entry table, and records the ids. A `#test` compares every fixture
-string, and the chat sequence, id for id.
+The examples and checks use a restricted table so that they run without
+the 16.7 MB file. The fixture `psionic/fixtures/ministral-tekken.coax` holds
+Tekken restricted to the fixture strings: every entry whose bytes occur
+inside one of their pieces, 417 entries with their original ranks, stored as
+one byte array (some entries are partial UTF-8 sequences, which a Coax string
+literal cannot hold). Merging a piece only ever forms substrings of that
+piece, so the restricted table encodes the fixture strings exactly as the
+full one does. A byte the restricted table lacks is refused, not guessed.
+
+The independent check is the Python script. It builds the pattern for
+Python's `re` with each `\p{..}` class spelled out as code point ranges, splits
+the text with Python's engine, applies tiktoken's merge rule over the full
+130,072-entry table, and records the ids. A `#test` compares all 18 fixture
+strings (8 ASCII, 10 with accents, Cyrillic, Greek, Japanese, combining
+marks, an emoji, no-break spaces and Unicode numbers), and the chat sequence,
+id for id, through the index and through a scan. The original-weight script
+below also loads the whole of `tekken.json` with `ms_tekken_read` and
+compares the same strings' ids with Python's.
 
 ## Rotary positions
 
@@ -465,6 +616,52 @@ architecture's description: its own RMSNorm, pair rotation, causal softmax
 and SwiGLU. A `#test` compares both layers' outputs and the 16 logits; the
 largest difference must stay under 2 × 10^-6.
 
+## A cache and the whole vocabulary
+
+`ms_forward` cannot run the real model. It recomputes every position for
+every new token, and it reads the logits in one projection, which chapter 7's
+product limits to 32,768 rows; the tied head has 131,072. Chapter 58 solved
+both for Minitron, a decoder built from this chapter's norm and projections:
+`lm_layer_step` keeps each layer's rotated keys and values in a cache
+(`LmCache`), so a new token runs one position, and `lm_readout` reads the head
+in chunks of at most 32,768 rows. Its step takes the rotation as an `LmRope`,
+so Ministral reuses it whole: Ministral is chapter 58's model with the YaRN
+rotation over adjacent pairs and the embedding as its head.
+
+<!-- source: psionic/lib/ministral-decode.coax model -->
+```jai
+// Ministral as chapter 58's model: the embedding is also the head, and every
+// layer rotates with YaRN over adjacent pairs. The cache holds at most
+// LM_POSITIONS_MAX = 64 positions, far inside the original 16,384, so the
+// Llama 4 query scale is exactly 1 and is not applied.
+md_model :: (embed:[]u8,norm:[]u8,layers:[]MsLayer)->LmModel #export_c {
+    return LmModel.{embed=embed,norm=norm,head=embed,layers=layers,rope=LmRope.yarn};
+}
+```
+
+Work out what the cache costs for the real model. A position of one layer
+keeps 8 key-value heads of 128 keys and 128 values: 2 × 1,024 f32 values, or
+8,192 bytes. The cache holds at most 64 positions, so 26 layers need
+26 × 64 × 8,192 = 13,631,488 bytes, 13 MiB. The readout runs four chunks of
+32,768 rows. The work buffer holds the larger of 64 tokens' queries
+(64 × 4,096 = 262,144 values) and one readout (3,072 + 131,072 = 134,144), so
+262,144 values.
+
+The cached step and the full recompute agree bit for bit, not just closely. A
+row's norm and projections depend only on that row, and a token's attention
+sums the same cached keys and values in the same order whether they were
+written a moment ago or in the same call. The checks in
+`psionic/lib/ministral-decode.coax` hold the synthetic model to that: after
+each of ten tokens decoded one at a time, the logits equal a full recompute
+of the prefix from position 0; a prefill of four, then three, then single
+steps gives the same bits; and greedy continuation equals the argmax chain of
+full recomputes. Chapter 58's step also shifts scores by their maximum before
+exponentiating, which `ms_layer` does not, so the two differ in rounding: the
+cached logits stay within 10^-6 of `ms_forward` and within 2 × 10^-6 of the
+float64 reference. A head of 40,000 rows of width 2 shows the chunks: one
+projection refuses it, and chunks of 32,768 and 7,232, or of 7, give the
+same bits as reading each row alone.
+
 ## Run it
 
 The programs are [`ministral.coax`](../examples/ministral.coax) and
@@ -477,8 +674,9 @@ main :: () {
     r:=ms_inventory(MS_3B,MS_PINNED_MANIFEST);
     print("checkpoint %: % tensors, % text parameters, % image tensors: %\n",cast(string)MS_PINNED_REVISION[0..<8],MS_PINNED_TENSORS,r.written,r.cause,r.status);
 
-    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
-    for k:0..<3 {
+    rig:MsTekkenRig;t:=ms_tekken_fixture(rig.data[..],rig.bytes[..],rig.ranks[..],rig.slots[..]);ids:[64]int;
+    picks:=[5]int.[0,1,2,9,11];
+    for k:picks {
         e:=ms_encode(t,MS_TEKKEN_TEXTS[k],ids[..]);print("tekken %:",k);
         for i:0..<e.written {print(" %",ids[i]);}print("\n");
     }
@@ -509,6 +707,8 @@ checkpoint b6d637be: 458 tensors, 3429006336 text parameters, 222 image tensors:
 tekken 0: 22177 1044 4304 1033
 tekken 1: 7493 1395 1278 8961 1307 5498 1063
 tekken 2: 1032 8924 18971 1267 1421 1032 1050 1048 1050 1053 8091
+tekken 9: 60297 1097 112203 1032 1053 20340
+tekken 11: 10008 15199 2439 7282 14742 13854
 chat (16 tokens): 1 17 22177 1044 4304 1033 18 3 7493 1395 1278 8961 1307 5498 1063 4
 yarn: f0 1.0 f20 0.013335214321633242 f37*16 0.000339820832894256 f63*16 1.240937760751719e-06
 tiny prompt: 1 3 7, greedy: 0 0 0 0 0
@@ -518,8 +718,12 @@ tiny prompt: 1 3 7, greedy: 0 0 0 0 0
 string, `  leading spaces\n\nand 2025 numbers`, shows two rules: the leading
 two spaces split into ` ` and ` leading` (whitespace before a non-space keeps
 its last space for the next piece), and `2025` becomes four single-digit
-tokens. The synthetic model's greedy tokens are whatever its formula weights
-prefer; they show the loop runs, not that the model says anything.
+tokens. String 9, `Ça coûte 5 €`, is the trace above: `Ç` is one token (60297)
+and `a` another (1097), because Tekken has no entry for `Ça`; ` coûte` is one
+token (112203). String 11, `日本語のテキスト`, is a single piece of Lo code
+points that merges into five tokens. The synthetic model's greedy tokens are
+whatever its formula weights prefer; they show the loop runs, not that the
+model says anything.
 
 ## Refusals
 
@@ -533,8 +737,8 @@ main :: () {
     print("27 layers: %, first missing: %\n",r.status,cast(string)buf[0..<n]);
     d=MS_3B;d.heads=30;print("30 query heads over 8 key-value heads: %\n",ms_inventory(d,MS_PINNED_MANIFEST).status);
 
-    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};ids:[64]int;
-    e:=ms_encode(t,"café",ids[..]);print("non-ASCII text: %\n",e);
+    rig:MsTekkenRig;t:=ms_tekken_fixture(rig.data[..],rig.bytes[..],rig.ranks[..],rig.slots[..]);ids:[64]int;
+    cut:=[5]u8.[0x63,0x61,0x66,0xc3,0x28];e:=ms_encode(t,cast(string)cut[..],ids[..]);print("a broken UTF-8 sequence: %\n",e);
     e=ms_encode(t,"on Q~",ids[..]);print("a byte outside the fixture table: %\n",e);
     print("chat into 6 ids: %\n",ms_chat(t,"Hello","What",ids[0..<6]));
 
@@ -552,7 +756,7 @@ main :: () {
 4 key-value heads against the pinned file: checkpoint, first missing: layers.0.attention.wk.weight BF16 512,3072
 27 layers: checkpoint, first missing: layers.26.attention.wk.weight BF16 1024,3072
 30 query heads over 8 key-value heads: shape
-non-ASCII text: MsResult.{status = unsupported, written = 0, cause = 3}
+a broken UTF-8 sequence: MsResult.{status = unsupported, written = 0, cause = 3}
 a byte outside the fixture table: MsResult.{status = range, written = 0, cause = 3}
 chat into 6 ids: MsResult.{status = capacity, written = 0, cause = 7}
 token 16 of 16: MsResult.{status = range, written = 0, cause = 1}
@@ -591,17 +795,81 @@ layer 0: 10 tokens, max |difference| 1.982e-07, largest |value| 3.535e+00
 readout rows 0..4096: max |difference| 3.280e-07, largest |value| 1.433e+01
 ```
 
+With `--run`, the script runs all 26 layers instead. It builds
+`psionic/tests/ministral_run.c`, which calls `md_model` and chapter 58's
+`lm_continue` on the same 10-token prompt for eight greedy tokens (stopping
+early at `</s>`), then recomputes every layer from position 0 over the prompt
+and the first seven emitted tokens, compares the last logits bit for bit with
+the cached run, and writes each layer's output. Then
+`psionic/tests/ministral_run_oracle.py` recomputes the whole model in float64
+from the original bytes with the reference script's own norm, rotation and
+softmax, spreading the matrix-vector products over worker processes. Its
+tolerance was frozen before the first comparison: every layer's output and
+the last logits within 10^-3 of the slice's largest magnitude, and the
+reference's own greedy choice at each of the eight positions equal to the
+token the Coax run emitted. The run takes about ten minutes, so it is
+recorded in `psionic/fixtures/ministral-run.txt`, not rerun:
+
+```text
+prompt (10 tokens): 1 3 7493 1395 1278 8961 1307 5498 1063 4
+greedy, all 26 layers through the cache: 8 tokens, cache length 17, 151.6 s: 1784 8961 1307 5498 1395 1603 42572 12617
+full recompute over 17 tokens, 136.1 s: last logits identical bits to the cached run
+layer  0: 17 positions: max |difference| 1.717e-07, largest |value| 3.535e+00
+layer  1: 17 positions: max |difference| 2.971e-07, largest |value| 4.084e+00
+layer  2: 17 positions: max |difference| 9.620e-05, largest |value| 5.357e+02
+layer  3: 17 positions: max |difference| 8.375e-05, largest |value| 5.358e+02
+layer  4: 17 positions: max |difference| 1.089e-04, largest |value| 5.360e+02
+layer  5: 17 positions: max |difference| 9.338e-05, largest |value| 5.362e+02
+layer  6: 17 positions: max |difference| 9.673e-05, largest |value| 5.363e+02
+layer  7: 17 positions: max |difference| 1.133e-04, largest |value| 5.364e+02
+layer  8: 17 positions: max |difference| 8.838e-05, largest |value| 5.366e+02
+layer  9: 17 positions: max |difference| 5.475e-05, largest |value| 5.368e+02
+layer 10: 17 positions: max |difference| 3.119e-05, largest |value| 5.370e+02
+layer 11: 17 positions: max |difference| 2.495e-05, largest |value| 5.376e+02
+layer 12: 17 positions: max |difference| 1.994e-05, largest |value| 5.379e+02
+layer 13: 17 positions: max |difference| 4.872e-05, largest |value| 5.382e+02
+layer 14: 17 positions: max |difference| 5.088e-05, largest |value| 5.384e+02
+layer 15: 17 positions: max |difference| 7.391e-05, largest |value| 5.386e+02
+layer 16: 17 positions: max |difference| 1.056e-04, largest |value| 5.388e+02
+layer 17: 17 positions: max |difference| 1.158e-04, largest |value| 5.409e+02
+layer 18: 17 positions: max |difference| 1.559e-04, largest |value| 5.411e+02
+layer 19: 17 positions: max |difference| 1.462e-04, largest |value| 5.412e+02
+layer 20: 17 positions: max |difference| 1.537e-04, largest |value| 5.416e+02
+layer 21: 17 positions: max |difference| 1.482e-04, largest |value| 5.417e+02
+layer 22: 17 positions: max |difference| 1.666e-04, largest |value| 5.416e+02
+layer 23: 17 positions: max |difference| 1.555e-04, largest |value| 5.412e+02
+layer 24: 17 positions: max |difference| 1.534e-04, largest |value| 5.414e+02
+layer 25: 17 positions: max |difference| 1.247e-04, largest |value| 4.624e+01
+last logits: max |difference| 1.223e-06, largest |value| 2.245e+01
+reference greedy at positions 9..16: [1784, 8961, 1307, 5498, 1395, 1603, 42572, 12617] (the tokens the Coax run emitted)
+emitted text: 'The capital of France is **Paris**.'
+reference: 227 s on 20 processes
+```
+
+The cached continuation and the full recompute agree bit for bit. Every
+layer stays within 3 × 10^-6 of the float64 reference relative to its
+largest value. From layer 2 to layer 24 one residual value near 540
+dominates the scale, so differences of about 10^-4 there are still more than
+six digits of agreement; layer 25 drops that value, and its 1.2 × 10^-4
+against a largest value of 46 is the loosest, 2.7 × 10^-6.
+The last logits differ by at most 1.2 × 10^-6, and the reference picks the
+same eight tokens: `The capital of France is **Paris**.` The cache paid for
+itself even on a short run: 17 positions through the cache took 152 seconds,
+and one full recompute of 17 positions took 136.
+
 This model's evidence does not qualify any larger Mistral model.
 
 ## What remains
 
-- Tekken's full pattern over Unicode classes, and the full table loaded from
-  `tekken.json` rather than a fixture restriction.
-- All 26 layers on the original weights, with logits recorded from an
-  independent source, and greedy tokens from the real model.
-- Positions past 16,384, where the Llama 4 query scale and the YaRN blend
-  start to matter, and the key-value cache that makes them affordable.
+- The code point classes come from Unicode 15.1.0 (Python's `unicodedata`);
+  the upstream tokenizer's regex engine may use another Unicode version, so a
+  code point whose category changed could split differently. Pieces longer
+  than 64 bytes are refused.
+- Positions past 64, the cache's bound here, and past 16,384, where the
+  Llama 4 query scale and the YaRN blend start to matter.
 - Mistral's reasoning and tool formats, and the image path.
+- Throughput: one position through all 26 layers and the readout takes
+  about 9 seconds on one CPU thread.
 
 ## Sources
 
@@ -609,5 +877,6 @@ This model's evidence does not qualify any larger Mistral model.
 - [Mistral target survey](../docs/targets/mistral.md).
 - [Chapter 7](ch007-reading-original-weights.md), [chapter 9](ch009-text-becomes-a-model-request.md),
   [chapter 10](ch010-attention-without-training.md),
-  [chapter 33](ch033-measure-the-work-and-plan-the-memory.md) and
-  [chapter 53](ch053-choosing-the-next-token.md).
+  [chapter 33](ch033-measure-the-work-and-plan-the-memory.md),
+  [chapter 53](ch053-choosing-the-next-token.md) and
+  [chapter 58](ch058-continue-a-passage.md).

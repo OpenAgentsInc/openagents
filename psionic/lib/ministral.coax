@@ -6,6 +6,7 @@
 #load "qwen-matvec.coax";
 #load "../fixtures/ministral-manifest.coax";
 #load "../fixtures/ministral-tekken.coax";
+#load "../fixtures/ministral-unicode.coax";
 #load "../fixtures/ministral-tiny.coax";
 
 MsStatus :: enum u8 {ok;shape;capacity;number;unsupported;range;checkpoint;}
@@ -155,11 +156,11 @@ ms_inventory :: (s:MsShape,manifest:string)->MsResult {
 
 // ---- Tekken ----------------------------------------------------------------
 
-// book:begin pieces
-// Tekken splits text with one pattern before byte-pair merging. This is the
-// pattern on ASCII text, where its Unicode classes reduce to: upper A-Z,
-// lower a-z, digit 0-9, space (tab to carriage return, and ' '), and other.
-MS_UPPER :: 0; MS_LOWER :: 1; MS_DIGIT :: 2; MS_SPACE :: 3; MS_OTHER :: 4;
+// book:begin classes
+// Tekken's pattern sees seven classes of code point. ms_class is the class
+// of one ASCII byte; ms_point_class looks any code point up in a table of
+// 3,123 ranges written from Unicode 15.1.0's general categories.
+MS_UPPER :: 0; MS_LOWER :: 1; MS_DIGIT :: 2; MS_SPACE :: 3; MS_OTHER :: 4; MS_BOTH :: 5; MS_MARK :: 6;
 ms_class :: (c:u8)->int {
     if c>='A' && c<='Z' {return MS_UPPER;}
     if c>='a' && c<='z' {return MS_LOWER;}
@@ -167,42 +168,254 @@ ms_class :: (c:u8)->int {
     if c==' ' || (c>=9 && c<=13) {return MS_SPACE;}
     return MS_OTHER;
 }
+ms_point_class :: (code:int)->int {
+    lo:=0;hi:=MS_UNICODE_RANGES;
+    while hi-lo>1 {mid:=(lo+hi)/2;if MS_UNICODE_STARTS[mid]<=code {lo=mid;} else {hi=mid;}}
+    return cast(int)MS_UNICODE_CLASSES[lo];
+}
+// One UTF-8 sequence at s[at]: its code point and the offset after it, or
+// code -1 when the bytes are not well-formed UTF-8 (a stray continuation
+// byte, a cut-off sequence, an overlong form, a surrogate, or past U+10FFFF).
+// A stray continuation byte (0x80-0xbf) starts below zero and a lead of 0xf8
+// or more lands past U+10FFFF, so the range checks at the end refuse both.
+MsPoint :: struct {code:int;next:int;}
+ms_utf8 :: (s:string,at:int)->MsPoint {
+    lead:=cast(int)s[at];bad:=MsPoint.{code=-1,next=at};
+    if lead<0x80 {return MsPoint.{code=lead,next=at+1};}
+    n:=3;code:=lead-0xf0;least:=0x10000;
+    if lead<0xe0 {n=1;code=lead-0xc0;least=0x80;} else if lead<0xf0 {n=2;code=lead-0xe0;least=0x800;}
+    if at+n>=s.count {return bad;}
+    for i:1..<n+1 {c:=cast(int)s[at+i];if c<0x80 || c>=0xc0 {return bad;}code=code*64+c-0x80;}
+    if code<least || code>0x10ffff || (code>=0xd800 && code<0xe000) {return bad;}
+    return MsPoint.{code=code,next=at+n+1};
+}
+ms_class_at :: (s:string,at:int)->int {return ms_point_class(ms_utf8(s,at).code);}
+// The pattern's sets as masks of classes: A = Lu Lt Lm Lo M, B = Ll Lm Lo M,
+// and the punctuation run [^\s\p{L}\p{N}] = other and marks.
+MS_SET_A :: 0x61; MS_SET_B :: 0x62; MS_SET_PUNCT :: 0x50;
+ms_in :: (s:string,at:int,set:int)->bool {return (set>>ms_class_at(s,at))&1==1;}
+ms_span :: (s:string,at:int,set:int)->int {p:=at;while p<s.count && ms_in(s,p,set) {p=ms_utf8(s,p).next;}return p;}
+// book:end classes
+
+// book:begin pieces
+// Tekken splits text with one pattern before byte-pair merging:
+//   [^\r\n\p{L}\p{N}]?[A]*[B]+ | [^\r\n\p{L}\p{N}]?[A]+[B]* | \p{N}
+//   | " ?[^\s\p{L}\p{N}]+[\r\n/]*" | \s*[\r\n]+ | \s+(?!\S) | \s+
+// A regex engine tries the alternatives in order and backtracks inside each.
+// [A]*[B]+ from p: A* first takes the whole A run up to e. If the code point
+// at e is lower case (in B; it is not in A), B+ runs on from e. Otherwise A*
+// gives back code points until the one after it is in B: the last code point
+// of the run that is in B (an Lm, Lo or mark). B+ takes it and stops, since
+// what follows it in the run is not in B. Each alternative returns p when
+// it fails.
+ms_alt1 :: (s:string,p:int)->int {
+    e:=ms_span(s,p,MS_SET_A);
+    if e<s.count && ms_class_at(s,e)==MS_LOWER {return ms_span(s,e,MS_SET_B);}
+    last:=p;q:=p;while q<e {if ms_in(s,q,MS_SET_B) {last=ms_utf8(s,q).next;}q=ms_utf8(s,q).next;}
+    return last;
+}
+// [A]+[B]*, tried only after [A]*[B]+ failed from the same p: then the code
+// point after the A run is not lower case, so [B]* adds nothing.
+ms_alt2 :: (s:string,p:int)->int {return ms_span(s,p,MS_SET_A);}
+// The optional first code point may be other, a mark, or a space that is
+// not \r or \n. A mark is in A and in B, so taking it as the first code
+// point or as the start of the letters gives the same piece; only other and
+// space make a difference, and with them taken the letters start after them.
 ms_newline :: (c:u8)->bool {return c==10 || c==13;}
 ms_run :: (s:string,at:int,class:int)->int {p:=at;while p<s.count && ms_class(s[p])==class {p+=1;}return p;}
-// [^\r\n\p{L}\p{N}]? then letters: upper* lower+ (first alternative) or
-// upper+ lower* (second). Both runs are greedy over disjoint classes, so
-// whenever either matches, both end at the end of the lower-case run: the
-// two together are "upper* lower*, at least one letter". The optional first
-// character is taken exactly when it is neither a letter, a digit nor a
-// newline; without it the letters could not start.
 ms_word :: (s:string,at:int)->int {
-    p:=at;c:=ms_class(s[at]);
-    if c==MS_OTHER || (c==MS_SPACE && !ms_newline(s[at])) {p+=1;}
-    lower:=ms_run(s,ms_run(s,p,MS_UPPER),MS_LOWER);
-    if lower>p {return lower;}
+    k:=ms_class_at(s,at);p:=at;
+    if k==MS_OTHER || (k==MS_SPACE && !ms_newline(s[at])) {p=ms_utf8(s,at).next;}
+    e:=ms_alt1(s,p);if e>p {return e;}
+    e=ms_alt2(s,p);if e>p {return e;}
     return at;
 }
-// The end of the piece that starts at `at` (at < s.count).
+// The end of the piece that starts at `at` (at < s.count, s valid UTF-8).
 ms_piece :: (s:string,at:int)->int {
     end:=ms_word(s,at);if end>at {return end;}
-    c:=ms_class(s[at]);
-    if c==MS_DIGIT {return at+1;}
+    if ms_class_at(s,at)==MS_DIGIT {return ms_utf8(s,at).next;}
     // " ?[^\s\p{L}\p{N}]+[\r\n/]*"
     p:=at;if s[p]==' ' {p+=1;}
-    end=ms_run(s,p,MS_OTHER);
+    end=ms_span(s,p,MS_SET_PUNCT);
     if end>p {while end<s.count && (ms_newline(s[end]) || s[end]=='/') {end+=1;}return end;}
     // Whitespace: through the last newline of the run, else all but the last
     // space before a non-space, else the whole run.
-    run:=ms_run(s,at,MS_SPACE);last:=at;
-    for i:at..<run {if ms_newline(s[i]) {last=i+1;}}
+    run:=at;last:=at;final:=at;
+    while run<s.count && ms_class_at(s,run)==MS_SPACE {final=run;if ms_newline(s[run]) {last=run+1;}run=ms_utf8(s,run).next;}
     if last>at {return last;}
-    if run==s.count || run-at==1 {return run;}
-    return run-1;
+    if run==s.count || final==at {return run;}
+    return final;
 }
 // book:end pieces
 
-MsTable :: struct {bytes:[]string;ranks:[]int;}
-ms_rank :: (t:MsTable,s:string)->int {for i:0..<t.bytes.count {if t.bytes[i]==s {return t.ranks[i];}}return -1;}
+// book:begin table
+// A table of byte strings and their ranks. With no slots, a lookup scans
+// every entry. With slots (a power of two, at least twice the entries) it
+// is an open-addressing hash index: slot h holds entry + 1, or 0 when empty.
+MsTable :: struct {bytes:[]string;ranks:[]int;slots:[]int;}
+ms_hash :: (s:string)->int {h:=0;for i:0..<s.count {h=(h*131+cast(int)s[i]+1)%16777213;}return h;}
+ms_rank :: (t:MsTable,s:string)->int {
+    if t.slots.count==0 {for i:0..<t.bytes.count {if t.bytes[i]==s {return t.ranks[i];}}return -1;}
+    mask:=t.slots.count-1;h:=ms_hash(s)&mask;
+    while t.slots[h]!=0 {i:=t.slots[h]-1;if t.bytes[i]==s {return t.ranks[i];}h=(h+1)&mask;}
+    return -1;
+}
+// Fill t's slots. A repeated byte string is refused with its entry.
+ms_index :: (t:MsTable)->MsResult {
+    m:=t.slots.count;
+    if m<2*t.bytes.count || m&(m-1)!=0 || t.ranks.count!=t.bytes.count {return MsResult.{status=MsStatus.capacity,cause=m};}
+    for i:0..<m {t.slots[i]=0;}
+    for i:0..<t.bytes.count {
+        if ms_rank(t,t.bytes[i])>=0 {return MsResult.{status=MsStatus.checkpoint,cause=i};}
+        h:=ms_hash(t.bytes[i])&(m-1);while t.slots[h]!=0 {h=(h+1)&(m-1);}
+        t.slots[h]=i+1;
+    }
+    return MsResult.{written=t.bytes.count};
+}
+// The fixture's restricted table, copied into caller storage and indexed
+// when slots are given.
+ms_tekken_fixture :: (data:[]u8,bytes:[]string,ranks:[]int,slots:[]int)->MsTable {
+    for i:0..<MS_TEKKEN_DATA_BYTES {data[i]=MS_TEKKEN_DATA[i];}
+    for k:0..<MS_TEKKEN_ENTRIES {bytes[k]=cast(string)data[MS_TEKKEN_ENDS[k]..<MS_TEKKEN_ENDS[k+1]];ranks[k]=MS_TEKKEN_RANKS[k];}
+    t:=MsTable.{bytes=bytes[0..<MS_TEKKEN_ENTRIES],ranks=ranks[0..<MS_TEKKEN_ENTRIES],slots=slots};
+    if ms_index(t).status!=MsStatus.ok {t.slots=slots[0..<0];}
+    return t;
+}
+MsTekkenRig :: struct {data:[MS_TEKKEN_DATA_BYTES]u8;bytes:[MS_TEKKEN_ENTRIES]string;ranks:[MS_TEKKEN_ENTRIES]int;slots:[1024]int;}
+// book:end table
+
+// book:begin read
+// A bounded reader of tekken.json. It checks the config (the pattern exactly
+// as the file spells it, `vocab` - `specials` ordinary entries and `specials`
+// control ids) and reads the first vocab - specials entries of "vocab": entry
+// k must have "rank" k, and its "token_bytes" are base64. The bytes go into
+// store, and bytes[k] views them. Refusals: range for malformed JSON or
+// base64, checkpoint for a config or rank that differs or too few entries,
+// capacity for storage; cause is the byte offset in the file.
+MsJson :: struct {ok:bool;at:int;from:int;to:int;}
+ms_json_blank :: (s:string,at:int)->int {p:=at;while p<s.count && (s[p]==' ' || s[p]=='\n' || s[p]=='\r' || s[p]=='\t') {p+=1;}return p;}
+// A string at s[at] (after blanks): its raw bytes from..<to and at after it.
+// A failure's at is where it stopped.
+ms_json_string :: (s:string,at:int)->MsJson {
+    p:=ms_json_blank(s,at);if p>=s.count || s[p]!='"' {return MsJson.{at=p};}
+    q:=p+1;while q<s.count && s[q]!='"' {if s[q]=='\\' {q+=1;}q+=1;}
+    if q>=s.count {return MsJson.{at=p};}
+    return MsJson.{ok=true,at=q+1,from=p+1,to=q};
+}
+// A non-negative integer of at most 9 digits: from holds its value and to
+// the offset of its first digit.
+ms_json_int :: (s:string,at:int)->MsJson {
+    p:=ms_json_blank(s,at);q:=p;v:=0;fail:=MsJson.{at=p,to=p};
+    while q<s.count && s[q]>='0' && s[q]<='9' {if q-p==9 {return fail;}v=v*10+cast(int)(s[q]-'0');q+=1;}
+    if q==p {return fail;}
+    return MsJson.{ok=true,at=q,from=v,to=p};
+}
+// Skip one value of any kind; nesting is counted, strings are skipped whole.
+ms_json_skip :: (s:string,at:int)->MsJson {
+    p:=ms_json_blank(s,at);fail:=MsJson.{at=p};
+    depth:=0;
+    while p<s.count {
+        c:=s[p];
+        if c=='"' {v:=ms_json_string(s,p);if !v.ok {return fail;}p=v.at;if depth==0 {return v;}continue;}
+        if c=='{' || c=='[' {depth+=1;}
+        if c=='}' || c==']' || c==',' {if depth==0 {return MsJson.{ok=true,at=p};}if c!=',' {depth-=1;if depth==0 {return MsJson.{ok=true,at=p+1};}}}
+        p+=1;
+    }
+    return fail;
+}
+// The punctuation after a member: ',' goes on (from 1), close ends (from 0).
+ms_json_next :: (s:string,at:int,close:u8)->MsJson {
+    p:=ms_json_blank(s,at);
+    if p<s.count && s[p]==',' {return MsJson.{ok=true,at=p+1,from=1};}
+    if p<s.count && s[p]==close {return MsJson.{ok=true,at=p+1};}
+    return MsJson.{at=p};
+}
+ms_base64_value :: (c:u8)->int {
+    if c>='A' && c<='Z' {return cast(int)(c-'A');}
+    if c>='a' && c<='z' {return cast(int)(c-'a')+26;}
+    if c>='0' && c<='9' {return cast(int)(c-'0')+52;}
+    if c=='+' {return 62;}
+    if c=='/' {return 63;}
+    return -1;
+}
+// Base64 with '=' padding into out; written is the byte count. Refusals:
+// range for bad text (cause the offset), capacity when out is too small.
+ms_base64 :: (s:string,out:[]u8)->MsResult {
+    if s.count%4!=0 || s.count==0 {return MsResult.{status=MsStatus.range,cause=s.count};}
+    pad:=0;if s[s.count-1]=='=' {pad=1;if s[s.count-2]=='=' {pad=2;}}
+    n:=s.count/4*3-pad;if n>out.count {return MsResult.{status=MsStatus.capacity,cause=n};}
+    acc:=0;bits:=0;w:=0;
+    for i:0..<s.count-pad {
+        d:=ms_base64_value(s[i]);if d<0 {return MsResult.{status=MsStatus.range,cause=i};}
+        acc=acc*64+d;bits+=6;
+        if bits>=8 {bits-=8;out[w]=cast(u8)(acc>>bits);acc-=cast(int)out[w]<<bits;w+=1;}
+    }
+    return MsResult.{written=w};
+}
+MS_TEKKEN_KEYS :: [3]string.["pattern","default_vocab_size","default_num_special_tokens"];
+ms_tekken_read :: (json:string,vocab:int,specials:int,store:[]u8,bytes:[]string,ranks:[]int)->MsResult {
+    need:=vocab-specials;used:=0;entries:=0;seen:=0;
+    if need<1 || bytes.count<need || ranks.count<need {return MsResult.{status=MsStatus.capacity,cause=need};}
+    p:=ms_json_blank(json,0);if p>=json.count || json[p]!='{' {return MsResult.{status=MsStatus.range,cause=p};}
+    p+=1;
+    while true {
+        key:=ms_json_string(json,p);if !key.ok {return MsResult.{status=MsStatus.range,cause=key.at};}
+        p=ms_json_blank(json,key.at);if p>=json.count || json[p]!=':' {return MsResult.{status=MsStatus.range,cause=p};}
+        p+=1;name:=json[key.from..<key.to];
+        if name=="config" || name=="vocab" {
+            open:=ms_json_blank(json,p);start:=cast(u8)'{';close:=cast(u8)'}';if name=="vocab" {start='[';close=']';}
+            if open>=json.count || json[open]!=start {return MsResult.{status=MsStatus.range,cause=open};}
+            p=open+1;
+            while true {
+                if name=="config" {
+                    field:=ms_json_string(json,p);if !field.ok {return MsResult.{status=MsStatus.range,cause=field.at};}
+                    p=ms_json_blank(json,field.at);if p>=json.count || json[p]!=':' {return MsResult.{status=MsStatus.range,cause=p};}
+                    p+=1;f:=json[field.from..<field.to];
+                    if f==MS_TEKKEN_KEYS[0] {
+                        v:=ms_json_string(json,p);if !v.ok || json[v.from..<v.to]!=MS_TEKKEN_PATTERN {return MsResult.{status=MsStatus.checkpoint,cause=v.from};}
+                        seen|=1;p=v.at;
+                    } else if f==MS_TEKKEN_KEYS[1] || f==MS_TEKKEN_KEYS[2] {
+                        v:=ms_json_int(json,p);want:=vocab;bit:=2;if f==MS_TEKKEN_KEYS[2] {want=specials;bit=4;}
+                        if !v.ok || v.from!=want {return MsResult.{status=MsStatus.checkpoint,cause=v.to};}
+                        seen|=bit;p=v.at;
+                    } else {v:=ms_json_skip(json,p);if !v.ok {return MsResult.{status=MsStatus.range,cause=v.at};}p=v.at;}
+                } else if entries>=need {
+                    v:=ms_json_skip(json,p);if !v.ok {return MsResult.{status=MsStatus.range,cause=v.at};}p=v.at;
+                } else {
+                    // One entry: an object with "rank" and "token_bytes".
+                    o:=ms_json_blank(json,p);if o>=json.count || json[o]!='{' {return MsResult.{status=MsStatus.range,cause=o};}
+                    p=o+1;rank:=false;have:=false;got:int;
+                    while true {
+                        field:=ms_json_string(json,p);if !field.ok {return MsResult.{status=MsStatus.range,cause=field.at};}
+                        p=ms_json_blank(json,field.at);if p>=json.count || json[p]!=':' {return MsResult.{status=MsStatus.range,cause=p};}
+                        p+=1;f:=json[field.from..<field.to];
+                        if f=="rank" {
+                            v:=ms_json_int(json,p);if !v.ok || v.from!=entries {return MsResult.{status=MsStatus.checkpoint,cause=v.to};}
+                            rank=true;p=v.at;
+                        } else if f=="token_bytes" {
+                            v:=ms_json_string(json,p);if !v.ok {return MsResult.{status=MsStatus.range,cause=v.at};}
+                            b:=ms_base64(json[v.from..<v.to],store[used..<store.count]);
+                            if b.status!=MsStatus.ok {return MsResult.{status=b.status,cause=v.from};}
+                            got=b.written;have=true;p=v.at;
+                        } else {v:=ms_json_skip(json,p);if !v.ok {return MsResult.{status=MsStatus.range,cause=v.at};}p=v.at;}
+                        x:=ms_json_next(json,p,'}');if !x.ok {return MsResult.{status=MsStatus.range,cause=x.at};}
+                        p=x.at;if x.from==0 {break;}
+                    }
+                    if !rank || !have {return MsResult.{status=MsStatus.checkpoint,cause=o};}
+                    bytes[entries]=cast(string)store[used..<used+got];ranks[entries]=entries;used+=got;entries+=1;
+                }
+                x:=ms_json_next(json,p,close);if !x.ok {return MsResult.{status=MsStatus.range,cause=x.at};}
+                p=x.at;if x.from==0 {break;}
+            }
+        } else {v:=ms_json_skip(json,p);if !v.ok {return MsResult.{status=MsStatus.range,cause=v.at};}p=v.at;}
+        x:=ms_json_next(json,p,'}');if !x.ok {return MsResult.{status=MsStatus.range,cause=x.at};}
+        p=x.at;if x.from==0 {break;}
+    }
+    if seen!=7 {return MsResult.{status=MsStatus.checkpoint,cause=json.count};}
+    if entries<need {return MsResult.{status=MsStatus.checkpoint,cause=entries};}
+    return MsResult.{written=entries,cause=used};
+}
+// book:end read
 
 // book:begin bpe
 // tiktoken's rule over original ranks: a piece found whole is one token;
@@ -228,11 +441,11 @@ ms_bpe :: (t:MsTable,piece:string,out:[]int)->MsResult {
 // book:end bpe
 
 // book:begin encode
-// ASCII text to token ids. Text outside ASCII is refused: the Unicode
-// classes of the full pattern are not built yet. cause is the byte offset.
+// UTF-8 text to token ids. Text that is not well-formed UTF-8 is refused
+// (unsupported); cause is the byte offset.
 ms_encode :: (t:MsTable,text:string,out:[]int)->MsResult {
-    for i:0..<text.count {if text[i]>=128 {return MsResult.{status=MsStatus.unsupported,cause=i};}}
-    at:=0;n:=0;
+    at:=0;while at<text.count {p:=ms_utf8(text,at);if p.code<0 {return MsResult.{status=MsStatus.unsupported,cause=at};}at=p.next;}
+    at=0;n:=0;
     while at<text.count {
         end:=ms_piece(text,at);
         r:=ms_bpe(t,text[at..<end],out[n..<out.count]);
@@ -260,19 +473,53 @@ ms_chat :: (t:MsTable,system:string,user:string,out:[]int)->MsResult {
 // book:end encode
 
 #test "Tekken ids match tiktoken's rule over the full table on every fixture string" {
-    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};out:[64]int;
+    g:MsTekkenRig;t:=ms_tekken_fixture(g.data[..],g.bytes[..],g.ranks[..],g.slots[..]);out:[64]int;
+    #assert t.slots.count==1024 && t.bytes.count==MS_TEKKEN_ENTRIES && MS_TEKKEN_TEXTS.count==18;
+    linear:=t;linear.slots=g.slots[0..<0];
     for k:0..<MS_TEKKEN_TEXTS.count {
-        r:=ms_encode(t,MS_TEKKEN_TEXTS[k],out[..]);from:=MS_TEKKEN_STARTS[k];
-        #assert r.status==MsStatus.ok && r.written==MS_TEKKEN_STARTS[k+1]-from;
-        for i:0..<r.written {#assert out[i]==MS_TEKKEN_IDS[from+i];}
+        for u:0..<2 {
+            r:=ms_encode(ifx u==0 then t else linear,MS_TEKKEN_TEXTS[k],out[..]);from:=MS_TEKKEN_STARTS[k];
+            #assert r.status==MsStatus.ok && r.written==MS_TEKKEN_STARTS[k+1]-from;
+            for i:0..<r.written {#assert out[i]==MS_TEKKEN_IDS[from+i];}
+        }
     }
     r:=ms_chat(t,MS_TEKKEN_TEXTS[0],MS_TEKKEN_TEXTS[1],out[..]);
     #assert r.status==MsStatus.ok && r.written==MS_TEKKEN_CHAT.count;
     for i:0..<r.written {#assert out[i]==MS_TEKKEN_CHAT[i];}
     r=ms_chat(t,"",MS_TEKKEN_TEXTS[1],out[..]);
     #assert r.status==MsStatus.ok && r.written==MS_TEKKEN_CHAT.count-6 && out[0]==1 && out[1]==3 && out[2]==7493 && out[r.written-1]==4;
+    // café: "caf" and "é" are not one entry; the piece merges to two tokens.
+    r=ms_encode(t,"café",out[..]);#assert r.status==MsStatus.ok && r.written==MS_TEKKEN_STARTS[9]-MS_TEKKEN_STARTS[8];
 }
-#test "pieces follow the pattern's alternatives in order" {
+#test "code point classes and UTF-8 decoding, by hand" {
+    want:=[24]int.[0x41,0,0x61,1,0x30,2,0x20,3,0x21,4,0,4,0x4e2d,5,0x301,6,0xe9,1,0xc7,0,0x1c5,0,0x2b0,5];
+    for k:0..<12 {#assert ms_point_class(want[2*k])==want[2*k+1];}
+    more:=[24]int.[0xbd,2,0x216b,2,0xa0,3,0x3000,3,0x85,3,0x2028,3,0x200b,4,0x1f44d,4,0x10ffff,4,0x40,4,0x5a,0,0x5b,4];
+    for k:0..<12 {#assert ms_point_class(more[2*k])==more[2*k+1];}
+    // Every range, at its first and last code point.
+    #assert MS_UNICODE_STARTS[0]==0 && MS_UNICODE_RANGES==MS_UNICODE_STARTS.count;
+    for k:0..<MS_UNICODE_RANGES {
+        top:=0x10ffff;if k+1<MS_UNICODE_RANGES {top=MS_UNICODE_STARTS[k+1]-1;}
+        #assert ms_point_class(MS_UNICODE_STARTS[k])==cast(int)MS_UNICODE_CLASSES[k] && ms_point_class(top)==cast(int)MS_UNICODE_CLASSES[k];
+    }
+    for c:0..<128 {#assert ms_point_class(c)==ms_class(cast(u8)c);}
+    #assert ms_class('@')==MS_OTHER && ms_class('[')==MS_OTHER && ms_class('`')==MS_OTHER && ms_class('{')==MS_OTHER;
+    // Well-formed sequences at each length's bounds.
+    good:=[30]u8.[0x7f,0xc2,0x80,0xdf,0xbf,0xe0,0xa0,0x80,0xef,0xbf,0xbf,0xf0,0x90,0x80,0x80,0xf4,0x8f,0xbf,0xbf,0xed,0x9f,0xbf,0xee,0x80,0x80,0xe2,0x82,0xac,0xc3,0xa9];
+    codes:=[10]int.[0x7f,0x80,0x7ff,0x800,0xffff,0x10000,0x10ffff,0xd7ff,0xe000,0x20ac];
+    s:=cast(string)good[0..<28];at:=0;
+    for k:0..<10 {p:=ms_utf8(s,at);#assert p.code==codes[k] && p.next>at;at=p.next;}
+    #assert at==28 && ms_utf8(cast(string)good[..],28).code==0xe9 && ms_utf8(cast(string)good[..],28).next==30;
+    // Malformed: a stray continuation, overlong forms, surrogates, past
+    // U+10FFFF, a lead of 0xf8, a cut-off sequence and a missing continuation.
+    bad:=[44]u8.[0x80,0,0,0,0xc1,0xbf,0,0,0xc0,0x80,0,0,0xe0,0x9f,0xbf,0,0xf0,0x8f,0xbf,0xbf,0xed,0xa0,0x80,0,
+        0xf4,0x90,0x80,0x80,0xf8,0x88,0x80,0x80,0xf7,0xbf,0xbf,0xbf,0xc3,0x41,0,0,0xe2,0x82,0xc0,0];
+    for k:0..<11 {p:=ms_utf8(cast(string)bad[4*k..<4*k+4],0);#assert p.code== -1 && p.next==0;}
+    #assert ms_utf8(cast(string)good[28..<29],0).code== -1 && ms_utf8(cast(string)good[25..<27],0).code== -1 && ms_utf8(cast(string)good[0..<1],0).next==1;
+    #assert ms_in("a",0,MS_SET_B) && !ms_in("A",0,MS_SET_B) && ms_in("A",0,MS_SET_A) && !ms_in("a",0,MS_SET_A) && ms_in("!",0,MS_SET_PUNCT) && !ms_in(" ",0,MS_SET_PUNCT);
+    #assert ms_span("ab1",0,MS_SET_B)==2 && ms_span("ab",0,MS_SET_B)==2 && ms_span("1",0,MS_SET_B)==0 && ms_span("é!",0,MS_SET_B)==2;
+}
+#test "pieces follow the pattern's alternatives and backtracking in order" {
     #assert ms_piece("Hello",0)==5 && ms_piece(" world",0)==6 && ms_piece("CamelCase",0)==5 && ms_piece("IPAddress",0)==9;
     #assert ms_piece("ABC",0)==3 && ms_piece("ABc d",0)==3 && ms_piece("'t",0)==2 && ms_piece("\tand",0)==4;
     #assert ms_piece("\nand",0)==1 && ms_piece("\rX",0)==1 && ms_piece("2025",0)==1 && ms_piece(" 5",0)==1;
@@ -281,14 +528,140 @@ ms_chat :: (t:MsTable,system:string,user:string,out:[]int)->MsResult {
     vt:=[2]u8.[11,120];#assert ms_piece(cast(string)vt[..],0)==2;
     #assert ms_piece("5a",0)==1 && ms_piece(" !a",0)==2 && ms_piece("!\n/x",0)==3 && ms_piece("!\nx",0)==2 && ms_piece("Ab",0)==2 && ms_piece("A",0)==1;
     #assert ms_piece("  \n",0)==3 && ms_piece("\t\tX",0)==1 && ms_piece("a b",1)==3 && ms_piece("ab",1)==2;
-    #assert ms_class('@')==MS_OTHER && ms_class('[')==MS_OTHER && ms_class('`')==MS_OTHER && ms_class('{')==MS_OTHER && ms_class('/')==MS_OTHER && ms_class(':')==MS_OTHER;
-    #assert ms_class(8)==MS_OTHER && ms_class(14)==MS_OTHER && ms_class(9)==MS_SPACE && ms_class(13)==MS_SPACE && ms_class(11)==MS_SPACE;
-    #assert ms_class('A')==MS_UPPER && ms_class('Z')==MS_UPPER && ms_class('a')==MS_LOWER && ms_class('z')==MS_LOWER && ms_class('0')==MS_DIGIT && ms_class('9')==MS_DIGIT;
-    #assert ms_newline(10) && ms_newline(13) && !ms_newline(11) && !ms_newline(9);
+    #assert ms_newline(10) && ms_newline(13) && !ms_newline(11) && !ms_newline(9) && ms_run("aaaB",0,MS_LOWER)==3 && ms_run("aa",0,MS_LOWER)==2;
+    // Python's re over the same pattern split these; the ends are its.
+    cases:=[26]string.["A中B","AB́c","́abc","!́","ABC中","中ABC","x ǅ","ǅǅ","Ⅻ5","   x","  ","€€\n/x"," €/","x　　y","ʰA","AʰB","́́","é́é","ÁB","́ ","5́"," ́","éé é","Á","́A","!ÁB"];
+    starts:=[27]int.[0,2,3,4,5,6,8,10,11,13,15,16,18,19,22,24,26,27,28,30,32,34,35,37,38,40,42];
+    ends:=[42]int.[4,5,5,5,3,6,3,6,1,4,4,3,4,2,5,4,8,9,5,1,4,8,2,3,3,4,4,6,3,4,2,3,1,3,3,4,7,3,2,3,4,5];
+    // A newline is not the optional first code point, so a mark after it starts its own piece.
+    nm:=[4]u8.[10,0xcc,0x81,0x61];#assert ms_piece(cast(string)nm[..],0)==1 && ms_piece(cast(string)nm[..],1)==4;
+    // U+2028 is White_Space but not a newline, so it can be the optional first code point.
+    ls:=[5]u8.[0x61,0xe2,0x80,0xa8,0x62];#assert ms_piece(cast(string)ls[..],0)==1 && ms_piece(cast(string)ls[..],1)==5;
+    for k:0..<cases.count {
+        at:=0;
+        for i:starts[k]..<starts[k+1] {e:=ms_piece(cases[k],at);#assert e==ends[i];at=e;}
+        #assert at==cases[k].count;
+    }
+    #assert ms_alt1("ABC",0)==0 && ms_alt2("abc",0)==0 && ms_alt1("",0)==0 && ms_alt2("ABC",0)==3 && ms_alt1("ABc",0)==3 && ms_alt1("x ABC",2)==2;
+    #assert ms_piece("!!A",0)==2 && ms_piece(" ABC",0)==4 && ms_piece("!ABC",0)==4 && ms_word("!!",0)==0 && ms_word("ab",0)==2;
+}
+#test "the hash index finds what a scan finds, and refuses bad slots" {
+    g:MsTekkenRig;t:=ms_tekken_fixture(g.data[..],g.bytes[..],g.ranks[..],g.slots[..]);linear:=t;linear.slots=g.slots[0..<0];
+    for k:0..<t.bytes.count {#assert ms_rank(t,t.bytes[k])==MS_TEKKEN_RANKS[k] && ms_rank(linear,t.bytes[k])==MS_TEKKEN_RANKS[k];}
+    #assert ms_rank(t,"Hello")==21177 && ms_rank(t,"Hellp")== -1 && ms_rank(linear,"Hellp")== -1 && ms_rank(t,"")== -1;
+    used:=0;for i:0..<1024 {if g.slots[i]!=0 {used+=1;}}#assert used==MS_TEKKEN_ENTRIES;
+    #assert ms_hash("")==0 && ms_hash("a")==98 && ms_hash("ab")==(98*131+99) && ms_hash("tekken")==9355174;
+    long:[8]u8;for i:0..<8 {long[i]=255;}#assert ms_hash(cast(string)long[..])==4297019;
+    // Too few slots, not a power of two, mismatched ranks, a repeated string.
+    b1:=[3]string.["a","b","a"];r1:=[3]int.[0,1,2];s8:[8]int;s6:[6]int;s4:[4]int;
+    u:=MsTable.{bytes=b1[0..<2],ranks=r1[0..<2],slots=s4[..]};r:=ms_index(u);#assert r.status==MsStatus.ok && r.written==2;
+    u.slots=s4[0..<3];#assert ms_index(u).status==MsStatus.capacity;
+    u.slots=s6[..];r=ms_index(u);#assert r.status==MsStatus.capacity && r.cause==6;
+    u.slots=s8[..];u.ranks=r1[0..<3];#assert ms_index(u).status==MsStatus.capacity;
+    u=MsTable.{bytes=b1[..],ranks=r1[..],slots=s8[..]};r=ms_index(u);#assert r.status==MsStatus.checkpoint && r.cause==2;
+    // Eight entries in sixteen slots probe past collisions and wrap around.
+    b2:=[8]string.["a","b","c","d","ab","ba","abc","cab"];r2:=[8]int.[7,6,5,4,3,2,1,0];s16:[16]int;
+    for i:0..<16 {s16[i]=9;}u=MsTable.{bytes=b2[..],ranks=r2[..],slots=s16[..]};#assert ms_index(u).status==MsStatus.ok;
+    for k:0..<8 {#assert ms_rank(u,b2[k])==r2[k];}
+    used=0;for i:0..<16 {if s16[i]!=0 {used+=1;}}#assert used==8;
+    // No entries need one slot; none at all is a power of two too.
+    s1:[1]int;u=MsTable.{bytes=b1[0..<0],ranks=r1[0..<0],slots=s1[..]};#assert ms_index(u).status==MsStatus.ok && ms_rank(u,"a")== -1;
+    #assert ms_rank(u,"x")== -1 && ms_rank(u,"bc")== -1;
+    // A fixture rig with too few slots falls back to the scan.
+    h:MsTekkenRig;f:=ms_tekken_fixture(h.data[..],h.bytes[..],h.ranks[..],h.slots[0..<512]);
+    #assert f.slots.count==0 && ms_rank(f,"Hello")==21177;
+}
+// The fixture JSON in tekken.json's layout, with `a` swapped for `b`.
+ms_test_json :: (out:[]u8,a:string,b:string)->string {
+    g:[2048]u8;n:=ms_put(g[..],0,"{\"config\":{\"pattern\":\"");n=ms_put(g[..],n,MS_TEKKEN_PATTERN);
+    n=ms_put(g[..],n,"\",\"num_vocab_tokens\":1003,\"default_vocab_size\":1003,\"default_num_special_tokens\":1000,\"version\":\"v13\"},\n");
+    n=ms_put(g[..],n," \"vocab\": [{\"rank\":0,\"token_bytes\":\"YQ==\",\"token_str\":\"a\"}, {\"rank\": 1, \"token_bytes\": \"YWI=\", \"token_str\": \"a\\\"b\"},\n");
+    n=ms_put(g[..],n,"  {\"token_str\": \"\\u20ac\", \"rank\": 2, \"token_bytes\": \"4oKs\"}, {\"rank\": 3, \"token_bytes\": \"eA==\"}],\n");
+    n=ms_put(g[..],n," \"special_tokens\": [{\"rank\": 0, \"token_str\": \"<unk>\", \"is_control\": true}, null], \"image\": {\"x\": [1, {\"y\": \"]}\"}], \"z\": -2.5e3}\n}\n");
+    s:=cast(string)g[0..<n];i:=0;while s[i..<i+a.count]!=a {i+=1;}
+    m:=ms_put(out,0,s[0..<i]);m=ms_put(out,m,b);m=ms_put(out,m,s[i+a.count..<n]);
+    return cast(string)out[0..<m];
+}
+#test "the tekken.json reader takes the layout and refuses what differs" {
+    buf:[2100]u8;store:[16]u8;bytes:[8]string;ranks:[8]int;
+    j:=ms_test_json(buf[..],"","");r:=ms_tekken_read(j,1003,1000,store[..],bytes[..],ranks[..]);
+    #assert r.status==MsStatus.ok && r.written==3 && r.cause==6 && bytes[0]=="a" && bytes[1]=="ab" && bytes[2]=="€" && ranks[2]==2 && ranks[0]==0;
+    // Two entries: the third is skipped unread.
+    r=ms_tekken_read(ms_test_json(buf[..],"1003,\"default_vocab_size\":1003","1002,\"default_vocab_size\":1002"),1002,1000,store[..],bytes[..],ranks[..]);
+    #assert r.status==MsStatus.ok && r.written==2 && r.cause==3;
+    r=ms_tekken_read(ms_test_json(buf[..],"1003,\"default_vocab_size\":1003","1001,\"default_vocab_size\":1001"),1001,1000,store[..],bytes[..],ranks[..]);
+    #assert r.status==MsStatus.ok && r.written==1 && r.cause==1;
+    // Five wanted, four there.
+    r=ms_tekken_read(ms_test_json(buf[..],"1003,\"default_vocab_size\":1003","1005,\"default_vocab_size\":1005"),1005,1000,store[..],bytes[..],ranks[..]);
+    #assert r.status==MsStatus.checkpoint && r.cause==4;
+    j=ms_test_json(buf[..],"","");
+    #assert ms_tekken_read(j,1004,1000,store[..],bytes[..],ranks[..]).status==MsStatus.checkpoint;
+    #assert ms_tekken_read(j,1003,999,store[..],bytes[..],ranks[..]).status==MsStatus.checkpoint;
+    #assert ms_tekken_read(j,1003,1000,store[0..<5],bytes[..],ranks[..]).status==MsStatus.capacity;
+    #assert ms_tekken_read(j,1003,1000,store[0..<6],bytes[..],ranks[..]).status==MsStatus.ok;
+    #assert ms_tekken_read(j,1003,1000,store[..],bytes[0..<2],ranks[..]).status==MsStatus.capacity;
+    #assert ms_tekken_read(j,1003,1000,store[..],bytes[..],ranks[0..<2]).status==MsStatus.capacity;
+    #assert ms_tekken_read(j,1003,1000,store[..],bytes[0..<3],ranks[0..<3]).status==MsStatus.ok;
+    #assert ms_tekken_read(j,1000,1000,store[..],bytes[..],ranks[..]).status==MsStatus.capacity;
+    // Each refusal names where it is.
+    swaps:=[38]string.[
+        "[^","[x", "\"default_vocab_size\"","\"default_vocab_sizes\"", "\"default_num_special_tokens\"","\"default_num_special\"",
+        "\"pattern\":\"","\"pattern\":7,\"x\":\"", "\"rank\": 1,","\"rank\": 5,", "\"token_bytes\":\"YQ==\"","\"token_byte\":\"YQ==\"",
+        "\"rank\":0,","\"r\":0,", "YWI=","Y?I=", "YWI=","YWI", "{\"config\"","[\"config\"", "\"config\":","\"config\" ",
+        "\"vocab\": [","\"vocab\": {", "{\"rank\":0","[\"rank\":0", "\"rank\": 1, \"token","\"rank\": 1 \"token", "}],\n \"special","} ],\n \"special",
+        "\"image\"","image\"", "\"z\": -2.5e3}","\"z\": -2.5e3,", "\"pattern\"","\"patterns\"", "\"rank\": 2,","\"rank\": 2"];
+    want:=[19]MsStatus.[MsStatus.checkpoint,MsStatus.checkpoint,MsStatus.checkpoint,MsStatus.checkpoint,MsStatus.checkpoint,MsStatus.checkpoint,
+        MsStatus.checkpoint,MsStatus.range,MsStatus.range,MsStatus.range,MsStatus.range,MsStatus.range,MsStatus.range,MsStatus.range,MsStatus.ok,MsStatus.range,MsStatus.range,
+        MsStatus.checkpoint,MsStatus.range];
+    for k:0..<19 {
+        r=ms_tekken_read(ms_test_json(buf[..],swaps[2*k],swaps[2*k+1]),1003,1000,store[..],bytes[..],ranks[..]);
+        #assert r.status==want[k];
+    }
+    // Where: the pattern's first byte, the bad rank, the base64 text.
+    j=ms_test_json(buf[..],"[^","[x");r=ms_tekken_read(j,1003,1000,store[..],bytes[..],ranks[..]);#assert j[r.cause-1]=='"' && j[r.cause]=='[';
+    j=ms_test_json(buf[..],"\"rank\": 1,","\"rank\": 5,");r=ms_tekken_read(j,1003,1000,store[..],bytes[..],ranks[..]);#assert j[r.cause]=='5' && j[r.cause-1]==' ';
+    j=ms_test_json(buf[..],"1000,","999,");r=ms_tekken_read(j,1003,1000,store[..],bytes[..],ranks[..]);#assert j[r.cause]=='9' && j[r.cause-1]==':';
+    j=ms_test_json(buf[..],"YWI=","Y?I=");r=ms_tekken_read(j,1003,1000,store[..],bytes[..],ranks[..]);#assert j[r.cause]=='Y' && j[r.cause+1]=='?';
+    j=ms_test_json(buf[..],"\"default_vocab_size\"","\"default_vocab_sizes\"");r=ms_tekken_read(j,1003,1000,store[..],bytes[..],ranks[..]);#assert r.cause==j.count;
+    // Cut short anywhere, the document is refused.
+    j=ms_test_json(buf[..],"","");
+    for cut:0..<j.count-2 {#assert ms_tekken_read(j[0..<cut],1003,1000,store[..],bytes[..],ranks[..]).status!=MsStatus.ok;}
+    // Leading blanks are fine; a document that is not an object is not.
+    #assert ms_tekken_read("[]",1003,1000,store[..],bytes[..],ranks[..]).status==MsStatus.range;
+    #assert !ms_json_int("1234567890",0).ok && ms_json_int("123456789",0).from==123456789 && ms_json_int(" 12x",0).at==3 && !ms_json_int("x",0).ok;
+    #assert ms_json_int(" 123456789",0).from==123456789 && ms_json_int("1:",0).at==1 && ms_json_int("09",0).from==9 && ms_json_int("1/",0).at==1 && ms_json_int("7",0).ok;
+    #assert ms_json_skip(" [1, [2]] ,",0).at==9 && ms_json_skip("{\"a\": \"}\"}",0).at==10 && ms_json_skip("12,",0).at==2 && ms_json_skip("\"ab\"",0).at==4;
+    #assert !ms_json_skip("[1",0).ok && !ms_json_skip("",0).ok && !ms_json_skip("[\"x]",0).ok && ms_json_skip("1]",0).at==1 && ms_json_skip("\"a\" 5",0).at==3;
+    #assert ms_json_skip("[\"]\"],",0).at==5 && ms_json_skip(" 1}",0).ok && ms_json_skip("x",0).at==0;
+    #assert ms_json_string(" \"a\\\"b\" ",0).to==6 && !ms_json_string("\"ab",0).ok && !ms_json_string("x",0).ok && !ms_json_string("",0).ok;
+    #assert ms_json_string("\"\"x\"",0).at==2 && ms_json_string("\"\\\"\"x",0).at==4 && ms_json_string("\"a\"",0).from==1;
+    x:=ms_json_next(" ,",0,'}');#assert x.ok && x.at==2 && x.from==1;
+    x=ms_json_next(" }",0,'}');#assert x.ok && x.at==2 && x.from==0;
+    x=ms_json_next(" ]",0,'}');#assert !x.ok && x.at==1;
+    #assert !ms_json_next("  ",0,'}').ok && ms_json_next("]",0,']').ok;
+    #assert ms_json_blank(" \t\r\nx",0)==4 && ms_json_blank("",0)==0;
+}
+#test "base64 over the whole alphabet, with padding and refusals" {
+    alpha:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";out:[48]u8;
+    #assert ms_base64(alpha,out[..]).written==48;
+    // Sextets 0, 1, ..., 63 in order: group g packs 4g .. 4g+3.
+    for g:0..<16 {
+        v:=(4*g)*262144+(4*g+1)*4096+(4*g+2)*64+4*g+3;
+        #assert cast(int)out[3*g]==v/65536 && cast(int)out[3*g+1]==(v/256)%256 && cast(int)out[3*g+2]==v%256;
+    }
+    r:=ms_base64("TWFu",out[..]);#assert r.status==MsStatus.ok && r.written==3 && out[0]=='M' && out[1]=='a' && out[2]=='n';
+    #assert ms_base64("TWE=",out[..]).written==2 && out[1]=='a' && ms_base64("TQ==",out[..]).written==1 && out[0]=='M';
+    bad:=[7]string.["","TQ=","T===","=AAA","TW=u","TW.u","TW@u"];
+    for b:bad {#assert ms_base64(b,out[..]).status==MsStatus.range;}
+    more:=[5]string.["TW[u","TW{u","TW:u","TW`u","TW,u"];
+    for b:more {r=ms_base64(b,out[..]);#assert r.status==MsStatus.range && r.cause==2;}
+    r=ms_base64("TQ==",out[0..<0]);#assert r.status==MsStatus.capacity && r.cause==1;
+    #assert ms_base64("TWFu",out[0..<2]).status==MsStatus.capacity && ms_base64("TWE=",out[0..<2]).written==2;
+    #assert ms_base64("TQ=",out[..]).cause==3;
+    #assert ms_base64_value('A')==0 && ms_base64_value('Z')==25 && ms_base64_value('a')==26 && ms_base64_value('z')==51 && ms_base64_value('0')==52 && ms_base64_value('9')==61;
 }
 #test "byte-pair merging refusals and bounds" {
-    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};out:[70]int;
-    #assert ms_rank(t,"Hello")==21177 && ms_rank(t,"Hellp")== -1;
+    g:MsTekkenRig;t:=ms_tekken_fixture(g.data[..],g.bytes[..],g.ranks[..],g.slots[..]);out:[70]int;
     r:=ms_bpe(t,"",out[..]);#assert r.status==MsStatus.range && r.cause==0;
     long:[65]u8;for i:0..<65 {long[i]='a';}
     r=ms_bpe(t,cast(string)long[0..<65],out[..]);#assert r.status==MsStatus.range && r.cause==65;
@@ -299,12 +672,15 @@ ms_chat :: (t:MsTable,system:string,user:string,out:[]int)->MsResult {
     // A byte the restricted table lacks is refused at its offset.
     r=ms_bpe(t,"Hel~",out[..]);#assert r.status==MsStatus.range && r.cause==3;
     r=ms_encode(t,"on Q~",out[..]);#assert r.status==MsStatus.range && r.cause==3;
-    bad:=[4]u8.[0x41,0x42,0xc3,0xa9];r=ms_encode(t,cast(string)bad[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==2;
-    edge:=[2]u8.[128,0x41];r=ms_encode(t,cast(string)edge[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==0;
+    // Malformed UTF-8 is refused at its first byte, before any piece.
+    bad:=[4]u8.[0x41,0x42,0xc3,0x41];r=ms_encode(t,cast(string)bad[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==2;
+    edge:=[3]u8.[0x41,0xff,0x7e];r=ms_encode(t,cast(string)edge[..],out[..]);#assert r.status==MsStatus.unsupported && r.cause==1;
     edge[0]=127;#assert ms_encode(t,cast(string)edge[0..<1],out[..]).status==MsStatus.range;
+    // NUL is a code point like any other; the restricted table lacks it.
+    nul:=[1]u8.[0];r=ms_encode(t,cast(string)nul[..],out[..]);#assert r.status==MsStatus.range && r.cause==0;
 }
 #test "merging follows ranks, takes the leftmost of equal pairs and keeps a whole piece" {
-    tb:=MS_TEKKEN_BYTES;tr:=MS_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};
+    g:MsTekkenRig;t:=ms_tekken_fixture(g.data[..],g.bytes[..],g.ranks[..],g.slots[..]);
     // a:0, aa:1, b:2. "aaa" joins the leftmost pair: [aa, a].
     b1:=[3]string.["a","aa","b"];r1:=[3]int.[0,1,2];u:=MsTable.{bytes=b1[..],ranks=r1[..]};out:[70]int;
     r:=ms_bpe(u,"aaa",out[..]);#assert r.status==MsStatus.ok && r.written==2 && out[0]==1001 && out[1]==1000;
@@ -331,8 +707,9 @@ ms_chat :: (t:MsTable,system:string,user:string,out:[]int)->MsResult {
     many:[2100]u8;for i:0..<2100 {many[i]='a';if i%2==1 {many[i]=' ';}}
     r=ms_chat(t,cast(string)many[0..<2050],"",out[..]);#assert r.status==MsStatus.capacity;
     r=ms_chat(t,"",cast(string)many[0..<2050],out[..]);#assert r.status==MsStatus.capacity;
-    r=ms_chat(t,"é","What",out[..]);#assert r.status==MsStatus.unsupported;
-    r=ms_chat(t,"Hello","é",out[..]);#assert r.status==MsStatus.unsupported;
+    ff:=[1]u8.[0xff];
+    r=ms_chat(t,cast(string)ff[..],"What",out[..]);#assert r.status==MsStatus.unsupported;
+    r=ms_chat(t,"Hello",cast(string)ff[..],out[..]);#assert r.status==MsStatus.unsupported;
     r=ms_chat(t,"Hello","Hello, world!",out[0..<9]);#assert r.status==MsStatus.capacity;
 }
 

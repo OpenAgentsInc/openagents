@@ -8,6 +8,9 @@ not from any downloaded code. Pure Python, float64. Tooling only.
         hash the pinned files; compare (or write) psionic/fixtures/ministral-manifest.coax
     python3 -I psionic/tests/ministral_reference.py tekken MODEL_DIRECTORY [--write]
         tokenize the fixture strings with tekken.json; compare (or write) psionic/fixtures/ministral-tekken.coax
+        and the Unicode class table psionic/fixtures/ministral-unicode.coax
+    python3 -I psionic/tests/ministral_reference.py tekken-check MODEL_DIRECTORY OUT_DIRECTORY
+        compare the ids the Coax harness wrote to OUT_DIRECTORY/tekken-ids.txt from the whole of tekken.json
     python3 -I psionic/tests/ministral_reference.py tiny [--write]
         the synthetic two-layer model and the 3B rotary frequencies; compare (or write) psionic/fixtures/ministral-tiny.coax
     python3 -I psionic/tests/ministral_reference.py slice-tokens MODEL_DIRECTORY OUT_DIRECTORY
@@ -28,6 +31,7 @@ import pathlib
 import re
 import struct
 import sys
+import unicodedata
 from array import array
 
 REVISION = "b6d637bef2393152b3da2b2fde72eecdee30557e"
@@ -53,6 +57,16 @@ TEKKEN_STRINGS = [
     "tabs\tand trailing   ",
     "a+b=c; // comment",
     "",
+    "caf\u00e9",
+    "\u00c7a co\u00fbte 5 \u20ac",
+    "\u041f\u0440\u0438\u0432\u0435\u0442, \u043c\u0438\u0440!",
+    "\u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8",
+    "na\u00efve r\u00e9sum\u00e9",
+    "e\u0301te\u0301 \u0301x",
+    "\u0393\u03b5\u03b9\u03ac \u03c3\u03bf\u03c5",
+    "\U0001f44d ok",
+    "a\u00a0b \u00a0 c",
+    "\u01c5emal \u00bd\u00b2\u216b",
 ]
 # The prompt the original-weight slices run.
 SLICE_PROMPT = "What is the capital of France?"
@@ -80,10 +94,10 @@ def coax_string(s):
             out.append("\\r")
         elif ch == "\t":
             out.append("\\t")
-        elif 32 <= c < 127:
+        elif 32 <= c < 127 or (c >= 0xA0 and unicodedata.category(ch)[0] != "C"):
             out.append(ch)
         else:
-            raise ValueError(f"fixture text must be printable ASCII: {s!r}")
+            raise ValueError(f"fixture text must be printable: {s!r}")
     return '"' + "".join(out) + '"'
 
 
@@ -161,29 +175,57 @@ def pin(directory, write):
 
 # ---- tekken ----------------------------------------------------------------
 
-# Tekken's split pattern restricted to ASCII text: \p{Lu} is A-Z, \p{Ll} is
-# a-z, \p{Lt}, \p{Lm}, \p{Lo} and \p{M} have no ASCII members, \p{N} is 0-9
-# and \s is Unicode White_Space, whose ASCII members are tab to carriage
-# return and space.
-S = r"\t\n\x0b\x0c\r "
-ASCII_PATTERN = re.compile(
-    r"[^\r\nA-Za-z0-9]?[A-Z]*[a-z]+"
-    r"|[^\r\nA-Za-z0-9]?[A-Z]+[a-z]*"
-    r"|[0-9]"
-    rf"| ?[^{S}A-Za-z0-9]+[\r\n/]*"
-    rf"|[{S}]*[\r\n]+"
-    rf"|[{S}]+(?![^{S}])"
-    rf"|[{S}]+"
-)
+# Tekken's split pattern over Unicode. Python's re has no \p{..} classes, so
+# each class is spelled out as code point ranges from unicodedata (Unicode
+# 15.1.0 in this Python), and \s and \S as Unicode White_Space. The matching
+# itself, alternatives and backtracking, is Python's regular-expression engine.
+
+WHITE_SPACE = [0x9, 0xA, 0xB, 0xC, 0xD, 0x20, 0x85, 0xA0, 0x1680, *range(0x2000, 0x200B), 0x2028, 0x2029, 0x202F, 0x205F, 0x3000]
+
+
+def char_class(categories=(), extra=()):
+    """A regex class body: every code point whose general category is in
+    categories, plus extra, as merged ranges."""
+    points = sorted({c for c in range(0x110000) if unicodedata.category(chr(c)) in categories} | set(extra))
+    out, i = [], 0
+    while i < len(points):
+        j = i
+        while j + 1 < len(points) and points[j + 1] == points[j] + 1:
+            j += 1
+        a, b = points[i], points[j]
+        out.append(f"\\U{a:08x}" if a == b else f"\\U{a:08x}-\\U{b:08x}")
+        i = j + 1
+    return "".join(out)
+
+
+def unicode_pattern():
+    L = char_class(("Lu", "Ll", "Lt", "Lm", "Lo"))
+    N = char_class(("Nd", "Nl", "No"))
+    A = char_class(("Lu", "Lt", "Lm", "Lo", "Mn", "Mc", "Me"))
+    B = char_class(("Ll", "Lm", "Lo", "Mn", "Mc", "Me"))
+    S = char_class((), WHITE_SPACE)
+    return re.compile(
+        rf"[^\r\n{L}{N}]?[{A}]*[{B}]+"
+        rf"|[^\r\n{L}{N}]?[{A}]+[{B}]*"
+        rf"|[{N}]"
+        rf"| ?[^{S}{L}{N}]+[\r\n/]*"
+        rf"|[{S}]*[\r\n]+"
+        rf"|[{S}]+(?![^{S}])"
+        rf"|[{S}]+"
+    )
+
+
 TEKKEN_PATTERN = (r"[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+|[^\r\n\p{L}\p{N}]?"
                   r"[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+")
+_PATTERN = []
 
 
 def pieces(text):
-    assert all(ord(c) < 128 for c in text)
+    if not _PATTERN:
+        _PATTERN.append(unicode_pattern())
     out, at = [], 0
     while at < len(text):
-        m = ASCII_PATTERN.match(text, at)
+        m = _PATTERN[0].match(text, at)
         assert m and m.end() > at
         out.append(text[at:m.end()].encode())
         at = m.end()
@@ -253,14 +295,24 @@ def tekken(directory, write):
             ids += [SPECIALS + r for r in bpe(ranks, p)]
         expected.append(ids)
     entries = sorted(subset.items())
+    data, ends = [], [0]
+    for piece, _ in entries:
+        data += list(piece)
+        ends.append(len(data))
     lines = [
         "// Tekken v13 restricted to chapter 81's fixture strings, written by",
         f"// psionic/tests/ministral_reference.py tekken from tekken.json at {REVISION}",
-        f"// (sha256 {FILES['tekken.json'][1]}). Each entry is a byte string and its",
-        "// original rank; token ids are rank + 1000. The ids are tiktoken's rule run",
-        "// in Python over the full 130,072-entry table.",
+        f"// (sha256 {FILES['tekken.json'][1]}). Entry k is the bytes",
+        "// MS_TEKKEN_DATA[MS_TEKKEN_ENDS[k]..<MS_TEKKEN_ENDS[k+1]] (some are partial",
+        "// UTF-8 sequences) with its original rank; token ids are rank + 1000. The",
+        "// ids are tiktoken's rule run in Python over the full 130,072-entry table,",
+        "// after Python's re split the text with the Unicode pattern.",
+        "// MS_TEKKEN_PATTERN is the pattern as tekken.json spells it, JSON escapes and all.",
+        "MS_TEKKEN_PATTERN :: " + coax_string(json.dumps(TEKKEN_PATTERN)[1:-1]) + ";",
         f"MS_TEKKEN_ENTRIES :: {len(entries)};",
-        f"MS_TEKKEN_BYTES :: [{len(entries)}]string.[" + ",".join(coax_string(b.decode()) for b, _ in entries) + "];",
+        f"MS_TEKKEN_DATA_BYTES :: {len(data)};",
+        f"MS_TEKKEN_DATA :: [{len(data)}]u8.[" + ",".join(map(str, data)) + "];",
+        f"MS_TEKKEN_ENDS :: [{len(ends)}]int.[" + ",".join(map(str, ends)) + "];",
         f"MS_TEKKEN_RANKS :: [{len(entries)}]int.[" + ",".join(str(r) for _, r in entries) + "];",
         f"MS_TEKKEN_TEXTS :: [{len(TEKKEN_STRINGS)}]string.[" + ",".join(coax_string(t) for t in TEKKEN_STRINGS) + "];",
     ]
@@ -272,7 +324,66 @@ def tekken(directory, write):
     lines.append(f"MS_TEKKEN_IDS :: [{len(flat)}]int.[" + ",".join(map(str, flat)) + "];")
     chat = [1, 17] + expected[0] + [18, 3] + expected[1] + [4]
     lines.append(f"MS_TEKKEN_CHAT :: [{len(chat)}]int.[" + ",".join(map(str, chat)) + "];")
-    return compare_or_write(FIXTURES / "ministral-tekken.coax", "\n".join(lines) + "\n", write, "Tekken on the fixture strings")
+    status = compare_or_write(FIXTURES / "ministral-tekken.coax", "\n".join(lines) + "\n", write, "Tekken on the fixture strings")
+    return status | compare_or_write(FIXTURES / "ministral-unicode.coax", unicode_table(), write, "unicodedata's classes")
+
+
+# The code point classes the Coax side reads: 0 Lu Lt, 1 Ll, 2 N, 3
+# White_Space, 4 anything else, 5 Lm Lo, 6 M. Each range starts at
+# MS_UNICODE_STARTS[k] and runs to the next start.
+def point_class(c):
+    if c in WHITE_SPACE:
+        return 3
+    k = unicodedata.category(chr(c))
+    if k in ("Lu", "Lt"):
+        return 0
+    if k == "Ll":
+        return 1
+    if k[0] == "N":
+        return 2
+    if k in ("Lm", "Lo"):
+        return 5
+    if k[0] == "M":
+        return 6
+    return 4
+
+
+def unicode_table():
+    starts, classes, prev = [], [], None
+    for c in range(0x110000):
+        k = point_class(c)
+        if k != prev:
+            starts.append(c)
+            classes.append(k)
+            prev = k
+    return "\n".join([
+        f"// Unicode {unicodedata.unidata_version} code point classes for Tekken's pattern, written by",
+        "// psionic/tests/ministral_reference.py tekken from Python's unicodedata. Range k",
+        "// runs from MS_UNICODE_STARTS[k] to the next start; its class is 0 Lu Lt, 1 Ll,",
+        "// 2 N, 3 White_Space, 4 other, 5 Lm Lo, 6 M.",
+        f"MS_UNICODE_RANGES :: {len(starts)};",
+        f"MS_UNICODE_STARTS :: [{len(starts)}]int.[" + ",".join(map(str, starts)) + "];",
+        f"MS_UNICODE_CLASSES :: [{len(starts)}]u8.[" + ",".join(map(str, classes)) + "];",
+    ]) + "\n"
+
+
+def tekken_check(directory, out):
+    """Compare the ids the Coax harness wrote (a header line, then one line a
+    fixture string, after it loaded the whole of tekken.json) with this
+    script's."""
+    ranks = load_tekken(directory)
+    got = (pathlib.Path(out) / "tekken-ids.txt").read_text().splitlines()
+    if len(got) != len(TEKKEN_STRINGS) + 1:
+        print(f"tekken-ids.txt has {len(got)} lines, expected {len(TEKKEN_STRINGS) + 1}", file=sys.stderr)
+        return 1
+    print(got[0])
+    for k, text in enumerate(TEKKEN_STRINGS):
+        want = " ".join(map(str, encode(ranks, text)))
+        if got[k + 1] != want:
+            print(f"string {k} {text!r}: Coax {got[k + 1]!r}, Python {want!r}", file=sys.stderr)
+            return 1
+    print(f"tekken: {len(TEKKEN_STRINGS)} strings, ids equal to Python's over the full table")
+    return 0
 
 
 # ---- the decoder -----------------------------------------------------------
@@ -508,6 +619,8 @@ def main():
         return pin(a[1], write)
     if a[:1] == ["tekken"] and len(a) == 2:
         return tekken(a[1], write)
+    if a[:1] == ["tekken-check"] and len(a) == 3 and not write:
+        return tekken_check(a[1], a[2])
     if a[:1] == ["tiny"] and len(a) == 1:
         return tiny(write)
     if a[:1] == ["slice-tokens"] and len(a) == 3 and not write:

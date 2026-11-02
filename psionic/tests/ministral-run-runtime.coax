@@ -1,0 +1,7 @@
+// Chapter 81's whole-model entry: Ministral as chapter 58's cached decoder
+// (the layer step with YaRN, the chunked tied readout, continuation through
+// chapter 53's sampler) and the safetensors inventory reader, exported for
+// psionic/tests/ministral_run.c. C maps the file and moves bytes; all
+// arithmetic is psionic/lib/ministral-decode.coax and what it loads.
+#load "../lib/ministral-decode.coax";
+#load "../lib/model-io/access.coax";

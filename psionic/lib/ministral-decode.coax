@@ -1,0 +1,91 @@
+// Chapter 81: Ministral 3 3B's whole decoder with a key-value cache. The
+// cached layer step, the chunked readout and continuation through chapter
+// 53's sampler are chapter 58's (minitron.coax); Ministral runs them with its
+// YaRN rotation over adjacent pairs and its tied embedding as the head.
+#load "minitron.coax";
+
+// book:begin model
+// Ministral as chapter 58's model: the embedding is also the head, and every
+// layer rotates with YaRN over adjacent pairs. The cache holds at most
+// LM_POSITIONS_MAX = 64 positions, far inside the original 16,384, so the
+// Llama 4 query scale is exactly 1 and is not applied.
+md_model :: (embed:[]u8,norm:[]u8,layers:[]MsLayer)->LmModel #export_c {
+    return LmModel.{embed=embed,norm=norm,head=embed,layers=layers,rope=LmRope.yarn};
+}
+// book:end model
+
+// A tiny model, its cache and its buffers, for the checks below.
+MdRig :: struct {bytes:[MS_TINY_BYTES]u8;layers:[2]MsLayer;keys:[2*16*8]f32;values:[2*16*8]f32;}
+md_tiny :: (bytes:[]u8,layers:[]MsLayer)->LmModel {
+    t:=ms_tiny_weights(bytes);layers[0]=t.layers[0];layers[1]=t.layers[1];
+    return md_model(t.embed,t.norm,layers);
+}
+MD_TOKENS :: [10]int.[1,3,7,12,4,9,0,15,2,6];
+
+#test "cached steps give the full recompute's logits bit for bit, and match the float64 reference" #steps 60000000 {
+    s:=ms_tiny();g:MdRig;m:=md_tiny(g.bytes[..],g.layers[..]);c:=LmCache.{keys=g.keys[..],values=g.values[..],capacity=16};
+    tokens:=MD_TOKENS;hidden:[160]f32;work:[160]f32;step:[16]f32;full:[16]f32;
+    #assert m.head.count==m.embed.count && m.rope==LmRope.yarn && ms_query_scale(LM_POSITIONS_MAX-1)==1;
+    keep:=g.bytes[1];g.bytes[1]=0x3f;#assert m.head[1]==0x3f;g.bytes[1]=keep;
+    // One token at a time; after each, the full recompute of the prefix from
+    // position 0 gives the same bits.
+    for t:0..<10 {
+        r:=lm_decode(s,m,c,t,tokens[t..<t+1],hidden[..],step[..],work[..]);#assert r.status==MsStatus.ok && r.written==t+1;
+        r=lm_decode(s,m,c,0,tokens[0..<t+1],hidden[..],full[..],work[..]);#assert r.status==MsStatus.ok && r.written==t+1;
+        for i:0..<16 {#assert full[i]==step[i];}
+    }
+    // A prefill of four, then three, then single steps: the same bits.
+    #assert lm_decode(s,m,c,0,tokens[0..<4],hidden[..],step[..],work[..]).status==MsStatus.ok;
+    #assert lm_decode(s,m,c,4,tokens[4..<7],hidden[..],step[..],work[..]).status==MsStatus.ok;
+    for t:7..<10 {#assert lm_decode(s,m,c,t,tokens[t..<t+1],hidden[..],step[..],work[..]).status==MsStatus.ok;}
+    for i:0..<16 {#assert full[i]==step[i];}
+    // The reference's five tokens: the logits within 2e-6 of float64, and
+    // within 1e-6 of the uncached ms_forward.
+    five:=MS_TINY_TOKENS;logits:[16]f32;plain:[16]f32;w81:[400]f32;
+    #assert lm_decode(s,m,c,0,five[..],hidden[..],logits[..],work[..]).status==MsStatus.ok;
+    #assert ms_forward(s,m.embed,m.norm,g.layers[..],five[..],hidden[0..<80],plain[..],w81[..]).status==MsStatus.ok;
+    for i:0..<16 {#assert abs(f64(logits[i])-MS_TINY_LOGITS[i])<2e-6 && abs(logits[i]-plain[i])<1e-6;}
+    // Each layer against the reference: the YaRN rotation over adjacent pairs.
+    x:[40]f32;a:[40]f32;b:[40]f32;
+    #assert ms_embed(s,m.embed,five[..],x[..]).status==MsStatus.ok;
+    #assert lm_layer_rope(s,g.layers[0],c,0,0,x[..],5,a[..],work[..],LmRope.yarn).status==MsStatus.ok;
+    #assert lm_layer_rope(s,g.layers[1],c,1,0,a[..],5,b[..],work[..],LmRope.yarn).status==MsStatus.ok;
+    for i:0..<40 {#assert abs(f64(a[i])-MS_TINY_LAYER0[i])<2e-6 && abs(f64(b[i])-MS_TINY_LAYER1[i])<2e-6;}
+    // Llama 3's rotation on the same weights moves every position after the first.
+    #assert lm_layer_rope(s,g.layers[0],c,0,0,x[..],5,b[..],work[..],LmRope.llama3).status==MsStatus.ok;
+    for i:0..<8 {#assert abs(a[i]-b[i])<1e-6;}
+    differ:=0;for i:8..<40 {if abs(a[i]-b[i])>1e-4 {differ+=1;}}#assert differ>4;
+}
+#test "the tied head is read in chunks past the projection's 32,768 rows" #steps 60000000 {
+    // A head of 40,000 rows of width 2: one projection refuses it; chunks of
+    // 32,768 and 7,232, or of 7, give the same bits as row-by-row readouts.
+    s:=MsShape.{width=2,layers=1,heads=1,kv_heads=1,head_dim=2,hidden=2,vocab=40000};
+    head:[160000]u8;at:=ms_tiny_fill(head[..],0,80000,3,false);#assert at==160000;
+    gain:[4]u8;#assert ms_tiny_fill(gain[..],0,2,99,true)==4;
+    h:=[2]f32.[1.5,-0.75];whole:[40000]f32;part:[40000]f32;work:[40002]f32;one:[1]f32;
+    #assert ms_readout(s,head[..],40000,gain[..],h[..],whole[..],work[..]).status==MsStatus.number;
+    r:=lm_readout(s,head[..],gain[..],h[..],whole[..],work[..],LM_READOUT_ROWS);#assert r.status==MsStatus.ok && r.written==40000;
+    r=lm_readout(s,head[..],gain[..],h[..],part[..],work[..],7);#assert r.status==MsStatus.ok;
+    for i:0..<40000 {#assert part[i]==whole[i];}
+    picks:=[5]int.[0,1,32767,32768,39999];
+    for i:picks {
+        #assert ms_readout(s,head[4*i..<4*i+4],1,gain[..],h[..],one[..],work[..]).status==MsStatus.ok && one[0]==whole[i];
+    }
+}
+#test "greedy continuation is the argmax chain of full recomputes, and stops at </s>" #steps 200000000 {
+    s:=ms_tiny();g:MdRig;m:=md_tiny(g.bytes[..],g.layers[..]);c:=LmCache.{keys=g.keys[..],values=g.values[..],capacity=16};
+    tokens:=MD_TOKENS;hidden:[256]f32;work:[256]f32;logits:[16]f32;st:[16]f64;o:[16]int;tm:[16]int;probs:[16]f64;
+    nostop:[1]int;k:=LmSampler.{options=NxOptions.{temperature=0},stops=nostop[0..<0],probabilities=probs[..],work=nx_work(st[..],o[..],tm[..])};
+    out:[12]int;r:=lm_continue(s,m,c,tokens[0..<4],12,k,out[..],hidden[..],logits[..],work[..]);
+    #assert r.status==MsStatus.ok && r.written==12 && r.cause==15;
+    chain:[16]int;for i:0..<4 {chain[i]=tokens[i];}
+    for i:0..<12 {
+        #assert lm_decode(s,m,c,0,chain[0..<4+i],hidden[..],logits[..],work[..]).status==MsStatus.ok;
+        chain[4+i]=ms_argmax(logits[..]);#assert out[i]==chain[4+i];
+    }
+    // The first emitted token that is not already the stop: make it </s>'s
+    // stand-in, and the run ends there with it emitted, not decoded.
+    stop:=[1]int.[out[3]];k.stops=stop[..];first:=0;while out[first]!=out[3] {first+=1;}
+    e:[12]int;r=lm_continue(s,m,c,tokens[0..<4],12,k,e[..],hidden[..],logits[..],work[..]);
+    #assert r.status==MsStatus.ok && r.written==first+1 && r.cause==4+first && e[first]==out[3];
+}
