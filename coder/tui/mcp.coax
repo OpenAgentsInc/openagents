@@ -9,8 +9,8 @@
 CD_MCP_VERSIONS :: [3] string.["2025-06-18", "2025-03-26", "2024-11-05"];
 CD_MCP_LINE :: 1048576;
 
-CD_MCP_TOOLS :: [9] string.["coder_run", "coder_ls", "coder_status", "coder_log", "coder_send", "coder_stop", "coder_fork", "coder_replay", "coder_decide"];
-CD_MCP_ABOUT :: [9] string.[
+CD_MCP_TOOLS :: [11] string.["coder_run", "coder_ls", "coder_status", "coder_log", "coder_send", "coder_stop", "coder_fork", "coder_replay", "coder_decide", "coder_remember", "coder_recall"];
+CD_MCP_ABOUT :: [11] string.[
   "Start a coding task in a repository as a background Coder session and return its ID at once. Follow it with coder_status and coder_log. engine is claude, codex, micro, psionic or echo; without it, System One picks.",
   "List Coder sessions, newest first, with state, engine, age and task.",
   "One Coder session's state: running, finished, stopped, failed or lost, its last step and its ending.",
@@ -19,9 +19,11 @@ CD_MCP_ABOUT :: [9] string.[
   "Stop a running Coder session.",
   "Start a new background session from an existing one's conversation (its first `at` turns, or all of them) with a new task, and return the new ID.",
   "Rebuild every request a session sent its engine from its log and compare bytes; reports each turn as same or different.",
-  "Ask System One, OpenAgents' decision model, one typed question: it picks one of the options and gives its probability, as {\"choice\":...,\"probability\":...}. Use it for a judgment a program should act on, such as which of several next steps, whether a reply needs a person, or how to label a message."];
+  "Ask System One, OpenAgents' decision model, one typed question: it picks one of the options and gives its probability, as {\"choice\":...,\"probability\":...}. Use it for a judgment a program should act on, such as which of several next steps, whether a reply needs a person, or how to label a message.",
+  "Remember a fact the person told you, for later sessions (Coder book chapter 19): a short key and one sentence. With reason (correction, update or resolve) it revises the fact the key holds. project: true keeps it to the folder cwd names. Only engines the person granted see it at the start of a session.",
+  "The facts the person asked Coder to remember, here: with a query, ranked by meaning; without one, in the order they were written."];
 // Each tool's input schema's properties and required list.
-CD_MCP_SCHEMAS :: [9] string.[
+CD_MCP_SCHEMAS :: [11] string.[
   "{\"type\":\"object\",\"properties\":{\"task\":{\"type\":\"string\"},\"engine\":{\"type\":\"string\",\"enum\":[\"claude\",\"codex\",\"micro\",\"psionic\",\"echo\"]},\"cwd\":{\"type\":\"string\",\"description\":\"the repository folder\"}},\"required\":[\"task\"]}",
   "{\"type\":\"object\",\"properties\":{}}",
   "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"a session ID or a unique prefix\"}},\"required\":[\"id\"]}",
@@ -30,7 +32,9 @@ CD_MCP_SCHEMAS :: [9] string.[
   "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"]}",
   "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"task\":{\"type\":\"string\"},\"at\":{\"type\":\"integer\",\"minimum\":1}},\"required\":[\"id\",\"task\"]}",
   "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"}},\"required\":[\"id\"]}",
-  "{\"type\":\"object\",\"properties\":{\"question\":{\"type\":\"string\"},\"options\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":2,\"maxItems\":32},\"state\":{\"type\":\"string\",\"description\":\"what the question is about: text, or a JSON object\"}},\"required\":[\"question\",\"options\"]}"];
+  "{\"type\":\"object\",\"properties\":{\"question\":{\"type\":\"string\"},\"options\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":2,\"maxItems\":32},\"state\":{\"type\":\"string\",\"description\":\"what the question is about: text, or a JSON object\"}},\"required\":[\"question\",\"options\"]}",
+  "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\"},\"text\":{\"type\":\"string\"},\"reason\":{\"type\":\"string\",\"enum\":[\"correction\",\"update\",\"resolve\"]},\"project\":{\"type\":\"boolean\"},\"cwd\":{\"type\":\"string\"}},\"required\":[\"key\",\"text\"]}",
+  "{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"},\"top\":{\"type\":\"integer\",\"minimum\":1},\"cwd\":{\"type\":\"string\"}}}"];
 
 // {"jsonrpc":"2.0","id":ID,"result":RESULT}
 cd_mcp_result :: (id: string, result: string, out: [] u8) -> string {
@@ -66,6 +70,16 @@ cd_mcp_coder :: (args: [] string, out: [] u8, ok: [] bool) -> string {
   for i: 0..<args.count { argv[i + 1] = args[i]; }
   env := [1] string.["BROWSER=/usr/bin/true"];
   return rt_run_in(argv[0..<args.count + 1], env[..], "", 600, out, ok);
+}
+
+// The same in folder cwd ("" for this one): the memory verbs scope project facts by it.
+cd_mcp_coder_in :: (args: [] string, cwd: string, out: [] u8, ok: [] bool) -> string {
+  rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+  sb: [4200] u8; sn := cd_cat(sb[..], cd_cat(sb[..], 0, repo), "/coder/tui/coder.sh");
+  argv: [26] string; argv[0] = cast(string) sb[0..<sn];
+  for i: 0..<args.count { argv[i + 1] = args[i]; }
+  env := [1] string.["BROWSER=/usr/bin/true"];
+  return rt_run_in(argv[0..<args.count + 1], env[..], cwd, 600, out, ok);
 }
 
 // A tools/call: the verb's output as text content, isError when it failed.
@@ -125,6 +139,21 @@ cd_mcp_call :: (ar: [] ClArena, params: string, extra: [] string, out: [] u8) ->
       text = cd_mcp_coder(a[0..<na], ob[..], ok[..]);
       while text.count > 0 && text[text.count - 1] == 10 { text = cast(string) text[0..<text.count - 1]; }
     }
+  } else if name == "coder_remember" {
+    key := cl_str(ar, args, "key"); ft := cl_str(ar, args, "text"); why := cl_str(ar, args, "reason");
+    if key.count == 0 || ft.count == 0 { text = "coder_remember needs a key and a text."; }
+    else {
+      a[0] = ifx why.count > 0 then "revise" else "remember"; a[1] = key; a[2] = ft; na = 3;
+      if why.count > 0 { a[3] = "--reason"; a[4] = why; na = 5; }
+      pj := cl_bool(args, "project"); if pj.ok && pj.value { a[na] = "--project"; na += 1; }
+      text = cd_mcp_coder_in(a[0..<na], cl_str(ar, args, "cwd"), ob[..], ok[..]);
+    }
+  } else if name == "coder_recall" {
+    a[0] = "recall"; na = 1;
+    q := cl_str(ar, args, "query"); if q.count > 0 { a[1] = q; na = 2; }
+    tp := cl_int(args, "top"); tb2: [16] u8;
+    if tp.ok && tp.value > 0 { a[na] = "--top"; a[na + 1] = cd_itoa(tp.value, tb2[..]); na += 2; }
+    text = cd_mcp_coder_in(a[0..<na], cl_str(ar, args, "cwd"), ob[..], ok[..]);
   } else { return ""; }
   n := json_raw(out, 0, "{\"content\":[{\"type\":\"text\",\"text\":"); n = json_write_string(out, n, ifx text.count > 0 then text else (ifx ok[0] then "Done." else "It failed."));
   n = json_raw(out, n, ifx ok[0] then "}],\"isError\":false}" else "}],\"isError\":true}");
@@ -256,12 +285,12 @@ cd_cmd_mcp :: () -> int {
   tb: [16384] u8; t := cd_mcp_tools(tb[..]);
   ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   list := cl_raw(t, "tools");
-  #assert cl_count(list) == 9;
+  #assert cl_count(list) == 11;
   first := cl_json(list, cl_item(list, 0));
   #assert cl_str(ar[..], first, "name") == "coder_run" && cl_raw(cl_raw(first, "inputSchema"), "required") == "[\"task\"]";
 }
 
-// --coder-tools: the same nine tools as an in-process SDK MCP server in a
+// --coder-tools: the same tools as an in-process SDK MCP server in a
 // Claude Code session, so Claude Code can start, follow and steer other
 // Coder sessions. The model sees them as mcp__coder__coder_run and so on.
 cd_claude_coder_server :: (o: [] ClOptions) {

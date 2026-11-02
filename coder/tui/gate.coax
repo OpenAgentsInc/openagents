@@ -1,0 +1,259 @@
+// Coder's consent gate (Coder book chapter 18) on
+// psionic/lib/harness/consent.coax. Remembered facts (chapter 19) go to an
+// engine only under a grant you record for that engine and those classes
+// of data. Each send, and each refusal, is logged in a hash-chained ledger
+// before the message reaches the engine; a later process replays the
+// ledger and refuses one that a grant did not cover.
+//
+//   coder consent [--json]                                   the grants, with what each carried
+//   coder consent grant ENGINE|all --classes user,project [--days N]
+//   coder consent revoke N                                    grant N stops carrying anything
+//
+//   ~/.openagents/coder/consent/events.jsonl   the ledger, one event a line
+//
+// A destination is an engine (claude, codex, micro, psionic) with the
+// purpose "delegate". The echo engine is offline: nothing goes out, so it
+// is not gated.
+
+#load "../../psionic/lib/harness/consent.coax";
+
+GT_EVENTS :: 2048;
+GT_GRANTS :: 256;
+GT_FILE :: 2097152;
+GT_PERSON :: 1;               // the person at this machine
+GT_FOREVER :: 1000000000000;  // seconds, as chapter 19's facts
+
+GtStore :: struct { src: [GT_EVENTS] CsEvent; events: [GT_EVENTS] CsEvent; grants: [GT_GRANTS] CsGrant; }
+
+gt_dest :: (engine: int) -> CsDest { return CsDest.{kind = CsKind.agent, id = engine, purpose = CsPurpose.delegate}; }
+
+gt_class_names :: [5] string.["session", "user", "project", "tool", "identity"];
+
+// "user,project" as class bits; -1 when a name is not a class.
+gt_classes :: (list: string) -> int {
+  bits := 0; at := 0;
+  while at < list.count {
+    e := at; while e < list.count && list[e] != ',' { e += 1; }
+    w := cast(string) list[at..<e];
+    found := -1;
+    for c: 0..<CS_CLASSES { if w == gt_class_names[c] { found = c; } }
+    if found < 0 { return -1; }
+    bits = bits | (1 << found);
+    at = e + 1;
+  }
+  return bits;
+}
+
+gt_class_text :: (bits: int, out: [] u8) -> string {
+  n := 0;
+  for c: 0..<CS_CLASSES { if (bits & (1 << c)) != 0 { if n > 0 { n = cd_cat(out, n, ","); } n = cd_cat(out, n, gt_class_names[c]); } }
+  return cast(string) out[0..<n];
+}
+
+gt_why_name :: (w: CsWhy) -> string {
+  names := [17] string.["ok", "none", "classes", "early", "expired", "revoked", "shape", "capacity", "unknown", "person", "twice", "tick", "sequence", "link", "digest", "uncovered", "replay"];
+  return names[cast(int) w];
+}
+
+gt_line :: (ev: CsEvent, out: [] u8) -> int {
+  e := ev;
+  n := json_raw(out, 0, "{\"sequence\":"); n = json_write_int(out, n, e.sequence);
+  f := [17] int.[cast(int) e.op, e.tick, cast(int) e.dest.kind, e.dest.id, cast(int) e.dest.purpose, e.classes, e.start, e.until, e.person, e.grant, cast(int) e.why, e.cover[0], e.cover[1], e.cover[2], e.cover[3], e.cover[4], e.sends];
+  names := [17] string.["op", "tick", "kind", "id", "purpose", "classes", "start", "until", "person", "grant", "why", "c0", "c1", "c2", "c3", "c4", "sends"];
+  for i: 0..<17 { n = json_raw(out, n, ",\""); n = json_raw(out, n, names[i]); n = json_raw(out, n, "\":"); n = json_write_int(out, n, f[i]); }
+  n = json_raw(out, n, ",\"bytes\":"); n = json_write_int(out, n, e.bytes);
+  n = json_raw(out, n, ",\"content\":\""); n = mem_hex(out, n, cast(string) e.content[..]);
+  n = json_raw(out, n, "\",\"previous\":\""); n = mem_hex(out, n, cast(string) e.previous[..]);
+  n = json_raw(out, n, "\",\"digest\":\""); n = mem_hex(out, n, cast(string) e.digest[..]);
+  return json_raw(out, n, "\"}\n");
+}
+
+gt_unline :: (line: string, e: [] CsEvent) -> bool {
+  ok: [1] bool; ok[0] = true;
+  x: CsEvent;
+  x.sequence = mem_i(line, "sequence", ok[..]);
+  op := mem_i(line, "op", ok[..]); kind := mem_i(line, "kind", ok[..]); pu := mem_i(line, "purpose", ok[..]); why := mem_i(line, "why", ok[..]);
+  if op < 0 || op > 3 || kind < 0 || kind > 3 || pu < 0 || pu > 3 || why < 0 || why > 16 { return false; }
+  x.op = cast(CsOp) op; x.dest.kind = cast(CsKind) kind; x.dest.purpose = cast(CsPurpose) pu; x.why = cast(CsWhy) why;
+  x.tick = mem_i(line, "tick", ok[..]); x.dest.id = mem_i(line, "id", ok[..]); x.classes = mem_i(line, "classes", ok[..]);
+  x.start = mem_i(line, "start", ok[..]); x.until = mem_i(line, "until", ok[..]); x.person = mem_i(line, "person", ok[..]);
+  x.grant = mem_i(line, "grant", ok[..]); x.sends = mem_i(line, "sends", ok[..]); x.bytes = mem_i(line, "bytes", ok[..]);
+  x.cover[0] = mem_i(line, "c0", ok[..]); x.cover[1] = mem_i(line, "c1", ok[..]); x.cover[2] = mem_i(line, "c2", ok[..]);
+  x.cover[3] = mem_i(line, "c3", ok[..]); x.cover[4] = mem_i(line, "c4", ok[..]);
+  x.content = mem_d32(mem_s(line, "content"), ok[..]); x.previous = mem_d32(mem_s(line, "previous"), ok[..]); x.digest = mem_d32(mem_s(line, "digest"), ok[..]);
+  e[0] = x;
+  return ok[0];
+}
+
+gt_path :: (out: [] u8) -> string {
+  p: [1] RtPaths;
+  if !rt_init(p[..]) { return ""; }
+  b: [1300] u8; x := fs_mkdir(rt_path(p[..], "/consent", b[..]));
+  return cast(string) out[0..<cd_cat(out, 0, rt_path(p[..], "/consent/events.jsonl", b[..]))];
+}
+
+// Reads the ledger and replays it into l: grants rebuilt, every send
+// checked against the grants of its moment. "" when it did, else why not.
+gt_open :: (path: string, st: [] GtStore, l: [] CsLedger, file: [] u8) -> string {
+  src := CsLedger.{events = st[0].src[..], grants = st[0].grants[0..<0]};
+  l[0] = CsLedger.{events = st[0].events[..], grants = st[0].grants[..]};
+  if !fs_exists(path) { return ""; }
+  n := fs_read(path, file);
+  if n < 0 { return "The consent ledger could not be read."; }
+  if n >= file.count { return "The consent ledger is larger than Coder reads."; }
+  at := 0;
+  while at < n {
+    e := at; while e < n && file[e] != 10 { e += 1; }
+    if e > at {
+      if src.count == src.events.count { return "The consent ledger is full."; }
+      if !gt_unline(cast(string) file[at..<e], src.events[src.count..<src.count + 1]) { return "A line of the consent ledger does not parse."; }
+      src.count += 1;
+    }
+    at = e + 1;
+  }
+  v := cs_replay(src, l);
+  if v.why != CsWhy.ok {
+    wb: [24] u8; mb: [200] u8;
+    k := cd_cat(mb[..], 0, "The consent ledger does not replay at event "); k = cd_cat(mb[..], k, cd_itoa(v.index, wb[..]));
+    k = cd_cat(mb[..], k, " ("); k = cd_cat(mb[..], k, gt_why_name(v.why)); k = cd_cat(mb[..], k, ").");
+    for i: 0..<k { file[i] = mb[i]; }
+    return cast(string) file[0..<k];
+  }
+  return "";
+}
+
+// Appends events from..<l.count to the ledger file.
+gt_save :: (path: string, l: CsLedger, from: int) -> bool {
+  ln: [1024] u8;
+  for i: from..<l.count {
+    n := gt_line(l.events[i], ln[..]);
+    if n < 0 || !fs_append(path, cast(string) ln[0..<n]) { return false; }
+  }
+  return true;
+}
+
+gt_engine_id :: (name: string) -> int {
+  if name == "claude" { return ENGINE_CLAUDE; }
+  if name == "codex" { return ENGINE_CODEX; }
+  if name == "micro" || name == "microcoder" { return ENGINE_MICRO; }
+  if name == "psionic" { return ENGINE_PSIONIC; }
+  return -1;
+}
+
+// coder consent [grant ENGINE|all --classes C | revoke N]
+cd_cmd_consent :: (sub: string, what: string, classes: string, days: int, json: bool) -> int {
+  pb: [1400] u8; path := gt_path(pb[..]);
+  if path.count == 0 { tool_errln("coder: no $HOME"); return 1; }
+  st: [1] GtStore; l: [1] CsLedger; file: [GT_FILE] u8;
+  why := gt_open(path, st[..], l[..], file[..]);
+  if why.count > 0 { tool_err("coder consent: "); tool_errln(why); return 1; }
+  now := cxproc_wall_us() / 1000000;
+  if l[0].count > 0 && l[0].events[l[0].count - 1].tick > now { now = l[0].events[l[0].count - 1].tick; }   // ticks never go back
+  before := l[0].count;
+  if sub == "grant" {
+    bits := gt_classes(classes);
+    if what.count == 0 || classes.count == 0 || bits <= 0 { tool_errln("coder consent grant ENGINE|all --classes user,project [--days N]   (classes: session, user, project, tool, identity)"); return 2; }
+    engines: [4] int; ne := 0;
+    if what == "all" { engines = [4] int.[ENGINE_CLAUDE, ENGINE_CODEX, ENGINE_MICRO, ENGINE_PSIONIC]; ne = 4; }
+    else { id := gt_engine_id(what); if id < 0 { tool_err("coder consent: no engine "); tool_errln(what); return 2; } engines[0] = id; ne = 1; }
+    for i: 0..<ne {
+      w := cs_grant(l[..], gt_dest(engines[i]), bits, now, ifx days > 0 then now + days * 86400 else GT_FOREVER, GT_PERSON, now);
+      if w != CsWhy.ok { tool_err("coder consent: the grant was refused ("); tool_err(gt_why_name(w)); tool_errln(")"); return 1; }
+    }
+  } else if sub == "revoke" {
+    g := cd_atoi(what);
+    w := cs_revoke(l[..], g, GT_PERSON, now);
+    if w != CsWhy.ok { tool_err("coder consent: "); tool_errln(ifx w == CsWhy.unknown then "no such grant" else ifx w == CsWhy.twice then "that grant is already revoked" else gt_why_name(w)); return 1; }
+  } else if sub.count > 0 { tool_errln("coder consent [grant ENGINE|all --classes C [--days N] | revoke N] [--json]"); return 2; }
+  if !gt_save(path, l[0], before) { tool_errln("coder consent: the ledger could not be written"); return 1; }
+  o: [65536] u8; k := 0; cb: [64] u8; ib: [24] u8;
+  if json { k = json_raw(o[..], 0, "{\"events\":"); k = json_write_int(o[..], k, l[0].count); k = json_raw(o[..], k, ",\"grants\":["); }
+  for g, i: l[0].grants[0..<l[0].granted] {
+    state := ifx g.revoked then "revoked" else ifx now >= g.until then "expired" else "active";
+    if json {
+      k = json_raw(o[..], k, ifx i > 0 then ",{\"grant\":" else "{\"grant\":"); k = json_write_int(o[..], k, i);
+      k = json_raw(o[..], k, ",\"engine\":"); k = json_write_string(o[..], k, cd_engine_name(g.dest.id));
+      k = json_raw(o[..], k, ",\"classes\":"); k = json_write_string(o[..], k, gt_class_text(g.classes, cb[..]));
+      k = json_raw(o[..], k, ",\"state\":\""); k = json_raw(o[..], k, state);
+      k = json_raw(o[..], k, "\",\"sends\":"); k = json_write_int(o[..], k, g.sends);
+      k = json_raw(o[..], k, ",\"bytes\":"); k = json_write_int(o[..], k, g.bytes); k = json_raw(o[..], k, "}");
+    } else {
+      ln: [512] u8; m := cd_cat(ln[..], 0, cd_itoa(i, ib[..])); m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, cd_engine_name(g.dest.id));
+      m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, gt_class_text(g.classes, cb[..])); m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, state);
+      m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, cd_itoa(g.sends, ib[..])); m = cd_cat(ln[..], m, " sends, "); m = cd_cat(ln[..], m, cd_itoa(g.bytes, ib[..])); m = cd_cat(ln[..], m, " bytes");
+      cd_outln(cast(string) ln[0..<m]);
+    }
+  }
+  if json { k = json_raw(o[..], k, "]}"); cd_outln(cast(string) o[0..<k]); }
+  else if l[0].granted == 0 { cd_outln("No grants. Remembered facts stay on this machine until you run: coder consent grant all --classes user,project"); }
+  return 0;
+}
+
+// The gate on a session's remembered facts: parts[i] is fact i's text and
+// own[i] its class bit. Logs the decision, and when a grant covers only
+// some facts, logs the send of those. keep gets the indexes that may go,
+// and the count is returned; -1 when nothing may (the ledger did not read,
+// or no grant covers any fact).
+gt_facts :: (engine: int, texts: [] string, own: [] int, keep: [] int) -> int {
+  pb: [1400] u8; path := gt_path(pb[..]);
+  if path.count == 0 || texts.count == 0 { return -1; }
+  st: [1] GtStore; l: [1] CsLedger; file: [GT_FILE] u8;
+  if gt_open(path, st[..], l[..], file[..]).count > 0 { return -1; }
+  now := cxproc_wall_us() / 1000000;
+  if l[0].count > 0 && l[0].events[l[0].count - 1].tick > now { now = l[0].events[l[0].count - 1].tick; }
+  labels: [MEM_EVENTS] int;
+  g := CsGraph.{texts = texts, own = own, labels = labels[0..<texts.count]};
+  for i: 0..<texts.count { labels[i] = own[i]; }
+  g.count = texts.count;
+  parts: [MEM_EVENTS] int; for i: 0..<texts.count { parts[i] = i; }
+  sb: [MEM_BRIEF_MAX + 1024] u8; se: [4] int; sv: [4] int;
+  s: [1] CsSink; s[0] = CsSink.{bytes = sb[..], ends = se[..], events = sv[..]};
+  before := l[0].count;
+  m := CsMessage.{dest = gt_dest(engine), parts = parts[0..<texts.count]};
+  r := cs_send(l[..], g, s[..], m, now);
+  k := -1;
+  if r.why == CsWhy.ok { for i: 0..<texts.count { keep[i] = i; } k = texts.count; }
+  else if r.why != CsWhy.shape && r.why != CsWhy.capacity {
+    c := cs_minimize(l[0], g, m, now, keep);
+    if c > 0 {
+      m2 := CsMessage.{dest = m.dest, parts = keep[0..<c]};
+      if cs_send(l[..], g, s[..], m2, now).why == CsWhy.ok { k = c; }
+    }
+  }
+  if !gt_save(path, l[0], before) { return -1; }
+  return k;
+}
+
+#test "consent: class names, ledger lines round-trip and replay, a forged send is refused" {
+  #assert gt_classes("user,project") == 6 && gt_classes("user") == 2 && gt_classes("users") == -1 && gt_classes("") == 0;
+  cb: [64] u8; #assert gt_class_text(6, cb[..]) == "user,project";
+  st: [1] GtStore;
+  l: [1] CsLedger; l[0] = CsLedger.{events = st[0].events[..], grants = st[0].grants[..]};
+  #assert cs_grant(l[..], gt_dest(ENGINE_CLAUDE), 2, 100, 200, GT_PERSON, 100) == CsWhy.ok;
+  texts := [2] string.["\n- editor: Helix", "\n- deploy: release.sh"]; own := [2] int.[2, 4];
+  labels: [2] int; labels[0] = 2; labels[1] = 4;
+  g := CsGraph.{texts = texts[..], own = own[..], labels = labels[..], count = 2};
+  sb: [256] u8; se: [4] int; sv: [4] int; s: [1] CsSink; s[0] = CsSink.{bytes = sb[..], ends = se[..], events = sv[..]};
+  parts := [2] int.[0, 1];
+  m := CsMessage.{dest = gt_dest(ENGINE_CLAUDE), parts = parts[..]};
+  #assert cs_send(l[..], g, s[..], m, 110).why == CsWhy.classes;
+  keep: [2] int; #assert cs_minimize(l[0], g, m, 110, keep[..]) == 1 && keep[0] == 0;
+  #assert cs_send(l[..], g, s[..], CsMessage.{dest = m.dest, parts = keep[0..<1]}, 110).why == CsWhy.ok;
+  #assert cs_send(l[..], g, s[..], CsMessage.{dest = gt_dest(ENGINE_CODEX), parts = keep[0..<1]}, 111).why == CsWhy.none;
+  #assert l[0].count == 4 && l[0].grants[0].sends == 1;
+  file: [8192] u8; n := 0;
+  for i: 0..<l[0].count { n += gt_line(l[0].events[i], file[n..<file.count]); }
+  st2: [1] GtStore; src := CsLedger.{events = st2[0].src[..], grants = st2[0].grants[0..<0]};
+  at := 0;
+  while at < n { e := at; while file[e] != 10 { e += 1; } #assert gt_unline(cast(string) file[at..<e], src.events[src.count..<src.count + 1]); src.count += 1; at = e + 1; }
+  to: [1] CsLedger; to[0] = CsLedger.{events = st2[0].events[..], grants = st2[0].grants[..]};
+  #assert cs_replay(src, to[..]).why == CsWhy.ok && to[0].granted == 1 && to[0].grants[0].bytes == texts[0].count;
+  // turn the refusal into a send: replay finds it uncovered
+  st3: [1] GtStore; src3 := CsLedger.{events = st3[0].src[..], grants = st3[0].grants[0..<0]};
+  for i: 0..<src.count { src3.events[i] = src.events[i]; }
+  src3.count = src.count;
+  src3.events[1].op = CsOp.send; src3.events[1].why = CsWhy.ok;
+  for i: 1..<src3.count { if i > 1 { src3.events[i].previous = src3.events[i - 1].digest; } src3.events[i].digest = cs_digest(src3.events[i]); }
+  to3: [1] CsLedger; to3[0] = CsLedger.{events = st3[0].events[..], grants = st3[0].grants[..]};
+  #assert cs_replay(src3, to3[..]).why == CsWhy.uncovered;
+}

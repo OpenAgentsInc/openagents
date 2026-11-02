@@ -7,7 +7,8 @@
 > Coder also serves its verbs as MCP tools over the stdio transport
 > (`coder mcp`, chapter 23), which Claude Code drives live, and runs as an
 > agent for editors over the Agent Client Protocol (`coder acp`). System One
-> is a typed tool (`coder decide`, `coder_decide`), and `coder mcp` serves
+> is a typed tool (`coder decide`, `coder_decide`), chapter 19's memory is
+> two tools (`coder_remember`, `coder_recall`), and `coder mcp` serves
 > each session's log as an MCP resource. The harness's client and server
 > also run over the stdio transport, and Claude Code has called the harness
 > server's tools live. `coder mcp --http PORT` serves the same tools over

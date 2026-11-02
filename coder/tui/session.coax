@@ -172,6 +172,15 @@ cs_text :: (a: [] App, kind: string, key: string, text: string) {
   cs_put(a, n);
 }
 
+// The remembered facts a first message carried, and how many the consent gate held back (chapters 18 and 19).
+cs_memory :: (a: [] App, text: string, held: int) {
+  o := a[0].log[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"memory\",\"text\":"); n = json_write_string(o, n, text);
+  if held > 0 { n = json_raw(o, n, ",\"withheld\":"); n = json_write_int(o, n, held); }
+  n = json_raw(o, n, "}");
+  cs_put(a, n);
+}
+
 // The digest and length of what a turn sent its engine.
 cs_request :: (a: [] App, sent: string) {
   hb: [64] u8; h := cd_sha256_hex(sent, hb[..]);

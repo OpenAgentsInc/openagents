@@ -7,13 +7,14 @@
 > decided and logged before any byte reaches the sink, revocation that
 > records what already went out, minimized and redacted alternatives, and
 > replay that rebuilds the grants from the log and refuses a send no grant
-> covered. Still to come: the gate wired into
-> [chapter16](ch016-speak-the-protocols.md)'s outbound calls, mesh peer
+> covered. In Coder, the gate stands between
+> [chapter 19](ch019-remember-a-fact-then-revise-it.md)'s remembered facts
+> and every engine, with `coder consent` to grant and revoke and a ledger
+> on disk that each process replays. Still to come: the gate on
+> [chapter 16](ch016-speak-the-protocols.md)'s outbound calls, mesh peer
 > links and [Psionic chapter 247](../../psionic/book/ch247-outcomes-become-training-rows.md)'s
-> export; labels read directly from
-> [chapter19](ch019-remember-a-fact-then-revise-it.md)'s facts and
-> [chapter2](ch002-model-visible-means-logged.md)'s log events; and a
-> ledger kept on disk.
+> export, and labels for [chapter 2](ch002-model-visible-means-logged.md)'s
+> log events.
 
 Session content is private by default. A harness sends bytes outward in
 many ways: a call to a remote tool, a task handed to another agent, work
@@ -696,17 +697,62 @@ runs 400 graphs and 120 sessions; `psionic/check.sh` runs it beside the
 unit. `coax mutate` on `consent.coax` kills all 401 mutants; none
 survive.
 
+## In Coder
+
+The first outbound path the gate guards is the one chapter 19 opened:
+the facts you remember go in front of a session's first message, and so
+to the engine's provider. In Coder, each fact is a node labelled with its
+scope's class, `user` or `project`. The message is the list of facts, and
+its destination is the engine with the purpose `delegate`.
+
+```shell
+coder/tui/coder.sh consent                                   # the grants, with what each carried
+coder/tui/coder.sh consent grant claude --classes user,project
+coder/tui/coder.sh consent grant all --classes user --days 30
+coder/tui/coder.sh consent revoke 0
+```
+
+- **No grant, no facts.** With no grant for the engine, `cs_send` refuses
+  the message and logs the refusal. The session starts without the facts.
+  It logs `{"kind":"memory","text":"","withheld":2}` and shows one line
+  with the command that sends them.
+- **Some classes.** When the grants cover only some classes,
+  `cs_minimize` picks the covered facts. Those go out as a second, logged
+  send, and the rest are counted as withheld.
+- **Revoke.** `coder consent revoke N` stops grant N. Its revoke event
+  records how many sends and bytes the grant already carried.
+- **The ledger.** `~/.openagents/coder/consent/events.jsonl` holds one
+  event per line with every field and its digests. Every `coder consent`
+  and every gated session replays the whole ledger with `cs_replay` before
+  it decides. A ledger that does not replay, including one with a send no
+  grant covered, sends nothing. Ticks are wall-clock seconds and never go
+  back. The ledger holds 2,048 events; when it is full, sends are refused
+  as `capacity`.
+- **Echo is not gated.** The echo engine is offline: nothing leaves the
+  machine.
+
+In a live run on 2026-11-02, Microcoder was asked which editor to use.
+With no grant, it got no facts and suggested VS Code. With
+`consent grant micro --classes user`, it got the user fact (the
+project-scoped `deploy` fact stayed local) and answered "You should open
+the file in Helix." After `consent revoke 0`, the next session got none.
+The grant listed `1 sends, 46 bytes`.
+
+The smoke checks the same sequence on recorded Microcoder responses:
+refused with no grant, refused when only a `user` grant exists for a
+`project` fact, sent under a `project` grant, refused after the revoke,
+and the ledger's counts. The code is in [coder/tui/gate.coax](../tui/gate.coax).
+
 ## What this does not do yet
 
-- **The gate is not yet on the outbound paths.** Chapter16's
-  `tools/call` requests, mesh peer links and Psionic chapter 247's training-row
-  export still need to build a `CsMessage` and go through `cs_send`; this
-  chapter's sink stands in for them.
-- **Labels are given by the caller.** A harness would make each source
-  node from a chapter19 fact (its scope gives the class) or a chapter
-  201 log event; here the example makes the nodes itself.
-- **The ledger lives in memory.** A later session in the same process sees
-  it; a new process starts with no grants.
+- **The gate guards one path.** Remembered facts to engines go through
+  it. Chapter 16's `tools/call` requests, mesh peer links and Psionic
+  chapter 247's training-row export still need to build a `CsMessage` and
+  go through `cs_send`.
+- **Labels come only from facts.** Coder labels each chapter 19 fact by
+  its scope. The text you type in a session and tool output (`session`
+  and `tool`) are not yet nodes, so the engine receives them without a
+  decision. They are the conversation itself.
 
 ## Dependencies
 

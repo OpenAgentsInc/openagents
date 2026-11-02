@@ -9,10 +9,10 @@
 > replay that rebuilds the store from the log. Coder keeps the log on disk
 > (`coder remember`, `revise`, `forget`, `recall`), verifies it in every
 > later process, and ranks facts for a query by cosine similarity of Vertex
-> embeddings. A session's first message carries the facts. Still to come:
-> checking an event-sourced fact's digest against
-> [chapter 2](ch002-model-visible-means-logged.md)'s session log, and the
-> agent proposing facts to remember.
+> embeddings. A session's first message carries the facts a consent
+> grant covers, and agents remember and recall through MCP tools. Still to
+> come: checking an event-sourced fact's digest against
+> [chapter 2](ch002-model-visible-means-logged.md)'s session log.
 
 An agent that works across sessions needs to remember facts: the command
 that builds the project, the editor the user prefers, a deadline. Facts
@@ -631,7 +631,9 @@ coder/tui/coder.sh recall "how do I put the website live?" --top 3
   cosine).
 
 - **Sessions.** The first message of every session starts with the facts
-  `recall` would list in its folder, then a blank line, then your message:
+  `recall` would list in its folder that a `coder consent` grant lets the
+  engine receive ([chapter 18](ch018-consent-before-sharing.md)), then a
+  blank line, then your message:
 
   ```text
   Facts I asked you to remember:
@@ -643,9 +645,19 @@ coder/tui/coder.sh recall "how do I put the website live?" --top 3
 
   The facts are logged as a `memory` line before the `request` line, so
   `coder replay` rebuilds the same bytes after the memory changes. At most
-  8,192 bytes of facts go in; `--no-memory` leaves them out. In a live
+  8,192 bytes of facts go in; `--no-memory` leaves them out. Facts no
+  grant covers stay on the machine, and the log counts them as
+  `withheld`. In a live
   Microcoder run, that message got the answer "You should open this file
   in Helix."
+
+- **Agents.** `coder mcp` serves two more tools, `coder_remember` (a key
+  and a text; with `reason` it revises; `project` and `cwd` scope it) and
+  `coder_recall` (an optional `query` and `top`). They run the verbs, so
+  the same log, checks and consent apply. On 2026-11-02, Claude Code was
+  told "I only deploy on Fridays" with only `coder_remember` allowed; it
+  stored `deploy-day: The user only deploys on Fridays.`, and `coder
+  recall` listed it.
 
 The files are in `~/.openagents/coder/memory/`:
 
@@ -677,9 +689,10 @@ that `--no-memory` leaves them out.
   event-sourced fact carries the digest of the event it was said in, but
   nothing yet confirms that chapter2's log holds an event with that
   digest. Cited facts are checked against their passage on every read.
-- **The agent can't write its memory.** You write facts with the verbs,
-  and the agent sees them at the start of a session. Letting the agent
-  propose a `remember` that you approve is not built.
+- **The agent writes through MCP only.** An agent that has Coder's MCP
+  tools can propose a fact with `coder_remember`, and the host's tool
+  approval is your consent. An engine Coder drives directly does not get
+  those tools unless you start it with `--coder-tools`.
 - **Ranking is by embeddings only.** Psionic chapter 54's lexical ranking
   and reranking are not combined with the cosine score.
 

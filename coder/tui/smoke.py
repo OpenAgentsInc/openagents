@@ -402,6 +402,26 @@ def verbs(check):
               any(l.get("kind") == "memory" and l.get("text") == "Facts I asked you to remember:\n- deploy: Ship openagents.com only through coax/web/release.sh." for l in mbl)
               and "You said: Facts I asked you to remember:" in mb.stdout and "1 of 1 requests rebuilt with the same bytes." in mbr.stdout
               and '"kind":"memory"' not in mbn.stdout and "You said: hi" in mbn.stdout)
+        # consent (chapter 18): facts reach an engine only under a grant for it and their class; the ledger counts what went
+        def gq(*a):
+            gd = tempfile.mkdtemp(prefix="coder-gate-")
+            for n in ("1.http", "2.http"):
+                shutil.copy(os.path.join(fx, n), gd)
+            r = mq("run", "Run `echo replay-check` and then tell me what it printed, in one short sentence.", "--engine", "micro", "--json", e=dict(menv, GW_REPLAY=gd))
+            return next((json.loads(l) for l in r.stdout.splitlines() if '"kind":"memory"' in l), {})
+        g0 = gq()
+        gu = mq("consent", "grant", "micro", "--classes", "user")
+        g1 = gq()
+        gp = mq("consent", "grant", "micro", "--classes", "project")
+        g2 = gq()
+        gr = mq("consent", "revoke", "1")
+        g3 = gq()
+        gj = json.loads(mq("consent", "--json").stdout or "{}")
+        check("consent: remembered facts reach an engine only under a grant for their class; a revoke stops them; the ledger replays",
+              g0 == {"kind": "memory", "text": "", "withheld": 1} and g1.get("withheld") == 1 and gu.returncode == 0 and gp.returncode == 0 and gr.returncode == 0
+              and g2.get("text") == "Facts I asked you to remember:\n- deploy: Ship openagents.com only through coax/web/release.sh." and "withheld" not in g2
+              and g3.get("withheld") == 1 and gj.get("events") == 7
+              and [(x["engine"], x["classes"], x["state"], x["sends"]) for x in gj.get("grants", [])] == [("microcoder", "user", "active", 1), ("microcoder", "project", "revoked", 1)])
         open(os.path.join(mdir, "events.jsonl"), "w").write(evs.replace('"from":0', '"from":5', 1))
         m8 = mq("recall")
         check("memory: remember, conflict, revise, forget; recall ranks by embeddings; forgotten text leaves the file; an edited log is refused",
@@ -725,7 +745,7 @@ def verbs(check):
               and mine[0]["description"].startswith("finished") and "via-mcp" in read["result"]["contents"][0]["text"]
               and miss["error"]["code"] == -32002)
         check("mcp: initialize, the tool list, a run started and its log read through tools",
-              init["result"]["serverInfo"]["name"] == "coder" and len(tools) == 9 and not started["isError"]
+              init["result"]["serverInfo"]["name"] == "coder" and len(tools) == 11 and "coder_remember" in tools and not started["isError"]
               and "    └ via-mcp" in logged and unknown["error"]["code"] == -32602)
         # coder mcp --http: the same server over Streamable HTTP on 127.0.0.1
         import urllib.request, urllib.error

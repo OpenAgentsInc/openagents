@@ -308,9 +308,13 @@ mem_paths :: (p: [] RtPaths) -> bool {
 MEM_BRIEF_MAX :: 8192;
 
 // The facts recall would list for a session in folder cwd, written as the
-// start of its first message; their length, 0 when there are none or the
-// log does not verify (recall says why).
-mem_brief :: (cwd: string, out: [] u8) -> int {
+// start of its first message to engine; their length, 0 when there are
+// none or the log does not verify (recall says why). Each fact is a part
+// of a message the consent gate (gate.coax, chapter 18) decides: only the
+// facts a grant for the engine covers go, and held[0] gets the count of
+// the rest. The echo engine is offline and not gated.
+mem_brief :: (cwd: string, engine: int, out: [] u8, held: [] int) -> int {
+  held[0] = 0;
   p: [1] RtPaths;
   if !mem_paths(p[..]) { return 0; }
   eb: [1400] u8; epath := rt_path(p[..], "/memory/events.jsonl", eb[..]);
@@ -325,14 +329,25 @@ mem_brief :: (cwd: string, out: [] u8) -> int {
   ids: [MEM_EVENTS] int;
   n := mm_read(t[0], ctx, cxproc_wall_us() / 1000000, ps, ids[..]);
   if n <= 0 { return 0; }
-  lim := ifx out.count < MEM_BRIEF_MAX then out.count else MEM_BRIEF_MAX;
-  k := cd_cat(out[0..<lim], 0, "Facts I asked you to remember:");
+  head := "Facts I asked you to remember:";
+  tb: [MEM_BRIEF_MAX] u8; tu := 0; texts: [MEM_EVENTS] string; own: [MEM_EVENTS] int; nt := 0;
   for i: 0..<n {
     f := t[0].facts[ids[i]];
-    if k + f.key.count + f.text.count + 5 > lim { break; }
-    k = cd_cat(out, k, "\n- "); k = cd_cat(out, k, f.key); k = cd_cat(out, k, ": "); k = cd_cat(out, k, f.text);
+    if head.count + tu + f.key.count + f.text.count + 5 > MEM_BRIEF_MAX { break; }
+    s0 := tu; tu = cd_cat(tb[..], tu, "\n- "); tu = cd_cat(tb[..], tu, f.key); tu = cd_cat(tb[..], tu, ": "); tu = cd_cat(tb[..], tu, f.text);
+    texts[nt] = cast(string) tb[s0..<tu];
+    own[nt] = 1 << cast(int) (ifx f.scope == MmScope.project then CsClass.project else CsClass.user);
+    nt += 1;
   }
-  return k;
+  keep: [MEM_EVENTS] int; k := nt;
+  if engine == ENGINE_ECHO { for i: 0..<nt { keep[i] = i; } }
+  else { k = gt_facts(engine, texts[0..<nt], own[0..<nt], keep[..]); }
+  if k <= 0 { held[0] = nt; return 0; }
+  held[0] = nt - k;
+  lim := ifx out.count < MEM_BRIEF_MAX then out.count else MEM_BRIEF_MAX;
+  w := cd_cat(out[0..<lim], 0, head);
+  for j: 0..<k { w = cd_cat(out[0..<lim], w, texts[keep[j]]); }
+  return w;
 }
 
 // coder remember | revise | forget | recall.

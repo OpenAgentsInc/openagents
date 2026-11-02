@@ -143,6 +143,9 @@ apart:
 | `coder_ls`, `coder_status`, `coder_log`, `coder_stop`, `coder_replay` | the verb of the same name |
 | `coder_send` | a message for a session: a running job takes it as its next turn; an ended one continues in a fork |
 | `coder_fork` | `coder fork ID TASK --detach [--at N]` |
+| `coder_decide` | `coder decide QUESTION --options A,B [--state S] --json` |
+| `coder_remember` | `coder remember KEY TEXT`, or `coder revise` when `reason` is given (`project` adds `--project`; it runs in `cwd`) |
+| `coder_recall` | `coder recall [QUERY] [--top N]` in `cwd` |
 
 `coder_run` always runs a background job, so a client's tool-call timeout
 never cuts a task short; the client follows it with `coder_status` and
