@@ -7,6 +7,54 @@ shared delivery sequence for [Coax](../../coax/book/README.md),
 routes through capabilities that already run. Each book's chapter registry
 remains authoritative for its current teaching profiles.
 
+The follow-up review on 2026-11-01 uses `71c1d3fcdb` and the measured MNIST
+MLP in `063a1a589a`. It turns the broad milestones below into eight
+independently trackable issues. The books share this repository, so their
+tasks belong in `OpenAgentsInc/openagents`, beside the existing book epics
+[#12610](https://github.com/OpenAgentsInc/openagents/issues/12610) and
+[#12612](https://github.com/OpenAgentsInc/openagents/issues/12612).
+
+## The next structural work
+
+The largest gap is joining implemented components into complete supported
+workflows. More worked chapters help, but an operator, shader, signing vector
+or simulated scheduler does not establish a usable application. Complete a
+small route, measure it, then expand its supported profile. Keep four parallel
+tracks; the CNN work does not wait for all compiler or relay work to finish.
+
+| Priority and issue | Independently reviewable tasks | Exit |
+| --- | --- | --- |
+| P1: [Supported reader routes and delivery evidence, #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) | Give each book a clean-checkout entry command and observable application exit; bind evidence to source/compiler/target; run quick metadata checks; record published revision. | A reader can reproduce a named supported route, and a changed dependency invalidates only its affected evidence. |
+| P1: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Reuse existing result-language, analysis-cost, B2 and B3 task identities; qualify a synchronous fallible adapter, then the real polling/cancel lifecycle; teach the resulting contract. | Handled outcomes, cleanup and buffer lifetime survive success, refusal and cancellation within measured analysis bounds. |
+| P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. The tiny CNN is a step toward ResNet/CIFAR, not that project's completion. |
+| P2: [Useful single-GPU training, #12627](https://github.com/OpenAgentsInc/openagents/issues/12627) | Cooperative backward and resident whole-step state, precision/overflow/resume, then a frozen 10–50M decoder with independent baseline. | Quality, tokens/s, memory and startup are measured together on the 4080. Distributed scaling follows this useful baseline. |
+| P1: [Aethyr shared rendering and playable route, #12628](https://github.com/OpenAgentsInc/openagents/issues/12628) | Common frame/pass/binding admission; migrate the Grid, then catalogue subsystems; qualify independent render profiles and resource refusals. | One playable route uses shared engine contracts on its declared native/browser targets; remaining private paths stay visible. |
+| P2: [Reproducible Forge artifacts, #12629](https://github.com/OpenAgentsInc/openagents/issues/12629) | Common invertible edits, stale-revision refusal, pinned document/engine/assets, reload, migration and isolated forks. | A later engine release cannot silently change a published world's pinned artifact. |
+| P1: [Nostr live consumers and evidence debt, #12630](https://github.com/OpenAgentsInc/openagents/issues/12630) | Close recorded pin/regression/settlement decisions, qualify complete signer/storage/transport profiles, migrate remaining actual consumers and connect applications individually. | Real consumer evidence covers its actual target and key boundary; offline traces and test keys retain their narrower claims. |
+| P1: [Production relay qualification, #12631](https://github.com/OpenAgentsInc/openagents/issues/12631) | Freeze required parity, qualify durable import/restart and production budgets, refresh differentials, shadow traffic and rehearse rollback. | Every production exit is evidenced before a separate owner-operated cutover. |
+
+Each issue has a task checklist and acceptance criteria. Execute it in bounded
+slices and retain failed results; do not mark an umbrella complete because one
+slice passes. The first Psionic slice was the MLP; the next is reusable CPU
+convolution and a CNN through the same training/state interfaces. Its GPU and
+compiled-backward support must be qualified separately or refuse explicitly.
+
+This ordering preserves completed work. B1 ownership qualification, generated
+realm shaders, API NIP-98 verification and the relay's wired operations already
+exist. The qualified analysis-cost candidate in the existing
+`book30-analysis-cost` task reports 1,010,708 steps; B1's older 1,047,475-step
+observation is historical, not a measurement of current main. Measure the exact
+current compiler before adding analysis. Forge currently pins the document
+revision but still plays it with the current engine, which is the concrete
+artifact gap for #12629. Nostr's frozen conformance example must not be relabeled
+as a current operational report.
+
+Later branches still matter: Aethyr rigid/articulated worlds and simulator
+interfaces, Psionic import/fine-tune/serve and real Pylon game decisions, and
+Nostr treasury signing/recovery. They keep their existing prerequisites and
+owner actions below. Advance them through actual consumers rather than
+flattening them into a single chapter-count queue.
+
 ## What completion means
 
 Keep four different questions separate:
@@ -59,8 +107,10 @@ The first bounded CPU MNIST MLP consumer is now measured in
 [chapter 118](../../psionic/book/ch118-one-trainer-for-every-model.md): public
 module/autodiff/trainer composition, caller-sized buffers, AdamW, a checked
 checkpoint replay and named inference export, with a frozen held-out quality
-rule. This advances the first milestone; CNN integration, larger datasets,
-GPU efficiency and the broader projects below remain open.
+rule. Its next bounded CPU CNN slice now reaches 88.5742% through reusable
+convolution/flatten layers and the same trainer, with independent gradients,
+replay and export checks. This advances the first milestone; residual models,
+CNN options, larger datasets, GPU efficiency and broader acceptance remain open.
 
 The [framework acceptance projects](../../psionic/book/PLAN.md#a-framework-not-only-engines)
 remain the graduation gates. Original model inference, a tiny GPU training run,
@@ -84,6 +134,11 @@ admission and independent references, not repeating that port. The
 [migration chapter](../../aethyr/book/ch064-every-realm-runs-on-aethyr.md) records
 both adopted components and remaining private paths; a migrated clock is not a
 whole migrated realm.
+
+While this follow-up was in progress, `1e37eb87d0` added the reusable monochrome
+HUD library and its recorded demo, moving chapter 15 forward. Preserve that
+component and its evidence in #12628; shared frame/pass/binding admission and
+complete realm adoption still need their own exits.
 
 ## Nostr: finish real consumers and operational qualification
 

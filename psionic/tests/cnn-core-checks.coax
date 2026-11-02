@@ -1,0 +1,134 @@
+// Focused CNN core checks. The literal batch oracle was derived separately
+// with exact rational arithmetic from NCHW/OIHW valid cross-correlation.
+#load "../lib/compiled-backward.coax";
+#load "../lib/tensor-ir-host.coax";
+
+cnn_core_shape :: (n:int,c:int,h:int,w:int)->TvShape {return TvShape.{rank=4,dims=[4]int.[n,c,h,w]};}
+cnn_core_program :: (a:TvShape,b:TvShape)->TiProgram {
+    p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(a,0);p.nodes[1]=ti_input(b,tv_elements(a).elements);
+    p.nodes[2]=TiNode.{op=TiOp.conv2d,a=0,b=1};return p;
+}
+cnn_core_reduce :: (program:TiProgram)->TiProgram {
+    p:=program;
+    for k:0..<4 {p.nodes[p.count]=TiNode.{op=TiOp.sum,a=p.output,axis=3-k};p.output=p.count;p.count+=1;}
+    return p;
+}
+cnn_core_kernel :: (p:TiPlan,input:[]f32,work:[]f32,stage:[]f32,flags:[]u8) {
+    for c:0..<p.launches {launch:=ti_lower(p,c);for item:0..<launch.items {tik_run(item,launch.meta[..],launch.epsilon,input,work,stage,flags);}}
+}
+
+#test "cnn core: rectangular cross correlation preserves operation tags and exact lowering" {
+    p:=cnn_core_program(cnn_core_shape(1,1,3,4),cnn_core_shape(1,1,2,3));
+    plan:=ti_compile(p,TiTarget.{},true);#assert plan.status==TiStatus.ok && ti_binary(TiOp.conv2d);
+    #assert cast(u8)TiOp.conv2d==12 && cast(u8)TiOp.registered==11;
+    #assert ti_request(p.nodes[2]).op==ToOp.conv2d && ti_request(p.nodes[2]).stride==1;
+    #assert plan.output_elements==4 && plan.work==24 && ti_shape_equal(plan.values[2].view.shape,cnn_core_shape(1,1,2,2));
+    first:=ti_lower(plan,0);last:=ti_lower(plan,1);
+    #assert first.meta[0]==12 && first.meta[8]==0 && first.meta[19]==0 && first.meta[20]==12 && last.meta[0]==10;
+    input:=[18]f32.[1,2,3,4,5,6,7,8,9,10,11,12,1,-1,2,0,3,-2];
+    work:[16]f32;stage:[4]f32;flags:[16]u8;out:[4]f32;want:=[4]f32.[9,12,21,24];
+    cnn_core_kernel(plan,input[..],work[..],stage[..],flags[..]);
+    #assert ti_publish(flags[0..<plan.flag_elements],stage[..],out[..])==TiStatus.ok;
+    for j:0..<4 {#assert out[j]==want[j];}
+    for j:0..<4 {#assert ti_ref_item(plan,2,j,input[..],work[..]).value==f64(want[j]);}
+}
+
+#test "cnn core: rank channel kernel target dtype dependency and work limits refuse" {
+    good:=cnn_core_program(cnn_core_shape(1,2,3,4),cnn_core_shape(2,2,2,3));
+    for kind:0..<5 {
+        a:=cnn_core_shape(1,2,3,4);b:=cnn_core_shape(2,2,2,3);
+        if kind==0 {a=TvShape.{rank=3,dims=[4]int.[2,3,4,0]};}else if kind==1 {b.dims[1]=1;}else if kind==2 {b.dims[2]=0;}else if kind==3 {b.dims[2]=4;}else {b.dims[3]=5;}
+        #assert ti_compile(cnn_core_program(a,b),TiTarget.{},true).status==TiStatus.shape;
+    }
+    #assert ti_compile(good,TiTarget.{device=TdDevice.cuda},true).status==TiStatus.device;
+    #assert ti_compile(good,TiTarget.{device=TdDevice.metal},true).status==TiStatus.device;
+    p:=good;p.nodes[2].b=2;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.dependency;
+    p=good;p.nodes[2].b=-1;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.dependency;
+    p=good;p.nodes[2].dtype=TdDtype.f16;#assert ti_compile(p,TiTarget.{},true).status==TiStatus.dtype;
+    #assert ti_compile(good,TiTarget.{budget=8},true).status==TiStatus.budget;
+    large:=cnn_core_program(cnn_core_shape(1,16,64,64),cnn_core_shape(16,16,5,5));
+    #assert ti_compile(large,TiTarget.{},true).status==TiStatus.limit;
+}
+
+#test "cnn core: batch channels and all formal operand gradients match an exact rational oracle" {
+    p:=cnn_core_program(cnn_core_shape(2,2,3,4),cnn_core_shape(2,2,2,3));
+    input:[88]f32;for j:0..<48 {input[j]=f32(f64((j*7)%17-8)/4);}for j:0..<24 {input[48+j]=f32(f64((j*3)%11-5)/4);}
+    for j:0..<16 {input[72+j]=f32(f64(j%5-2)/2);}
+    expected:=[16]f32.[3.75,-2.6875,-0.75,1.3125,8,-1.375,0.25,2.5625,-2,2.1875,-2.25,1.9375,-0.25,-2.1875,-3.75,0.6875];
+    dx:=[48]f32.[0.75,1.875,0.75,-1.125,-1.75,0.5,0.75,-0.25,0.5,0.625,-0.75,-0.125,0.75,-3.5,0.875,0.375,0.125,-2.125,2.25,0.75,-0.375,0.625,0.625,-0.625,-0.625,-1.75,-0.25,0.75,1.25,1.875,-0.5,-1.125,-2,1.25,1.5,-0.375,0.25,1.75,0.5,-0.75,0.75,-2.75,0.375,-1.125,0.75,-2.75,1.625,1.125];
+    dw:=[24]f32.[0.125,-1.625,-1.25,3.75,2,2.375,-3.875,-1.375,-1,4,0.125,-1.625,-4.25,2.125,0,2.125,0,-2.125,0,2.125,0,2.125,-4.25,2.125];
+    plan:=ti_compile(p,TiTarget.{},true);work:[256]f32;stage:[16]f32;flags:[128]u8;
+    cnn_core_kernel(plan,input[..],work[..],stage[..],flags[..]);for j:0..<16 {#assert stage[j]==expected[j];}
+    p.nodes[3]=ti_input(cnn_core_shape(2,2,2,2),72);p.nodes[4]=TiNode.{op=TiOp.multiply,a=2,b=3};p.count=5;p.output=4;p=cnn_core_reduce(p);
+    for k:1..<4 {
+        mode:AdMode;mode.grad[0]=(k&1)!=0;mode.grad[1]=(k&2)!=0;
+        t:=ad_tape(p,mode,OrRegistry.{});#assert t.status==AdStatus.ok;
+        values:[256]f32;grads:[256]f64;fl:[32]u8;gx:[48]f32;gw:[24]f32;loss:[1]f32;
+        run:=ad_run(t,AdCursor.{},input[..],values[..],grads[..],fl[..]);#assert run.status==AdStatus.ok && !run.external;
+        #assert ad_value(t,run.cursor,p.output,input[..],values[..],loss[..])==AdStatus.ok && loss[0]==4.4375;
+        if mode.grad[0] {#assert ad_gradient(t,run.cursor,0,grads[..],gx[..])==AdStatus.ok;for j:0..<48 {#assert gx[j]==dx[j];}}
+        if mode.grad[1] {#assert ad_gradient(t,run.cursor,1,grads[..],gw[..])==AdStatus.ok;for j:0..<24 {#assert gw[j]==dw[j];}}
+    }
+}
+
+#test "cnn core: signed strided operand views preserve both forward and physical root gradients" {
+    p:=cnn_core_program(cnn_core_shape(1,1,3,4),cnn_core_shape(1,1,2,3));
+    p.nodes[2]=TiNode.{op=TiOp.view,a=0,shape=cnn_core_shape(1,1,3,4),offset=3,strides=[4]int.[12,12,4,-1]};
+    p.nodes[3]=TiNode.{op=TiOp.view,a=1,shape=cnn_core_shape(1,1,2,3),offset=5,strides=[4]int.[6,6,-3,-1]};
+    p.nodes[4]=TiNode.{op=TiOp.conv2d,a=2,b=3};p.count=5;p.output=4;
+    input:=[18]f32.[1,2,3,4,5,6,7,8,9,10,11,12,1,-1,2,0,3,-2];work:[32]f32;stage:[4]f32;flags:[32]u8;
+    plan:=ti_compile(p,TiTarget.{},true);cnn_core_kernel(plan,input[..],work[..],stage[..],flags[..]);want:=[4]f32.[16,13,28,25];for j:0..<4 {#assert stage[j]==want[j];}
+    p=cnn_core_reduce(p);mode:AdMode;mode.grad[0]=true;mode.grad[1]=true;t:=ad_tape(p,mode,OrRegistry.{});
+    values:[128]f32;grads:[128]f64;fl:[16]u8;gx:[12]f32;gw:[6]f32;
+    run:=ad_run(t,AdCursor.{},input[..],values[..],grads[..],fl[..]);#assert run.status==AdStatus.ok;
+    #assert ad_gradient(t,run.cursor,0,grads[..],gx[..])==AdStatus.ok && ad_gradient(t,run.cursor,1,grads[..],gw[..])==AdStatus.ok;
+    dx:=[12]f32.[0,3,1,-2,1,3,2,0,1,0,1,2];dw:=[6]f32.[30,34,38,14,18,22];
+    for j:0..<12 {#assert gx[j]==dx[j];}for j:0..<6 {#assert gw[j]==dw[j];}
+}
+
+#test "cnn core: formal VJP keeps exactly the opposite operand alive" {
+    p:=cnn_core_program(cnn_core_shape(1,1,3,4),cnn_core_shape(1,1,2,3));
+    p.nodes[2]=TiNode.{op=TiOp.relu,a=0};p.nodes[3]=TiNode.{op=TiOp.multiply,a=1,b=1};
+    p.nodes[4]=TiNode.{op=TiOp.conv2d,a=2,b=3};p.nodes[5]=TiNode.{op=TiOp.relu,a=4};p.count=6;p.output=5;p=cnn_core_reduce(p);
+    input:=[18]f32.[-1,2,-3,4,5,-6,7,-8,9,10,-11,12,-1,0.5,1,0,2,-0.5];
+    dx:=[12]f32.[0,1.25,0,1,1,0,5.5,0,0,4,0,0.25];dw:=[6]f32.[-14,9,22,0,68,-19];
+    for k:1..<4 {
+        mode:AdMode;mode.grad[0]=(k&1)!=0;mode.grad[1]=(k&2)!=0;t:=ad_tape(p,mode,OrRegistry.{});
+        #assert t.status==AdStatus.ok && t.saved[2]==mode.grad[1] && t.saved[3]==mode.grad[0];
+        r:=ad_reads(p.nodes[4],false,mode.grad[0],mode.grad[1]);#assert r[0]==mode.grad[1] && r[1]==mode.grad[0];
+        if mode.grad[1] {#assert t.value_dies[2]>=t.forward;}
+        if mode.grad[0] {#assert t.value_dies[3]>=t.forward;}
+        values:[128]f32;grads:[128]f64;flags:[16]u8;gx:[12]f32;gw:[6]f32;loss:[1]f32;
+        run:=ad_run(t,AdCursor.{},input[..],values[..],grads[..],flags[..]);#assert run.status==AdStatus.ok;
+        #assert ad_value(t,run.cursor,p.output,input[..],values[..],loss[..])==AdStatus.ok && loss[0]==93;
+        if mode.grad[0] {#assert ad_gradient(t,run.cursor,0,grads[..],gx[..])==AdStatus.ok;for j:0..<12 {#assert gx[j]==dx[j];}}
+        if mode.grad[1] {#assert ad_gradient(t,run.cursor,1,grads[..],gw[..])==AdStatus.ok;for j:0..<6 {#assert gw[j]==dw[j];}}
+    }
+}
+
+#test "cnn core: formal VJP accumulates a contribution smaller than binary32 spacing" {
+    p:=cnn_core_program(cnn_core_shape(1,1,1,2),cnn_core_shape(1,1,1,1));
+    mode:AdMode;mode.grad[1]=true;t:=ad_tape(p,mode,OrRegistry.{});#assert t.status==AdStatus.ok;
+    input:=[3]f32.[1,1,1];values:[8]f32;grads:[8]f64;small:=1.0/1073741824.0;
+    grads[t.grad_at[2]]=1;grads[t.grad_at[2]+1]=small;ad_rule(t,2,input[..],values[..],grads[..]);
+    #assert grads[t.grad_at[1]]==1+small && grads[t.grad_at[1]]!=f64(f32(1+small));
+}
+
+#test "cnn core: product or accumulation overflow remains visible after ReLU and copy" {
+    p:=cnn_core_program(cnn_core_shape(1,1,1,2),cnn_core_shape(1,1,1,2));p.nodes[3]=TiNode.{op=TiOp.relu,a=2};p.count=4;p.output=3;
+    plan:=ti_compile(p,TiTarget.{},true);
+    for k:0..<2 {
+        input:=[4]f32.[3e38,3e38,1,1];if k==0 {input[1]=-3e38;input[2]=2;input[3]=2;}
+        work:[8]f32;stage:[1]f32;flags:[3]u8;out:=[1]f32.[-71];
+        cnn_core_kernel(plan,input[..],work[..],stage[..],flags[..]);
+        #assert flags[0]!=0 && flags[1]==0 && flags[2]==0 && stage[0]==0;
+        #assert ti_publish(flags[..],stage[..],out[..])==TiStatus.arithmetic && out[0]==-71;
+    }
+}
+
+#test "cnn core: compiled backward explicitly refuses convolution including forward only" {
+    p:=cnn_core_program(cnn_core_shape(1,1,3,4),cnn_core_shape(1,1,2,3));p=cnn_core_reduce(p);
+    mode:AdMode;mode.grad[1]=true;
+    #assert cb_compile(p,mode,OrRegistry.{},CbChoice.{}).status==CbStatus.operation;
+    mode.enabled=false;#assert cb_compile(p,mode,OrRegistry.{},CbChoice.{}).status==CbStatus.operation;
+}

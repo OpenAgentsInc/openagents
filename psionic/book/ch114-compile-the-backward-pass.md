@@ -8,6 +8,11 @@
 > from chapter 39, the AdamW update of chapter 124 and measured step time
 > are not here yet.
 
+The later `cnn-nchw-f32-v1` extension is supported by the eager tape, not this
+compiled-backward profile. `cb_compile` explicitly returns `operation` for
+convolution, including a forward-only request. It cannot silently run a
+convolution with a missing compiled derivative.
+
 [Chapter 106](ch106-differentiate-any-tensor-program.md) differentiates a
 tensor program with a tape. The tape is already planned ahead: it decides
 which values to save, places them in an arena and fixes the order of the
@@ -212,6 +217,9 @@ cb_compile :: (p:TiProgram,mode:AdMode,registry:OrRegistry,choice:CbChoice)->CbP
     for i:0..<p.count {
         // Chapter 106 admitted it; a compiled program also runs every kernel itself.
         if p.nodes[i].op==TiOp.registered || mode.custom[i] {return cb_fail(c,CbStatus.external);}
+        // Convolution has an interpreted formal VJP, but no compiled-backward
+        // instruction rule yet. Refuse even forward-only compilation explicitly.
+        if p.nodes[i].op==TiOp.conv2d {return cb_fail(c,CbStatus.operation);}
         r:=t.root[i];c.facts.root[i]=r;c.facts.input[i]=p.nodes[r].op==TiOp.input;c.facts.input_base[i]=p.nodes[i].input_base;
         c.facts.views[i]=t.plan.values[i].view;c.facts.storage[i]=t.plan.values[i].storage;
         c.facts.wants[i]=t.wants[i];c.facts.reaches[i]=t.reaches[i];

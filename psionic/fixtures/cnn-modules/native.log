@@ -1,0 +1,8 @@
+CNN native debug plain:
+CNN native: four independent NCHW/OIHW forward/input/kernel/bias VJPs; IEEE refusals; named state reload and frozen convolution pass
+CNN native debug sanitized:
+CNN native: four independent NCHW/OIHW forward/input/kernel/bias VJPs; IEEE refusals; named state reload and frozen convolution pass
+CNN native release plain:
+CNN native: four independent NCHW/OIHW forward/input/kernel/bias VJPs; IEEE refusals; named state reload and frozen convolution pass
+CNN native release sanitized:
+CNN native: four independent NCHW/OIHW forward/input/kernel/bias VJPs; IEEE refusals; named state reload and frozen convolution pass

@@ -106,9 +106,11 @@ owned HTTP checks.
 MNIST MLP built through public modules, caller-sized autodiff arenas and the
 shared AdamW trainer. Its single bounded CPU run reaches 85.6934% on 2,048
 held-out images, with independently audited metrics, one exact next-update
-resume and a named-tensor export/reload. The original tensor/optimizer engines
-are unchanged. The chapter states the remaining CNN, dataset-scale and GPU
+resume and a named-tensor export/reload. That MLP milestone left the tensor/optimizer engines
+unchanged; the CNN extension below now adds shared convolution support. The chapter states the remaining CNN, dataset-scale and GPU
 limits; the normal focused gate never repeats training.
+
+The [CPU CNN extension](book/ch117-models-are-compositions-of-modules.md#a-convolutional-module) now connects valid stride-one convolution, both operand gradients and batch-preserving flattening to the shared IR/modules. Its separately frozen [chapter 118 run](book/ch118-one-trainer-for-every-model.md#the-same-trainer-for-a-cnn) reaches **88.5742%** on the same-sized held-out MNIST slice in 13.8956 seconds, with exact next-update replay and export/reload. GPU/compiled convolution and broader CNN options remain unsupported.
 
 Start with [the book](book/README.md) and
 [Chapter 1: Learning a number](book/ch001-learning-a-number.md), then

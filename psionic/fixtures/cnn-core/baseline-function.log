@@ -1,0 +1,3 @@
+ok   #test graph function layout preserves root storage aliases and bounded metadata (1 case, 110757 steps, 101 ms)
+1 of 137 checks (--only 'graph function layout preserves'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

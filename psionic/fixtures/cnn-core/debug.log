@@ -1,0 +1,10 @@
+ok   #test cnn core: rectangular cross correlation preserves operation tags and exact lowering (1 case, 29770 steps, 1 ms)
+ok   #test cnn core: rank channel kernel target dtype dependency and work limits refuse (1 case, 69095 steps, 4 ms)
+ok   #test cnn core: batch channels and all formal operand gradients match an exact rational oracle (1 case, 813138 steps, 281 ms)
+ok   #test cnn core: signed strided operand views preserve both forward and physical root gradients (1 case, 88125 steps, 21 ms)
+ok   #test cnn core: formal VJP keeps exactly the opposite operand alive (1 case, 306605 steps, 74 ms)
+ok   #test cnn core: formal VJP accumulates a contribution smaller than binary32 spacing (1 case, 13238 steps, 3 ms)
+ok   #test cnn core: product or accumulation overflow remains visible after ReLU and copy (1 case, 18439 steps, 1 ms)
+ok   #test cnn core: compiled backward explicitly refuses convolution including forward only (1 case, 48177 steps, 14 ms)
+8 of 225 checks (--only 'cnn core:'), 8 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

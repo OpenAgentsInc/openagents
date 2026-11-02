@@ -1,0 +1,8 @@
+#test cnn core: rectangular cross correlation preserves operation tags and exact lowering
+#test cnn core: rank channel kernel target dtype dependency and work limits refuse
+#test cnn core: batch channels and all formal operand gradients match an exact rational oracle
+#test cnn core: signed strided operand views preserve both forward and physical root gradients
+#test cnn core: formal VJP keeps exactly the opposite operand alive
+#test cnn core: formal VJP accumulates a contribution smaller than binary32 spacing
+#test cnn core: product or accumulation overflow remains visible after ReLU and copy
+#test cnn core: compiled backward explicitly refuses convolution including forward only

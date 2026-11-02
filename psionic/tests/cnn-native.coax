@@ -1,0 +1,60 @@
+// Verification exports only. No learning, dataset or host policy.
+#load "../lib/module-cnn.coax";
+#load "../lib/module-train.coax";
+
+cnn_native_vjp :: (x:[]f32,w:[]f32,b:[]f32,dy:[]f32,y:[]f32,gx:[]f32,gw:[]f32,gb:[]f32,loss:[]f32)->AdStatus #export_c {
+    if x.count!=48 || w.count!=24 || b.count!=2 || dy.count!=16 || y.count!=16 || gx.count!=48 || gw.count!=24 || gb.count!=2 || loss.count!=1 {return AdStatus.capacity;}
+    m:=mdl_data(mdl_model(),"x",TvShape.{rank=4,dims=[4]int.[2,2,3,4]});
+    m=mdl_conv2d(m,MDL_ROOT,"conv",0,2,2,3);prediction:=m.node;forward:=m;
+    m=mdl_data(m,"dy",m.shapes[prediction]);upstream:=m.node;
+    m=mdl_op(m,TiOp.multiply,prediction,upstream);
+    for pass:0..<4 {m=mdl_op(m,TiOp.sum,m.node,0);}
+    if m.status!=MdlStatus.ok {return AdStatus.program;}
+    mode:=mdl_mode(m);mode.grad[0]=true;t:=ad_tape(m.program,mode,OrRegistry.{});
+    if t.status!=AdStatus.ok {return t.status;}
+    inputs:[90]f32;for i:0..<48 {inputs[i]=x[i];}for i:0..<24 {inputs[48+i]=w[i];}
+    for i:0..<2 {inputs[72+i]=b[i];}for i:0..<16 {inputs[74+i]=dy[i];}
+    values:[256]f32;grads:[256]f64;flags:[64]u8;
+    ys:[16]f32;xs:[48]f32;ws:[24]f32;bs:[2]f32;ls:[1]f32;
+    // The training tape may reuse the prediction's storage after its last
+    // backward reader. Capture values with a separate inference-only tape.
+    inference:=ad_tape(forward.program,AdMode.{enabled=false},OrRegistry.{});
+    ir:=ad_run(inference,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);if ir.status!=AdStatus.ok {return ir.status;}
+    s:=ad_value(inference,ir.cursor,prediction,inputs[..],values[..],ys[..]);if s!=AdStatus.ok {return s;}
+    run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);if run.status!=AdStatus.ok {return run.status;}
+    s=ad_value(t,run.cursor,m.program.output,inputs[..],values[..],ls[..]);if s!=AdStatus.ok {return s;}
+    s=ad_gradient(t,run.cursor,0,grads[..],xs[..]);if s!=AdStatus.ok {return s;}
+    s=ad_gradient(t,run.cursor,1,grads[..],ws[..]);if s!=AdStatus.ok {return s;}
+    s=ad_gradient(t,run.cursor,2,grads[..],bs[..]);if s!=AdStatus.ok {return s;}
+    for i:0..<16 {y[i]=ys[i];}for i:0..<48 {gx[i]=xs[i];}for i:0..<24 {gw[i]=ws[i];}for i:0..<2 {gb[i]=bs[i];}loss[0]=ls[0];
+    return AdStatus.ok;
+}
+
+cnn_native_model :: ()->MdlModel {
+    m:=mdl_data(mdl_model(),"x",TvShape.{rank=4,dims=[4]int.[1,1,3,4]});x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,2));target:=m.node;
+    m=mdl_conv2d(m,MDL_ROOT,"conv",x,2,2,3);m=mdl_relu(m,m.node);m=mdl_flatten(m,m.node);
+    m=mdl_linear(m,MDL_ROOT,"head",m.node,2);
+    return mdl_squared_error(m,MDL_ROOT,"loss",m.node,target);
+}
+cnn_native_state :: ()->bool #export_c {
+    m:=cnn_native_model();if m.status!=MdlStatus.ok || mdl_parameters(m)!=32 || m.top!=47 {return false;}
+    inputs:[47]f32;other:[47]f32;
+    if mdl_init(m,73,inputs[..])!=MdlStatus.ok || mdl_init(m,99,other[..])!=MdlStatus.ok {return false;}
+    file:[2048]u8;stage:[2048]u8;saved:=mdl_save(m,inputs[..],file[..],stage[..]);
+    if saved.status!=MdlStatus.ok || saved.tensors!=4 {return false;}
+    fresh:=cnn_native_model();loaded:=mdl_load(fresh,file[0..<saved.written],other[..],true);
+    if loaded.status!=MdlStatus.ok || loaded.loaded!=4 {return false;}
+    for e:m.entries[0..<m.count] {if mdl_saved(e) {for j:0..<e.size {if f32_bits(inputs[e.base+j])!=f32_bits(other[e.base+j]) {return false;}}}}
+    // A frozen convolution remains saved, but the generic adapter trains
+    // only the eighteen head values. Positive frozen features avoid vacuity.
+    f:=mdl_freeze(m,"conv",true);q:=mtr_plan(f);if q.status!=MtrStatus.ok || q.parameters!=18 {return false;}
+    for i:0..<12 {inputs[i]=f32(f64(i+1)/8);inputs[14+i]=0.25;}
+    inputs[12]=0;inputs[13]=1;inputs[26]=0.125;inputs[27]=0.125;
+    master:[18]f64;gradient:[18]f64;values:[256]f32;adjoints:[256]f64;flags:[64]u8;entry:[16]f32;staging:[18]f64;
+    run:=mtr_run(q,0,master[..],inputs[..],values[..],adjoints[..],flags[..],entry[..],staging[..],gradient[..]);
+    if run.status!=MtrStatus.ok || run.loss!=1 || gradient[17]!= -2 || gradient[1]>=0 {return false;}
+    for i:0..<12 {if inputs[14+i]!=0.25 {return false;}}if inputs[26]!=0.125 || inputs[27]!=0.125 {return false;}
+    for v:master {if v!=0 {return false;}}
+    return true;
+}

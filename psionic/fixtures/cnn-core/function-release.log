@@ -1,0 +1,3 @@
+ok   #test cnn function eligibility refuses convolution before unsupported higher derivatives (1 case, 44340 steps, 5 ms)
+1 of 137 checks (--only 'cnn function eligibility'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

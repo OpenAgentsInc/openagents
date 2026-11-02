@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "profile": "cnn-nchw-f32-v1",
+  "base_profile": "tensor-ir-f32-v1",
+  "operation": "conv2d",
+  "tag": 12,
+  "devices": [
+    "cpu"
+  ],
+  "dtypes": [
+    "f32"
+  ],
+  "input_layout": "NCHW",
+  "weight_layout": "OIHW",
+  "semantics": "cross-correlation; valid; stride1; dilation1; one group",
+  "forward": "round each product and ordered C/KH/KW sum to f32, no FMA; persistent numerical refusal flags",
+  "reverse": "formal f64 bilinear VJP, additive input/filter gradients; published parameter entry derivatives narrowed once to f32",
+  "limits": "base rank/node/elements/aggregate scalar work/budget limits retained",
+  "unsupported": [
+    "cuda",
+    "metal",
+    "compiled-backward",
+    "higher-order function transforms",
+    "padding/stride/dilation/group options",
+    "pooling"
+  ],
+  "callers": "unchanged public-constructor plans, valid live disjoint spans; no general alias/lifetime proof"
+}

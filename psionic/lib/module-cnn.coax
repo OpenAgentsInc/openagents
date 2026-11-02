@@ -1,0 +1,37 @@
+// Public CPU CNN layers, composed from the ordinary module and tensor IR APIs.
+// Profile: NCHW images, OIHW kernels, valid stride-one convolution. Callers
+// retain unchanged public-constructor models and valid disjoint storage.
+#load "module.coax";
+#authority;
+#load "../tests/cnn-modules-checks.coax";
+
+// book:begin cnn-layers
+// Kernel [out,channels,kh,kw], bias [1,out,1,1], so addition broadcasts
+// over the batch and both spatial axes. Both use uniform fan-in bounds.
+mdl_conv2d :: (m:MdlModel,parent:int,name:string,x:int,out:int,kh:int,kw:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];
+    if s.rank!=4 || s.dims[1]<1 || out<1 || kh<1 || kw<1 || kh>s.dims[2] || kw>s.dims[3] {return mdl_fail(m,MdlStatus.shape);}
+    shape:=TvShape.{rank=4,dims=[4]int.[out,s.dims[1],kh,kw]};
+    count:=tv_elements(shape);if count.status!=TvStatus.ok {return mdl_fail(m,MdlStatus.shape);}
+    bound:=f32(1/sqrt(f64(count.elements/out)));
+    r:=mdl_child(m,parent,name);me:=r.child;
+    r=mdl_parameter(r,me,"weight",shape,MdlInit.uniform,bound);w:=r.node;
+    r=mdl_parameter(r,me,"bias",TvShape.{rank=4,dims=[4]int.[1,out,1,1]},MdlInit.uniform,bound);b:=r.node;
+    r=mdl_op(r,TiOp.conv2d,x,w);
+    return mdl_op(r,TiOp.add,r.node,b);
+}
+
+// Keep the first axis as the batch. The ordinary reshape planner owns
+// contiguity and root lifetime checks; no data is copied by this layer.
+mdl_flatten :: (m:MdlModel,x:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];if s.rank<2 {return mdl_fail(m,MdlStatus.shape);}
+    // tv_elements reports zero on every refusal. A positive count for a
+    // rank-two-or-higher shape also proves a positive batch divisor.
+    count:=tv_elements(s);if count.elements<1 {return mdl_fail(m,MdlStatus.shape);}
+    return mdl_node(m,TiNode.{op=TiOp.reshape,a=x,shape=mdl_shape(2,s.dims[0],count.elements/s.dims[0])});
+}
+// book:end cnn-layers

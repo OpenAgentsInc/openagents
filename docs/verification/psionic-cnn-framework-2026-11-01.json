@@ -1,0 +1,1017 @@
+{
+  "schema": 1,
+  "date": "2026-11-01",
+  "profile": "psionic-mnist-cnn-frozen-v1",
+  "passed": true,
+  "book": "psionic",
+  "chapters": [
+    38,
+    106,
+    107,
+    114,
+    117,
+    118
+  ],
+  "structural_assessment": "docs/books/completion.md",
+  "created_issues": [
+    12624,
+    12625,
+    12626,
+    12627,
+    12628,
+    12629,
+    12630,
+    12631
+  ],
+  "source_freeze": "psionic/fixtures/cnn/source-freeze.json",
+  "experiment_manifest": "psionic/fixtures/cnn/experiment.json",
+  "actual_learning_runs": 1,
+  "repeated_training_prefixes": 0,
+  "next_update_replays": 1,
+  "outcome": {
+    "status": 0,
+    "steps": 3072,
+    "train_rows": 49152,
+    "test_rows": 2048,
+    "baseline_class": 1,
+    "initial_loss": 1.1769798680907115,
+    "final_loss": 0.3471311970060924,
+    "initial_correct": 166,
+    "final_correct": 1814,
+    "baseline_correct": 242,
+    "checkpoint_bytes": 70180,
+    "export_bytes": 11976,
+    "replay_equal": true,
+    "export_equal": true,
+    "seconds": 13.895613
+  },
+  "independent_audit": "psionic/fixtures/cnn/run-v1/audit.json",
+  "authority_mutations": {
+    "scope": "only new public-constructor and application-policy entry-source sites; shared-engine full mutation omitted under owner instruction",
+    "sites": 168,
+    "killed": 168,
+    "survived": 0,
+    "equivalent_waivers": 0,
+    "units": {
+      "module-cnn": 51,
+      "cnn-policy": 117
+    },
+    "constructor_baseline_groups": 212,
+    "failed_and_incomplete_attempts_retained": true
+  },
+  "focused_checks": {
+    "core_groups_per_mode": 8,
+    "higher_order_refusal_groups_per_mode": 1,
+    "constructor_groups_per_mode": 4,
+    "classifier_consumer_groups_per_mode": 2,
+    "policy_groups_per_mode": 8,
+    "selected_groups_per_mode": 23,
+    "modes": [
+      "debug",
+      "release"
+    ],
+    "existing_shared_smoke_groups": 5,
+    "core_evaluator_scope": "--only checks; full shared authority coverage and mutation not claimed",
+    "reference_tooling_tests": 8,
+    "reference_tooling_scope": "independent orderedf32/formalf64 equations and exact-rational controls, no Python optimizer/training",
+    "reference_tooling_observation": {
+      "command": "python3 -I -B -m unittest discover -s psionic/tests/cnn -p 'test_*.py' -v",
+      "result": "8 tests passed, attributed earlier agent/tool observation before capture/training",
+      "standalone_raw_receipt": false,
+      "interpreter_identity_at_execution": "not recorded",
+      "rerun": false
+    }
+  },
+  "native_checks": {
+    "constructors": "four modes: debug/release each plain and ASan/UBSan",
+    "classifier": "checked, release, checkedASan/UBSan; every initial capture byte identical",
+    "full_initial_gradient_count": 2910,
+    "initial_parameters_count": 2910,
+    "initial_features_count": 196,
+    "initial_scores_count": 10,
+    "observed_max_absolute_error": 0,
+    "full_learning": "one release run only",
+    "mlp_compatibility": "three new native captures match committed initialbytes; no training repeated"
+  },
+  "book_checks": {
+    "example_debug": "exact stdout/exit passed",
+    "example_release": "exact stdout/exit passed",
+    "structure_before_rebase": "250programs,1230source-linked listings, local links pass",
+    "all_four_registry": "passed; statuses/targets retained,117/118remainpartial",
+    "registry_unit_tests": 11,
+    "structure_after_rebase": "251programs,1236source-linked listings, local links pass; incoming sandbox chapter preserved"
+  },
+  "tooling_checks": {
+    "gate_routing": "10alias/jobs cases;6nonemptyselectors/23groups;correctedflagsacceptedon2-mutanttemporaryauthorityunit",
+    "gate_receipt": "psionic/fixtures/cnn/gate-routing.json",
+    "shell_syntax": "passed"
+  },
+  "qualification": [
+    "psionic/fixtures/cnn-core/qualification.json",
+    "psionic/fixtures/cnn-modules/qualification.json",
+    "psionic/fixtures/cnn/policy-qualification.json",
+    "psionic/fixtures/cnn/mlp-compatibility.json"
+  ],
+  "capability_binding_review": {
+    "scope": "existing text/features/targets preserved; five changed-source/ch107 hashes reviewed and refreshed; focused core/MLP compatibility evidence added to two existing claims",
+    "no_new_gpu_or_general_qualification": true
+  },
+  "limits": [
+    "CPU-only NCHW/OIHW validstride1 convolution. GPU,compiled-backward and higher-order function transforms explicitly refuse it. Pooling/options/large residual-CIFAR workflows remain.",
+    "One4096/1024/2048profile with fixedseeds/12epochs; no full-MNIST robustness, calibratedprobability or independentPyTorchqualitybaseline.",
+    "CNN accuracy is higher than priorMLP onslice, but finalSSE is higher; seeds/models differ, no architectureablation or calibration/speed superiority claim.",
+    "Caller retains immutable public-constructor plans and valid live disjoint spans; no general alias/ownership/lifetime proof.",
+    "Host writes artifacts aftercompletion; one nextupdate replay is not fullsuffix replay or crash/restart recovery.",
+    "Independent audit checks exported words; exact reloaded inference is producer-recorded Coax execution, not a second Python model.",
+    "Shared-host workflow timing is one observation, not isolatedperformancecomparison.",
+    "No compiler rebuild/full compilerqualification/full shared-engine mutation/fullmodelrelease gate. Retained compiler image and its original fingerprint are bound explicitly.",
+    "Initial oversized evaluator check failed its aggregate traversal limit; a small exact model now checks it in evaluator and full2910case remains native. Earlier diagnostics retained."
+  ],
+  "publication_reconciliation": {
+    "original_implementation_base": "71c1d3fcdb15e93c525c2f5e02037b562e6559b8",
+    "target_origin_main_at_review": "73fabc5cfcd1f8dd31aed1e11d5ad3d05a5aab4e",
+    "source_freeze_preserved_before_commit": true,
+    "incoming_hud_component": "1e37eb87d0 recognized in completion plan/issue12628; no HUD reimplementation",
+    "rebased_onto": "c0cd58645d5232047aeb1fb6d3b2b140202e1b7b",
+    "source_freeze_preserved_after_rebase": true,
+    "upstream_preserved": [
+      "Aethyr chapter15 HUD library and partial status",
+      "Whisper execution and transcribe documentation",
+      "Psionic chapter204 sandbox/approvals, examples and full-gate units"
+    ],
+    "routing_prefix_identical_after_conflict_resolution": true,
+    "merged_root_gate_sha256": "2e2e48db3eb78005b44fbd3dc614b5cd07389bb3a3204fe49f7d9de696f8bcfc"
+  },
+  "inventory": [
+    {
+      "path": "coax/book/capability-claims.json",
+      "bytes": 19850,
+      "sha256": "a28cfe8bc80e390050bfd0389bcd0ca4512a7ae0fdd58d6eee0331f852ec9341"
+    },
+    {
+      "path": "docs/books/completion.md",
+      "bytes": 16830,
+      "sha256": "7a2d6c2dcec5999cd7f1249a86d85c40e892add21efa1e7b2a6e7d70a05ec1d5"
+    },
+    {
+      "path": "docs/verification/books-structure-2026-11-01.json",
+      "bytes": 2787,
+      "sha256": "8b2a04d522619a23cf9c39b56dc3e76ef3b8d5e75c013b641a8bd89ad1bcb111"
+    },
+    {
+      "path": "psionic/README.md",
+      "bytes": 35799,
+      "sha256": "c0ff7da124f3cb96bd426a8b76a9a3fde45abd6f0d6d92deb751f7e52f05fc83"
+    },
+    {
+      "path": "psionic/book/PLAN.md",
+      "bytes": 190423,
+      "sha256": "225cee6d7c664c68dbe4bc00e4ffe7a7b682cb56a965880546e827e0e835fbaa"
+    },
+    {
+      "path": "psionic/book/README.md",
+      "bytes": 105817,
+      "sha256": "4b461854caa0d740e3d7ac342f96b6c8c04f366a70d4c1807438bed1c3812702"
+    },
+    {
+      "path": "psionic/book/ch038-a-tensor-program-becomes-an-execution-plan.md",
+      "bytes": 16022,
+      "sha256": "42c9f8656bb3e2791216493679566e335c2a5b3de054bc0a7792ccd723f5aab5"
+    },
+    {
+      "path": "psionic/book/ch106-differentiate-any-tensor-program.md",
+      "bytes": 30725,
+      "sha256": "5e67c13198eebb36f1ad3a0a6d3d00b047c61d7a7b94da127c9d10924354cd98"
+    },
+    {
+      "path": "psionic/book/ch107-transform-functions-not-just-tensors.md",
+      "bytes": 16415,
+      "sha256": "5b2d7dc9d6ba962378552dd1ed135b2e092a4c4105f139aba3288fb038905ffd"
+    },
+    {
+      "path": "psionic/book/ch114-compile-the-backward-pass.md",
+      "bytes": 35197,
+      "sha256": "bad2668349c624440157207c888693be901e6527fcc8558d398add13bac58b45"
+    },
+    {
+      "path": "psionic/book/ch117-models-are-compositions-of-modules.md",
+      "bytes": 43269,
+      "sha256": "48e17cc21390959920feec567556f2b94c441d9f4fa8bd236f4ef05d6576f250"
+    },
+    {
+      "path": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "bytes": 66918,
+      "sha256": "435003bc47059756d4eb30924cf8be86b9fe4d6e3f56273903b0566e8a5ae70f"
+    },
+    {
+      "path": "psionic/book/chapters.json",
+      "bytes": 98792,
+      "sha256": "97de554ad5661aba0ecf517d7cba1f5ccafc0308cbb47cd6cd5052f0e79a7e2a"
+    },
+    {
+      "path": "psionic/book/examples.json",
+      "bytes": 70720,
+      "sha256": "b58c6874e82fefce9f472b9d46cd5e00c4f285388b3916e0e403a6b958f7dac5"
+    },
+    {
+      "path": "psionic/check.sh",
+      "bytes": 58413,
+      "sha256": "2e2e48db3eb78005b44fbd3dc614b5cd07389bb3a3204fe49f7d9de696f8bcfc"
+    },
+    {
+      "path": "psionic/examples/cnn-classifier.coax",
+      "bytes": 1031,
+      "sha256": "2db80e1506c743b9d22804a0ad9b15f9261316d8f30ec7a32aabfd65881a2af2"
+    },
+    {
+      "path": "psionic/fixtures/cnn-classifier.out",
+      "bytes": 308,
+      "sha256": "f495e70270a94e7bad02139ad7a780897a2c4b7fed2db5ceba82222d62be5335"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-autodiff.json",
+      "bytes": 32838,
+      "sha256": "a8cae82824a73da5b801247c50939ae0b5c158527899d688db3c539bdc4bfc4f"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-autodiff.log",
+      "bytes": 268,
+      "sha256": "dda6f2046291ca7e25b45383d842ea201555d9819414c87c8ab008c652639e57"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-compiled.json",
+      "bytes": 54078,
+      "sha256": "6e99089ce45f1bbd4fa455f62dce0bbde19cdf817dbb355191dc201f597565a5"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-compiled.log",
+      "bytes": 297,
+      "sha256": "ca10178da8b2c9bc2dda39f51e724e33d186505bcfeb298373d0ad4cb6d26385"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-function.json",
+      "bytes": 34634,
+      "sha256": "04f3f096e6648a5d95f27234e3a97d8c2635d0635d8efab1ec4d9ababb1d1fd5"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-function.log",
+      "bytes": 289,
+      "sha256": "c8845f75809fd2d7ac82d6df150d7647173c45465b5cd73d14b5f90ccd8595b4"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-ir.json",
+      "bytes": 10869,
+      "sha256": "348a2ce00837841dc096c9e42715d678b836cac824b20027cb1a0cbf306c43b8"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-ir.log",
+      "bytes": 279,
+      "sha256": "a6418bb484a805cae97a4e56ac6defdfefd9bd06b9da72522b3e5af72a86e07c"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-kernel.json",
+      "bytes": 1666,
+      "sha256": "c21b0565d643e0457231e4cabcd7e1986f36dac6b388bf463236f553654d5e3f"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/baseline-kernel.log",
+      "bytes": 275,
+      "sha256": "2fbed868d7fa2c89eb4a9c40f7bb0f4d3f0ff95ce83d994c9416922896f1ada2"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/check-first.log",
+      "bytes": 2241,
+      "sha256": "91fe80b95e10f7a5fa46d9a92fa85ea98aa91d020845098ffe9564629ea42a85"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/debug.json",
+      "bytes": 56001,
+      "sha256": "fe364bc1dff48a9424a7b51f433f1e692b4bf451d51d090108835e22ab48eea0"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/debug.log",
+      "bytes": 1110,
+      "sha256": "645674da061b98e6830a7f4c29f48ff267556f0b859c14207ab9607c18695377"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/function-check-first.log",
+      "bytes": 813,
+      "sha256": "33465f07f06bd0eb9708b889502119c110babb0aeeba32c07f16f80ed25f56d0"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/function-debug.json",
+      "bytes": 34626,
+      "sha256": "c9eb5ed3f09a6e05fb071ebcf63fb3b4dd1349a6e20348324aa0860a27402486"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/function-debug.log",
+      "bytes": 288,
+      "sha256": "2cc95496e98a218607d7fed342baa8df37d6cae95bff9f39c564303279dfee96"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/function-release.json",
+      "bytes": 34627,
+      "sha256": "7f1a0a1e95acb29c2e0b0d2dc6b0acd80fcea58a47f28a83b51fc5cb0d8c968d"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/function-release.log",
+      "bytes": 288,
+      "sha256": "a9becdfcc61bfea771aa7d60b2277859915e4abfa21cb5d0957ce5ba4360241f"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/qualification.json",
+      "bytes": 11811,
+      "sha256": "92a20ed9c248ab1ffd3c809cbd35275d621932d45e9ed5fda2ad9a6d1ccc4e7f"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/release.json",
+      "bytes": 56002,
+      "sha256": "4ed40cfa73c3d43cbd475645c6b41e9273fa6fce2714726c66f883b1f7a676a7"
+    },
+    {
+      "path": "psionic/fixtures/cnn-core/release.log",
+      "bytes": 1110,
+      "sha256": "34f989bf1b7affa41d0a8b67c9587210c49a04711288fa8801dca9142cb17f36"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/debug.json",
+      "bytes": 52629,
+      "sha256": "4bf75ff00951dec70ee353438803f975e0e04176465e3726028d5e793888ab80"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/debug.log",
+      "bytes": 594,
+      "sha256": "fa3dc15f26452c5183b24fd373d1e506180ae5c53e82038251e73ae249a51695"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/mutation-final.json",
+      "bytes": 46151,
+      "sha256": "217d4af7d6431e973d0e2903efaaf9446e5267d7cac0b593ad74bddab81244eb"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/mutation-final.log",
+      "bytes": 114,
+      "sha256": "8d6dcc7b41fe740053ff7bf97f1b30bd0d178107c01a8d55ecaa6638e7b7998e"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/mutation-initial-interrupted.json",
+      "bytes": 415,
+      "sha256": "97680a3d2cab41b1b2138e27acff0c1ff76b3a4de1820883fa01cf42ca4199ba"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/mutation-initial.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/mutation-one-survivor.json",
+      "bytes": 46246,
+      "sha256": "c6bf4179b1a00a5449c9261d7d6933fa6e66cef90aef9c1e8c6d6fbb235a7f36"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/mutation-one-survivor.log",
+      "bytes": 654,
+      "sha256": "2a22a6bd9f9f8879157118319068626f850e9341886400087a9cd1d538241494"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/native-final.log",
+      "bytes": 640,
+      "sha256": "a1197434c101b800b21aba6172be53209023de6903d0ed38cfadeedf86580f1e"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/native.log",
+      "bytes": 640,
+      "sha256": "a1197434c101b800b21aba6172be53209023de6903d0ed38cfadeedf86580f1e"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/qualification.json",
+      "bytes": 9548,
+      "sha256": "3461808ae3461d174cfe3fe338515d6eea14906718a9c438d7324c87ec9ec4db"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/release-final.json",
+      "bytes": 52630,
+      "sha256": "2da04971284c4fe45cd24ca285d9ebd73075825e3af7cdc7ab6ed05fcac2813d"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/release-final.log",
+      "bytes": 596,
+      "sha256": "7f466dc74590ac5b006acc43bb0a46550a445dc6c2bab3ac2e911c737cb44e52"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/release-sharpened.json",
+      "bytes": 52630,
+      "sha256": "06695d96918d0fd790d3d203c2cde28a9ae766ca9b8dc4048abe1e656d55d641"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/release-sharpened.log",
+      "bytes": 595,
+      "sha256": "75972da7edea1362827201605c5a57f0b4643765aaf211df2a4a45fb8e638d92"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/release.json",
+      "bytes": 52630,
+      "sha256": "d9a921ee4e9529a42d8e736f96eb2eb08f79b3352f7e3f07825285b78522b523"
+    },
+    {
+      "path": "psionic/fixtures/cnn-modules/release.log",
+      "bytes": 595,
+      "sha256": "d12f065207b0bf1309c050dd2a8752bac0f19a9e5f6fe0ad8693652c280acd04"
+    },
+    {
+      "path": "psionic/fixtures/cnn/README.md",
+      "bytes": 4943,
+      "sha256": "1abaca7067b231d9f48ab46fbb714442a45c3033435bea2bc19789e843f17199"
+    },
+    {
+      "path": "psionic/fixtures/cnn/book-example/execution-final.log",
+      "bytes": 86,
+      "sha256": "b30175c2140fa614423758e7cb1996eb47e9c7f5270445686e24fdb985637fcf"
+    },
+    {
+      "path": "psionic/fixtures/cnn/book-example/execution.log",
+      "bytes": 2365,
+      "sha256": "aa4500a2840769723470159fb9d34713acba0d955e707f2a77258232f05f5c21"
+    },
+    {
+      "path": "psionic/fixtures/cnn/build-failures/debug-aggregate-limit.log",
+      "bytes": 632,
+      "sha256": "95ac2850ec1a3c73896ee6bb7857ac59d24bfc1336429b43924562ce038c04df"
+    },
+    {
+      "path": "psionic/fixtures/cnn/build-failures/release-aggregate-limit.log",
+      "bytes": 632,
+      "sha256": "95ac2850ec1a3c73896ee6bb7857ac59d24bfc1336429b43924562ce038c04df"
+    },
+    {
+      "path": "psionic/fixtures/cnn/build-failures/sanitized-aggregate-limit.log",
+      "bytes": 632,
+      "sha256": "95ac2850ec1a3c73896ee6bb7857ac59d24bfc1336429b43924562ce038c04df"
+    },
+    {
+      "path": "psionic/fixtures/cnn/build-failures/scope.json",
+      "bytes": 260,
+      "sha256": "1d394303c413772f3dfa8c280da7db8d70e09c8daab363872fad1842cf226cba"
+    },
+    {
+      "path": "psionic/fixtures/cnn/consumer-checks/layout-debug.json",
+      "bytes": 80942,
+      "sha256": "231f59fe66c8b85fbd3e860eb49f715ad528f33035ec1b274084e10bcd40d3ce"
+    },
+    {
+      "path": "psionic/fixtures/cnn/consumer-checks/layout-debug.log",
+      "bytes": 269,
+      "sha256": "d7e121a6211f0498b6af8bbe4b350d9563b9575d060846163bea1b195b3e14be"
+    },
+    {
+      "path": "psionic/fixtures/cnn/consumer-checks/layout-release.json",
+      "bytes": 80943,
+      "sha256": "2fe47f79b008fb858674836d6f9016b9ed5af2fe6364b2da7a02842aec41e7ec"
+    },
+    {
+      "path": "psionic/fixtures/cnn/consumer-checks/layout-release.log",
+      "bytes": 269,
+      "sha256": "c4669d25cf5f5855d4aaa9b4c9504d1fc26a1a2904981f93ed4ef2fa773629fb"
+    },
+    {
+      "path": "psionic/fixtures/cnn/consumer-checks/zero-debug.json",
+      "bytes": 80945,
+      "sha256": "73f125ae07a4cd039af7a0932f18d2c9cd838e8378d3d0422ca30e69bb11528e"
+    },
+    {
+      "path": "psionic/fixtures/cnn/consumer-checks/zero-debug.log",
+      "bytes": 279,
+      "sha256": "a8e39b2249ebf475329a9e2b62734889ac0b8279cc7396e81a53bc008c3086cb"
+    },
+    {
+      "path": "psionic/fixtures/cnn/consumer-checks/zero-release.json",
+      "bytes": 80946,
+      "sha256": "eaf5a692243dd063df44b009a139577d0b8e75b09c6046c4c594fd5299eb08eb"
+    },
+    {
+      "path": "psionic/fixtures/cnn/consumer-checks/zero-release.log",
+      "bytes": 279,
+      "sha256": "c653072a13226c4f1d3523850c77e40d05a340d67091367a5e8409d7b4ea19fd"
+    },
+    {
+      "path": "psionic/fixtures/cnn/experiment.json",
+      "bytes": 4644,
+      "sha256": "92e2cb2b7f18784ae3dafe0fdff61de593ae1ddce9d66c1c73b041cdec03942c"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing.json",
+      "bytes": 13472,
+      "sha256": "7ad247c8ebc6192efd279813bc42f9e458400d38402d3ae58d9a373bb73eb824"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/dispatch.json",
+      "bytes": 8130,
+      "sha256": "22ebdb6368a81a09a84d2924271e8b17152fd7720608613c2372e8be6125fd0b"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/dispatch.log",
+      "bytes": 5480,
+      "sha256": "e74a05223e077a57c7344a69b1458c9d746575f873d705da160636080e39aaf5"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/empty-inventory-source.txt",
+      "bytes": 144,
+      "sha256": "2a33ce5b042dd88e17000c31a974b398cf039d0dd059744935d24b8d6f0ddbbf"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/empty-inventory-tiny-mutation.json",
+      "bytes": 1352,
+      "sha256": "77c18fb1560dedcad589eac439ae11390bcb17a857a943f6698f1d7de3218f12"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/empty-inventory-tiny-mutation.log",
+      "bytes": 457,
+      "sha256": "e5e4f62313bd4903a3beae179027b1aabbe4f6af1d4e6e52120a26ad858a352e"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/mutation-argv.json",
+      "bytes": 358,
+      "sha256": "cc1edb85ebdc6cbfc63c50110233e12daefbedb575a68a15f39ee612a9feaf5f"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/classifier.command.json",
+      "bytes": 171,
+      "sha256": "b5e1116dc5926813a3480db0af7ef6975f74327ddb699e7e8a877ac7d45ff145"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/classifier.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/classifier.stdout.log",
+      "bytes": 78,
+      "sha256": "108ab9a8b6bd760f2f76b023b325c127d687fc40406ff4fdb9568f5a78538dfe"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/core.command.json",
+      "bytes": 169,
+      "sha256": "0c12773a7bbc8c6e438de7ef62c3487e9fc43437e2a85f3c380af4606f5e6c3d"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/core.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/core.stdout.log",
+      "bytes": 688,
+      "sha256": "e22a827eb1bf2d87e5f3a396f56459201aff9c98b08a1fd4bae50826847c978c"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/function-layout.command.json",
+      "bytes": 182,
+      "sha256": "e711cae6fa37321fd4a53aece0a503fff33fdffa8e94b068b57081693b55b5d8"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/function-layout.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/function-layout.stdout.log",
+      "bytes": 89,
+      "sha256": "8b6f63a4d75ce890546c435931d4f26b211f534b5fe1d98084dfd735fe8cdb63"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/module-cnn.command.json",
+      "bytes": 156,
+      "sha256": "eb53928737feb1e5fd00e1c4728028d4b6b35c234bd41cc4121305d87aa3805f"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/module-cnn.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/module-cnn.stdout.log",
+      "bytes": 306,
+      "sha256": "f6ff37fa611cbc4c347bc20db8f9bc90f96f8cf857bd9a58b71944cb0fa1559e"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/policy.command.json",
+      "bytes": 135,
+      "sha256": "a3da61f84e61d66a9fc250ad66695c3456b1044b5b04a01e29e5cf4fef57d23b"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/policy.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/policy.stdout.log",
+      "bytes": 603,
+      "sha256": "bc141c0e8cfaea4492f83001a85ac5b8c69d446577ccb508a69eabd1d1f01677"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/zero-network.command.json",
+      "bytes": 173,
+      "sha256": "7eaa709c18cec4bdb6be66a66ca6f5470a918d4706d86abe9f1829f773c953f3"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/zero-network.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/selectors/zero-network.stdout.log",
+      "bytes": 84,
+      "sha256": "9be71a14ac4d1e6300a3f2debbb2bbd5562b9930c8e9d0b4bcb4c3c6e6529789"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/tiny-authority-source.txt",
+      "bytes": 141,
+      "sha256": "289fe151601edff389fb1e310d4dd42beff5862d4b39a6b106fb9dc54d7215c0"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/tiny-mutation.json",
+      "bytes": 1342,
+      "sha256": "cd312c1404acca64d4b6afbdbbb4e72fe28feaad7bf093778f6582427a79c0c4"
+    },
+    {
+      "path": "psionic/fixtures/cnn/gate-routing/tiny-mutation.log",
+      "bytes": 112,
+      "sha256": "311b1ca871af4724ccf297ef2129954a6a71c8713fe8aec1478c4ba2eeebf624"
+    },
+    {
+      "path": "psionic/fixtures/cnn/initial-capture/features.f32",
+      "bytes": 784,
+      "sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a"
+    },
+    {
+      "path": "psionic/fixtures/cnn/initial-capture/gradient.f64",
+      "bytes": 23280,
+      "sha256": "deaa65c4fd743a0487ea681ea6f0b584bed43f024062582aea2eadb2275aef16"
+    },
+    {
+      "path": "psionic/fixtures/cnn/initial-capture/oracle.json",
+      "bytes": 112,
+      "sha256": "86ac2503940085e559ca4cfb9a6ad6b1f81b2348f30be245f41a02a034a659b9"
+    },
+    {
+      "path": "psionic/fixtures/cnn/initial-capture/params.f64",
+      "bytes": 23280,
+      "sha256": "3baf9925aa5b4c4fdf3358842a08583bd7a3cda070a1fb83aa52aaa01dc77f86"
+    },
+    {
+      "path": "psionic/fixtures/cnn/initial-capture/scores.f32",
+      "bytes": 40,
+      "sha256": "a37d337d5c24fc6bbab1217e97faa36e69fb83b2d95089b969c0f5268949bb59"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility.json",
+      "bytes": 40191,
+      "sha256": "20bd69e440c8f0a53a7e7b79c4c0bdbbcc353ff1686616eb0aa50f0489103cb8"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/debug/build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/debug/comparison.json",
+      "bytes": 1193,
+      "sha256": "af41edb1a43bdc61c0090b1e820703d1254b7203ff2941a7d3848dd2033c2909"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/debug/oracle.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/debug/synthetic.log",
+      "bytes": 95,
+      "sha256": "be4d2ef0453d17ddb192fc5c26319a2c9acd479733357fa3c144377dd81d9903"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/debug/verify.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/execution.json",
+      "bytes": 8804,
+      "sha256": "646ea7bc0e4c31bb6f965501831bd2cc1974ceeab8e369b8af0fe62f0d6f6674"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/release/build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/release/comparison.json",
+      "bytes": 1193,
+      "sha256": "af41edb1a43bdc61c0090b1e820703d1254b7203ff2941a7d3848dd2033c2909"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/release/oracle.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/release/synthetic.log",
+      "bytes": 95,
+      "sha256": "be4d2ef0453d17ddb192fc5c26319a2c9acd479733357fa3c144377dd81d9903"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/release/verify.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/sanitized/build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/sanitized/comparison.json",
+      "bytes": 1193,
+      "sha256": "af41edb1a43bdc61c0090b1e820703d1254b7203ff2941a7d3848dd2033c2909"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/sanitized/oracle.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/sanitized/synthetic.log",
+      "bytes": 95,
+      "sha256": "be4d2ef0453d17ddb192fc5c26319a2c9acd479733357fa3c144377dd81d9903"
+    },
+    {
+      "path": "psionic/fixtures/cnn/mlp-compatibility/sanitized/verify.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/oracle-debug.json",
+      "bytes": 1289,
+      "sha256": "2d0d20bc5407e44511c623ee80627f92564db13c0f7591ec538d9ea29db7767f"
+    },
+    {
+      "path": "psionic/fixtures/cnn/oracle-release.json",
+      "bytes": 1289,
+      "sha256": "2d0d20bc5407e44511c623ee80627f92564db13c0f7591ec538d9ea29db7767f"
+    },
+    {
+      "path": "psionic/fixtures/cnn/oracle-sanitized.json",
+      "bytes": 1289,
+      "sha256": "2d0d20bc5407e44511c623ee80627f92564db13c0f7591ec538d9ea29db7767f"
+    },
+    {
+      "path": "psionic/fixtures/cnn/policy-checks/debug.json",
+      "bytes": 2667,
+      "sha256": "3264fa84118115277a9ea22661eedbf7ec0eefc133de7128789b9406a3180029"
+    },
+    {
+      "path": "psionic/fixtures/cnn/policy-checks/debug.log",
+      "bytes": 883,
+      "sha256": "a5570186bd28af60a617d1e199eb8791340e93a10e47bb0e88e161cbdfd21d3b"
+    },
+    {
+      "path": "psionic/fixtures/cnn/policy-checks/mutation.json",
+      "bytes": 2921,
+      "sha256": "15598eb9c081d3e9fdb9a2630c42fa84a28c1aef63f26c0ee73b48271f8a9d0f"
+    },
+    {
+      "path": "psionic/fixtures/cnn/policy-checks/mutation.log",
+      "bytes": 116,
+      "sha256": "acf224694b0c8b6b83d5af72a93b95f044965e6afebad5f01b6a9763aaa12d7f"
+    },
+    {
+      "path": "psionic/fixtures/cnn/policy-checks/release.json",
+      "bytes": 2668,
+      "sha256": "109dac61a43c55cbeb07e80b72da89d45562ba24175dc2bfc086cad8153b9d22"
+    },
+    {
+      "path": "psionic/fixtures/cnn/policy-checks/release.log",
+      "bytes": 883,
+      "sha256": "a5570186bd28af60a617d1e199eb8791340e93a10e47bb0e88e161cbdfd21d3b"
+    },
+    {
+      "path": "psionic/fixtures/cnn/policy-qualification.json",
+      "bytes": 1018,
+      "sha256": "bddd92b27bb2032c1c52445bbfaeeca0ec917286bea20c1123644642a626d70b"
+    },
+    {
+      "path": "psionic/fixtures/cnn/profile.json",
+      "bytes": 923,
+      "sha256": "83a99f4a71ce5ea319b406f98a14a51c86889e88ebc52b85f9087eb6e1d077a0"
+    },
+    {
+      "path": "psionic/fixtures/cnn/reference.json",
+      "bytes": 20749,
+      "sha256": "9e404603d540c0af242a0029f4e0d14f1ef4ec90afdea8b4706929a8ba85a648"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/audit.json",
+      "bytes": 1439,
+      "sha256": "26b32e6addec82c2ce12aad6fdd4d28649f183ba98cf7bd493e3e2d2d4f0df6b"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/canonical-next.psck",
+      "bytes": 70180,
+      "sha256": "2dc4449ed3524778a9d44df2efe068e53c3daed1ffccf27af2d203993dec6b63"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/canonical-order.i64",
+      "bytes": 32768,
+      "sha256": "dcaca3ab91d362ee0b97fd76e9c104d16b61b7a2f4496459ec5b9eae6579acc3"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/epoch6.psck",
+      "bytes": 70180,
+      "sha256": "d011438752f750e5f5ae6d777b2626aa99e945c4e5bbeb5e92c26da3f5b75b4a"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/epoch6.pscp",
+      "bytes": 80,
+      "sha256": "7f19a78de7f76488c7e121c27e75186e27f7031f6cec19ae0088a29b4fe3729a"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/execution.json",
+      "bytes": 685,
+      "sha256": "ba18e3466df363dd4603d814db9b4fb6c3599cf7ca4eaf690c47742df497fcc9"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/final.psck",
+      "bytes": 70180,
+      "sha256": "b336329562267677b0eeea8f6404bb5e02df7251aa9651a071d0c5d9e0b54615"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/final.pscp",
+      "bytes": 80,
+      "sha256": "a3c9a18cc1b3bee8aec503c14e006f934f220dc439bf5b2e1d3be78b125c9258"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/initial-test-scores.f32",
+      "bytes": 81920,
+      "sha256": "ca787a506667b8c06e3bd6ca3288f708923f2860c0085e176413b8ee865820dc"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/model.safetensors",
+      "bytes": 11976,
+      "sha256": "69836b7ba9fe35da62e22e234cf446c92cdfbff6409de5a76976ec8903112f18"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/replayed-next.psck",
+      "bytes": 70180,
+      "sha256": "2dc4449ed3524778a9d44df2efe068e53c3daed1ffccf27af2d203993dec6b63"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/replayed-order.i64",
+      "bytes": 32768,
+      "sha256": "dcaca3ab91d362ee0b97fd76e9c104d16b61b7a2f4496459ec5b9eae6579acc3"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/result.json",
+      "bytes": 323,
+      "sha256": "82dda1088692d4713f63c3d145387acfa341bbec31e6302fbd858dbe85574971"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/stderr.log",
+      "bytes": 912,
+      "sha256": "b0606579124eb6b64bd4192663f0d79b55f39a604fafd5119f0616814bf830b2"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/test-scores.f32",
+      "bytes": 81920,
+      "sha256": "4d5af44c17bfd7610752c147cb2cb9aa71dae62386e0c1bce258a28699f50fdf"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/validation.csv",
+      "bytes": 691,
+      "sha256": "9d3c1eb5c4373ff0a0b6faaadbc51542950dac07ec7ec322ca7aba02e40d75bd"
+    },
+    {
+      "path": "psionic/fixtures/cnn/run-v1/validation.f64",
+      "bytes": 416,
+      "sha256": "d4ab844857aef49c267333558b2fb924d2a0e6fc6df734dbb77baaa79a121059"
+    },
+    {
+      "path": "psionic/fixtures/cnn/source-freeze.json",
+      "bytes": 14066,
+      "sha256": "47513a1a4adf37946da4010f6a8040e4873f591f64181a58d93894bf2165ba7d"
+    },
+    {
+      "path": "psionic/lib/autodiff.coax",
+      "bytes": 41125,
+      "sha256": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88"
+    },
+    {
+      "path": "psionic/lib/cnn-classifier.coax",
+      "bytes": 9966,
+      "sha256": "2b2853e24a0220444c20a1597764da342518d2d18ba04deab74be325e5b10dd4"
+    },
+    {
+      "path": "psionic/lib/cnn-experiment.coax",
+      "bytes": 6199,
+      "sha256": "c9c4792219adfc33e5a3f180814909b915709f5018bce6af5ce3ec6aa7d3be35"
+    },
+    {
+      "path": "psionic/lib/cnn-policy.coax",
+      "bytes": 7950,
+      "sha256": "f6d2b20fa7b0da7fa11c8422b44f4719ea75091a14a99fb92030c279481a54b9"
+    },
+    {
+      "path": "psionic/lib/compiled-backward.coax",
+      "bytes": 46454,
+      "sha256": "92996ed00ec80a41db201d015f364bb00f2988f750a9ae6af7d10743bc7fd7b2"
+    },
+    {
+      "path": "psionic/lib/function-layout.coax",
+      "bytes": 7774,
+      "sha256": "7c39882e1d1035ee6e125594fb23c951c93c18090d50c35f2fc832547c90fc81"
+    },
+    {
+      "path": "psionic/lib/module-cnn.coax",
+      "bytes": 2054,
+      "sha256": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1"
+    },
+    {
+      "path": "psionic/lib/tensor-ir-kernels.coax",
+      "bytes": 4247,
+      "sha256": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc"
+    },
+    {
+      "path": "psionic/lib/tensor-ir.coax",
+      "bytes": 15325,
+      "sha256": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258"
+    },
+    {
+      "path": "psionic/platform/cnn-build.sh",
+      "bytes": 972,
+      "sha256": "b66eede12bfe657e0525ca5245ad02842e12838da9cf9506f7ae6bc91d9f6e81"
+    },
+    {
+      "path": "psionic/platform/cnn-host.c",
+      "bytes": 7926,
+      "sha256": "1472a149325cd893003249e9fd06cef024eb5988c7722dd43cb0eabaa56526b0"
+    },
+    {
+      "path": "psionic/run-cnn.sh",
+      "bytes": 1109,
+      "sha256": "e7f46a03540b70d3a089b3dc345d0eda64c8bd1b24561320b5b0d55aa81a1f74"
+    },
+    {
+      "path": "psionic/tests/check_cnn.sh",
+      "bytes": 2587,
+      "sha256": "a87df6f2485e2426b17eec03be6dbead54e214b97e1857d1c3bab7562a5dc9b0"
+    },
+    {
+      "path": "psionic/tests/check_cnn_native.sh",
+      "bytes": 1338,
+      "sha256": "a2ece958bbf0f6d88b6de4ef89eac4fc8d0578167791ee1ac38d5b19456bc227"
+    },
+    {
+      "path": "psionic/tests/check_mnist.sh",
+      "bytes": 3063,
+      "sha256": "023ee761074976d12d84712919c39c368628e1c66599970fcb1c8c6b959e6f57"
+    },
+    {
+      "path": "psionic/tests/cnn-core-checks.coax",
+      "bytes": 9745,
+      "sha256": "c3003e58c8266b8320d060fe4e402c9fbcfa9cfb8b49e6a423c0e240c58fd71d"
+    },
+    {
+      "path": "psionic/tests/cnn-modules-checks.coax",
+      "bytes": 5626,
+      "sha256": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0"
+    },
+    {
+      "path": "psionic/tests/cnn-native.c",
+      "bytes": 3509,
+      "sha256": "16dd7e46e9c268e7691ce2bf47ba22c709af92f1915ab1681819151419438f53"
+    },
+    {
+      "path": "psionic/tests/cnn-native.coax",
+      "bytes": 4295,
+      "sha256": "c9094e2a3224ab3d2a40c7511163d2ddfc38a4f2d9764541f80ee80c116ee587"
+    },
+    {
+      "path": "psionic/tests/cnn/test_reference.py",
+      "bytes": 6731,
+      "sha256": "21c2fa7cb432075f8911f1da08f306e04c6ef051f42f86c27733663d6896bf3b"
+    },
+    {
+      "path": "psionic/tests/cnn_reference.py",
+      "bytes": 18883,
+      "sha256": "a47f2c121ec8c4509eaf4992d7703643f8988c6c65fe52b4e35f769d5a584aec"
+    }
+  ],
+  "retained_diagnostic_normalization": {
+    "path": "psionic/fixtures/cnn/book-example/execution.log",
+    "original_sha256": "60ed3cad2f083f629b206abf58bf23cfb08bbdaf9b9e8c6225642de7888464ab",
+    "operation": "Trailing blank lines normalized in the publication copy; diagnostic text and failure are unchanged. Original raw tool log remains in /tmp/cnn-book-example-20261101."
+  }
+}

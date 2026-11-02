@@ -1,0 +1,1 @@
+#test cnn function eligibility refuses convolution before unsupported higher derivatives

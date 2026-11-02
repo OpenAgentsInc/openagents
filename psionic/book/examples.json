@@ -2533,6 +2533,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/cnn-classifier.coax",
+      "chapter": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "stdout": "psionic/fixtures/cnn-classifier.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

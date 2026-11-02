@@ -1,0 +1,3 @@
+ok   #test compiled gradients equal the tape's bit for bit, with and without recomputation (1 case, 462344 steps, 558 ms)
+1 of 217 checks (--only 'compiled gradients equal the tape'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

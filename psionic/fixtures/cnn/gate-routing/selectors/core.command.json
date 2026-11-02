@@ -1,0 +1,9 @@
+[
+  "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+  "test",
+  "psionic/tests/cnn-core-checks.coax",
+  "--library",
+  "--list",
+  "--only",
+  "cnn core:"
+]

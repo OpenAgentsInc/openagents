@@ -117,7 +117,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "0564f2a49ab92f4ce7abba47e51e8c062df204312657710c9b82a5da79e9b06e"
+          "sha256": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88"
         },
         {
           "path": "docs/verification/psionic-ch71-2026-10-29.md",
@@ -129,7 +129,7 @@
         },
         {
           "path": "psionic/book/ch107-transform-functions-not-just-tensors.md",
-          "sha256": "4bf1e7c97caf03d23e58a24377a0fac516ea23f07abe6128bc3795b78fcd43bd"
+          "sha256": "5b2d7dc9d6ba962378552dd1ed135b2e092a4c4105f139aba3288fb038905ffd"
         },
         {
           "path": "psionic/lib/function-linearize.coax",
@@ -158,6 +158,14 @@
         {
           "path": "psionic/tests/gpu_train_device.c",
           "sha256": "4951d850138f0e99dce53a431aef175f987ec938551f69a84b149cecd0ecb005"
+        },
+        {
+          "path": "psionic/fixtures/cnn-core/qualification.json",
+          "sha256": "92a20ed9c248ab1ffd3c809cbd35275d621932d45e9ed5fda2ad9a6d1ccc4e7f"
+        },
+        {
+          "path": "psionic/fixtures/cnn/mlp-compatibility.json",
+          "sha256": "20bd69e440c8f0a53a7e7b79c4c0bdbbcc353ff1686616eb0aa50f0489103cb8"
         }
       ]
     },
@@ -174,7 +182,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "2cf54fdc3a8b07a249546dbcc428f09b26edfd6b0676162eeb63a2d860419d44"
+          "sha256": "b58c6874e82fefce9f472b9d46cd5e00c4f285388b3916e0e403a6b958f7dac5"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -206,7 +214,7 @@
         },
         {
           "path": "psionic/book/ch107-transform-functions-not-just-tensors.md",
-          "sha256": "4bf1e7c97caf03d23e58a24377a0fac516ea23f07abe6128bc3795b78fcd43bd"
+          "sha256": "5b2d7dc9d6ba962378552dd1ed135b2e092a4c4105f139aba3288fb038905ffd"
         },
         {
           "path": "psionic/lib/function-linearize.coax",
@@ -235,6 +243,14 @@
         {
           "path": "psionic/tests/gpu_train_device.c",
           "sha256": "4951d850138f0e99dce53a431aef175f987ec938551f69a84b149cecd0ecb005"
+        },
+        {
+          "path": "psionic/fixtures/cnn-core/qualification.json",
+          "sha256": "92a20ed9c248ab1ffd3c809cbd35275d621932d45e9ed5fda2ad9a6d1ccc4e7f"
+        },
+        {
+          "path": "psionic/fixtures/cnn/mlp-compatibility.json",
+          "sha256": "20bd69e440c8f0a53a7e7b79c4c0bdbbcc353ff1686616eb0aa50f0489103cb8"
         }
       ]
     },
@@ -251,7 +267,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "2cf54fdc3a8b07a249546dbcc428f09b26edfd6b0676162eeb63a2d860419d44"
+          "sha256": "b58c6874e82fefce9f472b9d46cd5e00c4f285388b3916e0e403a6b958f7dac5"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",
@@ -317,7 +333,7 @@
       "evidence": [
         {
           "path": "psionic/lib/tensor-ir.coax",
-          "sha256": "f21f170b75af3de4afb6c7b1d39506c0ff660219c5a02d3d4637a129bd0c7359"
+          "sha256": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258"
         },
         {
           "path": "psionic/lib/tensor-template.coax",
@@ -329,7 +345,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "0564f2a49ab92f4ce7abba47e51e8c062df204312657710c9b82a5da79e9b06e"
+          "sha256": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88"
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",

@@ -1,0 +1,418 @@
+{
+  "schema": 1,
+  "profile": "psionic-mnist-cnn-frozen-v1",
+  "frozen_at": "2026-11-02T01:52:01.908543+00:00",
+  "source_git_head": "71c1d3fcdb15e93c525c2f5e02037b562e6559b8",
+  "source_inventory": [
+    {
+      "path": "coax/lib/crypto/bytes.coax",
+      "bytes": 11552,
+      "sha256": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b"
+    },
+    {
+      "path": "coax/lib/crypto/sha256-kernel.coax",
+      "bytes": 16502,
+      "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+    },
+    {
+      "path": "coax/lib/crypto/sha256.coax",
+      "bytes": 13633,
+      "sha256": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/json_suite.coax",
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    {
+      "path": "coax/lib/nostr/json.coax",
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    {
+      "path": "psionic/examples/operators/squared-relu.coax",
+      "bytes": 2563,
+      "sha256": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4"
+    },
+    {
+      "path": "psionic/fixtures/adamw/reference.coax",
+      "bytes": 6613,
+      "sha256": "0f9e0c7d46ba27fca4ccdac955a4127ae547bb86e14997fe94d0ea8c9b59a608"
+    },
+    {
+      "path": "psionic/fixtures/cnn/experiment.json",
+      "bytes": 4644,
+      "sha256": "92e2cb2b7f18784ae3dafe0fdff61de593ae1ddce9d66c1c73b041cdec03942c"
+    },
+    {
+      "path": "psionic/fixtures/cnn/profile.json",
+      "bytes": 923,
+      "sha256": "83a99f4a71ce5ea319b406f98a14a51c86889e88ebc52b85f9087eb6e1d077a0"
+    },
+    {
+      "path": "psionic/fixtures/cnn/reference.json",
+      "bytes": 20749,
+      "sha256": "9e404603d540c0af242a0029f4e0d14f1ef4ec90afdea8b4706929a8ba85a648"
+    },
+    {
+      "path": "psionic/fixtures/mnist/artifacts.coax",
+      "bytes": 738,
+      "sha256": "ea9608786e6f315f72f0dd23df8795c87bb75cb343b6a58a181cc39a614b8a44"
+    },
+    {
+      "path": "psionic/fixtures/mnist/dataset.json",
+      "bytes": 4265,
+      "sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd"
+    },
+    {
+      "path": "psionic/fixtures/models/ch04/fixtures.coax",
+      "bytes": 4015,
+      "sha256": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa"
+    },
+    {
+      "path": "psionic/fixtures/resume/reference.coax",
+      "bytes": 5255,
+      "sha256": "d9b6f67974c6a598fc402fe0e84c30d3cdf0dc3a2ebea7f32ae53dd2acbb3784"
+    },
+    {
+      "path": "psionic/lib/autodiff.coax",
+      "bytes": 41125,
+      "sha256": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88"
+    },
+    {
+      "path": "psionic/lib/checkpoint/record.coax",
+      "bytes": 19941,
+      "sha256": "6194b4a99fdb4e37c3325c59a2e901cbe3613a9f7cfdd63731735899bea63562"
+    },
+    {
+      "path": "psionic/lib/checkpoint/resume.coax",
+      "bytes": 15848,
+      "sha256": "94e33ac85248cd413ae7d62ab034de0ba5ccf071695957297b82242abe8caa73"
+    },
+    {
+      "path": "psionic/lib/cnn-classifier.coax",
+      "bytes": 9966,
+      "sha256": "2b2853e24a0220444c20a1597764da342518d2d18ba04deab74be325e5b10dd4"
+    },
+    {
+      "path": "psionic/lib/cnn-experiment.coax",
+      "bytes": 6199,
+      "sha256": "c9c4792219adfc33e5a3f180814909b915709f5018bce6af5ce3ec6aa7d3be35"
+    },
+    {
+      "path": "psionic/lib/cnn-policy.coax",
+      "bytes": 7950,
+      "sha256": "f6d2b20fa7b0da7fa11c8422b44f4719ea75091a14a99fb92030c279481a54b9"
+    },
+    {
+      "path": "psionic/lib/cores.coax",
+      "bytes": 21923,
+      "sha256": "4a1b2ff7bdf6c5b8abd8db19e7aa360e24d0b0775f4d25df19da62aeb619ed75"
+    },
+    {
+      "path": "psionic/lib/counter-rng.coax",
+      "bytes": 1303,
+      "sha256": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49"
+    },
+    {
+      "path": "psionic/lib/data/feed.coax",
+      "bytes": 29933,
+      "sha256": "9d544d962e54e9071d9009cf26089bf68c51e64a1b8f37231a1a87fbb7b52bab"
+    },
+    {
+      "path": "psionic/lib/data/mnist.coax",
+      "bytes": 11427,
+      "sha256": "2a2ce156bd67f8edffeb169a4dbaf7f1e868f02cf7f12ffae20ad12c603bfaa6"
+    },
+    {
+      "path": "psionic/lib/data/pack.coax",
+      "bytes": 11692,
+      "sha256": "20a68afeda09ad6c213a0117229e0f0d45fe7d578ab961b4b5e5ddfb0f54016b"
+    },
+    {
+      "path": "psionic/lib/data/split.coax",
+      "bytes": 27671,
+      "sha256": "6d1f0ab92f9b39fb7b7dbee0784e53c71a9f3c11e1259ee4d43fdd86ca6b9cb6"
+    },
+    {
+      "path": "psionic/lib/interchange.coax",
+      "bytes": 14124,
+      "sha256": "19273063b9aedfee1ed2b071a368483f216a1017a372b76740e1d89f51032670"
+    },
+    {
+      "path": "psionic/lib/learn.coax",
+      "bytes": 11340,
+      "sha256": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5"
+    },
+    {
+      "path": "psionic/lib/model-io/format.coax",
+      "bytes": 7692,
+      "sha256": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca"
+    },
+    {
+      "path": "psionic/lib/model-io/reader.coax",
+      "bytes": 14204,
+      "sha256": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627"
+    },
+    {
+      "path": "psionic/lib/module-cnn.coax",
+      "bytes": 2054,
+      "sha256": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1"
+    },
+    {
+      "path": "psionic/lib/module-train.coax",
+      "bytes": 6173,
+      "sha256": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f"
+    },
+    {
+      "path": "psionic/lib/module.coax",
+      "bytes": 47473,
+      "sha256": "bf57b32ede57f770fef34f900644c2ed359a5d7cb47a38ca5f2b897cf2432e33"
+    },
+    {
+      "path": "psionic/lib/operator-registry.coax",
+      "bytes": 6984,
+      "sha256": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733"
+    },
+    {
+      "path": "psionic/lib/optim/adamw.coax",
+      "bytes": 22069,
+      "sha256": "30e17db86f4b207b79d03b63fdb261722a515b20c3eebf6b5950be119cc57a64"
+    },
+    {
+      "path": "psionic/lib/tensor-ir-host.coax",
+      "bytes": 9514,
+      "sha256": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a"
+    },
+    {
+      "path": "psionic/lib/tensor-ir-kernels.coax",
+      "bytes": 4247,
+      "sha256": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc"
+    },
+    {
+      "path": "psionic/lib/tensor-ir.coax",
+      "bytes": 15325,
+      "sha256": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258"
+    },
+    {
+      "path": "psionic/lib/tensor-ops-backward.coax",
+      "bytes": 32085,
+      "sha256": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2"
+    },
+    {
+      "path": "psionic/lib/tensor-ops-contract.coax",
+      "bytes": 22775,
+      "sha256": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591"
+    },
+    {
+      "path": "psionic/lib/tensor-ops.coax",
+      "bytes": 41445,
+      "sha256": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772"
+    },
+    {
+      "path": "psionic/lib/tensor-placement.coax",
+      "bytes": 17400,
+      "sha256": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0"
+    },
+    {
+      "path": "psionic/lib/tensor-view.coax",
+      "bytes": 29773,
+      "sha256": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529"
+    },
+    {
+      "path": "psionic/lib/tensor.coax",
+      "bytes": 13806,
+      "sha256": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6"
+    },
+    {
+      "path": "psionic/lib/trainer.coax",
+      "bytes": 53394,
+      "sha256": "831ae3ed34a71bd6dbc26879c1aa1f14f9b9b397e48c7d049f0add34b8b97768"
+    },
+    {
+      "path": "psionic/platform/cnn-build.sh",
+      "bytes": 972,
+      "sha256": "b66eede12bfe657e0525ca5245ad02842e12838da9cf9506f7ae6bc91d9f6e81"
+    },
+    {
+      "path": "psionic/platform/cnn-host.c",
+      "bytes": 7926,
+      "sha256": "1472a149325cd893003249e9fd06cef024eb5988c7722dd43cb0eabaa56526b0"
+    },
+    {
+      "path": "psionic/run-cnn.sh",
+      "bytes": 1109,
+      "sha256": "e7f46a03540b70d3a089b3dc345d0eda64c8bd1b24561320b5b0d55aa81a1f74"
+    },
+    {
+      "path": "psionic/tests/cnn-modules-checks.coax",
+      "bytes": 5626,
+      "sha256": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0"
+    },
+    {
+      "path": "psionic/tests/cnn_reference.py",
+      "bytes": 18883,
+      "sha256": "a47f2c121ec8c4509eaf4992d7703643f8988c6c65fe52b4e35f769d5a584aec"
+    },
+    {
+      "path": "psionic/tests/mnist_reference.py",
+      "bytes": 28940,
+      "sha256": "df56a0ac38b247a4b8dd85f8ffabb1786e77c308be8ba8423dc8fc5ed15ff427"
+    },
+    {
+      "path": "psionic/tests/module-train-checks.coax",
+      "bytes": 12713,
+      "sha256": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71"
+    },
+    {
+      "path": "psionic/tests/trainer-checks.coax",
+      "bytes": 2606,
+      "sha256": "49f0c0525577d7434fe41dc1b124be6fa854a2985ea051e968ab2cbd06f9f699"
+    }
+  ],
+  "compiler": {
+    "path": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+    "bytes": 3298680,
+    "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9"
+  },
+  "compiler_input_fingerprint": "3325db45fae565ab13644ce9f65550a908113586f7d3db2ea5287ff41b990d72",
+  "native_artifacts": [
+    {
+      "path": "/tmp/cnn-published-qualified-20261101/debug/cnn.c",
+      "bytes": 837590,
+      "sha256": "e9458f9af98688a0fb0c9a520afae433b964d9e5f9497d286e6a814b088dedfc"
+    },
+    {
+      "path": "/tmp/cnn-published-qualified-20261101/debug/cnn.h",
+      "bytes": 208715,
+      "sha256": "c32b009b8130d249d413bc01a9af9088ef8c965e58134ccfa1385755aaddda64"
+    },
+    {
+      "path": "/tmp/cnn-published-qualified-20261101/debug/cnn",
+      "bytes": 408368,
+      "sha256": "03b9acf23e7bddf768bbd0b4282259ea7aabcd9da6a8ceaf4f06939043ed6096"
+    },
+    {
+      "path": "/tmp/cnn-published-qualified-20261101/release/cnn.c",
+      "bytes": 1109717,
+      "sha256": "45fd72b86ccaab35ee8a61d2c737e02d496af5922fd1920f5074bce9fd1d01be"
+    },
+    {
+      "path": "/tmp/cnn-published-qualified-20261101/release/cnn.h",
+      "bytes": 208715,
+      "sha256": "c32b009b8130d249d413bc01a9af9088ef8c965e58134ccfa1385755aaddda64"
+    },
+    {
+      "path": "/tmp/cnn-published-qualified-20261101/release/cnn",
+      "bytes": 370128,
+      "sha256": "fd2314424ef52dc009cd8d8dae16efc710fbce2667ce313d411504146b8fbe15"
+    },
+    {
+      "path": "/tmp/cnn-published-qualified-20261101/sanitized/cnn.c",
+      "bytes": 837590,
+      "sha256": "e9458f9af98688a0fb0c9a520afae433b964d9e5f9497d286e6a814b088dedfc"
+    },
+    {
+      "path": "/tmp/cnn-published-qualified-20261101/sanitized/cnn.h",
+      "bytes": 208715,
+      "sha256": "c32b009b8130d249d413bc01a9af9088ef8c965e58134ccfa1385755aaddda64"
+    },
+    {
+      "path": "/tmp/cnn-published-qualified-20261101/sanitized/cnn",
+      "bytes": 1846816,
+      "sha256": "23f1bf3ec9730877f5ef335c10c8ea6fdad7fcfa1038cfd634581e55d14331f6"
+    }
+  ],
+  "native_preflight": {
+    "verified": true,
+    "source": "original official TRAIN row0",
+    "label": 5,
+    "checks": {
+      "parameters": {
+        "count": 2910,
+        "max_absolute_error": 0.0,
+        "rule": {
+          "comparison": "exact binary64 bits"
+        }
+      },
+      "gradient": {
+        "count": 2910,
+        "max_absolute_error": 0.0,
+        "rule": {
+          "absolute": 2e-06,
+          "relative": 2e-06
+        }
+      },
+      "scores": {
+        "count": 10,
+        "max_absolute_error": 0.0,
+        "rule": {
+          "absolute": 2e-06,
+          "relative": 2e-06
+        }
+      },
+      "features": {
+        "count": 196,
+        "max_absolute_error": 0.0,
+        "rule": {
+          "comparison": "exact binary32 bits"
+        }
+      },
+      "loss": {
+        "count": 1,
+        "max_absolute_error": 0.0,
+        "rule": {
+          "absolute": 2e-06,
+          "relative": 2e-06
+        }
+      }
+    },
+    "observed_native_counts": {
+      "parameters": 2910,
+      "inputs": 3117,
+      "values": 606,
+      "adjoints": 3486,
+      "flags": 288
+    },
+    "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+    "experiment_manifest_sha256": "92e2cb2b7f18784ae3dafe0fdff61de593ae1ddce9d66c1c73b041cdec03942c",
+    "scope": "public CNN forward and all 2910 formal parameter gradients; no optimizer or quality claim"
+  },
+  "native_capture_modes_byte_equal": true,
+  "new_authority_sites": {
+    "module-cnn": 51,
+    "cnn-policy": 117
+  },
+  "mutants_survived": 0,
+  "shared_engine_full_mutation": "omitted under owner fast focused-check instruction; see cnn-core/qualification.json",
+  "canonical_learning_runs": 1,
+  "training_prefix_repetitions": 0,
+  "next_update_replays": 1,
+  "runtime": "native Coax CPU model, preprocessing, gradients, policy, AdamW, checkpoints and export; no Python/model SDK in executable",
+  "host": "Apple M5 Max, arm64; shared host observation, not isolated speed benchmark",
+  "flags": [
+    "coax c --library --release",
+    "cc -std=c11 -O2 -g -ffp-contract=off -lm"
+  ],
+  "preflight_modes": [
+    "debug native",
+    "release native",
+    "debug ASan/UBSan"
+  ],
+  "qualification": [
+    "psionic/fixtures/cnn-core/qualification.json",
+    "psionic/fixtures/cnn-modules/qualification.json"
+  ],
+  "precision": "f64 master and moments; sequential f32 forward and published entry gradients; formal f64 reverse accumulation",
+  "limitations": [
+    "CPU-only convolution; no compiled-backward or higher-order transform support",
+    "Bounded4096/1024/2048 splits, one seed/profile; no full-MNIST/CIFAR or calibration claim",
+    "Artifacts published after completion; one next-update replay, no crash/restart experiment",
+    "Original MLP run/artifacts preserved; new no-training compatibility capture checks retained separately"
+  ]
+}

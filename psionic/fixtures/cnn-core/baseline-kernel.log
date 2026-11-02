@@ -1,0 +1,3 @@
+ok   #test a command uses explicit input reads workspace writes and persistent flags (1 case, 1775 steps, 0 ms)
+1 of 3 checks (--only 'a command uses explicit'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

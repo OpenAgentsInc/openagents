@@ -1,0 +1,6 @@
+{
+  "observed_utc": "2026-11-02T01:44:36.072081+00:00",
+  "command": "coax mutate psionic/lib/module-cnn.coax --library --root-only --jobs 2 --run-steps 250000000",
+  "result": "interrupted before a complete report; no mutation score claimed",
+  "reason": "Remove redundant flatten predicates: tv_elements failures return elements0 and positive count at rank>=2 implies a positive batch; no equivalence waivers."
+}

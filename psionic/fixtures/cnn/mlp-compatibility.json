@@ -1,0 +1,989 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-11-02T01:46:34.386173+00:00",
+  "profile": "mnist-mlp-compatibility-after-cnn-ir-v1",
+  "standing": "passed for the declared no-training synthetic and frozen initial-row profile",
+  "source_git_head": "71c1d3fcdb15e93c525c2f5e02037b562e6559b8",
+  "scope": "Fresh debug, release and ASan+UBSan native builds of the existing 196->16->10 MLP after adding convolution to shared IR and first-order autodiff. No training or optimizer step was requested.",
+  "baseline": {
+    "source_freeze": "psionic/fixtures/mnist/source-freeze.json",
+    "source_freeze_sha256": "20e16baf7a80846389555f88e870468be60944922b38ee62f7198e97f15b0306",
+    "experiment": "psionic/fixtures/mnist/experiment.json",
+    "initial_capture": [
+      {
+        "path": "psionic/fixtures/mnist/initial-capture/features.f32",
+        "bytes": 784,
+        "sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+        "unchanged_from_committed_head": true
+      },
+      {
+        "path": "psionic/fixtures/mnist/initial-capture/gradient.f64",
+        "bytes": 26576,
+        "sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+        "unchanged_from_committed_head": true
+      },
+      {
+        "path": "psionic/fixtures/mnist/initial-capture/oracle.json",
+        "bytes": 109,
+        "sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+        "unchanged_from_committed_head": true
+      },
+      {
+        "path": "psionic/fixtures/mnist/initial-capture/params.f64",
+        "bytes": 26576,
+        "sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+        "unchanged_from_committed_head": true
+      },
+      {
+        "path": "psionic/fixtures/mnist/initial-capture/scores.f32",
+        "bytes": 40,
+        "sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+        "unchanged_from_committed_head": true
+      }
+    ],
+    "frozen_records_unchanged_from_head": true
+  },
+  "source_inventory": [
+    {
+      "path": "psionic/lib/mnist-experiment.coax",
+      "bytes": 6203,
+      "sha256": "f94ca5cb73963162f1d06fd7a2d14576624802b6a190161dd52042af20c8ce14",
+      "frozen_sha256": "f94ca5cb73963162f1d06fd7a2d14576624802b6a190161dd52042af20c8ce14",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/mnist-classifier.coax",
+      "bytes": 9358,
+      "sha256": "509b79062f0238954c8d37f41efeacd25fee774836faf7ff4d0753e0e9a68c54",
+      "frozen_sha256": "509b79062f0238954c8d37f41efeacd25fee774836faf7ff4d0753e0e9a68c54",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/module-train.coax",
+      "bytes": 6173,
+      "sha256": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+      "frozen_sha256": "3d472652469fffc3ddb7b437baeac552d2e69ee468b395881ecdde1d2be9935f",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/module.coax",
+      "bytes": 47473,
+      "sha256": "bf57b32ede57f770fef34f900644c2ed359a5d7cb47a38ca5f2b897cf2432e33",
+      "frozen_sha256": "bf57b32ede57f770fef34f900644c2ed359a5d7cb47a38ca5f2b897cf2432e33",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/autodiff.coax",
+      "bytes": 41125,
+      "sha256": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88",
+      "frozen_sha256": "0564f2a49ab92f4ce7abba47e51e8c062df204312657710c9b82a5da79e9b06e",
+      "unchanged_from_frozen": false
+    },
+    {
+      "path": "psionic/lib/operator-registry.coax",
+      "bytes": 6984,
+      "sha256": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733",
+      "frozen_sha256": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/tensor-ir-host.coax",
+      "bytes": 9514,
+      "sha256": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a",
+      "frozen_sha256": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/tensor-ir.coax",
+      "bytes": 15325,
+      "sha256": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258",
+      "frozen_sha256": "f21f170b75af3de4afb6c7b1d39506c0ff660219c5a02d3d4637a129bd0c7359",
+      "unchanged_from_frozen": false
+    },
+    {
+      "path": "psionic/lib/tensor-ops-contract.coax",
+      "bytes": 22775,
+      "sha256": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+      "frozen_sha256": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/tensor-view.coax",
+      "bytes": 29773,
+      "sha256": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+      "frozen_sha256": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/tensor-placement.coax",
+      "bytes": 17400,
+      "sha256": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0",
+      "frozen_sha256": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/tensor-ir-kernels.coax",
+      "bytes": 4247,
+      "sha256": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc",
+      "frozen_sha256": "1aa231bf621098c30b2c346e40d7aca151264421c5aeff8b9d1b17336a3b19de",
+      "unchanged_from_frozen": false
+    },
+    {
+      "path": "psionic/lib/tensor-ops.coax",
+      "bytes": 41445,
+      "sha256": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+      "frozen_sha256": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "coax/lib/crypto/sha256.coax",
+      "bytes": 13633,
+      "sha256": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+      "frozen_sha256": "daf393d8c225652a7adb201e11546c1c862cf88b866b87c22fae493853f90004",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "coax/lib/crypto/bytes.coax",
+      "bytes": 11552,
+      "sha256": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+      "frozen_sha256": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "coax/lib/crypto/sha256-kernel.coax",
+      "bytes": 16502,
+      "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+      "frozen_sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/tensor-ops-backward.coax",
+      "bytes": 32085,
+      "sha256": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2",
+      "frozen_sha256": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/examples/operators/squared-relu.coax",
+      "bytes": 2563,
+      "sha256": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4",
+      "frozen_sha256": "6e2d61749ae7b5a26bd9798c156c684927d2b67421de4be8ae7c92c0f1e06fb4",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/interchange.coax",
+      "bytes": 14124,
+      "sha256": "19273063b9aedfee1ed2b071a368483f216a1017a372b76740e1d89f51032670",
+      "frozen_sha256": "19273063b9aedfee1ed2b071a368483f216a1017a372b76740e1d89f51032670",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/model-io/reader.coax",
+      "bytes": 14204,
+      "sha256": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+      "frozen_sha256": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/model-io/format.coax",
+      "bytes": 7692,
+      "sha256": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+      "frozen_sha256": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/tensor.coax",
+      "bytes": 13806,
+      "sha256": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+      "frozen_sha256": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "coax/lib/nostr/json.coax",
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+      "frozen_sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/json_suite.coax",
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "frozen_sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+      "frozen_sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/fixtures/models/ch04/fixtures.coax",
+      "bytes": 4015,
+      "sha256": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa",
+      "frozen_sha256": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/learn.coax",
+      "bytes": 11340,
+      "sha256": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5",
+      "frozen_sha256": "d9bce289fe24d134451428f2a500a443d0b3d173e10644109e721866f4585ce5",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/counter-rng.coax",
+      "bytes": 1303,
+      "sha256": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+      "frozen_sha256": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/tests/module-train-checks.coax",
+      "bytes": 12713,
+      "sha256": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71",
+      "frozen_sha256": "e04b091f1b509bd625a7715c0c6bb2b07eed3c57a9852192d37d429ef8826b71",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/trainer.coax",
+      "bytes": 53394,
+      "sha256": "831ae3ed34a71bd6dbc26879c1aa1f14f9b9b397e48c7d049f0add34b8b97768",
+      "frozen_sha256": "831ae3ed34a71bd6dbc26879c1aa1f14f9b9b397e48c7d049f0add34b8b97768",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/data/feed.coax",
+      "bytes": 29933,
+      "sha256": "9d544d962e54e9071d9009cf26089bf68c51e64a1b8f37231a1a87fbb7b52bab",
+      "frozen_sha256": "9d544d962e54e9071d9009cf26089bf68c51e64a1b8f37231a1a87fbb7b52bab",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/data/split.coax",
+      "bytes": 27671,
+      "sha256": "6d1f0ab92f9b39fb7b7dbee0784e53c71a9f3c11e1259ee4d43fdd86ca6b9cb6",
+      "frozen_sha256": "6d1f0ab92f9b39fb7b7dbee0784e53c71a9f3c11e1259ee4d43fdd86ca6b9cb6",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/checkpoint/resume.coax",
+      "bytes": 15848,
+      "sha256": "94e33ac85248cd413ae7d62ab034de0ba5ccf071695957297b82242abe8caa73",
+      "frozen_sha256": "94e33ac85248cd413ae7d62ab034de0ba5ccf071695957297b82242abe8caa73",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/checkpoint/record.coax",
+      "bytes": 19941,
+      "sha256": "6194b4a99fdb4e37c3325c59a2e901cbe3613a9f7cfdd63731735899bea63562",
+      "frozen_sha256": "6194b4a99fdb4e37c3325c59a2e901cbe3613a9f7cfdd63731735899bea63562",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/data/pack.coax",
+      "bytes": 11692,
+      "sha256": "20a68afeda09ad6c213a0117229e0f0d45fe7d578ab961b4b5e5ddfb0f54016b",
+      "frozen_sha256": "20a68afeda09ad6c213a0117229e0f0d45fe7d578ab961b4b5e5ddfb0f54016b",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/fixtures/resume/reference.coax",
+      "bytes": 5255,
+      "sha256": "d9b6f67974c6a598fc402fe0e84c30d3cdf0dc3a2ebea7f32ae53dd2acbb3784",
+      "frozen_sha256": "d9b6f67974c6a598fc402fe0e84c30d3cdf0dc3a2ebea7f32ae53dd2acbb3784",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/optim/adamw.coax",
+      "bytes": 22069,
+      "sha256": "30e17db86f4b207b79d03b63fdb261722a515b20c3eebf6b5950be119cc57a64",
+      "frozen_sha256": "30e17db86f4b207b79d03b63fdb261722a515b20c3eebf6b5950be119cc57a64",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/fixtures/adamw/reference.coax",
+      "bytes": 6613,
+      "sha256": "0f9e0c7d46ba27fca4ccdac955a4127ae547bb86e14997fe94d0ea8c9b59a608",
+      "frozen_sha256": "0f9e0c7d46ba27fca4ccdac955a4127ae547bb86e14997fe94d0ea8c9b59a608",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/cores.coax",
+      "bytes": 21923,
+      "sha256": "4a1b2ff7bdf6c5b8abd8db19e7aa360e24d0b0775f4d25df19da62aeb619ed75",
+      "frozen_sha256": "4a1b2ff7bdf6c5b8abd8db19e7aa360e24d0b0775f4d25df19da62aeb619ed75",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/tests/trainer-checks.coax",
+      "bytes": 2606,
+      "sha256": "49f0c0525577d7434fe41dc1b124be6fa854a2985ea051e968ab2cbd06f9f699",
+      "frozen_sha256": "49f0c0525577d7434fe41dc1b124be6fa854a2985ea051e968ab2cbd06f9f699",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/data/mnist.coax",
+      "bytes": 11427,
+      "sha256": "2a2ce156bd67f8edffeb169a4dbaf7f1e868f02cf7f12ffae20ad12c603bfaa6",
+      "frozen_sha256": "2a2ce156bd67f8edffeb169a4dbaf7f1e868f02cf7f12ffae20ad12c603bfaa6",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/lib/mnist-policy.coax",
+      "bytes": 7966,
+      "sha256": "5fd3bde7fcdbaf3758571fe7d9f7025409e959eb7fcb5612abcc98e0d74eb845",
+      "frozen_sha256": "5fd3bde7fcdbaf3758571fe7d9f7025409e959eb7fcb5612abcc98e0d74eb845",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/fixtures/mnist/artifacts.coax",
+      "bytes": 738,
+      "sha256": "ea9608786e6f315f72f0dd23df8795c87bb75cb343b6a58a181cc39a614b8a44",
+      "frozen_sha256": "ea9608786e6f315f72f0dd23df8795c87bb75cb343b6a58a181cc39a614b8a44",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/platform/mnist-host.c",
+      "bytes": 7912,
+      "sha256": "8dfe72f2fa163f8effcfbd774b9b9fe6204f65f114f9b7509b25009f16905905",
+      "frozen_sha256": "8dfe72f2fa163f8effcfbd774b9b9fe6204f65f114f9b7509b25009f16905905",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/platform/mnist-build.sh",
+      "bytes": 988,
+      "sha256": "ce991d1bc6db9115a4b48c0b3658ade5add06e5bc8ae68bf35adda3f064bd888",
+      "frozen_sha256": "ce991d1bc6db9115a4b48c0b3658ade5add06e5bc8ae68bf35adda3f064bd888",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/fixtures/mnist/experiment.json",
+      "bytes": 4338,
+      "sha256": "72e9b74333bc55dd78f98bc226bd08670c52e5a78a1ab98a54dc7fb5725a62f1",
+      "frozen_sha256": "72e9b74333bc55dd78f98bc226bd08670c52e5a78a1ab98a54dc7fb5725a62f1",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/fixtures/mnist/dataset.json",
+      "bytes": 4265,
+      "sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+      "frozen_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+      "unchanged_from_frozen": true
+    },
+    {
+      "path": "psionic/tests/mnist_reference.py",
+      "bytes": 28940,
+      "sha256": "df56a0ac38b247a4b8dd85f8ffabb1786e77c308be8ba8423dc8fc5ed15ff427",
+      "frozen_sha256": "df56a0ac38b247a4b8dd85f8ffabb1786e77c308be8ba8423dc8fc5ed15ff427",
+      "unchanged_from_frozen": true
+    }
+  ],
+  "changed_sources_since_frozen_mlp": [
+    "psionic/lib/autodiff.coax",
+    "psionic/lib/tensor-ir.coax",
+    "psionic/lib/tensor-ir-kernels.coax"
+  ],
+  "compiler": {
+    "version": "coax0 0.47.0",
+    "binary": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+    "binary_sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+    "provenance": [
+      "coax-provenance-v1",
+      "3325db45fae565ab13644ce9f65550a908113586f7d3db2ea5287ff41b990d72",
+      "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+      "ba5d65690f6f493c335d45597eae75931bb8e46ef7702b87679fb985dd03d297"
+    ],
+    "scope": "Retained compiler supplied by the parent; no compiler rebuild or new compiler qualification. The source-worktree freshness advisory and inherited unchanged compiler mutation survivor are not cleared by this regression."
+  },
+  "native_toolchain": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+  "environment": {
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1"
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "build": {
+        "command": "COAX=/tmp/openagents-psionic-framework-20261101/coax/bin/coax psionic/platform/mnist-build.sh /tmp/cnn-mlp-regression-20261101/debug debug 0",
+        "exit_status": 0,
+        "log": "mlp-compatibility/debug/build.log",
+        "coax_flags": [
+          "c",
+          "--library"
+        ],
+        "cc_flags": [
+          "-std=c11",
+          "-O0",
+          "-g",
+          "-ffp-contract=off",
+          "-lm"
+        ]
+      },
+      "native_artifacts": [
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/debug/mnist.c",
+          "bytes": 833370,
+          "sha256": "b06736e69b1f2530509d7706d8ce4093d5a655bf51849b0afdee944eaf4b0596"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/debug/mnist.h",
+          "bytes": 208717,
+          "sha256": "6a899f504232b21d0a115dfa1d0ed9efbed7ec007ff667cf087f83f29dc96ccd"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/debug/mnist",
+          "bytes": 408168,
+          "sha256": "e82035365ff66faf512ef1047baf18287c5b559828ca333b24959989b3c27805"
+        }
+      ],
+      "runs": [
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/debug/mnist --synthetic",
+          "label": "synthetic",
+          "started_utc": "2026-11-02T01:45:54.255278+00:00",
+          "seconds": 0.23053566698217764,
+          "exit_status": 0,
+          "log": "debug/synthetic.log"
+        },
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/debug/mnist --oracle /tmp/psionic-mnist-data /private/tmp/openagents-psionic-cnn-20261101/psionic/fixtures/mnist/experiment.json /tmp/cnn-mlp-regression-20261101/debug/capture",
+          "label": "oracle",
+          "started_utc": "2026-11-02T01:45:54.487629+00:00",
+          "seconds": 0.024424124974757433,
+          "exit_status": 0,
+          "log": "debug/oracle.log"
+        },
+        {
+          "command": "python3 psionic/tests/mnist_reference.py verify-capture /tmp/cnn-mlp-regression-20261101/debug/capture --data-dir /tmp/psionic-mnist-data --out /tmp/cnn-mlp-regression-20261101/debug/comparison.json",
+          "label": "verify",
+          "started_utc": "2026-11-02T01:45:54.512111+00:00",
+          "seconds": 0.4553716669906862,
+          "exit_status": 0,
+          "log": "debug/verify.log"
+        }
+      ],
+      "independent_verification": {
+        "verified": true,
+        "source": "original official TRAIN row0",
+        "label": 5,
+        "checks": {
+          "parameters": {
+            "count": 3322,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary64 bits"
+            }
+          },
+          "gradient": {
+            "count": 3322,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "scores": {
+            "count": 10,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "features": {
+            "count": 196,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary32 bits"
+            }
+          },
+          "loss": {
+            "count": 1,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          }
+        },
+        "observed_native_counts": {
+          "parameters": 3322,
+          "inputs": 3529,
+          "values": 62,
+          "adjoints": 3338,
+          "flags": 16
+        },
+        "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+        "scope": "initial public Coax forward and full published gradient; no training-quality or optimizer claim"
+      },
+      "frozen_capture_comparison": [
+        {
+          "file": "features.f32",
+          "bytes": 784,
+          "frozen_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "current_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "gradient.f64",
+          "bytes": 26576,
+          "frozen_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "current_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "oracle.json",
+          "bytes": 109,
+          "frozen_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "current_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "params.f64",
+          "bytes": 26576,
+          "frozen_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "current_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "scores.f32",
+          "bytes": 40,
+          "frozen_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "current_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "exact_bytes_equal": true
+        }
+      ],
+      "capture_artifacts": [
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/debug/capture/features.f32",
+          "bytes": 784,
+          "sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/debug/capture/gradient.f64",
+          "bytes": 26576,
+          "sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/debug/capture/oracle.json",
+          "bytes": 109,
+          "sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/debug/capture/params.f64",
+          "bytes": 26576,
+          "sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/debug/capture/scores.f32",
+          "bytes": 40,
+          "sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "mode": "release",
+      "build": {
+        "command": "COAX=/tmp/openagents-psionic-framework-20261101/coax/bin/coax psionic/platform/mnist-build.sh /tmp/cnn-mlp-regression-20261101/release release 0",
+        "exit_status": 0,
+        "log": "mlp-compatibility/release/build.log",
+        "coax_flags": [
+          "c",
+          "--library",
+          "--release"
+        ],
+        "cc_flags": [
+          "-std=c11",
+          "-O2",
+          "-g",
+          "-ffp-contract=off",
+          "-lm"
+        ]
+      },
+      "native_artifacts": [
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/release/mnist.c",
+          "bytes": 1105496,
+          "sha256": "bd96387c15290f34108f896e1da34fa6c15bdad72a50b06c8c08a8cb0a1e85b7"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/release/mnist.h",
+          "bytes": 208717,
+          "sha256": "6a899f504232b21d0a115dfa1d0ed9efbed7ec007ff667cf087f83f29dc96ccd"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/release/mnist",
+          "bytes": 369752,
+          "sha256": "3c1adaed6cac460233e09046a7cf0795d766dbe8f1c2d3d4d882a18ded19557c"
+        }
+      ],
+      "runs": [
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/release/mnist --synthetic",
+          "label": "synthetic",
+          "started_utc": "2026-11-02T01:45:54.261397+00:00",
+          "seconds": 0.4485710000153631,
+          "exit_status": 0,
+          "log": "release/synthetic.log"
+        },
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/release/mnist --oracle /tmp/psionic-mnist-data /private/tmp/openagents-psionic-cnn-20261101/psionic/fixtures/mnist/experiment.json /tmp/cnn-mlp-regression-20261101/release/capture",
+          "label": "oracle",
+          "started_utc": "2026-11-02T01:45:54.710003+00:00",
+          "seconds": 0.016496917000040412,
+          "exit_status": 0,
+          "log": "release/oracle.log"
+        },
+        {
+          "command": "python3 psionic/tests/mnist_reference.py verify-capture /tmp/cnn-mlp-regression-20261101/release/capture --data-dir /tmp/psionic-mnist-data --out /tmp/cnn-mlp-regression-20261101/release/comparison.json",
+          "label": "verify",
+          "started_utc": "2026-11-02T01:45:54.726546+00:00",
+          "seconds": 0.48187708301702514,
+          "exit_status": 0,
+          "log": "release/verify.log"
+        }
+      ],
+      "independent_verification": {
+        "verified": true,
+        "source": "original official TRAIN row0",
+        "label": 5,
+        "checks": {
+          "parameters": {
+            "count": 3322,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary64 bits"
+            }
+          },
+          "gradient": {
+            "count": 3322,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "scores": {
+            "count": 10,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "features": {
+            "count": 196,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary32 bits"
+            }
+          },
+          "loss": {
+            "count": 1,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          }
+        },
+        "observed_native_counts": {
+          "parameters": 3322,
+          "inputs": 3529,
+          "values": 62,
+          "adjoints": 3338,
+          "flags": 16
+        },
+        "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+        "scope": "initial public Coax forward and full published gradient; no training-quality or optimizer claim"
+      },
+      "frozen_capture_comparison": [
+        {
+          "file": "features.f32",
+          "bytes": 784,
+          "frozen_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "current_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "gradient.f64",
+          "bytes": 26576,
+          "frozen_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "current_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "oracle.json",
+          "bytes": 109,
+          "frozen_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "current_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "params.f64",
+          "bytes": 26576,
+          "frozen_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "current_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "scores.f32",
+          "bytes": 40,
+          "frozen_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "current_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "exact_bytes_equal": true
+        }
+      ],
+      "capture_artifacts": [
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/release/capture/features.f32",
+          "bytes": 784,
+          "sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/release/capture/gradient.f64",
+          "bytes": 26576,
+          "sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/release/capture/oracle.json",
+          "bytes": 109,
+          "sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/release/capture/params.f64",
+          "bytes": 26576,
+          "sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/release/capture/scores.f32",
+          "bytes": 40,
+          "sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa"
+        }
+      ],
+      "passed": true
+    },
+    {
+      "mode": "sanitized",
+      "build": {
+        "command": "COAX=/tmp/openagents-psionic-framework-20261101/coax/bin/coax psionic/platform/mnist-build.sh /tmp/cnn-mlp-regression-20261101/sanitized debug 1",
+        "exit_status": 0,
+        "log": "mlp-compatibility/sanitized/build.log",
+        "coax_flags": [
+          "c",
+          "--library"
+        ],
+        "cc_flags": [
+          "-std=c11",
+          "-O0",
+          "-g",
+          "-ffp-contract=off",
+          "-fsanitize=address,undefined",
+          "-fno-sanitize-recover=all",
+          "-fno-omit-frame-pointer",
+          "-lm"
+        ]
+      },
+      "native_artifacts": [
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/sanitized/mnist.c",
+          "bytes": 833370,
+          "sha256": "b06736e69b1f2530509d7706d8ce4093d5a655bf51849b0afdee944eaf4b0596"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/sanitized/mnist.h",
+          "bytes": 208717,
+          "sha256": "6a899f504232b21d0a115dfa1d0ed9efbed7ec007ff667cf087f83f29dc96ccd"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/sanitized/mnist",
+          "bytes": 1829640,
+          "sha256": "067abc39fbf7d18257afb2cb91b5efe661820af68985593283f864ad2926be97"
+        }
+      ],
+      "runs": [
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/sanitized/mnist --synthetic",
+          "label": "synthetic",
+          "started_utc": "2026-11-02T01:45:54.264105+00:00",
+          "seconds": 0.7607332920306362,
+          "exit_status": 0,
+          "log": "sanitized/synthetic.log"
+        },
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/sanitized/mnist --oracle /tmp/psionic-mnist-data /private/tmp/openagents-psionic-cnn-20261101/psionic/fixtures/mnist/experiment.json /tmp/cnn-mlp-regression-20261101/sanitized/capture",
+          "label": "oracle",
+          "started_utc": "2026-11-02T01:45:55.024863+00:00",
+          "seconds": 0.12446229200577363,
+          "exit_status": 0,
+          "log": "sanitized/oracle.log"
+        },
+        {
+          "command": "python3 psionic/tests/mnist_reference.py verify-capture /tmp/cnn-mlp-regression-20261101/sanitized/capture --data-dir /tmp/psionic-mnist-data --out /tmp/cnn-mlp-regression-20261101/sanitized/comparison.json",
+          "label": "verify",
+          "started_utc": "2026-11-02T01:45:55.149362+00:00",
+          "seconds": 0.569098915962968,
+          "exit_status": 0,
+          "log": "sanitized/verify.log"
+        }
+      ],
+      "independent_verification": {
+        "verified": true,
+        "source": "original official TRAIN row0",
+        "label": 5,
+        "checks": {
+          "parameters": {
+            "count": 3322,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary64 bits"
+            }
+          },
+          "gradient": {
+            "count": 3322,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "scores": {
+            "count": 10,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          },
+          "features": {
+            "count": 196,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "comparison": "exact binary32 bits"
+            }
+          },
+          "loss": {
+            "count": 1,
+            "max_absolute_error": 0.0,
+            "rule": {
+              "absolute": 2e-06,
+              "relative": 2e-06
+            }
+          }
+        },
+        "observed_native_counts": {
+          "parameters": 3322,
+          "inputs": 3529,
+          "values": 62,
+          "adjoints": 3338,
+          "flags": 16
+        },
+        "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+        "scope": "initial public Coax forward and full published gradient; no training-quality or optimizer claim"
+      },
+      "frozen_capture_comparison": [
+        {
+          "file": "features.f32",
+          "bytes": 784,
+          "frozen_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "current_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "gradient.f64",
+          "bytes": 26576,
+          "frozen_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "current_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "oracle.json",
+          "bytes": 109,
+          "frozen_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "current_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "params.f64",
+          "bytes": 26576,
+          "frozen_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "current_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "scores.f32",
+          "bytes": 40,
+          "frozen_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "current_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "exact_bytes_equal": true
+        }
+      ],
+      "capture_artifacts": [
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/sanitized/capture/features.f32",
+          "bytes": 784,
+          "sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/sanitized/capture/gradient.f64",
+          "bytes": 26576,
+          "sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/sanitized/capture/oracle.json",
+          "bytes": 109,
+          "sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/sanitized/capture/params.f64",
+          "bytes": 26576,
+          "sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5"
+        },
+        {
+          "path": "/tmp/cnn-mlp-regression-20261101/sanitized/capture/scores.f32",
+          "bytes": 40,
+          "sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa"
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "result": {
+    "synthetic_passed": 3,
+    "independent_initial_capture_verifications_passed": 3,
+    "capture_files_compared_per_mode": 5,
+    "all_capture_bytes_equal_to_committed_initial_capture": true,
+    "all_independent_max_absolute_errors": 0,
+    "parameter_count": 3322,
+    "gradient_count": 3322,
+    "feature_count": 196,
+    "score_count": 10
+  },
+  "omissions": [
+    "No training, checkpoint replay or held-out model-quality run. Existing frozen MLP training/quality records remain unchanged.",
+    "No legacy root mutation repeats, full release gate, compiler build or book structure gate.",
+    "Generated C/header/executable files and capture files are retained in the named /tmp directories and identified by current hashes; repository logs and reference comparisons are retained beside this receipt."
+  ],
+  "receipts": {
+    "mlp-compatibility/debug/build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mlp-compatibility/debug/comparison.json": "af41edb1a43bdc61c0090b1e820703d1254b7203ff2941a7d3848dd2033c2909",
+    "mlp-compatibility/debug/oracle.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mlp-compatibility/debug/synthetic.log": "be4d2ef0453d17ddb192fc5c26319a2c9acd479733357fa3c144377dd81d9903",
+    "mlp-compatibility/debug/verify.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mlp-compatibility/execution.json": "646ea7bc0e4c31bb6f965501831bd2cc1974ceeab8e369b8af0fe62f0d6f6674",
+    "mlp-compatibility/release/build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mlp-compatibility/release/comparison.json": "af41edb1a43bdc61c0090b1e820703d1254b7203ff2941a7d3848dd2033c2909",
+    "mlp-compatibility/release/oracle.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mlp-compatibility/release/synthetic.log": "be4d2ef0453d17ddb192fc5c26319a2c9acd479733357fa3c144377dd81d9903",
+    "mlp-compatibility/release/verify.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mlp-compatibility/sanitized/build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mlp-compatibility/sanitized/comparison.json": "af41edb1a43bdc61c0090b1e820703d1254b7203ff2941a7d3848dd2033c2909",
+    "mlp-compatibility/sanitized/oracle.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mlp-compatibility/sanitized/synthetic.log": "be4d2ef0453d17ddb192fc5c26319a2c9acd479733357fa3c144377dd81d9903",
+    "mlp-compatibility/sanitized/verify.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

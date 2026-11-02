@@ -1,0 +1,9 @@
+[
+  "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+  "test",
+  "psionic/lib/cnn-classifier.coax",
+  "--library",
+  "--list",
+  "--only",
+  "CNN classifier"
+]

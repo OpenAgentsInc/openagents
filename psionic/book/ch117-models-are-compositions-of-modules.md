@@ -3,9 +3,10 @@
 > **Status: partly implemented.** The module layer runs on the CPU: named
 > modules, parameters and buffers, train and eval modes, initialization
 > rules, freezing, shared parameters, and state dictionaries saved and loaded
-> by name. A convolutional network and a full transformer block cannot be
-> built yet, because chapter 38's tensor IR has no convolution, softmax or
-> exponential, and one program holds at most 32 nodes.
+> by name. The separate `cnn-nchw-f32-v1` CPU extension adds valid stride-one
+> convolution and batch-preserving flattening. A full transformer block still
+> needs softmax and exponential in the shared IR; one program holds at most
+> 32 nodes. Convolution on devices and in compiled backward remains unsupported.
 
 Up to here every network in this book was written by hand: [chapter 106](ch106-differentiate-any-tensor-program.md)'s
 two-layer network is seventeen numbered nodes and a list of input offsets.
@@ -730,14 +731,82 @@ The output shows each part of the chapter:
 - **Mutation:** `coax mutate psionic/lib/module.coax --root-only` kills
   every mutant.
 
+## A convolutional module
+
+[`module-cnn.coax`](../lib/module-cnn.coax) adds two public constructors.
+`mdl_conv2d(m, parent, name, x, out, kh, kw)` expects NCHW input and saves
+OIHW weights named `name.weight`. A bias of shape `[1,out,1,1]` broadcasts
+over the batch and both spatial axes. Weights and biases use the existing
+counter-based uniform initializer with a bound of `1/sqrt(channels*kh*kw)`.
+
+This operation is cross-correlation: the kernel is not reversed. It uses
+stride one, valid padding, one group and dilation one. For input
+`[N,C,H,W]` and weights `[O,C,KH,KW]`, its output is
+`[N,O,H-KH+1,W-KW+1]`. Other padding, strides and groups are not implicit
+options. The common planner checks ranks, channels, dimensions, storage and
+work before execution. Non-CPU targets refuse explicitly.
+
+`mdl_flatten(m, x)` keeps the first dimension as the batch and reshapes the
+remaining dimensions into one feature axis. It uses the existing contiguous
+reshape contract and aliases its root; it does not reorder or copy strided
+data. A transposed view that cannot be flattened without copying is refused.
+
+Chapter 106's tape saves each operand required by the other's derivative.
+For example, freezing a filter removes its parameter gradient but still
+requires the filter values when an earlier trainable layer needs the input
+gradient. Overlapping windows add into the same input gradient. These are
+formal derivatives accumulated in binary64, not derivatives of rounding.
+Forward products and sequential sums use the shared IR's binary32 profile.
+
+<!-- source: psionic/lib/module-cnn.coax cnn-layers -->
+```jai
+// Kernel [out,channels,kh,kw], bias [1,out,1,1], so addition broadcasts
+// over the batch and both spatial axes. Both use uniform fan-in bounds.
+mdl_conv2d :: (m:MdlModel,parent:int,name:string,x:int,out:int,kh:int,kw:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];
+    if s.rank!=4 || s.dims[1]<1 || out<1 || kh<1 || kw<1 || kh>s.dims[2] || kw>s.dims[3] {return mdl_fail(m,MdlStatus.shape);}
+    shape:=TvShape.{rank=4,dims=[4]int.[out,s.dims[1],kh,kw]};
+    count:=tv_elements(shape);if count.status!=TvStatus.ok {return mdl_fail(m,MdlStatus.shape);}
+    bound:=f32(1/sqrt(f64(count.elements/out)));
+    r:=mdl_child(m,parent,name);me:=r.child;
+    r=mdl_parameter(r,me,"weight",shape,MdlInit.uniform,bound);w:=r.node;
+    r=mdl_parameter(r,me,"bias",TvShape.{rank=4,dims=[4]int.[1,out,1,1]},MdlInit.uniform,bound);b:=r.node;
+    r=mdl_op(r,TiOp.conv2d,x,w);
+    return mdl_op(r,TiOp.add,r.node,b);
+}
+
+// Keep the first axis as the batch. The ordinary reshape planner owns
+// contiguity and root lifetime checks; no data is copied by this layer.
+mdl_flatten :: (m:MdlModel,x:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];if s.rank<2 {return mdl_fail(m,MdlStatus.shape);}
+    // tv_elements reports zero on every refusal. A positive count for a
+    // rank-two-or-higher shape also proves a positive batch divisor.
+    count:=tv_elements(s);if count.elements<1 {return mdl_fail(m,MdlStatus.shape);}
+    return mdl_node(m,TiNode.{op=TiOp.reshape,a=x,shape=mdl_shape(2,s.dims[0],count.elements/s.dims[0])});
+}
+```
+
+The end-to-end [CNN consumer in chapter 118](ch118-one-trainer-for-every-model.md#the-same-trainer-for-a-cnn)
+uses these constructors, the generic module training adapter and existing
+AdamW/checkpoint/state-dictionary APIs. It does not add a model-specific
+convolution or optimizer implementation. The focused gate is:
+
+```shell
+psionic/check.sh --only cnn
+```
+
 ## What is not here yet
 
-- **Convolutions and attention.** Chapter 38's IR has matrix products,
-  elementwise sums and products, ReLU, sums, layer norm and gathers. A
-  convolution, softmax or exponential is not one of them, so a CNN or the
-  attention half of a transformer block cannot be built from this API yet.
-  When the IR gains those operations, they become layers here the same way
-  `mdl_linear` is.
+- **Broader CNNs and attention.** Valid stride-one CPU convolution is wired
+  through modules, IR and the eager tape. Pooling, padding/stride/group
+  options, convolution on GPUs and compiled convolution derivatives remain.
+  `cb_compile` refuses convolution instead of producing an incomplete
+  gradient. Softmax and exponential are still missing from the IR, so a full
+  attention block cannot yet be composed from this API.
 - **Larger models.** One program holds 32 nodes, which is one block like the
   example's. Stacking blocks needs chapter 38's limit raised or programs
   chained.
@@ -761,6 +830,8 @@ The output shows each part of the chapter:
 | `mdl_transient(m, owner, name, shape, value)`, `mdl_data(m, name, shape)` | Adds a tensor rebuilt each run, or a batch input. |
 | `mdl_node(m, node)`, `mdl_op(m, op, a, b)`, `mdl_relu(m, x)` | Adds an operation; its node is in `node`. |
 | `mdl_linear`, `mdl_layernorm`, `mdl_dropout`, `mdl_squared_error` | The layers. |
+| `mdl_conv2d(m, parent, name, x, out, kh, kw)` | Named valid stride-one CPU convolution, with OIHW weights and broadcast bias; load `module-cnn.coax`. |
+| `mdl_flatten(m, x)` | Batch-preserving contiguous reshape; load `module-cnn.coax`. |
 | `mdl_output(m, x)` | Chooses the output node (by default, the last). |
 | `mdl_find(m, name)` | An entry's index, or -1. |
 | `mdl_parameters(m)`, `mdl_state_floats(m)` | Trainable and saved float counts. |

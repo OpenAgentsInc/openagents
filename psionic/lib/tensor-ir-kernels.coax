@@ -26,6 +26,15 @@ tik_run :: (item:int,m:[]int,epsilon:f32,input:[]f32,work:[]f32,out:[]f32,flags:
     if op==2 || op==3 {a:=tik_broadcast(m,8,item,input,work);b:=tik_broadcast(m,19,item,input,work);value=a+b;if op==3 {value=a*b;}}
     else if op==4 || op==10 {value=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);if op==4 {if !tik_finite(value) {bad=true;}if !(value>0) {value=0;}}}
     else if op==1 {for k:0..<m[30] {product:=tik_read(m,8,c[0],k,0,0,input,work)*tik_read(m,19,k,c[1],0,0,input,work);value+=product;if !tik_finite(product) || !tik_finite(value) {bad=true;}}}
+    else if op==12 {
+        // NCHW/OIHW valid cross-correlation. Each multiply and addition rounds
+        // to f32 in channel, kernel-row, kernel-column order. Keep an earlier
+        // failure even if later cancellation or a consumer produces zero.
+        for channel:0..<m[12] {for h:0..<m[24] {for w:0..<m[25] {
+            product:=tik_read(m,8,c[0],channel,c[2]+h,c[3]+w,input,work)*tik_read(m,19,c[1],channel,h,w,input,work);
+            value+=product;if !tik_finite(product) || !tik_finite(value) {bad=true;}
+        }}}
+    }
     else if op==5 {point:[4]int;cursor:=0;for i:0..<m[10] {if i!=m[31] {point[i]=c[cursor];cursor+=1;}}for j:0..<m[30] {point[m[31]]=j;value+=tik_read(m,8,point[0],point[1],point[2],point[3],input,work);if !tik_finite(value) {bad=true;}}}
     else if op==9 {point:=c;point[m[31]]=m[32+c[m[31]]];value=tik_read(m,8,point[0],point[1],point[2],point[3],input,work);}
     else if op==6 {

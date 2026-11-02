@@ -3,9 +3,10 @@
 > **Status: partly implemented.** One trainer runs on the CPU and trains
 > three existing models (chapter 103's tabular models, chapter 115's tiny
 > decoder and chapter 117's module block) to the same bits as their own
-> training loops. A new MNIST MLP composes the public module, autodiff and
-> trainer APIs. A convolutional classifier, SGD with momentum and Muon behind
-> the same interface, and the trainers of chapters 104, 116 and 157 remain.
+> training loops. MNIST MLP and CNN consumers compose the public module,
+> autodiff and trainer APIs on the CPU. GPU/compiled CNN training, SGD with
+> momentum and Muon behind the same interface, and the trainers of chapters
+> 104, 116 and 157 remain.
 
 Each earlier chapter that trains something writes its own loop. Chapter
 103's `tb_train` shuffles rows and runs minibatch SGD with weight decay.
@@ -760,8 +761,8 @@ trainer/checkpoint limit of 4,096. The graph uses existing matrix products,
 broadcasts, ReLU, multiplication and reductions. Classification takes the
 largest finite score, keeping the first class on a tie. It needs neither a
 softmax nor a convolution. The eager tensor library already has those
-operations and their derivatives; wiring them into the module/IR path is
-separate work.
+operations and their derivatives. The CNN section below now wires convolution
+into the shared module/IR path; broader operator integration remains.
 
 One micro-batch is one image. `tr_add` averages sixteen row losses and
 gradients before AdamW updates the binary64 master parameters and moments.
@@ -890,12 +891,178 @@ running the command above starts another explicit experiment and preserves the
 existing one. The focused gate is `psionic/check.sh --only mnist` and never
 downloads data or starts canonical learning.
 
+## The same trainer for a CNN
+
+The MLP exposed the next framework gap: the eager operator library could
+convolve, but the shared IR and module tape could not compose that operation.
+The `cnn-nchw-f32-v1` extension connects shape/work admission, forward
+execution, both operand derivatives, named modules and the unchanged generic
+training adapter. New model code calls public constructors:
+
+<!-- source: psionic/lib/cnn-classifier.coax model -->
+```jai
+cn_model :: ()->MdlModel {
+    m:=mdl_model();m=mdl_data(m,"x",TvShape.{rank=4,dims=[4]int.[1,1,14,14]});x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,1,10));target:=m.node;
+    m=mdl_conv2d(m,MDL_ROOT,"conv",x,2,3,3);m=mdl_relu(m,m.node);
+    m=mdl_flatten(m,m.node);m=mdl_linear(m,MDL_ROOT,"fc",m.node,10);prediction:=m.node;
+    return mdl_squared_error(m,MDL_ROOT,"loss",prediction,target);
+}
+cn_config :: ()->TrConfig {
+    return TrConfig.{optimizer=TrOptimizer.adamw,storage=TrStorage.binary64,
+        rate=0.003,beta1=0.9,beta2=0.999,eps=0.00000001,clip=1,bound=16,
+        examples=4096,batch=1,accumulate=16,epochs=12,shuffle=true,seed=11812};
+}
+```
+
+The same fixed pooling produces `[1,1,14,14]` input. Two learned 3 by 3
+filters produce `[1,2,12,12]`; ReLU and a contiguous flatten give 288
+features, followed by ten linear scores. There are
+`2*1*3*3 + 2 + 288*10 + 10 = 2,910` parameters, 18 nodes and 3,117 input
+floats. Names are `conv.weight`, `conv.bias`, `fc.weight` and `fc.bias`.
+The bias `[1,2,1,1]` broadcasts over batch and image coordinates. Flattening
+keeps the batch and channel-major order; it does not transpose the image.
+
+The planner still reports caller-owned capacities; the actual training tape
+needs 606 value floats, 3,486 binary64 adjoints and 288 numerical flags.
+The application supplies bounded arenas, and the generic adapter, AdamW,
+trainer, checkpoint and named-tensor implementations need no CNN-specific
+branches. Runtime model arithmetic and policy are Coax; C only supplies files,
+allocation, clocks and logging. Python is an independent oracle and audit.
+
+### Check the convolution before learning
+
+A zero network alone cannot check the learned filters. Independent asymmetric
+dyadic fixtures use multiple batches and channels, rectangular kernels and
+nonzero upstream derivatives. They check every input, filter and bias
+derivative, reversed strides, overlapping windows and the lifetime of saved
+materialized operands. Freezing a filter must preserve its values for an
+upstream trainable layer's derivative. Native checks also cover state reload,
+nonfinite operands and preservation of public outputs on refusal.
+
+The full classifier's original-training-image preflight checks all 2,910
+parameters and gradients, all 196 features, ten scores and the loss against
+[separate equations](../tests/cnn_reference.py). The reference rounds each
+forward product and sequential sum to binary32 and computes the formal reverse
+pass in binary64 before the same published-entry narrowing. Its fixed
+comparison tolerance is `2e-6 + 2e-6*abs(reference)`; the observations have
+zero error. Sixteen of the eighteen initial filter derivatives are nonzero.
+Checked, release and checked ASan/UBSan captures agree byte for byte.
+The [reference](../fixtures/cnn/reference.json) was fixed without an optimizer
+step. Small exact-rational checks test the independent equations themselves.
+
+A full-size zero-network check exceeded the compile-time evaluator's aggregate
+traversal limit. The retained native check covers all 2,910 derivatives;
+a 200-parameter composed CNN supplies the hand-derived compile-time check.
+No evaluator budget was raised. The [portable example](../examples/cnn-classifier.coax) demonstrates the full
+model and a refused unrepresentable compute weight without loading data:
+
+<!-- source: psionic/examples/cnn-classifier.coax example -->
+```jai
+main :: () {
+    m:=cn_model();q:=mtr_plan(m);w:[1]CnWork;p:[2910]f64;
+    print("CNN: %, % nodes, % parameters, % inputs\n",q.status,m.program.count,q.parameters,q.inputs);
+    print("input [1,1,14,14], conv [2,1,3,3], activation [1,2,12,12], flatten [1,288], scores [1,10]\n");
+    #assert mn_target(7,w[0].inputs[196..<206])==MnStatus.ok;
+    r:=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    print("zero network: %, loss %, last-bias gradient %\n",r.status,r.loss,w[0].gradient[2907]);
+    p[0]=1e300;w[0].gradient[0]=123;
+    r=mtr_run(q,0,p[..],w[0].inputs[..],w[0].values[..],w[0].adjoints[..],w[0].flags[..],w[0].entry[..],w[0].staging[..],w[0].gradient[..]);
+    print("unrepresentable compute weight: %, gradient unchanged %\n",r.status,w[0].gradient[0]==123);
+    print("No dataset downloaded and no learning experiment run.\n");
+}
+```
+
+```shell
+coax/bin/coax run psionic/examples/cnn-classifier.coax
+psionic/check.sh --only cnn
+```
+
+The focused gate never downloads images or trains. It checks the changed CNN
+path and new admission roots. Full mutation runs for shared tensor/autodiff
+engines are omitted under the owner's fast-check instruction; their focused
+numerical, lifetime and refusal checks are recorded separately. Do not treat
+new-module mutation scores as mutation qualification of those whole engines.
+
+### A separately frozen CNN experiment
+
+The [CNN manifest](../fixtures/cnn/experiment.json) keeps the MLP's 4,096/1,024/
+2,048 split, twelve epochs, sixteen-row accumulation, AdamW settings and quality
+thresholds. It freezes initialization seed 11811 and shuffle seed 11812 before
+learning. This is a new regression experiment, not a controlled architecture
+comparison: the model and seed differ. The earlier MLP artifacts remain intact.
+Validation is observed only at the scheduled boundaries; test scores are
+captured initially and finally, without selecting a checkpoint or tuning.
+
+The [single retained run](../fixtures/cnn/run-v1/result.json) passes the
+frozen gates. Its [independent audit](../fixtures/cnn/run-v1/audit.json)
+recomputes quality from the score captures and official labels.
+
+| Observation | Result |
+| --- | --- |
+| Initial held-out accuracy | 166 / 2,048 = 8.1055% |
+| Training-majority baseline | 242 / 2,048 = 11.8164% |
+| Final held-out accuracy | 1,814 / 2,048 = **88.5742%** |
+| Initial → final mean held-out squared error | 1.1769798681 → **0.3471311970** |
+| Learning | 3,072 updates; 49,152 training-row visits over twelve epochs |
+| Native workflow time | 13.895613 seconds on the recorded shared Apple M5 Max CPU context |
+| Process peak resident size | 58,359,808 bytes |
+| Next-update replay | All 70,180 checkpoint bytes and 4,096 shuffle entries match |
+| Named inference export | Four tensors, 2,910 F32 words, 11,976 bytes |
+| Reloaded inference | All 20,480 score words match in Coax |
+
+The [complete validation trace](../fixtures/cnn/run-v1/validation.csv) retains
+all thirteen scheduled observations. The CNN has higher accuracy on this
+slice than the earlier MLP, but also a larger final mean squared error
+(0.3471 versus 0.2832). Seeds and models differ, so this is not an architecture
+ablation or evidence of better calibration. Neither model's raw scores are
+probabilities. Timing is one shared-host workflow observation, not a speed
+comparison or throughput guarantee.
+
+The [source freeze](../fixtures/cnn/source-freeze.json) binds the exact model,
+54 source/context files, compiler image and three native preflight builds
+before learning. The [constructor qualification](../fixtures/cnn-modules/qualification.json)
+retains the incomplete initial mutation attempt, the 50/51 result and the
+sharpened 51/51 result. Together with the application policy's 117 sites,
+the two new roots have **168 killed mutants and zero survivors**. This is
+entry-source mutation; shared-engine full mutation was not run. The
+[core receipt](../fixtures/cnn-core/qualification.json) records focused debug/
+release calculus, lifetime, numerical-refusal and unsupported-path checks.
+The full learning run happened once in release, not once per sanitizer mode.
+The new [MLP compatibility record](../fixtures/cnn/mlp-compatibility.json)
+checks unchanged initial capture bytes in three fresh native builds without
+repeating the old training experiment.
+
+The checkpoint replay covers exactly the next update after epoch six,
+including moments, cursor and shuffle order. Export reload compares every
+held-out score word in Coax; the independent audit checks all exported
+weights and recomputes quality from captured scores and official labels.
+The host publishes artifacts after completion, so this does not qualify
+crash/restart recovery or incremental durable publication.
+
+To reproduce the explicit experiment in a new directory:
+
+```shell
+python3 psionic/tests/mnist_reference.py acquire --data-dir /tmp/psionic-mnist-data
+psionic/run-cnn.sh --train /tmp/psionic-mnist-data /tmp/my-cnn-run
+python3 psionic/tests/cnn_reference.py verify-run /tmp/my-cnn-run/run --data-dir /tmp/psionic-mnist-data --out /tmp/my-cnn-run/audit.json
+```
+
+Run the original-data numerical preflight before starting learning; the
+manifest is an identity input, while model/settings are the Coax constructors.
+For routine work use retained quality results and the focused gate. This CPU
+slice supplies no convolution GPU or compiled-backward throughput claim,
+probability calibration, full-MNIST/CIFAR result or PyTorch comparison.
+[`cb_compile`](../lib/compiled-backward.coax) and higher-order function
+transforms explicitly refuse convolution until their own derivative rules
+exist. Broader completion stays tracked in
+[#12626](https://github.com/OpenAgentsInc/openagents/issues/12626).
+
 ## What is not here yet
 
-- **A convolutional classifier.** The MNIST MLP above needs only the existing
-  public operations. A CNN still needs convolution and its gradients wired
-  into chapter 38's IR and chapter 117's module layer; the eager convolution
-  alone does not complete that path.
+- **Broader CNN training.** The bounded CPU CNN above uses the shared
+  module/IR/tape/trainer path. Larger datasets, pooling and convolution
+  options, efficient GPU training and compiled convolution derivatives remain.
 - **More optimizers behind the same interface.** SGD with momentum and
   chapter 124's Muon are not options yet; the trainer has plain SGD and
   AdamW.

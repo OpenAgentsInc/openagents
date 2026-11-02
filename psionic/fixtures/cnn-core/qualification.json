@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "unit": "psionic CNN tensor-IR and first-order autodiff core",
+  "recorded_utc": "2026-11-02T01:43:57.548110+00:00",
+  "base_commit": "71c1d3fcdb15e93c525c2f5e02037b562e6559b8",
+  "standing": "Focused evaluator checks pass; broader release and authority qualification are not established by this record.",
+  "profile": {
+    "target": "CPU only; CUDA and Metal admission explicitly refused",
+    "layout": "rank-4 NCHW activations and OIHW weights, valid cross-correlation, implicit stride one",
+    "compute": "sequential f32 multiply/add in input-channel, kernel-row, kernel-column order, persistent per-command finite flags",
+    "derivative": "formal first-order f64 VJP over stored f32 operands; both input and weight gradients; signed-stride view/root mapping retained",
+    "tags": {
+      "copy_command": 10,
+      "registered": 11,
+      "conv2d": 12
+    },
+    "unsupported": "Compiled-backward and graph-function transforms explicitly refuse convolution until their derivative rules are implemented."
+  },
+  "sources": {
+    "psionic/lib/tensor-ir.coax": "1a276ceabe0cd50b4165e3bfe3be309e710c42a94da60b5224f1d945e432d258",
+    "psionic/lib/tensor-ir-kernels.coax": "d62ef0a8591bec73c9940795aa97545701c710f50be69074b9b5cb84e03b01fc",
+    "psionic/lib/autodiff.coax": "d9b725e3f91db501921f28dcea572f8b8c7592b502d63778b19e7d3292963e88",
+    "psionic/lib/compiled-backward.coax": "92996ed00ec80a41db201d015f364bb00f2988f750a9ae6af7d10743bc7fd7b2",
+    "psionic/lib/function-layout.coax": "7c39882e1d1035ee6e125594fb23c951c93c18090d50c35f2fc832547c90fc81",
+    "psionic/tests/cnn-core-checks.coax": "c3003e58c8266b8320d060fe4e402c9fbcfa9cfb8b49e6a423c0e240c58fd71d"
+  },
+  "compiler": {
+    "version": "coax0 0.47.0",
+    "binary": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+    "binary_sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+    "scope": "Parent supplied the retained binary and explicitly prohibited rebuilding it. Compiler errors additionally print a stale-source advisory because its source worktree changed. This record does not qualify the compiler or clear its inherited unchanged mutation survivor."
+  },
+  "check_first": [
+    {
+      "log": "check-first.log",
+      "exit_status": 1,
+      "observed_red": "New CNN checks referenced TiOp.conv2d before implementation: missing enum-member diagnostics."
+    },
+    {
+      "log": "function-check-first.log",
+      "exit_status": 1,
+      "observed_red": "New graph-function convolution refusal assertion failed before the fx_program eligibility guard was added."
+    }
+  ],
+  "runs": [
+    {
+      "receipt": "debug.json",
+      "log": "debug.log",
+      "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/tests/cnn-core-checks.coax --only 'cnn core:' --run-steps 250000000 --evidence /tmp/cnn-core-20261101/debug.json",
+      "exit_status": 0,
+      "selected_checks": 8,
+      "available_checks": 225,
+      "passed": 8,
+      "failed": 0,
+      "evidence_verdict": "not-checked",
+      "runtime_arithmetic": "checked"
+    },
+    {
+      "receipt": "release.json",
+      "log": "release.log",
+      "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/tests/cnn-core-checks.coax --release --only 'cnn core:' --run-steps 250000000 --evidence /tmp/cnn-core-20261101/release.json",
+      "exit_status": 0,
+      "selected_checks": 8,
+      "available_checks": 225,
+      "passed": 8,
+      "failed": 0,
+      "evidence_verdict": "not-checked",
+      "runtime_arithmetic": "wrapping"
+    },
+    {
+      "receipt": "baseline-ir.json",
+      "log": "baseline-ir.log",
+      "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/lib/tensor-ir.coax --only 'feed forward shape inference' --run-steps 250000000 --evidence /tmp/cnn-core-20261101/baseline-ir.json",
+      "exit_status": 0,
+      "selected_checks": 1,
+      "available_checks": 40,
+      "passed": 1,
+      "failed": 0,
+      "evidence_verdict": "not-checked",
+      "runtime_arithmetic": "checked"
+    },
+    {
+      "receipt": "baseline-autodiff.json",
+      "log": "baseline-autodiff.log",
+      "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/lib/autodiff.coax --only 'every built-in rule agrees' --run-steps 250000000 --evidence /tmp/cnn-core-20261101/baseline-autodiff.json",
+      "exit_status": 0,
+      "selected_checks": 1,
+      "available_checks": 131,
+      "passed": 1,
+      "failed": 0,
+      "evidence_verdict": "not-checked",
+      "runtime_arithmetic": "checked"
+    },
+    {
+      "receipt": "baseline-kernel.json",
+      "log": "baseline-kernel.log",
+      "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/lib/tensor-ir-kernels.coax --only 'a command uses explicit' --run-steps 250000000 --evidence /tmp/cnn-core-20261101/baseline-kernel.json",
+      "exit_status": 0,
+      "selected_checks": 1,
+      "available_checks": 3,
+      "passed": 1,
+      "failed": 0,
+      "evidence_verdict": "not-checked",
+      "runtime_arithmetic": "checked"
+    },
+    {
+      "receipt": "baseline-compiled.json",
+      "log": "baseline-compiled.log",
+      "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/lib/compiled-backward.coax --only 'compiled gradients equal the tape' --run-steps 250000000 --evidence /tmp/cnn-core-20261101/baseline-compiled.json",
+      "exit_status": 0,
+      "selected_checks": 1,
+      "available_checks": 217,
+      "passed": 1,
+      "failed": 0,
+      "evidence_verdict": "not-checked",
+      "runtime_arithmetic": "checked"
+    },
+    {
+      "receipt": "function-debug.json",
+      "log": "function-debug.log",
+      "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/lib/function-layout.coax --only 'cnn function eligibility' --run-steps 250000000 --evidence /tmp/cnn-core-20261101/function-debug.json",
+      "exit_status": 0,
+      "selected_checks": 1,
+      "available_checks": 137,
+      "passed": 1,
+      "failed": 0,
+      "evidence_verdict": "not-checked",
+      "runtime_arithmetic": "checked"
+    },
+    {
+      "receipt": "function-release.json",
+      "log": "function-release.log",
+      "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/lib/function-layout.coax --release --only 'cnn function eligibility' --run-steps 250000000 --evidence /tmp/cnn-core-20261101/function-release.json",
+      "exit_status": 0,
+      "selected_checks": 1,
+      "available_checks": 137,
+      "passed": 1,
+      "failed": 0,
+      "evidence_verdict": "not-checked",
+      "runtime_arithmetic": "wrapping"
+    },
+    {
+      "receipt": "baseline-function.json",
+      "log": "baseline-function.log",
+      "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/lib/function-layout.coax --only 'graph function layout preserves' --run-steps 250000000 --evidence /tmp/cnn-core-20261101/baseline-function.json",
+      "exit_status": 0,
+      "selected_checks": 1,
+      "available_checks": 137,
+      "passed": 1,
+      "failed": 0,
+      "evidence_verdict": "not-checked",
+      "runtime_arithmetic": "checked"
+    }
+  ],
+  "coverage": [
+    "Eight focused core checks pass in checked and release evaluator modes.",
+    "Asymmetric rectangular kernels; N=2, Cin=2, Cout=2 exact rational oracle for every forward output and every operand gradient, including each single-operand mode.",
+    "Negative-stride activation and weight views, physical root gradient maps, actual saved material values and opposite-operand backward lifetimes.",
+    "A derivative contribution smaller than binary32 spacing survives in the f64 formal VJP.",
+    "Product overflow and accumulation overflow persist through later ReLU and copy; publishing refuses while preserving caller output.",
+    "Rank, channel, kernel extent, dependency, device, dtype, budget and work-limit refusal; stable existing command tags and lowering layout.",
+    "Compiled backward explicitly refuses both gradient-enabled and forward-only convolution programs.",
+    "One additional graph-function refusal check passes in checked and release evaluator modes for leaf orders zero through two and an unused convolution node.",
+    "Five existing selected smoke checks pass: tensor-IR shape inference, dense-Jacobian autodiff, kernel flag storage, compiled/tape gradient parity, graph-function layout."
+  ],
+  "omissions": [
+    "All tests used --only. Dependency checks and authority execution coverage are not checked by these commands; compiler evidence verdicts intentionally remain not-checked.",
+    "No mutation run, compiler rebuild or full legacy gate was run, following the explicit owner task scope.",
+    "Coax test executes in its evaluator, not generated native code. Native CNN/oracle experiments are maintained separately by the parent task; this record makes no native execution claim.",
+    "No GPU convolution, padding or dilation, general strides, pooling, compiled convolution derivative, higher-order convolution transform, dataset learning or product-quality claim follows."
+  ],
+  "consumer_audit": {
+    "finding": "The graph-function tangent and cross-curvature rules omitted convolution and previously would silently return zero after generic IR admission. fx_program now returns FxStatus.operation for every convolution graph.",
+    "guarded_entrypoints": [
+      "fx_function",
+      "fx_grad",
+      "fx_value_and_grad",
+      "fx_jacobian",
+      "fx_eval",
+      "fx_jvp",
+      "fx_vjp",
+      "fx_hvp",
+      "fx_vmap",
+      "fx_vmap_apply"
+    ],
+    "other_paths": "Compiled trainer uses cb_compile and its explicit refusal. Eager/module training uses the new ad_rule. Tensor templates preserve nodes and use ti_compile. The host reference maps convolution through ti_request to existing ToOp.conv2d."
+  },
+  "receipts": {
+    "baseline-autodiff.json": "a8cae82824a73da5b801247c50939ae0b5c158527899d688db3c539bdc4bfc4f",
+    "baseline-autodiff.log": "dda6f2046291ca7e25b45383d842ea201555d9819414c87c8ab008c652639e57",
+    "baseline-compiled.json": "6e99089ce45f1bbd4fa455f62dce0bbde19cdf817dbb355191dc201f597565a5",
+    "baseline-compiled.log": "ca10178da8b2c9bc2dda39f51e724e33d186505bcfeb298373d0ad4cb6d26385",
+    "baseline-function.json": "04f3f096e6648a5d95f27234e3a97d8c2635d0635d8efab1ec4d9ababb1d1fd5",
+    "baseline-function.log": "c8845f75809fd2d7ac82d6df150d7647173c45465b5cd73d14b5f90ccd8595b4",
+    "baseline-ir.json": "348a2ce00837841dc096c9e42715d678b836cac824b20027cb1a0cbf306c43b8",
+    "baseline-ir.log": "a6418bb484a805cae97a4e56ac6defdfefd9bd06b9da72522b3e5af72a86e07c",
+    "baseline-kernel.json": "c21b0565d643e0457231e4cabcd7e1986f36dac6b388bf463236f553654d5e3f",
+    "baseline-kernel.log": "2fbed868d7fa2c89eb4a9c40f7bb0f4d3f0ff95ce83d994c9416922896f1ada2",
+    "check-first.log": "91fe80b95e10f7a5fa46d9a92fa85ea98aa91d020845098ffe9564629ea42a85",
+    "debug.json": "fe364bc1dff48a9424a7b51f433f1e692b4bf451d51d090108835e22ab48eea0",
+    "debug.log": "645674da061b98e6830a7f4c29f48ff267556f0b859c14207ab9607c18695377",
+    "function-check-first.log": "33465f07f06bd0eb9708b889502119c110babb0aeeba32c07f16f80ed25f56d0",
+    "function-debug.json": "c9eb5ed3f09a6e05fb071ebcf63fb3b4dd1349a6e20348324aa0860a27402486",
+    "function-debug.log": "2cc95496e98a218607d7fed342baa8df37d6cae95bff9f39c564303279dfee96",
+    "function-release.json": "7f1a0a1e95acb29c2e0b0d2dc6b0acd80fcea58a47f28a83b51fc5cb0d8c968d",
+    "function-release.log": "a9becdfcc61bfea771aa7d60b2277859915e4abfa21cb5d0957ce5ba4360241f",
+    "release.json": "4ed40cfa73c3d43cbd475645c6b41e9273fa6fce2714726c66f883b1f7a676a7",
+    "release.log": "34f989bf1b7affa41d0a8b67c9587210c49a04711288fa8801dca9142cb17f36"
+  }
+}

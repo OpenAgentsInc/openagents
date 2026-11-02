@@ -1,0 +1,28 @@
+psionic/tests/cnn-core-checks.coax:9:31: error[E0351]: enum 'TiOp' has no member 'conv2d'
+      p.nodes[2]=TiNode.{op=TiOp.conv2d,a=0,b=1};return p;
+                                ^
+  fix: its members are: input matmul add multiply relu sum layernorm view reshape gather registered
+psionic/tests/cnn-core-checks.coax:22:92: error[E0351]: enum 'TiOp' has no member 'conv2d'
+      plan:=ti_compile(p,TiTarget.{},true);#assert plan.status==TiStatus.ok && ti_binary(TiOp.conv2d);
+                                                                                             ^
+  fix: its members are: input matmul add multiply relu sum layernorm view reshape gather registered
+psionic/tests/cnn-core-checks.coax:23:25: error[E0351]: enum 'TiOp' has no member 'conv2d'
+      #assert cast(u8)TiOp.conv2d==12 && cast(u8)TiOp.registered==11;
+                          ^
+  fix: its members are: input matmul add multiply relu sum layernorm view reshape gather registered
+psionic/tests/cnn-core-checks.coax:25:87: error[E0311]: cannot compare [4] int values with '=='
+      #assert plan.output_elements==4 && plan.work==24 && plan.values[2].view.shape.dims==[4]int.[1,1,2,2];
+                                                                                        ^
+  fix: compare the fields or elements you mean
+psionic/tests/cnn-core-checks.coax:78:31: error[E0351]: enum 'TiOp' has no member 'conv2d'
+      p.nodes[4]=TiNode.{op=TiOp.conv2d,a=2,b=3};p.count=5;p.output=4;
+                                ^
+  fix: its members are: input matmul add multiply relu sum layernorm view reshape gather registered
+psionic/tests/cnn-core-checks.coax:92:31: error[E0351]: enum 'TiOp' has no member 'conv2d'
+      p.nodes[4]=TiNode.{op=TiOp.conv2d,a=2,b=3};p.count=5;p.output=4;p=cnn_core_reduce(p);
+                                ^
+  fix: its members are: input matmul add multiply relu sum layernorm view reshape gather registered
+6 errors
+coax: this compiler is out of date: /private/tmp/openagents-psionic-framework-20261101/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /private/tmp/openagents-psionic-framework-20261101/coax/build.sh

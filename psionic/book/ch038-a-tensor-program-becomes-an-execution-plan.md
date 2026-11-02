@@ -20,6 +20,16 @@ It is a library IR constructed explicitly in Coax. Automatic extraction from
 an arbitrary Coax function, dynamic shapes, differentiation and fusion follow
 in their own chapters.
 
+The separately named CPU extension
+[`cnn-nchw-f32-v1`](../fixtures/cnn/profile.json) adds `conv2d` at tag 12,
+preserving the earlier operation tags and command metadata. It is NCHW/OIHW
+valid cross-correlation with stride one. Its forward and first derivatives
+serve [chapter 117's modules](ch117-models-are-compositions-of-modules.md#a-convolutional-module)
+and [chapter 118's CNN](ch118-one-trainer-for-every-model.md#the-same-trainer-for-a-cnn).
+CUDA/Metal plans refuse this operation; older device qualification is not
+qualification of convolution. Compiled backward and higher-order function
+transforms also refuse it until they have their own derivative rules.
+
 ## Run it
 
 The [Coax example](../examples/tensor-program.coax) compares the CPU procedures
@@ -63,7 +73,7 @@ Other dtype annotations return `dtype`, rather than silently converting.
 
 <!-- source: psionic/lib/tensor-ir.coax types -->
 ```jai
-TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;}
+TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;conv2d=12;}
 TiStatus :: enum u8 {ok;operation;dependency;shape;dtype;device;layout;index;limit;capacity;alias;number;arithmetic;identity;budget;driver;absent;state;}
 TiPlacement :: enum u8 {target;cpu;cuda;metal;}
 TiNode :: struct {
@@ -111,6 +121,7 @@ The first operation set is:
 | `view` | A read-only root-relative shape, offset and strides, including transpose, reverse and zero-stride broadcast. |
 | `reshape` | Equal logical element count and contiguous source order; no hidden materialization. |
 | `gather` | Gather along one axis using up to 16 constant, prevalidated indices. |
+| `conv2d` (CPU extension) | `[N,C,H,W] × [O,C,KH,KW] → [N,O,H-KH+1,W-KW+1]`; valid stride-one cross-correlation, no groups or dilation options. |
 
 Computed values have contiguous storage; views and reshapes retain their root.
 The root-relative `view` operation is an explicit strided view of the whole

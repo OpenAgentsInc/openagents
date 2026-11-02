@@ -1,0 +1,55 @@
+{
+  "verified": true,
+  "source": "original official TRAIN row0",
+  "label": 5,
+  "checks": {
+    "parameters": {
+      "count": 2910,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "comparison": "exact binary64 bits"
+      }
+    },
+    "gradient": {
+      "count": 2910,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "absolute": 2e-06,
+        "relative": 2e-06
+      }
+    },
+    "scores": {
+      "count": 10,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "absolute": 2e-06,
+        "relative": 2e-06
+      }
+    },
+    "features": {
+      "count": 196,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "comparison": "exact binary32 bits"
+      }
+    },
+    "loss": {
+      "count": 1,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "absolute": 2e-06,
+        "relative": 2e-06
+      }
+    }
+  },
+  "observed_native_counts": {
+    "parameters": 2910,
+    "inputs": 3117,
+    "values": 606,
+    "adjoints": 3486,
+    "flags": 288
+  },
+  "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+  "experiment_manifest_sha256": "92e2cb2b7f18784ae3dafe0fdff61de593ae1ddce9d66c1c73b041cdec03942c",
+  "scope": "public CNN forward and all 2910 formal parameter gradients; no optimizer or quality claim"
+}

@@ -4,7 +4,7 @@
 #authority;
 TI_NODES :: 32;
 // book:begin types
-TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;}
+TiOp :: enum u8 {input;matmul;add;multiply;relu;sum;layernorm;view;reshape;gather;registered=11;conv2d=12;}
 TiStatus :: enum u8 {ok;operation;dependency;shape;dtype;device;layout;index;limit;capacity;alias;number;arithmetic;identity;budget;driver;absent;state;}
 TiPlacement :: enum u8 {target;cpu;cuda;metal;}
 TiNode :: struct {
@@ -79,17 +79,20 @@ ti_fixture :: ()->TiProgram #export_c {
 }
 // book:end fixture
 ti_material :: (op:TiOp)->bool {return op!=TiOp.input && op!=TiOp.view && op!=TiOp.reshape;}
-ti_binary :: (op:TiOp)->bool {return op==TiOp.matmul || op==TiOp.add || op==TiOp.multiply || op==TiOp.registered;}
+ti_binary :: (op:TiOp)->bool {return op==TiOp.matmul || op==TiOp.add || op==TiOp.multiply || op==TiOp.registered || op==TiOp.conv2d;}
 ti_shape_equal :: (a:TvShape,b:TvShape)->bool {if a.rank!=b.rank {return false;}for i:0..<4 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
-ti_request :: (n:TiNode)->ToRequest {op:=ToOp.relu;if n.op==TiOp.matmul {op=ToOp.matmul;}else if n.op==TiOp.add {op=ToOp.add;}else if n.op==TiOp.multiply {op=ToOp.multiply;}else if n.op==TiOp.sum {op=ToOp.sum;}else if n.op==TiOp.gather {op=ToOp.take;}return ToRequest.{op=op,axis=n.axis};}
+ti_request :: (n:TiNode)->ToRequest {op:=ToOp.relu;if n.op==TiOp.matmul {op=ToOp.matmul;}else if n.op==TiOp.add {op=ToOp.add;}else if n.op==TiOp.multiply {op=ToOp.multiply;}else if n.op==TiOp.sum {op=ToOp.sum;}else if n.op==TiOp.gather {op=ToOp.take;}else if n.op==TiOp.conv2d {op=ToOp.conv2d;}return ToRequest.{op=op,axis=n.axis};}
 ti_compile :: (p:TiProgram,t:TiTarget,reuse:bool)->TiPlan #export_c {
     if p.count<1 || p.count>TI_NODES || p.output<0 || p.output>=p.count {return TiPlan.{status=TiStatus.capacity};}
     if !td_device_known(cast(u8)t.device) {return TiPlan.{status=TiStatus.device};}if t.budget<0 || t.budget>1073741824 {return TiPlan.{status=TiStatus.budget};}
     plan:=TiPlan.{program=p,target=t,reuse=reuse};
     for i:0..<p.count {
-        n:=p.nodes[i];if cast(u8)n.op>11 || cast(u8)n.op==10 {return TiPlan.{status=TiStatus.operation};}
+        n:=p.nodes[i];if cast(u8)n.op>12 || cast(u8)n.op==10 {return TiPlan.{status=TiStatus.operation};}
         if n.dtype!=TdDtype.f32 {return TiPlan.{status=TiStatus.dtype};}if cast(u8)n.placement>3 {return TiPlan.{status=TiStatus.device};}
         if n.placement!=TiPlacement.target && int(cast(u8)n.placement)-1!=int(cast(u8)t.device) {return TiPlan.{status=TiStatus.device};}
+        // The first convolution profile is CPU-only, NCHW/OIHW, valid padding
+        // and implicit stride one. Command tags 10 (copy) and 11 stay unchanged.
+        if n.op==TiOp.conv2d && t.device!=TdDevice.cpu {return TiPlan.{status=TiStatus.device};}
         v:TiValue;
         if n.op==TiOp.input {
             owner:=tv_owner(i+1,1,n.storage);if owner.status!=TvStatus.ok || n.input_base<0 || n.input_base>TV_LIMIT-n.storage {return TiPlan.{status=TiStatus.capacity};}
@@ -109,7 +112,8 @@ ti_compile :: (p:TiProgram,t:TiTarget,reuse:bool)->TiPlan #export_c {
                 if n.op==TiOp.registered {if n.axis<0 || n.axis>=32 || n.index_count<0 || n.index_count>1 || !tv_finite(n.epsilon) || !ti_shape_equal(shape,plan.values[n.b].view.shape) {return TiPlan.{status=TiStatus.shape};}}
                 else if n.op==TiOp.layernorm {if shape.rank<1 || shape.dims[shape.rank-1]<1 || !tv_finite(n.epsilon) || n.epsilon<=0 {return TiPlan.{status=TiStatus.shape};}inner=shape.dims[shape.rank-1]*2+1;}
                 else {b:=TvShape.{rank=1};if ti_binary(n.op) {b=plan.values[n.b].view.shape;}index_count:=0;if n.op==TiOp.gather {index_count=n.index_count;if index_count<0 || index_count>16 {return TiPlan.{status=TiStatus.index};}}
-                    inferred:=to_plan(ti_request(n),shape,b,index_count);if inferred.status!=ToStatus.ok {return TiPlan.{status=TiStatus.shape};}shape=inferred.shape;inner=inferred.inner;
+                    if n.op==TiOp.conv2d && (shape.rank!=4 || b.rank!=4) {return TiPlan.{status=TiStatus.shape};}
+                    inferred:=to_plan(ti_request(n),shape,b,index_count);if inferred.status!=ToStatus.ok {if n.op==TiOp.conv2d && inferred.status==ToStatus.limit {return TiPlan.{status=TiStatus.limit};}return TiPlan.{status=TiStatus.shape};}shape=inferred.shape;inner=inferred.inner;
                     if n.op==TiOp.gather {bound:=a.view.shape.dims[n.axis];for j:0..<n.index_count {if n.indices[j]<0 || n.indices[j]>=bound {return TiPlan.{status=TiStatus.index};}}}
                 }
                 count:=tv_elements(shape);if count.status!=TvStatus.ok || !to_work_fits(count.elements,inner) {return TiPlan.{status=TiStatus.limit};}work:=count.elements*inner;

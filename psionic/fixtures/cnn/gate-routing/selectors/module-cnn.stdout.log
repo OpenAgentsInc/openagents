@@ -1,0 +1,4 @@
+#test CNN modules: named OIHW weights and NCHW bias preserve registration order
+#test CNN modules: shape and index refusals precede construction
+#test CNN modules: inherited naming capacity and sticky refusals remain intact
+#test CNN modules: flatten preserves batch and refuses incompatible logical order

@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "started_at": "2026-11-02T01:52:09.127668+00:00",
+  "ended_at": "2026-11-02T01:52:23.042893+00:00",
+  "command": [
+    "/tmp/cnn-published-qualified-20261101/release/cnn",
+    "--train",
+    "/tmp/psionic-mnist-data",
+    "psionic/fixtures/cnn/experiment.json",
+    "/tmp/cnn-canonical-learning-20261101/run"
+  ],
+  "cwd": "/private/tmp/openagents-psionic-cnn-20261101",
+  "exit_status": 0,
+  "controller_wall_seconds": 13.914872499997728,
+  "max_rss_bytes": 58359808,
+  "user_seconds": 12.632702,
+  "system_seconds": 0.04239,
+  "scope": "one frozen native CPU workflow on a shared host, including admission/evaluation/replay/export; no isolated speed comparison"
+}

@@ -1,0 +1,158 @@
+// Frozen mnist-cnn-cpu-v1 experiment admission and quality rule.
+// Counts describe a bounded subset, not training on all 60,000 images.
+#load "../fixtures/mnist/artifacts.coax";
+#authority;
+CN_TRAIN :: 4096;
+CN_VALID :: 1024;
+CN_TEST :: 2048;
+CN_PARAMS :: 2910;
+CN_INPUTS :: 3117;
+CN_EPOCHS :: 12;
+CN_ACCUMULATE :: 16;
+
+CnMemory :: struct {
+    manifest:int;trace:int;checkpoint:int;final_checkpoint:int;
+    pointer:int;final_pointer:int;export_file:int;predictions:int;
+    next_record:int;replay_record:int;next_order:int;replay_order:int;
+    initial_predictions:int;
+}
+
+#test "CNN application memory admission checks every exact extent and range endpoint" {
+    base:=CnMemory.{manifest=1,trace=52,checkpoint=70180,final_checkpoint=70180,
+        pointer=80,final_pointer=80,export_file=32768,predictions=20480,
+        next_record=70180,replay_record=70180,next_order=4096,replay_order=4096,
+        initial_predictions=20480};
+    #assert cn_memory(base);
+    deltas:=[2]int.[-1,1];
+    for field:0..<11 {for delta:deltas {
+        m:=base;
+        if field==0 {m.trace+=delta;}else if field==1 {m.checkpoint+=delta;}
+        else if field==2 {m.final_checkpoint+=delta;}else if field==3 {m.pointer+=delta;}
+        else if field==4 {m.final_pointer+=delta;}else if field==5 {m.predictions+=delta;}
+        else if field==6 {m.next_record+=delta;}else if field==7 {m.replay_record+=delta;}
+        else if field==8 {m.next_order+=delta;}else if field==9 {m.replay_order+=delta;}
+        else {m.initial_predictions+=delta;}
+        #assert !cn_memory(m);
+    }}
+    m:=base;m.manifest=0;#assert !cn_memory(m);
+    m.manifest=-1;#assert !cn_memory(m);
+    m.manifest=2;#assert cn_memory(m);
+    m.manifest=1048575;#assert cn_memory(m);
+    m.manifest=1048576;#assert cn_memory(m);
+    m.manifest=1048577;#assert !cn_memory(m);
+    m=base;m.export_file=32767;#assert !cn_memory(m);
+    m.export_file=32769;#assert cn_memory(m);
+    m.export_file=0;#assert !cn_memory(m);
+}
+
+#test "CNN application workspace admission checks identity and every capacity endpoint" {
+    #assert cn_workspace(true,2910,3117,16384,16384,4096,2910);
+    #assert !cn_workspace(false,2910,3117,16384,16384,4096,2910);
+    #assert !cn_workspace(true,2909,3117,16384,16384,4096,2910);
+    #assert !cn_workspace(true,2911,3117,16384,16384,4096,2910);
+    #assert !cn_workspace(true,2910,3116,16384,16384,4096,2910);
+    #assert !cn_workspace(true,2910,3118,16384,16384,4096,2910);
+    #assert cn_workspace(true,2910,3117,16383,16384,4096,2910);
+    #assert !cn_workspace(true,2910,3117,16385,16384,4096,2910);
+    #assert cn_workspace(true,2910,3117,16384,16383,4096,2910);
+    #assert !cn_workspace(true,2910,3117,16384,16385,4096,2910);
+    #assert cn_workspace(true,2910,3117,16384,16384,4095,2910);
+    #assert !cn_workspace(true,2910,3117,16384,16384,4097,2910);
+    #assert cn_workspace(true,2910,3117,16384,16384,4096,2909);
+    #assert !cn_workspace(true,2910,3117,16384,16384,4096,2911);
+    #assert cn_workspace(true,2910,3117,0,0,0,0);
+}
+
+#test "CNN application capture admission checks every one-off extent" {
+    #assert cn_capture(2910,2910,10,196);
+    deltas:=[2]int.[-1,1];
+    for field:0..<4 {for delta:deltas {
+        n:=[4]int.[2910,2910,10,196];n[field]+=delta;
+        #assert !cn_capture(n[0],n[1],n[2],n[3]);
+    }}
+}
+
+#test "CNN application artifact admission checks every byte of all four digests" {
+    #assert cn_artifacts(MC_TRAIN_IMAGES_SHA,MC_TRAIN_LABELS_SHA,MC_TEST_IMAGES_SHA,MC_TEST_LABELS_SHA);
+    for field:0..<4 {for byte:0..<32 {
+        a:=MC_TRAIN_IMAGES_SHA;b:=MC_TRAIN_LABELS_SHA;c:=MC_TEST_IMAGES_SHA;d:=MC_TEST_LABELS_SHA;
+        if field==0 {a[byte]^=1;}else if field==1 {b[byte]^=1;}
+        else if field==2 {c[byte]^=1;}else {d[byte]^=1;}
+        #assert !cn_artifacts(a,b,c,d);
+    }}
+}
+
+#test "CNN profile admits only the frozen dataset and model extents" {
+    #assert cn_profile(60000,10000,2910,3117);
+    #assert !cn_profile(59999,10000,2910,3117) && !cn_profile(60001,10000,2910,3117);
+    #assert !cn_profile(60000,9999,2910,3117) && !cn_profile(60000,10001,2910,3117);
+    #assert !cn_profile(60000,10000,2909,3117) && !cn_profile(60000,10000,2911,3117);
+    #assert !cn_profile(60000,10000,2910,3116) && !cn_profile(60000,10000,2910,3118);
+}
+#test "CNN frozen accuracy rule rounds upwards and requires a majority margin" {
+    #assert cn_accept(2048,1639,615,1,0.5,true,true);
+    #assert !cn_accept(2048,1638,200,1,0.5,true,true);
+    #assert !cn_accept(2048,1639,616,1,0.5,true,true);
+    #assert cn_accept(2048,1640,616,1,0.5,true,true);
+    #assert cn_accept(2048,1639,0,1000000,0,true,true);
+    #assert cn_accept(2048,2048,1024,1,0,true,true);
+    #assert !cn_accept(2048,2048,1025,1,0,true,true);
+}
+#test "CNN quality also requires lower finite loss and exact persistence checks" {
+    #assert !cn_accept(2048,1700,200,1,1,true,true);
+    #assert !cn_accept(2048,1700,200,1,1.0001,true,true);
+    #assert !cn_accept(2048,1700,200,-1,0,true,true);
+    #assert !cn_accept(2048,1700,200,1,-0.001,true,true);
+    #assert !cn_accept(2048,1700,200,1e12,0,true,true);
+    #assert !cn_accept(2048,1700,200,1,0.5,false,true);
+    #assert !cn_accept(2048,1700,200,1,0.5,true,false);
+}
+#test "CNN refuses fabricated counts before accuracy arithmetic" {
+    #assert !cn_accept(0,0,0,1,0.5,true,true);
+    #assert !cn_accept(2047,1700,200,1,0.5,true,true);
+    #assert !cn_accept(2049,1700,200,1,0.5,true,true);
+    #assert !cn_accept(2048,-1,200,1,0.5,true,true);
+    #assert !cn_accept(2048,2049,200,1,0.5,true,true);
+    #assert !cn_accept(2048,1700,-1,1,0.5,true,true);
+    #assert !cn_accept(2048,1700,2049,1,0.5,true,true);
+}
+
+// These extents belong to the frozen application, not the general trainer.
+cn_memory :: (m:CnMemory)->bool {
+    return m.manifest>=1 && m.manifest<=1048576 && m.trace==52
+        && m.checkpoint==70180 && m.final_checkpoint==70180
+        && m.pointer==80 && m.final_pointer==80 && m.export_file>=32768
+        && m.predictions==20480 && m.next_record==70180 && m.replay_record==70180
+        && m.next_order==4096 && m.replay_order==4096 && m.initial_predictions==20480;
+}
+// Counts come from an unchanged valid MtrPlan and are nonnegative. This rule
+// admits its required arenas against this application's fixed capacities.
+cn_workspace :: (ok:bool,parameters:int,inputs:int,values:int,adjoints:int,flags:int,largest:int)->bool {
+    return ok && parameters==CN_PARAMS && inputs==CN_INPUTS
+        && values<=16384 && adjoints<=16384 && flags<=4096 && largest<=2910;
+}
+cn_capture :: (params:int,gradient:int,scores:int,features:int)->bool {
+    return params==2910 && gradient==2910 && scores==10 && features==196;
+}
+cn_artifacts :: (a:[32]u8,b:[32]u8,c:[32]u8,d:[32]u8)->bool {
+    for j:0..<32 {
+        if a[j]!=MC_TRAIN_IMAGES_SHA[j] || b[j]!=MC_TRAIN_LABELS_SHA[j]
+            || c[j]!=MC_TEST_IMAGES_SHA[j] || d[j]!=MC_TEST_LABELS_SHA[j] {return false;}
+    }
+    return true;
+}
+
+cn_profile :: (train_count:int,test_count:int,params:int,inputs:int)->bool {
+    return train_count==60000 && test_count==10000 && params==CN_PARAMS && inputs==CN_INPUTS;
+}
+// The baseline is the TRAINING split's majority class, scored on this test
+// split. The held-out data never selects the class, settings or checkpoint.
+cn_accept :: (count:int,correct:int,baseline:int,initial_loss:f64,final_loss:f64,replayed:bool,exported:bool)->bool {
+    if count!=CN_TEST || correct>count || baseline<0 {return false;}
+    if !(initial_loss<=1000000 && final_loss>=0 && final_loss<initial_loss) {return false;}
+    // ceil(2048 * 0.80) = 1639. Integer thresholds have observable endpoints;
+    // no rounded fraction or redundant predicate hides a mutation site.
+    // The accuracy check precedes subtraction, so even extreme counts refuse
+    // without overflowing. A baseline greater than count fails the margin.
+    return correct>=1639 && correct-baseline>=1024 && replayed && exported;
+}

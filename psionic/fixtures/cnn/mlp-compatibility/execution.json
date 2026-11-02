@@ -1,0 +1,211 @@
+{
+  "recorded_utc": "2026-11-02T01:45:55.719539+00:00",
+  "environment": {
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1"
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "runs": [
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/debug/mnist --synthetic",
+          "label": "synthetic",
+          "started_utc": "2026-11-02T01:45:54.255278+00:00",
+          "seconds": 0.23053566698217764,
+          "exit_status": 0,
+          "log": "debug/synthetic.log"
+        },
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/debug/mnist --oracle /tmp/psionic-mnist-data /private/tmp/openagents-psionic-cnn-20261101/psionic/fixtures/mnist/experiment.json /tmp/cnn-mlp-regression-20261101/debug/capture",
+          "label": "oracle",
+          "started_utc": "2026-11-02T01:45:54.487629+00:00",
+          "seconds": 0.024424124974757433,
+          "exit_status": 0,
+          "log": "debug/oracle.log"
+        },
+        {
+          "command": "python3 psionic/tests/mnist_reference.py verify-capture /tmp/cnn-mlp-regression-20261101/debug/capture --data-dir /tmp/psionic-mnist-data --out /tmp/cnn-mlp-regression-20261101/debug/comparison.json",
+          "label": "verify",
+          "started_utc": "2026-11-02T01:45:54.512111+00:00",
+          "seconds": 0.4553716669906862,
+          "exit_status": 0,
+          "log": "debug/verify.log"
+        }
+      ],
+      "frozen_capture_comparison": [
+        {
+          "file": "features.f32",
+          "bytes": 784,
+          "frozen_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "current_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "gradient.f64",
+          "bytes": 26576,
+          "frozen_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "current_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "oracle.json",
+          "bytes": 109,
+          "frozen_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "current_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "params.f64",
+          "bytes": 26576,
+          "frozen_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "current_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "scores.f32",
+          "bytes": 40,
+          "frozen_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "current_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "exact_bytes_equal": true
+        }
+      ],
+      "passed": true
+    },
+    {
+      "mode": "release",
+      "runs": [
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/release/mnist --synthetic",
+          "label": "synthetic",
+          "started_utc": "2026-11-02T01:45:54.261397+00:00",
+          "seconds": 0.4485710000153631,
+          "exit_status": 0,
+          "log": "release/synthetic.log"
+        },
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/release/mnist --oracle /tmp/psionic-mnist-data /private/tmp/openagents-psionic-cnn-20261101/psionic/fixtures/mnist/experiment.json /tmp/cnn-mlp-regression-20261101/release/capture",
+          "label": "oracle",
+          "started_utc": "2026-11-02T01:45:54.710003+00:00",
+          "seconds": 0.016496917000040412,
+          "exit_status": 0,
+          "log": "release/oracle.log"
+        },
+        {
+          "command": "python3 psionic/tests/mnist_reference.py verify-capture /tmp/cnn-mlp-regression-20261101/release/capture --data-dir /tmp/psionic-mnist-data --out /tmp/cnn-mlp-regression-20261101/release/comparison.json",
+          "label": "verify",
+          "started_utc": "2026-11-02T01:45:54.726546+00:00",
+          "seconds": 0.48187708301702514,
+          "exit_status": 0,
+          "log": "release/verify.log"
+        }
+      ],
+      "frozen_capture_comparison": [
+        {
+          "file": "features.f32",
+          "bytes": 784,
+          "frozen_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "current_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "gradient.f64",
+          "bytes": 26576,
+          "frozen_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "current_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "oracle.json",
+          "bytes": 109,
+          "frozen_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "current_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "params.f64",
+          "bytes": 26576,
+          "frozen_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "current_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "scores.f32",
+          "bytes": 40,
+          "frozen_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "current_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "exact_bytes_equal": true
+        }
+      ],
+      "passed": true
+    },
+    {
+      "mode": "sanitized",
+      "runs": [
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/sanitized/mnist --synthetic",
+          "label": "synthetic",
+          "started_utc": "2026-11-02T01:45:54.264105+00:00",
+          "seconds": 0.7607332920306362,
+          "exit_status": 0,
+          "log": "sanitized/synthetic.log"
+        },
+        {
+          "command": "/tmp/cnn-mlp-regression-20261101/sanitized/mnist --oracle /tmp/psionic-mnist-data /private/tmp/openagents-psionic-cnn-20261101/psionic/fixtures/mnist/experiment.json /tmp/cnn-mlp-regression-20261101/sanitized/capture",
+          "label": "oracle",
+          "started_utc": "2026-11-02T01:45:55.024863+00:00",
+          "seconds": 0.12446229200577363,
+          "exit_status": 0,
+          "log": "sanitized/oracle.log"
+        },
+        {
+          "command": "python3 psionic/tests/mnist_reference.py verify-capture /tmp/cnn-mlp-regression-20261101/sanitized/capture --data-dir /tmp/psionic-mnist-data --out /tmp/cnn-mlp-regression-20261101/sanitized/comparison.json",
+          "label": "verify",
+          "started_utc": "2026-11-02T01:45:55.149362+00:00",
+          "seconds": 0.569098915962968,
+          "exit_status": 0,
+          "log": "sanitized/verify.log"
+        }
+      ],
+      "frozen_capture_comparison": [
+        {
+          "file": "features.f32",
+          "bytes": 784,
+          "frozen_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "current_sha256": "025415fc37df4664e8b254a59626a1726e6e4ae68173bb51c21dbed2c2655b3a",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "gradient.f64",
+          "bytes": 26576,
+          "frozen_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "current_sha256": "c861f50ca1a242c45d181a9a4f9c7b6a23ab7dea07b24df4c4397a0354e0e0c0",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "oracle.json",
+          "bytes": 109,
+          "frozen_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "current_sha256": "685976e8f6fab2ced29c49ec00070d236e59fa9a68c40e51b146a91f804c62c8",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "params.f64",
+          "bytes": 26576,
+          "frozen_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "current_sha256": "06935c98b9c87ea3d9e232789450241db0315a5a6d8ffb0878bb195377ea45f5",
+          "exact_bytes_equal": true
+        },
+        {
+          "file": "scores.f32",
+          "bytes": 40,
+          "frozen_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "current_sha256": "e7660cbab7ada2eaab74f081f7fcc90c12c5e0597150c15e30f7d35ce2788ffa",
+          "exact_bytes_equal": true
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "passed": true
+}

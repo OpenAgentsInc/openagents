@@ -1,0 +1,285 @@
+{
+  "recorded_utc": "2026-11-02T01:47:35.255415+00:00",
+  "copied_script_sha256": "ea266b408d694a993fcf48fa2e7c0b667134121707469ca5ea7ce83b44ca1168",
+  "source_script_sha256": "ea266b408d694a993fcf48fa2e7c0b667134121707469ca5ea7ce83b44ca1168",
+  "delegate_stub": "#!/opt/homebrew/opt/python@3.15/bin/python3.15\nimport json,os,sys\nprint(json.dumps({\"delegate\":os.path.basename(sys.argv[0]),\"argv\":sys.argv[1:],\"COAX\":os.environ.get(\"COAX\"),\"COAX_CC\":os.environ.get(\"COAX_CC\")}))\n",
+  "cases": [
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--jobs",
+        "3",
+        "--only",
+        "cnn"
+      ],
+      "case": "explicit jobs before selection",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_cnn.sh",
+        "argv": [
+          "--mutate",
+          "--jobs",
+          "3"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--mutate",
+        "--jobs",
+        "3"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    },
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--jobs",
+        "3",
+        "--only",
+        "cnn.coax"
+      ],
+      "case": "explicit jobs before selection",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_cnn.sh",
+        "argv": [
+          "--mutate",
+          "--jobs",
+          "3"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--mutate",
+        "--jobs",
+        "3"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    },
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--jobs",
+        "3",
+        "--only",
+        "psionic/lib/cnn.coax"
+      ],
+      "case": "explicit jobs before selection",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_cnn.sh",
+        "argv": [
+          "--mutate",
+          "--jobs",
+          "3"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--mutate",
+        "--jobs",
+        "3"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    },
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--only",
+        "cnn",
+        "--jobs",
+        "5"
+      ],
+      "case": "explicit jobs after selection",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_cnn.sh",
+        "argv": [
+          "--mutate",
+          "--jobs",
+          "5"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--mutate",
+        "--jobs",
+        "5"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    },
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--only",
+        "cnn"
+      ],
+      "case": "PSIONIC_JOBS environment",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_cnn.sh",
+        "argv": [
+          "--mutate",
+          "--jobs",
+          "7"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--mutate",
+        "--jobs",
+        "7"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    },
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--jobs",
+        "3",
+        "--only",
+        "mnist"
+      ],
+      "case": "explicit jobs before selection",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_mnist.sh",
+        "argv": [
+          "--unit-checks",
+          "--jobs",
+          "3"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--unit-checks",
+        "--jobs",
+        "3"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    },
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--jobs",
+        "3",
+        "--only",
+        "mnist.coax"
+      ],
+      "case": "explicit jobs before selection",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_mnist.sh",
+        "argv": [
+          "--unit-checks",
+          "--jobs",
+          "3"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--unit-checks",
+        "--jobs",
+        "3"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    },
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--jobs",
+        "3",
+        "--only",
+        "psionic/lib/mnist.coax"
+      ],
+      "case": "explicit jobs before selection",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_mnist.sh",
+        "argv": [
+          "--unit-checks",
+          "--jobs",
+          "3"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--unit-checks",
+        "--jobs",
+        "3"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    },
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--only",
+        "mnist",
+        "--jobs",
+        "5"
+      ],
+      "case": "explicit jobs after selection",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_mnist.sh",
+        "argv": [
+          "--unit-checks",
+          "--jobs",
+          "5"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--unit-checks",
+        "--jobs",
+        "5"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    },
+    {
+      "command": [
+        "bash",
+        "/tmp/cnn-gate-routing-20261101/isolated/psionic/check.sh",
+        "--only",
+        "mnist"
+      ],
+      "case": "PSIONIC_JOBS environment",
+      "exit_status": 0,
+      "delegation": {
+        "delegate": "check_mnist.sh",
+        "argv": [
+          "--unit-checks",
+          "--jobs",
+          "7"
+        ],
+        "COAX": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "COAX_CC": "routing-cc-marker"
+      },
+      "expected_argv": [
+        "--unit-checks",
+        "--jobs",
+        "7"
+      ],
+      "no_oracle_provisioning": "Isolated tree contains only the copied entry script and two delegate stubs; no oracle/setup files are present."
+    }
+  ],
+  "passed": true
+}

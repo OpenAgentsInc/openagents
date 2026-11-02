@@ -1,0 +1,65 @@
+// Checks authored before the public CNN constructors.
+mcn_test_shape :: (n:int,c:int,h:int,w:int)->TvShape {return TvShape.{rank=4,dims=[4]int.[n,c,h,w]};}
+mcn_test_layer :: ()->MdlModel {
+    m:=mdl_data(mdl_model(),"x",mcn_test_shape(2,2,4,5));
+    return mdl_conv2d(m,MDL_ROOT,"conv",m.node,3,2,3);
+}
+#test "CNN modules: named OIHW weights and NCHW bias preserve registration order" {
+    m:=mcn_test_layer();
+    #assert m.status==MdlStatus.ok && m.count==3 && m.module_count==2 && m.program.count==5 && m.node==4 && m.top==119;
+    #assert mdl_find(m,"conv.weight")==1 && mdl_find(m,"conv.bias")==2;
+    #assert m.entries[1].kind==MdlKind.parameter && m.entries[1].base==80 && m.entries[1].size==36 && m.entries[2].base==116 && m.entries[2].size==3;
+    #assert ti_shape_equal(m.entries[1].shape,mcn_test_shape(3,2,2,3)) && ti_shape_equal(m.entries[2].shape,mcn_test_shape(1,3,1,1));
+    #assert ti_shape_equal(m.shapes[4],mcn_test_shape(2,3,3,3)) && m.program.nodes[3].op==TiOp.conv2d && m.program.nodes[3].a==0 && m.program.nodes[3].b==1;
+    #assert m.entries[1].value==f32(1/sqrt(12.0)) && m.entries[2].value==m.entries[1].value && m.entries[1].init==MdlInit.uniform && m.entries[2].init==MdlInit.uniform;
+    inputs:[119]f32;#assert mdl_init(m,73,inputs[..])==MdlStatus.ok;
+    for j:80..<119 {#assert inputs[j]==f32(f64(m.entries[1].value)*(2*cr_draw(CrSeed.{seed=73,counter=cast(u64)j}).value-1));}
+    f:=mdl_flatten(m,m.node);#assert f.status==MdlStatus.ok && f.node==5 && f.count==3 && f.top==119;
+    #assert ti_shape_equal(f.shapes[5],mdl_shape(2,2,27)) && f.program.nodes[5].op==TiOp.reshape && f.program.nodes[5].a==4;
+}
+#test "CNN modules: shape and index refusals precede construction" {
+    m:=mdl_data(mdl_model(),"x",mcn_test_shape(1,2,4,5));
+    #assert mdl_conv2d(m,0,"conv",-1,2,2,3).status==MdlStatus.program;
+    #assert mdl_conv2d(m,0,"conv",m.program.count,2,2,3).status==MdlStatus.program;
+    for bad:[6]int.[0,-1,0,-1,0,-1] {
+        #assert mdl_conv2d(m,0,"conv",0,bad,2,3).status==MdlStatus.shape;
+        #assert mdl_conv2d(m,0,"conv",0,2,bad,3).status==MdlStatus.shape;
+        #assert mdl_conv2d(m,0,"conv",0,2,2,bad).status==MdlStatus.shape;
+    }
+    #assert mdl_conv2d(m,0,"conv",0,2,5,3).status==MdlStatus.shape && mdl_conv2d(m,0,"conv",0,2,2,6).status==MdlStatus.shape;
+    #assert mdl_conv2d(m,0,"conv",0,9223372036854775807,2,3).status==MdlStatus.shape;
+    two:=mdl_data(mdl_model(),"x",mdl_shape(2,2,8));#assert mdl_conv2d(two,0,"conv",0,2,1,1).status==MdlStatus.shape;
+    bent:=m;bent.shapes[0].dims[1]=0;bad_channels:=mdl_conv2d(bent,0,"conv",0,2,2,3);
+    #assert bad_channels.status==MdlStatus.shape && bad_channels.module_count==bent.module_count && bad_channels.count==bent.count && bad_channels.top==bent.top;
+    bent=m;bent.shapes[0].rank=5;#assert mdl_conv2d(bent,0,"conv",0,2,2,3).status==MdlStatus.shape;
+    single:=mdl_data(mdl_model(),"x",mcn_test_shape(1,1,3,3));single=mdl_conv2d(single,0,"conv",0,2,3,3);
+    #assert single.status==MdlStatus.ok && ti_shape_equal(single.shapes[single.node],mcn_test_shape(1,2,1,1));
+    pixel:=mdl_conv2d(m,0,"pixel",0,1,1,1);#assert pixel.status==MdlStatus.ok && ti_shape_equal(pixel.shapes[pixel.node],mcn_test_shape(1,1,4,5));
+    edge:=mdl_conv2d(m,0,"conv",0,1,4,5);#assert edge.status==MdlStatus.ok && edge.shapes[4].dims[2]==1 && edge.shapes[4].dims[3]==1;
+}
+#test "CNN modules: inherited naming capacity and sticky refusals remain intact" {
+    m:=mdl_data(mdl_model(),"x",mcn_test_shape(1,1,3,3));
+    #assert mdl_conv2d(m,-1,"conv",0,1,2,2).status==MdlStatus.state;
+    #assert mdl_conv2d(m,m.module_count,"conv",0,1,2,2).status==MdlStatus.state;
+    #assert mdl_conv2d(m,0,"bad.name",0,1,2,2).status==MdlStatus.name;
+    full:=m;full.module_count=MDL_MODULES;#assert mdl_conv2d(full,0,"conv",0,1,2,2).status==MdlStatus.capacity;
+    c:=mdl_conv2d(m,0,"conv",0,1,2,2);#assert mdl_conv2d(c,0,"conv",0,1,2,2).status==MdlStatus.name;
+    sticky:=m;sticky.status=MdlStatus.number;
+    a:=mdl_conv2d(sticky,-1,"",-1,0,0,0);b:=mdl_flatten(sticky,-1);
+    #assert a.status==MdlStatus.number && a.count==sticky.count && a.top==sticky.top && a.node==sticky.node;
+    #assert b.status==MdlStatus.number && b.count==sticky.count && b.top==sticky.top;
+}
+#test "CNN modules: flatten preserves batch and refuses incompatible logical order" {
+    m:=mdl_data(mdl_model(),"x",mcn_test_shape(2,3,4,5));f:=mdl_flatten(m,0);
+    #assert f.status==MdlStatus.ok && ti_shape_equal(f.shapes[f.node],mdl_shape(2,2,60));
+    two:=mdl_data(mdl_model(),"x",mdl_shape(2,3,7));f=mdl_flatten(two,0);#assert f.status==MdlStatus.ok && ti_shape_equal(f.shapes[f.node],mdl_shape(2,3,7));
+    single:=mdl_data(mdl_model(),"x",mcn_test_shape(1,1,1,1));f=mdl_flatten(single,0);#assert f.status==MdlStatus.ok && ti_shape_equal(f.shapes[f.node],mdl_shape(2,1,1));
+    one:=mdl_data(mdl_model(),"x",mdl_shape(1,4,0));#assert mdl_flatten(one,0).status==MdlStatus.shape;
+    #assert mdl_flatten(m,-1).status==MdlStatus.program && mdl_flatten(m,m.program.count).status==MdlStatus.program;
+    bent:=m;bent.shapes[0].dims[0]=0;#assert mdl_flatten(bent,0).status==MdlStatus.shape;
+    bent=m;bent.shapes[0].dims[1]=0;#assert mdl_flatten(bent,0).status==MdlStatus.shape;
+    bent=m;bent.shapes[0].rank=5;#assert mdl_flatten(bent,0).status==MdlStatus.shape;
+    bent=m;bent.shapes[0].dims[1]=9223372036854775807;#assert mdl_flatten(bent,0).status==MdlStatus.shape;
+    view:=mdl_node(two,TiNode.{op=TiOp.view,a=0,shape=mdl_shape(2,7,3),strides=[4]int.[1,7,0,0]});
+    #assert view.status==MdlStatus.ok && mdl_flatten(view,view.node).status==MdlStatus.program;
+}

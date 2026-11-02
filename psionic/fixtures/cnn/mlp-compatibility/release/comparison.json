@@ -1,0 +1,54 @@
+{
+  "verified": true,
+  "source": "original official TRAIN row0",
+  "label": 5,
+  "checks": {
+    "parameters": {
+      "count": 3322,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "comparison": "exact binary64 bits"
+      }
+    },
+    "gradient": {
+      "count": 3322,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "absolute": 2e-06,
+        "relative": 2e-06
+      }
+    },
+    "scores": {
+      "count": 10,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "absolute": 2e-06,
+        "relative": 2e-06
+      }
+    },
+    "features": {
+      "count": 196,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "comparison": "exact binary32 bits"
+      }
+    },
+    "loss": {
+      "count": 1,
+      "max_absolute_error": 0.0,
+      "rule": {
+        "absolute": 2e-06,
+        "relative": 2e-06
+      }
+    }
+  },
+  "observed_native_counts": {
+    "parameters": 3322,
+    "inputs": 3529,
+    "values": 62,
+    "adjoints": 3338,
+    "flags": 16
+  },
+  "dataset_manifest_sha256": "1be0bacd7a0b474b215fda92124498ae19434fc682c2e55eedf0a8b05b221bfd",
+  "scope": "initial public Coax forward and full published gradient; no training-quality or optimizer claim"
+}

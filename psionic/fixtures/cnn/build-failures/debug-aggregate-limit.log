@@ -1,0 +1,8 @@
+psionic/lib/autodiff.coax:495:35: error[E0400]: compile-time aggregate traversal limit exceeded
+                  if need_a {ad_add(t,n.a,ja,g*ad_read(t,n.b,jb,inputs,values),grads);}
+                                    ^
+  note: in #test CNN zero network has the hand-derived full gradient and scalar loss
+1 error
+coax: this compiler is out of date: /private/tmp/openagents-psionic-framework-20261101/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /private/tmp/openagents-psionic-framework-20261101/coax/build.sh

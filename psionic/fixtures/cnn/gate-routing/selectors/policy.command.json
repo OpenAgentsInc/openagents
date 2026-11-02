@@ -1,0 +1,7 @@
+[
+  "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+  "test",
+  "psionic/lib/cnn-policy.coax",
+  "--library",
+  "--list"
+]

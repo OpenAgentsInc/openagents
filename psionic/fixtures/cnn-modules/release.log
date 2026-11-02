@@ -1,0 +1,6 @@
+ok   #test CNN modules: named OIHW weights and NCHW bias preserve registration order (1 case, 48952 steps, 6 ms)
+ok   #test CNN modules: shape and index refusals precede construction (1 case, 27253 steps, 19 ms)
+ok   #test CNN modules: inherited naming capacity and sticky refusals remain intact (1 case, 26501 steps, 16 ms)
+ok   #test CNN modules: flatten preserves batch and refuses incompatible logical order (1 case, 22636 steps, 10 ms)
+4 of 211 checks (--only 'CNN modules:'), 4 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

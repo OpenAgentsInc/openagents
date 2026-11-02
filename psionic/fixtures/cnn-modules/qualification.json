@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-11-02T01:51:11.465116+00:00",
+  "unit": "psionic/lib/module-cnn.coax",
+  "standing": "qualified within the declared CPU layer profile",
+  "profile": {
+    "name": "module-cnn-f32-valid-v1",
+    "input": "NCHW",
+    "kernel": "OIHW",
+    "convolution": "valid stride1; no padding dilation or groups",
+    "bias": "[1,out,1,1] broadcast",
+    "initializer": "uniform fan-in C*KH*KW, existing counter generator and registration offsets",
+    "flatten": "rank2..4, positive batch, contiguous logical reshape to [N,features]"
+  },
+  "sources": [
+    {
+      "path": "psionic/lib/module-cnn.coax",
+      "bytes": 2054,
+      "sha256": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1"
+    },
+    {
+      "path": "psionic/tests/cnn-modules-checks.coax",
+      "bytes": 5626,
+      "sha256": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0"
+    },
+    {
+      "path": "psionic/tests/cnn-native.coax",
+      "bytes": 4295,
+      "sha256": "c9094e2a3224ab3d2a40c7511163d2ddfc38a4f2d9764541f80ee80c116ee587"
+    },
+    {
+      "path": "psionic/tests/cnn-native.c",
+      "bytes": 3509,
+      "sha256": "16dd7e46e9c268e7691ce2bf47ba22c709af92f1915ab1681819151419438f53"
+    },
+    {
+      "path": "psionic/tests/check_cnn_native.sh",
+      "bytes": 1338,
+      "sha256": "a2ece958bbf0f6d88b6de4ef89eac4fc8d0578167791ee1ac38d5b19456bc227"
+    }
+  ],
+  "compiler": {
+    "version": "coax0 0.47.0",
+    "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9"
+  },
+  "compiler_scope": "Parent-supplied retained compiler /tmp/openagents-psionic-framework-20261101/coax/bin/coax; no compiler rebuild or new compiler qualification. Historical source mismatch warnings do not imply that a new compiler passed.",
+  "check_first": {
+    "command": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax test psionic/lib/module-cnn.coax --library --only 'CNN modules:' --run-steps 250000000",
+    "observed_exit_status": 1,
+    "observation": "31 E0315/E0351 diagnostics before constructors were implemented and before TiOp.conv2d existed; retained in task transcript, not a standalone stdout receipt."
+  },
+  "mutation": {
+    "command": "coax mutate psionic/lib/module-cnn.coax --library --root-only --jobs 8 --run-steps 250000000 --evidence FILE",
+    "scope": "Only the new module constructor source has sites; all imported baseline checks remain. No old core mutation score is claimed.",
+    "baseline_groups": 212,
+    "mutants": 51,
+    "killed": 51,
+    "survived": 0,
+    "marked_equivalent": 0,
+    "exit_status": 0,
+    "receipt": "mutation-final.json"
+  },
+  "release_checks": {
+    "selected_groups": 4,
+    "exit_status": 0,
+    "overall_evidence_verdict": "not-checked",
+    "scope": "The four CNN constructor groups only; --only skips dependency checks and authority coverage. Final mutation separately passes every baseline and authority coverage.",
+    "receipt": "release-sharpened.json"
+  },
+  "native": {
+    "command": "COAX=/tmp/openagents-psionic-framework-20261101/coax/bin/coax psionic/tests/check_cnn_native.sh /tmp/psionic-cnn-native-modules-final",
+    "exit_status": 0,
+    "modes": [
+      "checked C -O0 plain",
+      "checked C -O0 ASan+UBSan",
+      "release C -O2 plain",
+      "release C -O2 ASan+UBSan"
+    ],
+    "flags": [
+      "-std=c11",
+      "-ffp-contract=off",
+      "-fno-fast-math",
+      "-Wall -Wextra -Werror",
+      "sanitizers: address,undefined; no recover"
+    ],
+    "toolchain": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+    "cases": [
+      "Four dyadic asymmetric cases with two batches, channels and filters, rectangular 2x3 kernels; independent C pull-indexed input/kernel/bias derivatives and f32 forward outputs equal by value",
+      "Native quiet NaN, positive infinity and negative infinity in each of image, kernel, bias and upstream derivative refuse; staged verification outputs unchanged",
+      "Four named parameter tensors reload by name into independently initialized storage",
+      "Frozen convolution remains saved and unchanged while the generic mtr adapter publishes nonzero head gradients and preserves the master vector"
+    ],
+    "receipt": "native-final.log",
+    "producers": [
+      {
+        "path": "/tmp/psionic-cnn-native-modules-final/debug/cnn-native.c",
+        "bytes": 559151,
+        "sha256": "730a24bd79194fa241802feb7084f6a18b50bfbec5aa22308c9d080dbc18e752"
+      },
+      {
+        "path": "/tmp/psionic-cnn-native-modules-final/debug/cnn-native.h",
+        "bytes": 145337,
+        "sha256": "e08d2832a466fd92fb8a86b0b5cab2ca022175206b05df63e438030466dbbe6a"
+      },
+      {
+        "path": "/tmp/psionic-cnn-native-modules-final/debug/plain",
+        "bytes": 307912,
+        "sha256": "6e61b305810e7712b97c0f08fe6818c76a9a8464cef7097bd3ec7ef295525200"
+      },
+      {
+        "path": "/tmp/psionic-cnn-native-modules-final/debug/sanitized",
+        "bytes": 1389192,
+        "sha256": "63d802c916e4969ff6f6825202b2f5bcb7769b2824dce0c323f0f4089e2c65e1"
+      },
+      {
+        "path": "/tmp/psionic-cnn-native-modules-final/release/cnn-native.c",
+        "bytes": 701632,
+        "sha256": "5a03617adbd26df3711a08d7c126c618a28b4697cdc8b24727c484009564fb6e"
+      },
+      {
+        "path": "/tmp/psionic-cnn-native-modules-final/release/cnn-native.h",
+        "bytes": 145337,
+        "sha256": "e08d2832a466fd92fb8a86b0b5cab2ca022175206b05df63e438030466dbbe6a"
+      },
+      {
+        "path": "/tmp/psionic-cnn-native-modules-final/release/plain",
+        "bytes": 266600,
+        "sha256": "633e6bef8ee36a329b28e20f3ee09bb2b443de4a829bc4db16173121f1472fe2"
+      },
+      {
+        "path": "/tmp/psionic-cnn-native-modules-final/release/sanitized",
+        "bytes": 530760,
+        "sha256": "895505e33b2222a4d2de2083f27dfbb08889b01e761cce853e624b338d834207"
+      }
+    ],
+    "scope": "Native product bodies were final for this run. The last subsequent change strengthened only evaluator assertions; no constructor or native verification body changed afterward."
+  },
+  "earlier_observations": [
+    {
+      "receipt": "mutation-initial-interrupted.json",
+      "verdict": "No score; interrupted before a complete report to remove redundant flatten predicates. No equivalent waivers."
+    },
+    {
+      "receipt": "mutation-one-survivor.json",
+      "mutants": 51,
+      "killed": 50,
+      "survived": 1,
+      "site": "module-cnn.coax:15:28, channel-axis index1 changed to2",
+      "resolution": "Sharpen zero-channel refusal to preserve module_count/count/top and add valid single-channel coverage. Product source unchanged between failed and final complete mutation runs."
+    }
+  ],
+  "independent_review": {
+    "reviewer": "sibling agent /root/audit_aethyr_book",
+    "scope": "Read-only constructor/native-oracle source review; no edits or gates",
+    "finding": "No material issue within the unchanged-public-model and valid-span contract; review observation retained in task messages."
+  },
+  "limits": [
+    "The caller retains an unchanged model built with public constructors, valid live disjoint spans and immutable inputs. No arbitrary forged-model, alias or lifetime certification.",
+    "CPU-only layer and numerical tests. No dataset was accessed and no optimizer or classifier learning run was performed for this unit qualification.",
+    "Four dyadic synthetic numerical cases do not establish arbitrary numerical gradients, GPU support or trained model quality. Signed-zero bit equivalence is not claimed by value comparisons.",
+    "The native verification wrapper stages its outputs; that wrapper property does not enlarge the underlying raw autodiff publication contract.",
+    "Only this new authority root is mutation-qualified here. Core IR, kernel, autodiff and compiled-backward qualification belong to the separate core task."
+  ],
+  "receipts": {
+    "debug.json": "4bf75ff00951dec70ee353438803f975e0e04176465e3726028d5e793888ab80",
+    "debug.log": "fa3dc15f26452c5183b24fd373d1e506180ae5c53e82038251e73ae249a51695",
+    "mutation-final.json": "217d4af7d6431e973d0e2903efaaf9446e5267d7cac0b593ad74bddab81244eb",
+    "mutation-final.log": "8d6dcc7b41fe740053ff7bf97f1b30bd0d178107c01a8d55ecaa6638e7b7998e",
+    "mutation-initial-interrupted.json": "97680a3d2cab41b1b2138e27acff0c1ff76b3a4de1820883fa01cf42ca4199ba",
+    "mutation-initial.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mutation-one-survivor.json": "c6bf4179b1a00a5449c9261d7d6933fa6e66cef90aef9c1e8c6d6fbb235a7f36",
+    "mutation-one-survivor.log": "2a22a6bd9f9f8879157118319068626f850e9341886400087a9cd1d538241494",
+    "native-final.log": "a1197434c101b800b21aba6172be53209023de6903d0ed38cfadeedf86580f1e",
+    "native.log": "a1197434c101b800b21aba6172be53209023de6903d0ed38cfadeedf86580f1e",
+    "release-final.json": "2da04971284c4fe45cd24ca285d9ebd73075825e3af7cdc7ab6ed05fcac2813d",
+    "release-final.log": "7f466dc74590ac5b006acc43bb0a46550a445dc6c2bab3ac2e911c737cb44e52",
+    "release-sharpened.json": "06695d96918d0fd790d3d203c2cde28a9ae766ca9b8dc4048abe1e656d55d641",
+    "release-sharpened.log": "75972da7edea1362827201605c5a57f0b4643765aaf211df2a4a45fb8e638d92",
+    "release.json": "d9a921ee4e9529a42d8e736f96eb2eb08f79b3352f7e3f07825285b78522b523",
+    "release.log": "d12f065207b0bf1309c050dd2a8752bac0f19a9e5f6fe0ad8693652c280acd04"
+  }
+}

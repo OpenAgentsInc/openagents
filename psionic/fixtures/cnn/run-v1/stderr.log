@@ -1,0 +1,13 @@
+CNN validation: phase 0, step 0, loss 1.192008, correct 84/1024
+CNN validation: phase 1, step 256, loss 0.368443082, correct 901/1024
+CNN validation: phase 1, step 512, loss 0.345742373, correct 921/1024
+CNN validation: phase 1, step 768, loss 0.324063174, correct 938/1024
+CNN validation: phase 1, step 1024, loss 0.323526258, correct 934/1024
+CNN validation: phase 1, step 1280, loss 0.312488437, correct 936/1024
+CNN validation: phase 1, step 1536, loss 0.310754471, correct 934/1024
+CNN validation: phase 1, step 1792, loss 0.312970398, correct 928/1024
+CNN validation: phase 1, step 2048, loss 0.31022675, correct 931/1024
+CNN validation: phase 1, step 2304, loss 0.306991285, correct 936/1024
+CNN validation: phase 1, step 2560, loss 0.312672863, correct 933/1024
+CNN validation: phase 1, step 2816, loss 0.306714482, correct 932/1024
+CNN validation: phase 1, step 3072, loss 0.310594903, correct 938/1024

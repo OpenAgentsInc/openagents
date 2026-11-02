@@ -1,0 +1,3 @@
+ok   #test every built-in rule agrees with chapter 4's dense Jacobian (1 case, 422464 steps, 82 ms)
+1 of 131 checks (--only 'every built-in rule agrees'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

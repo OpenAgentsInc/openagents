@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-11-02T01:48:45.619095+00:00",
+  "profile": "cnn-and-mnist-focused-gate-routing-v1",
+  "standing": "passed within the declared tooling-only scope",
+  "source_git_head": "71c1d3fcdb15e93c525c2f5e02037b562e6559b8",
+  "scripts": {
+    "psionic/check.sh": "ea266b408d694a993fcf48fa2e7c0b667134121707469ca5ea7ce83b44ca1168",
+    "psionic/tests/check_cnn.sh": "a87df6f2485e2426b17eec03be6dbead54e214b97e1857d1c3bab7562a5dc9b0",
+    "psionic/tests/check_mnist.sh": "023ee761074976d12d84712919c39c368628e1c66599970fcb1c8c6b959e6f57"
+  },
+  "check_name_sources": {
+    "psionic/tests/cnn-core-checks.coax": "c3003e58c8266b8320d060fe4e402c9fbcfa9cfb8b49e6a423c0e240c58fd71d",
+    "psionic/lib/function-layout.coax": "7c39882e1d1035ee6e125594fb23c951c93c18090d50c35f2fc832547c90fc81",
+    "psionic/lib/module-cnn.coax": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1",
+    "psionic/tests/cnn-modules-checks.coax": "948b217da18199adae5235fb6358d60f9809db3029a56d5337ba7ceeb1c488c0",
+    "psionic/lib/cnn-classifier.coax": "2b2853e24a0220444c20a1597764da342518d2d18ba04deab74be325e5b10dd4",
+    "psionic/lib/cnn-policy.coax": "f6d2b20fa7b0da7fa11c8422b44f4719ea75091a14a99fb92030c279481a54b9"
+  },
+  "compiler": {
+    "version": "coax0 0.47.0",
+    "binary": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+    "binary_sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+    "provenance": [
+      "coax-provenance-v1",
+      "3325db45fae565ab13644ce9f65550a908113586f7d3db2ea5287ff41b990d72",
+      "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+      "ba5d65690f6f493c335d45597eae75931bb8e46ef7702b87679fb985dd03d297"
+    ],
+    "scope": "Retained parent-supplied compiler, no rebuild or new compiler qualification."
+  },
+  "selectors": [
+    {
+      "source": "psionic/tests/cnn-core-checks.coax",
+      "source_sha256": "c3003e58c8266b8320d060fe4e402c9fbcfa9cfb8b49e6a423c0e240c58fd71d",
+      "selector": "cnn core:",
+      "selected_checks": 8,
+      "names": [
+        "#test cnn core: rectangular cross correlation preserves operation tags and exact lowering",
+        "#test cnn core: rank channel kernel target dtype dependency and work limits refuse",
+        "#test cnn core: batch channels and all formal operand gradients match an exact rational oracle",
+        "#test cnn core: signed strided operand views preserve both forward and physical root gradients",
+        "#test cnn core: formal VJP keeps exactly the opposite operand alive",
+        "#test cnn core: formal VJP accumulates a contribution smaller than binary32 spacing",
+        "#test cnn core: product or accumulation overflow remains visible after ReLU and copy",
+        "#test cnn core: compiled backward explicitly refuses convolution including forward only"
+      ],
+      "command": [
+        "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "test",
+        "psionic/tests/cnn-core-checks.coax",
+        "--library",
+        "--list",
+        "--only",
+        "cnn core:"
+      ],
+      "exit_status": 0,
+      "scope": "--list only; evaluator checks were not executed"
+    },
+    {
+      "source": "psionic/lib/function-layout.coax",
+      "source_sha256": "7c39882e1d1035ee6e125594fb23c951c93c18090d50c35f2fc832547c90fc81",
+      "selector": "cnn function eligibility",
+      "selected_checks": 1,
+      "names": [
+        "#test cnn function eligibility refuses convolution before unsupported higher derivatives"
+      ],
+      "command": [
+        "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "test",
+        "psionic/lib/function-layout.coax",
+        "--library",
+        "--list",
+        "--only",
+        "cnn function eligibility"
+      ],
+      "exit_status": 0,
+      "scope": "--list only; evaluator checks were not executed"
+    },
+    {
+      "source": "psionic/lib/module-cnn.coax",
+      "source_sha256": "681c4158eda8ccb9a295fbf84764c28cff118e97fe1329265ca305ebcded98f1",
+      "selector": "CNN",
+      "selected_checks": 4,
+      "names": [
+        "#test CNN modules: named OIHW weights and NCHW bias preserve registration order",
+        "#test CNN modules: shape and index refusals precede construction",
+        "#test CNN modules: inherited naming capacity and sticky refusals remain intact",
+        "#test CNN modules: flatten preserves batch and refuses incompatible logical order"
+      ],
+      "command": [
+        "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "test",
+        "psionic/lib/module-cnn.coax",
+        "--library",
+        "--list",
+        "--only",
+        "CNN"
+      ],
+      "exit_status": 0,
+      "scope": "--list only; evaluator checks were not executed"
+    },
+    {
+      "source": "psionic/lib/cnn-classifier.coax",
+      "source_sha256": "2b2853e24a0220444c20a1597764da342518d2d18ba04deab74be325e5b10dd4",
+      "selector": "CNN classifier",
+      "selected_checks": 1,
+      "names": [
+        "#test CNN classifier is an ordinary named module with a shared linear readout"
+      ],
+      "command": [
+        "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "test",
+        "psionic/lib/cnn-classifier.coax",
+        "--library",
+        "--list",
+        "--only",
+        "CNN classifier"
+      ],
+      "exit_status": 0,
+      "scope": "--list only; evaluator checks were not executed"
+    },
+    {
+      "source": "psionic/lib/cnn-classifier.coax",
+      "source_sha256": "2b2853e24a0220444c20a1597764da342518d2d18ba04deab74be325e5b10dd4",
+      "selector": "CNN zero network",
+      "selected_checks": 1,
+      "names": [
+        "#test CNN zero network has the hand-derived full gradient on a small composed model"
+      ],
+      "command": [
+        "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "test",
+        "psionic/lib/cnn-classifier.coax",
+        "--library",
+        "--list",
+        "--only",
+        "CNN zero network"
+      ],
+      "exit_status": 0,
+      "scope": "--list only; evaluator checks were not executed"
+    },
+    {
+      "source": "psionic/lib/cnn-policy.coax",
+      "source_sha256": "f6d2b20fa7b0da7fa11c8422b44f4719ea75091a14a99fb92030c279481a54b9",
+      "selector": null,
+      "selected_checks": 8,
+      "names": [
+        "#test CNN application memory admission checks every exact extent and range endpoint",
+        "#test CNN application workspace admission checks identity and every capacity endpoint",
+        "#test CNN application capture admission checks every one-off extent",
+        "#test CNN application artifact admission checks every byte of all four digests",
+        "#test CNN profile admits only the frozen dataset and model extents",
+        "#test CNN frozen accuracy rule rounds upwards and requires a majority margin",
+        "#test CNN quality also requires lower finite loss and exact persistence checks",
+        "#test CNN refuses fabricated counts before accuracy arithmetic"
+      ],
+      "command": [
+        "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+        "test",
+        "psionic/lib/cnn-policy.coax",
+        "--library",
+        "--list"
+      ],
+      "exit_status": 0,
+      "scope": "--list only; evaluator checks were not executed"
+    }
+  ],
+  "selector_summary": {
+    "nonempty_selectors": 6,
+    "selected_checks_per_mode": 23,
+    "applies_to": "Both debug and release loops use the same selectors. Only one listing per selector was run; no numerical/evaluator reruns."
+  },
+  "dispatch": {
+    "receipt": "gate-routing/dispatch.json",
+    "isolated_copy_matches_current_script": true,
+    "cases_passed": 10,
+    "requested_aliases": [
+      "cnn",
+      "cnn.coax",
+      "psionic/lib/cnn.coax",
+      "mnist",
+      "mnist.coax",
+      "psionic/lib/mnist.coax"
+    ],
+    "jobs_cases": [
+      "explicit --jobs3 before --only",
+      "explicit --jobs5 after --only",
+      "PSIONIC_JOBS7 environment default"
+    ],
+    "cnn_expected_delegate": "check_cnn.sh --mutate --jobs N",
+    "mnist_expected_delegate": "check_mnist.sh --unit-checks --jobs N",
+    "environment_forwarding": [
+      "COAX",
+      "COAX_CC"
+    ],
+    "oracle_order_proof": "The exact copied psionic/check.sh successfully execs each stub delegate in an isolated tree containing no oracle/setup files. No real delegate, oracle or provisioning command was run."
+  },
+  "mnist_mutation_argv": {
+    "source": "psionic/tests/check_mnist.sh",
+    "literal_mutation_command": "\"$compiler\" mutate \"psionic/lib/$unit.coax\" --library --root-only --jobs \"$jobs\"",
+    "parsed_words": [
+      "$compiler",
+      "mutate",
+      "psionic/lib/$unit.coax",
+      "--library",
+      "--root-only",
+      "--jobs",
+      "$jobs"
+    ],
+    "unsupported_steps_flag_present": false
+  },
+  "tiny_flag_acceptance": {
+    "source_text": "gate-routing/tiny-authority-source.txt",
+    "source_sha256": "289fe151601edff389fb1e310d4dd42beff5862d4b39a6b106fb9dc54d7215c0",
+    "command": [
+      "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+      "mutate",
+      "/tmp/cnn-gate-routing-20261101/tiny-authority.coax",
+      "--library",
+      "--root-only",
+      "--jobs",
+      "2",
+      "--evidence",
+      "/tmp/cnn-gate-routing-20261101/tiny-mutation.json"
+    ],
+    "receipt": "gate-routing/tiny-mutation.json",
+    "log": "gate-routing/tiny-mutation.log",
+    "exit_status": 0,
+    "checks_passed": 1,
+    "authority": "passed",
+    "mutants": 2,
+    "killed": 2,
+    "survived": 0,
+    "marked_equivalent": 0,
+    "scope": "Only this new tiny temporary authority unit was mutated. This validates corrected command flags, not CNN or legacy MLP mutation qualification.",
+    "initial_fixture_trial": "The first temporary unary-negation fixture had no supported reachable mutation sites and exited1. It was not counted as a passing result; its source and receipt are preserved under empty-inventory names."
+  },
+  "omissions": [
+    "No numerical checks, model builds, synthetic consumers, real-data oracles, training or book gates were rerun.",
+    "No old-root mutation, shared-engine mutation or compiler rebuild.",
+    "No product or gate script was edited; only temporary isolation files and this new receipt/log directory were created."
+  ],
+  "receipts": {
+    "gate-routing/dispatch.json": "22ebdb6368a81a09a84d2924271e8b17152fd7720608613c2372e8be6125fd0b",
+    "gate-routing/dispatch.log": "e74a05223e077a57c7344a69b1458c9d746575f873d705da160636080e39aaf5",
+    "gate-routing/empty-inventory-source.txt": "2a33ce5b042dd88e17000c31a974b398cf039d0dd059744935d24b8d6f0ddbbf",
+    "gate-routing/empty-inventory-tiny-mutation.json": "77c18fb1560dedcad589eac439ae11390bcb17a857a943f6698f1d7de3218f12",
+    "gate-routing/empty-inventory-tiny-mutation.log": "e5e4f62313bd4903a3beae179027b1aabbe4f6af1d4e6e52120a26ad858a352e",
+    "gate-routing/mutation-argv.json": "cc1edb85ebdc6cbfc63c50110233e12daefbedb575a68a15f39ee612a9feaf5f",
+    "gate-routing/selectors/classifier.command.json": "b5e1116dc5926813a3480db0af7ef6975f74327ddb699e7e8a877ac7d45ff145",
+    "gate-routing/selectors/classifier.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gate-routing/selectors/classifier.stdout.log": "108ab9a8b6bd760f2f76b023b325c127d687fc40406ff4fdb9568f5a78538dfe",
+    "gate-routing/selectors/core.command.json": "0c12773a7bbc8c6e438de7ef62c3487e9fc43437e2a85f3c380af4606f5e6c3d",
+    "gate-routing/selectors/core.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gate-routing/selectors/core.stdout.log": "e22a827eb1bf2d87e5f3a396f56459201aff9c98b08a1fd4bae50826847c978c",
+    "gate-routing/selectors/function-layout.command.json": "e711cae6fa37321fd4a53aece0a503fff33fdffa8e94b068b57081693b55b5d8",
+    "gate-routing/selectors/function-layout.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gate-routing/selectors/function-layout.stdout.log": "8b6f63a4d75ce890546c435931d4f26b211f534b5fe1d98084dfd735fe8cdb63",
+    "gate-routing/selectors/module-cnn.command.json": "eb53928737feb1e5fd00e1c4728028d4b6b35c234bd41cc4121305d87aa3805f",
+    "gate-routing/selectors/module-cnn.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gate-routing/selectors/module-cnn.stdout.log": "f6ff37fa611cbc4c347bc20db8f9bc90f96f8cf857bd9a58b71944cb0fa1559e",
+    "gate-routing/selectors/policy.command.json": "a3da61f84e61d66a9fc250ad66695c3456b1044b5b04a01e29e5cf4fef57d23b",
+    "gate-routing/selectors/policy.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gate-routing/selectors/policy.stdout.log": "bc141c0e8cfaea4492f83001a85ac5b8c69d446577ccb508a69eabd1d1f01677",
+    "gate-routing/selectors/zero-network.command.json": "7eaa709c18cec4bdb6be66a66ca6f5470a918d4706d86abe9f1829f773c953f3",
+    "gate-routing/selectors/zero-network.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "gate-routing/selectors/zero-network.stdout.log": "9be71a14ac4d1e6300a3f2debbb2bbd5562b9930c8e9d0b4bcb4c3c6e6529789",
+    "gate-routing/tiny-authority-source.txt": "289fe151601edff389fb1e310d4dd42beff5862d4b39a6b106fb9dc54d7215c0",
+    "gate-routing/tiny-mutation.json": "cd312c1404acca64d4b6afbdbbb4e72fe28feaad7bf093778f6582427a79c0c4",
+    "gate-routing/tiny-mutation.log": "311b1ca871af4724ccf297ef2129954a6a71c8713fe8aec1478c4ba2eeebf624"
+  }
+}

@@ -1,6 +1,17 @@
 #load "function-types.coax";
 #authority;
 
+#test "cnn function eligibility refuses convolution before unsupported higher derivatives" {
+  shape:=TvShape.{rank=4,dims=[4]int.[1,1,1,1]};
+  p:TiProgram;p.count=3;p.output=2;p.nodes[0]=ti_input(shape,0);p.nodes[1]=ti_input(shape,1);p.nodes[2]=TiNode.{op=TiOp.conv2d,a=0,b=1};
+  #assert ti_compile(p,TiTarget.{},false).status==TiStatus.ok;
+  #assert fx_program(p).status==FxStatus.operation;
+  f:=FxFunction.{program=p,count=1};
+  for order:0..<3 {f.leaves[0].order=order;#assert fx_layout(f).status==FxStatus.operation;}
+  // A convolution outside the selected output is still not an eligible graph.
+  f.program.output=0;#assert fx_layout(f).status==FxStatus.operation;
+}
+
 #test "graph function layout preserves root storage aliases and bounded metadata" {
   p:TiProgram;p.count=3;p.output=2;shape:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};
   p.nodes[0]=ti_input(shape,1);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};p.nodes[2]=TiNode.{op=TiOp.sum,a=1,axis=0};
@@ -40,7 +51,10 @@ fx_program :: (p:TiProgram)->FxLayout {
   r.domain=r.tape.plan.input_elements;r.codomain=r.tape.plan.output_elements;
   if !fx_domain_valid(r.domain,r.codomain) {r.status=FxStatus.limit;return r;}
   for i:0..<p.count {
-    n:=p.nodes[i];if n.op==TiOp.registered {r.status=FxStatus.operation;return r;}
+    // Convolution has a first-order tape VJP, but the graph-function tangent
+    // and cross-curvature rules do not yet implement it. Refuse every leaf
+    // order here so a later transform cannot silently publish zero derivatives.
+    n:=p.nodes[i];if n.op==TiOp.registered || n.op==TiOp.conv2d {r.status=FxStatus.operation;return r;}
     root:=r.tape.plan.values[i].root;r.tape.root[i]=root;r.tape.wants[i]=true;
     if root==i {
       size:=r.tape.plan.values[i].storage;if size>FX_CELLS-r.cells {r.status=FxStatus.limit;return r;}

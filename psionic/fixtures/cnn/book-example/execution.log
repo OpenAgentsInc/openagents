@@ -1,0 +1,30 @@
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+  File "/private/tmp/openagents-psionic-cnn-20261101/psionic/tests/book.py", line 227, in run_one
+    assert result.returncode == item["exit_status"], f"exit status: {cmd}\n{result.stderr.decode()}"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: exit status: ['/tmp/openagents-psionic-framework-20261101/coax/bin/coax', 'run', '/private/tmp/openagents-psionic-cnn-20261101/psionic/examples/cnn-classifier.coax']
+/private/tmp/openagents-psionic-cnn-20261101/psionic/examples/cnn-classifier.coax:6:5: error[E0313]: print is in module Basic, which is not imported
+      print("CNN: %, % nodes, % parameters, % inputs\n",q.status,m.program.count,q.parameters,q.inputs);
+      ^
+  fix: add #import "Basic"; at the top of the file
+/private/tmp/openagents-psionic-cnn-20261101/psionic/examples/cnn-classifier.coax:7:5: error[E0313]: print is in module Basic, which is not imported
+      print("input [1,1,14,14], conv [2,1,3,3], activation [1,2,12,12], flatten [1,288], scores [1,10]\n");
+      ^
+  fix: add #import "Basic"; at the top of the file
+/private/tmp/openagents-psionic-cnn-20261101/psionic/examples/cnn-classifier.coax:10:5: error[E0313]: print is in module Basic, which is not imported
+      print("zero network: %, loss %, last-bias gradient %\n",r.status,r.loss,w[0].gradient[2907]);
+      ^
+  fix: add #import "Basic"; at the top of the file
+/private/tmp/openagents-psionic-cnn-20261101/psionic/examples/cnn-classifier.coax:13:5: error[E0313]: print is in module Basic, which is not imported
+      print("unrepresentable compute weight: %, gradient unchanged %\n",r.status,w[0].gradient[0]==123);
+      ^
+  fix: add #import "Basic"; at the top of the file
+/private/tmp/openagents-psionic-cnn-20261101/psionic/examples/cnn-classifier.coax:14:5: error[E0313]: print is in module Basic, which is not imported
+      print("No dataset downloaded and no learning experiment run.\n");
+      ^
+  fix: add #import "Basic"; at the top of the file
+5 errors
+coax: this compiler is out of date: /private/tmp/openagents-psionic-framework-20261101/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /private/tmp/openagents-psionic-framework-20261101/coax/build.sh

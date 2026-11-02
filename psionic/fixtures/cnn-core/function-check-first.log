@@ -1,0 +1,10 @@
+FAIL #test cnn function eligibility refuses convolution before unsupported higher derivatives (1 ms)
+psionic/lib/function-layout.coax:8:3: error[E0406]: assertion failed
+    #assert fx_program(p).status==FxStatus.operation;
+    ^
+  note: in #test cnn function eligibility refuses convolution before unsupported higher derivatives
+1 of 137 checks (--only 'cnn function eligibility'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /private/tmp/openagents-psionic-framework-20261101/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /private/tmp/openagents-psionic-framework-20261101/coax/build.sh

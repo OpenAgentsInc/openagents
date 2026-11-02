@@ -1,0 +1,6 @@
+coax: this compiler is out of date: /private/tmp/openagents-psionic-framework-20261101/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /private/tmp/openagents-psionic-framework-20261101/coax/build.sh
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+0 mutants, 0 killed, 0 survived
+no reachable mutation sites

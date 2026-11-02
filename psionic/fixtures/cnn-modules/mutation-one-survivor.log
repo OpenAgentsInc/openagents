@@ -1,0 +1,8 @@
+coax: this compiler is out of date: /private/tmp/openagents-psionic-framework-20261101/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /private/tmp/openagents-psionic-framework-20261101/coax/build.sh
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/module-cnn.coax:15:28: mutant survived: 1 became 2
+      if s.rank!=4 || s.dims[1]<1 || out<1 || kh<1 || kw<1 || kh>s.dims[2] || kw>s.dims[3] {return mdl_fail(m,MdlStatus.shape);}
+                             ^
+51 mutants, 50 killed, 1 survived

@@ -1,0 +1,1 @@
+#test CNN zero network has the hand-derived full gradient on a small composed model

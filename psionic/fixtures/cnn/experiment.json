@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "profile": "psionic-mnist-cnn-frozen-v1",
+  "status": "frozen before learning; no outcome claimed",
+  "frozen_at": "2026-11-02T01:37:28.269704+00:00",
+  "freeze_confirmation": "root confirmed this exact profile before any optimizer step",
+  "dataset_manifest": "../mnist/dataset.json",
+  "splits": {
+    "train": {
+      "source": "official train",
+      "first": 0,
+      "rows": 4096
+    },
+    "validation": {
+      "source": "official train",
+      "first": 4096,
+      "rows": 1024
+    },
+    "test": {
+      "source": "official test",
+      "first": 0,
+      "rows": 2048
+    }
+  },
+  "model": {
+    "shape": [
+      1,
+      1,
+      14,
+      14
+    ],
+    "activation": "ReLU",
+    "trainable_parameters": 2910,
+    "program_nodes": 18,
+    "prediction_node": 11,
+    "loss_node": 17,
+    "inputs_f32": 3117,
+    "registration_order": [
+      "x",
+      "target",
+      "conv.weight",
+      "conv.bias",
+      "fc.weight",
+      "fc.bias",
+      "loss.neg"
+    ],
+    "parameter_entries": [
+      {
+        "name": "conv.weight",
+        "base": 206,
+        "count": 18,
+        "shape": [
+          2,
+          1,
+          3,
+          3
+        ]
+      },
+      {
+        "name": "conv.bias",
+        "base": 224,
+        "count": 2,
+        "shape": [
+          1,
+          2,
+          1,
+          1
+        ]
+      },
+      {
+        "name": "fc.weight",
+        "base": 226,
+        "count": 2880,
+        "shape": [
+          288,
+          10
+        ]
+      },
+      {
+        "name": "fc.bias",
+        "base": 3106,
+        "count": 10,
+        "shape": [
+          10
+        ]
+      }
+    ],
+    "initializer": {
+      "seed": 11811,
+      "generator": "splitmix64-top53-v1",
+      "counter": "registered entry base + element index",
+      "bound": "f32(1/sqrt(C*KH*KW)) for convolution, f32(1/sqrt(inputwidth)) for linear",
+      "formula": "f32(f64(bound) * (2 * ((cr_bits(seed,counter)>>11)/2^53) - 1))",
+      "bias": "same uniform initializer and bound as its layer weight"
+    },
+    "architecture": "valid3x3 conv1to2, ReLU, flatten288, linear10",
+    "layout": "NCHW input and activations, OIHW weights; cross-correlation, stride1, no padding/dilation/groups"
+  },
+  "training": {
+    "engine": "public mdl/autodiff/trainer/AdamW path; Coax owns arithmetic",
+    "optimizer": "AdamW",
+    "master_parameters": "binary64",
+    "moments": "binary64",
+    "compute_parameters": "binary32",
+    "published_row_gradients": "binary32 rounded after f64 reverse accumulation",
+    "loss": "SUM over ten one-hot squared errors per row, not mean over classes",
+    "microbatch": 1,
+    "accumulate": 16,
+    "gradient_reduction": "mean over sixteen rows",
+    "learning_rate": 0.003,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "epsilon": 1e-08,
+    "decay": 0.0,
+    "clip": 1.0,
+    "parameter_bound": 16.0,
+    "epochs": 12,
+    "shuffle": true,
+    "shuffle_seed": 11812,
+    "shuffle_algorithm": "descending Fisher-Yates using cr_bits(seed,counter)%(i+1); each epoch continues the previous permutation, counter starts at epoch*(rows-1)",
+    "schedule": "constant",
+    "every": 0,
+    "early_stopping": false
+  },
+  "evaluation": {
+    "validation": "initial and at fixed epoch boundaries; no selection or tuning",
+    "official_test": "initial and final only, fixed by this profile; never feeds gradients or selection",
+    "baseline": "constant classifier choosing the most frequent TRAINING label; lowest label on a tie; score on the same official test slice",
+    "selection": "one fixed model; no search, tuning or retries chosen by test results"
+  },
+  "acceptance": {
+    "final_test_accuracy_min": 0.8,
+    "final_test_accuracy_above_majority_baseline_min": 0.5,
+    "final_test_mean_sse_less_than_initial_test_mean_sse": true,
+    "require_every_condition": true
+  },
+  "reproduction": {
+    "canonical_learning_runs": 1,
+    "checkpoint": "end of epoch6",
+    "resume": "replay exactly the next optimizer UPDATE (same16rows) from checkpoint; compare all master parameters, first/second moments, order and cursor bits to the canonical next update; do not rerun six epochs",
+    "export_reload": "final state dictionary reload reproduces predictions on all2048testrows",
+    "source_binding": "before learning, root writes separate freeze record with source closure, config/preprocess/dataset identities, native C/header and binary hashes"
+  },
+  "prohibited": [
+    "Python training or optimizer steps",
+    "tuning after validation or test observations",
+    "changing sample splits, seeds, epochs or thresholds to obtain a pass",
+    "counting tooling math as a product runtime"
+  ]
+}

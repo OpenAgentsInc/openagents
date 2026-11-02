@@ -1,0 +1,3 @@
+#authority;
+#test "tiny mutation argv acceptance" {#assert !tiny_gate(true);#assert tiny_gate(false);}
+tiny_gate :: (x:bool)->bool {return !x;}

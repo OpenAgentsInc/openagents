@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "source": "psionic/lib/cnn-policy.coax",
+  "source_sha256": "f6d2b20fa7b0da7fa11c8422b44f4719ea75091a14a99fb92030c279481a54b9",
+  "checks": {
+    "debug": 8,
+    "release": 8
+  },
+  "mutation": {
+    "sites": 117,
+    "killed": 117,
+    "survived": 0,
+    "scope": "root-only new application policy"
+  },
+  "compiler_sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+  "receipts": {
+    "release.log": "a5570186bd28af60a617d1e199eb8791340e93a10e47bb0e88e161cbdfd21d3b",
+    "debug.json": "3264fa84118115277a9ea22661eedbf7ec0eefc133de7128789b9406a3180029",
+    "release.json": "109dac61a43c55cbeb07e80b72da89d45562ba24175dc2bfc086cad8153b9d22",
+    "debug.log": "a5570186bd28af60a617d1e199eb8791340e93a10e47bb0e88e161cbdfd21d3b",
+    "mutation.log": "acf224694b0c8b6b83d5af72a93b95f044965e6afebad5f01b6a9763aaa12d7f",
+    "mutation.json": "15598eb9c081d3e9fdb9a2630c42fa84a28c1aef63f26c0ee73b48271f8a9d0f"
+  },
+  "receipt_directory": "psionic/fixtures/cnn/policy-checks"
+}

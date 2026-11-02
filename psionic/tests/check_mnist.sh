@@ -27,7 +27,7 @@ if [[ $unit_checks == 1 ]]; then
     for unit in module-train data/mnist mnist-policy; do
         "$compiler" test "psionic/lib/$unit.coax" --library --steps 4000000000
         "$compiler" test "psionic/lib/$unit.coax" --library --release --steps 4000000000
-        "$compiler" mutate "psionic/lib/$unit.coax" --library --root-only --jobs "$jobs" --steps 4000000000
+        "$compiler" mutate "psionic/lib/$unit.coax" --library --root-only --jobs "$jobs"
     done
     for name in 'MNIST classifier' 'MNIST zero network'; do
         "$compiler" test psionic/lib/mnist-classifier.coax --library --only "$name" --steps 4000000000

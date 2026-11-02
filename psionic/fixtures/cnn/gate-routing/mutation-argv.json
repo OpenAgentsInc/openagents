@@ -1,0 +1,14 @@
+{
+  "source": "psionic/tests/check_mnist.sh",
+  "literal_mutation_command": "\"$compiler\" mutate \"psionic/lib/$unit.coax\" --library --root-only --jobs \"$jobs\"",
+  "parsed_words": [
+    "$compiler",
+    "mutate",
+    "psionic/lib/$unit.coax",
+    "--library",
+    "--root-only",
+    "--jobs",
+    "$jobs"
+  ],
+  "unsupported_steps_flag_present": false
+}

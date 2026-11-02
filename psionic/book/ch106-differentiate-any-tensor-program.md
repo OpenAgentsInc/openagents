@@ -103,7 +103,7 @@ ad_reads :: (n:TiNode,custom:bool,need_a:bool,need_b:bool)->[2]bool {
     r:[2]bool;
     if custom {r[0]=true;r[1]=ti_binary(n.op);}
     else if n.op==TiOp.registered || n.op==TiOp.relu || n.op==TiOp.layernorm {r[0]=true;}
-    else if n.op==TiOp.matmul || n.op==TiOp.multiply {r[0]=need_b;r[1]=need_a;}
+    else if n.op==TiOp.matmul || n.op==TiOp.multiply || n.op==TiOp.conv2d {r[0]=need_b;r[1]=need_a;}
     return r;
 }
 ```
@@ -257,6 +257,16 @@ ad_rule :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
                 if need_a {ad_add(t,n.a,ja,g*ad_read(t,n.b,jb,inputs,values),grads);}
                 if need_b {ad_add(t,n.b,jb,g*ad_read(t,n.a,ja,inputs,values),grads);}
             }
+        } else if n.op==TiOp.conv2d {
+            b:=t.plan.values[n.b].view.shape;
+            // Formal bilinear VJP over the stored f32 operands, accumulated
+            // in f64. ad_read/ad_add retain signed-stride and alias-root maps.
+            for channel:0..<a.dims[1] {for h:0..<b.dims[2] {for w:0..<b.dims[3] {
+                ja:=((c[0]*a.dims[1]+channel)*a.dims[2]+c[2]+h)*a.dims[3]+c[3]+w;
+                jb:=((c[1]*b.dims[1]+channel)*b.dims[2]+h)*b.dims[3]+w;
+                if need_a {ad_add(t,n.a,ja,g*ad_read(t,n.b,jb,inputs,values),grads);}
+                if need_b {ad_add(t,n.b,jb,g*ad_read(t,n.a,ja,inputs,values),grads);}
+            }}}
         } else if n.op==TiOp.relu {
             if ad_read(t,n.a,j,inputs,values)>0 {ad_add(t,n.a,j,g,grads);}
         } else if n.op==TiOp.sum {
@@ -294,6 +304,19 @@ overwrites them. That is why a value read twice gets the sum of both
 gradients. A broadcast operand adds every output position that read it, and
 a gather adds every position that selected the same row. ReLU's gradient at
 exactly zero is zero, matching chapter 5's convention.
+
+The CPU convolution extension uses the same additive rule. For each output
+coordinate, the input derivative adds the upstream derivative times its
+filter value, and the filter derivative adds the upstream derivative times
+its input value. Overlapping windows accumulate into shared input locations;
+all batches accumulate into the same filter. Saved-value analysis retains
+the opposite operand whenever that derivative is needed, including a frozen
+filter above an earlier trainable layer. Signed-stride reads and root-relative
+gradient writes use the same view mapping as other operations. The
+[CNN qualification](../fixtures/cnn-core/qualification.json) records the
+independent asymmetric and saved-lifetime cases. Forward arithmetic is
+sequential binary32; these first derivatives are formal binary64 calculus,
+not derivatives of the rounding map.
 
 ## Running a tape
 

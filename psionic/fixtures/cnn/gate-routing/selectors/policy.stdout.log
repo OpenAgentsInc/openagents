@@ -1,0 +1,8 @@
+#test CNN application memory admission checks every exact extent and range endpoint
+#test CNN application workspace admission checks identity and every capacity endpoint
+#test CNN application capture admission checks every one-off extent
+#test CNN application artifact admission checks every byte of all four digests
+#test CNN profile admits only the frozen dataset and model extents
+#test CNN frozen accuracy rule rounds upwards and requires a majority margin
+#test CNN quality also requires lower finite loss and exact persistence checks
+#test CNN refuses fabricated counts before accuracy arithmetic
