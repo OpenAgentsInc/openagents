@@ -320,8 +320,8 @@ burst :: (buf: [] u32, p: [] Pen, a: Point, size: f32, age: f32, ground: bool) {
   }
   // the scorch left on the floor
   if ground {
-    pen_set(p, OBJ_FLOOR, MAT_FLAT, 0.14, 0.1, 0.12);
-    s := size * 1.6 * clamp01(age / 0.2);
+    pen_set(p, OBJ_FLOOR, MAT_FLAT, 0.3, 0.2, 0.22);
+    s := size * 0.85 * clamp01(age / 0.2);
     oval(buf, p, Frame.{o = v3(a.x, 0.012, a.z), x = v3(1, 0, 0), y = v3(0, 0, -1), z = v3(0, 1, 0)}, s, s * 0.85, 16);
   }
 }

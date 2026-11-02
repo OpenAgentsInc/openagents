@@ -114,7 +114,7 @@ sg_pose :: (pose: int, k: f32, t: f32) -> Limbs {
     b.lean = -0.28; b.crouch = 0.14; b.head_pitch = 0.3; b.head_yaw = -0.3;
   }
   if pose == POSE_POINT { b.r_pitch = 1.6; b.r_out = 0.1; b.r_elbow = 0.0; }
-  if pose == POSE_ROBED { b.r_pitch = 0.5; b.r_out = -0.5; b.r_elbow = 1.2; b.l_pitch = 0.5; b.l_out = -0.5; b.l_elbow = 1.2; b.lean = 0.05; }
+  if pose == POSE_ROBED { b.r_pitch = 0.3; b.r_out = -0.35; b.r_elbow = 0.9; b.l_pitch = 0.3; b.l_out = -0.35; b.l_elbow = 0.9; b.lean = 0.04; }
   if pose == POSE_COMMAND { b.r_pitch = 2.35; b.r_out = 0.45; b.r_elbow = 0.25; b.l_pitch = 0.3; b.l_out = 0.2; b.lean = -0.05; b.head_pitch = -0.08; b.glow = 0.8; }
   return b;
 }
@@ -217,6 +217,8 @@ anime_stage :: (events: [] AnimeEvent, n: int, t: f32, make_speed: f32) -> Stage
     if d.kind == AD_CAST {
       from := ifx d.who >= 0 then anime_hand(s[0].who[d.who]) else v3(IMPACT_X - 3, 26, IMPACT_Z + 14);
       if d.who >= 0 { sg_set_pose(s, d.who, POSE_CAST, e.at); }
+      // the engine's: a spell from no one on the stage comes at the dark lord's call, if he is there
+      if d.who < 0 && s[0].who[AS_LORD].on { sg_set_pose(s, AS_LORD, POSE_COMMAND, e.at); }
       to := ifx d.to >= 0 then anime_head(s[0], d.to) else anime_place(d.place);
       size := ifx d.size == SIZE_HUGE then 3.2f32 else ifx d.size == SIZE_SMALL then 0.6f32 else 1.0f32;
       leave := e.at + (ifx d.who >= 0 then CAST_RELEASE else 0.0f32);
@@ -227,7 +229,7 @@ anime_stage :: (events: [] AnimeEvent, n: int, t: f32, make_speed: f32) -> Stage
       if t >= hit {
         // the engine's reaction to a huge impact: everyone near it recoils
         if d.size == SIZE_HUGE {
-          for k: 0..<AS_MADE { if s[0].who[k].on && s[0].who[k].pose != POSE_RECOIL { sg_set_pose(s, k, POSE_RECOIL, hit + 0.05); } }
+          for k: 0..<AS_LORD { if s[0].who[k].on && s[0].who[k].pose != POSE_RECOIL { sg_set_pose(s, k, POSE_RECOIL, hit + 0.05); } }
           sg_set_emotion(s, AS_HEROINE, EMO_SHOCKED, hit + 0.05); sg_set_emotion(s, AS_HERO, EMO_SHOCKED, hit + 0.05);
         }
       }
