@@ -13,6 +13,7 @@
 // the tweaked key lives only in the caller's workspace, cleared on return.
 #load "../crypto/ecdsa_sign.coax";
 #load "../crypto/schnorr_sign.coax";
+#load "hash.coax";
 #load "../../tests/bitcoin/sighash_vectors.coax";
 #load "../../tests/bitcoin/support_tx.coax";
 #authority;
@@ -219,14 +220,10 @@ bt_var_put :: (out:[]u8,at:int,v:int)->int {
 }
 // SHA-256 and double SHA-256 into a 32-byte out; lengths here are always valid.
 bt_sha :: (b:[]u8,out:[]u8) {#assert sha256_hash_checked(b,out,false)==SHA_OK;}
-bt_sha2 :: (b:[]u8,out:[]u8) {t:[32]u8;bt_sha(b,t[..]);bt_sha(t[..],out);}
-// SHA-256(SHA-256(tag) || SHA-256(tag) || b), b at most 256 bytes.
-bt_tagged :: (tag:string,b:[]u8,out:[]u8) {
-  tb:[16]u8;for k:0..<tag.count {tb[k]=tag[k];}
-  th:[32]u8;bt_sha(tb[0..<tag.count],th[..]);
-  m:[64+256]u8;for k:0..<32 {m[k]=th[k];m[32+k]=th[k];}
-  bt_sha(m[0..<bt_put(m[..],64,b)],out);
-}
+// Both come from hash.coax (Bitcoin chapter 5).
+bt_sha2 :: (b:[]u8,out:[]u8) {#assert sha256d_checked(b,out,false)==SHA_OK;}
+// SHA-256(SHA-256(tag) || SHA-256(tag) || b), for a BH_* tag ID.
+bt_tagged :: (tag:int,b:[]u8,out:[]u8) {#assert bitcoin_tagged_checked(tag,b,out,false)==SHA_OK;}
 // The outpoints, the sequences and the outputs, serialized, into m; the length.
 bt_prevouts :: (tp:BtTx,m:[]u8)->int {t:=tp;n:=0;for k:0..<t.nin {n=bt_put(m,n,t.inputs[k].prev[..]);}return n;}
 bt_sequences :: (tp:BtTx,m:[]u8)->int {t:=tp;n:=0;for k:0..<t.nin {n=bt_put(m,n,t.inputs[k].seq[..]);}return n;}
@@ -295,7 +292,7 @@ bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,has
     o:[32]u8;bt_sha(b[t.out_at[index]..<t.out_at[index]+t.out_n[index]],o[..]);
     n=bt_put(m[..],n,o[..]);
   }
-  bt_tagged("TapSighash",m[0..<n],out);
+  bt_tagged(BH_TAPSIGHASH,m[0..<n],out);
   return true;
 }
 // book:end bip341
@@ -307,7 +304,7 @@ bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,has
 bt_internal :: (key:[]u8,merkle:[]u8,w:[]BtTapWork,th:[]u8) {
   #assert ss_key(key,w[0].key[..],false) && sp_base(w[0].key[0].safe,w[0].point[..]) && sp_x(w[0].point[..],w[0].internal[..]);
   m:[64]u8;n:=bt_put(m[..],0,w[0].internal[..]);
-  bt_tagged("TapTweak",m[0..<bt_put(m[..],n,merkle)],th);
+  bt_tagged(BH_TAPTWEAK,m[0..<bt_put(m[..],n,merkle)],th);
 }
 // The tweaked key d' + t into w.tweaked, where d' is d or n - d so that P
 // has an even y and t is the tweak hash th; false when t >= n. valid is

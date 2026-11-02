@@ -1,0 +1,174 @@
+// Bitcoin's two SHA-256 constructions (Bitcoin chapter 5):
+//
+// - SHA-256d, SHA-256 applied twice: txids, block hashes, Merkle nodes and
+//   the P2P message checksum;
+// - the BIP-340 and BIP-341 tagged hashes, by tag ID, over
+//   sha256_tagged_checked and sha256_tagged_init in sha256.coax.
+//
+// Every input and digest here is public. Statuses are sha256.coax's SHA_*
+// values, and a refusal writes nothing.
+#load "../crypto/sha256.coax";
+#authority;
+
+// The tags BIP-340 and BIP-341 define, in this order.
+BH_AUX :: 0; BH_NONCE :: 1; BH_CHALLENGE :: 2;
+BH_TAPLEAF :: 3; BH_TAPBRANCH :: 4; BH_TAPTWEAK :: 5; BH_TAPSIGHASH :: 6;
+BH_TAGS :: 7;
+
+// ---- checks
+// The expected digests below were computed outside Coax with Python's
+// hashlib.
+bh_hex_equal :: (bytes: [] u8, expected: string) -> bool {
+  digits := "0123456789abcdef";
+  if expected.count != bytes.count * 2 { return false; }
+  for i: 0..<bytes.count {
+    if expected[2 * i] != digits[bytes[i] >> 4] || expected[2 * i + 1] != digits[bytes[i] & 15] { return false; }
+  }
+  return true;
+}
+#test "SHA-256d of the empty string and abc" {
+  input := [3] u8.[97, 98, 99]; out: [32] u8;
+  #assert sha256d_checked(input[0..<0], out[..], false) == SHA_OK;
+  #assert bh_hex_equal(out[..], "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456");
+  #assert sha256d_checked(input[..], out[..], false) == SHA_OK;
+  #assert bh_hex_equal(out[..], "4f8b42c22dd3729b519ba6f68d2da7cc5b2d606d05daed5ad5128cc03e6c6358");
+  #assert !bh_hex_equal(out[..], "4f8b42c22dd3729b519ba6f68d2da7cc5b2d606d05daed5ad5128cc03e6c6359");
+  #assert !bh_hex_equal(out[..], "5f8b42c22dd3729b519ba6f68d2da7cc5b2d606d05daed5ad5128cc03e6c6358");
+  #assert !bh_hex_equal(out[0..<31], "4f8b42c22dd3729b519ba6f68d2da7cc5b2d606d05daed5ad5128cc03e6c6358");
+}
+#test "SHA-256d refusals write nothing" {
+  input := [3] u8.[97, 98, 99]; out: [33] u8;
+  for i: 0..<33 { out[i] = 165; }
+  #assert sha256d_checked(input[..], out[0..<31], false) == SHA_BAD_OUTPUT;
+  #assert sha256d_checked(input[..], out[..], true) == SHA_ALIAS;
+  for i: 0..<33 { #assert out[i] == 165; }
+  #assert sha256d_checked(input[..], out[..], false) == SHA_OK && out[32] == 165;
+}
+#test "the checksum is the first four bytes of SHA-256d" {
+  input := [3] u8.[97, 98, 99]; out: [5] u8;
+  for i: 0..<5 { out[i] = 165; }
+  #assert bitcoin_checksum_checked(input[0..<0], out[0..<3], false) == SHA_BAD_OUTPUT;
+  #assert bitcoin_checksum_checked(input[0..<0], out[0..<4], true) == SHA_ALIAS;
+  for i: 0..<5 { #assert out[i] == 165; }
+  #assert bitcoin_checksum_checked(input[0..<0], out[0..<4], false) == SHA_OK && out[4] == 165;
+  #assert bh_hex_equal(out[0..<4], "5df6e0e2");
+  #assert bitcoin_checksum_matches(input[0..<0], out[0..<4]);
+  #assert !bitcoin_checksum_matches(input[..], out[0..<4]);
+  #assert !bitcoin_checksum_matches(input[0..<0], out[0..<3]);
+  #assert !bitcoin_checksum_matches(input[0..<0], out[0..<5]);
+  out[3] ^= 1; #assert !bitcoin_checksum_matches(input[0..<0], out[0..<4]);
+  out[3] ^= 1; out[0] ^= 128; #assert !bitcoin_checksum_matches(input[0..<0], out[0..<4]);
+  out[0] ^= 128;
+  big: [1048577] u8;
+  #assert bitcoin_checksum_checked(big[..], out[0..<4], false) == SHA_BAD_INPUT;
+  #assert !bitcoin_checksum_matches(big[..], out[0..<4]);
+}
+#test "display order reverses the digest, in place too" {
+  d: [32] u8; for i: 0..<32 { d[i] = cast(u8) (i + 1); }
+  out: [32] u8;
+  #assert bitcoin_reverse32(d[..], out[..]) == SHA_OK;
+  for i: 0..<32 { #assert out[i] == cast(u8) (32 - i); }
+  #assert bitcoin_reverse32(d[..], d[..]) == SHA_OK;
+  for i: 0..<32 { #assert d[i] == out[i]; }
+  #assert bitcoin_reverse32(d[0..<31], out[..]) == SHA_BAD_INPUT;
+  #assert bitcoin_reverse32(d[..], out[0..<31]) == SHA_BAD_OUTPUT;
+  #assert out[0] == 32;
+}
+#forall "every tag ID names its BIP tag and hashes through sha256_tagged_checked" tag: 0..<7 {
+  names := [7] string.["BIP0340/aux", "BIP0340/nonce", "BIP0340/challenge", "TapLeaf", "TapBranch", "TapTweak", "TapSighash"];
+  #assert bitcoin_tag_name(tag) == names[tag];
+  input := [3] u8.[97, 98, 99]; a: [32] u8; b: [32] u8; c: [32] u8; s: [112] u8;
+  #assert bitcoin_tagged_checked(tag, input[..], a[..], false) == SHA_OK;
+  #assert sha256_tagged_checked(names[tag], input[..], b[..], false) == SHA_OK;
+  #assert bitcoin_tagged_init(s[..], tag) == SHA_OK && sha256_info(s[..]).total == 64;
+  #assert sha256_update_checked(s[..], input[..], false) == SHA_OK && sha256_final_checked(s[..], c[..], false) == SHA_OK;
+  for i: 0..<32 { #assert a[i] == b[i] && a[i] == c[i]; }
+}
+#forall "BIP-341 tagged hashes of abc" i: 0..<4 {
+  expected := [4] string.["83a56308a9c56f467e8df293da5ae5fdbc85b871952a83c4bf0575ee948ec230",
+    "d695f69898df4e3f1dbdb34be238218be5ee53c7deb2493a5345aa9154660b70",
+    "b4db0a539110ab84dac5af069f081eee7e3becbf970e6705d20f59ea9b4eb1f8",
+    "45514f36ed8411d581fa7f5521f02913c4032b1f67465af2e9591576e8ec087b"];
+  input := [3] u8.[97, 98, 99]; out: [32] u8;
+  #assert bitcoin_tagged_checked(BH_TAPLEAF + i, input[..], out[..], false) == SHA_OK;
+  #assert bh_hex_equal(out[..], expected[i]);
+}
+#test "unknown tag IDs refuse and write nothing" {
+  input: [1] u8; out: [32] u8; s: [112] u8;
+  for i: 0..<32 { out[i] = 165; }
+  #assert bitcoin_tag_name(-1) == "" && bitcoin_tag_name(BH_TAGS) == "";
+  #assert bitcoin_tagged_checked(-1, input[..], out[..], false) == SHA_BAD_TAG;
+  #assert bitcoin_tagged_checked(BH_TAGS, input[..], out[..], false) == SHA_BAD_TAG;
+  #assert bitcoin_tagged_init(s[..], BH_TAGS) == SHA_BAD_TAG && bitcoin_tagged_init(s[..], -1) == SHA_BAD_TAG;
+  for i: 0..<32 { #assert out[i] == 165; }
+  for i: 0..<112 { #assert s[i] == 0; }
+}
+
+// book:begin sha256d
+// SHA-256d: SHA-256 of the SHA-256 of the input, into the first 32 bytes
+// of out. The first digest stays in a local buffer, so input and out are
+// read and written once each.
+sha256d_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
+  status := sha256_request(input.count, out.count, overlap); if status != SHA_OK { return status; }
+  first: [32] u8;
+  status = sha256_hash_checked(input, first[..], false); if status != SHA_OK { return status; }
+  return sha256_hash_checked(first[..], out, false);
+}
+// Txids and block hashes are shown as the digest's bytes in reverse order.
+// digest and out may be the same view.
+bitcoin_reverse32 :: (digest: [] u8, out: [] u8) -> u32 {
+  if digest.count != 32 { return SHA_BAD_INPUT; }
+  if out.count != 32 { return SHA_BAD_OUTPUT; }
+  copy: [32] u8; for i: 0..<32 { copy[i] = digest[i]; }
+  for i: 0..<32 { out[i] = copy[31 - i]; }
+  return SHA_OK;
+}
+// book:end sha256d
+
+// book:begin checksum
+// The P2P message checksum: the first 4 bytes of SHA-256d of the payload,
+// into out[0..<4].
+bitcoin_checksum_checked :: (payload: [] u8, out: [] u8, overlap: bool) -> u32 {
+  if !sha256_input_ok(payload.count) { return SHA_BAD_INPUT; }
+  if out.count < 4 { return SHA_BAD_OUTPUT; }
+  if overlap { return SHA_ALIAS; }
+  digest: [32] u8;
+  status := sha256d_checked(payload, digest[..], false); if status != SHA_OK { return status; }
+  for i: 0..<4 { out[i] = digest[i]; }
+  return SHA_OK;
+}
+// True only when checksum is exactly 4 bytes and equals the payload's.
+bitcoin_checksum_matches :: (payload: [] u8, checksum: [] u8) -> bool {
+  if checksum.count != 4 { return false; }
+  want: [4] u8;
+  if bitcoin_checksum_checked(payload, want[..], false) != SHA_OK { return false; }
+  same := true;
+  for i: 0..<4 { if want[i] != checksum[i] { same = false; } }
+  return same;
+}
+// book:end checksum
+
+// book:begin tagged
+// The tag string for a tag ID, or "" for an unknown ID.
+bitcoin_tag_name :: (tag: int) -> string {
+  if tag == BH_AUX { return "BIP0340/aux"; }
+  if tag == BH_NONCE { return "BIP0340/nonce"; }
+  if tag == BH_CHALLENGE { return "BIP0340/challenge"; }
+  if tag == BH_TAPLEAF { return "TapLeaf"; }
+  if tag == BH_TAPBRANCH { return "TapBranch"; }
+  if tag == BH_TAPTWEAK { return "TapTweak"; }
+  if tag == BH_TAPSIGHASH { return "TapSighash"; }
+  return "";
+}
+// SHA256(SHA256(tag) || SHA256(tag) || input) for a tag ID.
+bitcoin_tagged_checked :: (tag: int, input: [] u8, out: [] u8, overlap: bool) -> u32 {
+  if tag < 0 || tag >= BH_TAGS { return SHA_BAD_TAG; }
+  return sha256_tagged_checked(bitcoin_tag_name(tag), input, out, overlap);
+}
+// A streaming state for a tag ID that has already absorbed the 64-byte
+// prefix. Update it with the message pieces, then finalize.
+bitcoin_tagged_init :: (state: [] u8, tag: int) -> u32 {
+  if tag < 0 || tag >= BH_TAGS { return SHA_BAD_TAG; }
+  return sha256_tagged_init(state, bitcoin_tag_name(tag));
+}
+// book:end tagged

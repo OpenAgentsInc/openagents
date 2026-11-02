@@ -1,0 +1,89 @@
+// The checks of sha-256d.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/sha-256d.coax
+#load "../sha-256d.coax";
+
+// book:begin check
+// Every pinned mainnet transaction hashes to the txid its tx_valid.json
+// comment names, and the genesis block to chainparams.cpp's values.
+#forall "pinned mainnet txids match their published values" i: 0..<3 {
+  tx: [512] u8; id: [32] u8;
+  n := decode(BH_TXS[i].tx, tx[..]);
+  published(tx[0..<n], id[..]);
+  #assert same_hex(id[..], BH_TXS[i].txid);
+}
+#test "the genesis block hash and coinbase txid match chainparams.cpp" {
+  block: [285] u8; id: [32] u8;
+  #assert decode(BH_GENESIS_BLOCK, block[..]) == 285;
+  published(block[0..<80], id[..]); #assert same_hex(id[..], BH_GENESIS_HASH);
+  published(block[81..<285], id[..]); #assert same_hex(id[..], BH_GENESIS_MERKLE);
+}
+// TapLeaf over leaf version, compact size and script (every script here is
+// shorter than 253 bytes, so the size is one byte).
+leaf_hash :: (leaf: BhLeaf, out: [] u8) {
+  m: [64] u8; m[0] = cast(u8) leaf.version;
+  n := decode(leaf.script, m[2..<64]); m[1] = cast(u8) n;
+  #assert n < 253 && bitcoin_tagged_checked(BH_TAPLEAF, m[0..<n + 2], out, false) == SHA_OK;
+}
+// TapBranch over the two children, the smaller one first.
+branch :: (a: [] u8, b: [] u8, out: [] u8) {
+  left := true; decided := false;
+  for i: 0..<32 { if !decided && a[i] != b[i] { left = a[i] < b[i]; decided = true; } }
+  m: [64] u8;
+  for i: 0..<32 { m[i] = ifx left then a[i] else b[i]; m[32 + i] = ifx left then b[i] else a[i]; }
+  #assert bitcoin_tagged_checked(BH_TAPBRANCH, m[..], out, false) == SHA_OK;
+}
+// Every BIP-341 scriptPubKey case: each leaf hash, the Merkle root from
+// the tree's shape, and the tweak over the internal key and that root.
+#forall "BIP-341 leaf hashes, Merkle roots and tweaks match" t: 0..<7 {
+  tree := BH_TREES[t];
+  h: [3][32] u8; root: [32] u8; m: [64] u8; out: [32] u8;
+  for k: 0..<tree.count {
+    leaf_hash(BH_LEAVES[tree.first + k], h[k][..]);
+    #assert same_hex(h[k][..], BH_LEAVES[tree.first + k].hash);
+  }
+  if tree.shape == 1 { for i: 0..<32 { root[i] = h[0][i]; } }
+  if tree.shape == 2 { branch(h[0][..], h[1][..], root[..]); }
+  if tree.shape == 3 { inner: [32] u8; branch(h[1][..], h[2][..], inner[..]); branch(h[0][..], inner[..], root[..]); }
+  #assert decode(tree.internal, m[0..<32]) == 32;
+  n := 32;
+  if tree.shape != 0 {
+    #assert same_hex(root[..], tree.merkle);
+    for i: 0..<32 { m[32 + i] = root[i]; }
+    n = 64;
+  }
+  #assert bitcoin_tagged_checked(BH_TAPTWEAK, m[0..<n], out[..], false) == SHA_OK;
+  #assert same_hex(out[..], tree.tweak);
+}
+// Every BIP-341 key-path signature message gives its sigHash, in one call
+// and split at every byte after a midstate.
+#forall "BIP-341 signature hashes match, split at every byte" i: 0..<7 #steps 1000000000 {
+  message: [200] u8; out: [32] u8;
+  n := decode(BH_SIGS[i].msg, message[..]);
+  #assert bitcoin_tagged_checked(BH_TAPSIGHASH, message[0..<n], out[..], false) == SHA_OK;
+  #assert same_hex(out[..], BH_SIGS[i].hash);
+  for cut: 0..<n + 1 {
+    state: [112] u8;
+    #assert bitcoin_tagged_init(state[..], BH_TAPSIGHASH) == SHA_OK;
+    #assert sha256_update_checked(state[..], message[0..<cut], false) == SHA_OK;
+    #assert sha256_update_checked(state[..], message[cut..<n], false) == SHA_OK;
+    #assert sha256_final_checked(state[..], out[..], false) == SHA_OK;
+    #assert same_hex(out[..], BH_SIGS[i].hash);
+  }
+}
+// The challenge for BIP-340 vector 0 agrees with chapter 23's path, which
+// computes the tag hash at compile time, and with the value Python's
+// hashlib gives (chapter 23's check).
+#test "the BIP0340/challenge hash agrees with chapter 23" #steps 1000000000 {
+  key: [32] u8; msg: [32] u8; sig: [64] u8; rpm: [96] u8; out: [32] u8;
+  #assert decode(BH_BIP340_KEY, key[..]) == 32 && decode(BH_BIP340_MESSAGE, msg[..]) == 32;
+  #assert decode(BH_BIP340_SIGNATURE, sig[..]) == 64;
+  for i: 0..<32 { rpm[i] = sig[i]; rpm[32 + i] = key[i]; rpm[64 + i] = msg[i]; }
+  #assert bitcoin_tagged_checked(BH_CHALLENGE, rpm[..], out[..], false) == SHA_OK;
+  #assert same_hex(out[..], "6bb6b93a91f2ecc0cd924f4f9baabb5e6eb21745bb00f2cebdaac908bb5d86ce");
+  e := sv_challenge_vartime(msg[..], key[..], sig[0..<32]); mine := sc_reduce_bytes(out[..]);
+  #assert e.ok && mine.ok && sc_equal(e.value, mine.value);
+  #assert verifies_with(out[..], key[..], sig[..]);
+  out[31] ^= 1; #assert !verifies_with(out[..], key[..], sig[..]);
+}
+// book:end check

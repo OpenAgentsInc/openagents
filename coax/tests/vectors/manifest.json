@@ -440,6 +440,85 @@
       "bytes": 28032
     },
     {
+      "path": "upstream/bip341/wallet-test-vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0341/wallet-test-vectors.json",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-3-Clause (declared in bip-0341.mediawiki)",
+      "covers": [
+        "bip341-tagged-hashes"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "403e19fb81dd1f31e745699216308f61fb403774b2aafa87b631b8f7c042d37f",
+      "bytes": 29296
+    },
+    {
+      "path": "upstream/bitcoin-core/tx_valid.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/tx_valid.json",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "sha256d-txid"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011",
+      "bytes": 87306
+    },
+    {
+      "path": "upstream/bitcoin-core/chainparams.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/chainparams.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "sha256d-block-hash"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1",
+      "bytes": 35931
+    },
+    {
+      "path": "upstream/bitcoin-core/COPYING",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "b028769f3852a9368ab10bd754ff01ebb741f84a2fa658c9aff82a631bc6ecfc",
+      "bytes": 1142
+    },
+    {
+      "path": "upstream/btcd/genesis_test.go",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/chaincfg/genesis_test.go",
+      "revision": "git:dd169fe0c32a56087d28b92fff3b8cf4fb43477a",
+      "license": "ISC (btcd LICENSE)",
+      "covers": [
+        "sha256d-block-hash",
+        "sha256d-txid"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "e188c4fb27cccec22a0853be80f5c9b308e88045baccbf81a2058b01c7155452",
+      "bytes": 21162
+    },
+    {
+      "path": "upstream/btcd/LICENSE",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/LICENSE",
+      "revision": "git:dd169fe0c32a56087d28b92fff3b8cf4fb43477a",
+      "license": "ISC",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "10db068dbe11e2b3d652a3d4ae3cdd7998b84b12cdefe3d8083a2b63c295c13f",
+      "bytes": 802
+    },
+    {
       "path": "derived/catalog.json",
       "kind": "derived",
       "url": "local:make_catalog.py",

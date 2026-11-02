@@ -1,0 +1,157 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/hash.coax";
+#load "../../coax/lib/crypto/schnorr.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/sha256d_vectors.coax";
+#import "Basic";
+
+// Print bytes as lowercase hex and end the line.
+hex_line :: (bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%\n", cast(string) text[0..<r.written]);
+}
+// Print a label, then bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) { print("%: ", label); hex_line(bytes); }
+// Decode hex into out and return the number of bytes written. Every
+// literal here is valid hex, so a decoding error stops the program.
+decode :: (text: string, out: [] u8) -> int {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return r.written;
+}
+// True when bytes, written as lowercase hex, are the text.
+same_hex :: (bytes: [] u8, text: string) -> bool {
+  hex: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, hex[..], false);
+  return r.error == 0 && cast(string) hex[0..<r.written] == text;
+}
+// A txid or block hash as it is published: SHA-256d, bytes reversed.
+published :: (input: [] u8, out: [] u8) {
+  #assert sha256d_checked(input, out, false) == SHA_OK;
+  #assert bitcoin_reverse32(out, out) == SHA_OK;
+}
+STATUS :: [8] string.["ok", "bad state", "bad input", "bad output",
+  "already final", "overlap", "too long", "bad tag"];
+
+main :: () {
+  // The genesis block: an 80-byte header, a transaction count of 1 and
+  // the coinbase transaction.
+  block: [285] u8;
+  print("genesis block: % bytes\n", decode(BH_GENESIS_BLOCK, block[..]));
+  header := block[0..<80];
+  show("header bytes 36-67 (Merkle root field)", header[36..<68]);
+  first: [32] u8; twice: [32] u8; id: [32] u8;
+  #assert sha256_hash_checked(header, first[..], false) == SHA_OK;
+  show("SHA-256(header)", first[..]);
+  #assert sha256_hash_checked(first[..], twice[..], false) == SHA_OK;
+  show("SHA-256(SHA-256(header))", twice[..]);
+  #assert sha256d_checked(header, id[..], false) == SHA_OK;
+  print("sha256d_checked gives the same bytes: %\n", same_hex(id[..], "6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000"));
+  #assert bitcoin_reverse32(id[..], id[..]) == SHA_OK;
+  show("genesis block hash", id[..]);
+  print("matches chainparams.cpp: %\n", same_hex(id[..], BH_GENESIS_HASH));
+
+  // The coinbase transaction is the rest of the block after the count.
+  print("transaction count byte: %\n", block[80]);
+  published(block[81..<285], id[..]);
+  show("coinbase txid", id[..]);
+  print("matches the Merkle root in chainparams.cpp: %\n", same_hex(id[..], BH_GENESIS_MERKLE));
+
+  // Three mainnet transactions from Bitcoin Core's tx_valid.json.
+  for i: 0..<BH_TXS.count {
+    tx: [512] u8;
+    n := decode(BH_TXS[i].tx, tx[..]);
+    published(tx[0..<n], id[..]);
+    print("% bytes, txid ", n); hex_line(id[..]);
+    print("  matches tx_valid.json: %\n", same_hex(id[..], BH_TXS[i].txid));
+  }
+
+  // The P2P checksum of an empty payload, the one every verack carries.
+  check: [4] u8;
+  #assert bitcoin_checksum_checked(block[0..<0], check[..], false) == SHA_OK;
+  show("checksum of an empty payload", check[..]);
+
+  // The tag hashes, and the midstate a tag leaves.
+  for tag: 0..<BH_TAGS {
+    if tag >= BH_CHALLENGE {
+      t := S_hash(bitcoin_tag_name(tag)); bytes: [32] u8;
+      #assert sha256_emit(t.words[..], bytes[..]) == SHA_OK;
+      print("SHA-256(\"%\"): ", bitcoin_tag_name(tag)); hex_line(bytes[..]);
+    }
+  }
+  state: [112] u8;
+  #assert bitcoin_tagged_init(state[..], BH_TAPLEAF) == SHA_OK;
+  print("TapLeaf state after the prefix: % bytes, % buffered\n", sha256_info(state[..]).total, sha256_info(state[..]).buffered);
+
+  // TapLeaf: leaf version, script length, script.
+  leaf := BH_LEAVES[3]; preimage: [9] u8; out: [32] u8;
+  preimage[0] = cast(u8) leaf.version; preimage[1] = 7;
+  #assert decode(leaf.script, preimage[2..<9]) == 7;
+  show("TapLeaf preimage", preimage[..]);
+  #assert sha256_update_checked(state[..], preimage[..], false) == SHA_OK;
+  #assert sha256_final_checked(state[..], out[..], false) == SHA_OK;
+  show("TapLeaf hash", out[..]);
+  print("matches BIP-341: %\n", same_hex(out[..], leaf.hash));
+
+  // TapBranch: the two child hashes, smaller first.
+  a: [32] u8; b: [32] u8; pair: [64] u8;
+  #assert decode(BH_LEAVES[2].hash, a[..]) == 32 && decode(BH_LEAVES[3].hash, b[..]) == 32;
+  print("first bytes: % and %, so the % leaf goes first\n", a[0], b[0], ifx a[0] < b[0] then "left" else "right");
+  for i: 0..<32 { pair[i] = a[i]; pair[32 + i] = b[i]; }
+  #assert bitcoin_tagged_checked(BH_TAPBRANCH, pair[..], out[..], false) == SHA_OK;
+  show("TapBranch hash", out[..]);
+  print("matches BIP-341's Merkle root: %\n", same_hex(out[..], BH_TREES[3].merkle));
+
+  // TapTweak: the internal key, then the Merkle root.
+  #assert decode(BH_TREES[3].internal, pair[0..<32]) == 32;
+  for i: 0..<32 { pair[32 + i] = out[i]; }
+  #assert bitcoin_tagged_checked(BH_TAPTWEAK, pair[..], out[..], false) == SHA_OK;
+  show("TapTweak hash", out[..]);
+  print("matches BIP-341's tweak: %\n", same_hex(out[..], BH_TREES[3].tweak));
+
+  // TapSighash over BIP-341's first signature message.
+  message: [200] u8;
+  n := decode(BH_SIGS[0].msg, message[..]);
+  #assert bitcoin_tagged_checked(BH_TAPSIGHASH, message[0..<n], out[..], false) == SHA_OK;
+  print("TapSighash of a % byte message: ", n); hex_line(out[..]);
+  print("matches BIP-341's sigHash: %\n", same_hex(out[..], BH_SIGS[0].hash));
+
+  // BIP0340/challenge: e for BIP-340 vector 0, and the signature checked
+  // with that e.
+  key: [32] u8; msg: [32] u8; sig: [64] u8; rpm: [96] u8;
+  #assert decode(BH_BIP340_KEY, key[..]) == 32 && decode(BH_BIP340_MESSAGE, msg[..]) == 32;
+  #assert decode(BH_BIP340_SIGNATURE, sig[..]) == 64;
+  for i: 0..<32 { rpm[i] = sig[i]; rpm[32 + i] = key[i]; rpm[64 + i] = msg[i]; }
+  #assert bitcoin_tagged_checked(BH_CHALLENGE, rpm[..], out[..], false) == SHA_OK;
+  show("challenge hash for vector 0", out[..]);
+  print("vector 0 verifies with this e: %\n", verifies_with(out[..], key[..], sig[..]));
+
+  // Broken cases.
+  bad: [80] u8; for i: 0..<80 { bad[i] = header[i]; }
+  bad[79] ^= 1;
+  published(bad[..], id[..]);
+  show("header with its last bit flipped", id[..]);
+  print("still the genesis hash: %\n", same_hex(id[..], BH_GENESIS_HASH));
+  #assert sha256d_checked(header, id[..], false) == SHA_OK;
+  print("digest bytes in hash order match the published hash: %\n", same_hex(id[..], BH_GENESIS_HASH));
+  print("empty payload with its checksum: %\n", bitcoin_checksum_matches(block[0..<0], check[..]));
+  check[0] ^= 1;
+  print("empty payload with one checksum bit changed: %\n", bitcoin_checksum_matches(block[0..<0], check[..]));
+  #assert sha256_hash_checked(message[0..<n], out[..], false) == SHA_OK;
+  print("plain SHA-256 of the message matches sigHash: %\n", same_hex(out[..], BH_SIGS[0].hash));
+  #assert sha256_tagged_checked("BIP0340/challengf", rpm[..], out[..], false) == SHA_OK;
+  print("vector 0 verifies under the tag BIP0340/challengf: %\n", verifies_with(out[..], key[..], sig[..]));
+  print("tag id 7: %\n", STATUS[bitcoin_tagged_checked(BH_TAGS, rpm[..], out[..], false)]);
+  print("31-byte txid output: %\n", STATUS[sha256d_checked(header, out[0..<31], false)]);
+  print("3-byte checksum output: %\n", STATUS[bitcoin_checksum_checked(header, check[0..<3], false)]);
+}
+// Chapter 23's verification equation, s*G - e*P has the x of r and an
+// even y, with e reduced from a challenge hash this chapter computed.
+verifies_with :: (challenge: [] u8, key: [] u8, sig: [] u8) -> bool {
+  e := sc_reduce_bytes(challenge); s := sc_load(sig[32..<64]);
+  r := sf_load_strict(sig[0..<32]); p := sg_lift_x_public(key);
+  if !e.ok || !s.ok || !r.ok || !p.ok { return false; }
+  return sv_prepared_matches_vartime(SvPrepared.{s = s.value, negative_e = sc_negate(e.value), point = p.value, r = r.value, ready = true});
+}
+// book:end example

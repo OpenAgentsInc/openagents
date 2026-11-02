@@ -102,15 +102,24 @@
   {
    "number": 5,
    "title": "SHA-256d and tagged hashes",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch005-sha-256d-and-tagged-hashes.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     4
    ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
+   "source": [
+    "coax/lib/bitcoin/hash.coax",
+    "coax/lib/crypto/sha256.coax",
+    "bitcoin/examples/sha-256d.coax",
+    "bitcoin/examples/checks/sha-256d.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": [
+    "coax/lib/bitcoin/sighash.coax"
+   ]
   },
   {
    "number": 6,

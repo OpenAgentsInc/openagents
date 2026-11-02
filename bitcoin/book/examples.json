@@ -42,6 +42,16 @@
       ]
     },
     {
+      "source": "bitcoin/examples/sha-256d.coax",
+      "chapter": "bitcoin/book/ch005-sha-256d-and-tagged-hashes.md",
+      "stdout": "bitcoin/fixtures/sha-256d.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/ripemd160.coax",
       "chapter": "bitcoin/book/ch006-ripemd-160-and-hash160.md",
       "stdout": "bitcoin/fixtures/ripemd160.out",

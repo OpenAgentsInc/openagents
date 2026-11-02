@@ -120,6 +120,18 @@ Sha256Work :: struct { h: [8] u32; block: [64] u8; total: u64; used: int; phase:
   #assert sha256_bip340_checked(3, input[..], out[..], false) == SHA_BAD_TAG;
   #assert sha256_bip340_name(-1) == "" && sha256_bip340_name(3) == "";
 }
+#test "a tagged state holds one absorbed block and refuses before writing" {
+  s:[112]u8;input:=[3]u8.[97,98,99];out:[32]u8;whole:[32]u8;
+  #assert sha256_tagged_init(s[..],"BIP0340/challenge")==SHA_OK;
+  #assert sha256_info(s[..]).total==64 && sha256_info(s[..]).buffered==0;
+  #assert sha256_update_checked(s[..],input[..],false)==SHA_OK && sha256_final_checked(s[..],out[..],false)==SHA_OK;
+  #assert sha256_bip340_checked(2,input[..],whole[..],false)==SHA_OK;
+  for i:0..<32 {#assert out[i]==whole[i];}
+  short:[111]u8;for i:0..<111 {short[i]=165;}
+  #assert sha256_tagged_init(short[..],"TapLeaf")==SHA_BAD_STATE;
+  long_tag:[1025]u8;#assert sha256_tagged_init(s[..],cast(string)long_tag[..])==SHA_BAD_TAG;
+  for i:0..<111 {#assert short[i]==165;}
+}
 #test "wide byte counters serialize without loss" {
   s:[112]u8;input:=[1]u8.[1];
   #assert sha256_init(s[..])==SHA_OK;
@@ -224,14 +236,23 @@ sha256_hash_checked :: (input: [] u8, out: [] u8, overlap: bool) -> u32 {
   status=sha256_update_checked(state[..],input,false);if status != SHA_OK {return status;}
   return sha256_final_checked(state[..],out,false);
 }
+// book:begin tagged-init
+// A fresh state that has absorbed SHA256(tag) || SHA256(tag): one full block,
+// so the state holds the tag's midstate and nothing buffered.
+sha256_tagged_init :: (state: [] u8, tag: string) -> u32 {
+  if !sha256_tag_ok(tag.count) {return SHA_BAD_TAG;}
+  if state.count != SHA_STATE_BYTES {return SHA_BAD_STATE;}
+  digest:=S_hash(tag);if digest.error != 0 {return digest.error;}
+  tag_hash:[32]u8;status:=sha256_emit(digest.words[..],tag_hash[..]);if status != SHA_OK {return status;}
+  status=sha256_init(state);if status != SHA_OK {return status;}
+  status=sha256_update_checked(state,tag_hash[..],false);if status != SHA_OK {return status;}
+  return sha256_update_checked(state,tag_hash[..],false);
+}
+// book:end tagged-init
 sha256_tagged_checked :: (tag: string, input: [] u8, out: [] u8, overlap: bool) -> u32 {
   if !sha256_tag_ok(tag.count) {return SHA_BAD_TAG;}
   status:=sha256_request(input.count,out.count,overlap);if status != SHA_OK {return status;}
-  digest:=S_hash(tag);if digest.error != 0 {return digest.error;}
-  tag_hash:[32]u8;status=sha256_emit(digest.words[..],tag_hash[..]);if status != SHA_OK {return status;}
-  state:[112]u8;status=sha256_init(state[..]);if status != SHA_OK {return status;}
-  status=sha256_update_checked(state[..],tag_hash[..],false);if status != SHA_OK {return status;}
-  status=sha256_update_checked(state[..],tag_hash[..],false);if status != SHA_OK {return status;}
+  state:[112]u8;status=sha256_tagged_init(state[..],tag);if status != SHA_OK {return status;}
   status=sha256_update_checked(state[..],input,false);if status != SHA_OK {return status;}
   return sha256_final_checked(state[..],out,false);
 }

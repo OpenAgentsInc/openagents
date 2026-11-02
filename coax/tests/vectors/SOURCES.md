@@ -72,6 +72,16 @@ that a maliciously replaced manifest is authentic.
   NIP-59 cross-implementation/deck fixtures and field/scalar oracle-generated
   edge cases are later consumer/harness outputs, not falsely labelled official
   vectors by this task.
+- **SHA-256d and tagged hashes (Bitcoin chapter 5):** three files give
+  published bytes and their published digests. btcd's `genesis_test.go` holds
+  the 285 serialized bytes of the mainnet genesis block. Bitcoin Core's
+  `chainparams.cpp` asserts its block hash and Merkle root. Bitcoin Core's
+  `tx_valid.json` holds mainnet transactions whose comments name their txids
+  (`23b397ed…`, `c99c49da…` and `f7fdd091…`). BIP-341's
+  `wallet-test-vectors.json` gives the TapLeaf, TapBranch, TapTweak and
+  TapSighash outputs (leaf hashes, Merkle roots, tweaks and signature hashes
+  over each `sigMsg`). The chapter copies hex from these files; it does not
+  claim to run the transactions' scripts or the other BIP-341 checks.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -97,7 +107,8 @@ execution, fuzzing, secret handling and production review remain separate tasks.
 ## License and source notices
 
 BIP-340 is BSD-2-Clause OR MIT OR CC0-1.0; BIP-173 declares BSD-2-Clause in its
-text. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
+text, and BIP-341 declares BSD-3-Clause in its text. Bitcoin Core is MIT and
+btcd is ISC; their license files are retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
 JSONTestSuite is MIT. Their provided license files are retained. RFCs retain
 complete IETF/Internet Society copyright and redistribution notices (including
 the older RFC 4231 terms). NIST's U.S. Government archive supplies CAVS notices
@@ -109,7 +120,8 @@ index is OpenAgents Apache-2.0; it does not relicense upstream material.
 ## Inventory
 
 All dates below are retrieval dates (2026-10-28; the RIPEMD-160 and BIP-32
-files 2026-11-02), not claims about publication.
+files, and the Bitcoin chapter 5 files, 2026-11-02), not claims about
+publication.
 The complete revision/license/archive fields are in `manifest.json`.
 
 | File | Source | SHA-256 |
@@ -147,4 +159,10 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/nips/19.md`](upstream/nips/19.md) | [pinned source](https://raw.githubusercontent.com/nostr-protocol/nips/400d157c53264b8e58c7b3cdbd21ef546fb7a157/19.md) | `5b53c98637ae0cb8e6d99e1570e32da2c5842154ba898393439f334f1fd90aad` |
 | [`upstream/nips/44.md`](upstream/nips/44.md) | [pinned source](https://raw.githubusercontent.com/nostr-protocol/nips/400d157c53264b8e58c7b3cdbd21ef546fb7a157/44.md) | `b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2` |
 | [`upstream/nips/59.md`](upstream/nips/59.md) | [pinned source](https://raw.githubusercontent.com/nostr-protocol/nips/400d157c53264b8e58c7b3cdbd21ef546fb7a157/59.md) | `b46b078ff5b219fd4ab33a53b479b49d4cbd604b88be46d6b978d53d8f8b43a0` |
+| [`upstream/bip341/wallet-test-vectors.json`](upstream/bip341/wallet-test-vectors.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0341/wallet-test-vectors.json) | `403e19fb81dd1f31e745699216308f61fb403774b2aafa87b631b8f7c042d37f` |
+| [`upstream/bitcoin-core/tx_valid.json`](upstream/bitcoin-core/tx_valid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/tx_valid.json) | `0abeb1a6e4b942e4e43ef8d49b7356c1f6204bcb14163f24153f4d0ec5418011` |
+| [`upstream/bitcoin-core/chainparams.cpp`](upstream/bitcoin-core/chainparams.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/kernel/chainparams.cpp) | `cfadf1478377c32625280520655b598674e6d487f08d7f7a80ac69252104b5e1` |
+| [`upstream/bitcoin-core/COPYING`](upstream/bitcoin-core/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING) | `b028769f3852a9368ab10bd754ff01ebb741f84a2fa658c9aff82a631bc6ecfc` |
+| [`upstream/btcd/genesis_test.go`](upstream/btcd/genesis_test.go) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/chaincfg/genesis_test.go) | `e188c4fb27cccec22a0853be80f5c9b308e88045baccbf81a2058b01c7155452` |
+| [`upstream/btcd/LICENSE`](upstream/btcd/LICENSE) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/LICENSE) | `10db068dbe11e2b3d652a3d4ae3cdd7998b84b12cdefe3d8083a2b63c295c13f` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

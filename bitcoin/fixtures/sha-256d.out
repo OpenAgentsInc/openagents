@@ -1,0 +1,45 @@
+genesis block: 285 bytes
+header bytes 36-67 (Merkle root field): 3ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4a
+SHA-256(header): af42031e805ff493a07341e2f74ff58149d22ab9ba19f61343e2c86c71c5d66d
+SHA-256(SHA-256(header)): 6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000
+sha256d_checked gives the same bytes: true
+genesis block hash: 000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f
+matches chainparams.cpp: true
+transaction count byte: 1
+coinbase txid: 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
+matches the Merkle root in chainparams.cpp: true
+158 bytes, txid 23b397edccd3740a74adb603c9756370fafcde9bcc4483eb271ecad09a94dd63
+  matches tx_valid.json: true
+225 bytes, txid c99c49da4c38af669dea436d3e73780dfdb6c1ecf9958baa52960e8baee30e73
+  matches tx_valid.json: true
+402 bytes, txid f7fdd091fa6d8f5e7a8c2458f5c38faffff2d3f1406b6e4fe2c99dcc0d2d1cbb
+  matches tx_valid.json: true
+checksum of an empty payload: 5df6e0e2
+SHA-256("BIP0340/challenge"): 7bb52d7a9fef58323eb1bf7a407db382d2f3f2d81bb1224f49fe518f6d48d37c
+SHA-256("TapLeaf"): aeea8fdc4208983105734b58081d1e2638d35f1cb54008d4d357ca03be78e9ee
+SHA-256("TapBranch"): 1941a1f2e56eb95fa2a9f194be5c01f7216f33ed82b091463490d05bf516a015
+SHA-256("TapTweak"): e80fe1639c9ca050e3af1b39c143c63e429cbceb15d940fbb5c5a1f4af57c5e9
+SHA-256("TapSighash"): f40a48df4b2a70c8b4924bf2654661ed3d95fd66a313eb87237597c628e4a031
+TapLeaf state after the prefix: 64 bytes, 0 buffered
+TapLeaf preimage: fa0706424950333431
+TapLeaf hash: f224a923cd0021ab202ab139cc56802ddb92dcfc172b9212261a539df79a112a
+matches BIP-341: true
+first bytes: 138 and 242, so the left leaf goes first
+TapBranch hash: 6c2dc106ab816b73f9d07e3cd1ef2c8c1256f519748e0813e4edd2405d277bef
+matches BIP-341's Merkle root: true
+TapTweak hash: 9e0517edc8259bb3359255400b23ca9507f2a91cd1e4250ba068b4eafceba4a9
+matches BIP-341's tweak: true
+TapSighash of a 175 byte message: 2514a6272f85cfa0f45eb907fcb0d121b808ed37c6ea160a5a9046ed5526d555
+matches BIP-341's sigHash: true
+challenge hash for vector 0: 6bb6b93a91f2ecc0cd924f4f9baabb5e6eb21745bb00f2cebdaac908bb5d86ce
+vector 0 verifies with this e: true
+header with its last bit flipped: 7423e9bb1c1ad68d63fed7b6256ced0271fbf363a86a618f0a894826de7ae1b4
+still the genesis hash: false
+digest bytes in hash order match the published hash: false
+empty payload with its checksum: true
+empty payload with one checksum bit changed: false
+plain SHA-256 of the message matches sigHash: false
+vector 0 verifies under the tag BIP0340/challengf: false
+tag id 7: bad tag
+31-byte txid output: bad output
+3-byte checksum output: bad output

@@ -15,6 +15,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **II. Hashes, MACs and ciphers**
 
 - [4. SHA-256](ch004-sha-256.md) — implemented
+- [5. SHA-256d and tagged hashes](ch005-sha-256d-and-tagged-hashes.md) — implemented
 - [6. RIPEMD-160 and HASH160](ch006-ripemd-160-and-hash160.md) — implemented
 - [8. HMAC-SHA256](ch008-hmac-sha256.md) — implemented
 - [9. HKDF](ch009-hkdf.md) — implemented
