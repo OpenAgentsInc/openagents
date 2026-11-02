@@ -648,7 +648,7 @@ _Bool SU_library_checks(_Bool l_root, _Bool l_authority, _Bool l_proto, _Bool l_
 }
 
 _Bool SU_admit(int64_t l_units, int64_t l_depth, int64_t l_total, int64_t l_bytes) {
-  return (((((((l_units >= INT64_C(0)) && (l_units < INT64_C(128))) && (l_depth >= INT64_C(0))) && (l_depth < INT64_C(32))) && (l_total >= INT64_C(0))) && (l_bytes >= INT64_C(0))) && (l_bytes <= coax_sub_s64(INT64_C(16777216), l_total, 465)));
+  return (((((((l_units >= INT64_C(0)) && (l_units < INT64_C(4096))) && (l_depth >= INT64_C(0))) && (l_depth < INT64_C(32))) && (l_total >= INT64_C(0))) && (l_bytes >= INT64_C(0))) && (l_bytes <= coax_sub_s64(INT64_C(67108864), l_total, 465)));
 }
 
 coax_t_SU_Visit SU_visit(coax_v_string l_paths, coax_v_u8 l_states, coax_string l_path) {
