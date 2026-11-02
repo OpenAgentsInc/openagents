@@ -4,10 +4,10 @@
 > "TASK" --engine micro` and the terminal UI's third agent both drive
 > `coax/lib/microcoder/` through a gateway plan of Vertex Gemini Flash, the
 > Gemini API and OpenRouter. Its checks cover every ending, the state's
-> caps and the reply streaming out of a partial action. Still to come:
-> recorded gateway streams replayed through the loop with byte-identical
-> logs, and the endings reached through `coder run` fixtures as well as
-> unit checks.
+> caps and the reply streaming out of a partial action. Gateway streams
+> recorded live replay through the loop with no credentials, the same each
+> time. Still to come: the endings reached through `coder run` fixtures as
+> well as unit checks.
 
 Microcoder is Coder's own engine: a small loop that runs on any model we can
 reach and needs no other agent installed. It is the engine for plain
@@ -88,6 +88,32 @@ coder/tui/coder.sh run "What is 2+2? Reply with only the number." --engine micro
   └ finished · 6.4s
 ```
 
+## Record and replay
+
+The gateway transport ([coax/lib/gateway/transport.coax](../../coax/lib/gateway/transport.coax))
+can keep what a server sent and play it back:
+
+- `GW_RECORD=DIR` saves each response as `DIR/1.http`, `DIR/2.http` and so
+  on: the status line, the headers and the body, as `curl -i` prints them.
+  Nothing of the request is kept, so no key. While recording, a response
+  arrives whole rather than streamed.
+- `GW_REPLAY=DIR` sends nothing. Each request reads the next saved response
+  instead of starting curl, in order, so no credential or server is needed.
+  The plan holds one Vertex attempt, and the psionic engine skips its
+  server check.
+
+Both keep their place in `DIR/.next`. The commands a step asks for still run
+for real, so a recording should ask for ones that give the same output on
+any machine.
+
+[coder/tui/fixtures/micro-replay](../../coder/tui/fixtures/micro-replay)
+holds two responses recorded from Vertex Gemini Flash for "Run `echo
+replay-check` and then tell me what it printed". Replayed with no
+credentials, the session log matched the live one line for line, and two
+replays matched each other byte for byte apart from the session's ID,
+times and folder: the same request digest, the same command and result,
+and the reply "It printed replay-check."
+
 ## Checks
 
 ```sh
@@ -95,6 +121,7 @@ coax test coax/lib/microcoder/run.coax --library   # the loop, state, actions, t
 coax/lib/microcoder/tools_smoke.sh           # commands and views in a real directory
 coax/lib/microcoder/live.sh                  # one live run on the plan
 python3 coder/tui/smoke.py --live microcoder # two turns in the terminal UI; the second needs the first
+python3 coder/tui/smoke.py                   # the Vertex recording replayed twice, with no credentials
 ```
 
 ## Dependencies
@@ -107,8 +134,8 @@ python3 coder/tui/smoke.py --live microcoder # two turns in the terminal UI; the
 
 - [x] `coder run --engine micro "TASK"` runs the loop in the current
   directory and prints each step and the ending.
-- [ ] Recorded gateway streams replay through the loop with byte-identical
-  logs.
+- [x] Recorded gateway streams replay through the loop with byte-identical
+  logs, apart from the session's ID, times and folder.
 - [x] Each ending is reached by a scripted check
   (`loop.coax`: "asked, no_capacity, idle and stopped", "three replies in
   a row that fail the schema").

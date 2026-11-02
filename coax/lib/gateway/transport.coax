@@ -12,9 +12,20 @@
 // log. Closing the stream (gw_close) kills curl, which closes the
 // connection: a server that watches for disconnects stops its work.
 // Part of the gateways (docs/coder/microcoder.md, row 1).
+//
+// Recording and replay (Coder book chapter 9): with GW_RECORD=DIR set,
+// each response curl gives (status line, headers and body, as -i prints
+// them) is also saved as DIR/1.http, DIR/2.http and so on; with GW_REPLAY=DIR
+// set, no request is sent and the next saved response is read back instead,
+// in order. Both keep their place in DIR/.next. A recording holds what the
+// server sent and nothing of the request, so no key.
 
 #load "sse.coax";
 #load "../agent/claude/transport.coax";
+
+// sh scripts for GW_REPLAY and GW_RECORD; the folder is $1, curl and its arguments follow.
+GW_REPLAY_SH :: "d=\"$1\"; n=$(cat \"$d/.next\" 2>/dev/null || echo 1); echo $((n + 1)) > \"$d/.next\"; f=\"$d/$n.http\"; if [ -f \"$f\" ]; then exec cat \"$f\"; fi; echo \"no recorded response $f\" >&2; exit 7";
+GW_RECORD_SH :: "d=\"$1\"; shift; mkdir -p \"$d\" || exit 7; n=$(cat \"$d/.next\" 2>/dev/null || echo 1); echo $((n + 1)) > \"$d/.next\"; \"$@\" > \"$d/$n.http\"; s=$?; cat \"$d/$n.http\"; exit $s";
 
 GwClient :: struct {
   url: string;                   // the full endpoint, e.g. http://127.0.0.1:8080/v1/responses
@@ -75,6 +86,17 @@ gw_digits :: (out: [] u8, v: int) -> string {
 // value" each). What went wrong, or "" (st is then live until gw_close).
 gw_start :: (c: GwClient, body: string, headers: [] string, st: [] GwStream) -> string {
   st[0] = GwStream.{};
+  rpb: [1024] u8; replay := cl_getenv("GW_REPLAY", rpb[..]);
+  if replay.count > 0 {
+    hr := cxproc_new();
+    if hr < 0 { return "no process slot is free"; }
+    if !(gw_arg(hr, "/bin/sh") && gw_arg(hr, "-c") && gw_arg(hr, GW_REPLAY_SH) && gw_arg(hr, "sh") && gw_arg(hr, replay)) { x := cxproc_release(hr); return "the replay folder does not fit"; }
+    e0 := cxproc_spawn(hr);
+    if e0 != 0 { x := cxproc_release(hr); return "failed to start the replay"; }
+    c0 := cxproc_close_stdin(hr);
+    st[0].h = hr; st[0].in_headers = true; st[0].exit = -1;
+    return "";
+  }
   keyed := c.key_env.count > 0;
   if keyed && !gw_name_ok(c.key_env) { return "key_env must be a plain variable name"; }
   if !keyed && c.key_value.count > 0 { return "a key needs a key_env to travel in"; }
@@ -87,8 +109,11 @@ gw_start :: (c: GwClient, body: string, headers: [] string, st: [] GwStream) -> 
   if body.count == 0 { return "no request body"; }
   h := cxproc_new();
   if h < 0 { return "no process slot is free"; }
+  rcb: [1024] u8; record := cl_getenv("GW_RECORD", rcb[..]);
   num: [24] u8; num2: [24] u8;
-  ok := gw_arg(h, c.curl) && gw_arg(h, "-sS") && gw_arg(h, "-N") && gw_arg(h, "-i");
+  ok := true;
+  if record.count > 0 { ok = gw_arg(h, "/bin/sh") && gw_arg(h, "-c") && gw_arg(h, GW_RECORD_SH) && gw_arg(h, "sh") && gw_arg(h, record); }
+  ok = ok && gw_arg(h, c.curl) && gw_arg(h, "-sS") && gw_arg(h, "-N") && gw_arg(h, "-i");
   ok = ok && gw_arg(h, "--connect-timeout") && gw_arg(h, gw_digits(num[..], c.connect_timeout_s));
   ok = ok && gw_arg(h, "--max-time") && gw_arg(h, gw_digits(num2[..], c.max_time_s));
   if keyed {

@@ -1,0 +1,25 @@
+HTTP/2 200 
+content-type: text/event-stream
+vary: X-Origin
+vary: Referer
+vary: Origin,Accept-Encoding
+date: Mon, 02 Nov 2026 09:51:03 GMT
+server: scaffolding on HTTPServer2
+x-xss-protection: 0
+x-frame-options: SAMEORIGIN
+x-content-type-options: nosniff
+alt-svc: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+accept-ranges: none
+
+data: {"choices":[{"delta":{"content":"{\n  \"rationale\": \"The command echo replay-check was executed and output '","role":"assistant"},"index":0,"logprobs":null}],"created":1793613061,"id":"BV3oaq26FIzYu-gP3qa6iAI","model":"google/gemini-3.8-flash","object":"chat.completion.chunk","system_fingerprint":""}
+
+data: {"choices":[{"delta":{"content":"replay-check'. Reporting the result to the user in one short sentence.\",\n  \"commands\": [],\n  \"view\": [],","role":"assistant"},"index":0,"logprobs":null}],"created":1793613061,"id":"BV3oaq26FIzYu-gP3qa6iAI","model":"google/gemini-3.8-flash","object":"chat.completion.chunk","system_fingerprint":""}
+
+data: {"choices":[{"delta":{"content":"\n  \"finished\": true,\n  \"reply\": \"It printed replay-check.\",\n  \"ask\":","role":"assistant"},"index":0,"logprobs":null}],"created":1793613061,"id":"BV3oaq26FIzYu-gP3qa6iAI","model":"google/gemini-3.8-flash","object":"chat.completion.chunk","system_fingerprint":""}
+
+data: {"choices":[{"delta":{"content":" \"none\"\n}","role":"assistant"},"index":0,"logprobs":null}],"created":1793613061,"id":"BV3oaq26FIzYu-gP3qa6iAI","model":"google/gemini-3.8-flash","object":"chat.completion.chunk","system_fingerprint":""}
+
+data: {"choices":[{"delta":{"content":"","extra_content":{"google":{"thought_signature":"AY89a196mqNf8ebkAAs9xK2+r3pBkOMb0IHcjTwirhXFcIZZ17d9dfhiQZp0L6bQG8nqX9DUePkd3bwTAEOXXCgIpweTkYCnFwe0ovVRBMVM1i1HAZmwRGm/7qw1QIuXw7A2TswSMRiIfygkDzgmvIg1J3DBkinligoQkepbJfi0vJGPxonln5Z7OsCfq4fAquTSkY5QTg5WdSP7XQdhxhfz07VhH42kvEq0yKkzCuAjEd4/YH6oKRGkVAGYGsSyNr5xBgmV0Ir0ORKZJQa9KnmED8gQtOBMmoLckPfi8rlAk+ktlQhV49JscVotW0QRq9MOeyAUynXdUWUFJ6gAdFAMsccpJdIale8E63tWgNEpXjJ0s9M="}},"role":"assistant"},"finish_reason":"stop","index":0,"logprobs":null}],"created":1793613061,"id":"BV3oaq26FIzYu-gP3qa6iAI","model":"google/gemini-3.8-flash","object":"chat.completion.chunk","system_fingerprint":"","usage":{"completion_tokens":75,"completion_tokens_details":{"reasoning_tokens":38},"extra_properties":{"google":{"traffic_type":"ON_DEMAND"}},"prompt_tokens":562,"total_tokens":675}}
+
+data: [DONE]
+

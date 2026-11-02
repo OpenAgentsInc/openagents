@@ -354,6 +354,23 @@ def verbs(check):
         check("--on ssh: the run happens on the other machine, is recorded here, and status by prefix is forwarded",
               rr.returncode == 0 and any(l.get("text") == "remote-ok" for l in rl) and recs == [rid + ".remote"]
               and any(n.startswith(rid) for n in os.listdir(os.path.join(rhome, ".openagents", "coder", "sessions"))) and rid in rs.stdout and "finished" in rs.stdout)
+        # replay (chapter 9): a Microcoder run recorded from Vertex replays through the loop with no credentials, the same each time
+        import re, shutil
+        fx = os.path.join(HERE, "fixtures", "micro-replay")
+        rw = tempfile.mkdtemp(prefix="coder-replay-")
+        renv = dict(env, OPENAGENTS_SECRETS="/nonexistent")
+        for k in ("VERTEX_ACCESS_TOKEN", "GOOGLE_APPLICATION_CREDENTIALS", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
+            renv.pop(k, None)
+        def replay():
+            rd = tempfile.mkdtemp(prefix="coder-replay-dir-")
+            for n in ("1.http", "2.http"):
+                shutil.copy(os.path.join(fx, n), rd)
+            r = subprocess.run([coder, "run", "Run `echo replay-check` and then tell me what it printed, in one short sentence.", "--engine", "micro", "--json", "--cwd", rw],
+                               cwd=REPO, env=dict(renv, GW_REPLAY=rd), capture_output=True, text=True, timeout=300)
+            return r.returncode, re.sub(r'"(id|cwd)":"[^"]*"|"(ms|started_us)":[0-9]*', "", r.stdout)
+        ra, rb = replay(), replay()
+        check("replay: recorded gateway streams run through the loop with no credentials, byte-identical each time",
+              ra[0] == 0 and ra == rb and '"text":"It printed replay-check."' in ra[1] and '"label":"Bash(echo replay-check)"' in ra[1])
         # goals (chapter 14): the check runs after each finished turn; its output is the next turn until it passes
         gw = tempfile.mkdtemp(prefix="coder-goal-")
         gm = subprocess.run([coder, "run", "$ echo working", "--engine", "echo", "--json", "--cwd", gw, "--goal", "test -f c || { touch c; echo c-missing; false; }"],

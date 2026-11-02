@@ -107,6 +107,9 @@ mk_vertex :: (k: [] MkKeys) -> string {
 mk_plan :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers) -> int {
   gw_plan_init(p, pb);
   none := k[0].none[0..<0];
+  // a replay of recorded answers (GW_REPLAY): Vertex's wire, with no credential, since nothing is sent
+  rb: [1024] u8;
+  if gw_env("GW_REPLAY", rb[..]).count > 0 { x := gw_plan_add(p, gw_vertex(k[0].vx[..]), GW_VERTEX_FLASH, none); return p[0].n; }
   why := mk_vertex(k);
   if why.count == 0 { x := gw_plan_add(p, gw_vertex(k[0].vx[..]), GW_VERTEX_FLASH, none); }
   else if !k[0].told { k[0].told = true; tool_err("microcoder: Vertex skipped: "); tool_errln(why); }
@@ -129,7 +132,8 @@ mk_plan :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers) -> int {
 mk_plan_local :: (k: [] MkKeys, p: [] GwPlan, pb: [] GwPlanBuffers, why: [] u8) -> string {
   gw_plan_init(p, pb);
   base := gw_psionic_base(k[0].pbase[..]);
-  if !gw_psionic_up(base) {
+  rb: [1024] u8; replaying := gw_env("GW_REPLAY", rb[..]).count > 0;    // recorded answers: no server to ask
+  if !replaying && !gw_psionic_up(base) {
     n := mk_cat(why, 0, "No model server answers at "); n = mk_cat(why, n, base);
     n = mk_cat(why, n, "/v1/models. Start one there (psionic, llama-server or any Chat Completions server), or set PSIONIC_BASE_URL.");
     return cast(string) why[0..<n];
