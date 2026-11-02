@@ -239,8 +239,11 @@ replying twice.
     issue in the issue format; the Router's own comment is not an event.
 - Unit checks for the last turn's result, the chat word cap and the issue
   format, and GitHub thread and cursor parsing.
-- Live: the two `chat` events above, decided by System One, and the
-  read-only GitHub poll.
+  - With ten candidates and no System One key, the first pass sends eight in
+    one request and drops them with why, and the next pass takes the other
+    two.
+- Live: the two `chat` events above, decided by System One; six candidates
+  decided in one batch; and the read-only GitHub poll.
 
 ## Dependencies
 
