@@ -185,6 +185,22 @@ def verbs(check):
                        env=dict(env, HOME=hook_home, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=hook_out, CLAUDE_STUB_MODE="hook"), capture_output=True, text=True, timeout=120)
         hooked = [json.loads(x) for x in open(hook_out)] if os.path.exists(hook_out) else []
         check("a tool_call hook refuses rm and lets ls run", [(h["command"], h["decision"]) for h in hooked] == [("ls", "allow"), ("rm -rf build", "deny")])
+        # Microcoder's commands pass the same hooks and policy before they run (chapter 15)
+        mc_home = tempfile.mkdtemp(prefix="coder-mchook-"); os.makedirs(os.path.join(mc_home, ".openagents/coder/plugins"))
+        with open(os.path.join(mc_home, ".openagents/coder/plugins/guard.json"), "w") as f:
+            f.write(json.dumps({"name": "guard", "hooks": [{"on": "tool_call", "run": "case \"$CODER_TOOL\" in *local-step*) echo no steps here; exit 1;; esac"}]}))
+        mh = subprocess.run([coder, "run", "say ok", "--engine", "psionic", "--json"], cwd=REPO, env=dict(env, HOME=mc_home), capture_output=True, text=True, timeout=600)
+        ml = [json.loads(l) for l in mh.stdout.splitlines() if l.startswith("{")]
+        mhook = [l for l in ml if l["kind"] == "hook"]
+        mres = [l for l in ml if l["kind"] == "result"]
+        check("microcoder: a tool_call hook refuses its command, and the model is told why",
+              len(mhook) == 1 and not mhook[0]["ok"] and mhook[0]["tool"] == "Bash(echo local-step)"
+              and len(mres) == 1 and mres[0]["error"] and "no steps here" in mres[0]["text"] and ml[-1].get("ending") == "finished")
+        mp_run = subprocess.run([coder, "run", "say ok", "--engine", "psionic", "--ceiling", "write", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=600)
+        mpl = [json.loads(l) for l in mp_run.stdout.splitlines() if l.startswith("{")]
+        check("microcoder: the policy refuses a command above the ceiling",
+              any(l["kind"] == "approval" and l["verdict"] == "refuse" and l["tool"] == "Bash(echo local-step)" for l in mpl)
+              and any(l["kind"] == "result" and l["error"] for l in mpl))
         # the agent's terminal (chapter 37): a program that asks a question gets an answer typed into it
         term_out = os.path.join(home, "term-answers")
         calls = [{"name": "terminal_start", "arguments": {"command": "printf 'name? '; read n; echo hi-$n; sleep 5"}},

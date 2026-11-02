@@ -28,6 +28,8 @@ cd_micro_send :: (a: [] App, msg: string) {
   n := json_raw(ob[..], 0, "{\"task\":"); n = json_write_string(ob[..], n, msg);
   n = json_raw(ob[..], n, ",\"cwd\":"); n = json_write_string(ob[..], n, a[0].cwd);
   if a[0].engine == ENGINE_PSIONIC { n = json_raw(ob[..], n, ",\"local\":true"); }
+  // hooks and approvals see each command first (chapter 15)
+  if cd_has_hook(a, "tool_call") || a[0].pol[0].on || a[0].ask_first { n = json_raw(ob[..], n, ",\"gated\":true"); }
   n = json_raw(ob[..], n, "}\n");
   if n < 0 || !cd_micro_write(a, cast(string) ob[0..<n]) { cd_micro_close(a); cd_finish(a, END_FAILED, "Microcoder's worker is gone."); }
 }
@@ -111,6 +113,7 @@ cd_micro_line :: (a: [] App, line: string) {
     cd_result_line(a, ifx timed_out then "timed out" else cd_mc_str(a, line, "output"), timed_out || (exit.ok && exit.value != 0));
     return;
   }
+  if kind == "ask" { cd_micro_ask(a, cd_mc_str(a, line, "command")); return; }
   if kind == "ended" {
     eb: [64] u8; en := cd_cat(eb[..], 0, cd_mc_str(a, line, "ending")); ending := cast(string) eb[0..<en];
     text := cd_mc_str(a, line, "text");
@@ -140,3 +143,38 @@ cd_micro_stop :: (a: [] App) {
   a[0].stopping = false;
   cd_finish(a, END_STOPPED, "");
 }
+
+// A gated run's command: the plugins' tool_call hooks, then the approval
+// policy, then the person when the policy (or --ask) says to ask.
+cd_micro_ask :: (a: [] App, command: string) {
+  lb: [1024] u8; what := cd_label(a, "Bash", command, lb[..]);
+  ib: [4200] u8; inn := json_raw(ib[..], 0, "{\"command\":"); inn = json_write_string(ib[..], inn, command); inn = json_raw(ib[..], inn, "}");
+  hw: [400] u8; for i: 0..<hw.count { hw[i] = 0; }
+  if !cd_hooks_run(a, "tool_call", "", what, ifx inn > 0 then cast(string) ib[0..<inn] else "{}", hw[..]) {
+    k := 0; while k < hw.count && hw[k] != 0 { k += 1; }
+    cd_micro_answer_why(a, false, cast(string) hw[0..<k]); return;
+  }
+  if a[0].pol[0].on {
+    pw: [256] u8; for i: 0..<pw.count { pw[i] = 0; }
+    verdict := cd_policy_decide(a[0].pol[..], CD_EFFECT_RUN, true, pw[..]);
+    k := 0; while k < pw.count && pw[k] != 0 { k += 1; }
+    cd_approval_note(a, what, CD_EFFECT_RUN, true, verdict, cast(string) pw[0..<k]);
+    if verdict == CD_VERDICT_RUN { cd_micro_answer_why(a, true, ""); return; }
+    if verdict == CD_VERDICT_REFUSE { wb: [400] u8; wn := cd_cat(wb[..], 0, "policy: "); wn = cd_cat(wb[..], wn, cast(string) pw[0..<k]); cd_micro_answer_why(a, false, cast(string) wb[0..<wn]); return; }
+  } else if !a[0].ask_first { cd_micro_answer_why(a, true, ""); return; }
+  a[0].nask = cd_cat(a[0].ask_text[..], 0, "Allow ");
+  a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, what);
+  a[0].nask = cd_cat(a[0].ask_text[..], a[0].nask, "?");
+  a[0].ask = true;
+}
+
+cd_micro_answer_why :: (a: [] App, allow: bool, why: string) {
+  ob: [1200] u8;
+  n := json_raw(ob[..], 0, ifx allow then "{\"answer\":true" else "{\"answer\":false");
+  if !allow { n = json_raw(ob[..], n, ",\"why\":"); n = json_write_string(ob[..], n, ifx why.count > 0 then why else "refused"); }
+  n = json_raw(ob[..], n, "}\n");
+  if n < 0 || !cd_micro_write(a, cast(string) ob[0..<n]) { cd_micro_close(a); cd_finish(a, END_FAILED, "Microcoder's worker is gone."); }
+}
+
+// The person's answer at the prompt: y runs the command; anything else refuses it.
+cd_micro_answer :: (a: [] App, c: int) { cd_micro_answer_why(a, c == 'y' || c == 'Y', "The person denied this."); }

@@ -671,6 +671,7 @@ cd_claude_poll :: (a: [] App) -> bool {
 
 cd_claude_answer :: (a: [] App, c: int) {
   if a[0].engine == ENGINE_CODEX { cd_codex_answer(a, c); }
+  else if cd_is_micro(a[0].engine) { cd_micro_answer(a, c); }
   else if c == 'y' || c == 'Y' { cl_allow(a[0].q, cast(string) a[0].ask_input[0..<a[0].nask_input], ""); }
   else if c == 'a' || c == 'A' { cl_allow(a[0].q, cast(string) a[0].ask_input[0..<a[0].nask_input], cast(string) a[0].ask_perm[0..<a[0].nask_perm]); }
   else { cl_deny(a[0].q, "The person denied this.", false); }

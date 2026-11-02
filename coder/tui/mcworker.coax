@@ -6,11 +6,13 @@
 //        {"task":...,"local":true}        the same on the model server on this machine (psionic)
 //        {"stop":true}                    STOP the run
 //        {"forget":true}                  forget the conversation
+//        {"task":...,"gated":true}        each command waits for an answer: {"answer":true} or {"answer":false,"why":"..."}
 //   out  {"kind":"ready"}
 //        {"kind":"reply","text":"..."}    more of the reply as it streams
 //        {"kind":"attempt","gateway":"vertex","model":"...","outcome":"done","status":200,"usd_micros":717}
 //        {"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"..."}
 //        {"kind":"view","path":"a.txt","found":true}
+//        {"kind":"ask","command":"rm -rf build"}   a gated run's command, waiting for its answer
 //        {"kind":"ended","ending":"finished","text":"..."}
 //
 // Each run's facts carry the earlier turns as "conversation". Credentials as
@@ -58,6 +60,8 @@ mw_event :: (e: McRunEvent, o: [] u8) {
   } else if e.kind == MR_VIEW {
     n = json_raw(o, 0, "{\"kind\":\"view\",\"path\":"); n = json_write_string(o, n, e.text);
     n = json_raw(o, n, ifx e.found then ",\"found\":true}" else ",\"found\":false}");
+  } else if e.kind == MR_ASK {
+    n = json_raw(o, 0, "{\"kind\":\"ask\",\"command\":"); n = json_write_string(o, n, e.text); n = json_raw(o, n, "}");
   } else if e.kind == MR_ENDED {
     n = json_raw(o, 0, "{\"kind\":\"ended\",\"ending\":"); n = json_write_string(o, n, mc_ending_name(e.ending));
     n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, e.text);
@@ -119,6 +123,21 @@ tool_main :: () -> int #export_c {
       continue;
     }
     if cl_bool(msg, "forget").ok { h[0].turns = 0; continue; }
+    ans := cl_bool(msg, "answer");
+    if ans.ok {
+      if running {
+        ev: [32] McRunEvent;
+        n := mc_run_answer(run[..], ans.value, cl_str(ar[..], msg, "why"), ev[..]);
+        for i: 0..<n {
+          if ev[i].kind == MR_ENDED {
+            running = false;
+            if ev[i].ending == MC_END_FINISHED || ev[i].ending == MC_END_ASKED { mk_remember(h[..], ev[i].text); }
+          }
+          mw_event(ev[i], out[..]);
+        }
+      }
+      continue;
+    }
     t := cl_str(ar[..], msg, "task");
     if t.count == 0 || running { continue; }
     tn := mk_keep(task[..], t);
@@ -136,6 +155,8 @@ tool_main :: () -> int #export_c {
     h[0].ncur = mk_keep(h[0].cur[..], tk);
     fx := mk_facts(h[..], cd, facts[..]);
     mc_init(run[0].l[..], sb[..], lb[..], fx, tk, "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
+    gated := cl_bool(msg, "gated");
+    run[0].gated = gated.ok && gated.value; run[0].asking = false;
     mc_run_start(run[..], plan[..], bench[..], cd, "low");
     running = true;
   }

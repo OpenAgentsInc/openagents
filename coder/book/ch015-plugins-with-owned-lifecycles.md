@@ -5,7 +5,8 @@
 > its states are visible, and disabling it removes everything it
 > registered. A signed plugin installs only when its Nostr signature
 > verifies and its key is trusted. Hooks run on `session_start`,
-> `turn_end` and `tool_call`, and a `tool_call` hook can refuse the call.
+> `turn_end` and `tool_call`, and a `tool_call` hook can refuse a call from
+> Claude Code, Codex or Microcoder.
 > Still to come: profiles, capabilities with providers and consumers, the
 > draining state, and third-party plugins in bounded Wasm.
 
@@ -87,7 +88,15 @@ non-zero refuses the call, and its output is the reason the agent sees:
 - Codex: Coder asks Codex for approvals (policy `untrusted`), and each one
   passes the hooks first. Codex doesn't ask before commands it treats as
   safe to read, so those skip the hooks.
-- Microcoder: not yet.
+- Microcoder: when a plugin has a `tool_call` hook, or an approval policy
+  or `--ask` is on, Coder starts the worker's run gated. Before each
+  command, the run stops with `MR_ASK` and the worker writes
+  `{"kind":"ask","command":...}`. Coder runs the hooks, then the policy,
+  then asks the person if the policy says to ask. It answers
+  `{"answer":true}` or `{"answer":false,"why":...}`. A refused command
+  doesn't run; the model sees it with `refused` and the reason in its next
+  state, and the run goes on (`mc_run_answer` in
+  [run.coax](../../coax/lib/microcoder/run.coax)).
 
 A `tool_call` hook that allows a call and prints nothing adds no row to the
 transcript; the log still has its line.
@@ -139,7 +148,8 @@ openagents nostr sign --kind 30078 --tags '[["d","coder-plugin:NAME"]]' --conten
 
 ```sh
 coax test coder/tui/coder.coax    # owned registrations, transitions, refusals, signatures
-python3 coder/tui/smoke.py        # a plugin's command runs; disabled, it keeps no command; hooks run on their events
+python3 coder/tui/smoke.py        # a plugin's command runs; disabled, it keeps no command; hooks run on their events;
+                                  # a hook and the policy refuse Microcoder's command
 ```
 
 ## Dependencies
