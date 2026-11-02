@@ -177,12 +177,20 @@ revision published (`0094_realm_live_and_undo.sql`): the spec, `/doc` and a
 fork by anyone but the owner are of that revision, and nothing but PUBLISH
 changes it. Every revision the owner's edits make is kept, and `POST
 .../<slug>/undo` restores an earlier one as a new revision, never rewriting
-history. A realm made or forked
+history. Each undo step is the edit's per-slot inverses, the slots
+`aethyr/forge/edit.coax` names (`0110_realm_edit_log.sql`): undo puts each
+slot it changed back, newest first, and is refused (409, nothing changed) when
+a slot is no longer what the step left; `.../<slug>/redo` applies it again
+under the same rule, and a new edit drops what was undone. A made realm's lore
+and quests are in its document (present only when it has some, so a document
+without them keeps its bytes and hash), so publish, undo and fork carry them;
+lore moved there from 0055's tables became one new revision and every older
+revision kept its bytes and hash. A realm made or forked
 by a tool (`verse-automation` cookie, `X-Verse-Automation` header) is
 unlisted. Checks: `coax/web/api/test_realm_fork.py` (stale save and publish
 refused, the original byte-identical after the fork is saved, tool-made realms
 unlisted, visitors on the revision published, each edit undone as one step); `aethyr/forge/edit.coax` (an edit is refused when its entity moved
-since, or a slot changed since; apply then inverse is the identity, for every revision path; a replayed log gives the same document); `coax/web/api/tests/realm_shapes.sql` (turns, sizes and removals, 0109: a save without them keeps them; visitors, forks and undo carry them); `apps/openagents-web/myrealm.coax`
+since, or a slot changed since; apply then inverse is the identity, for every revision path; a replayed log gives the same document); `coax/web/api/tests/realm_shapes.sql` (turns, sizes and removals, 0109: a save without them keeps them; visitors, forks and undo carry them); `coax/web/api/tests/realm_edit_log.sql` (every revision path is one step of ops; undo and redo walk them to each earlier state; a stale step refused; older steps undo whole; lore and quests published, undone, forked and moved in without changing older hashes); `coax/web/api/tests/realm_cli_api.coax` (the built CLI against a local API: rotate, resize, remove, lore, quest, a stale refusal, undo per edit, a pinned publish, a fork); `apps/openagents-web/myrealm.coax`
 (a 409 keeps the changes); `coax/web/tool.sh forge-journey` end to end.
 
 CLI edits use `commands.coax` for bounded arguments and carry a revision to

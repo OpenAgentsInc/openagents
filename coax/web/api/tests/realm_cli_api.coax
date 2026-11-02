@@ -1,0 +1,209 @@
+// The built CLI against a real API (GitHub #12629): rotate, resize and remove, lore and quests, a
+// stale refusal, undo through the server's per-edit log (migrations/0110_realm_edit_log.sql),
+// publish and a fork, every change read back from the database the API writes. Not a fixture:
+// the API is coax/web/api built from this checkout, on a throwaway PostgreSQL with every migration
+// applied. A fresh key is made for the run and passed only in the CLI's environment (never printed);
+// its NIP-98 caller (0098) owns the realm the check makes in SQL, since making one by words needs
+// the builder's model.
+// With PINNED=1 the API was started with OA_SITE_BUCKET and OA_ENGINE_TEMPLATE (an engine page), and
+// the publication must pin it; without, the API has no bucket and the publish is unpinned (0107).
+//   CLI=apps/openagents-cli/build/openagents API=http://127.0.0.1:PORT PGURL=... PSQL=psql [PINNED=1] \
+//     coax/web/tool.sh coax/web/api/tests/realm_cli_api.coax
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/json/json.coax";
+
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+CA_OUT :: 65536;
+Ca :: struct {
+  cli: string; api: string; db: string; psql: string;
+  key_env: [96] u8; key_n: int;
+  out: [CA_OUT] u8; n: int; status: int;
+  checks: int; fails: int;
+  pinned: bool;   // PINNED=1: the API reads an engine page (OA_ENGINE_TEMPLATE), so a publish pins it
+}
+ca_ok :: (c: [] Ca, ok: bool, what: string) -> bool {
+  c[0].checks += 1;
+  if ok { print("ok   %\n", what); } else { print("FAIL % (CLI exit %)\n", what, c[0].status); c[0].fails += 1; }
+  return ok;
+}
+// Text joined into a buffer.
+Cb :: struct { b: [4096] u8; n: int; bad: bool; }
+cb_put :: (w: [] Cb, s: string) { if w[0].bad || w[0].n + s.count > w[0].b.count { w[0].bad = true; return; } for i: 0..<s.count { w[0].b[w[0].n + i] = s[i]; } w[0].n += s.count; }
+cb_int :: (w: [] Cb, v: int) {
+  if v < 0 { cb_put(w, "-"); cb_int(w, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; cb_put(w, cast(string) e[..]); }
+}
+cb_text :: (w: [] Cb) -> string { return cast(string) w[0].b[0..<w[0].n]; }
+
+// One statement's single value (psql -At); "" on any error.
+ca_sql :: (c: [] Ca, sql: string, out: [] u8) -> string {
+  a := [8] string.[c[0].psql, "-XAt", "-v", "ON_ERROR_STOP=1", "--dbname", c[0].db, "-c", sql];
+  err: [4096] u8;
+  got := proc_run(a[..], 60000, out, err[..]);
+  if got.status != 0 || got.timed_out || got.cut { tool_err("cli-api sql: "); tool_errln(cast(string) err[0..<got.err_n]); return ""; }
+  return cast(string) out[0..<got.out_n];
+}
+ca_true :: (c: [] Ca, sql: string) -> bool { o: [16] u8; return ca_sql(c, sql, o[..]) == "t"; }
+ca_whole :: (s: string) -> int {
+  if s.count == 0 || s.count > 12 { return -1; }
+  v := 0; for ch: s { if ch < '0' || ch > '9' { return -1; } v = v * 10 + cast(int) (ch - '0'); }
+  return v;
+}
+ca_rev :: (c: [] Ca, slug: string) -> int {
+  q: [1] Cb; cb_put(q[..], "SELECT rev FROM verse.made_realms WHERE slug = '"); cb_put(q[..], slug); cb_put(q[..], "'");
+  o: [32] u8; return ca_whole(ca_sql(c, cb_text(q[..]), o[..]));
+}
+// Is this true of the realm's document now (d: verse.realm_doc of it)?
+ca_doc :: (c: [] Ca, slug: string, cond: string) -> bool {
+  q: [1] Cb; cb_put(q[..], "SELECT coalesce(("); cb_put(q[..], cond); cb_put(q[..], "), false) FROM (SELECT verse.realm_doc(r) d FROM verse.made_realms r WHERE r.slug = '");
+  cb_put(q[..], slug); cb_put(q[..], "') x");
+  return ca_true(c, cb_text(q[..]));
+}
+
+// The built CLI with --json --origin API, its key only in its environment; true when it exits
+// `expect` and prints one JSON answer whose ok says so. Output is never echoed.
+ca_cli :: (c: [] Ca, words: [] string, expect: int) -> bool {
+  c[0].n = 0; c[0].status = -1;
+  h := proc_new(); if h < 0 { return false; }
+  ok := proc_arg(h, c[0].cli) && proc_env(h, "OPENAGENTS_KEYCHAIN=0") && proc_env(h, cast(string) c[0].key_env[0..<c[0].key_n]);
+  for w: words { ok = ok && proc_arg(h, w); }
+  ok = ok && proc_arg(h, "--json") && proc_arg(h, "--origin") && proc_arg(h, c[0].api);
+  if !ok || proc_start(h) != 0 { done := proc_release(h); return false; }
+  until := proc_now_ms() + 60000;
+  line: [CA_OUT] u8; complete := false; cut := false;
+  while proc_now_ms() < until {
+    n := proc_line(h, 10, line[..]);
+    if n == PROC_EOF { complete = true; break; }
+    if n == PROC_TIMEOUT { continue; }
+    if n < 0 { cut = true; break; }
+    if c[0].n > 0 { if c[0].n >= CA_OUT { cut = true; break; } c[0].out[c[0].n] = '\n'; c[0].n += 1; }
+    if c[0].n + n > CA_OUT { cut = true; break; }
+    for i: 0..<n { c[0].out[c[0].n + i] = line[i]; } c[0].n += n;
+  }
+  if !complete { killed := proc_kill(h, PROC_SIGKILL); }
+  c[0].status = proc_wait(h, 2000); done := proc_release(h);
+  if !complete || cut || c[0].status != expect { return false; }
+  nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) c[0].out[0..<c[0].n], nodes[..]) { return false; }
+  return jv_bool(d[0], jv_get(d[0], 0, "ok")) == (expect == 0);
+}
+ca_answer :: (c: [] Ca, path1: string, path2: string, out: [] u8) -> string {
+  nodes: [2048] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) c[0].out[0..<c[0].n], nodes[..]) { return ""; }
+  at := jv_get(d[0], 0, path1);
+  if path2 != "" { at = jv_get(d[0], at, path2); }
+  n := jv_str(d[0], at, out);
+  if n < 0 { raw := jv_raw(d[0], at); if raw.count > out.count { return ""; } for i: 0..<raw.count { out[i] = raw[i]; } return cast(string) out[0..<raw.count]; }
+  return cast(string) out[0..<n];
+}
+ca_num :: (v: int, out: [] u8) -> string { q: [1] Cb; cb_int(q[..], v); for i: 0..<q[0].n { out[i] = q[0].b[i]; } return cast(string) out[0..<q[0].n]; }
+
+ca_run :: (c: [] Ca) -> bool {
+  me := [1] string.["whoami"];
+  if !ca_ok(c, ca_cli(c, me[..], 0), "the CLI names its key (whoami)") { return false; }
+  pk: [80] u8; pubkey := ca_answer(c, "pubkey", "", pk[..]);
+  if pubkey.count != 64 { pubkey = ca_answer(c, "body", "pubkey", pk[..]); }
+  if !ca_ok(c, pubkey.count == 64, "its public key is 64 hex digits") { return false; }
+  sb: [64] u8; stamp := ca_num(proc_now_ms() % 1000000000, sb[..]);
+  slug_b: [1] Cb; cb_put(slug_b[..], "cli-api-"); cb_put(slug_b[..], stamp); slug := cb_text(slug_b[..]);
+  // The realm, owned by the key's caller player (0098), made as MAKE IT would make it.
+  q: [1] Cb;
+  cb_put(q[..], "DO $$ DECLARE k text := auth.caller_key('"); cb_put(q[..], pubkey); cb_put(q[..], "'); p verse.players; BEGIN ");
+  cb_put(q[..], "SELECT * INTO p FROM verse.players WHERE key_sha256 = projects.sha(k); ");
+  cb_put(q[..], "INSERT INTO verse.worlds (id, owner_player, owner_account, created_ms) VALUES ('made-"); cb_put(q[..], slug); cb_put(q[..], "', p.id, p.account, 1); ");
+  cb_put(q[..], "INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, unlisted) VALUES ('");
+  cb_put(q[..], slug); cb_put(q[..], "', 'made-"); cb_put(q[..], slug);
+  cb_put(q[..], "', 'CLI API Test', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"size\":\"some\"},{\"feature\":\"rocks\"}]', '{}', 1, true); END $$");
+  o: [64] u8;
+  if !ca_ok(c, ca_sql(c, cb_text(q[..]), o[..]) == "DO" && ca_rev(c, slug) >= 1, "a private realm the CLI's caller owns") { return false; }
+  print("realm % revision %\n", slug, ca_rev(c, slug));
+
+  rb: [24] u8; r0 := ca_rev(c, slug);
+  rot := [6] string.["realm", "rotate", slug, "trees:1", "90", "--rev"];
+  w6 := [7] string.[rot[0], rot[1], rot[2], rot[3], rot[4], rot[5], ca_num(r0, rb[..])];
+  if !ca_ok(c, ca_cli(c, w6[..], 0), "rotate trees:1 90 at the revision read") { return false; }
+  w6[1] = "resize"; w6[4] = "150"; w6[6] = ca_num(ca_rev(c, slug), rb[..]);
+  if !ca_ok(c, ca_cli(c, w6[..], 0), "resize trees:1 to 150 percent") { return false; }
+  rm := [6] string.["realm", "remove", slug, "rocks:0", "--rev", ca_num(ca_rev(c, slug), rb[..])];
+  if !ca_ok(c, ca_cli(c, rm[..], 0), "remove rocks:0") { return false; }
+  if !ca_ok(c, ca_rev(c, slug) == r0 + 3
+             && ca_doc(c, slug, "d->'shaped' @> '[{\"entity\":\"trees:1\",\"yaw\":90,\"scale\":150,\"gone\":false},{\"entity\":\"rocks:0\",\"yaw\":0,\"scale\":100,\"gone\":true}]' AND jsonb_array_length(d->'shaped') = 2"),
+             "the server's document holds the turn, the size and the removal, three revisions on") { return false; }
+  // the CLI's own read of the document is the server's, hash and all
+  dw := [3] string.["realm", "doc", slug];
+  hb: [80] u8; rv: [24] u8;
+  if !ca_ok(c, ca_cli(c, dw[..], 0), "the CLI reads the document") { return false; }
+  sha := ca_answer(c, "sha256", "", hb[..]); if sha.count != 64 { sha = ca_answer(c, "body", "sha256", hb[..]); }
+  q[0].n = 0; cb_put(q[..], "SELECT verse.realm_doc_sha(verse.realm_doc(r)) = '"); cb_put(q[..], sha); cb_put(q[..], "' FROM verse.made_realms r WHERE slug = '"); cb_put(q[..], slug); cb_put(q[..], "'");
+  if !ca_ok(c, sha.count == 64 && ca_true(c, cb_text(q[..])), "its SHA-256 is the server's document's") { return false; }
+  // a stale rotate is refused (exit 5, 409) and changes nothing
+  r3 := ca_rev(c, slug);
+  w6[1] = "rotate"; w6[4] = "45"; w6[6] = ca_num(r0, rb[..]);
+  if !ca_ok(c, ca_cli(c, w6[..], 5) && ca_rev(c, slug) == r3 && ca_doc(c, slug, "d->'shaped' @> '[{\"entity\":\"trees:1\",\"yaw\":90}]'"),
+             "a stale rotate exits 5 and the document stays") { return false; }
+  // lore and quests are document edits
+  lo := [7] string.["realm", "lore", slug, "mara", "Keeps the lamp.", "--rev", ca_num(r3, rb[..])];
+  if !ca_ok(c, ca_cli(c, lo[..], 0) && ca_doc(c, slug, "d->'lore' = '{\"mara\":\"Keeps the lamp.\"}'"), "lore is in the document") { return false; }
+  qu := [11] string.["realm", "quest", slug, "mara", "--ask", "Light the lamp", "--step", "Find oil", "--reward", "A map", "--rev"];
+  qw := [12] string.[qu[0], qu[1], qu[2], qu[3], qu[4], qu[5], qu[6], qu[7], qu[8], qu[9], qu[10], ca_num(ca_rev(c, slug), rb[..])];
+  if !ca_ok(c, ca_cli(c, qw[..], 0) && ca_doc(c, slug, "d->'quests'->'mara'->>'ask' = 'Light the lamp' AND d->'quests'->'mara'->'steps'->>0 = 'Find oil'"), "a quest is in the document") { return false; }
+  // undo walks the server's log one edit at a time: the quest, the lore, then the removal
+  for step: 0..<3 {
+    un := [5] string.["realm", "undo", slug, "--rev", ca_num(ca_rev(c, slug), rb[..])];
+    if !ca_cli(c, un[..], 0) { return ca_ok(c, false, "undo"); }
+    cond := ifx step == 0 then "NOT (d ? 'quests') AND d->'lore' ? 'mara'"
+            else ifx step == 1 then "NOT (d ? 'lore') AND d->'shaped' @> '[{\"entity\":\"rocks:0\",\"gone\":true}]'"
+            else "d->'shaped' = '[{\"entity\":\"trees:1\",\"yaw\":90,\"scale\":150,\"gone\":false}]'";
+    what := ifx step == 0 then "undo takes the quest back and keeps the lore"
+            else ifx step == 1 then "undo takes the lore back and keeps the removal"
+            else "undo brings rocks:0 back and keeps trees:1's turn and size";
+    if !ca_ok(c, ca_doc(c, slug, cond), what) { return false; }
+  }
+  q[0].n = 0; cb_put(q[..], "SELECT strpos(verse.edit_spec(r.slug, auth.caller_key('"); cb_put(q[..], pubkey); cb_put(q[..], "'), false), E'\\nredo 3\\n') > 0 FROM verse.made_realms r WHERE slug = '"); cb_put(q[..], slug); cb_put(q[..], "'");
+  if !ca_ok(c, ca_true(c, cb_text(q[..])), "the owner's spec says three steps can be redone") { return false; }
+  // publish that revision; fork it; the fork's edit stays its own
+  pubw := [6] string.["realm", "publish", slug, "--rev", ca_num(ca_rev(c, slug), rb[..]), "--yes"];
+  if !ca_ok(c, ca_cli(c, pubw[..], 0) && ca_true(c, "SELECT true"), "publish the revision") { return false; }
+  q[0].n = 0; cb_put(q[..], "SELECT published_rev = rev AND published_sha256 = verse.realm_doc_sha(verse.realm_doc(r)) FROM verse.made_realms r WHERE slug = '"); cb_put(q[..], slug); cb_put(q[..], "'");
+  if !ca_ok(c, ca_true(c, cb_text(q[..])), "the published hash is the document's") { return false; }
+  if c[0].pinned {   // the API was given an engine page (OA_ENGINE_TEMPLATE): the publication pins it (0107)
+    q[0].n = 0; cb_put(q[..], "SELECT p.engine_sha256 = encode(sha256(convert_to(p.engine, 'UTF8')), 'hex') AND p.doc_sha256 = r.published_sha256 AND p.rev = r.published_rev FROM verse.made_realms r JOIN verse.realm_publications p ON p.slug = r.slug WHERE r.slug = '");
+    cb_put(q[..], slug); cb_put(q[..], "' ORDER BY p.n DESC LIMIT 1");
+    if !ca_ok(c, ca_true(c, cb_text(q[..])), "the publication pins the engine manifest with the revision's hash") { return false; }
+  }
+  fk := [5] string.["realm", "fork", slug, "--name", "CLI API Test Fork"];
+  if !ca_ok(c, ca_cli(c, fk[..], 0), "fork it") { return false; }
+  fb: [64] u8; fork := ca_answer(c, "slug", "", fb[..]); if fork == "" { fork = ca_answer(c, "body", "slug", fb[..]); }
+  if !ca_ok(c, fork != "" && ca_doc(c, fork, "d->'shaped' = '[{\"entity\":\"trees:1\",\"yaw\":90,\"scale\":150,\"gone\":false}]'"), "the fork carries its parent's shapes") { return false; }
+  parent_rev := ca_rev(c, slug);
+  fr := [7] string.["realm", "rotate", fork, "trees:1", "0", "--rev", ca_num(ca_rev(c, fork), rb[..])];
+  if !ca_ok(c, ca_cli(c, fr[..], 0) && ca_doc(c, fork, "d->'shaped' = '[{\"entity\":\"trees:1\",\"yaw\":0,\"scale\":150,\"gone\":false}]'")
+             && ca_rev(c, slug) == parent_rev && ca_doc(c, slug, "d->'shaped' @> '[{\"entity\":\"trees:1\",\"yaw\":90}]'"),
+             "the fork's rotate is its own; the parent stays") { return false; }
+  return true;
+}
+
+tool_main :: () -> int #export_c {
+  c: [1] Ca;
+  b1: [1024] u8; b2: [256] u8; b3: [1024] u8; b4: [1024] u8;
+  c[0].cli = proc_getenv("CLI", b1[..]); c[0].api = proc_getenv("API", b2[..]);
+  c[0].db = proc_getenv("PGURL", b3[..]); c[0].psql = proc_getenv("PSQL", b4[..]);
+  if c[0].cli == "" { c[0].cli = "apps/openagents-cli/build/openagents"; }
+  b5: [8] u8; c[0].pinned = proc_getenv("PINNED", b5[..]) == "1";
+  if c[0].api.count < 18 || c[0].api[0..<17] != "http://127.0.0.1:" || c[0].db == "" || c[0].psql == "" {
+    tool_errln("set API=http://127.0.0.1:PORT (a local API only), PGURL and PSQL (its throwaway database)"); return 2;
+  }
+  secret: [32] u8; if cxrand_draw(secret[..], 32) != 0 { return 1; }
+  pre := "OPENAGENTS_NSEC="; for i: 0..<pre.count { c[0].key_env[i] = pre[i]; } c[0].key_n = pre.count;
+  hex := "0123456789abcdef";
+  for i: 0..<32 { c[0].key_env[c[0].key_n] = hex[cast(int) (secret[i] >> 4)]; c[0].key_env[c[0].key_n + 1] = hex[cast(int) (secret[i] & 15)]; c[0].key_n += 2; secret[i] = 0; }
+  ok := ca_run(c[..]);
+  for i: 0..<c[0].key_env.count { c[0].key_env[i] = 0; }
+  print("% of % CLI/API checks passed\n", c[0].checks - c[0].fails, c[0].checks);
+  return ifx ok && c[0].fails == 0 then 0 else 1;
+}

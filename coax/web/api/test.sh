@@ -117,9 +117,11 @@ if [[ -x "$cli_coax" ]]; then
   done
   API="http://127.0.0.1:$api_port" ORIGIN="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" \
     ANIME_ONLY= ANIME_ISOLATED_DB=oa_analytics ANIME_SELECTOR_BIN="$work/anime_direct_selector" "$work/anime_direct" || { cat "$work/api.log"; exit 1; }
-  # A made realm's engine pins and shapes, and Aethyrforge's whole route checked end to end (#12629).
+  # A made realm's engine pins, shapes and edit log, and Aethyrforge's whole route checked end to end (#12629).
+  # (The built CLI against a local API is tests/realm_cli_api.coax; its publish needs an API with no
+  # bucket or with OA_ENGINE_TEMPLATE, which this run's fake bucket isn't, so it runs on its own.)
   mkdir -p "$work/walk"
-  for f in realm_engine_pin realm_shapes; do
+  for f in realm_engine_pin realm_shapes realm_edit_log; do
     (cd "$repo_root" && PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" PIN_SQL="coax/web/api/tests/$f.sql" COAX="$cli_coax" coax/web/tool.sh coax/web/api/tests/realm_engine_pin.coax) || exit 1
   done
   (cd "$repo_root" && PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" WORK="$work/walk" COAX="$cli_coax" coax/web/tool.sh coax/web/api/tests/realm_walkthrough.coax) || exit 1

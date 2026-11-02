@@ -8,9 +8,11 @@
 > ([apps/openagents-web/myrealm.coax](../../apps/openagents-web/myrealm.coax))
 > uses it for MOVE, UNDO and SAVE and draws turns, sizes and removals
 > (migration 0109); `openagents realm rotate|resize|remove` and `realm apply`
-> make them. The page has no hand gestures for turning, sizing or removing
-> yet, and the server still undoes rows, placements and cards as whole
-> revisions (`0094_realm_live_and_undo.sql`); see [Still to do](#still-to-do).
+> make them. The server keeps the same log: each undo step is the edit's
+> per-slot inverses, under the slot names this chapter uses, and lore and
+> quests are in the document (`0110_realm_edit_log.sql`). The page has no
+> hand gestures for turning, sizing or removing yet, and no REDO button; see
+> [Still to do](#still-to-do).
 
 Editing a realm while people walk in it is the same problem as replaying it.
 Each change must be a recorded, ordered operation over the state. It must be
@@ -276,10 +278,33 @@ nothing else does. This browser keeps the unsaved moves (host action 4), so
 a reload of the same revision brings them back, still undoable. A save
 becomes one server step.
 
-The server keeps the undo steps (`made_realms.undo`, at most 64): each edit
-that makes a revision pushes the revision before it. `POST .../undo {rev}`
-restores the fields of that revision as the next revision, so history is
-never rewritten, and a card settled goes back to waiting.
+The server keeps the undo steps (`made_realms.undo`, at most 64), and since
+migration 0110 each one is the edit's operations in this chapter's terms:
+`{to, card, ops}`, where every op is `{slot, before, after}` for one slot that
+changed. An entity (`trees:3`, `placed:0`) holds `{x, z}` when moved and
+`{yaw, scale, gone}` when shaped; the other slots are `set:FIELD`,
+`tool:NAME`, `row:N`, `feature:N`, `place:N`, `lore:WHO` and `quest:GIVER`
+(rows, features and placed things by their place in the document's lists, so
+an undo gives back the same order). A save, a row switched, a setting, a
+thing placed, a card accepted, lore and a quest are each one step; a declined
+card is a step with no ops. `POST .../undo {rev}` applies the newest step's
+inverse, newest op first, as the next revision, so history is never
+rewritten; it is refused with 409 and nothing changes when a slot is no
+longer what the step left, the same rule as `forge_apply`. `POST .../redo
+{rev}` applies the step last undone again under the same rule, and a card
+goes back to waiting and to settled with its step. A new edit drops what was
+undone. The spec gains `redo N` beside `undo N`. Steps kept before 0110 have
+no ops and still undo by their whole revision.
+
+Lore and quests were rows of their own (`0055_realm_panes.sql`), so an undo
+could not bring them back. A made realm's document now holds them, `lore`
+`{WHO: TEXT}` and `quests` `{GIVER: {ask, steps, reward}}`, each present only
+when it has an entry, so every document without them keeps its bytes and
+hash. Lore already written moved into each realm's document as one new kept
+revision (not an undo step); the revisions before keep their bytes and
+hashes, and until the owner publishes a revision that has them, a visitor
+reads the lore as before. Publish, fork and undo carry them; hand-built
+realms keep the old rows.
 
 On a 390 px phone the row spans the screen width and PUT IT HERE is
 shortened to PUT HERE.
@@ -307,6 +332,20 @@ shortened to PUT HERE.
   revision it was read at; a 409 keeps the changes unsaved, and reading the
   spec again does not drop them; a visitor gets none of the owner's
   controls; the row fits a 390 px phone.
+- `coax/web/tool.sh coax/web/api/tests/realm_engine_pin.coax` with
+  `PIN_SQL=coax/web/api/tests/realm_edit_log.sql`: the server's log. Slots
+  read and written by these names; a save, the settings, a row, lore, a quest
+  and a card accepted are one step each; undo walks back to each earlier
+  state and redo forward again, cards with them; a new edit drops the redo; a
+  step whose slot changed under it is refused whole; a declined card goes
+  back and forth; a step kept before 0110 undoes its whole revision; lore and
+  quests published, undone and forked with the document; lore moved in from
+  the old rows as one revision, older hashes unchanged, visitors unchanged.
+- `coax/web/tool.sh coax/web/api/tests/realm_cli_api.coax`: the built CLI
+  against a local API built from this tree (not a fixture): rotate, resize,
+  remove, lore and a quest, a stale rotate refused, three undos taking back
+  exactly one edit each, a publish pinned with its engine, a fork whose edit
+  stays its own (22 checks, 2026-11-02).
 - `coax/web/api/test.sh` (`test_realm_fork.py`): only the owner saves; a save
   from an older revision is refused with the revision there now; moves are
   validated and rounded to the centimetre; a save, a placement, a row switch,
@@ -319,12 +358,12 @@ shortened to PUT HERE.
 
 > **Design draft.** Nothing below runs yet.
 
-- The server keeping the log: today the server undoes rows, placements,
-  cards and revisions by voice as whole revisions, while the model's slot
-  edits replay them on the client. Revisions by voice and visitor proposals
-  are server-side model calls, not slot edits.
+- Revisions by voice and visitor proposals are server-side model calls; the
+  server logs what they change as ops, but the call itself is not a slot edit
+  a client can replay.
 - Hand gestures for rotate, resize and remove on the page (slice 3's canvas).
-- Redo across reloads, and redo of a server step.
+- A REDO control on the page and `openagents realm redo` (the server has
+  `POST .../redo`; the CLI's published command list doesn't have it yet).
 - The asks ledger's revert rule as a Coax function the server's SQL is
   checked against: for each row an ask changed, put back `before` only if
   the row still holds the ask's `after`.
