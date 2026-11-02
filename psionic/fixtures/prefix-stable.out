@@ -1,0 +1,35 @@
+hand trace logged: ok, 11 events, 30 tokens
+frozen prefix: ok, 12 tokens
+  section 0 system key 0: tokens 0 to 3
+  section 1 tool key 10: tokens 4 to 5
+  section 2 tool key 20: tokens 6 to 7
+  section 3 tool key 30: tokens 8 to 9
+  section 4 header key 0: tokens 10 to 11
+request at event 2: ok, 19 tokens, boundary 17
+request at event 5: ok, 30 tokens, boundary 28, shares 17 with the previous: ok
+request at event 8: ok, 41 tokens, boundary 39, shares 28 with the previous: ok
+request at event 11: ok, 44 tokens, boundary 42, shares 39 with the previous: ok
+  section 0 system key 0: tokens 0 to 3
+  section 1 tool key 10: tokens 4 to 5
+  section 2 tool key 20: tokens 6 to 7
+  section 3 tool key 30: tokens 8 to 9
+  section 4 header key 0: tokens 10 to 11
+  section 5 history key 0: tokens 12 to 41
+  section 6 tail key 0: tokens 42 to 43
+the session: ok
+header value changed mid-session: prefix (changes bytes before the previous request's boundary), section 4 (header), position 10
+tool 20's schema edited mid-session: prefix (changes bytes before the previous request's boundary), section 2 (tool), position 7
+tool 15 added mid-session: prefix (changes bytes before the previous request's boundary), section 2 (tool), position 6
+the clock at the top: order (a section out of the fixed order), section 1 (system), position 2
+tools in registration order: tools (tool schemas not sorted by id), section 2 (tool), position 6
+two tools with id 20: tools
+reply at event 6 redacted: ok; request at event 5: ok, at event 8: log
+stable: checker ok ok ok; blocks reused 51 of 78 (653 per mille), prefill tokens saved 204 of 288
+  reused by request: 0 4 5 6 3 4 5 6 3 4 5 6
+  modeled prefill 318566 us, total 745586 us, time to first token P50 25088 us, P95 42598 us
+registration order: checker tools tools ok; blocks reused 47 of 78 (602 per mille), prefill tokens saved 188 of 288
+  reused by request: 0 4 5 6 1 4 5 6 1 4 5 6
+  modeled prefill 341912 us, total 768932 us, time to first token P50 25088 us, P95 42598 us
+clock at the top: checker order order order; blocks reused 0 of 78 (0 per mille), prefill tokens saved 0 of 288
+  reused by request: 0 0 0 0 0 0 0 0 0 0 0 0
+  modeled prefill 616239 us, total 1043256 us, time to first token P50 48435 us, P95 60108 us

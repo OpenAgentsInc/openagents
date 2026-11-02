@@ -2461,6 +2461,18 @@
       "stack_kib": 65536
     },
     {
+      "source": "psionic/examples/prefix-stable.coax",
+      "chapter": "psionic/book/ch202-keep-the-prefix-stable.md",
+      "stdout": "psionic/fixtures/prefix-stable.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300,
+      "stack_kib": 65536
+    },
+    {
       "source": "psionic/examples/tool-capabilities.coax",
       "chapter": "psionic/book/ch203-tools-as-typed-capabilities.md",
       "stdout": "psionic/fixtures/tool-capabilities.out",

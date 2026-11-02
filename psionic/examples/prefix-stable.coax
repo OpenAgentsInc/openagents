@@ -1,0 +1,53 @@
+#import "Basic";
+#load "../lib/harness/prefix.coax";
+// Chapter 202's example: chapter 201's hand trace assembled behind a frozen
+// prefix and checked request by request; each broken assembly with its
+// reason; and three scripted sessions on chapter 176's cache with three
+// assemblers. Every number is exact.
+ex_sections :: (r:PxRequest) {
+    for i:0..<r.sections {x:=r.section[i];print("  section % % key %: tokens % to %\n",i,x.kind,x.key,x.at,x.at+x.count-1);}
+}
+ex_verdict :: (label:string,v:PxVerdict) {
+    print("%: %",label,v.status);
+    if v.status!=PxStatus.ok {print(" (%), section % (%), position %",px_status_name(v.status),v.section,v.kind,v.at);}
+    print("\n");
+}
+// book:begin example
+main :: () {
+    // Chapter 200's hand trace, logged as in chapter 201.
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    print("hand trace logged: %, % events, % tokens\n",pxc_trace(l[..]).status,l[0].count,l[0].used);
+    // The session opens once: tools registered as 30, 10, 20 are laid out by id.
+    sy:=PXC_SYSTEM;hd:=PXC_HEADER;t:=pxc_tools();s:=px_open(sy[..],t[..],hd[..]);
+    print("frozen prefix: %, % tokens\n",s.status,s.n);ex_sections(s);
+    // Each request event, then the end of the log: history, then the tail.
+    index:=[4]int.[2,5,8,11];r:[4]PxRequest;
+    for k:0..<4 {
+        tail:=pxc_tail(k);r[k]=px_assemble(s,l[0],index[k],tail[..]);
+        print("request at event %: %, % tokens, boundary %",index[k],r[k].status,r[k].n,px_boundary(r[k]));
+        if k>0 {v:=px_admit(r[k-1],r[k]);print(", shares % with the previous: %",v.shared,v.status);}
+        print("\n");
+    }
+    ex_sections(r[3]);
+    ex_verdict("the session",px_session(r[..]));
+    // Broken assemblies, each against request 0.
+    a:=pxc_tail(0);b:=pxc_tail(1);
+    h:=[2]int.[7,6];ex_verdict("header value changed mid-session",px_admit(r[0],px_assemble(px_open(sy[..],t[..],h[..]),l[0],5,b[..])));
+    u:=t;u[2].tok[1]=99;ex_verdict("tool 20's schema edited mid-session",px_admit(r[0],px_assemble(px_open(sy[..],u[..],hd[..]),l[0],5,b[..])));
+    w:[4]PxTool;for i:0..<3 {w[i]=t[i];}w[3]=PxTool.{id=15,count=1};
+    ex_verdict("tool 15 added mid-session",px_admit(r[0],px_assemble(px_open(sy[..],w[..],hd[..]),l[0],5,b[..])));
+    ex_verdict("the clock at the top",px_admit(r[0],px_naive(sy[..],t[..],hd[..],l[0],a[..],true)));
+    ex_verdict("tools in registration order",px_check(px_naive(sy[..],t[..],hd[..],l[0],a[..],false)));
+    w[3].id=20;print("two tools with id 20: %\n",px_open(sy[..],w[..],hd[..]).status);
+    e:=ev;k:=tk;g:=[1]LgLog.[LgLog.{events=e[..],tokens=k[..],count=11,used=30}];
+    print("reply at event 6 redacted: %; request at event 5: %, at event 8: %\n",lg_redact(g[..],6),px_assemble(s,g[0],5,a[..]).status,px_assemble(s,g[0],8,a[..]).status);
+    // Three sessions of four requests on chapter 176's cache, pages of 4, 3 output tokens each.
+    names:=[3]string.["stable","registration order","clock at the top"];q:[12]PxRequest;mem:[1728]f64;
+    for x:0..<3 {
+        n:=pxc_sessions(x,q[..]);m:=px_measure(q[0..<n],3,4,mem[..]);
+        print("%: checker % % %; blocks reused % of % (% per mille), prefill tokens saved % of %\n",names[x],px_session(q[0..<4]).status,px_session(q[4..<8]).status,px_session(q[8..<12]).status,m.hit,m.blocks,1000*m.hit/m.blocks,m.cached,m.tokens);
+        print("  reused by request:");for i:0..<n {print(" %",m.reused[i]);}
+        print("\n  modeled prefill % us, total % us, time to first token P50 % us, P95 % us\n",m.prefill,m.cost,m.p50,m.p95);
+    }
+}
+// book:end example

@@ -1,0 +1,371 @@
+// Chapter 202: keep the prefix stable. A request is assembled in a fixed
+// order of typed sections: system text, then tool schemas sorted by tool
+// id, then a header of values frozen when the session opens, then the
+// history read from chapter 201's log, then a tail of per-request values
+// (a clock, a counter) after the cache boundary. The checker refuses a
+// layout out of that order and a request whose bytes before the previous
+// request's boundary differ from it, naming the section and the position.
+// Requests are measured on chapter 176's prefix cache and priced with
+// chapter 177's cost model.
+// Profile px-prefix-v1: integer tokens; at most 16 sections and 64 tokens a
+// request, 8 tools of up to 8 tokens; the cache measurement takes up to 16
+// requests of up to 32 tokens on one model, one at a time.
+#load "log.coax";
+#load "../serve-pages.coax";
+#load "../../tests/harness-prefix-checks.coax";
+#authority;
+
+PX_SECTIONS :: 16;
+PX_TOKENS :: 64;
+PX_TOOLS :: 8;
+PX_SCHEMA :: 8;
+
+// book:begin types
+// Section kinds in the only order a request may hold them.
+PxKind :: enum u8 {system;tool;header;history;tail;}
+PxStatus :: enum u8 {ok;shape;log;order;tools;prefix;}
+// A section: its kind, its key (a tool's id; 0 otherwise), and where its
+// tokens start in the request and how many there are.
+PxSection :: struct {kind:PxKind;key:int;at:int;count:int;}
+// A tool's schema as tokens.
+PxTool :: struct {id:int;count:int;tok:[8]int;}
+// A request: its tokens and the sections that cover them, in order. A
+// session's frozen prefix is a request with no history and no tail.
+PxRequest :: struct {status:PxStatus;n:int;sections:int;section:[16]PxSection;tok:[64]int;}
+// The checker's answer: the request it is about, the section and position
+// of the first refusal, and the tokens shared with the previous request.
+PxVerdict :: struct {status:PxStatus;request:int;section:int;kind:PxKind;at:int;shared:int;}
+// book:end types
+// What a run of requests did on chapter 176's cache: prompt blocks and the
+// blocks reused, prompt tokens and those cached, modeled prefill and total
+// microseconds, P50 and P95 time to first token, and each request's reused
+// blocks.
+PxMeasure :: struct {status:PxStatus;requests:int;blocks:int;hit:int;tokens:int;cached:int;prefill:int;cost:int;p50:int;p95:int;reused:[16]int;}
+
+// Checks come first. The hand session's parts are in
+// psionic/tests/harness-prefix-checks.coax.
+// book:begin check-hand
+#test "the hand session: chapter 201's trace behind a frozen prefix, shared lengths by hand" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert pxc_trace(l[..]).status==LgStatus.ok;
+    sy:=PXC_SYSTEM;hd:=PXC_HEADER;t:=pxc_tools();s:=px_open(sy[..],t[..],hd[..]);
+    // system 0..3, tools 10, 20, 30 at 4..9 (sorted), header 10..11.
+    #assert s.status==PxStatus.ok && s.n==12 && s.sections==5;
+    keys:=[5]int.[0,10,20,30,0];at:=[5]int.[0,4,6,8,10];
+    for i:0..<5 {#assert s.section[i].key==keys[i] && s.section[i].at==at[i];}
+    #assert s.tok[4]==10 && s.tok[5]==11 && s.tok[6]==20 && s.tok[9]==31 && s.tok[11]==6;
+    // The three requests saw 5, 16 and 27 tokens; the next one sees all 30.
+    index:=[4]int.[2,5,8,11];n:=[4]int.[19,30,41,44];
+    r:[4]PxRequest;
+    for k:0..<4 {tail:=pxc_tail(k);r[k]=px_assemble(s,l[0],index[k],tail[..]);
+        #assert r[k].status==PxStatus.ok && r[k].n==n[k] && px_boundary(r[k])==n[k]-2 && r[k].tok[12]==320 && r[k].tok[n[k]-2]==1000+k;}
+    // Each request shares exactly the previous one's prefix up to its boundary: 17, 28, 39.
+    for k:0..<4 {for i:0..<7 {#assert r[k].section[i].key==(ifx i>0 && i<4 then 10*i else 0);}}
+    for k:1..<4 {v:=px_admit(r[k-1],r[k]);#assert v.status==PxStatus.ok && v.shared==n[k-1]-2 && v.at==n[k-1]-2;}
+    v:=px_session(r[..]);#assert v.status==PxStatus.ok && v.request==3 && v.shared==39;
+    // Its history passes chapter 201's gate: the tokens each request event saw.
+    for k:0..<3 {#assert lg_admit(l[0],index[k],r[k].tok[12..<n[k]-2]).status==LgStatus.ok;}
+}
+// book:end check-hand
+// book:begin check-refuse
+#test "each broken assembly, with its reason, section and position" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert pxc_trace(l[..]).status==LgStatus.ok;
+    sy:=PXC_SYSTEM;hd:=PXC_HEADER;t:=pxc_tools();s:=px_open(sy[..],t[..],hd[..]);a:=pxc_tail(0);b:=pxc_tail(1);
+    r0:=px_assemble(s,l[0],2,a[..]);r1:=px_assemble(s,l[0],5,b[..]);
+    // A header value that changes mid-session: position 10, section 4.
+    h:=[2]int.[7,6];x:=px_assemble(px_open(sy[..],t[..],h[..]),l[0],5,b[..]);
+    v:=px_admit(r0,x);#assert v.status==PxStatus.prefix && v.at==10 && v.section==4 && v.kind==PxKind.header && v.shared==10;
+    // A tool schema edited, and a tool added, mid-session: both inside the tool sections.
+    u:=t;u[2].tok[1]=99;v=px_admit(r0,px_assemble(px_open(sy[..],u[..],hd[..]),l[0],5,b[..]));
+    #assert v.status==PxStatus.prefix && v.at==7 && v.section==2 && v.kind==PxKind.tool;
+    w:[4]PxTool;for i:0..<3 {w[i]=t[i];}w[3]=PxTool.{id=15,count=1};
+    v=px_admit(r0,px_assemble(px_open(sy[..],w[..],hd[..]),l[0],5,b[..]));
+    #assert v.status==PxStatus.prefix && v.at==6 && v.section==2 && v.kind==PxKind.tool;
+    // History from another log: its second token differs, position 13, section 5.
+    e2:[16]LgEvent;t2:[48]int;g:=[1]LgLog.[LgLog.{events=e2[..],tokens=t2[..]}];q:=[3]int.[320,63,5];#assert lg_say(g[..],LgKind.user,q[..])==LgStatus.ok;
+    v=px_admit(r1,px_assemble(s,g[0],1,b[..]));#assert v.status==PxStatus.prefix && v.at==13 && v.section==5 && v.kind==PxKind.history && v.shared==13;
+    // A request that drops the tail's place but keeps the history: fine; one shorter than the boundary is not.
+    v=px_admit(r1,r0);#assert v.status==PxStatus.prefix && v.at==17 && v.section==5 && v.shared==17;
+    // The clock at the top: refused for its place before anything is compared.
+    c:=px_naive(sy[..],t[..],hd[..],l[0],a[..],true);
+    v=px_admit(r0,c);#assert v.status==PxStatus.order && v.section==1 && v.at==2 && v.kind==PxKind.system;
+    v=px_check(c);#assert v.status==PxStatus.order && v.section==1;
+    // Tools in registration order: refused at the first tool out of order.
+    d:=px_naive(sy[..],t[..],hd[..],l[0],a[..],false);
+    v=px_check(d);#assert v.status==PxStatus.tools && v.section==2 && v.at==6 && v.kind==PxKind.tool;
+    for i:0..<7 {#assert c.section[i].key==(ifx i==2 then 30 else ifx i==3 then 10 else ifx i==4 then 20 else 0) && d.section[i].key==(ifx i==1 then 30 else ifx i==2 then 10 else ifx i==3 then 20 else 0);}
+    // The naive assembler does not refuse equal ids; the checker does.
+    two:=[2]PxTool.[t[0],t[0]];v=px_check(px_naive(sy[..],two[..],hd[..],l[0],a[..],false));#assert v.status==PxStatus.tools && v.section==2;
+    // A request that is a strict prefix of the previous one shares only its own length.
+    p0:=[2]int.[1,0];p1:=[1]int.[1];v=px_admit(px_add(PxRequest.{},PxKind.history,0,p0[..]),px_add(PxRequest.{},PxKind.history,0,p1[..]));
+    #assert v.status==PxStatus.prefix && v.at==1 && v.shared==1;
+    // A duplicate tool id cannot be opened; a tool id 0 after the system section is fine.
+    w[3].id=20;#assert px_open(sy[..],w[..],hd[..]).status==PxStatus.tools;
+    w[3].id=0;z:=px_open(sy[..],w[..],hd[..]);#assert z.status==PxStatus.ok && z.section[1].key==0 && px_check(z).status==PxStatus.ok;
+    // A session check names the request.
+    rs:=[3]PxRequest.[r0,r1,x];v=px_session(rs[..]);#assert v.status==PxStatus.prefix && v.request==2 && v.at==10;
+    rs[1]=c;v=px_session(rs[..]);#assert v.status==PxStatus.order && v.request==1;
+    rs[0]=d;v=px_session(rs[..]);#assert v.status==PxStatus.tools && v.request==0;
+    #assert px_session(rs[0..<0]).status==PxStatus.shape && px_session(rs[2..<3]).status==PxStatus.ok;
+}
+// book:end check-refuse
+#test "the log must verify, the index must be a request or the end, and nothing redacted may be sent" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert pxc_trace(l[..]).status==LgStatus.ok;
+    sy:=PXC_SYSTEM;hd:=PXC_HEADER;t:=pxc_tools();s:=px_open(sy[..],t[..],hd[..]);a:=pxc_tail(0);
+    for i:[6]int.[-1,0,1,3,10,12] {#assert px_assemble(s,l[0],i,a[..]).status==PxStatus.log;}
+    for i:[4]int.[2,5,8,11] {#assert px_assemble(s,l[0],i,a[..]).status==PxStatus.ok;}
+    e:=ev;e[4].f[1]+=1;#assert px_assemble(s,LgLog.{events=e[..],tokens=tk[..],count=11,used=30},11,a[..]).status==PxStatus.log;
+    // A redacted reply before the request: refused there and at the end, not at the request before it.
+    e=ev;k:=tk;g:=[1]LgLog.[LgLog.{events=e[..],tokens=k[..],count=11,used=30}];#assert lg_redact(g[..],6)==LgStatus.ok;
+    #assert px_assemble(s,g[0],5,a[..]).status==PxStatus.ok && px_assemble(s,g[0],8,a[..]).status==PxStatus.log && px_assemble(s,g[0],11,a[..]).status==PxStatus.log;
+    // The first event redacted: every request is refused.
+    e=ev;k=tk;g=[1]LgLog.[LgLog.{events=e[..],tokens=k[..],count=11,used=30}];#assert lg_redact(g[..],0)==LgStatus.ok && px_assemble(s,g[0],2,a[..]).status==PxStatus.log;
+    // A refused session stays refused, whatever the log.
+    w:[2]PxTool;bad:=px_open(sy[..],w[..],hd[..]);#assert bad.status==PxStatus.tools && px_assemble(bad,g[0],8,a[..]).status==PxStatus.tools;
+    #assert px_check(bad).status==PxStatus.tools && px_admit(s,bad).status==PxStatus.tools;
+}
+#test "bounds: sections, tokens, tools and schemas" {
+    t:[9]PxTool;for i:0..<9 {t[i]=PxTool.{id=i,count=1};}
+    one:=[1]int.[1];none:=one[0..<0];
+    #assert px_open(none,t[0..<8],none).status==PxStatus.ok && px_open(none,t[..],none).status==PxStatus.shape;
+    t[0].id= -1;#assert px_open(none,t[0..<2],none).status==PxStatus.shape;
+    t[0].id=0;t[0].count=8;#assert px_open(none,t[0..<2],none).status==PxStatus.ok;
+    t[0].count=9;#assert px_open(none,t[0..<2],none).status==PxStatus.shape;
+    t[0].count= -1;#assert px_open(none,t[0..<2],none).status==PxStatus.shape;
+    // 64 tokens fit, 65 do not; 16 sections fit, 17 do not.
+    big:[64]int;r:PxRequest;r=px_add(r,PxKind.system,0,big[..]);#assert r.status==PxStatus.ok && r.n==64;
+    #assert px_add(r,PxKind.tail,0,none).status==PxStatus.ok && px_add(r,PxKind.tail,0,one[..]).status==PxStatus.shape;
+    r=PxRequest.{};for i:0..<16 {r=px_add(r,PxKind.history,0,one[..]);}
+    #assert r.status==PxStatus.ok && r.sections==16 && r.n==16 && px_add(r,PxKind.tail,0,none).status==PxStatus.shape;
+    // The boundary: the first tail section, or the end.
+    #assert px_boundary(r)==16;r=px_add(PxRequest.{},PxKind.tail,0,one[..]);r=px_add(r,PxKind.tail,0,one[..]);#assert px_boundary(r)==0;
+}
+// book:begin check-cache
+#test "the scripted sessions on chapter 176's cache, block by block" #steps 4000000000 {
+    q:[12]PxRequest;mem:[1728]f64;
+    // Stable: the second session's first request reuses the shared 12-token prefix, 3 blocks of 4.
+    #assert pxc_sessions(0,q[..])==12;
+    // Each session passes the checker; across sessions the history differs, so they are checked apart.
+    for j:0..<3 {#assert px_session(q[4*j..<4*j+4]).status==PxStatus.ok;}
+    v:=px_session(q[3..<5]);#assert v.status==PxStatus.prefix && v.at==12 && v.kind==PxKind.history;
+    m:=px_measure(q[..],1,4,mem[..]);
+    hit:=[12]int.[0,4,5,6,3,4,5,6,3,4,5,6];
+    for i:0..<12 {#assert m.reused[i]==hit[i] && q[i].n==18+4*(i%4);}
+    #assert m.status==PxStatus.ok && m.requests==12 && m.blocks==78 && m.hit==51 && m.tokens==288 && m.cached==204;
+    // Tools in registration order: the other sessions share only the system block.
+    #assert pxc_sessions(1,q[..])==12;v=px_session(q[..]);#assert v.status==PxStatus.tools && v.request==0;
+    m=px_measure(q[..],1,4,mem[..]);hit=[12]int.[0,4,5,6,1,4,5,6,1,4,5,6];
+    for i:0..<12 {#assert m.reused[i]==hit[i];}
+    #assert m.blocks==78 && m.hit==47 && m.cached==188;
+    // The clock at the top: nothing is ever reused.
+    #assert pxc_sessions(2,q[..])==12 && px_session(q[..]).status==PxStatus.order;
+    m=px_measure(q[..],1,4,mem[..]);#assert m.blocks==78 && m.hit==0 && m.cached==0;
+    // With nothing cached, each request's time is its length's: 18, 22, 26, 30 tokens three times each.
+    #assert m.p50==px_prefill(22,0) && m.p95==px_prefill(30,0);
+    t:[12]int;for i:0..<12 {t[i]=px_prefill(q[i].n,0);}#assert cb_rank(t[..],95)==m.p95 && cb_rank(t[..],50)==m.p50;
+}
+// book:end check-cache
+#test "time to first token and cost are chapter 177's" #steps 4000000000 {
+    // rr_cost and rr_prefill's own checks in psionic/lib/serve-route.coax.
+    #assert px_cost(13,2,0)==53095 && px_cost(13,2,8)==41421 && px_cost(13,2,12)==35584;
+    #assert px_prefill(13,0)==35302 && px_prefill(13,12)==17792 && px_cost(1,1,0)==17792;
+    // One step of 18 rows, then of 2: chapter 175's 17792472 + 1459182 per further row, in microseconds.
+    #assert px_prefill(18,0)==42598 && px_prefill(18,16)==19251 && px_cost(18,3,16)==54836;
+    q:[12]PxRequest;mem:[1728]f64;#assert pxc_sessions(0,q[..])==12;
+    m:=px_measure(q[0..<4],3,4,mem[..]);
+    // 18 tokens cold, then 22, 26, 30 with 16, 20, 24 cached: 6 rows each.
+    #assert m.status==PxStatus.ok && m.prefill==42598+3*px_prefill(6,0) && m.cost==78183+3*60673;
+    #assert m.p50==px_prefill(6,0) && m.p95==42598;
+    m=px_measure(q[0..<1],1,4,mem[..]);#assert m.p50==42598 && m.p95==42598 && m.cost==42598;
+    // Refused: too many requests, too long a request, a page out of bounds, no requests.
+    many:[17]PxRequest;for i:0..<17 {many[i]=q[0];}
+    #assert px_measure(many[0..<16],1,4,mem[..]).status==PxStatus.ok && px_measure(many[..],1,4,mem[..]).status==PxStatus.shape;
+    r:=[1]PxRequest.[q[0]];r[0].n=32;m=px_measure(r[..],1,4,mem[..]);#assert m.status==PxStatus.ok && m.blocks==8;
+    r[0].n=17;#assert px_measure(r[..],1,4,mem[..]).blocks==5;
+    many[15].n=33;#assert px_measure(many[0..<16],1,4,mem[..]).status==PxStatus.shape;
+    // Two requests that differ only in their first token share nothing.
+    x:=[2]PxRequest.[q[1],q[1]];x[1].tok[0]=9;#assert px_measure(x[..],1,4,mem[..]).hit==0 && px_measure(q[1..<3],1,4,mem[..]).hit==5;
+    #assert px_measure(q[0..<1],1,9,mem[..]).status==PxStatus.shape && px_measure(q[0..<0],1,4,mem[..]).status==PxStatus.shape;
+}
+#test "names" {
+    #assert px_status_name(PxStatus.ok)=="ok" && px_status_name(PxStatus.shape)=="outside the request's bounds";
+    #assert px_status_name(PxStatus.log)=="the log does not verify, or the history holds a redacted event";
+    #assert px_status_name(PxStatus.order)=="a section out of the fixed order" && px_status_name(PxStatus.tools)=="tool schemas not sorted by id";
+    #assert px_status_name(PxStatus.prefix)=="changes bytes before the previous request's boundary";
+}
+
+// Independent checks on random sessions (psionic/tests/harness-prefix-checks.coax).
+#forall "every assembled request is the brute-force one and extends the previous one exactly" seed:0..<80 #steps 2000000000 {
+    w:=pxc_work(seed);s:=px_open(w.system[0..<w.ns],w.tools[0..<w.nt],w.header[0..<w.nh]);
+    #assert s.status==PxStatus.ok;
+    ev:[8]LgEvent;tk:[32]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    prev:PxRequest;want:[64]int;
+    for e:0..<w.events {
+        #assert lg_say(l[..],ifx e%2==0 then LgKind.user else LgKind.context,w.text[e*5..<e*5+w.len[e]])==LgStatus.ok;
+        r:=px_assemble(s,l[0],l[0].count,w.tail[e][0..<w.ntail[e]]);
+        n:=pxc_build(w.system[0..<w.ns],w.tools[0..<w.nt],w.header[0..<w.nh],tk[0..<l[0].used],w.tail[e][0..<w.ntail[e]],want[..]);
+        #assert r.status==PxStatus.ok && r.n==n && px_boundary(r)==n-w.ntail[e] && px_check(r).status==PxStatus.ok;
+        for p:0..<n {#assert r.tok[p]==want[p];}
+        if e>0 {
+            b:=px_boundary(prev);v:=px_admit(prev,r);
+            #assert v.status==PxStatus.ok && v.shared==pxc_common(prev.tok[0..<prev.n],r.tok[0..<r.n]) && v.shared>=b;
+            // One token changed: refused at exactly that position when it is before the boundary.
+            p:=pxc_pick(cast(u64)seed,cast(u64)(500+e),r.n);x:=r;x.tok[p]+=1;v=px_admit(prev,x);
+            if p<b {#assert v.status==PxStatus.prefix && v.at==p && prev.section[v.section].at<=p && p<prev.section[v.section].at+prev.section[v.section].count && v.kind==prev.section[v.section].kind;}
+            else {#assert v.status==PxStatus.ok;}
+        }
+        prev=r;
+    }
+}
+#forall "a swapped pair of tool sections, or a section moved, is refused at its place" seed:0..<100 #steps 1000000000 {
+    w:=pxc_work(seed);s:=px_open(w.system[0..<w.ns],w.tools[0..<w.nt],w.header[0..<w.nh]);
+    if s.sections>3 {x:=s;i:=1+pxc_pick(cast(u64)seed,99,s.sections-3);y:=x.section[i];x.section[i]=x.section[i+1];x.section[i+1]=y;
+        v:=px_check(x);#assert v.status==PxStatus.tools && v.section==i+1;}
+    x:=px_add(s,PxKind.tool,99,w.header[0..<w.nh]);v:=px_check(x);#assert v.status==PxStatus.order && v.section==s.sections && v.at==s.n;
+}
+
+// book:begin assemble
+// A section after the others; refused when either bound would be passed.
+px_add :: (from:PxRequest,kind:PxKind,key:int,tok:[]int)->PxRequest {
+    r:=from;
+    if r.status!=PxStatus.ok {return r;}
+    if r.sections==PX_SECTIONS || tok.count>PX_TOKENS-r.n {r.status=PxStatus.shape;return r;}
+    r.section[r.sections]=PxSection.{kind=kind,key=key,at=r.n,count=tok.count};r.sections+=1;
+    for i:0..<tok.count {r.tok[r.n+i]=tok[i];}
+    r.n+=tok.count;return r;
+}
+// The session's frozen prefix, laid out once: the system text, every tool
+// schema in increasing id order whatever order they were registered in, and
+// the header's values. Two tools may not share an id.
+px_open :: (system:[]int,tools:[]PxTool,header:[]int)->PxRequest {
+    r:PxRequest;r.status=PxStatus.shape;
+    if tools.count>PX_TOOLS {return r;}
+    for t,i:tools {
+        if t.id<0 || t.count<0 || t.count>PX_SCHEMA {return r;}
+        for u:tools[0..<i] {if u.id==t.id {r.status=PxStatus.tools;return r;}}
+    }
+    // Ids are distinct, so each tool's place is the number of smaller ids.
+    order:[8]int;
+    for t,i:tools {k:=0;for u:tools {if u.id<t.id {k+=1;}}order[k]=i;}
+    r.status=PxStatus.ok;r=px_add(r,PxKind.system,0,system);
+    for b:order[0..<tools.count] {r=px_add(r,PxKind.tool,tools[b].id,tools[b].tok[0..<tools[b].count]);}
+    return px_add(r,PxKind.header,0,header);
+}
+// The history a request holds: what request event index saw, or with index
+// at the log's end, every token logged. The log must verify, and no event
+// in the history may be redacted.
+px_history :: (s:PxRequest,g:LgLog,index:int)->PxRequest {
+    r:=s;
+    if r.status!=PxStatus.ok {return r;}
+    if lg_verify(g).status!=LgStatus.ok {r.status=PxStatus.log;return r;}
+    n:=g.used;
+    if index!=g.count {
+        if lg_kind(g,index)!=LgKind.request {r.status=PxStatus.log;return r;}
+        n=g.events[index].f[1];
+    }
+    for e:g.events[0..<index] {if e.redacted {r.status=PxStatus.log;return r;}}
+    return px_add(r,PxKind.history,0,g.tokens[0..<n]);
+}
+// The request: the frozen prefix, the history, then the tail of values that
+// change every request, after the cache boundary.
+px_assemble :: (s:PxRequest,g:LgLog,index:int,tail:[]int)->PxRequest {
+    return px_add(px_history(s,g,index),PxKind.tail,0,tail);
+}
+// The assembler this chapter replaces: tools in the order they were
+// registered, and the tail at the top when top is set.
+px_naive :: (system:[]int,tools:[]PxTool,header:[]int,g:LgLog,tail:[]int,top:bool)->PxRequest {
+    r:PxRequest;
+    if top {r=px_add(r,PxKind.tail,0,tail);}
+    r=px_add(r,PxKind.system,0,system);
+    for i:0..<tools.count {r=px_add(r,PxKind.tool,tools[i].id,tools[i].tok[0..<tools[i].count]);}
+    r=px_history(px_add(r,PxKind.header,0,header),g,g.count);
+    if !top {r=px_add(r,PxKind.tail,0,tail);}
+    return r;
+}
+// book:end assemble
+
+// book:begin verdict
+// The cache boundary: where the first tail section starts, or the end.
+px_boundary :: (r:PxRequest)->int {
+    for i:0..<r.sections {if r.section[i].kind==PxKind.tail {return r.section[i].at;}}
+    return r.n;
+}
+px_at :: (r:PxRequest,i:int,status:PxStatus)->PxVerdict {return PxVerdict.{status=status,section=i,kind=r.section[i].kind,at=r.section[i].at};}
+// A layout is refused at the first section whose kind comes before the
+// previous section's, or at a tool whose id is not above the tool before it.
+px_check :: (r:PxRequest)->PxVerdict {
+    if r.status!=PxStatus.ok {return PxVerdict.{status=r.status};}
+    for i:1..<r.sections {
+        a:=r.section[i-1];x:=r.section[i];
+        if cast(u8)x.kind<cast(u8)a.kind {return px_at(r,i,PxStatus.order);}
+        if x.kind==PxKind.tool && a.kind==PxKind.tool && x.key<=a.key {return px_at(r,i,PxStatus.tools);}
+    }
+    return PxVerdict.{};
+}
+// The next request after prev: its layout must pass, and it must start with
+// every token of prev before prev's boundary. shared is the longest common
+// prefix; a refusal names prev's section that holds the first difference.
+px_admit :: (prev:PxRequest,next:PxRequest)->PxVerdict {
+    v:=px_check(next);
+    if v.status!=PxStatus.ok {return v;}
+    s:=0;
+    while s<prev.n && s<next.n && prev.tok[s]==next.tok[s] {s+=1;}
+    v.shared=s;v.at=s;
+    if s<px_boundary(prev) {
+        i:=0;while prev.section[i].at+prev.section[i].count<=s {i+=1;}
+        v.status=PxStatus.prefix;v.section=i;v.kind=prev.section[i].kind;
+    }
+    return v;
+}
+// A logged session's requests in order: the first refusal, with the
+// request's index, or the last request's verdict.
+px_session :: (reqs:[]PxRequest)->PxVerdict {
+    if reqs.count<1 {return PxVerdict.{status=PxStatus.shape};}
+    v:=px_check(reqs[0]);
+    for i:1..<reqs.count {
+        if v.status!=PxStatus.ok {return v;}
+        v=px_admit(reqs[i-1],reqs[i]);v.request=i;
+    }
+    return v;
+}
+// book:end verdict
+
+// book:begin measure
+// Chapter 177's cost model (rr_prefill and rr_cost in serve-route.coax), in
+// modeled microseconds: the uncached prompt positions run as one step's
+// rows, and each further output token is a step of one row.
+px_prefill :: (prompt:int,cached:int)->int {return cb_step_ns(prompt-cached)/1000;}
+px_cost :: (prompt:int,output:int,cached:int)->int {return (cb_step_ns(prompt-cached)+(output-1)*cb_step_ns(1))/1000;}
+// The requests run one at a time, in order, on one model through chapter
+// 176's paged cache with every tier at 16 frames of page positions. The
+// scheduler's other settings take their largest values; with one request
+// at a time, none of them changes what is reused. mem holds 1728 values.
+px_measure :: (reqs:[]PxRequest,output:int,page:int,mem:[]f64)->PxMeasure {
+    m:PxMeasure;m.status=PxStatus.shape;
+    if reqs.count>PG_REQUESTS {return m;}
+    q:[16]CbRequest;model:[16]int;tok:[512]int;
+    for r,i:reqs {
+        if r.n>PG_PROMPT {return m;}
+        q[i]=CbRequest.{prompt=r.n,output=output};
+        for p:0..<r.n {tok[i*PG_PROMPT+p]=r.tok[p];}
+    }
+    cfg:=PgConfig.{page=page,dim=PG_DIM};for t:0..<3 {cfg.cap[t]=PG_TIER;}
+    b:=CbConfig.{slots=1,tokens=CB_TOKENS,clients=1,steps=CB_STEPS};b.weight[0]=CB_WEIGHT;
+    s:=pg_run(cfg,b,q[0..<reqs.count],model[0..<reqs.count],tok[..],mem);
+    if s.status!=PgStatus.ok {return m;}
+    ttft:[16]int;
+    for r,i:reqs {
+        c:=s.reused[i]*page;m.reused[i]=s.reused[i];m.hit+=s.reused[i];m.blocks+=(r.n+page-1)/page;
+        m.tokens+=r.n;m.cached+=c;ttft[i]=px_prefill(r.n,c);m.prefill+=ttft[i];m.cost+=px_cost(r.n,output,c);
+    }
+    m.status=PxStatus.ok;m.requests=reqs.count;
+    // Nearest rank: P95 of at most 16 values is rank ceil(0.95 n) = n, the
+    // largest, so it is taken as rank 100.
+    m.p50=cb_rank(ttft[0..<reqs.count],50);m.p95=cb_rank(ttft[0..<reqs.count],100);
+    return m;
+}
+// book:end measure
+
+px_status_name :: (s:PxStatus)->string {
+    names:=[6]string.["ok","outside the request's bounds","the log does not verify, or the history holds a redacted event","a section out of the fixed order","tool schemas not sorted by id","changes bytes before the previous request's boundary"];
+    return names[cast(int)s];
+}

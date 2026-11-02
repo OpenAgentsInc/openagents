@@ -1,0 +1,83 @@
+// Chapter 202's check helpers, kept apart from psionic/lib/harness/prefix.coax:
+// the hand session's parts, three scripted sessions for the cache, and a
+// brute-force assembler and prefix oracle for random sessions. Nothing here
+// is used by the assembler itself.
+PXC_SYSTEM :: [4]int.[1,2,3,4];
+PXC_HEADER :: [2]int.[5,6];
+// Three tools, in the order a session registered them: 30, 10, 20.
+pxc_tools :: ()->[3]PxTool {
+    t:[3]PxTool;ids:=[3]int.[30,10,20];
+    for i:0..<3 {t[i]=PxTool.{id=ids[i],count=2};t[i].tok[0]=ids[i];t[i].tok[1]=ids[i]+1;}
+    return t;
+}
+// The tail: a clock reading and a request counter, after the boundary.
+pxc_tail :: (k:int)->[2]int {return [2]int.[1000+k,k];}
+// Chapter 200's hand trace, logged (chapter 201's lc_trace).
+pxc_trace :: (l:[]LgLog)->LgTurn {return lc_trace(l,HL_TRACE_BUDGET,48);}
+
+// Three sessions of four requests. Session j's tools are registered in a
+// rotated order; its log gains one 4-token text event before each request.
+// assembler 0: stable (px_open, px_assemble); 1: registration order with
+// the tail at the end; 2: registration order with the tail at the top.
+pxc_sessions :: (assembler:int,out:[]PxRequest)->int {
+    n:=0;sy:=PXC_SYSTEM;hd:=PXC_HEADER;
+    for j:0..<3 {
+        t:=pxc_tools();r:[3]PxTool;for i:0..<3 {r[i]=t[(i+3-j)%3];}
+        // Rotations: 30 10 20, then 20 30 10, then 10 20 30; sorted is 10 20 30.
+        ev:[8]LgEvent;tk:[32]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+        s:=px_open(sy[..],r[..],hd[..]);
+        for k:0..<4 {
+            text:[4]int;for p:0..<4 {text[p]=100*(j+1)+4*k+p;}
+            kind:=ifx k%2==0 then LgKind.user else LgKind.context;
+            #assert lg_say(l[..],kind,text[..])==LgStatus.ok;
+            tail:=pxc_tail(n);
+            if assembler==0 {out[n]=px_assemble(s,l[0],l[0].count,tail[..]);}
+            else {out[n]=px_naive(sy[..],r[..],hd[..],l[0],tail[..],assembler==2);}
+            n+=1;
+        }
+    }
+    return n;
+}
+
+// Brute force: the request's tokens rebuilt from its parts with a sort of
+// its own, and the longest common prefix of two token lists.
+pxc_build :: (system:[]int,tools:[]PxTool,header:[]int,history:[]int,tail:[]int,out:[]int)->int {
+    n:=0;sy:=PXC_SYSTEM;hd:=PXC_HEADER;
+    for x:system {out[n]=x;n+=1;}
+    used:[8]bool;
+    for k:0..<tools.count {
+        b:=0;while used[b] {b+=1;}
+        for i:0..<tools.count {if !used[i] && tools[i].id<tools[b].id {b=i;}}
+        used[b]=true;for x:tools[b].tok[0..<tools[b].count] {out[n]=x;n+=1;}
+    }
+    for x:header {out[n]=x;n+=1;}
+    for x:history {out[n]=x;n+=1;}
+    for x:tail {out[n]=x;n+=1;}
+    return n;
+}
+pxc_common :: (a:[]int,b:[]int)->int {
+    for i:0..<a.count {if i==b.count || a[i]!=b[i] {return i;}}
+    return a.count;
+}
+// A random session's parts: system, 1 to 4 tools with distinct ids in a
+// random order, a header, and the lengths of up to 6 text events.
+PxcWork :: struct {system:[6]int;ns:int;tools:[4]PxTool;nt:int;header:[3]int;nh:int;events:int;len:[6]int;text:[30]int;tail:[6][3]int;ntail:[6]int;}
+pxc_pick :: (sd:u64,c:u64,n:int)->int {return cast(int)(cr_bits(sd,c)%cast(u64)n);}
+pxc_work :: (seed:int)->PxcWork {
+    w:PxcWork;sd:=cast(u64)seed;c:=cast(u64)0;
+    w.ns=1+pxc_pick(sd,c,6);c+=1;for i:0..<w.ns {w.system[i]=pxc_pick(sd,c,40);c+=1;}
+    w.nt=1+pxc_pick(sd,c,4);c+=1;
+    for i:0..<w.nt {
+        id:=0;fresh:=false;
+        while !fresh {id=pxc_pick(sd,c,12);c+=1;fresh=true;for u:w.tools[0..<i] {if u.id==id {fresh=false;}}}
+        w.tools[i]=PxTool.{id=id,count=1+pxc_pick(sd,c,3)};c+=1;
+        for k:0..<w.tools[i].count {w.tools[i].tok[k]=pxc_pick(sd,c,40);c+=1;}
+    }
+    w.nh=pxc_pick(sd,c,4);c+=1;for i:0..<w.nh {w.header[i]=pxc_pick(sd,c,40);c+=1;}
+    w.events=1+pxc_pick(sd,c,6);c+=1;
+    for e:0..<w.events {
+        w.len[e]=1+pxc_pick(sd,c,5);c+=1;for k:0..<5 {w.text[e*5+k]=pxc_pick(sd,c,40);c+=1;}
+        w.ntail[e]=pxc_pick(sd,c,4);c+=1;for k:0..<3 {w.tail[e][k]=pxc_pick(sd,c,40);c+=1;}
+    }
+    return w;
+}
