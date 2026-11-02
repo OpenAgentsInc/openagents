@@ -71,6 +71,11 @@ Nostr treasury signing/recovery. They keep their existing prerequisites and
 owner actions below. Advance them through actual consumers rather than
 flattening them into a single chapter-count queue.
 
+The [2026-11-01 stopping-point handoff](handoff-2026-11-01-12625-12628.md)
+records the delivered polling, residual-model, dense-GPU and Grid-admission
+slices, the unmerged B2 compiler cost blocker, and the untouched remaining
+queue. All agents in that team have stopped; Coder's chapter move is preserved.
+
 ## What completion means
 
 Keep four different questions separate:

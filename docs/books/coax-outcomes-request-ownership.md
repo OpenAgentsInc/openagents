@@ -90,3 +90,15 @@ keeps a frame poll pending when stdout closes before child exit, with actual
 native delayed-completion/cancel checks and sharp policy mutation. Its frozen
 full-desktop diagnosis identifies the eight-step borrow-path refusal; it does
 not call a source subset a successful full application build.
+
+## 2026-11-01 stopping point
+
+The [polling fix](../verification/coax-request-polling-2026-11-01/README.md)
+is delivered on main. The new [B2 candidate](../verification/coax-helper-write-returns-2026-11-01/README.md)
+is unmerged: focused checks pass, but its final development image reaches
+work 1,048,577 against the unchanged 1,048,576 self-compilation bound. Portable
+source/test and proposed-doc patches preserve the work without changing main's
+compiler/seed or claiming B2 capability. Coordinate the existing R2 cost owner
+before rebasing and qualifying it. Broader B3 and typed async teaching remain
+open. The [team handoff](handoff-2026-11-01-12625-12628.md) records the exact
+measurements, accepted slices and stopped working copies.
