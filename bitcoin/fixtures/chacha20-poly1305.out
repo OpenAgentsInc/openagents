@@ -1,0 +1,27 @@
+init: ok
+r: 000806d5400e52447c036d555408bed685
+r limbs: 0bed685 3555502 047c036 1003949 00806d5
+update 16 bytes: ok
+accumulator after block 1: 02c88c77849d64ae9147ddeb88e69c83fc
+update 18 bytes: ok, 2 bytes wait for final
+final: ok
+tag: a8061dc1305136c6c22b8baf0c0127a9
+state erased after final: true
+update after final: already final
+one-shot: true
+one-shot tag: a8061dc1305136c6c22b8baf0c0127a9
+Poly1305 key from block 0: 8ad5a08b905f81cc815040274ab29471a833b637e3fd0da508dbb8e2fdd1a646
+seal: ok
+ciphertext 0-15: d31a8d34648e60db7b86afbc53ef7ec2
+tag: 1ae10b594f09e26a7e902ecbd0600691
+sealed box equals RFC 8439 2.8.2: true
+open: ok, "Ladies and Gentlemen of"
+open with tag bit 0 of byte 15 flipped: tag mismatch, output untouched true
+open with ciphertext bit 0 of byte 0 flipped: tag mismatch, output untouched true
+open with AAD bit 0 of byte 0 flipped: tag mismatch, output untouched true
+8-byte nonce: bad nonce
+129-byte output for 114 bytes: bad output
+open a 15-byte box: bad input
+output untouched by the refusals: true
+XChaCha20-Poly1305 seal: true
+XChaCha20-Poly1305 tag: c0875924c1c7987947deafd8780acf49

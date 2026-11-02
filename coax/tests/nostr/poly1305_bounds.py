@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[3]
 SOURCE=ROOT/'coax/lib/crypto/poly1305.coax'
-SOURCE_HASH='260530313c303e2d06a962471eae3d0b5b5168507826fee12d163cf7f7e48e23'
+SOURCE_HASH='b91e599c2e7b7b951dd2cb9290c75684728a477dc99c7fa4f5a6104e87f96509'
 BASE=1<<26
 LIMIT=1<<58
 

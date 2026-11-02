@@ -112,6 +112,16 @@
       ]
     },
     {
+      "source": "bitcoin/examples/chacha20-poly1305.coax",
+      "chapter": "bitcoin/book/ch012-poly1305-and-chacha20-poly1305.md",
+      "stdout": "bitcoin/fixtures/chacha20-poly1305.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/field-arithmetic.coax",
       "chapter": "bitcoin/book/ch013-field-arithmetic-mod-p.md",
       "stdout": "bitcoin/fixtures/field-arithmetic.out",

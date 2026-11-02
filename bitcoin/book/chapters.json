@@ -258,16 +258,28 @@
   {
    "number": 12,
    "title": "Poly1305 and ChaCha20-Poly1305",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch012-poly1305-and-chacha20-poly1305.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     11,
     3
    ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
+   "source": [
+    "coax/lib/crypto/poly1305.coax",
+    "coax/lib/crypto/chacha20_poly1305.coax",
+    "coax/lib/crypto/xchacha20_poly1305.coax",
+    "bitcoin/examples/chacha20-poly1305.coax",
+    "bitcoin/examples/checks/chacha20-poly1305.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": [
+    "coax/lib/crypto/aead_workspace.coax",
+    "psionic/lib/peer/link.coax"
+   ]
   },
   {
    "number": 13,

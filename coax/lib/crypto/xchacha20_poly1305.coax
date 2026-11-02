@@ -1,6 +1,7 @@
-// Experimental bounded XChaCha20-Poly1305. No production secret-use approval.
+// Experimental bounded XChaCha20-Poly1305: the RFC 8439 AEAD under an
+// HChaCha20 subkey. No production secret-use approval.
 #load "xchacha20.coax";
-#load "poly1305.coax";
+#load "chacha20_poly1305.coax";
 #authority;
 
 #test "XChaCha20-Poly1305 draft A.3.1 seal and open" {
@@ -34,6 +35,7 @@
 
 #test "XChaCha20-Poly1305 admission bounds and phase failures" {
   #assert xcp_admit(32,24,0,0,16,false,true);
+  #assert !xcp_admit(32,24,0,5,20,false,true) && xcp_admit(32,24,0,5,21,false,true);
   #assert xcp_admit(32,24,1024,4096,4112,false,true);
   #assert xcp_admit(32,24,0,16,0,false,false);
   #assert xcp_admit(32,24,1024,4112,4096,false,false);
@@ -51,15 +53,29 @@
   #assert !xcp_admit(32,24,0,17,0,false,false);
   #assert !xcp_admit(32,24,0,16,CB_MAX_BYTES+1,false,false);
   #assert !xcp_admit(32,24,0,0,16,true,true);
-  key:[32]u8;badkey:[31]u8;nonce:[24]u8;aad:[1]u8;cipher:[1]u8;tag:[16]u8;
-  #assert !xcp_tag(badkey[..],nonce[..],aad[..],cipher[..],tag[..]);
-  #assert !xcp_tag(key[..],nonce[..],aad[..],cipher[..],tag[0..<15]);
+  cipher:[1]u8;tag:[16]u8;
   out:[17]u8;for i:0..<17 {out[i]=165;}
   #assert !xcp_commit(cipher[..],tag[..],out[..],CC_KEY,true);
   #assert !xcp_commit(cipher[..],tag[..],out[..],CC_OK,false);
   for v:out {#assert v==165;}
-  box:[17]u8;#assert !xcp_finish_open(key[..],nonce[..],box[..],out[..],tag[..],false);
-  for v:out {#assert v==165;}
+  tag[0]=7;tag[15]=9;#assert xcp_commit(cipher[..],tag[..],out[..],CC_OK,true) && out[0]==0 && out[1]==7 && out[16]==9;
+}
+
+#test "seal admits 0 to 4096 plaintext bytes, not the 4112 that open admits" {
+  key:[32]u8;nonce:[24]u8;aad:[1]u8;msg:[4097]u8;out:[4113]u8;
+  #assert xcp_seal(key[..],nonce[..],aad[..],msg[0..<0],out[0..<16],false);
+  #assert xcp_seal(key[..],nonce[..],aad[..],msg[0..<4096],out[0..<4112],false);
+  #assert !xcp_seal(key[..],nonce[..],aad[..],msg[..],out[..],false);
+}
+
+#test "the subkey and short nonce are HChaCha20 and the last 8 nonce bytes" {
+  key:[32]u8;nonce:[24]u8;subkey:[32]u8;short:[12]u8;want:[32]u8;
+  for i:0..<32 {key[i]=cast(u8)i;}for i:0..<24 {nonce[i]=cast(u8)(i+50);}
+  for i:0..<12 {short[i]=165;}
+  xcp_subkey(key[..],nonce[..],subkey[..],short[..]);
+  #assert hchacha20_checked(key[..],nonce[0..<16],want[..],false).error==CC_OK;
+  for i:0..<32 {#assert subkey[i]==want[i];}
+  for i:0..<4 {#assert short[i]==0;}for i:0..<8 {#assert short[4+i]==nonce[16+i];}
 }
 
 XCP_MAX_AAD :: 1024; XCP_MAX_TEXT :: 4096;
@@ -74,22 +90,8 @@ xcp_admit :: (key:int,nonce:int,aad:int,text:int,capacity:int,overlap:bool,seal:
   return capacity>=text-16 && capacity<=CB_MAX_BYTES;
 }
 
-// Internal composition: metadata and alias facts have been checked. The
-// one-time key and stack buffers do not yet have proven erasure.
-xcp_tag :: (key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8,tag:[]u8)->bool {
-  zero:[32]u8;polykey:[32]u8;
-  stream:=xchacha20_xor_checked(key,nonce,0,zero[..],polykey[..],false);
-  data:[5168]u8;at:=0;
-  for b:aad {data[at]=b;at+=1;}
-  while at%16!=0 {at+=1;}
-  for b:cipher {data[at]=b;at+=1;}
-  while at%16!=0 {at+=1;}
-  a:=cb_store_le64(data[..],at,cast(u64)aad.count);at+=8;
-  b:=cb_store_le64(data[..],at,cast(u64)cipher.count);at+=8;
-  ok:=poly1305_checked(polykey[..],data[0..<at],tag,false);
-  return stream.error==CC_OK && ok;
-}
-
+// xcp_commit copies a staged ciphertext and tag once both steps succeeded;
+// aead_workspace.coax stages its results with it.
 xcp_commit :: (cipher:[]u8,tag:[]u8,out:[]u8,status:u32,tag_ok:bool)->bool {
   if status!=CC_OK || !tag_ok {return false;}
   for i:0..<cipher.count {out[i]=cipher[i];}
@@ -97,27 +99,30 @@ xcp_commit :: (cipher:[]u8,tag:[]u8,out:[]u8,status:u32,tag_ok:bool)->bool {
   return true;
 }
 
-xcp_finish_open :: (key:[]u8,nonce:[]u8,box:[]u8,out:[]u8,tag:[]u8,tag_ok:bool)->bool {
-  if !tag_ok {return false;}
-  n:=box.count-16;
-  if cb_ct_equal(tag,box[n..<box.count])!=CB_MAX64 {return false;}
-  result:=xchacha20_xor_checked(key,nonce,1,box[0..<n],out,false);
-  return result.error==CC_OK;
+// XChaCha20-Poly1305 is ChaCha20-Poly1305 under the HChaCha20 subkey of the
+// key and the first 16 nonce bytes, with the 12-byte nonce 0, 0, 0, 0 and
+// the last 8 nonce bytes.
+xcp_subkey :: (key:[]u8,nonce:[]u8,subkey:[]u8,short:[]u8) {
+  derived:=hchacha20_checked(key,nonce[0..<16],subkey,false);
+  for i:0..<12 {short[i]=ifx i<4 then cast(u8)0 else nonce[12+i];}
 }
 
 // Internal ABI: valid views and all input/output alias observations are the
 // caller's responsibility. Public APIs need a checked host memory adapter.
 xcp_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c {
   if !xcp_admit(key.count,nonce.count,aad.count,msg.count,out.count,overlap,true) {return false;}
-  cipher:[4096]u8;tag:[16]u8;
-  stream:=xchacha20_xor_checked(key,nonce,1,msg,cipher[0..<msg.count],false);
-  ok:=xcp_tag(key,nonce,aad,cipher[0..<msg.count],tag[..]);
-  return xcp_commit(cipher[0..<msg.count],tag[..],out,stream.error,ok);
+  subkey:[32]u8;short:[12]u8;
+  xcp_subkey(key,nonce,subkey[..],short[..]);
+  status:=chacha20_poly1305_seal(subkey[..],short[..],aad,msg,out,false);
+  for i:0..<32 {subkey[i]=0;} // mutant: equivalent (erases a dead local; no result reads it)
+  return status==CCP_OK;
 }
 
 xcp_open :: (key:[]u8,nonce:[]u8,aad:[]u8,box:[]u8,out:[]u8,overlap:bool)->bool #export_c {
   if !xcp_admit(key.count,nonce.count,aad.count,box.count,out.count,overlap,false) {return false;}
-  n:=box.count-16;tag:[16]u8;
-  ok:=xcp_tag(key,nonce,aad,box[0..<n],tag[..]);
-  return xcp_finish_open(key,nonce,box,out,tag[..],ok);
+  subkey:[32]u8;short:[12]u8;
+  xcp_subkey(key,nonce,subkey[..],short[..]);
+  status:=chacha20_poly1305_open(subkey[..],short[..],aad,box,out,false);
+  for i:0..<32 {subkey[i]=0;} // mutant: equivalent (erases a dead local; no result reads it)
+  return status==CCP_OK;
 }

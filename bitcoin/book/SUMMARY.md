@@ -22,6 +22,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [9. HKDF](ch009-hkdf.md) — implemented
 - [10. SipHash-2-4](ch010-siphash-2-4.md) — implemented
 - [11. ChaCha20](ch011-chacha20.md) — implemented
+- [12. Poly1305 and ChaCha20-Poly1305](ch012-poly1305-and-chacha20-poly1305.md) — implemented
 
 **III. secp256k1**
 

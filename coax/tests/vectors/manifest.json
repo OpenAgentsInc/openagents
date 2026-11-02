@@ -173,6 +173,19 @@
       "bytes": 501501
     },
     {
+      "path": "upstream/wycheproof/chacha20_poly1305_test.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/chacha20_poly1305_test.json",
+      "revision": "git:d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9",
+      "license": "Apache-2.0",
+      "covers": [
+        "chacha20-poly1305"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "fe61d25f90e1bde4461d00eafe61049e5f29bd999f36b766df9cda90906ad53d",
+      "bytes": 241127
+    },
+    {
       "path": "upstream/wycheproof/LICENSE",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/LICENSE",

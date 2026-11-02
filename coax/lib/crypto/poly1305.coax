@@ -1,5 +1,5 @@
-// Experimental bounded Poly1305. Each key is one-time and must never be
-// reused across messages. No production secret-use approval.
+// RFC 8439 Poly1305 over caller-owned state. Each key is one-time and must
+// never be reused across messages. No production secret-use approval.
 #load "bytes.coax";
 #authority;
 
@@ -34,14 +34,14 @@
 }
 
 #test "canonical reduction and carry propagation at modulus boundaries" {
-  m:=POLY_BASE_MASK;
+  m:=POLY_BASE_MASK;scratch:[5]u64;
   below:=[5]u64.[m-5,m,m,m,m];equal:=[5]u64.[m-4,m,m,m,m];
   above:=[5]u64.[m-3,m,m,m,m];
-  actual:=poly_reduce(below);for i:0..<5 {#assert actual[i]==below[i];}
-  actual=poly_reduce(equal);for i:0..<5 {#assert actual[i]==0;}
-  one:=[5]u64.[1,0,0,0,0];actual=poly_reduce(above);for i:0..<5 {#assert actual[i]==one[i];}
+  h:=below;poly_reduce(h[..],scratch[..]);for i:0..<5 {#assert h[i]==below[i] && scratch[i]==0;}
+  h=equal;poly_reduce(h[..],scratch[..]);for i:0..<5 {#assert h[i]==0;}
+  one:=[5]u64.[1,0,0,0,0];h=above;poly_reduce(h[..],scratch[..]);for i:0..<5 {#assert h[i]==one[i] && scratch[i]==0;}
   carries:=[5]u64.[m-1,m,m,m,cast(u64)13421773*(m+1)+m];
-  wanted:=[5]u64.[4,1,0,0,0];actual=poly_normalize(carries);for i:0..<5 {#assert actual[i]==wanted[i];}
+  wanted:=[5]u64.[4,1,0,0,0];poly_normalize(carries[..]);for i:0..<5 {#assert carries[i]==wanted[i];}
 }
 
 #test "RFC 8439 appendix A.3 vector 8 reduces a full accumulator" {
@@ -72,59 +72,292 @@
   #assert out[16]==165;
 }
 
+#test "clamping clears 22 bits of r and keeps s" {
+  key:[32]u8;for i:0..<32 {key[i]=255;}
+  state:[1]Poly1305State;
+  #assert poly1305_init(state[..],key[..],false)==POLY_OK;
+  // r = 0x0ffffffc0ffffffc0ffffffc0fffffff in 26-bit limbs.
+  r:=[5]u64.[0x3ffffff,0x3ffff03,0x3ffc0ff,0x3f03fff,0x00fffff];
+  for i:0..<5 {#assert state[0].r[i]==r[i] && state[0].h[i]==0;}
+  for i:0..<16 {#assert state[0].s[i]==255 && state[0].block[i]==0;}
+  #assert state[0].used==0 && state[0].phase==POLY_ACTIVE;
+}
+
+// With r = 1 and s = 0, one block's tag is the block plus 2^(8 * length):
+// the message bytes, then the appended 0x01 byte, then zeros. A full block's
+// 0x01 lands at bit 128, past the tag.
+#forall "with r = 1 and s = 0 the tag is the padded block" length: 1..<17 {
+  key:[32]u8;key[0]=1;msg:[16]u8;out:[16]u8;
+  for i:0..<16 {msg[i]=cast(u8)(200+i*3);}
+  #assert poly1305_checked(key[..],msg[0..<length],out[..],false);
+  for i:0..<16 {
+    want:=ifx i<length then msg[i] else ifx i==length then cast(u8)1 else cast(u8)0;
+    #assert out[i]==want;
+  }
+}
+
+#forall "every split into two updates gives the one-shot tag" cut: 0..<50 {
+  key:[32]u8;msg:[49]u8;whole:[16]u8;split:[16]u8;
+  for i:0..<32 {key[i]=cast(u8)((i*29+7)%256);}for i:0..<49 {msg[i]=cast(u8)((i*13+5)%256);}
+  #assert poly1305_checked(key[..],msg[..],whole[..],false);
+  state:[1]Poly1305State;
+  #assert poly1305_init(state[..],key[..],false)==POLY_OK;
+  #assert poly1305_update(state[..],msg[0..<cut],false)==POLY_OK;
+  #assert state[0].used==cut%16;
+  #assert poly1305_update(state[..],msg[cut..<49],false)==POLY_OK;
+  #assert poly1305_final(state[..],split[..],false)==POLY_OK;
+  for i:0..<16 {#assert split[i]==whole[i];}
+}
+
+#test "final erases the state, and a finished state refuses" {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)(i+1);}
+  msg:[5]u8;out:[16]u8;state:[1]Poly1305State;
+  #assert poly1305_init(state[..],key[..],false)==POLY_OK;
+  #assert poly1305_update(state[..],msg[..],false)==POLY_OK;
+  #assert state[0].used==5;
+  #assert poly1305_final(state[..],out[..],false)==POLY_OK;
+  for i:0..<5 {#assert state[0].r[i]==0 && state[0].h[i]==0 && state[0].product[i]==0;}
+  for i:0..<16 {#assert state[0].s[i]==0 && state[0].block[i]==0;}
+  #assert state[0].used==0 && state[0].phase==0;
+  for i:0..<16 {out[i]=165;}
+  #assert poly1305_update(state[..],msg[..],false)==POLY_PHASE;
+  #assert poly1305_final(state[..],out[..],false)==POLY_PHASE;
+  for v:out {#assert v==165;}
+}
+
+#test "refusals change neither the state nor the output" {
+  key:[33]u8;for i:0..<33 {key[i]=cast(u8)(3*i);}
+  msg:[20]u8;out:[16]u8;for i:0..<16 {out[i]=165;}
+  state:[2]Poly1305State;
+  #assert poly1305_init(state[0..<0],key[0..<32],false)==POLY_BAD_STATE;
+  #assert poly1305_init(state[..],key[0..<32],false)==POLY_BAD_STATE;
+  #assert poly1305_init(state[0..<1],key[0..<31],false)==POLY_BAD_KEY;
+  #assert poly1305_init(state[0..<1],key[..],false)==POLY_BAD_KEY;
+  #assert poly1305_init(state[0..<1],key[0..<32],true)==POLY_ALIAS;
+  #assert state[0].phase==0;
+  #assert poly1305_init(state[0..<1],key[0..<32],false)==POLY_OK;
+  #assert poly1305_update(state[0..<1],msg[0..<3],false)==POLY_OK;
+  before:=state[0];
+  #assert poly1305_update(state[..],msg[..],false)==POLY_BAD_STATE;
+  #assert poly1305_update(state[0..<1],msg[..],true)==POLY_ALIAS;
+  #assert poly1305_final(state[0..<1],out[0..<15],false)==POLY_BAD_OUTPUT;
+  #assert poly1305_final(state[0..<1],out[..],true)==POLY_ALIAS;
+  #assert poly1305_final(state[0..<0],out[..],false)==POLY_BAD_STATE;
+  #assert poly_input(-1,false)==POLY_BAD_INPUT && poly_input(CB_MAX_BYTES+1,false)==POLY_BAD_INPUT;
+  #assert poly_input(CB_MAX_BYTES,false)==POLY_OK && poly_input(0,true)==POLY_OK && poly_input(1,true)==POLY_ALIAS;
+  #assert poly_output(15,false)==POLY_BAD_OUTPUT && poly_output(CB_MAX_BYTES+1,false)==POLY_BAD_OUTPUT;
+  #assert poly_output(16,false)==POLY_OK && poly_output(CB_MAX_BYTES,false)==POLY_OK && poly_output(16,true)==POLY_ALIAS;
+  for v:out {#assert v==165;}
+  #assert state[0].used==before.used && state[0].phase==before.phase;
+  for i:0..<5 {#assert state[0].h[i]==before.h[i] && state[0].r[i]==before.r[i];}
+  for i:0..<16 {#assert state[0].block[i]==before.block[i] && state[0].s[i]==before.s[i];}
+  // An empty update with an overlap fact passes: it reads nothing.
+  #assert poly1305_update(state[0..<1],msg[0..<0],true)==POLY_OK;
+}
+
+#test "a damaged or forged state refuses" {
+  key:[32]u8;msg:[1]u8;state:[1]Poly1305State;
+  #assert poly1305_init(state[..],key[..],false)==POLY_OK;
+  good:=state[0];
+  state[0].phase=2;#assert poly_check(state[..])==POLY_BAD_STATE;
+  state[0]=good;state[0].used=16;#assert poly_check(state[..])==POLY_BAD_STATE;
+  state[0]=good;state[0].used=-1;#assert poly_check(state[..])==POLY_BAD_STATE;
+  state[0]=good;state[0].used=15;#assert poly_check(state[..])==POLY_OK;
+  state[0]=good;state[0].block[0]=1;#assert poly_check(state[..])==POLY_BAD_STATE;
+  state[0].used=1;#assert poly_check(state[..])==POLY_OK;
+  state[0].block[15]=1;state[0].used=15;#assert poly_check(state[..])==POLY_BAD_STATE;
+  for i:0..<5 {
+    state[0]=good;state[0].h[i]=POLY_BASE_MASK+1;#assert poly_check(state[..])==POLY_BAD_STATE;
+    state[0].h[i]=POLY_BASE_MASK;#assert poly_check(state[..])==POLY_OK;
+    state[0]=good;state[0].r[i]=POLY_BASE_MASK+1;#assert poly_check(state[..])==POLY_BAD_STATE;
+    state[0].r[i]=POLY_BASE_MASK;#assert poly_check(state[..])==POLY_OK;
+  }
+  for i:0..<5 {state[0]=good;state[0].product[i]=1;#assert poly_check(state[..])==POLY_BAD_STATE;}
+  state[0]=good;state[0].used=16;
+  #assert poly1305_update(state[..],msg[..],false)==POLY_BAD_STATE && state[0].used==16;
+}
+
 POLY_BASE_MASK :: cast(u64)0x3ffffff;
+POLY_OK :: cast(u32)0;
+POLY_BAD_STATE :: cast(u32)1;
+POLY_BAD_KEY :: cast(u32)2;
+POLY_BAD_INPUT :: cast(u32)3;
+POLY_BAD_OUTPUT :: cast(u32)4;
+POLY_PHASE :: cast(u32)5;
+POLY_ALIAS :: cast(u32)6;
+POLY_ACTIVE :: cast(u32)1;
+POLY_LOW32 :: cast(u64)0xffffffff;
+// book:begin state
+// The caller owns every byte of a MAC in progress: r and the accumulator h
+// in 26-bit limbs, s, the partial block, and the product the multiplication
+// builds. Final erases all of it.
+Poly1305State :: struct {
+  r:[5]u64; h:[5]u64; product:[5]u64;
+  s:[16]u8; block:[16]u8;
+  used:int;     // bytes in block, 0 to 15
+  phase:u32;    // POLY_ACTIVE, or 0 before init and after final
+}
+// The bits of r that clamping keeps, as the low and high 64-bit halves.
+// RFC 8439 clears the top four bits of bytes 3, 7, 11 and 15 and the bottom
+// two bits of bytes 4, 8 and 12.
+POLY_CLAMP_LO :: cast(u64)0x0ffffffc0fffffff;
+POLY_CLAMP_HI :: cast(u64)0x0ffffffc0ffffffc;
+// book:end state
 
 poly_admit :: (key:int,msg:int,capacity:int,overlap:bool)->bool {
   return key==32 && msg>=0 && msg<=CB_MAX_BYTES && capacity>=16 && capacity<=CB_MAX_BYTES && !overlap;
 }
 
-poly_carry :: (input:[5]u64)->[5]u64 {
-  product:=input;
+// book:begin carry
+// One carry pass: each limb keeps its low 26 bits and passes the rest up.
+// What passes out of limb 4 is a multiple of 2^130, and 2^130 = 5 mod p, so
+// it comes back into limb 0 times 5. Three passes bring every limb below
+// 2^26 (coax/tests/nostr/poly1305_bounds.py checks this with Z3).
+poly_carry :: (x:[]u64) {
   for i:0..<5 {
-    carry:=product[i]>>26;product[i]&=POLY_BASE_MASK;
-    if i==4 {product[0]+=carry*5;} else {product[i+1]+=carry;}
+    carry:=x[i]>>26;x[i]&=POLY_BASE_MASK;
+    if i==4 {x[0]+=carry*5;} else {x[i+1]+=carry;}
   }
-  return product;
 }
-poly_normalize :: (input:[5]u64)->[5]u64 {
-  first:=poly_carry(input);second:=poly_carry(first);return poly_carry(second);
+poly_normalize :: (x:[]u64) {poly_carry(x);poly_carry(x);poly_carry(x);}
+// book:end carry
+// book:begin reduce
+// h is below 2^130 in canonical limbs, so h mod p is h or h - p. h + 5
+// reaches 2^130 exactly when h >= p, and then its low 130 bits are h - p.
+// The bit above them becomes a mask that selects without a branch.
+poly_reduce :: (h:[]u64,scratch:[]u64) {
+  for i:0..<5 {scratch[i]=h[i];}scratch[0]+=5;
+  for i:0..<4 {carry:=scratch[i]>>26;scratch[i]&=POLY_BASE_MASK;scratch[i+1]+=carry;}
+  overflow:=scratch[4]>>26;scratch[4]&=POLY_BASE_MASK;
+  mask:=sub_wrap(cast(u64)0,overflow);
+  for i:0..<5 {h[i]=(scratch[i]&mask)|(h[i]^(h[i]&mask));scratch[i]=0;}
 }
-poly_reduce :: (h:[5]u64)->[5]u64 {
-  reduced:=h;reduced[0]+=5;
-  for i:0..<4 {carry:=reduced[i]>>26;reduced[i]&=POLY_BASE_MASK;reduced[i+1]+=carry;}
-  overflow:=reduced[4]>>26;reduced[4]&=POLY_BASE_MASK;
-  mask:=sub_wrap(cast(u64)0,overflow);result:=h;
-  for i:0..<5 {result[i]=(reduced[i]&mask)|(h[i]^(h[i]&mask));}
-  return result;
-}
+// book:end reduce
 
-// Internal ABI: views and overlap must be checked by the caller. Stack
-// temporaries have no proven erasure or machine-code timing guarantees.
+// book:begin start
+// Add a 128-bit number, given as its low and high 64 bits, to five 26-bit
+// limbs: bits 0-25, 26-51, 52-77, 78-103 and 104-127.
+poly_split :: (lo:u64,hi:u64,limbs:[]u64) {
+  limbs[0]+=lo&POLY_BASE_MASK;
+  limbs[1]+=(lo>>26)&POLY_BASE_MASK;
+  limbs[2]+=((lo>>52)|(hi<<12))&POLY_BASE_MASK;
+  limbs[3]+=(hi>>14)&POLY_BASE_MASK;
+  limbs[4]+=hi>>40;
+}
+// r is the first 16 key bytes, little-endian and clamped; s is the last 16.
+poly_start :: (state:[]Poly1305State,key:[]u8) {
+  state[0]=Poly1305State.{phase=POLY_ACTIVE};
+  lo:=cb_load_le64(key,0).value&POLY_CLAMP_LO;
+  hi:=cb_load_le64(key,8).value&POLY_CLAMP_HI;
+  poly_split(lo,hi,state[0].r[..]);
+  for i:0..<16 {state[0].s[i]=key[16+i];}
+}
+// book:end start
+// book:begin block
+// One block: h = (h + block + 2^(8 * length)) * r mod 2^130 - 5. The block's
+// first `length` bytes are the message; the rest are zero. Adding 2^(8 *
+// length) appends the 0x01 byte. Limb i times limb j lands in limb i + j;
+// past limb 4 it wraps to limb i + j - 5 times 5, because 2^130 = 5 mod p.
+poly_block :: (state:[]Poly1305State,length:int) {
+  poly_split(cb_load_le64(state[0].block[..],0).value,cb_load_le64(state[0].block[..],8).value,state[0].h[..]);
+  top:=length*8;state[0].h[top/26]+=cast(u64)1<<(top%26);
+  for i:0..<5 {for j:0..<5 {
+    index:=i+j;factor:=cast(u64)1;if index>=5 {index-=5;factor=5;}
+    state[0].product[index]+=state[0].h[i]*state[0].r[j]*factor;
+  }}
+  poly_normalize(state[0].product[..]);
+  for i:0..<5 {state[0].h[i]=state[0].product[i];state[0].product[i]=0;}
+  for i:0..<16 {state[0].block[i]=0;}
+}
+// book:end block
+// book:begin absorb
+// Full blocks are taken as soon as they fill; a partial one waits in the
+// state for more bytes or for final.
+poly_absorb :: (state:[]Poly1305State,msg:[]u8) {
+  used:=state[0].used;
+  for byte:msg {
+    state[0].block[used]=byte;used+=1;
+    if used==16 {poly_block(state,16);used=0;}
+  }
+  state[0].used=used;
+}
+// book:end absorb
+// book:begin finish
+// The tag is (h mod p + s) mod 2^128, little-endian. Every field of the
+// state is erased afterwards.
+poly_finish :: (state:[]Poly1305State,out:[]u8) {
+  if state[0].used>0 {poly_block(state,state[0].used);}
+  poly_reduce(state[0].h[..],state[0].product[..]);
+  // The low 128 bits of h as two 64-bit halves; bits 128 and 129 drop out.
+  h:=state[0].h[..];
+  lo:=h[0]|(h[1]<<26)|(h[2]<<52);
+  hi:=(h[2]>>12)|(h[3]<<14)|(h[4]<<40);
+  // Add s in 32-bit pieces, so each carry is the bits above 32.
+  slo:=cb_load_le64(state[0].s[..],0).value;shi:=cb_load_le64(state[0].s[..],8).value;
+  w0:=(lo&POLY_LOW32)+(slo&POLY_LOW32);
+  w1:=(lo>>32)+(slo>>32)+(w0>>32);
+  w2:=(hi&POLY_LOW32)+(shi&POLY_LOW32)+(w1>>32);
+  w3:=(hi>>32)+(shi>>32)+(w2>>32);
+  a:=cb_store_le32(out,0,cast(u32)(w0&POLY_LOW32));b:=cb_store_le32(out,4,cast(u32)(w1&POLY_LOW32));
+  c:=cb_store_le32(out,8,cast(u32)(w2&POLY_LOW32));d:=cb_store_le32(out,12,cast(u32)(w3&POLY_LOW32));
+  state[0]=Poly1305State.{};
+}
+// book:end finish
+
+// book:begin check
+// A state is usable only if it is active, its partial block is in range and
+// zero past `used`, every limb is below 2^26 and the product is zero (each
+// block clears it). Anything else was damaged or forged: refuse it rather
+// than compute with it. The secret fields are folded into one value that is
+// tested once, so a valid state takes the same path whatever its key and
+// message.
+poly_check :: (state:[]Poly1305State)->u32 {
+  if state.count!=1 {return POLY_BAD_STATE;}
+  if state[0].phase==0 {return POLY_PHASE;}
+  used:=state[0].used;
+  if state[0].phase!=POLY_ACTIVE || used<0 || used>15 {return POLY_BAD_STATE;}
+  excess:=cast(u64)0;
+  for i:used..<16 {excess|=cast(u64)state[0].block[i];}
+  for i:0..<5 {excess|=((state[0].h[i]|state[0].r[i])>>26)|state[0].product[i];}
+  if excess!=0 {return POLY_BAD_STATE;}
+  return POLY_OK;
+}
+// The size and overlap checks of one update's input and of final's output.
+poly_input :: (count:int,overlap:bool)->u32 {
+  if count<0 || count>CB_MAX_BYTES {return POLY_BAD_INPUT;}
+  if count>0 && overlap {return POLY_ALIAS;}
+  return POLY_OK;
+}
+poly_output :: (count:int,overlap:bool)->u32 {
+  if count<16 || count>CB_MAX_BYTES {return POLY_BAD_OUTPUT;}
+  if overlap {return POLY_ALIAS;}
+  return POLY_OK;
+}
+poly1305_init :: (state:[]Poly1305State,key:[]u8,overlap:bool)->u32 #export_c {
+  if state.count!=1 {return POLY_BAD_STATE;}
+  if key.count!=32 {return POLY_BAD_KEY;}
+  if overlap {return POLY_ALIAS;}
+  poly_start(state,key);return POLY_OK;
+}
+poly1305_update :: (state:[]Poly1305State,msg:[]u8,overlap:bool)->u32 #export_c {
+  status:=poly_check(state);if status!=POLY_OK {return status;}
+  status=poly_input(msg.count,overlap);if status!=POLY_OK {return status;}
+  poly_absorb(state,msg);return POLY_OK;
+}
+poly1305_final :: (state:[]Poly1305State,out:[]u8,overlap:bool)->u32 #export_c {
+  status:=poly_check(state);if status!=POLY_OK {return status;}
+  status=poly_output(out.count,overlap);if status!=POLY_OK {return status;}
+  poly_finish(state,out);return POLY_OK;
+}
+// book:end check
+
+// book:begin oneshot
+// One-shot MAC for NIP-49 and the AEADs: the same steps over a local state,
+// which poly_finish erases.
 poly1305_checked :: (key:[]u8,msg:[]u8,out:[]u8,overlap:bool)->bool #export_c {
   if !poly_admit(key.count,msg.count,out.count,overlap) {return false;}
-  clamped:[16]u8;for i:0..<16 {clamped[i]=key[i];}
-  clamped[3]&=15;clamped[7]&=15;clamped[11]&=15;clamped[15]&=15;
-  clamped[4]&=252;clamped[8]&=252;clamped[12]&=252;
-  r:[5]u64;h:[5]u64;
-  for bit:0..<128 {r[bit/26]|=cast(u64)((clamped[bit/8]>>(bit%8))&1)<<(bit%26);}
-  at:=0;
-  while at<msg.count {
-    remaining:=msg.count-at;length:=16;if (remaining-1)/16==0 {length=remaining;}
-    block:[17]u8;for i:0..<length {block[i]=msg[at+i];}block[length]=1;
-    for bit:0..<130 {h[bit/26]+=cast(u64)((block[bit/8]>>(bit%8))&1)<<(bit%26);}
-    product:[5]u64;
-    for i:0..<5 {for j:0..<5 {
-      index:=i+j;factor:=cast(u64)1;if index>=5 {index-=5;factor=5;}
-      product[index]+=h[i]*r[j]*factor;
-    }}
-    h=poly_normalize(product);at+=length;
-  }
-  h=poly_reduce(h);
-  carry:=cast(u64)0;
-  for i:0..<16 {
-    value:=cast(u64)0;
-    for j:0..<8 {bit:=i*8+j;value|=((h[bit/26]>>(bit%26))&1)<<j;}
-    sum:=value+cast(u64)key[16+i]+carry;out[i]=cast(u8)(sum&255);carry=sum>>8;
-  }
+  state:[1]Poly1305State;
+  poly_start(state[..],key);poly_absorb(state[..],msg);poly_finish(state[..],out);
   return true;
 }
+// book:end oneshot

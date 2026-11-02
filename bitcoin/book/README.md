@@ -38,16 +38,16 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 85 chapters, 19 are implemented and 66 are planned. The 19
-implemented chapters have runnable examples, qualified on native CPU, and 15
+Of the 85 chapters, 20 are implemented and 65 are planned. The 20
+implemented chapters have runnable examples, qualified on native CPU, and 16
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5, 6, 7 and 10 are new.
+chapters 5, 6, 7, 10 and 12 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
 that later chapters will teach already exists in places: ECDSA signing
 (`coax/lib/crypto/ecdsa_sign.coax`), BIP-39 and BIP-32 (`bip39.coax`,
-`bip32.coax`), Poly1305 (`poly1305.coax`), and the BIP-143 and BIP-341
+`bip32.coax`), and the BIP-143 and BIP-341
 signature hashes (`coax/lib/bitcoin/sighash.coax`), written for Nostr
 chapter 104's agent treasuries.
 
@@ -116,7 +116,7 @@ Every hash, MAC and cipher Bitcoin and Lightning use, each checked against its p
 | [9. HKDF](ch009-hkdf.md) | Runnable: native C and wasm | HKDF-SHA256 extract and expand with output bounds, checked against RFC 5869 cases 1–3, and the exact NIP-44 v2 use: extract with salt `nip44-v2`, expand to 76 bytes. |
 | [10. SipHash-2-4](ch010-siphash-2-4.md) | Runnable: native C and wasm | SipHash-2-4 with a 16-byte key and an 8-byte tag, checked against all 64 reference vectors natively and in Wasm, Bitcoin Core's salted-hash case and a separate Python SipHash. |
 | [11. ChaCha20](ch011-chacha20.md) | Runnable: native C and wasm | RFC 8439 ChaCha20 with caller-supplied nonce and counter, counter exhaustion refused, and HChaCha20 for NIP-49's XChaCha20. |
-| 12. Poly1305 and ChaCha20-Poly1305 | Planned | RFC 8439 sections 2.5.2 and 2.8.2 vectors pass. A tag that differs in one bit refuses and releases no plaintext. |
+| [12. Poly1305 and ChaCha20-Poly1305](ch012-poly1305-and-chacha20-poly1305.md) | Runnable: native C and wasm | Streaming Poly1305 over caller-owned state and the RFC 8439 AEAD with a 12-byte nonce, checked against RFC 8439 sections 2.5.2 and 2.8.2, appendices A.3 to A.5, all 325 Wycheproof cases and OpenSSL, natively and in Wasm. A tag one bit wrong refuses and releases no plaintext. |
 
 ### Part III. secp256k1 (chapters 13–18)
 

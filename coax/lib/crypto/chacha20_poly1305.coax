@@ -1,0 +1,172 @@
+// RFC 8439 AEAD_CHACHA20_POLY1305 with a 96-bit nonce. Never seal two
+// messages under one key and nonce. No production secret-use approval.
+#load "chacha20.coax";
+#load "poly1305.coax";
+#authority;
+
+#test "RFC 8439 section 2.6.2 Poly1305 key generation" {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)(128+i);}
+  nonce:=[12]u8.[0,0,0,0,0,1,2,3,4,5,6,7];
+  want:=[32]u8.[0x8a,0xd5,0xa0,0x8b,0x90,0x5f,0x81,0xcc,0x81,0x50,0x40,0x27,0x4a,0xb2,0x94,0x71,0xa8,0x33,0xb6,0x37,0xe3,0xfd,0x0d,0xa5,0x08,0xdb,0xb8,0xe2,0xfd,0xd1,0xa6,0x46];
+  out:[36]u8;for i:0..<36 {out[i]=165;}
+  ccp_poly_key(key[..],nonce[..],out[..]);
+  for i:0..<32 {#assert out[i]==want[i];}for i:32..<36 {#assert out[i]==165;}
+  // With no AAD and no message, the MAC input is one block of two zero
+  // lengths, so the tag is Poly1305 of 16 zero bytes under this key.
+  box:[16]u8;zeros:[16]u8;tag:[16]u8;
+  #assert chacha20_poly1305_seal(key[..],nonce[..],zeros[0..<0],zeros[0..<0],box[..],false)==CCP_OK;
+  #assert poly1305_checked(want[..],zeros[..],tag[..],false);
+  for i:0..<16 {#assert box[i]==tag[i];}
+}
+
+#test "RFC 8439 section 2.8.2 seal, open and a one-bit-wrong tag" {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)(128+i);}
+  nonce:=[12]u8.[7,0,0,0,0x40,0x41,0x42,0x43,0x44,0x45,0x46,0x47];
+  aad:=[12]u8.[0x50,0x51,0x52,0x53,0xc0,0xc1,0xc2,0xc3,0xc4,0xc5,0xc6,0xc7];
+  text:="Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
+  msg:[114]u8;for i:0..<114 {msg[i]=text[i];}
+  head:=[16]u8.[0xd3,0x1a,0x8d,0x34,0x64,0x8e,0x60,0xdb,0x7b,0x86,0xaf,0xbc,0x53,0xef,0x7e,0xc2];
+  tag:=[16]u8.[0x1a,0xe1,0x0b,0x59,0x4f,0x09,0xe2,0x6a,0x7e,0x90,0x2e,0xcb,0xd0,0x60,0x06,0x91];
+  box:[131]u8;box[130]=165;
+  #assert chacha20_poly1305_seal(key[..],nonce[..],aad[..],msg[..],box[..],false)==CCP_OK;
+  for i:0..<16 {#assert box[i]==head[i] && box[114+i]==tag[i];}
+  #assert box[112]==0x61 && box[113]==0x16 && box[130]==165;
+  plain:[115]u8;for i:0..<115 {plain[i]=165;}
+  #assert chacha20_poly1305_open(key[..],nonce[..],aad[..],box[0..<130],plain[..],false)==CCP_OK;
+  for i:0..<114 {#assert plain[i]==msg[i];}#assert plain[114]==165;
+  for i:0..<115 {plain[i]=165;}
+  box[129]^=0x80;
+  #assert chacha20_poly1305_open(key[..],nonce[..],aad[..],box[0..<130],plain[..],false)==CCP_TAG;
+  for v:plain {#assert v==165;}
+}
+
+#forall "a flipped bit in any byte of the AAD, ciphertext or tag refuses" at: 0..<37 {
+  bit:=at%8;
+  key:[32]u8;nonce:[12]u8;aad:[4]u8;msg:[17]u8;box:[33]u8;out:[17]u8;
+  for i:0..<32 {key[i]=cast(u8)i;}nonce[0]=9;
+  #assert chacha20_poly1305_seal(key[..],nonce[..],aad[..],msg[..],box[..],false)==CCP_OK;
+  if at<4 {aad[at]^=cast(u8)(1<<bit);} else {box[at-4]^=cast(u8)(1<<bit);}
+  for i:0..<17 {out[i]=165;}
+  #assert chacha20_poly1305_open(key[..],nonce[..],aad[..],box[..],out[..],false)==CCP_TAG;
+  for v:out {#assert v==165;}
+}
+
+#forall "lengths around block boundaries round-trip" n: 0..<34, k: 0..<3 {
+  a:=ifx k==0 then 0 else ifx k==1 then 12 else 17;
+  key:[32]u8;nonce:[12]u8;aad:[17]u8;msg:[33]u8;box:[49]u8;back:[33]u8;
+  for i:0..<32 {key[i]=cast(u8)(255-i);}for i:0..<17 {aad[i]=cast(u8)i;}for i:0..<33 {msg[i]=cast(u8)(i+100);}
+  #assert chacha20_poly1305_seal(key[..],nonce[..],aad[0..<a],msg[0..<n],box[0..<n+16],false)==CCP_OK;
+  #assert chacha20_poly1305_open(key[..],nonce[..],aad[0..<a],box[0..<n+16],back[0..<n],false)==CCP_OK;
+  for i:0..<n {#assert back[i]==msg[i];}
+}
+
+#test "admission refuses every bad size before writing" {
+  #assert ccp_admit(32,12,0,0,16,false,true)==CCP_OK;
+  #assert ccp_admit(31,12,0,0,16,false,true)==CCP_KEY && ccp_admit(33,12,0,0,16,false,true)==CCP_KEY;
+  #assert ccp_admit(32,11,0,0,16,false,true)==CCP_NONCE && ccp_admit(32,24,0,0,16,false,true)==CCP_NONCE;
+  #assert ccp_admit(32,12,-1,0,16,false,true)==CCP_AAD && ccp_admit(32,12,CB_MAX_BYTES+1,0,16,false,true)==CCP_AAD;
+  #assert ccp_admit(32,12,CB_MAX_BYTES,0,16,false,true)==CCP_OK;
+  #assert ccp_admit(32,12,0,-1,16,false,true)==CCP_INPUT;
+  #assert ccp_admit(32,12,0,CB_MAX_BYTES-16,CB_MAX_BYTES,false,true)==CCP_OK;
+  #assert ccp_admit(32,12,0,CB_MAX_BYTES-15,CB_MAX_BYTES,false,true)==CCP_INPUT;
+  #assert ccp_admit(32,12,0,5,20,false,true)==CCP_OUTPUT && ccp_admit(32,12,0,5,21,false,true)==CCP_OK;
+  #assert ccp_admit(32,12,0,0,CB_MAX_BYTES+1,false,true)==CCP_OUTPUT;
+  #assert ccp_admit(32,12,0,0,16,true,true)==CCP_ALIAS;
+  #assert ccp_admit(32,12,0,16,0,false,false)==CCP_OK && ccp_admit(32,12,0,15,0,false,false)==CCP_INPUT;
+  #assert ccp_admit(32,12,0,CB_MAX_BYTES,CB_MAX_BYTES,false,false)==CCP_OK;
+  #assert ccp_admit(32,12,0,CB_MAX_BYTES+1,CB_MAX_BYTES,false,false)==CCP_INPUT;
+  #assert ccp_admit(32,12,0,21,4,false,false)==CCP_OUTPUT && ccp_admit(32,12,0,21,5,false,false)==CCP_OK;
+  #assert ccp_admit(32,12,0,16,CB_MAX_BYTES+1,false,false)==CCP_OUTPUT;
+  #assert ccp_admit(32,12,0,16,0,true,false)==CCP_ALIAS;
+  key:[32]u8;nonce:[13]u8;aad:[1]u8;msg:[3]u8;out:[20]u8;for i:0..<20 {out[i]=165;}
+  #assert chacha20_poly1305_seal(key[0..<31],nonce[0..<12],aad[..],msg[..],out[..],false)==CCP_KEY;
+  #assert chacha20_poly1305_seal(key[..],nonce[..],aad[..],msg[..],out[..],false)==CCP_NONCE;
+  #assert chacha20_poly1305_seal(key[..],nonce[0..<12],aad[..],msg[..],out[0..<18],false)==CCP_OUTPUT;
+  #assert chacha20_poly1305_seal(key[..],nonce[0..<12],aad[..],msg[..],out[..],true)==CCP_ALIAS;
+  #assert chacha20_poly1305_open(key[..],nonce[0..<12],aad[..],out[0..<15],msg[..],false)==CCP_INPUT;
+  #assert chacha20_poly1305_open(key[..],nonce[0..<12],aad[..],out[..],msg[0..<3],false)==CCP_OUTPUT;
+  for v:out {#assert v==165;}
+}
+
+CCP_OK :: cast(u32)0;
+CCP_KEY :: cast(u32)1;
+CCP_NONCE :: cast(u32)2;
+CCP_AAD :: cast(u32)3;
+CCP_INPUT :: cast(u32)4;
+CCP_OUTPUT :: cast(u32)5;
+CCP_ALIAS :: cast(u32)6;
+CCP_TAG :: cast(u32)7;
+
+// book:begin admit
+// Every size and overlap check, before anything is written. To seal, text
+// is the plaintext and the output needs 16 more bytes for the tag. To open,
+// text is the ciphertext and tag, so it has at least 16 bytes.
+ccp_admit :: (key:int,nonce:int,aad:int,text:int,capacity:int,overlap:bool,seal:bool)->u32 #export_c {
+  if key!=32 {return CCP_KEY;}
+  if nonce!=12 {return CCP_NONCE;}
+  if aad<0 || aad>CB_MAX_BYTES {return CCP_AAD;}
+  if seal {
+    if text<0 || text>CB_MAX_BYTES-16 {return CCP_INPUT;}
+    if capacity<text+16 || capacity>CB_MAX_BYTES {return CCP_OUTPUT;}
+  } else {
+    if text<16 || text>CB_MAX_BYTES {return CCP_INPUT;}
+    if capacity<text-16 || capacity>CB_MAX_BYTES {return CCP_OUTPUT;}
+  }
+  if overlap {return CCP_ALIAS;}
+  return CCP_OK;
+}
+// book:end admit
+// book:begin tag
+// The one-time Poly1305 key is the first 32 bytes of the ChaCha20 block at
+// counter 0. The rest of that block is never used.
+ccp_poly_key :: (key:[]u8,nonce:[]u8,out:[]u8) {
+  words:=cc_block_words(cc_initial(key,nonce,0));
+  for i:0..<8 {stored:=cb_store_le32(out,i*4,words.words[i]);}
+  words=CcWords.{}; // mutant: equivalent (erases a dead local; no result reads it)
+}
+// Zero bytes that bring n up to a multiple of 16.
+ccp_pad :: (n:int)->int {return (16-n%16)%16;}
+// The tag is Poly1305 over the AAD, zeros to a multiple of 16, the
+// ciphertext, zeros to a multiple of 16, then the two lengths as 64-bit
+// little-endian numbers. The stream absorbs the pieces where they are.
+ccp_tag :: (key:[]u8,nonce:[]u8,aad:[]u8,cipher:[]u8,tag:[]u8) {
+  polykey:[32]u8;state:[1]Poly1305State;zeros:[16]u8;lengths:[16]u8;
+  ccp_poly_key(key,nonce,polykey[..]);
+  poly_start(state[..],polykey[..]);
+  for i:0..<32 {polykey[i]=0;} // mutant: equivalent (erases a dead local; no result reads it)
+  poly_absorb(state[..],aad);poly_absorb(state[..],zeros[0..<ccp_pad(aad.count)]);
+  poly_absorb(state[..],cipher);poly_absorb(state[..],zeros[0..<ccp_pad(cipher.count)]);
+  a:=cb_store_le64(lengths[..],0,cast(u64)aad.count);
+  b:=cb_store_le64(lengths[..],8,cast(u64)cipher.count);
+  poly_absorb(state[..],lengths[..]);
+  poly_finish(state[..],tag);
+}
+// book:end tag
+// book:begin seal
+// Encrypt from counter 1 into the output, then tag the ciphertext there.
+// Admission has already made every ChaCha20 check pass: the key and nonce
+// sizes, and at most 2^14 blocks from counter 1.
+chacha20_poly1305_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,plain:[]u8,out:[]u8,overlap:bool)->u32 #export_c {
+  status:=ccp_admit(key.count,nonce.count,aad.count,plain.count,out.count,overlap,true);
+  if status!=CCP_OK {return status;}
+  n:=plain.count;
+  stream:=chacha20_xor_checked(key,nonce,1,plain,out[0..<n],false);
+  ccp_tag(key,nonce,aad,out[0..<n],out[n..<n+16]);
+  return CCP_OK;
+}
+// book:end seal
+// book:begin open
+// Recompute the tag over the received ciphertext and compare all 16 bytes
+// without a branch. Only a match decrypts; a mismatch writes nothing.
+chacha20_poly1305_open :: (key:[]u8,nonce:[]u8,aad:[]u8,box:[]u8,out:[]u8,overlap:bool)->u32 #export_c {
+  status:=ccp_admit(key.count,nonce.count,aad.count,box.count,out.count,overlap,false);
+  if status!=CCP_OK {return status;}
+  n:=box.count-16;tag:[16]u8;
+  ccp_tag(key,nonce,aad,box[0..<n],tag[..]);
+  agree:=cb_ct_equal(tag[..],box[n..<box.count]);
+  for i:0..<16 {tag[i]=0;} // mutant: equivalent (erases a dead local; no result reads it)
+  if agree!=CB_MAX64 {return CCP_TAG;}
+  stream:=chacha20_xor_checked(key,nonce,1,box[0..<n],out[0..<n],false);
+  return CCP_OK;
+}
+// book:end open

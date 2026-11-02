@@ -48,6 +48,12 @@ that a maliciously replaced manifest is authentic.
   Nostr stack uses the ChaCha20 block/stream vectors, not a claim to implement
   every AEAD/Poly1305 example. The initial JCS consumer is integer-only; the
   RFC's floating-point cases are not silently advertised as supported.
+  Bitcoin chapter 12 reads RFC 8439's Poly1305 and AEAD examples (sections
+  2.5.2, 2.6.2 and 2.8.2, appendices A.3, A.4 and A.5) from the same file.
+- **ChaCha20-Poly1305:** the complete Wycheproof `chacha20_poly1305_test.json`
+  (325 cases) at the same revision as the ECDH file, retrieved 2026-11-02 for
+  Bitcoin chapter 12. Its 316 cases with a 96-bit nonce give their expected
+  result; the 9 cases with other nonce sizes must refuse the nonce.
 - **BIP-340:** all 19 official CSV rows, including invalid signatures and
   message lengths 0, 1, 17 and 100. The associated license is retained.
 - **RIPEMD-160:** the authors' paper (Dobbertin, Bosselaers and Preneel,
@@ -155,6 +161,7 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/nip44/nip44.vectors.json`](upstream/nip44/nip44.vectors.json) | [pinned source](https://raw.githubusercontent.com/paulmillr/nip44/671a1f04bcfacaf125b0db68adc45bc9ce0e763b/javascript/test/nip44.vectors.json) | `269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040` |
 | [`upstream/nip44/LICENSE`](upstream/nip44/LICENSE) | [pinned source](https://raw.githubusercontent.com/paulmillr/nip44/671a1f04bcfacaf125b0db68adc45bc9ce0e763b/javascript/LICENSE) | `f0510d3b9d1223c45e8fdd2b49270ec8734fff491c7f7d1b948ee70162e1ceff` |
 | [`upstream/wycheproof/ecdh_secp256k1_test.json`](upstream/wycheproof/ecdh_secp256k1_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/ecdh_secp256k1_test.json) | `049fa2be70e9db836a043aba6132b53cd97de4c0de5277bca6d65a2770075cae` |
+| [`upstream/wycheproof/chacha20_poly1305_test.json`](upstream/wycheproof/chacha20_poly1305_test.json) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/testvectors_v1/chacha20_poly1305_test.json) | `fe61d25f90e1bde4461d00eafe61049e5f29bd999f36b766df9cda90906ad53d` |
 | [`upstream/wycheproof/LICENSE`](upstream/wycheproof/LICENSE) | [pinned source](https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/LICENSE) | `58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd` |
 | [`upstream/json/LICENSE`](upstream/json/LICENSE) | [pinned source](https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/LICENSE) | `8bd0e0578be788c617ea01d18b2a8146e3746ae50bddadc65a5f9d3aad08ad49` |
 | [`upstream/json/y_string_escaped_control_character.json`](upstream/json/y_string_escaped_control_character.json) | [pinned source](https://raw.githubusercontent.com/nst/JSONTestSuite/1ef36fa01286573e846ac449e8683f8833c5b26a/test_parsing/y_string_escaped_control_character.json) | `1a9f37085203c6d712945c5fb87ad5e08fa38515e51ee4a637c7558bb1b82725` |
