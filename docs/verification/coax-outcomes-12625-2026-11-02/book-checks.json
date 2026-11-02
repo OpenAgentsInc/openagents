@@ -7,7 +7,7 @@
         "coax/book/check-structure.py"
       ],
       "outcome": "passed",
-      "scope": "navigation/local links/checked excerpts/chapter registry after rebasing onto 8ed49c9b6a"
+      "scope": "navigation/local links/checked excerpts/chapter registry after final rebase"
     },
     {
       "command": [
@@ -24,11 +24,22 @@
         "tools-check"
       ],
       "outcome": "failed",
-      "scope": "1433 tracked tools; exactly one upstream new tool lacks its required reason header",
+      "scope": "1435 tracked tools; exactly one upstream new tool lacks its required reason header",
       "file": "psionic/tests/check_deepseek_recipe.sh",
       "introduced_by": "8ed49c9b6a",
       "changed_by_this_task": false,
-      "action": "retained as an upstream release gate; no false Firm reason or unrelated port added"
+      "action": "retained as an upstream release gate; no false Firm reason or unrelated port added",
+      "raw_process_record": "tools-check.json"
+    },
+    {
+      "command": [
+        "scripts/coax-release.sh",
+        "--check",
+        "--binary",
+        "/tmp/coax-12625-native/final-v4/coax"
+      ],
+      "outcome": "passed",
+      "scope": "current generated catalogue/banner/changelog and final compiler binary agree; this is not full release qualification"
     }
   ]
 }

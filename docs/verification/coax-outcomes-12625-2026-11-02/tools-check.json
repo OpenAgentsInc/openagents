@@ -1,0 +1,41 @@
+{
+  "argv": [
+    "/private/tmp/openagents-12625-complete-20261101/coax/web/tool.sh",
+    "tools-check"
+  ],
+  "launched_argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
+    "--",
+    "/private/tmp/openagents-12625-complete-20261101/coax/web/tool.sh",
+    "tools-check"
+  ],
+  "cwd": "/private/tmp/openagents-12625-complete-20261101",
+  "started": true,
+  "pid": 62293,
+  "returncode": 1,
+  "launch_errno": null,
+  "launch_error": null,
+  "elapsed_s": 0.4122992919292301,
+  "timeout": false,
+  "deadline_exhausted": false,
+  "stdout_limit": false,
+  "stderr_limit": false,
+  "output_limit": false,
+  "observed_stdout_bytes": 170,
+  "observed_stderr_bytes": 0,
+  "group_killed": false,
+  "kill_errno": null,
+  "read_errno": null,
+  "stdout_eof": true,
+  "stderr_eof": true,
+  "limits": {
+    "stdout": 8388608,
+    "stderr": 8388608,
+    "total": 8388608
+  },
+  "timeout_s": 120,
+  "deadline": 569578.387704875,
+  "expected_preexisting_blocker": "psionic/tests/check_deepseek_recipe.sh",
+  "note": "Tool rule enforced. Task-owned new oracle tools have reasons; upstream missing reason remains open."
+}

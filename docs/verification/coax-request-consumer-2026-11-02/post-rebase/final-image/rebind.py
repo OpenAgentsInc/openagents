@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent emitted-artifact, source and receipt equality oracle).
 """Rebind frozen B3 native observations only when actual final emitted artifacts match."""
 import argparse,hashlib,json,os,subprocess,sys,time
 from pathlib import Path

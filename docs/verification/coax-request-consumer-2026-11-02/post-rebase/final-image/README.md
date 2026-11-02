@@ -31,3 +31,8 @@ new emissions, actual logs and finalization inputs. The compiler's own coherent
 source/model/bootstrap qualification belongs to the overarching R2 record.
 The canonical-owner and caller-storage preconditions and the separate full-app
 E0381 readiness gate are unchanged.
+
+The linked Python files are publication copies with the repository-required
+independent-oracle reason comment. [The copy record](script-publication.json)
+pins original and published bytes; the exact executed originals remain in the
+unchanged archive. This comment-only change is not a new execution claim.

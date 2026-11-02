@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Firm reason: 2 (independent emitted-artifact, source and receipt equality oracle).
 """Validate completed rebind stages after a temporary metadata-serialization typo."""
 import hashlib,json,sys
 from pathlib import Path

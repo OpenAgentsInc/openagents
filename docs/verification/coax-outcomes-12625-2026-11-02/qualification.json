@@ -75,7 +75,7 @@
   "publication": "All task-owned source, checks and records are to be pushed to main; no subsequent issue/chapter is started.",
   "evidence_sha256": {
     "README.md": "3c2b70a873bb1f3c7dd8ae4db4bcd766b54e1ff79c4aa149d5d915fd4d3639b5",
-    "book-checks.json": "872758a193da5a4866fe56a5aceaf67a68c957ff14c0692d10f38a3659600df3",
+    "book-checks.json": "2d614b188022efab08907770c8195d7e5de0e4054679b0b094c666f1dc225a82",
     "book-examples.json": "8d84d9edbae43e8058a0e2648f98d962250dd2845033dc793b627eb84f824c33",
     "file-policy.json": "2958e20910430b0b602790824b3730ef7a9e23000660b9b2d0d09b2ac024a385",
     "full-compiler.json": "70dad36c3a0b1022dd0fa9326682d1501bd1a74bf6590a293f31ec3dbfb13f74",
@@ -217,6 +217,9 @@
     "r2-source/sum-carrier-valid-graph-red/stderr": "ec90b32f27c66fa275e329456458abdae976cb3451d9c77314f2f4f9f3325a14",
     "r2-source/sum-carrier-valid-graph-red/stdout": "a9e0e9781d432b6d6d97271ec306be76d6d7d0e4a934938e170f101b43a1d3ef",
     "root-proof-manifest.json": "efe9b30521d466f4e4bba321ccfe0bc22d1e0447003c510d584bffec9da87759",
-    "root-proof.tar.xz": "56951488251b4a55970b29af0ba5087522cc2e4c436211db9158f390aeb4acfa"
-  }
+    "root-proof.tar.xz": "56951488251b4a55970b29af0ba5087522cc2e4c436211db9158f390aeb4acfa",
+    "tools-check.json": "a102989a4d0606767734bd87256e04c2e38c868d9fd316a5926ad40790e713bd"
+  },
+  "publication_base_main": "9a2ac3f855e1f6f7e1981f4e740b5a347ee1f4e7",
+  "post_rebase_compiler_source_pins_unchanged": true
 }

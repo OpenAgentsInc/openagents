@@ -1,0 +1,19 @@
+{
+  "schema": "coax.verification.script-publication.v1",
+  "copies": [
+    {
+      "file": "rebind.py",
+      "executed_original_sha256": "7de565d66fb8f176da6fe12ae461af025561025715ab1d516f00a2d34392f21d",
+      "publication_copy_sha256": "3c90fa76f816f0d305f739b096034fcba296c1fdeea8223a5626f193b15f1db5",
+      "change": "required independent-oracle reason comment only; original executed bytes remain in proof.tar.xz",
+      "commands_repeated": false
+    },
+    {
+      "file": "finalize.py",
+      "executed_original_sha256": "aefd45de678a80bcf9c6a98ca923c27cb87f9051735774cbf10e2f92f0e8b417",
+      "publication_copy_sha256": "5443db080ca334add74b3ab1c172c7578fe0d250996bc46a770862a68a1a9231",
+      "change": "required independent-oracle reason comment only; original executed bytes remain in proof.tar.xz",
+      "commands_repeated": false
+    }
+  ]
+}
