@@ -61,6 +61,8 @@ Code session. It has the eight tools `coder mcp` serves
 `coder_replay`. Claude Code sees them as `mcp__coder__coder_run` and so on,
 so one session can start, follow and steer others. Each call arrives as an
 `mcp_message` control request; Coder runs the verb and returns its text.
+The server also has four `terminal_*` tools for a terminal the agent
+drives ([chapter 37](ch037-a-terminal-inside-the-agent.md#a-terminal-the-agent-drives)).
 
 ```text
 $ coder run "Call the mcp__coder__coder_ls tool once and tell me how many sessions it lists." --engine claude --coder-tools

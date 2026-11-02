@@ -37,6 +37,7 @@
 #load "router.coax";
 #load "mcp.coax";
 #load "approvals.coax";
+#load "term.coax";
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -77,6 +78,7 @@ App :: struct {
   next_inbox_ms: int;
   cur: [256] u8; ncur: int;      // the step running now, for the status line
   jobs: int; next_jobs_ms: int;  // background jobs running on this machine, counted every 2 s            // the terminal UI looks for job reports this often
+  term: [1] CdTerm;               // the terminal the agent drives with --coder-tools (chapter 37)
   coder_tools: bool;              // --coder-tools: Coder's own verbs as an in-process MCP server in Claude Code (chapter 10)
   pol: [1] CdPolicy;              // --allow, --ceiling, --root: approvals answered by policy (chapters 10 and 11)
   cwd: string;
@@ -1695,6 +1697,7 @@ tool_main :: () -> int #export_c {
   a[0].model = args_value(args, "--model", "");
   a[0].ask_first = args_has(args, "--ask");
   a[0].coder_tools = args_has(args, "--coder-tools");
+  cd_term_reset(a[0].term[..]);
   dl := args_value(args, "--deadline", ""); dv := 0;
   if dl.count > 0 {
     for c: dl { if c < '0' || c > '9' { dv = -1; break; } dv = dv * 10 + cast(int) (c - '0'); }
@@ -1807,7 +1810,7 @@ tool_main :: () -> int #export_c {
     cd_report_job(a);
     pfb: [1300] u8; pid_file := cs_sibling(a[0].log, ".pid", pfb[..]);
     if sess.count > 0 && pid_file.count > 0 { x := fs_remove(pid_file); }     // a detached job is over
-    cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
+    cd_claude_close(a); cd_codex_close(a); cd_micro_close(a); cd_term_stop(a[0].term[..]);
     return a[0].exit;
   }
 

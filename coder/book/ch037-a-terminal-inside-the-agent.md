@@ -7,9 +7,10 @@
 > pseudo-terminal the width of the screen and reads their output through
 > the emulator, so a program that checks for a terminal draws, a progress
 > bar reads as its last state, and colors leave no bytes behind. While a
-> command runs, the person's typed lines go to it as keystrokes. Still to
-> come: keystrokes sent by an agent as tool calls, Claude Code's and Codex's
-> own commands in a pseudo-terminal (they run them themselves), and checking
+> command runs, the person's typed lines go to it as keystrokes. With
+> `--coder-tools`, an agent types into a terminal of its own through tool
+> calls and reads its screen. Still to come: Claude Code's and Codex's own
+> commands in a pseudo-terminal (they run them themselves), and checking
 > the emulator against libghostty on recorded sessions.
 
 The other direction: Coder runs programs that expect a terminal (test
@@ -110,6 +111,37 @@ Each line goes into the session log as a `keys` line:
   $ read -r x; echo got-$x · exit 0
     typed-in
     got-typed-in
+```
+
+### A terminal the agent drives
+
+With `--coder-tools` (chapter 10), Claude Code gets four tools for one
+terminal of its own, in
+[term.coax](../../coder/tui/term.coax):
+
+| Tool | Does |
+| --- | --- |
+| `terminal_start` | Runs a command line on a 100 by 30 pseudo-terminal in the session's folder. Starting another ends the first. |
+| `terminal_keys` | Types keys into it. |
+| `terminal_screen` | Reads the screen now. |
+| `terminal_stop` | Ends the program. |
+
+Each answer is the emulator's screen after the output settles: no new bytes
+for 250 ms, or `wait_ms` (1,000 by default, up to 60,000). A header line
+says whether the program is still running or how it ended. Keys are text,
+with named keys in angle brackets: `<Enter>`, `<Tab>`, `<Esc>`,
+`<Backspace>`, `<Up>`, `<Down>`, `<Left>`, `<Right>`, `<Space>`, and `<C-c>`
+for Ctrl and a letter. Anything else in angle brackets is typed as written.
+
+```text
+$ coder run "Use terminal_start to run 'python3 -q', then terminal_keys to type 2**10 and <Enter>, …" --engine claude --coder-tools
+  ⏺ mcp__coder__terminal_start(python3 -q)
+    └ [running: python3 -q] … +1 lines
+  ⏺ mcp__coder__terminal_keys
+    └ [running: python3 -q] … +3 lines
+  ⏺ mcp__coder__terminal_stop
+    └ [ended, exit 137] … +3 lines
+● 1024
 ```
 
 Chapter 33 found a further step in Toad: one persistent shell in a

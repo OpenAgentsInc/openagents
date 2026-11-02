@@ -1,0 +1,162 @@
+// A terminal the agent drives (Coder book chapter 37). With --coder-tools,
+// Claude Code gets four more tools: terminal_start runs a program in a
+// pseudo-terminal, terminal_keys types into it, terminal_screen reads it,
+// and terminal_stop ends it. The program's output goes through the VT
+// emulator, so each answer is the screen as a person would see it: a
+// prompt, an editor, a progress bar's last state.
+//
+// One terminal a session. Keys are text, with named keys in angle brackets:
+// <Enter> <Tab> <Esc> <Backspace> <Up> <Down> <Left> <Right> <Space>, and
+// <C-x> for Ctrl and a letter. Anything else is typed as written.
+
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
+
+CD_TERM_COLS :: 100;
+CD_TERM_ROWS :: 30;
+CD_TERM_WAIT_MS :: 1000;          // how long a call waits for the screen to settle, by default
+CD_TERM_QUIET_MS :: 250;          // no output for this long: settled
+
+CdTerm :: struct {
+  h: int;                        // the process, or -1
+  status: int;                   // its exit status once it ended
+  ended: bool;
+  v: [1] Vt;
+  cmd: [1024] u8; ncmd: int;
+}
+
+CD_TERM_TOOLS :: [4] string.["terminal_start", "terminal_keys", "terminal_screen", "terminal_stop"];
+CD_TERM_ABOUT :: [4] string.[
+  "Run a program in a terminal (a pseudo-terminal, 100 columns by 30 rows) in the session's folder, and return its screen once its output settles. Use it for programs that need a terminal or ask questions: installers, prompts, editors, REPLs, test runners with progress bars. One terminal at a time; starting another ends the first.",
+  "Type keys into the terminal and return its screen once the output settles. Text is typed as written. Named keys go in angle brackets: <Enter> <Tab> <Esc> <Backspace> <Up> <Down> <Left> <Right> <Space>, and <C-c> style for Ctrl and a letter.",
+  "Return the terminal's screen now, and whether its program has ended.",
+  "End the terminal's program."];
+CD_TERM_SCHEMAS :: [4] string.[
+  "{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"a shell command line\"},\"wait_ms\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000}},\"required\":[\"command\"]}",
+  "{\"type\":\"object\",\"properties\":{\"keys\":{\"type\":\"string\"},\"wait_ms\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":60000}},\"required\":[\"keys\"]}",
+  "{\"type\":\"object\",\"properties\":{}}",
+  "{\"type\":\"object\",\"properties\":{}}"];
+
+cd_term_reset :: (t: [] CdTerm) { t[0].h = -1; t[0].ended = false; t[0].status = 0; t[0].ncmd = 0; }
+
+// Bytes for keys: text as written, <Name> for a named key.
+cd_term_keys :: (keys: string, out: [] u8) -> int {
+  n := 0; i := 0;
+  while i < keys.count {
+    c := keys[i];
+    if c == '<' {
+      e := i + 1; while e < keys.count && e - i < 16 && keys[e] != '>' { e += 1; }
+      if e < keys.count && keys[e] == '>' {
+        name := cast(string) keys[i + 1..<e];
+        seq := "";
+        if name == "Enter" { seq = "\r"; } else if name == "Tab" { seq = "\t"; } else if name == "Space" { seq = " "; }
+        else if name == "Backspace" { if n < out.count { out[n] = 127; n += 1; } i = e + 1; continue; }
+        else if name == "Esc" || name == "Up" || name == "Down" || name == "Right" || name == "Left" {
+          if n < out.count { out[n] = 27; n += 1; }
+          seq = ifx name == "Esc" then "" else ifx name == "Up" then "[A" else ifx name == "Down" then "[B" else ifx name == "Right" then "[C" else "[D";
+        }
+        else if name.count == 3 && name[0] == 'C' && name[1] == '-' && ((name[2] >= 'a' && name[2] <= 'z') || (name[2] >= 'A' && name[2] <= 'Z')) {
+          low := ifx name[2] >= 'a' then name[2] - 'a' else name[2] - 'A';
+          if n < out.count { out[n] = cast,trunc(u8) (cast(int) low + 1); n += 1; }
+          i = e + 1; continue;
+        }
+        else { if n < out.count { out[n] = c; n += 1; } i += 1; continue; }     // not a key name: typed as written
+        n = cd_cat(out, n, seq);
+        i = e + 1; continue;
+      }
+    }
+    if n < out.count { out[n] = c; n += 1; }
+    i += 1;
+  }
+  return n;
+}
+
+// Reads what the program wrote until the output is quiet or wait_ms passes.
+cd_term_drain :: (t: [] CdTerm, wait_ms: int) {
+  if t[0].h < 0 || t[0].ended { return; }
+  start := cxproc_now_ms(); last := start;
+  buf: [16384] u8;
+  for guard: 0..<100000 {
+    now := cxproc_now_ms();
+    if now - start >= wait_ms { break; }
+    if now - last >= CD_TERM_QUIET_MS && now - start >= CD_TERM_QUIET_MS { break; }
+    n := cxproc_read_bytes(t[0].h, 50, buf[..]);
+    if n > 0 { vt_feed(t[0].v[..], cast(string) buf[0..<n]); last = cxproc_now_ms(); continue; }
+    if n < 0 {
+      t[0].status = cxproc_wait(t[0].h, 2000);
+      r := cxproc_release(t[0].h); t[0].h = -1; t[0].ended = true;
+      break;
+    }
+  }
+}
+
+// The screen as text, with a header line: running, or how it ended.
+cd_term_answer :: (t: [] CdTerm, out: [] u8) -> string {
+  tb: [16] u8;
+  n := cd_cat(out, 0, ifx t[0].ended then "[ended, exit " else "[running: ");
+  if t[0].ended { n = cd_cat(out, n, cd_itoa(t[0].status, tb[..])); n = cd_cat(out, n, "]\n"); }
+  else { n = cd_cat(out, n, cast(string) t[0].cmd[0..<t[0].ncmd]); n = cd_cat(out, n, "]\n"); }
+  sb: [65536] u8; screen := vt_screen(t[0].v[..], sb[..]);
+  n = cd_cat(out, n, screen);
+  return cast(string) out[0..<n];
+}
+
+cd_term_stop :: (t: [] CdTerm) {
+  if t[0].h < 0 { return; }
+  k := cxproc_kill(t[0].h, CL_SIGKILL); t[0].status = cxproc_wait(t[0].h, 5000);
+  r := cxproc_release(t[0].h); t[0].h = -1; t[0].ended = true;
+}
+
+cd_term_start :: (t: [] CdTerm, cmd: string, cwd: string) -> string {
+  cd_term_stop(t); cd_term_reset(t);
+  h := cxproc_new();
+  if h < 0 { return "No process slot is free."; }
+  ok := cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, cmd);
+  if cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, cwd); }
+  ok = ok && cl_push(h, CL_FIELD_ENV, "TERM=xterm-256color") && cxproc_pty(h, CD_TERM_COLS, CD_TERM_ROWS) == 0;
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); return "The program could not start."; }
+  t[0].h = h;
+  t[0].ncmd = cd_cat(t[0].cmd[..], 0, cast(string) cmd[0..<ifx cmd.count > 1000 then 1000 else cmd.count]);
+  vt_init(t[0].v[..], CD_TERM_COLS, CD_TERM_ROWS, false);
+  return "";
+}
+
+// One terminal_* tool call: the answer's text; is_error[0] when it failed.
+cd_term_call :: (t: [] CdTerm, ar: [] ClArena, name: string, args: string, cwd: string, out: [] u8, is_error: [] bool) -> string {
+  is_error[0] = false;
+  w := cl_int(args, "wait_ms");
+  wait := ifx w.ok && w.value >= 0 then (ifx w.value > 60000 then 60000 else w.value) else CD_TERM_WAIT_MS;
+  if name == "terminal_start" {
+    cmd := cl_str(ar, args, "command");
+    if cmd.count == 0 { is_error[0] = true; n := cd_cat(out, 0, "terminal_start needs a command."); return cast(string) out[0..<n]; }
+    why := cd_term_start(t, cmd, cwd);
+    if why.count > 0 { is_error[0] = true; n := cd_cat(out, 0, why); return cast(string) out[0..<n]; }
+    cd_term_drain(t, wait);
+    return cd_term_answer(t, out);
+  }
+  if t[0].ncmd == 0 { is_error[0] = true; n := cd_cat(out, 0, "No terminal: start one with terminal_start."); return cast(string) out[0..<n]; }
+  if name == "terminal_keys" {
+    if t[0].ended { is_error[0] = true; return cd_term_answer(t, out); }
+    kb: [8192] u8; kn := cd_term_keys(cl_str(ar, args, "keys"), kb[..]);
+    for i: 0..<kn { x := cxproc_write(t[0].h, cast(int) kb[i]); }
+    y := cxproc_flush(t[0].h);
+    cd_term_drain(t, wait);
+    return cd_term_answer(t, out);
+  }
+  if name == "terminal_screen" { cd_term_drain(t, 0); return cd_term_answer(t, out); }
+  if name == "terminal_stop" { cd_term_stop(t); return cd_term_answer(t, out); }
+  is_error[0] = true;
+  n := cd_cat(out, 0, "No such terminal tool.");
+  return cast(string) out[0..<n];
+}
+
+#test "keys: text as written, named keys in angle brackets" {
+  b: [64] u8;
+  n := cd_term_keys("ls<Enter>", b[..]);
+  #assert cast(string) b[0..<n - 1] == "ls" && b[n - 1] == 13;
+  n = cd_term_keys("<C-c><Up><Tab>", b[..]);
+  #assert n == 5 && b[0] == 3 && b[1] == 27 && b[2] == '[' && b[3] == 'A' && b[4] == 9;
+  n = cd_term_keys("a<b", b[..]);
+  #assert cast(string) b[0..<n] == "a<b";
+  n = cd_term_keys("<Nope>", b[..]);
+  #assert cast(string) b[0..<n] == "<Nope>";
+}

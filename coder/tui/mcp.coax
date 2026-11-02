@@ -197,12 +197,22 @@ cd_claude_coder_server :: (o: [] ClOptions) {
   names := CD_MCP_TOOLS; about := CD_MCP_ABOUT; schemas := CD_MCP_SCHEMAS;
   k := cl_add_server(o, "coder", "0.1.0");
   for name, i: names { x := cl_add_server_tool(o, k, name, about[i], schemas[i]); }
+  tnames := CD_TERM_TOOLS; tabout := CD_TERM_ABOUT; tschemas := CD_TERM_SCHEMAS;
+  for name, i: tnames { x := cl_add_server_tool(o, k, name, tabout[i], tschemas[i]); }
 }
 
 // A tools/call from Claude Code: the verb runs, and its text goes back.
 cd_claude_tool_call :: (a: [] App, ev: ClEvent) {
   q := a[0].q;
   name := q[0].options.servers[ev.server].tools[ev.tool].name;
+  if name.count > 9 && cast(string) name[0..<9] == "terminal_" {
+    tb: [70000] u8; bad: [1] bool;
+    text := cd_term_call(a[0].term[..], q[0].ar[..], name, ifx ev.arguments.count > 0 then ev.arguments else "{}", a[0].cwd, tb[..], bad[..]);
+    cb: [140000] u8;
+    cn := json_raw(cb[..], 0, "[{\"type\":\"text\",\"text\":"); cn = json_write_string(cb[..], cn, text); cn = json_raw(cb[..], cn, "}]");
+    cl_tool_answer(q, ifx cn > 0 then cast(string) cb[0..<cn] else "[]", bad[0], "");
+    return;
+  }
   pb: [65536] u8;
   n := json_raw(pb[..], 0, "{\"name\":"); n = json_write_string(pb[..], n, name);
   n = json_raw(pb[..], n, ",\"arguments\":"); n = json_raw(pb[..], n, ifx ev.arguments.count > 0 then ev.arguments else "{}");

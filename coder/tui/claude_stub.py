@@ -6,7 +6,8 @@ working directory and a Bash command, and records each answer.
 CLAUDE_STUB_OUT names the file the answers go to, one JSON line each.
 CLAUDE_STUB_MODE=mcp calls Coder's in-process coder_ls tool instead, and
 CLAUDE_STUB_MODE=mcprun starts a child session with coder_run, and
-CLAUDE_STUB_MODE=hook sends two Bash calls through the PreToolUse hook."""
+CLAUDE_STUB_MODE=hook sends two Bash calls through the PreToolUse hook, and
+CLAUDE_STUB_MODE=calls makes the tool calls listed in CLAUDE_STUB_CALLS."""
 import json, os, sys
 
 out = os.environ.get("CLAUDE_STUB_OUT", "/dev/null")
@@ -57,6 +58,17 @@ if mode == "hook":
                 r = read()
             got = r["response"].get("response", {}) or {}
             f.write(json.dumps({"command": cmd, "decision": (got.get("hookSpecificOutput") or {}).get("permissionDecision", "allow"), "hook_id": hook_id}) + "\n")
+    asks = []
+if mode == "calls":
+    # each call in CLAUDE_STUB_CALLS (a JSON list of {"name","arguments"}) to Coder's in-process server, in order
+    with open(out, "a") as f:
+        for i, call in enumerate(json.loads(os.environ.get("CLAUDE_STUB_CALLS", "[]"))):
+            send({"type": "control_request", "request_id": "stub-call-%d" % i, "request": {"subtype": "mcp_message", "server_name": "coder",
+                  "message": {"jsonrpc": "2.0", "id": 100 + i, "method": "tools/call", "params": call}}})
+            r = read()
+            while r.get("type") != "control_response":
+                r = read()
+            f.write(json.dumps({"mcp": r["response"].get("response", {}).get("mcp_response")}) + "\n")
     asks = []
 if mode in ("mcp", "mcprun"):
     # call Coder's in-process MCP server: coder_ls, or coder_run of a child task; record the answer

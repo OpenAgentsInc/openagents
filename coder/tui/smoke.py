@@ -183,6 +183,17 @@ def verbs(check):
                        env=dict(env, HOME=hook_home, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=hook_out, CLAUDE_STUB_MODE="hook"), capture_output=True, text=True, timeout=120)
         hooked = [json.loads(x) for x in open(hook_out)] if os.path.exists(hook_out) else []
         check("a tool_call hook refuses rm and lets ls run", [(h["command"], h["decision"]) for h in hooked] == [("ls", "allow"), ("rm -rf build", "deny")])
+        # the agent's terminal (chapter 37): a program that asks a question gets an answer typed into it
+        term_out = os.path.join(home, "term-answers")
+        calls = [{"name": "terminal_start", "arguments": {"command": "printf 'name? '; read n; echo hi-$n; sleep 5"}},
+                 {"name": "terminal_keys", "arguments": {"keys": "bob<Enter>"}},
+                 {"name": "terminal_stop", "arguments": {}}]
+        subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--cwd", work, "--json"], cwd=REPO,
+                       env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=term_out, CLAUDE_STUB_MODE="calls", CLAUDE_STUB_CALLS=json.dumps(calls)),
+                       capture_output=True, text=True, timeout=120)
+        tr = [json.loads(x)["mcp"]["result"]["content"][0]["text"] for x in open(term_out)] if os.path.exists(term_out) else []
+        check("the agent's terminal: a prompt, typed keys, the answer on screen, then stopped",
+              len(tr) == 3 and "name?" in tr[0] and "hi-bob" in tr[1] and tr[1].startswith("[running") and tr[2].startswith("[ended"))
         badp = subprocess.run([coder, "run", "hi", "--allow", "run", "--ceiling", "write"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("policy: --allow can't pass --ceiling", badp.returncode == 2 and "--allow can't be above --ceiling" in badp.stderr)
         # deadlines and reports (chapter 14): a job past its deadline expires; a job's result reaches the session that started it
