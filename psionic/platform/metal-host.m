@@ -96,18 +96,20 @@ PmStatus pm_unload(PmModule module) {
     return PM_OK;
 }
 
-PmStatus pm_alloc(size_t bytes, PmBuffer *buffer) {
+static PmStatus alloc_buffer(size_t bytes, PmBuffer *buffer, int zero) {
     @autoreleasepool {
         if (!device) return PM_ABSENT;
         if (bytes == 0) bytes = 16;
         id<MTLBuffer> b = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared | MTLResourceHazardTrackingModeTracked];
         if (!b) { note("cannot allocate %zu bytes", bytes); return PM_MEMORY; }
-        memset(b.contents, 0, bytes);
+        if (zero) memset(b.contents, 0, bytes);
         [live addObject:b];
         *buffer = (__bridge_retained void *)b;
         return PM_OK;
     }
 }
+PmStatus pm_alloc(size_t bytes, PmBuffer *buffer) { return alloc_buffer(bytes, buffer, 1); }
+PmStatus pm_alloc_unset(size_t bytes, PmBuffer *buffer) { return alloc_buffer(bytes, buffer, 0); }
 
 PmStatus pm_free(PmBuffer buffer) {
     if (!buffer) return PM_OK;

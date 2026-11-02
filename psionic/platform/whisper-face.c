@@ -35,11 +35,17 @@ enum { TENSORS = 1024, SEGMENTS = 4096 };
  * output element belongs to exactly one run, so the result is the same for
  * any thread count. Small work runs on the calling thread. */
 static int g_threads = 8;
-typedef struct { int kind; int64_t lo, hi; coax_v_f32 a, b, c, d, e; coax_v_f64 f, g; int64_t i0, i1, i2, i3, i4, i5; _Bool flag; } job;
+typedef struct { int kind; int64_t lo, hi; coax_v_f32 a, b, c, d, e; coax_v_f64 f, g; int64_t i0, i1, i2, i3, i4, i5; _Bool flag; coax_v_u8 u; coax_t_WgTensor t; void *p; } job;
+static _Atomic int g_load_bad; /* the first failing slice's WeStatus */
+static void halves_part(const float *W, __fp16 *h, int64_t lo, int64_t hi);
 static void run_job(job *j) {
     if (j->kind == 0) psionic_whisper_linear_part(j->a, j->i0, j->i1, j->b, j->c, j->i2, j->d, j->lo, j->hi, j->i3);
     else if (j->kind == 1) psionic_whisper_attend_part(j->a, j->i0, j->b, j->c, j->i1, j->i2, j->i3, j->i4, j->flag, j->d, j->lo, j->hi);
     else if (j->kind == 3) psionic_whisper_mel_part(j->a, j->f, j->g, j->i0, j->b, j->lo, j->hi);
+    else if (j->kind == 4) {
+        coax_t_WeStatus st = psionic_whisper_load_slice(j->u, j->t, j->i0, j->lo, j->hi, j->a);
+        if (st != COAX_WeStatus_ok) { int none = 0; atomic_compare_exchange_strong(&g_load_bad, &none, (int)st); }
+    } else if (j->kind == 5) halves_part(j->a.data, j->p, j->lo, j->hi);
 }
 /* A pool of g_threads - 1 workers, started once. split() hands each one a
  * job and runs the first itself; workers spin briefly on the generation
@@ -102,6 +108,7 @@ static void split(job base, int64_t n, double work) {
         int64_t chunks = (int64_t)t * 6;
         int64_t chunk = (n + chunks - 1) / chunks;
         if (base.kind == 0) chunk = (chunk + 3) / 4 * 4;
+        if (base.kind == 4) chunk = (chunk + 31) / 32 * 32; /* whole quantized blocks */
         if (chunk < 1) chunk = 1;
         g_jobs[0] = base; g_n = n; g_chunk = chunk; g_next = 0;
         int need = (int)((n + chunk - 1) / chunk) - 1;
@@ -113,7 +120,24 @@ static void split(job base, int64_t n, double work) {
         while (g_pending > 0 && spins < 2000000) spins++;
         if (g_pending > 0) { pthread_mutex_lock(&g_mu); while (g_pending > 0) pthread_cond_wait(&g_done, &g_mu); pthread_mutex_unlock(&g_mu); }
     }
-    if (g_profile) { int k = base.kind + (g_small && base.kind < 2 ? 4 : 0); g_prof[k] += now_ms() - t0; g_calls[k]++; }
+    if (g_profile && base.kind < 4) { int k = base.kind + (g_small && base.kind < 2 ? 4 : 0); g_prof[k] += now_ms() - t0; g_calls[k]++; }
+}
+/* W[lo..hi) as halves; g_load_bad when one is not a half exactly. */
+static void halves_part(const float *W, __fp16 *h, int64_t lo, int64_t hi) {
+    for (int64_t i = lo; i < hi; i++) {
+        h[i] = (__fp16)W[i];
+        if ((float)h[i] != W[i] || !isfinite(W[i])) { g_load_bad = 1; return; }
+    }
+}
+/* The weights from the file, each tensor's elements cut into slices across
+ * the threads (psionic_whisper_load_slice). */
+static coax_t_WeStatus load_weights(coax_v_u8 file, coax_v_t_WgTensor tv, int64_t count, const int64_t *offsets, coax_v_f32 W) {
+    g_load_bad = 0;
+    for (int64_t i = 0; i < count; i++) {
+        job j = {0}; j.kind = 4; j.u = file; j.t = tv.data[i]; j.i0 = offsets[i]; j.a = W;
+        split(j, tv.data[i].elements, (double)tv.data[i].elements * 4);
+    }
+    return g_load_bad ? (coax_t_WeStatus)g_load_bad : COAX_WeStatus_ok;
 }
 /* ---- the GPU (--gpu, Apple Metal) ----------------------------------------
  * With --gpu the weights and the engine's work arena live in shared Metal
@@ -129,15 +153,15 @@ static void split(job base, int64_t n, double work) {
 #include "whisper-metal.h"
 static int g_gpu;
 static PmBuffer g_buf[4]; static char *g_base[4]; static size_t g_size[4];
-static PmKernel g_klinear, g_krows, g_kscores, g_ksoftmax, g_kvalues, g_knorm, g_kadd, g_kstore, g_kpart, g_kjoin, g_kcross, g_krowsh;
+static PmKernel g_klinear, g_krows, g_kscores, g_ksoftmax, g_kvalues, g_knorm, g_kstore, g_kpart, g_kjoin, g_kcross, g_krowsh, g_kmv, g_krules, g_krjoin;
 static double g_gpu_ms;
-static PmBatch g_step; static int g_open, g_steps; static double g_step_ms;
+static PmBatch g_step; static int g_open, g_steps, g_counted; static double g_step_ms;
 static void gpu_close(void) {
     if (!g_open) return;
     double t = 0; g_open = 0;
     PmStatus st = pm_wait(g_step, &t);
     if (st != PM_OK) { fprintf(stderr, "psionic-whisper: GPU launch failed (%d): %s\n", (int)st, pm_log()); exit(1); }
-    g_gpu_ms += t * 1e3; g_step_ms += t * 1e3;
+    g_gpu_ms += t * 1e3; if (g_counted) g_step_ms += t * 1e3;
 }
 static int gpu_view(coax_v_f32 v, PmArg *a) {
     for (int i = 0; i < 2; i++) {
@@ -151,7 +175,26 @@ static int gpu_view(coax_v_f32 v, PmArg *a) {
 }
 static PmArg gpu_int(int64_t i) { return (PmArg){PM_ARG_INT, i, 0, 0, 0, 0}; }
 #define WD_ROWS_OUT 4 /* device.coax: outputs per group of wd_rows and wd_rowsh */
+#define WD_MR 5       /* device.coax: wd_mv's most rows and outputs per group */
+#define WD_MO 4
+/* PSIONIC_WHISPER_PROFILE=2: each launch of a decoder step runs alone and
+ * its GPU time is added to its kernel's. A measurement: it slows the step. */
+static PmKernel *g_ktab[] = {&g_klinear, &g_krows, &g_kscores, &g_ksoftmax, &g_kvalues, &g_knorm, &g_kstore, &g_kpart, &g_kjoin, &g_kcross, &g_krowsh, &g_kmv, &g_krules, &g_krjoin, &g_kmv};
+static const char *g_kname[] = {"linear", "rows", "scores", "softmax", "values", "norm", "store", "part", "join", "cross", "rowsh", "mv", "rules", "rjoin", "logits"};
+enum { KINDS = sizeof g_kname / sizeof g_kname[0] };
+static double g_kms[KINDS]; static long g_kn[KINDS];
+static void gpu_kernel_report(void) {
+    fprintf(stderr, "psionic-whisper kernels:");
+    for (int i = 0; i < KINDS; i++) if (g_kn[i]) fprintf(stderr, " %s %.1f ms (%ld, %.1f us)", g_kname[i], g_kms[i], g_kn[i], g_kms[i] * 1e3 / g_kn[i]);
+    fputc('\n', stderr);
+}
 static int gpu_run(PmKernel k, int64_t items, int lanes, int block, const PmArg *a, int n) {
+    if (g_open && g_profile == 2) {
+        PmBatch b; double t = 0;
+        if (pm_begin(&b) != PM_OK || pm_launch(b, k, items, lanes, block, a, n) != PM_OK || pm_wait(b, &t) != PM_OK) { fprintf(stderr, "psionic-whisper: GPU launch failed: %s\n", pm_log()); exit(1); }
+        for (int i = 0; i < KINDS; i++) if (*g_ktab[i] == k && (k != g_kmv || (i == KINDS - 1) == (items > 4096))) { g_kms[i] += t * 1e3; g_kn[i]++; }
+        return 1;
+    }
     if (g_open) {
         if (pm_launch(g_step, k, items, lanes, block, a, n) != PM_OK) { fprintf(stderr, "psionic-whisper: GPU launch refused: %s\n", pm_log()); exit(1); }
         return 1;
@@ -167,7 +210,7 @@ static int gpu_run(PmKernel k, int64_t items, int lanes, int block, const PmArg 
 static int gpu_refuse(void) { gpu_close(); return 0; }
 static int gpu_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, coax_v_f32 b, int64_t n_out, coax_v_f32 y, int64_t act) {
     if (!g_gpu || (rows < 64 && !(g_open && rows <= 8))) return g_open ? gpu_refuse() : 0;
-    PmArg a[9];
+    PmArg a[13];
     a[0] = gpu_int(rows); a[1] = gpu_int(n_in); a[2] = gpu_int(n_out); a[3] = gpu_int(act); a[4] = gpu_int(b.count > 0);
     if (!gpu_view(x, &a[5]) || !gpu_view(w, &a[6]) || !gpu_view(y, &a[8])) return g_open ? gpu_refuse() : 0;
     if (b.count > 0) { if (!gpu_view(b, &a[7])) return g_open ? gpu_refuse() : 0; } else a[7] = a[8];
@@ -176,7 +219,10 @@ static int gpu_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, co
         int64_t at = (int64_t)((char *)w.data - g_base[0]) / 4;
         if (g_base[3] && a[6].buffer == g_buf[0] && at % 2 == 0 && n_in % 2 == 0) {
             a[6] = (PmArg){PM_ARG_VIEW, 0, 0, g_buf[3], at * 2, w.count / 2};
-            return gpu_run(g_krowsh, (n_out + WD_ROWS_OUT - 1) / WD_ROWS_OUT, 128, 128, a, 9);
+            /* Wide products (fc1, the logits) as wd_mv: groups of 32 threads. */
+            if (rows <= WD_MR && n_out >= 4 * n_in) return gpu_run(g_kmv, (n_out + WD_MO - 1) / WD_MO, 32, 32, a, 9);
+            a[9] = gpu_int(0); a[10] = gpu_int(0); a[11] = gpu_int(0); a[12] = a[8];
+            return gpu_run(g_krowsh, (n_out + WD_ROWS_OUT - 1) / WD_ROWS_OUT, 128, 128, a, 13);
         }
         return gpu_run(g_krows, (n_out + WD_ROWS_OUT - 1) / WD_ROWS_OUT, 128, 128, a, 9);
     }
@@ -187,32 +233,67 @@ static int gpu_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, co
 static int gpu_split(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, int64_t ctx, int64_t sp, int causal, coax_v_f32 out) {
     int64_t chunks = (nk + 127) / 128, items = heads * nq * chunks;
     if (nq > 8 || (causal && nq > 5) || d != heads * 64 || (size_t)(items * 66) * sizeof(float) > g_size[2]) return gpu_refuse();
-    PmArg a[12], j[6], part = {PM_ARG_VIEW, 0, 0, g_buf[2], 0, items * 66};
+    PmArg a[13], j[6], part = {PM_ARG_VIEW, 0, 0, g_buf[2], 0, items * 66};
     a[0] = gpu_int(nq); a[1] = gpu_int(nk); a[2] = gpu_int(d); a[3] = gpu_int(heads); a[4] = gpu_int(ctx); a[5] = gpu_int(sp); a[6] = gpu_int(causal);
     if (!gpu_view(q, &a[7]) || !gpu_view(k, &a[8]) || !gpu_view(v, &a[9]) || !gpu_view(out, &j[5])) return gpu_refuse();
-    a[10] = part;
+    a[10] = part; a[11] = j[5];
     j[0] = a[0]; j[1] = a[1]; j[2] = a[2]; j[3] = part; j[4] = j[5];
     if (!causal) {
         PmArg c[9] = {a[0], a[1], a[2], a[3], a[7], a[8], a[9], part};
         return gpu_run(g_kcross, heads * chunks, 128, 128, c, 8) && gpu_run(g_kjoin, heads * nq, 64, 64, j, 5);
     }
-    return gpu_run(g_kpart, items, 128, 128, a, 11) && gpu_run(g_kjoin, heads * nq, 64, 64, j, 5);
+    /* One chunk of keys: wd_part writes the output, so there is no join. */
+    if (chunks == 1) return gpu_run(g_kpart, items, 128, 128, a, 12);
+    return gpu_run(g_kpart, items, 128, 128, a, 12) && gpu_run(g_kjoin, heads * nq, 64, 64, j, 5);
+}
+/* cxwh_qkv: the block's query, key and value in one wd_rowsh (act 3), from
+ * the halves of the weights that we_layout put together. */
+static int gpu_qkv(coax_v_f32 x, int64_t rows, int64_t d, coax_v_f32 w, coax_v_f32 b, coax_v_f32 q, coax_v_f32 kv, int64_t vstride, int64_t ctx, int64_t sp) {
+    if (!g_open) return 0;
+    int64_t at = (int64_t)((char *)w.data - g_base[0]) / 4;
+    PmArg a[13];
+    a[0] = gpu_int(rows); a[1] = gpu_int(d); a[2] = gpu_int(3 * d); a[3] = gpu_int(3); a[4] = gpu_int(1);
+    if (!g_base[3] || rows > 8 || d % 2 || at % 2 || !gpu_view(x, &a[5]) || !gpu_view(w, &a[6]) || a[6].buffer != g_buf[0] || !gpu_view(b, &a[7]) ||
+        !gpu_view(q, &a[8]) || !gpu_view(kv, &a[12])) return gpu_refuse();
+    a[6] = (PmArg){PM_ARG_VIEW, 0, 0, g_buf[3], at * 2, w.count / 2};
+    a[9] = gpu_int(sp); a[10] = gpu_int(ctx); a[11] = gpu_int(vstride);
+    return gpu_run(g_krowsh, (3 * d + WD_ROWS_OUT - 1) / WD_ROWS_OUT, 128, 128, a, 13);
+}
+#define WD_CH 2048 /* device.coax: tokens per chunk of wd_rules_part, values per chunk record */
+#define WD_REC 16
+/* cxwh_rules: each row's token rules, log-softmax and top k
+ * (wd_rules_part per chunk, then wd_rules_join per row). The chunk records
+ * (f64) go in lp, the scratch. */
+static int gpu_rules(coax_v_f32 logits, int64_t rows, int64_t V, int64_t beg, int64_t k, coax_v_f32 prm, coax_v_f32 lp, coax_v_f32 top) {
+    int64_t chunks = (beg + WD_CH - 1) / WD_CH + (V - beg + WD_CH - 1) / WD_CH;
+    PmArg a[6], j[6], rec;
+    if (!g_open || k > 5 || !gpu_view(lp, &rec)) return 0;
+    int64_t skip = (8 - rec.offset % 8) % 8; /* f64 records start on 8 bytes */
+    rec.offset += skip; rec.count = (lp.count * 4 - skip) / 8;
+    if (rec.count < rows * chunks * WD_REC) return 0;
+    a[0] = gpu_int(V); a[1] = gpu_int(beg);
+    if (!gpu_view(prm, &a[2]) || !gpu_view(logits, &a[3]) || !gpu_view(top, &j[4])) return 0;
+    a[4] = rec; j[0] = a[0]; j[1] = a[1]; j[2] = gpu_int(k); j[3] = rec;
+    return gpu_run(g_krules, rows * chunks, 256, 256, a, 5) && gpu_run(g_krjoin, rows, 1, 32, j, 5);
 }
 static int gpu_few(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, int64_t first, _Bool causal, coax_v_f32 out) {
     if (causal && (nq != 1 || first >= 512)) return gpu_refuse();
     return gpu_split(q, nq, k, v, nk, d, heads, 0, causal ? first : 0, causal, out);
 }
 static int gpu_attend(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, int64_t first, _Bool causal, coax_v_f32 out) {
-    if (g_open) return gpu_few(q, nq, k, v, nk, d, heads, first, causal, out);
-    if (!g_gpu || causal || nq < 64 || d != heads * 64 || (size_t)(heads * nq * nk) * sizeof(float) > g_size[2]) return 0;
+    if (g_open && (causal || nq < 64)) return gpu_few(q, nq, k, v, nk, d, heads, first, causal, out);
+    if (!g_gpu || causal || nq < 64 || d != heads * 64 || (size_t)(heads * nq * nk) * sizeof(float) > g_size[2]) return g_open ? gpu_refuse() : 0;
     PmArg a[8], m[2], c[8], sv = {PM_ARG_VIEW, 0, 0, g_buf[2], 0, heads * nq * nk};
     a[0] = gpu_int(nq); a[1] = gpu_int(nk); a[2] = gpu_int(d); a[3] = gpu_int(heads);
-    if (!gpu_view(q, &a[4]) || !gpu_view(k, &a[5]) || !gpu_view(v, &c[5]) || !gpu_view(out, &c[6])) return 0;
+    if (!gpu_view(q, &a[4]) || !gpu_view(k, &a[5]) || !gpu_view(v, &c[5]) || !gpu_view(out, &c[6])) return g_open ? gpu_refuse() : 0;
     a[6] = sv; m[0] = gpu_int(nk); m[1] = sv;
     c[0] = a[0]; c[1] = a[1]; c[2] = a[2]; c[3] = a[3]; c[4] = sv;
+    int64_t qt = (nq + 63) / 64;
+    /* The encoder's open batch takes the three launches. */
+    if (g_open) return gpu_run(g_kscores, heads * qt * ((nk + 31) / 32), 128, 128, a, 7) && gpu_run(g_ksoftmax, heads * nq, 128, 128, m, 2) &&
+                       gpu_run(g_kvalues, heads * qt * 2, 128, 128, c, 7);
     PmBatch b; double t = 0;
     if (pm_begin(&b) != PM_OK) return 0;
-    int64_t qt = (nq + 63) / 64;
     if (pm_launch(b, g_kscores, heads * qt * ((nk + 31) / 32), 128, 128, a, 7) != PM_OK ||
         pm_launch(b, g_ksoftmax, heads * nq, 128, 128, m, 2) != PM_OK ||
         pm_launch(b, g_kvalues, heads * qt * 2, 128, 128, c, 7) != PM_OK) return 0;
@@ -228,13 +309,14 @@ static int gpu_open(void) {
     if (pm_compile(whisper_metal_source, sizeof whisper_metal_source - 1, "whisper", &mod, &secs) != PM_OK) { fprintf(stderr, "psionic-whisper: %s\n", pm_log()); return 0; }
     if (pm_kernel(mod, "wd_linear", &g_klinear) != PM_OK || pm_kernel(mod, "wd_rows", &g_krows) != PM_OK || pm_kernel(mod, "wd_scores", &g_kscores) != PM_OK ||
         pm_kernel(mod, "wd_softmax", &g_ksoftmax) != PM_OK || pm_kernel(mod, "wd_values", &g_kvalues) != PM_OK || pm_kernel(mod, "wd_norm", &g_knorm) != PM_OK ||
-        pm_kernel(mod, "wd_add", &g_kadd) != PM_OK || pm_kernel(mod, "wd_store", &g_kstore) != PM_OK || pm_kernel(mod, "wd_part", &g_kpart) != PM_OK || pm_kernel(mod, "wd_join", &g_kjoin) != PM_OK || pm_kernel(mod, "wd_cross", &g_kcross) != PM_OK || pm_kernel(mod, "wd_rowsh", &g_krowsh) != PM_OK) return 0;
+        pm_kernel(mod, "wd_store", &g_kstore) != PM_OK || pm_kernel(mod, "wd_part", &g_kpart) != PM_OK || pm_kernel(mod, "wd_join", &g_kjoin) != PM_OK || pm_kernel(mod, "wd_cross", &g_kcross) != PM_OK || pm_kernel(mod, "wd_rowsh", &g_krowsh) != PM_OK || pm_kernel(mod, "wd_mv", &g_kmv) != PM_OK || pm_kernel(mod, "wd_rules_part", &g_krules) != PM_OK || pm_kernel(mod, "wd_rules_join", &g_krjoin) != PM_OK) return 0;
     return 1;
 }
 static int gpu_step(int begin) {
     if (!begin) { gpu_close(); return 1; }
     if (!g_gpu || g_open || pm_begin(&g_step) != PM_OK) return 0;
-    g_open = 1; g_steps++;
+    /* 1: a decoder step, counted for the profile; 2: the encoder's layers */
+    g_open = 1; g_counted = begin == 1; g_steps += g_counted;
     return 1;
 }
 static int gpu_norm(coax_v_f32 x, int64_t rows, int64_t d, coax_v_f32 g, coax_v_f32 b, coax_v_f32 y) {
@@ -242,12 +324,6 @@ static int gpu_norm(coax_v_f32 x, int64_t rows, int64_t d, coax_v_f32 g, coax_v_
     PmArg a[5]; a[0] = gpu_int(d);
     if (!gpu_view(x, &a[1]) || !gpu_view(g, &a[2]) || !gpu_view(b, &a[3]) || !gpu_view(y, &a[4])) return gpu_refuse();
     return gpu_run(g_knorm, rows, 128, 128, a, 5);
-}
-static int gpu_add(coax_v_f32 x, coax_v_f32 h) {
-    if (!g_open) return 0;
-    PmArg a[2];
-    if (x.count != h.count || !gpu_view(x, &a[0]) || !gpu_view(h, &a[1])) return gpu_refuse();
-    return gpu_run(g_kadd, x.count, 1, 256, a, 2);
 }
 static int gpu_store(coax_v_f32 ka, coax_v_f32 va, coax_v_f32 kb, coax_v_f32 vb) {
     if (!g_open) return 0;
@@ -259,19 +335,20 @@ static int gpu_store(coax_v_f32 ka, coax_v_f32 va, coax_v_f32 kb, coax_v_f32 vb)
  * when every weight is a half exactly (an f16 model; a quantized model's
  * products stay in f32). */
 static void gpu_halves(const float *W, size_t count) {
-    if (pm_alloc((count + 1) / 2 * 4, &g_buf[3]) != PM_OK) return;
+    if (pm_alloc_unset((count + 1) / 2 * 4, &g_buf[3]) != PM_OK) return;
     __fp16 *h = pm_contents(g_buf[3]);
-    for (size_t i = 0; i < count; i++) {
-        h[i] = (__fp16)W[i];
-        if ((float)h[i] != W[i] || !isfinite(W[i])) { pm_free(g_buf[3]); g_buf[3] = 0; return; }
-    }
+    job j = {0}; j.kind = 5; j.a = (coax_v_f32){(float *)W, (int64_t)count}; j.p = h;
+    g_load_bad = 0;
+    split(j, (int64_t)count, (double)count);
+    if (g_load_bad) { pm_free(g_buf[3]); g_buf[3] = 0; return; }
     if (count % 2) h[count] = 0;
     g_base[3] = (char *)h; g_size[3] = (count + 1) / 2 * 4;
 }
+/* Buffer i of count floats. The weights (0) and the attention scratch (2)
+ * are written before they are read, so only the work buffer (1) is zeroed. */
 static float *gpu_alloc(int i, size_t count) {
-    if (pm_alloc(count * sizeof(float), &g_buf[i]) != PM_OK) return 0;
+    if ((i == 1 ? pm_alloc : pm_alloc_unset)(count * sizeof(float), &g_buf[i]) != PM_OK) return 0;
     g_base[i] = pm_contents(g_buf[i]); g_size[i] = count * sizeof(float);
-    memset(g_base[i], 0, g_size[i]);
     return (float *)g_base[i];
 }
 #else
@@ -285,10 +362,16 @@ static int gpu_open(void) { return 0; }
 static int gpu_step(int begin) { (void)begin; return 0; }
 static int gpu_split(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, int64_t ctx, int64_t sp, int causal, coax_v_f32 out) { (void)q; (void)nq; (void)k; (void)v; (void)nk; (void)d; (void)heads; (void)ctx; (void)sp; (void)causal; (void)out; return 0; }
 static int gpu_norm(coax_v_f32 x, int64_t rows, int64_t d, coax_v_f32 g, coax_v_f32 b, coax_v_f32 y) { (void)x; (void)rows; (void)d; (void)g; (void)b; (void)y; return 0; }
-static int gpu_add(coax_v_f32 x, coax_v_f32 h) { (void)x; (void)h; return 0; }
 static int gpu_store(coax_v_f32 ka, coax_v_f32 va, coax_v_f32 kb, coax_v_f32 vb) { (void)ka; (void)va; (void)kb; (void)vb; return 0; }
+static int gpu_qkv(coax_v_f32 x, int64_t rows, int64_t d, coax_v_f32 w, coax_v_f32 b, coax_v_f32 q, coax_v_f32 kv, int64_t vstride, int64_t ctx, int64_t sp) {
+    (void)x; (void)rows; (void)d; (void)w; (void)b; (void)q; (void)kv; (void)vstride; (void)ctx; (void)sp; return 0;
+}
+static int gpu_rules(coax_v_f32 logits, int64_t rows, int64_t V, int64_t beg, int64_t k, coax_v_f32 prm, coax_v_f32 lp, coax_v_f32 top) {
+    (void)logits; (void)rows; (void)V; (void)beg; (void)k; (void)prm; (void)lp; (void)top; return 0;
+}
 static float *gpu_alloc(int i, size_t count) { (void)i; (void)count; return 0; }
 static void gpu_halves(const float *W, size_t count) { (void)W; (void)count; }
+static void gpu_kernel_report(void) {}
 #endif
 int64_t cxwh_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, coax_v_f32 b, int64_t n_out, coax_v_f32 y, int64_t act) {
     double t0 = g_profile ? now_ms() : 0;
@@ -309,8 +392,13 @@ int64_t cxwh_attend(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_
  * the engine must do it on the CPU. */
 int64_t cxwh_step(int64_t begin) { return gpu_step((int)begin); }
 int64_t cxwh_norm(coax_v_f32 x, int64_t rows, int64_t d, coax_v_f32 g, coax_v_f32 b, coax_v_f32 y) { return gpu_norm(x, rows, d, g, b, y); }
-int64_t cxwh_add(coax_v_f32 x, coax_v_f32 h) { return gpu_add(x, h); }
 int64_t cxwh_store(coax_v_f32 ka, coax_v_f32 va, coax_v_f32 kb, coax_v_f32 vb) { return gpu_store(ka, va, kb, vb); }
+int64_t cxwh_qkv(coax_v_f32 x, int64_t rows, int64_t d, coax_v_f32 w, coax_v_f32 b, coax_v_f32 q, coax_v_f32 kv, int64_t vstride, int64_t ctx, int64_t sp) {
+    return gpu_qkv(x, rows, d, w, b, q, kv, vstride, ctx, sp);
+}
+int64_t cxwh_rules(coax_v_f32 logits, int64_t rows, int64_t V, int64_t beg, int64_t k, coax_v_f32 prm, coax_v_f32 lp, coax_v_f32 top) {
+    return gpu_rules(logits, rows, V, beg, k, prm, lp, top);
+}
 int64_t cxwh_slots(coax_v_f32 q, int64_t rows, coax_v_f32 ks, coax_v_f32 vs, int64_t ctx, int64_t d, int64_t heads, int64_t sp, int64_t nk, coax_v_f32 out) {
     return g_open ? gpu_split(q, rows, ks, vs, nk, d, heads, ctx, sp, 1, out) : 0;
 }
@@ -368,9 +456,9 @@ psionic_stt *psionic_stt_open(const char *path, int threads, int gpu, char *err,
     if (g_gpu) {
         s->W = gpu_alloc(0, (size_t)s->net.weights); s->work = gpu_alloc(1, (size_t)s->net.work.total);
         if (!gpu_alloc(2, (size_t)(p.n_audio_head * p.n_audio_ctx * p.n_audio_ctx))) s->W = 0;
-    } else { s->W = malloc((size_t)s->net.weights * sizeof *s->W); s->work = calloc((size_t)s->net.work.total, sizeof *s->work); }
+    } else { s->W = calloc((size_t)s->net.weights, sizeof *s->W); s->work = calloc((size_t)s->net.work.total, sizeof *s->work); }
     if (!s->W || !s->work) { stt_err(err, errcap, "psionic: out of memory"); return 0; }
-    if (psionic_whisper_load(s->file, s->tv, s->m.tensor_count, (coax_v_s64){offsets, TENSORS}, (coax_v_f32){s->W, s->net.weights}) != COAX_WeStatus_ok) {
+    if (load_weights(s->file, s->tv, s->m.tensor_count, offsets, (coax_v_f32){s->W, s->net.weights}) != COAX_WeStatus_ok) {
         stt_err(err, errcap, "psionic: model weights"); return 0;
     }
     if (g_gpu) gpu_halves(s->W, (size_t)s->net.weights);
@@ -463,7 +551,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (strcmp(cmd, "transcribe") != 0 || argc < 4) return usage();
-    g_profile = getenv("PSIONIC_WHISPER_PROFILE") != 0;
+    g_profile = getenv("PSIONIC_WHISPER_PROFILE") ? (atoi(getenv("PSIONIC_WHISPER_PROFILE")) == 2 ? 2 : 1) : 0;
     int format = 0; const char *lang = "en", *name_arg = 0, *prompt = "", *words = ""; long ctx = p.n_audio_ctx;
     coax_t_WeOptions opt = psionic_whisper_options();
     for (int i = 4; i < argc; i++) {
@@ -496,9 +584,9 @@ int main(int argc, char **argv) {
         W = gpu_alloc(0, (size_t)net->weights); work = gpu_alloc(1, (size_t)net->work.total);
         if (!gpu_alloc(2, (size_t)(p.n_audio_head * p.n_audio_ctx * p.n_audio_ctx))) { fputs("psionic-whisper: out of GPU memory\n", stderr); return 1; }
     }
-    else { W = malloc((size_t)net->weights * sizeof *W); work = calloc((size_t)net->work.total, sizeof *work); }
+    else { W = calloc((size_t)net->weights, sizeof *W); work = calloc((size_t)net->work.total, sizeof *work); }
     if (!W || !work) { fputs("psionic-whisper: out of memory\n", stderr); return 1; }
-    coax_t_WeStatus ls = psionic_whisper_load(file, tv, m.tensor_count, (coax_v_s64){offsets, TENSORS}, (coax_v_f32){W, net->weights});
+    coax_t_WeStatus ls = load_weights(file, tv, m.tensor_count, offsets, (coax_v_f32){W, net->weights});
     if (ls != COAX_WeStatus_ok) { fprintf(stderr, "psionic-whisper: weights (status %d)\n", (int)ls); return 1; }
     if (g_gpu) gpu_halves(W, (size_t)net->weights);
     double t_load = now_ms();
@@ -553,6 +641,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "decoder linear %.0f ms (%ld), attend %.0f ms (%ld); encoder linear %.0f ms (%ld), attend %.0f ms (%ld), mel %.0f ms (%ld), other %.0f ms\n",
                 g_prof[4], g_calls[4], g_prof[5], g_calls[5], g_prof[0], g_calls[0], g_prof[1], g_calls[1], g_prof[3], g_calls[3],
                 (t_end - t_load) - g_prof[0] - g_prof[1] - g_prof[2] - g_prof[3] - g_prof[4] - g_prof[5]);
+    if (g_profile == 2) gpu_kernel_report();
     return 0;
 }
 #endif

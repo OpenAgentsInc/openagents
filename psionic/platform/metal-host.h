@@ -63,6 +63,9 @@ PmStatus pm_unload(PmModule module);
 
 /* Shared storage: pm_contents is the CPU address of the same bytes. */
 PmStatus pm_alloc(size_t bytes, PmBuffer *buffer);
+/* pm_alloc without writing the bytes first: for a buffer the caller fills
+   before anything reads it. Its pages are only touched as they are written. */
+PmStatus pm_alloc_unset(size_t bytes, PmBuffer *buffer);
 PmStatus pm_free(PmBuffer buffer);
 void *pm_contents(PmBuffer buffer);
 

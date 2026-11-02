@@ -29,7 +29,8 @@ WeBlock :: struct {
 // Offsets into work for one run.
 WeWork :: struct {
   mel: int; c1: int; x: int; h: int; q: int; k: int; v: int; a: int; m: int; s: int;
-  ck: int; cv: int; sk: int; sv: int; dx: int; dh: int; dq: int; da: int; dk: int; dv: int; dm: int; logits: int; lp: int; total: int;
+  ck: int; cv: int; sk: int; sv: int; dx: int; dh: int; dq: int; da: int; dk: int; dv: int; dm: int; logits: int; lp: int;
+  rp: int; rt: int; rl: int; total: int;
 }
 WeNet :: struct {
   status: WeStatus; params: WgParams; sp: WtSpecials; space: int; ctx: int;
@@ -52,11 +53,44 @@ we_half :: (h: int) -> WeHalf {
   if sign == 1 { v = -v; }
   return WeHalf.{ok = true, value = v};
 }
-// Each tensor's offset in W, in file order; the total element count.
+// Each tensor's offset in W, in file order, except that a block's
+// attention weights sit together so the GPU makes the query, key and value
+// of a row in one product: PREFIX.attn.query.weight, then the key and value
+// weights, then the query bias, the key's zero bias (a gap of the query
+// bias's size, left 0) and the value bias. The total element count.
 we_layout :: (tensors: [] WgTensor, count: int, offsets: [] int) -> int {
   at := 0;
-  for i: 0..<count { offsets[i] = at; at += tensors[i].elements; }
+  for i: 0..<count { offsets[i] = -1; }
+  for i: 0..<count {
+    if offsets[i] >= 0 { continue; }
+    g: [5] int; n := we_group(tensors, count, i, g[..]);
+    if n == 5 && tensors[g[1]].elements == tensors[g[0]].elements && tensors[g[2]].elements == tensors[g[0]].elements && tensors[g[4]].elements == tensors[g[3]].elements {
+      for j: 0..<3 { offsets[g[j]] = at; at += tensors[g[j]].elements; }
+      offsets[g[3]] = at; at += 2 * tensors[g[3]].elements;
+      offsets[g[4]] = at; at += tensors[g[4]].elements;
+      continue;
+    }
+    offsets[i] = at; at += tensors[i].elements;
+  }
   return at;
+}
+// When tensor i is PREFIX.attn.query.weight: g = its key weight, value
+// weight, query bias and value bias after it, and 5; otherwise 0.
+we_group :: (tensors: [] WgTensor, count: int, i: int, g: [] int) -> int {
+  q := ".attn.query.weight"; name := tensors[i].name;
+  if name.count <= q.count || cast(string) name[name.count - q.count..<name.count] != q { return 0; }
+  prefix := cast(string) name[0..<name.count - q.count];
+  g[0] = i;
+  g[1] = we_suffixed(tensors, count, prefix, ".attn.key.weight"); g[2] = we_suffixed(tensors, count, prefix, ".attn.value.weight");
+  g[3] = we_suffixed(tensors, count, prefix, ".attn.query.bias"); g[4] = we_suffixed(tensors, count, prefix, ".attn.value.bias");
+  for j: 1..<5 { if g[j] < 0 { return 0; } }
+  return 5;
+}
+we_suffixed :: (tensors: [] WgTensor, count: int, prefix: string, suffix: string) -> int {
+  buf: [160] u8; w: [1] WsOut; w[0].buf = buf[..];
+  wsg_put(w[..], prefix); wsg_put(w[..], suffix);
+  if w[0].full { return -1; }
+  return wg_find(tensors, count, cast(string) buf[0..<w[0].n]);
 }
 // The half at byte p.
 we_half_at :: (b: [] u8, p: int) -> WeHalf { return we_half(cast(int) b[p] | (cast(int) b[p + 1] << 8)); }
@@ -95,23 +129,31 @@ we_dequant :: (b: [] u8, kind: int, p: int, out: [] f32) -> bool {
 // (number).
 we_load :: (b: [] u8, tensors: [] WgTensor, count: int, offsets: [] int, w: [] f32) -> WeStatus {
   for i: 0..<count {
-    t := tensors[i]; at := offsets[i];
-    if at + t.elements > w.count { return WeStatus.capacity; }
-    if t.kind == WG_F32 {
-      for j: 0..<t.elements { v := wg_f32_at(b, t.begin + 4 * j); if !(v >= -3.0e38 && v <= 3.0e38) { return WeStatus.number; } w[at + j] = v; }
-    } else if t.kind == WG_F16 {
-      for j: 0..<t.elements {
-        h := we_half_at(b, t.begin + 2 * j);
-        if !h.ok { return WeStatus.number; }
-        w[at + j] = h.value;
-      }
-    } else if t.kind == WG_Q8_0 || t.kind == WG_Q4_0 || t.kind == WG_Q4_1 || t.kind == WG_Q5_0 || t.kind == WG_Q5_1 {
-      bytes := wg_block_bytes(t.kind);
-      for k: 0..<t.elements / 32 {
-        if !we_dequant(b, t.kind, t.begin + k * bytes, w[at + 32 * k..<at + 32 * k + 32]) { return WeStatus.number; }
-      }
-    } else { return WeStatus.kind; }
+    st := we_load_slice(b, tensors[i], offsets[i], 0, tensors[i].elements, w);
+    if st != WeStatus.ok { return st; }
   }
+  return WeStatus.ok;
+}
+// Elements j0..<j1 of tensor t into w at offset at (a quantized tensor's
+// j0 and j1 are multiples of its 32-value blocks); the host loads a large
+// tensor as slices on several threads, each element written by one slice.
+we_load_slice :: (b: [] u8, t: WgTensor, at: int, j0: int, j1: int, w: [] f32) -> WeStatus {
+  if at < 0 || at + t.elements > w.count || j0 < 0 || j1 > t.elements || j0 > j1 { return WeStatus.capacity; }
+  if t.kind == WG_F32 {
+    for j: j0..<j1 { v := wg_f32_at(b, t.begin + 4 * j); if !(v >= -3.0e38 && v <= 3.0e38) { return WeStatus.number; } w[at + j] = v; }
+  } else if t.kind == WG_F16 {
+    for j: j0..<j1 {
+      h := we_half_at(b, t.begin + 2 * j);
+      if !h.ok { return WeStatus.number; }
+      w[at + j] = h.value;
+    }
+  } else if t.kind == WG_Q8_0 || t.kind == WG_Q4_0 || t.kind == WG_Q4_1 || t.kind == WG_Q5_0 || t.kind == WG_Q5_1 {
+    if j0 % 32 != 0 || (j1 % 32 != 0 && j1 != t.elements) { return WeStatus.capacity; }
+    bytes := wg_block_bytes(t.kind);
+    for k: j0 / 32..<j1 / 32 {
+      if !we_dequant(b, t.kind, t.begin + k * bytes, w[at + 32 * k..<at + 32 * k + 32]) { return WeStatus.number; }
+    }
+  } else { return WeStatus.kind; }
   return WeStatus.ok;
 }
 
@@ -191,6 +233,8 @@ we_net :: (b: [] u8, m: WgModel, tensors: [] WgTensor, offsets: [] int, ctx: int
   k.dx = at; at += R * d; k.dh = at; at += R * d; k.dq = at; at += R * d; k.da = at; at += R * d;
   k.dk = at; at += R * d; k.dv = at; at += R * d; k.dm = at; at += R * 4 * d;
   k.logits = at; at += WE_SLOTS * p.n_vocab; k.lp = at; at += p.n_vocab;
+  // a step's token rules on the GPU (cxwh_rules): parameters, results, scratch
+  k.rp = at; at += WE_SLOTS * WE_PRM; k.rt = at; at += WE_SLOTS * WE_TOP; k.rl = at; at += WE_SLOTS * p.n_vocab;
   k.total = at;
   net.work = k;
   net.status = WeStatus.ok;
@@ -214,17 +258,27 @@ cxwh_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: in
 cxwh_attend :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32) -> int #foreign;
 cxwh_mel :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, frames: int) -> int #foreign;
 // A decoder step's batch on a GPU host: cxwh_step(1) opens it (1 when the
-// host has one), cxwh_step(0) runs it. While it is open the host takes the
-// step's calls into it, and these return 1 when it took the call; 0 means
-// the engine does it here.
+// host has one), cxwh_step(0) runs it; cxwh_step(2) opens one for the
+// encoder's layers. While it is open the host takes the calls into it, and
+// these return 1 when it took the call; 0 means the engine does it here.
 cxwh_step :: (begin: int) -> int #foreign;
 cxwh_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) -> int #foreign;
-cxwh_add :: (x: [] f32, h: [] f32) -> int #foreign;
 cxwh_store :: (ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) -> int #foreign;
 // Self-attention of rows decoders at once: row r is query q[r] in cache
 // slot s at position p, sp holding 512 s + p in its bits 12 r..12 r + 11;
 // ks and vs are a layer's slots of ctx rows each, nk is above every p.
 cxwh_slots :: (q: [] f32, rows: int, ks: [] f32, vs: [] f32, ctx: int, d: int, heads: int, sp: int, nk: int, out: [] f32) -> int #foreign;
+// A block's query, key and value of rows decoders in one product: w and b
+// are the three weights and biases together (we_layout), the queries go to
+// q and row r's key and value into the layer's cache kv (its key slots,
+// then its value slots vstride later) at slot and position sp as above.
+cxwh_qkv :: (x: [] f32, rows: int, d: int, w: [] f32, b: [] f32, q: [] f32, kv: [] f32, vstride: int, ctx: int, sp: int) -> int #foreign;
+// The token rules, log-softmax and top k of each row's logits
+// (device.coax's wd_rules): rules prm (WE_PRM a row), scratch lp, results
+// top (WE_TOP a row: the count, then token and log-probability pairs).
+cxwh_rules :: (logits: [] f32, rows: int, V: int, beg: int, k: int, prm: [] f32, lp: [] f32, top: [] f32) -> int #foreign;
+WE_PRM :: 64;
+WE_TOP :: 16;
 
 WE_KEYS_MAX :: 1500;
 
@@ -269,17 +323,19 @@ we_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out:
   }
 }
 // One output of we_linear_part from its combined lanes: the n_in % 4 tail
-// in order, the bias, then GELU.
+// in order, the bias, then GELU (act 1); act 2 adds it to y (a residual).
 we_out :: (x: [] f32, w: [] f32, b: [] f32, y: [] f32, r: int, o: int, n_in: int, n_out: int, act: int, lanes: f32) {
   v := lanes;
   for k: (n_in / 4) * 4..<n_in { v = fma(x[r * n_in + k], w[o * n_in + k], v); }
   if b.count > 0 { v += b[o]; }
   if act == 1 { v = we_gelu(v); }
-  y[r * n_out + o] = v;
+  if act == 2 { y[r * n_out + o] += v; } else { y[r * n_out + o] = v; }
 }
 we_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) { we_linear_part(x, rows, n_in, w, b, n_out, y, 0, n_out, 0); }
 we_mm :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) { r := cxwh_linear(x, rows, n_in, w, b, n_out, y, 0); }
 we_mm_gelu :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) { r := cxwh_linear(x, rows, n_in, w, b, n_out, y, 1); }
+// y += x w^T + b: a residual.
+we_mm_add :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) { r := cxwh_linear(x, rows, n_in, w, b, n_out, y, 2); }
 // LayerNorm of each row: (x - mean) / sqrt(var + 1e-5) * g + b, population variance.
 we_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) {
   for r: 0..<rows {
@@ -293,7 +349,6 @@ we_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) {
 }
 // we_norm, x += h and the cache store, through the host when it takes them.
 we_ln :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) { if cxwh_norm(x, rows, d, g, b, y) == 0 { we_norm(x, rows, d, g, b, y); } }
-we_add :: (x: [] f32, h: [] f32) { if cxwh_add(x, h) == 0 { for i: 0..<x.count { x[i] += h[i]; } } }
 we_store :: (ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) { if cxwh_store(ka, va, kb, vb) == 0 { for i: 0..<ka.count { kb[i] = ka[i]; vb[i] = va[i]; } } }
 // e^x in f32: n = round(x log2(e)), r = x - n ln(2) in two parts (Cody and
 // Waite) so |r| <= ln(2)/2 stays exact, e^r from its degree-6 Taylor
@@ -488,28 +543,29 @@ we_encode :: (net: WeNet, W: [] f32, work: [] f32) {
   we_mm_gelu(mm, T, 3 * d, W[net.c2_w..<net.c2_w + 3 * d * d], W[net.c2_b..<net.c2_b + d], d, x);
   pos := W[net.e_pos..<net.e_pos + T * d];
   for i: 0..<T * d { x[i] += pos[i]; }
+  // the layers in one GPU batch where the host has one
+  batch := cxwh_step(2) == 1;
   for l: 0..<p.n_audio_layer {
     bl := net.enc[l];
-    we_norm(x, T, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
+    we_ln(x, T, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
     we_mm(h, T, d, W[bl.q_w..<bl.q_w + d * d], W[bl.q_b..<bl.q_b + d], d, q);
     we_mm(h, T, d, W[bl.k_w..<bl.k_w + d * d], none[0..<0], d, kk);
     we_mm(h, T, d, W[bl.v_w..<bl.v_w + d * d], W[bl.v_b..<bl.v_b + d], d, v);
     we_att(q, T, kk, v, T, d, p.n_audio_head, 0, false, a);
-    we_mm(a, T, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, h);
-    for i: 0..<T * d { x[i] += h[i]; }
-    we_norm(x, T, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
+    we_mm_add(a, T, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, x);
+    we_ln(x, T, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
     we_mm_gelu(h, T, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
-    we_mm(mm, T, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, h);
-    for i: 0..<T * d { x[i] += h[i]; }
+    we_mm_add(mm, T, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, x);
   }
-  we_norm(x, T, d, W[net.e_ln_w..<net.e_ln_w + d], W[net.e_ln_b..<net.e_ln_b + d], h);
-  for i: 0..<T * d { x[i] = h[i]; }
+  we_ln(x, T, d, W[net.e_ln_w..<net.e_ln_w + d], W[net.e_ln_b..<net.e_ln_b + d], h);
   // cross-attention keys and values for every decoder layer
   for l: 0..<p.n_text_layer {
     bl := net.dec[l];
-    we_mm(x, T, d, W[bl.xk_w..<bl.xk_w + d * d], none[0..<0], d, work[k.ck + l * T * d..<k.ck + (l + 1) * T * d]);
-    we_mm(x, T, d, W[bl.xv_w..<bl.xv_w + d * d], W[bl.xv_b..<bl.xv_b + d], d, work[k.cv + l * T * d..<k.cv + (l + 1) * T * d]);
+    we_mm(h, T, d, W[bl.xk_w..<bl.xk_w + d * d], none[0..<0], d, work[k.ck + l * T * d..<k.ck + (l + 1) * T * d]);
+    we_mm(h, T, d, W[bl.xv_w..<bl.xv_w + d * d], W[bl.xv_b..<bl.xv_b + d], d, work[k.cv + l * T * d..<k.cv + (l + 1) * T * d]);
   }
+  if batch { done := cxwh_step(0); }
+  for i: 0..<T * d { x[i] = h[i]; }
 }
 
 // ---- decoder ------------------------------------------------------------------
@@ -543,11 +599,29 @@ we_slot_copy :: (net: WeNet, work: [] f32, from: int, to: int, n: int) {
 // five rows, positions below 512).
 we_slots :: (net: WeNet, work: [] f32, l: int, q: [] f32, rows: int, pos: [] int, slots: [] int, a: [] f32) -> bool {
   C := net.params.n_text_ctx; d := net.params.n_text_state;
-  if rows > 5 || C > 512 { return false; }
-  sp := 0; nk := 0;
-  for r: 0..<rows { sp = sp | ((slots[r] * 512 + pos[r]) << (12 * r)); if pos[r] + 1 > nk { nk = pos[r] + 1; } }
+  sp := we_sp(net, rows, pos, slots);
+  if sp < 0 { return false; }
+  nk := 0;
+  for r: 0..<rows { if pos[r] + 1 > nk { nk = pos[r] + 1; } }
   at := net.work.sk + l * WE_SLOTS * C * d; av := net.work.sv + l * WE_SLOTS * C * d;
   return cxwh_slots(q, rows, work[at..<at + WE_SLOTS * C * d], work[av..<av + WE_SLOTS * C * d], C, d, net.params.n_text_head, sp, nk, a) == 1;
+}
+// Slot and position of each row, 512 s + p in bits 12 r..12 r + 11; -1
+// when they do not fit (more than 5 rows, or a context above 512).
+we_sp :: (net: WeNet, rows: int, pos: [] int, slots: [] int) -> int {
+  if rows > 5 || net.params.n_text_ctx > 512 { return -1; }
+  sp := 0;
+  for r: 0..<rows { sp = sp | ((slots[r] * 512 + pos[r]) << (12 * r)); }
+  return sp;
+}
+// The query, key and value of a step's rows through cxwh_qkv, when the
+// block's weights lie together and the rows fit sp; false otherwise.
+we_qkv :: (net: WeNet, W: [] f32, work: [] f32, l: int, h: [] f32, rows: int, sp: int, q: [] f32) -> bool {
+  bl := net.dec[l]; d := net.params.n_text_state; C := net.params.n_text_ctx;
+  if sp < 0 || bl.k_w != bl.q_w + d * d || bl.v_w != bl.q_w + 2 * d * d || bl.v_b != bl.q_b + 2 * d { return false; }
+  at := net.work.sk + l * WE_SLOTS * C * d; vstride := net.work.sv - net.work.sk;
+  kv := work[at..<net.work.sv + (l + 1) * WE_SLOTS * C * d];
+  return cxwh_qkv(h, rows, d, W[bl.q_w..<bl.q_w + 3 * d * d], W[bl.q_b..<bl.q_b + 3 * d], q, kv, vstride, C, sp) == 1;
 }
 // The decoder over rows tokens. prefill: the rows are one sequence at
 // positions pos[0], pos[0] + 1, ... in slot slots[0], and only the last row's
@@ -556,7 +630,10 @@ we_slots :: (net: WeNet, work: [] f32, l: int, q: [] f32, rows: int, pos: [] int
 // made (logits row r). Self-attention keys and values of the rows go into
 // the slots first, so a row sees itself and everything before it. A step
 // that is not a prefill runs as one batch on a GPU host.
-we_forward :: (net: WeNet, W: [] f32, work: [] f32, toks: [] int, rows: int, pos: [] int, slots: [] int, prefill: bool) {
+// tops > 0 (a step only): the rules in work at rp are applied to each row's
+// logits in the step's batch, and its top tops tokens are left at rt; true
+// when that happened.
+we_forward :: (net: WeNet, W: [] f32, work: [] f32, toks: [] int, rows: int, pos: [] int, slots: [] int, prefill: bool, tops: int) -> bool {
   p := net.params; d := p.n_text_state; k := net.work; T := net.ctx; V := p.n_vocab;
   x := work[k.dx..<k.dx + rows * d]; h := work[k.dh..<k.dh + rows * d]; q := work[k.dq..<k.dq + rows * d];
   a := work[k.da..<k.da + rows * d]; kn := work[k.dk..<k.dk + rows * d]; vn := work[k.dv..<k.dv + rows * d];
@@ -568,16 +645,19 @@ we_forward :: (net: WeNet, W: [] f32, work: [] f32, toks: [] int, rows: int, pos
   }
   none: [1] f32;
   step := !prefill && cxwh_step(1) == 1;
+  sp := ifx step then we_sp(net, rows, pos, slots) else -1;
   for l: 0..<p.n_text_layer {
     bl := net.dec[l];
     we_ln(x, rows, d, W[bl.ln1_w..<bl.ln1_w + d], W[bl.ln1_b..<bl.ln1_b + d], h);
-    we_mm(h, rows, d, W[bl.q_w..<bl.q_w + d * d], W[bl.q_b..<bl.q_b + d], d, q);
-    we_mm(h, rows, d, W[bl.k_w..<bl.k_w + d * d], none[0..<0], d, kn);
-    we_mm(h, rows, d, W[bl.v_w..<bl.v_w + d * d], W[bl.v_b..<bl.v_b + d], d, vn);
-    for r: 0..<rows {
-      s := ifx prefill then slots[0] else slots[r]; at := ifx prefill then pos[0] + r else pos[r];
-      sk := we_slot_k(net, work, l, s); sv := we_slot_v(net, work, l, s);
-      we_store(kn[r * d..<(r + 1) * d], vn[r * d..<(r + 1) * d], sk[at * d..<(at + 1) * d], sv[at * d..<(at + 1) * d]);
+    if !we_qkv(net, W, work, l, h, rows, sp, q) {
+      we_mm(h, rows, d, W[bl.q_w..<bl.q_w + d * d], W[bl.q_b..<bl.q_b + d], d, q);
+      we_mm(h, rows, d, W[bl.k_w..<bl.k_w + d * d], none[0..<0], d, kn);
+      we_mm(h, rows, d, W[bl.v_w..<bl.v_w + d * d], W[bl.v_b..<bl.v_b + d], d, vn);
+      for r: 0..<rows {
+        s := ifx prefill then slots[0] else slots[r]; at := ifx prefill then pos[0] + r else pos[r];
+        sk := we_slot_k(net, work, l, s); sv := we_slot_v(net, work, l, s);
+        we_store(kn[r * d..<(r + 1) * d], vn[r * d..<(r + 1) * d], sk[at * d..<(at + 1) * d], sv[at * d..<(at + 1) * d]);
+      }
     }
     if prefill {
       we_att(q, rows, we_slot_k(net, work, l, slots[0]), we_slot_v(net, work, l, slots[0]), pos[0] + rows, d, p.n_text_head, pos[0], true, a);
@@ -586,22 +666,25 @@ we_forward :: (net: WeNet, W: [] f32, work: [] f32, toks: [] int, rows: int, pos
         we_att(q[r * d..<(r + 1) * d], 1, we_slot_k(net, work, l, slots[r]), we_slot_v(net, work, l, slots[r]), pos[r] + 1, d, p.n_text_head, pos[r], true, a[r * d..<(r + 1) * d]);
       }
     }
-    we_mm(a, rows, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, h);
-    we_add(x, h);
+    we_mm_add(a, rows, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, x);
     we_ln(x, rows, d, W[bl.lnx_w..<bl.lnx_w + d], W[bl.lnx_b..<bl.lnx_b + d], h);
     we_mm(h, rows, d, W[bl.xq_w..<bl.xq_w + d * d], W[bl.xq_b..<bl.xq_b + d], d, q);
     we_att(q, rows, work[k.ck + l * T * d..<k.ck + (l + 1) * T * d], work[k.cv + l * T * d..<k.cv + (l + 1) * T * d], T, d, p.n_text_head, 0, false, a);
-    we_mm(a, rows, d, W[bl.xo_w..<bl.xo_w + d * d], W[bl.xo_b..<bl.xo_b + d], d, h);
-    we_add(x, h);
+    we_mm_add(a, rows, d, W[bl.xo_w..<bl.xo_w + d * d], W[bl.xo_b..<bl.xo_b + d], d, x);
     we_ln(x, rows, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
     we_mm_gelu(h, rows, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
-    we_mm(mm, rows, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, h);
-    we_add(x, h);
+    we_mm_add(mm, rows, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, x);
   }
   r0 := ifx prefill then rows - 1 else 0; n := ifx prefill then 1 else rows;
   we_ln(x[r0 * d..<(r0 + n) * d], n, d, W[net.d_ln_w..<net.d_ln_w + d], W[net.d_ln_b..<net.d_ln_b + d], h[0..<n * d]);
   we_mm(h[0..<n * d], n, d, emb, none[0..<0], V, work[k.logits..<k.logits + n * V]);
+  ruled := false;
+  if step && tops > 0 {
+    ruled = cxwh_rules(work[k.logits..<k.logits + n * V], n, V, net.sp.beg, tops, work[k.rp..<k.rp + n * WE_PRM],
+                       work[k.rl..<k.rl + n * V], work[k.rt..<k.rt + n * WE_TOP]) == 1;
+  }
   if step { done := cxwh_step(0); }
+  return ruled;
 }
 
 // ---- the host's entry points ----------------------------------------------------
@@ -612,6 +695,9 @@ psionic_whisper_net :: (b: [] u8, m: WgModel, tensors: [] WgTensor, offsets: [] 
 }
 psionic_whisper_load :: (b: [] u8, tensors: [] WgTensor, count: int, offsets: [] int, w: [] f32) -> WeStatus #export_c {
   return we_load(b, tensors, count, offsets, w);
+}
+psionic_whisper_load_slice :: (b: [] u8, t: WgTensor, at: int, j0: int, j1: int, w: [] f32) -> WeStatus #export_c {
+  return we_load_slice(b, t, at, j0, j1, w);
 }
 psionic_whisper_bank :: (mels: int, bank: [] f64) -> int #export_c { return cast(int) sf_mel_bank(wf_spec(mels), bank).status; }
 // The largest difference between our mel filters and the file's.
@@ -644,6 +730,22 @@ psionic_whisper_resample :: (mono: [] f32, rate: int, out: [] f32) -> int #expor
   return wv_resample(mono, rate, table[..], out);
 }
 
+#test "a block's query, key and value weights are laid out together" {
+  t: [9] WgTensor; off: [9] int;
+  names := [9] string.["d.blocks.0.mlp.0.weight", "d.blocks.0.attn.query.weight", "d.blocks.0.attn.query.bias", "d.blocks.0.attn.key.weight",
+                       "d.blocks.0.attn.value.weight", "d.blocks.0.attn.value.bias", "d.blocks.0.cross_attn.query.weight", "d.blocks.0.cross_attn.key.weight", "e.blocks.1.attn.query.weight"];
+  sizes := [9] int.[8, 4, 2, 4, 4, 2, 4, 4, 4];
+  for i: 0..<9 { t[i].name = names[i]; t[i].elements = sizes[i]; }
+  total := we_layout(t[..], 9, off[..]);
+  // mlp, then q k v weights, q bias, a gap, v bias; cross attention and a
+  // query weight without partners stay in file order
+  #assert off[0] == 0 && off[1] == 8 && off[3] == 12 && off[4] == 16 && off[2] == 20 && off[5] == 24;
+  #assert off[6] == 26 && off[7] == 30 && off[8] == 34 && total == 38;
+  // a key weight of another size keeps the file order
+  t[3].elements = 3;
+  total = we_layout(t[..], 9, off[..]);
+  #assert off[1] == 8 && off[2] == 12 && off[3] == 14 && off[4] == 17 && off[5] == 21 && total == 35;
+}
 #test "quantized blocks decode as ggml does" {
   // d = 0.5 (0x3800), m = -1 (0xbc00)
   b: [40] u8; out: [32] f32;

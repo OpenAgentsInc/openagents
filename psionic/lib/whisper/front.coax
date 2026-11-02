@@ -41,20 +41,70 @@ wf_sample :: (x: [] f32, i: int) -> f64 {
   if k >= total { k = 2 * (total - 1) - k; }
   return ifx k < x.count then cast(f64) x[k] else 0;
 }
+// The 400-point transform as Cooley-Tukey with 400 = 16 x 25: for each p,
+// the 25-point transform of y[16 q + p]; a twiddle; then 16-point
+// transforms, kept to the bins 0 to 200 the power spectrum needs. tw holds
+// cos and sin of 2 pi j / 400 (wf_twiddles). About a fifth of the work of
+// the chirp transform sf_forward uses for 400 points.
+WfTwiddles :: struct { c: [WF_N_FFT] f64; s: [WF_N_FFT] f64; }
+wf_twiddles :: () -> WfTwiddles {
+  w: WfTwiddles;
+  for j: 0..<WF_N_FFT { a := 2 * SF_PI * cast(f64) j / cast(f64) WF_N_FFT; w.c[j] = cos(a); w.s[j] = sin(a); }
+  return w;
+}
+// |X[k]|^2 of the real frame y (400 values) for k in 0..<201.
+wf_power :: (y: [] f64, tw: WfTwiddles, p: [] f64) {
+  // zr, zi: the 16 inner transforms (25 bins each), twiddled
+  zr: [WF_N_FFT] f64; zi: [WF_N_FFT] f64;
+  for a: 0..<16 {
+    for kq: 0..<25 {
+      sr := 0.0; si := 0.0;
+      for q: 0..<25 { e := (16 * q * kq) % WF_N_FFT; v := y[16 * q + a]; sr += v * tw.c[e]; si -= v * tw.s[e]; }
+      e := (a * kq) % WF_N_FFT; c := tw.c[e]; n := -tw.s[e];
+      zr[a * 25 + kq] = sr * c - si * n; zi[a * 25 + kq] = sr * n + si * c;
+    }
+  }
+  for k: 0..<WF_BINS {
+    kq := k % 25; kp := k / 25;
+    sr := 0.0; si := 0.0;
+    for a: 0..<16 {
+      e := (25 * a * kp) % WF_N_FFT; c := tw.c[e]; n := -tw.s[e];
+      r := zr[a * 25 + kq]; i := zi[a * 25 + kq];
+      sr += r * c - i * n; si += r * n + i * c;
+    }
+    p[k] = sr * sr + si * si;
+  }
+}
+// The bins each mel's filter weighs: lo[m]..<hi[m] (the others are 0).
+WfBand :: struct { lo: [128] int; hi: [128] int; }
+wf_band :: (bank: [] f64, mels: int) -> WfBand {
+  b: WfBand;
+  for m: 0..<mels {
+    b.lo[m] = WF_BINS; b.hi[m] = 0;
+    for k: 0..<WF_BINS {
+      if bank[m * WF_BINS + k] != 0 { if k < b.lo[m] { b.lo[m] = k; } b.hi[m] = k + 1; }
+    }
+  }
+  return b;
+}
 // log10 of frame t's mel energies into out[0..<mels]. window is the
-// periodic Hann window (sf_window), bank sf_mel_bank's output.
-wf_frame :: (x: [] f32, t: int, window: [] f64, bank: [] f64, mels: int, out: [] f64) {
-  re: [WF_N_FFT] f64; im: [WF_N_FFT] f64;
+// periodic Hann window (sf_window), bank sf_mel_bank's output; tw and band
+// from wf_twiddles and wf_band. A frame of zeros (past the audio) is the
+// floor's log10 without a transform.
+wf_frame_with :: (x: [] f32, t: int, window: [] f64, bank: [] f64, mels: int, tw: WfTwiddles, band: WfBand, out: [] f64) {
+  y: [WF_N_FFT] f64; p: [WF_BINS] f64;
   start := t * WF_HOP - WF_N_FFT / 2;
-  for j: 0..<WF_N_FFT { re[j] = wf_sample(x, start + j) * window[j]; im[j] = 0; }
-  sf_forward(re[..], im[..]);
-  p: [WF_BINS] f64;
-  for k: 0..<WF_BINS { p[k] = re[k] * re[k] + im[k] * im[k]; }
+  any := false;
+  for j: 0..<WF_N_FFT { y[j] = wf_sample(x, start + j) * window[j]; if y[j] != 0 { any = true; } }
+  if any { wf_power(y[..], tw, p[..]); } else { for k: 0..<WF_BINS { p[k] = 0; } }
   for m: 0..<mels {
     sum := 0.0;
-    for k: 0..<WF_BINS { sum += bank[m * WF_BINS + k] * p[k]; }
+    for k: band.lo[m]..<band.hi[m] { sum += bank[m * WF_BINS + k] * p[k]; }
     out[m] = sf_log(sum, SfLog.clamp, WF_FLOOR) / log(10.0);
   }
+}
+wf_frame :: (x: [] f32, t: int, window: [] f64, bank: [] f64, mels: int, out: [] f64) {
+  wf_frame_with(x, t, window, bank, mels, wf_twiddles(), wf_band(bank, mels), out);
 }
 
 WfFront :: struct { status: WfStatus; mels: int; frames: int; window: [WF_N_FFT] f64; }
@@ -101,8 +151,9 @@ wf_window :: (x: [] f32, f: WfFront, bank: [] f64, top: f64, start: int, out: []
 // threads; each frame is computed alone.
 wf_frames_part :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, t0: int, t1: int) {
   v: [128] f64;
+  tw := wf_twiddles(); band := wf_band(bank, mels);
   for t: t0..<t1 {
-    wf_frame(x, t, window, bank, mels, v[..]);
+    wf_frame_with(x, t, window, bank, mels, tw, band, v[..]);
     for m: 0..<mels { cache[t * mels + m] = cast(f32) v[m]; }
   }
 }
@@ -151,6 +202,21 @@ wf_cache_window :: (f: WfFront, cache: [] f32, top: f64, start: int, out: [] f32
   }
   #assert a[2999] == cast(f32) ((top - 8 + 4) / 4) && top > -10;
   #assert wf_cache_window(f, cache[0..<100], top, 0, a[..]) == WfStatus.capacity && wf_cache_window(f, cache[..], top, 3005, a[..]) == WfStatus.shape;
+}
+#test "the 16 x 25 transform's power matches the chirp transform's" #steps 400000000 {
+  y: [WF_N_FFT] f64; re: [WF_N_FFT] f64; im: [WF_N_FFT] f64; p: [WF_BINS] f64;
+  for j: 0..<WF_N_FFT { y[j] = sin(cast(f64) j * 0.37) + 0.5 * cos(cast(f64) (j * j) * 0.011) - 0.1; re[j] = y[j]; im[j] = 0; }
+  sf_forward(re[..], im[..]);
+  wf_power(y[..], wf_twiddles(), p[..]);
+  for k: 0..<WF_BINS {
+    want := re[k] * re[k] + im[k] * im[k];
+    #assert abs(p[k] - want) <= 0.000000001 * (1 + want);
+  }
+  // a mel's band holds every bin its filter weighs
+  bank: [80 * 201] f64; r := sf_mel_bank(wf_spec(80), bank[..]);
+  b := wf_band(bank[..], 80);
+  for m: 0..<80 { for k: 0..<WF_BINS { if k < b.lo[m] || k >= b.hi[m] { #assert bank[m * WF_BINS + k] == 0; } } }
+  #assert b.lo[0] < b.hi[0] && b.hi[79] <= WF_BINS;
 }
 #test "the spec and frame counts" {
   s := wf_spec(80);

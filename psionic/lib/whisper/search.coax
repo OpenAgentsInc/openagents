@@ -208,6 +208,54 @@ we_rules :: (net: WeNet, logits: [] f32, d: WeDec, temperature: f64, bias: WeBia
   ts := ifx zt > 0 then best + log(zt) else -1.0e300;
   if ts > text { for i: 0..<sp.beg { lp[i] = WE_NEG; } }
 }
+WE_RANGES :: 8;
+WE_SINGLES :: 20;
+WE_ADDS :: 12;
+// we_rules for device.coax's wd_rules: the temperature's inverse, the
+// masked ranges, the masked tokens and the bias adds of decoder d's next
+// token, laid out as wd_rules reads them (WE_PRM values). False when they
+// do not fit; then the search applies we_rules itself.
+we_rule_params :: (net: WeNet, d: WeDec, temperature: f64, bias: WeBias, prm: [] f32) -> bool {
+  sp := net.sp; V := net.params.n_vocab; n := d.n;
+  for i: 0..<WE_PRM { prm[i] = 0; }
+  prm[0] = ifx temperature > 0 then cast(f32) (1 / temperature) else 1;
+  nr := 0; ns := 0; na := 0;
+  ranges: [16] int; singles: [WE_SINGLES] int; adds: [WE_ADDS] int; amounts: [WE_ADDS] f32;
+  if sp.multilingual { ranges[0] = sp.sot + 1; ranges[1] = sp.sot + 1 + sp.languages; nr = 1; }
+  last := n > 0 && d.toks[n - 1] >= sp.beg;
+  penult := n < 2 || d.toks[n - 2] >= sp.beg;
+  if last {
+    if penult { ranges[2 * nr] = sp.beg; ranges[2 * nr + 1] = V; } else { ranges[2 * nr] = 0; ranges[2 * nr + 1] = sp.eot; }
+    nr += 1;
+  }
+  if n == 0 { ranges[2 * nr] = sp.beg + 50 + 1; ranges[2 * nr + 1] = V; nr += 1; }
+  if d.has_ts { ranges[2 * nr] = sp.beg; ranges[2 * nr + 1] = sp.beg + d.seek_delta / 2; nr += 1; }
+  if n == 0 { singles[ns] = sp.eot; ns += 1; if net.space >= 0 { singles[ns] = net.space; ns += 1; } }
+  for tk: [7] int.[sp.no_timestamps, sp.sot, sp.nosp, sp.solm, sp.translate, sp.transcribe, sp.prev] { singles[ns] = tk; ns += 1; }
+  for w: 0..<bias.n {
+    L := bias.len[w]; at := w * WE_BIAS_LEN;
+    if na >= WE_ADDS { return false; }
+    adds[na] = bias.seq[at]; amounts[na] = cast(f32) bias.first; na += 1;
+    kk := ifx L - 1 < n then L - 1 else n;
+    while kk >= 1 {
+      same := true;
+      for j: 0..<kk { if d.toks[n - kk + j] != bias.seq[at + j] { same = false; break; } }
+      if same {
+        if na >= WE_ADDS { return false; }
+        adds[na] = bias.seq[at + kk]; amounts[na] = cast(f32) bias.next; na += 1;
+        break;
+      }
+      kk -= 1;
+    }
+  }
+  prm[1] = cast(f32) nr;
+  for g: 0..<nr { prm[2 + 2 * g] = cast(f32) ranges[2 * g]; prm[3 + 2 * g] = cast(f32) ranges[2 * g + 1]; }
+  prm[2 + 2 * WE_RANGES] = cast(f32) ns;
+  for g: 0..<ns { prm[3 + 2 * WE_RANGES + g] = cast(f32) singles[g]; }
+  prm[3 + 2 * WE_RANGES + WE_SINGLES] = cast(f32) na;
+  for g: 0..<na { prm[4 + 2 * WE_RANGES + WE_SINGLES + 2 * g] = cast(f32) adds[g]; prm[5 + 2 * WE_RANGES + WE_SINGLES + 2 * g] = amounts[g]; }
+  return true;
+}
 // The largest of v[a..<b] (at least -3e38), and the sum in f64 of
 // we_expv(v[i] - m) over it. Four lanes: lane l takes a + 4 k + l in order,
 // the lanes combine as (l0 + l1) + (l2 + l3), then the tail in order.
@@ -338,7 +386,7 @@ we_window :: (net: WeNet, W: [] f32, work: [] f32, o: WeOptions, bias: WeBias, i
     for c: init { prompt[P] = c; P += 1; }
     win.prompt_n = P; win.init_n = init.count;
     zero := [1] int.[0]; s0 := [1] int.[0];
-    we_forward(net, W, work, prompt[0..<P], P, zero[..], s0[..], true);
+    pf := we_forward(net, W, work, prompt[0..<P], P, zero[..], s0[..], true, 0);
     // no-speech probability from the raw logits
     row0 := work[k.logits..<k.logits + V];
     best := -1.0e300; for v: row0 { if cast(f64) v > best { best = cast(f64) v; } }
@@ -352,16 +400,25 @@ we_window :: (net: WeNet, W: [] f32, work: [] f32, o: WeOptions, bias: WeBias, i
     // the steps
     toks: [WE_SLOTS] int; poss: [WE_SLOTS] int; slots: [WE_SLOTS] int; rowof: [WE_SLOTS] int;
     for j: 0..<nd { rowof[j] = j; }
-    cands: [WE_SLOTS * WE_SLOTS] WeCand; ids: [WE_SLOTS] int;
+    cands: [WE_SLOTS * WE_SLOTS] WeCand; ids: [WE_SLOTS] int; lps: [WE_SLOTS] f32;
+    ruled := false;
     for i: 0..<WE_STEPS_MAX {
       if beam {
         nc := 0;
         for j: 0..<nd {
           if decs[j].completed || decs[j].failed || (i == 0 && j > 0) { continue; }
-          we_rules(net, work[k.logits + rowof[j] * V..<k.logits + (rowof[j] + 1) * V], decs[j], t, bias, lp);
-          m := we_topk(lp, nd, ids[..]);
+          m := 0;
+          if ruled {
+            // the step's GPU rules left this row's top tokens
+            at := k.rt + rowof[j] * WE_TOP; m = cast(int) work[at];
+            for c: 0..<m { ids[c] = cast(int) work[at + 1 + 2 * c]; lps[c] = work[at + 2 + 2 * c]; }
+          } else {
+            we_rules(net, work[k.logits + rowof[j] * V..<k.logits + (rowof[j] + 1) * V], decs[j], t, bias, lp);
+            m = we_topk(lp, nd, ids[..]);
+            for c: 0..<m { lps[c] = lp[ids[c]]; }
+          }
           for c: 0..<m {
-            cand := WeCand.{parent = j, token = ids[c], lp = cast(f64) lp[ids[c]], sum = decs[j].sum_all + cast(f64) lp[ids[c]]};
+            cand := WeCand.{parent = j, token = ids[c], lp = cast(f64) lps[c], sum = decs[j].sum_all + cast(f64) lps[c]};
             // keep cands sorted: higher sum first, then lower parent, then rank
             q := nc; nc += 1;
             while q > 0 && cands[q - 1].sum < cand.sum { cands[q] = cands[q - 1]; q -= 1; }
@@ -403,7 +460,16 @@ we_window :: (net: WeNet, W: [] f32, work: [] f32, o: WeOptions, bias: WeBias, i
         toks[rows] = decs[j].toks[decs[j].n - 1]; poss[rows] = P + i; slots[rows] = decs[j].slot; rowof[j] = rows; rows += 1;
       }
       if rows == 0 || P + i + 1 >= net.params.n_text_ctx { break; }
-      we_forward(net, W, work, toks[0..<rows], rows, poss[0..<rows], slots[0..<rows], false);
+      // in a beam search the next step's rules go with the step (cxwh_rules)
+      tops := 0;
+      if beam {
+        tops = nd;
+        for j: 0..<nd {
+          if decs[j].completed || decs[j].failed { continue; }
+          if !we_rule_params(net, decs[j], t, bias, work[k.rp + rowof[j] * WE_PRM..<k.rp + (rowof[j] + 1) * WE_PRM]) { tops = 0; }
+        }
+      }
+      ruled = we_forward(net, W, work, toks[0..<rows], rows, poss[0..<rows], slots[0..<rows], false, tops);
     }
     best_score := -1.0e300;
     for j: 0..<nd {
@@ -450,7 +516,7 @@ we_transcribe :: (net: WeNet, W: [] f32, work: [] f32, b: [] u8, m: WgModel, voc
     if st != WfStatus.ok { return run; }
     we_encode(net, W, work);
     sot := [1] int.[sp.sot]; zero := [1] int.[0];
-    we_forward(net, W, work, sot[..], 1, zero[..], zero[..], true);
+    pf := we_forward(net, W, work, sot[..], 1, zero[..], zero[..], true, 0);
     best := sp.sot + 1;
     for i: 0..<sp.languages { if work[k.logits + sp.sot + 1 + i] > work[k.logits + best] { best = sp.sot + 1 + i; } }
     language = best;

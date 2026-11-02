@@ -66,7 +66,7 @@ wd_linear :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, 
         v := a[e];
         if bias == 1 { v += b[o0 + c]; }
         if act == 1 { v = wd_gelu(v); }
-        y[(r0 + r) * n_out + o0 + c] = v;
+        if act == 2 { y[(r0 + r) * n_out + o0 + c] += v; } else { y[(r0 + r) * n_out + o0 + c] = v; }
       }
     }
   }
@@ -133,7 +133,7 @@ wd_rows :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x:
       for t: 0..<WD_RT { v += part[t + WD_RT * thread]; }
       if bias == 1 { v += b[o0 + oo]; }
       if act == 1 { v = wd_gelu(v); }
-      y[r * n_out + o0 + oo] = v;
+      if act == 2 { y[r * n_out + o0 + oo] += v; } else { y[r * n_out + o0 + oo] = v; }
     }
   }
 }
@@ -151,8 +151,18 @@ wd_half :: (word: u32, high: bool) -> f32 {
 // wd_rows with the weights as halves, two to a word (the low half first):
 // the model's own f16 values, so the product reads half the bytes. n_in is
 // even; thread i takes the inputs 2 i and 2 i + 1 of every WD_RT-th word.
-wd_rowsh :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] u32, b: [] f32, y: [] f32) #export_c {
-  part: [WD_RT * 8 * WD_ROWS_OUT] f32;
+// Partial sum e of thread t is at t + WD_RT e. Pass one has thread t add
+// the partials of value e = t % 32 from threads 32 (t / 32) onward, starting
+// at the one in lane e, so the 32 threads of a simdgroup read 32 different
+// banks at each step; pass two adds those four. act 2 adds the result to y
+// (a residual) instead of storing it. act 3 is a block's query, key and
+// value at once (n_out three times the width e): outputs below e are row r's
+// query in y, and the key and value go to row r's place in the cache kvc,
+// slot and position from sp (wd_slot_pos): key at (slot ctx + pos) e,
+// value vstride later.
+wd_rowsh :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] u32, b: [] f32, y: [] f32,
+             sp: int, ctx: int, vstride: int, kvc: [] f32) #export_c {
+  part: [WD_RT * 8 * WD_ROWS_OUT] f32; red: [WD_RT] f32;
   o0 := item * WD_ROWS_OUT; nw := n_in / 2;
   for thread: 0..<WD_RT {
     a: [8 * WD_ROWS_OUT] f32;
@@ -165,7 +175,7 @@ wd_rowsh :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x
           if o0 + oo < n_out {
             word := w[(o0 + oo) * nw + i];
             wa := wd_half(word, false); wb := wd_half(word, true);
-            for r: 0..<8 { a[oo * 8 + r] += wa * x0[r] + wb * x1[r]; }
+            for r: 0..<8 { v := fma(wa, x0[r], fma(wb, x1[r], a[oo * 8 + r])); a[oo * 8 + r] = v; }
           }
         }
       }
@@ -173,15 +183,304 @@ wd_rowsh :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x
     for e: 0..<8 * WD_ROWS_OUT { part[thread + WD_RT * e] = a[e]; }
   }
   for thread: 0..<WD_RT {
+    e := thread % 32; q := thread / 32;
+    z: f32 = 0;
+    for j: 0..<32 { z += part[q * 32 + (e + j) % 32 + WD_RT * e]; }
+    red[thread] = z;
+  }
+  for thread: 0..<WD_RT {
     oo := thread / 8; r := thread % 8;
     if thread < 8 * WD_ROWS_OUT && r < rows && o0 + oo < n_out {
-      v: f32 = 0;
-      for t: 0..<WD_RT { v += part[t + WD_RT * thread]; }
+      v := (red[thread] + red[thread + 32]) + (red[thread + 64] + red[thread + 96]);
       if bias == 1 { v += b[o0 + oo]; }
       if act == 1 { v = wd_gelu(v); }
-      y[r * n_out + o0 + oo] = v;
+      o := o0 + oo;
+      if act == 3 {
+        e := n_out / 3; at := wd_slot_pos(sp, r); place := ((at >> 9) * ctx + (at & 511)) * e;
+        if o < e { y[r * e + o] = v; } else if o < 2 * e { kvc[place + o - e] = v; } else { kvc[vstride + place + o - 2 * e] = v; }
+      } else if act == 2 { y[r * n_out + o] += v; } else { y[r * n_out + o] = v; }
     }
   }
+}
+// The decoder's products, at most WD_MR rows (the beams), with half
+// weights: item i is outputs WD_MO i onward, one group of WD_MT threads.
+// Thread t takes every WD_MT-th word of those outputs' weight rows, so each
+// input of each row is loaded once for the group's outputs; partial sum e
+// of thread t is at t + WD_MT e, and thread e then adds value e's WD_MT
+// partials, starting at lane e so a simdgroup reads 32 banks at each step.
+WD_MR :: 5;
+WD_MO :: 4;
+WD_MT :: 32;
+wd_mv_items :: (n_out: int) -> int { return (n_out + WD_MO - 1) / WD_MO; }
+wd_mv :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] u32, b: [] f32, y: [] f32) #export_c {
+  part: [WD_MT * WD_MR * WD_MO] f32;
+  o0 := item * WD_MO; nw := n_in / 2;
+  for thread: 0..<WD_MT {
+    a: [WD_MR * WD_MO] f32;
+    for u: 0..<(nw + WD_MT - 1) / WD_MT {
+      i := thread + WD_MT * u;
+      if i < nw {
+        x0: [WD_MR] f32; x1: [WD_MR] f32;
+        for r: 0..<WD_MR { if r < rows { x0[r] = x[r * n_in + 2 * i]; x1[r] = x[r * n_in + 2 * i + 1]; } }
+        for oo: 0..<WD_MO {
+          if o0 + oo < n_out {
+            word := w[(o0 + oo) * nw + i];
+            wa := wd_half(word, false); wb := wd_half(word, true);
+            for r: 0..<WD_MR { v := fma(wa, x0[r], fma(wb, x1[r], a[oo * WD_MR + r])); a[oo * WD_MR + r] = v; }
+          }
+        }
+      }
+    }
+    for e: 0..<WD_MR * WD_MO { part[thread + WD_MT * e] = a[e]; }
+  }
+  for thread: 0..<WD_MT {
+    if thread < WD_MR * WD_MO {
+      oo := thread / WD_MR; r := thread % WD_MR;
+      z: f32 = 0;
+      for j: 0..<WD_MT { z += part[(thread + j) % WD_MT + WD_MT * thread]; }
+      if r < rows && o0 + oo < n_out {
+        if bias == 1 { z += b[o0 + oo]; }
+        if act == 1 { z = wd_gelu(z); }
+        if act == 2 { y[r * n_out + o0 + oo] += z; } else { y[r * n_out + o0 + oo] = z; }
+      }
+    }
+  }
+}
+// A beam's token rules, log-softmax and top k on the GPU, as search.coax's
+// we_rules then we_topk, so the step hands the search k candidates a row
+// instead of the vocabulary. Row r's rules are WD_PRM values at
+// prm[r WD_PRM] (we_rule_params writes them): the temperature's inverse,
+// masked ranges, masked tokens and bias adds (token, amount) in order, each
+// count first. wd_rules_part takes each chunk of a row (item r chunks + c)
+// and leaves its maximum, sum and best tokens in rec (WD_REC values);
+// wd_rules_join (item r) combines a row's chunks. top
+// receives the row's count n, then n (token, log-probability) pairs, best
+// first, ties to the lower token, as we_topk.
+WD_PRM :: 64;
+WD_RANGES :: 8;
+WD_SINGLES :: 20;
+WD_ADDS :: 12;
+WD_TOP :: 16;
+WD_RT2 :: 256;
+WD_NEG :: -1.0e30;
+wd_dead :: (v: f32) -> bool { return v < -1.0e29; }
+// search.coax's we_expv, step for step.
+wd_expv :: (x: f32) -> f32 {
+  y := x; if y < -87 { y = -87; } if y > 88 { y = 88; }
+  k := y * 1.442695041 + 12582912.0;
+  fn := k - 12582912.0;
+  r := (y - fn * 0.693145752) - fn * 0.00000142860677;
+  p := 1 + r * (1 + r * (0.5 + r * (0.1666666667 + r * (0.04166666667 + r * (0.008333333333 + r * 0.001388888889)))));
+  e := p * f32_from_bits((f32_bits(k) - 0x4B3FFF81) << 23);
+  return ifx x < -87 then 0 else e;
+}
+// a ranks above b: larger, or equal and the lower token
+wd_above :: (av: f32, ai: int, bv: f32, bi: int) -> bool { return av > bv || (av == bv && ai < bi); }
+WD_CH :: 2048;
+WD_REC :: 16;
+WD_NONE :: -3.0e38;
+// A row's chunks: [0, beg) then [beg, V), WD_CH tokens each, so a chunk is
+// all text or all timestamps.
+wd_text_chunks :: (beg: int) -> int { return (beg + WD_CH - 1) / WD_CH; }
+wd_rule_chunks :: (V: int, beg: int) -> int { return wd_text_chunks(beg) + (V - beg + WD_CH - 1) / WD_CH; }
+// Chunk item of the rows: its maximum m, the sum of e^(lp - m) in f64, and
+// its best 5 live tokens by lp, ties to the lower token (WD_NONE pads).
+wd_rules_part :: (item: int, V: int, beg: int, prm: [] f32, logits: [] f32, rec: [] f64) #export_c {
+  tc := wd_text_chunks(beg); chunks := wd_rule_chunks(V, beg);
+  r := item / chunks; c := item % chunks;
+  c0 := ifx c < tc then c * WD_CH else beg + (c - tc) * WD_CH;
+  last := ifx c < tc then beg else V; end := ifx c0 + WD_CH < last then c0 + WD_CH else last;
+  P := r * WD_PRM; L := r * V; A0 := P + 4 + 2 * WD_RANGES + WD_SINGLES; S0 := P + 3 + 2 * WD_RANGES;
+  inv := prm[P]; nr := cast(int) prm[P + 1]; ns := cast(int) prm[S0 - 1]; na := cast(int) prm[A0 - 1];
+  // the chunk's scaled logits with the rules applied, and its maximum
+  lv: [WD_CH] f32; mx: [WD_RT2] f32;
+  for thread: 0..<WD_RT2 {
+    lo: [WD_RANGES] int; hi: [WD_RANGES] int; at: [WD_ADDS] int; by: [WD_ADDS] f32; sg: [WD_SINGLES] int;
+    for g: 0..<WD_RANGES { lo[g] = ifx g < nr then cast(int) prm[P + 2 + 2 * g] else 0; hi[g] = ifx g < nr then cast(int) prm[P + 3 + 2 * g] else 0; }
+    for g: 0..<WD_ADDS { at[g] = ifx g < na then cast(int) prm[A0 + 2 * g] else -1; by[g] = ifx g < na then prm[A0 + 2 * g + 1] else 0; }
+    for g: 0..<WD_SINGLES { sg[g] = ifx g < ns then cast(int) prm[S0 + g] else -1; }
+    a: f32 = WD_NONE;
+    for u: 0..<WD_CH / WD_RT2 {
+      i := c0 + thread + WD_RT2 * u;
+      v: f32 = WD_NEG;
+      if i < end {
+        v = logits[L + i] * inv;
+        for g: 0..<WD_RANGES { if i >= lo[g] && i < hi[g] { v = WD_NEG; } }
+        for g: 0..<WD_ADDS { if at[g] == i && !wd_dead(v) { v += by[g]; } }
+        for g: 0..<WD_SINGLES { if sg[g] == i { v = WD_NEG; } }
+        if v > a { a = v; }
+      }
+      lv[thread + WD_RT2 * u] = v;
+    }
+    mx[thread] = a;
+  }
+  m: f32 = WD_NONE;
+  for i: 0..<WD_RT2 { if mx[i] > m { m = mx[i]; } }
+  // the sum of e^(lp - m), in f64; each thread's best 5
+  sx: [WD_RT2] f64;
+  gv: [WD_RT2 * 5] f32; gi: [WD_RT2 * 5] f32; hv: [WD_RT2 * 5] f32; hi: [WD_RT2 * 5] f32;
+  for thread: 0..<WD_RT2 {
+    z := 0.0;
+    bv: [5] f32; bi: [5] int;
+    for j: 0..<5 { bv[j] = WD_NONE; bi[j] = 1 << 30; }
+    for u: 0..<WD_CH / WD_RT2 {
+      i := c0 + thread + WD_RT2 * u; v := lv[thread + WD_RT2 * u];
+      if i < end && !wd_dead(m) { z += cast(f64) wd_expv(v - m); }
+      if i < end && !wd_dead(v) && wd_above(v, i, bv[4], bi[4]) {
+        o := 0;
+        for j: 0..<5 { if wd_above(bv[j], bi[j], v, i) { o += 1; } }
+        for jj: 0..<4 { j := 4 - jj; if j > o { bv[j] = bv[j - 1]; bi[j] = bi[j - 1]; } }
+        bv[o] = v; bi[o] = i;
+      }
+    }
+    sx[thread] = z;
+    for j: 0..<5 { gv[thread + WD_RT2 * j] = bv[j]; gi[thread + WD_RT2 * j] = cast(f32) bi[j]; }
+  }
+  zs := 0.0;
+  for i: 0..<WD_RT2 { zs += sx[i]; }
+  // pairs of lists merged, 128 then 64 ... then 1 (into gv and gi)
+  for thread: 0..<WD_RT2 {
+    if thread < 128 {
+      p := 0; q := 0; x := 2 * thread;
+      for j: 0..<5 {
+        av := gv[x + WD_RT2 * p]; ai := cast(int) gi[x + WD_RT2 * p];
+        bv := gv[x + 1 + WD_RT2 * q]; bi := cast(int) gi[x + 1 + WD_RT2 * q];
+        if wd_above(av, ai, bv, bi) { hv[thread + WD_RT2 * j] = av; hi[thread + WD_RT2 * j] = cast(f32) ai; p += 1; }
+        else { hv[thread + WD_RT2 * j] = bv; hi[thread + WD_RT2 * j] = cast(f32) bi; q += 1; }
+      }
+    }
+  }
+  for thread: 0..<WD_RT2 {
+    if thread < 64 {
+      p := 0; q := 0; x := 2 * thread;
+      for j: 0..<5 {
+        av := hv[x + WD_RT2 * p]; ai := cast(int) hi[x + WD_RT2 * p];
+        bv := hv[x + 1 + WD_RT2 * q]; bi := cast(int) hi[x + 1 + WD_RT2 * q];
+        if wd_above(av, ai, bv, bi) { gv[thread + WD_RT2 * j] = av; gi[thread + WD_RT2 * j] = cast(f32) ai; p += 1; }
+        else { gv[thread + WD_RT2 * j] = bv; gi[thread + WD_RT2 * j] = cast(f32) bi; q += 1; }
+      }
+    }
+  }
+  for thread: 0..<WD_RT2 {
+    if thread < 32 {
+      p := 0; q := 0; x := 2 * thread;
+      for j: 0..<5 {
+        av := gv[x + WD_RT2 * p]; ai := cast(int) gi[x + WD_RT2 * p];
+        bv := gv[x + 1 + WD_RT2 * q]; bi := cast(int) gi[x + 1 + WD_RT2 * q];
+        if wd_above(av, ai, bv, bi) { hv[thread + WD_RT2 * j] = av; hi[thread + WD_RT2 * j] = cast(f32) ai; p += 1; }
+        else { hv[thread + WD_RT2 * j] = bv; hi[thread + WD_RT2 * j] = cast(f32) bi; q += 1; }
+      }
+    }
+  }
+  for thread: 0..<WD_RT2 {
+    if thread < 16 {
+      p := 0; q := 0; x := 2 * thread;
+      for j: 0..<5 {
+        av := hv[x + WD_RT2 * p]; ai := cast(int) hi[x + WD_RT2 * p];
+        bv := hv[x + 1 + WD_RT2 * q]; bi := cast(int) hi[x + 1 + WD_RT2 * q];
+        if wd_above(av, ai, bv, bi) { gv[thread + WD_RT2 * j] = av; gi[thread + WD_RT2 * j] = cast(f32) ai; p += 1; }
+        else { gv[thread + WD_RT2 * j] = bv; gi[thread + WD_RT2 * j] = cast(f32) bi; q += 1; }
+      }
+    }
+  }
+  for thread: 0..<WD_RT2 {
+    if thread < 8 {
+      p := 0; q := 0; x := 2 * thread;
+      for j: 0..<5 {
+        av := gv[x + WD_RT2 * p]; ai := cast(int) gi[x + WD_RT2 * p];
+        bv := gv[x + 1 + WD_RT2 * q]; bi := cast(int) gi[x + 1 + WD_RT2 * q];
+        if wd_above(av, ai, bv, bi) { hv[thread + WD_RT2 * j] = av; hi[thread + WD_RT2 * j] = cast(f32) ai; p += 1; }
+        else { hv[thread + WD_RT2 * j] = bv; hi[thread + WD_RT2 * j] = cast(f32) bi; q += 1; }
+      }
+    }
+  }
+  for thread: 0..<WD_RT2 {
+    if thread < 4 {
+      p := 0; q := 0; x := 2 * thread;
+      for j: 0..<5 {
+        av := hv[x + WD_RT2 * p]; ai := cast(int) hi[x + WD_RT2 * p];
+        bv := hv[x + 1 + WD_RT2 * q]; bi := cast(int) hi[x + 1 + WD_RT2 * q];
+        if wd_above(av, ai, bv, bi) { gv[thread + WD_RT2 * j] = av; gi[thread + WD_RT2 * j] = cast(f32) ai; p += 1; }
+        else { gv[thread + WD_RT2 * j] = bv; gi[thread + WD_RT2 * j] = cast(f32) bi; q += 1; }
+      }
+    }
+  }
+  for thread: 0..<WD_RT2 {
+    if thread < 2 {
+      p := 0; q := 0; x := 2 * thread;
+      for j: 0..<5 {
+        av := gv[x + WD_RT2 * p]; ai := cast(int) gi[x + WD_RT2 * p];
+        bv := gv[x + 1 + WD_RT2 * q]; bi := cast(int) gi[x + 1 + WD_RT2 * q];
+        if wd_above(av, ai, bv, bi) { hv[thread + WD_RT2 * j] = av; hi[thread + WD_RT2 * j] = cast(f32) ai; p += 1; }
+        else { hv[thread + WD_RT2 * j] = bv; hi[thread + WD_RT2 * j] = cast(f32) bi; q += 1; }
+      }
+    }
+  }
+  for thread: 0..<WD_RT2 {
+    if thread < 1 {
+      p := 0; q := 0; x := 2 * thread;
+      for j: 0..<5 {
+        av := hv[x + WD_RT2 * p]; ai := cast(int) hi[x + WD_RT2 * p];
+        bv := hv[x + 1 + WD_RT2 * q]; bi := cast(int) hi[x + 1 + WD_RT2 * q];
+        if wd_above(av, ai, bv, bi) { gv[thread + WD_RT2 * j] = av; gi[thread + WD_RT2 * j] = cast(f32) ai; p += 1; }
+        else { gv[thread + WD_RT2 * j] = bv; gi[thread + WD_RT2 * j] = cast(f32) bi; q += 1; }
+      }
+    }
+  }
+  R := item * WD_REC;
+  for thread: 0..<WD_RT2 {
+    if thread == 0 {
+      rec[R] = cast(f64) m; rec[R + 1] = zs;
+      for j: 0..<5 { rec[R + 2 + 2 * j] = cast(f64) gi[WD_RT2 * j]; rec[R + 3 + 2 * j] = cast(f64) gv[WD_RT2 * j]; }
+    }
+  }
+}
+// Row item from its chunks: the log-softmax over the row (text and
+// timestamps apart, as we_rules), then its best k (at most 5) into top.
+wd_rules_join :: (item: int, V: int, beg: int, k: int, rec: [] f64, top: [] f32) #export_c {
+  tc := wd_text_chunks(beg); chunks := wd_rule_chunks(V, beg); R0 := item * chunks * WD_REC;
+  m1: f32 = WD_NONE; m2: f32 = WD_NONE;
+  for c: 0..<chunks {
+    m := cast(f32) rec[R0 + c * WD_REC];
+    if c < tc { if m > m1 { m1 = m; } } else { if m > m2 { m2 = m; } }
+  }
+  text := ifx wd_dead(m1) then -1.0e300 else cast(f64) m1;
+  tmax := ifx wd_dead(m2) then -1.0e300 else cast(f64) m2;
+  best := ifx text > tmax then text else tmax;
+  bf := ifx best > -1.0e299 then cast(f32) best else 0;
+  zx := 0.0; zt := 0.0;
+  for c: 0..<chunks {
+    R := R0 + c * WD_REC; m := cast(f32) rec[R];
+    if !wd_dead(m) {
+      e := rec[R + 1] * exp(cast(f64) m - cast(f64) bf);
+      if c < tc { zx += e; } else { zt += e; }
+    }
+  }
+  lz := best + log(zx + zt);
+  ts := ifx zt > 0 then best + log(zt) else -1.0e300;
+  only_ts := ts > text;
+  bv: [5] f32; bi: [5] int; n := 0;
+  for c: 0..<chunks {
+    if c >= tc || !only_ts {
+      for e: 0..<5 {
+        R := R0 + c * WD_REC + 2 + 2 * e;
+        raw := cast(f32) rec[R + 1];
+        if !wd_dead(raw) {
+          i := cast(int) cast(f32) rec[R]; v := cast(f32) (rec[R + 1] - lz);
+          if n < k || wd_above(v, i, bv[k - 1], bi[k - 1]) {
+            o := 0;
+            for j: 0..<5 { if j < n && wd_above(bv[j], bi[j], v, i) { o += 1; } }
+            for jj: 0..<4 { j := 4 - jj; if j > o && j < k { bv[j] = bv[j - 1]; bi[j] = bi[j - 1]; } }
+            bv[o] = v; bi[o] = i;
+            if n < k { n += 1; }
+          }
+        }
+      }
+    }
+  }
+  T := item * WD_TOP;
+  top[T] = cast(f32) n;
+  for j: 0..<5 { if j < n { top[T + 1 + 2 * j] = cast(f32) bi[j]; top[T + 2 + 2 * j] = bv[j]; } }
 }
 // LayerNorm of row item of x (d values) into y, as engine.coax's we_norm
 // but in f32: (x - mean) / sqrt(var + 1e-5) * g + b.
@@ -208,8 +507,6 @@ wd_norm :: (item: int, d: int, x: [] f32, g: [] f32, b: [] f32, y: [] f32) #expo
     for u: 0..<per { i := thread + WD_THREADS * u; if i < d { y[base + i] = (x[base + i] - mean) * inv * g[i] + b[i]; } }
   }
 }
-// x[i] += h[i], one thread per element: the decoder's residual adds.
-wd_add :: (item: int, x: [] f32, h: [] f32) #export_c { x[item] = x[item] + h[item]; }
 // ka[i] and va[i] into kb[i] and vb[i]: a row's keys and values into its
 // self-attention cache slot.
 wd_store :: (item: int, ka: [] f32, va: [] f32, kb: [] f32, vb: [] f32) #export_c { kb[item] = ka[item]; vb[item] = va[item]; }
@@ -229,7 +526,7 @@ WD_CHUNK :: 128;
 WD_PART :: 66;
 wd_chunks :: (nk: int) -> int { return (nk + WD_CHUNK - 1) / WD_CHUNK; }
 wd_slot_pos :: (sp: int, t: int) -> int { return (sp >> (12 * t)) & 4095; }
-wd_part :: (item: int, nq: int, nk: int, d: int, heads: int, ctx: int, sp: int, causal: int, q: [] f32, k: [] f32, v: [] f32, part: [] f32) #export_c {
+wd_part :: (item: int, nq: int, nk: int, d: int, heads: int, ctx: int, sp: int, causal: int, q: [] f32, k: [] f32, v: [] f32, part: [] f32, out: [] f32) #export_c {
   C := wd_chunks(nk); qi := item / C; j0 := item % C * WD_CHUNK;
   h := qi / nq; t := qi % nq; hd := h * WD_HEAD;
   n := nk; base := 0;
@@ -260,8 +557,11 @@ wd_part :: (item: int, nq: int, nk: int, d: int, heads: int, ctx: int, sp: int, 
     red[thread] = a;
   }
   for thread: 0..<WD_THREADS {
-    if thread < WD_HEAD { part[item * WD_PART + 2 + thread] = red[thread] + red[thread + WD_HEAD]; }
-    if thread == 0 { part[item * WD_PART] = best; part[item * WD_PART + 1] = total; }
+    if C == 1 { if thread < WD_HEAD { out[t * d + hd + thread] = (red[thread] + red[thread + WD_HEAD]) / total; } }
+    else {
+      if thread < WD_HEAD { part[item * WD_PART + 2 + thread] = red[thread] + red[thread + WD_HEAD]; }
+      if thread == 0 { part[item * WD_PART] = best; part[item * WD_PART + 1] = total; }
+    }
   }
 }
 // wd_cross: the same parts when every query sees all nk keys (the
@@ -490,8 +790,78 @@ wd_values :: (item: int, nq: int, nk: int, d: int, heads: int, s: [] f32, v: [] 
   for i: 0..<315 { wh[i] = cast(u32) (0x3000 + (i * 37) % 2048) | (cast(u32) (0xb000 + (i * 53) % 2048) << 16); }
   for i: 0..<630 { w[i] = wd_half(wh[i / 2], i % 2 == 1); }
   for i: 0..<9 { b[i] = cast(f32) i * 0.01; }
-  for o: 0..<wd_rows_items(n_out) { wd_rows(o, rows, n_in, n_out, 1, 1, x[..], w[..], b[..], y[..]); wd_rowsh(o, rows, n_in, n_out, 1, 1, x[..], wh[..], b[..], z[..]); }
+  for o: 0..<wd_rows_items(n_out) { wd_rows(o, rows, n_in, n_out, 1, 1, x[..], w[..], b[..], y[..]); wd_rowsh(o, rows, n_in, n_out, 1, 1, x[..], wh[..], b[..], z[..], 0, 0, 0, z[..]); }
   for i: 0..<45 { #assert abs(cast(f64) (y[i] - z[i])) < 0.00001; }
+  // act 2 adds the product to y: z (the GELU products) plus the plain ones
+  g: [45] f32; for i: 0..<45 { g[i] = z[i]; }
+  for o: 0..<wd_rows_items(n_out) { wd_rows(o, rows, n_in, n_out, 0, 1, x[..], w[..], b[..], y[..]); wd_rowsh(o, rows, n_in, n_out, 2, 1, x[..], wh[..], b[..], z[..], 0, 0, 0, z[..]); }
+  for i: 0..<45 { #assert abs(cast(f64) (z[i] - (g[i] + y[i]))) < 0.00001; }
+  // act 3: n_out 9 is a query, key and value of width 3; row r goes to slot
+  // 4 - r at position r + 1 of slots of ctx 3 rows, values 40 later
+  q: [15] f32; kv: [100] f32; sp := 0;
+  for r: 0..<rows { sp = sp | (((4 - r) * 512 + r + 1) << (12 * r)); }
+  for o: 0..<wd_rows_items(n_out) { wd_rowsh(o, rows, n_in, n_out, 3, 1, x[..], wh[..], b[..], q[..], sp, 3, 40, kv[..]); }
+  for r: 0..<rows {
+    place := ((4 - r) * 3 + r + 1) * 3;
+    for c: 0..<3 {
+      #assert q[r * 3 + c] == y[r * n_out + c];
+      #assert kv[place + c] == y[r * n_out + 3 + c] && kv[40 + place + c] == y[r * n_out + 6 + c];
+    }
+  }
+}
+#test "the rules kernel picks what the search's rules and top k pick" #steps 400000000 {
+  // three chunks a row; the best tokens in different chunks
+  V := 5000; beg := 4500; k := 5;
+  logits: [10000] f32; prm: [128] f32; top: [32] f32;
+  for i: 0..<10000 { logits[i] = cast(f32) ((i * 37) % 101) * 0.05 - 2; }
+  for i: beg..<V { logits[i] = -6; }
+  logits[2100] = 4; logits[4200] = 4; logits[V + 4300] = 3.5;
+  // row 1's timestamps are likelier than its text: only timestamps follow
+  for i: V + beg..<2 * V { logits[i] = cast(f32) ((i * 13) % 17) * 0.1 + 3; }
+  for r: 0..<2 {
+    P := r * WD_PRM;
+    prm[P] = 0.5;
+    prm[P + 1] = 2; prm[P + 2] = 0; prm[P + 3] = 3; prm[P + 4] = 4950; prm[P + 5] = 5000;
+    S := P + 2 + 2 * WD_RANGES; prm[S] = 2; prm[S + 1] = 10; prm[S + 2] = 20;
+    A := S + 1 + WD_SINGLES; prm[A] = 3;
+    prm[A + 1] = 30; prm[A + 2] = 2.5; prm[A + 3] = 1; prm[A + 4] = 1; prm[A + 5] = 30; prm[A + 6] = 0.5;
+  }
+  rec: [8 * WD_REC] f64;
+  #assert wd_rule_chunks(V, beg) == 4;
+  for item: 0..<8 { wd_rules_part(item, V, beg, prm[..], logits[..], rec[..]); }
+  for r: 0..<2 { wd_rules_join(r, V, beg, k, rec[..], top[..]); }
+  for r: 0..<2 {
+    // the reference: scale, ranges, adds unless masked, tokens, then
+    // log-softmax with f64 sums, as we_rules
+    want: [5000] f32;
+    for i: 0..<V {
+      v := logits[r * V + i] * 0.5;
+      if i < 3 || i >= 4950 { v = WD_NEG; }
+      want[i] = v;
+    }
+    want[30] += 2.5; want[30] += 0.5; want[10] = WD_NEG; want[20] = WD_NEG;
+    m1: f32 = -3.0e38; m2: f32 = -3.0e38;
+    for i: 0..<V { if i < beg { if want[i] > m1 { m1 = want[i]; } } else { if want[i] > m2 { m2 = want[i]; } } }
+    text := cast(f64) m1; tmax := cast(f64) m2; best := ifx text > tmax then text else tmax; bf := cast(f32) best;
+    zx := 0.0; zt := 0.0;
+    for i: 0..<V { e := cast(f64) wd_expv(want[i] - bf); if i < beg { zx += e; } else { zt += e; } }
+    lz := best + log(zx + zt); only := best + log(zt) > text;
+    #assert only == (r == 1);
+    // brute force: the best k live tokens, ties to the lower token
+    taken: [5000] bool;
+    #assert cast(int) top[r * WD_TOP] == k;
+    for c: 0..<k {
+      bi := -1; bv: f32 = 0;
+      for i: 0..<V {
+        if taken[i] || wd_dead(want[i]) || (only && i < beg) { continue; }
+        v := cast(f32) (cast(f64) want[i] - lz);
+        if bi < 0 || v > bv { bi = i; bv = v; }
+      }
+      taken[bi] = true;
+      #assert cast(int) top[r * WD_TOP + 1 + 2 * c] == bi;
+      #assert abs(cast(f64) (top[r * WD_TOP + 2 + 2 * c] - bv)) < 0.000001;
+    }
+  }
 }
 #test "the row norm matches LayerNorm in f64" {
   d := 300; x: [600] f32; g: [300] f32; b: [300] f32; y: [600] f32;
@@ -504,8 +874,6 @@ wd_values :: (item: int, nq: int, nk: int, d: int, heads: int, s: [] f32, v: [] 
     inv := 1 / sqrt(q / cast(f64) d + 0.00001);
     for i: 0..<d { #assert abs(cast(f64) y[r * d + i] - ((cast(f64) x[r * d + i] - m) * inv * cast(f64) g[i] + cast(f64) b[i])) < 0.00001; }
   }
-  h: [600] f32; for i: 0..<600 { h[i] = 1; }
-  for i: 0..<600 { wd_add(i, y[..], h[..]); }
   kb: [600] f32; vb: [600] f32;
   for i: 0..<600 { wd_store(i, x[..], y[..], kb[..], vb[..]); }
   for i: 0..<600 { #assert kb[i] == x[i] && vb[i] == y[i]; }
@@ -517,7 +885,7 @@ wd_values :: (item: int, nq: int, nk: int, d: int, heads: int, s: [] f32, v: [] 
   for i: 0..<38400 { k[i] = cast(f32) ((i * 5) % 13) * 0.1 - 0.6; v[i] = cast(f32) ((i * 3) % 7) - 3; }
   C := wd_chunks(nk);
   #assert C == 3;
-  for i: 0..<heads * nq * C { wd_part(i, nq, nk, d, heads, 0, 0, 0, q[..], k[..], v[..], part[..]); }
+  for i: 0..<heads * nq * C { wd_part(i, nq, nk, d, heads, 0, 0, 0, q[..], k[..], v[..], part[..], o[..]); }
   for i: 0..<heads * nq { wd_join(i, nq, nk, d, part[..], o[..]); wd_attend(i, nq, nk, d, heads, q[..], k[..], v[..], r[..]); }
   for i: 0..<384 { #assert abs(cast(f64) (o[i] - r[i])) < 0.0001; }
   for i: 0..<heads * C { wd_cross(i, nq, nk, d, heads, q[..], k[..], v[..], part[..]); }
@@ -528,8 +896,9 @@ wd_values :: (item: int, nq: int, nk: int, d: int, heads: int, s: [] f32, v: [] 
   sp := 0;
   for t: 0..<nq { sp = sp | (((2 - t) * 512 + 40 + t) << (12 * t)); }
   #assert wd_slot_pos(sp, 1) == 512 + 41;
-  for i: 0..<heads * nq * wd_chunks(44) { wd_part(i, nq, 44, d, heads, 100, sp, 1, q[..], k[..], v[..], part[..]); }
-  for i: 0..<heads * nq { wd_join(i, nq, 44, d, part[..], o[..]); }
+  // one chunk (44 keys): wd_part writes the output itself, as wd_join would
+  #assert wd_chunks(44) == 1;
+  for i: 0..<heads * nq { wd_part(i, nq, 44, d, heads, 100, sp, 1, q[..], k[..], v[..], part[..], o[..]); }
   for t: 0..<nq {
     at := (2 - t) * 100 * d;
     for h: 0..<heads { wd_attend(h * nq + t, nq, 41 + t, d, heads, q[..], k[at..<at + 100 * d], v[at..<at + 100 * d], r[..]); }
