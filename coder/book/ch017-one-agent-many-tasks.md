@@ -9,9 +9,11 @@
 > and, for a GitHub source that asks for it, posts it on the issue. The
 > offline smoke, a live System One check and a live read-only GitHub poll
 > cover it. The candidates of one pass are decided together, in one System
-> One request, and a reply cut to fit points to the rest. Still to come:
+> One request, and a reply cut to fit points to the rest. A Worker started
+> from a GitHub issue gets the issue and its newest comments inline in its
+> first message. Still to come:
 > chat sources, a Router model for replies that need more than the Worker's
-> result, inlining related objects into a Worker's task, chain of recall,
+> result, chain of recall,
 > acting ahead, many-to-many subscriptions, and the ablation.
 
 Chapters1–19 build one session well. A person can follow only three to
@@ -229,6 +231,23 @@ source and channel, where any bridge can pick it up. A GitHub source with
 it, nothing leaves the machine. `router/reported` keeps each Worker from
 replying twice.
 
+### Inline and spill
+
+A Worker the Router starts from a GitHub issue doesn't begin with only the
+comment that asked for it. Before it starts the Worker, the Router writes
+`router/context/SESSION` with:
+
+- The issue's number, title and the first 600 characters of its body.
+- The three newest comments, each cut to 300 characters on one line.
+- The command that reads the rest: `gh issue view N -R OWNER/REPO --comments`.
+
+The Router passes that file as `coder run --context FILE`. Coder reads at most
+8,192 bytes of it, logs it as a `context` line, and puts it ahead of the task
+in the first message, after the memory brief. Replay rebuilds the same first
+message from the log, so a resumed Worker sees what it saw the first time.
+Any caller can pass `--context` to `coder run`. A `$ COMMAND` task runs in the
+shell without a model, so it doesn't use the context.
+
 ## Checks
 
 - `coax test coder/tui/coder.coax`: the fast path on every combination of
@@ -243,6 +262,9 @@ replying twice.
   - Against a stand-in `gh`: the first poll only sets the cursor; the next
     turns a labelled issue into a Worker; the Worker's reply is posted on the
     issue in the issue format; the Router's own comment is not an event.
+  - A Worker started from an issue gets a context file with the issue, its
+    newest comment and the command for the rest. A task run with that file
+    logs it as a `context` line, and `coder replay` rebuilds the same bytes.
 - Unit checks for the last turn's result, the chat word cap and the issue
   format, each with a cut result and its pointer, and GitHub thread and cursor parsing.
   - With ten candidates and no System One key, the first pass sends eight in

@@ -62,7 +62,7 @@ names it.
 | [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) | Partly implemented: forks, jobs with deadlines and reports, subagents held to the parent's policy, goals |
 | [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) | Implemented: profiles, capabilities, draining, signed installs, Wasm plugins with admitted imports |
 | [16. Speak the protocols](ch016-speak-the-protocols.md) | Partly implemented: MCP over stdio both ways and HTTP, `coder mcp` with resources, ACP, System One as a tool |
-| [17. One agent, many tasks](ch017-one-agent-many-tasks.md) | Partly implemented: a Router with local, GitHub issue and CI sources, Workers and replies |
+| [17. One agent, many tasks](ch017-one-agent-many-tasks.md) | Partly implemented: a Router with local, GitHub issue and CI sources, Workers, replies and issue context inline |
 | [18. Consent before sharing](ch018-consent-before-sharing.md) | Partly implemented: cs-consent-v1 hash-chained ledger; `coder consent` gates remembered facts to every engine and Worker logs to System One |
 | [19. Remember a fact, then revise it](ch019-remember-a-fact-then-revise-it.md) | Partly implemented: mm-memory-v1 hash-chained memory events; `coder remember`/`revise`/`forget`/`recall` on disk, ranked by Vertex embeddings |
 | [20. An agent that stays online](ch020-an-agent-that-stays-online.md) | Partly implemented: a resumable loop, a watchdog with provider rechecks, machine daemons, credential handles and channel rules |

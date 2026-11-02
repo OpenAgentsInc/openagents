@@ -880,7 +880,7 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
       else { fate = RT_START; decided = true; }
     }
     if fate == RT_START || fate == RT_TO_THREAD {
-      args: [8] string; na := 0;
+      args: [10] string; na := 0;
       if fate == RT_TO_THREAD { args[0] = "fork"; args[1] = cast(string) th[0].session[k][0..<th[0].nsession[k]]; args[2] = t.text; na = 3; }
       else { args[0] = "run"; args[1] = t.text; na = 2; }
       if engine.count > 0 { args[na] = "--engine"; args[na + 1] = engine; na += 2; }
@@ -888,6 +888,11 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
       sid := rt_claim(p, name, cast(string) lastb[0..<nlast], cb[..], was[..]);
       nlast = cd_cat(lastb[..], 0, sid);
       args[na] = "--session"; args[na + 1] = sid; na += 2;
+      xb: [1400] u8;
+      if fate == RT_START {          // a new Worker: the objects next to its event, inlined (chapter 17)
+        cx := rt_context_file(p, t, sid, xb[..]);
+        if cx.count > 0 { args[na] = "--context"; args[na + 1] = cx; na += 2; }
+      }
       idb: [256] u8; id := sid;
       if !was[0] { id = rt_coder(args[0..<na], idb[..]); }
       rt_fault("started");
@@ -915,6 +920,37 @@ rt_pass :: (p: [] RtPaths, th: [] RtThreads, sources: string, json: bool) -> int
     done += 1;
   }
   return done;
+}
+
+// Inline and spill (chapter 17): a new Worker for a GitHub issue or comment
+// gets, in front of its first message, the issue it is on (title and the
+// first 600 characters) and its 3 newest comments (300 characters each),
+// with the command that reads the rest. Written to router/context/SID;
+// "" when there is nothing to inline.
+rt_context_file :: (p: [] RtPaths, t: RtTrigger, sid: string, out: [] u8) -> string {
+  repo := rt_github_repo(t.source); num := rt_github_number(t.thread);
+  if repo.count == 0 || num.count == 0 || sid.count == 0 { return ""; }
+  ub: [600] u8; un := cd_cat(ub[..], 0, "repos/"); un = cd_cat(ub[..], un, repo); un = cd_cat(ub[..], un, "/issues/"); un = cd_cat(ub[..], un, num);
+  ok: [1] bool; ghb: [1024] u8; gh := rt_gh(ghb[..]);
+  ib: [4096] u8;
+  iv := [5] string.[gh, "api", cast(string) ub[0..<un], "--jq", "\"#\\(.number) \\(.title)\\n\\((.body // \"\")[0:600])\""];
+  issue := rt_run(iv[..], ib[..], ok[..]);
+  if !ok[0] { issue = ""; }
+  cn := cd_cat(ub[..], un, "/comments?per_page=100");
+  cb: [4096] u8;
+  cv := [5] string.[gh, "api", cast(string) ub[0..<cn], "--jq", ".[-3:][] | \"- \\(.user.login): \\((.body // \"\")[0:300] | gsub(\"\\n\"; \" \"))\""];
+  comments := rt_run(cv[..], cb[..], ok[..]);
+  if !ok[0] { comments = ""; }
+  if issue.count == 0 && comments.count == 0 { return ""; }
+  tb: [9000] u8;
+  n := cd_cat(tb[..], 0, "Related to this task, from "); n = cd_cat(tb[..], n, t.source); n = cd_cat(tb[..], n, " (event "); n = cd_cat(tb[..], n, t.id); n = cd_cat(tb[..], n, "):\n");
+  if issue.count > 0 { n = cd_cat(tb[..], n, "\nIssue "); n = cd_cat(tb[..], n, issue); n = cd_cat(tb[..], n, "\n"); }
+  if comments.count > 0 { n = cd_cat(tb[..], n, "\nNewest comments:\n"); n = cd_cat(tb[..], n, comments); n = cd_cat(tb[..], n, "\n"); }
+  n = cd_cat(tb[..], n, "\nThe rest: gh issue view "); n = cd_cat(tb[..], n, num); n = cd_cat(tb[..], n, " -R "); n = cd_cat(tb[..], n, repo); n = cd_cat(tb[..], n, " --comments");
+  b: [1300] u8; x := fs_mkdir(rt_path(p, "/router/context", b[..]));
+  k := cd_cat(out, 0, rt_path(p, "/router/context/", b[..])); k = cd_cat(out, k, sid);
+  if !fs_write(cast(string) out[0..<k], cast(string) tb[0..<n]) { return ""; }
+  return cast(string) out[0..<k];
 }
 
 // The reply for a Worker that ended: into the outbox, and to GitHub when the source delivers.

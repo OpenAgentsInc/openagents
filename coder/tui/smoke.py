@@ -102,6 +102,11 @@ elif a[:1] == ["api"]:
         print('{"k":"comment:555","c":"555","n":7,"a":"alice","t":"thanks"}')
         if os.path.exists(os.path.join(d, "gh-posted")):
             print(json.dumps({"k": "comment:999", "c": "999", "n": 7, "a": "alice", "t": open(os.path.join(d, "gh-posted")).read().split(" --body ", 1)[-1]}))
+    elif "/issues/7/comments" in a[1] and "contains(" not in " ".join(a):
+        # the Router inlining the newest comments into a new Worker's first message (chapter 17)
+        print("- alice: the parser test is the one that fails")
+    elif a[1].endswith("/issues/7"):
+        print("#7 Fix parser\n$ echo gh-ok")
     elif "/issues/7/comments" in a[1]:
         # the Router looking for a reply it posted before a crash: the marker it names is in the posted body
         body = open(os.path.join(d, "gh-posted")).read() if os.path.exists(os.path.join(d, "gh-posted")) else ""
@@ -812,6 +817,18 @@ def verbs(check):
               g1 == [] and sorted(l["fate"] for l in g2) == ["addressed to the agent: new worker", "dropped: not addressed to the agent"]
               and any(l.get("thread") == "github:o/r#7" for l in g2))
         gw = next((l.get("session", "") for l in g2 if l.get("session")), "")
+        # inline and spill (chapter 17): the Router writes the issue and its newest comments for the new Worker,
+        # and a model task given that file logs it as a context line ahead of the task, and replays the same bytes
+        gcp = os.path.join(home, ".openagents", "coder", "router", "context", gw)
+        gctx = open(gcp).read() if gw and os.path.exists(gcp) else ""
+        check("github: a new Worker's context has the issue, its newest comments and the command for the rest",
+              "#7 Fix parser" in gctx and "- alice: the parser test is the one that fails" in gctx and "gh issue view 7 -R o/r --comments" in gctx)
+        cr = subprocess.run([coder, "run", "fix it", "--engine", "echo", "--context", gcp, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        cl = [json.loads(x) for x in cr.stdout.splitlines() if x.startswith("{")]
+        cid = cl[0].get("id", "") if cl else ""
+        rp = subprocess.run([coder, "replay", cid], cwd=REPO, env=env, capture_output=True, text=True, timeout=120) if cid else None
+        check("--context: logged as a context line ahead of the task, and replay rebuilds the same bytes",
+              any(l["kind"] == "context" and l.get("text", "") == gctx.rstrip("\n") for l in cl) and rp is not None and "1 of 1 requests rebuilt with the same bytes" in rp.stdout)
         g3 = []
         for _ in range(50):
             g3 += grouter()
