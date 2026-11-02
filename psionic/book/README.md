@@ -296,7 +296,7 @@ run examples directly without the check command.
 | [200. The simplest loop](ch200-the-simplest-loop.md) | Partly implemented: cpu-harness-loop-v1, bounded CPU (a model served through chapters 20, 22 and 79, a wall-clock deadline, and cancelling a running stream and running tools, remain) | The minimal agent loop on chapter 126's engine and chapter 136's calculator: model turn, typed tool call, result appended, repeat, with typed stops for the answer and for each budget (steps, drawn tokens, a logical-clock deadline, the window, the reply cap), cancellation at each boundary, malformed calls refused before anything runs, a transcript of exactly what each request saw, and replay of every step from its seed. |
 | [201. Model-visible means logged](ch201-model-visible-means-logged.md) | Unimplemented: design draft | An append-only, versioned session log from which every model request is rebuilt byte for byte and replayed. |
 | [202. Keep the prefix stable](ch202-keep-the-prefix-stable.md) | Unimplemented: design draft | Prompt assembly in a fixed order so each turn only appends, with metadata kept outside the model input, measured against chapter 176's prefix cache. |
-| [203. Tools as typed capabilities](ch203-tools-as-typed-capabilities.md) | Unimplemented: design draft | A registry of tools with schemas in proto/, a guarded before/run/after pipeline, structured errors and arguments constrained during generation. |
+| [203. Tools as typed capabilities](ch203-tools-as-typed-capabilities.md) | Partly implemented: cpu-harness-tools-v1, bounded CPU (declarations in proto/, filesystem and process tools, the calls inside chapter 200's engine loop, and logging through chapter 201 remain) | Tools as typed capabilities: name, typed arguments, typed result, effect class and cost; a per-turn grant with call and cost budgets and an effect ceiling; declarations compiled to chapter 53's byte automaton so masked sampling cannot produce an ungranted or ill-typed call; before, run and after stages whose refusals name the reason, tool, field and byte; and typed tool-role messages. |
 | [204. A sandbox and approvals](ch204-a-sandbox-and-approvals.md) | Unimplemented: design draft | Processes confined to declared roots and resources, an approval policy for anything outside them, per-tool timeouts and a guard against repeated failing calls. |
 | [205. A document tries to become the system prompt](ch205-a-document-tries-to-become-the-system-prompt.md) | Unimplemented: design draft | A replayable prompt-injection lab with planted hostile passages and tool results, zero unauthorized effects at the gate and separately reported leakage and task completion. |
 | [206. Condense the history](ch206-condense-the-history.md) | Unimplemented: design draft | One marked summary replaces older history when the context fills, bracketed in the log, with rule-based pruning and measured prefill cost. |
@@ -352,7 +352,9 @@ training and the remaining generality/performance work. Chapter 218 checks a
 Pylon before advertisement; chapters 215–225 and 239–249 supply calibrated,
 measured decision/evaluation components with their stated real or simulated
 inputs. Chapter 200 starts the agent harness with the smallest loop: a model
-turn, a tool call and its result, until an answer or a budget stops it. The table and registry, rather than an unlisted-chapter rule, determine
+turn, a tool call and its result, until an answer or a budget stops it.
+Chapter 203 makes tools typed capabilities: declarations compiled to
+chapter 53's grammar, a grant per turn, and refusals before anything runs. The table and registry, rather than an unlisted-chapter rule, determine
 which chapters are implemented, partial or drafts.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)

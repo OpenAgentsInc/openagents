@@ -2429,6 +2429,18 @@
       "stack_kib": 65536
     },
     {
+      "source": "psionic/examples/tool-capabilities.coax",
+      "chapter": "psionic/book/ch203-tools-as-typed-capabilities.md",
+      "stdout": "psionic/fixtures/tool-capabilities.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300,
+      "stack_kib": 65536
+    },
+    {
       "source": "psionic/examples/start-fast.coax",
       "chapter": "psionic/book/ch178-start-fast.md",
       "stdout": "psionic/fixtures/start-fast.out",

@@ -1,0 +1,33 @@
+registry: 4 tools, check none
+  add fields 2, result integer, effect none, cost 1
+  div fields 2, result integer, effect none, cost 1
+  set fields 2, result boolean, effect write, cost 2
+  get fields 1, result boolean, effect read, cost 1
+get's grammar: 27 states, start 26, accepts get{"room":"den"}: true, get{"room":"attic"}: false
+grant: none
+a read-only grant that names set: {"error":"effect","tool":"set"}
+at the start: 4 pieces: a d g add{
+after add{"a":: 10 pieces: 0 1 2 3 4 5 6 7 8 9
+after add{"a":4: 11 pieces: , 0 1 2 3 4 5 6 7 8 9
+after get{"room":"den"}: 1 pieces: <end>
+  add{"a":37,"b":48} -> {"tool":"add","result":85}  (calls 1 0 0, cost 1)
+  mul{"a":1,"b":2} -> {"error":"unknown","at":0}  (calls 1 0 0, cost 1)
+  set{"room":"den","on":true} -> {"error":"ungranted","tool":"set","at":0}  (calls 1 0 0, cost 1)
+  add{"a":01,"b":2} -> {"error":"arguments","tool":"add","field":"a","at":9}  (calls 1 0 0, cost 1)
+  add{"b":1,"a":2} -> {"error":"arguments","tool":"add","field":"a","at":5}  (calls 1 0 0, cost 1)
+  add{"a": 1,"b":2} -> {"error":"arguments","tool":"add","field":"a","at":8}  (calls 1 0 0, cost 1)
+  get{"room":"attic"} -> {"error":"arguments","tool":"get","field":"room","at":12}  (calls 1 0 0, cost 1)
+  add{"a":1, -> {"error":"incomplete","tool":"add","field":"b","at":10}  (calls 1 0 0, cost 1)
+  div{"a":7,"b":0} -> {"error":"run","tool":"div","field":"b"}  (calls 1 1 0, cost 2)
+  div{"a":7,"b":2} -> {"error":"calls","tool":"div"}  (calls 1 1 0, cost 2)
+  add{"a":999,"b":1} -> {"error":"result","tool":"add"}  (calls 2 1 0, cost 3)
+  add{"a":1,"b":1} -> {"error":"calls","tool":"add"}  (calls 2 1 0, cost 3)
+  get{"room":"den"} -> {"error":"cost","tool":"get"}  (calls 2 1 0, cost 3)
+  add -> {"error":"incomplete","tool":"add","at":3}  (calls 2 1 0, cost 3)
+set den on: {"tool":"set","result":true}; get den: {"tool":"get","result":true}; get den in another session: {"tool":"get","result":false}
+turn, seed 0: stop spent, steps 3, ran 3, refused 0, cost 3
+  {"tool":"add","result":617}
+  {"tool":"div","result":0}
+  {"tool":"get","result":false}
+1000 turns of up to 12 steps, every tool granted 3 calls, cost 12: 0 stopped at the step limit, 1000 spent; 9629 calls ran (201 refused by run, 967 by result), 0 refused before running, cost 11837
+a 3-piece limit: ran 0, refused 2: {"error":"incomplete","tool":"add","field":"a","at":6}

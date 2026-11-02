@@ -1,0 +1,584 @@
+// Chapter 203: tools as typed capabilities. A tool is declared, not just
+// named: a name, typed arguments, a typed result, an effect class and a
+// cost. The declarations compile to chapter 53's byte automaton, so a model
+// whose next piece is masked by it can only spell a granted tool with
+// arguments of the right types. Every call, sampled or not, passes three
+// stages: before (the grant, the budgets and the argument grammar decide;
+// a refusal names the reason, the field and the byte and runs nothing),
+// run (the tool computes, and may refuse with its own typed reason), and
+// after (the result must fit its declared type). Each outcome becomes one
+// typed event, rendered as the tool-role message the model sees next.
+// Profile cpu-harness-tools-v1: canonical JSON objects with no whitespace,
+// fields in declared order and all required; argument and result types are
+// integers of 1 to 6 decimal digits (no sign, no leading zero), booleans,
+// or one of up to 8 words; up to 8 tools of up to 4 fields each; names and
+// words are 1 to 16 bytes of a-z and _; one call is at most 256 bytes; a
+// model's piece is at most 8 bytes.
+#load "../next-token.coax";
+#load "../../tests/harness-tools-oracle.coax";
+#authority;
+
+HT_TOOLS_MAX :: 8;
+HT_FIELDS_MAX :: 4;
+HT_CHOICES_MAX :: 8;
+HT_DIGITS_MAX :: 6;
+HT_WORD_MAX :: 16;
+HT_COST_MAX :: 1000;
+HT_TEXT_MAX :: 256;
+HT_PIECE_MAX :: 8;
+
+HtKind :: enum u8 {integer;boolean;choice;}
+// An argument's or a result's type. digits: an integer's most decimal
+// digits. choices: the words a choice may be.
+HtType :: struct {kind:HtKind;digits:int;choices:[]string;}
+HtField :: struct {name:string;type:HtType;}
+HtEffect :: enum u8 {none;read;write;}
+// Which built-in body runs the tool. The bodies are the chapter's four.
+HtBody :: enum u8 {add;divide;set;get;}
+HtTool :: struct {name:string;fields:[]HtField;result:HtType;effect:HtEffect;cost:int;body:HtBody;}
+// A turn's grant: tool indices, each one's call budget, the cost budget
+// for the turn, and the strongest effect any granted tool may have.
+HtGrant :: struct {tools:[]int;calls:[]int;cost:int;effects:HtEffect;}
+// What a turn has spent: calls per grant entry, and cost.
+HtUsage :: struct {calls:[HT_TOOLS_MAX]int;cost:int;}
+// Why a call or a declaration was refused; none is a call that ran.
+HtWhy :: enum u8 {none;shape;capacity;schema;grant;effect;unknown;ungranted;calls;cost;arguments;incomplete;run;result;}
+// One call's outcome, the tool-role event. tool, field and at are -1 when
+// they do not apply; at is the byte of the call where the refusal falls.
+// values are the decoded arguments; value is the result; cost is what the
+// call was charged; ran is whether its body ran.
+HtEvent :: struct {why:HtWhy;tool:int=-1;field:int=-1;at:int=-1;values:[HT_FIELDS_MAX]int;value:int;cost:int;ran:bool;}
+// Buffers for one compiled grammar: edges while building, each state's
+// field, and chapter 53's table.
+HtWork :: struct {edges:[]NxEdge;owner:[]int;next:[]int;accept:[]u8;live:[]u8;}
+HtGrammar :: struct {why:HtWhy;grammar:NxGrammar;}
+HtBuild :: struct {edges:int;states:int;field:int=-1;}
+// The stand-in model: seeded noise over the pieces, end the stop piece,
+// limit the most pieces one call may draw.
+HtModel :: struct {pieces:[]string;end:int;options:NxOptions;limit:int;}
+HtSampler :: struct {logits:[]f32;mask:[]u8;out:[]f64;work:NxWork;text:[]u8;}
+HtStop :: enum u8 {steps;spent;invalid;model;}
+HtTurn :: struct {stop:HtStop;why:HtWhy;steps:int;ran:int;refused:int;cost:int;}
+
+HT_ROOMS :: [3]string.["hall","den","study"];
+ht_int :: (digits:int)->HtType {return HtType.{kind=HtKind.integer,digits=digits};}
+ht_bool :: ()->HtType {return HtType.{kind=HtKind.boolean};}
+// The chapter's registry. Its declarations are views, so they live in the
+// caller's storage: rooms holds the three room words, fields five fields.
+ht_registry :: (rooms:[]string,fields:[]HtField)->[4]HtTool {
+    room:=HtType.{kind=HtKind.choice,choices=rooms};
+    fields[0]=HtField.{name="a",type=ht_int(3)};fields[1]=HtField.{name="b",type=ht_int(3)};
+    fields[2]=HtField.{name="room",type=room};fields[3]=HtField.{name="on",type=ht_bool()};fields[4]=fields[2];
+    return [4]HtTool.[
+        HtTool.{name="add",fields=fields[0..<2],result=ht_int(3),cost=1,body=HtBody.add},
+        HtTool.{name="div",fields=fields[0..<2],result=ht_int(3),cost=1,body=HtBody.divide},
+        HtTool.{name="set",fields=fields[2..<4],result=ht_bool(),effect=HtEffect.write,cost=2,body=HtBody.set},
+        HtTool.{name="get",fields=fields[4..<5],result=ht_bool(),effect=HtEffect.read,cost=1,body=HtBody.get}];
+}
+// The stand-in model's pieces: every byte the calls use, a few longer
+// pieces, two that no call may contain, and the end piece last.
+ht_pieces :: ()->[52]string {
+    return [52]string.["{","}","\"",":",",","0","1","2","3","4","5","6","7","8","9",
+        "a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z","_",
+        "{\"","\":","true","false","\"}","add{","den"," ","Q",""];
+}
+HT_END :: 51;
+
+// Checks first.
+ht_work :: (e:[]NxEdge,o:[]int,n:[]int,a:[]u8,l:[]u8)->HtWork {return HtWork.{edges=e,owner=o,next=n,accept=a,live=l};}
+ht_text :: (b:[]u8,n:int)->string {return cast(string)b[0..<n];}
+#test "declarations: names, types and budgets are checked before anything compiles" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);#assert ht_check(r[..]).why==HtWhy.none;
+    #assert ht_word("a") && ht_word("z") && ht_word("snake_case") && ht_word("abcdefghijklmnop") && !ht_word("abcdefghijklmnopq") && !ht_word("") && !ht_word("A") && !ht_word("a1") && !ht_word("a{") && !ht_word("`") && !ht_word("{");
+    // The chapter's registry, as declared.
+    #assert r[0].result.digits==3 && r[1].result.digits==3 && fs[0].type.digits==3 && fs[1].type.digits==3 && r[2].cost==2 && r[3].effect==HtEffect.read;
+    #assert ht_check(r[0..<0]).why==HtWhy.shape && ht_check(r[0..<1]).why==HtWhy.none;
+    nine:[9]HtTool;for i:0..<9 {nine[i]=r[0];}#assert ht_check(nine[..]).why==HtWhy.shape;
+    eight:=[8]string.["a","b","c","d","e","f","g","h"];for i:0..<8 {nine[i].name=eight[i];}#assert ht_check(nine[0..<8]).why==HtWhy.none;
+    s:=r;s[2].name="add";e:=ht_check(s[..]);#assert e.why==HtWhy.schema && e.tool==2 && e.field== -1;
+    s=r;s[1].name="Div";e=ht_check(s[..]);#assert e.why==HtWhy.schema && e.tool==1 && e.field== -1;
+    s=r;s[3].cost= -1;#assert ht_check(s[..]).why==HtWhy.schema;s[3].cost=HT_COST_MAX+1;#assert ht_check(s[..]).why==HtWhy.schema;
+    s[3].cost=HT_COST_MAX;#assert ht_check(s[..]).why==HtWhy.none;s[3].cost=0;#assert ht_check(s[..]).why==HtWhy.none;
+    same:=[2]HtField.[fs[0],fs[0]];s=r;s[0].fields=same[..];e=ht_check(s[..]);#assert e.why==HtWhy.schema && e.tool==0 && e.field==1;
+    bad:=[2]HtField.[fs[0],fs[1]];bad[1].name="B";s=r;s[0].fields=bad[..];e=ht_check(s[..]);#assert e.why==HtWhy.schema && e.field==1;
+    five:[5]HtField;names:=[5]string.["a","b","c","d","e"];for i:0..<5 {five[i]=fs[0];five[i].name=names[i];}
+    s=r;s[0].fields=five[..];#assert ht_check(s[..]).why==HtWhy.schema;s[0].fields=five[0..<4];#assert ht_check(s[..]).why==HtWhy.none;
+    s[0].fields=five[0..<0];#assert ht_check(s[..]).why==HtWhy.none;
+    // Types: 1 to 6 digits, 1 to 8 distinct words.
+    #assert ht_type(HtType.{kind=HtKind.integer,digits=1}) && ht_type(HtType.{kind=HtKind.integer,digits=6}) && !ht_type(HtType.{kind=HtKind.integer,digits=0}) && !ht_type(HtType.{kind=HtKind.integer,digits=7});
+    #assert ht_type(HtType.{kind=HtKind.boolean});
+    w9:=[9]string.["a","b","c","d","e","f","g","h","i"];
+    #assert ht_type(HtType.{kind=HtKind.choice,choices=w9[0..<1]}) && ht_type(HtType.{kind=HtKind.choice,choices=w9[0..<8]}) && !ht_type(HtType.{kind=HtKind.choice,choices=w9[..]}) && !ht_type(HtType.{kind=HtKind.choice,choices=w9[0..<0]});
+    dup:=[3]string.["ab","a","ab"];#assert !ht_type(HtType.{kind=HtKind.choice,choices=dup[..]}) && ht_type(HtType.{kind=HtKind.choice,choices=dup[0..<2]});
+    dup[1]="a b";#assert !ht_type(HtType.{kind=HtKind.choice,choices=dup[0..<2]});
+    t:=[2]HtField.[fs[0],fs[1]];t[0].type.digits=7;s=r;s[0].fields=t[..];e=ht_check(s[..]);#assert e.why==HtWhy.schema && e.tool==0 && e.field==0;
+    s=r;s[3].result=HtType.{kind=HtKind.integer};e=ht_check(s[..]);#assert e.why==HtWhy.schema && e.tool==3 && e.field== -1;
+}
+#test "grants: indices, budgets and the effect ceiling" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);g:=[4]int.[0,1,2,3];c:=[4]int.[1,1,1,1];
+    gr:=to_grant_all(g[..],c[..]);#assert ht_grant(r[..],gr).why==HtWhy.none;
+    gr.effects=HtEffect.read;e:=ht_grant(r[..],gr);#assert e.why==HtWhy.effect && e.tool==2;
+    gr.effects=HtEffect.none;e=ht_grant(r[..],gr);#assert e.why==HtWhy.effect && e.tool==2;
+    ro:=[3]int.[0,1,3];#assert ht_grant(r[..],HtGrant.{tools=ro[..],calls=c[0..<3],effects=HtEffect.read}).why==HtWhy.none;
+    #assert ht_grant(r[..],HtGrant.{tools=ro[..],calls=c[0..<3],effects=HtEffect.none}).tool==3;
+    #assert ht_grant(r[..],HtGrant.{tools=ro[0..<2],calls=c[0..<2]}).why==HtWhy.none;
+    #assert ht_grant(r[..],to_grant_all(g[..],c[0..<3])).why==HtWhy.shape;
+    #assert ht_grant(r[..],to_grant_all(g[0..<0],c[0..<0])).why==HtWhy.none;
+    x:=g;x[3]=4;e=ht_grant(r[..],to_grant_all(x[..],c[..]));#assert e.why==HtWhy.grant && e.tool==4;
+    x[3]= -1;#assert ht_grant(r[..],to_grant_all(x[..],c[..])).why==HtWhy.grant;
+    x[3]=1;e=ht_grant(r[..],to_grant_all(x[..],c[..]));#assert e.why==HtWhy.grant && e.tool==1;
+    x[3]=0;e=ht_grant(r[..],to_grant_all(x[..],c[..]));#assert e.why==HtWhy.grant && e.tool==0;
+    y:=c;y[2]= -1;e=ht_grant(r[..],to_grant_all(g[..],y[..]));#assert e.why==HtWhy.grant && e.tool==2;
+    y[2]=0;#assert ht_grant(r[..],to_grant_all(g[..],y[..])).why==HtWhy.none;
+    gr=to_grant_all(g[..],c[..]);gr.cost= -1;#assert ht_grant(r[..],gr).why==HtWhy.grant;gr.cost=0;#assert ht_grant(r[..],gr).why==HtWhy.none;
+    // Eight entries is the most a grant may hold.
+    eight:=[8]string.["a","b","c","d","e","f","g","h"];many:[8]HtTool;for i:0..<8 {many[i]=r[0];many[i].name=eight[i];}
+    all8:=[8]int.[0,1,2,3,4,5,6,7];c8:=[8]int.[1,1,1,1,1,1,1,1];#assert ht_grant(many[..],to_grant_all(all8[..],c8[..])).why==HtWhy.none;
+    nine:[9]int;nc:[9]int;#assert ht_grant(r[..],to_grant_all(nine[..],nc[..])).why==HtWhy.shape;
+}
+// The hand trace's grammar: get{"room":"hall"|"den"|"study"}, state by state.
+// The state a text leads to, numbered in the order the builder made it.
+ht_made :: (g:NxGrammar,text:string)->int {return g.states-1-nx_walk(g,g.start,text);}
+#test "the hand-traced grammar for get" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);e:[256]NxEdge;o:[128]int;n:[32768]int;a:[128]u8;l:[128]u8;w:=ht_work(e[..],o[..],n[..],a[..],l[..]);
+    one:=[1]int.[3];c:=ht_compile(r[..],one[..],w);g:=c.grammar;
+    #assert c.why==HtWhy.none && g.states==27 && g.start==26;
+    // g e t { " r o o m " : " then the room's first letter.
+    walk:=[13]string.["g","ge","get","get{","get{\"","get{\"r","get{\"ro","get{\"roo","get{\"room","get{\"room\"","get{\"room\":","get{\"room\":\"","get{\"room\":\"h"];
+    for x,i:walk {#assert ht_made(g,x)==i+1;}
+    #assert ht_made(g,"get{\"room\":\"d")==17 && ht_made(g,"get{\"room\":\"s")==20;
+    #assert ht_made(g,"get{\"room\":\"hall\"")==25 && ht_made(g,"get{\"room\":\"den\"")==25 && ht_made(g,"get{\"room\":\"study\"")==25;
+    #assert nx_accepts(g,"get{\"room\":\"den\"}") && ht_made(g,"get{\"room\":\"den\"}")==26 && a[0]==1 && a[1]==0;
+    // Owners: -1 in the name, then field 0 from its { on.
+    for s:0..<4 {#assert o[26-s]== -1;}for s:4..<27 {#assert o[26-s]==0;}
+    #assert !nx_accepts(g,"get{\"room\":\"de\"}") && !nx_accepts(g,"get{\"room\":\"dens\"}") && !nx_accepts(g,"get{\"room\": \"den\"}") && !nx_accepts(g,"get{\"room\":\"den\"}}");
+    // Stored last-made first, every edge points to a lower state, so chapter
+    // 53's liveness sweep finishes in one pass.
+    for s:0..<27 {for b:0..<256 {t:=n[s*256+b];#assert t<s;}}
+    // Exactly the edges and states it needs, and one fewer of each.
+    #assert ht_compile(r[..],one[..],ht_work(e[0..<28],o[..],n[..],a[..],l[..])).why==HtWhy.none;
+    #assert ht_compile(r[..],one[..],ht_work(e[0..<27],o[..],n[..],a[..],l[..])).why==HtWhy.capacity;
+    #assert ht_compile(r[..],one[..],ht_work(e[..],o[0..<27],n[..],a[..],l[..])).why==HtWhy.none;
+    #assert ht_compile(r[..],one[..],ht_work(e[..],o[0..<26],n[..],a[..],l[..])).why==HtWhy.capacity;
+    #assert ht_compile(r[..],one[..],ht_work(e[..],o[..],n[0..<27*256-1],a[..],l[..])).why==HtWhy.capacity;
+}
+#test "the union grammar offers granted names only, and each tool's arguments after its name" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);e:[512]NxEdge;o:[256]int;n:[65536]int;a:[256]u8;l:[256]u8;w:=ht_work(e[..],o[..],n[..],a[..],l[..]);
+    all:=[4]int.[0,1,2,3];g:=ht_compile(r[..],all[..],w).grammar;
+    yes:=[7]string.["add{\"a\":0,\"b\":999}","div{\"a\":10,\"b\":0}","set{\"room\":\"study\",\"on\":true}","set{\"room\":\"hall\",\"on\":false}","get{\"room\":\"hall\"}","add{\"a\":7,\"b\":70}","div{\"a\":100,\"b\":3}"];
+    for x:yes {#assert nx_accepts(g,x);}
+    no:=[10]string.["add{\"a\":01,\"b\":2}","add{\"a\":1000,\"b\":2}","add{\"b\":1,\"a\":2}","add{\"a\":1}","set{\"room\":\"den\",\"on\":1}","get{\"room\":\"attic\"}","mul{\"a\":1,\"b\":2}","add {\"a\":1,\"b\":2}","get{}","add{\"a\":1,\"b\":2,\"c\":3}"];
+    for x:no {#assert !nx_accepts(g,x);}
+    some:=[2]int.[3,0];h:=ht_compile(r[..],some[..],w).grammar;
+    #assert nx_accepts(h,"get{\"room\":\"den\"}") && nx_accepts(h,"add{\"a\":1,\"b\":2}") && !nx_accepts(h,"div{\"a\":1,\"b\":2}") && !nx_accepts(h,"set{\"room\":\"den\",\"on\":true}");
+    // A tool with no fields takes {}; names that share a prefix share states.
+    f:=r;f[1].fields=fs[0..<0];f[1].name="ad";h=ht_compile(f[..],all[0..<2],w).grammar;
+    #assert nx_accepts(h,"ad{}") && nx_accepts(h,"add{\"a\":1,\"b\":2}") && !nx_accepts(h,"ad{\"a\":1,\"b\":2}") && !nx_accepts(h,"add{}");
+    // Owners in the union: get's name comes after add's fields and is still -1.
+    two:=[2]int.[0,3];h=ht_compile(r[..],two[..],w).grammar;#assert o[nx_walk(h,h.start,"get")]== -1 && o[nx_walk(h,h.start,"get{")]==0 && o[nx_walk(h,h.start,"add{\"a\":1,")]==1;
+    #assert ht_compile(r[..],all[..],ht_work(e[..],o[..],n[0..<1],a[..],l[..])).why==HtWhy.capacity;
+}
+#test "admission: the refusal table, each refusal exact and nothing run" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);e:[256]NxEdge;o:[128]int;n:[32768]int;a:[128]u8;l:[128]u8;w:=ht_work(e[..],o[..],n[..],a[..],l[..]);
+    g:=[3]int.[0,1,3];c:=[3]int.[2,1,1];gr:=HtGrant.{tools=g[..],calls=c[..],cost=3,effects=HtEffect.read};u:=HtUsage.{};
+    ok:=ht_admit(r[..],gr,u,"add{\"a\":37,\"b\":48}",w);#assert ok.why==HtWhy.none && ok.tool==0 && ok.field== -1 && ok.at== -1 && ok.values[0]==37 && ok.values[1]==48;
+    ok=ht_admit(r[..],gr,u,"get{\"room\":\"study\"}",w);#assert ok.why==HtWhy.none && ok.tool==3 && ok.values[0]==2;
+    ok=ht_admit(r[..],gr,u,"div{\"a\":0,\"b\":999}",w);#assert ok.why==HtWhy.none && ok.tool==1 && ok.values[0]==0 && ok.values[1]==999;
+    // text, why, tool, field, at
+    texts:=[16]string.["mul{\"a\":1,\"b\":2}","","set{\"room\":\"den\",\"on\":true}","add{\"a\":01,\"b\":2}","add{\"a\":1000,\"b\":2}","add{\"b\":1,\"a\":2}",
+        "add{\"a\":1}","add{\"a\":1,","add","add{\"a\":1,\"b\":2}x","get{\"room\":\"attic\"}","get{\"room\":\"Den\"}","add {\"a\":1}","add{\"a\": 1,\"b\":2}","get{\"room\":\"den\",\"on\":true}","{\"a\":1}"];
+    whys:=[16]HtWhy.[HtWhy.unknown,HtWhy.incomplete,HtWhy.ungranted,HtWhy.arguments,HtWhy.arguments,HtWhy.arguments,
+        HtWhy.arguments,HtWhy.incomplete,HtWhy.incomplete,HtWhy.arguments,HtWhy.arguments,HtWhy.arguments,HtWhy.unknown,HtWhy.arguments,HtWhy.arguments,HtWhy.unknown];
+    tools:=[16]int.[-1,-1,2,0,0,0,0,0,0,0,3,3,-1,0,3,-1];
+    fields:=[16]int.[-1,-1,-1,0,0,0,0,1,-1,1,0,0,-1,0,0,-1];
+    ats:=[16]int.[0,0,0,9,11,5,9,10,3,16,12,12,0,8,16,0];
+    for x,i:texts {v:=ht_admit(r[..],gr,u,x,w);#assert v.why==whys[i] && v.tool==tools[i] && v.field==fields[i] && v.at==ats[i] && v.values[0]==0 && v.cost==0;}
+    // Budgets: the third add, the second div, a get the cost cannot cover.
+    u.calls[0]=2;v:=ht_admit(r[..],gr,u,"add{\"a\":1,\"b\":2}",w);#assert v.why==HtWhy.calls && v.tool==0 && v.at== -1;
+    u.calls[0]=1;#assert ht_admit(r[..],gr,u,"add{\"a\":1,\"b\":2}",w).why==HtWhy.none;
+    u.calls[1]=1;#assert ht_admit(r[..],gr,u,"div{\"a\":1,\"b\":2}",w).why==HtWhy.calls;
+    u=HtUsage.{cost=3};v=ht_admit(r[..],gr,u,"get{\"room\":\"den\"}",w);#assert v.why==HtWhy.cost && v.tool==3;
+    u.cost=2;#assert ht_admit(r[..],gr,u,"get{\"room\":\"den\"}",w).why==HtWhy.none;
+    // A spent budget refuses before the arguments are read.
+    u.cost=3;#assert ht_admit(r[..],gr,u,"get{\"room\":\"attic\"}",w).why==HtWhy.cost;
+    u=HtUsage.{};u.calls[0]=2;#assert ht_admit(r[..],gr,u,"add{\"a\":01}",w).why==HtWhy.calls;
+    // The registry, the grant and the buffers are checked on every call.
+    u=HtUsage.{};s:=r;s[0].name="ADD";#assert ht_admit(s[..],gr,u,"get{\"room\":\"den\"}",w).why==HtWhy.schema;
+    gr.effects=HtEffect.none;v=ht_admit(r[..],gr,u,"add{\"a\":1,\"b\":2}",w);#assert v.why==HtWhy.effect && v.tool==3;gr.effects=HtEffect.read;
+    long:[257]u8;for i:0..<257 {long[i]='a';}#assert ht_admit(r[..],gr,u,cast(string)long[..],w).why==HtWhy.shape && ht_admit(r[..],gr,u,cast(string)long[0..<256],w).why==HtWhy.incomplete;
+    #assert ht_admit(r[..],gr,u,"add{\"a\":1,\"b\":2}",ht_work(e[..],o[..],n[0..<100],a[..],l[..])).why==HtWhy.capacity;
+}
+#test "decoding: every argument type, at its bounds" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);e:[256]NxEdge;o:[128]int;n:[32768]int;a:[128]u8;l:[128]u8;w:=ht_work(e[..],o[..],n[..],a[..],l[..]);
+    g:=[4]int.[0,1,2,3];c:=[4]int.[9,9,9,9];gr:=to_grant_all(g[..],c[..]);u:=HtUsage.{};
+    v:=ht_admit(r[..],gr,u,"set{\"room\":\"study\",\"on\":true}",w);#assert v.why==HtWhy.none && v.values[0]==2 && v.values[1]==1;
+    v=ht_admit(r[..],gr,u,"set{\"room\":\"hall\",\"on\":false}",w);#assert v.values[0]==0 && v.values[1]==0;
+    v=ht_admit(r[..],gr,u,"set{\"room\":\"den\",\"on\":true}",w);#assert v.values[0]==1 && v.values[1]==1;
+    v=ht_admit(r[..],gr,u,"add{\"a\":999,\"b\":10}",w);#assert v.values[0]==999 && v.values[1]==10;
+    v=ht_admit(r[..],gr,u,"add{\"a\":0,\"b\":5}",w);#assert v.values[0]==0 && v.values[1]==5;
+    // Six digits and the words of a prefix-sharing choice.
+    px:=HT_PREFIXED;six:=[2]HtField.[HtField.{name="n",type=HtType.{kind=HtKind.integer,digits=6}},HtField.{name="w",type=HtType.{kind=HtKind.choice,choices=px[..]}}];
+    s:=r;s[0].fields=six[..];v=ht_admit(s[..],gr,u,"add{\"n\":999999,\"w\":\"abc\"}",w);#assert v.why==HtWhy.none && v.values[0]==999999 && v.values[1]==2;
+    v=ht_admit(s[..],gr,u,"add{\"n\":100000,\"w\":\"ab\"}",w);#assert v.values[0]==100000 && v.values[1]==1;
+    v=ht_admit(s[..],gr,u,"add{\"n\":1,\"w\":\"a\"}",w);#assert v.values[0]==1 && v.values[1]==0;
+    v=ht_admit(s[..],gr,u,"add{\"n\":1000000,\"w\":\"a\"}",w);#assert v.why==HtWhy.arguments && v.field==0 && v.at==14;
+}
+HT_PREFIXED :: [3]string.["a","ab","abc"];
+#test "the pipeline: before, run and after, each with its own refusal" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);e:[256]NxEdge;o:[128]int;n:[32768]int;a:[128]u8;l:[128]u8;w:=ht_work(e[..],o[..],n[..],a[..],l[..]);
+    g:=[4]int.[0,1,2,3];c:=[4]int.[2,2,1,1];gr:=HtGrant.{tools=g[..],calls=c[..],cost=6,effects=HtEffect.write};u:[1]HtUsage;world:=[8]int.[0,0,0,0,0,0,0,0];
+    v:=ht_call(r[..],gr,u[..],"add{\"a\":37,\"b\":48}",world[..],w);#assert v.why==HtWhy.none && v.value==85 && v.cost==1 && u[0].calls[0]==1 && u[0].cost==1;
+    // run: division by zero is a typed refusal; the call is charged, nothing else changes.
+    v=ht_call(r[..],gr,u[..],"div{\"a\":7,\"b\":0}",world[..],w);#assert v.why==HtWhy.run && v.tool==1 && v.field==1 && v.value==0 && v.cost==1 && u[0].calls[1]==1 && u[0].cost==2;
+    v=ht_call(r[..],gr,u[..],"div{\"a\":7,\"b\":2}",world[..],w);#assert v.why==HtWhy.none && v.value==3 && u[0].cost==3;
+    // after: 999+1 does not fit three digits; the result is withheld.
+    v=ht_call(r[..],gr,u[..],"add{\"a\":999,\"b\":1}",world[..],w);#assert v.why==HtWhy.result && v.tool==0 && v.field== -1 && v.value==0 && v.cost==1 && u[0].calls[0]==2 && u[0].cost==4;
+    // before: a third add runs nothing and charges nothing.
+    v=ht_call(r[..],gr,u[..],"add{\"a\":1,\"b\":1}",world[..],w);#assert v.why==HtWhy.calls && v.cost==0 && u[0].calls[0]==2 && u[0].cost==4;
+    // Effects land in the session's world: set, then get sees it.
+    v=ht_call(r[..],gr,u[..],"set{\"room\":\"den\",\"on\":true}",world[..],w);#assert v.why==HtWhy.none && v.value==1 && v.cost==2 && world[1]==1 && world[0]==0 && world[2]==0 && u[0].cost==6;
+    other:=[8]int.[0,0,0,0,0,0,0,0];
+    v=ht_call(r[..],gr,u[..],"get{\"room\":\"den\"}",world[..],w);#assert v.why==HtWhy.cost && v.cost==0;
+    u[0]=HtUsage.{};v=ht_call(r[..],gr,u[..],"get{\"room\":\"den\"}",world[..],w);#assert v.why==HtWhy.none && v.value==1;
+    u[0]=HtUsage.{};v=ht_call(r[..],gr,u[..],"get{\"room\":\"den\"}",other[..],w);#assert v.why==HtWhy.none && v.value==0;
+    u[0]=HtUsage.{};v=ht_call(r[..],gr,u[..],"set{\"room\":\"den\",\"on\":false}",world[..],w);#assert v.value==0 && world[1]==0;
+    u[0]=HtUsage.{};v=ht_call(r[..],gr,u[..],"set{\"room\":\"study\",\"on\":true}",world[..],w);#assert world[2]==1 && world[1]==0;
+    // A world too small for the registry's rooms runs nothing.
+    u[0]=HtUsage.{};v=ht_call(r[..],gr,u[..],"add{\"a\":1,\"b\":1}",world[0..<7],w);#assert v.why==HtWhy.shape && u[0].cost==0;
+    #assert ht_call(r[..],gr,u[0..<0],"add{\"a\":1,\"b\":1}",world[..],w).why==HtWhy.shape;
+    // Results at their bounds: 499+500 fits, and so does 0.
+    u[0]=HtUsage.{};#assert ht_call(r[..],gr,u[..],"add{\"a\":499,\"b\":500}",world[..],w).value==999;
+    #assert ht_call(r[..],gr,u[..],"div{\"a\":0,\"b\":3}",world[..],w).why==HtWhy.none;
+}
+#test "result types and tool bodies" {
+    #assert ht_fits(ht_int(3),0) && ht_fits(ht_int(3),999) && !ht_fits(ht_int(3),1000) && !ht_fits(ht_int(3),-1);
+    #assert ht_fits(ht_bool(),0) && ht_fits(ht_bool(),1) && !ht_fits(ht_bool(),2) && !ht_fits(ht_bool(),-1);
+    rm:=HT_ROOMS;c:=HtType.{kind=HtKind.choice,choices=rm[..]};#assert ht_fits(c,0) && ht_fits(c,2) && !ht_fits(c,3) && !ht_fits(c,-1);
+    #assert ht_power(0)==1 && ht_power(1)==10 && ht_power(6)==1000000;
+    world:=[3]int.[0,0,0];v:=[4]int.[17,5,0,0];
+    x:=ht_body(HtBody.divide,v,world[..]);#assert x.why==HtWhy.none && x.value==3;
+    v[0]=999;v[1]=1;x=ht_body(HtBody.add,v,world[..]);#assert x.value==1000;
+}
+#test "rendering: the tool-role message for each outcome" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);b:[128]u8;
+    v:=HtEvent.{tool=0,value=85};#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"tool\":\"add\",\"result\":85}";
+    v=HtEvent.{tool=2,value=1};#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"tool\":\"set\",\"result\":true}";
+    v.value=0;#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"tool\":\"set\",\"result\":false}";
+    rooms:=r;rooms[3].result=HtType.{kind=HtKind.choice,choices=rm[..]};v=HtEvent.{tool=3,value=2};#assert ht_text(b[..],ht_render(rooms[..],v,b[..]))=="{\"tool\":\"get\",\"result\":\"study\"}";
+    v=HtEvent.{why=HtWhy.arguments,tool=0,field=1,at=16};#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"error\":\"arguments\",\"tool\":\"add\",\"field\":\"b\",\"at\":16}";
+    v=HtEvent.{why=HtWhy.arguments,tool=0,field=0,at=9};#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"error\":\"arguments\",\"tool\":\"add\",\"field\":\"a\",\"at\":9}";
+    v=HtEvent.{why=HtWhy.unknown,at=0};#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"error\":\"unknown\",\"at\":0}";
+    v=HtEvent.{why=HtWhy.run,tool=1,field=1};#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"error\":\"run\",\"tool\":\"div\",\"field\":\"b\"}";
+    v=HtEvent.{why=HtWhy.ungranted,tool=2};#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"error\":\"ungranted\",\"tool\":\"set\"}";
+    v=HtEvent.{why=HtWhy.result,tool=0,value=1000};#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"error\":\"result\",\"tool\":\"add\"}";
+    v=HtEvent.{why=HtWhy.incomplete,tool=0,field=-1,at=3};#assert ht_text(b[..],ht_render(r[..],v,b[..]))=="{\"error\":\"incomplete\",\"tool\":\"add\",\"at\":3}";
+    names:=[14]string.["none","shape","capacity","schema","grant","effect","unknown","ungranted","calls","cost","arguments","incomplete","run","result"];
+    for x,i:names {#assert HT_WHY[i]==x;}
+    // The longest message fits 128 bytes; one byte less is refused with nothing written.
+    v=HtEvent.{why=HtWhy.incomplete,tool=0,field=1,at=255};k:=ht_render(r[..],v,b[..]);#assert k==56;
+    for i:0..<128 {b[i]='#';}#assert ht_render(r[..],v,b[0..<55])==0 && b[0]=='#' && ht_render(r[..],v,b[0..<56])==56;
+    #assert ht_text(b[..],ht_put_int(b[..],0,0))=="0" && ht_text(b[..],ht_put_int(b[..],0,120))=="120";
+}
+ht_sampler :: (lg:[]f32,m:[]u8,p:[]f64,s:[]f64,o:[]int,t:[]int,tx:[]u8)->HtSampler {return HtSampler.{logits=lg,mask=m,out=p,work=nx_work(s,o,t),text=tx};}
+#test "constrained turns never sample an inadmissible call, for every seed" #steps 2000000000 {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);e:[512]NxEdge;o:[256]int;n:[65536]int;a:[256]u8;l:[256]u8;w:=ht_work(e[..],o[..],n[..],a[..],l[..]);
+    pc:=ht_pieces();lg:[52]f32;mk:[52]u8;p:[52]f64;s:[52]f64;od:[52]int;tm:[52]int;tx:[512]u8;sm:=ht_sampler(lg[..],mk[..],p[..],s[..],od[..],tm[..],tx[..]);
+    m:=HtModel.{pieces=pc[..],end=HT_END,options=NxOptions.{temperature=1},limit=64};
+    g:=[4]int.[0,1,2,3];c:=[4]int.[3,3,3,3];gr:=HtGrant.{tools=g[..],calls=c[..],cost=12,effects=HtEffect.write};
+    ran:=0;runs:=0;results:=0;
+    for seed:0..<20 {
+        world:[8]int;ev:[8]HtEvent;
+        t:=ht_turn(r[..],gr,m,cast(u64)seed,8,world[..],w,sm,ev[..]);
+        #assert t.stop==HtStop.spent || t.stop==HtStop.steps;
+        for k:0..<t.steps {x:=ev[k].why;#assert x==HtWhy.none || x==HtWhy.run || x==HtWhy.result;
+            if x==HtWhy.run {runs+=1;}if x==HtWhy.result {results+=1;}}
+        ran+=t.ran;#assert t.refused==0 && t.cost<=12;
+    }
+    #assert ran==160 && runs==4 && results==16;
+}
+#test "turn budgets, the stops, and a sampled call cut short" {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);e:[512]NxEdge;o:[256]int;n:[65536]int;a:[256]u8;l:[256]u8;w:=ht_work(e[..],o[..],n[..],a[..],l[..]);
+    pc:=ht_pieces();lg:[52]f32;mk:[52]u8;p:[52]f64;s:[52]f64;od:[52]int;tm:[52]int;tx:[512]u8;sm:=ht_sampler(lg[..],mk[..],p[..],s[..],od[..],tm[..],tx[..]);
+    m:=HtModel.{pieces=pc[..],end=HT_END,options=NxOptions.{temperature=1},limit=64};
+    g:=[2]int.[3,0];c:=[2]int.[2,1];gr:=HtGrant.{tools=g[..],calls=c[..],cost=3,effects=HtEffect.read};world:[8]int;ev:[8]HtEvent;
+    // Two gets and an add: the cost budget is spent exactly; nothing is offered after.
+    t:=ht_turn(r[..],gr,m,5,8,world[..],w,sm,ev[..]);#assert t.stop==HtStop.spent && t.steps==3 && t.ran==3 && t.cost==3;
+    adds:=0;for k:0..<3 {if ev[k].tool==0 {adds+=1;}}#assert adds==1;
+    t=ht_turn(r[..],gr,m,5,2,world[..],w,sm,ev[..]);#assert t.stop==HtStop.steps && t.steps==2;
+    t=ht_turn(r[..],gr,m,5,0,world[..],w,sm,ev[..]);#assert t.stop==HtStop.steps && t.steps==0;
+    gr.cost=0;t=ht_turn(r[..],gr,m,5,8,world[..],w,sm,ev[..]);#assert t.stop==HtStop.spent && t.steps==0;
+    // A one-piece limit cuts every call: incomplete, refused, nothing run.
+    gr.cost=3;m.limit=1;t=ht_turn(r[..],gr,m,5,3,world[..],w,sm,ev[..]);#assert t.stop==HtStop.steps && t.ran==0 && t.refused==3 && ev[0].why==HtWhy.incomplete && ev[1].why==HtWhy.incomplete && ev[2].why==HtWhy.incomplete && !ev[0].ran;
+    // Shapes and declarations: nothing is sampled.
+    m.limit=64;
+    #assert ht_turn(r[..],gr,m,5,9,world[..],w,sm,ev[..]).stop==HtStop.invalid;
+    #assert ht_turn(r[..],gr,m,5,-1,world[..],w,sm,ev[..]).stop==HtStop.invalid;
+    #assert ht_turn(r[..],gr,m,5,3,world[0..<7],w,sm,ev[..]).why==HtWhy.shape;
+    b:=m;b.limit=0;#assert ht_turn(r[..],gr,b,5,3,world[..],w,sm,ev[..]).why==HtWhy.shape;
+    b=m;b.limit=65;#assert ht_turn(r[..],gr,b,5,3,world[..],w,sm,ev[..]).why==HtWhy.shape;b.limit=64;#assert ht_turn(r[..],gr,b,5,3,world[..],w,sm,ev[..]).why==HtWhy.none;
+    // A piece of 8 bytes is allowed; 9 is not.
+    long:=pc;long[49]="abcdefgh";#assert ht_turn(r[..],gr,HtModel.{pieces=long[..],end=HT_END,limit=64},5,0,world[..],w,sm,ev[..]).why==HtWhy.none;
+    long[49]="abcdefghi";#assert ht_turn(r[..],gr,HtModel.{pieces=long[..],end=HT_END,limit=64},5,0,world[..],w,sm,ev[..]).why==HtWhy.shape;
+    t2:=sm;t2.text=tx[0..<511];#assert ht_turn(r[..],gr,b,5,3,world[..],w,t2,ev[..]).why==HtWhy.shape;
+    t2=sm;t2.logits=lg[0..<51];#assert ht_turn(r[..],gr,m,5,3,world[..],w,t2,ev[..]).why==HtWhy.shape;
+    q:=gr;q.effects=HtEffect.none;t=ht_turn(r[..],q,m,5,3,world[..],w,sm,ev[..]);#assert t.stop==HtStop.invalid && t.why==HtWhy.effect && t.steps==0;
+    x:=r;x[0].cost= -1;#assert ht_turn(x[..],gr,m,5,3,world[..],w,sm,ev[..]).why==HtWhy.schema;
+    // A model the sampler refuses (an end index past the pieces) stops the turn.
+    b=m;b.end=52;t=ht_turn(r[..],gr,b,5,3,world[..],w,sm,ev[..]);#assert t.stop==HtStop.model && t.steps==0;
+    // Buffers too small to compile the turn's grammar.
+    t=ht_turn(r[..],gr,m,5,3,world[..],ht_work(e[..],o[..],n[0..<10],a[..],l[..]),sm,ev[..]);#assert t.stop==HtStop.invalid && t.why==HtWhy.capacity;
+}
+
+#forall "compiled grammars accept exactly the calls random schemas allow" seed:0..<100 #steps 1000000000 {
+    sd:=cast(u64)seed;fields:[9]HtField;words:[36]string;tools:[3]HtTool;count:=to_registry(sd,fields[..],words[..],tools[..]);
+    text:[12800]u8;starts:[TO_CALLS_MAX+1]int;n:=to_calls(tools[0..<count],text[..],starts[..]);
+    e:[256]NxEdge;o:[128]int;nx:[32768]int;a:[128]u8;l:[128]u8;w:=ht_work(e[..],o[..],nx[..],a[..],l[..]);
+    all:=[3]int.[0,1,2];c:=ht_compile(tools[0..<count],all[0..<count],w);
+    // Every enumerated call is accepted, and the table accepts no more strings than that.
+    #assert c.why==HtWhy.none && to_language(c.grammar)==n;
+    for k:0..<n {#assert nx_accepts(c.grammar,cast(string)text[starts[k]..<starts[k+1]]);}
+    // One-byte edits: accepted exactly when the edit is itself a call.
+    for k:0..<40 {pick:=to_bits(sd,2000+k,n);x:[64]u8;m:=to_edit(sd,k,cast(string)text[starts[pick]..<starts[pick+1]],x[..]);
+        #assert nx_accepts(c.grammar,cast(string)x[0..<m])==to_member(text[..],starts[..],n,cast(string)x[0..<m]);}
+    // Admission decodes the values the enumerator wrote.
+    e2:[256]NxEdge;o2:[128]int;n2:[32768]int;a2:[128]u8;l2:[128]u8;w2:=ht_work(e2[..],o2[..],n2[..],a2[..],l2[..]);
+    budget:=[3]int.[1,1,1];gr:=HtGrant.{tools=all[0..<count],calls=budget[0..<count],cost=3};
+    for t,ti:tools[0..<count] {size:=to_size(t);for i:0..<size {if i%11==0 || i==size-1 {
+        b:[64]u8;v:[4]int;m:=to_write(t,i,b[..],v[..]);d:=ht_admit(tools[0..<count],gr,HtUsage.{},cast(string)b[0..<m],w2);
+        #assert d.why==HtWhy.none && d.tool==ti;for j:0..<t.fields.count {#assert d.values[j]==v[j];}}}}
+}
+
+// book:begin check
+// A name or a word: 1 to 16 bytes of a-z and _.
+ht_word :: (s:string)->bool {
+    if s.count<1 || s.count>HT_WORD_MAX {return false;}
+    for c:s {if !((c>='a' && c<='z') || c=='_') {return false;}}
+    return true;
+}
+ht_type :: (t:HtType)->bool {
+    if t.kind==HtKind.integer {return t.digits>=1 && t.digits<=HT_DIGITS_MAX;}
+    if t.kind==HtKind.boolean {return true;}
+    if t.choices.count<1 || t.choices.count>HT_CHOICES_MAX {return false;}
+    for x,i:t.choices {if !ht_word(x) {return false;}for k:0..<i {if t.choices[k]==x {return false;}}}
+    return true;
+}
+// The registry: names distinct and well formed, fields distinct and typed,
+// results typed, costs bounded. field -1 is the tool's own declaration.
+ht_check :: (tools:[]HtTool)->HtEvent {
+    if tools.count<1 || tools.count>HT_TOOLS_MAX {return HtEvent.{why=HtWhy.shape};}
+    for t,i:tools {
+        bad:=!ht_word(t.name) || !ht_type(t.result) || t.cost<0 || t.cost>HT_COST_MAX;
+        for k:0..<i {if tools[k].name==t.name {bad=true;}}
+        if bad || t.fields.count>HT_FIELDS_MAX {return HtEvent.{why=HtWhy.schema,tool=i};}
+        for f,j:t.fields {
+            same:=false;for k:0..<j {if t.fields[k].name==f.name {same=true;}}
+            if same || !ht_word(f.name) || !ht_type(f.type) {return HtEvent.{why=HtWhy.schema,tool=i,field=j};}
+        }
+    }
+    return HtEvent.{};
+}
+// The grant: each entry a distinct tool of the registry, budgets not
+// negative, and no granted tool's effect above the ceiling.
+ht_grant :: (tools:[]HtTool,g:HtGrant)->HtEvent {
+    if g.tools.count!=g.calls.count || g.tools.count>HT_TOOLS_MAX {return HtEvent.{why=HtWhy.shape};}
+    if g.cost<0 {return HtEvent.{why=HtWhy.grant};}
+    for t,j:g.tools {
+        twice:=false;for k:0..<j {if g.tools[k]==t {twice=true;}}
+        if t<0 || t>=tools.count || twice || g.calls[j]<0 {return HtEvent.{why=HtWhy.grant,tool=t};}
+        if cast(u8)tools[t].effect>cast(u8)g.effects {return HtEvent.{why=HtWhy.effect,tool=t};}
+    }
+    return HtEvent.{};
+}
+// book:end check
+
+// book:begin compile
+// Building the automaton: states are numbered as they are made, and every
+// edge goes from an older state to a newer one, so the language is finite.
+// Each state records the field whose text it is inside (-1 before the first).
+// States and edges past the buffers are counted, not kept; the count refuses them.
+ht_state :: (b:[]HtBuild,w:HtWork)->int {
+    s:=b[0].states;if s<w.owner.count {w.owner[s]=b[0].field;}
+    b[0].states+=1;return s;
+}
+ht_edge :: (b:[]HtBuild,w:HtWork,from:int,low:u8,high:u8,to:int) {
+    if b[0].edges<w.edges.count {w.edges[b[0].edges]=NxEdge.{from=from,low=low,high=high,to=to};}
+    b[0].edges+=1;
+}
+// One byte from every state in ends to one new state.
+ht_join :: (b:[]HtBuild,w:HtWork,ends:[]int,c:u8)->int {
+    s:=ht_state(b,w);for e:ends {ht_edge(b,w,e,c,c,s);}return s;
+}
+// One byte from s: the existing edge if a shared prefix made it, else a new state.
+ht_follow :: (b:[]HtBuild,w:HtWork,s:int,c:u8)->int {
+    for e:w.edges[0..<nx_min(b[0].edges,w.edges.count)] {if e.from==s && e.low==c {return e.to;}}
+    one:=[1]int.[s];return ht_join(b,w,one[..],c);
+}
+ht_bytes :: (b:[]HtBuild,w:HtWork,s:int,text:string)->int {x:=s;for c:text {x=ht_follow(b,w,x,c);}return x;}
+// A value of type t after state s; its end states go to ends, and the count is returned.
+ht_value :: (b:[]HtBuild,w:HtWork,s:int,t:HtType,ends:[]int)->int {
+    if t.kind==HtKind.integer {
+        ends[0]=ht_bytes(b,w,s,"0");d:=ht_state(b,w);ht_edge(b,w,s,'1','9',d);ends[1]=d;
+        for k:1..<t.digits {x:=ht_state(b,w);ht_edge(b,w,d,'0','9',x);d=x;ends[k+1]=d;}
+        return t.digits+1;
+    }
+    if t.kind==HtKind.boolean {ends[0]=ht_bytes(b,w,s,"true");ends[1]=ht_bytes(b,w,s,"false");return 2;}
+    q:=ht_bytes(b,w,s,"\"");words:[HT_CHOICES_MAX]int;
+    for x,i:t.choices {words[i]=ht_bytes(b,w,q,x);}
+    ends[0]=ht_join(b,w,words[0..<t.choices.count],'"');return 1;
+}
+// The calls of the offered tools: name{"field":value,...}, fields in order.
+ht_compile :: (tools:[]HtTool,offered:[]int,w:HtWork)->HtGrammar {
+    b:[1]HtBuild;start:=ht_state(b[..],w);
+    closing:[HT_TOOLS_MAX*(HT_DIGITS_MAX+1)]int;nc:=0;
+    for t:offered {
+        b[0].field= -1;ends:[HT_DIGITS_MAX+1]int;ends[0]=ht_bytes(b[..],w,start,tools[t].name);ne:=1;
+        intro:="{\"";
+        for f,i:tools[t].fields {
+            b[0].field=i;s:=ht_join(b[..],w,ends[0..<ne],intro[0]);
+            s=ht_bytes(b[..],w,ht_bytes(b[..],w,s,intro[1..<2]),f.name);s=ht_bytes(b[..],w,s,"\":");
+            ne=ht_value(b[..],w,s,f.type,ends[..]);intro=",\"";
+        }
+        if tools[t].fields.count==0 {ends[0]=ht_bytes(b[..],w,ends[0],"{");}
+        for e:ends[0..<ne] {closing[nc]=e;nc+=1;}
+    }
+    accept:=ht_join(b[..],w,closing[0..<nc],'}');
+    if b[0].states>w.owner.count || b[0].edges>w.edges.count {return HtGrammar.{why=HtWhy.capacity};}
+    // The table stores state k as last-k, so every edge points down and the
+    // liveness sweep, which runs upward, finishes in one pass.
+    last:=b[0].states-1;
+    for i:0..<b[0].edges {x:=w.edges[i];w.edges[i]=NxEdge.{from=last-x.from,low=x.low,high=x.high,to=last-x.to};}
+    for i:0..<b[0].states/2 {x:=w.owner[i];w.owner[i]=w.owner[last-i];w.owner[last-i]=x;}
+    final:=[1]int.[last-accept];
+    c:=nx_compile(b[0].states,last,w.edges[0..<b[0].edges],final[..],w.next,w.accept,w.live,false);
+    if c.status!=NxStatus.ok {return HtGrammar.{why=HtWhy.capacity};}
+    return HtGrammar.{grammar=c.grammar};
+}
+// book:end compile
+
+// book:begin admit
+// Before: the registry, the grant, the name, the budgets, then the
+// arguments, byte by byte through the tool's own grammar. A refusal names
+// why, the tool, the field and the byte; nothing runs.
+ht_admit :: (tools:[]HtTool,g:HtGrant,u:HtUsage,text:string,w:HtWork)->HtEvent {
+    e:=ht_check(tools);if e.why!=HtWhy.none {return e;}
+    e=ht_grant(tools,g);if e.why!=HtWhy.none {return e;}
+    if text.count>HT_TEXT_MAX {return HtEvent.{why=HtWhy.shape};}
+    p:=0;while p<text.count && text[p]!='{' {p+=1;}
+    t:=-1;for x,i:tools {if x.name==text[0..<p] {t=i;}}
+    if p==text.count {return HtEvent.{why=HtWhy.incomplete,tool=t,at=p};}
+    if t<0 {return HtEvent.{why=HtWhy.unknown,at=0};}
+    j:=-1;for x,i:g.tools {if x==t {j=i;}}
+    if j<0 {return HtEvent.{why=HtWhy.ungranted,tool=t,at=0};}
+    if u.calls[j]>=g.calls[j] {return HtEvent.{why=HtWhy.calls,tool=t};}
+    if u.cost+tools[t].cost>g.cost {return HtEvent.{why=HtWhy.cost,tool=t};}
+    one:=[1]int.[t];c:=ht_compile(tools,one[..],w);if c.why!=HtWhy.none {return HtEvent.{why=c.why,tool=t};}
+    s:=c.grammar.start;
+    for x,i:text {n:=w.next[s*256+cast(int)x];if n<0 {return HtEvent.{why=HtWhy.arguments,tool=t,field=w.owner[s],at=i};}s=n;}
+    if w.accept[s]!=1 {return HtEvent.{why=HtWhy.incomplete,tool=t,field=w.owner[s],at=text.count};}
+    return HtEvent.{tool=t,values=ht_decode(tools[t],text)};
+}
+// The values of an admitted call: integers, booleans as 0 and 1, choices as indices.
+ht_decode :: (t:HtTool,text:string)->[HT_FIELDS_MAX]int {
+    v:[HT_FIELDS_MAX]int;at:=t.name.count+1;
+    for f,i:t.fields {
+        at+=f.name.count+3;
+        if f.type.kind==HtKind.integer {while text[at]!=',' && text[at]!='}' {v[i]=v[i]*10+cast(int)(text[at]-'0');at+=1;}}
+        else if f.type.kind==HtKind.boolean {v[i]=ifx text[at]=='t' then 1 else 0;at+=5-v[i];}
+        else {e:=at;while text[e+1]!='"' {e+=1;}for x,k:f.type.choices {if x==text[at+1..<e+1] {v[i]=k;}}at=e+2;}
+        at+=1;
+    }
+    return v;
+}
+// book:end admit
+
+// book:begin pipeline
+// Run: the four bodies. The world is the session's state, one switch per room.
+ht_body :: (body:HtBody,v:[HT_FIELDS_MAX]int,world:[]int)->HtEvent {
+    if body==HtBody.add {return HtEvent.{value=v[0]+v[1]};}
+    if body==HtBody.divide {if v[1]==0 {return HtEvent.{why=HtWhy.run,field=1};}return HtEvent.{value=v[0]/v[1]};}
+    if body==HtBody.set {world[v[0]]=v[1];}
+    return HtEvent.{value=world[v[0]]};
+}
+ht_power :: (n:int)->int {x:=1;for i:0..<n {x*=10;}return x;}
+// After: a result is shown only when it fits its declared type.
+ht_fits :: (t:HtType,v:int)->bool {
+    if t.kind==HtKind.integer {return v>=0 && v<ht_power(t.digits);}
+    if t.kind==HtKind.boolean {return v==0 || v==1;}
+    return v>=0 && v<t.choices.count;
+}
+// One call through before, run and after. A call that is admitted is
+// charged one call and its cost, whatever the run and after stages say.
+ht_call :: (tools:[]HtTool,g:HtGrant,u:[]HtUsage,text:string,world:[]int,w:HtWork)->HtEvent {
+    if u.count<1 || world.count<HT_CHOICES_MAX {return HtEvent.{why=HtWhy.shape};}
+    e:=ht_admit(tools,g,u[0],text,w);if e.why!=HtWhy.none {return e;}
+    t:=tools[e.tool];j:=0;while g.tools[j]!=e.tool {j+=1;}
+    u[0].calls[j]+=1;u[0].cost+=t.cost;e.cost=t.cost;e.ran=true;
+    r:=ht_body(t.body,e.values,world);e.why=r.why;e.field=r.field;
+    if r.why==HtWhy.none && !ht_fits(t.result,r.value) {e.why=HtWhy.result;}
+    if e.why==HtWhy.none {e.value=r.value;}
+    return e;
+}
+// book:end pipeline
+
+// book:begin render
+// The tool-role message: the result as its declared type, or the refusal
+// with whatever of tool, field and byte applies. 0 when out is too small.
+HT_WHY :: [14]string.["none","shape","capacity","schema","grant","effect","unknown","ungranted","calls","cost","arguments","incomplete","run","result"];
+ht_put :: (out:[]u8,n:int,s:string)->int {for c,i:s {out[n+i]=c;}return n+s.count;}
+ht_put_int :: (out:[]u8,n:int,v:int)->int {b:[20]u8;k:=0;x:=v;while true {b[19-k]='0'+cast(u8)(x%10);k+=1;x/=10;if x==0 {break;}}return ht_put(out,n,cast(string)b[20-k..<20]);}
+ht_render :: (tools:[]HtTool,e:HtEvent,out:[]u8)->int {
+    m:[96]u8;n:=0;
+    if e.why==HtWhy.none {
+        r:=tools[e.tool].result;n=ht_put(m[..],ht_put(m[..],n,"{\"tool\":\""),tools[e.tool].name);n=ht_put(m[..],n,"\",\"result\":");
+        if r.kind==HtKind.integer {n=ht_put_int(m[..],n,e.value);}
+        else if r.kind==HtKind.boolean {n=ht_put(m[..],n,ifx e.value==1 then "true" else "false");}
+        else {n=ht_put(m[..],ht_put(m[..],ht_put(m[..],n,"\""),r.choices[e.value]),"\"");}
+    } else {
+        n=ht_put(m[..],ht_put(m[..],ht_put(m[..],n,"{\"error\":\""),HT_WHY[cast(int)e.why]),"\"");
+        if e.tool>=0 {n=ht_put(m[..],ht_put(m[..],ht_put(m[..],n,",\"tool\":\""),tools[e.tool].name),"\"");}
+        if e.field>=0 {n=ht_put(m[..],ht_put(m[..],ht_put(m[..],n,",\"field\":\""),tools[e.tool].fields[e.field].name),"\"");}
+        if e.at>=0 {n=ht_put_int(m[..],ht_put(m[..],n,",\"at\":"),e.at);}
+    }
+    n=ht_put(m[..],n,"}");
+    if n>out.count {return 0;}
+    for i:0..<n {out[i]=m[i];}return n;
+}
+// book:end render
+
+// book:begin turn
+// The stand-in model's logits for draw i of step k: seeded noise in [0, 8).
+ht_noise :: (seed:u64,k:int,i:int,logits:[]f32) {
+    for x,j:logits {logits[j]=f32(cast(int)(cr_bits(seed,cast(u64)(k*1048576+i*1024+j))%4096))/512.0;}
+}
+// One turn of tool calls. Before each request the turn offers only the
+// granted tools whose call and cost budgets can still pay for them, and
+// compiles their calls into the mask; then the call goes through ht_call
+// like any other. Each step's event is events[k].
+ht_turn :: (tools:[]HtTool,g:HtGrant,m:HtModel,seed:u64,steps:int,world:[]int,w:HtWork,sm:HtSampler,events:[]HtEvent)->HtTurn {
+    t:=HtTurn.{stop=HtStop.invalid};
+    e:=ht_check(tools);if e.why==HtWhy.none {e=ht_grant(tools,g);}
+    if e.why!=HtWhy.none {t.why=e.why;return t;}
+    long:=false;for x:m.pieces {if x.count>HT_PIECE_MAX {long=true;}}
+    if long || steps<0 || events.count<steps || world.count<HT_CHOICES_MAX || m.limit<1 || m.limit*HT_PIECE_MAX>sm.text.count || sm.logits.count!=m.pieces.count {t.why=HtWhy.shape;return t;}
+    u:[1]HtUsage;
+    while true {
+        if t.steps==steps {t.stop=HtStop.steps;return t;}
+        offer:[HT_TOOLS_MAX]int;no:=0;
+        for x,j:g.tools {if u[0].calls[j]<g.calls[j] && u[0].cost+tools[x].cost<=g.cost {offer[no]=x;no+=1;}}
+        if no==0 {t.stop=HtStop.spent;return t;}
+        c:=ht_compile(tools,offer[0..<no],w);if c.why!=HtWhy.none {t.why=c.why;return t;}
+        run:=NxRun.{limit=m.limit,random=CrSeed.{seed=cr_bits(seed,cast(u64)t.steps)}};state:=c.grammar.start;n:=0;
+        while run.stop==NxStop.running {
+            ht_noise(seed,t.steps,run.emitted,sm.logits);
+            d:=nx_guided(sm.logits,c.grammar,state,m.pieces,m.end,m.options,run,false,sm.mask,sm.out,sm.work,false);
+            if d.status!=NxStatus.ok {t.stop=HtStop.model;return t;}
+            if d.token!=m.end {for x:m.pieces[d.token] {sm.text[n]=x;n+=1;}}
+            run=d.run;state=d.state;
+        }
+        v:=ht_call(tools,g,u[..],cast(string)sm.text[0..<n],world,w);events[t.steps]=v;t.steps+=1;
+        if v.ran {t.ran+=1;}else {t.refused+=1;}
+        t.cost=u[0].cost;
+    }
+    return t;
+}
+// book:end turn

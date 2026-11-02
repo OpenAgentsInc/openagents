@@ -1,0 +1,56 @@
+#import "Basic";
+#load "../lib/harness/tools.coax";
+// Chapter 203's example: the registry, the hand-traced grammar for get,
+// the pieces the mask offers, the refusal table, and constrained turns
+// over many seeds. Every number is exact for the named build.
+tc_show :: (tools:[]HtTool,e:HtEvent) {b:[128]u8;print("%",cast(string)b[0..<ht_render(tools,e,b[..])]);}
+tc_offered :: (label:string,g:NxGrammar,state:int,pieces:[]string) {
+    m:[52]u8;r:=nx_mask(g,state,pieces,HT_END,m[..],false);print("%: % pieces:",label,r.kept);
+    for p,i:pieces {if m[i]==1 {if i==HT_END {print(" <end>");}else {print(" %",p);}}}print("\n");
+}
+// book:begin example
+main :: () {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);
+    e:[512]NxEdge;o:[256]int;n:[65536]int;a:[256]u8;l:[256]u8;w:=ht_work(e[..],o[..],n[..],a[..],l[..]);
+    print("registry: % tools, check %\n",r.count,ht_check(r[..]).why);
+    for t:r {print("  % fields %, result %, effect %, cost %\n",t.name,t.fields.count,t.result.kind,t.effect,t.cost);}
+    // The hand trace: get's grammar, built state by state.
+    get:=[1]int.[3];c:=ht_compile(r[..],get[..],w);
+    print("get's grammar: % states, start %, accepts get{\"room\":\"den\"}: %, get{\"room\":\"attic\"}: %\n",c.grammar.states,c.grammar.start,
+        nx_accepts(c.grammar,"get{\"room\":\"den\"}"),nx_accepts(c.grammar,"get{\"room\":\"attic\"}"));
+    // The grant: add twice, div once, get once, cost 3, nothing that writes.
+    g:=[3]int.[0,1,3];calls:=[3]int.[2,1,1];gr:=HtGrant.{tools=g[..],calls=calls[..],cost=3,effects=HtEffect.read};
+    print("grant: %\n",ht_grant(r[..],gr).why);
+    wide:=[4]int.[0,1,2,3];four:=[4]int.[1,1,1,1];bad:=HtGrant.{tools=wide[..],calls=four[..],cost=3,effects=HtEffect.read};
+    print("a read-only grant that names set: ");tc_show(r[..],ht_grant(r[..],bad));print("\n");
+    // What the mask offers at three points of a call.
+    pc:=ht_pieces();u:=ht_compile(r[..],g[..],w).grammar;
+    tc_offered("at the start",u,u.start,pc[..]);
+    tc_offered("after add{\"a\":",u,nx_walk(u,u.start,"add{\"a\":"),pc[..]);
+    tc_offered("after add{\"a\":4",u,nx_walk(u,u.start,"add{\"a\":4"),pc[..]);
+    tc_offered("after get{\"room\":\"den\"}",u,nx_walk(u,u.start,"get{\"room\":\"den\"}"),pc[..]);
+    // The pipeline: each call, its event, and the session's usage after it.
+    texts:=[14]string.["add{\"a\":37,\"b\":48}","mul{\"a\":1,\"b\":2}","set{\"room\":\"den\",\"on\":true}","add{\"a\":01,\"b\":2}","add{\"b\":1,\"a\":2}",
+        "add{\"a\": 1,\"b\":2}","get{\"room\":\"attic\"}","add{\"a\":1,","div{\"a\":7,\"b\":0}","div{\"a\":7,\"b\":2}","add{\"a\":999,\"b\":1}","add{\"a\":1,\"b\":1}","get{\"room\":\"den\"}","add"];
+    us:[1]HtUsage;world:[8]int;
+    for x:texts {v:=ht_call(r[..],gr,us[..],x,world[..],w);print("  % -> ",x);tc_show(r[..],v);print("  (calls % % %, cost %)\n",us[0].calls[0],us[0].calls[1],us[0].calls[2],us[0].cost);}
+    // Effects stay in the session's world.
+    all:=[4]int.[0,1,2,3];some:=[4]int.[1,1,1,1];rw:=HtGrant.{tools=all[..],calls=some[..],cost=10,effects=HtEffect.write};us[0]=HtUsage.{};other:[8]int;
+    print("set den on: ");tc_show(r[..],ht_call(r[..],rw,us[..],"set{\"room\":\"den\",\"on\":true}",world[..],w));
+    print("; get den: ");tc_show(r[..],ht_call(r[..],rw,us[..],"get{\"room\":\"den\"}",world[..],w));us[0]=HtUsage.{};
+    print("; get den in another session: ");tc_show(r[..],ht_call(r[..],rw,us[..],"get{\"room\":\"den\"}",other[..],w));print("\n");
+    // Constrained turns: a stand-in model of seeded noise, masked by the grant's grammar.
+    lg:[52]f32;mk:[52]u8;p:[52]f64;s:[52]f64;od:[52]int;tm:[52]int;tx:[512]u8;sm:=ht_sampler(lg[..],mk[..],p[..],s[..],od[..],tm[..],tx[..]);
+    m:=HtModel.{pieces=pc[..],end=HT_END,options=NxOptions.{temperature=1},limit=64};ev:[12]HtEvent;tw:[8]int;
+    t:=ht_turn(r[..],gr,m,0,8,tw[..],w,sm,ev[..]);
+    print("turn, seed 0: stop %, steps %, ran %, refused %, cost %\n",t.stop,t.steps,t.ran,t.refused,t.cost);
+    for k:0..<t.steps {print("  ");tc_show(r[..],ev[k]);print("\n");}
+    c4:=[4]int.[3,3,3,3];wide4:=HtGrant.{tools=all[..],calls=c4[..],cost=12,effects=HtEffect.write};
+    ran:=0;refused:=0;runs:=0;results:=0;cost:=0;stops:[4]int;
+    for seed:0..<1000 {wd:[8]int;q:=ht_turn(r[..],wide4,m,cast(u64)seed,12,wd[..],w,sm,ev[..]);stops[cast(int)q.stop]+=1;ran+=q.ran;refused+=q.refused;cost+=q.cost;
+        for k:0..<q.steps {if ev[k].why==HtWhy.run {runs+=1;}if ev[k].why==HtWhy.result {results+=1;}}}
+    print("1000 turns of up to 12 steps, every tool granted 3 calls, cost 12: % stopped at the step limit, % spent; % calls ran (% refused by run, % by result), % refused before running, cost %\n",
+        stops[0],stops[1],ran,runs,results,refused,cost);
+    m.limit=3;t=ht_turn(r[..],gr,m,0,2,tw[..],w,sm,ev[..]);print("a 3-piece limit: ran %, refused %: ",t.ran,t.refused);tc_show(r[..],ev[0]);print("\n");
+}
+// book:end example
