@@ -20,12 +20,13 @@ pf_missing_stopped :: (path:string)->bool {
 }
 tool_main :: ()->int #export_c {
   a:[1]Args;if !args_load(a[..]) {return 2;}work:=args_value(a[..],"--work-dir","");receipt:=args_value(a[..],"--receipt","");observer:=args_value(a[..],"--observer","");observer_expected:=args_value(a[..],"--observer-sha256","");bun:=args_value(a[..],"--bun","");parity:=args_value(a[..],"--parity","");compiler:=args_value(a[..],"--coax","");
+  reference:=args_value(a[..],"--reference-source","aethyr/tests/capture-render-frame.ts");
   clang:=args_value(a[..],"--clang","/opt/homebrew/opt/llvm/bin/clang");sysroot:=args_value(a[..],"--sysroot","/opt/homebrew/opt/wasi-libc/share/wasi-sysroot");resources:=args_value(a[..],"--resources","/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes");
   start_case:=args_whole(args_value(a[..],"--start-case","0"));end_case:=args_whole(args_value(a[..],"--end-case","21"));reuse_inputs:=args_value(a[..],"--reuse-inputs","");
-  if start_case<0 || end_case>21 || start_case>=end_case || work=="" || receipt=="" || observer=="" || observer_expected=="" || bun=="" || parity=="" || compiler=="" || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
+  if start_case<0 || end_case>23 || start_case>=end_case || work=="" || receipt=="" || observer=="" || observer_expected=="" || bun=="" || parity=="" || compiler=="" || !fs_exists(reference) || fs_exists(work) || fs_exists(receipt) || !fs_mkdir(work) {return 2;}
   expected:[64]u8;if !rtq_hash_file(observer,expected[..]) || cast(string)expected[..]!=observer_expected {return 2;}
   deadline:=proc_deadline(810000,proc_now_ms());paths:[24][4096]u8;input_root:=ifx reuse_inputs=="" then work else reuse_inputs;build:=fs_join(input_root,"build",paths[0][..]);if reuse_inputs=="" && !fs_mkdir(build) {return 1;}
-  inputs:[1]RtqInputs;for file:[10]string.[observer,bun,parity,compiler,clang,"aethyr/tests/capture-render-frame.ts","aethyr/tests/producer-capture-fixture.coax","aethyr/tests/producer-capture-fixture-checks.coax","aethyr/tests/producer-capture-fixture-face.c","aethyr/tests/producer-capture-fixture-inputs.coax"] {if !rtq_input_add(inputs[..],file) {return 1;}}
+  inputs:[1]RtqInputs;for file:[10]string.[observer,bun,parity,compiler,clang,reference,"aethyr/tests/producer-capture-fixture.coax","aethyr/tests/producer-capture-fixture-checks.coax","aethyr/tests/producer-capture-fixture-face.c","aethyr/tests/producer-capture-fixture-inputs.coax"] {if !rtq_input_add(inputs[..],file) {return 1;}}
   env_buffer:[4096]u8;environment:=[1]string.[pf_env("COAX",compiler,env_buffer[..])];out:[1048576]u8;err:[65536]u8;
   macros:=[4]string.["","-DPFX_NO_VERSION","-DPFX_NO_KEY","-DPFX_MINIMAL"];wasm_names:=[4]string.["versioned.wasm","unversioned.wasm","no-key.wasm","minimal.wasm"];
   if reuse_inputs=="" {
@@ -43,21 +44,30 @@ tool_main :: ()->int #export_c {
     override:=[9]u8.[0,255,128,13,10,7,6,5,4];if !fs_write(index_file,cast(string)override[0..<4]) || !fs_write(vertices_file,cast(string)override[..]) || !fs_write(mesh_file,cast(string)override[0..<5]) {return 1;}
   }
   for file:[9]string.[pack_path,zero_pack,table_pack,payload_pack,small_facts,large_facts,index_file,vertices_file,mesh_file] {if !rtq_input_add(inputs[..],file) {return 1;}}
+  malformed_path:=fs_join(work,"malformed-facts.bin",paths[16][..]);
+  if end_case>21 {
+    // Valid BOM/NUL, malformed multibyte sequences, CR and trailing LF:
+    // compare the legacy decoder's observable producer bytes, not just text.
+    malformed:=[27]u8.[239,187,191,65,0,192,175,226,130,66,237,160,128,244,144,128,128,240,159,146,169,255,13,10,67,10,10];
+    if !fs_write(malformed_path,cast(string)malformed[..]) || !rtq_input_add(inputs[..],malformed_path) {return 1;}
+  }
   result:[1048576]u8;o:[1]Jo;jo_start(o[..],result[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.producer-capture-fixtures.v1");jo_key(o[..],"observer_sha256");jo_str(o[..],observer_expected);jo_key(o[..],"gpu_execution");jo_bool(o[..],false);jo_key(o[..],"start_case");jo_int(o[..],start_case);jo_key(o[..],"end_case");jo_int(o[..],end_case);jo_key(o[..],"reused_fixture_inputs");jo_str(o[..],reuse_inputs);jo_key(o[..],"cases");jo_arr(o[..]);
   for index:start_case..<end_case {
     label:[128]u8;case_dir:=fs_join(work,pf_name("case-",index,"",label[..]),paths[11][..]);if !fs_mkdir(case_dir) {return 1;}old_dump:=fs_join(case_dir,"old",paths[12][..]);new_dump:=fs_join(case_dir,"new",paths[13][..]);image:=ifx index==1 || index==3 then 1 else ifx index==14 || index==15 then 2 else ifx index==16 then 3 else 0;wasm:=fs_join(build,wasm_names[image],paths[14][..]);
     common:[48]string;n:=0;for arg:[12]string.["--frames","4","--every","1","--size","32x24","--scale","1.5","--clock","-9223372036854775808","--page","-2"] {common[n]=arg;n+=1;}
+    if index==21 {for arg:[4]string.["--facts",malformed_path,"--fact","unicode=ok"] {common[n]=arg;n+=1;}}
+    if index==22 {common[9]="-09223372036854775808";}
     if index==2 || index==3 {for arg:[17]string.["--pack",pack_path,"--facts",small_facts,"--fact","B=2","--extra","7,9","--hash","ok","--keys","1:32:1,2:32:0","--pointer","3:1.5:-3.25","--golden","--index",index_file] {common[n]=arg;n+=1;}for arg:[4]string.["--vertices",vertices_file,"--mesh",mesh_file] {common[n]=arg;n+=1;}}
     if index==4 || index==5 || index==17 || index==18 {common[n]="--pack";common[n+1]=ifx index==4 then pack_path else ifx index==5 then zero_pack else ifx index==17 then table_pack else payload_pack;n+=2;}
     if index==6 {for arg:[4]string.["--facts",large_facts,"--fact","B=2"] {common[n]=arg;n+=1;}}
     if index>=7 && index<=13 {faults:=[7]string.["bad-hud","bad-store","bad-span","bad-particles","bad-draw-span","bad-draw-span","bad-draw-span"];common[n]="--hash";common[n+1]=faults[index-7];n+=2;}
     if index==19 {common[n]="--extra";common[n+1]="7,9";n+=2;}if index==20 {common[n]="--fact";common[n+1]="ignored-without-facts=1";n+=2;}
     if index==14 {common[n]="--keys";common[n+1]="1:32:1";n+=2;}if index==16 {common[n]="--hash";common[n+1]="ignored-if-absent";n+=2;}
-    dumped:=index!=12 && index!=13;old_args:[56]string;new_args:[56]string;on:=3;nn:=2;old_args[0]=bun;old_args[1]="aethyr/tests/capture-render-frame.ts";old_args[2]=wasm;new_args[0]=observer;new_args[1]=wasm;
+    dumped:=index!=12 && index!=13;old_args:[56]string;new_args:[56]string;on:=3;nn:=2;old_args[0]=bun;old_args[1]=reference;old_args[2]=wasm;new_args[0]=observer;new_args[1]=wasm;
     for arg:common[0..<n] {old_args[on]=arg;on+=1;new_args[nn]=arg;nn+=1;}
     if dumped || index==13 {old_args[on]="--dump";old_args[on+1]=ifx dumped then old_dump else "";on+=2;new_args[nn]="--dump";new_args[nn+1]=ifx dumped then new_dump else "";nn+=2;}
     old:=pf_run(old_args[0..<on],environment[..],deadline,case_dir,"old-observer",out[..],err[..]);old_stdout:[1048576]u8;old_n:=old.out_n;for k:0..<old_n {old_stdout[k]=out[k];}
-    fresh:=pf_run(new_args[0..<nn],environment[..],deadline,case_dir,"new-observer",out[..],err[..]);positive:=index<7 || index==12 || index==13 || index==15 || index==16 || index==19 || index==20;
+    fresh:=pf_run(new_args[0..<nn],environment[..],deadline,case_dir,"new-observer",out[..],err[..]);positive:=index<7 || index==12 || index==13 || index==15 || index==16 || index==19 || index==20 || index==21 || index==22;
     if old.started!=0 || fresh.started!=0 || old.timed_out || fresh.timed_out || old.cut || fresh.cut || (positive && (old.status!=0 || fresh.status!=0)) || (!positive && (old.status==0 || fresh.status==0)) {tool_err("producer fixture status mismatch case ");tool_errln(pf_name("",index,"",label[..]));return 1;}
     parity_ok:=false;if positive && dumped {parity_file:=fs_join(case_dir,"parity.json",paths[15][..]);argv:=[4]string.[parity,old_dump,new_dump,parity_file];checked:=pf_run(argv[..],environment[..],deadline,case_dir,"parity-check",out[..],err[..]);if !rtq_ok(checked) {tool_err("producer fixture product parity mismatch case ");tool_errln(pf_name("",index,"",label[..]));return 1;}parity_ok=true;}
     if positive && !dumped {if old_n!=fresh.out_n || cast(string)old_stdout[0..<old_n]!=cast(string)out[0..<fresh.out_n] {return 1;}parity_ok=true;}

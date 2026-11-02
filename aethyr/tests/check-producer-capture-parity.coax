@@ -1,0 +1,21 @@
+#load "producer-capture-parity-policy.coax";
+#load "../render/tests/qualification-files.coax";
+pcp_raw_same :: (a:string,b:string,n:int)->bool {
+  left:[65536]u8;right:[65536]u8;at:=0;while at<n {count:=ifx n-at>left.count then left.count else n-at;if fs_read_at(a,at,left[0..<count])!=count || fs_read_at(b,at,right[0..<count])!=count || cast(string)left[0..<count]!=cast(string)right[0..<count] {return false;}at+=count;}return true;
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {tool_errln("usage: check-producer-capture-parity OLD_DIRECTORY NEW_DIRECTORY NEW_RECEIPT.json");return 2;}
+  left_dir:=args_at(a[..],0);right_dir:=args_at(a[..],1);output:=args_at(a[..],2);if fs_exists(output) {return 2;}
+  paths:[4][4096]u8;left_file:=fs_join(left_dir,"capture.json",paths[0][..]);right_file:=fs_join(right_dir,"capture.json",paths[1][..]);left:[8388608]u8;right:[8388608]u8;ln:[262144]JvNode;rn:[262144]JvNode;ld:[1]Jv;rd:[1]Jv;
+  if !rtq_json_file(left_file,left[..],ln[..],ld[..]) || !rtq_json_file(right_file,right[..],rn[..],rd[..]) {return 2;}
+  inputs:[1]RtqInputs;if !rtq_input_add(inputs[..],left_file) || !rtq_input_add(inputs[..],right_file) {return 2;}
+  passed:=pcp_fields(ld[0],rd[0]);files:=jv_get(ld[0],0,"files");if jv_kind(ld[0],files)!=JV_OBJECT {return 2;}child:=ld[0].nodes[files].first;count:=0;bytes:=0;record:[262144]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.producer-capture-parity.v1");jo_key(o[..],"product_metadata_equal");jo_bool(o[..],passed);jo_key(o[..],"files");jo_arr(o[..]);
+  while child!=-1 {
+    name:=jv_key(ld[0],child);if !pcp_file_name(name) {return 2;}path_left:=fs_join(left_dir,name,paths[2][..]);path_right:=fs_join(right_dir,name,paths[3][..]);expected:=jv_int(ld[0],jv_get(ld[0],child,"bytes"),-1);expected_hash:=jv_raw(ld[0],jv_get(ld[0],child,"sha256"));lh:[64]u8;rh:[64]u8;
+    same:=expected>=0 && fs_size(path_left)==expected && fs_size(path_right)==expected && rtq_hash_file(path_left,lh[..]) && rtq_hash_file(path_right,rh[..]) && cast(string)lh[..]==expected_hash && cast(string)rh[..]==expected_hash && pcp_raw_same(path_left,path_right,expected);
+    jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],name);jo_key(o[..],"bytes");jo_int(o[..],expected);jo_key(o[..],"sha256");jo_str(o[..],expected_hash);jo_key(o[..],"raw_equal");jo_bool(o[..],same);jo_end(o[..]);passed=passed && same;count+=1;bytes+=expected;child=ld[0].nodes[child].next;
+  }jo_end(o[..]);
+  for name:[2]string.["draws.txt","layers.bin.list"] {path_left:=fs_join(left_dir,name,paths[2][..]);path_right:=fs_join(right_dir,name,paths[3][..]);n:=fs_size(path_left);passed=passed && n>=0 && fs_size(path_right)==n && pcp_raw_same(path_left,path_right,n);}
+  stable:=rtq_inputs_match(inputs[..]);passed=passed && stable;jo_key(o[..],"status");jo_str(o[..],ifx passed then "passed" else "failed");jo_key(o[..],"binary_files");jo_int(o[..],count);jo_key(o[..],"binary_bytes");jo_int(o[..],bytes);jo_key(o[..],"metadata_inputs_unchanged");jo_bool(o[..],stable);jo_key(o[..],"scope");jo_str(o[..],"All declared product metadata and every raw artifact byte, plus draws.txt/layers.bin.list. Only observer identity/provenance and the owned dump directory differ. No GPU or producer execution.");jo_end(o[..]);
+  if o[0].bad || !fs_mkdir(fs_dir(output)) || !fs_write(output,jo_text(o[..])) {return 1;}print("producer parity: % binary files, % bytes; %\n",count,bytes,passed);return ifx passed then 0 else 1;
+}

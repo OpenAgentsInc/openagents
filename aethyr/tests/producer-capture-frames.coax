@@ -1,0 +1,53 @@
+#load "producer-capture-artifacts.coax";
+PctUpdate :: struct {frame:int;bytes:int;known:bool;version:[128]u8;vn:int;}
+PctStore :: struct {policy:PcStore;physical:int;version:[128]u8;vn:int;updates:[600]PctUpdate;un:int;}
+PctCapture :: struct {stores:[64]PctStore;store_count:int;puffs:[1]PctStore;frames:[600][9]int;frame_count:int;}
+pct_frame_json :: (o:[]Jo,row:[]int) {names:=[9]string.["frame","hud","draws","water","grass","particles","surface","caster_vertices","caster_instances"];jo_obj(o);for name,k:names {jo_key(o,name);jo_int(o,row[k]);}jo_end(o);}
+pct_store_init :: (c:[]Cdp,s:[]PcSession,capture:[]PctCapture,work:string,files:[]PctFiles)->bool {
+  empty:[]f64;count:=pc_get(c,s,"coaxial_stores",empty,false);if s[0].failed || !pc_count(count,capture[0].stores.count) {return false;}capture[0].store_count=count;
+  for index:0..<count {
+    args:=[1]f64.[cast(f64)index];capacity:=pc_get(c,s,"coaxial_store_cap",args[..],true);physical:=pc_physical(capacity);if physical<0 || s[0].failed {return false;}
+    capture[0].stores[index].policy.capacity=capacity;capture[0].stores[index].physical=physical;
+    name:[128]u8;upload:[128]u8;filename:=pct_name("s",index,".bin",name[..]);uploadname:=pct_name("s",index,".upload.bin",upload[..]);
+    if !pct_zero(work,filename,physical,files) || !pct_zero(work,uploadname,0,files) {return false;}
+  }
+  cap:=pc_get(c,s,"coaxial_particle_cap",empty,false);if !pc_count(cap,67108864) || s[0].failed {return false;}capture[0].puffs[0].policy.capacity=cap;capture[0].puffs[0].physical=cap;
+  if cap>0 && (!pct_zero(work,"puffs.bin",cap,files) || !pct_zero(work,"puffs.upload.bin",0,files)) {return false;}return true;
+}
+pct_store_update :: (c:[]Cdp,s:[]PcSession,store:[]PctStore,index:int,particle:bool,frame:int,work:string,files:[]PctFiles)->bool {
+  if s[0].deadline>0 && proc_now_ms()>=s[0].deadline {return false;}
+  args:=[2]f64.[cast(f64)s[0].arena.base,cast(f64)index];prior:=store[0].policy;prior.version=cast(string)store[0].version[0..<store[0].vn];version:PcResult;
+  if !particle {version=pc_call(c,"coaxial_store_version",args[..]);if !version.ok {return false;}if !pc_store_due(prior,version.defined && version.has_value,cast(string)version.text[0..<version.text_n]) {return true;}}
+  bytes:=pc_get(c,s,ifx particle then "coaxial_particle_bytes" else "coaxial_store_bytes",ifx particle then args[0..<1] else args[..],true);
+  next:=pc_store_observe(prior,bytes,version.defined && version.has_value,cast(string)version.text[0..<version.text_n]);if s[0].failed || !next.valid || store[0].un==store[0].updates.count {return false;}
+  update:PctUpdate;update.frame=frame;update.bytes=bytes;update.known=version.defined && version.has_value;update.vn=version.text_n;for k:0..<version.text_n {update.version[k]=version.text[k];}store[0].updates[store[0].un]=update;store[0].un+=1;
+  if bytes>0 {
+    pointer:=pc_get(c,s,ifx particle then "coaxial_particles" else "coaxial_store",ifx particle then args[0..<1] else args[..],true);name:[128]u8;upload:[128]u8;
+    filename:="puffs.bin";uploadname:="puffs.upload.bin";if !particle {filename=pct_name("s",index,".bin",name[..]);uploadname=pct_name("s",index,".upload.bin",upload[..]);}
+    if s[0].failed || !pct_binary(c,s,work,uploadname,pointer,bytes,files) || !pct_prefix(work,filename,uploadname,store[0].physical,bytes,files) {return false;}
+    store[0].vn=version.text_n;for k:0..<version.text_n {store[0].version[k]=version.text[k];}
+  }
+  store[0].policy.valid=next.valid;store[0].policy.last_update=next.last_update;store[0].policy.last_positive=next.last_positive;store[0].policy.highwater=next.highwater;store[0].policy.version_known=next.version_known;return true;
+}
+pct_frames :: (c:[]Cdp,s:[]PcSession,p:PctOptions,capture:[]PctCapture,work:string,files:[]PctFiles)->bool {
+  keys:[4096]PctEvent;pointers:[4096]PctEvent;kn:=pct_events(p.values[12],keys[..]);pn:=pct_events(p.values[13],pointers[..]);if kn<0 || pn<0 || !pct_store_init(c,s,capture,work,files) {return false;}
+  for frame:1..<p.frames+1 {
+    for k:0..<kn {row:=keys[k];if row.frame==frame {args:=[3]f64.[cast(f64)s[0].arena.base,row.a,0.0];pressed:=pc_get(c,s,ifx row.b!=0.0 then "coaxial_key" else "coaxial_key_up",args[..],true);pc_after(c,s);}}
+    for k:0..<pn {row:=pointers[k];if row.frame==frame {for phase:[2]int.[0,2] {args:=[6]f64.[cast(f64)s[0].arena.base,row.a,row.b,cast(f64)phase,0.0,1.0];pressed:=pc_get(c,s,"coaxial_pointer",args[..],true);pc_after(c,s);}}}
+    args:=[8]f64.[cast(f64)s[0].arena.base,cast(f64)s[0].arena.vertices,cast(f64)s[0].arena.uniforms,cast(f64)p.width,cast(f64)p.height,p.scale,1.0/60.0,0.0];hud:=pc_get(c,s,"coaxial_frame",args[..],true);
+    if s[0].failed || !pc_count(hud,s[0].max_vertices) {return false;}pc_after(c,s);row:[9]int;row[0]=frame;row[1]=hud;
+    getters:=[7]string.["coaxial_draw_count","coaxial_water_draws","coaxial_grass_instances","coaxial_particle_instances","coaxial_surface_vertices","coaxial_caster_vertices","coaxial_caster_instances"];
+    for name,k:getters {row[k+2]=pc_get(c,s,name,args[0..<1],false);if row[k+2]<0 {return false;}}
+    if s[0].failed {return false;}
+    if row[2]>0 {for index:0..<capture[0].store_count {if !pct_store_update(c,s,capture[0].stores[index..<index+1],index,false,frame,work,files) {return false;}}}
+    if row[5]>0 && s[0].particle_bytes_available {if !pct_store_update(c,s,capture[0].puffs[..],0,true,frame,work,files) {return false;}}
+    capture[0].frames[frame-1]=row;capture[0].frame_count=frame;
+    if frame%p.every==0 || frame==p.frames {text:[16384]u8;o:[1]Jo;jo_start(o[..],text[..]);pct_frame_json(o[..],row[..]);if o[0].bad {return false;}print("%\n",jo_text(o[..]));}
+  }return true;
+}
+pct_store_json :: (o:[]Jo,s:PctStore,index:int,particle:bool) {
+  jo_obj(o);if !particle {jo_key(o,"index");jo_int(o,index);jo_key(o,"capacity");jo_int(o,s.policy.capacity);jo_key(o,"physical_bytes");jo_int(o,s.physical);}
+  jo_key(o,"highwater");jo_int(o,s.policy.highwater);jo_key(o,"last_update_bytes");jo_int(o,s.policy.last_update);jo_key(o,"updates");jo_arr(o);for k:0..<s.un {row:=s.updates[k];jo_obj(o);jo_key(o,"frame");jo_int(o,row.frame);jo_key(o,"bytes");jo_int(o,row.bytes);if !particle {jo_key(o,"version");if row.known {jo_str(o,cast(string)row.version[0..<row.vn]);}else {jo_null(o);}}jo_end(o);}jo_end(o);
+  if particle {jo_key(o,"capacity");jo_int(o,s.policy.capacity);}jo_key(o,"retained_bytes");jo_int(o,s.physical);jo_key(o,"last_positive_bytes");jo_int(o,s.policy.last_positive);
+  if !particle {jo_key(o,"version");if s.policy.version_known {version:=s.version;jo_str(o,cast(string)version[0..<s.vn]);}else {jo_null(o);}name:[128]u8;jo_key(o,"file");jo_str(o,pct_name("s",index,".bin",name[..]));}jo_end(o);
+}

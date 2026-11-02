@@ -1,0 +1,32 @@
+#load "producer-capture-session.coax";
+#load "producer-capture-tool-policy.coax";
+PctFile :: struct {name:[256]u8;n:int;bytes:int;hash:[64]u8;}
+PctFiles :: struct {files:[256]PctFile;count:int;}
+pct_name :: (stem:string,index:int,suffix:string,out:[]u8)->string {o:[1]Jo;jo_start(o[..],out);jo_put(o[..],stem);jo_int(o[..],index);jo_put(o[..],suffix);return ifx o[0].bad then "" else jo_text(o[..]);}
+pct_saved_file :: (files:[]PctFiles,work:string,name:string)->bool {
+  path:[4096]u8;file:=fs_join(work,name,path[..]);hash:[64]u8;n:=fs_size(file);if n<0 || name.count<1 || name.count>256 || !rtq_hash_file(file,hash[..]) {return false;}
+  index:=files[0].count;for k:0..<files[0].count {row:=files[0].files[k];if cast(string)row.name[0..<row.n]==name {index=k;break;}}
+  if index==files[0].count {if index==files[0].files.count {return false;}files[0].count+=1;}
+  row:PctFile;row.n=name.count;for byte,k:name {row.name[k]=byte;}row.bytes=n;row.hash=hash;files[0].files[index]=row;return true;
+}
+pct_copy :: (source:string,work:string,name:string,files:[]PctFiles)->bool {
+  bytes:[67108864]u8;n:=fs_size(source);path:[4096]u8;if n<0 || n>bytes.count || fs_read_at(source,0,bytes[0..<n])!=n || !fs_write(fs_join(work,name,path[..]),cast(string)bytes[0..<n]) {return false;}return pct_saved_file(files,work,name);
+}
+pct_binary :: (c:[]Cdp,s:[]PcSession,work:string,name:string,pointer:int,count:int,files:[]PctFiles)->bool {
+  if s[0].failed {return false;}
+  if s[0].deadline>0 && proc_now_ms()>=s[0].deadline {s[0].failed=true;return false;}
+  if !pc_span(pointer,count,s[0].memory) || count>67108864 {return false;}
+  request:[4096]u8;o:[1]Jo;pc_operation(o[..],request[..],"read");jo_key(o[..],"pointer");jo_int(o[..],pointer);jo_key(o[..],"bytes");jo_int(o[..],count);jo_key(o[..],"upload");jo_str(o[..],"/capture/transport.bin");at:=pc_run(c,o[..]);if at<0 {return false;}
+  d:=c[0].doc[0];ack:=jv_get(d,at,"acknowledgement");hash:[64]u8;actual_file:[4096]u8;schema:[128]u8;expected_file:[4096]u8;path:=fs_join(work,"transport.bin",expected_file[..]);
+  a:=PctAck.{http=jv_int(d,jv_get(d,at,"upload_status"),-1),schema=rto_string(d,jv_get(d,ack,"schema"),schema[..]),status=jv_int(d,jv_get(d,ack,"status"),-1),published=jv_kind(d,jv_get(d,ack,"published"))==JV_TRUE,clean=jv_kind(d,jv_get(d,ack,"staging_removed"))==JV_TRUE,declared=jv_int(d,jv_get(d,ack,"declared_bytes"),-1),received=jv_int(d,jv_get(d,ack,"received_bytes"),-1),stored=jv_int(d,jv_get(d,ack,"stored_bytes"),-1),bytes=jv_int(d,jv_get(d,at,"bytes"),-1),hash=jv_raw(d,jv_get(d,ack,"sha256")),file=rto_string(d,jv_get(d,ack,"file"),actual_file[..])};
+  expected:=jv_raw(d,jv_get(d,at,"sha256"));if !pct_ack(a,count,expected,path) || fs_size(path)!=count || !rtq_hash_file(path,hash[..]) || cast(string)hash[..]!=expected {return false;}
+  return pct_copy(path,work,name,files);
+}
+pct_zero :: (work:string,name:string,count:int,files:[]PctFiles)->bool {
+  bytes:[67108864]u8;path:[4096]u8;return pc_count(count,bytes.count) && fs_write(fs_join(work,name,path[..]),cast(string)bytes[0..<count]) && pct_saved_file(files,work,name);
+}
+pct_prefix :: (work:string,name:string,upload:string,physical:int,count:int,files:[]PctFiles)->bool {
+  bytes:[67108864]u8;paths:[2][4096]u8;file:=fs_join(work,name,paths[0][..]);part:=fs_join(work,upload,paths[1][..]);
+  return pc_count(physical,bytes.count) && pc_count(count,physical) && fs_size(file)==physical && fs_size(part)==count && fs_read_at(file,0,bytes[0..<physical])==physical && fs_read_at(part,0,bytes[0..<count])==count && fs_write(file,cast(string)bytes[0..<physical]) && pct_saved_file(files,work,name);
+}
+pct_files_json :: (o:[]Jo,files:[]PctFiles) {jo_obj(o);for k:0..<files[0].count {row:=files[0].files[k];jo_key(o,cast(string)row.name[0..<row.n]);jo_obj(o);jo_key(o,"bytes");jo_int(o,row.bytes);jo_key(o,"sha256");jo_str(o,cast(string)row.hash[..]);jo_end(o);}jo_end(o);}

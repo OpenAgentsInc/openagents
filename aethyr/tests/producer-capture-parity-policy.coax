@@ -1,0 +1,19 @@
+#import "Basic";
+#load "../render/tests/tooling-policy.coax";
+#authority;
+#load "producer-capture-parity-checks.coax";
+pcp_keys :: ()->[14]string {return [14]string.["schema","status","wasm","counts","frames","stores","particles","uniform_floats","vertex_stride","max_vertices","memory_bytes","files","inputs","options"];}
+pcp_options :: (a:Jv,ai:int,b:Jv,bi:int)->bool {
+  if jv_kind(a,ai)!=JV_OBJECT || jv_kind(b,bi)!=JV_OBJECT || jv_len(a,ai)!=jv_len(b,bi) {return false;}
+  child:=a.nodes[ai].first;while child!=-1 {key:=jv_key(a,child);other:=rtq_member(b,bi,key);if key=="dump" {if jv_kind(a,child)!=JV_STRING || jv_kind(b,other)!=JV_STRING {return false;}}else if !rtq_equal(a,child,b,other) {return false;}child=a.nodes[child].next;}return true;
+}
+pcp_fields :: (a:Jv,b:Jv)->bool {
+  if jv_raw(a,jv_get(a,0,"schema"))!="aethyr.render.producer-capture.v1" || jv_raw(a,jv_get(a,0,"status"))!="captured-unadmitted" {return false;}
+  for key:pcp_keys() {ai:=jv_get(a,0,key);bi:=jv_get(b,0,key);if key=="options" {if !pcp_options(a,ai,b,bi) {return false;}}else if !rtq_equal(a,ai,b,bi) {return false;}}
+  // Additional new observer provenance is allowed. Old observed product
+  // fields must all exist on the new side and match the comparisons above.
+  child:=a.nodes[0].first;while child!=-1 {key:=jv_key(a,child);known:=false;for expected:pcp_keys() {if key==expected {known=true;}}if key!="tool" && !known {return false;}child=a.nodes[child].next;}return true;
+}
+pcp_file_name :: (name:string)->bool {
+  if name.count<1 || name.count>255 || name[0]=='.' {return false;}for byte:name {if !((byte>='A' && byte<='Z')||(byte>='a' && byte<='z')||(byte>='0' && byte<='9')||byte=='-'||byte=='_'||byte=='.') {return false;}}return true;
+}

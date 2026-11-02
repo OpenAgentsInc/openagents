@@ -1,0 +1,77 @@
+#test "producer capture CLI keeps supplied options and refuses incomplete or unknown controls" {
+  a:[1]Args;
+  for arg:[12]string.["producer.wasm","--golden","--frames","3","--every","2","--size","16x8","--scale","1.5","--dump","output"] {#assert args_add(a[..],arg);}
+  p:=pct_options(a[..]);#assert p.valid && p.frames==3 && p.every==2 && p.width==16 && p.height==8 && p.scale==1.5 && p.seen[17] && p.values[17]=="1" && p.values[0]=="output";
+  b:[1]Args;#assert args_add(b[..],"x") && args_add(b[..],"--frames");#assert !pct_options(b[..]).valid;
+  b[0]=Args.{};#assert args_add(b[..],"x") && args_add(b[..],"--not-a-capture-option") && args_add(b[..],"1");#assert !pct_options(b[..]).valid;
+  b[0]=Args.{};#assert args_add(b[..],"x") && args_add(b[..],"--frames") && args_add(b[..],"0");#assert !pct_options(b[..]).valid;
+  #assert pct_option("--mesh")==16 && pct_option("--golden")==17 && pct_option("--mesh-extra")== -1;
+}
+#test "producer upload joins exact HTTP ACK, SDK bytes and declared destination" {
+  a:=PctAck.{http=200,schema="aethyr.render-test-origin.post.v1",status=200,published=true,clean=true,declared=8,received=8,stored=8,bytes=8,hash="abc",file="/owned/transport.bin"};
+  #assert pct_ack(a,8,"abc","/owned/transport.bin");
+  b:=a;b.http=503;#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.schema="other";#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.status=400;#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.published=false;#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.clean=false;#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.declared=9;#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.received=7;#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.stored=-1;#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.bytes=7;#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.hash="changed";#assert !pct_ack(b,8,"abc",a.file);
+  b=a;b.file="/other/file";#assert !pct_ack(b,8,"abc",a.file);
+}
+#test "producer event parsing preserves order and pointer fractions while refusing missing fields" {
+  rows:[8]PctEvent;n:=pct_events("1:32:1,,3:32:0",rows[..]);#assert n==2 && rows[0].frame==1 && rows[0].a==32.0 && rows[0].b==1.0 && rows[1].frame==3;
+  n=pct_events("2:4.5:-3.25",rows[..]);#assert n==1 && rows[0].a==4.5 && rows[0].b== -3.25 && rows[0].frame==2;
+  #assert pct_events("1:2",rows[..])== -1 && pct_events("1:2:3:4",rows[..])== -1;
+  #assert pct_events("1:2:3",rows[0..<0])== -1 && pct_events("x:2:3",rows[..])== -1;
+  #assert pct_events("1.5:2:3",rows[..])== -1 && pct_events("1:2.5:0.5",rows[..])==1 && rows[0].a==2.5 && rows[0].b==0.5;
+  #assert pct_events("",rows[..])==0;
+  #assert pct_events(",:2:3",rows[..])==1 && rows[0].frame==0;
+}
+#test "capture clock preserves the complete signed i64 domain without a float conversion" {
+  a:=pct_clock("9223372036854775807");#assert a.valid && a.value==9223372036854775807;
+  a=pct_clock("-9223372036854775808");#assert a.valid && a.value== -9223372036854775808;
+  a=pct_clock("-09223372036854775808");#assert a.valid && a.value== -9223372036854775808;
+  a=pct_clock("+1793641578123");#assert a.valid && a.value==1793641578123;
+  a=pct_clock("-1");#assert a.valid && a.value== -1;
+  #assert pct_clock("0").valid && !pct_clock("").valid && !pct_clock("+").valid && !pct_clock("1x").valid;
+  #assert !pct_clock("9223372036854775808").valid && !pct_clock("-9223372036854775809").valid;
+  #assert !pct_clock(":").valid;
+  a=pct_whole("3.0");#assert a.valid && a.value==3;
+  a=pct_whole("-9007199254740991.0");#assert a.valid && a.value== -9007199254740991;
+  a=pct_whole("9007199254740992.0");#assert a.valid && a.value==9007199254740992;
+  #assert !pct_whole("1.5").valid && !pct_whole("x").valid;
+  a=pct_whole("  +1.20e3 ");#assert a.valid && a.value==1200;
+  a=pct_whole("-1200e-2");#assert a.valid && a.value== -12;
+  #assert !pct_whole("1e-2").valid && pct_whole("0.00e20").valid;
+  a=pct_whole("  -3.0  ");#assert a.valid && a.value== -3;
+  a=pct_whole(" -3e2 ");#assert a.valid && a.value== -300;
+  a=pct_whole("3.0");#assert a.valid && a.value==3;
+  a=pct_whole("1E3");#assert a.valid && a.value==1000;
+  a=pct_whole(".1e1");#assert a.valid && a.value==1;
+  #assert pct_whole("0.00e-20").valid;
+}
+#test "normalized decimal accumulation admits signed i64 endpoints and refuses invalid digits before arithmetic" {
+  a:=pct_decimal("9223372036854775807",0,false);#assert a.valid && a.value==9223372036854775807;
+  a=pct_decimal("9223372036854775808",0,true);#assert a.valid && a.value== -9223372036854775808;
+  #assert !pct_decimal("9223372036854775808",0,false).valid;
+  #assert !pct_decimal("9223372036854775809",0,true).valid;
+  a=pct_decimal("0012",2,false);#assert a.valid && a.value==1200;
+  #assert pct_decimal("0",22,false).valid && !pct_decimal("0",23,false).valid && !pct_decimal("0",-1,false).valid;
+  #assert !pct_decimal("/",0,false).valid && !pct_decimal(":",0,false).valid;
+}
+#test "each capture flag works alone and empty arguments cannot supply missing values" {
+  a:[1]Args;#assert !pct_options(a[..]).valid;#assert args_add(a[..],"x");p:=pct_options(a[..]);#assert p.valid && p.frames==120 && p.every==30 && p.width==1280 && p.height==720 && p.scale==1.0 && p.clock==0 && p.page==0;
+  flags:=[8]string.["--frames","--every","--size","--scale","--clock","--page","--dump","--pack"];
+  values:=[8]string.["600","1","2x3","2","-1793641578123","-2147483648","out","in.pack"];
+  for flag,k:flags {a[0]=Args.{};#assert args_add(a[..],"x") && args_add(a[..],flag) && args_add(a[..],values[k]);p=pct_options(a[..]);#assert p.valid;
+    if k==0 {#assert p.frames==600;}if k==1 {#assert p.every==1;}if k==2 {#assert p.width==2 && p.height==3;}if k==3 {#assert p.scale==2.0;}if k==4 {#assert p.clock== -1793641578123;}if k==5 {#assert p.page== -2147483648;}
+  }
+  for flag:flags {a[0]=Args.{};#assert args_add(a[..],"x") && args_add(a[..],flag);#assert !pct_options(a[..]).valid;}
+  for pair:[6][2]string.[[2]string.["--page","2147483647"],[2]string.["--page","2147483648"],[2]string.["--page","-2147483649"],[2]string.["--page","x"],[2]string.["--clock","x"],[2]string.["--every","x"]] {
+    a[0]=Args.{};#assert args_add(a[..],"x") && args_add(a[..],pair[0]) && args_add(a[..],pair[1]);p=pct_options(a[..]);#assert p.valid==(pair[1]=="2147483647");
+  }
+}

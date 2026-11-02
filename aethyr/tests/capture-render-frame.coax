@@ -1,0 +1,71 @@
+// Strict offline producer capture. Coax owns options, pack/fact delivery,
+// event/frame order, counts, retained uploads and artifact metadata.
+#load "producer-capture-frames.coax";
+#load "producer-facts-text-policy.coax";
+PCF_DRIVER :: "aethyr/tests/capture-render-frame.coax";
+PCF_EFFECTS :: "aethyr/tests/producer-capture-effects.js";
+pcf_input :: (inputs:[]RtqInputs,path:string)->bool {p:[4096]u8;file:=fs_realpath(path,p[..]);return file!="" && rtq_input_add(inputs,file);}
+pcf_config :: (work:string,wasm:string)->bool {
+  bytes:[16384]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render-test-origin.v1");jo_key(o[..],"lifetime_ms");jo_int(o[..],810000);jo_key(o[..],"routes");jo_arr(o[..]);jo_raw(o[..],"{\"url\":\"/\",\"text\":\"<!doctype html><title>Producer capture</title>\",\"mime\":\"text/html\"}");jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/producer.wasm");jo_key(o[..],"file");jo_str(o[..],wasm);jo_key(o[..],"mime");jo_str(o[..],"application/wasm");jo_end(o[..]);jo_end(o[..]);
+  path:[4096]u8;jo_key(o[..],"post_sinks");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],"/capture/transport.bin");jo_key(o[..],"root");jo_str(o[..],work);jo_key(o[..],"file");jo_str(o[..],fs_join(work,"transport.bin",path[..]));jo_key(o[..],"max_bytes");jo_int(o[..],67108864);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return !o[0].bad && rto_saved(work,"origin-config.json",jo_text(o[..]));
+}
+pcf_setup :: (c:[]Cdp,s:[]PcSession,p:PctOptions,pack:[]u8,pack_used:bool,facts:string)->bool {
+  state:=cast(f64)s[0].arena.base;one:=[1]f64.[state];if p.seen[17] {golden:=[1]f64.[1.0];enabled:=pc_get(c,s,"coaxial_golden",golden[..],false);}
+  page:=[2]f64.[state,cast(f64)p.page];selected:=pc_get(c,s,"coaxial_page",page[..],false);
+  entries:=pc_pack_count(pack);if entries<0 {return false;}layers:=0;catalog:PcPackEntry;mesh_bytes:=0;index_bytes:=0;mesh_known:=false;index_known:=false;
+  for k:0..<entries {e:=pc_pack_entry(pack,k);if !e.valid {return false;}if e.kind==1 && !catalog.valid {catalog=e;}if e.kind==2 && !mesh_known {mesh_bytes=e.bytes;mesh_known=true;}if e.kind==3 && !index_known {index_bytes=e.bytes;index_known=true;}if e.kind==4 {layers+=1;}}
+  if p.values[8]!="" && !pc_send(c,s,600,facts) {return false;}if !pc_send(c,s,606,"") {return false;}
+  if pack_used {
+    if !catalog.valid {return false;}text:[128]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_int(o[..],pack.count);jo_put(o[..]," ");jo_int(o[..],pack.count);if !pc_send(c,s,605,jo_text(o[..])) {return false;}
+    args:=[3]f64.[state,0.0,cast(f64)catalog.bytes];pointer:=pc_get(c,s,"coaxial_asset",args[..],true);if pointer!=0 && !pct_write_all(c,s,pointer,cast(string)pack[catalog.begin..<catalog.begin+catalog.bytes]) {return false;}
+    sizes:=[4]int.[catalog.bytes,mesh_bytes,index_bytes,layers];for size,k:sizes {ready:=[3]f64.[state,cast(f64)k,cast(f64)size];delivered:=pc_get(c,s,"coaxial_asset_ready",ready[..],true);}
+  }
+  extra:=p.values[10];if extra!="" {from:=0;index:=0;for k:0..<extra.count+1 {if k==extra.count || extra[k]==',' {number:=pct_whole(extra[from..<k]);if !number.valid || number.value< -2147483648 || number.value>2147483647 {return false;}ready:=[3]f64.[state,cast(f64)index+(ifx pack_used then 4.0 else 0.0),cast(f64)number.value];delivered:=pc_get(c,s,"coaxial_asset_ready",ready[..],false);index+=1;from=k+1;}}}
+  if s[0].failed {return false;}print("realm-run: % entries in the pack (% layers), % floats a vertex, % uniforms\n",entries,layers,s[0].stride,s[0].uniforms);
+  if p.values[11]!="" && s[0].hash_available {
+    empty:[]f64;cap:=pc_get(c,s,"coaxial_inbox_cap",empty,true);pointer:=pc_get(c,s,"coaxial_inbox",one[..],true);if !pc_count(p.values[11].count,cap) || !pct_write_all(c,s,pointer,p.values[11]) {return false;}
+    args:=[2]f64.[state,cast(f64)p.values[11].count];delivered:=pc_get(c,s,"coaxial_hash",args[..],true);pc_after(c,s);
+  }return !s[0].failed;
+}
+pcf_dump :: (c:[]Cdp,s:[]PcSession,p:PctOptions,capture:[]PctCapture,work:string,pack:[]u8,paths:[][4096]u8,path_n:[]int,files:[]PctFiles)->bool {
+  row:=capture[0].frames[capture[0].frame_count-1];state:=[1]f64.[cast(f64)s[0].arena.base];draws:=row[2];pointer:=ifx draws>0 then pc_get(c,s,"coaxial_draws",state[..],true) else 0;
+  if s[0].failed || !pct_binary(c,s,work,"u.bin",s[0].arena.uniforms,s[0].uniforms*4,files) || !pct_binary(c,s,work,"hud.bin",s[0].arena.vertices,row[1]*s[0].stride*4,files) || !pct_binary(c,s,work,"draws.bin",pointer,draws*16,files) {return false;}
+  counts:[4096]u8;o:[1]Jo;jo_start(o[..],counts[..]);for value,k:[9]int.[row[2],row[3],row[4],row[5],row[1],s[0].stride,row[6],row[7],row[8]] {if k>0 {jo_put(o[..]," ");}jo_int(o[..],value);}jo_put(o[..],"\n");if o[0].bad || !rto_saved(work,"draws.txt",jo_text(o[..])) {return false;}
+  list:[65536]u8;lo:[1]Jo;jo_start(lo[..],list[..]);image:=0;have_vertices:=false;have_index:=false;
+  for k:0..<pc_pack_count(pack) {
+    e:=pc_pack_entry(pack,k);name_buf:[128]u8;name:="";if e.kind==2 && !have_vertices {name="vertices.bin";have_vertices=true;}if e.kind==3 && !have_index {name="index.bin";have_index=true;}if e.kind==4 {name=pct_name("layer-",image,".img",name_buf[..]);jo_put(lo[..],name);jo_put(lo[..],"\n");image+=1;}
+    if name!="" {file:[4096]u8;if !fs_write(fs_join(work,name,file[..]),cast(string)pack[e.begin..<e.begin+e.bytes]) || !pct_saved_file(files,work,name) {return false;}}
+  }
+  for index,k:[3]int.[14,15,16] {if p.values[index]!="" {names:=[3]string.["index.bin","vertices.bin","mesh.bin"];source:=cast(string)paths[index][0..<path_n[index]];if !pct_copy(source,work,names[k],files) {return false;}}}
+  if lo[0].bad || !rto_saved(work,"layers.bin.list",jo_text(lo[..])) {return false;}return true;
+}
+pcf_metadata :: (p:PctOptions,s:PcSession,capture:[]PctCapture,work:string,wasm:string,wasm_bytes:int,wasm_hash:string,paths:[][4096]u8,path_n:[]int,files:[]PctFiles,inputs:[]RtqInputs)->bool {
+  bytes:[8388608]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.render.producer-capture.v1");jo_key(o[..],"status");jo_str(o[..],"captured-unadmitted");jo_key(o[..],"wasm");jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],wasm);jo_key(o[..],"bytes");jo_int(o[..],wasm_bytes);jo_key(o[..],"sha256");jo_str(o[..],wasm_hash);jo_end(o[..]);
+  hash:[64]u8;if !rtq_hash_file(PCF_DRIVER,hash[..]) {return false;}jo_key(o[..],"tool");jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],PCF_DRIVER);jo_key(o[..],"sha256");jo_str(o[..],cast(string)hash[..]);jo_end(o[..]);
+  names:=[18]string.["dump","frames","every","size","scale","clock","page","pack","facts","fact","extra","hash","keys","pointer","index","vertices","mesh","golden"];jo_key(o[..],"options");jo_obj(o[..]);for k:0..<18 {if p.seen[k] {jo_key(o[..],names[k]);jo_str(o[..],p.values[k]);}}jo_end(o[..]);
+  jo_key(o[..],"inputs");jo_obj(o[..]);for index:[5]int.[7,8,14,15,16] {if p.values[index]!="" {path:=cast(string)paths[index][0..<path_n[index]];if !rtq_hash_file(path,hash[..]) {return false;}jo_key(o[..],names[index]);jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],p.values[index]);jo_key(o[..],"bytes");jo_int(o[..],fs_size(path));jo_key(o[..],"sha256");jo_str(o[..],cast(string)hash[..]);jo_end(o[..]);}}jo_end(o[..]);
+  jo_key(o[..],"counts");pct_frame_json(o[..],capture[0].frames[capture[0].frame_count-1][..]);jo_key(o[..],"frames");jo_arr(o[..]);for k:0..<capture[0].frame_count {pct_frame_json(o[..],capture[0].frames[k][..]);}jo_end(o[..]);
+  jo_key(o[..],"stores");jo_arr(o[..]);for k:0..<capture[0].store_count {pct_store_json(o[..],capture[0].stores[k],k,false);}jo_end(o[..]);jo_key(o[..],"particles");pct_store_json(o[..],capture[0].puffs[0],0,true);
+  jo_key(o[..],"uniform_floats");jo_int(o[..],s.uniforms);jo_key(o[..],"vertex_stride");jo_int(o[..],s.stride);jo_key(o[..],"max_vertices");jo_int(o[..],s.max_vertices);jo_key(o[..],"memory_bytes");jo_int(o[..],s.memory);jo_key(o[..],"files");pct_files_json(o[..],files);
+  jo_key(o[..],"source_inputs");rtq_inputs_json(o[..],inputs[..],".");jo_end(o[..]);return !o[0].bad && rto_saved(work,"capture.json",jo_text(o[..]));
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}child:=rto_child(a[..]);if child>=0 {return child;}p:=pct_options(a[..]);if !p.valid {tool_errln("usage: capture-render-frame PRODUCER.wasm [--dump NEW_DIR] [--frames1..600 --every N --size WxH --scale S --clock I64 --page I32 --golden --pack FILE --facts FILE --fact K=V --extra N,... --hash TEXT --keys FRAME:KEY:DOWN,... --pointer FRAME:X:Y,... --index FILE --vertices FILE --mesh FILE]");return 2;}
+  wasm_buf:[4096]u8;wasm:=fs_realpath(args_at(a[..],0),wasm_buf[..]);if wasm=="" {return 2;}bytes:[67108864]u8;wn:=fs_size(wasm);if wn<8 || wn>bytes.count || fs_read_at(wasm,0,bytes[0..<wn])!=wn {return 2;}description:=gm_describe(bytes[0..<wn]);wasm_hash:[64]u8;if !description.valid || description.maximum!=1024 || !S_hex(S_hash(cast(string)bytes[0..<wn]),wasm_hash[..]) {return 2;}
+  work_buf:[4096]u8;temporary_buf:[4096]u8;work:="";temporary:=p.values[0]=="";if temporary {created:=fs_temp("aethyr-producer-capture-",temporary_buf[..]);if created!="" {work=fs_realpath(created,work_buf[..]);}}else {if fs_exists(p.values[0]) || !fs_mkdir(p.values[0]) {return 2;}work=fs_realpath(p.values[0],work_buf[..]);}if work=="" {return 2;}
+  deadline:=proc_now_ms()+750000;compiler_buf:[4096]u8;compiler:=proc_getenv("COAX",compiler_buf[..]);if compiler=="" {compiler="coax/bin/coax";}inputs:[1]RtqInputs;paths:[18][4096]u8;path_n:[18]int;
+  for index:[5]int.[7,8,14,15,16] {if p.values[index]!="" {path:=fs_realpath(p.values[index],paths[index][..]);path_n[index]=path.count;if path=="" || !pcf_input(inputs[..],path) {return 2;}}}
+  if !pcf_input(inputs[..],wasm) || !pcf_input(inputs[..],compiler) || !pcf_input(inputs[..],PCF_EFFECTS) || !pcf_input(inputs[..],"coax/web/tool.sh") || !rtq_deps(inputs[..],compiler,PCF_DRIVER,deadline,work,"tool-dependencies") || !rtq_deps(inputs[..],compiler,"coax/lib/crypto/entropy.coax",deadline,work,"entropy-dependencies") {return 2;}
+  for name:[7]string.["tool-native","process-native","store-file-native","read-file-native","socket-native","entropy-native","entropy-foreign"] {for ext:[2]string.[".c",".h"] {text:[4096]u8;o:[1]Jo;jo_start(o[..],text[..]);jo_put(o[..],"coax/platform/");jo_put(o[..],name);jo_put(o[..],ext);if !pcf_input(inputs[..],jo_text(o[..])) {return 2;}}}
+  self:[4096]u8;image:=gp_self(self[..]);chrome:[4096]u8;chrome_path:=cdp_chrome(chrome[..]);if !pcf_input(inputs[..],image) || !pcf_input(inputs[..],chrome_path) || !pcf_config(work,wasm) {return 2;}
+  pack:[67108864]u8;pack_n:=32;if p.values[7]!="" {path:=cast(string)paths[7][0..<path_n[7]];pack_n=fs_size(path);if pack_n<0 || pack_n>pack.count || fs_read_at(path,0,pack[0..<pack_n])!=pack_n {return 2;}}if pc_pack_count(pack[0..<pack_n])<0 {return 2;}
+  facts:[67108864]u8;fo:[1]Jo;jo_start(fo[..],facts[..]);if p.values[8]!="" {path:=cast(string)paths[8][0..<path_n[8]];n:=fs_size(path);if n<0 || n>bytes.count || fs_read_at(path,0,bytes[0..<n])!=n {return 2;}decoded:=pft_write(cast(string)bytes[0..<n],facts[..]);if decoded<0 {return 2;}while decoded>0 && facts[decoded-1]=='\n' {decoded-=1;}fo[0].n=decoded;if p.values[9]!="" {jo_put(fo[..],"\n");jo_put(fo[..],p.values[9]);}if fo[0].bad {return 2;}}
+  port_file:[4096]u8;config_path:[4096]u8;ledger_path:[4096]u8;config:=fs_join(work,"origin-config.json",config_path[..]);portname:=fs_join(work,"origin-port",port_file[..]);ledger:=fs_join(work,"origin",ledger_path[..]);if !pcf_input(inputs[..],config) {return 2;}server:=rto_start(portname,config,ledger);if server<0 {return 1;}
+  port_text:[32]u8;pn:=-1;for attempt:0..<100 {pn=fs_read(portname,port_text[..]);if pn>0 {break;}proc_sleep(50);}port:=ifx pn>0 then args_whole(cast(string)port_text[0..<pn]) else -1;
+  c:[1]Cdp;s:[1]PcSession;s[0].deadline=deadline;capture:[1]PctCapture;files:[1]PctFiles;browser:[65536]u8;bn:=-1;glue:[65536]u8;gn:=fs_read(PCF_EFFECTS,glue[..]);okay:=false;
+  if port>0 && gn>0 {url:[128]u8;o:[1]Jo;jo_start(o[..],url[..]);jo_put(o[..],"http://127.0.0.1:");jo_int(o[..],port);jo_put(o[..],"/");bn=wp_open(c[..],jo_text(o[..]),cast(string)glue[0..<gn],browser[..]);if bn>0 {okay=pc_open(c[..],s[..],description,wn,cast(string)wasm_hash[..],p.clock) && pcf_setup(c[..],s[..],p,pack[0..<pack_n],p.values[7]!="",jo_text(fo[..])) && pct_frames(c[..],s[..],p,capture[..],work,files[..]) && (temporary || pcf_dump(c[..],s[..],p,capture[..],work,pack[0..<pack_n],paths[..],path_n[..],files[..]));}}
+  last_saved:=rto_saved(work,"last-sdk-response.json",cast(string)c[0].msg[0..<c[0].msg_n]);cdp_close(c[..]);finalized:=port>0 && rto_finalize(port);status:=proc_wait(server,5000);if status==PROC_RUNNING {killed:=proc_kill(server,PROC_SIGKILL);status=proc_wait(server,5000);}released:=proc_release(server);
+  okay=okay && last_saved && finalized && status==0 && rto_add_inputs(ledger,inputs[..]) && rtq_inputs_match(inputs[..]) && !s[0].failed;
+  if okay && !temporary {okay=pcf_metadata(p,s[0],capture[..],work,args_at(a[..],0),wn,cast(string)wasm_hash[..],paths[..],path_n[..],files[..],inputs[..]);}
+  if temporary {removed:=fs_remove(work);okay=okay && removed;}if !okay {tool_errln("strict producer capture refused; see owned output and origin/SDK records");}return ifx okay then 0 else 1;
+}

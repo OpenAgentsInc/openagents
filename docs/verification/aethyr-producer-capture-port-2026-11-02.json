@@ -1,0 +1,56 @@
+{
+  "schema": "aethyr.producer-capture-port.v1",
+  "status": "port_qualified_final_chapter_gates_pending",
+  "entry": "aethyr/tests/capture-render-frame.coax",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_scope": "Explicit older qualified observer compiler, not a current-main compiler claim.",
+  "reference_sha256": "d9d93aa4a72c62e16056d3ec3e30cb51eb4383948c151dd0899c4da78f67d07b",
+  "archive": {
+    "path": "docs/verification/data/aethyr-ch11-2026-11-02/producer-capture-port/artifacts-and-reference.tar.gz",
+    "bytes": 1439316,
+    "sha256": "b894c630b3d38e211a5d96684d205954def238beb28337971af7f9d18e03e460",
+    "complete_extraction_directory_diff_exit": 0
+  },
+  "epochs": [
+    {
+      "name": "joined-grid",
+      "observer_sha256": "d0c297b3dc1ba04716b5599ea1a2de968b5dd9b6ca316da0f5ff5f40bf2185a5",
+      "raw_artifacts_equal": true,
+      "raw_bytes": 1068064,
+      "product_metadata_equal": true,
+      "scope": "Existing Grid Wasm, two frames, 32x24; observer parity only. No repeated GPU gate. Complete actual source closure and executable retained."
+    },
+    {
+      "name": "tiny-producer-fixtures",
+      "record": "docs/verification/aethyr-producer-capture-fixtures-2026-11-02.json",
+      "cases": 21,
+      "scope": "Eleven dumped positive cases, two count-only cases and eight expected refusals across explicitly retained reviewed and canonical-temporary-path source epochs."
+    },
+    {
+      "name": "text-and-clock-extensions",
+      "observer_sha256": "2d1674954a89cc1489cfc0332d1b16029361e3d1eb9e1cb38982d8ad3eec35a0",
+      "fixture_wasm_sha256": "94bf1f9056baa2ff5a588a014e37938072113935b3248b961f381186b02e8911",
+      "cases": [21, 22],
+      "old_and_new_exit": 0,
+      "raw_and_product_metadata_equal": true,
+      "source_fence_unchanged": true,
+      "complete_source_copy_checksum_diff_empty": true,
+      "scope": "Malformed UTF-8 facts including valid BOM/NUL, invalid sequences, CR and trailing LF; then -09223372036854775808 clock. Same existing fixture Wasm; no product emission or GPU execution."
+    }
+  ],
+  "policy_checks": {
+    "session_root_mutants": {"killed": 211, "survived": 0},
+    "final_tool_policy_root_mutants": {"killed": 256, "survived": 0},
+    "parity_root_mutants": {"killed": 89, "survived": 0},
+    "utf8_root_mutants": {"killed": 118, "survived": 0},
+    "utf8_independent_oracle_record": "docs/verification/aethyr-producer-capture-fixtures-2026-11-02.json",
+    "scope": "Each result applies to its recorded source closure. The final clock test first exposed rejection of a leading-zero minimum integer; its red and final zero-survivor log are retained. Earlier passing policies were not rerun unchanged."
+  },
+  "limits": {"wasm_and_file_bytes": 67108864, "frames": 600, "viewport_dimension": 8192},
+  "limitations": [
+    "Captured producer bytes remain unadmitted until the shared renderer admits them.",
+    "The first exploratory Grid observer image lacked a complete recovered source closure and is not acceptance evidence.",
+    "The fixture driver later gained an explicit archived reference-source path; that transport-only argument addition does not rerun any producer or numerical result.",
+    "Current-main compiler qualification and final chapter-wide CPU/WebGPU/Vulkan checks remain separate gates."
+  ]
+}

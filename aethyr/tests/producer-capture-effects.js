@@ -24,7 +24,11 @@
             };
           }
           instance = await WebAssembly.instantiate(module, imports);
-          return {memory_bytes: memory.buffer.byteLength, exports: WebAssembly.Module.exports(module), heap_base: Number(instance.exports.__heap_base?.value ?? 0)};
+          return {memory_bytes: memory.buffer.byteLength, exports: WebAssembly.Module.exports(module)};
+        }
+        case "global": {
+          const value = instance.exports[request.name];
+          return {defined: value instanceof WebAssembly.Global, value: raw(value?.value ?? 0), memory_bytes: memory.buffer.byteLength};
         }
         case "call": {
           const fn = instance.exports[request.name];
@@ -33,7 +37,8 @@
             view.setUint32(0, low, true); view.setUint32(4, high, true);
             return view.getFloat64(0, true);
           });
-          return {defined: typeof fn === "function", value: typeof fn === "function" ? raw(fn(...args)) ?? null : null};
+          const value = typeof fn === "function" ? fn(...args) : undefined;
+          return {defined: typeof fn === "function", value: raw(value) ?? null, text: value === undefined ? null : String(value)};
         }
         case "grow": {
           const before = memory.buffer.byteLength;
