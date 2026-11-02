@@ -1,0 +1,9 @@
+// Chapter 213's long comparisons with the brute-force models, kept out of
+// the gate's own checks so that the examples, which run those checks, stay
+// fast. psionic/check.sh runs it beside harness/consent.
+#load "../lib/harness/consent.coax";
+
+#forall "labels agree with the taint model on 400 random graphs" seed: 12..<412 #steps 2000000000 { ct_graphs(seed); }
+#forall "the gate agrees with the consent model on 120 random sessions" seed: 8..<128 #steps 4000000000 {
+  tally: [17] int; ct_random(seed, tally[..]);
+}

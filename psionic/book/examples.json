@@ -2631,6 +2631,26 @@
       ]
     },
     {
+      "source": "psionic/examples/consent.coax",
+      "chapter": "psionic/book/ch213-consent-before-sharing.md",
+      "stdout": "psionic/fixtures/consent/consent.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/consent-refuse.coax",
+      "chapter": "psionic/book/ch213-consent-before-sharing.md",
+      "stdout": "psionic/fixtures/consent/consent-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/candidates.coax",
       "chapter": "psionic/book/ch212-generate-candidates-then-check-them.md",
       "stdout": "psionic/fixtures/candidates.out",

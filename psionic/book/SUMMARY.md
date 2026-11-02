@@ -233,7 +233,7 @@
 - [210. Speak the protocols](ch210-speak-the-protocols.md) — partly implemented
 - [211. Measure the harness](ch211-measure-the-harness.md) — design draft
 - [212. Generate candidates, then check them](ch212-generate-candidates-then-check-them.md) — partly implemented
-- [213. Consent before sharing](ch213-consent-before-sharing.md) — design draft
+- [213. Consent before sharing](ch213-consent-before-sharing.md) — partly implemented
 - [214. Remember a fact, then revise it](ch214-remember-a-fact-then-revise-it.md) — partly implemented
 
 - [215. Fit our own calibration, and refuse a stale one](ch215-fit-our-own-calibration.md)
@@ -282,7 +282,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–57, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200–204, 206, 207, 210, 212, 214–237, 239–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–57, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200–204, 206, 207, 210, 212–237, 239–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

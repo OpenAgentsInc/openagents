@@ -1,0 +1,319 @@
+// Chapter 213: consent before sharing. No session bytes leave the harness
+// (to a remote tool, another agent, a mesh peer or a training-row export)
+// unless the person recorded a grant that covers them. Every piece of
+// session content is a node of a graph with a label: the classes of data it
+// carries (typed in the session, a fact about the user, project files and
+// facts, a tool's output, who someone is). A source node gets its label
+// from where it came from; a derived node carries its own label and every
+// parent's. An outbound message is a list of nodes; its label is theirs.
+// A grant names a destination, a purpose, the classes it covers, a window
+// of ticks and the person who gave it. A send goes out only when the grants
+// active at its tick for its destination and purpose cover every class of
+// its label; otherwise it is refused with a reason, and the caller may ask
+// for the covered parts alone or a copy with the rest withheld. Grants,
+// revocations, sends and refusals are events in a hash chain, logged
+// before any byte reaches the sink. A revocation stops later sends and
+// records how many messages and bytes already went out under the grant;
+// it does not pretend to recall them. Nothing grants consent but cs_grant.
+// Profile cs-consent-v1: five data classes, SHA-256 over little-endian u64
+// fields, one in-process ledger and sink of caller-owned storage, ticks are
+// caller integers that never go back.
+#authority;
+#load "../../../coax/lib/crypto/sha256.coax";
+#load "../../tests/harness-consent-checks.coax";
+
+// book:begin types
+// The classes of data, one bit each in a label: session (typed in the
+// session), user (a fact about the user), project (project files and
+// facts), tool (a tool's output), identity (ids and keys).
+CsClass :: enum u8 { session; user; project; tool; identity; }
+CS_CLASSES :: 5;
+CS_ALL :: 31;
+// Where bytes go, and why.
+CsKind :: enum u8 { tool; agent; peer; export; }
+CsPurpose :: enum u8 { call; delegate; compute; train; }
+CsDest :: struct { kind: CsKind; id: int; purpose: CsPurpose; }
+CsOp :: enum u8 { grant; revoke; send; refuse; }
+// ok, then a send's refusals (none: no grant for the destination and
+// purpose; classes: grants exist but none covers a class; early, expired,
+// revoked: the covering grant is not active), then refused calls and
+// refused logs.
+CsWhy :: enum u8 { ok; none; classes; early; expired; revoked; shape; capacity; unknown; person; twice; tick; sequence; link; digest; uncovered; replay; }
+// The session graph: node i holds texts[i], its source's classes own[i]
+// and its label labels[i].
+CsGraph :: struct { texts: [] string; own: [] int; labels: [] int; count: int; }
+CsMessage :: struct { dest: CsDest; parts: [] int; }
+// A grant, folded from the event that recorded it. sends and bytes count
+// what went out under it; at is the tick it was revoked.
+CsGrant :: struct { event: int; dest: CsDest; classes: int; start: int; until: int; person: int; revoked: bool; at: int; sends: int; bytes: int; }
+// One logged event. grant: the grant made or revoked, or the first active
+// grant for a send's destination (-1 when none). classes: a grant's
+// classes, or a message's label. cover, for a send or a refusal: per
+// class, the grant that covers it (-1 when none or not in the label). sends and bytes: what a revoked
+// grant had already carried, or a message's byte count. content: SHA-256
+// of a message's bytes. digest covers every field and previous.
+CsEvent :: struct { sequence: int; op: CsOp; tick: int; dest: CsDest; classes: int; start: int; until: int; person: int; grant: int; why: CsWhy; cover: [5] int; sends: int; bytes: int; content: [32] u8; previous: [32] u8; digest: [32] u8; }
+CsLedger :: struct { events: [] CsEvent; grants: [] CsGrant; count: int; granted: int; }
+// What reached the outside: each message's bytes end at ends[i], and
+// events[i] is the send event that let it out.
+CsSink :: struct { bytes: [] u8; ends: [] int; events: [] int; count: int; used: int; }
+// A send's decision. missing: classes of the label no active grant covers.
+CsDecision :: struct { why: CsWhy; labels: int; missing: int; first: int; cover: [5] int; }
+CsCheck :: struct { why: CsWhy; index: int; }
+// book:end types
+CS_WITHHELD :: "[withheld]";
+
+// book:begin label
+// Add a node: its label is its own classes and every parent's label.
+// Returns its index, or -1 when the classes or a parent are not valid or
+// the graph is full.
+cs_node :: (g: [] CsGraph, text: string, own: int, parents: [] int) -> int {
+  n := g[0].count;
+  if own < 0 || own > CS_ALL || n == g[0].texts.count { return -1; }
+  label := own;
+  for p: parents {
+    if p < 0 || p >= n { return -1; }
+    label = label | g[0].labels[p];
+  }
+  g[0].texts[n] = text; g[0].own[n] = own; g[0].labels[n] = label; g[0].count = n + 1;
+  return n;
+}
+// A message's label: every part's label.
+cs_label :: (g: CsGraph, parts: [] int) -> int {
+  label := 0;
+  for p: parts { label = label | g.labels[p]; }
+  return label;
+}
+// book:end label
+
+// book:begin encode
+cs_u64 :: (b: [] u8, at: int, x: int) -> int {
+  v := cast,trunc(u64) x;
+  for i: 0..<8 { b[at + i] = cast(u8) (v & 255); v = v >> 8; }
+  return at + 8;
+}
+cs_feed :: (state: [] u8, s: string) {
+  buf: [64] u8; at := 0;
+  while at < s.count {
+    n := 0;
+    while n < buf.count && at + n < s.count { buf[n] = s[at + n]; n += 1; }
+    r := sha256_update_checked(state, buf[0..<n], false);
+    at += n;
+  }
+}
+// SHA-256 of a message's bytes: its parts' texts in order.
+cs_content :: (g: CsGraph, parts: [] int) -> [32] u8 {
+  s: [112] u8; out: [32] u8;
+  r := sha256_init(s[..]);
+  for p: parts { cs_feed(s[..], g.texts[p]); }
+  r = sha256_final_checked(s[..], out[..], false);
+  return out;
+}
+cs_digest :: (e: CsEvent) -> [32] u8 {
+  b: [216] u8; s: [112] u8; out: [32] u8;
+  for i: 0..<32 { b[i] = e.content[i]; b[32 + i] = e.previous[i]; }
+  f := [19] int.[e.sequence, cast(int) e.op, e.tick, cast(int) e.dest.kind, e.dest.id, cast(int) e.dest.purpose, e.classes, e.start, e.until, e.person, e.grant, cast(int) e.why, e.cover[0], e.cover[1], e.cover[2], e.cover[3], e.cover[4], e.sends, e.bytes];
+  at := 64;
+  for x: f { at = cs_u64(b[..], at, x); }
+  r := sha256_init(s[..]);
+  r = sha256_update_checked(s[..], b[..], false);
+  r = sha256_final_checked(s[..], out[..], false);
+  return out;
+}
+cs_same :: (a: [32] u8, b: [32] u8) -> bool {
+  for i: 0..<32 { if a[i] != b[i] { return false; } }
+  return true;
+}
+// book:end encode
+
+// book:begin decide
+cs_to :: (g: CsGrant, d: CsDest) -> bool { return g.dest.kind == d.kind && g.dest.id == d.id && g.dest.purpose == d.purpose; }
+cs_active :: (g: CsGrant, d: CsDest, now: int) -> bool { return cs_to(g, d) && !g.revoked && g.start <= now && now < g.until; }
+// May a message with this label go to d at tick now? Each class of the
+// label needs an active grant for d that covers it, and even an empty
+// label needs one active grant for d. A refusal names the strongest reason
+// among d's grants that could have covered the missing classes: revoked,
+// then expired, then early; classes when d has grants but none of them
+// could; none when d has no grant at all.
+cs_decide :: (l: CsLedger, d: CsDest, labels: int, now: int) -> CsDecision {
+  r := CsDecision.{why = CsWhy.none, labels = labels, first = -1};
+  for c: 0..<CS_CLASSES { r.cover[c] = -1; }
+  for g, i: l.grants[0..<l.granted] {
+    if !cs_active(g, d, now) { continue; }
+    if r.first < 0 { r.first = i; }
+    for c: 0..<CS_CLASSES { if r.cover[c] < 0 && (labels & g.classes & (1 << c)) != 0 { r.cover[c] = i; } }
+  }
+  for c: 0..<CS_CLASSES { if r.cover[c] < 0 { r.missing = r.missing | (labels & (1 << c)); } }
+  if r.first >= 0 && r.missing == 0 { r.why = CsWhy.ok; return r; }
+  // A grant for d that could have covered the missing classes is not
+  // active: it was revoked, is over, or has not started.
+  any := false; gone := false; over := false; soon := false;
+  for g: l.grants[0..<l.granted] {
+    if !cs_to(g, d) { continue; }
+    any = true;
+    if r.missing != 0 && (g.classes & r.missing) == 0 { continue; }
+    if g.revoked { gone = true; }
+    else if now >= g.until { over = true; }
+    else { soon = true; }
+  }
+  if gone { r.why = CsWhy.revoked; }
+  else if over { r.why = CsWhy.expired; }
+  else if soon { r.why = CsWhy.early; }
+  else if any { r.why = CsWhy.classes; }
+  return r;
+}
+// book:end decide
+
+// book:begin ledger
+// May one more event be logged at tick now?
+cs_room :: (l: CsLedger, now: int) -> CsWhy {
+  if l.count == l.events.count { return CsWhy.capacity; }
+  if l.count > 0 && now < l.events[l.count - 1].tick { return CsWhy.tick; }
+  return CsWhy.ok;
+}
+// Chain and append an event.
+cs_append :: (l: [] CsLedger, x: CsEvent) {
+  n := l[0].count; e := x;
+  e.sequence = n;
+  if n > 0 { e.previous = l[0].events[n - 1].digest; }
+  e.digest = cs_digest(e);
+  l[0].events[n] = e; l[0].count = n + 1;
+}
+// The only way consent is given: the person's explicit grant to one
+// destination and purpose, for some classes, at ticks start..<until.
+cs_grant :: (l: [] CsLedger, d: CsDest, classes: int, start: int, until: int, person: int, now: int) -> CsWhy {
+  if classes < 0 || classes > CS_ALL || d.id < 0 || person < 0 || until <= start || until <= now { return CsWhy.shape; }
+  w := cs_room(l[0], now);
+  if w == CsWhy.ok && l[0].granted == l[0].grants.count { w = CsWhy.capacity; }
+  if w != CsWhy.ok { return w; }
+  k := l[0].granted;
+  cs_append(l, CsEvent.{op = CsOp.grant, tick = now, dest = d, classes = classes, start = start, until = until, person = person, grant = k});
+  l[0].grants[k] = CsGrant.{event = l[0].count - 1, dest = d, classes = classes, start = start, until = until, person = person};
+  l[0].granted = k + 1;
+  return CsWhy.ok;
+}
+// Withdraw a grant. Only the person who gave it may; later sends under it
+// stop. The event records what it already carried: that stays sent.
+cs_revoke :: (l: [] CsLedger, grant: int, person: int, now: int) -> CsWhy {
+  if grant < 0 || grant >= l[0].granted { return CsWhy.unknown; }
+  g := l[0].grants[grant];
+  if person != g.person { return CsWhy.person; }
+  if g.revoked { return CsWhy.twice; }
+  w := cs_room(l[0], now);
+  if w != CsWhy.ok { return w; }
+  cs_append(l, CsEvent.{op = CsOp.revoke, tick = now, dest = g.dest, classes = g.classes, start = g.start, until = g.until, person = person, grant = grant, sends = g.sends, bytes = g.bytes});
+  l[0].grants[grant].revoked = true; l[0].grants[grant].at = now;
+  return CsWhy.ok;
+}
+// Log a decided message; a sent one counts once under every grant it used.
+cs_record :: (l: [] CsLedger, d: CsDest, r: CsDecision, bytes: int, content: [32] u8, now: int) {
+  e := CsEvent.{op = ifx r.why == CsWhy.ok then CsOp.send else CsOp.refuse, tick = now, dest = d, classes = r.labels, grant = r.first, why = r.why, cover = r.cover, bytes = bytes, content = content};
+  cs_append(l, e);
+  if r.why != CsWhy.ok { return; }
+  for i: 0..<l[0].granted {
+    used := i == r.first;
+    for c: r.cover { if c == i { used = true; } }
+    if used { l[0].grants[i].sends += 1; l[0].grants[i].bytes += bytes; }
+  }
+}
+// book:end ledger
+
+// book:begin send
+// A call refused before any decision: no grant, no cover.
+cs_fail :: (w: CsWhy) -> CsDecision {
+  r := CsDecision.{why = w, first = -1};
+  for c: 0..<CS_CLASSES { r.cover[c] = -1; }
+  return r;
+}
+// The gate. Decide, log the decision, and only then copy the bytes to the
+// sink. Nothing is logged for a malformed message or one that does not fit.
+cs_send :: (l: [] CsLedger, g: CsGraph, s: [] CsSink, m: CsMessage, now: int) -> CsDecision {
+  n := 0;
+  for p: m.parts {
+    if p < 0 || p >= g.count { return cs_fail(CsWhy.shape); }
+    n += g.texts[p].count;
+  }
+  if m.parts.count == 0 || m.dest.id < 0 { return cs_fail(CsWhy.shape); }
+  w := cs_room(l[0], now);
+  if w != CsWhy.ok { return cs_fail(w); }
+  r := cs_decide(l[0], m.dest, cs_label(g, m.parts), now);
+  if r.why == CsWhy.ok && (s[0].count == s[0].ends.count || n > s[0].bytes.count - s[0].used) { return cs_fail(CsWhy.capacity); }
+  cs_record(l, m.dest, r, n, cs_content(g, m.parts), now);
+  if r.why != CsWhy.ok { return r; }
+  at := s[0].used;
+  for p: m.parts { t := g.texts[p]; for i: 0..<t.count { s[0].bytes[at + i] = t[i]; } at += t.count; }
+  s[0].ends[s[0].count] = at; s[0].events[s[0].count] = l[0].count - 1;
+  s[0].count += 1; s[0].used = at;
+  return r;
+}
+// book:end send
+
+// book:begin offer
+// What could go instead: the parts whose labels the active grants for the
+// message's destination cover, in order, to out. None when no grant for
+// the destination is active. Returns their count, or -1 when out is too
+// small.
+cs_minimize :: (l: CsLedger, g: CsGraph, m: CsMessage, now: int, out: [] int) -> int {
+  r := cs_decide(l, m.dest, CS_ALL, now);
+  if r.first < 0 { return 0; }
+  k := 0;
+  for p: m.parts {
+    if (g.labels[p] & r.missing) != 0 { continue; }
+    if k == out.count { return -1; }
+    out[k] = p; k += 1;
+  }
+  return k;
+}
+// The message's bytes with every part that is not covered replaced by
+// [withheld], to out. Returns the byte count, or -1 when out is too small.
+// Its node, made with the kept parts as parents, has their label only.
+cs_redact :: (l: CsLedger, g: CsGraph, m: CsMessage, now: int, out: [] u8) -> int {
+  keep: [64] int;
+  k := cs_minimize(l, g, m, now, keep[..]);
+  if k < 0 { return -1; }
+  at := 0; j := 0;
+  for p: m.parts {
+    t := CS_WITHHELD;
+    if j < k && keep[j] == p { t = g.texts[p]; j += 1; }
+    if t.count > out.count - at { return -1; }
+    for i: 0..<t.count { out[at + i] = t[i]; }
+    at += t.count;
+  }
+  return at;
+}
+// book:end offer
+
+// book:begin replay
+// Check the chain alone: sequence, link and digest of every event.
+cs_verify :: (l: CsLedger) -> CsCheck {
+  previous: [32] u8;
+  for e, i: l.events[0..<l.count] {
+    if e.sequence != i { return CsCheck.{why = CsWhy.sequence, index = i}; }
+    if !cs_same(e.previous, previous) { return CsCheck.{why = CsWhy.link, index = i}; }
+    if !cs_same(e.digest, cs_digest(e)) { return CsCheck.{why = CsWhy.digest, index = i}; }
+    previous = e.digest;
+  }
+  return CsCheck.{why = CsWhy.ok, index = l.count};
+}
+// Rebuild a ledger from the log src alone, in the empty ledger to: verify the
+// chain, then redo every event and require the same event back. A send the
+// grants of its moment do not cover is uncovered, even in a chain that
+// verifies.
+cs_replay :: (src: CsLedger, to: [] CsLedger) -> CsCheck {
+  v := cs_verify(src);
+  if v.why != CsWhy.ok { return v; }
+  for e, i: src.events[0..<src.count] {
+    w := CsWhy.ok;
+    if e.op == CsOp.grant { w = cs_grant(to, e.dest, e.classes, e.start, e.until, e.person, e.tick); }
+    else if e.op == CsOp.revoke { w = cs_revoke(to, e.grant, e.person, e.tick); }
+    else {
+      w = cs_room(to[0], e.tick);
+      r := cs_decide(to[0], e.dest, e.classes, e.tick);
+      if w == CsWhy.ok && e.op == CsOp.send && r.why != CsWhy.ok { return CsCheck.{why = CsWhy.uncovered, index = i}; }
+      if w == CsWhy.ok { cs_record(to, e.dest, r, e.bytes, e.content, e.tick); }
+    }
+    if w != CsWhy.ok || !cs_same(to[0].events[i].digest, e.digest) { return CsCheck.{why = CsWhy.replay, index = i}; }
+  }
+  return v;
+}
+// book:end replay

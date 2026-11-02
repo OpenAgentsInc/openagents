@@ -1,0 +1,15 @@
+node with an unknown class bit (32): -1
+node whose parent does not exist yet: -1
+grant with an empty window: shape
+grant already over: shape
+grant from no person: shape
+revoke a grant never given: unknown
+send of no parts: shape
+send of a node that does not exist: shape
+events logged: 0
+grant at tick 6: ok, then a send at tick 5: tick
+a covered 38-byte send to a 37-byte sink: capacity, events logged: 1
+the redacted send's label edited: verify digest
+the linter's grant narrowed to session, chain rewritten: verify ok, replay uncovered at event 2
+the first refusal written as a send: replay uncovered at event 0
+the revocation claims one message already sent, not two: replay replay at event 9

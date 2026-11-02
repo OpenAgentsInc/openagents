@@ -1,0 +1,44 @@
+// Chapter 213's broken inputs: calls the gate refuses without logging
+// anything, and logs that verify or replay to a refusal. Each prints its
+// reason.
+#import "Basic";
+#load "../lib/harness/consent.coax";
+
+WHY :: [17] string.["ok", "none", "classes", "early", "expired", "revoked", "shape", "capacity", "unknown", "person", "twice", "tick", "sequence", "link", "digest", "uncovered", "replay"];
+name :: (w: CsWhy) -> string { n := WHY; return n[cast(int) w]; }
+check :: (c: CsCheck) -> string { if c.why == CsWhy.ok { return "ok"; } return name(c.why); }
+
+// book:begin refuse
+main :: () {
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])];
+  g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])]; s := [1] CsSink.[ct_sink(st.bytes[..], st.ends[..], st.sent[..])];
+  ct_session(g[..]); nb: [1] int; one := [1] int.[4]; far := [1] int.[9];
+  print("node with an unknown class bit (32): %\n", cs_node(g[..], "x", 32, nb[0..<0]));
+  print("node whose parent does not exist yet: %\n", cs_node(g[..], "x", 0, far[..]));
+  print("grant with an empty window: %\n", name(cs_grant(l[..], CT_LINT, CT_SESSION, 5, 5, 1, 2)));
+  print("grant already over: %\n", name(cs_grant(l[..], CT_LINT, CT_SESSION, 2, 4, 1, 4)));
+  print("grant from no person: %\n", name(cs_grant(l[..], CT_LINT, CT_SESSION, 2, 20, -1, 2)));
+  print("revoke a grant never given: %\n", name(cs_revoke(l[..], 0, 1, 2)));
+  print("send of no parts: %\n", name(cs_send(l[..], g[0], s[..], ct_message(CT_LINT, nb[0..<0]), 2).why));
+  print("send of a node that does not exist: %\n", name(cs_send(l[..], g[0], s[..], ct_message(CT_LINT, far[..]), 2).why));
+  print("events logged: %\n", l[0].count);
+  print("grant at tick 6: %, then a send at tick 5: %\n", name(cs_grant(l[..], CT_LINT, CT_SESSION | CT_PROJECT, 6, 20, 1, 6)), name(cs_send(l[..], g[0], s[..], ct_message(CT_LINT, one[..]), 5).why));
+  small := [1] CsSink.[ct_sink(st.bytes[0..<37], st.ends[..], st.sent[..])];
+  print("a covered 38-byte send to a 37-byte sink: %, events logged: %\n", name(cs_send(l[..], g[0], small[..], ct_message(CT_LINT, one[..]), 6).why), l[0].count);
+  // The hand trace in a new ledger, then its log edited after the fact.
+  st = CtStore.{}; l[0] = ct_open(st.events[..], st.grants[..]); g[0] = ct_graph(st.texts[..], st.own[..], st.labels[..]); s[0] = ct_sink(st.bytes[..], st.ends[..], st.sent[..]);
+  ct_session(g[..]); out: [24] CsWhy; n := ct_trace(l[..], g[..], s[..], st.redacted[..], out[..]);
+  e2 := st.events; f := CsLedger.{events = e2[..], grants = st.grants[..], count = l[0].count, granted = l[0].granted};
+  st2: CtStore; u := [1] CsLedger.[ct_open(st2.events[..], st2.grants[..])];
+  e2[4].classes = CT_SESSION; print("the redacted send's label edited: verify %\n", check(cs_verify(f)));
+  e2 = st.events; e2[1].classes = CT_SESSION; ct_rechain(f);
+  r := cs_replay(f, u[..]);
+  print("the linter's grant narrowed to session, chain rewritten: verify %, replay % at event %\n", check(cs_verify(f)), check(r), r.index);
+  e2 = st.events; e2[0].op = CsOp.send; ct_rechain(f); u[0] = ct_open(st2.events[..], st2.grants[..]);
+  r = cs_replay(f, u[..]);
+  print("the first refusal written as a send: replay % at event %\n", check(r), r.index);
+  e2 = st.events; e2[9].sends = 1; ct_rechain(f); u[0] = ct_open(st2.events[..], st2.grants[..]);
+  r = cs_replay(f, u[..]);
+  print("the revocation claims one message already sent, not two: replay % at event %\n", check(r), r.index);
+}
+// book:end refuse

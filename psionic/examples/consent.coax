@@ -1,0 +1,98 @@
+// Chapter 213: the hand trace. A session's content as labelled nodes; sends
+// to a remote linter, another agent, a mesh peer and a training-row export,
+// each refused until a grant covers it; a redacted copy offered and sent;
+// a revocation that records what already went out; then the log verified
+// and replayed.
+#import "Basic";
+#load "../lib/harness/consent.coax";
+
+WHY :: [17] string.["ok", "none", "classes", "early", "expired", "revoked", "shape", "capacity", "unknown", "person", "twice", "tick", "sequence", "link", "digest", "uncovered", "replay"];
+why_name :: (w: CsWhy) -> string { n := WHY; return n[cast(int) w]; }
+// A label as class names: session+project, or "-" when empty.
+class_names :: (label: int, out: [] u8) -> string {
+  names := [5] string.["session", "user", "project", "tool", "identity"]; at := 0;
+  for c: 0..<CS_CLASSES {
+    if (label >> c) % 2 == 0 { continue; }
+    if at > 0 { out[at] = '+'; at += 1; }
+    for i: 0..<names[c].count { out[at + i] = names[c][i]; }
+    at += names[c].count;
+  }
+  if at == 0 { return "-"; }
+  return cast(string) out[0..<at];
+}
+dest_name :: (d: CsDest) -> string {
+  if d.kind == CsKind.tool && d.purpose == CsPurpose.call { return "linter (tool 1, call)"; }
+  if d.kind == CsKind.tool { return "linter (tool 1, train)"; }
+  if d.kind == CsKind.agent { return "agent 2 (delegate)"; }
+  if d.kind == CsKind.peer { return "peer 3 (compute)"; }
+  return "export 4 (train)";
+}
+show_send :: (l: [] CsLedger, g: CsGraph, s: [] CsSink, d: CsDest, part: int, now: int) {
+  one := [1] int.[part]; x: [64] u8; y: [64] u8;
+  r := cs_send(l, g, s, ct_message(d, one[..]), now);
+  print("t%: send node % [%] to %: %", now, part, class_names(r.labels, x[..]), dest_name(d), why_name(r.why));
+  if r.why != CsWhy.ok { print(" (missing %)", class_names(r.missing, y[..])); }
+  print("\n");
+}
+show_grant :: (l: [] CsLedger, d: CsDest, c: int, start: int, until: int, now: int) {
+  x: [64] u8;
+  print("t%: person 1 grants % to %, ticks %..<%: %\n", now, class_names(c, x[..]), dest_name(d), start, until, why_name(cs_grant(l, d, c, start, until, 1, now)));
+}
+
+main :: () {
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])];
+  g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])]; s := [1] CsSink.[ct_sink(st.bytes[..], st.ends[..], st.sent[..])];
+  ct_session(g[..]); x: [64] u8; y: [64] u8;
+  print("session nodes:\n");
+  for i: 0..<g[0].count { print("  % \"%\" own % label %\n", i, g[0].texts[i], class_names(g[0].own[i], x[..]), class_names(g[0].labels[i], y[..])); }
+  show_send(l[..], g[0], s[..], CT_LINT, 4, 1);
+  show_grant(l[..], CT_LINT, CT_SESSION | CT_PROJECT, 2, 20, 2);
+  show_send(l[..], g[0], s[..], CT_LINT, 4, 3);
+  two := [2] int.[4, 2]; m := ct_message(CT_LINT, two[..]);
+  r := cs_send(l[..], g[0], s[..], m, 4);
+  print("t4: send nodes 4,2 [%] to %: % (missing %)\n", class_names(r.labels, x[..]), dest_name(CT_LINT), why_name(r.why), class_names(r.missing, y[..]));
+  keep: [4] int; k := cs_minimize(l[0], g[0], m, 4, keep[..]);
+  print("    minimized: % part(s), node %\n", k, keep[0]);
+  b := cs_redact(l[0], g[0], m, 4, st.redacted[..]);
+  n := cs_node(g[..], cast(string) st.redacted[0..<b], 0, keep[0..<k]);
+  print("    redacted: node % \"%\" label %\n", n, g[0].texts[n], class_names(g[0].labels[n], x[..]));
+  show_send(l[..], g[0], s[..], CT_LINT, n, 4);
+  show_send(l[..], g[0], s[..], CT_AGENT, 5, 5);
+  show_send(l[..], g[0], s[..], CT_LINT_TRAIN, 4, 5);
+  show_grant(l[..], CT_AGENT, CT_SESSION | CT_PROJECT | CT_TOOL, 6, 9, 6);
+  show_send(l[..], g[0], s[..], CT_AGENT, 5, 6);
+  print("t7: person 2 revokes grant 0: %\n", why_name(cs_revoke(l[..], 0, 2, 7)));
+  print("t7: person 1 revokes grant 0: %\n", why_name(cs_revoke(l[..], 0, 1, 7)));
+  e := st.events[l[0].count - 1];
+  print("    already sent under grant 0, not recalled: % messages, % bytes\n", e.sends, e.bytes);
+  show_send(l[..], g[0], s[..], CT_LINT, 4, 8);
+  print("t8: person 1 revokes grant 0 again: %\n", why_name(cs_revoke(l[..], 0, 1, 8)));
+  show_send(l[..], g[0], s[..], CT_AGENT, 5, 9);
+  show_grant(l[..], CT_PEER, CT_SESSION, 20, 30, 9);
+  show_send(l[..], g[0], s[..], CT_PEER, 0, 10);
+  show_grant(l[..], CT_EXPORT, CT_PROJECT, 10, 12, 10);
+  show_send(l[..], g[0], s[..], CT_EXPORT, 1, 10);
+  show_send(l[..], g[0], s[..], CT_EXPORT, 3, 11);
+  show_send(l[..], g[0], s[..], CT_EXPORT, 1, 12);
+  print("grants:\n");
+  for gr, i: st.grants[0..<l[0].granted] {
+    print("  % % to %, ticks %..<%, % sends, % bytes", i, class_names(gr.classes, x[..]), dest_name(gr.dest), gr.start, gr.until, gr.sends, gr.bytes);
+    if gr.revoked { print(", revoked at %", gr.at); }
+    print("\n");
+  }
+  print("sink: % messages, % bytes\n", s[0].count, s[0].used);
+  at := 0;
+  for i: 0..<s[0].count {
+    ev := st.events[s[0].events[i]];
+    print("  event % to %: \"%\"\n", s[0].events[i], dest_name(ev.dest), cast(string) st.bytes[at..<s[0].ends[i]]);
+    at = s[0].ends[i];
+  }
+  h: [64] u8;
+  v := cs_verify(l[0]);
+  print("verify: % after % events; head %\n", why_name(v.why), v.index, cast(string) ct_hex(st.events[l[0].count - 1].digest, h[..])[0..<16]);
+  st2: CtStore; u := [1] CsLedger.[ct_open(st2.events[..], st2.grants[..])];
+  v = cs_replay(l[0], u[..]);
+  same := true;
+  for i: 0..<l[0].granted { if !ct_same_grant(st.grants[i], st2.grants[i]) { same = false; } }
+  print("replay: %, % grants, same grants: %\n", why_name(v.why), u[0].granted, same);
+}

@@ -1,0 +1,42 @@
+session nodes:
+  0 "Fix the flaky test in parser.rs." own session label session
+  1 "fn parse(s: &str) -> Ast" own project label project
+  2 "editor = helix" own user label user
+  3 "owner npub1alice" own identity label identity
+  4 "Summary: parse() fails on empty input." own - label session+project
+  5 "lint: 2 warnings in parse()" own tool label session+project+tool
+t1: send node 4 [session+project] to linter (tool 1, call): none (missing session+project)
+t2: person 1 grants session+project to linter (tool 1, call), ticks 2..<20: ok
+t3: send node 4 [session+project] to linter (tool 1, call): ok
+t4: send nodes 4,2 [session+user+project] to linter (tool 1, call): classes (missing user)
+    minimized: 1 part(s), node 4
+    redacted: node 6 "Summary: parse() fails on empty input.[withheld]" label session+project
+t4: send node 6 [session+project] to linter (tool 1, call): ok
+t5: send node 5 [session+project+tool] to agent 2 (delegate): none (missing session+project+tool)
+t5: send node 4 [session+project] to linter (tool 1, train): none (missing session+project)
+t6: person 1 grants session+project+tool to agent 2 (delegate), ticks 6..<9: ok
+t6: send node 5 [session+project+tool] to agent 2 (delegate): ok
+t7: person 2 revokes grant 0: person
+t7: person 1 revokes grant 0: ok
+    already sent under grant 0, not recalled: 2 messages, 86 bytes
+t8: send node 4 [session+project] to linter (tool 1, call): revoked (missing session+project)
+t8: person 1 revokes grant 0 again: twice
+t9: send node 5 [session+project+tool] to agent 2 (delegate): expired (missing session+project+tool)
+t9: person 1 grants session to peer 3 (compute), ticks 20..<30: ok
+t10: send node 0 [session] to peer 3 (compute): early (missing session)
+t10: person 1 grants project to export 4 (train), ticks 10..<12: ok
+t10: send node 1 [project] to export 4 (train): ok
+t11: send node 3 [identity] to export 4 (train): classes (missing identity)
+t12: send node 1 [project] to export 4 (train): expired (missing project)
+grants:
+  0 session+project to linter (tool 1, call), ticks 2..<20, 2 sends, 86 bytes, revoked at 7
+  1 session+project+tool to agent 2 (delegate), ticks 6..<9, 1 sends, 27 bytes
+  2 session to peer 3 (compute), ticks 20..<30, 0 sends, 0 bytes
+  3 project to export 4 (train), ticks 10..<12, 1 sends, 24 bytes
+sink: 4 messages, 137 bytes
+  event 2 to linter (tool 1, call): "Summary: parse() fails on empty input."
+  event 4 to linter (tool 1, call): "Summary: parse() fails on empty input.[withheld]"
+  event 8 to agent 2 (delegate): "lint: 2 warnings in parse()"
+  event 15 to export 4 (train): "fn parse(s: &str) -> Ast"
+verify: ok after 18 events; head 159dffe01868dd3e
+replay: ok, 4 grants, same grants: true

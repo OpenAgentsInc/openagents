@@ -1,0 +1,434 @@
+// Chapter 213's checks, kept apart from psionic/lib/harness/consent.coax:
+// the hand trace (refuse, grant, send, minimize, redact, revoke, expire,
+// early, export), every refusal of a call, the encoding against digests
+// written outside Coax, forged logs, label propagation against a
+// brute-force taint model on random graphs, and the gate against a
+// brute-force consent model on random sessions. Nothing here is used by
+// the gate itself.
+
+// book:begin fixture
+// The hand trace's session: what the person typed, a project file, a fact
+// about the user from chapter 214's memory, the owner's key, a summary
+// written from the first two, and a remote linter's reply to the summary.
+CT_TEXTS :: [6] string.["Fix the flaky test in parser.rs.", "fn parse(s: &str) -> Ast", "editor = helix", "owner npub1alice", "Summary: parse() fails on empty input.", "lint: 2 warnings in parse()"];
+CT_SESSION :: 1; CT_USER :: 2; CT_PROJECT :: 4; CT_TOOL :: 8; CT_IDENTITY :: 16;
+CT_LINT :: CsDest.{kind = CsKind.tool, id = 1, purpose = CsPurpose.call};
+CT_LINT_TRAIN :: CsDest.{kind = CsKind.tool, id = 1, purpose = CsPurpose.train};
+CT_AGENT :: CsDest.{kind = CsKind.agent, id = 2, purpose = CsPurpose.delegate};
+CT_PEER :: CsDest.{kind = CsKind.peer, id = 3, purpose = CsPurpose.compute};
+CT_EXPORT :: CsDest.{kind = CsKind.export, id = 4, purpose = CsPurpose.train};
+// book:end fixture
+ct_session :: (g: [] CsGraph) {
+  t := CT_TEXTS; nb: [1] int; p := [2] int.[0, 1]; q := [1] int.[4];
+  a := cs_node(g, t[0], CT_SESSION, nb[0..<0]); a = cs_node(g, t[1], CT_PROJECT, nb[0..<0]);
+  a = cs_node(g, t[2], CT_USER, nb[0..<0]); a = cs_node(g, t[3], CT_IDENTITY, nb[0..<0]);
+  a = cs_node(g, t[4], 0, p[..]); a = cs_node(g, t[5], CT_TOOL, q[..]);
+}
+ct_message :: (d: CsDest, parts: [] int) -> CsMessage { return CsMessage.{dest = d, parts = parts}; }
+CtStore :: struct { events: [64] CsEvent; grants: [16] CsGrant; texts: [16] string; own: [16] int; labels: [16] int; bytes: [512] u8; ends: [16] int; sent: [16] int; redacted: [128] u8; }
+ct_open :: (ev: [] CsEvent, gr: [] CsGrant) -> CsLedger { return CsLedger.{events = ev, grants = gr}; }
+ct_graph :: (t: [] string, o: [] int, lb: [] int) -> CsGraph { return CsGraph.{texts = t, own = o, labels = lb}; }
+ct_sink :: (b: [] u8, e: [] int, s: [] int) -> CsSink { return CsSink.{bytes = b, ends = e, events = s}; }
+
+// The hand trace, as the chapter traces it and the example prints it. The
+// decisions go to out, in order; returns their count.
+ct_trace :: (l: [] CsLedger, g: [] CsGraph, s: [] CsSink, red: [] u8, out: [] CsWhy) -> int {
+  n := 0; one: [1] int; two: [2] int; keep: [4] int;
+  one[0] = 4; out[n] = cs_send(l, g[0], s, ct_message(CT_LINT, one[..]), 1).why; n += 1;
+  out[n] = cs_grant(l, CT_LINT, CT_SESSION | CT_PROJECT, 2, 20, 1, 2); n += 1;
+  out[n] = cs_send(l, g[0], s, ct_message(CT_LINT, one[..]), 3).why; n += 1;
+  two[0] = 4; two[1] = 2; out[n] = cs_send(l, g[0], s, ct_message(CT_LINT, two[..]), 4).why; n += 1;
+  k := cs_redact(l[0], g[0], ct_message(CT_LINT, two[..]), 4, red);
+  one[0] = cs_node(g, cast(string) red[0..<k], 0, keep[0..<cs_minimize(l[0], g[0], ct_message(CT_LINT, two[..]), 4, keep[..])]);
+  out[n] = cs_send(l, g[0], s, ct_message(CT_LINT, one[..]), 4).why; n += 1;
+  one[0] = 5; out[n] = cs_send(l, g[0], s, ct_message(CT_AGENT, one[..]), 5).why; n += 1;
+  one[0] = 4; out[n] = cs_send(l, g[0], s, ct_message(CT_LINT_TRAIN, one[..]), 5).why; n += 1;
+  out[n] = cs_grant(l, CT_AGENT, CT_SESSION | CT_PROJECT | CT_TOOL, 6, 9, 1, 6); n += 1;
+  one[0] = 5; out[n] = cs_send(l, g[0], s, ct_message(CT_AGENT, one[..]), 6).why; n += 1;
+  out[n] = cs_revoke(l, 0, 2, 7); n += 1;
+  out[n] = cs_revoke(l, 0, 1, 7); n += 1;
+  one[0] = 4; out[n] = cs_send(l, g[0], s, ct_message(CT_LINT, one[..]), 8).why; n += 1;
+  out[n] = cs_revoke(l, 0, 1, 8); n += 1;
+  one[0] = 5; out[n] = cs_send(l, g[0], s, ct_message(CT_AGENT, one[..]), 9).why; n += 1;
+  out[n] = cs_grant(l, CT_PEER, CT_SESSION, 20, 30, 1, 9); n += 1;
+  one[0] = 0; out[n] = cs_send(l, g[0], s, ct_message(CT_PEER, one[..]), 10).why; n += 1;
+  out[n] = cs_grant(l, CT_EXPORT, CT_PROJECT, 10, 12, 1, 10); n += 1;
+  one[0] = 1; out[n] = cs_send(l, g[0], s, ct_message(CT_EXPORT, one[..]), 10).why; n += 1;
+  one[0] = 3; out[n] = cs_send(l, g[0], s, ct_message(CT_EXPORT, one[..]), 11).why; n += 1;
+  one[0] = 1; out[n] = cs_send(l, g[0], s, ct_message(CT_EXPORT, one[..]), 12).why; n += 1;
+  return n;
+}
+CT_WANT :: [20] CsWhy.[CsWhy.none, CsWhy.ok, CsWhy.ok, CsWhy.classes, CsWhy.ok, CsWhy.none, CsWhy.none, CsWhy.ok, CsWhy.ok, CsWhy.person, CsWhy.ok, CsWhy.revoked, CsWhy.twice, CsWhy.expired, CsWhy.ok, CsWhy.early, CsWhy.ok, CsWhy.ok, CsWhy.classes, CsWhy.expired];
+ct_hex :: (h: [32] u8, out: [] u8) -> string {
+  x := "0123456789abcdef";
+  for i: 0..<32 { out[2 * i] = x[cast(int) (h[i] >> 4)]; out[2 * i + 1] = x[cast(int) (h[i] & 15)]; }
+  return cast(string) out[0..<64];
+}
+ct_same_grant :: (a: CsGrant, b: CsGrant) -> bool {
+  return a.event == b.event && cs_to(a, b.dest) && a.classes == b.classes && a.start == b.start && a.until == b.until && a.person == b.person && a.revoked == b.revoked && a.at == b.at && a.sends == b.sends && a.bytes == b.bytes;
+}
+// Re-chain a log after editing it, as a forger with the code would.
+ct_rechain :: (l: CsLedger) {
+  previous: [32] u8;
+  for i: 0..<l.count { l.events[i].previous = previous; l.events[i].digest = cs_digest(l.events[i]); previous = l.events[i].digest; }
+}
+
+#test "labels: a node carries its own classes and its parents' labels" {
+  st: CtStore; g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])];
+  ct_session(g[..]);
+  want := [6] int.[1, 4, 2, 16, 5, 13];
+  #assert g[0].count == 6;
+  for i: 0..<6 { #assert g[0].labels[i] == want[i]; }
+  parts := [2] int.[2, 5]; #assert cs_label(g[0], parts[..]) == 15;
+  nb: [1] int; bad := [1] int.[6]; neg := [1] int.[-1]; ok := [1] int.[5];
+  #assert cs_node(g[..], "x", 32, nb[0..<0]) == -1 && cs_node(g[..], "x", -1, nb[0..<0]) == -1;
+  #assert cs_node(g[..], "x", 0, bad[..]) == -1 && cs_node(g[..], "x", 0, neg[..]) == -1 && g[0].count == 6;
+  #assert cs_node(g[..], "x", 31, nb[0..<0]) == 6 && cs_node(g[..], "y", 16, ok[..]) == 7 && g[0].labels[7] == 29 && g[0].own[7] == 16 && g[0].texts[7] == "y";
+  small: [1] string; so: [1] int; sl: [1] int; h := [1] CsGraph.[CsGraph.{texts = small[..], own = so[..], labels = sl[..]}];
+  #assert cs_node(h[..], "a", 1, nb[0..<0]) == 0 && cs_node(h[..], "b", 1, nb[0..<0]) == -1;
+}
+
+#test "the hand trace: refuse, grant, send, minimize, redact, revoke, expire, early, export" #steps 200000000 {
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])]; g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])]; s := [1] CsSink.[ct_sink(st.bytes[..], st.ends[..], st.sent[..])];
+  ct_session(g[..]);
+  out: [24] CsWhy; n := ct_trace(l[..], g[..], s[..], st.redacted[..], out[..]);
+  want := CT_WANT; #assert n == 20;
+  for i: 0..<n { #assert out[i] == want[i]; }
+  // The redacted copy: the summary kept, the user fact withheld, its label the summary's.
+  #assert g[0].texts[6] == "Summary: parse() fails on empty input.[withheld]" && g[0].labels[6] == 5 && g[0].own[6] == 0;
+  // 18 events: 4 grants, 1 revocation (the two refused revocations are not logged), 4 sends, 9 refusals.
+  #assert l[0].count == 18 && l[0].granted == 4;
+  ops := [18] CsOp.[CsOp.refuse, CsOp.grant, CsOp.send, CsOp.refuse, CsOp.send, CsOp.refuse, CsOp.refuse, CsOp.grant, CsOp.send, CsOp.revoke, CsOp.refuse, CsOp.refuse, CsOp.grant, CsOp.refuse, CsOp.grant, CsOp.send, CsOp.refuse, CsOp.refuse];
+  for i: 0..<18 { #assert st.events[i].op == ops[i] && st.events[i].sequence == i; }
+  // The revocation records what grant 0 had carried: two messages, 38 + 48 bytes.
+  e := st.events[9]; #assert e.grant == 0 && e.sends == 2 && e.bytes == 86 && e.person == 1 && e.tick == 7 && e.classes == 5 && e.dest.kind == CsKind.tool;
+  #assert st.grants[0].revoked && st.grants[0].at == 7 && st.grants[0].sends == 2 && st.grants[0].bytes == 86 && st.grants[0].event == 1;
+  #assert !st.grants[1].revoked && st.grants[1].sends == 1 && st.grants[1].bytes == 27 && st.grants[2].sends == 0 && st.grants[3].sends == 1 && st.grants[3].bytes == 24;
+  // A send names its covering grant per class; a refusal its label and what is missing.
+  #assert st.events[2].cover[0] == 0 && st.events[2].cover[2] == 0 && st.events[2].cover[1] == -1 && st.events[2].classes == 5 && st.events[2].grant == 0 && st.events[2].bytes == 38;
+  #assert st.events[3].why == CsWhy.classes && st.events[3].classes == 7 && st.events[3].cover[1] == -1 && st.events[3].cover[0] == 0 && st.events[3].bytes == 52;
+  #assert st.events[8].cover[3] == 1 && st.events[8].classes == 13 && st.events[8].grant == 1;
+  #assert st.events[0].grant == -1 && st.events[0].why == CsWhy.none && st.events[0].tick == 1;
+  // The sink holds exactly the four sent messages, each after its send event.
+  #assert s[0].count == 4 && s[0].used == 38 + 48 + 27 + 24;
+  sent := [4] int.[2, 4, 8, 15]; ends := [4] int.[38, 86, 113, 137];
+  for i: 0..<4 { #assert s[0].events[i] == sent[i] && s[0].ends[i] == ends[i] && st.events[sent[i]].op == CsOp.send; }
+  #assert cast(string) st.bytes[86..<113] == "lint: 2 warnings in parse()" && cast(string) st.bytes[113..<137] == "fn parse(s: &str) -> Ast";
+  one := [1] int.[4]; #assert cs_same(st.events[2].content, cs_content(g[0], one[..]));
+  // The log verifies and replays to the same grants.
+  #assert cs_verify(l[0]).why == CsWhy.ok && cs_verify(l[0]).index == 18;
+  st2: CtStore; u := [1] CsLedger.[ct_open(st2.events[..], st2.grants[..])];
+  r := cs_replay(l[0], u[..]); #assert r.why == CsWhy.ok && r.index == 18 && u[0].count == 18 && u[0].granted == 4;
+  for i: 0..<4 { #assert ct_same_grant(st.grants[i], st2.grants[i]); }
+  for i: 0..<18 { #assert cs_same(st.events[i].digest, st2.events[i].digest); }
+}
+
+#test "minimize and redact: only covered parts, in order, and none without an active grant" #steps 100000000 {
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])]; g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])];
+  ct_session(g[..]);
+  parts := [5] int.[2, 4, 0, 3, 1]; m := ct_message(CT_LINT, parts[..]); out: [8] int; b: [256] u8;
+  #assert cs_minimize(l[0], g[0], m, 3, out[..]) == 0 && cs_redact(l[0], g[0], m, 3, b[..]) == 50;
+  #assert cast(string) b[0..<50] == "[withheld][withheld][withheld][withheld][withheld]";
+  #assert cs_grant(l[..], CT_LINT, CT_SESSION | CT_PROJECT, 2, 20, 1, 2) == CsWhy.ok;
+  #assert cs_minimize(l[0], g[0], m, 3, out[..]) == 3 && out[0] == 4 && out[1] == 0 && out[2] == 1;
+  #assert cs_minimize(l[0], g[0], m, 3, out[0..<2]) == -1 && cs_minimize(l[0], g[0], m, 3, out[0..<3]) == 3;
+  k := cs_redact(l[0], g[0], m, 3, b[..]);
+  #assert cast(string) b[0..<k] == "[withheld]Summary: parse() fails on empty input.Fix the flaky test in parser.rs.[withheld]fn parse(s: &str) -> Ast";
+  #assert cs_redact(l[0], g[0], m, 3, b[0..<k - 1]) == -1 && cs_redact(l[0], g[0], m, 3, b[0..<k]) == k && cs_redact(l[0], g[0], m, 3, b[0..<9]) == -1;
+  // Another destination's grant does not count, nor does a grant before its start.
+  #assert cs_minimize(l[0], g[0], ct_message(CT_AGENT, parts[..]), 3, out[..]) == 0 && cs_minimize(l[0], g[0], m, 1, out[..]) == 0;
+  many: [70] int; mm := ct_message(CT_LINT, many[..]); big: [2048] u8;
+  #assert cs_redact(l[0], g[0], mm, 3, big[..]) == -1;
+  #assert cs_redact(l[0], g[0], ct_message(CT_LINT, many[0..<64]), 3, big[..]) == 64 * 32;
+}
+
+#test "every refused call, and none of them is logged" #steps 100000000 {
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])]; g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])]; s := [1] CsSink.[ct_sink(st.bytes[..], st.ends[..], st.sent[..])];
+  ct_session(g[..]);
+  bad := CsDest.{kind = CsKind.tool, id = -1};
+  #assert cs_grant(l[..], CT_LINT, 32, 2, 20, 1, 2) == CsWhy.shape && cs_grant(l[..], CT_LINT, -1, 2, 20, 1, 2) == CsWhy.shape;
+  #assert cs_grant(l[..], bad, 1, 2, 20, 1, 2) == CsWhy.shape && cs_grant(l[..], CT_LINT, 1, 2, 20, -1, 2) == CsWhy.shape;
+  #assert cs_grant(l[..], CT_LINT, 1, 5, 5, 1, 2) == CsWhy.shape && cs_grant(l[..], CT_LINT, 1, 2, 4, 1, 4) == CsWhy.shape;
+  #assert l[0].count == 0 && l[0].granted == 0;
+  #assert cs_revoke(l[..], 0, 1, 2) == CsWhy.unknown && cs_revoke(l[..], -1, 1, 2) == CsWhy.unknown;
+  // With one event logged, a call at an earlier tick is refused.
+  ev1: [4] CsEvent; gr1: [2] CsGrant; z := [1] CsLedger.[CsLedger.{events = ev1[..], grants = gr1[..]}];
+  zero := CsDest.{kind = CsKind.peer, id = 0, purpose = CsPurpose.compute}; four := [1] int.[4];
+  #assert cs_grant(z[..], zero, CT_SESSION | CT_PROJECT, 5, 9, 0, 5) == CsWhy.ok && cs_grant(z[..], zero, 1, 5, 9, 0, 4) == CsWhy.tick;
+  #assert cs_send(z[..], g[0], s[..], ct_message(zero, four[..]), 4).why == CsWhy.tick && cs_send(z[..], g[0], s[..], ct_message(zero, four[..]), 5).why == CsWhy.ok;
+  #assert z[0].count == 2 && s[0].count == 1; s[0] = ct_sink(st.bytes[..], st.ends[..], st.sent[..]);
+  #assert cs_grant(l[..], CT_LINT, 0, 2, 5, 0, 4) == CsWhy.ok && cs_grant(l[..], CT_LINT, CS_ALL, 0, 5, 0, 4) == CsWhy.ok;
+  #assert cs_revoke(l[..], 2, 0, 4) == CsWhy.unknown;
+  #assert cs_grant(l[..], CT_LINT, 1, 2, 20, 1, 3) == CsWhy.tick && cs_revoke(l[..], 0, 0, 3) == CsWhy.tick;
+  one := [1] int.[4]; nb: [1] int; out := [1] int.[6]; neg := [1] int.[-1];
+  #assert cs_send(l[..], g[0], s[..], ct_message(CT_LINT, one[..]), 3).why == CsWhy.tick;
+  #assert cs_send(l[..], g[0], s[..], ct_message(CT_LINT, nb[0..<0]), 4).why == CsWhy.shape;
+  r := cs_send(l[..], g[0], s[..], ct_message(CT_LINT, out[..]), 4); #assert r.why == CsWhy.shape && r.first == -1 && r.cover[0] == -1 && r.cover[4] == -1;
+  #assert cs_send(l[..], g[0], s[..], ct_message(CT_LINT, neg[..]), 4).why == CsWhy.shape;
+  #assert cs_send(l[..], g[0], s[..], ct_message(bad, one[..]), 4).why == CsWhy.shape;
+  #assert l[0].count == 2 && s[0].count == 0;
+  // Full sink: a covered send that does not fit is refused, not logged.
+  t := [1] CsSink.[CsSink.{bytes = st.bytes[0..<37], ends = st.ends[..], events = st.sent[..]}];
+  #assert cs_send(l[..], g[0], t[..], ct_message(CT_LINT, one[..]), 4).why == CsWhy.capacity && l[0].count == 2;
+  t[0].bytes = st.bytes[0..<38]; #assert cs_send(l[..], g[0], t[..], ct_message(CT_LINT, one[..]), 4).why == CsWhy.ok && t[0].used == 38;
+  #assert cs_send(l[..], g[0], t[..], ct_message(CT_LINT, one[..]), 4).why == CsWhy.capacity;
+  u := [1] CsSink.[CsSink.{bytes = st.bytes[..], ends = st.ends[0..<1], events = st.sent[0..<1]}];
+  #assert cs_send(l[..], g[0], u[..], ct_message(CT_LINT, one[..]), 4).why == CsWhy.ok && cs_send(l[..], g[0], u[..], ct_message(CT_LINT, one[..]), 4).why == CsWhy.capacity;
+  #assert l[0].count == 4;
+  // A refused send needs no sink room: it is logged.
+  #assert cs_send(l[..], g[0], u[..], ct_message(CT_AGENT, one[..]), 4).why == CsWhy.none && l[0].count == 5;
+  // A full log refuses everything; a full grant table refuses grants.
+  ev: [5] CsEvent; gr: [2] CsGrant; f := [1] CsLedger.[CsLedger.{events = ev[..], grants = gr[..]}];
+  #assert cs_grant(f[..], CT_LINT, 1, 0, 9, 1, 0) == CsWhy.ok && cs_grant(f[..], CT_LINT, 1, 0, 9, 1, 0) == CsWhy.ok;
+  #assert cs_grant(f[..], CT_LINT, 1, 0, 9, 1, 0) == CsWhy.capacity && f[0].count == 2;
+  #assert cs_revoke(f[..], 1, 1, 0) == CsWhy.ok;
+  #assert cs_send(f[..], g[0], s[..], ct_message(CT_LINT, one[..]), 0).why == CsWhy.classes;
+  #assert cs_send(f[..], g[0], s[..], ct_message(CT_LINT, one[..]), 0).why == CsWhy.classes && f[0].count == 5;
+  #assert cs_send(f[..], g[0], s[..], ct_message(CT_LINT, one[..]), 0).why == CsWhy.capacity && cs_revoke(f[..], 0, 1, 0) == CsWhy.capacity;
+  ev2: [5] CsEvent; f[0] = CsLedger.{events = ev2[..], grants = gr[..], granted = 2};
+  #assert cs_revoke(f[..], 1, 1, 0) == CsWhy.twice && cs_revoke(f[..], 0, 2, 0) == CsWhy.person;
+}
+
+#test "the decision table: an empty label, purposes, reason order" #steps 100000000 {
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])]; g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])];
+  // An empty label still needs an active grant for the destination.
+  #assert cs_decide(l[0], CT_LINT, 0, 5).why == CsWhy.none;
+  #assert cs_grant(l[..], CT_LINT, CT_USER, 3, 6, 1, 0) == CsWhy.ok;
+  #assert cs_decide(l[0], CT_LINT, 0, 2).why == CsWhy.early && cs_decide(l[0], CT_LINT, 0, 3).why == CsWhy.ok && cs_decide(l[0], CT_LINT, 0, 6).why == CsWhy.expired;
+  #assert cs_decide(l[0], CT_LINT, 0, 3).first == 0 && cs_decide(l[0], CT_LINT, 2, 5).why == CsWhy.ok && cs_decide(l[0], CT_LINT, 2, 5).cover[1] == 0;
+  // Purpose and kind and id each matter.
+  other := CsDest.{kind = CsKind.agent, id = 1, purpose = CsPurpose.call}; id := CsDest.{kind = CsKind.tool, id = 9, purpose = CsPurpose.call};
+  #assert cs_decide(l[0], CT_LINT_TRAIN, 2, 4).why == CsWhy.none && cs_decide(l[0], other, 2, 4).why == CsWhy.none && cs_decide(l[0], id, 2, 4).why == CsWhy.none;
+  // classes: an active grant that does not cover the class, and the missing bits.
+  r := cs_decide(l[0], CT_LINT, 3, 4); #assert r.why == CsWhy.classes && r.missing == 1 && r.labels == 3 && r.cover[1] == 0 && r.cover[0] == -1;
+  // Two grants: a class each, both cover one message; the first grant opens it.
+  #assert cs_grant(l[..], CT_LINT, CT_SESSION, 4, 9, 1, 1) == CsWhy.ok;
+  r = cs_decide(l[0], CT_LINT, 3, 4); #assert r.why == CsWhy.ok && r.cover[0] == 1 && r.cover[1] == 0 && r.first == 0 && r.missing == 0;
+  r = cs_decide(l[0], CT_LINT, 3, 3); #assert r.why == CsWhy.early && r.missing == 1 && r.first == 0;
+  r = cs_decide(l[0], CT_LINT, 3, 7); #assert r.why == CsWhy.expired && r.missing == 2 && r.first == 1;
+  // The strongest reason among grants that could cover a missing class.
+  #assert cs_revoke(l[..], 1, 1, 2) == CsWhy.ok;
+  #assert cs_decide(l[0], CT_LINT, 1, 4).why == CsWhy.revoked && cs_decide(l[0], CT_LINT, 1, 2).why == CsWhy.revoked;
+  #assert cs_decide(l[0], CT_LINT, 4, 4).why == CsWhy.classes && cs_decide(l[0], CT_LINT, 4, 9).why == CsWhy.classes;
+  #assert cs_grant(l[..], CT_LINT, CT_PROJECT, 10, 12, 1, 2) == CsWhy.ok;
+  #assert cs_decide(l[0], CT_LINT, 4, 4).why == CsWhy.early && cs_decide(l[0], CT_LINT, 4, 12).why == CsWhy.expired && cs_decide(l[0], CT_LINT, 4, 11).why == CsWhy.ok;
+  #assert cs_decide(l[0], CT_LINT, 5, 11).why == CsWhy.revoked && cs_decide(l[0], CT_LINT, 6, 11).why == CsWhy.expired;
+}
+
+#test "a send counts once under every grant it used, and the first grant covers a class" #steps 100000000 {
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])]; g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])]; s := [1] CsSink.[ct_sink(st.bytes[..], st.ends[..], st.sent[..])];
+  ct_session(g[..]);
+  #assert cs_grant(l[..], CT_LINT, CT_USER, 0, 9, 1, 0) == CsWhy.ok && cs_grant(l[..], CT_LINT, CT_SESSION, 0, 9, 1, 0) == CsWhy.ok;
+  #assert cs_grant(l[..], CT_LINT, CT_SESSION | CT_PROJECT, 0, 9, 1, 0) == CsWhy.ok && cs_grant(l[..], CT_LINT, CT_SESSION | CT_USER, 0, 9, 1, 0) == CsWhy.ok;
+  one := [1] int.[4]; r := cs_send(l[..], g[0], s[..], ct_message(CT_LINT, one[..]), 1);
+  #assert r.why == CsWhy.ok && r.first == 0 && r.cover[0] == 1 && r.cover[2] == 2 && r.cover[1] == -1;
+  #assert st.grants[0].sends == 1 && st.grants[1].sends == 1 && st.grants[2].sends == 1 && st.grants[3].sends == 0;
+  #assert st.grants[0].bytes == 38 && st.grants[1].bytes == 38 && st.grants[2].bytes == 38 && st.grants[3].bytes == 0;
+  two := [2] int.[4, 2]; r = cs_send(l[..], g[0], s[..], ct_message(CT_LINT, two[..]), 1);
+  #assert r.why == CsWhy.ok && r.cover[0] == 1 && r.cover[1] == 0 && r.cover[2] == 2 && st.grants[3].sends == 0 && st.grants[0].bytes == 38 + 52;
+}
+
+#test "the encoding, against digests written outside Coax" #steps 100000000 {
+  // Written with Python's hashlib and struct: the first event of the hand
+  // trace, the refusal at tick 1 (the content digest, 32 zero bytes, then
+  // 19 fields as little-endian signed u64), an event with every field
+  // distinct, and sha256 of the summary.
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])]; g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])]; s := [1] CsSink.[ct_sink(st.bytes[..], st.ends[..], st.sent[..])];
+  ct_session(g[..]); x: [64] u8;
+  one := [1] int.[4]; r := cs_send(l[..], g[0], s[..], ct_message(CT_LINT, one[..]), 1);
+  #assert ct_hex(st.events[0].content, x[..]) == "72f775f2900f9ddc7edf2933d8f2be2b7bf47986b9948cdaeb139bc8f3e80544";
+  #assert ct_hex(st.events[0].digest, x[..]) == "421ed01b755f094ee996875bcf692b6676291799bded55d8b22d8aeaa606922d";
+  e := CsEvent.{sequence = 3, op = CsOp.send, tick = 7, dest = CsDest.{kind = CsKind.export, id = 9, purpose = CsPurpose.compute}, classes = 21, start = 2, until = 11, person = 4, grant = 5, why = CsWhy.classes, sends = 12, bytes = 13};
+  cv := [5] int.[6, -1, 8, 9, 10]; e.cover = cv;
+  for i: 0..<32 { e.content[i] = cast(u8) i; e.previous[i] = cast(u8) (100 + i); }
+  #assert ct_hex(cs_digest(e), x[..]) == "bb6599fe9cd23274f41681065f021ea591bc0929a6740d98a1294c72a4a7a0b7";
+  // Parts are hashed as one byte string: the split does not matter.
+  t: [2] string; o: [2] int; lb: [2] int; h := [1] CsGraph.[CsGraph.{texts = t[..], own = o[..], labels = lb[..]}]; nb: [1] int;
+  a := cs_node(h[..], "Summary: parse() fails ", 0, nb[0..<0]); a = cs_node(h[..], "on empty input.", 0, nb[0..<0]);
+  both := [2] int.[0, 1]; #assert ct_hex(cs_content(h[0], both[..]), x[..]) == "72f775f2900f9ddc7edf2933d8f2be2b7bf47986b9948cdaeb139bc8f3e80544";
+  // A long text crosses the feeding buffer.
+  long: [130] u8; for i: 0..<130 { long[i] = 'a'; }
+  c := [1] string.[cast(string) long[..]]; z: [1] int; zl: [1] int; k := [1] CsGraph.[CsGraph.{texts = c[..], own = z[..], labels = zl[..], count = 1}];
+  zero := [1] int.[0];
+  // sha256(b"a" * 130), written with Python's hashlib.
+  #assert ct_hex(cs_content(k[0], zero[..]), x[..]) == "1e3c4f4750c8c29bbfa9ced317788176b156d342e57f7777f62fd7221a44312f";
+}
+
+#test "forged logs: an edited, reordered or cut chain, and rechained lies" #steps 400000000 {
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])]; g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])]; s := [1] CsSink.[ct_sink(st.bytes[..], st.ends[..], st.sent[..])];
+  ct_session(g[..]); out: [24] CsWhy; n := ct_trace(l[..], g[..], s[..], st.redacted[..], out[..]);
+  e2 := st.events; f := CsLedger.{events = e2[..], grants = st.grants[..], count = 18, granted = 4};
+  e2[4].classes = 7; v := cs_verify(f); #assert v.why == CsWhy.digest && v.index == 4;
+  e2 = st.events; e2[5].sequence = 6; v = cs_verify(f); #assert v.why == CsWhy.sequence && v.index == 5;
+  e2 = st.events; e2[6] = st.events[7]; e2[7] = st.events[6]; v = cs_verify(f); #assert v.why == CsWhy.sequence && v.index == 6;
+  e2 = st.events; e2[3].previous[0] ^= 1; e2[3].digest = cs_digest(e2[3]); v = cs_verify(f); #assert v.why == CsWhy.link && v.index == 3;
+  st2: CtStore; u := [1] CsLedger.[ct_open(st2.events[..], st2.grants[..])];
+  #assert cs_replay(f, u[..]).why == CsWhy.link;
+  // The grant to the linter removed and the chain rewritten: its send is uncovered.
+  e2 = st.events; e2[1].classes = CT_SESSION; ct_rechain(f);
+  #assert cs_verify(f).why == CsWhy.ok;
+  u[0] = ct_open(st2.events[..], st2.grants[..]); v = cs_replay(f, u[..]); #assert v.why == CsWhy.uncovered && v.index == 2;
+  // A refusal turned into a send: uncovered too.
+  e2 = st.events; e2[0].op = CsOp.send; ct_rechain(f);
+  u[0] = ct_open(st2.events[..], st2.grants[..]); v = cs_replay(f, u[..]); #assert v.why == CsWhy.uncovered && v.index == 0;
+  // A send turned into a refusal: the grants of its moment covered it.
+  e2 = st.events; e2[2].op = CsOp.refuse; ct_rechain(f);
+  u[0] = ct_open(st2.events[..], st2.grants[..]); v = cs_replay(f, u[..]); #assert v.why == CsWhy.replay && v.index == 2;
+  // The revocation claims fewer messages already sent.
+  e2 = st.events; e2[9].sends = 1; ct_rechain(f);
+  u[0] = ct_open(st2.events[..], st2.grants[..]); v = cs_replay(f, u[..]); #assert v.why == CsWhy.replay && v.index == 9;
+  // A refused revocation (another person) written in as done.
+  e2 = st.events; e2[9].person = 2; ct_rechain(f);
+  u[0] = ct_open(st2.events[..], st2.grants[..]); v = cs_replay(f, u[..]); #assert v.why == CsWhy.replay && v.index == 9;
+  // A send's cover rewritten to another grant.
+  e2 = st.events; e2[8].cover[3] = 0; ct_rechain(f);
+  u[0] = ct_open(st2.events[..], st2.grants[..]); v = cs_replay(f, u[..]); #assert v.why == CsWhy.replay && v.index == 8;
+  // A tick moved back.
+  e2 = st.events; e2[10].tick = 6; ct_rechain(f);
+  u[0] = ct_open(st2.events[..], st2.grants[..]); v = cs_replay(f, u[..]); #assert v.why == CsWhy.replay && v.index == 10;
+  // Too small a ledger to replay into.
+  e2 = st.events; ev: [17] CsEvent; gr: [4] CsGrant; w := [1] CsLedger.[CsLedger.{events = ev[..], grants = gr[..]}];
+  v = cs_replay(f, w[..]); #assert v.why == CsWhy.replay && v.index == 17;
+  ev3: [18] CsEvent; w[0] = CsLedger.{events = ev3[..], grants = gr[..]}; #assert cs_replay(f, w[..]).why == CsWhy.ok;
+}
+
+// book:begin taint
+// The taint model: a node's label is the classes of every source it can
+// reach through its parents, found by walking the graph, not by carrying
+// labels forward.
+ct_reach :: (own: [] int, starts: [] int, ends: [] int, parents: [] int, node: int) -> int {
+  seen: [32] bool; stack: [32] int; top := 1; stack[0] = node; seen[node] = true; label := 0;
+  while top > 0 {
+    top -= 1; v := stack[top];
+    for c: 0..<CS_CLASSES { if (own[v] >> c) % 2 == 1 { label = label | (1 << c); } }
+    for k: starts[v]..<ends[v] { p := parents[k]; if !seen[p] { seen[p] = true; stack[top] = p; top += 1; } }
+  }
+  return label;
+}
+// book:end taint
+ct_draw :: (r: [] int, n: int) -> int { r[0] = (r[0] * 1103515245 + 12345) % 2147483648; return (r[0] >> 8) % n; }
+// A random graph of up to 24 nodes, built through cs_node and kept as
+// parent lists for the model; every node's label and random messages'
+// labels agree.
+ct_graphs :: (seed: int) {
+  r := [1] int.[seed * 7919 + 1];
+  texts: [24] string; own: [24] int; labels: [24] int; g := [1] CsGraph.[CsGraph.{texts = texts[..], own = own[..], labels = labels[..]}];
+  mo: [24] int; starts: [24] int; ends: [24] int; parents: [96] int; used := 0;
+  n := 1 + ct_draw(r[..], 24);
+  for i: 0..<n {
+    o := 0;
+    if ct_draw(r[..], 3) == 0 { o = 1 << ct_draw(r[..], CS_CLASSES); }
+    if ct_draw(r[..], 8) == 0 { o = ct_draw(r[..], CS_ALL + 1); }
+    k := ifx i == 0 then 0 else ct_draw(r[..], 4);
+    starts[i] = used;
+    for j: 0..<k { parents[used] = ct_draw(r[..], i); used += 1; }
+    ends[i] = used; mo[i] = o;
+    #assert cs_node(g[..], "n", o, parents[starts[i]..<used]) == i;
+  }
+  for i: 0..<n { #assert g[0].labels[i] == ct_reach(mo[..], starts[..], ends[..], parents[..], i); }
+  for t: 0..<4 {
+    parts: [4] int; m := 1 + ct_draw(r[..], 4); want := 0;
+    for j: 0..<m { parts[j] = ct_draw(r[..], n); want = want | ct_reach(mo[..], starts[..], ends[..], parents[..], parts[j]); }
+    #assert cs_label(g[0], parts[0..<m]) == want;
+  }
+}
+#forall "labels agree with the taint model on random graphs" seed: 0..<12 #steps 200000000 { ct_graphs(seed); }
+
+// The consent model: a list of grants as the person gave them, and for a
+// send, for each class of its label, a search for one that covers it now.
+CtGrant :: struct { dest: CsDest; classes: int; start: int; until: int; person: int; gone: bool; }
+ct_live :: (g: CtGrant, d: CsDest, t: int) -> bool {
+  return g.dest.kind == d.kind && g.dest.id == d.id && g.dest.purpose == d.purpose && !g.gone && t >= g.start && t < g.until;
+}
+ct_expect :: (gs: [] CtGrant, d: CsDest, label: int, t: int) -> CsWhy {
+  open := false; missing := 0;
+  for g: gs { if ct_live(g, d, t) { open = true; } }
+  for c: 0..<CS_CLASSES {
+    if (label >> c) % 2 == 0 { continue; }
+    found := false;
+    for g: gs { if ct_live(g, d, t) && (g.classes >> c) % 2 == 1 { found = true; } }
+    if !found { missing = missing + (1 << c); }
+  }
+  if open && missing == 0 { return CsWhy.ok; }
+  // Not covered: say why, from the grants to d that could have covered it.
+  best := 0; any := false;
+  for g: gs {
+    if g.dest.kind != d.kind || g.dest.id != d.id || g.dest.purpose != d.purpose { continue; }
+    any = true;
+    rank := 2;
+    if missing == 0 || (g.classes & missing) > 0 {
+      if g.gone { rank = 5; } else if t >= g.until { rank = 4; } else if t < g.start { rank = 3; }
+    }
+    if rank > best { best = rank; }
+  }
+  if !any { return CsWhy.none; }
+  ranks := [6] CsWhy.[CsWhy.ok, CsWhy.none, CsWhy.classes, CsWhy.early, CsWhy.expired, CsWhy.revoked];
+  return ranks[best];
+}
+CT_DESTS :: [3] CsDest.[CsDest.{kind = CsKind.tool, id = 1, purpose = CsPurpose.call}, CsDest.{kind = CsKind.tool, id = 1, purpose = CsPurpose.train}, CsDest.{kind = CsKind.peer, id = 1, purpose = CsPurpose.call}];
+// One random session: grants, revocations and sends, compared op by op
+// with the model; then every byte in the sink is checked to have had a
+// covering grant at its tick, and the log replays. tally counts outcomes.
+ct_random :: (seed: int, tally: [] int) {
+  r := [1] int.[seed * 104729 + 17];
+  st: CtStore; l := [1] CsLedger.[ct_open(st.events[..], st.grants[..])]; g := [1] CsGraph.[ct_graph(st.texts[..], st.own[..], st.labels[..])]; s := [1] CsSink.[ct_sink(st.bytes[..], st.ends[..], st.sent[..])];
+  ct_session(g[..]); ds := CT_DESTS;
+  model: [16] CtGrant; granted := 0; sent := 0; now := 0;
+  // Per sink entry: its destination index, label and tick.
+  sd: [16] int; sl: [16] int; stk: [16] int;
+  for step: 0..<28 {
+    now += ct_draw(r[..], 3);
+    d := ct_draw(r[..], 3); op := ct_draw(r[..], 3);
+    if op == 0 && granted < 16 {
+      classes := ct_draw(r[..], CS_ALL + 1); start := now - 1 + ct_draw(r[..], 4); until := start + ct_draw(r[..], 6); person := 1 + ct_draw(r[..], 2);
+      w := cs_grant(l[..], ds[d], classes, start, until, person, now);
+      want := ifx until <= start || until <= now then CsWhy.shape else CsWhy.ok;
+      #assert w == want;
+      if w == CsWhy.ok { model[granted] = CtGrant.{dest = ds[d], classes = classes, start = start, until = until, person = person}; granted += 1; }
+      tally[cast(int) w] += 1;
+    } else if op == 1 {
+      k := ct_draw(r[..], granted + 2) - 1; person := 1 + ct_draw(r[..], 2);
+      want := CsWhy.ok;
+      if k < 0 || k >= granted { want = CsWhy.unknown; }
+      else if model[k].person != person { want = CsWhy.person; }
+      else if model[k].gone { want = CsWhy.twice; }
+      w := cs_revoke(l[..], k, person, now);
+      #assert w == want;
+      if w == CsWhy.ok { model[k].gone = true; }
+      tally[cast(int) w] += 1;
+    } else {
+      parts: [3] int; m := 1 + ct_draw(r[..], 3); label := 0;
+      for j: 0..<m { parts[j] = ct_draw(r[..], 6); label = label | g[0].labels[parts[j]]; }
+      want := ct_expect(model[0..<granted], ds[d], label, now);
+      dec := cs_send(l[..], g[0], s[..], ct_message(ds[d], parts[0..<m]), now);
+      #assert dec.why == want && dec.labels == label;
+      if dec.why == CsWhy.ok { sd[sent] = d; sl[sent] = label; stk[sent] = now; sent += 1; }
+      tally[cast(int) dec.why] += 1;
+      // What minimizing keeps is always sendable.
+      keep: [3] int; kept := cs_minimize(l[0], g[0], ct_message(ds[d], parts[0..<m]), now, keep[..]);
+      if kept > 0 { #assert cs_decide(l[0], ds[d], cs_label(g[0], keep[0..<kept]), now).why == CsWhy.ok; }
+    }
+  }
+  // No send without a covering grant: rebuild, from the model's final list
+  // and the ticks, whether each sink entry was covered when it was sent.
+  #assert s[0].count == sent;
+  for i: 0..<sent {
+    e := st.events[s[0].events[i]];
+    #assert e.op == CsOp.send && e.tick == stk[i] && e.classes == sl[i] && cs_to(CsGrant.{dest = ds[sd[i]]}, e.dest);
+    for c: 0..<CS_CLASSES {
+      if (sl[i] >> c) % 2 == 0 { continue; }
+      k := e.cover[c]; #assert k >= 0 && k < granted && (model[k].classes >> c) % 2 == 1 && model[k].start <= stk[i] && stk[i] < model[k].until;
+      // It was not revoked before: a revocation of k, if any, comes after this send in the log.
+      for j: 0..<s[0].events[i] { #assert !(st.events[j].op == CsOp.revoke && st.events[j].grant == k); }
+    }
+  }
+  st2: CtStore; u := [1] CsLedger.[ct_open(st2.events[..], st2.grants[..])];
+  v := cs_replay(l[0], u[..]); #assert v.why == CsWhy.ok && v.index == l[0].count;
+  for i: 0..<granted { #assert ct_same_grant(st.grants[i], st2.grants[i]); }
+}
+#test "the gate agrees with the consent model on random sessions that reach every outcome" #steps 2000000000 {
+  tally: [17] int;
+  for seed: 0..<8 { ct_random(seed, tally[..]); }
+  reached := [10] CsWhy.[CsWhy.ok, CsWhy.none, CsWhy.classes, CsWhy.early, CsWhy.expired, CsWhy.revoked, CsWhy.shape, CsWhy.unknown, CsWhy.person, CsWhy.twice];
+  for w: reached { #assert tally[cast(int) w] > 0; }
+}
