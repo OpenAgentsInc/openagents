@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent IANA/IP/time oracles and actual emitted FI candidate fixtures."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import csv
 import ctypes as C
 from functools import cache
@@ -69,6 +70,6 @@ class FI(unittest.TestCase):
   exe=OUT/'sanitized';run('cc','-std=c11','-O1','-g','-Wno-unknown-attributes','-fsanitize=address,undefined',main,'-lm','-o',exe);run(exe,binary)
   reports=[]
   for mode,_ in self.libs:
-   wasm=OUT/(mode+'.wasm');run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',OUT/(mode+'_fixture.c'),'-lm','-o',wasm);result=json.loads(run('bun',HERE/'fi_policy_wasm.cjs',wasm,OUT/'cases.json'));self.assertEqual(result['addresses'],len(self.rows));self.assertEqual(result['scenarios'],len(SCENARIOS));reports.append({'mode':mode,'artifact_sha256':sha(wasm),**result})
+   wasm=OUT/(mode+'.wasm');run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',OUT/(mode+'_fixture.c'),'-lm','-o',wasm);result=json.loads(run('bun',HERE/'fi_policy_wasm.cjs',wasm,OUT/'cases.json'));self.assertEqual(result['addresses'],len(self.rows));self.assertEqual(result['scenarios'],len(SCENARIOS));reports.append({'mode':mode,'artifact_sha256':sha(wasm),**result})
   self.report['sanitizer']={'addresses':len(self.rows),'scenarios':len(SCENARIOS),'binary_sha256':sha(exe)};self.report['wasm']=reports
 if __name__=='__main__':unittest.main()

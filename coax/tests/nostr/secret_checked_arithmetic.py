@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Real checked-arithmetic refusal and native/WASI runtime controls."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib,json,resource,shutil,signal,subprocess,sys,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3];HERE=Path(__file__).resolve().parent
 SOURCE=HERE/'secret_checked_arithmetic_fixture.coax';COMPILER=ROOT/'coax/bin/coax'
-CLANG='/opt/homebrew/opt/llvm/bin/clang';SYSROOT='/opt/homebrew/opt/wasi-libc/share/wasi-sysroot';RESOURCE='/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes'
+CLANG=WASM_CLANG;SYSROOT=WASM_SYSROOT;RESOURCE=WASM_RESOURCES
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def run(*args):return subprocess.run([str(x) for x in args],capture_output=True,text=True,timeout=180,preexec_fn=lambda:resource.setrlimit(resource.RLIMIT_CORE,(0,0)))
 def require(result):

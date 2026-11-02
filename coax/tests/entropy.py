@@ -14,10 +14,33 @@ import threading
 import unittest
 
 ROOT=Path(__file__).resolve().parents[2]
-COAX=ROOT/'coax/bin/coax'
+COAX=Path(os.environ.get('COAX',ROOT/'coax/bin/coax'))
 CC=os.environ.get('COAX_CC','clang')
-CHROME=Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
-if not CHROME.exists():CHROME=Path(shutil.which('google-chrome') or shutil.which('chromium') or '/nonexistent/chrome')
+def _launcher(path):
+    # A script that hands off to a windowed browser is not a headless Chrome (coax/web/chrome.ts).
+    try:return re.search(rb'coder-browser|has not granted a browser',Path(path).read_bytes()[:8192]) is not None
+    except OSError:return True
+
+
+def find_chrome():
+    """The headless Chrome to run, chosen as coax/web/chrome.ts chooses it; CHROME overrides."""
+    if os.environ.get('CHROME'):return Path(os.environ['CHROME'])
+    if platform.system()=='Darwin':return Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome')
+    dirs=os.environ.get('PATH','').split(':')+['/run/current-system/sw/bin']
+    for d in dirs:
+        for name in ['chromium','chromium-browser','google-chrome-stable','google-chrome']:
+            p=Path(d)/name
+            if p.exists() and not _launcher(p):return p
+    # CoderOS shadows every browser name with its launcher; the launcher names the real Chromium it runs.
+    for d in dirs:
+        p=Path(d)/'coder-browser'
+        if not p.exists():continue
+        m=re.search(r'/nix/store/[^/:"]*chromium[^/:"]*/bin',p.read_text(errors='replace'))
+        if m and (Path(m.group(0))/'chromium').exists():return Path(m.group(0))/'chromium'
+    return Path('/nonexistent/chrome')
+
+
+CHROME=find_chrome()
 
 
 def generated(directory):

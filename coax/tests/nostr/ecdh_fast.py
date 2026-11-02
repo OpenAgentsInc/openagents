@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Public full-u32 fused-field differential fixtures; no secret-use approval."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C,json,os,pathlib,random,tempfile
 import secp_field as base
 from secp_field32 import Field32,pack,number
@@ -23,7 +24,7 @@ def main():
    lib.ef_test_inverse.argtypes=[Field32];lib.ef_test_inverse.restype=Field32
    for i,(op,a,b,want) in enumerate(rows):
     got=number(lib.ef_test_add(pack(a),pack(b)) if op==0 else lib.ef_test_mul(pack(a),pack(b)) if op==1 else lib.ef_test_inverse(pack(a)));assert got==want,(label,i,op)
-   wasm=d/(label+'.wasm');base.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(d),c,ROOT/'coax/tests/nostr/ecdh_fast_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)
+   wasm=d/(label+'.wasm');base.run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(d),c,ROOT/'coax/tests/nostr/ecdh_fast_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)
    w=json.loads(base.run('node',ROOT/'coax/tests/nostr/ecdh_fast_wasm.cjs',wasm,fixtures,timeout=1800).stdout);report['modes'].append({'mode':label,'native_cases':len(rows),'native_failures':0,'wasm':w,'native_sha256':file_sha(libpath),'wasm_sha256':file_sha(wasm)})
  for p,h in graph.items():assert file_sha(ROOT/p)==h,p
  path=os.environ.get('COAX_ECDH_FAST_REPORT');text=json.dumps(report,indent=2)+'\n';pathlib.Path(path).write_text(text) if path else print(text,end='')

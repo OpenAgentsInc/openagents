@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent closed-JWKS Python oracle; no transport or authorization."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64
 import copy
 import ctypes as c
@@ -99,9 +100,9 @@ def main():
       assert bytes(got.keys[i].kid[:got.keys[i].kid_count])==kid and bytes(got.keys[i].modulus[:got.keys[i].modulus_count])==modulus and got.keys[i].has_key_ops==has,(mode,text)
    print(f'{mode}: {len(cases)} JWKS cases match independent Python oracle',flush=True)
    wasm=Path(tmp)/(mode+'.wasm')
-   subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1',
-    '--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot',
-    '-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+tmp,
+   subprocess.run([WASM_CLANG,'--target=wasm32-wasip1',
+    '--sysroot='+WASM_SYSROOT,
+    '-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+tmp,
     str(ROOT/'coax/tests/nostr/fi_jwks_wasm.c'),'-mexec-model=reactor',
     '-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
    print(f'{mode} generated_c_sha256={hashlib.sha256(generated.read_bytes()).hexdigest()} native_sha256={hashlib.sha256(lib.read_bytes()).hexdigest()} wasm_sha256={hashlib.sha256(wasm.read_bytes()).hexdigest()}',flush=True)

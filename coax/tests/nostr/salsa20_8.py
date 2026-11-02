@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Independent arithmetic oracle for the checked and release native core."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes
 import hashlib
 import random
@@ -61,9 +62,9 @@ def main():
             sdk = subprocess.check_output(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-path'], text=True).strip()
             subprocess.run(['xcrun', '--sdk', 'iphonesimulator', 'clang', '-arch', 'arm64', '-isysroot', sdk,
                             '-std=c11', '-O2', '-c', str(cfile), '-o', str(directory / (mode + '-ios.o'))], check=True)
-            clang = '/opt/homebrew/opt/llvm/bin/clang'
-            sysroot = '/opt/homebrew/opt/wasi-libc/share/wasi-sysroot'
-            resources = '/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes'
+            clang = WASM_CLANG
+            sysroot = WASM_SYSROOT
+            resources = WASM_RESOURCES
             module = directory / (mode + '.wasm')
             subprocess.run([clang, '--target=wasm32-wasip1', '--sysroot=' + sysroot, '-resource-dir=' + resources,
                             '-std=c11', '-O2', '-I' + str(directory), '-mexec-model=reactor', str(cfile),

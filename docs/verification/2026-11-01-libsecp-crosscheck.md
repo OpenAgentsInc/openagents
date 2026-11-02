@@ -28,6 +28,13 @@ libsecp256k1.
   rewrites `/opt/homebrew/opt/llvm/bin/clang`, the wasi sysroot and the
   resource directory to `~/.cache/coax-wasm-toolchain/{bin/clang,sysroot,resource}`,
   and puts its `bin` (with `wasm-ld`) on `PATH`. Nothing else changes.
+  Later the same day the harnesses stopped needing it: every Wasm harness
+  under `coax/tests/nostr/` now takes its clang, sysroot, resource directory
+  and `wasm-ld` from `wasm_toolchain.py`, which uses `coax/web/toolchain.sh`
+  (Homebrew on macOS, `~/.cache/coax-wasm-toolchain` on Linux,
+  `COAXIAL_*` overrides). With no wrapper, `schnorr_fast.py` (790 cases in
+  each of four builds) and `ecdh_vectors.py` (783 cases in each of four
+  builds) passed again with 0 failures, in 33 s and 60 s.
 
 ## Chapter 13: Coax-signed signatures through libsecp256k1
 

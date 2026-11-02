@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Owned host against public NIP-44 and adapted Wycheproof raw-x checks."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C,hashlib,hmac,json,os,pathlib,random,subprocess,tempfile
 import secp_field as field,secp_group as group
 from scalar_candidate import Scalar
@@ -69,7 +70,7 @@ def main():
     assert bytes(a)==k and bytes(b)==p and lib.coax_ecdh_owned_close(h)==0,(mode,i,'ownership')
    if public:wasm=wd/'coax_ecdh_owned.wasm';wasm_driver=ROOT/'coax/tests/nostr/ecdh_owned_public_wasm.cjs'
    else:
-    wasm=d/(mode+'.wasm');field.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes',*common,*sources,ROOT/'coax/tests/nostr/ecdh_owned_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm);wasm_driver=ROOT/'coax/tests/nostr/ecdh_owned_wasm.cjs'
+    wasm=d/(mode+'.wasm');field.run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,*common,*sources,ROOT/'coax/tests/nostr/ecdh_owned_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm);wasm_driver=ROOT/'coax/tests/nostr/ecdh_owned_wasm.cjs'
    w=json.loads(field.run('node',wasm_driver,wasm,fixture,timeout=1800).stdout);report['modes'].append({'mode':mode,'native_cases':len(rows),'native_failures':0,'native_artifact_sha256':file_sha(libpath),'wasm_artifact_sha256':file_sha(wasm),'wasm':w})
  for name,digest in hashes.items():assert file_sha(pathlib.Path(name))==digest,name
  report['inputs']=hashes;oracle.close();print(json.dumps(report,indent=2))

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent public event admission fixtures; no full-store authority claim."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64,copy,ctypes as C,hashlib,json,pathlib,random,struct,subprocess,tempfile
 import secp_field as base
 from oracle import NativeOracle,DEFAULT_LIBRARY,schnorr_verify
@@ -42,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='coax-store-admit-') as td:
    assert bytes(source)==bytes([165])*8+text+bytes([165])*8 and bytes(scratch[:8])==bytes([165])*8 and bytes(scratch[-8:])==bytes([165])*8 and bytes(out[:8])==bytes([165])*8 and bytes(out[-8:])==bytes([165])*8
   valid=next(x for x in rows if x['status']==0);text=base64.b64decode(valid['text']).decode();probe=d/'asan.c';probe.write_text('#include "store-admit.h"\n#include <assert.h>\n#include <string.h>\nint main(void){char text[]='+json.dumps(text)+';uint8_t scratch[1040],out[2064];memset(scratch,165,sizeof scratch);memset(out,165,sizeof out);coax_t_NsAdmission r=ns_admit_one((coax_string){text,sizeof(text)-1},(coax_v_u8){scratch+8,1024},(coax_v_u8){out+8,2048},0);assert(r.status==0&&r.written==(int64_t)sizeof(text)-1+20);for(int i=0;i<8;i++)assert(scratch[i]==165&&scratch[1032+i]==165&&out[i]==165&&out[2056+i]==165);return 0;}\n')
   sanitized=d/(mode+'-asan');run('cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(d),c,probe,'-lm','-o',sanitized);run(sanitized)
-  wasm=d/(mode+'.wasm');run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(d),c,T/'store_admit_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=16777216,--export=__heap_base,-z,stack-size=2097152','-lm','-o',wasm)
+  wasm=d/(mode+'.wasm');run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(d),c,T/'store_admit_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=16777216,--export=__heap_base,-z,stack-size=2097152','-lm','-o',wasm)
   observed=json.loads(run('node',T/'store_admit_wasm.cjs',wasm,fixtures));results.append({'mode':mode,'native_cases':len(rows),'native_failures':0,'native_sha256':sha(target),'sanitized_fixture':'passed','sanitized_sha256':sha(sanitized),'wasm_sha256':sha(wasm),'wasm':observed})
 for p,h in hashes.items():assert sha(p)==h,p
 oracle.close();print(json.dumps({'schema':'coax.nostr-store-single-admission.v1','scope':'one-event verification and framing only; no multi-event store, replay or durability claim','seed':8120261029,'fixture_sha256':fixture_hash,'inputs':hashes,'modes':results},indent=2))

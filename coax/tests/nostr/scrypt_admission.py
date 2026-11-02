@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generated pointer-range policy against an independent integer model."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import json
@@ -46,6 +47,6 @@ with tempfile.TemporaryDirectory(prefix='coax-scrypt-admission-') as temp:
         sdk=subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip()
         subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2','-c',str(c),'-o',str(d/'ios.o')],check=True)
         wasm=d/(mode+'.wasm')
-        subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',str(c),'-Wl,--export=sa_start,--export=sa_output,--export=sa_start32,--export=sa_output32','-o',str(wasm)],check=True)
+        subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',str(c),'-Wl,--export=sa_start,--export=sa_output,--export=sa_start32,--export=sa_output32','-o',str(wasm)],check=True)
         subprocess.run(['node',str(R/'coax/tests/nostr/scrypt_admission_wasm.cjs'),str(wasm),str(cases)],check=True)
         print(mode,'12000 start and 12000 output independent 32/64-bit address cases on native and Wasm; simulator compile; C',hashlib.sha256(c.read_bytes()).hexdigest(),'Wasm',hashlib.sha256(wasm.read_bytes()).hexdigest(),flush=True)

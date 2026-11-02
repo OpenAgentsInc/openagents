@@ -674,9 +674,20 @@ it ran on x86_64 Linux 6.18 with GCC 15.2 under ASan and UBSan:
   and `sc_is_zero`: all 10,000 were valid scalars, and the scratch buffer
   was zero after every draw. It prints no key bytes.
 
-`coax/tests/entropy.py` runs the first of these on any host; its iOS and
-Chrome cases need macOS and Chrome. They were not rerun today. Safari,
-Firefox and a physical phone remain later checks.
+The browser case ran on the same Linux host on 2026-11-01.
+`coax/tests/entropy.py` built `entropy.coax` and `entropy-wasm.c` to Wasm
+with clang 21.1.8. It served the module from 127.0.0.1 to headless, muted
+Chromium 152.0.7977.82 (`--headless=new --mute-audio`, no window). All 21
+browser and Wasm cases passed with real WebCrypto `getRandomValues`:
+
+- requests of 0 to 1,048,576 bytes, in calls of at most 65,536 bytes;
+- missing, throwing, partial and wrong-return `crypto`, each refused with
+  nothing released;
+- the admission cases, refused before WebCrypto is called.
+
+The native case passed again in the same run. The iOS case needs macOS and
+the simulator, so the Mac and iOS 26.5 results above are cited, not rerun.
+Safari, Firefox and a physical phone remain later checks.
 
 ## Summary
 

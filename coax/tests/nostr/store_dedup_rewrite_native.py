@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent frame tests. Match flags are untrusted and confer no authority."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64,ctypes as C,hashlib,json,os,pathlib,struct,subprocess,tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[3];T=ROOT/'coax/tests/nostr';COMPILER=pathlib.Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'coax/bin/coax'));SOURCE=T/'store_dedup_rewrite_adapter.coax'
 def run(*args):
@@ -53,7 +54,7 @@ with tempfile.TemporaryDirectory(prefix='coax-store-rewrite-') as tmp:
    for x in (a,b,f,out):assert bytes(x[:8])==bytes([165])*8 and bytes(x[-8:])==bytes([165])*8,(mode,row['name'],'guard')
   probe=d/'probe.c';probe.write_text('#include "store-rewrite.h"\n#include <assert.h>\n#include <string.h>\n#include <stdbool.h>\nint main(void){uint8_t old[]={78,83,76,71,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,122};bool flags[]={1};uint8_t out[32];memset(out,165,sizeof out);coax_t_NsDedupFrame r=store_rewrite_test((coax_v_u8){old,sizeof old},(coax_string){"a",1},(coax_v_bool){flags,1},(coax_v_u8){out,21},0);assert(r.ok&&r.count==1&&r.duplicates==1&&out[20]==97);return 0;}\n')
   sanitized=d/(mode+'-asan');run('cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(d),c,probe,'-o',sanitized);run(sanitized)
-  wasm=d/(mode+'.wasm');run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(d),c,T/'store_dedup_rewrite_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=16777216,--export=__heap_base,-z,stack-size=1048576','-o',wasm)
+  wasm=d/(mode+'.wasm');run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(d),c,T/'store_dedup_rewrite_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=16777216,--export=__heap_base,-z,stack-size=1048576','-o',wasm)
   observed=json.loads(run('node',T/'store_dedup_rewrite_wasm.cjs',wasm,cases));reports.append({'mode':mode,'native_cases':len(rows),'native_failures':0,'sanitized':'passed','wasm':observed,'generated_c_sha256':digest(c),'wasm_sha256':digest(wasm)})
 for p,h in hashes.items():assert digest(p)==h,p
 print(json.dumps({'schema':'coax.nostr-store-dedup-rewrite.v1','scope':'unverified private framing transformation only; caller-supplied match flags carry no authority','fixture_sha256':fixture_hash,'inputs':hashes,'modes':reports},indent=2))

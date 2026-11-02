@@ -5,6 +5,7 @@ The two real tables must be evaluated by the compiler using the explicit
 bounded build input. No runtime table generator is substituted for #run.
 Public deterministic scalars, never identities/production key material.
 """
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
@@ -117,8 +118,8 @@ class FixedBase(unittest.TestCase):
    want=self.native_point(k);rows.append({'scalar':f'{k:064x}','expected':None if want is None else [f'{v:064x}' for v in want]})
   fixtures=self.dir/'wasm.json';fixtures.write_text(json.dumps(rows,separators=(',',':')));reports=[]
   for label,_ in self.libs:
-   wasm=self.dir/(label+'.wasm');base.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(self.dir),self.dir/(label+'.c'),ROOT/'coax/tests/nostr/secp_base_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)
-   reports.append({'mode':label,'stack_bytes':1048576,'artifact_sha256':file_sha(wasm),'wasm_compiler':base.run('/opt/homebrew/opt/llvm/bin/clang','--version').stdout.splitlines()[0],**json.loads(base.run('node',ROOT/'coax/tests/nostr/secp_base_wasm.cjs',wasm,fixtures,timeout=1800).stdout)})
+   wasm=self.dir/(label+'.wasm');base.run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(self.dir),self.dir/(label+'.c'),ROOT/'coax/tests/nostr/secp_base_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)
+   reports.append({'mode':label,'stack_bytes':1048576,'artifact_sha256':file_sha(wasm),'wasm_compiler':base.run(WASM_CLANG,'--version').stdout.splitlines()[0],**json.loads(base.run('node',ROOT/'coax/tests/nostr/secp_base_wasm.cjs',wasm,fixtures,timeout=1800).stdout)})
   self.report['wasm']=reports
  def test_d_sanitizers_truncation_and_frozen_public_module(self):
   probe=self.dir/'sanitized.c';probe.write_text('#include "checked.c"\n#include <assert.h>\nint main(void){_Static_assert(sizeof(coax_t_SgPoint)==240,"point layout");coax_t_ScScalar s={0};for(unsigned i=0;i<256;i++){s.limbs.e[i/32]=UINT32_C(1)<<(i%32);coax_t_SgPoint a=smb_multiply_web(s),b=smb_multiply_native(s);assert(sg_valid_mask(a)==UINT64_MAX&&sg_equal_mask(a,b)==UINT64_MAX);s.limbs.e[i/32]=0;}return0;}\n'.replace('return0','return 0'))

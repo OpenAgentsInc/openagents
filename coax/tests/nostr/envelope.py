@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent JSON/hash oracle, actual native/Wasm closure and resource limits."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import json
@@ -132,7 +133,7 @@ class Envelope(unittest.TestCase):
    exe=self.dir/(label+'-sanitized');run('cc','-std=c11','-O2','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(self.dir),self.dir/(label+'.c'),ROOT/'coax/tests/nostr/envelope_native.c','-lm','-o',exe)
    result=subprocess.run([str(exe)],input=self.binary,capture_output=True,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'});self.assertEqual(result.returncode,0,result.stderr.decode());self.evidence['results'].append(dict(target='native-arm64-asan-ubsan',profile=label,records=len(self.cases),observation=result.stdout.decode().strip()));print(label+': '+result.stdout.decode().strip())
  def test_actual_wasm_independent_reference_closure_and_transactions(self):
-  clang=Path(os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang'));sysroot=Path(os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot'));resources=Path(os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes'));environment={**os.environ,'PATH':'/opt/homebrew/opt/lld/bin:'+os.environ.get('PATH','')}
+  clang=Path(WASM_CLANG);sysroot=Path(WASM_SYSROOT);resources=Path(WASM_RESOURCES);environment={**os.environ,'PATH':os.environ.get('PATH','')}
   for label in ['checked','release']:
    module=self.dir/(label+'.wasm');run(clang,'--target=wasm32-wasip1','--sysroot='+str(sysroot),'-resource-dir='+str(resources),'-std=c11','-O2','-ffp-contract=off','-fno-fast-math','-I'+str(self.dir),'-mexec-model=reactor',self.dir/(label+'.c'),ROOT/'coax/tests/nostr/envelope_wasm.c','-Wl,--import-memory,--export=__heap_base,--max-memory=67108864,-z,stack-size=2097152,--gc-sections','-o',module,env=environment)
    result=json.loads(run('node',ROOT/'coax/tests/nostr/envelope_wasm.cjs',module,self.fixture).stdout);result.update(profile=label,wasm_compiler=run(clang,'--version').stdout.splitlines()[0]);self.evidence['results'].append(result);print(f"{label}: {result['records']} actual Wasm envelope records passed")

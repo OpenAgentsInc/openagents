@@ -173,7 +173,11 @@ These earlier records are cited, not rerun:
   signature
   ([2026-11-01-libsecp-crosscheck.md](2026-11-01-libsecp-crosscheck.md)).
 - **Secret probe (chapter 13):** the memcheck gate exempts three procedures.
-- **Entropy (chapter 12):** the Mac, iOS and Chrome runs.
+- **Entropy (chapter 12):** the Mac and iOS runs. The Chrome run was redone
+  on this Linux host later on 2026-11-01. `coax/tests/entropy.py` passed all
+  21 browser and Wasm cases with real WebCrypto `getRandomValues`, in
+  headless, muted Chromium 152.0.7977.82 with a clang 21.1.8 Wasm build. Its
+  native case passed too, and the iOS case skipped.
 - **Mutation, sanitizers and the 10,000-entity run:** chapters 15 and 16.
 - **Full mutation (`COAX_MUTATION_FULL=1`):** not run on any new file. Each
   new `#authority` file had root-only mutation with zero survivors,

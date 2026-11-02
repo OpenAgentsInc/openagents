@@ -11,6 +11,7 @@ Wasm needs clang with wasm32-wasip1, wasm-ld and wasi-libc: COAXIAL_CLANG,
 COAXIAL_SYSROOT and COAXIAL_RESOURCES (defaults are the Mac's Homebrew paths),
 and Node for WASI.
 """
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import json
@@ -25,9 +26,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[3]
 COMPILER = Path(os.environ.get('COAX_TEST_COMPILER', ROOT / 'coax/bin/coax'))
 SOURCE = ROOT / 'coax/lib/crypto/bytes.coax'
-CLANG = os.environ.get('COAXIAL_CLANG', '/opt/homebrew/opt/llvm/bin/clang')
-SYSROOT = os.environ.get('COAXIAL_SYSROOT', '/opt/homebrew/opt/wasi-libc/share/wasi-sysroot')
-RESOURCES = os.environ.get('COAXIAL_RESOURCES', '/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes')
+CLANG = WASM_CLANG
+SYSROOT = WASM_SYSROOT
+RESOURCES = WASM_RESOURCES
 DRIVER = r'''
 #include <stdint.h>
 #include "bytes.h"

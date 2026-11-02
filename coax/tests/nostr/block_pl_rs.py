@@ -2,6 +2,7 @@
 """NIP-PL and NIP-RS envelope interoperability: protoc 29.3 to the Coax adapters on native sanitizers and Wasm.
 Envelope consistency only; no signature, decryption, expiration window or acceptance."""
 # Firm reason: 3 (runs protoc 29.3, the reference protobuf implementation we test against)
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import os, pathlib, re, shutil, subprocess, sys, tempfile
 R=pathlib.Path(__file__).resolve().parents[3]
 PROTOC=os.environ.get('PROTOC') or shutil.which('protoc')
@@ -15,7 +16,7 @@ run(sys.executable,R/'coax/tests/nostr/generate_pl_rs_fixtures.py','--check',env
 def load(name,prefix):return {m.group(1):bytes(int(x) for x in m.group(2).split(',')) for m in re.finditer(r'^'+prefix+r'(\w+) :: \[\d+\]u8\.\[([0-9,]+)\];$',(R/'coax/tests/nostr'/name).read_text(),re.M)}
 sets=[('pl','PL',load('pl_lease_fixtures.coax','PL_FIX_'),{'OK','NO_ALT','ZERO','MAX','D64'},'nostr.block.pl.v1alpha1.PushLease','nostr/block/pl/v1alpha1/lease.proto',b'installation: "f3a1'),
       ('rs','RS',load('rs_read_state_fixtures.coax','RS_FIX_'),{'OK','MORE_TAGS','EXTRA_D_VALUE','T_NO_VALUE','VALUE_NOT_T'},'nostr.block.rs.v1alpha1.ReadStateEvent','nostr/block/rs/v1alpha1/read_state.proto',b'slot: "0123')]
-clang=os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang');sysroot=os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot');resources=os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes')
+clang=WASM_CLANG;sysroot=WASM_SYSROOT;resources=WASM_RESOURCES
 include=pathlib.Path(PROTOC).resolve().parent.parent/'include'
 with tempfile.TemporaryDirectory(prefix='coax-pl-rs-') as tmp:
  d=pathlib.Path(tmp)

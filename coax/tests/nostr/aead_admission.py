@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """AEAD seven-span policy against independent integer intersections."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C,hashlib,json,random,subprocess,tempfile
 from pathlib import Path
 R=Path(__file__).resolve().parents[3];rng=random.Random(99049);U=(1<<64)-1
@@ -36,6 +37,6 @@ with tempfile.TemporaryDirectory(prefix='coax-aead-admission-') as temp:
   for s,seal,narrow,e in cases:
    entries=(Span*7)(*(Span(a,n) for a,n in s));assert obj.aa_admit(View(entries,7),seal,narrow)==e
   sdk=subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip();subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2','-c',str(c),'-o',str(d/'ios.o')],check=True)
-  wasm=d/(mode+'.wasm');subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,--export=aa_set,--export=aa_check','-o',str(wasm)],check=True)
+  wasm=d/(mode+'.wasm');subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,--export=aa_set,--export=aa_check','-o',str(wasm)],check=True)
   subprocess.run(['node',str(R/'coax/tests/nostr/aead_admission_wasm.cjs'),str(wasm),str(casesfile)],check=True)
   print(mode,len(cases),'independent address cases, native and Wasm; simulator compile; C',hashlib.sha256(c.read_bytes()).hexdigest(),'Wasm',hashlib.sha256(wasm.read_bytes()).hexdigest(),flush=True)

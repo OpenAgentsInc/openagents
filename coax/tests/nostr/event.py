@@ -4,6 +4,7 @@
 Test signatures use only deterministic throwaway keys via the pinned public
 libsecp oracle artifact. Production code under test is the actual Coax module.
 """
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import copy,ctypes as C,hashlib,json,os,platform,random,re,tempfile,time,unittest
 from pathlib import Path
 import secp_field as base
@@ -155,7 +156,7 @@ class Events(unittest.TestCase):
     def test_z_real_wasm_and_sanitized_callers(self):
         fixtures=self.dir/'wasm.json';fixtures.write_text(json.dumps(self.cases));reports=[]
         for mode,_ in self.libs:
-            target=self.dir/(mode+'.wasm');base.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(self.dir),self.dir/(mode+'.c'),ROOT/'coax/tests/nostr/event_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',target)
+            target=self.dir/(mode+'.wasm');base.run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(self.dir),self.dir/(mode+'.c'),ROOT/'coax/tests/nostr/event_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',target)
             reports.append({'mode':mode,'artifact_sha256':sha(target),**json.loads(base.run('node',ROOT/'coax/tests/nostr/event_wasm.cjs',target,fixtures).stdout)})
         self.report['wasm']=reports;self.report['cases_per_native_profile']=len(self.cases);self.report['wasm_stack_bytes']=1048576
         e=self.signed(fixture());text=encoded(e).encode();probe=self.dir/'sanitized.c'

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build bounded public owner artifacts and check native/Wasm export surfaces."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib,json,pathlib,subprocess,tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[3];C=ROOT/'coax/bin/coax';P=ROOT/'coax/lib/crypto/platform'
 API=['coax_ecdh_owned_'+x for x in ('acquire','start','collect','retry','cancel','close')]
@@ -27,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='coax-ecdh-exports-') as td:
   negative=d/(mode+'-exposed.dylib');run('cc',*common,'-shared','-fPIC',*sources,'-lm','-o',negative)
   unsafe={line.split()[-1].removeprefix('_') for line in run('nm','-gU',negative).splitlines() if line.split()}
   if 'ecdh_stage_bridge' not in unsafe:raise RuntimeError('native negative control failed')
-  wasi=['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes',*common,*sources,'-mexec-model=reactor','-Wl,--export-memory,--export=malloc,--export=free,-z,stack-size=1048576',*[f'-Wl,--export={name}' for name in API],'-lm']
+  wasi=[WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,*common,*sources,'-mexec-model=reactor','-Wl,--export-memory,--export=malloc,--export=free,-z,stack-size=1048576',*[f'-Wl,--export={name}' for name in API],'-lm']
   wasm=d/(mode+'.wasm');run(*wasi,'-o',wasm)
   js='const fs=require("fs");let m=new WebAssembly.Module(fs.readFileSync(process.argv[1]));console.log(JSON.stringify(WebAssembly.Module.exports(m).map(x=>x.name)))'
   exports=set(json.loads(run('node','-e',js,wasm)))

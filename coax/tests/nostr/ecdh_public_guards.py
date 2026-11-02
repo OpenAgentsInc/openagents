@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Adversarial public-peer fixtures; no guard or production attestation."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C,hashlib,json,os,pathlib,random,tempfile
 import secp_field as field
 from ecdh_vectors import Work,WV
@@ -25,7 +26,7 @@ def main():
     a=(C.c_uint8*32).from_buffer_copy(k);b=(C.c_uint8*32).from_buffer_copy(p);w=Work();C.memset(C.byref(w),0xa5,C.sizeof(w));actual=lib.ecdh_stage_bridge(field.View(a,32),field.View(b,32),WV(C.pointer(w),1));assert actual==status,(mode,i,actual,status)
     if status==2:assert C.string_at(C.byref(w),C.sizeof(w))==bytes([0xa5])*C.sizeof(w),(mode,i,'refusal work')
     else:assert bytes(w.staged)==want,(mode,i,'raw x')
-   wasm=d/(mode+'.wasm');field.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(d),c,ROOT/'coax/tests/nostr/ecdh_public_guards_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)
+   wasm=d/(mode+'.wasm');field.run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(d),c,ROOT/'coax/tests/nostr/ecdh_public_guards_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)
    result=json.loads(field.run('node',ROOT/'coax/tests/nostr/ecdh_public_guards_wasm.cjs',wasm,fixture,timeout=1800).stdout);report['modes'].append({'mode':mode,'native_cases':len(rows),'native_failures':0,'native_sha256':file_sha(libpath),'wasm_sha256':file_sha(wasm),'wasm':result})
  for name,h in graph.items():assert file_sha(ROOT/name)==h,name
  assert file_sha(field.COMPILER)==report['compiler_sha256'];text=json.dumps(report,indent=2)+'\n';path=os.environ.get('COAX_ECDH_PUBLIC_GUARDS_REPORT');pathlib.Path(path).write_text(text) if path else print(text,end='')

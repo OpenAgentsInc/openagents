@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Original-byte signature tests with OpenSSL and an independent header oracle."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64
 import ctypes as c
 import hashlib
@@ -70,7 +71,7 @@ def main():
    raw_rsa=library.rsa;raw_rsa.argtypes=[ptr,c.c_int64,ptr,c.c_int64,ptr,c.c_int64];raw_rsa.restype=c.c_int
    assert raw_rsa(buf(rfc_n),len(rfc_n),buf(rfc_sig),len(rfc_sig),buf(rfc_message),len(rfc_message))==1
    assert verify(buf(rfc_token),len(rfc_token),buf(rfc_n),len(rfc_n))==0 # FI profile requires typ and kid.
-   subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(tmp),str(ROOT/'coax/tests/nostr/fi_jws_signature_wasm.c'),'-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
+   subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(tmp),str(ROOT/'coax/tests/nostr/fi_jws_signature_wasm.c'),'-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
    print(f'{mode}: {len(rows)} JWS cases match OpenSSL; generated_c_sha256={hashlib.sha256(generated.read_bytes()).hexdigest()} native_sha256={hashlib.sha256(lib.read_bytes()).hexdigest()} wasm_sha256={hashlib.sha256(wasm.read_bytes()).hexdigest()}',flush=True)
    subprocess.run(['node',str(ROOT/'coax/tests/nostr/fi_jws_signature_wasm.cjs'),str(wasm),str(fixtures)],check=True)
 if __name__=='__main__':main()

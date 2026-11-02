@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise generated lifecycle policy on native and actual WebAssembly."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib
 import subprocess
 import tempfile
@@ -19,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix='coax-scrypt-cleanup-') as temp:
         sdk=subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip()
         subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2','-I'+str(d),'-c',str(c),'-o',str(d/'ios.o')],check=True)
         wasm=d/(mode+'.wasm')
-        subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(d),'-mexec-model=reactor',str(c),str(FIXTURE),'-Wl,--export=cleanup_fixture','-o',str(wasm)],check=True)
+        subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(d),'-mexec-model=reactor',str(c),str(FIXTURE),'-Wl,--export=cleanup_fixture','-o',str(wasm)],check=True)
         js='const fs=require("fs"),{WASI}=require("node:wasi"); (async()=>{const w=new WASI({version:"preview1"});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[1]),{wasi_snapshot_preview1:w.wasiImport});w.initialize(instance);if(instance.exports.cleanup_fixture()!==0)process.exit(1)})().catch(()=>process.exit(1))'
         subprocess.run(['node','-e',js,str(wasm)],check=True)
         print(mode,'exhaustive finite policy model: native ASan/UBSan and Wasm passed; iOS simulator compile only; C',hashlib.sha256(c.read_bytes()).hexdigest(),'Wasm',hashlib.sha256(wasm.read_bytes()).hexdigest(),flush=True)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Original JWS, semantic candidate and caller-supplied JWKS; never FI authority."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64
 import ctypes as c
 import json
@@ -61,6 +62,6 @@ with tempfile.TemporaryDirectory(prefix='fi-local-jws-') as td:
   guard.write_text('#include "'+str(FIXTURE)+'"\n#include <assert.h>\n#include <sys/mman.h>\nint main(void){const uint8_t t[]={'+tb+'},w[]={'+wrong_issuer+'};void *p=mmap(0,4096,PROT_NONE,MAP_PRIVATE|MAP_ANON,-1,0);assert(p!=MAP_FAILED);assert(!fi_test_local(t,sizeof(t),p,4096,"other.test",10,101));assert(!fi_test_local(t,sizeof(t),p,4096,"relay.test",10,110));assert(!fi_test_local(w,sizeof(w),p,4096,"relay.test",10,101));munmap(p,4096);return 0;}')
   guard_exe=d/(mode+'-guard')
   subprocess.run(['cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(d),str(guard),'-lm','-o',str(guard_exe)],check=True);subprocess.run([str(guard_exe)],check=True,timeout=60)
-  subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-DFI_LOCAL_WASM','-I'+str(d),str(FIXTURE),'-mexec-model=reactor','-Wl,-z,stack-size=4194304,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
+  subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-DFI_LOCAL_WASM','-I'+str(d),str(FIXTURE),'-mexec-model=reactor','-Wl,-z,stack-size=4194304,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
   subprocess.run(['node',str(ROOT/'coax/tests/nostr/fi_local_jws_wasm.cjs'),str(wasm),str(d/'vectors.json')],check=True)
   print(f'{mode}: {len(cases)} local signed candidate cases passed native, Wasm and sanitizer')

@@ -7,6 +7,7 @@ fixtures/project_history.json is history-fixture.ts's output (signed events
 and model.ts's log), frozen on 2026-11-01 when the TypeScript project tools
 were removed.
 """
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import json, os, subprocess, tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
@@ -28,9 +29,9 @@ with tempfile.TemporaryDirectory(prefix='coax-project-history-') as tmp:
   actual=run(exe,fixture['pk'],input=frames,env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'})
   assert actual==fixture['expected'],f'{mode} native log differs:\nactual {actual!r}\nexpected {fixture["expected"]!r}'
   wasm=d/(mode+'.wasm')
-  clang=os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang')
-  sysroot=os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot')
-  resources=os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes')
+  clang=WASM_CLANG
+  sysroot=WASM_SYSROOT
+  resources=WASM_RESOURCES
   run(clang,'--target=wasm32-wasip1','--sysroot='+sysroot,'-resource-dir='+resources,*common,'-Wl,-z,stack-size=1048576,--max-memory=67108864','-o',wasm)
   actual=run('node','--no-warnings',runner,wasm,fixture['pk'],input=frames)
   assert actual==fixture['expected'],f'{mode} Wasm log differs'

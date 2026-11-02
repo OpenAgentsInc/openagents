@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Finite mock of recovery policy; this is not a real checkpoint provider."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib
 import subprocess
 import tempfile
@@ -10,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[3]
 ADAPTER = ROOT / 'coax/tests/nostr/recovery_policy_adapter.coax'
 FIXTURE = ROOT / 'coax/tests/nostr/recovery_policy_fixture.c'
 COMPILER = ROOT / 'coax/bin/coax'
-LLVM = '/opt/homebrew/opt/llvm/bin/clang'
-SYSROOT = '/opt/homebrew/opt/wasi-libc/share/wasi-sysroot'
-RESOURCE = '/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes'
+LLVM = WASM_CLANG
+SYSROOT = WASM_SYSROOT
+RESOURCE = WASM_RESOURCES
 
 def run(*args, **kw):
     return subprocess.run([str(x) for x in args], check=True, **kw)

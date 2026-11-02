@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Test-only NIP-98 tag extraction; parsed tags confer no authority."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import copy
 import ctypes as C
 import json
@@ -110,9 +111,9 @@ class WasmTags(unittest.TestCase):
             for mode,options in [('checked',[]),('release',['--release'])]:
                 source=d/(mode+'.c');header=d/'tags.h';target=d/(mode+'.wasm')
                 source.write_text(prior.run(COMPILER,'c',ROOT/'coax/lib/nostr/nip98-tags.coax','--library','--header',header,*options))
-                prior.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1',
-                    '--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot',
-                    '-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes',
+                prior.run(WASM_CLANG,'--target=wasm32-wasip1',
+                    '--sysroot='+WASM_SYSROOT,
+                    '-resource-dir='+WASM_RESOURCES,
                     '-std=c11','-O2','-I'+str(d),source,ROOT/'coax/tests/nostr/nip98_tags_wasm.c',
                     '-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=8388608,--export=__heap_base,-z,stack-size=1048576',
                     '-lm','-o',target)

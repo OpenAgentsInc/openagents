@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Differential public BIP-340 verification; no secret timing claim."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib,json,random,tempfile
 from pathlib import Path
@@ -56,7 +57,7 @@ def main():
     if lib.schnorr_fast_verify_vartime(*views) or lib.nostr_fast_verify_vartime(*views):raise AssertionError(('metadata accepted',label,counts))
    same=base.array(key);alias=base.view(same);sig_array=base.array(alias_sig);sig_view=base.view(sig_array)
    if not lib.schnorr_fast_verify_vartime(alias,alias,sig_view) or not lib.nostr_fast_verify_vartime(alias,alias,sig_view) or bytes(same)!=key:raise AssertionError(('readonly alias',label))
-   wasm=d/(label+'.wasm');base.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(d),c,ROOT/'coax/tests/nostr/schnorr_fast_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',wasm)
+   wasm=d/(label+'.wasm');base.run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(d),c,ROOT/'coax/tests/nostr/schnorr_fast_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',wasm)
    observed=json.loads(base.run('node',ROOT/'coax/tests/nostr/schnorr_fast_wasm.cjs',wasm,cases).stdout)
 
    if any(support.sha(path)!=digest for path,digest in hashes.items()):raise AssertionError('source closure changed during test')

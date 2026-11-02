@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Explicit RFC/independent native oracle checks for Coax HMAC and HKDF."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import hmac
@@ -169,13 +170,13 @@ int main(void){
   run(self.dir/'sanitized')
 
  def test_actual_wasm_rfc_and_nip44_vectors(self):
-  clang=Path(os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang'));sysroot=Path(os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot'));resources=Path(os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes'))
+  clang=Path(WASM_CLANG);sysroot=Path(WASM_SYSROOT);resources=Path(WASM_RESOURCES)
   self.assertTrue(clang.exists() and sysroot.exists() and resources.exists(),'actual Wasm toolchain required; see coax/web/wasm.sh')
   fixture={'hmac':[{'key':key.hex(),'input':message.hex(),'digest':hmac.digest(key,message,'sha256').hex(),'published':digest.hex()} for key,message,digest in hmac_vectors()],'hkdf':[{'salt':salt.hex(),'ikm':ikm.hex(),'info':info.hex(),'prk':prk.hex(),'okm':okm.hex()} for salt,ikm,info,prk,okm in hkdf_vectors()]}
   message_keys=json.loads((ROOT/'coax/tests/vectors/upstream/nip44/nip44.vectors.json').read_text())['v2']['valid']['get_message_keys'];prk=message_keys['conversation_key']
   fixture['expand']=[{'prk':prk,'info':v['nonce'],'okm':v['chacha_key']+v['chacha_nonce']+v['hmac_key']} for v in message_keys['keys']]
   for length in [0,1,31,32,33,8160]:fixture['expand'].append({'prk':prk,'info':'','okm':expand_oracle(bytes.fromhex(prk),b'',length).hex()})
-  path=self.dir/'wasm-rfc.json';path.write_text(json.dumps(fixture));env=os.environ.copy();env['PATH']='/opt/homebrew/opt/lld/bin:'+env.get('PATH','')
+  path=self.dir/'wasm-rfc.json';path.write_text(json.dumps(fixture));env=os.environ.copy();env['PATH']=env.get('PATH','')
   for label in ['checked','release']:
    module=self.dir/(label+'.wasm')
    run(clang,'--target=wasm32-wasip1','--sysroot='+str(sysroot),'-resource-dir='+str(resources),'-std=c11','-O2','-ffp-contract=off','-fno-fast-math','-I'+str(self.dir),'-mexec-model=reactor',self.dir/(label+'.c'),ROOT/'coax/tests/nostr/hmac_hkdf_wasm.c','-Wl,--import-memory,--export-memory,--export=__heap_base,--max-memory=67108864,-z,stack-size=1048576,--gc-sections','-o',module,env=env)

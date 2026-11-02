@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Integer oracle for the isolated BIP-340 scalar equation, no real keys."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C,hashlib,json,os,random,subprocess,tempfile
 from pathlib import Path
 R=Path(__file__).resolve().parents[3];compiler=R/'coax/bin/coax';platform=R/'coax/lib/crypto/platform'
@@ -33,6 +34,6 @@ with tempfile.TemporaryDirectory(prefix='coax-sign-math-') as temp:
    ios=d/(mode+'-ios');subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2',*common,str(R/'coax/tests/nostr/schnorr_math_ios.c'),'-o',str(ios)],check=True)
    subprocess.run(['xcrun','simctl','spawn',sim,str(ios)],check=True);print(mode,'iOS Simulator equation/refusal',hashlib.sha256(ios.read_bytes()).hexdigest(),flush=True)
   wasm=d/(mode+'.wasm');exports='-Wl,--export=sm_key,--export=sm_nonce,--export=sm_challenge,--export=sm_output,--export=sm_valid,--export=sm_run,--export=sm_refusal'
-  subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',*common,exports,'-o',str(wasm)],check=True)
+  subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',*common,exports,'-o',str(wasm)],check=True)
   subprocess.run(['node',str(R/'coax/tests/nostr/schnorr_math_wasm.cjs'),str(wasm),str(fixtures)],check=True)
   print(mode,len(cases),'independent cases, four parities and workspace wipes; C',hashlib.sha256(c.read_bytes()).hexdigest(),'Wasm',hashlib.sha256(wasm.read_bytes()).hexdigest(),flush=True)

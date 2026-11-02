@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Staged AEAD workspace against independent HChaCha+OpenSSL vectors."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C,hashlib,importlib.util,json,os,random,subprocess,tempfile
 from pathlib import Path
 R=Path(__file__).resolve().parents[3];compiler=R/'coax/bin/coax';platform=R/'coax/lib/crypto/platform'
@@ -40,6 +41,6 @@ with tempfile.TemporaryDirectory(prefix='coax-aead-workspace-') as temp:
    ios=d/(mode+'-ios');subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2',*common,str(R/'coax/tests/nostr/aead_workspace_ios.c'),'-o',str(ios)],check=True)
    subprocess.run(['xcrun','simctl','spawn',sim,str(ios)],check=True);print(mode,'iOS simulator draft vector and tag tampering',hashlib.sha256(ios.read_bytes()).hexdigest(),flush=True)
   wasm=d/(mode+'.wasm');exports='-Wl,-z,stack-size=1048576,--export=aead_key,--export=aead_nonce,--export=aead_aad,--export=aead_input,--export=aead_output,--export=aead_seal,--export=aead_open,--export=aead_tamper,--export=aead_nonce_tamper,--export=aead_aad_tamper'
-  subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',*common,exports,'-o',str(wasm)],check=True)
+  subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',*common,exports,'-o',str(wasm)],check=True)
   subprocess.run(['node',str(js),str(wasm),str(fixtures)],check=True)
   print(mode,len(cases),'independent cases, real workspace erasure; C',hashlib.sha256(c.read_bytes()).hexdigest(),'Wasm',hashlib.sha256(wasm.read_bytes()).hexdigest(),flush=True)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent issuer/marker selection cases, not FI authorization."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64
 import ctypes as c
 import json
@@ -56,6 +57,6 @@ with tempfile.TemporaryDirectory(prefix='fi-claims-select-') as td:
   wrong=dump(dict(base,iss='https://other.test'));nums=','.join(map(str,wrong));guard=d/'guard.c'
   guard.write_text('#include "generated.c"\n#include <assert.h>\n#include <sys/mman.h>\nint main(void){const char bad[]={'+nums+'};coax_string names[1]={{"https://issuer.test",19}};coax_t_FiCommunity c={0};c.host=(coax_string){"relay.test",10};c.audience=(coax_string){"wss://relay.test",16};c.issuers=(coax_v_string){names,1};void *p=mmap(0,4096,PROT_NONE,MAP_PRIVATE|MAP_ANON,-1,0);assert(p!=MAP_FAILED);coax_v_t_FiIssuer issuers={(coax_t_FiIssuer*)p,1};assert(fi_claims_select((coax_v_t_FiCommunity){&c,1},issuers,(coax_string){"other.test",10},(coax_string){"{}",2}).status==1);assert(fi_claims_select((coax_v_t_FiCommunity){&c,1},issuers,(coax_string){"relay.test",10},(coax_string){"{}",2}).status==2);assert(fi_claims_select((coax_v_t_FiCommunity){&c,1},issuers,(coax_string){"relay.test",10},(coax_string){bad,sizeof(bad)}).status==2);c.host=(coax_string){"bad_",4};assert(fi_claims_select((coax_v_t_FiCommunity){&c,1},issuers,(coax_string){"bad_",4},(coax_string){"{}",2}).status==1);munmap(p,4096);return 0;}')
   guard_exe=d/(mode+'-guard');subprocess.run(['cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(d),str(guard),'-lm','-o',str(guard_exe)],check=True);subprocess.run([str(guard_exe)],check=True,timeout=60)
-  subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-DFI_CLAIMS_WASM','-I'+str(d),str(FIXTURE),'-mexec-model=reactor','-Wl,-z,stack-size=2097152,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
+  subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-DFI_CLAIMS_WASM','-I'+str(d),str(FIXTURE),'-mexec-model=reactor','-Wl,-z,stack-size=2097152,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
   subprocess.run(['node',str(ROOT/'coax/tests/nostr/fi_claims_select_wasm.cjs'),str(wasm),str(d/'vectors.json')],check=True)
   print(f'{mode}: {len(cases)} native and Wasm issuer/marker cases passed')

@@ -6,6 +6,7 @@ verification. Only after Coax accepts them does this test extract tags from
 those same bytes and call the field observer. No production key, live endpoint,
 replay rule, session, authorization, or production cutover is involved.
 """
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64
 import copy
 import ctypes as C
@@ -179,9 +180,9 @@ class WasmObserver(unittest.TestCase):
             for mode, flags in [('checked', []), ('release', ['--release'])]:
                 source = d / (mode + '.c'); header = d / 'observe.h'; target = d / (mode + '.wasm')
                 source.write_text(run(COMPILER, 'c', ROOT / 'coax/lib/nostr/nip98-observe.coax', '--library', '--header', header, *flags))
-                run('/opt/homebrew/opt/llvm/bin/clang', '--target=wasm32-wasip1',
-                    '--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot',
-                    '-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes',
+                run(WASM_CLANG, '--target=wasm32-wasip1',
+                    '--sysroot='+WASM_SYSROOT,
+                    '-resource-dir='+WASM_RESOURCES,
                     '-std=c11', '-O2', '-I'+str(d), source,
                     ROOT / 'coax/tests/nostr/api_request_observation_wasm.c',
                     '-mexec-model=reactor', '-Wl,--import-memory,--export-memory,--max-memory=8388608,--export=__heap_base,-z,stack-size=1048576',

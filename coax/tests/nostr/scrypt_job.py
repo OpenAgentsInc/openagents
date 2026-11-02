@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Checked/release scrypt lifecycle with real wipe effects on native and Wasm."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib
 import os
 import subprocess
@@ -42,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='coax-scrypt-job-') as temp:
                 subprocess.run(['xcrun','simctl','spawn',device,str(large_ios)],check=True)
                 print(mode,'iOS Simulator 64 MiB fixture passed; binary',hashlib.sha256(large_ios.read_bytes()).hexdigest(),flush=True)
         wasm=d/(mode+'.wasm')
-        subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,--export=scrypt_job_fixture','-o',str(wasm)],check=True)
+        subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,--export=scrypt_job_fixture','-o',str(wasm)],check=True)
         js='const fs=require("fs"),{WASI}=require("node:wasi"); (async()=>{const w=new WASI({version:"preview1"});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[1]),{wasi_snapshot_preview1:w.wasiImport});w.initialize(instance);if(instance.exports.scrypt_job_fixture()!==0)process.exit(1)})().catch(()=>process.exit(1))'
         subprocess.run(['node','-e',js,str(wasm)],check=True)
         print(mode,'independent scrypt vector and actual wipe success/cancel/failure: native ASan/UBSan and Wasm passed; iOS',('executed' if device else 'compile only'),'; C',hashlib.sha256(c.read_bytes()).hexdigest(),'Wasm',hashlib.sha256(wasm.read_bytes()).hexdigest(),flush=True)

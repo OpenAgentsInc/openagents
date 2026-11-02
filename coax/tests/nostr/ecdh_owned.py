@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Experimental owned ECDH host: checked/release, native/sanitized/Wasm."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib,json,pathlib,subprocess,sys,tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[3];C=ROOT/'coax/bin/coax';P=ROOT/'coax/lib/crypto/platform';T=ROOT/'coax/tests/nostr'
 def run(*args):subprocess.run([str(x) for x in args],check=True)
@@ -20,6 +21,6 @@ with tempfile.TemporaryDirectory(prefix='coax-ecdh-owned-') as tmp:
   sources += [P/'zeroize.c',P/'ecdh_owned.c',T/'ecdh_owned_fixture.c'];common=['-std=c11',*([] if direct else ['-DCOAX_ECDH_OWNED_TEST_EFFECT']),'-I'+str(d),'-I'+str(P)]
   for name,opts in [('native',['-O2']),('asan',['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer'])]:
    exe=d/(mode+'-'+name);run('cc',*common,*opts,*sources,'-pthread','-lm','-o',exe);run(exe);print(mode,name,'owned host fixture passed',flush=True)
-  wasm=d/(mode+'.wasm');run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes',*common,'-O2',*sources,'-Wl,-z,stack-size=1048576','-lm','-o',wasm);run('node',T/'ecdh_host_wasm.cjs',wasm);print(mode,'Wasm owned host fixture passed',flush=True)
+  wasm=d/(mode+'.wasm');run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,*common,'-O2',*sources,'-Wl,-z,stack-size=1048576','-lm','-o',wasm);run('node',T/'ecdh_host_wasm.cjs',wasm);print(mode,'Wasm owned host fixture passed',flush=True)
 if any(hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()!=digest for p,digest in hashes.items()):raise RuntimeError('test input drift')
 print('input hashes',hashes,flush=True)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Focused public BIP340/strict Nostr verification in actual native and Wasm."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import csv
 import hashlib
@@ -91,8 +92,8 @@ class Schnorr(unittest.TestCase):
   for counts in [[-1,32,64],[1048577,32,64],[32,31,64],[32,33,64],[32,32,63],[32,32,65]]:add('metadata',row['message'],row['public'],row['signature'],False,counts=counts)
   fixtures=self.dir/'wasm-fixtures.json';fixtures.write_text(json.dumps(cases));reports=[]
   for label,lib in self.libs:
-   wasm=self.dir/(label+'.wasm');support.base.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(self.dir),self.dir/(label+'.c'),ROOT/'coax/tests/nostr/schnorr_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',wasm)
-   reports.append({'mode':label,'artifact_sha256':support.sha(wasm),'wasm_compiler':support.base.run('/opt/homebrew/opt/llvm/bin/clang','--version').stdout.splitlines()[0],**json.loads(support.base.run('node',ROOT/'coax/tests/nostr/schnorr_wasm.cjs',wasm,fixtures).stdout)})
+   wasm=self.dir/(label+'.wasm');support.base.run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(self.dir),self.dir/(label+'.c'),ROOT/'coax/tests/nostr/schnorr_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',wasm)
+   reports.append({'mode':label,'artifact_sha256':support.sha(wasm),'wasm_compiler':support.base.run(WASM_CLANG,'--version').stdout.splitlines()[0],**json.loads(support.base.run('node',ROOT/'coax/tests/nostr/schnorr_wasm.cjs',wasm,fixtures).stdout)})
   self.report['wasm']=reports
  def test_sanitized_metadata_boundaries_and_readonly_inputs(self):
   row=self.rows[0];probe=self.dir/'sanitized.c';probe.write_text('''#include "checked.c"

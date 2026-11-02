@@ -2,6 +2,7 @@
 """NIP-GS typed wire interoperability: protoc 29.3 to the Coax adapter on native sanitizers and Wasm.
 Consistency of armor and projection only; no key lifting, signature or trust decision."""
 # Firm reason: 3 (runs protoc 29.3, the reference protobuf implementation we test against)
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import os, pathlib, re, shutil, subprocess, sys, tempfile
 R=pathlib.Path(__file__).resolve().parents[3]
 PROTOC=os.environ.get('PROTOC') or shutil.which('protoc')
@@ -30,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix='coax-gs-') as tmp:
  g.armor=g.armor+b'x';extra.append(('armor past its bound',g.SerializeToString(),False))
  g=GitSignature.FromString(fixtures['OWNER']);g.owner.ClearField('conditions');extra.append(('owner without conditions',g.SerializeToString(),False))
  runner=d/'run.mjs';runner.write_text("import{WASI}from'node:wasi';import{readFileSync}from'node:fs';const w=new WASI({version:'preview1',args:process.argv.slice(2),env:{},preopens:{}});const{instance}=await WebAssembly.instantiate(readFileSync(process.argv[2]),{wasi_snapshot_preview1:w.wasiImport});w.start(instance);\n")
- clang=os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang');sysroot=os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot');resources=os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes')
+ clang=WASM_CLANG;sysroot=WASM_SYSROOT;resources=WASM_RESOURCES
  for mode,flags in [('checked',[]),('release',['--release'])]:
   src=d/(mode+'.c');h=d/'block_git_signature.h';src.write_bytes(run(COAX,'c',R/'coax/lib/nostr/adapters/gs-projection.coax','--library','--header',h,*flags))
   common=['-std=c11','-O1','-I'+str(d),src,R/'coax/tests/nostr/block_git_signature_driver.c','-lm'];exe=d/(mode+'-san')

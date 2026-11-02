@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Actual AEAD host cleanup and injected-failure tests."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib,os,subprocess,tempfile
 from pathlib import Path
 R=Path(__file__).resolve().parents[3];P=R/'coax/lib/crypto/platform';compiler=R/'coax/bin/coax'
@@ -18,6 +19,6 @@ with tempfile.TemporaryDirectory(prefix='coax-aead-host-') as temp:
    if sim:
     ios=d/(mode+'-'+effect+'-ios');subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2','-DNATIVE_MAIN',*common,'-o',str(ios)],check=True)
     subprocess.run(['xcrun','simctl','spawn',sim,str(ios)],check=True);print(mode,effect,'iOS Simulator',hashlib.sha256(ios.read_bytes()).hexdigest(),flush=True)
-   wasm=d/(mode+'-'+effect+'.wasm');subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,-z,stack-size=1048576,--export=aead_host_fixture','-o',str(wasm)],check=True)
+   wasm=d/(mode+'-'+effect+'.wasm');subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,-z,stack-size=1048576,--export=aead_host_fixture','-o',str(wasm)],check=True)
    js='const fs=require("fs"),{WASI}=require("node:wasi");(async()=>{const w=new WASI({version:"preview1"});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[1]),{wasi_snapshot_preview1:w.wasiImport});w.initialize(instance);const r=instance.exports.aead_host_fixture();if(r!==0){console.error("fixture",r);process.exit(1)}})().catch(e=>{console.error(e);process.exit(1)})'
    subprocess.run(['node','-e',js,str(wasm)],check=True);print(mode,effect,'native sanitizer and Wasm passed; Wasm',hashlib.sha256(wasm.read_bytes()).hexdigest(),flush=True)

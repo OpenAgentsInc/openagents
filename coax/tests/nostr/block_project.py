@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """NIP-MP typed wire interoperability, not signature or project admission."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import json, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
@@ -45,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix='coax-mp-') as tmp:
   src=d/(mode+'.c');h=d/'block_project.h';src.write_bytes(run(COAX,'c',ROOT/'coax/tests/nostr/mp_projection_checks.coax','--library','--header',h,*flags))
   common=['-std=c11','-O1','-I'+str(d),src,ROOT/'coax/tests/nostr/block_project_driver.c','-lm'];exe=d/(mode+'-san')
   run('cc',*common,'-fsanitize=address,undefined','-fno-sanitize-recover=all','-o',exe)
-  clang=os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang');sysroot=os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot');resources=os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes')
+  clang=WASM_CLANG;sysroot=WASM_SYSROOT;resources=WASM_RESOURCES
   wasm=d/(mode+'.wasm');run(clang,'--target=wasm32-wasip1','--sysroot='+sysroot,'-resource-dir='+resources,*common,'-Wl,-z,stack-size=1048576,--max-memory=67108864','-o',wasm)
   for target in ([exe],['node','--no-warnings',runner,wasm]):
    def read(op,data):return int(run(*target,op,data=data))

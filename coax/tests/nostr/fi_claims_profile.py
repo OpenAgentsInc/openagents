@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Issuer-only and selected-class claim projection; no authorization."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64
 import ctypes as c
 import json
@@ -55,6 +56,6 @@ with tempfile.TemporaryDirectory(prefix='fi-claims-profile-') as td:
    mb=m.encode();lines.append(f'const char t{i}[]={{ {data(t)} }},m{i}[]={{ {data(mb)} }};assert(fi_test_profile(t{i},{len(t)},m{i},{len(mb)},{n})=={w});')
   lines.append('return 0;}');driver.write_text('\n'.join(lines));exe=d/(mode+'-sanitized')
   subprocess.run(['cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(d),str(driver),'-lm','-o',str(exe)],check=True);subprocess.run([str(exe)],check=True,timeout=60)
-  subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-DFI_CLAIMS_WASM','-I'+str(d),str(FIXTURE),'-mexec-model=reactor','-Wl,-z,stack-size=1048576,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
+  subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-DFI_CLAIMS_WASM','-I'+str(d),str(FIXTURE),'-mexec-model=reactor','-Wl,-z,stack-size=1048576,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
   subprocess.run(['node',str(ROOT/'coax/tests/nostr/fi_claims_profile_wasm.cjs'),str(wasm),str(d/'vectors.json')],check=True)
   print(f'{mode}: {len(cases)} class-aware native, Wasm and sanitizer cases passed')

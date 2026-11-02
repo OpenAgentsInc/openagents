@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent canonical configuration byte oracle, not a full policy ID."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64
 import ctypes as c
 import json
@@ -59,6 +60,6 @@ with tempfile.TemporaryDirectory(prefix='fi-policy-encoding-') as td:
     lines.append(f'assert(fi_test_policy_encoding({i},out,sizeof(out))=={len(want)} && memcmp(out,e{i},{len(want)})==0);')
   lines.append('return 0;}');driver.write_text('\n'.join(lines));exe=d/(mode+'-sanitized')
   subprocess.run(['cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I'+str(d),str(driver),'-lm','-o',str(exe)],check=True);subprocess.run([str(exe)],check=True,timeout=60)
-  subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-DFI_POLICY_WASM','-I'+str(d),str(FIXTURE),'-mexec-model=reactor','-Wl,-z,stack-size=1048576,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
+  subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-DFI_POLICY_WASM','-I'+str(d),str(FIXTURE),'-mexec-model=reactor','-Wl,-z,stack-size=1048576,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
   subprocess.run(['node',str(ROOT/'coax/tests/nostr/fi_policy_encoding_wasm.cjs'),str(wasm),str(d/'vectors.json')],check=True)
   print(f'{mode}: {len(rows)} native/Wasm/sanitizer encoding cases passed')

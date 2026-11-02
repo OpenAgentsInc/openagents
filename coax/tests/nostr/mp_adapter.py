@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Protoc to Coax MP consistency; synthetic signatures grant no authority."""
 # Firm reason: 3 (runs protoc 29.3, the reference protobuf implementation we test against)
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import copy, ctypes as C, hashlib, json, os, pathlib, subprocess, sys, tempfile
 R=pathlib.Path(__file__).resolve().parents[3]
 compiler=os.environ.get('COAX_TEST_BIN',str(R/'coax/bin/coax'))
@@ -71,6 +72,6 @@ with tempfile.TemporaryDirectory(prefix='coax-mp-adapter-') as tmp:
   good=bytes(cases[0]['wire']);raw=bytes(cases[0]['original'])
   main=d/'main.c';main.write_text('#include <stdint.h>\n#include <string.h>\nuint8_t *mpa_input(void),*mpa_output(void);int64_t mpa_test_run(int64_t);\nstatic uint8_t wire[]={'+','.join(map(str,good))+'};\nstatic uint8_t raw[]={'+','.join(map(str,raw))+'};\nint main(void){memcpy(mpa_input(),wire,sizeof wire);return mpa_test_run(sizeof wire)!=(int64_t)sizeof raw||memcmp(mpa_output(),raw,sizeof raw);}\n')
   exe=d/(mode+'-san');run('cc','-std=c11','-O1','-fsanitize=address,undefined','-fno-sanitize-recover=all',*common,main,'-o',exe);run(exe)
-  wasm=d/(mode+'.wasm');run(os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang'),'--target=wasm32-wasip1','--sysroot='+os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot'),'-resource-dir='+os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes'),'-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,-z,stack-size=2097152,--export=mpa_input,--export=mpa_output,--export=mpa_test_run','-o',wasm)
+  wasm=d/(mode+'.wasm');run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,-z,stack-size=2097152,--export=mpa_input,--export=mpa_output,--export=mpa_test_run','-o',wasm)
   run('node',R/'coax/tests/nostr/mp_adapter_wasm.cjs',wasm,path)
   print(mode,len(cases),'protoc/native/Wasm cases; C SHA-256',hashlib.sha256(c.read_bytes()).hexdigest(),flush=True)

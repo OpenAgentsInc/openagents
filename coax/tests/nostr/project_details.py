@@ -4,6 +4,7 @@
 fixtures/project_details.json is details-fixture.ts's output, frozen on
 2026-11-01 when the TypeScript project tools were removed.
 """
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import json, os, subprocess, tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
@@ -21,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='coax-project-details-') as tmp:
   src.write_bytes(run(ROOT/'coax/bin/coax','c',ROOT/'coax/tests/nostr/project_details_adapter.coax','--library','--header',header,*flags))
   common=['-std=c11','-O1','-I'+str(d),src,ROOT/'coax/tests/nostr/project_details.c','-lm']
   exe=d/(mode+'-san'); run('cc',*common,'-fsanitize=address,undefined','-fno-sanitize-recover=all','-o',exe)
-  clang=os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang'); sysroot=os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot'); resources=os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes')
+  clang=WASM_CLANG; sysroot=WASM_SYSROOT; resources=WASM_RESOURCES
   wasm=d/(mode+'.wasm'); run(clang,'--target=wasm32-wasip1','--sysroot='+sysroot,'-resource-dir='+resources,*common,'-Wl,-z,stack-size=1048576,--max-memory=67108864','-o',wasm)
   for target in ([exe],['node','--no-warnings',runner,wasm]):
    for case in cases:

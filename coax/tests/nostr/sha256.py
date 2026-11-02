@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Focused SHA-256 stream/tag/oracle tests. Explicit tooling, no app dependency."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import json
@@ -169,9 +170,9 @@ int main(void){
   run(self.dir/'sanitized')
 
  def test_actual_wasm_vectors_streams_tags_and_throughput(self):
-  clang=Path(os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang'))
-  sysroot=Path(os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot'))
-  resources=Path(os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes'))
+  clang=Path(WASM_CLANG)
+  sysroot=Path(WASM_SYSROOT)
+  resources=Path(WASM_RESOURCES)
   self.assertTrue(clang.exists() and sysroot.exists() and resources.exists(),'actual Wasm toolchain is required; see coax/web/wasm.sh')
   vectors=[{'input':data.hex(),'digest':digest.hex()} for data,digest in nist_vectors()]
   streams=[{'input':bytes(i%256 for i in range(n)).hex(),'digest':hashlib.sha256(bytes(i%256 for i in range(n))).hexdigest(),'chunk':chunk} for n in [0,55,56,63,64,65,120,129,4097] for chunk in [1,7,64,129]]
@@ -181,7 +182,7 @@ int main(void){
     th=hashlib.sha256(tag).digest();tags.append({'id':tag_id,'input':data.hex(),'digest':hashlib.sha256(th+th+data).hexdigest()})
   fixture=self.dir/'wasm_vectors.json';fixture.write_text(json.dumps({'vectors':vectors,'streams':streams,'tags':tags,'large_digest':hashlib.sha256(bytes(range(256))*4096).hexdigest()}))
   face=ROOT/'coax/tests/nostr/sha256_wasm.c'
-  environment=os.environ.copy();environment['PATH']='/opt/homebrew/opt/lld/bin:'+environment.get('PATH','')
+  environment=os.environ.copy();environment['PATH']=environment.get('PATH','')
   for label in ['checked','release']:
    module=self.dir/(label+'.wasm')
    run(clang,'--target=wasm32-wasip1','--sysroot='+str(sysroot),'-resource-dir='+str(resources),'-std=c11','-O2','-ffp-contract=off','-fno-fast-math','-I'+str(self.dir),'-mexec-model=reactor',self.dir/(label+'.c'),face,'-Wl,--import-memory,--export-memory,--export=__heap_base,--max-memory=67108864,-z,stack-size=1048576,--gc-sections','-o',module,env=environment)

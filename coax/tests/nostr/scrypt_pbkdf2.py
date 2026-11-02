@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """One-iteration PBKDF2 compared with OpenSSL-backed hashlib."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import json
@@ -46,7 +47,7 @@ def main():
             sdk=subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip()
             subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2','-c',str(cfile),'-o',str(d/'ios.o')],check=True)
             module=d/(mode+'.wasm')
-            subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(d),'-mexec-model=reactor',str(cfile),str(ROOT/'coax/tests/nostr/scrypt_pbkdf2_wasm.c'),'-Wl,--export=pb_password,--export=pb_salt,--export=pb_output,--export=pb_run,--export=pb_refusal','-o',str(module)],check=True)
+            subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(d),'-mexec-model=reactor',str(cfile),str(ROOT/'coax/tests/nostr/scrypt_pbkdf2_wasm.c'),'-Wl,--export=pb_password,--export=pb_salt,--export=pb_output,--export=pb_run,--export=pb_refusal','-o',str(module)],check=True)
             subprocess.run(['node',str(ROOT/'coax/tests/nostr/scrypt_pbkdf2_wasm.cjs'),str(module),str(fixtures)],check=True)
             print(mode,len(cases),'independent cases; C sha256',hashlib.sha256(cfile.read_bytes()).hexdigest(),'Wasm sha256',hashlib.sha256(module.read_bytes()).hexdigest(),flush=True)
 

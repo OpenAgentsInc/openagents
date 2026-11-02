@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """NFKC-to-scrypt bridge; local test tools only."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib,os,subprocess,tempfile
 from pathlib import Path
 R=Path(__file__).resolve().parents[3];P=R/'coax/lib/crypto/platform';compiler=R/'coax/bin/coax'
@@ -28,6 +29,6 @@ with tempfile.TemporaryDirectory(prefix='coax-scrypt-text-') as temp:
      full=d/(mode+'-large-ios');large=R/'coax/tests/nostr/scrypt_text_host_large_ios.c'
      subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2',*common[:-1],str(large),'-o',str(full)],check=True)
      subprocess.run(['xcrun','simctl','spawn',sim,str(full)],check=True);print(mode,'iOS simulator full 64 MiB normalized scrypt',hashlib.sha256(full.read_bytes()).hexdigest(),flush=True)
-   wasm=d/(mode+'-'+effect+'.wasm');subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,-z,stack-size=1048576,--export=scrypt_text_host_fixture','-o',str(wasm)],check=True)
+   wasm=d/(mode+'-'+effect+'.wasm');subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',*common,'-Wl,-z,stack-size=1048576,--export=scrypt_text_host_fixture','-o',str(wasm)],check=True)
    js='const fs=require("fs"),{WASI}=require("node:wasi");(async()=>{const w=new WASI({version:"preview1"});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[1]),{wasi_snapshot_preview1:w.wasiImport});w.initialize(instance);const r=instance.exports.scrypt_text_host_fixture();if(r!==0){console.error("fixture",r);process.exit(1)}})().catch(e=>{console.error(e);process.exit(1)})'
    subprocess.run(['node','-e',js,str(wasm)],check=True);print(mode,effect,'native sanitizer and Wasm fixture passed; Wasm',hashlib.sha256(wasm.read_bytes()).hexdigest(),flush=True)

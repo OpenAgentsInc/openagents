@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fixed-base affine x/parity against pinned libsecp and a Python model."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C,hashlib,json,os,random,subprocess,sys,tempfile
 from pathlib import Path
 R=Path(__file__).resolve().parents[3];sys.path.insert(0,str(R/'tools/coax-nostr/fuzz'))
@@ -35,6 +36,6 @@ with tempfile.TemporaryDirectory(prefix='coax-sign-point-') as temp:
    ios=d/(mode+'-ios');subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2',*common,str(R/'coax/tests/nostr/schnorr_point_ios.c'),'-o',str(ios)],check=True)
    subprocess.run(['xcrun','simctl','spawn',sim,str(ios)],check=True);print(mode,'iOS Simulator three/infinity',hashlib.sha256(ios.read_bytes()).hexdigest(),flush=True)
   wasm=d/(mode+'.wasm');exports='-Wl,-z,stack-size=1048576,--export=sp_input,--export=sp_output,--export=sp_finite,--export=sp_odd,--export=sp_run'
-  subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-mexec-model=reactor',*common,exports,'-o',str(wasm)],check=True)
+  subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-mexec-model=reactor',*common,exports,'-o',str(wasm)],check=True)
   subprocess.run(['node',str(R/'coax/tests/nostr/schnorr_point_wasm.cjs'),str(wasm),str(fixtures)],check=True)
   print(mode,len(cases),'pinned-libsecp inputs, first 32 independently modelled, workspace wipes; C',hashlib.sha256(c.read_bytes()).hexdigest(),'Wasm',hashlib.sha256(wasm.read_bytes()).hexdigest(),flush=True)

@@ -3,6 +3,7 @@
 
 Public-only primitive evidence. This does not claim FI/JOSE authorization.
 """
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as c
 import hashlib
 import json
@@ -98,9 +99,9 @@ def main():
    print(f'{mode}: {len(fixtures)} Wycheproof cases and 300 seeded Montgomery products match independent integer oracle', flush=True)
    print(f'{mode} generated C sha256 {hashlib.sha256(generated.read_bytes()).hexdigest()}; native library sha256 {hashlib.sha256(lib.read_bytes()).hexdigest()}', flush=True)
    wasm = Path(tmp) / (mode + '.wasm')
-   subprocess.run(['/opt/homebrew/opt/llvm/bin/clang', '--target=wasm32-wasip1',
-    '--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot',
-    '-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes', '-std=c11', '-O2',
+   subprocess.run([WASM_CLANG, '--target=wasm32-wasip1',
+    '--sysroot='+WASM_SYSROOT,
+    '-resource-dir='+WASM_RESOURCES, '-std=c11', '-O2',
     '-I' + tmp, str(generated), str(ROOT / 'coax/tests/nostr/rsa_verify_wasm.c'),
     '-mexec-model=reactor', '-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base',
     '-lm', '-o', str(wasm)], check=True)

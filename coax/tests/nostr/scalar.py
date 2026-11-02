@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent scalar arithmetic, actual C ABI/Wasm and seeded carry checks."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import json
@@ -124,7 +125,7 @@ for(int i=0;i<10000;i++){s=sc_mul(s,s);s=sc_add(s,sc_negate(s));s.limbs.e[i%8]=0
 return 0;}''')
   run('cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer',self.dir/'checked.c',host,'-lm','-o',self.dir/'sanitized');run(self.dir/'sanitized')
  def test_actual_wasm_edge_and_random_integer_oracle(self):
-  clang=Path(os.environ.get('COAXIAL_CLANG','/opt/homebrew/opt/llvm/bin/clang'));sysroot=Path(os.environ.get('COAXIAL_SYSROOT','/opt/homebrew/opt/wasi-libc/share/wasi-sysroot'));resources=Path(os.environ.get('COAXIAL_RESOURCES','/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes'))
+  clang=Path(WASM_CLANG);sysroot=Path(WASM_SYSROOT);resources=Path(WASM_RESOURCES)
   self.assertTrue(clang.exists() and sysroot.exists() and resources.exists(),'explicit actual Wasm toolchain required')
   rng=random.Random(20261028);rows=[]
   for index in range(2000):
@@ -133,7 +134,7 @@ return 0;}''')
   for a in [0,1,N-1,N,2**256-1]:
    for op in range(6):
     want=expected(op,a,N-1);rows.append({'op':op,'a':format(a,'064x'),'b':format(N-1,'064x'),'value':None if want is None else format(want,'064x')})
-  fixture=self.dir/'wasm.json';fixture.write_text(json.dumps(rows));env=os.environ.copy();env['PATH']='/opt/homebrew/opt/lld/bin:'+env.get('PATH','')
+  fixture=self.dir/'wasm.json';fixture.write_text(json.dumps(rows));env=os.environ.copy();env['PATH']=env.get('PATH','')
   for label in ['checked','release']:
    module=self.dir/(label+'.wasm');run(clang,'--target=wasm32-wasip1','--sysroot='+str(sysroot),'-resource-dir='+str(resources),'-std=c11','-O2','-ffp-contract=off','-fno-fast-math','-I'+str(self.dir),'-mexec-model=reactor',self.dir/(label+'.c'),ROOT/'coax/tests/nostr/scalar_wasm.c','-Wl,--import-memory,--export-memory,--export=__heap_base,--max-memory=67108864,-z,stack-size=1048576,--gc-sections','-o',module,env=env)
    report=json.loads(run('node',ROOT/'coax/tests/nostr/scalar_wasm.cjs',module,fixture).stdout);self.assertEqual(report['comparisons'],len(rows))

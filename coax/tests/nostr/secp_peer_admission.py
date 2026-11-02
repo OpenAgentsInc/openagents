@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Adversarial public raw-peer tests against the pre-admission behavior."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import json
@@ -48,7 +49,7 @@ def main():
  compiler=field.COMPILER.resolve();inputs=cases();source_hash=sha(SOURCE);binary_hash=sha(compiler)
  deps=json.loads(run(compiler,'deps',SOURCE).stdout);assert not deps['descriptors']
  source_graph={str(Path(p).resolve().relative_to(ROOT)):sha(p) for p in deps['sources']}
- report={'schema':'coax.raw-peer-admission.v1','scope':'public raw-peer boundary behavior, not target constant time or production approval','baseline_commit':BASE,'compiler':run(compiler,'version').stdout.strip(),'compiler_sha256':binary_hash,'source_sha256':source_hash,'driver_sha256':sha(DRIVER),'test_sha256':sha(__file__),'source_graph':source_graph,'native_compiler':run('cc','--version').stdout.splitlines()[0],'wasm_compiler':run('/opt/homebrew/opt/llvm/bin/clang','--version').stdout.splitlines()[0],'modes':[]}
+ report={'schema':'coax.raw-peer-admission.v1','scope':'public raw-peer boundary behavior, not target constant time or production approval','baseline_commit':BASE,'compiler':run(compiler,'version').stdout.strip(),'compiler_sha256':binary_hash,'source_sha256':source_hash,'driver_sha256':sha(DRIVER),'test_sha256':sha(__file__),'source_graph':source_graph,'native_compiler':run('cc','--version').stdout.splitlines()[0],'wasm_compiler':run(WASM_CLANG,'--version').stdout.splitlines()[0],'modes':[]}
  with tempfile.TemporaryDirectory(prefix='coax-peer-admit-') as d:
   tmp=Path(d).resolve();old=tmp/'coax/lib/crypto';shutil.copytree(ROOT/'coax/lib/crypto',old)
   (tmp/'coax/tests/nostr').mkdir(parents=True);shutil.copy2(ROOT/'coax/tests/nostr/scalar_fixtures.coax',tmp/'coax/tests/nostr/scalar_fixtures.coax')
@@ -71,7 +72,7 @@ def main():
     assert len(metadata['source_hashes'])==len(source_graph)
 
     lib=tmp/(name+'-'+label+'.dylib');run('cc','-std=c11','-O2','-shared','-fPIC',c,'-lm','-o',lib);loaded=C.CDLL(str(lib));loaded.smc_multiply.argtypes=[Scalar,group.Point];loaded.smc_multiply.restype=group.Result;libs.append(loaded)
-    wasm=tmp/(name+'-'+label+'.wasm');run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(tmp),c,WASM_ADAPTER,'-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm);wasms.append(wasm)
+    wasm=tmp/(name+'-'+label+'.wasm');run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(tmp),c,WASM_ADAPTER,'-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm);wasms.append(wasm)
     artifacts.append({'version':label,'c_sha256':sha(c),'library_sha256':sha(lib),'wasm_sha256':sha(wasm),'source_map_sha256':sha(source_map),'header_sha256':sha(header),'normalized_header_sha256':hashlib.sha256(header_bytes).hexdigest()})
    bounded=refused=0
    for row in inputs:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent JWKS lookup/composition checks; no provider authority is inferred."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import base64
 import ctypes
 import json
@@ -80,7 +81,7 @@ def main():
             subprocess.run(['cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer',str(sanitizer),'-lm','-o',str(executable)],check=True)
             subprocess.run([str(executable)],check=True,timeout=60)
             wasm = tmp/(mode+'.wasm')
-            subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(tmp),str(ROOT/'coax/tests/nostr/fi_jws_jwks_wasm.c'),'-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
+            subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(tmp),str(ROOT/'coax/tests/nostr/fi_jws_jwks_wasm.c'),'-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
             subprocess.run(['node',str(ROOT/'coax/tests/nostr/fi_jws_jwks_wasm.cjs'),str(wasm),str(vectors)],check=True)
             print(f'{mode}: {len(cases)} native and Wasm composition cases passed',flush=True)
 if __name__ == '__main__': main()

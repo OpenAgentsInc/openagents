@@ -3,6 +3,7 @@
 
 Test-only native/Wasm adapters. No production dependency or private identity.
 """
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import json
@@ -209,9 +210,9 @@ class Group(unittest.TestCase):
   fixture=self.dir/'group.json';fixture.write_text(json.dumps({'operations':operations,'decodes':decodes,'picks':picks,'encodes':encodes}));reports=[]
   for label,lib in self.libs:
    wasm=self.dir/(label+'.wasm')
-   base.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(self.dir),self.dir/(label+'.c'),ROOT/'coax/tests/nostr/secp_group_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',wasm)
+   base.run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(self.dir),self.dir/(label+'.c'),ROOT/'coax/tests/nostr/secp_group_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',wasm)
    result=json.loads(base.run('node',ROOT/'coax/tests/nostr/secp_group_wasm.cjs',wasm,fixture).stdout)
-   reports.append({'mode':label,'artifact_sha256':file_sha(wasm),'wasm_compiler':base.run('/opt/homebrew/opt/llvm/bin/clang','--version').stdout.splitlines()[0],**result})
+   reports.append({'mode':label,'artifact_sha256':file_sha(wasm),'wasm_compiler':base.run(WASM_CLANG,'--version').stdout.splitlines()[0],**result})
   self.report['wasm']=reports
  def test_sanitized_exceptions_and_actual_emitted_faults(self):
   c=self.dir/'sanitized.c';exe=self.dir/'sanitized'

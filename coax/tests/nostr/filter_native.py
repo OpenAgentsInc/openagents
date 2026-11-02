@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Native/Wasm event-filter matrix compared to an independent Boolean oracle."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ast,ctypes as C,json,os,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
@@ -27,5 +28,5 @@ with tempfile.TemporaryDirectory(prefix='coax-filter-') as t:
   print(mode,'4096 independently modeled event-filter combinations passed',flush=True)
   sanitized=d/(mode+'-sanitized');subprocess.run(['cc','-std=c11','-O1','-g','-fsanitize=address,undefined','-DFILTER_STANDALONE','-I'+str(d),'-include',str(d/'event.h'),str(fixture),'-lm','-o',str(sanitized)],check=True)
   subprocess.run([str(sanitized)],check=True);print(mode,'ASan/UBSan matrix passed',flush=True)
-  wasm=d/(mode+'.wasm');subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-DFILTER_WASM','-I'+str(d),'-include',str(d/'event.h'),str(fixture),'-mexec-model=reactor','-Wl,-z,stack-size=2097152,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
+  wasm=d/(mode+'.wasm');subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-DFILTER_WASM','-I'+str(d),'-include',str(d/'event.h'),str(fixture),'-mexec-model=reactor','-Wl,-z,stack-size=2097152,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',str(wasm)],check=True)
   subprocess.run(['node',str(ROOT/'coax/tests/nostr/filter_wasm.cjs'),str(wasm)],check=True)

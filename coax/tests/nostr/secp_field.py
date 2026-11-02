@@ -4,6 +4,7 @@
 Explicit test tooling only. No keys, group arithmetic, timing assurance or
 production Python dependency. Raw digit cases independently enforce limb bounds.
 """
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 import hashlib
 import json
@@ -168,9 +169,9 @@ int main(int argc,char**argv){{coax_t_SecpFieldDebug d={{0}};d.magnitude=8;
   reports=[]
   for label,lib in self.libs:
    wasm=self.dir/(label+'.wasm')
-   run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(self.dir),self.dir/(label+'.c'),ROOT/'coax/tests/nostr/secp_field_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',wasm)
+   run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(self.dir),self.dir/(label+'.c'),ROOT/'coax/tests/nostr/secp_field_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base','-lm','-o',wasm)
    report=json.loads(run('node',ROOT/'coax/tests/nostr/secp_field_wasm.cjs',wasm,fixtures).stdout)
-   reports.append({'mode':label,'optimization':'O2, no LTO','wasm_compiler':run('/opt/homebrew/opt/llvm/bin/clang','--version').stdout.splitlines()[0],'artifact_sha256':hashlib.sha256(wasm.read_bytes()).hexdigest(),**report})
+   reports.append({'mode':label,'optimization':'O2, no LTO','wasm_compiler':run(WASM_CLANG,'--version').stdout.splitlines()[0],'artifact_sha256':hashlib.sha256(wasm.read_bytes()).hexdigest(),**report})
   self.evidence['wasm']=reports
  def test_seeded_wrong_reduction_is_detected_by_independent_oracle(self):
   original=(self.dir/'checked.c').read_text()

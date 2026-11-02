@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Test-only shared-memory Wasm owner contention, checked and release."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib,json,pathlib,platform,shutil,subprocess,sys,tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[3];C=ROOT/'coax/bin/coax';P=ROOT/'coax/lib/crypto/platform';T=ROOT/'coax/tests/nostr'
 def run(*args):
@@ -7,7 +8,7 @@ def run(*args):
  if result.returncode:raise RuntimeError('probe failed: '+str(args[0])+': '+result.stderr[-3000:])
  return result.stdout
 def sha(p):return hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest()
-clang=pathlib.Path('/opt/homebrew/opt/llvm/bin/clang');linker=pathlib.Path(shutil.which('wasm-ld'));node=pathlib.Path(shutil.which('node'))
+clang=pathlib.Path(WASM_CLANG);linker=pathlib.Path(shutil.which('wasm-ld'));node=pathlib.Path(shutil.which('node'))
 inputs=[C,clang,linker,node,pathlib.Path(sys.executable),P/'zeroize.c',P/'ecdh_owned.c',P/'ecdh_owned.h',T/'ecdh_owned_threads_wasm.c',T/'ecdh_owned_threads_wasm.cjs',pathlib.Path(__file__).resolve()];hashes={str(p):sha(p) for p in inputs};results=[]
 if sys.argv[1:] not in ([],['--negative']):raise SystemExit('usage: ecdh_owned_threads_wasm.py [--negative]')
 negative=sys.argv[1:]==['--negative']
@@ -25,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix='coax-owned-wasm-threads-') as td:
     if sha(path)!=digest or path in hashes and hashes[path]!=digest:raise RuntimeError('source identity drift')
     hashes[path]=digest
   wasm=d/(mode+'.wasm');sources += [P/'zeroize.c',host,T/'ecdh_owned_threads_wasm.c'];exports=['coax_ecdh_owned_'+n for n in ('acquire','start','collect','retry','cancel','close')]+['gate_address','__stack_pointer','__heap_base']
-  run(clang,'--target=wasm32-wasip1-threads','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-pthread','-matomics','-mbulk-memory','-DCOAX_ECDH_OWNED_TEST_EFFECT','-I'+str(d),'-I'+str(P),*sources,'-mexec-model=reactor','-Wl,--import-memory,--export-memory,--shared-memory,--initial-memory=16777216,--max-memory=16777216,-z,stack-size=1048576',*[f'-Wl,--export={x}' for x in exports],'-lm','-o',wasm)
+  run(clang,'--target=wasm32-wasip1-threads','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-pthread','-matomics','-mbulk-memory','-DCOAX_ECDH_OWNED_TEST_EFFECT','-I'+str(d),'-I'+str(P),*sources,'-mexec-model=reactor','-Wl,--import-memory,--export-memory,--shared-memory,--initial-memory=16777216,--max-memory=16777216,-z,stack-size=1048576',*[f'-Wl,--export={x}' for x in exports],'-lm','-o',wasm)
   if negative:
    result=subprocess.run(['node',str(T/'ecdh_owned_threads_wasm.cjs'),str(wasm)],capture_output=True,text=True,timeout=30)
    if result.returncode==0 or 'concurrent operation did not report busy' not in result.stderr:raise RuntimeError('unlocked negative control did not trigger expected contention refusal: '+result.stderr[-3000:])

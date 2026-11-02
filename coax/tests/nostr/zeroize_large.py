@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Large wipe policy, real observable host erasure and sanitizer checks."""
 if not __debug__: raise SystemExit('tests require Python assertions')
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import hashlib
 import subprocess
 import tempfile
@@ -27,7 +28,7 @@ def main():
             subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2','-I'+str(d),
                             '-I'+str(ROOT/'coax/lib/crypto/platform'),'-c',str(ROOT/'coax/lib/crypto/platform/zeroize_large.c'),'-o',str(d/'ios.o')],check=True)
             module=d/(mode+'.wasm')
-            subprocess.run(['/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes',
+            subprocess.run([WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,
                             '-std=c11','-O2','-I'+str(d),'-I'+str(ROOT/'coax/lib/crypto/platform'),'-mexec-model=reactor',str(cfile),
                             str(ROOT/'coax/lib/crypto/platform/zeroize.c'),str(ROOT/'coax/lib/crypto/platform/zeroize_large.c'),
                             str(ROOT/'coax/tests/nostr/zeroize_large_wasm.c'),'-Wl,--export=wipe_fixture','-o',str(module)],check=True)

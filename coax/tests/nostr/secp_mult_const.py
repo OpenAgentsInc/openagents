@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Independent variable-base arithmetic evidence; public test inputs only."""
+import os as _os,sys as _sys;_sys.path.insert(0,_os.path.dirname(_os.path.abspath(__file__)));from wasm_toolchain import WASM_CLANG,WASM_SYSROOT,WASM_RESOURCES
 import ctypes as C
 from concurrent.futures import ThreadPoolExecutor
 import json
@@ -99,7 +100,7 @@ class VariableBase(unittest.TestCase):
    source.write((self.dir/'inputs.bin').read_bytes());target.write((self.dir/'expected.bin').read_bytes())
   reports=[]
   for name,_ in self.libs:
-   wasm=self.dir/(name+'.wasm');base.run('/opt/homebrew/opt/llvm/bin/clang','--target=wasm32-wasip1','--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot','-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes','-std=c11','-O2','-I'+str(self.dir),self.dir/(name+'.c'),ROOT/'coax/tests/nostr/secp_mult_const_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)
+   wasm=self.dir/(name+'.wasm');base.run(WASM_CLANG,'--target=wasm32-wasip1','--sysroot='+WASM_SYSROOT,'-resource-dir='+WASM_RESOURCES,'-std=c11','-O2','-I'+str(self.dir),self.dir/(name+'.c'),ROOT/'coax/tests/nostr/secp_mult_const_wasm.c','-mexec-model=reactor','-Wl,--import-memory,--export-memory,--max-memory=67108864,--export=__heap_base,-z,stack-size=1048576','-lm','-o',wasm)
    reports.append({'mode':name,'artifact_sha256':file_sha(wasm),'stack_bytes':1048576,**json.loads(base.run('node',ROOT/'coax/tests/nostr/secp_mult_const_wasm.cjs',wasm,inputs,expected,timeout=1800).stdout)})
   self.report['wasm']=reports
  def test_d_sanitizers_and_short_input(self):
