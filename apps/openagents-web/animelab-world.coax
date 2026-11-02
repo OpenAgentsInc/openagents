@@ -1,0 +1,528 @@
+// Anime Lab's stage set and effects (animelab.coax): Skyreach Academy's
+// courtyard, our own cliff-top school of magic, and everything that happens
+// in it. The academy (walls, the gate between its towers, the great hall
+// and its spire, corner towers, banners, braziers, trees, the cliff) is
+// written once into the world store; the fire, the spells, smoke, rubble,
+// the breach in the east wall and the ink dragon are written every frame
+// into the live store, from the stage (verse/anime/stage.coax) at t.
+// Every motion is a function of t, so a take draws the same frames twice.
+
+// Colours (sRGB), from the anime palette (verse/style.coax ANIME_*), a few of the stage's own.
+STONE_R :: 0.74; STONE_G :: 0.68; STONE_B :: 0.62;   // a warm grey stone, a little darker than the palette's pale
+ROOF_R :: 0.267; ROOF_G :: 0.420; ROOF_B :: 0.659;
+OBJ_FLOOR :: 1; OBJ_WALL :: 2; OBJ_GATE :: 3; OBJ_DOOR :: 4; OBJ_HALL :: 5; OBJ_TOWER :: 6;   // towers 6..13
+OBJ_BRAZIER :: 14; OBJ_TREE :: 15; OBJ_BANNER :: 70; OBJ_FX :: 80; OBJ_RUBBLE :: 90; OBJ_DRAGON :: 100;
+
+BRAZIERS :: 4;
+BRAZIER_X :: [BRAZIERS] f32.[-6.5, 6.5, -7.0, 7.0];
+BRAZIER_Z :: [BRAZIERS] f32.[-4.5, -4.5, 5.8, 5.8];
+BREACH_HALF :: 3.0f32;     // m either side of the breach's middle, along the east wall
+WALL_H :: 5.5f32;
+WALL_T :: 0.7f32;          // half its thickness
+
+wh :: (x: f32, y: f32) -> f32 { v := sin(x * 127.1 + y * 311.7) * 43758.5453; return v - floor(v); }
+nz :: (x: f32, y: f32) -> f32 {
+  ix := floor(x); iy := floor(y); fx := x - ix; fy := y - iy;
+  sx := fx * fx * (3 - 2 * fx); sy := fy * fy * (3 - 2 * fy);
+  a := wh(ix, iy); b := wh(ix + 1, iy); c := wh(ix, iy + 1); d := wh(ix + 1, iy + 1);
+  return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+}
+
+// An arched window on a wall or a tower, its middle at frame f's origin facing f.z: w wide, h tall to
+// the arch's top, lit (a warm lamp) or dark.
+window :: (buf: [] u32, p: [] Pen, f: Frame, w: f32, h: f32, lamp: bool, obj: int) {
+  pen_set(p, obj, MAT_FLAT, 0.08, 0.06, 0.14);
+  arch(buf, p, frame_move(f, sub(f.o, times(f.z, 0.005))), w * 1.35, h * 1.15);
+  if lamp { pen_set(p, obj, MAT_WINDOW, 1.0, 0.72, 0.38); p[0].param = 1.7; } else { pen_set(p, obj, MAT_FLAT, 0.16, 0.2, 0.36); }
+  arch(buf, p, frame_move(f, add(f.o, times(f.z, 0.01))), w, h);
+}
+// A flat arch shape on f's x-y plane: a w-wide rectangle under a half circle, h tall overall.
+arch :: (buf: [] u32, p: [] Pen, f: Frame, w: f32, h: f32) {
+  r := w * 0.5; spring := h - r;
+  n := f.z;
+  a := fp(f, -r, -h * 0.5, 0); b := fp(f, r, -h * 0.5, 0); c := fp(f, r, -h * 0.5 + spring, 0); d := fp(f, -r, -h * 0.5 + spring, 0);
+  tri(buf, p, a, b, c, n, n, n); tri(buf, p, a, c, d, n, n, n);
+  mid := fp(f, 0, -h * 0.5 + spring, 0);
+  for i: 0..<8 {
+    a0 := PI * cast(f32) i / 8.0; a1 := PI * cast(f32) (i + 1) / 8.0;
+    tri(buf, p, mid, fp(f, cos(a0) * r, -h * 0.5 + spring + sin(a0) * r, 0), fp(f, cos(a1) * r, -h * 0.5 + spring + sin(a1) * r, 0), n, n, n);
+  }
+}
+// A round tower at (x, z): r wide, h to its roof's foot, a slate cone roof, a trim band, windows.
+tower :: (buf: [] u32, p: [] Pen, x: f32, z: f32, r: f32, h: f32, roof: f32, obj: int) {
+  pen_set(p, obj, MAT_WORLD, STONE_R * 0.96, STONE_G * 0.95, STONE_B * 0.95);
+  tube(buf, p, frame_at(v3(x, -1, z), 0), h + 1, r, r, r * 0.94, r * 0.94, 22, false);
+  pen_set(p, obj, MAT_WORLD, STONE_R * 0.82, STONE_G * 0.8, STONE_B * 0.82);
+  tube(buf, p, frame_at(v3(x, h - 0.7, z), 0), 0.8, r * 1.08, r * 1.08, r * 1.1, r * 1.1, 22, true);
+  pen_set(p, obj + 1, MAT_WORLD, ROOF_R, ROOF_G, ROOF_B);
+  tube(buf, p, frame_at(v3(x, h + 0.1, z), 0), roof, r * 1.22, r * 1.22, 0, 0, 22, true);
+  // a gold finial
+  pen_set(p, obj + 1, MAT_WORLD, 1.0, 0.82, 0.3);
+  limb(buf, p, v3(x, h + 0.1 + roof - 0.2, z), v3(x, h + roof + 1.2, z), 0.06, 0.02, v3(1, 0, 0), 6);
+  // windows in two or three rows, turned round the tower
+  rows := ifx h > 14 then 3 else 2;
+  for row: 0..<rows {
+    for i: 0..<5 {
+      a := 0.6f32 * cast(f32) i + cast(f32) row * 1.3 + x * 0.1;
+      wy := h * (0.35 + 0.22 * cast(f32) row);
+      f := frame_at(v3(x + sin(a) * r * 0.955, wy, z + cos(a) * r * 0.955), a);
+      window(buf, p, f, 0.55, 1.2, wh(cast(f32) i + x, cast(f32) row + z) > 0.35, obj);
+    }
+  }
+}
+// A wall from (x0, z0) to (x1, z1), its foot on the ground, crenellated along its top.
+wall :: (buf: [] u32, p: [] Pen, x0: f32, z0: f32, x1: f32, z1: f32, h: f32, half: f32, obj: int) {
+  dx := x1 - x0; dz := z1 - z0; l := sqrt(dx * dx + dz * dz);
+  yaw := atan2(dx, dz) + 1.5707963;
+  f := frame_at(v3((x0 + x1) * 0.5, h * 0.5 - 0.5, (z0 + z1) * 0.5), yaw);
+  pen_set(p, obj, MAT_WORLD, STONE_R, STONE_G, STONE_B);
+  box(buf, p, f, l * 0.5, h * 0.5 + 0.5, half);
+  // a coping course along the top, a little proud of the wall, and the merlons on it
+  pen_set(p, obj, MAT_WORLD, STONE_R * 0.9, STONE_G * 0.88, STONE_B * 0.9);
+  box(buf, p, frame_move(f, fp(f, 0, h * 0.5 + 0.5 - 0.15, 0)), l * 0.5, 0.17, half + 0.12);
+  n := cast(int) floor(l / 1.5);
+  for i: 0..<n {
+    x := -l * 0.5 + 0.75 + 1.5 * cast(f32) i;
+    pen_set(p, obj, MAT_WORLD, STONE_R * 0.97, STONE_G * 0.95, STONE_B * 0.95);
+    box(buf, p, frame_move(f, fp(f, x, h * 0.5 + 0.5 + 0.35, -half * 0.4)), 0.42, 0.38, half * 0.55);
+  }
+}
+// The academy: written once into the world store.
+build_world :: (buf: [] u32, p: [] Pen) {
+  // the ground beyond the walls, the courtyard's flagstones, the cliff
+  pen_set(p, 0, MAT_WORLD, 0.2, 0.42, 0.24);
+  quad(buf, p, v3(-140, -0.04, 13.4), v3(140, -0.04, 13.4), v3(140, -0.04, -140), v3(-140, -0.04, -140));
+  pen_set(p, OBJ_FLOOR, MAT_FLOOR, 0.62, 0.57, 0.53);
+  quad(buf, p, v3(-12, 0, 13.2), v3(12, 0, 13.2), v3(12, 0, -12), v3(-12, 0, -12));
+  pen_set(p, OBJ_FLOOR, MAT_WORLD, 0.5, 0.44, 0.48);
+  box(buf, p, frame_at(v3(0, -45, 14.6), 0), 140, 45, 1.2);
+  // the walls: north with the gate, east (its middle is the live store's: it breaks), west, the south parapet
+  wall(buf, p, -12.7, GATE_Z, -2.4, GATE_Z, WALL_H, WALL_T, OBJ_WALL);
+  wall(buf, p, 2.4, GATE_Z, 12.7, GATE_Z, WALL_H, WALL_T, OBJ_WALL);
+  wall(buf, p, COURT, -12.7, COURT, BREACH_Z - BREACH_HALF, WALL_H, WALL_T, OBJ_WALL);
+  wall(buf, p, COURT, BREACH_Z + BREACH_HALF, COURT, 13.0, WALL_H, WALL_T, OBJ_WALL);
+  wall(buf, p, -COURT, -12.7, -COURT, 13.0, WALL_H, WALL_T, OBJ_WALL);
+  wall(buf, p, -12.7, 12.7, 12.7, 12.7, 1.0, 0.3, OBJ_WALL);
+  gate(buf, p);
+  // the gate's towers and the corner towers
+  tower(buf, p, -3.9, GATE_Z - 0.4, 1.9, 11, 5.5, OBJ_TOWER);
+  tower(buf, p, 3.9, GATE_Z - 0.4, 1.9, 11, 5.5, OBJ_TOWER + 2);
+  tower(buf, p, -12.6, -12.6, 2.6, 17, 7, OBJ_TOWER + 4);
+  tower(buf, p, 12.6, -12.6, 2.4, 15, 6.5, OBJ_TOWER + 6);
+  tower(buf, p, -12.6, 12.4, 2.2, 9, 5, OBJ_TOWER + 4);
+  tower(buf, p, 12.6, 12.4, 2.2, 10, 5, OBJ_TOWER + 6);
+  hall(buf, p);
+  // the braziers' stands and bowls (their fire is live)
+  for i: 0..<BRAZIERS {
+    x := BRAZIER_X[i]; z := BRAZIER_Z[i];
+    pen_set(p, OBJ_BRAZIER, MAT_WORLD, STONE_R * 0.8, STONE_G * 0.78, STONE_B * 0.8);
+    tube(buf, p, frame_at(v3(x, 0, z), 0), 0.25, 0.42, 0.42, 0.36, 0.36, 12, true);
+    tube(buf, p, frame_at(v3(x, 0.25, z), 0), 0.75, 0.2, 0.2, 0.16, 0.16, 12, false);
+    pen_set(p, OBJ_BRAZIER + 1, MAT_WORLD, 0.24, 0.22, 0.3);
+    tube(buf, p, frame_at(v3(x, 1.0, z), 0), 0.32, 0.22, 0.22, 0.5, 0.5, 14, true);
+    pen_set(p, OBJ_BRAZIER + 1, MAT_WORLD, 1.0, 0.82, 0.3);
+    tube(buf, p, frame_at(v3(x, 1.26, z), 0), 0.07, 0.5, 0.5, 0.52, 0.52, 14, false);
+  }
+  // banners on the north wall's inner face
+  for i: 0..<4 {
+    x := ifx i < 2 then -9.0 + 3.2 * cast(f32) i else 5.8 + 3.2 * cast(f32) (i - 2);
+    banner(buf, p, frame_at(v3(x, 3.4, GATE_Z + WALL_T + 0.04), 0), 1.1, 3.4, OBJ_BANNER + i);
+  }
+  // trees: two in the courtyard's west corners, pines on the grass beyond
+  tree(buf, p, -9.6, 9.6, 1.0, OBJ_TREE); tree(buf, p, -9.4, -8.6, 0.9, OBJ_TREE + 1);
+  for i: 0..<14 {
+    a := cast(f32) i * 0.9;
+    x := -18 - 9 * wh(a, 1) + ifx i % 2 == 0 then 0.0f32 else 36 + 18 * wh(a, 2);
+    z := -40 + 48 * wh(a, 3);
+    pine(buf, p, x, z, 0.9 + 0.6 * wh(a, 4), OBJ_TREE + 2 + (i % 3));
+  }
+}
+gate :: (buf: [] u32, p: [] Pen) {
+  z := GATE_Z;
+  // the lintel and the arch's stones over the opening
+  pen_set(p, OBJ_GATE, MAT_WORLD, STONE_R, STONE_G, STONE_B);
+  box(buf, p, frame_at(v3(0, 4.95, z), 0), 2.45, 0.55 + 0.5, WALL_T);
+  for i: 0..<6 {
+    y0 := 2.0f32 + 0.4 * cast(f32) i;
+    w := 2.4f32 - sqrt(hi(0, 2.4 * 2.4 - (y0 + 0.2 - 2.0) * (y0 + 0.2 - 2.0)));
+    if w > 0.01 {
+      box(buf, p, frame_at(v3(-2.4 + w * 0.5, y0 + 0.2, z), 0), w * 0.5, 0.2, WALL_T);
+      box(buf, p, frame_at(v3(2.4 - w * 0.5, y0 + 0.2, z), 0), w * 0.5, 0.2, WALL_T);
+    }
+  }
+  pen_set(p, OBJ_GATE, MAT_WORLD, STONE_R * 0.86, STONE_G * 0.82, STONE_B * 0.84);
+  for i: 0..<11 {
+    a := PI * (cast(f32) i + 0.5) / 11.0;
+    f := frame_turn(frame_at(v3(cos(a) * 2.55, 2.0 + sin(a) * 2.55, z + WALL_T + 0.08), 0), 2, a - 1.5707963);
+    box(buf, p, f, 0.2, 0.3, 0.1);
+  }
+  // the doors: dark wood under iron bands, an arch shape
+  pen_set(p, OBJ_DOOR, MAT_WORLD, 0.42, 0.25, 0.14);
+  arch(buf, p, frame_at(v3(0, 2.2, z + 0.2), 0), 4.8, 4.4);
+  pen_set(p, OBJ_DOOR, MAT_WORLD, 0.18, 0.16, 0.22);
+  for i: 0..<3 { box(buf, p, frame_at(v3(0, 0.8 + 1.1 * cast(f32) i, z + 0.24), 0), 2.38, 0.08, 0.04); }
+  box(buf, p, frame_at(v3(0, 1.9, z + 0.25), 0), 0.04, 1.9, 0.05);
+}
+// The great hall behind the north wall: a long gabled hall, tall lit windows, a spire in its middle.
+hall :: (buf: [] u32, p: [] Pen) {
+  z0 := -24.0f32; z1 := -15.0f32; x0 := -10.0f32; x1 := 10.0f32; h := 12.0f32;
+  pen_set(p, OBJ_HALL, MAT_WORLD, STONE_R * 0.98, STONE_G * 0.96, STONE_B * 0.95);
+  box(buf, p, frame_at(v3(0, h * 0.5 - 0.5, (z0 + z1) * 0.5), 0), (x1 - x0) * 0.5, h * 0.5 + 0.5, (z1 - z0) * 0.5);
+  pen_set(p, OBJ_HALL + 1, MAT_WORLD, ROOF_R * 0.95, ROOF_G * 0.95, ROOF_B);
+  ridge := h + 6.0;
+  e := 0.6f32;
+  quad(buf, p, v3(x0 - e, h, z1 + e), v3(x1 + e, h, z1 + e), v3(x1 + e, ridge, (z0 + z1) * 0.5), v3(x0 - e, ridge, (z0 + z1) * 0.5));
+  quad(buf, p, v3(x1 + e, h, z0 - e), v3(x0 - e, h, z0 - e), v3(x0 - e, ridge, (z0 + z1) * 0.5), v3(x1 + e, ridge, (z0 + z1) * 0.5));
+  pen_set(p, OBJ_HALL, MAT_WORLD, STONE_R * 0.92, STONE_G * 0.9, STONE_B * 0.9);
+  for s: 0..<2 {
+    x := ifx s == 0 then x0 else x1;
+    o := ifx s == 0 then -1.0f32 else 1.0f32;
+    tri(buf, p, v3(x, h, z1), v3(x, h, z0), v3(x, ridge - 0.3, (z0 + z1) * 0.5), v3(o, 0, 0), v3(o, 0, 0), v3(o, 0, 0));
+  }
+  for i: 0..<6 {
+    x := -8.0f32 + 3.2 * cast(f32) i;
+    if abs(x) < 3.5 { continue; }
+    window(buf, p, frame_at(v3(x, 7.0, z1 + 0.02), 0), 1.3, 4.6, true, OBJ_HALL);
+  }
+  // the spire
+  tower(buf, p, 0, -19.5, 3.0, 26, 12, OBJ_TOWER + 4);
+  // a pennant on the spire
+  pen_set(p, OBJ_TOWER + 5, MAT_CLOTH, 0.18, 0.33, 0.76);
+  tri(buf, p, v3(0, 39.6, -19.5), v3(0, 38.9, -19.5), v3(2.6, 39.5, -19.3), v3(0, 0, 1), v3(0, 0, 1), v3(0, 0, 1));
+}
+// A banner: blue cloth hanging from a gold rod, a gold border and our emblem (a four-pointed star).
+banner :: (buf: [] u32, p: [] Pen, f: Frame, w: f32, h: f32, obj: int) {
+  pen_set(p, obj, MAT_CLOTH, 0.18, 0.33, 0.76);
+  a := fp(f, -w * 0.5, h * 0.5, 0); b := fp(f, w * 0.5, h * 0.5, 0);
+  c := fp(f, w * 0.5, -h * 0.5 + 0.35, 0); d := fp(f, 0, -h * 0.5, 0); e := fp(f, -w * 0.5, -h * 0.5 + 0.35, 0);
+  n := f.z;
+  tri(buf, p, a, e, b, n, n, n); tri(buf, p, b, e, c, n, n, n); tri(buf, p, e, d, c, n, n, n);
+  pen_set(p, obj, MAT_FLAT, 1.0, 0.82, 0.3);
+  g := frame_move(f, add(f.o, times(f.z, 0.012)));
+  dash(buf, p, g, -w * 0.42, h * 0.45, -w * 0.42, -h * 0.5 + 0.38, 0.05, 0.05);
+  dash(buf, p, g, w * 0.42, h * 0.45, w * 0.42, -h * 0.5 + 0.38, 0.05, 0.05);
+  for k: 0..<4 {
+    an := 1.5707963f32 * cast(f32) k;
+    dash(buf, p, g, 0, 0.35, cos(an) * 0.42, 0.35 + sin(an) * 0.42, 0.16, 0.0);
+  }
+  pen_set(p, obj, MAT_WORLD, 1.0, 0.82, 0.3);
+  limb(buf, p, fp(f, -w * 0.65, h * 0.5 + 0.04, 0.03), fp(f, w * 0.65, h * 0.5 + 0.04, 0.03), 0.04, 0.04, f.y, 6);
+}
+tree :: (buf: [] u32, p: [] Pen, x: f32, z: f32, k: f32, obj: int) {
+  pen_set(p, obj, MAT_WORLD, 0.42, 0.27, 0.16);
+  tube(buf, p, frame_at(v3(x, 0, z), 0), 2.6 * k, 0.2 * k, 0.2 * k, 0.12 * k, 0.12 * k, 8, false);
+  pen_set(p, obj, MAT_WORLD, 0.17, 0.49, 0.28);
+  ellipsoid(buf, p, frame_at(v3(x, 3.2 * k, z), 0), 1.5 * k, 1.2 * k, 1.5 * k, 12, 8, 0);
+  ellipsoid(buf, p, frame_at(v3(x + 0.8 * k, 2.6 * k, z + 0.4 * k), 0), 1.0 * k, 0.85 * k, 1.0 * k, 10, 6, 0);
+  ellipsoid(buf, p, frame_at(v3(x - 0.7 * k, 2.8 * k, z - 0.5 * k), 0), 1.0 * k, 0.9 * k, 1.0 * k, 10, 6, 0);
+}
+pine :: (buf: [] u32, p: [] Pen, x: f32, z: f32, k: f32, obj: int) {
+  pen_set(p, obj, MAT_WORLD, 0.36, 0.24, 0.16);
+  tube(buf, p, frame_at(v3(x, 0, z), 0), 1.6 * k, 0.25 * k, 0.25 * k, 0.18 * k, 0.18 * k, 6, false);
+  pen_set(p, obj, MAT_WORLD, 0.12, 0.38, 0.27);
+  for i: 0..<3 {
+    tube(buf, p, frame_at(v3(x, (1.2 + 1.7 * cast(f32) i) * k, z), 0), 3.2 * k, (2.2 - 0.55 * cast(f32) i) * k, (2.2 - 0.55 * cast(f32) i) * k, 0, 0, 10, true);
+  }
+}
+
+// ---- Live: fire, spells, smoke, rubble, the breach, the made thing
+// The lights the shaders band (gpu/animelab.coax AL_LIGHTS): x, y, z, radius; r, g, b, strength.
+LIGHTS :: 8;
+LIGHT_FLOATS :: 8;
+light_put :: (l: [] f32, k: int, at: Point, radius: f32, r: f32, g: f32, b: f32, strength: f32) {
+  if k < 0 || k >= LIGHTS { return; }
+  o := k * LIGHT_FLOATS;
+  l[o] = at.x; l[o + 1] = at.y; l[o + 2] = at.z; l[o + 3] = radius;
+  l[o + 4] = r; l[o + 5] = g; l[o + 6] = b; l[o + 7] = strength;
+}
+// The braziers' flames: tongues of two tones flickering, embers rising; their light.
+fire :: (buf: [] u32, p: [] Pen, t: f32, lights: [] f32) {
+  for i: 0..<BRAZIERS {
+    x := BRAZIER_X[i]; z := BRAZIER_Z[i];
+    fi := cast(f32) i;
+    flick := 0.85f32 + 0.15 * sin(t * 13 + fi * 2) + 0.08 * sin(t * 29 + fi);
+    light_put(lights, i, v3(x, 1.9, z), 7.5, 1.0, 0.55, 0.22, 1.25 * flick);
+    for k: 0..<7 {
+      fk := cast(f32) k;
+      a := fk * 0.9 + fi;
+      h := (0.55 + 0.35 * nz(t * 2.6 + fk * 3.1, fi * 7)) * (ifx k == 0 then 1.4f32 else 1.0f32);
+      lean := 0.25f32 * sin(t * 3.1 + fk * 1.7);
+      base := v3(x + cos(a) * 0.22 * (ifx k == 0 then 0.0f32 else 1.0f32), 1.28, z + sin(a) * 0.22 * (ifx k == 0 then 0.0f32 else 1.0f32));
+      f := frame_turn(frame_turn(frame_at(base, a), 2, lean), 0, 0.15 * sin(t * 2.3 + fk));
+      pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.42, 0.1); p[0].param = 2.2;
+      tube(buf, p, f, h, 0.17, 0.17, 0, 0, 7, false);
+      pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.86, 0.45); p[0].param = 3.2;
+      tube(buf, p, frame_move(f, fp(f, 0, 0.02, 0.04)), h * 0.62, 0.09, 0.09, 0, 0, 6, false);
+    }
+    for k: 0..<9 {
+      fk := cast(f32) k;
+      ph := fract(t * (0.28 + 0.05 * wh(fk, fi)) + wh(fk + 3, fi));
+      at := v3(x + 0.6 * sin(t * 0.9 + fk * 2.1) * ph + 0.15 * (wh(fk, fi + 5) - 0.5), 1.4 + 4.0 * ph, z + 0.6 * cos(t * 0.7 + fk) * ph);
+      s := 0.035f32 * (1 - ph);
+      if s > 0.004 {
+        pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.6, 0.2); p[0].param = 3.0 * (1 - ph);
+        box(buf, p, frame_turn(frame_at(at, t * 3 + fk), 0, t * 2 + fk), s, s, s);
+      }
+    }
+  }
+}
+// A fireball's head at a (its size): a white-hot core, a flame shell streaming back along dir.
+fireball :: (buf: [] u32, p: [] Pen, a: Point, dir: Point, size: f32, t: f32) {
+  r := 0.2f32 * size;
+  pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.95, 0.75); p[0].param = 4.0;
+  ball(buf, p, a, r, 10);
+  back := times(dir, -1);
+  for k: 0..<8 {
+    fk := cast(f32) k;
+    s := v3(sin(fk * 2.4 + t * 9), cos(fk * 1.7 + t * 7), sin(fk * 3.3 + t * 11));
+    tip := add(add(a, times(back, r * (2.5 + 1.2 * wh(fk, t)))), times(s, r * 0.9));
+    pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.45 + 0.2 * wh(fk, 2), 0.1); p[0].param = 2.6;
+    limb(buf, p, add(a, times(s, r * 0.4)), tip, r * 1.05, 0, v3(0, 1, 0), 7);
+  }
+}
+// A burst at a: a swelling flame ball breaking into petals, a ring on the ground, sparks, smoke.
+burst :: (buf: [] u32, p: [] Pen, a: Point, size: f32, age: f32, ground: bool) {
+  if age > 3.2 { return; }
+  k := clamp01(age / 0.32);
+  r := (0.4 + 2.1 * k) * size;
+  fade := 1 - clamp01((age - 0.25) / 0.6);
+  if fade > 0 {
+    pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.85, 0.55); p[0].param = 4.0 * fade;
+    ball(buf, p, a, r * 0.55 * fade, 12);
+    for i: 0..<14 {
+      fi := cast(f32) i;
+      d := unit_or(v3(wh(fi, 1) - 0.5, wh(fi, 2) * 0.8 + (ifx ground then 0.1f32 else -0.4f32), wh(fi, 3) - 0.5), v3(0, 1, 0));
+      pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.35 + 0.35 * wh(fi, 4), 0.08); p[0].param = 3.0 * fade;
+      limb(buf, p, add(a, times(d, r * 0.3)), add(a, times(d, r * (1.0 + 0.4 * wh(fi, 5)))), r * 0.32 * fade, 0, v3(0, 1, 0), 6);
+    }
+  }
+  if ground && age < 1.2 {
+    // the shockwave: a flat ring racing out over the floor
+    q := clamp01(age / 1.0);
+    rr := (1 + 8 * q) * size; w := 0.5f32 * size * (1 - q);
+    pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.9, 0.7); p[0].param = 2.5 * (1 - q);
+    for i: 0..<32 {
+      a0 := TAU * cast(f32) i / 32.0; a1 := TAU * cast(f32) (i + 1) / 32.0;
+      quad(buf, p, v3(a.x + cos(a0) * rr, 0.06, a.z + sin(a0) * rr), v3(a.x + cos(a1) * rr, 0.06, a.z + sin(a1) * rr),
+           v3(a.x + cos(a1) * (rr + w), 0.06 + 0.4 * w, a.z + sin(a1) * (rr + w)), v3(a.x + cos(a0) * (rr + w), 0.06 + 0.4 * w, a.z + sin(a0) * (rr + w)));
+    }
+  }
+  // smoke rising after
+  if age > 0.2 {
+    for i: 0..<7 {
+      fi := cast(f32) i;
+      sa := age - 0.2;
+      left := 1 - clamp01(sa / 2.8);
+      c := add(a, v3((wh(fi, 7) - 0.5) * 2.2 * size, (0.6 + 1.6 * clamp01(sa / 2.0)) * size + wh(fi, 8) * size, (wh(fi, 9) - 0.5) * 2.2 * size));
+      pen_set(p, OBJ_FX + 1, MAT_SMOKE, 0.62, 0.56, 0.66); p[0].param = left;
+      ball(buf, p, c, (0.5 + 0.6 * clamp01(sa / 1.2)) * size * (0.8 + 0.4 * wh(fi, 6)), 10);
+    }
+  }
+  // the scorch left on the floor
+  if ground {
+    pen_set(p, OBJ_FLOOR, MAT_FLAT, 0.14, 0.1, 0.12);
+    s := size * 1.6 * clamp01(age / 0.2);
+    oval(buf, p, Frame.{o = v3(a.x, 0.012, a.z), x = v3(1, 0, 0), y = v3(0, 0, -1), z = v3(0, 1, 0)}, s, s * 0.85, 16);
+  }
+}
+// Smoke where something appears: puffs swelling then thinning away.
+smoke :: (buf: [] u32, p: [] Pen, at: Point, size: f32, age: f32) {
+  if age < 0 || age > 4.5 { return; }
+  for i: 0..<9 {
+    fi := cast(f32) i;
+    g := clamp01(age / 0.5);
+    left := 1 - clamp01((age - 1.2 - 0.15 * fi) / 2.2);
+    c := add(at, v3((wh(fi, 11) - 0.5) * 1.8 * size, (0.3 + 1.2 * wh(fi, 12) + 0.25 * age) * size, (wh(fi, 13) - 0.5) * 1.4 * size));
+    pen_set(p, OBJ_FX + 2, MAT_SMOKE, 0.5, 0.44, 0.58); p[0].param = left;
+    ball(buf, p, c, (0.45 + 0.4 * wh(fi, 14)) * size * (0.4 + 0.6 * g), 10);
+  }
+}
+// Rubble raining on the courtyard from rubble_at: chunks falling and tumbling, coming to rest with a puff.
+RUBBLE :: 42;
+rubble :: (buf: [] u32, p: [] Pen, age: f32) {
+  if age < 0 { return; }
+  for i: 0..<RUBBLE {
+    fi := cast(f32) i;
+    start := 2.6f32 * wh(fi, 21);
+    a := age - start;
+    if a < 0 { continue; }
+    x := -9 + 18 * wh(fi, 22); z := -8 + 18 * wh(fi, 23);
+    h0 := 14 + 8 * wh(fi, 24);
+    y := h0 - 0.5 * 18 * a * a;
+    s := 0.18f32 + 0.32 * wh(fi, 25);
+    landed := y <= s;
+    yy := ifx landed then s * 0.8 else y;
+    spin := ifx landed then 3.0 * wh(fi, 26) else a * 6 + wh(fi, 26) * 9;
+    pen_set(p, OBJ_RUBBLE + (i % 7), MAT_WORLD, STONE_R * (0.8 + 0.15 * wh(fi, 27)), STONE_G * 0.8, STONE_B * 0.82);
+    f := frame_turn(frame_turn(frame_at(v3(x, yy, z), spin), 0, spin * 0.7), 2, spin * 0.4);
+    box(buf, p, f, s, s * 0.7, s * 0.85);
+    if landed {
+      ta := sqrt(2 * (h0 - s) / 18);
+      da := a - ta;
+      if da < 1.0 {
+        pen_set(p, OBJ_FX + 3, MAT_SMOKE, 0.78, 0.72, 0.68); p[0].param = 1 - da;
+        ball(buf, p, v3(x, 0.2 + 0.4 * da, z), (0.3 + 0.7 * da) * (s * 2), 8);
+      }
+    }
+  }
+}
+// The east wall's middle: whole until the breach, then its stones flung into the courtyard.
+BREACH_STONES :: 24;
+breach :: (buf: [] u32, p: [] Pen, age: f32) {
+  if age < 0 {
+    wall(buf, p, COURT, BREACH_Z - BREACH_HALF, COURT, BREACH_Z + BREACH_HALF, WALL_H, WALL_T, OBJ_WALL);
+    return;
+  }
+  // what is left of it: two ragged stubs
+  pen_set(p, OBJ_WALL, MAT_WORLD, STONE_R, STONE_G, STONE_B);
+  block(buf, p, COURT, -0.5, BREACH_Z - BREACH_HALF + 0.5, WALL_T, 3.2, 0.5);
+  block(buf, p, COURT, -0.5, BREACH_Z + BREACH_HALF - 0.6, WALL_T, 2.2, 0.6);
+  block(buf, p, COURT, -0.5, BREACH_Z, WALL_T, 0.9, BREACH_HALF);
+  for i: 0..<BREACH_STONES {
+    fi := cast(f32) i;
+    v := v3(-6 - 6 * wh(fi, 31), 2 + 5 * wh(fi, 32), (wh(fi, 33) - 0.5) * 7);
+    o := v3(COURT, 1 + 4 * wh(fi, 34), BREACH_Z + (wh(fi, 35) - 0.5) * 5.4);
+    tl := (v.y + sqrt(v.y * v.y + 2 * 18 * o.y)) / 18;   // when it lands
+    a := lo(age, tl);
+    at := v3(o.x + v.x * a, hi(o.y + v.y * a - 9 * a * a, 0.25), o.z + v.z * a);
+    s := 0.25f32 + 0.3 * wh(fi, 36);
+    spin := a * 7 * (0.5 + wh(fi, 37));
+    pen_set(p, OBJ_RUBBLE + (i % 7), MAT_WORLD, STONE_R * 0.95, STONE_G * 0.92, STONE_B * 0.92);
+    box(buf, p, frame_turn(frame_turn(frame_at(at, spin), 0, spin * 0.8), 2, fi), s, s * 0.6, s * 0.8);
+  }
+  smoke(buf, p, v3(COURT + 1.2, 0, BREACH_Z), 1.2, age * 0.9);
+}
+
+// ---- The ink dragon: a long serpentine body along a path, a horned head, a crimson mane.
+DRAGON_RINGS :: 44;
+DRAGON_SIDES :: 10;
+DRAGON_KEYS :: 10;
+DRAGON_PATH :: [DRAGON_KEYS * 3] f32.[
+  7.4, 4.4, 0.6,   8.6, 3.7, 0.9,   9.8, 2.5, 2.0,   9.4, 1.1, 3.6,   7.8, 0.8, 2.7,
+  8.0, 1.0, 0.3,   9.6, 1.3, -1.5,  11.6, 1.6, -0.4, 14.0, 2.0, 0.8,  17.0, 2.6, 2.6];
+dragon_key :: (i: int, t: f32, enter: f32) -> Point {
+  k := lo_i(hi_i(i, 0), DRAGON_KEYS - 1);
+  fk := cast(f32) k;
+  return v3(DRAGON_PATH[k * 3] + 6.5 * enter, DRAGON_PATH[k * 3 + 1] + 0.28 * sin(t * 1.8 + fk * 1.3), DRAGON_PATH[k * 3 + 2] + 0.2 * sin(t * 1.3 + fk));
+}
+// The body's middle at u (0 the head, 1 the tail's end).
+dragon_at :: (u: f32, t: f32, enter: f32) -> Point {
+  x := clamp01(u) * cast(f32) (DRAGON_KEYS - 1);
+  i := lo_i(cast(int) floor(x), DRAGON_KEYS - 2);
+  f := x - cast(f32) i;
+  return fl_spline(dragon_key(i - 1, t, enter), dragon_key(i, t, enter), dragon_key(i + 1, t, enter), dragon_key(i + 2, t, enter), f);
+}
+dragon_radius :: (u: f32) -> f32 {
+  if u < 0.12 { return 0.55 + 0.22 * u / 0.12; }
+  return 0.77 * (1 - clamp01((u - 0.12) / 0.88)) + 0.1;
+}
+// How far a point round the body is from the nearest sketch line (four, a quarter turn apart): 0 on a
+// line, 1 between two; the flood fills from 0 out.
+dragon_from_line :: (angle: f32) -> f32 {
+  q := angle / 1.5707963;
+  return abs(q - floor(q) - 0.5) * 2;
+}
+dragon :: (buf: [] u32, p: [] Pen, t: f32, age: f32, d: DrawIn, view: Point, lights: [] f32) {
+  enter := 1 - sg_smooth(age / 0.9);
+  if d.flood > 0 {
+    for j: 0..<DRAGON_RINGS {
+      u0 := cast(f32) j / cast(f32) DRAGON_RINGS; u1 := cast(f32) (j + 1) / cast(f32) DRAGON_RINGS;
+      a0 := dragon_at(u0, t, enter); a1 := dragon_at(u1, t, enter);
+      f0 := frame_along(a0, a1, v3(0, 1, 0)); f1 := frame_along(a1, dragon_at(u1 + 0.02, t, enter), v3(0, 1, 0));
+      r0 := dragon_radius(u0); r1 := dragon_radius(u1);
+      for i: 0..<DRAGON_SIDES {
+        b0 := TAU * cast(f32) i / cast(f32) DRAGON_SIDES; b1 := TAU * cast(f32) (i + 1) / cast(f32) DRAGON_SIDES;
+        n00 := fd(f0, cos(b0), 0, sin(b0)); n01 := fd(f0, cos(b1), 0, sin(b1));
+        n10 := fd(f1, cos(b0), 0, sin(b0)); n11 := fd(f1, cos(b1), 0, sin(b1));
+        belly := dot(add(n00, n01), f0.x) < -0.9;
+        pen_set(p, OBJ_DRAGON + (j / 11), MAT_MADE, ifx belly then 0.78f32 else 0.13f32, ifx belly then 0.8f32 else 0.15f32, ifx belly then 0.93f32 else 0.32f32);
+        p[0].param = dragon_from_line((b0 + b1) * 0.5) * 0.85 + 0.15 * u0;
+        tri(buf, p, add(a0, times(n00, r0)), add(a1, times(n10, r1)), add(a1, times(n11, r1)), n00, n10, n11);
+        tri(buf, p, add(a0, times(n00, r0)), add(a1, times(n11, r1)), add(a0, times(n01, r0)), n00, n11, n01);
+      }
+      // the mane: crimson spines along its back
+      if j % 3 == 1 && j < DRAGON_RINGS - 6 {
+        top := add(a0, times(f0.z, r0 * 0.9));
+        pen_set(p, OBJ_DRAGON + 5, MAT_MADE, 0.75, 0.1, 0.18); p[0].param = 0.3 + 0.3 * u0;
+        limb(buf, p, top, add(top, add(times(f0.z, 0.35 * (1.2 - u0)), times(f0.y, 0.25))), 0.09 * (1.2 - u0), 0, f0.x, 5);
+      }
+    }
+    // the head: skull, snout, a jaw that opens to roar, horns, glowing eyes
+    h0 := dragon_at(0, t, enter); h1 := dragon_at(0.04, t, enter);
+    look := unit_or(sub(v3(1.0, 1.7, 2.4), h0), v3(-1, 0, 0));
+    hf := frame_along(h0, add(h0, v3(0, 1, 0)), cross(v3(0, 1, 0), look));
+    hf = Frame.{o = h0, x = unit_or(cross(v3(0, 1, 0), look), v3(0, 0, 1)), y = v3(0, 1, 0), z = look};
+    hf = frame_turn(hf, 0, 0.15);
+    roar := clamp01(sin(t * 1.4) * 1.5 - 0.3);
+    pen_set(p, OBJ_DRAGON + 6, MAT_MADE, 0.13, 0.15, 0.32); p[0].param = 0.4;
+    ellipsoid(buf, p, hf, 0.62, 0.52, 0.72, 12, 8, 0);
+    box(buf, p, frame_move(hf, fp(hf, 0, 0.03, 0.85)), 0.34, 0.22, 0.58);
+    pen_set(p, OBJ_DRAGON + 7, MAT_MADE, 0.78, 0.8, 0.93); p[0].param = 0.5;
+    jaw := frame_turn(frame_move(hf, fp(hf, 0, -0.27, 0.3)), 0, -0.45 * roar);
+    box(buf, p, frame_move(jaw, fp(jaw, 0, 0, 0.52)), 0.29, 0.1, 0.52);
+    pen_set(p, OBJ_DRAGON + 8, MAT_MADE, 0.9, 0.86, 0.72); p[0].param = 0.5;
+    for s: 0..<2 {
+      x := ifx s == 0 then -0.22f32 else 0.22f32;
+      limb(buf, p, fp(hf, x * 1.4, 0.42, -0.08), fp(hf, x * 3.2, 1.35, -1.2), 0.1, 0.0, hf.x, 6);
+    }
+    if d.shade > 0.3 {
+      pen_set(p, OBJ_DRAGON + 9, MAT_GLOW, 0.5, 1.0, 1.0); p[0].param = 3.0 * d.shade;
+      for s: 0..<2 {
+        x := ifx s == 0 then -0.2f32 else 0.2f32;
+        oval(buf, p, face_frame(hf, 0.68, x * 1.45, 0.17, 0.012), 0.085, 0.04, 8);
+      }
+      light_put(lights, 6, fp(hf, 0, 0.1, 0.9), 3.5, 0.5, 0.9, 1.0, 0.8 * d.shade);
+    }
+  }
+  // the sketch: ink strokes drawn along the body's lines and round it, then thinning as the lines settle
+  w := 0.045f32 * (1 - clamp01((age - anime_draw_in_length(1) + DRAW_SETTLE * 2) / 0.8));
+  if d.sketch > 0 && w > 0.002 {
+    pen_set(p, OBJ_DRAGON + 10, MAT_INK, 0.05, 0.04, 0.12);
+    for line: 0..<4 {
+      b := 1.5707963f32 * cast(f32) line;
+      for j: 0..<DRAGON_RINGS {
+        u0 := cast(f32) j / cast(f32) DRAGON_RINGS; u1 := cast(f32) (j + 1) / cast(f32) DRAGON_RINGS;
+        reach := d.sketch * 1.15 - 0.05 * cast(f32) line;
+        if u0 > reach { break; }
+        uu := lo(u1, reach);
+        a0 := dragon_at(u0, t, enter); a1 := dragon_at(uu, t, enter);
+        f0 := frame_along(a0, dragon_at(u0 + 0.02, t, enter), v3(0, 1, 0));
+        rough := 0.03f32 * sin(u0 * 40 + cast(f32) line * 3);
+        q0 := add(a0, times(fd(f0, cos(b), 0, sin(b)), dragon_radius(u0) * 1.02 + rough));
+        q1 := add(a1, times(fd(f0, cos(b), 0, sin(b)), dragon_radius(uu) * 1.02 + rough));
+        ribbon(buf, p, q0, q1, w * (1.2 - 0.6 * u0), view);
+      }
+    }
+    // rings round it, as an animator's construction lines
+    for r: 0..<8 {
+      u := 0.04f32 + 0.11 * cast(f32) r;
+      if u > d.sketch * 1.1 { continue; }
+      c := dragon_at(u, t, enter);
+      f := frame_along(c, dragon_at(u + 0.02, t, enter), v3(0, 1, 0));
+      rr := dragon_radius(u) * 1.04;
+      for i: 0..<12 {
+        b0 := TAU * cast(f32) i / 12.0; b1 := TAU * cast(f32) (i + 1) / 12.0;
+        ribbon(buf, p, add(c, times(fd(f, cos(b0), 0, sin(b0)), rr)), add(c, times(fd(f, cos(b1), 0, sin(b1)), rr)), w * 0.7, view);
+      }
+    }
+    // the head's outline and its horns, sketched first
+    h0 := dragon_at(0, t, enter);
+    for i: 0..<16 {
+      b0 := TAU * cast(f32) i / 16.0; b1 := TAU * cast(f32) (i + 1) / 16.0;
+      if cast(f32) i / 16.0 > d.sketch * 2.5 { break; }
+      ribbon(buf, p, add(h0, v3(cos(b0) * 0.75 - 0.3, sin(b0) * 0.6, 0.45 * sin(b0))), add(h0, v3(cos(b1) * 0.75 - 0.3, sin(b1) * 0.6, 0.45 * sin(b1))), w, view);
+    }
+    // whiskers: long flowing ink lines
+    for s: 0..<2 {
+      sz := ifx s == 0 then -1.0f32 else 1.0f32;
+      last := add(h0, v3(-0.9, -0.05, 0.25 * sz));
+      for k: 1..<8 {
+        fk := cast(f32) k;
+        if fk / 8.0 > d.sketch * 1.6 { break; }
+        nx := add(h0, v3(-0.9 + 0.35 * fk, -0.05 - 0.12 * fk + 0.1 * sin(t * 2 + fk), (0.25 + 0.2 * fk) * sz));
+        ribbon(buf, p, last, nx, w * 0.8 * (1 - fk / 9), view);
+        last = nx;
+      }
+    }
+  }
+}

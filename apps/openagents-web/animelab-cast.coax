@@ -1,0 +1,307 @@
+// Anime Lab's cast (animelab.coax): the stage's archetypes in our own designs,
+// built from the mesh writers and posed from verse/anime/stage.coax's Limbs.
+// The heroine (Draconia): long pale hair, a long dark navy coat with gold
+// trim, a wand. The hero (Kai): dark spiky hair, a long burgundy coat, a
+// wand. The hooded figures: peaked hoods over dark robes, faces in shadow
+// but for two red eyes. The dark lord: tall, a black robe and a tall
+// flaring collar, pale skin and red eyes. Faces are anime marks on the head
+// (eyes with a lash line, an iris in two tones and a highlight, brows, a
+// mouth), changing with the feeling the stage gives: calm, sad, angry,
+// hesitant, shocked and the rest of the catalogue's.
+// A figure's frame faces its yaw (its z ahead); its own right is its -x.
+
+// Object numbers (the ink draws a line where two meet), a few per figure.
+OBJ_FIGURE :: 16;    // + 8 × slot + part
+
+Look :: struct {
+  height: f32;
+  coat_r: f32; coat_g: f32; coat_b: f32;
+  trim_r: f32; trim_g: f32; trim_b: f32;
+  hair_r: f32; hair_g: f32; hair_b: f32;
+  skin_r: f32; skin_g: f32; skin_b: f32;
+  eye_r: f32; eye_g: f32; eye_b: f32;
+  hood: bool; collar: bool; wand: bool; long_hair: bool;
+  hem: f32;          // the coat's foot above the ground (m)
+  flare: f32;        // the coat's radius at its foot
+}
+cast_look :: (slot: int) -> Look {
+  if slot == AS_HEROINE {
+    return Look.{height = 1.62, coat_r = 0.13, coat_g = 0.16, coat_b = 0.34, trim_r = 1.0, trim_g = 0.82, trim_b = 0.36,
+                 hair_r = 0.93, hair_g = 0.90, hair_b = 1.0, skin_r = 1.0, skin_g = 0.88, skin_b = 0.81,
+                 eye_r = 0.62, eye_g = 0.32, eye_b = 0.95, wand = true, long_hair = true, hem = 0.16, flare = 0.31};
+  }
+  if slot == AS_HERO {
+    return Look.{height = 1.74, coat_r = 0.40, coat_g = 0.09, coat_b = 0.15, trim_r = 0.95, trim_g = 0.86, trim_b = 0.70,
+                 hair_r = 0.12, hair_g = 0.11, hair_b = 0.2, skin_r = 0.98, skin_g = 0.84, skin_b = 0.74,
+                 eye_r = 0.95, eye_g = 0.62, eye_b = 0.18, wand = true, hem = 0.2, flare = 0.3};
+  }
+  if slot == AS_LORD {
+    return Look.{height = 2.1, coat_r = 0.07, coat_g = 0.055, coat_b = 0.1, trim_r = 0.62, trim_g = 0.04, trim_b = 0.14,
+                 hair_r = 0.08, hair_g = 0.07, hair_b = 0.1, skin_r = 0.74, skin_g = 0.78, skin_b = 0.9,
+                 eye_r = 1.0, eye_g = 0.1, eye_b = 0.1, collar = true, hem = 0.0, flare = 0.44};
+  }
+  return Look.{height = 1.86, coat_r = 0.19, coat_g = 0.16, coat_b = 0.26, trim_r = 0.3, trim_g = 0.25, trim_b = 0.4,
+               hair_r = 0.1, hair_g = 0.1, hair_b = 0.12, skin_r = 0.1, skin_g = 0.08, skin_b = 0.12,
+               eye_r = 1.0, eye_g = 0.15, eye_b = 0.1, hood = true, hem = 0.0, flare = 0.4};
+}
+
+// A face's marks for a feeling: the brows' tilt (inner end up +) and lift, how open the eyes are, where
+// they look, the mouth's curve (smile +), how open, and tears.
+Face :: struct { tilt: f32; lift: f32; open: f32; look_x: f32; look_y: f32; pupil: f32; curve: f32; mouth: f32; width: f32; tears: f32; }
+face_of :: (emotion: int) -> Face {
+  f := Face.{open = 1, pupil = 1, width = 1, curve = 0.15};
+  if emotion == EMO_SAD { f.tilt = 0.42; f.lift = 0.004; f.open = 0.72; f.look_y = -0.35; f.curve = -0.5; f.width = 0.8; f.tears = 1; }
+  if emotion == EMO_ANGRY { f.tilt = -0.55; f.lift = -0.006; f.open = 0.62; f.pupil = 0.75; f.curve = -0.35; f.mouth = 0.32; f.width = 1.15; }
+  if emotion == EMO_HESITANT { f.tilt = 0.25; f.lift = 0.003; f.open = 0.86; f.look_x = 0.5; f.look_y = -0.15; f.curve = -0.15; f.width = 0.7; }
+  if emotion == EMO_SHOCKED { f.tilt = 0.15; f.lift = 0.012; f.open = 1.22; f.pupil = 0.55; f.curve = 0; f.mouth = 0.7; f.width = 0.75; }
+  if emotion == EMO_AFRAID { f.tilt = 0.35; f.lift = 0.008; f.open = 1.1; f.pupil = 0.6; f.mouth = 0.35; f.curve = -0.25; }
+  if emotion == EMO_DETERMINED { f.tilt = -0.25; f.lift = -0.002; f.open = 0.88; f.curve = -0.05; f.width = 0.9; }
+  if emotion == EMO_SMUG { f.tilt = -0.15; f.open = 0.7; f.curve = 0.5; f.look_x = -0.2; }
+  if emotion == EMO_CRYING { f.tilt = 0.5; f.open = 0.55; f.look_y = -0.4; f.curve = -0.6; f.mouth = 0.3; f.tears = 1; }
+  if emotion == EMO_LAUGHING { f.open = 0.35; f.curve = 0.8; f.mouth = 0.6; f.width = 1.2; }
+  return f;
+}
+face_mix :: (a: Face, b: Face, k: f32) -> Face {
+  return Face.{tilt = lerp(a.tilt, b.tilt, k), lift = lerp(a.lift, b.lift, k), open = lerp(a.open, b.open, k),
+               look_x = lerp(a.look_x, b.look_x, k), look_y = lerp(a.look_y, b.look_y, k), pupil = lerp(a.pupil, b.pupil, k),
+               curve = lerp(a.curve, b.curve, k), mouth = lerp(a.mouth, b.mouth, k), width = lerp(a.width, b.width, k), tears = lerp(a.tears, b.tears, k)};
+}
+cast_face :: (c: StageCast, t: f32) -> Face {
+  return face_mix(face_of(c.was_emotion), face_of(c.emotion), sg_smooth((t - c.emotion_at) / 0.22));
+}
+
+// The head's shape (figure: an ellipsoid of these shares of r, its chin narrowed).
+HEAD_RX :: 0.9f32; HEAD_RY :: 1.04f32; HEAD_RZ :: 0.95f32;
+// A mark on the face: a frame on the head's front surface at (x, y) (head-local metres, r the head's
+// radius), lifted `out` off it, facing out along the surface.
+face_frame :: (h: Frame, r: f32, x: f32, y: f32, out: f32) -> Frame {
+  rx := r * HEAD_RX; ry := r * HEAD_RY; rz := r * HEAD_RZ;
+  q := 1 - (x / rx) * (x / rx) - (y / ry) * (y / ry);
+  z := ifx q > 0 then rz * sqrt(q) else 0.0f32;
+  if y < 0 { k := (-y / ry) * (-y / ry); z = z * (1 + k * 0.12); }
+  n := unit_or(fd(h, x / (rx * rx), y / (ry * ry), z / (rz * rz)), h.z);
+  o := add(fp(h, x, y, z), times(n, out));
+  side := unit_or(cross(h.y, n), h.x);
+  up := cross(n, side);
+  return Frame.{o = o, x = side, y = up, z = n};
+}
+// The anime eye at a mark: white, an iris of two tones and a pupil, a highlight, the lash line over it.
+// s is -1 for the figure's right eye (its -x), 1 for its left.
+anime_eye :: (buf: [] u32, p: [] Pen, f: Frame, s: f32, look: Look, fc: Face, blink: f32) {
+  open := fc.open * (1 - blink);
+  hgt := 0.016f32 * open;
+  if hgt > 0.002 {
+    pen_set(p, p[0].obj, MAT_FLAT, 1, 1, 1);
+    oval(buf, p, f, 0.0165, hgt, 12);
+    iris := frame_move(f, add(fp(f, fc.look_x * 0.004 * s - 0.0015 * s, fc.look_y * 0.004 - 0.0015 * (1 - open), 0), times(f.z, 0.0006)));
+    ih := lo(0.0185, hgt * 0.98);
+    pen_set(p, p[0].obj, MAT_FLAT, look.eye_r * 0.55, look.eye_g * 0.55, look.eye_b * 0.55);
+    oval(buf, p, iris, 0.0115, ih, 12);
+    lower := frame_move(iris, add(fp(iris, 0, -ih * 0.3, 0), times(f.z, 0.0003)));
+    pen_set(p, p[0].obj, MAT_FLAT, look.eye_r, look.eye_g, look.eye_b);
+    oval(buf, p, lower, 0.009, ih * 0.6, 12);
+    pen_set(p, p[0].obj, MAT_FLAT, 0.05, 0.03, 0.08);
+    oval(buf, p, frame_move(iris, add(iris.o, times(f.z, 0.0006))), 0.0045 * fc.pupil, ih * 0.42 * fc.pupil, 8);
+    pen_set(p, p[0].obj, MAT_FLAT, 1, 1, 1);
+    oval(buf, p, frame_move(iris, add(fp(iris, 0.0042 * s, ih * 0.38, 0), times(f.z, 0.0009))), 0.0034, 0.0034, 8);
+    oval(buf, p, frame_move(iris, add(fp(iris, -0.003 * s, -ih * 0.45, 0), times(f.z, 0.0009))), 0.0012, 0.0012, 5);
+  }
+  // the lash line: thick over the eye, flicking out at its outer end
+  pen_set(p, p[0].obj, MAT_FLAT, 0.07, 0.04, 0.09);
+  top := hi(hgt, 0.0015);
+  lf := frame_move(f, add(f.o, times(f.z, 0.0011)));
+  dash(buf, p, lf, -0.018 * s, top * 0.5, 0.0, top + 0.0015, 0.0032, 0.0044);
+  dash(buf, p, lf, 0.0, top + 0.0015, 0.0168 * s, top * 0.72, 0.0044, 0.0052);
+  dash(buf, p, lf, 0.0165 * s, top * 0.72, 0.023 * s, top * 0.95 + 0.003, 0.0044, 0.001);
+  if hgt > 0.002 { dash(buf, p, lf, -0.01 * s, -hgt * 0.95, 0.012 * s, -hgt * 0.88, 0.001, 0.0016); }
+  if fc.tears > 0.05 {
+    pen_set(p, p[0].obj, MAT_GLOW, 0.55, 0.8, 1.0); p[0].param = 1.4 * fc.tears;
+    dash(buf, p, frame_move(f, add(f.o, times(f.z, 0.0016))), 0.004 * s, -hgt - 0.002, 0.0065 * s, -hgt - 0.016 * fc.tears, 0.0022, 0.0008);
+  }
+}
+// A whole face on head frame h (its origin the head's middle, r its radius).
+face :: (buf: [] u32, p: [] Pen, h: Frame, r: f32, look: Look, fc: Face, t: f32, slot: int) {
+  blink := ifx fract(t * 0.23 + cast(f32) slot * 0.37) < 0.025 then 1.0f32 else 0.0f32;
+  for k: 0..<2 {
+    s := ifx k == 0 then -1.0f32 else 1.0f32;
+    ef := face_frame(h, r, 0.043 * s, -0.012, 0.0012);
+    anime_eye(buf, p, ef, s, look, fc, blink);
+    // the brow: a thin stroke above, its inner end raised by the tilt
+    bf := face_frame(h, r, 0.043 * s, 0.017 + fc.lift, 0.0016);
+    pen_set(p, p[0].obj, MAT_FLAT, 0.3 + look.hair_r * 0.2, 0.2 + look.hair_g * 0.15, 0.26 + look.hair_b * 0.15);
+    dash(buf, p, bf, -0.019 * s, fc.tilt * 0.014, 0.018 * s, -fc.tilt * 0.004, 0.0034, 0.0016);
+  }
+  // the mouth: a short line, curved by the feeling, open into a dark shape when it says so
+  mf := face_frame(h, r, 0, -0.06, 0.0012);
+  w := 0.012f32 * fc.width;
+  if fc.mouth > 0.08 {
+    pen_set(p, p[0].obj, MAT_FLAT, 0.35, 0.08, 0.12);
+    oval(buf, p, frame_move(mf, add(fp(mf, 0, -0.004 * fc.mouth, 0), times(mf.z, 0.0004))), w * 0.8, 0.008 * fc.mouth + 0.001, 10);
+    if fc.curve < -0.2 {
+      pen_set(p, p[0].obj, MAT_FLAT, 1, 1, 1);
+      dash(buf, p, frame_move(mf, add(mf.o, times(mf.z, 0.0008))), -w * 0.6, 0.0005, w * 0.6, 0.0005, 0.0025, 0.0025);
+    }
+  }
+  pen_set(p, p[0].obj, MAT_FLAT, 0.42, 0.18, 0.2);
+  lf := frame_move(mf, add(mf.o, times(mf.z, 0.0009)));
+  dash(buf, p, lf, -w, -fc.curve * 0.004, 0, 0.0004, 0.0016, 0.0019);
+  dash(buf, p, lf, 0, 0.0004, w, -fc.curve * 0.004, 0.0019, 0.0016);
+  // a hint of a nose, as anime draws one
+  pen_set(p, p[0].obj, MAT_FLAT, look.skin_r * 0.72, look.skin_g * 0.6, look.skin_b * 0.62);
+  nf := face_frame(h, r, 0.004, -0.034, 0.0012);
+  dash(buf, p, nf, 0, 0.004, 0.002, -0.002, 0.0012, 0.002);
+}
+
+// A figure on the stage: its look, its pose's limbs, its face; `grow` 0 to 1 as it appears (from smoke).
+figure :: (buf: [] u32, p: [] Pen, slot: int, c: StageCast, b: Limbs, t: f32, grow: f32, view: Point) {
+  look := cast_look(slot);
+  k := look.height / 1.65 * (0.55 + 0.45 * sg_smooth(grow));
+  sink := (1 - sg_smooth(grow)) * 0.5;
+  base := frame_at(v3(c.x, -sink, c.z), c.yaw + b.turn * 0.3);
+  obj := OBJ_FIGURE + 8 * slot;
+  hip_y := (0.92 - b.crouch) * k;
+  // the body above the hips leans and turns about them
+  hips := frame_move(base, fp(base, 0, hip_y, 0));
+  body := frame_turn(frame_turn(hips, 1, b.turn * 0.7), 0, b.lean);
+  // legs and boots, under the coat
+  pen_set(p, obj, MAT_CLOTH, look.coat_r * 0.6, look.coat_g * 0.6, look.coat_b * 0.6);
+  for s: 0..<2 {
+    x := ifx s == 0 then -0.09f32 * k else 0.09f32 * k;
+    limb(buf, p, fp(base, x, hip_y, 0), fp(base, x * 1.15, 0.1 * k, 0.01), 0.07 * k, 0.055 * k, base.x, 8);
+    pen_set(p, obj, MAT_WORLD, 0.12, 0.08, 0.07);
+    box(buf, p, frame_move(base, fp(base, x * 1.15, 0.05 * k, 0.04 * k)), 0.055 * k, 0.05 * k, 0.1 * k);
+    pen_set(p, obj, MAT_CLOTH, look.coat_r * 0.6, look.coat_g * 0.6, look.coat_b * 0.6);
+  }
+  // the coat's skirt: from the waist, flaring to its hem, swaying a little
+  sway := 0.025f32 * sin(t * 1.9 + cast(f32) slot) - b.lean * 0.15;
+  skirt := frame_turn(frame_move(base, fp(base, 0, hip_y + 0.06 * k, 0)), 0, 3.14159265 + sway);
+  pen_set(p, obj + 1, MAT_CLOTH, look.coat_r, look.coat_g, look.coat_b);
+  hem := hip_y + 0.06 * k - look.hem * k;
+  tube(buf, p, skirt, hem, 0.15 * k, 0.12 * k, look.flare * k, (look.flare - 0.05) * k, 16, false);
+  pen_set(p, obj + 1, MAT_CLOTH, look.trim_r, look.trim_g, look.trim_b);
+  tube(buf, p, frame_move(skirt, fp(skirt, 0, hem - 0.035 * k, 0)), 0.035 * k, look.flare * k * 1.01, (look.flare - 0.05) * k * 1.01, look.flare * k * 1.015, (look.flare - 0.05) * k * 1.015, 16, false);
+  // the torso
+  pen_set(p, obj + 1, MAT_CLOTH, look.coat_r, look.coat_g, look.coat_b);
+  tube(buf, p, frame_move(body, fp(body, 0, 0.0, 0)), 0.36 * k, 0.15 * k, 0.11 * k, 0.2 * k, 0.12 * k, 14, false);
+  tube(buf, p, frame_move(body, fp(body, 0, 0.36 * k, 0)), 0.1 * k, 0.2 * k, 0.12 * k, 0.12 * k, 0.09 * k, 14, true);
+  // the front's trim: a line of gold (or the lord's crimson) down the coat
+  pen_set(p, obj + 2, MAT_CLOTH, look.trim_r, look.trim_g, look.trim_b);
+  box(buf, p, frame_move(body, fp(body, 0, 0.2 * k, 0.118 * k)), 0.012 * k, 0.2 * k, 0.006 * k);
+  neck_at := fp(body, 0, 0.46 * k, 0);
+  pen_set(p, obj, MAT_SKIN, look.skin_r, look.skin_g, look.skin_b);
+  if !look.hood { limb(buf, p, neck_at, fp(body, 0, 0.53 * k, 0.005), 0.042 * k, 0.04 * k, body.x, 8); }
+  // the head
+  r := 0.118f32 * k;
+  head := frame_turn(frame_turn(frame_move(body, fp(body, 0, 0.6 * k, 0.012 * k)), 1, b.head_yaw), 0, b.head_pitch);
+  if look.hood {
+    // a dark face in a peaked hood, two red eyes
+    pen_set(p, obj + 3, MAT_FLAT, 0.03, 0.02, 0.04);
+    ellipsoid(buf, p, head, r * 0.95, r * 1.05, r, 10, 6, 0);
+    pen_set(p, obj + 4, MAT_GLOW, 1, 0.12, 0.08); p[0].param = 3.0;
+    for s: 0..<2 {
+      e := face_frame(head, r, (ifx s == 0 then -0.04f32 else 0.04f32) * k, 0.0, 0.003);
+      oval(buf, p, e, 0.014 * k, 0.005 * k, 6);
+    }
+    pen_set(p, obj + 5, MAT_CLOTH, look.coat_r * 1.2, look.coat_g * 1.2, look.coat_b * 1.2);
+    hood := frame_turn(frame_move(head, fp(head, 0, -0.16 * k, -0.04 * k)), 0, -0.25);
+    tube(buf, p, hood, 0.5 * k, 0.2 * k, 0.19 * k, 0.0, 0.0, 14, false);
+  } else {
+    pen_set(p, obj + 3, MAT_SKIN, look.skin_r, look.skin_g, look.skin_b);
+    ellipsoid(buf, p, head, r * HEAD_RX, r * HEAD_RY, r * HEAD_RZ, 18, 12, 1.0);
+    // ears
+    for s: 0..<2 { ellipsoid(buf, p, frame_move(head, fp(head, (ifx s == 0 then -0.1f32 else 0.1f32) * k, -0.005 * k, -0.005 * k)), 0.018 * k, 0.03 * k, 0.02 * k, 6, 4, 0); }
+    face(buf, p, head, r, look, cast_face(c, t), t, slot);
+    hair(buf, p, head, body, r, look, slot, t, k);
+  }
+  if look.collar {
+    // the lord's tall collar: panels flaring up and out behind his head, crimson within
+    for i: 0..<7 {
+      a := -1.3f32 + 2.6 * cast(f32) i / 6.0;
+      f := frame_turn(frame_turn(frame_move(body, fp(body, sin(a) * 0.15 * k, 0.44 * k, -cos(a) * 0.1 * k)), 1, a), 0, -0.32);
+      pen_set(p, obj + 6, MAT_CLOTH, look.coat_r, look.coat_g, look.coat_b);
+      box(buf, p, frame_move(f, fp(f, 0, 0.22 * k, 0)), 0.065 * k, 0.24 * k, 0.012 * k);
+      pen_set(p, obj + 6, MAT_CLOTH, look.trim_r, look.trim_g, look.trim_b);
+      box(buf, p, frame_move(f, fp(f, 0, 0.2 * k, 0.014 * k)), 0.05 * k, 0.2 * k, 0.004 * k);
+    }
+  }
+  // arms: from the shoulders, the upper arm and forearm in the coat's sleeves, a hand
+  for s: 0..<2 {
+    sx := ifx s == 0 then -1.0f32 else 1.0f32;      // -1 is its right
+    pitch := ifx s == 0 then b.r_pitch else b.l_pitch;
+    out := ifx s == 0 then b.r_out else b.l_out;
+    elbow := ifx s == 0 then b.r_elbow else b.l_elbow;
+    shoulder := fp(body, sx * 0.21 * k, 0.4 * k, 0);
+    up := limb_dir(body, sx, pitch, out);
+    fore := limb_dir(body, sx, pitch + elbow, out * 0.6);
+    el := add(shoulder, times(up, 0.29 * k));
+    wr := add(el, times(fore, 0.27 * k));
+    pen_set(p, obj + 7, MAT_CLOTH, look.coat_r * 1.08, look.coat_g * 1.08, look.coat_b * 1.08);
+    limb(buf, p, shoulder, el, 0.068 * k, 0.058 * k, body.x, 10);
+    limb(buf, p, el, wr, 0.056 * k, 0.07 * k, body.x, 10);
+    pen_set(p, obj + 7, MAT_CLOTH, look.trim_r, look.trim_g, look.trim_b);
+    limb(buf, p, add(el, times(fore, 0.235 * k)), wr, 0.066 * k, 0.068 * k, body.x, 10);
+    pen_set(p, obj + 3, ifx look.hood then MAT_CLOTH else MAT_SKIN, look.skin_r, look.skin_g, look.skin_b);
+    hand := add(wr, times(fore, 0.04 * k));
+    ellipsoid(buf, p, frame_along(wr, add(wr, fore), body.x), 0.035 * k, 0.05 * k, 0.03 * k, 8, 5, 0);
+    if look.wand && s == 0 {
+      tip := add(hand, times(unit_or(add(fore, times(body.y, 0.18)), fore), 0.34 * k));
+      pen_set(p, obj + 4, MAT_WORLD, 0.25, 0.14, 0.08);
+      limb(buf, p, sub(hand, times(fore, 0.04 * k)), tip, 0.011 * k, 0.006 * k, body.x, 6);
+      if b.glow > 0.02 {
+        pen_set(p, obj + 4, MAT_GLOW, 0.75, 0.95, 1.0); p[0].param = 2.5 * b.glow;
+        ball(buf, p, tip, 0.02 * k * (0.6 + b.glow), 8);
+      }
+    }
+    if slot == AS_LORD && s == 0 && b.glow > 0.02 {
+      pen_set(p, obj + 4, MAT_GLOW, 1.0, 0.25, 0.1); p[0].param = 2.5 * b.glow;
+      ball(buf, p, add(hand, times(fore, 0.06)), 0.07 * b.glow, 8);
+    }
+  }
+}
+// An arm's direction from its pitch (0 down, PI/2 ahead, PI up) and how far it swings out to its side
+// (side -1 its right, at its -x): swung out first, then pitched.
+limb_dir :: (body: Frame, side: f32, pitch: f32, out: f32) -> Point {
+  d := fd(body, side * sin(out), -cos(out), 0);
+  return unit_or(turn(d, body.x, -pitch), d);
+}
+// Hair: a cap over the head, then the heroine's long fall down her back and her fringe, the hero's spikes.
+hair :: (buf: [] u32, p: [] Pen, h: Frame, body: Frame, r: f32, look: Look, slot: int, t: f32, k: f32) {
+  obj := OBJ_FIGURE + 8 * slot + 5;
+  pen_set(p, obj, MAT_HAIR, look.hair_r, look.hair_g, look.hair_b);
+  ellipsoid(buf, p, frame_turn(frame_move(h, fp(h, 0, 0.026 * k, -0.03 * k)), 0, -0.35), r * 0.98, r * 1.0, r * 1.0, 16, 10, 0);
+  if look.long_hair {
+    // the fall: a long tapered sheet hanging down her back from the back of her head (it hangs as the
+    // body stands, not as the head tilts), swaying a little, clear of the coat
+    sway := 0.05f32 * sin(t * 1.3);
+    f := frame_turn(frame_move(body, fp(h, 0, -0.01 * k, -0.075 * k)), 0, 3.14159265 + 0.2 + sway);
+    tube(buf, p, f, 0.6 * k, 0.12 * k, 0.075 * k, 0.16 * k, 0.04 * k, 12, true);
+    // locks either side of the face
+    for s: 0..<2 {
+      x := ifx s == 0 then -0.085f32 else 0.085f32;
+      lf := frame_turn(frame_move(h, fp(h, x * k, 0.0, 0.035 * k)), 0, 3.14159265 + 0.05);
+      tube(buf, p, lf, 0.2 * k, 0.03 * k, 0.025 * k, 0.012 * k, 0.01 * k, 8, true);
+    }
+    // the fringe: points over the brow
+    for i: 0..<5 {
+      x := (-0.064 + 0.032 * cast(f32) i) * k;
+      ff := frame_turn(frame_turn(frame_move(h, fp(h, x, 0.06 * k, 0.07 * k)), 0, 3.14159265 - 0.45), 2, x * 3.0);
+      tube(buf, p, ff, 0.075 * k, 0.026 * k, 0.014 * k, 0.0, 0.0, 6, false);
+    }
+  } else if slot == AS_LORD {
+    f := frame_turn(frame_move(h, fp(h, 0, 0.03 * k, -0.06 * k)), 0, -2.0);
+    tube(buf, p, f, 0.16 * k, 0.1 * k, 0.07 * k, 0.03 * k, 0.02 * k, 10, true);
+  } else {
+    // the hero's spikes: swept back and out
+    for i: 0..<9 {
+      a := -1.4f32 + 2.8 * cast(f32) (i % 5) / 4.0;
+      up := ifx i < 5 then 0.06f32 else 0.0f32;
+      sf := frame_turn(frame_turn(frame_move(h, fp(h, sin(a) * 0.07 * k, (0.05 + up) * k, (cos(a) * 0.03 - 0.02 - (ifx i >= 5 then 0.05f32 else 0.0f32)) * k)), 2, -a * 0.9), 0, -0.6 - (ifx i >= 5 then 0.9f32 else 0.0f32));
+      tube(buf, p, sf, 0.13 * k, 0.04 * k, 0.03 * k, 0.0, 0.0, 6, false);
+    }
+    for i: 0..<3 {
+      x := (-0.04 + 0.04 * cast(f32) i) * k;
+      ff := frame_turn(frame_turn(frame_move(h, fp(h, x, 0.075 * k, 0.07 * k)), 0, 3.14159265 - 0.6), 2, x * 5.0);
+      tube(buf, p, ff, 0.055 * k, 0.018 * k, 0.012 * k, 0.0, 0.0, 6, false);
+    }
+  }
+}

@@ -1,0 +1,608 @@
+// Anime Lab, openagents.com/realms/anime-lab (unlisted): direct an anime with
+// your voice (docs/verse/anime-lab.md). ?stage=direct plays the demo: a
+// simulated directing session, each spoken line heard (partial words, then
+// final), turned by the director into typed directions over the catalogue
+// (verse/anime/director.coax: the decision model's answers are recorded in
+// the session as the typed selector returns them, with their confidences),
+// and the scene playing them (verse/anime/stage.coax) in the anime style's
+// action variant (docs/verse/art-styles.md, Anime): the courtyard of
+// Skyreach Academy at dusk, our own cliff-top school of magic. One line asks
+// for something that isn't in stock, an ink dragon, and it draws in: ink
+// strokes sketch it, flat colour floods in, then shading, labelled DRAWING
+// IN... then MADE. The bottom of the frame is the director's live caption.
+// ?stage=film plays the same stage as a ten-second short with no overlay.
+// &t=SECONDS holds one moment (stills); &card=1 leaves the overlay out.
+//
+// Simulated: the voice (the words and their timing are recorded) and the
+// decision model (its answers are recorded). Everything after that is the
+// real path: the answers are read and held to the catalogue, laid out on a
+// timeline under the anime grammar, and played by the stage.
+//   coax/bin/coax test apps/openagents-web/animelab.coax
+
+#load "../../verse/anime/stage.coax";
+#load "font.coax";
+#load "../../aethyr/budget.coax";
+#load "animelab-mesh.coax";
+#load "animelab-cast.coax";
+#load "animelab-world.coax";
+
+MAX_VERTICES :: 36000;     // the overlay's quads
+VERTEX_FLOATS :: 12;       // a stroke's or a sans glyph's corner, as aethyr/ui/draw.coax and font.coax lay them out
+HOST_FACTS :: 600;
+PIN_MOMENT :: 700;          // a page script's coaxial.send(700, "SECONDS"): hold that moment (shots; "-1" lets it run)
+WORLD_VERTICES :: 150000;  // store 0: the academy
+LIVE_VERTICES :: 150000;   // store 1: the cast and the effects, every frame
+DRAWS :: 2;
+
+// The uniforms (gpu/animelab.coax AnimelabU), floats.
+U_SIZE :: 0; U_VIEW :: 4; U_EYE :: 20; U_FWD :: 24; U_RIGHT :: 28; U_UP :: 32; U_SHADOW :: 36;
+U_FX :: 52; U_DRAW :: 56; U_MISC :: 60; U_PANELS :: 64; U_LIGHTS :: 160; U_STYLE :: 224;
+PANELS :: 12; PANEL_FLOATS :: 8;
+UNIFORM_FLOATS :: U_STYLE + STYLE_FLOATS;
+NEAR :: 0.07f32; FAR :: 400.0f32;
+SHADOW_HALF :: 26.0f32; SHADOW_DEEP :: 70.0f32;
+
+// The anime style's block (verse/style-preset.coax), which animelab-style.coax computes as its own
+// library: its size, the few slots read here, the variants' numbers.
+STYLE_FLOATS :: 128; SU_KEY_DIR :: 4; SU_STYLE :: 124;
+ANIME_ACTION :: 1; STYLE_ANIME :: 4;
+STAGE_DIRECT :: 0; STAGE_FILM :: 1;
+CLOCK_DEFAULT :: 0.78f32;    // realms.json clock fixed:0.78: just after sunset
+GOLDEN_AT :: 47.0f32;        // golden mode's moment: the whole cast, the dragon made
+
+Animelab :: struct {
+  started: bool; facts: bool;
+  mode: int; card: bool; golden: bool; pinned: f32 = -1;
+  time: f32;
+  events: [EVENTS_MAX] AnimeEvent; n: int;
+  length: f32;
+  speed: f32 = 1;              // the maker's speed (the film's is quicker)
+  variant: int = 1; clock: f32 = 0.78;
+  world_n: int; live_n: int; world_built: bool;
+  draws: [DRAWS * 4] u32;
+  panels: int;
+  over: bool;                  // a store ran out of room
+}
+
+animelab_reset :: (s: [] Animelab) {
+  s[0].started = true;
+  s[0].pinned = -1;
+  s[0].variant = ANIME_ACTION; s[0].clock = CLOCK_DEFAULT;
+  animelab_take(s, STAGE_DIRECT);
+}
+// Lays out the take for a stage: the demo's session or the film's written take.
+animelab_take :: (s: [] Animelab, mode: int) {
+  s[0].mode = mode;
+  if mode == STAGE_FILM {
+    lines := FILM_LINES; answers := FILM_ANSWERS;
+    s[0].n = anime_timeline(lines[..], answers[..], false, s[0].events[..]);
+    s[0].length = FILM_LENGTH; s[0].speed = 2.6;
+  } else {
+    lines := DEMO_LINES; answers := DEMO_ANSWERS;
+    s[0].n = anime_timeline(lines[..], answers[..], true, s[0].events[..]);
+    s[0].length = DEMO_LENGTH; s[0].speed = 1;
+  }
+}
+
+// ---- The camera's matrices
+put4 :: (u: [] f32, at: int, a: f32, b: f32, c: f32, d: f32) { u[at] = a; u[at + 1] = b; u[at + 2] = c; u[at + 3] = d; }
+view_rows :: (u: [] f32, c: CamNow, aspect: f32) {
+  f := unit_or(sub(c.at, c.eye), v3(0, 0, -1));
+  r := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0));
+  up := cross(r, f);
+  t := tan(c.fov * 0.5);
+  sx := 1 / (t * aspect); sy := 1 / t;
+  a := FAR / (FAR - NEAR); b := -NEAR * FAR / (FAR - NEAR);
+  put4(u, U_VIEW, r.x * sx, r.y * sx, r.z * sx, -dot(r, c.eye) * sx);
+  put4(u, U_VIEW + 4, up.x * sy, up.y * sy, up.z * sy, -dot(up, c.eye) * sy);
+  put4(u, U_VIEW + 8, f.x * a, f.y * a, f.z * a, -dot(f, c.eye) * a + b);
+  put4(u, U_VIEW + 12, f.x, f.y, f.z, -dot(f, c.eye));
+  put4(u, U_EYE, c.eye.x, c.eye.y, c.eye.z, t);
+  put4(u, U_FWD, f.x, f.y, f.z, aspect);
+  put4(u, U_RIGHT, r.x, r.y, r.z, NEAR);
+  put4(u, U_UP, up.x, up.y, up.z, FAR);
+}
+// Where a world point lands on the screen (device pixels), and whether it is ahead of the eye.
+Spot :: struct { x: f32; y: f32; ahead: bool; }
+screen_of :: (u: [] f32, w: Point, width: f32, height: f32) -> Spot {
+  cx := u[U_VIEW] * w.x + u[U_VIEW + 1] * w.y + u[U_VIEW + 2] * w.z + u[U_VIEW + 3];
+  cy := u[U_VIEW + 4] * w.x + u[U_VIEW + 5] * w.y + u[U_VIEW + 6] * w.z + u[U_VIEW + 7];
+  cw := u[U_VIEW + 12] * w.x + u[U_VIEW + 13] * w.y + u[U_VIEW + 14] * w.z + u[U_VIEW + 15];
+  if cw < 0.05 { return Spot.{}; }
+  return Spot.{x = (cx / cw * 0.5 + 0.5) * width, y = (0.5 - cy / cw * 0.5) * height, ahead = true};
+}
+// The key light's orthographic view of the courtyard, for the shadow map.
+shadow_rows :: (u: [] f32, l: Point) {
+  z := unit_or(l, v3(0, 1, 0));
+  r := unit_or(cross(v3(0, 1, 0), z), v3(1, 0, 0));
+  up := cross(z, r);
+  c := v3(1, 0, 2);
+  k := 1 / SHADOW_HALF;
+  put4(u, U_SHADOW, r.x * k, r.y * k, r.z * k, -dot(r, c) * k);
+  put4(u, U_SHADOW + 4, up.x * k, up.y * k, up.z * k, -dot(up, c) * k);
+  d := -0.5 / SHADOW_DEEP;
+  put4(u, U_SHADOW + 8, z.x * d, z.y * d, z.z * d, 0.5 - dot(z, c) * d);
+  put4(u, U_SHADOW + 12, 0, 0, 0, 1);
+}
+
+// ---- The frame
+// style: the anime block for this frame (animelab-style.coax, from the face; zeros draw it unlit).
+animelab_frame :: (s: [] Animelab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
+                   world: [] u32, live: [] u32, style: [] f32) -> int #export_c {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || !(width >= 1) || !(height >= 1) { return 0; }
+  if !s[0].started { animelab_reset(s); }
+  if !s[0].world_built {
+    pen := [1] Pen.[Pen.{}];
+    build_world(world, pen[..]);
+    s[0].world_n = pen[0].n; s[0].world_built = true; s[0].over = pen[0].over;
+  }
+  if s[0].pinned >= 0 { s[0].time = s[0].pinned; }
+  else if s[0].golden { s[0].time = ifx s[0].mode == STAGE_FILM then 8.0f32 else GOLDEN_AT; }
+  else if !still { s[0].time += clamp(dt, 0, 0.1); }
+  if s[0].time > s[0].length + 2 { s[0].time = 0; }
+  t := s[0].time;
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  phone := animelab_phone(width, dpr);
+  for i: 0..<lo_i(style.count, STYLE_FLOATS) { u[U_STYLE + i] = style[i]; }
+  st := anime_stage(s[0].events[..], s[0].n, t, s[0].speed);
+  cam := anime_camera_at(st, t);
+  aspect := width / height;
+  view_rows(u, cam, aspect);
+  // The courtyard faces the sunset: the preset's key light, its colour and strength as the clock
+  // says, comes from beyond the gate (the west-north-west), low, so the gate and towers stand dark
+  // against the glowing sky and long shadows reach across the flagstones toward the parapet.
+  key := unit_or(v3(-0.5, 0.27, -0.82), v3(0, 1, 0));
+  if style.count >= STYLE_FLOATS { u[U_STYLE + SU_KEY_DIR] = key.x; u[U_STYLE + SU_KEY_DIR + 1] = key.y; u[U_STYLE + SU_KEY_DIR + 2] = key.z; u[U_STYLE + SU_KEY_DIR + 3] = 0; }
+  shadow_rows(u, key);
+  put4(u, U_SIZE, width, height, t, dpr);
+  ink := hi(1, lo(width, height) / 720);
+  put4(u, U_FX, st.flash, st.impact, st.speed, ink);
+  // the live store
+  pen := [1] Pen.[Pen.{}];
+  lights: [LIGHTS * LIGHT_FLOATS] f32;
+  fire(live, pen[..], t, lights[..]);
+  draw_cast(live, pen[..], st, t, cam.eye);
+  draw_effects(live, pen[..], st, t, lights[..]);
+  breach(live, pen[..], ifx st.breach_at >= 0 then t - st.breach_at else -1.0f32);
+  din := DrawIn.{};
+  if st.make_at >= 0 {
+    din = anime_draw_in(t - st.make_at, st.make_speed);
+    dragon(live, pen[..], t, (t - st.make_at) * st.make_speed, din, cam.eye, lights[..]);
+  }
+  for i: 0..<LIGHTS * LIGHT_FLOATS { u[U_LIGHTS + i] = lights[i]; }
+  s[0].live_n = pen[0].n; s[0].over = s[0].over || pen[0].over;
+  put4(u, U_DRAW, din.flood, din.shade, din.sketch, ifx st.make_at >= 0 then t - st.make_at else -1.0f32);
+  // speed lines centre on what is happening: the impact, the breach, else the middle
+  centre := Spot.{x = width * 0.5, y = height * 0.45, ahead = true};
+  put4(u, U_MISC, ifx phone then 1.0f32 else 0.0f32, centre.x / width, centre.y / height, 1);
+  s[0].draws[0] = 0; s[0].draws[1] = cast(u32) s[0].world_n; s[0].draws[2] = 0x80000000; s[0].draws[3] = 1;
+  s[0].draws[4] = 0; s[0].draws[5] = cast(u32) s[0].live_n; s[0].draws[6] = 0x80000001; s[0].draws[7] = 1;
+  // the overlay
+  s[0].panels = 0;
+  n := 0;
+  if s[0].mode == STAGE_FILM {
+    if !s[0].card { n = film_bars(s, out, u, width, height); }
+  } else if !s[0].card {
+    n = director_overlay(s, out, u, width, height, dpr, st, t, din);
+  }
+  return n;
+}
+// A phone's screen (the style's phone tier): under 600 CSS pixels across.
+animelab_phone :: (width: f32, dpr: f32) -> bool #export_c { return width / hi(dpr, 0.5) < 600; }
+animelab_variant :: (s: [] Animelab) -> int #export_c { return s[0].variant; }
+animelab_clock :: (s: [] Animelab) -> f32 #export_c { return s[0].clock; }
+
+// Everyone on the stage, posed; whoever appears grows out of their smoke.
+draw_cast :: (buf: [] u32, p: [] Pen, st: Stage, t: f32, view: Point) {
+  for i: 0..<AS_MADE {
+    c := st.who[i];
+    if !c.on || t < c.at { continue; }
+    grow := ifx i >= AS_HOODED && i < AS_LORD then clamp01((t - c.at) / 0.55) else 1.0f32;
+    if i == AS_LORD { grow = clamp01((t - c.at) / 0.3); }
+    figure(buf, p, i, c, anime_limbs(c, t), t, grow, view);
+  }
+}
+// The spells, their bursts, smoke and rubble, Kai's gathering spell; their light.
+draw_effects :: (buf: [] u32, p: [] Pen, st: Stage, t: f32, lights: [] f32) {
+  light := 4;
+  kai := st.who[AS_HERO];
+  if sg_now(kai, t) == POSE_CHARGE && t > kai.pose_at + 0.15 {
+    a := t - kai.pose_at;
+    orb := v3(kai.x + sin(kai.yaw) * 0.55, 1.28, kai.z + cos(kai.yaw) * 0.55);
+    k := clamp01(a / 1.2);
+    pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.4, 0.85); p[0].param = 3.0;
+    ball(buf, p, orb, (0.05 + 0.1 * k) * (1 + 0.15 * sin(t * 17)), 10);
+    pen_set(p, OBJ_FX, MAT_GLOW, 0.55, 0.95, 1.0); p[0].param = 3.0;
+    for i: 0..<6 {
+      fi := cast(f32) i;
+      ang := t * 5 + fi * 1.047;
+      q := add(orb, v3(cos(ang) * 0.3 * (1.2 - k * 0.5), sin(ang * 1.3) * 0.18, sin(ang) * 0.3 * (1.2 - k * 0.5)));
+      ball(buf, p, q, 0.025, 6);
+    }
+    light_put(lights, light, orb, 4.0, 1.0, 0.45, 0.9, 1.2 * k); light += 1;
+  }
+  for i: 0..<st.fx_n {
+    f := st.fx[i];
+    a := t - f.at;
+    if a < 0 { continue; }
+    if f.kind == FXK_BOLT {
+      flight := ifx f.who >= 0 then FLIGHT else 1.0f32;
+      if a > flight { continue; }
+      k := a / flight;
+      at := mix(f.from, f.to, k);
+      if f.who < 0 { at = mix(f.from, f.to, k * k); }
+      at = add(at, v3(0, sin(k * 3.14159) * 0.6 * (ifx f.who >= 0 then 1.0f32 else 0.0f32), 0));
+      dir := unit_or(sub(f.to, f.from), v3(0, 0, -1));
+      fireball(buf, p, at, dir, f.size, t);
+      // its trail
+      for j: 1..<7 {
+        fj := cast(f32) j;
+        kk := hi(k - fj * 0.035, 0);
+        q := ifx f.who < 0 then mix(f.from, f.to, kk * kk) else add(mix(f.from, f.to, kk), v3(0, sin(kk * 3.14159) * 0.6, 0));
+        pen_set(p, OBJ_FX, MAT_GLOW, 1.0, 0.55 - 0.05 * fj, 0.12); p[0].param = 2.4 - 0.25 * fj;
+        ball(buf, p, q, 0.16 * f.size * (1 - fj / 8.0), 8);
+      }
+      light_put(lights, light, at, 6 * f.size, 1.0, 0.6, 0.25, 1.6); light += 1;
+    }
+    if f.kind == FXK_BURST {
+      burst(buf, p, f.to, f.size, a, f.to.y < 1.0);
+      if a < 1.2 { light_put(lights, light, add(f.to, v3(0, 1.0, 0)), 9 * f.size, 1.0, 0.65, 0.3, 2.2 * (1 - a / 1.2)); light += 1; }
+    }
+    if f.kind == FXK_SMOKE { smoke(buf, p, f.to, f.size, a); }
+    if f.kind == FXK_RUBBLE { rubble(buf, p, a); }
+  }
+}
+
+// ---- The overlay: the director's live caption
+// Colours a kind is shown in (sRGB).
+kind_r :: (k: int) -> f32 { return ifx k == AD_CAST then 1.0f32 else ifx k == AD_ACT then 0.45f32 else ifx k == AD_EMOTE then 1.0f32 else ifx k == AD_SHOT || k == AD_CUT then 0.35f32 else ifx k == AD_ENTER then 0.72f32 else ifx k == AD_FX then 1.0f32 else ifx k == AD_MAKE then 1.0f32 else 0.75f32; }
+kind_g :: (k: int) -> f32 { return ifx k == AD_CAST then 0.42f32 else ifx k == AD_ACT then 0.72f32 else ifx k == AD_EMOTE then 0.55f32 else ifx k == AD_SHOT || k == AD_CUT then 0.92f32 else ifx k == AD_ENTER then 0.55f32 else ifx k == AD_FX then 0.66f32 else ifx k == AD_MAKE then 0.83f32 else 0.75f32; }
+kind_b :: (k: int) -> f32 { return ifx k == AD_CAST then 0.32f32 else ifx k == AD_ACT then 1.0f32 else ifx k == AD_EMOTE then 0.82f32 else ifx k == AD_SHOT || k == AD_CUT then 1.0f32 else ifx k == AD_ENTER then 1.0f32 else ifx k == AD_FX then 0.25f32 else ifx k == AD_MAKE then 0.3f32 else 0.75f32; }
+
+panel :: (s: [] Animelab, u: [] f32, x0: f32, y0: f32, x1: f32, y1: f32, r: f32, g: f32, b: f32, a: f32) {
+  if s[0].panels >= PANELS || a <= 0.001 { return; }
+  o := U_PANELS + s[0].panels * PANEL_FLOATS;
+  put4(u, o, x0, y0, x1, y1); put4(u, o + 4, r, g, b, a);
+  s[0].panels += 1;
+}
+ink_of :: (r: f32, g: f32, b: f32, light: f32) -> Ink { return Ink.{core = 1, light = light, glow = 0, red = r, green = g, blue = b, mode = MODE_SANS, sans = true}; }
+label :: (out: [] f32, at: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int { return draw_sans(out, at, t, x, base, cap, k); }
+text_w :: (t: string, cap: f32) -> f32 { return sans_width(t, sans_em(cap)); }
+// A stroke on the overlay, w device pixels wide: one quad round the segment, its corners carrying
+// where they are along and across it (the stroke vertex aethyr/ui/draw.coax lit writes).
+stroke :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, r: f32, g: f32, b: f32, light: f32) -> int {
+  if lit(out, at, ax, ay, bx, by, w * 0.5, light, w * 0.8, r, g, b, 0) { return at + 6; }
+  return at;
+}
+// One stroke's quad (font.coax draws Filament text with it): the segment from a to b, its core and glow.
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0.003 { return false; }
+  dx := bx - ax; dy := by - ay; l := sqrt(dx * dx + dy * dy);
+  if !(l > 0) { return false; }
+  ux := dx / l; uy := dy / l; rr := core + glow;
+  along := [6] f32.[-rr, l + rr, l + rr, -rr, l + rr, -rr];
+  across := [6] f32.[-rr, -rr, rr, -rr, rr, rr];
+  for i: 0..<6 {
+    o := (at + i) * VERTEX_FLOATS;
+    out[o] = ax + ux * along[i] - uy * across[i]; out[o + 1] = ay + uy * along[i] + ux * across[i];
+    out[o + 2] = along[i]; out[o + 3] = across[i]; out[o + 4] = l; out[o + 5] = core;
+    out[o + 6] = light; out[o + 7] = glow; out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+  }
+  return true;
+}
+// Text into a buffer from at, as much as fits; returns the new length.
+tput :: (buf: [] u8, at: int, t: string) -> int { n := at; for i: 0..<t.count { if n < buf.count { buf[n] = t[i]; n += 1; } } return n; }
+tput_int :: (buf: [] u8, at: int, v: int) -> int {
+  digits: [12] u8; k := 0; x := hi_i(v, 0);
+  while true { digits[k] = cast(u8) (48 + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := at;
+  while k > 0 && n < buf.count { k -= 1; buf[n] = digits[k]; n += 1; }
+  return n;
+}
+// A number with two decimals: "0.94".
+put_p :: (buf: [] u8, at: int, p: f32) -> int {
+  n := at;
+  v := cast(int) floor(clamp01(p) * 100 + 0.5);
+  if n + 4 > buf.count { return n; }
+  buf[n] = cast(u8) (48 + v / 100); buf[n + 1] = '.'; buf[n + 2] = cast(u8) (48 + (v / 10) % 10); buf[n + 3] = cast(u8) (48 + v % 10);
+  return n + 4;
+}
+put_clock :: (buf: [] u8, at: int, t: f32) -> int {
+  n := at;
+  tenths := cast(int) floor(hi(t, 0) * 10);
+  sec := tenths / 10; m := sec / 60; ss := sec % 60;
+  if n + 7 > buf.count { return n; }
+  buf[n] = cast(u8) (48 + (m / 10) % 10); buf[n + 1] = cast(u8) (48 + m % 10); buf[n + 2] = ':';
+  buf[n + 3] = cast(u8) (48 + ss / 10); buf[n + 4] = cast(u8) (48 + ss % 10); buf[n + 5] = '.'; buf[n + 6] = cast(u8) (48 + tenths % 10);
+  return n + 7;
+}
+
+// The line on screen at t: the last one whose words have started (-1 none yet).
+line_at :: (t: f32) -> int {
+  lines := DEMO_LINES; k := -1;
+  for i: 0..<DEMO_LINES_N { if t >= lines[i].said - 0.25 { k = i; } }
+  return k;
+}
+
+director_overlay :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, st: Stage, t: f32, din: DrawIn) -> int {
+  portrait := h > w;
+  S := ifx portrait then w / 600 else lo(w / 1280, h / 720);
+  m := 18 * S;
+  n := 0;
+  buf: [160] u8;
+  white := ink_of(1, 1, 1, 1);
+  grey := ink_of(0.72, 0.74, 0.8, 1);
+  dim := ink_of(0.5, 0.52, 0.6, 1);
+  // the tag, top left: what this is
+  tag_cap := 12 * S;
+  nb := tput(buf[..], 0, "TAKE 1  ");
+  nb = put_clock(buf[..], nb, t);
+  tw := hi(text_w("ANIME LAB  DIRECTOR", tag_cap), text_w(cast(string) buf[0..<nb], tag_cap * 0.85));
+  panel(s, u, m, m, m + tw + 24 * S, m + 50 * S, 0.02, 0.02, 0.06, 0.62);
+  n = label(out, n, "ANIME LAB", m + 12 * S, m + 21 * S, tag_cap, white);
+  n = label(out, n, "DIRECTOR", m + 12 * S + text_w("ANIME LAB  ", tag_cap), m + 21 * S, tag_cap, ink_of(1.0, 0.75, 0.3, 1));
+  n = label(out, n, cast(string) buf[0..<nb], m + 12 * S, m + 40 * S, tag_cap * 0.85, grey);
+  // honest about what is simulated, top right
+  sim := "VOICE SIMULATED  ·  ANSWERS RECORDED";
+  sim_cap := 10 * S;
+  sw := text_w(sim, sim_cap);
+  if !portrait {
+    panel(s, u, w - m - sw - 22 * S, m, w - m, m + 28 * S, 0.02, 0.02, 0.06, 0.55);
+    n = label(out, n, sim, w - m - sw - 11 * S, m + 19 * S, sim_cap, ink_of(1.0, 0.78, 0.45, 1));
+  } else {
+    n = label(out, n, sim, m, m + 64 * S, sim_cap, ink_of(1.0, 0.78, 0.45, 1));
+  }
+  // the bottom bar: the line as heard, then what the director made of it
+  li := line_at(t);
+  lines := DEMO_LINES;
+  words_cap := (ifx portrait then 30.0f32 else 25.0f32) * S;
+  chip_cap := (ifx portrait then 17.0f32 else 14.5f32) * S;
+  chip_h := chip_cap * 2.05;
+  bar_h := words_cap * 2.2 + chip_h * (ifx portrait then 3.3f32 else 1.55f32) + 22 * S;
+  y0 := h - m - bar_h;
+  panel(s, u, m, y0, w - m, h - m, 0.015, 0.012, 0.04, 0.72);
+  // the mic: a dot, and rings while the words come
+  mx := m + 26 * S; my := y0 + 12 * S + words_cap * 0.9;
+  speaking := li >= 0 && t >= lines[li].said && t < lines[li].done + 0.1;
+  mr := 9 * S;
+  for k: 0..<12 {
+    a0 := TAU * cast(f32) k / 12.0; a1 := TAU * cast(f32) (k + 1) / 12.0;
+    n = stroke(out, n, mx + cos(a0) * mr, my + sin(a0) * mr, mx + cos(a1) * mr, my + sin(a1) * mr, 2.2 * S, 1.0, 0.36, 0.36, ifx speaking then 1.0f32 else 0.5f32);
+  }
+  if speaking {
+    n = stroke(out, n, mx, my - 3 * S, mx, my + 3 * S, 6 * S, 1.0, 0.3, 0.3, 1);
+    lv := 0.5f32 + 0.5 * abs(sin(t * 11)) * abs(sin(t * 3.7));
+    for k: 0..<3 {
+      x := mx + (16 + 6 * cast(f32) k) * S;
+      hh := (4 + 9 * lv * (1 - 0.25 * cast(f32) k)) * S;
+      n = stroke(out, n, x, my - hh, x, my + hh, 2.6 * S, 1.0, 0.45, 0.45, 1);
+    }
+  } else {
+    n = stroke(out, n, mx, my - 2 * S, mx, my + 2 * S, 5 * S, 0.7, 0.7, 0.75, 0.6);
+  }
+  wx := mx + 50 * S;
+  wy := y0 + 12 * S + words_cap * 1.25;
+  if li < 0 {
+    n = label(out, n, "Listening…  say what happens, as a director would.", wx, wy, words_cap * 0.8, dim);
+  } else {
+    l := lines[li];
+    heard := anime_heard(l, t);
+    final := t >= l.done;
+    nb = 0;
+    if heard > 0 { nb = tput(buf[..], 0, "“"); nb = tput(buf[..], nb, l.words[0..<heard]); }
+    if final { nb = tput(buf[..], nb, "”"); } else { nb = tput(buf[..], nb, ifx heard > 0 then " …" else "…"); }
+    n = label(out, n, cast(string) buf[0..<nb], wx, wy, words_cap, ifx final then white else grey);
+    lab := ifx final then "HEARD" else "HEARING";
+    lc := 8.5 * S;
+    n = label(out, n, lab, mx - text_w(lab, lc) * 0.5, my + mr + 15 * S, lc, ifx final then ink_of(0.6, 1.0, 0.7, 1) else ink_of(1.0, 0.55, 0.5, 1));
+    // the directions it became: chips after an arrow
+    cy := wy + words_cap * 0.65 + 8 * S;
+    cx := wx;
+    n = label(out, n, "→", m + 22 * S, cy + chip_h * 0.68, chip_cap * 1.3, ink_of(1.0, 0.78, 0.45, 1));
+    for i: 0..<s[0].n {
+      e := s[0].events[i];
+      mine := e.line == li || (e.line < 0 && e.shown >= l.done && (li + 1 >= DEMO_LINES_N || e.shown < lines[li + 1].said));
+      if !mine || t < e.shown { continue; }
+      d := e.d;
+      age := t - e.shown;
+      a := clamp01(age / 0.18);
+      // the chip's words
+      kl := AD_KIND_LABELS[d.kind];
+      says: [96] u8;
+      sd := anime_says(d, says[..]);
+      tail: [48] u8; nt := 0;
+      if d.engine_framed { nt = tput(tail[..], 0, "ENGINE"); }
+      else {
+        nt = put_p(tail[..], 0, d.p);
+        nt = tput(tail[..], nt, "  ");
+        if !d.stock {
+          if st.make_at < 0 || t < st.make_at + 0.05 { nt = tput(tail[..], nt, "NOT IN STOCK"); }
+          else if !din.made { nt = tput(tail[..], nt, "DRAWING IN… "); nt = tput_int(tail[..], nt, cast(int) floor((din.sketch + din.flood + din.shade) / 3 * 100)); nt = tput(tail[..], nt, "%"); }
+          else { nt = tput(tail[..], nt, "MADE"); }
+        } else if d.p < P_PLAY && age < 2.4 { nt = tput(tail[..], nt, "PLAYS · DID YOU MEAN?"); }
+        else { nt = tput(tail[..], nt, "IN STOCK"); }
+      }
+      kw := text_w(kl, chip_cap); dw := text_w(sd, chip_cap); tw2 := text_w(cast(string) tail[0..<nt], chip_cap * 0.78);
+      cw := kw + dw + tw2 + 46 * S;
+      if cx + cw > w - m - 10 * S && cx > wx { cx = wx; cy += chip_h + 6 * S; }
+      kr := kind_r(d.kind); kg := kind_g(d.kind); kb := kind_b(d.kind);
+      fade := ifx d.engine_framed then 0.55f32 else 1.0f32;
+      panel(s, u, cx, cy, cx + cw, cy + chip_h, kr * 0.22, kg * 0.22, kb * 0.22, 0.85 * a);
+      bx := cx + 12 * S; by := cy + chip_h * 0.66;
+      n = label(out, n, kl, bx, by, chip_cap, ink_of(kr, kg, kb, a * fade));
+      n = label(out, n, sd, bx + kw + 10 * S, by, chip_cap, ink_of(1, 1, 1, a * fade));
+      stock_r := 0.55f32; stock_g := 0.95f32; stock_b := 0.6f32;
+      if !d.stock && !din.made { stock_r = 1.0; stock_g = 0.76; stock_b = 0.28; }
+      if d.p < P_PLAY && !d.engine_framed && age < 2.4 { stock_r = 1.0; stock_g = 0.8; stock_b = 0.4; }
+      if d.engine_framed { stock_r = 0.6; stock_g = 0.62; stock_b = 0.7; }
+      n = label(out, n, cast(string) tail[0..<nt], bx + kw + dw + 24 * S, by, chip_cap * 0.78, ink_of(stock_r, stock_g, stock_b, a * fade));
+      cx += cw + 8 * S;
+    }
+  }
+  // the take's line: a tick for each line said, the playhead
+  ty := y0 - 7 * S;
+  n = stroke(out, n, m + 4 * S, ty, w - m - 4 * S, ty, 1.2 * S, 0.6, 0.62, 0.72, 0.35);
+  span := w - 2 * m - 8 * S;
+  for i: 0..<DEMO_LINES_N {
+    x := m + 4 * S + span * lines[i].done / s[0].length;
+    n = stroke(out, n, x, ty - 3 * S, x, ty + 3 * S, 1.6 * S, 1.0, 0.78, 0.45, ifx t >= lines[i].done then 0.9f32 else 0.3f32);
+  }
+  hx := m + 4 * S + span * clamp01(t / s[0].length);
+  n = stroke(out, n, hx, ty - 6 * S, hx, ty + 6 * S, 2.2 * S, 1, 1, 1, 1);
+  // the draw-in, on the stage: brackets round the made thing and what is happening to it
+  if st.make_at >= 0 && t >= st.make_at && t < st.make_at + anime_draw_in_length(st.make_speed) + 1.8 {
+    hd := screen_of(u, dragon_at(0, t, 0), w, h);
+    bd := screen_of(u, dragon_at(0.45, t, 0), w, h);
+    if hd.ahead && bd.ahead {
+      x0 := lo(hd.x, bd.x) - 90 * S; x1 := hi(hd.x, bd.x) + 90 * S;
+      yy0 := lo(hd.y, bd.y) - 110 * S; yy1 := hi(hd.y, bd.y) + 70 * S;
+      x0 = hi(x0, m); x1 = lo(x1, w - m); yy0 = hi(yy0, m + 60 * S); yy1 = lo(yy1, y0 - 20 * S);
+      c := 26 * S; lw := 2 * S;
+      br := ifx din.made then 0.55f32 else 1.0f32; bg := ifx din.made then 0.95f32 else 0.78f32; bb := ifx din.made then 0.6f32 else 0.3f32;
+      n = stroke(out, n, x0, yy0, x0 + c, yy0, lw, br, bg, bb, 1); n = stroke(out, n, x0, yy0, x0, yy0 + c, lw, br, bg, bb, 1);
+      n = stroke(out, n, x1, yy0, x1 - c, yy0, lw, br, bg, bb, 1); n = stroke(out, n, x1, yy0, x1, yy0 + c, lw, br, bg, bb, 1);
+      n = stroke(out, n, x0, yy1, x0 + c, yy1, lw, br, bg, bb, 1); n = stroke(out, n, x0, yy1, x0, yy1 - c, lw, br, bg, bb, 1);
+      n = stroke(out, n, x1, yy1, x1 - c, yy1, lw, br, bg, bb, 1); n = stroke(out, n, x1, yy1, x1, yy1 - c, lw, br, bg, bb, 1);
+      lab: [64] u8; nl := 0;
+      if din.made { nl = tput(lab[..], 0, "MADE  ·  ink dragon joins the library"); }
+      else {
+        nl = tput(lab[..], 0, "DRAWING IN…  ");
+        nl = tput(lab[..], nl, ifx din.flood <= 0 then "ink sketch" else ifx din.shade <= 0 then "flat colour" else "shading");
+      }
+      lc := 13 * S;
+      lw2 := text_w(cast(string) lab[0..<nl], lc);
+      panel(s, u, x0, yy0 - 30 * S, x0 + lw2 + 22 * S, yy0 - 6 * S, 0.06, 0.04, 0.0, 0.75);
+      n = label(out, n, cast(string) lab[0..<nl], x0 + 11 * S, yy0 - 13 * S, lc, ink_of(br, bg, bb, 1));
+      // the maker's progress under the label
+      pr := ifx din.made then 1.0f32 else (din.sketch + din.flood + din.shade) / 3;
+      n = stroke(out, n, x0, yy0 - 3 * S, x0 + (lw2 + 22 * S) * pr, yy0 - 3 * S, 2 * S, br, bg, bb, 1);
+    }
+  }
+  return n;
+}
+// The film's letterbox: black bars to a wide frame.
+film_bars :: (s: [] Animelab, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
+  bar := hi(0, (h - w / 2.2) * 0.5);
+  panel(s, u, -20, -20, w + 20, bar, 0, 0, 0, 1);
+  panel(s, u, -20, h - bar, w + 20, h + 20, 0, 0, 0, 1);
+  return 0;
+}
+
+// ---- Input and the page
+animelab_key :: (s: [] Animelab, key: int, down: bool) -> bool #export_c {
+  if !s[0].started { animelab_reset(s); }
+  if !down { return false; }
+  if key == ' ' { s[0].time = 0; return true; }     // the take again from the top
+  if key == 'f' || key == 'F' { animelab_take(s, ifx s[0].mode == STAGE_FILM then STAGE_DIRECT else STAGE_FILM); s[0].time = 0; return true; }
+  if key == 'h' || key == 'H' { s[0].card = !s[0].card; return true; }
+  return false;
+}
+animelab_pointer :: (s: [] Animelab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if !s[0].started { animelab_reset(s); }
+  return false;
+}
+animelab_golden :: (s: [] Animelab, on: bool) #export_c { if !s[0].started { animelab_reset(s); } s[0].golden = on; }
+
+fact :: (facts: string, key: string) -> string {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > key.count && facts[i + key.count] == '=' && facts[i..<i + key.count] == key { return facts[i + key.count + 1..<e]; }
+    i = e + 1;
+  }
+  return "";
+}
+// A query's value (?key=VALUE), "" if none.
+query :: (url: string, key: string) -> string {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if e - i > key.count && url[i..<i + key.count] == key && url[i + key.count] == '=' { return url[i + key.count + 1..<e]; }
+    i = e;
+  }
+  return "";
+}
+// A decimal "12.5" (no sign), -1 if it isn't one.
+decimal :: (t: string) -> f32 {
+  if t.count == 0 || t.count > 8 { return -1; }
+  v := 0.0f32; scale := 0.0f32; any := false;
+  for i: 0..<t.count {
+    c := t[i];
+    if c == '.' && scale == 0 { scale = 1; continue; }
+    if c < '0' || c > '9' { return -1; }
+    any = true;
+    if scale > 0 { scale *= 0.1; v += cast(f32) (c - '0') * scale; } else { v = v * 10 + cast(f32) (c - '0'); }
+  }
+  return ifx any then v else -1.0f32;
+}
+animelab_message :: (s: [] Animelab, kind: int, body: string) #export_c {
+  if !s[0].started { animelab_reset(s); }
+  if kind == PIN_MOMENT { k := decimal(body); s[0].pinned = k; if k < 0 { s[0].time = 0; } return; }
+  if kind != HOST_FACTS || s[0].facts { return; }
+  s[0].facts = true;
+  url := fact(body, "url");
+  stage := query(url, "stage");
+  animelab_take(s, ifx stage == "film" then STAGE_FILM else STAGE_DIRECT);
+  s[0].card = query(url, "card") == "1";
+  s[0].pinned = decimal(query(url, "t"));
+  names := [4] string.["pastoral", "action", "dusk", "neon"];
+  for v: 0..<4 { if fact(body, "variant") == names[v] { s[0].variant = v; } }
+  c := fact(body, "clock");
+  if c.count > 6 && c[0..<6] == "fixed:" { k := decimal(c[6..<c.count]); if k >= 0 && k <= 1 { s[0].clock = k; } }
+  s[0].time = 0;
+}
+
+coaxial_animelab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_animelab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_animelab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+animelab_world_vertices :: () -> int #export_c { return WORLD_VERTICES; }
+animelab_live_vertices :: () -> int #export_c { return LIVE_VERTICES; }
+animelab_world_n :: (s: [] Animelab) -> int #export_c { return s[0].world_n; }
+animelab_live_n :: (s: [] Animelab) -> int #export_c { return s[0].live_n; }
+animelab_draw_count :: (s: [] Animelab) -> int #export_c { return ifx s[0].world_built then DRAWS else 0; }
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax): what one frame of Anime Lab may use.
+ANIMELAB_BUDGET :: FrameBudget.{steps = 8, vertices = MAX_VERTICES - 6, draws = DRAWS, bytes = 16777216};
+
+#test "Anime Lab's frames fit its declared budget" {
+  #assert budget_declared(ANIMELAB_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+}
+
+#test "the page's facts choose the stage, the moment and the overlay" {
+  s := [1] Animelab.[Animelab.{}];
+  animelab_message(s[..], HOST_FACTS, "url=http://127.0.0.1:8800/realms/anime-lab?stage=film&t=4.5&card=1\nvariant=action\nclock=fixed:0.78");
+  #assert s[0].mode == STAGE_FILM && s[0].pinned == 4.5 && s[0].card && s[0].variant == ANIME_ACTION && near(s[0].clock, 0.78, 0.0001);
+  #assert s[0].length == FILM_LENGTH && s[0].n > 6;
+  d := [1] Animelab.[Animelab.{}];
+  animelab_message(d[..], HOST_FACTS, "url=https://openagents.com/realms/anime-lab?stage=direct\nclock=fixed:0.78");
+  #assert d[0].mode == STAGE_DIRECT && d[0].pinned < 0 && !d[0].card && d[0].length == DEMO_LENGTH;
+}
+
+#test "the camera's matrix puts what it looks at in the middle, in front" {
+  u: [UNIFORM_FLOATS] f32;
+  view_rows(u[..], CamNow.{eye = v3(0, 2, 10), at = v3(0, 2, 0), fov = 0.8}, 16.0 / 9.0);
+  sp := screen_of(u[..], v3(0, 2, 0), 1280, 720);
+  #assert sp.ahead && near(sp.x, 640, 0.01) && near(sp.y, 360, 0.01);
+  #assert !screen_of(u[..], v3(0, 2, 20), 1280, 720).ahead;   // behind the eye
+  right := screen_of(u[..], v3(1, 2, 0), 1280, 720);
+  #assert right.x > 640;
+}
+
+#test "a frame writes the academy once, the stage every time, and two draws" #steps 3000000000 {
+  s := [1] Animelab.[Animelab.{}];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  world: [WORLD_VERTICES * VERTEX_WORDS] u32;
+  live: [LIVE_VERTICES * VERTEX_WORDS] u32;
+  animelab_message(s[..], HOST_FACTS, "url=http://x/realms/anime-lab?stage=direct&t=47\nclock=fixed:0.78");
+  style: [STYLE_FLOATS] f32;
+  style[SU_STYLE + 1] = cast(f32) STYLE_ANIME; style[SU_KEY_DIR + 1] = 1;
+  n := animelab_frame(s[..], out[..], u[..], 1280, 720, 1, 0.033, false, world[..], live[..], style[..]);
+  #assert n > 0 && s[0].world_n > 1000 && s[0].live_n > 1000 && !s[0].over;
+  #assert s[0].draws[1] == cast(u32) s[0].world_n && s[0].draws[5] == cast(u32) s[0].live_n && s[0].draws[6] == 0x80000001;
+  #assert u[U_STYLE + SU_STYLE + 1] == cast(f32) STYLE_ANIME;   // the face's anime block, in the uniforms
+}

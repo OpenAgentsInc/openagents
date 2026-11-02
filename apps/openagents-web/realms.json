@@ -197,6 +197,20 @@
         "golden": { "lit": 0.5, "settle": 3000, "blocks": 6 },
         "assets": []
       } },
+    { "id": "animelab", "name": "ANIME LAB", "kind": "open", "listed": false, "orbit": { "r": 0.26, "a": 5.9, "size": 0.022 },
+      "realm": {
+        "slug": "anime-lab",
+        "style": "anime",
+        "variant": "action",
+        "clock": "fixed:0.78",
+        "title": "Anime Lab",
+        "description": "Direct an anime with your voice: spoken lines become typed directions, and an anime scene at Skyreach Academy plays them as you speak. The demo's voice is simulated.",
+        "alt": "Enter the Verse",
+        "module": "animelab",
+        "slot": "anime-lab",
+        "golden": { "lit": 0.5, "settle": 6000, "blocks": 12 },
+        "assets": ["index:/realms/anime-lab/assets/AnimeLab.indices"]
+      } },
     { "id": "drop", "name": "A FIRST REALM", "kind": "open", "listed": false, "orbit": { "r": 0.22, "a": 5.2, "size": 0.024 },
       "realm": {
         "slug": "drop",
