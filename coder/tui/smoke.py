@@ -232,6 +232,45 @@ def verbs(check):
         rl = [json.loads(l) for l in subprocess.run([coder, "log", rj, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout.splitlines() if l.startswith("{")]
         check("a redirect ends the turn as redirected, and the message is the next turn",
               [l["ending"] for l in rl if l["kind"] == "end"] == ["redirected", "finished"] and any(l["kind"] == "user" and l["text"] == "watchdog says try again" for l in rl))
+        # coder acp (chapter 16): an editor's session, two prompts in one conversation, and a cancel
+        acp = subprocess.Popen([coder, "acp", "--engine", "echo"], cwd=REPO, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+        def acp_send(o):
+            acp.stdin.write(json.dumps(o) + "\n"); acp.stdin.flush()
+        def acp_until(rid, secs=60):
+            got, end = [], time.time() + secs
+            while time.time() < end:
+                r, _, _ = select.select([acp.stdout], [], [], 0.2)
+                if r:
+                    line = acp.stdout.readline()
+                    if not line:
+                        break
+                    got.append(json.loads(line))
+                    if got[-1].get("id") == rid:
+                        break
+            return got
+        acp_send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
+        init = acp_until(1)
+        acp_send({"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": REPO, "mcpServers": []}})
+        sess = (acp_until(2) or [{}])[-1].get("result", {}).get("sessionId", "")
+        acp_send({"jsonrpc": "2.0", "id": 3, "method": "session/prompt", "params": {"sessionId": sess, "prompt": [{"type": "text", "text": "hello acp"}]}})
+        g3 = acp_until(3)
+        acp_send({"jsonrpc": "2.0", "id": 4, "method": "session/prompt", "params": {"sessionId": sess, "prompt": [{"type": "text", "text": "$ echo second"}]}})
+        g4 = acp_until(4)
+        acp_send({"jsonrpc": "2.0", "id": 5, "method": "session/prompt", "params": {"sessionId": sess, "prompt": [{"type": "text", "text": "$ sleep 30"}]}})
+        time.sleep(2)
+        acp_send({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": sess}})
+        g5 = acp_until(5, 20)
+        acp.stdin.close()
+        try:
+            acp.wait(15)
+        except subprocess.TimeoutExpired:
+            acp.kill()
+        ups = lambda g: [m["params"]["update"] for m in g if m.get("method") == "session/update"]
+        check("acp: initialize and session/new", init and init[-1].get("result", {}).get("protocolVersion") == 1 and sess == "s1")
+        check("acp: a prompt streams the reply and ends the turn", any(u["sessionUpdate"] == "agent_message_chunk" and "hello acp" in u["content"]["text"] for u in ups(g3))
+              and g3[-1].get("result") == {"stopReason": "end_turn"})
+        check("acp: a command is a tool call, then its update", [u["sessionUpdate"] for u in ups(g4)] == ["tool_call", "tool_call_update"] and ups(g4)[0]["kind"] == "execute")
+        check("acp: session/cancel ends the turn as cancelled", g5 and g5[-1].get("result") == {"stopReason": "cancelled"} and acp.returncode == 0)
         # a progress bar and colors read back as a terminal shows them (chapter 37)
         bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]

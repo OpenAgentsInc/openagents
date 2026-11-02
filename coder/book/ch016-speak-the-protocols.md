@@ -5,9 +5,10 @@
 > calls run in both directions over byte strings, with typed import,
 > chapter4's admission, a remote policy and a hash-chained message log.
 > Coder also serves its verbs as MCP tools over the stdio transport
-> (`coder mcp`, chapter 23), which Claude Code drives live. The harness's
-> own client over live transports (stdio and HTTP), MCP resources, ACP for
-> editors and System One as a tool remain; see [What remains](#what-remains).
+> (`coder mcp`, chapter 23), which Claude Code drives live, and runs as an
+> agent for editors over the Agent Client Protocol (`coder acp`). The
+> harness's own client over live transports (stdio and HTTP), MCP resources
+> and System One as a tool remain; see [What remains](#what-remains).
 
 Other programs already speak protocols for tools. A Model Context Protocol
 (MCP) server publishes tools as JSON-RPC 2.0 messages, and the Open
@@ -665,6 +666,27 @@ listed, imported and exported again to the same bytes, and every call the
 oracle writes goes client to server to client and must give the same
 outcome as calling chapter4's `ht_call` directly.
 
+## Coder as an editor's agent
+
+`coder acp` speaks the [Agent Client Protocol](https://agentclientprotocol.com),
+version 1: JSON-RPC 2.0 with one message a line on stdio, as Zed and other
+editors start their agents. [acp.coax](../../coder/tui/acp.coax) answers:
+
+| Method | Coder does |
+| --- | --- |
+| `initialize` | Protocol version 1; no session loading; text prompts and embedded resources. |
+| `session/new` | Keeps the folder (`cwd`) and returns a session ID. |
+| `session/prompt` | The first runs `coder run TEXT --json` in the folder; each later one `coder fork LAST TEXT --json`, which carries the conversation. It answers `{"stopReason":"end_turn"}` when the turn ends. |
+| `session/cancel` | Leaves the running Coder session's stop file; the turn answers `{"stopReason":"cancelled"}`. |
+
+While a turn runs, its log lines become `session/update` notifications: a
+reply is an `agent_message_chunk`, a tool call a `tool_call` with its kind
+(`execute`, `read`, `search`, `edit`, `fetch` or `other`, from the tool's
+exact name), and its result a `tool_call_update` that is `completed` or
+`failed`. `--engine` picks the engine for every turn; without it, System One
+picks (chapter 13). An editor's settings entry is the command
+`openagents coder acp`.
+
 ## What remains
 
 - **Live transports.** The harness's messages are byte strings in one
@@ -678,8 +700,10 @@ outcome as calling chapter4's `ht_call` directly.
 - **Chapter5's sandbox itself.** Remote calls go through this chapter's
   policy, not `sb_call`, whose approvals, pattern grants, simulated clock
   and replay are bound to chapter4's four built-in bodies.
-- **ACP for editors.** No editor session runs over the Agent Client
-  Protocol yet.
+- **ACP beyond the basics.** `coder acp` doesn't load past sessions, ask
+  the editor for permission (`session/request_permission`), read files
+  through the editor, or send diffs as ACP diff content. No editor has
+  driven it yet; the smoke drives it as one would.
 - **System One as a tool.** A `/v1/systemone` decision from
   [Psionic chapter 20](../../psionic/book/ch020-serve-systemone.md) isn't yet offered as a typed tool.
 - **OpenAgents wire contracts.** This chapter speaks third-party protocols

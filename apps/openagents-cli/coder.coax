@@ -28,6 +28,8 @@ coder_usage :: () {
   print("%\n", "  coder trigger \"TEXT\" [--thread T] [--to-agent] | router [--once]   the Router (book chapters 17, 20)");
   print("%\n", "  coder watch THREAD | policy list|add|rm   what the Router acts on");
   print("%\n", "  coder bench [SUITE]                run a suite (harness, checks, smoke) and report it");
+  print("%\n", "  coder mcp                          Coder's verbs as MCP tools on stdio, for Claude Code or another agent");
+  print("%\n", "  coder acp [--engine E]             Coder as an agent for editors, such as Zed (Agent Client Protocol on stdio)");
   print("%\n", "  coder ls                           sessions, newest first");
   print("%\n", "  coder status ID                    one session's state (ID may be a prefix)");
   print("%\n", "  coder log ID                       one session's log");

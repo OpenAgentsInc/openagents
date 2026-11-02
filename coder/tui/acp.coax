@@ -1,0 +1,268 @@
+// coder acp (Coder book chapter 16): Coder as an agent for editors over
+// the Agent Client Protocol, version 1: JSON-RPC 2.0, one message a line on
+// stdio. An editor such as Zed starts `coder acp`, opens a session for a
+// folder and sends prompts; Coder runs each prompt as a Coder session and
+// streams it back as session/update notifications.
+//
+//   initialize      → protocol version 1, no session loading, text prompts
+//   session/new     → a session ID for the folder (cwd)
+//   session/prompt  → the first runs `coder run TEXT --json`; later ones
+//                     `coder fork LAST TEXT --json`, which carries the
+//                     conversation. The reply is {"stopReason":...} at the
+//                     end of the turn.
+//   session/cancel  → stops the running turn (the Coder session's stop file)
+//
+// The log's lines become updates: a reply is an agent_message_chunk, a tool
+// call a tool_call, its result a tool_call_update. Nothing here holds a key:
+// the engines run on the person's own logins, as with `coder run`.
+
+CD_ACP_SESSIONS :: 8;
+
+CdAcpSession :: struct {
+  id: [16] u8; nid: int;            // "s1", "s2", …
+  cwd: [1024] u8; ncwd: int;
+  last: [32] u8; nlast: int;        // the Coder session the conversation is in
+  h: int;                           // the running turn's process, or -1
+  prompt_id: [128] u8; nprompt_id: int;   // the session/prompt request it answers
+  tools: int;                       // tool calls so far, for their IDs
+  cancelled: bool;
+  ending: [16] u8; nending: int;
+}
+
+CdAcp :: struct {
+  s: [CD_ACP_SESSIONS] CdAcpSession; n: int;
+  engine: [16] u8; nengine: int;    // --engine for every turn, or "" for System One's pick
+}
+
+cd_acp_send :: (s: string) { cd_outln(s); }
+
+cd_acp_result :: (id: string, result: string) {
+  ob: [65536] u8;
+  n := json_raw(ob[..], 0, "{\"jsonrpc\":\"2.0\",\"id\":"); n = json_raw(ob[..], n, id);
+  n = json_raw(ob[..], n, ",\"result\":"); n = json_raw(ob[..], n, result); n = json_raw(ob[..], n, "}");
+  if n > 0 { cd_acp_send(cast(string) ob[0..<n]); }
+}
+
+cd_acp_error :: (id: string, code: int, message: string) {
+  ob: [4096] u8;
+  n := json_raw(ob[..], 0, "{\"jsonrpc\":\"2.0\",\"id\":"); n = json_raw(ob[..], n, id);
+  n = json_raw(ob[..], n, ",\"error\":{\"code\":"); n = json_write_int(ob[..], n, code);
+  n = json_raw(ob[..], n, ",\"message\":"); n = json_write_string(ob[..], n, message); n = json_raw(ob[..], n, "}}");
+  if n > 0 { cd_acp_send(cast(string) ob[0..<n]); }
+}
+
+// {"jsonrpc":"2.0","method":"session/update","params":{"sessionId":ID,"update":UPDATE}}
+cd_acp_update :: (s: [] CdAcpSession, update: string) {
+  ob: [300000] u8;
+  n := json_raw(ob[..], 0, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":");
+  n = json_write_string(ob[..], n, cast(string) s[0].id[0..<s[0].nid]);
+  n = json_raw(ob[..], n, ",\"update\":"); n = json_raw(ob[..], n, update); n = json_raw(ob[..], n, "}}");
+  if n > 0 { cd_acp_send(cast(string) ob[0..<n]); }
+}
+
+cd_acp_text_update :: (s: [] CdAcpSession, kind: string, text: string) {
+  ub: [270000] u8;
+  n := json_raw(ub[..], 0, "{\"sessionUpdate\":"); n = json_write_string(ub[..], n, kind);
+  n = json_raw(ub[..], n, ",\"content\":{\"type\":\"text\",\"text\":"); n = json_write_string(ub[..], n, text); n = json_raw(ub[..], n, "}}");
+  if n > 0 { cd_acp_update(s, cast(string) ub[0..<n]); }
+}
+
+// ACP's tool kind for a tool label such as "Bash(ls)": by the tool's exact name.
+cd_acp_kind :: (label: string) -> string {
+  e := 0; while e < label.count && label[e] != '(' { e += 1; }
+  name := cast(string) label[0..<e];
+  if name == "Bash" || (label.count > 0 && label[0] == '$') { return "execute"; }
+  if name == "Read" || name == "LS" || name == "NotebookRead" { return "read"; }
+  if name == "Grep" || name == "Glob" || name == "WebSearch" { return "search"; }
+  if name == "Edit" || name == "Write" || name == "MultiEdit" || name == "NotebookEdit" { return "edit"; }
+  if name == "WebFetch" { return "fetch"; }
+  return "other";
+}
+
+// One line of the running turn's log, as ACP updates.
+cd_acp_line :: (s: [] CdAcpSession, line: string, ar: [] ClArena) {
+  ar[0].at = 0; ar[0].full = false;
+  kind := cl_str(ar, line, "kind");
+  tb: [24] u8;
+  if kind == "session" { s[0].nlast = cd_cat(s[0].last[..], 0, cl_str(ar, line, "id")); return; }
+  if kind == "reply" { cd_acp_text_update(s, "agent_message_chunk", cl_str(ar, line, "text")); return; }
+  if kind == "tool" {
+    s[0].tools += 1;
+    label := cl_str(ar, line, "label");
+    ub: [8192] u8;
+    n := json_raw(ub[..], 0, "{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t");
+    n = json_raw(ub[..], n, cd_itoa(s[0].tools, tb[..]));
+    n = json_raw(ub[..], n, "\",\"title\":"); n = json_write_string(ub[..], n, label);
+    n = json_raw(ub[..], n, ",\"kind\":"); n = json_write_string(ub[..], n, cd_acp_kind(label));
+    n = json_raw(ub[..], n, ",\"status\":\"in_progress\"}");
+    if n > 0 { cd_acp_update(s, cast(string) ub[0..<n]); }
+    return;
+  }
+  if kind == "result" && s[0].tools > 0 {
+    bad := cl_bool(line, "error");
+    ub: [270000] u8;
+    n := json_raw(ub[..], 0, "{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"t");
+    n = json_raw(ub[..], n, cd_itoa(s[0].tools, tb[..]));
+    n = json_raw(ub[..], n, ifx bad.ok && bad.value then "\",\"status\":\"failed\"" else "\",\"status\":\"completed\"");
+    n = json_raw(ub[..], n, ",\"content\":[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":");
+    n = json_write_string(ub[..], n, cl_str(ar, line, "text")); n = json_raw(ub[..], n, "}}]}");
+    if n > 0 { cd_acp_update(s, cast(string) ub[0..<n]); }
+    return;
+  }
+  if kind == "end" {
+    s[0].nending = cd_cat(s[0].ending[..], 0, cl_str(ar, line, "ending"));
+    why := cl_str(ar, line, "text");
+    if s[0].nending > 0 && cast(string) s[0].ending[0..<s[0].nending] == "failed" && why.count > 0 { cd_acp_text_update(s, "agent_message_chunk", why); }
+  }
+}
+
+// The stop reason for a turn's ending.
+cd_acp_stop_reason :: (s: [] CdAcpSession) -> string {
+  if s[0].cancelled { return "cancelled"; }
+  e := cast(string) s[0].ending[0..<s[0].nending];
+  if e == "stopped" { return "cancelled"; }
+  return "end_turn";
+}
+
+// Starts a turn: run for the first prompt, fork after.
+cd_acp_start :: (a: [] CdAcp, s: [] CdAcpSession, text: string) -> bool {
+  rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+  sb: [4200] u8; sn := cd_cat(sb[..], cd_cat(sb[..], 0, repo), "/coder/tui/coder.sh");
+  h := cxproc_new();
+  if h < 0 { return false; }
+  ok := cl_push(h, CL_FIELD_ARG, cast(string) sb[0..<sn]);
+  if s[0].nlast == 0 { ok = ok && cl_push(h, CL_FIELD_ARG, "run") && cl_push(h, CL_FIELD_ARG, text); }
+  else { ok = ok && cl_push(h, CL_FIELD_ARG, "fork") && cl_push(h, CL_FIELD_ARG, cast(string) s[0].last[0..<s[0].nlast]) && cl_push(h, CL_FIELD_ARG, text); }
+  ok = ok && cl_push(h, CL_FIELD_ARG, "--json");
+  if s[0].nlast == 0 && s[0].ncwd > 0 { ok = ok && cl_push(h, CL_FIELD_ARG, "--cwd") && cl_push(h, CL_FIELD_ARG, cast(string) s[0].cwd[0..<s[0].ncwd]); }
+  if a[0].nengine > 0 { ok = ok && cl_push(h, CL_FIELD_ARG, "--engine") && cl_push(h, CL_FIELD_ARG, cast(string) a[0].engine[0..<a[0].nengine]); }
+  if s[0].ncwd > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, cast(string) s[0].cwd[0..<s[0].ncwd]); }
+  ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=/usr/bin/true");
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); return false; }
+  s[0].h = h; s[0].cancelled = false; s[0].nending = 0;
+  return true;
+}
+
+// Reads the running turns' lines; at a turn's end, answers its prompt.
+cd_acp_poll :: (a: [] CdAcp) -> bool {
+  any := false;
+  ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  lb: [262144] u8;
+  for k: 0..<a[0].n {
+    s := a[0].s[k..<k + 1];
+    if s[0].h < 0 { continue; }
+    for guard: 0..<256 {
+      m := cxproc_read_line(s[0].h, 0);
+      if m == CL_TIMEOUT || m == CL_TOO_LONG { break; }
+      if m < 0 {
+        st := cxproc_wait(s[0].h, 5000); r := cxproc_release(s[0].h); s[0].h = -1;
+        rb: [64] u8; rn := json_raw(rb[..], 0, "{\"stopReason\":"); rn = json_write_string(rb[..], rn, cd_acp_stop_reason(s)); rn = json_raw(rb[..], rn, "}");
+        cd_acp_result(cast(string) s[0].prompt_id[0..<s[0].nprompt_id], cast(string) rb[0..<rn]);
+        any = true;
+        break;
+      }
+      n := ifx m < lb.count then m else lb.count;
+      for i: 0..<n { lb[i] = cast,trunc(u8) cxproc_line_byte(s[0].h, i); }
+      if n > 0 && lb[0] == '{' { cd_acp_line(s, cast(string) lb[0..<n], ar[..]); any = true; }
+    }
+  }
+  return any;
+}
+
+cd_acp_find :: (a: [] CdAcp, id: string) -> int {
+  for k: 0..<a[0].n { if cast(string) a[0].s[k].id[0..<a[0].s[k].nid] == id { return k; } }
+  return -1;
+}
+
+// The prompt's text: its text blocks, and a resource link's URI.
+cd_acp_prompt_text :: (ar: [] ClArena, prompt: string, out: [] u8) -> string {
+  n := 0;
+  for i: 0..<cl_count(prompt) {
+    b := cl_json(prompt, cl_item(prompt, i));
+    t := cl_str(ar, b, "type");
+    piece := ifx t == "text" then cl_str(ar, b, "text") else ifx t == "resource_link" then cl_str(ar, b, "uri") else ifx t == "resource" then cl_str(ar, b, "resource.text") else "";
+    if piece.count == 0 { continue; }
+    if n > 0 { n = cd_cat(out, n, "\n"); }
+    n = cd_cat(out, n, piece);
+  }
+  return cast(string) out[0..<n];
+}
+
+cd_acp_message :: (a: [] CdAcp, msg: string) {
+  ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  method := cl_str(ar[..], msg, "method");
+  id := cl_raw(msg, "id");
+  params := cl_raw(msg, "params");
+  if method == "session/cancel" {
+    k := cd_acp_find(a, cl_str(ar[..], params, "sessionId"));
+    if k >= 0 && a[0].s[k].h >= 0 && a[0].s[k].nlast > 0 {
+      a[0].s[k].cancelled = true;
+      pb: [1300] u8; x := fs_write(cd_sibling(cast(string) a[0].s[k].last[0..<a[0].s[k].nlast], ".stop", pb[..]), "stop\n");
+    }
+    return;
+  }
+  if id.count == 0 { return; }                                  // another notification
+  if method == "initialize" {
+    cd_acp_result(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":false,\"promptCapabilities\":{\"image\":false,\"audio\":false,\"embeddedContext\":true}},\"authMethods\":[]}");
+    return;
+  }
+  if method == "authenticate" { cd_acp_result(id, "{}"); return; }
+  if method == "session/new" {
+    if a[0].n == CD_ACP_SESSIONS { cd_acp_error(id, -32000, "Too many sessions."); return; }
+    s := a[0].s[a[0].n..<a[0].n + 1];
+    s[0] = CdAcpSession.{}; s[0].h = -1;
+    tb: [24] u8; s[0].nid = cd_cat(s[0].id[..], cd_cat(s[0].id[..], 0, "s"), cd_itoa(a[0].n + 1, tb[..]));
+    s[0].ncwd = cd_cat(s[0].cwd[..], 0, cl_str(ar[..], params, "cwd"));
+    a[0].n += 1;
+    rb: [128] u8; rn := json_raw(rb[..], 0, "{\"sessionId\":"); rn = json_write_string(rb[..], rn, cast(string) s[0].id[0..<s[0].nid]); rn = json_raw(rb[..], rn, "}");
+    cd_acp_result(id, cast(string) rb[0..<rn]);
+    return;
+  }
+  if method == "session/prompt" {
+    k := cd_acp_find(a, cl_str(ar[..], params, "sessionId"));
+    if k < 0 { cd_acp_error(id, -32602, "No such session."); return; }
+    s := a[0].s[k..<k + 1];
+    if s[0].h >= 0 { cd_acp_error(id, -32000, "A turn is already running in this session."); return; }
+    pb: [65536] u8; text := cd_acp_prompt_text(ar[..], cl_raw(params, "prompt"), pb[..]);
+    if text.count == 0 { cd_acp_error(id, -32602, "The prompt has no text."); return; }
+    s[0].nprompt_id = cd_cat(s[0].prompt_id[..], 0, cast(string) id[0..<ifx id.count > 120 then 120 else id.count]);
+    if !cd_acp_start(a, s, text) { cd_acp_error(id, -32000, "Coder could not start the turn."); }
+    return;
+  }
+  cd_acp_error(id, -32601, "Method not found.");
+}
+
+// coder acp [--engine E]: serves until stdin ends and every turn is over.
+cd_cmd_acp :: (engine: string) -> int {
+  a_b: [1] CdAcp; a := a_b[..];
+  a[0].nengine = cd_cat(a[0].engine[..], 0, engine);
+  line: [262144] u8; n := 0; eof := false;
+  for guard: 0..<1000000000 {
+    running := false;
+    for k: 0..<a[0].n { if a[0].s[k].h >= 0 { running = true; } }
+    if eof && !running { return 0; }
+    if !eof {
+      c := cxterm_byte(ifx running then 10 else 200);
+      for burst: 0..<65536 {
+        if c == -2 { eof = true; break; }
+        if c < 0 { break; }
+        if c == 10 { if n > 0 { cd_acp_message(a, cast(string) line[0..<n]); } n = 0; }
+        else if n < line.count { line[n] = cast,trunc(u8) c; n += 1; }
+        c = cxterm_byte(0);
+      }
+    } else { x := cxproc_sleep_ms(10); }
+    y := cd_acp_poll(a);
+  }
+  return 0;
+}
+
+#test "ACP tool kinds come from the tool's exact name" {
+  #assert cd_acp_kind("Bash(ls)") == "execute" && cd_acp_kind("$ make") == "execute";
+  #assert cd_acp_kind("Read(a.c)") == "read" && cd_acp_kind("Grep(x)") == "search";
+  #assert cd_acp_kind("Edit(a.c)") == "edit" && cd_acp_kind("mcp__x__y") == "other";
+}
+
+#test "a prompt's text blocks and resource links become one message" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]}; ob: [256] u8;
+  #assert cd_acp_prompt_text(ar[..], "[{\"type\":\"text\",\"text\":\"fix it\"},{\"type\":\"resource_link\",\"uri\":\"file:///a.c\",\"name\":\"a.c\"}]", ob[..]) == "fix it\nfile:///a.c";
+}
