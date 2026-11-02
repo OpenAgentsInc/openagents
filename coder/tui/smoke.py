@@ -518,7 +518,15 @@ def verbs(check):
                 break
             time.sleep(0.2)
         unknown = rpc(5, "tools/call", {"name": "coder_nope", "arguments": {}})
+        res = rpc(6, "resources/list", {})["result"]["resources"]
+        mine = [r for r in res if r["name"] == mid]
+        read = rpc(7, "resources/read", {"uri": "coder://session/" + mid})
+        miss = rpc(8, "resources/read", {"uri": "coder://session/../../etc"})
         mp.stdin.close(); mp.wait(timeout=10)
+        check("mcp resources: each session's log at coder://session/ID; another URI is not found",
+              init["result"]["capabilities"].get("resources") == {} and len(mine) == 1 and mine[0]["uri"] == "coder://session/" + mid
+              and mine[0]["description"].startswith("finished") and "via-mcp" in read["result"]["contents"][0]["text"]
+              and miss["error"]["code"] == -32002)
         check("mcp: initialize, the tool list, a run started and its log read through tools",
               init["result"]["serverInfo"]["name"] == "coder" and len(tools) == 9 and not started["isError"]
               and "    └ via-mcp" in logged and unknown["error"]["code"] == -32602)

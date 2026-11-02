@@ -158,6 +158,49 @@ cd_mcp_send_message :: (id_in: string, msg: string, out: [] u8, ok: [] bool) -> 
 }
 
 // coder mcp: serves until stdin ends.
+// MCP resources: each session's log is a text resource at coder://session/ID,
+// newest first, at most CD_MCP_RESOURCES of them.
+CD_MCP_RESOURCES :: 100;
+CD_MCP_SESSION_URI :: "coder://session/";
+
+cd_mcp_resources :: (ar: [] ClArena, out: [] u8) -> string {
+  b: [2] string; b[0] = "ls"; b[1] = "--json";
+  lb: [1048576] u8; ok: [1] bool;
+  list := cd_mcp_coder(b[0..<2], lb[..], ok[..]);
+  n := json_raw(out, 0, "{\"resources\":[");
+  k := cl_count(list);
+  for i: 0..<ifx k > CD_MCP_RESOURCES then CD_MCP_RESOURCES else k {
+    item := cl_json(list, cl_item(list, i));
+    id := cl_str(ar, item, "id");
+    if id.count == 0 { continue; }
+    ub: [256] u8; un := cd_cat(ub[..], cd_cat(ub[..], 0, CD_MCP_SESSION_URI), id);
+    task := cl_str(ar, item, "task");
+    db: [256] u8; dn := cd_cat(db[..], 0, cl_str(ar, item, "state")); dn = cd_cat(db[..], dn, " · "); dn = cd_cat(db[..], dn, cl_str(ar, item, "engine"));
+    n = json_raw(out, n, ifx i > 0 then ",{\"uri\":" else "{\"uri\":"); n = json_write_string(out, n, cast(string) ub[0..<un]);
+    n = json_raw(out, n, ",\"name\":"); n = json_write_string(out, n, id);
+    n = json_raw(out, n, ",\"title\":"); n = json_write_string(out, n, cast(string) task[0..<ifx task.count > 200 then 200 else task.count]);
+    n = json_raw(out, n, ",\"description\":"); n = json_write_string(out, n, cast(string) db[0..<dn]);
+    n = json_raw(out, n, ",\"mimeType\":\"text/plain\"}");
+  }
+  n = json_raw(out, n, "]}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// A session's log as the resource's text; "" when the URI names no session.
+cd_mcp_read :: (uri: string, out: [] u8) -> string {
+  p := CD_MCP_SESSION_URI;
+  if uri.count <= p.count || cast(string) uri[0..<p.count] != p { return ""; }
+  id := cast(string) uri[p.count..<uri.count];
+  for c: id { if !((c >= '0' && c <= '9') || c == '-') { return ""; } }   // IDs are digits and dashes
+  a: [2] string; a[0] = "log"; a[1] = id;
+  lb: [262144] u8; ok: [1] bool;
+  text := cd_mcp_coder(a[0..<2], lb[..], ok[..]);
+  if !ok[0] { return ""; }
+  n := json_raw(out, 0, "{\"contents\":[{\"uri\":"); n = json_write_string(out, n, uri);
+  n = json_raw(out, n, ",\"mimeType\":\"text/plain\",\"text\":"); n = json_write_string(out, n, text); n = json_raw(out, n, "}]}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
 cd_cmd_mcp :: () -> int {
   line: [CD_MCP_LINE] u8;
   out: [524288] u8;
@@ -183,7 +226,7 @@ cd_cmd_mcp :: () -> int {
         for x: versions { if x == want { v = x; } }
         rb: [1024] u8;
         r := json_raw(rb[..], 0, "{\"protocolVersion\":"); r = json_write_string(rb[..], r, v);
-        r = json_raw(rb[..], r, ",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"coder\",\"version\":"); r = json_write_string(rb[..], r, CODER_VERSION);
+        r = json_raw(rb[..], r, ",\"capabilities\":{\"tools\":{},\"resources\":{}},\"serverInfo\":{\"name\":\"coder\",\"version\":"); r = json_write_string(rb[..], r, CODER_VERSION);
         r = json_raw(rb[..], r, "},\"instructions\":\"Coder runs coding tasks in repositories on this machine as background sessions. Start one with coder_run, follow it with coder_status and coder_log, and talk to it with coder_send.\"}");
         cd_mcp_result(id, cast(string) rb[0..<r], out[..]);
       }
@@ -192,6 +235,14 @@ cd_cmd_mcp :: () -> int {
       else if method == "tools/call" {
         none: [1] string; cb: [524288] u8; r := cd_mcp_call(ar[..], params, none[0..<0], cb[..]);
         if r.count == 0 { cd_mcp_error(id, -32602, "Unknown tool.", out[..]); } else { cd_mcp_result(id, r, out[..]); }
+      }
+      else if method == "resources/list" { lb: [262144] u8; cd_mcp_result(id, cd_mcp_resources(ar[..], lb[..]), out[..]); }
+      else if method == "resources/templates/list" {
+        cd_mcp_result(id, "{\"resourceTemplates\":[{\"uriTemplate\":\"coder://session/{id}\",\"name\":\"session\",\"title\":\"A Coder session's log\",\"mimeType\":\"text/plain\"}]}", out[..]);
+      }
+      else if method == "resources/read" {
+        rb: [400000] u8; r := cd_mcp_read(cl_str(ar[..], params, "uri"), rb[..]);
+        if r.count == 0 { cd_mcp_error(id, -32002, "Resource not found.", out[..]); } else { cd_mcp_result(id, r, out[..]); }
       }
       else { cd_mcp_error(id, -32601, "Method not found.", out[..]); }
     }

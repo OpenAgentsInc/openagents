@@ -7,9 +7,9 @@
 > Coder also serves its verbs as MCP tools over the stdio transport
 > (`coder mcp`, chapter 23), which Claude Code drives live, and runs as an
 > agent for editors over the Agent Client Protocol (`coder acp`). System One
-> is a typed tool (`coder decide`, `coder_decide`). The harness's own client
-> over live transports (stdio and HTTP) and MCP resources remain; see
-> [What remains](#what-remains).
+> is a typed tool (`coder decide`, `coder_decide`), and `coder mcp` serves
+> each session's log as an MCP resource. The harness's own client over live
+> transports (stdio and HTTP) remains; see [What remains](#what-remains).
 
 Other programs already speak protocols for tools. A Model Context Protocol
 (MCP) server publishes tools as JSON-RPC 2.0 messages, and the Open
@@ -714,6 +714,21 @@ Save." with the options bug, question and praise, and got
 `{"choice":"bug","probability":1.000}`. The smoke checks the no-key answer
 and the refusal of an option that contains a comma.
 
+## Sessions as resources
+
+`coder mcp` declares the `resources` capability. `resources/list` names the
+newest 100 sessions, each at `coder://session/ID` with its task as the
+title and its state and engine as the description.
+`resources/templates/list` gives the template `coder://session/{id}`, and
+`resources/read` returns the session's log as plain text, the same text as
+`coder log ID`. A URI that names no session, or whose ID holds anything but
+digits and dashes, answers error -32002, "Resource not found".
+
+In the live check, Claude Code connected to `coder mcp`, read
+`coder://session/20261102-085404-058` with its ReadMcpResourceTool, and
+quoted the log's first line, `Coder 0.1.0 · echo · …`. The smoke lists the
+resources, reads one, and checks that a `..` URI is not found.
+
 ## What remains
 
 - **Live transports.** The harness's messages are byte strings in one
@@ -721,7 +736,7 @@ and the refusal of an option that contains a comma.
   (newline-delimited messages; Claude Code connects to it), but the
   harness's client and server here don't use it yet, and the Streamable
   HTTP transport needs the host's socket effects.
-- **The rest of MCP.** Resources, prompts, sampling, pagination with
+- **The rest of MCP.** Prompts, sampling, resource subscriptions, pagination with
   `nextCursor`, notifications other than `initialized`, string request ids,
   and content other than one text item.
 - **Chapter5's sandbox itself.** Remote calls go through this chapter's
