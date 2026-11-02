@@ -695,7 +695,7 @@ A `/v1/systemone` decision from
 typed tool. `coder decide` asks one choice question and prints the chosen
 option with its probability:
 
-```sh
+```shell
 $ coder decide "Does this message need a reply from a person?" --options yes,no \
     --state "Thanks, that fixed it! Closing the issue."
 {"choice":"no","probability":0.986}
