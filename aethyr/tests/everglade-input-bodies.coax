@@ -1,0 +1,24 @@
+// Retain and join every input body from this chapter's named Everglade
+// observer epochs. This is not an archive framework or a new raster gate.
+#import "Basic";
+#load "render-layer-tools.coax";
+ev_body :: (root:string,epoch:string,key:string,expected:string,target:string,out:[]u8)->string {
+  if !rlay_hash(expected) {return "";}paths:[5][8192]u8;prefix:=fs_join(root,epoch,paths[0][..]);
+  for k:0..<8 {candidate:=key;if k==1 {candidate=fs_join(fs_join(prefix,"source",paths[1][..]),ifx key.count>0 && key[0]=='/' then key[1..<key.count] else key,paths[2][..]);}
+    if k==2 {candidate=fs_join(fs_join(prefix,"platform",paths[1][..]),fs_base(key),paths[2][..]);}
+    if k==3 {candidate=fs_join(prefix,fs_base(key),paths[2][..]);}
+    if k==4 {candidate=fs_join(prefix,"images/observer",paths[2][..]);}
+    if k==5 {candidate=fs_join(fs_join(root,"epochs/rfi-first",paths[1][..]),fs_base(key),paths[2][..]);}
+    if k==6 {candidate=fs_join(fs_join(root,"surface",paths[1][..]),key,paths[2][..]);}
+    if k==7 {candidate=fs_join(fs_join(root,"retained-inputs/bodies",paths[1][..]),expected,paths[2][..]);}
+    hash:[64]u8;if rtq_hash_file(candidate,hash[..]) && cast(string)hash[..]==expected && rlay_copy(candidate,0,fs_size(candidate),target) && rtq_hash_file(target,hash[..]) && cast(string)hash[..]==expected {return fs_join("",candidate,out);}
+  }return "";
+}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}paths:[6][8192]u8;root:=fs_realpath(args_at(a[..],0),paths[0][..]);if root=="" || !fs_mkdir(args_at(a[..],1)) {return 2;}work:=fs_realpath(args_at(a[..],1),paths[1][..]);list:[1]FsList;if work=="" || fs_list(work,list[..])!=0 || !fs_mkdir(fs_join(work,"bodies",paths[2][..])) {return 2;}
+  names:=[15]string.["numerical-320","numerical-320-fixed","full-1280x800","numerical-320-source-rows","numerical-320-qualified-rfi","full-1280x800-qualified-rfi","stock-golden","stock-legacy-integer","stock-legacy-sine","stock-legacy-sine-fork","causal-integer/legacy","causal-integer/generic","causal-sine/legacy","stock-shared-fork","stock-final"];
+  epochs:=[15]string.["epochs/stream-red","epochs/stream-fixed","epochs/stream-fixed","epochs/rfi-first","epochs/rfi-first","epochs/rfi-first","epochs/stock-first","epochs/stock-no-fork","epochs/stock-no-fork","epochs/stock-no-fork","epochs/stock-no-fork","epochs/stock-no-fork","epochs/stock-no-fork","epochs/stock-no-fork","epochs/stock-no-fork"];
+  result:[8388608]u8;o:[1]Jo;jo_start(o[..],result[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.everglade.retained-input-bodies.v1");jo_key(o[..],"rows");jo_arr(o[..]);count:=0;passed:=true;
+  for name,i:names {file:=fs_join(fs_join(root,name,paths[2][..]),"receipt.json",paths[3][..]);bytes:[8388608]u8;nodes:[65536]JvNode;d:[1]Jv;if !rtq_json_file(file,bytes[..],nodes[..],d[..]) {return 1;}inputs:=jv_get(d[0],0,"inputs");if jv_kind(d[0],inputs)!=JV_OBJECT {inputs=jv_get(d[0],0,"source_inputs");}if jv_kind(d[0],inputs)!=JV_OBJECT {tool_err("input inventory missing: ");tool_errln(file);return 1;}row:=d[0].nodes[inputs].first;while row!= -1 {key:=jv_key(d[0],row);expected:=jv_raw(d[0],row);target:=fs_join(fs_join(work,"bodies",paths[2][..]),expected,paths[3][..]);source_path:[8192]u8;copy_from:=ev_body(root,epochs[i],key,expected,target,source_path[..]);okay:=copy_from!="";if !okay {tool_err("retained input body missing: ");tool_errln(key);}passed=passed && okay;jo_obj(o[..]);jo_key(o[..],"receipt");jo_str(o[..],name);jo_key(o[..],"input");jo_str(o[..],key);jo_key(o[..],"sha256");jo_str(o[..],expected);jo_key(o[..],"body");jo_str(o[..],expected);jo_key(o[..],"source_candidate");jo_str(o[..],copy_from);jo_key(o[..],"equal");jo_bool(o[..],okay);jo_end(o[..]);count+=1;row=d[0].nodes[row].next;}}
+  jo_end(o[..]);jo_key(o[..],"status");jo_str(o[..],ifx passed then "passed" else "failed");jo_key(o[..],"input_rows_joined");jo_int(o[..],count);jo_end(o[..]);print("Everglade retained input bodies: % (% rows)\n",passed,count);return ifx !o[0].bad && rto_saved(work,"qualification.json",jo_text(o[..])) && passed then 0 else 1;
+}

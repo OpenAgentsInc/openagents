@@ -1,0 +1,11 @@
+// RFI source draw_count is the original row span, never the active-row total.
+#load "render-host-policy.coax";
+#authority;
+#load "render-host-rfi-checks.coax";
+rh_source_draws :: (d:Jv,capture:int,bytes:int)->int {
+  n:=rh_number(d,capture,"counts.draws");if n<0 || n>4096 || bytes!=n*16 {return -1;}return n;
+}
+rh_rfi_repair :: (old:string,source:int,admitted:int,out:[]u8)->int {
+  end:=rtq_find(old,"\n",0);if end== -1 {return -1;}header:=old[0..<end];if args_whole(rtq_word(header,5))!=admitted || rtq_word(header,13)!="" {return -1;}
+  o:[1]Jo;jo_start(o[..],out);for k:0..<13 {word:=rtq_word(header,k);if word=="" {return -1;}if k>0 {jo_put(o[..]," ");}if k==5 {jo_int(o[..],source);}else {jo_put(o[..],word);}}jo_put(o[..],old[end..<old.count]);return ifx o[0].bad then -1 else o[0].n;
+}

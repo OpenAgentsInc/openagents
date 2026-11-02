@@ -1,0 +1,12 @@
+{
+  "schema": "aethyr.everglade.visual-review.v1",
+  "date": "2026-11-02",
+  "before_sha256": "100e6f30d74ff635138cc14d82bea1e46c65af7dbc0645bfba09754196bbb565",
+  "reviewed_current_sha256": "a6cb4a92ceed078f27bac07a04f62c1e1ed96fe3bfa297805a4b36d5d3a0dcc1",
+  "reviewers": ["/root", "/root/aethyr_issue_assessment"],
+  "both_approvals_before_baseline_copy": true,
+  "root": "Personally inspected exact metadata-correct current image: FORK in its original position; full HUD, camera, avatar pose/shadow, buildings, road, tree silhouettes and labels preserved. Remaining grass and upper-sky patterns match the declared noise migration. Approved this exact PNG after exact-input old/shared renderer equality and the sine-only original-golden zero-block control.",
+  "second_peer_reported_by_root": "Independently hashed before100e6f30/currenta6cb4a92 and personally reviewed that exact pair. FORK/full HUD restored; same camera/avatar/pose/shadow/road/gate/buildings/tree outlines/labels; remaining grass and sky noise patterns acceptable with the proved causal controls. Approved.",
+  "earlier_review_correction": "The first broad reviews were conditional and missed the absent FORK button. The47-block sine-control residual exposed a missing GET-only fork metadata fixture. All initial shots/reports remain retained; no baseline was updated until the correct API fixture restored the HUD, the sine control passed the original golden, and both peers reviewed the exact corrected PNG.",
+  "decision": "Copy only this exact current PNG to Everglade's Mac baseline, then run the unchanged stock comparison. Keep original six-block allowance, lit, moving-block and analytics/error gates. No other baseline or pixel mask changes."
+}

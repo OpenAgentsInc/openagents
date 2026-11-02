@@ -1,0 +1,10 @@
+// Observation completion never turns a stock golden refusal into a pass.
+#load "render-host-policy.coax";
+#authority;
+#load "everglade-stock-checks.coax";
+eg_stock_complete :: (started:int,status:int,timed_out:bool,cut:bool,retained:bool,joined:bool,same:bool,report:bool)->bool {
+  return started==0 && !timed_out && !cut && (status==0 || status==1) && retained && joined && same && report;
+}
+eg_stock_shot :: (source:string)->string {
+  prefix:="; this shot: ";first:=rtq_find(source,prefix,0);if first== -1 {return "";}begin:=first+prefix.count;if rtq_find(source,prefix,begin)!= -1 {return "";}end:=rtq_find(source,")",begin);if end== -1 {return "";}path:=source[begin..<end];for c:path {if c==10 || c==13 || c==0 {return "";}}return path;
+}

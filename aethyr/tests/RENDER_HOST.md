@@ -20,6 +20,7 @@ The positional arguments and original flags remain available:
 | Flag | Observation |
 | --- | --- |
 | `--start` | Warm the host, send the actual Enter press/release, then arm capture only after scene readiness and any requested media readiness. |
+| `--autoentry` | For a realm which enters from its actual frame callback: use explicit clip steps and manual capture, require observed scene readiness, a submitted ready renderer and nonempty actual draw count before arming, without sending Enter. Mutually exclusive with `--start`; retain the prearm facts and require nonempty captured draws. |
 | `--half` | Request rgba16float capture and explicit clip steps. Without it, retain the host's normal capture format. |
 | `--size=WIDTHxHEIGHT` | CSS viewport, default 320×180, each dimension 1–8192. |
 | `--physical=WIDTHxHEIGHT` | Explicit capture-only ResizeObserver device-pixel-box fixture; the literal argument and actual observation are retained. |
@@ -39,6 +40,12 @@ surface for qualification. No implicit Start is added to another flag.
 The pending guard only waits for an observed asset row; it never invents
 readiness or bypasses an absent/incompatible producer.
 
+For Everglade, use `--autoentry --half --texture-stream --require-draws`.
+Its frame callback enters the world; Enter opens room chat. The receipt
+keeps `started=false`, `autoentry=true`, `key_injected=false` and the actual
+prearm observation. This is the declared probe/golden capture profile,
+separate from an ordinary continuously animated page or the stock PNG walk.
+
 Coax owns the schedule, deadlines, source identities, all admission and
 lifecycle verdicts, artifact names, chunks, checksums and native frame
 configuration. The narrow JavaScript file performs browser SDK effects and
@@ -48,6 +55,28 @@ counts, digest, ACK, stored bytes and source/origin finalization are joined.
 Both streaming and non-streaming modes retain `gpu.bin`, uniforms, HUD,
 draw/index data, all declared buffers/textures, media metadata and
 `frame.config`.
+
+Texture stream slots are reserved before asynchronous hashing. Concurrent
+callbacks retain separate indices; the observer waits for the first pending
+slot's real digest, then copies and acknowledges each slot in order. Receipts
+retain the actual completion order and reservation counts.
+
+The native RFI uses `capture.counts.draws`, the source row count. The separate
+`admitted_draws` field counts active rows and can be smaller when source rows
+have zero work. Coax requires exactly 16 bytes for every source row. The
+initial Everglade observation exposed the older formatter's use of the
+active count; the original configuration remains retained. Reassemble a
+corrected configuration from those existing bytes with:
+
+```sh
+coax/web/tool.sh aethyr/tests/reassemble-render-host-frame.coax \
+  CAPTURE_DIRECTORY NEW_EMPTY_OUTPUT_DIRECTORY
+```
+
+This tool changes only the draw-count header field and retains every other
+header value and suffix byte, including all resource references. Its record
+joins the original receipt/configuration and actual draw span. It does not
+repeat the browser capture or establish a CPU/native raster result.
 
 The v2 receipt retains actual DOM/status facts, window errors/rejections,
 raw CDP event count and precise compiler/tool/source identities. The current

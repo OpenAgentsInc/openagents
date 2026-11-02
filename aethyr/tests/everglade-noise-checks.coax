@@ -1,0 +1,26 @@
+#test "Everglade noise diagnostics replace only each exact named hash body once" {
+  out:[4096]u8;for site:0..<5 {n:=en_transform("verse/everglade/gpu.coax",EN_EG_CURRENT[site],true,site,out[..]);#assert n==EN_EG_OLD[site].count && cast(string)out[0..<n]==EN_EG_OLD[site];}
+  n:=en_transform("verse/style.coax",EN_STYLE_CURRENT,true,0,out[..]);#assert n==EN_STYLE_OLD.count && cast(string)out[0..<n]==EN_STYLE_OLD;
+  n=en_transform("verse/everglade/gpu.coax",EN_EG_CURRENT[0],false,0,out[..]);#assert n==EN_EG_CURRENT[0].count && cast(string)out[0..<n]==EN_EG_CURRENT[0];
+  n=en_transform("verse/style.coax",EN_STYLE_CURRENT,false,0,out[..]);#assert n==EN_STYLE_CURRENT.count && cast(string)out[0..<n]==EN_STYLE_CURRENT;
+  n=en_transform("untouched.coax","before\0after",true,0,out[..]);#assert n==12 && cast(string)out[0..<n]=="before\0after";
+  #assert en_transform("verse/everglade/gpu.coax","not that procedure",true,0,out[..])== -1;
+  #assert en_transform("verse/style.coax",EN_EG_CURRENT[0],true,0,out[..])== -1;
+  joined:[1024]u8;w:[1]Jo;jo_start(w[..],joined[..]);jo_put(w[..],EN_EG_CURRENT[0]);jo_put(w[..],EN_EG_CURRENT[0]);#assert en_transform("verse/everglade/gpu.coax",jo_text(w[..]),true,0,out[..])== -1;
+  tiny:[1]u8;#assert en_transform("verse/style.coax",EN_STYLE_CURRENT,true,0,tiny[..])== -1;
+  #assert en_transform("other.coax","longer",false,0,tiny[..])== -1;
+  #assert en_transform("verse/everglade/gpu.coax",EN_EG_CURRENT[0],true,-1,out[..])== -1;
+  #assert en_transform("verse/everglade/gpu.coax",EN_EG_CURRENT[0],true,8,out[..])== -1;
+  #assert en_transform("verse/style.coax",EN_STYLE_CURRENT,true,2,out[..])== -1;
+  for site:0..<3 {#assert en_transform("verse/everglade/gpu.coax",EN_EG_TESTS[site],true,site+5,out[..])==0;}
+  #assert en_transform("verse/style.coax",EN_STYLE_TEST,true,1,out[..])==0;
+  #assert en_edit_count("verse/everglade/gpu.coax",true)==8 && en_edit_count("verse/style.coax",true)==2 && en_edit_count("other",true)==0;
+  #assert en_edit_count("verse/everglade/gpu.coax",false)==0;
+}
+#test "Everglade noise source closure remains beneath the exact repository root" {
+  #assert en_relative("/repo/verse/gpu.coax","/repo")=="verse/gpu.coax";
+  #assert en_relative("/repo2/verse/gpu.coax","/repo")=="";
+  #assert en_relative("/repo","/repo")=="";
+  #assert en_relative("","/repo")=="";
+  #assert en_relative("/repo/a","/repo/a")=="";
+}

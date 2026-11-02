@@ -1,0 +1,105 @@
+{
+  "schema": "aethyr.render.everglade-browser-final.v1",
+  "date": "2026-11-02",
+  "status": "browser_admission_and_reviewed_visual_migration_passed",
+  "scope": "Chapter11 current ordinary Everglade producer through the production WebGPU host at the exact desktop regression extent, a separate bounded numerical capture with every physical resource, complete same-input legacy/shared renderer controls, and a reviewed stock PNG migration. CPU/native raster comparison is a separate record; no uncompleted numerical result is promoted here.",
+  "compiler": {
+    "sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+    "input_fingerprint": "6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e",
+    "qualification_scope": "Root verified the selected compiler's provenance against the integrated main compiler inputs. The owner-approved fast release-cache profile remains distinct from full compiler mutation qualification.",
+    "ordinary_producer_sha256": "6a954ad72695c6c3a0130c91fe8ccbd16bca9e8ab5ec4adab5141eaba2bf08d6",
+    "package_manifest_sha256": "9376144faac5c8e27968103d918d279e8ecb52c21b6bec9e333625a90c7b1c6d",
+    "fresh_build_record": "aethyr-render-final-artifacts-2026-11-02.json"
+  },
+  "browser_source": {
+    "host_sha256": "5b1f06251ad712bcf18121cbc13ebf841b156728a0cdfd113da0547b74561954",
+    "renderer_sha256": "c524e3f88b955c0721807e9b996c30c00d94c378682ca68fca64679b514b97d6",
+    "page_sha256": "79f41cc2f951e3e07ce0789577b6b0d23008a1405050c54df11a557c315a459a",
+    "capture_observer_image_sha256": "4bc4ca613d2a99c26882596d92177504694c1e79560b6adfc23afd9293bd1672",
+    "source_changes": [],
+    "profile": "Muted/headless Chrome, the original three background flags and explicit CDP Emulation. Probe/golden/rgba16float capture uses --autoentry, clip steps, manual arming, no Enter, and explicit physical dimensions. It is separate from the normal URL/stock PNG profile. Every prearm observation requires a submitted ready scene and nonempty actual draw span. started=false and key_injected=false remain explicit."
+  },
+  "actual_frames": {
+    "desktop": {
+      "css_and_physical": [1280, 800], "dpr": 1,
+      "declared_draw_rows": 190, "active_admitted_rows": 78,
+      "water": 1, "grass": 104576, "particles": 126,
+      "window_errors": 0,
+      "frame_validation": {"ok": true, "error": null},
+      "result": "Submitted ready frame, including the actual final water draw189 which the old geometry refused.",
+      "corrected_rfi_sha256": "804f135a5c7c7d32136bb7d49619a710572ce7ce62f174328a0f49fe92cceb6f"
+    },
+    "numerical": {
+      "css_and_physical": [320, 180], "dpr": 1,
+      "declared_draw_rows": 190, "active_admitted_rows": 67,
+      "water": 1, "grass": 13824, "particles": 16,
+      "hud_vertices": 1518, "format": "rgba16float",
+      "gpu_sha256": "1945d4ace885d5f71c55f527882c5655ceab2f98fd36fc76fb2245365f888bfe",
+      "corrected_rfi_sha256": "08207a08c57809162ff1ca44e68fef5ea415b21662b31fc8872e2c3047876c23",
+      "physical_textures": 8,
+      "largest_texture_bytes": 50715648,
+      "resources": "All7 named buffers, source draw/index bytes,36-layer512x512 sRGB atlas with all10mips,7actual48x48 media textures, media command text and complete package/tree references retained. Each transport count/hash/ACK joins its stored bytes. No missing resource row or numerical mask.",
+      "frame_validation": {"ok": true, "error": null},
+      "window_errors": 0
+    },
+    "fixture_boundary": "The original sparse capture origin returns404 for fork-info, so these two renderer captures do not include that optional FORK HUD. That actual API profile stays explicit; its absence is not hidden. The separate normal stock fixture now supplies the current GET-only built-in realm metadata and proves the complete HUD. No fork POST, owner grant, payment or product permission is introduced."
+  },
+  "observer_repairs": {
+    "autoentry": "Everglade enters from its actual frame callback; Enter opens room chat. A separate checked autoentry profile preserves legacy --start behavior, waits for real readiness/draw observations and arms without a key.145 baseline checks and15/15 root mutants killed; an actual conflicting-flags refusal preserves the absent output directory.",
+    "concurrent_streams": "The retained first actual attempt refused duplicate stream index1 because callbacks chose streams.length before asynchronous hashing. The repaired reason1 glue reserves each row synchronously, waits for its real digest, and preserves all original Coax index/count/hash checks. Eight actual callbacks overlap (reservation counts3/6/8) and all indices0..7 copy/ACK correctly. Their observed completion order happened to remain ordered; no out-of-order completion claim.",
+    "source_draw_count": "The inherited formatter wrote active admitted rows67/78 as the RFI source row count, despite retaining190 source rows/3040bytes. The corrected formatter checks source_count*16 and writes190. A separate Coax reassembler changes only that header field, preserving every other header/suffix/reference byte and every original config.41/41 root mutants killed. No browser capture was repeated for this offline repair.",
+    "earlier_epochs": "Original stream failure, wrong-count configurations, initial unqualified reassembly and sharpened policy controls remain distinct. The first partial final input-body scan refused on a receipt-key classification bug; its source/image and copied bodies remain retained, and the corrected final scan selects the actual typed inventory. No incomplete epoch is relabelled passed."
+  },
+  "causal_controls": {
+    "extent": [1280, 800], "fixed_frames": 1, "query": "golden", "key_injected": false,
+    "current_in_legacy_and_shared": {
+      "same_producer_and_u_hud_draw_bytes": true,
+      "same_shape": true,
+      "gpu_sha256_both": "8a326efcaad63ef5b6570682c52d31f25847acf8ade800cd2f56fdfd8b22826c",
+      "different_channels": 0, "different_pixels": 0
+    },
+    "noise_only_in_legacy": {
+      "sine_shader_sha256": "a01dcfd42980a7bbf0dd2e68ea9416ac2deef6014e4f4f9cec46dc2370ec169b",
+      "current_control_equals_package_module": true,
+      "changed_sites": ["eg_hash2", "eg_place window dye", "eg_place spell-soft dye", "eg_hash", "eg_weather_hash", "verse_style_hash"],
+      "other_sampling_demote_and_math_preserved": true,
+      "same_producer_and_u_hud_draw_bytes": true,
+      "different_channels": 1918961, "different_pixels": 688422,
+      "gpu_sha256": "e984e9bd233d5b696ec97241d9fa3d1fb6ab12fc4d062d18b4716eeca9f19fb3",
+      "transformer_mutation": "44/44 killed,0survivors; four explicitly named integer-value assertions removed only in the diagnostic sine copy after retaining the real four-assertion refusal. All other checks remain; no generated WGSL arithmetic was edited."
+    },
+    "normal_stock_restoration": "Sine-only restoration reduced3318changed blocks to47. That47-block residual exposed the missing fork-info GET fixture. The exact current GET contract (built-in realm, owner0/published0/four rules) restored FORK, after which sine-only stock matched the original golden with0changed blocks under the unchanged6allowance. This accounts for grass, upper sky and the entire HUD."
+  },
+  "visual_migration": {
+    "original_png_sha256": "100e6f30d74ff635138cc14d82bea1e46c65af7dbc0645bfba09754196bbb565",
+    "reviewed_and_adopted_png_sha256": "a6cb4a92ceed078f27bac07a04f62c1e1ed96fe3bfa297805a4b36d5d3a0dcc1",
+    "reviewers": ["/root", "/root/aethyr_issue_assessment"],
+    "both_exact_pair_approvals_before_copy": true,
+    "review": "Metadata-correct pair preserves FORK/full HUD, camera, avatar/pose/shadow, road/gate/buildings/tree outlines and labels. Grass/upper-sky redistribution is the causally proved integer-noise change. Earlier broad reviews were corrected when the missing HUD was discovered.",
+    "metadata_correct_before": {"changed_blocks": 3264, "allowed_blocks": 6, "moving_blocks": 55},
+    "final_stock": {"exit": 0, "changed_blocks": 0, "allowed_blocks": 6, "moving_blocks": 36, "lit_percent": 94.9, "minimum_lit_percent": 3.0, "errors": 0, "actual_analytics_events": 4},
+    "policy_mutation": "34/34 killed,0survivors",
+    "tolerances_or_new_masks_changed": false,
+    "other_baselines_changed": false
+  },
+  "separate_numeric_evidence": {
+    "native_measurement": "aethyr-native-frame-measurement-2026-11-02.json",
+    "cpu_and_raster_comparison": "Root owns the current CPU/reference qualification and comparisons on the immutable corrected190-row RFI. This browser/visual record does not convert a C bridge exit0, refused CPU frame or unfinished comparison into an image pass."
+  },
+  "retention": {
+    "directory": "data/aethyr-ch11-2026-11-02/everglade-browser-final",
+    "archive": "artifacts-and-source.tar.xz",
+    "archive_bytes": 49926264,
+    "archive_sha256": "04a347198e03dec849e4c52f70c1ab246f16a4f38b82f58e353d1d0cd262cf28",
+    "complete_input_body_rows": 1777,
+    "source_body_join": "qualification.json",
+    "body_store_inside_archive": "payload/browser/retained-inputs-final2/bodies",
+    "input_join_tool_image_sha256": "bea800c38d1dd16c3ab4aad20cb38bd9160119e68ca14d55bf7dc620e9f7433e",
+    "whole_directory_link_aware_readback_exit": 0,
+    "archive_extract_and_readback_stdout_stderr_bytes": 0,
+    "readback_command": ["/usr/bin/diff", "-qr", "--no-dereference", "payload", "readback/payload"],
+    "contents": "Every declared source/tool/compiler/browser/input body from15 named qualified or explicitly failed epochs, complete actual browser/GPU/resource/RFI bytes, original and adopted PNGs, all stock and raw causal reports, reviews, immutable observer/generator images and source epochs, default-policy mutation successes and retained failures. The byte-identical reused generic receipt is joined by direct comparison with its retained original; no generic GPU result is repeated.",
+    "deduplication_scope": "Unfetched public-surface files are omitted; every actually consumed file is retained by the1777-row body join. Earlier duplicate/partial input-body stores retain their records/source/image while the same content-addressed objects are stored once in the final body store. Complete owned archive-payload inventory, regular bodies, links and empty files compare exactly after extraction.",
+    "status": "complete"
+  }
+}

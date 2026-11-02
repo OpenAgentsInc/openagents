@@ -1,0 +1,12 @@
+// Capture profile for worlds which enter from their actual frame callback.
+// It changes only observer scheduling; it never sends a synthetic Start key.
+#load "render-host-policy.coax";
+#authority;
+RhEntry :: struct {valid:bool;autoentry:bool;manual:bool;clip:bool;key:bool;}
+#load "render-host-entry-checks.coax";
+rh_entry :: (autoentry:bool,start:bool,half:bool)->RhEntry {
+  return RhEntry.{valid=!(autoentry && start),autoentry=autoentry,manual=autoentry || start,clip=autoentry || start || half,key=start};
+}
+rh_autoentry_ready :: (d:Jv)->bool {
+  return rh_true(d,0,"scene_ready") && rh_true(d,0,"render.submitted") && rh_number(d,0,"render.readiness")==2 && rh_number(d,0,"draws")>0;
+}

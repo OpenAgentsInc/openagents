@@ -1,0 +1,15 @@
+#test "host autoentry is explicit manual capture without an Enter event" {
+  a:=rh_entry(false,false,false);#assert a.valid && !a.autoentry && !a.manual && !a.clip && !a.key;
+  a=rh_entry(false,true,false);#assert a.valid && !a.autoentry && a.manual && a.clip && a.key;
+  a=rh_entry(false,false,true);#assert a.valid && !a.autoentry && !a.manual && a.clip && !a.key;
+  a=rh_entry(true,false,false);#assert a.valid && a.autoentry && a.manual && a.clip && !a.key;
+  a=rh_entry(true,false,true);#assert a.valid && a.autoentry && a.manual && a.clip && !a.key;
+  #assert !rh_entry(true,true,false).valid && !rh_entry(true,true,true).valid;
+}
+#forall "host autoentry requires actual submitted ready nonempty scene before arming" change:0..<6 {
+  d:[1]Jv;nodes:[128]JvNode;#assert jv_parse(d[..],"{\"scene_ready\":true,\"render\":{\"submitted\":true,\"readiness\":2},\"draws\":190}",nodes[..]) && rh_autoentry_ready(d[0]);
+  #assert jv_parse(d[..],"{\"scene_ready\":true,\"render\":{\"submitted\":true,\"readiness\":2},\"draws\":1}",nodes[..]) && rh_autoentry_ready(d[0]);
+  if change<4 {keys:=[4]string.["scene_ready","render.submitted","render.readiness","draws"];at:=jv_path(d[0],0,keys[change]);d[0].nodes[at].kind=JV_NULL;#assert !rh_autoentry_ready(d[0]);}
+  if change==4 {#assert jv_parse(d[..],"{\"scene_ready\":true,\"render\":{\"submitted\":true,\"readiness\":2},\"draws\":0}",nodes[..]) && !rh_autoentry_ready(d[0]);}
+  if change==5 {#assert jv_parse(d[..],"{\"scene_ready\":true,\"render\":{\"submitted\":true,\"readiness\":1},\"draws\":1}",nodes[..]) && !rh_autoentry_ready(d[0]);}
+}

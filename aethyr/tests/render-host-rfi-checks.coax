@@ -1,0 +1,18 @@
+#test "host RFI keeps source draw rows when only some rows are active" {
+  d:[1]Jv;nodes:[128]JvNode;#assert jv_parse(d[..],"{\"counts\":{\"draws\":190},\"admitted_draws\":67}",nodes[..]);#assert rh_source_draws(d[0],0,3040)==190;
+  #assert rh_source_draws(d[0],0,1072)== -1 && rh_source_draws(d[0],0,3039)== -1 && rh_source_draws(d[0],0,3041)== -1;
+  #assert jv_parse(d[..],"{\"counts\":{\"draws\":0},\"admitted_draws\":0}",nodes[..]) && rh_source_draws(d[0],0,0)==0 && rh_source_draws(d[0],0,1)== -1;
+  #assert jv_parse(d[..],"{\"counts\":{\"draws\":1},\"admitted_draws\":0}",nodes[..]) && rh_source_draws(d[0],0,16)==1;
+  #assert jv_parse(d[..],"{\"counts\":{\"draws\":4096}}",nodes[..]) && rh_source_draws(d[0],0,65536)==4096;
+  #assert jv_parse(d[..],"{\"counts\":{\"draws\":4097}}",nodes[..]) && rh_source_draws(d[0],0,65552)== -1;
+  for text:[4]string.["{}","{\"counts\":{\"draws\":-1}}","{\"counts\":{\"draws\":4097}}","{\"counts\":{\"draws\":null}}"] {#assert jv_parse(d[..],text,nodes[..]) && rh_source_draws(d[0],0,0)== -1;}
+}
+#test "host RFI reconstruction changes one header field and keeps all suffix bytes" {
+  out:[1024]u8;n:=rh_rfi_repair("2 320 180 1518 16 67 1 13824 16 0 0 0 0\n/actual/inputs\ntextures 0\n",190,67,out[..]);#assert n>0 && cast(string)out[0..<n]=="2 320 180 1518 16 190 1 13824 16 0 0 0 0\n/actual/inputs\ntextures 0\n";
+  #assert rh_rfi_repair("2 320 180 1518 16 67 1 13824 16 0 0 0 0\nbody",190,66,out[..])== -1;
+  #assert rh_rfi_repair("2 320 180 1518 16 67 1 13824 16 0 0 0 0 9\nbody",190,67,out[..])== -1;
+  #assert rh_rfi_repair("2 320 180 1518 16 67\nbody",190,67,out[..])== -1;
+  #assert rh_rfi_repair("no newline",190,67,out[..])== -1;
+  #assert rh_rfi_repair("\n2 320 180 1518 16 67 1 13824 16 0 0 0 0\nbody",190,67,out[..])== -1;
+  tiny:[1]u8;#assert rh_rfi_repair("2 320 180 1518 16 67 1 13824 16 0 0 0 0\nbody",190,67,tiny[..])== -1;
+}

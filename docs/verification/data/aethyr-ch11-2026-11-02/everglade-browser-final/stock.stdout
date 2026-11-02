@@ -1,0 +1,9 @@
+lane everglade (8.6 s)
+  ok    everglade: at http://127.0.0.1:53655/realms/everglade
+  ok    everglade: the engine started
+  ok    everglade: no errors
+  ok    everglade: draws (94.9% lit, at least 3.0%)
+  ok    everglade: matches its golden (0 blocks changed, 6 allowed, 36 moving)
+  time  everglade: 8.6 s
+  ok    analytics contract: every everglade event sent (4 events, 0.0 s)
+goldens http://127.0.0.1:53655: passed in 9.4 s (1 tabs)

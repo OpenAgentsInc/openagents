@@ -1,6 +1,6 @@
 // Firm reason: 1 (DOM, WebGPU, MediaRecorder, retained browser objects and HTTP byte effects; Coax owns order, time budgets, filenames and verdicts).
 (() => {
-  const state = { done: true, error: null, value: null, events: [], slots: [], streams: [], capture: null, projected: null };
+  const state = { done: true, error: null, value: null, events: [], slots: [], streams: [], streamCompletions: 0, capture: null, projected: null };
   const digest = async bytes => [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(b => b.toString(16).padStart(2, '0')).join('');
   addEventListener('error', e => state.events.push({ kind: 'error', message: String(e.message) }));
   addEventListener('unhandledrejection', e => state.events.push({ kind: 'unhandledrejection', message: String(e.reason?.stack || e.reason) }));
@@ -98,7 +98,9 @@
     binding: () => coaxial.renderBindingState(),
     files: () => state.files,
     events: () => state.events,
-    dimensions: () => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio, canvas_width: document.querySelector('canvas')?.width, canvas_height: document.querySelector('canvas')?.height })
+    dimensions: () => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio, canvas_width: document.querySelector('canvas')?.width, canvas_height: document.querySelector('canvas')?.height }),
+    autoentryStatus: () => ({ scene_ready: globalThis.coaxial?.sceneReady === true, render: globalThis.coaxial?.renderStatus ?? null, draws: Number(state.renderer?.x.coaxial_draw_count?.(state.renderer.arena.state) ?? 0) }),
+    streamObservations: () => state.streams.map(row => ({ index: row.index, ready_order: row.readyOrder, reserved_at_completion: row.reservedAtCompletion, done: row.done, name: row.receipt.name, file: row.receipt.file, bytes: row.file?.bytes, sha256: row.file?.sha256 }))
   };
   globalThis.renderHostBegin = (name, request) => {
     state.done = false; state.error = null; state.value = null;
@@ -106,18 +108,19 @@
   };
   globalThis.renderHostPoll = () => ({ done: state.done, error: state.error, value: state.value });
   globalThis.renderHostPost = async request => { const response = await fetch(request.url, { method: 'POST', body: state.slots[request.slot].slice(request.from, request.to) }); return { status: response.status, ack: await response.json() }; };
-  globalThis.renderHostStream = async () => { const row = state.streams.find(row => !row.done); return row ? { index: row.index, ...row.file } : null; };
+  globalThis.renderHostStream = async () => { const row = state.streams.find(row => !row.done); return row?.file ? { index: row.index, ...row.file } : null; };
   globalThis.renderHostStreamAck = request => { const row = state.streams[request.index]; row.receipt.file = request.file; row.done = true; row.release(); return null; };
   globalThis.renderHostInstall = request => {
     state.textureNames = request.textureNames;
-    if (request.start || request.half) globalThis.coaxialClip = true;
+    if (request.start || request.half || request.autoentry) globalThis.coaxialClip = true;
+    if (request.autoentry) import('/coaxial/render.js').then(({ RenderHost }) => { const frame = RenderHost.prototype.frame; RenderHost.prototype.frame = function(...args) { state.renderer = this; return frame.apply(this, args); }; });
     if (request.half) globalThis.coaxialRenderCaptureFormat = 'rgba16float';
     if (request.pendingIndex || request.pendingLayer || request.pendingPack) {
       const original = fetch; let release, held = false; const gate = new Promise(r => release = r); globalThis.coaxialReleaseAsset = release;
       if (request.pendingLayer) { const bitmap = createImageBitmap; globalThis.createImageBitmap = async (...args) => { const image = await bitmap(...args); if (!held) { held = true; await gate; } return image; }; }
       globalThis.fetch = async (...args) => { const response = await original(...args), input = args[0], url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href); if (!((request.pendingIndex && url.pathname.endsWith('Garden.indices')) || (request.pendingPack && url.pathname.endsWith('.pack')))) return response; const bytes = await response.arrayBuffer(); await gate; return new Response(bytes, { status: response.status, headers: response.headers }); };
     }
-    if (request.textureStream) import('/coaxial/render.js').then(({ RenderHost }) => { Object.defineProperty(RenderHost.prototype, 'textureCaptureSink', { configurable: true, value: async (receipt, bytes) => { let release; const waiting = new Promise(r => release = r), index = state.streams.length, file = await slot('', bytes); state.streams.push({ index, receipt, file, release, done: false }); await waiting; } }); });
+    if (request.textureStream) import('/coaxial/render.js').then(({ RenderHost }) => { Object.defineProperty(RenderHost.prototype, 'textureCaptureSink', { configurable: true, value: async (receipt, bytes) => { const row = { index: state.streams.length, receipt, file: null, release: null, done: false }; const waiting = new Promise(r => row.release = r); state.streams.push(row); row.file = await slot('', bytes); row.readyOrder = state.streamCompletions++; row.reservedAtCompletion = state.streams.length; await waiting; } }); });
     if (request.physical) { const Native = ResizeObserver; globalThis.ResizeObserver = class extends Native { constructor(callback) { super((entries, observer) => callback(entries.map(entry => new Proxy(entry, { get(target, key) { if (key === 'devicePixelContentBoxSize') { globalThis.coaxialCaptureDeviceObservation = { kind: 'injected device-pixel-box', css_width: target.contentRect.width, css_height: target.contentRect.height, physical_width: request.pw, physical_height: request.ph, window_dpr: devicePixelRatio }; return [{ inlineSize: request.pw, blockSize: request.ph }]; } return Reflect.get(target, key, target); } })), observer)); } }; }
   };
   return 'ready';
