@@ -1055,14 +1055,14 @@ verse_style_anime_colour :: (an_slot:f32,an_ch:f32)->f32 #export_c {return pow(v
  #assert verse_style_anime_glow(0.1f32,1.0f32,0.25f32,0.8f32)>verse_style_anime_glow(0.1f32,0.0f32,0.25f32,0.8f32);
  #assert verse_style_anime_glow(0.0f32,1.0f32,0.25f32,0.0f32)==0.0f32;
  // stars: none at density 0; at density 1 a point in the middle of every cell, nothing at its corner
- lit:=0;
+ lit_n:=0;
  for i:0..<50 {
   x:=cast(f32)i*1.37f32; y:=cast(f32)i*0.71f32;
   #assert verse_style_anime_star(x,y,0.0f32,1.0f32)==0.0f32;
   #assert verse_style_anime_star(floor(x)+0.5f32,floor(y)+0.5f32,1.0f32,cast(f32)i)>=0.5f32 && verse_style_anime_star(floor(x)+0.02f32,floor(y)+0.02f32,1.0f32,0.0f32)==0.0f32;
-  if verse_style_anime_star(floor(x)+0.5f32,floor(y)+0.5f32,0.1f32,0.0f32)>0.0f32 {lit+=1;}
+  if verse_style_anime_star(floor(x)+0.5f32,floor(y)+0.5f32,0.1f32,0.0f32)>0.0f32 {lit_n+=1;}
  }
- #assert lit>0 && lit<20;
+ #assert lit_n>0 && lit_n<20;
 }
 #test "anime: clouds in two or three flat tones with crisp edges, shaded toward the sky, lit on the sun's side" {
  for i:0..<1001 {
@@ -1078,13 +1078,13 @@ verse_style_anime_colour :: (an_slot:f32,an_ch:f32)->f32 #export_c {return pow(v
  sr:=verse_style_anime_cloud_colour(1.0f32,0.04f32,0.45f32,0.0f32); sb:=verse_style_anime_cloud_colour(1.0f32,0.75f32,0.45f32,0.0f32);
  #assert abs(sr-0.568f32)<0.0001f32 && sb>sr;
  // the cumulus bank: heads between its base and `tall`, round the horizon without a seam
- lo:=1.0f32; hi:=0.0f32;
+ bot:=1.0f32; top:=0.0f32;
  for i:0..<360 {
   a:=cast(f32)i*0.0174533f32-3.14159f32; t:=verse_style_anime_cumulus_top(a,0.3f32,4.0f32);
   #assert t>=0.3f32*0.12f32-0.0001f32 && t<=0.3f32+0.0001f32;
-  lo=st_min(lo,t); hi=st_max(hi,t);
+  bot=st_min(bot,t); top=st_max(top,t);
  }
- #assert hi-lo>0.09f32;
+ #assert top-bot>0.09f32;
  #assert abs(verse_style_anime_cumulus_top(-3.14159265f32,0.3f32,4.0f32)-verse_style_anime_cumulus_top(3.14159265f32,0.3f32,4.0f32))<0.0001f32;
  #assert verse_style_anime_cumulus(0.05f32,0.2f32,0.004f32)==1.0f32 && verse_style_anime_cumulus(0.3f32,0.2f32,0.004f32)==0.0f32;
  // lit high in a head and on the sun's side
@@ -1124,9 +1124,9 @@ verse_style_anime_colour :: (an_slot:f32,an_ch:f32)->f32 #export_c {return pow(v
 #test "anime: a clean, saturated palette; nothing black, greens green, neon neon" {
  for s:0..<ANIME_SLOTS {
   r:=verse_style_anime_srgb(cast(f32)s,0.0f32); g:=verse_style_anime_srgb(cast(f32)s,1.0f32); b:=verse_style_anime_srgb(cast(f32)s,2.0f32);
-  hi:=st_max(r,st_max(g,b)); lo:=st_min(r,st_min(g,b));
-  #assert lo>=0.0f32 && hi<=1.0f32 && hi>0.15f32;
-  if s!=ANIME_STONE && s!=ANIME_SKIN && s!=ANIME_GUARDIAN {#assert (hi-lo)/hi>=0.25f32;}
+  top:=st_max(r,st_max(g,b)); bot:=st_min(r,st_min(g,b));
+  #assert bot>=0.0f32 && top<=1.0f32 && top>0.15f32;
+  if s!=ANIME_STONE && s!=ANIME_SKIN && s!=ANIME_GUARDIAN {#assert (top-bot)/top>=0.25f32;}
   #assert abs(verse_style_anime_colour(cast(f32)s,1.0f32)-pow(g,2.2f32))<0.00001f32;
  }
  for k:0..<3 {s:=ifx k==0 then ANIME_GRASS else ifx k==1 then ANIME_GRASS2 else ANIME_FOLIAGE;

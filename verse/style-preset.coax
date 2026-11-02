@@ -294,9 +294,9 @@ sk_haze :: (k: StyleKey, start: f32, density: f32, cap: f32, r: f32, g: f32, b: 
   q.haze_r = r; q.haze_g = g; q.haze_b = b;
   return q;
 }
-sk_tint :: (k: StyleKey, tr: f32, tg: f32, tb: f32, sr: f32, sg: f32, sb: f32, ambient: f32, gr: f32, gg: f32, gb: f32) -> StyleKey {
+sk_tint :: (k: StyleKey, tr: f32, tgn: f32, tb: f32, sr: f32, sg: f32, sb: f32, ambient: f32, gr: f32, gg: f32, gb: f32) -> StyleKey {
   q := k;
-  q.tint_r = tr; q.tint_g = tg; q.tint_b = tb; q.sky_r = sr; q.sky_g = sg; q.sky_b = sb; q.ambient = ambient;
+  q.tint_r = tr; q.tint_g = tgn; q.tint_b = tb; q.sky_r = sr; q.sky_g = sg; q.sky_b = sb; q.ambient = ambient;
   q.ground_r = gr; q.ground_g = gg; q.ground_b = gb;
   return q;
 }
@@ -415,10 +415,10 @@ verse_style_anime :: (variant: int, tier: int) -> StylePreset {
   p.wind_x = 0.8; p.wind_z = 0.6; p.wind_tilt = 0; p.parting = 0.7;
   p.canopy_mix = 0.85; p.sway = 0.05; p.canopy_gap = 0.2; p.grass_near = 0;
   // water in hard bands; the neon street's is dark and takes the signs' light
-  city := v == ANIME_NEON;
-  p.shallow_r = ifx city then 0.06 else 0.20; p.shallow_g = ifx city then 0.05 else 0.70; p.shallow_b = ifx city then 0.14 else 0.80; p.shallow_depth = 0.4;
-  p.mid_r = ifx city then 0.03 else 0.05; p.mid_g = ifx city then 0.02 else 0.42; p.mid_b = ifx city then 0.08 else 0.68; p.mid_depth = 1.5;
-  p.deep_r = ifx city then 0.01 else 0.02; p.deep_g = ifx city then 0.01 else 0.16; p.deep_b = ifx city then 0.04 else 0.42; p.water_soft = 0.02;
+  neon := v == ANIME_NEON;
+  p.shallow_r = ifx neon then 0.06 else 0.20; p.shallow_g = ifx neon then 0.05 else 0.70; p.shallow_b = ifx neon then 0.14 else 0.80; p.shallow_depth = 0.4;
+  p.mid_r = ifx neon then 0.03 else 0.05; p.mid_g = ifx neon then 0.02 else 0.42; p.mid_b = ifx neon then 0.08 else 0.68; p.mid_depth = 1.5;
+  p.deep_r = ifx neon then 0.01 else 0.02; p.deep_g = ifx neon then 0.01 else 0.16; p.deep_b = ifx neon then 0.04 else 0.42; p.water_soft = 0.02;
   p.sparkle_grid = ifx on_phone then 0.30 else 0.20; p.sparkle_angle = 5 * DEG; p.twinkle = 0.25; p.foam_line = 0.2;
   // the ink
   p.outline_max = 1;
@@ -947,8 +947,8 @@ sp_flat_lum :: (p: StylePreset, slot: int) -> f32 {
 
 // ---- anime (art-styles.md, Anime)
 sp_sat :: (r: f32, g: f32, b: f32) -> f32 {
-  hi := st_max(r, st_max(g, b)); lo := st_min(r, st_min(g, b));
-  return ifx hi > 0 then (hi - lo) / hi else 0.0f32;
+  top := st_max(r, st_max(g, b)); bot := st_min(r, st_min(g, b));
+  return ifx top > 0 then (top - bot) / top else 0.0f32;
 }
 #test "anime: each variant's two hard tones from its own block, a spot, its ink and vignette in the spare slots" {
   for v: 0..<ANIME_VARIANTS { for t: 0..<2 {
