@@ -1,0 +1,1032 @@
+// NIP-HOST browser profile over the direct artifact binding: the requests a
+// browser sends to the person's computer, the host's replies, and the sealed
+// kind 3188 private artifacts that carry them. NIP-HOST "Browser device
+// grants (#12264)", "Bindings" (direct artifact binding), "Operations" and
+// "Grants, epochs, and revocation"; the envelope: contracts.md "Private
+// artifact envelope".
+//
+// One codec for both ends: Coder's host (`coder host`, coder/tui/host.coax)
+// and the realm builder's "Your computer" panel (a wasm page). It has no
+// platform effect: callers bring the keys, the clock, 32 random bytes for
+// each NIP-44 nonce and BIP-340 aux, and they move the events over a relay.
+//
+// A request is openagents.host-request.v1:
+//   {v, requires: [], request, host, grant, epoch, relay, issued_at, expires_at, op}
+// grant and epoch are null for the pairing operations and set for the
+// thread operations. op is one of:
+//   {kind: "browser.request", key, label}    pair this browser key; key is the signer
+//   {kind: "browser.status", request}        how the pairing request stands
+//   {kind: "browser.forget"}                 revoke this browser's grant
+//   {kind: "thread.run", text, realm}        start a Coder job on this realm
+//   {kind: "thread.read", thread, after}     the job's steps after sequence number after
+//   {kind: "thread.stop", thread}            stop the job
+// A reply is openagents.host-reply.v1:
+//   {v, requires: [], request, request_event, host, issued_at, expires_at, result}
+// result is {status: "ok", outcome} or {status: "refused", code, missing}, and
+// outcome one of:
+//   {kind: "browser_request", request, state, grant}   state asked|allowed|denied|expired;
+//        grant null, or when allowed {grant, epoch, rights: ["observe","operate"], expires_at}
+//   {kind: "forgotten"}
+//   {kind: "dispatched", operation, reference}         thread.run or thread.stop; the thread ID
+//   {kind: "thread_steps", thread, state, next, steps}  state running|finished|stopped|failed;
+//        steps at most 32 of {seq, kind, text}, next the last seq read (after when none)
+//
+// Each travels as a kind 3188 event signed by its sender with exactly
+// ["p", recipient], ["h", mailbox], ["t", "oa:artifact:v1"]; the mailbox of a
+// request and of its reply is the request ID. The content is NIP-44 v2 from
+// the sender to the recipient of the artifact envelope whose inline object is
+// the body (schema openagents.host-request.v1 or openagents.host-reply.v1).
+//
+// HB_OK from an open says only that the body is well formed, sealed by its
+// signer for this recipient. The host's current record decides admission
+// (host/admit.coax); a reply grants nothing.
+//
+// Its signing tables are computed at compile time: build it with
+// --run-steps 250000000 (COAXIAL_RUN_STEPS for coax/web/wasm.sh).
+// Checks: coax/bin/coax test coax/lib/nostr/host/browser.coax --library --run-steps 250000000 --only "browser: "
+#load "../nip44-key.coax";
+#load "../event.coax";
+#load "../event_sign.coax";
+#load "../envelope.coax";
+#load "../../json/json.coax";
+
+// book:begin wire
+HB_REQUEST_SCHEMA :: "openagents.host-request.v1";
+HB_REPLY_SCHEMA :: "openagents.host-reply.v1";
+HB_TOPIC :: "oa:artifact:v1";
+HB_KIND :: 3188;
+HB_WINDOW :: 60;           // a request lives at most this long
+HB_RETAIN :: 3600;         // the retention an artifact envelope asks for
+HB_BODY_MAX :: 49152;      // a body, in bytes
+HB_TEXT_MAX :: 16384;      // thread.run text
+HB_LABEL_MAX :: 80;        // a browser's label
+HB_RELAY_MAX :: 256;
+HB_STEPS_MAX :: 32;        // steps in one thread_steps outcome
+HB_STEP_TEXT_MAX :: 2048;  // one step's text
+HB_PAIRING_WAIT :: 600;    // a pairing request waits at most ten minutes
+HB_PAIRING_MAX :: 8;       // and a host keeps at most eight waiting
+HB_GRANT_LIFETIME :: 604800;   // a browser grant lasts seven days
+// book:end wire
+HB_NODES :: 512;
+HB_REGION :: 131072;
+
+// book:begin codes
+HB_OK :: cast(u32)0;
+HB_JSON :: cast(u32)1;         // not one JSON object
+HB_SHAPE :: cast(u32)2;        // a field missing, unknown, repeated, mistyped or malformed
+HB_VERSION :: cast(u32)3;      // v is not this schema
+HB_FEATURE :: cast(u32)4;      // requires is not empty
+HB_UNSUPPORTED :: cast(u32)5;  // an operation or outcome kind this version does not know
+HB_BOUNDS :: cast(u32)6;       // a body, text or list over its limit
+HB_SPACE :: cast(u32)7;        // the output or the arena is too small
+HB_EVENT :: cast(u32)8;        // not a NIP-01 event with its own id
+HB_SIGNATURE :: cast(u32)9;
+HB_ARTIFACT :: cast(u32)10;    // not a 3188 private artifact for exactly this recipient
+HB_KEY :: cast(u32)11;         // the recipient secret is refused
+HB_DECRYPT :: cast(u32)12;     // the content does not decrypt for this recipient
+HB_ENVELOPE :: cast(u32)13;    // not an artifact envelope of this schema, or its digest or size differ
+HB_INPUT :: cast(u32)14;       // a key, nonce or work view is not admitted
+HB_SIGNER :: cast(u32)15;      // browser.request names a key that is not its signer
+HB_MAILBOX :: cast(u32)16;     // the mailbox is not the body's request ID
+// book:end codes
+
+// book:begin ops
+HB_OP_BROWSER_REQUEST :: 1; HB_OP_BROWSER_STATUS :: 2; HB_OP_BROWSER_FORGET :: 3;
+HB_OP_THREAD_RUN :: 4; HB_OP_THREAD_READ :: 5; HB_OP_THREAD_STOP :: 6;
+HB_OPS :: [7]string.["","browser.request","browser.status","browser.forget","thread.run","thread.read","thread.stop"];
+HB_OUT_PAIRING :: 1; HB_OUT_FORGOTTEN :: 2; HB_OUT_DISPATCHED :: 3; HB_OUT_STEPS :: 4;
+HB_OUTCOMES :: [5]string.["","browser_request","forgotten","dispatched","thread_steps"];
+HB_ASKED :: 0; HB_ALLOWED :: 1; HB_DENIED :: 2; HB_EXPIRED :: 3;
+HB_PAIRING_STATES :: [4]string.["asked","allowed","denied","expired"];
+HB_RUNNING :: 0; HB_FINISHED :: 1; HB_STOPPED :: 2; HB_FAILED :: 3;
+HB_THREAD_STATES :: [4]string.["running","finished","stopped","failed"];
+HB_CODES :: [13]string.["malformed","unsupported","forbidden","missing_right","expired","revoked","stale","conflict","bounds","unavailable","rate_limited","wrong_code","denied"];
+HB_RIGHTS :: [7]string.["observe","operate","terminal","review","access_read","access_admin","world"];
+// book:end ops
+
+// book:begin record
+// Strings point into the caller's text or arena; "" is null for grant.
+HbRequest :: struct {
+  request:string; host:string; grant:string; epoch:int=-1; relay:string; issued_at:int; expires_at:int;
+  op:int;
+  key:string; label:string;       // browser.request
+  pairing:string;                 // browser.status: the pairing request ID
+  text:string; realm:string;      // thread.run
+  thread:string; after:int;       // thread.read (after), thread.stop
+}
+HbStep :: struct {seq:int; kind:string; text:string;}
+HbReply :: struct {
+  request:string; request_event:string; host:string; issued_at:int; expires_at:int;
+  ok:bool;
+  code:string; missing:string;    // refused: a NIP-HOST code, and the missing right or ""
+  outcome:int;
+  pairing:string; state:int;      // browser_request (state: HB_ASKED..), thread_steps (state: HB_RUNNING..)
+  grant:string; epoch:int=-1; grant_expires:int;   // browser_request when allowed
+  operation:int; reference:string;                 // dispatched
+  thread:string; next:int; nsteps:int; steps:[HB_STEPS_MAX]HbStep;   // thread_steps
+}
+// Where decoded strings go.
+HbText :: struct {buf:[]u8; at:int; full:bool;}
+// The private workspace for sealing and opening: plaintext and the
+// conversation key live here, and seal and open leave it all zero.
+HbWork :: struct {pre:[HB_REGION]u8; body:[HB_REGION]u8; cipher:[2*HB_REGION]u8; scratch:[HB_REGION]u8; ck:[32]u8;}
+// An opened artifact: who signed it, its id and mailbox (64 lowercase hex),
+// its created_at, and the body's length in the caller's buffer.
+HbOpened :: struct {error:u32=HB_INPUT; signer:[64]u8; id:[64]u8; mailbox:[64]u8; created_at:int; body_n:int;}
+// book:end record
+
+// ---------------------------------------------------------------- small checks
+
+hb_hexn :: (s:string,n:int)->bool {
+  if s.count!=n {return false;}
+  for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+hb_hex64 :: (s:string)->bool {return hb_hexn(s,64);}
+hb_hex32 :: (s:string)->bool {return hb_hexn(s,32);}
+// At most max bytes, none a control byte.
+hb_plain :: (s:string,max:int)->bool {
+  if s.count>max {return false;}
+  for c:s {if c<32 || c==127 {return false;}}
+  return true;
+}
+// The unqualified slug of contracts.md: ^[a-z0-9][a-z0-9_-]{0,63}$.
+hb_slug :: (s:string)->bool {
+  if s.count<1 || s.count>64 {return false;}
+  for c,i:s {
+    al:=(c>='a' && c<='z') || (c>='0' && c<='9');
+    if !al && (i==0 || (c!='_' && c!='-')) {return false;}
+  }
+  return true;
+}
+// thread.run text: 1 byte to 16 KiB, not blank, no NUL.
+hb_text_ok :: (s:string)->bool {
+  if s.count<1 || s.count>HB_TEXT_MAX {return false;}
+  seen:=false;
+  for c:s {if c==0 {return false;}if c!=' ' && c!=9 && c!=10 && c!=13 {seen=true;}}
+  return seen;
+}
+hb_index :: (names:[]string,s:string)->int {
+  for n,i:names {if n==s {return i;}}
+  return -1;
+}
+// The refusal code a host answers for a body that does not read.
+hb_refusal :: (error:u32)->string {
+  if error==HB_UNSUPPORTED || error==HB_VERSION || error==HB_FEATURE {return "unsupported";}
+  if error==HB_BOUNDS {return "bounds";}
+  return "malformed";
+}
+// The right an operation needs (admit.coax's HA_OBSERVE and HA_OPERATE bits), or -1 for none:
+// the pairing operations are answered for the signer's own key.
+hb_op_right :: (op:int)->int {
+  if op==HB_OP_THREAD_READ {return 0;}
+  if op==HB_OP_THREAD_RUN || op==HB_OP_THREAD_STOP {return 1;}
+  return -1;
+}
+hb_keep :: (a:[]HbText,s:string)->string {
+  from:=a[0].at;
+  if from+s.count>a[0].buf.count {a[0].full=true;return "";}
+  for i:0..<s.count {a[0].buf[from+i]=s[i];}
+  a[0].at+=s.count;
+  return cast(string)a[0].buf[from..<a[0].at];
+}
+
+#test "browser: small checks" {
+  #assert hb_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !hb_hex64("0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert hb_hex32("0123456789abcdef0123456789abcdef") && !hb_hex32("0123456789abcdef0123456789abcde") && !hb_hex32("0123456789abcdef0123456789abcdeg");
+  #assert hb_plain("My laptop",80) && !hb_plain("a\tb",80) && !hb_plain("abc",2) && hb_plain("",0);
+  del:=[1]u8.[127];#assert !hb_plain(cast(string)del[..],4);
+  #assert hb_slug("garden") && hb_slug("g") && hb_slug("my-realm_2") && !hb_slug("") && !hb_slug("-a") && !hb_slug("_a") && !hb_slug("Garden") && !hb_slug("a b") && !hb_slug("a.b");
+  long:[65]u8;for i:0..<65 {long[i]='a';}#assert hb_slug(cast(string)long[0..<64]) && !hb_slug(cast(string)long[..]);
+  #assert hb_text_ok("Add a well") && !hb_text_ok("") && !hb_text_ok(" \n\t") && !hb_text_ok("a\0b");
+  big:[HB_TEXT_MAX+1]u8;for i:0..<big.count {big[i]='x';}#assert hb_text_ok(cast(string)big[0..<HB_TEXT_MAX]) && !hb_text_ok(cast(string)big[..]);
+  ops:=HB_OPS;#assert hb_index(ops[..],"thread.read")==HB_OP_THREAD_READ && hb_index(ops[..],"thread.nope")==-1;
+  #assert hb_refusal(HB_UNSUPPORTED)=="unsupported" && hb_refusal(HB_VERSION)=="unsupported" && hb_refusal(HB_BOUNDS)=="bounds" && hb_refusal(HB_SHAPE)=="malformed" && hb_refusal(HB_JSON)=="malformed";
+  #assert hb_op_right(HB_OP_THREAD_READ)==0 && hb_op_right(HB_OP_THREAD_RUN)==1 && hb_op_right(HB_OP_THREAD_STOP)==1 && hb_op_right(HB_OP_BROWSER_REQUEST)==-1 && hb_op_right(HB_OP_BROWSER_FORGET)==-1;
+  b:[4]u8;a:=[1]HbText.[HbText.{buf=b[..]}];
+  #assert hb_keep(a[..],"abc")=="abc" && hb_keep(a[..],"de")=="" && a[0].full && hb_keep(a[..],"d")=="d" && a[0].at==4;
+}
+
+// ---------------------------------------------------------------- requests
+
+// book:begin request-check
+// Whether a request is one this version writes and reads.
+hb_request_check :: (q:HbRequest)->u32 {
+  if !hb_hex64(q.request) || !hb_hex64(q.host) {return HB_SHAPE;}
+  if q.grant.count==0 {if q.epoch!=-1 {return HB_SHAPE;}}
+  else if !hb_hex64(q.grant) || q.epoch<0 {return HB_SHAPE;}
+  if q.relay.count<1 || !hb_plain(q.relay,HB_RELAY_MAX) {return HB_SHAPE;}
+  if q.issued_at<0 || q.expires_at<=q.issued_at || q.expires_at-q.issued_at>HB_WINDOW {return HB_SHAPE;}
+  if q.op<HB_OP_BROWSER_REQUEST || q.op>HB_OP_THREAD_STOP {return HB_UNSUPPORTED;}
+  // pairing carries no grant; a thread operation always names one
+  pairing:=q.op<=HB_OP_BROWSER_FORGET;
+  if pairing!=(q.grant.count==0) {return HB_SHAPE;}
+  if q.op==HB_OP_BROWSER_REQUEST && (!hb_hex64(q.key) || !hb_plain(q.label,HB_LABEL_MAX)) {return HB_SHAPE;}
+  if q.op==HB_OP_BROWSER_STATUS && !hb_hex64(q.pairing) {return HB_SHAPE;}
+  if q.op==HB_OP_THREAD_RUN {
+    if q.text.count>HB_TEXT_MAX {return HB_BOUNDS;}
+    if !hb_text_ok(q.text) || !hb_slug(q.realm) {return HB_SHAPE;}
+  }
+  if (q.op==HB_OP_THREAD_READ || q.op==HB_OP_THREAD_STOP) && !hb_hex32(q.thread) {return HB_SHAPE;}
+  if q.op==HB_OP_THREAD_READ && q.after<0 {return HB_SHAPE;}
+  return HB_OK;
+}
+// book:end request-check
+
+// book:begin request-write
+// The request's JSON body into out: its length, or -1 when the request does
+// not check or out is too small.
+hb_request_write :: (q:HbRequest,out:[]u8)->int {
+  if hb_request_check(q)!=HB_OK {return -1;}
+  ops:=HB_OPS;o:[1]Jo;jo_start(o[..],out);
+  jo_obj(o[..]);
+  jo_key(o[..],"v");jo_str(o[..],HB_REQUEST_SCHEMA);
+  jo_key(o[..],"requires");jo_arr(o[..]);jo_end(o[..]);
+  jo_key(o[..],"request");jo_str(o[..],q.request);
+  jo_key(o[..],"host");jo_str(o[..],q.host);
+  jo_key(o[..],"grant");if q.grant.count==0 {jo_null(o[..]);} else {jo_str(o[..],q.grant);}
+  jo_key(o[..],"epoch");if q.grant.count==0 {jo_null(o[..]);} else {jo_int(o[..],q.epoch);}
+  jo_key(o[..],"relay");jo_str(o[..],q.relay);
+  jo_key(o[..],"issued_at");jo_int(o[..],q.issued_at);
+  jo_key(o[..],"expires_at");jo_int(o[..],q.expires_at);
+  jo_key(o[..],"op");jo_obj(o[..]);
+  jo_key(o[..],"kind");jo_str(o[..],ops[q.op]);
+  if q.op==HB_OP_BROWSER_REQUEST {jo_key(o[..],"key");jo_str(o[..],q.key);jo_key(o[..],"label");jo_str(o[..],q.label);}
+  if q.op==HB_OP_BROWSER_STATUS {jo_key(o[..],"request");jo_str(o[..],q.pairing);}
+  if q.op==HB_OP_THREAD_RUN {jo_key(o[..],"text");jo_str(o[..],q.text);jo_key(o[..],"realm");jo_str(o[..],q.realm);}
+  if q.op==HB_OP_THREAD_READ || q.op==HB_OP_THREAD_STOP {jo_key(o[..],"thread");jo_str(o[..],q.thread);}
+  if q.op==HB_OP_THREAD_READ {jo_key(o[..],"after");jo_int(o[..],q.after);}
+  jo_end(o[..]);jo_end(o[..]);
+  if o[0].bad || o[0].n>HB_BODY_MAX {return -1;}
+  return o[0].n;
+}
+// book:end request-write
+
+// Every member of object at is one of names, none twice, and all are there.
+hb_fields :: (d:Jv,at:int,names:[]string)->bool {
+  if jv_kind(d,at)!=JV_OBJECT || jv_len(d,at)!=names.count {return false;}
+  k:=d.nodes[at].first;
+  while k!=-1 {
+    if hb_index(names,jv_key(d,k))<0 {return false;}
+    m:=d.nodes[k].next;
+    while m!=-1 {if jv_key(d,m)==jv_key(d,k) {return false;}m=d.nodes[m].next;}
+    k=d.nodes[k].next;
+  }
+  return true;
+}
+// A string member unescaped into the arena; ok[0] false when absent, not a string or out of room.
+hb_get_str :: (d:Jv,at:int,key:string,a:[]HbText,ok:[]bool)->string {
+  v:=jv_get(d,at,key);
+  if jv_kind(d,v)!=JV_STRING {ok[0]=false;return "";}
+  from:=a[0].at;
+  n:=jv_unescape(jv_raw(d,v),a[0].buf[from..<a[0].buf.count]);
+  if n<0 {a[0].full=true;ok[0]=false;return "";}
+  a[0].at+=n;
+  return cast(string)a[0].buf[from..<from+n];
+}
+// A nonnegative safe integer member, or -1.
+hb_get_int :: (d:Jv,at:int,key:string)->int {
+  v:=jv_get(d,at,key);
+  if jv_kind(d,v)!=JV_NUMBER {return -1;}
+  n:=jv_int(d,v,-1);
+  return ifx n<0 then -1 else n;
+}
+// v and requires: the schema, and no required feature.
+hb_head :: (d:Jv,schema:string)->u32 {
+  v:=jv_get(d,0,"v");
+  if jv_kind(d,v)!=JV_STRING {return HB_SHAPE;}
+  if jv_raw(d,v)!=schema {return HB_VERSION;}
+  r:=jv_get(d,0,"requires");
+  if jv_kind(d,r)!=JV_ARRAY {return HB_SHAPE;}
+  if jv_len(d,r)!=0 {return HB_FEATURE;}
+  return HB_OK;
+}
+
+// book:begin request-read
+// Reads a request body, closed: every field, no other, each well formed.
+// Strings land in the arena.
+hb_request_read :: (body:string,q:[]HbRequest,a:[]HbText)->u32 {
+  fresh:HbRequest;q[0]=fresh;
+  if body.count>HB_BODY_MAX {return HB_BOUNDS;}
+  nodes:[HB_NODES]JvNode;dv:[1]Jv;
+  if !jv_parse(dv[..],body,nodes[..]) || jv_kind(dv[0],0)!=JV_OBJECT {return HB_JSON;}
+  d:=dv[0];
+  head:=hb_head(d,HB_REQUEST_SCHEMA);if head!=HB_OK {return head;}
+  top:=[10]string.["v","requires","request","host","grant","epoch","relay","issued_at","expires_at","op"];
+  if !hb_fields(d,0,top[..]) {return HB_SHAPE;}
+  ok:=[1]bool.[true];
+  q[0].request=hb_get_str(d,0,"request",a,ok[..]);
+  q[0].host=hb_get_str(d,0,"host",a,ok[..]);
+  q[0].relay=hb_get_str(d,0,"relay",a,ok[..]);
+  g:=jv_get(d,0,"grant");e:=jv_get(d,0,"epoch");
+  if jv_kind(d,g)==JV_NULL && jv_kind(d,e)==JV_NULL {q[0].grant="";q[0].epoch=-1;}
+  else {
+    q[0].grant=hb_get_str(d,0,"grant",a,ok[..]);q[0].epoch=hb_get_int(d,0,"epoch");
+    if q[0].grant.count==0 || q[0].epoch<0 {ok[0]=false;}
+  }
+  q[0].issued_at=hb_get_int(d,0,"issued_at");q[0].expires_at=hb_get_int(d,0,"expires_at");
+  if !ok[0] {return ifx a[0].full then HB_SPACE else HB_SHAPE;}
+  op:=jv_get(d,0,"op");
+  if jv_kind(d,op)!=JV_OBJECT {return HB_SHAPE;}
+  kind:=hb_get_str(d,op,"kind",a,ok[..]);
+  if !ok[0] {return ifx a[0].full then HB_SPACE else HB_SHAPE;}
+  ops:=HB_OPS;q[0].op=hb_index(ops[..],kind);
+  if q[0].op<1 {return HB_UNSUPPORTED;}
+  f2:=[2]string.["kind","thread"];
+  f3:=[3]string.["kind","",""];
+  members:=f2[0..<1];
+  if q[0].op==HB_OP_BROWSER_REQUEST {f3[1]="key";f3[2]="label";members=f3[..];}
+  if q[0].op==HB_OP_BROWSER_STATUS {f2[1]="request";members=f2[..];}
+  if q[0].op==HB_OP_THREAD_RUN {f3[1]="text";f3[2]="realm";members=f3[..];}
+  if q[0].op==HB_OP_THREAD_READ {f3[1]="thread";f3[2]="after";members=f3[..];}
+  if q[0].op==HB_OP_THREAD_STOP {members=f2[..];}
+  if !hb_fields(d,op,members) {return HB_SHAPE;}
+  if q[0].op==HB_OP_BROWSER_REQUEST {q[0].key=hb_get_str(d,op,"key",a,ok[..]);q[0].label=hb_get_str(d,op,"label",a,ok[..]);}
+  if q[0].op==HB_OP_BROWSER_STATUS {q[0].pairing=hb_get_str(d,op,"request",a,ok[..]);}
+  if q[0].op==HB_OP_THREAD_RUN {
+    tv:=jv_get(d,op,"text");
+    if jv_kind(d,tv)==JV_STRING && jv_raw(d,tv).count>6*HB_TEXT_MAX {return HB_BOUNDS;}
+    q[0].text=hb_get_str(d,op,"text",a,ok[..]);q[0].realm=hb_get_str(d,op,"realm",a,ok[..]);
+  }
+  if q[0].op==HB_OP_THREAD_READ || q[0].op==HB_OP_THREAD_STOP {q[0].thread=hb_get_str(d,op,"thread",a,ok[..]);}
+  if q[0].op==HB_OP_THREAD_READ {q[0].after=hb_get_int(d,op,"after");}
+  if !ok[0] {return ifx a[0].full then HB_SPACE else HB_SHAPE;}
+  return hb_request_check(q[0]);
+}
+// book:end request-read
+
+// ---------------------------------------------------------------- replies
+
+// book:begin reply-check
+hb_reply_check :: (r:HbReply)->u32 {
+  if !hb_hex64(r.request) || !hb_hex64(r.request_event) || !hb_hex64(r.host) {return HB_SHAPE;}
+  if r.issued_at<0 || r.expires_at<0 {return HB_SHAPE;}
+  if !r.ok {
+    codes:=HB_CODES;rights:=HB_RIGHTS;
+    if hb_index(codes[..],r.code)<0 {return HB_SHAPE;}
+    if (r.code=="missing_right")!=(r.missing.count>0) {return HB_SHAPE;}
+    if r.missing.count>0 && hb_index(rights[..],r.missing)<0 {return HB_SHAPE;}
+    return HB_OK;
+  }
+  if r.outcome<HB_OUT_PAIRING || r.outcome>HB_OUT_STEPS {return HB_UNSUPPORTED;}
+  if r.outcome==HB_OUT_PAIRING {
+    if !hb_hex64(r.pairing) || r.state<HB_ASKED || r.state>HB_EXPIRED {return HB_SHAPE;}
+    if (r.state==HB_ALLOWED)!=(r.grant.count>0) {return HB_SHAPE;}
+    if r.grant.count>0 && (!hb_hex64(r.grant) || r.epoch<0 || r.grant_expires<=0) {return HB_SHAPE;}
+    if r.grant.count==0 && r.epoch!=-1 {return HB_SHAPE;}
+  }
+  if r.outcome==HB_OUT_DISPATCHED {
+    if r.operation!=HB_OP_THREAD_RUN && r.operation!=HB_OP_THREAD_STOP {return HB_SHAPE;}
+    if !hb_hex32(r.reference) {return HB_SHAPE;}
+  }
+  if r.outcome==HB_OUT_STEPS {
+    if !hb_hex32(r.thread) || r.state<HB_RUNNING || r.state>HB_FAILED || r.next<0 {return HB_SHAPE;}
+    if r.nsteps<0 || r.nsteps>HB_STEPS_MAX {return HB_BOUNDS;}
+    last:=0;
+    for i:0..<r.nsteps {
+      s:=r.steps[i];
+      if s.seq<=last || !hb_slug(s.kind) || s.kind.count>32 {return HB_SHAPE;}
+      if s.text.count>HB_STEP_TEXT_MAX {return HB_BOUNDS;}
+      last=s.seq;
+    }
+    if r.next<last {return HB_SHAPE;}
+  }
+  return HB_OK;
+}
+// book:end reply-check
+
+// book:begin reply-write
+hb_reply_write :: (r:HbReply,out:[]u8)->int {
+  if hb_reply_check(r)!=HB_OK {return -1;}
+  outs:=HB_OUTCOMES;ops:=HB_OPS;ps:=HB_PAIRING_STATES;ts:=HB_THREAD_STATES;
+  o:[1]Jo;jo_start(o[..],out);
+  jo_obj(o[..]);
+  jo_key(o[..],"v");jo_str(o[..],HB_REPLY_SCHEMA);
+  jo_key(o[..],"requires");jo_arr(o[..]);jo_end(o[..]);
+  jo_key(o[..],"request");jo_str(o[..],r.request);
+  jo_key(o[..],"request_event");jo_str(o[..],r.request_event);
+  jo_key(o[..],"host");jo_str(o[..],r.host);
+  jo_key(o[..],"issued_at");jo_int(o[..],r.issued_at);
+  jo_key(o[..],"expires_at");jo_int(o[..],r.expires_at);
+  jo_key(o[..],"result");jo_obj(o[..]);
+  if !r.ok {
+    jo_key(o[..],"status");jo_str(o[..],"refused");
+    jo_key(o[..],"code");jo_str(o[..],r.code);
+    jo_key(o[..],"missing");if r.missing.count==0 {jo_null(o[..]);} else {jo_str(o[..],r.missing);}
+  } else {
+    jo_key(o[..],"status");jo_str(o[..],"ok");
+    jo_key(o[..],"outcome");jo_obj(o[..]);
+    jo_key(o[..],"kind");jo_str(o[..],outs[r.outcome]);
+    if r.outcome==HB_OUT_PAIRING {
+      jo_key(o[..],"request");jo_str(o[..],r.pairing);
+      jo_key(o[..],"state");jo_str(o[..],ps[r.state]);
+      jo_key(o[..],"grant");
+      if r.grant.count==0 {jo_null(o[..]);}
+      else {
+        jo_obj(o[..]);
+        jo_key(o[..],"grant");jo_str(o[..],r.grant);
+        jo_key(o[..],"epoch");jo_int(o[..],r.epoch);
+        jo_key(o[..],"rights");jo_arr(o[..]);jo_str(o[..],"observe");jo_str(o[..],"operate");jo_end(o[..]);
+        jo_key(o[..],"expires_at");jo_int(o[..],r.grant_expires);
+        jo_end(o[..]);
+      }
+    }
+    if r.outcome==HB_OUT_DISPATCHED {
+      jo_key(o[..],"operation");jo_str(o[..],ops[r.operation]);
+      jo_key(o[..],"reference");jo_str(o[..],r.reference);
+    }
+    if r.outcome==HB_OUT_STEPS {
+      jo_key(o[..],"thread");jo_str(o[..],r.thread);
+      jo_key(o[..],"state");jo_str(o[..],ts[r.state]);
+      jo_key(o[..],"next");jo_int(o[..],r.next);
+      jo_key(o[..],"steps");jo_arr(o[..]);
+      for i:0..<r.nsteps {
+        jo_obj(o[..]);
+        jo_key(o[..],"seq");jo_int(o[..],r.steps[i].seq);
+        jo_key(o[..],"kind");jo_str(o[..],r.steps[i].kind);
+        jo_key(o[..],"text");jo_str(o[..],r.steps[i].text);
+        jo_end(o[..]);
+      }
+      jo_end(o[..]);
+    }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);jo_end(o[..]);
+  if o[0].bad || o[0].n>HB_BODY_MAX {return -1;}
+  return o[0].n;
+}
+// book:end reply-write
+
+// book:begin reply-read
+hb_reply_read :: (body:string,r:[]HbReply,a:[]HbText)->u32 {
+  fresh:HbReply;r[0]=fresh;
+  if body.count>HB_BODY_MAX {return HB_BOUNDS;}
+  nodes:[HB_NODES]JvNode;dv:[1]Jv;
+  if !jv_parse(dv[..],body,nodes[..]) || jv_kind(dv[0],0)!=JV_OBJECT {return HB_JSON;}
+  d:=dv[0];
+  head:=hb_head(d,HB_REPLY_SCHEMA);if head!=HB_OK {return head;}
+  top:=[8]string.["v","requires","request","request_event","host","issued_at","expires_at","result"];
+  if !hb_fields(d,0,top[..]) {return HB_SHAPE;}
+  ok:=[1]bool.[true];
+  r[0].request=hb_get_str(d,0,"request",a,ok[..]);
+  r[0].request_event=hb_get_str(d,0,"request_event",a,ok[..]);
+  r[0].host=hb_get_str(d,0,"host",a,ok[..]);
+  r[0].issued_at=hb_get_int(d,0,"issued_at");r[0].expires_at=hb_get_int(d,0,"expires_at");
+  res:=jv_get(d,0,"result");
+  status:=hb_get_str(d,res,"status",a,ok[..]);
+  if !ok[0] {return ifx a[0].full then HB_SPACE else HB_SHAPE;}
+  if status=="refused" {
+    rf:=[3]string.["status","code","missing"];
+    if !hb_fields(d,res,rf[..]) {return HB_SHAPE;}
+    r[0].code=hb_get_str(d,res,"code",a,ok[..]);
+    mv:=jv_get(d,res,"missing");
+    if jv_kind(d,mv)!=JV_NULL {r[0].missing=hb_get_str(d,res,"missing",a,ok[..]);if r[0].missing.count==0 {ok[0]=false;}}
+    if !ok[0] {return ifx a[0].full then HB_SPACE else HB_SHAPE;}
+    return hb_reply_check(r[0]);
+  }
+  if status!="ok" {return HB_SHAPE;}
+  okf:=[2]string.["status","outcome"];
+  if !hb_fields(d,res,okf[..]) {return HB_SHAPE;}
+  r[0].ok=true;
+  oc:=jv_get(d,res,"outcome");
+  if jv_kind(d,oc)!=JV_OBJECT {return HB_SHAPE;}
+  kind:=hb_get_str(d,oc,"kind",a,ok[..]);
+  if !ok[0] {return ifx a[0].full then HB_SPACE else HB_SHAPE;}
+  outs:=HB_OUTCOMES;r[0].outcome=hb_index(outs[..],kind);
+  if r[0].outcome<1 {return HB_UNSUPPORTED;}
+  e:=hb_reply_outcome(d,oc,r,a);
+  if e!=HB_OK {return e;}
+  return hb_reply_check(r[0]);
+}
+hb_reply_outcome :: (d:Jv,oc:int,r:[]HbReply,a:[]HbText)->u32 {
+  ok:=[1]bool.[true];
+  if r[0].outcome==HB_OUT_FORGOTTEN {
+    f1:=[1]string.["kind"];return ifx hb_fields(d,oc,f1[..]) then HB_OK else HB_SHAPE;
+  }
+  if r[0].outcome==HB_OUT_PAIRING {
+    fp:=[4]string.["kind","request","state","grant"];
+    if !hb_fields(d,oc,fp[..]) {return HB_SHAPE;}
+    r[0].pairing=hb_get_str(d,oc,"request",a,ok[..]);
+    ps:=HB_PAIRING_STATES;r[0].state=hb_index(ps[..],hb_get_str(d,oc,"state",a,ok[..]));
+    g:=jv_get(d,oc,"grant");
+    if jv_kind(d,g)!=JV_NULL {
+      fg:=[4]string.["grant","epoch","rights","expires_at"];
+      if !hb_fields(d,g,fg[..]) {return HB_SHAPE;}
+      r[0].grant=hb_get_str(d,g,"grant",a,ok[..]);r[0].epoch=hb_get_int(d,g,"epoch");r[0].grant_expires=hb_get_int(d,g,"expires_at");
+      rv:=jv_get(d,g,"rights");
+      if jv_kind(d,rv)!=JV_ARRAY || jv_len(d,rv)!=2 || jv_raw(d,jv_at(d,rv,0))!="observe" || jv_raw(d,jv_at(d,rv,1))!="operate" {return HB_SHAPE;}
+      if jv_kind(d,jv_at(d,rv,0))!=JV_STRING || jv_kind(d,jv_at(d,rv,1))!=JV_STRING {return HB_SHAPE;}
+      if r[0].grant.count==0 {ok[0]=false;}
+    }
+    if !ok[0] {return ifx a[0].full then HB_SPACE else HB_SHAPE;}
+    return HB_OK;
+  }
+  if r[0].outcome==HB_OUT_DISPATCHED {
+    fd:=[3]string.["kind","operation","reference"];
+    if !hb_fields(d,oc,fd[..]) {return HB_SHAPE;}
+    ops:=HB_OPS;r[0].operation=hb_index(ops[..],hb_get_str(d,oc,"operation",a,ok[..]));
+    r[0].reference=hb_get_str(d,oc,"reference",a,ok[..]);
+    if !ok[0] {return ifx a[0].full then HB_SPACE else HB_SHAPE;}
+    return HB_OK;
+  }
+  fs:=[5]string.["kind","thread","state","next","steps"];
+  if !hb_fields(d,oc,fs[..]) {return HB_SHAPE;}
+  r[0].thread=hb_get_str(d,oc,"thread",a,ok[..]);
+  ts:=HB_THREAD_STATES;r[0].state=hb_index(ts[..],hb_get_str(d,oc,"state",a,ok[..]));
+  r[0].next=hb_get_int(d,oc,"next");
+  sv:=jv_get(d,oc,"steps");
+  if jv_kind(d,sv)!=JV_ARRAY {return HB_SHAPE;}
+  if jv_len(d,sv)>HB_STEPS_MAX {return HB_BOUNDS;}
+  fe:=[3]string.["seq","kind","text"];
+  k:=d.nodes[sv].first;n:=0;
+  while k!=-1 {
+    if !hb_fields(d,k,fe[..]) {return HB_SHAPE;}
+    r[0].steps[n].seq=hb_get_int(d,k,"seq");
+    r[0].steps[n].kind=hb_get_str(d,k,"kind",a,ok[..]);
+    r[0].steps[n].text=hb_get_str(d,k,"text",a,ok[..]);
+    n+=1;k=d.nodes[k].next;
+  }
+  r[0].nsteps=n;
+  if !ok[0] {return ifx a[0].full then HB_SPACE else HB_SHAPE;}
+  return HB_OK;
+}
+// book:end reply-read
+
+// book:begin answers
+// Whether a reply answers op: a refusal answers anything; an outcome only its own operation.
+hb_reply_answers :: (op:int,r:HbReply)->bool {
+  if !r.ok {return true;}
+  if op==HB_OP_BROWSER_REQUEST || op==HB_OP_BROWSER_STATUS {return r.outcome==HB_OUT_PAIRING;}
+  if op==HB_OP_BROWSER_FORGET {return r.outcome==HB_OUT_FORGOTTEN;}
+  if op==HB_OP_THREAD_READ {return r.outcome==HB_OUT_STEPS;}
+  if op==HB_OP_THREAD_RUN || op==HB_OP_THREAD_STOP {return r.outcome==HB_OUT_DISPATCHED && r.operation==op;}
+  return false;
+}
+// book:end answers
+
+// ---------------------------------------------------------------- relay filters
+
+// book:begin filters
+// What a host subscribes to: 3188 artifacts addressed to it, since a time (0: none).
+hb_host_filter :: (host:string,since:int,out:[]u8)->int {
+  if !hb_hex64(host) || since<0 {return -1;}
+  o:[1]Jo;jo_start(o[..],out);
+  jo_obj(o[..]);jo_key(o[..],"kinds");jo_arr(o[..]);jo_int(o[..],HB_KIND);jo_end(o[..]);
+  jo_key(o[..],"#p");jo_arr(o[..]);jo_str(o[..],host);jo_end(o[..]);
+  if since>0 {jo_key(o[..],"since");jo_int(o[..],since);}
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// What a browser subscribes to before it publishes a request: the reply in
+// the request's mailbox, addressed to the browser.
+hb_reply_filter :: (browser:string,request:string,out:[]u8)->int {
+  if !hb_hex64(browser) || !hb_hex64(request) {return -1;}
+  o:[1]Jo;jo_start(o[..],out);
+  jo_obj(o[..]);jo_key(o[..],"kinds");jo_arr(o[..]);jo_int(o[..],HB_KIND);jo_end(o[..]);
+  jo_key(o[..],"#p");jo_arr(o[..]);jo_str(o[..],browser);jo_end(o[..]);
+  jo_key(o[..],"#h");jo_arr(o[..]);jo_str(o[..],request);jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// book:end filters
+
+// ---------------------------------------------------------------- sealing and opening
+
+hb_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
+hb_clear :: (w:[]HbWork) {hb_zero(w[0].pre[..]);hb_zero(w[0].body[..]);hb_zero(w[0].cipher[..]);hb_zero(w[0].scratch[..]);hb_zero(w[0].ck[..]);}
+// 64 lowercase hex for 32 bytes.
+hb_hex :: (bytes:[]u8,out:[]u8)->bool {
+  if bytes.count!=32 || out.count<64 {return false;}
+  r:=hex_encode_checked(cast(string)bytes,out[0..<64],false);
+  return r.written==64;
+}
+// 32 bytes from 64 lowercase hex.
+hb_unhex :: (s:string,out:[]u8)->bool {
+  if !hb_hex64(s) || out.count<32 {return false;}
+  r:=hex_decode_checked(s,out[0..<32],false);
+  return r.written==32;
+}
+// The x-only public key of a secret, as 32 bytes: the signer's first stage.
+hb_public :: (secret:[]u8,out:[]u8)->bool {
+  if secret.count!=32 || out.count<32 {return false;}
+  aux:[32]u8;sw:[1]NostrSignWork;scratch:[256]u8;ev:[512]u8;
+  k:=nostr_event_sign_step(secret,aux[..],0,1,"[]","",sw[..],scratch[..],ev[..],false);
+  if k!=EVENT_MORE {return false;}
+  for i:0..<32 {out[i]=sw[0].pub[i];}
+  fresh:NostrSignWork;sw[0]=fresh;
+  return true;
+}
+
+// Exactly one ["p", recipient], one ["h", <64-hex>] (copied to mailbox) and a ["t", "oa:artifact:v1"].
+hb_tags :: (tags:string,recipient_hex:string,mailbox:[]u8)->bool {
+  nodes:[64]JvNode;dv:[1]Jv;
+  if !jv_parse(dv[..],tags,nodes[..]) || jv_kind(dv[0],0)!=JV_ARRAY {return false;}
+  d:=dv[0];ps:=0;hs:=0;topic:=false;
+  t:=d.nodes[0].first;
+  while t!=-1 {
+    if jv_kind(d,t)!=JV_ARRAY {return false;}
+    if jv_len(d,t)>=2 {
+      name:=jv_at(d,t,0);value:=jv_at(d,t,1);
+      if jv_kind(d,name)!=JV_STRING || jv_kind(d,value)!=JV_STRING {return false;}
+      nm:=jv_raw(d,name);vs:=jv_raw(d,value);
+      if nm=="p" {ps+=1;if vs!=recipient_hex {return false;}}
+      if nm=="h" {hs+=1;if !hb_hex64(vs) {return false;}for i:0..<64 {mailbox[i]=vs[i];}}
+      if nm=="t" && vs==HB_TOPIC {topic=true;}
+    }
+    t=d.nodes[t].next;
+  }
+  return ps==1 && hs==1 && topic;
+}
+
+// book:begin seal
+// Seals body (a request or reply JSON object of schema) from sender to
+// recipient_x under mailbox (64 hex). nonce and aux are 32 fresh random
+// bytes each. The signed event JSON goes to out; returns its length, or -1.
+// The work is all zero after.
+hb_seal :: (body:string,schema:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,w:[]HbWork,out:[]u8)->int {
+  if sender.count!=32 || recipient_x.count!=32 || nonce.count!=32 || aux.count!=32 || w.count!=1 || !hb_hex64(mailbox) || created_at<0 {return -1;}
+  if schema!=HB_REQUEST_SCHEMA && schema!=HB_REPLY_SCHEMA {return -1;}
+  n:=hb_seal_work(body,schema,sender,recipient_x,mailbox,nonce,aux,created_at,w,out);
+  hb_clear(w);return n;
+}
+hb_seal_work :: (body:string,schema:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,w:[]HbWork,out:[]u8)->int {
+  b:=envelope_build_checked(body,schema,created_at,created_at+HB_RETAIN,w[0].scratch[..],w[0].body[..],false);
+  if b.error!=AE_OK {return -1;}
+  ew:[1]EcdhScratch;
+  if nip44_conversation_key_from_keys_checked(sender,recipient_x,ew[..],w[0].ck[..],false)!=NIP44_OK {return -1;}
+  e:=nip44_encrypt_checked(NIP44_COMPAT,w[0].ck[..],nonce,w[0].body[0..<b.written],w[0].cipher[..],w[0].pre[..],false);
+  if e.error!=NIP44_OK {return -1;}
+  rhex:[64]u8;if !hb_hex(recipient_x,rhex[..]) {return -1;}
+  o:[1]Jo;tags:[256]u8;jo_start(o[..],tags[..]);
+  jo_arr(o[..]);
+  jo_arr(o[..]);jo_str(o[..],"p");jo_str(o[..],cast(string)rhex[..]);jo_end(o[..]);
+  jo_arr(o[..]);jo_str(o[..],"h");jo_str(o[..],mailbox);jo_end(o[..]);
+  jo_arr(o[..]);jo_str(o[..],"t");jo_str(o[..],HB_TOPIC);jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad {return -1;}
+  sw:[1]NostrSignWork;k:=EVENT_MORE;
+  while k==EVENT_MORE {k=nostr_event_sign_step(sender,aux,created_at,HB_KIND,jo_text(o[..]),cast(string)w[0].pre[0..<e.written],sw[..],w[0].scratch[..],out,false);}
+  return k;
+}
+// book:end seal
+
+// book:begin open
+// Opens a 3188 for the recipient whose secret and x-only key are given: the
+// NIP-01 id and BIP-340 signature, kind 3188 for exactly this recipient with
+// one 64-hex mailbox and the topic, NIP-44 v2 from the signer, and the
+// artifact envelope of schema (inline JCS bytes matching digest and size).
+// The inline body goes to body[0..<body_n]. The work is all zero after.
+hb_open :: (text:string,recipient:[]u8,recipient_x:[]u8,schema:string,w:[]HbWork,body:[]u8)->HbOpened {
+  r:HbOpened;
+  if recipient.count!=32 || recipient_x.count!=32 || w.count!=1 {return r;}
+  r=hb_open_work(text,recipient,recipient_x,schema,w,body);
+  hb_clear(w);
+  return r;
+}
+hb_open_work :: (text:string,recipient:[]u8,recipient_x:[]u8,schema:string,w:[]HbWork,body:[]u8)->HbOpened {
+  r:HbOpened;
+  e:=nostr_event_read(text,w[0].pre[..],false);
+  if e.error!=NE_OK {r.error=HB_EVENT;return r;}
+  if !nostr_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {r.error=HB_SIGNATURE;return r;}
+  rhex:[64]u8;mail:[64]u8;peer:=e.public_key;eid:=e.id;
+  if !hb_hex(recipient_x,rhex[..]) {return r;}
+  if e.kind!=HB_KIND || !hb_tags(text[e.tags_from..<e.tags_to],cast(string)rhex[..],mail[..]) {r.error=HB_ARTIFACT;return r;}
+  ew:[1]EcdhScratch;
+  c:=nip44_conversation_key_from_keys_checked(recipient,peer[..],ew[..],w[0].ck[..],false);
+  if c!=NIP44_OK {r.error=ifx c==NIP44_SECRET then HB_KEY else HB_DECRYPT;return r;}
+  n:=json_unescape(text[e.content_from..<e.content_to],w[0].scratch[..]);
+  if n<0 {r.error=HB_DECRYPT;return r;}
+  dd:=nip44_decrypt_checked(NIP44_COMPAT,w[0].ck[..],cast(string)w[0].scratch[0..<n],w[0].cipher[..],w[0].body[..],false);
+  if dd.error!=NIP44_OK {r.error=HB_DECRYPT;return r;}
+  envelope:=cast(string)w[0].body[0..<dd.written];
+  info:=envelope_check_body_checked(envelope,schema,w[0].scratch[..],false);
+  if info.error!=AE_OK {r.error=HB_ENVELOPE;return r;}
+  inl:=envelope[info.inline_from..<info.inline_to];
+  if inl.count>body.count {r.error=HB_SPACE;return r;}
+  for i:0..<inl.count {body[i]=inl[i];}
+  r.body_n=inl.count;
+  if !hb_hex(peer[..],r.signer[..]) || !hb_hex(eid[..],r.id[..]) {return r;}
+  for i:0..<64 {r.mailbox[i]=mail[i];}
+  r.created_at=e.created_at;
+  r.error=HB_OK;
+  return r;
+}
+// book:end open
+
+// ---------------------------------------------------------------- the two ends
+
+// book:begin ends
+// A browser: the request sealed to the host, mailbox its request ID.
+hb_request_seal :: (q:HbRequest,sender:[]u8,host_x:[]u8,nonce:[]u8,aux:[]u8,created_at:int,w:[]HbWork,out:[]u8)->int {
+  body:[HB_BODY_MAX]u8;
+  n:=hb_request_write(q,body[..]);
+  if n<0 {return -1;}
+  return hb_seal(cast(string)body[0..<n],HB_REQUEST_SCHEMA,sender,host_x,q.request,nonce,aux,created_at,w,out);
+}
+// A host: opens a request addressed to it and reads its body into q
+// (strings in the arena, the body itself in body). Beyond hb_open: the
+// mailbox is the request ID, and browser.request's key is its signer.
+hb_request_open :: (text:string,host:[]u8,host_x:[]u8,w:[]HbWork,body:[]u8,q:[]HbRequest,a:[]HbText)->HbOpened {
+  r:=hb_open(text,host,host_x,HB_REQUEST_SCHEMA,w,body);
+  if r.error!=HB_OK {return r;}
+  e:=hb_request_read(cast(string)body[0..<r.body_n],q,a);
+  if e!=HB_OK {r.error=e;return r;}
+  if q[0].request!=cast(string)r.mailbox[..] {r.error=HB_MAILBOX;return r;}
+  if q[0].op==HB_OP_BROWSER_REQUEST && q[0].key!=cast(string)r.signer[..] {r.error=HB_SIGNER;return r;}
+  return r;
+}
+// A host: the reply sealed to the requesting key, mailbox the request ID.
+hb_reply_seal :: (rp:HbReply,host:[]u8,browser_x:[]u8,nonce:[]u8,aux:[]u8,created_at:int,w:[]HbWork,out:[]u8)->int {
+  body:[HB_BODY_MAX]u8;
+  n:=hb_reply_write(rp,body[..]);
+  if n<0 {return -1;}
+  return hb_seal(cast(string)body[0..<n],HB_REPLY_SCHEMA,host,browser_x,rp.request,nonce,aux,created_at,w,out);
+}
+// A browser: opens a reply addressed to it and reads it into rp. The caller
+// then checks that the signer is the host it pinned, rp.request is its own
+// request and rp.request_event its event id, and hb_reply_answers.
+hb_reply_open :: (text:string,browser:[]u8,browser_x:[]u8,w:[]HbWork,body:[]u8,rp:[]HbReply,a:[]HbText)->HbOpened {
+  r:=hb_open(text,browser,browser_x,HB_REPLY_SCHEMA,w,body);
+  if r.error!=HB_OK {return r;}
+  e:=hb_reply_read(cast(string)body[0..<r.body_n],rp,a);
+  if e!=HB_OK {r.error=e;return r;}
+  if rp[0].request!=cast(string)r.mailbox[..] {r.error=HB_MAILBOX;return r;}
+  if rp[0].host!=cast(string)r.signer[..] {r.error=HB_SIGNER;return r;}
+  return r;
+}
+// book:end ends
+
+// ---------------------------------------------------------------- checks
+
+HBT_HOST_SECRET :: "0000000000000000000000000000000000000000000000000000000000000001";
+HBT_HOST_X :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+HBT_BROWSER_SECRET :: "0000000000000000000000000000000000000000000000000000000000000002";
+HBT_BROWSER_X :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+HBT_REQ :: "1111111111111111111111111111111111111111111111111111111111111111";
+HBT_GRANT :: "2222222222222222222222222222222222222222222222222222222222222222";
+HBT_EVENT :: "3333333333333333333333333333333333333333333333333333333333333333";
+HBT_THREAD :: "44444444444444444444444444444444";
+HBT_T0 :: 1790000000;
+
+hbt_request :: (op:int)->HbRequest {
+  q:HbRequest;q.request=HBT_REQ;q.host=HBT_HOST_X;q.relay="wss://relay.openagents.com";q.issued_at=HBT_T0;q.expires_at=HBT_T0+60;q.op=op;
+  if op>=HB_OP_THREAD_RUN {q.grant=HBT_GRANT;q.epoch=0;}
+  if op==HB_OP_BROWSER_REQUEST {q.key=HBT_BROWSER_X;q.label="Chrome on a Mac";}
+  if op==HB_OP_BROWSER_STATUS {q.pairing=HBT_EVENT;}
+  if op==HB_OP_THREAD_RUN {q.text="Add a well by the north gate";q.realm="garden";}
+  if op==HB_OP_THREAD_READ || op==HB_OP_THREAD_STOP {q.thread=HBT_THREAD;}
+  if op==HB_OP_THREAD_READ {q.after=3;}
+  return q;
+}
+hbt_reply :: (outcome:int)->HbReply {
+  r:HbReply;r.request=HBT_REQ;r.request_event=HBT_EVENT;r.host=HBT_HOST_X;r.issued_at=HBT_T0+1;r.expires_at=HBT_T0+60;
+  r.ok=true;r.outcome=outcome;
+  if outcome==HB_OUT_PAIRING {r.pairing=HBT_EVENT;r.state=HB_ALLOWED;r.grant=HBT_GRANT;r.epoch=2;r.grant_expires=HBT_T0+HB_GRANT_LIFETIME;}
+  if outcome==HB_OUT_DISPATCHED {r.operation=HB_OP_THREAD_RUN;r.reference=HBT_THREAD;}
+  if outcome==HB_OUT_STEPS {
+    r.thread=HBT_THREAD;r.state=HB_RUNNING;r.next=5;r.nsteps=2;
+    r.steps[0]=HbStep.{seq=4,kind="tool",text="realm_show(garden)"};
+    r.steps[1]=HbStep.{seq=5,kind="reply",text="I added a well \"north\".\n"};
+  }
+  return r;
+}
+// Writes q, reads it back, and returns the read status.
+hbt_round :: (q:HbRequest,back:[]HbRequest,st:[]u8)->u32 {
+  out:[4096]u8;n:=hb_request_write(q,out[..]);
+  if n<0 {return HB_SPACE;}
+  a:=[1]HbText.[HbText.{buf=st}];
+  return hb_request_read(cast(string)out[0..<n],back,a[..]);
+}
+hbt_reply_round :: (r:HbReply,back:[]HbReply,st:[]u8)->u32 {
+  out:[8192]u8;n:=hb_reply_write(r,out[..]);
+  if n<0 {return HB_SPACE;}
+  a:=[1]HbText.[HbText.{buf=st}];
+  return hb_reply_read(cast(string)out[0..<n],back,a[..]);
+}
+hbt_read :: (body:string)->u32 {
+  st:[4096]u8;a:=[1]HbText.[HbText.{buf=st[..]}];back:[1]HbRequest;
+  return hb_request_read(body,back[..],a[..]);
+}
+hbt_reply_read :: (body:string)->u32 {
+  st:[4096]u8;a:=[1]HbText.[HbText.{buf=st[..]}];back:[1]HbReply;
+  return hb_reply_read(body,back[..],a[..]);
+}
+hbt_key :: (hex:string)->[32]u8 {k:[32]u8;ok:=hb_unhex(hex,k[..]);return k;}
+
+#test "browser: every request writes the exact shape and reads back the same" {
+  out:[4096]u8;
+  n:=hb_request_write(hbt_request(HB_OP_BROWSER_REQUEST),out[..]);
+  #assert cast(string)out[0..<n]=="{\"v\":\"openagents.host-request.v1\",\"requires\":[],\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"host\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"grant\":null,\"epoch\":null,\"relay\":\"wss://relay.openagents.com\",\"issued_at\":1790000000,\"expires_at\":1790000060,\"op\":{\"kind\":\"browser.request\",\"key\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"label\":\"Chrome on a Mac\"}}";
+  n=hb_request_write(hbt_request(HB_OP_THREAD_READ),out[..]);
+  #assert cast(string)out[0..<n]=="{\"v\":\"openagents.host-request.v1\",\"requires\":[],\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"host\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"grant\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":0,\"relay\":\"wss://relay.openagents.com\",\"issued_at\":1790000000,\"expires_at\":1790000060,\"op\":{\"kind\":\"thread.read\",\"thread\":\"44444444444444444444444444444444\",\"after\":3}}";
+  for op:HB_OP_BROWSER_REQUEST..<HB_OP_THREAD_STOP+1 {
+    q:=hbt_request(op);b:[1]HbRequest;st:[4096]u8;
+    #assert hbt_round(q,b[..],st[..])==HB_OK;
+    #assert b[0].op==op && b[0].request==q.request && b[0].host==q.host && b[0].grant==q.grant && b[0].epoch==q.epoch && b[0].relay==q.relay;
+    #assert b[0].issued_at==q.issued_at && b[0].expires_at==q.expires_at && b[0].key==q.key && b[0].label==q.label && b[0].pairing==q.pairing;
+    #assert b[0].text==q.text && b[0].realm==q.realm && b[0].thread==q.thread && b[0].after==q.after;
+  }
+  // text with quotes, newlines and UTF-8 survives
+  q:=hbt_request(HB_OP_THREAD_RUN);q.text="Say \"hi\"\nthen é";b:[1]HbRequest;st:[4096]u8;
+  #assert hbt_round(q,b[..],st[..])==HB_OK && b[0].text==q.text;
+}
+#test "browser: the writer refuses what it would not read" {
+  out:[4096]u8;
+  q:=hbt_request(HB_OP_THREAD_RUN);q.grant="";q.epoch=-1;#assert hb_request_write(q,out[..])==-1 && hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_BROWSER_REQUEST);q.grant=HBT_GRANT;q.epoch=0;#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_BROWSER_REQUEST);q.epoch=0;#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_READ);q.epoch=-1;#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_READ);q.grant="22";#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_READ);q.after=-1;#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_READ);q.expires_at=q.issued_at+61;#assert hb_request_check(q)==HB_SHAPE;
+  q.expires_at=q.issued_at;#assert hb_request_check(q)==HB_SHAPE;
+  q.expires_at=q.issued_at+60;q.issued_at-=1;#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_READ);q.issued_at=-1;q.expires_at=10;#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_READ);q.relay="";#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_READ);q.request="11";#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_READ);q.host=HBT_THREAD;#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_STOP);q.thread=HBT_REQ;#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_RUN);q.realm="Not A Slug";#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_THREAD_RUN);q.text="   ";#assert hb_request_check(q)==HB_SHAPE;
+  big:[HB_TEXT_MAX+1]u8;for i:0..<big.count {big[i]='x';}
+  q=hbt_request(HB_OP_THREAD_RUN);q.text=cast(string)big[..];#assert hb_request_check(q)==HB_BOUNDS;
+  q=hbt_request(HB_OP_BROWSER_REQUEST);q.label="tab\there";#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_BROWSER_REQUEST);q.key="c6";#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_BROWSER_STATUS);q.pairing="";#assert hb_request_check(q)==HB_SHAPE;
+  q=hbt_request(HB_OP_BROWSER_FORGET);q.op=7;#assert hb_request_check(q)==HB_UNSUPPORTED;
+  q.op=0;#assert hb_request_check(q)==HB_UNSUPPORTED;
+  q=hbt_request(HB_OP_THREAD_RUN);#assert hb_request_write(q,out[0..<40])==-1;
+}
+#test "browser: the reader refuses unknown, missing, repeated and mistyped fields" {
+  head:="{\"v\":\"openagents.host-request.v1\",\"requires\":[],\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"host\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"grant\":null,\"epoch\":null,\"relay\":\"wss://r\",\"issued_at\":1790000000,\"expires_at\":1790000060,";
+  b:[2048]u8;
+  #assert hbt_read(hbt_cat(head,"\"op\":{\"kind\":\"browser.forget\"}}",b[..]))==HB_OK;
+  #assert hbt_read(hbt_cat(head,"\"op\":{\"kind\":\"browser.forget\",\"x\":1}}",b[..]))==HB_SHAPE;
+  #assert hbt_read(hbt_cat(head,"\"op\":{\"kind\":\"browser.forget\"},\"meta\":{}}",b[..]))==HB_SHAPE;
+  #assert hbt_read(hbt_cat(head,"\"op\":{\"kind\":\"task.create\"}}",b[..]))==HB_UNSUPPORTED;
+  #assert hbt_read(hbt_cat(head,"\"op\":{\"kind\":7}}",b[..]))==HB_SHAPE;
+  #assert hbt_read(hbt_cat(head,"\"op\":[]}",b[..]))==HB_SHAPE;
+  #assert hbt_read(hbt_cat(head,"\"op\":{\"kind\":\"browser.status\",\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\"}}",b[..]))==HB_OK;
+  #assert hbt_read(hbt_cat(head,"\"op\":{\"kind\":\"browser.status\"}}",b[..]))==HB_SHAPE;
+  #assert hbt_read(hbt_cat(head,"\"op\":{\"kind\":\"browser.forget\",\"kind\":\"browser.forget\"}}",b[..]))==HB_SHAPE;
+  // a thread operation without a grant, and pairing with one
+  #assert hbt_read(hbt_cat(head,"\"op\":{\"kind\":\"thread.stop\",\"thread\":\"44444444444444444444444444444444\"}}",b[..]))==HB_SHAPE;
+  #assert hbt_read("{\"v\":\"openagents.host-request.v1\",\"requires\":[],\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"host\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"grant\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":0,\"relay\":\"wss://r\",\"issued_at\":1790000000,\"expires_at\":1790000060,\"op\":{\"kind\":\"thread.stop\",\"thread\":\"44444444444444444444444444444444\"}}")==HB_OK;
+  #assert hbt_read("{\"v\":\"openagents.host-request.v1\",\"requires\":[],\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"host\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"grant\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":null,\"relay\":\"wss://r\",\"issued_at\":1790000000,\"expires_at\":1790000060,\"op\":{\"kind\":\"thread.stop\",\"thread\":\"44444444444444444444444444444444\"}}")==HB_SHAPE;
+  #assert hbt_read("{\"v\":\"openagents.host-request.v1\",\"requires\":[],\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"host\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"grant\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":1.5,\"relay\":\"wss://r\",\"issued_at\":1790000000,\"expires_at\":1790000060,\"op\":{\"kind\":\"thread.stop\",\"thread\":\"44444444444444444444444444444444\"}}")==HB_SHAPE;
+  // the head: version, features, JSON
+  #assert hbt_read("{\"v\":\"openagents.host-request.v2\",\"requires\":[]}")==HB_VERSION;
+  #assert hbt_read("{\"v\":\"openagents.host-request.v1\",\"requires\":[\"x\"]}")==HB_FEATURE;
+  #assert hbt_read("{\"v\":1}")==HB_SHAPE && hbt_read("[]")==HB_JSON && hbt_read("{")==HB_JSON && hbt_read("")==HB_JSON;
+  big:[HB_BODY_MAX+1]u8;for i:0..<big.count {big[i]=' ';}#assert hbt_read(cast(string)big[..])==HB_BOUNDS;
+  // an arena too small
+  st:[8]u8;a:=[1]HbText.[HbText.{buf=st[..]}];back:[1]HbRequest;
+  #assert hb_request_read(hbt_cat(head,"\"op\":{\"kind\":\"browser.forget\"}}",b[..]),back[..],a[..])==HB_SPACE;
+}
+hbt_cat :: (x:string,y:string,out:[]u8)->string {
+  for i:0..<x.count {out[i]=x[i];}
+  for i:0..<y.count {out[x.count+i]=y[i];}
+  return cast(string)out[0..<x.count+y.count];
+}
+#test "browser: every reply writes and reads back the same" {
+  for oc:HB_OUT_PAIRING..<HB_OUT_STEPS+1 {
+    r:=hbt_reply(oc);b:[1]HbReply;st:[4096]u8;
+    #assert hbt_reply_round(r,b[..],st[..])==HB_OK;
+    #assert b[0].ok && b[0].outcome==oc && b[0].request==r.request && b[0].request_event==r.request_event && b[0].host==r.host;
+    #assert b[0].pairing==r.pairing && b[0].state==r.state && b[0].grant==r.grant && b[0].epoch==r.epoch && b[0].grant_expires==r.grant_expires;
+    #assert b[0].operation==r.operation && b[0].reference==r.reference && b[0].thread==r.thread && b[0].next==r.next && b[0].nsteps==r.nsteps;
+    for i:0..<r.nsteps {#assert b[0].steps[i].seq==r.steps[i].seq && b[0].steps[i].kind==r.steps[i].kind && b[0].steps[i].text==r.steps[i].text;}
+  }
+  r:=hbt_reply(HB_OUT_PAIRING);r.state=HB_ASKED;r.grant="";r.epoch=-1;r.grant_expires=0;b:[1]HbReply;st:[4096]u8;
+  #assert hbt_reply_round(r,b[..],st[..])==HB_OK && b[0].state==HB_ASKED && b[0].grant=="";
+  r=hbt_reply(HB_OUT_STEPS);r.nsteps=0;r.state=HB_FINISHED;
+  #assert hbt_reply_round(r,b[..],st[..])==HB_OK && b[0].nsteps==0 && b[0].state==HB_FINISHED;
+  out:[4096]u8;
+  n:=hb_reply_write(hbt_reply(HB_OUT_DISPATCHED),out[..]);
+  #assert cast(string)out[0..<n]=="{\"v\":\"openagents.host-reply.v1\",\"requires\":[],\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"request_event\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"host\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at\":1790000001,\"expires_at\":1790000060,\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"dispatched\",\"operation\":\"thread.run\",\"reference\":\"44444444444444444444444444444444\"}}}";
+  n=hb_reply_write(hbt_reply(HB_OUT_PAIRING),out[..]);
+  #assert cast(string)out[0..<n]=="{\"v\":\"openagents.host-reply.v1\",\"requires\":[],\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"request_event\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"host\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at\":1790000001,\"expires_at\":1790000060,\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"browser_request\",\"request\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"state\":\"allowed\",\"grant\":{\"grant\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":2,\"rights\":[\"observe\",\"operate\"],\"expires_at\":1790604800}}}}";
+}
+#test "browser: refusals write and read back, and only well-formed ones" {
+  r:=hbt_reply(HB_OUT_FORGOTTEN);r.ok=false;r.code="not_a_code";b:[1]HbReply;st:[4096]u8;out:[4096]u8;
+  #assert hb_reply_write(r,out[..])==-1;
+  r.code="revoked";#assert hbt_reply_round(r,b[..],st[..])==HB_OK && !b[0].ok && b[0].code=="revoked" && b[0].missing=="";
+  r.code="missing_right";#assert hb_reply_check(r)==HB_SHAPE;
+  r.missing="operate";#assert hbt_reply_round(r,b[..],st[..])==HB_OK && b[0].code=="missing_right" && b[0].missing=="operate";
+  r.missing="flying";#assert hb_reply_check(r)==HB_SHAPE;
+  r.code="forbidden";r.missing="operate";#assert hb_reply_check(r)==HB_SHAPE;
+  n:=hb_reply_write(hbt_reply(HB_OUT_FORGOTTEN),out[..]);#assert n>0;
+  head:="{\"v\":\"openagents.host-reply.v1\",\"requires\":[],\"request\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"request_event\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"host\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"issued_at\":1,\"expires_at\":2,";
+  c:[2048]u8;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"refused\",\"code\":\"stale\",\"missing\":null}}",c[..]))==HB_OK;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"refused\",\"code\":\"stale\"}}",c[..]))==HB_SHAPE;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"maybe\"}}",c[..]))==HB_SHAPE;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"tasks\"}}}",c[..]))==HB_UNSUPPORTED;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"forgotten\",\"x\":1}}}",c[..]))==HB_SHAPE;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"forgotten\"}}}",c[..]))==HB_OK;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"browser_request\",\"request\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"state\":\"allowed\",\"grant\":{\"grant\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"epoch\":0,\"rights\":[\"observe\",\"operate\",\"terminal\"],\"expires_at\":5}}}}",c[..]))==HB_SHAPE;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"browser_request\",\"request\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"state\":\"allowed\",\"grant\":null}}}",c[..]))==HB_SHAPE;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"browser_request\",\"request\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"state\":\"pending\",\"grant\":null}}}",c[..]))==HB_SHAPE;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"dispatched\",\"operation\":\"thread.read\",\"reference\":\"44444444444444444444444444444444\"}}}",c[..]))==HB_SHAPE;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"thread_steps\",\"thread\":\"44444444444444444444444444444444\",\"state\":\"running\",\"next\":2,\"steps\":[{\"seq\":2,\"kind\":\"a\",\"text\":\"\"},{\"seq\":2,\"kind\":\"a\",\"text\":\"\"}]}}}",c[..]))==HB_SHAPE;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"thread_steps\",\"thread\":\"44444444444444444444444444444444\",\"state\":\"running\",\"next\":1,\"steps\":[{\"seq\":2,\"kind\":\"a\",\"text\":\"\"}]}}}",c[..]))==HB_SHAPE;
+  #assert hbt_reply_read(hbt_cat(head,"\"result\":{\"status\":\"ok\",\"outcome\":{\"kind\":\"thread_steps\",\"thread\":\"44444444444444444444444444444444\",\"state\":\"running\",\"next\":2,\"steps\":[{\"seq\":2,\"kind\":\"a\",\"text\":\"\"}]}}}",c[..]))==HB_OK;
+  #assert hbt_reply_read("{\"v\":\"openagents.host-request.v1\",\"requires\":[]}")==HB_VERSION && hbt_reply_read("1")==HB_JSON;
+  big:[HB_BODY_MAX+1]u8;for i:0..<big.count {big[i]=' ';}#assert hbt_reply_read(cast(string)big[..])==HB_BOUNDS;
+  r=hbt_reply(HB_OUT_STEPS);r.nsteps=HB_STEPS_MAX+1;#assert hb_reply_check(r)==HB_BOUNDS;
+  r=hbt_reply(HB_OUT_STEPS);r.steps[1].kind="Not slug";#assert hb_reply_check(r)==HB_SHAPE;
+  r=hbt_reply(HB_OUT_DISPATCHED);r.reference=HBT_REQ;#assert hb_reply_check(r)==HB_SHAPE;
+  r=hbt_reply(HB_OUT_PAIRING);r.grant="";#assert hb_reply_check(r)==HB_SHAPE;
+  r.state=HB_DENIED;r.epoch=-1;#assert hb_reply_check(r)==HB_OK;
+  r.outcome=9;#assert hb_reply_check(r)==HB_UNSUPPORTED;
+  r=hbt_reply(HB_OUT_FORGOTTEN);r.host="x";#assert hb_reply_check(r)==HB_SHAPE;
+  r=hbt_reply(HB_OUT_FORGOTTEN);r.issued_at=-1;#assert hb_reply_check(r)==HB_SHAPE;
+  // a step's text over its bound
+  long:[HB_STEP_TEXT_MAX+1]u8;for i:0..<long.count {long[i]='y';}
+  r=hbt_reply(HB_OUT_STEPS);r.steps[1].text=cast(string)long[..];#assert hb_reply_check(r)==HB_BOUNDS;
+}
+#test "browser: a reply answers its own operation" {
+  #assert hb_reply_answers(HB_OP_BROWSER_REQUEST,hbt_reply(HB_OUT_PAIRING)) && hb_reply_answers(HB_OP_BROWSER_STATUS,hbt_reply(HB_OUT_PAIRING));
+  #assert hb_reply_answers(HB_OP_BROWSER_FORGET,hbt_reply(HB_OUT_FORGOTTEN)) && !hb_reply_answers(HB_OP_BROWSER_FORGET,hbt_reply(HB_OUT_PAIRING));
+  #assert hb_reply_answers(HB_OP_THREAD_RUN,hbt_reply(HB_OUT_DISPATCHED)) && !hb_reply_answers(HB_OP_THREAD_STOP,hbt_reply(HB_OUT_DISPATCHED));
+  #assert hb_reply_answers(HB_OP_THREAD_READ,hbt_reply(HB_OUT_STEPS)) && !hb_reply_answers(HB_OP_THREAD_READ,hbt_reply(HB_OUT_DISPATCHED));
+  r:=hbt_reply(HB_OUT_FORGOTTEN);r.ok=false;r.code="denied";#assert hb_reply_answers(HB_OP_THREAD_READ,r) && !hb_reply_answers(0,hbt_reply(HB_OUT_FORGOTTEN));
+}
+#test "browser: the filters name the kind, the recipient and the mailbox" {
+  out:[512]u8;
+  n:=hb_host_filter(HBT_HOST_X,0,out[..]);
+  #assert cast(string)out[0..<n]=="{\"kinds\":[3188],\"#p\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]}";
+  n=hb_host_filter(HBT_HOST_X,1790000000,out[..]);
+  #assert cast(string)out[0..<n]=="{\"kinds\":[3188],\"#p\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],\"since\":1790000000}";
+  n=hb_reply_filter(HBT_BROWSER_X,HBT_REQ,out[..]);
+  #assert cast(string)out[0..<n]=="{\"kinds\":[3188],\"#p\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],\"#h\":[\"1111111111111111111111111111111111111111111111111111111111111111\"]}";
+  #assert hb_host_filter("x",0,out[..])==-1 && hb_host_filter(HBT_HOST_X,-1,out[..])==-1 && hb_reply_filter(HBT_BROWSER_X,"1",out[..])==-1 && hb_host_filter(HBT_HOST_X,0,out[0..<10])==-1;
+}
+#test "browser: tags name exactly one recipient, one mailbox and the topic" {
+  m:[64]u8;
+  #assert hb_tags("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"h\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"t\",\"oa:artifact:v1\"]]",HBT_HOST_X,m[..]);
+  #assert cast(string)m[..]==HBT_REQ;
+  #assert !hb_tags("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"h\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]",HBT_HOST_X,m[..]);
+  #assert !hb_tags("[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"h\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"t\",\"oa:artifact:v1\"]]",HBT_HOST_X,m[..]);
+  #assert !hb_tags("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"h\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"t\",\"oa:artifact:v1\"]]",HBT_HOST_X,m[..]);
+  #assert !hb_tags("[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"h\",\"11\"],[\"t\",\"oa:artifact:v1\"]]",HBT_HOST_X,m[..]);
+  #assert !hb_tags("{}",HBT_HOST_X,m[..]) && !hb_tags("[\"p\"]",HBT_HOST_X,m[..]) && !hb_tags("[[\"p\",1]]",HBT_HOST_X,m[..]);
+  #assert hb_tags("[[\"x\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"h\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"t\",\"oa:artifact:v1\"]]",HBT_HOST_X,m[..]);
+}
+#test "browser: keys: hex both ways, and the public key of a secret" #steps 400000000 {
+  k:=hbt_key(HBT_BROWSER_SECRET);x:[32]u8;h:[64]u8;
+  #assert hb_public(k[..],x[..]) && hb_hex(x[..],h[..]) && cast(string)h[..]==HBT_BROWSER_X;
+  z:[32]u8;#assert !hb_public(z[..],x[..]) && !hb_public(k[0..<31],x[..]);
+  #assert !hb_unhex("zz",x[..]) && !hb_hex(x[0..<31],h[..]);
+}
+#test "browser: seal and open: a request to the host, its reply to the browser" #steps 3000000000 {
+  w:[1]HbWork;out:[16384]u8;body:[HB_BODY_MAX]u8;st:[8192]u8;
+  hs:=hbt_key(HBT_HOST_SECRET);hx:=hbt_key(HBT_HOST_X);bs:=hbt_key(HBT_BROWSER_SECRET);bx:=hbt_key(HBT_BROWSER_X);
+  nonce:[32]u8;aux:[32]u8;for i:0..<32 {nonce[i]=0x5a;aux[i]=0xa5;}
+  q:=hbt_request(HB_OP_BROWSER_REQUEST);
+  n:=hb_request_seal(q,bs[..],hx[..],nonce[..],aux[..],HBT_T0,w[..],out[..]);
+  #assert n>0 && hbt_zeroed(w[..]);
+  a:=[1]HbText.[HbText.{buf=st[..]}];back:[1]HbRequest;
+  o:=hb_request_open(cast(string)out[0..<n],hs[..],hx[..],w[..],body[..],back[..],a[..]);
+  #assert o.error==HB_OK && cast(string)o.signer[..]==HBT_BROWSER_X && cast(string)o.mailbox[..]==HBT_REQ && o.created_at==HBT_T0 && hbt_zeroed(w[..]);
+  #assert back[0].op==HB_OP_BROWSER_REQUEST && back[0].label=="Chrome on a Mac";
+  // the browser can't open its own request: it is not addressed to it
+  a[0].at=0;#assert hb_request_open(cast(string)out[0..<n],bs[..],bx[..],w[..],body[..],back[..],a[..]).error==HB_ARTIFACT;
+  // a changed signature
+  t:[16384]u8;for i:0..<n {t[i]=out[i];}
+  sig:=0;for i:0..<n-6 {if sig==0 && cast(string)out[i..<i+6]=="\"sig\":" {sig=i+7;}}
+  t[sig]=ifx t[sig]=='0' then cast(u8)'1' else cast(u8)'0';
+  a[0].at=0;#assert hb_request_open(cast(string)t[0..<n],hs[..],hx[..],w[..],body[..],back[..],a[..]).error==HB_SIGNATURE;
+  // the reply, sealed by the host to the browser
+  rp:=hbt_reply(HB_OUT_PAIRING);rp.request_event=cast(string)o.id[..];
+  m:=hb_reply_seal(rp,hs[..],bx[..],nonce[..],aux[..],HBT_T0+1,w[..],out[..]);
+  #assert m>0 && hbt_zeroed(w[..]);
+  a[0].at=0;rb:[1]HbReply;
+  ro:=hb_reply_open(cast(string)out[0..<m],bs[..],bx[..],w[..],body[..],rb[..],a[..]);
+  #assert ro.error==HB_OK && rb[0].state==HB_ALLOWED && rb[0].grant==HBT_GRANT && rb[0].request_event==rp.request_event && hbt_zeroed(w[..]);
+  // a reply is not a request
+  a[0].at=0;#assert hb_request_open(cast(string)out[0..<m],bs[..],bx[..],w[..],body[..],back[..],a[..]).error==HB_ENVELOPE;
+  // a browser.request whose key is not its signer: sealed by the host's key
+  m=hb_request_seal(q,hs[..],bx[..],nonce[..],aux[..],HBT_T0,w[..],out[..]);
+  a[0].at=0;#assert hb_request_open(cast(string)out[0..<m],bs[..],bx[..],w[..],body[..],back[..],a[..]).error==HB_SIGNER;
+}
+#test "browser: sealing refuses bad views and inputs" {
+  w:[1]HbWork;out:[64]u8;k:[32]u8;k[31]=1;s:=k[0..<31];
+  #assert hb_seal("{}",HB_REQUEST_SCHEMA,s,k[..],HBT_REQ,k[..],k[..],0,w[..],out[..])==-1;
+  #assert hb_seal("{}",HB_REQUEST_SCHEMA,k[..],k[..],"11",k[..],k[..],0,w[..],out[..])==-1;
+  #assert hb_seal("{}","other",k[..],k[..],HBT_REQ,k[..],k[..],0,w[..],out[..])==-1;
+  #assert hb_seal("{}",HB_REQUEST_SCHEMA,k[..],k[..],HBT_REQ,k[..],k[..],-1,w[..],out[..])==-1;
+  #assert hb_seal("[]",HB_REQUEST_SCHEMA,k[..],k[..],HBT_REQ,k[..],k[..],0,w[..],out[..])==-1 && hbt_zeroed(w[..]);
+  q:=hbt_request(HB_OP_THREAD_RUN);q.grant="";#assert hb_request_seal(q,k[..],k[..],k[..],k[..],0,w[..],out[..])==-1;
+  rp:=hbt_reply(HB_OUT_STEPS);rp.next=-1;#assert hb_reply_seal(rp,k[..],k[..],k[..],k[..],0,w[..],out[..])==-1;
+  o:=hb_open("{}",s,k[..],HB_REQUEST_SCHEMA,w[..],out[..]);#assert o.error==HB_INPUT;
+  #assert hb_open("{}",k[..],k[..],HB_REQUEST_SCHEMA,w[..],out[..]).error==HB_EVENT;
+}
+hbt_zeroed :: (w:[]HbWork)->bool {
+  for c:w[0].pre {if c!=0 {return false;}}
+  for c:w[0].body {if c!=0 {return false;}}
+  for c:w[0].cipher {if c!=0 {return false;}}
+  for c:w[0].scratch {if c!=0 {return false;}}
+  for c:w[0].ck {if c!=0 {return false;}}
+  return true;
+}
