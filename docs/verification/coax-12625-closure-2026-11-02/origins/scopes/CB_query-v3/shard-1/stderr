@@ -1,0 +1,8 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:152:56: mutant survived: 0 became 1
+   head:=b.c.nodes[decl].borrow_query;link:=head;bucket:=0;if b.query_index {bucket=CB_index_bucket(kind,path);link=CB_index_start(b,decl,head,bucket);if b.c.state[0].fatal {return CB_Result.{};}}
+                                                         ^
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:192:44: mutant survived: '||' became '&&'
+    else if kind==5 {if n.kind!=CK_Tag.param || !indirect {CK_resource(b.c,n.loc);return CB_Result.{};}}
+                                             ^
+shard 1/4: 93 of 372 mutants, 91 killed, 2 survived

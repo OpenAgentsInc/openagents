@@ -1,0 +1,33 @@
+{
+  "schema": "coax.12625.focused-native-package.v5",
+  "compiler_sha256": "6fc6af83d554d32592645e495cdf5ba3f58a30977c289adad0c41e98a1681aa8",
+  "binary_committed": false,
+  "private_package": "/tmp/coax-12625-closure/native-v5/focused-package",
+  "canonical_source_archive": "canonical",
+  "canonical_files": {
+    "budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+    "budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+    "check-domains.c": "02bbf189cdca9a3411d56adce7aacdfd7c364c926e820f3e3b9494a498cef014",
+    "check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+    "profiles.c": "f1f47f87a05805a2a37b243be35de1d0092c89287a73b934acb504c584908ab9",
+    "profiles.h": "631833a9bd6dfe7c2310fd5a87b0e7e837f845bbcbf1aed3754a26ee8b63a7ad",
+    "mutation-schedule.c": "ffafaf0c4e597ec7eeae2d8932d91452c148de88437376dd73b991b7950a4433",
+    "mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+    "lexer.c": "1ccb3588c957644bfca17079fd208012588cfcbaeb859b1e3885d7b31ba65919",
+    "lexer.h": "1a57f8f377d457451a02542d201748a23c0888ff166a5444a363c49808bacbc3",
+    "parser.c": "beb6e8ee4da8ebc79f75bcb6a8a198b83fc7123089e06a14ebbec73c0e6afffa",
+    "parser.h": "a8abf3a93fd4c0b89a22d2bc7a2d9eb614a226857fc156acebcbe63f51ad9c4b",
+    "checker.c": "ab1719e27ca3cf9eb91a81f69a33d9796fdd00fc529aa995dfb5dcef08850dca",
+    "checker.h": "7fac7a56ebbfd9c72fd72ea817b6d5f72c535ba30de81f7c89687188fc71cf99",
+    "sources.c": "688091ddb65adff6f83934ead05ef02e4ec73b180eaac726b1eccdad7a89002a",
+    "sources.h": "0495835277054e2fc5518680c43810ef089f5a69c7dc93fe9e3b5cfb73a63c3f",
+    "proto_importer.c": "6babaaa25ee3c5bcaad517f2702d9e0a7491e5cae18a392cc4ab4c02108e914d",
+    "proto_importer.h": "bb317624dd7ddb155103a6849fa9016a726971cd09817fa66c77c89f81a8d968",
+    "proto_runtime.inc": "19ba5ddbd2936d00ee94e38c45a2020ba2c33d0cff0654b056641bec08278922"
+  },
+  "fixedpoint_record_sha256": "c94514f7f72949bb80419148e2cca24aec22dc942e440637d40f7eddcde44e67",
+  "normal_features": true,
+  "normal_cache_or_release_provenance": false,
+  "qualification": "Composed V5 qualification complete:9 fixedpoints and4 native gates, preserving original bridge timeout and successful bounded continuation; seeds intentionally not promoted.",
+  "qualification_record_sha256": "a9d5363698af702700c2d206ed707e7d97d7ec7682e5525cd465a15ca84c91ba"
+}

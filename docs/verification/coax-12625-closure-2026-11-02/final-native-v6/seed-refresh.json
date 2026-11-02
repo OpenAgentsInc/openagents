@@ -1,0 +1,122 @@
+{
+  "schema": "coax.12625.closure.canonical-seeds.v1",
+  "compiler_sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c",
+  "fixedpoint_record_sha256": "2ead602a6375f00240ff95db4c54b04bec3dabd22f59cdc0d6b882a3e2443aba",
+  "canonical_relative_entry_paths": true,
+  "applied": true,
+  "normal_release_provenance": false,
+  "files": [
+    {
+      "path": "coax/bootstrap/budget.c",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/budget.c",
+      "before_sha256": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+      "after_sha256": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/budget.h",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/budget.h",
+      "before_sha256": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+      "after_sha256": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/check-domains.c",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/check-domains.c",
+      "before_sha256": "02bbf189cdca9a3411d56adce7aacdfd7c364c926e820f3e3b9494a498cef014",
+      "after_sha256": "02bbf189cdca9a3411d56adce7aacdfd7c364c926e820f3e3b9494a498cef014",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/check-domains.h",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/check-domains.h",
+      "before_sha256": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+      "after_sha256": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/profiles.c",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/profiles.c",
+      "before_sha256": "f1f47f87a05805a2a37b243be35de1d0092c89287a73b934acb504c584908ab9",
+      "after_sha256": "f1f47f87a05805a2a37b243be35de1d0092c89287a73b934acb504c584908ab9",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/profiles.h",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/profiles.h",
+      "before_sha256": "631833a9bd6dfe7c2310fd5a87b0e7e837f845bbcbf1aed3754a26ee8b63a7ad",
+      "after_sha256": "631833a9bd6dfe7c2310fd5a87b0e7e837f845bbcbf1aed3754a26ee8b63a7ad",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/mutation-schedule.c",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/mutation-schedule.c",
+      "before_sha256": "ffafaf0c4e597ec7eeae2d8932d91452c148de88437376dd73b991b7950a4433",
+      "after_sha256": "ffafaf0c4e597ec7eeae2d8932d91452c148de88437376dd73b991b7950a4433",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/mutation-schedule.h",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/mutation-schedule.h",
+      "before_sha256": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+      "after_sha256": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/lexer.c",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/lexer.c",
+      "before_sha256": "1ccb3588c957644bfca17079fd208012588cfcbaeb859b1e3885d7b31ba65919",
+      "after_sha256": "1ccb3588c957644bfca17079fd208012588cfcbaeb859b1e3885d7b31ba65919",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/lexer.h",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/lexer.h",
+      "before_sha256": "1a57f8f377d457451a02542d201748a23c0888ff166a5444a363c49808bacbc3",
+      "after_sha256": "1a57f8f377d457451a02542d201748a23c0888ff166a5444a363c49808bacbc3",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/parser.c",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/parser.c",
+      "before_sha256": "beb6e8ee4da8ebc79f75bcb6a8a198b83fc7123089e06a14ebbec73c0e6afffa",
+      "after_sha256": "beb6e8ee4da8ebc79f75bcb6a8a198b83fc7123089e06a14ebbec73c0e6afffa",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/parser.h",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/parser.h",
+      "before_sha256": "a8abf3a93fd4c0b89a22d2bc7a2d9eb614a226857fc156acebcbe63f51ad9c4b",
+      "after_sha256": "a8abf3a93fd4c0b89a22d2bc7a2d9eb614a226857fc156acebcbe63f51ad9c4b",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/checker.c",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/checker.c",
+      "before_sha256": "c3b5dd9e6aa59d1cf84b2773f322acd9102d156c5cf6adf6b4c5d4d79628b29a",
+      "after_sha256": "5d7e53b7cb02a1ef972168eb9dc9b1fdf86ee23ea2e8c5b0fdc4db5813bbfd51",
+      "changed": true
+    },
+    {
+      "path": "coax/bootstrap/checker.h",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/checker.h",
+      "before_sha256": "7fac7a56ebbfd9c72fd72ea817b6d5f72c535ba30de81f7c89687188fc71cf99",
+      "after_sha256": "7fac7a56ebbfd9c72fd72ea817b6d5f72c535ba30de81f7c89687188fc71cf99",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/sources.c",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/sources.c",
+      "before_sha256": "688091ddb65adff6f83934ead05ef02e4ec73b180eaac726b1eccdad7a89002a",
+      "after_sha256": "688091ddb65adff6f83934ead05ef02e4ec73b180eaac726b1eccdad7a89002a",
+      "changed": false
+    },
+    {
+      "path": "coax/bootstrap/sources.h",
+      "source": "/tmp/coax-12625-closure/native-v6/fixedpoints/sources.h",
+      "before_sha256": "0495835277054e2fc5518680c43810ef089f5a69c7dc93fe9e3b5cfb73a63c3f",
+      "after_sha256": "0495835277054e2fc5518680c43810ef089f5a69c7dc93fe9e3b5cfb73a63c3f",
+      "changed": false
+    }
+  ]
+}

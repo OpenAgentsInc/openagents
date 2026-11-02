@@ -1,0 +1,16 @@
+{
+  "name": "emit-importer",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v5/stage0",
+    "c",
+    "lib/compiler/compiler.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v5/proto_importer.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 64.37637283292133,
+  "stdout_sha256": "6babaaa25ee3c5bcaad517f2702d9e0a7491e5cae18a392cc4ab4c02108e914d",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

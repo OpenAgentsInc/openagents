@@ -72,7 +72,9 @@ them, break them on purpose, and read what the compiler says.
 
 Coax is young. Its first compiler, `coax0`, compiles a real but limited
 subset of the language: procedures, integers and floats, strings,
-structs, enums, fixed arrays and views, `defer`, compile-time `#run` and
+structs, enums, the initial native LP64 profile of tagged unions, optionals and
+handled direct Results, exhaustive selection, fixed arrays and views, `defer`,
+compile-time `#run` and
 `#assert`, checks with `#test` and `#forall`, logical modules and explicit
 exports, generic procedures and fixed-storage struct templates over type
 and length parameters with built-in constraints, nominal scalar quantities,
@@ -119,9 +121,9 @@ draft* or *planned*. A planned chapter starts with the planned note shown above,
 contents label, the list below or the registry disagree.
 
 Status describes the chapter's named teaching profile. An *implemented*
-chapter can also explain a planned extension: chapter 5 teaches current
-structs and enums alongside planned unions, and chapter 7 teaches current
-failure values and cleanup alongside planned results and optionals. Chapter
+chapter can also explain a planned extension: chapters 5 and 7 teach the initial
+native LP64 sums, direct Results, optionals and cleanup while naming their
+remaining containment, generic, effect and target limits. Chapter
 counts therefore measure recorded teaching coverage. They do not measure
 completion of the language specification, a whole product or every target.
 
@@ -177,13 +179,16 @@ its own prerequisites and consumer are ready.
    and direct adoption separate in the registry and the
    [paths through all four books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
 2. **Finish shared application contracts.** Close the roadmap's remaining
-   R0 device, frame-tail, development-loop and independent-review gates. Use
-   chapters [6](ch06-memory.md), [7](ch07-errors.md),
+   R0 device, frame-tail, development-loop and independent-review gates.
+   Chapters [6](ch06-memory.md), [7](ch07-errors.md),
    [15](ch15-asynchronous-work.md), [20](ch20-interop.md) and
    [24](ch24-a-complete-boundary.md) now join handled Results, the real file
    adapter and System One/Lab request ownership. Their bounded native profile
    and component adoption are distinct from whole-desktop/device readiness;
-   see the [request qualification](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-outcomes-12625-2026-11-02/README.md). Extend chapter
+   see the [request closure qualification](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/coax-12625-closure-2026-11-02/README.md).
+   Its cache/origin and final query scopes have zero survivors; the v6 native,
+   fixedpoint, authored and actual-cost gates pass. Whole-desktop
+   E0381 and normal release/cache gates retain their separate scope. Extend chapter
    17 only with named GPU resource, layout and artifact evidence. The shipped
    bounded generics, modules and borrow diagnostics remain the starting point.
 3. **Build physical-world facilities through the shared consumers.** Complete

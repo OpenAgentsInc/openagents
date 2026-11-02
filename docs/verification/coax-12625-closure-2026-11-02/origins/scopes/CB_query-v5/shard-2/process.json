@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "mutate",
+    "/tmp/coax-12625-origins-closure-scopes/CB_query-v5/scope.coax",
+    "--root-only",
+    "--shard",
+    "2/4",
+    "--jobs",
+    "2",
+    "--evidence",
+    "/tmp/coax-12625-origins-closure-scopes/CB_query-v5/shard-2/evidence.json"
+  ],
+  "exit_status": 0,
+  "timeout": false,
+  "seconds": 179.22414829104673,
+  "pins_unchanged": true,
+  "compiler_unchanged": true,
+  "stdout_sha256": "cf51ce7d8deccd1e5fa84310856c229ed5a5e21e4eb134018aea447dda0aae1b",
+  "stderr_sha256": "a0c94b1aa133b7198aabbca58462569686ea90c8e9d4b9a01780a7a652e2c6e8"
+}

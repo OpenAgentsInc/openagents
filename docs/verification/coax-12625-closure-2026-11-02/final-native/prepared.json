@@ -1,0 +1,28 @@
+{
+  "schema": "coax.12625.native-v5-preparation.v1",
+  "state": "authorized freeze received; build launch next",
+  "root": "/tmp/openagents-12625-complete-20261101",
+  "out": "/tmp/coax-12625-closure/native-v5",
+  "generator": "/tmp/coax-12625-native/final-v4/coax",
+  "generator_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "freeze_required_env": "COAX_CLOSURE_FREEZE points to JSON with authorized_all_source_frozen=true and source_pins mapping",
+  "scripts": {
+    "build-native-v5.py": "7f97ec8e419eaa77cf17bf116fce94c127a9dbb1bff4d4a108acfc31c6a79a86",
+    "seeds-native-v5.py": "34c31f9c23b8c1e4ad63ce1fea1c01dc669a8ebd9d9e8a331e1e58fd977deaff",
+    "fixedpoint-native-v5.py": "9614ea3157ae3d0f17bbd8bb7c4fcb2f8ca14ced35bd342dec50b1a69357a02a",
+    "qualify-native-v5.py": "6a515746d6303167e4c61ed3fd9b75a64494d0ac4d9e356940755d4a68af3322"
+  },
+  "execution_order": [
+    "build-native-v5.py",
+    "fixedpoint-native-v5.py and qualify-native-v5.py can run independently after build",
+    "seeds-native-v5.py --apply only after all9 fixedpoint C/H comparisons pass"
+  ],
+  "native_gates": [
+    "outcomes results.py (nativeO0/O2/fatalASanUBSan)",
+    "18-profile results_profiles.py, including actual changed Sum policy native kernel atO0/O2/fatalASanUBSan",
+    "24-case read-file OS/fault cases and headercomposition",
+    "native bridge under ASan/UBSan, actual parser/checker/home/grid"
+  ],
+  "command_limits": "Each child840s maximum; build process has total840s deadline; all source+test-input pins verified; fresh output directories refuse overwrite",
+  "normal_provenance": false
+}

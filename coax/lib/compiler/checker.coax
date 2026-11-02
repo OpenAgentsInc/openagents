@@ -81677,7 +81677,7 @@ CB_query :: (b:CB_Context,kind:u8,decl:int,path:BS_Path,out:[]BS_Origin)->CB_Res
  if b.retain_fields && kind==3 && !indirect {owner:=b.c.nodes[decl].borrow_owner;if owner<2 || owner>b.c.state[0].used || (b.c.nodes[owner].kind!=CK_Tag.proc && b.c.nodes[owner].kind!=CK_Tag.check) {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}if !CB_tick(b,b.c.nodes[decl].loc) {return CB_Result.{};}return CB_put(b,out,CB_Result.{},BS_Origin.{kind=BS_LOCAL,root=decl,type=CB_key(b,expected_type,true),path=path});}
  // Per-declaration one-based links keep unrelated procedures out of a lookup.
  // Rows stay append-only: even a recursive query retains its original slot.
- head:=b.c.nodes[decl].borrow_query;link:=head;bucket:=0;if b.query_index {bucket=CB_index_bucket(kind,path);link=CB_index_start(b,decl,head,bucket);if b.c.state[0].fatal {return CB_Result.{};}}
+ head:=b.c.nodes[decl].borrow_query;link:=head;bucket:int;if b.query_index {bucket=CB_index_bucket(kind,path);link=CB_index_start(b,decl,head,bucket);if b.c.state[0].fatal {return CB_Result.{};}}
  while link!=0 {
   if link<1 || link>b.state[0].queries {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}
   if !(b.query_index && link==head) {if !CB_tick(b,b.c.nodes[decl].loc) {return CB_Result.{};}}q:=b.queries[link-1];

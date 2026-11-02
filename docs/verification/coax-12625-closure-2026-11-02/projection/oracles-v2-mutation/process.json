@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "mutate",
+    "/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "returncode": 1,
+  "timeout": false,
+  "elapsed_seconds": 236.26589362497907,
+  "compiler_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "pins_unchanged": true,
+  "stdout_sha256": "1fd202019427092d7aeec7eb0921e7f96f9a359c4eaef5a07ced36aa8a8c6faf",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

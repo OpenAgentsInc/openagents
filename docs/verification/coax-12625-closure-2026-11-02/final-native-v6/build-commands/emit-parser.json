@@ -1,0 +1,16 @@
+{
+  "name": "emit-parser",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v5/coax",
+    "c",
+    "lib/compiler/parser.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v6/parser.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.6200805829139426,
+  "stdout_sha256": "beb6e8ee4da8ebc79f75bcb6a8a198b83fc7123089e06a14ebbec73c0e6afffa",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

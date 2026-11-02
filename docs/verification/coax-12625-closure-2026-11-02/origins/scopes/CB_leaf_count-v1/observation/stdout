@@ -1,0 +1,5 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-origins-closure-scopes/CB_leaf_count-v1/scope.coax:132:162: mutant survived: 0 became 1
+    count:=CK_sum_count(b.c,type);variant:=0;while variant<count && n<=64 {payload:=CB_variant(b,type,variant);if payload==0 {return 0;}if CB_has_borrow(b,payload,0) {n+=CB_leaf_count(b,payload);}variant+=1;}
+                                                                                                                                                                   ^
+74 mutants, 73 killed, 1 survived

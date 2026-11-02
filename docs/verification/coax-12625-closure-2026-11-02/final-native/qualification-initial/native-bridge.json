@@ -1,0 +1,20 @@
+{
+  "name": "native-bridge",
+  "argv": [
+    "python3",
+    "/private/tmp/openagents-12625-complete-20261101/coax/tests/parser.py",
+    "Parser.test_native_bridge_under_sanitizers"
+  ],
+  "environment": {
+    "COAX_TEST_COMPILER": "/tmp/coax-12625-closure/native-v5/coax",
+    "COAX_TEST_ARTIFACT_DIR": "/tmp/coax-12625-closure/native-v5",
+    "COAX_NATIVE_BRIDGE_DIR": "/tmp/coax-12625-closure/native-v5/bridge",
+    "ASAN_OPTIONS": "detect_leaks=0",
+    "UBSAN_OPTIONS": "halt_on_error=1"
+  },
+  "returncode": 1,
+  "timed_out": false,
+  "elapsed_seconds": 262.7631243329961,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "83cf4213e7c20630f85915a29af03b7a1e401fac389ead4a049bc9d466f7369d"
+}

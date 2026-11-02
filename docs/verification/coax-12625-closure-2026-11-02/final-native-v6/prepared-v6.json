@@ -1,0 +1,15 @@
+{
+  "schema": "coax.12625.native-v6-prepared.v1",
+  "state": "prepared; awaiting new coordinated freeze, no execution",
+  "generator_sha256": "6fc6af83d554d32592645e495cdf5ba3f58a30977c289adad0c41e98a1681aa8",
+  "source_freeze_required": "COAX_CLOSURE_FREEZE",
+  "out": "/tmp/coax-12625-closure/native-v6",
+  "scripts": {
+    "build-native-v6.py": "98b2e365a6858e9e29940563dae0a484c2ee6674a77b7c179d414bcc08e4fb2a",
+    "fixedpoint-native-v6.py": "c636d8fab729cf9a3eafeac84be58912ed9adbb34ecd45fcfbaeb7ed2ad3b57f",
+    "seeds-native-v6.py": "c41ecb87f2a4c57e33bdff315306fca341e1e15754bd2469545e11679f1003fb",
+    "qualify-native-v6.py": "87f3b35c275a82dbc20358c37f11f260a233c22d0f9445bdae5d7638336a3144",
+    "bridge-native-v6.py": "72ffe021a7ba7dcf7f4a2cb7f76937c2d073d5edbf0714a282f2b771e436e9f7"
+  },
+  "wall_override": "Original native-bridge unittest unchanged; only sanitized checker check wall600; otherLX180/deep30; outer gate840."
+}

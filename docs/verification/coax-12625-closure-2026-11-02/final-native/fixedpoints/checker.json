@@ -1,0 +1,17 @@
+{
+  "module": "checker",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v5/coax",
+    "c",
+    "lib/compiler/checker.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v5/fixedpoints/checker.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 30.47860066697467,
+  "stderr_empty": true,
+  "c_identical": true,
+  "header_identical": true
+}

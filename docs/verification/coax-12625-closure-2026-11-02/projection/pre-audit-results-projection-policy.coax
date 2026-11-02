@@ -1,0 +1,52 @@
+// Focused projection witness admission and publication oracles; outside compiler input.
+#authority;
+PP_path :: ()->BS_Path {p:=BS_Path.{count=1};p.steps[0]=BS_Step.{kind=BS_FIELD};return p;}
+PP_init :: (b:CB_Context)->CB_QueryProjection {
+ for i:0..<16 {b.c.types[i]=CK_builtin(i);}b.c.state[0]=CK_State.{used=15,type_count=18};b.state[0]=CB_State.{queries=2,loc=CK_Loc.{line=906,column=7,offset=90607}};
+ b.c.types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2,retain_fields=2};b.c.types[17]=CK_Type.{kind=CK_Kind.view,elem=12};b.c.nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=4};b.c.nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_query=1};b.c.nodes[4]=CK_Node.{kind=CK_Tag.field,type=12};
+ path:=PP_path();b.queries[0]=CK_BorrowQuery.{kind=2,decl=3,type=12,status=2,path=path};b.queries[1]=CK_BorrowQuery.{kind=4,decl=16,type=2,status=2,count=4};b.queries[1].path.steps[0].index=4;
+ p:=CB_QueryProjection.{decl=3,kind=2,root=16,type=12,path=path,query=1,head=1,used=15,types=18};p.steps[0]=CB_ProjectionStep.{type=16,decl=2,head=4,field_head=2,row=2,field=4,next_type=12};return p;
+}
+#forall "projection witness endpoint layouts admit first and last committed IDs" layout:0..<3 {
+ nodes:[20]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:[1]CK_State;queries:[4]CK_BorrowQuery;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..],retain_fields=true};p:=PP_init(b);
+ if layout==1 {types[16].decl=15;nodes[15]=CK_Node.{kind=CK_Tag.struct_,head=2};nodes[2]=CK_Node.{kind=CK_Tag.field,type=1};queries[1].type=15;queries[1].count=2;queries[1].path.steps[0].index=2;p.steps[0].decl=15;p.steps[0].head=2;p.steps[0].field=2;p.steps[0].next_type=1;p.type=1;queries[0].type=1;}
+ if layout==2 {nodes[2].head=15;nodes[15]=CK_Node.{kind=CK_Tag.field,type=17};queries[1].count=15;queries[1].path.steps[0].index=15;p.steps[0].head=15;p.steps[0].field=15;p.steps[0].next_type=17;p.type=17;queries[0].type=17;}
+ #assert CB_projection_hit(b,p,2,3,PP_path()) && !state[0].fatal && state[0].error_count==0 && work[0].work==1 && work[0].field_type==16 && work[0].field_block==0 && work[0].field_head==2 && work[0].field_row==2;
+}
+#forall "projection witness independent source identity and memo misses never become hits" mode:0..<23 {
+ nodes:[20]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:[1]CK_State;queries:[4]CK_BorrowQuery;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..],retain_fields=true};p:=PP_init(b);
+ if mode==0 {p.classes=true;}if mode==1 {p.root=17;}if mode==2 {p.used=14;}if mode==3 {p.types=17;}if mode==4 {p.head=0;}if mode==5 {p.query=0;}if mode==6 {p.query=3;queries[2]=queries[0];}if mode==7 {queries[0].decl=4;}if mode==8 {queries[0].kind=3;}if mode==9 {queries[0].status=3;}if mode==10 {queries[0].path.steps[0].index=1;}if mode==11 {queries[0].retain_classes=true;}if mode==12 {p.steps[0].type=17;}
+ if mode==13 {p.steps[0].decl=5;}if mode==14 {types[16].decl=1;p.steps[0].decl=1;nodes[1]=CK_Node.{kind=CK_Tag.struct_,head=4};}if mode==15 {types[16].decl=16;p.steps[0].decl=16;nodes[16]=CK_Node.{kind=CK_Tag.struct_,head=4};}if mode==16 {nodes[2].kind=CK_Tag.field;}if mode==17 {nodes[2].head=5;}if mode==18 {types[16].retain_fields=1;}if mode==19 {queries[1].path.steps[0].index=5;}if mode==20 {p.steps[0].next_type=13;}if mode==21 {p.type=13;}if mode==22 {types[16].kind=CK_Kind.view;types[16].elem=12;}
+ #assert !CB_projection_hit(b,p,2,3,PP_path()) && !state[0].fatal && state[0].error_count==0;
+}
+#forall "projection field witnesses refuse each malformed published component atomically" mode:0..<31 {
+ nodes:[20]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:[1]CK_State;queries:[4]CK_BorrowQuery;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..],retain_fields=true};p:=PP_init(b);
+ if mode==0 {nodes[4].kind=CK_Tag.invalid;}if mode==1 {p.steps[0].row=0;}if mode==2 {p.steps[0].row=3;queries[2]=queries[1];}if mode==3 {p.steps[0].field_head=0;types[16].retain_fields=0;}if mode==4 {p.steps[0].field_head=3;types[16].retain_fields=3;}
+ if mode==5 {queries[1].kind=3;}if mode==6 {queries[1].decl=17;}if mode==7 {queries[1].type=5;}if mode==8 {queries[1].status=1;}if mode==9 {queries[1].count=5;}if mode==10 {queries[1].retain_classes=true;}if mode==11 {queries[1].start=1;}if mode==12 {queries[1].path.count=1;}if mode==13 {queries[1].next= -1;}if mode==14 {queries[1].next=2;}
+ if mode>=15 && mode<23 {queries[1].path.steps[mode-15].kind=BS_FIELD;}
+ if mode==23 {p.steps[0].field=1;queries[1].path.steps[0].index=1;nodes[1]=nodes[4];}if mode==24 {p.steps[0].field=16;queries[1].path.steps[0].index=16;nodes[16]=nodes[4];}if mode==25 {nodes[5]=nodes[4];nodes[5].kind=CK_Tag.variant;p.steps[0].field=5;queries[1].path.steps[0].index=5;}if mode==26 {nodes[4].type=0;}if mode==27 {nodes[4].type=18;}if mode==28 {work[0].work=1048576;}if mode==29 {nodes[5]=nodes[4];nodes[5].type= -1;p.steps[0].field=5;queries[1].path.steps[0].index=5;}if mode==30 {p.steps[0].row= -1;}
+ ignored:=CB_projection_hit(b,p,2,3,PP_path());#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==906 && work[0].field_type==0 && work[0].field_row==0;
+}
+#forall "projection array and view steps use their exact route and terminal prefix" shape:0..<12 {
+ nodes:[20]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:[1]CK_State;queries:[4]CK_BorrowQuery;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..],retain_fields=true};p:=PP_init(b);path:=PP_path();path.steps[0].kind=BS_ELEMENT;types[16]=CK_Type.{kind=CK_Kind.array,elem=1,length=2};p.type=1;
+ if shape==1 {path.steps[0].index=1;}if shape==2 {path.steps[0].index=2147483647;}if shape==3 {path.steps[0].index=2;}if shape==4 {path.steps[0].kind=BS_DEREFERENCE;}if shape==5 {types[16].kind=CK_Kind.view;}if shape==6 {types[16].kind=CK_Kind.view;path.steps[0].kind=BS_DEREFERENCE;}if shape==7 {types[16].kind=CK_Kind.view;path.steps[0].kind=BS_FIELD;}if shape==8 {types[16].elem=0;p.type=0;}if shape==9 {types[16].elem=18;p.type=18;}if shape==10 {types[16].elem=17;p.type=17;}if shape==11 {types[16].elem=17;p.type=12;}
+ p.path=path;queries[0].path=path;expected:=shape==0 || shape==1 || shape==2 || shape==6 || shape==10;
+ #assert CB_projection_hit(b,p,2,3,path)==expected && !state[0].fatal && state[0].error_count==0;
+}
+#forall "projection cold and hit routes publish the complete successful witness" warm:bool {
+ nodes:[20]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:[1]CK_State;queries:[4]CK_BorrowQuery;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..],retain_fields=true};p:=PP_init(b);if warm {work[0].projections[0]=p;}record:=[1]CB_QueryProjection.[CB_QueryProjection.{decl=99}];got:=CB_query_project(b,2,3,PP_path(),record[..]);q:=record[0];
+ #assert !state[0].fatal && state[0].error_count==0 && got==12 && q.decl==3 && q.kind==2 && !q.classes && q.root==16 && q.type==12 && bs_path_equal(q.path,PP_path()) && q.used==15 && q.types==18 && q.steps[0].type==16 && q.steps[0].decl==2 && q.steps[0].head==4 && q.steps[0].field_head==2 && q.steps[0].row==2 && q.steps[0].field==4 && q.steps[0].next_type==12;
+}
+#forall "projection cold admission preserves diagnostics and refuses invalid terminal types" shape:0..<11 {
+ nodes:[20]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:[1]CK_State;queries:[4]CK_BorrowQuery;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..],retain_fields=true};p:=PP_init(b);path:=PP_path();types[16]=CK_Type.{kind=CK_Kind.view,elem=1};path.steps[0].kind=BS_DEREFERENCE;
+ if shape==1 {types[16].elem=17;}if shape==2 {types[16].elem=0;}if shape==3 {types[16].elem=18;}if shape==4 {path.steps[0].kind=BS_FIELD;path.steps[0].index= -1;}if shape==5 {path.steps[0].kind=BS_ELEMENT;}if shape==6 {path.steps[0].kind=BS_ELEMENT;path.steps[0].index=2147483647;}if shape==7 {types[16]=CK_Type.{kind=CK_Kind.array,elem=1,length=2};}if shape==8 || shape==9 || shape==10 {types[16]=CK_Type.{kind=CK_Kind.array,elem=1,length=2};path.steps[0].kind=BS_ELEMENT;path.steps[0].index=ifx shape==8 then 2147483647 else ifx shape==9 then 1 else 2;}
+ record:=[1]CB_QueryProjection.[CB_QueryProjection.{decl=99}];got:=CB_query_project(b,2,3,path,record[..]);if shape<2 || shape==8 || shape==9 {#assert !state[0].fatal && state[0].error_count==0 && got==(ifx shape==1 then 17 else 1) && record[0].decl==3 && record[0].type==got;}
+ else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==906 && record[0].decl==99;}
+}
+#forall "projection publication refreshes the exact key and preserves the other working set" mode:0..<5 {
+ nodes:[20]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:[1]CK_State;queries:[4]CK_BorrowQuery;work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..],retain_fields=true};p:=PP_init(b);work[0].projections[0]=p;work[0].projections[1]=p;work[0].projections[1].decl=4;work[0].projection_next=true;
+ pending:=p;pending.steps[0].next_type=17;if mode==1 {pending.classes=true;work[0].projections[0].classes=true;}if mode==2 {pending.decl=0;}if mode==3 {queries[0].status=3;}if mode==4 {pending.path.steps[0].index=1;work[0].projections[0].path=pending.path;}
+ CB_projection_commit(b,pending,1);if mode==2 || mode==3 {#assert work[0].projections[0].steps[0].next_type==12;}else {#assert work[0].projections[0].steps[0].next_type==17 && work[0].projections[0].query==1 && work[0].projections[0].head==1 && work[0].projections[0].classes==(mode==1);}
+ #assert work[0].projections[1].decl==4 && work[0].projections[1].steps[0].next_type==12 && work[0].projection_next;
+}
+#load "../lib/compiler/checker.coax";

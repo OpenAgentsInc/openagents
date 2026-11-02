@@ -1,0 +1,4 @@
+/tmp/coax-12625-closure/native-v5/bridge/deep-types.coax:129:1: error[E0381]: type checker storage or nesting budget exceeded
+  S128 :: struct {x:S129;}
+  ^
+1 error

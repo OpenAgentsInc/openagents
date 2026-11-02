@@ -1,0 +1,31 @@
+{
+  "name": "compile-stage0",
+  "argv": [
+    "c++",
+    "-std=c++20",
+    "-O1",
+    "-g",
+    "-Wall",
+    "-Wextra",
+    "-Wno-missing-field-initializers",
+    "-DCOAX_BOOTSTRAP_IMPORTER",
+    "-I",
+    "/tmp/coax-12625-closure/native-v5",
+    "-o",
+    "/tmp/coax-12625-closure/native-v5/stage0",
+    "/private/tmp/openagents-12625-complete-20261101/coax/src/main.cpp",
+    "/tmp/coax-12625-closure/native-v5/budget.o",
+    "/tmp/coax-12625-closure/native-v5/check-domains.o",
+    "/tmp/coax-12625-closure/native-v5/profiles.o",
+    "/tmp/coax-12625-closure/native-v5/mutation-schedule.o",
+    "/tmp/coax-12625-closure/native-v5/lexer.o",
+    "/tmp/coax-12625-closure/native-v5/parser.o",
+    "/tmp/coax-12625-closure/native-v5/checker.o",
+    "/tmp/coax-12625-closure/native-v5/sources.o"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 23.602872082963586,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "dd7180b6e273661aabd328b4f0ce20a4045d4061605d9030cd7f3b866593b70c"
+}

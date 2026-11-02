@@ -1,0 +1,4 @@
+coax/tests/results-cache-policy.coax:7:10: error[E0315]: procedure 'CB_literal_stageable' is not declared
+   #assert CB_literal_stageable(enabled,index,block)==expected;
+           ^
+1 error

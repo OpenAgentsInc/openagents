@@ -1,0 +1,10 @@
+ok   #forall R2 cache staging permission requires an enabled nonnegative ordinal in its own block (152 cases, 4688 steps, 0 ms)
+ok   #test R2 cache nested element keys retain four lookup working sets within fuel (1 case, 156180 steps, 16 ms)
+ok   #forall R2 cache index initialization preserves uncharged words and stops at exhausted prefix (3 cases, 4740 steps, 0 ms)
+ok   #forall R2 cache selected snapshot heads refuse corrupt links before a caller can read a row (4 cases, 4772 steps, 0 ms)
+ok   #forall R2 cache next links stay inside the validated original chain and current bucket (4 cases, 1327 steps, 0 ms)
+ok   #forall R2 cache literal key equality requires every component even under compound mismatches (64 cases, 6714 steps, 0 ms)
+ok   #forall R2 cache literal block endpoints and minimum live witness keep one tick per warm hit (2 cases, 30302 steps, 2 ms)
+ok   #forall R2 cache previous witness refresh does not promote FIFO insertion order (2 cases, 29921 steps, 3 ms)
+8 of 1202 checks (--only 'R2 cache'), 8 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

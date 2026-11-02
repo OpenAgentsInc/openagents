@@ -1,0 +1,19 @@
+# Firm reason: 2 (independent read-only LLDB measurement of actual compiler counters).
+from pathlib import Path
+import hashlib,importlib.util,json,os,sys,time
+root=Path(sys.argv[5]).resolve();image=Path(sys.argv[1]).resolve();expected=sys.argv[2];out=Path(sys.argv[3]);entry=sys.argv[4];assert entry in ('checker','compiler');out.mkdir();here=Path(__file__).resolve().parent;source=root/f'coax/lib/compiler/{entry}.coax';model=root/'coax/lib/compiler/checker.coax';header=out/(entry+'.h')
+paths=[image,here/'phase_callbacks.py',Path(__file__).resolve(),Path('/usr/bin/lldb'),root/'coax/tools/bounded_process.py',root/'coax/tests/quiet_crash.py',*[p for p in sorted((root/'coax/lib').rglob('*')) if p.is_file()]]
+def hashes():return {str(p):hashlib.sha256(p.read_bytes()).hexdigest()for p in paths}
+before=hashes();assert before[str(image)]==expected;assert before[str(model)]==sys.argv[6]
+spec=importlib.util.spec_from_file_location('final_phase_bp',root/'coax/tools/bounded_process.py');bp=importlib.util.module_from_spec(spec);spec.loader.exec_module(bp)
+commands=['command script import '+str(here/'phase_callbacks.py'),'breakpoint set -n coax_p_CR_run','breakpoint command add -F phase_callbacks.capture 1','breakpoint set -n coax_p_CR_walk','breakpoint command add -F phase_callbacks.capture 2','breakpoint set -n coax_p_CK_resource','run','script phase_callbacks.finish(lldb.debugger)','quit'];argv=['lldb','--batch']
+for command in commands:argv+=['-o',command]
+argv+=['--',str(image),'c',str(source),'--library','--header',str(header)]
+r=bp.run(argv,root,os.environ.copy(),840,33554432,time.monotonic()+845,quiet_faults=True)
+for k in ('stdout','stderr'):(out/(k+'.log')).write_bytes(r.pop(k))
+r.update(inputs_before=before,inputs_after=hashes());r['inputs_unchanged']=r['inputs_before']==r['inputs_after'];r['scope']='Read-only debugger observes whole actual compile and native CR_run return counters. Not normal compiler, native suite, or bootstrap qualification.';rows=[]
+for line in(out/'stdout.log').read_text().splitlines():
+ if line.startswith('COAX_PHASE '):rows.append(json.loads(line[len('COAX_PHASE '):]))
+flags=('timeout','deadline_exhausted','stdout_limit','stderr_limit','output_limit','group_killed','launch_errno','launch_error','kill_errno','read_errno');clean=r['started'] and r['returncode']==0 and r['stdout_eof'] and r['stderr_eof'] and not any(r[k]for k in flags) and r['inputs_unchanged'];finished=[row for row in rows if row['event']=='finish'];returns=[row for row in rows if row['event']=='CR_run-return'];complete=bool(finished) and finished[-1]['exited'] is True and finished[-1]['exit_status']==0
+# Preserve raw state/status; the observer transports LLDB's eStateExited enum comparison.
+r.update(rows=rows,transport_clean=clean,compiler_exited_zero=complete,header={'sha256':hashlib.sha256(header.read_bytes()).hexdigest(),'bytes':header.stat().st_size}if header.is_file()else None,exit_counters_observed=bool(returns)and all(row['counters']is not None and all(v is not None for v in row['counters'].values())for row in returns));r['outcome']='observed-success' if clean and complete and r['header'] and r['header']['bytes']>0 and r['exit_counters_observed'] else 'incomplete-or-failed';(out/'process.json').write_text(json.dumps(r,indent=2)+'\n');(out/'phases.json').write_text(json.dumps(rows,indent=2)+'\n');print(json.dumps({'outcome':r['outcome'],'entry':entry,'rows':rows,'header':r['header'],'transport':{k:r[k]for k in ('returncode','elapsed_s',*flags,'stdout_eof','stderr_eof','inputs_unchanged')}},indent=2))

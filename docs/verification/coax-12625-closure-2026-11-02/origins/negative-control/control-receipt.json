@@ -1,0 +1,12 @@
+{
+  "original_sha256": "a3e7ed3e5af62baf6bc685e7a6fcf1a747e69cc3cc25a4d3c2b51d32ba9bdeac",
+  "negative_sha256": "eb49a120af10c927709f931a58fbe42fdeaad7e28f68674b4dfb7f886a195b78",
+  "exact_change": "Only successful RAW-to-CLASS CB_projection_commit call removed",
+  "positive_evidence": "../checks-first/origins-projection-two-blocks-final-helpers.json",
+  "negative_evidence": "../checks-first/origins-projection-removed-negative.json",
+  "negative_expected_exit_status": 1,
+  "negative_actual_exit_status": 1,
+  "negative_stderr_sha256": "1a71a60fa274fc26be6e2f3860c60478f38b4e237abbf5041b95dfb216dd90d7",
+  "expected_diagnostic": "E0406 at public acceptance/fatal assertion",
+  "dependencies": "identical files from scopes/CB_query-v6/loaded-source.tar.gz"
+}

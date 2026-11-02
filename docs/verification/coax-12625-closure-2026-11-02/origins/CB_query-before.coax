@@ -1,0 +1,73 @@
+CB_query :: (b:CB_Context,kind:u8,decl:int,path:BS_Path,out:[]BS_Origin)->CB_Result {
+ if (kind<1 || (kind>3 && kind!=5)) || decl<2 || decl>b.c.state[0].used || !BS_path_valid(path) {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}
+ if b.state[0].queries<0 || b.state[0].queries>b.queries.count || b.state[0].origins<0 || b.state[0].origins>b.origins.count {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}
+ projection:[1]CB_QueryProjection;expected_type:=CB_query_project(b,kind,decl,path,projection[..]);if b.c.state[0].fatal {return CB_Result.{};}prior_loc:=b.state[0].loc;if b.c.nodes[decl].loc.line>0 {b.state[0].loc=b.c.nodes[decl].loc;}defer b.state[0].loc=prior_loc;
+ indirect:=false;for i:0..<path.count {if path.steps[i].kind==BS_DEREFERENCE {indirect=true;}}
+ // Direct owned storage has no value/write/alias dependencies or recursion.
+ // B1 can derive it without a separate origin-query row or origin span.
+ if b.retain_fields && kind==3 && !indirect {owner:=b.c.nodes[decl].borrow_owner;if owner<2 || owner>b.c.state[0].used || (b.c.nodes[owner].kind!=CK_Tag.proc && b.c.nodes[owner].kind!=CK_Tag.check) {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}if !CB_tick(b,b.c.nodes[decl].loc) {return CB_Result.{};}return CB_put(b,out,CB_Result.{},BS_Origin.{kind=BS_LOCAL,root=decl,type=CB_key(b,expected_type,true),path=path});}
+ // Per-declaration one-based links keep unrelated procedures out of a lookup.
+ // Rows stay append-only: even a recursive query retains its original slot.
+ head:=b.c.nodes[decl].borrow_query;link:=head;bucket:=0;if b.query_index {bucket=CB_index_bucket(kind,path);link=CB_index_start(b,decl,head,bucket);if b.c.state[0].fatal {return CB_Result.{};}}
+ while link!=0 {
+  if link<1 || link>b.state[0].queries {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}
+  if !(b.query_index && link==head) {if !CB_tick(b,b.c.nodes[decl].loc) {return CB_Result.{};}}q:=b.queries[link-1];
+  if q.decl!=decl || q.kind<1 || (q.kind>3 && q.kind!=5) || q.status<1 || q.status>3 || q.next<0 || q.next>=link || !BS_path_valid(q.path) {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}
+  next:=q.next;if b.query_index {next=CB_index_next(b,decl,link,q,bucket);if b.c.state[0].fatal {return CB_Result.{};}}same:=q.retain_classes==b.retain_classes;
+  // Complete raw facts survive source normalization. Reverse
+  // value/procedure reuse and unknown/active rows remain unsupported.
+  if q.kind==kind && bs_path_equal(q.path,path) && (same || (b.retain_fields && q.status==2 && !q.retain_classes)) {
+   if q.type!=expected_type {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}if q.status==1 {return CB_Result.{incomplete=true};}
+   if q.start<0 || q.count<0 || q.start>b.state[0].origins || q.count>b.state[0].origins-q.start {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}
+   if same {if q.count>out.count {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}for i:0..<q.count {out[i]=b.origins[q.start+i];}CB_projection_commit(b,projection[0],link);return CB_Result.{count=q.count,incomplete=q.status==3};}
+   // A complete raw dependency graph is already admitted. Derive its class
+   // result with the same normalization, without publishing a second row/span.
+   if q.count>64 {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}staged:[64]BS_Origin;mapped:CB_Result;
+   for i:0..<q.count {if !CB_tick(b,b.c.nodes[decl].loc) {return CB_Result.{};}value:=b.origins[q.start+i];if !BS_origin_valid(value) {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}mapped=CB_put(b,staged[..],mapped,value);}
+   if mapped.count>out.count {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}for i:0..<mapped.count {out[i]=staged[i];}CB_projection_commit(b,projection[0],link);return mapped;
+  }link=next;
+ }
+ slot:=b.state[0].queries;if slot>=b.queries.count {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}if !CB_index_prepare(b,slot,kind,path,head) {return CB_Result.{};}b.state[0].queries+=1;b.queries[slot]=CK_BorrowQuery.{kind=kind,decl=decl,type=expected_type,path=path,status=1,next=head,retain_classes=b.retain_classes};b.c.nodes[decl].borrow_query=slot+1;r:CB_Result;n:=b.c.nodes[decl];
+ if kind==1 {
+  if n.kind!=CK_Tag.proc {CK_resource(b.c,n.loc);return CB_Result.{};}if n.flag2 || n.generic || n.b==0 || n.borrow_returns==0 {CK_resource(b.c,n.loc);return CB_Result.{};}
+  // A caller asks where an array behind the returned descriptor lives (its
+  // storage), or what a returned descriptor points at (its value).
+  ret:=n.borrow_returns;temp:[64]BS_Origin;place:=b.c.types[expected_type].kind==CK_Kind.array;
+  while ret!=0 {
+   if ret<2 || ret>b.c.state[0].used {CK_resource(b.c,n.loc);return CB_Result.{};}edge:=b.c.nodes[ret];z:CB_Result;witness:=b.c.nodes[edge.a].loc;
+   if edge.kind==CK_Tag.stmt_return {z=CB_expr(b,edge.a,path,place,temp[..]);}
+   else if edge.kind==CK_Tag.expr_try {
+    if edge.propagate_type!=n.type || path.count==0 || path.steps[0].kind!=BS_VARIANT {CK_resource(b.c,edge.loc);return CB_Result.{};}
+    failure:=ifx b.c.types[n.type].kind==CK_Kind.result then 1 else 0;witness=edge.loc;
+    if path.steps[0].index==failure && failure==1 {z=CB_expr(b,edge.a,CB_prepend(b,CB_tail(path),BS_VARIANT,1),place,temp[..]);}
+   }else {CK_resource(b.c,n.loc);return CB_Result.{};}
+   for i:0..<z.count {if temp[i].kind==BS_LOCAL && b.c.state[0].error_count==0 {CK_error(b.c,witness,"E0383","returned borrow may refer to local inline storage through a helper or aggregate","return owned storage, or keep the borrowed backing in the caller");break;}}
+   r=CB_merge(b,out,r,temp[..],z);ret=edge.borrow_next;
+  }
+ }else {
+  owner:=n.borrow_owner;if owner<2 || owner>b.c.state[0].used || (b.c.nodes[owner].kind!=CK_Tag.proc && b.c.nodes[owner].kind!=CK_Tag.check) {CK_resource(b.c,n.loc);return CB_Result.{};}
+  t:=expected_type;
+  if kind==3 && !indirect {r=CB_put(b,out,r,BS_Origin.{kind=BS_LOCAL,root=decl,type=CB_key(b,t,true),path=path});}
+  else if kind==5 {if n.kind!=CK_Tag.param || !indirect {CK_resource(b.c,n.loc);return CB_Result.{};}}
+  else if n.kind==CK_Tag.param {
+   at:=b.c.nodes[owner].head;ordinal:=0;while at!=decl {if at<2 || at>b.c.state[0].used || !CB_tick(b,n.loc) {CK_resource(b.c,n.loc);return CB_Result.{};}at=b.c.nodes[at].next;ordinal+=1;}
+   r=CB_put(b,out,r,BS_Origin.{kind=BS_PARAMETER,root=ordinal,role=BS_DESCRIPTOR,type=CB_key(b,t,kind==3),path=path});
+  }else if n.kind==CK_Tag.case_binding {r=CB_expr(b,n.a,CB_prepend(b,path,BS_VARIANT,n.sum_variant),kind==3,out);}
+  else if n.kind==CK_Tag.stmt_var {if n.a!=0 {r=CB_expr(b,n.a,path,kind==3,out);}else {r=CB_default(b,n.type,path,out);}}
+  else if n.kind==CK_Tag.stmt_each {collection:=b.c.types[b.c.nodes[n.a].type];r=CB_expr(b,n.a,CB_prepend(b,path,ifx collection.kind==CK_Kind.array then BS_ELEMENT else BS_DEREFERENCE,ifx collection.kind==CK_Kind.array then 2147483647 else 0),false,out);}
+  else {CK_resource(b.c,n.loc);return CB_Result.{};}
+  if !(kind==3 && !indirect) {write:=n.borrow_writes;temp:[64]BS_Origin;
+  while write!=0 {p:=CB_place(b,b.c.nodes[write].c);if p.decl!=decl {CK_resource(b.c,n.loc);return CB_Result.{};}if CB_prefix(p.path,path) {rest:BS_Path;for i:p.path.count..<path.count {rest=CB_add_path(b,rest,path.steps[i].kind,path.steps[i].index);}z:=CB_expr(b,b.c.nodes[write].a,rest,kind==3,temp[..]);if kind==5 {CB_external_local(b,b.c.nodes[write].a,temp[..],z);}r=CB_merge(b,out,r,temp[..],z);}write=b.c.nodes[write].borrow_next;}
+  r=CB_alias_writes_mode(b,decl,path,out,r,kind==5);
+  // Raw return queries compose selected helper writes. Retained-store-only
+  // misses keep B1's manual boundary; a complete raw memo above is reusable.
+  // This never certifies unknown effects or expands the shared work budget.
+  if b.retain_fields {r.incomplete=r.incomplete || CB_opaque(b,decl,path);}
+  else {r=CB_call_writes(b,decl,path,out,r);}}
+ }
+ if b.c.state[0].fatal {return CB_Result.{};}if r.count>b.origins.count-b.state[0].origins {CK_resource(b.c,n.loc);return CB_Result.{};}
+ start:=b.state[0].origins;for i:0..<r.count {b.origins[start+i]=out[i];}b.state[0].origins+=r.count;b.queries[slot].start=start;b.queries[slot].count=r.count;b.queries[slot].status=ifx r.incomplete then cast(u8)3 else cast(u8)2;CB_projection_commit(b,projection[0],slot+1);return r;
+}
+// The leaves of a type holding a borrow when every element is its own: 128
+// stands for more than 64. Stops once over, so a wide or deep type costs at
+// most the budget per level.

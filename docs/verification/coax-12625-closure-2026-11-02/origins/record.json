@@ -1,0 +1,164 @@
+{
+  "schema": 1,
+  "scope": "#12625 origins mutation closure only",
+  "producer": {
+    "path": "/tmp/coax-12625-native/final-v4/coax",
+    "sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b"
+  },
+  "shared_checker_sha256": "4b8bda3678d616ce093e7c9c1a6ff63dda4ab2a0fd055d341eb55d8bdf2301b9",
+  "origin_policy_sha256": "0b40f7e0bed8186b229098531134175dc7140ed81fd6163dd364f227faa4bdf3",
+  "new_origin_groups": 12,
+  "new_origin_cases": 42,
+  "production_change": "ONE dead initializer bucket:=0 changed to bucket:int; every indexed use is preceded by unconditional CB_index_bucket assignment; no read when index is disabled. No guard/helper/quota/path/depth/work change.",
+  "scopes": [
+    {
+      "scope": "original-CB_variant",
+      "source_files": 16,
+      "loaded_source_sha256": "23ee058655ba74cf221ea87e4a164857e1d0ddb79e08769e4734e1b2e4950f6e",
+      "manifest_sha256": "0ff6155663337e6c1691f5c8c1b66e3aab280eb09bdf2a0470bac3e5021d894a"
+    },
+    {
+      "scope": "original-CB_leaf_count",
+      "source_files": 16,
+      "loaded_source_sha256": "9925695eebb21fb43c99b3d9739039db1d93c74e5387ae683576fd4ce36b83ac",
+      "manifest_sha256": "17298f9bf95af144e8c84ad19a1f591dd13bbfc5d486cef0ee494cb4a3dd2b88"
+    },
+    {
+      "scope": "original-CB_discover",
+      "source_files": 16,
+      "loaded_source_sha256": "23a276aaf5b4ac8558fc9eec4cfb33cca7008499b9225fb00b13cfcc95745555",
+      "manifest_sha256": "9da7e05440cbe45707327b8ecc588751e3b390dd7d47e3cde339574ed05cead7"
+    },
+    {
+      "scope": "original-CB_expr",
+      "source_files": 16,
+      "loaded_source_sha256": "bdba84cea7186f10ff2dc1b3af40d5cc3a254bc9337a5691afca588451aa93f7",
+      "manifest_sha256": "b35dd027df903fac17d06bab5a4ef4d472007c450c6ed9fde184ae3d46a81612"
+    },
+    {
+      "scope": "CB_discover-v1",
+      "source_files": 16,
+      "loaded_source_sha256": "727f754852800d343f4324fe6b4cfb9a98d453fd48e4ff87f2a4871e32d03a26",
+      "manifest_sha256": "87aed738f449efc3292f6e88edd23d0b3d55023397c0fb4b6751e5862e9ca07d"
+    },
+    {
+      "scope": "CB_expr-v1",
+      "source_files": 16,
+      "loaded_source_sha256": "6fca4dd2c8f4834cfb035438552edc501247fd16f2ce253eb8c936313cd4284a",
+      "manifest_sha256": "6b4f28bb9017b37b50e1820cf056706a12543c1b455ba5860e1beb8639426fbe"
+    },
+    {
+      "scope": "CB_leaf_count-v1",
+      "source_files": 16,
+      "loaded_source_sha256": "49e222b4285ad723e65bad1e2cd94ca099c24c13fdae0f5d1bb054fc668a9f5e",
+      "manifest_sha256": "f177b5dbf0abc30f251f53ae3c72482e6ad02b0c25be32922d6de4cecd8a2f00"
+    },
+    {
+      "scope": "CB_leaf_count-v2",
+      "source_files": 16,
+      "loaded_source_sha256": "dca7334843ef599528e964c03e7a96815b3b26568e5d6456c24a35095ff9dac5",
+      "manifest_sha256": "397b141c6af5dd96c4d3a92bba0ef4cb0344eb415b5bd22050fe81072f9215ff"
+    },
+    {
+      "scope": "CB_leaf_count-v3",
+      "source_files": 16,
+      "loaded_source_sha256": "9df4b89777912519884f2ef68e8c4c172f91495df6dc09076d612af69fa38212",
+      "manifest_sha256": "170b17aa0f282f41b2c8ed79f50c91d320d0437b4b3388ccb5a5ad6624fa00d3"
+    },
+    {
+      "scope": "CB_query-v1",
+      "source_files": 16,
+      "loaded_source_sha256": "7a098f63b7d3c00791055792380b2b8d28d52a08cfc03caeb10a5aeffcdd627a",
+      "manifest_sha256": "80a0c7279b0dc13fbf362dc32ad48dc07aca8378f61eb81daae7a6337d741163"
+    },
+    {
+      "scope": "CB_query-v2",
+      "source_files": 16,
+      "loaded_source_sha256": "27c9baa573e01c2c497c3162d9c5c25269d2016bf88cc06e2a5bcb4f9ed647b1",
+      "manifest_sha256": "916de3e38a4769ace6cbdf1729af15c07ccaa468b703698b7ac73de9cb0f61e4"
+    },
+    {
+      "scope": "CB_query-v3",
+      "source_files": 18,
+      "loaded_source_sha256": "c6a629a3c15a4f87e713797ce6614b1c0c546280b33350ff04ac3bf386afe08a",
+      "manifest_sha256": "bf350518eddb9e92a5f8975bb0d8ee077db3449a44225a7c0c7c702e4f28c854"
+    },
+    {
+      "scope": "CB_query-v4",
+      "source_files": 18,
+      "loaded_source_sha256": "4ca9dca557e75a5f560c0a75c91d744e0692e2433e994904f85bb87e3804dc0f",
+      "manifest_sha256": "94aba2d9440f82dd497daf7ff276953dd70d74e4970ff743c0e31d4d81c899f9"
+    },
+    {
+      "scope": "CB_query-v5",
+      "source_files": 18,
+      "loaded_source_sha256": "89afe2c2e846043a0c58b0602c97518b115367f64329023c10e1d3148b5e13af",
+      "manifest_sha256": "e8201f94955ab3c17b2fc66572bdce9cd03bf9c1f853f13b24aec5a2b56cf117"
+    },
+    {
+      "scope": "CB_query-v6",
+      "source_files": 18,
+      "loaded_source_sha256": "8120803a13bdcb77787686ec80ff9e8c5ad629f3c51fc9141fb054ce6dedfc6e",
+      "manifest_sha256": "8e1b323744dc1475ad46c94bd4bc4b59750ab283a4cab6c5434bb7ea3bf8cb86"
+    },
+    {
+      "scope": "CB_variant-v1",
+      "source_files": 16,
+      "loaded_source_sha256": "e15eab21e7929d6e35b8c2d3bfca95d2c1f5a3ed6842862d5548e175f452c99e",
+      "manifest_sha256": "a2362e96dc6d84b2e776ed573e5a855d5c21d1f700a8f36608a1ff65927c88ee"
+    }
+  ],
+  "passing_nonquery": {
+    "CB_variant-v1": 46,
+    "CB_leaf_count-v3": 74,
+    "CB_discover-v1": 132,
+    "CB_expr-v1": 226
+  },
+  "old_query": {
+    "scope": "CB_query-v3",
+    "mutants": 372,
+    "killed": 365,
+    "survived": 7
+  },
+  "final_query": {
+    "scope": "CB_query-v6",
+    "mutants": 371,
+    "evaluated": 371,
+    "killed": 371,
+    "survived": 0,
+    "marked_equivalent": 0,
+    "stock_merged_records": 4,
+    "scope_source_sha256": "a3e7ed3e5af62baf6bc685e7a6fcf1a747e69cc3cc25a4d3c2b51d32ba9bdeac",
+    "production_body_sha256": "ef3388f51e59774f403d8472dec1b984f01403cf0cc57059c135ec67bd529742",
+    "baseline_claims": 1232,
+    "baseline_cases": 13678,
+    "baseline_outcomes": [
+      "passed"
+    ],
+    "merge_seconds": 7.403522584005259,
+    "shard_seconds": [
+      229.2042454170296,
+      199.81157666700892,
+      271.9295774999773,
+      211.808200999978
+    ]
+  },
+  "trial_status": {
+    "CB_query-v5": "complete 371-site stock inventory, 370 killed and one removed-publication call survived; single-block fuel fixture did not distinguish. Final v6 uses both real layouts with two admitted field blocks.",
+    "CB_query-v1": "840s owned-process timeout, not passing",
+    "CB_query-v2": "canceled to rebind to final sibling cache modules, not passing",
+    "CB_query-v4": "checks-first snapshot; selected baseline had malformed unused path tail in write-only fixture; corrected in final policy before production edit",
+    "CB_leaf_count-v1": "73/74; depth-zero mutant survived",
+    "CB_leaf_count-v2": "deep borrowed fixture evaluator E0403; corrected to deep owned payload in v3"
+  },
+  "no_waivers": true,
+  "postfatal_contract": "Only compositional helper sentinel values consumed by existing callers before fatal barrier are asserted after rejection; no unspecified private failed cache output asserted.",
+  "combined_focused_sites": 849,
+  "combined_focused_killed": 849,
+  "combined_focused_survived": 0,
+  "final_cache_modules": {
+    "query-index.coax": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+    "literal-projection-cache.coax": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+    "query-projection-cache.coax": "400298be33a996fc7ee4982db26c64265e39401160d008e8feac1184e5a2bfae"
+  }
+}

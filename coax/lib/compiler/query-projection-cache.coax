@@ -16,14 +16,14 @@ CB_projection_hit :: (b:CB_Context,p:CB_QueryProjection,kind:u8,decl:int,path:BS
   if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {
    if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
    // CB_field published this head in the same used prefix; the current declaration head still matches.
-   if b.c.nodes[w.head].kind!=CK_Tag.field {CK_resource(b.c,b.state[0].loc);return false;}
-   if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return false;}
+   if b.c.nodes[w.head].kind!=CK_Tag.field {CK_resource(b.c,b.state[0].loc);return b.c.state[0].fatal;}
+   if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return b.c.state[0].fatal;}
    charged:=CB_tick(b,b.state[0].loc);if !charged {return charged;}q:=b.queries[w.row-1];
-   if q.kind!=4 || q.decl!=t || q.type!=r.decl || q.status!=2 || q.count!=w.head || q.retain_classes || q.start!=step.index/8 || q.path.count!=0 || q.next<0 || q.next>=w.row {CK_resource(b.c,b.state[0].loc);return false;}
+   if q.kind!=4 || q.decl!=t || q.type!=r.decl || q.status!=2 || q.count!=w.head || q.retain_classes || q.start!=step.index/8 || q.path.count!=0 || q.next<0 || q.next>=w.row {CK_resource(b.c,b.state[0].loc);return b.c.state[0].fatal;}
    for j:0..<8 {if q.path.steps[j].kind!=0 {CK_resource(b.c,b.state[0].loc);return charged;}}
    if q.path.steps[step.index%8].index!=w.field {return false;}
-   if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
-   f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+   if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return b.c.state[0].fatal;}
+   f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return b.c.state[0].fatal;}
    if f.type!=w.next_type {return false;}t=f.type;
    b.state[0].field_type=w.type;b.state[0].field_block=step.index/8;b.state[0].field_head=w.field_head;b.state[0].field_row=w.row;
   }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
@@ -32,6 +32,8 @@ CB_projection_hit :: (b:CB_Context,p:CB_QueryProjection,kind:u8,decl:int,path:BS
  }
  return t==p.type && t>=1 && t<b.c.state[0].type_count;
 }
+// On the eligible cold route retain_fields is true: CB_field returns zero
+// only after fatal refusal. Stop on that canonical phase before reading a field.
 // On fatal, the private returned type is unspecified; CB_query immediately
 // checks fatal before any use. Stop here without another probe or record write.
 CB_query_project :: (b:CB_Context,kind:u8,decl:int,path:BS_Path,record:[]CB_QueryProjection)->int {
@@ -43,15 +45,15 @@ CB_query_project :: (b:CB_Context,kind:u8,decl:int,path:BS_Path,record:[]CB_Quer
  for i:0..<2 {p:=b.state[0].projections[i];hit:=CB_projection_hit(b,p,kind,decl,path);if b.c.state[0].fatal {return p.type;}if hit {record[0]=p;return p.type;}}
  // One original walk, recording only field rows that CB_field has admitted.
  p:=CB_QueryProjection.{decl=decl,kind=kind,classes=b.retain_classes,root=b.c.nodes[decl].type,path=path,used=b.c.state[0].used,types=b.c.state[0].type_count};t:=p.root;
- if !BS_path_valid(path) {CK_resource(b.c,b.state[0].loc);return 0;}
+ if !BS_path_valid(path) {CK_resource(b.c,b.state[0].loc);return p.type;}
  for i:0..<path.count {
   if t<16 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return p.type;}r:=b.c.types[t];step:=path.steps[i];w:=CB_ProjectionStep.{type=t};
-  if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {field:=CB_field(b,t,step.index);if field==0 {return 0;}w.decl=r.decl;w.head=b.c.nodes[r.decl].head;w.field_head=b.c.types[t].retain_fields;w.row=b.state[0].field_row;w.field=field;t=b.c.nodes[field].type;}
+  if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {field:=CB_field(b,t,step.index);if b.c.state[0].fatal {return field;}w.decl=r.decl;w.head=b.c.nodes[r.decl].head;w.field_head=b.c.types[t].retain_fields;w.row=b.state[0].field_row;w.field=field;t=b.c.nodes[field].type;}
   else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
   else if step.kind==BS_DEREFERENCE && r.kind==CK_Kind.view {t=r.elem;}
   else {CK_resource(b.c,b.state[0].loc);return p.type;}w.next_type=t;p.steps[i]=w;
  }
- if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+ if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return t;}p.type=t;record[0]=p;return t;
 }
 CB_projection_commit :: (b:CB_Context,pending:CB_QueryProjection,query:int) {
  if pending.decl==0 || b.queries[query-1].status!=2 {return;}p:=pending;p.query=query;p.head=b.c.nodes[p.decl].borrow_query;

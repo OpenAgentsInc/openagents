@@ -1,0 +1,162 @@
+{
+  "schema": "coax.r2.native.fixedpoint.v1",
+  "compiler": "/tmp/coax-12625-closure/native-v6/coax",
+  "compiler_sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c",
+  "commands": [
+    {
+      "module": "budget",
+      "argv": [
+        "/tmp/coax-12625-closure/native-v6/coax",
+        "c",
+        "lib/compiler/budget.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-closure/native-v6/fixedpoints/budget.h"
+      ],
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.2979215420782566,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "check-domains",
+      "argv": [
+        "/tmp/coax-12625-closure/native-v6/coax",
+        "c",
+        "lib/compiler/check-domains.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-closure/native-v6/fixedpoints/check-domains.h"
+      ],
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.26196866703685373,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "profiles",
+      "argv": [
+        "/tmp/coax-12625-closure/native-v6/coax",
+        "c",
+        "lib/compiler/profiles.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-closure/native-v6/fixedpoints/profiles.h"
+      ],
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.24872362497262657,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "mutation-schedule",
+      "argv": [
+        "/tmp/coax-12625-closure/native-v6/coax",
+        "c",
+        "lib/compiler/mutation-schedule.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-closure/native-v6/fixedpoints/mutation-schedule.h"
+      ],
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.2324057910591364,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "lexer",
+      "argv": [
+        "/tmp/coax-12625-closure/native-v6/coax",
+        "c",
+        "lib/compiler/lexer.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-closure/native-v6/fixedpoints/lexer.h"
+      ],
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 1.0334288750309497,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "parser",
+      "argv": [
+        "/tmp/coax-12625-closure/native-v6/coax",
+        "c",
+        "lib/compiler/parser.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-closure/native-v6/fixedpoints/parser.h"
+      ],
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.8883497909409925,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "checker",
+      "argv": [
+        "/tmp/coax-12625-closure/native-v6/coax",
+        "c",
+        "lib/compiler/checker.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-closure/native-v6/fixedpoints/checker.h"
+      ],
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 35.15747099998407,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "sources",
+      "argv": [
+        "/tmp/coax-12625-closure/native-v6/coax",
+        "c",
+        "lib/compiler/sources.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-closure/native-v6/fixedpoints/sources.h"
+      ],
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 0.061741875018924475,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "compiler",
+      "argv": [
+        "/tmp/coax-12625-closure/native-v6/coax",
+        "c",
+        "lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-closure/native-v6/fixedpoints/compiler.h"
+      ],
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 67.5024660830386,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    }
+  ],
+  "inputs_unchanged": true,
+  "passed": true
+}

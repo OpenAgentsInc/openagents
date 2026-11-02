@@ -1,0 +1,17 @@
+{
+  "schema": "coax.12625.native.bridge-wall-override.v1",
+  "argv": [
+    "/private/tmp/coax-12625-closure/native-v6/bridge/coax-sanitized",
+    "check",
+    "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/checker.coax"
+  ],
+  "original_wall_limit": 180,
+  "new_wall_limit": 600,
+  "scope": "Only original sanitized checker-source check; every other LX.checked remains180 and original deep-refusal stays30. Outer gate840.",
+  "compiler_work_budget_changed": false,
+  "timed_out": false,
+  "returncode": 0,
+  "elapsed_seconds": 203.30451812501997,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

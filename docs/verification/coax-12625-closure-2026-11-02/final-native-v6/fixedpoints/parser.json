@@ -1,0 +1,17 @@
+{
+  "module": "parser",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v6/coax",
+    "c",
+    "lib/compiler/parser.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v6/fixedpoints/parser.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.8883497909409925,
+  "stderr_empty": true,
+  "c_identical": true,
+  "header_identical": true
+}

@@ -1,0 +1,23 @@
+{
+  "name": "compile-native",
+  "argv": [
+    "c++",
+    "-std=c++20",
+    "-O1",
+    "-g",
+    "-Wall",
+    "-Wextra",
+    "-Wno-missing-field-initializers",
+    "-I",
+    "/tmp/coax-12625-closure/native-v5",
+    "-o",
+    "/tmp/coax-12625-closure/native-v5/coax",
+    "/private/tmp/openagents-12625-complete-20261101/coax/src/main.cpp",
+    "/tmp/coax-12625-closure/native-v5/proto_importer.o"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 26.882182791014202,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

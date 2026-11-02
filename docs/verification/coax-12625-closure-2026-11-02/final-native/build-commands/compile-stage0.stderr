@@ -1,0 +1,9 @@
+In file included from /private/tmp/openagents-12625-complete-20261101/coax/src/main.cpp:41:
+/private/tmp/openagents-12625-complete-20261101/coax/src/emit_c.cpp:3745:57: warning: unused parameter 'text' [-Wunused-parameter]
+ 3745 | static std::string debug_source_hash(const std::string &text) {
+      |                                                         ^
+In file included from /private/tmp/openagents-12625-complete-20261101/coax/src/main.cpp:43:
+/private/tmp/openagents-12625-complete-20261101/coax/src/effects.cpp:127:55: warning: unused parameter 'file' [-Wunused-parameter]
+  127 | static bool effects_report(const Source *,const File *file,const EmitOptions &opts,const std::string &selected,std::string *text) {
+      |                                                       ^
+2 warnings generated.

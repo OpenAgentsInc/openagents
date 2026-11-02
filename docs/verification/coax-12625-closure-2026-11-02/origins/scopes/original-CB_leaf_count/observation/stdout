@@ -1,0 +1,17 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_leaf_count-resume/scope.coax:252:85: mutant survived: 0 became 1
+   if type<1 || type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}r:=b.c.types[type];
+                                                                                      ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_leaf_count-resume/scope.coax:253:14: mutant survived: '&&' became '||'
+   if (type==3 && r.kind==CK_Kind.string_) || r.kind==CK_Kind.view {return 1;}n:=0;
+               ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_leaf_count-resume/scope.coax:258:132: mutant survived: 0 became 1
+    count:=CK_sum_count(b.c,type);variant:=0;while variant<count && n<=64 {payload:=CB_variant(b,type,variant);if payload==0 {return 0;}if CB_has_borrow(b,payload,0) {n+=CB_leaf_count(b,payload);}variant+=1;}
+                                                                                                                                     ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_leaf_count-resume/scope.coax:258:162: mutant survived: 0 became 1
+    count:=CK_sum_count(b.c,type);variant:=0;while variant<count && n<=64 {payload:=CB_variant(b,type,variant);if payload==0 {return 0;}if CB_has_borrow(b,payload,0) {n+=CB_leaf_count(b,payload);}variant+=1;}
+                                                                                                                                                                   ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_leaf_count-resume/scope.coax:262:47: mutant survived: 0 became 1
+   else {CK_resource(b.c,b.state[0].loc);return 0;}
+                                                ^
+74 mutants, 69 killed, 5 survived

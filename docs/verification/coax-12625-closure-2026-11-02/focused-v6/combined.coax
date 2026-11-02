@@ -1,0 +1,6 @@
+#load "/private/tmp/openagents-12625-complete-20261101/coax/tests/results-borrow-policy.coax";
+#load "/private/tmp/openagents-12625-complete-20261101/coax/tests/results-sum-policy.coax";
+#load "/private/tmp/openagents-12625-complete-20261101/coax/tests/results-cache-policy.coax";
+#load "/private/tmp/openagents-12625-complete-20261101/coax/tests/results-projection-policy.coax";
+#load "/private/tmp/openagents-12625-complete-20261101/coax/tests/results-origin-policy.coax";
+#authority;

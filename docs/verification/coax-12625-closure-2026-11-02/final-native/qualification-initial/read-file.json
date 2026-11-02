@@ -1,0 +1,17 @@
+{
+  "name": "read-file",
+  "argv": [
+    "python3",
+    "/private/tmp/openagents-12625-complete-20261101/coax/tests/sys/read-file.py",
+    "--compiler",
+    "/tmp/coax-12625-closure/native-v5/coax",
+    "--output",
+    "/tmp/coax-12625-closure/native-v5/read-file"
+  ],
+  "environment": {},
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 4.541084500029683,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

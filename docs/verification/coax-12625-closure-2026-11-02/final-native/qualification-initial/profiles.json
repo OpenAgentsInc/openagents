@@ -1,0 +1,17 @@
+{
+  "name": "profiles",
+  "argv": [
+    "python3",
+    "/private/tmp/openagents-12625-complete-20261101/coax/tests/results_profiles.py"
+  ],
+  "environment": {
+    "COAX_TEST_COMPILER": "/tmp/coax-12625-closure/native-v5/coax",
+    "COAX_RESULTS_PROFILE_DIR": "/tmp/coax-12625-closure/native-v5/profiles",
+    "COAX_TEST_ARTIFACT_DIR": "/tmp/coax-12625-closure/native-v5"
+  },
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 58.777169915963896,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "cffdf69606cafaf85e8538f49df986381947b0a4c0ec59c7e182aa2326be89fc"
+}

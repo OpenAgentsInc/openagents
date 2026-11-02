@@ -1,0 +1,17 @@
+{
+  "module": "sources",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v6/coax",
+    "c",
+    "lib/compiler/sources.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v6/fixedpoints/sources.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.061741875018924475,
+  "stderr_empty": true,
+  "c_identical": true,
+  "header_identical": true
+}

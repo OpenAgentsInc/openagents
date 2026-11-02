@@ -1,0 +1,4 @@
+/tmp/coax-12625-origins-projection-negative/scope.coax:120:50: error[E0406]: assertion failed
+   for i:0..<64 {got:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && !got.incomplete && out[0].kind==BS_STATIC && out[0].root==1 && out[0].type==12;}
+                                                   ^
+  note: in #test origin raw-to-class publication retains bounded two-field lookup admission

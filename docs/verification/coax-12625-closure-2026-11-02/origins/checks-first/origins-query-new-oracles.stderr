@@ -1,0 +1,5 @@
+/tmp/coax-12625-origins-closure-scopes/CB_query-v4/scope.coax:94:8: error[E0406]: assertion failed
+   else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==841 && errors[0].loc.column==7;}
+         ^
+  note: in #forall origin write-only requests admit only indirect formal storage
+  counterexample: mode = 1

@@ -1,0 +1,63 @@
+{
+  "schema": "coax.12625.cache-closure.v1",
+  "status": "complete",
+  "production_frozen": true,
+  "production_pins": {
+    "query-index.coax": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+    "literal-projection-cache.coax": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a"
+  },
+  "external_oracles": "coax/tests/results-cache-policy.coax",
+  "external_oracles_sha256": "3de648667025bd1af987fb6a32f04a5e58318d3c01e393df0e3e0b79d566aad7",
+  "literal": {
+    "mutants": 73,
+    "killed": 73,
+    "survivors": 0,
+    "seconds": 56.48621604195796,
+    "scope": "all4literalmoduleprocedures; stockroot-only; completebaseline+neworaclesretained"
+  },
+  "index_prior_stronger_oracle": {
+    "mutants": 138,
+    "killed": 138,
+    "survivors": 0,
+    "seconds": 283.2243967090035,
+    "qualification": "superseded because test asserted private scratch words; rerun with every privatewordassertion removed"
+  },
+  "probe_reuse": "unchanged34/34qualifiedprobe; definition/transitivehelper/recursivecontext typeidentityinindex-probe-reuse.json",
+  "fatal_values": "No postfatal private return value, scratch marker, abandoned row or unused tail is an oracle. Public lookup/refusal, source reads and charged work alone are asserted.",
+  "limits": "shared1048576,paths8 unchanged; no admission waivers or equivalent classifications",
+  "files": {
+    "literal-zero.json": "37eaa2282a5890ec4e28adab49571909f9ed4a85adc8dc1f0214920a76135541",
+    "literal-zero.txt": "609a1261c8a032a9a548df1b49d9ca8f1e6dfb14123a15f57e88af903ae0a171",
+    "literal-inputs.json": "4c5785f258f3c77218a7c34ca31daaf36700f270891cdc7d5f0ceafdad23dcfd",
+    "index-stronger-oracle.json": "ec2201063136191039bcad998a12a1dba906c5b3ce9f6202922f1b8721a4fb5e",
+    "index-stronger-oracle.txt": "ee413a65b0d6112fe9c7d5b7225567857dca9e73f80efad14674185e59c8b128",
+    "index-probe-reuse.json": "94ab4dba8f85a3b8c47d6e925f78c31c6378ef7f2a2d85143120619246803221",
+    "prior-index-13.txt": "f5c869bd03caef31d715d4ab294d70a8fc4f23d80a78d2d31ca019c94924cb67",
+    "prior-literal-14.txt": "b794e43bf339ace1aece328ecef094a45f76950be377ad1b6feda0069859d857",
+    "hash-cost-red.json": "4503d309890362c36cef37e4dc982cc046d0f0f179b2c7bec88ca76fb79bc85a",
+    "hash-cost-red.stderr": "5bba2cfc970c7d96f38e6dc25fff78ddd6de1c5f89cc2c7a0575d16999f2b1ad",
+    "baseline-cache-checks.txt": "be5e9128fdecd310a2cc189d1ec5ca1b54c828bda246090ce06408c6510a373a",
+    "stage-before-helper-red.stderr": "89100196724a659fc4e185f71d696d64b09df7194079284685948361e37c1a18",
+    "first-green-cache-checks.txt": "88c8830f28e35cbbe4173157903ea2fc9c3af5709fbc8202bb4de844b2d1fe8e",
+    "index-zero.json": "eef75b18c65f65e95db191fc6d47b84c9b788295bae3e8ba83e142eb6b0be2c6",
+    "index-zero.txt": "ee413a65b0d6112fe9c7d5b7225567857dca9e73f80efad14674185e59c8b128",
+    "index-inputs.json": "d2e23556604da449c25db44dd343258da388077f1941a403cdeec13342e04969",
+    "probe-historical-zero.json": "91604f2e04700a1d51a621d1d70a5cd8a85cd6dac042c9078b75d0f510c10fab",
+    "probe-historical-zero.txt": "dc2d5cb9546cfc67088b6a8fb9bb984b6bcbdd6081ef8bf825fb8485ff90d83d",
+    "index-obsolete-cancelled.json": "911f96d08b9711fc1302817f110e854d9c657846e1ae26c5b0ebfb7d510728d7",
+    "proof.tar.xz": "8ef11ab1df24b206afe7e27acacc7b9ef3697982c5432e33188818d54e3f74a7",
+    "proof-manifest.json": "0e0d4494ea71325341383160ce5408fe88faef831c66c7c8674189669370c1b3"
+  },
+  "new_oracle_groups": 8,
+  "new_oracle_cases": 232,
+  "index": {
+    "mutants": 138,
+    "killed": 138,
+    "survivors": 0,
+    "seconds": 297.11029145901557,
+    "producer_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+    "scope": "5changed/index-openprocedures; unmodifiedqualifiedprobeleftasdependency; stockroot-onlyallbaselinechecker+existingborroworacles+newcacheoracles; noprivatemarker/tailasserts"
+  },
+  "probe_reuse_qualification": "historical34/34usestrustedH601802; definition/callee/recursivecontext typesbyte-identical; this isNOTfreshmatchingproducerqualificationandnotaddedtoanycurrentmutationtotal",
+  "literal_scope_reuse_after_oracle_cleanup": "Onlyassertionsinindex-initializationtestwereremovedafterliteralzero; thattesthasnoliteralcachecallsandcannotcontributeliteralmutantkills. Rootrequestedreuseunchangedpassingliteral73scope."
+}

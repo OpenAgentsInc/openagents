@@ -1,0 +1,45 @@
+{
+  "argv": [
+    "scripts/coax-release.sh",
+    "--check",
+    "--binary",
+    "/tmp/coax-12625-closure/native-v6/coax"
+  ],
+  "launched_argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
+    "--",
+    "scripts/coax-release.sh",
+    "--check",
+    "--binary",
+    "/tmp/coax-12625-closure/native-v6/coax"
+  ],
+  "cwd": "/private/tmp/openagents-12625-complete-20261101",
+  "started": true,
+  "pid": 44001,
+  "returncode": 0,
+  "launch_errno": null,
+  "launch_error": null,
+  "elapsed_s": 3.8352366250474006,
+  "timeout": false,
+  "deadline_exhausted": false,
+  "stdout_limit": false,
+  "stderr_limit": false,
+  "output_limit": false,
+  "observed_stdout_bytes": 0,
+  "observed_stderr_bytes": 0,
+  "group_killed": false,
+  "kill_errno": null,
+  "read_errno": null,
+  "stdout_eof": true,
+  "stderr_eof": true,
+  "limits": {
+    "stdout": 33554432,
+    "stderr": 33554432,
+    "total": 33554432
+  },
+  "timeout_s": 840,
+  "deadline": 574404.072535208,
+  "compiler_sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c",
+  "scope": "Generated release/catalogue/banner/changelog metadata coherence, not full release qualification."
+}

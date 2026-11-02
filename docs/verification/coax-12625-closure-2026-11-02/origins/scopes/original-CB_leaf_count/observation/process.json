@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/tmp/coax-chapter30-r2/trusted-H601802/coax",
+    "mutate",
+    "/tmp/coax-12625-source/scoped-mutation/borrow-CB_leaf_count-resume/scope.coax",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "returncode": 1,
+  "timeout": false,
+  "elapsed_seconds": 39.31528487498872,
+  "setup_sha256": "b8b346444d812fb544d02d90ce52e99c15e46a407cd936a4923cf27020221f4a",
+  "compiler_sha256": "6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648",
+  "pins_unchanged": true,
+  "stdout_sha256": "d8d4db8601f38d64568f2a741f0b9628aecf790da6986d60006ed284e475ccda",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

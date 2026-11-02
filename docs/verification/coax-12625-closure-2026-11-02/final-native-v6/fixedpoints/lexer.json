@@ -1,0 +1,17 @@
+{
+  "module": "lexer",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v6/coax",
+    "c",
+    "lib/compiler/lexer.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v6/fixedpoints/lexer.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 1.0334288750309497,
+  "stderr_empty": true,
+  "c_identical": true,
+  "header_identical": true
+}

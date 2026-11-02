@@ -1,0 +1,52 @@
+{
+  "schema": "coax.12625.cache.scope.v1",
+  "module": "literal-projection-cache",
+  "production_module_sha256": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+  "moved_procedures": [
+    "CB_LiteralBlock",
+    "CB_literal_same",
+    "CB_literal_stageable",
+    "CB_literal_keep",
+    "CB_literal_field"
+  ],
+  "source_pins": {
+    "coax/tests/results-cache-policy.coax": "aaff4ef96fecec3e095ae5d81d3e4830be1faec08411571b00db613b05b6b4d3",
+    "coax/lib/compiler/checker.coax": "11d2c2a971ab664b172a3ec074502511c7f6207f095f3971f74b2fba09679fef",
+    "coax/lib/compiler/query-index.coax": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+    "coax/lib/compiler/literal-projection-cache.coax": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a",
+    "coax/lib/compiler/borrow-summary.coax": "53f7f3d8db5c84006bc46f62fb5fffa7a7052a411cf59e7f4fec5321deadc92c",
+    "coax/lib/compiler/query-projection-cache.coax": "400298be33a996fc7ee4982db26c64265e39401160d008e8feac1184e5a2bfae",
+    "coax/lib/compiler/sum-types.coax": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+    "coax/lib/compiler/sum-layout.coax": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+    "coax/lib/compiler/result-handling.coax": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+    "coax/lib/compiler/result-flow.coax": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+    "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+    "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+    "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+    "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+    "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+    "coax/tests/results-borrow-policy.coax": "3001eea6874976b2737c75a0100298f1db9c61212d824bae511f1eb98ff07a0c"
+  },
+  "private_pins": {
+    "scope.coax": "cc48a78e35815cfb905c0456e82d3faa0f968ef655e54db3f355889a0f5104a7",
+    "coax/tests/results-cache-policy.coax": "aaff4ef96fecec3e095ae5d81d3e4830be1faec08411571b00db613b05b6b4d3",
+    "coax/lib/compiler/query-index.coax": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d",
+    "coax/lib/compiler/borrow-summary.coax": "53f7f3d8db5c84006bc46f62fb5fffa7a7052a411cf59e7f4fec5321deadc92c",
+    "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+    "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4",
+    "coax/lib/compiler/result-flow.coax": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+    "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+    "coax/lib/compiler/sum-layout.coax": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+    "coax/lib/compiler/checker.coax": "11d2c2a971ab664b172a3ec074502511c7f6207f095f3971f74b2fba09679fef",
+    "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+    "coax/lib/compiler/literal-projection-cache.coax": "780294fcb2ceec003be93d69d6dd9d851f9a379c6d8c3089b01b0e594a5cd631",
+    "coax/lib/compiler/sum-types.coax": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+    "coax/lib/compiler/query-projection-cache.coax": "400298be33a996fc7ee4982db26c64265e39401160d008e8feac1184e5a2bfae",
+    "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+    "coax/lib/compiler/result-handling.coax": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c"
+  },
+  "compiler_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "scope": "stock root-only exact production function bytes; new independent oracles first and all loaded old baseline checks retained; index_probe unchanged qualified body stays dependency"
+}

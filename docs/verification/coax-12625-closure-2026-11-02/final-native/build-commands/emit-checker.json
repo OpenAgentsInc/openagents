@@ -1,0 +1,16 @@
+{
+  "name": "emit-checker",
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "c",
+    "lib/compiler/checker.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v5/checker.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 31.606835291022435,
+  "stdout_sha256": "ab1719e27ca3cf9eb91a81f69a33d9796fdd00fc529aa995dfb5dcef08850dca",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

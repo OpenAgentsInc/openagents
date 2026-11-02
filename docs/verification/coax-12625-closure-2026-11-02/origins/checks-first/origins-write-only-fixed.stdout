@@ -1,0 +1,3 @@
+ok   #forall origin write-only requests admit only indirect formal storage (3 cases, 14114 steps, 6 ms)
+1 of 1206 checks (--only 'origin write-only'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

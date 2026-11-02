@@ -1,0 +1,1 @@
+{"file": "/private/tmp/openagents-12625-complete-20261101/coax/tests/systemone-outcomes/incomplete-terminal.coax", "line": 3, "col": 3, "code": "E0904", "message": "switch must cover every alternative exactly once", "fix": ""}

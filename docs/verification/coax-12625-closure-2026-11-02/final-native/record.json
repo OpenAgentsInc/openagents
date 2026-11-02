@@ -1,0 +1,44 @@
+{
+  "schema": "coax.12625.native-v5-qualification-composed.v1",
+  "compiler_sha256": "6fc6af83d554d32592645e495cdf5ba3f58a30977c289adad0c41e98a1681aa8",
+  "generator_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "source_snapshot_receipt": "v5-frozen-receipt.json",
+  "source_pin_count": 496,
+  "frozen_checker_sha256": "11d2c2a971ab664b172a3ec074502511c7f6207f095f3971f74b2fba09679fef",
+  "fixedpoints": {
+    "modules": 9,
+    "c_headers_identical": true,
+    "record": "fixedpoints/record.json"
+  },
+  "gates": {
+    "outcomes": {
+      "passed": true,
+      "record": "qualification-initial/outcomes.json",
+      "elapsed_seconds": 30.647978790919296
+    },
+    "profiles": {
+      "passed": true,
+      "record": "qualification-initial/profiles.json",
+      "elapsed_seconds": 58.777169915963896
+    },
+    "read-file": {
+      "passed": true,
+      "record": "qualification-initial/read-file.json",
+      "elapsed_seconds": 4.541084500029683
+    },
+    "native-bridge": {
+      "passed": true,
+      "qualification": "Original successful compile/parser check reused; failed checker and all unrun original assertions complete in a separately recorded continuation.",
+      "original_raw_unittest_passed": false,
+      "original_failure": "qualification-initial/native-bridge.json",
+      "continuation_record": "bridge-continuation/record.json",
+      "continuation_elapsed_seconds": 174.54458304098807
+    }
+  },
+  "passed": true,
+  "raw_initial_failure_preserved": true,
+  "source_flags_changed": false,
+  "normal_cache_or_release_provenance": false,
+  "seeds_promoted": false,
+  "supersession": "V5 observations remain bound to exact old11d2 source; next one-line checker cleanup requires separate V6 build, fixedpoint, cost and needed-gate observations."
+}

@@ -1,0 +1,16 @@
+{
+  "name": "emit-mutation-schedule",
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "c",
+    "lib/compiler/mutation-schedule.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v5/mutation-schedule.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.025658917031250894,
+  "stdout_sha256": "ffafaf0c4e597ec7eeae2d8932d91452c148de88437376dd73b991b7950a4433",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "test",
+    "/tmp/coax-12625-projection/phase-v3-baseline/scope.coax"
+  ],
+  "returncode": 0,
+  "timeout": false,
+  "elapsed_seconds": 27.06250658398494,
+  "compiler_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "pins_unchanged": true,
+  "stdout_sha256": "2cb72a2c688419be4cc18e13eced5f4cc467ee10392d826c17caaad2c79e5828",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "mutate",
+    "/tmp/coax-12625-origins-closure-scopes/CB_query-v6/scope.coax",
+    "--root-only",
+    "--merge",
+    "/tmp/coax-12625-origins-closure-scopes/CB_query-v6/shard-1/stdout",
+    "--merge",
+    "/tmp/coax-12625-origins-closure-scopes/CB_query-v6/shard-2/stdout",
+    "--merge",
+    "/tmp/coax-12625-origins-closure-scopes/CB_query-v6/shard-3/stdout",
+    "--merge",
+    "/tmp/coax-12625-origins-closure-scopes/CB_query-v6/shard-4/stdout",
+    "--evidence",
+    "/tmp/coax-12625-origins-closure-scopes/CB_query-v6/merge-evidence.json"
+  ],
+  "exit_status": 0,
+  "timeout": false,
+  "seconds": 7.403522584005259,
+  "pins_unchanged": true,
+  "compiler_unchanged": true,
+  "stdout_sha256": "8738a2e98ce9cad1d7004442c5759e4381d66bc4db9e311e54c81ee3aaacd240",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

@@ -1,0 +1,19 @@
+{
+  "name": "outcomes",
+  "argv": [
+    "python3",
+    "/private/tmp/openagents-12625-complete-20261101/coax/tests/results.py",
+    "--compiler",
+    "/tmp/coax-12625-closure/native-v6/coax",
+    "--output",
+    "/tmp/coax-12625-closure/native-v6/outcomes",
+    "--budget-s",
+    "840"
+  ],
+  "environment": {},
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 37.236177167040296,
+  "stdout_sha256": "5d6f418d567e954026951cbebbd824abd605c197f790c45148419e682c67fea2",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

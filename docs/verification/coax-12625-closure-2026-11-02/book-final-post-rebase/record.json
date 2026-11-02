@@ -1,0 +1,30 @@
+{
+  "schema": "coax.12625.closure.reader-maintenance.v1",
+  "commands": [
+    {
+      "name": "book",
+      "exit_status": 0,
+      "timeout": false,
+      "record": "book.json"
+    },
+    {
+      "name": "shell",
+      "exit_status": 0,
+      "timeout": false,
+      "record": "shell.json"
+    },
+    {
+      "name": "tools",
+      "exit_status": 1,
+      "timeout": false,
+      "record": "tools.json"
+    },
+    {
+      "name": "whitespace",
+      "exit_status": 0,
+      "timeout": false,
+      "record": "whitespace.json"
+    }
+  ],
+  "scope": "Changed Coax book/route registry, maintenance shell and tracked-tools policy; tools output retains any independent upstream gate."
+}

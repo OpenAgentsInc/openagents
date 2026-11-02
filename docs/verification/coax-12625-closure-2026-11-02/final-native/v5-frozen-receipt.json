@@ -1,0 +1,13 @@
+{
+  "schema": "coax.12625.native-v5-old-source-archive.v1",
+  "source_files": 496,
+  "source_snapshot": "source-v5-496.tar.gz",
+  "source_snapshot_sha256": "dbeacbd7f0a47eff16747996a939ab2299077ecd6518b96d51a276d54297378a",
+  "source_pins_sha256": "ca14ddff22349f93b970f66b9bffd6e1614ca22040864a2eed97162d1bf6ba0d",
+  "checker_sha256": "11d2c2a971ab664b172a3ec074502511c7f6207f095f3971f74b2fba09679fef",
+  "compiler_sha256": "6fc6af83d554d32592645e495cdf5ba3f58a30977c289adad0c41e98a1681aa8",
+  "bridge_continuation_record_sha256": "719102e643e94af0e9dcc0acc2e1787b8a33e98d16925d0281b4cbad9b45fc91",
+  "bridge_continuation_passed": true,
+  "source_files_verified_from_archive": true,
+  "seed_refresh": "Not promoted; final v6 only."
+}

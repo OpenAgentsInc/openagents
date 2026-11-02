@@ -1,0 +1,8 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:183:37: mutant survived: '&&' became '||'
+      if path.steps[0].index==failure && failure==1 {z=CB_expr(b,edge.a,CB_prepend(b,CB_tail(path),BS_VARIANT,1),place,temp[..]);}
+                                      ^
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:200:14: mutant survived: 3 became 4
+    if !(kind==3 && !indirect) {write:=n.borrow_writes;temp:[64]BS_Origin;
+               ^
+shard 2/4: 93 of 372 mutants, 91 killed, 2 survived

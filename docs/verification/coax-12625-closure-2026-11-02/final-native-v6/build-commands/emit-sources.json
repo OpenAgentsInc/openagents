@@ -1,0 +1,16 @@
+{
+  "name": "emit-sources",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v5/coax",
+    "c",
+    "lib/compiler/sources.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v6/sources.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.03565991704817861,
+  "stdout_sha256": "688091ddb65adff6f83934ead05ef02e4ec73b180eaac726b1eccdad7a89002a",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

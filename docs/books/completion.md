@@ -25,7 +25,7 @@ tracks; the CNN work does not wait for all compiler or relay work to finish.
 | Priority and issue | Independently reviewable tasks | Exit |
 | --- | --- | --- |
 | Delivered infrastructure: [Supported reader routes and delivery evidence, #12624](https://github.com/OpenAgentsInc/openagents/issues/12624) | Give each book a clean-checkout entry command and observable application exit; bind evidence to source/compiler/target; run quick metadata checks; record published revision. | A reader can reproduce a named supported route, and a changed dependency invalidates only its affected evidence. |
-| Implemented route; qualification open: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Integrate the initial R2 native LP64 language, real file cleanup, B2 helper composition and generation-fenced typed System One/Lab ownership. [Current qualification](../verification/coax-outcomes-12625-2026-11-02/README.md) binds focused checks, canonical compiler fixedpoints and matching-image analysis cost under the unchanged budget. | Actual native outcomes, cleanup, cancellation/reap/reuse and transcript lifetimes pass within their declared component profile. Remaining compiler sharpness gates keep #12625 open. Whole-desktop E0381, normal full-release/cache gates and R0 physical/reviewer/page-golden gates remain separate; no general linear ownership is claimed. |
+| Delivered bounded route: [Coax outcomes and request ownership, #12625](https://github.com/OpenAgentsInc/openagents/issues/12625) | Initial R2 native LP64 language, real file cleanup, B2 helper composition and generation-fenced typed System One/Lab ownership are integrated. The [closure record](../verification/coax-12625-closure-2026-11-02/README.md) binds focused checks, canonical compiler fixedpoints and matching-image analysis cost under the unchanged budget. | The original 130 cache/origin survivors are closed; final `CB_query` kills 371/371, authored baseline passes 1,256/1,256, all native/fixedpoint gates pass, and actual compiler cost is 1,036,428/1,048,576. The [closure handoff](handoff-2026-11-02-12625-closed.md) records the completed route. Whole-desktop E0381, normal full-release/cache and R0 physical/reviewer/page-golden gates remain separate; no general linear ownership is claimed. |
 | P1: [Psionic public models, #12626](https://github.com/OpenAgentsInc/openagents/issues/12626) | Connect convolution to IR/autodiff/modules; train and reload a frozen CNN; add residual-model and unfamiliar-consumer acceptance; publish operator/backend limits. A same-shape residual block and frozen CPU trial now pass; independent artifact-reader checks are recorded, with fresh training still open. | Ordinary models use reusable APIs, with independent gradients, held-out quality and saved artifacts. The tiny CNN is a step toward ResNet/CIFAR, not that project's completion. |
 | P2: [Useful single-GPU training, #12627](https://github.com/OpenAgentsInc/openagents/issues/12627) | Cooperative backward and resident whole-step state, precision/overflow/resume, then a frozen 10–50M decoder with independent baseline. | Quality, tokens/s, memory and startup are measured together on the 4080. Distributed scaling follows this useful baseline. |
 | P1: [Aethyr shared rendering and playable route, #12628](https://github.com/OpenAgentsInc/openagents/issues/12628) | Common frame/pass/binding admission; migrate the Grid, then catalogue subsystems; qualify independent render profiles and resource refusals. | One playable route uses shared engine contracts on its declared native/browser targets; remaining private paths stay visible. |
@@ -55,7 +55,10 @@ System One/Lab request ownership, with actual native offline child traces and
 snapshot/transcript lifetime oracles. The bounded raw helper-return continuation
 preserves retained-only manual fallback. General ownership, broader roadmap R2
 forms and whole-desktop readiness remain open; the execution map names those
-boundaries separately from the delivered component route.
+boundaries separately from the delivered component route. The original 130
+cache/origin sharpness findings and final query scope are qualified with zero
+survivors; v6 native/fixedpoint, authored and actual-cost gates pass in the
+[current closure record](../verification/coax-12625-closure-2026-11-02/README.md).
 
 This ordering preserves completed work. B1 ownership qualification, generated
 realm shaders, API NIP-98 verification and the relay's wired operations already
@@ -114,8 +117,10 @@ depend on its future consumer. A forward reading reference is allowed.
 The retained-store B1 qualification is complete within its recorded boundary.
 Do not reopen it based on an older stopping-point report. B2's selected raw
 helper-write composition preserves retained-only manual fallback and does not
-discharge foreign retention or host lifetimes. Broader B2, B3 asynchronous
-request ownership and general lifetimes remain; the
+discharge foreign retention or host lifetimes. The bounded canonical B3
+asynchronous owner and detached snapshots are integrated; broader B2,
+arbitrary owner-value copies, races and general lifetimes remain outside that
+profile. The
 [current boundary](../../coax/verification-retained-stores.md) records them.
 
 ## Psionic: one complete model workflow

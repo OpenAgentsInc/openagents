@@ -75,9 +75,19 @@ terminal snapshot checks capacities before copying body/stderr/problem into
 separate caller buffers. Stop and quit handle discard. The offline native
 checks cover completion, cancellation, EOF-before-exit, process-slot reuse and
 transcript storage after wire overwrite. The
-[issue qualification](../docs/verification/coax-outcomes-12625-2026-11-02/README.md)
+[closure qualification](../docs/verification/coax-12625-closure-2026-11-02/README.md)
 keeps source, producer, focused compiler checks and actual consumer evidence
 separate.
+
+The original 130 cache/origin mutation findings are now closed with independent
+source/refusal and charged-work oracles. No private postfatal return value,
+abandoned marker or unused tail is treated as an admitted result. The final
+`CB_query` scope kills 371/371 mutants. V6 native/fixedpoint gates pass, the
+authored baseline passes 1,256/1,256, and actual compiler cost is 1,036,428 of
+1,048,576 steps (12,148 spare); the
+[closure handoff](../docs/books/handoff-2026-11-02-12625-closed.md) records those
+completed route. Earlier dated B1/B2/integration observations keep their original
+source and producer identities and are not renamed as current results.
 
 This is a serialized canonical-owner protocol. Arbitrary owner-value copies,
 races, overlapping snapshots and host-entry outlives duties are not

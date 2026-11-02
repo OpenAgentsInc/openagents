@@ -1,0 +1,259 @@
+{
+  "schema": "coax.results.observations.v1",
+  "outcome": "passed",
+  "compiler": "/private/tmp/coax-12625-closure/native-v6/coax",
+  "compiler_sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c",
+  "mode": "all",
+  "selected_cases": [
+    "p01-tagged-alternatives",
+    "p02-optional-shapes",
+    "p03-result-transfer",
+    "p04-propagation-cleanup",
+    "p05-lazy-order",
+    "p06-caller-payload-borrows",
+    "p09-unit-cleanup-handling",
+    "p11-declared-some-is-ordinary-call",
+    "n01-bound-result-ignored",
+    "n02-bare-result-ignored",
+    "n03-result-read-after-transfer",
+    "n04-partial-handling-join",
+    "n05-pending-dropped-by-try",
+    "n06-result-reassignment",
+    "n07-result-contained-in-record",
+    "n08-result-consumed-from-outer-loop",
+    "n09-result-captured-by-defer",
+    "n10-later-try-drops-result-argument",
+    "n11-nominal-error-mismatch",
+    "n12-optional-result-family-mismatch",
+    "n13-try-leaves-defer",
+    "n14-inactive-payload-access",
+    "n15-nonexhaustive-switch",
+    "n16-duplicate-switch-case",
+    "n17-multiple-active-constructor",
+    "n18-union-default",
+    "n19-fallback-type",
+    "n20-ambiguous-null",
+    "n21-local-success-backing",
+    "n22-local-error-backing",
+    "n23-propagated-local-error",
+    "n32-switch-break-is-loop-only",
+    "n34-optional-is-not-implicit",
+    "n37-optional-explicit-uninitialized",
+    "n38-array-containing-optional-uninitialized",
+    "n39-record-containing-optional-uninitialized",
+    "p12-switch-loop-control",
+    "p13-while-propagation",
+    "p14-place-propagation",
+    "p15-range-propagation",
+    "p16-unit-try-before-effects"
+  ],
+  "manifest_sha256": "5a990da2fde3c860fd346b73e8a71ddf23cde04211ac7a1dd5eddc53c8f26099",
+  "cases": [
+    {
+      "id": "p01-tagged-alternatives",
+      "source_sha256": "26d076ad73500389ae088370b544c78614f23ca41349ede468167e7a18645d1a",
+      "passed": true
+    },
+    {
+      "id": "p02-optional-shapes",
+      "source_sha256": "02ed45a3ad3bd4b316774f458816458ae128c463373c674f1a1c0182c7df5608",
+      "passed": true
+    },
+    {
+      "id": "p03-result-transfer",
+      "source_sha256": "7fa8b7190addc0a8d282cf930f09545203101b8cfc26f38828ac676e75f817ec",
+      "passed": true
+    },
+    {
+      "id": "p04-propagation-cleanup",
+      "source_sha256": "754ad283c2adf0005ca7adc38ccc031ca0cca619af01ca69258fd1072d512ca0",
+      "passed": true
+    },
+    {
+      "id": "p05-lazy-order",
+      "source_sha256": "b9e70eaceb9ef1e7249c444279dc1ae485688e375c256859d659e28708052239",
+      "passed": true
+    },
+    {
+      "id": "p06-caller-payload-borrows",
+      "source_sha256": "1b56afee793c68aeb9dc6e1a5635dafef296b982a1dc09df06a2eb13c6bb9180",
+      "passed": true
+    },
+    {
+      "id": "p09-unit-cleanup-handling",
+      "source_sha256": "f79ad82cc9f66f56d04f80721754bb3c82f1a74ea93c142ae36d7f3b32fdde03",
+      "passed": true
+    },
+    {
+      "id": "p11-declared-some-is-ordinary-call",
+      "source_sha256": "a0f55fc3ca01d32e56a2ab178b1146919da897a2c4b770736b3e0ef3728cf2ca",
+      "passed": true
+    },
+    {
+      "id": "n01-bound-result-ignored",
+      "source_sha256": "e279dbb0dae3b29edc5396539ac27f3ca3aece78bd439acf70be4976fc836ced",
+      "passed": true
+    },
+    {
+      "id": "n02-bare-result-ignored",
+      "source_sha256": "cf098cfb405077e247b6c469fb0b4cfd9a2a3025c2c42de4f252059d1f0eb0ac",
+      "passed": true
+    },
+    {
+      "id": "n03-result-read-after-transfer",
+      "source_sha256": "40ce1824abb1041f3840b754ececd91cb9be2504b2dbe385a629d8f42cea1e3c",
+      "passed": true
+    },
+    {
+      "id": "n04-partial-handling-join",
+      "source_sha256": "4fd8bbf489dd0cd7f7d74becc320f319d1c27047216e81a4fe69eee896c1bd7d",
+      "passed": true
+    },
+    {
+      "id": "n05-pending-dropped-by-try",
+      "source_sha256": "3c12fb17a0fa1432cc91a3bc4c967ef01e20e428e54776c9d036e745f21027c4",
+      "passed": true
+    },
+    {
+      "id": "n06-result-reassignment",
+      "source_sha256": "e66d256a6b68046b87faf0b1772a1e96ba12f8b35fa49eb516971fc4cf9a4ea3",
+      "passed": true
+    },
+    {
+      "id": "n07-result-contained-in-record",
+      "source_sha256": "db04cbfb1207f7c140f515f25fc940ca3d9823a080c1f32432ed59aa3daec1a0",
+      "passed": true
+    },
+    {
+      "id": "n08-result-consumed-from-outer-loop",
+      "source_sha256": "8f2f195c0a6d5c0cdf84b529be3d229c782f0cabd4e64619e16cd45cee405c78",
+      "passed": true
+    },
+    {
+      "id": "n09-result-captured-by-defer",
+      "source_sha256": "c0b24fb7f30e7fe10401302993b16caea4b5cfdd822daa56dabe8dbae0433d97",
+      "passed": true
+    },
+    {
+      "id": "n10-later-try-drops-result-argument",
+      "source_sha256": "2963a10694bb0ecdcc5eb71a0e14edaff8b005b6fb1cdef7c466e54094d6a353",
+      "passed": true
+    },
+    {
+      "id": "n11-nominal-error-mismatch",
+      "source_sha256": "118211f5b30d855fb5d102b85eb8af03bc9e10d871c4d017be67f40f1902ca8b",
+      "passed": true
+    },
+    {
+      "id": "n12-optional-result-family-mismatch",
+      "source_sha256": "e650eaf9163640a102dfe1f0e5ba4d88d32450624967491562614cac1d7c1e56",
+      "passed": true
+    },
+    {
+      "id": "n13-try-leaves-defer",
+      "source_sha256": "146e5b1bea7529dd93570186594bc35be17d70dd41702c1f2885f9d136f2ef30",
+      "passed": true
+    },
+    {
+      "id": "n14-inactive-payload-access",
+      "source_sha256": "6e3f0ad8587db182e6d5f27b795f537f88830eb541f6ad915d47d6e498a350c2",
+      "passed": true
+    },
+    {
+      "id": "n15-nonexhaustive-switch",
+      "source_sha256": "04b1301ed557799a70f7ca8852c46daf52755914998759649475990b81354167",
+      "passed": true
+    },
+    {
+      "id": "n16-duplicate-switch-case",
+      "source_sha256": "0b8fcabf3c2a2da537c4ddfcb6979b3238e7f4cc79ef3be822060a77f8334740",
+      "passed": true
+    },
+    {
+      "id": "n17-multiple-active-constructor",
+      "source_sha256": "9883cdde8ca68c5249d474fe367d1ca3958a842d9f51ce075f6e2ea975a016fc",
+      "passed": true
+    },
+    {
+      "id": "n18-union-default",
+      "source_sha256": "96559e1620c085278a7b0ca5160bca1c8ae2bde8a58bb1594ab46dd887f09868",
+      "passed": true
+    },
+    {
+      "id": "n19-fallback-type",
+      "source_sha256": "25c66127d9eb9cf7e1355bc1397f5a7328cc5a3d91d456851ee6c881c7ca09b3",
+      "passed": true
+    },
+    {
+      "id": "n20-ambiguous-null",
+      "source_sha256": "06d02e5ec67e9e7eae47dc2f16f910ba7936cde7401fbdde987f59d1fd16902d",
+      "passed": true
+    },
+    {
+      "id": "n21-local-success-backing",
+      "source_sha256": "34660c584bfa0a740d53ae10af42972d304a9cc39bdf990f3bca9f0459adfd2b",
+      "passed": true
+    },
+    {
+      "id": "n22-local-error-backing",
+      "source_sha256": "559e3bc8be26a33e29272cf49a1994de47ff5ed515a11577c7eff789378534a4",
+      "passed": true
+    },
+    {
+      "id": "n23-propagated-local-error",
+      "source_sha256": "2ee1a7714c511976eef4fd7ad133e8ed16a75a2742b3c8cf41445d633749faf9",
+      "passed": true
+    },
+    {
+      "id": "n32-switch-break-is-loop-only",
+      "source_sha256": "395304b03d7b02ea1f2fd2fa6373577d3da1f0f4b388715334868089e7aca04f",
+      "passed": true
+    },
+    {
+      "id": "n34-optional-is-not-implicit",
+      "source_sha256": "30727115ec0438ce835c1bb8cf7fd92a07c8836fb20a3a2fb13e0f3188f09ce9",
+      "passed": true
+    },
+    {
+      "id": "n37-optional-explicit-uninitialized",
+      "source_sha256": "c649635a0619f3f3460ccdc6a5c9a7e6ce504b5da58cbe8c61ceb53f7167d4a9",
+      "passed": true
+    },
+    {
+      "id": "n38-array-containing-optional-uninitialized",
+      "source_sha256": "36a1ed1c1868e28c0454be21551faf07d47bf6f5c6eae4ae02f8b1559473c80f",
+      "passed": true
+    },
+    {
+      "id": "n39-record-containing-optional-uninitialized",
+      "source_sha256": "892aa3affba53e080f25dce6fb215d83244350b163d7cb11b8db0692722dda97",
+      "passed": true
+    },
+    {
+      "id": "p12-switch-loop-control",
+      "source_sha256": "62bd1c051d5bb9e2b2a240e307e04442c7b746fa44e325dd5cbd50c968b52d4b",
+      "passed": true
+    },
+    {
+      "id": "p13-while-propagation",
+      "source_sha256": "58f83025c095bb53474d50157b22f24c16dfef43844e7bf2acab43b7d9db0653",
+      "passed": true
+    },
+    {
+      "id": "p14-place-propagation",
+      "source_sha256": "dec10b2a1ad278d5dbf5f988204f8b0a34d563c5e0c1afcbfbdf46b004d7146a",
+      "passed": true
+    },
+    {
+      "id": "p15-range-propagation",
+      "source_sha256": "06cba5dc8ab555551e3336f3fa3d1811daf847e8966cb4d589c91ed017555a02",
+      "passed": true
+    },
+    {
+      "id": "p16-unit-try-before-effects",
+      "source_sha256": "b0c3f0f2606c132371a0e3df75c7b14495adf50503e8d9d53b3758c7b8ad331f",
+      "passed": true
+    }
+  ],
+  "failures": []
+}

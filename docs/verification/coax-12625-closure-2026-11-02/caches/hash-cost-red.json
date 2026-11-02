@@ -1,0 +1,7 @@
+{
+  "scope": "Exact frozen copy with one previously-surviving XOR-to-AND hash mutation; independent public query/fuel oracle",
+  "returncode": 1,
+  "elapsed_seconds": 9.70720145793166,
+  "source_sha256": "359ed84cf2b604dbb33ff873902f13cc7c303eabc601086625063ed91d21542e",
+  "compiler_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b"
+}

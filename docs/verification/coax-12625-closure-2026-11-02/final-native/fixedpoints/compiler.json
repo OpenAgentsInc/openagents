@@ -1,0 +1,17 @@
+{
+  "module": "compiler",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v5/coax",
+    "c",
+    "lib/compiler/compiler.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v5/fixedpoints/compiler.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 61.755405833013356,
+  "stderr_empty": true,
+  "c_identical": true,
+  "header_identical": true
+}

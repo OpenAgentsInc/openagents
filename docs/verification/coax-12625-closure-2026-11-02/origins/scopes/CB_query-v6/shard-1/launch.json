@@ -1,0 +1,1 @@
+{"pid": 43879, "pgid": 43879, "argv": ["/tmp/coax-12625-native/final-v4/coax", "mutate", "/tmp/coax-12625-origins-closure-scopes/CB_query-v6/scope.coax", "--root-only", "--shard", "1/4", "--jobs", "2", "--evidence", "/tmp/coax-12625-origins-closure-scopes/CB_query-v6/shard-1/evidence.json"]}

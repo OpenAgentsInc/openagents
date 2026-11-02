@@ -1,0 +1,31 @@
+E
+======================================================================
+ERROR: test_native_bridge_under_sanitizers (__main__.Parser.test_native_bridge_under_sanitizers)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-12625-complete-20261101/coax/tests/parser.py", line 185, in test_native_bridge_under_sanitizers
+    LX.checked([exe,'check',source],env={**os.environ,'ASAN_OPTIONS':'detect_leaks=0'})
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/openagents-12625-complete-20261101/coax/tests/lexer.py", line 29, in checked
+    r=subprocess.run(list(map(str,args)),capture_output=True,timeout=180,**kwargs)
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/subprocess.py", line 671, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/subprocess.py", line 1395, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/subprocess.py", line 2424, in _communicate
+    self._check_timeout(endtime, orig_timeout, stdout, stderr,
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        skip_check_and_raise=True)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.1/Frameworks/Python.framework/Versions/3.15/lib/python3.15/subprocess.py", line 1434, in _check_timeout
+    raise TimeoutExpired(
+    ...<2 lines>...
+            stderr=b''.join(stderr_seq) if stderr_seq else None)
+subprocess.TimeoutExpired: Command '['/private/tmp/coax-12625-closure/native-v5/bridge/coax-sanitized', 'check', '/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/checker.coax']' timed out after 180 seconds
+
+----------------------------------------------------------------------
+Ran 1 test in 262.578s
+
+FAILED (errors=1)

@@ -1,0 +1,21 @@
+{
+  "reason": "Raw LLDB PTY stdout contains CRLF and emitted C. Preserve exact bytes compressed rather than normalize or present it as an authored text patch. Original raw copies remain in the private measurement directories.",
+  "logs": [
+    {
+      "original_path": "full-compiler-v5/stdout.log",
+      "raw_sha256": "b7965bd5626d89837beb0223e270a23ee478d8ea9a5f87417562dcb8d20982fb",
+      "raw_bytes": 2025276,
+      "archive": "full-compiler-v5/stdout.log.gz",
+      "archive_sha256": "56848d2460d4725d437388536b082257e2a1ad7b3d799c2d49f704a6c890f12d",
+      "exact_decompression_verified": true
+    },
+    {
+      "original_path": "full-compiler-v6/stdout.log",
+      "raw_sha256": "161c57f9d35bf00ddb58eba7a002f99d895a6a3a6a3dd9c14f1a71af765455b4",
+      "raw_bytes": 2025275,
+      "archive": "full-compiler-v6/stdout.log.gz",
+      "archive_sha256": "cf0b4d226dd8192debc4ea6f3665432ac2e00cb4712fc9040f2d5d1d5d9b55b3",
+      "exact_decompression_verified": true
+    }
+  ]
+}

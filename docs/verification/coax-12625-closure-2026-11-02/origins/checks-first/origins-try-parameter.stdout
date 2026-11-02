@@ -1,0 +1,3 @@
+ok   #forall origin try carries exactly the selected caller parameter descriptor (2 cases, 12805 steps, 9 ms)
+1 of 1202 checks (--only 'origin try carries'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

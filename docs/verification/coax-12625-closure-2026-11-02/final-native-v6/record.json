@@ -1,0 +1,79 @@
+{
+  "schema": "coax.12625.final-native-v6.v1",
+  "observed_utc": "2026-11-02T15:58:57.260236+00:00",
+  "compiler": "/tmp/coax-12625-closure/native-v6/coax",
+  "compiler_sha256": "a2053bb0462c849008025e3a2fc328c38070bfea3dfd0f9f19b468aed271508c",
+  "generator_sha256": "6fc6af83d554d32592645e495cdf5ba3f58a30977c289adad0c41e98a1681aa8",
+  "frozen_checker_sha256": "4b8bda3678d616ce093e7c9c1a6ff63dda4ab2a0fd055d341eb55d8bdf2301b9",
+  "source_file_count": 496,
+  "source_snapshot": "source-v6-496.tar.gz",
+  "source_snapshot_sha256": "4b0c0d52ea791b69d1b3c8849232355c4f84846a4c08e58f422c16113920c6b0",
+  "source_pins_unchanged": true,
+  "build": {
+    "commands": 20,
+    "all_passed": true,
+    "record": "build.json"
+  },
+  "fixedpoints": {
+    "modules": 9,
+    "all_c_and_headers_identical": true,
+    "record": "fixedpoints/record.json"
+  },
+  "native_gates": [
+    {
+      "name": "outcomes",
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 37.236177167040296
+    },
+    {
+      "name": "profiles",
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 63.157791666919366
+    },
+    {
+      "name": "read-file",
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 5.404223458957858
+    },
+    {
+      "name": "native-bridge",
+      "returncode": 0,
+      "timed_out": false,
+      "elapsed_seconds": 290.081561833038
+    }
+  ],
+  "native_gate_inputs_unchanged": true,
+  "native_qualification_record": "qualification/record.json",
+  "native_bridge_wall_override": {
+    "record": "bridge-wall-override.json",
+    "only_checker_child_wall_seconds": 600,
+    "other_checked_commands_wall_seconds": 180,
+    "deep_refusal_wall_seconds": 30,
+    "whole_gate_wall_seconds": 840,
+    "actual_checker_child_seconds": 203.30451812501997,
+    "compiler_work_budget_changed": false,
+    "original_unittest_and_assertions_unchanged": true
+  },
+  "seed_refresh": {
+    "record": "seed-refresh.json",
+    "canonical_files_verified": 16,
+    "changed_files": [
+      "coax/bootstrap/checker.c"
+    ]
+  },
+  "canonical_source_files": 19,
+  "executed_scripts": {
+    "build-native-v6.py": "98b2e365a6858e9e29940563dae0a484c2ee6674a77b7c179d414bcc08e4fb2a",
+    "fixedpoint-native-v6.py": "c636d8fab729cf9a3eafeac84be58912ed9adbb34ecd45fcfbaeb7ed2ad3b57f",
+    "qualify-native-v6.py": "87f3b35c275a82dbc20358c37f11f260a233c22d0f9445bdae5d7638336a3144",
+    "bridge-native-v6.py": "72ffe021a7ba7dcf7f4a2cb7f76937c2d073d5edbf0714a282f2b771e436e9f7",
+    "seeds-native-v6.py": "c41ecb87f2a4c57e33bdff315306fca341e1e15754bd2469545e11679f1003fb"
+  },
+  "compiler_binary_committed": false,
+  "normal_cache_or_release_provenance": false,
+  "passed": true,
+  "scope": "Focused R2 source closure/native first-delivery qualification. Actual full-compiler work and joint authored/consumer qualification remain bound to the root final V6 records; unused external mutation-oracle edits do not alter this image or these four native gates."
+}

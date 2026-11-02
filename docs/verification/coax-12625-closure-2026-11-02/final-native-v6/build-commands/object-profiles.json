@@ -1,0 +1,18 @@
+{
+  "name": "object-profiles",
+  "argv": [
+    "cc",
+    "-std=c11",
+    "-O1",
+    "-g",
+    "-c",
+    "/tmp/coax-12625-closure/native-v6/profiles.c",
+    "-o",
+    "/tmp/coax-12625-closure/native-v6/profiles.o"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.12187787494622171,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

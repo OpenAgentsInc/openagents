@@ -2,9 +2,15 @@
 
 The delivery route for [#12625](https://github.com/OpenAgentsInc/openagents/issues/12625)
 joins the initial R2 language profile, B2 helper summaries and the actual B3
-System One/Lab consumer. The [qualification record](../verification/coax-outcomes-12625-2026-11-02/README.md)
-binds the final source, compiler, native observations and focused checks.
-It keeps this component delivery separate from whole-desktop and R0 readiness.
+System One/Lab consumer. The [closure qualification](../verification/coax-12625-closure-2026-11-02/README.md)
+records the resolved compiler sharpness gaps and binds the final source,
+compiler, native observations and focused checks. The original 130 observed
+cache/origin survivors are closed, and the final `CB_query` scope kills
+371/371 mutants. V6 passes its native gates and nine fixedpoints, the authored
+baseline passes 1,256/1,256, and the actual full compiler uses 1,036,428 of
+1,048,576 steps (12,148 spare). The
+[closure handoff](handoff-2026-11-02-12625-closed.md) records the completed route.
+Whole-desktop, R0 and normal release readiness remain independent.
 
 ## Existing work identities
 
@@ -73,6 +79,14 @@ real file effects, the complete native parser/checker bridge and canonical
 C/header fixedpoints. Tests target changed code; a full checker mutation sweep
 and the unrelated whole release gate were not requested or run.
 
+The original 130 cache/origin findings are resolved through source/refusal and
+charged-work oracles, explicit private policy predicates and bounded cleanup.
+No private postfatal value, abandoned scratch marker or unused tail supplies
+a published-value oracle. Historical failed and inconclusive runs retain their
+identities; the closure record records the new zero scopes separately. The
+finer query scope and v6 native/consumer qualification now have final passing
+receipts; this completes the bounded issue rather than a broader language milestone.
+
 The current full-feature compiler and canonical bootstrap tuple have a
 **focused qualification record**. They are not installed into the normal
 checked-build cache with a fabricated provenance claim. Normal release/cache
@@ -108,5 +122,8 @@ No owner action or production sign-off was performed here.
 
 Earlier [construction/admission](../verification/coax-request-owner-2026-11-01/README.md),
 [nonblocking EOF](../verification/coax-request-polling-2026-11-01/README.md) and
-[stopping-point](handoff-2026-11-01-12625-12628.md) records stay immutable.
+[stopping-point](handoff-2026-11-01-12625-12628.md) records stay immutable. The
+[earlier November 2 integration](../verification/coax-outcomes-12625-2026-11-02/README.md)
+and its [open-gate handoff](handoff-2026-11-02-12625.md) remain historical;
+their original 130-survivor stop is not the current closure status.
 This delivery does not start another chapter or advance issues #12626–#12631.

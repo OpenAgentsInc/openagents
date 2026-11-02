@@ -1,0 +1,16 @@
+{
+  "name": "emit-lexer",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v5/coax",
+    "c",
+    "lib/compiler/lexer.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v6/lexer.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.7508795829489827,
+  "stdout_sha256": "1ccb3588c957644bfca17079fd208012588cfcbaeb859b1e3885d7b31ba65919",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

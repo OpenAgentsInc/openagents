@@ -1,0 +1,1 @@
+{"file": "/private/tmp/openagents-12625-complete-20261101/coax/tests/systemone-outcomes/local-snapshot.coax", "line": 4, "col": 10, "code": "E0383", "message": "returned borrow may refer to local inline storage through a helper or aggregate", "fix": "return owned storage, or keep the borrowed backing in the caller"}

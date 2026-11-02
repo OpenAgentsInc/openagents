@@ -1,0 +1,23 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:152:56: mutant survived: 0 became 1
+   head:=b.c.nodes[decl].borrow_query;link:=head;bucket:=0;if b.query_index {bucket=CB_index_bucket(kind,path);link=CB_index_start(b,decl,head,bucket);if b.c.state[0].fatal {return CB_Result.{};}}
+                                                         ^
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:168:131: mutant survived: the call was removed
+     if mapped.count>out.count {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}for i:0..<mapped.count {out[i]=staged[i];}CB_projection_commit(b,projection[0],link);return mapped;
+                                                                                                                                    ^
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:182:69: mutant survived: 0 became 1
+      failure:=ifx b.c.types[n.type].kind==CK_Kind.result then 1 else 0;witness=edge.loc;
+                                                                      ^
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:183:37: mutant survived: '&&' became '||'
+      if path.steps[0].index==failure && failure==1 {z=CB_expr(b,edge.a,CB_prepend(b,CB_tail(path),BS_VARIANT,1),place,temp[..]);}
+                                      ^
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:192:44: mutant survived: '||' became '&&'
+    else if kind==5 {if n.kind!=CK_Tag.param || !indirect {CK_resource(b.c,n.loc);return CB_Result.{};}}
+                                             ^
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:192:58: mutant survived: the call was removed
+    else if kind==5 {if n.kind!=CK_Tag.param || !indirect {CK_resource(b.c,n.loc);return CB_Result.{};}}
+                                                           ^
+/tmp/coax-12625-origins-closure-scopes/CB_query-v3/scope.coax:200:14: mutant survived: 3 became 4
+    if !(kind==3 && !indirect) {write:=n.borrow_writes;temp:[64]BS_Origin;
+               ^
+372 mutants, 365 killed, 7 survived

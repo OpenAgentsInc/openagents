@@ -113,6 +113,9 @@ results_output=$(mktemp -d "${TMPDIR:-/tmp}/coax-results.XXXXXX")
 if [[ -n "$results_output" ]] && \
    "$COAX" test tests/results-borrow-policy.coax && \
    "$COAX" test tests/results-sum-policy.coax && \
+   "$COAX" test tests/results-cache-policy.coax && \
+   "$COAX" test tests/results-projection-policy.coax && \
+   "$COAX" test tests/results-origin-policy.coax && \
    python3 tests/results.py --compiler "$PWD/$COAX" --output "$results_output/sources" && \
    COAX_TEST_COMPILER="$PWD/$COAX" COAX_RESULTS_PROFILE_DIR="$results_output/profiles" python3 tests/results_profiles.py && \
    "$COAX" test lib/sys/file-policy.coax --library && \

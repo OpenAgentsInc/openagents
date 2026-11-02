@@ -1,0 +1,62 @@
+// Independent cache validity, source selection and fuel oracles. Tooling only.
+#load "../lib/compiler/checker.coax";
+#authority;
+
+#forall "R2 cache staging permission requires an enabled nonnegative ordinal in its own block" enabled:bool,index:-1..<18,block:-1..<3 {
+ expected:=enabled && ((index>=0 && index<=7 && block==0) || (index>=8 && index<=15 && block==1) || (index>=16 && block==2));
+ #assert CB_literal_stageable(enabled,index,block)==expected;
+}
+
+#test "R2 cache nested element keys retain four lookup working sets within fuel" {
+ nodes:[32]CK_Node;types:[19]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=31,type_count=19}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;scratch:[1280]int;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12,size=16,alignment=8};types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=1,size=16,alignment=8};types[18]=CK_Type.{kind=CK_Kind.array,elem=17,length=4,size=64,alignment=8};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};out:[4]BS_Origin;path:=BS_Path.{count=2};path.steps[0].kind=BS_ELEMENT;path.steps[1].kind=BS_ELEMENT;
+ for i:0..<4 {path.steps[0].index=i;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12 && bs_path_equal(out[0].path,path);}
+ b.query_index=CB_index_begin(b);path.steps[0].index=0;warm:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && warm.count==1;
+ // One original-head probe plus one selected nonhead row per completed hit.
+ work[0].work=1048448;for i:0..<64 {r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].root==0 && bs_path_equal(out[0].path,path);}
+ #assert work[0].work==1048576 && work[0].queries==4 && work[0].origins==4;
+}
+#forall "R2 cache index initialization requires fitting workspace and funds only its admitted prefix" mode:0..<3 {
+ nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=16}];queries:[4]CK_BorrowQuery;work:=[1]CB_State.[CB_State.{queries=2}];scratch:[40]int;for i:0..<40 {scratch[i]=100+i;}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=ifx mode==2 then scratch[0..<39] else scratch[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..]};if mode==1 {work[0].work=1048575;}
+ enabled:=CB_index_begin(b);
+ if mode==1 {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && work[0].work==1048577;}
+ else {#assert !state[0].fatal && state[0].error_count==0 && enabled==(mode==0) && work[0].work==(ifx mode==0 then 2 else 0);}
+ // No private marker, abandoned row or unused tail value is asserted here.
+ // Successful public lookup behavior and fuel are checked by the test above.
+}
+#forall "R2 cache selected snapshot heads refuse corrupt links before a caller can read a row" mode:0..<4 {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=17}];queries:[4]CK_BorrowQuery;work:=[1]CB_State.[CB_State.{queries=1}];scratch:[40]int;nodes[3].loc=CK_Loc.{line=40,column=5,offset=4005};queries[0]=CK_BorrowQuery.{kind=2,decl=3,type=16,status=2};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..]};bucket:=CB_index_bucket(2,BS_Path.{});warm:=CB_index_start(b,3,1,bucket);#assert !state[0].fatal && warm==1;
+ if mode==1 {scratch[bucket]= -1;}if mode==2 {scratch[bucket]=2;}if mode==3 {scratch[9]=2;}
+ found:=CB_index_start(b,3,1,bucket);if mode==0 {#assert !state[0].fatal && found==1;}else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==40 && errors[0].loc.offset==4005;}
+}
+#forall "R2 cache next links stay inside the validated original chain and current bucket" mode:0..<4 {
+ nodes:[8]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=17}];queries:[4]CK_BorrowQuery;work:=[1]CB_State.[CB_State.{queries=3}];scratch:[40]int;nodes[3].loc=CK_Loc.{line=50,column=7,offset=5007};
+ q:=CK_BorrowQuery.{kind=2,decl=3,type=16,status=2,next=1};queries[2]=q;scratch[28]=1;if mode==1 {scratch[28]= -1;}if mode==2 {scratch[28]=2;}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};b:=CB_Context.{c=c,queries=queries[..],state=work[..]};bucket:=CB_index_bucket(q.kind,q.path);if mode==3 {bucket=(bucket+1)%8;}
+ found:=CB_index_next(b,3,3,q,bucket);if mode==0 {#assert !state[0].fatal && found==1;}else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==50 && errors[0].loc.offset==5007;}
+}
+#forall "R2 cache literal key equality requires every component even under compound mismatches" mask:0..<64 {
+ p:=CB_LiteralBlock.{id=10,type=16,head=20,used=96,types=24,block=1};id:=10;type:=16;head:=20;used:=96;types:=24;block:=1;
+ if (mask&1)!=0 {id+=1;}if (mask&2)!=0 {type+=1;}if (mask&4)!=0 {head+=1;}if (mask&8)!=0 {used+=1;}if (mask&16)!=0 {types+=1;}if (mask&32)!=0 {block+=1;}
+ #assert CB_literal_same(p,id,type,head,used,types,block)==(mask==0);
+}
+#forall "R2 cache literal block endpoints and minimum live witness keep one tick per warm hit" upper:bool {
+ nodes:[96]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=95,type_count=17}];work:[1]CB_State;names:=[9]string.["f0","f1","f2","f3","f4","f5","f6","f7","f8"];
+ types[16]=CK_Type.{kind=CK_Kind.struct_,decl=60};nodes[60]=CK_Node.{kind=CK_Tag.struct_,head=61,type=16,mark=2};for i:0..<9 {nodes[61+i]=CK_Node.{kind=CK_Tag.field,name=names[i],type=3,next=ifx i==8 then 0 else 62+i};nodes[40+i]=CK_Node.{kind=CK_Tag.expr_string,type=3,name="value"};}
+ nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=20};target:=0;if upper {target=8;}
+ for i:0..<8 {index:=8-i;if upper {index=i;}nodes[20+i]=CK_Node.{kind=CK_Tag.field_init,name=names[index],field_index=index,a=40+index,next=ifx i==7 then 2 else 21+i};}nodes[2]=CK_Node.{kind=CK_Tag.field_init,name=names[target],field_index=target,a=40+target};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=true};#assert CB_literal_field(b,10,target)==2 && !state[0].fatal;
+ work[0].work=1048512;for i:0..<64 {#assert CB_literal_field(b,10,target)==2 && !state[0].fatal && state[0].error_count==0;}
+ #assert work[0].work==1048576;
+}
+#forall "R2 cache previous witness refresh does not promote FIFO insertion order" insert_third:bool {
+ nodes:[96]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=95,type_count=17}];work:[1]CB_State;
+ types[16]=CK_Type.{kind=CK_Kind.struct_,decl=60};nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=20};nodes[11]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=24};nodes[12]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=32};
+ nodes[20]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=40,next=21};nodes[21]=CK_Node.{kind=CK_Tag.field_init,field_index=1,a=41};for i:0..<8 {nodes[24+i]=CK_Node.{kind=CK_Tag.field_init,field_index=i,a=48+i,next=ifx i==7 then 0 else 25+i};}nodes[32]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=56};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=true};#assert CB_literal_field(b,10,0)==20 && CB_literal_field(b,11,7)==31 && CB_literal_field(b,10,1)==21 && !state[0].fatal;
+ id:=10;index:=1;expected:=21;if insert_third {#assert CB_literal_field(b,12,0)==32;id=11;index=7;expected=31;}
+ work[0].work=1048512;for i:0..<64 {#assert CB_literal_field(b,id,index)==expected && !state[0].fatal && state[0].error_count==0;}#assert work[0].work==1048576;
+}

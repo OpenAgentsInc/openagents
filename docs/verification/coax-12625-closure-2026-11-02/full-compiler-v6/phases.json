@@ -1,0 +1,76 @@
+[
+  {
+    "counters": {
+      "depth": 0,
+      "origins": 1552,
+      "queries": 347,
+      "work": 42556
+    },
+    "event": "phase-entry",
+    "function": "coax_p_CR_run",
+    "return_watch": "registered"
+  },
+  {
+    "counters": {
+      "depth": 0,
+      "origins": 1552,
+      "queries": 347,
+      "work": 47114
+    },
+    "event": "phase-entry",
+    "function": "coax_p_CR_walk",
+    "instances": "false",
+    "seed": "true"
+  },
+  {
+    "counters": {
+      "depth": 0,
+      "origins": 3024,
+      "queries": 3551,
+      "work": 528727
+    },
+    "event": "phase-entry",
+    "function": "coax_p_CR_walk",
+    "instances": "true",
+    "seed": "true"
+  },
+  {
+    "counters": {
+      "depth": 0,
+      "origins": 3024,
+      "queries": 3551,
+      "work": 528727
+    },
+    "event": "phase-entry",
+    "function": "coax_p_CR_walk",
+    "instances": "false",
+    "seed": "false"
+  },
+  {
+    "counters": {
+      "depth": 0,
+      "origins": 8725,
+      "queries": 15329,
+      "work": 1036428
+    },
+    "event": "phase-entry",
+    "function": "coax_p_CR_walk",
+    "instances": "true",
+    "seed": "false"
+  },
+  {
+    "counters": {
+      "depth": 0,
+      "origins": 8725,
+      "queries": 15329,
+      "work": 1036428
+    },
+    "event": "CR_run-return"
+  },
+  {
+    "event": "finish",
+    "exit_status": 0,
+    "exited": true,
+    "state": 10
+  }
+]

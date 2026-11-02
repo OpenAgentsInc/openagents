@@ -1,0 +1,35 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:14:84: mutant survived: false became true
+     if b.c.nodes[w.head].kind!=CK_Tag.field {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                     ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:15:136: mutant survived: false became true
+     if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                                                         ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:17:215: mutant survived: false became true
+     if q.kind!=4 || q.decl!=t || q.type!=r.decl || q.status!=2 || q.count!=w.head || q.retain_classes || q.start!=step.index/8 || q.path.count!=0 || q.next<0 || q.next>=w.row {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                                                                                                                                        ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:20:17: mutant survived: '||' became '&&'
+     if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+                  ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:20:86: mutant survived: false became true
+     if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                       ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:21:137: mutant survived: false became true
+     f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                                                          ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:41:66: mutant survived: 0 became 1
+   if !BS_path_valid(path) {CK_resource(b.c,b.state[0].loc);return 0;}
+                                                                   ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:44:96: mutant survived: 0 became 1
+    if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {field:=CB_field(b,t,step.index);if field==0 {return 0;}w.decl=r.decl;w.head=b.c.nodes[r.decl].head;w.field_head=b.c.types[t].retain_fields;w.row=b.state[0].field_row;w.field=field;t=b.c.nodes[field].type;}
+                                                                                                 ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:44:106: mutant survived: 0 became 1
+    if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {field:=CB_field(b,t,step.index);if field==0 {return 0;}w.decl=r.decl;w.head=b.c.nodes[r.decl].head;w.field_head=b.c.types[t].retain_fields;w.row=b.state[0].field_row;w.field=field;t=b.c.nodes[field].type;}
+                                                                                                           ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:45:33: mutant survived: '&&' became '||'
+    else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                  ^
+/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax:49:79: mutant survived: 0 became 1
+   if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+                                                                                ^
+290 mutants, 279 killed, 11 survived

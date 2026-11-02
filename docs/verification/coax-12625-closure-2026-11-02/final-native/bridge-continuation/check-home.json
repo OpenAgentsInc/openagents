@@ -1,0 +1,15 @@
+{
+  "name": "check-home",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v5/bridge/coax-sanitized",
+    "check",
+    "/private/tmp/openagents-12625-complete-20261101/verse/home.coax"
+  ],
+  "returncode": 0,
+  "expected_returncode": 0,
+  "timed_out": false,
+  "wall_limit_seconds": 180,
+  "elapsed_seconds": 1.3171532499836758,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

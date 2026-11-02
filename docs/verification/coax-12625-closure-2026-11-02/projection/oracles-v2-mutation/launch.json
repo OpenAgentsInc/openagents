@@ -1,0 +1,1 @@
+{"pid": 11890, "pgid": 11890, "argv": ["/tmp/coax-12625-native/final-v4/coax", "mutate", "/tmp/coax-12625-projection/oracles-v2-mutation/scope.coax", "--root-only", "--jobs", "4"]}

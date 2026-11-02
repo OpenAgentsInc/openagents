@@ -1,0 +1,44 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:78:18: mutant survived: '&&' became '||'
+   return p.id==id && p.type==type && p.head==head && p.used==used && p.types==types && p.block==block;
+                   ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:83:5: mutant survived: the if condition was negated
+   if CB_literal_same(b.state[0].literal_previous,p.id,p.type,p.head,p.used,p.types,p.block) {b.state[0].literal_previous=p;return;}
+      ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:83:120: mutant survived: the assignment was removed
+   if CB_literal_same(b.state[0].literal_previous,p.id,p.type,p.head,p.used,p.types,p.block) {b.state[0].literal_previous=p;return;}
+                                                                                                                         ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:83:101: mutant survived: 0 became 1
+   if CB_literal_same(b.state[0].literal_previous,p.id,p.type,p.head,p.used,p.types,p.block) {b.state[0].literal_previous=p;return;}
+                                                                                                      ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:89:52: mutant survived: '>=' became '>'
+   e:=b.c.nodes[id];enabled:=b.literal_cache && index>=0;block:=0;if enabled {block=index/8;
+                                                     ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:89:54: mutant survived: 0 became 1
+   e:=b.c.nodes[id];enabled:=b.literal_cache && index>=0;block:=0;if enabled {block=index/8;
+                                                       ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:89:63: mutant survived: 0 became 1
+   e:=b.c.nodes[id];enabled:=b.literal_cache && index>=0;block:=0;if enabled {block=index/8;
+                                                                ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:89:89: mutant survived: 8 became 9
+   e:=b.c.nodes[id];enabled:=b.literal_cache && index>=0;block:=0;if enabled {block=index/8;
+                                                                                          ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:94:45: mutant survived: 0 became 1
+     selected:=p.fields[index%8];if selected!=0 && b.c.nodes[selected].field_index==index {if !CB_tick(b,e.loc) {return 0;}return selected;}
+                                              ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:94:119: mutant survived: 0 became 1
+     selected:=p.fields[index%8];if selected!=0 && b.c.nodes[selected].field_index==index {if !CB_tick(b,e.loc) {return 0;}return selected;}
+                                                                                                                        ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:99:32: mutant survived: 0 became 1
+    if !CB_tick(b,e.loc) {return 0;}f:=b.c.nodes[field];
+                                 ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:102:14: mutant survived: '&&' became '||'
+    if enabled && f.field_index>=0 && f.field_index/8==block {slot:=f.field_index%8;if staged.fields[slot]==0 {staged.fields[slot]=field;}}
+               ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:102:30: mutant survived: '>=' became '>'
+    if enabled && f.field_index>=0 && f.field_index/8==block {slot:=f.field_index%8;if staged.fields[slot]==0 {staged.fields[slot]=field;}}
+                               ^
+/tmp/coax-12625-source/scoped-mutation/cache-literal-resume-v2/scope.coax:102:32: mutant survived: 0 became 1
+    if enabled && f.field_index>=0 && f.field_index/8==block {slot:=f.field_index%8;if staged.fields[slot]==0 {staged.fields[slot]=field;}}
+                                 ^
+77 mutants, 63 killed, 14 survived

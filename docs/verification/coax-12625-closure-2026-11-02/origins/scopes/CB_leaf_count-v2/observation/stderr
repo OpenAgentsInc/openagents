@@ -1,0 +1,5 @@
+/tmp/coax-12625-origins-closure-scopes/CB_leaf_count-v2/scope.coax:136:39: error[E0403]: compile-time call depth exceeds 64
+   if r.kind==CK_Kind.array {n=r.length*CB_leaf_count(b,r.elem);}
+                                        ^
+  note: in #test origin leaf count preserves the independently admitted 256-aggregate payload
+coax: the checks fail before any mutation; make them pass first

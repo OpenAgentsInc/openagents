@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "mutate",
+    "/tmp/coax-12625-projection/phase-v4-mutation/scope.coax",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "returncode": 0,
+  "timeout": false,
+  "elapsed_seconds": 231.33631799998693,
+  "compiler_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "pins_unchanged": true,
+  "stdout_sha256": "4c8aaa135923b8e426e741b288874ac2e996eccad5bce036e4d9e231035596e7",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "mutate",
+    "/tmp/coax-12625-origins-closure-scopes/CB_leaf_count-v3/scope.coax",
+    "--root-only",
+    "--jobs",
+    "2",
+    "--evidence",
+    "/tmp/coax-12625-origins-closure-scopes/CB_leaf_count-v3/observation/evidence.json"
+  ],
+  "exit_status": 0,
+  "timeout": false,
+  "seconds": 188.77748050005175,
+  "pins_unchanged": true,
+  "compiler_unchanged": true,
+  "stdout_sha256": "a5498f2fb2bfe274203f081dafa89f3f1334b4a22e94149f7b39de98c4c9f906",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

@@ -1,0 +1,16 @@
+{
+  "name": "emit-profiles",
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "c",
+    "lib/compiler/profiles.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v5/profiles.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.040511167026124895,
+  "stdout_sha256": "f1f47f87a05805a2a37b243be35de1d0092c89287a73b934acb504c584908ab9",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

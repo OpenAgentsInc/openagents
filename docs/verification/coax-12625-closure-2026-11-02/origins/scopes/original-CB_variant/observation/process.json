@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/tmp/coax-chapter30-r2/trusted-H601802/coax",
+    "mutate",
+    "/tmp/coax-12625-source/scoped-mutation/borrow-CB_variant-resume/scope.coax",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "returncode": 1,
+  "timeout": false,
+  "elapsed_seconds": 38.06242237507831,
+  "setup_sha256": "89586a9dd608c4d8217f77911c9f385fd4fa76511156f2197052605688f37ba7",
+  "compiler_sha256": "6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648",
+  "pins_unchanged": true,
+  "stdout_sha256": "ff46bc12d5f8d33337283bc82250e5f98ee62e79f7aa3457d4d6a226a0156a9b",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

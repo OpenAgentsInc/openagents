@@ -1,0 +1,105 @@
+{
+  "schema": "coax.12625.index-probe.reuse.v1",
+  "unchanged": true,
+  "mutants": 34,
+  "prior_process": "/tmp/coax-12625-source/scoped-mutation/index-probe-v2/observation/process.json",
+  "prior_stdout": "/tmp/coax-12625-source/scoped-mutation/index-probe-v2/observation/stdout",
+  "definition_and_context_identity": {
+    "CB_index_probe": {
+      "old_sha256": "f8857a8db1c9b4a36c299e7922bc3e76388f828b2cbf677c58dbfcc75ae0827c",
+      "current_sha256": "f8857a8db1c9b4a36c299e7922bc3e76388f828b2cbf677c58dbfcc75ae0827c",
+      "identical": true
+    },
+    "CB_tick": {
+      "old_sha256": "073f5e677842632b741b72dbbccec790d4d4751258a1bef193c108d53cdf6d08",
+      "current_sha256": "073f5e677842632b741b72dbbccec790d4d4751258a1bef193c108d53cdf6d08",
+      "identical": true
+    },
+    "CK_resource": {
+      "old_sha256": "2bc560905903ea62e9d697fe9c0c1bb0a35c7b7ced41d47179b11a17d84a8d6e",
+      "current_sha256": "2bc560905903ea62e9d697fe9c0c1bb0a35c7b7ced41d47179b11a17d84a8d6e",
+      "identical": true
+    },
+    "CB_Context": {
+      "old_sha256": "e08be97dd00aa653f0dc940112c80d548ad0159c8698ac27fe5543c13a2fa371",
+      "current_sha256": "e08be97dd00aa653f0dc940112c80d548ad0159c8698ac27fe5543c13a2fa371",
+      "identical": true
+    },
+    "CB_State": {
+      "old_sha256": "eb678f5e4afd979cc10dec39ead52fc829e67dd5dbcd46dcbb67f46e3c4ae242",
+      "current_sha256": "eb678f5e4afd979cc10dec39ead52fc829e67dd5dbcd46dcbb67f46e3c4ae242",
+      "identical": true
+    },
+    "CK_Context": {
+      "old_sha256": "cdf4b6c4dddd08081139a2e2a867a2e8f50b0416649a09358e419ffbd9eb9ecb",
+      "current_sha256": "cdf4b6c4dddd08081139a2e2a867a2e8f50b0416649a09358e419ffbd9eb9ecb",
+      "identical": true
+    },
+    "CK_State": {
+      "old_sha256": "bdc25005081150992506cc62050d3921ed6a5337d4f947489bb0af5b92621d03",
+      "current_sha256": "bdc25005081150992506cc62050d3921ed6a5337d4f947489bb0af5b92621d03",
+      "identical": true
+    },
+    "CK_Node": {
+      "old_sha256": "7eada23dd07f86836c81b21df58d3d85d2b78fe22ae20d00e87b05e26462b9bc",
+      "current_sha256": "7eada23dd07f86836c81b21df58d3d85d2b78fe22ae20d00e87b05e26462b9bc",
+      "identical": true
+    },
+    "CK_Type": {
+      "old_sha256": "21d8f1a8cb1ec876895c1187786748216afed5580e85d132c65ff6455249f519",
+      "current_sha256": "21d8f1a8cb1ec876895c1187786748216afed5580e85d132c65ff6455249f519",
+      "identical": true
+    },
+    "CK_BorrowQuery": {
+      "old_sha256": "1d7178672bc9ef9b7f0a82a9c839f4f53497880987a1e529a49e9d3f020f0cfe",
+      "current_sha256": "1d7178672bc9ef9b7f0a82a9c839f4f53497880987a1e529a49e9d3f020f0cfe",
+      "identical": true
+    },
+    "CK_Error": {
+      "old_sha256": "8166d957873048488d6c254048b4ea104814715ddc1876f3e1302c562b398a12",
+      "current_sha256": "8166d957873048488d6c254048b4ea104814715ddc1876f3e1302c562b398a12",
+      "identical": true
+    },
+    "CK_Loc": {
+      "old_sha256": "b4ab566615875b795abb1f8e74f59aa62472455c51ba693e29185cbe2d55e827",
+      "current_sha256": "b4ab566615875b795abb1f8e74f59aa62472455c51ba693e29185cbe2d55e827",
+      "identical": true
+    },
+    "BS_path_valid": {
+      "old_sha256": "fb3a7e06cd7edec168d2c406eaab380f3346d9859c8d7c4d41b35e27a0b60d44",
+      "current_sha256": "fb3a7e06cd7edec168d2c406eaab380f3346d9859c8d7c4d41b35e27a0b60d44",
+      "identical": true
+    },
+    "CB_QueryProjection": {
+      "old_sha256": "d695924b77a5617ada8010ee35c438f6ee8b4da3904d0c3455452e5ca06a384d",
+      "current_sha256": "d695924b77a5617ada8010ee35c438f6ee8b4da3904d0c3455452e5ca06a384d",
+      "identical": true
+    },
+    "CB_ProjectionStep": {
+      "old_sha256": "decaa030da51655587ac506cca094aabb013a36983504c5e80b371315b43d097",
+      "current_sha256": "decaa030da51655587ac506cca094aabb013a36983504c5e80b371315b43d097",
+      "identical": true
+    },
+    "CB_LiteralBlock": {
+      "old_sha256": "d4635388cb2cb7287355a43808eb72e752c9e67a92a5d2082053d942b17215a0",
+      "current_sha256": "d4635388cb2cb7287355a43808eb72e752c9e67a92a5d2082053d942b17215a0",
+      "identical": true
+    },
+    "BS_Path": {
+      "old_sha256": "0e1b476ecf61c997ec395acb9d83d84cf352c40042e0e00a836d512bacdb23af",
+      "current_sha256": "0e1b476ecf61c997ec395acb9d83d84cf352c40042e0e00a836d512bacdb23af",
+      "identical": true
+    },
+    "BS_Step": {
+      "old_sha256": "51a5f1cd7bdea6d273d98a4385249165fc579f952271cb38d5bf0992396daa5b",
+      "current_sha256": "51a5f1cd7bdea6d273d98a4385249165fc579f952271cb38d5bf0992396daa5b",
+      "identical": true
+    },
+    "BS_Origin": {
+      "old_sha256": "a1238e307cca3b2e3599e91a136933a8e16896985c57b4f964db7f1fef55940d",
+      "current_sha256": "a1238e307cca3b2e3599e91a136933a8e16896985c57b4f964db7f1fef55940d",
+      "identical": true
+    }
+  },
+  "note": "Unchanged qualified probe reused; changed5indexprocedures separately stockroot-only138/138ZERO; no scores combinedacrossoverlappingmutationdomains"
+}

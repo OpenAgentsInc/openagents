@@ -1,0 +1,3 @@
+FAIL #test origin leaf count preserves the independently admitted 256-aggregate payload (2 ms)
+1 of 1201 checks (--only 'origin leaf count preserves'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

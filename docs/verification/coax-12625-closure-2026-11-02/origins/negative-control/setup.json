@@ -1,0 +1,7 @@
+{
+  "source_scope": "/tmp/coax-12625-origins-closure-scopes/CB_query-v6",
+  "source_sha256": "a3e7ed3e5af62baf6bc685e7a6fcf1a747e69cc3cc25a4d3c2b51d32ba9bdeac",
+  "change": "Only RAW-to-CLASS successful CB_projection_commit call removed",
+  "selection": "origin raw-to-class",
+  "expected": "E0406 assertion failure on public fuel admission, no private workspace assertions"
+}

@@ -1,0 +1,79 @@
+{
+  "original_root": "/tmp/coax-12625-origins-closure-scopes/CB_query-v3",
+  "sources": {
+    "scope.coax": {
+      "bytes": 28140,
+      "sha256": "36a65355f22cfd21300690fea51ea155af5dc530c9bfdb52e417b998b5b19fe0"
+    },
+    "coax/lib/compiler/checker.coax": {
+      "bytes": 5467480,
+      "sha256": "0dcbfd8fc67194f08e8bc9c5053fe5bc4917cc5a2abf3f21f4b1c2ec7d35b51b"
+    },
+    "coax/lib/compiler/query-index.coax": {
+      "bytes": 3906,
+      "sha256": "d4233ad8db6759b8daefea04c23ec0238a2c34b16289ff676c82fdcbc68ce89d"
+    },
+    "coax/lib/compiler/literal-projection-cache.coax": {
+      "bytes": 2804,
+      "sha256": "373f7334e923a1a83c38ddcf3b61e1cd97265fe9fd7a7f1539e1c7edb5406b6a"
+    },
+    "coax/lib/compiler/borrow-summary.coax": {
+      "bytes": 27609,
+      "sha256": "53f7f3d8db5c84006bc46f62fb5fffa7a7052a411cf59e7f4fec5321deadc92c"
+    },
+    "coax/lib/compiler/query-projection-cache.coax": {
+      "bytes": 5908,
+      "sha256": "400298be33a996fc7ee4982db26c64265e39401160d008e8feac1184e5a2bfae"
+    },
+    "coax/lib/compiler/sum-types.coax": {
+      "bytes": 45657,
+      "sha256": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a"
+    },
+    "coax/lib/compiler/sum-layout.coax": {
+      "bytes": 3650,
+      "sha256": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169"
+    },
+    "coax/lib/compiler/result-handling.coax": {
+      "bytes": 42762,
+      "sha256": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c"
+    },
+    "coax/lib/compiler/result-flow.coax": {
+      "bytes": 6040,
+      "sha256": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef"
+    },
+    "coax/lib/compiler/retain-policy.coax": {
+      "bytes": 20853,
+      "sha256": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785"
+    },
+    "coax/lib/compiler/quantity.coax": {
+      "bytes": 6156,
+      "sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+    },
+    "coax/lib/compiler/unit-algebra.coax": {
+      "bytes": 9564,
+      "sha256": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780"
+    },
+    "coax/lib/compiler/unit-forms.coax": {
+      "bytes": 8595,
+      "sha256": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33"
+    },
+    "coax/lib/compiler/spatial-policy.coax": {
+      "bytes": 9550,
+      "sha256": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536"
+    },
+    "coax/lib/compiler/spatial-mutation.coax": {
+      "bytes": 5163,
+      "sha256": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+    },
+    "coax/tests/results-cache-policy.coax": {
+      "bytes": 8095,
+      "sha256": "aaff4ef96fecec3e095ae5d81d3e4830be1faec08411571b00db613b05b6b4d3"
+    },
+    "coax/tests/results-projection-policy.coax": {
+      "bytes": 10194,
+      "sha256": "8dd7f84a84bb1a862fcc15a7d5a80ad1c94fd88fbf64323c09a279fb40e48004"
+    }
+  },
+  "archive_sha256": "c6a629a3c15a4f87e713797ce6614b1c0c546280b33350ff04ac3bf386afe08a",
+  "stock_source_receipts_verified": 4
+}

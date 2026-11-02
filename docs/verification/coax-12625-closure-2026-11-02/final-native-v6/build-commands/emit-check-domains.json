@@ -1,0 +1,16 @@
+{
+  "name": "emit-check-domains",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v5/coax",
+    "c",
+    "lib/compiler/check-domains.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v6/check-domains.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.018419875064864755,
+  "stdout_sha256": "02bbf189cdca9a3411d56adce7aacdfd7c364c926e820f3e3b9494a498cef014",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

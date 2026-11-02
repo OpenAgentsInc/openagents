@@ -1,0 +1,16 @@
+{
+  "name": "deep-refusal",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v5/bridge/coax-sanitized",
+    "c",
+    "/tmp/coax-12625-closure/native-v5/bridge/deep-types.coax",
+    "--library"
+  ],
+  "returncode": 1,
+  "expected_returncode": 1,
+  "timed_out": false,
+  "wall_limit_seconds": 30,
+  "elapsed_seconds": 0.10580329096410424,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "96528a1669dbe4ce1d6c8e7e58c0f93a7e04c305ca9172d0fbcb5fb08a729d2f"
+}

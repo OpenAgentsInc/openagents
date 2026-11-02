@@ -1,0 +1,17 @@
+{
+  "module": "budget",
+  "argv": [
+    "/tmp/coax-12625-closure/native-v6/coax",
+    "c",
+    "lib/compiler/budget.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-closure/native-v6/fixedpoints/budget.h"
+  ],
+  "returncode": 0,
+  "timed_out": false,
+  "elapsed_seconds": 0.2979215420782566,
+  "stderr_empty": true,
+  "c_identical": true,
+  "header_identical": true
+}

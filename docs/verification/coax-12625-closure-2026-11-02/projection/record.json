@@ -1,0 +1,81 @@
+{
+  "schema": "coax.12625.projection-closure.v1",
+  "source_head": "92d8efaafdc9d7672960300341cb170782cd8303",
+  "frozen_utc": "2026-11-02T15:34:03.314051+00:00",
+  "pins": {
+    "coax/lib/compiler/query-projection-cache.coax": "400298be33a996fc7ee4982db26c64265e39401160d008e8feac1184e5a2bfae",
+    "coax/tests/results-projection-policy.coax": "d5343b61a282b9026067c5136c103b743980eb8b7f1ec574c1a2dec6fdfe251f"
+  },
+  "producer": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "scope": {
+    "procedures": [
+      "CB_projection_hit",
+      "CB_query_project",
+      "CB_projection_commit"
+    ],
+    "all_production_procedures": true,
+    "exact_production_text_matches_scope": true,
+    "baseline_checks_retained": 1201,
+    "new_oracle_groups": 7,
+    "new_oracle_cases": 87,
+    "stock_root_only": true,
+    "jobs": 4,
+    "command": [
+      "/tmp/coax-12625-native/final-v4/coax",
+      "mutate",
+      "/tmp/coax-12625-projection/post-audit-v5-mutation/scope.coax",
+      "--root-only",
+      "--jobs",
+      "4"
+    ],
+    "dependency_manifest": "post-audit-v5-mutation/setup.json"
+  },
+  "result": {
+    "mutants": 286,
+    "killed": 286,
+    "survived": 0,
+    "elapsed_seconds": 184.95182833401486,
+    "pins_unchanged": true,
+    "timeout": false,
+    "raw_report": "post-audit-v5-mutation/stdout",
+    "process_record": "post-audit-v5-mutation/process.json"
+  },
+  "checks_first": {
+    "initial_focused_green": "oracles-v1.stdout",
+    "original_module_mutation_with_new_oracles": {
+      "record": "oracles-v2-mutation/process.json",
+      "mutants": 290,
+      "killed": 279,
+      "survived": 11
+    },
+    "phase_cleanup_baseline": {
+      "record": "phase-v3-baseline/process.json",
+      "checks": 1201,
+      "passed": 1201
+    }
+  },
+  "phase_contract": {
+    "eligible_cold_context": "eligible requires b.retain_fields; array/view/field paths remain the original admitted kinds; all existing path, type and field guards remain.",
+    "field_refusal": "In retain_fields mode CB_field has no ordinary absent-field return. Every zero follows CK_resource, failed CB_tick, or CB_at fatal refusal. Testing the canonical fatal phase after CB_field preserves immediate stop before reading field metadata or storing the witness.",
+    "caller_barriers": "CB_query_project checks c.state[0].fatal immediately after CB_projection_hit and before considering hit. CB_query checks fatal immediately after CB_query_project, before using expected_type or any pending record.",
+    "private_results": "Post-fatal hit/type values remain unspecified. The implementation returns already established fatal/field/type state; checks ignore those private values and check actual resource diagnostics and publication/phase boundaries.",
+    "constraints": "Every admission guard, resource call and charge position preserved. Shared work1048576; borrow path8. No equivalent markers or mutator exclusions."
+  },
+  "active_process_group_members": [],
+  "process_group_checked": 28015,
+  "remaining": "No projection-cache mutation survivors. Matching final native compiler image, canonical seeds/fixedpoints and full-compiler cost qualification are coordinated after all source owners freeze.",
+  "unmodified_by_this_agent": [
+    "checker.coax",
+    "query-index.coax",
+    "literal-projection-cache.coax",
+    "result-handling.coax",
+    "result-flow.coax",
+    "sum-types.coax",
+    "sum-layout.coax"
+  ],
+  "oracle_contract_audit": {
+    "removed": "Only the conjunction asserting private field_type/field_row hint words stayed0 after fatal. Those words are unused after refusal; they have no published-value contract.",
+    "retained": "Fatal refusal, exactly one E0381 at the original site, valid-state endpoint and cache behavior, route/type admission, and successful record publication. No assertion of private post-fatal return values.",
+    "rerun": "Stock exact-module mutation rerun after that test edit:286/286 ZERO; no old score carried forward."
+  }
+}

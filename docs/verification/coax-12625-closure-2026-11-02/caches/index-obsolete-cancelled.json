@@ -1,0 +1,6 @@
+{
+  "reason": "Root clarified that no private scratch marker/tail values should be asserted, including postfatal. Stop this obsolete oracle epoch before rerunning weaker public/cost oracle. No production changes.",
+  "groups": [
+    27617
+  ]
+}

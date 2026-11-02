@@ -1,0 +1,50 @@
+{
+  "argv": [
+    "/tmp/coax-12625-native/final-v4/coax",
+    "mutate",
+    "/tmp/coax-12625-caches/index-v4/scope.coax",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "launched_argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
+    "--",
+    "/tmp/coax-12625-native/final-v4/coax",
+    "mutate",
+    "/tmp/coax-12625-caches/index-v4/scope.coax",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "cwd": "/private/tmp/openagents-12625-complete-20261101",
+  "started": true,
+  "pid": 28616,
+  "returncode": 0,
+  "launch_errno": null,
+  "launch_error": null,
+  "elapsed_s": 297.1094593750313,
+  "timeout": false,
+  "deadline_exhausted": false,
+  "stdout_limit": false,
+  "stderr_limit": false,
+  "output_limit": false,
+  "observed_stdout_bytes": 116,
+  "observed_stderr_bytes": 0,
+  "group_killed": false,
+  "kill_errno": null,
+  "read_errno": null,
+  "stdout_eof": true,
+  "stderr_eof": true,
+  "limits": {
+    "stdout": 8388608,
+    "stderr": 8388608,
+    "total": 8388608
+  },
+  "timeout_s": 840,
+  "deadline": 572911.54462825,
+  "elapsed_seconds": 297.11029145901557,
+  "private_inputs_unchanged": true,
+  "shared_inputs_unchanged": true
+}
