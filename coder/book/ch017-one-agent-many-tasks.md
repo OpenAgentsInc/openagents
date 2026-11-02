@@ -189,6 +189,35 @@ fails on linux, investigate why", and dropped "thanks, that looks great!",
 and one for eight took 252 to 319 ms: about 36 ms a decision instead of
 about 227.
 
+### Filtering
+
+`python3 coder/tui/filter_eval.py` sends a labelled stream of 100 events
+through the Router, under a scratch `CODER_HOME` with a session grant for
+System One. Each event is labelled by whether it should start work:
+
+| Source | Mode | Events |
+| --- | --- | --- |
+| `chat` | `candidate`, any author | 15 work requests, 35 social messages |
+| `ci` | `candidate`, policy "start work only when a build or check on main fails" | 6 failures on main, 14 passes, branch failures and notices |
+| `team` | `explicit_requests_only`, author `kim` | 8 requests addressed by kim, 6 not addressed, 6 addressed by `mallory` |
+| `spam` | `ignore` | 10 |
+
+Two live runs on mammoth-1 gave the same result:
+
+- The fast path dropped 22 of the 100 events (all of `spam`, kim's
+  unaddressed events and mallory's) and started 8 (kim's addressed
+  requests), with no error.
+- The slow path decided the other 70 with no miss and no false start. It
+  started Workers for all 21 work items, including "build #812 on main
+  failed", and dropped "build #813 on branch feature/tui failed: lint" and
+  "the parser bug was fixed yesterday".
+- That took 9 System One requests, 9 per 100 events: eight batches of 8
+  and one of 6, at 246 to 858 ms each.
+
+The stream is small and written by hand. The labels are clear cases, so
+it shows the two paths work together, not where System One's accuracy
+starts to drop.
+
 ### Workers and subscription
 
 A Worker is a background Coder session (chapter14): the Router runs `coder
@@ -340,9 +369,9 @@ line reports one session, two hops.
   Report mean batch size, time per request and amortized time per decision at
   each rate, and the rate where decision accuracy on a labelled set first
   drops.
-- **Filtering.** On a labelled event stream, report the fraction the fast path
+- [x] **Filtering.** On a labelled event stream, report the fraction the fast path
   drops, the slow path's misses and false starts, and model calls per hundred
-  events.
+  events. Measured by `coder/tui/filter_eval.py` (see [Filtering](#filtering)).
 - **Recall.** A follow-up about a task that left the Router's window long ago,
   sent from a different channel, recovers the task through the reference
   graph. Report hops and tokens read.
