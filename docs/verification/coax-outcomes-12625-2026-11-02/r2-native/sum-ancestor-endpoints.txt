@@ -1,0 +1,3 @@
+ok   #forall R2 sum audit exhausted ancestor probes retain a conservative result (2 cases, 2262717 steps, 71 ms)
+1 of 1219 checks (--only 'R2 sum audit exhausted'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

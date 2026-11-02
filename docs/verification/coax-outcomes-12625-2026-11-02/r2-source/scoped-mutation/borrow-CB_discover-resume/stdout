@@ -1,0 +1,11 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_discover-resume/scope.coax:255:174: mutant survived: false became true
+    if CK_sum(b.c,t) {if depth>=256 {CK_resource(b.c,b.state[0].loc);return false;}for variant:0..<CK_sum_count(b.c,t) {payload:=CB_variant(b,t,variant);if payload==0 {return false;}if CB_discover(b,payload,depth+1,mutable) {return true;}if b.c.state[0].fatal {return false;}}}
+                                                                                                                                                                               ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_discover-resume/scope.coax:255:212: mutant survived: 1 became 2
+    if CK_sum(b.c,t) {if depth>=256 {CK_resource(b.c,b.state[0].loc);return false;}for variant:0..<CK_sum_count(b.c,t) {payload:=CB_variant(b,t,variant);if payload==0 {return false;}if CB_discover(b,payload,depth+1,mutable) {return true;}if b.c.state[0].fatal {return false;}}}
+                                                                                                                                                                                                                     ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_discover-resume/scope.coax:255:267: mutant survived: false became true
+    if CK_sum(b.c,t) {if depth>=256 {CK_resource(b.c,b.state[0].loc);return false;}for variant:0..<CK_sum_count(b.c,t) {payload:=CB_variant(b,t,variant);if payload==0 {return false;}if CB_discover(b,payload,depth+1,mutable) {return true;}if b.c.state[0].fatal {return false;}}}
+                                                                                                                                                                                                                                                                            ^
+132 mutants, 129 killed, 3 survived

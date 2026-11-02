@@ -360,6 +360,22 @@ second :: ()->Result(A,B__u_C) #export_c {return Result(A,B__u_C).{err=B__u_C.{n
         result=self.run_tool([os.environ.get('CC','cc'),'-std=c11',composed,'-o',self.directory/'compose'])
         self.assertEqual(result.returncode,0,result.stderr)
 
+    def test_changed_sum_policies_in_the_actual_native_compiler(self):
+        artifacts=Path(os.environ.get('COAX_TEST_ARTIFACT_DIR',ROOT/'bin')).resolve()
+        # Include one complete emitted implementation, so these are the native
+        # compiler's actual policies rather than translated test substitutes.
+        source=ROOT/'tests/results-sum-native.c'
+        for name,flags in (('O0',['-O0']),('O2',['-O2']),
+                           ('sanitized',['-O1','-g','-fsanitize=address,undefined',
+                                         '-fno-sanitize-recover=all','-fno-omit-frame-pointer'])):
+            with self.subTest(profile=name):
+                binary=self.directory/name
+                result=self.run_tool([os.environ.get('CC','cc'),'-std=c11',*flags,
+                                      '-I',artifacts,source,'-lm','-o',binary])
+                self.assertEqual(result.returncode,0,result.stderr)
+                result=self.run_tool([binary])
+                self.assertEqual((result.returncode,result.stdout,result.stderr),(0,'',''))
+
 
 if __name__ == '__main__':
     unittest.main()

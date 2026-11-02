@@ -1,0 +1,23 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+coax/lib/compiler/sum-layout.coax:47:14: mutant survived: '>' became '>='
+    if n<0 || n>2147483647 || a<1 || a>1073741824 || (a & (a-1))!=0 {return SL_Layout.{};}
+               ^
+coax/lib/compiler/sum-layout.coax:47:15: mutant survived: 2147483647 became 2147483648
+    if n<0 || n>2147483647 || a<1 || a>1073741824 || (a & (a-1))!=0 {return SL_Layout.{};}
+                ^
+coax/lib/compiler/sum-layout.coax:47:38: mutant survived: 1073741824 became 1073741825
+    if n<0 || n>2147483647 || a<1 || a>1073741824 || (a & (a-1))!=0 {return SL_Layout.{};}
+                                       ^
+coax/lib/compiler/sum-layout.coax:51:23: mutant survived: 1 became 2
+   offset:=(4+alignment-1)/alignment*alignment;
+                        ^
+coax/lib/compiler/sum-layout.coax:52:9: mutant survived: '>' became '>='
+   if size>2147483647-offset {return SL_Layout.{};}
+          ^
+coax/lib/compiler/sum-layout.coax:52:20: mutant survived: '-' became '+'
+   if size>2147483647-offset {return SL_Layout.{};}
+                     ^
+coax/lib/compiler/sum-layout.coax:52:10: mutant survived: 2147483647 became 2147483648
+   if size>2147483647-offset {return SL_Layout.{};}
+           ^
+64 mutants, 57 killed, 7 survived

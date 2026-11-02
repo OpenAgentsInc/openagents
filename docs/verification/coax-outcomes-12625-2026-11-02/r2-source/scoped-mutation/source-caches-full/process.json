@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/tmp/coax-chapter30-r2/trusted-H601802/coax",
+    "mutate",
+    "/tmp/coax-12625-source/scoped-mutation/source-caches-full/scope.coax",
+    "--root-only",
+    "--jobs",
+    "8"
+  ],
+  "returncode": -15,
+  "timeout": true,
+  "elapsed_seconds": 840.0247623750474,
+  "setup_sha256": "c91bca61c14e6d0c64a53a28fe9c3fcbd30cc7e00715223980b52b7d7360b984",
+  "compiler_sha256": "6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648",
+  "pins_unchanged": true,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

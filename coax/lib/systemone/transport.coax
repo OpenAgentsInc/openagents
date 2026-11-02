@@ -1,11 +1,12 @@
 // The HTTP(S) transport: curl as a child (coax/platform/process-native.c,
 // reached through the Claude SDK's process bindings; link that file). The
 // body goes on curl's stdin; the response and its status come back on
-// stdout. The API key never passes through Coax or curl's arguments: curl
-// reads it from the environment variable named by key_env (--variable) and
-// expands it into the Authorization header itself, so it is not visible in
-// a process listing either. A keyless door (key_env "", our own
-// psionic-serve on loopback) sends no Authorization header.
+// stdout. With an inherited key_env, curl reads/expands the key itself and
+// the value does not enter Coax memory. An explicit key_value is already in
+// Coax memory and is copied synchronously into the child's environment. Both
+// paths keep the key out of curl's arguments and process listings. A keyless
+// door (key_env "", our own psionic-serve on loopback) sends no Authorization
+// header.
 
 #load "answers.coax";
 #load "../agent/claude/transport.coax";

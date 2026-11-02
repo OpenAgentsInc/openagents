@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "/tmp/coax-chapter30-r2/trusted-H601802/coax",
+    "mutate",
+    "/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "returncode": 1,
+  "timeout": false,
+  "elapsed_seconds": 276.76007550000213,
+  "setup_sha256": "8f3e51dc1af1dc793a01d31e562b03b01d95f1fa7a80fce40f83f7b75d1f6213",
+  "compiler_sha256": "6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648",
+  "pins_unchanged": true,
+  "stdout_sha256": "6be148788eaa0521c8408c75cb15ec70a9c0e6ae0066c0e62c5cb0734e9f9a92",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

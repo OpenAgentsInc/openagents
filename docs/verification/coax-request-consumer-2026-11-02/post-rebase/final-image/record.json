@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "scope": "Final coherent R2 image binding to fresh post-rebase B3 native observations through complete checked input and emitted-artifact equality. No native observation is relabeled as reexecuted.",
+  "compiler": {
+    "path": "/private/tmp/coax-12625-native/final-v4/coax",
+    "sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b"
+  },
+  "prior_compiler": {
+    "path": "/tmp/coax-12625-native/v3/coax",
+    "sha256": "67e753aec35af4d35b31988fe2962ccb04f0b42ece3e86d465511972426dab80"
+  },
+  "artifact_count": 11,
+  "all_artifacts_byte_equal": true,
+  "inputs_unchanged": true,
+  "checks": 42,
+  "authority": "passed",
+  "focused_mutants": {
+    "typed": 32,
+    "owner_policy": 34,
+    "survivors": 0,
+    "marked_equivalent": 0
+  },
+  "diagnostics": [
+    "E0907",
+    "E0904",
+    "E0383"
+  ],
+  "native_reexecuted": false,
+  "native_basis": "../record.json and its original fresh source/host receipts",
+  "finalization": {
+    "original_receipt": "/private/tmp/b3-rebased-975b-final-v4/qualification.json",
+    "original_receipt_sha256": "f05eec1dce3c7d59236290de58577d8f8803ee408d28602d2feca9668e48fb18",
+    "original_run_final_metadata_failure": "tuple-key metadata typo after every substantive stage passed",
+    "finalizer": "/tmp/b3-finalize-rebind.py",
+    "finalizer_sha256": "aefd45de678a80bcf9c6a98ca923c27cb87f9051735774cbf10e2f92f0e8b417",
+    "substantive_stages_reexecuted": false,
+    "validation": "independently read back every C/header equality, stage exit, diagnostic, mutation inventory, source, native input, tool and prior receipt"
+  },
+  "qualification_sha256": "5222f3831e158dd24eea9abe4b98621becae100a8605df08286113327e9f6729",
+  "archive": {
+    "bytes": 126400,
+    "sha256": "41f6fe41a4583b031e99f7751a832ee5c325861fd398a657368472f365753fe2"
+  },
+  "manifest_sha256": "faa8d69c543b89fb773fa96429757238d36fbfcd8d3b8f2b37bccce9f55f2fba",
+  "readback_verified": true,
+  "limits": "Unchanged canonical/exclusive owner and disjoint live snapshots preconditions; actual bounded Lab consumer only. Whole desktop/UI, remote service, new key-value injection, PTY feature and compiler normal-release/cache readiness remain outside this witness."
+}

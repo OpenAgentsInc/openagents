@@ -1969,11 +1969,12 @@ CK_clone :: (c:CK_Context,id:int)->int {
   n.head=CK_clone_list(c,n.head);
   // Checked constructors may occur in generic field defaults. Rebuild their
   // syntax so each specialization re-admits the active type and payload.
-  if n.kind==CK_Tag.expr_sum {field:=CK_new(c,CK_Tag.field_init,n.loc);if field==0 {return 0;}c.nodes[field].name=n.name;c.nodes[field].a=n.a;n.kind=CK_Tag.expr_struct;n.head=field;n.a=0;n.type=0;n.effects_known=false;}
+  // Clear the generated marker: CK_prechecked must not reuse the old type.
+  if n.kind==CK_Tag.expr_sum {field:=CK_new(c,CK_Tag.field_init,n.loc);if c.state[0].fatal {return field;}c.nodes[field].name=n.name;c.nodes[field].a=n.a;n.kind=CK_Tag.expr_struct;n.mark=0;n.head=field;}
   if n.kind==CK_Tag.expr_some {n.kind=CK_Tag.expr_call;n.head=n.a;n.a=0;}
-  if n.kind==CK_Tag.expr_null {n.type=0;}
-  n.effect_head=CK_clone_list(c,n.effect_head);n.propagate_type=0;n.sum_variant= -1;if n.kind==CK_Tag.case_binding {n.a=0;}n.borrow_binding=0;n.borrow_owner=0;n.borrow_writes=0;n.borrow_returns=0;n.borrow_calls=0;n.borrow_next=0;n.borrow_status=0;c.nodes[copy]=n;return copy;
+  n.borrow_binding=0;n.borrow_owner=0;n.borrow_writes=0;n.borrow_returns=0;n.borrow_calls=0;n.borrow_next=0;n.borrow_status=0;c.nodes[copy]=n;return copy;
 }
+
 CK_clone_list :: (c:CK_Context,item:int)->int {
   head:=CK_NONE;last:=CK_NONE;at:=item;
   while at!=CK_NONE {k:=CK_clone(c,at);if last==CK_NONE {head=k;}else {c.nodes[last].next=k;}last=k;at=c.nodes[at].next;}
@@ -2762,7 +2763,7 @@ CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   c.state[0].generic=CK_NONE;c.state[0].site=CK_Site.none;
   id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.check {CK_check(c,id);}id=c.nodes[id].next;}
   CK_instantiate(c);
-  if c.state[0].error_count==0 && !c.state[0].fatal {CK_results(c);}
+  if c.state[0].error_count==0 {if !c.state[0].fatal {CK_results(c);}}
   if c.state[0].error_count==0 && !c.state[0].fatal {CK_borrow_returns(c);}
   if options.authority && c.state[0].error_count==0 {CK_coverage(c);}
   if options.metal && c.state[0].error_count==0 {CK_metal(c);}

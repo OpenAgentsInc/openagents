@@ -1,0 +1,15 @@
+{
+  "name": "emit-importer",
+  "argv": [
+    "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+    "c",
+    "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/compiler.coax",
+    "--library",
+    "--header",
+    "/tmp/coax-12625-native/proto_importer.h"
+  ],
+  "returncode": 1,
+  "elapsed_seconds": 8.331922124954872,
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr_sha256": "eade7c9f1c3d1bf45cb0489c797382260182319fea82e17b4d29bcd4d48dd40f"
+}

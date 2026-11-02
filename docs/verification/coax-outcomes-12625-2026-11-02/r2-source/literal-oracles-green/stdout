@@ -1,0 +1,4 @@
+ok   #forall R2 focused literal witness identity requires every frozen key component (7 cases, 645 steps, 0 ms)
+ok   #forall R2 focused literal FIFO refresh preserves two working sets within remaining fuel (2 cases, 214258 steps, 28 ms)
+2 of 1204 checks (--only 'R2 focused literal'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

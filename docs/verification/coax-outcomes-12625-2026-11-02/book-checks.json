@@ -1,0 +1,34 @@
+{
+  "schema": "coax.12625.book-checks.v1",
+  "observations": [
+    {
+      "command": [
+        "python3",
+        "coax/book/check-structure.py"
+      ],
+      "outcome": "passed",
+      "scope": "navigation/local links/checked excerpts/chapter registry after rebasing onto 8ed49c9b6a"
+    },
+    {
+      "command": [
+        "bash",
+        "-n",
+        "coax/tests/run.sh"
+      ],
+      "outcome": "passed",
+      "scope": "focused maintenance-gate shell syntax"
+    },
+    {
+      "command": [
+        "coax/web/tool.sh",
+        "tools-check"
+      ],
+      "outcome": "failed",
+      "scope": "1433 tracked tools; exactly one upstream new tool lacks its required reason header",
+      "file": "psionic/tests/check_deepseek_recipe.sh",
+      "introduced_by": "8ed49c9b6a",
+      "changed_by_this_task": false,
+      "action": "retained as an upstream release gate; no false Firm reason or unrelated port added"
+    }
+  ]
+}

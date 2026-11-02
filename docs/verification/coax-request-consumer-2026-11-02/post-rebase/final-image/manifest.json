@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "scope": "Final image emissions, actual evaluator/mutation/diagnostic logs and independent finalization; original failed metadata receipt is retained separately.",
+  "files": [
+    {
+      "member": "b3-finalize-rebind.py",
+      "original": "/tmp/b3-rebased-975b-final-v4/b3-finalize-rebind.py",
+      "bytes": 4485,
+      "sha256": "aefd45de678a80bcf9c6a98ca923c27cb87f9051735774cbf10e2f92f0e8b417"
+    },
+    {
+      "member": "b3-rebased-final-rebind.py",
+      "original": "/tmp/b3-rebased-975b-final-v4/b3-rebased-final-rebind.py",
+      "bytes": 7820,
+      "sha256": "7de565d66fb8f176da6fe12ae461af025561025715ab1d516f00a2d34392f21d"
+    },
+    {
+      "member": "entry-green-emit.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/entry-green-emit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entry-green/lab-owner.c",
+      "original": "/tmp/b3-rebased-975b-final-v4/entry-green/lab-owner.c",
+      "bytes": 79766,
+      "sha256": "fea9a74112b67c334acfcb747480fb93bcfb50583485e0035594d7e5025e3e94"
+    },
+    {
+      "member": "entry-green/lab-owner.h",
+      "original": "/tmp/b3-rebased-975b-final-v4/entry-green/lab-owner.h",
+      "bytes": 134169,
+      "sha256": "d418cb2205d1cd9bd446ec963ecefeb05b4dc0c903e6a6ada141f24057e2690e"
+    },
+    {
+      "member": "entry-red-emit.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/entry-red-emit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entry-red/lab-owner.c",
+      "original": "/tmp/b3-rebased-975b-final-v4/entry-red/lab-owner.c",
+      "bytes": 79260,
+      "sha256": "c4ce23078e4cf9d974be262d5319d825677460b2105785c31b59cdce41a2e584"
+    },
+    {
+      "member": "entry-red/lab-owner.h",
+      "original": "/tmp/b3-rebased-975b-final-v4/entry-red/lab-owner.h",
+      "bytes": 134167,
+      "sha256": "2ec3937ed12c3a56d07d100617de8290356d2c24575128cfc6aaa8f22f0e600c"
+    },
+    {
+      "member": "factory-emit.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/factory-emit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "factory/zeron.c",
+      "original": "/tmp/b3-rebased-975b-final-v4/factory/zeron.c",
+      "bytes": 182786,
+      "sha256": "d59da61b7d17364da822ee62dfd798b0c1ee255242d3f66acce4b4f13425c526"
+    },
+    {
+      "member": "factory/zeron.h",
+      "original": "/tmp/b3-rebased-975b-final-v4/factory/zeron.h",
+      "bytes": 354912,
+      "sha256": "d14af1ca9e680293fe3468ddbb9420d3b3d5d1eab31c3afea7b4b27ce53f2d0d"
+    },
+    {
+      "member": "finalized-qualification.json",
+      "original": "/tmp/b3-rebased-975b-final-v4/finalized-qualification.json",
+      "bytes": 51459,
+      "sha256": "5222f3831e158dd24eea9abe4b98621becae100a8605df08286113327e9f6729"
+    },
+    {
+      "member": "ignored-start.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/ignored-start.stderr",
+      "bytes": 211,
+      "sha256": "48462f5df605a47c7fae2dd9ba6ef57d3c5135c5c4f602436e99aee4e635b5ca"
+    },
+    {
+      "member": "ignored-start.stdout",
+      "original": "/tmp/b3-rebased-975b-final-v4/ignored-start.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "incomplete-terminal.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/incomplete-terminal.stderr",
+      "bytes": 227,
+      "sha256": "44ee25894f9f09b39c25bbe2394905bc1011a382b49f38a479d33a8f44d13a6c"
+    },
+    {
+      "member": "incomplete-terminal.stdout",
+      "original": "/tmp/b3-rebased-975b-final-v4/incomplete-terminal.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "lab-emit.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/lab-emit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "lab/lab-consumer.c",
+      "original": "/tmp/b3-rebased-975b-final-v4/lab/lab-consumer.c",
+      "bytes": 286485,
+      "sha256": "94416dbefaec9dc33d5879d0967cf2aaacb9b865077a21190522a650ef633f92"
+    },
+    {
+      "member": "lab/lab-consumer.h",
+      "original": "/tmp/b3-rebased-975b-final-v4/lab/lab-consumer.h",
+      "bytes": 223004,
+      "sha256": "f477b228aefdc9c5b2d0ed9c30aaa65684734df21b623a1f4471703b6fd1560b"
+    },
+    {
+      "member": "local-snapshot.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/local-snapshot.stderr",
+      "bytes": 318,
+      "sha256": "65248a69d67ec674890c2e933c416b9310d1a1bd8e43c5346df8864892433aaa"
+    },
+    {
+      "member": "local-snapshot.stdout",
+      "original": "/tmp/b3-rebased-975b-final-v4/local-snapshot.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "metadata-failure-summary.txt",
+      "original": "/tmp/b3-rebased-975b-final-v4/metadata-failure-summary.txt",
+      "bytes": 636,
+      "sha256": "be9e8885cb5b2ef677da3238fff381e684f95f4d3d680f3c23737fe8b65f9a63"
+    },
+    {
+      "member": "owner-policy-mutation.json",
+      "original": "/tmp/b3-rebased-975b-final-v4/owner-policy-mutation.json",
+      "bytes": 2469,
+      "sha256": "d411a4d61b0e8ef68a5f998adbfc760eeb0ef6609f378dc6aea145184e09f831"
+    },
+    {
+      "member": "owner-policy-mutation.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/owner-policy-mutation.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "owner-policy-mutation.stdout",
+      "original": "/tmp/b3-rebased-975b-final-v4/owner-policy-mutation.stdout",
+      "bytes": 114,
+      "sha256": "dc2d5cb9546cfc67088b6a8fb9bb984b6bcbdd6081ef8bf825fb8485ff90d83d"
+    },
+    {
+      "member": "qualification.json",
+      "original": "/tmp/b3-rebased-975b-final-v4/qualification.json",
+      "bytes": 40186,
+      "sha256": "f05eec1dce3c7d59236290de58577d8f8803ee408d28602d2feca9668e48fb18"
+    },
+    {
+      "member": "raw-owner-emit.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/raw-owner-emit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "raw-owner/systemone-owner.c",
+      "original": "/tmp/b3-rebased-975b-final-v4/raw-owner/systemone-owner.c",
+      "bytes": 398114,
+      "sha256": "077dcca307aec51a0aca541469148210c9b0242e353dd738c06a30d7490f3036"
+    },
+    {
+      "member": "raw-owner/systemone-owner.h",
+      "original": "/tmp/b3-rebased-975b-final-v4/raw-owner/systemone-owner.h",
+      "bytes": 12550,
+      "sha256": "f46ea59018ac0a33205958fda4f0819952f90f23cec4d48788fbaa74a6ed268e"
+    },
+    {
+      "member": "typed-checks.json",
+      "original": "/tmp/b3-rebased-975b-final-v4/typed-checks.json",
+      "bytes": 14033,
+      "sha256": "e152016516893e3f21e050a10e90c94c1be3bb6deacbb7b711671cb422d11fdd"
+    },
+    {
+      "member": "typed-checks.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/typed-checks.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "typed-checks.stdout",
+      "original": "/tmp/b3-rebased-975b-final-v4/typed-checks.stdout",
+      "bytes": 4259,
+      "sha256": "ce954d040156889f6bffa24b89073b690fe85578453e89575c4d77be3aa00249"
+    },
+    {
+      "member": "typed-emit.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/typed-emit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "typed-mutation.json",
+      "original": "/tmp/b3-rebased-975b-final-v4/typed-mutation.json",
+      "bytes": 14279,
+      "sha256": "87d77c8317cdcded4d4d8b01b9afd6e71b9b9770c9534eefd212e7374d14b647"
+    },
+    {
+      "member": "typed-mutation.stderr",
+      "original": "/tmp/b3-rebased-975b-final-v4/typed-mutation.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "typed-mutation.stdout",
+      "original": "/tmp/b3-rebased-975b-final-v4/typed-mutation.stdout",
+      "bytes": 114,
+      "sha256": "250378a8d6a37e99bbc5ac17e79a09c079f3b3382040606382e1c3f76c93039b"
+    },
+    {
+      "member": "typed/systemone-outcomes.c",
+      "original": "/tmp/b3-rebased-975b-final-v4/typed/systemone-outcomes.c",
+      "bytes": 413503,
+      "sha256": "4a3604acb44b01c5a9b26b624ac9dc3dc6df2217d048510aa540675f51e40e75"
+    }
+  ],
+  "readback_verified": true,
+  "archive": {
+    "bytes": 126400,
+    "sha256": "41f6fe41a4583b031e99f7751a832ee5c325861fd398a657368472f365753fe2"
+  }
+}

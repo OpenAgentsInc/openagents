@@ -1,0 +1,227 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:128:15: mutant survived: '||' became '&&'
+   if p.query<1 || p.query>b.state[0].queries {return false;}memo:=b.queries[p.query-1];
+                ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:128:12: mutant survived: '<' became '<='
+   if p.query<1 || p.query>b.state[0].queries {return false;}memo:=b.queries[p.query-1];
+             ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:128:13: mutant survived: 1 became 2
+   if p.query<1 || p.query>b.state[0].queries {return false;}memo:=b.queries[p.query-1];
+              ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:128:53: mutant survived: false became true
+   if p.query<1 || p.query>b.state[0].queries {return false;}memo:=b.queries[p.query-1];
+                                                      ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:129:40: mutant survived: '||' became '&&'
+   if memo.decl!=decl || memo.kind!=kind || memo.status!=2 || !bs_path_equal(memo.path,path) || !(memo.retain_classes==b.retain_classes || !memo.retain_classes) {return false;}
+                                         ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:129:21: mutant survived: '||' became '&&'
+   if memo.decl!=decl || memo.kind!=kind || memo.status!=2 || !bs_path_equal(memo.path,path) || !(memo.retain_classes==b.retain_classes || !memo.retain_classes) {return false;}
+                      ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:133:58: mutant survived: false became true
+    w:=p.steps[i];step:=path.steps[i];if w.type!=t {return false;}r:=b.c.types[t];
+                                                           ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:134:26: mutant survived: '&&' became '||'
+    if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {
+                           ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:135:138: mutant survived: '||' became '&&'
+     if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+                                                                                                                                           ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:135:104: mutant survived: '||' became '&&'
+     if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+                                                                                                         ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:135:62: mutant survived: '||' became '&&'
+     if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+                                                               ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:135:34: mutant survived: '||' became '&&'
+     if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+                                   ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:135:22: mutant survived: '||' became '&&'
+     if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+                       ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:135:31: mutant survived: '<' became '<='
+     if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+                                ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:135:32: mutant survived: 2 became 3
+     if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+                                 ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:135:43: mutant survived: '>' became '>='
+     if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+                                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:135:179: mutant survived: false became true
+     if r.decl!=w.decl || r.decl<2 || r.decl>b.c.state[0].used || b.c.nodes[r.decl].kind!=CK_Tag.struct_ || b.c.nodes[r.decl].head!=w.head || r.retain_fields!=w.field_head {return false;}
+                                                                                                                                                                                    ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:137:45: mutant survived: the call was removed
+     if b.c.nodes[w.head].kind!=CK_Tag.field {CK_resource(b.c,b.state[0].loc);return false;}
+                                              ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:137:84: mutant survived: false became true
+     if b.c.nodes[w.head].kind!=CK_Tag.field {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                     ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:138:61: mutant survived: '||' became '&&'
+     if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return false;}
+                                                              ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:138:43: mutant survived: '||' became '&&'
+     if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return false;}
+                                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:138:15: mutant survived: '||' became '&&'
+     if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return false;}
+                ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:138:97: mutant survived: the call was removed
+     if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                  ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:138:121: mutant survived: 0 became 1
+     if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                                          ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:138:136: mutant survived: false became true
+     if w.row<1 || w.row>b.state[0].queries || w.field_head<1 || w.field_head>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                                                         ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:140:176: mutant survived: the call was removed
+     if q.kind!=4 || q.decl!=t || q.type!=r.decl || q.status!=2 || q.count!=w.head || q.retain_classes || q.start!=step.index/8 || q.path.count!=0 || q.next<0 || q.next>=w.row {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                                                                                                 ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:140:215: mutant survived: false became true
+     if q.kind!=4 || q.decl!=t || q.type!=r.decl || q.status!=2 || q.count!=w.head || q.retain_classes || q.start!=step.index/8 || q.path.count!=0 || q.next<0 || q.next>=w.row {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                                                                                                                                        ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:141:10: mutant survived: 0 became 1
+     for j:0..<8 {if q.path.steps[j].kind!=0 {CK_resource(b.c,b.state[0].loc);return charged;}}
+           ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:143:17: mutant survived: '||' became '&&'
+     if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+                  ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:143:14: mutant survived: '<' became '<='
+     if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+               ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:143:15: mutant survived: 2 became 3
+     if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+                ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:143:27: mutant survived: '>' became '>='
+     if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:143:47: mutant survived: the call was removed
+     if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+                                                ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:143:71: mutant survived: 0 became 1
+     if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                        ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:143:86: mutant survived: false became true
+     if w.field<2 || w.field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                       ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:144:62: mutant survived: '||' became '&&'
+     f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+                                                               ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:144:50: mutant survived: '||' became '&&'
+     f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+                                                   ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:144:59: mutant survived: '<' became '<='
+     f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+                                                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:144:60: mutant survived: 1 became 2
+     f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+                                                             ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:144:71: mutant survived: '>=' became '>'
+     f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                        ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:144:98: mutant survived: the call was removed
+     f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                   ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:144:137: mutant survived: false became true
+     f:=b.c.nodes[w.field];if f.kind!=CK_Tag.field || f.type<1 || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
+                                                                                                                                          ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:59: mutant survived: the if condition was negated
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:59: mutant survived: '&&' became '||'
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:34: mutant survived: '&&' became '||'
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                   ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:21: mutant survived: '==' became '!='
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                      ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:43: mutant survived: '==' became '!='
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:86: mutant survived: '||' became '&&'
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                                                                       ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:73: mutant survived: '==' became '!='
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                                                          ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:75: mutant survived: 2147483647 became 2147483648
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                                                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:99: mutant survived: '<' became '<='
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                                                                                    ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:147:112: mutant survived: the assignment was removed
+    }else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                                                                                                 ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:148:37: mutant survived: '&&' became '||'
+    else if step.kind==BS_DEREFERENCE && r.kind==CK_Kind.view {t=r.elem;}
+                                      ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:149:16: mutant survived: false became true
+    else {return false;}
+                 ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:151:27: mutant survived: '&&' became '||'
+   return t==p.type && t>=1 && t<b.c.state[0].type_count;
+                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:151:19: mutant survived: '&&' became '||'
+   return t==p.type && t>=1 && t<b.c.state[0].type_count;
+                    ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:151:23: mutant survived: '>=' became '>'
+   return t==p.type && t>=1 && t<b.c.state[0].type_count;
+                        ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:151:25: mutant survived: 1 became 2
+   return t==p.type && t>=1 && t<b.c.state[0].type_count;
+                          ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:151:31: mutant survived: '<' became '<='
+   return t==p.type && t>=1 && t<b.c.state[0].type_count;
+                                ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:162:142: mutant survived: the assignment was removed
+   for i:0..<2 {p:=b.state[0].projections[i];hit:=CB_projection_hit(b,p,kind,decl,path);if b.c.state[0].fatal {return p.type;}if hit {record[0]=p;return p.type;}}
+                                                                                                                                               ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:165:27: mutant survived: the call was removed
+   if !BS_path_valid(path) {CK_resource(b.c,b.state[0].loc);return 0;}
+                            ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:165:51: mutant survived: 0 became 1
+   if !BS_path_valid(path) {CK_resource(b.c,b.state[0].loc);return 0;}
+                                                    ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:165:66: mutant survived: 0 became 1
+   if !BS_path_valid(path) {CK_resource(b.c,b.state[0].loc);return 0;}
+                                                                   ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:168:96: mutant survived: 0 became 1
+    if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {field:=CB_field(b,t,step.index);if field==0 {return 0;}w.decl=r.decl;w.head=b.c.nodes[r.decl].head;w.field_head=b.c.types[t].retain_fields;w.row=b.state[0].field_row;w.field=field;t=b.c.nodes[field].type;}
+                                                                                                 ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:168:106: mutant survived: 0 became 1
+    if step.kind==BS_FIELD && r.kind==CK_Kind.struct_ {field:=CB_field(b,t,step.index);if field==0 {return 0;}w.decl=r.decl;w.head=b.c.nodes[r.decl].head;w.field_head=b.c.types[t].retain_fields;w.row=b.state[0].field_row;w.field=field;t=b.c.nodes[field].type;}
+                                                                                                           ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:169:33: mutant survived: '&&' became '||'
+    else if step.kind==BS_ELEMENT && r.kind==CK_Kind.array && (step.index==2147483647 || step.index<r.length) {t=r.elem;}
+                                  ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:170:37: mutant survived: '&&' became '||'
+    else if step.kind==BS_DEREFERENCE && r.kind==CK_Kind.view {t=r.elem;}
+                                      ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:173:9: mutant survived: '||' became '&&'
+   if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+          ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:173:6: mutant survived: '<' became '<='
+   if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+       ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:173:7: mutant survived: 1 became 2
+   if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+        ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:173:13: mutant survived: '>=' became '>'
+   if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+              ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:173:40: mutant survived: the call was removed
+   if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+                                         ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:173:64: mutant survived: 0 became 1
+   if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+                                                                 ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:173:79: mutant survived: 0 became 1
+   if t<1 || t>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}p.type=t;record[0]=p;return t;
+                                                                                ^
+/tmp/coax-12625-source/scoped-mutation/cache-projection-resume-v2/scope.coax:178:100: mutant survived: '==' became '!='
+   for i:0..<2 {old:=b.state[0].projections[i];if old.decl==p.decl && old.kind==p.kind && old.classes==p.classes && bs_path_equal(old.path,p.path) {b.state[0].projections[i]=p;return;}}
+                                                                                                     ^
+290 mutants, 215 killed, 75 survived

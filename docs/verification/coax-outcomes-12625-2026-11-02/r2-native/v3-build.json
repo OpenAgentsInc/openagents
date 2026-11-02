@@ -1,0 +1,348 @@
+{
+  "schema": "coax.r2.native.build.v2",
+  "generator": "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+  "generator_sha256": "6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648",
+  "compiler_sha256": "67e753aec35af4d35b31988fe2962ccb04f0b42ece3e86d465511972426dab80",
+  "commands": [
+    {
+      "name": "emit-budget",
+      "argv": [
+        "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/budget.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/v3/budget.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.004538917099125683,
+      "stdout_sha256": "57c15e44ce1689486128d4dded342ae0bbe08cd030f7f6f0ebe00886122ca012",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-check-domains",
+      "argv": [
+        "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/check-domains.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/v3/check-domains.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.00675754202529788,
+      "stdout_sha256": "aa32fb05c8b19e560382c8af0f983934df4cebd8c213830313f7d9e710c14cf1",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-profiles",
+      "argv": [
+        "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/profiles.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/v3/profiles.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.00820349995046854,
+      "stdout_sha256": "abd0a3e66a6623397448812d2a5c1fd5c6dd8c4c893b320220be5c39dc5f50dc",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-mutation-schedule",
+      "argv": [
+        "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/mutation-schedule.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/v3/mutation-schedule.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.006138666998594999,
+      "stdout_sha256": "1be1b2cee2a9679d48e1b35891a6b9dac5a621af63e20f21a6e35e4ce00a2c50",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-lexer",
+      "argv": [
+        "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/lexer.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/v3/lexer.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.27712166600394994,
+      "stdout_sha256": "47a9b160d3a6194eed95353d159c6ca6594e1fbbdd0c216d4433446758a1174a",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-parser",
+      "argv": [
+        "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/parser.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/v3/parser.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.2726844160351902,
+      "stdout_sha256": "f2111914267fe627b1066b23e157e895069bd91b2e196fafa84d5eb54eb3cf58",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-checker",
+      "argv": [
+        "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/checker.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/v3/checker.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 10.21954733307939,
+      "stdout_sha256": "2677be6a3ffd5ec3f416186dd9e89c8b1497fc728d93caaa643b3f01b429f513",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "emit-sources",
+      "argv": [
+        "/tmp/coax-chapter30-full/final-controls-qualification/normal167/snapshot/coax/bin/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/sources.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/v3/sources.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.012589875026606023,
+      "stdout_sha256": "4d6fbc5ecf59d3c54fc5cc8598e429d41ba20d0b4d2be3205491948eebd8b811",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "object-budget",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/tmp/coax-12625-native/v3/budget.c",
+        "-o",
+        "/tmp/coax-12625-native/v3/budget.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.04011579102370888,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "object-check-domains",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/tmp/coax-12625-native/v3/check-domains.c",
+        "-o",
+        "/tmp/coax-12625-native/v3/check-domains.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.056336916983127594,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "object-profiles",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/tmp/coax-12625-native/v3/profiles.c",
+        "-o",
+        "/tmp/coax-12625-native/v3/profiles.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.05029749998357147,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "object-mutation-schedule",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/tmp/coax-12625-native/v3/mutation-schedule.c",
+        "-o",
+        "/tmp/coax-12625-native/v3/mutation-schedule.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.04071983299218118,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "object-lexer",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/tmp/coax-12625-native/v3/lexer.c",
+        "-o",
+        "/tmp/coax-12625-native/v3/lexer.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.12935495795682073,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "object-parser",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/tmp/coax-12625-native/v3/parser.c",
+        "-o",
+        "/tmp/coax-12625-native/v3/parser.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.41148675000295043,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "object-checker",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/tmp/coax-12625-native/v3/checker.c",
+        "-o",
+        "/tmp/coax-12625-native/v3/checker.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 2.2388350419932976,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "object-sources",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/tmp/coax-12625-native/v3/sources.c",
+        "-o",
+        "/tmp/coax-12625-native/v3/sources.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.09224337490741163,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-stage0",
+      "argv": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-DCOAX_BOOTSTRAP_IMPORTER",
+        "-I",
+        "/tmp/coax-12625-native/v3",
+        "-o",
+        "/tmp/coax-12625-native/v3/stage0",
+        "/private/tmp/openagents-12625-complete-20261101/coax/src/main.cpp",
+        "/tmp/coax-12625-native/v3/budget.o",
+        "/tmp/coax-12625-native/v3/check-domains.o",
+        "/tmp/coax-12625-native/v3/profiles.o",
+        "/tmp/coax-12625-native/v3/mutation-schedule.o",
+        "/tmp/coax-12625-native/v3/lexer.o",
+        "/tmp/coax-12625-native/v3/parser.o",
+        "/tmp/coax-12625-native/v3/checker.o",
+        "/tmp/coax-12625-native/v3/sources.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 8.501992249977775,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "dd7180b6e273661aabd328b4f0ce20a4045d4061605d9030cd7f3b866593b70c"
+    },
+    {
+      "name": "emit-importer",
+      "argv": [
+        "/tmp/coax-12625-native/v3/stage0",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/v3/proto_importer.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 23.601432166993618,
+      "stdout_sha256": "620e490d84a94c903ccac9de959398de9a57b385fb1525a9456516a5581c39e0",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-importer",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/tmp/coax-12625-native/v3/proto_importer.c",
+        "-o",
+        "/tmp/coax-12625-native/v3/proto_importer.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 4.91456520895008,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-native",
+      "argv": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-I",
+        "/tmp/coax-12625-native/v3",
+        "-o",
+        "/tmp/coax-12625-native/v3/coax",
+        "/private/tmp/openagents-12625-complete-20261101/coax/src/main.cpp",
+        "/tmp/coax-12625-native/v3/proto_importer.o"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 16.287198041914962,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

@@ -1,0 +1,178 @@
+#authority;
+// Focused R2 borrow and lookup semantic oracles. Tooling-only; not compiler input.
+
+
+
+#test "R2 B2 indexed addressed-storage queries retain valid kind3 rows" {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=11,type_count=17}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;scratch:[1280]int;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};out:[64]BS_Origin;
+ first:=CB_query(b,3,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && first.count==1 && !first.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && bs_path_equal(out[0].path,path);
+ b.query_index=CB_index_begin(b);again:=CB_query(b,3,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && again.count==1 && !again.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12 && bs_path_equal(out[0].path,path) && work[0].queries==1;
+}
+
+#forall "R2 focused borrow container syntax preserves optional identity and rejects Result storage" shape:0..<3,result:bool {
+ nodes:[20]CK_Node;types:[32]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=19,type_count=17,generic=2}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.param,name="$N",decl=2,bits=1,length=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="bound"};nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=2};nodes[5]=CK_Node.{kind=CK_Tag.type_view,b=6,loc=CK_Loc.{line=901,column=7}};nodes[6]=CK_Node.{kind=CK_Tag.type_optional,b=7};nodes[7]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ if shape!=0 {nodes[5].kind=CK_Tag.type_array;nodes[5].a=3;}if shape==2 {nodes[3]=CK_Node.{kind=CK_Tag.type_param,name="N"};}
+ if result {nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="Result",head=7};nodes[7].next=8;nodes[8]=CK_Node.{kind=CK_Tag.type_named,name="u8"};}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};expected:=0;if !result {expected=CK_sum_type(c,CK_Kind.optional,11,0,CK_Loc.{});}got:=0;if result {nodes[9]=CK_Node.{kind=CK_Tag.stmt_var,name="invalid",d=5,a=10};nodes[10]=CK_Node.{kind=CK_Tag.expr_int,value=7};CK_stmt(c,9);}else {got=CK_resolve(c,5,CK_Access.value);}
+ #assert !state[0].fatal;if result {#assert state[0].error_count==1 && errors[0].code=="E0900" && errors[0].loc.line==901;}
+ else {#assert state[0].error_count==0 && got>=16 && types[got].elem==expected && types[got].kind==(ifx shape==0 then CK_Kind.view else CK_Kind.array);if shape!=0 {#assert types[got].length==2;}}
+}
+#test "R2 focused borrow nominal union syntax refuses written type arguments" {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=11,type_count=17}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.union_,decl=2};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Choice",type=16};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="Choice",head=6,loc=CK_Loc.{line=902,column=7}};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="int"};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};ignored:=CK_resolve(c,5,CK_Access.view);#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0803" && errors[0].loc.line==902;
+}
+#forall "R2 focused borrow exhaustive return flow requires every actual switch arm" shape:0..<3 {
+ nodes:[12]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=11,type_count=16}];nodes[2]=CK_Node.{kind=CK_Tag.stmt_switch};if shape!=0 {nodes[2].head=3;nodes[3]=CK_Node.{kind=CK_Tag.switch_case,b=5,next=4};nodes[4]=CK_Node.{kind=CK_Tag.switch_case,b=7};nodes[5]=CK_Node.{kind=CK_Tag.stmt_block,head=6};nodes[6]=CK_Node.{kind=CK_Tag.stmt_return};nodes[7]=CK_Node.{kind=CK_Tag.stmt_block};if shape==2 {nodes[7].head=8;nodes[8]=CK_Node.{kind=CK_Tag.stmt_return};}}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};#assert CK_always_returns(c,2)==(shape==2) && !state[0].fatal && state[0].error_count==0 && state[0].depth==0;
+}
+#test "R2 focused borrow cloned sum syntax keeps its active tag and payload" {
+ nodes:[32]CK_Node;types:[20]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=12,type_count=17}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.union_,name="Choice",decl=2,size=16,alignment=8,sum_payload_offset=8,sum_default= -1};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Choice",type=16,head=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.variant,name="item",type=11};nodes[10]=CK_Node.{kind=CK_Tag.expr_sum,name="item",type=16,a=11,d=12,sum_variant=0};nodes[11]=CK_Node.{kind=CK_Tag.expr_int,type=11,value=7};nodes[12]=CK_Node.{kind=CK_Tag.type_named,name="Choice"};c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};copy:=CK_clone(c,10);#assert CK_value(c,copy,CK_Hint.{})==16 && !state[0].fatal && state[0].error_count==0 && nodes[copy].kind==CK_Tag.expr_sum && nodes[copy].sum_variant==0 && nodes[nodes[copy].a].value==7 && nodes[nodes[copy].a].type==11;
+}
+#forall "R2 focused borrow cloned null is retyped by each optional context" boolean:bool {
+ nodes:[12]CK_Node;types:[19]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=19}];for i:0..<16 {types[i]=CK_builtin(i);}types[17]=CK_Type.{kind=CK_Kind.optional,elem=11,sum_default=0};types[18]=CK_Type.{kind=CK_Kind.optional,elem=2,sum_default=0};nodes[3]=CK_Node.{kind=CK_Tag.expr_null,type=17,sum_variant=0};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};copy:=CK_clone(c,3);want:=ifx boolean then 18 else 17;#assert CK_value(c,copy,CK_Hint.{type=want})==want && !state[0].fatal && state[0].error_count==0 && nodes[copy].kind==CK_Tag.expr_null && nodes[copy].sum_variant==0;
+}
+#test "R2 focused borrow conflicting union diagnostics name the actual declaration kind" {
+ nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=2,type_count=16}];nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="int",loc=CK_Loc.{line=903,column=1}};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_global_names(c);#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0372" && errors[0].loc.line==903 && errors[0].message=="union 'int' conflicts with another declaration or a built-in name";
+}
+#forall "R2 focused borrow checked constructors re-admit payloads in a new generic context" nominal:bool,generated:bool {
+ nodes:[40]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=13,type_count=18,local_count=1,generic=3}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.optional,elem=11,size=16,alignment=8,sum_payload_offset=8,sum_default=0};types[17]=CK_Type.{kind=CK_Kind.param,name="$T",decl=3,elem=6};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="instance"};nodes[8]=CK_Node.{kind=CK_Tag.param,name="x",type=6};locals[0]=CK_Local.{name="x",type=6,decl=8,immutable="parameter"};nodes[10]=CK_Node.{kind=CK_Tag.expr_sum,name="some",type=16,a=11,d=12,sum_variant=1};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,name="x",type=11,loc=CK_Loc.{line=904,column=9}};nodes[12]=CK_Node.{kind=CK_Tag.type_optional,b=13};nodes[13]=CK_Node.{kind=CK_Tag.type_param,name="T"};
+ if nominal {types[16]=CK_Type.{kind=CK_Kind.union_,name="Choice",decl=2,size=16,alignment=8,sum_payload_offset=8,sum_default= -1};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Choice",type=16,head=5,mark=2};nodes[5]=CK_Node.{kind=CK_Tag.variant,name="item",type=11};nodes[10].name="item";nodes[10].sum_variant=0;nodes[12]=CK_Node.{kind=CK_Tag.type_named,name="Choice"};}
+ if generated {nodes[10].mark=1;}c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};expected:=0;if !nominal {expected=CK_sum_type(c,CK_Kind.optional,6,0,CK_Loc.{});}copy:=CK_clone(c,10);got:=CK_value(c,copy,CK_Hint.{});#assert !state[0].fatal;
+ if nominal {#assert state[0].error_count==1 && errors[0].code=="E0901" && errors[0].loc.line==904;}
+ else {#assert state[0].error_count==0 && got==expected && types[got].kind==CK_Kind.optional && types[got].elem==6 && nodes[nodes[copy].a].type==6;}
+}
+
+CK_resolve :: (c:CK_Context,id:int,by_value:CK_Access)->int {
+  if id<2 {return CK_NONE;}e:=c.nodes[id];if !CK_enter(c,e.loc) {return CK_NONE;}defer CK_leave(c);
+  if e.kind==CK_Tag.type_optional {return CK_sum_type(c,CK_Kind.optional,CK_sum_inner(c,e.b),0,e.loc);}
+  if e.kind==CK_Tag.type_named {
+    if e.name=="Result" && e.name2.count==0 {return CK_result_syntax(c,id);}
+    if CK_unit_constructor(e.name,e.name2)!=0 {return CK_unit_type(c,id);}
+    if CK_spatial_constructor(e.name,e.name2)!=SP_Kind.raw {return CK_spatial_type(c,id);}
+    if e.name2.count==0 {builtin:=CK_builtin_type(e.name);if builtin!=0 {CK_no_args(c,id);return builtin;}}
+    kinds:=[3] CK_Tag.[CK_Tag.struct_,CK_Tag.enum_,CK_Tag.union_];if !CK_bind_check(c,id,kinds[..],"type") {return CK_NONE;}
+    d:=CK_lookup(c,CK_Tag.struct_,id);if d!=CK_NONE {if c.nodes[d].generic || e.head!=CK_NONE {return CK_struct_type(c,id,d,by_value);}if by_value==CK_Access.value {CK_layout(c,d);}return c.nodes[d].type;}
+    un:=CK_lookup(c,CK_Tag.union_,id);if un!=0 {CK_no_args(c,id);if by_value==CK_Access.value {CK_union_layout(c,un);}return c.nodes[un].type;}
+    en:=CK_lookup(c,CK_Tag.enum_,id);if en!=0 {CK_no_args(c,id);return c.nodes[en].type;}
+    later:=[11] string.["fixed32","fixed64","v2","v3","v4","quat","m3","m4","Any","Type","Code"];
+    for name:later {if e.name==name {CK_error(c,e.loc,"E0301",CK_join3(c,"type '",e.name,"' is not supported by coax0 yet"),"");return CK_NONE;}}
+    if e.name=="void" {CK_error(c,e.loc,"E0302","'void' is not a type you can write","leave out '-> void'");return CK_NONE;}
+    CK_error(c,e.loc,"E0302",CK_join3(c,"unknown type '",e.name,"'"),"");return CK_NONE;
+  }
+  if e.kind==CK_Tag.type_param {return CK_type_param(c,id);}
+  if e.kind==CK_Tag.type_dynamic {CK_error(c,e.loc,"E0301","dynamic arrays '[..] T' are not supported by coax0 yet","use a fixed array '[N] T' and a count");return CK_NONE;}
+  if e.kind==CK_Tag.type_view {elem:=CK_resolve(c,e.b,CK_Access.view);if elem==CK_NONE {return CK_NONE;}
+    if CK_sum_contains(c,elem,true) {CK_error(c,e.loc,"E0900","a view cannot contain Result","");return 0;}
+    if CK_nests(c,elem) {CK_nested(c,e.loc,false,elem);return CK_NONE;}return CK_intern(c,CK_Kind.view,elem,0);}
+  if c.nodes[e.a].kind==CK_Tag.type_param {count:=CK_length_param(c,e.a);elem:=CK_resolve(c,e.b,CK_Access.value);
+    if count==0 || c.types[elem].kind==CK_Kind.invalid {return CK_NONE;}if CK_sum_contains(c,elem,true) {CK_error(c,e.loc,"E0900","an array cannot contain Result","");return 0;}if CK_nests(c,elem) {CK_nested(c,e.loc,true,elem);return CK_NONE;}
+    // a struct argument's length is bounded here, by the array's total size
+    if count*c.types[elem].size>1073741824 {CK_error(c,c.nodes[e.a].loc,"E0357",CK_join3(c,"array length ",CK_count(c,count)," is out of range (1 to 1 GiB total)"),"");return CK_NONE;}
+    return CK_intern(c,CK_Kind.array,elem,count);}
+  elem:=CK_resolve(c,e.b,CK_Access.value);n:=CK_value(c,e.a,CK_Hint.{type=11});length:=CK_const_int(c,e.a);
+  if n==CK_NONE || elem==CK_NONE {return CK_NONE;}
+  if CK_sum_contains(c,elem,true) {CK_error(c,e.loc,"E0900","an array cannot contain Result","");return 0;}if CK_nests(c,elem) {CK_nested(c,e.loc,true,elem);return CK_NONE;}
+  if !CK_integer(c,n) || length.bad {CK_error(c,c.nodes[e.a].loc,"E0357","an array length must be an integer known while checking: a literal, a constant, or arithmetic on them","");return CK_NONE;}
+  size:=CM_mul(length,CM_Int.{mag=CM_u(cast(u64)c.types[elem].size)});
+  if length.negative || CM_zero(length.mag) || CM_cmp(size.mag,CM_u(1073741824))>0 {
+    CK_error(c,c.nodes[e.a].loc,"E0357",CK_join3(c,"array length ",CK_number(c,length)," is out of range (1 to 1 GiB total)"),"");return CK_NONE;
+  }
+  return CK_intern(c,CK_Kind.array,elem,cast(int)CM_low(length.mag));
+}
+
+CK_clone :: (c:CK_Context,id:int)->int {
+  if id==CK_NONE {return CK_NONE;}
+  copy:=CK_new(c,c.nodes[id].kind,c.nodes[id].loc);
+  n:=c.nodes[id];if n.kind==CK_Tag.case_binding {n.a=0;}n.a=CK_clone(c,n.a);n.b=CK_clone(c,n.b);n.c=CK_clone(c,n.c);n.d=CK_clone(c,n.d);
+  n.head=CK_clone_list(c,n.head);
+  // Checked constructors may occur in generic field defaults. Rebuild their
+  // syntax so each specialization re-admits the active type and payload.
+  if n.kind==CK_Tag.expr_sum {field:=CK_new(c,CK_Tag.field_init,n.loc);if c.state[0].fatal {return field;}c.nodes[field].name=n.name;c.nodes[field].a=n.a;n.kind=CK_Tag.expr_struct;n.mark=0;n.head=field;}
+  if n.kind==CK_Tag.expr_some {n.kind=CK_Tag.expr_call;n.head=n.a;n.a=0;}
+  n.borrow_binding=0;n.borrow_owner=0;n.borrow_writes=0;n.borrow_returns=0;n.borrow_calls=0;n.borrow_next=0;n.borrow_status=0;c.nodes[copy]=n;return copy;
+}
+
+CK_global_names :: (c:CK_Context) {
+  pass:=0;while pass<3 {
+    wanted:=CK_Tag.struct_;what:="struct";if pass==1 {wanted=CK_Tag.enum_;what="enum";}if pass==2 {wanted=CK_Tag.union_;what="union";}
+    id:=c.nodes[1].head;while id!=CK_NONE {d:=c.nodes[id];if d.kind==wanted {
+      // The diagnostic order is structures first, then enums, independently
+      // of their interleaving in source. Earlier enums do not precede a struct.
+      prior_pass:=0;while prior_pass<=pass {
+        tag:=CK_Tag.struct_;if prior_pass==1 {tag=CK_Tag.enum_;}if prior_pass==2 {tag=CK_Tag.union_;}
+        prior:=c.nodes[1].head;while prior!=CK_NONE {
+          if prior_pass==pass && prior==id {break;}p:=c.nodes[prior];
+          if p.kind==tag && p.name==d.name && p.scope==d.scope {parts:=[4] string.["type '",d.name,"' is already declared at line ",CK_count(c,p.loc.line)];CK_error(c,d.loc,"E0372",CK_text(c,parts[..]),"");}prior=p.next;
+        }prior_pass+=1;
+      }
+      if CK_scan(c,CK_Tag.proc,d.name,d.scope,true)!=0 || CK_scan(c,CK_Tag.constant,d.name,d.scope,true)!=0 || CK_builtin_name(c,d.name) || CK_builtin_type(d.name)!=0 {parts:=[4] string.[what," '",d.name,"' conflicts with another declaration or a built-in name"];CK_error(c,d.loc,"E0372",CK_text(c,parts[..]),"");}
+    }id=d.next;}pass+=1;
+  }
+}
+
+CK_always_returns :: (c:CK_Context,id:int)->bool {
+  if id<2 {return false;}if !CK_enter(c,c.nodes[id].loc) {return false;}defer CK_leave(c);s:=c.nodes[id];
+  if s.kind==CK_Tag.stmt_return {return true;}
+  if s.kind==CK_Tag.stmt_block {child:=s.head;while child!=CK_NONE {if CK_always_returns(c,child) {return true;}child=c.nodes[child].next;}return false;}
+  if s.kind==CK_Tag.stmt_if {return CK_always_returns(c,s.c) && CK_always_returns(c,s.d);}
+  if s.kind==CK_Tag.stmt_switch {at:=s.head;if at==0 {return false;}while at!=0 {if !CK_always_returns(c,c.nodes[at].b) {return false;}at=c.nodes[at].next;}return true;}return false;
+}
+
+CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
+  if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16,quantity_device=options.quantity_device};
+  defer {if c.state[0].fatal || c.state[0].error_count>0 {c.state[0].retain_report_count=0;}}
+  if used<1 || used>=c.nodes.count || c.types.count<16 || c.errors.count<1 || c.locals.count<1 {CK_resource(c,CK_Loc.{});return false;}
+  for id:2..<used+1 {c.nodes[id].borrow_binding=0;c.nodes[id].borrow_owner=0;c.nodes[id].borrow_writes=0;c.nodes[id].borrow_returns=0;c.nodes[id].borrow_calls=0;c.nodes[id].borrow_status=0;}
+  for i:0..<16 {c.types[i]=CK_builtin(i);}
+  CK_templates(c);
+  id:=c.nodes[1].head;
+  while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.import_ {
+    if n.name=="Basic" {if c.state[0].basic {CK_error(c,n.loc,"E0332","module Basic is imported twice","remove this import");}c.state[0].basic=true;}
+    else {CK_error(c,n.loc,"E0333",CK_join3(c,"unknown module '",n.name,"'"),"coax0 has one module: \"Basic\"");}
+  }id=n.next;}
+  pass:=0;while pass<3 {tag:=CK_Tag.struct_;kind:=CK_Kind.struct_;if pass==1 {tag=CK_Tag.enum_;kind=CK_Kind.enum_;}if pass==2 {tag=CK_Tag.union_;kind=CK_Kind.union_;}id=c.nodes[1].head;
+    while id!=CK_NONE {n:=c.nodes[id];if n.kind==tag {c.nodes[id].type=CK_new_type(c,CK_Type.{kind=kind,name=n.name,decl=id});if n.d!=CK_NONE && pass==0 {CK_template(c,id);}}id=n.next;}pass+=1;
+  }
+  CK_global_names(c);CK_collisions(c,options.library);
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.enum_ {CK_enum(c,id);}id=c.nodes[id].next;}
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.struct_ || c.nodes[id].kind==CK_Tag.union_ {CK_layout(c,id);}id=c.nodes[id].next;}
+  any_export:=false;id=c.nodes[1].head;
+  while id!=CK_NONE && !c.state[0].fatal {
+    p:=c.nodes[id];if p.kind==CK_Tag.proc {
+      if p.effect_present || p.pure_decl || p.effect_head!=0 {CK_error(c,p.effect_loc,"E0940","effect declarations require the subsequent R11 enforcement profile","");}
+      prior:=c.nodes[1].head;while prior!=id {old:=c.nodes[prior];if old.kind==CK_Tag.proc && old.name==p.name && old.scope==p.scope {parts:=[4] string.["procedure '",p.name,"' is already declared at line ",CK_count(c,old.loc.line)];CK_error(c,p.loc,"E0334",CK_text(c,parts[..]),"");}prior=old.next;}
+      if CK_builtin_name(c,p.name) {CK_error(c,p.loc,"E0335",CK_join3(c,"'",p.name,"' is already a builtin"),"pick another name");}
+      c.state[0].generic=id;c.state[0].site=CK_Site.param;
+      param:=p.head;while param!=CK_NONE {c.nodes[param].type=CK_resolve(c,c.nodes[param].a,CK_Access.value);param=c.nodes[param].next;}
+      c.state[0].site=CK_Site.result;c.nodes[id].type=1;if p.a!=CK_NONE {c.nodes[id].type=CK_resolve(c,p.a,CK_Access.value);}
+      c.state[0].generic=CK_NONE;if p.flag2 {CK_foreign(c,id);}
+      if c.nodes[id].generic && p.flag {CK_error(c,p.loc,"E0398",CK_join3(c,"'",p.name,"' has type parameters, so it cannot be #export_c"),"export a procedure with concrete types that does the work");}
+      if p.flag {any_export=true;if p.name=="main" {CK_error(c,p.loc,"E0369","'main' cannot be exported; it is the program's entry point","");}else if p.name.count>=5 && p.name[0..<5]=="coax_" {CK_error(c,p.loc,"E0369","exported names cannot start with 'coax_', which the runtime uses","");}}
+    }id=p.next;
+  }
+  id=c.nodes[1].head;while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.constant {
+    prior:=c.nodes[1].head;while prior!=id {old:=c.nodes[prior];if old.kind==CK_Tag.constant && old.name==n.name && old.scope==n.scope {CK_error(c,n.loc,"E0345",CK_join3(c,"duplicate constant '",n.name,"'"),"");}prior=old.next;}
+    if CK_scan(c,CK_Tag.proc,n.name,n.scope,true)!=0 || CK_builtin_name(c,n.name) {CK_error(c,n.loc,"E0345",CK_join3(c,"constant '",n.name,"' conflicts with a procedure or intrinsic"),"");}
+  }id=n.next;}
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.constant {ignored:=CK_constant_type(c,id);}id=c.nodes[id].next;}
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.struct_ && !c.nodes[id].generic {CK_defaults(c,id);}id=c.nodes[id].next;}
+  id=c.nodes[1].head;while id!=CK_NONE {n:=c.nodes[id];if n.kind==CK_Tag.assert_ {t:=CK_value(c,n.a,CK_Hint.{});if t!=CK_NONE && t!=2 {CK_error(c,c.nodes[n.a].loc,"E0346","#assert requires bool","");}}id=n.next;}
+  entry:=CK_find(c,CK_Tag.proc,"main");
+  if entry==CK_NONE {if !options.library {fix:="add main :: () { ... }";if any_export {fix="build it as a library: coax lib FILE.coax";}CK_error(c,CK_Loc.{line=1,column=1},"E0336","the program has no 'main'",fix);}}
+  else {p:=c.nodes[entry];if p.head!=0 || p.type!=1 || p.flag2 {CK_error(c,p.loc,"E0337","'main' takes no parameters and returns nothing in coax0","main :: () { ... }");}}
+  id=c.nodes[1].head;while id!=CK_NONE && !c.state[0].fatal {p:=c.nodes[id];if p.kind==CK_Tag.proc && !p.flag2 {
+    c.state[0].current=id;c.state[0].generic=id;c.state[0].site=CK_Site.body;c.state[0].local_count=0;param:=p.head;
+    while param!=CK_NONE {prm:=c.nodes[param];CK_declare_id(c,prm.name,prm.type,prm.loc,"parameter",param);param=prm.next;}CK_stmt(c,p.b);
+    if p.type!=1 && p.type!=0 && !CK_always_returns(c,p.b) {parts:=[4] string.["'",p.name,"' can reach its end without returning ",c.types[p.type].name];CK_error(c,p.loc,"E0338",CK_text(c,parts[..]),"add a return at the end");}
+  }id=p.next;}
+  c.state[0].generic=CK_NONE;c.state[0].site=CK_Site.none;
+  id=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==CK_Tag.check {CK_check(c,id);}id=c.nodes[id].next;}
+  CK_instantiate(c);
+  if c.state[0].error_count==0 {if !c.state[0].fatal {CK_results(c);}}
+  if c.state[0].error_count==0 && !c.state[0].fatal {CK_borrow_returns(c);}
+  if options.authority && c.state[0].error_count==0 {CK_coverage(c);}
+  if options.metal && c.state[0].error_count==0 {CK_metal(c);}
+  return c.state[0].error_count==0 && !c.state[0].fatal;
+}
+
+#load "coax/lib/compiler/checker.coax";

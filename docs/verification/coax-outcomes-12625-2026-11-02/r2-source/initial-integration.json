@@ -1,0 +1,37 @@
+{
+  "schema": "coax.12625.r2-initial-integration.v1",
+  "utc": "2026-11-02T05:56:38.916389+00:00",
+  "head": "69077b82b44210e78f688008ace44ce7305f2ab5",
+  "all_uncommitted": true,
+  "W_commits_applied_no_commit": [
+    "4888ebb19092c562fcb392fb9f4fa293b74f7297",
+    "cd83a7ee263db3279345c9ff9115b52a9f348ff9",
+    "08c2551179f6a29c6bc6e84948d0596738b0e2d3"
+  ],
+  "held_V_patch_sha256": "f7393a92938ba3ded835e8c284b1fbe1f66c2e996a9ef689a3764291973a946e",
+  "source_hashes": {
+    "checker.coax": "7966c5296a1bfc929d02c1b77a65e5260c5e2ea24f8b7029d37bd9bbc6256b37",
+    "query-index.coax": "ee1141c40abd0aa1ea228a1f05b71d6334cb4bad5b25c89dec705897443d9ca8",
+    "literal-projection-cache.coax": "db48be8fe9863f3156442d185c633e031237361f90c2d27f9363b6eff1aad6e5",
+    "query-projection-cache.coax": "2f64cd642fa4094585b8f52724c44e17409d16a7db4c379ee9e5e36cdaed4a13",
+    "sum-types.coax": "3447c89e1686756130f9adb7ab6427792113d9a8af2211af8b9d76dd971da7c7",
+    "sum-layout.coax": "9c5a7ce4cd70271e7d51df79bbb8ee46de12dc1b0e49f801b35ca5cee2a7a8cf",
+    "result-handling.coax": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+    "result-flow.coax": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef"
+  },
+  "B2_preservation": {
+    "CB_call_values ::": {
+      "main_sha256": "950b3cd3f5592011d4629c89cffbb2e2ac450f71b94c63c4343a97a210deb3b5",
+      "current_sha256": "950b3cd3f5592011d4629c89cffbb2e2ac450f71b94c63c4343a97a210deb3b5",
+      "byte_identical": true
+    },
+    "CB_alias_writes ::": {
+      "main_sha256": "bde398bb6e880539d573edd961f3b6548c0585f9ddbdbadbc101dcd3683ada63",
+      "current_sha256": "bde398bb6e880539d573edd961f3b6548c0585f9ddbdbadbc101dcd3683ada63",
+      "byte_identical": true
+    },
+    "B2_all_tail_checks_preserved": true
+  },
+  "qualification_claim": false,
+  "open_integration_semantics": "query-index probe still only admits kinds1..3; inherited B2kind5 rows require a genuine regression before integration fix. No tests/builds yet."
+}

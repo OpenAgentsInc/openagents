@@ -1,0 +1,60 @@
+#load "coax/lib/compiler/checker.coax";
+#authority;
+CB_call_writes :: (b:CB_Context,decl:int,path:BS_Path,out:[]BS_Origin,result:CB_Result)->CB_Result {
+ r:=result;inside:=false;for i:0..<path.count {if path.steps[i].kind==BS_ELEMENT || path.steps[i].kind==BS_DEREFERENCE {inside=true;}}if !inside {return r;}
+ owner:=b.c.nodes[decl].borrow_owner;call:=b.c.nodes[owner].borrow_calls;
+ while call!=0 {
+  if call<2 || call>b.c.state[0].used || !CB_tick(b,b.c.nodes[decl].loc) {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}e:=b.c.nodes[call];arg:=e.head;ordinal:=0;
+  while arg!=0 {
+   if arg<2 || arg>b.c.state[0].used || !CB_tick(b,b.c.nodes[arg].loc) {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}type:=b.c.types[b.c.nodes[arg].type];
+   // By-value aggregates with contained mutable views still need a separate
+   // addressed-place substitution. Keep that boundary explicitly manual.
+   if (type.kind==CK_Kind.array || type.kind==CK_Kind.struct_ || CK_sum(b.c,b.c.nodes[arg].type)) && CB_mutable_descriptors(b,b.c.nodes[arg].type,0) {r.incomplete=true;}
+   if type.kind==CK_Kind.view && CB_has_borrow(b,type.elem,0) {
+    backing:[64]BS_Origin;known:=CB_expr(b,arg,BS_Path.{},false,backing[..]);r.incomplete=r.incomplete || known.incomplete;
+    for i:0..<known.count {
+     origin:=backing[i];root:=origin.root;destination:=origin.path;
+     if origin.kind==BS_LOCAL {destination=CB_add_path(b,destination,BS_ELEMENT,2147483647);}
+     else if origin.kind==BS_PARAMETER {root=CB_at(b,b.c.nodes[owner].head,origin.root);destination=CB_add_path(b,destination,BS_DEREFERENCE,0);}
+     else {continue;}
+     if root==decl && CB_prefix(destination,path) {
+      if e.proc==0 {r.incomplete=true;continue;}
+      if e.proc<2 || e.proc>b.c.state[0].used {CK_resource(b.c,e.loc);return CB_Result.{};}callee:=b.c.nodes[e.proc];
+      if callee.kind!=CK_Tag.proc {CK_resource(b.c,e.loc);return CB_Result.{};}
+      if callee.flag2 || callee.generic || callee.b==0 {r.incomplete=true;continue;}
+      formal:=CB_at(b,callee.head,ordinal);selected:BS_Path;selected=CB_add_path(b,selected,BS_DEREFERENCE,0);
+      for j:destination.count..<path.count {selected=CB_add_path(b,selected,path.steps[j].kind,path.steps[j].index);}
+      // Acyclic write-summary chains need a live origin-depth frame even
+      // after their argument expression has returned. Read-only/no-call
+      // paths do not acquire one. Restore it before every failure return.
+      // The successful argument CB_expr already proved depth below32.
+      b.state[0].depth+=1;
+      summary:[64]BS_Origin;writes:=CB_query(b,5,formal,selected,summary[..]);temp:[64]BS_Origin;values:=CB_call_values(b,call,summary[..],writes,temp[..]);b.state[0].depth-=1;r=CB_merge(b,out,r,temp[..],values);
+      if b.c.state[0].fatal || b.c.state[0].error_count>0 {return r;}
+     }
+    }
+   }
+   arg=b.c.nodes[arg].next;ordinal+=1;
+  }
+  call=e.borrow_next;
+ }return r;
+}
+
+CB_opaque :: (b:CB_Context,decl:int,path:BS_Path)->bool {
+ owner:=b.c.nodes[decl].borrow_owner;inside:=false;for i:0..<path.count {if path.steps[i].kind==BS_ELEMENT || path.steps[i].kind==BS_DEREFERENCE {inside=true;}}call:=b.c.nodes[owner].borrow_calls;
+ while call!=0 {
+  if !CB_tick(b,b.c.nodes[call].loc) {return true;}arg:=b.c.nodes[call].head;
+  while arg!=0 {
+   if !CB_tick(b,b.c.nodes[arg].loc) {return true;}type:=b.c.types[b.c.nodes[arg].type];
+   if inside && (type.kind==CK_Kind.array || type.kind==CK_Kind.struct_ || CK_sum(b.c,b.c.nodes[arg].type)) && CB_mutable_descriptors(b,b.c.nodes[arg].type,0) {return true;}
+   if type.kind==CK_Kind.view && CB_has_borrow(b,type.elem,0) {
+    origins:[64]BS_Origin;r:=CB_expr(b,arg,BS_Path.{},false,origins[..]);
+    for i:0..<r.count {origin:=origins[i];if origin.kind==BS_LOCAL && origin.root==decl && (CB_prefix(origin.path,path) || CB_prefix(path,origin.path)) {return true;}
+     if origin.kind==BS_PARAMETER {parameter:=CB_at(b,b.c.nodes[owner].head,origin.root);if parameter==decl && CB_prefix(origin.path,path) && path.count>origin.path.count && path.steps[origin.path.count].kind==BS_DEREFERENCE {return true;}}
+    }
+    if r.incomplete {if b.c.types[b.c.nodes[decl].type].kind==CK_Kind.array {return true;}for i:0..<path.count {if path.steps[i].kind==BS_DEREFERENCE || path.steps[i].kind==BS_ELEMENT {return true;}}}
+   }
+   arg=b.c.nodes[arg].next;
+  }call=b.c.nodes[call].borrow_next;
+ }return false;
+}

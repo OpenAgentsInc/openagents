@@ -1,0 +1,9 @@
+#load "coax/lib/compiler/checker.coax";
+#authority;
+CB_index_probe :: (b:CB_Context,decl:int,link:int) {
+ if link<1 || link>b.state[0].queries {CK_resource(b.c,b.c.nodes[decl].loc);}
+ else if CB_tick(b,b.c.nodes[decl].loc) {
+  q:=b.queries[link-1];
+  if q.decl!=decl || q.kind<1 || (q.kind>3 && q.kind!=5) || q.status<1 || q.status>3 || q.next<0 || q.next>=link || !BS_path_valid(q.path) {CK_resource(b.c,b.c.nodes[decl].loc);}
+ }
+}

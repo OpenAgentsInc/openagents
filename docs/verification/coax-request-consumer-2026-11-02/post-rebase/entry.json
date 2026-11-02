@@ -1,0 +1,1241 @@
+{
+  "schema": 1,
+  "projection": {
+    "files": [
+      {
+        "path": "apps/openagents-desktop/zeron/settings.coax",
+        "sha256": "83b347eaeaa57260aea0fd474c7bac16f5ff9dc2bedb33a9803f8f9c18626205",
+        "bytes": 13119
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/store.coax",
+        "sha256": "efeaf660c6860deb9df6644b65602ae7bc7583c363350549e2ee819cbfecd86d",
+        "bytes": 7472
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/desk.coax",
+        "sha256": "bca99ec4a86c88ffaabe71e7ba84ca92fde18c3ff6254e76fbe2c8f9e1e653d6",
+        "bytes": 61396
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/screen.coax",
+        "sha256": "57a81186e56edf188009a9fa9f3e0ffeed4808194c0200b622d4f801fb30f475",
+        "bytes": 77602
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/modes.coax",
+        "sha256": "ae2ec8993bbecce3264959a9e5a54bae2cfca81ff2ecd645b542f089f1b55901",
+        "bytes": 5353
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/psionic.coax",
+        "sha256": "9a4294bf470d5deb7f629e0269fd27568daae1d4589e288e90a2cd995ecb1682",
+        "bytes": 59200
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/claude.coax",
+        "sha256": "4bae1398ca5850959f1a2a5ef4bedc52e6e7bebec38fa642ee7487f6f2e2a730",
+        "bytes": 73880
+      },
+      {
+        "path": "apps/shared/zeron/transcript.coax",
+        "sha256": "3e34f9eeff009edb54387e459256c4797f67ca7de7d9bb291d0c58bdcf846dda",
+        "bytes": 68357
+      },
+      {
+        "path": "apps/shared/zeron/tools.coax",
+        "sha256": "98e45d878dc414a5b90512a4e4882f03ec45eca4198130c8d720742daf375a3e",
+        "bytes": 10686
+      },
+      {
+        "path": "apps/shared/zeron/markdown.coax",
+        "sha256": "bd57c8cdb460dfae716dcaa48c43dd5ceb1fdab7f9b21e70227fd45ea766ddba",
+        "bytes": 36551
+      },
+      {
+        "path": "apps/shared/zeron/composer.coax",
+        "sha256": "e1febf99aed7ffc48520aeb93f33d6ce6709f4aa40de78fa091450117512cf19",
+        "bytes": 69866
+      },
+      {
+        "path": "apps/shared/zeron/gpui.coax",
+        "sha256": "73edf966ba9cb05c3970fc7c1a8ce1b2157f0c740e5d84938d560b6793608eca",
+        "bytes": 42784
+      },
+      {
+        "path": "apps/shared/zeron/picker.coax",
+        "sha256": "96a417171dd2fa738c165a7501fbbfcf5247ce4620cbd18b6bf08813eb77c499",
+        "bytes": 44986
+      },
+      {
+        "path": "apps/shared/zeron/attachments.coax",
+        "sha256": "9cc8b813adfab5e9a23e3484efec4d59082707dd91b853a9a8bced505a2b9144",
+        "bytes": 15522
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/claude_fixture.coax",
+        "sha256": "6196953d33f5703174885e9d7242345da6dc014832a2b4320ed84aa4944ef1b4",
+        "bytes": 37165
+      },
+      {
+        "path": "coax/lib/agent/claude/claude.coax",
+        "sha256": "bce2fd8804f060dbed33f81ffec822dbe668c30359484875a26d6af6320d5562",
+        "bytes": 275
+      },
+      {
+        "path": "coax/lib/agent/claude/transport.coax",
+        "sha256": "fd1dfbea34aad2533da77753f19555c32b54bc7ef288b2d817a0b4d58027d33f",
+        "bytes": 7525
+      },
+      {
+        "path": "coax/lib/agent/claude/query.coax",
+        "sha256": "f7ab119e8a0b1818043c59f0a99484cea367c070c064923643fd6d4d45df25b2",
+        "bytes": 20217
+      },
+      {
+        "path": "coax/lib/agent/claude/mcp.coax",
+        "sha256": "25a70c8c0e848b254aa5ca9733691837bdbb333b57ad75f7b38b39c8e47d1140",
+        "bytes": 7445
+      },
+      {
+        "path": "coax/lib/agent/claude/options.coax",
+        "sha256": "f36c373f3c640a694b27603926dfefc59319c55d8a8c810c615395f02204eb13",
+        "bytes": 14037
+      },
+      {
+        "path": "coax/lib/agent/claude/control.coax",
+        "sha256": "5b7ebabdcfab80b586ea5491e52006fd5630207c5aef4eb8366da1381511f508",
+        "bytes": 11710
+      },
+      {
+        "path": "coax/lib/agent/claude/messages.coax",
+        "sha256": "2deb53691e964762d692f0c98fae01cbef100b6c54db95d936f0db41f5c3d9d3",
+        "bytes": 44027
+      },
+      {
+        "path": "coax/lib/agent/claude/fields.coax",
+        "sha256": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4",
+        "bytes": 12916
+      },
+      {
+        "path": "coax/lib/nostr/json.coax",
+        "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+        "bytes": 37156
+      },
+      {
+        "path": "coax/lib/nostr/fixtures/json_suite.coax",
+        "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+        "bytes": 41864
+      },
+      {
+        "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+        "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28",
+        "bytes": 365603
+      },
+      {
+        "path": "coax/lib/nostr/json-f64.coax",
+        "sha256": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c",
+        "bytes": 2744
+      },
+      {
+        "path": "coax/lib/gateway/transport.coax",
+        "sha256": "d1f1e6d8e8206859f5ab7b003e16b2ebb7f5b7f1928234dbfd668ea0a86478d0",
+        "bytes": 12399
+      },
+      {
+        "path": "coax/lib/gateway/sse.coax",
+        "sha256": "548ea93a60affaa3eb61264166589a4259ddd724920de95b2250b96753b65be6",
+        "bytes": 4416
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/psionic_fixture.coax",
+        "sha256": "59d34a96dc7be8ddf2cf15c004f0529cda0ee0232816b4b46944635ca17979ce",
+        "bytes": 21324
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/codex.coax",
+        "sha256": "c453508377923fcc398d5762121a73e6c089e4f8172217d3364b24e6f9700996",
+        "bytes": 50569
+      },
+      {
+        "path": "coax/lib/agent/codex/codex.coax",
+        "sha256": "35bf0c5c3e0a92971ddb39324b4051c883638e3b29b2d41abba71cf5bb6352e0",
+        "bytes": 298
+      },
+      {
+        "path": "coax/lib/agent/codex/transport.coax",
+        "sha256": "e6e3b7032a58409901940c54d0f996ed74f4b826937bf759807bfb59409f793e",
+        "bytes": 4251
+      },
+      {
+        "path": "coax/lib/agent/codex/client.coax",
+        "sha256": "36b43c2007d3ea0595fc72477b24aa6b849977bead2550cb4feefeda64c57be5",
+        "bytes": 17348
+      },
+      {
+        "path": "coax/lib/agent/codex/fixture.coax",
+        "sha256": "75a2a6f9c5074be4c40892280ba67173a2bf24f43375dcc99c5c1b2cfd9d71ee",
+        "bytes": 109987
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/lab.coax",
+        "sha256": "772425729008ceee3b260856ed60ce90e969e2cb3bdf070b32f77e5661b55aca",
+        "bytes": 53091
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/gpu.coax",
+        "sha256": "05d14bea00077a5446b2bf9697e55190ca02f33dec17402fb1b76929657b654a",
+        "bytes": 20866
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/microcoder.coax",
+        "sha256": "0099b56c71891ef4daa225ece6efd2a5d597af04cfa86750177020e93579eb82",
+        "bytes": 25116
+      },
+      {
+        "path": "coax/lib/microcoder/run.coax",
+        "sha256": "28a4fb637da30af4e66546b114ae04e08190b270d31821e17615b084106dafcd",
+        "bytes": 12641
+      },
+      {
+        "path": "coax/lib/microcoder/tools.coax",
+        "sha256": "e83bbf576bfd35630d4941c854a3bacd01c687224aee40ff82ce66297ee5ad31",
+        "bytes": 8892
+      },
+      {
+        "path": "coax/lib/microcoder/loop.coax",
+        "sha256": "9bea3bc5be047e3657f93ff23ec2c36c08986f4119696fa7a486fee7d59cc71e",
+        "bytes": 17262
+      },
+      {
+        "path": "coax/lib/microcoder/text_action.coax",
+        "sha256": "1c1ed270244d52c8e738e2d773fa299b5b6a0ad5d0e9825040ea0bd804bed75f",
+        "bytes": 9805
+      },
+      {
+        "path": "coax/lib/microcoder/action.coax",
+        "sha256": "9ecebad36b881b11bda2ef6e0ab3f6afbe2eb5f895fb3f25da4e6cffd015300e",
+        "bytes": 4946
+      },
+      {
+        "path": "coax/lib/microcoder/state.coax",
+        "sha256": "dcdaa01e2d0b63a2b035c31471d33f35fd0f03daa4570a3a7b3fe697ecb83a48",
+        "bytes": 12170
+      },
+      {
+        "path": "coax/lib/gateway/gateway.coax",
+        "sha256": "73d2e0eb6a5a81b1559052049293e9611592c772138573df96f140969e6fe87d",
+        "bytes": 33990
+      },
+      {
+        "path": "coax/lib/gateway/chat.coax",
+        "sha256": "da4e496d23052b6678119b16d00b1368f1ff4dcbda5f520d8d62632e05b238d1",
+        "bytes": 18839
+      },
+      {
+        "path": "coax/lib/gateway/gemini.coax",
+        "sha256": "d93faa4e0b6482df628f0457898f0c7f20ce89aad7e4e9d29853af4a68dc3f97",
+        "bytes": 7962
+      },
+      {
+        "path": "coax/lib/gateway/anthropic.coax",
+        "sha256": "51f921d80c0e6f846075c45c5cfaf24d559f5854f5c76fd40938759181fe5f61",
+        "bytes": 14925
+      },
+      {
+        "path": "coax/lib/gateway/fixtures.coax",
+        "sha256": "3bcce3cfdaf330663af46f31c656ed749a73952cc90bc6566be5cc1342b896c2",
+        "bytes": 43741
+      },
+      {
+        "path": "coax/lib/gateway/plan.coax",
+        "sha256": "1b9590b9dbd7d1081026a31d632dba16bcc2c55fb3bbe30bb27e9ff5d8323e1a",
+        "bytes": 12291
+      },
+      {
+        "path": "coax/lib/gateway/rates.coax",
+        "sha256": "292ccd06e77170180c3c9e2a00a1e58cca7264c17f5ff604ea838900eab7386f",
+        "bytes": 7315
+      },
+      {
+        "path": "coax/lib/gateway/vertex.coax",
+        "sha256": "7df364cd0360c4ad2486f48b82d14e05249e5ef288166af7f93b2bdbc1117dea",
+        "bytes": 9614
+      },
+      {
+        "path": "coax/lib/gateway/openrouter.coax",
+        "sha256": "101510672893c9646666e73d274937121fba1a99035d792eac7dfec3a3a16b58",
+        "bytes": 3209
+      },
+      {
+        "path": "coax/lib/gateway/ours.coax",
+        "sha256": "8ae20bce97936f80ec3f887f5c1d163b7ff7651da407016e20d89b2de17bf1df",
+        "bytes": 6419
+      },
+      {
+        "path": "coax/lib/x402/x402.coax",
+        "sha256": "4245acba6bf4fe3d91504bf5ddb71de108a614d78d06e9716999e1fbb73206e9",
+        "bytes": 19079
+      },
+      {
+        "path": "coax/lib/systemone/systemone.coax",
+        "sha256": "67f08489ee200071f8fc136d1f05e39a600da5bd6f2a1a92edaa3f902ed91b7b",
+        "bytes": 249
+      },
+      {
+        "path": "coax/lib/systemone/outcomes.coax",
+        "sha256": "9c71c5925d82e5cd328c3d2b254144290fadc2bd88b9787ad28441c490d1320c",
+        "bytes": 8831
+      },
+      {
+        "path": "coax/lib/systemone/owner.coax",
+        "sha256": "b3cf98fe929c57b512959e24bb6649cc5eb05691a1f07218c3ba36a6f18c6097",
+        "bytes": 3446
+      },
+      {
+        "path": "coax/lib/systemone/transport.coax",
+        "sha256": "fa3af1f3dc8881c67d775cbf76248a85b0b4aea41ff774a77026f060cd0268a6",
+        "bytes": 8942
+      },
+      {
+        "path": "coax/lib/systemone/answers.coax",
+        "sha256": "27a95b60c4c46c1756349ae245ca307aa427a5e781a4329cb610365146d8fbc0",
+        "bytes": 10554
+      },
+      {
+        "path": "coax/lib/systemone/request.coax",
+        "sha256": "a44abb35e9961e4c965326f2194f8f2d57acbbee048c737c9d5d3d59131fc4a8",
+        "bytes": 10676
+      },
+      {
+        "path": "coax/lib/systemone/call-policy.coax",
+        "sha256": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf",
+        "bytes": 1829
+      },
+      {
+        "path": "coax/lib/systemone/owner-policy.coax",
+        "sha256": "3d457681de3dfbc02f1ad35336f743ae03fce1724b87ad1396d00d0fa2944720",
+        "bytes": 2292
+      },
+      {
+        "path": "apps/openagents-desktop/zeron/room.coax",
+        "sha256": "95e393b41bbc9f78f082f64e8682ae7b5c1c1c1a3b9d5c773c7a4ebd94537b0c",
+        "bytes": 13423
+      }
+    ],
+    "declarations": [
+      {
+        "name": "Lab",
+        "kind": "type",
+        "path": "apps/openagents-desktop/zeron/lab.coax",
+        "line": 64,
+        "start": 4827,
+        "end": 6065,
+        "sha256": "35784e96f7937d858eaa7c6cf0a5afa6999e96bb5694a1e4678e75e5b8d792e0"
+      },
+      {
+        "name": "LabMc",
+        "kind": "type",
+        "path": "apps/openagents-desktop/zeron/microcoder.coax",
+        "line": 89,
+        "start": 4890,
+        "end": 5692,
+        "sha256": "771ca40b9642f3901be5bd2007bbcd1f28ba51f37585632008566acc966f0e52"
+      },
+      {
+        "name": "GwBench",
+        "kind": "type",
+        "path": "coax/lib/gateway/plan.coax",
+        "line": 29,
+        "start": 1169,
+        "end": 1274,
+        "sha256": "3743c32e74535e5a3f741f8fc8d782e2a938ca864ac7e7b49621cdc281e13551"
+      },
+      {
+        "name": "GW_BENCH_MAX",
+        "kind": "constant",
+        "path": "coax/lib/gateway/plan.coax",
+        "line": 20,
+        "start": 997,
+        "end": 1018,
+        "sha256": "8b9056131f4f7231dc7be317208ca1a08dd8763f18ba5399552f6ce34d0c2cca"
+      },
+      {
+        "name": "GwOurs",
+        "kind": "type",
+        "path": "coax/lib/gateway/ours.coax",
+        "line": 20,
+        "start": 1067,
+        "end": 1298,
+        "sha256": "1add239f1619db8230894fb89efaef8753a7be0f93e02b595c633d351bf6606c"
+      },
+      {
+        "name": "GwPlan",
+        "kind": "type",
+        "path": "coax/lib/gateway/plan.coax",
+        "line": 110,
+        "start": 5072,
+        "end": 5542,
+        "sha256": "36b6c71eff6b203b4251c752f0cac9db73d68704ff34d6e37b73b8d9ecdcdf17"
+      },
+      {
+        "name": "GW_PLAN_MAX",
+        "kind": "constant",
+        "path": "coax/lib/gateway/plan.coax",
+        "line": 19,
+        "start": 979,
+        "end": 997,
+        "sha256": "09930bcf2638462d1146f3e8465733b492e5fd10aaa8accae3024d669c48c53e"
+      },
+      {
+        "name": "GwAttempt",
+        "kind": "type",
+        "path": "coax/lib/gateway/plan.coax",
+        "line": 22,
+        "start": 1018,
+        "end": 1169,
+        "sha256": "836ae987e3ead97daa8f84cf1ec1144a5903cada171235366b43bb5c4d0225c9"
+      },
+      {
+        "name": "Gateway",
+        "kind": "type",
+        "path": "coax/lib/gateway/gateway.coax",
+        "line": 73,
+        "start": 3609,
+        "end": 4333,
+        "sha256": "a332861754c1206671c2e726419425de2181c4c8690f73367c0007036243c5c8"
+      },
+      {
+        "name": "GwAttemptLog",
+        "kind": "type",
+        "path": "coax/lib/gateway/plan.coax",
+        "line": 53,
+        "start": 2193,
+        "end": 2841,
+        "sha256": "ee8cb253d4e57a4e6071280e01c6c09c9bd87fdc2dca6695d0f91d3d13af2a9d"
+      },
+      {
+        "name": "GwCall",
+        "kind": "type",
+        "path": "coax/lib/gateway/gateway.coax",
+        "line": 396,
+        "start": 18620,
+        "end": 19193,
+        "sha256": "49e4f73c0d151284efbcab5f52428b5256cc06f7d316437c188a39fcfe848aef"
+      },
+      {
+        "name": "ClArena",
+        "kind": "type",
+        "path": "coax/lib/agent/claude/fields.coax",
+        "line": 30,
+        "start": 1370,
+        "end": 1479,
+        "sha256": "cd4682bfa1a7f8ffff394e10b34e83131d8693073ce067ee379da6e5958bea60"
+      },
+      {
+        "name": "GwParse",
+        "kind": "type",
+        "path": "coax/lib/gateway/gateway.coax",
+        "line": 93,
+        "start": 4499,
+        "end": 4974,
+        "sha256": "0ed62c3f4e142b47ddad060ae9f1976cd0d7514107405bf3e84535c0f16b3eeb"
+      },
+      {
+        "name": "GwUsage",
+        "kind": "type",
+        "path": "coax/lib/gateway/gateway.coax",
+        "line": 36,
+        "start": 2021,
+        "end": 2728,
+        "sha256": "7671781e2709cf78c5048c8b83f533ad46a304db49335d39a4ddef20e8e339f5"
+      },
+      {
+        "name": "GwSse",
+        "kind": "type",
+        "path": "coax/lib/gateway/sse.coax",
+        "line": 10,
+        "start": 574,
+        "end": 893,
+        "sha256": "450d2b75f5b55e3c8d8011d108e0a277d17b360f1b267239e259c0eeba0f8e6e"
+      },
+      {
+        "name": "GwStream",
+        "kind": "type",
+        "path": "coax/lib/gateway/transport.coax",
+        "line": 41,
+        "start": 2668,
+        "end": 3165,
+        "sha256": "9901a07393a19f98935becb9033ae9b0713126dc96902db06bba5b5e79bb6ea4"
+      },
+      {
+        "name": "GwRequest",
+        "kind": "type",
+        "path": "coax/lib/gateway/gateway.coax",
+        "line": 61,
+        "start": 3039,
+        "end": 3609,
+        "sha256": "da7336e9e73a832cc48e399de2d1d15def30dbfbcc4fcb3973ad398cdb06850a"
+      },
+      {
+        "name": "GwMessage",
+        "kind": "type",
+        "path": "coax/lib/gateway/gateway.coax",
+        "line": 56,
+        "start": 2940,
+        "end": 3039,
+        "sha256": "76204960cdd33f06c205b4034be6aabda9142bf7e1d6a9a750c52b865216b7a2"
+      },
+      {
+        "name": "GwPlanBuffers",
+        "kind": "type",
+        "path": "coax/lib/gateway/plan.coax",
+        "line": 124,
+        "start": 5542,
+        "end": 5619,
+        "sha256": "eb711970cf0effd7a673f6976763053fdf46e251a3479b3d6e34dc369481b494"
+      },
+      {
+        "name": "GwCallBuffers",
+        "kind": "type",
+        "path": "coax/lib/gateway/gateway.coax",
+        "line": 413,
+        "start": 19193,
+        "end": 19325,
+        "sha256": "56f66948c3f2d15fd8577fbce08aa2c2377b0a96e0a1fb075449204b5217a619"
+      },
+      {
+        "name": "GwVertex",
+        "kind": "type",
+        "path": "coax/lib/gateway/vertex.coax",
+        "line": 34,
+        "start": 1763,
+        "end": 2093,
+        "sha256": "9b2f8b02a41457d9a687b2300849c51206018bc04f9162474112faab20f6c361"
+      },
+      {
+        "name": "GW_VERTEX_LOCATION",
+        "kind": "constant",
+        "path": "coax/lib/gateway/vertex.coax",
+        "line": 28,
+        "start": 1355,
+        "end": 1387,
+        "sha256": "5c26099c150e50e3f8ecab59913baab3268e3c7ea79c074abef98f267533794f"
+      },
+      {
+        "name": "GW_VERTEX_PROJECT",
+        "kind": "constant",
+        "path": "coax/lib/gateway/vertex.coax",
+        "line": 27,
+        "start": 1314,
+        "end": 1355,
+        "sha256": "b45ecaae83bad10a23aa316b7216383ba8ab231106b5f4a6ebd8a746afd6a189"
+      },
+      {
+        "name": "LmcPay",
+        "kind": "type",
+        "path": "apps/openagents-desktop/zeron/microcoder.coax",
+        "line": 74,
+        "start": 4375,
+        "end": 4890,
+        "sha256": "f30a27bc242f826c9541ac16bf48716d65def58b23686b52d42a531e7b288274"
+      },
+      {
+        "name": "X402Offer",
+        "kind": "type",
+        "path": "coax/lib/x402/x402.coax",
+        "line": 20,
+        "start": 1042,
+        "end": 1479,
+        "sha256": "b3d27ed019b3c61221d41fa8da5ccff3fe78386f0e3c5d6313740504fe3df0ca"
+      },
+      {
+        "name": "LmcView",
+        "kind": "type",
+        "path": "apps/openagents-desktop/zeron/microcoder.coax",
+        "line": 112,
+        "start": 5692,
+        "end": 6203,
+        "sha256": "460155357868f989fe7b69475e4a1eccb723749b087adee8dc060d8fd0f7a44d"
+      },
+      {
+        "name": "McLoopBuffers",
+        "kind": "type",
+        "path": "coax/lib/microcoder/loop.coax",
+        "line": 54,
+        "start": 2877,
+        "end": 3044,
+        "sha256": "3607b422fcdd9b59b886b63b91d55e01e5bff3bfc074f4215c0bd9a2b9d2ef50"
+      },
+      {
+        "name": "McRun",
+        "kind": "type",
+        "path": "coax/lib/microcoder/run.coax",
+        "line": 119,
+        "start": 5236,
+        "end": 5938,
+        "sha256": "c36d52ab446595812234a6509b84742c6f690976717561bfdd711413762e4d2a"
+      },
+      {
+        "name": "McLoop",
+        "kind": "type",
+        "path": "coax/lib/microcoder/loop.coax",
+        "line": 61,
+        "start": 3044,
+        "end": 3761,
+        "sha256": "e84bc028c1230b82580f255b793ce821b6cd8dc200a2f4d84f6198c9f79d7ecd"
+      },
+      {
+        "name": "McAction",
+        "kind": "type",
+        "path": "coax/lib/microcoder/action.coax",
+        "line": 23,
+        "start": 1227,
+        "end": 1567,
+        "sha256": "05e07aae2dfee8fa2faf15399056e2dbfb3da846fe379bc56ef48a371fbfcf33"
+      },
+      {
+        "name": "MC_MAX_COMMANDS",
+        "kind": "constant",
+        "path": "coax/lib/microcoder/action.coax",
+        "line": 20,
+        "start": 1183,
+        "end": 1206,
+        "sha256": "5bc9b0cbd873aa62d7965ccfdf6aaebbb02aff3ea5e4a04327a470c771497e88"
+      },
+      {
+        "name": "MC_MAX_VIEWS",
+        "kind": "constant",
+        "path": "coax/lib/microcoder/action.coax",
+        "line": 21,
+        "start": 1206,
+        "end": 1227,
+        "sha256": "56e745d9498d9dbeaa92fc9576386dd5d8fcab9ffc72ffd99584f5fa318c512a"
+      },
+      {
+        "name": "McState",
+        "kind": "type",
+        "path": "coax/lib/microcoder/state.coax",
+        "line": 35,
+        "start": 1378,
+        "end": 1920,
+        "sha256": "2ae4bd0e28a1938c50dd681084082c08a973256105911306f7a89a6d8a3c1b69"
+      },
+      {
+        "name": "MC_RECENT",
+        "kind": "constant",
+        "path": "coax/lib/microcoder/state.coax",
+        "line": 21,
+        "start": 912,
+        "end": 989,
+        "sha256": "85486106cc984a159984d6019920c5a8bdbd635f4bd4fa073644e7a75b3a85fb"
+      },
+      {
+        "name": "McReplyStream",
+        "kind": "type",
+        "path": "coax/lib/microcoder/run.coax",
+        "line": 22,
+        "start": 1102,
+        "end": 1672,
+        "sha256": "5fe79f85e2474a33d16890c4048bf1fb7e68749bd29b5c3c7c3d5142eeaf99ce"
+      },
+      {
+        "name": "McToolBuffers",
+        "kind": "type",
+        "path": "coax/lib/microcoder/tools.coax",
+        "line": 169,
+        "start": 7172,
+        "end": 7447,
+        "sha256": "faa1e87779c07434b02c0b955264e7e260c26d9eb0e178a3b28118bda958036e"
+      },
+      {
+        "name": "McOutput",
+        "kind": "type",
+        "path": "coax/lib/microcoder/tools.coax",
+        "line": 21,
+        "start": 1015,
+        "end": 1302,
+        "sha256": "4c586cc3e1d6b3954f74ae92d1a63d251ff151005240cbccaa76ff451dd73de5"
+      },
+      {
+        "name": "MC_KEEP_HEAD",
+        "kind": "constant",
+        "path": "coax/lib/microcoder/tools.coax",
+        "line": 17,
+        "start": 817,
+        "end": 921,
+        "sha256": "51aac45b15fc6f6f5f626ef390195babdb6b60948156d4457a062677791ede20"
+      },
+      {
+        "name": "MC_KEEP_TAIL",
+        "kind": "constant",
+        "path": "coax/lib/microcoder/tools.coax",
+        "line": 18,
+        "start": 921,
+        "end": 1015,
+        "sha256": "c2724bcc3934dd48ae968e20825960b4b5a3a98e550d7d2db0ad953c844b79c7"
+      },
+      {
+        "name": "McStateBuffers",
+        "kind": "type",
+        "path": "coax/lib/microcoder/state.coax",
+        "line": 26,
+        "start": 1190,
+        "end": 1378,
+        "sha256": "ee8b88735aaf6da08930a44214d49d085514967d4fe957cf8811441f8a43acd8"
+      },
+      {
+        "name": "SoBody",
+        "kind": "type",
+        "path": "coax/lib/systemone/request.coax",
+        "line": 38,
+        "start": 1875,
+        "end": 2263,
+        "sha256": "4ff411731b67b88aab38bf716cecf006a45768f4df2e3e72cd9dabaa36ed4e6e"
+      },
+      {
+        "name": "SO_MAX_QUESTIONS",
+        "kind": "constant",
+        "path": "coax/lib/systemone/request.coax",
+        "line": 31,
+        "start": 1645,
+        "end": 1669,
+        "sha256": "938147a057860fc9ac0e023aab1db8a2bb5f635457b653dbf0c4ba86d3a117a0"
+      },
+      {
+        "name": "SoKind",
+        "kind": "type",
+        "path": "coax/lib/systemone/request.coax",
+        "line": 36,
+        "start": 1825,
+        "end": 1875,
+        "sha256": "fab4c1055397187c61ef1f390430a1dc1e80e8aefbcc53f96b5031a3c659ee47"
+      },
+      {
+        "name": "SoOwnedCall",
+        "kind": "type",
+        "path": "coax/lib/systemone/owner.coax",
+        "line": 7,
+        "start": 290,
+        "end": 606,
+        "sha256": "0610aef9b8e359e2f90c15f578634a79fe75a0b9e234537d09582578ad1fbb87"
+      },
+      {
+        "name": "SoCall",
+        "kind": "type",
+        "path": "coax/lib/systemone/transport.coax",
+        "line": 54,
+        "start": 2271,
+        "end": 2415,
+        "sha256": "4411759d9577a9e6ab62d41d1a45415bf45bdf4f16e4c7a12a7df014f88111f7"
+      },
+      {
+        "name": "SoResult",
+        "kind": "type",
+        "path": "coax/lib/systemone/transport.coax",
+        "line": 24,
+        "start": 1117,
+        "end": 1457,
+        "sha256": "e7f19f1a9cfd5c6cfb773902c0c78b34c321a6ef30b13d8876152edd0c77a0f2"
+      },
+      {
+        "name": "SoUsage",
+        "kind": "type",
+        "path": "coax/lib/systemone/answers.coax",
+        "line": 38,
+        "start": 1297,
+        "end": 1448,
+        "sha256": "3e2fd9e933a1ae072a763a26b517e4125cdd972fa8ee9590be6069be24fb6dd4"
+      },
+      {
+        "name": "Session",
+        "kind": "type",
+        "path": "apps/openagents-desktop/zeron/claude.coax",
+        "line": 59,
+        "start": 3183,
+        "end": 3905,
+        "sha256": "a5dd75b4b77534662eb93044404a62178d93aa9431bf5f4d15d3ee578dbbdfe8"
+      },
+      {
+        "name": "SPart",
+        "kind": "type",
+        "path": "apps/openagents-desktop/zeron/claude.coax",
+        "line": 46,
+        "start": 2581,
+        "end": 3183,
+        "sha256": "a21af3be943ca7b803dfe16a1be529b61fef369a50fbc23fc4b033c2e8e4e5f9"
+      },
+      {
+        "name": "S_PARTS",
+        "kind": "constant",
+        "path": "apps/openagents-desktop/zeron/claude.coax",
+        "line": 39,
+        "start": 2226,
+        "end": 2242,
+        "sha256": "733d7f63a900141f9c7d154eba0a52f0699726f69a8a427a06d2d4562e95b5dc"
+      },
+      {
+        "name": "SoClient",
+        "kind": "type",
+        "path": "coax/lib/systemone/transport.coax",
+        "line": 15,
+        "start": 710,
+        "end": 1117,
+        "sha256": "eab6072bfd333b3a1ec74c81a467483646f698daf17620358627b216b4c2619a"
+      },
+      {
+        "name": "SO_BASETEN_KEY_ENV",
+        "kind": "constant",
+        "path": "coax/lib/systemone/request.coax",
+        "line": 18,
+        "start": 810,
+        "end": 851,
+        "sha256": "ad82cd2a2a3f0b2c24736a745323e8021fc771e92874ed750f21be3cae50d92e"
+      },
+      {
+        "name": "SO_BASETEN_URL",
+        "kind": "constant",
+        "path": "coax/lib/systemone/request.coax",
+        "line": 17,
+        "start": 747,
+        "end": 810,
+        "sha256": "915890fbf5b5284682d776fb9df9ccf411c3758d2fe3fa18e3036846c8536ef4"
+      },
+      {
+        "name": "SO_OWN_IDLE",
+        "kind": "constant",
+        "path": "coax/lib/systemone/owner-policy.coax",
+        "line": 5,
+        "start": 168,
+        "end": 186,
+        "sha256": "e64c39dfbdc0e73c5241d33a8eed8a42d034a30b9bef787634b3ab9dc6c7e5d7"
+      },
+      {
+        "name": "SO_OWN_LAST",
+        "kind": "constant",
+        "path": "coax/lib/systemone/owner-policy.coax",
+        "line": 6,
+        "start": 226,
+        "end": 263,
+        "sha256": "6f2fd26b768e9068ade70b6ef514270cd90e155b2a2c3c6948728fa7f1da19ec"
+      },
+      {
+        "name": "SoStartFailure",
+        "kind": "type",
+        "path": "coax/lib/systemone/outcomes.coax",
+        "line": 7,
+        "start": 269,
+        "end": 312,
+        "sha256": "9e7859104c8d17e4380061150a453ad2f4db36bc71fc01532def2a61c8717971"
+      },
+      {
+        "name": "LAB_ASKING",
+        "kind": "constant",
+        "path": "apps/openagents-desktop/zeron/lab.coax",
+        "line": 41,
+        "start": 2598,
+        "end": 2615,
+        "sha256": "c1b27c2f6e38ed0bc58595e9cf2b782eca7ed5a68e59ced9bdaecda9c83473f0"
+      },
+      {
+        "name": "LAB_IDLE",
+        "kind": "constant",
+        "path": "apps/openagents-desktop/zeron/lab.coax",
+        "line": 41,
+        "start": 2583,
+        "end": 2598,
+        "sha256": "f88ea5281369d56d97b76c281fddac1b22596474036e15fdaf9822201543b4e8"
+      },
+      {
+        "name": "LAB_TIMEOUT_S",
+        "kind": "constant",
+        "path": "apps/openagents-desktop/zeron/lab.coax",
+        "line": 37,
+        "start": 2284,
+        "end": 2385,
+        "sha256": "88ca017162c912477fca51bb907a2fdedc942188f5ee9ef87372869ea47d218c"
+      },
+      {
+        "name": "SO_PSIONIC_KEY_ENV",
+        "kind": "constant",
+        "path": "coax/lib/systemone/request.coax",
+        "line": 28,
+        "start": 1499,
+        "end": 1607,
+        "sha256": "fb3d479875a31bc40f57f86157de9a6d016058e59b0ccd0d551308b0ea37c671"
+      }
+    ],
+    "stubs": [
+      {
+        "name": "lab_body",
+        "path": "apps/openagents-desktop/zeron/lab.coax",
+        "line": 137,
+        "signature": "lab_body :: (b: [] SoBody, buf: [] u8, state: string, codex: bool, mc: bool)",
+        "source_sha256": "95afa0b995bbc4e52b422c6cbb97696f3f3e55af520074ded28100c8edc0fec8",
+        "stub_sha256": "719536ba034f16d806d2c2986b9ab9ac8628f3c7ad5847aa768149b4bd759834"
+      },
+      {
+        "name": "lab_state",
+        "path": "apps/openagents-desktop/zeron/lab.coax",
+        "line": 110,
+        "signature": "lab_state :: (out: [] u8, message: string, codex: bool, mc: bool) -> string",
+        "source_sha256": "ccfacac8aad282adaf44611fdd1e423e9db7be429803ccf95ac5d72df3cc45d1",
+        "stub_sha256": "98a74bef36d877c00b505f73982869ce1161bfb67e0101d25549d09e31e17bf8"
+      },
+      {
+        "name": "s_text_of",
+        "path": "apps/openagents-desktop/zeron/claude.coax",
+        "line": 76,
+        "signature": "s_text_of :: (s: [] Session, k: int) -> string",
+        "source_sha256": "2a4aff20aa7d0dfc7c84468e66a51fee7239a18f1ae115d30353f9a87ada9077",
+        "stub_sha256": "185ed04bd3497e1cce13506d2b2791aebf631df563b96d4fe53ed32e365bd93b"
+      },
+      {
+        "name": "so_body",
+        "path": "coax/lib/systemone/request.coax",
+        "line": 152,
+        "signature": "so_body :: (b: [] SoBody) -> string",
+        "source_sha256": "a062c6d4b179ad504be838b2d05c78af72fb662a904cb156116868553ffa66f4",
+        "stub_sha256": "6ee919116f2d671c45affc19c385654311ec6229daf983b3551b3ce4b0f0e1bc"
+      },
+      {
+        "name": "lab_fail",
+        "path": "apps/openagents-desktop/zeron/lab.coax",
+        "line": 312,
+        "signature": "lab_fail :: (s: [] Session, why: string)",
+        "source_sha256": "d4307d15ecfea1768e59662dd868e173057bc9be8ec6ce7fe26f1399eadab583",
+        "stub_sha256": "367f2c10d8ef30a5c476a91e047790c57af97a96626d94408bd12f1c0e2823c2"
+      },
+      {
+        "name": "lab_url",
+        "path": "apps/openagents-desktop/zeron/lab.coax",
+        "line": 106,
+        "signature": "lab_url :: (l: [] Lab) -> string",
+        "source_sha256": "bc6f39a85a2c4f7b3d9c96abe3177bca16b035819f7f75be2018e8395f980f49",
+        "stub_sha256": "d4321336b9b114b20390a71eac8db66a17b734f4d7c53556a192f186babb6689"
+      },
+      {
+        "name": "cl_getenv",
+        "path": "coax/lib/agent/claude/transport.coax",
+        "line": 165,
+        "signature": "cl_getenv :: (name: string, out: [] u8) -> string",
+        "source_sha256": "3a238eaf1220893f003030dc3bc27d018176caaf4d6e17ef51aa6d36365914b6",
+        "stub_sha256": "babfffca2496044a5c7391839665994ae3adc90f808129165c68caa029ccb20e"
+      },
+      {
+        "name": "so_request_start",
+        "path": "coax/lib/systemone/outcomes.coax",
+        "line": 19,
+        "signature": "so_request_start :: (owner:[]SoOwnedCall,c:SoClient,body:string,out:[]u8,err:[]u8)->Result(int,SoStartFailure)",
+        "source_sha256": "8df23a58af8412f99ffa4098ec56b52ac1b25d24e2f867be7cf76b09db4f5153",
+        "stub_sha256": "52e4cbcd20b1debb371203e9b9badc9b5393ba2c876cf9a97cf6ef257448ac5d"
+      }
+    ],
+    "actual_lab_ask_sha256": "53849368aadcb51a63a4a0b0d4f82b40eb8937ab31f534613234f574c9bf4c7e",
+    "guard": "  // A repeated ask must not abandon the active owner or rewrite its backing.\n  if !so_owned_can_start(l[0].owner[0].phase,l[0].owner[0].generation) || !so_start_allowed(l[0].owner[0].call[0].h) { return; }\n",
+    "compared_fields": {
+      "Lab": "phase owner ticket q part route via mc codex_due codex_effort fallback secs codex url url_n local remote body out err",
+      "SoOwnedCall": "generation phase call",
+      "SoCall": "h out err at last lines timeout_s done r",
+      "SoResult": "status body problem stderr usage",
+      "SoUsage": "ok input_tokens output_tokens",
+      "SoBody": "buf at stage problem questions names kinds options",
+      "Session": "pool np parts n live stopping noticed secs turns changed asking cost turn_ms hint",
+      "SPart": "kind at n notice id tk arg detail before after input output failed resolved"
+    },
+    "fault_injection": "remove exact entry guard",
+    "red_lab_ask_sha256": "92db3d4d103f3d8926586d955f222aee16b940e0b07e77442ad9d5c5298b24e5",
+    "compiler_sha256": "67e753aec35af4d35b31988fe2962ccb04f0b42ece3e86d465511972426dab80",
+    "cc": "/usr/bin/cc",
+    "cc_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "scope": "Exact lab_ask early active/invalid refusal only; complete authored types/defaults; signature-matched unreachable fatal stubs. Not full Lab generation, attachment, process lifecycle, B2, R2 or general ownership qualification."
+  },
+  "runs": [
+    {
+      "label": "red-emit",
+      "argv": [
+        "/private/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/b3-rebased-975b-entry/red/subset.coax",
+        "--library",
+        "--header",
+        "/private/tmp/b3-rebased-975b-entry/red/lab-owner.h"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.028264292050153017,
+      "stdout_sha256": "c4ce23078e4cf9d974be262d5319d825677460b2105785c31b59cdce41a2e584",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "red-O0-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O0",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/b3-rebased-975b-entry/red",
+        "/private/tmp/b3-rebased-975b-entry/red/lab-owner.c",
+        "/private/tmp/openagents-12625-complete-20261101/apps/openagents-desktop/tests/lab-owner.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-rebased-975b-entry/red/O0"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.2024432080797851,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "red-O0-run",
+      "argv": [
+        "/private/tmp/b3-rebased-975b-entry/red/O0"
+      ],
+      "exit_status": 97,
+      "expected": 97,
+      "seconds": 0.2136582500534132,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "72a83e73ca20e6759da0135be0dc31b6b789b7ae937ce871c4ca3bf528b1fff7"
+    },
+    {
+      "label": "red-O2-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/b3-rebased-975b-entry/red",
+        "/private/tmp/b3-rebased-975b-entry/red/lab-owner.c",
+        "/private/tmp/openagents-12625-complete-20261101/apps/openagents-desktop/tests/lab-owner.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-rebased-975b-entry/red/O2"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.318511874997057,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "red-O2-run",
+      "argv": [
+        "/private/tmp/b3-rebased-975b-entry/red/O2"
+      ],
+      "exit_status": 97,
+      "expected": 97,
+      "seconds": 0.21255645796190947,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "72a83e73ca20e6759da0135be0dc31b6b789b7ae937ce871c4ca3bf528b1fff7"
+    },
+    {
+      "label": "red-sanitized-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/b3-rebased-975b-entry/red",
+        "/private/tmp/b3-rebased-975b-entry/red/lab-owner.c",
+        "/private/tmp/openagents-12625-complete-20261101/apps/openagents-desktop/tests/lab-owner.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-rebased-975b-entry/red/sanitized"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.379118625074625,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "red-sanitized-run",
+      "argv": [
+        "/private/tmp/b3-rebased-975b-entry/red/sanitized"
+      ],
+      "exit_status": 97,
+      "expected": 97,
+      "seconds": 0.600626458064653,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "72a83e73ca20e6759da0135be0dc31b6b789b7ae937ce871c4ca3bf528b1fff7"
+    },
+    {
+      "label": "green-emit",
+      "argv": [
+        "/private/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/b3-rebased-975b-entry/green/subset.coax",
+        "--library",
+        "--header",
+        "/private/tmp/b3-rebased-975b-entry/green/lab-owner.h"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.014818458002991974,
+      "stdout_sha256": "fea9a74112b67c334acfcb747480fb93bcfb50583485e0035594d7e5025e3e94",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "green-O0-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O0",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/b3-rebased-975b-entry/green",
+        "/private/tmp/b3-rebased-975b-entry/green/lab-owner.c",
+        "/private/tmp/openagents-12625-complete-20261101/apps/openagents-desktop/tests/lab-owner.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-rebased-975b-entry/green/O0"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.1410751660587266,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "green-O0-run",
+      "argv": [
+        "/private/tmp/b3-rebased-975b-entry/green/O0"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.29676249995827675,
+      "stdout_sha256": "bedb6a90acba7539c23e063771c574f8d6a8abf46bceb4468a5e6fcd2a6ea217",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "green-O2-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/b3-rebased-975b-entry/green",
+        "/private/tmp/b3-rebased-975b-entry/green/lab-owner.c",
+        "/private/tmp/openagents-12625-complete-20261101/apps/openagents-desktop/tests/lab-owner.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-rebased-975b-entry/green/O2"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.2546352499630302,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "green-O2-run",
+      "argv": [
+        "/private/tmp/b3-rebased-975b-entry/green/O2"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.516898832982406,
+      "stdout_sha256": "bedb6a90acba7539c23e063771c574f8d6a8abf46bceb4468a5e6fcd2a6ea217",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "green-sanitized-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-I",
+        "/private/tmp/b3-rebased-975b-entry/green",
+        "/private/tmp/b3-rebased-975b-entry/green/lab-owner.c",
+        "/private/tmp/openagents-12625-complete-20261101/apps/openagents-desktop/tests/lab-owner.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-rebased-975b-entry/green/sanitized"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.32466450007632375,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "label": "green-sanitized-run",
+      "argv": [
+        "/private/tmp/b3-rebased-975b-entry/green/sanitized"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.45244620798621327,
+      "stdout_sha256": "bedb6a90acba7539c23e063771c574f8d6a8abf46bceb4468a5e6fcd2a6ea217",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "status": "passed",
+  "recorded_utc": "2026-11-02T14:26:26.309063+00:00",
+  "artifacts": {
+    "green-emit.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-sanitized-run.stderr": "72a83e73ca20e6759da0135be0dc31b6b789b7ae937ce871c4ca3bf528b1fff7",
+    "red-O2-run.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-sanitized-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "green-sanitized-run.stdout": "bedb6a90acba7539c23e063771c574f8d6a8abf46bceb4468a5e6fcd2a6ea217",
+    "green-O2-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "green-O0-run.stdout": "bedb6a90acba7539c23e063771c574f8d6a8abf46bceb4468a5e6fcd2a6ea217",
+    "green-sanitized-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-O0-run.stderr": "72a83e73ca20e6759da0135be0dc31b6b789b7ae937ce871c4ca3bf528b1fff7",
+    "green-O2-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "green-O0-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "green-sanitized-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "green-O2-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "green-O0-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-O0-run.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "green-O0-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "projection.json": "a4116e31fd4470741613a5c234ba12109d1202286241aa22bb5c3b7734611b54",
+    "green-O2-run.stdout": "bedb6a90acba7539c23e063771c574f8d6a8abf46bceb4468a5e6fcd2a6ea217",
+    "green-sanitized-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-O2-run.stderr": "72a83e73ca20e6759da0135be0dc31b6b789b7ae937ce871c4ca3bf528b1fff7",
+    "red-emit.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-sanitized-run.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-sanitized-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-O0-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-O2-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-O0-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "red-O2-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "green/lab-owner.c": "fea9a74112b67c334acfcb747480fb93bcfb50583485e0035594d7e5025e3e94",
+    "green/O2": "61776ae0b38beeabac16fd2dcce27dd5327d177e307b8e5bd54f62d348e3aba0",
+    "green/lab-owner.h": "d418cb2205d1cd9bd446ec963ecefeb05b4dc0c903e6a6ada141f24057e2690e",
+    "green/O0": "8952437b6816def83926b6330240c4f4c0ae370a3ec7f0046f256987861a73f8",
+    "green/sanitized": "358a2647b705a4beb47e567a8a46708d5efbec70455ff607512fbc2b3f2bbd19",
+    "green/subset.coax": "abea57009aa0456674a0d7e732f15d58f11406bcbd26d18b4c78deedd748eb22",
+    "red/lab-owner.c": "c4ce23078e4cf9d974be262d5319d825677460b2105785c31b59cdce41a2e584",
+    "red/O2": "bbe24a4fc48c5273a7ccd151d5ee108e3e594ac5859b60d5989f4f765f68212a",
+    "red/lab-owner.h": "2ec3937ed12c3a56d07d100617de8290356d2c24575128cfc6aaa8f22f0e600c",
+    "red/O0": "545f5036cfffa8f9b07bbec93cfaa80a2ecc4eb0a7b05ec5f731d11db7affd08",
+    "red/sanitized": "7fb6c5ffff394bcb64bb352ea190c6ba41c40911d204d1baa4e4ed3c2ff81fd4",
+    "red/subset.coax": "3041d629269f4a9d0ac506dcc4c5234a38b08d2a4eb7e23c34647c5f023c64f3",
+    "red/sanitized.dSYM/Contents/Info.plist": "e85b3d40bab615bff5677e8efc8212941d0bbdecf04afaf645e06b35b6bdc0ab",
+    "red/sanitized.dSYM/Contents/Resources/DWARF/sanitized": "deb29452eb44953f628714108a7df0ecae0e4cac4565e4b1dc3d43d795dd2724",
+    "red/sanitized.dSYM/Contents/Resources/Relocations/aarch64/sanitized.yml": "ea57eab37fe5dedd8601ece18564f42b48b4234967f081e67f5cdf881ea9a053",
+    "green/sanitized.dSYM/Contents/Info.plist": "e85b3d40bab615bff5677e8efc8212941d0bbdecf04afaf645e06b35b6bdc0ab",
+    "green/sanitized.dSYM/Contents/Resources/DWARF/sanitized": "f335e8665e0d0c5869b9d5c5a1bf69c70b8c4f999dace3a261f811e36500600f",
+    "green/sanitized.dSYM/Contents/Resources/Relocations/aarch64/sanitized.yml": "6af0a20b79138395c46172fd30cd4b3d60d27d49fc692e04f9b1d0bd1c6a70f1"
+  },
+  "tooling": {
+    "apps/openagents-desktop/tests/lab-owner.py": "78f72553246647acca4cad1d5d00e24f86cfe9b945baa4258a86e2b5cc3065f9",
+    "apps/openagents-desktop/tests/lab-owner.c": "fe8b9148907fd7b267b6fba287f57584900e630410cf6b307fb418a9ab6af786",
+    "apps/openagents-desktop/tests/zeron_source_extract.py": "8bc43fa2c6459380ccb995d8f7d0601c0a861a0b2ae546d1597bb0ef33c86d7e"
+  }
+}

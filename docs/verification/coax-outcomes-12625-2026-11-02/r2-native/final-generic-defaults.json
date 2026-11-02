@@ -1,0 +1,30 @@
+{
+  "compiler_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "commands": [
+    {
+      "name": "sum",
+      "argv": [
+        "/tmp/coax-12625-native/final-v4/coax",
+        "test",
+        "/tmp/coax-12625-source/generic-sum-defaults.coax"
+      ],
+      "source_sha256": "5e36c32f9f674b40e820ef2d1c310d0be3a3b20807b48138a45181ede311d517",
+      "unchanged": true,
+      "returncode": 0,
+      "elapsed_s": 0.005448582931421697
+    },
+    {
+      "name": "optional",
+      "argv": [
+        "/tmp/coax-12625-native/final-v4/coax",
+        "test",
+        "/tmp/coax-12625-root/generic-optional-default-v3.coax"
+      ],
+      "source_sha256": "e825da3744004bcce0f55019f0ee56c1dc686d7a26fc0cb5522e0ad788a85597",
+      "unchanged": true,
+      "returncode": 0,
+      "elapsed_s": 0.00559466693084687
+    }
+  ],
+  "passed": true
+}

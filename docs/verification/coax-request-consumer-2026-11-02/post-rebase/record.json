@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "scope": "Fresh focused B3 witness after upstream SoClient.key_value and opt-in PTY host changes. Default/keyless System One consumer only; no qualification of the new key injection or PTY feature itself.",
+  "head": "975b94412d803671070dec7012913f7c1be76221",
+  "upstream": "8ed49c9b6a7f23c25b4f516993073441082b30b1",
+  "compiler": {
+    "path": "/tmp/coax-12625-native/v3/coax",
+    "sha256": "67e753aec35af4d35b31988fe2962ccb04f0b42ece3e86d465511972426dab80"
+  },
+  "status": "fresh post-rebase focused witness passed",
+  "results": {
+    "typed_checks": 42,
+    "typed_root_mutants": 32,
+    "typed_killed": 32,
+    "typed_survivors": 0,
+    "negative_diagnostics": [
+      "E0907",
+      "E0904",
+      "E0383"
+    ],
+    "native_modes": [
+      "O0",
+      "O2",
+      "fatal ASan+UBSan"
+    ],
+    "typed_real_host_transcript_cases_per_mode": 5,
+    "raw_owner_assertions_per_mode": 150,
+    "actual_lab_real_host_generations_per_mode": 6,
+    "factory_runs": 16,
+    "entry_red_green_runs": 14,
+    "entry_refusal_cases_per_mode": 8,
+    "source_and_tool_continuity": "passed by every original receipt",
+    "tests_or_product_fixes_needed": false
+  },
+  "why_fresh": [
+    "SoClient gained a descriptor field and transport environment setup, changing ABI/emitted code.",
+    "process-native.c gained PTY fields/shared host code. Even pipe-only cases require a new host witness.",
+    "Earlier native observations were not reused across these changed inputs."
+  ],
+  "limits": [
+    "One canonical serialized noncopied owner; copy tickets only.",
+    "Disjoint caller snapshots and backing lifetime remain caller obligations.",
+    "No full desktop/UI/service/remote model or general linear-lifetime claim.",
+    "Compiler normal-release/bootstrap/source qualification belongs to the overarching R2 record."
+  ],
+  "receipts": {
+    "typed.json": {
+      "original": "/tmp/b3-rebased-975b-typed/qualification.json",
+      "sha256": "a20a32ff72a9252bb8497592f83d70c274e73f81bf5e097a2cad55639b2bc16b",
+      "bytes": 19331
+    },
+    "typed-checks.json": {
+      "original": "/tmp/b3-rebased-975b-typed/checks.json",
+      "sha256": "6527b1e2378e992d578682d157a9fd0b35ca2d2014e5fa0d341619e4489d6550",
+      "bytes": 14033
+    },
+    "typed-mutation.json": {
+      "original": "/tmp/b3-rebased-975b-typed/mutation.json",
+      "sha256": "5933d924dcd7decb1118349d92a55736b84d03878b41b2ddd91740329d4232ff",
+      "bytes": 14279
+    },
+    "owner.json": {
+      "original": "/tmp/b3-rebased-975b-owner/qualification.json",
+      "sha256": "180be8ecf90df82879f57fdb47aaf477816ae8f197c9a235c34cf537294bccf0",
+      "bytes": 11776
+    },
+    "lab.json": {
+      "original": "/tmp/b3-rebased-975b-lab-native/qualification.json",
+      "sha256": "dba9381096c951a67baa2f7aab5122abc7502c396564e88e2a030dffd791bb66",
+      "bytes": 118552
+    },
+    "lab-emission.json": {
+      "original": "/tmp/b3-rebased-975b-lab-emission/qualification.json",
+      "sha256": "33ce2d327ada21d75dc7283adb7a8cd03d1eeb2955b1997117f18b58fe660722",
+      "bytes": 110688
+    },
+    "factory.json": {
+      "original": "/tmp/b3-rebased-975b-factory/receipt.json",
+      "sha256": "f7d6866a23a1f384ddaf86e19b6d8514b62b6c54917b505e96101c0f7d655a79",
+      "bytes": 94371
+    },
+    "entry.json": {
+      "original": "/tmp/b3-rebased-975b-entry/receipt.json",
+      "sha256": "e15b5b9ee592acae0e611dd8432e56eecb7974b8a4f4e1913a5f5d70ccbd8b17",
+      "bytes": 45665
+    }
+  },
+  "archive": {
+    "bytes": 523916,
+    "sha256": "deb1b8c7dbb1738b8b009332c69a9dc9b233f05052655eba4e763794baf57de7"
+  },
+  "manifest_sha256": "65a137f259be6a0dd30598be0612f439be7d4680fc3e86fbe5a7ec78930f0f8f",
+  "readback_verified": true
+}

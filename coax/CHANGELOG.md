@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.48.0 — Tagged Results and Cleanup — 2026-11-02
 
-Commit: pending
+Commit: [`975b94412d803671070dec7012913f7c1be76221`](https://github.com/OpenAgentsInc/openagents/commit/975b94412d803671070dec7012913f7c1be76221)
 
 - Add compiler-owned `Result(T,E)`, nominal tagged unions, nested `T?`
   optionals and exhaustive selection. Keep valid active-tag construction and

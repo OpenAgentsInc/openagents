@@ -1,0 +1,14 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-sum/scope-v2/coax/lib/compiler/scope.coax:421:63: mutant survived: true became false
+    for i:0..<seen_count {if !CK_sum_tick(c,budget[..]) {return true;}if visited[i]==child {seen=true;break;}}
+                                                                ^
+/tmp/coax-12625-sum/scope-v2/coax/lib/compiler/scope.coax:425:64: mutant survived: true became false
+    else {for i:0..<top+1 {if !CK_sum_tick(c,budget[..]) {return true;}if frames[i].type==child {seen=true;break;}}if seen {continue;}}
+                                                                 ^
+/tmp/coax-12625-sum/scope-v2/coax/lib/compiler/scope.coax:450:43: mutant survived: the assignment was removed
+   count:=2;if kind==CK_Kind.optional {count=1;}
+                                            ^
+/tmp/coax-12625-sum/scope-v2/coax/lib/compiler/scope.coax:450:44: mutant survived: 1 became 2
+   count:=2;if kind==CK_Kind.optional {count=1;}
+                                             ^
+577 mutants, 573 killed, 4 survived

@@ -1,0 +1,26 @@
+{
+  "schema": "coax.12625.r2-source-checkpoint.v1",
+  "recorded_utc": "2026-11-02T06:02:06.167843+00:00",
+  "root": "/private/tmp/openagents-12625-complete-20261101",
+  "base_head": "69077b82b44210e78f688008ace44ce7305f2ab5",
+  "source_pins": {
+    "checker.coax": "82ab1231045824462c520da080b166f2e9b544141aa50a79df9fe32d1d726cdf",
+    "query-index.coax": "1b4713011826ebc0cf115e9efe8b9719163f9e35eaff8ab7e45a094c7091128d",
+    "literal-projection-cache.coax": "db48be8fe9863f3156442d185c633e031237361f90c2d27f9363b6eff1aad6e5",
+    "query-projection-cache.coax": "2f64cd642fa4094585b8f52724c44e17409d16a7db4c379ee9e5e36cdaed4a13",
+    "sum-types.coax": "3447c89e1686756130f9adb7ab6427792113d9a8af2211af8b9d76dd971da7c7",
+    "sum-layout.coax": "9c5a7ce4cd70271e7d51df79bbb8ee46de12dc1b0e49f801b35ca5cee2a7a8cf",
+    "result-handling.coax": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+    "result-flow.coax": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef"
+  },
+  "default_authored": {
+    "record": "/tmp/coax-12625-source/coherent-authored-v2/process.json",
+    "sha256": "9e03aa17186e907b0fd107c281fa8d0b9163b43e5dde8eb4dcdd17b018a05955",
+    "checks": 1193,
+    "passed": 1193,
+    "elapsed_seconds": 9.674423999967985
+  },
+  "qualification_claim": false,
+  "no_more_owned_source_writes_until_root_release": true,
+  "latest_semantic_fix": "query-index kind5 admission plus by-value sum mutable descriptors retain manual helper boundary; genuine private RED then3caseGREEN; knownlocalfact retained"
+}

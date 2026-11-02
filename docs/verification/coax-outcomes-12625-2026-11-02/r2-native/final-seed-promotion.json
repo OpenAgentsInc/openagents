@@ -1,0 +1,40 @@
+{
+  "schema": "coax.r2.seed-refresh.v2",
+  "compiler_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "source_checker_sha256": "11d2c2a971ab664b172a3ec074502511c7f6207f095f3971f74b2fba09679fef",
+  "fixedpoint_sha256": "18a43e5fadbe287c14286d21ba435f76aa037f7fc264f9761e98e3673b6a3851",
+  "canonical_argument_base": "coax/; lib/compiler/{module}.coax",
+  "normal_release_provenance": false,
+  "files": [
+    {
+      "path": "coax/bootstrap/lexer.c",
+      "before_sha256": "1ccb3588c957644bfca17079fd208012588cfcbaeb859b1e3885d7b31ba65919",
+      "after_sha256": "1ccb3588c957644bfca17079fd208012588cfcbaeb859b1e3885d7b31ba65919"
+    },
+    {
+      "path": "coax/bootstrap/lexer.h",
+      "before_sha256": "1a57f8f377d457451a02542d201748a23c0888ff166a5444a363c49808bacbc3",
+      "after_sha256": "1a57f8f377d457451a02542d201748a23c0888ff166a5444a363c49808bacbc3"
+    },
+    {
+      "path": "coax/bootstrap/parser.c",
+      "before_sha256": "beb6e8ee4da8ebc79f75bcb6a8a198b83fc7123089e06a14ebbec73c0e6afffa",
+      "after_sha256": "beb6e8ee4da8ebc79f75bcb6a8a198b83fc7123089e06a14ebbec73c0e6afffa"
+    },
+    {
+      "path": "coax/bootstrap/parser.h",
+      "before_sha256": "a8abf3a93fd4c0b89a22d2bc7a2d9eb614a226857fc156acebcbe63f51ad9c4b",
+      "after_sha256": "a8abf3a93fd4c0b89a22d2bc7a2d9eb614a226857fc156acebcbe63f51ad9c4b"
+    },
+    {
+      "path": "coax/bootstrap/checker.c",
+      "before_sha256": "56827ce7e8aa5be3ca30682014dc5d98c39f8ef3aaef36ee0818a06408529e59",
+      "after_sha256": "c3b5dd9e6aa59d1cf84b2773f322acd9102d156c5cf6adf6b4c5d4d79628b29a"
+    },
+    {
+      "path": "coax/bootstrap/checker.h",
+      "before_sha256": "7fac7a56ebbfd9c72fd72ea817b6d5f72c535ba30de81f7c89687188fc71cf99",
+      "after_sha256": "7fac7a56ebbfd9c72fd72ea817b6d5f72c535ba30de81f7c89687188fc71cf99"
+    }
+  ]
+}

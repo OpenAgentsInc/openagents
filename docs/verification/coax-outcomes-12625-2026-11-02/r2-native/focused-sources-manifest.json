@@ -1,0 +1,32 @@
+{
+  "schema": "coax.focused-source-package.v1",
+  "archive_sha256": "e456adab077dde32982406089a073d43811bc14ae5301d10462c5d576112c70e",
+  "archive_bytes": 287532,
+  "files": {
+    "budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+    "budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+    "check-domains.c": "02bbf189cdca9a3411d56adce7aacdfd7c364c926e820f3e3b9494a498cef014",
+    "check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+    "checker.c": "c3b5dd9e6aa59d1cf84b2773f322acd9102d156c5cf6adf6b4c5d4d79628b29a",
+    "checker.h": "7fac7a56ebbfd9c72fd72ea817b6d5f72c535ba30de81f7c89687188fc71cf99",
+    "focused-qualification.json": "6b4535d90e804ea5f8b3723b7bd159231892640b55fd3a4b093916c262898023",
+    "lexer.c": "1ccb3588c957644bfca17079fd208012588cfcbaeb859b1e3885d7b31ba65919",
+    "lexer.h": "1a57f8f377d457451a02542d201748a23c0888ff166a5444a363c49808bacbc3",
+    "mutation-schedule.c": "ffafaf0c4e597ec7eeae2d8932d91452c148de88437376dd73b991b7950a4433",
+    "mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+    "parser.c": "beb6e8ee4da8ebc79f75bcb6a8a198b83fc7123089e06a14ebbec73c0e6afffa",
+    "parser.h": "a8abf3a93fd4c0b89a22d2bc7a2d9eb614a226857fc156acebcbe63f51ad9c4b",
+    "profiles.c": "f1f47f87a05805a2a37b243be35de1d0092c89287a73b934acb504c584908ab9",
+    "profiles.h": "631833a9bd6dfe7c2310fd5a87b0e7e837f845bbcbf1aed3754a26ee8b63a7ad",
+    "proto_importer.c": "b17eac3b8e03fa69fb83b15beecce3f3e1f860f5df170a8e11f7bbfbfe821437",
+    "proto_importer.h": "bb317624dd7ddb155103a6849fa9016a726971cd09817fa66c77c89f81a8d968",
+    "proto_runtime.inc": "19ba5ddbd2936d00ee94e38c45a2020ba2c33d0cff0654b056641bec08278922",
+    "sources.c": "688091ddb65adff6f83934ead05ef02e4ec73b180eaac726b1eccdad7a89002a",
+    "sources.h": "0495835277054e2fc5518680c43810ef089f5a69c7dc93fe9e3b5cfb73a63c3f"
+  },
+  "binary_included": false,
+  "binary_local_path": "/tmp/coax-12625-native/focused-package-final-v4/coax",
+  "binary_local_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "objects_or_dsym_included": false,
+  "normal_cache_promoted": false
+}

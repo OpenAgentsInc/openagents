@@ -40,3 +40,24 @@
  if nominal {#assert state[0].error_count==1 && errors[0].code=="E0901" && errors[0].loc.line==904;}
  else {#assert state[0].error_count==0 && got==expected && types[got].kind==CK_Kind.optional && types[got].elem==6 && nodes[nodes[copy].a].type==6;}
 }
+
+#forall "R2 focused literal witness identity requires every frozen key component" changed:0..<7 {
+ p:=CB_LiteralBlock.{id=10,type=16,head=20,used=80,types=24,block=1};id:=10;type:=16;head:=20;used:=80;types:=24;block:=1;
+ if changed==1 {id=11;}if changed==2 {type=17;}if changed==3 {head=21;}if changed==4 {used=81;}if changed==5 {types=25;}if changed==6 {block=2;}
+ #assert CB_literal_same(p,id,type,head,used,types,block)==(changed==0);
+}
+#forall "R2 focused literal FIFO refresh preserves two working sets within remaining fuel" third:bool {
+ nodes:[96]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=95,type_count=17}];work:[1]CB_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=20};nodes[11]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=24};nodes[12]=CK_Node.{kind=CK_Tag.expr_struct,type=16,head=32};
+ nodes[20]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=40,next=21};nodes[21]=CK_Node.{kind=CK_Tag.field_init,field_index=1,a=41};
+ for i:0..<8 {nodes[24+i]=CK_Node.{kind=CK_Tag.field_init,field_index=i,a=48+i,next=ifx i==7 then 0 else 25+i};nodes[48+i]=CK_Node.{kind=CK_Tag.expr_string,type=3};}
+ nodes[32]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=42};for i:40..<43 {nodes[i]=CK_Node.{kind=CK_Tag.expr_string,type=3};}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],literal_cache=true};out:[64]BS_Origin;path:=BS_Path.{count=1};path.steps[0].kind=BS_FIELD;
+ got:=CB_expr(b,10,path,false,out[..]);#assert !state[0].fatal && got.count==1 && out[0].root==40;
+ path.steps[0].index=7;got=CB_expr(b,11,path,false,out[..]);#assert !state[0].fatal && got.count==1 && out[0].root==55;
+ path.steps[0].index=1;got=CB_expr(b,10,path,false,out[..]);#assert !state[0].fatal && got.count==1 && out[0].root==41;
+ id:=10;expected:=41;if third {path.steps[0].index=0;got=CB_expr(b,12,path,false,out[..]);#assert !state[0].fatal && got.count==1 && out[0].root==42;id=11;expected=55;path.steps[0].index=7;}
+ // Each warmed source read costs the expression, selected witness, and payload ticks.
+ work[0].work=1048384;for i:0..<64 {got=CB_expr(b,id,path,false,out[..]);#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && !got.incomplete && out[0].kind==BS_STATIC && out[0].root==expected && out[0].type==12;}
+ #assert work[0].work<=1048576;
+}

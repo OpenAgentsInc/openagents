@@ -1,0 +1,510 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "scope": "Bounded typed async API checks, sharp authority mutation and real offline transcript.",
+  "source_before": {
+    "coax/tests/systemone-outcomes.coax": {
+      "bytes": 2238,
+      "sha256": "1b5c50bf5b4050d2da8198e6de7d0f65130250d51e23b8af13857b318deab03d"
+    },
+    "coax/lib/systemone/outcomes.coax": {
+      "bytes": 8831,
+      "sha256": "9c71c5925d82e5cd328c3d2b254144290fadc2bd88b9787ad28441c490d1320c"
+    },
+    "coax/lib/systemone/owner.coax": {
+      "bytes": 3446,
+      "sha256": "b3cf98fe929c57b512959e24bb6649cc5eb05691a1f07218c3ba36a6f18c6097"
+    },
+    "coax/lib/systemone/transport.coax": {
+      "bytes": 8942,
+      "sha256": "fa3af1f3dc8881c67d775cbf76248a85b0b4aea41ff774a77026f060cd0268a6"
+    },
+    "coax/lib/systemone/answers.coax": {
+      "bytes": 10554,
+      "sha256": "27a95b60c4c46c1756349ae245ca307aa427a5e781a4329cb610365146d8fbc0"
+    },
+    "coax/lib/systemone/request.coax": {
+      "bytes": 10676,
+      "sha256": "a44abb35e9961e4c965326f2194f8f2d57acbbee048c737c9d5d3d59131fc4a8"
+    },
+    "coax/lib/nostr/json.coax": {
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    "coax/lib/nostr/fixtures/json_suite.coax": {
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    "coax/lib/nostr/fixtures/coax_relay.coax": {
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    "coax/lib/agent/claude/fields.coax": {
+      "bytes": 12916,
+      "sha256": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4"
+    },
+    "coax/lib/nostr/json-f64.coax": {
+      "bytes": 2744,
+      "sha256": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c"
+    },
+    "coax/lib/agent/claude/transport.coax": {
+      "bytes": 7525,
+      "sha256": "fd1dfbea34aad2533da77753f19555c32b54bc7ef288b2d817a0b4d58027d33f"
+    },
+    "coax/lib/agent/claude/query.coax": {
+      "bytes": 20217,
+      "sha256": "f7ab119e8a0b1818043c59f0a99484cea367c070c064923643fd6d4d45df25b2"
+    },
+    "coax/lib/agent/claude/mcp.coax": {
+      "bytes": 7445,
+      "sha256": "25a70c8c0e848b254aa5ca9733691837bdbb333b57ad75f7b38b39c8e47d1140"
+    },
+    "coax/lib/agent/claude/options.coax": {
+      "bytes": 14037,
+      "sha256": "f36c373f3c640a694b27603926dfefc59319c55d8a8c810c615395f02204eb13"
+    },
+    "coax/lib/agent/claude/control.coax": {
+      "bytes": 11710,
+      "sha256": "5b7ebabdcfab80b586ea5491e52006fd5630207c5aef4eb8366da1381511f508"
+    },
+    "coax/lib/agent/claude/messages.coax": {
+      "bytes": 44027,
+      "sha256": "2deb53691e964762d692f0c98fae01cbef100b6c54db95d936f0db41f5c3d9d3"
+    },
+    "coax/lib/systemone/call-policy.coax": {
+      "bytes": 1829,
+      "sha256": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf"
+    },
+    "coax/lib/systemone/owner-policy.coax": {
+      "bytes": 2292,
+      "sha256": "3d457681de3dfbc02f1ad35336f743ae03fce1724b87ad1396d00d0fa2944720"
+    },
+    "coax/tests/systemone-outcomes/ignored-start.coax": {
+      "bytes": 160,
+      "sha256": "89dcba3e38113ec9ebb21f58a6d64e2f3ec47580c14493f54f21a43a4404a03e"
+    },
+    "coax/tests/systemone-outcomes/incomplete-terminal.coax": {
+      "bytes": 194,
+      "sha256": "2d5eeca3ade0ec8b1217ad683a706e3d0e03d952a70bc801bd1ae83829558a20"
+    },
+    "coax/tests/systemone-outcomes/local-snapshot.coax": {
+      "bytes": 242,
+      "sha256": "6c5c67870b5645c4d7811b21b7b80330f28320bfa47a7a5aceae3ab57e747dfd"
+    },
+    "coax/tests/systemone-outcomes.py": {
+      "bytes": 5671,
+      "sha256": "3d90790a8ff8f93b4c2dbbb792d44315ef275e43aaa8636a4b26f3f5c9470066"
+    },
+    "coax/tests/b2_support.py": {
+      "bytes": 2973,
+      "sha256": "aa9cf321283e88af0dac1745a3628f3aa16fc8e7da5063010a8aff83568be594"
+    },
+    "coax/tests/systemone-outcomes-child.c": {
+      "bytes": 738,
+      "sha256": "8d3ea09e92f3b083be26208645511469e0e72d4fb0582e818fb3bb8adf27f583"
+    },
+    "coax/tests/systemone-outcomes.out": {
+      "bytes": 145,
+      "sha256": "55d59540712ef1621d53938f05d35aa357273b0a81f17e2a7037022cf78b8e53"
+    },
+    "coax/platform/process-native.c": {
+      "bytes": 28627,
+      "sha256": "3c2e5ac2febb9e4ab2042363e0a15adfe0432eaee0e840056ccdd3827275528f"
+    },
+    "coax/platform/process-native.h": {
+      "bytes": 5423,
+      "sha256": "b4fac09b341a274b46dfaed525c85e889808da2892f377f815deac58845e2d3e"
+    }
+  },
+  "tools": {
+    "/private/tmp/coax-12625-native/v3/coax": "67e753aec35af4d35b31988fe2962ccb04f0b42ece3e86d465511972426dab80",
+    "/usr/bin/cc": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba"
+  },
+  "runs": [
+    {
+      "label": "checks",
+      "argv": [
+        "/private/tmp/coax-12625-native/v3/coax",
+        "test",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/systemone/outcomes.coax",
+        "--library",
+        "--evidence",
+        "/private/tmp/b3-rebased-975b-typed/checks.json"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.749927542055957
+    },
+    {
+      "label": "mutation",
+      "argv": [
+        "/private/tmp/coax-12625-native/v3/coax",
+        "mutate",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/systemone/outcomes.coax",
+        "--library",
+        "--root-only",
+        "--jobs",
+        "2",
+        "--evidence",
+        "/private/tmp/b3-rebased-975b-typed/mutation.json"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.7413917089579627
+    },
+    {
+      "label": "ignored-start",
+      "argv": [
+        "/private/tmp/coax-12625-native/v3/coax",
+        "check",
+        "/private/tmp/openagents-12625-complete-20261101/coax/tests/systemone-outcomes/ignored-start.coax",
+        "--library",
+        "--json"
+      ],
+      "exit_status": 1,
+      "expected": 1,
+      "seconds": 0.13264950003940612
+    },
+    {
+      "label": "incomplete-terminal",
+      "argv": [
+        "/private/tmp/coax-12625-native/v3/coax",
+        "check",
+        "/private/tmp/openagents-12625-complete-20261101/coax/tests/systemone-outcomes/incomplete-terminal.coax",
+        "--library",
+        "--json"
+      ],
+      "exit_status": 1,
+      "expected": 1,
+      "seconds": 0.12219287501648068
+    },
+    {
+      "label": "local-snapshot",
+      "argv": [
+        "/private/tmp/coax-12625-native/v3/coax",
+        "check",
+        "/private/tmp/openagents-12625-complete-20261101/coax/tests/systemone-outcomes/local-snapshot.coax",
+        "--library",
+        "--json"
+      ],
+      "exit_status": 1,
+      "expected": 1,
+      "seconds": 0.13388179196044803
+    },
+    {
+      "label": "emit",
+      "argv": [
+        "/private/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/tests/systemone-outcomes.coax"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.18466374999843538
+    },
+    {
+      "label": "O0-child",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O0",
+        "/private/tmp/openagents-12625-complete-20261101/coax/tests/systemone-outcomes-child.c",
+        "-o",
+        "/private/tmp/b3-rebased-975b-typed/child-O0"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.0788528339471668
+    },
+    {
+      "label": "O0-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O0",
+        "-ffp-contract=off",
+        "/private/tmp/b3-rebased-975b-typed/systemone-outcomes.c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/platform/process-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-rebased-975b-typed/O0"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.24272887501865625
+    },
+    {
+      "label": "O0-run",
+      "argv": [
+        "/private/tmp/b3-rebased-975b-typed/O0"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.5372081670211628
+    },
+    {
+      "label": "O2-child",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O2",
+        "/private/tmp/openagents-12625-complete-20261101/coax/tests/systemone-outcomes-child.c",
+        "-o",
+        "/private/tmp/b3-rebased-975b-typed/child-O2"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.07553574990015477
+    },
+    {
+      "label": "O2-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "/private/tmp/b3-rebased-975b-typed/systemone-outcomes.c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/platform/process-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-rebased-975b-typed/O2"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.6131440419703722
+    },
+    {
+      "label": "O2-run",
+      "argv": [
+        "/private/tmp/b3-rebased-975b-typed/O2"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.5721937090856954
+    },
+    {
+      "label": "sanitized-child",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "/private/tmp/openagents-12625-complete-20261101/coax/tests/systemone-outcomes-child.c",
+        "-o",
+        "/private/tmp/b3-rebased-975b-typed/child-sanitized"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.1128604169934988
+    },
+    {
+      "label": "sanitized-compile",
+      "argv": [
+        "/usr/bin/cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "/private/tmp/b3-rebased-975b-typed/systemone-outcomes.c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/platform/process-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/b3-rebased-975b-typed/sanitized"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 0.9717142910230905
+    },
+    {
+      "label": "sanitized-run",
+      "argv": [
+        "/private/tmp/b3-rebased-975b-typed/sanitized"
+      ],
+      "exit_status": 0,
+      "expected": 0,
+      "seconds": 1.2226271670078859
+    }
+  ],
+  "negative": {
+    "ignored-start": [
+      "E0907",
+      2
+    ],
+    "incomplete-terminal": [
+      "E0904",
+      3
+    ],
+    "local-snapshot": [
+      "E0383",
+      4
+    ]
+  },
+  "source_after": {
+    "coax/tests/systemone-outcomes.coax": {
+      "bytes": 2238,
+      "sha256": "1b5c50bf5b4050d2da8198e6de7d0f65130250d51e23b8af13857b318deab03d"
+    },
+    "coax/lib/systemone/outcomes.coax": {
+      "bytes": 8831,
+      "sha256": "9c71c5925d82e5cd328c3d2b254144290fadc2bd88b9787ad28441c490d1320c"
+    },
+    "coax/lib/systemone/owner.coax": {
+      "bytes": 3446,
+      "sha256": "b3cf98fe929c57b512959e24bb6649cc5eb05691a1f07218c3ba36a6f18c6097"
+    },
+    "coax/lib/systemone/transport.coax": {
+      "bytes": 8942,
+      "sha256": "fa3af1f3dc8881c67d775cbf76248a85b0b4aea41ff774a77026f060cd0268a6"
+    },
+    "coax/lib/systemone/answers.coax": {
+      "bytes": 10554,
+      "sha256": "27a95b60c4c46c1756349ae245ca307aa427a5e781a4329cb610365146d8fbc0"
+    },
+    "coax/lib/systemone/request.coax": {
+      "bytes": 10676,
+      "sha256": "a44abb35e9961e4c965326f2194f8f2d57acbbee048c737c9d5d3d59131fc4a8"
+    },
+    "coax/lib/nostr/json.coax": {
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    "coax/lib/nostr/fixtures/json_suite.coax": {
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    "coax/lib/nostr/fixtures/coax_relay.coax": {
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    "coax/lib/agent/claude/fields.coax": {
+      "bytes": 12916,
+      "sha256": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4"
+    },
+    "coax/lib/nostr/json-f64.coax": {
+      "bytes": 2744,
+      "sha256": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c"
+    },
+    "coax/lib/agent/claude/transport.coax": {
+      "bytes": 7525,
+      "sha256": "fd1dfbea34aad2533da77753f19555c32b54bc7ef288b2d817a0b4d58027d33f"
+    },
+    "coax/lib/agent/claude/query.coax": {
+      "bytes": 20217,
+      "sha256": "f7ab119e8a0b1818043c59f0a99484cea367c070c064923643fd6d4d45df25b2"
+    },
+    "coax/lib/agent/claude/mcp.coax": {
+      "bytes": 7445,
+      "sha256": "25a70c8c0e848b254aa5ca9733691837bdbb333b57ad75f7b38b39c8e47d1140"
+    },
+    "coax/lib/agent/claude/options.coax": {
+      "bytes": 14037,
+      "sha256": "f36c373f3c640a694b27603926dfefc59319c55d8a8c810c615395f02204eb13"
+    },
+    "coax/lib/agent/claude/control.coax": {
+      "bytes": 11710,
+      "sha256": "5b7ebabdcfab80b586ea5491e52006fd5630207c5aef4eb8366da1381511f508"
+    },
+    "coax/lib/agent/claude/messages.coax": {
+      "bytes": 44027,
+      "sha256": "2deb53691e964762d692f0c98fae01cbef100b6c54db95d936f0db41f5c3d9d3"
+    },
+    "coax/lib/systemone/call-policy.coax": {
+      "bytes": 1829,
+      "sha256": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf"
+    },
+    "coax/lib/systemone/owner-policy.coax": {
+      "bytes": 2292,
+      "sha256": "3d457681de3dfbc02f1ad35336f743ae03fce1724b87ad1396d00d0fa2944720"
+    },
+    "coax/tests/systemone-outcomes/ignored-start.coax": {
+      "bytes": 160,
+      "sha256": "89dcba3e38113ec9ebb21f58a6d64e2f3ec47580c14493f54f21a43a4404a03e"
+    },
+    "coax/tests/systemone-outcomes/incomplete-terminal.coax": {
+      "bytes": 194,
+      "sha256": "2d5eeca3ade0ec8b1217ad683a706e3d0e03d952a70bc801bd1ae83829558a20"
+    },
+    "coax/tests/systemone-outcomes/local-snapshot.coax": {
+      "bytes": 242,
+      "sha256": "6c5c67870b5645c4d7811b21b7b80330f28320bfa47a7a5aceae3ab57e747dfd"
+    },
+    "coax/tests/systemone-outcomes.py": {
+      "bytes": 5671,
+      "sha256": "3d90790a8ff8f93b4c2dbbb792d44315ef275e43aaa8636a4b26f3f5c9470066"
+    },
+    "coax/tests/b2_support.py": {
+      "bytes": 2973,
+      "sha256": "aa9cf321283e88af0dac1745a3628f3aa16fc8e7da5063010a8aff83568be594"
+    },
+    "coax/tests/systemone-outcomes-child.c": {
+      "bytes": 738,
+      "sha256": "8d3ea09e92f3b083be26208645511469e0e72d4fb0582e818fb3bb8adf27f583"
+    },
+    "coax/tests/systemone-outcomes.out": {
+      "bytes": 145,
+      "sha256": "55d59540712ef1621d53938f05d35aa357273b0a81f17e2a7037022cf78b8e53"
+    },
+    "coax/platform/process-native.c": {
+      "bytes": 28627,
+      "sha256": "3c2e5ac2febb9e4ab2042363e0a15adfe0432eaee0e840056ccdd3827275528f"
+    },
+    "coax/platform/process-native.h": {
+      "bytes": 5423,
+      "sha256": "b4fac09b341a274b46dfaed525c85e889808da2892f377f815deac58845e2d3e"
+    }
+  },
+  "inputs_unchanged": true,
+  "tools_unchanged": true,
+  "artifacts": {
+    "sanitized-child.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0-child.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "checks.stdout": "ae0e03e67de607b3801f75e7b402126fba8c0d0415654ed1dfc9bdfbd3f33491",
+    "incomplete-terminal.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "child-O0": "7ffeffeef4cdd11821f178001d22e9aca0b026be7663125a9d5c69d521d4a18e",
+    "child-sanitized": "86942125ad5e8318ca84fa0c9bf4e78e95aa86472c53c9857f39e4dacba15469",
+    "checks.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "emit.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "systemone-outcomes.c": "4a3604acb44b01c5a9b26b624ac9dc3dc6df2217d048510aa540675f51e40e75",
+    "O2": "ffe7bf71cb6b0b5d425c89c395735bcd814a82148af4258194314e7b61fb7f43",
+    "incomplete-terminal.stderr": "44ee25894f9f09b39c25bbe2394905bc1011a382b49f38a479d33a8f44d13a6c",
+    "O0-child.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-child.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "checks.json": "6527b1e2378e992d578682d157a9fd0b35ca2d2014e5fa0d341619e4489d6550",
+    "O2-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O2-child.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ignored-start.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "local-snapshot.stderr": "65248a69d67ec674890c2e933c416b9310d1a1bd8e43c5346df8864892433aaa",
+    "mutation.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "sanitized-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "child-O2": "3b22239e0f7bf63abbbf6d632af867d2e6ea33b47b937c257554fc0ce208c4bf",
+    "sanitized-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O2-run.stdout": "55d59540712ef1621d53938f05d35aa357273b0a81f17e2a7037022cf78b8e53",
+    "O2-run.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0": "fb61a150bc8f94419b88e525ef4466cb1b79ce9d03e955e58a1f75675e23f156",
+    "sanitized-run.stdout": "55d59540712ef1621d53938f05d35aa357273b0a81f17e2a7037022cf78b8e53",
+    "local-snapshot.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mutation.json": "5933d924dcd7decb1118349d92a55736b84d03878b41b2ddd91740329d4232ff",
+    "ignored-start.stderr": "48462f5df605a47c7fae2dd9ba6ef57d3c5135c5c4f602436e99aee4e635b5ca",
+    "sanitized": "7ec70305062879b7a9a0a41eef076d262c4fe9d9f6d34906be57703cf529cecf",
+    "sanitized-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mutation.stdout": "250378a8d6a37e99bbc5ac17e79a09c079f3b3382040606382e1c3f76c93039b",
+    "O2-compile.stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0-run.stdout": "55d59540712ef1621d53938f05d35aa357273b0a81f17e2a7037022cf78b8e53",
+    "O2-child.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "O0-compile.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "child-sanitized.dSYM/Contents/Info.plist": "96771ad37b076d804a645fc4b99e24fc093209be244343a144108844b362e8d6",
+    "child-sanitized.dSYM/Contents/Resources/DWARF/child-sanitized": "a63bd76a093043842fc57286e517dc639eb1060aeeab0007944c9b9d0605279d",
+    "child-sanitized.dSYM/Contents/Resources/Relocations/aarch64/child-sanitized.yml": "84f1f5b075e8c6fe9349c3bedb988627ececc306ead9cbf8300983829613cbf8",
+    "sanitized.dSYM/Contents/Info.plist": "e85b3d40bab615bff5677e8efc8212941d0bbdecf04afaf645e06b35b6bdc0ab",
+    "sanitized.dSYM/Contents/Resources/DWARF/sanitized": "63ff900e9a05b622e15dae80699fa618aa426bc204b82bf38c29f8e411a283f4",
+    "sanitized.dSYM/Contents/Resources/Relocations/aarch64/sanitized.yml": "3c51c146569cfc49d8dfde778155a3b1de8b58f6d60623fb90886ff0dddcfcf8"
+  }
+}

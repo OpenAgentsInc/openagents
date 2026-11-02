@@ -1,5 +1,6 @@
 {
-  "compiler_sha256": "67e753aec35af4d35b31988fe2962ccb04f0b42ece3e86d465511972426dab80",
+  "compiler_sha256": "710c4f5708d4c7ccbbe3207f89b9e9bb141860988ec9d98e71eca7a14712ac4b",
+  "reason_for_new_observation": "changed compiler producer; final source integration",
   "rows": [
     {
       "unit": "ch05_tagged",
@@ -7,7 +8,7 @@
       "passed": true,
       "process": {
         "argv": [
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "test",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch05_tagged.coax"
         ],
@@ -15,17 +16,17 @@
           "/opt/homebrew/opt/python@3.15/bin/python3.15",
           "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
           "--",
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "test",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch05_tagged.coax"
         ],
         "cwd": "/private/tmp/openagents-12625-complete-20261101",
         "started": true,
-        "pid": 81074,
+        "pid": 33859,
         "returncode": 0,
         "launch_errno": null,
         "launch_error": null,
-        "elapsed_s": 0.032937334035523236,
+        "elapsed_s": 0.02390762499999255,
         "timeout": false,
         "deadline_exhausted": false,
         "stdout_limit": false,
@@ -44,7 +45,7 @@
           "total": 8388608
         },
         "timeout_s": 45,
-        "deadline": 538493.728369041
+        "deadline": 569203.647070875
       },
       "source_sha256": "8701b791b96efa30d70e43f07a963fe7ffe7de85af00d4aba8486087fc0832e6",
       "stdout_sha256": "b2c13382a8f9f1b3aa3a16b19aad5da69a82ac1147d2f10b50bd39024d5d8a67"
@@ -55,7 +56,7 @@
       "passed": true,
       "process": {
         "argv": [
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "run",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch05_tagged.coax"
         ],
@@ -63,17 +64,17 @@
           "/opt/homebrew/opt/python@3.15/bin/python3.15",
           "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
           "--",
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "run",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch05_tagged.coax"
         ],
         "cwd": "/private/tmp/openagents-12625-complete-20261101",
         "started": true,
-        "pid": 81078,
+        "pid": 33861,
         "returncode": 0,
         "launch_errno": null,
         "launch_error": null,
-        "elapsed_s": 0.300465542008169,
+        "elapsed_s": 0.35780516697559506,
         "timeout": false,
         "deadline_exhausted": false,
         "stdout_limit": false,
@@ -92,7 +93,7 @@
           "total": 8388608
         },
         "timeout_s": 45,
-        "deadline": 538493.728369041
+        "deadline": 569203.647070875
       },
       "source_sha256": "8701b791b96efa30d70e43f07a963fe7ffe7de85af00d4aba8486087fc0832e6",
       "stdout_sha256": "49d894d9e43fa77d682a29d55f948aea689e8f2baf2bd39beffe50bdf41732e7"
@@ -103,7 +104,7 @@
       "passed": true,
       "process": {
         "argv": [
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "run",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch05_tagged.coax",
           "--release"
@@ -112,18 +113,18 @@
           "/opt/homebrew/opt/python@3.15/bin/python3.15",
           "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
           "--",
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "run",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch05_tagged.coax",
           "--release"
         ],
         "cwd": "/private/tmp/openagents-12625-complete-20261101",
         "started": true,
-        "pid": 81117,
+        "pid": 33901,
         "returncode": 0,
         "launch_errno": null,
         "launch_error": null,
-        "elapsed_s": 0.28784812497906387,
+        "elapsed_s": 0.21514112502336502,
         "timeout": false,
         "deadline_exhausted": false,
         "stdout_limit": false,
@@ -142,7 +143,7 @@
           "total": 8388608
         },
         "timeout_s": 45,
-        "deadline": 538493.728369041
+        "deadline": 569203.647070875
       },
       "source_sha256": "8701b791b96efa30d70e43f07a963fe7ffe7de85af00d4aba8486087fc0832e6",
       "stdout_sha256": "49d894d9e43fa77d682a29d55f948aea689e8f2baf2bd39beffe50bdf41732e7"
@@ -153,7 +154,7 @@
       "passed": true,
       "process": {
         "argv": [
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "test",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch07_results.coax"
         ],
@@ -161,17 +162,17 @@
           "/opt/homebrew/opt/python@3.15/bin/python3.15",
           "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
           "--",
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "test",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch07_results.coax"
         ],
         "cwd": "/private/tmp/openagents-12625-complete-20261101",
         "started": true,
-        "pid": 81160,
+        "pid": 33929,
         "returncode": 0,
         "launch_errno": null,
         "launch_error": null,
-        "elapsed_s": 0.03622716700192541,
+        "elapsed_s": 0.023359499988146126,
         "timeout": false,
         "deadline_exhausted": false,
         "stdout_limit": false,
@@ -190,7 +191,7 @@
           "total": 8388608
         },
         "timeout_s": 45,
-        "deadline": 538493.728369041
+        "deadline": 569203.647070875
       },
       "source_sha256": "a6c28d47e0f76b4b1c5233a69d911ebb30422cc75728f508626ea3212c89005a",
       "stdout_sha256": "590f8e31ce5fd344bf8a475d32f441638ad6eb019deafc3deb86e0dddc79c405"
@@ -201,7 +202,7 @@
       "passed": true,
       "process": {
         "argv": [
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "run",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch07_results.coax"
         ],
@@ -209,17 +210,17 @@
           "/opt/homebrew/opt/python@3.15/bin/python3.15",
           "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
           "--",
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "run",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch07_results.coax"
         ],
         "cwd": "/private/tmp/openagents-12625-complete-20261101",
         "started": true,
-        "pid": 81165,
+        "pid": 33930,
         "returncode": 0,
         "launch_errno": null,
         "launch_error": null,
-        "elapsed_s": 0.31432804092764854,
+        "elapsed_s": 0.3030600000638515,
         "timeout": false,
         "deadline_exhausted": false,
         "stdout_limit": false,
@@ -238,7 +239,7 @@
           "total": 8388608
         },
         "timeout_s": 45,
-        "deadline": 538493.728369041
+        "deadline": 569203.647070875
       },
       "source_sha256": "a6c28d47e0f76b4b1c5233a69d911ebb30422cc75728f508626ea3212c89005a",
       "stdout_sha256": "05050f63aa786dc71ac10de74fa135b8df53bff551f7d48160de1da66f8561a1"
@@ -249,7 +250,7 @@
       "passed": true,
       "process": {
         "argv": [
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "run",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch07_results.coax",
           "--release"
@@ -258,18 +259,18 @@
           "/opt/homebrew/opt/python@3.15/bin/python3.15",
           "/private/tmp/openagents-12625-complete-20261101/coax/tests/quiet_crash.py",
           "--",
-          "/tmp/coax-12625-native/v3/coax",
+          "/tmp/coax-12625-native/final-v4/coax",
           "run",
           "/private/tmp/openagents-12625-complete-20261101/coax/book/examples/ch07_results.coax",
           "--release"
         ],
         "cwd": "/private/tmp/openagents-12625-complete-20261101",
         "started": true,
-        "pid": 81199,
+        "pid": 34006,
         "returncode": 0,
         "launch_errno": null,
         "launch_error": null,
-        "elapsed_s": 0.3017256249440834,
+        "elapsed_s": 0.21390687499660999,
         "timeout": false,
         "deadline_exhausted": false,
         "stdout_limit": false,
@@ -288,7 +289,7 @@
           "total": 8388608
         },
         "timeout_s": 45,
-        "deadline": 538493.728369041
+        "deadline": 569203.647070875
       },
       "source_sha256": "a6c28d47e0f76b4b1c5233a69d911ebb30422cc75728f508626ea3212c89005a",
       "stdout_sha256": "05050f63aa786dc71ac10de74fa135b8df53bff551f7d48160de1da66f8561a1"

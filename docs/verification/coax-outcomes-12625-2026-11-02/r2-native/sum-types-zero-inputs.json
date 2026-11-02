@@ -1,0 +1,24 @@
+{
+  "schema": "coax.sum.policy.mutation-scope.v1",
+  "scope": "stockroot-only exactproductionmodule+allloadedchecks+externalpolicyoracles",
+  "production_sha256": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+  "source_pins": {
+    "coax/tests/results-sum-policy.coax": "4e6bbab4898eafe6fe18ebcd80d459141dfaa7c8c95113a2b56b76c112b90468",
+    "coax/lib/compiler/checker.coax": "82ab1231045824462c520da080b166f2e9b544141aa50a79df9fe32d1d726cdf",
+    "coax/lib/compiler/query-index.coax": "1b4713011826ebc0cf115e9efe8b9719163f9e35eaff8ab7e45a094c7091128d",
+    "coax/lib/compiler/literal-projection-cache.coax": "db48be8fe9863f3156442d185c633e031237361f90c2d27f9363b6eff1aad6e5",
+    "coax/lib/compiler/borrow-summary.coax": "53f7f3d8db5c84006bc46f62fb5fffa7a7052a411cf59e7f4fec5321deadc92c",
+    "coax/lib/compiler/query-projection-cache.coax": "2f64cd642fa4094585b8f52724c44e17409d16a7db4c379ee9e5e36cdaed4a13",
+    "coax/lib/compiler/sum-types.coax": "d1371380db7879e930b0d702feb4cbe49c36b512c2267898356de608eafe2a3a",
+    "coax/lib/compiler/sum-layout.coax": "d3964be01f2cb3e0b6c89993a49d95cba2330d4efd62699b8fd54c591339d169",
+    "coax/lib/compiler/result-handling.coax": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+    "coax/lib/compiler/result-flow.coax": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef",
+    "coax/lib/compiler/retain-policy.coax": "eef328e3f889a43f9d6bbd9009246dcca4727c747bfe58b91e17c941949c5785",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+    "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+    "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+    "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+    "coax/lib/compiler/spatial-mutation.coax": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+  },
+  "compiler_sha256": "67e753aec35af4d35b31988fe2962ccb04f0b42ece3e86d465511972426dab80"
+}

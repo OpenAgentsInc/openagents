@@ -1,0 +1,260 @@
+#authority;
+#forall "return borrow presence and mutable descriptor discovery preserve literal type shapes" sample:0..<19 {
+ nodes:[24]CK_Node;types:[40]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=23,type_count=32}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=37,column=4}}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=1};types[18]=CK_Type.{kind=CK_Kind.struct_,decl=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=12,next=4};nodes[4]=CK_Node.{kind=CK_Tag.field,type=3};types[19]=CK_Type.{kind=CK_Kind.struct_,decl=5};nodes[5]=CK_Node.{kind=CK_Tag.struct_};types[20]=CK_Type.{kind=CK_Kind.view,elem=18};types[21]=CK_Type.{kind=CK_Kind.array,elem=20,length=0};types[22]=CK_Type.{kind=CK_Kind.array,elem=20,length=1};types[23]=CK_Type.{kind=CK_Kind.struct_,decl=6};nodes[6]=CK_Node.{kind=CK_Tag.struct_,head=7};nodes[7]=CK_Node.{kind=CK_Tag.field,type=12,next=8};nodes[8]=CK_Node.{kind=CK_Tag.field,type=20};types[24]=CK_Type.{kind=CK_Kind.array,elem=12,length=1};types[25]=CK_Type.{kind=CK_Kind.array,elem=17,length=1};types[27]=CK_Type.{kind=CK_Kind.view,elem=3};
+ inputs:=[19]int.[1,2,3,12,16,17,18,19,20,21,22,23,24,25,27,0,32,16,3];has:=[19]bool.[false,false,true,false,true,true,true,false,true,false,true,true,false,true,true,false,false,false,false];mutable:=[19]bool.[false,false,false,false,false,false,false,false,true,false,true,true,false,false,true,false,false,false,false];if sample==17 || sample==18 {state[0].fatal=true;}
+ result:=CB_has_borrow(b,inputs[sample],0);#assert result==has[sample];if sample<15 {#assert !state[0].fatal && state[0].error_count==0;}else if sample<17 {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}else {#assert state[0].fatal && state[0].error_count==0 && work[0].work==0;}
+ state[0].fatal=sample==17 || sample==18;state[0].error_count=0;work[0].work=0;result=CB_mutable_descriptors(b,inputs[sample],0);#assert result==mutable[sample];if sample<15 {#assert !state[0].fatal && state[0].error_count==0;}else if sample<17 {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}else {#assert state[0].fatal && state[0].error_count==0 && work[0].work==0;}
+}
+
+#test "return borrow presence discovery does not impose projection depth on owned scalar records" {
+ nodes:[64]CK_Node;types:[32]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=63,type_count=26}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=16,b=3,loc=CK_Loc.{line=10,column=2}};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block};
+ for i:0..<10 {types[16+i]=CK_Type.{kind=CK_Kind.struct_,decl=32+i*2};nodes[32+i*2]=CK_Node.{kind=CK_Tag.struct_,head=33+i*2};nodes[33+i*2]=CK_Node.{kind=CK_Tag.field,type=ifx i==9 then 12 else 17+i};}
+ CK_borrow_returns(c);#assert !state[0].fatal && state[0].error_count==0 && nodes[2].borrow_status==0;
+}
+
+#forall "retained discovery keeps the exact 256-level type boundary" mutable:bool,too_deep:bool {
+ types:[274]CK_Type;nodes:[4]CK_Node;errors:[4]CK_Error;state:[1]CK_State;work:[1]CB_State;
+ for i:0..<16 {types[i]=CK_builtin(i);}layers:=ifx too_deep then 257 else 256;
+ for i:0..<layers {types[16+i]=CK_Type.{kind=CK_Kind.array,length=1,elem=17+i};}
+ types[16+layers]=CK_Type.{kind=CK_Kind.view,elem=3};state[0]=CK_State.{used=3,type_count=17+layers};work[0].loc=CK_Loc.{line=901,column=8,offset=90108};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};answer:=ifx mutable then CR_mutable(b,16) else CR_presence(b,16);
+ if too_deep {#assert !answer && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==901 && errors[0].loc.column==8 && errors[0].loc.offset==90108;}
+ else {#assert answer && !state[0].fatal && state[0].error_count==0;}
+}
+
+// Repeated whole-record writes exercise the full CR_run wiring, not a cache row.
+// A single shared budget has 4096 steps left; no per-query or test budget changes.
+#test "R2 Result and optional identities use existing scalar IDs and checked payload layout" {
+ nodes:[24]CK_Node;types:[40]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[2048]u8;state:=[1]CK_State.[CK_State.{used=16,type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[2]=CK_Node.{kind=CK_Tag.type_named,name="Result",head=3};nodes[3]=CK_Node.{kind=CK_Tag.type_named,name="int",next=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="u8"};
+ a:=CK_resolve(c,2,CK_Access.value);#assert a==16 && types[a].kind==CK_Kind.result && types[a].elem==11 && types[a].sum_error==12;
+ #assert types[a].size==16 && types[a].alignment==8 && types[a].sum_payload_offset==8 && types[a].sum_default== -1;
+ #assert CK_resolve(c,2,CK_Access.value)==a && state[0].type_count==17 && types[13].name=="u16";
+ nodes[5]=CK_Node.{kind=CK_Tag.type_optional,b=6};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="int"};b:=CK_resolve(c,5,CK_Access.value);
+ #assert b==17 && types[b].kind==CK_Kind.optional && types[b].elem==11 && types[b].sum_default==0 && types[b].size==16;
+ nodes[3].name="void";u:=CK_resolve(c,2,CK_Access.value);#assert u==18 && types[u].elem==1 && types[u].size==8 && types[u].sum_payload_offset==4 && types[u].sum_default== -1;
+ #assert state[0].error_count==0 && !state[0].fatal;
+}
+#test "R2 nominal union constructors carry only their selected payload" {
+ nodes:[24]CK_Node;types:[32]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[2048]u8;state:=[1]CK_State.[CK_State.{used=20,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Reply",type=16,head=3};types[16]=CK_Type.{kind=CK_Kind.union_,name="Reply",decl=2};
+ nodes[3]=CK_Node.{kind=CK_Tag.variant,name="value",a=6,next=4};nodes[4]=CK_Node.{kind=CK_Tag.variant,name="done"};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ nodes[10]=CK_Node.{kind=CK_Tag.type_named,name="Reply"};nodes[11]=CK_Node.{kind=CK_Tag.expr_struct,d=10,head=12};nodes[12]=CK_Node.{kind=CK_Tag.field_init,name="value",a=13};nodes[13]=CK_Node.{kind=CK_Tag.expr_int,value=9};
+ #assert CK_value(c,11,CK_Hint.{})==16 && nodes[11].kind==CK_Tag.expr_sum && nodes[11].sum_variant==0 && nodes[11].a==13 && nodes[11].head==0 && nodes[13].type==11;
+ nodes[14]=CK_Node.{kind=CK_Tag.expr_struct,d=10,head=15};nodes[15]=CK_Node.{kind=CK_Tag.field_init,name="done"};
+ #assert CK_value(c,14,CK_Hint.{})==16 && nodes[14].sum_variant==1 && nodes[14].a==0 && types[16].size==16 && types[16].sum_default== -1 && state[0].error_count==0;
+}
+#forall "R2 missing initialization and explicit uninitialized sums stay distinct" mode:0..<4 {
+ nodes:[12]CK_Node;types:[32]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=10,type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[2]=CK_Node.{kind=CK_Tag.stmt_var,name="x",d=3};nodes[3]=CK_Node.{kind=CK_Tag.type_optional,b=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ if mode==1 {nodes[2].flag=true;}if mode>=2 {nodes[3]=CK_Node.{kind=CK_Tag.type_named,name="Result",head=4};nodes[4].next=5;nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="u8"};}if mode==3 {nodes[2].flag=true;}
+ CK_stmt(c,2);#assert state[0].error_count==(ifx mode!=0 then 1 else 0);if mode!=0 {#assert errors[0].code=="E0902";}else {#assert types[nodes[2].type].sum_default==0;}
+}
+#forall "R2 switch is exhaustive and binds immutable case-local payloads" mode:0..<5 {
+ nodes:[32]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[2048]u8;state:=[1]CK_State.[CK_State.{used=25,type_count=17,current=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.union_,name="Reply",decl=3,size=16,alignment=8};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1};nodes[3]=CK_Node.{kind=CK_Tag.union_,type=16,head=4,mark=2};nodes[4]=CK_Node.{kind=CK_Tag.variant,name="item",type=11,next=5};nodes[5]=CK_Node.{kind=CK_Tag.variant,name="done",type=1};
+ nodes[7]=CK_Node.{kind=CK_Tag.param,name="arg",type=16};CK_declare_id(c,"arg",16,CK_Loc.{},"parameter",7);nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="arg"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_switch,a=8,head=10};
+ nodes[10]=CK_Node.{kind=CK_Tag.switch_case,name="item",a=12,b=13,next=11};nodes[11]=CK_Node.{kind=CK_Tag.switch_case,name="done",b=14};nodes[12]=CK_Node.{kind=CK_Tag.case_binding,name="value"};nodes[13]=CK_Node.{kind=CK_Tag.stmt_block,head=15};nodes[14]=CK_Node.{kind=CK_Tag.stmt_block,head=16};nodes[15]=CK_Node.{kind=CK_Tag.stmt_return};nodes[16]=CK_Node.{kind=CK_Tag.stmt_return};
+ if mode==1 {nodes[10].next=0;}if mode==2 {nodes[11].name="item";nodes[11].a=17;nodes[17]=CK_Node.{kind=CK_Tag.case_binding,name="other"};}if mode==3 {nodes[10].a=0;}if mode==4 {nodes[11].a=17;nodes[17]=CK_Node.{kind=CK_Tag.case_binding,name="other"};}
+ CK_stmt(c,6);if mode==0 {#assert state[0].error_count==0 && nodes[12].type==11 && nodes[12].a==8 && nodes[10].sum_variant==0 && nodes[11].sum_variant==1 && state[0].local_count==1 && CK_always_returns(c,6);}
+ else {#assert state[0].error_count==1 && errors[0].code=="E0904";}
+}
+#forall "R2 sum payloads retain the old generic-record borrowed-argument restriction" kind:0..<3 {
+ nodes:[16]CK_Node;types:[32]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=12,type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12,size=16,alignment=8};types[17]=CK_Type.{kind=CK_Kind.optional,elem=16};
+ if kind==1 {types[17]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=16};}if kind==2 {types[17]=CK_Type.{kind=CK_Kind.union_,decl=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,head=3};nodes[3]=CK_Node.{kind=CK_Tag.variant,type=16};}
+ #assert CK_borrows(c,17);
+}
+#forall "R2 legacy reflection refuses sums instead of inventing old-schema kinds" mode:0..<3 {
+ names:=[3]string.["type_info","field_info","enum_info"];name:=names[mode];
+ nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.optional,elem=11};nodes[2]=CK_Node.{kind=CK_Tag.expr_call,name=name,loc=CK_Loc.{line=9,column=3}};
+ #assert CK_meta_query(c,2,16)==0 && state[0].error_count==1 && errors[0].code=="E0911" && errors[0].loc.line==9;
+}
+#test "R2 Metal admission refuses an unsupported sum even when unused by an exported body" {
+ nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=5,type_count=17}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.optional,elem=11};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="f",type=1,b=3};nodes[3]=CK_Node.{kind=CK_Tag.stmt_block};
+ CK_metal(c);#assert state[0].error_count==1 && errors[0].code=="E0377";
+}
+
+#forall "R2 provenance selects only the active constructor payload" mode:0..<4, classes:bool {
+ nodes:[24]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=20,type_count=20}];bytes:[256]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};types[18]=CK_Type.{kind=CK_Kind.result,elem=16,sum_error=16};types[19]=CK_Type.{kind=CK_Kind.optional,elem=16};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1};nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=17,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=3};nodes[5]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=4};nodes[6]=CK_Node.{kind=CK_Tag.expr_sum,type=18,a=5,sum_variant=0};
+ path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_VARIANT,index=0};if mode==1 || mode==2 {nodes[6].sum_variant=1;}if mode>=2 {path.steps[0].index=1;}if mode==3 {nodes[6]=CK_Node.{kind=CK_Tag.expr_null,type=19,sum_variant=0};}
+ queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;bs:[1]CB_State;b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=bs[..],retain_classes=classes};out:[64]BS_Origin;r:=CB_expr(b,6,path,false,out[..]);
+ #assert !r.incomplete && state[0].error_count==0 && !state[0].fatal;
+ #assert r.count==(ifx mode==0 || mode==2 then 1 else 0);if r.count==1 {#assert out[0].kind==BS_LOCAL && out[0].root==3 && out[0].type==12;}
+}
+#forall "R2 case payload copies own inline storage and preserve selected caller backing" storage:bool {
+ nodes:[24]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=20,type_count=18}];bytes:[256]u8;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],bytes=bytes[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.result,elem=16,sum_error=11};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=3};nodes[5]=CK_Node.{kind=CK_Tag.case_binding,type=16,a=4,sum_variant=0,borrow_owner=2};
+ queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;bs:[1]CB_State;b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=bs[..]};out:[64]BS_Origin;r:=CB_query(b,ifx storage then cast(u8)3 else cast(u8)2,5,BS_Path.{},out[..]);
+ #assert r.count==1 && !r.incomplete && !state[0].fatal && state[0].error_count==0;
+ if storage {#assert out[0].kind==BS_LOCAL && out[0].root==5 && out[0].path.count==0;}else {#assert out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].role==BS_DESCRIPTOR && out[0].path.count==1 && out[0].path.steps[0].kind==BS_VARIANT && out[0].path.steps[0].index==0;}
+}
+#forall "R2 indirect case payload array storage keeps caller keys and local refusal" local_backing:bool {
+ nodes:[48]CK_Node;types:[32]CK_Type;errors:[8]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=40,type_count=27}];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.array,elem=12,length=2,size=2,alignment=1};types[17]=CK_Type.{kind=CK_Kind.view,elem=16,size=16,alignment=8};types[18]=CK_Type.{kind=CK_Kind.union_,decl=3,size=24,alignment=8,sum_payload_offset=8};types[19]=CK_Type.{kind=CK_Kind.view,elem=12,size=16,alignment=8};types[26]=CK_Type.{kind=CK_Kind.array,elem=16,length=1,size=2,alignment=1};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=19,head=5,b=10,borrow_returns=11};nodes[3]=CK_Node.{kind=CK_Tag.union_,type=18,head=4,mark=2};nodes[4]=CK_Node.{kind=CK_Tag.variant,name="rows",type=17,value=0};nodes[5]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};nodes[6]=CK_Node.{kind=CK_Tag.case_binding,type=17,a=15,sum_variant=0,borrow_owner=2};nodes[10]=CK_Node.{kind=CK_Tag.stmt_block};nodes[11]=CK_Node.{kind=CK_Tag.stmt_return,a=12};nodes[12]=CK_Node.{kind=CK_Tag.expr_slice,type=19,a=13};nodes[13]=CK_Node.{kind=CK_Tag.expr_index,type=16,a=14,b=16};nodes[14]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=6};nodes[15]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=5};nodes[16]=CK_Node.{kind=CK_Tag.expr_int,type=11};
+ nodes[20]=CK_Node.{kind=CK_Tag.expr_call,type=19,proc=2,head=21,loc=CK_Loc.{line=88,column=9}};nodes[21]=CK_Node.{kind=CK_Tag.expr_sum,type=18,sum_variant=0,a=22};nodes[22]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=24};nodes[24]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=30};nodes[30]=CK_Node.{kind=CK_Tag.proc,type=19,head=24,b=32,borrow_returns=31};nodes[31]=CK_Node.{kind=CK_Tag.stmt_return,a=20};nodes[32]=CK_Node.{kind=CK_Tag.stmt_block};
+ if local_backing {nodes[30].head=0;nodes[22]=CK_Node.{kind=CK_Tag.expr_slice,type=17,a=25};nodes[25]=CK_Node.{kind=CK_Tag.expr_ident,type=26,borrow_binding=27};nodes[27]=CK_Node.{kind=CK_Tag.stmt_var,type=26,borrow_owner=30};}
+ queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;bs:[1]CB_State;b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=bs[..]};out:[64]BS_Origin;r:=CB_query(b,1,30,BS_Path.{},out[..]);
+ if local_backing {#assert state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==88;}else {#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12;}
+}
+#forall "R2 leaf counts include every possible sum payload and no unit leaf" mode:0..<8 {
+ nodes:[64]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=63,type_count=24}];work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.optional,elem=16};types[18]=CK_Type.{kind=CK_Kind.union_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.union_,head=41};nodes[41]=CK_Node.{kind=CK_Tag.variant,type=1,value=0,next=42};nodes[42]=CK_Node.{kind=CK_Tag.variant,type=16,value=1};types[19]=CK_Type.{kind=CK_Kind.union_,decl=44};nodes[44]=CK_Node.{kind=CK_Tag.union_,head=45};nodes[45]=CK_Node.{kind=CK_Tag.variant,type=16,value=0,next=46};nodes[46]=CK_Node.{kind=CK_Tag.variant,type=3,value=1};types[20]=CK_Type.{kind=CK_Kind.result,elem=1,sum_error=18};types[21]=CK_Type.{kind=CK_Kind.array,elem=19,length=33};types[22]=CK_Type.{kind=CK_Kind.struct_,decl=50};nodes[50]=CK_Node.{kind=CK_Tag.struct_,head=51};nodes[51]=CK_Node.{kind=CK_Tag.field,type=3,next=52};nodes[52]=CK_Node.{kind=CK_Tag.field,type=21};types[23]=CK_Type.{kind=CK_Kind.array,elem=18,length=64};inputs:=[8]int.[1,17,18,19,20,21,22,23];expected:=[8]int.[0,1,1,2,1,128,128,64];b:=CB_Context.{c=c,state=work[..]};
+ #assert CB_leaf_count(b,inputs[mode])==expected[mode] && !state[0].fatal && state[0].error_count==0;
+}
+#forall "R2 wide optional union nested and mixed array returns keep variant paths in joined leaves" shape:0..<4 {
+ nodes:[112]CK_Node;types:[23]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=111,type_count=23}];work:[1]CB_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;leaves:[1]int;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.optional,elem=16};types[18]=CK_Type.{kind=CK_Kind.union_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.union_,head=41};nodes[41]=CK_Node.{kind=CK_Tag.variant,type=16,value=0,next=42};nodes[42]=CK_Node.{kind=CK_Tag.variant,type=3,value=1};types[19]=CK_Type.{kind=CK_Kind.array,elem=17,length=65};types[20]=CK_Type.{kind=CK_Kind.array,elem=18,length=33};types[21]=CK_Type.{kind=CK_Kind.array,elem=20,length=2};types[22]=CK_Type.{kind=CK_Kind.struct_,decl=50};nodes[50]=CK_Node.{kind=CK_Tag.struct_,head=51};nodes[51]=CK_Node.{kind=CK_Tag.field,type=3,next=52};nodes[52]=CK_Node.{kind=CK_Tag.field,type=20};inputs:=[4]int.[19,20,21,22];expected:=[4]int.[1,2,2,3];type:=inputs[shape];nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=type,head=3,b=100,borrow_returns=101};nodes[3]=CK_Node.{kind=CK_Tag.param,type=type,borrow_owner=2};nodes[100]=CK_Node.{kind=CK_Tag.stmt_block,head=101};nodes[101]=CK_Node.{kind=CK_Tag.stmt_return,a=102};nodes[102]=CK_Node.{kind=CK_Tag.expr_ident,type=type,borrow_binding=3};b:=CB_Context.{c=c,state=work[..],queries=queries[..],origins=origins[..]};
+ #assert CB_leaves(b,2,type,BS_Path.{},leaves[..]) && !state[0].fatal && state[0].error_count==0 && leaves[0]==expected[shape] && work[0].queries==expected[shape]*2;
+ joined:=false;for i:0..<work[0].queries {q:=queries[i];if q.kind==1 {element:=false;variant:=false;for j:0..<q.path.count {if q.path.steps[j].kind==BS_ELEMENT && q.path.steps[j].index==2147483647 {element=true;}if q.path.steps[j].kind==BS_VARIANT {variant=true;}}if element && variant {joined=true;}}}#assert joined;
+}
+#forall "R2 joined wide active payloads retain the final local witness and accept static alternatives" optional:bool,local:bool {
+ nodes:[96]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=95,type_count=20}];work:[1]CB_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;leaves:[1]int;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=ifx optional then CK_Kind.optional else CK_Kind.union_,elem=16,decl=4};nodes[4]=CK_Node.{kind=CK_Tag.union_,head=5};nodes[5]=CK_Node.{kind=CK_Tag.variant,type=16,value=0,next=6};nodes[6]=CK_Node.{kind=CK_Tag.variant,type=1,value=1};types[18]=CK_Type.{kind=CK_Kind.array,elem=17,length=65};types[19]=CK_Type.{kind=CK_Kind.array,elem=12,length=1};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=18,b=92,borrow_returns=90};nodes[90]=CK_Node.{kind=CK_Tag.stmt_return,a=91};nodes[91]=CK_Node.{kind=CK_Tag.expr_array,type=18,head=10,loc=CK_Loc.{line=610,column=11,offset=61011}};nodes[92]=CK_Node.{kind=CK_Tag.stmt_block,head=90};
+ for i:0..<65 {nodes[10+i]=CK_Node.{kind=CK_Tag.expr_sum,type=17,sum_variant=ifx optional then 1 else 0,a=ifx local && i==64 then 81 else 80,next=ifx i==64 then 0 else 11+i};}nodes[80]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=82};nodes[82]=CK_Node.{kind=CK_Tag.expr_ident,type=19,constant=84};nodes[84]=CK_Node.{kind=CK_Tag.constant,type=19,a=85};nodes[85]=CK_Node.{kind=CK_Tag.expr_array,type=19,head=86};nodes[86]=CK_Node.{kind=CK_Tag.expr_int,type=12};nodes[81]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=83};nodes[83]=CK_Node.{kind=CK_Tag.expr_ident,type=19,borrow_binding=87};nodes[87]=CK_Node.{kind=CK_Tag.stmt_var,type=19,borrow_owner=2};b:=CB_Context.{c=c,state=work[..],queries=queries[..],origins=origins[..]};known:=CB_leaves(b,2,18,BS_Path.{},leaves[..]);
+ #assert !state[0].fatal && leaves[0]==1 && state[0].retain_report_count==0;if local {#assert state[0].error_count==1 && errors[0].code=="E0383" && errors[0].loc.line==610 && errors[0].loc.column==11 && errors[0].loc.offset==61011;}else {#assert known && state[0].error_count==0;}
+}
+
+#forall "R2 leaf counts reject invalid IDs committed prefixes and unknown kinds before owned shortcuts" mode:0..<6 {
+ nodes:[12]CK_Node;types:[18]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=11,type_count=17}];work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[2]=CK_Node.{kind=CK_Tag.struct_,head=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};types[0]=CK_Type.{kind=CK_Kind.view,elem=12};types[16]=CK_Type.{kind=CK_Kind.invalid,decl=2};types[17]=CK_Type.{kind=CK_Kind.view,elem=12};type:=16;if mode==0 {type=0;}if mode==1 {type=-1;}if mode==2 {type=17;}if mode==3 {type=18;}if mode==5 {types[16].kind=CK_Kind.param;}
+ b:=CB_Context.{c=c,state=work[..]};ignored:=CB_leaf_count(b,type);#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && state[0].retain_report_count==0;
+}
+
+#forall "R2 owned leaf counts keep every builtin and a concrete enum family" type:1..<17 {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=11,type_count=17}];work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[2]=CK_Node.{kind=CK_Tag.enum_,head=3};nodes[3]=CK_Node.{kind=CK_Tag.member,name="ok",type=16,value=0};types[16]=CK_Type.{kind=CK_Kind.enum_,decl=2,size=8,alignment=8};b:=CB_Context.{c=c,state=work[..]};#assert CB_leaf_count(b,type)==(ifx type==3 then 1 else 0) && !state[0].fatal && state[0].error_count==0;
+}
+#test "R2 owned leaf counts keep admitted quantity spatial unit and frame layouts" {
+ nodes:[24]CK_Node;types:[25]CK_Type;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=23,type_count=25}];work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Metre",type=16,quantity=1,unit=Q_Unit.{length=1,numerator=1,denominator=1}};types[16]=CK_Type.{kind=CK_Kind.struct_,decl=2,size=1,alignment=1};nodes[3]=CK_Node.{kind=CK_Tag.struct_,name="Quantity",type=17,quantity=2,origin=12,head=4};nodes[4]=CK_Node.{kind=CK_Tag.field,name="value",type=7};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=3,size=8,alignment=8,carrier=7,unit=16};nodes[5]=CK_Node.{kind=CK_Tag.struct_,name="World",type=18,frame_decl=true,frame=SP_Frame.{handedness=1,convention=SP_Convention.cartesian,continuity=SP_Continuity.continuous,min_rep=64}};types[18]=CK_Type.{kind=CK_Kind.struct_,decl=5,size=1,alignment=1};nodes[6]=CK_Node.{kind=CK_Tag.struct_,name="Vector3",type=19,head=7};for i:0..<3 {nodes[7+i]=CK_Node.{kind=CK_Tag.field,type=7,field_index=i*8,next=ifx i==2 then 0 else 8+i};}types[19]=CK_Type.{kind=CK_Kind.struct_,decl=6,size=24,alignment=8,space=SP_Type.{kind=SP_Kind.vector,frame=18,unit=16,rep=64}};nodes[10]=CK_Node.{kind=CK_Tag.enum_,head=11};nodes[11]=CK_Node.{kind=CK_Tag.member,type=20,value=0};types[20]=CK_Type.{kind=CK_Kind.enum_,decl=10,size=8,alignment=8};
+ nodes[12]=CK_Node.{kind=CK_Tag.struct_,name="Quantity",type=21,quantity=2,generic=true,d=13,head=15};nodes[13]=CK_Node.{kind=CK_Tag.type_param,name="U",next=14};nodes[14]=CK_Node.{kind=CK_Tag.type_param,name="R"};nodes[15]=CK_Node.{kind=CK_Tag.field,name="value",a=16,type=22};nodes[16]=CK_Node.{kind=CK_Tag.type_param,name="R"};types[21]=CK_Type.{kind=CK_Kind.struct_,decl=12};types[22]=CK_Type.{kind=CK_Kind.param,name="$R",decl=12,need=4};types[23]=CK_Type.{kind=CK_Kind.param,name="$U",decl=3,elem=16};types[24]=CK_Type.{kind=CK_Kind.param,name="$R",decl=3,elem=7};CK_quantity_layout(c,12);CK_quantity_layout(c,3);
+ #assert state[0].error_count==0 && types[17].carrier==7 && types[17].unit==16;
+ #assert CK_unit_admit(c,16,CK_Loc.{}) && SP_admit(types[19].space,nodes[5].frame,nodes[2].unit)==SP_Status.ok;b:=CB_Context.{c=c,state=work[..]};for type:16..<21 {#assert CB_leaf_count(b,type)==0 && !state[0].fatal && state[0].error_count==0;}
+}
+
+#forall "R2 mutation repair variant lookup checks the committed type prefix before payload" mode:0..<3 {
+ nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=18}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=711,column=9}}];for i:0..<16 {types[i]=CK_builtin(i);}types[17]=CK_Type.{kind=CK_Kind.optional,elem=12};types[18]=types[17];c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};type:=ifx mode==0 then 18 else 17;ordinal:=ifx mode==1 then -1 else 1;payload:=CB_variant(b,type,ordinal);
+ if mode<2 {#assert payload==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==711 && errors[0].loc.column==9;}else {#assert payload==12 && !state[0].fatal && state[0].error_count==0;}
+}
+#forall "R2 mutation repair constructor active ordinal cannot equal the variant count" optional:bool {
+ nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];work:[1]CB_State;out:[2]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=ifx optional then CK_Kind.optional else CK_Kind.result,elem=3,sum_error=12};nodes[2]=CK_Node.{kind=ifx optional then CK_Tag.expr_some else CK_Tag.expr_sum,type=16,sum_variant=2,a=3,loc=CK_Loc.{line=712,column=11}};nodes[3]=CK_Node.{kind=CK_Tag.expr_string,type=3,name="safe"};path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_VARIANT,index=1};out[0]=BS_Origin.{kind=BS_STATIC,root=901,type=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};r:=CB_expr(b,2,path,false,out[..]);
+ #assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==712 && errors[0].loc.column==11 && r.count==0 && out[0].root==901;
+}
+#test "R2 part02 repair active variant queries cannot evict completed field witnesses" {
+ nodes:[96]CK_Node;types:[20]CK_Type;errors:[8]CK_Error;state:=[1]CK_State.[CK_State.{used=95,type_count=20}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.view,elem=13};types[18]=CK_Type.{kind=CK_Kind.struct_,decl=10};types[19]=CK_Type.{kind=CK_Kind.optional,elem=3};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2,next=4};nodes[4]=CK_Node.{kind=CK_Tag.param,type=19,borrow_owner=2};nodes[10]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==0 then 17 else 16,next=ifx i==63 then 0 else 21+i};}c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};path:=BS_Path.{count=1};path.steps[0].kind=BS_FIELD;out:[2]BS_Origin;
+ for i:0..<8 {path.steps[0].index=i*8;#assert CB_type(b,18,path)>0 && !state[0].fatal;}
+ order:=[4]int.[0,8,0,8];for i:order {path.steps[0].index=i;r:=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && r.count==1 && !r.incomplete && out[0].type==(ifx i==0 then 13 else 12);}
+ variant:=BS_Path.{count=1};variant.steps[0]=BS_Step.{kind=BS_VARIANT,index=1};r:=CB_query(b,2,4,variant,out[..]);#assert !state[0].fatal && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==1;
+ work[0].work=1048573;path.steps[0].index=0;r=CB_query(b,2,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && r.count==1 && !r.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==13 && bs_path_equal(out[0].path,path);
+}
+
+#forall "R2 current coverage sum projection refuses the first absent optional or Result variant" result:bool {
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=17}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=731,column=9,offset=73109}}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=ifx result then CK_Kind.result else CK_Kind.optional,elem=11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_VARIANT,index=2};t:=CB_type(b,16,path);
+ #assert t==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==731 && errors[0].loc.column==9 && state[0].retain_report_count==0;
+}
+#forall "R2 current coverage unit variants retain the canonical void projection type" result:bool {
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=17}];work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=ifx result then CK_Kind.result else CK_Kind.optional,elem=ifx result then 1 else 11,sum_error=12};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_VARIANT,index=0};
+ #assert CB_type(b,16,path)==1 && !state[0].fatal && state[0].error_count==0;
+}
+#forall "R2 current part23 all variant leaves after an exact sixty four prefix remain counted" borrowed_tail:bool {
+ nodes:[24]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=23,type_count=19}];work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=64};types[18]=CK_Type.{kind=CK_Kind.union_,decl=10};nodes[10]=CK_Node.{kind=CK_Tag.union_,head=11};nodes[11]=CK_Node.{kind=CK_Tag.variant,type=17,value=0,next=12};nodes[12]=CK_Node.{kind=CK_Tag.variant,type=ifx borrowed_tail then 16 else 1,value=1};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};
+ #assert CB_leaf_count(b,18)==(ifx borrowed_tail then 128 else 64) && !state[0].fatal && state[0].error_count==0;
+}
+#test "R2 current part45 saturated sum counts stop before another variant consumes work" {
+ nodes:[24]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=23,type_count=19}];work:=[1]CB_State.[CB_State.{work=1048568}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=64};types[18]=CK_Type.{kind=CK_Kind.union_,decl=10};nodes[10]=CK_Node.{kind=CK_Tag.union_,head=11};nodes[11]=CK_Node.{kind=CK_Tag.variant,type=17,value=0,next=12};nodes[12]=CK_Node.{kind=CK_Tag.variant,type=16,value=1,next=13};nodes[13]=CK_Node.{kind=CK_Tag.variant,type=16,value=2};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};
+ #assert CB_leaf_count(b,18)==128 && !state[0].fatal && state[0].error_count==0;
+}
+#forall "R2 current part45 sum discovery refuses the first excluded active depth" mutable:bool {
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=18}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=745,column=9,offset=74509}}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.optional,elem=16};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};present:=CB_discover(b,17,256,mutable);
+ #assert !present && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==745 && errors[0].loc.column==9 && errors[0].loc.offset==74509;
+}
+#test "R2 current part67 cloned Some preserves payload overflow sequencing through retyping" {
+ nodes:[24]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[4]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=11,type_count=17,local_count=2,current=9}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.optional,elem=11,size=16,alignment=8,sum_payload_offset=8,sum_default=0};nodes[1]=CK_Node.{kind=CK_Tag.file,head=9};nodes[2]=CK_Node.{kind=CK_Tag.expr_some,type=16,name="some",a=3,sum_variant=1};nodes[3]=CK_Node.{kind=CK_Tag.expr_binary,type=11,op=34,a=4,b=5};nodes[4]=CK_Node.{kind=CK_Tag.expr_ident,name="x",type=11};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,name="y",type=11};nodes[9]=CK_Node.{kind=CK_Tag.proc,name="body",head=10,type=1};nodes[10]=CK_Node.{kind=CK_Tag.param,name="x",type=11,next=11};nodes[11]=CK_Node.{kind=CK_Tag.param,name="y",type=11};locals[0]=CK_Local.{name="x",type=11,decl=10,immutable="parameter"};locals[1]=CK_Local.{name="y",type=11,decl=11,immutable="parameter"};c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};copy:=CK_clone(c,2);#assert CK_value(c,copy,CK_Hint.{})==16 && !state[0].fatal && state[0].error_count==0;CK_lower_effects(c);
+ #assert CK_effects(c,copy)==CK_EFFECT_OVERFLOW && nodes[copy].kind==CK_Tag.expr_some;
+}
+#test "R2 current part67 variant lookup refuses a complete sixty five node candidate at ordinal sixty four" {
+ nodes:[80]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=79,type_count=17}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=784,column=9}}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.union_,decl=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,head=3};for i:0..<65 {nodes[3+i]=CK_Node.{kind=CK_Tag.variant,type=12,value=cast(u64)i,next=ifx i==64 then 0 else 4+i};}c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};
+ #assert CB_variant(b,16,64)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==784 && errors[0].loc.column==9;
+}
+#forall "R2 B2 write summaries remain reusable when retained lookup enables the index" indexed:bool {
+ nodes:[96]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;scratch:[1280]int;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],result_work=scratch[..]};CB2_fixture(c);b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};out:[64]BS_Origin;
+ raw:=CB_query(b,1,2,BS_Path.{},out[..]);#assert !state[0].fatal && state[0].error_count==0 && raw.count==1 && !raw.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0;
+ row:=nodes[31].borrow_query;#assert row>0 && queries[row-1].kind==5 && queries[row-1].status==2;before:=work[0].queries;
+ b.retain_fields=true;if indexed {b.query_index=CB_index_begin(b);}path:=BS_Path.{count=2};path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};path.steps[1]=BS_Step.{kind=BS_FIELD};
+ got:=CB_query(b,5,31,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && !got.incomplete && out[0].kind==BS_PARAMETER && out[0].root==1 && out[0].type==12 && out[0].role==BS_DESCRIPTOR && out[0].path.count==0 && queries[row-1].status==2;
+}
+
+#forall "R2 B2 by-value mutable sum carriers keep the unsupported write boundary manual" family:0..<3 {
+ nodes:[96]CK_Node;types:[24]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CB2_fixture(c);state[0].type_count=23;
+ types[22]=CK_Type.{kind=CK_Kind.optional,elem=19,sum_default=0};active:=1;
+ if family==1 {types[22]=CK_Type.{kind=CK_Kind.union_,decl=80,sum_default= -1};nodes[80]=CK_Node.{kind=CK_Tag.union_,head=81};nodes[81]=CK_Node.{kind=CK_Tag.variant,type=19,next=82};nodes[82]=CK_Node.{kind=CK_Tag.variant,type=1,value=1};active=0;}
+ if family==2 {types[22]=CK_Type.{kind=CK_Kind.result,elem=19,sum_error=11,sum_default= -1};active=0;}
+ nodes[23]=CK_Node.{kind=CK_Tag.expr_sum,type=22,a=84,sum_variant=active};nodes[84]=CK_Node.{kind=CK_Tag.expr_slice,type=19,a=24};nodes[31].type=22;nodes[44].borrow_binding=90;nodes[31].borrow_writes=0;nodes[90]=CK_Node.{kind=CK_Tag.case_binding,type=19,a=85,sum_variant=active,borrow_owner=30,borrow_writes=40};nodes[85]=CK_Node.{kind=CK_Tag.expr_ident,type=22,borrow_binding=31};nodes[50].head=86;nodes[86]=CK_Node.{kind=CK_Tag.stmt_switch,a=85,head=87};nodes[87]=CK_Node.{kind=CK_Tag.switch_case,a=90,b=88,next=89,sum_variant=active};nodes[88]=CK_Node.{kind=CK_Tag.stmt_block,head=40};nodes[89]=CK_Node.{kind=CK_Tag.switch_case,b=91,sum_variant=ifx active==0 then 1 else 0};nodes[91]=CK_Node.{kind=CK_Tag.stmt_block};if family==2 {nodes[89].a=92;nodes[92]=CK_Node.{kind=CK_Tag.case_binding,type=11,a=85,sum_variant=1,borrow_owner=30};}
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};path:=BS_Path.{count=2};path.steps[0]=BS_Step.{kind=BS_ELEMENT};path.steps[1]=BS_Step.{kind=BS_FIELD};out:[64]BS_Origin;out[0]=BS_Origin.{kind=BS_LOCAL,root=9,type=12,role=BS_DESCRIPTOR};
+ got:=CB_call_writes(b,8,path,out[..],CB_Result.{count=1});#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && got.incomplete && out[0].kind==BS_LOCAL && out[0].root==9;
+ #assert CB_opaque(b,8,path) && !state[0].fatal && state[0].error_count==0;
+}
+
+// Focused R2 borrow and lookup semantic oracles. Tooling-only; not compiler input.
+
+
+
+#test "R2 B2 indexed addressed-storage queries retain valid kind3 rows" {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=11,type_count=17}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;scratch:[1280]int;
+ for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],result_work=scratch[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};out:[64]BS_Origin;
+ first:=CB_query(b,3,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && first.count==1 && !first.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && bs_path_equal(out[0].path,path);
+ b.query_index=CB_index_begin(b);again:=CB_query(b,3,3,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && again.count==1 && !again.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0 && out[0].type==12 && bs_path_equal(out[0].path,path) && work[0].queries==1;
+}
+
+#forall "R2 focused borrow container syntax preserves optional identity and rejects Result storage" shape:0..<3,result:bool {
+ nodes:[20]CK_Node;types:[32]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=19,type_count=17,generic=2}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.param,name="$N",decl=2,bits=1,length=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="bound"};nodes[3]=CK_Node.{kind=CK_Tag.expr_int,value=2};nodes[5]=CK_Node.{kind=CK_Tag.type_view,b=6,loc=CK_Loc.{line=901,column=7}};nodes[6]=CK_Node.{kind=CK_Tag.type_optional,b=7};nodes[7]=CK_Node.{kind=CK_Tag.type_named,name="int"};
+ if shape!=0 {nodes[5].kind=CK_Tag.type_array;nodes[5].a=3;}if shape==2 {nodes[3]=CK_Node.{kind=CK_Tag.type_param,name="N"};}
+ if result {nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="Result",head=7};nodes[7].next=8;nodes[8]=CK_Node.{kind=CK_Tag.type_named,name="u8"};}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};expected:=0;if !result {expected=CK_sum_type(c,CK_Kind.optional,11,0,CK_Loc.{});}got:=0;if result {nodes[9]=CK_Node.{kind=CK_Tag.stmt_var,name="invalid",d=5,a=10};nodes[10]=CK_Node.{kind=CK_Tag.expr_int,value=7};CK_stmt(c,9);}else {got=CK_resolve(c,5,CK_Access.value);}
+ #assert !state[0].fatal;if result {#assert state[0].error_count==1 && errors[0].code=="E0900" && errors[0].loc.line==901;}
+ else {#assert state[0].error_count==0 && got>=16 && types[got].elem==expected && types[got].kind==(ifx shape==0 then CK_Kind.view else CK_Kind.array);if shape!=0 {#assert types[got].length==2;}}
+}
+#test "R2 focused borrow nominal union syntax refuses written type arguments" {
+ nodes:[12]CK_Node;types:[17]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=11,type_count=17}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.union_,decl=2};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Choice",type=16};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name="Choice",head=6,loc=CK_Loc.{line=902,column=7}};nodes[6]=CK_Node.{kind=CK_Tag.type_named,name="int"};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};ignored:=CK_resolve(c,5,CK_Access.view);#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0803" && errors[0].loc.line==902;
+}
+#forall "R2 focused borrow exhaustive return flow requires every actual switch arm" shape:0..<3 {
+ nodes:[12]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=11,type_count=16}];nodes[2]=CK_Node.{kind=CK_Tag.stmt_switch};if shape!=0 {nodes[2].head=3;nodes[3]=CK_Node.{kind=CK_Tag.switch_case,b=5,next=4};nodes[4]=CK_Node.{kind=CK_Tag.switch_case,b=7};nodes[5]=CK_Node.{kind=CK_Tag.stmt_block,head=6};nodes[6]=CK_Node.{kind=CK_Tag.stmt_return};nodes[7]=CK_Node.{kind=CK_Tag.stmt_block};if shape==2 {nodes[7].head=8;nodes[8]=CK_Node.{kind=CK_Tag.stmt_return};}}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};#assert CK_always_returns(c,2)==(shape==2) && !state[0].fatal && state[0].error_count==0 && state[0].depth==0;
+}
+#test "R2 focused borrow cloned sum syntax keeps its active tag and payload" {
+ nodes:[32]CK_Node;types:[20]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=12,type_count=17}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.union_,name="Choice",decl=2,size=16,alignment=8,sum_payload_offset=8,sum_default= -1};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Choice",type=16,head=3,mark=2};nodes[3]=CK_Node.{kind=CK_Tag.variant,name="item",type=11};nodes[10]=CK_Node.{kind=CK_Tag.expr_sum,name="item",type=16,a=11,d=12,sum_variant=0};nodes[11]=CK_Node.{kind=CK_Tag.expr_int,type=11,value=7};nodes[12]=CK_Node.{kind=CK_Tag.type_named,name="Choice"};c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};copy:=CK_clone(c,10);#assert CK_value(c,copy,CK_Hint.{})==16 && !state[0].fatal && state[0].error_count==0 && nodes[copy].kind==CK_Tag.expr_sum && nodes[copy].sum_variant==0 && nodes[nodes[copy].a].value==7 && nodes[nodes[copy].a].type==11;
+}
+#forall "R2 focused borrow cloned null is retyped by each optional context" boolean:bool {
+ nodes:[12]CK_Node;types:[19]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=19}];for i:0..<16 {types[i]=CK_builtin(i);}types[17]=CK_Type.{kind=CK_Kind.optional,elem=11,sum_default=0};types[18]=CK_Type.{kind=CK_Kind.optional,elem=2,sum_default=0};nodes[3]=CK_Node.{kind=CK_Tag.expr_null,type=17,sum_variant=0};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};copy:=CK_clone(c,3);want:=ifx boolean then 18 else 17;#assert CK_value(c,copy,CK_Hint.{type=want})==want && !state[0].fatal && state[0].error_count==0 && nodes[copy].kind==CK_Tag.expr_null && nodes[copy].sum_variant==0;
+}
+#test "R2 focused borrow conflicting union diagnostics name the actual declaration kind" {
+ nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=2,type_count=16}];nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="int",loc=CK_Loc.{line=903,column=1}};c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_global_names(c);#assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0372" && errors[0].loc.line==903 && errors[0].message=="union 'int' conflicts with another declaration or a built-in name";
+}
+#forall "R2 focused borrow checked constructors re-admit payloads in a new generic context" nominal:bool,generated:bool {
+ nodes:[40]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[8]CK_Error;bytes:[1024]u8;state:=[1]CK_State.[CK_State.{used=13,type_count=18,local_count=1,generic=3}];for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.optional,elem=11,size=16,alignment=8,sum_payload_offset=8,sum_default=0};types[17]=CK_Type.{kind=CK_Kind.param,name="$T",decl=3,elem=6};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="instance"};nodes[8]=CK_Node.{kind=CK_Tag.param,name="x",type=6};locals[0]=CK_Local.{name="x",type=6,decl=8,immutable="parameter"};nodes[10]=CK_Node.{kind=CK_Tag.expr_sum,name="some",type=16,a=11,d=12,sum_variant=1};nodes[11]=CK_Node.{kind=CK_Tag.expr_ident,name="x",type=11,loc=CK_Loc.{line=904,column=9}};nodes[12]=CK_Node.{kind=CK_Tag.type_optional,b=13};nodes[13]=CK_Node.{kind=CK_Tag.type_param,name="T"};
+ if nominal {types[16]=CK_Type.{kind=CK_Kind.union_,name="Choice",decl=2,size=16,alignment=8,sum_payload_offset=8,sum_default= -1};nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.union_,name="Choice",type=16,head=5,mark=2};nodes[5]=CK_Node.{kind=CK_Tag.variant,name="item",type=11};nodes[10].name="item";nodes[10].sum_variant=0;nodes[12]=CK_Node.{kind=CK_Tag.type_named,name="Choice"};}
+ if generated {nodes[10].mark=1;}c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};expected:=0;if !nominal {expected=CK_sum_type(c,CK_Kind.optional,6,0,CK_Loc.{});}copy:=CK_clone(c,10);got:=CK_value(c,copy,CK_Hint.{});#assert !state[0].fatal;
+ if nominal {#assert state[0].error_count==1 && errors[0].code=="E0901" && errors[0].loc.line==904;}
+ else {#assert state[0].error_count==0 && got==expected && types[got].kind==CK_Kind.optional && types[got].elem==6 && nodes[nodes[copy].a].type==6;}
+}
+
+CB_variant :: (b:CB_Context,type:int,ordinal:int)->int {
+ if type<16 || type>=b.c.state[0].type_count || ordinal<0 || ordinal>=64 || !CB_tick(b,b.state[0].loc) {CK_resource(b.c,b.state[0].loc);return 0;}
+ r:=b.c.types[type];payload:=0;
+ if r.kind==CK_Kind.union_ {field:=CB_at(b,b.c.nodes[r.decl].head,ordinal);if field==0 {return 0;}f:=b.c.nodes[field];if f.kind!=CK_Tag.variant || f.value!=cast(u64)ordinal {CK_resource(b.c,b.state[0].loc);return 0;}payload=f.type;}
+ else if r.kind==CK_Kind.result || r.kind==CK_Kind.optional {payload=CK_sum_payload(b.c,type,ordinal);}
+ if payload<1 || payload>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}return payload;
+}
+
+
+#load "coax/lib/compiler/checker.coax";

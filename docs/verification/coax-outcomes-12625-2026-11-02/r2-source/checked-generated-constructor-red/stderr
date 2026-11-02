@@ -1,0 +1,5 @@
+coax/tests/results-borrow-policy.coax:41:8: error[E0406]: assertion failed
+   else {#assert state[0].error_count==0 && got==expected && types[got].kind==CK_Kind.optional && types[got].elem==6 && nodes[nodes[copy].a].type==6;}
+         ^
+  note: in #forall R2 focused borrow checked constructors re-admit payloads in a new generic context
+  counterexample: nominal = false, generated = true

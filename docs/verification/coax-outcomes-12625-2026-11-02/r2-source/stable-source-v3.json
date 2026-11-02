@@ -1,0 +1,27 @@
+{
+  "schema": "coax.12625.source-freeze.v3",
+  "source_head": "975b94412d803671070dec7012913f7c1be76221",
+  "observed_utc": "2026-11-02T14:30:57.473748+00:00",
+  "pins": {
+    "coax/lib/compiler/checker.coax": "11d2c2a971ab664b172a3ec074502511c7f6207f095f3971f74b2fba09679fef",
+    "coax/lib/compiler/query-index.coax": "1b4713011826ebc0cf115e9efe8b9719163f9e35eaff8ab7e45a094c7091128d",
+    "coax/lib/compiler/literal-projection-cache.coax": "db48be8fe9863f3156442d185c633e031237361f90c2d27f9363b6eff1aad6e5",
+    "coax/lib/compiler/query-projection-cache.coax": "2f64cd642fa4094585b8f52724c44e17409d16a7db4c379ee9e5e36cdaed4a13",
+    "coax/lib/compiler/result-handling.coax": "1bbfba28c5bb25d430573b140af5e48d9c72efab63b6289ebac450d011a3132c",
+    "coax/lib/compiler/result-flow.coax": "ce3bee44e00b4dd1a8052b204b81c3295770a73f1eeef82154970bfc868657ef"
+  },
+  "qualification": {
+    "shared_authority": "/tmp/coax-12625-source/front-v3-shared-authority/process.json",
+    "shared_checks": "1202/1202 PASS; source pins unchanged; no filtered authority coverage",
+    "front_scope": "/tmp/coax-12625-source/scoped-mutation/source-front-v3/observation/process.json",
+    "front_mutation": "617/617 killed, zero survivors; all 1202 checks retained; 113.4376717s; four workers"
+  },
+  "contract": {
+    "mark": "A checked sum can carry generated mark1. Converting it back to expr_struct must clear that marker; otherwise CK_prechecked returns the old type without resolving its target or payload in the new generic context. RED generated optional case, then GREEN all four nominal/optional x marked/unmarked cases.",
+    "syntax": "Keep saved alternative name, cloned payload a, target syntax d, and rebuild a single field_init head. Some restores call syntax from its cloned payload.",
+    "redundant_resets": "Reconstructed struct now cannot take CK_prechecked; CK_expr resolves d and CK_sum_construct reassigns kind/name/a/head/tail/sum_variant, and CK_expr stores its result type. Null always resolves from want.type before CK_expr stores it. Try re-admission computes propagate_type and selected variant before accepted Result handling; erroneous phases stop before CK_results. Case binding a is cleared before recursion, so its later second clear was redundant.",
+    "effects": "CK_run captures templates and clones instances before CK_lower_effects; lowered graphs are not admitted inputs to CK_clone. R2 rejects effect declarations before accepted handling. Existing A1 borrow metadata resets are unchanged.",
+    "refusal": "Allocator refusal keeps canonical fatal and returns the same allocator sentinel; no bounds/guards/charge positions/quotas changed. CK_run still requires both zero errors and nonfatal before CK_results, expressed as nested phase gates."
+  },
+  "remaining": "Focused cache/borrow mutation observations in progress; no overall Source44 or full checker zero claim. Earlier 840-second scopes remain inconclusive and are not counted."
+}

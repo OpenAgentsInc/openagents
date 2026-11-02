@@ -1,0 +1,74 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:186:106: mutant survived: 0 became 1
+    if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;f:=frames[top];r:=c.types[f.type];child:=0;
+                                                                                                           ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:189:59: mutant survived: the assignment was removed
+     if mode==3 && sum {if r.sum_default<0 {return true;}top-=1;continue;}
+                                                            ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:189:59: mutant survived: '-=' became '+='
+     if mode==3 && sum {if r.sum_default<0 {return true;}top-=1;continue;}
+                                                            ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:192:15: mutant survived: 1 became 2
+     else {top-=1;continue;}
+                ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:193:45: mutant survived: '==' became '!='
+    }else if r.kind==CK_Kind.struct_ || r.kind==CK_Kind.union_ {
+                                              ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:197:32: mutant survived: '>=' became '>'
+    for i:0..<seen_count {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if visited[i]==child {seen=true;break;}}
+                                 ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:197:73: mutant survived: true became false
+    for i:0..<seen_count {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if visited[i]==child {seen=true;break;}}
+                                                                          ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:201:33: mutant survived: '>=' became '>'
+    else {for i:0..<top+1 {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if frames[i].type==child {seen=true;break;}}if seen {continue;}}
+                                  ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:201:42: mutant survived: the call was removed
+    else {for i:0..<top+1 {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if frames[i].type==child {seen=true;break;}}if seen {continue;}}
+                                           ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:201:74: mutant survived: true became false
+    else {for i:0..<top+1 {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if frames[i].type==child {seen=true;break;}}if seen {continue;}}
+                                                                           ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:224:75: mutant survived: the assignment was removed
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                            ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:224:76: mutant survived: 0 became 1
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                             ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:224:73: mutant survived: 0 became 1
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                          ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:224:87: mutant survived: the assignment was removed
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                                        ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:224:88: mutant survived: 1 became 2
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                                         ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:224:85: mutant survived: 0 became 1
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                                      ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:231:48: mutant survived: the call was removed
+   e:=c.nodes[id];if CK_list_count(c,e.head)!=2 {CK_error(c,e.loc,"E0900","Result requires exactly success and error type arguments","");return 0;}
+                                                 ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:231:143: mutant survived: 0 became 1
+   e:=c.nodes[id];if CK_list_count(c,e.head)!=2 {CK_error(c,e.loc,"E0900","Result requires exactly success and error type arguments","");return 0;}
+                                                                                                                                                ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:232:76: mutant survived: 6 became 7
+   arg:=e.head;while arg!=0 {tag:=cast(u32)c.nodes[arg].kind;if tag<1 || tag>6 {CK_error(c,c.nodes[arg].loc,"E0900","Result arguments must both be types, not length or value arguments","");return 0;}arg=c.nodes[arg].next;}
+                                                                             ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:238:52: mutant survived: '>' became '>='
+   count:=CK_list_count(c,n.head);if count<1 || count>64 || n.d!=0 {CK_error(c,n.loc,"E0900","a nongeneric union requires one through sixty four alternatives","");return;}
+                                                     ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:243:27: mutant survived: true became false
+    if CK_sum_contains(c,ty,true) {CK_error(c,f.loc,"E0900","Result cannot be stored in a union payload","");return;}
+                            ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:244:46: mutant survived: the assignment was removed
+    c.nodes[field].type=ty;c.nodes[field].value=cast(u64)at;sizes[at]=c.types[ty].size;aligns[at]=c.types[ty].alignment;field=f.next;at+=1;
+                                               ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:274:25: mutant survived: 0 became 1
+   if c.state[0].current==0 || r.kind!=out.kind || (r.kind==CK_Kind.result && r.sum_error!=out.sum_error) {CK_error(c,e.loc,"E0905","try requires the same propagation family and exact error type","");return 0;}
+                          ^
+/tmp/coax-12625-sum/scope-v1/coax/lib/compiler/scope.coax:274:57: mutant survived: '==' became '!='
+   if c.state[0].current==0 || r.kind!=out.kind || (r.kind==CK_Kind.result && r.sum_error!=out.sum_error) {CK_error(c,e.loc,"E0905","try requires the same propagation family and exact error type","");return 0;}
+                                                          ^
+590 mutants, 566 killed, 24 survived

@@ -1,0 +1,152 @@
+{
+  "schema": "coax.r2.native.fixedpoint.v1",
+  "compiler": "/tmp/coax-12625-native/v3/coax",
+  "compiler_sha256": "67e753aec35af4d35b31988fe2962ccb04f0b42ece3e86d465511972426dab80",
+  "commands": [
+    {
+      "module": "budget",
+      "argv": [
+        "/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/budget.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/fixedpoint-v3/budget.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.0075729170348495245,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "check-domains",
+      "argv": [
+        "/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/check-domains.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/fixedpoint-v3/check-domains.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.011120541952550411,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "profiles",
+      "argv": [
+        "/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/profiles.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/fixedpoint-v3/profiles.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.014631083002313972,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "mutation-schedule",
+      "argv": [
+        "/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/mutation-schedule.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/fixedpoint-v3/mutation-schedule.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.010349667049013078,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "lexer",
+      "argv": [
+        "/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/lexer.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/fixedpoint-v3/lexer.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.7134688749210909,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "parser",
+      "argv": [
+        "/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/parser.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/fixedpoint-v3/parser.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.620242124889046,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "checker",
+      "argv": [
+        "/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/checker.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/fixedpoint-v3/checker.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 23.199705000035465,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "sources",
+      "argv": [
+        "/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/sources.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/fixedpoint-v3/sources.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 0.022473584045656025,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    },
+    {
+      "module": "compiler",
+      "argv": [
+        "/tmp/coax-12625-native/v3/coax",
+        "c",
+        "/private/tmp/openagents-12625-complete-20261101/coax/lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-12625-native/fixedpoint-v3/compiler.h"
+      ],
+      "returncode": 0,
+      "elapsed_seconds": 41.741457958938554,
+      "stderr_empty": true,
+      "c_identical": true,
+      "header_identical": true
+    }
+  ],
+  "passed": true
+}

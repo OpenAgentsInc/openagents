@@ -1,0 +1,38 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:255:26: mutant survived: '||' became '&&'
+    if !CK_sum(b.c,e.type) || e.sum_variant<0 || e.sum_variant>=CK_sum_count(b.c,e.type) || path.count==0 || path.steps[0].kind!=BS_VARIANT {CK_resource(b.c,e.loc);return CB_Result.{};}
+                           ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:256:65: mutant survived: 0 became 1
+    payload:=CB_variant(b,e.type,path.steps[0].index);if payload==0 {return CB_Result.{};}if path.steps[0].index!=e.sum_variant {return CB_Result.{};}
+                                                                  ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:257:15: mutant survived: 1 became 2
+    if payload==1 {if path.count!=1 {CK_resource(b.c,e.loc);}return CB_Result.{};}return CB_expr(b,e.a,CB_tail(path),storage,out);
+                ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:257:31: mutant survived: the if condition was negated
+    if payload==1 {if path.count!=1 {CK_resource(b.c,e.loc);}return CB_Result.{};}return CB_expr(b,e.a,CB_tail(path),storage,out);
+                                ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:257:31: mutant survived: '!=' became '=='
+    if payload==1 {if path.count!=1 {CK_resource(b.c,e.loc);}return CB_Result.{};}return CB_expr(b,e.a,CB_tail(path),storage,out);
+                                ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:257:33: mutant survived: 1 became 2
+    if payload==1 {if path.count!=1 {CK_resource(b.c,e.loc);}return CB_Result.{};}return CB_expr(b,e.a,CB_tail(path),storage,out);
+                                  ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:257:36: mutant survived: the call was removed
+    if payload==1 {if path.count!=1 {CK_resource(b.c,e.loc);}return CB_Result.{};}return CB_expr(b,e.a,CB_tail(path),storage,out);
+                                     ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:259:79: mutant survived: 0 became 1
+   if e.kind==CK_Tag.expr_try {operand:=b.c.types[b.c.nodes[e.a].type];variant:=0;if operand.kind==CK_Kind.optional {variant=1;}return CB_expr(b,e.a,CB_prepend(b,path,BS_VARIANT,variant),storage,out);}
+                                                                                ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:259:96: mutant survived: the if condition was negated
+   if e.kind==CK_Tag.expr_try {operand:=b.c.types[b.c.nodes[e.a].type];variant:=0;if operand.kind==CK_Kind.optional {variant=1;}return CB_expr(b,e.a,CB_prepend(b,path,BS_VARIANT,variant),storage,out);}
+                                                                                                 ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:259:96: mutant survived: '==' became '!='
+   if e.kind==CK_Tag.expr_try {operand:=b.c.types[b.c.nodes[e.a].type];variant:=0;if operand.kind==CK_Kind.optional {variant=1;}return CB_expr(b,e.a,CB_prepend(b,path,BS_VARIANT,variant),storage,out);}
+                                                                                                 ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:259:123: mutant survived: the assignment was removed
+   if e.kind==CK_Tag.expr_try {operand:=b.c.types[b.c.nodes[e.a].type];variant:=0;if operand.kind==CK_Kind.optional {variant=1;}return CB_expr(b,e.a,CB_prepend(b,path,BS_VARIANT,variant),storage,out);}
+                                                                                                                            ^
+/tmp/coax-12625-source/scoped-mutation/borrow-CB_expr-resume/scope.coax:259:124: mutant survived: 1 became 2
+   if e.kind==CK_Tag.expr_try {operand:=b.c.types[b.c.nodes[e.a].type];variant:=0;if operand.kind==CK_Kind.optional {variant=1;}return CB_expr(b,e.a,CB_prepend(b,path,BS_VARIANT,variant),storage,out);}
+                                                                                                                             ^
+226 mutants, 214 killed, 12 survived

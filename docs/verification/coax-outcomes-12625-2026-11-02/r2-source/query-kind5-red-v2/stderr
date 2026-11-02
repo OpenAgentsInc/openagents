@@ -1,0 +1,5 @@
+coax/lib/compiler/checker.coax:86247:37: error[E0406]: assertion failed
+   got:=CB_query(b,5,31,path,out[..]);#assert !state[0].fatal && state[0].error_count==0 && got.count==1 && !got.incomplete && out[0].kind==BS_PARAMETER && out[0].root==1 && out[0].type==12 && out[0].role==BS_DESCRIPTOR && out[0].path.count==0 && queries[row-1].status==2;
+                                      ^
+  note: in #forall R2 B2 write summaries remain reusable when retained lookup enables the index
+  counterexample: indexed = true

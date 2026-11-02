@@ -1,0 +1,260 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:182:30: mutant survived: '||' became '&&'
+   if t<16 || c.state[0].fatal || c.state[0].error_count>0 {return false;}
+                               ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:182:10: mutant survived: '||' became '&&'
+   if t<16 || c.state[0].fatal || c.state[0].error_count>0 {return false;}
+           ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:182:56: mutant survived: 0 became 1
+   if t<16 || c.state[0].fatal || c.state[0].error_count>0 {return false;}
+                                                         ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:184:67: mutant survived: the assignment was removed
+   frames:[256]CK_SumFrame;visited:[256]int;seen_count:=1;visited[0]=t;top:=0;frames[0].type=t;work:=0;
+                                                                    ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:184:65: mutant survived: 0 became 1
+   frames:[256]CK_SumFrame;visited:[256]int;seen_count:=1;visited[0]=t;top:=0;frames[0].type=t;work:=0;
+                                                                  ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:186:106: mutant survived: 0 became 1
+    if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;f:=frames[top];r:=c.types[f.type];child:=0;
+                                                                                                           ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:189:59: mutant survived: the assignment was removed
+     if mode==3 && sum {if r.sum_default<0 {return true;}top-=1;continue;}
+                                                            ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:189:59: mutant survived: '-=' became '+='
+     if mode==3 && sum {if r.sum_default<0 {return true;}top-=1;continue;}
+                                                            ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:190:61: mutant survived: '<' became '<='
+     if r.kind==CK_Kind.array || (r.kind==CK_Kind.view && mode<2) || (r.kind==CK_Kind.optional && mode==0) {child=r.elem;}
+                                                              ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:190:62: mutant survived: 2 became 3
+     if r.kind==CK_Kind.array || (r.kind==CK_Kind.view && mode<2) || (r.kind==CK_Kind.optional && mode==0) {child=r.elem;}
+                                                               ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:192:15: mutant survived: 1 became 2
+     else {top-=1;continue;}
+                ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:193:45: mutant survived: '==' became '!='
+    }else if r.kind==CK_Kind.struct_ || r.kind==CK_Kind.union_ {
+                                              ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:197:32: mutant survived: '>=' became '>'
+    for i:0..<seen_count {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if visited[i]==child {seen=true;break;}}
+                                 ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:197:73: mutant survived: true became false
+    for i:0..<seen_count {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if visited[i]==child {seen=true;break;}}
+                                                                          ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:201:33: mutant survived: '>=' became '>'
+    else {for i:0..<top+1 {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if frames[i].type==child {seen=true;break;}}if seen {continue;}}
+                                  ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:201:42: mutant survived: the call was removed
+    else {for i:0..<top+1 {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if frames[i].type==child {seen=true;break;}}if seen {continue;}}
+                                           ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:201:74: mutant survived: true became false
+    else {for i:0..<top+1 {if work>=limit {CK_resource(c,CK_Loc.{});return true;}work+=1;if frames[i].type==child {seen=true;break;}}if seen {continue;}}
+                                                                           ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:202:11: mutant survived: '>=' became '>'
+    if top+1>=frames.count {CK_resource(c,CK_Loc.{});return true;}top+=1;frames[top]=CK_SumFrame.{type=child};
+            ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:202:9: mutant survived: '+' became '-'
+    if top+1>=frames.count {CK_resource(c,CK_Loc.{});return true;}top+=1;frames[top]=CK_SumFrame.{type=child};
+          ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:202:27: mutant survived: the call was removed
+    if top+1>=frames.count {CK_resource(c,CK_Loc.{});return true;}top+=1;frames[top]=CK_SumFrame.{type=child};
+                            ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:202:59: mutant survived: true became false
+    if top+1>=frames.count {CK_resource(c,CK_Loc.{});return true;}top+=1;frames[top]=CK_SumFrame.{type=child};
+                                                            ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:212:78: mutant survived: 0 became 1
+   if r.kind==CK_Kind.optional {if ordinal==0 {return 1;}return r.elem;}return 0;
+                                                                               ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:221:49: mutant survived: '==' became '!='
+   if (kind==CK_Kind.optional && elem==1) || (kind==CK_Kind.result && error==1) || CK_sum_contains(c,elem,true) || CK_sum_contains(c,error,true) {CK_error(c,loc,"E0900","Result cannot be contained in another value type; optional payload and Result error must be non-void","");return 0;}
+                                                  ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:221:76: mutant survived: 1 became 2
+   if (kind==CK_Kind.optional && elem==1) || (kind==CK_Kind.result && error==1) || CK_sum_contains(c,elem,true) || CK_sum_contains(c,error,true) {CK_error(c,loc,"E0900","Result cannot be contained in another value type; optional payload and Result error must be non-void","");return 0;}
+                                                                             ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:224:75: mutant survived: the assignment was removed
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                            ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:224:76: mutant survived: 0 became 1
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                             ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:224:73: mutant survived: 0 became 1
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                          ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:224:87: mutant survived: the assignment was removed
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                                        ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:224:88: mutant survived: 1 became 2
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                                         ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:224:85: mutant survived: 0 became 1
+   if kind==CK_Kind.optional {sizes[1]=sizes[0];aligns[1]=aligns[0];sizes[0]=0;aligns[0]=1;}
+                                                                                      ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:225:50: mutant survived: the call was removed
+   l:=SL_layout(sizes[..],aligns[..]);if !l.valid {CK_resource(c,loc);return 0;}
+                                                   ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:225:76: mutant survived: 0 became 1
+   l:=SL_layout(sizes[..],aligns[..]);if !l.valid {CK_resource(c,loc);return 0;}
+                                                                             ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:227:31: mutant survived: the assignment was removed
+   if kind==CK_Kind.result {name=CK_join3(c,"Result(",c.types[elem].name,CK_join3(c,", ",c.types[error].name,")"));default= -1;}
+                                ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:228:117: mutant survived: 32 became 33
+   return CK_new_type(c,CK_Type.{kind=kind,name=name,elem=elem,sum_error=error,size=l.size,alignment=l.alignment,bits=32,sum_payload_offset=l.offset,sum_default=default});
+                                                                                                                      ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:231:48: mutant survived: the call was removed
+   e:=c.nodes[id];if CK_list_count(c,e.head)!=2 {CK_error(c,e.loc,"E0900","Result requires exactly success and error type arguments","");return 0;}
+                                                 ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:231:143: mutant survived: 0 became 1
+   e:=c.nodes[id];if CK_list_count(c,e.head)!=2 {CK_error(c,e.loc,"E0900","Result requires exactly success and error type arguments","");return 0;}
+                                                                                                                                                ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:232:76: mutant survived: 6 became 7
+   arg:=e.head;while arg!=0 {tag:=cast(u32)c.nodes[arg].kind;if tag<1 || tag>6 {CK_error(c,c.nodes[arg].loc,"E0900","Result arguments must both be types, not length or value arguments","");return 0;}arg=c.nodes[arg].next;}
+                                                                             ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:236:28: mutant survived: 2 became 3
+   n:=c.nodes[id];if n.mark==2 {return;}if n.mark==1 {CK_error(c,n.loc,"E0900","a union cannot contain itself by value","");return;}
+                             ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:236:50: mutant survived: 1 became 2
+   n:=c.nodes[id];if n.mark==2 {return;}if n.mark==1 {CK_error(c,n.loc,"E0900","a union cannot contain itself by value","");return;}
+                                                   ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:236:53: mutant survived: the call was removed
+   n:=c.nodes[id];if n.mark==2 {return;}if n.mark==1 {CK_error(c,n.loc,"E0900","a union cannot contain itself by value","");return;}
+                                                      ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:237:39: mutant survived: the call was removed
+   if !CK_enter(c,n.loc) {return;}defer CK_leave(c);c.nodes[id].mark=1;
+                                        ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:237:67: mutant survived: the assignment was removed
+   if !CK_enter(c,n.loc) {return;}defer CK_leave(c);c.nodes[id].mark=1;
+                                                                    ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:237:68: mutant survived: 1 became 2
+   if !CK_enter(c,n.loc) {return;}defer CK_leave(c);c.nodes[id].mark=1;
+                                                                     ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:238:56: mutant survived: '||' became '&&'
+   count:=CK_list_count(c,n.head);if count<1 || count>64 || n.d!=0 {CK_error(c,n.loc,"E0900","a nongeneric union requires one through sixty four alternatives","");return;}
+                                                         ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:238:44: mutant survived: '||' became '&&'
+   count:=CK_list_count(c,n.head);if count<1 || count>64 || n.d!=0 {CK_error(c,n.loc,"E0900","a nongeneric union requires one through sixty four alternatives","");return;}
+                                             ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:238:52: mutant survived: '>' became '>='
+   count:=CK_list_count(c,n.head);if count<1 || count>64 || n.d!=0 {CK_error(c,n.loc,"E0900","a nongeneric union requires one through sixty four alternatives","");return;}
+                                                     ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:238:53: mutant survived: 64 became 65
+   count:=CK_list_count(c,n.head);if count<1 || count>64 || n.d!=0 {CK_error(c,n.loc,"E0900","a nongeneric union requires one through sixty four alternatives","");return;}
+                                                      ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:238:67: mutant survived: the call was removed
+   count:=CK_list_count(c,n.head);if count<1 || count>64 || n.d!=0 {CK_error(c,n.loc,"E0900","a nongeneric union requires one through sixty four alternatives","");return;}
+                                                                    ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:243:27: mutant survived: true became false
+    if CK_sum_contains(c,ty,true) {CK_error(c,f.loc,"E0900","Result cannot be stored in a union payload","");return;}
+                            ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:243:34: mutant survived: the call was removed
+    if CK_sum_contains(c,ty,true) {CK_error(c,f.loc,"E0900","Result cannot be stored in a union payload","");return;}
+                                   ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:244:46: mutant survived: the assignment was removed
+    c.nodes[field].type=ty;c.nodes[field].value=cast(u64)at;sizes[at]=c.types[ty].size;aligns[at]=c.types[ty].alignment;field=f.next;at+=1;
+                                               ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:246:64: mutant survived: the call was removed
+   l:=SL_layout(sizes[0..<count],aligns[0..<count]);if !l.valid {CK_resource(c,n.loc);return;}
+                                                                 ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:253:8: mutant survived: 0 became 1
+   if t==0 {return 0;}e:=c.nodes[id];if CK_list_count(c,e.head)!=1 {CK_error(c,e.loc,"E0901","construct exactly one sum alternative","");return 0;}
+         ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:253:18: mutant survived: 0 became 1
+   if t==0 {return 0;}e:=c.nodes[id];if CK_list_count(c,e.head)!=1 {CK_error(c,e.loc,"E0901","construct exactly one sum alternative","");return 0;}
+                   ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:253:67: mutant survived: the call was removed
+   if t==0 {return 0;}e:=c.nodes[id];if CK_list_count(c,e.head)!=1 {CK_error(c,e.loc,"E0901","construct exactly one sum alternative","");return 0;}
+                                                                    ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:253:143: mutant survived: 0 became 1
+   if t==0 {return 0;}e:=c.nodes[id];if CK_list_count(c,e.head)!=1 {CK_error(c,e.loc,"E0901","construct exactly one sum alternative","");return 0;}
+                                                                                                                                                ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:254:34: mutant survived: -1 became 0
+   init:=c.nodes[e.head];ordinal:= -1;for i:0..<CK_sum_count(c,t) {if CK_sum_name(c,t,i)==init.name {ordinal=i;}}
+                                   ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:255:16: mutant survived: the call was removed
+   if ordinal<0 {CK_error(c,init.loc,"E0901","unknown sum alternative","");return 0;}
+                 ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:255:81: mutant survived: 0 became 1
+   if ordinal<0 {CK_error(c,init.loc,"E0901","unknown sum alternative","");return 0;}
+                                                                                  ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:257:155: mutant survived: 0 became 1
+   else {if init.a==0 {CK_error(c,init.loc,"E0901","this alternative requires its payload","");return 0;}a:=CK_value(c,init.a,CK_Hint.{type=payload});if a==0 {return 0;}if a!=payload {CK_error(c,c.nodes[init.a].loc,"E0901","sum payload type does not match its alternative","");return 0;}}
+                                                                                                                                                            ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:257:165: mutant survived: 0 became 1
+   else {if init.a==0 {CK_error(c,init.loc,"E0901","this alternative requires its payload","");return 0;}a:=CK_value(c,init.a,CK_Hint.{type=payload});if a==0 {return 0;}if a!=payload {CK_error(c,c.nodes[init.a].loc,"E0901","sum payload type does not match its alternative","");return 0;}}
+                                                                                                                                                                      ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:257:183: mutant survived: the call was removed
+   else {if init.a==0 {CK_error(c,init.loc,"E0901","this alternative requires its payload","");return 0;}a:=CK_value(c,init.a,CK_Hint.{type=payload});if a==0 {return 0;}if a!=payload {CK_error(c,c.nodes[init.a].loc,"E0901","sum payload type does not match its alternative","");return 0;}}
+                                                                                                                                                                                        ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:257:283: mutant survived: 0 became 1
+   else {if init.a==0 {CK_error(c,init.loc,"E0901","this alternative requires its payload","");return 0;}a:=CK_value(c,init.a,CK_Hint.{type=payload});if a==0 {return 0;}if a!=payload {CK_error(c,c.nodes[init.a].loc,"E0901","sum payload type does not match its alternative","");return 0;}}
+                                                                                                                                                                                                                                                                                            ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:258:51: mutant survived: the assignment was removed
+   c.nodes[id].kind=CK_Tag.expr_sum;c.nodes[id].name=init.name;c.nodes[id].a=init.a;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=ordinal;return t;
+                                                    ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:258:118: mutant survived: the assignment was removed
+   c.nodes[id].kind=CK_Tag.expr_sum;c.nodes[id].name=init.name;c.nodes[id].a=init.a;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=ordinal;return t;
+                                                                                                                       ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:258:119: mutant survived: 0 became 1
+   c.nodes[id].kind=CK_Tag.expr_sum;c.nodes[id].name=init.name;c.nodes[id].a=init.a;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=ordinal;return t;
+                                                                                                                        ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:264:53: mutant survived: 0 became 1
+   r:=CK_sum_type(c,CK_Kind.optional,t,0,e.loc);if r==0 {return 0;}c.nodes[id].kind=CK_Tag.expr_some;c.nodes[id].a=e.head;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=1;return r;
+                                                      ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:264:137: mutant survived: the assignment was removed
+   r:=CK_sum_type(c,CK_Kind.optional,t,0,e.loc);if r==0 {return 0;}c.nodes[id].kind=CK_Tag.expr_some;c.nodes[id].a=e.head;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=1;return r;
+                                                                                                                                          ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:264:138: mutant survived: 0 became 1
+   r:=CK_sum_type(c,CK_Kind.optional,t,0,e.loc);if r==0 {return 0;}c.nodes[id].kind=CK_Tag.expr_some;c.nodes[id].a=e.head;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=1;return r;
+                                                                                                                                           ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:264:156: mutant survived: the assignment was removed
+   r:=CK_sum_type(c,CK_Kind.optional,t,0,e.loc);if r==0 {return 0;}c.nodes[id].kind=CK_Tag.expr_some;c.nodes[id].a=e.head;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=1;return r;
+                                                                                                                                                             ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:264:157: mutant survived: 0 became 1
+   r:=CK_sum_type(c,CK_Kind.optional,t,0,e.loc);if r==0 {return 0;}c.nodes[id].kind=CK_Tag.expr_some;c.nodes[id].a=e.head;c.nodes[id].head=0;c.nodes[id].tail=0;c.nodes[id].sum_variant=1;return r;
+                                                                                                                                                              ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:269:38: mutant survived: 0 became 1
+   t:=CK_value(c,e.a,CK_Hint.{});if t==0 {return 0;}r:=c.types[t];
+                                       ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:269:48: mutant survived: 0 became 1
+   t:=CK_value(c,e.a,CK_Hint.{});if t==0 {return 0;}r:=c.types[t];
+                                                 ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:270:57: mutant survived: the call was removed
+   if r.kind!=CK_Kind.result && r.kind!=CK_Kind.optional {CK_error(c,e.loc,"E0905","try and or_else require Result or optional","");return 0;}
+                                                          ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:270:138: mutant survived: 0 became 1
+   if r.kind!=CK_Kind.result && r.kind!=CK_Kind.optional {CK_error(c,e.loc,"E0905","try and or_else require Result or optional","");return 0;}
+                                                                                                                                           ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:271:79: mutant survived: '!=' became '=='
+   if e.kind==CK_Tag.expr_or_else {f:=CK_value(c,e.b,CK_Hint.{type=r.elem});if f!=0 && f!=r.elem {CK_error(c,c.nodes[e.b].loc,"E0906","or_else fallback must have the success payload type","");return 0;}return r.elem;}
+                                                                                ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:271:81: mutant survived: 0 became 1
+   if e.kind==CK_Tag.expr_or_else {f:=CK_value(c,e.b,CK_Hint.{type=r.elem});if f!=0 && f!=r.elem {CK_error(c,c.nodes[e.b].loc,"E0906","or_else fallback must have the success payload type","");return 0;}return r.elem;}
+                                                                                  ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:271:97: mutant survived: the call was removed
+   if e.kind==CK_Tag.expr_or_else {f:=CK_value(c,e.b,CK_Hint.{type=r.elem});if f!=0 && f!=r.elem {CK_error(c,c.nodes[e.b].loc,"E0906","or_else fallback must have the success payload type","");return 0;}return r.elem;}
+                                                                                                  ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:271:198: mutant survived: 0 became 1
+   if e.kind==CK_Tag.expr_or_else {f:=CK_value(c,e.b,CK_Hint.{type=r.elem});if f!=0 && f!=r.elem {CK_error(c,c.nodes[e.b].loc,"E0906","or_else fallback must have the success payload type","");return 0;}return r.elem;}
+                                                                                                                                                                                                       ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:274:25: mutant survived: 0 became 1
+   if c.state[0].current==0 || r.kind!=out.kind || (r.kind==CK_Kind.result && r.sum_error!=out.sum_error) {CK_error(c,e.loc,"E0905","try requires the same propagation family and exact error type","");return 0;}
+                          ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:274:57: mutant survived: '==' became '!='
+   if c.state[0].current==0 || r.kind!=out.kind || (r.kind==CK_Kind.result && r.sum_error!=out.sum_error) {CK_error(c,e.loc,"E0905","try requires the same propagation family and exact error type","");return 0;}
+                                                          ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:286:33: mutant survived: -1 became 0
+    branch:=c.nodes[at];ordinal:= -1;payload:=1;tag:u64;valid:bool;
+                                  ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:294:3: mutant survived: the call was removed
+    CK_stmt(c,branch.b);c.state[0].local_count=mark;at=branch.next;
+    ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:300:40: mutant survived: 0 became 1
+   t:=CK_value(c,other,CK_Hint.{});if t==0 {return 0;}if c.types[t].kind!=CK_Kind.optional || (e.op!=44 && e.op!=45) {CK_error(c,e.loc,"E0910","null compares only for equality with an optional","");return 0;}
+                                         ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:300:50: mutant survived: 0 became 1
+   t:=CK_value(c,other,CK_Hint.{});if t==0 {return 0;}if c.types[t].kind!=CK_Kind.optional || (e.op!=44 && e.op!=45) {CK_error(c,e.loc,"E0910","null compares only for equality with an optional","");return 0;}
+                                                   ^
+/tmp/coax-12625-source/scoped-mutation/sum-types-full/coax/lib/compiler/scope.coax:300:112: mutant survived: 45 became 46
+   t:=CK_value(c,other,CK_Hint.{});if t==0 {return 0;}if c.types[t].kind!=CK_Kind.optional || (e.op!=44 && e.op!=45) {CK_error(c,e.loc,"E0910","null compares only for equality with an optional","");return 0;}
+                                                                                                                 ^
+590 mutants, 504 killed, 86 survived

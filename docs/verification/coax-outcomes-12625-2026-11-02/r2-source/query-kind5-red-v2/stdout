@@ -1,0 +1,3 @@
+FAIL #forall R2 B2 write summaries remain reusable when retained lookup enables the index (6 ms)
+1 of 1192 checks (--only 'R2 B2 write summaries'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

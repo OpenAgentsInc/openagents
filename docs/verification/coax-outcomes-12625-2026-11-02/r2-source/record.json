@@ -1,0 +1,166 @@
+{
+  "schema": "coax.12625.r2-source-final-stopping-point.v1",
+  "observed_utc": "2026-11-02T14:35:33.292450+00:00",
+  "source_head": "975b94412d",
+  "frozen_six": "stable-source-v3.json",
+  "frozen_six_unchanged": true,
+  "external_entry_sha256": "3001eea6874976b2737c75a0100298f1db9c61212d824bae511f1eb98ff07a0c",
+  "authored_authority": {
+    "checks": 1204,
+    "passed": 1204,
+    "failed": 0,
+    "record": "final-borrow-authority-v3/process.json"
+  },
+  "scopes": [
+    {
+      "scope": "source-front-v3",
+      "returncode": 0,
+      "timeout": false,
+      "elapsed_seconds": 113.43767170794308,
+      "pins_unchanged": true,
+      "mutants": 617,
+      "killed": 617,
+      "survived": 0,
+      "record": "scoped-mutation/source-front-v3/process.json"
+    },
+    {
+      "scope": "sum-carriers",
+      "returncode": 0,
+      "timeout": false,
+      "elapsed_seconds": 172.12288933398668,
+      "pins_unchanged": true,
+      "mutants": 172,
+      "killed": 172,
+      "survived": 0,
+      "record": "scoped-mutation/sum-carriers/process.json"
+    },
+    {
+      "scope": "index-probe-v2",
+      "returncode": 0,
+      "timeout": false,
+      "elapsed_seconds": 80.77620462491177,
+      "pins_unchanged": true,
+      "mutants": 34,
+      "killed": 34,
+      "survived": 0,
+      "record": "scoped-mutation/index-probe-v2/process.json"
+    },
+    {
+      "scope": "cache-index-resume-v2",
+      "returncode": 1,
+      "timeout": false,
+      "elapsed_seconds": 58.58198200003244,
+      "pins_unchanged": true,
+      "mutants": 139,
+      "killed": 126,
+      "survived": 13,
+      "record": "scoped-mutation/cache-index-resume-v2/process.json"
+    },
+    {
+      "scope": "cache-literal-resume-v2",
+      "returncode": 1,
+      "timeout": false,
+      "elapsed_seconds": 58.37776075000875,
+      "pins_unchanged": true,
+      "mutants": 77,
+      "killed": 63,
+      "survived": 14,
+      "record": "scoped-mutation/cache-literal-resume-v2/process.json"
+    },
+    {
+      "scope": "cache-projection-resume-v2",
+      "returncode": 1,
+      "timeout": false,
+      "elapsed_seconds": 276.76007550000213,
+      "pins_unchanged": true,
+      "mutants": 290,
+      "killed": 215,
+      "survived": 75,
+      "record": "scoped-mutation/cache-projection-resume-v2/process.json"
+    },
+    {
+      "scope": "borrow-CB_variant-resume",
+      "returncode": 1,
+      "timeout": false,
+      "elapsed_seconds": 38.06242237507831,
+      "pins_unchanged": true,
+      "mutants": 46,
+      "killed": 38,
+      "survived": 8,
+      "record": "scoped-mutation/borrow-CB_variant-resume/process.json"
+    },
+    {
+      "scope": "borrow-CB_leaf_count-resume",
+      "returncode": 1,
+      "timeout": false,
+      "elapsed_seconds": 39.31528487498872,
+      "pins_unchanged": true,
+      "mutants": 74,
+      "killed": 69,
+      "survived": 5,
+      "record": "scoped-mutation/borrow-CB_leaf_count-resume/process.json"
+    },
+    {
+      "scope": "borrow-CB_discover-resume",
+      "returncode": 1,
+      "timeout": false,
+      "elapsed_seconds": 59.42925187502988,
+      "pins_unchanged": true,
+      "mutants": 132,
+      "killed": 129,
+      "survived": 3,
+      "record": "scoped-mutation/borrow-CB_discover-resume/process.json"
+    },
+    {
+      "scope": "borrow-CB_expr-resume",
+      "returncode": 1,
+      "timeout": false,
+      "elapsed_seconds": 178.68425812502392,
+      "pins_unchanged": true,
+      "mutants": 226,
+      "killed": 214,
+      "survived": 12,
+      "record": "scoped-mutation/borrow-CB_expr-resume/process.json"
+    },
+    {
+      "scope": "source-borrows",
+      "returncode": -15,
+      "timeout": true,
+      "elapsed_seconds": 840.017175624962,
+      "pins_unchanged": true,
+      "mutants": null,
+      "killed": null,
+      "survived": null,
+      "record": "scoped-mutation/source-borrows/process.json"
+    },
+    {
+      "scope": "source-caches-full",
+      "returncode": -15,
+      "timeout": true,
+      "elapsed_seconds": 840.0247623750474,
+      "pins_unchanged": true,
+      "mutants": null,
+      "killed": null,
+      "survived": null,
+      "record": "scoped-mutation/source-caches-full/process.json"
+    }
+  ],
+  "unrun_prepared_scope": "/tmp/coax-12625-source/scoped-mutation/borrow-CB_query-resume",
+  "conclusion": "Correctness fixes and focused front scope pass. R2 overall mutation qualification remains OPEN: latest broader cache and borrow snapshots have surviving mutants; no equivalent waivers and no overall zero claim. Two former 840-second scopes are inconclusive with null scores. The final two external cache oracle groups pass baseline; no new mutation batch was run after the stopping instruction.",
+  "process_groups_checked": [
+    81638,
+    81640,
+    5681,
+    15167
+  ],
+  "active_group_members": [],
+  "production_changes_this_resumed_epoch": [
+    "CK_clone reconstructs checked sums as syntax with mark=0 and preserves their name, cloned payload and target type syntax; removes only phase-recomputed metadata resets.",
+    "CK_run expresses the same zero-errors plus nonfatal Result admission as nested gates."
+  ],
+  "unchanged_limits": {
+    "shared_work": 1048576,
+    "borrow_path_max": 8
+  },
+  "next_work": "Keep #12625 open. Independently test observable valid-state cached witness admission/reuse/cost, active-variant/optional try provenance, and resource refusal atomicity in the named smaller scopes. Preserve unspecified private post-fatal return contracts. No full 12k gate was attempted."
+}
