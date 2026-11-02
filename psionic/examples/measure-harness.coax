@@ -1,0 +1,106 @@
+#import "Basic";
+#load "../lib/harness/measure.coax";
+// Chapter 211's example: the hand suite, then a pinned 40-task suite run
+// through chapter 200's loop under three configurations, with seed blocks,
+// noise floors, chapter 241's verdicts, a receipt chain, replays and the
+// refusals. Every number is exact for the named build.
+STOP :: [11]string.["none","answer","steps","tokens","deadline","window","length","malformed","cancelled","model","shape"];
+STATUS :: [12]string.["ok","shape","capacity","broken chain","another suite","another harness","configuration not pinned",
+    "development tasks","no change","more than one change","scores not pinned","number"];
+VERDICT :: [3]string.["unverifiable","passed","failed"];
+REASON :: [14]string.["none","beyond the floor","within the floor","near the floor","no headroom","no floor",
+    "too few tasks","lower log loss","higher log loss","more confident errors","log loss unclear",
+    "over cost","over time","unmeasured"];
+KIND :: [3]string.["sort","dedupe","prefix"];
+mx_r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+mx_r2 :: (v:f64)->f64 {return floor(v*100+0.5)/100;}
+hex8 :: (d:[32]u8) {
+    digits:="0123456789abcdef";text:[8]u8;
+    for i:0..<4 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("%",cast(string)text[..]);
+}
+show_work :: (w:EnWork) {print("[");for i:0..<w.size {if i>0 {print(" ");}print("%",w.v[i]);}print("]");}
+show_run :: (x:MhRun) {
+    print("stop %, %, % steps, % tokens, % tool calls, % ticks\n",STOP[cast(int)x.stop],ifx x.solved then "right" else "wrong",
+        x.steps,x.tokens,x.tools,x.ticks);
+}
+show_totals :: (label:string,r:MhReceipt) {
+    m:=r.totals;n:=f64(m.runs);
+    print("  %: % of % runs right (%), per run % steps, % tokens, % tool calls, % ticks\n    stops:",label,m.solved,m.runs,mx_r4(f64(m.solved)/n),
+        mx_r2(f64(m.steps)/n),mx_r2(f64(m.tokens)/n),mx_r2(f64(m.tools)/n),mx_r2(f64(m.ticks)/n));
+    for k:0..<11 {if m.stops[k]>0 {print(" % %",STOP[k],m.stops[k]);}}
+    print("; config ");hex8(r.config);print(", runs ");hex8(r.runs);print(", receipt ");hex8(r.digest);print("\n");
+}
+show_verdict :: (label:string,v:MhVerdict) {
+    print("  %: ",label);
+    if v.status!=MhStatus.ok {print("refused: %\n",STATUS[cast(int)v.status]);return;}
+    d:=v.decision;
+    print("floor % from % blocks, gain % (se %, % of 1000 replicates at or below the floor), headroom %; cost % tokens, time % ticks: % (%)\n",
+        mx_r4(v.floor.floor),v.floor.blocks,mx_r4(d.gain.gain),mx_r4(d.gain.se),d.gain.below,mx_r4(d.room.room),mx_r2(v.cost),mx_r2(v.time),
+        VERDICT[cast(int)v.result.verdict],REASON[cast(int)v.result.reason]);
+}
+
+// book:begin example
+main :: () {
+    // The hand suite: three held-out tasks, two runs, two configurations.
+    hand:=mh_hand();
+    print("the hand suite, seeds 7 and 8, skill 0.5:\n");
+    for c,k:[2]MhConfig.[MH_DIRECT,MH_CALC] {
+        for q:0..<2 {for t,r:hand {
+            print("  % run % % ",ifx k==0 then "direct    " else "calculator",q,KIND[cast(int)t.kind]);show_work(t.work);print(": ");
+            show_run(mh_run(MH_H,c,t,r,q));
+        }}
+    }
+    print("  the calculator's sums under tighter budgets (3 steps, 20 tokens, 8 a reply, deadline 80):\n");
+    budgets:=[4]MhConfig.[MH_CALC,MH_CALC,MH_CALC,MH_CALC];budgets[0].steps=3;budgets[1].tokens=20;budgets[2].reply=8;budgets[3].deadline=80;
+    for c:budgets {print("    ");show_run(mh_run(MH_H,c,hand[1],1,0));}
+    small:=MH_H;small.context=40;print("    window 40: ");show_run(mh_run(small,MH_CALC,hand[1],1,0));
+
+    // The suite, harness and configurations, pinned before any run below.
+    tasks:[40]EnTask;#assert en_tasks(211,tasks[..])==EnStatus.ok;
+    gate:=MhGate.{replicates=1000,seed=2111,cost_limit=60,time_limit=3000};
+    suite:=mh_suite(tasks[..],10,gate);
+    h:=MhHarness.{context=512,tool=4,skill=0.6,seed=2110,runs=8,block=2};
+    direct:=MhConfig.{tools=false,steps=8,tokens=96,reply=48,deadline=100000};
+    calc:=direct;calc.tools=true;
+    long:=calc;long.steps=16;
+    kinds:[3]int;for t:tasks[10..<40] {kinds[cast(int)t.kind]+=1;}
+    print("suite: 40 tasks from seed 211, 10 development and 30 held out (% sort, % dedupe, % prefix); items ",kinds[0],kinds[1],kinds[2]);
+    hex8(suite.items);print(", questions ");hex8(suite.questions);print(", gate ");hex8(suite.gates);
+    print("\nharness: chapter 200's loop, window 512, 4 ticks a call, skill 0.6, seeds 2110 to 2117 in 4 blocks of 2; digest ");hex8(mh_harness_digest(h));print("\n");
+
+    // Every configuration on the held-out tasks, into one receipt chain.
+    store:[8]MhReceipt;count:=0;
+    sd:[240]f64;sc:[240]f64;sl:[240]f64;dev:[80]f64;
+    count=mh_append(store[..],count,mh_bench(h,direct,suite,tasks[..],1,sd[..])).index;
+    count=mh_append(store[..],count,mh_bench(h,calc,suite,tasks[..],1,sc[..])).index;
+    count=mh_append(store[..],count,mh_bench(h,long,suite,tasks[..],1,sl[..])).index;
+    count=mh_append(store[..],count,mh_bench(h,calc,suite,tasks[..],0,dev[..])).index;
+    print("held out, 30 tasks x 8 runs:\n");
+    show_totals("direct, 8 steps         ",store[0]);
+    show_totals("calculator, 8 steps     ",store[1]);
+    show_totals("calculator, 16 steps    ",store[2]);
+    print("development, 10 tasks x 8 runs:\n");show_totals("calculator, 8 steps     ",store[3]);
+
+    // Verdicts: one change at a time, on held-out tasks only.
+    print("verdicts:\n");
+    show_verdict("calculator against direct",mh_verdict(store[..],count,0,1,suite,h,direct,calc,sd[..],sc[..]));
+    show_verdict("16 steps against 8, with the calculator",mh_verdict(store[..],count,1,2,suite,h,calc,long,sc[..],sl[..]));
+    show_verdict("16 steps and the calculator against direct",mh_verdict(store[..],count,0,2,suite,h,direct,long,sd[..],sl[..]));
+    show_verdict("on the development tasks",mh_verdict(store[..],count,0,3,suite,h,direct,calc,sd[..],dev[..]));
+    other:[40]EnTask;#assert en_tasks(212,other[..])==EnStatus.ok;
+    show_verdict("against another suite",mh_verdict(store[..],count,0,1,mh_suite(other[..],10,gate),h,direct,calc,sd[..],sc[..]));
+    seeds:=h;seeds.seed=2120;show_verdict("under other seeds",mh_verdict(store[..],count,0,1,suite,seeds,direct,calc,sd[..],sc[..]));
+    loose:=calc;loose.tokens=128;show_verdict("with a configuration the receipt did not pin",mh_verdict(store[..],count,0,1,suite,h,direct,loose,sd[..],sc[..]));
+    swapped:=sc;swapped[0]=1-swapped[0];show_verdict("with one score changed",mh_verdict(store[..],count,0,1,suite,h,direct,calc,sd[..],swapped[..]));
+
+    // Replays: every held-out receipt from its seeds, which reruns every
+    // run and compares the chain of run digests; then the receipt chain.
+    scratch:[240]f64;bodies:=0;
+    for c,k:[3]MhConfig.[direct,calc,long] {if mh_bench_replay(h,c,suite,tasks[..],1,store[k],scratch[..]) {bodies+=1;}}
+    print("replay: % of 3 held-out receipts (720 runs) reproduce from their seeds; chain of % receipts: %\n",bodies,count,
+        STATUS[cast(int)mh_verify(store[..],count).status]);
+    edited:=store;edited[1].totals.solved+=1;c:=mh_verify(edited[..],count);
+    print("  receipt 1 claimed with one more right run: % at receipt %\n",STATUS[cast(int)c.status],c.index);
+}
+// book:end example

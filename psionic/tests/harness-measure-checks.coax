@@ -1,0 +1,53 @@
+// Chapter 211's check helpers, kept apart from psionic/lib/harness/measure.coax:
+// the hand suite, its harness, configurations and gate, settings one step
+// out of range, the hand chain and chosen scores. Nothing here is used by
+// the bench itself.
+
+// The hand suite: three held-out tasks,
+// worked token by token in chapter 211.
+MH_H :: MhHarness.{context=128,tool=3,skill=0.5,seed=7,runs=2,block=1};
+MH_DIRECT :: MhConfig.{tools=false,steps=8,tokens=96,reply=48,deadline=100000};
+MH_CALC :: MhConfig.{tools=true,steps=8,tokens=96,reply=48,deadline=100000};
+MH_GATE :: MhGate.{replicates=40,seed=11,cost_limit=100,time_limit=1000};
+mh_hand :: ()->[3]EnTask {
+    return [3]EnTask.[en_task(EnKind.sort,"3 1 2 1"),en_task(EnKind.prefix,"1 2 3 4"),en_task(EnKind.dedupe,"2 2 5 2")];
+}
+mh_run_is :: (x:MhRun,stop:HlStop,solved:bool,steps:int,tokens:int,tools:int,ticks:int)->bool {
+    return x.status==MhStatus.ok && x.stop==stop && x.solved==solved && x.steps==steps && x.tokens==tokens && x.tools==tools && x.ticks==ticks;
+}
+mh_ids_are :: (ids:[]int,text:string)->bool {
+    if ids.count!=text.count {return false;}
+    for i:0..<ids.count {if ids[i]!=cast(int)text[i] {return false;}}
+    return true;
+}
+
+// Harnesses and configurations one step outside their ranges.
+h_bad :: (k:int)->MhHarness {
+    h:=MH_H;
+    if k==0 {h.context=39;} else if k==1 {h.context=513;} else if k==2 {h.tool=-1;} else if k==3 {h.skill=-0.01;}
+    else if k==4 {h.skill=1.01;} else if k==5 {h.runs=17;} else if k==6 {h.block=0;} else if k==7 {h.runs=3;h.block=2;}
+    else if k==8 {h.runs=2;h.block=2;} else {h.runs=34;h.block=2;}
+    return h;
+}
+c_bad :: (k:int)->MhConfig {
+    c:=MH_CALC;
+    if k==0 {c.steps=0;} else if k==1 {c.steps=33;} else if k==2 {c.tokens=-1;} else if k==3 {c.reply=0;} else {c.deadline=-1;}
+    return c;
+}
+
+// The hand suite's receipts: the direct loop, then the calculator.
+MhHand :: struct {s:MhSuite;store:[4]MhReceipt;count:int;sa:[6]f64;sb:[6]f64;}
+mh_hand_chain :: ()->MhHand {
+    t:=mh_hand();x:MhHand;x.s=mh_suite(t[..],0,MH_GATE);
+    a:=mh_bench(MH_H,MH_DIRECT,x.s,t[..],1,x.sa[..]);x.count=mh_append(x.store[..],0,a).index;
+    b:=mh_bench(MH_H,MH_CALC,x.s,t[..],1,x.sb[..]);x.count=mh_append(x.store[..],x.count,b).index;
+    return x;
+}
+
+mh_scores :: (seed:u64,p:f64,out:[]f64) {for i:0..<out.count {out[i]=ifx tb_uniform(seed,cast(u64)i)<p then 1.0 else 0.0;}}
+// A receipt from another harness (k = 0) or with another suite's items,
+// questions or gate (k = 1, 2, 3).
+mh_forge :: (r:MhReceipt,k:int)->MhReceipt {
+    x:=r;if k==0 {x.harness[0]^=1;} else if k==1 {x.items[0]^=1;} else if k==2 {x.questions[0]^=1;} else {x.gates[0]^=1;}
+    return x;
+}

@@ -1,0 +1,42 @@
+the hand suite, seeds 7 and 8, skill 0.5:
+  direct     run 0 sort [3 1 2 1]: stop answer, wrong, 1 steps, 8 tokens, 0 tool calls, 20 ticks
+  direct     run 0 prefix [1 2 3 4]: stop answer, wrong, 1 steps, 9 tokens, 0 tool calls, 21 ticks
+  direct     run 0 dedupe [2 2 5 2]: stop answer, wrong, 1 steps, 2 tokens, 0 tool calls, 14 ticks
+  direct     run 1 sort [3 1 2 1]: stop answer, right, 1 steps, 8 tokens, 0 tool calls, 20 ticks
+  direct     run 1 prefix [1 2 3 4]: stop answer, wrong, 1 steps, 8 tokens, 0 tool calls, 20 ticks
+  direct     run 1 dedupe [2 2 5 2]: stop answer, wrong, 1 steps, 8 tokens, 0 tool calls, 20 ticks
+  calculator run 0 sort [3 1 2 1]: stop answer, wrong, 1 steps, 8 tokens, 0 tool calls, 20 ticks
+  calculator run 0 prefix [1 2 3 4]: stop answer, right, 4 steps, 24 tokens, 3 tool calls, 130 ticks
+  calculator run 0 dedupe [2 2 5 2]: stop answer, wrong, 1 steps, 2 tokens, 0 tool calls, 14 ticks
+  calculator run 1 sort [3 1 2 1]: stop answer, right, 1 steps, 8 tokens, 0 tool calls, 20 ticks
+  calculator run 1 prefix [1 2 3 4]: stop answer, right, 4 steps, 24 tokens, 3 tool calls, 130 ticks
+  calculator run 1 dedupe [2 2 5 2]: stop answer, wrong, 1 steps, 8 tokens, 0 tool calls, 20 ticks
+  the calculator's sums under tighter budgets (3 steps, 20 tokens, 8 a reply, deadline 80):
+    stop steps, wrong, 3 steps, 15 tokens, 3 tool calls, 84 ticks
+    stop tokens, wrong, 4 steps, 20 tokens, 3 tool calls, 126 ticks
+    stop length, wrong, 4 steps, 23 tokens, 3 tool calls, 129 ticks
+    stop deadline, wrong, 3 steps, 14 tokens, 2 tool calls, 80 ticks
+    window 40: stop window, wrong, 4 steps, 17 tokens, 3 tool calls, 123 ticks
+suite: 40 tasks from seed 211, 10 development and 30 held out (11 sort, 11 dedupe, 8 prefix); items 7495cedf, questions c2df9da7, gate e60834fa
+harness: chapter 200's loop, window 512, 4 ticks a call, skill 0.6, seeds 2110 to 2117 in 4 blocks of 2; digest b36e9532
+held out, 30 tasks x 8 runs:
+  direct, 8 steps         : 146 of 240 runs right (0.6083), per run 1.0 steps, 19.24 tokens, 0.0 tool calls, 43.37 ticks
+    stops: answer 240; config 19d36c35, runs 8d9a870e, receipt 36f0e5ed
+  calculator, 8 steps     : 133 of 240 runs right (0.5542), per run 2.77 steps, 25.12 tokens, 1.93 tool calls, 164.09 ticks
+    stops: answer 200 steps 40; config 209af09b, runs dda4f9e4, receipt 4eab1e39
+  calculator, 16 steps    : 157 of 240 runs right (0.6542), per run 3.4 steps, 32.42 tokens, 2.4 tool calls, 251.12 ticks
+    stops: answer 224 tokens 16; config 5f691bc3, runs 5863dd93, receipt 7cbb92c1
+development, 10 tasks x 8 runs:
+  calculator, 8 steps     : 51 of 80 runs right (0.6375), per run 3.8 steps, 29.08 tokens, 3.0 tool calls, 215.48 ticks
+    stops: answer 64 steps 16; config 209af09b, runs c1bd70fd, receipt 205ff3f1
+verdicts:
+  calculator against direct: floor 0.2572 from 4 blocks, gain -0.0542 (se 0.0463, 1000 of 1000 replicates at or below the floor), headroom 0.3917; cost 25.12 tokens, time 164.09 ticks: failed (within the floor)
+  16 steps against 8, with the calculator: floor 0.2212 from 4 blocks, gain 0.1 (se 0.0569, 969 of 1000 replicates at or below the floor), headroom 0.4458; cost 32.42 tokens, time 251.12 ticks: unverifiable (near the floor)
+  16 steps and the calculator against direct: refused: more than one change
+  on the development tasks: refused: development tasks
+  against another suite: refused: another suite
+  under other seeds: refused: another harness
+  with a configuration the receipt did not pin: refused: configuration not pinned
+  with one score changed: refused: scores not pinned
+replay: 3 of 3 held-out receipts (720 runs) reproduce from their seeds; chain of 4 receipts: ok
+  receipt 1 claimed with one more right run: broken chain at receipt 1

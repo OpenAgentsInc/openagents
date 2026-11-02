@@ -2679,6 +2679,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/measure-harness.coax",
+      "chapter": "psionic/book/ch211-measure-the-harness.md",
+      "stdout": "psionic/fixtures/measure-harness.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

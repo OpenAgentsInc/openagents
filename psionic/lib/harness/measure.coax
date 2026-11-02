@@ -1,0 +1,639 @@
+// Chapter 211: measure the harness. A suite of chapter 242's environments is
+// pinned by chapter 239's three digests; every task runs through chapter
+// 200's loop under one configuration, once per seed, with a scripted
+// stand-in model; each run records its stop, steps, tokens, tool calls,
+// clock and whether chapter 242's exact checker passes its answer, under a
+// digest a replay from the same seeds must reproduce. A configuration's
+// receipt binds the suite, harness and configuration digests, its totals,
+// its run digests and its per-run scores, in a hash chain. Two receipts
+// compare only on the same suite and harness, on held-out tasks, with both
+// configurations pinned and exactly one setting changed; the difference
+// gets chapter 241's verdict beyond chapter 240's noise floor, measured
+// from the baseline's seed blocks.
+// Profile cpu-harness-bench-v1: chapter 200's cpu-harness-loop-v1 with a
+// scripted model, agent-sim-tools-v1 over chapter 242's agent-sim-v1, up to
+// 64 tasks, 16 runs and 32 steps, a window of at most 512 tokens, cost
+// counted in tokens drawn and time in chapter 200's logical clock ticks.
+#load "loop.coax";
+#load "../env.coax";
+#load "../verdict.coax";
+#load "../../tests/harness-measure-checks.coax";
+#authority;
+
+MhStatus :: enum u8 {ok;shape;capacity;broken;suite;harness;unpinned;development;same;changes;values;number;}
+// What stays fixed between configurations: chapter 200's window and tool
+// cost, the stand-in model's skill, and the seed blocks: run q uses seed
+// seed + q, and runs come in blocks of block runs.
+MhHarness :: struct {context:int;tool:int;skill:f64;seed:u64;runs:int;block:int;}
+// What a configuration may change: whether the calculator is offered, and
+// chapter 200's budgets.
+MhConfig :: struct {tools:bool;steps:int;tokens:int;reply:int;deadline:int;}
+// The verdict settings, pinned in the suite's gate digest: bootstrap
+// replicates and seed, and limits on tokens and clock ticks per run.
+MhGate :: struct {replicates:int;seed:u64;cost_limit:f64;time_limit:f64;}
+// tasks: the suite's size; the first split tasks are development tasks,
+// the rest held out.
+MhSuite :: struct {status:MhStatus;tasks:int;split:int;gate:MhGate;items:[32]u8;questions:[32]u8;gates:[32]u8;}
+MhRun :: struct {status:MhStatus;stop:HlStop;solved:bool;steps:int;tokens:int;tools:int;ticks:int;digest:[32]u8;}
+// Totals over every run of one partition; stops counts each chapter 200 stop.
+MhTotals :: struct {tasks:int;runs:int;solved:int;steps:int;tokens:int;tools:int;ticks:int;stops:[11]int;}
+MhReceipt :: struct {
+    status:MhStatus;sequence:int;previous:[32]u8;
+    items:[32]u8;questions:[32]u8;gates:[32]u8;harness:[32]u8;config:[32]u8;
+    partition:int;totals:MhTotals;runs:[32]u8;values:[32]u8;digest:[32]u8;
+}
+MhCheck :: struct {status:MhStatus;index:int;}
+MhVerdict :: struct {status:MhStatus;floor:NsFloor;decision:VdDecision;cost:f64;time:f64;result:VdResult;}
+
+MH_CONTEXT_MAX :: 512;
+MH_STEPS_MAX :: 32;
+MH_SCRIPT_MAX :: 256;
+MH_TASKS_MAX :: 64;
+MH_RUNS_MAX :: 16;
+MH_USER :: 321;MH_USER_END :: 322;MH_ASSISTANT :: 323;
+MH_KIND :: [3]int.[115,100,112];
+
+// Checks precede the implementation; the hand suite and the helpers are in
+// psionic/tests/harness-measure-checks.coax.
+#test "the check helpers see every field" {
+    x:=MhRun.{stop=HlStop.answer,solved=true,steps=1,tokens=2,tools=3,ticks=4};
+    #assert mh_run_is(x,HlStop.answer,true,1,2,3,4);
+    y:=x;y.status=MhStatus.shape;#assert !mh_run_is(y,HlStop.answer,true,1,2,3,4);
+    #assert !mh_run_is(x,HlStop.steps,true,1,2,3,4) && !mh_run_is(x,HlStop.answer,false,1,2,3,4) && !mh_run_is(x,HlStop.answer,true,0,2,3,4);
+    #assert !mh_run_is(x,HlStop.answer,true,1,0,3,4) && !mh_run_is(x,HlStop.answer,true,1,2,0,4) && !mh_run_is(x,HlStop.answer,true,1,2,3,0);
+    a:=[2]int.[49,32];#assert mh_ids_are(a[..],"1 ") && !mh_ids_are(a[..],"1") && !mh_ids_are(a[..],"2 ");
+}
+
+#test "prompts, numbers and answers as tokens" {
+    t:=mh_hand();ids:[64]int;
+    n:=mh_prompt(t[1],ids[..]);#assert n==13 && ids[0]==HL_BOS && ids[1]==321 && ids[11]==322 && ids[12]==323;
+    #assert mh_ids_are(ids[2..<11],"p 1 2 3 4");
+    #assert mh_prompt(t[0],ids[..])==13 && ids[2]==115 && mh_prompt(t[2],ids[..])==13 && ids[2]==100;
+    #assert mh_number(0,ids[..],0)==1 && ids[0]==48 && mh_number(144,ids[..],5)==8 && mh_ids_are(ids[5..<8],"144");
+    #assert mh_text(en_w("1 3 6 10"),ids[..],0)==8 && mh_ids_are(ids[0..<8],"1 3 6 10");
+    // An answer is numbers of one to four digits, one space apart.
+    for good:[3]string.["1 3 6 10","0","9999 0"] {
+        for i:0..<good.count {ids[i]=cast(int)good[i];}
+        a:=mh_answer(ids[0..<good.count]);#assert a.ok && en_same(a.work,en_w(good));
+    }
+    for bad:[7]string.["","1 ","1  2"," 1","12345","1,2","0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6"] {
+        for i:0..<bad.count {ids[i]=cast(int)bad[i];}#assert !mh_answer(ids[0..<bad.count]).ok;
+    }
+    seventeen:[36]int;for i:0..<18 {seventeen[2*i]=49;seventeen[2*i+1]=32;}
+    #assert mh_answer(seventeen[0..<31]).ok && mh_answer(seventeen[0..<31]).work.size==16 && !mh_answer(seventeen[0..<33]).ok && !mh_answer(seventeen[0..<35]).ok;
+    ids[0]=HL_END;#assert !mh_answer(ids[0..<1]).ok;
+    ids[0]=47;#assert !mh_answer(ids[0..<1]).ok;ids[0]=58;#assert !mh_answer(ids[0..<1]).ok;
+}
+
+#test "the stand-in's script: calls for running sums, otherwise one answer" {
+    t:=mh_hand();s:[MH_SCRIPT_MAX]int;st:[MH_STEPS_MAX+1]int;
+    // With the calculator: 1+2, 3+3, 6+4, then the sums.
+    #assert mh_script(MH_H,MH_CALC,t[1],1,0,s[..],st[..])==4;
+    #assert st[0]==0 && st[1]==5 && st[2]==10 && st[3]==15 && st[4]==24;
+    #assert s[0]==HL_CALL && mh_ids_are(s[1..<4],"1+2") && s[4]==HL_CLOSE && mh_ids_are(s[6..<9],"3+3") && mh_ids_are(s[11..<14],"6+4");
+    #assert mh_ids_are(s[15..<23],"1 3 6 10") && s[23]==HL_END;
+    // Without it, or on another kind of task: chapter 242's attempt 0.
+    for c:[2]MhConfig.[MH_DIRECT,MH_CALC] {for r:[2]int.[0,2] {
+        #assert mh_script(MH_H,c,t[r],r,1,s[..],st[..])==1;w:=en_attempt(EnAgent.{seed=8,skill=0.5},t[r],r,0);
+        k:=mh_text(w,s[..],0);#assert st[1]==k+1 && s[k]==HL_END;
+    }}
+    #assert mh_script(MH_H,MH_DIRECT,t[1],1,0,s[..],st[..])==1;
+}
+
+#test "the hand suite, run by run" {
+    t:=mh_hand();
+    // Seed 7 (run 0): the sort with 3 bumped to 4, the sums with 6 bumped
+    // to 7, the dedupe with its last value dropped. Seed 8 (run 1): the sort
+    // is right, the sums and the dedupe hand back their input.
+    a:=EnAgent.{seed=7,skill=0.5};b:=EnAgent.{seed=8,skill=0.5};
+    #assert en_is(en_attempt(a,t[0],0,0),"1 1 2 4") && en_is(en_attempt(a,t[1],1,0),"1 3 7 10") && en_is(en_attempt(a,t[2],2,0),"2");
+    #assert en_is(en_attempt(b,t[0],0,0),"1 1 2 3") && en_is(en_attempt(b,t[1],1,0),"1 2 3 4") && en_is(en_attempt(b,t[2],2,0),"2 2 5 2");
+    // Direct: one step; a 13-token prompt and w answer tokens draw w + 1
+    // and read 13 + w positions.
+    #assert mh_run_is(mh_run(MH_H,MH_DIRECT,t[0],0,0),HlStop.answer,false,1,8,0,20);
+    #assert mh_run_is(mh_run(MH_H,MH_DIRECT,t[1],1,0),HlStop.answer,false,1,9,0,21);
+    #assert mh_run_is(mh_run(MH_H,MH_DIRECT,t[2],2,0),HlStop.answer,false,1,2,0,14);
+    #assert mh_run_is(mh_run(MH_H,MH_DIRECT,t[0],0,1),HlStop.answer,true,1,8,0,20);
+    #assert mh_run_is(mh_run(MH_H,MH_DIRECT,t[1],1,1),HlStop.answer,false,1,8,0,20);
+    #assert mh_run_is(mh_run(MH_H,MH_DIRECT,t[2],2,1),HlStop.answer,false,1,8,0,20);
+    // The calculator: 3 calls and the answer, 5 + 5 + 5 + 9 tokens drawn,
+    // positions 17 + 25 + 33 + 46 read, 3 ticks per call.
+    for q:0..<2 {#assert mh_run_is(mh_run(MH_H,MH_CALC,t[1],1,q),HlStop.answer,true,4,24,3,130);}
+    #assert mh_run_is(mh_run(MH_H,MH_CALC,t[0],0,0),HlStop.answer,false,1,8,0,20);
+    // Budgets end the calculator's turn with chapter 200's typed stops.
+    c:=MH_CALC;c.steps=3;#assert mh_run_is(mh_run(MH_H,c,t[1],1,0),HlStop.steps,false,3,15,3,84);
+    c=MH_CALC;c.tokens=20;#assert mh_run_is(mh_run(MH_H,c,t[1],1,0),HlStop.tokens,false,4,20,3,126);
+    c=MH_CALC;c.reply=8;#assert mh_run_is(mh_run(MH_H,c,t[1],1,0),HlStop.length,false,4,23,3,129);
+    c=MH_CALC;c.deadline=80;#assert mh_run_is(mh_run(MH_H,c,t[1],1,0),HlStop.deadline,false,3,14,2,80);
+    h:=MH_H;h.context=40;#assert mh_run_is(mh_run(h,MH_CALC,t[1],1,0),HlStop.window,false,4,17,3,123);
+    // Refusals: a harness or configuration out of range, a negative task, a
+    // run outside the seed blocks.
+    for bad:[5]MhRun.[mh_run(MH_H,MH_CALC,t[1],-1,0),mh_run(MH_H,MH_CALC,t[1],1,-1),mh_run(MH_H,MH_CALC,t[1],1,2),
+                      mh_run(h_bad(0),MH_CALC,t[1],1,0),mh_run(MH_H,c_bad(0),t[1],1,0)] {
+        #assert bad.status==MhStatus.shape && bad.stop==HlStop.none && su_same(bad.digest,su_zero());
+    }
+}
+#test "harness and configuration ranges, each edge" {
+    for k:0..<10 {#assert !mh_harness_ok(h_bad(k));}
+    for k:0..<5 {#assert !mh_config_ok(c_bad(k));}
+    h:=MH_H;h.context=40;#assert mh_harness_ok(h);h.context=512;#assert mh_harness_ok(h);
+    h=MH_H;h.tool=0;h.skill=0;#assert mh_harness_ok(h);h.skill=1;#assert mh_harness_ok(h);
+    h=MH_H;h.runs=16;h.block=8;#assert mh_harness_ok(h);h.runs=16;h.block=1;#assert mh_harness_ok(h);
+    c:=MH_CALC;c.steps=1;c.tokens=0;c.reply=1;c.deadline=0;#assert mh_config_ok(c);c.steps=32;#assert mh_config_ok(c);
+}
+
+#test "a run's digest covers its inputs, and a replay catches every change" {
+    t:=mh_hand();x:=mh_run(MH_H,MH_CALC,t[1],1,0);
+    #assert mh_run_replay(MH_H,MH_CALC,t[1],1,0,x);
+    #assert !su_same(mh_run(MH_H,MH_CALC,t[1],1,1).digest,x.digest) && !su_same(mh_run(MH_H,MH_CALC,t[1],0,0).digest,x.digest);
+    h:=MH_H;h.tool=4;#assert !su_same(mh_run(h,MH_CALC,t[1],1,0).digest,x.digest);
+    c:=MH_CALC;c.deadline=99999;#assert !su_same(mh_run(MH_H,c,t[1],1,0).digest,x.digest);
+    u:=t[1];u.work.v[3]=5;#assert !su_same(mh_run(MH_H,MH_CALC,u,1,0).digest,x.digest);
+    for f:0..<8 {
+        y:=x;
+        if f==0 {y.status=MhStatus.shape;} else if f==1 {y.stop=HlStop.steps;} else if f==2 {y.solved=false;} else if f==3 {y.steps=3;}
+        else if f==4 {y.tokens=23;} else if f==5 {y.tools=2;} else if f==6 {y.ticks=129;} else {y.digest[0]^=1;}
+        #assert !mh_run_replay(MH_H,MH_CALC,t[1],1,0,y);
+    }
+    #assert !mh_run_replay(MH_H,MH_CALC,t[1],1,1,x) && !mh_run_replay(MH_H,MH_DIRECT,t[1],1,0,x);
+}
+
+#test "the suite is three digests" {
+    t:=mh_hand();s:=mh_suite(t[..],0,MH_GATE);#assert s.status==MhStatus.ok && s.tasks==3 && s.split==0;
+    #assert mh_suite_ok(s,t[..]);
+    u:=t;u[2].work.v[0]=3;x:=mh_suite(u[..],0,MH_GATE);
+    #assert !su_same(x.items,s.items) && !su_same(x.questions,s.questions) && su_same(x.gates,s.gates) && !mh_suite_ok(s,u[..]);
+    x=mh_suite(t[..],1,MH_GATE);#assert !su_same(x.items,s.items) && su_same(x.questions,s.questions);
+    x=mh_suite(t[0..<2],0,MH_GATE);#assert !su_same(x.items,s.items) && !su_same(x.questions,s.questions);
+    for k:0..<4 {
+        g:=MH_GATE;if k==0 {g.replicates=41;} else if k==1 {g.seed=12;} else if k==2 {g.cost_limit=99;} else {g.time_limit=999;}
+        x=mh_suite(t[..],0,g);#assert su_same(x.items,s.items) && !su_same(x.gates,s.gates);
+        y:=s;y.gate=g;#assert !mh_suite_ok(y,t[..]);
+    }
+    y:=s;y.split=1;#assert !mh_suite_ok(y,t[..]);y=s;y.tasks=2;#assert !mh_suite_ok(y,t[0..<2]);
+    y=s;y.status=MhStatus.shape;#assert !mh_suite_ok(y,t[..]);
+    // Refusals: no tasks, a split past the end, a gate out of range.
+    many:[65]EnTask;#assert mh_suite(many[..],0,MH_GATE).status==MhStatus.shape && mh_suite(many[0..<64],64,MH_GATE).status==MhStatus.ok;
+    #assert mh_suite(t[0..<0],0,MH_GATE).status==MhStatus.shape && mh_suite(t[..],4,MH_GATE).status==MhStatus.shape && mh_suite(t[..],-1,MH_GATE).status==MhStatus.shape;
+    #assert mh_suite(t[..],3,MH_GATE).status==MhStatus.ok && mh_suite(t[0..<1],1,MH_GATE).status==MhStatus.ok;
+    g2:=MH_GATE;g2.replicates=2;#assert mh_suite(t[..],0,g2).status==MhStatus.ok;
+    for k:0..<6 {
+        g:=MH_GATE;
+        if k==0 {g.replicates=1;} else if k==1 {g.replicates=10001;} else if k==2 {g.cost_limit=-1;} else if k==3 {g.time_limit=-1;}
+        else if k==4 {g.cost_limit=1.0e301;} else {g.time_limit=1.0e301;}
+        #assert mh_suite(t[..],0,g).status==MhStatus.shape;
+    }
+    g:=MH_GATE;g.replicates=10000;g.cost_limit=0;g.time_limit=1.0e300;#assert mh_suite(t[..],0,g).status==MhStatus.ok;
+}
+
+#test "the hand suite's totals, scores and receipts" {
+    t:=mh_hand();x:=mh_hand_chain();#assert x.count==2;
+    a:=x.store[0];b:=x.store[1];
+    // Direct: 1 of 6 right; 6 steps; 8+9+2+8+8+8 tokens; 20+21+14+20+20+20 ticks.
+    #assert a.status==MhStatus.ok && a.partition==1 && a.totals.tasks==3 && a.totals.runs==6 && a.totals.solved==1 && a.totals.steps==6;
+    #assert a.totals.tokens==43 && a.totals.tools==0 && a.totals.ticks==115 && a.totals.stops[cast(int)HlStop.answer]==6;
+    // Scores run by run: run 0 gets nothing right; run 1 the sort.
+    want:=[6]f64.[0,0,0,1,0,0];for i:0..<6 {#assert x.sa[i]==want[i];}
+    // The calculator: the sums are right in both runs, so 3 of 6.
+    #assert b.totals.solved==3 && b.totals.steps==12 && b.totals.tokens==74 && b.totals.tools==6 && b.totals.ticks==334;
+    #assert b.totals.stops[cast(int)HlStop.answer]==6 && x.sb[1]==1 && x.sb[4]==1;
+    #assert su_same(a.values,su_values(x.sa[..])) && su_same(b.values,su_values(x.sb[..]));
+    #assert su_same(a.items,x.s.items) && su_same(a.harness,mh_harness_digest(MH_H)) && su_same(a.config,mh_config_digest(MH_DIRECT)) && su_same(b.config,mh_config_digest(MH_CALC));
+    // The runs digest chains every run's digest in order.
+    d:=mh_chain(su_zero(),mh_run(MH_H,MH_DIRECT,t[0],0,0).digest);
+    for k:1..<6 {d=mh_chain(d,mh_run(MH_H,MH_DIRECT,t[k%3],k%3,k/3).digest);}
+    #assert su_same(a.runs,d);
+    // Each receipt replays from its seeds.
+    sc:[6]f64;#assert mh_bench_replay(MH_H,MH_DIRECT,x.s,t[..],1,a,sc[..]) && mh_bench_replay(MH_H,MH_CALC,x.s,t[..],1,b,sc[..]);
+    #assert !mh_bench_replay(MH_H,MH_CALC,x.s,t[..],1,a,sc[..]);
+    // The development partition is empty here: refused.
+    #assert mh_bench(MH_H,MH_DIRECT,x.s,t[..],0,sc[0..<0]).status==MhStatus.shape;
+}
+#test "a receipt's replay checks every field" {
+    t:=mh_hand();x:=mh_hand_chain();a:=x.store[0];sc:[6]f64;
+    for f:0..<20 {
+        y:=a;
+        if f==0 {y.status=MhStatus.shape;} else if f==1 {y.items[0]^=1;} else if f==2 {y.questions[0]^=1;} else if f==3 {y.gates[0]^=1;}
+        else if f==4 {y.harness[0]^=1;} else if f==5 {y.config[0]^=1;} else if f==6 {y.partition=0;} else if f==7 {y.totals.tasks=2;}
+        else if f==8 {y.totals.runs=5;} else if f==9 {y.totals.solved=4;} else if f==10 {y.totals.steps=7;} else if f==11 {y.totals.tokens=41;}
+        else if f==12 {y.totals.tools=1;} else if f==13 {y.totals.ticks=111;} else if f==14 {y.totals.stops[1]=5;} else if f==15 {y.totals.stops[10]=1;}
+        else if f==16 {y.runs[0]^=1;} else if f==17 {y.values[0]^=1;} else if f==18 {y.totals.stops[0]=1;} else {y.totals.stops[2]=1;}
+        #assert !mh_body_same(a,y) || f==0 || f==6;
+    }
+    // Status and partition are checked by the replay itself.
+    y:=a;y.status=MhStatus.shape;#assert !mh_bench_replay(MH_H,MH_DIRECT,x.s,t[..],1,y,sc[..]);
+    y=a;y.partition=0;#assert !mh_bench_replay(MH_H,MH_DIRECT,x.s,t[..],1,y,sc[..]);
+    #assert !mh_bench_replay(MH_H,MH_DIRECT,x.s,t[..],1,a,sc[0..<5]);
+}
+#test "the bench refuses a suite that does not match its tasks" {
+    t:=mh_hand();s:=mh_suite(t[..],0,MH_GATE);sc:[6]f64;
+    u:=t;u[0].kind=EnKind.dedupe;#assert mh_bench(MH_H,MH_DIRECT,s,u[..],1,sc[..]).status==MhStatus.suite;
+    #assert mh_bench(h_bad(0),MH_DIRECT,s,t[..],1,sc[..]).status==MhStatus.shape && mh_bench(MH_H,c_bad(0),s,t[..],1,sc[..]).status==MhStatus.shape;
+    #assert mh_bench(MH_H,MH_DIRECT,s,t[..],2,sc[..]).status==MhStatus.shape && mh_bench(MH_H,MH_DIRECT,s,t[..],-1,sc[..]).status==MhStatus.shape;
+    #assert mh_bench(MH_H,MH_DIRECT,s,t[..],1,sc[0..<5]).status==MhStatus.shape;
+    // With one development task, partition 0 is run 0's and run 1's first task.
+    d:=mh_suite(t[..],1,MH_GATE);two:[2]f64;r:=mh_bench(MH_H,MH_DIRECT,d,t[..],0,two[..]);
+    #assert r.status==MhStatus.ok && r.partition==0 && r.totals.tasks==1 && r.totals.solved==1 && two[0]==0 && two[1]==1;
+    four:[4]f64;r=mh_bench(MH_H,MH_CALC,d,t[..],1,four[..]);
+    #assert r.totals.tasks==2 && r.totals.runs==4 && r.totals.solved==2 && four[0]==1 && four[1]==0 && four[2]==1 && four[3]==0;
+}
+
+#test "the receipt chain: append, verify, and a changed receipt found" {
+    x:=mh_hand_chain();
+    #assert x.store[0].sequence==0 && su_same(x.store[0].previous,su_zero()) && x.store[1].sequence==1 && su_same(x.store[1].previous,x.store[0].digest);
+    #assert mh_verify(x.store[..],2).status==MhStatus.ok && mh_verify(x.store[..],0).status==MhStatus.ok;
+    #assert su_same(x.store[1].digest,mh_receipt_digest(x.store[1]));
+    for f:0..<22 {
+        y:=x.store;r:=y[1];
+        if f==0 {r.sequence=2;} else if f==1 {r.previous[0]^=1;} else if f==2 {r.items[0]^=1;} else if f==3 {r.questions[0]^=1;}
+        else if f==4 {r.gates[0]^=1;} else if f==5 {r.harness[0]^=1;} else if f==6 {r.config[0]^=1;} else if f==7 {r.partition=0;}
+        else if f==8 {r.totals.tasks=2;} else if f==9 {r.totals.runs=5;} else if f==10 {r.totals.solved=2;} else if f==11 {r.totals.steps=11;}
+        else if f==12 {r.totals.tokens=1;} else if f==13 {r.totals.tools=5;} else if f==14 {r.totals.ticks=1;} else if f==15 {r.totals.stops[0]=1;}
+        else if f==16 {r.totals.stops[10]=1;} else if f==17 {r.runs[0]^=1;} else if f==18 {r.values[0]^=1;} else if f==19 {r.digest[0]^=1;}
+        else if f==20 {r.totals.stops[1]=5;} else {r.totals.stops[3]=1;}
+        y[1]=r;c:=mh_verify(y[..],2);#assert c.status==MhStatus.broken && c.index==1;
+    }
+    // Resealed: a wrong sequence number or link with a digest that matches it.
+    y:=x.store;y[1].sequence=2;y[1].digest=mh_receipt_digest(y[1]);c:=mh_verify(y[..],2);#assert c.status==MhStatus.broken && c.index==1;
+    y=x.store;y[1].previous[0]^=1;y[1].digest=mh_receipt_digest(y[1]);c=mh_verify(y[..],2);#assert c.status==MhStatus.broken && c.index==1;
+    y=x.store;y[0].totals.solved=3;c=mh_verify(y[..],2);#assert c.status==MhStatus.broken && c.index==0;
+    #assert mh_verify(x.store[..],-1).status==MhStatus.shape && mh_verify(x.store[..],5).status==MhStatus.shape && mh_verify(x.store[..],4).status==MhStatus.broken;
+    // Append refuses a receipt the bench refused, a bad count, and a full store.
+    a:=x.store[0];bad:=a;bad.status=MhStatus.suite;
+    #assert mh_append(x.store[..],2,bad).status==MhStatus.shape && mh_append(x.store[..],-1,a).status==MhStatus.shape && mh_append(x.store[..],5,a).status==MhStatus.shape;
+    y=x.store;#assert mh_append(y[..],4,a).status==MhStatus.capacity && mh_append(y[..],3,a).index==4;
+}
+
+#test "verdict refusals, in order" #steps 60000000 {
+    t:=mh_hand();x:=mh_hand_chain();g:=MH_H;
+    v:=mh_verdict(x.store[..],2,0,1,x.s,g,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]);
+    // Three tasks are too few for chapter 241: unverifiable, not refused.
+    #assert v.status==MhStatus.ok && vd_is(v.result,VdVerdict.unverifiable,VdReason.few_tasks) && v.decision.gain.tasks==3;
+    #assert v.floor.blocks==2 && v.cost==74.0/6.0 && v.time==334.0/6.0;
+    for k:[4][2]int.[[2]int.[0,0],[2]int.[2,1],[2]int.[0,-1],[2]int.[0,2]] {
+        #assert mh_verdict(x.store[..],2,k[0],k[1],x.s,g,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.shape;
+    }
+    y:=x.store;y[0].totals.solved=2;#assert mh_verdict(y[..],2,0,1,x.s,g,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.broken;
+    // A different suite: other tasks, or a gate changed after the suite was pinned.
+    u:=t;u[0].work.v[0]=4;o:=mh_suite(u[..],0,MH_GATE);#assert mh_verdict(x.store[..],2,0,1,o,g,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.suite;
+    o=x.s;o.gate.replicates=1000;#assert mh_verdict(x.store[..],2,0,1,o,g,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.suite;
+    o=x.s;o.status=MhStatus.shape;#assert mh_verdict(x.store[..],2,0,1,o,g,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.suite;
+    for f:0..<3 {
+        o=x.s;if f==0 {o.items[0]^=1;} else if f==1 {o.questions[0]^=1;} else {o.gates[0]^=1;}
+        #assert mh_verdict(x.store[..],2,0,1,o,g,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.suite;
+    }
+    // A different harness, or one out of range.
+    g.seed=8;#assert mh_verdict(x.store[..],2,0,1,x.s,g,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.harness;
+    #assert mh_verdict(x.store[..],2,0,1,x.s,h_bad(0),MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.shape;
+    // One receipt of the two from another harness, or another suite, resealed into a chain.
+    for f:0..<8 {
+        z:[2]MhReceipt;a:=x.store[0];b:=x.store[1];
+        if f%2==0 {a=mh_forge(a,f/2);} else {b=mh_forge(b,f/2);}
+        n:=mh_append(z[..],0,a).index;n=mh_append(z[..],n,b).index;
+        #assert mh_verdict(z[..],2,0,1,x.s,MH_H,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==(ifx f<2 then MhStatus.harness else MhStatus.suite);
+    }
+    // A configuration other than the one each receipt pinned.
+    c:=MH_CALC;c.tokens=95;
+    #assert mh_verdict(x.store[..],2,0,1,x.s,MH_H,MH_DIRECT,c,x.sa[..],x.sb[..]).status==MhStatus.unpinned;
+    #assert mh_verdict(x.store[..],2,0,1,x.s,MH_H,MH_CALC,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.unpinned;
+    #assert mh_verdict(x.store[..],2,1,0,x.s,MH_H,MH_DIRECT,MH_CALC,x.sa[..],x.sb[..]).status==MhStatus.unpinned;
+    // Changed scores: the values digest no longer matches, or the shape is wrong.
+    s:=x.sa;s[3]=0;#assert mh_verdict(x.store[..],2,0,1,x.s,MH_H,MH_DIRECT,MH_CALC,s[..],x.sb[..]).status==MhStatus.values;
+    s=x.sb;s[1]=0;#assert mh_verdict(x.store[..],2,0,1,x.s,MH_H,MH_DIRECT,MH_CALC,x.sa[..],s[..]).status==MhStatus.values;
+    #assert mh_verdict(x.store[..],2,0,1,x.s,MH_H,MH_DIRECT,MH_CALC,x.sa[0..<5],x.sb[..]).status==MhStatus.shape;
+    #assert mh_verdict(x.store[..],2,0,1,x.s,MH_H,MH_DIRECT,MH_CALC,x.sa[..],x.sb[0..<5]).status==MhStatus.shape;
+    // Two receipts of one configuration, and two changes at once.
+    w:=x;w.count=mh_append(w.store[..],2,x.store[0]).index;
+    #assert mh_verdict(w.store[..],3,0,2,x.s,MH_H,MH_DIRECT,MH_DIRECT,x.sa[..],x.sa[..]).status==MhStatus.same;
+    c=MH_CALC;c.steps=16;w.count=mh_append(w.store[..],3,mh_bench(MH_H,c,x.s,t[..],1,s[..])).index;
+    #assert mh_verdict(w.store[..],4,0,3,x.s,MH_H,MH_DIRECT,c,x.sa[..],s[..]).status==MhStatus.changes;
+    #assert mh_verdict(w.store[..],4,1,3,x.s,MH_H,MH_CALC,c,x.sb[..],s[..]).status==MhStatus.ok;
+}
+#test "verdicts on development tasks are refused" {
+    t:=mh_hand();d:=mh_suite(t[..],1,MH_GATE);sa:[2]f64;sb:[2]f64;store:[2]MhReceipt;
+    n:=mh_append(store[..],0,mh_bench(MH_H,MH_DIRECT,d,t[..],0,sa[..])).index;n=mh_append(store[..],n,mh_bench(MH_H,MH_CALC,d,t[..],0,sb[..])).index;
+    #assert mh_verdict(store[..],2,0,1,d,MH_H,MH_DIRECT,MH_CALC,sa[..],sb[..]).status==MhStatus.development;
+    ha:[4]f64;store[1]=mh_bench(MH_H,MH_CALC,d,t[..],1,ha[..]);n=mh_append(store[..],1,store[1]).index;
+    #assert mh_verdict(store[..],2,0,1,d,MH_H,MH_DIRECT,MH_CALC,sa[..],ha[..]).status==MhStatus.development;
+    #assert mh_verdict(store[..],2,1,0,d,MH_H,MH_CALC,MH_DIRECT,ha[..],sa[..]).status==MhStatus.development;
+}
+#test "one change: each setting alone counts once" {
+    #assert mh_changes(MH_DIRECT,MH_DIRECT)==0 && mh_changes(MH_DIRECT,MH_CALC)==1;
+    for k:0..<5 {
+        c:=MH_DIRECT;
+        if k==0 {c.tools=true;} else if k==1 {c.steps=9;} else if k==2 {c.tokens=95;} else if k==3 {c.reply=47;} else {c.deadline=1;}
+        #assert mh_changes(MH_DIRECT,c)==1 && mh_changes(c,MH_DIRECT)==1 && !su_same(mh_config_digest(c),mh_config_digest(MH_DIRECT));
+    }
+    c:=MH_CALC;c.steps=9;c.deadline=1;#assert mh_changes(MH_DIRECT,c)==3;
+}
+#test "the harness digest covers every field" {
+    d:=mh_harness_digest(MH_H);
+    for k:0..<6 {
+        h:=MH_H;
+        if k==0 {h.context=127;} else if k==1 {h.tool=2;} else if k==2 {h.skill=0.51;} else if k==3 {h.seed=8;} else if k==4 {h.runs=4;} else {h.block=2;}
+        #assert !su_same(mh_harness_digest(h),d);
+    }
+}
+#test "pinned digests: the encoding is fixed" #steps 40000000 {
+    t:=mh_hand();s:=mh_suite(t[..],0,MH_GATE);
+    #assert su_hex(s.items,"1d94078f476e9e91daf71f534297f16ee2fcb50b4d20ac984e8fd4a36fd0b9e0");
+    #assert su_hex(s.questions,"71acf4f259ecae5d275e71db4465a48278d71f504715be37bd05173a72323f53");
+    #assert su_hex(s.gates,"4e25deb8b6e5c5bd285f5fa05f0eba2c6b7e4178ca87c846b7cf173a4b3f7c87");
+    #assert su_hex(mh_harness_digest(MH_H),"d025d0ae719d147ce1381a881a636a9d33334230eb44ea4826ecd6530fc91862");
+    #assert su_hex(mh_config_digest(MH_DIRECT),"19d36c357536b1848b92e6a67b4888e65f7e529aa13b11816698c6886cbce778");
+    #assert su_hex(mh_config_digest(MH_CALC),"209af09b9239e84d4143e057395f3d041d4ca2c434743daa01cab29e8e58fe1a");
+    #assert su_hex(mh_run(MH_H,MH_CALC,t[1],1,0).digest,"169a1722f7ee7d20b6548bbc860ad0f295819ae36399be67cdbb400b84cec712");
+    #assert su_hex(mh_run(MH_H,MH_DIRECT,t[2],2,0).digest,"21fffe6ae59a4ab2372f2c49d70450cef5494758683a20490bf97619753cbf0e");
+    x:=mh_hand_chain();
+    #assert su_hex(x.store[0].runs,"5464e12f87ea3a854babbba52ff4af077b296cdbae32e0d52d6ff1d3794336de");
+    #assert su_hex(x.store[0].values,"4195d2dd9d053af79ae8942bfead139c811a5743b57cfc2db5d86fa0592c1899");
+    #assert su_hex(x.store[0].digest,"eace875063fa3e6e7574f86c59b4b87838c63e0791b89501c22bd83238cb1fac");
+    #assert su_hex(x.store[1].digest,"d9edd9c962c7c8b0ecbbfeca60fa0446ec07f84c4406b47ac7d9d9ebee44ad00");
+}
+
+// Twelve held-out tasks with chosen scores in four runs, bound into two
+// receipts: the verdict is chapter 241's decision on the run means, with
+// the floor from the baseline's blocks, then its evaluation of cost and time.
+#forall "verdict rules: chapter 241's decision on run means, after every admission check" seed:0..<12 #steps 400000000 {
+    sd:=cast(u64)seed;t:[12]EnTask;#assert en_tasks(9000+sd,t[..])==EnStatus.ok;
+    h:=MH_H;h.runs=4;h.block=2;
+    g:=MhGate.{replicates=40,seed=sd,cost_limit=ifx seed%3==0 then 5.0 else 100.0,time_limit=ifx seed%4==1 then 30.0 else 1000.0};
+    s:=mh_suite(t[..],0,g);sa:[48]f64;sb:[48]f64;store:[2]MhReceipt;
+    mh_scores(sd,0.5,sa[..]);mh_scores(sd+100,0.3+0.05*f64(seed%12),sb[..]);
+    r:=MhReceipt.{items=s.items,questions=s.questions,gates=s.gates,harness=mh_harness_digest(h),partition=1};
+    r.totals.tasks=12;r.totals.runs=48;
+    a:=r;a.config=mh_config_digest(MH_DIRECT);a.values=su_values(sa[..]);a.totals.tokens=200;a.totals.ticks=900;
+    b:=r;b.config=mh_config_digest(MH_CALC);b.values=su_values(sb[..]);b.totals.tokens=100+30*seed;b.totals.ticks=960+20*seed;
+    n:=mh_append(store[..],0,a).index;n=mh_append(store[..],n,b).index;
+    v:=mh_verdict(store[..],2,0,1,s,h,MH_DIRECT,MH_CALC,sa[..],sb[..]);#assert v.status==MhStatus.ok;
+    // The oracle: means by hand, the floor and decision straight from 240 and 241.
+    ma:[12]f64;mb:[12]f64;task:[12]int;part:[12]int;
+    for i:0..<12 {task[i]=i;for q:0..<4 {ma[i]+=sa[q*12+i]/4;mb[i]+=sb[q*12+i]/4;}}
+    f:=ns_floor(sa[..],part[..],0,4,2);d:=vd_decision(ma[..],mb[..],task[..],part[..],0,f,1.0,sd,40);
+    #assert f.floor==v.floor.floor && d.status==VdStatus.ok && vd_is(v.decision.result,d.result.verdict,d.result.reason) && d.gain.gain==v.decision.gain.gain;
+    cost:=f64(b.totals.tokens)/48;time:=f64(b.totals.ticks)/48;#assert v.cost==cost && v.time==time;
+    want:=vd_evaluate(d.result,cost,time,g.cost_limit,g.time_limit);#assert vd_is(v.result,want.verdict,want.reason);
+    // A pass needs the gain clear of the floor and both limits held.
+    if v.result.verdict==VdVerdict.passed {#assert d.gain.below*40<=40 && cost<=g.cost_limit && time<=g.time_limit;}
+    if cost>g.cost_limit || time>g.time_limit {#assert v.result.verdict==VdVerdict.failed;}
+    // Changing one score breaks the values binding, whatever the verdict.
+    sa[seed%48]=1-sa[seed%48];#assert mh_verdict(store[..],2,0,1,s,h,MH_DIRECT,MH_CALC,sa[..],sb[..]).status==MhStatus.values;
+}
+
+// book:begin prompt
+// The task as a prompt: <|bos|> <|user_start|>, the kind's letter (s, d or
+// p) and each value after a space, <|user_end|> <|assistant_start|>.
+// Tokens below 256 are bytes.
+mh_prompt :: (t:EnTask,ids:[]int)->int {
+    ids[0]=HL_BOS;ids[1]=MH_USER;ids[2]=MH_KIND[cast(int)t.kind];at:=3;
+    for i:0..<t.work.size {ids[at]=32;ids[at+1]=48+t.work.v[i];at+=2;}
+    ids[at]=MH_USER_END;ids[at+1]=MH_ASSISTANT;return at+2;
+}
+// book:end prompt
+mh_number :: (x:int,out:[]int,at:int)->int {
+    d:[8]int;k:=0;v:=x;while true {d[k]=48+v%10;k+=1;v/=10;if v==0 {break;}}
+    for i:0..<k {out[at+i]=d[k-1-i];}return at+k;
+}
+mh_text :: (w:EnWork,out:[]int,at:int)->int {
+    p:=at;for i:0..<w.size {if i>0 {out[p]=32;p+=1;}p=mh_number(w.v[i],out,p);}
+    return p;
+}
+MhAnswer :: struct {ok:bool;work:EnWork;}
+// An answer: numbers of 1 to 4 digits, one space apart, at most 16.
+mh_answer :: (reply:[]int)->MhAnswer {
+    out:MhAnswer;x:=0;digits:=0;
+    for tok:reply {
+        if tok>=48 && tok<=57 {
+            if digits==4 {return MhAnswer.{};}
+            x=10*x+tok-48;digits+=1;
+        } else {
+            if tok!=32 || digits==0 || out.work.size==EN_ITEMS_MAX {return MhAnswer.{};}
+            out.work.v[out.work.size]=x;out.work.size+=1;x=0;digits=0;
+        }
+    }
+    if digits==0 || out.work.size==EN_ITEMS_MAX {return MhAnswer.{};}
+    out.work.v[out.work.size]=x;out.work.size+=1;out.ok=true;
+    return out;
+}
+
+// book:begin standin
+// agent-sim-tools-v1, the stand-in model. Offered the calculator on a
+// running-sums task, it adds one value per call and then writes the sums;
+// otherwise it writes chapter 242's attempt 0 for task r at seed seed + q.
+// Its replies are fixed before the run, which a scripted model in chapter
+// 200's loop needs: the calculator is exact, so the sums it will return are
+// known. Returns the number of replies.
+mh_script :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int,script:[]int,starts:[]int)->int {
+    n:=0;at:=0;
+    if c.tools && t.kind==EnKind.prefix {
+        sum:=t.work.v[0];
+        for i:1..<t.work.size {
+            script[at]=HL_CALL;at=mh_number(sum,script,at+1);script[at]=43;
+            at=mh_number(t.work.v[i],script,at+1);script[at]=HL_CLOSE;at+=1;
+            sum+=t.work.v[i];n+=1;starts[n]=at;
+        }
+        at=mh_text(en_solve(t),script,at);
+    } else {
+        at=mh_text(en_attempt(EnAgent.{seed=h.seed+cast(u64)q,skill=h.skill},t,r,0),script,at);
+    }
+    script[at]=HL_END;n+=1;starts[n]=at+1;
+    return n;
+}
+// book:end standin
+
+mh_harness_ok :: (h:MhHarness)->bool {
+    if h.context<40 || h.context>MH_CONTEXT_MAX || h.tool<0 || !tb_in(h.skill,0,1) {return false;}
+    return h.runs<=MH_RUNS_MAX && h.block>=1 && h.runs%h.block==0 && h.runs/h.block>=2;
+}
+mh_config_ok :: (c:MhConfig)->bool {return c.steps>=1 && c.steps<=MH_STEPS_MAX && c.tokens>=0 && c.reply>=1 && c.deadline>=0;}
+
+// book:begin run
+// Task r, run q: the prompt, the stand-in's replies, and chapter 200's loop
+// under the configuration's budgets. Only an answer can be right, and only
+// when chapter 242's exact checker passes it. The digest covers the harness,
+// the configuration, the environment, r and q, the replies scripted, the
+// turn, each step's seed and every token of the transcript.
+mh_run :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int)->MhRun {tb:=NC_LEARNED;return mh_turn(tb[..],h,c,t,r,q);}
+mh_turn :: (tb:[]u8,h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int)->MhRun {
+    out:MhRun;
+    if !mh_harness_ok(h) || !mh_config_ok(c) || r<0 || q<0 || q>=h.runs {out.status=MhStatus.shape;return out;}
+    script:[MH_SCRIPT_MAX]int;starts:[MH_STEPS_MAX+1]int;replies:=mh_script(h,c,t,r,q,script[..],starts[..]);
+    ids:[MH_CONTEXT_MAX]int;p:=mh_prompt(t,ids[..]);steps:[MH_STEPS_MAX]HlStep;
+    b:=HlBudget.{steps=c.steps,tokens=c.tokens,deadline=c.deadline,reply=c.reply,tool=h.tool};
+    u:=hl_run(hl_scripted(tb,script[..],starts[..],h.context),b,h.seed+cast(u64)q,p,ids[..],steps[..]);
+    out.stop=u.stop;out.steps=u.steps;out.tokens=u.tokens;out.tools=u.tools;out.ticks=u.ticks;
+    if u.stop==HlStop.answer {a:=mh_answer(ids[u.reply..<u.at]);out.solved=a.ok && en_check(EnChecker.exact,t,a.work);}
+    buf:[1536]u8;at:=su_text(buf[..],0,"psionic.harness-bench.run.v1");hd:=mh_harness_digest(h);cd:=mh_config_digest(c);
+    ed:=en_digest(EnEnv.{task=t,checker=EnChecker.exact,attempts=1,reference=en_solve(t)});
+    for i:0..<32 {buf[at+i]=hd[i];buf[at+32+i]=cd[i];buf[at+64+i]=ed[i];}
+    at=su_u64(buf[..],at+96,cast(u64)r);at=su_u64(buf[..],at,cast(u64)q);at=su_u64(buf[..],at,cast(u64)replies);buf[at]=cast(u8)u.stop;
+    at=su_u64(buf[..],at+1,cast(u64)u.steps);at=su_u64(buf[..],at,cast(u64)u.tokens);at=su_u64(buf[..],at,cast(u64)u.tools);
+    at=su_u64(buf[..],at,cast(u64)u.ticks);at=su_flag(buf[..],at,out.solved);at=su_u64(buf[..],at,cast(u64)u.at);
+    for k:0..<u.steps {at=su_u64(buf[..],at,steps[k].seed);}
+    for i:0..<u.at {buf[at]=cast(u8)(ids[i]&255);buf[at+1]=cast(u8)(ids[i]>>8);at+=2;}
+    out.digest=su_hash(buf[0..<at]);
+    return out;
+}
+// book:end run
+
+// book:begin replay
+mh_run_replay :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int,claimed:MhRun)->bool {
+    x:=mh_run(h,c,t,r,q);
+    return x.status==claimed.status && x.stop==claimed.stop && x.solved==claimed.solved && x.steps==claimed.steps &&
+        x.tokens==claimed.tokens && x.tools==claimed.tools && x.ticks==claimed.ticks && su_same(x.digest,claimed.digest);
+}
+// book:end replay
+
+// book:begin digests
+mh_harness_digest :: (h:MhHarness)->[32]u8 {
+    buf:[160]u8;at:=su_text(buf[..],0,"psionic.harness-bench.harness.v1");at=su_text(buf[..],at,"cpu-harness-loop-v1 agent-sim-tools-v1");
+    at=su_u64(buf[..],at,cast(u64)h.context);at=su_u64(buf[..],at,cast(u64)h.tool);at=su_u64(buf[..],at,f64_bits(h.skill));
+    at=su_u64(buf[..],at,h.seed);at=su_u64(buf[..],at,cast(u64)h.runs);at=su_u64(buf[..],at,cast(u64)h.block);
+    return su_hash(buf[0..<at]);
+}
+mh_config_digest :: (c:MhConfig)->[32]u8 {
+    buf:[96]u8;at:=su_text(buf[..],0,"psionic.harness-bench.config.v1");at=su_flag(buf[..],at,c.tools);
+    at=su_u64(buf[..],at,cast(u64)c.steps);at=su_u64(buf[..],at,cast(u64)c.tokens);at=su_u64(buf[..],at,cast(u64)c.reply);
+    return su_hash(buf[0..<su_u64(buf[..],at,cast(u64)c.deadline)]);
+}
+mh_gate_digest :: (g:MhGate)->[32]u8 {
+    buf:[96]u8;at:=su_text(buf[..],0,"psionic.harness-bench.gate.v1");at=su_u64(buf[..],at,cast(u64)g.replicates);
+    at=su_u64(buf[..],at,g.seed);at=su_u64(buf[..],at,f64_bits(g.cost_limit));
+    return su_hash(buf[0..<su_u64(buf[..],at,f64_bits(g.time_limit))]);
+}
+// The suite's three digests, as in chapter 239: the items (every
+// environment, with the split), the questions (every prompt) and the gate.
+mh_suite :: (tasks:[]EnTask,split:int,g:MhGate)->MhSuite {
+    n:=tasks.count;
+    if n<1 || n>MH_TASKS_MAX || split<0 || split>n || g.replicates<2 || g.replicates>NS_REPLICATES_MAX {return MhSuite.{status=MhStatus.shape};}
+    if !tb_in(g.cost_limit,0,NS_BIG) || !tb_in(g.time_limit,0,NS_BIG) {return MhSuite.{status=MhStatus.shape};}
+    s:=MhSuite.{tasks=n,split=split,gate=g,gates=mh_gate_digest(g)};
+    buf:[2400]u8;at:=su_text(buf[..],0,"psionic.harness-bench.items.v1");at=su_u64(buf[..],at,cast(u64)n);at=su_u64(buf[..],at,cast(u64)split);
+    for t:tasks {d:=en_digest(EnEnv.{task=t,checker=EnChecker.exact,attempts=1,reference=en_solve(t)});for i:0..<32 {buf[at+i]=d[i];}at+=32;}
+    s.items=su_hash(buf[0..<at]);
+    ids:[64]int;at=su_text(buf[..],0,"psionic.harness-bench.questions.v1");at=su_u64(buf[..],at,cast(u64)n);
+    for t:tasks {p:=mh_prompt(t,ids[..]);for i:0..<p {buf[at]=cast(u8)(ids[i]&255);buf[at+1]=cast(u8)(ids[i]>>8);at+=2;}}
+    s.questions=su_hash(buf[0..<at]);
+    return s;
+}
+// The suite was built from these tasks and its gate, and nothing changed since.
+mh_suite_ok :: (s:MhSuite,tasks:[]EnTask)->bool {
+    if s.status!=MhStatus.ok {return false;}
+    x:=mh_suite(tasks,s.split,s.gate);
+    return x.status==MhStatus.ok && su_same(x.items,s.items) && su_same(x.questions,s.questions) && su_same(x.gates,s.gates);
+}
+// book:end digests
+
+// book:begin bench
+mh_chain :: (d:[32]u8,run:[32]u8)->[32]u8 {buf:[64]u8;for i:0..<32 {buf[i]=d[i];buf[32+i]=run[i];}return su_hash(buf[..]);}
+// Every task of one partition (0: development, 1: held out), once per run:
+// scores[q*n+i] is 1 when run q got task i right. The receipt binds the
+// suite, harness and configuration digests, the totals, the chain of run
+// digests and the digest of the scores.
+mh_bench :: (h:MhHarness,c:MhConfig,s:MhSuite,tasks:[]EnTask,partition:int,scores:[]f64)->MhReceipt {
+    if !mh_harness_ok(h) || !mh_config_ok(c) || partition<0 || partition>1 {return MhReceipt.{status=MhStatus.shape};}
+    if !mh_suite_ok(s,tasks) {return MhReceipt.{status=MhStatus.suite};}
+    first:=ifx partition==0 then 0 else s.split;last:=ifx partition==0 then s.split else s.tasks;n:=last-first;
+    if n<1 || scores.count!=h.runs*n {return MhReceipt.{status=MhStatus.shape};}
+    out:=MhReceipt.{items=s.items,questions=s.questions,gates=s.gates,harness=mh_harness_digest(h),config=mh_config_digest(c),partition=partition};
+    out.totals.tasks=n;tb:=NC_LEARNED;
+    for q:0..<h.runs {
+        for i:first..<last {
+            x:=mh_turn(tb[..],h,c,tasks[i],i,q);m:=out.totals;
+            m.runs+=1;m.steps+=x.steps;m.tokens+=x.tokens;m.tools+=x.tools;m.ticks+=x.ticks;m.stops[cast(int)x.stop]+=1;
+            scores[q*n+i-first]=ifx x.solved then 1.0 else 0.0;
+            if x.solved {m.solved+=1;}
+            out.totals=m;out.runs=mh_chain(out.runs,x.digest);
+        }
+    }
+    out.values=su_values(scores);
+    return out;
+}
+// book:end bench
+mh_totals_same :: (a:MhTotals,b:MhTotals)->bool {
+    if a.tasks!=b.tasks || a.runs!=b.runs || a.solved!=b.solved || a.steps!=b.steps || a.tokens!=b.tokens || a.tools!=b.tools || a.ticks!=b.ticks {return false;}
+    for i:0..<11 {if a.stops[i]!=b.stops[i] {return false;}}
+    return true;
+}
+// A receipt replays when running the bench again from its seeds gives the
+// same digests, totals, run chain and scores.
+mh_bench_replay :: (h:MhHarness,c:MhConfig,s:MhSuite,tasks:[]EnTask,partition:int,claimed:MhReceipt,scores:[]f64)->bool {
+    x:=mh_bench(h,c,s,tasks,partition,scores);
+    return x.status==MhStatus.ok && claimed.status==MhStatus.ok && x.partition==claimed.partition && mh_body_same(x,claimed);
+}
+mh_body_same :: (x:MhReceipt,y:MhReceipt)->bool {
+    return su_same(x.items,y.items) && su_same(x.questions,y.questions) && su_same(x.gates,y.gates) && su_same(x.harness,y.harness) &&
+        su_same(x.config,y.config) && mh_totals_same(x.totals,y.totals) && su_same(x.runs,y.runs) && su_same(x.values,y.values);
+}
+
+// book:begin chain
+mh_receipt_digest :: (r:MhReceipt)->[32]u8 {
+    buf:[512]u8;at:=su_text(buf[..],0,"psionic.harness-bench.receipt.v1");at=su_u64(buf[..],at,cast(u64)r.sequence);
+    for i:0..<32 {buf[at+i]=r.previous[i];buf[at+32+i]=r.items[i];buf[at+64+i]=r.questions[i];buf[at+96+i]=r.gates[i];buf[at+128+i]=r.harness[i];buf[at+160+i]=r.config[i];}
+    at=su_u64(buf[..],at+192,cast(u64)r.partition);m:=r.totals;
+    for v:[7]int.[m.tasks,m.runs,m.solved,m.steps,m.tokens,m.tools,m.ticks] {at=su_u64(buf[..],at,cast(u64)v);}
+    for v:m.stops {at=su_u64(buf[..],at,cast(u64)v);}
+    for i:0..<32 {buf[at+i]=r.runs[i];buf[at+32+i]=r.values[i];}
+    return su_hash(buf[0..<at+64]);
+}
+// Append at count: the receipt takes the next sequence number and the
+// previous receipt's digest. index is the new count.
+mh_append :: (store:[]MhReceipt,count:int,r:MhReceipt)->MhCheck {
+    if count<0 || count>store.count || r.status!=MhStatus.ok {return MhCheck.{status=MhStatus.shape};}
+    if count==store.count {return MhCheck.{status=MhStatus.capacity};}
+    e:=r;e.sequence=count;e.previous=ifx count==0 then su_zero() else store[count-1].digest;
+    e.digest=mh_receipt_digest(e);store[count]=e;
+    return MhCheck.{index=count+1};
+}
+// The first receipt whose sequence, link or digest does not hold.
+mh_verify :: (store:[]MhReceipt,count:int)->MhCheck {
+    if count<0 || count>store.count {return MhCheck.{status=MhStatus.shape};}
+    for r,i:store[0..<count] {
+        previous:=ifx i==0 then su_zero() else store[i-1].digest;
+        if r.sequence!=i || !su_same(r.previous,previous) || !su_same(r.digest,mh_receipt_digest(r)) {return MhCheck.{status=MhStatus.broken,index=i};}
+    }
+    return MhCheck.{};
+}
+// book:end chain
+
+// book:begin verdict
+mh_changes :: (a:MhConfig,b:MhConfig)->int {
+    n:=ifx a.tools!=b.tools then 1 else 0;
+    for d:[4]int.[a.steps-b.steps,a.tokens-b.tokens,a.reply-b.reply,a.deadline-b.deadline] {if d!=0 {n+=1;}}
+    return n;
+}
+// Receipt i (the baseline, ac) against receipt j (the candidate, bc), with
+// the scores each one's values digest pinned. Refused, in this order: a bad
+// index or harness, a broken chain, another suite, another harness, a configuration
+// the receipt did not pin, development tasks, no change or more than one,
+// scores that are not the pinned ones. Otherwise chapter 241's decision on
+// the per-task means over runs, beyond chapter 240's floor from the
+// baseline's seed blocks, then its evaluation of tokens and ticks per run.
+mh_verdict :: (store:[]MhReceipt,count:int,i:int,j:int,s:MhSuite,h:MhHarness,ac:MhConfig,bc:MhConfig,sa:[]f64,sb:[]f64)->MhVerdict {
+    if i<0 || j<0 || i>=count || j>=count || i==j {return MhVerdict.{status=MhStatus.shape};}
+    if mh_verify(store,count).status!=MhStatus.ok {return MhVerdict.{status=MhStatus.broken};}
+    a:=store[i];b:=store[j];
+    if s.status!=MhStatus.ok || !su_same(s.gates,mh_gate_digest(s.gate)) {return MhVerdict.{status=MhStatus.suite};}
+    for r:[2]MhReceipt.[a,b] {
+        if !su_same(r.items,s.items) || !su_same(r.questions,s.questions) || !su_same(r.gates,s.gates) {return MhVerdict.{status=MhStatus.suite};}
+    }
+    if !mh_harness_ok(h) {return MhVerdict.{status=MhStatus.shape};}
+    hd:=mh_harness_digest(h);
+    if !su_same(a.harness,hd) || !su_same(b.harness,hd) {return MhVerdict.{status=MhStatus.harness};}
+    if !su_same(a.config,mh_config_digest(ac)) || !su_same(b.config,mh_config_digest(bc)) {return MhVerdict.{status=MhStatus.unpinned};}
+    if a.partition!=1 || b.partition!=1 {return MhVerdict.{status=MhStatus.development};}
+    k:=mh_changes(ac,bc);
+    if k==0 {return MhVerdict.{status=MhStatus.same};}
+    if k>1 {return MhVerdict.{status=MhStatus.changes};}
+    n:=a.totals.tasks;
+    if sa.count!=h.runs*n || sb.count!=h.runs*n {return MhVerdict.{status=MhStatus.shape};}
+    if !su_same(su_values(sa),a.values) || !su_same(su_values(sb),b.values) {return MhVerdict.{status=MhStatus.values};}
+    ma:[MH_TASKS_MAX]f64;mb:[MH_TASKS_MAX]f64;task:[MH_TASKS_MAX]int;part:[MH_TASKS_MAX]int;
+    for t:0..<n {task[t]=t;for q:0..<h.runs {ma[t]+=sa[q*n+t];mb[t]+=sb[q*n+t];}ma[t]/=f64(h.runs);mb[t]/=f64(h.runs);}
+    v:=MhVerdict.{floor=ns_floor(sa,part[0..<n],0,h.runs,h.block)};
+    v.decision=vd_decision(ma[0..<n],mb[0..<n],task[0..<n],part[0..<n],0,v.floor,1.0,s.gate.seed,s.gate.replicates);
+    v.cost=f64(b.totals.tokens)/f64(b.totals.runs);v.time=f64(b.totals.ticks)/f64(b.totals.runs);
+    v.result=vd_evaluate(v.decision.result,v.cost,v.time,s.gate.cost_limit,s.gate.time_limit);
+    return v;
+}
+// book:end verdict
