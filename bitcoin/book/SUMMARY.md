@@ -20,6 +20,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [7. SHA-512](ch007-sha-512.md) — implemented
 - [8. HMAC-SHA256](ch008-hmac-sha256.md) — implemented
 - [9. HKDF](ch009-hkdf.md) — implemented
+- [10. SipHash-2-4](ch010-siphash-2-4.md) — implemented
 - [11. ChaCha20](ch011-chacha20.md) — implemented
 
 **III. secp256k1**

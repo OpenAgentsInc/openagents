@@ -92,6 +92,16 @@
       ]
     },
     {
+      "source": "bitcoin/examples/siphash.coax",
+      "chapter": "bitcoin/book/ch010-siphash-2-4.md",
+      "stdout": "bitcoin/fixtures/siphash.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/chacha20.coax",
       "chapter": "bitcoin/book/ch011-chacha20.md",
       "stdout": "bitcoin/fixtures/chacha20.out",

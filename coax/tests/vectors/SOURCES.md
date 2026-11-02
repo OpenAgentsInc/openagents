@@ -86,6 +86,15 @@ that a maliciously replaced manifest is authentic.
   TapSighash outputs (leaf hashes, Merkle roots, tweaks and signature hashes
   over each `sigMsg`). The chapter copies hex from these files; it does not
   claim to run the transactions' scripts or the other BIP-341 checks.
+- **SipHash-2-4 (Bitcoin chapter 10):** the reference implementation's
+  `vectors.h` at `veorq/SipHash` commit `32d06760`, whose `vectors_sip64`
+  table gives the 64 SipHash-2-4 tags for the key `00 01 … 0f` and the
+  inputs `""`, `00`, `00 01`, … up to 63 bytes. The 128-bit and HalfSipHash
+  tables in the same file are not claimed. Bitcoin Core's `hash_tests.cpp`
+  copies the same 64 tags as `siphash_4_2_testvec` and adds one Bitcoin
+  case: SipHash with k0 = 1 and k1 = 2 of the SHA-256d of an empty
+  version-1 transaction is `0x79751e980c2a0a35`. Its streaming,
+  SipHash-1-3 and `siphash.json` checks are not claimed.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -112,7 +121,8 @@ execution, fuzzing, secret handling and production review remain separate tasks.
 
 BIP-340 is BSD-2-Clause OR MIT OR CC0-1.0; BIP-173 declares BSD-2-Clause in its
 text, and BIP-341 declares BSD-3-Clause in its text. Bitcoin Core is MIT and
-btcd is ISC; their license files are retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
+btcd is ISC; their license files are retained. SipHash is CC0-1.0, MIT or
+Apache-2.0 with LLVM exception; its CC0 file is retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
 JSONTestSuite is MIT. Their provided license files are retained. RFCs retain
 complete IETF/Internet Society copyright and redistribution notices (including
 the older RFC 4231 terms). NIST's U.S. Government archive supplies CAVS notices
@@ -124,7 +134,7 @@ index is OpenAgents Apache-2.0; it does not relicense upstream material.
 ## Inventory
 
 All dates below are retrieval dates (2026-10-28; the RIPEMD-160 and BIP-32
-files, and the Bitcoin chapter 5 files, 2026-11-02), not claims about
+files, the Bitcoin chapter 5 files and the SipHash files, 2026-11-02), not claims about
 publication.
 The complete revision/license/archive fields are in `manifest.json`.
 
@@ -169,4 +179,7 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/COPYING`](upstream/bitcoin-core/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING) | `b028769f3852a9368ab10bd754ff01ebb741f84a2fa658c9aff82a631bc6ecfc` |
 | [`upstream/btcd/genesis_test.go`](upstream/btcd/genesis_test.go) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/chaincfg/genesis_test.go) | `e188c4fb27cccec22a0853be80f5c9b308e88045baccbf81a2058b01c7155452` |
 | [`upstream/btcd/LICENSE`](upstream/btcd/LICENSE) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/LICENSE) | `10db068dbe11e2b3d652a3d4ae3cdd7998b84b12cdefe3d8083a2b63c295c13f` |
+| [`upstream/siphash/vectors.h`](upstream/siphash/vectors.h) | [pinned source](https://raw.githubusercontent.com/veorq/SipHash/32d067603b93b47828700880649198e0bfbbcffa/vectors.h) | `212c44114a63c6d84710b8627f3bc5ce155698accf2ea7bbff1c4b69c9f48d31` |
+| [`upstream/siphash/LICENSE_CC0`](upstream/siphash/LICENSE_CC0) | [pinned source](https://raw.githubusercontent.com/veorq/SipHash/32d067603b93b47828700880649198e0bfbbcffa/LICENSE_CC0) | `5537d4d10b76b81b6e8dfd8b644480a4b1efa332fbb0cdb61126c5be781ef7b4` |
+| [`upstream/bitcoin-core/hash_tests.cpp`](upstream/bitcoin-core/hash_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/hash_tests.cpp) | `c567bcc5c403b7098d1cf4caaa0a9817e3dc2438ba77c8f1fbef78100b3cab3f` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

@@ -1,0 +1,34 @@
+k0: 0706050403020100
+k1: 0f0e0d0c0b0a0908
+initial state:
+  v0: 7469686173716475
+  v1: 6b617f6d656e6665
+  v2: 6b7f62616d677361
+  v3: 7b6b696e727e6c7b
+last word m: 0100000000000000
+v3 ^= m: 7a6b696e727e6c7b
+v0 += v1: dfcae7ced8dfcada
+v1 rotl 13: 2fedacadccccad6c
+v1 ^= v0: f0274b63141367b6
+v0 rotl 32: d8dfcadadfcae7ce
+after the first SipRound:
+  v0: 6564848c93698d85
+  v1: 40d43f143c94a7dc
+  v2: f3f94792d6121732
+  v3: 5352f75825981d12
+vector 0 (empty): 310e0edd47db6f72
+vector 1 (00): fd67dc93c539f874
+vector 7 (00..06): 37d1018bf50002ab
+vector 8 (00..07): 6224939a79f5f593
+vector 15 (00..0e): e545be4961ca29a1
+vector 63 (00..3e): 724506eb4c328a95
+SHA-256d of the empty transaction: 43ec7a579f5561a42a7e9637ad4156672735a658be2752181801f723ba3316d2
+SipHash(k0 = 1, k1 = 2): 79751e980c2a0a35
+tag of 00 matches vector 1: true
+tag of 00 with key bit 0 flipped: 7511c2b0ba840578
+matches vector 1: false
+15-byte key: bad key
+7-byte output: bad output
+output overlaps the input: overlap
+1 MiB + 1 byte: bad input
+output after the refusals: 0000000000000000

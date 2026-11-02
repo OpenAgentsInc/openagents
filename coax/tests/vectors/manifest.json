@@ -549,6 +549,45 @@
       "bytes": 802
     },
     {
+      "path": "upstream/siphash/vectors.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/veorq/SipHash/32d067603b93b47828700880649198e0bfbbcffa/vectors.h",
+      "revision": "git:32d067603b93b47828700880649198e0bfbbcffa",
+      "license": "CC0-1.0, MIT or Apache-2.0 with LLVM exception (declared in the SipHash README)",
+      "covers": [
+        "siphash24"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "212c44114a63c6d84710b8627f3bc5ce155698accf2ea7bbff1c4b69c9f48d31",
+      "bytes": 35777
+    },
+    {
+      "path": "upstream/siphash/LICENSE_CC0",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/veorq/SipHash/32d067603b93b47828700880649198e0bfbbcffa/LICENSE_CC0",
+      "revision": "git:32d067603b93b47828700880649198e0bfbbcffa",
+      "license": "CC0-1.0",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "5537d4d10b76b81b6e8dfd8b644480a4b1efa332fbb0cdb61126c5be781ef7b4",
+      "bytes": 6554
+    },
+    {
+      "path": "upstream/bitcoin-core/hash_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/hash_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "siphash24"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "c567bcc5c403b7098d1cf4caaa0a9817e3dc2438ba77c8f1fbef78100b3cab3f",
+      "bytes": 9011
+    },
+    {
       "path": "derived/catalog.json",
       "kind": "derived",
       "url": "local:make_catalog.py",

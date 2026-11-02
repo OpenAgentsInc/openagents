@@ -213,14 +213,23 @@
   {
    "number": 10,
    "title": "SipHash-2-4",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch010-siphash-2-4.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
-    1
+    1,
+    3,
+    5
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/crypto/siphash.coax",
+    "bitcoin/examples/siphash.coax",
+    "bitcoin/examples/checks/siphash.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

@@ -38,10 +38,10 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 85 chapters, 18 are implemented and 67 are planned. The 18
-implemented chapters have runnable examples, qualified on native CPU, and 14
+Of the 85 chapters, 19 are implemented and 66 are planned. The 19
+implemented chapters have runnable examples, qualified on native CPU, and 15
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
-chapters 5, 6 and 7 are new.
+chapters 5, 6, 7 and 10 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -114,7 +114,7 @@ Every hash, MAC and cipher Bitcoin and Lightning use, each checked against its p
 | [7. SHA-512](ch007-sha-512.md) | Runnable: native C and wasm | Streaming SHA-512 over caller-owned state, checked against all 257 NIST CAVS ShortMsg and LongMsg vectors natively and in Wasm, with the one-shot, HMAC-SHA512 and PBKDF2 calls that BIP-39 and BIP-32 use. |
 | [8. HMAC-SHA256](ch008-hmac-sha256.md) | Runnable: native C and wasm | HMAC-SHA256 with keys longer than a block hashed first, checked against RFC 4231 cases 1–7 including the truncated case. |
 | [9. HKDF](ch009-hkdf.md) | Runnable: native C and wasm | HKDF-SHA256 extract and expand with output bounds, checked against RFC 5869 cases 1–3, and the exact NIP-44 v2 use: extract with salt `nip44-v2`, expand to 76 bytes. |
-| 10. SipHash-2-4 | Planned | The 64 vectors of the SipHash reference implementation pass. |
+| [10. SipHash-2-4](ch010-siphash-2-4.md) | Runnable: native C and wasm | SipHash-2-4 with a 16-byte key and an 8-byte tag, checked against all 64 reference vectors natively and in Wasm, Bitcoin Core's salted-hash case and a separate Python SipHash. |
 | [11. ChaCha20](ch011-chacha20.md) | Runnable: native C and wasm | RFC 8439 ChaCha20 with caller-supplied nonce and counter, counter exhaustion refused, and HChaCha20 for NIP-49's XChaCha20. |
 | 12. Poly1305 and ChaCha20-Poly1305 | Planned | RFC 8439 sections 2.5.2 and 2.8.2 vectors pass. A tag that differs in one bit refuses and releases no plaintext. |
 

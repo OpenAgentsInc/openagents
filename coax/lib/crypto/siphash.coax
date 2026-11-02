@@ -1,0 +1,132 @@
+// SipHash-2-4 (Aumasson and Bernstein, 2012): a keyed 64-bit hash for short
+// inputs. Bitcoin uses it for BIP-152 short transaction IDs, BIP-158 filter
+// hashing and Bitcoin Core's salted hash tables. No host calls, allocation or
+// input-sized buffer. The key never decides a branch or an index: the state
+// is four words updated by additions, rotations and XORs, and every loop runs
+// over the public input length (Bitcoin chapter 3).
+#load "bytes.coax";
+#authority;
+SIP_OK :: cast(u32) 0;
+SIP_BAD_KEY :: cast(u32) 1;
+SIP_BAD_INPUT :: cast(u32) 2;
+SIP_BAD_OUTPUT :: cast(u32) 3;
+SIP_ALIAS :: cast(u32) 4;
+SIP_KEY_BYTES :: 16;
+SIP_TAG_BYTES :: 8;
+SipState :: struct { v0: u64; v1: u64; v2: u64; v3: u64; }
+
+#test "the first SipRound from the reference key, worked by hand in chapter 10" {
+  s := sip_init(0x0706050403020100, 0x0f0e0d0c0b0a0908);
+  #assert s.v0 == 0x7469686173716475 && s.v1 == 0x6b617f6d656e6665;
+  #assert s.v2 == 0x6b7f62616d677361 && s.v3 == 0x7b6b696e727e6c7b;
+  s.v3 ^= 0x0100000000000000;
+  r := sip_round(s);
+  #assert r.v0 == 0x6564848c93698d85 && r.v1 == 0x40d43f143c94a7dc;
+  #assert r.v2 == 0xf3f94792d6121732 && r.v3 == 0x5352f75825981d12;
+}
+#test "reference vectors 0, 1, 8, 15 and 63, and Bitcoin Core's uint256 case" {
+  k0 := cast(u64) 0x0706050403020100; k1 := cast(u64) 0x0f0e0d0c0b0a0908;
+  input: [63] u8; for i: 0..<63 { input[i] = cast(u8) i; }
+  // vectors.h stores each tag as 8 bytes; these are the same tags read
+  // little-endian, as Bitcoin Core's siphash_4_2_testvec lists them.
+  #assert siphash24(k0, k1, input[0..<0]) == 0x726fdb47dd0e0e31;
+  #assert siphash24(k0, k1, input[0..<1]) == 0x74f839c593dc67fd;
+  #assert siphash24(k0, k1, input[0..<8]) == 0x93f5f5799a932462;
+  #assert siphash24(k0, k1, input[0..<15]) == 0xa129ca6149be45e5;
+  #assert siphash24(k0, k1, input[0..<63]) == 0x958a324ceb064572;
+  // hash_tests.cpp: SipHash with k0 = 1, k1 = 2 of the SHA-256d of an
+  // empty version-1 transaction.
+  txid := [32] u8.[0x43, 0xec, 0x7a, 0x57, 0x9f, 0x55, 0x61, 0xa4, 0x2a, 0x7e, 0x96, 0x37, 0xad, 0x41, 0x56, 0x67,
+    0x27, 0x35, 0xa6, 0x58, 0xbe, 0x27, 0x52, 0x18, 0x18, 0x01, 0xf7, 0x23, 0xba, 0x33, 0x16, 0xd2];
+  #assert siphash24(1, 2, txid[..]) == 0x79751e980c2a0a35;
+}
+#test "the byte interface writes the tag little-endian and nothing past it" {
+  key: [16] u8; for i: 0..<16 { key[i] = cast(u8) i; }
+  input := [1] u8.[0]; out: [9] u8; for i: 0..<9 { out[i] = 165; }
+  #assert siphash24_checked(key[..], input[..], out[..], false) == SIP_OK;
+  expected := [8] u8.[0xfd, 0x67, 0xdc, 0x93, 0xc5, 0x39, 0xf8, 0x74];
+  for i: 0..<8 { #assert out[i] == expected[i]; }
+  #assert out[8] == 165;
+}
+#test "refusals leave the output unchanged" {
+  key: [17] u8; input := [1] u8.[7]; out: [8] u8;
+  for i: 0..<8 { out[i] = 165; }
+  #assert siphash24_checked(key[0..<15], input[..], out[..], false) == SIP_BAD_KEY;
+  #assert siphash24_checked(key[..], input[..], out[..], false) == SIP_BAD_KEY;
+  #assert siphash24_checked(key[0..<16], input[..], out[0..<7], false) == SIP_BAD_OUTPUT;
+  #assert siphash24_checked(key[0..<16], input[..], out[..], true) == SIP_ALIAS;
+  for i: 0..<8 { #assert out[i] == 165; }
+  #assert sip_request(16, -1, 8, false) == SIP_BAD_INPUT && sip_request(16, CB_MAX_BYTES + 1, 8, false) == SIP_BAD_INPUT;
+  #assert sip_request(16, CB_MAX_BYTES, 8, false) == SIP_OK && sip_request(16, 0, 8, false) == SIP_OK;
+  #assert sip_request(16, 0, 9, false) == SIP_OK;
+}
+#test "the last word holds the length mod 256 in its top byte" {
+  data: [16] u8; for i: 0..<16 { data[i] = cast(u8) (i + 1); }
+  #assert sip_last_word(data[0..<0], 0) == 0;
+  #assert sip_last_word(data[0..<3], 3) == 0x0300000000030201;
+  #assert sip_last_word(data[0..<15], 15) == 0x0f0f0e0d0c0b0a09;
+  #assert sip_last_word(data[0..<16], 16) == 0x1000000000000000;
+  #assert sip_last_word(data[0..<3], 259) == 0x0300000000030201;
+}
+
+// book:begin round
+// The initial state: the key XOR the ASCII of "somepseudorandomlygeneratedbytes".
+sip_init :: (k0: u64, k1: u64) -> SipState {
+  return SipState.{v0 = k0 ^ 0x736f6d6570736575, v1 = k1 ^ 0x646f72616e646f6d,
+    v2 = k0 ^ 0x6c7967656e657261, v3 = k1 ^ 0x7465646279746573};
+}
+// One SipRound: additions modulo 2^64, rotations by fixed distances and XORs.
+sip_round :: (s: SipState) -> SipState {
+  v0 := s.v0; v1 := s.v1; v2 := s.v2; v3 := s.v3;
+  v0 = add_wrap(v0, v1); v1 = rotl(v1, 13); v1 ^= v0; v0 = rotl(v0, 32);
+  v2 = add_wrap(v2, v3); v3 = rotl(v3, 16); v3 ^= v2;
+  v0 = add_wrap(v0, v3); v3 = rotl(v3, 21); v3 ^= v0;
+  v2 = add_wrap(v2, v1); v1 = rotl(v1, 17); v1 ^= v2; v2 = rotl(v2, 32);
+  return SipState.{v0 = v0, v1 = v1, v2 = v2, v3 = v3};
+}
+// book:end round
+// book:begin hash
+// The last word: the 0-7 bytes after the last full word, little-endian, with
+// the input length mod 256 in the top byte.
+sip_last_word :: (input: [] u8, total: int) -> u64 {
+  b := cast(u64) (total & 255) << 56;
+  tail := input.count - input.count % 8;
+  for i: tail..<input.count { b |= cast(u64) input[i] << ((i - tail) * 8); }
+  return b;
+}
+// Each 8-byte word goes into v3, through two SipRounds (the "2"), then into
+// v0. Finalization runs four SipRounds (the "4").
+siphash24 :: (k0: u64, k1: u64, input: [] u8) -> u64 {
+  s := sip_init(k0, k1);
+  words := input.count / 8;
+  for w: 0..<words + 1 {
+    m := ifx w < words then cb_load_le64(input, w * 8).value else sip_last_word(input, input.count);
+    s.v3 ^= m;
+    s = sip_round(s); s = sip_round(s);
+    s.v0 ^= m;
+  }
+  s.v2 ^= 255;
+  s = sip_round(s); s = sip_round(s); s = sip_round(s); s = sip_round(s);
+  return s.v0 ^ s.v1 ^ s.v2 ^ s.v3;
+}
+// book:end hash
+sip_request :: (key: int, input: int, output: int, overlap: bool) -> u32 {
+  if key != SIP_KEY_BYTES { return SIP_BAD_KEY; }
+  if input < 0 || input > CB_MAX_BYTES { return SIP_BAD_INPUT; }
+  if !cb_span(output, 0, SIP_TAG_BYTES) { return SIP_BAD_OUTPUT; }
+  if overlap { return SIP_ALIAS; }
+  return SIP_OK;
+}
+// book:begin checked
+// The byte interface: a 16-byte key read as two little-endian words, and the
+// 8-byte tag written little-endian. The checks run first, so a refusal writes
+// nothing. `overlap` says whether the output shares memory with the key or
+// the input.
+siphash24_checked :: (key: [] u8, input: [] u8, out: [] u8, overlap: bool) -> u32 #export_c {
+  status := sip_request(key.count, input.count, out.count, overlap);
+  if status != SIP_OK { return status; }
+  tag := siphash24(cb_load_le64(key, 0).value, cb_load_le64(key, 8).value, input);
+  if !cb_store_le64(out, 0, tag) { return SIP_BAD_OUTPUT; }
+  return SIP_OK;
+}
+// book:end checked

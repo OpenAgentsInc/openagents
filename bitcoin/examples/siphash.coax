@@ -1,0 +1,87 @@
+// book:begin example
+#load "../../coax/lib/crypto/siphash.coax";
+#load "../../coax/lib/bitcoin/hash.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show_bytes :: (label: string, bytes: [] u8) {
+  digits := "0123456789abcdef";
+  text: [128] u8; n := 0;
+  for b: bytes { text[n] = digits[b >> 4]; text[n + 1] = digits[b & 15]; n += 2; }
+  print("%: %\n", label, cast(string) text[0..<n]);
+}
+// Print a label and one 64-bit word as 16 hex digits, most significant first.
+show_word :: (label: string, x: u64) {
+  b: [8] u8;
+  if cb_store_be64(b[..], 0, x) { show_bytes(label, b[..]); }
+}
+// Print the four state words.
+show_state :: (label: string, s: SipState) {
+  print("%:\n", label);
+  show_word("  v0", s.v0); show_word("  v1", s.v1); show_word("  v2", s.v2); show_word("  v3", s.v3);
+}
+STATUS :: [5] string.["ok", "bad key", "bad input", "bad output", "overlap"];
+
+main :: () {
+  // The reference key is the bytes 00 01 ... 0f, read as two little-endian
+  // words.
+  key: [16] u8;
+  for i: 0..<16 { key[i] = cast(u8) i; }
+  k0 := cb_load_le64(key[..], 0).value; k1 := cb_load_le64(key[..], 8).value;
+  show_word("k0", k0); show_word("k1", k1);
+  s := sip_init(k0, k1);
+  show_state("initial state", s);
+
+  // The one-byte message 00 is one last word: the byte, then the length 1
+  // in the top byte.
+  message := [1] u8.[0];
+  m := sip_last_word(message[..], 1);
+  show_word("last word m", m);
+  s.v3 ^= m;
+  show_word("v3 ^= m", s.v3);
+  // The first four steps of the first SipRound, then the whole round.
+  v0 := add_wrap(s.v0, s.v1); show_word("v0 += v1", v0);
+  v1 := rotl(s.v1, 13); show_word("v1 rotl 13", v1);
+  v1 ^= v0; show_word("v1 ^= v0", v1);
+  show_word("v0 rotl 32", rotl(v0, 32));
+  show_state("after the first SipRound", sip_round(s));
+
+  // The tag is 8 bytes: the 64-bit result, little-endian.
+  tag: [8] u8;
+  lengths := [6] int.[0, 1, 7, 8, 15, 63];
+  labels := [6] string.["vector 0 (empty)", "vector 1 (00)", "vector 7 (00..06)", "vector 8 (00..07)",
+    "vector 15 (00..0e)", "vector 63 (00..3e)"];
+  input: [63] u8;
+  for i: 0..<63 { input[i] = cast(u8) i; }
+  for k: 0..<6 {
+    if siphash24_checked(key[..], input[0..<lengths[k]], tag[..], false) != SIP_OK { print("unexpected refusal\n"); }
+    show_bytes(labels[k], tag[..]);
+  }
+
+  // Bitcoin Core's case: k0 = 1 and k1 = 2 over the SHA-256d of an empty
+  // version-1 transaction (version, no inputs, no outputs, lock time 0).
+  tx := [10] u8.[1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  txid: [32] u8;
+  if sha256d_checked(tx[..], txid[..], false) != SHA_OK { print("sha256d refused\n"); }
+  show_bytes("SHA-256d of the empty transaction", txid[..]);
+  show_word("SipHash(k0 = 1, k1 = 2)", siphash24(1, 2, txid[..]));
+
+  // A broken case: one flipped key bit gives an unrelated tag, and a
+  // constant-time comparison with the expected tag fails.
+  expected := [8] u8.[0xfd, 0x67, 0xdc, 0x93, 0xc5, 0x39, 0xf8, 0x74];
+  if siphash24_checked(key[..], message[..], tag[..], false) != SIP_OK { print("unexpected refusal\n"); }
+  print("tag of 00 matches vector 1: %\n", cb_ct_equal(tag[..], expected[..]) == CB_MAX64);
+  key[0] ^= 1;
+  if siphash24_checked(key[..], message[..], tag[..], false) != SIP_OK { print("unexpected refusal\n"); }
+  show_bytes("tag of 00 with key bit 0 flipped", tag[..]);
+  print("matches vector 1: %\n", cb_ct_equal(tag[..], expected[..]) == CB_MAX64);
+
+  // Refusals. Each one returns a status and leaves the output unchanged.
+  for i: 0..<8 { tag[i] = 0; }
+  print("15-byte key: %\n", STATUS[siphash24_checked(key[0..<15], message[..], tag[..], false)]);
+  print("7-byte output: %\n", STATUS[siphash24_checked(key[..], message[..], tag[0..<7], false)]);
+  print("output overlaps the input: %\n", STATUS[siphash24_checked(key[..], message[..], tag[..], true)]);
+  print("1 MiB + 1 byte: %\n", STATUS[sip_request(16, 1048577, 8, false)]);
+  show_bytes("output after the refusals", tag[..]);
+}
+// book:end example

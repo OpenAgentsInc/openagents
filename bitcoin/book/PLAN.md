@@ -59,7 +59,7 @@ otherwise. Nostr From Scratch needs Parts I–V.
 | [7. SHA-512](ch007-sha-512.md) — implemented | 1, 4 | Every NIST CAVS vector in `SHA512ShortMsg.rsp` and `SHA512LongMsg.rsp` passes. | FIPS 180-4 |
 | [8. HMAC-SHA256](ch008-hmac-sha256.md) — implemented | 4 | RFC 4231 SHA-256 cases 1–7 (`coax/tests/vectors/upstream/rfc/rfc4231.txt`) pass. A tag that differs in one bit is refused by the constant-time comparison. | — |
 | [9. HKDF](ch009-hkdf.md) — implemented | 8 | RFC 5869 SHA-256 cases 1–3 (`coax/tests/vectors/upstream/rfc/rfc5869.txt`) pass. An expand request of `255 * 32 + 1` bytes refuses. | — |
-| 10. SipHash-2-4 — planned | 1 | The 64 vectors of the SipHash reference implementation pass. | SipHash (Aumasson and Bernstein, 2012) |
+| [10. SipHash-2-4](ch010-siphash-2-4.md) — implemented | 1, 3, 5 | The 64 vectors of the SipHash reference implementation pass. | SipHash (Aumasson and Bernstein, 2012) |
 | [11. ChaCha20](ch011-chacha20.md) — implemented | 1 | RFC 8439 sections 2.3.2 and 2.4.2 vectors (`coax/tests/vectors/upstream/rfc/rfc8439.txt`) pass. A request that would pass counter `2^32 - 1` refuses. | — |
 | 12. Poly1305 and ChaCha20-Poly1305 — planned | 11, 3 | RFC 8439 sections 2.5.2 and 2.8.2 vectors pass. A tag that differs in one bit refuses and releases no plaintext. | RFC 8439 |
 
