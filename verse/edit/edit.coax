@@ -23,18 +23,28 @@
 // (who gives it, what is asked, three steps, what you get), whose save makes the quest. Everyone
 // reads both (redit_lore, redit_quest*), so a realm's characters can know their lore and give their
 // quests.
+//
+// YOUR COMPUTER (computer.coax, openagents#12642): a realm that wires the person's own Coder
+// (redit_computer; its face carries the wire, apps/openagents-web/computer-face.h) gets a fourth pane,
+// where this browser pairs with the person's computer and sends it requests for this realm.
 //   coax/bin/coax test verse/edit/edit_test.coax
+//   coax/bin/coax test verse/edit/computer_test.coax
+
+#load "computer.coax";
 
 REDIT_ROWS :: 16; REDIT_KEY :: 32; REDIT_LABEL :: 48;
 REDIT_TOOLS :: 6; REDIT_CARDS :: 8; REDIT_WHO :: 16; REDIT_THING :: 16;
 REDIT_PLACED :: 64; REDIT_PLATES :: 8;
 REDIT_SLUG :: 64; REDIT_URL :: 200; REDIT_BODY :: 1400; REDIT_TYPED :: 200; REDIT_NOTE :: 100; REDIT_OUT :: 32;
 REDIT_UNKNOWN :: 0; REDIT_VISITOR :: 1; REDIT_ADMIN :: 2; REDIT_OWNER :: 3;
-REDIT_SHUT :: 0; REDIT_BOARD :: 1; REDIT_SETTINGS :: 2; REDIT_CARDS_PANE :: 3; REDIT_LORE_PANE :: 4; REDIT_QUEST_PANE :: 5;
+REDIT_SHUT :: 0; REDIT_BOARD :: 1; REDIT_SETTINGS :: 2; REDIT_CARDS_PANE :: 3; REDIT_LORE_PANE :: 4; REDIT_QUEST_PANE :: 5; REDIT_COMPUTER_PANE :: 6;
 REQ_E_NONE :: 0; REQ_E_SPEC :: 1; REQ_E_SWITCH :: 2; REQ_E_SETTINGS :: 3; REQ_E_CARDS :: 4; REQ_E_DECIDE :: 5; REQ_E_REVISE :: 6; REQ_E_PLACE :: 7;
 REQ_E_PANES :: 8; REQ_E_LORE :: 9; REQ_E_QUEST :: 10; REQ_E_ASKS :: 11; REQ_E_ADD :: 12; REQ_E_DELETE :: 13;
 // buttons: EDIT, the three tabs, TALK, TYPE IT, ACCEPT, DECLINE, SAVE, LORE <-> QUEST, and MORE (the feature list's next page)
-RB_EDIT :: 0; RB_TAB :: 1; RB_TALK :: 4; RB_TYPE :: 5; RB_ACCEPT :: 6; RB_DECLINE :: 7; RB_SAVE :: 8; RB_SWAP :: 9; RB_MORE :: 10; RB_DOC :: 11; RB_N :: 12;
+RB_EDIT :: 0; RB_TAB :: 1; RB_TALK :: 4; RB_TYPE :: 5; RB_ACCEPT :: 6; RB_DECLINE :: 7; RB_SAVE :: 8; RB_SWAP :: 9; RB_MORE :: 10; RB_DOC :: 11;
+// YOUR COMPUTER: its tab, the pane's main button, FORGET (or CANCEL), COPY (the command), and the field you type in
+RB_CTAB :: 12; RB_CMAIN :: 13; RB_CFORGET :: 14; RB_CCOPY :: 15; RB_CFIELD :: 16; RB_N :: 17;
+REDIT_ACT_COPY :: 2;   // coax/web/host.js: the outbox's text to the clipboard
 // What its owner asked for (migrations/0078_realm_asks.sql): the asks, each applied, waiting (NOT APPLIED) or removing.
 REDIT_ASKS :: 24; REDIT_WORDS :: 120; REDIT_ITEMS :: 40;   // the list: the board's rows, then the asks (REDIT_ROWS + REDIT_ASKS)
 ASK_WAITING :: 0; ASK_APPLIED :: 1; ASK_REMOVING :: 2;
@@ -101,6 +111,8 @@ RealmEdit :: struct {
   ask_words: [REDIT_ASKS * REDIT_WORDS] u8; ask_words_n: [REDIT_ASKS] int; asks_due: bool;
   del_box: [REDIT_ITEMS] RBox; del_shown: [REDIT_ITEMS] bool; del_press: int; armed: int; armed_at: f32;
   del_row: int; del_ask: int; list_first: int; list_page: int;
+  // YOUR COMPUTER (computer.coax): on when the realm's face carries the wire; COPY's command; FORGET tapped once
+  computer: bool; pc: [1] RealmComputer; copy: [32] u8; copy_n: int; forget_armed_at: f32;
 }
 
 // ---- small helpers of its own (a realm's names stay its own)
@@ -323,7 +335,10 @@ redit_start :: (e: [] RealmEdit, slug: string) {
   e[0].req_id = -1; e[0].press = -1; e[0].row_press = -1; e[0].finger = -1; e[0].switch_row = -1; e[0].decide_due = 0;
   e[0].spec_due = true; e[0].field = 0; e[0].field_press = 0;
   e[0].del_press = -1; e[0].armed = -1; e[0].del_row = -1; e[0].del_ask = 0;
+  rc_start(e[0].pc[..], slug);
 }
+// The realm's face carries the wire to the person's computer: YOUR COMPUTER is offered.
+redit_computer :: (e: [] RealmEdit) { e[0].computer = true; }
 
 // ---- the spec (verse.edit_spec), a line each
 
@@ -628,7 +643,7 @@ redit_answer :: (e: [] RealmEdit, text: string) {
 // ---- in from the host: true when it was this layer's
 
 redit_message :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c {
-  if kind == REDIT_FACTS { e[0].voice = fact_of(text, "voice").count > 0; return false; }
+  if kind == REDIT_FACTS { e[0].voice = fact_of(text, "voice").count > 0; rc_facts(e[0].pc[..], fact_of(text, "ua")); return false; }
   if kind >= HTTP_KIND && kind < HTTP_KIND + 8 && e[0].req_id >= 0 && kind - HTTP_KIND == e[0].req_id { redit_answer(e, text); return true; }
   if kind == REDIT_MSG_TEXT && e[0].typing && e[0].field > 0 {
     f := e[0].field - 1; cap := redit_field_cap(f);
@@ -681,6 +696,10 @@ redit_say :: (e: [] RealmEdit, p_words: string) {
 
 RAct :: struct { kind: int; n: int; }
 redit_take_action :: (e: [] RealmEdit, p_outbox: [] u8) -> RAct {
+  if e[0].copy_n > 0 {
+    m := redit_put(p_outbox, 0, cast(string) e[0].copy[0..<e[0].copy_n]); e[0].copy_n = 0;
+    return RAct.{kind = REDIT_ACT_COPY, n = m};
+  }
   if e[0].want_doc {
     e[0].want_doc = false;
     m := redit_put(p_outbox, 0, "/api/playtest/realms/"); m = redit_put(p_outbox, m, cast(string) e[0].slug[0..<e[0].slug_n]); m = redit_put(p_outbox, m, "/asks/doc");
@@ -749,6 +768,7 @@ redit_toggle :: (e: [] RealmEdit) {
 redit_send_typed :: (e: [] RealmEdit) {
   w := cast(string) e[0].typed[0..<e[0].typed_n];
   e[0].typing = false;
+  if e[0].pane == REDIT_COMPUTER_PANE { redit_computer_send(e, w); e[0].typed_n = 0; return; }
   if w.count > 0 { redit_say(e, w); e[0].caption_n = redit_copy(e[0].caption[..], w); }
   e[0].typed_n = 0;
 }
@@ -757,6 +777,7 @@ redit_send_typed :: (e: [] RealmEdit) {
 redit_step :: (e: [] RealmEdit, time: f32, width: f32, height: f32, dpr: f32) {
   e[0].time = time; e[0].width = width; e[0].height = height; e[0].dpr = redit_hi(dpr, 0.5);
   if e[0].note_n > 0 && time - e[0].note_at > 6 { e[0].note_n = 0; }
+  if e[0].computer { rc_step_time(e[0].pc[..], time); }
   redit_next(e);
 }
 
@@ -797,6 +818,7 @@ redit_over :: (e: [] RealmEdit, x: f32, y: f32) -> bool {
 }
 redit_press :: (e: [] RealmEdit, b: int) {
   if b == RB_EDIT { redit_toggle(e); return; }
+  if b >= RB_CTAB && b <= RB_CFIELD { redit_computer_press(e, b); return; }
   if b >= RB_TAB && b < RB_TAB + 3 { p := b - RB_TAB + 1; if e[0].pane != p { redit_pane(e, p); } return; }
   if b == RB_TYPE { e[0].typing = !e[0].typing; e[0].typed_n = 0; return; }
   if b == RB_ACCEPT { redit_decide(e, true); return; }
@@ -910,14 +932,17 @@ redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
   redit_plate(e, RBox.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}, 0.9, 0);
   pad := 14 * k;
   // the tabs: one pane at a time
-  tabs := [3] string.["FEATURES", "SETTINGS", "IDEAS"];
-  tw := (pw - 2 * pad - 2 * 6 * k) / 3;
-  for t: 0..<3 {
+  tabs := [4] string.["FEATURES", "SETTINGS", "IDEAS", "COMPUTER"];
+  p_tabs := ifx e[0].computer then 4 else 3;
+  tw := (pw - 2 * pad - f32(p_tabs - 1) * 6 * k) / f32(p_tabs);
+  for t: 0..<p_tabs {
     bx := x0 + pad + f32(t) * (tw + 6 * k);
     label := tabs[t];
     lab: [24] u8;
     if t == 2 && e[0].waiting > 0 { m := redit_put(lab[..], 0, "IDEAS · "); m = redit_put_int(lab[..], m, e[0].waiting); label = cast(string) lab[0..<m]; }
-    n = redit_button(e, out, n, RB_TAB + t, RBox.{x0 = bx, y0 = y0 + pad, x1 = bx + tw, y1 = y0 + pad + 30 * k}, label, e[0].pane == t + 1);
+    p_tb := ifx t == 3 then RB_CTAB else RB_TAB + t;
+    p_tp := ifx t == 3 then REDIT_COMPUTER_PANE else t + 1;
+    n = redit_button(e, out, n, p_tb, RBox.{x0 = bx, y0 = y0 + pad, x1 = bx + tw, y1 = y0 + pad + 30 * k}, label, e[0].pane == p_tp);
   }
   y := y0 + pad + 30 * k + 18 * k;
   room := pw - 2 * pad;
@@ -925,6 +950,7 @@ redit_hud :: (e: [] RealmEdit, out: [] f32, at: int, anchor: RBox) -> int {
   else if e[0].pane == REDIT_SETTINGS { n = redit_settings(e, out, n, x0 + pad, y, room, y1 - pad); }
   else if e[0].pane == REDIT_LORE_PANE { n = redit_lore_pane(e, out, n, x0 + pad, y, room, y1 - pad); }
   else if e[0].pane == REDIT_QUEST_PANE { n = redit_quest_pane(e, out, n, x0 + pad, y, room, y1 - pad); }
+  else if e[0].pane == REDIT_COMPUTER_PANE { n = redit_computer_pane(e, out, n, x0 + pad, y, room, y1 - pad); }
   else { n = redit_cards(e, out, n, x0 + pad, y, room, y1 - pad); }
   if e[0].note_n > 0 {
     n = redit_text(e, out, n, cast(string) e[0].note[0..<e[0].note_n], x0 + pad, y1 - pad, 7 * k, redit_parch(k, 0.9), room);
@@ -1162,4 +1188,205 @@ redit_quest_pane :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, room
   half := (room - 8 * k) / 2;
   n = redit_button(e, out, n, RB_SAVE, RBox.{x0 = x, y0 = yy, x1 = x + half, y1 = yy + 32 * k}, ifx e[0].dirty then "SAVE QUEST" else "SAVED", e[0].dirty);
   return redit_button(e, out, n, RB_SWAP, RBox.{x0 = x + half + 8 * k, y0 = yy, x1 = x + room, y1 = yy + 32 * k}, "LORE", false);
+}
+
+// ---- YOUR COMPUTER (computer.coax): pair this browser with the person's computer, send it a request
+// for this realm, read its steps, stop it. Each view says what is so and the one thing to do next,
+// with the exact command to run on the computer.
+
+REDIT_FORGET_S :: 4.0f32;   // FORGET, tapped once, reads SURE? this long
+redit_computer_view :: (e: [] RealmEdit) -> int { return rc_view(e[0].pc[..]); }
+// The words typed (ENTER or the pane's button): the computer's key while unpaired, else a request.
+redit_computer_send :: (e: [] RealmEdit, p_words: string) {
+  c := e[0].pc[..];
+  v := rc_view(c);
+  if v == RV_UNPAIRED {
+    if p_words.count > 0 && !rc_set_host(c, p_words) { return; }
+    rc_pair(c);
+    return;
+  }
+  if v == RV_ALLOWED || v == RV_DONE || v == RV_STOPPED || v == RV_FAILED {
+    if p_words.count == 0 { e[0].typing = true; e[0].typed_n = 0; return; }
+    rc_again(c);
+    _ := rc_run(c, p_words);
+  }
+}
+redit_copy_command :: (e: [] RealmEdit, p_cmd: string) { e[0].copy_n = redit_copy(e[0].copy[..], p_cmd); redit_note(e, "Copied. Paste it on your computer."); }
+// The command the pane names now ("" none).
+redit_computer_command :: (e: [] RealmEdit) -> string {
+  v := redit_computer_view(e);
+  if v == RV_ASKING { return RC_ALLOW_CMD; }
+  if v == RV_UNPAIRED || v == RV_OFFLINE { return RC_HOST_CMD; }
+  return "";
+}
+redit_computer_press :: (e: [] RealmEdit, b: int) {
+  c := e[0].pc[..];
+  if b == RB_CTAB { if e[0].pane != REDIT_COMPUTER_PANE { redit_pane(e, REDIT_COMPUTER_PANE); } return; }
+  if b == RB_CCOPY { p_cmd := redit_computer_command(e); if p_cmd.count > 0 { redit_copy_command(e, p_cmd); } return; }
+  if b == RB_CFIELD { e[0].typing = true; e[0].typed_n = 0; return; }
+  if b == RB_CFORGET {
+    if (e[0].forget_armed_at > 0 && e[0].time - e[0].forget_armed_at <= REDIT_FORGET_S) || rc_view(c) == RV_ASKING {
+      e[0].forget_armed_at = 0; rc_forget(c); e[0].typing = false; e[0].typed_n = 0;
+      redit_note(e, "This browser is off your computer.");
+      return;
+    }
+    e[0].forget_armed_at = e[0].time;
+    return;
+  }
+  if b != RB_CMAIN { return; }
+  v := rc_view(c);
+  if v == RV_UNPAIRED {
+    if e[0].typing && e[0].typed_n > 0 { redit_send_typed(e); return; }
+    if c[0].host_n > 0 { rc_pair(c); return; }
+    e[0].typing = true; e[0].typed_n = 0;
+    return;
+  }
+  if v == RV_DENIED || v == RV_EXPIRED { rc_again(c); return; }
+  if v == RV_RUNNING { rc_stop(c); return; }
+  if v == RV_ALLOWED {
+    if e[0].typing && e[0].typed_n > 0 { redit_send_typed(e); return; }
+    e[0].typing = true; e[0].typed_n = 0;
+    return;
+  }
+  if v == RV_DONE || v == RV_STOPPED || v == RV_FAILED { rc_again(c); e[0].typing = true; e[0].typed_n = 0; }
+}
+
+// An outlined control (a realm has few plates): COPY, FORGET, the field.
+redit_outline :: (e: [] RealmEdit, out: [] f32, at: int, b: int, p_box: RBox, label: string, p_hot: bool) -> int {
+  k := e[0].dpr; cap := 6.5 * k;
+  e[0].boxes[b] = p_box; e[0].shown[b] = true;
+  n := redit_frame(out, at, p_box, p_hot || e[0].press == b, k);
+  lw := redit_lo(redit_width(label, cap), p_box.x1 - p_box.x0 - 8 * k);
+  return redit_text(e, out, n, label, (p_box.x0 + p_box.x1 - lw) / 2, (p_box.y0 + p_box.y1 + cap) / 2, cap, redit_gold(k, 0.95), p_box.x1 - p_box.x0 - 8 * k);
+}
+// A line of the pane's words; returns where the next line starts.
+redit_cline :: (e: [] RealmEdit, out: [] f32, at: [] int, text: string, x: f32, y: f32, room: f32, p_bright: f32) -> f32 {
+  k := e[0].dpr;
+  at[0] = redit_text(e, out, at[0], text, x, y + 10 * k, 7.5 * k, redit_parch(k, p_bright), room);
+  return y + 20 * k;
+}
+// The command to run on the computer, in a box, with COPY.
+redit_cmd :: (e: [] RealmEdit, out: [] f32, at: [] int, p_cmd: string, x: f32, y: f32, room: f32) -> f32 {
+  k := e[0].dpr; h := 28 * k; p_cw := 64 * k;
+  b := RBox.{x0 = x, y0 = y, x1 = x + room - p_cw - 8 * k, y1 = y + h};
+  at[0] = redit_frame(out, at[0], b, true, k);
+  at[0] = redit_text(e, out, at[0], p_cmd, x + 10 * k, y + (h + 8.5 * k) / 2, 8.5 * k, redit_gold(k, 1.0), b.x1 - b.x0 - 20 * k);
+  at[0] = redit_outline(e, out, at[0], RB_CCOPY, RBox.{x0 = x + room - p_cw, y0 = y, x1 = x + room, y1 = y + h}, "COPY", false);
+  return y + h + 10 * k;
+}
+// The field: what is typed, with a cursor while typing, else what it holds, else the p_hint.
+redit_cfield :: (e: [] RealmEdit, out: [] f32, at: [] int, p_hint: string, p_shown: string, x: f32, y: f32, room: f32) -> f32 {
+  k := e[0].dpr; h := 30 * k;
+  b := RBox.{x0 = x, y0 = y, x1 = x + room, y1 = y + h};
+  e[0].boxes[RB_CFIELD] = b; e[0].shown[RB_CFIELD] = true;
+  if e[0].typing { e[0].type_box = b; }
+  at[0] = redit_frame(out, at[0], b, e[0].typing, k);
+  t: [REDIT_TYPED + 1] u8; m := 0;
+  if e[0].typing { m = redit_copy(t[..], cast(string) e[0].typed[0..<e[0].typed_n]); t[m] = '_'; m += 1; }
+  else { m = redit_copy(t[..], p_shown); }
+  if m == 0 { at[0] = redit_text(e, out, at[0], p_hint, x + 8 * k, y + (h + 7.5 * k) / 2, 7.5 * k, redit_parch(k, 0.45), room - 16 * k); }
+  else { at[0] = redit_wrap(e, out, at[0], cast(string) t[0..<m], x + 8 * k, y + 4 * k, 7.5 * k, room - 16 * k, 1, redit_parch(k, 0.95)); }
+  return y + h + 10 * k;
+}
+// The job's steps, newest last, as many as fit.
+redit_csteps :: (e: [] RealmEdit, out: [] f32, at: [] int, x: f32, y: f32, room: f32, bottom: f32) -> f32 {
+  k := e[0].dpr; c := e[0].pc[..];
+  p_fit := redit_hi_int(0, cast(int) ((bottom - y) / (16 * k)));
+  p_first := redit_hi_int(0, c[0].step_n - p_fit);
+  yy := y;
+  for i: p_first..<c[0].step_n {
+    if lit(out, at[0], x + 2 * k, yy + 8 * k, x + 3.5 * k, yy + 8 * k, 1.4 * k, 0.9, 1.0 * k, 0.80, 0.64, 0.36, 0) { at[0] += 6; }
+    at[0] = redit_text(e, out, at[0], rc_step(c, i), x + 10 * k, yy + 11 * k, 6.5 * k, redit_parch(k, ifx i == c[0].step_n - 1 then 0.95f32 else 0.7f32), room - 10 * k);
+    yy += 16 * k;
+  }
+  return yy;
+}
+// Whether it answers, in plain words.
+redit_cstatus :: (c: [] RealmComputer) -> string {
+  if c[0].offline_page { return "THIS PAGE IS OFFLINE"; }
+  if rc_answers(c) { return "ANSWERS"; }
+  if c[0].silent { return "NOT ANSWERING"; }
+  return "ASKING IT";
+}
+// What the job's view says above what was asked.
+redit_chead :: (c: [] RealmComputer, v: int) -> string {
+  if v == RV_DONE { return "DONE. THE REALM SHOWS IT:"; }
+  if v == RV_STOPPED { return "STOPPED:"; }
+  if v == RV_FAILED { return "IT STOPPED WITH A PROBLEM:"; }
+  if c[0].run_state == RJ_STOPPING { return "STOPPING:"; }
+  if c[0].thread_n == 0 { return "SENDING TO YOUR COMPUTER:"; }
+  return "CODER IS BUILDING:";
+}
+redit_computer_pane :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, room: f32, bottom: f32) -> int {
+  k := e[0].dpr; c := e[0].pc[..];
+  if e[0].forget_armed_at > 0 && e[0].time - e[0].forget_armed_at > REDIT_FORGET_S { e[0].forget_armed_at = 0; }
+  n: [1] int;
+  n[0] = redit_text(e, out, at, "YOUR COMPUTER", x, y + 10 * k, 8.5 * k, redit_gold(k, 0.95), room);
+  v := rc_view(c);
+  if v == RV_LOADING { return n[0]; }
+  // whether it answers, top right, once there is a computer to answer
+  if v != RV_UNPAIRED {
+    p_st := redit_cstatus(c);
+    p_sw := redit_width(p_st, 6.5 * k);
+    p_on := rc_answers(c);
+    p_r := ifx p_on then 0.45f32 else 0.85f32; p_g := ifx p_on then 0.85f32 else 0.40f32; p_b := ifx p_on then 0.45f32 else 0.30f32;
+    if lit(out, n[0], x + room - p_sw - 12 * k, y + 7 * k, x + room - p_sw - 10 * k, y + 7 * k, 2.2 * k, 1.0, 2.0 * k, p_r, p_g, p_b, 0) { n[0] += 6; }
+    n[0] = redit_text(e, out, n[0], p_st, x + room - p_sw, y + 10 * k, 6.5 * k, redit_parch(k, 0.85), 0);
+  }
+  yy := y + 26 * k;
+  p_half := (room - 8 * k) / 2;
+  p_forget := ifx e[0].forget_armed_at > 0 then "SURE? TAP AGAIN" else "FORGET THIS COMPUTER";
+  if v == RV_UNPAIRED {
+    yy = redit_cline(e, out, n[..], "BUILD THIS REALM WITH CODER ON YOUR COMPUTER.", x, yy, room, 0.95);
+    yy = redit_cline(e, out, n[..], "1. ON YOUR COMPUTER, RUN:", x, yy, room, 0.8);
+    yy = redit_cmd(e, out, n[..], RC_HOST_CMD, x, yy, room);
+    yy = redit_cline(e, out, n[..], "2. PASTE THE KEY IT SHOWS HERE:", x, yy, room, 0.8);
+    yy = redit_cfield(e, out, n[..], "TAP, THEN PASTE", rc_host(c), x, yy, room);
+    n[0] = redit_button(e, out, n[0], RB_CMAIN, RBox.{x0 = x, y0 = yy, x1 = x + room, y1 = yy + 32 * k}, "PAIR", true);
+    yy += 40 * k;
+  } else if v == RV_ASKING {
+    yy = redit_cline(e, out, n[..], "ALLOW THIS BROWSER ON YOUR COMPUTER.", x, yy, room, 0.95);
+    yy = redit_cline(e, out, n[..], "ON YOUR COMPUTER, RUN:", x, yy, room, 0.8);
+    yy = redit_cmd(e, out, n[..], RC_ALLOW_CMD, x, yy, room);
+    p_lab: [RC_LABEL + 16] u8; p_lm := redit_put(p_lab[..], 0, "IT ASKS ABOUT "); p_lm = redit_put(p_lab[..], p_lm, rc_label(c)); redit_upper(p_lab[..], p_lm);
+    yy = redit_cline(e, out, n[..], cast(string) p_lab[0..<p_lm], x, yy, room, 0.8);
+    p_w := ifx c[0].silent then "IT ISN'T ANSWERING. IS coder host RUNNING THERE?" else ifx c[0].request_n == 0 then "SENDING THE ASK TO YOUR COMPUTER" else "YOUR COMPUTER HAS THE ASK. ALLOW IT THERE.";
+    yy = redit_cline(e, out, n[..], p_w, x, yy, room, 0.95);
+    n[0] = redit_outline(e, out, n[0], RB_CFORGET, RBox.{x0 = x, y0 = yy, x1 = x + room, y1 = yy + 26 * k}, "CANCEL", false);
+    yy += 34 * k;
+  } else if v == RV_DENIED || v == RV_EXPIRED {
+    yy = redit_cline(e, out, n[..], ifx v == RV_DENIED then "YOUR COMPUTER SAID NO TO THIS BROWSER." else "NO ONE ALLOWED IT IN TEN MINUTES, SO THE ASK ENDED.", x, yy, room, 0.95);
+    n[0] = redit_button(e, out, n[0], RB_CMAIN, RBox.{x0 = x, y0 = yy, x1 = x + p_half, y1 = yy + 32 * k}, "ASK AGAIN", true);
+    n[0] = redit_outline(e, out, n[0], RB_CFORGET, RBox.{x0 = x + p_half + 8 * k, y0 = yy + 3 * k, x1 = x + room, y1 = yy + 29 * k}, p_forget, e[0].forget_armed_at > 0);
+    yy += 40 * k;
+  } else if v == RV_OFFLINE {
+    yy = redit_cline(e, out, n[..], ifx c[0].offline_page then "THIS PAGE CAN'T REACH THE INTERNET. CHECK YOUR CONNECTION." else "YOUR COMPUTER ISN'T ANSWERING. ON IT, RUN:", x, yy, room, 0.95);
+    if !c[0].offline_page { yy = redit_cmd(e, out, n[..], RC_HOST_CMD, x, yy, room); }
+    if rc_busy(c) {
+      yy = redit_cline(e, out, n[..], "YOUR REQUEST WAITS FOR IT:", x, yy, room, 0.8);
+      yy = redit_cline(e, out, n[..], rc_ask(c), x, yy, room, 0.95);
+    }
+    n[0] = redit_outline(e, out, n[0], RB_CFORGET, RBox.{x0 = x, y0 = yy, x1 = x + room, y1 = yy + 26 * k}, p_forget, e[0].forget_armed_at > 0);
+    yy += 34 * k;
+  } else if v == RV_ALLOWED {
+    yy = redit_cline(e, out, n[..], "TELL CODER WHAT TO BUILD IN THIS REALM:", x, yy, room, 0.95);
+    yy = redit_cfield(e, out, n[..], "TAP TO TYPE", "", x, yy, room);
+    n[0] = redit_button(e, out, n[0], RB_CMAIN, RBox.{x0 = x, y0 = yy, x1 = x + p_half, y1 = yy + 32 * k}, ifx e[0].typing then "SEND" else "TYPE A REQUEST", true);
+    n[0] = redit_outline(e, out, n[0], RB_CFORGET, RBox.{x0 = x + p_half + 8 * k, y0 = yy + 3 * k, x1 = x + room, y1 = yy + 29 * k}, p_forget, e[0].forget_armed_at > 0);
+    yy += 40 * k;
+  } else {
+    // the job: what was asked, how it stands, its steps, and the one thing to do
+    yy = redit_cline(e, out, n[..], redit_chead(c, v), x, yy, room, 0.8);
+    n[0] = redit_wrap(e, out, n[0], rc_ask(c), x, yy, 7.5 * k, room, 2, redit_parch(k, 0.95));
+    yy += 30 * k;
+    if v == RV_FAILED && c[0].why_n > 0 { yy = redit_cline(e, out, n[..], rc_why(c), x, yy, room, 0.95); }
+    yy = redit_csteps(e, out, n[..], x, yy, room, bottom - 52 * k);
+    yy += 6 * k;
+    if v == RV_RUNNING && (c[0].thread_n == 0 || c[0].run_state == RJ_STOPPING) { return n[0]; }   // nothing to stop until it has started, nor twice
+    p_main := ifx v == RV_RUNNING then "STOP" else ifx v == RV_FAILED then "TRY AGAIN" else "NEW REQUEST";
+    n[0] = redit_button(e, out, n[0], RB_CMAIN, RBox.{x0 = x, y0 = yy, x1 = x + room, y1 = yy + 32 * k}, p_main, v != RV_RUNNING);
+    yy += 40 * k;
+  }
+  if c[0].why_n > 0 && v != RV_FAILED { n[0] = redit_text(e, out, n[0], rc_why(c), x, yy + 8 * k, 7 * k, redit_parch(k, 0.9), room); }
+  return n[0];
 }

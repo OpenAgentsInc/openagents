@@ -5,6 +5,11 @@
 #include "myrealm.h"
 #include "analytics-face.h"
 #include "edit-face.h"
+// YOUR COMPUTER (verse/edit/computer-wire.coax, linked beside it): the owner's own Coder, over the relay
+#include "computer-face.h"
+// The browser's secure random (crypto.getRandomValues) under the shared Coax entropy policy (coax/lib/crypto/entropy.coax).
+#define COAX_ENTROPY_HEADER "Entropy.h"
+#include "../../coax/platform/entropy-wasm.c"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -15,7 +20,7 @@ static coax_v_t_MyRealm at(uint32_t state) { return (coax_v_t_MyRealm){state_at(
 static coax_t_Track track_state;
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->ed.e, 1}; }
-static uint8_t inbox[16384];
+static uint8_t inbox[65536];   // a relay frame with a page of a job's steps fits
 static uint8_t catalog[32768];
 
 static void start_track(void) { if (!track_state.page_n) track_init(tr(), track_cstr("realm-made")); }
@@ -32,6 +37,7 @@ static void drain(uint32_t state) {
     realm_access_sent(at(state), coaxial_http((uint32_t)(uintptr_t)access_url, sizeof access_url - 1, 0, 0, 12));
   }
   edit_face_drain(ed(state));
+  computer_face_drain(ed(state));
   track_drain(&track_state);
 }
 
@@ -90,6 +96,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int
   if (length < 0 || (uint32_t)length > sizeof inbox) return;
   start_track();
   coax_string bytes = {(const char *)inbox, length};
+  if (computer_face_message(ed(state), kind, bytes)) { drain(state); return; }
   bool taken = track_message(tr(), kind, bytes);
   if (kind != 600 && !taken && edit_face_message(ed(state), kind, bytes)) { drain(state); return; }
   if (kind == 600) edit_face_message(ed(state), kind, bytes);

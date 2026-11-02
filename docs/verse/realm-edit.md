@@ -76,6 +76,7 @@ EDIT opens one pane at a time (the panes rule, verse/fairy-forest/README.md "Mak
 panes"): FEATURES (the list below; HOLD TO TALK on a page with a voice, typing everywhere),
 SETTINGS (what visitors get; a realm whose code honours no visitor tool says so), and N WAITING
 (the first card: who, what, where, the count before and after, ACCEPT and DECLINE).
+A realm whose face carries the wire also gets COMPUTER (below, "Your computer").
 
 The panes for what you work on (ff-panes, migration 0055): a realm says, each frame, which of its
 characters you are by (`redit_near(ed, key, name)`). With EDIT open, coming to one brings up its
@@ -165,3 +166,52 @@ What the answer changed that no line names is one more line ("The rest of NAME")
 named nothing still waits as one line. The answer: `doc N A applied W waiting`, then the rows.
 
 `verse/SKILL.md` ("Asks waiting on code") is how an agent works the waiting ones.
+
+## Your computer
+
+COMPUTER, the fourth pane, lets the realm's owner build it with their own Coder, on their own
+computer, with their own Claude Code or Codex login (openagents#12640, #12642). Made realms
+(`myrealm.coax`) have it; another realm gets it by calling `redit_computer(ed)` and linking the
+wire into its face as `myrealm-face.c` does. It works the same on a desktop and a phone browser.
+
+What the owner sees, one view at a time:
+
+| View | What it says and does |
+| --- | --- |
+| Unpaired | "On your computer, run:" `coder host` (COPY), then a field for the key it shows, and PAIR. |
+| Asking | "Allow this browser on your computer", with `coder host allow` (COPY) and this browser's name ("Chrome on Mac"). CANCEL takes the ask back. |
+| Allowed | Whether the computer answers, a field for a request, SEND, and FORGET THIS COMPUTER (a second tap within 4 s). |
+| Denied, expired | What happened, ASK AGAIN, or another computer. An ask lasts ten minutes. |
+| Not answering | "Your computer isn't answering. On it, run:" `coder host`; a request already sent waits. |
+| Running | What was asked, the job's steps as they come, and STOP. |
+| Stopped, failed, done | What was asked, its steps, the reason a job failed, and NEW REQUEST. |
+
+The realm reloads by itself as the job's edits land.
+
+How it works:
+
+- `verse/edit/computer.coax` is the pane's state and nothing else (checks:
+  `coax/bin/coax test verse/edit/computer_test.coax`). `rc_next_op` names the one request to send
+  next; `rc_reply` reads the computer's answers as plain lines from the wire.
+- `verse/edit/computer-wire.coax` is its own wasm unit, linked beside the realm (its signing tables
+  are computed at compile time, so `build.sh` builds `myrealm.wasm` with
+  `COAXIAL_RUN_STEPS=250000000`). It keeps this browser's key, signs NIP-42 AUTH for
+  `wss://relay.openagents.com`, and seals each request with the NIP-HOST browser codec
+  (`coax/lib/nostr/host/browser.coax`) as a kind 3188 private artifact for the computer, NIP-44
+  encrypted, after subscribing to its reply's mailbox. A reply counts only when it opens for this
+  key, is signed by the computer the owner pasted, names our request and event, and answers our
+  operation. Asking the same thing again within 50 s resends the exact signed event. Checks:
+  `coax/bin/coax test verse/edit/computer-wire.coax --library --run-steps 250000000 --only "wire: "`.
+- `apps/openagents-web/computer-face.h` moves the bytes: the record in IndexedDB (namespace
+  `openagents.computer`, key `browser`: the browser's secret key, the grant, the computer's key and
+  the ask), the relay socket, the browser's random bytes and the clock. The socket opens only for an
+  owner or admin, once COMPUTER is open or the browser is paired.
+
+The operations are NIP-HOST "Browser device grants" (`nostr/nips/openagents/NIP-HOST.md`):
+`browser.request {key, label}` to pair, `browser.status {request}` while asking and, once allowed,
+every 20 s to check that the computer answers; `thread.run {text, realm}`, `thread.read {thread,
+after}` every 1.5 s while the job runs, `thread.stop {thread}`, and `browser.forget`. Only the person
+at the computer allows a browser; the browser never makes a code. A request unanswered for 15 s
+means the computer isn't answering. A refusal that says the browser's grant is gone (revoked,
+stale, expired) pairs again.
+

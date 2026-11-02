@@ -1,0 +1,312 @@
+// The realm editor's YOUR COMPUTER pane (openagents#12642; docs/verse/realm-edit.md "Your computer"):
+// the person's own Coder, on their own computer, builds the realm. This is the pane's state and
+// nothing else: no key, no crypto, no socket. The realm's face owns the wire (verse/edit/computer-wire
+// and apps/openagents-web/computer-face.h): it asks rc_next_op what to send, sends it to the computer
+// over the relay as NIP-HOST "Browser device grants" requests, and hands back what the computer
+// answered as plain lines (rc_reply).
+//
+// The flow: the browser names its computer (the key `coder host` shows), PAIR asks it
+// (BrowserRequest), and the person at the computer allows it there (`coder host allow`); the pane
+// asks how that went (BrowserRequestStatus) until it is allowed, denied or ten minutes have passed.
+// Once allowed, a request for this realm becomes a Coder job (thread.run {text, realm}); the pane
+// reads its steps as they come (thread.read {thread, after}) and STOP stops it (thread.stop).
+// FORGET (BrowserForget) takes this browser off the computer. Only the computer allows; this browser
+// never makes a code.
+//
+// Whether the computer answers: every request it answers says so; one unanswered for RC_SILENT_S
+// says it doesn't. While a pane is up and nothing else is in flight, a quiet check asks again.
+//
+// Lines in from the wire (rc_reply), a line each, our own words, never the person's:
+//   heard                  the computer answered something
+//   request ID STATE       the ask's state: asked, allowed, denied or expired
+//   key bad                what was pasted isn't a computer's key
+//   refused CODE           the computer refused (revoked, not_admitted, expired, stale: unpaired again)
+//   thread ID              the job started
+//   step SEQ TEXT          one of its steps
+//   run STATE CURSOR       running, done, failed or stopped, and where the next read starts
+//   stopped                the stop was taken
+//   forgot                 the computer forgot this browser
+//   offline, online        the page can't reach the relay; it can again
+//   coax/bin/coax test verse/edit/computer_test.coax
+
+RC_HOST :: 96; RC_ID :: 64; RC_LABEL :: 48; RC_ASK :: 200; RC_STEPS :: 24; RC_STEP :: 160; RC_WHY :: 80;
+// pairing
+RP_UNPAIRED :: 0; RP_ASKING :: 1; RP_ALLOWED :: 2; RP_DENIED :: 3; RP_EXPIRED :: 4;
+// the job
+RJ_NONE :: 0; RJ_SENDING :: 1; RJ_RUNNING :: 2; RJ_STOPPING :: 3; RJ_STOPPED :: 4; RJ_FAILED :: 5; RJ_DONE :: 6;
+// what the pane shows: exactly one
+RV_LOADING :: 0; RV_UNPAIRED :: 1; RV_ASKING :: 2; RV_ALLOWED :: 3; RV_DENIED :: 4; RV_EXPIRED :: 5;
+RV_OFFLINE :: 6; RV_RUNNING :: 7; RV_STOPPED :: 8; RV_FAILED :: 9; RV_DONE :: 10;
+// what the wire sends next
+RO_NONE :: 0; RO_PAIR :: 1; RO_STATUS :: 2; RO_CHECK :: 3; RO_RUN :: 4; RO_READ :: 5; RO_STOP :: 6; RO_FORGET :: 7;
+RC_SILENT_S :: 15.0f32;     // an answer this late: the computer isn't answering
+RC_ASK_POLL_S :: 3.0f32;    // how often a waiting ask is asked about
+RC_READ_POLL_S :: 1.5f32;   // how often a running job's steps are read
+RC_CHECK_S :: 20.0f32;      // how often an idle, paired pane checks the computer is there
+RC_ASK_LIFE_S :: 600.0f32;  // a computer keeps an ask ten minutes
+RC_HOST_CMD :: "coder host";
+RC_ALLOW_CMD :: "coder host allow";
+
+RealmComputer :: struct {
+  loaded: bool;              // this browser's record was read (or there was none)
+  host: [RC_HOST] u8; host_n: int;          // the computer's key as pasted (npub or hex); the wire checks it
+  label: [RC_LABEL] u8; label_n: int;       // this browser, as the computer shows it
+  pair: int; request: [RC_ID] u8; request_n: int; asked_at: f32;
+  // whether it answers
+  heard: bool; silent: bool; offline_page: bool; heard_at: f32;
+  // the one request in flight
+  op_out: int; op_at: f32; last_poll: f32;
+  pair_due: bool; forget_due: bool; stop_due: bool; keep_due: bool; new_key_due: bool;
+  // the job
+  run_state: int; run_due: bool; ask: [RC_ASK] u8; ask_n: int; realm: [64] u8; realm_n: int;
+  thread: [RC_ID] u8; thread_n: int; cursor: int;
+  step_n: int; step_seq: [RC_STEPS] int; step_text: [RC_STEPS * RC_STEP] u8; step_text_n: [RC_STEPS] int;
+  why: [RC_WHY] u8; why_n: int;
+  time: f32;
+}
+
+rc_text :: (p_buf: [] u8, n: int) -> string { return cast(string) p_buf[0..<n]; }
+rc_host :: (c: [] RealmComputer) -> string { return cast(string) c[0].host[0..<c[0].host_n]; }
+rc_request :: (c: [] RealmComputer) -> string { return cast(string) c[0].request[0..<c[0].request_n]; }
+rc_thread :: (c: [] RealmComputer) -> string { return cast(string) c[0].thread[0..<c[0].thread_n]; }
+rc_ask :: (c: [] RealmComputer) -> string { return cast(string) c[0].ask[0..<c[0].ask_n]; }
+rc_realm :: (c: [] RealmComputer) -> string { return cast(string) c[0].realm[0..<c[0].realm_n]; }
+rc_label :: (c: [] RealmComputer) -> string { return cast(string) c[0].label[0..<c[0].label_n]; }
+rc_why :: (c: [] RealmComputer) -> string { return cast(string) c[0].why[0..<c[0].why_n]; }
+rc_step :: (c: [] RealmComputer, i: int) -> string { return cast(string) c[0].step_text[i * RC_STEP..<i * RC_STEP + c[0].step_text_n[i]]; }
+
+// ---- what the pane shows
+
+rc_view :: (c: [] RealmComputer) -> int {
+  if !c[0].loaded { return RV_LOADING; }
+  if c[0].pair == RP_UNPAIRED { return RV_UNPAIRED; }
+  if c[0].pair == RP_DENIED { return RV_DENIED; }
+  if c[0].pair == RP_EXPIRED { return RV_EXPIRED; }
+  if c[0].pair == RP_ASKING { return RV_ASKING; }
+  // allowed
+  p_gone := c[0].silent || c[0].offline_page;
+  if rc_busy(c) { return ifx p_gone then RV_OFFLINE else RV_RUNNING; }
+  if p_gone { return RV_OFFLINE; }
+  if c[0].run_state == RJ_STOPPED { return RV_STOPPED; }
+  if c[0].run_state == RJ_FAILED { return RV_FAILED; }
+  if c[0].run_state == RJ_DONE { return RV_DONE; }
+  return RV_ALLOWED;
+}
+// Does the computer answer (what was last seen): a line for every pane but the first.
+rc_answers :: (c: [] RealmComputer) -> bool { return c[0].heard && !c[0].silent && !c[0].offline_page; }
+rc_busy :: (c: [] RealmComputer) -> bool { return c[0].run_state == RJ_SENDING || c[0].run_state == RJ_RUNNING || c[0].run_state == RJ_STOPPING; }
+
+// ---- starting: the browser's label, and its record read back
+
+// "Chrome on Mac": the browser and the machine, from the page's user agent (what the computer shows
+// beside the ask). Bounded parsing of a header, nothing routed by it.
+rc_has :: (text: string, p_part: string) -> bool {
+  if p_part.count == 0 || text.count < p_part.count { return false; }
+  for i: 0..<text.count - p_part.count + 1 { if text[i..<i + p_part.count] == p_part { return true; } }
+  return false;
+}
+rc_label_of :: (p_ua: string, p_buf: [] u8) -> int {
+  b := ifx rc_has(p_ua, "Edg/") then "Edge" else ifx rc_has(p_ua, "Firefox/") || rc_has(p_ua, "FxiOS") then "Firefox"
+       else ifx rc_has(p_ua, "Chrome/") || rc_has(p_ua, "CriOS") then "Chrome" else ifx rc_has(p_ua, "Safari/") then "Safari" else "A browser";
+  m := ifx rc_has(p_ua, "iPhone") then "iPhone" else ifx rc_has(p_ua, "iPad") then "iPad" else ifx rc_has(p_ua, "Android") then "Android"
+       else ifx rc_has(p_ua, "Mac OS") then "Mac" else ifx rc_has(p_ua, "Windows") then "Windows" else ifx rc_has(p_ua, "Linux") then "Linux" else "";
+  n := redit_put(p_buf, 0, b);
+  if m.count > 0 { n = redit_put(p_buf, n, " on "); n = redit_put(p_buf, n, m); }
+  return n;
+}
+rc_facts :: (c: [] RealmComputer, p_ua: string) { c[0].label_n = rc_label_of(p_ua, c[0].label[..]); }
+rc_start :: (c: [] RealmComputer, slug: string) { c[0].realm_n = redit_copy(c[0].realm[..], slug); }
+
+// The record this browser kept (the wire keeps its key beside it): "host KEY", "request ID",
+// "paired asked|allowed", a line each. "" when it kept none.
+rc_restore :: (c: [] RealmComputer, text: string) #export_c {
+  c[0].loaded = true;
+  i := 0;
+  while i < text.count {
+    end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;
+    head := redit_word(line, 0);
+    if head == "host" { c[0].host_n = redit_copy(c[0].host[..], redit_word(line, 1)); }
+    else if head == "request" { c[0].request_n = redit_copy(c[0].request[..], redit_word(line, 1)); }
+    else if head == "paired" {
+      p_st := redit_word(line, 1);
+      c[0].pair = ifx p_st == "allowed" then RP_ALLOWED else ifx p_st == "asked" then RP_ASKING else RP_UNPAIRED;
+    }
+  }
+  if c[0].host_n == 0 || (c[0].pair == RP_ASKING && c[0].request_n == 0) { c[0].pair = RP_UNPAIRED; }
+  if c[0].pair == RP_ASKING { c[0].asked_at = c[0].time; }
+  c[0].last_poll = c[0].time - RC_CHECK_S;   // ask at once
+}
+// What to keep (the wire puts its key line first).
+rc_keep :: (c: [] RealmComputer, out: [] u8) -> int #export_c {
+  n := 0;
+  if c[0].host_n > 0 { n = redit_put(out, n, "host "); n = redit_put(out, n, rc_host(c)); n = redit_put(out, n, "\n"); }
+  if c[0].request_n > 0 { n = redit_put(out, n, "request "); n = redit_put(out, n, rc_request(c)); n = redit_put(out, n, "\n"); }
+  if c[0].pair == RP_ASKING { n = redit_put(out, n, "paired asked\n"); }
+  if c[0].pair == RP_ALLOWED { n = redit_put(out, n, "paired allowed\n"); }
+  return n;
+}
+rc_kept :: (c: [] RealmComputer) -> bool #export_c { k := c[0].keep_due; c[0].keep_due = false; return k; }
+// The wire makes a new key (after FORGET): true once.
+rc_new_key :: (c: [] RealmComputer) -> bool #export_c { k := c[0].new_key_due; c[0].new_key_due = false; return k; }
+
+rc_note :: (c: [] RealmComputer, text: string) { c[0].why_n = redit_copy(c[0].why[..], text); }
+
+// ---- what the person does
+
+// The computer's key, as pasted (an npub or 64 hex; the wire decides). Spaces and line ends go.
+rc_set_host :: (c: [] RealmComputer, text: string) -> bool {
+  n := 0;
+  for i: 0..<text.count { p_ch := text[i]; if p_ch > 32 && p_ch < 127 && n < RC_HOST { c[0].host[n] = p_ch; n += 1; } }
+  if n < 60 { c[0].why_n = 0; rc_note(c, "That isn't a computer's key. Copy the one coder host shows."); return false; }
+  c[0].host_n = n; c[0].why_n = 0;
+  return true;
+}
+// PAIR: ask the computer to allow this browser.
+rc_pair :: (c: [] RealmComputer) {
+  if c[0].host_n == 0 || c[0].pair == RP_ALLOWED || c[0].pair == RP_ASKING { return; }
+  c[0].pair = RP_ASKING; c[0].request_n = 0; c[0].pair_due = true; c[0].asked_at = c[0].time;
+  c[0].heard = false; c[0].silent = false; c[0].why_n = 0; c[0].keep_due = true;
+}
+// A request for this realm.
+rc_run :: (c: [] RealmComputer, p_words: string) -> bool {
+  if c[0].pair != RP_ALLOWED || rc_busy(c) || p_words.count == 0 { return false; }
+  c[0].ask_n = redit_copy(c[0].ask[..], p_words);
+  c[0].run_state = RJ_SENDING; c[0].run_due = true; c[0].thread_n = 0; c[0].cursor = 0; c[0].step_n = 0; c[0].why_n = 0;
+  return true;
+}
+rc_stop :: (c: [] RealmComputer) {
+  if c[0].thread_n == 0 || (c[0].run_state != RJ_RUNNING) { return; }
+  c[0].run_state = RJ_STOPPING; c[0].stop_due = true;
+}
+// FORGET: take this browser off the computer, here at once and there when it answers.
+rc_forget :: (c: [] RealmComputer) {
+  if c[0].pair != RP_UNPAIRED && c[0].host_n > 0 { c[0].forget_due = true; }
+  c[0].pair = RP_UNPAIRED; c[0].request_n = 0; c[0].run_state = RJ_NONE; c[0].thread_n = 0; c[0].step_n = 0;
+  c[0].heard = false; c[0].silent = false; c[0].why_n = 0; c[0].keep_due = true; c[0].pair_due = false; c[0].run_due = false; c[0].stop_due = false;
+}
+// After a job ends: back to a new request.
+rc_again :: (c: [] RealmComputer) {
+  if c[0].pair == RP_DENIED || c[0].pair == RP_EXPIRED { c[0].pair = RP_UNPAIRED; rc_pair(c); return; }
+  if !rc_busy(c) { c[0].run_state = RJ_NONE; c[0].why_n = 0; }
+}
+
+// ---- out: the one request the wire sends next
+
+rc_next_op :: (c: [] RealmComputer) -> int #export_c {
+  if !c[0].loaded || c[0].op_out != RO_NONE || c[0].host_n == 0 { return RO_NONE; }
+  if c[0].forget_due { return RO_FORGET; }
+  if c[0].pair_due { return RO_PAIR; }
+  if c[0].stop_due { return RO_STOP; }
+  if c[0].run_due && c[0].pair == RP_ALLOWED { return RO_RUN; }
+  p_since := c[0].time - c[0].last_poll;
+  if c[0].pair == RP_ASKING && c[0].request_n > 0 && p_since >= RC_ASK_POLL_S { return RO_STATUS; }
+  if c[0].pair == RP_ALLOWED && c[0].thread_n > 0 && (c[0].run_state == RJ_RUNNING || c[0].run_state == RJ_STOPPING) && p_since >= RC_READ_POLL_S { return RO_READ; }
+  p_every := ifx c[0].heard && !c[0].silent then RC_CHECK_S else RC_ASK_POLL_S * 3;
+  if c[0].pair == RP_ALLOWED && p_since >= p_every { return RO_CHECK; }
+  return RO_NONE;
+}
+// The wire sent it (or could not: sent false, and it is asked again later).
+rc_op_sent :: (c: [] RealmComputer, p_what: int, p_sent: bool) #export_c {
+  c[0].last_poll = c[0].time;
+  if !p_sent { return; }
+  c[0].op_out = p_what; c[0].op_at = c[0].time;
+  if p_what == RO_FORGET { c[0].forget_due = false; c[0].new_key_due = true; c[0].op_out = RO_NONE; c[0].host_n = 0; c[0].keep_due = true; }
+  if p_what == RO_PAIR { c[0].pair_due = false; }
+  if p_what == RO_RUN { c[0].run_due = false; }
+  if p_what == RO_STOP { c[0].stop_due = false; }
+}
+
+// Each frame: the clock, and what silence means.
+rc_step_time :: (c: [] RealmComputer, time: f32) {
+  c[0].time = time;
+  if c[0].op_out != RO_NONE && time - c[0].op_at > RC_SILENT_S {
+    p_op := c[0].op_out; c[0].op_out = RO_NONE; c[0].silent = true;
+    // a request it never heard is asked again (the wire resends the same one)
+    if p_op == RO_PAIR { c[0].pair_due = true; }
+    if p_op == RO_RUN && c[0].run_state == RJ_SENDING { c[0].run_due = true; }
+    if p_op == RO_STOP && c[0].run_state == RJ_STOPPING { c[0].stop_due = true; }
+  }
+  if c[0].pair == RP_ASKING && time - c[0].asked_at > RC_ASK_LIFE_S + RC_SILENT_S { c[0].pair = RP_EXPIRED; c[0].keep_due = true; }
+}
+
+// ---- in: what the computer answered
+
+rc_set_state :: (c: [] RealmComputer, p_st: string) {
+  if p_st == "allowed" { if c[0].pair != RP_ALLOWED { c[0].pair = RP_ALLOWED; c[0].keep_due = true; } return; }
+  if p_st == "denied" { c[0].pair = RP_DENIED; c[0].keep_due = true; return; }
+  if p_st == "expired" { c[0].pair = RP_EXPIRED; c[0].keep_due = true; return; }
+  if p_st == "asked" && c[0].pair == RP_UNPAIRED { return; }
+}
+rc_add_step :: (c: [] RealmComputer, p_seq: int, text: string) {
+  for i: 0..<c[0].step_n { if c[0].step_seq[i] == p_seq { return; } }   // a step read twice shows once
+  if c[0].step_n == RC_STEPS {
+    for i: 0..<RC_STEPS - 1 {
+      c[0].step_seq[i] = c[0].step_seq[i + 1];
+      c[0].step_text_n[i] = redit_copy(c[0].step_text[i * RC_STEP..<(i + 1) * RC_STEP], rc_step(c, i + 1));
+    }
+    c[0].step_n = RC_STEPS - 1;
+  }
+  s := c[0].step_n;
+  c[0].step_seq[s] = p_seq;
+  c[0].step_text_n[s] = redit_copy(c[0].step_text[s * RC_STEP..<(s + 1) * RC_STEP], text);
+  c[0].step_n = s + 1;
+}
+// A refusal: one that says this browser's place on the computer is gone pairs again.
+rc_refused :: (c: [] RealmComputer, p_code: string) {
+  if p_code == "revoked" || p_code == "not_admitted" || p_code == "stale" || p_code == "expired" {
+    c[0].pair = RP_UNPAIRED; c[0].request_n = 0; c[0].keep_due = true;
+    if rc_busy(c) { c[0].run_state = RJ_NONE; }
+    rc_note(c, "Your computer no longer lets this browser in. Pair again.");
+    return;
+  }
+  if c[0].run_state == RJ_SENDING || c[0].run_state == RJ_STOPPING { c[0].run_state = RJ_FAILED; }
+  rc_note(c, ifx p_code == "busy" then "Your computer is already running a job." else "Your computer turned that down.");
+}
+
+rc_reply :: (c: [] RealmComputer, text: string) #export_c {
+  i := 0;
+  while i < text.count {
+    end := redit_line_end(text, i); line := text[i..<end]; i = end + 1;
+    head := redit_word(line, 0);
+    if head == "offline" { c[0].offline_page = true; c[0].op_out = RO_NONE; continue; }
+    if head.count == 0 { continue; }
+    c[0].offline_page = false;
+    if head == "online" { continue; }
+    if head == "key" { c[0].op_out = RO_NONE; c[0].pair = RP_UNPAIRED; c[0].pair_due = false; c[0].host_n = 0; c[0].keep_due = true; rc_note(c, "That isn't a computer's key. Copy the one coder host shows."); continue; }
+    // anything else is the computer answering
+    c[0].heard = true; c[0].silent = false; c[0].heard_at = c[0].time;
+    if head == "heard" { if c[0].op_out == RO_CHECK { c[0].op_out = RO_NONE; } continue; }
+    if head == "request" {
+      if c[0].op_out == RO_PAIR || c[0].op_out == RO_STATUS { c[0].op_out = RO_NONE; }
+      p_id := redit_word(line, 1);
+      if p_id.count > 0 && p_id.count <= RC_ID && c[0].pair == RP_ASKING && (c[0].request_n == 0 || rc_request(c) == p_id) {
+        if c[0].request_n == 0 { c[0].request_n = redit_copy(c[0].request[..], p_id); c[0].keep_due = true; }
+        rc_set_state(c, redit_word(line, 2));
+      }
+      continue;
+    }
+    if head == "refused" { c[0].op_out = RO_NONE; rc_refused(c, redit_word(line, 1)); continue; }
+    if head == "thread" {
+      if c[0].op_out == RO_RUN { c[0].op_out = RO_NONE; }
+      p_id := redit_word(line, 1);
+      if c[0].run_state == RJ_SENDING && p_id.count > 0 && p_id.count <= RC_ID {
+        c[0].thread_n = redit_copy(c[0].thread[..], p_id); c[0].run_state = RJ_RUNNING; c[0].cursor = 0;
+        c[0].last_poll = c[0].time;
+      }
+      continue;
+    }
+    if head == "step" { rc_add_step(c, redit_int(redit_word(line, 1)), redit_rest(line, 2)); continue; }
+    if head == "run" {
+      if c[0].op_out == RO_READ { c[0].op_out = RO_NONE; }
+      p_st := redit_word(line, 1); p_at := redit_int(redit_word(line, 2));
+      if p_at > c[0].cursor { c[0].cursor = p_at; }
+      if c[0].thread_n == 0 { continue; }
+      if p_st == "done" { c[0].run_state = RJ_DONE; }
+      else if p_st == "stopped" { c[0].run_state = RJ_STOPPED; }
+      else if p_st == "failed" { c[0].run_state = RJ_FAILED; p_why := redit_rest(line, 3); if p_why.count > 0 { rc_note(c, p_why); } }
+      continue;
+    }
+    if head == "stopped" { if c[0].op_out == RO_STOP { c[0].op_out = RO_NONE; } if c[0].run_state == RJ_STOPPING || c[0].run_state == RJ_RUNNING { c[0].run_state = RJ_STOPPED; } continue; }
+    if head == "forgot" { continue; }
+  }
+}

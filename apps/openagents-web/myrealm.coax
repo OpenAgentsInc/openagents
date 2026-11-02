@@ -2543,7 +2543,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     if read_spec(s, SAMPLE) { s[0].spec_ready = true; lay_out(s); }
     if !s[0].entered && track_begin(t, "realm-enter") { s[0].entered = true; track_str(t, "slug", "built"); track_bool(t, "owner", false); track_end(t); }
   }
-  if s[0].slug_n > 0 { redit_start(s[0].ed[..], slug_text(s)); }
+  if s[0].slug_n > 0 { redit_start(s[0].ed[..], slug_text(s)); redit_computer(s[0].ed[..]); }   // its face carries YOUR COMPUTER
   redit_step(s[0].ed[..], s[0].time, width, height, s[0].dpr);
   // the board changed the realm: read the spec again once the layer is done
   if s[0].ed[0].version != s[0].ed_seen && !redit_busy(s[0].ed[..]) && s[0].ed[0].switch_row < 0 && s[0].ed[0].revise_n == 0 {

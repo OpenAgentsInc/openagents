@@ -1,0 +1,304 @@
+// Checks for YOUR COMPUTER (computer.coax, and its pane in edit.coax): every state the pane shows,
+// what each sends the computer next, and the pane drawn on a desktop and a phone.
+//   coax/bin/coax test verse/edit/computer_test.coax
+
+#load "../../apps/openagents-web/font.coax";
+#load "../../apps/openagents-web/analytics.coax";
+#load "edit.coax";
+
+VERTEX_FLOATS :: 16;
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+HOST_HEX :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+REQ :: "1111111111111111111111111111111111111111111111111111111111111111";
+THREAD :: "2222222222222222222222222222222222222222222222222222222222222222";
+UA_MAC :: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
+UA_IPHONE :: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+SPEC :: "200\nrealm moonlit-marsh\nowner 1\nrole owner\nrow water 1 Large pond\n";
+ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
+
+// A computer with nothing kept, at time t.
+fresh :: (c: [] RealmComputer, t: f32) { rc_start(c, "moonlit-marsh"); rc_step_time(c, t); rc_restore(c, ""); }
+// One that was allowed before.
+paired :: (c: [] RealmComputer, t: f32) {
+  rc_start(c, "moonlit-marsh"); rc_step_time(c, t);
+  rc_restore(c, "host 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\nrequest 1111111111111111111111111111111111111111111111111111111111111111\npaired allowed\n");
+}
+sends :: (c: [] RealmComputer, op: int) -> bool { o := rc_next_op(c); if o != op { return false; } rc_op_sent(c, o, true); return true; }
+keep_is :: (c: [] RealmComputer, text: string) -> bool { b: [512] u8; m := rc_keep(c, b[..]); return cast(string) b[0..<m] == text; }
+
+#test "unpaired: nothing kept, nothing sent; a pasted key pairs" {
+  c: [1] RealmComputer;
+  #assert rc_view(c[..]) == RV_LOADING && rc_next_op(c[..]) == RO_NONE;
+  fresh(c[..], 1);
+  #assert rc_view(c[..]) == RV_UNPAIRED && rc_next_op(c[..]) == RO_NONE;
+  #assert !rc_set_host(c[..], "hello") && c[0].host_n == 0 && rc_why(c[..]).count > 0;
+  #assert rc_set_host(c[..], "  npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d\n");
+  #assert rc_host(c[..]) == "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d" && rc_why(c[..]).count == 0;
+  rc_pair(c[..]);
+  #assert rc_view(c[..]) == RV_ASKING && rc_kept(c[..]) && !rc_kept(c[..]);
+  #assert sends(c[..], RO_PAIR) && rc_next_op(c[..]) == RO_NONE;   // one in flight at a time
+}
+#test "a key that isn't one comes back from the wire as unpaired, with what to do" {
+  c: [1] RealmComputer; fresh(c[..], 1);
+  #assert rc_set_host(c[..], HOST_HEX); rc_pair(c[..]); #assert sends(c[..], RO_PAIR);
+  rc_reply(c[..], "key bad\n");
+  #assert rc_view(c[..]) == RV_UNPAIRED && c[0].host_n == 0 && rc_why(c[..]).count > 0 && rc_next_op(c[..]) == RO_NONE;
+}
+#test "asking: the ask's id is kept, its state is asked about every few seconds" {
+  c: [1] RealmComputer; fresh(c[..], 1);
+  #assert rc_set_host(c[..], HOST_HEX); rc_pair(c[..]); #assert sends(c[..], RO_PAIR);
+  rc_reply(c[..], "request 1111111111111111111111111111111111111111111111111111111111111111 asked\n");
+  #assert rc_view(c[..]) == RV_ASKING && rc_request(c[..]) == REQ && rc_answers(c[..]);
+  #assert keep_is(c[..], "host 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\nrequest 1111111111111111111111111111111111111111111111111111111111111111\npaired asked\n");
+  #assert rc_next_op(c[..]) == RO_NONE;
+  rc_step_time(c[..], 1 + RC_ASK_POLL_S);
+  #assert sends(c[..], RO_STATUS);
+  // another ask's answer says nothing about ours
+  rc_reply(c[..], "request 3333333333333333333333333333333333333333333333333333333333333333 allowed\n");
+  #assert rc_view(c[..]) == RV_ASKING;
+}
+#test "allowed: the computer said yes, and it is kept" {
+  c: [1] RealmComputer; fresh(c[..], 1);
+  #assert rc_set_host(c[..], HOST_HEX); rc_pair(c[..]); #assert sends(c[..], RO_PAIR);
+  rc_reply(c[..], "request 1111111111111111111111111111111111111111111111111111111111111111 asked\n");
+  rc_step_time(c[..], 5); #assert sends(c[..], RO_STATUS);
+  rc_reply(c[..], "request 1111111111111111111111111111111111111111111111111111111111111111 allowed\n");
+  #assert rc_view(c[..]) == RV_ALLOWED && rc_answers(c[..]) && rc_kept(c[..]);
+  #assert keep_is(c[..], "host 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\nrequest 1111111111111111111111111111111111111111111111111111111111111111\npaired allowed\n");
+  // a browser that kept it starts allowed and checks the computer at once
+  d: [1] RealmComputer; paired(d[..], 50);
+  #assert rc_view(d[..]) == RV_ALLOWED && !rc_answers(d[..]) && sends(d[..], RO_CHECK);
+  rc_reply(d[..], "heard\n");
+  #assert rc_answers(d[..]) && rc_next_op(d[..]) == RO_NONE;
+  rc_step_time(d[..], 50 + RC_CHECK_S); #assert rc_next_op(d[..]) == RO_CHECK;
+}
+#test "denied, and asking again" {
+  c: [1] RealmComputer; fresh(c[..], 1);
+  #assert rc_set_host(c[..], HOST_HEX); rc_pair(c[..]); #assert sends(c[..], RO_PAIR);
+  rc_reply(c[..], "request 1111111111111111111111111111111111111111111111111111111111111111 denied\n");
+  #assert rc_view(c[..]) == RV_DENIED && rc_next_op(c[..]) == RO_NONE && keep_is(c[..], "host 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\nrequest 1111111111111111111111111111111111111111111111111111111111111111\n");
+  rc_again(c[..]);
+  #assert rc_view(c[..]) == RV_ASKING && c[0].request_n == 0 && sends(c[..], RO_PAIR);
+}
+#test "expired: the computer says so, or ten minutes pass with no answer" {
+  c: [1] RealmComputer; fresh(c[..], 1);
+  #assert rc_set_host(c[..], HOST_HEX); rc_pair(c[..]); #assert sends(c[..], RO_PAIR);
+  rc_reply(c[..], "request 1111111111111111111111111111111111111111111111111111111111111111 expired\n");
+  #assert rc_view(c[..]) == RV_EXPIRED;
+  d: [1] RealmComputer; fresh(d[..], 1);
+  #assert rc_set_host(d[..], HOST_HEX); rc_pair(d[..]);
+  rc_step_time(d[..], 1 + RC_ASK_LIFE_S + RC_SILENT_S + 1);
+  #assert rc_view(d[..]) == RV_EXPIRED;
+}
+#test "computer offline: an unanswered request says so; the next answer says it's back" {
+  c: [1] RealmComputer; paired(c[..], 10);
+  #assert sends(c[..], RO_CHECK);
+  rc_step_time(c[..], 10 + RC_SILENT_S + 0.5);
+  #assert rc_view(c[..]) == RV_OFFLINE && !rc_answers(c[..]) && c[0].op_out == RO_NONE;
+  rc_step_time(c[..], 10 + RC_SILENT_S + 0.5 + RC_ASK_POLL_S * 3);
+  #assert sends(c[..], RO_CHECK);
+  rc_reply(c[..], "heard\n");
+  #assert rc_view(c[..]) == RV_ALLOWED && rc_answers(c[..]);
+  // the page itself can't reach the relay
+  rc_reply(c[..], "offline\n");
+  #assert rc_view(c[..]) == RV_OFFLINE && c[0].offline_page;
+  rc_reply(c[..], "online\n");
+  #assert rc_view(c[..]) == RV_ALLOWED;
+  // an ask never heard is sent again
+  d: [1] RealmComputer; fresh(d[..], 1);
+  #assert rc_set_host(d[..], HOST_HEX); rc_pair(d[..]); #assert sends(d[..], RO_PAIR);
+  rc_step_time(d[..], 1 + RC_SILENT_S + 1);
+  #assert rc_view(d[..]) == RV_ASKING && d[0].silent && rc_next_op(d[..]) == RO_PAIR;
+}
+#test "running: a request becomes a job; its steps come in order, once each" {
+  c: [1] RealmComputer; paired(c[..], 10);
+  #assert sends(c[..], RO_CHECK); rc_reply(c[..], "heard\n");
+  #assert !rc_run(c[..], "");
+  #assert rc_run(c[..], "add a lighthouse on the cliff");
+  #assert rc_view(c[..]) == RV_RUNNING && c[0].run_state == RJ_SENDING && sends(c[..], RO_RUN);
+  #assert rc_ask(c[..]) == "add a lighthouse on the cliff" && rc_realm(c[..]) == "moonlit-marsh";
+  #assert !rc_run(c[..], "another");   // one job at a time
+  rc_reply(c[..], "thread 2222222222222222222222222222222222222222222222222222222222222222\n");
+  #assert c[0].run_state == RJ_RUNNING && rc_thread(c[..]) == THREAD;
+  rc_step_time(c[..], 10 + RC_READ_POLL_S); #assert sends(c[..], RO_READ);
+  rc_reply(c[..], "step 1 Reading the realm\nstep 2 Placing a lighthouse\nrun running 2\n");
+  #assert c[0].step_n == 2 && rc_step(c[..], 1) == "Placing a lighthouse" && c[0].cursor == 2;
+  rc_step_time(c[..], 10 + 2 * RC_READ_POLL_S); #assert sends(c[..], RO_READ);
+  rc_reply(c[..], "step 2 Placing a lighthouse\nstep 3 Saved\nrun done 3\n");
+  #assert c[0].step_n == 3 && rc_view(c[..]) == RV_DONE && rc_next_op(c[..]) == RO_NONE;
+  rc_again(c[..]); #assert rc_view(c[..]) == RV_ALLOWED;
+}
+#test "a long job keeps its newest steps" {
+  c: [1] RealmComputer; paired(c[..], 10);
+  #assert rc_run(c[..], "build"); rc_reply(c[..], "thread 2222222222222222222222222222222222222222222222222222222222222222\n");
+  t: [32] u8;
+  for i: 1..<RC_STEPS + 5 { m := redit_put(t[..], 0, "step "); m = redit_put_int(t[..], m, i); m = redit_put(t[..], m, " s"); m = redit_put_int(t[..], m, i); rc_reply(c[..], cast(string) t[0..<m]); }
+  #assert c[0].step_n == RC_STEPS && rc_step(c[..], RC_STEPS - 1) == "s28" && rc_step(c[..], 0) == "s5";
+}
+#test "stopped: STOP is sent once, and the job says stopped" {
+  c: [1] RealmComputer; paired(c[..], 10);
+  #assert sends(c[..], RO_CHECK); rc_reply(c[..], "heard\n");
+  #assert rc_run(c[..], "fill the pond") && sends(c[..], RO_RUN);
+  rc_stop(c[..]); #assert c[0].run_state == RJ_SENDING;   // nothing to stop before it starts
+  rc_reply(c[..], "thread 2222222222222222222222222222222222222222222222222222222222222222\n");
+  rc_stop(c[..]);
+  #assert c[0].run_state == RJ_STOPPING && rc_view(c[..]) == RV_RUNNING && sends(c[..], RO_STOP);
+  rc_reply(c[..], "stopped\n");
+  #assert rc_view(c[..]) == RV_STOPPED && rc_next_op(c[..]) == RO_NONE;
+}
+#test "failed: the job's reason is shown; a refusal of this browser unpairs it" {
+  c: [1] RealmComputer; paired(c[..], 10);
+  #assert sends(c[..], RO_CHECK); rc_reply(c[..], "heard\n");
+  #assert rc_run(c[..], "a castle") && sends(c[..], RO_RUN);
+  rc_reply(c[..], "thread 2222222222222222222222222222222222222222222222222222222222222222\nrun failed 1 Coder isn't logged in\n");
+  #assert rc_view(c[..]) == RV_FAILED && rc_why(c[..]) == "Coder isn't logged in";
+  d: [1] RealmComputer; paired(d[..], 10);
+  #assert sends(d[..], RO_CHECK); rc_reply(d[..], "heard\n");
+  #assert rc_run(d[..], "a castle") && sends(d[..], RO_RUN);
+  rc_reply(d[..], "refused busy\n");
+  #assert rc_view(d[..]) == RV_FAILED && rc_why(d[..]).count > 0;
+  r: [1] RealmComputer; paired(r[..], 10);
+  #assert sends(r[..], RO_CHECK);
+  rc_reply(r[..], "refused revoked\n");
+  #assert rc_view(r[..]) == RV_UNPAIRED && r[0].host_n > 0 && rc_kept(r[..]);
+  rc_pair(r[..]); #assert rc_view(r[..]) == RV_ASKING;
+}
+#test "FORGET is sent once, the record forgets the computer and the wire makes a new key" {
+  c: [1] RealmComputer; paired(c[..], 10);
+  rc_forget(c[..]);
+  #assert rc_view(c[..]) == RV_UNPAIRED && sends(c[..], RO_FORGET) && rc_new_key(c[..]) && !rc_new_key(c[..]);
+  #assert c[0].host_n == 0 && keep_is(c[..], "") && rc_next_op(c[..]) == RO_NONE;
+}
+#test "the label names the browser and the machine" {
+  b: [48] u8;
+  #assert cast(string) b[0..<rc_label_of(UA_MAC, b[..])] == "Chrome on Mac";
+  #assert cast(string) b[0..<rc_label_of(UA_IPHONE, b[..])] == "Safari on iPhone";
+  #assert cast(string) b[0..<rc_label_of("", b[..])] == "A browser";
+}
+
+// ---- the pane, through the edit layer
+
+opened :: (e: [] RealmEdit, w: f32, h: f32) {
+  redit_computer(e);
+  redit_start(e, "moonlit-marsh");
+  redit_step(e, 1, w, h, 1);
+  redit_requested(e, 0); _ := redit_message(e, HTTP_KIND, SPEC);
+  _ = redit_message(e, REDIT_FACTS, "ua=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/141.0 Safari/537.36\n");
+}
+drawn :: (e: [] RealmEdit) -> int { out: [200000] f32; return redit_hud(e, out[..], 0, ANCHOR); }
+redraw :: (e: [] RealmEdit) { out: [200000] f32; m := redit_hud(e, out[..], 0, ANCHOR); }
+tap :: (e: [] RealmEdit, b: int) -> bool {
+  if !e[0].shown[b] { return false; }
+  x := (e[0].boxes[b].x0 + e[0].boxes[b].x1) / 2; y := (e[0].boxes[b].y0 + e[0].boxes[b].y1) / 2;
+  _ := redit_pointer(e, x, y, 0, 1);
+  return redit_pointer(e, x, y, 2, 1);
+}
+typed :: (e: [] RealmEdit, text: string) { _ := redit_message(e, REDIT_MSG_TEXT, text); }
+
+#test "COMPUTER is a fourth tab only where the realm carries the wire" {
+  e: [1] RealmEdit;
+  redit_start(e[..], "moonlit-marsh"); redit_step(e[..], 1, 1440, 900, 1);
+  redit_requested(e[..], 0); _ := redit_message(e[..], HTTP_KIND, SPEC);
+  redit_toggle(e[..]); redraw(e[..]);
+  #assert !e[0].shown[RB_CTAB];
+  f: [1] RealmEdit; opened(f[..], 1440, 900);
+  redit_toggle(f[..]); redraw(f[..]);
+  #assert f[0].shown[RB_CTAB] && tap(f[..], RB_CTAB) && f[0].pane == REDIT_COMPUTER_PANE;
+  #assert rc_label(f[0].pc[..]) == "Chrome on Mac";
+}
+#test "the pane pairs: COPY gives the command, the pasted key pairs, the ask names the next command" {
+  e: [1] RealmEdit; opened(e[..], 1440, 900);
+  redit_pane(e[..], REDIT_COMPUTER_PANE);
+  rc_restore(e[0].pc[..], "");
+  #assert drawn(e[..]) > 0 && e[0].shown[RB_CCOPY] && e[0].shown[RB_CFIELD] && e[0].shown[RB_CMAIN];
+  #assert tap(e[..], RB_CCOPY);
+  a := redit_take_action(e[..], e[0].out[..]);
+  #assert a.kind == REDIT_ACT_COPY && cast(string) e[0].out[0..<a.n] == RC_HOST_CMD;
+  #assert tap(e[..], RB_CFIELD) && e[0].typing;
+  typed(e[..], HOST_HEX);
+  #assert redit_key(e[..], REDIT_KEY_ENTER, true) == 1;
+  #assert redit_computer_view(e[..]) == RV_ASKING && rc_next_op(e[0].pc[..]) == RO_PAIR;
+  redraw(e[..]);
+  #assert tap(e[..], RB_CCOPY);
+  b := redit_take_action(e[..], e[0].out[..]);
+  #assert b.kind == REDIT_ACT_COPY && cast(string) e[0].out[0..<b.n] == RC_ALLOW_CMD;
+  // CANCEL takes the ask back at once
+  #assert tap(e[..], RB_CFORGET) && redit_computer_view(e[..]) == RV_UNPAIRED;
+}
+#test "the pane runs a request, shows its steps, and STOP stops it" {
+  e: [1] RealmEdit; opened(e[..], 1440, 900);
+  redit_pane(e[..], REDIT_COMPUTER_PANE);
+  c := e[0].pc[..];
+  paired(c, 1); rc_op_sent(c, rc_next_op(c), true); rc_reply(c, "heard\n");
+  redraw(e[..]);
+  #assert tap(e[..], RB_CMAIN) && e[0].typing;
+  typed(e[..], "add a red barn");
+  redraw(e[..]);
+  #assert tap(e[..], RB_CMAIN) && redit_computer_view(e[..]) == RV_RUNNING && rc_ask(c) == "add a red barn";
+  redraw(e[..]);
+  #assert !e[0].shown[RB_CMAIN];   // nothing to stop until it has started
+  rc_op_sent(c, rc_next_op(c), true);
+  rc_reply(c, "thread 2222222222222222222222222222222222222222222222222222222222222222\nstep 1 Reading the realm\n");
+  redraw(e[..]);
+  #assert e[0].shown[RB_CMAIN] && tap(e[..], RB_CMAIN) && c[0].run_state == RJ_STOPPING;
+  redraw(e[..]);
+  #assert !e[0].shown[RB_CMAIN];   // not twice
+  rc_op_sent(c, rc_next_op(c), true); rc_reply(c, "stopped\n");
+  redraw(e[..]);
+  #assert redit_computer_view(e[..]) == RV_STOPPED && tap(e[..], RB_CMAIN) && redit_computer_view(e[..]) == RV_ALLOWED && e[0].typing;
+}
+#test "FORGET asks SURE? first" {
+  e: [1] RealmEdit; opened(e[..], 1440, 900);
+  redit_pane(e[..], REDIT_COMPUTER_PANE);
+  c := e[0].pc[..];
+  paired(c, 1); rc_op_sent(c, rc_next_op(c), true); rc_reply(c, "heard\n");
+  redraw(e[..]);
+  #assert tap(e[..], RB_CFORGET) && redit_computer_view(e[..]) == RV_ALLOWED && e[0].forget_armed_at > 0;
+  redraw(e[..]);
+  #assert tap(e[..], RB_CFORGET) && redit_computer_view(e[..]) == RV_UNPAIRED && rc_next_op(c) == RO_FORGET;
+}
+#test "every view draws, inside the pane, on a desktop and on a phone" #steps 600000000 {
+  for p_w: 0..<2 {
+    e: [1] RealmEdit;
+    w := ifx p_w == 0 then 1440.0f32 else 390.0f32; h := ifx p_w == 0 then 900.0f32 else 844.0f32;
+    opened(e[..], w, h);
+    redit_pane(e[..], REDIT_COMPUTER_PANE);
+    c := e[0].pc[..];
+    #assert drawn(e[..]) > 0;                                     // loading: the title
+    rc_restore(c, ""); #assert drawn(e[..]) > 0 && e[0].shown[RB_CMAIN];   // unpaired
+    #assert rc_set_host(c, HOST_HEX); rc_pair(c); #assert drawn(e[..]) > 0 && e[0].shown[RB_CCOPY];   // asking
+    rc_reply(c, "request 1111111111111111111111111111111111111111111111111111111111111111 denied\n"); #assert drawn(e[..]) > 0 && e[0].shown[RB_CMAIN];
+    c[0].pair = RP_EXPIRED; #assert drawn(e[..]) > 0 && e[0].shown[RB_CMAIN];
+    c[0].pair = RP_ALLOWED; c[0].silent = true; #assert redit_computer_view(e[..]) == RV_OFFLINE && drawn(e[..]) > 0 && e[0].shown[RB_CCOPY];
+    rc_reply(c, "heard\n"); #assert redit_computer_view(e[..]) == RV_ALLOWED && drawn(e[..]) > 0 && e[0].shown[RB_CFIELD];
+    #assert rc_run(c, "a windmill by the river"); rc_reply(c, "thread 2222222222222222222222222222222222222222222222222222222222222222\nstep 1 Reading\nstep 2 Building\n");
+    #assert redit_computer_view(e[..]) == RV_RUNNING && drawn(e[..]) > 0 && e[0].shown[RB_CMAIN];
+    rc_reply(c, "run failed 2 Out of room\n"); #assert redit_computer_view(e[..]) == RV_FAILED && drawn(e[..]) > 0;
+    c[0].run_state = RJ_STOPPED; #assert redit_computer_view(e[..]) == RV_STOPPED && drawn(e[..]) > 0;
+    c[0].run_state = RJ_DONE; #assert redit_computer_view(e[..]) == RV_DONE && drawn(e[..]) > 0;
+    // every control sits inside the screen
+    for b: RB_CTAB..<RB_N { if e[0].shown[b] { #assert e[0].boxes[b].x0 >= 0 && e[0].boxes[b].x1 <= w && e[0].boxes[b].y1 <= h; } }
+  }
+}

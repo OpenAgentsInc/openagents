@@ -1,0 +1,452 @@
+// The wire behind YOUR COMPUTER (computer.coax; openagents#12642): this browser's own key, and the
+// pane's requests carried to the person's computer over the relay as NIP-HOST "Browser device
+// grants" in the direct artifact binding (coax/lib/nostr/host/browser.coax seals and opens them).
+// It is its own wasm unit (its signing tables are computed at compile time), linked into a realm's
+// module beside it; the realm's face moves bytes between the two (apps/openagents-web/computer-face.h).
+//
+// In: the pane's next op (cw_op, with 96 fresh random bytes), the relay socket's events (cw_socket),
+// and the record this browser kept (cw_restore). Out: frames for the socket (cw_take_frame), lines
+// for the pane (cw_take_lines, read by rc_reply) and the record to keep (cw_keep).
+//
+// The browser's secret key is made here from the browser's random bytes, kept only in this
+// browser's storage (the record's "secret" line) and never sent: requests are signed with it and
+// NIP-44 encrypted to the computer. The relay asks for NIP-42 AUTH; the answer is signed with the
+// same key. One request is in flight at a time; asking the same thing again within 50 s resends the
+// exact signed event (a retry the host answers once), and later gets a fresh request ID.
+//
+// A reply counts only when it opens for this key, is signed by the pinned computer, sits in our
+// request's mailbox, names our event, and answers our op (hb_reply_answers).
+//   coax/bin/coax test verse/edit/computer-wire.coax --library --run-steps 250000000
+#load "../../coax/lib/nostr/host/browser.coax";
+#load "../../coax/lib/nostr/message.coax";
+#load "../../coax/lib/nostr/nip19-core.coax";
+
+CW_RELAY :: "wss://relay.openagents.com";
+// the pane's ops (computer.coax RO_*)
+CW_PAIR :: 1; CW_STATUS :: 2; CW_CHECK :: 3; CW_RUN :: 4; CW_READ :: 5; CW_STOP :: 6; CW_FORGET :: 7;
+// cw_op's answer
+CW_SENT :: 1; CW_WAIT :: 0; CW_BADKEY :: -1; CW_REFUSED :: -2;
+CW_FRAMES :: 65536; CW_LINES :: 16384; CW_EVENT :: 16384;
+CW_RESEND_S :: 50;   // a request lives 60 s: resend the same one inside this, a fresh one after
+CW_AUTH_WAIT_S :: 2; // a relay that asks for AUTH asks at once
+
+ComputerWire :: struct {
+  w: [1] HbWork; body: [HB_BODY_MAX] u8; arena: [65536] u8;
+  secret: [32] u8; pub: [32] u8; pub_hex: [64] u8; has_key: bool;
+  host: [32] u8; host_hex: [64] u8; has_host: bool;
+  grant: [64] u8; grant_n: int; epoch: int; grant_expires: int;
+  keep_due: bool;
+  // the socket
+  open: bool; opened_at: int; challenge: [128] u8; challenge_n: int; authed: bool; ever_open: bool;
+  // the request in flight
+  op: int; req_hex: [64] u8; event_id: [64] u8; event: [CW_EVENT] u8; event_n: int; sent_at: int; sub_n: int;
+  args: [512] u8; args_n: int;   // what it asked, to tell a retry from a new ask
+  // out
+  frames: [CW_FRAMES] u8; frames_n: int; lines: [CW_LINES] u8; lines_n: int;
+}
+
+cw_put :: (b: [] u8, at: int, s: string) -> int { n := at; for i: 0..<s.count { if n >= b.count { return n; } b[n] = s[i]; n += 1; } return n; }
+cw_put_int :: (b: [] u8, at: int, v: int) -> int {
+  if v < 0 { return cw_put_int(b, cw_put(b, at, "-"), -v); }
+  d: [20] u8; k := 0; x := v;
+  while k == 0 || (x > 0 && k < 20) { d[k] = cast(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  n := at; while k > 0 && n < b.count { k -= 1; b[n] = d[k]; n += 1; }
+  return n;
+}
+cw_line :: (w: [] ComputerWire, s: string) {
+  if w[0].lines_n + s.count + 1 > CW_LINES { return; }
+  w[0].lines_n = cw_put(w[0].lines[..], w[0].lines_n, s);
+  w[0].lines_n = cw_put(w[0].lines[..], w[0].lines_n, "\n");
+}
+cw_frame :: (w: [] ComputerWire, s: string) {
+  // frames go out NUL-separated
+  if w[0].frames_n + s.count + 1 > CW_FRAMES { return; }
+  w[0].frames_n = cw_put(w[0].frames[..], w[0].frames_n, s);
+  w[0].frames[w[0].frames_n] = 0; w[0].frames_n += 1;
+}
+cw_word :: (line: string, k: int) -> string {
+  i := 0; c := 0;
+  while i < line.count {
+    while i < line.count && line[i] == ' ' { i += 1; }
+    e := i; while e < line.count && line[e] != ' ' { e += 1; }
+    if c == k { return line[i..<e]; }
+    c += 1; i = e;
+  }
+  return "";
+}
+cw_int :: (s: string) -> int { v := 0; if s.count == 0 { return -1; } for ch: s { if ch < '0' || ch > '9' { return -1; } v = v * 10 + cast(int) (ch - '0'); } return v; }
+
+// ---- the key, and the record
+
+// A new key from 32 random bytes (the face's crypto.getRandomValues). False when they make no key.
+cw_new_key :: (w: [] ComputerWire, random: [] u8) -> bool #export_c {
+  if random.count != 32 { return false; }
+  for i: 0..<32 { w[0].secret[i] = random[i]; }
+  w[0].has_key = hb_public(w[0].secret[..], w[0].pub[..]) && hb_hex(w[0].pub[..], w[0].pub_hex[..]);
+  w[0].grant_n = 0; w[0].keep_due = true;
+  return w[0].has_key;
+}
+cw_has_key :: (w: [] ComputerWire) -> bool #export_c { return w[0].has_key; }
+// The record: "secret HEX" and "grant HEX EPOCH EXPIRES"; the pane's own lines ride along.
+cw_restore :: (w: [] ComputerWire, text: string) #export_c {
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e]; i = e + 1;
+    head := cw_word(line, 0);
+    if head == "secret" {
+      s: [32] u8;
+      if hb_unhex(cw_word(line, 1), s[..]) {
+        for k: 0..<32 { w[0].secret[k] = s[k]; }
+        w[0].has_key = hb_public(w[0].secret[..], w[0].pub[..]) && hb_hex(w[0].pub[..], w[0].pub_hex[..]);
+      }
+      for k: 0..<32 { s[k] = 0; }
+    }
+    if head == "grant" && hb_hex64(cw_word(line, 1)) {
+      g := cw_word(line, 1); for k: 0..<64 { w[0].grant[k] = g[k]; } w[0].grant_n = 64;
+      w[0].epoch = cw_int(cw_word(line, 2)); w[0].grant_expires = cw_int(cw_word(line, 3));
+      if w[0].epoch < 0 { w[0].grant_n = 0; }
+    }
+  }
+}
+// The record to keep: the key, the grant, then the pane's lines as given.
+cw_keep :: (w: [] ComputerWire, pane: string, out: [] u8) -> int #export_c {
+  w[0].keep_due = false;
+  if !w[0].has_key { return 0; }
+  n := cw_put(out, 0, "secret ");
+  h: [64] u8; ok := hb_hex(w[0].secret[..], h[..]);
+  n = cw_put(out, n, cast(string) h[..]); n = cw_put(out, n, "\n");
+  for k: 0..<64 { h[k] = 0; }
+  if w[0].grant_n == 64 {
+    n = cw_put(out, n, "grant "); n = cw_put(out, n, cast(string) w[0].grant[..]); n = cw_put(out, n, " ");
+    n = cw_put_int(out, n, w[0].epoch); n = cw_put(out, n, " "); n = cw_put_int(out, n, w[0].grant_expires); n = cw_put(out, n, "\n");
+  }
+  return cw_put(out, n, pane);
+}
+cw_wants_keep :: (w: [] ComputerWire) -> bool #export_c { return w[0].keep_due; }
+// After FORGET: the grant goes (the face makes a new key too).
+cw_forgotten :: (w: [] ComputerWire) #export_c { w[0].grant_n = 0; w[0].has_host = false; w[0].keep_due = true; }
+
+// The computer's key as pasted: npub1... or 64 hex.
+cw_set_host :: (w: [] ComputerWire, text: string) -> bool #export_c {
+  x: [32] u8; ok := false;
+  if hb_hex64(text) { ok = hb_unhex(text, x[..]); }
+  else if text.count > 5 && text[0..<5] == "npub1" {
+    raw: [64] u8; r := nip19_decode_checked(text, raw[..], false);
+    if r.error == NC_OK && r.type == N19_NPUB && r.written == 32 { for i: 0..<32 { x[i] = raw[i]; } ok = true; }
+  }
+  if !ok { return false; }
+  if w[0].has_host { same := true; for i: 0..<32 { if w[0].host[i] != x[i] { same = false; } } if !same { w[0].grant_n = 0; } }
+  for i: 0..<32 { w[0].host[i] = x[i]; }
+  w[0].has_host = hb_hex(w[0].host[..], w[0].host_hex[..]);
+  return w[0].has_host;
+}
+
+// ---- the socket
+
+cw_socket_url :: () -> string #export_c { return CW_RELAY; }
+cw_wants_socket :: (w: [] ComputerWire) -> bool #export_c { return !w[0].open && w[0].has_key; }
+cw_ready :: (w: [] ComputerWire, now: int) -> bool { return w[0].open && (w[0].authed || (w[0].challenge_n == 0 && now - w[0].opened_at >= CW_AUTH_WAIT_S)); }
+
+// NIP-42: kind 22242 with the relay and the challenge, signed with this browser's key.
+cw_auth :: (w: [] ComputerWire, aux: [] u8, now: int) {
+  tags: [512] u8;
+  n := cw_put(tags[..], 0, "[[\"relay\",\""); n = cw_put(tags[..], n, CW_RELAY); n = cw_put(tags[..], n, "\"],[\"challenge\",");
+  jo: [1] Jo; q: [300] u8; jo_start(jo[..], q[..]); jo_str(jo[..], cast(string) w[0].challenge[0..<w[0].challenge_n]);
+  if jo[0].bad { return; }
+  n = cw_put(tags[..], n, jo_text(jo[..])); n = cw_put(tags[..], n, "]]");
+  sw: [1] NostrSignWork; scratch: [2048] u8; ev: [2048] u8; k := EVENT_MORE;
+  while k == EVENT_MORE { k = nostr_event_sign_step(w[0].secret[..], aux, now, 22242, cast(string) tags[0..<n], "", sw[..], scratch[..], ev[..], false); }
+  if k <= 0 { return; }
+  f: [2100] u8; m := cw_put(f[..], 0, "[\"AUTH\","); m = cw_put(f[..], m, cast(string) ev[0..<k]); m = cw_put(f[..], m, "]");
+  cw_frame(w, cast(string) f[0..<m]);
+  w[0].authed = true;
+}
+// The subscription for our request's reply, and the request, once the socket can carry them.
+cw_publish :: (w: [] ComputerWire) {
+  if w[0].event_n == 0 { return; }
+  filt: [512] u8; fn := hb_reply_filter(cast(string) w[0].pub_hex[..], cast(string) w[0].req_hex[..], filt[..]);
+  if fn < 0 { return; }
+  f: [700] u8; m := cw_put(f[..], 0, "[\"REQ\",\"r"); m = cw_put(f[..], m, cast(string) w[0].req_hex[0..<16]); m = cw_put(f[..], m, "\",");
+  m = cw_put(f[..], m, cast(string) filt[0..<fn]); m = cw_put(f[..], m, "]");
+  cw_frame(w, cast(string) f[0..<m]);
+  ev: [CW_EVENT + 16] u8; e := cw_put(ev[..], 0, "[\"EVENT\","); e = cw_put(ev[..], e, cast(string) w[0].event[0..<w[0].event_n]); e = cw_put(ev[..], e, "]");
+  cw_frame(w, cast(string) ev[0..<e]);
+}
+cw_close_sub :: (w: [] ComputerWire) {
+  if w[0].event_n == 0 { return; }
+  f: [64] u8; m := cw_put(f[..], 0, "[\"CLOSE\",\"r"); m = cw_put(f[..], m, cast(string) w[0].req_hex[0..<16]); m = cw_put(f[..], m, "\"]");
+  cw_frame(w, cast(string) f[0..<m]);
+}
+
+// A socket event (coax/web/host.js: 0 opened, 1 a frame, 2 closed, 3 an error). aux: 32 fresh random bytes.
+cw_socket :: (w: [] ComputerWire, event: int, text: string, aux: [] u8, now: int) #export_c {
+  if event == 0 { w[0].open = true; w[0].opened_at = now; w[0].authed = false; w[0].challenge_n = 0; if w[0].ever_open { cw_line(w, "online"); } w[0].ever_open = true; return; }
+  if event == 2 || event == 3 {
+    if w[0].open || event == 3 { cw_line(w, "offline"); }
+    w[0].open = false; w[0].authed = false;
+    return;
+  }
+  if event != 1 || text.count < 8 { return; }
+  if text.count > 9 && text[0..<9] == "[\"AUTH\",\"" {
+    j: [1] Json; json_start(j[..], text);
+    if json_next(j[..]) != JSON_ARRAY || json_next(j[..]) != JSON_STRING || json_next(j[..]) != JSON_STRING { return; }
+    c: [128] u8; cn := json_unescape(json_text(j[..]), c[..]);
+    if cn <= 0 { return; }
+    for i: 0..<cn { w[0].challenge[i] = c[i]; } w[0].challenge_n = cn;
+    cw_auth(w, aux, now);
+    return;
+  }
+  m := nostr_message_read(text);
+  if m.error != NM_OK || m.type != NM_EVENT { return; }
+  cw_reply(w, nm_text(m, m.event));
+}
+
+// ---- out: the pane's op
+
+// What the op asks, to tell a retry from a new ask.
+cw_args :: (op: int, a: string, b: string, cursor: int, out: [] u8) -> int {
+  n := cw_put_int(out, 0, op); n = cw_put(out, n, "|"); n = cw_put(out, n, a); n = cw_put(out, n, "|"); n = cw_put(out, n, b); n = cw_put(out, n, "|");
+  return cw_put_int(out, n, cursor);
+}
+// The pane's op: host (the key as pasted), arg (the pairing request for STATUS and CHECK, the thread
+// for READ and STOP, the words for RUN), realm, cursor, label; random: 96 fresh bytes (request ID,
+// NIP-44 nonce, BIP-340 aux). CW_SENT, CW_WAIT (the socket isn't ready: ask again), CW_BADKEY, CW_REFUSED.
+cw_op :: (w: [] ComputerWire, op: int, host: string, arg: string, realm: string, cursor: int, label: string, random: [] u8, now: int) -> int #export_c {
+  if !w[0].has_key || random.count != 96 { return CW_WAIT; }
+  if !cw_set_host(w, host) { cw_line(w, "key bad"); return CW_BADKEY; }
+  if !cw_ready(w, now) { return CW_WAIT; }
+  hop := ifx op == CW_PAIR then HB_OP_BROWSER_REQUEST else ifx op == CW_STATUS || op == CW_CHECK then HB_OP_BROWSER_STATUS
+         else ifx op == CW_FORGET then HB_OP_BROWSER_FORGET else ifx op == CW_RUN then HB_OP_THREAD_RUN
+         else ifx op == CW_READ then HB_OP_THREAD_READ else ifx op == CW_STOP then HB_OP_THREAD_STOP else 0;
+  if hop == 0 { return CW_REFUSED; }
+  if hb_op_right(hop) >= 0 && w[0].grant_n != 64 { cw_line(w, "refused revoked"); return CW_REFUSED; }
+  args: [512] u8; an := cw_args(op, arg, realm, cursor, args[..]);
+  // the same ask again, inside a request's life: the same signed event
+  if w[0].event_n > 0 && w[0].op == op && now - w[0].sent_at < CW_RESEND_S && cast(string) w[0].args[0..<w[0].args_n] == cast(string) args[0..<an] {
+    cw_publish(w);
+    return CW_SENT;
+  }
+  cw_close_sub(w);
+  rq: [64] u8; if !hb_hex(random[0..<32], rq[..]) { return CW_REFUSED; }
+  q: HbRequest;
+  q.request = cast(string) rq[..]; q.host = cast(string) w[0].host_hex[..]; q.relay = CW_RELAY;
+  q.issued_at = now; q.expires_at = now + HB_WINDOW; q.op = hop;
+  if hb_op_right(hop) >= 0 { q.grant = cast(string) w[0].grant[..]; q.epoch = w[0].epoch; }
+  lab: [HB_LABEL_MAX] u8; ln := 0;
+  for ch: label { if ch >= 32 && ch != 127 && ln < HB_LABEL_MAX { lab[ln] = ch; ln += 1; } }
+  if hop == HB_OP_BROWSER_REQUEST { q.key = cast(string) w[0].pub_hex[..]; q.label = cast(string) lab[0..<ln]; }
+  if hop == HB_OP_BROWSER_STATUS { q.pairing = arg; }
+  if hop == HB_OP_THREAD_RUN { q.text = arg; q.realm = realm; }
+  if hop == HB_OP_THREAD_READ || hop == HB_OP_THREAD_STOP { q.thread = arg; }
+  if hop == HB_OP_THREAD_READ { q.after = ifx cursor < 0 then 0 else cursor; }
+  n := hb_request_seal(q, w[0].secret[..], w[0].host[..], random[32..<64], random[64..<96], now, w[0].w[..], w[0].event[..]);
+  if n <= 0 { return CW_REFUSED; }
+  w[0].event_n = n; w[0].op = op; w[0].sent_at = now;
+  for i: 0..<64 { w[0].req_hex[i] = rq[i]; }
+  for i: 0..<an { w[0].args[i] = args[i]; } w[0].args_n = an;
+  ev := nostr_event_read(cast(string) w[0].event[0..<n], w[0].body[..], false);
+  if ev.error != NE_OK || !hb_hex(ev.id[..], w[0].event_id[..]) { w[0].event_n = 0; return CW_REFUSED; }
+  cw_publish(w);
+  return CW_SENT;
+}
+
+// ---- in: the host's reply
+
+// A step's words on one line: no line ends, at most 150 bytes, cut at a character.
+cw_step_line :: (w: [] ComputerWire, p_seq: int, text: string) {
+  b: [200] u8; n := cw_put(b[..], 0, "step "); n = cw_put_int(b[..], n, p_seq); n = cw_put(b[..], n, " ");
+  start := n; i := 0;
+  while i < text.count && n - start < 150 {
+    ch := text[i];
+    if ch == '\n' || ch == '\r' || ch == '\t' { ch = ' '; }
+    if ch >= 32 { b[n] = ch; n += 1; }
+    i += 1;
+  }
+  // cut short: drop the last character whole, not half of it
+  if i < text.count { while n > start && (b[n - 1] & 0x80) != 0 { n -= 1; } }
+  cw_line(w, cast(string) b[0..<n]);
+}
+cw_reply :: (w: [] ComputerWire, text: string) {
+  if w[0].event_n == 0 { return; }
+  rp: [1] HbReply; a := [1] HbText.[HbText.{buf = w[0].arena[..]}];
+  r := hb_reply_open(text, w[0].secret[..], w[0].pub[..], w[0].w[..], w[0].body[..], rp[..], a[..]);
+  if r.error != HB_OK { return; }
+  if cast(string) r.signer[..] != cast(string) w[0].host_hex[..] { return; }
+  if rp[0].request != cast(string) w[0].req_hex[..] || rp[0].request_event != cast(string) w[0].event_id[..] { return; }
+  hop := ifx w[0].op == CW_PAIR then HB_OP_BROWSER_REQUEST else ifx w[0].op == CW_STATUS || w[0].op == CW_CHECK then HB_OP_BROWSER_STATUS
+         else ifx w[0].op == CW_FORGET then HB_OP_BROWSER_FORGET else ifx w[0].op == CW_RUN then HB_OP_THREAD_RUN
+         else ifx w[0].op == CW_READ then HB_OP_THREAD_READ else HB_OP_THREAD_STOP;
+  if !hb_reply_answers(hop, rp[0]) { return; }
+  op := w[0].op;
+  cw_close_sub(w); w[0].event_n = 0;   // answered: a new ask is a new request
+  b: [256] u8;
+  if !rp[0].ok {
+    n := cw_put(b[..], 0, "refused "); n = cw_put(b[..], n, rp[0].code);
+    if rp[0].code == "revoked" || rp[0].code == "stale" || rp[0].code == "expired" { w[0].grant_n = 0; w[0].keep_due = true; }
+    cw_line(w, cast(string) b[0..<n]);
+    return;
+  }
+  if rp[0].outcome == HB_OUT_PAIRING {
+    st := HB_PAIRING_STATES;
+    if rp[0].state == HB_ALLOWED && hb_hex64(rp[0].grant) {
+      if w[0].grant_n != 64 || cast(string) w[0].grant[..] != rp[0].grant || w[0].epoch != rp[0].epoch { w[0].keep_due = true; }
+      for i: 0..<64 { w[0].grant[i] = rp[0].grant[i]; } w[0].grant_n = 64; w[0].epoch = rp[0].epoch; w[0].grant_expires = rp[0].grant_expires;
+    }
+    if op == CW_CHECK { cw_line(w, "heard"); return; }
+    n := cw_put(b[..], 0, "request "); n = cw_put(b[..], n, rp[0].pairing); n = cw_put(b[..], n, " "); n = cw_put(b[..], n, st[rp[0].state]);
+    cw_line(w, cast(string) b[0..<n]);
+    return;
+  }
+  if rp[0].outcome == HB_OUT_FORGOTTEN { cw_forgotten(w); cw_line(w, "forgot"); return; }
+  if rp[0].outcome == HB_OUT_DISPATCHED {
+    if rp[0].operation == HB_OP_THREAD_STOP { cw_line(w, "stopped"); return; }
+    n := cw_put(b[..], 0, "thread "); n = cw_put(b[..], n, rp[0].reference);
+    cw_line(w, cast(string) b[0..<n]);
+    return;
+  }
+  if rp[0].outcome == HB_OUT_STEPS {
+    for i: 0..<rp[0].nsteps { cw_step_line(w, rp[0].steps[i].seq, rp[0].steps[i].text); }
+    word := ifx rp[0].state == HB_FINISHED then "done" else ifx rp[0].state == HB_STOPPED then "stopped" else ifx rp[0].state == HB_FAILED then "failed" else "running";
+    n := cw_put(b[..], 0, "run "); n = cw_put(b[..], n, word); n = cw_put(b[..], n, " "); n = cw_put_int(b[..], n, rp[0].next);
+    cw_line(w, cast(string) b[0..<n]);
+  }
+}
+
+// ---- out to the face
+
+// The next frame for the socket into out: its length, 0 none.
+cw_take_frame :: (w: [] ComputerWire, out: [] u8) -> int #export_c {
+  if w[0].frames_n == 0 { return 0; }
+  e := 0; while e < w[0].frames_n && w[0].frames[e] != 0 { e += 1; }
+  if e > out.count { w[0].frames_n = 0; return 0; }
+  for i: 0..<e { out[i] = w[0].frames[i]; }
+  rest := w[0].frames_n - e - 1;
+  for i: 0..<rest { w[0].frames[i] = w[0].frames[e + 1 + i]; }
+  w[0].frames_n = rest;
+  return e;
+}
+// The lines for the pane (rc_reply) into out: their length, 0 none.
+cw_take_lines :: (w: [] ComputerWire, out: [] u8) -> int #export_c {
+  n := w[0].lines_n; if n > out.count { n = out.count; }
+  for i: 0..<n { out[i] = w[0].lines[i]; }
+  w[0].lines_n = 0;
+  return n;
+}
+
+// ---- checks: a stand-in host opens what the wire sends and seals its answers with the same codec
+
+CWT_HOST_SECRET :: "0000000000000000000000000000000000000000000000000000000000000001";
+CWT_HOST_X :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+CWT_BROWSER_X :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+CWT_GRANT :: "2222222222222222222222222222222222222222222222222222222222222222";
+CWT_THREAD :: "44444444444444444444444444444444";
+CWT_T0 :: 1790000000;
+CwtHost :: struct { w: [1] HbWork; body: [HB_BODY_MAX] u8; arena: [16384] u8; q: [1] HbRequest; id: [64] u8; frame: [CW_EVENT + 64] u8; }
+
+cwt_random :: (seed: u8, out: [] u8) { for i: 0..<out.count { out[i] = cast(u8) ((cast(int) seed * 13 + i * 7 + 1) % 256); } }
+// The EVENT frame the wire queued, opened by the host: the request's op, or 0.
+cwt_take_request :: (cw: [] ComputerWire, h: [] CwtHost) -> int {
+  f: [CW_EVENT + 64] u8; n := cw_take_frame(cw, f[..]);
+  while n > 0 && !(n > 9 && cast(string) f[0..<9] == "[\"EVENT\",") { n = cw_take_frame(cw, f[..]); }
+  if n == 0 { return 0; }
+  ev := cast(string) f[9..<n - 1];
+  hs: [32] u8; hx: [32] u8; ok := hb_unhex(CWT_HOST_SECRET, hs[..]) && hb_unhex(CWT_HOST_X, hx[..]);
+  a := [1] HbText.[HbText.{buf = h[0].arena[..]}];
+  r := hb_request_open(ev, hs[..], hx[..], h[0].w[..], h[0].body[..], h[0].q[..], a[..]);
+  if r.error != HB_OK { return 0; }
+  for i: 0..<64 { h[0].id[i] = r.id[i]; }
+  return h[0].q[0].op;
+}
+// The host's answer to the request it read, fed to the wire as a relay EVENT frame.
+cwt_answer :: (cw: [] ComputerWire, h: [] CwtHost, rp: HbReply) {
+  r := rp; r.request = h[0].q[0].request; r.request_event = cast(string) h[0].id[..]; r.host = CWT_HOST_X;
+  r.issued_at = CWT_T0; r.expires_at = CWT_T0 + 60;
+  hs: [32] u8; bx: [32] u8; ok := hb_unhex(CWT_HOST_SECRET, hs[..]) && hb_unhex(CWT_BROWSER_X, bx[..]);
+  nonce: [32] u8; aux: [32] u8; cwt_random(9, nonce[..]); cwt_random(11, aux[..]);
+  ev: [CW_EVENT] u8; n := hb_reply_seal(r, hs[..], bx[..], nonce[..], aux[..], CWT_T0, h[0].w[..], ev[..]);
+  m := cw_put(h[0].frame[..], 0, "[\"EVENT\",\"r1\","); m = cw_put(h[0].frame[..], m, cast(string) ev[0..<n]); m = cw_put(h[0].frame[..], m, "]");
+  cw_socket(cw, 1, cast(string) h[0].frame[0..<m], aux[..], CWT_T0);
+}
+cwt_lines :: (cw: [] ComputerWire, out: [] u8) -> string { n := cw_take_lines(cw, out); return cast(string) out[0..<n]; }
+cwt_op :: (cw: [] ComputerWire, op: int, arg: string, cursor: int, seed: u8) -> int {
+  r: [96] u8; cwt_random(seed, r[..]);
+  return cw_op(cw, op, CWT_HOST_X, arg, "moonlit-marsh", cursor, "Chrome on Mac", r[..], CWT_T0);
+}
+cwt_ok :: (outcome: int) -> HbReply { r: HbReply; r.ok = true; r.outcome = outcome; return r; }
+
+#test "wire: the key is kept, the relay's AUTH is answered, and a pasted npub is the computer" #steps 2000000000 {
+  cw: [1] ComputerWire;
+  cw_restore(cw[..], "secret 0000000000000000000000000000000000000000000000000000000000000002\nhost x\n");
+  #assert cw_has_key(cw[..]) && cast(string) cw[0].pub_hex[..] == CWT_BROWSER_X;
+  out: [512] u8; n := cw_keep(cw[..], "host x\n", out[..]);
+  #assert cast(string) out[0..<n] == "secret 0000000000000000000000000000000000000000000000000000000000000002\nhost x\n";
+  #assert !cw_set_host(cw[..], "not a key") && cw_set_host(cw[..], "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d");
+  #assert cast(string) cw[0].host_hex[..] == CWT_HOST_X;
+  aux: [32] u8;
+  #assert cwt_op(cw[..], CW_PAIR, "", 0, 1) == CW_WAIT;   // no socket yet
+  cw_socket(cw[..], 0, "", aux[..], CWT_T0);
+  #assert cwt_op(cw[..], CW_PAIR, "", 0, 1) == CW_WAIT;   // a relay asks for AUTH at once
+  cw_socket(cw[..], 1, "[\"AUTH\",\"challenge-1\"]", aux[..], CWT_T0);
+  f: [4096] u8; m := cw_take_frame(cw[..], f[..]);
+  #assert m > 0 && cast(string) f[0..<9] == "[\"AUTH\",{" && cw[0].authed;
+  ev := nostr_event_read(cast(string) f[8..<m - 1], cw[0].body[..], false);
+  #assert ev.error == NE_OK && ev.kind == 22242 && nostr_fast_verify_vartime(ev.id[..], ev.public_key[..], ev.signature[..]);
+  r: [96] u8; cwt_random(1, r[..]);
+  #assert cw_op(cw[..], CW_PAIR, "bad", "", "moonlit-marsh", 0, "x", r[..], CWT_T0) == CW_BADKEY;
+  l: [512] u8; #assert cwt_lines(cw[..], l[..]) == "key bad\n";
+}
+#test "wire: pair, and allowed with a grant" #steps 4000000000 {
+  cw: [1] ComputerWire; h: [1] CwtHost; aux: [32] u8; l: [4096] u8;
+  cw_restore(cw[..], "secret 0000000000000000000000000000000000000000000000000000000000000002\n");
+  cw_socket(cw[..], 0, "", aux[..], CWT_T0 - 5);
+  // a thread op before any grant is refused here, and unpairs the pane
+  #assert cwt_op(cw[..], CW_RUN, "a barn", 0, 2) == CW_REFUSED && cwt_lines(cw[..], l[..]) == "refused revoked\n";
+  #assert cwt_op(cw[..], CW_PAIR, "", 0, 3) == CW_SENT;
+  f: [1024] u8; m := cw_take_frame(cw[..], f[..]);
+  #assert cast(string) f[0..<8] == "[\"REQ\",\"" && cw[0].frames_n > 0;   // subscribed before it publishes
+  cw[0].frames_n = 0; #assert cwt_op(cw[..], CW_PAIR, "", 0, 3) == CW_SENT;   // asked again: the same event
+  #assert cwt_take_request(cw[..], h[..]) == HB_OP_BROWSER_REQUEST && h[0].q[0].key == CWT_BROWSER_X && h[0].q[0].label == "Chrome on Mac";
+  p := cwt_ok(HB_OUT_PAIRING); p.pairing = h[0].q[0].request; p.state = HB_ASKED;
+  cwt_answer(cw[..], h[..], p);
+  pairing: [64] u8; for i: 0..<64 { pairing[i] = h[0].q[0].request[i]; }
+  lines := cwt_lines(cw[..], l[..]);
+  #assert lines.count == 79 && cast(string) lines[0..<8] == "request " && cast(string) lines[72..<79] == " asked\n";
+  // a second copy of the same reply says nothing more
+  cwt_answer(cw[..], h[..], p); #assert cwt_lines(cw[..], l[..]) == "";
+  #assert cwt_op(cw[..], CW_STATUS, cast(string) pairing[..], 0, 4) == CW_SENT && cwt_take_request(cw[..], h[..]) == HB_OP_BROWSER_STATUS;
+  #assert h[0].q[0].pairing == cast(string) pairing[..];
+  a := cwt_ok(HB_OUT_PAIRING); a.pairing = cast(string) pairing[..]; a.state = HB_ALLOWED; a.grant = CWT_GRANT; a.epoch = 3; a.grant_expires = CWT_T0 + 604800;
+  cwt_answer(cw[..], h[..], a);
+  #assert cast(string) cwt_lines(cw[..], l[..])[72..<80] == " allowed" && cw[0].grant_n == 64 && cw[0].epoch == 3 && cw_wants_keep(cw[..]);
+  k: [512] u8; kn := cw_keep(cw[..], "", k[..]);
+  #assert cast(string) k[0..<kn] == "secret 0000000000000000000000000000000000000000000000000000000000000002\ngrant 2222222222222222222222222222222222222222222222222222222222222222 3 1790604800\n";
+}
+#test "wire: run, read the steps, stop; a revoked browser loses its grant" #steps 4000000000 {
+  cw: [1] ComputerWire; h: [1] CwtHost; aux: [32] u8; l: [4096] u8;
+  cw_restore(cw[..], "secret 0000000000000000000000000000000000000000000000000000000000000002\ngrant 2222222222222222222222222222222222222222222222222222222222222222 3 1790604800\nhost x\n");
+  #assert cw[0].grant_n == 64 && cw[0].epoch == 3 && cw[0].grant_expires == CWT_T0 + 604800;
+  cw_socket(cw[..], 0, "", aux[..], CWT_T0 - 5);
+  #assert cwt_op(cw[..], CW_RUN, "add a red barn", 0, 5) == CW_SENT && cwt_take_request(cw[..], h[..]) == HB_OP_THREAD_RUN;
+  #assert h[0].q[0].text == "add a red barn" && h[0].q[0].realm == "moonlit-marsh" && h[0].q[0].grant == CWT_GRANT && h[0].q[0].epoch == 3;
+  ds := cwt_ok(HB_OUT_DISPATCHED); ds.operation = HB_OP_THREAD_RUN; ds.reference = CWT_THREAD;
+  cwt_answer(cw[..], h[..], ds);
+  #assert cwt_lines(cw[..], l[..]) == "thread 44444444444444444444444444444444\n";
+  #assert cwt_op(cw[..], CW_READ, CWT_THREAD, 0, 6) == CW_SENT && cwt_take_request(cw[..], h[..]) == HB_OP_THREAD_READ && h[0].q[0].after == 0;
+  st := cwt_ok(HB_OUT_STEPS); st.thread = CWT_THREAD; st.state = HB_RUNNING; st.next = 2; st.nsteps = 2;
+  st.steps[0] = HbStep.{seq = 1, kind = "tool", text = "Reading the realm"}; st.steps[1] = HbStep.{seq = 2, kind = "text", text = "Placing\na barn"};
+  cwt_answer(cw[..], h[..], st);
+  #assert cwt_lines(cw[..], l[..]) == "step 1 Reading the realm\nstep 2 Placing a barn\nrun running 2\n";
+  #assert cwt_op(cw[..], CW_STOP, CWT_THREAD, 0, 7) == CW_SENT && cwt_take_request(cw[..], h[..]) == HB_OP_THREAD_STOP;
+  sp := cwt_ok(HB_OUT_DISPATCHED); sp.operation = HB_OP_THREAD_STOP; sp.reference = CWT_THREAD;
+  cwt_answer(cw[..], h[..], sp);
+  #assert cwt_lines(cw[..], l[..]) == "stopped\n";
+  // a revoked browser hears refused, and its grant goes
+  #assert cwt_op(cw[..], CW_READ, CWT_THREAD, 2, 8) == CW_SENT && cwt_take_request(cw[..], h[..]) == HB_OP_THREAD_READ;
+  rf: HbReply; rf.ok = false; rf.code = "revoked";
+  cwt_answer(cw[..], h[..], rf);
+  #assert cwt_lines(cw[..], l[..]) == "refused revoked\n" && cw[0].grant_n == 0;
+  // the socket going away is the page offline, and back
+  cw_socket(cw[..], 2, "", aux[..], CWT_T0); cw_socket(cw[..], 0, "", aux[..], CWT_T0);
+  #assert cwt_lines(cw[..], l[..]) == "offline\nonline\n";
+}
