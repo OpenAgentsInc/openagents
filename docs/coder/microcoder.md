@@ -1,6 +1,7 @@
 # Microcoder in Coax, and the inference gateways
 
 Written 2026-10-28. Project: [Coder](https://openagents.com/projects/coder).
+Book: [chapter 9 of Coder: Coding Agents From Scratch](../../coder/book/ch009-microcoder.md).
 
 The desktop Lab sends each message to Mammoth first (`apps/openagents-desktop/router.coax`).
 Mammoth picks `claude_code`, `codex` or `other`. **`other` goes to Microcoder**:

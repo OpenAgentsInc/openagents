@@ -60,8 +60,9 @@ What we drop:
 - Hand-written dispatch and help text. In v1, one command table drives the
   parser, help, the MCP tool list and the reference table in this doc
   (see [One command table](#one-command-table)).
-- Commands for the retired stacks (Coder service, Foreman, sales, cloud
-  pools, Boat). They don't return.
+- Commands for the retired stacks (the old Coder Cloud Run service, Foreman,
+  sales, cloud pools, Boat). They don't return. The new `coder` domain below
+  is a different thing: a local-first coding agent built in Coax.
 
 ## Shape
 
@@ -466,6 +467,35 @@ Each one ships when its server surface exists:
 | `nostr` | sign, publish, query relays | `coax/lib/nostr` client, relay pool |
 | `pylon` | link a Pylon to the account, see its jobs and XP | [connect a Pylon](../connect-a-pylon.md) |
 | `realm watch` | follow a realm's revisions and proposals live | the room service |
+
+## The coder domain (planned)
+
+Added 2026-11-01. `openagents coder` runs Coder, OpenAgents' coding agent, as
+specified chapter by chapter in [Coder: Coding Agents From Scratch](../../coder/book/README.md).
+OpenAgents is the general agent that routes and replies in every channel;
+Coder is the Worker that takes one repository task to a pull request
+([the split](../../coder/book/PLAN.md#openagents-and-coder)).
+
+| Verb | What it does | Needs a server |
+| --- | --- | --- |
+| `coder run "TASK" [--engine micro\|claude\|codex\|psionic] [--on mac\|cloud] [--cwd DIR] [--detach]` | start a task; prints its ID and streams its steps | only for `--on cloud` |
+| `coder ls` | tasks with state, engine, Thread and age | no |
+| `coder status ID` | one task's state, last step and ending | no |
+| `coder log ID` | the task's session log, as text or `--json` lines | no |
+| `coder attach ID` | follow a running task and send it messages | no |
+| `coder stop ID` | stop a task and its tools | no |
+| `coder fork ID [--at TURN]` | a new task from a turn boundary | no |
+| `coder replay ID` | rebuild every request from the log and compare bytes | no |
+| `coder watch THREAD` | subscribe Coder to a Thread such as `github:owner/repo#123` | yes |
+| `coder policy list\|add\|rm` | trigger policies for acting without being asked | yes |
+| `coder daemon` | attach this machine as an execution environment | yes |
+| `coder bench SUITE` | run a harness suite and report it | no |
+
+This domain is an exception to "a domain ships only when its routes exist":
+its local verbs need no routes. The verbs marked "yes" wait for the routes in
+the book's chapters 17 and 20, and ship under the normal rule. Without
+`--engine`, `run` asks a System One decision which engine to use (chapter 13).
+Every verb is in the one command table, so each is also an MCP tool.
 
 ## Order of work
 

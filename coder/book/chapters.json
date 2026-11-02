@@ -1,0 +1,20 @@
+{"schema": 1, "book": "coder", "chapters": [
+  {"number": 9, "title": "Microcoder", "file": "ch009-microcoder.md", "status": "design draft", "profile": null, "depends_on": [1, 5], "source": ["coax/lib/microcoder/loop.coax", "coax/lib/microcoder/state.coax", "coax/lib/microcoder/action.coax", "coax/lib/microcoder/tools.coax", "coax/lib/microcoder/run.coax"], "qualified_targets": [], "adopted_by": []},
+  {"number": 10, "title": "Drive Claude Code", "file": "ch010-drive-claude-code.md", "status": "design draft", "profile": null, "depends_on": [2, 5, 16], "source": ["coax/lib/agent/claude/query.coax", "coax/lib/agent/claude/control.coax", "coax/lib/agent/claude/mcp.coax", "coax/lib/agent/claude/transport.coax"], "qualified_targets": [], "adopted_by": []},
+  {"number": 11, "title": "Drive Codex", "file": "ch011-drive-codex.md", "status": "design draft", "profile": null, "depends_on": [2, 5, 10], "source": ["coax/lib/agent/codex/client.coax", "coax/lib/agent/codex/transport.coax", "coax/lib/agent/codex/codex.coax"], "qualified_targets": [], "adopted_by": []},
+  {"number": 12, "title": "A Psionic-served model as an engine", "file": "ch012-a-psionic-served-model.md", "status": "design draft", "profile": null, "depends_on": [3, 9, "psionic:53", "psionic:174", "psionic:176"], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 13, "title": "Choose an engine", "file": "ch013-choose-an-engine.md", "status": "design draft", "profile": null, "depends_on": [9, 10, 11, 12, 16], "source": ["apps/openagents-desktop/router.coax"], "qualified_targets": [], "adopted_by": []},
+  {"number": 23, "title": "`openagents coder`", "file": "ch023-openagents-coder.md", "status": "design draft", "profile": null, "depends_on": [1, 2, 9, 13, 14, 17, 20, 21], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 24, "title": "DeepSeek Harness", "file": "ch024-deepseek-harness.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 25, "title": "Claude Code", "file": "ch025-claude-code.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 26, "title": "Codex", "file": "ch026-codex.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 27, "title": "OpenCode", "file": "ch027-opencode.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 28, "title": "Goose", "file": "ch028-goose.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 29, "title": "Aider", "file": "ch029-aider.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 30, "title": "mini-SWE-agent", "file": "ch030-mini-swe-agent.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 31, "title": "OpenHands Software Agent SDK", "file": "ch031-openhands-sdk.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 32, "title": "Hermes Agent", "file": "ch032-hermes-agent.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 33, "title": "Toad", "file": "ch033-toad.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 34, "title": "Background Agents", "file": "ch034-background-agents.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 35, "title": "Flue and Agent OS", "file": "ch035-flue-and-agent-os.md", "status": "planned", "profile": null, "depends_on": [], "source": [], "qualified_targets": [], "adopted_by": []}
+]}

@@ -9,6 +9,10 @@ pre-reset survey of an earlier revision is at
 `git show 0b401561a0^:docs/coder-new/deepseek-harness-lessons.md`. Part XXI of
 the [book plan](../book/PLAN.md) takes its scope from here.
 
+> Since 2026-11-01 the harness is becoming its own book,
+> [Coder: Coding Agents From Scratch](../../coder/book/README.md). These notes
+> feed its Part VII chapter on DeepSeek Harness and its Parts I–IV.
+
 ## Why study this harness
 
 DeepSeek publishes the whole stack: its models, its serving engine and article

@@ -1,10 +1,12 @@
 # Paths through the books
 
-The four books are [The Coax Programming Language](../../coax/book/README.md),
+The four books with routes here are [The Coax Programming Language](../../coax/book/README.md),
 [Psionic: ML From Scratch](../../psionic/book/README.md),
 [Building Aethyr, World Engine](../../aethyr/book/README.md) and
 [Nostr From Scratch](../../nostr/book/README.md). Chapter numbers below are
-each book's own.
+each book's own. A fifth book, [Coder: Coding Agents From Scratch](../../coder/book/README.md),
+started on 2026-11-01 and has no runnable route yet; its harness chapters are
+moving from Part XXI of the Psionic book.
 
 The [supported-route catalog](routes.json) declares four bounded CPU routes.
 The [delivery process](DELIVERY.md) explains clean-checkout execution, selective

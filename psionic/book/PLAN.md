@@ -734,6 +734,11 @@ peers or offering Large 4 as a service each need owner approval.
 
 ## XXI. A harness for Psionic models
 
+> **Moving.** On 2026-11-01 this part began moving to its own book,
+> [Coder: Coding Agents From Scratch](../../coder/book/README.md), with its code
+> in `lib/harness/`. The [Coder plan](../../coder/book/PLAN.md#what-stays-in-psionic)
+> says which pieces stay here. Until the move, the chapters below are the source.
+
 A harness turns a served model into an agent: it assembles each request, runs
 the tools the model asks for, keeps the session's history and decides when a
 turn is done. DeepSeek publishes its models, its serving system and
