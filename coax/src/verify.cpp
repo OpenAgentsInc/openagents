@@ -26,6 +26,10 @@
 #include <sys/prctl.h>
 #endif
 #include <sys/wait.h>
+#include <poll.h>
+#include <fcntl.h>
+#include <cstring>
+#include <set>
 #include <unistd.h>
 
 namespace coax {
@@ -94,14 +98,28 @@ static void print_step_profile(const File *file, const CheckOutcome &r) {
   fflush(stdout);
 }
 
+// A check that already passed in a child process (parallel_checks): its steps,
+// cases, time and the procedures it entered, as run_check reported them there.
+struct PassedCheck {
+  bool passed = false;
+  uint64_t steps = 0, cases = 0, budget = 0;
+  double seconds = 0;
+  std::vector<const ProcDecl *> executed;
+};
+
+// passed: the checks that already passed in a child process (parallel_checks);
+// each is taken as its child reported it, and every other check runs here.
 static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::vector<uint64_t> *steps = nullptr, int32_t *failures = nullptr,
                            std::vector<std::vector<const ProcDecl *>> *paths = nullptr, bool *unstable = nullptr,
-                           const std::string *only = nullptr, int32_t *ran = nullptr, bool profile = false) {
+                           const std::string *only = nullptr, int32_t *ran = nullptr, bool profile = false,
+                           const std::vector<PassedCheck> *passed = nullptr) {
   bool ok = true;
   std::vector<const ProcDecl *> executed;
   if (failures) *failures = 0;
   if (ran) *ran = 0;
+  int32_t index = -1;
   for (CheckDecl *c : file->checks) {
+    ++index;
     if (only && to_std(c->name).find(*only) == std::string::npos) {
       evidence_claim({c->forall ? "#forall" : "#test", to_std(c->name), "", "excluded by --only", "", EV_check(false, false, false), 0, 0, c->loc});
       continue;
@@ -110,10 +128,19 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     const auto slots = file->ct_memory->slots, containers = file->ct_memory->containers;
     const auto began = std::chrono::steady_clock::now();
     // A check's own #steps budget replaces the file's.
-    CheckOutcome r = run_check(file, c, c->steps ? c->steps : max_steps, profile);
-    const long long ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
+    const PassedCheck *child = passed && (size_t)index < passed->size() && (*passed)[(size_t)index].passed ? &(*passed)[(size_t)index] : nullptr;
+    CheckOutcome r;
+    if (child) {
+      r.passed = true;
+      r.steps = child->steps;
+      r.cases = child->cases;
+      r.budget = child->budget;
+      r.executed = child->executed;
+    } else r = run_check(file, c, c->steps ? c->steps : max_steps, profile);
+    const double seconds = child ? child->seconds : seconds_since(began);
+    const long long ms = (long long)(seconds * 1000);
     if (g_timings.on())
-      g_timings.checks.push_back({c->forall ? "#forall" : "#test", to_std(c->name), g_timings.check_phase, seconds_since(began), r.steps, r.cases, r.passed});
+      g_timings.checks.push_back({c->forall ? "#forall" : "#test", to_std(c->name), g_timings.check_phase, seconds, r.steps, r.cases, r.passed});
     if (paths) paths->push_back(r.executed);
     if (unstable && MS_storage_changed(slots, containers, file->ct_memory->slots, file->ct_memory->containers)) *unstable = true;
     if (steps) steps->push_back(r.steps);
@@ -539,6 +566,200 @@ static bool parse_count(const char *text, uint64_t *out) {
     v = v * 10 + (uint64_t)(*p - '0');
   }
   *out = v;
+  return true;
+}
+
+// Parallel #authority checks (ax-parallel-checks). A compile of an #authority
+// program runs every check it keeps, one after another, in the evaluator.
+// parallel_checks runs each check instead in a forked child of this process,
+// up to the core count at once ($COAX_CHECK_JOBS caps it), with the same
+// evaluator, budgets and limits. A child reports whether its check passed,
+// its steps and cases, the procedures it entered (for E0380), its peak
+// compile-time storage and what it left behind; it prints nothing. The
+// parent then runs run_all_checks as before, taking each passing check from
+// its child and running every other check itself, in order, so a failure's
+// diagnostics are the ones a sequential run prints.
+//
+// A sequential run starts each check with the storage the checks before it
+// left behind; a child starts with none of it. So parallel_checks returns
+// false, and the caller runs every check sequentially as if nothing had been
+// tried, when its result might not be the sequential one: a child crashed or
+// wrote no whole report; a check changed the evaluator's shared state (frozen
+// values, struct defaults); a check's peak storage plus what the checks
+// before it left behind passes a storage limit; or a check failed after some
+// check left storage behind. It also returns false, without running
+// anything, for fewer than two checks, one job, or an --evidence record.
+// The struct defaults not yet evaluated: a check that evaluates one changes
+// what later checks pay for.
+static int64_t defaults_pending(const File *file) {
+  int64_t pending = 0;
+  for (const StructDecl *d : file->structs) pending += d->defaults != 2;
+  return pending;
+}
+
+// times: each check's seconds in the last run of this file's checks, by
+// name. Checks start longest first (one not timed yet first of all), so the
+// slowest doesn't start last; the order changes nothing else. On return it
+// holds the seconds this run measured.
+static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCheck> *out, std::map<std::string, double> *times) {
+  const size_t n = (size_t)file->checks.count;
+  auto sequential = [](const char *why) { g_timings.parallel = std::string("sequential: ") + why; return false; };
+  if (n < 2) return sequential("fewer than two checks");
+  if (!g_evidence.path.empty()) return sequential("an --evidence record");
+  uint64_t jobs = 0;
+  const char *env = getenv("COAX_CHECK_JOBS");
+  if (!env || !parse_count(env, &jobs) || !jobs) jobs = available_cores();
+  jobs = std::min<uint64_t>(std::min<uint64_t>(jobs, available_cores()), n);
+  if (jobs < 2) return sequential("one job");
+  CtMemory &memory = *file->ct_memory;
+  const uint64_t slots = memory.slots, containers = memory.containers, strings = memory.string_bytes;
+  const size_t frozen = file->frozen_values.size();
+  const int64_t pending = defaults_pending(file);
+  enum { MAGIC, PASSED, STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS,
+         END_SLOTS, END_CONTAINERS, END_STRINGS, SHARED, EXECUTED, FIELDS };
+  static constexpr uint64_t REPORT = 0x636f61782d636b31ULL;  // "coax-ck1"
+  struct Child { pid_t pid; int fd; size_t index; std::string bytes; };
+  std::vector<Child> running;
+  std::vector<std::vector<uint64_t>> reports(n);
+  bool broken = false;
+  std::vector<size_t> order(n);
+  std::vector<double> known(n, 1e300);
+  for (size_t i = 0; i < n; i++) {
+    order[i] = i;
+    auto at = times->find(to_std(file->checks[(int32_t)i]->name));
+    if (at != times->end()) known[i] = at->second;
+  }
+  std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return known[a] > known[b]; });
+  size_t next = 0;
+  fflush(stdout);
+  fflush(stderr);
+  auto start = [&](size_t index) -> bool {
+    int pipe_fds[2];
+    if (pipe(pipe_fds) != 0) return false;
+    pid_t pid = fork();
+    if (pid < 0) { close(pipe_fds[0]); close(pipe_fds[1]); return false; }
+    if (pid == 0) {
+      close(pipe_fds[0]);
+      int null = open("/dev/null", O_WRONLY);
+      if (null >= 0) { dup2(null, 1); dup2(null, 2); }
+      memory.peak_slots = memory.slots;
+      memory.peak_containers = memory.containers;
+      memory.string_peak_bytes = memory.string_bytes;
+      CheckDecl *c = file->checks[(int32_t)index];
+      const auto began = std::chrono::steady_clock::now();
+      CheckOutcome r = run_check(file, c, c->steps ? c->steps : max_steps, false);
+      const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
+      std::vector<uint64_t> report(FIELDS + r.executed.size());
+      uint64_t seconds_bits;
+      memcpy(&seconds_bits, &seconds, sizeof seconds_bits);
+      report[MAGIC] = REPORT;
+      report[PASSED] = r.passed;
+      report[STEPS] = r.steps;
+      report[CASES] = r.cases;
+      report[BUDGET] = r.budget;
+      report[SECONDS] = seconds_bits;
+      report[PEAK_SLOTS] = memory.peak_slots;
+      report[PEAK_CONTAINERS] = memory.peak_containers;
+      report[PEAK_STRINGS] = memory.string_peak_bytes;
+      report[END_SLOTS] = memory.slots;
+      report[END_CONTAINERS] = memory.containers;
+      report[END_STRINGS] = memory.string_bytes;
+      report[SHARED] = file->frozen_values.size() != frozen || defaults_pending(file) != pending;
+      report[EXECUTED] = r.executed.size();
+      for (size_t i = 0; i < r.executed.size(); i++) report[FIELDS + i] = (uint64_t)(uintptr_t)r.executed[i];
+      const char *at = (const char *)report.data();
+      size_t left = report.size() * sizeof(uint64_t);
+      while (left) {
+        ssize_t w = write(pipe_fds[1], at, left);
+        if (w < 0 && errno == EINTR) continue;
+        if (w <= 0) _exit(1);
+        at += w;
+        left -= (size_t)w;
+      }
+      _exit(0);
+    }
+    close(pipe_fds[1]);
+    running.push_back({pid, pipe_fds[0], index, {}});
+    return true;
+  };
+  while (!broken && (next < n || !running.empty())) {
+    while (running.size() < jobs && next < n)
+      if (!start(order[next++])) { broken = true; break; }
+    if (broken || running.empty()) break;
+    std::vector<pollfd> fds;
+    for (const Child &c : running) fds.push_back({c.fd, POLLIN, 0});
+    if (poll(fds.data(), fds.size(), -1) < 0) {
+      if (errno == EINTR) continue;
+      broken = true;
+      break;
+    }
+    for (size_t k = running.size(); k-- > 0;) {
+      if (!(fds[k].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+      Child &c = running[k];
+      char buffer[65536];
+      ssize_t got = read(c.fd, buffer, sizeof buffer);
+      if (got < 0 && errno == EINTR) continue;
+      if (got > 0) { c.bytes.append(buffer, (size_t)got); continue; }
+      close(c.fd);
+      int status = 0;
+      while (waitpid(c.pid, &status, 0) < 0 && errno == EINTR) {}
+      if (WIFEXITED(status) && WEXITSTATUS(status) == 0 && c.bytes.size() % sizeof(uint64_t) == 0 &&
+          c.bytes.size() >= FIELDS * sizeof(uint64_t)) {
+        std::vector<uint64_t> report(c.bytes.size() / sizeof(uint64_t));
+        memcpy(report.data(), c.bytes.data(), c.bytes.size());
+        if (report[MAGIC] == REPORT && report[EXECUTED] == report.size() - FIELDS) reports[c.index] = std::move(report);
+      }
+      running.erase(running.begin() + (std::ptrdiff_t)k);
+    }
+  }
+  if (broken) {
+    for (Child &c : running) { kill(c.pid, SIGKILL); close(c.fd); int status; waitpid(c.pid, &status, 0); }
+    return sequential("a child process could not start");
+  }
+  times->clear();
+  for (size_t i = 0; i < n; i++)
+    if (!reports[i].empty()) {
+      double seconds;
+      memcpy(&seconds, &reports[i][SECONDS], sizeof seconds);
+      (*times)[to_std(file->checks[(int32_t)i]->name)] = seconds;
+    }
+  // Is this the sequential result? Each check, run sequentially, would start
+  // with what every check before it left behind.
+  std::set<const ProcDecl *> procedures(file->procs.begin(), file->procs.end());
+  int64_t extra_slots = 0, extra_containers = 0, extra_strings = 0;
+  bool left = false, failed = false;
+  out->assign(n, PassedCheck{});
+  for (size_t i = 0; i < n; i++) {
+    const std::vector<uint64_t> &report = reports[i];
+    // A child that crashed or wrote no whole report: run them all here.
+    if (report.empty()) return sequential("a child crashed or wrote no whole report");
+    if (report[SHARED]) return sequential("a check changed the evaluator's shared state");
+    if ((int64_t)report[PEAK_SLOTS] + extra_slots > (int64_t)memory.slot_limit ||
+        (int64_t)report[PEAK_CONTAINERS] + extra_containers > (int64_t)memory.container_limit ||
+        (int64_t)report[PEAK_STRINGS] + extra_strings > (int64_t)CB_string_live_limit())
+      return sequential("a check would pass a storage limit after the storage earlier checks left behind");
+    const int64_t ds = (int64_t)report[END_SLOTS] - (int64_t)slots, dc = (int64_t)report[END_CONTAINERS] - (int64_t)containers,
+                  db = (int64_t)report[END_STRINGS] - (int64_t)strings;
+    left = left || ds || dc || db;
+    extra_slots += ds;
+    extra_containers += dc;
+    extra_strings += db;
+    if (!report[PASSED]) { failed = true; continue; }
+    PassedCheck &passed = (*out)[i];
+    passed.passed = true;
+    passed.steps = report[STEPS];
+    passed.cases = report[CASES];
+    passed.budget = report[BUDGET];
+    memcpy(&passed.seconds, &report[SECONDS], sizeof passed.seconds);
+    for (size_t k = FIELDS; k < report.size(); k++) {
+      const ProcDecl *p = (const ProcDecl *)(uintptr_t)report[k];
+      if (procedures.count(p)) passed.executed.push_back(p);
+    }
+  }
+  // A failing check runs again here, after none of the others; that is where
+  // a sequential run would start it only when no check left anything behind.
+  if (failed && left) return sequential("a check failed after checks left storage behind");
+  g_timings.parallel = "parallel: " + std::to_string(n) + " checks, " + std::to_string(jobs) + " jobs";
   return true;
 }
 

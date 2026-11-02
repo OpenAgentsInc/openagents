@@ -1,0 +1,98 @@
+// #authority checks in parallel give what a sequential run gives (ax-parallel-checks).
+//   coax/web/tool.sh coax/tests/parallel-checks.coax COMPILER
+// Run from coax/. Each fixture in tests/parallel-checks/ is checked twice,
+// each time with a new check cache so nothing is reused: sequentially
+// (COAX_CHECK_JOBS=1) and in parallel (COAX_CHECK_JOBS=4). The two must print
+// the same stdout and stderr, exit the same way and report the same steps
+// for every check. --timings says which way the parallel compile went:
+//   - pass.coax: every check passes; run in parallel;
+//   - fail.coax: an #assert and a #forall fail (E0406, a counterexample);
+//     the failures run again in the parent, in order;
+//   - budget.coax: a check runs out of its #steps (E0400);
+//   - coverage.coax: the checks pass but never run 'unused' (E0380), and
+//     'late' runs only in the last check;
+//   - storage.coax: the first check leaves storage behind. Without a limit
+//     both ways pass; under --slots 40000 the second check passes the limit
+//     only after the first, so the parallel compile falls back to a
+//     sequential one and reports its E0400.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// Whether part occurs anywhere in text.
+has :: (text: string, part: string) -> bool {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "has finds a part anywhere and nothing that is not there" {
+  #assert has("abc", "a") && has("abc", "bc") && has("abc", "abc") && has("abc", "");
+  #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
+}
+
+// Runs body in sh with C the compiler, D a scratch directory and the shell
+// function both (FUNCTIONS); out gets stdout and stderr.
+run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
+  argv := [8] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "sh", compiler, dir, FUNCTIONS, body];
+  err: [1024] u8;
+  return proc_run(argv[..], 120000, out, err[..]);
+}
+
+// both NAME FILE [ARGS...]: coax check FILE sequentially and in parallel,
+// each with a new cache, then one line: NAME, the sequential exit status,
+// "same" when stdout, stderr and status agree, "same-steps" when every
+// check's steps agree, the parallel compile's way, and the stderr.
+FUNCTIONS :: "both() { n=$1; f=$2; shift 2; for m in seq par; do j=1; [ $m = par ] && j=4; COAX_CHECK_JOBS=$j COAX_CHECK_CACHE=\"$D/cache-$m-$n\" \"$C\" check \"$f\" \"$@\" --timings \"$D/$m-$n.json\" > \"$D/$m-$n.out\" 2> \"$D/$m-$n.err\"; echo $? > \"$D/$m-$n.status\"; grep -o '\"steps\":[0-9]*' \"$D/$m-$n.json\" > \"$D/$m-$n.steps\"; done; s=$(cat \"$D/seq-$n.status\"); same=different; cmp -s \"$D/seq-$n.out\" \"$D/par-$n.out\" && cmp -s \"$D/seq-$n.err\" \"$D/par-$n.err\" && cmp -s \"$D/seq-$n.status\" \"$D/par-$n.status\" && same=same; steps=different-steps; cmp -s \"$D/seq-$n.steps\" \"$D/par-$n.steps\" && steps=same-steps; way=$(grep -o '\"parallel_checks\":\"[a-z]*' \"$D/par-$n.json\" | sed 's/.*\"//'); echo \"$n status=$s $same $steps $way\"; cat \"$D/par-$n.err\"; }";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: parallel-checks.coax COMPILER"); return 2; }
+  compiler := args_at(a[..], 0);
+  bad := 0;
+  out: [65536] u8;
+  dir_out: [4096] u8;
+  r := run(compiler, "", "mktemp -d \"${TMPDIR:-/tmp}/coax-parallel-checks.XXXXXX\"", dir_out[..]);
+  if r.status != 0 || r.out_n < 2 { tool_errln("parallel-checks: cannot make a scratch directory"); return 1; }
+  dir := cast(string) dir_out[0..<r.out_n];
+  if dir[dir.count - 1] == '\n' { dir = cast(string) dir_out[0..<r.out_n - 1]; }
+
+  r = run(compiler, dir, "both pass tests/parallel-checks/pass.coax", out[..]);
+  t := cast(string) out[0..<r.out_n];
+  bad += check(has(t, "pass status=0 same same-steps parallel"), "passing checks: run in parallel, the same quiet pass");
+
+  r = run(compiler, dir, "both fail tests/parallel-checks/fail.coax", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "fail status=1 same same-steps parallel"), "failing checks: the same diagnostics, in order, and exit 1");
+  bad += check(has(t, "error[E0406]: assertion failed") && has(t, "in #test a fee is one percent and nothing more") && has(t, "counterexample: paid = 0, refund = 0") && has(t, "2 errors"), "both failures are reported, the #forall with its counterexample");
+
+  r = run(compiler, dir, "both budget tests/parallel-checks/budget.coax", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "budget status=1 same same-steps parallel") && has(t, "error[E0400]") && has(t, "5000 steps"), "a check out of its #steps fails the same way (E0400)");
+
+  r = run(compiler, dir, "both coverage tests/parallel-checks/coverage.coax", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "coverage status=1 same same-steps parallel") && has(t, "error[E0380]: 'unused' was never executed by a check") && !has(t, "'late'"), "coverage comes from every child: E0380 for 'unused' only");
+
+  r = run(compiler, dir, "both storage tests/parallel-checks/storage.coax", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "storage status=0 same same-steps parallel"), "storage left behind within the limit: run in parallel, the same pass");
+
+  r = run(compiler, dir, "both limit tests/parallel-checks/storage.coax --slots 40000", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "limit status=1 same same-steps sequential") && has(t, "error[E0400]") && has(t, "in #test most of the slots"), "past the limit only sequentially: the parallel compile runs sequentially and reports its E0400");
+
+  r = run(compiler, dir, "rm -rf \"$D\"", out[..]);
+  if bad == 0 { print("parallel-checks: ok\n"); return 0; }
+  print("parallel-checks: % failed\n", bad);
+  return 1;
+}

@@ -1,0 +1,26 @@
+// An #authority program whose first check leaves storage behind (views that
+// point back into their own array form a cycle the evaluator keeps until the
+// compile ends) and whose second needs most of the slots. Alone, each fits
+// under coax check --slots 40000; one after the other, as a sequential run
+// has them, the second passes the limit (E0400). A parallel compile must
+// report what the sequential one does.
+#authority;
+Node :: struct { next: [] Node; k: int; }
+leave_behind :: (rounds: int) -> int {
+  total := 0;
+  for r: 0..<rounds {
+    nodes: [64] Node;
+    nodes[0].next = nodes[..];
+    nodes[1].k = r;
+    total += nodes[0].next.count;
+  }
+  return total;
+}
+fill :: (n: int) -> int {
+  big: [30000] int;
+  for i: 0..<n { big[i] = i; }
+  return big[n - 1];
+}
+#test "cycles left behind" { #assert leave_behind(100) == 6400; }
+#test "most of the slots" { #assert fill(30000) == 29999; }
+main :: () { }

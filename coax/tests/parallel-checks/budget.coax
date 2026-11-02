@@ -1,0 +1,8 @@
+// An #authority program whose second check runs out of its own #steps
+// budget (E0400) while the others pass. Both compiles report it the same way.
+#authority;
+sum_to :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }
+#test "a short sum" { #assert sum_to(10) == 45; }
+#test "a long sum on a short budget" #steps 5000 { #assert sum_to(100000) == 4999950000; }
+#test "a middling sum" { #assert sum_to(1000) == 499500; }
+main :: () { }

@@ -52,6 +52,7 @@ struct NativeTimings {
   std::vector<TimedCheck> checks;                // each #test/#forall run (coax test, or an #authority file's checks)
   std::vector<TimedLibrary> libraries;           // each loaded unit's standalone check (cached or run)
   const char *check_phase="test";
+  std::string parallel;                          // how the #authority checks ran (parallel_checks), "" when they did not
   size_t generated_bytes=0,instances=0,instance_bytes=0;
   uint64_t run_steps=100000, evaluated_steps=0, peak_slots=0, peak_containers=0, peak_string_bytes=0, traversal_work=0;
   std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
@@ -291,7 +292,8 @@ static int run_process(const std::vector<std::string> &args,bool *started=nullpt
 }
 
 static size_t g_library_cached = 0, g_library_checked = 0;  // library checks reused and run (ax-library-check-cache)
-static size_t g_authority_cached = 0, g_authority_checked = 0;  // #authority check runs reused and run (ax-authority-check-cache)
+static size_t g_authority_cached = 0, g_authority_checked = 0;
+static uint64_t g_check_slots = 0;  // --slots N on a compile: a smaller value-slot limit for its checks (0: the test limit)  // #authority check runs reused and run (ax-authority-check-cache)
 
 // Observations of the checked Coax selection and host I/O. Hashing uses the
 // existing Coax SHA-256 implementation, never a native fallback.
@@ -368,6 +370,7 @@ static void timings_table(double total) {
     slowest(g_timings.checks,[](const TimedCheck &c){fprintf(stderr,"    %9.3f s %12llu steps  %s %s%s (%s)\n",c.seconds,(unsigned long long)c.steps,c.kind.c_str(),c.name.c_str(),c.passed?"":" FAILED",c.phase.c_str());});
   }
   if(g_authority_cached)fprintf(stderr,"  authority: every check passed in an earlier compile of these sources; reused, none run\n");
+  else if(!g_timings.parallel.empty())fprintf(stderr,"  authority checks: %s\n",g_timings.parallel.c_str());
   if(!g_timings.libraries.empty()){
     double ran=0,cached=0;size_t n_ran=0;
     for(const auto &l:g_timings.libraries){if(l.cached)cached+=l.seconds;else {ran+=l.seconds;n_ran++;}}
@@ -381,7 +384,7 @@ static int finish_profile(int status) {
   const double total=seconds_since(g_timings.start);
   if(g_timings.table)timings_table(total);
   if(g_timings.path.empty()) return status;
-  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"library_checks\":{\"cached\":"<<g_library_cached<<",\"checked\":"<<g_library_checked<<"}"<<",\"authority_checks\":{\"cached\":"<<g_authority_cached<<",\"checked\":"<<g_authority_checked<<"}"<<",\"seconds\":{";
+  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"library_checks\":{\"cached\":"<<g_library_cached<<",\"checked\":"<<g_library_checked<<"}"<<",\"authority_checks\":{\"cached\":"<<g_authority_cached<<",\"checked\":"<<g_authority_checked<<"}"<<",\"parallel_checks\":"<<json_string(g_timings.parallel)<<",\"seconds\":{";
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
   out<<(first?"":",")<<"\"total\":"<<total<<"},\"detail_seconds\":{";
   first=true;for(const auto &[part,duration]:g_timings.detail) {out<<(first?"":",")<<json_string(part)<<":"<<duration;first=false;}
@@ -985,7 +988,8 @@ static std::string library_key(const Source *src, int32_t at, const EmitOptions 
   text += "run_steps=" + std::to_string(opts.run_steps) + " development=" + std::to_string(opts.development) +
           " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
           " metal=" + std::to_string(opts.metal) + " cuda=" + std::to_string(opts.cuda) + " metal_compute=" +
-          std::to_string(opts.metal_compute) + " quantity_device=" + std::to_string(opts.quantity_device) + "\n";
+          std::to_string(opts.metal_compute) + " quantity_device=" + std::to_string(opts.quantity_device) +
+          (g_check_slots ? " check_slots=" + std::to_string(g_check_slots) : std::string()) + "\n";
   for (int32_t u : library_closure(src, at)) {
     const SourceUnit &unit = *src->units[(size_t)u];
     const std::string sha = debug_source_hash(unit.text);
@@ -1007,9 +1011,32 @@ static bool run_compilation_checks(File *file) {
     uint64_t slots, containers;
     ~RestoreLimits() { memory.slot_limit = slots; memory.container_limit = containers; }
   } restore{memory, memory.slot_limit, memory.container_limit};
-  memory.slot_limit = CB_test_slot_limit();
+  memory.slot_limit = g_check_slots ? g_check_slots : CB_test_slot_limit();
   memory.container_limit = CB_test_container_limit();
   g_timings.check_phase = "authority";
+  // Each check's time in the last parallel run, beside the check cache
+  // ("seconds<TAB>name" lines), so the next run starts the slowest first.
+  std::map<std::string, double> times;
+  const std::string sha = debug_source_hash("coax.check-times.v1\n" + file->src->units[0]->canonical);
+  const std::string dir = library_cache_dir(), path = sha.empty() ? "" : dir + "/" + sha;
+  std::string text;
+  if (!path.empty() && read_record(path, &text))
+    for (size_t at = 0; at < text.size();) {
+      size_t tab = text.find('\t', at), end = text.find('\n', at);
+      if (end == std::string::npos) break;
+      if (tab != std::string::npos && tab < end) times[text.substr(tab + 1, end - tab - 1)] = strtod(text.c_str() + at, nullptr);
+      at = end + 1;
+    }
+  std::vector<PassedCheck> passed;
+  const bool parallel = parallel_checks(file, TEST_STEPS, &passed, &times);
+  if (!path.empty() && !times.empty()) {
+    std::string record;
+    char seconds[64];
+    for (const auto &[name, value] : times)
+      if (name.find('\n') == std::string::npos) { snprintf(seconds, sizeof seconds, "%.3f\t", value); record += seconds + name + "\n"; }
+    cache_record(dir, sha, record);
+  }
+  if (parallel) return run_all_checks(file, TEST_STEPS, false, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, &passed);
   return run_all_checks(file, TEST_STEPS, false);
 }
 
@@ -1060,7 +1087,8 @@ static std::string authority_key(const Source *src, const File *file, const Emit
           " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
           " library=" + std::to_string(file->library) + " metal=" + std::to_string(opts.metal) + " cuda=" +
           std::to_string(opts.cuda) + " metal_compute=" + std::to_string(opts.metal_compute) +
-          " quantity_device=" + std::to_string(opts.quantity_device) + "\n";
+          " quantity_device=" + std::to_string(opts.quantity_device) + " check_slots=" +
+          std::to_string(g_check_slots ? g_check_slots : CB_test_slot_limit()) + "\n";
   for (size_t u = 0; u < src->units.size(); u++) {
     const SourceUnit &unit = *src->units[u];
     const std::string sha = debug_source_hash(unit.text);
@@ -1387,7 +1415,7 @@ static int usage() {
           "       coax metal-compute file.coax [--release]\n"
           "       coax spirv   file.coax [--kernel NAME | --fill A[,B,C,D] | --stroke NAME | --vertex V --fragment F [--tree]] [-o out.spv]\n"
           "       coax wgsl    file.coax (--functions A,B | --vertices A,B --fragments C,D --bindings F [--strip P]) [--tree] [-o out.wgsl]\n"
-          "       coax check   file.coax\n"
+          "       coax check   file.coax [--slots N]  (--slots also on run, build, lib, header, c: a smaller slot limit for #authority checks)\n"
           "       coax proto   profile.pb --prefix Name [-o output.coax]\n"
           "       coax layout  file.coax\n"
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
@@ -1668,8 +1696,10 @@ static int main_impl(int argc, char **argv) {
     }
     else if (a == "--list" && cmd == "test") list = true;
     else if (a == "--profile" && cmd == "test" && i + 1 < argc && std::string(argv[i + 1]) == "steps" && !profile_steps) { profile_steps = true; ++i; }
-    else if (a == "--slots" && i + 1 < argc && cmd == "test") {
-      // A smaller value-slot limit for the checks than the test limit (a shared machine's memory).
+    else if (a == "--slots" && i + 1 < argc && (cmd == "test" || cmd == "check" || cmd == "c" || cmd == "build" || cmd == "run" ||
+                                                 cmd == "lib" || cmd == "header")) {
+      // A smaller value-slot limit for the checks than the test limit (a shared
+      // machine's memory); on a compile, for the checks an #authority file runs.
       const char *value = argv[++i];
       bool digits = *value != '\0';
       for (const char *p = value; *p; p++) digits = digits && *p >= '0' && *p <= '9';
@@ -1679,6 +1709,7 @@ static int main_impl(int argc, char **argv) {
         fprintf(stderr, "coax: --slots requires a positive count at most %llu\n", (unsigned long long)CB_test_slot_limit());
         return 1;
       }
+      if (cmd != "test") g_check_slots = test_slots;
     }
     else if (a == "--steps" && i + 1 < argc && cmd == "test") {
       const char *value = argv[++i];

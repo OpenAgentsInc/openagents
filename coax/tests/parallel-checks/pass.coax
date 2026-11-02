@@ -1,0 +1,11 @@
+// An #authority program whose checks all pass and between them run every
+// procedure: a parallel and a sequential compile both exit 0, quietly.
+#authority;
+fee :: (amount: int) -> int { return amount / 100 + 3; }
+refund_ok :: (paid: int, refund: int) -> bool { return refund >= 0 && refund <= paid; }
+sum_to :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }
+#test "a fee is one percent and three" { #assert fee(1000) == 13 && fee(0) == 3; }
+#forall paid: 0..<20, refund: -2..<25 { #assert refund_ok(paid, refund) == (refund >= 0 && refund <= paid); }
+#test "the sum of the first thousand" { #assert sum_to(1000) == 499500; }
+#test "a refund of everything" { #assert refund_ok(7, 7); }
+main :: () { }

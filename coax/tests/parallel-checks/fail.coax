@@ -1,0 +1,12 @@
+// An #authority program with two failing checks among passing ones: an
+// #assert that fails and a #forall with a counterexample. Both compiles
+// report the same two errors, in order, and exit 1.
+#authority;
+fee :: (amount: int) -> int { return amount / 100 + 3; }
+refund_ok :: (paid: int, refund: int) -> bool { return refund >= 0 && refund < paid; }
+#test "a fee is one percent and three" { #assert fee(1000) == 13; }
+#test "a fee is one percent and nothing more" { #assert fee(1000) == 10; }
+#test "a small refund" { #assert refund_ok(7, 2); }
+#forall paid: 0..<5, refund: 0..<6 { #assert refund_ok(paid, refund) == (refund <= paid); }
+#test "a zero fee" { #assert fee(0) == 3; }
+main :: () { }

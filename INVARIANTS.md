@@ -3566,6 +3566,25 @@ stage0 can't hash itself and records nothing. The cache is local trusted
 state, not a signature: anyone who can write it can make a compile skip
 checks.
 
+Since #12657 a compile runs those checks in forked children, one check a
+child, up to the core count (`$COAX_CHECK_JOBS`), with the same evaluator,
+budgets and limits. A child that passed contributes its steps and the
+procedures it entered (for E0380); every failing check runs again in the
+compiler, in order, so diagnostics and exit status are the sequential ones.
+The parallel result is used only when it must equal the sequential one: no
+child crashed, no check changed shared evaluator state (frozen values or
+struct defaults), every check's peak storage plus what earlier checks left
+behind fits the limits, and no check failed after storage was left behind.
+Otherwise every check runs again sequentially. The order children start in
+(slowest last time first, from a times record beside the check cache)
+changes nothing else.
+
+Check: `coax/tests/parallel-checks.coax` (passing, failing `#assert` and
+`#forall`, over-budget E0400, E0380 coverage from children, storage left
+behind within the limit, and past `--slots 40000` only sequentially: each
+gives the same stdout, stderr, exit status and per-check steps sequentially
+and in parallel, and the last falls back to sequential).
+
 Check: `coax/tests/authority-cache.coax` (a second check reuses the pass and
 prints what the first printed; `coax c` gives the same C either way; a changed
 loaded unit, `#run_steps`, `--run-steps`, build profile or compiler binary

@@ -1055,6 +1055,20 @@ refund_ok :: (paid: int, refund: int) -> bool {
   in a check, directly or through calls (E0380). Dead references, short-circuited
   calls and pre-folded `#run` results do not count. Every compile of the
   file runs its checks: a failing check is a failed build.
+- A compile runs those checks in parallel: each in a forked child of the
+  compiler, as many at once as there are cores (`$COAX_CHECK_JOBS` caps it),
+  with the same evaluator, budgets and storage limits, the slowest of the last
+  run first. The children report pass or fail, steps and the procedures each
+  check entered; the compiler then reports every check in order and runs each
+  failing one again itself, so the diagnostics, exit status and E0380 coverage
+  are what a sequential run gives. When a check leaves storage behind for the
+  ones after it, the result is used only if every check also fits the
+  storage limits with that storage added and every check passed; otherwise,
+  and when a check changes the evaluator's shared state or a child crashes,
+  the compile runs every check again sequentially. `--slots N` on `check`,
+  `c`, `build`, `run`, `lib` and `header` lowers the checks' value-slot limit
+  as it does for `coax test`. `--timings` reports how they ran
+  (`parallel_checks`).
 - `coax mutate FILE` changes the code reached from checks one site at a time:
   comparison boundaries (`<` and `<=`), equality, arithmetic, logical and
   bitwise operators, `+=`/`-=`, integer literals (n to n+1), bool literals,
