@@ -27,12 +27,13 @@ MmState :: enum u8 { current; conflict; superseded; forgotten; }
 MmStatus :: enum u8 { ok; capacity; shape; reason; source; same; missing; sequence; link; content; digest; redacted; exposed; }
 MmServe :: enum u8 { served; missing; forgotten; conflict; early; expired; stale; }
 // A write as the caller asks for it. origin: for an event source, the
-// digest of the event the fact was said in; a cite source carries cite, and
+// digest of the event the fact was said in, with cite.id naming its session
+// and cite.from its line when known; a cite source carries cite, and
 // text must be its quoted bytes. The fact is valid at ticks start..<until.
 MmWrite :: struct { key: string; scope: MmScope; owner: int; text: string; source: MmSource; origin: [32] u8; cite: AnCite; start: int; until: int; }
 // One logged event. Its bytes follow the earlier events' bytes in the log:
-// keys bytes of key, texts bytes of text, ids bytes of the cite's id. from
-// and to are the cite's span. content covers those bytes; digest covers
+// keys bytes of key, texts bytes of text, ids bytes of the cite's id (an
+// event's session). from and to are the cite's span (an event's line). content covers those bytes; digest covers
 // every field but redacted, and the previous event's digest. A key is
 // never empty.
 MmEvent :: struct { sequence: int; op: MmOp; scope: MmScope; owner: int; reason: MmReason; source: MmSource; origin: [32] u8; from: int; to: int; start: int; until: int; keys: int; texts: int; ids: int; redacted: bool; content: [32] u8; previous: [32] u8; digest: [32] u8; }
@@ -141,7 +142,7 @@ mm_write :: (l: [] MmLog, t: [] MmTable, op: MmOp, reason: MmReason, w: MmWrite,
   g := l[0];
   if w.key.count == 0 || w.owner < 0 || w.start < 0 || w.until <= w.start || (op == MmOp.forget) != (w.text.count == 0) { return MmStatus.shape; }
   if op != MmOp.forget && w.source == MmSource.cite && an_check(w.cite, w.text, p.ids, p.heads, p.texts) != AnCheck.current { return MmStatus.source; }
-  id := ifx w.source == MmSource.cite then w.cite.id else "";
+  id := w.cite.id;      // a cite's passage, or for an event the session it was said in
   s := mm_admit(t[0], op, reason, w.key, w.scope, w.owner, w.text);
   if s != MmStatus.ok { return s; }
   n := w.key.count + w.text.count + id.count;
@@ -149,6 +150,7 @@ mm_write :: (l: [] MmLog, t: [] MmTable, op: MmOp, reason: MmReason, w: MmWrite,
   end := an_put(g.bytes, an_put(g.bytes, an_put(g.bytes, g.used, w.key), w.text), id);
   e := MmEvent.{sequence = g.count, op = op, scope = w.scope, owner = w.owner, reason = reason, source = w.source, origin = w.origin, start = w.start, until = w.until, keys = w.key.count, texts = w.text.count, ids = id.count};
   if w.source == MmSource.cite { e.origin = w.cite.digest; e.from = w.cite.from; e.to = w.cite.to; }
+  else { e.from = w.cite.from; }      // the line of that session's log
   if g.count > 0 { e.previous = g.events[g.count - 1].digest; }
   e.content = mm_content(e, g.bytes[g.used..<g.used + n]);
   e.digest = mm_digest(e);

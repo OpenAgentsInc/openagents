@@ -472,6 +472,30 @@ def verbs(check):
               and mr.returncode == 0 and mj.get("ranked") is True and [f["key"] for f in mj.get("facts", [])] == ["deploy", "build"]
               and mj["facts"][0]["score"] > mj["facts"][1]["score"] and mj["facts"][1]["version"] == 3
               and vlines == 2 and vafter == 1 and m8.returncode == 1 and "does not verify" in m8.stderr)
+        # where a fact was said (chapter 19): its session line's digest, checked on every read; a changed line is not used
+        ohome = tempfile.mkdtemp(prefix="coder-origin-")
+        oenv = dict(renv, HOME=ohome)
+        def oq(*a):
+            return subprocess.run([coder] + list(a), cwd=rw, env=oenv, capture_output=True, text=True, timeout=300)
+        orun = [json.loads(x) for x in oq("run", "the build command is make -C coder", "--engine", "echo", "--json").stdout.splitlines() if x.startswith("{")]
+        osid = orun[0]["id"] if orun else ""
+        o1 = oq("remember", "build", "make -C coder", "--session", osid)
+        o2 = oq("remember", "editor", "vim")
+        oj1 = json.loads(oq("recall", "--json").stdout or "{}")
+        ofile = os.path.join(ohome, ".openagents", "coder", "sessions", osid + ".jsonl")
+        otext = open(ofile).read()
+        open(ofile, "w").write(otext.replace("make -C coder", "make -C coax"))
+        oj2 = json.loads(oq("recall", "--json").stdout or "{}")
+        obrief = next((json.loads(x) for x in oq("run", "hi", "--engine", "echo", "--json").stdout.splitlines() if '"kind":"memory"' in x), {})
+        os.remove(ofile)
+        oj3 = json.loads(oq("recall", "--json").stdout or "{}")
+        o4 = oq("remember", "x", "y", "--session", "nope")
+        def osaid(j):
+            return [f.get("said_in", {}).get("state") for f in j.get("facts", [])]
+        check("memory: a fact remembered from a session carries its line's digest; a changed line is not used, a removed one is gone",
+              o1.returncode == 0 and o2.returncode == 0 and osaid(oj1) == ["held", None] and oj1["facts"][0]["said_in"] == {"session": osid, "line": 2, "state": "held"}
+              and osaid(oj2) == ["changed", None] and obrief.get("text") == "Facts I asked you to remember:\n- editor: vim"
+              and osaid(oj3) == ["gone", None] and o4.returncode == 6)
         # each Microcoder ending through coder run (chapter 9), from replayed responses
         def mhttp(content, status=200):
             if status != 200:

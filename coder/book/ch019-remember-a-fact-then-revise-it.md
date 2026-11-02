@@ -10,9 +10,11 @@
 > (`coder remember`, `revise`, `forget`, `recall`), verifies it in every
 > later process, and ranks facts for a query by cosine similarity of Vertex
 > embeddings. A session's first message carries the facts a consent
-> grant covers, and agents remember and recall through MCP tools. Still to
-> come: checking an event-sourced fact's digest against
-> [chapter 2](ch002-model-visible-means-logged.md)'s session log.
+> grant covers, and agents remember and recall through MCP tools. A fact
+> remembered from a session carries the digest of the line it was said
+> in, and every read checks that line in
+> [chapter 2](ch002-model-visible-means-logged.md)'s session log. Still to
+> come: lexical ranking and reranking with the cosine score.
 
 An agent that works across sessions needs to remember facts: the command
 that builds the project, the editor the user prefers, a deadline. Facts
@@ -87,12 +89,13 @@ MmState :: enum u8 { current; conflict; superseded; forgotten; }
 MmStatus :: enum u8 { ok; capacity; shape; reason; source; same; missing; sequence; link; content; digest; redacted; exposed; }
 MmServe :: enum u8 { served; missing; forgotten; conflict; early; expired; stale; }
 // A write as the caller asks for it. origin: for an event source, the
-// digest of the event the fact was said in; a cite source carries cite, and
+// digest of the event the fact was said in, with cite.id naming its session
+// and cite.from its line when known; a cite source carries cite, and
 // text must be its quoted bytes. The fact is valid at ticks start..<until.
 MmWrite :: struct { key: string; scope: MmScope; owner: int; text: string; source: MmSource; origin: [32] u8; cite: AnCite; start: int; until: int; }
 // One logged event. Its bytes follow the earlier events' bytes in the log:
-// keys bytes of key, texts bytes of text, ids bytes of the cite's id. from
-// and to are the cite's span. content covers those bytes; digest covers
+// keys bytes of key, texts bytes of text, ids bytes of the cite's id (an
+// event's session). from and to are the cite's span (an event's line). content covers those bytes; digest covers
 // every field but redacted, and the previous event's digest. A key is
 // never empty.
 MmEvent :: struct { sequence: int; op: MmOp; scope: MmScope; owner: int; reason: MmReason; source: MmSource; origin: [32] u8; from: int; to: int; start: int; until: int; keys: int; texts: int; ids: int; redacted: bool; content: [32] u8; previous: [32] u8; digest: [32] u8; }
@@ -249,7 +252,7 @@ mm_write :: (l: [] MmLog, t: [] MmTable, op: MmOp, reason: MmReason, w: MmWrite,
   g := l[0];
   if w.key.count == 0 || w.owner < 0 || w.start < 0 || w.until <= w.start || (op == MmOp.forget) != (w.text.count == 0) { return MmStatus.shape; }
   if op != MmOp.forget && w.source == MmSource.cite && an_check(w.cite, w.text, p.ids, p.heads, p.texts) != AnCheck.current { return MmStatus.source; }
-  id := ifx w.source == MmSource.cite then w.cite.id else "";
+  id := w.cite.id;      // a cite's passage, or for an event the session it was said in
   s := mm_admit(t[0], op, reason, w.key, w.scope, w.owner, w.text);
   if s != MmStatus.ok { return s; }
   n := w.key.count + w.text.count + id.count;
@@ -257,6 +260,7 @@ mm_write :: (l: [] MmLog, t: [] MmTable, op: MmOp, reason: MmReason, w: MmWrite,
   end := an_put(g.bytes, an_put(g.bytes, an_put(g.bytes, g.used, w.key), w.text), id);
   e := MmEvent.{sequence = g.count, op = op, scope = w.scope, owner = w.owner, reason = reason, source = w.source, origin = w.origin, start = w.start, until = w.until, keys = w.key.count, texts = w.text.count, ids = id.count};
   if w.source == MmSource.cite { e.origin = w.cite.digest; e.from = w.cite.from; e.to = w.cite.to; }
+  else { e.from = w.cite.from; }      // the line of that session's log
   if g.count > 0 { e.previous = g.events[g.count - 1].digest; }
   e.content = mm_content(e, g.bytes[g.used..<g.used + n]);
   e.digest = mm_digest(e);
@@ -651,6 +655,23 @@ coder/tui/coder.sh recall "how do I put the website live?" --top 3
   Microcoder run, that message got the answer "You should open this file
   in Helix."
 
+- **Where it was said.** `--session ID` records the session the fact
+  came from: the last line you typed in it, or line `--at LINE` of its
+  log. The event stores the session ID and line number, and its origin is
+  the SHA-256 of that line's bytes. Every read hashes the line again:
+
+  ```text
+  build: make -C coder (said in 20261102-112632-452, line 2)
+  build: make -C coder (not used: its line changed in 20261102-112632-452, line 2)
+  build: make -C coder (its line is gone from 20261102-112632-452, line 2)
+  ```
+
+  A fact whose line changed isn't put in a session's first message, the
+  same rule as a cited fact whose passage changed. A fact whose session
+  log was removed still is, because removing old logs is ordinary
+  housekeeping. `recall --json` gives each such fact a `said_in` object
+  with `session`, `line` and `state` (`held`, `changed` or `gone`).
+
 - **Agents.** `coder mcp` serves two more tools, `coder_remember` (a key
   and a text; with `reason` it revises; `project` and `cwd` scope it) and
   `coder_recall` (an optional `query` and `top`). They run the verbs, so
@@ -681,14 +702,15 @@ in a fresh HOME, then replays three recorded embedding responses
 the forgotten text is not in the file, that `forget` drops the vector, and
 that a log with one edited field is refused. It also checks that a
 session's first message carries the facts, that replay rebuilds it, and
-that `--no-memory` leaves them out.
+that `--no-memory` leaves them out. A fact remembered with `--session` is `held`, then
+`changed` and left out of the first message after its line is edited, then
+`gone` after the log is removed.
 
 ## What this does not do yet
 
-- **Event sources are not checked against a session log.** An
-  event-sourced fact carries the digest of the event it was said in, but
-  nothing yet confirms that chapter2's log holds an event with that
-  digest. Cited facts are checked against their passage on every read.
+- **A fact from the command line has no session.** Without `--session`,
+  nothing ties the fact to a line, and nothing is checked. `coder_remember`
+  through MCP doesn't pass a session yet.
 - **The agent writes through MCP only.** An agent that has Coder's MCP
   tools can propose a fact with `coder_remember`, and the host's tool
   approval is your consent. An engine Coder drives directly does not get
