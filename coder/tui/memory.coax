@@ -182,8 +182,9 @@ mem_project :: (dir: string) -> int {
   return v;
 }
 
-mem_dir_here :: (out: [] u8) -> string {
-  pb: [4096] u8; pwd := cl_getenv("PWD", pb[..]);
+// The physical path of dir ("" for the folder Coder runs in).
+mem_dir :: (dir: string, out: [] u8) -> string {
+  pb: [4096] u8; pwd := ifx dir.count > 0 then dir else cl_getenv("PWD", pb[..]);
   argv := [2] string.["/bin/pwd", "-P"];
   none: [1] string; ok: [1] bool;
   r := rt_run_in(argv[..], none[0..<0], pwd, 10, out, ok[..]);
@@ -304,6 +305,36 @@ mem_paths :: (p: [] RtPaths) -> bool {
   return true;
 }
 
+MEM_BRIEF_MAX :: 8192;
+
+// The facts recall would list for a session in folder cwd, written as the
+// start of its first message; their length, 0 when there are none or the
+// log does not verify (recall says why).
+mem_brief :: (cwd: string, out: [] u8) -> int {
+  p: [1] RtPaths;
+  if !mem_paths(p[..]) { return 0; }
+  eb: [1400] u8; epath := rt_path(p[..], "/memory/events.jsonl", eb[..]);
+  if !fs_exists(epath) { return 0; }
+  st: [1] MemStore; file: [MEM_FILE] u8;
+  g: [1] MmLog; g[0] = MmLog.{events = st[0].events[..], bytes = st[0].bytes[..]};
+  t: [1] MmTable; t[0] = MmTable.{facts = st[0].facts[..]};
+  if mem_load(epath, g[..], file[..]).count > 0 || mm_replay(g[0], t[..]).status != MmStatus.ok { return 0; }
+  db: [4096] u8;
+  ctx := MmContext.{session = 0, user = MEM_USER, project = mem_project(mem_dir(cwd, db[..]))};
+  pn: [1] string; ps := MmPassages.{ids = pn[0..<0], heads = pn[0..<0], texts = pn[0..<0]};
+  ids: [MEM_EVENTS] int;
+  n := mm_read(t[0], ctx, cxproc_wall_us() / 1000000, ps, ids[..]);
+  if n <= 0 { return 0; }
+  lim := ifx out.count < MEM_BRIEF_MAX then out.count else MEM_BRIEF_MAX;
+  k := cd_cat(out[0..<lim], 0, "Facts I asked you to remember:");
+  for i: 0..<n {
+    f := t[0].facts[ids[i]];
+    if k + f.key.count + f.text.count + 5 > lim { break; }
+    k = cd_cat(out, k, "\n- "); k = cd_cat(out, k, f.key); k = cd_cat(out, k, ": "); k = cd_cat(out, k, f.text);
+  }
+  return k;
+}
+
 // coder remember | revise | forget | recall.
 cd_cmd_memory :: (verb: string, key: string, text: string, project: bool, days: int, reason: string, top: int, json: bool) -> int {
   p: [1] RtPaths; eb: [1400] u8; vb: [1400] u8;
@@ -321,7 +352,7 @@ cd_cmd_memory :: (verb: string, key: string, text: string, project: bool, days: 
     ib: [24] u8; tool_err("coder: the memory log does not verify at event "); tool_err(cd_itoa(v.index, ib[..])); tool_err(" ("); tool_err(mem_status_name(v.status)); tool_errln(")");
     return 1;
   }
-  db: [4096] u8; owner := mem_project(mem_dir_here(db[..]));
+  db: [4096] u8; owner := mem_project(mem_dir("", db[..]));
   ctx := MmContext.{session = 0, user = MEM_USER, project = owner};
   scope := ifx project then MmScope.project else MmScope.user;
   sowner := ifx project then owner else MEM_USER;

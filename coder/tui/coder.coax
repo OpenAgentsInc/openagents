@@ -77,6 +77,7 @@ App :: struct {
   model: string;
   model_engine: int;             // --model is for the engine it came with
   ask_first: bool;               // --ask: permission prompts instead of skipping them
+  no_memory: bool;               // --no-memory: the first message goes without the facts from `coder remember`
   deadline_ms: int;              // --deadline: when the job expires (0: never)
   expiring: bool;
   redirecting: bool;             // the watchdog left ID.turnstop: this turn's stop ends as redirected                // the job passed its deadline: its stop ends as expired
@@ -386,6 +387,15 @@ cd_start :: (a: [] App, msg: string) {
     n = cd_cat(fb[..], n, "\n\nNow: "); n = cd_cat(fb[..], n, msg);
     sent = cast(string) fb[0..<n];
     a[0].pre = "";
+  }
+  mb: [MEM_BRIEF_MAX + 40100] u8;
+  if a[0].turns == 1 && !a[0].no_memory {     // the facts from `coder remember`, logged so replay rebuilds them (chapter 19)
+    bn := mem_brief(a[0].cwd, mb[..]);
+    if bn > 0 {
+      cs_text(a, "memory", "text", cast(string) mb[0..<bn]);
+      bn = cd_cat(mb[..], bn, "\n\n"); bn = cd_cat(mb[..], bn, sent);
+      sent = cast(string) mb[0..<bn];
+    }
   }
   cs_request(a, sent);           // what the engine is sent, as a digest `coder replay` rebuilds (chapters 2 and 23)
   if a[0].engine == ENGINE_ECHO {
@@ -1027,7 +1037,7 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--once]   attach this machine: start queued jobs within its grant\n       coder queue \"TASK\" [--engine E] [--cwd DIR]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E]                    Coder as an agent for editors (Agent Client Protocol on stdio)\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--once]   attach this machine: start queued jobs within its grant\n       coder queue \"TASK\" [--engine E] [--cwd DIR]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E]                    Coder as an agent for editors (Agent Client Protocol on stdio)\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --no-memory (no remembered facts in the first message)  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
 
 // Flags that take a value: their value is not a positional argument.
 CD_VALUE_FLAGS :: [36] string.["--goal", "--goal-turns", "--http", "--name", "--engines", "--remote-repo", "--profile", "--options", "--state", "--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop", "--days", "--reason", "--top"];
@@ -1460,6 +1470,7 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
   if text.count == 0 { tool_err("coder: no session "); tool_errln(id); return 6; }
   pb: [64] u8; pn := 0; at := 0;
   ub: [65536] u8; un := 0; have_user := false; first := true; users := 0;
+  mb: [MEM_BRIEF_MAX] u8; mn := 0;
   requests := 0; matched := 0; tb: [24] u8;
   pos := 0;
   if json { cd_out("{\"requests\":["); }
@@ -1475,11 +1486,16 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
     } else if kind == "user" {
       un = cd_cat(ub[..], 0, cl_str(ar[..], line, "text")); have_user = true; users += 1;
       first = users == 1;
+    } else if kind == "memory" {
+      mn = cd_cat(mb[..], 0, cl_str(ar[..], line, "text"));
     } else if kind == "request" {
       requests += 1;
       want := cl_str(ar[..], line, "sha256"); wb := cl_int(line, "bytes");
       rb: [131072] u8; hb: [64] u8;
       sent := ifx have_user then cd_rebuild(cast(string) ub[0..<un], cast(string) pb[0..<pn], at, first, rb[..]) else "";
+      wb2: [MEM_BRIEF_MAX + 131100] u8;
+      if have_user && mn > 0 { k := cd_cat(wb2[..], 0, cast(string) mb[0..<mn]); k = cd_cat(wb2[..], k, "\n\n"); k = cd_cat(wb2[..], k, sent); sent = cast(string) wb2[0..<k]; }
+      mn = 0;
       got := cd_sha256_hex(sent, hb[..]);
       same := have_user && got == want && wb.ok && wb.value == sent.count;
       if same { matched += 1; }
@@ -1762,6 +1778,7 @@ tool_main :: () -> int #export_c {
   a[0].cwd = args_value(args, "--cwd", cl_getenv("PWD", cb[..]));
   a[0].model = args_value(args, "--model", "");
   a[0].ask_first = args_has(args, "--ask");
+  a[0].no_memory = args_has(args, "--no-memory");
   a[0].coder_tools = args_has(args, "--coder-tools");
   cd_term_reset(a[0].term[..]);
   dl := args_value(args, "--deadline", ""); dv := 0;

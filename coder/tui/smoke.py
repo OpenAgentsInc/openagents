@@ -392,6 +392,16 @@ def verbs(check):
         vlines = open(os.path.join(mdir, "vectors.jsonl")).read().count("\n")
         m7 = mq("forget", "build")
         vafter = open(os.path.join(mdir, "vectors.jsonl")).read().count("\n")
+        # the first message of a session carries the remembered facts, logged so replay rebuilds it; --no-memory leaves them out
+        mb = mq("run", "hi", "--engine", "echo", "--json")
+        mbl = [json.loads(l) for l in mb.stdout.splitlines() if l.startswith("{")]
+        mbid = next((l["id"] for l in mbl if l.get("kind") == "session"), "")
+        mbr = mq("replay", mbid)
+        mbn = mq("run", "hi", "--engine", "echo", "--no-memory", "--json")
+        check("memory: a session's first message carries the remembered facts, and replay rebuilds it",
+              any(l.get("kind") == "memory" and l.get("text") == "Facts I asked you to remember:\n- deploy: Ship openagents.com only through coax/web/release.sh." for l in mbl)
+              and "You said: Facts I asked you to remember:" in mb.stdout and "1 of 1 requests rebuilt with the same bytes." in mbr.stdout
+              and '"kind":"memory"' not in mbn.stdout and "You said: hi" in mbn.stdout)
         open(os.path.join(mdir, "events.jsonl"), "w").write(evs.replace('"from":0', '"from":5', 1))
         m8 = mq("recall")
         check("memory: remember, conflict, revise, forget; recall ranks by embeddings; forgotten text leaves the file; an edited log is refused",

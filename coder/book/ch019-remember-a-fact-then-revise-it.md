@@ -9,9 +9,10 @@
 > replay that rebuilds the store from the log. Coder keeps the log on disk
 > (`coder remember`, `revise`, `forget`, `recall`), verifies it in every
 > later process, and ranks facts for a query by cosine similarity of Vertex
-> embeddings. Still to come: checking an event-sourced fact's digest
-> against [chapter 2](ch002-model-visible-means-logged.md)'s session log,
-> and the agent reading and writing its memory during a session.
+> embeddings. A session's first message carries the facts. Still to come:
+> checking an event-sourced fact's digest against
+> [chapter 2](ch002-model-visible-means-logged.md)'s session log, and the
+> agent proposing facts to remember.
 
 An agent that works across sessions needs to remember facts: the command
 that builds the project, the editor the user prefers, a deadline. Facts
@@ -629,6 +630,23 @@ coder/tui/coder.sh recall "how do I put the website live?" --top 3
   the facts with their scope, version and score (thousandths of the
   cosine).
 
+- **Sessions.** The first message of every session starts with the facts
+  `recall` would list in its folder, then a blank line, then your message:
+
+  ```text
+  Facts I asked you to remember:
+  - deploy: Ship openagents.com only through coax/web/release.sh.
+  - editor: I use Helix; never suggest VS Code.
+
+  Which editor should I open this file in?
+  ```
+
+  The facts are logged as a `memory` line before the `request` line, so
+  `coder replay` rebuilds the same bytes after the memory changes. At most
+  8,192 bytes of facts go in; `--no-memory` leaves them out. In a live
+  Microcoder run, that message got the answer "You should open this file
+  in Helix."
+
 The files are in `~/.openagents/coder/memory/`:
 
 | File | What it holds |
@@ -649,7 +667,9 @@ in a fresh HOME, then replays three recorded embedding responses
 ([fixtures/memory-replay](../tui/fixtures/memory-replay/README.md)) with
 `GW_REPLAY` and no credentials. It checks that `deploy` ranks first, that
 the forgotten text is not in the file, that `forget` drops the vector, and
-that a log with one edited field is refused.
+that a log with one edited field is refused. It also checks that a
+session's first message carries the facts, that replay rebuilds it, and
+that `--no-memory` leaves them out.
 
 ## What this does not do yet
 
@@ -657,10 +677,9 @@ that a log with one edited field is refused.
   event-sourced fact carries the digest of the event it was said in, but
   nothing yet confirms that chapter2's log holds an event with that
   digest. Cited facts are checked against their passage on every read.
-- **The agent doesn't use its memory yet.** You write and read facts
-  with the verbs. Showing the served facts to the model at the start of a
-  session, and letting the agent propose a `remember` that you approve,
-  are not built.
+- **The agent can't write its memory.** You write facts with the verbs,
+  and the agent sees them at the start of a session. Letting the agent
+  propose a `remember` that you approve is not built.
 - **Ranking is by embeddings only.** Psionic chapter 54's lexical ranking
   and reranking are not combined with the cosine score.
 
