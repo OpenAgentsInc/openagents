@@ -1,0 +1,56 @@
+#import "Basic";
+#load "../lib/harness/log.coax";
+// Chapter 201's example: chapter 200's hand trace written to a session log,
+// verified, checked request by request, tampered with, redacted, replayed,
+// and a second turn on chapter 126's engine. Every number is exact.
+LX_HEX :: [16]string.["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
+lx_hex :: (d:[32]u8,n:int) {for i:0..<n {print("%",LX_HEX[cast(int)d[i]/16]);print("%",LX_HEX[cast(int)d[i]%16]);}}
+lx_events :: (g:LgLog,from:int) {
+    for e,i:g.events[from..<g.count] {
+        print("  % % tokens %, seed %, fields % % % % % % %, digest ",from+i,e.kind,e.count,e.seed,e.f[0],e.f[1],e.f[2],e.f[3],e.f[4],e.f[5],e.f[6]);lx_hex(e.digest,8);print("\n");
+    }
+}
+lx_check :: (label:string,c:LgCheck) {print("%: % at event %\n",label,c.status,c.index);}
+// book:begin example
+main :: () {
+    tb:=NC_LEARNED;tr:=HL_TRACE;ts:=HL_TRACE_STARTS;m:=hl_scripted(tb[..],tr[..],ts[..],48);p:=HL_PROMPT;
+    ev:[32]LgEvent;tk:[64]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    // Chapter 200's hand trace, logged: the prompt, then the turn.
+    say:=lg_say(l[..],LgKind.user,p[..]);r:=lg_run(m,HL_TRACE_BUDGET,7,l[..]);
+    print("prompt logged: %; turn: %, stop %, steps %, transcript % tokens\n",say,r.status,r.turn.stop,r.turn.steps,r.turn.at);
+    lx_events(l[0],0);
+    c:=lg_verify(l[0]);print("verify: % over % events, head ",c.status,c.index);lx_hex(c.head,32);print("\n");
+    // Each request admits exactly what it was sent, and nothing else.
+    g:=l[0];ids:=tk;
+    for k:[3]int.[2,5,8] {n:=ev[k].f[1];print("request event % (% tokens): sent %",k,n,lg_admit(g,k,ids[0..<n]).status);
+        print(", one token more %",lg_admit(g,k,ids[0..<n+1]).status);bad:=ids;bad[n-1]=64;c=lg_admit(g,k,bad[0..<n]);print(", its last token changed % at event %\n",c.status,c.index);}
+    // Tampering, without rewriting the chain.
+    t:=tk;t[8]=50;lx_check("token 8 edited",lg_verify(LgLog.{events=ev[..],tokens=t[..],count=11,used=30}));
+    e:=ev;e[6].f[3]=20;lx_check("reply 1's positions edited",lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}));
+    e=ev;e[4]=ev[5];e[5]=ev[4];lx_check("events 4 and 5 swapped",lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}));
+    e=ev;for i:4..<10 {e[i]=ev[i+1];}lx_check("output 0 dropped",lg_verify(LgLog.{events=e[..],tokens=tk[..],count=10,used=30}));
+    e=ev;for i:5..<12 {e[i]=ev[i-1];}lx_check("output 0 inserted twice",lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30}));
+    // Tampering by someone who rewrites the whole chain: what the events must explain still fails.
+    e=ev;t=tk;e[1]=LgEvent.{kind=LgKind.context,count=1};for i:2..<12 {e[i]=ev[i-1];}t[5]=120;for i:6..<31 {t[i]=tk[i-1];}lc_rechain(e[..],12,t[..]);
+    lx_check("context injected before the turn, chain rewritten",lg_verify(LgLog.{events=e[..],tokens=t[..],count=12,used=31}));
+    e=ev;e[5]=LgEvent.{kind=LgKind.context};for i:6..<12 {e[i]=ev[i-1];}lc_rechain(e[..],12,tk[..]);
+    lx_check("context injected inside the turn, chain rewritten",lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30}));
+    e=ev;e[10].f[4]=16;lc_rechain(e[..],11,tk[..]);lx_check("stop's token count rewritten",lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}));
+    // Redaction: the prompt's tokens go, its digest stays.
+    steps:[4]HlStep;scratch:[64]int;
+    print("replay before redaction: %\n",lg_replay(m,l[0],1,steps[..],scratch[..]));
+    e=ev;t=tk;h:=[1]LgLog.[LgLog.{events=e[..],tokens=t[..],count=11,used=30}];
+    print("redact event 0: %; tokens 0..4 now % % % % %\n",lg_redact(h[..],0),t[0],t[1],t[2],t[3],t[4]);
+    c=lg_verify(h[0]);print("verify: %, head unchanged: %\n",c.status,su_same(c.head,ev[10].digest));
+    print("request event 8 admits what it was sent: %; replay: %; a new turn: %\n",lg_admit(h[0],8,ids[0..<27]).status,lg_replay(m,h[0],1,steps[..],scratch[..]),lg_run(m,HL_TRACE_BUDGET,7,h[..]).status);
+    // A second turn on chapter 126's engine, on top of the first.
+    cf:=SF_TEST;w:[29416]f64;cache:[8000]f64;work:[12000]f64;logits:[21056]f64;last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;
+    ww:=ne_buffers(cf,64,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);pairs:=HL_PAIRS;sf_program(cf,pairs[..],w[..]);
+    en:=HlModel.{engine=true,c=cf,base=320,table=tb[..],w=w[..],options=NxOptions.{temperature=0},work=ww};
+    q:=[4]int.[321,63,322,323];eb:=HlBudget.{steps=4,tokens=40,deadline=1000,reply=16,tool=0};
+    print("second prompt logged: %\n",lg_say(l[..],LgKind.user,q[..]));
+    u:=lg_run(en,eb,5,l[..]);print("engine turn: %, stop %, steps %, transcript % tokens, events % to %\n",u.status,u.turn.stop,u.turn.steps,u.turn.at,u.start,u.end);
+    lx_events(l[0],11);
+    print("verify: %; replay turn 1 on the script: %, turn 2 on the engine: %, turn 2 on the script: %\n",lg_verify(l[0]).status,lg_replay(m,l[0],1,steps[..],scratch[..]),lg_replay(en,l[0],u.start,steps[..],scratch[..]),lg_replay(m,l[0],u.start,steps[..],scratch[..]));
+}
+// book:end example

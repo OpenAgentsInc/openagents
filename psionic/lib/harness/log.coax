@@ -1,0 +1,496 @@
+// Chapter 201: model-visible means logged. Every token a model request holds
+// is first an event in an append-only, hash-chained log, and the request is
+// read from the log's own token store, so nothing reaches the model that the
+// log does not hold. Events are typed: system, user and injected context
+// text before a turn; then a turn's start (its seed and budget), each step's
+// request, reply and tool output, and its stop. Redaction replaces an
+// event's tokens and keeps its content digest, so the chain still verifies
+// and a request can still be checked against the digest. The verifier
+// rebuilds every turn and every step from the events alone and refuses a
+// log, or a request, that the events do not explain; a rebuilt turn replays
+// through chapter 200's hl_replay.
+// Profile sha256-harness-log-v1: SHA-256 over chapter 239's little-endian
+// encoding, one in-process log of caller-owned events and tokens.
+#load "loop.coax";
+#load "../suite.coax";
+#load "../../tests/harness-log-checks.coax";
+#authority;
+
+LgKind :: enum u8 {none;start;system;user;context;request;reply;output;stop;}
+LgStatus :: enum u8 {ok;shape;capacity;order;sequence;link;digest;content;step;view;turn;open;redacted;replay;}
+// One event. Its count tokens follow the earlier events' tokens in the log's
+// token store. seed and f carry the kind's fields:
+//   start    seed: the turn's seed; f: steps tokens deadline reply tool cancel
+//   request  seed: the step's seed; f: step seen limit
+//   reply    f: step draws stop positions (count: the tokens kept)
+//   output   f: step value (count: the tokens appended)
+//   stop     f: stop steps at reply tokens ticks tools
+LgEvent :: struct {sequence:int;kind:LgKind;count:int;seed:u64;f:[7]int;redacted:bool;content:[32]u8;previous:[32]u8;digest:[32]u8;}
+// The log: caller-owned events and tokens, count events and used tokens
+// written. A function that appends takes the log as a one-element view.
+LgLog :: struct {events:[]LgEvent;tokens:[]int;count:int;used:int;}
+// head: the last event's digest, or zero for an empty log.
+LgCheck :: struct {status:LgStatus;index:int;head:[32]u8;}
+// One turn rebuilt from its events: the start and stop events' indices, the
+// seed, budget and prompt length, and the turn chapter 200 returned.
+LgTurn :: struct {status:LgStatus;start:int;end:int;seed:u64;budget:HlBudget;prompt:int;turn:HlTurn;}
+// The verifier's state between events.
+LgFold :: struct {status:LgStatus;at:int;open:bool;last:LgKind;step:HlStep;r:LgTurn;}
+LG_HIDDEN :: -1;
+
+// Checks first. Expected digests come from psionic/tests/harness_log_oracle.py
+// --tests, which uses Python's hashlib over chapter 200's hand trace.
+#test "the hand trace, logged: every digest by hand" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    r:=lc_trace(l[..],HL_TRACE_BUDGET,48);
+    #assert r.status==LgStatus.ok && r.start==1 && r.end==10 && r.seed==7 && r.prompt==5 && l[0].count==11 && l[0].used==30;
+    hl_expect(r.turn,HlStop.answer,3,30,17,68,2);#assert r.turn.reply==27 && r.budget.cancel== -1 && r.budget.tool==3;
+    #assert su_hex(ev[0].content,LC_PROMPT_CONTENT) && su_hex(ev[1].content,LC_EMPTY_CONTENT) && su_hex(lg_content(tk[0..<0]),LC_EMPTY_CONTENT);
+    for i:0..<11 {#assert su_hex(ev[i].digest,LC_DIGESTS[i]) && ev[i].sequence==i;}
+    kinds:=[11]LgKind.[LgKind.user,LgKind.start,LgKind.request,LgKind.reply,LgKind.output,LgKind.request,LgKind.reply,LgKind.output,LgKind.request,LgKind.reply,LgKind.stop];
+    counts:=[11]int.[5,0,0,7,4,0,6,5,0,3,0];
+    for i:0..<11 {#assert ev[i].kind==kinds[i] && ev[i].count==counts[i] && !ev[i].redacted;}
+    c:=lg_verify(l[0]);#assert c.status==LgStatus.ok && c.index==11 && su_hex(c.head,LC_DIGESTS[10]);
+    // The transcript is the log's token store, exactly chapter 200's.
+    ids:[48]int;steps:[3]HlStep;tb:=NC_LEARNED;t:=hl_trace(tb[..],HL_TRACE_BUDGET,48,ids[..],steps[..]);
+    #assert lc_same(t,r.turn);for i:0..<30 {#assert tk[i]==ids[i];}
+    #assert lg_word(0)==0 && lg_word(5)==5 && lg_word(-1)==18446744073709551615 && lg_word(-2)==18446744073709551614;
+    e:LgEvent;#assert su_same(lg_verify(LgLog.{events=ev[0..<0],tokens=tk[..]}).head,e.previous);
+    h:[100]int;for i:0..<100 {h[i]=i;}#assert su_hex(lg_content(h[..]),LC_HUNDRED_CONTENT);
+}
+#test "chapter 200's budgets at their limits, logged" #steps 4000000000 {
+    lc_compare(HL_TRACE_BUDGET,48);
+    b:=HL_TRACE_BUDGET;b.steps=2;lc_compare(b,48);
+    b=HL_TRACE_BUDGET;b.tokens=16;lc_compare(b,48);
+    for d:[8]int.[67,38,37,35,34,5,4,0] {b=HL_TRACE_BUDGET;b.deadline=d;lc_compare(b,48);}
+    for r:[2]int.[7,6] {b=HL_TRACE_BUDGET;b.reply=r;lc_compare(b,48);}
+    for w:[6]int.[31,30,27,26,5,4] {lc_compare(HL_TRACE_BUDGET,w);}
+    b=HL_TRACE_BUDGET;b.tokens=16;b.deadline=67;lc_compare(b,30);
+    b=HL_TRACE_BUDGET;b.deadline=67;lc_compare(b,30);
+    b=HL_TRACE_BUDGET;b.tokens=0;lc_compare(b,48);b.deadline=0;lc_compare(b,5);
+    b=HL_TRACE_BUDGET;b.tokens=1;b.deadline=0;lc_compare(b,48);
+    b=HL_TRACE_BUDGET;b.tokens= -1;lc_compare(b,48);
+    for k:[5]int.[0,1,2,3,5] {b=HL_TRACE_BUDGET;b.cancel=k;lc_compare(b,48);}
+    b=HL_TRACE_BUDGET;b.tool=0;lc_compare(b,48);
+}
+#test "tampering: an edit, a reorder, a drop and an insert, each with its reason" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert lc_trace(l[..],HL_TRACE_BUDGET,48).status==LgStatus.ok;
+    g:=l[0];
+    // An edited token: the content digest of the event that holds it.
+    for p:0..<30 {t:=tk;t[p]+=1;c:=lg_verify(LgLog.{events=ev[..],tokens=t[..],count=11,used=30});
+        want:=ifx p<5 then 0 else ifx p<12 then 3 else ifx p<16 then 4 else ifx p<22 then 6 else ifx p<27 then 7 else 9;
+        #assert c.status==LgStatus.content && c.index==want;}
+    // An edited field: that event's digest; an edited link: the link.
+    for i:0..<11 {
+        for j:0..<7 {e:=ev;e[i].f[j]+=1;#assert lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}).status==LgStatus.digest;}
+        e:=ev;e[i].seed+=1;c:=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30});#assert c.status==LgStatus.digest && c.index==i;
+        e=ev;e[i].kind=ifx e[i].kind==LgKind.stop then LgKind.user else LgKind.stop;#assert lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}).status==LgStatus.digest;
+        e=ev;e[i].content[31]^=1;#assert lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}).status==LgStatus.digest;
+        e=ev;e[i].digest[0]^=1;#assert lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}).status==LgStatus.digest;
+        e=ev;e[i].previous[5]^=1;c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30});#assert c.status==LgStatus.link && c.index==i;
+        e=ev;e[i].sequence+=1;c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30});#assert c.status==LgStatus.sequence && c.index==i;
+    }
+    e:=ev;e[3].count=6;#assert lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}).status==LgStatus.digest;
+    // Reorder, drop and insert: the first event out of place.
+    e=ev;e[4]=ev[5];e[5]=ev[4];c:=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30});#assert c.status==LgStatus.sequence && c.index==4;
+    e=ev;for i:4..<10 {e[i]=ev[i+1];}c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=10,used=30});#assert c.status==LgStatus.sequence && c.index==4;
+    e=ev;for i:5..<12 {e[i]=ev[i-1];}c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30});#assert c.status==LgStatus.sequence && c.index==5;
+    // A count past the tokens, and tokens no event holds.
+    c=lg_verify(LgLog.{events=ev[..],tokens=tk[..],count=11,used=29});#assert c.status==LgStatus.content && c.index==9;
+    c=lg_verify(LgLog.{events=ev[..],tokens=tk[..],count=11,used=31});#assert c.status==LgStatus.content && c.index==11;
+    #assert lg_verify(LgLog.{events=ev[..],tokens=tk[..],count=12,used=30}).status!=LgStatus.shape;
+    for bad:[4][2]int.[[2]int.[-1,30],[2]int.[17,30],[2]int.[11,-1],[2]int.[11,49]] {#assert lg_verify(LgLog.{events=ev[..],tokens=tk[..],count=bad[0],used=bad[1]}).status==LgStatus.shape;}
+    #assert lg_verify(LgLog.{events=ev[..],tokens=tk[..],count=16,used=30}).status==LgStatus.sequence;
+    #assert lg_verify(LgLog.{events=ev[..],tokens=tk[..],count=11,used=48}).status==LgStatus.content;
+    // A log cut after any event still verifies: the turn is open, not broken.
+    at:=0;for n:0..<12 {#assert lg_verify(LgLog.{events=ev[..],tokens=tk[..],count=n,used=at}).status==LgStatus.ok;if n<11 {at+=ev[n].count;}}
+}
+#test "a forger who rewrites the chain is stopped by what the events must explain" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert lc_trace(l[..],HL_TRACE_BUDGET,48).status==LgStatus.ok;
+    // Injected context before the turn: the first request saw 5 tokens, not 6.
+    e:=ev;t:=tk;e[1]=LgEvent.{kind=LgKind.context,count=1};for i:2..<12 {e[i]=ev[i-1];}t[5]=120;for i:6..<31 {t[i]=tk[i-1];}
+    lc_rechain(e[..],12,t[..]);#assert su_hex(e[11].digest,LC_INJECTED_HEAD);
+    c:=lg_verify(LgLog.{events=e[..],tokens=t[..],count=12,used=31});#assert c.status==LgStatus.view && c.index==3;
+    // Text inside a turn, a dropped output, a second start, a stop outside a turn.
+    for kind:[3]LgKind.[LgKind.system,LgKind.user,LgKind.context] {
+        e=ev;e[5]=LgEvent.{kind=kind};for i:6..<12 {e[i]=ev[i-1];}lc_rechain(e[..],12,tk[..]);
+        c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30});#assert c.status==LgStatus.order && c.index==5;}
+    e=ev;t=tk;for i:4..<10 {e[i]=ev[i+1];}for i:12..<26 {t[i]=tk[i+4];}lc_rechain(e[..],10,t[..]);
+    c=lg_verify(LgLog.{events=e[..],tokens=t[..],count=10,used=26});#assert c.status==LgStatus.order && c.index==4;
+    e=ev;e[5]=ev[1];for i:6..<12 {e[i]=ev[i-1];}lc_rechain(e[..],12,tk[..]);#assert lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30}).status==LgStatus.order;
+    e=ev;e[0]=ev[10];for i:1..<12 {e[i]=ev[i-1];}lc_rechain(e[..],12,tk[..]);c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30});#assert c.status==LgStatus.order && c.index==0;
+    // A reply without its request, an output after an answer, two requests in a row.
+    e=ev;for i:2..<10 {e[i]=ev[i+1];}lc_rechain(e[..],10,tk[..]);#assert lg_verify(LgLog.{events=e[..],tokens=tk[..],count=10,used=30}).status==LgStatus.order;
+    e=ev;e[10]=LgEvent.{kind=LgKind.output,count=0,f=[7]int.[2,0,0,0,0,0,0]};e[11]=ev[10];lc_rechain(e[..],12,tk[..]);
+    c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30});#assert c.status==LgStatus.order && c.index==10;
+    e=ev;e[3]=ev[2];for i:4..<12 {e[i]=ev[i-1];}lc_rechain(e[..],12,tk[..]);c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30});#assert c.status==LgStatus.order && c.index==3;
+    // An output that follows a reply which did not call.
+    e=ev;e[9].f[2]=cast(int)cast(u8)NeStop.limit;e[9].f[1]=3;e[10]=LgEvent.{kind=LgKind.output,f=[7]int.[2,0,0,0,0,0,0]};e[11]=ev[10];lc_rechain(e[..],12,tk[..]);
+    c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30});#assert c.status==LgStatus.order && c.index==10;
+    // Steps: a request's number or seed, a reply's number, draws or length, an output's number.
+    for x:[8][3]int.[[3]int.[5,0,1],[3]int.[2,0,1],[3]int.[6,0,1],[3]int.[6,1,1],[3]int.[6,1,-1],[3]int.[7,0,1],[3]int.[7,0,-1],[3]int.[3,0,-1]] {
+        e=ev;e[x[0]].f[x[1]]+=x[2];lc_rechain(e[..],11,tk[..]);c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30});#assert c.status==LgStatus.step && c.index==x[0];}
+    e=ev;e[5].seed+=1;lc_rechain(e[..],11,tk[..]);c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30});#assert c.status==LgStatus.step && c.index==5;
+    // A reply longer than its request's limit.
+    e=ev;e[8].f[2]=2;lc_rechain(e[..],11,tk[..]);c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30});#assert c.status==LgStatus.step && c.index==9;
+    e=ev;e[8].f[2]=3;lc_rechain(e[..],11,tk[..]);#assert lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}).status==LgStatus.ok;
+    // A request that saw a different length.
+    e=ev;e[5].f[1]+=1;lc_rechain(e[..],11,tk[..]);c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30});#assert c.status==LgStatus.view && c.index==5;
+    // The stop must equal the turn the steps rebuild; its stop kind is the loop's.
+    for j:1..<7 {e=ev;e[10].f[j]+=1;lc_rechain(e[..],11,tk[..]);c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30});#assert c.status==LgStatus.turn && c.index==10;}
+    e=ev;e[10].f[0]=cast(int)cast(u8)HlStop.window;lc_rechain(e[..],11,tk[..]);#assert lg_verify(LgLog.{events=e[..],tokens=tk[..],count=11,used=30}).status==LgStatus.ok;
+    // A kind no event has.
+    e=ev;e[11]=LgEvent.{kind=LgKind.none};lc_rechain(e[..],12,tk[..]);c=lg_verify(LgLog.{events=e[..],tokens=tk[..],count=12,used=30});#assert c.status==LgStatus.order && c.index==11;
+}
+#test "redaction keeps the chain and every check that needs only digests" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert lc_trace(l[..],HL_TRACE_BUDGET,48).status==LgStatus.ok;
+    tb:=NC_LEARNED;tr:=HL_TRACE;ts:=HL_TRACE_STARTS;m:=hl_scripted(tb[..],tr[..],ts[..],48);steps:[3]HlStep;scratch:[48]int;
+    ids:=tk;#assert lg_replay(m,l[0],1,steps[..],scratch[..])==LgStatus.ok;
+    for i:[5]int.[0,3,4,6,9] {
+        e:=ev;t:=tk;g:=[1]LgLog.[LgLog.{events=e[..],tokens=t[..],count=11,used=30}];
+        #assert lg_redact(g[..],i)==LgStatus.ok && e[i].redacted;
+        at:=lg_offset(g[0],i);for p:0..<30 {#assert t[p]==(ifx p>=at && p<at+e[i].count then LG_HIDDEN else ids[p]);}
+        c:=lg_verify(g[0]);#assert c.status==LgStatus.ok && su_hex(c.head,LC_DIGESTS[10]);
+        // Every request still admits the tokens it was sent, and nothing else.
+        for k:[3]int.[2,5,8] {n:=e[k].f[1];#assert lg_admit(g[0],k,ids[0..<n]).status==LgStatus.ok;
+            if at<n {bad:=ids;bad[at]+=1;c=lg_admit(g[0],k,bad[0..<n]);#assert c.status==LgStatus.content && c.index==i;}}
+        r:=lg_turn(g[0],1,steps[..]);#assert r.status==LgStatus.ok && lc_same(r.turn,lg_turn(l[0],1,steps[..]).turn);
+        #assert lg_replay(m,g[0],1,steps[..],scratch[..])==LgStatus.redacted;
+        // A redacted log takes text but runs no turn: the model would see hidden tokens.
+        p:=HL_PROMPT;#assert lg_say(g[..],LgKind.user,p[0..<1])==LgStatus.ok && lg_run(m,HL_TRACE_BUDGET,7,g[..]).status==LgStatus.redacted;
+        // The digest still binds a redacted event.
+        e[i].content[0]^=1;#assert lg_verify(g[0]).status==LgStatus.digest;
+    }
+    for i:[5]int.[-1,1,2,10,11] {e:=ev;g:=[1]LgLog.[LgLog.{events=e[..],tokens=tk[..],count=11,used=30}];#assert lg_redact(g[..],i)==LgStatus.shape && !e[1].redacted && !e[2].redacted && !e[10].redacted;}
+    // Past the log's end, even where an earlier, longer log left an output.
+    e0:=ev;t0:=tk;g0:=[1]LgLog.[LgLog.{events=e0[..],tokens=t0[..],count=4,used=12}];
+    #assert lg_redact(g0[..],4)==LgStatus.shape && !e0[4].redacted && t0[12]==327;
+    // A redacted event whose tokens are later changed still verifies: only its digest is kept.
+    e:=ev;t:=tk;g:=[1]LgLog.[LgLog.{events=e[..],tokens=t[..],count=11,used=30}];#assert lg_redact(g[..],3)==LgStatus.ok;t[6]=5;#assert lg_verify(g[0]).status==LgStatus.ok;
+}
+#test "admission: a request the log does not explain is refused" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert lc_trace(l[..],HL_TRACE_BUDGET,48).status==LgStatus.ok;
+    g:=l[0];ids:=tk;
+    for k:[3]int.[2,5,8] {n:=ev[k].f[1];
+        c:=lg_admit(g,k,ids[0..<n]);#assert c.status==LgStatus.ok && c.index==k;
+        c=lg_admit(g,k,ids[0..<n+1]);#assert c.status==LgStatus.view && c.index==k;
+        c=lg_admit(g,k,ids[0..<n-1]);#assert c.status==LgStatus.view;
+        for p:0..<n {bad:=ids;bad[p]= -5;c=lg_admit(g,k,bad[0..<n]);
+            want:=ifx p<5 then 0 else ifx p<12 then 3 else ifx p<16 then 4 else ifx p<22 then 6 else 7;
+            #assert c.status==LgStatus.content && c.index==want;}
+    }
+    for i:[5]int.[-1,0,1,3,11] {#assert lg_admit(g,i,ids[0..<5]).status==LgStatus.shape;}
+    #assert lg_admit(LgLog.{events=ev[..],tokens=tk[..],count=2,used=5},2,ids[0..<5]).status==LgStatus.shape;
+    #assert lg_admit(g,10,ids[0..<5]).status==LgStatus.shape;
+    e:=ev;e[4].f[1]+=1;c:=lg_admit(LgLog.{events=e[..],tokens=tk[..],count=11,used=30},2,ids[0..<5]);#assert c.status==LgStatus.digest && c.index==4;
+}
+#test "the loop with the log: refusals before anything is logged, and more than one turn" #steps 4000000000 {
+    tb:=NC_LEARNED;tr:=HL_TRACE;ts:=HL_TRACE_STARTS;m:=hl_scripted(tb[..],tr[..],ts[..],48);p:=HL_PROMPT;
+    ev:[32]LgEvent;tk:[48]int;
+    l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    #assert lg_run(m,HL_TRACE_BUDGET,7,l[..]).status==LgStatus.shape && l[0].count==0;
+    #assert lg_say(l[..],LgKind.user,p[..])==LgStatus.ok;
+    for f:0..<3 {b:=HL_TRACE_BUDGET;if f==0 {b.steps= -1;}else if f==1 {b.reply=0;}else {b.tool= -1;}#assert lg_run(m,b,7,l[..]).status==LgStatus.shape && l[0].count==1;}
+    b:=HL_TRACE_BUDGET;b.tool=0;b.reply=1;b.steps=0;#assert lg_run(m,b,7,l[..]).turn.stop==HlStop.steps && l[0].count==3;
+    // A one-token prompt is enough.
+    one:=[2]int.[HL_X,HL_END];os:=[2]int.[0,2];l=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert lg_say(l[..],LgKind.user,p[0..<1])==LgStatus.ok;
+    o1:=lg_run(hl_scripted(tb[..],one[..],os[..],48),HL_TRACE_BUDGET,7,l[..]);#assert o1.status==LgStatus.ok && o1.turn.stop==HlStop.answer && o1.turn.at==2;
+    l=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[0..<47]}];#assert lg_say(l[..],LgKind.user,p[..])==LgStatus.ok;#assert lg_run(m,HL_TRACE_BUDGET,7,l[..]).status==LgStatus.shape;
+    // The whole turn must fit: start, stop and three events a step.
+    l=[1]LgLog.[LgLog.{events=ev[0..<11],tokens=tk[..]}];#assert lg_say(l[..],LgKind.user,p[..])==LgStatus.ok;#assert lg_run(m,HL_TRACE_BUDGET,7,l[..]).status==LgStatus.capacity && l[0].count==1;
+    l=[1]LgLog.[LgLog.{events=ev[0..<12],tokens=tk[..]}];#assert lg_say(l[..],LgKind.user,p[..])==LgStatus.ok;#assert lg_run(m,HL_TRACE_BUDGET,7,l[..]).status==LgStatus.ok && l[0].count==11;
+    // A broken log runs nothing.
+    l=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert lg_say(l[..],LgKind.user,p[..])==LgStatus.ok;ev[0].seed=1;#assert lg_run(m,HL_TRACE_BUDGET,7,l[..]).status==LgStatus.digest && l[0].count==1;
+    // Text: only system, user and context, only between turns, only with room.
+    l=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];
+    for k:[5]LgKind.[LgKind.none,LgKind.start,LgKind.request,LgKind.reply,LgKind.stop] {#assert lg_say(l[..],k,p[..])==LgStatus.shape;}
+    #assert lg_say(l[..],LgKind.output,p[..])==LgStatus.shape && l[0].count==0;
+    #assert lg_say(l[..],LgKind.system,p[0..<1])==LgStatus.ok && lg_say(l[..],LgKind.context,p[1..<3])==LgStatus.ok && lg_say(l[..],LgKind.user,p[3..<5])==LgStatus.ok;
+    #assert l[0].used==5 && ev[0].kind==LgKind.system && ev[1].kind==LgKind.context && ev[2].kind==LgKind.user && tk[4]==323;
+    t:=lg_run(m,HL_TRACE_BUDGET,7,l[..]);hl_expect(t.turn,HlStop.answer,3,30,17,68,2);#assert t.start==3 && t.end==12;
+    // A second turn on top of the first: its prompt is the whole log so far.
+    two:=[2]int.[HL_X,HL_END];st:=[2]int.[0,2];m2:=hl_scripted(tb[..],two[..],st[..],48);q:=[3]int.[321,63,323];
+    #assert lg_say(l[..],LgKind.user,q[..])==LgStatus.ok;
+    u:=lg_run(m2,HL_TRACE_BUDGET,9,l[..]);#assert u.status==LgStatus.ok;#assert u.start==14;#assert u.prompt==33;#assert u.end==17;hl_expect(u.turn,HlStop.answer,1,34,2,34,0);
+    steps:[3]HlStep;scratch:[48]int;
+    #assert lg_replay(m2,l[0],14,steps[..],scratch[..])==LgStatus.ok && lg_replay(m,l[0],3,steps[..],scratch[..])==LgStatus.ok;
+    #assert lg_replay(m,l[0],14,steps[..],scratch[..])==LgStatus.replay && lg_replay(m2,l[0],3,steps[..],scratch[..])==LgStatus.replay;
+    // Cut inside the second turn: the log verifies, the turn is open and takes no text or turn.
+    o:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..],count=16,used=33}];
+    #assert lg_verify(o[0]).status==LgStatus.ok && lg_turn(o[0],14,steps[..]).status==LgStatus.open;
+    #assert lg_say(o[..],LgKind.user,q[..])==LgStatus.order && lg_run(m2,HL_TRACE_BUDGET,9,o[..]).status==LgStatus.order && o[0].count==16;
+    // Room: events, then tokens, exactly.
+    z:=[1]LgLog.[LgLog.{events=ev[0..<1],tokens=tk[0..<5]}];#assert lg_say(z[..],LgKind.user,p[..])==LgStatus.ok && lg_say(z[..],LgKind.user,p[0..<0])==LgStatus.capacity;
+    z=[1]LgLog.[LgLog.{events=ev[0..<2],tokens=tk[0..<5]}];#assert lg_say(z[..],LgKind.user,p[0..<4])==LgStatus.ok && lg_say(z[..],LgKind.user,p[0..<2])==LgStatus.capacity && lg_say(z[..],LgKind.user,p[0..<1])==LgStatus.ok;
+}
+#test "turns rebuilt and replayed, and their refusals" #steps 4000000000 {
+    ev:[16]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];#assert lc_trace(l[..],HL_TRACE_BUDGET,48).status==LgStatus.ok;
+    tb:=NC_LEARNED;tr:=HL_TRACE;ts:=HL_TRACE_STARTS;m:=hl_scripted(tb[..],tr[..],ts[..],48);
+    ids:[48]int;want:[3]HlStep;t:=hl_trace(tb[..],HL_TRACE_BUDGET,48,ids[..],want[..]);
+    steps:[3]HlStep;scratch:[48]int;r:=lg_turn(l[0],1,steps[..]);
+    #assert r.status==LgStatus.ok && r.start==1 && r.end==10 && r.seed==7 && r.prompt==5 && lc_same(r.turn,t);
+    #assert r.budget.steps==3 && r.budget.tokens==17 && r.budget.deadline==68 && r.budget.reply==8 && r.budget.tool==3 && r.budget.cancel== -1;
+    for k:0..<3 {#assert lc_step(steps[k],want[k]);}
+    // Fewer step records than steps: the turn rebuilds, but does not replay.
+    few:[2]HlStep;#assert lg_turn(l[0],1,few[..]).status==LgStatus.ok && lc_step(few[1],want[1]) && lg_replay(m,l[0],1,few[..],scratch[..])==LgStatus.shape;
+    #assert lg_turn(LgLog.{events=ev[..],tokens=tk[..],count=1,used=5},1,steps[..]).status==LgStatus.shape;
+    // A turn with an empty prompt at the log's first event: a start and a stop.
+    z:[2]LgEvent;z[0]=ev[1];z[1]=LgEvent.{kind=LgKind.stop};lc_rechain(z[..],2,tk[..]);
+    zr:=lg_turn(LgLog.{events=z[..],tokens=tk[..],count=2},0,steps[..]);#assert zr.status==LgStatus.ok && zr.start==0 && zr.end==1 && zr.prompt==0;
+    for s:[4]int.[-1,0,2,11] {#assert lg_turn(l[0],s,steps[..]).status==LgStatus.shape && lg_replay(m,l[0],s,steps[..],scratch[..])==LgStatus.shape;}
+    e:=ev;e[6].f[0]=9;c:=lg_turn(LgLog.{events=e[..],tokens=tk[..],count=11,used=30},1,steps[..]);#assert c.status==LgStatus.digest;
+    #assert lg_replay(m,l[0],1,steps[..],scratch[..])==LgStatus.ok && lg_replay(m,l[0],1,steps[..],scratch[0..<7])==LgStatus.replay;
+    o:=HL_TRACE;o[11]=49;#assert lg_replay(hl_scripted(tb[..],o[..],ts[..],48),l[0],1,steps[..],scratch[..])==LgStatus.replay;
+    // Replay is chapter 200's: it agrees with hl_replay on the same record.
+    #assert hl_replay(m,7,5,ids[..],t,want[..],scratch[..]) && !hl_replay(hl_scripted(tb[..],o[..],ts[..],48),7,5,ids[..],t,want[..],scratch[..]);
+    // A turn the model refused: the request is logged, no reply, then the stop.
+    short:=[3]int.[0,7,13];g:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];p:=HL_PROMPT;#assert lg_say(g[..],LgKind.user,p[..])==LgStatus.ok;
+    u:=lg_run(hl_scripted(tb[..],tr[..],short[..],48),HL_TRACE_BUDGET,7,g[..]);hl_expect(u.turn,HlStop.model,2,27,13,38,2);
+    #assert u.end==9 && ev[8].kind==LgKind.request && ev[9].kind==LgKind.stop && lg_verify(g[0]).status==LgStatus.ok;
+    #assert lg_replay(hl_scripted(tb[..],tr[..],short[..],48),g[0],1,steps[..],scratch[..])==LgStatus.ok;
+}
+#forall "every step's view is rebuilt from the log, on random scripts and budgets" seed:0..<200 #steps 2000000000 {
+    tb:=NC_LEARNED;tr:=HL_TRACE;ts:=HL_TRACE_STARTS;
+    sd:=cast(u64)seed;count:=cast(int)(cr_bits(sd,3)%6);script:[400]int;starts:[7]int;ho_script(sd,count,script[..],starts[..]);
+    m:=hl_scripted(tb[..],script[..],starts[0..<count+1],HL_TEST_CONTEXT);b:=ho_budget(sd);
+    ids:[48]int;for i:0..<5 {ids[i]=HL_PROMPT[i];}want:[6]HlStep;t:=hl_run(m,b,sd,5,ids[..],want[..]);
+    // The same prompt as one to three text events of random kinds.
+    ev:[24]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];x:=cr_bits(sd,11);p:=HL_PROMPT;
+    cut:=1+cast(int)(x%4);cut2:=cut+cast(int)((x>>8)%cast(u64)(6-cut));kinds:=[3]LgKind.[LgKind.system,LgKind.user,LgKind.context];
+    #assert lg_say(l[..],kinds[cast(int)((x>>16)%3)],p[0..<cut])==LgStatus.ok;if cut2>cut {#assert lg_say(l[..],kinds[cast(int)((x>>20)%3)],p[cut..<cut2])==LgStatus.ok;}if cut2<5 {#assert lg_say(l[..],kinds[cast(int)((x>>24)%3)],p[cut2..<5])==LgStatus.ok;}
+    n:=l[0].count;r:=lg_run(m,b,sd,l[..]);
+    #assert r.status==LgStatus.ok && r.start==n && r.prompt==5 && lc_same(r.turn,t) && r.end==l[0].count-1;
+    for i:0..<t.at {#assert tk[i]==ids[i];}
+    steps:[6]HlStep;u:=lg_turn(l[0],n,steps[..]);#assert u.status==LgStatus.ok && lc_same(u.turn,t) && u.end==r.end;
+    for k:0..<t.steps {#assert lc_step(steps[k],want[k]);}
+    // Each request event admits exactly the prefix chapter 200's step saw.
+    k:=0;for e,i:ev[0..<l[0].count] {if e.kind==LgKind.request {
+        #assert e.f[1]==want[k].seen || k==t.steps;#assert lg_admit(l[0],i,ids[0..<e.f[1]]).status==LgStatus.ok;k+=1;}}
+    #assert k==t.steps || k==t.steps+1;
+    scratch:[48]int;#assert lg_replay(m,l[0],n,steps[..],scratch[..])==LgStatus.ok && hl_replay(m,sd,5,ids[..],t,want[..],scratch[..]);
+}
+
+// book:begin encode
+// Integers as two's-complement little-endian u64s; a content digest covers
+// the token count and every token.
+lg_word :: (x:int)->u64 {return ifx x<0 then (cast(u64)18446744073709551615)-cast(u64)(-1-x) else cast(u64)x;}
+lg_content :: (tokens:[]int)->[32]u8 {
+    s:[112]u8;b:[64]u8;out:[32]u8;#assert sha256_init(s[..])==SHA_OK;
+    at:=su_u64(b[..],su_text(b[..],0,"psionic.harness.log.content.v1"),cast(u64)tokens.count);
+    #assert sha256_update_checked(s[..],b[0..<at],false)==SHA_OK;
+    for x:tokens {#assert sha256_update_checked(s[..],b[0..<su_u64(b[..],0,lg_word(x))],false)==SHA_OK;}
+    #assert sha256_final_checked(s[..],out[..],false)==SHA_OK;return out;
+}
+// An event digest covers its sequence, the previous digest, its kind, its
+// token count and content digest, its seed and its seven fields, and not
+// whether it was redacted.
+lg_digest :: (e:LgEvent)->[32]u8 {
+    b:[256]u8;at:=su_u64(b[..],su_text(b[..],0,"psionic.harness.log.event.v1"),cast(u64)e.sequence);
+    for i:0..<32 {b[at+i]=e.previous[i];}at+=32;b[at]=cast(u8)e.kind;at=su_u64(b[..],at+1,cast(u64)e.count);
+    for i:0..<32 {b[at+i]=e.content[i];}at=su_u64(b[..],at+32,e.seed);
+    for x:e.f {at=su_u64(b[..],at,lg_word(x));}
+    return su_hash(b[0..<at]);
+}
+// book:end encode
+
+// book:begin append
+lg_text :: (k:LgKind)->bool {return k==LgKind.system || k==LgKind.user || k==LgKind.context;}
+// Append the kind's event over the count tokens already at the store's end.
+// Only the log's own functions call this; they check room first.
+lg_put :: (l:[]LgLog,kind:LgKind,count:int,seed:u64,f:[7]int) {
+    g:=l[0];e:=LgEvent.{sequence=g.count,kind=kind,count=count,seed=seed,f=f};
+    if g.count>0 {e.previous=g.events[g.count-1].digest;}
+    e.content=lg_content(g.tokens[g.used..<g.used+count]);e.digest=lg_digest(e);
+    g.events[g.count]=e;l[0].count=g.count+1;l[0].used=g.used+count;
+}
+// Text the model will see before the next turn: system, user or injected
+// context. It is refused inside an open turn, where only the loop appends.
+lg_say :: (l:[]LgLog,kind:LgKind,text:[]int)->LgStatus {
+    g:=l[0];
+    if !lg_text(kind) {return LgStatus.shape;}
+    if lg_fold_log(g,g.count).open {return LgStatus.order;}
+    if g.count==g.events.count || text.count>g.tokens.count-g.used {return LgStatus.capacity;}
+    for i:0..<text.count {g.tokens[g.used+i]=text[i];}
+    lg_put(l,kind,text.count,0,[7]int.[0,0,0,0,0,0,0]);return LgStatus.ok;
+}
+// book:end append
+
+// book:begin redact
+// Redaction overwrites a text event's tokens and keeps its content digest,
+// so the chain, and every check that needs only digests, still holds.
+lg_redact :: (l:[]LgLog,index:int)->LgStatus {
+    g:=l[0];k:=lg_kind(g,index);
+    if !lg_text(k) && k!=LgKind.reply && k!=LgKind.output {return LgStatus.shape;}
+    at:=lg_offset(g,index);for i:at..<at+g.events[index].count {g.tokens[i]=LG_HIDDEN;}
+    g.events[index].redacted=true;return LgStatus.ok;
+}
+// The kind of event index, or none past either end.
+lg_kind :: (g:LgLog,index:int)->LgKind {if index<0 || index>=g.count {return LgKind.none;}return g.events[index].kind;}
+lg_offset :: (g:LgLog,index:int)->int {at:=0;for e:g.events[0..<index] {at+=e.count;}return at;}
+// book:end redact
+
+// book:begin fold
+// One event against the verifier's state. Text comes only between turns; a
+// turn is start, then (request reply output?)*, then stop, where an output
+// follows only a reply that ended in a call. Each request must have seen
+// exactly the tokens before it and carry the step's seed; each reply's draws
+// follow chapter 200's rule; the stop must equal the turn rebuilt from them.
+// step is the step being rebuilt.
+lg_fold :: (s:LgFold,e:LgEvent)->LgFold {
+    v:=s;k:=v.r.turn.steps;f:=e.f;
+    if lg_text(e.kind) {
+        if v.open {v.status=LgStatus.order;return v;}
+    }
+    else if e.kind==LgKind.start {
+        if v.open {v.status=LgStatus.order;return v;}
+        v.open=true;v.r=LgTurn.{seed=e.seed,prompt=v.at,turn=HlTurn.{at=v.at,reply=v.at}};
+        v.r.budget=HlBudget.{steps=f[0],tokens=f[1],deadline=f[2],reply=f[3],tool=f[4],cancel=f[5]};
+    }
+    else if e.kind==LgKind.request {
+        if v.last!=LgKind.start && v.last!=LgKind.output {v.status=LgStatus.order;return v;}
+        if f[0]!=k || e.seed!=cr_bits(v.r.seed,cast(u64)k) {v.status=LgStatus.step;return v;}
+        if f[1]!=v.at {v.status=LgStatus.view;return v;}
+        v.step=HlStep.{seen=f[1],seed=e.seed,limit=f[2]};
+    }
+    else if e.kind==LgKind.reply {
+        if v.last!=LgKind.request {v.status=LgStatus.order;return v;}
+        v.step.stop=cast(NeStop)cast(u8)f[2];
+        if f[0]!=k || e.count>v.step.limit || f[1]!=hl_draws(NeReply.{stop=v.step.stop,written=e.count}) {v.status=LgStatus.step;return v;}
+        v.step.written=e.count;v.step.draws=f[1];v.step.positions=f[3];
+        v.r.turn.steps=k+1;v.r.turn.tokens+=f[1];v.r.turn.ticks+=f[3];v.r.turn.reply=v.at;v.r.turn.at=v.at+e.count;
+    }
+    else if e.kind==LgKind.output {
+        if v.last!=LgKind.reply || v.step.stop!=NeStop.tool {v.status=LgStatus.order;return v;}
+        if f[0]!=k-1 {v.status=LgStatus.step;return v;}
+        v.step.value=f[1];v.step.output=e.count;
+        v.r.turn.tools+=1;v.r.turn.ticks+=v.r.budget.tool;v.r.turn.at=v.at+e.count;
+    }
+    else if e.kind==LgKind.stop {
+        if !v.open {v.status=LgStatus.order;return v;}
+        t:=v.r.turn;
+        if f[1]!=t.steps || f[2]!=t.at || f[3]!=t.reply || f[4]!=t.tokens || f[5]!=t.ticks || f[6]!=t.tools {v.status=LgStatus.turn;return v;}
+        v.r.turn.stop=cast(HlStop)cast(u8)f[0];v.open=false;
+    }
+    else {v.status=LgStatus.order;return v;}
+    v.at+=e.count;v.last=e.kind;return v;
+}
+// The state after events 0..<n, folded without checking digests.
+lg_fold_log :: (g:LgLog,n:int)->LgFold {
+    v:=LgFold.{};
+    for e:g.events[0..<n] {v=lg_fold(v,e);}
+    return v;
+}
+// book:end fold
+
+// book:begin verify
+// The first event whose sequence, link, digest, tokens or place does not
+// hold. A redacted event's tokens are not checked; its digest still is.
+lg_verify :: (g:LgLog)->LgCheck {
+    if g.count<0 || g.count>g.events.count || g.used<0 || g.used>g.tokens.count {return LgCheck.{status=LgStatus.shape};}
+    v:=LgFold.{};c:=LgCheck.{};
+    for e,i:g.events[0..<g.count] {
+        c.index=i;
+        if e.sequence!=i {c.status=LgStatus.sequence;return c;}
+        if !su_same(e.previous,c.head) {c.status=LgStatus.link;return c;}
+        if !su_same(e.digest,lg_digest(e)) {c.status=LgStatus.digest;return c;}
+        if e.count<0 || e.count>g.used-v.at {c.status=LgStatus.content;return c;}
+        if !e.redacted && !su_same(e.content,lg_content(g.tokens[v.at..<v.at+e.count])) {c.status=LgStatus.content;return c;}
+        v=lg_fold(v,e);if v.status!=LgStatus.ok {c.status=v.status;return c;}
+        c.head=e.digest;
+    }
+    c.index=g.count;if v.at!=g.used {c.status=LgStatus.content;}
+    return c;
+}
+// book:end verify
+
+// book:begin rebuild
+// The turn whose start event is at start, rebuilt from a verified log: each
+// step goes to steps once its reply, and then its output, is folded, while
+// steps has room. A turn without a stop event is open.
+lg_turn :: (g:LgLog,start:int,steps:[]HlStep)->LgTurn {
+    c:=lg_verify(g);if c.status!=LgStatus.ok {return LgTurn.{status=c.status,start=start};}
+    if lg_kind(g,start)!=LgKind.start {return LgTurn.{status=LgStatus.shape,start=start};}
+    v:=LgFold.{at=lg_offset(g,start)};
+    for e,i:g.events[start..<g.count] {
+        v=lg_fold(v,e);k:=v.r.turn.steps;
+        if (e.kind==LgKind.reply || e.kind==LgKind.output) && k<=steps.count {steps[k-1]=v.step;}
+        if !v.open {v.r.start=start;v.r.end=start+i;return v.r;}
+    }
+    return LgTurn.{status=LgStatus.open,start=start};
+}
+// The request a step's model was sent, checked against the log: request
+// must be exactly the tokens of the events before that step's request event,
+// token for token, or for a redacted event, digest for digest.
+lg_admit :: (g:LgLog,index:int,request:[]int)->LgCheck {
+    c:=lg_verify(g);if c.status!=LgStatus.ok {return c;}
+    c.index=index;
+    if lg_kind(g,index)!=LgKind.request {c.status=LgStatus.shape;return c;}
+    if request.count!=g.events[index].f[1] {c.status=LgStatus.view;return c;}
+    at:=0;
+    for e,i:g.events[0..<index] {
+        if !su_same(e.content,lg_content(request[at..<at+e.count])) {c.status=LgStatus.content;c.index=i;return c;}
+        at+=e.count;
+    }
+    return c;
+}
+// book:end rebuild
+
+// book:begin replay
+// A turn replays when its rebuilt record passes chapter 200's hl_replay over
+// the log's own tokens. A turn whose text was redacted cannot be resent.
+lg_replay :: (m:HlModel,g:LgLog,start:int,steps:[]HlStep,scratch:[]int)->LgStatus {
+    r:=lg_turn(g,start,steps);if r.status!=LgStatus.ok {return r.status;}
+    if steps.count<r.turn.steps {return LgStatus.shape;}
+    for e:g.events[0..<r.end] {if e.redacted {return LgStatus.redacted;}}
+    if !hl_replay(m,r.seed,r.prompt,g.tokens,r.turn,steps,scratch) {return LgStatus.replay;}
+    return LgStatus.ok;
+}
+// book:end replay
+
+// book:begin run
+// Chapter 200's turn with the log as its transcript. The prompt is every
+// token logged so far. Each request is logged, then sent as exactly
+// tokens[0..<used]; the model draws into the store past used, where nothing
+// is visible until the reply event takes it; the tool's output is taken the
+// same way. Every turn the log opens it also closes with a stop event, so a
+// log is refused before the start when it could not hold the whole turn.
+lg_run :: (m:HlModel,b:HlBudget,seed:u64,l:[]LgLog)->LgTurn {
+    g:=l[0];context:=m.c.context;
+    r:=LgTurn.{start=g.count,seed=seed,budget=b,prompt=g.used,turn=HlTurn.{at=g.used,reply=g.used}};
+    if g.used<1 || g.tokens.count<context || b.steps<0 || b.reply<1 || b.tool<0 {r.status=LgStatus.shape;return r;}
+    w:=lg_verify(g);if w.status!=LgStatus.ok {r.status=w.status;return r;}
+    if lg_fold_log(g,g.count).open {r.status=LgStatus.order;return r;}
+    for e:g.events[0..<g.count] {if e.redacted {r.status=LgStatus.redacted;return r;}}
+    if g.events.count-g.count<2+3*b.steps {r.status=LgStatus.capacity;return r;}
+    lg_put(l,LgKind.start,0,seed,[7]int.[b.steps,b.tokens,b.deadline,b.reply,b.tool,b.cancel,0]);
+    t:=lg_loop(m,b,seed,l,r.prompt);
+    lg_put(l,LgKind.stop,0,0,[7]int.[cast(int)cast(u8)t.stop,t.steps,t.at,t.reply,t.tokens,t.ticks,t.tools]);
+    r.end=l[0].count-1;r.turn=t;return r;
+}
+lg_loop :: (m:HlModel,b:HlBudget,seed:u64,l:[]LgLog,prompt:int)->HlTurn {
+    t:=HlTurn.{at=prompt,reply=prompt};context:=m.c.context;tokens:=l[0].tokens;
+    while true {
+        k:=t.steps;
+        if b.cancel==2*k {t.stop=HlStop.cancelled;return t;}
+        if k==b.steps {t.stop=HlStop.steps;return t;}
+        left:=b.tokens-t.tokens;time:=b.deadline-t.ticks-t.at+1;room:=context-t.at;
+        limit:=hl_least(hl_least(b.reply,left),hl_least(time,room));
+        if limit<1 {t.stop=hl_binding(0,left,time,room);return t;}
+        s:=cr_bits(seed,cast(u64)k);lg_put(l,LgKind.request,0,s,[7]int.[k,t.at,limit,0,0,0,0]);
+        g:=hl_reply(m,k,tokens[0..<t.at],s,limit,tokens[t.at..<t.at+limit]);
+        if g.status!=NeStatus.ok {t.stop=HlStop.model;return t;}
+        lg_put(l,LgKind.reply,g.written,0,[7]int.[k,hl_draws(g),cast(int)cast(u8)g.stop,g.positions,0,0,0]);
+        t.steps+=1;t.tokens+=hl_draws(g);t.ticks+=g.positions;t.reply=t.at;t.at+=g.written;
+        if g.stop==NeStop.assistant_end {t.stop=HlStop.answer;return t;}
+        if g.stop==NeStop.limit {t.stop=hl_binding(limit,left,time,room);return t;}
+        if g.stop!=NeStop.tool {t.stop=HlStop.malformed;return t;}
+        if b.cancel==2*k+1 {t.stop=HlStop.cancelled;return t;}
+        if t.ticks+b.tool>b.deadline {t.stop=HlStop.deadline;return t;}
+        u:=hl_tool(m.table,m.base,tokens[t.reply..<t.at],tokens[t.at..<context]);
+        if u.stop!=HlStop.none {t.stop=u.stop;return t;}
+        lg_put(l,LgKind.output,u.written,0,[7]int.[k,u.value,0,0,0,0,0]);
+        t.at+=u.written;t.ticks+=b.tool;t.tools+=1;
+    }
+    return t;
+}
+// book:end run

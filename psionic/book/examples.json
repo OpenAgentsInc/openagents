@@ -2429,6 +2429,18 @@
       "stack_kib": 65536
     },
     {
+      "source": "psionic/examples/harness-log.coax",
+      "chapter": "psionic/book/ch201-model-visible-means-logged.md",
+      "stdout": "psionic/fixtures/harness-log.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300,
+      "stack_kib": 65536
+    },
+    {
       "source": "psionic/examples/tool-capabilities.coax",
       "chapter": "psionic/book/ch203-tools-as-typed-capabilities.md",
       "stdout": "psionic/fixtures/tool-capabilities.out",

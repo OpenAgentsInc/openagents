@@ -1,0 +1,54 @@
+// Chapter 201's check helpers, kept apart from psionic/lib/harness/log.coax:
+// chapter 200's hand trace logged as a session, and a forger who rewrites
+// the chain after editing events, so a check can reach the rules the chain
+// alone does not enforce. Nothing here is used by the log itself.
+// Two turns, and two steps, field for field.
+lc_same :: (a:HlTurn,b:HlTurn)->bool {return a.stop==b.stop && a.steps==b.steps && a.at==b.at && a.reply==b.reply && a.tokens==b.tokens && a.ticks==b.ticks && a.tools==b.tools;}
+lc_step :: (a:HlStep,b:HlStep)->bool {
+    return a.seen==b.seen && a.seed==b.seed && a.limit==b.limit && a.written==b.written && a.draws==b.draws && a.stop==b.stop && a.positions==b.positions && a.value==b.value && a.output==b.output;
+}
+// The hand trace: HL_PROMPT as one user event, then chapter 200's turn at seed 7.
+lc_trace :: (l:[]LgLog,b:HlBudget,context:int)->LgTurn {
+    tb:=NC_LEARNED;tr:=HL_TRACE;ts:=HL_TRACE_STARTS;p:=HL_PROMPT;
+    #assert lg_say(l,LgKind.user,p[..])==LgStatus.ok;
+    return lg_run(hl_scripted(tb[..],tr[..],ts[..],context),b,7,l);
+}
+// Chapter 200's turn and the logged turn under one budget and window: the
+// same turn and transcript, the same steps rebuilt from the log, and replay.
+lc_compare :: (b:HlBudget,context:int) {
+    tb:=NC_LEARNED;tr:=HL_TRACE;ts:=HL_TRACE_STARTS;
+    ids:[48]int;want:[6]HlStep;t:=hl_trace(tb[..],b,context,ids[..],want[..]);
+    ev:[24]LgEvent;tk:[48]int;l:=[1]LgLog.[LgLog.{events=ev[..],tokens=tk[..]}];r:=lc_trace(l[..],b,context);
+    #assert r.status==LgStatus.ok && lc_same(r.turn,t);for i:0..<t.at {#assert tk[i]==ids[i];}
+    steps:[6]HlStep;u:=lg_turn(l[0],1,steps[..]);#assert u.status==LgStatus.ok && lc_same(u.turn,t);
+    for k:0..<t.steps {#assert lc_step(steps[k],want[k]);}
+    scratch:[48]int;#assert lg_replay(hl_scripted(tb[..],tr[..],ts[..],context),l[0],1,steps[..],scratch[..])==LgStatus.ok;
+}
+// Rewrite sequence, links, content digests and digests in order, as someone
+// who can write the whole log would after editing it.
+lc_rechain :: (events:[]LgEvent,n:int,tokens:[]int) {
+    at:=0;previous:[32]u8;
+    for i:0..<n {
+        e:=events[i];e.sequence=i;e.previous=previous;
+        if !e.redacted {e.content=lg_content(tokens[at..<at+e.count]);}
+        e.digest=lg_digest(e);events[i]=e;previous=e.digest;at+=e.count;
+    }
+}
+// The digests psionic/tests/harness_log_oracle.py --tests prints with
+// Python's hashlib for chapter 200's hand trace, event by event.
+LC_DIGESTS :: [11]string.[
+    "b4ebddca31f0f55e1ba0ff8883a0f41b43770344d986ab8a8759f1e58c73d42f",
+    "45049e473c7e17a058c163a6dd607518ca1ee4ca80f4549b537babbc66758ec5",
+    "e52fb54919476951e5fa00ee1bc3ca5f9b7d0548b008033ee0852c9d94c2d142",
+    "0002502c18e6fdd5665698285ed8fa140e7527e289ae7d49468a4410be25a93c",
+    "ed2b08e60de817ab066b1a0f327cd0522195259b648e881b8a1e52d8bc873a8f",
+    "c4c9224775dffee99f991834f2b5bbd5bda2e424ac3cb3f64b8a1defe82ee3b3",
+    "9227268f44a8fdea65dbce207eaae249976bc72a37c2ff14d71c37f1c85b28af",
+    "c10cddbb9d9dec0242429cb4107db532ee53b38df232d68a24345443a44cc86d",
+    "434bc1d0a00a64a95b1b2d13d52e0217d8460d38948867fd79efacf3393c7c5a",
+    "9f5c21d3656b21febb158879e6951745ff7436ac0610fd6b50f989b3fc4778fb",
+    "4433d94c10344be852085e41b0ca76456f839b121700c62f9a4858c9d9ef8a8c"];
+LC_PROMPT_CONTENT :: "bb1b98884912c41772d47668c36585facff14c66f831db68633e330dcbf08dec";
+LC_HUNDRED_CONTENT :: "7b49549d6b7741d5f0b74bcee86beb75db80a683ae8e6ee1ba7c2628c71e95fc";
+LC_EMPTY_CONTENT :: "505d77dc7e3a66a59cf843f5b40507b1879de4b37d54f877a6149a6d4d29d357";
+LC_INJECTED_HEAD :: "c957fdeb613e51e229ea241d8736d970b2629ca0a25a85136a22c63c874431d5";

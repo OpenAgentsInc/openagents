@@ -1,0 +1,39 @@
+prompt logged: ok; turn: ok, stop answer, steps 3, transcript 30 tokens
+  0 user tokens 5, seed 0, fields 0 0 0 0 0 0 0, digest b4ebddca31f0f55e
+  1 start tokens 0, seed 7, fields 3 17 68 8 3 -1 0, digest 45049e473c7e17a0
+  2 request tokens 0, seed 7191089600892374487, fields 0 5 8 0 0 0 0, digest e52fb54919476951
+  3 reply tokens 7, seed 0, fields 0 7 5 11 0 0 0, digest 0002502c18e6fdd5
+  4 output tokens 4, seed 0, fields 0 85 0 0 0 0 0, digest ed2b08e60de817ab
+  5 request tokens 0, seed 309689372594955804, fields 1 16 8 0 0 0 0, digest c4c9224775dffee9
+  6 reply tokens 6, seed 0, fields 1 6 5 21 0 0 0, digest 9227268f44a8fdea
+  7 output tokens 5, seed 0, fields 1 170 0 0 0 0 0, digest c10cddbb9d9dec02
+  8 request tokens 0, seed 16616101746815609346, fields 2 27 4 0 0 0 0, digest 434bc1d0a00a64a9
+  9 reply tokens 3, seed 0, fields 2 4 1 30 0 0 0, digest 9f5c21d3656b21fe
+  10 stop tokens 0, seed 0, fields 1 3 30 27 17 68 2, digest 4433d94c10344be8
+verify: ok over 11 events, head 4433d94c10344be852085e41b0ca76456f839b121700c62f9a4858c9d9ef8a8c
+request event 2 (5 tokens): sent ok, one token more view, its last token changed content at event 0
+request event 5 (16 tokens): sent ok, one token more view, its last token changed content at event 4
+request event 8 (27 tokens): sent ok, one token more view, its last token changed content at event 7
+token 8 edited: content at event 3
+reply 1's positions edited: digest at event 6
+events 4 and 5 swapped: sequence at event 4
+output 0 dropped: sequence at event 4
+output 0 inserted twice: sequence at event 5
+context injected before the turn, chain rewritten: view at event 3
+context injected inside the turn, chain rewritten: order at event 5
+stop's token count rewritten: turn at event 10
+replay before redaction: ok
+redact event 0: ok; tokens 0..4 now -1 -1 -1 -1 -1
+verify: ok, head unchanged: true
+request event 8 admits what it was sent: ok; replay: redacted; a new turn: redacted
+second prompt logged: ok
+engine turn: ok, stop answer, steps 2, transcript 43 tokens, events 12 to 18
+  11 user tokens 4, seed 0, fields 0 0 0 0 0 0 0, digest 6b053f057a99a37c
+  12 start tokens 0, seed 5, fields 4 40 1000 16 0 -1 0, digest c9200d68b5bfa0f3
+  13 request tokens 0, seed 7134611160154358618, fields 0 34 16 0 0 0 0, digest a01ae49ea4fe74ad
+  14 reply tokens 5, seed 0, fields 0 5 5 38 0 0 0, digest 6a25fd80fb5e5920
+  15 output tokens 3, seed 0, fields 0 3 0 0 0 0 0, digest 4b99360c28deebf0
+  16 request tokens 0, seed 13877614986023876344, fields 1 42 16 0 0 0 0, digest 025814b723ad89ee
+  17 reply tokens 1, seed 0, fields 1 2 1 43 0 0 0, digest b4379d7bf50452a3
+  18 stop tokens 0, seed 0, fields 1 2 43 42 7 81 1, digest 910ff536b36f1d69
+verify: ok; replay turn 1 on the script: ok, turn 2 on the engine: ok, turn 2 on the script: replay
