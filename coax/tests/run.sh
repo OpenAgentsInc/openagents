@@ -87,6 +87,18 @@ python3 tests/checker.py && python3 tests/borrow_summaries.py && python3 tests/b
    COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/retained_borrows.py && \
    COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/retained_borrows_native.py
 checker_rc=$?
+# Actual System One admission and offline generated-Coax polling. Retain failures.
+systemone_output=$(mktemp -d "${TMPDIR:-/tmp}/coax-systemone.XXXXXX")
+if [[ -n "$systemone_output" ]] && \
+   "$COAX" test lib/systemone/call-policy.coax --library && \
+   "$COAX" mutate lib/systemone/call-policy.coax --library --root-only && \
+   COAX="$PWD/$COAX" tests/systemone-lifecycle.sh "$systemone_output/scripted" && \
+   tests/systemone-process-lifecycle.sh "$systemone_output/process" "$systemone_output/scripted"; then
+  systemone_rc=0
+else
+  echo "System One gate failed; evidence: $systemone_output" >&2
+  systemone_rc=1
+fi
 python3 tests/sources.py && python3 tests/modules.py && python3 tests/lowering.py && python3 tests/generics.py && python3 tests/effects.py && python3 tests/quantity.py && python3 tests/quantity_native.py && python3 tests/quantity_derived.py && python3 tests/quantity_derived_native.py
 sources_rc=$?
 python3 tests/reflection.py
@@ -169,4 +181,4 @@ else
   echo "Spatial gate failed; evidence: $spatial_output" >&2
   spatial_rc=1
 fi
-[[ $spatial_operators_rc -eq 0 && $spatial_rc -eq 0 && $borrow_summary_rc -eq 0 && $spatial_policy_rc -eq 0 && $unit_forms_rc -eq 0 && $unit_algebra_rc -eq 0 && $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $native_check_baseline_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $query_rc -eq 0 && $steps_rc -eq 0 && $library_checks_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $bounded_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]
+[[ $systemone_rc -eq 0 && $spatial_operators_rc -eq 0 && $spatial_rc -eq 0 && $borrow_summary_rc -eq 0 && $spatial_policy_rc -eq 0 && $unit_forms_rc -eq 0 && $unit_algebra_rc -eq 0 && $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $native_check_baseline_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $query_rc -eq 0 && $steps_rc -eq 0 && $library_checks_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $bounded_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]

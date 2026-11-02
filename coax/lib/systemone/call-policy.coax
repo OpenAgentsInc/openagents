@@ -1,0 +1,12 @@
+// Admission only: the initialized/retired sentinel owns no process slot.
+// This does not authenticate handles or permit copying an active owner.
+#authority;
+
+so_start_allowed :: (handle:int)->bool {return handle == -1;}
+
+#test "a System One start admits only the initialized ownerless sentinel" {
+  #assert so_start_allowed(-1);
+  #assert !so_start_allowed(-2) && !so_start_allowed(0) && !so_start_allowed(1);
+  #assert !so_start_allowed(-9223372036854775807-1);
+  #assert !so_start_allowed(9223372036854775807);
+}

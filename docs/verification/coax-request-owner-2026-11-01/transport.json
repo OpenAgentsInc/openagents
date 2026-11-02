@@ -1,0 +1,491 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-02T03:09:23.736219+00:00",
+  "profile": "systemone-single-owner-admission-v1",
+  "status": "passed within declared scope",
+  "compiler": {
+    "path": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+    "bytes": 3298680,
+    "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+    "version": "coax0 0.47.0"
+  },
+  "compiler_scope": "Root-selected retained binary; no rebuild or new compiler qualification. Error diagnostics from check-first trials included inherited stale-source advisory.",
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "release": "25.4.0"
+  },
+  "cc": {
+    "path": "/usr/bin/cc",
+    "bytes": 118928,
+    "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+  },
+  "source_inventory": [
+    {
+      "path": "coax/lib/agent/claude/control.coax",
+      "bytes": 11710,
+      "sha256": "5b7ebabdcfab80b586ea5491e52006fd5630207c5aef4eb8366da1381511f508"
+    },
+    {
+      "path": "coax/lib/agent/claude/fields.coax",
+      "bytes": 12916,
+      "sha256": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4"
+    },
+    {
+      "path": "coax/lib/agent/claude/mcp.coax",
+      "bytes": 7445,
+      "sha256": "25a70c8c0e848b254aa5ca9733691837bdbb333b57ad75f7b38b39c8e47d1140"
+    },
+    {
+      "path": "coax/lib/agent/claude/messages.coax",
+      "bytes": 44027,
+      "sha256": "2deb53691e964762d692f0c98fae01cbef100b6c54db95d936f0db41f5c3d9d3"
+    },
+    {
+      "path": "coax/lib/agent/claude/options.coax",
+      "bytes": 14037,
+      "sha256": "f36c373f3c640a694b27603926dfefc59319c55d8a8c810c615395f02204eb13"
+    },
+    {
+      "path": "coax/lib/agent/claude/query.coax",
+      "bytes": 20217,
+      "sha256": "f7ab119e8a0b1818043c59f0a99484cea367c070c064923643fd6d4d45df25b2"
+    },
+    {
+      "path": "coax/lib/agent/claude/transport.coax",
+      "bytes": 7525,
+      "sha256": "fd1dfbea34aad2533da77753f19555c32b54bc7ef288b2d817a0b4d58027d33f"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/json_suite.coax",
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    {
+      "path": "coax/lib/nostr/json-f64.coax",
+      "bytes": 2744,
+      "sha256": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c"
+    },
+    {
+      "path": "coax/lib/nostr/json.coax",
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    {
+      "path": "coax/lib/systemone/answers.coax",
+      "bytes": 10554,
+      "sha256": "27a95b60c4c46c1756349ae245ca307aa427a5e781a4329cb610365146d8fbc0"
+    },
+    {
+      "path": "coax/lib/systemone/call-policy.coax",
+      "bytes": 517,
+      "sha256": "198e65e8565dbf7d3b336ae26e9ef094e1e525986ccb356ff383b36014c63bdc"
+    },
+    {
+      "path": "coax/lib/systemone/request.coax",
+      "bytes": 10676,
+      "sha256": "a44abb35e9961e4c965326f2194f8f2d57acbbee048c737c9d5d3d59131fc4a8"
+    },
+    {
+      "path": "coax/lib/systemone/transport.coax",
+      "bytes": 8041,
+      "sha256": "8e07445894e7c053af92e69347748ae12f46b810c02058a9ae19ebba0f5a26ba"
+    },
+    {
+      "path": "coax/tests/systemone-lifecycle.c",
+      "bytes": 9802,
+      "sha256": "f035f9f8f7232a829955b0f9173b24a975db0e3a0b4b475677eb263c0b3e7356"
+    },
+    {
+      "path": "coax/tests/systemone-lifecycle.coax",
+      "bytes": 413,
+      "sha256": "6363ba316775e2b0726a9186b1a7c9f6370d4d67d0570b0be659af17bda12bdf"
+    },
+    {
+      "path": "coax/tests/systemone-lifecycle.sh",
+      "bytes": 1376,
+      "sha256": "4d129564af44f162e26f082d9d3ae4f00e6c2d6d09a9b81afa421a2f21fe94f0"
+    }
+  ],
+  "source_inventory_scope": "Current actual wrapper dependency metadata plus native fixture and script. Product transport/policy and C/Coax native fixture were unchanged after the successful four-mode native run; harness-only mode/default/output handling changed afterward and has separate focused tooling checks.",
+  "native": {
+    "command": {
+      "command": [
+        "bash",
+        "coax/tests/systemone-lifecycle.sh",
+        "/tmp/systemone-lifecycle-20261101/qualified",
+        "all"
+      ],
+      "exit_status": 0,
+      "seconds": 4.697415541042574
+    },
+    "modes": [
+      "checked Coax C -O0",
+      "checked Coax C -O0 ASan+UBSan",
+      "release Coax C -O2",
+      "release Coax C -O2 ASan+UBSan"
+    ],
+    "flags": [
+      "-std=c11",
+      "-g",
+      "-ffp-contract=off",
+      "-lm",
+      "sanitized: -fsanitize=address,undefined -fno-sanitize-recover=all"
+    ],
+    "stdout": {
+      "path": "/tmp/systemone-lifecycle-20261101/qualified.stdout.log",
+      "bytes": 2124,
+      "sha256": "76efade78640099ab1426e06146e94a651bc1d2123218797cdff123240a0f472"
+    },
+    "stderr": {
+      "path": "/tmp/systemone-lifecycle-20261101/qualified.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "artifacts": [
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/plain",
+        "bytes": 95880,
+        "sha256": "1c697ba439f7842050a57360500ca15767321432e7affd29265854ec37c0ad10"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/plain.dSYM/Contents/Info.plist",
+        "bytes": 634,
+        "sha256": "0f3da32dd923193a5cc59bb074dbfa629b1c9cc4460809d7b0a4b587c9cf4f83"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/plain.dSYM/Contents/Resources/DWARF/plain",
+        "bytes": 45020,
+        "sha256": "59e23f6522535ca6dd2c40e739453332dbb12aa61f8bd96bcb556879e55bd708"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/plain.dSYM/Contents/Resources/Relocations/aarch64/plain.yml",
+        "bytes": 141,
+        "sha256": "18e51b3013523a1cf6e6ee72ea6950eef5c4493847a8556cd70313ef36ff0e09"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/sanitized",
+        "bytes": 250616,
+        "sha256": "14caf170f6a16ff2c3f599ce416b951d6e883932d7799ff533fdb91588fe15ce"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/sanitized.dSYM/Contents/Info.plist",
+        "bytes": 638,
+        "sha256": "e85b3d40bab615bff5677e8efc8212941d0bbdecf04afaf645e06b35b6bdc0ab"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/sanitized.dSYM/Contents/Resources/DWARF/sanitized",
+        "bytes": 94184,
+        "sha256": "9dbdbe8f1f7bd40dec76a82bdb0116e330b5de4951731abbece05d82b1ad9b00"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/sanitized.dSYM/Contents/Resources/Relocations/aarch64/sanitized.yml",
+        "bytes": 145,
+        "sha256": "e06d5dcf27cc340e551869d2b5b48e915b3e1daf983e4ce40d50e9c36f23d087"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/systemone-lifecycle.c",
+        "bytes": 383916,
+        "sha256": "4aa0ae15bd023ed9d223f8394415ae3a149a0c5962cc3ff23bfb7679539d86e1"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/systemone-lifecycle.h",
+        "bytes": 9377,
+        "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/plain",
+        "bytes": 61688,
+        "sha256": "e3ba07d8bda6bb6b78c754363c9e55c499f8841b562f549b595d9834a1c21b6a"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/plain.dSYM/Contents/Info.plist",
+        "bytes": 634,
+        "sha256": "0f3da32dd923193a5cc59bb074dbfa629b1c9cc4460809d7b0a4b587c9cf4f83"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/plain.dSYM/Contents/Resources/DWARF/plain",
+        "bytes": 98724,
+        "sha256": "8625b4cde0b8a77776b96a7d6bbaa90537a5bfe06118b307cb3152a9626bf6dc"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/plain.dSYM/Contents/Resources/Relocations/aarch64/plain.yml",
+        "bytes": 143,
+        "sha256": "d1b668053f2abc7ce963a8ba5c72c229ebfa017a5b9dada05518027dca22d69f"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/sanitized",
+        "bytes": 125368,
+        "sha256": "7c33eb80829f7959eb876f08b84d0c9c6375ba55071299a1dcf6696832a9558c"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/sanitized.dSYM/Contents/Info.plist",
+        "bytes": 638,
+        "sha256": "e85b3d40bab615bff5677e8efc8212941d0bbdecf04afaf645e06b35b6bdc0ab"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/sanitized.dSYM/Contents/Resources/DWARF/sanitized",
+        "bytes": 115508,
+        "sha256": "7876143ffe7f39b2b205110c9fe0b78a877c7347a518a75dd679bacb767e6cf3"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/sanitized.dSYM/Contents/Resources/Relocations/aarch64/sanitized.yml",
+        "bytes": 147,
+        "sha256": "6ffd455e0dc6950f622164128191bca984f601e2bf3d9222dbedd1c2bb3c5bb4"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/systemone-lifecycle.c",
+        "bytes": 403029,
+        "sha256": "d78d52dde39286df0728fb3751afcd5bd1f0678e29ae2c78a0937dcb666ae380"
+      },
+      {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/systemone-lifecycle.h",
+        "bytes": 9377,
+        "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+      }
+    ],
+    "script_at_execution": "Initial script selected the same retained compiler by private default; this old script was not separately snapshotted. Final script uses checkout compiler by default; override COAX explicitly for the recorded retained producer. No unchanged numerical checks were repeated after this tooling-only fix."
+  },
+  "authority": {
+    "policy-debug": {
+      "evidence": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-debug.evidence.json",
+        "bytes": 1122,
+        "sha256": "e5647cf9ea00e967f7f384feb80f7bfc5d7edbe94d58732c2235332ea2ec9c7f"
+      },
+      "command": {
+        "command": [
+          "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+          "test",
+          "coax/lib/systemone/call-policy.coax",
+          "--library",
+          "--evidence",
+          "/tmp/systemone-lifecycle-20261101/policy-debug.evidence.json"
+        ],
+        "exit_status": 0,
+        "seconds": 0.025852082995697856
+      },
+      "stdout": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-debug.stdout.log",
+        "bytes": 130,
+        "sha256": "829988b9d8b56941bce145f6d82a5bbf6ff237421f1e829a3579ca630d8155bb"
+      },
+      "stderr": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-debug.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "verdict": "passed",
+      "mutation": null
+    },
+    "policy-release": {
+      "evidence": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-release.evidence.json",
+        "bytes": 1123,
+        "sha256": "497b962796027a961c4fe07adfdd50add2fa02dfee7addcca37cf260aa28d129"
+      },
+      "command": {
+        "command": [
+          "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+          "test",
+          "coax/lib/systemone/call-policy.coax",
+          "--library",
+          "--release",
+          "--evidence",
+          "/tmp/systemone-lifecycle-20261101/policy-release.evidence.json"
+        ],
+        "exit_status": 0,
+        "seconds": 0.02427437505684793
+      },
+      "stdout": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-release.stdout.log",
+        "bytes": 130,
+        "sha256": "829988b9d8b56941bce145f6d82a5bbf6ff237421f1e829a3579ca630d8155bb"
+      },
+      "stderr": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-release.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "verdict": "passed",
+      "mutation": null
+    },
+    "policy-mutation": {
+      "evidence": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-mutation.evidence.json",
+        "bytes": 1370,
+        "sha256": "4fe5e4a58804fe2f8d1bed012a1abeb94d5d28ff3540a5d6eaeac233f6561043"
+      },
+      "command": {
+        "command": [
+          "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+          "mutate",
+          "coax/lib/systemone/call-policy.coax",
+          "--library",
+          "--root-only",
+          "--jobs",
+          "2",
+          "--evidence",
+          "/tmp/systemone-lifecycle-20261101/policy-mutation.evidence.json"
+        ],
+        "exit_status": 0,
+        "seconds": 0.03759733296465129
+      },
+      "stdout": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-mutation.stdout.log",
+        "bytes": 112,
+        "sha256": "311b1ca871af4724ccf297ef2129954a6a71c8713fe8aec1478c4ba2eeebf624"
+      },
+      "stderr": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-mutation.stderr.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "verdict": "passed",
+      "mutation": {
+        "outcome": "passed",
+        "mutants": 2,
+        "evaluated": 2,
+        "killed": 2,
+        "survived": [],
+        "marked_equivalent": 0,
+        "unreached": "",
+        "scope": "root-only",
+        "shard": null,
+        "merged_records": 0,
+        "scheduling": "selective",
+        "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+      }
+    }
+  },
+  "admission": "Only h==-1 may start; empty view or any other handle returns false before state/result/backing/env/process effects. Such false preserves an existing result rather than installing a new r.problem. Admitted setup failures retain prior fresh-call behavior.",
+  "coverage": [
+    "All named SoCall/SoResult/SoUsage fields, descriptor addresses/extents and all four guarded backing byte arrays preserved on active h0 and invalid h-2 refusal; zero scripted foreign effects.",
+    "Fresh generated default h-1; idle poll; successful body and usage; body/stderr pointer and content after16KiB stack disturbance.",
+    "Terminal success, scripted wait/read timeout, child exit28 plus stderr, HTTP503 and invalid read; repeat done/late poll and cancel perform no new effects.",
+    "Active cancellation and restart only after old valid borrowed uses; duplicate cancellation releases once; spawn refusal and empty-body setup refusal; empty START view safe refusal.",
+    "Script tooling: unknown or explicit-empty mode refused, existing output evidence preserved, checkout compiler default selected using an isolated non-compiling stub."
+  ],
+  "preconditions_and_limits": [
+    "so_step and so_cancel retain a nonempty initialized-call precondition; only so_start admits empty views safely.",
+    "Caller keeps owner/out/err storage live and valid through every borrowed-result use; consumes old borrowed results before restart or reuse. This does not prove general alias/lifetime safety.",
+    "Scripted cxproc effects qualify generated Coax decisions and release-call counts only; no process-native.c spawn/kill/wait/reap, real process-slot reclamation, service/network, SDK, copied-handle/generation, app-life pool or full desktop qualification.",
+    "Child-error coverage uses exit28; unreachable7 and generic other exit codes are not separately qualified.",
+    "Only the new small admission policy was mutated,2sites/2killed/0survivors. No full transport, compiler or legacy gate mutation.",
+    "B2 compiler result/store composition and remaining B3 owner/lifecycle acceptance stay open."
+  ],
+  "red_observations": {
+    "first_build": {
+      "status": "failed fixture compilation due Apple stdio stderr macro collision; fixture fixed before behavioral RED",
+      "command": {
+        "command": [
+          "bash",
+          "coax/tests/systemone-lifecycle.sh",
+          "/tmp/systemone-lifecycle-20261101/red",
+          "debug"
+        ],
+        "exit_status": 1,
+        "seconds": 0.31952154194004834,
+        "scope": "Check-first actual generated transport before active admission fix; offline scripted process effects."
+      },
+      "stderr": {
+        "path": "/tmp/systemone-lifecycle-20261101/red.stderr.log",
+        "bytes": 3961,
+        "sha256": "14ef4317e0308890ed858d6add9ab1ced2e73bde2620cda2d0c87b49450cf276"
+      }
+    },
+    "actual_transport_before_fix": {
+      "command": {
+        "command": [
+          "bash",
+          "coax/tests/systemone-lifecycle.sh",
+          "/tmp/systemone-lifecycle-20261101/red-behavior",
+          "debug"
+        ],
+        "exit_status": 1,
+        "seconds": 0.6160896670771763
+      },
+      "stderr": {
+        "path": "/tmp/systemone-lifecycle-20261101/red-behavior.stderr.log",
+        "bytes": 72,
+        "sha256": "86e736d9ad7ccf2d9bc1a7ff9ff94272b7f342f99f12760ae956e55d36e99e01"
+      }
+    },
+    "policy_before_implementation": {
+      "command": {
+        "command": [
+          "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+          "test",
+          "coax/lib/systemone/call-policy.coax",
+          "--library"
+        ],
+        "exit_status": 1
+      },
+      "source": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-check-first.coax",
+        "bytes": 454,
+        "sha256": "b1568b7c9fde0c7653c0598a546e864296836da8118e3ea78d6d69751da10e0e"
+      },
+      "stderr": {
+        "path": "/tmp/systemone-lifecycle-20261101/policy-red.stderr.log",
+        "bytes": 1485,
+        "sha256": "1dea9adac443c78b78b711860a7021a613fb0c7026ceaa10a673ea0166df6f98"
+      }
+    },
+    "harness_selector_before_fix": {
+      "command": [
+        "bash",
+        "coax/tests/systemone-lifecycle.sh",
+        "/tmp/systemone-lifecycle-20261101/bad-mode-before-fix",
+        "typo"
+      ],
+      "exit_status": 0,
+      "output_created": true,
+      "scope": "Invalid selector demonstrates zero-work successful exit before harness-only fix."
+    }
+  },
+  "tooling_checks": {
+    "passed": true,
+    "cases": [
+      {
+        "case": "invalid selector",
+        "mode": "typo",
+        "exit_status": 2,
+        "output_created": false,
+        "stderr": "mode must be debug, release or all\n"
+      },
+      {
+        "case": "invalid selector",
+        "mode": "--debug",
+        "exit_status": 2,
+        "output_created": false,
+        "stderr": "mode must be debug, release or all\n"
+      },
+      {
+        "case": "invalid selector",
+        "mode": "",
+        "exit_status": 2,
+        "output_created": false,
+        "stderr": "mode must be debug, release or all\n"
+      },
+      {
+        "case": "existing evidence",
+        "exit_status": 2,
+        "sentinel_unchanged": true
+      },
+      {
+        "case": "default checkout compiler",
+        "exit_status": 42,
+        "selected_checkout_stub": true,
+        "scope": "Compiler stub exits42 before any compiler or C build; no numerical repeat."
+      }
+    ],
+    "intermediate_observation": "The first expanded tooling check found explicit empty selection defaulted to all; changed parameter expansion to default only when omitted. No numerical command ran: missing checkout compiler returned127."
+  }
+}

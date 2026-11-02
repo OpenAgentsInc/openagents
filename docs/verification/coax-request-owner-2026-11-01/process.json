@@ -1,0 +1,463 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-02T03:14:29.272682+00:00",
+  "profile": "systemone-offline-real-process-v2",
+  "status": "passed within declared scope",
+  "source_inventory": [
+    {
+      "path": "coax/lib/agent/claude/control.coax",
+      "bytes": 11710,
+      "sha256": "5b7ebabdcfab80b586ea5491e52006fd5630207c5aef4eb8366da1381511f508"
+    },
+    {
+      "path": "coax/lib/agent/claude/fields.coax",
+      "bytes": 12916,
+      "sha256": "e53f2d7132dc34737ea638c9a3e769036033cfc83e82c8bb7fc03c206307b1a4"
+    },
+    {
+      "path": "coax/lib/agent/claude/mcp.coax",
+      "bytes": 7445,
+      "sha256": "25a70c8c0e848b254aa5ca9733691837bdbb333b57ad75f7b38b39c8e47d1140"
+    },
+    {
+      "path": "coax/lib/agent/claude/messages.coax",
+      "bytes": 44027,
+      "sha256": "2deb53691e964762d692f0c98fae01cbef100b6c54db95d936f0db41f5c3d9d3"
+    },
+    {
+      "path": "coax/lib/agent/claude/options.coax",
+      "bytes": 14037,
+      "sha256": "f36c373f3c640a694b27603926dfefc59319c55d8a8c810c615395f02204eb13"
+    },
+    {
+      "path": "coax/lib/agent/claude/query.coax",
+      "bytes": 20217,
+      "sha256": "f7ab119e8a0b1818043c59f0a99484cea367c070c064923643fd6d4d45df25b2"
+    },
+    {
+      "path": "coax/lib/agent/claude/transport.coax",
+      "bytes": 7525,
+      "sha256": "fd1dfbea34aad2533da77753f19555c32b54bc7ef288b2d817a0b4d58027d33f"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/coax_relay.coax",
+      "bytes": 365603,
+      "sha256": "c11a666b11e8138d5b0ad15311c26bb91c8c844b06ec2437481773e609117a28"
+    },
+    {
+      "path": "coax/lib/nostr/fixtures/json_suite.coax",
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    {
+      "path": "coax/lib/nostr/json-f64.coax",
+      "bytes": 2744,
+      "sha256": "83cb53f0b43fc4e4d0c8563310d5b45bff6a04243fe53cf559e43b1a18cae37c"
+    },
+    {
+      "path": "coax/lib/nostr/json.coax",
+      "bytes": 37156,
+      "sha256": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47"
+    },
+    {
+      "path": "coax/lib/systemone/answers.coax",
+      "bytes": 10554,
+      "sha256": "27a95b60c4c46c1756349ae245ca307aa427a5e781a4329cb610365146d8fbc0"
+    },
+    {
+      "path": "coax/lib/systemone/call-policy.coax",
+      "bytes": 517,
+      "sha256": "198e65e8565dbf7d3b336ae26e9ef094e1e525986ccb356ff383b36014c63bdc"
+    },
+    {
+      "path": "coax/lib/systemone/request.coax",
+      "bytes": 10676,
+      "sha256": "a44abb35e9961e4c965326f2194f8f2d57acbbee048c737c9d5d3d59131fc4a8"
+    },
+    {
+      "path": "coax/lib/systemone/transport.coax",
+      "bytes": 8041,
+      "sha256": "8e07445894e7c053af92e69347748ae12f46b810c02058a9ae19ebba0f5a26ba"
+    },
+    {
+      "path": "coax/platform/process-native.c",
+      "bytes": 24971,
+      "sha256": "c5657424d634fdb9ebd8c011ed05ea4e7cc4633f25b5382be37d5d0dfcc71256"
+    },
+    {
+      "path": "coax/platform/process-native.h",
+      "bytes": 5298,
+      "sha256": "4f0cc2c0b47d189ae8119861de61057eba04c4e1a4333d5a2e4a7acf99eb2b92"
+    },
+    {
+      "path": "coax/tests/systemone-fakecurl.c",
+      "bytes": 874,
+      "sha256": "2b839a8a8f483a8842c49d4ee1763fd6edfb4b80e5aec6b4aed1cca9c9f035ac"
+    },
+    {
+      "path": "coax/tests/systemone-lifecycle.coax",
+      "bytes": 413,
+      "sha256": "6363ba316775e2b0726a9186b1a7c9f6370d4d67d0570b0be659af17bda12bdf"
+    },
+    {
+      "path": "coax/tests/systemone-lifecycle.sh",
+      "bytes": 1431,
+      "sha256": "5a65b1a7d516dcd11f07c8525d9e5f2444aeaec5ec4d093820c40746ef8d8db2"
+    },
+    {
+      "path": "coax/tests/systemone-process-lifecycle.c",
+      "bytes": 5179,
+      "sha256": "1bb860e0c9b61818ca917e2eaecffd6be92c053c53249d42b982a6f1a3f765c5"
+    },
+    {
+      "path": "coax/tests/systemone-process-lifecycle.sh",
+      "bytes": 1609,
+      "sha256": "dc21350f44f48ef09cc92177dbaaf417f0795d93541f36fd6e9b04002b1679ab"
+    }
+  ],
+  "source_inventory_scope": "Current identities observed after the v2 four-mode run, not pre-run snapshots. The subsequent independent cleanup-failure fixture captures its actual inputs before and after execution and finds no changes. No passing scripted/policy tests were repeated.",
+  "retained_wrapper_qualification": {
+    "path": "/tmp/systemone-lifecycle-20261101/qualification.json",
+    "bytes": 19831,
+    "sha256": "0ea04a0b4370ebafd7454e9781375790b6b086d4f13257dd4d380081643f489e"
+  },
+  "retained_generated_wrapper_links": [
+    {
+      "origin": {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/systemone-lifecycle.c",
+        "bytes": 383916,
+        "sha256": "4aa0ae15bd023ed9d223f8394415ae3a149a0c5962cc3ff23bfb7679539d86e1"
+      },
+      "copy": {
+        "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/systemone-lifecycle.c",
+        "bytes": 383916,
+        "sha256": "4aa0ae15bd023ed9d223f8394415ae3a149a0c5962cc3ff23bfb7679539d86e1"
+      },
+      "exact_bytes_equal": true
+    },
+    {
+      "origin": {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/debug/systemone-lifecycle.h",
+        "bytes": 9377,
+        "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+      },
+      "copy": {
+        "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/systemone-lifecycle.h",
+        "bytes": 9377,
+        "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+      },
+      "exact_bytes_equal": true
+    },
+    {
+      "origin": {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/systemone-lifecycle.c",
+        "bytes": 403029,
+        "sha256": "d78d52dde39286df0728fb3751afcd5bd1f0678e29ae2c78a0937dcb666ae380"
+      },
+      "copy": {
+        "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/systemone-lifecycle.c",
+        "bytes": 403029,
+        "sha256": "d78d52dde39286df0728fb3751afcd5bd1f0678e29ae2c78a0937dcb666ae380"
+      },
+      "exact_bytes_equal": true
+    },
+    {
+      "origin": {
+        "path": "/tmp/systemone-lifecycle-20261101/qualified/release/systemone-lifecycle.h",
+        "bytes": 9377,
+        "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+      },
+      "copy": {
+        "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/systemone-lifecycle.h",
+        "bytes": 9377,
+        "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+      },
+      "exact_bytes_equal": true
+    }
+  ],
+  "compiler_producer": {
+    "path": "/tmp/openagents-psionic-framework-20261101/coax/bin/coax",
+    "bytes": 3298680,
+    "sha256": "f7eb9551b2eef9cd801ab51e7da8949db06e081d3c1075d9456c8cc31a4d73e9",
+    "version": "coax0 0.47.0"
+  },
+  "compiler_rebuilt": false,
+  "compiler_invoked_for_this_slice": false,
+  "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "release": "25.4.0"
+  },
+  "cc": {
+    "path": "/usr/bin/cc",
+    "bytes": 118928,
+    "sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+  },
+  "command": {
+    "command": [
+      "bash",
+      "/private/tmp/openagents-book-routes-20261101/coax/tests/systemone-process-lifecycle.sh",
+      "../real-process-v2",
+      "../qualified"
+    ],
+    "cwd": "/tmp/systemone-lifecycle-20261101/caller",
+    "exit_status": 0,
+    "seconds": 7.931547167012468,
+    "reason": "Cfixture adds atexit cleanup for owned slots; script accepts relative output/generated paths from a foreign cwd. Earlier passing real-host record retained untouched."
+  },
+  "stdout": {
+    "path": "/tmp/systemone-lifecycle-20261101/real-process-v2.stdout.log",
+    "bytes": 1812,
+    "sha256": "1f78af9f8fa4f25887b3cb5811c5ae93fee39b8d724fb37b8bd4e8d0da036d52"
+  },
+  "stderr": {
+    "path": "/tmp/systemone-lifecycle-20261101/real-process-v2.stderr.log",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "artifacts": [
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/child-plain",
+      "bytes": 34168,
+      "sha256": "deb468dc31081805bdd7a9e974100da349e76002daa76e294333a777a6f9d2cf"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/child-plain.dSYM/Contents/Info.plist",
+      "bytes": 640,
+      "sha256": "114220640bfe0039ca36cb6c9704a3f1d7f9e2b4700256409d2d10990ed31997"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/child-plain.dSYM/Contents/Resources/DWARF/child-plain",
+      "bytes": 10172,
+      "sha256": "942d8ca9a544cb13c5dbf55c3c8d545cbef1a6bef9b814c65f93c6fe312ae3c8"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/child-plain.dSYM/Contents/Resources/Relocations/aarch64/child-plain.yml",
+      "bytes": 171,
+      "sha256": "2f26365f6d204ccf7361bd598177814e8b0805d29a73eac8fd8b965a51b2c6ee"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/child-sanitized",
+      "bytes": 53536,
+      "sha256": "00c4e08ae431a26c71ab05dde94db05e85db09ffc17f0d9af250ced20bac6e83"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/child-sanitized.dSYM/Contents/Info.plist",
+      "bytes": 644,
+      "sha256": "96771ad37b076d804a645fc4b99e24fc093209be244343a144108844b362e8d6"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/child-sanitized.dSYM/Contents/Resources/DWARF/child-sanitized",
+      "bytes": 14740,
+      "sha256": "397cc7f8002a76e099f29bef23e9ce64fb60db71bb646019b994fccaf9ccfa41"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/child-sanitized.dSYM/Contents/Resources/Relocations/aarch64/child-sanitized.yml",
+      "bytes": 175,
+      "sha256": "cc67a501e015153f53ee6bfce2db763d137bbcd76feeb12a0c7971419de911b6"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/plain",
+      "bytes": 117992,
+      "sha256": "33f5799b412389275a9b9cfbd9c6ed95b8c1711b61767364769e767deb4bc889"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/plain.dSYM/Contents/Info.plist",
+      "bytes": 634,
+      "sha256": "0f3da32dd923193a5cc59bb074dbfa629b1c9cc4460809d7b0a4b587c9cf4f83"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/plain.dSYM/Contents/Resources/DWARF/plain",
+      "bytes": 65444,
+      "sha256": "c9df9798221e6291a349279e303e96e3c3e2e6ee3618c7fac390b389004406c8"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/plain.dSYM/Contents/Resources/Relocations/aarch64/plain.yml",
+      "bytes": 165,
+      "sha256": "f0e93d2c5cfd908c51f8a84fd3e0b84e1443bbb5b6505240fde490ae408573f6"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/sanitized",
+      "bytes": 356936,
+      "sha256": "88d0930e335fb28e2f81bf34671b1a6ac1e6d3b6392a985b82fa8b5e453982f9"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/sanitized.dSYM/Contents/Info.plist",
+      "bytes": 638,
+      "sha256": "e85b3d40bab615bff5677e8efc8212941d0bbdecf04afaf645e06b35b6bdc0ab"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/sanitized.dSYM/Contents/Resources/DWARF/sanitized",
+      "bytes": 136304,
+      "sha256": "e5c6bfd491fd4397e0f171b622d3ab9fb377c7556e8714602de06cee0b9a219f"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/sanitized.dSYM/Contents/Resources/Relocations/aarch64/sanitized.yml",
+      "bytes": 169,
+      "sha256": "fc30c37da59104d1fe60efb8b83dbbe09038f21d33f7378c1318cd5d4c87b409"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/systemone-lifecycle.c",
+      "bytes": 383916,
+      "sha256": "4aa0ae15bd023ed9d223f8394415ae3a149a0c5962cc3ff23bfb7679539d86e1"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/debug/systemone-lifecycle.h",
+      "bytes": 9377,
+      "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/child-plain",
+      "bytes": 34136,
+      "sha256": "f67c70f02b3bee683c30b0d3ca45e6e76b77b9cb2c823fc2fb861243088b3fdf"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/child-plain.dSYM/Contents/Info.plist",
+      "bytes": 640,
+      "sha256": "114220640bfe0039ca36cb6c9704a3f1d7f9e2b4700256409d2d10990ed31997"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/child-plain.dSYM/Contents/Resources/DWARF/child-plain",
+      "bytes": 12032,
+      "sha256": "ccbf7e423866b73746ad1ded8d74c087e0b0caa1dfa5f0bd51346d41807d731e"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/child-plain.dSYM/Contents/Resources/Relocations/aarch64/child-plain.yml",
+      "bytes": 173,
+      "sha256": "830acda53626240ced59ac54add8bfcd9efb13faa49c1040c7e64db65b8f8e17"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/child-sanitized",
+      "bytes": 53344,
+      "sha256": "57b26e4f30f5c05db080ad46be2eeda93fd39908047f82a54acbdde7af02a977"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/child-sanitized.dSYM/Contents/Info.plist",
+      "bytes": 644,
+      "sha256": "96771ad37b076d804a645fc4b99e24fc093209be244343a144108844b362e8d6"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/child-sanitized.dSYM/Contents/Resources/DWARF/child-sanitized",
+      "bytes": 16504,
+      "sha256": "627ac1b2d0569a174f407a17b56d136c459a09cb07274182348c9ae5954e7c62"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/child-sanitized.dSYM/Contents/Resources/Relocations/aarch64/child-sanitized.yml",
+      "bytes": 177,
+      "sha256": "cb7b36cc8acbff378f9f365334c4e675934d7ced9e2af34a10c4e8996a9458f5"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/plain",
+      "bytes": 67160,
+      "sha256": "98d0feea41ffe46641dbe57532d13ad0adcd134fdb9dca572c8c2958563c4198"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/plain.dSYM/Contents/Info.plist",
+      "bytes": 634,
+      "sha256": "0f3da32dd923193a5cc59bb074dbfa629b1c9cc4460809d7b0a4b587c9cf4f83"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/plain.dSYM/Contents/Resources/DWARF/plain",
+      "bytes": 125812,
+      "sha256": "460a3dc2929fc674388ead7ef894d8b188e37ffa9e35ed4573c79833725874d8"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/plain.dSYM/Contents/Resources/Relocations/aarch64/plain.yml",
+      "bytes": 167,
+      "sha256": "7cd5bc428b965905f058634b3a06f61b9d7afc3bf9c16ab93307acba9ae9f514"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/sanitized",
+      "bytes": 149928,
+      "sha256": "e321a2828d4edebad93e695e8acce20bdb62c7f4f684c98cdd11626a9c24aa6e"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/sanitized.dSYM/Contents/Info.plist",
+      "bytes": 638,
+      "sha256": "e85b3d40bab615bff5677e8efc8212941d0bbdecf04afaf645e06b35b6bdc0ab"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/sanitized.dSYM/Contents/Resources/DWARF/sanitized",
+      "bytes": 159076,
+      "sha256": "9dd40f999ea3d7c6a7bf3bdf0a557ad3b5051a6ec3b5b604df2c3fdf48c314b0"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/sanitized.dSYM/Contents/Resources/Relocations/aarch64/sanitized.yml",
+      "bytes": 171,
+      "sha256": "ae2ce69c8371998d29a6065db6938578f34ff2d4b26495e2fece3ea0bec34791"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/systemone-lifecycle.c",
+      "bytes": 403029,
+      "sha256": "d78d52dde39286df0728fb3751afcd5bd1f0678e29ae2c78a0937dcb666ae380"
+    },
+    {
+      "path": "/tmp/systemone-lifecycle-20261101/real-process-v2/release/systemone-lifecycle.h",
+      "bytes": 9377,
+      "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+    }
+  ],
+  "modes": [
+    "checked generated Coax -O0 plain",
+    "checked generated Coax -O0 ASan+UBSan",
+    "release generated Coax -O2 plain",
+    "release generated Coax -O2 ASan+UBSan"
+  ],
+  "flags": [
+    "-std=c11",
+    "-g",
+    "-ffp-contract=off for generated Coax+real host+harness",
+    "-lm",
+    "sanitized child and harness/real host: -fsanitize=address,undefined -fno-sanitize-recover=all"
+  ],
+  "actual_native_process_host": {
+    "source": "coax/platform/process-native.c",
+    "header": "coax/platform/process-native.h",
+    "foreign_functions_stubbed": false
+  },
+  "owned_child": {
+    "source": "coax/tests/systemone-fakecurl.c",
+    "effects": "Reads exact two-byte stdin body; writes fixed JSON+200 or fixed stderr+exit28, or writes sleeping marker and sleeps until killed. No HTTP, sockets, environment keys, user files, model or network."
+  },
+  "checks": [
+    "so_start with generated Coax default owner starts the owned child through actual process-native pipes; success returns borrowed body and usage, exit28 returns borrowed stderr.",
+    "Success/exit28 child PID is already reaped: waitpid(WNOHANG) reports ECHILD and kill(pid,0) reports ESRCH.",
+    "Copied success body/error descriptors preserve exact caller buffer pointer, extent and bytes after16KiB stack disturbance and duplicate terminal poll/cancel; surrounding guards remain intact.",
+    "Sleeping child is observed through actual so_step nonblocking stdout handling, then so_cancel kills/reaps it.",
+    "After every completion/cancel, native slot0 is reclaimable. Reserve that slot, issue duplicate cancel/poll on the retired owner, then a second native allocation returns slot1; retired operations did not release unrelated reusedslot0."
+  ],
+  "limitations": [
+    "Small offline process-host smoke, not full B2/B3 acceptance, full desktop attachment/factory, service/model behavior, all process failure codes or production recovery.",
+    "No copied active owner/handle transfer or generation-tag guarantee; native handles remain reusable raw indices.",
+    "Caller owns live out/err memory and consumes every copied result before reuse/free; process-slot reclamation does not end caller-buffer lifetime.",
+    "No new admission policy or product source was needed for this host slice; the new policy2/2 mutation and prior scripted cases are retained separately.",
+    "Exact source hashes are observed after the run, not an execution attestation.",
+    "Historical v1 C/shell snapshots were reconstructed by reversing only the documented small robustness patch and verified byte-for-byte by the original receipt hashes; they were not captured before execution."
+  ],
+  "prior_real_host_observation": {
+    "path": "/tmp/systemone-lifecycle-20261101/real-process-qualification.json",
+    "bytes": 18570,
+    "sha256": "751969dfe3c343f8b93c3e03b5fec87f510a69abc018f1461aca240c95d6d9d1"
+  },
+  "prior_source_snapshots": {
+    "path": "/tmp/systemone-lifecycle-20261101/verified-v1-source-snapshots/README.json",
+    "bytes": 1058,
+    "sha256": "167b54a6262ac39206c50950d29e754b2531c92769b04404fb78ff96ab64fa4a"
+  },
+  "robustness_changes": [
+    "Output and generated-wrapper paths remain valid after cd to checkout; actual v2 invocation used relative paths from a foreign cwd.",
+    "atexit releases only this standalone harness process own slots0/1, including a failed REQUIRE with sleeping child.",
+    "New separate negative fixture returns1 after observing sleeping child; atexit alone kills/reaps it. Controller observes ESRCH, and exact source/tool/generated input hashes before/after that fixture are unchanged."
+  ],
+  "cleanup_failure_fixture": {
+    "path": "/tmp/systemone-lifecycle-20261101/cleanup-failure/qualification.json",
+    "bytes": 5837,
+    "sha256": "fe6552c864e6750a77cc39e0eb389f089daebbbfee605c77f90bbb91b5563191"
+  },
+  "scripted_harness_tooling_delta": {
+    "path": "/tmp/systemone-lifecycle-20261101/relative-script-tooling.json",
+    "bytes": 717,
+    "sha256": "4f57c28bcbc59cc56fcd8071fc9710cba4c8828d33c1e597be4960f8d4db28cb"
+  }
+}

@@ -9,6 +9,7 @@
 
 #load "answers.coax";
 #load "../agent/claude/transport.coax";
+#load "call-policy.coax";
 
 SoClient :: struct {
   url: string = SO_BASETEN_URL;
@@ -63,9 +64,17 @@ so_fail_call :: (call: [] SoCall, problem: string) -> bool {
   return false;
 }
 
-// Starts curl on body for c.url: false (call[0].r.problem says why) when it
-// could not start. A door with no key_env sends no Authorization header.
+// An empty call view or a handle other than the initialized/retired -1
+// sentinel refuses before changing state, results, backing bytes or effects.
+// That false retains any existing result; it does not install a new problem.
+// After admission, a setup failure returns false with its new r.problem.
+// The caller consumes every old borrowed result before restarting and keeps
+// the owner and its out/err backing live through polling and all result uses.
+// A door with no key_env sends no Authorization header. Copying an active
+// owner or transferring its raw process handle is unsupported.
 so_start :: (c: SoClient, body: string, call: [] SoCall, out: [] u8, err: [] u8) -> bool {
+  if call.count < 1 { return false; }
+  if !so_start_allowed(call[0].h) { return false; }
   call[0] = SoCall.{out = out, err = err, timeout_s = c.timeout_s};
   keyed := c.key_env.count > 0;
   if keyed {

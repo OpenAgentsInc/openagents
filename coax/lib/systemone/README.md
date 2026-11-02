@@ -11,7 +11,7 @@ loopback, answering as `SO_PSIONIC_ELEPHANT` at `SO_PSIONIC_URL`
 (`SoClient.{url = SO_PSIONIC_URL, key_env = ""}`; a `key_env` of `""` sends no
 Authorization header). The Mac app's Lab uses it.
 
-```coax
+```jai
 #load "coax/lib/systemone/systemone.coax";   // link coax/platform/process-native.c
 
 buf: [4096] u8; out: [65536] u8; err: [4096] u8;
@@ -31,7 +31,7 @@ if r.problem.count == 0 && so_noul_of(r.body, "refund").value > 0.9 { ... }
 | `transport.coax` | `so_post` and `so_decide` run `curl` (8.3 or later) as a child; `so_start` and `so_step` do the same without blocking, for a frame loop (`so_step(call, 0)` reads what has arrived), and `so_cancel` stops one. The key stays in the environment: curl expands it into the header, so it never appears in Coax memory, curl's arguments or a process listing. |
 | `smoke.sh` | A live run against both models, plus a 401 and a 422 refusal, which cost no credit. |
 
-```sh
+```shell
 coax/bin/coax test --library coax/lib/systemone/answers.coax   # unit checks, offline
 coax/lib/systemone/smoke.sh                                    # live; reads ~/work/.secrets/baseten.env
 ```
@@ -39,3 +39,37 @@ coax/lib/systemone/smoke.sh                                    # live; reads ~/w
 Both models refuse requests over 16,384 tokens (`SO_CONTEXT_TOKENS`). A
 choice's `confidence` measures how concentrated its distribution is. It is
 not the probability of the chosen option, which is `SoChoice.probability`.
+
+## The asynchronous owner and its buffers
+
+Create a `SoCall` with Coax's declared defaults before its first use. A C host
+allocating a containing record must invoke that record's actual generated
+`coax_default_*` constructor after successful allocation and before attachment.
+Zero-filled memory is insufficient: a fresh call's process handle is `-1`,
+while process slot `0` can belong to a different live request. Construct a
+root once; constructing a view descriptor does not initialize its pointee.
+
+`so_start` admits only a nonempty call view whose handle is exactly `-1`.
+An active handle (including `0`) or any other sentinel returns false before
+changing the owner, results, buffer bytes or process/environment effects. That
+refusal preserves the existing result; it does not install a new `r.problem`.
+After admission, setup failures still return false with a new problem.
+`so_step` and `so_cancel` require a nonempty initialized call view.
+
+A call has one owner. Keep its output/error storage alive; do not overwrite or
+reuse it from another operation while the call runs or while borrowed results
+are still in use. `SoResult`
+copies descriptors, not their backing bytes. Completion, cancellation and
+process-slot release do not invalidate copied descriptors or release caller
+storage. Finish all those uses before reusing the buffers for another call.
+The desktop's selected pool lasts for the application; it has no new pool-free
+or ownership-transfer contract.
+
+The [retained owner checks](../../../docs/verification/coax-request-owner-2026-11-01/README.md)
+cover generated transport, real offline child processes and exact desktop
+state/entry projections. Full desktop generation remains unqualified by this
+slice. The [issue execution route](../../../docs/books/coax-outcomes-request-ownership.md)
+keeps the remaining work in order.
+The compiler's [B2/B3 boundary](../../verification-retained-stores.md#remaining-boundary)
+remains explicit: runtime admission alone is not a proof of arbitrary backing
+lifetimes, foreign retention, copied active handles or ownership transfer.

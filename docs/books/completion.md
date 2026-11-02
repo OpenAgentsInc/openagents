@@ -43,9 +43,17 @@ not promote the separate application milestones below.
 
 Each issue has a task checklist and acceptance criteria. Execute it in bounded
 slices and retain failed results; do not mark an umbrella complete because one
-slice passes. The first Psionic slice was the MLP; the next is reusable CPU
-convolution and a CNN through the same training/state interfaces. Its GPU and
-compiled-backward support must be qualified separately or refuse explicitly.
+slice passes. The first Psionic slices delivered the MLP and reusable CPU convolution/CNN
+through the same training/state interfaces. Residual-model and unfamiliar-consumer
+acceptance come next. GPU and compiled-backward support must be qualified
+separately or refuse explicitly.
+
+The [Coax issue execution map](coax-outcomes-request-ownership.md) links existing
+R2, analysis-cost, B2 and B3 identities, preserving the separate agent's active
+language work and the independent R0 owner/reviewer gates. Its first
+[owner prerequisite slice](../verification/coax-request-owner-2026-11-01/README.md)
+now fixes default construction, active-start admission and the Lab entry, with
+scoped native and actual offline process checks. Full R2/B2/B3 remains open.
 
 This ordering preserves completed work. B1 ownership qualification, generated
 realm shaders, API NIP-98 verification and the relay's wired operations already

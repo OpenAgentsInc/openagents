@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "recorded_utc": "2026-11-02T03:18:21.521980+00:00",
+  "scope": "Independent read-only byte/closure and retained-observation audit; no compiler or test invocation",
+  "passed": true,
+  "mismatches": [],
+  "final_receipt": {
+    "path": "/tmp/zeron-defaults-20261101/final-green/receipt.json",
+    "sha256": "b7e47ccf081e3fc28ac6f57848649b6372da38703c6bdc541ce5757d8d889b07"
+  },
+  "check_first": {
+    "receipt": "/tmp/zeron-defaults-20261101/isolated-red/receipt.json",
+    "sha256": "f11871743548efbc055654abeba1d462d832c664276ef608c7f82d9dfb6f40a8",
+    "source_commit": "8f36568370916ad063ee8119e472ddd74df6acca",
+    "original_source_sha256": "8135e71eba7bd60c9aa359b2467f7ec8d4c351fab897a13fe1e096cd0d5e6992",
+    "cases": [
+      "missing generated initializer",
+      "unrelated process slot0 released after owner-ready projection"
+    ],
+    "observed_exits": [
+      1,
+      1
+    ]
+  },
+  "counts": {
+    "coax_inventory_files": 61,
+    "exact_authored_declarations": 165,
+    "tooling_sources": 5,
+    "generated_artifacts": 6,
+    "native_binaries": 3,
+    "commands": 16,
+    "native_cases": 6
+  },
+  "conclusions": [
+    "All current selected Coax/C/tooling/compiler/CC inputs and generated/native artifact bytes match the final receipt.",
+    "The subset contains complete actual ZeronState and nested type/default declarations, exact selected Coax procedures, and explicitly recorded test-only owner-ready helper statements.",
+    "Production zr_new allocates once, calls the actual generated helper once only for a nonnull allocation, and returns it.",
+    "Read-only source spans and generated header/C confirm the constructor is generated, not a handwritten or reduced struct.",
+    "The isolated original factory replay genuinely fails both focused expectations; the final actual factory passes both in three native modes."
+  ],
+  "limitations": [
+    "No full settings/screen/desktop emission or full zr_attach qualification: f7, qualified H and full R2 each refused E0381 before a native test.",
+    "The passing observation is a qualified-H exact-declaration subset, actual C factory/quit wrappers, actual lab_attach/quit/close logic, and source-bound relevant attachment initializers.",
+    "No real request, active-owner transfer, general lifetime safety, app rendering or new compiler qualification is established.",
+    "Earlier failed projection omitted non-Lab subsystem initialization; its failing observations remain retained and are not counted as unresolved production defects."
+  ]
+}

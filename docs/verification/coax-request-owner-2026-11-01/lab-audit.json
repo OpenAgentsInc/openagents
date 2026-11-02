@@ -1,0 +1,16 @@
+{
+  "kind": "read-only final closure audit",
+  "receipt_sha256": "bf1460dc604f4ffb5031a01d8c13b2a939c8cca91d46d3a7a2611b1fe3de126a",
+  "checks": {
+    "passed": true,
+    "tooling_matches": true,
+    "source_closure_matches": true,
+    "artifacts_match_record": true,
+    "reused_C_header_source_exact": true,
+    "all_expected_exits": true
+  },
+  "source_files": 61,
+  "selected_declarations": 56,
+  "compiler_sha256": "6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648",
+  "status": "passed"
+}

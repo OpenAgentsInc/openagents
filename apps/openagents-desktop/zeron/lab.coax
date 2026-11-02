@@ -287,6 +287,8 @@ lab_send :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Ses
 }
 // Elephant is asked where the message goes.
 lab_ask :: (l: [] Lab, s: [] Session) {
+  // A repeated ask must not abandon the active owner or rewrite its backing.
+  if !so_start_allowed(l[0].call[0].h) { return; }
   st: [1400] u8;
   mc := l[0].mc.count > 0;
   lab_body(l[0].q[..], l[0].body[..], lab_state(st[..], s_text_of(s, l[0].part), l[0].codex, mc), l[0].codex, mc);
@@ -705,4 +707,30 @@ LAB_TEST_OTHER :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"o
   ev[0] = McRunEvent.{kind = MR_ENDED, ending = MC_END_STOPPED};
   lab_mc_take(v[..], ss[..], ev[..], 1);
   #assert ss[0].parts[ss[0].n - 1].notice == N_STOPPED && !ss[0].live && s_text_of(ss[..], ss[0].n - 2) == "One, ";
+}
+
+#test "the Lab keeps the active request and its buffers when asked again" {
+  l: [1] Lab; ss: [1] Session; pool: [256] u8;
+  body: [12] u8; out: [12] u8; err: [12] u8;
+  for i: 0..<12 { body[i] = 71; out[i] = 72; err[i] = 73; }
+  s_init(ss[..], pool[..]); s_user(ss[..], "first");
+  lab_attach(l[..], body[2..<10], out[2..<10], err[2..<10]);
+  l[0].phase = LAB_ASKING; l[0].secs = 7; l[0].route = 3;
+  l[0].call[0].h = 0; l[0].call[0].at = 4; l[0].call[0].lines = 2;
+  l[0].call[0].out = out[2..<10]; l[0].call[0].err = err[2..<10];
+  l[0].call[0].r = SoResult.{status = 202, body = "pending", problem = "keep", stderr = "prior"};
+  l[0].q[0].at = 5; l[0].q[0].stage = 3; l[0].q[0].questions = 1;
+  l[0].q[0].problem = "original question";
+  lab_ask(l[..], ss[..]);
+  #assert l[0].phase == LAB_ASKING && l[0].secs == 7 && l[0].route == 3;
+  #assert l[0].call[0].h == 0 && !l[0].call[0].done && l[0].call[0].at == 4 && l[0].call[0].lines == 2;
+  #assert l[0].call[0].r.status == 202 && l[0].call[0].r.body == "pending" && l[0].call[0].r.problem == "keep" && l[0].call[0].r.stderr == "prior";
+  #assert l[0].q[0].at == 5 && l[0].q[0].stage == 3 && l[0].q[0].questions == 1 && l[0].q[0].problem == "original question";
+  #assert ss[0].n == 1 && ss[0].live && s_text_of(ss[..], 0) == "first";
+  for i: 0..<12 { #assert body[i] == 71 && out[i] == 72 && err[i] == 73; }
+  #assert l[0].body.count == 8 && l[0].out.count == 8 && l[0].err.count == 8;
+  // The original descriptors still select the same bytes, including their offset.
+  l[0].body[0] = 81; l[0].out[0] = 82; l[0].err[0] = 83;
+  #assert body[2] == 81 && out[2] == 82 && err[2] == 83;
+  #assert body[1] == 71 && out[1] == 72 && err[1] == 73;
 }

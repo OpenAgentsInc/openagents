@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "kind": "attributed coordination and task-scope mapping, not execution or live claim qualification",
+  "issue": 12625,
+  "observed_repository_revision": "a2e4931045ca62b204481956a74128b4277f6250",
+  "owner_checkpoint": {
+    "path": "/tmp/coax-chapter30-full/CURRENT_STATE.json",
+    "sha256": "0d8d3f024225e935a9983b50d1d85bb407975b96a124b38404d26575e344b0c8",
+    "selected_observation": "cost task reported resolved; R2 language child reported active; no independent live project query",
+    "provisional_results_promoted": false
+  },
+  "inputs": {
+    "apps/openagents-web/projects/coax/work/book30-clocks.json": "f4d6c31ca6a65cd38eefd49e6c22e122464f6343010a1ce9c72bda42513692e6",
+    "apps/openagents-web/projects/coax/work/retained-borrow-subtasks.json": "ae18993c2b1c1ceaf1e2e630bacd7bd15d701c365e8f8a1125d7575e49ac9b03",
+    "apps/openagents-web/projects/coax/work/coax.json": "87b3d0ae7d01ffcd7f766c87d6c307cb8797735fb51d35de1a89c6e3eb96a190",
+    "coax/verification-retained-stores.md": "d15a697d0820a78f0ea097ab46504a58efefb512f1dee0d52c914d0c251295c9",
+    "docs/verification/coax-wide-retained-stores-2026-11-01/record.json": "45a39e73db04dd7589b51d8e67e71348f36a8dc888775476e5b404e085c9d1a8",
+    "NEEDS_OWNER.md": "484a04cf5df190d11dc5aaf372d9205d00fa6dca8465a7df3b100af14020d3c6"
+  },
+  "r0_owner_actions": "Existing NEEDS_OWNER.md R0 adoption gate; no decision or physical-device result inferred",
+  "compiler_work": "Existing R2 owner retains compiler/language/synchronous-adapter work; no changed compiler qualification claimed by this record",
+  "recorded_at_utc": "2026-11-02T03:05:11.991120+00:00"
+}

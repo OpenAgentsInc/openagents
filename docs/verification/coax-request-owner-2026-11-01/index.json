@@ -1,0 +1,195 @@
+{
+  "schema": 1,
+  "issue": 12625,
+  "issue_complete": false,
+  "implementation_base": "a2e4931045ca62b204481956a74128b4277f6250",
+  "recorded_at_utc": "2026-11-02T03:19:55.325704+00:00",
+  "status": "passed bounded prerequisites; full application/language/compiler-ownership gates remain open",
+  "components": {
+    "transport": "transport.json",
+    "transport_historical_continuity": "transport-continuity.json",
+    "real_process": "process.json",
+    "factory_subset": "factory.json",
+    "lab_entry_subset": "lab.json",
+    "task_map": "coordination.json"
+  },
+  "focused_policy_mutants": {
+    "killed": 2,
+    "survivors": 0
+  },
+  "native_modes": {
+    "transport_scripted": 4,
+    "actual_process_host": 4,
+    "factory_subset": 3,
+    "lab_entry_subset": 3
+  },
+  "full_desktop_and_full_Lab_test_pass_claimed": false,
+  "compiler_rebuilt_or_qualified_here": false,
+  "model_full_mutation_or_training_runs": false,
+  "current_file_pins": [
+    {
+      "path": "apps/openagents-desktop/tests/check_zeron_defaults.py",
+      "bytes": 12290,
+      "sha256": "f9b27ff781a1b59337740fa738cf58fde76968a1942e9d55073e070a47214c5b"
+    },
+    {
+      "path": "apps/openagents-desktop/tests/lab-owner.c",
+      "bytes": 5514,
+      "sha256": "b417d18bbbd73fe39787f22d589945e3dc9d4c23d11f217c9b31835d0f5502ad"
+    },
+    {
+      "path": "apps/openagents-desktop/tests/lab-owner.py",
+      "bytes": 8717,
+      "sha256": "f1495d095beaa762d5eb2aca671e036946a67e842c5e24e6e49734b2626d1a47"
+    },
+    {
+      "path": "apps/openagents-desktop/tests/zeron-defaults.c",
+      "bytes": 6627,
+      "sha256": "9f523c1d7409568617141cabbd90174acf7746d74b6d822e42f2cf6c00ebd2e5"
+    },
+    {
+      "path": "apps/openagents-desktop/tests/zeron_source_extract.py",
+      "bytes": 4039,
+      "sha256": "8bc43fa2c6459380ccb995d8f7d0601c0a861a0b2ae546d1597bb0ef33c86d7e"
+    },
+    {
+      "path": "apps/openagents-desktop/zeron-face.c",
+      "bytes": 16525,
+      "sha256": "24285c64ea95d45402b0aff7e611ce69be3376d1c597c11ccccf383fd0ffba63"
+    },
+    {
+      "path": "apps/openagents-desktop/zeron/lab.coax",
+      "bytes": 51123,
+      "sha256": "c4248c017688354f186f601d93f44cc7a2390aa049814f36143acdd29a588186"
+    },
+    {
+      "path": "coax/lib/systemone/README.md",
+      "bytes": 4897,
+      "sha256": "09ba52b672928b77d8e96fb5ae36cfa021c0bed00af271f8952186743972275c"
+    },
+    {
+      "path": "coax/lib/systemone/call-policy.coax",
+      "bytes": 517,
+      "sha256": "198e65e8565dbf7d3b336ae26e9ef094e1e525986ccb356ff383b36014c63bdc"
+    },
+    {
+      "path": "coax/lib/systemone/transport.coax",
+      "bytes": 8041,
+      "sha256": "8e07445894e7c053af92e69347748ae12f46b810c02058a9ae19ebba0f5a26ba"
+    },
+    {
+      "path": "coax/tests/run.sh",
+      "bytes": 10621,
+      "sha256": "c81884454bb477fc9137915d766a5a1204b4e634d93c9b435a37f397c1d84265"
+    },
+    {
+      "path": "coax/tests/systemone-fakecurl.c",
+      "bytes": 874,
+      "sha256": "2b839a8a8f483a8842c49d4ee1763fd6edfb4b80e5aec6b4aed1cca9c9f035ac"
+    },
+    {
+      "path": "coax/tests/systemone-lifecycle.c",
+      "bytes": 9802,
+      "sha256": "f035f9f8f7232a829955b0f9173b24a975db0e3a0b4b475677eb263c0b3e7356"
+    },
+    {
+      "path": "coax/tests/systemone-lifecycle.coax",
+      "bytes": 413,
+      "sha256": "6363ba316775e2b0726a9186b1a7c9f6370d4d67d0570b0be659af17bda12bdf"
+    },
+    {
+      "path": "coax/tests/systemone-lifecycle.sh",
+      "bytes": 1431,
+      "sha256": "5a65b1a7d516dcd11f07c8525d9e5f2444aeaec5ec4d093820c40746ef8d8db2"
+    },
+    {
+      "path": "coax/tests/systemone-process-lifecycle.c",
+      "bytes": 5179,
+      "sha256": "1bb860e0c9b61818ca917e2eaecffd6be92c053c53249d42b982a6f1a3f765c5"
+    },
+    {
+      "path": "coax/tests/systemone-process-lifecycle.sh",
+      "bytes": 1609,
+      "sha256": "dc21350f44f48ef09cc92177dbaaf417f0795d93541f36fd6e9b04002b1679ab"
+    },
+    {
+      "path": "docs/books/coax-outcomes-request-ownership.md",
+      "bytes": 7213,
+      "sha256": "5b040451844239919f4a3940acedec40bd85cde17b5fe2f4f9358cc65dd4287f"
+    },
+    {
+      "path": "docs/books/completion.md",
+      "bytes": 18129,
+      "sha256": "fbc4ce6c929b819576df67879089fe2a82618f50fa388dce5bd6ba5b01b5ccef"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/README.md",
+      "bytes": 5566,
+      "sha256": "0d39cc866c46783c6eca55da337da699967ab92da9c2e386cb8c580531e77cb6"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/coordination.json",
+      "bytes": 1641,
+      "sha256": "bbf0f4fef64002775fccdea2b77b58f66a6c38cfc6269b3898ab7a0224f10546"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/factory-audit.json",
+      "bytes": 2546,
+      "sha256": "1b2018b265698b79db24517bc6e883c1e2b32f18be7c2d3cd62324c3b6c9b410"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/factory.json",
+      "bytes": 90476,
+      "sha256": "b7e47ccf081e3fc28ac6f57848649b6372da38703c6bdc541ce5757d8d889b07"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/lab-audit.json",
+      "bytes": 511,
+      "sha256": "da84c65be9af6ab13d82e7d4fd4c948976ba3a237b741461d70e66a043769697"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/lab.json",
+      "bytes": 43784,
+      "sha256": "bf1460dc604f4ffb5031a01d8c13b2a939c8cca91d46d3a7a2611b1fe3de126a"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/process.json",
+      "bytes": 20530,
+      "sha256": "f8fc2e295bc037aff8f3961a90fd6521f55336fa4abd42d43097ce50de89fca6"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/proof-manifest.json",
+      "bytes": 76938,
+      "sha256": "ab882a15a4762079666ca96e680f8f0167422560d23114d517721c7b53d66267"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/proof.tar.xz",
+      "bytes": 180336,
+      "sha256": "611b50dcd04a929b8370cffc46e9ed115820223ea044385e0da251c73f849c1e"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/transport-continuity.json",
+      "bytes": 10761,
+      "sha256": "7849b372ae3ca64c91ea82a73818597e324d76890873e0766c3f2f387cb1949d"
+    },
+    {
+      "path": "docs/verification/coax-request-owner-2026-11-01/transport.json",
+      "bytes": 19831,
+      "sha256": "0ea04a0b4370ebafd7454e9781375790b6b086d4f13257dd4d380081643f489e"
+    }
+  ],
+  "reviews": {
+    "factory": "factory-audit.json",
+    "lab": "lab-audit.json",
+    "archive": "proof-manifest.json",
+    "root": "Static current transport/process/Lab/factory source+tooling pins match original final records; changed local documentation targets exist; Python AST/Bash syntax pass. No passing native/mutation/model gate was repeated."
+  },
+  "remaining": [
+    "Existing R2 compiler/synchronous adapter delivery",
+    "Precise B2 helper-write/returned-borrow composition",
+    "Full B3 actual desktop attachment/consumer and backing-buffer qualification on integrated compiler",
+    "Typed asynchronous outcomes and corresponding worked chapter",
+    "Existing R0 device/review/budget/golden gates; no approval inferred",
+    "Issues12626 through12631 remain pending numeric implementation order"
+  ]
+}

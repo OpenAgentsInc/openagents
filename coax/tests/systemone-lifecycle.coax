@@ -1,0 +1,8 @@
+// Native verification entrypoints for the actual System One transport.
+#load "../lib/systemone/transport.coax";
+
+so_life_start :: (client:SoClient,body:string,call:[]SoCall,out:[]u8,err:[]u8)->bool #export_c {
+  return so_start(client,body,call,out,err);
+}
+so_life_step :: (call:[]SoCall,wait_ms:int)->bool #export_c {return so_step(call,wait_ms);}
+so_life_cancel :: (call:[]SoCall) #export_c {so_cancel(call);}

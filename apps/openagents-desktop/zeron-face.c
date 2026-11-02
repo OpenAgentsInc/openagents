@@ -8,7 +8,11 @@
 
 static coax_v_t_ZeronState at(void *state) { return (coax_v_t_ZeronState){(coax_t_ZeronState *)state, 1}; }
 
-void *zr_new(void) { return calloc(1, sizeof(coax_t_ZeronState)); }
+void *zr_new(void) {
+  coax_t_ZeronState *state = calloc(1, sizeof *state);
+  if (state) coax_default_t_ZeronState(state);
+  return state;
+}
 int32_t zr_vertex_floats(void) { return (int32_t)coaxial_zeron_vertex_floats(); }
 int32_t zr_max_vertices(void) { return (int32_t)coaxial_zeron_max_vertices(); }
 int32_t zr_glyph_count(void) { return (int32_t)coaxial_zeron_glyph_count(); }
