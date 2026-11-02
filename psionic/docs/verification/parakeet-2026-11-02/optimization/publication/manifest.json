@@ -1,0 +1,52 @@
+{
+  "files": {
+    "book-parallel.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "book-parallel.stdout": {
+      "sha256": "5e341e2f9b8a2f5483d8f1024bde23d5f5c4aabd91b857a47bc567351e51065c",
+      "bytes": 104
+    },
+    "cli-build-parallel.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "cli-build-parallel.stdout": {
+      "sha256": "c3a7c45b58adcbee8dd075ea0b2982731daf14cd9c597466c3023144c1fb9f7a",
+      "bytes": 85
+    },
+    "cli-check-parallel.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "cli-check-parallel.stdout": {
+      "sha256": "3381359b25f4919ad28633c27ae9625767ddadee886796a54fe7deb312ac76c7",
+      "bytes": 86
+    },
+    "rebase.json": {
+      "sha256": "cc18582a264c0016381b920a3b57e1fbc43425e4c2832a733735aea4a11e7977",
+      "bytes": 349
+    },
+    "record.json": {
+      "sha256": "c002e18db2948d2458c21cbb6522a20355ebd491a9b104f458adece6a38909d2",
+      "bytes": 2136
+    },
+    "tools-parallel-rebased.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "tools-parallel-rebased.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "tools-parallel.stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "tools-parallel.stdout": {
+      "sha256": "622a1a21a2fddc85c96f79927975f50cf585b5cb2110b181f36b1a5d2f12cb44",
+      "bytes": 387
+    }
+  }
+}

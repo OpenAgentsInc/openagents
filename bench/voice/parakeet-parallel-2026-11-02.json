@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.voice.offline-stt-observation.v1",
+  "scope": "Same frozen29 recordings, row-parallel Parakeet implementation; one ordered observation per implementation, not a controlled steady-state or Coder key-release benchmark.",
+  "record": "../../psionic/docs/verification/parakeet-2026-11-02/optimization/reference/timing-comparison.json",
+  "prior_record": "parakeet-2026-11-02.json",
+  "hardware": "Apple M5 Max, 128 GiB, macOS 26.4",
+  "actual_decoder_threads": 8,
+  "fresh_engine_open_seconds": 15.861997,
+  "filesystem_cache": "uncontrolled",
+  "other_machine_load": "uncontrolled; own CLI compiler paused during GPU cohort",
+  "audio_seconds": 298.435,
+  "prior_reported_inference_seconds": 48.374912,
+  "reported_inference_seconds": 27.199433,
+  "ordered_requests": 29,
+  "repetitions": 1,
+  "observed_ratio": 1.7785264861955028,
+  "audio_seconds_per_inference_second": 10.972103719956221,
+  "timer": "After API lock through frontend/encoder/decoder/checked rendering, before final snapshot/output copies."
+}

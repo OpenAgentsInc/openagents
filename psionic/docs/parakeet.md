@@ -7,8 +7,10 @@ vocabulary stay resident between calls. Python, NeMo and Torch are independent
 verification tools; none is a runtime dependency.
 
 [Chapter 153](../book/ch153-transcribe-with-parakeet.md) explains the arithmetic,
-reference comparison and limits. [Qualification and measurements](verification/parakeet-2026-11-02/README.md)
-keep the actual source/compiler/model/input identities and failed attempts.
+reference comparison and limits. [Current qualification and measurements](verification/parakeet-2026-11-02/optimization/README.md)
+keep the exact row-parallel implementation's identities and checks. The
+[original resident baseline](verification/parakeet-2026-11-02/README.md) and
+its failed attempts remain intact for comparison.
 
 ## Get the pinned data
 
@@ -80,6 +82,10 @@ if (engine != NULL) {
 ```
 
 The model is opened once per process. Calls serialize through the public API.
+The CPU decoder uses up to eight participants in one persistent worker pool,
+including the caller, with complete rows and unchanged compensated-sum order.
+`psionic_parakeet_decoder_threads(engine)` reports the actual pool size. A
+smaller available pool preserves the same arithmetic; closing joins its workers.
 Inputs are mono f32 samples at 16 kHz in `[-1, 1]`, from 320 through 327,520
 samples (20 ms through 20.47 seconds). The low-level model cannot supply
 60-second dictation by silently changing this limit. Segmentation and its
@@ -113,7 +119,10 @@ encoder, token, frame-position and text comparisons. Multilingual WER/CER uses
 the manifest's explicit Unicode normalization. It is not the legacy
 ASCII-only `pk_score` metric and has no invented quality threshold.
 
-Measured offline recognition time excludes microphone/key-event timing.
+The public info's recognition timer covers frontend, encoder, decoder and
+checked text rendering. It excludes time waiting for the API lock, final
+snapshot/output copies, microphone/key events and composer insertion. The
+recording harness's whole-process time also includes load and artifact I/O.
 This engine is the Parakeet foundation for
 [the Coder voice proposal](../../docs/voice/2026-11-02-coder-voice-from-hex.md).
 That proposal's microphone capture, opt-in UI, pre-roll/tail, vocabulary

@@ -14,7 +14,7 @@ static int write_bytes(const char*path,const void*bytes,size_t n){FILE*f=fopen(p
 int main(int argc,char**argv){
  if(argc!=4){fprintf(stderr,"usage: runtime-gpu MODEL LIST.tsv OUTPUT_DIR\n");return 2;}
  FILE*list=fopen(argv[2],"rb");assert(list);char error[1024],text[8193],json[131072],line[4096],path[4096];double started=seconds();
- psionic_parakeet*s=psionic_parakeet_open(argv[1],1,error,sizeof error);if(!s){fprintf(stderr,"open: %s\n",error);return 1;}printf("MODEL_OPEN_SECONDS %.6f\n",seconds()-started);fflush(stdout);
+ psionic_parakeet*s=psionic_parakeet_open(argv[1],1,error,sizeof error);if(!s){fprintf(stderr,"open: %s\n",error);return 1;}printf("MODEL_OPEN_SECONDS %.6f\nDECODER_THREADS %d\n",seconds()-started,psionic_parakeet_decoder_threads(s));fflush(stdout);
  float *stage=malloc(128*2048*4);assert(stage);int count=0;
  while(fgets(line,sizeof line,list)){
   char*id=strtok(line,"\t"),*input=strtok(NULL,"\t\r\n");assert(id&&input&&!strchr(id,'/'));

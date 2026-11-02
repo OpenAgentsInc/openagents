@@ -1,0 +1,7 @@
+{
+  "scope": "Rebase onto current main changed no qualified native production/test source, CLI implementation, chapter or publication source pin. Reuse passing changed-code results; no full gates repeated.",
+  "onto": "c19307f496ceffe62c567253e7197e5e19667251",
+  "native_pins_identical": 48,
+  "publication_pins_identical": 8,
+  "mismatches": []
+}

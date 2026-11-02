@@ -216,9 +216,10 @@ machine, model and build, as coax-native-voice.md requires.
 
 - **Parakeet in Coder.** Psionic's bounded resident engine now matches actual
   NeMo on chapter 153's frozen 29-recording qualification. Its measured offline
-  baseline processes 298.435 s audio in 48.375 s inference on an M5 Max, with
-  a 20.272 s fresh engine open (filesystem cache uncontrolled). That is not
-  a 300 ms key-release result. Keep it resident, measure dictation timing and
+  row-parallel pass processes 298.435 s audio in 27.199 s reported inference
+  on an M5 Max (original baseline 48.375 s). The single-pass comparison has
+  uncontrolled machine load and filesystem caches; it is not a 300 ms
+  key-release result. Keep it resident, measure dictation timing and
   implement the 60-second segmentation policy before choosing it as default.
   Hex makes Parakeet the default for speed and accuracy, and Zeron ships it.
   Hex's vocabulary rescoring (rescore look-alike spans with the

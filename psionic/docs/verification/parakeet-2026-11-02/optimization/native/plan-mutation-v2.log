@@ -1,0 +1,8 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/parakeet/parallel-plan.coax:49:34: mutant survived: 8 became 9
+   n:=requested;if requested<=0 {n=8;}
+                                   ^
+psionic/lib/parakeet/parallel-plan.coax:53:39: mutant survived: 0 became 1
+   d:=n-8;n=8+(d&(d>>63));if available<=0 {return 1;}
+                                        ^
+83 mutants, 81 killed, 2 survived

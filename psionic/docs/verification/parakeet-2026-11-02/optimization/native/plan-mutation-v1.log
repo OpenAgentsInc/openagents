@@ -1,0 +1,44 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/parakeet/parallel-plan.coax:35:35: mutant survived: '||' became '&&'
+   if rows<1 || rows>8198 || cols<1 || cols>1024 {return false;}
+                                    ^
+psionic/lib/parakeet/parallel-plan.coax:35:25: mutant survived: '||' became '&&'
+   if rows<1 || rows>8198 || cols<1 || cols>1024 {return false;}
+                          ^
+psionic/lib/parakeet/parallel-plan.coax:35:12: mutant survived: '||' became '&&'
+   if rows<1 || rows>8198 || cols<1 || cols>1024 {return false;}
+             ^
+psionic/lib/parakeet/parallel-plan.coax:35:9: mutant survived: '<' became '<='
+   if rows<1 || rows>8198 || cols<1 || cols>1024 {return false;}
+          ^
+psionic/lib/parakeet/parallel-plan.coax:35:10: mutant survived: 1 became 2
+   if rows<1 || rows>8198 || cols<1 || cols>1024 {return false;}
+           ^
+psionic/lib/parakeet/parallel-plan.coax:35:20: mutant survived: 8198 became 8199
+   if rows<1 || rows>8198 || cols<1 || cols>1024 {return false;}
+                     ^
+psionic/lib/parakeet/parallel-plan.coax:35:32: mutant survived: '<' became '<='
+   if rows<1 || rows>8198 || cols<1 || cols>1024 {return false;}
+                                 ^
+psionic/lib/parakeet/parallel-plan.coax:35:33: mutant survived: 1 became 2
+   if rows<1 || rows>8198 || cols<1 || cols>1024 {return false;}
+                                  ^
+psionic/lib/parakeet/parallel-plan.coax:35:43: mutant survived: 1024 became 1025
+   if rows<1 || rows>8198 || cols<1 || cols>1024 {return false;}
+                                            ^
+psionic/lib/parakeet/parallel-plan.coax:40:41: mutant survived: 8 became 9
+   n:=ifx requested>0 then requested else 8;if n>8 {n=8;}if available<1 {return 1;}return ifx n<available then n else available;
+                                          ^
+psionic/lib/parakeet/parallel-plan.coax:40:47: mutant survived: '>' became '>='
+   n:=ifx requested>0 then requested else 8;if n>8 {n=8;}if available<1 {return 1;}return ifx n<available then n else available;
+                                                ^
+psionic/lib/parakeet/parallel-plan.coax:40:68: mutant survived: '<' became '<='
+   n:=ifx requested>0 then requested else 8;if n>8 {n=8;}if available<1 {return 1;}return ifx n<available then n else available;
+                                                                     ^
+psionic/lib/parakeet/parallel-plan.coax:40:69: mutant survived: 1 became 2
+   n:=ifx requested>0 then requested else 8;if n>8 {n=8;}if available<1 {return 1;}return ifx n<available then n else available;
+                                                                      ^
+psionic/lib/parakeet/parallel-plan.coax:40:94: mutant survived: '<' became '<='
+   n:=ifx requested>0 then requested else 8;if n>8 {n=8;}if available<1 {return 1;}return ifx n<available then n else available;
+                                                                                               ^
+73 mutants, 59 killed, 14 survived

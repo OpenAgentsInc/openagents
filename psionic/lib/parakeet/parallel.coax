@@ -1,0 +1,65 @@
+// Exact TDT row-parallel arithmetic: preserve each output's original binary64
+// compensated order and single f32 store. Thread count changes no bits.
+#load "../tdt.coax";
+#load "parallel-plan.coax";
+PkpJob :: struct {rows:int;cols:int;w:[]f32;x:[]f32;bias:[]f32;second:bool;w2:[]f32;x2:[]f32;bias2:[]f32;out:[]f32;}
+#test "parallel TDT rows preserve cancellation-sensitive compensated order" {
+ w:=[6]f32.[1e20,1,-1e20,2,-3,4];x:=[3]f32.[1,1,1];bias:=[2]f32.[0,0];a:=[2]f32.[-7,-7];b:=a;
+ j:=PkpJob.{rows=2,cols=3,w=w[..],x=x[..],bias=bias[..],out=a[..]};#assert pkp_dot_part(j,0,2);#assert a[0]==1 && a[1]==3;
+ j.out=b[..];j.second=true;j.w2=w[..];j.x2=x[..];j.bias2=bias[..];#assert pkp_dot_part(j,0,1) && b[0]==2 && b[1]== -7;#assert pkp_dot_part(j,1,2) && b[1]==6;
+}
+#forall "parallel TDT serial composition equals the original decoder bit for bit" seed:0..<4 {
+ s:=tdt_tiny();s.max_symbols=1+seed%3;p:=tdt_plan(s,5);w:[433]f32;#assert tdt_init(s,w[..],cast(u64)seed)==TdtStatus.ok;
+ x:[15]f32;for i:0..<15 {x[i]=f32(f64(cr_bits(cast(u64)seed,cast(u64)i)%1000)/1000);}
+ a:[256]f32;b:[256]f32;ta:[50]int;tb:[50]int;fa:[50]int;fb:[50]int;
+ ra:=tdt_decode(s,w[..],x[..],5,a[..],ta[..],fa[..]);rb:=pkp_decode(s,w[..],x[..],5,b[..],tb[..],fb[..],false);
+ #assert ra.status==TdtStatus.ok && rb.status==TdtStatus.ok && ra.written==rb.written;
+ for i:0..<ra.written {#assert ta[i]==tb[i] && fa[i]==fb[i];}for i:0..<p.work {#assert f32_bits(a[i])==f32_bits(b[i]);}
+}
+cxpk_dot :: (rows:int,cols:int,w:[]f32,x:[]f32,bias:[]f32,second:bool,w2:[]f32,x2:[]f32,bias2:[]f32,out:[]f32)->bool #foreign;
+pkp_valid :: (j:PkpJob)->bool {return pkp_counts(j.rows,j.cols,j.w.count,j.x.count,j.bias.count,j.w2.count,j.x2.count,j.bias2.count,j.out.count,j.second);}
+pkp_dot_part :: (j:PkpJob,lo:int,hi:int)->bool #export_c {
+ if !pkp_valid(j) || !pkp_rows(j.rows,lo,hi) {return false;}
+ for r:lo..<hi {a:PsionicAccumulator;a=psionic_ops_accumulate(a,f64(j.bias[r]));if j.second {a=psionic_ops_accumulate(a,f64(j.bias2[r]));}
+  for k:0..<j.cols {a=psionic_ops_accumulate(a,f64(j.w[r*j.cols+k])*f64(j.x[k]));}
+  if j.second {for k:0..<j.cols {a=psionic_ops_accumulate(a,f64(j.w2[r*j.cols+k])*f64(j.x2[k]));}}
+  j.out[r]=f32(psionic_ops_total(a));
+ }return true;
+}
+pkp_dot :: (j:PkpJob,enabled:bool)->bool {
+ if !pkp_valid(j) {return false;}if enabled && j.rows*j.cols>=4096 {return cxpk_dot(j.rows,j.cols,j.w,j.x,j.bias,j.second,j.w2,j.x2,j.bias2,j.out);}return pkp_dot_part(j,0,j.rows);
+}
+pkp_linear :: (w:[]f32,at:int,x:[]f32,out:[]f32,enabled:bool)->bool {
+ n:=x.count;r:=out.count;return pkp_dot(PkpJob.{rows=r,cols=n,w=w[at..<at+r*n],x=x,bias=w[at+r*n..<at+r*n+r],out=out},enabled);
+}
+pkp_predict :: (s:TdtShape,p:TdtPlan,w:[]f32,label:int,work:[]f32,enabled:bool)->bool {
+ n:=s.pred;x:=tdt_part(work,p.at_x,n);gates:=tdt_part(work,p.at_gates,4*n);for i:0..<n {x[i]=w[label*n+i];}
+ for layer:0..<s.layers {at:=p.lstm+layer*(8*n*n+8*n);h:=tdt_part(work,p.at_h+layer*n,n);c:=tdt_part(work,p.at_c+layer*n,n);
+  j:=PkpJob.{rows=4*n,cols=n,w=w[at..<at+4*n*n],x=x,bias=w[at+8*n*n..<at+8*n*n+4*n],second=true,w2=w[at+4*n*n..<at+8*n*n],x2=h,bias2=w[at+8*n*n+4*n..<at+8*n*n+8*n],out=gates};
+  if !pkp_dot(j,enabled) {return false;}
+  // The host barrier finishes every gate before any h/c or next-layer x changes.
+  for k:0..<n {c[k]=f32(tdt_sigmoid(f64(gates[n+k]))*f64(c[k])+tdt_sigmoid(f64(gates[k]))*tdt_tanh(f64(gates[2*n+k])));h[k]=f32(tdt_sigmoid(f64(gates[3*n+k]))*tdt_tanh(f64(c[k])));x[k]=h[k];}
+ }return pkp_linear(w,p.dec,x,work[p.at_dec..<p.at_dec+s.joint],enabled);
+}
+pkp_joint :: (s:TdtShape,p:TdtPlan,w:[]f32,t:int,work:[]f32,enabled:bool)->bool {
+ z:=work[p.at_z..<p.at_z+s.joint];for j:0..<s.joint {z[j]=f32(tdt_relu(f64(work[t*s.joint+j])+f64(work[p.at_dec+j])));}
+ return pkp_linear(w,p.head,z,work[p.at_logits..<p.at_logits+p.outputs],enabled);
+}
+pkp_decode :: (s:TdtShape,w:[]f32,enc:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,enabled:bool)->TdtResult #export_c {
+ p:=tdt_plan(s,frames);if p.status!=TdtStatus.ok {return TdtResult.{status=p.status};}
+ if w.count!=p.weights || enc.count!=frames*s.enc {return TdtResult.{status=TdtStatus.shape};}
+ if work.count<p.work || at.count<tokens.count {return TdtResult.{status=TdtStatus.capacity};}
+ if !tdt_values_ok(w,TDT_WEIGHT_MAX) || !tdt_values_ok(enc,TDT_FRAME_MAX) {return TdtResult.{status=TdtStatus.number};}
+ for t:0..<frames {if !pkp_linear(w,p.enc,enc[t*s.enc..<t*s.enc+s.enc],work[t*s.joint..<t*s.joint+s.joint],enabled) {return TdtResult.{status=TdtStatus.number};}}
+ for i:p.at_h..<p.at_x {work[i]=0;}if !pkp_predict(s,p,w,s.vocab,work,enabled) {return TdtResult.{status=TdtStatus.number};}
+ t:=0;symbols:=0;n:=0;
+ while t<frames {
+  if !pkp_joint(s,p,w,t,work,enabled) {return TdtResult.{status=TdtStatus.number};}
+  logits:=work[p.at_logits..<p.at_logits+p.outputs];pick:TdtPick;pick.duration=s.vocab+1;
+  for k:1..<s.vocab+1 {if logits[k]>logits[pick.token] {pick.token=k;}}
+  for k:s.vocab+2..<p.outputs {if logits[k]>logits[pick.duration] {pick.duration=k;}}pick.duration-=s.vocab+1;
+  m:=tdt_rule(s,t,symbols,pick.token,pick.duration);
+  if m.emit {if n==tokens.count {return TdtResult.{status=TdtStatus.capacity,written=n};}tokens[n]=pick.token;at[n]=t;n+=1;if !pkp_predict(s,p,w,pick.token,work,enabled) {return TdtResult.{status=TdtStatus.number};}}
+  t=m.t;symbols=m.symbols;
+ }return TdtResult.{written=n};
+}

@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "/tmp/parakeet-optimized/reference-native",
+    "/Users/christopherdavid/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",
+    "/tmp/parakeet-reference-inputs.tsv",
+    "/tmp/parakeet-decoder-parallel"
+  ],
+  "returncode": 0,
+  "seconds": 30.879001958062872
+}

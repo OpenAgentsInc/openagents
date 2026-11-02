@@ -1,0 +1,32 @@
+MODEL_OPEN_SECONDS 15.861997
+DECODER_THREADS 8
+GPU 6930-75918-0000 audio=3.505000 frames=350 encoded=44 tokens=15 inference_ms=769.477000 total_seconds=0.770262
+GPU 6930-75918-0002 audio=5.025000 frames=502 encoded=63 tokens=26 inference_ms=559.329000 total_seconds=0.562683
+GPU 6930-75918-0006 audio=5.850000 frames=585 encoded=74 tokens=32 inference_ms=604.150000 total_seconds=0.609583
+GPU 6930-75918-0011 audio=3.195000 frames=319 encoded=40 tokens=15 inference_ms=387.167000 total_seconds=0.388112
+GPU bg audio=13.860000 frames=1386 encoded=174 tokens=76 inference_ms=1431.044000 total_seconds=1.434022
+GPU hr audio=8.040000 frames=804 encoded=101 tokens=41 inference_ms=819.453000 total_seconds=0.820262
+GPU cs audio=13.320000 frames=1332 encoded=167 tokens=58 inference_ms=1205.999000 total_seconds=1.207204
+GPU da audio=5.100000 frames=510 encoded=64 tokens=24 inference_ms=550.553000 total_seconds=0.551197
+GPU nl audio=6.480000 frames=648 encoded=81 tokens=32 inference_ms=595.294000 total_seconds=0.597107
+GPU en audio=10.560000 frames=1056 encoded=132 tokens=38 inference_ms=836.017000 total_seconds=0.838888
+GPU et audio=14.100000 frames=1410 encoded=177 tokens=61 inference_ms=1058.883000 total_seconds=1.060024
+GPU fi audio=18.600000 frames=1860 encoded=233 tokens=90 inference_ms=1453.952000 total_seconds=1.459373
+GPU fr audio=10.200000 frames=1020 encoded=128 tokens=42 inference_ms=816.415000 total_seconds=0.817296
+GPU de audio=17.940000 frames=1794 encoded=225 tokens=41 inference_ms=1217.897000 total_seconds=1.219332
+GPU el audio=11.040000 frames=1104 encoded=138 tokens=70 inference_ms=1067.025000 total_seconds=1.067845
+GPU hu audio=12.060000 frames=1206 encoded=151 tokens=40 inference_ms=844.465000 total_seconds=0.845657
+GPU it audio=11.520000 frames=1152 encoded=144 tokens=54 inference_ms=865.030000 total_seconds=0.871787
+GPU lv audio=12.120000 frames=1212 encoded=152 tokens=52 inference_ms=817.988000 total_seconds=0.821747
+GPU lt audio=5.760000 frames=576 encoded=72 tokens=27 inference_ms=404.439000 total_seconds=0.405693
+GPU mt audio=13.740000 frames=1374 encoded=172 tokens=56 inference_ms=1347.626000 total_seconds=1.349704
+GPU pl audio=12.120000 frames=1212 encoded=152 tokens=68 inference_ms=1406.866000 total_seconds=1.410578
+GPU pt audio=17.760000 frames=1776 encoded=222 tokens=73 inference_ms=1633.655000 total_seconds=1.637769
+GPU ro audio=6.300000 frames=630 encoded=79 tokens=33 inference_ms=742.375000 total_seconds=0.748602
+GPU sk audio=9.840000 frames=984 encoded=123 tokens=37 inference_ms=948.004000 total_seconds=0.949772
+GPU sl audio=7.500000 frames=750 encoded=94 tokens=42 inference_ms=802.764000 total_seconds=0.804135
+GPU es audio=12.840000 frames=1284 encoded=161 tokens=59 inference_ms=1145.690000 total_seconds=1.147230
+GPU sv audio=5.760000 frames=576 encoded=72 tokens=31 inference_ms=590.490000 total_seconds=0.593489
+GPU ru audio=16.920000 frames=1692 encoded=212 tokens=69 inference_ms=1446.104000 total_seconds=1.451327
+GPU uk audio=7.380000 frames=738 encoded=93 tokens=47 inference_ms=831.282000 total_seconds=0.833076
+DONE clips=29 seconds=43.152009

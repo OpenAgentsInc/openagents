@@ -1,0 +1,153 @@
+{
+  "scope": "Hash-only comparison of already recorded complete v1/v2 tensors; no new inference. Every normalized feature/final encoder tensor byte-identical across versions. Exact token/frame/text matching is independently in both frozen NeMo comparisons.",
+  "v1_comparison_sha256": "55b42298235fd45d04d0bc5f2a444b8bf329b6b2851afcc466d3a13a9166193d",
+  "v2_comparison_sha256": "f3de07adac929784e7f08e0eb10ea0cfe3f795b1f7141b330d6b242c26300c9e",
+  "passed": true,
+  "clips": [
+    {
+      "id": "6930-75918-0000",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "6930-75918-0002",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "6930-75918-0006",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "6930-75918-0011",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "bg",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "hr",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "cs",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "da",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "nl",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "en",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "et",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "fi",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "fr",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "de",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "el",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "hu",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "it",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "lv",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "lt",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "mt",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "pl",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "pt",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "ro",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "sk",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "sl",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "es",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "sv",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "ru",
+      "features": true,
+      "encoded": true
+    },
+    {
+      "id": "uk",
+      "features": true,
+      "encoded": true
+    }
+  ]
+}

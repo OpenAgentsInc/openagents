@@ -1,0 +1,9 @@
+ok   #test parallel TDT rows preserve cancellation-sensitive compensated order (1 case, 1676 steps, 0 ms)
+ok   #forall parallel TDT serial composition equals the original decoder bit for bit (4 cases, 1148272 steps, 40 ms)
+ok   #forall parallel TDT partitions cover each row exactly once with balanced disjoint ranges (144 cases, 80268 steps, 1 ms)
+ok   #test parallel TDT partition limits and rejected indices have no admitted rows (1 case, 559 steps, 0 ms)
+ok   #test parallel TDT jobs own complete dense rows and ignore unused second inputs (1 case, 1286 steps, 0 ms)
+ok   #forall parallel TDT thread choice stays within hardware and the fixed cap (198 cases, 11047 steps, 0 ms)
+ok   #test parallel TDT thread endpoints remain observable (1 case, 157 steps, 0 ms)
+7 of 65 checks (--only 'parallel TDT'), 7 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

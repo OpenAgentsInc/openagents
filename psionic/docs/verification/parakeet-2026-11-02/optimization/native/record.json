@@ -1,0 +1,75 @@
+{
+  "scope": "exact per-output compensated-binary64 TDT row scheduling; unchanged f32 storage/numerical profile",
+  "policy_final": {
+    "mutants": 92,
+    "killed": 92,
+    "survived": 0,
+    "log": "plan-mutation-v5.log"
+  },
+  "native_final": {
+    "o0": {
+      "returncode": 0,
+      "log": "final2-o0.log",
+      "binary_sha256": "89303cf784535b5fd9e3e113d4c07bb99f3d9bf2180b71965212dee9b8ab9952"
+    },
+    "o2": {
+      "returncode": 0,
+      "log": "final2-o2.log",
+      "binary_sha256": "dc5b05b783168d4f224703bbab1d7b567603af5ad9273d2366c97d2c7f4ca795"
+    },
+    "asan": {
+      "returncode": 0,
+      "log": "final2-asan.log",
+      "binary_sha256": "aacf290b67bc8c7b0a3ac7dfb87ff6783fef643c84c58b9af57ea1b83c70ab08"
+    },
+    "partial": {
+      "returncode": 0,
+      "log": "final2-partial.log",
+      "binary_sha256": "c224c9b72982aa86eabd59dc75710cbc142571cc0920c6c08ee9867a6565f725"
+    }
+  },
+  "checks": [
+    "36 seed/configuration comparisons per profile: exact tokens, frame IDs and every workspace f32 bit",
+    "three seeds force21 emitted zero-duration tokens to exercise every recurrent update",
+    "257x65 dual-source row comparison plus output tail guards and malformed-job refusal",
+    "actual thread counts1/2/8; repeated start/close; two concurrent clients",
+    "partial pthread_create injection after2workers, uses actual3threads then joins/restarts"
+  ],
+  "sanitizers": "address,undefined; halt_on_error=1; detect_leaks=0 on macOS (no leak-check claim)",
+  "failed_oracle_attempt": "final-*.log: concurrent verification client allocated0.8MB local weights on Apple512KB defaultpthreadstack. Set verification-only clientstack4MB; productworkers allocate no model arrays. Production arithmetic/thread host unchanged by oracle fix. Failed logs retained.",
+  "source_pins": {
+    "psionic/lib/parakeet/parallel.coax": "6d4724261f44be988343d40667f2b4897bc8e9868b741f3ffd2bb034a9cf8151",
+    "psionic/lib/parakeet/parallel-plan.coax": "01e753759a074340f15fb7d0c2aec6ccd48ea56cc5894e7d0da0a4d6a95e199c",
+    "psionic/platform/parakeet-threads.c": "18ba4cbe01e6e4ae5cc148197424d7f5aafbf0372a467edc5ad736faf0a787c8",
+    "psionic/platform/parakeet-threads.h": "4dfecea7d0354ce1b8b055bde7137d222c0ef4a25e0a6ba98be7985ebc4d863c",
+    "psionic/tests/parakeet-parallel-native.coax": "eb4e4582e5b264c0b7da5304f31060c5c17b0466fc196d75fdcfa0ceb35c890a",
+    "psionic/tests/parakeet-parallel-native.c": "6f9a46a2a404fe8ef34d819ee694bd949012867065d5cdc6aa199d021c3625b3"
+  },
+  "additional_final_profiles": {
+    "cpu-only-o2": {
+      "returncode": 0,
+      "log": "cpu-only-o2.log",
+      "binary_sha256": "939d44902fdbaeff9cfd788ecc1aaa2c0d651deafe04db9fe6a1ca3e9f1b0972"
+    },
+    "cpu-only-asan": {
+      "returncode": 0,
+      "log": "cpu-only-asan.log",
+      "binary_sha256": "2d6f7c9b26380fd527d19dd9f540e4bff5587c965fe3180d6fb71f053eea0ed5"
+    },
+    "final-production-flags": {
+      "returncode": 0,
+      "log": "final-production-flags.log",
+      "binary_sha256": "3a8d96a5aa09b40f61d4ec3ffa297ee634f99fae86ca510bf1d919f4c741db76"
+    }
+  },
+  "additional_scope": {
+    "cpu-only-o2": "Current complete generatedruntime +face+pthreadeffects linked withoutMetal, refusal/APIatomicity andnewdecoder_threads(NULL)=0",
+    "cpu-only-asan": "Same currentwholeAPI invalidinput/wrongmodel/failedopenretry proof underfatalASan/UBSan, no originalmodelencoder",
+    "final-production-flags": "Native bitwise row/decoder proof with -O2 -ffp-contract=off -fno-fast-math exactlymatchingproductflags"
+  },
+  "initial_vm_checks": {
+    "log": "serial-vm-initial.log",
+    "passed_groups": 7,
+    "scope": "Earlier helper epoch; exact row arithmetic/serial composition unchanged afterward. Later edits refined pure thread policy and widened head bound; final native profiles and92-mutant policy receipt cover final source."
+  }
+}

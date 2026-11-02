@@ -1,0 +1,7 @@
+bitwise tokens/frames/workspace + row/tail/refusal parity: requested=1 actual=1 seeds=6
+bitwise tokens/frames/workspace + row/tail/refusal parity: requested=2 actual=2 seeds=6
+bitwise tokens/frames/workspace + row/tail/refusal parity: requested=8 actual=3 seeds=6
+bitwise tokens/frames/workspace + row/tail/refusal parity: requested=0 actual=3 seeds=6
+bitwise tokens/frames/workspace + row/tail/refusal parity: requested=1 actual=1 seeds=6
+bitwise tokens/frames/workspace + row/tail/refusal parity: requested=8 actual=3 seeds=6
+thread lifecycle and repeated close: PASS

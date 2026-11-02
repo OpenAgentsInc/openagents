@@ -1,0 +1,592 @@
+{
+  "schema": "psionic.parakeet-nemo-comparison.v1",
+  "reference_record_sha256": "2f98038e31f992b64a20ee285019373f4ddc2fd34a6b1a5213f1b58149faf7fa",
+  "fixture_manifest_sha256": "ffe97a41feb987b8a6457b5c44908b54855803d78bf8abfe7c00de31fc6abaf2",
+  "product_inputs": {
+    "/tmp/parakeet-decoder-parallel/6930-75918-0000.tokens.json": "dd36b0b72db71426f750fec23ffb586d58635ac2528bc2417bd038c843f340c8",
+    "/tmp/parakeet-decoder-parallel/6930-75918-0002.tokens.json": "d9593bdb4b16b71a76a6442bc17442ff51913f39b3a25576d2010db1bc60e3eb",
+    "/tmp/parakeet-decoder-parallel/6930-75918-0006.tokens.json": "7e5a2fbaef559ce8971b39703f876875f43f2a08c738126c08d1fab1a7f4dd99",
+    "/tmp/parakeet-decoder-parallel/6930-75918-0011.tokens.json": "11ea3eb6eb81f00d09060ae54cc0303e6de19ad072767e75cef83bb3e1fc8808",
+    "/tmp/parakeet-decoder-parallel/bg.tokens.json": "353e1de42d74851c49f101a3132f5cf7fd0f76eb53f598b7ad59e63511a66945",
+    "/tmp/parakeet-decoder-parallel/hr.tokens.json": "ab765a665e427cf983ea872a574f742ab5907dc36d0932415419750286c1a18d",
+    "/tmp/parakeet-decoder-parallel/cs.tokens.json": "43ee07783fc2a8393570f7be4ac8e8f6594b2fc3c3f257ad5e6cc8067791a573",
+    "/tmp/parakeet-decoder-parallel/da.tokens.json": "0f51eb4d8171b257994dbbc708349e711be2c90f4d29e0c3a371986cf57f5a55",
+    "/tmp/parakeet-decoder-parallel/nl.tokens.json": "02ed3019f5026189175eb4a7dbd8360adeffda492dd75a95a706b7395d484588",
+    "/tmp/parakeet-decoder-parallel/en.tokens.json": "72477d22031d88334f6271b37af684443aced9f11310bbd9fa8b5e1ef6af3023",
+    "/tmp/parakeet-decoder-parallel/et.tokens.json": "cbdd8a27aec05f8b6636be585452a6e509843e078280076f2041e24aef28b276",
+    "/tmp/parakeet-decoder-parallel/fi.tokens.json": "b06fcd6d472d23a07b923c0377cc002943a4910e635c15f666e92d8e0a1f54a3",
+    "/tmp/parakeet-decoder-parallel/fr.tokens.json": "431867fad0c732f62d5900fabb810ada78e95683f7785ba8f62d4257533652f0",
+    "/tmp/parakeet-decoder-parallel/de.tokens.json": "a39811e8b038545438b2e8bfcf12968e1a52f3263bf81d64e0d55b80345b8af4",
+    "/tmp/parakeet-decoder-parallel/el.tokens.json": "4a7253f2df4f81c220755bbb4357ca9fd728e64b868bc138fd1ffad59f9ac713",
+    "/tmp/parakeet-decoder-parallel/hu.tokens.json": "5c31c6d51af514b161f6420e385315cace3d1f223557206b90d495fd93b8b755",
+    "/tmp/parakeet-decoder-parallel/it.tokens.json": "23e96c781acdb72aa7089276e3a09afa7b1ce98d7d919cfa16806c5718a9c362",
+    "/tmp/parakeet-decoder-parallel/lv.tokens.json": "662aa7641da8e273e7e0af30d40a635d96562ff75c84f28803e57efac787c9fd",
+    "/tmp/parakeet-decoder-parallel/lt.tokens.json": "34892c32260ad07aa530a432e5f7f8415b08bcf0dcbfbf87ca567333dfd25f3a",
+    "/tmp/parakeet-decoder-parallel/mt.tokens.json": "6583fe97a3b827d54baa6fd76e06edc2dfa0c52aab738924a9bdbf620e3c4bc1",
+    "/tmp/parakeet-decoder-parallel/pl.tokens.json": "acd933fcd9a58bb3f395de9e90c06208a32033a8ccc6ca7e8d5ccfa5ef65e1ac",
+    "/tmp/parakeet-decoder-parallel/pt.tokens.json": "362ddec1ee0c0b87ea95815e89f022c39451aa2fbb6fa3d19e99b92ab9a6bd94",
+    "/tmp/parakeet-decoder-parallel/ro.tokens.json": "bc726884ae7e188699e20ea649c60404d6a3c4c988c112926525a22e3e2757dd",
+    "/tmp/parakeet-decoder-parallel/sk.tokens.json": "63b442fda2c9d7e928bd039b8394e010cd6d61190bdd62c8cf52aa5104cbb468",
+    "/tmp/parakeet-decoder-parallel/sl.tokens.json": "6fdf72d1802b2cfeb122175914cfe590a055430d4a08d0349aee84797f0c5a9d",
+    "/tmp/parakeet-decoder-parallel/es.tokens.json": "bc8b3e65f504c92076fd134a6d4d1ff9b4bfa987003e927435f92386b4d33dd8",
+    "/tmp/parakeet-decoder-parallel/sv.tokens.json": "7ea6d7e315ab1d34b4d77b6c2aeecddf30d339e6ff84f13b18dc24b30f14d544",
+    "/tmp/parakeet-decoder-parallel/ru.tokens.json": "c72b036fe82fdacc198a46fb8aeef40e5119629d0bc5942c303f584fea26135b",
+    "/tmp/parakeet-decoder-parallel/uk.tokens.json": "0b43bcb6d01eae2e7b8b1e788a12c6b38e97ffa0254c3b3f1540caf120afc5af"
+  },
+  "clips": [
+    {
+      "id": "6930-75918-0000",
+      "language": "en",
+      "corpus": "parakeet-clips-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 8,
+        "word_errors": 0,
+        "characters": 46,
+        "character_errors": 0
+      },
+      "reference_text": "Concord returned to its place amidst the tents,",
+      "product_text": "Concord returned to its place amidst the tents,",
+      "product_tokens_sha256": "dd36b0b72db71426f750fec23ffb586d58635ac2528bc2417bd038c843f340c8",
+      "passed": true
+    },
+    {
+      "id": "6930-75918-0002",
+      "language": "en",
+      "corpus": "parakeet-clips-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 11,
+        "word_errors": 0,
+        "characters": 78,
+        "character_errors": 0
+      },
+      "reference_text": "Congratulations were poured in upon the Princess everywhere during her journey.",
+      "product_text": "Congratulations were poured in upon the Princess everywhere during her journey.",
+      "product_tokens_sha256": "d9593bdb4b16b71a76a6442bc17442ff51913f39b3a25576d2010db1bc60e3eb",
+      "passed": true
+    },
+    {
+      "id": "6930-75918-0006",
+      "language": "en",
+      "corpus": "parakeet-clips-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 17,
+        "word_errors": 0,
+        "characters": 91,
+        "character_errors": 0
+      },
+      "reference_text": "This has indeed been a harassing day, continued the young man, his eyes fixed upon his friend,",
+      "product_text": "This has indeed been a harassing day, continued the young man, his eyes fixed upon his friend,",
+      "product_tokens_sha256": "7e5a2fbaef559ce8971b39703f876875f43f2a08c738126c08d1fab1a7f4dd99",
+      "passed": true
+    },
+    {
+      "id": "6930-75918-0011",
+      "language": "en",
+      "corpus": "parakeet-clips-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 10,
+        "word_errors": 0,
+        "characters": 43,
+        "character_errors": 0
+      },
+      "reference_text": "I am convinced of what I say, said the Count.",
+      "product_text": "I am convinced of what I say, said the Count.",
+      "product_tokens_sha256": "11ea3eb6eb81f00d09060ae54cc0303e6de19ad072767e75cef83bb3e1fc8808",
+      "passed": true
+    },
+    {
+      "id": "bg",
+      "language": "bg",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 34,
+        "word_errors": 5,
+        "characters": 190,
+        "character_errors": 14
+      },
+      "reference_text": "Съобщава се, че е бил на около двадесет години. В изявление би бързави, че докато не съм присъстването пряко замесен в този трагичен инцидент, Мислите и молитвите ми са със семейството на жертвата.",
+      "product_text": "Съобщава се, че е бил на около двадесет години. В изявление би бързави, че докато не съм присъстването пряко замесен в този трагичен инцидент, Мислите и молитвите ми са със семейството на жертвата.",
+      "product_tokens_sha256": "353e1de42d74851c49f101a3132f5cf7fd0f76eb53f598b7ad59e63511a66945",
+      "passed": true
+    },
+    {
+      "id": "hr",
+      "language": "hr",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 17,
+        "word_errors": 1,
+        "characters": 99,
+        "character_errors": 2
+      },
+      "reference_text": "Tijekom noći izrađeno je između 150 i 200 kopija koje su sada poznate pod nazivom Danlep Broadsides.",
+      "product_text": "Tijekom noći izrađeno je između 150 i 200 kopija koje su sada poznate pod nazivom Danlep Broadsides.",
+      "product_tokens_sha256": "ab765a665e427cf983ea872a574f742ab5907dc36d0932415419750286c1a18d",
+      "passed": true
+    },
+    {
+      "id": "cs",
+      "language": "cs",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 22,
+        "word_errors": 2,
+        "characters": 130,
+        "character_errors": 3
+      },
+      "reference_text": "Sundarbans je největším pásem pobřežích mangrovů na světě, který se od pobřeží táhne 80 km 50 mil do vnitrozemí Bangléše a Indie.",
+      "product_text": "Sundarbans je největším pásem pobřežích mangrovů na světě, který se od pobřeží táhne 80 km 50 mil do vnitrozemí Bangléše a Indie.",
+      "product_tokens_sha256": "43ee07783fc2a8393570f7be4ac8e8f6594b2fc3c3f257ad5e6cc8067791a573",
+      "passed": true
+    },
+    {
+      "id": "da",
+      "language": "da",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 12,
+        "word_errors": 3,
+        "characters": 67,
+        "character_errors": 4
+      },
+      "reference_text": "Detter er en vigtig måde at skælde mellem nogle verbere og objektiver.",
+      "product_text": "Detter er en vigtig måde at skælde mellem nogle verbere og objektiver.",
+      "product_tokens_sha256": "0f51eb4d8171b257994dbbc708349e711be2c90f4d29e0c3a371986cf57f5a55",
+      "passed": true
+    },
+    {
+      "id": "nl",
+      "language": "nl",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 15,
+        "word_errors": 1,
+        "characters": 101,
+        "character_errors": 1
+      },
+      "reference_text": "Volgens Angel 2006 kunnen organisaties beter presteren met een aanpak op basis van het continuummodel.",
+      "product_text": "Volgens Angel 2006 kunnen organisaties beter presteren met een aanpak op basis van het continuummodel.",
+      "product_tokens_sha256": "02ed3019f5026189175eb4a7dbd8360adeffda492dd75a95a706b7395d484588",
+      "passed": true
+    },
+    {
+      "id": "en",
+      "language": "en",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 19,
+        "word_errors": 2,
+        "characters": 99,
+        "character_errors": 4
+      },
+      "reference_text": "However, due to the slow communication channels, styles in the west could lag behind by 25-30 years.",
+      "product_text": "However, due to the slow communication channels, styles in the west could lag behind by 25-30 years.",
+      "product_tokens_sha256": "72477d22031d88334f6271b37af684443aced9f11310bbd9fa8b5e1ef6af3023",
+      "passed": true
+    },
+    {
+      "id": "et",
+      "language": "et",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 19,
+        "word_errors": 5,
+        "characters": 146,
+        "character_errors": 6
+      },
+      "reference_text": "Pritviche järvede rahvuspark on kaetud tihedate metsadega, põhiliselt köökide kuuskede ja nulgedega, ning seal kasvab mägi ja Vahem mere taimestike segu.",
+      "product_text": "Pritviche järvede rahvuspark on kaetud tihedate metsadega, põhiliselt köökide kuuskede ja nulgedega, ning seal kasvab mägi ja Vahem mere taimestike segu.",
+      "product_tokens_sha256": "cbdd8a27aec05f8b6636be585452a6e509843e078280076f2041e24aef28b276",
+      "passed": true
+    },
+    {
+      "id": "fi",
+      "language": "fi",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 22,
+        "word_errors": 2,
+        "characters": 215,
+        "character_errors": 1
+      },
+      "reference_text": "Yhdysvaltojen ilmailuviranomainen väittää, että Next Gen on järjestelmä, jonka ansiosta lentokoneet voivat lentää lyhyempiä reittejä, säästää vuosittain miljoonia gallonia polttoainetta ja vähentää hiilidioksidipäästöjä.",
+      "product_text": "Yhdysvaltojen ilmailuviranomainen väittää, että Next Gen on järjestelmä, jonka ansiosta lentokoneet voivat lentää lyhyempiä reittejä, säästää vuosittain miljoonia gallonia polttoainetta ja vähentää hiilidioksidipäästöjä.",
+      "product_tokens_sha256": "b06fcd6d472d23a07b923c0377cc002943a4910e635c15f666e92d8e0a1f54a3",
+      "passed": true
+    },
+    {
+      "id": "fr",
+      "language": "fr",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 19,
+        "word_errors": 0,
+        "characters": 110,
+        "character_errors": 0
+      },
+      "reference_text": "L'accident a eu lieu en terrain montagneux, et il semblerait que cela ait été causé par un incendie malveillant.",
+      "product_text": "L'accident a eu lieu en terrain montagneux, et il semblerait que cela ait été causé par un incendie malveillant.",
+      "product_tokens_sha256": "431867fad0c732f62d5900fabb810ada78e95683f7785ba8f62d4257533652f0",
+      "passed": true
+    },
+    {
+      "id": "de",
+      "language": "de",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 18,
+        "word_errors": 1,
+        "characters": 121,
+        "character_errors": 1
+      },
+      "reference_text": "Für die besten Aussichten auf Hongkong sollten Sie die Insel verlassen und zum gegenüberliegenden Ufer von Kowlon fahren.",
+      "product_text": "Für die besten Aussichten auf Hongkong sollten Sie die Insel verlassen und zum gegenüberliegenden Ufer von Kowlon fahren.",
+      "product_tokens_sha256": "a39811e8b038545438b2e8bfcf12968e1a52f3263bf81d64e0d55b80345b8af4",
+      "passed": true
+    },
+    {
+      "id": "el",
+      "language": "el",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 20,
+        "word_errors": 3,
+        "characters": 142,
+        "character_errors": 3
+      },
+      "reference_text": "Η δέκατη καταιγίδα τη εποχή των Ατλαντικών τυφώνων που απέκτησε όνομα η υποτροπική καταιγίδα Τζέρι σχηματίστηκε σήμερα στον Ατλαντικό ωκεανό.",
+      "product_text": "Η δέκατη καταιγίδα τη εποχή των Ατλαντικών τυφώνων που απέκτησε όνομα η υποτροπική καταιγίδα Τζέρι σχηματίστηκε σήμερα στον Ατλαντικό ωκεανό.",
+      "product_tokens_sha256": "4a7253f2df4f81c220755bbb4357ca9fd728e64b868bc138fd1ffad59f9ac713",
+      "passed": true
+    },
+    {
+      "id": "hu",
+      "language": "hu",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 17,
+        "word_errors": 0,
+        "characters": 104,
+        "character_errors": 0
+      },
+      "reference_text": "Hongkong nevét a Hongkong-szigetről kapta, és ez a hely sok turista számára a figyelem középpontjában áll.",
+      "product_text": "Hongkong nevét a Hongkong-szigetről kapta, és ez a hely sok turista számára a figyelem középpontjában áll.",
+      "product_tokens_sha256": "5c31c6d51af514b161f6420e385315cace3d1f223557206b90d495fd93b8b755",
+      "passed": true
+    },
+    {
+      "id": "it",
+      "language": "it",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 23,
+        "word_errors": 0,
+        "characters": 158,
+        "character_errors": 0
+      },
+      "reference_text": "Il blog è uno strumento che si prefigge di incoraggiare la collaborazione e sviluppare l'apprendimento degli studenti ben oltre la giornata scolastica normale.",
+      "product_text": "Il blog è uno strumento che si prefigge di incoraggiare la collaborazione e sviluppare l'apprendimento degli studenti ben oltre la giornata scolastica normale.",
+      "product_tokens_sha256": "23e96c781acdb72aa7089276e3a09afa7b1ce98d7d919cfa16806c5718a9c362",
+      "passed": true
+    },
+    {
+      "id": "lv",
+      "language": "lv",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 17,
+        "word_errors": 5,
+        "characters": 105,
+        "character_errors": 6
+      },
+      "reference_text": "2000. gadā Gomu iznīcināja lavam no niera Gongo vulkāna, kas apraka vairum pilsētas ielu, jo īpaši tās centrā.",
+      "product_text": "2000. gadā Gomu iznīcināja lavam no niera Gongo vulkāna, kas apraka vairum pilsētas ielu, jo īpaši tās centrā.",
+      "product_tokens_sha256": "662aa7641da8e273e7e0af30d40a635d96562ff75c84f28803e57efac787c9fd",
+      "passed": true
+    },
+    {
+      "id": "lt",
+      "language": "lt",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 8,
+        "word_errors": 1,
+        "characters": 65,
+        "character_errors": 2
+      },
+      "reference_text": "Ant piramidžių rodomos scenos skirtingos piramidės apšviečiamos.",
+      "product_text": "Ant piramidžių rodomos scenos skirtingos piramidės apšviečiamos.",
+      "product_tokens_sha256": "34892c32260ad07aa530a432e5f7f8415b08bcf0dcbfbf87ca567333dfd25f3a",
+      "passed": true
+    },
+    {
+      "id": "mt",
+      "language": "mt",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 21,
+        "word_errors": 2,
+        "characters": 138,
+        "character_errors": 4
+      },
+      "reference_text": "Ġeneralment huma jkollhom offerti ta' ikel, xorb u divertiment speċjali biex iżommu l-mistednin f'burdata tajba u jżommuhom fuq il-post.",
+      "product_text": "Ġeneralment huma jkollhom offerti ta' ikel, xorb u divertiment speċjali biex iżommu l-mistednin f'burdata tajba u jżommuhom fuq il-post.",
+      "product_tokens_sha256": "6583fe97a3b827d54baa6fd76e06edc2dfa0c52aab738924a9bdbf620e3c4bc1",
+      "passed": true
+    },
+    {
+      "id": "pl",
+      "language": "pl",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 20,
+        "word_errors": 0,
+        "characters": 160,
+        "character_errors": 0
+      },
+      "reference_text": "Podróżni zwiedzający państwa obłożone szczególnie wysokimi podatkami mogą czasem zaoszczędzić sporo pieniędzy, szczególnie na takich towarach jak alkohol i tytoń.",
+      "product_text": "Podróżni zwiedzający państwa obłożone szczególnie wysokimi podatkami mogą czasem zaoszczędzić sporo pieniędzy, szczególnie na takich towarach jak alkohol i tytoń.",
+      "product_tokens_sha256": "acd933fcd9a58bb3f395de9e90c06208a32033a8ccc6ca7e8d5ccfa5ef65e1ac",
+      "passed": true
+    },
+    {
+      "id": "pt",
+      "language": "pt",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 36,
+        "word_errors": 1,
+        "characters": 225,
+        "character_errors": 1
+      },
+      "reference_text": "Segundo informações, ele estava na casa dos 20 anos. Em uma declaração, Biber disse que, embora eu não estivesse presente nem diretamente envolvido neste trágico incidente, meus pensamentos e orações estão com a família da vítima.",
+      "product_text": "Segundo informações, ele estava na casa dos 20 anos. Em uma declaração, Biber disse que, embora eu não estivesse presente nem diretamente envolvido neste trágico incidente, meus pensamentos e orações estão com a família da vítima.",
+      "product_tokens_sha256": "362ddec1ee0c0b87ea95815e89f022c39451aa2fbb6fa3d19e99b92ab9a6bd94",
+      "passed": true
+    },
+    {
+      "id": "ro",
+      "language": "ro",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 15,
+        "word_errors": 4,
+        "characters": 87,
+        "character_errors": 7
+      },
+      "reference_text": "Înainte de sosirea trupelor, Hitler mai avusese din ani 800 probleme legate de boală.",
+      "product_text": "Înainte de sosirea trupelor, Hitler mai avusese din ani 800 probleme legate de boală.",
+      "product_tokens_sha256": "bc726884ae7e188699e20ea649c60404d6a3c4c988c112926525a22e3e2757dd",
+      "passed": true
+    },
+    {
+      "id": "sk",
+      "language": "sk",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 16,
+        "word_errors": 1,
+        "characters": 88,
+        "character_errors": 3
+      },
+      "reference_text": "Madagaskar je vzdaľeka tým najväčším a je sám o sebe kontinentom, keď ide o divokú prírodu.",
+      "product_text": "Madagaskar je vzdaľeka tým najväčším a je sám o sebe kontinentom, keď ide o divokú prírodu.",
+      "product_tokens_sha256": "63b442fda2c9d7e928bd039b8394e010cd6d61190bdd62c8cf52aa5104cbb468",
+      "passed": true
+    },
+    {
+      "id": "sl",
+      "language": "sl",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 20,
+        "word_errors": 7,
+        "characters": 105,
+        "character_errors": 7
+      },
+      "reference_text": "Napadejo tudi vsabitja, ki so stopile v vodo. Niti ogromni dinozauri, kot so tiranozauri mu niso bili kos.",
+      "product_text": "Napadejo tudi vsabitja, ki so stopile v vodo. Niti ogromni dinozauri, kot so tiranozauri mu niso bili kos.",
+      "product_tokens_sha256": "6fdf72d1802b2cfeb122175914cfe590a055430d4a08d0349aee84797f0c5a9d",
+      "passed": true
+    },
+    {
+      "id": "es",
+      "language": "es",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 29,
+        "word_errors": 2,
+        "characters": 169,
+        "character_errors": 2
+      },
+      "reference_text": "Se recomienda enfáticamente a los viajeros que se informen sobre cualquier riesgo del clima extremo en el área que visitan, dado que ello pueda afectar sus planes de viaje.",
+      "product_text": "Se recomienda enfáticamente a los viajeros que se informen sobre cualquier riesgo del clima extremo en el área que visitan, dado que ello pueda afectar sus planes de viaje.",
+      "product_tokens_sha256": "bc8b3e65f504c92076fd134a6d4d1ff9b4bfa987003e927435f92386b4d33dd8",
+      "passed": true
+    },
+    {
+      "id": "sv",
+      "language": "sv",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 12,
+        "word_errors": 3,
+        "characters": 71,
+        "character_errors": 6
+      },
+      "reference_text": "Måns yta utgörs av stenar och stoft, måns ytterre lager kallas skorpan.",
+      "product_text": "Måns yta utgörs av stenar och stoft, måns ytterre lager kallas skorpan.",
+      "product_tokens_sha256": "7ea6d7e315ab1d34b4d77b6c2aeecddf30d339e6ff84f13b18dc24b30f14d544",
+      "passed": true
+    },
+    {
+      "id": "ru",
+      "language": "ru",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 21,
+        "word_errors": 0,
+        "characters": 154,
+        "character_errors": 0
+      },
+      "reference_text": "В древнем Китае использовали уникальный способ обозначения периодов времени, каждый этап Китая или каждая семья, находившаяся у власти, были особой династией.",
+      "product_text": "В древнем Китае использовали уникальный способ обозначения периодов времени, каждый этап Китая или каждая семья, находившаяся у власти, были особой династией.",
+      "product_tokens_sha256": "c72b036fe82fdacc198a46fb8aeef40e5119629d0bc5942c303f584fea26135b",
+      "passed": true
+    },
+    {
+      "id": "uk",
+      "language": "uk",
+      "corpus": "fleurs-smoke-v1",
+      "scope": "decoder-only on recorded NeMo encoder frames",
+      "tokens_equal": true,
+      "frames_equal": true,
+      "text_equal": true,
+      "reference_score": {
+        "words": 14,
+        "word_errors": 0,
+        "characters": 100,
+        "character_errors": 0
+      },
+      "reference_text": "Жінки усім подорожнім жінкам радять казати, що вони заміжні, незалежно від справжнього сімейного стану.",
+      "product_text": "Жінки усім подорожнім жінкам радять казати, що вони заміжні, незалежно від справжнього сімейного стану.",
+      "product_tokens_sha256": "0b43bcb6d01eae2e7b8b1e788a12c6b38e97ffa0254c3b3f1540caf120afc5af",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "full_inference_qualification": false,
+  "scope": "Only named artifacts and this finite audio set; decoder-only comparisons do not qualify the product encoder."
+}

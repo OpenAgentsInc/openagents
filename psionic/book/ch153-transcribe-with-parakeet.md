@@ -131,7 +131,8 @@ module and final normalization through all 24 layers. Every kernel is in
 [`device.coax`](../lib/parakeet/device.coax); the host only binds and launches
 it. This f32 device profile is checked within frozen tolerances, not declared
 bitwise equal to the compensated CPU arithmetic. The prediction and joint
-networks still use the CPU TDT implementation below.
+networks keep the CPU TDT arithmetic below. The resident route now distributes
+independent output rows over a persistent worker pool, as explained next.
 
 NeMo's SentencePiece decoder also has a specific unknown surface: token zero
 renders as `" ⁇ "`, including its spaces. Other control-looking pieces are
@@ -173,7 +174,7 @@ reports every FLEURS score, including the weaker observations, without turning
 one utterance into a language-quality claim.
 
 On an Apple M5 Max with 128 GiB and macOS 26.4, one ordered resident pass
-recognized 298.435 seconds of audio in **48.375 seconds** of complete API
+recognized 298.435 seconds of audio in **48.375 seconds** of reported pipeline
 inference: **6.17 audio seconds per inference second**. Fresh engine opening
 took **20.272 seconds**, with filesystem cache uncontrolled. The four English
 requests took 743–1541 ms; the first may include Metal warm-up. These are
@@ -186,6 +187,56 @@ records focused mutation checks, native O0/O2 and ASan/UBSan API checks, the
 actual GPU corpus, and the public CLI run from a foreign working directory
 with a file name containing spaces. Passing unchanged legacy gates were reused;
 no full CPU-model or old 822-mutant run was repeated.
+
+## Speed without changing a reduction
+
+The first resident baseline above is retained as an actual measurement, not
+replaced by a later faster number. The next pass targets the decoder's dense
+products. Each output row is independent, but the order within a row matters:
+the old compensated sum adds the first bias, the second bias for an LSTM gate,
+every input product in order, then every recurrent product in order, before one
+f32 store. Splitting that sum into partial reductions would change the profile.
+
+[`parallel.coax`](../lib/parakeet/parallel.coax) instead assigns complete rows
+to workers and keeps that sequence intact. The host supplies available CPU
+count and pthread effects; [`parallel-plan.coax`](../lib/parakeet/parallel-plan.coax)
+owns a maximum of eight participants and the disjoint balanced ranges. The
+caller participates. A completion barrier finishes all gate rows before the
+LSTM updates its hidden/cell state or the next layer's input. Calls remain
+serialized through the resident API, so requests cannot oversubscribe that pool.
+Closing joins every worker before freeing model storage. Partial thread startup
+uses the observed smaller pool and reports its actual size through
+`psionic_parakeet_decoder_threads`; it does not change the chosen model/device.
+
+The independent native oracle compares token IDs, frame positions and every
+used workspace bit with the old decoder at O0, O2 and fatal ASan/UBSan. It covers
+1/2/8 participants, rows with large cancelling terms, repeated zero-duration recurrent
+updates, concurrent dispatch, partial pthread startup and repeated lifecycle
+transitions. The new authority's 92 emitted mutants are all killed. These are
+new-code checks; the unchanged legacy decoder mutation run is still reused.
+
+The changed engine is compared with the **same** frozen NeMo recordings again:
+all 29 full GPU pipelines and all 29 decoder-only inputs pass, with unchanged
+tensor tolerances and exact token/frame/text results. Unicode WER/CER is
+unchanged on every slice. The [independent comparison and timing table](../docs/verification/parakeet-2026-11-02/optimization/reference/timing-comparison.md)
+retains every request alongside the original baseline.
+
+In the new ordered pass, 298.435 seconds of audio takes **27.199 seconds** of
+reported inference, versus **48.375 seconds** before: an observed **1.78×**
+improvement, or **10.97 audio seconds per inference second**. The four English
+requests take 769, 559, 604 and 387 ms. Opening takes 15.862 seconds in this run;
+filesystem caches and other machine load are uncontrolled, so that difference
+is not attributed to the decoder change. Neither pass is a repeated steady-state
+benchmark or evidence of 300 ms release latency.
+
+The public recognition timer starts after the API lock and ends before the
+last-success snapshot and caller-output copies. It covers the frontend, encoder,
+decoder and checked text rendering. Harness process time also includes model
+opening and artifact I/O. No separate stage timing was measured. Future speed
+work should profile those stages, cache fixed FFT twiddles, reuse decoder
+projections and reduce encoder launch overhead, with the same reference gate.
+The model remains an offline full-attention checkpoint; this optimization does
+not make it a streaming model.
 
 ## The pinned checkpoint
 

@@ -1,0 +1,623 @@
+{
+  "schema": "psionic.parakeet-independent-optimization.v1",
+  "scope": "Recorded output comparison and descriptive timing arithmetic only; no new inference.",
+  "sources": {
+    "psionic/tests/parakeet_reference_compare.py": "e7b96ae44b0c32599c449ac566f8f091746d01680d77b3434889996436918bdf",
+    "psionic/tests/parakeet_reference_timing.py": "4342e4ea9404690ecfe03996346b7b5738a61cfd1c9207bee402e76e50f045d6"
+  },
+  "files": {
+    "README.md": {
+      "sha256": "0ae19a4aadecc78f3b2654f92e4a66ad8d9689cfbfe56e0ac5f504d41d5f9bde",
+      "bytes": 2302
+    },
+    "full-gpu-comparison.json": {
+      "sha256": "f3de07adac929784e7f08e0eb10ea0cfe3f795b1f7141b330d6b242c26300c9e",
+      "bytes": 66390
+    },
+    "resident-decoder-comparison.json": {
+      "sha256": "2a2dc62b3846f5e1a795912e1e16bb0cddbd3bd31b31dcfa598a682c060a32d4",
+      "bytes": 28179
+    },
+    "timing-comparison.json": {
+      "sha256": "665098e586ae7bef3a0aed719b70430f202d1904f15753a94960e77974fe547e",
+      "bytes": 23915
+    },
+    "timing-comparison.md": {
+      "sha256": "d8dda4d1d468792bb2b374dd1a24da0551422268a9e2ed43fd0fe9e6661097ca",
+      "bytes": 3602
+    },
+    "v1-v2-stage-identity.json": {
+      "sha256": "eb6e0646a275d7cdde386eb3768aa621855d1403448a505d92d6561a46e288c4",
+      "bytes": 2768
+    }
+  },
+  "durable_product_inputs": {
+    "gpu-corpus/6930-75918-0000.tokens.json": {
+      "sha256": "cc1ee3f19bb85f2215e3d2a553e236feddb6aeaa7f13e40fdd8b7689ea9fd0bb",
+      "bytes": 399,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0000.tokens.json"
+    },
+    "gpu-corpus/6930-75918-0000.features.f32": {
+      "sha256": "39977a85131cd878b073cb565515c29dc103b4fb7c3167f9cfdab4dc0b7be00e",
+      "bytes": 179200,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0000.features.f32"
+    },
+    "gpu-corpus/6930-75918-0000.encoded.f32": {
+      "sha256": "73075606779b0e501721bbc836fd7a154d9565509c8df8d27a20eee93f51c36c",
+      "bytes": 180224,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0000.encoded.f32"
+    },
+    "gpu-corpus/6930-75918-0002.tokens.json": {
+      "sha256": "b8da49700146ae93c1c78b788ef5c9041bb7fa291889305e4faebe8d38abe59f",
+      "bytes": 512,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0002.tokens.json"
+    },
+    "gpu-corpus/6930-75918-0002.features.f32": {
+      "sha256": "241e0fa4d752a38abb0d1f1f680abb641ebc04938f1364e8efa746effe341695",
+      "bytes": 257024,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0002.features.f32"
+    },
+    "gpu-corpus/6930-75918-0002.encoded.f32": {
+      "sha256": "ab0d3f3ec58b1aae2f001425b5b721a3eae533072dba707218357775d842670c",
+      "bytes": 258048,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0002.encoded.f32"
+    },
+    "gpu-corpus/6930-75918-0006.tokens.json": {
+      "sha256": "04bde532a2fa265e28bacbdc884076af692185d5931691f7a7b91690a02040b2",
+      "bytes": 574,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0006.tokens.json"
+    },
+    "gpu-corpus/6930-75918-0006.features.f32": {
+      "sha256": "3bf104aba880be32bdc533419e8cea4a919af2cda5e6428e97f5d33a1574364e",
+      "bytes": 299520,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0006.features.f32"
+    },
+    "gpu-corpus/6930-75918-0006.encoded.f32": {
+      "sha256": "47a266f99790b8a1ebc8cfaa607492388a510b4ee14921b41315abe53e6d45dc",
+      "bytes": 303104,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0006.encoded.f32"
+    },
+    "gpu-corpus/6930-75918-0011.tokens.json": {
+      "sha256": "f81189d3107db2ac3b4280e678523d59c7cda03099e3b315a5fa82303b57c118",
+      "bytes": 395,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0011.tokens.json"
+    },
+    "gpu-corpus/6930-75918-0011.features.f32": {
+      "sha256": "6760e50455567c20345d47ac111b8d4c02edd34b051f82e777ef81036a1928d4",
+      "bytes": 163328,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0011.features.f32"
+    },
+    "gpu-corpus/6930-75918-0011.encoded.f32": {
+      "sha256": "0de06f3e5a529edb9e6e6fb4ee437505d900ea079c0e0831f4d3d12552a4af43",
+      "bytes": 163840,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/6930-75918-0011.encoded.f32"
+    },
+    "gpu-corpus/bg.tokens.json": {
+      "sha256": "f21abd87723c87c598c2f587d6a4b6002f8f9159b6bb64c856d6c622d0fdfa66",
+      "bytes": 1209,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/bg.tokens.json"
+    },
+    "gpu-corpus/bg.features.f32": {
+      "sha256": "1abe323aeb7004e53593bd046442fcbf439dbb4fbadadc7432e0b605694d45a1",
+      "bytes": 709632,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/bg.features.f32"
+    },
+    "gpu-corpus/bg.encoded.f32": {
+      "sha256": "ec5078919f0a4a23b081156bc7c7e4a2fe889757af0bed31542a31bd22ecad9a",
+      "bytes": 712704,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/bg.encoded.f32"
+    },
+    "gpu-corpus/hr.tokens.json": {
+      "sha256": "6be243d5003f21da5d290dedbb9f2b9b70deb68ea7a27c7ab474044a3b1c97d5",
+      "bytes": 647,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/hr.tokens.json"
+    },
+    "gpu-corpus/hr.features.f32": {
+      "sha256": "e0acb5b9c5ea2239fa8eabcc3e883a9359f72b32f40c68d8dba9a33adf5b994e",
+      "bytes": 411648,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/hr.features.f32"
+    },
+    "gpu-corpus/hr.encoded.f32": {
+      "sha256": "b3b533a38edb8d6f86e06165c99ff5cf09be21ca5e3224a0a69c0cb29b9a99bf",
+      "bytes": 413696,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/hr.encoded.f32"
+    },
+    "gpu-corpus/cs.tokens.json": {
+      "sha256": "622cec109d9422e112993a6d600eef314979ec38d9ef162b09964d0615d67181",
+      "bytes": 845,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/cs.tokens.json"
+    },
+    "gpu-corpus/cs.features.f32": {
+      "sha256": "6cba0a288f3985d78fc4a1c8fe61c4a0c9133e339c3ac1e472889e6d5688a8a8",
+      "bytes": 681984,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/cs.features.f32"
+    },
+    "gpu-corpus/cs.encoded.f32": {
+      "sha256": "86fd884d5e3a589a45c6a5b867d09f8cf56205f344fe4d164f674efaffd50724",
+      "bytes": 684032,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/cs.encoded.f32"
+    },
+    "gpu-corpus/da.tokens.json": {
+      "sha256": "ec4c383f657b5dfe4725701df91cdcc8b75321263dd69427744eb2f6b53c00dc",
+      "bytes": 488,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/da.tokens.json"
+    },
+    "gpu-corpus/da.features.f32": {
+      "sha256": "67025d89f224a6813d54ca7dc96b927de6e3f3e0e733aaaa1e068d7240917c64",
+      "bytes": 261120,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/da.features.f32"
+    },
+    "gpu-corpus/da.encoded.f32": {
+      "sha256": "2045b8837597953b7f4b79b006180cb59a92cf9dcb840191d947df2e0d4c370b",
+      "bytes": 262144,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/da.encoded.f32"
+    },
+    "gpu-corpus/nl.tokens.json": {
+      "sha256": "9d8a196c67755f95a0451e42f6239772d5742e7b5881ee6e4dbce3db0aa720da",
+      "bytes": 579,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/nl.tokens.json"
+    },
+    "gpu-corpus/nl.features.f32": {
+      "sha256": "8e82eadca3757695909cceb9bda26b0ce3e792e2aaa21dea113681baf3bd7285",
+      "bytes": 331776,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/nl.features.f32"
+    },
+    "gpu-corpus/nl.encoded.f32": {
+      "sha256": "a8df7efe58d7be48ca30fa0e5bb0e54e4138d93e03f0cfcfe96fbdb14bb2c965",
+      "bytes": 331776,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/nl.encoded.f32"
+    },
+    "gpu-corpus/en.tokens.json": {
+      "sha256": "a30a20a622445a59e1cd5e4621de803fbae1a5124eb55a9d99f1a47f457f66a0",
+      "bytes": 632,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/en.tokens.json"
+    },
+    "gpu-corpus/en.features.f32": {
+      "sha256": "59ee57d6b457b20f159f5a4aaaf0ed53d1e4500ea288221c0749b48468988665",
+      "bytes": 540672,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/en.features.f32"
+    },
+    "gpu-corpus/en.encoded.f32": {
+      "sha256": "21aa90500d61a4450c39f1ce021b029dbffd7e83fa4893e1cc30f758100e0b1f",
+      "bytes": 540672,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/en.encoded.f32"
+    },
+    "gpu-corpus/et.tokens.json": {
+      "sha256": "b699589668c847f13d3d49fb5981f06586d52d3ffff12c102579a1105332fdbb",
+      "bytes": 878,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/et.tokens.json"
+    },
+    "gpu-corpus/et.features.f32": {
+      "sha256": "62e3b9788a97e4705185f01131302cc52d5456c2dbdcbfbed1a1ad24a7d61a5c",
+      "bytes": 721920,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/et.features.f32"
+    },
+    "gpu-corpus/et.encoded.f32": {
+      "sha256": "9ab9dede38a77ac0e5e95ec3eeb266c5618864b1a8a2b225561599f8bdd24a4e",
+      "bytes": 724992,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/et.encoded.f32"
+    },
+    "gpu-corpus/fi.tokens.json": {
+      "sha256": "4ccce2c1968d04114116cd79a7dafa3469c09bffd836f3ee963d113cf24d7a79",
+      "bytes": 1212,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/fi.tokens.json"
+    },
+    "gpu-corpus/fi.features.f32": {
+      "sha256": "7d1c1571cadcb6472257cef213359452f07c78086b27a898727524bdf31f6b86",
+      "bytes": 952320,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/fi.features.f32"
+    },
+    "gpu-corpus/fi.encoded.f32": {
+      "sha256": "89bc768b0893ed5624bb9ed0646a06650380fa8d025eaad182dbe245eec57059",
+      "bytes": 954368,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/fi.encoded.f32"
+    },
+    "gpu-corpus/fr.tokens.json": {
+      "sha256": "f6e218d1029c962b1a3d6b5a3575ab5e42a4dbf26340d4b6f0c37f546a459450",
+      "bytes": 676,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/fr.tokens.json"
+    },
+    "gpu-corpus/fr.features.f32": {
+      "sha256": "b09fd0a15bbb7d67df51bade9fb8616a6e54185a3f47d0f689958a4b1e0231ca",
+      "bytes": 522240,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/fr.features.f32"
+    },
+    "gpu-corpus/fr.encoded.f32": {
+      "sha256": "dbf74f130fd447c4a96e429847d8162876f556211cc6bdc5f9b6e35a3867c37b",
+      "bytes": 524288,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/fr.encoded.f32"
+    },
+    "gpu-corpus/de.tokens.json": {
+      "sha256": "4b1233d57067c7ee642d051527792ad6525ab8dfe792edca8ce902897c640eca",
+      "bytes": 701,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/de.tokens.json"
+    },
+    "gpu-corpus/de.features.f32": {
+      "sha256": "51b2c9c81249bfe8bda2c32d30639ead01d489f8ad5ff18ad64fe0ca24f7d7a9",
+      "bytes": 918528,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/de.features.f32"
+    },
+    "gpu-corpus/de.encoded.f32": {
+      "sha256": "36d05b9ea84c0d7a9e39fa20a94006afcfcb597529b0a70aea381e895cb767af",
+      "bytes": 921600,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/de.encoded.f32"
+    },
+    "gpu-corpus/el.tokens.json": {
+      "sha256": "f8bd6b31519ce080d01cf993bc902c806cf9b55a8553348d9bc77285b513e40f",
+      "bytes": 1067,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/el.tokens.json"
+    },
+    "gpu-corpus/el.features.f32": {
+      "sha256": "e7cd869e2f4c86832edd693b5eca1bc95187a36b010ac183b7e490dc21f61aea",
+      "bytes": 565248,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/el.features.f32"
+    },
+    "gpu-corpus/el.encoded.f32": {
+      "sha256": "abd928ce02911f59e9c319b2079db0b50a4c51c477b373c8a434073b97ca2d4a",
+      "bytes": 565248,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/el.encoded.f32"
+    },
+    "gpu-corpus/hu.tokens.json": {
+      "sha256": "a79a383ab8fdaef20fd77896f8a0ec04b22a73786abb063f742aa9aa7325621c",
+      "bytes": 677,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/hu.tokens.json"
+    },
+    "gpu-corpus/hu.features.f32": {
+      "sha256": "8dcae00c58825ef0e1ffaecea0eba1e5c7a648c1e33407f4223ee89ca08fbd9f",
+      "bytes": 617472,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/hu.features.f32"
+    },
+    "gpu-corpus/hu.encoded.f32": {
+      "sha256": "bc7be2f3919592e0d52104a08ee341b96ae408e85f8c1872b2cf0919ec2f8250",
+      "bytes": 618496,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/hu.encoded.f32"
+    },
+    "gpu-corpus/it.tokens.json": {
+      "sha256": "0657ecdc9e680c2181bfa8c6cab8a01356e9c5e5bc37dfe161a660216b599578",
+      "bytes": 820,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/it.tokens.json"
+    },
+    "gpu-corpus/it.features.f32": {
+      "sha256": "483e7fcfa7f0d709974128afac9291bf272b93aa1124132f87beac7fbab5f1c3",
+      "bytes": 589824,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/it.features.f32"
+    },
+    "gpu-corpus/it.encoded.f32": {
+      "sha256": "f7499904b543d4f7b2d7039caf03fc58630d9e03e9eb2139aea80b7a424b3b3b",
+      "bytes": 589824,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/it.encoded.f32"
+    },
+    "gpu-corpus/lv.tokens.json": {
+      "sha256": "e6326a6d859b0008400f107a74a179a97872bb72e4ed5109ffdcb0f64a3881cf",
+      "bytes": 769,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/lv.tokens.json"
+    },
+    "gpu-corpus/lv.features.f32": {
+      "sha256": "334a46119c92fb3c71c1043a1f391a52cabd6f9625457db6de912fc4de3254ef",
+      "bytes": 620544,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/lv.features.f32"
+    },
+    "gpu-corpus/lv.encoded.f32": {
+      "sha256": "d4ede35b1b6182eef3d464fc33559b01ee7fe0978293e583213c31b3590ade8b",
+      "bytes": 622592,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/lv.encoded.f32"
+    },
+    "gpu-corpus/lt.tokens.json": {
+      "sha256": "e161c68d3c498248ea5faa7c81097ecbce1ef6a4ee5c238dec49177268562d5c",
+      "bytes": 512,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/lt.tokens.json"
+    },
+    "gpu-corpus/lt.features.f32": {
+      "sha256": "72600a19639e802feabf3a5bc1cfe3cac295e271f06b1c20574f9b11afaf3db6",
+      "bytes": 294912,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/lt.features.f32"
+    },
+    "gpu-corpus/lt.encoded.f32": {
+      "sha256": "0b4e04ee4e33e455392f7efedec2467fb75cabb552e352577c989203b40c0112",
+      "bytes": 294912,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/lt.encoded.f32"
+    },
+    "gpu-corpus/mt.tokens.json": {
+      "sha256": "5f1c69d6339a3b4a2aa3dc5b1f86682b372cc610d056232b1fa4ef604c3953f1",
+      "bytes": 836,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/mt.tokens.json"
+    },
+    "gpu-corpus/mt.features.f32": {
+      "sha256": "ad4dd0f7e139d7504bfa54d052b214612c1c660515416196a4061c5a0f618b34",
+      "bytes": 703488,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/mt.features.f32"
+    },
+    "gpu-corpus/mt.encoded.f32": {
+      "sha256": "15b7f1691fbfdd534996942ad73aaa46e45194f6cd329947b9866c6176ba4bf4",
+      "bytes": 704512,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/mt.encoded.f32"
+    },
+    "gpu-corpus/pl.tokens.json": {
+      "sha256": "6eb6a56c4be4a70ea580058780b46baa39efd74a36d6b503d48eeaf19c8f6ad0",
+      "bytes": 947,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/pl.tokens.json"
+    },
+    "gpu-corpus/pl.features.f32": {
+      "sha256": "86ddd101b08918855d903c1de6a294cacae66a3933142f6c6918aebabe69852e",
+      "bytes": 620544,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/pl.features.f32"
+    },
+    "gpu-corpus/pl.encoded.f32": {
+      "sha256": "e39cc537fc9cb1588bdd5918ba6397a5584adbc9991e3c5c20421f81e368f5e0",
+      "bytes": 622592,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/pl.encoded.f32"
+    },
+    "gpu-corpus/pt.tokens.json": {
+      "sha256": "48c432783d1ba0d062eda7f2be41f014dbdd8a67658a4c4f988d9204ddf154da",
+      "bytes": 1083,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/pt.tokens.json"
+    },
+    "gpu-corpus/pt.features.f32": {
+      "sha256": "6b558c6fc378269d31a0effd2acd340f5ae34ad6766adecf8c2e4e53448d7344",
+      "bytes": 909312,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/pt.features.f32"
+    },
+    "gpu-corpus/pt.encoded.f32": {
+      "sha256": "c516a89f000ee49a77c6dd95fb1d43c77b0264b738ced5097016d677ca067977",
+      "bytes": 909312,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/pt.encoded.f32"
+    },
+    "gpu-corpus/ro.tokens.json": {
+      "sha256": "974b026bb0331e4eaafe5cb29b48ab36b2fe0450db7ae9cc15fcc26751bbdd21",
+      "bytes": 574,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/ro.tokens.json"
+    },
+    "gpu-corpus/ro.features.f32": {
+      "sha256": "934ff30474ed29babf21c5ddf81b777f0e159055b3b8baef074b3436d6323bba",
+      "bytes": 322560,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/ro.features.f32"
+    },
+    "gpu-corpus/ro.encoded.f32": {
+      "sha256": "3dceb7448cb1ea373d51efd5e71a5b9e367e20c841c0d9e4c9743684e49f7c6e",
+      "bytes": 323584,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/ro.encoded.f32"
+    },
+    "gpu-corpus/sk.tokens.json": {
+      "sha256": "33139ec00d36b064df6811a437c86f747db3b96e4d011d15210b38941e3fa7e7",
+      "bytes": 625,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/sk.tokens.json"
+    },
+    "gpu-corpus/sk.features.f32": {
+      "sha256": "9ded49c1e08e07e92a9a9814ff397977fd6708f8bed6929f0b6643c0e48aa8c4",
+      "bytes": 503808,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/sk.features.f32"
+    },
+    "gpu-corpus/sk.encoded.f32": {
+      "sha256": "e374a1c308b1f92a21272ea634810ce570654f7387a7495af114515696edb483",
+      "bytes": 503808,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/sk.encoded.f32"
+    },
+    "gpu-corpus/sl.tokens.json": {
+      "sha256": "362a889e4f68fc987a6e6a9442f65c02f60844608d36ec16aea3a9c282a74faf",
+      "bytes": 658,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/sl.tokens.json"
+    },
+    "gpu-corpus/sl.features.f32": {
+      "sha256": "de8ec266b214a73ec997b85fb34ca554d47b444cb1101993c710a474ef072f89",
+      "bytes": 384000,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/sl.features.f32"
+    },
+    "gpu-corpus/sl.encoded.f32": {
+      "sha256": "5bd78aaaeb4ad4339f7a6eda1a41298831b8df7b363ad9f0d9ac56b16c904445",
+      "bytes": 385024,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/sl.encoded.f32"
+    },
+    "gpu-corpus/es.tokens.json": {
+      "sha256": "0ac3c3f9c1101278315caf0afc30c4af6e50a02d8b98e457faf5aa31283cdd4c",
+      "bytes": 876,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/es.tokens.json"
+    },
+    "gpu-corpus/es.features.f32": {
+      "sha256": "8de15ab95f48410b7ec5cf715b1f7cd502987779ff7e04d447568e65fa4dfdcf",
+      "bytes": 657408,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/es.features.f32"
+    },
+    "gpu-corpus/es.encoded.f32": {
+      "sha256": "bad29131e9420d1fd3e6f7ca721d315a1d252c1d54a59421f9112e1207e87e09",
+      "bytes": 659456,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/es.encoded.f32"
+    },
+    "gpu-corpus/sv.tokens.json": {
+      "sha256": "7b581b8f2876ba3b049e74ad68ee378aa98f11fa9e14864fd0abb30d9ee22996",
+      "bytes": 544,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/sv.tokens.json"
+    },
+    "gpu-corpus/sv.features.f32": {
+      "sha256": "d5761ea2e95378fb90f1f920308212a9a88494e580de26b20cd21b30a84824b6",
+      "bytes": 294912,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/sv.features.f32"
+    },
+    "gpu-corpus/sv.encoded.f32": {
+      "sha256": "e1d4aee363bd8a2410ce42729b0ce6d0cb86149fcfaed45cdd2e031fcbe18c1d",
+      "bytes": 294912,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/sv.encoded.f32"
+    },
+    "gpu-corpus/ru.tokens.json": {
+      "sha256": "6a912e58687c4b0d97bf2d181ae40cbd79ea48561428cf32fee0b164e8496871",
+      "bytes": 1103,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/ru.tokens.json"
+    },
+    "gpu-corpus/ru.features.f32": {
+      "sha256": "67b87bb8a9e7860bad0f4ecda26d4b780e4c259495bb2236e94144d2903128a2",
+      "bytes": 866304,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/ru.features.f32"
+    },
+    "gpu-corpus/ru.encoded.f32": {
+      "sha256": "172371f0a7aca930e82810d31035e636a484f3270b94edc50bbc8c1ca86c1206",
+      "bytes": 868352,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/ru.encoded.f32"
+    },
+    "gpu-corpus/uk.tokens.json": {
+      "sha256": "04edfc5684a68d0be49d4e2e42721a0e904e2548415b2df4c9c03349642b8f03",
+      "bytes": 786,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/uk.tokens.json"
+    },
+    "gpu-corpus/uk.features.f32": {
+      "sha256": "32e90cf7b4dda2d20eb074953a1b3a5ee3fd4a60b4588453da4c589cede39db8",
+      "bytes": 377856,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/uk.features.f32"
+    },
+    "gpu-corpus/uk.encoded.f32": {
+      "sha256": "cfd85f0f2cd94419d2162e55914b522d3c1f3d8f59d366224bb8f598ab642038",
+      "bytes": 380928,
+      "original_path": "/tmp/parakeet-gpu-corpus-parallel/uk.encoded.f32"
+    },
+    "resident-decoder/6930-75918-0000.tokens.json": {
+      "sha256": "dd36b0b72db71426f750fec23ffb586d58635ac2528bc2417bd038c843f340c8",
+      "bytes": 390,
+      "original_path": "/tmp/parakeet-decoder-parallel/6930-75918-0000.tokens.json"
+    },
+    "resident-decoder/6930-75918-0002.tokens.json": {
+      "sha256": "d9593bdb4b16b71a76a6442bc17442ff51913f39b3a25576d2010db1bc60e3eb",
+      "bytes": 503,
+      "original_path": "/tmp/parakeet-decoder-parallel/6930-75918-0002.tokens.json"
+    },
+    "resident-decoder/6930-75918-0006.tokens.json": {
+      "sha256": "7e5a2fbaef559ce8971b39703f876875f43f2a08c738126c08d1fab1a7f4dd99",
+      "bytes": 565,
+      "original_path": "/tmp/parakeet-decoder-parallel/6930-75918-0006.tokens.json"
+    },
+    "resident-decoder/6930-75918-0011.tokens.json": {
+      "sha256": "11ea3eb6eb81f00d09060ae54cc0303e6de19ad072767e75cef83bb3e1fc8808",
+      "bytes": 386,
+      "original_path": "/tmp/parakeet-decoder-parallel/6930-75918-0011.tokens.json"
+    },
+    "resident-decoder/bg.tokens.json": {
+      "sha256": "353e1de42d74851c49f101a3132f5cf7fd0f76eb53f598b7ad59e63511a66945",
+      "bytes": 1198,
+      "original_path": "/tmp/parakeet-decoder-parallel/bg.tokens.json"
+    },
+    "resident-decoder/hr.tokens.json": {
+      "sha256": "ab765a665e427cf983ea872a574f742ab5907dc36d0932415419750286c1a18d",
+      "bytes": 637,
+      "original_path": "/tmp/parakeet-decoder-parallel/hr.tokens.json"
+    },
+    "resident-decoder/cs.tokens.json": {
+      "sha256": "43ee07783fc2a8393570f7be4ac8e8f6594b2fc3c3f257ad5e6cc8067791a573",
+      "bytes": 834,
+      "original_path": "/tmp/parakeet-decoder-parallel/cs.tokens.json"
+    },
+    "resident-decoder/da.tokens.json": {
+      "sha256": "0f51eb4d8171b257994dbbc708349e711be2c90f4d29e0c3a371986cf57f5a55",
+      "bytes": 479,
+      "original_path": "/tmp/parakeet-decoder-parallel/da.tokens.json"
+    },
+    "resident-decoder/nl.tokens.json": {
+      "sha256": "02ed3019f5026189175eb4a7dbd8360adeffda492dd75a95a706b7395d484588",
+      "bytes": 569,
+      "original_path": "/tmp/parakeet-decoder-parallel/nl.tokens.json"
+    },
+    "resident-decoder/en.tokens.json": {
+      "sha256": "72477d22031d88334f6271b37af684443aced9f11310bbd9fa8b5e1ef6af3023",
+      "bytes": 621,
+      "original_path": "/tmp/parakeet-decoder-parallel/en.tokens.json"
+    },
+    "resident-decoder/et.tokens.json": {
+      "sha256": "cbdd8a27aec05f8b6636be585452a6e509843e078280076f2041e24aef28b276",
+      "bytes": 867,
+      "original_path": "/tmp/parakeet-decoder-parallel/et.tokens.json"
+    },
+    "resident-decoder/fi.tokens.json": {
+      "sha256": "b06fcd6d472d23a07b923c0377cc002943a4910e635c15f666e92d8e0a1f54a3",
+      "bytes": 1201,
+      "original_path": "/tmp/parakeet-decoder-parallel/fi.tokens.json"
+    },
+    "resident-decoder/fr.tokens.json": {
+      "sha256": "431867fad0c732f62d5900fabb810ada78e95683f7785ba8f62d4257533652f0",
+      "bytes": 665,
+      "original_path": "/tmp/parakeet-decoder-parallel/fr.tokens.json"
+    },
+    "resident-decoder/de.tokens.json": {
+      "sha256": "a39811e8b038545438b2e8bfcf12968e1a52f3263bf81d64e0d55b80345b8af4",
+      "bytes": 690,
+      "original_path": "/tmp/parakeet-decoder-parallel/de.tokens.json"
+    },
+    "resident-decoder/el.tokens.json": {
+      "sha256": "4a7253f2df4f81c220755bbb4357ca9fd728e64b868bc138fd1ffad59f9ac713",
+      "bytes": 1056,
+      "original_path": "/tmp/parakeet-decoder-parallel/el.tokens.json"
+    },
+    "resident-decoder/hu.tokens.json": {
+      "sha256": "5c31c6d51af514b161f6420e385315cace3d1f223557206b90d495fd93b8b755",
+      "bytes": 666,
+      "original_path": "/tmp/parakeet-decoder-parallel/hu.tokens.json"
+    },
+    "resident-decoder/it.tokens.json": {
+      "sha256": "23e96c781acdb72aa7089276e3a09afa7b1ce98d7d919cfa16806c5718a9c362",
+      "bytes": 809,
+      "original_path": "/tmp/parakeet-decoder-parallel/it.tokens.json"
+    },
+    "resident-decoder/lv.tokens.json": {
+      "sha256": "662aa7641da8e273e7e0af30d40a635d96562ff75c84f28803e57efac787c9fd",
+      "bytes": 758,
+      "original_path": "/tmp/parakeet-decoder-parallel/lv.tokens.json"
+    },
+    "resident-decoder/lt.tokens.json": {
+      "sha256": "34892c32260ad07aa530a432e5f7f8415b08bcf0dcbfbf87ca567333dfd25f3a",
+      "bytes": 503,
+      "original_path": "/tmp/parakeet-decoder-parallel/lt.tokens.json"
+    },
+    "resident-decoder/mt.tokens.json": {
+      "sha256": "6583fe97a3b827d54baa6fd76e06edc2dfa0c52aab738924a9bdbf620e3c4bc1",
+      "bytes": 825,
+      "original_path": "/tmp/parakeet-decoder-parallel/mt.tokens.json"
+    },
+    "resident-decoder/pl.tokens.json": {
+      "sha256": "acd933fcd9a58bb3f395de9e90c06208a32033a8ccc6ca7e8d5ccfa5ef65e1ac",
+      "bytes": 936,
+      "original_path": "/tmp/parakeet-decoder-parallel/pl.tokens.json"
+    },
+    "resident-decoder/pt.tokens.json": {
+      "sha256": "362ddec1ee0c0b87ea95815e89f022c39451aa2fbb6fa3d19e99b92ab9a6bd94",
+      "bytes": 1072,
+      "original_path": "/tmp/parakeet-decoder-parallel/pt.tokens.json"
+    },
+    "resident-decoder/ro.tokens.json": {
+      "sha256": "bc726884ae7e188699e20ea649c60404d6a3c4c988c112926525a22e3e2757dd",
+      "bytes": 564,
+      "original_path": "/tmp/parakeet-decoder-parallel/ro.tokens.json"
+    },
+    "resident-decoder/sk.tokens.json": {
+      "sha256": "63b442fda2c9d7e928bd039b8394e010cd6d61190bdd62c8cf52aa5104cbb468",
+      "bytes": 615,
+      "original_path": "/tmp/parakeet-decoder-parallel/sk.tokens.json"
+    },
+    "resident-decoder/sl.tokens.json": {
+      "sha256": "6fdf72d1802b2cfeb122175914cfe590a055430d4a08d0349aee84797f0c5a9d",
+      "bytes": 648,
+      "original_path": "/tmp/parakeet-decoder-parallel/sl.tokens.json"
+    },
+    "resident-decoder/es.tokens.json": {
+      "sha256": "bc8b3e65f504c92076fd134a6d4d1ff9b4bfa987003e927435f92386b4d33dd8",
+      "bytes": 865,
+      "original_path": "/tmp/parakeet-decoder-parallel/es.tokens.json"
+    },
+    "resident-decoder/sv.tokens.json": {
+      "sha256": "7ea6d7e315ab1d34b4d77b6c2aeecddf30d339e6ff84f13b18dc24b30f14d544",
+      "bytes": 535,
+      "original_path": "/tmp/parakeet-decoder-parallel/sv.tokens.json"
+    },
+    "resident-decoder/ru.tokens.json": {
+      "sha256": "c72b036fe82fdacc198a46fb8aeef40e5119629d0bc5942c303f584fea26135b",
+      "bytes": 1092,
+      "original_path": "/tmp/parakeet-decoder-parallel/ru.tokens.json"
+    },
+    "resident-decoder/uk.tokens.json": {
+      "sha256": "0b43bcb6d01eae2e7b8b1e788a12c6b38e97ffa0254c3b3f1540caf120afc5af",
+      "bytes": 776,
+      "original_path": "/tmp/parakeet-decoder-parallel/uk.tokens.json"
+    }
+  },
+  "baseline_inputs": {
+    "reference/manifest.json": "067d7e9f1b922a0ead3554cce172a129cda4fac468ba9a66b41311adce30b9a0",
+    "reference/full-gpu-comparison.json": "55b42298235fd45d04d0bc5f2a444b8bf329b6b2851afcc466d3a13a9166193d",
+    "reference/product-quality-latency.json": "11fcfa7451ff6808bc1cc9ac86273aab8c5656d24207249d5c6744e7164c4200"
+  },
+  "frozen_fixture_manifest_sha256": "ffe97a41feb987b8a6457b5c44908b54855803d78bf8abfe7c00de31fc6abaf2",
+  "actual_nemo_record_sha256": "2f98038e31f992b64a20ee285019373f4ddc2fd34a6b1a5213f1b58149faf7fa"
+}

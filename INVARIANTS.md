@@ -3110,6 +3110,15 @@ the next call cannot mutate a borrowed result. Closing releases the model and
 device resources. Empty text is valid; microphone consent, VAD, long-clip
 segmentation and draft insertion remain the caller's explicit responsibilities.
 
+The exact decoder's persistent pool has at most eight participants, including
+the caller. Coax owns complete disjoint rows and preserves each compensated
+sum's original bias/input/recurrent order. Every gate finishes before hidden
+state changes. Host dispatch is serialized, partial thread startup uses the
+observed smaller pool, and close joins workers before freeing their inputs.
+The added thread-count query preserves the existing info-struct ABI. Native
+O0/O2/ASan/UBSan bitwise and lifecycle checks plus the same 29-recording
+reference replay qualify this optimization separately from the baseline.
+
 Checks: focused model/frontend/text/launch-policy mutations, native O0/O2 and
 ASan/UBSan API boundaries, and actual full Metal feature/encoder/token/frame/text
 comparison against pinned NeMo on 29 frozen recordings. These finite checks

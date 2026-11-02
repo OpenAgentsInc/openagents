@@ -1,0 +1,46 @@
+{
+  "schema": "psionic.parakeet.optimization-publication.v1",
+  "baseline_commit": "e13a571981",
+  "result": "targeted-changes-pass",
+  "cli": "cli-check-parallel.stdout",
+  "actual_cli": "../cli-real/record.json",
+  "book": "book-parallel.stdout",
+  "tools_policy": {
+    "same_unrelated_main_failures": [
+      "coax/tests/bitcoin/chacha20_poly1305.py",
+      "coax/tests/bitcoin/chacha20_poly1305_wasm.cjs",
+      "coax/web/api/computer-flow.ts"
+    ],
+    "record": "tools-parallel.stdout",
+    "no_exemptions_added": true
+  },
+  "source_pins": {
+    "INVARIANTS.md": "d9bad75e03e3a63141cffd6fa58dbc8151c9684b01d40d1abf5f7b14cc2abe73",
+    "apps/openagents-cli/parakeet.coax": "4fcf3be7b91e795d4a412c874d4417c45c3ab2d5f35453af97d87945357e1790",
+    "psionic/book/ch153-transcribe-with-parakeet.md": "5ab52823b196291214dfa5a8d35e003ce032e1fa03df081f0b007217f894ccdd",
+    "psionic/book/chapters.json": "203f446aaafd96f1a01e1656e47be4782e893f6e9508447978fc4755ed0d3e31",
+    "psionic/check.sh": "7000471aed01d702f7321a5a21d833ab67a567219d9a884aa9ff0699f3067d3d",
+    "psionic/docs/parakeet.md": "2d80abecc1bcad5127dcfa5e46e8799f227fd1fb72419c62dca7ac0508541fed",
+    "docs/voice/2026-11-02-coder-voice-from-hex.md": "7c5b84168cb6529dec54386a28a87cce2b0e47ae3f86572b3dca87b058338478",
+    "bench/voice/parakeet-parallel-2026-11-02.json": "418eea88d0cf3887d64c0222bbbc20fa8cc9e0f59272378ded73fd5a051690c2"
+  },
+  "native_source_pins": "../source-pins.json",
+  "independent_reference": "../reference/manifest.json",
+  "baseline_evidence_untouched": true,
+  "limits": [
+    "One ordered pass per implementation, variable-length finite cohort, uncontrolled global machine load and filesystem caches.",
+    "No whole-model CPU encoder or old full mutation sweeps rerun.",
+    "Offline 20.47-second recognizer; Coder capture/composer/vocabulary/segmentation and real streaming remain separate."
+  ],
+  "checks": {
+    "thread_policy": [
+      92,
+      92,
+      0
+    ],
+    "full_gpu_reference_recordings": 29,
+    "cpu_decoder_reference_recordings": 29,
+    "feature_encoder_v1_v2_byte_identical": 58,
+    "cli_transport_cases": 13
+  }
+}

@@ -1,0 +1,31 @@
+// Native oracle: the original serial decoder is independent of the new row
+// dispatch. Compare every published token/frame and every workspace f32 bit.
+#load "../lib/parakeet/parallel.coax";
+pkp_native_check :: (seed:u64)->int #export_c {
+ s:=tdt_durations(TdtShape.{vocab=257,enc=65,pred=64,layers=2,joint=128,max_symbols=3},3);p:=tdt_plan(s,7);
+ w:[200000]f32;x:[455]f32;a:[4096]f32;b:[4096]f32;ta:[70]int;tb:[70]int;fa:[70]int;fb:[70]int;
+ if p.weights>w.count || p.work>a.count {return 1;}
+ if tdt_init(s,w[0..<p.weights],seed)!=TdtStatus.ok {return 2;}
+ // Three seeds force zero-duration emissions through the per-frame cap, so
+ // parity includes every recurrent update rather than only blank frames.
+ if seed>=3 {for i:0..<p.outputs {w[p.head+p.outputs*s.joint+i]= -20;}w[p.head+p.outputs*s.joint+17]=20;w[p.head+p.outputs*s.joint+s.vocab+1]=20;}
+ for i:0..<x.count {x[i]=f32(f64(cr_bits(seed,cast(u64)i)%2000)/1000-1);}
+ for i:0..<a.count {a[i]= -91;b[i]= -91;}
+ ra:=tdt_decode(s,w[0..<p.weights],x[..],7,a[..],ta[..],fa[..]);rb:=pkp_decode(s,w[0..<p.weights],x[..],7,b[..],tb[..],fb[..],true);
+ if ra.status!=TdtStatus.ok || rb.status!=TdtStatus.ok || ra.written!=rb.written {return 3;}
+ if seed>=3 && ra.written!=21 {return 6;}
+ for i:0..<ra.written {if ta[i]!=tb[i] || fa[i]!=fb[i] {return 4;}}
+ for i:0..<a.count {if f32_bits(a[i])!=f32_bits(b[i]) {return 5;}}
+ return 0;
+}
+pkp_native_rows :: ()->int #export_c {
+ w:[16705]f32;x:[65]f32;bias:[257]f32;a:[260]f32;b:[260]f32;
+ for i:0..<w.count {w[i]=f32(f64(cr_bits(71,cast(u64)i)%1000)/1000-0.5);}
+ for i:0..<x.count {x[i]=f32(f64(i%7)-3);}for i:0..<bias.count {bias[i]=f32(i%13);}
+ for i:0..<a.count {a[i]= -123;b[i]= -123;}
+ j:=PkpJob.{rows=257,cols=65,w=w[..],x=x[..],bias=bias[..],second=true,w2=w[..],x2=x[..],bias2=bias[..],out=a[..]};
+ if !pkp_dot_part(j,0,257) {return 1;}j.out=b[..];if !pkp_dot(j,true) {return 2;}
+ for i:0..<a.count {if f32_bits(a[i])!=f32_bits(b[i]) {return 3;}}
+ j.cols=64;if pkp_dot(j,true) {return 4;}for i:0..<b.count {if f32_bits(a[i])!=f32_bits(b[i]) {return 5;}}
+ return 0;
+}

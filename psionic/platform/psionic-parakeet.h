@@ -21,6 +21,10 @@ int psionic_parakeet_text(psionic_parakeet *s,const float *samples,int64_t n,cha
  * TDT decoder. This is an offline/reference API, not a streaming contract. */
 int psionic_parakeet_decode(psionic_parakeet *s,const float *encoded,int64_t frames,char *out,size_t cap,char *err,size_t errcap);
 int psionic_parakeet_last_info(psionic_parakeet *s,psionic_parakeet_info *info);
+/* Actual persistent decoder threads, including the calling thread:1..8;
+ * a partial pthread startup keeps the successfully created workers.0 for
+ * an invalid handle. Per-output arithmetic is independent of this count. */
+int psionic_parakeet_decoder_threads(psionic_parakeet *s);
 /* Copy last successful token IDs and encoded-frame indices, or -1 for
  * insufficient capacity/no result. No pointers into the engine escape. */
 int64_t psionic_parakeet_tokens(psionic_parakeet *s,int64_t *tokens,int64_t *frames,size_t cap);

@@ -1,0 +1,239 @@
+{
+  "profile": "psionic-tdt-v1 compensated binary64, one f32 store; unchanged numerical profile",
+  "change": "Persistent pthread row scheduler: up to8totalthreads. Coax owns complete disjoint rows; each row preserves original bias/Wih/Whh compensated accumulation order. Synchronous barrier before recurrent state update.",
+  "method": "One ordered resident process/pass on same29frozen clips asV1. First clip includes lazyGPUweightupload; remaining28warm. Publicinfo.inference_ms starts afterAPIlock and ends before lastsuccessfulsnapshot/textpublication. It measures recognition checks/frontend/encoder/decoder, excludeslockwait/outputcopies. Harness total_seconds additionally includesinspection+fileI/O. Globalcoload/cache uncontrolled; no causalstatisticalclaim.",
+  "comparison_baseline": "../runtime/performance-v1.json from e13a571981 (actual parentV1publication)",
+  "model_open_seconds": 15.861997,
+  "actual_decoder_threads": 8,
+  "rows": [
+    {
+      "id": "6930-75918-0000",
+      "audio_seconds": 3.505,
+      "inference_ms": 769.477,
+      "rtf": 0.21953694721825961,
+      "inspection_and_file_output_seconds": 0.770262
+    },
+    {
+      "id": "6930-75918-0002",
+      "audio_seconds": 5.025,
+      "inference_ms": 559.329,
+      "rtf": 0.11130925373134327,
+      "inspection_and_file_output_seconds": 0.562683
+    },
+    {
+      "id": "6930-75918-0006",
+      "audio_seconds": 5.85,
+      "inference_ms": 604.15,
+      "rtf": 0.10327350427350428,
+      "inspection_and_file_output_seconds": 0.609583
+    },
+    {
+      "id": "6930-75918-0011",
+      "audio_seconds": 3.195,
+      "inference_ms": 387.167,
+      "rtf": 0.12117902973395932,
+      "inspection_and_file_output_seconds": 0.388112
+    },
+    {
+      "id": "bg",
+      "audio_seconds": 13.86,
+      "inference_ms": 1431.044,
+      "rtf": 0.10324992784992787,
+      "inspection_and_file_output_seconds": 1.434022
+    },
+    {
+      "id": "hr",
+      "audio_seconds": 8.04,
+      "inference_ms": 819.453,
+      "rtf": 0.10192201492537314,
+      "inspection_and_file_output_seconds": 0.820262
+    },
+    {
+      "id": "cs",
+      "audio_seconds": 13.32,
+      "inference_ms": 1205.999,
+      "rtf": 0.09054046546546547,
+      "inspection_and_file_output_seconds": 1.207204
+    },
+    {
+      "id": "da",
+      "audio_seconds": 5.1,
+      "inference_ms": 550.553,
+      "rtf": 0.10795156862745098,
+      "inspection_and_file_output_seconds": 0.551197
+    },
+    {
+      "id": "nl",
+      "audio_seconds": 6.48,
+      "inference_ms": 595.294,
+      "rtf": 0.09186635802469136,
+      "inspection_and_file_output_seconds": 0.597107
+    },
+    {
+      "id": "en",
+      "audio_seconds": 10.56,
+      "inference_ms": 836.017,
+      "rtf": 0.07916827651515151,
+      "inspection_and_file_output_seconds": 0.838888
+    },
+    {
+      "id": "et",
+      "audio_seconds": 14.1,
+      "inference_ms": 1058.883,
+      "rtf": 0.07509808510638298,
+      "inspection_and_file_output_seconds": 1.060024
+    },
+    {
+      "id": "fi",
+      "audio_seconds": 18.6,
+      "inference_ms": 1453.952,
+      "rtf": 0.07816946236559139,
+      "inspection_and_file_output_seconds": 1.459373
+    },
+    {
+      "id": "fr",
+      "audio_seconds": 10.2,
+      "inference_ms": 816.415,
+      "rtf": 0.0800406862745098,
+      "inspection_and_file_output_seconds": 0.817296
+    },
+    {
+      "id": "de",
+      "audio_seconds": 17.94,
+      "inference_ms": 1217.897,
+      "rtf": 0.06788723522853957,
+      "inspection_and_file_output_seconds": 1.219332
+    },
+    {
+      "id": "el",
+      "audio_seconds": 11.04,
+      "inference_ms": 1067.025,
+      "rtf": 0.09665081521739133,
+      "inspection_and_file_output_seconds": 1.067845
+    },
+    {
+      "id": "hu",
+      "audio_seconds": 12.06,
+      "inference_ms": 844.465,
+      "rtf": 0.07002197346600332,
+      "inspection_and_file_output_seconds": 0.845657
+    },
+    {
+      "id": "it",
+      "audio_seconds": 11.52,
+      "inference_ms": 865.03,
+      "rtf": 0.07508940972222222,
+      "inspection_and_file_output_seconds": 0.871787
+    },
+    {
+      "id": "lv",
+      "audio_seconds": 12.12,
+      "inference_ms": 817.988,
+      "rtf": 0.0674907590759076,
+      "inspection_and_file_output_seconds": 0.821747
+    },
+    {
+      "id": "lt",
+      "audio_seconds": 5.76,
+      "inference_ms": 404.439,
+      "rtf": 0.07021510416666668,
+      "inspection_and_file_output_seconds": 0.405693
+    },
+    {
+      "id": "mt",
+      "audio_seconds": 13.74,
+      "inference_ms": 1347.626,
+      "rtf": 0.09808049490538573,
+      "inspection_and_file_output_seconds": 1.349704
+    },
+    {
+      "id": "pl",
+      "audio_seconds": 12.12,
+      "inference_ms": 1406.866,
+      "rtf": 0.11607805280528054,
+      "inspection_and_file_output_seconds": 1.410578
+    },
+    {
+      "id": "pt",
+      "audio_seconds": 17.76,
+      "inference_ms": 1633.655,
+      "rtf": 0.09198507882882882,
+      "inspection_and_file_output_seconds": 1.637769
+    },
+    {
+      "id": "ro",
+      "audio_seconds": 6.3,
+      "inference_ms": 742.375,
+      "rtf": 0.11783730158730159,
+      "inspection_and_file_output_seconds": 0.748602
+    },
+    {
+      "id": "sk",
+      "audio_seconds": 9.84,
+      "inference_ms": 948.004,
+      "rtf": 0.0963418699186992,
+      "inspection_and_file_output_seconds": 0.949772
+    },
+    {
+      "id": "sl",
+      "audio_seconds": 7.5,
+      "inference_ms": 802.764,
+      "rtf": 0.10703520000000001,
+      "inspection_and_file_output_seconds": 0.804135
+    },
+    {
+      "id": "es",
+      "audio_seconds": 12.84,
+      "inference_ms": 1145.69,
+      "rtf": 0.08922819314641746,
+      "inspection_and_file_output_seconds": 1.14723
+    },
+    {
+      "id": "sv",
+      "audio_seconds": 5.76,
+      "inference_ms": 590.49,
+      "rtf": 0.102515625,
+      "inspection_and_file_output_seconds": 0.593489
+    },
+    {
+      "id": "ru",
+      "audio_seconds": 16.92,
+      "inference_ms": 1446.104,
+      "rtf": 0.08546713947990543,
+      "inspection_and_file_output_seconds": 1.451327
+    },
+    {
+      "id": "uk",
+      "audio_seconds": 7.38,
+      "inference_ms": 831.282,
+      "rtf": 0.112639837398374,
+      "inspection_and_file_output_seconds": 0.833076
+    }
+  ],
+  "warm": {
+    "clips": 28,
+    "p50_inference_ms": 840.241,
+    "p95_inference_ms": 1453.952,
+    "weighted_rtf": 0.08961433560505883
+  },
+  "baseline_warm": {
+    "p50_inference_ms": 1554.992,
+    "weighted_rtf": 0.15963618485742379
+  },
+  "observed_ratio": {
+    "p50_old_over_new": 1.850649992085604,
+    "weighted_rtf_old_over_new": 1.7813688376931085
+  },
+  "limitations": [
+    "not under300ms full5s recognition target",
+    "no microphone/key-release/streaming latency measured",
+    "model_open timings do not establish a cold-load improvement",
+    "one ordered pass; uncontrolled global co-load and filesystem caches"
+  ],
+  "all29": {
+    "audio_seconds": 298.435,
+    "inference_seconds": 27.199433000000003,
+    "weighted_rtf": 0.09114022483957981
+  },
+  "baseline_all29_weighted_rtf": 0.16209530383500592
+}

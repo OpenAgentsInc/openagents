@@ -1,0 +1,55 @@
+// Exact row ownership for resident TDT. The host observes available CPUs;
+// Coax owns row partitions and the fixed total of at most eight threads.
+#authority;
+PkpRange :: struct {ok:bool;lo:int;hi:int;}
+#forall "parallel TDT partitions cover each row exactly once with balanced disjoint ranges" rows:0..<18,parts:1..<9 {
+ seen:[18]int;small:=rows;big:=0;cursor:=0;
+ for i:0..<parts {r:=pkp_range(rows,parts,i);#assert r.ok && r.lo==cursor && r.hi>=r.lo && r.hi<=rows;cursor=r.hi;n:=r.hi-r.lo;if n<small {small=n;}if n>big {big=n;}for k:r.lo..<r.hi {seen[k]+=1;}}
+ #assert cursor==rows && big-small<=1;for i:0..<rows {#assert seen[i]==1;}
+}
+#test "parallel TDT partition limits and rejected indices have no admitted rows" {
+ #assert pkp_range(8201,8,7).hi==8201 && pkp_range(8201,1,0).lo==0;
+ for bad:0..<6 {rows:=1;parts:=1;index:=0;if bad==0 {rows= -1;}if bad==1 {rows=8202;}if bad==2 {parts=0;}if bad==3 {parts=9;}if bad==4 {index= -1;}if bad==5 {index=1;}#assert !pkp_range(rows,parts,index).ok;}
+ #assert pkp_rows(5,0,5) && pkp_rows(5,5,5) && !pkp_rows(5,-1,2) && !pkp_rows(5,0,6) && !pkp_rows(5,3,2);
+}
+#test "parallel TDT jobs own complete dense rows and ignore unused second inputs" {
+ #assert pkp_counts(3,2,6,2,3,0,0,0,3,false) && pkp_counts(3,2,6,2,3,6,2,3,4,true);
+ for fault:0..<10 {rows:=3;cols:=2;nw:=6;nx:=2;nb:=3;rw:=6;rx:=2;rb:=3;ny:=3;
+  if fault==0 {rows=0;}if fault==1 {cols=0;}if fault==2 {rows=8202;}if fault==3 {cols=1025;}if fault==4 {nw=5;}if fault==5 {nx=1;}if fault==6 {nb=2;}if fault==7 {rw=5;}if fault==8 {rx=1;}if fault==9 {rb=2;}#assert !pkp_counts(rows,cols,nw,nx,nb,rw,rx,rb,ny,true);
+ }
+ #assert !pkp_counts(3,2,6,2,3,6,2,3,2,true);
+ #assert pkp_counts(8201,1024,8397824,1024,8201,0,0,0,8201,false);
+ #assert pkp_counts(1,1,1,1,1,1,1,1,1,true);
+ #assert !pkp_counts(0,1,0,1,0,0,1,0,0,true);
+ #assert !pkp_counts(8202,1,8202,1,8202,8202,1,8202,8202,true);
+ #assert !pkp_counts(1,0,0,0,1,0,0,1,1,true);
+ #assert !pkp_counts(1,1025,1025,1025,1,1025,1025,1,1,true);
+}
+#forall "parallel TDT thread choice stays within hardware and the fixed cap" available: -1..<17,requested:0..<11 {
+ n:=pkp_threads(requested,available);#assert n>=1 && n<=8;if available>0 {#assert n<=available;}if requested>0 && requested<8 && available>=requested {#assert n==requested;}
+}
+#test "parallel TDT thread endpoints remain observable" {
+ #assert pkp_threads(0,32)==8 && pkp_threads(8,8)==8 && pkp_threads(1,32)==1 && pkp_threads(0,0)==1 && pkp_threads(0,-1)==1 && pkp_threads(8,2)==2;
+ #assert pkp_threads(9,32)==8 && pkp_threads(-1,32)==8;
+ #assert pkp_threads(9223372036854775807,32)==8;
+ #assert pkp_threads(1,9223372036854775807)==1;
+ #assert pkp_threads(-9223372036854775807-1,-9223372036854775807-1)==1;
+}
+pkp_range :: (rows:int,parts:int,index:int)->PkpRange #export_c {
+ if rows<0 || rows>8201 || parts<1 || parts>8 || index<0 || index>=parts {return PkpRange.{};}
+ return PkpRange.{ok=true,lo=rows*index/parts,hi=rows*(index+1)/parts};
+}
+pkp_rows :: (rows:int,lo:int,hi:int)->bool {return lo>=0 && hi>=lo && hi<=rows;}
+pkp_counts :: (rows:int,cols:int,nw:int,nx:int,nb:int,rw:int,rx:int,rb:int,ny:int,second:bool)->bool {
+ if rows<1 || rows>8201 || cols<1 || cols>1024 {return false;}
+ if nw!=rows*cols || nx!=cols || nb!=rows || ny<rows {return false;}
+ return !second || (rw==rows*cols && rx==cols && rb==rows);
+}
+pkp_threads :: (requested:int,available:int)->int #export_c {
+ // C supplies only the observed CPU count. A failed observation becomes zero;
+ // cap it before enforcing the conservative one-thread minimum. All signed
+ // differences below fit, including INT64_MIN/MAX observations and requests.
+ observed:=available&((available>>63)^(-1));d:=observed-8;n:=8+(d&(d>>63));
+ d=n-1;n=1+(d&((d>>63)^(-1)));if requested<=0 {return n;}
+ d=requested-n;return n+(d&(d>>63));
+}

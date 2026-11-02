@@ -9,6 +9,7 @@
 #include <unistd.h>
 int main(void){
  char err[512],text[32]="unchanged";float sample=0;
+ assert(psionic_parakeet_decoder_threads(NULL)==0);
  assert(!psionic_parakeet_text(NULL,&sample,1,text,sizeof text,err,sizeof err));assert(!strcmp(text,"unchanged"));
  assert(!psionic_parakeet_decode(NULL,&sample,1,text,sizeof text,err,sizeof err));assert(!strcmp(text,"unchanged"));
  assert(!psionic_parakeet_json(NULL,text,sizeof text)&&!strcmp(text,"unchanged"));

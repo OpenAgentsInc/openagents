@@ -1,0 +1,6 @@
+psionic/lib/parakeet/parallel-plan.coax:52:22: error[E0108]: unexpected character '~'
+   observed:=available&~(available>>63);d:=observed-8;n:=8+(d&(d>>63));
+                       ^
+psionic/lib/parakeet/parallel-plan.coax:53:15: error[E0108]: unexpected character '~'
+   d=n-1;n=1+(d&~(d>>63));if requested<=0 {return n;}
+                ^

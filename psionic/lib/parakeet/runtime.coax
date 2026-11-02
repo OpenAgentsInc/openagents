@@ -3,6 +3,7 @@
 #load "fast.coax";
 #load "front.coax";
 #load "text.coax";
+#load "parallel.coax";
 #load "../whisper/wav.coax";
 pkrt_layout :: (file:[]u8,nodes:[]JvNode,offsets:[]int)->PkRtStatus #export_c {
  if !pkmp_model_size(file.count) {return PkRtStatus.file;}base:=pkrt_header(file);if base<0 {return PkRtStatus.header;}
@@ -28,7 +29,7 @@ cxpk_encode :: (ew:[]f32,x:[]f32,frames:int,work:[]f32,out:[]f32)->int #foreign;
 // Decode-only entry for independently recorded encoder tensors. Status is
 // typed; output text is published only after complete token rendering.
 pkrt_decode :: (dw:[]f32,pieces:[]string,encoded:[]f32,frames:int,work:[]f32,tokens:[]int,at:[]int,text:[]u8,stats:[]int)->PkRtStatus #export_c {
- r:=tdt_decode(tdt_parakeet_shape(),dw,encoded,frames,work,tokens,at);if r.status!=TdtStatus.ok {return PkRtStatus.decoder;}
+ r:=pkp_decode(tdt_parakeet_shape(),dw,encoded,frames,work,tokens,at,true);if r.status!=TdtStatus.ok {return PkRtStatus.decoder;}
  draft:[PK_TEXT_MAX]u8;n:=pkv3_text(pieces,tokens[0..<r.written],draft[..]);if n<0 || !pkrt_text_fits(n,text.count) || stats.count<2 {return PkRtStatus.text;}
  for i:0..<n {text[i]=draft[i];}text[n]=0;stats[0]=n;stats[1]=r.written;return PkRtStatus.ok;
 }

@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "/tmp/parakeet-optimized/runtime-gpu",
+    "/Users/christopherdavid/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99",
+    "/tmp/parakeet-gpu-inputs.tsv",
+    "/tmp/parakeet-gpu-corpus-parallel"
+  ],
+  "returncode": 0,
+  "seconds": 43.5041456669569
+}
