@@ -122,7 +122,7 @@ passed and how long it took. Each report is kept in
 Router of chapters 17 and 20 on this machine:
 
 - `coder policy add NAME --mode M [--authors A,B] [--engine E] [--label L]
-  [--channel chat|issue] [--deliver] [--text POLICY]` writes a source's
+  [--channel chat|issue|pr|mail|doc] [--deliver] [--text POLICY]` writes a source's
   policy to `router/sources.json`; `list` and `rm` read and remove them.
 - `coder watch THREAD` makes every later event on the Thread addressed to
   the agent. For a GitHub Thread such as `github:owner/repo#123` whose

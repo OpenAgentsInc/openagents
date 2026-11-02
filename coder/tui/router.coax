@@ -265,6 +265,89 @@ rt_reply_pr :: (task: string, id: string, ending: string, result: string, checks
   return cast(string) out[0..<n];
 }
 
+// The first line of text, at most max bytes, cut at a space with " …".
+rt_head :: (text: string, max: int, out: [] u8, n0: int) -> int {
+  e := 0; while e < text.count && text[e] != 10 { e += 1; }
+  if e <= max { return cd_cat(out, n0, cast(string) text[0..<e]); }
+  c := max; while c > 0 && text[c] != ' ' { c -= 1; }
+  if c == 0 { c = max; while c > 0 && (text[c] & 192) == 128 { c -= 1; } }
+  n := cd_cat(out, n0, cast(string) text[0..<c]);
+  return cd_cat(out, n, " …");
+}
+
+// The first paragraph of text: up to the first blank line.
+rt_para :: (text: string) -> string {
+  e := 0;
+  while e < text.count { if text[e] == 10 && e + 1 < text.count && text[e + 1] == 10 { break; } e += 1; }
+  return cast(string) text[0..<e];
+}
+
+// text with each line longer than width broken at spaces; a list item's
+// later lines are indented two spaces. Code lines (four spaces or a fence) stay.
+rt_wrap :: (text: string, width: int, out: [] u8, n0: int) -> int {
+  n := n0; at := 0; fenced := false;
+  while at <= text.count && at < text.count + 1 {
+    e := at; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at..<e];
+    if line.count >= 3 && cast(string) line[0..<3] == "```" { fenced = !fenced; }
+    code := fenced || (line.count >= 4 && cast(string) line[0..<4] == "    ");
+    item := line.count >= 2 && (line[0] == '-' || line[0] == '*') && line[1] == ' ';
+    rest := line; first := true;
+    while true {
+      lim := ifx first then width else width - (ifx item then 2 else 0);
+      if !first && item { n = cd_cat(out, n, "  "); }
+      if code || rest.count <= lim { n = cd_cat(out, n, rest); break; }
+      c := lim; while c > 0 && rest[c] != ' ' { c -= 1; }
+      if c == 0 { c = lim; while c < rest.count && rest[c] != ' ' { c += 1; } if c >= rest.count { n = cd_cat(out, n, rest); break; } }
+      n = cd_cat(out, n, cast(string) rest[0..<c]); n = cd_cat(out, n, "\n");
+      rest = cast(string) rest[c + 1..<rest.count]; first = false;
+    }
+    if e >= text.count { break; }
+    n = cd_cat(out, n, "\n");
+    at = e + 1;
+  }
+  return n;
+}
+
+// A mail reply: a Subject line, a blank line, then plain text wrapped at 72
+// columns. The conclusion first, the rest of the result after it, the
+// commands the session ran, and the session. No Markdown headings.
+rt_reply_mail :: (task: string, id: string, ending: string, result: string, checks: string, out: [] u8) -> string {
+  n := cd_cat(out, 0, ifx ending == "finished" then "Subject: Re: " else "Subject: Not finished: ");
+  n = rt_head(ifx task.count > 0 then task else "your request", 64, out, n);
+  n = cd_cat(out, n, "\n\n");
+  if ending != "finished" { n = cd_cat(out, n, "The work ended as "); n = cd_cat(out, n, ending); n = cd_cat(out, n, " before it finished.\n\n"); }
+  e := ifx result.count > RT_ISSUE_BYTES then RT_ISSUE_BYTES else result.count;
+  while e > 0 && e < result.count && (result[e] & 192) == 128 { e -= 1; }
+  n = rt_wrap(ifx result.count > 0 then cast(string) result[0..<e] else "There is no result text.", 72, out, n);
+  if e < result.count { n = cd_cat(out, n, "\n\nThe rest is in the session: coder log "); n = cd_cat(out, n, id); }
+  if checks.count > 0 { n = cd_cat(out, n, "\n\nCommands run:\n"); n = rt_wrap(checks, 72, out, n); while n > 0 && out[n - 1] == 10 { n -= 1; } }
+  n = cd_cat(out, n, "\n\nSession: "); n = cd_cat(out, n, id);
+  return cast(string) out[0..<n];
+}
+
+// A document reply: a title from the task, then Summary (the result's first
+// paragraph), Details (the rest, when there is more), Verification and the session.
+rt_reply_doc :: (task: string, id: string, ending: string, result: string, checks: string, out: [] u8) -> string {
+  n := cd_cat(out, 0, "# ");
+  n = rt_head(ifx task.count > 0 then task else "Result", 80, out, n);
+  n = cd_cat(out, n, "\n\n## Summary\n\n");
+  if ending != "finished" { n = cd_cat(out, n, "Not finished: the session ended as "); n = cd_cat(out, n, ending); n = cd_cat(out, n, ". "); }
+  e := ifx result.count > RT_ISSUE_BYTES then RT_ISSUE_BYTES else result.count;
+  while e > 0 && e < result.count && (result[e] & 192) == 128 { e -= 1; }
+  whole := cast(string) result[0..<e];
+  summary := rt_para(whole);
+  n = cd_cat(out, n, ifx summary.count > 0 then summary else "There is no result text.");
+  if summary.count + 2 < whole.count {
+    n = cd_cat(out, n, "\n\n## Details\n\n"); n = cd_cat(out, n, cast(string) whole[summary.count + 2..<whole.count]);
+  }
+  if e < result.count { n = cd_cat(out, n, "\n\nThe rest is in the session: `coder log "); n = cd_cat(out, n, id); n = cd_cat(out, n, "`."); }
+  n = cd_cat(out, n, "\n\n## Verification\n\n");
+  n = cd_cat(out, n, ifx checks.count > 0 then checks else "No commands were run in this session.\n");
+  n = cd_cat(out, n, "\nSession: `"); n = cd_cat(out, n, id); n = cd_cat(out, n, "`");
+  return cast(string) out[0..<n];
+}
+
 rt_reply :: (channel: string, id: string, ending: string, steps: int, result: string, out: [] u8) -> string {
   if channel == "issue" {
     tb: [16] u8;
@@ -834,9 +917,10 @@ rt_report :: (p: [] RtPaths, th: [] RtThreads, i: int, text: string, s: [] CsSum
   rb: [32768] u8; result := rt_last_turn(text, lar[..], rb[..]);
   ob: [16384] u8;
   body := "";
-  if channel == "pr" {
+  if channel == "pr" || channel == "mail" || channel == "doc" {
     ckb: [8192] u8; car: [1] ClArena; cab: [65536] u8; car[0] = ClArena.{buf = cab[..]};
-    body = rt_reply_pr(cast(string) s[0].task[0..<s[0].ntask], id, cast(string) s[0].ending[0..<s[0].nending], result, rt_checks(text, car[..], ckb[..]), ob[..]);
+    task := cast(string) s[0].task[0..<s[0].ntask]; en := cast(string) s[0].ending[0..<s[0].nending]; ck := rt_checks(text, car[..], ckb[..]);
+    body = ifx channel == "pr" then rt_reply_pr(task, id, en, result, ck, ob[..]) else ifx channel == "mail" then rt_reply_mail(task, id, en, result, ck, ob[..]) else rt_reply_doc(task, id, en, result, ck, ob[..]);
   } else { body = rt_reply(channel, id, cast(string) s[0].ending[0..<s[0].nending], s[0].steps, result, ob[..]); }
   t: RtTrigger; t.id = id; t.source = source; t.thread = thread;
   jb: [65536] u8;
@@ -1086,7 +1170,7 @@ rt_sources_with :: (sources: string, name: string, entry: string, out: [] u8) ->
 }
 
 RT_POLICY_MODES :: [3] string.["explicit_requests_only", "candidate", "ignore"];
-RT_CHANNELS :: [3] string.["chat", "issue", "pr"];
+RT_CHANNELS :: [5] string.["chat", "issue", "pr", "mail", "doc"];
 
 // One source's policy entry. authors is a comma-separated list ("*" for anyone).
 rt_policy_entry :: (mode: string, authors: string, engine: string, label: string, channel: string, deliver: bool, ci: bool, policy: string, out: [] u8) -> string {
@@ -1140,7 +1224,7 @@ cd_cmd_policy :: (args: [] Args, json: bool) -> int {
     modes := RT_POLICY_MODES; channels := RT_CHANNELS;
     if !rt_in(mode, modes[..]) { tool_errln("coder policy: --mode is explicit_requests_only, candidate or ignore"); return 2; }
     channel := args_value(args, "--channel", "");
-    if channel.count > 0 && !rt_in(channel, channels[..]) { tool_errln("coder policy: --channel is chat, issue or pr"); return 2; }
+    if channel.count > 0 && !rt_in(channel, channels[..]) { tool_errln("coder policy: --channel is chat, issue, pr, mail or doc"); return 2; }
     eb: [8192] u8;
     entry := rt_policy_entry(mode, args_value(args, "--authors", "*"), args_value(args, "--engine", ""), args_value(args, "--label", ""), channel, args_has(args, "--deliver"), args_has(args, "--ci"), args_value(args, "--text", ""), eb[..]);
     next = rt_sources_with(sources, name, entry, ob[..]);
@@ -1276,4 +1360,25 @@ cd_cmd_watch :: (thread: string, stop: bool, list: bool) -> int {
   #assert rt_github_number("github:o/r#123") == "123" && rt_github_number("ci") == "" && rt_github_number("github:o/r#") == "";
   ob: [64] u8;
   #assert rt_iso(1793604694334529, ob[..]) == "2026-11-02T07:31:34Z";
+}
+
+#test "router: mail replies have a subject and wrapped plain text; documents have a summary, details and verification" {
+  ob: [8192] u8;
+  m := rt_reply_mail("Why does the nightly build fail on the Linux runners since Tuesday's dependency bump?", "S1", "finished",
+    "The bump moved openssl to 3.4, and the runners still have 3.0 headers, so the link step fails.\n\nPinning it back fixes the build.", "- `make`: passed\n", ob[..]);
+  #assert cd_holds(m, "Subject: Re: Why does the nightly build fail on the Linux runners since …\n\n");
+  #assert cd_holds(m, "The bump moved openssl to 3.4, and the runners still have 3.0 headers,\nso the link step fails.");
+  #assert cd_holds(m, "\n\nCommands run:\n- `make`: passed\n\nSession: S1");
+  #assert !cd_holds(m, "##");
+  ob2: [8192] u8;
+  st := rt_reply_mail("fix it", "S2", "stopped", "", "", ob2[..]);
+  #assert cd_holds(st, "Subject: Not finished: fix it\n\nThe work ended as stopped before it finished.");
+  ob3: [8192] u8;
+  d := rt_reply_doc("write the release notes", "S3", "finished", "Three fixes and one feature.\n\n- faster start\n- fewer prompts", "", ob3[..]);
+  #assert cd_holds(d, "# write the release notes\n\n## Summary\n\nThree fixes and one feature.\n\n## Details\n\n- faster start\n- fewer prompts\n\n## Verification\n\nNo commands were run in this session.\n\nSession: `S3`");
+  ob4: [8192] u8;
+  d1 := rt_reply_doc("x", "S4", "finished", "One paragraph only.", "", ob4[..]);
+  #assert !cd_holds(d1, "## Details");
+  wb: [256] u8;
+  #assert cast(string) wb[0..<rt_wrap("- one two three four five", 12, wb[..], 0)] == "- one two\n  three four\n  five";
 }

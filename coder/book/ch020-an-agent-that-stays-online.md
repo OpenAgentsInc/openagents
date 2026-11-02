@@ -16,8 +16,9 @@
 > daemon gives a job the handle's variable only when its grant lists the
 > handle, and the session log shows `[credential]` in place of the value.
 > A Worker whose model provider didn't answer waits, with a doubling
-> backoff, and then continues in a fork the Thread follows. Still to come:
-> rules for mail and documents.
+> backoff, and then continues in a fork the Thread follows. Mail and
+> document replies have their own structure. Still open: sending mail
+> (replies wait in the outbox) and following a project's own templates.
 
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
@@ -249,9 +250,13 @@ and the reply follows its rules (`rt_reply`):
 | --- | --- |
 | `chat` | At most 100 words, cut with " …". Says how a Worker stopped if it didn't finish. |
 | `issue` | Structured: the ending, steps and session first, then the full result. |
+| `mail` | `Subject: Re:` and the task's first line (`Subject: Not finished:` when it didn't finish), a blank line, then plain text wrapped at 72 columns: the result, the commands run, the session. No Markdown headings. |
+| `doc` | Markdown: a title from the task, **Summary** (the result's first paragraph), **Details** (the rest, only when there is more), **Verification** and the session. |
 | `pr` | A pull request body with three sections, always present: **Background** (the task), **Change** (the Worker's result), **Verification** (each command the session ran, from its log, as passed or failed; the last ten). A session that did not finish says so. |
 
-`coder policy add SOURCE --channel pr` sets a source's channel. In a live
+`coder policy add SOURCE --channel pr` sets a source's channel. Mail and
+document replies go to the outbox (`~/.openagents/coder/outbox`) only:
+sending mail is an outward action, and no sender is wired yet. In a live
 check, an event `$ echo pr-three` on a `pr` source got this reply:
 
 ```text
@@ -387,7 +392,8 @@ machine's grant".
   stopped job reports as stopped, and an expired one as expired.
 - [x] **Channels.** Every chat reply in a replayed stream is 100 words or fewer,
   and every pull request body has its required sections. Checked by unit
-  checks on `rt_reply` and `rt_reply_pr`, and the smoke's replies.
+  checks on `rt_reply`, `rt_reply_pr`, `rt_reply_mail` and `rt_reply_doc`,
+  and the smoke's replies.
 - [x] **Restart.** Killing the loop's container mid-task and starting a new one
   resumes every open task from the log with no lost or repeated tool effects.
   Checked by the smoke: SIGKILL right after a Worker starts, and right after
