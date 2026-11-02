@@ -1,0 +1,5 @@
+aethyr/render/tests/compare-interiors-checks.coax:34:2: error[E0303]: 'bad' is already declared at line 265; Coax does not allow shadowing
+   bad:=cfi_done(r);#assert !bad.valid && bad.full.status==CFStatus.bad_sequence && bad.checked.status==CFStatus.bad_sequence;
+   ^
+  fix: pick another name
+1 error

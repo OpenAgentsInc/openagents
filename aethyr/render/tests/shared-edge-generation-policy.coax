@@ -1,0 +1,5 @@
+// The chapter11 geometry envelope has one locked input/profile/radius scope.
+#load "shared-edge-envelope-policy.coax";
+#authority;
+#test "shared edge generation admits only declared fixture and supported precision profiles" {hash:="62823c676088a5296d1ca46bc265aafe93b1946dec1f60268ee05818474d3302";#assert seg_admit("nearest-even",1155168,hash,0) && seg_admit("nearest-positive",1155168,hash,0);#assert !seg_admit("analytic",1155168,hash,0) && !seg_admit("nearest-even",1155167,hash,0) && !seg_admit("nearest-even",1155168,"other",0);#assert !seg_admit("nearest-even",1155168,hash,-1) && !seg_admit("nearest-even",1155168,hash,1);}
+seg_admit :: (rounding:string,bytes:int,hash:string,existing_entries:int)->bool {return (rounding=="nearest-even" || rounding=="nearest-positive") && bytes==1155168 && hash=="62823c676088a5296d1ca46bc265aafe93b1946dec1f60268ee05818474d3302" && existing_entries==0;}

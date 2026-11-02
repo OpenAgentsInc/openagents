@@ -1,0 +1,44 @@
+#test "interior comparison retains raw failure and excludes only declared finite boundary packets" {
+ cpu:[48]u8;gpu:[48]u8;cf_test_float(gpu[..],0,1);cf_test_float(gpu[..],28,1);cf_test_float(gpu[..],44,1);
+ mask:=[3]u8.[1,0,1];r:=cfi_begin(3,1,0,48,48,3);r=cfi_done(cfi_accumulate(r,cpu[..],gpu[..],mask[..],0,3,0));
+ #assert r.valid && r.full.status==CFStatus.different && r.full.colour_failures==3;
+ #assert r.checked.status==CFStatus.different && r.checked.colour_failures==1 && r.checked.samples[0].x==1 && r.checked.samples[0].channel==3;
+ #assert r.masked_pixels==2 && r.checked.channels==4 && r.excluded_colour_failures==2 && r.full.channels==12;
+ mask[1]=1;#assert !cfi_done(cfi_accumulate(cfi_begin(3,1,0,48,48,3),cpu[..],gpu[..],mask[..],0,3,0)).valid;
+ cf_test_float(gpu[..],28,0);mask[1]=0;r=cfi_done(cfi_accumulate(cfi_begin(3,1,0,48,48,3),cpu[..],gpu[..],mask[..],0,3,0));
+ #assert r.valid && r.checked.status==CFStatus.ok && r.full.status==CFStatus.different && r.excluded_colour_failures==2;
+}
+#test "a boundary packet never waives nonfinite values in any image storage format" {
+ cpu:[32]u8;gpu:[32]u8;mask:=[2]u8.[1,0];
+ for format:0..<2 {for side:0..<2 {for word:[3]u32.[0x7fc00001,0x7f800000,0xff800000] {
+   for k:0..<32 {cpu[k]=0;gpu[k]=0;}if side==0 {for k:0..<4 {cpu[k]=cast,trunc(u8)(word>>cast(u32)(8*k));}}
+   else {if format==0 {for k:0..<4 {gpu[k]=cast,trunc(u8)(word>>cast(u32)(8*k));}}else {half:=ifx word==0x7fc00001 then 0x7e01 else ifx word==0x7f800000 then 0x7c00 else 0xfc00;gpu[0]=cast,trunc(u8)half;gpu[1]=cast,trunc(u8)(half>>8);}}
+   n:=2*cf_stride(format);r:=cfi_done(cfi_accumulate(cfi_begin(2,1,format,32,n,2),cpu[..],gpu[0..<n],mask[..],format,2,0));
+   #assert r.valid && r.full.nonfinite_failures==1 && r.checked.nonfinite_failures==1 && r.checked.status==CFStatus.different;
+ }}}
+}
+#test "interior mask admission is atomic and refuses invalid lengths bytes and sequence" {
+ cpu:[32]u8;gpu:[32]u8;mask:=[2]u8.[0,2];r:=cfi_begin(2,1,0,32,32,2);
+ #assert r.valid && !cfi_begin(2,1,0,32,32,1).valid && !cfi_begin(2,1,0,31,32,2).valid;
+ #assert !cfi_begin(0,1,0,0,0,0).valid && !cfi_begin(2,1,4,32,32,2).valid;
+ bad:=cfi_accumulate(r,cpu[..],gpu[..],mask[..],0,2,0);#assert !bad.valid && bad.full.processed==0 && bad.checked.processed==0 && bad.masked_pixels==0;
+ mask[1]=0;#assert !cfi_accumulate(r,cpu[..],gpu[..],mask[0..<1],0,2,0).valid;
+ #assert !cfi_accumulate(r,cpu[0..<31],gpu[..],mask[..],0,2,0).valid;
+ #assert !cfi_accumulate(r,cpu[..],gpu[0..<31],mask[..],0,2,0).valid;
+ #assert !cfi_accumulate(r,cpu[..],gpu[..],mask[..],0,2,1).valid;
+ #assert !cfi_accumulate(r,cpu[..],gpu[..],mask[..],-1,2,0).valid;
+ #assert !cfi_accumulate(r,cpu[..],gpu[..],mask[..],0,3,0).valid;
+ bad=cfi_accumulate(r,cpu[0..<17],gpu[0..<16],mask[0..<1],0,2,0);#assert !bad.valid && bad.full.status==CFStatus.ok && bad.full.processed==0;
+ bad=cfi_accumulate(r,cpu[..],gpu[0..<31],mask[..],0,2,0);#assert !bad.valid && bad.full.status==CFStatus.ok;
+ bad=cfi_accumulate(r,cpu[..],gpu[..],mask[0..<1],0,2,0);#assert !bad.valid && bad.full.status==CFStatus.ok;
+ bad=cfi_done(r);#assert !bad.valid && bad.full.status==CFStatus.bad_sequence && bad.checked.status==CFStatus.bad_sequence;
+ short:=cfi_begin(1,1,0,16,16,1);bad=cfi_accumulate(short,cpu[..],gpu[..],mask[..],0,1,0);#assert !bad.valid && bad.full.status==CFStatus.bad_sequence && bad.checked.processed==0;
+ invalid:=r;invalid.valid=false;#assert !cfi_accumulate(invalid,cpu[..],gpu[..],mask[..],0,2,0).valid && !cfi_done(invalid).valid;
+ inconsistent:=r;inconsistent.full.processed=2;bad=cfi_done(inconsistent);#assert !bad.valid && bad.checked.status==CFStatus.bad_sequence;
+}
+#test "zero mask preserves strict format decoding alpha limits and chunk coordinates" {
+ cpu:[32]u8;for k:0..<8 {cf_test_float(cpu[..],k*4,1);}gpu:=[8]u8.[255,255,255,255,255,255,255,0];mask:=[2]u8.[0,0];
+ for format:2..<4 {r:=cfi_begin(2,1,format,32,8,2);r=cfi_accumulate(r,cpu[0..<16],gpu[0..<4],mask[0..<1],format,2,0);#assert r.valid && r.checked.status==CFStatus.ok && r.full.processed==1 && r.checked.processed==1;
+ r=cfi_done(cfi_accumulate(r,cpu[16..<32],gpu[4..<8],mask[1..<2],format,2,1));#assert r.valid && r.masked_pixels==0 && r.excluded_colour_failures==0 && r.checked.channels==8;
+ #assert r.checked.colour_failures==r.full.colour_failures && r.checked.max_absolute_error==r.full.max_absolute_error && r.checked.samples[0].x==1 && r.checked.samples[0].channel==3;}
+}

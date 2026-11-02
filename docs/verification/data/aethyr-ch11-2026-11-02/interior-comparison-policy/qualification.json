@@ -1,0 +1,18 @@
+{
+  "schema": "aethyr.render.interior-comparison-policy.v1",
+  "status": "pure_policy_passed_certificate_cli_and_actual_frame_gates_pending",
+  "policy": "aethyr/render/tests/compare-interiors-policy.coax",
+  "policy_sha256": "846e22bab68ad6d8315613d89cbfbd8471da8b6074c78380672e39c761b9112c",
+  "checks_sha256": "934f9639ffe54af644dc0c91ac8407acc51e5574f6733d872c5470dfefe8c00e",
+  "compiler_sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+  "root_mutants": {"total": 82, "killed": 82, "survived": 0, "waivers": 0},
+  "checks": "Four new groups plus eleven imported strict-comparator groups. The final mutation invocation runs the complete baseline before mutations. Earlier parser/shadowing errors and the initial nine survivors are retained honestly.",
+  "behavior": [
+    "The original full strict result is retained, including every finite colour failure and all RGBA values.",
+    "A separate strict result checks all unmasked RGBA packets under the unchanged 0.002 rule.",
+    "Every masked finite packet contributes four unchecked channels; it is not called colour-qualified.",
+    "Nonfinite values fail everywhere, even when masked.",
+    "Malformed mask lengths/bytes/sequences refuse before publication; an all-masked image cannot qualify an interior."
+  ],
+  "limitations": "This policy does not admit a geometric certificate or establish matching frame/resources. Those belong to the separate CLI and enclosing host qualification. No target GPU frame was read by this pure policy qualification. The published strict v1 comparator is unchanged."
+}

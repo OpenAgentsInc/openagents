@@ -1,0 +1,34 @@
+// A separately declared geometry boundary exclusion, never a change to the
+// strict v1 comparator. Excluded finite RGBA packets remain unqualified.
+#module "aethyr.render.tool.compare.interiors";
+#load "compare-frames-policy.coax";
+#authority;
+#load "compare-interiors-checks.coax";
+CFIResult :: struct {valid:bool;full:CFResult;checked:CFResult;masked_pixels:int;excluded_colour_failures:int;width:int;format:int;}
+cfi_begin :: (width:int,height:int,format:int,cpu_bytes:int,gpu_bytes:int,mask_bytes:int)->CFIResult {
+ r:=CFIResult.{width=width,format=format};r.full=cf_begin(width,height,format,cpu_bytes,gpu_bytes);r.checked=r.full;r.checked.channels=0;
+ r.valid=r.full.status==CFStatus.ok && mask_bytes==r.full.pixels;return r;
+}
+cfi_accumulate :: (prior:CFIResult,cpu:[]u8,gpu:[]u8,mask:[]u8,format:int,width:int,first:int)->CFIResult {
+ r:=prior;
+ if !r.valid {return r;}
+ if format!=r.format || width!=r.width || cpu.count%16!=0 || mask.count!=cpu.count/16 || gpu.count!=mask.count*cf_stride(format) || first!=r.checked.processed {r.valid=false;return r;}
+ for byte:mask {if byte>1 {r.valid=false;return r;}}
+ r.full=cf_accumulate(r.full,cpu,gpu,format,width,first);
+ if r.full.status!=CFStatus.ok && r.full.status!=CFStatus.different {r.valid=false;return r;}
+ for pixel:0..<mask.count {
+  if mask[pixel]==0 {
+   r.checked=cf_accumulate(r.checked,cpu[pixel*16..<(pixel+1)*16],gpu[pixel*cf_stride(format)..<(pixel+1)*cf_stride(format)],format,width,first+pixel);
+   r.checked.channels+=4;
+  }else {r.masked_pixels+=1;r.checked.processed+=1;}
+ }
+ r.excluded_colour_failures=r.full.colour_failures-r.checked.colour_failures;return r;
+}
+cfi_done :: (prior:CFIResult)->CFIResult {
+ r:=prior;if !r.valid {return r;}r.full=cf_done(r.full);r.checked=cf_done(r.checked);
+ r.valid=r.full.processed==r.full.pixels && r.checked.processed==r.full.pixels && r.masked_pixels<r.full.pixels;
+ // Every original value was decoded by the full comparator. Nonfinite values
+ // are fatal everywhere, including packets excluded from colour comparison.
+ r.checked.nonfinite_failures=r.full.nonfinite_failures;
+ if r.full.nonfinite_failures>0 {r.checked.status=CFStatus.different;}return r;
+}

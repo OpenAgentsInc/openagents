@@ -1,0 +1,24 @@
+// Declared geometry scope only. This does not assert a hardware error bound
+// or legal alternate vertex/depth result. Coordinates are in 1/512 pixels.
+#module "aethyr.render.tests.shared.edge.envelope";
+#load "tooling-policy.coax";
+#authority;
+#test "shared edge envelope has exact finite endpoint, axis and diagonal boundaries" {#assert se_point(0,0,1024,0,512,1,1) && !se_point(0,0,1024,0,512,2,1);#assert se_point(0,0,0,1024,1,512,1) && !se_point(0,0,0,1024,2,512,1);#assert se_point(0,0,1024,1024,512,514,1) && !se_point(0,0,1024,1024,512,515,1);#assert se_point(0,0,1024,1024,-1,-1,1) && !se_point(0,0,1024,1024,-2,-2,1);#assert se_point(0,0,1024,1024,1025,1025,1) && !se_point(0,0,1024,1024,1026,1026,1);}
+#test "shared edge envelope zero radius and known input-only witnesses remain distinct" {#assert se_point(0,0,1024,1024,512,512,0) && !se_point(0,0,1024,1024,512,513,0);#assert se_point(22176,45526,21556,36052,21760,39168,1) && !se_point(22176,45526,21556,36052,21760,39168,0);#assert se_point(134724,45340,134136,55518,134400,50944,1) && !se_point(134724,45340,134136,55518,134400,50944,0);}
+#test "shared edge envelope domain refuses malformed radius, degenerate edges and unbounded coordinates" {#assert !se_point(0,0,0,0,0,0,1) && !se_point(0,0,1,1,0,0,-1) && !se_point(0,0,1,1,0,0,2);#assert !se_point(41943041,0,0,1,0,0,1) && !se_point(-41943041,0,0,1,0,0,1);#assert se_point(-41943040,0,41943040,0,0,0,1);}
+#forall "shared edge envelope is independent of endpoint order and axis orientation" p:-4..<5,q:-4..<5 {#assert se_point(-2,-1,3,2,p,q,1)==se_point(3,2,-2,-1,p,q,1);#assert se_point(-2,-1,3,2,p,q,1)==se_point(-1,-2,2,3,q,p,1);#assert se_point(-2,-1,3,2,p,q,1)==se_point(2,1,-3,-2,-p,-q,1);}
+#test "shared edge witness rational endpoints are feasible and ordered without float division" {#assert se_interval(0,0,1024,0,512,1,511,1024,513,1024);#assert !se_interval(0,0,1024,0,512,2,511,1024,513,1024);#assert !se_interval(0,0,1024,0,512,1,513,1024,511,1024);#assert !se_interval(0,0,1024,0,512,1,510,1024,513,1024);#assert !se_interval(0,0,1024,0,512,1,511,1024,514,1024);#assert se_interval(134724,45340,134136,55518,134400,50944,5603,10178,5605,10178);#assert !se_interval(0,0,1,1,0,0,0,0,1,1) && !se_interval(0,0,1,1,0,0,-1,1,1,1) && !se_interval(0,0,1,1,0,0,0,1,2,1);#assert !se_interval(0,0,1,1,0,0,0,83886081,1,1);}
+#test "shared edge mask records exact binary membership including empty zero control" {zero:[]u8;mask:=[4]u8.[0,1,0,1];#assert se_count(zero)==0 && se_count(mask[..])==2;mask[0]=2;#assert se_count(mask[..])== -1;}
+#test "shared edge rational unit endpoints and maximum denominators remain admitted" {#assert se_interval(0,0,1,1,0,0,0,1,1,1);#assert se_interval(0,0,1024,0,-1,0,0,1,0,1);#assert se_interval(0,0,1024,0,1025,0,1,1,1,1);#assert se_interval(0,0,1,1,0,0,0,83886080,0,83886080);#assert !se_interval(0,0,1,1,0,0,0,1,0,83886081);#assert !se_interval(10,0,1034,0,522,1,511,1024,514,1024);}
+se_point :: (ax:int,ay:int,bx:int,by:int,px:int,py:int,radius:int)->bool #export_c {
+ if radius<0 || radius>1 || (ax==bx && ay==by) {return false;}for c:[6]int.[ax,ay,bx,by,px,py] {if c< -41943040 || c>41943040 {return false;}}
+ dx:=bx-ax;dy:=by-ay;adx:=cast(int)abs(cast(f64)dx);ady:=cast(int)abs(cast(f64)dy);
+ if px<(ax+bx-adx)/2-radius || px>(ax+bx+adx)/2+radius || py<(ay+by-ady)/2-radius || py>(ay+by+ady)/2+radius {return false;}
+ cross:=dx*(py-ay)-dy*(px-ax);bound:=radius*(adx+ady);return cross>= -bound && cross<=bound;
+}
+se_interval :: (ax:int,ay:int,bx:int,by:int,px:int,py:int,ln:int,ld:int,hn:int,hd:int)->bool {
+ if ld<1 || hd<1 || ld>83886080 || hd>83886080 || ln<0 || hn<0 || ln>ld || hn>hd || ln*hd>hn*ld {return false;}
+ if !se_point(ax,ay,bx,by,px,py,1) {return false;}
+ for span:[2][2]int.[[2]int.[ln,ld],[2]int.[hn,hd]] {for axis:[2][3]int.[[3]int.[ax,bx,px],[3]int.[ay,by,py]] {value:=(axis[1]-axis[0])*span[0];if value<(axis[2]-1-axis[0])*span[1] || value>(axis[2]+1-axis[0])*span[1] {return false;}}}return true;
+}
+se_count :: (mask:[]u8)->int {n:=0;for byte:mask {if byte>1 {return -1;}n+=cast(int)byte;}return n;}

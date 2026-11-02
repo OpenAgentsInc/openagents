@@ -1,0 +1,93 @@
+{
+  "schema": "aethyr.render.shared-edge-envelope-qualification.v1",
+  "date": "2026-11-02",
+  "status": "geometry_math_verified_unadmitted",
+  "scope": "Declared nominal-geometry shared-fold-edge exclusion only. Complete RGBA packets at marked pixels are UNQUALIFIED. This establishes neither a legal alternate shader/depth result nor a universal hardware error bound, visible edge, or depth winner. No GPU/color/depth image is an input to this oracle or its generation/census tools.",
+  "entrypoint": "aethyr/render/tests/derive-shared-edge-envelope.coax",
+  "oracle": "aethyr/render/tests/shared_edge_envelope_oracle.py",
+  "independent_coax_census": "aethyr/render/tests/check-shared-edge-envelope.coax",
+  "contract": "aethyr/render/tests/SHARED_EDGE_ENVELOPE.md",
+  "algorithm_version": "exact-shared-world-fold-linf-cell-v1",
+  "oracle_source_sha256": "61f2004d8653e7bd84f79b8cec25263445798feb31856e6376ea37903735fc31",
+  "geometry": {
+    "sha256": "62823c676088a5296d1ca46bc265aafe93b1946dec1f60268ee05818474d3302",
+    "bytes": 1155168,
+    "triangles": 6876,
+    "vertex_stride_bytes": 56,
+    "layout": "little-endian f32: clip4/world3/normal3/tint3/glow1; every one of the14words is checked finite"
+  },
+  "profile": {
+    "rounding": ["nearest-even", "nearest-positive"],
+    "subpixel_bits": 8,
+    "xy": "guard-band",
+    "guard_pixels": 65536,
+    "width": 320,
+    "height": 180,
+    "radius": {"numerator": 1, "denominator": 512},
+    "claim": "Fixed conservative region declared from the measured eight-bit profile; not a claim of legal post-snap endpoint movement.",
+    "measurement_context": "aethyr/book/ch011-the-wgsl-renderer.md; docs/verification/aethyr-depth-diagnostics-2026-11-02.json. Neither source establishes a universal interpolation/depth error constant."
+  },
+  "global_census": {
+    "edge_occurrences": 20628,
+    "exact_shared_endpoint_groups": 9276,
+    "unmatched_groups": 0,
+    "eligible_shared_fold_groups": 7471,
+    "eligible_shared_coplanar_groups_excluded": 1598,
+    "degenerate_endpoint_groups_excluded": 116,
+    "eligible_triangles": 6086,
+    "world_degenerate_first_reason": 736,
+    "nonpositive_w_first_reason": 46,
+    "snapped_screen_degenerate_first_reason": 8,
+    "first_reason_note": "Mutually exclusive eligibility categories. Original near/far/W/guard-ineligible geometry and degenerates do not generate mask regions; no synthetic clipping edges are introduced."
+  },
+  "masks": {
+    "profiles_byte_identical": true,
+    "bytes": 57600,
+    "pixels": 159,
+    "whole_rgba_channels_unqualified": 636,
+    "sha256": "fe53de8772f0ea5d9ebcf5343247bf385a1691781b19c4de0807af10f951198c",
+    "zero_radius_exact_centerline_pixels": 62,
+    "zero_radius_sha256": "a63a250b3638d01e873b63335575f0920bc4ba82f6bd3646ac556a8939146e07",
+    "distinct_all_zero_mask_pixels": 0,
+    "distinct_all_zero_mask_sha256": "c72274a22cba2dcef62e0f62834446ee39b0cd95ad0faa27a89b3b49f48aa390",
+    "witness_records": 160,
+    "witness_pixels": 159,
+    "selected_known_point_checks": "Input-only regression witnesses include edges for primitive pairs398/405 and1417/1424. No primitive ID or selected pixel occurs in the oracle's generation algorithm."
+  },
+  "independent_math": {
+    "oracle": "Exact Fraction intersection of t in[0,1] with each axis constraint; finite segment, including exact boundary equality.",
+    "coax": "Independent bounded integer cross/AABB Minkowski-envelope predicate; rebuilds every mask and verifies both exact rational t endpoints of every witness.",
+    "complete_per_profile_coax_candidate_pixel_visits": 28629,
+    "every_mask_bit_and_centerline_bit_equal": true,
+    "every_witness_verified": true,
+    "python_analytic_tests": 6,
+    "independent_hull_vs_rational_lattice_cases": 7938,
+    "math_policy_mutants": 121,
+    "math_policy_killed": 121,
+    "generation_policy_mutants": 8,
+    "generation_policy_killed": 8,
+    "survivors": 0,
+    "waivers": 0,
+    "checks_first": "Independent oracle tests and Coax checks were authored before their implementations. Initial missing-oracle, parser/library setup failures and every mutation survivor round are retained. The final generation admission stub runs85/86 passing checks before the implementation; its final8/8mutants are killed."
+  },
+  "peer_review": {
+    "reviewer": "independent agent /root/aethyr_issue_assessment",
+    "status": "no_actionable_math_eligibility_or_schema_issue_found",
+    "review_scope": "Rational membership and row scan independent of Coax cross/AABB; exact full clip/world keys and world triple product; all14word finite scan; explicit first-reason ineligibility; raw-mask/profile/source joins; whole masked RGBA unqualified. This is an explicit geometry scope, not a depth/VS/hardware ambiguity proof."
+  },
+  "orchestration": {
+    "final_generation_elapsed_ms": 4607,
+    "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "generator_image_sha256": "3a4cb250a2d3581c21a25a77795e60d569e321cba030bac0a8fb29dca1d0dacb",
+    "earlier_census_image_sha256": "78fa2da032e3a87a650d735079dc9a03a6e40588fac4df269321a7784543ca25",
+    "final_census_image_sha256": "570634a6564848562d56cf47031347b3f0d5aa32e0d8099dbcdfb61dbb60ff00",
+    "source_changes": 0,
+    "fresh_nonempty_output_control": "Actual exit2 before oracle execution; existing mask and input hashes unchanged.",
+    "unsupported_profile_control": "Actual analytic profile exit2 before oracle execution; empty output remains empty.",
+    "bounds": "Oracle child and independent census each bounded120seconds; all process output, argv/status, interpreter/compiler/image/native/source identities and final artifacts retained. No shader or producer is emitted.",
+    "final_source_manifest_paths": 30,
+    "final_source_readback": "passed",
+    "earlier_observing_source_readback": "passed; exact earlier policy source retained before final boundary tests were added"
+  },
+  "comparison_admission": "Separate consumer work. Full raw strict failures must remain; nonfinite values stay fatal even when masked; shape/resource/profile/source joins precede image reads; mask pixels are whole-RGBA unqualified. This oracle and certificate do not grant a release or image-parity pass."
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "aethyr.interiors-admission-development.v1",
+  "status": "WIP_NOT_ADMITTED",
+  "scope": "Retained pre-rebase source checkpoint only. The new certificate admission policy is incomplete and must not admit a comparison. The interior CLI and actual control qualification remain unfinished. The published strict comparator and root-qualified CFI pure policy are unchanged.",
+  "compiler_sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+  "baseline": { "checks": 83, "passed": 83 },
+  "mutation": { "scope": "root-only", "mutants": 342, "killed": 270, "survived": 72, "waivers": 0 },
+  "remaining": [
+    "Strengthen meaningful schema, hash, exact-boundary, metadata census and path coverage; remove redundant predicates and mathematically unused geometry-word bits rather than waiving mutants.",
+    "Complete a separate streaming compare-frame-interiors CLI with all certificate/profile/shape/geometry/mask/oracle/artifact joins before image reads.",
+    "Retain raw full strict failures, separately qualify strict interior agreement, report every masked RGBA packet as UNQUALIFIED, and keep all nonfinite values fatal.",
+    "Run bounded fresh CLI/admission controls and qualify actual retained DG images only after enclosing frame/resource/source joins; no GPU frame rerun."
+  ],
+  "retention": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/interiors-admission-wip/artifacts.tar.gz",
+    "bytes": 9005,
+    "sha256": "f49e041ad51afdf8c9fc1a2f1b28a9e02c6533097aac65decf5ed91acd510efd",
+    "contents": "Exact WIP policy/check sources, passing baseline and complete first mutation failure report.",
+    "readback": "Extracted archive and whole payload/readback directory diff: exit0, no differences."
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "schema": "aethyr.render.everglade-fresh-build.v1",
+  "status": "ordinary_build_and_producer_capture_passed_gpu_and_image_gates_pending",
+  "compiler": {
+    "sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+    "input_fingerprint": "6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e",
+    "source_commit": "dabbacb0e5",
+    "provenance_verification": "Passed against a git-archive snapshot of that main revision's compiler inputs. Private work changes none of the compiler fingerprint inputs; verify the merged checkout before a final matching-main claim.",
+    "build_profile": "Existing owner-approved fast release cache, COAX_MUTATION=0. Compiler bootstrap/check results are retained in that cache; this is not full compiler mutation qualification or a claim that issue12638 is closed."
+  },
+  "ordinary_build": {
+    "entry": "coax/web/wasm.sh apps/openagents-web/everglade.coax apps/openagents-web/everglade-face.c OUT verse/player.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax",
+    "renderer": "ordinary auto-selected carrier",
+    "compile_time_steps": 128000,
+    "checks_disabled": false,
+    "authority_checks": "Ordinary compiler-required authority execution passed; 839 checks were separately inventoried, not asserted as 839 executed lines in the silent build log.",
+    "deadline_seconds": 810,
+    "exit": 0,
+    "completed_before_deadline": true,
+    "wasm_bytes": 2148592,
+    "wasm_sha256": "95a699b4325d3abf516cb3c91fd2995a0828e51452f0040a2f9bbbea10e3a307",
+    "source_fence": "Carrier sources copied before the build. Separate library input profiles were captured during the build; no library source writer was active. Both complete source lists compare unchanged by checksum afterward. Actual admitted C/headers are retained.",
+    "earlier_failures": "The old compiler timeouts remain in the 2026-11-01 Everglade water record. The test-local collision is retained in the source-integration record. A dependency diagnostic also refused the default100000-step budget; its stderr is in the execution transcript, not a separately archived stderr file. Neither diagnostic is relabelled as a successful build."
+  },
+  "producer_capture": {
+    "observer_sha256": "2d1674954a89cc1489cfc0332d1b16029361e3d1eb9e1cb38982d8ad3eec35a0",
+    "observer_compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "frames_each": 2,
+    "pack": "apps/openagents-web/realms/everglade/assets/everglade.pack",
+    "golden": true,
+    "full_size": {"width": 1280, "height": 720, "draws": 190, "water": 1, "grass": 104576, "particles": 126},
+    "numerical_size": {"width": 320, "height": 180, "draws": 190, "water": 1, "grass": 13824, "particles": 16},
+    "scope": "Actual new Wasm initialization, allocation and producer frame output. These captures remain unadmitted until the renderer admits their complete frame; they do not establish GPU submission or image parity."
+  },
+  "package": {
+    "manifest_sha256": "9376144faac5c8e27968103d918d279e8ecb52c21b6bec9e333625a90c7b1c6d",
+    "compiler_sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+    "product_byte_comparison": "Whole-directory comparison against the earlier current Everglade package differs only in render.json. Every WGSL, SPIR-V and checked CPU-tree filename and byte is identical. Join previous exact-product validator results in the final chapter record; no unchanged shader validator was repeated here."
+  },
+  "fresh_executors_prepared": {
+    "cpu_checked_o2_sha256": "7e5e65c903bec224d7d88a91b9911669cca39fe87b054a43a62a592fe6ddb6c0",
+    "native_coax_host_c_sha256": "aeca6269871346b9adaf680767c3427802fe42b2498ed0c1649a4fcf095d9d4d",
+    "native_coax_texture_c_sha256": "7a9c0b4b56e155c3ff6e9f8fb431921922387f818da2745b579bd1f50ec128ff",
+    "scope": "Current selected compiler emitted the complete authority-checked CPU and native-host/texture closures with source-hash profile reports. CPU linked at checked O2 without contraction or fast math. No new executor image result is claimed until actual frame execution."
+  },
+  "retention": {
+    "archive": "docs/verification/data/aethyr-ch11-2026-11-02/everglade-fresh-build/artifacts.tar.gz",
+    "bytes": 14930757,
+    "sha256": "8a9dd8c229a5e040d925db97dc81e25e59fcdc19fdc3de6444360d3e64eaa7f3",
+    "whole_directory_readback_diff_exit": 0,
+    "contents": "Actual ordinary Wasm/C/headers, source copies and profiles, build diagnostics/sample, both producer captures with complete bytes/journals, selected immutable compiler/provenance/source digest, new package and fresh CPU/native generated artifacts."
+  }
+}

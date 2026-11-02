@@ -1,0 +1,3 @@
+aethyr/render/tests/compare-interiors-checks.coax:14:15: error[E0201]: expected '[' to start the elements, found '{'
+     cpu=[32]u8.{};gpu=[32]u8.{};if side==0 {for k:0..<4 {cpu[k]=cast,trunc(u8)(word>>cast(u32)(8*k));}}
+                ^

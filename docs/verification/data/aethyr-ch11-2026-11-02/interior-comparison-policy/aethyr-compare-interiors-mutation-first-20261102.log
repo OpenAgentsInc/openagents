@@ -1,0 +1,29 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/render/tests/compare-interiors-policy.coax:15:87: mutant survived: '||' became '&&'
+   if format!=r.format || width!=r.width || cpu.count%16!=0 || mask.count!=cpu.count/16 || gpu.count!=mask.count*cf_stride(format) || first!=r.checked.processed {r.valid=false;return r;}
+                                                                                        ^
+aethyr/render/tests/compare-interiors-policy.coax:15:59: mutant survived: '||' became '&&'
+   if format!=r.format || width!=r.width || cpu.count%16!=0 || mask.count!=cpu.count/16 || gpu.count!=mask.count*cf_stride(format) || first!=r.checked.processed {r.valid=false;return r;}
+                                                            ^
+aethyr/render/tests/compare-interiors-policy.coax:15:40: mutant survived: '||' became '&&'
+   if format!=r.format || width!=r.width || cpu.count%16!=0 || mask.count!=cpu.count/16 || gpu.count!=mask.count*cf_stride(format) || first!=r.checked.processed {r.valid=false;return r;}
+                                         ^
+aethyr/render/tests/compare-interiors-policy.coax:15:22: mutant survived: '||' became '&&'
+   if format!=r.format || width!=r.width || cpu.count%16!=0 || mask.count!=cpu.count/16 || gpu.count!=mask.count*cf_stride(format) || first!=r.checked.processed {r.valid=false;return r;}
+                       ^
+aethyr/render/tests/compare-interiors-policy.coax:18:77: mutant survived: the assignment was removed
+   if r.full.status!=CFStatus.ok && r.full.status!=CFStatus.different {r.valid=false;return r;}
+                                                                              ^
+aethyr/render/tests/compare-interiors-policy.coax:18:78: mutant survived: false became true
+   if r.full.status!=CFStatus.ok && r.full.status!=CFStatus.different {r.valid=false;return r;}
+                                                                               ^
+aethyr/render/tests/compare-interiors-policy.coax:28:40: mutant survived: the assignment was removed
+   r:=prior;if !r.valid {return r;}r.full=cf_done(r.full);r.checked=cf_done(r.checked);
+                                         ^
+aethyr/render/tests/compare-interiors-policy.coax:28:66: mutant survived: the assignment was removed
+   r:=prior;if !r.valid {return r;}r.full=cf_done(r.full);r.checked=cf_done(r.checked);
+                                                                   ^
+aethyr/render/tests/compare-interiors-policy.coax:29:42: mutant survived: '&&' became '||'
+   r.valid=r.full.processed==r.full.pixels && r.checked.processed==r.full.pixels && r.masked_pixels<r.full.pixels;
+                                           ^
+82 mutants, 73 killed, 9 survived
