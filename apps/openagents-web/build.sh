@@ -78,6 +78,10 @@ fairy=$!
 "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.c" "$here/build/villa.wasm" \
   "$m/player.coax" "$m/grid.coax" "$here/villafig.coax" &
 villa=$!
+# /realms/anime-lab: direct an anime (docs/verse/anime-lab.md), with the anime style's numbers as a library.
+"$here/../../coax/web/wasm.sh" "$here/animelab.coax" "$here/animelab-face.c" "$here/build/animelab.wasm" \
+  "$here/animelab-style.coax" &
+animelab=$!
 # /realms/fixture: the realm host's test world, the smallest realm module.
 "$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
 fixture=$!
@@ -229,6 +233,7 @@ wait "$orbitleague"
 wait "$everglade"
 wait "$fairy"
 wait "$villa"
+wait "$animelab"
 [[ -z "$newland" ]] || wait "$newland"
 wait "$connectpylon"
 wait "$changelog"
