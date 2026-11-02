@@ -21,7 +21,7 @@
 
 **III. Seeing it**
 
-- [11. The WGSL renderer](ch011-the-wgsl-renderer.md) — partly implemented
+- [11. The WGSL renderer](ch011-the-wgsl-renderer.md)
 - [12. Materials](ch012-materials.md) — design draft
 - [13. Light and shadow](ch013-light-and-shadow.md) — design draft
 - [14. Figures and animation](ch014-figures-and-animation.md) — design draft

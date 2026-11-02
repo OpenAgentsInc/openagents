@@ -50,13 +50,14 @@ consolidates the existing Coax shader and host paths in `verse/gpu/`.
 
 ## Completion milestones
 
-The registry currently has 13 implemented chapters (1–10 and 65–67), three
-partly implemented chapters (16, 52 and 54), and 70 design drafts. These counts
+The registry currently has 14 implemented chapters (1–11 and 65–67), four
+partly implemented chapters (15, 16, 52 and 54), and 68 design drafts. These counts
 describe teaching profiles, not a percentage of the engine completed. Existing
 realm code can already provide a feature whose shared Aethyr module is a draft.
 
-1. **Complete one playable route.** Build chapters 11–15 on the existing
-   Coax-generated WGSL and native Vulkan paths, preserving their draw ABI and
+1. **Complete one playable route.** Chapter 11 qualifies the shared renderer
+   and a recorded Grid CPU/WebGPU/Vulkan teaching profile. Build chapters
+   12–15 on those Coax-generated shader and host paths, preserving their draw ABI and
    recorded parity. Finish chapter 16's content-hashed asset admission. Take
    the Grid through one shared frame, material, pose and HUD contract; retain
    a native/Wasm session replay, its golden and its frame-time checks.

@@ -1,11 +1,10 @@
 # 11. The WGSL renderer
 
-> **Status: partly implemented.** Shared admission and the bounded CPU
-> reference exist. Host and image qualification remains in progress.
-> The shared Coax frame, binding, pass and resource modules now exist. Their
-> checks and the new CPU reference are being qualified with the actual realm
-> producers and both GPU hosts. This chapter is not yet a claim that every
-> renderer acceptance check has passed.
+> **Implemented profile:** shared frame and pass admission, with the Grid's
+> recorded CPU/WebGPU/Vulkan teaching profile. The completion matrix below
+> separates catalogue and host checks from numerical image qualification.
+> Everglade's complete CPU image and Dead Gears' excluded boundary pixels
+> remain explicitly unqualified.
 
 An incorrect draw count can make a shader read past its vertices. A correct
 count can still draw the wrong image if the browser and native host disagree
@@ -348,6 +347,15 @@ The new reference has three layers:
   covered quads. It applies the declared depth, blend and target-format
   behavior, including half-float or unorm storage conversion.
 
+A boolean condition also selects which lanes evaluate its right operand.
+For `cut && sample_alpha()`, a lane with no cutout must not sample an unused
+texture layer and then refuse the whole frame. The reference initially did
+that on Everglade's shadow pass. Its `&&` and `||` paths now pass only the
+selected active lanes to the right operand. Independent word fixtures cover
+every active mask and boolean pattern, including terminated lanes. The
+checked tree's separate select operation keeps its existing derivative
+semantics; it is not changed by this repair.
+
 Framebuffer precision is an explicit reference profile. The measured
 Apple WebGPU and NVIDIA Vulkan devices both used eight fractional position
 bits, with different halfway rounding. A profile records that choice and
@@ -412,10 +420,38 @@ source, profile and file identities must be joined before reading target
 images; the enclosing host record must also establish matching frame and
 resource inputs. A geometric exclusion cannot supply those missing joins.
 
+The retained [frame and source joins](../../docs/verification/aethyr-deadgears-retained-frame-join-2026-11-02.md)
+and [adversarially checked comparator](../../docs/verification/aethyr-frame-interiors-2026-11-02.json)
+close this explicitly bounded comparison on both GPU readbacks: 229,764
+interior channels pass, with zero color or nonfinite failures. The original
+complete comparison still fails three RGB channels. The 159 excluded pixels
+remain unqualified; the interior pass does not rename the complete result.
+
 The CPU pass driver joins those layers to the same pass and resource
 plan. It refuses malformed trees, unsupported operations, unavailable
 resources and exhausted budgets. It does not replace an unsupported
 operation with zero and call the resulting image a reference.
+
+The [qualified artifact record](../../docs/verification/aethyr-render-final-artifacts-2026-11-02.json)
+and the [completion matrix](../../docs/verification/aethyr-chapter-11-completion-2026-11-02.md)
+name the supported teaching profile. They keep these outcomes separate:
+
+| Profile | Qualified result | Explicit limit |
+| --- | --- | --- |
+| Moving Grid, then 320×180 recorded frame | Complete strict CPU/WebGPU/Vulkan comparison, all 230,400 channels, no mask | The normal 960×540 route has input, replay and submission evidence; its full-size pixels are not this numerical profile. |
+| Dead Gears, retained 320×180 frame | Both strict interior comparisons pass 229,764 channels | Complete comparison still fails three RGB channels; all 159 boundary pixels remain unqualified. |
+| Everglade | Actual 1280×800 WebGPU admission, complete 320×180 Vulkan execution with zero validation errors/warnings, reviewed stock golden passes | The full 190-row frame exhausts the CPU's three-billion-step shadow-pass budget. Its complete CPU image is **unqualified**. |
+| Eighteen-profile catalogue | Binding/resource/entry inventory, emitted product and host admission checks | This is not numerical conformance of every catalogue shader or workload. |
+
+The Grid comparison executes the actual checked trees for both of its entry
+pairs: `newland_bg_vs`/`newland_bg_fs` and
+`newland_fx_vs`/`newland_fx_fs`. Their background and HUD passes have nonzero
+execution counts and use the physically read-back font mips. This complete
+frame check supplies shader-body evidence for that profile. The independent
+quad, clipping, interpolation, texture, depth, blend and graph fixtures qualify
+their own operations; they do not prove every helper or branch of every
+catalogue shader. Remaining workloads keep their own refusal or qualification
+records.
 
 [reference-work.coax](../render/reference-work.coax) names the offline work
 profiles. `standard` keeps its 100-million-step pass limit. `large-world`
@@ -555,6 +591,19 @@ inspected every pair before the nine PNG baselines changed. The existing
 six-block screenshot allowance remains unchanged; numerical image
 comparisons still use the separate strict per-channel rule.
 
+Everglade's [final browser record](../../docs/verification/aethyr-everglade-browser-final-2026-11-02.json)
+retains the same causal controls. The current shader in the old executor and
+the shared executor produce identical complete raw images on identical
+producer bytes. Restoring only six old sine-noise expressions makes the
+original stock screenshot pass with zero changed blocks. A missing FORK
+button in the first local fixture was traced to a missing GET-only fork-info
+response; correcting that fixture restores the HUD without changing product
+permissions. Two independent reviews accepted the remaining grass and sky
+pattern changes before the exact reviewed PNG became the new baseline. The
+unchanged stock comparison then passed with zero changed blocks, its original
+six-block allowance, startup and lit-pixel checks, and all four actual
+analytics events.
+
 The Fairy Forest's [migration record](../../docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/fairy/noise-migration.json)
 uses the same two controls. Restoring only its two sine hashes reproduces
 the old raw image and passes the original saved screenshot with zero changed
@@ -604,9 +653,9 @@ The normal-C catalog inventory checks identity, assets, every logical
 binding and entry pair, and every active use. The geometry producer gate
 checks wire ranges, actual indices, all six direct caps and atomic refusal.
 Neither certifies the truth of an asset's BVH or proves arbitrary shader
-arithmetic. The GPU/CPU and host-adoption checks supply the remaining
-renderer evidence. Until those final gates pass, the status at the top of
-this chapter remains in progress.
+arithmetic. The linked completion matrix binds each acceptance check to its
+actual source, compiler, target, recorded workload and retained result. A
+passing catalogue or host check does not enlarge that numerical profile.
 
 The image comparison tool reads complete raw images, including alpha. It
 decodes the declared byte, half or float storage format and checks every

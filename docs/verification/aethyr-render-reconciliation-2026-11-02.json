@@ -1,9 +1,15 @@
 {
   "schema": "aethyr.render.resumption.v1",
   "date": "2026-11-02",
-  "status": "active_not_complete",
+  "status": "chapter_11_named_profile_complete_final_integration",
   "chapter": 11,
-  "chapter_status": "partly_implemented",
+  "chapter_status": "implemented",
+  "final_completion_matrix": "docs/verification/aethyr-chapter-11-completion-2026-11-02.md",
+  "final_CPU_and_current_native": "docs/verification/aethyr-cpu-reference-final-2026-11-02.json",
+  "final_ordinary_artifacts": "docs/verification/aethyr-render-final-artifacts-2026-11-02.json",
+  "final_browser_and_visual_migration": "docs/verification/aethyr-everglade-browser-final-2026-11-02.json",
+  "final_interior_comparison": "docs/verification/aethyr-frame-interiors-2026-11-02.json",
+  "limits": "Dead Gears full strict remains FAIL3 with159RGBA pixels unqualified; full Everglade CPU remains budget-refused/unqualified. Catalogue/host checks do not imply catalogue-wide numerical conformance. The unused20B experiment is withdrawn.",
   "base_main": "8ed49c9b6a7f23c25b4f516993073441082b30b1",
   "rebased_checkpoint": "dbbfe6bf70360b6500a62a9a60213a6ce7ee725c",
   "preserved": [
@@ -35,7 +41,7 @@
   "icecream_tooling_port": "docs/verification/data/aethyr-ch11-2026-11-02/icecream-tooling-port/qualification.json",
   "producer_capture_sdk_prerequisite": "docs/verification/data/aethyr-ch11-2026-11-02/producer-capture-session/qualification.json",
   "integration_checkpoint": "88a89f8ddf: clean successful rebase; Aethyr and Grid module bodies are unchanged from the pre-rebase checkpoint. Upstream compiler R2/B3, realm edit/navigation changes and read-file-native tool linking are preserved. This does not promote the older compiler to matching-current.",
-  "tooling": {
+  "tooling_at_resumption": {
     "initial_enforced_gate": "docs/verification/data/aethyr-tools-2026-11-02/initial-tools-check.log",
     "initial_missing_reasons": 172,
     "progress_gate": "docs/verification/data/aethyr-tools-2026-11-02/progress-13-tools-check.log",
@@ -65,7 +71,7 @@
     "generator_changed_scope": "4 focused checks pass, 19 filtered; prior unchanged checks retained from initial run",
     "generator_logs": ["docs/verification/data/aethyr-tools-2026-11-02/realms-initial.log", "docs/verification/data/aethyr-tools-2026-11-02/realms-focused.log"]
   },
-  "metadata": {
+  "metadata_at_resumption": {
     "command": "python3 psionic/tests/book.py --book aethyr",
     "result": "20 programs, 108 source-linked listings, local links pass",
     "scope": "Final changed chapter64 text before the next main integration; all local links pass",
@@ -80,7 +86,7 @@
     "blocker_scope_update": "Still open for compiler publishing/full mutation. Owner commit a02afa2228 separates website release builds with COAX_MUTATION=0 and a separate cache; the older website-release blocking description is historical. Matching final source/compiler qualification remains required.",
     "external_work_untouched": true
   },
-  "remaining": [
+  "historical_remaining_at_resumption": [
     "Complete maintained tool ports and actual tools-check gate",
     "Final matching-source/compiler Grid qualification; declared exact-artifact headless session/native-producer/pixel composition is retained and passing",
     "Qualify fresh full-size Everglade runtime and close strict Dead Gears precision failure",

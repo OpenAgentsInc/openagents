@@ -1,0 +1,67 @@
+{
+  "schema": "aethyr.render.cpu-reference-final.v1",
+  "date": "2026-11-02",
+  "status": "qualified_bounded_Grid_profile_with_explicit_Everglade_refusal",
+  "scope": "The real CPU boolean-execution repair, the current generated native Grid renderer, and source-bound composition of the already-strict recorded Grid comparisons. No full Everglade CPU image or catalogue-wide numerical conformance is claimed.",
+  "source_base": "8c9027ad9c",
+  "compiler_sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+  "compiler_scope": "Explicit owner-approved fast cache; provenance/source matched at execution. Not full compiler mutation qualification or an ordinary-default compiler replacement.",
+  "repair": {
+    "source": "aethyr/render/reference-ir.coax",
+    "sha256": "011c3d6f2c83a7eab2b28eddcf3660067c589db02187a15e7806d566e8f7afb2",
+    "checks": "aethyr/render/tests/reference-ir-short-circuit-checks.coax",
+    "checks_sha256": "4b5d9756c186396256969575c42aeb61fb38ac7cfc343464e11813f0668f174c",
+    "problem": "The CPU interpreter evaluated both boolean operands in every active lane. Everglade cut==0 shadow geometry could therefore sample an unused texture layer, producing an artificial resource refusal.",
+    "change": "Evaluate the logical RHS only for active true lanes of AND or active false lanes of OR; preserve termination and first-error ordering. Reject a numeric logical LHS before reading its RHS.",
+    "test_first": "Independent hand-assembled typed expressions failed before the repair. Their untaken lanes divide by zero; all512 active-mask/boolean-pattern/operator combinations and2 numeric-left refusal cases are checked.",
+    "baseline": {"dependency_inclusive_groups": 143, "passed": 143, "new_authored_groups": 2, "new_cases": 514},
+    "mutation": {"entry_source_mutants": 2422, "killed": 2422, "survivors": 0, "equivalence_waivers": 0},
+    "initial_mutation": "2421 mutants,2420 killed,1 survivor. Refactored the redundant combined type/operator predicate into an observable first-error type admission and added its refused-case check. The failed run remains retained; no equivalent-mutant waiver was used.",
+    "independent_review": "Agent1 reviewed lane masks, termination, first-error preservation, test coverage and bounded arithmetic; no defect found.",
+    "separate_select_protocol": "An initial experiment also masked the arms of checked-tree select. The existing shader-lowering/derivative fixture rejected that change. It was withdrawn; op24 retains its original eager protocol semantics. Both the failed check and its proposed fixture are retained."
+  },
+  "CPU_executor": {
+    "sha256": "1617cce94c549879fd1948fc12933b1e41670e2eb21546eddef3a21913684868",
+    "generated_c_sha256": "0cb5c6b18bffbe7052bdf3470ce8108d7cecd5ab238ca729902f7a61c5279881",
+    "emission": "Ordinary authority-checked Coax C/H, selected e8 compiler; Clang O2, ffp-contract=off, fno-fast-math. No release wrapping or changed tolerance.",
+    "source_closure": "Exact executed source bodies, emission profile, C/H, native bridge, compiler logs and native image retained. Final checksum scan shows only four restored-file mtime changes; each of those four bodies separately passes cmp. No content changed. The raw scan is retained, not relabelled empty."
+  },
+  "Grid_CPU": {
+    "input": "The exact ordinary a06c704a producer's final320x180 RFI, physically read-back Sans mips and82891691 package, retained by aethyr-render-final-artifacts-2026-11-02.json",
+    "browser": {"rounding": "nearest-positive", "bits": 8, "XY": "viewport", "guard": 0, "filter": "analytic", "status": 0, "shader_steps": 1552180373, "image_sha256": "7a49d5ee3879cc9699413603c2e4caad14116c5fb83580f41200295824032071"},
+    "native": {"rounding": "nearest-even", "bits": 8, "XY": "guard-band", "guard": 65536, "filter": "analytic", "status": 0, "shader_steps": 1544495639, "image_sha256": "cebf68b5f0375e1e404f3739d0f8b98452b46190581d90400b0040aaa6b98774"},
+    "both": {"draws": 2, "nonzero_background_and_HUD_execution": true, "colour_failures": 0, "nonfinite_failures": 0, "channels": 230400, "masked_pixels": 0},
+    "comparison_reuse": "Both fresh CPU images compare byte-for-byte with the corresponding already-qualified CPU images. The current browser image is also identical. Reuse the exact strict comparisons retained in final-artifacts; do not rerun an unchanged passing image comparison."
+  },
+  "Grid_current_native": {
+    "reason_for_execution": "The earlier Grid readback used a historical executor. This is a new target-artifact qualification of the current e8-generated RenderHost/RenderTexture and native effects, not a repetition of that old executor's passing command.",
+    "controller_sha256": "c54034a5f9d4696aef3e79b13716ed7a9f8a64f1b805e494c4d46a152a97abde",
+    "native_executable_sha256": "c16eda2215827863371c57e1f590640dc2b41129a49c1584a423ac1110733247",
+    "preparation_sha256": "a70f1d5f0d14ca5277cb0df351b75ce2b8cb97db28e129bcb8049c476eeb68ba",
+    "measurement_sha256": "ebbba321670956628d4519df3670877dde3a0b8ded314c6e8119d2d497bba527",
+    "stage": {"files": 146, "bytes": 10542160, "all_RFI_and_package_resources": true},
+    "host": "coderos-4080",
+    "device": "NVIDIA GeForce RTX4080",
+    "format": "rgba16f", "width": 320, "height": 180, "bytes": 460800,
+    "image_sha256": "9e1920842bc752982697e592a8bbbb7436a645244f127120eeedd6c7ed51ca4c",
+    "draw_commands": 2, "validation_errors": 0, "validation_warnings": 0,
+    "compile_exit": 0, "measurement_exit": 0, "elapsed_seconds": 34.741,
+    "source_changes": [], "local_inputs_unchanged": true, "remote_inputs_unchanged": true, "SDK_inputs_unchanged": true, "all_available_outputs_retained": true, "owned_cleanup": true,
+    "strict_join": "The actual current-native raw image compares byte-for-byte with the recorded9e192084 strict-passing readback. Its fresh current-CPU input is likewise identical to the recordedcebf68b5 CPU image. The complete230400-channel comparison therefore carries forward on exact image identity. Historical and new native executable identities remain separate."
+  },
+  "Everglade": {
+    "GPU_and_golden": "PASS in aethyr-everglade-browser-final-2026-11-02.json and aethyr-native-frame-measurement-2026-11-02.json; these are separate from CPU qualification",
+    "corrected_input": "Complete190-row320x180 RFI08207a08, eight physical textures, source-bound package and all declared resources",
+    "initial_profile_failure": "The initially selected measured UNORM8-only model correctly refused the actual sRGB atlas. An analytic run then exposed the eager boolean resource refusal. Both measurements remain failures, and the old67-row config is never promoted.",
+    "after_boolean_repair": {"profile": "complex-world", "status": 4, "meaning": "budget refusal", "bad_operation": 1, "operation": "shadow", "shader_steps": 3000000000, "published_image_writes": 0},
+    "numerical_status": "UNQUALIFIED: no complete CPU image and no accepted CPU/GPU colour comparison for this full Everglade workload",
+    "invalid_follow_on_diagnostic": "A raw comparison was attempted on the refused CPU bridge's zero candidate buffer. Its failing receipt is retained as an ineligible diagnostic. C bridge exit0 never makes a refused renderer result an image pass."
+  },
+  "withdrawn_experiment": {
+    "public_profile_shipped": false,
+    "description": "An uncommitted appended textured-world20B/pass profile, still100M/invocation and810s/wall, was tested and independently reviewed. Both real Everglade profiles still exhausted that shadow budget. The unused profile, CLI admission and seven affected files were reverted exactly; old public identities/limits remain unchanged.",
+    "retained": "Full candidate patch/source snapshots, C/H/executables, all checks/mutation logs, valid CLI input preparation, both20B refusals and initial invalid directory-as-manifest invocation. The final experiment's extra pipeline checks change only a test source versus its earlier executed emission; both exact source epochs and raw source-map diff remain retained.",
+    "future_scope": "Full Everglade CPU qualification should use bounded resumed pass/draw slices or a separately measured faster path. Another larger single-command ceiling is not assumed."
+  },
+  "retention": "data/aethyr-ch11-2026-11-02/cpu-reference-final/retention.json"
+}

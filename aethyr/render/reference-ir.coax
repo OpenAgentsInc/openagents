@@ -242,7 +242,20 @@ rq_ir_expr_inner :: (m:[]RQMachine,tree:[]u32,meta:[]int,memory:[]u32,res:RQReso
   id:=rq_ir_next(m,tree);v:=rq_ir_local(m,tree,meta,memory,f,id);r:=rq_ir_value(m,meta,memory,v.ty);
   if m[0].status==RQStatus.ok {rq_ir_transfer(memory,r,v,mask);}return r;
  }
- if op==19 {kind:=rq_ir_next(m,tree);a:=rq_ir_expr(m,tree,meta,memory,res,f,mask);b:=rq_ir_expr(m,tree,meta,memory,res,f,mask);if m[0].status!=RQStatus.ok {return RQValue.{};}return rq_ir_binary(m,meta,memory,kind,a,b,mask&(m[0].terminated^15));}
+ if op==19 {
+  kind:=rq_ir_next(m,tree);a:=rq_ir_expr(m,tree,meta,memory,res,f,mask);
+  if m[0].status!=RQStatus.ok {return RQValue.{};}
+  right:=mask&(m[0].terminated^15);
+  // Coax short-circuits per lane. Still parse the complete RHS when no lane
+  // selects it; its resource operations and arithmetic receive an empty mask.
+  if kind==12 || kind==13 {
+   if a.ty!=1 {rq_ir_fail(m,RQStatus.unsupported);return RQValue.{};}
+   yes:=rq_ir_bool_mask(memory,a,right);right=ifx kind==12 then yes else right^yes;
+  }
+  b:=rq_ir_expr(m,tree,meta,memory,res,f,right);
+  if m[0].status!=RQStatus.ok {return RQValue.{};}
+  return rq_ir_binary(m,meta,memory,kind,a,b,mask&(m[0].terminated^15));
+ }
  if op==20 || op==21 {
   a:=rq_ir_expr(m,tree,meta,memory,res,f,mask);r:=rq_ir_value(m,meta,memory,a.ty);if m[0].status!=RQStatus.ok {return r;}
   active:=rq_active_lanes(mask);for active_index:0..<active.count {lane:=active.lanes[active_index];
@@ -718,3 +731,4 @@ rq_ir_block_count_ok :: (count:int)->bool {return cast,trunc(u64)count<=1000000;
 #load "tests/reference-ir-value-extra-checks.coax";
 
 #load "tests/reference-ir-flow-extra-checks.coax";
+#load "tests/reference-ir-short-circuit-checks.coax";

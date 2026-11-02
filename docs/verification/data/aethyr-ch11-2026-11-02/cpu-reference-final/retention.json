@@ -1,0 +1,11 @@
+{
+  "schema": "aethyr.render.retention.v1",
+  "archive": "artifacts.tar.gz",
+  "sha256": "70d32da7f940fb078b3ac97f1fd62e38a4a5b82a56225c78ccc73388723c3896",
+  "bytes": 44142735,
+  "members": "archive-members.txt",
+  "readback": {"extract_exit": 0, "whole_tree_diff_exit": 0, "diff_bytes": 0, "log": "readback.log", "symlinks": "compared as links with --no-dereference", "archived_scripts_executed": false},
+  "contains": ["test-first boolean failures, initial select experiment and rejected fixture", "final143-check and2422-zero mutation logs", "executed current3B CPU Coax source closure, C/H, native bridge and executable", "fresh browser/native Grid CPU images and exact counters", "current-generated native Grid complete preparation, source bodies, compiled ELF, SDK/compiler/remote logs, raw frame and cleanup receipt", "original and corrected Everglade CPU refusal epochs, including the ineligible zero-buffer comparison", "complete withdrawn20B candidate patch/source/target/check/CLI-preparation and both real budget refusals", "both exact emitted test-source epochs and raw source-map diff", "initial mixed-relative-path source-copy diagnostic archive and its correction"],
+  "historical_source_copy_diagnostic": "The first rsync list left one repository-relative frame-input.h alias unresolved; its stat failure is in the tool transcript and described inside the retained diagnostic. The actual staged header was already present by hash. The complete corrected list resolves relative keys against the real worktree. The initial archive/readback is retained separately inside the final payload; no inventory-completeness claim is inferred from its self-readback.",
+  "qualification_boundary": "Only source/artifact joins and the named final outcomes in aethyr-cpu-reference-final-2026-11-02.json are accepted. Refused renderer outputs, experimental profiles and raw successful transport exits do not become CPU image qualification."
+}

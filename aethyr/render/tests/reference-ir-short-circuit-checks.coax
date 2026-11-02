@@ -1,0 +1,30 @@
+// A hand-assembled typed expression, independent of the shader emitter.
+// Untaken lanes divide by zero; selected lanes produce exact integer words.
+#forall "quad short circuit booleans never evaluate an untaken lane" disjunction:bool, outer:0..<16, pattern:0..<16 {
+  tree:=[18]u32.[1,3,19,12,18,0,19,10,19,4,16,3,1,18,1,16,3,1];
+  if disjunction {tree[3]=13;}
+  meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);meta[RQ_IR_PROC+2]=2;meta[RQ_IR_PROC+3]=0;
+  memory:[256]u32;memory[0]=16;memory[1]=20;
+  for lane:0..<4 {
+    yes:=(cast(u32)pattern&(cast(u32)1<<cast(u32)lane))!=0;
+    memory[16+lane]=ifx yes then 1 else 0;
+    memory[20+lane]=ifx yes!=disjunction then 1 else 0;
+  }
+  m:=[1]RQMachine.[RQMachine.{types=7,procs=1,version=3,stage=1,budget=1000,at=2,used=32,terminated=8}];
+  value:=rq_ir_expr(m[..],tree[..],meta[..],memory[..],RQResources.{},RQFrame.{proc=0,locals=0},cast(u32)outer);
+  #assert m[0].status==RQStatus.ok && m[0].at==18 && m[0].nesting==0 && value.ty==1 && value.words==1;
+  for lane:0..<4 {
+    active:=lane!=3 && (cast(u32)outer&(cast(u32)1<<cast(u32)lane))!=0;
+    yes:=(cast(u32)pattern&(cast(u32)1<<cast(u32)lane))!=0;
+    expected:=ifx active && (disjunction || yes) then 1 else 0;
+    #assert rq_ir_u64(memory[..],value,lane)==cast(u64)expected;
+  }
+}
+#forall "quad logical operands refuse a numeric left side before reading the right side" disjunction:bool {
+  // The invalid local on the right must never replace the left type refusal.
+  tree:=[7]u32.[19,12,16,2,1065353216,18,99];if disjunction {tree[1]=13;}
+  meta:[RQ_IR_META]int;rq_ir_scalar_meta(meta[..]);memory:[64]u32;
+  m:=[1]RQMachine.[RQMachine.{types=7,procs=1,version=3,budget=1000}];
+  result:=rq_ir_expr(m[..],tree[..],meta[..],memory[..],RQResources.{},RQFrame.{},15);
+  #assert m[0].status==RQStatus.unsupported && m[0].at==5 && m[0].used==4 && m[0].nesting==0;
+}
