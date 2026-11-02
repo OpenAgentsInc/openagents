@@ -13,13 +13,20 @@
 // book:begin types
 PxStatus :: enum u8 {ok;shape;channels;depth;limit;parameter;capacity;alias;number;}
 PxOrder :: enum u8 {rgb;bgr;}
-PxFilter :: enum u8 {nearest;bilinear;}
+PxFilter :: enum u8 {nearest;bilinear;bicubic;}
 // Pixels arrive row by row, each pixel's channels together (height, width,
 // channel), one byte per channel, in the stated channel order.
 PxImage :: struct {width:int;height:int;channels:int=3;depth:int=8;order:PxOrder;}
 // What a model expects: channel order, the factor that maps a byte to its
-// range, per-channel mean and standard deviation, and the resize rule.
-PxProfile :: struct {order:PxOrder;scale:f64;mean:[3]f64;std:[3]f64;height:int;width:int;filter:PxFilter;}
+// range, per-channel mean and standard deviation, and the resize rule: the
+// filter, corner alignment, antialiasing, and an optional shorter side to
+// resize to before a centred crop of height by width.
+PxProfile :: struct {order:PxOrder;scale:f64;mean:[3]f64;std:[3]f64;height:int;width:int;filter:PxFilter;
+    corners:bool;antialias:bool;shorter:int;}
+// The resized grid a profile samples, and where its crop starts.
+PxFit :: struct {status:PxStatus;height:int;width:int;top:int;left:int;}
+// The source pixels one output reads along one axis, and their weights.
+PxTaps :: struct {first:int;count:int;}
 PxResult :: struct {status:PxStatus;written:int;}
 // Input (batch, channels, height, width); weights (filters, channels/groups,
 // kernel_h, kernel_w); output (batch, filters, out_h, out_w).
@@ -29,13 +36,16 @@ PxConvPlan :: struct {status:PxStatus;out_h:int;out_w:int;x:int;w:int;y:int;patc
 // Input (batch, channels, height, width); weights (dim, channels, patch,
 // patch), the layout of the equivalent convolution; output (batch, tokens, dim).
 PxPatch :: struct {batch:int=1;channels:int;height:int;width:int;patch:int;dim:int;}
-PxPatchPlan :: struct {status:PxStatus;grid_h:int;grid_w:int;tokens:int;features:int;x:int;w:int;out:int;scratch:int;}
+PxPatchPlan :: struct {status:PxStatus;grid_h:int;grid_w:int;tokens:int;features:int;x:int;w:int;out:int;work:int;rows:int;scratch:int;}
 // book:end types
 
 PX_SIDE_MAX :: 512;
 PX_EXTENT_MAX :: 4096;
 PX_ELEMENTS_MAX :: 1048576;
 PX_WORK_MAX :: 16777216;
+PX_PATCH_WORK_MAX :: 268435456;
+PX_TILE_WORK :: 1048575;
+PX_SUM_MAX :: 170141183460469231731687303715884105728.0;
 PX_MEAN_MAX :: 256.0;
 PX_STD_MIN :: 0.0009765625;
 
@@ -156,6 +166,111 @@ px_same :: (a:[]f32,b:[]f32)->bool {if a.count!=b.count {return false;}for i:0..
         for i:0..<m {#assert out[i]==f32((f64(resized[i])-0.5)/0.5);}
     }
 }
+px_taps_are :: (t:PxTaps,first:int,weights:[]f64,want:[]f64)->bool {
+    if t.first!=first || t.count!=want.count {return false;}
+    for i:0..<want.count {if weights[i]!=want[i] {return false;}}
+    return true;
+}
+#test "taps by hand: corners, bicubic and antialiasing" {
+    w:[8]f64;
+    // Nearest: floor(o * 2 / 4), or with corners the nearest of o / 3.
+    for o:0..<4 {#assert px_taps(2,4,PxFilter.nearest,false,false,o,w[..]).first==o/2 && w[0]==1;}
+    want:=[5]int.[0,1,1,2,2];for o:0..<5 {#assert px_taps(3,5,PxFilter.nearest,true,false,o,w[..]).first==want[o];}
+    #assert px_taps(2,4,PxFilter.nearest,true,false,1,w[..]).first==0 && px_taps(2,4,PxFilter.nearest,true,false,2,w[..]).first==1;
+    #assert px_taps(5,1,PxFilter.nearest,true,false,0,w[..]).first==0 && px_taps(5,1,PxFilter.nearest,false,false,0,w[..]).first==0;
+    // Bilinear, corners aligned, 2 to 4: source points 0, 1/3, 2/3, 1.
+    t:=px_taps(2,4,PxFilter.bilinear,true,false,1,w[..]);#assert t.first==0 && t.count==2 && w[0]==1-1.0/3 && abs(w[1]-1.0/3)<0.000000000000001;
+    one:=[1]f64.[1];#assert px_taps_are(px_taps(2,4,PxFilter.bilinear,true,false,3,w[..]),1,w[..],one[..]);
+    pair:=[2]f64.[1,0];
+    #assert px_taps_are(px_taps(2,4,PxFilter.bilinear,true,false,0,w[..]),0,w[..],pair[..]);
+    #assert px_taps_are(px_taps(7,1,PxFilter.bilinear,true,false,0,w[..]),0,w[..],pair[..]);
+    // Bilinear with half-pixel centres is chapter 5's to_point.
+    for size:1..<9 {for o:0..<size {
+        t=px_taps(3,size,PxFilter.bilinear,false,false,o,w[..]);a:=to_point(o,3,size);
+        #assert t.first==a.low && t.first+t.count-1==a.high;
+        if t.count==2 {#assert w[0]==1-a.fraction && abs(w[1]-a.fraction)<0.000000000000001;} else {#assert abs(w[0]-1)<0.000000000000001;}
+    }}
+    // Bicubic, a = -0.75, 2 to 4: points -1/4 and 1/4; edge taps fold onto pixel 0.
+    c0:=[2]f64.[1.10546875,-0.10546875];c1:=[2]f64.[0.7734375,0.2265625];c3:=[2]f64.[-0.10546875,1.10546875];
+    #assert px_taps_are(px_taps(2,4,PxFilter.bicubic,false,false,0,w[..]),0,w[..],c0[..]);
+    #assert px_taps_are(px_taps(2,4,PxFilter.bicubic,false,false,1,w[..]),0,w[..],c1[..]);
+    #assert px_taps_are(px_taps(2,4,PxFilter.bicubic,false,false,3,w[..]),0,w[..],c3[..]);
+    // Inside a long row all four taps are distinct: 8 to 8 reads one pixel.
+    same:=[4]f64.[0,1,0,0];half:=[4]f64.[-0.09375,0.59375,0.59375,-0.09375];edge:=[2]f64.[0,1];
+    #assert px_taps_are(px_taps(8,8,PxFilter.bicubic,false,false,4,w[..]),3,w[..],same[..]);
+    #assert px_taps_are(px_taps(8,4,PxFilter.bicubic,false,false,2,w[..]),3,w[..],half[..]);
+    #assert px_taps_are(px_taps(4,2,PxFilter.bicubic,true,false,1,w[..]),2,w[..],edge[..]);
+    // Keys' kernel at its knots and between them.
+    #assert px_cubic(0,-0.5)==1 && px_cubic(1,-0.5)==0 && px_cubic(2,-0.5)==0 && px_cubic(-1.5,-0.5)==-0.0625 && px_cubic(0.5,-0.75)==0.59375 && px_cubic(1.99,-0.5)<0;
+    #assert px_cubic(1.25,-0.75)==-0.10546875 && px_cubic(-1.75,-0.75)==-0.03515625 && px_cubic(2.5,-0.75)==0 && px_cubic(3,-0.5)==0 && px_cubic(-0.25,-0.75)==0.87890625;
+    // The comparison itself: a different start, count or weight is not a match.
+    w[0]=1;#assert px_taps_are(PxTaps.{first=0,count=1},0,w[..],one[..]);
+    #assert !px_taps_are(PxTaps.{first=1,count=1},0,w[..],one[..]) && !px_taps_are(PxTaps.{first=0,count=2},0,w[..],one[..]);
+    w[0]=0.5;#assert !px_taps_are(PxTaps.{first=0,count=1},0,w[..],one[..]);
+    // Antialiased bilinear, 4 to 2: the triangle twice as wide, cut at the edge.
+    left:=[3]f64.[0.75/1.75,0.75/1.75,0.25/1.75];right:=[3]f64.[0.25/1.75,0.75/1.75,0.75/1.75];
+    #assert px_taps_are(px_taps(4,2,PxFilter.bilinear,false,true,0,w[..]),0,w[..],left[..]);
+    #assert px_taps_are(px_taps(4,2,PxFilter.bilinear,false,true,1,w[..]),1,w[..],right[..]);
+    // Antialiased bicubic, 8 to 2: the a = -0.5 kernel four times as wide, centred on 2.
+    t=px_taps(8,2,PxFilter.bicubic,false,true,0,w[..]);#assert t.first==0 && t.count==8 && w[1]==w[2] && w[0]==w[3] && w[1]>w[0] && w[5]>0 && w[6]<0 && w[7]<w[6];
+    // Upscaling with antialiasing keeps the filter's width: 2 to 4.
+    // The reference's antialiased weights alone: 4 to 2 is 3/7, 3/7, 1/7, 0.
+    soft:=px_imagenet();soft.antialias=true;dense:[4]f64;px_reference_axis(4,2,soft,0,dense[..]);
+    #assert abs(dense[0]-3.0/7)<0.000000000000001 && abs(dense[2]-1.0/7)<0.000000000000001 && dense[3]==0;
+    up:=[2]f64.[0.75,0.25];
+    #assert px_taps_are(px_taps(2,4,PxFilter.bilinear,false,true,0,w[..]),0,w[..],one[..]);
+    #assert px_taps_are(px_taps(2,4,PxFilter.bilinear,false,true,1,w[..]),0,w[..],up[..]);
+    #assert px_clamp(-1,4)==0 && px_clamp(4,4)==3 && px_clamp(3,4)==3 && px_clamp(0,4)==0 && px_clamp(1,4)==1 && px_clamp(9,4)==3 && px_clamp(-5,1)==0;
+    #assert px_most(2,3)==3 && px_most(3,2)==3 && px_most(-1,0)==0;
+}
+#test "fits: the shorter side, the aspect ratio and a centred crop" {
+    p:=px_imagenet();p.shorter=256;
+    // ImageNet's evaluation rule on a 500 by 375 photo: 341 by 256, crop from (16, 58).
+    f:=px_fit(375,500,p);#assert f.status==PxStatus.ok && f.height==256 && f.width==341 && f.top==16 && f.left==58;
+    f=px_fit(500,375,p);#assert f.height==341 && f.width==256 && f.top==58 && f.left==16;
+    f=px_fit(300,300,p);#assert f.height==256 && f.width==256 && f.top==16 && f.left==16;
+    #assert px_centre(0)==0 && px_centre(1)==0 && px_centre(3)==2 && px_centre(4)==2 && px_centre(5)==2 && px_centre(7)==4;
+    q:=p;q.shorter=0;f=px_fit(375,500,q);#assert f.status==PxStatus.ok && f.height==224 && f.width==224 && f.top==0 && f.left==0;
+    q=p;q.shorter=512;q.height=1;q.width=1;
+    #assert px_fit(8,64,q).width==4096 && px_fit(8,65,q).status==PxStatus.limit && px_fit(64,8,q).height==4096 && px_fit(65,8,q).status==PxStatus.limit;
+    q=p;q.height=256;#assert px_fit(300,300,q).status==PxStatus.ok;q.height=257;#assert px_fit(300,300,q).status==PxStatus.shape;
+    q=p;q.width=256;#assert px_fit(300,300,q).status==PxStatus.ok;q.width=257;#assert px_fit(300,300,q).status==PxStatus.shape;
+    // 17 times 241 is 4,097, one past the bound, on either side.
+    q=p;q.shorter=17;q.height=1;q.width=1;#assert px_fit(1,241,q).status==PxStatus.limit && px_fit(241,1,q).status==PxStatus.limit && px_fit(1,240,q).width==4080;
+    // The profile fields themselves.
+    #assert px_profile_status(p)==PxStatus.ok;q=p;q.shorter=-1;#assert px_profile_status(q)==PxStatus.parameter;
+    q.shorter=512;#assert px_profile_status(q)==PxStatus.ok;q.shorter=513;#assert px_profile_status(q)==PxStatus.limit;
+    q=p;q.antialias=true;#assert px_profile_status(q)==PxStatus.ok;q.filter=PxFilter.bicubic;#assert px_profile_status(q)==PxStatus.ok;
+    q.corners=true;#assert px_profile_status(q)==PxStatus.parameter;q.filter=PxFilter.nearest;q.corners=false;#assert px_profile_status(q)==PxStatus.parameter;
+    q.antialias=false;q.corners=true;#assert px_profile_status(q)==PxStatus.ok;
+    // A fit that does not hold refuses the preprocessing.
+    pixels:=px_tiny();work:[12]f32;out:[48]f32;out[0]=-7;q=px_half();q.shorter=2;q.height=3;
+    #assert px_preprocess(PxImage.{width=2,height=2},pixels[..],q,work[..],out[..],false).status==PxStatus.shape && out[0]==-7;
+    #assert px_round_even(16)==16 && px_round_even(58.5)==58 && px_round_even(59.5)==60 && px_round_even(0.5)==0;
+}
+#test "the 2 by 2 image, bicubic, by hand" {
+    pixels:=px_tiny();work:[12]f32;out:[48]f32;p:=px_half();p.filter=PxFilter.bicubic;
+    #assert px_preprocess(PxImage.{width=2,height=2},pixels[..],p,work[..],out[..],false).written==48;
+    // Red 0 1 / 1 0: output (1, 0) is 0.7734375 * -0.10546875 + 0.2265625 * 1.10546875
+    // = 0.16888427734375, then 2v - 1. The corners pass -1: the kernel's negative lobes.
+    #assert out[4]==-0.6622314453125 && out[0]==f32(2*(2*1.10546875*-0.10546875)-1) && out[0]< -1;
+    for i:16..<32 {#assert out[i]==-0.6;}
+}
+#test "every resize rule agrees with the floating-point reference" {for rule:0..<8 {for size:0..<5 {
+    // Nearest, nearest with corners; bilinear with corners, antialiased; bicubic,
+    // with corners, antialiased; bilinear from a shorter side and a crop.
+    p:=px_imagenet();filters:=[8]PxFilter.[PxFilter.nearest,PxFilter.nearest,PxFilter.bilinear,PxFilter.bilinear,PxFilter.bicubic,PxFilter.bicubic,PxFilter.bicubic,PxFilter.bilinear];
+    p.filter=filters[rule];p.corners=rule==1 || rule==2 || rule==5;p.antialias=rule==3 || rule==6;
+    heights:=[5]int.[4,9,2,1,3];widths:=[5]int.[9,3,11,1,2];p.height=heights[size];p.width=widths[size];
+    // Wide and tall images; shorter sides of 1 (7 by 3 to 2 by 1) and 3 (5 by 7 to 3 by 4).
+    across:=[5]int.[7,7,5,7,5];down:=[5]int.[5,5,7,3,7];shorter:=[5]int.[0,0,0,1,3];
+    image:=PxImage.{width=across[size],height=down[size]};if size==4 {image.order=PxOrder.bgr;}
+    p.shorter=shorter[size];if rule==7 {p.shorter=11;}
+    pixels:[105]u8;for i:0..<105 {pixels[i]=cast(u8)((i*97+13)%256);}
+    work:[105]f32;out:[108]f32;m:=3*p.height*p.width;
+    #assert px_preprocess(image,pixels[0..<3*image.width*image.height],p,work[..],out[0..<m],false).written==m;
+    for i:0..<m {#assert abs(f64(out[i])-px_reference(image,pixels[..],p,i/(m/3),(i/p.width)%p.height,i%p.width))<=0.000002;}
+}}}
 #test "convolution plans: output sizes, counts and work" {
     p:=px_conv_plan(PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=3,kernel_w=3,stride_h=2,stride_w=2,pad_h=1,pad_w=1});
     #assert p.status==PxStatus.ok && p.out_h==2 && p.out_w==2 && p.x==9 && p.w==9 && p.y==4 && p.patch==9 && p.columns==4 && p.work==36;
@@ -369,8 +484,8 @@ px_loss :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,dy:[]f32,y:[]f32,s:[]f32)->f64 {
 #test "patch plans" {
     p:=px_patch_plan(PxPatch.{batch=2,channels=3,height=8,width=12,patch=4,dim=5});
     #assert p.status==PxStatus.ok && p.grid_h==2 && p.grid_w==3 && p.tokens==6 && p.features==48 && p.x==576 && p.w==240 && p.out==60;
-    // Tokens 12 by 48, transposed weights 48 by 5, the product 12 by 5 and chapter 4's staging.
-    #assert p.scratch==12*48+48*5+2*12*5;
+    // One tile of every token: 48 by 12, then its product and chapter 4's staging, 5 by 12 each.
+    #assert p.scratch==12*48+2*12*5 && p.rows==12;
     q:=PxPatch.{channels=3,height=8,width=8,patch=4,dim=5};#assert px_patch_plan(q).status==PxStatus.ok;
     for f:0..<6 {
         b:=q;if f==0 {b.batch=0;}if f==1 {b.channels=0;}if f==2 {b.height=0;}if f==3 {b.width=0;}if f==4 {b.patch=0;}if f==5 {b.dim=0;}
@@ -381,13 +496,41 @@ px_loss :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,dy:[]f32,y:[]f32,s:[]f32)->f64 {
     b:=PxPatch.{channels=1,height=1,width=4096,patch=1,dim=1};#assert px_patch_plan(b).status==PxStatus.ok;
     b=q;b.height=9;#assert px_patch_plan(b).status==PxStatus.shape;b=q;b.width=10;#assert px_patch_plan(b).status==PxStatus.shape;
     b=q;b.patch=8;#assert px_patch_plan(b).status==PxStatus.ok;b.patch=16;#assert px_patch_plan(b).status==PxStatus.shape;
-    // Chapter 4's product bounds the projection: 2^20 multiply-adds.
-    b=PxPatch.{channels=1,height=1024,width=1024,patch=1,dim=1};#assert px_patch_plan(b).status==PxStatus.ok;
-    b.dim=2;#assert px_patch_plan(b).status==PxStatus.limit;
+    // Each tensor at most 2^20 values, each reached alone.
+    b=PxPatch.{channels=1,height=1024,width=1024,patch=2,dim=1};#assert px_patch_plan(b).status==PxStatus.ok;
+    b.width=1026;#assert px_patch_plan(b).status==PxStatus.limit;
+    b=PxPatch.{batch=2,channels=1,height=32,width=32,patch=32,dim=1024};p=px_patch_plan(b);#assert p.status==PxStatus.ok && p.w==1048576 && p.rows==1;
+    b.dim=1025;#assert px_patch_plan(b).status==PxStatus.limit;
     b=PxPatch.{channels=1,height=1,width=1024,patch=1,dim=1024};#assert px_patch_plan(b).status==PxStatus.ok;
-    b.batch=2;#assert px_patch_plan(b).status==PxStatus.limit;
-    b=PxPatch.{channels=4,height=512,width=512,patch=1,dim=1};#assert px_patch_plan(b).status==PxStatus.ok;
-    b.dim=2;#assert px_patch_plan(b).status==PxStatus.limit;
+    b.dim=1025;#assert px_patch_plan(b).status==PxStatus.limit;
+    // At most 2^28 multiply-adds: 256 tokens of 1,024 features to 1,024, then 257.
+    b=PxPatch.{batch=256,channels=1,height=32,width=32,patch=32,dim=1024};p=px_patch_plan(b);#assert p.status==PxStatus.ok && p.work==268435456;
+    b.batch=257;#assert px_patch_plan(b).status==PxStatus.limit;
+    #assert px_patch_work(268435456,1,1)==268435456 && px_patch_work(268435457,1,1)==-1;
+    // Tokens per tile: as many as keep a tile within 2^20 - 1 multiply-adds,
+    // at least one, at most all of them.
+    b=PxPatch.{channels=1,height=96,width=32,patch=32,dim=512};p=px_patch_plan(b);
+    #assert p.status==PxStatus.ok && p.rows==1 && p.scratch==1024+2*512;
+    b.dim=511;#assert px_patch_plan(b).rows==2;b.dim=342;#assert px_patch_plan(b).rows==2;b.dim=341;#assert px_patch_plan(b).rows==3;
+    b.dim=1;#assert px_patch_plan(b).rows==3;
+    b=PxPatch.{channels=1,height=1024,width=1024,patch=2,dim=1};#assert px_patch_plan(b).rows==262143;
+    b=PxPatch.{channels=1,height=451,width=775,patch=1,dim=3};#assert px_patch_plan(b).rows==349525;
+    #assert px_fewer(3,5)==3 && px_fewer(5,3)==3 && px_fewer(4,4)==4;
+    // ViT-B/16 at 224 pixels: 196 tokens of 768 features to 768, one row per tile.
+    vit:=px_patch_plan(PxPatch.{channels=3,height=224,width=224,patch=16,dim=768});
+    #assert vit.status==PxStatus.ok && vit.tokens==196 && vit.features==768 && vit.work==115605504 && vit.rows==1;
+}
+#test "a tiled projection equals the direct sum, tile by tile" {
+    // Six tokens of four features to three, in tiles of one to six rows; the
+    // last tile is short when the rows do not divide six.
+    q:=PxPatch.{channels=1,height=4,width=6,patch=2,dim=3};p:=px_patch_plan(q);#assert p.rows==6;
+    x:[24]f32;w:[12]f32;bias:[3]f32;px_fill(x[..],5);px_fill(w[..],3);px_fill(bias[..],7);
+    for rows:1..<7 {
+        t:=p;t.rows=rows;t.scratch=rows*(4+2*3);work:[60]f32;out:[19]f32;out[18]=-7;
+        r:=px_patch_tiles(q,t,x[..],w[..],bias[..],work[0..<t.scratch],out[..]);#assert r.status==PxStatus.ok && r.written==18 && out[18]==-7;
+        // Every value is a multiple of 1/256 well inside f32's range: both sums are exact.
+        for i:0..<18 {#assert out[i]==f32(px_patch_value(q,p,x[..],w[..],bias[..],i));}
+    }
 }
 #forall "a patch projection equals the convolution with stride equal to kernel" patch: 1..<4, batch: 1..<3 {
     q:=PxPatch.{batch=batch,channels=2,height=6,width=3*patch,patch=patch,dim=3};p:=px_patch_plan(q);
@@ -403,7 +546,7 @@ px_loss :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,dy:[]f32,y:[]f32,s:[]f32)->f64 {
 #test "patch projection by hand and its refusals" {
     // One 2 by 2 patch per token; weights pick the top-left pixel and sum the patch.
     q:=PxPatch.{channels=1,height=2,width=4,patch=2,dim=2};x:=[8]f32.[1,2,3,4,5,6,7,8];w:=[8]f32.[1,0,0,0,1,1,1,1];b:=[2]f32.[0,0.5];
-    out:=[5]f32.[-7,-7,-7,-7,-7];work:[24]f32;#assert px_patch_plan(q).scratch==24;
+    out:=[5]f32.[-7,-7,-7,-7,-7];work:[16]f32;#assert px_patch_plan(q).scratch==16;
     r:=px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false);
     #assert r.status==PxStatus.ok && r.written==4 && out[0]==1 && out[1]==14.5 && out[2]==3 && out[3]==22.5 && out[4]==-7;
     tokens:[8]f32;#assert px_patchify(q,x[..],tokens[..])==8;
@@ -411,17 +554,26 @@ px_loss :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,dy:[]f32,y:[]f32,s:[]f32)->f64 {
     #assert px_patch_embed(q,x[0..<7],w[..],b[..],work[..],out[..],false).status==PxStatus.shape;
     #assert px_patch_embed(q,x[..],w[0..<7],b[..],work[..],out[..],false).status==PxStatus.shape;
     #assert px_patch_embed(q,x[..],w[..],b[0..<1],work[..],out[..],false).status==PxStatus.shape;
-    #assert px_patch_embed(q,x[..],w[..],b[..],work[0..<23],out[..],false).status==PxStatus.capacity;
+    #assert px_patch_embed(q,x[..],w[..],b[..],work[0..<15],out[..],false).status==PxStatus.capacity;
     #assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[0..<3],false).status==PxStatus.capacity;
     #assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],true).status==PxStatus.alias;
     bad:=q;bad.width=5;#assert px_patch_embed(bad,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.shape;
     x[7]=0.0/0.0;#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;x[7]=8;
     w[7]=0.0/0.0;#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;w[7]=1;
     b[1]=0.0/0.0;#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;b[1]=0.5;
-    // Too large for f32 inside chapter 4's product, then only after the bias.
+    // Sums that could pass 2^127: in the product, then only with the bias.
     x[0]=f32_from_bits(0x7f7fffff);w[0]=2;#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;
-    w[0]=1;b[1]=x[0];#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;
+    x[0]=1;w[0]=1;b[1]=f32_from_bits(0x7f7fffff);#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;
     #assert out[0]==1 && out[3]==22.5;
+    // The bound itself: one feature, 2^63 times 2^64 is 2^127 exactly; any bias passes it.
+    one:=PxPatch.{channels=1,height=1,width=1,patch=1,dim=1};big:=[1]f32.[9223372036854775808.0];huge:=[1]f32.[18446744073709551616.0];
+    zero:=[1]f32.[0];small:=[1]f32.[f32_from_bits(0x65000000)];got:[1]f32;
+    #assert px_patch_embed(one,big[..],huge[..],zero[..],work[..],got[..],false).status==PxStatus.ok && got[0]==f32_from_bits(0x7f000000);
+    #assert px_patch_embed(one,big[..],huge[..],small[..],work[..],got[..],false).status==PxStatus.number;
+    #assert px_largest(w[..])==1 && px_largest(zero[..])==0;
+    neg:=[2]f32.[-3,2];#assert px_largest(neg[..])==3;
+    // Four features: 4 times 2^63 times 2^63 is 2^128, past the bound.
+    x[5]=9223372036854775808.0;w[5]=9223372036854775808.0;b[1]=0.5;#assert px_patch_embed(q,x[..],w[..],b[..],work[..],out[..],false).status==PxStatus.number;
     #assert px_patchify(q,x[0..<7],tokens[..])==0 && px_patchify(q,x[..],tokens[0..<7])==0 && px_patchify(bad,x[..],tokens[..])==0;
 }
 #test "position tables resized to a new grid" {
@@ -493,9 +645,30 @@ px_profile_status :: (p:PxProfile)->PxStatus {
     for c:0..<3 {
         if !(p.mean[c]>=-PX_MEAN_MAX && p.mean[c]<=PX_MEAN_MAX) || !(p.std[c]>=PX_STD_MIN && p.std[c]<=PX_MEAN_MAX) {return PxStatus.parameter;}
     }
+    if p.shorter<0 {return PxStatus.parameter;}
+    if p.shorter>PX_SIDE_MAX {return PxStatus.limit;}
+    // Antialiasing widens a filter; nearest has none, and the widened filter
+    // is defined for half-pixel centres only.
+    if p.antialias && (p.filter==PxFilter.nearest || p.corners) {return PxStatus.parameter;}
     return PxStatus.ok;
 }
 // book:end profiles
+
+// book:begin fit
+// Half of d, rounded half to even, as torchvision's centre crop rounds.
+px_centre :: (d:int)->int {k:=d/2;if d%2==1 && k%2==1 {k+=1;}return k;}
+// Without a shorter side, the image is resized straight to height by width.
+// With one, the shorter image side becomes that many pixels, the longer side
+// keeps the aspect ratio rounded down (torchvision's Resize(int)), and the
+// output is the centred height by width crop of that grid.
+px_fit :: (h:int,w:int,p:PxProfile)->PxFit {
+    if p.shorter==0 {return PxFit.{height=p.height,width=p.width};}
+    short:=(h+w-tv_magnitude(h-w))/2;rh:=p.shorter*h/short;rw:=p.shorter*w/short;
+    if rh>PX_EXTENT_MAX || rw>PX_EXTENT_MAX {return PxFit.{status=PxStatus.limit};}
+    if p.height>rh || p.width>rw {return PxFit.{status=PxStatus.shape};}
+    return PxFit.{height=rh,width=rw,top=px_centre(rh-p.height),left=px_centre(rw-p.width)};
+}
+// book:end fit
 
 // book:begin sample
 // One resized value, with chapter 5's arithmetic for nearest2d and
@@ -513,15 +686,94 @@ px_sample :: (data:[]f32,base:int,row:int,column:int,h:int,w:int,size_h:int,size
 }
 // book:end sample
 
+// book:begin taps
+// Keys' cubic convolution kernel with coefficient a, as one cubic plus two
+// truncated powers: (a + 2)t^3 - (a + 3)t^2 + 1 up to t = 1, plus
+// (t - 1)^2 (-2t - 4a - 1) from 1, minus a(t - 1)(t - 2)^2 from 2, where it
+// cancels to 0. (u + |u|) / 2 is u above 0 and 0 below.
+px_cubic :: (x:f64,a:f64)->f64 {
+    t:=abs(x);r:=(t-1+abs(t-1))/2;s:=(t-2+abs(t-2))/2;
+    return ((a+2)*t-(a+3))*t*t+1+r*r*(-2*t-4*a-1)-s*s*a*(t-1);
+}
+// i moved into 0 to n - 1.
+px_clamp :: (i:int,n:int)->int {low:=(i+tv_magnitude(i))/2;return (low+n-1-tv_magnitude(low-n+1))/2;}
+// The source pixels output o reads along an axis of input pixels resized to
+// size, from first, with their weights. Three rules:
+// - nearest reads floor(o * input / size), or with corners aligned the
+//   nearest of o * (input - 1) / (size - 1), halves rounding up;
+// - antialiased bilinear and bicubic follow PIL's resampler (and PyTorch's
+//   antialias=True): centre (o + 1/2) * input / size, the filter widened by
+//   the downscaling factor, the window cut at the image edge and the weights
+//   divided by their sum; bicubic uses a = -0.5;
+// - otherwise bilinear and bicubic follow PyTorch's interpolate: the exact
+//   source point (o + 1/2) * input / size - 1/2, or o * (input - 1) /
+//   (size - 1) with corners aligned, then 2 or 4 neighbours whose indices
+//   stop at the edges; bilinear moves a point below 0 up to 0, bicubic uses
+//   a = -0.75. Repeated edge pixels add their weights.
+px_taps :: (input:int,size:int,filter:PxFilter,corners:bool,antialias:bool,o:int,weights:[]f64)->PxTaps {
+    if filter==PxFilter.nearest {
+        first:=o*input/size;
+        if corners && size>1 {first=(2*o*(input-1)+size-1)/(2*(size-1));}
+        weights[0]=1;return PxTaps.{first=first,count=1};
+    }
+    if antialias {
+        // widen = max(scale, 1); the window [first, last) stops at the edges.
+        scale:=f64(input)/f64(size);widen:=(scale+1+abs(scale-1))/2;
+        support:=widen;if filter==PxFilter.bicubic {support=2*widen;}
+        centre:=(f64(o)+0.5)*scale;inverse:=1/widen;
+        first:=int(floor(centre-support+0.5));first=(first+tv_magnitude(first))/2;
+        last:=int(floor(centre+support+0.5));last=(last+input-tv_magnitude(last-input))/2;
+        count:=last-first;total:=0.0;
+        for j:0..<count {
+            u:=(f64(first+j)-centre+0.5)*inverse;v:=px_cubic(u,-0.5);
+            // Twice the triangle max(1 - |u|, 0); dividing by the sum removes the 2.
+            if filter==PxFilter.bilinear {v=1-abs(u)+abs(1-abs(u));}
+            weights[j]=v;total+=v;
+        }
+        for j:0..<count {weights[j]/=total;}
+        return PxTaps.{first=first,count=count};
+    }
+    // The source point num / den, exactly; with corners and one output the
+    // point is 0 and den is 0.
+    num:=(2*o+1)*input-size;den:=2*size;
+    if corners {num=o*(input-1);den=size-1;}
+    if filter==PxFilter.bilinear {num=(num+tv_magnitude(num))/2;}
+    low:=0;t:=0.0;
+    if den>0 {low=num/den;if num<low*den {low-=1;}t=f64(num-low*den)/f64(den);}
+    start:=low-1;n:=4;if filter==PxFilter.bilinear {start=low;n=2;}
+    first:=px_clamp(start,input);count:=px_clamp(start+n-1,input)-first+1;
+    for j:0..<count {weights[j]=0;}
+    for j:0..<n {
+        u:=f64(start+j-low)-t;v:=px_cubic(u,-0.75);
+        if filter==PxFilter.bilinear {v=1-abs(u);}
+        weights[px_clamp(start+j,input)-first]+=v;
+    }
+    return PxTaps.{first=first,count=count};
+}
+// One resized value. The half-pixel nearest and bilinear rules without
+// antialiasing take chapter 5's arithmetic above; every other rule sums the
+// two axes' taps.
+px_resample :: (data:[]f32,base:int,row:int,column:int,h:int,w:int,size_h:int,size_w:int,p:PxProfile,y:int,x:int)->f64 {
+    if !p.corners && !p.antialias && p.filter!=PxFilter.bicubic {return px_sample(data,base,row,column,h,w,size_h,size_w,p.filter,y,x);}
+    wy:[512]f64;wx:[512]f64;
+    a:=px_taps(h,size_h,p.filter,p.corners,p.antialias,y,wy[..]);b:=px_taps(w,size_w,p.filter,p.corners,p.antialias,x,wx[..]);
+    t:PsionicAccumulator;
+    for i:0..<a.count {for j:0..<b.count {t=psionic_ops_accumulate(t,wy[i]*wx[j]*f64(data[base+(a.first+i)*row+(b.first+j)*column]));}}
+    return psionic_ops_total(t);
+}
+// book:end taps
+
 // book:begin preprocess
 px_preprocess_work :: (image:PxImage,p:PxProfile)->int {return 3*image.width*image.height;}
 // Bytes to model values: pick the model's channel order and lay the image out
-// channel by channel, times the scale; resize; subtract the mean and divide by
-// the spread. Each stage rounds to f32 once, as chapter 5's operators do.
+// channel by channel, times the scale; resize, and crop when the profile names
+// a shorter side; subtract the mean and divide by the spread. Each stage
+// rounds to f32 once, as chapter 5's operators do.
 px_preprocess :: (image:PxImage,pixels:[]u8,p:PxProfile,work:[]f32,out:[]f32,overlap:bool)->PxResult {
     s:=px_image_status(image);if s!=PxStatus.ok {return PxResult.{status=s};}
     s=px_profile_status(p);if s!=PxStatus.ok {return PxResult.{status=s};}
     h:=image.height;w:=image.width;area:=h*w;size:=p.height*p.width;
+    fit:=px_fit(h,w,p);if fit.status!=PxStatus.ok {return PxResult.{status=fit.status};}
     if pixels.count!=3*area {return PxResult.{status=PxStatus.shape};}
     if work.count<3*area || out.count<3*size {return PxResult.{status=PxStatus.capacity};}
     if overlap {return PxResult.{status=PxStatus.alias};}
@@ -531,7 +783,7 @@ px_preprocess :: (image:PxImage,pixels:[]u8,p:PxProfile,work:[]f32,out:[]f32,ove
         for i:0..<area {work[c*area+i]=f32(f64(pixels[i*3+source])*p.scale);}
     }
     for c:0..<3 {for y:0..<p.height {for x:0..<p.width {
-        v:=f32(px_sample(work,c*area,w,1,h,w,p.height,p.width,p.filter,y,x));
+        v:=f32(px_resample(work,c*area,w,1,h,w,fit.height,fit.width,p,y+fit.top,x+fit.left));
         out[(c*p.height+y)*p.width+x]=f32((f64(v)-p.mean[c])/p.std[c]);
     }}}
     return PxResult.{written=3*size};
@@ -539,28 +791,68 @@ px_preprocess :: (image:PxImage,pixels:[]u8,p:PxProfile,work:[]f32,out:[]f32,ove
 // book:end preprocess
 
 // book:begin reference
-// One output value straight from the bytes, in binary64, written from the
-// usual description of bilinear sampling with half-pixel centres: the source
-// point is (out + 1/2) * in / size - 1/2, at least 0; the pixel at its floor
-// and the next one, which stops at the last pixel, are blended by the
-// fraction. Nearest reads source floor(out * in / size).
+// One output value straight from the bytes, in binary64: the resized grid
+// and crop computed in floating point as torchvision does, then each source
+// pixel times its two axis weights.
 px_reference :: (image:PxImage,pixels:[]u8,p:PxProfile,c:int,y:int,x:int)->f64 {
     source:=c;if image.order!=p.order {source=2-c;}
-    h:=image.height;w:=image.width;v:=0.0;
-    if p.filter==PxFilter.nearest {v=f64(pixels[((y*h/p.height)*w+x*w/p.width)*3+source]);}
-    else {
-        sy:=(f64(y)+0.5)*f64(h)/f64(p.height)-0.5;sx:=(f64(x)+0.5)*f64(w)/f64(p.width)-0.5;
-        sy=(sy+abs(sy))/2;sx=(sx+abs(sx))/2;
-        y0:=int(floor(sy));x0:=int(floor(sx));y1:=y0+1;x1:=x0+1;
-        if y1==h {y1=h-1;}
-        if x1==w {x1=w-1;}
-        fy:=sy-f64(y0);fx:=sx-f64(x0);
-        top:=(1-fx)*f64(pixels[(y0*w+x0)*3+source])+fx*f64(pixels[(y0*w+x1)*3+source]);
-        bottom:=(1-fx)*f64(pixels[(y1*w+x0)*3+source])+fx*f64(pixels[(y1*w+x1)*3+source]);
-        v=(1-fy)*top+fy*bottom;
+    h:=image.height;w:=image.width;size_h:=p.height;size_w:=p.width;top:=0;left:=0;
+    if p.shorter>0 {
+        short:=-px_most(-f64(h),-f64(w));
+        size_h=int(floor(f64(p.shorter)*f64(h)/short));size_w=int(floor(f64(p.shorter)*f64(w)/short));
+        top=px_round_even(f64(size_h-p.height)/2);left=px_round_even(f64(size_w-p.width)/2);
     }
+    wy:[512]f64;wx:[512]f64;px_reference_axis(h,size_h,p,y+top,wy[..]);px_reference_axis(w,size_w,p,x+left,wx[..]);
+    v:=0.0;
+    for i:0..<h {for j:0..<w {v+=wy[i]*wx[j]*f64(pixels[(i*w+j)*3+source]);}}
     return (v*p.scale-p.mean[c])/p.std[c];
 }
+// Python's round(), which rounds halves to even, as torchvision calls it.
+px_round_even :: (v:f64)->int {r:=floor(v);if v-r==0.5 && int(r)%2==1 {r+=1;}return int(r);}
+// The weight of every source pixel along one axis for output o, written into
+// weights that arrive as zeros, from each rule's usual floating-point
+// description: the source point and its floor; PyTorch's cubic convolution
+// formulas; PIL's filter evaluated at every pixel's distance from the
+// centre rather than only inside a window, its pieces as clamped arguments.
+px_reference_axis :: (input:int,size:int,p:PxProfile,o:int,weights:[]f64) {
+    if p.filter==PxFilter.nearest {
+        s:=floor(f64(o)*f64(input)/f64(size));
+        if p.corners && size>1 {s=floor(f64(o)*f64(input-1)/f64(size-1)+0.5);}
+        weights[int(s)]=1;return;
+    }
+    if p.antialias {
+        scale:=f64(input)/f64(size);widen:=px_most(scale,1);total:=0.0;a:=-0.5;
+        for j:0..<input {
+            u:=abs(f64(j)+0.5-(f64(o)+0.5)*scale)/widen;
+            // Bilinear: 1 - u, not below 0. Bicubic: the inner cubic at min(u, 1), where it
+            // is 0, plus the outer cubic at u held between 1 and 2, where it is 0 at both ends.
+            v:=px_most(1-u,0);
+            if p.filter==PxFilter.bicubic {
+                i:=-px_most(-u,-1);e:=px_most(-px_most(-u,-2),1);
+                v=(a+2)*i*i*i-(a+3)*i*i+1+a*e*e*e-5*a*e*e+8*a*e-4*a;
+            }
+            weights[j]=v;total+=v;
+        }
+        for j:0..<input {weights[j]/=total;}
+        return;
+    }
+    s:=(f64(o)+0.5)*f64(input)/f64(size)-0.5;
+    if p.corners {s=0;if size>1 {s=f64(o)*f64(input-1)/f64(size-1);}}
+    if p.filter==PxFilter.bilinear {
+        s=px_most(s,0);i0:=int(floor(s));f:=s-f64(i0);
+        weights[i0]+=1-f;weights[px_clamp(i0+1,input)]+=f;return;
+    }
+    i0:=int(floor(s));t:=s-f64(i0);a:=-0.75;
+    near:=[2]f64.[t,1-t];far:=[2]f64.[t+1,2-t];
+    for k:0..<2 {
+        // cubic_convolution1 for the two inner taps, cubic_convolution2 for the outer two.
+        inner:=((a+2)*near[k]-(a+3))*near[k]*near[k]+1;
+        outer:=((a*far[k]-5*a)*far[k]+8*a)*far[k]-4*a;
+        weights[px_clamp(i0+k,input)]+=inner;weights[px_clamp(i0-1+3*k,input)]+=outer;
+    }
+}
+// The larger of two values.
+px_most :: (a:f64,b:f64)->f64 {return (a+b+abs(a-b))/2;}
 // book:end reference
 
 // book:begin plan
@@ -739,8 +1031,10 @@ px_conv_backward :: (c:PxConv,x:[]f32,w:[]f32,dy:[]f32,dx:[]f32,dw:[]f32,db:[]f3
 // book:end backward
 
 // book:begin patch
-// Chapter 4's product bounds the projection at 2^20 multiply-adds, and with
-// it every count below.
+// Each tensor holds at most 2^20 values and the projection does at most 2^28
+// multiply-adds. Chapter 4's product takes at most 2^20 multiply-adds at a
+// time, so the plan cuts the tokens into tiles: as many tokens as keep one
+// tile within 2^20 - 1 multiply-adds beside all of the weights.
 px_patch_plan :: (q:PxPatch)->PxPatchPlan {
     extents:=[6]int.[q.batch,q.channels,q.height,q.width,q.patch,q.dim];
     for e:extents {if e<1 {return PxPatchPlan.{status=PxStatus.shape};}}
@@ -748,49 +1042,70 @@ px_patch_plan :: (q:PxPatch)->PxPatchPlan {
     if q.height%q.patch!=0 || q.width%q.patch!=0 {return PxPatchPlan.{status=PxStatus.shape};}
     p:=PxPatchPlan.{grid_h=q.height/q.patch,grid_w=q.width/q.patch};
     p.tokens=p.grid_h*p.grid_w;p.features=q.channels*q.patch*q.patch;
-    request:=PsionicRequest.{op=PsionicOp.matmul,rows=q.batch*p.tokens,width=p.features,columns=q.dim};
-    if psionic_ops_plan(request).status!=PsionicOpStatus.ok {return PxPatchPlan.{status=PxStatus.limit};}
-    p.x=q.batch*q.channels*q.height*q.width;p.w=q.dim*p.features;p.out=q.batch*p.tokens*q.dim;
-    p.scratch=p.x+p.w+2*p.out;
+    p.x=px_elements(q.batch,q.channels,q.height,q.width);p.w=px_elements(q.dim,p.features,1,1);p.out=px_elements(q.batch,p.tokens,q.dim,1);
+    if p.x==-1 || p.w==-1 || p.out==-1 {return PxPatchPlan.{status=PxStatus.limit};}
+    total:=q.batch*p.tokens;p.work=px_patch_work(total,p.features,q.dim);
+    if p.work==-1 {return PxPatchPlan.{status=PxStatus.limit};}
+    // At least one token per tile: 2^20 weights fill chapter 4 exactly.
+    rows:=PX_TILE_WORK/p.w;if rows==0 {rows=1;}p.rows=px_fewer(rows,total);p.scratch=p.rows*(p.features+2*q.dim);
     return p;
+}
+// The smaller of two counts.
+px_patch_work :: (a:int,b:int,c:int)->int {return px_product(a,b,c,1,PX_PATCH_WORK_MAX);}
+px_fewer :: (a:int,b:int)->int {return (a+b-tv_magnitude(a-b))/2;}
+// Where feature k of token r sits in the image: image r / tokens, grid cell
+// r % tokens, and within its square (channel, row, column).
+px_patch_pixel :: (q:PxPatch,p:PxPatchPlan,r:int,k:int)->int {
+    n:=r/p.tokens;gy:=(r%p.tokens)/p.grid_w;gx:=r%p.grid_w;ch:=k/(q.patch*q.patch);dy:=(k/q.patch)%q.patch;dx:=k%q.patch;
+    return ((n*q.channels+ch)*q.height+gy*q.patch+dy)*q.width+gx*q.patch+dx;
 }
 // Cut each image into patch by patch squares, left to right and top to
 // bottom; each square becomes one row of features in (channel, row, column)
 // order, the order of the convolution's weights.
 px_patchify :: (q:PxPatch,x:[]f32,tokens:[]f32)->int {
     p:=px_patch_plan(q);if p.status!=PxStatus.ok || x.count!=p.x || tokens.count<p.x {return 0;}
-    for r:0..<q.batch*p.tokens {
-        n:=r/p.tokens;gy:=(r%p.tokens)/p.grid_w;gx:=r%p.grid_w;
-        for k:0..<p.features {
-            ch:=k/(q.patch*q.patch);dy:=(k/q.patch)%q.patch;dx:=k%q.patch;
-            tokens[r*p.features+k]=x[((n*q.channels+ch)*q.height+gy*q.patch+dy)*q.width+gx*q.patch+dx];
-        }
-    }
+    for i:0..<p.x {tokens[i]=x[px_patch_pixel(q,p,i/p.features,i%p.features)];}
     return p.x;
 }
-// Tokens times the transposed weights, plus the bias: the first layer of a
-// vision transformer. Scratch holds the tokens, the transposed weights,
-// chapter 4's staging and the product, in that order.
+// The weights times the tokens, plus the bias: the first layer of a vision
+// transformer. Chapter 4 multiplies one tile of tokens at a time, each
+// output's whole inner product in one call, so the tiles change nothing but
+// the size admitted. Admission bounds every sum first: features times the
+// largest pixel times the largest weight, plus the largest bias, at most
+// 2^127. No tile can then fail, and each writes its outputs directly.
+// Scratch holds one tile's tokens, its product and chapter 4's staging.
 px_patch_embed :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,out:[]f32,overlap:bool)->PxResult {
     p:=px_patch_plan(q);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
     if x.count!=p.x || w.count!=p.w || bias.count!=q.dim {return PxResult.{status=PxStatus.shape};}
     if work.count<p.scratch || out.count<p.out {return PxResult.{status=PxStatus.capacity};}
     if overlap {return PxResult.{status=PxStatus.alias};}
-    // Chapter 4 checks the pixels and weights it multiplies.
-    if !px_finite(bias) {return PxResult.{status=PxStatus.number};}
-    #assert px_patchify(q,x,work[0..<p.x])==p.x;
-    for k:0..<p.features {for d:0..<q.dim {work[p.x+k*q.dim+d]=w[d*p.features+k];}}
-    idx:[1]int;mask:[1]u8;stage:=p.x+p.w;product:=stage+p.out;
-    r:=psionic_ops_checked(PsionicRequest.{op=PsionicOp.matmul,rows=q.batch*p.tokens,width=p.features,columns=q.dim},work[0..<p.x],
-        work[p.x..<stage],idx[0..<0],mask[0..<0],work[product..<product+p.out],work[stage..<product],false);
-    if r.status!=PsionicOpStatus.ok {return PxResult.{status=PxStatus.number};}
-    for i:0..<p.out {
-        v:=f64(work[product+i])+f64(bias[i%q.dim]);
-        if !psionic_ops_fits_f32(v) {return PxResult.{status=PxStatus.number};}
-        work[product+i]=f32(v);
+    if !px_finite(x) || !px_finite(w) || !px_finite(bias) {return PxResult.{status=PxStatus.number};}
+    if !(f64(p.features)*px_largest(x)*px_largest(w)+px_largest(bias)<=PX_SUM_MAX) {return PxResult.{status=PxStatus.number};}
+    return px_patch_tiles(q,p,x,w,bias,work,out);
+}
+px_largest :: (x:[]f32)->f64 {m:=0.0;for v:x {m=px_most(m,abs(f64(v)));}return m;}
+// The product for an admitted plan, p.rows tokens at a time.
+px_patch_tiles :: (q:PxPatch,p:PxPatchPlan,x:[]f32,w:[]f32,bias:[]f32,work:[]f32,out:[]f32)->PxResult {
+    total:=q.batch*p.tokens;idx:[1]int;mask:[1]u8;
+    for tile:0..<(total+p.rows-1)/p.rows {
+        first:=tile*p.rows;columns:=px_fewer(total-first,p.rows);
+        // The tile's tokens as columns: feature k of token first + j at k * columns + j.
+        for i:0..<p.features*columns {work[i]=x[px_patch_pixel(q,p,first+i%columns,i/columns)];}
+        tokens:=p.features*columns;each:=q.dim*columns;
+        r:=psionic_ops_checked(PsionicRequest.{op=PsionicOp.matmul,rows=q.dim,width=p.features,columns=columns},w,work[0..<tokens],idx[0..<0],mask[0..<0],
+            work[tokens..<tokens+each],work[tokens+each..<tokens+2*each],false);
+        #assert r.status==PsionicOpStatus.ok;
+        // Row d, column j of the product is token first + j, feature d.
+        for i:0..<each {out[(first+i%columns)*q.dim+i/columns]=f32(f64(work[tokens+i])+f64(bias[i/columns]));}
     }
-    for i:0..<p.out {out[i]=work[product+i];}
     return PxResult.{written=p.out};
+}
+// One projected value as a direct sum, bias included, in binary64 with
+// chapter 4's compensated accumulator. Weight (d, k) is at d * features + k.
+px_patch_value :: (q:PxPatch,p:PxPatchPlan,x:[]f32,w:[]f32,bias:[]f32,i:int)->f64 {
+    d:=i%q.dim;r:=i/q.dim;s:PsionicAccumulator;s=psionic_ops_accumulate(s,f64(bias[d]));
+    for k:0..<p.features {s=psionic_ops_accumulate(s,f64(x[px_patch_pixel(q,p,r,k)])*f64(w[d*p.features+k]));}
+    return psionic_ops_total(s);
 }
 // book:end patch
 

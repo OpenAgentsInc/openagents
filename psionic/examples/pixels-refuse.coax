@@ -1,7 +1,7 @@
 // Chapter 142: malformed images, profiles, convolutions, patches and
 // position tables, each refused with its status before anything is written.
 #import "Basic";
-#load "../lib/pixels.coax";
+#load "../lib/pixels-ir.coax";
 
 // book:begin refuse
 main :: () {
@@ -14,6 +14,10 @@ main :: () {
     print("11 bytes for a 2x2 RGB image: %\n",px_preprocess(image,pixels[0..<11],p,work[..],out[..],false).status);
     zero:=p;zero.std[1]=0;print("spread 0 in green: %\n",px_preprocess(image,pixels[..],zero,work[..],out[..],false).status);
     print("47 output values for 48: %\n",px_preprocess(image,pixels[..],p,work[..],out[0..<47],false).status);
+    soft:=p;soft.filter=PxFilter.nearest;soft.antialias=true;print("antialiased nearest: %\n",px_preprocess(image,pixels[..],soft,work[..],out[..],false).status);
+    soft=p;soft.antialias=true;soft.corners=true;print("antialiasing with corners aligned: %\n",px_preprocess(image,pixels[..],soft,work[..],out[..],false).status);
+    crop:=p;crop.shorter=2;crop.height=3;print("a 3-row crop of a 2-row resize: %\n",px_preprocess(image,pixels[..],crop,work[..],out[..],false).status);
+    crop=p;crop.shorter=513;print("shorter side 513: %\n",px_preprocess(image,pixels[..],crop,work[..],out[..],false).status);
     untouched:=0;for v:out {if v==-7 {untouched+=1;}}print("output values still -7: % of 48\n",untouched);
 
     x:=[9]f32.[1,2,3,4,5,6,7,8,9];w:=[9]f32.[1,1,1,1,1,1,1,1,1];none:[1]f32;y:=[4]f32.[-7,-7,-7,-7];s:[4]f32;
@@ -31,7 +35,12 @@ main :: () {
     big:=PxConv.{channels=2,height=1024,width=1024,filters=1,kernel_h=1,kernel_w=1};print("2^21 input values: %\n",px_conv_plan(big).status);
 
     q:=PxPatch.{channels=3,height=8,width=10,patch=4,dim=5};print("patch 4 on width 10: %\n",px_patch_plan(q).status);
-    q=PxPatch.{channels=4,height=512,width=512,patch=1,dim=2};print("a projection of 2^21 multiply-adds: %\n",px_patch_plan(q).status);
+    q=PxPatch.{batch=257,channels=1,height=32,width=32,patch=32,dim=1024};print("a projection of 2^28 + 2^20 multiply-adds: %\n",px_patch_plan(q).status);
+    q=PxPatch.{channels=1,height=2,width=4,patch=2,dim=2};img:=[8]f32.[1,2,3,4,5,6,7,8];pw:=[8]f32.[1,0,0,0,1,1,1,1];pb:=[2]f32.[0,0.5];pwork:[16]f32;
+    embed:=[4]f32.[-7,-7,-7,-7];img[0]=f32_from_bits(0x7f000000);
+    print("a pixel of 2^127 in a projection: %, outputs still % %\n",px_patch_embed(q,img[..],pw[..],pb[..],pwork[..],embed[..],false).status,embed[0],embed[3]);
+    pad:=PxConv.{channels=1,height=1024,width=1024,filters=1,kernel_h=3,kernel_w=3,pad_h=1,pad_w=1};
+    print("lowering a padded 1024x1024 image to chapter 38: %\n",px_lower_conv(pad,false,false).status);
     table:=[4]f32.[0,1,1,0];grid:[16]f32;
     print("a position table resized to 0 rows: %\n",px_positions(2,2,1,table[..],0,4,grid[..],false).status);
     print("3 table values for a 2x2 grid: %\n",px_positions(2,2,1,table[0..<3],4,4,grid[..],false).status);

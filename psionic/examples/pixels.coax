@@ -68,7 +68,7 @@ main :: () {
     // Two 2 by 2 patches of a 2 by 4 image; weights pick the top-left pixel and sum the patch.
     q:=PxPatch.{channels=1,height=2,width=4,patch=2,dim=2};img:=[8]f32.[1,2,3,4,5,6,7,8];pw:=[8]f32.[1,0,0,0,1,1,1,1];pb:=[2]f32.[0,0.5];
     tokens:[8]f32;n:=px_patchify(q,img[..],tokens[..]);show("patches as rows:",tokens[0..<n]);
-    embed:[4]f32;pwork:[24]f32;r=px_patch_embed(q,img[..],pw[..],pb[..],pwork[..],embed[..],false);show("projected tokens:",embed[..]);
+    embed:[4]f32;pwork:[20]f32;r=px_patch_embed(q,img[..],pw[..],pb[..],pwork[..],embed[..],false);show("projected tokens:",embed[..]);
     cp:=PxConv.{channels=1,height=2,width=4,filters=2,kernel_h=2,kernel_w=2,stride_h=2,stride_w=2};
     r=px_conv_direct(cp,img[..],pw[..],pb[..],y[..],s[..],false);show("stride-2 convolution, (filter, column):",y[..]);
 

@@ -1,0 +1,11 @@
+red row 1, bicubic: -0.66223145 -0.29907227 0.29907227 0.66223145
+red row 1, bilinear, corners aligned: -0.3333333 -0.111111104 0.111111164 0.33333337
+4 to 2, bilinear: 0.0 1.0
+4 to 2, antialiased: 0.14285715 0.85714287
+320x240 resized to 341x256, cropped at row 16 column 58
+prepared: ok, 150528 values; 150 against the reference, largest difference 2.440068355147318e-07
+ViT-B/16 projection: ok, 115605504 multiply-adds, 196 tiles of 1 token
+  30408 of 150528 values differ from the direct sum, by at most 8.412189345108345e-08
+lowered: 5 nodes, 8 phase channels of 5x8, 3x4 taps
+  chapter 5's reference arithmetic: ok, 120 of 120 outputs equal the direct sum
+  chapter 38's planned kernels: ok, 120 of 120 outputs equal the direct sum

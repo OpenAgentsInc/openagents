@@ -1,0 +1,202 @@
+// Chapter 142: a convolution with stride, padding, dilation and groups, and a
+// vision transformer's patch projection, lowered into chapter 38's tensor IR.
+// Chapter 38's conv2d node is the valid, stride-one, one-group convolution.
+// The lowering rewrites every other setting into that one: the padded input
+// is cut into stride-phase planes stacked as channels (space to depth), and
+// the weights are spread into those channels with zeros wherever a dilated
+// tap does not land or a filter's group does not reach. The bias is chapter
+// 38's broadcast add, and the patch tokens are a view of the result.
+#load "pixels.coax";
+#load "tensor-ir-host.coax";
+#authority;
+
+// book:begin ir-types
+// The chapter 38 program for one convolution, and the counts of its inputs.
+PxLowered :: struct {status:PxStatus;program:TiProgram;plan:PxConvPlan;reuse:bool;taps_h:int;taps_w:int;channels:int;height:int;width:int;
+    x:int;w:int;input:int;workspace:int;stage:int;flags:int;}
+// book:end ir-types
+
+px_ir_shape :: (a:int,b:int,c:int,d:int)->TvShape {return TvShape.{rank=4,dims=[4]int.[a,b,c,d]};}
+#test "a padded, strided, dilated convolution lowers to five nodes" {
+    c:=PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=3,kernel_w=3,stride_h=2,stride_w=2,pad_h=1,pad_w=1};
+    l:=px_lower_conv(c,true,false);
+    // Taps 0, 1, 2 at stride 2: phases 0, 1, 0 and offsets 0, 0, 1.
+    #assert l.status==PxStatus.ok && l.taps_h==2 && l.taps_w==2 && l.channels==4 && l.height==3 && l.width==3;
+    #assert l.x==36 && l.w==16 && l.input==53 && l.program.count==5 && l.program.output==4;
+    #assert l.program.nodes[3].op==TiOp.conv2d && l.program.nodes[4].op==TiOp.add && l.program.nodes[2].shape.dims[0]==1;
+    x:=[9]f32.[1,2,3,4,5,6,7,8,9];ones:=[9]f32.[1,1,1,1,1,1,1,1,1];bias:=[1]f32.[0.5];
+    input:[53]f32;#assert px_lower_inputs(c,l,x[..],ones[..],bias[..],input[..]).written==53;
+    // Phase (0, 0) holds rows and columns -1 and 1 of the image: zero, zero / zero, 5.
+    #assert input[0]==0 && input[1]==0 && input[4]==5 && input[3]==0;
+    // Phase (1, 1) holds rows and columns 0 and 2: 1 3 / 7 9.
+    #assert input[27]==1 && input[28]==3 && input[30]==7 && input[31]==9;
+    // The weights: phase (0, 0) has taps (0, 0), (0, 2), (2, 0), (2, 2) at offsets 0 and 1.
+    #assert input[36]==1 && input[37]==1 && input[38]==1 && input[39]==1 && input[48]==1 && input[49]==0;
+    y:=[4]f32.[-7,-7,-7,-7];scratch:[80]f32;flags:[16]u8;
+    for reuse:0..<2 {
+        for i:0..<80 {scratch[i]=7;}
+        r:=px_conv_ir(c,x[..],ones[..],bias[..],reuse==1,scratch[..],flags[..],y[..]);
+        #assert r.status==PxStatus.ok && r.written==4 && y[0]==12.5 && y[1]==16.5 && y[2]==24.5 && y[3]==28.5;
+    }
+    // Horizontal dilation at stride 1 and 2: taps two and three columns apart.
+    for k:0..<2 {
+        d:=PxConv.{channels=2,height=3,width=7,filters=2,kernel_h=1,kernel_w=2,stride_w=1+k,dilation_w=2+k,groups=2};pd:=px_conv_plan(d);
+        dx:[42]f32;dw:[4]f32;db:[2]f32;px_fill(dx[..],5);px_fill(dw[..],3);px_fill(db[..],7);want:[30]f32;ws:[30]f32;
+        #assert px_conv_direct(d,dx[..],dw[..],db[..],want[0..<pd.y],ws[0..<pd.y],false).written==pd.y;
+        for reuse:0..<2 {
+            got:[30]f32;ds:[200]f32;for i:0..<200 {ds[i]=7;}df:[100]u8;
+            #assert px_conv_ir(d,dx[..],dw[..],db[..],reuse==1,ds[..],df[..],got[0..<pd.y]).written==pd.y && px_same(got[0..<pd.y],want[0..<pd.y]);
+        }
+    }
+    // Without a bias the program stops at the convolution.
+    l=px_lower_conv(c,false,true);#assert l.program.count==3 && l.program.output==2 && l.input==52 && l.program.nodes[2].op==TiOp.conv2d;
+    #assert px_conv_ir(c,x[..],ones[..],bias[0..<0],false,scratch[..],flags[..],y[..]).status==PxStatus.ok && y[0]==12 && y[3]==28;
+}
+#forall "the compiled program equals the direct sum on every setting" stride: 1..<3, wide: 0..<2, pad: 0..<2, dilation: 1..<3, groups: 1..<3 #steps 400000000 {
+    c:=PxConv.{batch=2,channels=2,height=4,width=4,filters=2,kernel_h=2,kernel_w=3,stride_h=stride,stride_w=stride+wide*(3-2*stride),
+        pad_h=pad,pad_w=pad,dilation_h=dilation,groups=groups};
+    p:=px_conv_plan(c);#assert p.status==PxStatus.ok;
+    x:[64]f32;w:[24]f32;b:[2]f32;px_fill(x[..],5);px_fill(w[0..<p.w],3);px_fill(b[..],7);
+    direct:[80]f32;s:[80]f32;#assert px_conv_direct(c,x[..],w[0..<p.w],b[..],direct[..],s[..],false).written==p.y;
+    l:=px_lower_conv(c,true,false);#assert l.status==PxStatus.ok && px_lower_conv(c,true,true).workspace==l.workspace;
+    scratch:[4000]f32;flags:[400]u8;
+    for reuse:0..<2 {
+        for i:0..<4000 {scratch[i]=7;}
+        y:[80]f32;r:=px_conv_ir(c,x[..],w[0..<p.w],b[..],reuse==1,scratch[..],flags[..],y[0..<p.y]);
+        #assert r.status==PxStatus.ok && r.written==p.y && px_same(y[0..<p.y],direct[0..<p.y]);
+    }
+}
+#test "lowering and running refuse before they write" {
+    c:=PxConv.{channels=1,height=3,width=3,filters=1,kernel_h=3,kernel_w=3,stride_h=2,stride_w=2,pad_h=1,pad_w=1};
+    x:=[9]f32.[1,2,3,4,5,6,7,8,9];w:=[9]f32.[1,1,1,1,1,1,1,1,1];b:=[1]f32.[0.5];y:=[4]f32.[-7,-7,-7,-7];scratch:[80]f32;flags:[16]u8;
+    bad:=c;bad.stride_w=0;#assert px_lower_conv(bad,true,false).status==PxStatus.parameter;
+    #assert px_conv_ir(bad,x[..],w[..],b[..],false,scratch[..],flags[..],y[..]).status==PxStatus.parameter;
+    #assert px_conv_ir(c,x[0..<8],w[..],b[..],false,scratch[..],flags[..],y[..]).status==PxStatus.shape;
+    #assert px_conv_ir(c,x[..],w[0..<8],b[..],false,scratch[..],flags[..],y[..]).status==PxStatus.shape;
+    two:=[2]f32.[1,1];#assert px_conv_ir(c,x[..],w[..],two[..],false,scratch[..],flags[..],y[..]).status==PxStatus.shape;
+    l:=px_lower_conv(c,true,false);#assert l.workspace==8 && l.stage==4 && l.flags==12;
+    #assert px_conv_ir(c,x[..],w[..],b[..],false,scratch[0..<64],flags[..],y[..]).status==PxStatus.capacity;
+    #assert px_conv_ir(c,x[..],w[..],b[..],false,scratch[0..<65],flags[..],y[..]).status==PxStatus.ok;
+    #assert px_conv_ir(c,x[..],w[..],b[..],false,scratch[..],flags[0..<11],y[..]).status==PxStatus.capacity;
+    #assert px_conv_ir(c,x[..],w[..],b[..],false,scratch[..],flags[0..<12],y[..]).status==PxStatus.ok;
+    #assert px_conv_ir(c,x[..],w[..],b[..],false,scratch[..],flags[..],y[0..<3]).status==PxStatus.capacity;
+    #assert px_lower_inputs(c,l,x[..],w[..],b[..],scratch[0..<52]).status==PxStatus.capacity;
+    for i:0..<4 {y[i]=-7;}
+    x[4]=0.0/0.0;#assert px_conv_ir(c,x[..],w[..],b[..],false,scratch[..],flags[..],y[..]).status==PxStatus.number;x[4]=5;
+    x[4]=f32_from_bits(0x7f7fffff);x[5]=x[4];
+    for reuse:0..<2 {#assert px_conv_ir(c,x[..],w[..],b[..],reuse==1,scratch[..],flags[..],y[..]).status==PxStatus.number;}
+    #assert y[0]==-7 && y[3]==-7;
+    // Chapter 5 admits at most 2^20 multiply-adds; the zero taps count.
+    big:=PxConv.{channels=4,height=64,width=64,filters=64,kernel_h=1,kernel_w=1};#assert px_lower_conv(big,false,false).status==PxStatus.ok;
+    big.filters=65;#assert px_lower_conv(big,false,false).status==PxStatus.limit;
+    big=PxConv.{channels=1,height=2,width=8,filters=1,kernel_h=1,kernel_w=1,stride_w=4};#assert px_lower_conv(big,false,false).channels==4;
+    // Padding grows the input: 1,024 by 1,024 pixels become 1,026 by 1,026, past chapter 38's 2^20.
+    big=PxConv.{channels=1,height=1024,width=1024,filters=1,kernel_h=3,kernel_w=3,pad_h=1,pad_w=1};#assert px_conv_plan(big).status==PxStatus.ok && px_lower_conv(big,false,false).status==PxStatus.limit;
+    #assert px_ir_status(TiStatus.ok)==PxStatus.ok && px_ir_status(TiStatus.budget)==PxStatus.limit && px_ir_status(TiStatus.layout)==PxStatus.limit;
+    #assert px_ir_status(TiStatus.arithmetic)==PxStatus.number && px_ir_status(TiStatus.number)==PxStatus.number && px_ir_status(TiStatus.shape)==PxStatus.limit;
+}
+#forall "a patch projection compiled through chapter 38 equals the tiled product" patch: 1..<4, batch: 1..<3 {
+    q:=PxPatch.{batch=batch,channels=2,height=6,width=3*patch,patch=patch,dim=3};p:=px_patch_plan(q);
+    x:[216]f32;w:[54]f32;bias:=[3]f32.[0.5,-0.25,1];px_fill(x[0..<p.x],5);px_fill(w[0..<p.w],3);
+    want:[108]f32;work:[600]f32;#assert px_patch_embed(q,x[0..<p.x],w[0..<p.w],bias[..],work[..],want[..],false).written==p.out;
+    scratch:[2000]f32;flags:[400]u8;
+    for reuse:0..<2 {
+        for i:0..<2000 {scratch[i]=7;}
+        out:[109]f32;out[p.out]=-7;r:=px_patch_ir(q,x[0..<p.x],w[0..<p.w],bias[..],reuse==1,scratch[..],flags[..],out[..]);
+        #assert r.status==PxStatus.ok && r.written==p.out && px_same(out[0..<p.out],want[0..<p.out]) && out[p.out]==-7;
+    }
+    bad:=q;bad.width=3*patch+1;if patch>1 {#assert px_patch_ir(bad,x[0..<p.x],w[0..<p.w],bias[..],false,scratch[..],flags[..],want[..]).status==PxStatus.shape;}
+    #assert px_patch_ir(q,x[0..<p.x],w[0..<p.w],bias[0..<2],false,scratch[..],flags[..],want[..]).status==PxStatus.shape;
+}
+
+// Every program the lowering builds is well formed, so chapter 38 refuses
+// one only for its size bounds, and a run only for its values.
+px_ir_status :: (s:TiStatus)->PxStatus {
+    if s==TiStatus.ok {return PxStatus.ok;}
+    if s==TiStatus.arithmetic || s==TiStatus.number {return PxStatus.number;}
+    return PxStatus.limit;
+}
+// book:begin lower
+// Tap i of a kernel dilated by d reads row oh * stride + i * d of the padded
+// image. Write i * d = q * stride + r: the tap reads row oh + q of phase r,
+// the plane of every stride-th padded row starting at r. Each phase becomes
+// one input channel, and tap i becomes weight q of that channel: a valid,
+// stride-one convolution with taps_h = (kernel_h - 1) * d / stride + 1 rows.
+px_lower_conv :: (c:PxConv,bias:bool,reuse:bool)->PxLowered {
+    p:=px_conv_plan(c);if p.status!=PxStatus.ok {return PxLowered.{status=p.status};}
+    l:=PxLowered.{plan=p,reuse=reuse,taps_h=(c.kernel_h-1)*c.dilation_h/c.stride_h+1,taps_w=(c.kernel_w-1)*c.dilation_w/c.stride_w+1};
+    l.channels=c.channels*c.stride_h*c.stride_w;l.height=p.out_h+l.taps_h-1;l.width=p.out_w+l.taps_w-1;
+    // Chapter 38 bounds these counts when it compiles the program.
+    l.x=c.batch*l.channels*l.height*l.width;l.w=c.filters*l.channels*l.taps_h*l.taps_w;
+    // Inputs: phases, spread weights and, with a bias, the bias as (filters, 1, 1).
+    l.program.nodes[0]=ti_input(px_ir_shape(c.batch,l.channels,l.height,l.width),0);
+    l.program.nodes[1]=ti_input(px_ir_shape(c.filters,l.channels,l.taps_h,l.taps_w),l.x);
+    l.program.nodes[2]=TiNode.{op=TiOp.conv2d,a=0,b=1};l.program.count=3;l.program.output=2;l.input=l.x+l.w;
+    if bias {
+        l.program.nodes[2]=ti_input(TvShape.{rank=3,dims=[4]int.[c.filters,1,1,0]},l.input);
+        l.program.nodes[3]=TiNode.{op=TiOp.conv2d,a=0,b=1};l.program.nodes[4]=TiNode.{op=TiOp.add,a=3,b=2};
+        l.program.count=5;l.program.output=4;l.input+=c.filters;
+    }
+    plan:=ti_compile(l.program,TiTarget.{},reuse);
+    if plan.status!=TiStatus.ok {return PxLowered.{status=px_ir_status(plan.status)};}
+    l.workspace=plan.workspace;l.stage=plan.output_elements;l.flags=plan.flag_elements;
+    return l;
+}
+// Pack the program's inputs: the padded phases, the spread weights, the bias.
+px_lower_inputs :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,input:[]f32)->PxResult {
+    if input.count<l.input {return PxResult.{status=PxStatus.capacity};}
+    for i:0..<l.x {
+        v:=i%l.width;u:=(i/l.width)%l.height;phase:=(i/(l.width*l.height))%l.channels;n:=i/(l.width*l.height*l.channels);
+        ch:=phase/(c.stride_h*c.stride_w);row:=u*c.stride_h+(phase/c.stride_w)%c.stride_h-c.pad_h;col:=v*c.stride_w+phase%c.stride_w-c.pad_w;
+        value:f32=0;if row>=0 && row<c.height && col>=0 && col<c.width {value=x[((n*c.channels+ch)*c.height+row)*c.width+col];}
+        input[i]=value;
+    }
+    // Weight (f, phase, q_h, q_w) is tap (row, column) = ((q * stride + r) /
+    // dilation) when that divides exactly, lies inside the kernel, and the
+    // phase's channel is in f's group; zero otherwise.
+    per:=c.channels/c.groups;each:=c.filters/c.groups;
+    for i:0..<l.w {
+        qw:=i%l.taps_w;qh:=(i/l.taps_w)%l.taps_h;phase:=(i/(l.taps_w*l.taps_h))%l.channels;f:=i/(l.taps_w*l.taps_h*l.channels);
+        k:=phase/(c.stride_h*c.stride_w)-f/each*per;down:=qh*c.stride_h+(phase/c.stride_w)%c.stride_h;across:=qw*c.stride_w+phase%c.stride_w;
+        value:f32=0;
+        if k>=0 && k<per && down%c.dilation_h==0 && down/c.dilation_h<c.kernel_h && across%c.dilation_w==0 && across/c.dilation_w<c.kernel_w {
+            value=w[((f*per+k)*c.kernel_h+down/c.dilation_h)*c.kernel_w+across/c.dilation_w];
+        }
+        input[l.x+i]=value;
+    }
+    for i:0..<l.input-l.x-l.w {input[l.x+l.w+i]=bias[i];}
+    return PxResult.{written=l.input};
+}
+// book:end lower
+
+// book:begin ir-run
+// Lower, pack and run on chapter 38's CPU path: reuse selects its planned
+// kernels, otherwise chapter 5's reference arithmetic. Scratch holds the
+// program's inputs, its workspace and its staged output.
+px_conv_ir :: (c:PxConv,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult {
+    l:=px_lower_conv(c,bias.count>0,reuse);if l.status!=PxStatus.ok {return PxResult.{status=l.status};}
+    return px_ir_run(c,l,x,w,bias,scratch,flags,y);
+}
+px_ir_run :: (c:PxConv,l:PxLowered,x:[]f32,w:[]f32,bias:[]f32,scratch:[]f32,flags:[]u8,y:[]f32)->PxResult {
+    if x.count!=l.plan.x || w.count!=l.plan.w || (bias.count!=0 && bias.count!=c.filters) {return PxResult.{status=PxStatus.shape};}
+    if scratch.count<l.input+l.workspace+l.stage || flags.count<l.flags || y.count<l.stage {return PxResult.{status=PxStatus.capacity};}
+    #assert px_lower_inputs(c,l,x,w,bias,scratch[0..<l.input]).written==l.input;
+    work:=l.input+l.workspace;
+    r:=ti_cpu_checked(l.program,l.reuse,scratch[0..<l.input],scratch[l.input..<work],scratch[work..<work+l.stage],y,flags[0..<l.flags],false);
+    if r.status!=TiStatus.ok {return PxResult.{status=px_ir_status(r.status)};}
+    return PxResult.{written=r.written};
+}
+// A patch projection is the convolution with kernel and stride both the
+// patch size; one more node views its (batch, dim, grid) result as (batch,
+// token, dim), and chapter 38's publication copies it out in that order.
+px_patch_ir :: (q:PxPatch,x:[]f32,w:[]f32,bias:[]f32,reuse:bool,scratch:[]f32,flags:[]u8,out:[]f32)->PxResult {
+    p:=px_patch_plan(q);if p.status!=PxStatus.ok {return PxResult.{status=p.status};}
+    if bias.count!=q.dim {return PxResult.{status=PxStatus.shape};}
+    c:=PxConv.{batch=q.batch,channels=q.channels,height=q.height,width=q.width,filters=q.dim,kernel_h=q.patch,kernel_w=q.patch,stride_h=q.patch,stride_w=q.patch};
+    l:=px_lower_conv(c,true,reuse);if l.status!=PxStatus.ok {return PxResult.{status=l.status};}
+    l.program.nodes[5]=TiNode.{op=TiOp.view,a=4,shape=TvShape.{rank=3,dims=[4]int.[q.batch,p.tokens,q.dim,0]},strides=[4]int.[q.dim*p.tokens,1,p.tokens,0]};
+    // A view adds no storage, command or flag: the counts stay the convolution's.
+    l.program.count=6;l.program.output=5;
+    return px_ir_run(c,l,x,w,bias,scratch,flags,out);
+}
+// book:end ir-run

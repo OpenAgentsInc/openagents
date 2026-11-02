@@ -1192,6 +1192,16 @@
       ]
     },
     {
+      "source": "psionic/examples/pixels-vit.coax",
+      "chapter": "psionic/book/ch142-pixels-convolutions-and-patches.md",
+      "stdout": "psionic/fixtures/pixels-vit.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/see.coax",
       "chapter": "psionic/book/ch143-elephant-and-mammoth-see.md",
       "stdout": "psionic/fixtures/see.out",

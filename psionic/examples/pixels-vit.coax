@@ -1,0 +1,65 @@
+// Chapter 142: the resize rules by hand, a 320 by 240 photo prepared the way
+// ImageNet evaluation does, ViT-B/16's patch projection of it in tiles, and a
+// grouped, strided, padded, dilated convolution compiled through chapter 38.
+#import "Basic";
+#load "../lib/pixels-ir.coax";
+
+show :: (label:string,v:[]f32) {print("%",label);for x:v {print(" %",x);}print("\n");}
+
+// book:begin main
+main :: () {
+    // The 2 by 2 image to 4 by 4, red row 1, under three more rules.
+    pixels:=px_tiny();work:[12]f32;out:[48]f32;image:=PxImage.{width=2,height=2};
+    cubic:=px_half();cubic.filter=PxFilter.bicubic;r:=px_preprocess(image,pixels[..],cubic,work[..],out[..],false);
+    show("red row 1, bicubic:",out[4..<8]);
+    aligned:=px_half();aligned.corners=true;r=px_preprocess(image,pixels[..],aligned,work[..],out[..],false);
+    show("red row 1, bilinear, corners aligned:",out[4..<8]);
+    // A red row 0 0 255 255 halved, without and with antialiasing.
+    row:=[12]u8.[0,0,0, 0,0,0, 255,0,0, 255,0,0];four:=PxImage.{width=4,height=1};
+    plain:=PxProfile.{scale=1.0/255,mean=[3]f64.[0,0,0],std=[3]f64.[1,1,1],height=1,width=2,filter=PxFilter.bilinear};
+    r=px_preprocess(four,row[..],plain,work[..],out[0..<6],false);show("4 to 2, bilinear:",out[0..<2]);
+    plain.antialias=true;r=px_preprocess(four,row[..],plain,work[..],out[0..<6],false);show("4 to 2, antialiased:",out[0..<2]);
+
+    // A 320 by 240 photo: shorter side to 256, a centred 224 crop, PIL's bicubic,
+    // then ViT-B/16's projection of the crop.
+    x:[150528]f32;vit_prepare(x[..]);vit_project(x[..]);
+
+    // Two groups, stride (2, 1), padding 1, dilation (2, 3), through chapter 38.
+    c:=PxConv.{batch=2,channels=4,height=7,width=6,filters=4,kernel_h=3,kernel_w=2,stride_h=2,pad_h=1,pad_w=1,dilation_h=2,dilation_w=3,groups=2};
+    l:=px_lower_conv(c,true,true);cp:=px_conv_plan(c);
+    print("lowered: % nodes, % phase channels of %x%, %x% taps\n",l.program.count,l.channels,l.height,l.width,l.taps_h,l.taps_w);
+    cx:[336]f32;cw:[48]f32;cb:[4]f32;px_fill(cx[..],5);px_fill(cw[0..<cp.w],3);px_fill(cb[..],7);
+    direct:[120]f32;ds:[120]f32;r=px_conv_direct(c,cx[..],cw[0..<cp.w],cb[..],direct[0..<cp.y],ds[0..<cp.y],false);
+    scratch:[2000]f32;flags:[400]u8;
+    for reuse:0..<2 {
+        y:[120]f32;r=px_conv_ir(c,cx[..],cw[0..<cp.w],cb[..],reuse==1,scratch[..],flags[..],y[0..<cp.y]);
+        same:=0;for i:0..<cp.y {if y[i]==direct[i] {same+=1;}}
+        names:=[2]string.["chapter 5's reference arithmetic","chapter 38's planned kernels"];
+        print("  %: %, % of % outputs equal the direct sum\n",names[reuse],r.status,same,cp.y);
+    }
+}
+// book:end main
+
+// book:begin photo
+vit_prepare :: (x:[]f32) {
+    photo:=PxImage.{width=320,height=240};bytes:[230400]u8;
+    for i:0..<230400 {bytes[i]=cast(u8)(((i/3)%320*7+i/960*3+i%3*85)%256);}
+    net:=px_imagenet();net.shorter=256;net.filter=PxFilter.bicubic;net.antialias=true;
+    fit:=px_fit(240,320,net);print("320x240 resized to %x%, cropped at row % column %\n",fit.width,fit.height,fit.top,fit.left);
+    work:[230400]f32;r:=px_preprocess(photo,bytes[..],net,work[..],x,false);
+    worst:=0.0;
+    for s:0..<150 {i:=s*1003;d:=abs(f64(x[i])-px_reference(photo,bytes[..],net,i/50176,(i/224)%224,i%224));if d>worst {worst=d;}}
+    print("prepared: %, % values; 150 against the reference, largest difference %\n",r.status,r.written,worst);
+}
+// 196 tokens of 768 features to 768, against the direct sum of every output.
+vit_project :: (x:[]f32) {
+    q:=PxPatch.{channels=3,height=224,width=224,patch=16,dim=768};p:=px_patch_plan(q);
+    w:[589824]f32;for i:0..<589824 {w[i]=f32((i*37+11)%101-50)/1024;}
+    bias:[768]f32;for i:0..<768 {bias[i]=f32(i%9-4)/32;}
+    work:[2304]f32;tokens:[150528]f32;r:=px_patch_embed(q,x,w[..],bias[..],work[0..<p.scratch],tokens[..],false);
+    differ:=0;gap:=0.0;
+    for i:0..<p.out {v:=px_patch_value(q,p,x,w[..],bias[..],i);if f32(v)!=tokens[i] {differ+=1;}e:=abs(f64(tokens[i])-v);if e>gap {gap=e;}}
+    print("ViT-B/16 projection: %, % multiply-adds, % tiles of % token\n",r.status,p.work,p.tokens/p.rows,p.rows);
+    print("  % of % values differ from the direct sum, by at most %\n",differ,p.out,gap);
+}
+// book:end photo
