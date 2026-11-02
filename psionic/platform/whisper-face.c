@@ -261,6 +261,9 @@ static int gpu_qkv(coax_v_f32 x, int64_t rows, int64_t d, coax_v_f32 w, coax_v_f
 }
 #define WD_CH 2048 /* device.coax: tokens per chunk of wd_rules_part, values per chunk record */
 #define WD_REC 16
+#define WD_RT2 128 /* wd_rules_part's threads */
+#define WD_RJ 32   /* wd_rules_join's threads */
+#define WD_RJC 64  /* wd_rules_join's most chunks a row */
 /* cxwh_rules: each row's token rules, log-softmax and top k
  * (wd_rules_part per chunk, then wd_rules_join per row). The chunk records
  * (f64) go in lp, the scratch. */
@@ -270,11 +273,11 @@ static int gpu_rules(coax_v_f32 logits, int64_t rows, int64_t V, int64_t beg, in
     if (!g_open || k > 5 || !gpu_view(lp, &rec)) return 0;
     int64_t skip = (8 - rec.offset % 8) % 8; /* f64 records start on 8 bytes */
     rec.offset += skip; rec.count = (lp.count * 4 - skip) / 8;
-    if (rec.count < rows * chunks * WD_REC) return 0;
+    if (rec.count < rows * chunks * WD_REC || chunks > WD_RJC) return 0;
     a[0] = gpu_int(V); a[1] = gpu_int(beg);
     if (!gpu_view(prm, &a[2]) || !gpu_view(logits, &a[3]) || !gpu_view(top, &j[4])) return 0;
     a[4] = rec; j[0] = a[0]; j[1] = a[1]; j[2] = gpu_int(k); j[3] = rec;
-    return gpu_run(g_krules, rows * chunks, 256, 256, a, 5) && gpu_run(g_krjoin, rows, 1, 32, j, 5);
+    return gpu_run(g_krules, rows * chunks, WD_RT2, WD_RT2, a, 5) && gpu_run(g_krjoin, rows, WD_RJ, WD_RJ, j, 5);
 }
 static int gpu_few(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, int64_t first, _Bool causal, coax_v_f32 out) {
     if (causal && (nq != 1 || first >= 512)) return gpu_refuse();
