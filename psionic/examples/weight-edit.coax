@@ -1,0 +1,19 @@
+#import "Basic";
+#load "../lib/weight-edit.coax";
+
+// book:begin example
+main :: () {
+    ts:=we_example_tensors();p:=[4]f64.[1,2,3,4];id:=we_identity("linear-v1",ts[..],p[..]);
+    edits:=[2]WeEdit.[WeEdit.{tensor="matrix",index=1,before=2,after=-2},WeEdit.{tensor="bias",index=0,before=4,after=0}];
+    r:=we_apply("linear-v1",ts[..],p[..],id.digest,edits[..]);#assert r.status==WeStatus.ok;
+    print("linear input [2,1,0]: before %, after %; changed % of % weights\n",2*p[0]+p[1]+p[3],2*r.values[0]+r.values[1]+r.values[3],r.changed,r.count);
+    for i:0..<2 {old:=edits[i].before;edits[i].before=edits[i].after;edits[i].after=old;}
+    restored:=we_apply("linear-v1",ts[..],r.values[0..<4],r.digest,edits[..]);
+    print("reverse patch restores original digest: %\n",we_same(id.digest,restored.digest));
+    stale:=we_apply("linear-v1",ts[..],p[..],id.digest,edits[..]);
+    print("refused reverse patch on the unedited base: %; returned values: %\n",stale.status,stale.count);
+    foreign:=we_apply("another-model-v1",ts[..],p[..],id.digest,edits[..]);
+    print("refused patch on another model profile: %; source weight remains %\n",foreign.status,p[1]);
+    #assert stale.status==WeStatus.stale && foreign.status==WeStatus.identity;
+}
+// book:end example

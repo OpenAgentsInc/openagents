@@ -3784,3 +3784,29 @@ each through a temporary file, fsync and rename, so a crash leaves the
 previous pointer naming a whole record.
 Check: `psionic/check.sh --only resume`: independent oracle, interrupted runs
 bit for bit, zero surviving mutants, native crash-and-resume under ASan/UBSan.
+
+
+## Psionic weight edits name an immutable base and publish a whole value result
+
+`psionic/lib/weight-edit.coax` owns `weight-edit-f64-v1`: 1–4096 binary64
+values within ±2^20, 1–32 unique named contiguous rank-0–4 tensors, and at
+most 256 distinct expected-old/replacement edits. Shapes cover the complete
+input in order. The semantic profile, names, canonical shapes and every
+weight bit participate in a versioned SHA-256 encoding. Signed zero retains
+its bits. Missing names, bad indices, duplicates, stale old bits, a foreign
+base digest and nonfinite/out-of-profile values refuse before publication.
+
+The source is immutable and successful output owns its fixed-capacity value
+array. Refusal returns zero count, changed count, digest and payload; exact
+inverse edits on the edited base restore the original digest. Names are
+borrowed only during the synchronous call; callers retain valid immutable
+views and exclusive source ownership for that call. The profile does not
+provide in-place concurrency, original-model-sized overlays, GPU edits,
+file publication, model provenance or quality/promotion authority.
+
+Checks: chapter 253's focused Coax gate, entry-source zero-survivor mutation,
+independent SHA-256/full-prefix decoder oracle and native nonfinite tests
+under debug/release plain/ASan/UBSan. Recorded model proposals are exploratory
+measurements, never deployment permissions; likelihood gains alone have
+counterexamples with zero recovered answers. Evidence is in
+`docs/verification/psionic-ch253-2026-11-02.md`.

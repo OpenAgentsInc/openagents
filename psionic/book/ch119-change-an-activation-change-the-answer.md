@@ -1,5 +1,8 @@
 # 119. Change an activation, change the answer
 
+[Chapter 253](ch253-read-and-repair-a-models-weights.md) uses these interventions
+to check permanent parameter edits and tests them across fresh model seeds.
+
 An attention picture can suggest how a model works, but it does not show
 cause. This chapter tests an explanation by intervention. You train a tiny
 decoder on a task with a known shortcut, then replace activations at named

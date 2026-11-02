@@ -1,0 +1,45 @@
+// A completely specified positive control for weights-only model reading.
+// These 22 weights are constructed, not learned. Every example states that.
+#load "weight-edit.coax";
+
+#test "the complete ReLU network exposes both a rule and a nuisance circuit" {
+    for shift:0..<4 {p:=wm22_model(shift,0);
+        #assert wm22_right(p[..])<42;
+        fixed:=wm22_edit(p[..],(2-shift+4)%4,(3-shift+4)%4);
+        #assert fixed.status==WeStatus.ok && fixed.changed==4 && wm22_right(fixed.values[0..<22])==42;
+        healthy:=wm22_model(shift,1);#assert wm22_right(healthy[..])==42;
+        empty:=wm22_model(shift,2);#assert wm22_right(empty[..])==21;
+    }
+}
+#test "the grid and both logits have hand values" {
+    p:=wm22_model(0,0);#assert wm22_score(p[..],1,-1)==-6 && wm22_score(p[..],-2,1)==4;
+    ts:=wm22_tensors();#assert we_layout("relu-2-4-2-v1",ts[..],22);
+}
+wm22_tensors :: ()->[4]WeTensor {return [4]WeTensor.[
+    WeTensor.{name="input",rank=2,dims=[4]int.[4,2,0,0]},
+    WeTensor.{name="hidden_bias",first=8,rank=1,dims=[4]int.[4,0,0,0]},
+    WeTensor.{name="output",first=12,rank=2,dims=[4]int.[2,4,0,0]},
+    WeTensor.{name="output_bias",first=20,rank=1,dims=[4]int.[2,0,0,0]}];}
+wm22_model :: (shift:int,kind:int)->[22]f64 {
+    p:[22]f64;
+    for unit:0..<4 {
+        original:=(unit+shift)%4;feature:=original/2;sign:=ifx original%2==0 then 1.0 else -1.0;
+        p[unit*2+feature]=sign;gain:=ifx original<2 then 1.0 else 4.0;
+        if kind==1 && original>=2 {gain=0;}if kind==2 {gain=0;}
+        p[12+unit]=-sign*gain;p[16+unit]=sign*gain;
+    }return p;
+}
+wm22_score :: (p:[]f64,x:f64,nuisance:f64)->f64 {
+    a:=p[20];b:=p[21];
+    for unit:0..<4 {z:=p[unit*2]*x+p[unit*2+1]*nuisance+p[8+unit];if z>0 {a+=p[12+unit]*z;b+=p[16+unit]*z;}}
+    return b-a;
+}
+wm22_right :: (p:[]f64)->int {
+    right:=0;for x:-3..<4 {if x!=0 {for n:-3..<4 {if (wm22_score(p,f64(x),f64(n))>0)==(x>0) {right+=1;}}}}return right;
+}
+wm22_edit :: (p:[]f64,a:int,b:int)->WeResult {
+    #assert a>=0 && a<4 && b>=0 && b<4 && a!=b;
+    ts:=wm22_tensors();pin:=we_identity("relu-2-4-2-v1",ts[..],p);es:[4]WeEdit;units:=[2]int.[a,b];n:=0;
+    for row:0..<2 {for unit:units {index:=row*4+unit;es[n]=WeEdit.{tensor="output",index=index,before=p[12+index],after=0};n+=1;}}
+    return we_apply("relu-2-4-2-v1",ts[..],p,pin.digest,es[..]);
+}

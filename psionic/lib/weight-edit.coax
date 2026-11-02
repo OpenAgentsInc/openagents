@@ -1,0 +1,212 @@
+// Chapter 253. weight-edit-f64-v1: immutable, named, digest-bound sparse edits.
+// CPU binary64, at most 4096 values, 32 tensors, 256 edits. Returned values
+// own their storage. Tensor names/profile borrow valid immutable strings for
+// the synchronous call only. A digest identifies bytes; it is not provenance,
+// a signature, a quality verdict or permission to deploy a model.
+#load "../../coax/lib/crypto/sha256.coax";
+#authority;
+
+// book:begin types
+WeStatus :: enum u8 {ok;layout;number;identity;capacity;tensor;index;duplicate;stale;}
+WeTensor :: struct {name:string;first:int;rank:int;dims:[4]int;}
+WeEdit :: struct {tensor:string;index:int;before:f64;after:f64;}
+WeIdentity :: struct {status:WeStatus;digest:[32]u8;}
+WeResult :: struct {status:WeStatus;count:int;changed:int;digest:[32]u8;values:[4096]f64;}
+WE_VALUES :: 4096;
+WE_TENSORS :: 32;
+WE_EDITS :: 256;
+WE_NUMBER :: 1048576.0;
+// book:end types
+
+#test "a two-tensor edit is persistent, bounded and exactly reversible" {
+    ts:=we_example_tensors();p:=[4]f64.[1,2,3,4];pin:=we_identity("linear-v1",ts[..],p[..]);
+    #assert pin.status==WeStatus.ok;
+    es:=[2]WeEdit.[WeEdit.{tensor="matrix",index=1,before=2,after=-2},WeEdit.{tensor="bias",index=0,before=4,after=0}];
+    r:=we_apply("linear-v1",ts[..],p[..],pin.digest,es[..]);
+    #assert r.status==WeStatus.ok && r.count==4 && r.changed==2;
+    #assert r.values[0]==1 && r.values[1]==-2 && r.values[2]==3 && r.values[3]==0 && r.values[4]==0;
+    #assert p[0]==1 && p[1]==2 && p[2]==3 && p[3]==4;
+    #assert !we_same(r.digest,pin.digest);
+    for i:0..<2 {v:=es[i].before;es[i].before=es[i].after;es[i].after=v;}
+    back:=we_apply("linear-v1",ts[..],r.values[0..<4],r.digest,es[..]);
+    #assert back.status==WeStatus.ok && back.changed==2 && we_same(back.digest,pin.digest);
+    for i:0..<4 {#assert f64_bits(back.values[i])==f64_bits(p[i]);}
+}
+#test "empty and equal-value patches preserve the digest; signed zero is a change" {
+    ts:=we_example_tensors();p:=[4]f64.[0,2,3,4];pin:=we_identity("linear-v1",ts[..],p[..]);es:[1]WeEdit;
+    r:=we_apply("linear-v1",ts[..],p[..],pin.digest,es[0..<0]);
+    #assert r.status==WeStatus.ok && r.count==4 && r.changed==0 && we_same(r.digest,pin.digest);
+    es[0]=WeEdit.{tensor="matrix",index=2,before=3,after=3};r=we_apply("linear-v1",ts[..],p[..],pin.digest,es[..]);
+    #assert r.status==WeStatus.ok && r.changed==0 && we_same(r.digest,pin.digest);
+    es[0]=WeEdit.{tensor="matrix",index=0,before=0,after=f64_from_bits(0x8000000000000000)};
+    r=we_apply("linear-v1",ts[..],p[..],pin.digest,es[..]);
+    #assert r.status==WeStatus.ok && r.changed==1 && f64_bits(r.values[0])==0x8000000000000000;
+    es[0].before=f64_from_bits(0x8000000000000000);#assert we_apply("linear-v1",ts[..],p[..],pin.digest,es[..]).status==WeStatus.stale;
+}
+#test "every late refusal returns no payload and leaves the source alone" {
+    ts:=we_example_tensors();p:=[4]f64.[1,2,3,4];pin:=we_identity("linear-v1",ts[..],p[..]);
+    es:=[2]WeEdit.[WeEdit.{tensor="matrix",index=0,before=1,after=7},WeEdit.{tensor="bias",index=0,before=4,after=8}];
+    for fault:0..<7 {
+        bad:=es;id:=pin.digest;
+        if fault==0 {id[31]^=1;}
+        if fault==1 {bad[1].tensor="absent";}
+        if fault==2 {bad[1].index=-1;}
+        if fault==3 {bad[1].index=1;}
+        if fault==4 {bad[1]=bad[0];}
+        if fault==5 {bad[1].before=3;}
+        if fault==6 {bad[1].after=WE_NUMBER+1;}
+        r:=we_apply("linear-v1",ts[..],p[..],id,bad[..]);
+        wants:=[7]WeStatus.[WeStatus.identity,WeStatus.tensor,WeStatus.index,WeStatus.index,WeStatus.duplicate,WeStatus.stale,WeStatus.number];
+        #assert r.status==wants[fault] && r.count==0 && r.changed==0;
+        for i:0..<4096 {#assert r.values[i]==0;}
+        for i:0..<32 {#assert r.digest[i]==0;}
+        #assert p[0]==1 && p[1]==2 && p[2]==3 && p[3]==4;
+    }
+}
+#test "layout has unique names, canonical shapes and complete ordered coverage" {
+    ts:=we_example_tensors();#assert we_layout("linear-v1",ts[..],4);
+    for fault:0..<12 {
+        bad:=ts;
+        if fault==0 {bad[0].name="";}
+        if fault==1 {bad[1].name="matrix";}
+        if fault==2 {bad[0].first=1;}
+        if fault==3 {bad[1].first=2;}
+        if fault==4 {bad[0].rank=-1;}
+        if fault==5 {bad[0].rank=5;}
+        if fault==6 {bad[0].dims[0]=0;}
+        if fault==7 {bad[0].dims[0]=-1;}
+        if fault==8 {bad[0].dims[0]=4097;}
+        if fault==9 {bad[0].dims[1]=1;}
+        if fault==10 {bad[0].name="a b";}
+        if fault==11 {bad[1].rank=0;bad[1].dims[0]=1;}
+        #assert !we_layout("linear-v1",bad[..],4);
+        p:[4]f64;#assert we_identity("linear-v1",bad[..],p[..]).status==WeStatus.layout;
+        es:[1]WeEdit;z:[32]u8;#assert we_apply("linear-v1",bad[..],p[..],z,es[0..<0]).status==WeStatus.layout;
+    }
+    #assert !we_layout("",ts[..],4) && !we_layout("x",ts[0..<0],4);
+    #assert !we_layout("x",ts[..],3) && !we_layout("x",ts[..],5);
+    #assert !we_layout("x",ts[..],0) && !we_layout("x",ts[..],4097);
+}
+#test "all finite-value boundaries and every digest component matter" {
+    ts:=we_example_tensors();p:=[4]f64.[1,2,3,4];pin:=we_identity("linear-v1",ts[..],p[..]);
+    #assert !we_same(pin.digest,we_identity("linear-v2",ts[..],p[..]).digest);
+    for k:0..<4 {q:=p;q[k]+=1;#assert !we_same(pin.digest,we_identity("linear-v1",ts[..],q[..]).digest);}
+    q:=ts;q[0].name="other";#assert !we_same(pin.digest,we_identity("linear-v1",q[..],p[..]).digest);
+    q=ts;q[0].rank=2;q[0].dims=[4]int.[1,3,0,0];#assert !we_same(pin.digest,we_identity("linear-v1",q[..],p[..]).digest);
+    q=ts;q[1].rank=0;q[1].dims=[4]int.[0,0,0,0];#assert !we_same(pin.digest,we_identity("linear-v1",q[..],p[..]).digest);
+    limits:=[4]f64.[WE_NUMBER,-WE_NUMBER,WE_NUMBER+1,-WE_NUMBER-1];
+    for k:0..<4 {v:=p;v[3]=limits[k];r:=we_identity("linear-v1",ts[..],v[..]);#assert (r.status==WeStatus.ok)==(k<2);
+        if k>=2 {es:[1]WeEdit;#assert we_apply("linear-v1",ts[..],v[..],pin.digest,es[0..<0]).status==WeStatus.number;}}
+    for k:0..<32 {d:=pin.digest;d[k]^=1;#assert !we_same(d,pin.digest);}
+}
+#test "resource limits are inclusive, rank four and scalar are supported" #steps 200000000 {
+    ts:[33]WeTensor;p:[4096]f64;names:=[33]string.["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z","aa","ab","ac","ad","ae","af","ag"];
+    for i:0..<33 {ts[i]=WeTensor.{name=names[i],first=i,rank=0};}
+    #assert we_layout("x",ts[0..<32],32) && !we_layout("x",ts[..],33);
+    ts[0]=WeTensor.{name="all",rank=4,dims=[4]int.[4,4,16,16]};
+    pin:=we_identity("x",ts[0..<1],p[..]);#assert pin.status==WeStatus.ok;
+    es:[257]WeEdit;for i:0..<257 {es[i]=WeEdit.{tensor="all",index=i,after=f64(i)};}
+    r:=we_apply("x",ts[0..<1],p[..],pin.digest,es[0..<256]);#assert r.status==WeStatus.ok && r.changed==255 && r.values[255]==255 && r.values[4095]==0;
+    #assert we_apply("x",ts[0..<1],p[..],pin.digest,es[..]).status==WeStatus.capacity;
+    long:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab";
+    #assert long.count==64 && we_name(long) && !we_name("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abc");
+    hi:=[1]u8.[127];lo:=[1]u8.[31];
+    #assert we_name("!") && we_name("~") && !we_name(cast(string)hi[..]) && !we_name(cast(string)lo[..]);
+    ts[0].dims=[4]int.[16,16,16,2];#assert !we_layout("x",ts[0..<1],4096);
+}
+#test "shape helper refuses malformed shapes even without a model layout" {
+    t:=WeTensor.{name="x",rank=4,dims=[4]int.[1,1,1,1]};#assert we_size(t)==1;
+    t.rank=5;#assert we_size(t)==0;t.rank=-1;t.dims=[4]int.[0,0,0,0];#assert we_size(t)==0;
+    t.rank=1;t.dims=[4]int.[4097,0,0,0];#assert we_size(t)==0;
+    t.dims=[4]int.[0,0,0,0];#assert we_size(t)==0;
+    t.rank=2;t.dims=[4]int.[4096,2,0,0];#assert we_size(t)==0;
+    t.rank=4;t.dims=[4]int.[2,2,2,2];#assert we_size(t)==16;
+    t.rank=0;t.dims=[4]int.[0,0,0,0];ts:=[1]WeTensor.[t];#assert we_layout("x",ts[..],1);
+    big:=[2]WeTensor.[WeTensor.{name="a",rank=1,dims=[4]int.[4096,0,0,0]},WeTensor.{name="b",first=4096,rank=0}];
+    #assert !we_layout("x",big[..],4097);
+}
+#test "artifact bytes match independently specified SHA-256 and endian words" {
+    ts:=we_example_tensors();p:=[4]f64.[1,2,3,4];
+    want:=[32]u8.[224,63,114,222,183,49,119,25,95,114,59,131,200,253,117,66,221,183,246,228,66,84,166,113,20,222,224,34,102,216,177,115];
+    #assert we_same(we_identity("linear-v1",ts[..],p[..]).digest,want);
+    b:[20]u8;n:=we_word(b[..],3,0x0807060504030201);#assert n==11;
+    for i:0..<8 {#assert b[i+3]==cast(u8)(i+1);}
+    n=we_text(b[..],0,"abc");#assert n==11 && b[0]==3 && b[8]==97 && b[9]==98 && b[10]==99;
+}
+
+we_example_tensors :: ()->[2]WeTensor {return [2]WeTensor.[WeTensor.{name="matrix",rank=1,dims=[4]int.[3,0,0,0]},WeTensor.{name="bias",first=3,rank=1,dims=[4]int.[1,0,0,0]}];}
+we_name :: (s:string)->bool {
+    if s.count<1 || s.count>64 {return false;}
+    for c:s {if c<33 || c>126 {return false;}}
+    return true;
+}
+we_size :: (t:WeTensor)->int {
+    if t.rank<0 || t.rank>4 {return 0;}
+    n:=1;
+    for i:0..<4 {
+        d:=t.dims[i];
+        if i<t.rank {if d<1 || d>WE_VALUES/n {return 0;}n*=d;}
+        else {if d!=0 {return 0;}}
+    }
+    return n;
+}
+we_layout :: (profile:string,ts:[]WeTensor,n:int)->bool {
+    if !we_name(profile) || ts.count<1 || ts.count>WE_TENSORS || n<1 || n>WE_VALUES {return false;}
+    at:=0;
+    for i:0..<ts.count {
+        t:=ts[i];k:=we_size(t);
+        if !we_name(t.name) || k==0 || t.first!=at {return false;}
+        for j:0..<i {if ts[j].name==t.name {return false;}}
+        at+=k;
+    }
+    return at==n;
+}
+we_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+we_number :: (v:f64)->bool {return v>=-WE_NUMBER && v<=WE_NUMBER;}
+// Little-endian u64 words; strings are byte-count followed by bytes.
+we_word :: (buf:[]u8,n:int,v:u64)->int {for i:0..<8 {buf[n+i]=cast(u8)((v>>cast(u64)(i*8))&255);}return n+8;}
+we_text :: (buf:[]u8,n:int,s:string)->int {at:=we_word(buf,n,cast(u64)s.count);for c:s {buf[at]=c;at+=1;}return at;}
+// book:begin identity
+we_identity :: (profile:string,ts:[]WeTensor,p:[]f64)->WeIdentity {
+    r:WeIdentity;
+    if !we_layout(profile,ts,p.count) {r.status=WeStatus.layout;return r;}
+    for v:p {if !we_number(v) {r.status=WeStatus.number;return r;}}
+    buf:[40000]u8;n:=we_text(buf[..],0,"weight-edit-f64-v1");n=we_text(buf[..],n,profile);
+    n=we_word(buf[..],n,cast(u64)ts.count);n=we_word(buf[..],n,cast(u64)p.count);
+    for t:ts {
+        n=we_text(buf[..],n,t.name);n=we_word(buf[..],n,cast(u64)t.first);n=we_word(buf[..],n,cast(u64)t.rank);
+        for d:t.dims {n=we_word(buf[..],n,cast(u64)d);}
+    }
+    for v:p {n=we_word(buf[..],n,f64_bits(v));}
+    #assert sha256_hash_checked(buf[0..<n],r.digest[..],false)==SHA_OK;
+    return r;
+}
+// book:end identity
+// book:begin apply
+we_apply :: (profile:string,ts:[]WeTensor,p:[]f64,pin:[32]u8,edits:[]WeEdit)->WeResult {
+    r:WeResult;id:=we_identity(profile,ts,p);
+    if id.status!=WeStatus.ok {r.status=id.status;return r;}
+    if !we_same(id.digest,pin) {r.status=WeStatus.identity;return r;}
+    if edits.count>WE_EDITS {r.status=WeStatus.capacity;return r;}
+    positions:[256]int;
+    for e:0..<edits.count {
+        edit:=edits[e];which:=-1;
+        for j:0..<ts.count {if ts[j].name==edit.tensor {which=j;}}
+        if which<0 {r.status=WeStatus.tensor;return r;}
+        t:=ts[which];
+        if edit.index<0 || edit.index>=we_size(t) {r.status=WeStatus.index;return r;}
+        at:=t.first+edit.index;
+        for j:0..<e {if positions[j]==at {r.status=WeStatus.duplicate;return r;}}
+        if f64_bits(p[at])!=f64_bits(edit.before) {r.status=WeStatus.stale;return r;}
+        if !we_number(edit.after) {r.status=WeStatus.number;return r;}
+        positions[e]=at;
+    }
+    for i:0..<p.count {r.values[i]=p[i];}
+    for e:0..<edits.count {
+        r.values[positions[e]]=edits[e].after;
+        if f64_bits(edits[e].before)!=f64_bits(edits[e].after) {r.changed+=1;}
+    }
+    r.count=p.count;r.digest=we_identity(profile,ts,r.values[0..<r.count]).digest;
+    return r;
+}
+// book:end apply

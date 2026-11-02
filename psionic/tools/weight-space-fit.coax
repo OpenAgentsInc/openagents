@@ -1,0 +1,23 @@
+// Separately declared fine-tuning comparison: ten full-batch AdamW steps on
+// the 15 DEVELOPMENT conflicts, sequence next-token loss, rate 0.002. No
+// held-out reads until these immutable artifacts have been written. stdout
+// is a source fixture. 150 sequence forward/backward passes per model.
+#import "Basic";
+#load "../lib/weight-space.coax";
+#load "../fixtures/weight-space/fresh.coax";
+#load "../../coax/lib/sys/tool.coax";
+
+tool_main :: ()->int #export_c {
+    print("// Prepared once by weight-space-fit.coax: ten AdamW steps on development conflicts.\nWS_FIT :: [5][664]u64.[\n");
+    for model:0..<5 {
+        tool_errln("fitting one development-only artifact");p:[664]f64;bits:=WS_FRESH[model];ax_from_bits(bits[..],p[..]);
+        m:[664]f64;v:[664]f64;total:[664]f64;zero:[664]f64;none:[1]f32;state:AwState;
+        group:=[1]AwGroup.[AwGroup.{first=0,count=664,lr=0.002,beta1=0.9,beta2=0.99,eps=0.00000001,decay=0}];
+        for step:0..<10 {
+            total=zero;
+            for a:1..<4 {for b:1..<7 {if a!=b {loss:=ax_term(p[..],ax_sequence(a,b+6),1.0/15,total[..]);}}}
+            r:=aw_step(group[..],AwPolicy.{},state,p[..],total[..],m[..],v[..],none[0..<0],false);#assert r.status==AwStatus.ok;state=r.state;
+        }
+        print("[664]u64.[");for i:0..<664 {if i>0 {print(",");}print("%",f64_bits(p[i]));}print("]");if model<4 {print(",");}print("\n");
+    }print("];\n");return 0;
+}

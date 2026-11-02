@@ -1,0 +1,20 @@
+// Native-only non-finite encodings: the compile-time evaluator deliberately
+// refuses constructing these numbers. All assertions and arithmetic are Coax.
+#load "../lib/weight-edit.coax";
+
+weight_edit_native_checks :: ()->int #export_c {
+    ts:=we_example_tensors();p:=[4]f64.[1,2,3,4];pin:=we_identity("linear-v1",ts[..],p[..]);
+    encodings:=[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001,0x7ff0000000000001,0xfff8000000000001];
+    for bits:encodings {
+        bad:=p;bad[3]=f64_from_bits(bits);#assert we_identity("linear-v1",ts[..],bad[..]).status==WeStatus.number;
+        edits:=[2]WeEdit.[WeEdit.{tensor="matrix",index=0,before=1,after=5},WeEdit.{tensor="bias",index=0,before=4,after=f64_from_bits(bits)}];
+        r:=we_apply("linear-v1",ts[..],p[..],pin.digest,edits[..]);#assert r.status==WeStatus.number && r.count==0 && r.changed==0;
+        for v:r.values {#assert f64_bits(v)==0;}#assert p[0]==1 && p[3]==4;
+        edits[1].after=0;edits[1].before=f64_from_bits(bits);#assert we_apply("linear-v1",ts[..],p[..],pin.digest,edits[..]).status==WeStatus.stale;
+    }
+    tiny:=[2]u64.[1,0x8000000000000001];
+    for bits:tiny {q:=p;q[0]=f64_from_bits(bits);id:=we_identity("linear-v1",ts[..],q[..]);#assert id.status==WeStatus.ok;
+        e:=[1]WeEdit.[WeEdit.{tensor="matrix",index=0,before=q[0],after=0}];r:=we_apply("linear-v1",ts[..],q[..],id.digest,e[..]);#assert r.status==WeStatus.ok && r.changed==1;
+    }
+    return 0;
+}

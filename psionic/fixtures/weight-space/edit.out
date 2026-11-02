@@ -1,0 +1,4 @@
+linear input [2,1,0]: before 8.0, after 0.0; changed 2 of 4 weights
+reverse patch restores original digest: true
+refused reverse patch on the unedited base: stale; returned values: 0
+refused patch on another model profile: identity; source weight remains 2.0

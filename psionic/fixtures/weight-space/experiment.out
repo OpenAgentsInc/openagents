@@ -1,0 +1,15 @@
+chapter 119, permanent edit through ordinary decoder execution:
+  head 1: 12 -> 14 of 15 correct; retained 6 -> 6 of 6; changed 32 of 664
+five saved fresh seeds; best site selected on development only; NLL in millinats:
+  seed 119: site 2, correct 12 -> 12, retained 6 -> 6, NLL 645 -> 486, changed 8
+  seed 120: site 7, correct 14 -> 14, retained 6 -> 6, NLL 257 -> 257, changed 8
+  seed 121: site -1, correct 15 -> 15, retained 6 -> 6, NLL 11 -> 11, changed 0
+  seed 122: site 4, correct 10 -> 9, retained 6 -> 6, NLL 2413 -> 2450, changed 8
+  seed 123: site 3, correct 13 -> 13, retained 6 -> 6, NLL 759 -> 759, changed 8
+separate development-only ten-step fine-tune, no hyperparameter retries:
+  seed 119: correct 12 of 15, retained 6 of 6, NLL 350 millinats
+  seed 120: correct 14 of 15, retained 6 of 6, NLL 349 millinats
+  seed 121: correct 15 of 15, retained 6 of 6, NLL 20 millinats
+  seed 122: correct 8 of 15, retained 6 of 6, NLL 2085 millinats
+  seed 123: correct 13 of 15, retained 6 of 6, NLL 470 millinats
+These are exploratory measurements; an NLL gain alone establishes no recovered ability.

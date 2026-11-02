@@ -1,5 +1,9 @@
 # 237. Composable weight modules
 
+[Chapter 253](ch253-read-and-repair-a-models-weights.md) builds a separate
+named-tensor edit boundary and experiments on learned weights. This chapter's
+linker and exactness guarantees retain their compiled-block scope.
+
 [Chapter 229](ch229-compile-a-gate-graph-into-a-block.md) compiles a gate
 graph into a block of gated layers. Each block is a single program. This
 chapter treats a compiled block as a **module**: a weight artifact pinned by

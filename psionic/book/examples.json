@@ -3563,6 +3563,28 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/weight-edit.coax",
+      "chapter": "psionic/book/ch253-read-and-repair-a-models-weights.md",
+      "stdout": "psionic/fixtures/weight-space/edit.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180
+    },
+    {
+      "source": "psionic/examples/weight-space.coax",
+      "chapter": "psionic/book/ch253-read-and-repair-a-models-weights.md",
+      "stdout": "psionic/fixtures/weight-space/experiment.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180
     }
   ],
   "libraries": [

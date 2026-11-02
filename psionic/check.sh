@@ -24,6 +24,10 @@ while [[ $# -gt 0 ]]; do
 done
 coax=${COAX:-$root/coax/bin/coax}
 cc=${COAX_CC:-cc}
+# The chapter 253 gate is Coax orchestration and also belongs to a full release.
+if [[ ${#only[@]} -eq 0 ]]; then
+    coax/web/tool.sh psionic/tools/check-weight-space.coax all
+fi
 # A mesh-only request skips unrelated weight/text oracle provisioning.
 if [[ ${#only[@]} -gt 0 ]]; then
     mesh_only=1
@@ -71,6 +75,9 @@ fi
 # A chapter-only request avoids unrelated oracle/package setup.
 if [[ ${#only[@]} -eq 1 ]]; then
     chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
+    if [[ $chapter == weight-edit || $chapter == weight-space || $chapter == weight-space-mlp ]]; then
+        exec coax/web/tool.sh psionic/tools/check-weight-space.coax all
+    fi
     if [[ $chapter == training-dense || $chapter == device/training-dense || $chapter == device/training-dense-kernels ]];then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_training_dense_units.sh --mutate --jobs "$jobs"
     fi

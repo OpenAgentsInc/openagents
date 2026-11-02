@@ -178,11 +178,11 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "3cab83b0ae2a6b269edd1617df0b4b28bad8772fd1b121cd445f8d50e9ab3501"
+          "sha256": "83ffefd7faa81adc3ad903ed72ceb2f4e98b8d71bafa2a11d83ca740ad3c1fcc"
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "25ae22f6df8dfcba97dd5d44566e5b0c11dc00c46791d36ee55b0e4c7694de3d"
+          "sha256": "6bd9f8d549ebe94852041c50b935afbac0200a1529698591cf21e33c623ea6b2"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -263,11 +263,11 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "3cab83b0ae2a6b269edd1617df0b4b28bad8772fd1b121cd445f8d50e9ab3501"
+          "sha256": "83ffefd7faa81adc3ad903ed72ceb2f4e98b8d71bafa2a11d83ca740ad3c1fcc"
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "25ae22f6df8dfcba97dd5d44566e5b0c11dc00c46791d36ee55b0e4c7694de3d"
+          "sha256": "6bd9f8d549ebe94852041c50b935afbac0200a1529698591cf21e33c623ea6b2"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",

@@ -1,0 +1,23 @@
+#import "Basic";
+#load "../lib/weight-space.coax";
+#load "../fixtures/weight-space/fresh.coax";
+#load "../fixtures/weight-space/fit.coax";
+
+ws_milli :: (v:f64)->int {return cast(int)floor(v*1000+0.5);}
+// book:begin example
+main :: () {
+    print("chapter 119, permanent edit through ordinary decoder execution:\n");
+    old:=ax_trained();before:=ws_measure(old[..],4,6);edit:=ws_edit(old[..],1,0);after:=ws_measure(edit.values[0..<664],4,6);
+    print("  head 1: % -> % of 15 correct; retained % -> % of 6; changed % of 664\n",before.right,after.right,before.retained,after.retained,edit.changed);
+    print("five saved fresh seeds; best site selected on development only; NLL in millinats:\n");
+    for model:0..<5 {
+        p:[664]f64;bits:=WS_FRESH[model];ax_from_bits(bits[..],p[..]);base:=ws_measure(p[..],4,6);choice:=ws_choose(p[..]);result:=base;changed:=0;
+        if choice.site>=0 {r:=ws_edit(p[..],choice.site,0);result=ws_measure(r.values[0..<664],4,6);changed=r.changed;}
+        print("  seed %: site %, correct % -> %, retained % -> %, NLL % -> %, changed %\n",model+119,choice.site,base.right,result.right,base.retained,result.retained,ws_milli(base.loss),ws_milli(result.loss),changed);
+    }
+    print("separate development-only ten-step fine-tune, no hyperparameter retries:\n");
+    for model:0..<5 {p:[664]f64;bits:=WS_FIT[model];ax_from_bits(bits[..],p[..]);m:=ws_measure(p[..],4,6);
+        print("  seed %: correct % of 15, retained % of 6, NLL % millinats\n",119+model,m.right,m.retained,ws_milli(m.loss));}
+    print("These are exploratory measurements; an NLL gain alone establishes no recovered ability.\n");
+}
+// book:end example

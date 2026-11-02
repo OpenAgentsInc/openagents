@@ -1,0 +1,110 @@
+// Fresh stateless inference trials, no training or tools offered to the model.
+// Usage: coax/web/tool.sh psionic/tools/weight-space-llm.coax OUTDIR [--replay]
+// Requires our original GPT-OSS Responses server on loopback 8794, with the
+// PUBLIC TEST credential below (no real account/key). Never opens a browser.
+#import "Basic";
+#load "../lib/weight-space.coax";
+#load "../lib/weight-space-mlp.coax";
+#load "../fixtures/weight-space/fresh.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+
+WlText :: struct {b:[16384]u8;n:int;}
+wl_add :: (o:[]WlText,s:string) {#assert o[0].n+s.count<=16384;for c:s {o[0].b[o[0].n]=c;o[0].n+=1;}}
+wl_int :: (o:[]WlText,n:int) {b:[64]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_int(j[..],n);wl_add(o,jo_text(j[..]));}
+wl_text :: (o:[]WlText)->string {return cast(string)o[0].b[0..<o[0].n];}
+wl_path :: (dir:string,id:int,suffix:string,b:[]u8)->string {
+    text:[1]WlText;wl_add(text[..],dir);wl_add(text[..],"/");wl_int(text[..],id);wl_add(text[..],suffix);
+    s:=wl_text(text[..]);#assert s.count<=b.count;for i:0..<s.count {b[i]=s[i];}return cast(string)b[0..<s.count];
+}
+#test "only a complete final answer is a proposal; reasoning never becomes one" {
+    out:[32]u8;
+    #assert wl_answer("{\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"content\":[{\"type\":\"reasoning_text\",\"text\":\"0\"}]},{\"type\":\"message\",\"content\":[{\"type\":\"output_text\",\"text\":\"1\"}]}]}",out[..])=="1";
+    #assert wl_answer("{\"status\":\"incomplete\",\"output\":[]}",out[..])=="INVALID";
+    #assert wl_answer("{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[{\"type\":\"reasoning_text\",\"text\":\"0\"}]}]}",out[..])=="INVALID";
+    #assert wl_pair("0,3")==3 && wl_pair("3,0")==12 && wl_pair("1,1")==-1 && wl_pair("NONE")==-1 && wl_pair("0,3 extra")==-1;
+}
+wl_answer :: (raw:string,out:[]u8)->string {
+    d:[1]Jv;nodes:[2048]JvNode;tmp:[128]u8;
+    if !jv_parse(d[..],raw,nodes[..]) {return "INVALID";}
+    status:=jv_get(d[0],0,"status");n:=jv_str(d[0],status,tmp[..]);
+    if n!=9 || cast(string)tmp[0..<n]!="completed" {return "INVALID";}
+    array:=jv_get(d[0],0,"output");
+    for i:0..<jv_len(d[0],array) {item:=jv_at(d[0],array,i);kind:=jv_get(d[0],item,"type");k:=jv_str(d[0],kind,tmp[..]);
+        if k==7 && cast(string)tmp[0..<k]=="message" {
+            content:=jv_get(d[0],item,"content");part:=jv_at(d[0],content,0);ct:=jv_str(d[0],jv_get(d[0],part,"type"),tmp[..]);
+            if ct!=11 || cast(string)tmp[0..<ct]!="output_text" {return "INVALID";}
+            at:=jv_get(d[0],part,"text");written:=jv_str(d[0],at,out);
+            if written>0 {return cast(string)out[0..<written];}
+        }
+    }return "INVALID";
+}
+wl_pair :: (s:string)->int {
+    if s.count!=3 || s[1]!=',' || s[0]<'0' || s[0]>'3' || s[2]<'0' || s[2]>'3' || s[0]==s[2] {return -1;}
+    return cast(int)(s[0]-'0')*4+cast(int)(s[2]-'0');
+}
+wl_query :: (dir:string,id:int,prompt:string,out:[]u8,replay:bool)->string {
+    request:[32768]u8;j:[1]Jo;jo_start(j[..],request[..]);jo_obj(j[..]);
+    jo_key(j[..],"model");jo_str(j[..],"gpt-oss-20b");jo_key(j[..],"input");jo_str(j[..],prompt);
+    jo_key(j[..],"max_output_tokens");jo_int(j[..],ifx id>=12 && id<22 then 256 else 512);jo_key(j[..],"stream");jo_bool(j[..],false);jo_end(j[..]);#assert !j[0].bad;
+    pathbuf:[1024]u8;path:=wl_path(dir,id,".request.json",pathbuf[..]);
+    if replay {
+        prior:[32768]u8;k:=fs_read(path,prior[..]);#assert k>=0 && cast(string)prior[0..<k]==jo_text(j[..]);
+        response:=wl_path(dir,id,".response.json",pathbuf[..]);raw:[65536]u8;n:=fs_read(response,raw[..]);#assert n>=0;
+        return wl_answer(cast(string)raw[0..<n],out);
+    }
+    #assert fs_write(path,jo_text(j[..]));
+    at:[1024]u8;at[0]='@';for i:0..<path.count {at[i+1]=path[i];}
+    argv:=[13]string.["curl","--silent","--show-error","--fail-with-body","--max-time","120","http://127.0.0.1:8794/v1/responses","-H","Authorization: Bearer psionic-weight-space-local-test-only","-H","Content-Type: application/json","--data-binary",cast(string)at[0..<path.count+1]];
+    raw:[65536]u8;err:[4096]u8;r:=proc_run(argv[..],130000,raw[..],err[..]);
+    response:=wl_path(dir,id,".response.json",pathbuf[..]);#assert fs_write(response,cast(string)raw[0..<r.out_n]);
+    if r.status!=0 || r.timed_out {return "INVALID";}
+    return wl_answer(cast(string)raw[0..<r.out_n],out);
+}
+wl_mini_prompt :: (p:[]f64,o:[]WlText) {
+    wl_add(o,"Inspect this COMPLETE neural network, without tools or forward evaluations. It is a constructed positive control, not a trained model. Two inputs x0,x1; 4 ReLU hidden units; 2 linear output logits, argmax class, class 0 wins ties. Desired class is 1 iff x0>0. x1 is nuisance. Preserve the x0 circuit. If a nuisance circuit overrides it, name the TWO hidden units whose outgoing weights should become zero. If already correct or no x0 capability exists, return NONE. Reply ONLY with two DISTINCT zero-based unit indices separated by a comma, or NONE. No explanation. All arrays row major.\nInput weights (4x2): ");
+    for i:0..<8 {if i>0 {wl_add(o,",");}wl_int(o,cast(int)p[i]);}
+    wl_add(o,"\nHidden biases (4): ");for i:8..<12 {wl_int(o,cast(int)p[i]);wl_add(o,",");}
+    wl_add(o,"\nOutput weights (2x4): ");for i:12..<20 {if i>12 {wl_add(o,",");}wl_int(o,cast(int)p[i]);}
+    wl_add(o,"\nOutput biases (2): 0,0\n");
+}
+wl_decoder_prompt :: (p:[]f64,mode:int,o:[]WlText) {
+    wl_add(o,"A trained one-block causal decoder copies an answer token from position 1 to position 4. Position 0=BOS, 1=answer (tokens 1..6), 2=hint (tokens 7..12 correspond to answers 1..6; token 13=no hint), 3=query token14. Correct hints during training can create a shortcut. There are 2 attention heads, width4 each, residual width8, pre RMSNorm epsilon1e-6 with learned scale, interleaved RoPE base10000, Wq/Wk/Wv 8x8, Wo 8x8, all row major. I want less reliance on hints while preserving copying. You may zero ONE head's four Wo columns, or decline. Reply ONLY 0, 1, or NONE. No tools, no forward passes, no explanation.\n");
+    b:=td_block(AX_SHAPE,0);
+    if mode==0 {
+        wl_add(o,"You receive SELECTED attention weights only; FFN and output matrices are omitted. Every integer below is a weight rounded to nearest 0.01 and multiplied by100. Embedding rows tokens1..14 (14x8): ");
+        for i:8..<120 {wl_int(o,cast(int)floor(p[i]*100+0.5));wl_add(o,",");}
+        wl_add(o,"\nNorm1, Wq, Wk, Wv, Wo, consecutively (8+4*64): ");
+        for i:b.norm1..<b.norm2 {wl_int(o,cast(int)floor(p[i]*100+0.5));wl_add(o,",");}
+    } else {
+        wl_add(o,"Only activation observations on DEVELOPMENT examples, no held-out cases. Attention mass in thousandths at the query position, averaged over conflicts with answers1..3. For each head: attention on answer position1, hint position2:\n");
+        for h:0..<2 {
+            answer:=0.0;hint:=0.0;w:[640]f64;lg:[80]f64;
+            for a:1..<4 {for k:1..<7 {if a!=k {x:=ax_sequence(a,k+6);#assert td_forward(AX_SHAPE,p,x[..],w[..],lg[..],false).status==TdStatus.ok;
+                offset:=ax_offset(AX_SHAPE,AxSite.{part=AxPart.unit,index=8,position=3})+h*5;answer+=w[offset+1];hint+=w[offset+2];
+            }}}
+            wl_int(o,h);wl_add(o,": ");wl_int(o,cast(int)floor(answer/15*1000+0.5));wl_add(o,",");wl_int(o,cast(int)floor(hint/15*1000+0.5));wl_add(o,"\n");
+        }
+    }
+}
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args_count(args[..])<1 || args_count(args[..])>2 {tool_errln("usage: weight-space-llm OUTDIR [--replay]");return 2;}
+    replay:=args_count(args[..])==2;#assert !replay || args_at(args[..],1)=="--replay";
+    dir:=args_at(args[..],0);#assert fs_mkdir(dir);print("case,condition,proposal,base_right,edited_right,total,changed\n");
+    for kind:0..<3 {for shift:0..<4 {
+        id:=kind*4+shift;p:=wm22_model(shift,kind);text:[1]WlText;wl_mini_prompt(p[..],text[..]);reply:[1024]u8;
+        answer:=wl_query(dir,id,wl_text(text[..]),reply[..],replay);pair:=wl_pair(answer);right:=wm22_right(p[..]);after:=right;changed:=0;
+        if pair>=0 {r:=wm22_edit(p[..],pair/4,pair%4);#assert r.status==WeStatus.ok;after=wm22_right(r.values[0..<22]);changed=r.changed;}
+        print("%,complete-22-weights,\"%\",%,%,42,%\n",id,answer,right,after,changed);
+    }}
+    for mode:0..<2 {for model:0..<5 {for perm:0..<2 {
+        p:[664]f64;bits:=WS_FRESH[model];ax_from_bits(bits[..],p[..]);if perm==1 {p=ws_permute(p[..]);}
+        id:=12+mode*10+model*2+perm;text:[1]WlText;wl_decoder_prompt(p[..],mode,text[..]);reply:[1024]u8;answer:=wl_query(dir,id,wl_text(text[..]),reply[..],replay);
+        base:=ws_measure(p[..],4,6);after:=base;changed:=0;
+        if answer=="0" || answer=="1" {site:=ifx answer=="0" then 0 else 1;r:=ws_edit(p[..],site,0);after=ws_measure(r.values[0..<664],4,6);changed=r.changed;}
+        print("%,%,\"%\",%,%,15,%\n",id,ifx mode==0 then "selected-rounded-weights" else "development-attention",answer,base.right,after.right,changed);
+    }}}
+    return 0;
+}

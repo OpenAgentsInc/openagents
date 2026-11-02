@@ -76,6 +76,10 @@ books](../../docs/books/paths.md). The [shared completion
 milestones](../../docs/books/completion.md) distinguish runnable teaching
 profiles from complete training, serving, game and robotics workflows.
 
+The new [weight-space programming branch](ch253-read-and-repair-a-models-weights.md)
+adds a bounded parameter-editing interface and recorded experiments. Chapters
+254–255 are design drafts; no original-model editing capability is claimed.
+
 ## Recorded adoption and remaining integration
 
 The registry now records reviewed consumers of selected implemented components.
@@ -338,6 +342,9 @@ run examples directly without the check command.
 | [248. Is the loop improving?](ch248-is-the-loop-improving.md) | Runnable: cpu-f64-loop-v1, a simulated world | Cost per accepted result per cycle on a digested fixed set; every component removed in turn under the same seeds and kept only beyond twice the paired standard error; a complexity ledger of settings and spend; a share of one budget per component; a barren loop reported flat, and the break-even volume of one that improves. |
 | [249. An agent optimizes a Psionic kernel](ch249-an-agent-optimizes-a-psionic-kernel.md) | Runnable: DEVICE-F32-CHUNKED-v1 norm, recorded on an NVIDIA L4; CPU checks anywhere | A bounded tuner and then an agent search chapter 37's compute subset for Elephant's offset RMS norm under a declared contract, with held-out cases, bounds traps and bit-for-bit device checks outside the agent's reach: the tuner is 1.73 times faster than chapter 44's kernels, the agent's winner 2.85 times faster than the tuner, and every evaluation, failures included, is kept in a ledger. |
 | [250. Can someone use Psionic instead of PyTorch?](ch250-can-someone-use-psionic-instead-of-pytorch.md) | Partly implemented: pytorch-audit-v1, bounded CPU (a model audit over 32 PyTorch operators, a capability matrix generated from the registry, nine recorded workflows and a PyTorch parity check of two MNIST models; a package for outside users, the three tutorials rebuilt and the four acceptance projects remain) | An honest, checked answer: which PyTorch workflows Psionic runs today, and what each one still lacks. |
+| [253. Read and repair a model's weights](ch253-read-and-repair-a-models-weights.md) | Runnable: weight-edit-f64-v1, bounded CPU and recorded local proposer trials | Immutable named-tensor patches with SHA-256 base binding, expected old values, exact reversal and zero-survivor authority checks; 180 decoder metric rows, five-seed controls, fine-tuning and 32 actual local GPT-OSS trials, including harmful edits and failed proposals. |
+| [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) | Unimplemented: design draft | Direct and compiler-assisted weight construction, then headless control against strong references, with held-out evaluation and full costs. |
+| [255. Edit an original language model](ch255-edit-an-original-language-model.md) | Unimplemented: design draft | Versioned original-tensor editing, reproducible failures, retained-capability floors and independent qualification; no original-model edit is implemented. |
 
 The learning route starts with chapters 103–104, then the tensor/function
 transforms in 106–107, the tiny decoder in 112–118 and nanochat in 123–139.

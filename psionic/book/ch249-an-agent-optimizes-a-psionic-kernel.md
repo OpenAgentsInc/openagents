@@ -1,5 +1,8 @@
 # 249. An agent optimizes a Psionic kernel
 
+[Chapter 253](ch253-read-and-repair-a-models-weights.md) applies the same
+separation between proposer and evaluator to changes in network parameters.
+
 [Chapter 37](ch037-a-coax-compute-subset.md) gave Coax a small language for
 GPU code, so that the arithmetic of every kernel stays in Coax. Writing fast
 kernels in it is slow work, and the obvious idea is to hand that work to an

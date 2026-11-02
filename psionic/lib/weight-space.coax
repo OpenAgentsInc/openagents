@@ -1,0 +1,127 @@
+// Chapter 253's controlled experiment on chapter 119's trained decoder.
+// This is an experiment, not an automatic deployment or model-quality gate.
+#load "weight-edit.coax";
+#load "transformer/patch.coax";
+
+WsMetrics :: struct {right:int;total:int;retained:int;clean:int;confident_errors:int;loss:f64;effect:f64;}
+WsChoice :: struct {site:int;loss:f64;evaluations:int;}
+WS_PROFILE :: "shortcut-decoder-664-v1";
+
+#test "the named tensors cover the decoder without a hidden layout conversion" {
+    ts:=ws_tensors();p:=ax_trained();#assert we_layout(WS_PROFILE,ts[..],p.count);
+    #assert ts[0].first==0 && ts[5].first==328 && ts[8].first==464 && ts[10].first==536;
+    #assert ts[5].name=="block.0.wo" && ts[8].name=="block.0.w2";
+    #assert we_identity(WS_PROFILE,ts[..],p[..]).status==WeStatus.ok;
+}
+#test "permanent output-column edits equal an activation ablation at every position" #steps 4000000000 {
+    p:=ax_trained();
+    for site:0..<10 {
+        r:=ws_edit(p[..],site,0);#assert r.status==WeStatus.ok && r.count==664;
+        #assert r.changed==ifx site<2 then 32 else 8;
+        x:=ax_sequence(4,9);w:[640]f64;lg:[80]f64;
+        #assert td_forward(AX_SHAPE,r.values[0..<664],x[..],w[..],lg[..],false).status==TdStatus.ok;
+        patched:[80]f64;v:[8]f64;at:=ax_candidate(site);
+        ax_run(p[..],x,at,v[0..<ax_width(AX_SHAPE,at)],w[..],patched[..]);
+        for i:48..<64 {#assert abs(lg[i]-patched[i])<1e-10;}
+        no:=ws_edit(p[..],site,1);#assert no.status==WeStatus.ok && no.changed==0;
+        for i:0..<664 {#assert f64_bits(no.values[i])==f64_bits(p[i]);}
+    }
+}
+#test "measured losses and selection use development examples only" #steps 4000000000 {
+    p:=ax_trained();base:=ws_measure(p[..],4,6);
+    #assert base.right==12 && base.total==15 && base.retained==6 && base.clean==6;
+    ab:=ws_edit(p[..],1,0);m:=ws_measure(ab.values[0..<664],4,6);
+    #assert m.right==14 && m.retained==6 && m.loss<base.loss && m.effect<base.effect;
+    #assert abs(base.effect-ax_measure(p[..],ax_candidate(1),AxMode.plain,4,6).effect)<1e-10;
+    choice:=ws_choose(p[..]);#assert choice.site>=0 && choice.site<10 && choice.evaluations==10;
+    picked:=ws_edit(p[..],choice.site,0);dev:=ws_measure(picked.values[0..<664],1,3);
+    #assert dev.loss==choice.loss && dev.retained==ws_measure(p[..],1,3).retained;
+    for i:0..<10 {q:=ws_edit(p[..],i,0);e:=ws_measure(q.values[0..<664],1,3);if e.retained==dev.retained {#assert e.loss>=dev.loss;}}
+}
+#test "head and FFN permutations preserve logits and commute with mapped edits" #steps 4000000000 {
+    p:=ax_trained();q:=ws_permute(p[..]);x:=ax_sequence(4,9);w:[640]f64;a:[80]f64;b:[80]f64;
+    #assert td_forward(AX_SHAPE,p[..],x[..],w[..],a[..],false).status==TdStatus.ok;
+    #assert td_forward(AX_SHAPE,q[..],x[..],w[..],b[..],false).status==TdStatus.ok;
+    for i:0..<80 {#assert abs(a[i]-b[i])<1e-10;}
+    for site:0..<10 {
+        left:=ws_edit(p[..],site,0);right:=ws_edit(q[..],ws_mapped(site),0);after:=ws_permute(left.values[0..<664]);
+        for i:0..<664 {#assert f64_bits(after[i])==f64_bits(right.values[i]);}
+    }
+}
+
+ws_tensors :: ()->[11]WeTensor {
+    s:=AX_SHAPE;b:=td_block(s,0);
+    return [11]WeTensor.[
+        WeTensor.{name="embedding",rank=2,dims=[4]int.[16,8,0,0]},
+        WeTensor.{name="block.0.norm1",first=b.norm1,rank=1,dims=[4]int.[8,0,0,0]},
+        WeTensor.{name="block.0.wq",first=b.wq,rank=2,dims=[4]int.[8,8,0,0]},
+        WeTensor.{name="block.0.wk",first=b.wk,rank=2,dims=[4]int.[8,8,0,0]},
+        WeTensor.{name="block.0.wv",first=b.wv,rank=2,dims=[4]int.[8,8,0,0]},
+        WeTensor.{name="block.0.wo",first=b.wo,rank=2,dims=[4]int.[8,8,0,0]},
+        WeTensor.{name="block.0.norm2",first=b.norm2,rank=1,dims=[4]int.[8,0,0,0]},
+        WeTensor.{name="block.0.w1",first=b.w1,rank=2,dims=[4]int.[8,8,0,0]},
+        WeTensor.{name="block.0.w2",first=b.w2,rank=2,dims=[4]int.[8,8,0,0]},
+        WeTensor.{name="final_norm",first=td_final_norm(s),rank=1,dims=[4]int.[8,0,0,0]},
+        WeTensor.{name="unembedding",first=td_unembed(s),rank=2,dims=[4]int.[16,8,0,0]}];
+}
+// book:begin edit
+// Sites 0..1 are attention heads; sites 2..9 are FFN units. A head is
+// removed by zeroing its four columns in Wo; a unit by its one column in W2.
+// Scale 1 is an exact no-op. Ordinary decoder execution needs no patch hook.
+ws_edit :: (p:[]f64,site:int,scale:f64)->WeResult {
+    ts:=ws_tensors();pin:=we_identity(WS_PROFILE,ts[..],p);es:[32]WeEdit;n:=0;
+    #assert site>=0 && site<10;
+    which:=ifx site<2 then 5 else 8;first:=ifx site<2 then site*4 else site-2;cols:=ifx site<2 then 4 else 1;
+    for row:0..<8 {for c:first..<first+cols {
+        i:=row*8+c;old:=p[ts[which].first+i];
+        es[n]=WeEdit.{tensor=ts[which].name,index=i,before=old,after=scale*old};n+=1;
+    }}
+    return we_apply(WS_PROFILE,ts[..],p,pin.digest,es[0..<n]);
+}
+// book:end edit
+ws_logits :: (p:[]f64,a:int,h:int)->[16]f64 {
+    x:=ax_sequence(a,h);w:[640]f64;lg:[80]f64;out:[16]f64;
+    #assert td_forward(AX_SHAPE,p,x[..],w[..],lg[..],false).status==TdStatus.ok;
+    for i:0..<16 {out[i]=lg[48+i];}return out;
+}
+ws_nll :: (lg:[16]f64,a:int)->f64 {
+    m:=lg[0];for v:lg {if v>m {m=v;}}
+    z:=0.0;for v:lg {z+=exp(v-m);}return log(z)+m-lg[a];
+}
+// book:begin measure
+ws_measure :: (p:[]f64,first:int,last:int)->WsMetrics {
+    m:WsMetrics;
+    for a:first..<last+1 {
+        clean:=ws_logits(p,a,a+6);none:=ws_logits(p,a,13);m.clean+=2;
+        if td_argmax(clean[..])==a {m.retained+=1;}if td_argmax(none[..])==a {m.retained+=1;}
+        for b:1..<7 {if b!=a {
+            lg:=ws_logits(p,a,b+6);guess:=td_argmax(lg[..]);m.total+=1;
+            if guess==a {m.right+=1;}else {if ws_nll(lg,guess)<-log(0.9) {m.confident_errors+=1;}}
+            m.loss+=ws_nll(lg,a);m.effect+=(lg[b]-lg[a])-(clean[b]-clean[a]);
+        }}
+    }
+    m.loss/=f64(m.total);m.effect/=f64(m.total);return m;
+}
+// book:end measure
+// book:begin choose
+// Exhaustive simple baseline: 10 ablations, selected on answers 1..3 only.
+// Preserve the baseline's clean answers; keep a strictly lower development NLL.
+ws_choose :: (p:[]f64)->WsChoice {
+    base:=ws_measure(p,1,3);best:=WsChoice.{site=-1,loss=base.loss};
+    for site:0..<10 {
+        r:=ws_edit(p,site,0);m:=ws_measure(r.values[0..<664],1,3);best.evaluations+=1;
+        if m.retained>=base.retained && m.loss<best.loss {best.site=site;best.loss=m.loss;}
+    }
+    return best;
+}
+// book:end choose
+ws_mapped :: (site:int)->int {return ifx site<2 then 1-site else 9-(site-2);}
+ws_permute :: (p:[]f64)->[664]f64 {
+    q:[664]f64;for i:0..<664 {q[i]=p[i];}b:=td_block(AX_SHAPE,0);
+    for i:0..<8 {for j:0..<8 {
+        h:=(i+4)%8;
+        q[b.wq+i*8+j]=p[b.wq+h*8+j];q[b.wk+i*8+j]=p[b.wk+h*8+j];q[b.wv+i*8+j]=p[b.wv+h*8+j];
+        q[b.wo+j*8+i]=p[b.wo+j*8+h];
+        q[b.w1+i*8+j]=p[b.w1+(7-i)*8+j];q[b.w2+j*8+i]=p[b.w2+j*8+7-i];
+    }}return q;
+}

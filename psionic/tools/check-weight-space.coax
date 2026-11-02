@@ -1,0 +1,70 @@
+// Focused chapter 253 gate, all orchestration in Coax.
+// coax/web/tool.sh psionic/tools/check-weight-space.coax all|native|checks|mutate|book
+// Separate phases keep each command below fifteen minutes. No model calls,
+// downloads or training. Existing dependency units retain their own gates.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+
+wsc_run :: (argv:[]string,seconds:int,out:[]u8)->int {
+    err:[65536]u8;r:=proc_run(argv,seconds*1000,out,err[..]);
+    if r.status!=0 || r.timed_out {tool_errln(cast(string)err[0..<r.err_n]);tool_errln(cast(string)out[0..<r.out_n]);return -1;}
+    return r.out_n;
+}
+wsc_native :: ()->int {
+    path:[1024]u8;dir:=fs_temp("psionic-weight-edit-",path[..]);#assert dir.count>0;
+    cb:[1024]u8;exe:[1024]u8;cpath:=fs_join(dir,"check.c",cb[..]);binary:=fs_join(dir,"check",exe[..]);
+    out:[16777216]u8;
+    for mode:0..<2 {
+        args:=[5]string.["coax/bin/coax","c","psionic/tests/weight-edit-native.coax","--library","--release"];
+        n:=wsc_run(args[0..<4+mode],120,out[..]);if n<0 {return 1;}
+        #assert fs_write(cpath,cast(string)out[0..<n]);#assert fs_append(cpath,"\nint main(void) { return (int)weight_edit_native_checks(); }\n");
+        for sanitized:0..<2 {
+            flags:=[12]string.["cc","-std=c11",ifx mode==0 then "-O0" else "-O2","-ffp-contract=off","-fno-fast-math",cpath,"-lm","-o",binary,"-g","-fsanitize=address,undefined","-fno-omit-frame-pointer"];
+            if wsc_run(flags[0..<10+sanitized*2],120,out[..])<0 {return 1;}
+            run:=[1]string.[binary];if wsc_run(run[..],60,out[..])<0 {return 1;}
+            print("native: mode %, sanitizers %: passed\n",mode,sanitized);
+        }
+    }
+    #assert fs_remove(dir);return 0;
+}
+tool_main :: ()->int #export_c {
+    args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {tool_errln("usage: check-weight-space all|native|checks|mutate|book");return 2;}
+    phase:=args_at(args[..],0);out:[16777216]u8;
+    if phase=="all" {
+        start:=proc_now_ms();phases:=[4]string.["checks","native","mutate","book"];
+        for part:phases {
+            left:=840-(proc_now_ms()-start)/1000;if left<=0 {tool_errln("fourteen-minute gate budget exhausted; run separate phases");return 1;}
+            cmd:=[3]string.["coax/web/tool.sh","psionic/tools/check-weight-space.coax",part];
+            n:=wsc_run(cmd[..],left,out[..]);if n<0 {return 1;}print("%",cast(string)out[0..<n]);
+        }return 0;
+    }
+    if phase=="native" {return wsc_native();}
+    if phase=="checks" {
+        sources:=[3]string.["psionic/lib/weight-edit.coax","psionic/lib/weight-space.coax","psionic/lib/weight-space-mlp.coax"];
+        for source:sources {for mode:0..<2 {cmd:=[4]string.["coax/bin/coax","test",source,"--release"];
+            if wsc_run(cmd[0..<3+mode],600,out[..])<0 {return 1;}print("checks: %, release %: passed\n",source,mode);
+        }}return 0;
+    }
+    if phase=="mutate" {
+        cmd:=[7]string.["coax/bin/coax","mutate","psionic/lib/weight-edit.coax","--root-only","--jobs","8","--mutation-stats"];
+        n:=wsc_run(cmd[..],600,out[..]);if n<0 {return 1;}print("%",cast(string)out[0..<n]);return 0;
+    }
+    if phase=="book" {
+        oracle:=[3]string.["python3","-I","psionic/tests/weight_space_oracle.py"];if wsc_run(oracle[..],120,out[..])<0 {return 1;}
+        examples:=[2]string.["weight-edit","weight-space"];
+        for example:examples {
+            // Paths are selected from the fixed list above.
+            src:=ifx example=="weight-edit" then "psionic/examples/weight-edit.coax" else "psionic/examples/weight-space.coax";
+            gold:=ifx example=="weight-edit" then "psionic/fixtures/weight-space/edit.out" else "psionic/fixtures/weight-space/experiment.out";
+            expected:[65536]u8;k:=fs_read(gold,expected[..]);#assert k>=0;
+            for mode:0..<2 {cmd:=[4]string.["coax/bin/coax","run",src,"--release"];n:=wsc_run(cmd[0..<3+mode],180,out[..]);
+                if n<0 || n!=k || cast(string)out[0..<n]!=cast(string)expected[0..<k] {tool_errln("example transcript drift");return 1;}
+            }
+        }
+        book:=[3]string.["python3","-I","psionic/tests/book.py"];if wsc_run(book[..],120,out[..])<0 {return 1;}
+        print("book: independent oracle, two exact examples in debug/release, inventory and links: passed\n");return 0;
+    }
+    tool_errln("unknown phase");return 2;
+}

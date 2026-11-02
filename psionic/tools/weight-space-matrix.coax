@@ -1,0 +1,36 @@
+// Replay chapter 253's matrix from saved artifacts. No training, downloads,
+// hosted inference or Python. stdout is a CSV ledger.
+#import "Basic";
+#load "../lib/weight-space.coax";
+#load "../fixtures/weight-space/fresh.coax";
+
+wsm_row :: (model:int,method:string,site:int,changed:int,p:[]f64,base:WsMetrics) {
+    m:=ws_measure(p,4,6);pass:=base.loss-m.loss>0.01 && m.right>=base.right && m.retained>=base.retained && m.confident_errors<=base.confident_errors;
+    print("%,%,%,%,%,%,%,%,%,%,%\n",model,method,site,changed,m.right,m.retained,m.confident_errors,m.loss,m.effect,pass,m.total);
+}
+wsm_random :: (p:[]f64,trial:int)->WeResult {
+    ts:=ws_tensors();id:=we_identity(WS_PROFILE,ts[..],p);es:[32]WeEdit;
+    // 37 is coprime to 664: every one of these 32 indices is distinct.
+    for i:0..<32 {
+        at:=(trial*127+i*37+19)%664;t:=0;
+        for j:0..<ts.count {if ts[j].first<=at {t=j;}}
+        es[i]=WeEdit.{tensor=ts[t].name,index=at-ts[t].first,before=p[at],after=0};
+    }return we_apply(WS_PROFILE,ts[..],p,id.digest,es[..]);
+}
+tool_main :: ()->int #export_c {
+    print("model,method,site,changed,right,retained,confident_errors,nll,hint_effect,descriptive_repair,total\n");
+    for model:0..<20 {
+        p:[664]f64;
+        if model<10 {bits:=WS_FRESH[model];ax_from_bits(bits[..],p[..]);}
+        if model>=10 && model<15 {seed:=td_init(AX_SHAPE,CrSeed.{seed=cast(u64)(model+109)},p[..]);#assert seed.counter==664;}
+        if model>=15 {bits:=WS_FRESH[model-15];ax_from_bits(bits[..],p[..]);for i:536..<664 {p[i]=0;}}
+        base:=ws_measure(p[..],4,6);wsm_row(model,"base",-1,0,p[..],base);
+        no:=ws_edit(p[..],1,1);#assert no.changed==0;wsm_row(model,"noop",1,0,no.values[0..<664],base);
+        for head:0..<2 {r:=ws_edit(p[..],head,0);wsm_row(model,"head",head,r.changed,r.values[0..<664],base);}
+        choice:=ws_choose(p[..]);
+        if choice.site>=0 {r:=ws_edit(p[..],choice.site,0);wsm_row(model,"development-best",choice.site,r.changed,r.values[0..<664],base);}
+        else {wsm_row(model,"development-best",-1,0,p[..],base);}
+        for trial:0..<3 {r:=wsm_random(p[..],trial);#assert r.status==WeStatus.ok;wsm_row(model,"random32",trial,r.changed,r.values[0..<664],base);}
+        perm:=ws_permute(p[..]);wsm_row(model,"permuted",-1,0,perm[..],base);
+    }return 0;
+}

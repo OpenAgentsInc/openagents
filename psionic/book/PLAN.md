@@ -116,9 +116,9 @@ of its spend.
 [Chapter 225](ch225-learn-which-model-to-call.md) uses chapter 103's trainer
 to choose among three simulated models and to judge a new router from an old
 one's logs.
-No chapter below is still a *design draft* (a written chapter whose first
-line says *Status: unimplemented — design draft*, with no runnable code);
-chapter 199 was the last. A
+Chapters 254–255 are new *design drafts* (written chapters whose first
+line says *Status: unimplemented — design draft*, with no runnable code).
+The other chapters have runnable profiles, complete or partial. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
 listings use `jai` Markdown fences.
@@ -876,6 +876,20 @@ The loops improve the system around the weights first (settings, prompts,
 routers, harness configuration); weight updates follow only when both the
 decision and probability gates pass, since the pre-reset fine-tuning raised
 accuracy while making confidence worse.
+
+## XXV. Weight-space programming
+
+An LLM can propose changes to the weights themselves. This branch follows
+the compiled constructions in Part XXIII and the independent measurement in
+Part XXIV, with chapter 119's causal interventions as its first reference.
+It begins with small, fully observable experiments and records failures;
+targeted sparse changes do not establish preserved behavior by their size.
+
+| Chapter | What we build and check |
+| --- | --- |
+| [253. Read and repair a model's weights](ch253-read-and-repair-a-models-weights.md) — runnable: weight-edit-f64-v1, bounded CPU and recorded local proposer trials | Named rank-0–4 binary64 tensors, SHA-256 base binding, sparse expected-old/replacement edits with whole-result publication and exact reversal; a trained decoder's permanent edits checked against activation interventions, five saved seeds, no-op/random/permuted/untrained/erased controls, separate fine-tuning and 32 fresh GPT-OSS trials. The chapter records failed proposals, harmful edits and a descriptive criterion's false positives. |
+| [254. Write a network from a specification](ch254-write-a-network-from-a-specification.md) — design draft | Direct weight construction and compiler-assisted construction as separate conditions, arithmetic against exact references, then a headless control task with sufficient observations, strong native/planner/trained baselines, held-out inputs/maps and a full compute ledger. |
+| [255. Edit an original language model](ch255-edit-an-original-language-model.md) — design draft | A reproducible original-model failure, versioned bounded window/overlay editing beyond chapter 253's small profile, intervention controls, sampling-only and fine-tuning baselines, retained-capability floors and independent qualification before any shadow promotion. Qwen3.5-0.8B generation support and a reproduction of the blog remain unimplemented. |
 
 ## A framework, not only engines
 
