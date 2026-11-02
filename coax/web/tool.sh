@@ -18,10 +18,26 @@ shift
 name="$(basename "$src" .coax)"; bin="$here/build/tools/$name"; p="$repo/coax/platform"
 # Imports may live beside the entry file, beside web tools or in Verse,
 # Psionic, apps, protocol and OS sources. Conservatively watch those Coax trees as well as the entry/native
-# inputs; a cached executable must not silently retain an older #load.
-if [[ ! -x "$bin" || -n "$(find "$src" "$repo/coax/lib" "$p" "$repo/coax/bin/coax" -newer "$bin" -print -quit)" ||
-      -n "$(find "$(dirname "$src")" -maxdepth 1 -name '*.coax' -newer "$bin" -print -quit)" ||
-      -n "$(find "$repo/coax" "$repo/verse" "$repo/psionic" "$repo/apps" "$repo/proto" "$repo/os" -name '*.coax' -newer "$bin" -print -quit)" ]]; then
+# inputs when no source list was recorded; a cached executable must not silently retain an older #load.
+# A build records the sources it read (coax deps) in NAME.sources; with that
+# list, only those files, the compiler and the platform sources can make it
+# stale, so a change elsewhere in the repository doesn't rebuild the tool.
+sources="$bin.sources"
+why=""
+if [[ ! -x "$bin" ]]; then why="first build"
+elif changed="$(find "$repo/coax/bin/coax" "$p" -newer "$bin" -print -quit)"; [[ -n "$changed" ]]; then why="$changed changed"
+elif [[ -s "$sources" ]]; then
+  while IFS= read -r f; do
+    if [[ ! -e "$f" || "$f" -nt "$bin" ]]; then why="$f changed"; break; fi
+  done < "$sources"
+  [[ -n "$why" ]] || { changed="$(find "$(dirname "$src")" -maxdepth 1 -name '*.coax' -newer "$bin" -print -quit)"; [[ -z "$changed" ]] || why="$changed changed"; }
+elif changed="$(find "$src" "$(dirname "$src")" "$repo/coax" "$repo/verse" "$repo/psionic" "$repo/apps" "$repo/proto" "$repo/os" -name '*.coax' -newer "$bin" -print -quit)"; [[ -n "$changed" ]]; then
+  why="$changed changed"
+fi
+if [[ -n "$why" ]]; then
+  started=$SECONDS
+  # Say why the tool isn't up yet: a rebuild takes a while (Coder about 30 s).
+  [[ ! -t 2 ]] || printf '%s: rebuilding (%s) ...\n' "$name" "${why#"$repo/"}" >&2
   if [[ "$(uname -s)" == Darwin ]]; then cc=(/usr/bin/clang -D_DARWIN_C_SOURCE); libs=(-framework Security); else cc=("${CC:-gcc}" -D_DEFAULT_SOURCE); libs=(-lpthread); fi
   tls=()
   near=("$src"); while read -r f; do near+=("$(dirname "$src")/$f"); done < <(sed -n 's/^#load "\([^/"]*\.coax\)";.*/\1/p' "$src")
@@ -31,10 +47,17 @@ if [[ ! -x "$bin" || -n "$(find "$src" "$repo/coax/lib" "$p" "$repo/coax/bin/coa
   fi
   work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
   "$repo/coax/bin/coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
+  "$repo/coax/bin/coax" deps "$src" > "$work/deps.json" 2> /dev/null & deps_pid=$!
   "$repo/coax/bin/coax" c "$src" --library > "$work/$name.c"
   mkdir -p "$(dirname "$bin")"
   "${cc[@]}" -std=c11 -O2 -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "$p/tool-native.c" "$p/process-native.c" \
     "$p/store-file-native.c" "$p/read-file-native.c" "$p/socket-native.c" "$p/entropy-native.c" "$p/entropy-foreign.c" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm
-  mv -f "$work/$name" "$bin"; rm -rf "$work"; trap - EXIT
+  mv -f "$work/$name" "$bin"
+  # the sources this build read, for the next staleness check (none: the broad check)
+  if wait "$deps_pid" && grep -o '"sources":\[[^]]*\]' "$work/deps.json" | grep -o '"/[^"]*"' | tr -d '"' > "$work/sources" && [[ -s "$work/sources" ]]; then
+    mv -f "$work/sources" "$sources"
+  else rm -f "$sources"; fi
+  rm -rf "$work"; trap - EXIT
+  [[ ! -t 2 ]] || printf '%s: built in %d s\n' "$name" $((SECONDS - started)) >&2
 fi
 exec "$bin" "$@"
