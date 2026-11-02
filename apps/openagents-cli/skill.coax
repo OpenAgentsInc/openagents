@@ -15,24 +15,10 @@ skill_text :: (out: [] u8) -> string {
   rep_put(r[..], "- Exit codes: 0 done, 1 failed, 2 usage, 3 no key (run `openagents login`), 4 forbidden, 5 conflict, 6 not found, 7 slow down, 8 a needed program is missing.\n\n");
   rep_put(r[..], "## Commands\n\n");
   for c: REALM_COMMANDS {
+    // the row's own usage line, as `openagents help` prints it
     rep_put(r[..], "- `openagents realm "); rep_put(r[..], c.verb);
-    i := 0; count := 0; while cli_field(c.arguments, count) != "" { count += 1; }
-    while i < count {
-      kind := cli_field(c.arguments, i); up: [32] u8; un := 0;
-      for ch: mcp_arg_name(kind, mcp_kind_index(c, i)) { if un < up.count { up[un] = ifx ch >= 'a' && ch <= 'z' then ch - 32 else ch; un += 1; } }
-      rep_put(r[..], ifx mcp_optional_at(c, i, count) then " [" else " ");
-      rep_put(r[..], cast(string) up[0..<un]);
-      if mcp_optional_at(c, i, count) { rep_put(r[..], "]"); }
-      i += 1;
-    }
+    if c.usage != "" { rep_put(r[..], " "); rep_put(r[..], c.usage); }
     rep_put(r[..], "`");
-    f := 0;
-    while cli_field(c.flags, f) != "" {
-      fl := cli_field(c.flags, f); colon := 0; while colon < fl.count && fl[colon] != ':' { colon += 1; }
-      rep_put(r[..], ifx f == 0 then " (" else ", "); rep_put(r[..], "`"); rep_put(r[..], fl[0..<colon]); rep_put(r[..], "`");
-      f += 1;
-    }
-    if f > 0 { rep_put(r[..], ")"); }
     rep_put(r[..], ": "); rep_put(r[..], c.help); rep_put(r[..], "\n");
   }
   rep_put(r[..], "\nThe same commands are MCP tools: `claude mcp add openagents -- openagents mcp` (add `--read-only` to offer only the commands that change nothing).\n");
@@ -41,9 +27,9 @@ skill_text :: (out: [] u8) -> string {
 }
 #test "skill: every row, with its arguments and flags" {
   out: [65536] u8; s := skill_text(out[..]);
-  #assert acct_has(s, "name: openagents-realm") && acct_has(s, "`openagents realm move SLUG ENTITY X Z` (`--rev`): move an entity");
-  #assert acct_has(s, "`openagents realm shot SLUG [OUT]`") && acct_has(s, "`openagents realm new [WORDS]` (`--from`)");
-  for c: REALM_COMMANDS { #assert acct_has(s, c.help); }
+  #assert acct_has(s, "name: openagents-realm") && acct_has(s, "`openagents realm move SLUG ENTITY X Z [--rev N]`: move a thing");
+  #assert acct_has(s, "`openagents realm list`: ");
+  for c: REALM_COMMANDS { #assert acct_has(s, c.help) && acct_has(s, c.usage); }
 }
 skill_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if verb != "realm" { return fail(r, EXIT_USAGE, "skill realm [--install]"); }
