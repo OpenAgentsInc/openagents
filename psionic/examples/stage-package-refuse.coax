@@ -1,0 +1,41 @@
+// Chapter 187: stage packages that are wrong in one way each, every one
+// refused by name, and the stage never reaching ready.
+#import "Basic";
+#load "../lib/stage-package.coax";
+
+show :: (what:string,c:SpStage) {
+    print("%: %",what,sp_status_name(c.status));
+    line:=c.status==SpStatus.set || c.status==SpStatus.range || c.status==SpStatus.hash || c.status==SpStatus.shape;
+    if line {print(" at manifest tensor %, % bytes hashed first",c.tensor,c.hashed);}
+    print("; phase %, ready %\n",cs_state_name(c.life.state),cs_ready(c.life));
+}
+// book:begin refuse
+main :: () {
+    w:SpxWork;fn:=spx_file(2,w.file[..]);file:=w.file[0..<fn];
+    sc:=SpScratch.{inventory=w.inventory[..],draft=w.draft[..],picked=w.picked[..]};model:[64]u8;sha:=spx_hex(file,model[..]);
+    s:=ms_tiny();b:=[2]int.[100000,100000];p:=spx_plan(2,b[..],4);layers:[2]MsLayer;
+    r:=sp_build(file,sha,p,1,sc,w.text[..]);good:=w.text[0..<r.length];dg:[64]u8;digest:=spx_hex(good,dg[..]);
+    c:=sp_stage(good,digest,file,sha,p,1,s,2,sc,layers[..]);show("stage 1's own package",c);
+    // The host allocates its arenas and passes two golden warm-ups (chapter 178).
+    l:=cs_step(cs_step(cs_step(c.life,CsEvent.allocated,true),CsEvent.warmed,true),CsEvent.warmed,true);
+    print("  after its arenas and two golden warm-ups: phase %, ready %\n",cs_state_name(l.state),cs_ready(l));
+    bad:[8192]u8;n:=spx_edit(good,"boundary 1","boundary 2",bad[..]);
+    show("one byte of the manifest changed, the published digest kept",sp_stage(bad[0..<n],digest,file,sha,p,1,s,2,sc,layers[..]));
+    // Each change below comes with its manifest's digest recomputed.
+    edits:=[7][3]string.[[3]string.["boundary 1","boundary 2","boundary contract version 2"],
+        [3]string.["stage 1 of 2","stage 0 of 2","the package of stage 0"],
+        [3]string.["tensor norm.weight","tensor normx.weight","a tensor renamed"],
+        [3]string.[" 1853 2109 "," 1854 2109 ","the embedding's range moved by one byte"],
+        [3]string.["tensor layers.1.attention.wk","tensor layers.0.attention.wk","layer 0's tensor in layer 1's place"],
+        [3]string.["model ","model 0","another parent file"],[3]string.["plan ","plan 0","another plan"]];
+    for e:edits {n=spx_edit(good,e[0],e[1],bad[..]);d:[64]u8;show(e[2],sp_stage(bad[0..<n],spx_hex(bad[0..<n],d[..]),file,sha,p,1,s,2,sc,layers[..]));}
+    hl:=good.count-65;bad=w.text;bad[hl]=ifx good[hl]=='0' then '1' else '0';d:[64]u8;
+    show("the last tensor's hash, one digit changed",sp_stage(bad[0..<good.count],spx_hex(bad[0..<good.count],d[..]),file,sha,p,1,s,2,sc,layers[..]));
+    f:=w.file;f[1853+100]^=1;
+    show("one bit of the embedding changed in the file",sp_stage(good,digest,f[0..<fn],sha,p,1,s,2,sc,layers[..]));
+    f=w.file;f[2125+5]^=1;
+    show("one bit of layer 0 changed, which stage 1 does not hold",sp_stage(good,digest,f[0..<fn],sha,p,1,s,2,sc,layers[..]));
+    show("the right package, checked as stage 0",sp_stage(good,digest,file,sha,p,0,s,2,sc,layers[..]));
+    t:=s;t.hidden=13;show("a model whose feed-forward is 13 wide",sp_stage(good,digest,file,sha,p,1,t,2,sc,layers[..]));
+}
+// book:end refuse

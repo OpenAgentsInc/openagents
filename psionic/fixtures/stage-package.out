@@ -1,0 +1,20 @@
+Ministral 3 3B, two stages of 6 GB at 4096 positions: layers 0..<14 and 14..<26
+  stage 0: 127 tensors, 4064452608 bytes; first tok_embeddings.weight, last layers.13.ffn_norm.weight
+  stage 1: 110 tensors, 3598866432 bytes; first norm.weight, last layers.25.ffn_norm.weight
+synthetic file: 13625 bytes, header 5081 bytes, sha256 f33f223babd314373cbcdadf5d9ba30309e82da9d23e0b359706cda57f4cc067
+stage 0: layers 0..<2, 19 tensors, 3008 bytes of 13625, manifest 2316 bytes, sha256 e3c7bf5c43525bef42a81d010dde7c1b72586e85871ea7ae26e58b6b80ee48fc
+stage 1: layers 2..<4, 18 tensors, 2752 bytes of 13625, manifest 2225 bytes, sha256 3fd586c6685dabdc3c335adf13f9f0c81790f2ac60c71c7c2f0101d2d4ecb847
+stage 2: layers 4..<6, 20 tensors, 3024 bytes of 13625, manifest 2446 bytes, sha256 de890cb8744b4d0e859f18cad142490d507a6bb71597ae58ea01df68bf416ab8
+stage 2's manifest, first 8 of 25 lines:
+psionic-stage-package 1
+model f33f223babd314373cbcdadf5d9ba30309e82da9d23e0b359706cda57f4cc067
+plan 32ec04db5e89006c8bc0e8c020ace8aeecd060ba081ed961f0a3c82171fdf166
+boundary 1
+stage 2 of 3 layers 4 6
+tensor norm.weight 5345 5361 5092a98b60f8a07dff417a46931ce0d25cd85d72a114413aeafb271cac9a622a
+tensor tok_embeddings.weight 5089 5345 3b6e6d9c8d19b04e6e938c604abe023aea680c060e1055cafbf46d9943b37610
+tensor layers.4.attention.wk.weight 11121 11249 19168903bfdaec432aadd41886d740000c29f5f3bc53f3a90765431c381a22f2
+stage 0: ok, 3008 bytes hashed, 19 tensors handed out (3008 bytes), next phase arenas
+stage 1: ok, 2752 bytes hashed, 18 tensors handed out (2752 bytes), next phase arenas
+stage 2: ok, 3024 bytes hashed, 20 tensors handed out (3024 bytes), next phase arenas
+run from the packaged stages: ok, 8 messages; logits equal to the unsplit forward bit for bit: 64 of 64

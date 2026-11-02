@@ -1,0 +1,21 @@
+// Chapter 187's original-weight entry: stage packages of Ministral 3 3B
+// built from and verified against the pinned consolidated.safetensors, and
+// chapter 186's two-layer slice run from packaged stages, exported for
+// psionic/tests/stage_packages.c. C maps the file, keeps the clock and
+// writes the manifests out; every choice, hash comparison and refusal is
+// Coax (psionic/lib/stage-package.coax).
+#load "../lib/stage-package.coax";
+#load "stage-slices-runtime.coax";
+
+// The whole model at 4,096 positions under two 6 GB budgets: layers
+// 0..<14 and 14..<26 (chapter 186's worked split).
+sp_rt_full :: ()->StgPlan #export_c {b:=[2]int.[6000000000,6000000000];return stg_plan(stg_ministral(MS_3B),b[..],4096);}
+// Its first two layers as a model of their own, one layer a stage.
+sp_rt_slice :: ()->StgPlan #export_c {s:=MS_3B;s.layers=2;b:=[2]int.[2000000000,2000000000];return stg_plan(stg_ministral(s),b[..],64);}
+sp_rt_build :: (file:[]u8,model:string,p:StgPlan,stage:int,w:SpScratch,out:[]u8)->SpBuilt #export_c {return sp_build(file,model,p,stage,w,out);}
+sp_rt_stage :: (text:[]u8,digest:string,file:[]u8,model:string,p:StgPlan,stage:int,s:MsShape,w:SpScratch,layers:[]MsLayer)->SpStage #export_c {
+    return sp_stage(text,digest,file,model,p,stage,s,1,w,layers);
+}
+sp_rt_hex :: (data:[]u8,out:[]u8) #export_c {h:=sp_hex(data);for i:0..<64 {out[i]=h[i];}}
+sp_rt_status :: (s:SpStatus)->string #export_c {return sp_status_name(s);}
+sp_rt_state :: (s:CsState)->string #export_c {return cs_state_name(s);}

@@ -1,0 +1,15 @@
+stage 1's own package: ok; phase arenas, ready false
+  after its arenas and two golden warm-ups: phase ready, ready true
+one byte of the manifest changed, the published digest kept: digest; phase failed, ready false
+boundary contract version 2: boundary; phase failed, ready false
+the package of stage 0: stage; phase failed, ready false
+a tensor renamed: set at manifest tensor 0, 0 bytes hashed first; phase failed, ready false
+the embedding's range moved by one byte: range at manifest tensor 1, 0 bytes hashed first; phase failed, ready false
+layer 0's tensor in layer 1's place: set at manifest tensor 2, 0 bytes hashed first; phase failed, ready false
+another parent file: model; phase failed, ready false
+another plan: plan; phase failed, ready false
+the last tensor's hash, one digit changed: hash at manifest tensor 10, 1632 bytes hashed first; phase failed, ready false
+one bit of the embedding changed in the file: hash at manifest tensor 1, 16 bytes hashed first; phase failed, ready false
+one bit of layer 0 changed, which stage 1 does not hold: ok; phase arenas, ready false
+the right package, checked as stage 0: stage; phase failed, ready false
+a model whose feed-forward is 13 wide: shape at manifest tensor 7, 1648 bytes hashed first; phase failed, ready false

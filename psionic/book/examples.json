@@ -2849,6 +2849,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/stage-package.coax",
+      "chapter": "psionic/book/ch187-stage-packages.md",
+      "stdout": "psionic/fixtures/stage-package.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/stage-package-refuse.coax",
+      "chapter": "psionic/book/ch187-stage-packages.md",
+      "stdout": "psionic/fixtures/stage-package-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

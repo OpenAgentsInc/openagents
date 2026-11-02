@@ -1,0 +1,491 @@
+// Chapter 187: stage packages. A stage of chapter 186's split needs only
+// some of the checkpoint: its own layers, the embedding if it is first, the
+// final norm and the readout if it is last. Its package is a manifest of
+// those tensors as byte ranges into the original safetensors file (nothing
+// is copied or re-encoded), each with its SHA-256, bound to the parent
+// file's SHA-256, the planner's StgPlan digest, the stage's place in the
+// plan and the boundary contract's version. A stage verifies its package by
+// building it again from its own copy of the file and requiring the same
+// text, byte for byte, so a wrong digest, tensor set, range or hash is
+// refused by name. Only a verified package is loaded, and loading is the
+// verify and map phases of chapter 178's readiness machine.
+// Profile stage-package-v1: chapter 81's checkpoint names (a tied readout),
+// up to 1,024 tensors a stage; SHA-256 through coax/lib/crypto.
+#authority;
+#load "stage-run.coax";
+#load "startup.coax";
+#load "../tests/stage-package-checks.coax";  // the checks' synthetic safetensors file and Ministral inventory
+
+SpStatus :: enum u8 {ok;shape;capacity;digest;version;model;plan;boundary;stage;set;range;hash;}
+SP_VERSION :: 1;
+
+// ---- Checks first ------------------------------------------------------------
+
+#test "chapter 81's names, by inventory index" {
+    s:=MS_3B;name:[64]u8;
+    for e:0..<ms_expected_count(s) {n:=spx_name(s,e,name[..]);#assert sp_entry(cast(string)name[0..<n])==e;}
+    #assert sp_entry("norm.weight")==0 && sp_entry("tok_embeddings.weight")==1;
+    #assert sp_entry("layers.0.attention.wk.weight")==2 && sp_entry("layers.0.ffn_norm.weight")==10;
+    #assert sp_entry("layers.127.ffn_norm.weight")==2+9*127+8 && sp_entry("layers.128.ffn_norm.weight")== -1;
+    #assert sp_entry("layers.1280.ffn_norm.weight")== -1 && sp_entry("layers.12")== -1 && sp_entry("layers.12.")== -1;
+    #assert sp_entry("layers.0")== -1 && sp_entry("layers.")== -1 && sp_entry("layers")== -1 && sp_entry("")== -1;
+    #assert sp_entry("layers..attention.wk.weight")== -1 && sp_entry("layers.01.attention.wk.weight")== -1;
+    #assert sp_entry("layers.10.attention.wk.weight")==92 && sp_entry("layers.3.attention.wk.weightx")== -1;
+    #assert sp_entry("layerz.3.attention.wk.weight")== -1 && sp_entry("output.weight")== -1 && sp_entry("vision_encoder.x")== -1;
+    #assert sp_entry("Layers.3.attention.wk.weight")== -1 && sp_entry("layers/3.attention.wk.weight")== -1;
+    #assert sp_entry("layers.3:attention.wk.weight")== -1 && sp_entry("layers.3/attention.wk.weight")== -1;
+    #assert sp_entry("layers.3:.attention.wk.weight")== -1 && sp_entry("layers.3/.attention.wk.weight")== -1 && sp_entry("layers.:.attention.wk.weight")== -1;
+    #assert sp_size(MS_3B,1)==805306368 && sp_size(MS_3B,0)==6144 && sp_size(MS_3B,2)==6291456 && sp_size(MS_3B,6)==6144;
+}
+#test "SHA-256 in any chunking, and the boundary tag from a digest" {
+    abc:=[3]u8.[97,98,99];out:[64]u8;
+    for chunk:1..<5 {out=sp_hex_chunks(abc[..],chunk);#assert cast(string)out[..]=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";}
+    out=sp_hex(abc[0..<0]);#assert cast(string)out[..]=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    #assert sp_tag(MS_PINNED_SHA256)==STG_MINISTRAL_DIGEST && sp_tag("fedcba9876543210ffffffffffffffffffffffffffffffffffffffffffffffff")==0xfedcba9876543210;
+    #assert sp_tag("00000000000000a1ffffffffffffffffffffffffffffffffffffffffffffffff")==161;
+}
+#test "the hand-worked packages of a two-layer model split after layer 0" {
+    w:SpxWork;n:=spx_file(2,w.file[..]);file:=w.file[0..<n];sc:=SpScratch.{inventory=w.inventory[..],draft=w.draft[..],picked=w.picked[..]};model:[64]u8;
+    #assert n==4885 && pw_header(file).data==1853;
+    sha:=spx_hex(file,model[..]);b:=[2]int.[100000,100000];p:=spx_plan(2,b[..],4);
+    #assert p.status==StgStatus.ok && p.cut[1]==1;
+    // The plan's text, worked by hand in the chapter; its digest is its SHA-256.
+    pt:[256]u8;m:=sp_plan_text(p,pt[..]);plan:=sp_plan_digest(p);
+    #assert cast(string)pt[0..<m]=="psionic-stage-plan 1 2 928 0 1 2 2656 256 800 2832 256 928\n";
+    #assert pw_digest(pt[0..<m],cast(string)plan[..]);
+    // Stage 0: the embedding (256 bytes) and layer 0's nine tensors (1,376 bytes).
+    r:=sp_build(file,sha,p,0,sc,w.text[..]);
+    #assert r.status==SpStatus.ok && r.count==10 && r.bytes==256+1376;
+    text:=cast(string)w.text[0..<r.length];
+    want:[2048]u8;at:=pv_text("psionic-stage-package 1\nmodel ",want[..],0);at=pv_text(sha,want[..],at);
+    at=pv_text("\nplan ",want[..],at);at=pv_text(cast(string)plan[..],want[..],at);at=pv_text("\nboundary 1\nstage 0 of 2 layers 0 1\n",want[..],at);
+    #assert text[0..<at]==cast(string)want[0..<at];
+    line:="tensor tok_embeddings.weight 1853 2109 ";
+    #assert text[at..<at+line.count]==line && pw_digest(file[1853..<2109],text[at+line.count..<at+line.count+64]);
+    #assert text[at+line.count+64]=='\n';
+    // Layer 0's first tensor in header order is its wk, the payload's 256 + 16 + 256 bytes on.
+    at+=line.count+65;line="tensor layers.0.attention.wk.weight 2381 2509 ";#assert text[at..<at+line.count]==line;
+    // The second stage: the final norm, the embedding again as its readout, layer 1.
+    q:=sp_build(file,sha,p,1,sc,w.text[..]);#assert q.status==SpStatus.ok && q.count==11 && q.bytes==16+256+1376;
+    #assert sc.inventory[sc.picked[0]].name=="norm.weight" && sc.inventory[sc.picked[1]].name=="tok_embeddings.weight";
+}
+#test "every tensor a package names hashes to its line, and the text is canonical" #steps 1000000000 {
+    w:SpxWork;n:=spx_file(6,w.file[..]);file:=w.file[0..<n];sc:=SpScratch.{inventory=w.inventory[..],draft=w.draft[..],picked=w.picked[..]};model:[64]u8;sha:=spx_hex(file,model[..]);
+    #assert n==13625;
+    b:=[3]int.[6000,6000,6000];p:=spx_plan(6,b[..],6);#assert p.status==StgStatus.ok && p.cut[1]==2 && p.cut[2]==4;
+    for k:0..<3 {
+        r:=sp_build(file,sha,p,k,sc,w.text[..]);#assert r.status==SpStatus.ok;
+        text:=w.text[0..<r.length];lines:=0;
+        for i:0..<text.count {if text[i]=='\n' {lines+=1;}}
+        #assert lines==5+r.count;
+        // Each tensor line's hash is the SHA-256 of the bytes its range names.
+        start:=0;seen:=0;
+        for i:0..<text.count {if text[i]=='\n' {
+            l:=cast(string)text[start..<i];start=i+1;
+            if l.count<7 || l[0..<7]!="tensor " {continue;}
+            t:=sc.inventory[sc.picked[seen]];seen+=1;
+            #assert l[l.count-64..<l.count]==spx_hex(file[t.begin..<t.end],model[..]);
+        }}
+        #assert seen==r.count;
+        dg:[64]u8;layers:[6]MsLayer;
+        c:=sp_stage(text,spx_hex(text,dg[..]),file,sha,p,k,MS_TINY_LAYERS6,1,sc,layers[..]);
+        #assert c.status==SpStatus.ok && c.hashed==r.bytes && c.count==r.count && c.life.state==CsState.arenas && c.tag==sp_tag(sha);
+    }
+    // A text too small for the manifest is refused.
+    r:=sp_build(file,sha,p,0,sc,w.text[0..<100]);#assert r.status==SpStatus.capacity && r.length==0;
+    r=sp_build(file,sha,p,0,sc,w.text[..]);q:=sp_build(file,sha,p,0,sc,w.text[0..<r.length]);#assert q.status==SpStatus.ok;
+    q=sp_build(file,sha,p,0,sc,w.text[0..<r.length-1]);#assert q.status==SpStatus.capacity;
+}
+#forall "Ministral 3 3B: each stage's tensors are the planner's bytes, and every tensor has its stage" seed:0..<60,n:1..<5 #steps 400000000 {
+    inv:[240]P5Tensor;names:[240*64]u8;count:=spx_ministral(inv[..],names[..]);m:=stg_ministral(MS_3B);
+    b:[4]int;x:=seed*69069+7;
+    for i:0..<n {x=(x*48271+11)%2147483647;b[i]=9000000000/n*(80+x%80)/100;}
+    p:=stg_plan(m,b[0..<n],1+seed*37%4096);
+    picked:[240]int;holders:[240]int;
+    for k:0..<n {
+        s:=sp_select(inv[0..<count],p,k,picked[..]);
+        if p.status!=StgStatus.ok {#assert s.status==SpStatus.stage && s.count==0;continue;}
+        #assert s.status==SpStatus.ok && s.bytes==spx_weights(m,p,k);
+        for j:0..<s.count {holders[picked[j]]+=1;if j>0 {#assert picked[j]>picked[j-1];}}
+        shared:=0;if k==n-1 {shared+=1;}if k==0 || k==n-1 {shared+=1;}
+        #assert s.count==9*(p.cut[k+1]-p.cut[k])+shared;
+    }
+    if p.status==StgStatus.ok {
+        // The norm is held once, the tied embedding by the first and the last stage, each layer tensor once, the image tensor never.
+        embed:=2;if n==1 {embed=1;}
+        #assert holders[0]==1 && holders[1]==embed && holders[count-1]==0;
+        for e:2..<count-1 {#assert holders[e]==1;}
+    }
+}
+#test "the synthetic file: each stage loads exactly the planner's bytes, over twelve plans" #steps 1000000000 {
+    w:SpxWork;fn:=spx_file(6,w.file[..]);file:=w.file[0..<fn];sc:=SpScratch.{inventory=w.inventory[..],draft=w.draft[..],picked=w.picked[..]};model:[64]u8;sha:=spx_hex(file,model[..]);
+    s:=MS_TINY_LAYERS6;m:=stg_ministral(s);ran:[4]int;refused:=0;
+    for seed:0..<4 {for n:1..<4 {
+    b:[3]int;x:=seed*69069+5;
+    for i:0..<n {x=(x*48271+11)%2147483647;b[i]=18000/n*(40+x%100)/100;}
+    p:=stg_plan(m,b[0..<n],1+seed%6);
+    for k:0..<n {
+        r:=sp_build(file,sha,p,k,sc,w.text[..]);
+        if p.status!=StgStatus.ok {#assert r.status==SpStatus.stage;refused+=1;continue;}
+        dg:[64]u8;layers:[6]MsLayer;text:=w.text[0..<r.length];
+        c:=sp_stage(text,spx_hex(text,dg[..]),file,sha,p,k,s,1,sc,layers[..]);
+        #assert c.status==SpStatus.ok && c.read==spx_weights(m,p,k) && c.read==r.bytes && c.tensors==r.count;
+        #assert (c.embed.count>0)==(k==0 || k==n-1) && (c.norm.count>0)==(k==n-1);
+        for l:0..<6 {#assert (layers[l].wq.count>0)==(l>=p.cut[k] && l<p.cut[k+1]);}
+        ran[n]+=1;
+    }
+    }}
+    // Plans of one, two and three stages were built and loaded, and some budgets were refused.
+    #assert ran[1]>0 && ran[2]>0 && ran[3]>0 && refused>0;
+}
+#test "the loaded views are chapter 186's tensors, and a stage reads nothing outside its package" #steps 1000000000 {
+    w:SpxWork;fn:=spx_file(6,w.file[..]);clean:=w.file;sc:=SpScratch.{inventory=w.inventory[..],draft=w.draft[..],picked=w.picked[..]};model:[64]u8;sha:=spx_hex(clean[0..<fn],model[..]);
+    s:=MS_TINY_LAYERS6;bt:[8528]u8;t:=stg_tiny(6,bt[..]);
+    b:=[3]int.[6000,6000,6000];p:=spx_plan(6,b[..],6);
+    // Each stage gets its own copy of the file, with every byte outside its package set to a NaN pattern.
+    copies:[3][SPX_FILE_MAX]u8;layers:[6]MsLayer;digests:[3]u64;embed:[]u8;norm:[]u8;
+    for k:0..<3 {
+        r:=sp_build(clean[0..<fn],sha,p,k,sc,w.text[..]);text:=w.text[0..<r.length];dg:[64]u8;digest:=spx_hex(text,dg[..]);
+        keep:[SPX_FILE_MAX]bool;for i:0..<pw_header(clean[0..<fn]).data {keep[i]=true;}
+        for j:0..<r.count {u:=sc.inventory[sc.picked[j]];for i:u.begin..<u.end {keep[i]=true;}}
+        copies[k]=clean;for i:0..<fn {if !keep[i] {copies[k][i]=ifx i%2==0 then 0xc0 else 0x7f;}}
+        c:=sp_stage(text,digest,copies[k][0..<fn],sha,p,k,s,1,sc,layers[..]);
+        #assert c.status==SpStatus.ok;digests[k]=c.tag;
+        if k==2 {embed=c.embed;norm=c.norm;}
+    }
+    for l:0..<6 {
+        a:=layers[l];e:=t.layers[l];
+        pairs:=[9][2][]u8.[[2][]u8.[a.wq,e.wq],[2][]u8.[a.wk,e.wk],[2][]u8.[a.wv,e.wv],[2][]u8.[a.wo,e.wo],[2][]u8.[a.w1,e.w1],
+            [2][]u8.[a.w2,e.w2],[2][]u8.[a.w3,e.w3],[2][]u8.[a.attention_norm,e.attention_norm],[2][]u8.[a.ffn_norm,e.ffn_norm]];
+        for q:pairs {#assert q[0].count==q[1].count;for i:0..<q[0].count {#assert q[0][i]==q[1][i];}}
+    }
+    #assert embed.count==256 && norm.count==16;for i:0..<256 {#assert embed[i]==t.embed[i];}for i:0..<16 {#assert norm[i]==t.norm[i];}
+    tokens:=STGT_TOKENS;starts:=STGT_STARTS;x:StgtBuffers;
+    run:=stg_pipeline(s,digests[..],embed,norm,layers[..],p.cut[0..<4],tokens[..],starts[..],x.logits[..],x.mem[..],x.wire[..]);
+    #assert run.status==StgRunStatus.ok && run.messages==8;
+    for r:0..<4 {
+        want:[16]f32;#assert stgt_forward(t,tokens[starts[r]..<starts[r+1]],want[..]).status==MsStatus.ok;
+        for i:0..<16 {#assert f32_bits(want[i])==f32_bits(x.logits[16*r+i]);}
+    }
+}
+#test "a package is refused for each way it can be wrong, and the stage never reaches ready" #steps 1000000000 {
+    w:SpxWork;fn:=spx_file(2,w.file[..]);file:=w.file[0..<fn];sc:=SpScratch.{inventory=w.inventory[..],draft=w.draft[..],picked=w.picked[..]};model:[64]u8;sha:=spx_hex(file,model[..]);
+    s:=ms_tiny();b:=[2]int.[100000,100000];p:=spx_plan(2,b[..],4);
+    r:=sp_build(file,sha,p,1,sc,w.text[..]);good:=w.text[0..<r.length];dg:[64]u8;digest:=spx_hex(good,dg[..]);
+    layers:[2]MsLayer;
+    c:=sp_stage(good,digest,file,sha,p,1,s,2,sc,layers[..]);
+    #assert c.status==SpStatus.ok && c.life.state==CsState.arenas && c.tensors==11 && c.read==1648 && c.hashed==1648;
+    l:=cs_step(cs_step(cs_step(c.life,CsEvent.allocated,true),CsEvent.warmed,true),CsEvent.warmed,true);#assert cs_ready(l);
+    // One byte of the text changed, the digest left as published.
+    bad:[8192]u8;n:=spx_edit(good,"boundary 1","boundary 2",bad[..]);
+    c=sp_stage(bad[0..<n],digest,file,sha,p,1,s,2,sc,layers[..]);
+    #assert c.status==SpStatus.digest && c.life.state==CsState.failed && c.life.at==CsState.verify && !cs_ready(c.life) && c.embed.count==0;
+    // Changes with the digest recomputed, so they reach the line checks.
+    edits:=[10][2]string.[[2]string.["package 1","package 2"],[2]string.["model ","model 1"],[2]string.["plan ","plan 1"],
+        [2]string.["boundary 1","boundary 2"],[2]string.["stage 1 of 2","stage 0 of 2"],[2]string.["layers 1 2","layers 0 2"],
+        [2]string.["tensor layers.1.attention.wk","tensor layers.0.attention.wk"],[2]string.["tensor norm.weight","tensor normx.weight"],
+        [2]string.[" 1853 2109 "," 1854 2109 "],[2]string.[" 1853 2109 "," 1853 2108 "]];
+    kinds:=[10]SpStatus.[SpStatus.version,SpStatus.model,SpStatus.plan,SpStatus.boundary,SpStatus.stage,SpStatus.stage,
+        SpStatus.set,SpStatus.set,SpStatus.range,SpStatus.range];
+    at:=[10]int.[0,0,0,0,0,0,2,0,1,1];
+    for k:0..<10 {
+        n=spx_edit(good,edits[k][0],edits[k][1],bad[..]);#assert n>0;d:[64]u8;
+        c=sp_stage(bad[0..<n],spx_hex(bad[0..<n],d[..]),file,sha,p,1,s,2,sc,layers[..]);
+        #assert c.status==kinds[k] && c.tensor==at[k] && c.life.state==CsState.failed && c.hashed==0 && c.read==0;
+    }
+    // The last hash with one digit changed, and one digit short.
+    d:[64]u8;hl:=good.count-65;bad=w.text;bad[hl]=ifx good[hl]=='0' then '1' else '0';
+    c=sp_stage(bad[0..<good.count],spx_hex(bad[0..<good.count],d[..]),file,sha,p,1,s,2,sc,layers[..]);
+    #assert spx_is(c,SpStatus.hash,10,1632);
+    for i:hl..<good.count-1 {bad[i]=good[i+1];}
+    c=sp_stage(bad[0..<good.count-1],spx_hex(bad[0..<good.count-1],d[..]),file,sha,p,1,s,2,sc,layers[..]);
+    #assert spx_is(c,SpStatus.hash,10,0);
+    // The first tensor line removed; the last one removed; the first one again at the end.
+    first:=0;while cast(string)good[first..<first+7]!="tensor " {first+=1;}
+    size:=0;while good[first+size]!='\n' {size+=1;}size+=1;
+    bad=w.text;for i:first..<good.count-size {bad[i]=good[i+size];}m:=good.count-size;
+    c=sp_stage(bad[0..<m],spx_hex(bad[0..<m],d[..]),file,sha,p,1,s,2,sc,layers[..]);#assert spx_is(c,SpStatus.set,0,0);
+    last:=good.count-1;while good[last-1]!='\n' {last-=1;}
+    c=sp_stage(good[0..<last],spx_hex(good[0..<last],d[..]),file,sha,p,1,s,2,sc,layers[..]);#assert c.status==SpStatus.set && c.tensor==10;
+    bad=w.text;for i:0..<size {bad[good.count+i]=good[first+i];}m=good.count+size;
+    c=sp_stage(bad[0..<m],spx_hex(bad[0..<m],d[..]),file,sha,p,1,s,2,sc,layers[..]);#assert c.status==SpStatus.set && c.tensor==11;
+    c=sp_stage(good[0..<good.count-1],spx_hex(good[0..<good.count-1],d[..]),file,sha,p,1,s,2,sc,layers[..]);
+    #assert c.status==SpStatus.hash && c.tensor==10 && c.hashed==0;
+    // One changed byte in a tensor the package names (the embedding); one in a tensor it does not (layer 0).
+    f:=w.file;f[1853+100]^=1;c=sp_stage(good,digest,f[0..<fn],sha,p,1,s,2,sc,layers[..]);
+    #assert spx_is(c,SpStatus.hash,1,16) && !cs_ready(c.life);
+    f=w.file;f[2125+5]^=1;c=sp_stage(good,digest,f[0..<fn],sha,p,1,s,2,sc,layers[..]);#assert c.status==SpStatus.ok;
+    // The right package for the wrong stage, plan or model.
+    c=sp_stage(good,digest,file,sha,p,0,s,2,sc,layers[..]);#assert c.status==SpStatus.stage;
+    o:=p;o.slowest+=1;c=sp_stage(good,digest,file,sha,o,1,s,2,sc,layers[..]);#assert c.status==SpStatus.plan;
+    c=sp_stage(good,digest,file,MS_PINNED_SHA256,p,1,s,2,sc,layers[..]);#assert c.status==SpStatus.model;
+}
+#test "inputs refused before any byte is hashed, and stages that cannot be mapped" #steps 1000000000 {
+    w:SpxWork;fn:=spx_file(2,w.file[..]);file:=w.file[0..<fn];sc:=SpScratch.{inventory=w.inventory[..],draft=w.draft[..],picked=w.picked[..]};model:[64]u8;sha:=spx_hex(file,model[..]);
+    s:=ms_tiny();b:=[2]int.[100000,100000];p:=spx_plan(2,b[..],4);
+    r:=sp_build(file,sha,p,1,sc,w.text[..]);good:=w.text[0..<r.length];dg:[64]u8;digest:=spx_hex(good,dg[..]);
+    layers:[2]MsLayer;
+    #assert sp_stage(good,digest,file,sha,p,1,s,2,sc,layers[..]).status==SpStatus.ok;
+    #assert sp_build(file,"abc",p,1,sc,w.text[..]).status==SpStatus.shape;
+    #assert sp_build(file[0..<fn-1],sha,p,1,sc,w.text[..]).status==SpStatus.shape;
+    #assert sp_stage(good,"abc",file,sha,p,1,s,2,sc,layers[..]).status==SpStatus.shape;
+    #assert sp_stage(good,digest,file,"abc",p,1,s,2,sc,layers[..]).status==SpStatus.shape;
+    #assert sp_stage(good,digest,file[0..<fn-1],sha,p,1,s,2,sc,layers[..]).status==SpStatus.shape;
+    c:=sp_stage(good,digest,file,sha,p,1,s,0,sc,layers[..]);#assert c.status==SpStatus.shape && c.life.why==CsStatus.shape && c.hashed==0;
+    c=sp_stage(good,digest,file,sha,p,1,s,CS_GOLDEN_MAX,sc,layers[..]);#assert c.status==SpStatus.ok;
+    // The stage index and the plan's status.
+    #assert sp_build(file,sha,p,2,sc,w.text[..]).status==SpStatus.stage && sp_build(file,sha,p,-1,sc,w.text[..]).status==SpStatus.stage;
+    o:=p;o.status=StgStatus.split;#assert sp_build(file,sha,o,1,sc,w.text[..]).status==SpStatus.stage;
+    // Room for the chosen entries and the inventory.
+    small:=sc;small.picked=w.picked[0..<10];#assert sp_build(file,sha,p,1,small,w.text[..]).status==SpStatus.capacity;
+    small.picked=w.picked[0..<11];#assert sp_build(file,sha,p,1,small,w.text[..]).status==SpStatus.ok;
+    small=sc;small.inventory=w.inventory[0..<20];#assert sp_stage(good,digest,file,sha,p,1,s,2,small,layers[..]).status==SpStatus.shape;
+    // Verified, but nowhere to put the layers: refused at the map phase, with no views.
+    one:[1]MsLayer;c=sp_stage(good,digest,file,sha,p,1,s,2,sc,one[..]);
+    #assert c.status==SpStatus.shape && c.life.state==CsState.failed && c.life.at==CsState.map && c.hashed==1648 && c.embed.count==0 && c.tag==0 && c.tensor==0;
+    // A model shape whose sizes differ from the file's: layer 1's w1 (the eighth tensor) is the first to differ.
+    t:=s;t.hidden=13;c=sp_stage(good,digest,file,sha,p,1,t,2,sc,layers[..]);
+    #assert c.status==SpStatus.shape && c.life.at==CsState.map && c.tensor==7 && c.read==0 && c.norm.count==0;
+    t=s;t.heads=3;c=sp_stage(good,digest,file,sha,p,1,t,2,sc,layers[..]);#assert c.status==SpStatus.shape && c.life.at==CsState.map && c.tensor==0;
+    // A wider model: the first tensor, the final norm, already differs.
+    t=s;t.width=16;c=sp_stage(good,digest,file,sha,p,1,t,2,sc,layers[..]);#assert c.status==SpStatus.shape && c.tensor==0 && c.life.at==CsState.map;
+    t=s;t.vocab=17;c=sp_stage(good,digest,file,sha,p,1,t,2,sc,layers[..]);#assert c.status==SpStatus.shape && c.tensor==1;
+    t=s;t.layers=3;three:[3]MsLayer;c=sp_stage(good,digest,file,sha,p,1,t,2,sc,three[..]);
+    #assert c.status==SpStatus.shape && c.life.at==CsState.map && c.tensor==0;
+    // A file lacking tensors the plan needs: layer 1 of a one-layer file.
+    f1:SpxWork;n1:=spx_file(1,f1.file[..]);one_sha:=spx_hex(f1.file[0..<n1],model[..]);
+    q:=sp_build(f1.file[0..<n1],one_sha,p,1,sc,w.text[..]);#assert q.status==SpStatus.ok && q.count==2;
+    tx:=w.text[0..<q.length];c=sp_stage(tx,spx_hex(tx,dg[..]),f1.file[0..<n1],one_sha,p,1,s,2,sc,layers[..]);
+    #assert c.status==SpStatus.shape && c.life.at==CsState.map && c.tensor==2 && c.tensors==0;
+    // Stage 0 of the same one-layer file: only the embedding is there.
+    q=sp_build(f1.file[0..<n1],one_sha,p,0,sc,w.text[..]);tx=w.text[0..<q.length];
+    c=sp_stage(tx,spx_hex(tx,dg[..]),f1.file[0..<n1],one_sha,p,0,s,2,sc,layers[..]);#assert c.status==SpStatus.ok && c.tensors==10;
+    #assert sp_status_name(SpStatus.ok)=="ok" && sp_status_name(SpStatus.hash)=="hash" && sp_status_name(SpStatus.range)=="range";
+}
+
+// Last, since it is slow here: more than one streaming call's 1 MiB, and chapter 7's check agrees.
+#test "a tensor over 1 MiB is hashed in more than one call" #steps 2000000000 {
+    big:[1048577]u8;big[1048576]=1;out:=sp_hex(big[..]);#assert pw_digest_chunks(big[..],cast(string)out[..],1048576);
+}
+
+// ---- the package ------------------------------------------------------------
+
+// book:begin select
+// Which tensor a name is: chapter 81's inventory index e (0 the final norm,
+// 1 the tied embedding, 2 + 9 x layer + k a layer's k-th tensor), or -1
+// for a tensor no text stage runs.
+sp_entry :: (name:string)->int {
+    if name=="norm.weight" {return 0;}
+    if name=="tok_embeddings.weight" {return 1;}
+    prefix:="layers.";
+    for i:0..<7 {if i>=name.count || name[i]!=prefix[i] {return -1;}}
+    at:=7;layer:=0;
+    while at<name.count && name[at]>='0' && name[at]<='9' {
+        layer=layer*10+cast(int)(name[at]-'0');at+=1;
+        if layer>=STG_LAYERS_MAX {return -1;}
+    }
+    // One or more digits, no leading zero, then one of a layer's nine names.
+    digits:=at-7;
+    if digits<1 || (name[7]=='0' && digits>1) {return -1;}
+    for k:0..<9 {if name[at..<name.count]==MS_LAYER_NAMES[k] {return 2+9*layer+k;}}
+    return -1;
+}
+// Does stage `stage` of plan p need tensor e? Its own layers; the embedding
+// if it is first, and again as the tied readout if it is last; the final
+// norm if it is last.
+sp_needs :: (e:int,p:StgPlan,stage:int)->bool {
+    if e<0 {return false;}
+    last:=stage==p.stages-1;
+    if e==0 {return last;}
+    if e==1 {return stage==0 || last;}
+    l:=(e-2)/9;
+    return l>=p.cut[stage] && l<p.cut[stage+1];
+}
+// The inventory entries stage `stage` needs, in the file's header order.
+SpSelected :: struct {status:SpStatus;count:int;bytes:int;}
+sp_select :: (inventory:[]P5Tensor,p:StgPlan,stage:int,out:[]int)->SpSelected {
+    if p.status!=StgStatus.ok || stage<0 || stage>=p.stages {return SpSelected.{status=SpStatus.stage};}
+    r:SpSelected;
+    for i:0..<inventory.count {
+        if !sp_needs(sp_entry(inventory[i].name),p,stage) {continue;}
+        if r.count==out.count {return SpSelected.{status=SpStatus.capacity};}
+        out[r.count]=i;r.count+=1;r.bytes+=inventory[i].end-inventory[i].begin;
+    }
+    return r;
+}
+// A tensor's bytes in chapter 81's inventory for shape s.
+sp_size :: (s:MsShape,e:int)->int {x:=ms_expected(s,e);n:=2*x.rows;if x.rank==2 {n*=x.cols;}return n;}
+// book:end select
+
+// book:begin text
+// SHA-256 of data as 64 lowercase hex digits, fed `chunk` bytes at a time
+// (chapter 7's streaming limit is 1 MiB a call).
+sp_hex_chunks :: (data:[]u8,chunk:int)->[64]u8 {
+    state:[112]u8;digest:[32]u8;out:[64]u8;at:=0;
+    #assert sha256_init(state[..])==SHA_OK;
+    while at<data.count {n:=stg_min(chunk,data.count-at);#assert sha256_update_checked(state[..],data[at..<at+n],false)==SHA_OK;at+=n;}
+    #assert sha256_final_checked(state[..],digest[..],false)==SHA_OK;
+    digits:="0123456789abcdef";
+    for i:0..<32 {out[2*i]=digits[digest[i]>>4];out[2*i+1]=digits[digest[i]&15];}
+    return out;
+}
+sp_hex :: (data:[]u8)->[64]u8 {return sp_hex_chunks(data,CB_MAX_BYTES);}
+// The plan as text: its stages, slowest stage, cuts, and each stage's
+// bytes, cache bytes and multiply-adds. Its SHA-256 is the plan's digest.
+sp_plan_text :: (p:StgPlan,out:[]u8)->int {
+    at:=pv_decimal(p.slowest,out,pv_text(" ",out,pv_decimal(p.stages,out,pv_text("psionic-stage-plan 1 ",out,0))));
+    for i:0..<p.stages+1 {at=pv_decimal(p.cut[i],out,pv_text(" ",out,at));}
+    for i:0..<p.stages {
+        at=pv_decimal(p.bytes[i],out,pv_text(" ",out,at));
+        at=pv_decimal(p.kv[i],out,pv_text(" ",out,at));
+        at=pv_decimal(p.macs[i],out,pv_text(" ",out,at));
+    }
+    return pv_text("\n",out,at);
+}
+sp_plan_digest :: (p:StgPlan)->[64]u8 {text:[2048]u8;return sp_hex(text[0..<sp_plan_text(p,text[..])]);}
+// The manifest's five header lines, k = 0..<5:
+//   psionic-stage-package 1
+//   model SHA256          the parent safetensors file
+//   plan SHA256           the planner's StgPlan
+//   boundary 1            chapter 186's boundary contract version
+//   stage I of N layers A B
+// then one line a tensor, in the file's header order:
+//   tensor NAME BEGIN END SHA256    (BEGIN..<END: bytes of the original file)
+sp_head :: (k:int,model:string,plan:[]u8,p:StgPlan,stage:int,out:[]u8)->int {
+    if k==0 {return pv_text("\n",out,pv_decimal(SP_VERSION,out,pv_text("psionic-stage-package ",out,0)));}
+    if k==1 {return pv_text("\n",out,pv_text(model,out,pv_text("model ",out,0)));}
+    if k==2 {return pv_text("\n",out,pv_text(cast(string)plan,out,pv_text("plan ",out,0)));}
+    if k==3 {return pv_text("\n",out,pv_decimal(STG_VERSION,out,pv_text("boundary ",out,0)));}
+    at:=pv_decimal(p.stages,out,pv_text(" of ",out,pv_decimal(stage,out,pv_text("stage ",out,0))));
+    at=pv_decimal(p.cut[stage+1],out,pv_text(" ",out,pv_decimal(p.cut[stage],out,pv_text(" layers ",out,at))));
+    return pv_text("\n",out,at);
+}
+SP_NEWLINE :: [1]u8.['\n'];
+SP_HEAD_REFUSALS :: [5]SpStatus.[SpStatus.version,SpStatus.model,SpStatus.plan,SpStatus.boundary,SpStatus.stage];
+sp_name_piece :: (t:P5Tensor,out:[]u8)->int {return pv_text(" ",out,pv_text(t.name,out,pv_text("tensor ",out,0)));}
+sp_range_piece :: (t:P5Tensor,out:[]u8)->int {return pv_text(" ",out,pv_decimal(t.end,out,pv_text(" ",out,pv_decimal(t.begin,out,0))));}
+// book:end text
+
+// book:begin build
+// Scratch for the file's inventory and the chosen entries.
+SpScratch :: struct {inventory:[]P5Tensor;draft:[]P5Tensor;picked:[]int;}
+SpBuilt :: struct {status:SpStatus;length:int;count:int;bytes:int;}
+// Build stage `stage`'s manifest from the original file, whose SHA-256 is
+// `model`: read its header (chapter 7), choose the stage's tensors, hash
+// each one's bytes in place, and write the text into out.
+sp_build :: (file:[]u8,model:string,p:StgPlan,stage:int,w:SpScratch,out:[]u8)->SpBuilt {
+    if !pw_hex_digest(model) {return SpBuilt.{status=SpStatus.shape};}
+    scan:=p5_inspect_checked(file,w.inventory,w.draft,false);
+    if scan.status!=PwStatus.ok {return SpBuilt.{status=SpStatus.shape};}
+    s:=sp_select(w.inventory[0..<scan.written],p,stage,w.picked);
+    if s.status!=SpStatus.ok {return SpBuilt.{status=s.status};}
+    plan:=sp_plan_digest(p);line:[256]u8;at:=0;
+    for k:0..<5 {at=pv_text(cast(string)line[0..<sp_head(k,model,plan[..],p,stage,line[..])],out,at);}
+    for j:0..<s.count {
+        t:=w.inventory[w.picked[j]];
+        at=pv_text(cast(string)line[0..<sp_name_piece(t,line[..])],out,at);
+        at=pv_text(cast(string)line[0..<sp_range_piece(t,line[..])],out,at);
+        hex:=sp_hex(file[t.begin..<t.end]);
+        at=pv_text("\n",out,pv_text(cast(string)hex[..],out,at));
+    }
+    if at>out.count {return SpBuilt.{status=SpStatus.capacity};}
+    return SpBuilt.{length=at,count=s.count,bytes=s.bytes};
+}
+// book:end build
+
+// book:begin verify
+SpStage :: struct {
+    status:SpStatus;tensor:int;hashed:int;count:int;life:CsLife;
+    tag:u64;embed:[]u8;norm:[]u8;tensors:int;read:int;
+}
+// Is piece at text[at..]?
+sp_same :: (text:[]u8,at:int,piece:[]u8)->bool {
+    if at+piece.count>text.count {return false;}
+    for i:0..<piece.count {if text[at+i]!=piece[i] {return false;}}
+    return true;
+}
+// Verify a package against the stage's own copy of the file: the text must
+// hash to the published digest, then equal, line by line, the manifest
+// this stage would build. The header lines and every tensor's name and
+// range are compared before any tensor is hashed. The result's tensor is
+// the manifest line (0 = first tensor) where the text first differs.
+sp_verify :: (text:[]u8,digest:string,file:[]u8,model:string,p:StgPlan,stage:int,w:SpScratch)->SpStage {
+    if !pw_hex_digest(digest) || !pw_hex_digest(model) {return SpStage.{status=SpStatus.shape};}
+    if !pw_digest(text,digest) {return SpStage.{status=SpStatus.digest};}
+    scan:=p5_inspect_checked(file,w.inventory,w.draft,false);
+    if scan.status!=PwStatus.ok {return SpStage.{status=SpStatus.shape};}
+    s:=sp_select(w.inventory[0..<scan.written],p,stage,w.picked);
+    if s.status!=SpStatus.ok {return SpStage.{status=s.status};}
+    plan:=sp_plan_digest(p);line:[256]u8;at:=0;
+    for k:0..<5 {
+        n:=sp_head(k,model,plan[..],p,stage,line[..]);
+        if !sp_same(text,at,line[0..<n]) {return SpStage.{status=SP_HEAD_REFUSALS[k]};}
+        at+=n;
+    }
+    head:=at;nl:=SP_NEWLINE;
+    for j:0..<s.count {
+        t:=w.inventory[w.picked[j]];n:=sp_name_piece(t,line[..]);
+        if !sp_same(text,at,line[0..<n]) {return SpStage.{status=SpStatus.set,tensor=j};}
+        at+=n;n=sp_range_piece(t,line[..]);
+        if !sp_same(text,at,line[0..<n]) {return SpStage.{status=SpStatus.range,tensor=j};}
+        at+=n+65;
+        if !sp_same(text,at-1,nl[..]) {return SpStage.{status=SpStatus.hash,tensor=j};}
+    }
+    if at!=text.count {return SpStage.{status=SpStatus.set,tensor=s.count};}
+    r:=SpStage.{count=s.count};at=head;
+    for j:0..<s.count {
+        t:=w.inventory[w.picked[j]];at+=sp_name_piece(t,line[..])+sp_range_piece(t,line[..]);
+        hex:=sp_hex(file[t.begin..<t.end]);
+        if !sp_same(text,at,hex[..]) {r.status=SpStatus.hash;r.tensor=j;return r;}
+        at+=65;r.hashed+=t.end-t.begin;
+    }
+    return r;
+}
+// book:end verify
+
+// book:begin load
+// The boundary tag chapter 186's messages carry: the parent digest's first
+// 8 bytes.
+sp_tag :: (model:string)->u64 {
+    t:u64=0;
+    for i:0..<16 {c:=model[i];v:=ifx c>='a' then c-'a'+10 else c-'0';t|=cast(u64)v<<(60-4*i);}
+    return t;
+}
+// Bring up stage `stage` of model shape s from its package: chapter 178's
+// verify phase is sp_verify, and its map phase hands out views into the
+// file for exactly the package's tensors, each the size chapter 81
+// expects, into layers[cut..] (and embed, norm). On any refusal the stage
+// fails for good and gets no views. read counts the bytes handed out.
+sp_stage :: (text:[]u8,digest:string,file:[]u8,model:string,p:StgPlan,stage:int,s:MsShape,golden:int,w:SpScratch,layers:[]MsLayer)->SpStage {
+    life:=cs_start(golden);
+    if life.state==CsState.failed {return SpStage.{status=SpStatus.shape,life=life};}
+    r:=sp_verify(text,digest,file,model,p,stage,w);
+    r.life=cs_step(life,CsEvent.verified,r.status==SpStatus.ok);
+    if r.status!=SpStatus.ok {return r;}
+    // The map phase: the stage's tensor count, then every size, before any view is handed out.
+    last:=stage==p.stages-1;need:=9*(p.cut[stage+1]-p.cut[stage]);
+    if stage==0 || last {need+=1;}
+    if last {need+=1;}
+    if !ms_shape_valid(s) || layers.count!=s.layers || p.cut[p.stages]!=s.layers {return sp_unmapped(r,0);}
+    if r.count!=need {return sp_unmapped(r,r.count);}
+    for j:0..<r.count {t:=w.inventory[w.picked[j]];if t.end-t.begin!=sp_size(s,sp_entry(t.name)) {return sp_unmapped(r,j);}}
+    v:=r;v.tag=sp_tag(model);
+    for j:0..<r.count {
+        t:=w.inventory[w.picked[j]];e:=sp_entry(t.name);view:=file[t.begin..<t.end];v.tensors+=1;v.read+=view.count;
+        if e==0 {v.norm=view;continue;}
+        if e==1 {v.embed=view;continue;}
+        l:=(e-2)/9;k:=(e-2)%9;x:=layers[l];
+        if k==0 {x.wk=view;}if k==1 {x.wo=view;}if k==2 {x.wq=view;}if k==3 {x.wv=view;}if k==4 {x.attention_norm=view;}
+        if k==5 {x.w1=view;}if k==6 {x.w2=view;}if k==7 {x.w3=view;}if k==8 {x.ffn_norm=view;}
+        layers[l]=x;
+    }
+    v.life=cs_step(r.life,CsEvent.mapped,true);
+    return v;
+}
+sp_unmapped :: (r:SpStage,tensor:int)->SpStage {u:=r;u.status=SpStatus.shape;u.tensor=tensor;u.life=cs_step(r.life,CsEvent.mapped,false);return u;}
+// book:end load
+
+sp_status_name :: (s:SpStatus)->string {
+    names:=[12]string.["ok","shape","capacity","digest","version","model","plan","boundary","stage","set","range","hash"];
+    return names[cast(int)s];
+}
