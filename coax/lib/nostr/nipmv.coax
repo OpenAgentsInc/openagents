@@ -85,15 +85,19 @@ MV_STATE_TAGS :: "[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28
 MV_STATE_BODY :: "{\"v\":1,\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[3.2,0,-10.5],\"q\":[0,0.38,0,0.92],\"t\":1790000000000,\"online\":true}";
 
 mv_plaza :: ()->MvWorld {a:[256]u8;return mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,MV_PLAZA_BODY,a[..]);}
+// The swapped content lives in these helpers' own buffers, so only the codes
+// and numbers come back: a string read from it would dangle (E0383).
 mv_frame_with :: (from:string,to:string)->MvFrame {
   o:[2048]u8;poses:[MV_ENTITIES]MvPose;
-  return mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,from,to,o[..]),MV_PLAZA,mv_plaza(),poses[..]);
+  f:=mv_frame_read(MV_FRAME,MV_FRAME_TAGS,ts_swap(MV_FRAME_BODY,from,to,o[..]),MV_PLAZA,mv_plaza(),poses[..]);
+  return MvFrame.{code=f.code,at=f.at,n=f.n,t=f.t,count=f.count};
 }
 mv_world_with :: (from:string,to:string)->MvWorld {
   o:[512]u8;a:[256]u8;return mv_world_read(MV_WORLD,MV_PK,MV_PLAZA_TAGS,ts_swap(MV_PLAZA_BODY,from,to,o[..]),a[..]);
 }
 mv_state_with :: (tags:string,from:string,to:string)->MvState {
-  o:[1024]u8;return mv_state_read(MV_STATE,tags,ts_swap(MV_STATE_BODY,from,to,o[..]),MV_PLAZA,mv_plaza());
+  o:[1024]u8;s:=mv_state_read(MV_STATE,tags,ts_swap(MV_STATE_BODY,from,to,o[..]),MV_PLAZA,mv_plaza());
+  return MvState.{code=s.code,p=s.p,q=s.q,t=s.t,online=s.online,cx=s.cx,cz=s.cz};
 }
 
 #test "NIP-MV's plaza reads: cell 64, bounds -264..264, 0..200" {
@@ -346,7 +350,7 @@ mv_state_with :: (tags:string,from:string,to:string)->MvState {
   big:[300]u8;for i:0..<300 {big[i]='a';}#assert mv_object_id(cast(string)big[..],out[..])=="";
   #assert mv_object_id(cast(string)big[0..<256],out[..]).count==24 && mv_object_id(cast(string)big[0..<257],out[..])=="";
   ot:="[[\"d\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza/obj-558157d13a69707d2163\"],[\"w\",\"33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza\"],[\"role\",\"object\"]]";
-  good:=mv_state_with(ot,"\"id\":\"avatar\",\"role\":\"avatar\"","\"id\":\"obj-558157d13a69707d2163\",\"role\":\"object\",\"node\":\"plaza/lamp-0\",\"state\":{\"kind\":\"lamp\",\"lit\":true}");
+  gb:[1024]u8;good:=mv_state_read(MV_STATE,ot,ts_swap(MV_STATE_BODY,"\"id\":\"avatar\",\"role\":\"avatar\"","\"id\":\"obj-558157d13a69707d2163\",\"role\":\"object\",\"node\":\"plaza/lamp-0\",\"state\":{\"kind\":\"lamp\",\"lit\":true}",gb[..]),MV_PLAZA,mv_plaza());
   #assert good.code==MvCode.ok && good.role=="object";
   // An object state without a node isn't held to one.
   #assert mv_state_with(ot,"\"id\":\"avatar\",\"role\":\"avatar\"","\"id\":\"obj-558157d13a69707d2163\",\"role\":\"object\"").code==MvCode.ok;

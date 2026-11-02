@@ -8,9 +8,12 @@ at_payload :: (spec:string,out:[]u8)->string {
   n=json_raw(out,n,AT_ID);n=json_raw(out,n,"\",\"revision\":3,\"spec\":");n=json_raw(out,n,spec);
   n=json_raw(out,n,",\"deleted\":false}}");return cast(string)out[0..<n];
 }
-at_read :: (payload:string)->AgentDefinition {
-  store:[4096]u8;a:=[1]AgText.[AgText.{buf=store[..]}];return agent_read(payload,a[..]);
+// The definition's strings live in the caller's store (E0383 refuses a
+// local arena here); at_error keeps its own arena and returns only the code.
+at_read :: (payload:string,store:[]u8)->AgentDefinition {
+  a:=[1]AgText.[AgText.{buf=store}];return agent_read(payload,a[..]);
 }
+at_error :: (payload:string)->u32 {store:[4096]u8;return at_read(payload,store[..]).error;}
 // The spec with one field's text replaced: old must occur once.
 at_spec :: (old:string,new:string,out:[]u8)->string {
   s:=AT_SPEC;at:=-1;
@@ -19,9 +22,10 @@ at_spec :: (old:string,new:string,out:[]u8)->string {
   return cast(string)out[0..<n];
 }
 at_field :: (old:string,new:string)->u32 {
-  sb:[1024]u8;pb:[2048]u8;return at_read(at_payload(at_spec(old,new,sb[..]),pb[..])).error;
+  sb:[1024]u8;pb:[2048]u8;return at_error(at_payload(at_spec(old,new,sb[..]),pb[..]));
 }
-at_spec_read :: (spec:string)->AgentDefinition {pb:[2048]u8;return at_read(at_payload(spec,pb[..]));}
+at_spec_read :: (spec:string,pb:[]u8,store:[]u8)->AgentDefinition {return at_read(at_payload(spec,pb),store);}
+at_spec_error :: (spec:string)->u32 {pb:[2048]u8;return at_error(at_payload(spec,pb[..]));}
 
 at_build :: (n:int,big:[]u8)->string {
   m:=json_raw(big,0,"{\"name\":\"T\",\"description\":\"\",\"instructions\":\"");
@@ -30,11 +34,11 @@ at_build :: (n:int,big:[]u8)->string {
 }
 at_fb :: (list:string)->u32 {
   s:[1024]u8;n:=json_raw(s[..],0,"{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"codex\",\"model\":null,\"access\":\"read_only\",\"fallbacks\":");
-  n=json_raw(s[..],n,list);n=json_raw(s[..],n,"}");return at_spec_read(cast(string)s[0..<n]).error;
+  n=json_raw(s[..],n,list);n=json_raw(s[..],n,"}");return at_spec_error(cast(string)s[0..<n]);
 }
 at_au :: (obj:string)->u32 {
   s:[1024]u8;n:=json_raw(s[..],0,"{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"codex\",\"model\":null,\"access\":\"read_only\",\"autonomy\":");
-  n=json_raw(s[..],n,obj);n=json_raw(s[..],n,"}");return at_spec_read(cast(string)s[0..<n]).error;
+  n=json_raw(s[..],n,obj);n=json_raw(s[..],n,"}");return at_spec_error(cast(string)s[0..<n]);
 }
 AT_DEF :: "{\"id\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":1,\"spec\":{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"},\"deleted\":false}";
 AT_FORK :: ",\"forked_from\":{\"published\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":1}";

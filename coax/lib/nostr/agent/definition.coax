@@ -291,49 +291,49 @@ agent_select :: (pin:AgentPin,signer:string,digest:string,d:AgentDefinition)->u3
   d:=agent_read(at_payload(AT_SPEC,pb[..]),a[..]);
   #assert d.error==AG_OK && d.id==AT_ID && d.revision==3 && !d.deleted && d.name=="Triage" && d.description=="Sorts new issues";
   #assert d.instructions=="Label each new issue." && d.runtime=="codex" && !d.has_model && d.access==AG_READ_ONLY && d.fallbacks==0 && !d.forked;
-  e:=at_spec_read("{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"codex\",\"model\":\"gpt-6\",\"access\":\"workspace_write\",\"fallbacks\":[{\"runtime\":\"claude\"},{\"runtime\":\"luna\",\"model\":\"m\"}],\"autonomy\":{\"check_ins\":true,\"every_minutes\":5,\"wakes\":[\"chat_finished\",\"later\"],\"future\":{\"x\":1}}}");
+  pe:[2048]u8;se:[4096]u8;e:=at_spec_read("{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"codex\",\"model\":\"gpt-6\",\"access\":\"workspace_write\",\"fallbacks\":[{\"runtime\":\"claude\"},{\"runtime\":\"luna\",\"model\":\"m\"}],\"autonomy\":{\"check_ins\":true,\"every_minutes\":5,\"wakes\":[\"chat_finished\",\"later\"],\"future\":{\"x\":1}}}",pe[..],se[..]);
   #assert e.error==AG_OK && e.has_model && e.model=="gpt-6" && e.access==AG_WORKSPACE_WRITE && e.fallbacks==2 && e.description=="";
   // The escaped name unescapes into the arena.
-  f:=at_spec_read("{\"name\":\"Tri\\u0061ge\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"any\",\"model\":null,\"access\":\"host_default\"}");
+  pf:[2048]u8;sf:[4096]u8;f:=at_spec_read("{\"name\":\"Tri\\u0061ge\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"any\",\"model\":null,\"access\":\"host_default\"}",pf[..],sf[..]);
   #assert f.error==AG_OK && f.name=="Triage" && f.runtime=="any" && f.access==AG_HOST_DEFAULT;
 }
 #test "the payload's fields: schema, definition and a fork" {
   pb:[2048]u8;p:=at_payload(AT_SPEC,pb[..]);
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v2\",\"definition\":{}}").error==AG_SCHEMA;
-  #assert at_read("{\"schema\":1}").error==AG_SHAPE && at_read("[]").error==AG_SHAPE && at_read("").error==AG_SHAPE;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\"}").error==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v2\",\"definition\":{}}")==AG_SCHEMA;
+  #assert at_error("{\"schema\":1}")==AG_SHAPE && at_error("[]")==AG_SHAPE && at_error("")==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\"}")==AG_SHAPE;
   q:[2200]u8;n:=json_raw(q[..],0,p[0..<p.count-1]);
   m:=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\",\"revision\":2}}");
-  d:=at_read(cast(string)q[0..<m]);#assert d.error==AG_OK && d.forked && d.forked_from==AT_ID && d.forked_revision==2;
-  m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"ab\",\"revision\":2}}");#assert at_read(cast(string)q[0..<m]).error==AG_FIELD;
+  ds:[4096]u8;d:=at_read(cast(string)q[0..<m],ds[..]);#assert d.error==AG_OK && d.forked && d.forked_from==AT_ID && d.forked_revision==2;
+  m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"ab\",\"revision\":2}}");#assert at_error(cast(string)q[0..<m])==AG_FIELD;
   m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\",\"revision\":0}}");
-  #assert at_read(cast(string)q[0..<m]).error==AG_FIELD;
+  #assert at_error(cast(string)q[0..<m])==AG_FIELD;
   m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\"}}");
-  #assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  #assert at_error(cast(string)q[0..<m])==AG_SHAPE;
   m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\",\"revision\":2,\"revision\":2}}");
-  #assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
-  m=json_raw(q[..],n,",\"forked_from\":{\"published\":1,\"revision\":2}}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  #assert at_error(cast(string)q[0..<m])==AG_SHAPE;
+  m=json_raw(q[..],n,",\"forked_from\":{\"published\":1,\"revision\":2}}");#assert at_error(cast(string)q[0..<m])==AG_SHAPE;
   m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\",\"revision\":\"2\"}}");
-  #assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
-  m=json_raw(q[..],n,",\"forked_from\":[]}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
-  m=json_raw(q[..],n,",\"grants\":[]}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
-  m=json_raw(q[..],n,",\"schema\":\"openagents.agent.definition.v1\"}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
-  m=json_raw(q[..],0,p);m=json_raw(q[..],m," 1");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
-  m=json_raw(q[..],0,"{\"schema\":\"openagents.agent.definition.v1\",\"definition\":[]}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  #assert at_error(cast(string)q[0..<m])==AG_SHAPE;
+  m=json_raw(q[..],n,",\"forked_from\":[]}");#assert at_error(cast(string)q[0..<m])==AG_SHAPE;
+  m=json_raw(q[..],n,",\"grants\":[]}");#assert at_error(cast(string)q[0..<m])==AG_SHAPE;
+  m=json_raw(q[..],n,",\"schema\":\"openagents.agent.definition.v1\"}");#assert at_error(cast(string)q[0..<m])==AG_SHAPE;
+  m=json_raw(q[..],0,p);m=json_raw(q[..],m," 1");#assert at_error(cast(string)q[0..<m])==AG_SHAPE;
+  m=json_raw(q[..],0,"{\"schema\":\"openagents.agent.definition.v1\",\"definition\":[]}");#assert at_error(cast(string)q[0..<m])==AG_SHAPE;
 }
 #test "the definition's id, revision and deleted flag" {
   ok:="{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9,\"spec\":{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"},\"deleted\":true}}";
-  d:=at_read(ok);#assert d.error==AG_OK && d.deleted && d.revision==9;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"4F1C6C3A2B0E5D7F8A9B0C1D2E3F405162738495A6B7C8D9E0F1A2B3C4D5E6F7\"}}").error==AG_FIELD;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":7}}").error==AG_SHAPE;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":0}}").error==AG_FIELD;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":\"1\"}}").error==AG_SHAPE;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":1,\"revision\":1}}").error==AG_SHAPE;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"spec\":[]}}").error==AG_SHAPE;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"deleted\":0}}").error==AG_SHAPE;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"owner\":0}}").error==AG_SHAPE;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":1}}").error==AG_SHAPE;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":1,\"deleted\":false]}").error==AG_SHAPE;
+  ds:[4096]u8;d:=at_read(ok,ds[..]);#assert d.error==AG_OK && d.deleted && d.revision==9;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"4F1C6C3A2B0E5D7F8A9B0C1D2E3F405162738495A6B7C8D9E0F1A2B3C4D5E6F7\"}}")==AG_FIELD;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":7}}")==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":0}}")==AG_FIELD;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":\"1\"}}")==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":1,\"revision\":1}}")==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"spec\":[]}}")==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"deleted\":0}}")==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"owner\":0}}")==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":1}}")==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":1,\"deleted\":false]}")==AG_SHAPE;
 }
 #test "name, description and instructions bounds" {
   long:[600]u8;for i:0..<600 {long[i]='n';}
@@ -380,11 +380,11 @@ agent_select :: (pin:AgentPin,signer:string,digest:string,d:AgentDefinition)->u3
   #assert ag_model_ok(cast(string)m[0..<256]) && !ag_model_ok(cast(string)m[0..<257]);
   #assert at_field("\"read_only\"","\"admin\"")==AG_FIELD && at_field("\"read_only\"","\"host_default\"")==AG_OK && at_field("\"read_only\"","0")==AG_SHAPE;
   // runtime any takes a null model.
-  #assert at_spec_read("{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"any\",\"model\":\"m\",\"access\":\"read_only\"}").error==AG_FIELD;
+  #assert at_spec_error("{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"any\",\"model\":\"m\",\"access\":\"read_only\"}")==AG_FIELD;
   #assert at_field("\"codex\"","\"codex\",\"executable\":\"/bin/sh\"")==AG_SHAPE;
   #assert at_field("\"codex\"","\"codex\",\"runtime\":\"codex\"")==AG_SHAPE;
   #assert at_field(",\"access\":\"read_only\"","")==AG_SHAPE;
-  #assert at_spec_read("{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"]").error==AG_SHAPE;
+  #assert at_spec_error("{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"]")==AG_SHAPE;
 }
 #test "fallbacks: at most four, distinct, not the primary, sdk or any" {
   #assert at_fb("[]")==AG_OK && at_fb("[{\"runtime\":\"a\"},{\"runtime\":\"b\"},{\"runtime\":\"c\",\"model\":null},{\"runtime\":\"d\"}]")==AG_OK;
@@ -420,7 +420,7 @@ agent_select :: (pin:AgentPin,signer:string,digest:string,d:AgentDefinition)->u3
   #assert at_au("{\"check_ins\":true]")==AG_SHAPE;
 }
 #test "selection pins signer, id, revision and digest" {
-  pb:[2048]u8;d:=at_read(at_payload(AT_SPEC,pb[..]));
+  pb:[2048]u8;ds:[4096]u8;d:=at_read(at_payload(AT_SPEC,pb[..]),ds[..]);
   pin:AgentPin;pin.signer="s1";pin.id=AT_ID;pin.revision=3;pin.digest="sha256:aa";
   #assert agent_select(pin,"s1","sha256:aa",d)==AG_OK;
   #assert agent_select(pin,"s2","sha256:aa",d)==AG_SIGNER;
@@ -448,20 +448,20 @@ agent_select :: (pin:AgentPin,signer:string,digest:string,d:AgentDefinition)->u3
 #test "an unknown key never stands in for a required one" {
   #assert at_field("\"name\":\"Triage\"","\"title\":\"Triage\"")==AG_SHAPE;
   q:[1024]u8;
-  #assert at_read(at_join("{\"schemas\":\"openagents.agent.definition.v1\",\"definition\":",true,"","}",q[..])).error==AG_SHAPE;
-  #assert at_read(at_join(AT_HEAD,true,"","}",q[..])).error==AG_OK;
+  #assert at_error(at_join("{\"schemas\":\"openagents.agent.definition.v1\",\"definition\":",true,"","}",q[..]))==AG_SHAPE;
+  #assert at_error(at_join(AT_HEAD,true,"","}",q[..]))==AG_OK;
   // Every key repeated in an otherwise valid payload refuses.
-  #assert at_read(at_join("{\"schema\":\"openagents.agent.definition.v1\",\"schema\":\"openagents.agent.definition.v1\",\"definition\":",true,"","}",q[..])).error==AG_SHAPE;
+  #assert at_error(at_join("{\"schema\":\"openagents.agent.definition.v1\",\"schema\":\"openagents.agent.definition.v1\",\"definition\":",true,"","}",q[..]))==AG_SHAPE;
   r:[1024]u8;second:=at_join(",\"definition\":",true,"","}",r[..]);
-  #assert at_read(at_join(AT_HEAD,true,"",second,q[..])).error==AG_SHAPE;
-  d:=at_read(at_join(AT_HEAD,true,AT_FORK,"}",q[..]));#assert d.error==AG_OK && d.forked_revision==1;
+  #assert at_error(at_join(AT_HEAD,true,"",second,q[..]))==AG_SHAPE;
+  ds:[4096]u8;d:=at_read(at_join(AT_HEAD,true,AT_FORK,"}",q[..]),ds[..]);#assert d.error==AG_OK && d.forked_revision==1;
   f2:[512]u8;n:=json_raw(f2[..],0,AT_FORK);n=json_raw(f2[..],n,AT_FORK);n=json_raw(f2[..],n,"}");
-  #assert at_read(at_join(AT_HEAD,true,"",cast(string)f2[0..<n],q[..])).error==AG_SHAPE;
-  #assert at_read(at_join(AT_HEAD,true,",\"forked_from\":{\"source\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":1}","}",q[..])).error==AG_SHAPE;
-  #assert at_read(at_join(AT_HEAD,true,",\"forked_from\":{\"published\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9007199254740992}","}",q[..])).error==AG_FIELD;
-  #assert at_read(at_join(AT_HEAD,true,",\"forked_from\":{\"published\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9007199254740991}","}",q[..])).error==AG_OK;
+  #assert at_error(at_join(AT_HEAD,true,"",cast(string)f2[0..<n],q[..]))==AG_SHAPE;
+  #assert at_error(at_join(AT_HEAD,true,",\"forked_from\":{\"source\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":1}","}",q[..]))==AG_SHAPE;
+  #assert at_error(at_join(AT_HEAD,true,",\"forked_from\":{\"published\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9007199254740992}","}",q[..]))==AG_FIELD;
+  #assert at_error(at_join(AT_HEAD,true,",\"forked_from\":{\"published\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9007199254740991}","}",q[..]))==AG_OK;
   // The definition's own keys: repeated or unknown, and the revision's ceiling.
-  for k:0..<5 {#assert at_read(at_join(AT_HEAD,false,AT_DUP[k],"}",q[..])).error==AG_SHAPE;}
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"identity\":\"x\",\"revision\":1,\"spec\":{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"},\"deleted\":false}}").error==AG_SHAPE;
-  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9007199254740992,\"spec\":{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"},\"deleted\":false}}").error==AG_FIELD;
+  for k:0..<5 {#assert at_error(at_join(AT_HEAD,false,AT_DUP[k],"}",q[..]))==AG_SHAPE;}
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"identity\":\"x\",\"revision\":1,\"spec\":{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"},\"deleted\":false}}")==AG_SHAPE;
+  #assert at_error("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9007199254740992,\"spec\":{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"},\"deleted\":false}}")==AG_FIELD;
 }
