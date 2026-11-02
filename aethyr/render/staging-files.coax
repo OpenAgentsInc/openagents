@@ -40,13 +40,15 @@ rsp_stage :: (app:string,url:string,stage:string,result:[]u8)->string {
   if !rsp_url(url) {tool_errln("render staging: unsafe package URL");return "";}
   source:[FS_PATH_MAX]u8;files:[1]RspFiles;
   if !rsp_load(fs_join(app,url[1..<url.count],source[..]),files[..]) {return "";}
-  rel:[128]u8;o:[1]Jo;jo_start(o[..],rel[..]);jo_put(o[..],"build/render/");jo_put(o[..],cast(string)files[0].hash[..]);rel_count:=o[0].n;
+  // One writer per backing: the returned writer only ever holds the caller's
+  // result, so the local rel never joins its returned borrow (E0383).
+  rel:[128]u8;r:[1]Jo;jo_start(r[..],rel[..]);jo_put(r[..],"build/render/");jo_put(r[..],cast(string)files[0].hash[..]);rel_count:=r[0].n;
   path1:[FS_PATH_MAX]u8;path2:[FS_PATH_MAX]u8;
   for tree:[2]string.["assets","site"] {
-    base:=fs_join(stage,tree,path1[..]);directory:=fs_join(base,jo_text(o[..]),path2[..]);
+    base:=fs_join(stage,tree,path1[..]);directory:=fs_join(base,jo_text(r[..]),path2[..]);
     if !rsp_publish_files(directory,files[..]) {tool_errln("render staging: could not publish products");return "";}
   }
-  jo_start(o[..],result);jo_put(o[..],"/");jo_put(o[..],cast(string)rel[0..<rel_count]);jo_put(o[..],"/render.json");
+  o:[1]Jo;jo_start(o[..],result);jo_put(o[..],"/");jo_put(o[..],cast(string)rel[0..<rel_count]);jo_put(o[..],"/render.json");
   return ifx o[0].bad then "" else jo_text(o[..]);
 }
 rsp_write_identity :: (source:string,app:string,slug:string,output:string)->bool {

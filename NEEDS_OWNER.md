@@ -9,6 +9,12 @@ apps/openagents-web`), run `coax/web/tool.sh aethyr/tests/render-ledger.coax
 http://127.0.0.1:8800/realms/the-grid/`, then the same for `/realms/everglade/`.
 Add the results to issue #12628. Not blocking.
 
+## iOS Metal host onto the render admission ledger (#12628, 2026-11-02)
+
+Move the iOS Metal host (`apps/openagents-ios` `HomeRenderer.swift`) onto
+the shared render admission ledger (`aethyr/render/registry.coax`). This
+needs an agent on the Mac with Xcode; coderos-4080 can't build the app.
+
 ## GPU device loss and trap recovery: check on real GPUs (#12651, 2026-11-02)
 
 `coax/web/host.js` now replaces a lost GPU device and keeps the realm's
