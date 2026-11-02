@@ -241,17 +241,27 @@ rt_init :: (p: [] RtPaths) -> bool {
 
 // Runs argv and returns its output lines joined with LF ("" with ok false when it failed).
 rt_run :: (argv: [] string, out: [] u8, ok: [] bool) -> string {
+  none: [1] string;
+  return rt_run_in(argv, none[0..<0], "", 120, out, ok);
+}
+
+// rt_run with NAME=value environment entries, a working folder ("" for this
+// one) and a limit in seconds, after which the process is ended.
+rt_run_in :: (argv: [] string, env: [] string, cwd: string, limit_s: int, out: [] u8, ok: [] bool) -> string {
   ok[0] = false;
   h := cxproc_new();
   if h < 0 { return ""; }
   good := true;
   for v: argv { good = good && cl_push(h, CL_FIELD_ARG, v); }
+  for v: env { good = good && cl_push(h, CL_FIELD_ENV, v); }
+  if cwd.count > 0 { good = good && cl_push(h, CL_FIELD_CWD, cwd); }
   if !good || cxproc_spawn(h) != 0 { r := cxproc_release(h); return ""; }
   c := cxproc_close_stdin(h);
   n := 0;
+  timeouts := 0;
   for guard: 0..<100000 {
     m := cxproc_read_line(h, 1000);
-    if m == CL_TIMEOUT { if guard > 120 { break; } continue; }
+    if m == CL_TIMEOUT { timeouts += 1; if timeouts > limit_s { k := cxproc_kill(h, 9); break; } continue; }
     if m == CL_TOO_LONG { continue; }
     if m < 0 { break; }
     if n + m + 1 > out.count { continue; }

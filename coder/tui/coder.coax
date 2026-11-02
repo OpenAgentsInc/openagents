@@ -241,6 +241,7 @@ cd_finish :: (a: [] App, ending: int, text: string) {
   if a[0].steps > 0 { n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_itoa(a[0].steps, tb[..])); n = cd_cat(sb[..], n, ifx a[0].steps == 1 then " step" else " steps"); }
   cd_commit(a, ifx ending == END_FINISHED then TUI_FAINT else TUI_RED, cast(string) sb[0..<n]);
   cs_end(a, ifx ending == END_STOPPED then "stopped" else ifx ending == END_FAILED then "failed" else "finished", cd_now(a) - a[0].started_ms, a[0].steps, text);
+  cd_hooks(a, "turn_end", ifx ending == END_STOPPED then "stopped" else ifx ending == END_FAILED then "failed" else "finished");
   a[0].exit = ifx ending == END_FINISHED then 0 else ifx ending == END_STOPPED then 130 else 1;
   a[0].running = false; a[0].ask = false;
 }
@@ -665,7 +666,7 @@ cd_submit :: (a: [] App) {
       rb: [2400] u8; rn := cd_cat(rb[..], 0, "$ ");
       rn = cd_cat(rb[..], rn, cast(string) a[0].pl[0].cmds[ci].run[0..<a[0].pl[0].cmds[ci].nrun]);
       rn = cd_cat(rb[..], rn, cast(string) msg[w..<msg.count]);
-      if a[0].log[0].nid == 0 { cs_open(a); }
+      if a[0].log[0].nid == 0 { cs_open(a); cd_hooks(a, "session_start", ""); }
       cs_user(a, msg);
       cd_start(a, cast(string) rb[0..<rn]);
       return;
@@ -674,7 +675,7 @@ cd_submit :: (a: [] App) {
     return;
   }
   cd_commit_prefixed(a, TUI_BRIGHT, "› ", "  ", msg);
-  if a[0].log[0].nid == 0 { cs_open(a); }
+  if a[0].log[0].nid == 0 { cs_open(a); cd_hooks(a, "session_start", ""); }
   cs_user(a, msg);
   cd_start(a, msg);
 }
@@ -682,6 +683,43 @@ cd_submit :: (a: [] App) {
 cd_plugins_show :: (a: [] App) {
   if a[0].pl[0].n == 0 { cd_commit(a, TUI_FAINT, "  No plugins: add NAME.json to ~/.openagents/coder/plugins (Coder book chapter 15)."); return; }
   for k: 0..<a[0].pl[0].n { lb: [1024] u8; tb: [1100] u8; n := cd_cat(tb[..], 0, "  "); n = cd_cat(tb[..], n, pl_line(a[0].pl, k, lb[..])); cd_commit(a, ifx a[0].pl[0].p[k].state == PL_FAILED then TUI_RED else TUI_DIM, cast(string) tb[0..<n]); }
+}
+
+// Runs every active plugin's hooks on event, in the session's folder, with
+// its context in the environment: CODER_EVENT, CODER_SESSION, CODER_ENGINE,
+// CODER_ENDING. Each hook's output shows as rows and is logged as a "hook"
+// line. A hook runs for at most PL_HOOK_SECONDS.
+PL_HOOK_SECONDS :: 30;
+cd_hooks :: (a: [] App, event: string, ending: string) {
+  r := a[0].pl;
+  if r.count == 0 { return; }
+  for i: 0..<r[0].nhooks {
+    h := r[0].hooks[i..<i + 1];
+    if cast(string) h[0].on[0..<h[0].non] != event || r[0].p[h[0].owner].state != PL_ACTIVE { continue; }
+    run := cast(string) h[0].run[0..<h[0].nrun];
+    owner := pl_name(r, h[0].owner);
+    eb: [4] [1200] u8; env: [4] string;
+    env[0] = cast(string) eb[0][0..<cd_cat(eb[0][..], cd_cat(eb[0][..], 0, "CODER_EVENT="), event)];
+    env[1] = cast(string) eb[1][0..<cd_cat(eb[1][..], cd_cat(eb[1][..], 0, "CODER_SESSION="), cs_id(a[0].log))];
+    env[2] = cast(string) eb[2][0..<cd_cat(eb[2][..], cd_cat(eb[2][..], 0, "CODER_ENGINE="), cd_engine_name(a[0].engine))];
+    env[3] = cast(string) eb[3][0..<cd_cat(eb[3][..], cd_cat(eb[3][..], 0, "CODER_ENDING="), ending)];
+    cb: [1100] u8; cn := cd_cat(cb[..], cd_cat(cb[..], 0, run), " 2>&1");
+    argv := [3] string.["/bin/sh", "-c", cast(string) cb[0..<cn]];
+    ob: [65536] u8; ok: [1] bool;
+    out := rt_run_in(argv[..], env[..], a[0].cwd, PL_HOOK_SECONDS, ob[..], ok[..]);
+    hb: [1200] u8; hn := cd_cat(hb[..], 0, "Hook("); hn = cd_cat(hb[..], hn, owner); hn = cd_cat(hb[..], hn, ": ");
+    hn = cd_cat(hb[..], hn, run); hn = cd_cat(hb[..], hn, ")");
+    cd_commit(a, TUI_DIM, cast(string) hb[0..<hn]);
+    if out.count > 0 { cd_commit_prefixed(a, ifx ok[0] then TUI_FAINT else TUI_RED, "  ⎿ ", "    ", cast(string) out[0..<ifx out.count > 2000 then 2000 else out.count]); }
+    o := a[0].log[0].line[..];
+    n := json_raw(o, 0, "{\"kind\":\"hook\",\"on\":"); n = json_write_string(o, n, event);
+    n = json_raw(o, n, ",\"plugin\":"); n = json_write_string(o, n, owner);
+    n = json_raw(o, n, ",\"run\":"); n = json_write_string(o, n, run);
+    n = json_raw(o, n, ifx ok[0] then ",\"ok\":true" else ",\"ok\":false");
+    n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, cast(string) out[0..<ifx out.count > 4000 then 4000 else out.count]);
+    n = json_raw(o, n, "}");
+    if n > 0 { cs_put(a, n); }
+  }
 }
 
 // /plugin enable NAME, /plugin disable NAME: the disabled list on disk follows.
@@ -1196,7 +1234,7 @@ tool_main :: () -> int #export_c {
     tui_ed_set(a[0].ed[..], task);
     // No --engine: System One chooses (chapter 13); the session's first lines say what and why.
     rt: [1] CdRoute; routed := verb == "run" && want.count == 0;
-    if routed { cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); a[0].engine = cd_route_pick(rt[..]); a[0].model_engine = a[0].engine; cs_open(a); cs_route(a, rt[..]); }
+    if routed { cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); a[0].engine = cd_route_pick(rt[..]); a[0].model_engine = a[0].engine; cs_open(a); cs_route(a, rt[..]); cd_hooks(a, "session_start", ""); }
     cd_submit(a);
     if !json { tb: [64] u8; tn := cd_cat(tb[..], 0, "  session "); tn = cd_cat(tb[..], tn, cs_id(a[0].log)); cd_commit(a, TUI_FAINT, cast(string) tb[0..<tn]); }
     if routed && !json { rb: [700] u8; cd_commit(a, TUI_FAINT, cd_route_line(a, rt[..], rb[..])); }

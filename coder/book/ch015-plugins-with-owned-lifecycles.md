@@ -4,9 +4,9 @@
 > `~/.openagents/coder/plugins`: each one's commands become slash commands,
 > its states are visible, and disabling it removes everything it
 > registered. A signed plugin installs only when its Nostr signature
-> verifies and its key is trusted. Still to come: profiles, capabilities
-> with providers and consumers, hooks that run on their events (they are
-> registered and listed, but nothing fires them yet), the draining state,
+> verifies and its key is trusted. Hooks run on `session_start` and
+> `turn_end`. Still to come: profiles, capabilities with providers and
+> consumers, hooks on tool calls that can refuse them, the draining state,
 > and third-party plugins in bounded Wasm.
 
 Extensions to the harness need clear ownership. This chapter composes the
@@ -40,6 +40,31 @@ A plugin is `NAME.json` in `~/.openagents/coder/plugins`
 as a `$ ` command in the session's folder, so it shows in the transcript
 and the log like any other command. Words after the command's name are
 passed on: `/test some_case` runs `cargo test -q some_case`.
+
+### Hooks
+
+A hook runs a shell command on an event: `session_start`, after a session's
+log opens, or `turn_end`, after each turn's end line
+(`cd_hooks` in [coder.coax](../../coder/tui/coder.coax)). It runs in the
+session's folder with the event's context in its environment:
+
+| Variable | Value |
+| --- | --- |
+| `CODER_EVENT` | `session_start` or `turn_end` |
+| `CODER_SESSION` | The session's ID |
+| `CODER_ENGINE` | The engine that ran the turn |
+| `CODER_ENDING` | `finished`, `stopped` or `failed`; empty at `session_start` |
+
+Its output, standard error included, shows as rows under `Hook(PLUGIN:
+COMMAND)` and goes into the session log as a `hook` line:
+
+```json
+{"kind":"hook","on":"turn_end","plugin":"tests","run":"git status --short","ok":true,"text":" M src/parse.rs"}
+```
+
+A hook that runs longer than 30 seconds is ended and logged with `"ok":
+false`. Only an active plugin's hooks run, so a disabled plugin's hooks stop
+with its commands.
 
 ### Owned registrations
 
@@ -88,7 +113,7 @@ openagents nostr sign --kind 30078 --tags '[["d","coder-plugin:NAME"]]' --conten
 
 ```sh
 coax test coder/tui/coder.coax    # owned registrations, transitions, refusals, signatures
-python3 coder/tui/smoke.py        # a plugin's command runs; disabled, it keeps no command
+python3 coder/tui/smoke.py        # a plugin's command runs; disabled, it keeps no command; hooks run on their events
 ```
 
 ## Dependencies

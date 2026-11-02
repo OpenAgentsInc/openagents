@@ -142,6 +142,13 @@ def verbs(check):
         subprocess.run([coder, "run", "/plugin disable demo", "--engine", "echo"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         pl = json.loads(subprocess.run([coder, "plugins", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
         check("a disabled plugin keeps no command", pl == [{"name": "demo", "state": "disabled", "signed": False, "commands": []}])
+        # a plugin's hooks run on their events, in the session's folder, with the session's context
+        with open(os.path.join(plugdir, "hooks.json"), "w") as f:
+            f.write('{"name":"hooks","hooks":[{"on":"session_start","run":"echo start-$CODER_EVENT"},{"on":"turn_end","run":"echo end-$CODER_ENDING-$CODER_ENGINE"}]}')
+        hk = subprocess.run([coder, "run", "hi", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        hl = [json.loads(l) for l in hk.stdout.splitlines() if '"kind":"hook"' in l]
+        check("a plugin's hooks run on session_start and turn_end", [(h["on"], h["text"]) for h in hl] == [("session_start", "start-session_start"), ("turn_end", "end-finished-echo")])
+        os.remove(os.path.join(plugdir, "hooks.json"))
         # fork: the new session carries the parent's turns, and its header names the parent
         first = subprocess.run([coder, "run", "remember heliotrope", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         pid_ = json.loads(first.stdout.splitlines()[0])["id"]

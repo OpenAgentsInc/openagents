@@ -15,8 +15,8 @@
 // transitions in PL_MOVES.
 //
 // A command runs as a "$ " command in the session's folder, so it is in the
-// transcript and the log. Hooks are registered and listed; running them on
-// their events is still to come.
+// transcript and the log. Hooks run on their events (session_start,
+// turn_end) in the session's folder; see cd_hooks in coder.coax.
 
 #load "../../coax/lib/nostr/event.coax";
 
