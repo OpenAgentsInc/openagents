@@ -11,6 +11,18 @@
 > chapter's device step is slower than the CPU) and a PyTorch baseline
 > remain.
 
+A separate [checked dense component](../lib/device/training-dense.coax),
+`training-dense-f32-v1`, now supplies cooperative `Y = XW`, `dX = dY Wᵀ`
+and `dW = Xᵀ dY`. Its 128-thread groups own disjoint 32×32 output tiles,
+use a bounded reduction tile and fixed-order FP32 sums, and pass independent
+CPU and actual RTX 4080 numerical checks. The
+[public example](../examples/training-dense.coax) computes a squared loss
+and both operand gradients through the checked API. Dimensions are 1–128;
+this component has no optimizer or decoder integration. The
+[qualification record](../../docs/verification/psionic-training-dense-2026-11-02/README.md)
+keeps the earlier failures, exact scope and remaining work. The whole-step
+measurements below remain unchanged.
+
 Inference needs only forward kernels. Training needs the gradients of
 every one of them, an optimizer that runs where the parameters live, and
 a rule for every number a step could produce. This chapter moves the whole
@@ -544,3 +556,8 @@ chapters 66–70 do for inference; that is the next step, not this one.
 ## Sources
 
 - [Chapter plan](PLAN.md), section "A framework, not only engines"
+
+The [bounded dense example](../examples/training-dense.coax) is registered
+separately from whole-model training. `psionic/check.sh --only training-dense`
+checks only these new units and native fixtures; it starts no dataset, optimizer
+experiment or GPU job.

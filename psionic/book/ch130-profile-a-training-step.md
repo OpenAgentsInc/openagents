@@ -476,6 +476,13 @@ What the profile shows:
 - On the hardware: the harness above, which fails if a profile is refused
   or a profiled run leaves chapter 129's tolerance.
 
+The later [dense forward/VJP component](../lib/device/training-dense.coax)
+uses cooperative tiles and has its own
+[numerical qualification](../../docs/verification/psionic-training-dense-2026-11-02/README.md).
+It has not replaced `gk_rows` in this measured decoder step. No new step
+speedup, end-to-end throughput or before/after comparison follows from those
+kernel checks; the bottleneck and measurements in this chapter still stand.
+
 ## What is not here yet
 
 - **The fix and its measurement.** The profile names the rows kernel: one

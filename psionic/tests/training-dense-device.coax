@@ -1,0 +1,7 @@
+// Device effects harness entry: existing Coax capability admission for the
+// actual two4096-f32 shared tiles and128threads of each dense kernel.
+#load "../lib/device/training-dense.coax";
+#load "../lib/device/admit.coax";
+gdt_admit :: (major:int,minor:int,threads:int,shared:int)->int #export_c {
+    return cast(int)da_admit(DaNeeds.{threads=GDK_THREADS,shared=2*4096*4},DaDevice.{major=major,minor=minor,max_threads=threads,max_shared=shared});
+}

@@ -1,0 +1,19 @@
+// Check-first scalar formulas; the implementation is a tiled group program.
+#forall "dense tile orientations and edges match scalar derivatives" m:1..<4,n:1..<4,k:1..<4 #steps 100000000 {
+    x:[9]f32;w:[9]f32;dy:[9]f32;y:[9]f32;dx:[9]f32;dw:[9]f32;
+    for i:0..<9 {x[i]=f32(i%5-2)*0.25;w[i]=f32(i%7-3)*0.125;dy[i]=f32(i%3-1)*0.5;}
+    gdk_forward(0,m,n,k,x[..],w[..],y[..]);gdk_dx(0,m,n,k,dy[..],w[..],dx[..]);gdk_dw(0,m,n,k,x[..],dy[..],dw[..]);
+    for r:0..<m {for c:0..<n {s:f32=0;for j:0..<k {s+=x[r*k+j]*w[j*n+c];}#assert y[r*n+c]==s;}}
+    for r:0..<m {for j:0..<k {s:f32=0;for c:0..<n {s+=dy[r*n+c]*w[j*n+c];}#assert dx[r*k+j]==s;}}
+    for j:0..<k {for c:0..<n {s:f32=0;for r:0..<m {s+=x[r*k+j]*dy[r*n+c];}#assert dw[j*n+c]==s;}}
+}
+#test "dense tiles cover multiple ragged groups in reverse order" #steps 200000000 {
+    m:=33;n:=64;k:=64;x:[2112]f32;w:[4096]f32;dy:[2112]f32;y:[2112]f32;dx:[2112]f32;dw:[4096]f32;
+    for i:0..<2112 {x[i]=f32(i%11-5)*0.125;}
+    for i:0..<4096 {w[i]=f32(i%7-3)*0.25;}
+    for i:0..<2112 {dy[i]=f32(i%13-6)*0.0625;}
+    for g:0..<4 {gdk_forward(3-g,m,n,k,x[..],w[..],y[..]);gdk_dx(3-g,m,n,k,dy[..],w[..],dx[..]);gdk_dw(3-g,m,n,k,x[..],dy[..],dw[..]);}
+    for r:0..<m {for c:0..<n {s:f32=0;for j:0..<k {s+=x[r*k+j]*w[j*n+c];}#assert y[r*n+c]==s;}}
+    for r:0..<m {for j:0..<k {s:f32=0;for c:0..<n {s+=dy[r*n+c]*w[j*n+c];}#assert dx[r*k+j]==s;}}
+    for j:0..<k {for c:0..<n {s:f32=0;for r:0..<m {s+=x[r*k+j]*dy[r*n+c];}#assert dw[j*n+c]==s;}}
+}

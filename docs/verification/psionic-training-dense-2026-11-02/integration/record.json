@@ -1,0 +1,34 @@
+{
+  "scope": "Publication integration only. New9 alias route subcases RED then GREEN through copied real dispatcher and nonexecuting child spy; shell syntax; metadata; missing release-mode example only. Original72-case/343-mutant/186-native/GPU observations retained, not repeated.",
+  "reviewed_bindings": [
+    {
+      "claim": "psionic.execution.current",
+      "path": "psionic/book/examples.json"
+    },
+    {
+      "claim": "psionic.gpu.current",
+      "path": "psionic/book/examples.json"
+    },
+    {
+      "claim": "psionic.autodiff.current",
+      "path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md"
+    },
+    {
+      "claim": "psionic.execution.current",
+      "path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md"
+    }
+  ],
+  "claim_text_features_targets_unchanged": true,
+  "inventory": "269 runnable programs,1 native library,1332 exact source listings; Coder move preserved",
+  "source_hashes": {
+    "psionic/check.sh": "d540c937846668635efe3b8c8274b4f87419027c18165efe5b96719d76358d56",
+    "psionic/tests/check_training_dense_units.sh": "3685f041966a86c85a26966784ee45b3d3318ae9f5b24b53e2bb7cb6a82eb1cb",
+    "psionic/tests/training_dense_routing.py": "12e8966d15c244c1565f7ecd84a5570b0a0d75936bc049d157bd738674fe3c01",
+    "psionic/book/examples.json": "f35f6d4b03bd814c15317ffa484cc76dad9379b8414034f8f996e3bb29b7af08",
+    "psionic/book/chapters.json": "98715390c09d2d65faa674c4160ef86f00c48f22ddc4f48a4e25b8a181c7cfe6",
+    "coax/book/capability-claims.json": "c2a09a242da6ee6e34f04f7c00deda3a68f47ed3bf86134c39a19709f677326b"
+  },
+  "release_example_compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "release_example_matches": true,
+  "cuda_runs_added_by_integration": 0
+}

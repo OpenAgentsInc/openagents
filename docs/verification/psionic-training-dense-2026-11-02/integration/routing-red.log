@@ -1,0 +1,95 @@
+FFFFFFFFF
+======================================================================
+FAIL: test_dense_aliases_delegate_before_provisioning (__main__.DenseRoutes.test_dense_aliases_delegate_before_provisioning) (alias='training-dense')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-book-delivery-publish-20261101/psionic/tests/training_dense_routing.py", line 16, in test_dense_aliases_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode());self.assertEqual(spy.read_text().splitlines(),['/selected/compiler','/selected/cc','--mutate','--jobs','3'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_dense_aliases_delegate_before_provisioning (__main__.DenseRoutes.test_dense_aliases_delegate_before_provisioning) (alias='training-dense.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-book-delivery-publish-20261101/psionic/tests/training_dense_routing.py", line 16, in test_dense_aliases_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode());self.assertEqual(spy.read_text().splitlines(),['/selected/compiler','/selected/cc','--mutate','--jobs','3'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_dense_aliases_delegate_before_provisioning (__main__.DenseRoutes.test_dense_aliases_delegate_before_provisioning) (alias='psionic/lib/training-dense.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-book-delivery-publish-20261101/psionic/tests/training_dense_routing.py", line 16, in test_dense_aliases_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode());self.assertEqual(spy.read_text().splitlines(),['/selected/compiler','/selected/cc','--mutate','--jobs','3'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_dense_aliases_delegate_before_provisioning (__main__.DenseRoutes.test_dense_aliases_delegate_before_provisioning) (alias='device/training-dense')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-book-delivery-publish-20261101/psionic/tests/training_dense_routing.py", line 16, in test_dense_aliases_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode());self.assertEqual(spy.read_text().splitlines(),['/selected/compiler','/selected/cc','--mutate','--jobs','3'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_dense_aliases_delegate_before_provisioning (__main__.DenseRoutes.test_dense_aliases_delegate_before_provisioning) (alias='device/training-dense.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-book-delivery-publish-20261101/psionic/tests/training_dense_routing.py", line 16, in test_dense_aliases_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode());self.assertEqual(spy.read_text().splitlines(),['/selected/compiler','/selected/cc','--mutate','--jobs','3'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_dense_aliases_delegate_before_provisioning (__main__.DenseRoutes.test_dense_aliases_delegate_before_provisioning) (alias='psionic/lib/device/training-dense.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-book-delivery-publish-20261101/psionic/tests/training_dense_routing.py", line 16, in test_dense_aliases_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode());self.assertEqual(spy.read_text().splitlines(),['/selected/compiler','/selected/cc','--mutate','--jobs','3'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_dense_aliases_delegate_before_provisioning (__main__.DenseRoutes.test_dense_aliases_delegate_before_provisioning) (alias='device/training-dense-kernels')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-book-delivery-publish-20261101/psionic/tests/training_dense_routing.py", line 16, in test_dense_aliases_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode());self.assertEqual(spy.read_text().splitlines(),['/selected/compiler','/selected/cc','--mutate','--jobs','3'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_dense_aliases_delegate_before_provisioning (__main__.DenseRoutes.test_dense_aliases_delegate_before_provisioning) (alias='device/training-dense-kernels.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-book-delivery-publish-20261101/psionic/tests/training_dense_routing.py", line 16, in test_dense_aliases_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode());self.assertEqual(spy.read_text().splitlines(),['/selected/compiler','/selected/cc','--mutate','--jobs','3'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+======================================================================
+FAIL: test_dense_aliases_delegate_before_provisioning (__main__.DenseRoutes.test_dense_aliases_delegate_before_provisioning) (alias='psionic/lib/device/training-dense-kernels.coax')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/openagents-book-delivery-publish-20261101/psionic/tests/training_dense_routing.py", line 16, in test_dense_aliases_delegate_before_provisioning
+    self.assertEqual(p.returncode,73,p.stderr.decode());self.assertEqual(spy.read_text().splitlines(),['/selected/compiler','/selected/cc','--mutate','--jobs','3'])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 73 : COAX is not executable: /selected/compiler
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.574s
+
+FAILED (failures=9)

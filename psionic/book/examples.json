@@ -2719,6 +2719,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/training-dense.coax",
+      "chapter": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
+      "stdout": "psionic/fixtures/training-dense.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

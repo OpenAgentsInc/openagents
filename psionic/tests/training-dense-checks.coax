@@ -1,0 +1,60 @@
+// Focused independent scalar oracles for the cooperative dense training slice.
+
+#test "training dense plan counts independent tiles and exact caller storage" {
+    p:=gd_plan(37,45,70,2590,3150,1665,1665,2590,3150,false);
+    #assert p.status==GdStatus.ok && p.m==37 && p.n==45 && p.k==70;
+    #assert p.forward==4 && p.dx==6 && p.dw==6 && p.bytes==59240;
+    #assert gd_plan(0,1,1,0,1,0,0,0,1,false).status==GdStatus.shape;
+    #assert gd_plan(129,1,1,129,1,129,129,129,1,false).status==GdStatus.shape;
+    #assert gd_plan(1,1,1,1,1,1,1,1,1,true).status==GdStatus.alias;
+    #assert gd_plan(128,128,128,16384,16384,16384,16384,16384,16384,false).status==GdStatus.ok;
+    for field:0..<6 {sizes:=[6]int.[2,6,3,3,2,6];sizes[field]-=1;
+        #assert gd_plan(1,3,2,sizes[0],sizes[1],sizes[2],sizes[3],sizes[4],sizes[5],false).status==GdStatus.capacity;}
+}
+
+#test "training dense ragged forward and both VJPs equal independent scalar sums" #steps 100000000 {
+    x:[2590]f32;w:[3150]f32;dy:[1665]f32;y:[1665]f32;dx:[2590]f32;dw:[3150]f32;
+    for i:0..<2590 {x[i]=f32(i%11-5)*0.125;}
+    for i:0..<3150 {w[i]=f32(i%7-3)*0.25;}
+    for i:0..<1665 {dy[i]=f32(i%13-6)*0.0625;}
+    #assert gd_run(37,45,70,x[..],w[..],dy[..],y[..],dx[..],dw[..],false)==GdStatus.ok;
+    for r:0..<37 {for c:0..<45 {s:f32=0;for j:0..<70 {s+=x[r*70+j]*w[j*45+c];}#assert y[r*45+c]==s;}}
+    for r:0..<37 {for j:0..<70 {s:f32=0;for c:0..<45 {s+=dy[r*45+c]*w[j*45+c];}#assert dx[r*70+j]==s;}}
+    for j:0..<70 {for c:0..<45 {s:f32=0;for r:0..<37 {s+=x[r*70+j]*dy[r*45+c];}#assert dw[j*45+c]==s;}}
+}
+
+#test "training dense refusal writes nothing and admits the numeric bound" {
+    x:=[2]f32.[1,2];w:=[2]f32.[3,4];dy:=[1]f32.[5];y:=[1]f32.[7];dx:=[2]f32.[8,9];dw:=[2]f32.[10,11];
+    for which:0..<3 {a:=x;b:=w;c:=dy;if which==0 {a[1]=1025;}if which==1 {b[1]=-1025;}if which==2 {c[0]=1025;}
+        #assert gd_run(1,1,2,a[..],b[..],c[..],y[..],dx[..],dw[..],false)==GdStatus.number;
+        #assert y[0]==7 && dx[0]==8 && dx[1]==9 && dw[0]==10 && dw[1]==11;}
+    #assert gd_run(1,1,2,x[..],w[..],dy[..],y[..],dx[..],dw[..],true)==GdStatus.alias && y[0]==7;
+    x[0]=1024;x[1]=-1024;#assert gd_run(1,1,2,x[..],w[..],dy[..],y[..],dx[..],dw[..],false)==GdStatus.ok;
+    #assert y[0]==-1024 && dx[0]==15 && dx[1]==20 && dw[0]==5120 && dw[1]==-5120;
+}
+
+#forall "training dense dimension bounds are inclusive independently on every axis" axis:0..<3,edge:0..<4 {
+    choices:=[4]int.[0,1,128,129];d:=[3]int.[1,1,1];d[axis]=choices[edge];m:=d[0];n:=d[1];k:=d[2];
+    p:=gd_plan(m,n,k,m*k,k*n,m*n,m*n,m*k,k*n,false);
+    if edge==0 || edge==3 {#assert p.status==GdStatus.shape;}else {#assert p.status==GdStatus.ok;}
+}
+#test "training dense exact work and numeric edges admit; every capacity excess refuses" {
+    p:=gd_plan(128,128,64,8192,8192,16384,16384,8192,8192,false);#assert p.status==GdStatus.ok && p.bytes==262144;
+    for field:0..<6 {sizes:=[6]int.[2,6,3,3,2,6];sizes[field]+=1;
+        #assert gd_plan(1,3,2,sizes[0],sizes[1],sizes[2],sizes[3],sizes[4],sizes[5],false).status==GdStatus.capacity;}
+    x:=[1]f32.[1];w:=[1]f32.[-1];dy:=[1]f32.[0];y:=[1]f32.[9];dx:=[1]f32.[8];dw:=[1]f32.[7];
+    #assert gd_run(1,1,1,x[0..<0],w[..],dy[..],y[..],dx[..],dw[..],false)==GdStatus.capacity && y[0]==9 && dx[0]==8 && dw[0]==7;
+    for which:0..<3 {a:=x;b:=w;c:=dy;a[0]=-1024;b[0]=1024;c[0]=-1024;
+        if which==0 {a[0]=-1025;}if which==1 {b[0]=1025;}if which==2 {c[0]=-1025;}
+        #assert gd_run(1,1,1,a[..],b[..],c[..],y[..],dx[..],dw[..],false)==GdStatus.number && y[0]==9 && dx[0]==8 && dw[0]==7;}
+}
+#forall "training dense tile counts cross exact32 boundaries on each independent axis" axis:0..<3,edge:0..<9 {
+    choices:=[9]int.[1,31,32,33,63,64,65,127,128];d:=[3]int.[1,1,1];d[axis]=choices[edge];m:=d[0];n:=d[1];k:=d[2];
+    blocks:=[3]int.[0,0,0];for a:0..<3 {for j:0..<d[a] {if j%32==0 {blocks[a]+=1;}}}
+    p:=gd_plan(m,n,k,m*k,k*n,m*n,m*n,m*k,k*n,false);
+    #assert p.status==GdStatus.ok && p.forward==blocks[0]*blocks[1] && p.dx==blocks[0]*blocks[2] && p.dw==blocks[2]*blocks[1];
+}
+#test "training dense largest shape has independently bounded work and storage" {
+    p:=gd_plan(128,128,128,16384,16384,16384,16384,16384,16384,false);
+    #assert p.status==GdStatus.ok && p.forward==16 && p.dx==16 && p.dw==16 && p.bytes==393216;
+}

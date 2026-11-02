@@ -497,6 +497,13 @@ The checks in [train-compare.coax](../lib/train-compare.coax) and
 - **The whole step compiled:** chapter 114's program with its update on,
   against the trainer's SGD at chapter 117's f32 rate, bit for bit.
 
+The separately qualified [cooperative dense kernels](../lib/device/training-dense-kernels.coax)
+provide forward and both operand VJPs for a bounded FP32 matrix product.
+Their [record](../../docs/verification/psionic-training-dense-2026-11-02/README.md)
+does not qualify a compiled GPU tensor program: lowering this chapter's
+compiled schedule, optimizer and recovery state to resident device execution
+remains open.
+
 ## What remains
 
 - **Bounded dynamic batch sizes.** The block trains one fixed batch.

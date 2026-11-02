@@ -1,0 +1,31 @@
+// Reusable cooperative dense forward/VJP, training-dense-f32-v1.
+// A bounded prerequisite for chapter129, not a decoder or resident optimizer.
+// The caller owns immutable X[M,K], W[K,N], dY[M,N] and exclusively owns
+// disjoint Y[M,N], dX[M,K], dW[K,N]. `overlap` is the caller's alias fact,
+// not an address detector. Refusal changes no output. Each sum rounds f32
+// products and additions in increasing reduction-index order, without FMA.
+#load "training-dense-kernels.coax";
+#load "../../tests/training-dense-checks.coax";
+#authority;
+GdStatus :: enum u8 {ok;shape;capacity;alias;number;}
+GdPlan :: struct {status:GdStatus;m:int;n:int;k:int;forward:int;dx:int;dw:int;bytes:int;}
+GD_DIM :: 128;
+GD_NUMBER :: 1024.0f32;
+
+gd_plan :: (m:int,n:int,k:int,xcount:int,wcount:int,dycount:int,ycount:int,dxcount:int,dwcount:int,overlap:bool)->GdPlan #export_c {
+    if overlap {return GdPlan.{status=GdStatus.alias};}
+    if m<1 || m>GD_DIM || n<1 || n>GD_DIM || k<1 || k>GD_DIM {return GdPlan.{status=GdStatus.shape};}
+    if xcount!=m*k || wcount!=k*n || dycount!=m*n || ycount!=m*n || dxcount!=m*k || dwcount!=k*n {return GdPlan.{status=GdStatus.capacity};}
+    return GdPlan.{m=m,n=n,k=k,forward=((m+31)/32)*((n+31)/32),dx=((m+31)/32)*((k+31)/32),dw=((k+31)/32)*((n+31)/32),bytes=8*(m*k+k*n+m*n)};
+}
+gd_numbers :: (x:[]f32)->bool #export_c {for v:x {if !(v>=-GD_NUMBER && v<=GD_NUMBER) {return false;}}return true;}
+gd_run :: (m:int,n:int,k:int,x:[]f32,w:[]f32,dy:[]f32,y:[]f32,dx:[]f32,dw:[]f32,overlap:bool)->GdStatus #export_c {
+    p:=gd_plan(m,n,k,x.count,w.count,dy.count,y.count,dx.count,dw.count,overlap);if p.status!=GdStatus.ok {return p.status;}
+    // Complete admission before the first write. These bounds prove every
+    // product and sum fits f32: at most128 products of magnitude1024^2.
+    if !gd_numbers(x) || !gd_numbers(w) || !gd_numbers(dy) {return GdStatus.number;}
+    for item:0..<p.forward {gdk_forward(item,m,n,k,x,w,y);}
+    for item:0..<p.dx {gdk_dx(item,m,n,k,dy,w,dx);}
+    for item:0..<p.dw {gdk_dw(item,m,n,k,x,dy,dw);}
+    return GdStatus.ok;
+}

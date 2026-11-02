@@ -1,0 +1,76 @@
+// Cooperative dense training arithmetic, training-dense-f32-v1.
+// Raw kernels require gd_plan plus complete finite input admission and
+// disjoint output spans. Each128thread group owns a32x32 output tile.
+// Its two32x128/128x32 tiles use exactly32768shared bytes. The bounded
+// inner dimension is loaded once; reductions visit EXACT increasing logical
+// indices, with f32 multiply/add rounding and no atomics/FMA.
+// The compute contract requires thread loops physically inside each exported
+// kernel, so the three orientations spell out the same tile schedule.
+#load "../../tests/training-dense-kernels-checks.coax";
+GDK_THREADS :: 128;
+
+gdk_forward :: (item:int,m:int,n:int,k:int,x:[]f32,w:[]f32,out:[]f32) #export_c {
+    rows:=m;cols:=n;inner:=k;
+    tiles:=(cols+31)/32;r0:=item/tiles*32;c0:=item%tiles*32;
+    ta:[4096]f32;tb:[4096]f32;
+    for thread:0..<GDK_THREADS {
+        for i:0..<32 {
+            e:=thread+GDK_THREADS*i;ar:=e/128;aq:=e%128;br:=e/32;bq:=e%32;
+            va:f32=0;vb:f32=0;
+            if r0+ar<rows && aq<inner {va=x[(r0+ar)*inner+aq];}
+            if br<inner && c0+bq<cols {vb=w[br*cols+c0+bq];}
+            ta[thread+GDK_THREADS*i]=va;tb[thread+GDK_THREADS*i]=vb;
+        }
+    }
+    for thread:0..<GDK_THREADS {
+        row:=thread/4;col:=thread%4*8;
+        for j:0..<8 {if r0+row<rows && c0+col+j<cols {
+            sum:f32=0;for q:0..<inner {sum+=ta[row*128+q]*tb[q*32+col+j];}
+            out[(r0+row)*cols+c0+col+j]=sum;
+        }}
+    }
+}
+
+gdk_dx :: (item:int,m:int,n:int,k:int,dy:[]f32,w:[]f32,out:[]f32) #export_c {
+    rows:=m;cols:=k;inner:=n;
+    tiles:=(cols+31)/32;r0:=item/tiles*32;c0:=item%tiles*32;
+    ta:[4096]f32;tb:[4096]f32;
+    for thread:0..<GDK_THREADS {
+        for i:0..<32 {
+            e:=thread+GDK_THREADS*i;ar:=e/128;aq:=e%128;br:=e/32;bq:=e%32;
+            va:f32=0;vb:f32=0;
+            if r0+ar<rows && aq<inner {va=dy[(r0+ar)*inner+aq];}
+            if br<inner && c0+bq<cols {vb=w[(c0+bq)*inner+br];}
+            ta[thread+GDK_THREADS*i]=va;tb[thread+GDK_THREADS*i]=vb;
+        }
+    }
+    for thread:0..<GDK_THREADS {
+        row:=thread/4;col:=thread%4*8;
+        for j:0..<8 {if r0+row<rows && c0+col+j<cols {
+            sum:f32=0;for q:0..<inner {sum+=ta[row*128+q]*tb[q*32+col+j];}
+            out[(r0+row)*cols+c0+col+j]=sum;
+        }}
+    }
+}
+
+gdk_dw :: (item:int,m:int,n:int,k:int,x:[]f32,dy:[]f32,out:[]f32) #export_c {
+    rows:=k;cols:=n;inner:=m;
+    tiles:=(cols+31)/32;r0:=item/tiles*32;c0:=item%tiles*32;
+    ta:[4096]f32;tb:[4096]f32;
+    for thread:0..<GDK_THREADS {
+        for i:0..<32 {
+            e:=thread+GDK_THREADS*i;ar:=e/128;aq:=e%128;br:=e/32;bq:=e%32;
+            va:f32=0;vb:f32=0;
+            if r0+ar<rows && aq<inner {va=x[aq*rows+r0+ar];}
+            if br<inner && c0+bq<cols {vb=dy[br*cols+c0+bq];}
+            ta[thread+GDK_THREADS*i]=va;tb[thread+GDK_THREADS*i]=vb;
+        }
+    }
+    for thread:0..<GDK_THREADS {
+        row:=thread/4;col:=thread%4*8;
+        for j:0..<8 {if r0+row<rows && c0+col+j<cols {
+            sum:f32=0;for q:0..<inner {sum+=ta[row*128+q]*tb[q*32+col+j];}
+            out[(r0+row)*cols+c0+col+j]=sum;
+        }}
+    }
+}

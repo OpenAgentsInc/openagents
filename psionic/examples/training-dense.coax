@@ -1,0 +1,14 @@
+#import "Basic";
+// Dense-loss derivatives through the public cooperative training component.
+// CPU execution; the same three raw kernels can be emitted with coax cuda.
+#load "../lib/device/training-dense.coax";
+main :: () {
+    x:=[6]f32.[1,2,-1,0.5,-2,1];w:=[6]f32.[0.25,-0.5,1,0.5,-0.25,0.75];
+    target:=[4]f32.[1,0,-1,1];dy:[4]f32;y:[4]f32;dx:[6]f32;dw:[6]f32;
+    #assert gd_run(2,2,3,x[..],w[..],dy[..],y[..],dx[..],dw[..],false)==GdStatus.ok;
+    loss:f32=0;for i:0..<4 {e:=y[i]-target[i];loss+=e*e;dy[i]=2*e;}
+    #assert gd_run(2,2,3,x[..],w[..],dy[..],y[..],dx[..],dw[..],false)==GdStatus.ok;
+    print("dense squared loss: %\n",loss);
+    print("weight gradient:");for v:dw {print(" %",v);}print("\n");
+    print("input gradient:");for v:dx {print(" %",v);}print("\n");
+}
