@@ -4,9 +4,33 @@
 
 so_start_allowed :: (handle:int)->bool {return handle == -1;}
 
+// Frame callers use nonpositive waits as polls. Positive calls keep the
+// existing five-second finish wait. The native process contract uses -2
+// for a still-running child; EOF alone never grants terminal ownership.
+so_poll_should_wait :: (wait_ms:int)->bool {return wait_ms > 0;}
+so_poll_finish_wait_ms :: (wait_ms:int)->int {return ifx so_poll_should_wait(wait_ms) then 5000 else 0;}
+so_poll_pending :: (wait_ms:int,status:int)->bool {return !so_poll_should_wait(wait_ms) && status == -2;}
+
 #test "a System One start admits only the initialized ownerless sentinel" {
   #assert so_start_allowed(-1);
   #assert !so_start_allowed(-2) && !so_start_allowed(0) && !so_start_allowed(1);
   #assert !so_start_allowed(-9223372036854775807-1);
   #assert !so_start_allowed(9223372036854775807);
+}
+
+
+#test "System One frame polling clamps nonpositive waits and never waits for exit" {
+  #assert !so_poll_should_wait(0) && !so_poll_should_wait(-1);
+  #assert !so_poll_should_wait(-9223372036854775807-1);
+  #assert so_poll_should_wait(1) && so_poll_should_wait(70000);
+  #assert so_poll_should_wait(9223372036854775807);
+  #assert so_poll_finish_wait_ms(0) == 0 && so_poll_finish_wait_ms(-1) == 0;
+  #assert so_poll_finish_wait_ms(1) == 5000 && so_poll_finish_wait_ms(70000) == 5000;
+}
+
+#test "System One only a nonblocking running child remains pending at EOF" {
+  #assert so_poll_pending(0, -2) && so_poll_pending(-1, -2);
+  #assert !so_poll_pending(1, -2) && !so_poll_pending(70000, -2);
+  #assert !so_poll_pending(0, 0) && !so_poll_pending(0, -1);
+  #assert !so_poll_pending(0, 7) && !so_poll_pending(0, 28);
 }

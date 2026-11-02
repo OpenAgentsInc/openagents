@@ -1,0 +1,91 @@
+{
+  "kind": "focused changed nonblocking EOF/poll path with actual native child host",
+  "at_utc": "2026-11-02T04:00:13.806022+00:00",
+  "compiler": {
+    "path": "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa"
+  },
+  "source_before": {
+    "coax/lib/systemone/transport.coax": "4ef727091b9248ea1d7997a8312d37b99e632e8150374c36ec571ba392451244",
+    "coax/lib/systemone/call-policy.coax": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf",
+    "coax/tests/systemone-process-lifecycle.c": "2e02bce3f48e673d0441ea95ef3fe0a4b79098f5e4f278be171f4672484027bc",
+    "coax/tests/systemone-process-lifecycle.sh": "c0cce27b0ae335660411db0ecee7321927aa243ba7c34d720d2596f9e18b3063",
+    "coax/tests/systemone-fakecurl.c": "31497739cd35d5f1ba125b8b0902d41f19a98b2175026bc1ff84e11c9811bd41",
+    "coax/platform/process-native.c": "c5657424d634fdb9ebd8c011ed05ea4e7cc4633f25b5382be37d5d0dfcc71256",
+    "coax/platform/process-native.h": "4f0cc2c0b47d189ae8119861de61057eba04c4e1a4333d5a2e4a7acf99eb2b92"
+  },
+  "source_after": {
+    "coax/lib/systemone/transport.coax": "4ef727091b9248ea1d7997a8312d37b99e632e8150374c36ec571ba392451244",
+    "coax/lib/systemone/call-policy.coax": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf",
+    "coax/tests/systemone-process-lifecycle.c": "2e02bce3f48e673d0441ea95ef3fe0a4b79098f5e4f278be171f4672484027bc",
+    "coax/tests/systemone-process-lifecycle.sh": "c0cce27b0ae335660411db0ecee7321927aa243ba7c34d720d2596f9e18b3063",
+    "coax/tests/systemone-fakecurl.c": "31497739cd35d5f1ba125b8b0902d41f19a98b2175026bc1ff84e11c9811bd41",
+    "coax/platform/process-native.c": "c5657424d634fdb9ebd8c011ed05ea4e7cc4633f25b5382be37d5d0dfcc71256",
+    "coax/platform/process-native.h": "4f0cc2c0b47d189ae8119861de61057eba04c4e1a4333d5a2e4a7acf99eb2b92"
+  },
+  "runs": [
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "c",
+        "coax/tests/systemone-lifecycle.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-request-polling-20261102/generated/debug/systemone-lifecycle.h",
+        "--profile-report",
+        "/tmp/coax-request-polling-20261102/generated/debug/profile.json"
+      ],
+      "exit_status": 0,
+      "seconds": 0.1002398330019787
+    },
+    {
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "c",
+        "coax/tests/systemone-lifecycle.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/tmp/coax-request-polling-20261102/generated/release/systemone-lifecycle.h",
+        "--profile-report",
+        "/tmp/coax-request-polling-20261102/generated/release/profile.json"
+      ],
+      "exit_status": 0,
+      "seconds": 0.9265147499972954
+    },
+    {
+      "argv": [
+        "bash",
+        "coax/tests/systemone-process-lifecycle.sh",
+        "/tmp/coax-request-polling-20261102/green",
+        "/tmp/coax-request-polling-20261102/generated",
+        "polling"
+      ],
+      "exit_status": 0,
+      "seconds": 15.456019875011407
+    }
+  ],
+  "passed": true,
+  "artifact_pins": {
+    "generated/release/systemone-lifecycle.h": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b",
+    "generated/release/emission.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "generated/release/systemone-lifecycle.c": "20b1ce565bf336b5b23d08fda77988efbaa8a33aede75f96f8dd6ec1e8c8d9a4",
+    "generated/release/profile.json": "c6bd88b38d51ba7aecc1dfc32481fb4f06325bbc399b846b92f4bd709c9abe61",
+    "generated/debug/systemone-lifecycle.h": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b",
+    "generated/debug/emission.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "generated/debug/systemone-lifecycle.c": "b55a6571f31daa3a0c1ae2aefc94cacfaf7075a2d71899d9ce9f57ba6c18dc76",
+    "generated/debug/profile.json": "fedfb72381ac42963b8d653408dcaa9bb373092867835858b8cea228983ef2dc",
+    "green/release/systemone-lifecycle.h": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b",
+    "green/release/plain": "da4842a33858b7fb9b156a814f40e82beaca9ada6cfd7c6f798fc2e8112308cf",
+    "green/release/child-sanitized": "06192a302d5d88f62e8c87907cba7aaf4a86b5fd43915bf8f08c45ed1ecb1289",
+    "green/release/child-plain": "fd59a64497270c188e41315617b4c589a1f7c5f1aab4bf6d148ae45505eb6b6e",
+    "green/release/systemone-lifecycle.c": "20b1ce565bf336b5b23d08fda77988efbaa8a33aede75f96f8dd6ec1e8c8d9a4",
+    "green/release/sanitized": "92b0ea482bbb66c9ce88297da514a7bc1350b08d0e814df13b953dab489d20a6",
+    "green/debug/systemone-lifecycle.h": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b",
+    "green/debug/plain": "5bc0a274774c08811423bdec6abbbbddd8252b92931f7d585e89a2e8f72766cb",
+    "green/debug/child-sanitized": "5ebea8d4af3dd70a29de1eb699419c9fffd9469644888fb4c6c1d643716f91d0",
+    "green/debug/child-plain": "a45f10db54d17f37d692eccf81402e8cd36f4f1f7f53d52bcfed4a81cc4bf6af",
+    "green/debug/systemone-lifecycle.c": "b55a6571f31daa3a0c1ae2aefc94cacfaf7075a2d71899d9ce9f57ba6c18dc76",
+    "green/debug/sanitized": "ff35edb401870dac9f5a93680336e5001cf818eae24a582bc3bee3154af82406"
+  }
+}

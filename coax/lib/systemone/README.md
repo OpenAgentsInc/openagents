@@ -55,6 +55,13 @@ changing the owner, results, buffer bytes or process/environment effects. That
 refusal preserves the existing result; it does not install a new `r.problem`.
 After admission, setup failures still return false with a new problem.
 `so_step` and `so_cancel` require a nonempty initialized call view.
+`so_step(call, wait_ms)` treats every nonpositive wait as a poll, including
+when stdout has closed but the child has not exited. It returns pending and
+retains ownership until exit is observed; only then is the result published.
+Positive waits preserve the existing five-second finish wait. The
+[focused polling record](../../../docs/verification/coax-request-polling-2026-11-01/README.md)
+measures the changed path and keeps the full desktop analysis refusal separate.
+
 
 A call has one owner. Keep its output/error storage alive; do not overwrite or
 reuse it from another operation while the call runs or while borrowed results

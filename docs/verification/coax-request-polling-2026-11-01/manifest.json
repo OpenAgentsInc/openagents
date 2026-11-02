@@ -1,0 +1,381 @@
+{
+  "schema": 1,
+  "archive": "proof.tar.xz",
+  "archive_sha256": "db72db6ded4af496e5395755cfdabe7165579c8bf0627278851b3ff06ee26d76",
+  "scope": "Text sources, emitted C/headers, raw diagnostics and receipts; native binaries/objects/dSYM excluded, their hashes remain in receipts.",
+  "members": [
+    {
+      "member": "polling/generated/debug/emission.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/generated/debug/emission.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/generated/debug/profile.json",
+      "original_path": "/tmp/coax-request-polling-20261102/generated/debug/profile.json",
+      "bytes": 3163,
+      "sha256": "fedfb72381ac42963b8d653408dcaa9bb373092867835858b8cea228983ef2dc"
+    },
+    {
+      "member": "polling/generated/debug/systemone-lifecycle.c",
+      "original_path": "/tmp/coax-request-polling-20261102/generated/debug/systemone-lifecycle.c",
+      "bytes": 384718,
+      "sha256": "b55a6571f31daa3a0c1ae2aefc94cacfaf7075a2d71899d9ce9f57ba6c18dc76"
+    },
+    {
+      "member": "polling/generated/debug/systemone-lifecycle.h",
+      "original_path": "/tmp/coax-request-polling-20261102/generated/debug/systemone-lifecycle.h",
+      "bytes": 9377,
+      "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+    },
+    {
+      "member": "polling/generated/release/emission.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/generated/release/emission.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/generated/release/profile.json",
+      "original_path": "/tmp/coax-request-polling-20261102/generated/release/profile.json",
+      "bytes": 3160,
+      "sha256": "c6bd88b38d51ba7aecc1dfc32481fb4f06325bbc399b846b92f4bd709c9abe61"
+    },
+    {
+      "member": "polling/generated/release/systemone-lifecycle.c",
+      "original_path": "/tmp/coax-request-polling-20261102/generated/release/systemone-lifecycle.c",
+      "bytes": 403827,
+      "sha256": "20b1ce565bf336b5b23d08fda77988efbaa8a33aede75f96f8dd6ec1e8c8d9a4"
+    },
+    {
+      "member": "polling/generated/release/systemone-lifecycle.h",
+      "original_path": "/tmp/coax-request-polling-20261102/generated/release/systemone-lifecycle.h",
+      "bytes": 9377,
+      "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+    },
+    {
+      "member": "polling/green/debug/systemone-lifecycle.c",
+      "original_path": "/tmp/coax-request-polling-20261102/green/debug/systemone-lifecycle.c",
+      "bytes": 384718,
+      "sha256": "b55a6571f31daa3a0c1ae2aefc94cacfaf7075a2d71899d9ce9f57ba6c18dc76"
+    },
+    {
+      "member": "polling/green/debug/systemone-lifecycle.h",
+      "original_path": "/tmp/coax-request-polling-20261102/green/debug/systemone-lifecycle.h",
+      "bytes": 9377,
+      "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+    },
+    {
+      "member": "polling/green/release/systemone-lifecycle.c",
+      "original_path": "/tmp/coax-request-polling-20261102/green/release/systemone-lifecycle.c",
+      "bytes": 403827,
+      "sha256": "20b1ce565bf336b5b23d08fda77988efbaa8a33aede75f96f8dd6ec1e8c8d9a4"
+    },
+    {
+      "member": "polling/green/release/systemone-lifecycle.h",
+      "original_path": "/tmp/coax-request-polling-20261102/green/release/systemone-lifecycle.h",
+      "bytes": 9377,
+      "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+    },
+    {
+      "member": "polling/green.json",
+      "original_path": "/tmp/coax-request-polling-20261102/green.json",
+      "bytes": 5471,
+      "sha256": "0437fb22656e675f7f275336d53aeb1073fd71953d8d5371e83b07d6783af4da"
+    },
+    {
+      "member": "polling/green.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/green.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/green.stdout",
+      "original_path": "/tmp/coax-request-polling-20261102/green.stdout",
+      "bytes": 1156,
+      "sha256": "d79584047abedc41bf681e38704f693f1cfac704dafa365153c308347fcefb2e"
+    },
+    {
+      "member": "polling/policy-debug.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/policy-debug.stdout",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-debug.stdout",
+      "bytes": 347,
+      "sha256": "d7f1500b8f5990f73c847e82eb777f5f5140a202423cd54d95d7069c98b0bafa"
+    },
+    {
+      "member": "polling/policy-mutate.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-mutate.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/policy-mutate.stdout",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-mutate.stdout",
+      "bytes": 348,
+      "sha256": "b0f4a0d666b85a02b3eedc412ba11e5fe7076c5eab9570477a719acb540d936f"
+    },
+    {
+      "member": "polling/policy-red-source.coax",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-red-source.coax",
+      "bytes": 1388,
+      "sha256": "f80ea410cbfbf8231f015075e9649a35869dce25307f59f76fb2ffd8b57f75d9"
+    },
+    {
+      "member": "polling/policy-red.json",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-red.json",
+      "bytes": 387,
+      "sha256": "9e3a671a9cf3a77211e1273a6e6246a629f66264fd7be30cbaec6c049d35d03e"
+    },
+    {
+      "member": "polling/policy-red.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-red.stderr",
+      "bytes": 3687,
+      "sha256": "1bf9555c00652078a6775afb1c87d1e3ee5edebc971ec04ff415915c48a815f1"
+    },
+    {
+      "member": "polling/policy-red.stdout",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-red.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/policy-release.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/policy-release.stdout",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-release.stdout",
+      "bytes": 347,
+      "sha256": "d7f1500b8f5990f73c847e82eb777f5f5140a202423cd54d95d7069c98b0bafa"
+    },
+    {
+      "member": "polling/policy-v1-source.coax",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-v1-source.coax",
+      "bytes": 1874,
+      "sha256": "3c669560abb8e1dd2f3d598cb43ddfa161f5726cbed63dc6f539e40890433620"
+    },
+    {
+      "member": "polling/policy-v2-checks.json",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-v2-checks.json",
+      "bytes": 1299,
+      "sha256": "73deb8a046913c788ac0e5948f826d8291eb1cbb9883e4a938694a86f9b85c4d"
+    },
+    {
+      "member": "polling/policy-v2-debug.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-v2-debug.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/policy-v2-debug.stdout",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-v2-debug.stdout",
+      "bytes": 347,
+      "sha256": "eb99eb0fe23b1e0bc66c5867a912704de726b5daeea9474374f280404445a763"
+    },
+    {
+      "member": "polling/policy-v2-mutate.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-v2-mutate.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/policy-v2-mutate.stdout",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-v2-mutate.stdout",
+      "bytes": 112,
+      "sha256": "710a463e912e0ca1d52c6f97dce1bf9e83e00bb287d34dfd80965f76342a5f53"
+    },
+    {
+      "member": "polling/policy-v2-release.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-v2-release.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/policy-v2-release.stdout",
+      "original_path": "/tmp/coax-request-polling-20261102/policy-v2-release.stdout",
+      "bytes": 347,
+      "sha256": "eb99eb0fe23b1e0bc66c5867a912704de726b5daeea9474374f280404445a763"
+    },
+    {
+      "member": "polling/red/debug/systemone-lifecycle.c",
+      "original_path": "/tmp/coax-request-polling-20261102/red/debug/systemone-lifecycle.c",
+      "bytes": 383916,
+      "sha256": "4aa0ae15bd023ed9d223f8394415ae3a149a0c5962cc3ff23bfb7679539d86e1"
+    },
+    {
+      "member": "polling/red/debug/systemone-lifecycle.h",
+      "original_path": "/tmp/coax-request-polling-20261102/red/debug/systemone-lifecycle.h",
+      "bytes": 9377,
+      "sha256": "98d2a17e4146980feeef54505823c9737b422fbfa1e53bd8a83e7e3e65c0184b"
+    },
+    {
+      "member": "polling/red-source-systemone-fakecurl.c",
+      "original_path": "/tmp/coax-request-polling-20261102/red-source-systemone-fakecurl.c",
+      "bytes": 1233,
+      "sha256": "31497739cd35d5f1ba125b8b0902d41f19a98b2175026bc1ff84e11c9811bd41"
+    },
+    {
+      "member": "polling/red-source-systemone-process-lifecycle.c",
+      "original_path": "/tmp/coax-request-polling-20261102/red-source-systemone-process-lifecycle.c",
+      "bytes": 7613,
+      "sha256": "7b20668266993b7786296189d5d038d619f3aa6731c45e97a77ff9114f88785b"
+    },
+    {
+      "member": "polling/red-source-systemone-process-lifecycle.sh",
+      "original_path": "/tmp/coax-request-polling-20261102/red-source-systemone-process-lifecycle.sh",
+      "bytes": 1830,
+      "sha256": "c0cce27b0ae335660411db0ecee7321927aa243ba7c34d720d2596f9e18b3063"
+    },
+    {
+      "member": "polling/red.json",
+      "original_path": "/tmp/coax-request-polling-20261102/red.json",
+      "bytes": 2245,
+      "sha256": "d73c785c2a5370b0f4bf22b8a1a9b40cf88719dba7ee6697263a6ed9716c14b0"
+    },
+    {
+      "member": "polling/red.stderr",
+      "original_path": "/tmp/coax-request-polling-20261102/red.stderr",
+      "bytes": 129,
+      "sha256": "cdcafd3f47d75396a4a58a009d41740947db19f926867aeb5eab9495ab781a18"
+    },
+    {
+      "member": "polling/red.stdout",
+      "original_path": "/tmp/coax-request-polling-20261102/red.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "polling/selector-check.json",
+      "original_path": "/tmp/coax-request-polling-20261102/selector-check.json",
+      "bytes": 300,
+      "sha256": "5cda370f01e7892f1fb31479c4332544aeb5ec2d3f4024bfbdecbab1e2ed81c4"
+    },
+    {
+      "member": "desktop-diagnosis/README.md",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/README.md",
+      "bytes": 2341,
+      "sha256": "fc8ded111646e3ce6bfcdfbeed70df9b345b4d48b8e5477a58411bab8b4aa0f8"
+    },
+    {
+      "member": "desktop-diagnosis/diagnosis.json",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/diagnosis.json",
+      "bytes": 6510,
+      "sha256": "d04622d46ec312379edd53eee34bd9a393ba2ed907f9a2e1e3b6119bba923561"
+    },
+    {
+      "member": "desktop-diagnosis/inputs-after.json",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/inputs-after.json",
+      "bytes": 20136,
+      "sha256": "150d1492eb0c962a794f6a6958b66d9cccff6593a17e6718f862288788d77557"
+    },
+    {
+      "member": "desktop-diagnosis/inputs-before.json",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/inputs-before.json",
+      "bytes": 20458,
+      "sha256": "f903c7a80dea6e11cfd3a446a706d07ea9718fecfbc2ddb3350b8a77adb76755"
+    },
+    {
+      "member": "desktop-diagnosis/lab-debug.evidence.json",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lab-debug.evidence.json",
+      "bytes": 8969,
+      "sha256": "58e64026fb6bb53e78ccd5699039a0197e214c7b06c150d8b16643754e24dfc3"
+    },
+    {
+      "member": "desktop-diagnosis/lab-debug.stderr.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lab-debug.stderr.log",
+      "bytes": 167,
+      "sha256": "07228402fae5a7b8200c767bd0c3940f7096b427a9b9ac37d67337fd6fa8e164"
+    },
+    {
+      "member": "desktop-diagnosis/lab-debug.stdout.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lab-debug.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "desktop-diagnosis/lab-release.evidence.json",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lab-release.evidence.json",
+      "bytes": 8970,
+      "sha256": "756b32cbac80aa44dfce5d97b6162d9b53373c774af1d98bd1d3c059e75211cc"
+    },
+    {
+      "member": "desktop-diagnosis/lab-release.stderr.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lab-release.stderr.log",
+      "bytes": 167,
+      "sha256": "07228402fae5a7b8200c767bd0c3940f7096b427a9b9ac37d67337fd6fa8e164"
+    },
+    {
+      "member": "desktop-diagnosis/lab-release.stdout.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lab-release.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "desktop-diagnosis/lldb-cr-leaf-disassembly.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lldb-cr-leaf-disassembly.log",
+      "bytes": 78053,
+      "sha256": "56fdd4c3ec51b928bce477afc298e44a37c3cfa8497098bc5d959b3c1c9ff4ca"
+    },
+    {
+      "member": "desktop-diagnosis/lldb-lab-path-frozen.command.json",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lldb-lab-path-frozen.command.json",
+      "bytes": 14545,
+      "sha256": "3ae23b7e4ef914af296d9168c8ad6abb36386cec150a5d65944ddb5b0cc8d676"
+    },
+    {
+      "member": "desktop-diagnosis/lldb-lab-path-frozen.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lldb-lab-path-frozen.log",
+      "bytes": 3063,
+      "sha256": "be0d5440721b527c612d157e32b8bfd42dc1f04220a852202dde40a45f2ec640"
+    },
+    {
+      "member": "desktop-diagnosis/lldb-lab-source-origin.command.json",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lldb-lab-source-origin.command.json",
+      "bytes": 21494,
+      "sha256": "6cf7309ed83fc755924d04fbd8fc30cf36aa08bb9aee561851458a036550742b"
+    },
+    {
+      "member": "desktop-diagnosis/lldb-lab-source-origin.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lldb-lab-source-origin.log",
+      "bytes": 2632,
+      "sha256": "7ef03771760e245aaaaae1b5189913a26c56e1be3f1a54fb80c585356ff613da"
+    },
+    {
+      "member": "desktop-diagnosis/lldb-settings-resource-frozen.command.json",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lldb-settings-resource-frozen.command.json",
+      "bytes": 14493,
+      "sha256": "4567a97e72db4632b2b7958571afe2c1af8e0f6d267d539c3d7dec0d7def08db"
+    },
+    {
+      "member": "desktop-diagnosis/lldb-settings-resource-frozen.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/lldb-settings-resource-frozen.log",
+      "bytes": 2988,
+      "sha256": "db0711703ac8d082c99f8200263383682099ad2ef5038531512b636b46a04f47"
+    },
+    {
+      "member": "desktop-diagnosis/receipt.json",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/receipt.json",
+      "bytes": 3822,
+      "sha256": "e0583d8df616a6431fcc319e9571afdac61434c028007a0bfc2bc47ea6e9a9ab"
+    },
+    {
+      "member": "desktop-diagnosis/settings-c.stderr.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/settings-c.stderr.log",
+      "bytes": 194,
+      "sha256": "0640e4d52994b45accf51492e3736ae8479b02d4d680495200a6d4bf4c440dd0"
+    },
+    {
+      "member": "desktop-diagnosis/settings-c.stdout.log",
+      "original_path": "/tmp/zeron-full-budget-20261102/frozen-evidence/settings-c.stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "readback_passed": true
+}

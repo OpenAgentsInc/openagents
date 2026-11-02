@@ -106,16 +106,19 @@ so_start :: (c: SoClient, body: string, call: [] SoCall, out: [] u8, err: [] u8)
 }
 
 // Reads what curl has written, waiting up to wait_ms for each line (0: only
-// what is there); true once the call is done and call[0].r holds the result.
+// what is there; negative waits also poll); true once the call is done and
+// call[0].r holds the result. Closed stdout can precede child exit: polling
+// retains the owner until the native process reports a terminal status.
 so_step :: (call: [] SoCall, wait_ms: int) -> bool {
   if call[0].done { return true; }
   h := call[0].h; out := call[0].out;
+  read_ms := ifx so_poll_should_wait(wait_ms) then wait_ms else 0;
   // Every line into out, newline-joined; the last one is the status.
   while true {
-    n := cxproc_read_line(h, wait_ms);
+    n := cxproc_read_line(h, read_ms);
     if n == CL_EOF { break; }
     if n == CL_TIMEOUT {
-      if wait_ms <= 0 { return false; }
+      if read_ms == 0 { return false; }
       x := so_fail_call(call, "curl did not finish in time"); return true;
     }
     if n < 0 || call[0].at + n + 1 > out.count { x := so_fail_call(call, "the response does not fit its buffer"); return true; }
@@ -124,7 +127,8 @@ so_step :: (call: [] SoCall, wait_ms: int) -> bool {
     for i: 0..<n { out[call[0].at + i] = cast(u8) cxproc_line_byte(h, i); }
     call[0].at += n; call[0].lines += 1;
   }
-  status := cxproc_wait(h, 5000);
+  status := cxproc_wait(h, so_poll_finish_wait_ms(read_ms));
+  if so_poll_pending(read_ms, status) { return false; }
   if status != 0 {
     call[0].r.stderr = so_stderr(h, call[0].err);
     x := so_fail_call(call, ifx status == 28 then "the request timed out" else ifx status == 7 then "the server is unreachable" else "curl failed");

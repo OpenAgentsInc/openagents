@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "scope": "Diagnostic refusal evidence only. Actual full settings C emission and one authored full Lab test were attempted under published qualified compiler 1fac; no emitted app, no executed authored check, and no full-desktop qualification. LLDB stopped the unchanged compiler before the first E0381 was printed.",
+  "application_commit": "a84361363c6866445c2ef5785fe33cf065e968bd",
+  "compiler_qualified_commit": "8008dcc0386f7ba819faa7b1bc8c4454ed460fae",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "qualification_record": "docs/verification/coax-authority-check-budgets-2026-11-01.json",
+  "compiler_source": {
+    "path": "coax/lib/compiler/checker.coax",
+    "commit": "8008dcc0386f7ba819faa7b1bc8c4454ed460fae",
+    "sha256": "0f7225384defdee04f4bcd69432b2115db2f7d4eb77932bd3e872e6fb9d4f915",
+    "guard_line": 81300,
+    "function": "CB_add_path",
+    "published_path_steps": 8
+  },
+  "first_refusals": {
+    "lab": {
+      "source": "apps/openagents-desktop/zeron/claude.coax",
+      "line": 900,
+      "count_before_append": 8,
+      "kind_index_pairs": [
+        [
+          3,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          50
+        ],
+        [
+          2,
+          2147483647
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          2,
+          2147483647
+        ]
+      ],
+      "decoded_destination_prefix": "e[0].q[0].options.servers[*].tools[*]",
+      "next_component": "ClTool string field",
+      "pass": "B1 retained-write seeding: CR_leaf -> CR_address -> CB_add_path",
+      "source_value_facts": {
+        "count": 0,
+        "incomplete": true,
+        "interpretation": "unknown source alternatives; not complete-empty and not STATIC-only"
+      }
+    },
+    "settings": {
+      "source": "apps/openagents-desktop/zeron/settings.coax",
+      "line": 52,
+      "count_before_append": 8,
+      "kind_index_pairs": [
+        [
+          2,
+          2147483647
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          1,
+          14
+        ],
+        [
+          2,
+          2147483647
+        ],
+        [
+          1,
+          14
+        ],
+        [
+          2,
+          0
+        ],
+        [
+          1,
+          4
+        ]
+      ],
+      "pass": "B1 retained-write seeding: CR_leaf -> CB_expr -> CB_prepend -> CB_add_path"
+    }
+  },
+  "diagnostic_limits": [
+    "No compiler or application source edits; no caps changed.",
+    "The original exact61-file application closure was recreated from its pinned commit and checked byte-for-byte against inputs-before.json for debugger diagnosis.",
+    "Later shared-tree mid-edit E0315 diagnostics are excluded; those were not the original full-source attempts.",
+    "The eight-step path guard remains unchanged; evaluator authority storage changes do not extend this bound.",
+    "The Lab complete ClOptions RHS is not all-static; selected fields borrow Engine storage or parameter catalog values.",
+    "A destination-address shortcut requiring complete-empty/STATIC-only per-leaf facts cannot apply to the captured incomplete Lab source fact.",
+    "Settings first fails while producing source facts, so skipping only destination enumeration would not resolve it.",
+    "Existing exact-source projection remains narrower evidence, not a full-application workaround."
+  ],
+  "artifacts": {
+    "inputs-after.json": {
+      "sha256": "150d1492eb0c962a794f6a6958b66d9cccff6593a17e6718f862288788d77557",
+      "bytes": 20136
+    },
+    "lldb-lab-source-origin.log": {
+      "sha256": "7ef03771760e245aaaaae1b5189913a26c56e1be3f1a54fb80c585356ff613da",
+      "bytes": 2632
+    },
+    "settings-c.stdout.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "lab-debug.evidence.json": {
+      "sha256": "58e64026fb6bb53e78ccd5699039a0197e214c7b06c150d8b16643754e24dfc3",
+      "bytes": 8969
+    },
+    "lldb-cr-leaf-disassembly.log": {
+      "sha256": "56fdd4c3ec51b928bce477afc298e44a37c3cfa8497098bc5d959b3c1c9ff4ca",
+      "bytes": 78053
+    },
+    "lab-release.evidence.json": {
+      "sha256": "756b32cbac80aa44dfce5d97b6162d9b53373c774af1d98bd1d3c059e75211cc",
+      "bytes": 8970
+    },
+    "lab-debug.stdout.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "lab-release.stdout.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "lldb-settings-resource-frozen.command.json": {
+      "sha256": "4567a97e72db4632b2b7958571afe2c1af8e0f6d267d539c3d7dec0d7def08db",
+      "bytes": 14493
+    },
+    "lldb-lab-source-origin.command.json": {
+      "sha256": "6cf7309ed83fc755924d04fbd8fc30cf36aa08bb9aee561851458a036550742b",
+      "bytes": 21494
+    },
+    "lldb-lab-path-frozen.log": {
+      "sha256": "be0d5440721b527c612d157e32b8bfd42dc1f04220a852202dde40a45f2ec640",
+      "bytes": 3063
+    },
+    "lldb-settings-resource-frozen.log": {
+      "sha256": "db0711703ac8d082c99f8200263383682099ad2ef5038531512b636b46a04f47",
+      "bytes": 2988
+    },
+    "inputs-before.json": {
+      "sha256": "f903c7a80dea6e11cfd3a446a706d07ea9718fecfbc2ddb3350b8a77adb76755",
+      "bytes": 20458
+    },
+    "settings-c.stderr.log": {
+      "sha256": "0640e4d52994b45accf51492e3736ae8479b02d4d680495200a6d4bf4c440dd0",
+      "bytes": 194
+    },
+    "lab-debug.stderr.log": {
+      "sha256": "07228402fae5a7b8200c767bd0c3940f7096b427a9b9ac37d67337fd6fa8e164",
+      "bytes": 167
+    },
+    "lldb-lab-path-frozen.command.json": {
+      "sha256": "3ae23b7e4ef914af296d9168c8ad6abb36386cec150a5d65944ddb5b0cc8d676",
+      "bytes": 14545
+    },
+    "receipt.json": {
+      "sha256": "e0583d8df616a6431fcc319e9571afdac61434c028007a0bfc2bc47ea6e9a9ab",
+      "bytes": 3822
+    },
+    "lab-release.stderr.log": {
+      "sha256": "07228402fae5a7b8200c767bd0c3940f7096b427a9b9ac37d67337fd6fa8e164",
+      "bytes": 167
+    }
+  },
+  "compiler_generated_source": {
+    "checker.c": {
+      "sha256": "7a68884a2df8db32cc89569e6eecabd3accf508a0d79aef7dac30278c223e626",
+      "bytes": 779263
+    },
+    "checker.h": {
+      "sha256": "883aac6a7c74ad5c943cff13aeb9db3fb6e78258730582e96fb7e88fdffae1e8",
+      "bytes": 114938
+    }
+  }
+}

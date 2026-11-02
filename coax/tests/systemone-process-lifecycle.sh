@@ -2,8 +2,10 @@
 # Reuse already qualified generated wrappers; qualify only the new real host slice.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
-output=${1:?usage: systemone-process-lifecycle.sh OUTPUT_DIR GENERATED_WRAPPERS_DIR}
-generated=${2:?usage: systemone-process-lifecycle.sh OUTPUT_DIR GENERATED_WRAPPERS_DIR}
+output=${1:?usage: systemone-process-lifecycle.sh OUTPUT_DIR GENERATED_WRAPPERS_DIR [all|polling]}
+generated=${2:?usage: systemone-process-lifecycle.sh OUTPUT_DIR GENERATED_WRAPPERS_DIR [all|polling]}
+selection=${3-all}
+case "$selection" in all|polling) ;; *) echo "mode must be all or polling" >&2; exit 2 ;; esac
 if [[ $output != /* ]]; then output="$PWD/$output"; fi
 generated=$(cd "$generated" && pwd -P)
 if [[ -e $output || -L $output ]]; then echo "refusing existing evidence: $output" >&2; exit 2; fi
@@ -20,6 +22,7 @@ for mode in debug release; do
     sanitizer=();if [[ $sanitize == sanitized ]];then sanitizer=(-fsanitize=address,undefined -fno-sanitize-recover=all);fi
     "${COAX_CC:-cc}" -std=c11 "$optimization" -g "${sanitizer[@]}" coax/tests/systemone-fakecurl.c -o "$work/child-$sanitize"
     "${COAX_CC:-cc}" -std=c11 "$optimization" -g -ffp-contract=off "${sanitizer[@]}" -I "$work" -I coax/platform "$work/systemone-lifecycle.c" coax/platform/process-native.c coax/tests/systemone-process-lifecycle.c -lm -o "$work/$sanitize"
-    "$work/$sanitize" "$work/child-$sanitize"
+    args=();if [[ $selection == polling ]];then args=(polling);fi
+    "$work/$sanitize" "$work/child-$sanitize" "${args[@]}"
   done
 done

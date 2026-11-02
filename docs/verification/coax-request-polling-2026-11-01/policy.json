@@ -1,0 +1,43 @@
+{
+  "runs": [
+    {
+      "name": "policy-v2-debug",
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "test",
+        "coax/lib/systemone/call-policy.coax",
+        "--library"
+      ],
+      "exit_status": 0,
+      "seconds": 0.003444459056481719
+    },
+    {
+      "name": "policy-v2-release",
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "test",
+        "coax/lib/systemone/call-policy.coax",
+        "--library",
+        "--release"
+      ],
+      "exit_status": 0,
+      "seconds": 0.0029438750352710485
+    },
+    {
+      "name": "policy-v2-mutate",
+      "argv": [
+        "/Users/christopherdavid/.cache/coax-release/06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039/coax",
+        "mutate",
+        "coax/lib/systemone/call-policy.coax",
+        "--library",
+        "--root-only",
+        "--jobs",
+        "4"
+      ],
+      "exit_status": 0,
+      "seconds": 0.004091041977517307
+    }
+  ],
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "policy_sha256": "bf7b7ce7a1377375e722474c7afa7b57bd282539c544fba206670a48916fe5cf"
+}

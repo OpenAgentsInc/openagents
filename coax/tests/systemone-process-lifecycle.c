@@ -66,13 +66,55 @@ static int cancelled(const char*exe){
   REQUIRE(preserved_reclaimed_slot(&call)==0&&guards(&out)&&guards(&err)&&reaped(pid));
   puts("real native process: sleeping child cancelled and reaped; duplicate cancel/poll preserves unrelated reused slot0");return 0;
 }
+/* Closed stdout is not a terminal process observation. A frame poll must
+ * preserve the running owner; a later poll completes or cancellation reaps it. */
+static int nonblocking_eof(const char*exe,const char*mode,int cancel,int64_t wait_ms){
+  Guard out,err;fill(&out);fill(&err);coax_t_SoCall call;coax_default_t_SoCall(&call);
+  REQUIRE(so_life_start(client(exe,mode),text("{}"),owner(&call),bytes(&out),bytes(&err)));
+  int64_t pid=cxproc_pid(call.h);REQUIRE(pid>0);
+  int64_t deadline=cxproc_now_ms()+6000,max_poll=0;
+  while(call.lines<2&&cxproc_now_ms()<deadline){
+    int64_t start=cxproc_now_ms();int done=so_life_step(owner(&call),wait_ms);int64_t elapsed=cxproc_now_ms()-start;
+    if(elapsed>max_poll)max_poll=elapsed;
+    REQUIRE(elapsed<1000&&!done&&!call.done&&call.h==0);
+    struct timespec pause={0,1000000};nanosleep(&pause,NULL);
+  }
+  REQUIRE(call.lines==2&&kill((pid_t)pid,0)==0&&call.r.status==0&&call.r.body.count==0);
+  REQUIRE(call.out.data==out.data&&call.err.data==err.data&&guards(&out)&&guards(&err));
+  if(cancel){
+    so_life_cancel(owner(&call));
+    REQUIRE(call.done&&call.h==-1&&content(call.r.problem,"cancelled")&&reaped(pid));
+  }else{
+    while(!call.done&&cxproc_now_ms()<deadline){
+      int64_t start=cxproc_now_ms();(void)so_life_step(owner(&call),wait_ms);int64_t elapsed=cxproc_now_ms()-start;
+      if(elapsed>max_poll)max_poll=elapsed;REQUIRE(elapsed<1000);
+      struct timespec pause={0,1000000};nanosleep(&pause,NULL);
+    }
+    REQUIRE(call.done&&call.h==-1&&reaped(pid)&&call.r.status==200&&call.r.problem.count==0);
+    REQUIRE(call.r.body.data==(const char*)out.data&&content(call.r.body,"{\"answers\":{},\"usage\":{\"input_tokens\":7,\"output_tokens\":2}}"));
+    coax_string body=call.r.body;disturb();REQUIRE(content(body,"{\"answers\":{},\"usage\":{\"input_tokens\":7,\"output_tokens\":2}}"));
+  }
+  REQUIRE(preserved_reclaimed_slot(&call)==0&&reaped(pid)&&guards(&out)&&guards(&err));
+  printf("closed stdout: wait_ms=%lld %s, max frame poll=%lld ms; owner preserved until terminal release\n",(long long)wait_ms,cancel?"cancelled":"completed",(long long)max_poll);
+  return 0;
+}
 int main(int argc,char**argv){
   REQUIRE(atexit(cleanup)==0);
-  REQUIRE(argc==2);
+  REQUIRE(argc==2||argc==3);
+  if(argc==3&&strcmp(argv[2],"polling"))return 2;
+  if(argc==3){
+    REQUIRE(nonblocking_eof(argv[1],"offline-eof-finish",0,0)==0);
+    REQUIRE(nonblocking_eof(argv[1],"offline-eof-cancel",1,0)==0);
+    REQUIRE(nonblocking_eof(argv[1],"offline-eof-cancel",1,-1)==0);
+    return 0;
+  }
   REQUIRE(completed(argv[1],"offline-success",0)==0);
   puts("real native process: success reaped, slots reclaimed, borrowed body pointer/extent/content survives stack disturbance and duplicate terminal uses");
   REQUIRE(completed(argv[1],"offline-exit28",1)==0);
   puts("real native process: exit28 stderr reaped and borrowed error backing preserved");
   REQUIRE(cancelled(argv[1])==0);
+  REQUIRE(nonblocking_eof(argv[1],"offline-eof-finish",0,0)==0);
+  REQUIRE(nonblocking_eof(argv[1],"offline-eof-cancel",1,0)==0);
+  REQUIRE(nonblocking_eof(argv[1],"offline-eof-cancel",1,-1)==0);
   puts("System One real process smoke passes; offline owned child only, no full desktop or general ownership qualification");return 0;
 }

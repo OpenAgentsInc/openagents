@@ -83,3 +83,10 @@ refused with E0381 on the observed images before the application checks ran;
 exact source subsets qualify the changed boundaries without calling the full
 application passed. B2, typed async outcomes and the full B3 milestone remain
 open; those application exits are not inferred from these prerequisites.
+
+
+The [nonblocking EOF follow-up](../verification/coax-request-polling-2026-11-01/README.md)
+keeps a frame poll pending when stdout closes before child exit, with actual
+native delayed-completion/cancel checks and sharp policy mutation. Its frozen
+full-desktop diagnosis identifies the eight-step borrow-path refusal; it does
+not call a source subset a successful full application build.
