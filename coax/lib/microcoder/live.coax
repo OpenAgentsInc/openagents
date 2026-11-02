@@ -49,21 +49,22 @@ live_commands_run :: (l: [] McLoop, lb: [] McLoopBuffers) -> int {
 
 // Through McRun: the reply must stream in more than one piece; with stop,
 // STOP after the first piece must end the run stopped mid-stream.
-live_run_stream :: (p: [] GwPlan, bench: [] GwBench, stop: bool) -> bool {
-  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; r: [1] McRun;
+// The run and its buffers belong to the caller: the plan keeps the request,
+// which borrows from them, after this returns.
+live_run_stream :: (r: [] McRun, sb: [] McStateBuffers, lb: [] McLoopBuffers, p: [] GwPlan, bench: [] GwBench, stop: bool) -> bool {
   mc_init(r[0].l[..], sb[..], lb[..], "{\"os\":\"macOS\"}", "In one paragraph of about 150 words, explain what a GPU is.", "{\"route\":\"other\",\"local_work\":0.1}", 0.1);
   t0 := cxproc_now_ms();
-  mc_run_start(r[..], p, bench, "", "low");
+  mc_run_start(r, p, bench, "", "low");
   ev: [16] McRunEvent;
   pieces := 0; first_ms := -1; chars := 0; ending := 0;
   while !r[0].ended {
-    n := mc_run_poll(r[..], ev[..]);
+    n := mc_run_poll(r, ev[..]);
     for i: 0..<n {
       if ev[i].kind == MR_REPLY { pieces += 1; chars += ev[i].text.count; if first_ms < 0 { first_ms = cxproc_now_ms() - t0; } }
       if ev[i].kind == MR_ENDED { ending = ev[i].ending; }
     }
     if stop && pieces > 0 && !r[0].ended {
-      n = mc_run_stop(r[..], ev[..]);
+      n = mc_run_stop(r, ev[..]);
       for i: 0..<n { if ev[i].kind == MR_ENDED { ending = ev[i].ending; } }
     }
   }
@@ -104,8 +105,9 @@ main :: () {
   ran := live_commands_run(l[..], lb[..]);
   print("microcoder: % command(s) ran\n", ran);
   ok = ok && l[0].ending == MC_END_FINISHED && three && ran >= 1;   // the model may look twice
-  ok = live_run_stream(p[..], bench[..], false) && ok;
-  ok = live_run_stream(p[..], bench[..], true) && ok;
+  run: [1] McRun;
+  ok = live_run_stream(run[..], sb[..], lb[..], p[..], bench[..], false) && ok;
+  ok = live_run_stream(run[..], sb[..], lb[..], p[..], bench[..], true) && ok;
   // a gateway that drops the schema (as Z.ai does): Vertex told not to send it, so
   // the reply comes back as text with the reminder's shape and is read out of it
   if v[0].nt > 0 {

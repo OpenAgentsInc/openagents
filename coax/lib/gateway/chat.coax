@@ -122,8 +122,14 @@ gw_chat_reasoning :: (ar: [] ClArena, obj: string) -> string {
 gw_chat_finished :: (ps: [] GwParse, out: [] GwEvent, n: int) -> int {
   f := ps[0].finish;
   ps[0].finish = GW_FIN_NONE;
+  return gw_chat_done(f, ps[0].usage, cast(string) ps[0].provider[0..<ps[0].np], out, n);
+}
+
+// How a response finished, as the last event: refused for the content
+// filter, else done with its usage and the provider that served it.
+gw_chat_done :: (f: int, usage: GwUsage, provider: string, out: [] GwEvent, n: int) -> int {
   if f == GW_FIN_FILTER { return gw_put(out, n, GwEvent.{kind = GW_EV_REFUSED, reason = "content_filter"}); }
-  return gw_put(out, n, GwEvent.{kind = GW_EV_DONE, usage = ps[0].usage, text = cast(string) ps[0].provider[0..<ps[0].np], reason = ifx f == GW_FIN_LENGTH then "length" else ifx f == GW_FIN_TOOLS then "tool_calls" else "stop"});
+  return gw_put(out, n, GwEvent.{kind = GW_EV_DONE, usage = usage, text = provider, reason = ifx f == GW_FIN_LENGTH then "length" else ifx f == GW_FIN_TOOLS then "tool_calls" else "stop"});
 }
 
 gw_chat_provider :: (ps: [] GwParse, ar: [] ClArena, obj: string) {
@@ -185,12 +191,8 @@ gw_chat_whole :: (ar: [] ClArena, body: string, out: [] GwEvent) -> int {
   if t.count > 0 { n = gw_put(out, n, GwEvent.{kind = GW_EV_TEXT, text = t}); }
   refusal := cl_str(ar, msg, "refusal");
   if refusal.count > 0 { return gw_put(out, n, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = refusal}); }
-  ps: [1] GwParse;
-  ps[0].finish = gw_chat_finish_of(cl_str(ar, body, "choices.0.finish_reason"));
-  ps[0].usage = gw_chat_usage_of(cl_raw(body, "usage"));
-  k := gw_chat_finished(ps[..], out, n);
-  if k > n && out[k - 1].kind == GW_EV_DONE { out[k - 1].text = cl_str(ar, body, "provider"); }   // borrowed from body, not ps
-  return k;
+  // the provider is borrowed from body, which outlives the events
+  return gw_chat_done(gw_chat_finish_of(cl_str(ar, body, "choices.0.finish_reason")), gw_chat_usage_of(cl_raw(body, "usage")), cl_str(ar, body, "provider"), out, n);
 }
 
 // ---------------------------------------------------------------- checks

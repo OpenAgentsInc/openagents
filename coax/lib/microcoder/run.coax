@@ -126,7 +126,18 @@ McRun :: struct {
   logged: int;                   // plan log entries handed out this step
   ended: bool;
   rbuf: [4096] u8;               // this poll's reply bytes
+  obuf: [131072] u8; nob: int;   // this poll's command outputs: the tools reuse their buffer per command
   tb: [1] McToolBuffers;
+}
+
+// A command's output kept for this poll's events (cut to what is left).
+mc_run_keep :: (r: [] McRun, s: string) -> string {
+  at := r[0].nob;
+  n := s.count;
+  if n > r[0].obuf.count - at { n = r[0].obuf.count - at; }
+  for i: 0..<n { r[0].obuf[at + i] = s[i]; }
+  r[0].nob = at + n;
+  return cast(string) r[0].obuf[at..<at + n];
 }
 
 // Starts a run of the loop already set up in r.l (mc_init) through plan p
@@ -185,12 +196,13 @@ mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
   k = mc_run_logs(r, out, k);
   if status == MC_WAIT { return k; }
   r[0].calling = false;
+  r[0].nob = 0;
   if status == MC_TOOLS {
     a := mc_pending(l);
     for i: 0..<a.nc {
       res := mc_run_command(r[0].cwd, a.commands[i], MC_COMMAND_SECONDS, r[0].tb[0].out[..]);
       mc_command(l, a.commands[i], res.exit, res.timed_out, res.output);
-      k = mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = a.commands[i], exit = res.exit, timed_out = res.timed_out, output = res.output});
+      k = mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = a.commands[i], exit = res.exit, timed_out = res.timed_out, output = mc_run_keep(r, res.output)});
     }
     for i: 0..<a.nv {
       v := mc_view_file(r[0].cwd, a.view[i], r[0].tb[0].view[..]);
@@ -240,4 +252,16 @@ mc_run_stop :: (r: [] McRun, out: [] McRunEvent) -> int {
   mc_rs_reset(rs[..]);
   n = mc_rs_feed(rs[..], "{\"reply\" : \"spaced\"}", got[..]);
   #assert cast(string) got[0..<n] == "spaced";
+}
+
+#test "each command's output in a poll keeps its own bytes, cut when the poll's buffer is full" {
+  r: [1] McRun;
+  tool: [8] u8;
+  tool[0] = 'o'; tool[1] = 'n'; tool[2] = 'e';
+  first := mc_run_keep(r[..], cast(string) tool[0..<3]);
+  tool[0] = 't'; tool[1] = 'w'; tool[2] = 'o';      // the tools' buffer, reused by the next command
+  second := mc_run_keep(r[..], cast(string) tool[0..<3]);
+  #assert first == "one" && second == "two";
+  r[0].nob = r[0].obuf.count - 2;
+  #assert mc_run_keep(r[..], "abc") == "ab" && mc_run_keep(r[..], "d") == "";
 }

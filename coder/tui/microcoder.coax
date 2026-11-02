@@ -1,0 +1,140 @@
+// The microcoder engine: OpenAgents' own small agent loop
+// (coax/lib/microcoder, Coder book chapter 9) through a gateway plan of
+// Vertex Gemini Flash, then the Gemini API, then OpenRouter. It runs as a
+// process of its own, coder/tui/mcworker.coax, which this side starts with
+// coax/web/tool.sh on the first message and talks to in JSON lines, the way
+// the claude and codex engines talk to their CLIs. The worker keeps the
+// conversation and owns the credentials; nothing here holds a key.
+
+CD_MC_TOOL :: "/coax/web/tool.sh";              // under the repo
+CD_MC_WORKER :: "/coder/tui/mcworker.coax";
+
+// Starts the worker on the first message; later messages go to the same one.
+cd_micro_send :: (a: [] App, msg: string) {
+  if a[0].mc_h < 0 {
+    rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+    if repo.count == 0 { cd_finish(a, END_FAILED, "CODER_REPO is not set: start Coder with coder/tui/coder.sh."); return; }
+    tb: [4200] u8; tn := cd_cat(tb[..], cd_cat(tb[..], 0, repo), CD_MC_TOOL);
+    wb: [4200] u8; wn := cd_cat(wb[..], cd_cat(wb[..], 0, repo), CD_MC_WORKER);
+    h := cxproc_new();
+    if h < 0 { cd_finish(a, END_FAILED, "No process slot is free."); return; }
+    ok := cl_push(h, CL_FIELD_ARG, cast(string) tb[0..<tn]) && cl_push(h, CL_FIELD_ARG, cast(string) wb[0..<wn]);
+    if a[0].cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, a[0].cwd); }
+    if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); cd_finish(a, END_FAILED, "Microcoder's worker did not start."); return; }
+    a[0].mc_h = h;
+  }
+  ob: [20000] u8;
+  n := json_raw(ob[..], 0, "{\"task\":"); n = json_write_string(ob[..], n, msg);
+  n = json_raw(ob[..], n, ",\"cwd\":"); n = json_write_string(ob[..], n, a[0].cwd);
+  n = json_raw(ob[..], n, "}\n");
+  if n < 0 || !cd_micro_write(a, cast(string) ob[0..<n]) { cd_micro_close(a); cd_finish(a, END_FAILED, "Microcoder's worker is gone."); }
+}
+
+cd_micro_write :: (a: [] App, s: string) -> bool {
+  if a[0].mc_h < 0 { return false; }
+  for b: s { if cxproc_write(a[0].mc_h, cast(int) b) != 0 { return false; } }
+  return cxproc_flush(a[0].mc_h) == 0;
+}
+
+cd_micro_close :: (a: [] App) {
+  if a[0].mc_h < 0 { return; }
+  x := cxproc_close_stdin(a[0].mc_h);
+  w := cxproc_wait(a[0].mc_h, 300);
+  if w < 0 { k := cxproc_kill(a[0].mc_h, CL_SIGKILL); w = cxproc_wait(a[0].mc_h, 2000); }
+  r := cxproc_release(a[0].mc_h);
+  a[0].mc_h = -1;
+}
+
+// Forgets the conversation (the worker keeps it).
+cd_micro_forget :: (a: [] App) { if a[0].mc_h >= 0 { x := cd_micro_write(a, "{\"forget\":true}\n"); } }
+
+// One poll of the worker; true when something changed.
+cd_micro_poll :: (a: [] App) -> bool {
+  if a[0].mc_h < 0 { return false; }
+  changed := false;
+  for guard: 0..<64 {
+    n := cxproc_read_line(a[0].mc_h, 0);
+    if n == CL_TIMEOUT { break; }
+    changed = true;
+    if n == CL_EOF || (n < 0 && n != CL_TOO_LONG) {
+      eb: [2048] u8; en := 0;
+      sc := cxproc_stderr_count(a[0].mc_h);
+      for i: 0..<sc { if en < eb.count { eb[en] = cast(u8) cxproc_stderr_byte(a[0].mc_h, i); en += 1; } }
+      cd_micro_close(a);
+      if a[0].running && a[0].engine == ENGINE_MICRO { cd_finish(a, END_FAILED, ifx en > 0 then cast(string) eb[0..<en] else "Microcoder's worker exited."); }
+      return true;
+    }
+    if n == CL_TOO_LONG || n > a[0].mc_line.count { continue; }
+    for i: 0..<n { a[0].mc_line[i] = cast(u8) cxproc_line_byte(a[0].mc_h, i); }
+    cd_micro_line(a, cast(string) a[0].mc_line[0..<n]);
+  }
+  return changed;
+}
+
+cd_mc_str :: (a: [] App, json: string, path: string) -> string { return cl_str(a[0].mc_ar[..], json, path); }
+
+cd_micro_line :: (a: [] App, line: string) {
+  a[0].mc_ar[0].at = 0; a[0].mc_ar[0].full = false;
+  kind := cd_mc_str(a, line, "kind");
+  if !a[0].running || a[0].engine != ENGINE_MICRO { return; }    // late lines after a stop
+  if kind == "reply" { cd_reply_add(a, cd_mc_str(a, line, "text")); cd_reply_commit(a, false); return; }
+  if kind == "attempt" {
+    usd := cl_int(line, "usd_micros");
+    if usd.ok && usd.value > 0 { a[0].cost += cast(f64) usd.value / 1000000.0; }
+    outcome := cd_mc_str(a, line, "outcome");
+    if outcome != "done" && outcome != "stopped" {
+      lb: [512] u8; ln := cd_cat(lb[..], 0, "  · "); ln = cd_cat(lb[..], ln, cd_mc_str(a, line, "gateway"));
+      ln = cd_cat(lb[..], ln, " "); ln = cd_cat(lb[..], ln, cd_mc_str(a, line, "outcome"));
+      st := cl_int(line, "status");
+      if st.ok && st.value > 0 { tb: [16] u8; ln = cd_cat(lb[..], ln, " "); ln = cd_cat(lb[..], ln, cd_itoa(st.value, tb[..])); }
+      cd_commit(a, TUI_FAINT, cast(string) lb[0..<ln]);
+    }
+    return;
+  }
+  if kind == "command" || kind == "view" {
+    cd_reply_commit(a, true); a[0].rep_lines = 0; a[0].nrep = 0; a[0].rep_done = 0;
+    lb: [1024] u8;
+    // copies: each lookup reuses the arena
+    pb: [1024] u8; pn := cd_cat(pb[..], 0, cd_mc_str(a, line, ifx kind == "view" then "path" else "command"));
+    cd_commit_prefixed(a, TUI_DIM, "  ⏺ ", "    ", cd_label(a, ifx kind == "view" then "Read" else "Bash", cast(string) pb[0..<pn], lb[..]));
+    a[0].steps += 1;
+    if kind == "view" {
+      found := cl_bool(line, "found");
+      if !(found.ok && found.value) { cd_result_line(a, "not found", true); }
+      return;
+    }
+    exit := cl_int(line, "exit");
+    late := cl_bool(line, "timed_out");
+    timed_out := late.ok && late.value;
+    cd_result_line(a, ifx timed_out then "timed out" else cd_mc_str(a, line, "output"), timed_out || (exit.ok && exit.value != 0));
+    return;
+  }
+  if kind == "ended" {
+    eb: [64] u8; en := cd_cat(eb[..], 0, cd_mc_str(a, line, "ending")); ending := cast(string) eb[0..<en];
+    text := cd_mc_str(a, line, "text");
+    a[0].stopping = false;
+    if ending == "finished" || ending == "asked" {
+      if a[0].nrep == 0 && text.count > 0 { cd_reply_add(a, text); }
+      cd_finish(a, END_FINISHED, "");
+      return;
+    }
+    if ending == "stopped" { cd_finish(a, END_STOPPED, ""); return; }
+    wb: [1400] u8; wn := 0;
+    if ending == "no_capacity" { wn = cd_cat(wb[..], 0, "No model answered: "); wn = cd_cat(wb[..], wn, text); }
+    else if ending == "bad_replies" { wn = cd_cat(wb[..], 0, "The model's replies didn't fit Microcoder's schema three times in a row."); }
+    else { wn = cd_cat(wb[..], 0, "Microcoder ended: "); wn = cd_cat(wb[..], wn, ending); }
+    cd_finish(a, END_FAILED, cast(string) wb[0..<wn]);
+  }
+}
+
+// Esc: STOP the run; the worker answers with its ended line. Twice, or no answer: end the worker.
+cd_micro_stop :: (a: [] App) {
+  if a[0].mc_h >= 0 && !a[0].stopping && cd_micro_write(a, "{\"stop\":true}\n") {
+    a[0].stopping = true;
+    a[0].stop_ms = cd_now(a);
+    return;
+  }
+  cd_micro_close(a);
+  a[0].stopping = false;
+  cd_finish(a, END_STOPPED, "");
+}

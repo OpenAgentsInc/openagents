@@ -200,7 +200,8 @@ McScript :: struct {
   replies: [] string;
   at: int;
   calls: int;                    // requests sent
-  ran: [16] string; nran: int;   // commands run, in order
+  ran: [16] string; nran: int;   // commands run, in order (copies in rb: the loop reuses its buffers each step)
+  rb: [2048] u8; nrb: int;
 }
 
 mc_script_step :: (l: [] McLoop, s: [] McScript) -> int {
@@ -229,7 +230,11 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
     if r == MC_TOOLS {
       a := mc_pending(l);
       for i: 0..<a.nc {
-        if s[0].nran < 16 { s[0].ran[s[0].nran] = a.commands[i]; s[0].nran += 1; }
+        if s[0].nran < 16 && s[0].nrb + a.commands[i].count <= s[0].rb.count {
+          at := s[0].nrb;
+          for c: a.commands[i] { s[0].rb[s[0].nrb] = c; s[0].nrb += 1; }
+          s[0].ran[s[0].nran] = cast(string) s[0].rb[at..<s[0].nrb]; s[0].nran += 1;
+        }
         mc_command(l, a.commands[i], 0, false, "3\n");
       }
       for i: 0..<a.nv { mc_view(l, a.view[i], true, "contents"); }

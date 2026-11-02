@@ -8,6 +8,7 @@ kitty), then quits with Ctrl-C and checks the exit.
     python3 coder/tui/smoke.py                # offline, echo engine
     python3 coder/tui/smoke.py --live         # two turns on the claude engine (your Claude Code login)
     python3 coder/tui/smoke.py --live codex   # the same on the codex engine (your Codex login)
+    python3 coder/tui/smoke.py --live microcoder   # ... on Microcoder (keys under ~/work/.secrets)
 
 Test-only harness; the program under test is Coax.
 """
@@ -59,7 +60,8 @@ def live(engine):
         read_until("\x00never", 0.2)
     steps.append(("second turn ended", out.count("└ finished".encode()) >= 2))
     os.write(fd, b"\x1b[Z")                 # Shift-Tab: the other agent
-    steps.append(("Shift-Tab switches agent", read_until("Agent: Claude Code" if engine == "codex" else "Agent: Codex", 5)))
+    after = {"claude": "Agent: Codex", "codex": "Agent: Microcoder", "microcoder": "Agent: Claude Code"}[engine]
+    steps.append(("Shift-Tab switches agent", read_until(after, 5)))
     for _ in range(3):                      # stop, clear, quit: whichever applies
         os.write(fd, b"\x03")
         time.sleep(0.5)
@@ -148,6 +150,8 @@ def main():
     send(b"\x1b[9;2u")                 # Shift-Tab, kitty
     check("Shift-Tab to Codex", read_until("Agent: Codex", 5))
     check("hint names the agent", read_until("codex · Enter send", 5))
+    send(b"\x1b[Z")
+    check("Shift-Tab to Microcoder", read_until("Agent: Microcoder", 5) and read_until("microcoder · Enter send", 5))
     send(b"\x1b[A")
     time.sleep(0.3)
     send(b"\x03")            # clears the recalled entry

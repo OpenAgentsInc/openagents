@@ -5,13 +5,14 @@
 // over stream-json by coax/lib/agent/claude, one session for the whole
 // conversation), codex (the installed Codex CLI on its own login, driven as
 // `codex app-server` by coax/lib/agent/codex, one thread; codex.coax) and
-// echo (offline: it streams your words back). Shift-Tab switches between
-// claude and codex; each keeps its own conversation. In any engine,
+// microcoder (OpenAgents' own small loop, coax/lib/microcoder, through a
+// Vertex/Gemini/OpenRouter plan; microcoder.coax) and echo (offline: it
+// streams your words back). Shift-Tab cycles claude, codex and microcoder;
+// each keeps its own conversation. In any engine,
 // a message that starts with "$ " runs that command in the working
-// directory. Microcoder joins once its library builds on the current
-// compiler.
+// directory.
 //
-//   coder/tui/coder.sh [--engine claude|codex|echo] [--model M] [--ask] [--cwd DIR]
+//   coder/tui/coder.sh [--engine claude|codex|microcoder|echo] [--model M] [--ask] [--cwd DIR]
 //   coder/tui/coder.sh --print "TASK"      no TUI: one task, plain lines out
 //
 // Keys: Enter sends, Shift-Enter (Ctrl-J, Alt-Enter or a trailing \ where
@@ -28,6 +29,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "diff.coax";
 #load "codex.coax";
+#load "microcoder.coax";
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -39,7 +41,7 @@ cxterm_stopped :: () -> int #foreign;
 cxterm_resized :: () -> int #foreign;
 
 CODER_VERSION :: "0.1.0";
-ENGINE_ECHO :: 0; ENGINE_CLAUDE :: 1; ENGINE_CODEX :: 2;
+ENGINE_ECHO :: 0; ENGINE_CLAUDE :: 1; ENGINE_CODEX :: 2; ENGINE_MICRO :: 3;
 END_FINISHED :: 0; END_STOPPED :: 1; END_FAILED :: 2;
 COMMAND_MS :: 120000;      // a "$ " command is stopped after two minutes
 SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -90,11 +92,15 @@ App :: struct {
   cx_live: bool;                  // the server is running
   cx_ready: bool;                 // its thread is started
   err: [1024] u8; nerr: int;      // an error notification, for a failed turn
+  // microcoder engine: its worker process (mcworker.coax), a run per message
+  mc_h: int = -1;
+  mc_line: [] u8;
+  mc_ar: [1] ClArena;
   turns: int;
   cost: f64;
 }
 
-cd_engine_name :: (e: int) -> string { return ifx e == ENGINE_CLAUDE then "claude" else ifx e == ENGINE_CODEX then "codex" else "echo"; }
+cd_engine_name :: (e: int) -> string { return ifx e == ENGINE_CLAUDE then "claude" else ifx e == ENGINE_CODEX then "codex" else ifx e == ENGINE_MICRO then "microcoder" else "echo"; }
 
 // ---------------------------------------------------------------- output
 
@@ -257,11 +263,12 @@ cd_start :: (a: [] App, msg: string) {
     a[0].necho = 0; a[0].echo_at = 0; a[0].echo_next_ms = cd_now(a) + 300;
     a[0].necho = cd_cat(a[0].echo[..], 0, "Echo engine, offline. You said: ");
     a[0].necho = cd_cat(a[0].echo[..], a[0].necho, msg);
-    a[0].necho = cd_cat(a[0].echo[..], a[0].necho, "\nStart with \"$ \" to run a command here, or press Shift-Tab for Claude Code or Codex.");
+    a[0].necho = cd_cat(a[0].echo[..], a[0].necho, "\nStart with \"$ \" to run a command here, or press Shift-Tab for Claude Code, Codex or Microcoder.");
     return;
   }
   a[0].nerr = 0;
   if a[0].engine == ENGINE_CODEX { cd_codex_send(a, msg); return; }
+  if a[0].engine == ENGINE_MICRO { cd_micro_send(a, msg); return; }
   cd_claude_send(a, msg);
 }
 
@@ -521,6 +528,7 @@ cd_stop :: (a: [] App) {
   if a[0].cmd_h >= 0 { cd_command_stop(a); cd_finish(a, END_STOPPED, ""); return; }
   if a[0].engine == ENGINE_ECHO { cd_finish(a, END_STOPPED, ""); return; }
   if a[0].engine == ENGINE_CODEX { cd_codex_stop(a); return; }
+  if a[0].engine == ENGINE_MICRO { cd_micro_stop(a); return; }
   if a[0].ask { cl_deny(a[0].q, "The person stopped the turn.", true); a[0].ask = false; }
   if a[0].live && !a[0].stopping {
     a[0].stopping = true;
@@ -541,6 +549,7 @@ cd_poll :: (a: [] App) -> bool {
     changed := false;
     if a[0].live { changed = cd_claude_poll(a); }
     if a[0].cx_live { changed = cd_codex_poll(a) || changed; }
+    if a[0].mc_h >= 0 { changed = cd_micro_poll(a) || changed; }
     return changed;
   }
   if a[0].cmd_h >= 0 { return cd_command_poll(a); }
@@ -551,6 +560,10 @@ cd_poll :: (a: [] App) -> bool {
   if a[0].engine == ENGINE_CODEX {
     if a[0].stopping && cd_now(a) - a[0].stop_ms > 5000 { cd_stop(a); return true; }
     return cd_codex_poll(a);
+  }
+  if a[0].engine == ENGINE_MICRO {
+    if a[0].stopping && cd_now(a) - a[0].stop_ms > 5000 { cd_stop(a); return true; }
+    return cd_micro_poll(a);
   }
   if cd_now(a) < a[0].echo_next_ms { return false; }
   // a word at a time, like a stream
@@ -567,7 +580,7 @@ cd_poll :: (a: [] App) -> bool {
 
 // ---------------------------------------------------------------- input
 
-HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login) or echo (offline)\nShift-Tab  switch between claude and codex; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
+HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop) or echo (offline)\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
 
 cd_submit :: (a: [] App) {
   text := tui_ed_text(a[0].ed[..]);
@@ -585,14 +598,15 @@ cd_submit :: (a: [] App) {
     if msg == "/quit" || msg == "/exit" { a[0].quit = true; return; }
     if msg == "/help" { cd_commit_prefixed(a, TUI_DIM, "  ", "  ", HELP); return; }
     if msg == "/clear" {
-      cd_claude_close(a); cd_codex_close(a);
+      cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
       if !a[0].plain { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); tui_live_cleared(a[0].lv[..]); }
       cd_commit(a, TUI_FAINT, "  The conversation is cleared; the next message starts a new session.");
       return;
     }
-    if msg == "/engine echo" { cd_claude_close(a); cd_codex_close(a); a[0].engine = ENGINE_ECHO; cd_commit(a, TUI_DIM, "  Engine: echo (offline)."); return; }
+    if msg == "/engine echo" { cd_claude_close(a); cd_codex_close(a); cd_micro_close(a); a[0].engine = ENGINE_ECHO; cd_commit(a, TUI_DIM, "  Engine: echo (offline)."); return; }
     if msg == "/engine claude" { cd_switch(a, ENGINE_CLAUDE); return; }
     if msg == "/engine codex" { cd_switch(a, ENGINE_CODEX); return; }
+    if msg == "/engine microcoder" { cd_switch(a, ENGINE_MICRO); return; }
     cd_commit(a, TUI_RED, "  Unknown command. /help lists them.");
     return;
   }
@@ -603,7 +617,7 @@ cd_submit :: (a: [] App) {
 // Switches the agent. Each agent's session stays open with its own conversation.
 cd_switch :: (a: [] App, e: int) {
   a[0].engine = e;
-  cd_commit(a, TUI_DIM, ifx e == ENGINE_CODEX then "  Agent: Codex" else "  Agent: Claude Code");
+  cd_commit(a, TUI_DIM, ifx e == ENGINE_CODEX then "  Agent: Codex" else ifx e == ENGINE_MICRO then "  Agent: Microcoder" else "  Agent: Claude Code");
 }
 
 cd_key :: (a: [] App, k: TuiKey) {
@@ -611,7 +625,7 @@ cd_key :: (a: [] App, k: TuiKey) {
   if a[0].ask && k.kind == TUI_K_CHAR { cd_claude_answer(a, k.cp); return; }
   if k.kind == TUI_K_BACKTAB {
     if a[0].running { return; }      // one agent per run; switch once it is done
-    cd_switch(a, ifx a[0].engine == ENGINE_CLAUDE then ENGINE_CODEX else ENGINE_CLAUDE);
+    cd_switch(a, ifx a[0].engine == ENGINE_CLAUDE then ENGINE_CODEX else ifx a[0].engine == ENGINE_CODEX then ENGINE_MICRO else ENGINE_CLAUDE);
     return;
   }
   if k.kind == TUI_K_CTRL_C {
@@ -671,7 +685,7 @@ tool_main :: () -> int #export_c {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
   if args_has(args, "--help") || args_has(args, "-h") {
-    tool_errln("usage: coder [--engine claude|codex|echo] [--model M] [--ask] [--cwd DIR]\n       coder --print \"TASK\" [--engine claude|codex|echo]");
+    tool_errln("usage: coder [--engine claude|codex|microcoder|echo] [--model M] [--ask] [--cwd DIR]\n       coder --print \"TASK\" [--engine claude|codex|microcoder|echo]");
     return 0;
   }
   if args_has(args, "--version") { tool_errln(CODER_VERSION); return 0; }
@@ -682,6 +696,8 @@ tool_main :: () -> int #export_c {
   cx_b: [1] CxClient; cxp_b: [1] ClProcess; cxl_b: [CL_LINE_MAX] u8; cxa_b: [262144] u8; cxo_b: [262144] u8;
   a[0].cx = cx_b[..]; a[0].cxp = cxp_b[..]; a[0].cx_line = cxl_b[..]; a[0].cx_arena = cxa_b[..]; a[0].cx_outb = cxo_b[..];
   a[0].cxp[0].handle = -1;
+  mcl_b: [CL_LINE_MAX] u8; mca_b: [262144] u8;
+  a[0].mc_line = mcl_b[..]; a[0].mc_ar[0] = ClArena.{buf = mca_b[..]};
   a[0].q = q[..]; a[0].p = p[..]; a[0].qline = qline_b[..]; a[0].qarena = qarena_b[..]; a[0].qout = qout_b[..]; a[0].scratch = scratch_b[..];
   a[0].o[0].b = a[0].ob[..];
   cb: [4096] u8;
@@ -692,7 +708,8 @@ tool_main :: () -> int #export_c {
   want := args_value(args, "--engine", "");
   if want == "echo" { a[0].engine = ENGINE_ECHO; }
   else if want == "codex" { a[0].engine = ENGINE_CODEX; }
-  else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex or echo"); return 2; }
+  else if want == "microcoder" { a[0].engine = ENGINE_MICRO; }
+  else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex, microcoder or echo"); return 2; }
   a[0].model_engine = a[0].engine;
 
   task := args_value(args, "--print", "");
@@ -702,7 +719,7 @@ tool_main :: () -> int #export_c {
     tui_ed_set(a[0].ed[..], task);
     cd_submit(a);
     for guard: 0..<100000000 { if !a[0].running { break; } if a[0].ask { cd_claude_answer(a, 'n'); } if !cd_poll(a) { x := cxproc_sleep_ms(5); } }
-    cd_claude_close(a); cd_codex_close(a);
+    cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
     return 0;
   }
 
@@ -716,7 +733,7 @@ tool_main :: () -> int #export_c {
   tui_csi(a[0].o[..], TUI_KEYS_ON);                     // Shift-Enter distinct from Enter
   hb: [512] u8; hn := cd_cat(hb[..], 0, "Coder ");
   hn = cd_cat(hb[..], hn, CODER_VERSION); hn = cd_cat(hb[..], hn, " · ");
-  hn = cd_cat(hb[..], hn, ifx a[0].engine == ENGINE_CLAUDE then "Claude Code" else ifx a[0].engine == ENGINE_CODEX then "Codex" else "echo engine (offline)");
+  hn = cd_cat(hb[..], hn, ifx a[0].engine == ENGINE_CLAUDE then "Claude Code" else ifx a[0].engine == ENGINE_CODEX then "Codex" else ifx a[0].engine == ENGINE_MICRO then "Microcoder" else "echo engine (offline)");
   hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, a[0].cwd);
   cd_commit(a, TUI_BRIGHT, cast(string) hb[0..<hn]);
   cd_commit(a, TUI_FAINT, "/help for commands.");
@@ -735,7 +752,7 @@ tool_main :: () -> int #export_c {
     if dirty { cd_draw(a); last_draw = now; }
   }
   if a[0].running { cd_stop(a); }
-  cd_claude_close(a); cd_codex_close(a);
+  cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
   tui_live_erase(a[0].o[..], a[0].lv[..]);
   tui_csi(a[0].o[..], TUI_KEYS_OFF);
   tui_csi(a[0].o[..], "?2004l"); tui_csi(a[0].o[..], "?25h"); tui_csi(a[0].o[..], "0m");

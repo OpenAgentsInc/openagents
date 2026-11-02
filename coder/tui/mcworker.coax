@@ -1,0 +1,139 @@
+// Microcoder as a process for Coder's TUI (microcoder.coax): it reads one
+// JSON object a line on stdin and writes one a line on stdout, like the
+// Claude and Codex CLIs the other engines drive.
+//
+//   in   {"task":"...","cwd":"/path"}    a message: one Microcoder run
+//        {"stop":true}                    STOP the run
+//        {"forget":true}                  forget the conversation
+//   out  {"kind":"ready"}
+//        {"kind":"reply","text":"..."}    more of the reply as it streams
+//        {"kind":"attempt","gateway":"vertex","model":"...","outcome":"done","status":200,"usd_micros":717}
+//        {"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"..."}
+//        {"kind":"view","path":"a.txt","found":true}
+//        {"kind":"ended","ending":"finished","text":"..."}
+//
+// Each run's facts carry the earlier turns as "conversation". Credentials as
+// the desktop Lab reads them (microcoder_keys.coax): into curl's and gcloud's
+// child environments only, never this process's.
+//
+// The run and its buffers are tool_main's locals and every call into the
+// loop is made from tool_main itself: the checker's storage budget (E0381)
+// does not reach a McRun through a struct held two calls deep.
+//
+//   coax/web/tool.sh coder/tui/mcworker.coax
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "microcoder_keys.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign;
+cxterm_write :: (s: [] u8) -> int #foreign;
+
+MW_LINE :: 1048576;
+
+mw_send :: (o: [] u8, n: int) {
+  if n < 0 || n >= o.count { return; }
+  o[n] = 10;
+  r := cxterm_write(o[0..<n + 1]);
+}
+
+mw_event :: (e: McRunEvent, o: [] u8) {
+  n := 0;
+  if e.kind == MR_REPLY {
+    n = json_raw(o, 0, "{\"kind\":\"reply\",\"text\":"); n = json_write_string(o, n, e.text); n = json_raw(o, n, "}");
+  } else if e.kind == MR_ATTEMPT {
+    n = json_raw(o, 0, "{\"kind\":\"attempt\",\"gateway\":"); n = json_write_string(o, n, e.log.gateway);
+    n = json_raw(o, n, ",\"model\":"); n = json_write_string(o, n, e.log.model);
+    n = json_raw(o, n, ",\"outcome\":"); n = json_write_string(o, n, gw_outcome_name(e.log.outcome));
+    n = json_raw(o, n, ",\"status\":"); n = json_write_int(o, n, e.log.status);
+    n = json_raw(o, n, ",\"usd_micros\":"); n = json_write_int(o, n, e.log.card_usd_micros);
+    n = json_raw(o, n, "}");
+  } else if e.kind == MR_COMMAND {
+    n = json_raw(o, 0, "{\"kind\":\"command\",\"command\":"); n = json_write_string(o, n, e.text);
+    n = json_raw(o, n, ",\"exit\":"); n = json_write_int(o, n, e.exit);
+    n = json_raw(o, n, ifx e.timed_out then ",\"timed_out\":true" else ",\"timed_out\":false");
+    n = json_raw(o, n, ",\"output\":"); n = json_write_string(o, n, e.output);
+    n = json_raw(o, n, "}");
+  } else if e.kind == MR_VIEW {
+    n = json_raw(o, 0, "{\"kind\":\"view\",\"path\":"); n = json_write_string(o, n, e.text);
+    n = json_raw(o, n, ifx e.found then ",\"found\":true}" else ",\"found\":false}");
+  } else if e.kind == MR_ENDED {
+    n = json_raw(o, 0, "{\"kind\":\"ended\",\"ending\":"); n = json_write_string(o, n, mc_ending_name(e.ending));
+    n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, e.text);
+    n = json_raw(o, n, "}");
+  } else { return; }
+  mw_send(o, n);
+}
+
+mw_ended :: (o: [] u8, ending: string, text: string) {
+  n := json_raw(o, 0, "{\"kind\":\"ended\",\"ending\":"); n = json_write_string(o, n, ending);
+  n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text); n = json_raw(o, n, "}");
+  mw_send(o, n);
+}
+
+tool_main :: () -> int #export_c {
+  run: [1] McRun; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
+  plan: [1] GwPlan; pb: [1] GwPlanBuffers; bench: [1] GwBench;
+  k: [1] MkKeys; h: [1] MkTurns;
+  facts: [32768] u8;
+  line: [MW_LINE] u8; nl := 0;
+  out: [MW_LINE] u8;
+  ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  task: [16384] u8; cwd: [4096] u8;
+  running := false;
+  mw_send(out[..], json_raw(out[..], 0, "{\"kind\":\"ready\"}"));
+  while true {
+    // the run's events first, then whatever stdin has
+    if running {
+      ev: [32] McRunEvent;
+      n := mc_run_poll(run[..], ev[..]);
+      for i: 0..<n {
+        if ev[i].kind == MR_ENDED {
+          running = false;
+          if ev[i].ending == MC_END_FINISHED || ev[i].ending == MC_END_ASKED { mk_remember(h[..], ev[i].text); }
+        }
+        mw_event(ev[i], out[..]);
+      }
+    }
+    b := cxterm_byte(ifx running then 10 else 200);
+    if b == -2 { break; }          // stdin closed: the TUI is gone
+    got_line := false;
+    while b >= 0 {
+      if b == 10 { got_line = true; break; }
+      if nl < line.count { line[nl] = cast,trunc(u8) b; nl += 1; }
+      b = cxterm_byte(0);
+    }
+    if b == -2 && !got_line { break; }
+    if !got_line { continue; }
+    msg := cast(string) line[0..<nl];
+    nl = 0;
+    ar[0].at = 0; ar[0].full = false;
+    if cl_bool(msg, "stop").ok {
+      if running {
+        ev: [32] McRunEvent;
+        n := mc_run_stop(run[..], ev[..]);
+        for i: 0..<n { mw_event(ev[i], out[..]); }
+        running = false;
+      }
+      continue;
+    }
+    if cl_bool(msg, "forget").ok { h[0].turns = 0; continue; }
+    t := cl_str(ar[..], msg, "task");
+    if t.count == 0 || running { continue; }
+    tn := mk_keep(task[..], t);
+    cn := mk_keep(cwd[..], cl_str(ar[..], msg, "cwd"));
+    tk := cast(string) task[0..<tn]; cd := cast(string) cwd[0..<cn];
+    mk_keys(k[..]);
+    if mk_plan(k[..], plan[..], pb[..]) == 0 {
+      mw_ended(out[..], "no_capacity", "Microcoder has no model to call here: add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.");
+      continue;
+    }
+    h[0].ncur = mk_keep(h[0].cur[..], tk);
+    fx := mk_facts(h[..], cd, facts[..]);
+    mc_init(run[0].l[..], sb[..], lb[..], fx, tk, "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
+    mc_run_start(run[..], plan[..], bench[..], cd, "low");
+    running = true;
+  }
+  if running { ev: [32] McRunEvent; n := mc_run_stop(run[..], ev[..]); }
+  return 0;
+}
