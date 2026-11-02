@@ -1,0 +1,8 @@
+{
+  "budget": 1048576,
+  "minimum_headroom": 10486,
+  "minimum_headroom_percent": 1,
+  "maximum_accepted_work": 1038090,
+  "source_sha256": "759e1739e64fa447d8f5b2b48d2a499e3ed7180c566de6af08fdde48f1f82fd9",
+  "scope": "Predeclared before actual measurement; no budget/profile changes; no push unless full-compiler completion, observed counters, unchanged inputs and this margin all pass."
+}

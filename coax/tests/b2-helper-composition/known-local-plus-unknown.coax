@@ -1,0 +1,9 @@
+Carrier :: struct { selected: []u8; }
+unknown :: () -> []u8 { return unknown(); }
+fill :: (c: []Carrier, value: []u8) { c[0].selected = value; }
+through :: (choose: bool) -> []u8 {
+  c: [1]Carrier; local: [4]u8;
+  fill(c[..], ifx choose then local[..] else unknown());
+  return c[0].selected;
+}
+main :: () {}

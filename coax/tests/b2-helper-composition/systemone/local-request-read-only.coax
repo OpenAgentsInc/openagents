@@ -1,0 +1,7 @@
+#load "../../../lib/systemone/transport.coax";
+through :: (out:[]u8, err:[]u8) -> string {
+  client:SoClient;request:[2]u8;request[0]='{';request[1]='}';
+  result:=so_post(client,cast(string)request[..],out,err);
+  return result.body;
+}
+main :: () {}

@@ -319,16 +319,16 @@
     {
       "id": "manual-helper-local-state",
       "source": "manual/helper-local-state.coax",
-      "outcome": "accept-manual",
+      "outcome": "accept",
       "diagnostics": [],
-      "analysis_obligation": "Local state may be written through a helper; retain incomplete/manual status2, not complete-empty. Retained caller-state lifetime remains later work."
+      "analysis_obligation": "B2 complete returned-borrow summary (status 1): helper writes into the local carrier preserve the precise caller-provided output origin. The generic source gate checks acceptance; the focused B2 native origin oracle checks completeness independently. This does not qualify asynchronous host lifetime or B3 contextual retention."
     },
     {
       "id": "manual-helper-alias-local-state",
       "source": "manual/helper-alias-local-state.coax",
-      "outcome": "accept-manual",
+      "outcome": "accept",
       "diagnostics": [],
-      "analysis_obligation": "A view alias still reaches local aggregate storage modified through a helper; require independently observed incomplete/manual status2, not complete-empty."
+      "analysis_obligation": "B2 complete returned-borrow summary (status 1): helper writes into the local carrier preserve the precise caller-provided output origin. The generic source gate checks acceptance; the focused B2 native origin oracle checks completeness independently. This does not qualify asynchronous host lifetime or B3 contextual retention."
     },
     {
       "id": "reject-alias-local-field-write",

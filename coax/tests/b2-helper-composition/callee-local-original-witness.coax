@@ -1,0 +1,11 @@
+Carrier :: struct { selected: []u8; }
+fill :: (c: []Carrier) {
+  local: [4]u8;
+  c[0].selected = local[..];
+}
+through :: () -> []u8 {
+  c: [1]Carrier;
+  fill(c[..]);
+  return c[0].selected;
+}
+main :: () {}

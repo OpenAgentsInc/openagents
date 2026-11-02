@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "status": "compile and focused checks PASS; predeclared publication margin FAIL; NOT PUSHED",
+  "base_commit": "386330a2fd3f733670531ded6f92439ae2173146",
+  "source_sha256": "759e1739e64fa447d8f5b2b48d2a499e3ed7180c566de6af08fdde48f1f82fd9",
+  "compiler_work": 1044325,
+  "budget": 1048576,
+  "headroom": 4251,
+  "headroom_percent": 0.4054069519042969,
+  "required_headroom": 10486,
+  "missing_margin_steps": 6235,
+  "publication_gate_passed": false,
+  "budget_function_unchanged": true,
+  "native_compiler_sha256": "e90ea63ab53520461b5bc97643aeb7d65d0d9d0b5b1a5b25ecf3302a0c5dc66b",
+  "compiler_kind": "Development stage0; full actual compiler input compiled, not normal release/bootstrap qualification",
+  "qualifications": {
+    "new_regression_cases": 2,
+    "new_guard_controls_killed": 3,
+    "new_guard_native_observations": 6,
+    "helper_mutants": 220,
+    "helper_mutants_killed": 220,
+    "source_internal_native_observations": 63,
+    "physical_source_fixtures": 21,
+    "affected_existing_fixtures": 2,
+    "amended_check_cases": 16,
+    "passing_unchanged_results_retained_by_runtime_and_load_continuity": true
+  },
+  "patches": {
+    "source-and-tests.patch.gz": {
+      "sha256": "e02c5ae53275a491dd12c1acc70f9d31f26c893a86141d7caa4722a5ded4126e",
+      "decompressed_sha256": "c27bf0558a3e2fb94182520462d016123f281e0dd65fc51ef13ea6d87b2f07e1",
+      "includes_canonical_generated_seed": true
+    },
+    "proposed-current-docs.patch.gz": {
+      "sha256": "f78bd6c1d83b14f0d4c404f013eb04d5a09afbdc3ede07d8d1c5257d8e529c61",
+      "decompressed_sha256": "eb7483a11f2d2218a240281bfcbbebd4218575fea5e9cc0d373e9a688bcc5dfd",
+      "prospective_only": true
+    }
+  },
+  "archive": {
+    "file": "proof.tar.xz",
+    "sha256": "961e86eccf35e26487151121c93c4908d6861f72ede46d6c34ee173208e6abf8",
+    "bytes": 2572952,
+    "logical_text_files": 425,
+    "unique_text_members": 210,
+    "readback_verified": true,
+    "manifest_sha256": "461b4eb6e9a06b1617199a1a32750bd8fdf66f4824d65fa5eaea0d350744199e"
+  },
+  "stopped": true,
+  "further_optimization_started": false,
+  "remote_writes": 0
+}

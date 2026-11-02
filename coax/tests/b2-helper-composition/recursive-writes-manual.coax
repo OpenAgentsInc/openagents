@@ -1,0 +1,8 @@
+Carrier :: struct { selected: []u8; }
+fill :: (c: []Carrier, value: []u8, again: bool) { if again { fill(c, value, false); } else { c[0].selected = value; } }
+through :: (out: []u8) -> []u8 {
+  c: [1]Carrier;
+  fill(c[..], out, true);
+  return c[0].selected;
+}
+main :: () {}

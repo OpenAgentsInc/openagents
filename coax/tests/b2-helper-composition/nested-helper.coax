@@ -1,0 +1,9 @@
+Carrier :: struct { selected: []u8; }
+leaf :: (c: []Carrier, value: []u8) { c[0].selected = value; }
+relay :: (unrelated: []u8, value: []u8, c: []Carrier) { n := unrelated.count; leaf(c, value); }
+through :: (out: []u8) -> []u8 {
+  c: [1]Carrier; scratch: [4]u8;
+  relay(scratch[..], out, c[..]);
+  return c[0].selected;
+}
+main :: () {}
