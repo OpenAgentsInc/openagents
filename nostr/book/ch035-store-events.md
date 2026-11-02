@@ -19,6 +19,11 @@ before `OK`, and crash recovery that cuts only a partial last write.
 - Ephemeral kinds (20000–29999): accepted and never stored.
 - Fixed bounds: a record table and a byte arena. A full table is compacted
   first; only when nothing can be dropped does the store answer `full`.
+  The relay sizes both once, at start: 2,048 records and 4 MiB (`RSD_MAX`,
+  `RSD_ARENA`), or `--store-capacity EVENTS` records at 2 KiB each, 128 to
+  1,048,576 (`rr_capacity`, `rr_arena` in `relay_route.coax`). The file
+  format doesn't depend on the size, but a file that holds more than the
+  store refuses to start, unchanged.
 - The file: one frame per stored original, a 4-byte big-endian length and the
   exact bytes, written and synced before the relay sends `OK true`.
 - Recovery: replay re-verifies every frame, cuts a crash's partial last

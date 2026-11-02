@@ -348,7 +348,9 @@ n45_answer :: (text: string, s: [] RsdStore, ix: [] NsiIndex, now: int, w: [] N4
   for k: 0..<m.filters {
     if rs_filter(text, m, k, w[0].filters[k..<m.filters], sp[..]) != FR_OK { return ms_write_closed(sub, rs_prefix(why), rs_text(why), out); }
   }
-  c := n45_count(s, ix, w[0].filters[0..<m.filters], now, w[0].out[..], w[0].seen[..], w[0].regs[..]);
+  slots := w[0].out[..]; seen := w[0].seen[..];
+  if w[0].big_out.count > 0 { slots = w[0].big_out; seen = w[0].big_seen; }
+  c := n45_count(s, ix, w[0].filters[0..<m.filters], now, slots, seen, w[0].regs[..]);
   if c.n < 0 { return ms_write_closed(sub, "error", N45_STALE, out); }
   regs := w[0].regs[0..<0]; if c.hll { regs = w[0].regs[..]; }
   return n45_write_response(sub, c.n, false, regs, out);

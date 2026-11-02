@@ -56,6 +56,9 @@ N45Work :: struct {
   filters: [16] NostrFilter;
   out: [RSD_MAX] int; seen: [RSD_MAX] u8;
   regs: [256] u8;
+  // A store larger than RSD_MAX records (the relay's --store-capacity):
+  // the caller's slots, used in place of out and seen when not empty.
+  big_out: [] int; big_seen: [] u8;
 }
 
 // ---- test helpers ------------------------------------------------------------
@@ -454,7 +457,9 @@ n45_answer :: (text: string, s: [] RsdStore, ix: [] NsiIndex, now: int, w: [] N4
   for k: 0..<m.filters {
     if rs_filter(text, m, k, w[0].filters[k..<m.filters], sp[..]) != FR_OK { return ms_write_closed(sub, rs_prefix(why), rs_text(why), out); }
   }
-  c := n45_count(s, ix, w[0].filters[0..<m.filters], now, w[0].out[..], w[0].seen[..], w[0].regs[..]);
+  slots := w[0].out[..]; seen := w[0].seen[..];
+  if w[0].big_out.count > 0 { slots = w[0].big_out; seen = w[0].big_seen; }
+  c := n45_count(s, ix, w[0].filters[0..<m.filters], now, slots, seen, w[0].regs[..]);
   if c.n < 0 { return ms_write_closed(sub, "error", N45_STALE, out); }
   regs := w[0].regs[0..<0]; if c.hll { regs = w[0].regs[..]; }
   return n45_write_response(sub, c.n, false, regs, out);
@@ -509,4 +514,26 @@ n45_answer :: (text: string, s: [] RsdStore, ix: [] NsiIndex, now: int, w: [] N4
   n45_t_rec(t[..], 3, N45_T_B, 1, "[]");
   n = n45_answer("[\"COUNT\",\"q\",{\"kinds\":[1]}]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
   #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"error: the store index is out of date\"]";
+}
+#test "a larger store counts in the caller's slots" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  n45_t_rec(t[..], 1, N45_T_A, 1, "[]");
+  n45_t_rec(t[..], 2, N45_T_A, 1, "[]");
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  w: [1] N45Work; out: [1024] u8; slots: [2] int; seen: [2] u8;
+  q := "[\"COUNT\",\"q\",{\"kinds\":[1]}]";
+  // one slot for two records: refused, as a short work space is
+  w[0].big_out = slots[0..<1]; w[0].big_seen = seen[0..<1];
+  n := n45_answer(q, t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"error: the store index is out of date\"]";
+  w[0].big_out = slots[..]; w[0].big_seen = seen[0..<1];
+  n = n45_answer(q, t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"error: the store index is out of date\"]";
+  w[0].big_seen = seen[..];
+  n = n45_answer(q, t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"COUNT\",\"q\",{\"count\":2}]" && seen[0] == 1 && seen[1] == 1;
+  // empty: the struct's own slots
+  w[0].big_out = slots[0..<0]; seen[0] = 0;
+  n = n45_answer(q, t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"COUNT\",\"q\",{\"count\":2}]" && seen[0] == 0 && w[0].seen[0] == 1;
 }

@@ -67,7 +67,7 @@ refusal is the exact text the relay sends.
 | Events per filter | 127 (`RS_MAX_LIMIT`) | `rs_limit` | none: the `limit` is clamped |
 | Tags | 256 (`RS_MAX_TAGS`) | `rs_admit_policy` | `OK false` `invalid: event has too many tags` |
 | `created_at` ahead | 900 s (`RS_FUTURE`) | `rs_admit_policy` | `OK false` `invalid: the event's created_at timestamp is too far in the past or the future for this relay` |
-| Stored events | 2,048 records, 4 MiB (`RSD_MAX`, `RSD_ARENA`) | `ns_store_admit` | `OK false` `error: relay storage is full` |
+| Stored events | 2,048 records, 4 MiB (`RSD_MAX`, `RSD_ARENA`), or `--store-capacity` | `ns_store_admit` | `OK false` `error: relay storage is full` |
 | `EVENT`s per connection | 120 a minute | `rt_event` | `OK false` `rate-limited: event rate exceeded` |
 | `EVENT`s per key | 60 a minute | `rt_event` | `OK false` `rate-limited: event rate exceeded for this key` |
 | Keys tracked | 64 with open windows (`RT_KEYS`) | `rt_key_slot` | `OK false` `rate-limited: too many keys are publishing; try again later` |
@@ -300,7 +300,8 @@ pending output, from the code.
 ### Storage
 
 The store has fixed caps: `RSD_MAX` (2,048) records and `RSD_ARENA` (4 MiB)
-of event bytes. Past either, `ns_store_admit` answers `NSS_FULL`, which is
+of event bytes, unless the relay starts with `--store-capacity EVENTS`
+(2 KiB of arena a record, chapter 35). Past either, `ns_store_admit` answers `NSS_FULL`, which is
 the relay's `RS_FULL`: `OK false` `error: relay storage is full`. The
 example uses a store with room for 4 records, so the fifth event is refused.
 The prefix is `error:`, not `rate-limited:`: waiting doesn't help until an

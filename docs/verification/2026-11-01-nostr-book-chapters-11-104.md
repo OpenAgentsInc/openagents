@@ -86,8 +86,14 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
      over `n50_scan`; NIP-11 then lists 50. Searches scan the store; the
      word index is not used (it is rebuilt whole after any write).
    - Still not wired: `nip77`, `nip86`, `nip43`, `nip29`.
-   - The Coax store holds at most 2,048 events, which blocks a cutover of
-     the production data.
+   - The store's size is now `--store-capacity EVENTS` (128 to 1,048,576
+     records, 2 KiB of arena each; default 2,048 and 4 MiB). relay-host.c
+     allocates the arrays and calls `#export_c ry_main`; `relay_route.coax`
+     root-only 451 of 451. `relay_capacity.py`: 3,000 events replay at
+     capacity 13,000 in 77 s (COUNT, REQ, search, a write, a cut partial
+     append); the default store refuses the file unchanged. Not run: 50,000
+     events, since replay's signature checks (~25 ms each) would take
+     ~20 minutes, past the 15-minute limit.
    - Not rerun: the Rust differential (`relay_rust_differential.py`) needs
      the Rust sandbox; its expected COUNT reply and its `supported_nips`
      note are out of date.

@@ -32,7 +32,6 @@
 #load "nip45.coax";
 #load "nip50.coax";
 
-RD_TAGS :: RSD_MAX * RS_MAX_TAGS;
 RD_TOMBS :: 8192;             // tombstones the relay keeps
 RD_WORK :: RS_MAX_TAGS;       // one request's tombstones (one per tag at most)
 
@@ -43,26 +42,15 @@ RdStore :: struct {
   saved: bool;      // --store: every write goes to the file first
   builds: int;      // whole builds, for the checks
 }
-// The relay's storage: the store's arena and records, and the index's
-// arrays (one entry per record, and RD_TAGS tag entries).
-RdSpace :: struct {
-  arena: [RSD_ARENA] u8; recs: [RSD_MAX] RsdRec;
-  by_id: [RSD_MAX] int; by_ak: [RSD_MAX] int; by_time: [RSD_MAX] int;
-  tag_key: [RD_TAGS] int; tag_rec: [RD_TAGS] int;
-  tombs: [RD_TOMBS] NsdTomb; work: [RD_WORK] NsdTomb;
-}
-
-// The caller owns every array (an RdSpace for the relay); none may move
-// afterwards.
+// The caller owns every array (relay-host.c allocates them at
+// --store-capacity's size, with RD_TOMBS tombstones and RD_WORK work
+// slots); none may move afterwards.
 // relay is this relay's URL, for NIP-62.
 rd_init :: (d: [] RdStore, arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, tombs: [] NsdTomb, work: [] NsdTomb, relay: string, saved: bool) {
   d[0].s[0] = RsdStore.{arena = arena, recs = recs};
   d[0].tb[0] = NsdTombs.{t = tombs}; d[0].work = work; d[0].relay = relay;
   d[0].ix[0] = NsiIndex.{by_id = by_id, by_ak = by_ak, by_time = by_time, tag_key = tag_key, tag_rec = tag_rec};
   d[0].saved = saved; d[0].builds = 0;
-}
-rd_init_space :: (d: [] RdStore, sp: [] RdSpace, relay: string, saved: bool) {
-  rd_init(d, sp[0].arena[..], sp[0].recs[..], sp[0].by_id[..], sp[0].by_ak[..], sp[0].by_time[..], sp[0].tag_key[..], sp[0].tag_rec[..], sp[0].tombs[..], sp[0].work[..], relay, saved);
 }
 rd_store :: (d: [] RdStore) -> [] RsdStore { return d[0].s[..]; }
 

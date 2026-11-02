@@ -523,3 +523,28 @@ rr_nip11_pow :: (doc: string, bits: int, out: [] u8) -> int {
   out[k] = '}'; out[k + 1] = '}';
   return k + 2;
 }
+
+// ---- store capacity (chapters 35 and 103) ---------------------------------------
+//
+// --store-capacity EVENTS: the records the store holds (absent: 2,048,
+// chapter 35's size; RR_CAP_MIN to RR_CAP_MAX). The host allocates the
+// store's arrays at that size and the arena at 2 KiB a record (rr_arena):
+// 4 MiB at 2,048, and at RR_CAP_MIN still room for the largest original a
+// store file frames (262,144 bytes). Anything else refuses to start.
+RR_CAP_DEFAULT :: 2048; RR_CAP_MIN :: 128; RR_CAP_MAX :: 1048576; RR_ARENA_PER :: 2048;
+
+#test "the store capacity: absent is 2,048, 128 to 1,048,576 is taken, anything else refuses" {
+  #assert rr_capacity(-1) == 2048 && rr_capacity(128) == 128 && rr_capacity(50000) == 50000 && rr_capacity(1048576) == 1048576;
+  #assert rr_capacity(127) == -1 && rr_capacity(0) == -1 && rr_capacity(1048577) == -1 && rr_capacity(-2) == -1;
+}
+#test "the arena: 2 KiB a record" {
+  #assert rr_arena(2048) == 4194304 && rr_arena(128) == 262144 && rr_arena(50000) == 102400000 && rr_arena(1048576) == 2147483648;
+}
+// --store-capacity's value (-1 when absent): the records, or -1 to refuse.
+rr_capacity :: (flag: int) -> int {
+  if flag == -1 { return RR_CAP_DEFAULT; }
+  if flag < RR_CAP_MIN || flag > RR_CAP_MAX { return -1; }
+  return flag;
+}
+// The arena bytes for a store of events records.
+rr_arena :: (events: int) -> int { return events * RR_ARENA_PER; }

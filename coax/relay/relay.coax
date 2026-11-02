@@ -1,6 +1,8 @@
 // The Coax relay, R1 (relay-server-r1, coax/nostr.md section 17): a ws://
 // Nostr relay for 127.0.0.1 or a tailnet address. relay-host.c parses the
-// flags and runs main on a large stack; socket-server-native.c moves bytes.
+// flags, allocates the store's arrays at the size ry_store_events,
+// ry_store_arena and ry_store_tags give, and runs ry_main on a large stack;
+// socket-server-native.c moves bytes.
 // The chain: socket -> ws_server.coax (RFC 6455 server half) ->
 // message_server.coax (NIP-01 frames) -> relay_server.coax (admission,
 // REQ rules, subscriptions, NIP-11, NIP-40, replacement) -> the store.
@@ -14,7 +16,10 @@
 // from the requests in the --store file. With
 // --store FILE every stored original is appended to FILE and synced before
 // it is stored, and a restart replays FILE, verifying every event again.
-// Without --store the store is in memory only. A crash's partial last write
+// Without --store the store is in memory only. --store-capacity EVENTS
+// sizes the store (relay_route.coax's rr_capacity: 2,048 records and 4 MiB
+// without it, chapter 35's size; 128 to 1,048,576 records at 2 KiB each);
+// a --store file larger than the store refuses to start, unchanged. A crash's partial last write
 // is cut on restart; other damage to FILE stops the relay before it listens
 // (store_recover.coax, #966b). Not trusted freshness: an older copy of FILE
 // replays as an older store. TLS: with --tls-cert and
@@ -390,7 +395,21 @@ ry_rate :: () -> RtConfig {
   if ry_host_rate(0) < 0 { return rt_default(); }
   return RtConfig.{events = ry_host_rate(0), reqs = ry_host_rate(1), key_events = ry_host_rate(2)};
 }
-main :: () {
+#assert RR_CAP_DEFAULT == RSD_MAX && RR_CAP_DEFAULT * RR_ARENA_PER == RSD_ARENA && RR_CAP_MIN * RR_ARENA_PER >= NS_FRAME_MAX_ORIGINAL;
+// The store's records for --store-capacity's value (-1 when absent), or -1
+// after saying why it is refused.
+ry_store_events :: (flag: int) -> int #export_c {
+  n := rr_capacity(flag);
+  if n < 0 { print("relay: --store-capacity takes % to % events\n", RR_CAP_MIN, RR_CAP_MAX); }
+  return n;
+}
+// The store's arena bytes, and its tag-index entries, for events records.
+ry_store_arena :: (events: int) -> int #export_c { return rr_arena(events); }
+ry_store_tags :: (events: int) -> int #export_c { return events * RS_MAX_TAGS; }
+main :: () { print("relay: start the relay with the host that coax/relay/build.sh builds\n"); }
+// The relay, over the store's arrays, which the host allocated zeroed at
+// ry_store_events records (count_out and count_seen: one COUNT's slots).
+ry_main :: (arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, count_out: [] int, count_seen: [] u8) #export_c {
   if cxsrv_listen(ry_host_port()) != 0 { print("relay: cannot listen\n"); return; }
   conns: [RY_CONNS] RyConn;
   w: [1] RyWork;
@@ -398,8 +417,10 @@ main :: () {
   if u < 0 || nip42_init(w[0].n42[..], cast(string) url[0..<u]) != N42_OK {
     print("relay: NIP-42 needs a ws:// (wss:// with TLS) relay URL without brackets: pass --url\n"); return;
   }
-  space: [1] RdSpace;
-  store: [1] RdStore; rd_init_space(store[..], space[..], cast(string) url[0..<u], ry_host_store() == 1);
+  tombs: [RD_TOMBS] NsdTomb; work: [RD_WORK] NsdTomb;
+  store: [1] RdStore;
+  rd_init(store[..], arena, recs, by_id, by_ak, by_time, tag_key, tag_rec, tombs[..], work[..], cast(string) url[0..<u], ry_host_store() == 1);
+  w[0].count[0].big_out = count_out; w[0].count[0].big_seen = count_seen;
   if ry_host_store() == 1 {
     text: [NS_FRAME_MAX_ORIGINAL] u8;
     rp := rd_replay(store[..], cxsrv_now_s(), text[..], w[0].scratch[..]);

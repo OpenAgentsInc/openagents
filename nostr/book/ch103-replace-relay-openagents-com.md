@@ -485,10 +485,17 @@ Nothing in this chapter has run any of them.
 1. The relay modules in the next section that the Rust relay's NIP-11
    document advertises are wired into `coax/relay/relay.coax`, or the
    owner decides which advertised NIPs are dropped (R2).
-2. The Coax store holds the whole export. Today it holds at most 2,048
-   records and 4 MiB (`RSD_MAX`, `RSD_ARENA`); an export larger than that
-   imports as `RI_INCOMPLETE` (`relay_import.coax` checks this), and the
-   cutover can't start.
+2. The Coax store holds the whole export. By default it holds 2,048
+   records and 4 MiB (`RSD_MAX`, `RSD_ARENA`); an export larger than the
+   store imports as `RI_INCOMPLETE` (`relay_import.coax` checks this), and
+   the cutover can't start. Start the relay with `--store-capacity EVENTS`
+   above the export's count (128 to 1,048,576 records, 2 KiB of arena
+   each). [relay_capacity.py](../../coax/tests/nostr/relay_capacity.py)
+   replays a 3,000-event `--store` file at `--store-capacity 13000`
+   (COUNT, REQ, search, a new write and a cut partial append), and shows
+   the default-sized relay refusing it unchanged. Replay re-verifies every
+   signature at about 25 ms an event, so a 50,000-event import would take
+   about 20 minutes to start: that time, not the size, is what's left.
 3. An import command writes the relay's `--store` file: `ri_line` with
    `rsd_admit_saved` in place of `rsd_admit`, so the relay starts from the
    imported events and verifies them all again on its first replay.
@@ -659,7 +666,8 @@ and
   the shadow store missed is named, explains the one answer it changes,
   and is put back.
 - The cutover and the rollback rehearsal are written down and wait for the
-  owner; so do the store's capacity and the R2 wiring they depend on.
+  owner; so does the R2 wiring they depend on. The store's size is
+  `--store-capacity`.
 
 ## Dependencies
 

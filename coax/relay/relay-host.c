@@ -1,8 +1,12 @@
-/* The Coax relay's C host: flags, then the Coax program (relay.coax,
-   compiled with -Dmain=coax_relay_main) on a thread with a 512 MiB stack,
-   since its connection, frame and store buffers are Coax locals.
+/* The Coax relay's C host: flags, then the Coax relay (relay.coax's
+   #export_c ry_main) on a thread with a 512 MiB stack, since its
+   connection and frame buffers are Coax locals. The store's arrays are
+   allocated here, zeroed, at the size relay.coax gives for
+   --store-capacity (ry_store_events, ry_store_arena, ry_store_tags), and
+   lent to ry_main for the life of the process.
      relay --listen 127.0.0.1 --port 7447 [--url ws://name:7447] [--store FILE]
-           [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS]
+           [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem]
+           [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS]
    (port 0 picks a free one). --url is the relay URL NIP-42 AUTH events
    must name; without it the relay uses ws://ADDRESS:PORT, or
    wss://ADDRESS:PORT with TLS. --tls-cert and --tls-key (both, PEM) make
@@ -19,6 +23,7 @@
 #include "socket-server-native.h"
 #include "store-file-native.h"
 #include "tls-native.h"
+#include "relay.h"
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,7 +34,10 @@
 #include <sys/random.h>
 #endif
 
-int coax_relay_main(void);
+static long long capacity = -1;
+static coax_v_u8 arena, count_seen;
+static coax_t_RsdRec *recs; static int64_t events;
+static coax_v_s64 by_id, by_ak, by_time, tag_key, tag_rec, count_out;
 static int64_t port = 7447;
 static const char *address = "127.0.0.1";
 static const char *url = "";
@@ -57,9 +65,11 @@ int64_t ry_host_random(void) {
 
 static void *run(void *arg) {
   (void)arg;
-  coax_relay_main();
+  ry_main(arena, (coax_v_t_RsdRec){recs, events}, by_id, by_ak, by_time, tag_key, tag_rec, count_out, count_seen);
   return NULL;
 }
+/* n zeroed int64 slots, or a view with no data. */
+static coax_v_s64 ints(int64_t n) { return (coax_v_s64){calloc((size_t)n, sizeof(int64_t)), n}; }
 
 static const char *tls_why(int64_t e) {
   if (e == CXTLS_KEY_MODE) return "the --tls-key file must be a regular file owned by this user with mode 0600 or 0400";
@@ -85,11 +95,15 @@ int main(int argc, char **argv) {
       char tail = 0;
       if (sscanf(argv[++i], "%lld%c", &pow_bits, &tail) != 1) { fprintf(stderr, "relay: --pow takes a number of bits\n"); return 2; }
     }
+    else if (!strcmp(argv[i], "--store-capacity") && i + 1 < argc) {
+      char tail = 0;
+      if (sscanf(argv[++i], "%lld%c", &capacity, &tail) != 1) { fprintf(stderr, "relay: --store-capacity takes a number of events\n"); return 2; }
+    }
     else if (!strcmp(argv[i], "--store") && i + 1 < argc) {
       if (cxstore_set_path(argv[++i]) != 0) { fprintf(stderr, "relay: bad --store path\n"); return 2; }
       store = 1;
     }
-    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS]\n"); return 2; }
+    else { fprintf(stderr, "usage: relay [--listen ADDRESS] [--port N] [--url ws://HOST[:PORT][/PATH]] [--store FILE] [--store-capacity EVENTS] [--tls-cert CHAIN.pem --tls-key KEY.pem] [--rate EVENTS,REQS,KEY_EVENTS] [--pow BITS]\n"); return 2; }
   }
   if ((cert == NULL) != (key == NULL)) { fprintf(stderr, "relay: --tls-cert and --tls-key go together\n"); return 2; }
   if (cert != NULL) {
@@ -99,6 +113,17 @@ int main(int argc, char **argv) {
     tls = 1;
   }
   setvbuf(stdout, NULL, _IOLBF, 0);
+  events = ry_store_events(capacity);
+  if (events < 0) return 2;
+  int64_t bytes = ry_store_arena(events), tags = ry_store_tags(events);
+  arena = (coax_v_u8){calloc((size_t)bytes, 1), bytes};
+  recs = calloc((size_t)events, sizeof(coax_t_RsdRec));
+  by_id = ints(events); by_ak = ints(events); by_time = ints(events);
+  tag_key = ints(tags); tag_rec = ints(tags); count_out = ints(events);
+  count_seen = (coax_v_u8){calloc((size_t)events, 1), events};
+  if (!arena.data || !recs || !by_id.data || !by_ak.data || !by_time.data || !tag_key.data || !tag_rec.data || !count_out.data || !count_seen.data) {
+    fprintf(stderr, "relay: cannot allocate a store of %lld events\n", (long long)events); return 1;
+  }
   pthread_attr_t attr;
   pthread_attr_init(&attr);
   pthread_attr_setstacksize(&attr, (size_t)512 << 20);

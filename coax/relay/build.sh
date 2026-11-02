@@ -14,9 +14,11 @@ mkdir -p "$(dirname "$out")"
 work="$(mktemp -d "${TMPDIR:-/tmp}/coax-relay-build.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 "${COAX:-$root/coax/bin/coax}" c "$here/relay.coax" > "$work/relay.c"
+# relay.h: the #export_c entry (ry_main) and the store types the host allocates
+"${COAX:-$root/coax/bin/coax}" header "$here/relay.coax" -o "$work/relay.h"
 cc "${flags[@]}" -Dmain=coax_relay_main -c "$work/relay.c" -o "$work/relay.o"
 # shellcheck disable=SC2086
-cc "${flags[@]}" -Wall -Wextra -Werror $CXTLS_CFLAGS -I"$root/coax/platform" "$here/relay-host.c" "$root/coax/platform/socket-server-native.c" \
+cc "${flags[@]}" -Wall -Wextra -Werror $CXTLS_CFLAGS -I"$root/coax/platform" -I"$work" "$here/relay-host.c" "$root/coax/platform/socket-server-native.c" \
   "$root/coax/platform/store-file-native.c" "$root/coax/platform/tls-native.c" "$root/coax/platform/socket-native.c" \
   "$work/relay.o" $CXTLS_LIBS -lm -lpthread -o "$out"
 echo "built $out"
