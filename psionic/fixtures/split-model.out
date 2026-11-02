@@ -1,0 +1,15 @@
+decoder: vocabulary 6, width 8, 4 heads over 2 key-value heads, 8 FFN columns, 2 layers, context 8; 776 parameters
+1 devices: admitted; each holds 4 heads, 2 key-value heads (shared: false), 8 FFN columns
+  776 weight values + 128 cache values = 7232 bytes a device; one all-reduce 0 bytes, 0 bytes a token
+2 devices: admitted; each holds 2 heads, 1 key-value heads (shared: false), 4 FFN columns
+  456 weight values + 64 cache values = 4160 bytes a device; one all-reduce 128 bytes, 512 bytes a token
+4 devices: admitted; each holds 1 heads, 1 key-value heads (shared: true), 2 FFN columns
+  328 weight values + 64 cache values = 3136 bytes a device; one all-reduce 384 bytes, 1536 bytes a token
+budget 8000 bytes a device: 1 devices, admitted, 7232 bytes
+budget 4200 bytes a device: 2 devices, admitted, 4160 bytes
+budget 3100 bytes a device: 4 devices, refused: a device's weights and cache exceed its budget, 3136 bytes
+chapter 113's forward on tokens 1 3 0 2 5 4: ok, largest gap to the oracle 1.1449174941446927e-16
+  its greedy next tokens: 0 0 0 0 3 0
+1 devices: split admitted, run admitted, 36 logits; equal to one device bit for bit: true; largest gap 0.0 to one device, 1.1449174941446927e-16 to the oracle; greedy tokens agree: true
+2 devices: split admitted, run admitted, 36 logits; equal to one device bit for bit: false; largest gap 2.220446049250313e-16 to one device, 1.6653345369377348e-16 to the oracle; greedy tokens agree: true
+4 devices: split admitted, run admitted, 36 logits; equal to one device bit for bit: false; largest gap 1.1102230246251565e-16 to one device, 1.1449174941446927e-16 to the oracle; greedy tokens agree: true

@@ -1,0 +1,140 @@
+// Chapter 183: split a model across devices (tensor-parallel-v1), the run.
+// The arithmetic of each half of a block on one device, the vocabulary head,
+// and tl_run, which runs every device one after another on this CPU in the
+// order the plan's barriers allow. psionic/tests/tensor_parallel_threads.c
+// runs each device as a POSIX thread with the same functions. The plan, the
+// slices, the admission and the all-reduce's order are
+// psionic/lib/tensor-parallel.coax (#authority).
+#load "tensor-parallel.coax";
+
+// The frozen tolerance for a split whose all-reduce regroups the sums.
+TL_TOLERANCE :: 0.000000000001;
+
+// ---- Checks first. TL_SPLIT, its oracle and the buffers are in psionic/tests/tensor-parallel-checks.coax.
+tlt_run :: (plan:TlPlan,tokens:[]int,logits:[]f64)->TlResult {
+    x:TlBuffers;s:=plan.shape;td_formula(x.p[0..<td_parameter_count(s)]);
+    st:=tl_split(plan,x.p[0..<td_parameter_count(s)],x.shards[..]);if st!=TlStatus.ok {return TlResult.{status=st};}
+    return tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[..],tokens,0,logits);
+}
+#test "one device is chapter 113's forward bit for bit" {
+    x:TlBuffers;oracle:=TP_ORACLE_LOGITS;tiny_oracle:=TD_ORACLE_LOGITS;tokens:=[6]int.[1,3,0,2,5,4];
+    r:=tlt_run(tl_plan(TL_SPLIT,1,100000),tokens[..],x.logits[..]);#assert r.status==TlStatus.ok && r.written==36;
+    td_formula(x.p[..]);w:[2000]f64;ref:[36]f64;#assert td_forward(TL_SPLIT,x.p[..],tokens[..],w[..],ref[..],false).status==TdStatus.ok;
+    #assert tlt_same(x.logits[0..<36],ref[..]) && tlt_gap(x.logits[0..<36],oracle[..])<1e-12;
+    tiny:=[4]int.[1,3,0,2];r=tlt_run(tl_plan(TD_TINY,1,100000),tiny[..],x.logits[..]);#assert r.status==TlStatus.ok && r.written==20 && tlt_gap(x.logits[0..<20],tiny_oracle[..])<1e-12;
+    tp:[204]f64;td_formula(tp[..]);tref:[20]f64;#assert td_forward(TD_TINY,tp[..],tiny[..],w[..],tref[..],false).status==TdStatus.ok && tlt_same(x.logits[0..<20],tref[..]);
+}
+#test "two and four devices match the oracle within the frozen tolerance" {
+    oracle:=TP_ORACLE_LOGITS;tokens:=[6]int.[1,3,0,2,5,4];w:[2000]f64;ref:[36]f64;p:[776]f64;td_formula(p[..]);
+    #assert td_forward(TL_SPLIT,p[..],tokens[..],w[..],ref[..],false).status==TdStatus.ok;
+    for n:[2]int.[2,4] {x:TlBuffers;r:=tlt_run(tl_plan(TL_SPLIT,n,100000),tokens[..],x.logits[..]);#assert r.status==TlStatus.ok && r.written==36;
+        #assert tlt_gap(x.logits[0..<36],ref[..])<TL_TOLERANCE && tlt_gap(x.logits[0..<36],oracle[..])<TL_TOLERANCE;
+        for t:0..<6 {#assert td_argmax(x.logits[6*t..<6*t+6])==td_argmax(ref[6*t..<6*t+6]);}}
+    // The regrouped sums do change bits at 2 devices: the tolerance is needed.
+    x:TlBuffers;r:=tlt_run(tl_plan(TL_SPLIT,2,100000),tokens[..],x.logits[..]);#assert !tlt_same(x.logits[0..<36],ref[..]);
+}
+#test "prefill in one call equals one position at a time, and decode continues it" {
+    tokens:=[6]int.[1,3,0,2,5,4];
+    for n:[3]int.[1,2,4] {x:TlBuffers;#assert tlt_run(tl_plan(TL_SPLIT,n,100000),tokens[..],x.logits[..]).status==TlStatus.ok;
+        y:TlBuffers;td_formula(y.p[..]);plan:=tl_plan(TL_SPLIT,n,100000);#assert tl_split(plan,y.p[..],y.shards[..])==TlStatus.ok;
+        for t:0..<6 {r:=tl_run(plan,y.shards[..],y.works[..],y.partials[..],y.reduced[..],tokens[t..<t+1],t,y.logits[..]);#assert r.status==TlStatus.ok && r.written==6;
+            #assert tlt_same(y.logits[0..<6],x.logits[6*t..<6*t+6]);}
+        // Three positions at once after three, from the same cache.
+        z:TlBuffers;td_formula(z.p[..]);#assert tl_split(plan,z.p[..],z.shards[..])==TlStatus.ok;
+        #assert tl_run(plan,z.shards[..],z.works[..],z.partials[..],z.reduced[..],tokens[0..<3],0,z.logits[..]).written==18;
+        #assert tl_run(plan,z.shards[..],z.works[..],z.partials[..],z.reduced[..],tokens[3..<6],3,z.logits[..]).written==18 && tlt_same(z.logits[0..<18],x.logits[18..<36]);}
+}
+#test "the whole context, and greedy decoding agrees with one device" {
+    p:[776]f64;td_formula(p[..]);w:[2000]f64;one:[6]f64;
+    for n:[3]int.[1,2,4] {x:TlBuffers;td_formula(x.p[..]);plan:=tl_plan(TL_SPLIT,n,100000);#assert tl_split(plan,x.p[..],x.shards[..])==TlStatus.ok;
+        a:=[8]int.[1,0,0,0,0,0,0,0];b:=a;filled:=0;
+        for t:0..<8 {#assert tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[..],a[t..<t+1],t,x.logits[..]).status==TlStatus.ok;
+            r:=td_decode(TL_SPLIT,p[..],w[..],filled,b[t],one[..],false);#assert r.status==TdStatus.ok;filled=r.written;
+            #assert tlt_gap(x.logits[0..<6],one[..])<TL_TOLERANCE && (n>1 || tlt_same(x.logits[0..<6],one[..]));
+            if t<7 {a[t+1]=td_argmax(x.logits[0..<6]);b[t+1]=td_argmax(one[..]);}}
+        for t:0..<8 {#assert a[t]==b[t];}}
+}
+#test "refusals precede every write" {
+    x:TlBuffers;td_formula(x.p[..]);s:=TL_SPLIT;plan:=tl_plan(s,2,100000);tokens:=[6]int.[1,3,0,2,5,4];
+    #assert tl_split(plan,x.p[..],x.shards[..])==TlStatus.ok;
+    for i:0..<48 {x.logits[i]=-7;}for i:0..<4*240 {x.works[i]=-7;}for i:0..<4*64 {x.partials[i]=-7;}for i:0..<64 {x.reduced[i]=-7;}
+    #assert tl_run(tl_plan(s,3,100000),x.shards[..],x.works[..],x.partials[..],x.reduced[..],tokens[..],0,x.logits[..]).status==TlStatus.heads;
+    #assert tl_run(plan,x.shards[0..<911],x.works[..],x.partials[..],x.reduced[..],tokens[..],0,x.logits[..]).status==TlStatus.storage;
+    #assert tl_run(plan,x.shards[..],x.works[0..<303],x.partials[..],x.reduced[..],tokens[..],0,x.logits[..]).status==TlStatus.storage;
+    #assert tl_run(plan,x.shards[..],x.works[..],x.partials[0..<127],x.reduced[..],tokens[..],0,x.logits[..]).status==TlStatus.storage;
+    #assert tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[0..<63],tokens[..],0,x.logits[..]).status==TlStatus.storage;
+    #assert tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[..],tokens[..],0,x.logits[0..<35]).status==TlStatus.storage;
+    #assert tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[..],tokens[0..<0],0,x.logits[..]).status==TlStatus.position;
+    #assert tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[..],tokens[..],3,x.logits[..]).status==TlStatus.position;
+    tokens[4]=6;#assert tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[..],tokens[..],0,x.logits[..]).status==TlStatus.token;tokens[4]=5;
+    for i:0..<48 {#assert x.logits[i]==-7;}for i:0..<4*240 {#assert x.works[i]==-7;}for i:0..<4*64 {#assert x.partials[i]==-7;}for i:0..<64 {#assert x.reduced[i]==-7;}
+    // Exactly the buffers' sizes are admitted.
+    #assert tl_run(plan,x.shards[0..<912],x.works[0..<304],x.partials[0..<128],x.reduced[0..<64],tokens[..],0,x.logits[0..<36]).written==36;
+}
+
+// book:begin halves
+// The attention half of layer l on device d for positions first..<first+n:
+// its heads' queries, keys and values, causal attention over the keys it
+// holds, and its run of Wo's columns. The result is device d's addend of the
+// output, written to its partials. Same arithmetic, in the same order, as
+// chapter 113's td_advance.
+tl_attend :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c {
+    s:=p.shape;w:=s.width;e:=s.head_width;q:=p.heads*e;k:=p.kv_heads*e;group:=s.heads/s.kv_heads;scale:=1/sqrt(f64(e));
+    sh:=shards[d*p.shard..<(d+1)*p.shard];x:=works[d*tl_work_count(p)..<(d+1)*tl_work_count(p)];b:=tl_block(p,l);
+    row:=tl_scratch(p);nm:=row+s.context;qs:=nm+w;cs:=nm;keys:=tl_keys(p,l);values:=tl_values(p,l);
+    for t:first..<first+n {key:=keys+t*k;value:=values+t*k;
+        _:=td_norm(x,t*w,sh,b.norm1,w,x,nm);
+        td_matvec(sh,b.wq,q,w,x,nm,x,qs);td_matvec(sh,b.wk,k,w,x,nm,x,key);td_matvec(sh,b.wv,k,w,x,nm,x,value);
+        td_rope(x,qs,p.heads,e,f64(t));td_rope(x,key,p.kv_heads,e,f64(t));
+        for h:0..<p.heads {g:=(tl_head0(p,d)+h)/group-tl_kv0(p,d);
+            for j:0..<t+1 {score:=0.0;for c:0..<e {score+=x[qs+h*e+c]*x[keys+j*k+g*e+c];}x[row+j]=score*scale;}
+            top:=x[row+td_argmax(x[row..<row+t+1])];
+            total:=0.0;for j:0..<t+1 {x[row+j]=exp(x[row+j]-top);total+=x[row+j];}for j:0..<t+1 {x[row+j]/=total;}
+            for c:0..<e {acc:=0.0;for j:0..<t+1 {acc+=x[row+j]*x[values+j*k+g*e+c];}x[cs+h*e+c]=acc;}}
+        td_matvec(sh,b.wo,w,q,x,cs,partials,(d*s.context+t)*w);}
+}
+// The FFN half: its FFN columns of W1, the squared ReLU, and its run of W2's
+// columns, again as an addend. The ReLU is (z + |z|) / 2, exact, so a column
+// at or below zero adds W2 * 0 * 0, a zero that leaves the sum's bits as
+// chapter 113's skipped term does.
+tl_ffn :: (p:TlPlan,d:int,l:int,shards:[]f64,works:[]f64,first:int,n:int,partials:[]f64) #export_c {
+    s:=p.shape;w:=s.width;
+    sh:=shards[d*p.shard..<(d+1)*p.shard];x:=works[d*tl_work_count(p)..<(d+1)*tl_work_count(p)];b:=tl_block(p,l);
+    nm:=tl_scratch(p);u:=tl_work_count(p)-p.hidden;
+    for t:first..<first+n {_:=td_norm(x,t*w,sh,b.norm2,w,x,nm);td_matvec(sh,b.w1,p.hidden,w,x,nm,x,u);
+        for f:0..<p.hidden {z:=x[u+f];x[u+f]=(z+abs(z))*0.5;}
+        for i:0..<w {acc:=0.0;for f:0..<p.hidden {z:=x[u+f];acc+=sh[b.w2+i*p.hidden+f]*z*z;}partials[(d*s.context+t)*w+i]=acc;}}
+}
+// book:end halves
+// Device d's residual rows start as the tokens' embeddings.
+tl_embed :: (p:TlPlan,d:int,shards:[]f64,works:[]f64,tokens:[]int,first:int) #export_c {
+    w:=p.shape.width;for t:0..<tokens.count {tl_rows(shards,d*p.shard+tokens[t]*w,works,d*tl_work_count(p)+(first+t)*w,w);}
+}
+// Device 0 alone computes the logits: the final norm and the replicated head.
+tl_head :: (p:TlPlan,shards:[]f64,works:[]f64,first:int,n:int,logits:[]f64) #export_c {
+    s:=p.shape;w:=s.width;sh:=shards[0..<p.shard];nm:=tl_scratch(p);
+    for t:first..<first+n {_:=td_norm(works,t*w,sh,tl_final_norm(p),w,works,nm);td_matvec(sh,tl_unembed(p),s.vocab,w,works,nm,logits,(t-first)*s.vocab);}
+}
+TlResult :: struct {status:TlStatus;written:int;}
+// book:begin run
+// Positions first..<first+tokens.count on every device, the earlier ones
+// already in each device's cache. Each layer is the attention half on every
+// device, an all-reduce, the FFN half, an all-reduce. Here the devices run
+// one after another; the threads harness runs the same calls in parallel
+// with a barrier between steps.
+tl_run :: (p:TlPlan,shards:[]f64,works:[]f64,partials:[]f64,reduced:[]f64,tokens:[]int,first:int,logits:[]f64)->TlResult #export_c {
+    status:=tl_admit(p,shards.count,works.count,partials.count,reduced.count,tokens,first,logits.count);if status!=TlStatus.ok {return TlResult.{status=status};}
+    n:=tokens.count;
+    for d:0..<p.devices {tl_embed(p,d,shards,works,tokens,first);}
+    for l:0..<p.shape.layers {
+        for d:0..<p.devices {tl_attend(p,d,l,shards,works,first,n,partials);}
+        for d:0..<p.devices {tl_reduce(p,d,works,first,n,partials,reduced);}
+        for d:0..<p.devices {tl_gather(p,d,works,first,n,reduced);}
+        for d:0..<p.devices {tl_ffn(p,d,l,shards,works,first,n,partials);}
+        for d:0..<p.devices {tl_reduce(p,d,works,first,n,partials,reduced);}
+        for d:0..<p.devices {tl_gather(p,d,works,first,n,reduced);}
+    }
+    tl_head(p,shards,works,first,n,logits);
+    return TlResult.{written=n*p.shape.vocab};
+}
+// book:end run

@@ -1,0 +1,30 @@
+#import "Basic";
+#load "../lib/tensor-parallel-run.coax";
+
+// book:begin example
+// Chapter 183: one decoder split over 1, 2 and 4 logical devices. The plan
+// says what each device holds and what each token sends; the run compares
+// the split's logits with chapter 113's one-device forward and with the
+// independent Python oracle. The devices run one after another on this CPU;
+// psionic/tests/check_tensor_parallel.sh runs them as threads.
+main :: () {
+    s:=TL_SPLIT;
+    print("decoder: vocabulary %, width %, % heads over % key-value heads, % FFN columns, % layers, context %; % parameters\n",
+        s.vocab,s.width,s.heads,s.kv_heads,s.hidden,s.layers,s.context,td_parameter_count(s));
+    for n:[3]int.[1,2,4] {p:=tl_plan(s,n,100000);
+        print("% devices: %; each holds % heads, % key-value heads (shared: %), % FFN columns\n",n,tl_why(p.status),p.heads,p.kv_heads,p.shared,p.hidden);
+        print("  % weight values + % cache values = % bytes a device; one all-reduce % bytes, % bytes a token\n",p.shard,p.cache,p.bytes,p.reduce,p.token);}
+    for budget:[3]int.[8000,4200,3100] {c:=tl_choose(s,4,budget);print("budget % bytes a device: % devices, %, % bytes\n",budget,c.devices,tl_why(c.status),c.bytes);}
+
+    tokens:=[6]int.[1,3,0,2,5,4];p:[776]f64;td_formula(p[..]);w:[2000]f64;ref:[36]f64;oracle:=TP_ORACLE_LOGITS;
+    r:=td_forward(s,p[..],tokens[..],w[..],ref[..],false);
+    print("chapter 113's forward on tokens 1 3 0 2 5 4: %, largest gap to the oracle %\n",r.status,tlt_gap(ref[..],oracle[..]));
+    g:[6]int;for k:0..<6 {g[k]=td_argmax(ref[6*k..<6*k+6]);}print("  its greedy next tokens: % % % % % %\n",g[0],g[1],g[2],g[3],g[4],g[5]);
+    for n:[3]int.[1,2,4] {x:TlBuffers;td_formula(x.p[..]);plan:=tl_plan(s,n,100000);st:=tl_split(plan,x.p[..],x.shards[..]);
+        t:=tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[..],tokens[..],0,x.logits[..]);
+        greedy:=true;for k:0..<6 {if td_argmax(x.logits[6*k..<6*k+6])!=td_argmax(ref[6*k..<6*k+6]) {greedy=false;}}
+        print("% devices: split %, run %, % logits; equal to one device bit for bit: %; largest gap % to one device, % to the oracle; greedy tokens agree: %\n",
+            n,tl_why(st),tl_why(t.status),t.written,tlt_same(x.logits[0..<36],ref[..]),tlt_gap(x.logits[0..<36],ref[..]),tlt_gap(x.logits[0..<36],oracle[..]),greedy);}
+
+}
+// book:end example

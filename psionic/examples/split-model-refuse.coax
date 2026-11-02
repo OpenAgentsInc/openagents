@@ -1,0 +1,30 @@
+#import "Basic";
+#load "../lib/tensor-parallel-run.coax";
+
+// book:begin refuse
+// Chapter 183: splits the plan refuses, and runs the admission refuses. A
+// refused run writes no logits, no cache, no addend and no sum.
+main :: () {
+    s:=TL_SPLIT;
+    print("chapter 113's shape (3 FFN columns) on 2 devices: %\n",tl_why(tl_plan(TD_TINY,2,100000).status));
+    print("4 heads on 3 devices: %\n",tl_why(tl_plan(s,3,100000).status));
+    g:=TdShape.{vocab=6,width=12,heads=6,kv_heads=3,head_width=2,hidden=6,layers=1,context=4};
+    print("6 heads over 3 key-value heads on 2 devices: %\n",tl_why(tl_plan(g,2,100000).status));
+    print("0 devices: %\n",tl_why(tl_plan(s,0,100000).status));
+    m:=tl_plan(s,2,4159);print("2 devices with 4159 bytes each: %, it needs % bytes\n",tl_why(m.status),m.bytes);
+    c:=tl_choose(s,4,3000);print("the fewest of up to 4 devices with 3000 bytes each: %, % devices need % bytes each\n",tl_why(c.status),c.devices,c.bytes);
+
+    x:TlBuffers;td_formula(x.p[..]);plan:=tl_plan(s,2,100000);_:=tl_split(plan,x.p[..],x.shards[..]);tokens:=[6]int.[1,3,0,2,5,4];
+    for i:0..<48 {x.logits[i]=-7;}for i:0..<4*240 {x.works[i]=-7;}for i:0..<4*64 {x.partials[i]=-7;}for i:0..<64 {x.reduced[i]=-7;}
+    r:=tl_run(plan,x.shards[..],x.works[0..<303],x.partials[..],x.reduced[..],tokens[..],0,x.logits[..]);
+    print("work buffers of 303 values for 2 devices of 152: %\n",tl_why(r.status));
+    r=tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[..],tokens[..],3,x.logits[..]);
+    print("6 positions from position 3 in a context of 8: %\n",tl_why(r.status));
+    tokens[4]=6;r=tl_run(plan,x.shards[..],x.works[..],x.partials[..],x.reduced[..],tokens[..],0,x.logits[..]);
+    print("token 6 in a vocabulary of 6: %\n",tl_why(r.status));
+    untouched:=true;
+    for i:0..<48 {if x.logits[i]!=-7 {untouched=false;}}for i:0..<4*240 {if x.works[i]!=-7 {untouched=false;}}
+    for i:0..<4*64 {if x.partials[i]!=-7 {untouched=false;}}for i:0..<64 {if x.reduced[i]!=-7 {untouched=false;}}
+    print("logits, caches, addends and sums unchanged: %\n",untouched);
+}
+// book:end refuse

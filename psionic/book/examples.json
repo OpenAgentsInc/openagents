@@ -1932,6 +1932,26 @@
       ]
     },
     {
+      "source": "psionic/examples/split-model.coax",
+      "chapter": "psionic/book/ch183-split-a-model-across-devices.md",
+      "stdout": "psionic/fixtures/split-model.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/split-model-refuse.coax",
+      "chapter": "psionic/book/ch183-split-a-model-across-devices.md",
+      "stdout": "psionic/fixtures/split-model-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-rollout.coax",
       "chapter": "psionic/book/ch179-ship-without-downtime.md",
       "stdout": "psionic/fixtures/serve-rollout/serve-rollout.out",

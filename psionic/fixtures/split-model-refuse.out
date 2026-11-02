@@ -1,0 +1,10 @@
+chapter 113's shape (3 FFN columns) on 2 devices: refused: the devices do not divide the FFN columns
+4 heads on 3 devices: refused: the devices do not divide the attention heads
+6 heads over 3 key-value heads on 2 devices: refused: a device's heads would read part of a key-value head
+0 devices: refused: from 1 to 8 devices
+2 devices with 4159 bytes each: refused: a device's weights and cache exceed its budget, it needs 4160 bytes
+the fewest of up to 4 devices with 3000 bytes each: refused: a device's weights and cache exceed its budget, 4 devices need 3136 bytes each
+work buffers of 303 values for 2 devices of 152: refused: a buffer is smaller than the plan needs
+6 positions from position 3 in a context of 8: refused: the positions are empty or past the context
+token 6 in a vocabulary of 6: refused: a token is outside the vocabulary
+logits, caches, addends and sums unchanged: true

@@ -14,8 +14,20 @@ TOKENS = [1, 3, 0, 2]
 EPS, THETA = 1e-6, 10000.0
 
 
+def count():
+    return 2 * V * D + L * (2 * D + H * E * D + 2 * K * E * D + D * H * E + 2 * F * D) + D
+
+
+def use_split():
+    """Chapter 183's splittable shape: 4 heads over 2 key-value heads, 8 FFN columns."""
+    global V, D, H, K, E, F, L, TOKENS
+    V, D, H, K, E, F, L = 6, 8, 4, 2, 2, 8, 2
+    TOKENS = [1, 3, 0, 2, 5, 4]
+
+
 def parameters():
-    flat = [0.5 * math.sin(0.7 * i + 0.3) for i in range(204)]
+    n = count()
+    flat = [0.5 * math.sin(0.7 * i + 0.3) for i in range(n)]
     at = 0
 
     def take(rows, cols=None):
@@ -31,7 +43,7 @@ def parameters():
         layers.append(dict(norm1=take(D), wq=take(H * E, D), wk=take(K * E, D), wv=take(K * E, D),
                            wo=take(D, H * E), norm2=take(D), w1=take(F, D), w2=take(D, F)))
     final, unembed = take(D), take(V, D)
-    assert at == 204
+    assert at == n
     return embed, layers, final, unembed
 
 
@@ -93,7 +105,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--coax", action="store_true", help="print the Coax constants")
     parser.add_argument("--header", action="store_true", help="print the native harness goldens")
+    parser.add_argument("--split", action="store_true", help="print chapter 183's Coax constants for its splittable shape")
     args = parser.parse_args()
+    if args.split:
+        use_split()
+        z = logits(TOKENS)
+        flat = [v for row in z for v in row]
+        print("TP_ORACLE_LOGITS :: [%d]f64.[%s];" % (len(flat), ",".join(repr(v) for v in flat)))
+        return
     z = logits(TOKENS)
     flat = [v for row in z for v in row]
     if args.header:

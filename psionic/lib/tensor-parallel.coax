@@ -1,0 +1,275 @@
+// Chapter 183: split a model across devices (tensor-parallel-v1), the plan.
+// Chapter 113's tiny decoder runs on N logical devices the way Megatron-LM
+// splits a transformer: each device holds a contiguous run of attention
+// heads (with the key-value heads they read) and a contiguous run of FFN
+// columns. Wq, Wk, Wv and W1 are split by output rows (column-parallel in
+// chapter 133's terms), Wo and W2 by input columns (row-parallel), so each
+// half of a block ends in a partial sum that one all-reduce turns back into
+// the replicated residual. Norms, the embedding and the vocabulary head are
+// replicated.
+//
+// This file decides which splits are allowed (tl_plan refuses a device count
+// that does not divide the heads, the key-value groups or the FFN columns,
+// and a device whose weights and cache exceed its budget), what each device
+// holds (tl_scatter), which runs are admitted (tl_admit), the order of every
+// addition in the all-reduce (device order, summed by the device that owns
+// the column) and how many bytes it moves (chapter 133's sd_cost). The
+// arithmetic of each half is psionic/lib/tensor-parallel-run.coax.
+#load "transformer/decoder.coax";
+#load "shard.coax";
+#load "../tests/tensor-parallel-checks.coax";  // TL_SPLIT, its oracle logits, the checks' buffers
+#authority;
+
+TlStatus :: enum u8 {ok;shape;devices;heads;groups;hidden;memory;storage;position;token;}
+TL_MAX_DEVICES :: 8;
+
+// ---- Checks first.
+#test "plans by hand" {
+    s:=TL_SPLIT;
+    a:=tl_plan(s,1,7232);#assert a.status==TlStatus.ok && a.devices==1 && a.heads==4 && a.kv_heads==2 && !a.shared && a.hidden==8;
+    #assert a.shard==776 && a.shard==td_parameter_count(s) && a.cache==128 && a.bytes==7232 && a.reduce==0 && a.token==0 && a.work==96;
+    b:=tl_plan(s,2,4160);#assert b.status==TlStatus.ok && b.devices==2 && b.heads==2 && b.kv_heads==1 && !b.shared && b.hidden==4;
+    #assert b.shard==456 && b.cache==64 && b.bytes==4160 && b.reduce==128 && b.token==512 && b.work==88;
+    c:=tl_plan(s,4,3136);#assert c.status==TlStatus.ok && c.heads==1 && c.kv_heads==1 && c.shared && c.hidden==2;
+    #assert c.shard==328 && c.cache==64 && c.bytes==3136 && c.reduce==384 && c.token==1536 && c.work==84;
+    #assert c.shape.vocab==6 && c.shape.hidden==8 && c.shape.context==8;
+    // 8 query heads over 2 key-value heads in one layer: at 2 devices each holds one group whole.
+    w:=TdShape.{vocab=6,width=16,heads=8,kv_heads=2,head_width=2,hidden=8,layers=1,context=4};d:=tl_plan(w,2,100000);
+    #assert d.status==TlStatus.ok && d.heads==4 && d.kv_heads==1 && !d.shared && d.reduce==256 && d.token==512;
+    #assert tl_plan(w,8,100000).status==TlStatus.ok && tl_plan(w,8,100000).shared && tl_plan(w,8,100000).hidden==1 && tl_plan(w,4,100000).heads==2;
+}
+#test "every refusal, and the budget's edge" {
+    s:=TL_SPLIT;
+    #assert tl_plan(s,2,4159).status==TlStatus.memory && tl_plan(s,2,4159).bytes==4160 && tl_plan(s,4,3135).status==TlStatus.memory;
+    #assert tl_plan(s,0,100000).status==TlStatus.devices && tl_plan(s,TL_MAX_DEVICES+1,100000).status==TlStatus.devices && tl_plan(s,-1,100000).devices==-1;
+    #assert tl_plan(s,3,100000).status==TlStatus.heads && tl_plan(s,8,100000).status==TlStatus.heads;
+    // Chapter 113's own shape: 2 heads split, but 3 FFN columns do not.
+    #assert tl_plan(TD_TINY,2,100000).status==TlStatus.hidden && tl_plan(TD_TINY,1,100000).status==TlStatus.ok;
+    // 6 heads over 3 key-value heads at 2 devices: device 0 would need half of head group 1.
+    g:=TdShape.{vocab=6,width=12,heads=6,kv_heads=3,head_width=2,hidden=6,layers=1,context=4};
+    #assert tl_plan(g,2,100000).status==TlStatus.groups && tl_plan(g,3,100000).status==TlStatus.ok && tl_plan(g,6,100000).status==TlStatus.ok;
+    h:=s;h.hidden=6;#assert tl_plan(h,4,100000).status==TlStatus.hidden && tl_plan(h,2,100000).status==TlStatus.ok;
+    bad:=s;bad.width=7;#assert tl_plan(bad,1,100000).status==TlStatus.shape;
+    #assert tl_plan(s,1,100000).status==TlStatus.ok && tl_plan(s,TL_MAX_DEVICES,100000).status==TlStatus.heads;
+    names:=[10]string.["admitted","refused: not a valid decoder shape","refused: from 1 to 8 devices","refused: the devices do not divide the attention heads",
+        "refused: a device's heads would read part of a key-value head","refused: the devices do not divide the FFN columns",
+        "refused: a device's weights and cache exceed its budget","refused: a buffer is smaller than the plan needs",
+        "refused: the positions are empty or past the context","refused: a token is outside the vocabulary"];
+    all:=[10]TlStatus.[TlStatus.ok,TlStatus.shape,TlStatus.devices,TlStatus.heads,TlStatus.groups,TlStatus.hidden,TlStatus.memory,TlStatus.storage,TlStatus.position,TlStatus.token];
+    for k:0..<10 {#assert tl_why(all[k])==names[k];}
+}
+#test "the fewest devices that fit" {
+    s:=TL_SPLIT;
+    #assert tl_choose(s,4,8000).devices==1 && tl_choose(s,4,8000).status==TlStatus.ok && tl_choose(s,1,8000).status==TlStatus.ok;
+    #assert tl_choose(s,4,7231).devices==2 && tl_choose(s,4,4200).status==TlStatus.ok && tl_choose(s,4,4160).devices==2;
+    #assert tl_choose(s,4,4159).devices==4 && tl_choose(s,4,4159).status==TlStatus.ok;
+    // Nothing fits: the refusal at the most devices that divide, with its bytes.
+    x:=tl_choose(s,4,3000);#assert x.status==TlStatus.memory && x.devices==4 && x.bytes==3136;
+    y:=tl_choose(s,3,3000);#assert y.status==TlStatus.memory && y.devices==2;
+    #assert tl_choose(s,1,3000).devices==1 && tl_choose(s,1,3000).status==TlStatus.memory;
+    #assert tl_choose(s,0,8000).status==TlStatus.devices && tl_choose(TD_TINY,4,10).devices==1;
+    bad:=s;bad.width=7;#assert tl_choose(bad,4,8000).status==TlStatus.shape;
+}
+#test "each half of a block ends in one all-reduce, by chapter 133's rules" {
+    // x is replicated; Wq and W1 split by output columns, Wo and W2 by input rows.
+    col:=sd_matmul_rule(sd_replicated(),sd_shard(1));#assert col.status==SdStatus.ok && sd_same(col.layout,sd_shard(1));
+    #assert sd_relu_rule(col.layout).status==SdStatus.ok;
+    row:=sd_matmul_rule(col.layout,sd_shard(0));#assert row.status==SdStatus.ok && row.layout.kind==SdKind.partial;
+    #assert sd_collective(row.layout,sd_replicated())==SdCollective.all_reduce && sd_cost(1,8,2,row.layout,sd_replicated())==tl_plan(TL_SPLIT,2,9999).reduce;
+    // Splitting the norm's input instead would need an all-gather first.
+    #assert sd_collective(sd_shard(1),sd_replicated())==SdCollective.all_gather;
+}
+#test "each device holds only its slice" {
+    x:TlBuffers;td_formula(x.p[..]);s:=TL_SPLIT;plan:=tl_plan(s,2,1000000);#assert tl_split(plan,x.p[..],x.shards[..])==TlStatus.ok;
+    for l:0..<2 {g:=td_block(s,l);b:=tl_block(plan,l);
+    for d:0..<2 {base:=d*plan.shard;
+        // Wq rows of heads 2d and 2d+1; Wk, Wv rows of key-value head d; Wo's columns of those heads.
+        for i:0..<32 {#assert x.shards[base+b.wq+i]==x.p[g.wq+32*d+i];}
+        for i:0..<16 {#assert x.shards[base+b.wk+i]==x.p[g.wk+16*d+i] && x.shards[base+b.wv+i]==x.p[g.wv+16*d+i];}
+        for r:0..<8 {for c:0..<4 {#assert x.shards[base+b.wo+4*r+c]==x.p[g.wo+8*r+4*d+c] && x.shards[base+b.w2+4*r+c]==x.p[g.w2+8*r+4*d+c];}}
+        for i:0..<32 {#assert x.shards[base+b.w1+i]==x.p[g.w1+32*d+i];}
+        for i:0..<8 {#assert x.shards[base+b.norm1+i]==x.p[g.norm1+i] && x.shards[base+b.norm2+i]==x.p[g.norm2+i];}
+        for i:0..<48 {#assert x.shards[base+i]==x.p[i] && x.shards[base+tl_unembed(plan)+i]==x.p[td_unembed(s)+i];}
+        for i:0..<8 {#assert x.shards[base+tl_final_norm(plan)+i]==x.p[td_final_norm(s)+i];}}}
+    #assert tl_block(plan,1).norm1==48+176 && tl_final_norm(plan)==48+352 && tl_unembed(plan)==408 && tl_unembed(plan)+48==plan.shard;
+    // At 4 devices, devices 0 and 1 both hold key-value head 0, 2 and 3 head 1.
+    four:=tl_plan(s,4,1000000);#assert tl_split(four,x.p[..],x.shards[..])==TlStatus.ok;b:=tl_block(four,0);g:=td_block(s,0);
+    #assert tl_unembed(four)+48==four.shard && tl_unembed(tl_plan(s,1,1000000))+48==776 && tl_block(tl_plan(s,1,1000000),1).norm1==48+336;
+    #assert tl_kv0(four,1)==0 && tl_kv0(four,2)==1 && tl_head0(four,3)==3;
+    for d:0..<4 {for i:0..<16 {#assert x.shards[d*four.shard+b.wk+i]==x.p[g.wk+16*(d/2)+i] && x.shards[d*four.shard+b.wv+i]==x.p[g.wv+16*(d/2)+i];}
+        for i:0..<16 {#assert x.shards[d*four.shard+b.wq+i]==x.p[g.wq+16*d+i];}}
+    // The splits refuse before writing a shard.
+    for i:0..<4*776 {x.shards[i]=-7;}
+    #assert tl_split(tl_plan(s,3,1000000),x.p[..],x.shards[..])==TlStatus.heads && tl_split(plan,x.p[0..<775],x.shards[..])==TlStatus.shape;
+    #assert tl_split(plan,x.p[..],x.shards[0..<911])==TlStatus.storage;
+    for i:0..<4*776 {#assert x.shards[i]==-7;}
+    #assert tl_split(plan,x.p[..],x.shards[0..<912])==TlStatus.ok;
+}
+#test "a device's work buffer by hand" {
+    // 2 devices: 8 residual rows of 8, then per layer 8 keys and 8 values of
+    // one key-value head (2 wide), then 8 + 8 + 4 + 4 values of scratch.
+    p:=tl_plan(TL_SPLIT,2,1000000);
+    #assert tl_keys(p,0)==64 && tl_values(p,0)==80 && tl_keys(p,1)==96 && tl_values(p,1)==112 && tl_scratch(p)==128 && tl_work_count(p)==152;
+    a:=tl_plan(TL_SPLIT,1,1000000);#assert tl_values(a,0)==96 && tl_keys(a,1)==128 && tl_scratch(a)==192 && tl_work_count(a)==224;
+}
+#test "the all-reduce by hand: device order, each column summed by its owner" {
+    s:=TL_SPLIT;p:=tl_plan(s,4,1000000);x:TlBuffers;n:=tl_work_count(p);#assert n==148;
+    // Every device's residual row 1 holds i / 8 in column i; everything else 100.
+    for i:0..<4*240 {x.works[i]=100;}for d:0..<4 {for i:0..<8 {x.works[d*n+8+i]=0.125*f64(i);}}for i:0..<64 {x.reduced[i]=-7;}
+    // Row 1 of every device's addend: device e holds e + 1 in every column,
+    // except column 3, which holds 1, 2^53, -2^53, 1.
+    for e:0..<4 {for i:0..<8 {x.partials[(e*8+1)*8+i]=f64(e+1);}}
+    x.partials[8+3]=1;x.partials[72+3]=9007199254740992.0;x.partials[136+3]=-9007199254740992.0;x.partials[200+3]=1;
+    // Device 1 alone owns columns 2 and 3 and writes nothing else.
+    tl_reduce(p,1,x.works[..],1,1,x.partials[..],x.reduced[..]);
+    #assert x.reduced[10]==10.25 && x.reduced[11]==1.375;
+    for i:0..<64 {if i!=10 && i!=11 {#assert x.reduced[i]==-7;}}
+    for d:0..<4 {tl_reduce(p,d,x.works[..],1,1,x.partials[..],x.reduced[..]);}
+    for i:0..<8 {if i!=3 {#assert x.reduced[8+i]==10+0.125*f64(i);}}
+    // 1 + 2^53 rounds back to 2^53, so device order gives 1, not the exact 2.
+    #assert 1+9007199254740992.0==9007199254740992.0;
+    for d:0..<4 {tl_gather(p,d,x.works[..],1,1,x.reduced[..]);}
+    for d:0..<4 {for i:0..<8 {#assert x.works[d*n+8+i]==x.reduced[8+i] && x.works[d*n+i]==100 && x.works[d*n+16+i]==100;}}
+}
+#test "runs admitted, and every refusal" {
+    x:TlBuffers;s:=TL_SPLIT;plan:=tl_plan(s,2,1000000);tokens:=[6]int.[1,3,0,2,5,4];
+    #assert tl_admit(plan,912,304,128,64,tokens[..],0,36)==TlStatus.ok && tl_admit(plan,912,304,128,64,tokens[0..<2],6,12)==TlStatus.ok;
+    #assert tl_admit(tl_plan(s,3,1000000),912,304,128,64,tokens[..],0,36)==TlStatus.heads;
+    #assert tl_admit(plan,911,312,128,64,tokens[..],0,36)==TlStatus.storage && tl_admit(plan,912,303,128,64,tokens[..],0,36)==TlStatus.storage;
+    #assert tl_admit(plan,912,304,127,64,tokens[..],0,36)==TlStatus.storage && tl_admit(plan,912,304,128,63,tokens[..],0,36)==TlStatus.storage;
+    #assert tl_admit(plan,912,304,128,64,tokens[..],0,35)==TlStatus.storage;
+    #assert tl_admit(plan,912,304,128,64,tokens[0..<0],0,36)==TlStatus.position && tl_admit(plan,912,304,128,64,tokens[..],-1,36)==TlStatus.position;
+    #assert tl_admit(plan,912,304,128,64,tokens[..],3,36)==TlStatus.position && tl_admit(plan,912,304,128,64,tokens[..],2,36)==TlStatus.ok;
+    #assert tl_admit(plan,912,304,128,64,tokens[0..<1],7,6)==TlStatus.ok && tl_admit(plan,912,304,128,64,tokens[0..<1],8,6)==TlStatus.position;
+    tokens[4]=6;#assert tl_admit(plan,912,304,128,64,tokens[..],0,36)==TlStatus.token;
+    tokens[4]=-1;#assert tl_admit(plan,912,304,128,64,tokens[..],0,36)==TlStatus.token;tokens[4]=5;
+    tokens[0]=0;tokens[5]=5;#assert tl_admit(plan,912,304,128,64,tokens[..],0,36)==TlStatus.ok;
+}
+
+// book:begin plan
+// What one device holds and what the split moves. heads, kv_heads and hidden
+// are per device; shared is true when several devices hold the same
+// key-value head. shard and cache count values, bytes is 8 a value; work is
+// the device's scratch beyond its cache. reduce is the bytes one all-reduce
+// of one position moves; token is the bytes per token for the whole model.
+TlPlan :: struct {status:TlStatus;shape:TdShape;devices:int;heads:int;kv_heads:int;shared:bool;hidden:int;shard:int;cache:int;bytes:int;work:int;reduce:int;token:int;}
+tl_plan :: (s:TdShape,devices:int,budget:int)->TlPlan #export_c {
+    p:=TlPlan.{shape=s,devices=devices};
+    if !td_valid(s) {p.status=TlStatus.shape;return p;}
+    if devices<1 || devices>TL_MAX_DEVICES {p.status=TlStatus.devices;return p;}
+    if s.heads%devices!=0 {p.status=TlStatus.heads;return p;}
+    // A device's heads must read whole key-value heads: either the key-value
+    // heads split evenly too, or several devices share one.
+    if s.kv_heads%devices!=0 && devices%s.kv_heads!=0 {p.status=TlStatus.groups;return p;}
+    if s.hidden%devices!=0 {p.status=TlStatus.hidden;return p;}
+    p.heads=s.heads/devices;p.shared=devices>s.kv_heads;p.kv_heads=1;if !p.shared {p.kv_heads=s.kv_heads/devices;}p.hidden=s.hidden/devices;
+    d:=s.width;q:=p.heads*s.head_width;k:=p.kv_heads*s.head_width;
+    p.shard=2*s.vocab*d+d+s.layers*(2*d+q*d+2*k*d+d*q+2*p.hidden*d);
+    p.cache=s.layers*s.context*2*k;p.bytes=8*(p.shard+p.cache);
+    p.work=s.context*d+d+q+s.context+p.hidden;
+    p.reduce=sd_cost(1,d,devices,sd_partial(),sd_replicated());p.token=2*s.layers*p.reduce;
+    if p.bytes>budget {p.status=TlStatus.memory;}
+    return p;
+}
+// The fewest devices, up to `most`, whose split is allowed and fits the
+// budget. When none fits, the memory refusal at the most devices that divide.
+tl_choose :: (s:TdShape,most:int,budget:int)->TlPlan #export_c {
+    best:=tl_plan(s,1,budget);
+    if most<1 {best.status=TlStatus.devices;}
+    for n:2..<most+1 {
+        if best.status!=TlStatus.memory {return best;}
+        p:=tl_plan(s,n,budget);if p.status==TlStatus.ok || p.status==TlStatus.memory {best=p;}
+    }
+    return best;
+}
+// book:end plan
+tl_why :: (s:TlStatus)->string {
+    if s==TlStatus.ok {return "admitted";}
+    if s==TlStatus.shape {return "refused: not a valid decoder shape";}
+    if s==TlStatus.devices {return "refused: from 1 to 8 devices";}
+    if s==TlStatus.heads {return "refused: the devices do not divide the attention heads";}
+    if s==TlStatus.groups {return "refused: a device's heads would read part of a key-value head";}
+    if s==TlStatus.hidden {return "refused: the devices do not divide the FFN columns";}
+    if s==TlStatus.memory {return "refused: a device's weights and cache exceed its budget";}
+    if s==TlStatus.storage {return "refused: a buffer is smaller than the plan needs";}
+    if s==TlStatus.position {return "refused: the positions are empty or past the context";}
+    return "refused: a token is outside the vocabulary";
+}
+
+// book:begin scatter
+// Where each piece sits in one device's shard: the embedding, every block's
+// norms and its slices of the projections, the final norm and the head.
+tl_block :: (p:TlPlan,layer:int)->TdBlock {
+    s:=p.shape;d:=s.width;q:=p.heads*s.head_width;k:=p.kv_heads*s.head_width;b:TdBlock;
+    b.norm1=s.vocab*d+layer*(2*d+q*d+2*k*d+d*q+2*p.hidden*d);
+    b.wq=b.norm1+d;b.wk=b.wq+q*d;b.wv=b.wk+k*d;b.wo=b.wv+k*d;b.norm2=b.wo+d*q;b.w1=b.norm2+d;b.w2=b.w1+p.hidden*d;return b;
+}
+tl_final_norm :: (p:TlPlan)->int {return tl_block(p,p.shape.layers).norm1;}
+tl_unembed :: (p:TlPlan)->int {return tl_final_norm(p)+p.shape.width;}
+// Device d's first query head and first key-value head.
+tl_head0 :: (p:TlPlan,d:int)->int {return d*p.heads;}
+tl_kv0 :: (p:TlPlan,d:int)->int {return tl_head0(p,d)/(p.shape.heads/p.shape.kv_heads);}
+tl_rows :: (from:[]f64,at:int,to:[]f64,dest:int,n:int) {for i:0..<n {to[dest+i]=from[at+i];}}
+// Copies device d's slice of the full parameters into its shard. Wq, Wk, Wv
+// and W1 are row-major with one row per output, so a device's rows are one
+// run; Wo and W2 take a run of columns from every row.
+tl_scatter :: (p:TlPlan,d:int,params:[]f64,shard:[]f64) #export_c {
+    s:=p.shape;w:=s.width;e:=s.head_width;q:=p.heads*e;k:=p.kv_heads*e;base:=d*p.shard;
+    tl_rows(params,0,shard,base,s.vocab*w);
+    for l:0..<s.layers {g:=td_block(s,l);b:=tl_block(p,l);
+        for r:0..<w {tl_rows(params,g.wo+r*s.heads*e+tl_head0(p,d)*e,shard,base+b.wo+r*q,q);
+            tl_rows(params,g.w2+r*s.hidden+d*p.hidden,shard,base+b.w2+r*p.hidden,p.hidden);}
+        tl_rows(params,g.w1+d*p.hidden*w,shard,base+b.w1,p.hidden*w);
+        tl_rows(params,g.wv+tl_kv0(p,d)*e*w,shard,base+b.wv,k*w);tl_rows(params,g.wk+tl_kv0(p,d)*e*w,shard,base+b.wk,k*w);
+        tl_rows(params,g.wq+tl_head0(p,d)*e*w,shard,base+b.wq,q*w);
+        tl_rows(params,g.norm2,shard,base+b.norm2,w);tl_rows(params,g.norm1,shard,base+b.norm1,w);}
+    tl_rows(params,td_unembed(s),shard,base+tl_unembed(p),s.vocab*w);tl_rows(params,td_final_norm(s),shard,base+tl_final_norm(p),w);
+}
+// book:end scatter
+// Every device's shard, after checking the plan and the buffers.
+tl_split :: (p:TlPlan,params:[]f64,shards:[]f64)->TlStatus #export_c {
+    if p.status!=TlStatus.ok {return p.status;}
+    if params.count!=td_parameter_count(p.shape) {return TlStatus.shape;}
+    if shards.count<p.devices*p.shard {return TlStatus.storage;}
+    for d:0..<p.devices {tl_scatter(p,d,params,shards);}
+    return TlStatus.ok;
+}
+
+// A device's work buffer: the replicated residual (context rows of width),
+// each layer's keys and values for its key-value heads, then scratch: one
+// row of attention probabilities, the normed row (which the attention
+// context reuses once the projections have read it), its queries, and last
+// its FFN columns.
+tl_keys :: (p:TlPlan,l:int)->int {s:=p.shape;return s.context*s.width+l*2*s.context*p.kv_heads*s.head_width;}
+tl_values :: (p:TlPlan,l:int)->int {return tl_keys(p,l)+p.shape.context*p.kv_heads*p.shape.head_width;}
+tl_scratch :: (p:TlPlan)->int {return tl_keys(p,p.shape.layers);}
+tl_work_count :: (p:TlPlan)->int {return p.cache+p.work;}
+
+// book:begin reduce
+// The all-reduce, as a reduce-scatter and an all-gather. Device d owns
+// columns sd_first(width, N, d) up to sd_first(width, N, d + 1): it adds
+// every device's addend for them in device order, then its own residual,
+// and writes the sums to the shared row. Then every device copies the whole
+// row into its residual. Every column is summed once, in one order, so the
+// bits do not depend on which device finishes first.
+tl_reduce :: (p:TlPlan,d:int,works:[]f64,first:int,n:int,partials:[]f64,reduced:[]f64) #export_c {
+    s:=p.shape;w:=s.width;x:=d*tl_work_count(p);
+    for t:first..<first+n {for i:sd_first(w,p.devices,d)..<sd_first(w,p.devices,d+1) {v:=partials[t*w+i];
+        for e:1..<p.devices {v+=partials[(e*s.context+t)*w+i];}reduced[t*w+i]=v+works[x+t*w+i];}}
+}
+tl_gather :: (p:TlPlan,d:int,works:[]f64,first:int,n:int,reduced:[]f64) #export_c {
+    w:=p.shape.width;for t:first..<first+n {tl_rows(reduced,t*w,works,d*tl_work_count(p)+t*w,w);}
+}
+// book:end reduce
+// What a run needs, checked before anything is written: an admitted plan,
+// buffers of at least the plan's sizes (counted in values), positions inside
+// the context and tokens inside the vocabulary.
+tl_admit :: (p:TlPlan,shards:int,works:int,partials:int,reduced:int,tokens:[]int,first:int,logits:int)->TlStatus #export_c {
+    if p.status!=TlStatus.ok {return p.status;}
+    s:=p.shape;
+    if shards<p.devices*p.shard || works<p.devices*tl_work_count(p) || partials<p.devices*s.context*s.width || reduced<s.context*s.width {return TlStatus.storage;}
+    if logits<tokens.count*s.vocab {return TlStatus.storage;}
+    if tokens.count<1 || first<0 || first+tokens.count>s.context {return TlStatus.position;}
+    for x:tokens {if x<0 || x>=s.vocab {return TlStatus.token;}}
+    return TlStatus.ok;
+}
