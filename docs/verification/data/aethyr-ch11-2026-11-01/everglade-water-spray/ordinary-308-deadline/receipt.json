@@ -1,0 +1,12 @@
+{
+  "status": "stopped_at_810_second_deadline",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "files": {
+    "everglade.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "phase-sample.log": "2bb6a2b7d9ee63fef1a101234f60936433657bba599b2961017288fd7e79ce90",
+    "everglade.json": "00e6911dd8cf9eb3dbcf344e832cfb56fae7d2c609c52fef3432e15f9e2e25fe",
+    "driver.py": "1a80f357aa6909fe8a109b10d13488b5c4dbb0b160a7119e565a6bb5d0936e18",
+    "phase-sample.txt": "167ad2cddfabe7cadabaac23e1edf4b27d690921121e7a48e56fd040316c6b9e"
+  },
+  "scope": "Ordinary changed-source build did not finish, and the owned process group was terminated. The compiler phase sample identifies check evaluation. This is a retained failed attempt, not a build or image qualification."
+}

@@ -51,8 +51,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 13 implemented chapters (1–10 and 65–67), three partly implemented
-chapters (16, 52 and 54), and 70 design drafts. An implemented chapter is
+There are 13 implemented chapters (1–10 and 65–67), five partly implemented
+chapters (11, 15, 16, 52 and 54), and 68 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -169,7 +169,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [11. The WGSL renderer](ch011-the-wgsl-renderer.md) | Unimplemented: design draft | Shared admitted frame/pass/binding plans and a complete CPU reference for supported shader profiles, built on the existing Coax-generated WGSL and native Vulkan port while preserving its draw ABI and parity evidence. |
+| [11. The WGSL renderer](ch011-the-wgsl-renderer.md) | Partly implemented: shared admission and bounded CPU reference | Checked frame, geometry, pass and binding admission, shared host effects and a bounded CPU graph executor. Full image acceptance and final host integration remain in progress; recorded failures and source epochs stay explicit. |
 | [12. Materials](ch012-materials.md) | Unimplemented: design draft | One typed material record and style table built from `verse/style.coax`, its presets and `look.coax` outlines; missing texture layers are refused at load, and the painterly goldens stay unchanged. |
 | [13. Light and shadow](ch013-light-and-shadow.md) | Unimplemented: design draft | One lighting record per frame: key light from the clock, hemisphere ambient, a texel-snapped shadow map that doesn't shimmer, height fog, tone mapping and bounded local lights. |
 | [14. Figures and animation](ch014-figures-and-animation.md) | Unimplemented: design draft | The Grid's cast, skinned rigs and rounded-bone figures share one pose pipeline: fades blend each joint locally, gaits advance by distance, motions that break joint limits are refused, and bone lengths stay constant. |

@@ -1,0 +1,68 @@
+{
+  "schema": "aethyr.grid.merged512-check-budget.v1",
+  "status": "passed-calibration-and-final-ordinary-build",
+  "source": "apps/openagents-web/newland-network.coax",
+  "line": 37,
+  "check": "a project with as many rows as the live fold hands up is ready, one more is refused",
+  "old_steps": 70000000,
+  "new_steps": 100000000,
+  "measured_steps": 77453931,
+  "minimum_125percent_steps": 96817414,
+  "rounding": "round up to 10 million",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "compiler_source_identity": "Qualified B3/1fac source and provenance remain independent of newer main. No source-match claim.",
+  "case_scope": "One complete #test containing both512-row acceptance and513-row refusal scenarios; this is not a forall aggregate.",
+  "body_and_line_count_unchanged": true,
+  "temporary_400m_removed": true,
+  "final_source_sha256": "802261c672090ce5998516a55293d31d2b0eabca50b88b5b08a9e91b2ffa55d7",
+  "source_changes_during_measurement": [],
+  "budget_precedence": "Authored #steps overrides CLI --steps; the CLI400M attempt therefore correctly remained inconclusive at70M. Temporary authored400M enabled measurement; final100M has25percent measured headroom. No default/compiler/authority change.",
+  "final_build": "docs/verification/data/aethyr-ch11-2026-11-01/merged-grid-512/ordinary-build.json",
+  "files": {
+    "authored-400m-measurement/execution.log": {
+      "sha256": "aefab621be0be530e8729114d0a8cbe287f88f428c1a5ba3b474f1a52b1bfb16",
+      "bytes": 1180
+    },
+    "authored-400m-measurement/measurement.evidence.json": {
+      "sha256": "33cbd6b1244c16dddc812981d11941f56f349635d45a8c7b57e27abf33089296",
+      "bytes": 32270
+    },
+    "authored-400m-measurement/qualification.json": {
+      "sha256": "533636f0ba97e5c0e22fcb5e6b28e1910b383a5dff85485f64774f3228b22c98",
+      "bytes": 4444
+    },
+    "authored-400m-measurement/source-before-70m.coax": {
+      "sha256": "acc79e078f6453cdd5a6bea81a88cb15ebf384c40616e58801913681fa39f71c",
+      "bytes": 35219
+    },
+    "authored-400m-measurement/source-measured-400m.coax": {
+      "sha256": "8aec35158ccf722e62501551a65cd2449f748e00aadeaaf2a3a5d56bf055600d",
+      "bytes": 35220
+    },
+    "cli-400m-still-authored70/execution.log": {
+      "sha256": "36e47089635bfbf388134198a27ffa930a45e5dfce70a98afcdd8207cbaab525",
+      "bytes": 1545
+    },
+    "cli-400m-still-authored70/measurement.evidence.json": {
+      "sha256": "4cfd4533e9544edd73c2d761c8cd3d11c79df281145764701bd703eb7ef57ef2",
+      "bytes": 32337
+    },
+    "cli-400m-still-authored70/qualification.json": {
+      "sha256": "075e253bcef7ddca595f986019123b5c6bf7d17b0749277136fc375dd0c1e219",
+      "bytes": 4309
+    },
+    "original-default-refusal/execution.log": {
+      "sha256": "77a9094f058d46f0b7a3828ef94f153b77aa490a10d96a0ab66322dda5b7a831",
+      "bytes": 344
+    },
+    "original-default-refusal/qualification.json": {
+      "sha256": "eac63e865c4c238afd19403d897caa07e97f2691ae163a368334855b178e717a",
+      "bytes": 24003
+    },
+    "source-final-100m.coax": {
+      "sha256": "802261c672090ce5998516a55293d31d2b0eabca50b88b5b08a9e91b2ffa55d7",
+      "bytes": 35220
+    }
+  },
+  "final_build_sha256": "2d60e2480cd17ef57b1f56b4f81963442d69341dd695df79344d80a6dc879af7"
+}

@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-book-main/psionic/tests/book.py", line 252, in <module>
+    main()
+    ~~~~^^
+  File "/Users/christopherdavid/work/openagents-aethyr-book-main/psionic/tests/book.py", line 246, in main
+    examples = check(args.book)
+  File "/Users/christopherdavid/work/openagents-aethyr-book-main/psionic/tests/book.py", line 70, in check
+    assert not errors, f"chapter registry ({book}/chapters.json): " + "; ".join(errors)
+           ^^^^^^^^^^
+AssertionError: chapter registry (aethyr/book/chapters.json): ch011-the-wgsl-renderer.md: registry status is design draft; line 3 must start with > **Status: unimplemented — design draft.**; ch011-the-wgsl-renderer.md: registry source lacks listed files ['aethyr/examples/admit-a-frame.coax']; aethyr/book/chapters.json: chapter 11 source lacks its example aethyr/examples/admit-a-frame.coax

@@ -1,6 +1,7 @@
 # 11. The WGSL renderer
 
-> **Status: unimplemented — implementation and qualification in progress.**
+> **Status: partly implemented.** Shared admission and the bounded CPU
+> reference exist. Host and image qualification remains in progress.
 > The shared Coax frame, binding, pass and resource modules now exist. Their
 > checks and the new CPU reference are being qualified with the actual realm
 > producers and both GPU hosts. This chapter is not yet a claim that every
@@ -151,6 +152,9 @@ reads indices `[0, 2, 1]`; the second uses the nonindexed flag. Changing the
 last index to 3 refuses the first draw. Changing the later draw's first
 vertex to 1 makes its range `[1, 4)`, outside `[0, 3)`. Both failures leave
 the frame's admitted count at zero.
+
+The [runnable example](../examples/admit-a-frame.coax) prints both refusals
+and the admitted pass plan.
 
 <!-- source: aethyr/examples/admit-a-frame.coax example -->
 ```jai

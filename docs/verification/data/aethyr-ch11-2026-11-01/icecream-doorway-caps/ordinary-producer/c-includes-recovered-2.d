@@ -1,0 +1,26 @@
+icecream-face.o: \
+  /Users/christopherdavid/work/openagents-aethyr-book-main/apps/openagents-web/icecream-face.c \
+  /private/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/admitted/icecream.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/stddef.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/__stddef_header_macro.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/__stddef_ptrdiff_t.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/__stddef_size_t.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/__stddef_wchar_t.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/__stddef_null.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/__stddef_max_align_t.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/__stddef_offsetof.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/stdint.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/stdint.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/bits/alltypes.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/wasi/version.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/__struct_timeval.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/__typedef_suseconds_t.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/__typedef_time_t.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/__struct_timespec.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/__struct_iovec.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/bits/stdint.h \
+  /private/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/admitted/Scene.h \
+  /Users/christopherdavid/work/openagents-aethyr-book-main/apps/openagents-web/analytics-face.h \
+  /Users/christopherdavid/work/openagents-aethyr-book-main/apps/openagents-web/edit-face.h \
+  /opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes/include/stdbool.h \
+  /opt/homebrew/opt/wasi-libc/share/wasi-sysroot/include/wasm32-wasip1/stdbool.h

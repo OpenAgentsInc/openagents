@@ -1,0 +1,721 @@
+// Command/fetch domains derived from the renderer's declared encodings and
+// initialized typed payloads. The caller admits source spans before borrowing
+// these views; no GPU effects or output writes occur on refusal.
+#module "aethyr.render.geometry";
+#load "catalog.coax";
+#load "frame.coax";
+#authority;
+
+RENDER_GEOMETRY_DRAWS :: 4096;
+RENDER_GEOMETRY_WORK :: 16777216;
+RenderGeometryBuffer :: struct { binding_set:int; resource:int; words:[]u32; }
+RenderGeometryStatus :: enum u8 { ok; bad_profile; bad_counts; bad_uniforms; bad_resources; bad_draw; capacity; work_budget; }
+RenderGeometryResult :: struct {
+  status:RenderGeometryStatus=RenderGeometryStatus.bad_profile;
+  bad_draw:int=-1; bad_resource:int=-1; work:int; direct:RenderDirectDomains;
+}
+
+#test "render geometry derives stored vertex records and object rows rather than trusting counts" {
+  u:[256]f32;v:[24]u32;o:[32]u32;rg_local_lights:[8]u32;rg_hud_payload:[32]f32;
+  b:=[3]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=v[..]},RenderGeometryBuffer.{resource=2,words=o[..]},RenderGeometryBuffer.{resource=3,words=rg_local_lights[..]}];
+  rg_local_words:=[4]u32.[0,2,0x80000000,2];indices:[1]u32;domains:[1]RenderDrawDomain;
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
+  q:=render_geometry_admit(0,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.ok && q.direct.hud_vertices==2;
+  #assert domains[0].vertices==2 && domains[0].instances==2 && domains[0].indices==0;
+}
+#test "render geometry ground and object partitions have distinct vertex domains" {
+  u:[328]f32;u[32]=1;h:[4]u32;o:[16]u32;o[15]=f32_bits(1.0f32);rg_hud_payload:[16]f32;indices:[1]u32;
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=h[..]},RenderGeometryBuffer.{resource=2,words=o[..]}];
+  rg_local_words:=[8]u32.[0,6,0x80000000,1,0,36,0x80000001,1];domains:[2]RenderDrawDomain;
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=2};
+  q:=render_geometry_admit(16,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.ok && domains[0].vertices==6 && domains[0].instance_begin==0 && domains[0].instances==1;
+  #assert domains[1].vertices==36 && domains[1].instance_begin==1 && domains[1].instances==2;
+}
+#test "render geometry refuses a bad second record without publishing the first" {
+  u:[328]f32;u[32]=1;h:[4]u32;o:[16]u32;rg_hud_payload:[16]f32;indices:[1]u32;
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=h[..]},RenderGeometryBuffer.{resource=2,words=o[..]}];
+  rg_local_words:=[8]u32.[0,6,0x80000000,1,0,36,0x80000040,1];domains:[2]RenderDrawDomain;domains[0].vertices=99;domains[1].vertices=77;
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=2};
+  q:=render_geometry_admit(16,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.bad_draw && q.bad_draw==1 && domains[0].vertices==99 && domains[1].vertices==77;
+}
+#test "render geometry retains the sparse Myrealm round vertex interval" {
+  u:[452]f32;v:[24]u32;o:[16]u32;rg_hud_payload:[16]f32;indices:[1]u32;
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=v[..]},RenderGeometryBuffer.{resource=2,words=o[..]}];
+  rg_local_words:=[4]u32.[16777216,504,0x80000000,1];domains:[1]RenderDrawDomain;
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
+  q:=render_geometry_admit(10,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.ok && domains[0].vertices==2 && domains[0].vertex_alt_begin==16777216 && domains[0].vertex_alt_end==16777720;
+  rg_local_words[0]=2;rg_local_words[1]=1;
+  q=render_geometry_admit(10,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.bad_draw;
+}
+#test "render geometry decodes Icecream terrain chunks and object outline prefixes" {
+  u:[764]f32;v:[12240]u32;o:[24]u32;rg_hud_payload:[16]f32;indices:[1]u32;o[20]=f32_bits(1.0f32);
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=v[..]},RenderGeometryBuffer.{resource=2,words=o[..]}];
+  rg_local_words:=[8]u32.[0,1020,0x80000000,2,0,1020,0x80c00000,1];domains:[2]RenderDrawDomain;
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=2};
+  q:=render_geometry_admit(12,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.ok && domains[0].vertices==1020 && domains[0].instances==2;
+  #assert domains[1].instance_begin==12582912 && domains[1].instances==12582913;
+  rg_local_words[6]=0x80c00400;
+  q=render_geometry_admit(12,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.bad_draw;
+}
+#test "render geometry checks every packed skin joint against the initialized pose" {
+  u:[2300]f32;u[32]=1;h:[4]u32;v:[8]u32;o:[16]u32;o[15]=f32_bits(6.0f32);p:[12]u32;rg_hud_payload:[16]f32;indices:[1]u32;
+  b:=[4]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=v[..]},RenderGeometryBuffer.{resource=2,words=h[..]},RenderGeometryBuffer.{resource=3,words=o[..]},RenderGeometryBuffer.{resource=4,words=p[..]}];
+  rg_local_words:=[4]u32.[0,1,0x80000001,1];domains:[1]RenderDrawDomain;c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
+  good:=render_geometry_admit(2,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert good.status==RenderGeometryStatus.ok && domains[0].vertices==1;
+  v[6]=1;domains[0].vertices=99;
+  bad:=render_geometry_admit(2,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert bad.status==RenderGeometryStatus.bad_resources && domains[0].vertices==99;
+}
+#test "render geometry rectangular Fairy ground includes both additional path planes" {
+  u:[796]f32;u[32]=1;u[238]=2;u[239]=6;h:[18]u32;rg_hud_payload:[16]f32;indices:[1]u32;
+  b:=[1]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=h[..]}];
+  rg_local_words:=[4]u32.[0,6,0x80000000,2];domains:[1]RenderDrawDomain;c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
+  q:=render_geometry_admit(3,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.ok && domains[0].instances==2;
+  b[0].words=h[0..<17];q=render_geometry_admit(3,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.bad_resources;
+}
+#test "render geometry derives river grid vertices and all Everglade water piece classes" {
+  u:[2300]f32;u[32]=1;u[1072]=2;u[1073]=2;u[1074]=2;u[1075]=3;u[1076]=1;u[1077]=1;
+  h:[4]u32;nodes:[32]u32;rg_hud_payload:[16]f32;indices:[1]u32;
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=h[..]},RenderGeometryBuffer.{resource=5,words=nodes[..]}];
+  rg_local_words:=[4]u32.[0,36,0x80000000,1];domains:[1]RenderDrawDomain;c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1,water_draws=1};
+  q:=render_geometry_admit(2,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.ok && domains[0].vertices==36 && domains[0].instances==77;
+  b[1].words=nodes[0..<31];q=render_geometry_admit(2,c,rg_local_words[..],indices[0..<0],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.bad_resources;
+}
+#test "render geometry derives Waterlab clipmap and uniform-only fixture direct capacities" {
+  u:[15748]f32;u[44]=32;u[45]=2;u[50]=0.5;u[54]=1;
+  rg_hud_payload:[32]f32;none:[]u32;buffers:[]RenderGeometryBuffer;domains:[]RenderDrawDomain;
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16,surface_vertices=10752};
+  q:=render_geometry_admit(8,c,none,none,u[..],buffers,rg_hud_payload[..],domains,64);
+  #assert q.status==RenderGeometryStatus.ok && q.direct.surface_vertices==10752 && q.direct.hud_vertices==2;
+  u[44]=63;q=render_geometry_admit(8,c,none,none,u[..],buffers,rg_hud_payload[..],domains,64);
+  #assert q.status==RenderGeometryStatus.bad_uniforms;
+  u[244]=1;u[245]=1;c.surface_vertices=0;c.grass_instances=1;
+  q=render_geometry_admit(7,c,none,none,u[0..<284],buffers,rg_hud_payload[..],domains,64);
+  #assert q.status==RenderGeometryStatus.ok && q.direct.grass_instances==4 && q.direct.caster_vertices==1872 && q.direct.caster_instances==8;
+}
+#forall "render geometry accepts empty frames for all catalog profiles" profile:0..<18 {
+  meta:=render_catalog(profile);u:[15748]f32;rg_hud_payload:[32]f32;rg_local_words:[]u32;buffers:[]RenderGeometryBuffer;domains:[]RenderDrawDomain;
+  q:=render_geometry_admit(profile,FrameCounts.{width=1,height=1,vertex_stride=meta.vertex_stride},rg_local_words,rg_local_words,u[..],buffers,rg_hud_payload[..],domains,1);
+  #assert q.status==RenderGeometryStatus.ok && q.direct.hud_vertices==u64(32/meta.vertex_stride);
+}
+#forall "render geometry procedural shape limits follow each realm's actual encoding" realm:0..<4, kind:0..<8 {
+  profiles:=[4]int.[16,13,3,2];
+  limits:=[4][8]u64.[[8]u64.[96,36,960,192,96,96,96,96],[8]u64.[48,36,240,96,48,240,48,48],[8]u64.[96,36,960,192,96,96,96,96],[8]u64.[96,36,960,192,96,2,3,1008]];
+  u:[2300]f32;u[32]=1;u[168]=1;u[238]=1;u[239]=4;h:[12]u32;o:[16]u32;o[15]=f32_bits(f32(kind));v:[24]u32;p:[12]u32;rg_hud_payload:[16]f32;indices:[]u32;
+  b:[4]RenderGeometryBuffer;b[0]=RenderGeometryBuffer.{resource=1,words=h[..]};b[1]=RenderGeometryBuffer.{resource=2,words=o[..]};nb:=2;
+  if realm==3 {nb=4;b[0]=RenderGeometryBuffer.{resource=1,words=v[..]};b[1]=RenderGeometryBuffer.{resource=2,words=h[..]};b[2]=RenderGeometryBuffer.{resource=3,words=o[..]};b[3]=RenderGeometryBuffer.{resource=4,words=p[..]};}
+  rg_local_words:=[4]u32.[0,1,0x80000001,1];domains:[1]RenderDrawDomain;
+  q:=render_geometry_admit(profiles[realm],FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1},rg_local_words[..],indices,u[..],b[0..<nb],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.ok && domains[0].vertices==limits[realm][kind];
+}
+#test "render geometry indexed domains retain initialized index length and actual index values" {
+  u:[172]f32;v:[24]u32;o:[16]u32;rg_hud_payload:[16]f32;
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=v[..]},RenderGeometryBuffer.{resource=2,words=o[..]}];
+  rg_local_words:=[4]u32.[0,1,0,1];indices:=[1]u32.[1];domains:[1]RenderDrawDomain;c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
+  q:=render_geometry_admit(9,c,rg_local_words[..],indices[..],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.ok && domains[0].indices==1;
+  indices[0]=2;domains[0].vertices=99;q=render_geometry_admit(9,c,rg_local_words[..],indices[..],u[..],b[..],rg_hud_payload[..],domains[..],64);
+  #assert q.status==RenderGeometryStatus.bad_draw && domains[0].vertices==99;
+}
+#test "render geometry refuses a water tail on a nonwater profile" {
+  u:[256]f32;rg_local_words:=[4]u32.[0,1,0x80000000,1];indices:[]u32;buffers:[]RenderGeometryBuffer;rg_hud_payload:[]f32;domains:[1]RenderDrawDomain;
+  q:=render_geometry_admit(0,FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1,water_draws=1},rg_local_words[..],indices,u[..],buffers,rg_hud_payload,domains[..],64);
+  #assert q.status==RenderGeometryStatus.bad_counts;
+}
+#test "render geometry skips empty commands before looking at unused ground metadata" {
+  u:[328]f32;rg_local_words:=[4]u32.[4294967295,0,4294967295,1];indices:[]u32;buffers:[]RenderGeometryBuffer;rg_hud_payload:[]f32;domains:[1]RenderDrawDomain;domains[0].vertices=99;
+  q:=render_geometry_admit(16,FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1},rg_local_words[..],indices,u[..],buffers,rg_hud_payload,domains[..],1);
+  #assert q.status==RenderGeometryStatus.ok && q.work==0 && domains[0].vertices==0;
+}
+#forall "render geometry integer cap primitive includes adjacent values zero and ties" a:0..<5, b:0..<5 {
+  expected:=[5][5]u64.[[5]u64.[0,0,0,0,0],[5]u64.[0,1,1,1,1],[5]u64.[0,1,2,2,2],[5]u64.[0,1,2,3,3],[5]u64.[0,1,2,3,4]];
+  #assert rg_min(u64(a),u64(b))==expected[a][b];
+}
+#test "render geometry budget and numeric metadata distinguish every refusal boundary" {
+  w:=[1]RGWork.[RGWork.{left=1}];#assert rg_take(w[..]) && w[0].left==0 && w[0].used==1;
+  #assert !rg_take(w[..]) && w[0].left==0 && w[0].used==1;
+  #assert rg_integer(0,0)==0 && rg_integer(1,1)==1 && rg_integer(1,0)==-1;
+  #assert rg_integer(-1,1)==-1 && rg_integer(0.5,1)==-1 && rg_integer(65536,65535)==-1;
+  zero:=0.0f32;nan:=zero/zero;infinity:=1.0f32/zero;
+  #assert rg_integer(nan,1)==-1 && rg_integer(infinity,1)==-1;
+  #assert rg_code(-1)==-1 && rg_code(nan)==-1 && rg_code(4294967296.0f32)==-1 && rg_code(0.5)==0 && rg_code(3.75)==3;
+}
+#forall "render geometry validates catalog resources and borrowed view record strides" variant:0..<5 {
+  data:[17]u32;b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=data[0..<16]},RenderGeometryBuffer.{resource=3,words=data[0..<8]}];
+  if variant==0 {b[0].resource=-1;}if variant==1 {b[0].binding_set=2;}if variant==2 {b[0].words=data[..];}if variant==3 {b[1]=b[0];}if variant==4 {b[0].resource=4;}
+  #assert rg_buffers(0,b[..])>=0;
+}
+#test "render geometry exact buffer table outer capacity precedes invalid resource contents" {
+  b:[49]RenderGeometryBuffer;
+  #assert rg_buffers(0,b[..])==-2 && rg_buffers(0,b[0..<48])==0;
+  #assert rg_payload(0,0,"missing",b[0..<0]).count==0;
+}
+#forall "render geometry preflight refusals leave a caller's domains intact" variant:0..<11 {
+  u:[328]f32;rg_local_words:[4]u32;indices:[]u32;buffers:[]RenderGeometryBuffer;rg_hud_payload:[]f32;domains:[1]RenderDrawDomain;domains[0].vertices=99;
+  profile:=16;c:=FrameCounts.{width=1,height=1,vertex_stride=16};budget:=64;uc:=328;wc:=4;dc:=1;
+  if variant==0 {profile=-1;}if variant==1 {c.draw_count=-1;}if variant==2 {c.draw_count=4097;}
+  if variant==3 {c.draw_count=1;dc=0;}if variant==4 {c.draw_count=1;wc=3;}if variant==5 {c.vertex_stride=12;}
+  if variant==6 {c.water_draws=-1;}if variant==7 {c.water_draws=1;}if variant==8 {budget=0;}if variant==9 {budget=16777217;}if variant==10 {uc=327;}
+  q:=render_geometry_admit(profile,c,rg_local_words[0..<wc],indices,u[0..<uc],buffers,rg_hud_payload,domains[0..<dc],budget);
+  #assert q.status!=RenderGeometryStatus.ok && domains[0].vertices==99;
+}
+#test "render geometry admits exact empty command and work capacities without amplification" {
+  u:[328]f32;rg_local_words:[16384]u32;indices:[]u32;buffers:[]RenderGeometryBuffer;rg_hud_payload:[]f32;domains:[4096]RenderDrawDomain;
+  q:=render_geometry_admit(16,FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=4096},rg_local_words[..],indices,u[..],buffers,rg_hud_payload,domains[..],16777216);
+  #assert q.status==RenderGeometryStatus.ok && q.work==0;
+}
+#test "render geometry generic particle instances expand sixty four slots per initialized emitter" {
+  u:[496]f32;puffs:[96]u32;rg_hud_payload:[16]f32;rg_local_words:[]u32;domains:[]RenderDrawDomain;
+  b:=[1]RenderGeometryBuffer.[RenderGeometryBuffer.{binding_set=1,resource=1,words=puffs[..]}];
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16,particle_instances=384};
+  q:=render_geometry_admit(13,c,rg_local_words,rg_local_words,u[..],b[..],rg_hud_payload[..],domains,64);
+  #assert q.status==RenderGeometryStatus.ok && q.direct.particle_instances==384;
+  uploads:[]RenderUpload;c.particle_instances=385;
+  #assert render_frame_admit(c,RenderFrameLimits.{},q.direct,uploads,rg_local_words,domains,rg_local_words).status==RenderFrameStatus.bad_direct;
+}
+#forall "render geometry Icecream prefixes chunks partial tails and metadata bounds are exact" variant:0..<16 {
+  v:[12246]u32;o:[48]u32;o[44]=f32_bits(1.0f32);
+  rg_local_starts:=[16]u32.[0,1,2,3,8388608,8389632,8389633,8389634,12583936,16777216,8388608,8388608,8388608,8390656,8388608,0];
+  statuses:=[16]RenderGeometryStatus.[RenderGeometryStatus.ok,RenderGeometryStatus.ok,RenderGeometryStatus.ok,RenderGeometryStatus.bad_draw,RenderGeometryStatus.ok,RenderGeometryStatus.ok,RenderGeometryStatus.ok,RenderGeometryStatus.bad_draw,RenderGeometryStatus.ok,RenderGeometryStatus.bad_draw,RenderGeometryStatus.bad_resources,RenderGeometryStatus.bad_resources,RenderGeometryStatus.bad_draw,RenderGeometryStatus.bad_draw,RenderGeometryStatus.ok,RenderGeometryStatus.bad_draw];
+  begins:=[16]u64.[0,0,0,0,8388608,8389632,8389632,0,12583936,0,0,0,0,0,8388608,0];
+  ends:=[16]u64.[3,3,3,0,8388611,8389634,8389634,0,12583938,0,0,0,0,0,8388609,0];
+  caps:=[16]u64.[1020,1,1,0,1020,1020,1,0,1020,0,0,0,0,0,1,0];
+  d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,base_instance=rg_local_starts[variant],instances=1};
+  if variant==1 {d.instances=2;}if variant==15 {d.instances=4;}
+  if variant==10 {o[20]=f32_bits(-1.0f32);}if variant==11 {o[20]=f32_bits(3.0f32);}if variant==14 {o[20]=f32_bits(2.0f32);}
+  g:=RGContext.{vertices=v[..],objects=o[..]};if variant==12 {g.vertices=v[0..<0];}
+  r:=rg_icecream(g,d);#assert r.status==statuses[variant];
+  if r.status==RenderGeometryStatus.ok {#assert r.domain.vertices==caps[variant] && r.domain.instance_begin==begins[variant] && r.domain.instances==ends[variant];}
+}
+#test "render geometry person packed offsets pose blocks and threshold equality are observable" {
+  v:[31]u32;o:[32]u32;p:[796]u32;
+  o[28]=f32_bits(7.0f32);o[29]=f32_bits(1.0f32);o[30]=f32_bits(2.0f32);
+  v[17]=0x40020100;v[23]=0x00020140;
+  g:=RGContext.{vertices=v[..],objects=o[..],pose=p[..]};w:=[1]RGWork.[RGWork.{left=2}];
+  d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,first=1,count=2,instances=1};
+  r:=rg_skin(g,d,1,w[..]);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==4 && w[0].used==2 && w[0].left==0;
+  g.pose=p[0..<792];w[0]=RGWork.{left=2};#assert rg_skin(g,d,1,w[..]).status==RenderGeometryStatus.bad_resources;
+  g.pose=p[..];o[29]=0;w[0]=RGWork.{left=2};#assert rg_skin(g,d,1,w[..]).status==RenderGeometryStatus.ok;
+  o[30]=f32_bits(1.5f32);g.pose=p[0..<12];w[0]=RGWork.{left=1};d.first=0;d.count=1;
+  #assert rg_skin(g,d,1,w[..]).status==RenderGeometryStatus.ok;
+}
+#forall "render geometry checks all four joint bytes even when weights are zero" rg_local_person:0..<2, byte:0..<4 {
+  v:[8]u32;o:[16]u32;p:[792]u32;
+  o[14]=f32_bits(f32(rg_local_person*2));slot:=ifx rg_local_person==1 then 4 else 6;
+  v[slot]=u32(ifx rg_local_person==1 then 65 else 1)<<u32(8*byte);
+  g:=RGContext.{vertices=v[..],objects=o[..],pose=p[..]};if rg_local_person==0 {g.pose=p[0..<12];}
+  w:=[1]RGWork.[RGWork.{left=1}];d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=1,instances=1};
+  #assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
+}
+#test "render geometry skin refusals distinguish malformed metadata out of bounds fetch and work" {
+  v:[16]u32;o:[16]u32;p:[792]u32;g:=RGContext.{vertices=v[..],objects=o[..],pose=p[..]};
+  d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,count=1,instances=1};w:=[1]RGWork.[RGWork.{left=1}];
+  o[12]=f32_bits(-1.0f32);#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
+  o[12]=0;o[14]=f32_bits(3.0f32);#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
+  o[14]=f32_bits(2.0f32);o[13]=f32_bits(-1.0f32);#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
+  o[13]=0;w[0]=RGWork.{};#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.work_budget;
+  w[0]=RGWork.{left=1};d.first=3;#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_draw;
+}
+#forall "render geometry water metadata rejects each malformed dimension before resource reads" variant:0..<15 {
+  u:[2300]f32;u[1072]=2;u[1073]=3;u[1074]=1;u[1075]=1;u[1076]=1;nodes:[48]u32;
+  if variant==0 {u[1072]=1;}if variant==1 {u[1073]=1;}if variant==2 {u[1072]=32768;}if variant==3 {u[1073]=32768;}
+  if variant==4 {u[1074]=0;}if variant==5 {u[1075]=0;}if variant==6 {u[1074]=4097;}if variant==7 {u[1075]=4097;}
+  if variant==8 {u[1076]=0;}if variant==9 {u[1076]=4294967296.0f32;}if variant==10 {u[1076]=0.00048828125f32;}
+  if variant==11 {u[1077]=-1;}if variant==12 {u[1077]=65536;}if variant==13 {u[1076]=-1;}if variant==14 {u[1072]=0.5;}
+  #assert rg_water(RGContext.{app="everglade",u=u[..],water=nodes[..]}).status==RenderGeometryStatus.bad_uniforms;
+}
+#test "render geometry water dimensions preserve exact and fractional piece counts" {
+  u:[2300]f32;nodes:[48]u32;g:=RGContext.{app="everglade",u=u[..],water=nodes[..]};
+  u[1072]=2;u[1073]=3;u[1074]=1;u[1075]=1;u[1076]=0.0009765625;u[1077]=0;
+  r:=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==6 && r.domain.instances==129;
+  u[1074]=8;u[1075]=8;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==384 && r.domain.instances==66;
+  u[1077]=65535;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.instances==65601;
+  g.app="fairy";u[780]=2;u[781]=3;u[782]=1;u[783]=2;u[784]=1;
+  r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.instances==2 && r.domain.vertices==12;
+  u[784]=1.5;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.instances==2;
+  u[784]=0.0009765625;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.instances==2048;
+  g.water=nodes[0..<47];#assert rg_water(g).status==RenderGeometryStatus.bad_resources;
+}
+#test "render geometry packed virtual extents preserve the procedural discriminator at large sizes" {
+  d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,instances=1};
+  r:=rg_packed("myrealm",201326604,16,d);
+  #assert r.status==RenderGeometryStatus.ok && r.domain.vertices==16777216 && r.domain.vertex_alt_begin==16777216 && r.domain.vertex_alt_end==16777720;
+  r=rg_packed("realm",24,16,d);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==2 && r.domain.instances==1;
+  d.instances=2;#assert rg_packed("fixture",24,16,d).status==RenderGeometryStatus.bad_draw;
+}
+#test "render geometry round and box instance batches retain their exact Deadgears boundary" {
+  o:[1552]u32;g:=RGContext.{app="deadgears",objects=o[..]};w:=[1]RGWork.[RGWork.{left=1}];
+  d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,base_instance=95,instances=1};r:=rg_record(g,d,w[..]);
+  #assert r.status==RenderGeometryStatus.ok && r.domain.vertices==240 && r.domain.instances==97;
+  d.base_instance=96;r=rg_record(g,d,w[..]);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==36;
+  d.instances=2;#assert rg_record(g,d,w[..]).status==RenderGeometryStatus.bad_draw;
+}
+#test "render geometry grass near rings retain phone threshold and checked u32 arithmetic" {
+  u:[2300]f32;u[1172]=1;u[1173]=0.5;u[1191]=3;
+  f:=RenderFeatures.{scene=true,grass=true};c:=FrameCounts.{grass_instances=1};g:=RGContext.{app="everglade",u=u[..]};
+  r:=rg_direct(g,f,c);#assert r.status==RenderGeometryStatus.ok && r.direct.grass_instances==589;
+  u[1210]=0.5;r=rg_direct(g,f,c);#assert r.status==RenderGeometryStatus.ok && r.direct.grass_instances==589;
+  u[1210]=1;r=rg_direct(g,f,c);#assert r.status==RenderGeometryStatus.ok && r.direct.grass_instances==433;
+  u[1191]=0;r=rg_direct(g,f,c);#assert r.status==RenderGeometryStatus.ok && r.direct.grass_instances==1;
+  u[1210]=0;u[1172]=64847;u[1173]=128.5;u[1191]=60652;
+  r=rg_direct(g,f,c);#assert r.status==RenderGeometryStatus.ok && r.direct.grass_instances==4294967295;
+  u[1172]=64;u[1173]=4096;u[1191]=0;#assert rg_direct(g,f,c).status==RenderGeometryStatus.bad_uniforms;
+  u[1172]=65535;u[1173]=128;r=rg_direct(g,f,c);#assert r.status==RenderGeometryStatus.ok && r.direct.grass_instances==4294901760;
+}
+#forall "render geometry rejects each invalid grass parameter without overflowing products" variant:0..<9 {
+  u:[2300]f32;u[1172]=1;u[1173]=0.5;
+  if variant==0 {u[1172]=0;}if variant==1 {u[1173]=0;}if variant==2 {u[1172]=65536;}
+  if variant==3 {u[1191]=-1;}if variant==4 {u[1191]=65536;}if variant==5 {u[1210]=-1;}if variant==6 {u[1210]=2;}
+  if variant==7 {u[1173]=2147483648.0f32;}if variant==8 {u[1172]=2;u[1173]=32767.5;}
+  r:=rg_direct(RGContext.{app="everglade",u=u[..]},RenderFeatures.{scene=true,grass=true},FrameCounts.{grass_instances=1});
+  #assert r.status==RenderGeometryStatus.bad_uniforms;
+}
+#forall "render geometry ocean clipmaps validate both tiers and every level record" variant:0..<10 {
+  u:[15748]f32;u[44]=64;u[45]=1;
+  for i:0..<12 {u[50+i*4]=1;}
+  expected:=RenderGeometryStatus.bad_uniforms;
+  if variant==0 {expected=RenderGeometryStatus.ok;}
+  if variant==1 {u[45]=0;}if variant==2 {u[45]=13;}if variant==3 {u[50]=0;}if variant==4 {u[50]=4294967296.0f32;}
+  if variant==5 {u[51]=4;}if variant==6 {u[45]=2;u[55]=-1;}if variant==7 {u[44]=65;}
+  if variant==8 {u[51]=3;u[45]=12;expected=RenderGeometryStatus.ok;}if variant==9 {u[44]=32;expected=RenderGeometryStatus.ok;}
+  r:=rg_direct(RGContext.{app="waterlab",u=u[..]},RenderFeatures.{surface=true},FrameCounts.{surface_vertices=1});
+  #assert r.status==expected;
+  if variant==0 {#assert r.direct.surface_vertices==24576;}if variant==8 {#assert r.direct.surface_vertices==227328;}if variant==9 {#assert r.direct.surface_vertices==6144;}
+}
+#test "render geometry error receipts name resource and preflight failures precisely" {
+  u:[328]f32;rg_local_words:[4]u32;none:[]u32;rg_hud_payload:[]f32;out:[1]RenderDrawDomain;out[0].vertices=99;b:[49]RenderGeometryBuffer;
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16};
+  r:=render_geometry_admit(16,c,rg_local_words[..],none,u[..],b[0..<1],rg_hud_payload,out[..],1);#assert r.status==RenderGeometryStatus.bad_resources && r.bad_resource==0;
+  r=render_geometry_admit(16,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],1);#assert r.status==RenderGeometryStatus.capacity && r.bad_resource==-2;
+  r=render_geometry_admit(16,c,rg_local_words[..],none,u[0..<327],b[0..<0],rg_hud_payload,out[..],1);#assert r.status==RenderGeometryStatus.bad_uniforms;
+  r=render_geometry_admit(16,c,rg_local_words[..],none,u[..],b[0..<0],rg_hud_payload,out[..],0);#assert r.status==RenderGeometryStatus.work_budget;
+  c.draw_count=-1;r=render_geometry_admit(16,c,rg_local_words[..],none,u[..],b[0..<0],rg_hud_payload,out[..],1);#assert r.status==RenderGeometryStatus.capacity;
+  c.draw_count=4097;r=render_geometry_admit(16,c,rg_local_words[..],none,u[..],b[0..<0],rg_hud_payload,out[..],1);#assert r.status==RenderGeometryStatus.capacity;
+  #assert out[0].vertices==99;
+}
+#test "render geometry index work is paid once per checked word and refusal is atomic" {
+  u:[172]f32;v:[24]u32;o:[16]u32;rg_hud_payload:[16]f32;
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=v[..]},RenderGeometryBuffer.{resource=2,words=o[..]}];
+  rg_local_words:=[8]u32.[0,1,0,1,0,1,0,1];indices:=[2]u32.[0,1];out:[2]RenderDrawDomain;out[0].vertices=99;out[1].vertices=77;
+  c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=2};
+  r:=render_geometry_admit(9,c,rg_local_words[..],indices[..],u[..],b[..],rg_hud_payload[..],out[..],2);
+  #assert r.status==RenderGeometryStatus.work_budget && r.bad_draw==1 && r.work==2 && out[0].vertices==99 && out[1].vertices==77;
+  r=render_geometry_admit(9,c,rg_local_words[..],indices[..],u[..],b[..],rg_hud_payload[..],out[..],4);
+  #assert r.status==RenderGeometryStatus.ok && r.work==4;
+  c.draw_count=1;rg_local_words[1]=2;out[0].vertices=99;
+  r=render_geometry_admit(9,c,rg_local_words[..],indices[..],u[..],b[..],rg_hud_payload[..],out[..],2);
+  #assert r.status==RenderGeometryStatus.work_budget && r.bad_draw==0 && r.work==2 && out[0].vertices==99;
+}
+#test "render geometry metadata bases must leave a complete packed record" {
+  v:[6120]u32;o:[24]u32;o[20]=f32_bits(1.0f32);
+  d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,base_instance=8388608,instances=1};
+  #assert rg_icecream(RGContext.{vertices=v[..],objects=o[..]},d).status==RenderGeometryStatus.bad_resources;
+  p:[12]u32;o[12]=f32_bits(1.0f32);w:=[1]RGWork.[RGWork.{left=1}];d.base_instance=0;d.count=1;
+  #assert rg_skin(RGContext.{vertices=v[0..<8],objects=o[..],pose=p[..]},d,0,w[..]).status==RenderGeometryStatus.bad_resources;
+}
+#test "render geometry follows requested skin indices rather than adjacent valid vertices" {
+  v:[24]u32;o:[16]u32;p:[24]u32;v[22]=1;indices:=[3]u32.[0,1,2];
+  g:=RGContext.{vertices=v[..],objects=o[..],pose=p[0..<12],indices=indices[..]};
+  d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,first=1,count=2,instances=1};w:=[1]RGWork.[RGWork.{left=2}];
+  #assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
+  d.kind=RenderDrawKind.indexed;w[0]=RGWork.{left=2};#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
+  d.first=2;d.count=1;g.pose=p[0..<20];w[0]=RGWork.{left=1};#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.bad_resources;
+  g.pose=p[..];w[0]=RGWork.{left=1};#assert rg_skin(g,d,0,w[..]).status==RenderGeometryStatus.ok;
+}
+#test "render geometry overflow checks precede a grass product and a near-ring sum" {
+  u:[2300]f32;u[1172]=65535;u[1173]=2147483520.0f32;
+  f:=RenderFeatures.{scene=true,grass=true};c:=FrameCounts.{grass_instances=1};g:=RGContext.{app="everglade",u=u[..]};
+  #assert rg_direct(g,f,c).status==RenderGeometryStatus.bad_uniforms;
+  u[1172]=65535;u[1173]=128;u[1191]=65535;#assert rg_direct(g,f,c).status==RenderGeometryStatus.bad_uniforms;
+}
+#test "render geometry clipmaps refuse a thirteenth fully populated level" {
+  u:[15748]f32;u[44]=64;u[45]=13;for i:0..<13 {u[50+i*4]=1;}
+  #assert rg_direct(RGContext.{app="waterlab",u=u[..]},RenderFeatures.{surface=true},FrameCounts.{surface_vertices=1}).status==RenderGeometryStatus.bad_uniforms;
+}
+#test "render geometry procedural metadata and exhausted work retain exact statuses" {
+  o:[32]u32;o[15]=f32_bits(9.25f32);o[31]=f32_bits(18.0f32);
+  g:=RGContext.{app="garden",objects=o[..],cells=1};d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,base_instance=1,instances=2};w:=[1]RGWork.[RGWork.{left=2}];
+  r:=rg_record(g,d,w[..]);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==36;
+  w[0]=RGWork.{};#assert rg_record(g,d,w[..]).status==RenderGeometryStatus.work_budget;
+  o[15]=0x7fc00000;w[0]=RGWork.{left=2};#assert rg_record(g,d,w[..]).status==RenderGeometryStatus.bad_resources;
+}
+#test "render geometry draw outer cap is independent of caller output allocation" {
+  u:[328]f32;rg_local_words:[16388]u32;none:[]u32;buffers:[]RenderGeometryBuffer;rg_hud_payload:[]f32;out:[4097]RenderDrawDomain;
+  #assert render_geometry_admit(16,FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=4097},rg_local_words[..],none,u[..],buffers,rg_hud_payload,out[..],1).status==RenderGeometryStatus.capacity;
+  #assert render_geometry_admit(1,FrameCounts.{width=1,height=1,vertex_stride=12,draw_count=1},rg_local_words[..],none,u[..],buffers,rg_hud_payload,out[..],1).status==RenderGeometryStatus.bad_counts;
+}
+#test "render geometry Realm lights use their own live resource extent only when active" {
+  u:[256]f32;u[27]=1;v:[12]u32;o:[16]u32;rg_lamps:[8]u32;rg_hud_payload:[]f32;none:[]u32;out:[1]RenderDrawDomain;
+  b:=[3]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=v[..]},RenderGeometryBuffer.{resource=2,words=o[..]},RenderGeometryBuffer.{resource=3,words=rg_lamps[..]}];
+  rg_local_words:=[4]u32.[0,1,0x80000000,1];c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
+  r:=render_geometry_admit(0,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],8);#assert r.status==RenderGeometryStatus.ok;
+  u[27]=2;r=render_geometry_admit(0,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],8);#assert r.status==RenderGeometryStatus.bad_resources;
+  c.draw_count=0;r=render_geometry_admit(0,c,rg_local_words[..],none,u[..],b[0..<0],rg_hud_payload,out[..],8);#assert r.status==RenderGeometryStatus.ok;
+}
+#test "render geometry Everglade puffs are one twelve-word record per instance" {
+  u:[2300]f32;p:[24]u32;rg_hud_payload:[]f32;none:[]u32;out:[]RenderDrawDomain;
+  b:=[1]RenderGeometryBuffer.[RenderGeometryBuffer.{binding_set=1,resource=1,words=p[..]}];
+  r:=render_geometry_admit(2,FrameCounts.{width=1,height=1,vertex_stride=16},none,none,u[..],b[..],rg_hud_payload,out,1);
+  #assert r.status==RenderGeometryStatus.ok && r.direct.particle_instances==2;
+}
+#test "render geometry virtual ground dimensions and all height planes are exact" {
+  a:=rg_ground(1,2,6,false,0);#assert a.ok && a.n==1 && a.rows==2 && a.points==6 && a.cells==2;
+  #assert !rg_ground(0,1,2,false,0).ok && !rg_ground(1,0,2,false,0).ok;
+  #assert !rg_ground(1,2,5,false,0).ok && !rg_ground(32768,1,65538,false,0).ok && !rg_ground(1,32768,65538,false,0).ok;
+  #assert rg_ground(32767,32767,1073741824,false,0).ok;
+  #assert rg_ground(1,2,18,true,6).ok && !rg_ground(1,2,17,true,6).ok && !rg_ground(1,2,18,true,5).ok;
+}
+#test "render geometry bad indexed fetch and object work refusal name the record" {
+  u:[328]f32;u[32]=1;h:[4]u32;o:[16]u32;o[15]=f32_bits(1.0f32);rg_hud_payload:[]f32;none:[]u32;out:[1]RenderDrawDomain;out[0].vertices=99;
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=1,words=h[..]},RenderGeometryBuffer.{resource=2,words=o[..]}];
+  rg_local_words:=[4]u32.[0,1,0x80000001,1];c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
+  r:=render_geometry_admit(16,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],1);#assert r.status==RenderGeometryStatus.work_budget && r.work==1 && r.bad_draw==0 && out[0].vertices==99;
+  rg_local_words[2]=1;r=render_geometry_admit(16,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],4);#assert r.status==RenderGeometryStatus.bad_draw && r.bad_draw==0;
+  u[32]=0;r=render_geometry_admit(16,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],4);#assert r.status==RenderGeometryStatus.bad_resources;
+}
+#forall "render geometry bit metadata refuses nonfinite words before float conversion" which:0..<9 {
+  rg_local_words:=[9]u32.[0,0x80000000,0x7f7fffff,0xff7fffff,0x7f800000,0xff800000,0x7f800001,0x7fc00000,0xffffffff];
+  #assert rg_finite_word(rg_local_words[which])==(which<4);
+  if which>=4 {#assert rg_integer_word(rg_local_words[which],10)==-1 && rg_code_word(rg_local_words[which])==-1;}
+}
+#test "render geometry a single grass draw still validates its ground payload" {
+  u:[2300]f32;u[32]=1;u[1172]=1;u[1173]=0.5;h:[4]u32;rg_hud_payload:[]f32;none:[]u32;out:[]RenderDrawDomain;
+  b:=[1]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=h[..]}];c:=FrameCounts.{width=1,height=1,vertex_stride=16,grass_instances=1};
+  #assert render_geometry_admit(2,c,none,none,u[..],b[..],rg_hud_payload,out,8).status==RenderGeometryStatus.ok;
+  u[32]=0;#assert render_geometry_admit(2,c,none,none,u[..],b[..],rg_hud_payload,out,8).status==RenderGeometryStatus.bad_resources;
+}
+#test "render geometry shard plane metadata stays inside the same object resource" {
+  v:[24]u32;o:[48]u32;o[15]=f32_bits(453.0f32);w:=[1]RGWork.[RGWork.{left=1}];
+  g:=RGContext.{app="everglade",vertices=v[..],objects=o[..],cells=1};d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,base_instance=1,instances=1};
+  #assert rg_record(g,d,w[..]).status==RenderGeometryStatus.ok;
+  o[15]=f32_bits(709.0f32);w[0]=RGWork.{left=1};#assert rg_record(g,d,w[..]).status==RenderGeometryStatus.bad_resources;
+}
+#test "render geometry active river shading validates nodes without requiring a water draw" {
+  u:[2300]f32;u[32]=1;u[1072]=2;u[1073]=2;u[1074]=1;u[1075]=1;u[1076]=1;u[1083]=1;
+  h:[4]u32;nodes:[32]u32;rg_hud_payload:[]f32;none:[]u32;out:[1]RenderDrawDomain;
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=h[..]},RenderGeometryBuffer.{resource=5,words=nodes[..]}];
+  rg_local_words:=[4]u32.[0,6,0x80000000,1];c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
+  #assert render_geometry_admit(2,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],8).status==RenderGeometryStatus.ok;
+  b[1].words=nodes[0..<31];#assert render_geometry_admit(2,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],8).status==RenderGeometryStatus.bad_resources;
+  u[1083]=0;#assert render_geometry_admit(2,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],8).status==RenderGeometryStatus.ok;
+}
+#test "render geometry shard plane encoding uses a full byte below the plane index" {
+  v:[24]u32;o:[3184]u32;o[15]=f32_bits(50885.0f32);w:=[1]RGWork.[RGWork.{left=1}];
+  g:=RGContext.{app="everglade",vertices=v[..],objects=o[..],cells=1};d:=RenderDecodedDraw.{kind=RenderDrawKind.nonindexed,base_instance=1,instances=1};
+  #assert rg_record(g,d,w[..]).status==RenderGeometryStatus.bad_resources;
+  o[15]=f32_bits(50629.0f32);w[0]=RGWork.{left=1};#assert rg_record(g,d,w[..]).status==RenderGeometryStatus.ok;
+}
+#forall "render geometry river spacing is finite bounded and may disable node reads" variant:0..<4 {
+  u:[2300]f32;u[32]=1;u[1072]=2;u[1073]=2;u[1074]=1;u[1075]=1;u[1076]=1;u[1083]=1;
+  if variant==0 {u[1083]=-1;}if variant==1 {u[1083]=4294967296.0f32;}if variant==2 {z:=0.0f32;u[1083]=z/z;}if variant==3 {u[1072]=1;}
+  h:[4]u32;nodes:[32]u32;rg_hud_payload:[]f32;none:[]u32;out:[1]RenderDrawDomain;
+  b:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=h[..]},RenderGeometryBuffer.{resource=5,words=nodes[..]}];
+  rg_local_words:=[4]u32.[0,6,0x80000000,1];c:=FrameCounts.{width=1,height=1,vertex_stride=16,draw_count=1};
+  r:=render_geometry_admit(2,c,rg_local_words[..],none,u[..],b[..],rg_hud_payload,out[..],8);
+  #assert r.status==(ifx variant==3 then RenderGeometryStatus.ok else RenderGeometryStatus.bad_uniforms);
+}
+
+RGWork :: struct { left:int; used:int; }
+RGContext :: struct {
+  app:string; u:[]f32; vertices:[]u32; objects:[]u32; heights:[]u32; indices:[]u32;
+  pose:[]u32; water:[]u32; puffs:[]u32; lights:[]u32;
+  cells:u64;
+}
+RGDomain :: struct { status:RenderGeometryStatus=RenderGeometryStatus.bad_draw; domain:RenderDrawDomain; }
+RGGround :: struct { ok:bool; n:int; rows:int; cells:u64; points:int; }
+rg_min :: (a:u64,b:u64)->u64 {
+  if b==0 {return 0;}
+  return ifx a<=b-1 then a else b;
+}
+rg_take :: (w:[]RGWork)->bool {
+  if w[0].left<1 {return false;}
+  w[0].left-=1;w[0].used+=1;return true;
+}
+// Strict address metadata is an exactly represented nonnegative integer. Shape
+// words may additionally carry their documented fractional opacity.
+rg_integer :: (v:f32,rg_local_most:int)->int {
+  if !(v>=0 && f64(v)<=f64(rg_local_most)) {return -1;}
+  n:=cast(int)v;return ifx f32(n)==v then n else -1;
+}
+rg_code :: (v:f32)->int {
+  if !(v>=0 && v<4294967296.0f32) {return -1;}
+  return cast(int)v;
+}
+rg_finite_word :: (word:u32)->bool {
+  exponent:u32=0x7f800000;
+  return (word&exponent)!=exponent;
+}
+rg_integer_word :: (word:u32,rg_local_most:int)->int {
+  if !rg_finite_word(word) {return -1;}
+  return rg_integer(f32_from_bits(word),rg_local_most);
+}
+rg_code_word :: (word:u32)->int {
+  if !rg_finite_word(word) {return -1;}
+  return rg_code(f32_from_bits(word));
+}
+rg_payload :: (profile:int,set:int,name:string,buffers:[]RenderGeometryBuffer)->[]u32 {
+  for b:buffers {if b.binding_set==set && render_catalog_binding(profile,set,b.resource).name==name {return b.words;}}
+  empty:[]u32;return empty;
+}
+rg_buffers :: (profile:int,buffers:[]RenderGeometryBuffer)->int {
+  if buffers.count>RENDER_RESOURCES {return -2;}
+  for i:0..<buffers.count {
+    b:=buffers[i];rb:=render_catalog_binding(profile,b.binding_set,b.resource);
+    if rb.kind!=RenderResourceKind.storage {return i;}
+    if b.words.count%(rb.stride/4)!=0 {return i;}
+    for j:0..<i {if b.binding_set==buffers[j].binding_set && b.resource==buffers[j].resource {return i;}}
+  }
+  return -1;
+}
+
+rg_ground :: (n_value:f32,rows_value:f32,height_words:int,planes:bool,plane_offset:f32)->RGGround {
+  r:=RGGround.{};r.n=rg_integer(n_value,32767);r.rows=rg_integer(rows_value,32767);
+  if r.n<1 || r.rows<1 {return r;}
+  r.points=(r.n+1)*(r.rows+1);
+  if height_words<r.points {return r;}
+  if planes && (f64(plane_offset)!=f64(r.points) || height_words<r.points*3) {return r;}
+  r.cells=u64(r.n)*u64(r.rows);r.ok=true;return r;
+}
+
+rg_icecream :: (g:RGContext,d:RenderDecodedDraw)->RGDomain {
+  r:=RGDomain.{};vcount:=cast(u64)g.vertices.count/6;
+  object_base:u64=8388608;rg_local_outline:u64=4194304;chunks:u64=1024;chunk_vertices:u64=1020;
+  start:=u64(d.base_instance);amount:=u64(d.instances);last:=start+amount-1;
+  offset:u64;prefix:u64;available:u64;
+  if start<object_base {
+    available=(vcount+chunk_vertices-1)/chunk_vertices;
+    r.domain.instances=rg_min(available,object_base);
+    if last>=r.domain.instances {return r;}
+    offset=last*chunk_vertices;
+  } else {
+    if start>=object_base+2*rg_local_outline || vcount==0 {return r;}
+    k:=start-object_base;object:=(k%rg_local_outline)/chunks;record_words:u64=24;
+    if object>=cast(u64)g.objects.count/record_words {return r;}
+    chunk:=rg_integer_word(g.objects[cast(int)(object*record_words+20)],cast(int)((vcount-1)/chunk_vertices));
+    if chunk<0 {r.status=RenderGeometryStatus.bad_resources;return r;}
+    prefix=object_base+(k/rg_local_outline)*rg_local_outline+object*chunks;
+    available=rg_min(chunks,(vcount-u64(chunk)*chunk_vertices+chunk_vertices-1)/chunk_vertices);
+    r.domain.instance_begin=prefix;r.domain.instances=prefix+available;
+    if last>=r.domain.instances {return r;}
+    offset=(u64(chunk)+last-prefix)*chunk_vertices;
+  }
+  r.domain.vertices=rg_min(chunk_vertices,vcount-offset);
+  r.status=RenderGeometryStatus.ok;return r;
+}
+
+rg_skin :: (g:RGContext,d:RenderDecodedDraw,row:int,w:[]RGWork)->RGDomain {
+  r:=RGDomain.{status=RenderGeometryStatus.bad_resources};
+  marker_word:=g.objects[row*16+14];
+  if !rg_finite_word(marker_word) {return r;}
+  marker:=f32_from_bits(marker_word);
+  if !(marker>=0 && marker<=2) {return r;}
+  rg_local_person:=marker>1.5;stride:=ifx rg_local_person then 6 else 8;
+  offset:=rg_integer_word(g.objects[row*16+12],g.vertices.count-stride);
+  if offset<0 {return r;}
+  pose_rows:=g.pose.count/4;
+  if rg_local_person {
+    pose_base:=rg_integer_word(g.objects[row*16+13],pose_rows-198);
+    if pose_base<0 {return r;}
+  }
+  r.domain.vertices=cast(u64)((g.vertices.count-offset)/stride);
+  for j:0..<cast(int)d.count {
+    if !rg_take(w) {r.status=RenderGeometryStatus.work_budget;return r;}
+    id:=ifx d.kind==RenderDrawKind.indexed then u64(g.indices[cast(int)d.first+j]) else u64(d.first)+u64(j);
+    at:=u64(offset)+id*u64(stride);
+    if at+u64(stride)>u64(g.vertices.count) {r.status=RenderGeometryStatus.bad_draw;return r;}
+    joints:=g.vertices[cast(int)at+(ifx rg_local_person then 4 else 6)];
+    for k:0..<4 {
+      joint:=cast(int)((joints>>u32(8*k))&255);
+      if rg_local_person {if joint>=65 {return r;}}
+      else if joint*3+2>=pose_rows {return r;}
+    }
+  }
+  r.status=RenderGeometryStatus.ok;return r;
+}
+
+rg_water :: (g:RGContext)->RGDomain {
+  r:=RGDomain.{status=RenderGeometryStatus.bad_uniforms};
+  at:=ifx g.app=="everglade" then 1072 else 780;
+  cols:=rg_integer(g.u[at],32767);rows:=rg_integer(g.u[at+1],32767);
+  across:=rg_integer(g.u[at+2],4096);along:=rg_integer(g.u[at+3],4096);
+  distance:=g.u[at+4];
+  // The profile admits patch lengths of at least 1/1024 grid units; with
+  // <=32767 rows this proves the derived piece count fits u32 without a cast
+  // overflow or an unbounded reciprocal of a positive subnormal.
+  if cols<2 || rows<2 || across<1 || along<1 || !(distance>=0.0009765625f32 && distance<4294967296.0f32) {return r;}
+  if u64(cols)*u64(rows)*8>u64(g.water.count) {r.status=RenderGeometryStatus.bad_resources;return r;}
+  r.domain.vertices=u64(across)*u64(along)*6;
+  if g.app=="everglade" {
+    rg_local_patches:=rg_integer(g.u[at+5],65535);
+    if rg_local_patches<0 {return r;}
+    per:=u64(across)*u64(along);
+    r.domain.instances=u64(rg_local_patches)+65+(64+per-1)/per;
+  } else {
+    pieces:=f64(rows-1)/f64(distance);
+    n:=cast(u64)pieces;r.domain.instances=n+(ifx f64(n)<pieces then u64(1) else u64(0));
+  }
+  r.status=RenderGeometryStatus.ok;return r;
+}
+
+rg_direct :: (g:RGContext,f:RenderFeatures,c:FrameCounts)->RenderGeometryResult {
+  r:=RenderGeometryResult.{status=RenderGeometryStatus.ok};
+  if f.casters {r.direct.caster_vertices=1872;r.direct.caster_instances=8;}
+  if f.grass && c.grass_instances>0 {
+    at:=ifx g.app=="fixture" then 244 else 1172;
+    most_instances:u64=4294967295;
+    per:=rg_integer(g.u[at],65535);side:=rg_integer(g.u[at+1]*2,cast(int)most_instances);
+    if per<1 || side<1 {r.status=RenderGeometryStatus.bad_uniforms;return r;}
+    if u64(side)>most_instances/u64(per)/u64(side) {r.status=RenderGeometryStatus.bad_uniforms;return r;}
+    r.direct.grass_instances=u64(per)*u64(side)*u64(side);
+    if g.app=="everglade" {
+      near_per:=rg_integer(g.u[1191],65535);rg_phone:=g.u[1210];
+      if near_per<0 || !(rg_phone>=0 && rg_phone<=1) {r.status=RenderGeometryStatus.bad_uniforms;return r;}
+      near_side:=ifx rg_phone>0.5 then u64(12) else u64(14);
+      near_count:=u64(near_per)*near_side*near_side;
+      if near_count>most_instances-r.direct.grass_instances {r.status=RenderGeometryStatus.bad_uniforms;return r;}
+      r.direct.grass_instances+=near_count;
+    }
+  }
+  if f.surface && c.surface_vertices>0 {
+    n:=32;levels:=rg_integer(g.u[45],12);
+    if g.u[44]==64 {n=64;}else if g.u[44]!=32 {r.status=RenderGeometryStatus.bad_uniforms;return r;}
+    if levels<1 {r.status=RenderGeometryStatus.bad_uniforms;return r;}
+    for i:0..<levels {
+      cell:=g.u[50+i*4];hole:=rg_integer(g.u[51+i*4],3);
+      if !(cell>0 && cell<4294967296.0f32) || hole<0 {r.status=RenderGeometryStatus.bad_uniforms;return r;}
+    }
+    full:=n*n;rg_surface_ring:=full-(n/2)*(n/2);
+    r.direct.surface_vertices=u64(6*(full+(levels-1)*rg_surface_ring));
+  }
+  return r;
+}
+
+// Pure extent arithmetic is separate from payload inspection, so its boundary
+// checks can exercise huge virtual domains without allocating huge fixtures.
+// Production callers obtain both word counts from the admitted borrowed views.
+rg_packed :: (app:string,vertex_words:int,object_words:int,d:RenderDecodedDraw)->RGDomain {
+  r:=RGDomain.{};rows:=u64(object_words/16);
+  if u64(d.base_instance)+u64(d.instances)>rows {return r;}
+  r.domain.instances=rows;r.domain.vertices=u64(vertex_words/12);
+  if app=="myrealm" {
+    round_base:u64=16777216;
+    r.domain.vertices=rg_min(r.domain.vertices,round_base);
+    r.domain.vertex_alt_begin=round_base;r.domain.vertex_alt_end=round_base+504;
+  }
+  r.status=RenderGeometryStatus.ok;return r;
+}
+
+rg_record :: (g:RGContext,d:RenderDecodedDraw,w:[]RGWork)->RGDomain {
+  r:=RGDomain.{};
+  if g.app=="icecream" {return rg_icecream(g,d);}
+  rows:=cast(u64)g.objects.count/16;
+  start:=u64(d.base_instance);past:=start+u64(d.instances);
+  if g.app=="realm" || g.app=="droprealm" || g.app=="fixture" || g.app=="myrealm" {
+    return rg_packed(g.app,g.vertices.count,g.objects.count,d);
+  }
+  if g.app=="deadgears" {
+    if past>rows {return r;}
+    r.domain.instances=rows;r.domain.vertices=ifx past<=96 then 240 else 36;
+    r.status=RenderGeometryStatus.ok;return r;
+  }
+  if start<g.cells {
+    if past>g.cells {return r;}
+    r.domain.vertices=6;r.domain.instances=g.cells;
+    r.status=RenderGeometryStatus.ok;return r;
+  }
+  if past>g.cells+rows {return r;}
+  r.domain.instance_begin=g.cells;r.domain.instances=g.cells+rows;
+  first:=cast(int)(start-g.cells);
+  for i:first..<cast(int)(past-g.cells) {
+    if !rg_take(w) {r.status=RenderGeometryStatus.work_budget;return r;}
+    code:=rg_code_word(g.objects[i*16+15]);
+    if code<0 {r.status=RenderGeometryStatus.bad_resources;return r;}
+    kind:=code%8;rg_local_most:u64=ifx g.app=="villa" then 48 else 96;
+    if kind==1 {rg_local_most=36;}
+    else if kind==2 {rg_local_most=ifx g.app=="villa" then 240 else 960;}
+    else if kind==3 {rg_local_most=ifx g.app=="villa" then 96 else 192;}
+    else if g.app=="villa" && kind==5 {rg_local_most=240;}
+    else if g.app=="everglade" {
+      if kind==5 {
+        if (code/8)%32==24 && u64(code/256)+2>rows {r.status=RenderGeometryStatus.bad_resources;return r;}
+        rg_local_most=cast(u64)g.vertices.count/12;
+      }
+      else if kind==6 {
+        skin:=rg_skin(g,d,i,w);
+        if skin.status!=RenderGeometryStatus.ok {return skin;}
+        rg_local_most=skin.domain.vertices;
+      }
+      else if kind==7 {rg_local_most=1008;}
+    }
+    r.domain.vertices=ifx i==first then rg_local_most else rg_min(r.domain.vertices,rg_local_most);
+  }
+  r.status=RenderGeometryStatus.ok;return r;
+}
+
+render_geometry_admit :: (profile:int,c:FrameCounts,draw_words:[]u32,indices:[]u32,u:[]f32,buffers:[]RenderGeometryBuffer,rg_hud_payload:[]f32,domains:[]RenderDrawDomain,work_limit:int)->RenderGeometryResult {
+  result:=RenderGeometryResult.{};meta:=render_catalog(profile);
+  if !meta.valid {return result;}
+  if c.draw_count<0 || c.draw_count>RENDER_GEOMETRY_DRAWS || domains.count<c.draw_count || draw_words.count<c.draw_count*4 {result.status=RenderGeometryStatus.capacity;return result;}
+  if c.vertex_stride!=meta.vertex_stride || c.water_draws<0 || c.water_draws>c.draw_count || (!meta.features.scene && c.draw_count>0) || (!meta.features.water && c.water_draws>0) {result.status=RenderGeometryStatus.bad_counts;return result;}
+  if work_limit<1 || work_limit>RENDER_GEOMETRY_WORK {result.status=RenderGeometryStatus.work_budget;return result;}
+  if u.count<meta.uniform_vec4s*4 {result.status=RenderGeometryStatus.bad_uniforms;return result;}
+  bad:=rg_buffers(profile,buffers);
+  if bad!=-1 {result.status=ifx bad==-2 then RenderGeometryStatus.capacity else RenderGeometryStatus.bad_resources;result.bad_resource=bad;return result;}
+  g:=RGContext.{app=meta.app,u=u,indices=indices,vertices=rg_payload(profile,0,"vertices",buffers),objects=rg_payload(profile,0,"objects",buffers),heights=rg_payload(profile,0,"heights",buffers),pose=rg_payload(profile,0,"pose",buffers),water=rg_payload(profile,0,"water_nodes",buffers),lights=rg_payload(profile,0,"lights",buffers)};
+  direct:=rg_direct(g,meta.features,c);
+  if direct.status!=RenderGeometryStatus.ok {return direct;}
+  result.direct=direct.direct;result.direct.hud_vertices=cast(u64)(rg_hud_payload.count/meta.vertex_stride);
+  if meta.features.particles {
+    name:=ifx meta.app=="everglade" then "puffs" else "emitters";
+    g.puffs=rg_payload(profile,1,name,buffers);
+    result.direct.particle_instances=ifx meta.app=="everglade" then cast(u64)g.puffs.count/12 else (cast(u64)g.puffs.count/16)*64;
+  }
+  rg_local_active:=c.grass_instances>0;
+  for i:0..<c.draw_count {if draw_words[i*4+1]!=0 && draw_words[i*4+3]!=0 {rg_local_active=true;}}
+  if rg_local_active && meta.app=="realm" && rg_integer(u[27],g.lights.count/8)<0 {result.status=RenderGeometryStatus.bad_resources;return result;}
+  if rg_local_active && (meta.app=="garden" || meta.app=="villa" || meta.app=="fairy" || meta.app=="everglade") {
+    at:=ifx meta.app=="villa" then 168 else 32;
+    fairy:=meta.app=="fairy";
+    rg_local_ground:=rg_ground(u[at],ifx fairy then u[238] else u[at],g.heights.count,fairy,ifx fairy then u[239] else 0.0f32);
+    if !rg_local_ground.ok {result.status=RenderGeometryStatus.bad_resources;return result;}
+    g.cells=rg_local_ground.cells;
+  }
+  if rg_local_active && meta.app=="everglade" {
+    rg_cell_step:=u[1083];
+    if !(rg_cell_step>=0 && rg_cell_step<4294967296.0f32) {result.status=RenderGeometryStatus.bad_uniforms;return result;}
+    if rg_cell_step>0 && !(u[1072]<2) {
+      water:=rg_water(g);
+      if water.status!=RenderGeometryStatus.ok {result.status=water.status;return result;}
+    }
+  }
+  work:[1]RGWork;work[0].left=work_limit;local:[RENDER_GEOMETRY_DRAWS]RenderDrawDomain;
+  for i:0..<c.draw_count {
+    d:=render_decode_draw(draw_words,i);
+    // The preflight proves every record's four words exist, so decoding can
+    // return only skip, indexed or nonindexed here.
+    if d.kind==RenderDrawKind.skip {continue;}
+    if !rg_take(work[..]) {result.status=RenderGeometryStatus.work_budget;result.bad_draw=i;result.work=work[0].used;return result;}
+    if d.kind==RenderDrawKind.indexed && u64(d.first)+u64(d.count)>u64(indices.count) {result.status=RenderGeometryStatus.bad_draw;result.bad_draw=i;return result;}
+    r:=ifx i>=c.draw_count-c.water_draws then rg_water(g) else rg_record(g,d,work[..]);
+    if r.status!=RenderGeometryStatus.ok {result.status=r.status;result.bad_draw=i;result.work=work[0].used;return result;}
+    r.domain.indices=cast(u64)indices.count;local[i]=r.domain;
+    one:=[1]RenderDrawDomain.[r.domain];uploads:[]RenderUpload;
+    check:=render_frame_admit(FrameCounts.{width=c.width,height=c.height,vertex_stride=meta.vertex_stride,draw_count=1},RenderFrameLimits.{index_work=work[0].left},RenderDirectDomains.{},uploads,draw_words[i*4..<i*4+4],one[..],indices);
+    if check.status!=RenderFrameStatus.ok {result.status=ifx check.status==RenderFrameStatus.index_budget then RenderGeometryStatus.work_budget else RenderGeometryStatus.bad_draw;result.bad_draw=i;result.work=work[0].used+check.checked_indices;return result;}
+    work[0].used+=check.checked_indices;work[0].left-=check.checked_indices;
+  }
+  for i:0..<c.draw_count {domains[i]=local[i];}
+  result.status=RenderGeometryStatus.ok;result.work=work[0].used;return result;
+}

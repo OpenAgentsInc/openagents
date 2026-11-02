@@ -1,0 +1,5 @@
+mesh-oracle.o: \
+  /Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-oracle.cpp \
+  /Users/christopherdavid/work/aethyr-demo/src/icecream/mesh.h \
+  /Users/christopherdavid/work/aethyr-demo/src/icecream/../vec3.h \
+  /Users/christopherdavid/work/aethyr-demo/src/icecream/rules.h

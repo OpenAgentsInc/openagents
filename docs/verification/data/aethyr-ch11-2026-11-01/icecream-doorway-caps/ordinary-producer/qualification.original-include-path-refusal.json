@@ -1,0 +1,180 @@
+{
+  "schema": "aethyr.icecream.doorway-main-producer.v1",
+  "status": "failed",
+  "checkout": "/Users/christopherdavid/work/openagents-aethyr-book-main",
+  "product_head": "7c9289b4db25d2df527f6446debadaffe364e7ad",
+  "build_deadline_seconds": 810,
+  "commands": [
+    {
+      "argv": [
+        "bash",
+        "-c",
+        "source \"$1\"; printf \"%s\\0%s\\0%s\\0\" \"$COAXIAL_CLANG\" \"$COAXIAL_SYSROOT\" \"$COAXIAL_RESOURCES\"",
+        "toolchain",
+        "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/toolchain.sh"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.016958,
+      "log": "toolchain-paths.bin",
+      "log_sha256": "ac9899d7a095cb375c20f155995a4af80b10ac01ba7541b589293a358a203a93"
+    },
+    {
+      "argv": [
+        "/opt/homebrew/opt/llvm/bin/clang",
+        "--version"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.202263,
+      "log": "clang-version.log",
+      "log_sha256": "9098788d5853f7198299a669cf9f2a05d4380538feadca57c52178ac22554652"
+    },
+    {
+      "argv": [
+        "verse/native/build.sh",
+        "--libraries",
+        "icecream"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.324705,
+      "log": "libraries.txt",
+      "log_sha256": "5a5c71a3215a9a013347e498e0d558a564cfb1a0700e2616edfd33fcf9f9ada7"
+    },
+    {
+      "argv": [
+        "coax/web/wasm.sh",
+        "apps/openagents-web/icecream.coax",
+        "apps/openagents-web/icecream-face.c",
+        "/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/icecream.wasm",
+        "/Users/christopherdavid/work/openagents-aethyr-book-main/verse/icecream/scene.coax"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 35.307134,
+      "log": "build.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "argv": [
+        "/opt/homebrew/opt/llvm/bin/clang",
+        "--target=wasm32-wasip1",
+        "--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot",
+        "-resource-dir",
+        "/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I",
+        "/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/admitted",
+        "-I",
+        "/Users/christopherdavid/work/openagents-aethyr-book-main/apps/openagents-web",
+        "-M",
+        "/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/admitted/Scene.c"
+      ],
+      "exit": 0,
+      "elapsed_seconds": 0.047646,
+      "log": "c-includes-0.d",
+      "log_sha256": "6ae61856338090938fbfd8a1c764c30b4480639e6fa85f37125292095d4d1568"
+    }
+  ],
+  "compiler": {
+    "path": "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "qualified_source_root": "/Users/christopherdavid/work/openagents-aethyr-check-budgets-current",
+    "qualified_source_digest": "b3f0e5a69265dbbbe2f7dc07ebff868b415e465658bf68c2436202260f951dc9",
+    "qualified_full_input_fingerprint": "06b30d5381a42d50980e5961928e5b657043e4758a1e87fa0a6dfd64d732d039",
+    "matches_current_checkout": false,
+    "scope": "Explicit previously qualified B3 compiler; this is not the current-main matching-source compiler.",
+    "prior_qualification": "docs/verification/data/coax-authority-check-budgets-2026-11-01/current/final-artifact.json"
+  },
+  "wasm_toolchain": {
+    "clang": "/opt/homebrew/opt/llvm/bin/clang",
+    "clang_sha256": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a",
+    "sysroot": "/opt/homebrew/opt/wasi-libc/share/wasi-sysroot",
+    "resources": "/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes"
+  },
+  "build_command": [
+    "coax/web/wasm.sh",
+    "apps/openagents-web/icecream.coax",
+    "apps/openagents-web/icecream-face.c",
+    "/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/icecream.wasm",
+    "/Users/christopherdavid/work/openagents-aethyr-book-main/verse/icecream/scene.coax"
+  ],
+  "environment": {
+    "COAX": "/tmp/aethyr-authority-budget-qualified-1fac/coax",
+    "COAXIAL_ADMITTED_DIR": "/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/admitted",
+    "COAXIAL_RENDER": "auto(unset)",
+    "COAXIAL_MODE": "release(unset)",
+    "COAXIAL_RUN_STEPS": "default(unset)"
+  },
+  "emitted": {
+    "icecream.h": "eadf62e755bf9342bf80a001a3ea3745f0c956eafa159a072074aa9a57b3f11e",
+    "Scene.c": "4ce5cb9ff0940236c2062afbfbf4a633ac8341b93232cea786ee401375d43b4f",
+    "icecream.c": "a18077f848e5f8d8804381f549accb4a61a4d88a6d6991a2a5dfb606f37054e3",
+    "Render.h": "eadf62e755bf9342bf80a001a3ea3745f0c956eafa159a072074aa9a57b3f11e",
+    "Scene.h": "0b621bef741357cad68dfa49025a0c9d19eea7ce8a362bb6a582d826071fa30b"
+  },
+  "coax_emission_source_graph": {
+    "Scene.c": [
+      "verse/icecream/scene.coax",
+      "verse/icecream/play.coax",
+      "verse/icecream/camera.coax",
+      "verse/icecream/mesh.coax",
+      "verse/icecream/rules.coax",
+      "verse/icecream/tuning.coax",
+      "verse/icecream/fixtures/mesh-oracle.coax",
+      "verse/icecream/fixtures/mesh-band-oracle.coax",
+      "verse/icecream/trace-text.coax"
+    ],
+    "icecream.c": [
+      "aethyr/render/carriers/icecream.coax",
+      "apps/openagents-web/icecream.coax",
+      "apps/openagents-web/font.coax",
+      "aethyr/render/sans-profile.coax",
+      "aethyr/render/tests/sans-profile-checks.coax",
+      "apps/openagents-web/ui.coax",
+      "apps/openagents-web/analytics.coax",
+      "verse/edit/edit.coax",
+      "aethyr/budget.coax",
+      "aethyr/render/native-host.coax",
+      "aethyr/render/host.coax",
+      "aethyr/render/host-policy.coax",
+      "aethyr/render/runtime.coax",
+      "aethyr/render/geometry.coax",
+      "aethyr/render/catalog.coax",
+      "aethyr/render/bindings.coax",
+      "aethyr/render/passes.coax",
+      "aethyr/render/types.coax",
+      "aethyr/render/frame.coax",
+      "aethyr/tests/render-frame-checks.coax",
+      "aethyr/render/package.coax",
+      "aethyr/render/interface.coax",
+      "aethyr/render/build-policy.coax",
+      "aethyr/render/emit.coax",
+      "aethyr/render/capabilities.coax",
+      "coax/lib/json/json.coax",
+      "aethyr/render/fragment-layout.coax",
+      "aethyr/render/tests/fragment-layout-checks.coax",
+      "aethyr/render/media-profile.coax",
+      "coax/lib/crypto/sha256-kernel.coax",
+      "aethyr/render/tests/package-checks.coax",
+      "aethyr/render/binding-sources.coax",
+      "aethyr/render/resources.coax",
+      "aethyr/render/tests/resources-checks.coax",
+      "aethyr/render/tests/binding-sources-checks.coax",
+      "aethyr/render/host-frame.coax",
+      "aethyr/render/host-bindings.coax",
+      "aethyr/render/media-limits.coax",
+      "aethyr/render/tests/host-bindings-checks.coax",
+      "aethyr/render/host-inputs.coax",
+      "aethyr/render/host-textures.coax",
+      "aethyr/render/tests/host-textures-checks.coax",
+      "aethyr/render/host-memory.coax",
+      "aethyr/render/media-commands.coax",
+      "aethyr/render/host-media.coax",
+      "aethyr/render/host-uploads.coax",
+      "aethyr/render/asset-profile.coax"
+    ]
+  },
+  "error": "AssertionError:/private/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/admitted/Scene.c",
+  "elapsed_seconds": 38.039688
+}

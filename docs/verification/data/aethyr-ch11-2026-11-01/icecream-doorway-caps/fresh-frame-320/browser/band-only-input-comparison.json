@@ -1,0 +1,50 @@
+{
+  "u.bin": {
+    "equal": true,
+    "before_bytes": 3056,
+    "after_bytes": 3056,
+    "changed_bytes": 0,
+    "before_sha": "f37a1d77ae1e58724bff968062f4e43ab2e48afd7664a99657b200de8b1c97d6",
+    "after_sha": "f37a1d77ae1e58724bff968062f4e43ab2e48afd7664a99657b200de8b1c97d6"
+  },
+  "hud.bin": {
+    "equal": true,
+    "before_bytes": 415488,
+    "after_bytes": 415488,
+    "changed_bytes": 0,
+    "before_sha": "a0351958e7adca2130e7ba920f385496d9502bf2d8c9908d9d8dde0f3fdc88aa",
+    "after_sha": "a0351958e7adca2130e7ba920f385496d9502bf2d8c9908d9d8dde0f3fdc88aa"
+  },
+  "draws.bin": {
+    "equal": true,
+    "before_bytes": 960,
+    "after_bytes": 960,
+    "changed_bytes": 0,
+    "before_sha": "2296fdbeaed5316156f185fb7a600057289ba7e6ee6b214e86f88f491d9e7055",
+    "after_sha": "2296fdbeaed5316156f185fb7a600057289ba7e6ee6b214e86f88f491d9e7055"
+  },
+  "indices.bin": {
+    "equal": true,
+    "before_bytes": 4096,
+    "after_bytes": 4096,
+    "changed_bytes": 0,
+    "before_sha": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef",
+    "after_sha": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+  },
+  "s0.bin": {
+    "equal": false,
+    "before_bytes": 14400000,
+    "after_bytes": 14400000,
+    "changed_bytes": 7110,
+    "before_sha": "289470372dc89a142d94aac42df90032d17cbc2a1ba43a1470f15beb6641405a",
+    "after_sha": "14eaaafd72b18c61b735bbfb1af0a3c3aaf0c155929b61eea6a323fec302f2fd"
+  },
+  "s1.bin": {
+    "equal": true,
+    "before_bytes": 196608,
+    "after_bytes": 196608,
+    "changed_bytes": 0,
+    "before_sha": "09427c1a9ee1b46621eaaaa00e3562e39e5b145b43ea2e47ed8849beaf27203b",
+    "after_sha": "09427c1a9ee1b46621eaaaa00e3562e39e5b145b43ea2e47ed8849beaf27203b"
+  }
+}

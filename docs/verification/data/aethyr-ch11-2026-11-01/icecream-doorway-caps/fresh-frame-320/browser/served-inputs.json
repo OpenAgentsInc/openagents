@@ -1,0 +1,86 @@
+{
+  "/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/icecream.wasm": {
+    "member": "served/24f1d888c22b4d5275caeb64c2360e58865b8848b0f250fd9c4c0358c9030b2f-icecream.wasm",
+    "sha256": "24f1d888c22b4d5275caeb64c2360e58865b8848b0f250fd9c4c0358c9030b2f"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/render.js": {
+    "member": "served/824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9-render.js",
+    "sha256": "824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/host.js": {
+    "member": "served/dde14d57e3dddea1d06821d77cfd7bea9c93b679e712767ed66bbcfe4e923d69-host.js",
+    "sha256": "dde14d57e3dddea1d06821d77cfd7bea9c93b679e712767ed66bbcfe4e923d69"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/chrome.ts": {
+    "member": "served/fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3-chrome.ts",
+    "sha256": "fe9f25a65df966fd67722285310ec86b52c76328047c6029990b0df2a6a78bf3"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/render-face.c": {
+    "member": "served/d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f-render-face.c",
+    "sha256": "d169fd4b7fd7ff62ccb6c590e043c4fc2ad03b5622f272c85561198158f6a51f"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/apps/openagents-web/realms/ice-cream-man/index.html": {
+    "member": "served/e9745bc9e0e09be19687ed6607615cfd0f4c4de1a429afdcda19df03562fd5c2-index.html",
+    "sha256": "e9745bc9e0e09be19687ed6607615cfd0f4c4de1a429afdcda19df03562fd5c2"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/aethyr/tests/check_render_host.ts": {
+    "member": "served/b310234bf3b57e2dbf8883d1a47f7b6bc5db3dce9b4849dfb43240f25c711ef1-check_render_host.ts",
+    "sha256": "b310234bf3b57e2dbf8883d1a47f7b6bc5db3dce9b4849dfb43240f25c711ef1"
+  },
+  "/tmp/aethyr-ch11-packages-current/ice-cream-man/render.json": {
+    "member": "served/bbfa0fb78abbe9dad237f7b1460267ce25916f3ddf3482d34b49880e565dc3db-render.json",
+    "sha256": "bbfa0fb78abbe9dad237f7b1460267ce25916f3ddf3482d34b49880e565dc3db"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/entropy-import.js": {
+    "member": "served/4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070-entropy-import.js",
+    "sha256": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/drop.js": {
+    "member": "served/65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e-drop.js",
+    "sha256": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/uploads.js": {
+    "member": "served/c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8-uploads.js",
+    "sha256": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/docs.js": {
+    "member": "served/50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb-docs.js",
+    "sha256": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/card.js": {
+    "member": "served/6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b-card.js",
+    "sha256": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/voice.js": {
+    "member": "served/d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2-voice.js",
+    "sha256": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/gpui.js": {
+    "member": "served/89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4-gpui.js",
+    "sha256": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/loader.js": {
+    "member": "served/27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1-loader.js",
+    "sha256": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/http-requests.js": {
+    "member": "served/9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630-http-requests.js",
+    "sha256": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/coax/web/entropy.js": {
+    "member": "served/14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a-entropy.js",
+    "sha256": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/apps/openagents-web/favicon.svg": {
+    "member": "served/0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74-favicon.svg",
+    "sha256": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74"
+  },
+  "/tmp/aethyr-ch11-packages-current/ice-cream-man/module-0-13c4de36d088a2bd8d4e95925d64f4464d867fbee0e2311f8b3ba8f52558126c.wgsl": {
+    "member": "served/13c4de36d088a2bd8d4e95925d64f4464d867fbee0e2311f8b3ba8f52558126c-module-0-13c4de36d088a2bd8d4e95925d64f4464d867fbee0e2311f8b3ba8f52558126c.wgsl",
+    "sha256": "13c4de36d088a2bd8d4e95925d64f4464d867fbee0e2311f8b3ba8f52558126c"
+  },
+  "/Users/christopherdavid/work/openagents-aethyr-book-main/apps/openagents-web/realms/ice-cream-man/assets/IceCream.indices": {
+    "member": "served/c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef-IceCream.indices",
+    "sha256": "c89db7222126863309183fc023c7091fb18392d16a397dac76a96a022cd62cef"
+  }
+}

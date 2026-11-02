@@ -1,0 +1,61 @@
+--- RF633
++++ current
+@@ -236,12 +236,42 @@
+   if variant==11 {u[1077]=-1;}if variant==12 {u[1077]=65536;}if variant==13 {u[1076]=-1;}if variant==14 {u[1072]=0.5;}
+   #assert rg_water(RGContext.{app="everglade",u=u[..],water=nodes[..]}).status==RenderGeometryStatus.bad_uniforms;
+ }
++#forall "render geometry retains Everglade's three reserved spray slots at both river tiers" rg_spray_case:0..<8 {
++  rg_per:=[8]int.[1,2,21,22,24,32,64,96];
++  rg_expected:=[8]u64.[181,149,121,120,120,120,120,120];
++  rg_u:[2300]f32;rg_nodes:[32]u32;
++  rg_u[1072]=2;rg_u[1073]=2;rg_u[1074]=f32(rg_per[rg_spray_case]);rg_u[1075]=1;rg_u[1076]=1;rg_u[1077]=52;
++  rg_q:=rg_water(RGContext.{app="everglade",u=rg_u[..],water=rg_nodes[..]});
++  #assert rg_q.status==RenderGeometryStatus.ok && rg_q.domain.vertices==u64(rg_per[rg_spray_case]*6) && rg_q.domain.instances==rg_expected[rg_spray_case];
++}
++#test "render geometry admits the actual desktop river tail and refuses its first excess instance" {
++  rg_u:[2300]f32;rg_u[32]=104;
++  rg_u[1072]=13;rg_u[1073]=209;rg_u[1074]=12;rg_u[1075]=8;rg_u[1076]=4;rg_u[1077]=52;
++  rg_heights:[11025]u32;rg_nodes:[21736]u32;rg_hud:[]f32;
++  rg_spray_buffers:=[2]RenderGeometryBuffer.[RenderGeometryBuffer.{resource=2,words=rg_heights[..]},RenderGeometryBuffer.{resource=5,words=rg_nodes[..]}];
++  // The captured draw starts at463572 in the pack's identity-index tail.
++  // Rebase that identical576-word interval to zero for this bounded fixture.
++  rg_words:=[4]u32.[0,576,0,120];rg_indices:[576]u32;for rg_i:0..<576 {rg_indices[rg_i]=u32(rg_i);}
++  rg_domains:[1]RenderDrawDomain;rg_domains[0].vertices=999;
++  rg_counts:=FrameCounts.{width=1280,height=800,vertex_stride=16,draw_count=1,water_draws=1};
++  rg_q:=render_geometry_admit(2,rg_counts,rg_words[..],rg_indices[..],rg_u[..],rg_spray_buffers[..],rg_hud,rg_domains[..],2048);
++  #assert rg_q.status==RenderGeometryStatus.ok && rg_domains[0].vertices==576 && rg_domains[0].instances==120;
++  rg_domains[0].vertices=999;rg_words[3]=121;
++  rg_q=render_geometry_admit(2,rg_counts,rg_words[..],rg_indices[..],rg_u[..],rg_spray_buffers[..],rg_hud,rg_domains[..],2048);
++  #assert rg_q.status==RenderGeometryStatus.bad_draw && rg_q.bad_draw==0 && rg_domains[0].vertices==999;
++  rg_words[3]=120;rg_indices[575]=576;
++  rg_q=render_geometry_admit(2,rg_counts,rg_words[..],rg_indices[..],rg_u[..],rg_spray_buffers[..],rg_hud,rg_domains[..],2048);
++  #assert rg_q.status==RenderGeometryStatus.bad_draw && rg_domains[0].vertices==999;
++  rg_indices[575]=575;rg_spray_buffers[1].words=rg_nodes[0..<21735];
++  rg_q=render_geometry_admit(2,rg_counts,rg_words[..],rg_indices[..],rg_u[..],rg_spray_buffers[..],rg_hud,rg_domains[..],2048);
++  #assert rg_q.status==RenderGeometryStatus.bad_resources && rg_domains[0].vertices==999;
++}
+ #test "render geometry water dimensions preserve exact and fractional piece counts" {
+   u:[2300]f32;nodes:[48]u32;g:=RGContext.{app="everglade",u=u[..],water=nodes[..]};
+   u[1072]=2;u[1073]=3;u[1074]=1;u[1075]=1;u[1076]=0.0009765625;u[1077]=0;
+   r:=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==6 && r.domain.instances==129;
+-  u[1074]=8;u[1075]=8;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==384 && r.domain.instances==66;
+-  u[1077]=65535;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.instances==65601;
++  u[1074]=8;u[1075]=8;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.vertices==384 && r.domain.instances==68;
++  u[1077]=65535;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.instances==65603;
+   g.app="fairy";u[780]=2;u[781]=3;u[782]=1;u[783]=2;u[784]=1;
+   r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.instances==2 && r.domain.vertices==12;
+   u[784]=1.5;r=rg_water(g);#assert r.status==RenderGeometryStatus.ok && r.domain.instances==2;
+@@ -561,7 +591,12 @@
+     rg_local_patches:=rg_integer(g.u[at+5],65535);
+     if rg_local_patches<0 {return r;}
+     per:=u64(across)*u64(along);
+-    r.domain.instances=u64(rg_local_patches)+65+(64+per-1)/per;
++    // The producer reserves three spray slots at both tiers. At the desktop
++    // tier only the first has live particles; eg_fx_vertex clips k>=64 before
++    // any particle read. Those two bounded empty slots are valid draws too.
++    spray:=(64+per-1)/per;
++    spray=3+spray-rg_min(3,spray);
++    r.domain.instances=u64(rg_local_patches)+65+spray;
+   } else {
+     pieces:=f64(rows-1)/f64(distance);
+     n:=cast(u64)pieces;r.domain.instances=n+(ifx f64(n)<pieces then u64(1) else u64(0));

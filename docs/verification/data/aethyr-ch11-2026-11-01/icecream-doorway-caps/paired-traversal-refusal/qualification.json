@@ -1,0 +1,52 @@
+{
+  "schema": "aethyr.icecream.mesh-bands.native.v1",
+  "status": "failed",
+  "scope": "Independent repaired C++ oracle copy versus actual normal generated-Coax meshes; original C++ fixtures stay historical.",
+  "commands": [
+    {
+      "args": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "deps",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.coax"
+      ],
+      "exit": 0,
+      "failure": null,
+      "elapsed_seconds": 0.44771,
+      "log": "deps.json",
+      "log_sha256": "d15d9ffa84eeca2ae44cc94641e16d40b835e1487c237bbc30764f839e547688"
+    },
+    {
+      "args": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "test",
+        "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh.coax",
+        "--library",
+        "--steps",
+        "4000000000"
+      ],
+      "exit": 1,
+      "failure": null,
+      "elapsed_seconds": 121.04066,
+      "log": "coax-checks.log",
+      "log_sha256": "28a9b1cc676ed5d0d583c86fdf9d362e009887386eea6cad973036eac7eee0a5"
+    }
+  ],
+  "whole_deadline_seconds": 820,
+  "child_deadline_seconds": 600,
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "source_sha256": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.coax": "313ee29e6c150f5d253974af6c8965296c872713261091afc4edfb0cd31d6106",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh.coax": "853dd3d51d7f905eaa61e683ce26f3f22b3ffe7ab0c33e963e5545330e095b41",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/rules.coax": "936c676da35c11b32d8e67e41500dea021b377063904dcb1b5e47688e2fa3cf4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/tuning.coax": "3754c90740d8ebb78891e7a93a1403312a6ec26aa2253b24dac9025101ffc63c",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/fixtures/mesh-oracle.coax": "78baa9a7e9952e007814fea6db1cf38b84cbfc753161e8e340fa9d6439b8173d",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/fixtures/mesh-band-oracle.coax": "b2f00e11b26f783125dbead20bcf1db11ad95742104e7f2fd273b65107ec24a8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c": "76938952be407d8043474decb5ae374a0bacd102b4a78480f6e8278def85343a",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-check.c": "d179d4df6680562c8cf625e5e1a46fbd5cac27d0a86c42630743efbc18c594e8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-oracle.cpp": "bc6e81f195885cb14a93b4139a30c4ba4fc9468dd00184b1f1da294376b77180",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/check_mesh_bands.py": "c8c0279db0a8af17e42fc88c90d2e88862c027cfa35ddcb09095d622f01f6aaa",
+    "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/test-mesh.sh": "ebed295f2d8f0af1896635c4348f174566fbbb5f363bc6db91a8b21114600698"
+  },
+  "error": "RuntimeError: coax-checks.log: exit 1",
+  "elapsed_seconds": 121.492531
+}

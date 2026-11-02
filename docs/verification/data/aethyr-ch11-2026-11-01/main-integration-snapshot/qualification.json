@@ -1,0 +1,73 @@
+{
+  "schema": "aethyr.main-integration.private-snapshot.v1",
+  "status": "local-unpublished-integration; chapter11-in-progress",
+  "snapshot": {
+    "schema": "aethyr.private-integration-snapshot.v1",
+    "status": "frozen-tree-verified-unreferenced-commit",
+    "source_worktree": "/Users/christopherdavid/work/openagents-aethyr-book",
+    "integration_worktree": "/Users/christopherdavid/work/openagents-aethyr-book-main",
+    "original_head": "08729561f96d6cc56c454c62a1920ab2e9b29410",
+    "upstream_target": "39fa38023775f123173ba6dc3cab8173a311b597",
+    "common_base": "4aa69fe6fa0c7619cf123f182558784cb29dee65",
+    "tree": "a604a45ef0d33f723562d5cdeb3ba7095afa1ebb",
+    "commit": "9df7d74b3638662b413b4a3d52e57de92ff53df1",
+    "original_index_path": "/Users/christopherdavid/work/openagents/.git/worktrees/openagents-aethyr-book/index",
+    "original_index_sha256": "d583ba979e2e09bb919ed656440a5dab52bd72312fa084fa92eff4bd83650c84",
+    "original_index_unchanged": true,
+    "selected_paths": 2682,
+    "selected_present_files": 2682,
+    "selected_bytes": 199466196,
+    "stage_paths": 2418,
+    "all_selected_unchanged_before_after_tree": true,
+    "elapsed_seconds": 26.022240041056648,
+    "deadline_seconds": 810,
+    "manifest": "selected-before.json",
+    "manifest_sha256": "025dcbb8c9b8c5ea6fb46dfe4d7c2ab4852a3f4b8cdb5af48006f8cb07b49370",
+    "scope": "Private index only; original files, index, HEAD and refs untouched. No cherry-pick/rebase/applied integration yet. Commit parent is common base, so its single delta includes all earlier local checkpoints."
+  },
+  "integration_commit": "7c9289b4db25d2df527f6446debadaffe364e7ad",
+  "integration_tree": "8049887752072c9bdbda43ae4af783efd0f39f82",
+  "upstream_preservation": {
+    "remote_only_paths_verified": 2265,
+    "local_only_paths_verified": 2622,
+    "upstream_deletions_retained": 33,
+    "mismatches": []
+  },
+  "conflicts": [
+    "aethyr/book/ch011-the-wgsl-renderer.md",
+    "coax/CHANGELOG.md",
+    "coax/bootstrap-build.sh",
+    "coax/release-status.json",
+    "coax/src/release.h"
+  ],
+  "resolution": "Routine changelog/bootstrap hunks retain upstream borrow follow-ups and link flags. Root reviewed chapter11 with its in-progress status and dependencies. Canonical release equals upstream; generated files retain upstream bytes and supported release check passed. All other paths use the actual Git three-way merge.",
+  "original_worktree_index_still_matches_snapshot": true,
+  "no_push": true,
+  "matching_main_compiler": "External pending; compiler-availability.json records missing published/cache entry and an active external build. B3/1fac remains a separate explicit qualified driver, never relabelled source-matching main.",
+  "files": {
+    "compiler-availability.json": {
+      "sha256": "eeb5af8aaae383da4f42d079b36edd914a1164e7ccdbc2f53734d36f26097d39",
+      "bytes": 1418
+    },
+    "private-qualification.json": {
+      "sha256": "a203b0d8ac897a31059ef13649a62058c2dff7a1b3f6f0b8e37b821c5066d0ab",
+      "bytes": 1397
+    },
+    "private-selected-before.json": {
+      "sha256": "025dcbb8c9b8c5ea6fb46dfe4d7c2ab4852a3f4b8cdb5af48006f8cb07b49370",
+      "bytes": 919288
+    },
+    "private-snapshot.py": {
+      "sha256": "c831de0afb1efe451c6693a0719a55f55af92cd85fd3b6c1d2d80937773f9b3d",
+      "bytes": 6199
+    },
+    "readonly-threeway-audit.json": {
+      "sha256": "558d22bfd363f9d712756fc73401839b571862f1779278434829460e80a09573",
+      "bytes": 331699
+    },
+    "release-check.log": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  }
+}

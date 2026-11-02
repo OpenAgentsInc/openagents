@@ -1,0 +1,10 @@
+{
+  "status": "stopped_at_810_second_deadline",
+  "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+  "files": {
+    "everglade.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "everglade.json": "00e6911dd8cf9eb3dbcf344e832cfb56fae7d2c609c52fef3432e15f9e2e25fe",
+    "driver.py": "7cc8c62b7022d8606baa2faff46325b38bb9eaf1c1b24334f7e2c71118cf3858"
+  },
+  "scope": "Second ordinary changed-source Everglade build also exceeded its owned command deadline. No successful fresh desktop Wasm or runtime frame is claimed, and no further build was started after the user requested a stopping point."
+}

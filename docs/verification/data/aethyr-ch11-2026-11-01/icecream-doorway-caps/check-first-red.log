@@ -1,0 +1,16 @@
+FAIL #test door jamb caps: normal room materials do not overlap (166 ms)
+verse/icecream/mesh.coax:1215:9: error[E0406]: assertion failed
+          #assert ijv[ijstart+iji].p.y>=DOOR_HEIGHT;
+          ^
+  note: in #test door jamb caps: normal room materials do not overlap
+FAIL #test door jamb caps: mixed room materials do not overlap (291 ms)
+verse/icecream/mesh.coax:1215:9: error[E0406]: assertion failed
+          #assert ijv[ijstart+iji].p.y>=DOOR_HEIGHT;
+          ^
+  note: in #test door jamb caps: mixed room materials do not overlap
+FAIL #test door jamb caps: Backrooms materials do not overlap (187 ms)
+verse/icecream/mesh.coax:1215:9: error[E0406]: assertion failed
+          #assert ijv[ijstart+iji].p.y>=DOOR_HEIGHT;
+          ^
+  note: in #test door jamb caps: Backrooms materials do not overlap
+3 of 24 checks (--only 'door jamb caps:'), 0 passed, 3 failed

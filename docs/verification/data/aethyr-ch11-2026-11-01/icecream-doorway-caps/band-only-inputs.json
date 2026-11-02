@@ -1,0 +1,8 @@
+{
+  "verse/icecream/mesh.coax": "4f911f2d43d247177e9d38426f84a9c84a61610436c36af2be05f53a1ab3cc12",
+  "verse/icecream/fixtures/mesh-band-oracle.coax": "4c1c462c6b5f4b8a68b517758ee6d5da560b1f929306ba4e383aef4e8370ddb7",
+  "verse/icecream/check_mesh_bands.py": "a23d5688f4eef49fcb400408fcaec266bcb44a120898e90be0dcb2ae3a17eb54",
+  "verse/icecream/check_mesh_band_controls.py": "3d55eb39df9fb39ef2eb8e1b46b7b695d69399882414cfbb05e1f7a9267f5c98",
+  "verse/icecream/mesh-band-native.coax": "5b1f4b76ba49ba0cb3a3dc4bc8feecda7d5d51afe48c4f04491696a239e4e87c",
+  "verse/icecream/mesh-band-native.c": "a6f052b499fcd4a5eed7e88091b7926332d274b5053284a912d45da4d2c337a0"
+}

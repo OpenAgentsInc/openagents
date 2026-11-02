@@ -1,0 +1,5 @@
+coax/lib/nostr/json.coax:70:31: error[E0400]: compile-time evaluation exceeded 70000000 steps, the check's budget (its own #steps)
+    j[0].tok = tok; j[0].from = from; j[0].to = to; j[0].key = false;
+                                ^
+  note: in #test a project with as many rows as the live fold hands up is ready, one more is refused
+1 error

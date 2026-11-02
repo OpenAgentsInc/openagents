@@ -1,0 +1,26 @@
+{
+  "mesh_changed_words": 1980,
+  "mesh_changed_vertices": 1540,
+  "changed_attributes_beyond_position": 0,
+  "preview": "Top WebGPU; bottom Vulkan; left band-only; right doorway caps. Linear half values converted to sRGB for visual review only.",
+  "pairs": {
+    "webgpu": {
+      "before": "/tmp/aethyr-ch11-icecream-bands-half-320/gpu.bin",
+      "after": "/tmp/aethyr-ch11-icecream-doorway-main-half-320/gpu.bin",
+      "before_sha256": "534beb2ca9f76cf618b7083b5f47c80528bf292200c5fb71fc68ff69dfb541b3",
+      "after_sha256": "d3eed58bc680ce5ddd54b54489558c2a00aae6b5a73269906b9e21e66f36dcca",
+      "changed_channels": 540,
+      "changed_pixels": 180,
+      "max_absolute_change": 0.0546875
+    },
+    "vulkan": {
+      "before": "/tmp/aethyr-ch11-native-icecream-bands-320/screen.raw",
+      "after": "/tmp/aethyr-ch11-native-icecream-doorway-main-320/screen.raw",
+      "before_sha256": "3b825aacd0605345a75d423462357f18bb2ed2b33e5ba428ae3156aecc6819f0",
+      "after_sha256": "4643f31b844d377102b9a52716b9fb7a22b1778d19aee85015c2e3416c3a80dd",
+      "changed_channels": 1044,
+      "changed_pixels": 348,
+      "max_absolute_change": 0.0546875
+    }
+  }
+}

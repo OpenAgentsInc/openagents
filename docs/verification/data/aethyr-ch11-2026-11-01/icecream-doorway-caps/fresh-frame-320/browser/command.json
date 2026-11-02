@@ -1,0 +1,19 @@
+{
+  "command": [
+    "/Users/christopherdavid/.bun/bin/bun",
+    "aethyr/tests/check_render_host.ts",
+    "/tmp/aethyr-ch11-icecream-doorway-main-7c9289b4-producer/icecream.wasm",
+    "/tmp/aethyr-ch11-packages-current/ice-cream-man",
+    "apps/openagents-web/realms/ice-cream-man/index.html",
+    "/tmp/aethyr-ch11-icecream-doorway-main-half-320",
+    "--half",
+    "--start",
+    "--require-draws",
+    "--size=320x180"
+  ],
+  "deadline_seconds": 180,
+  "status": "pass",
+  "exit": 0,
+  "elapsed_seconds": 7.812329458072782,
+  "log_sha256": "25b720bc25fdf9b51d89134025684838ae782c36d3a55dc4987f5c1bcb52d774"
+}

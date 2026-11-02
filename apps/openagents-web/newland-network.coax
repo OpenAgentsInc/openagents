@@ -34,7 +34,7 @@ HomeIssue :: struct {id:string;kind:string;status:string;title:string;parent:str
   #assert hn_field("{\"nested\":{\"x\":1}}","nested")=="{\"x\":1}";
   #assert hn_number("{\"n\":12}","n")==12 && hn_string("{\"s\":\"hi\"}","s")=="hi";
 }
-#test "a project with as many rows as the live fold hands up is ready, one more is refused" #steps 70000000 {
+#test "a project with as many rows as the live fold hands up is ready, one more is refused" #steps 100000000 {
   // 2026-10-31: coax (264 rows) and verse (284) passed the old 256-row room and the homepage readied no project
   s:[1]LandState;read_tables(s[..]);text:[65536]u8;
   for extra:0..<2 {held:=HOME_ISSUES+extra;

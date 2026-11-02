@@ -9,7 +9,7 @@
     "design_draft": 70
   },
   "current_chapter": 11,
-  "status": "chapter11 implementation and qualification in progress",
+  "status": "stopped_at_user_request",
   "deliveries": [
     {
       "chapter": 2,
@@ -46,7 +46,7 @@
     17
   ],
   "scope_rule": "Keep design status until its declared acceptance is supported; preserve existing evidence and test only changed inputs.",
-  "worktree": "/Users/christopherdavid/work/openagents-aethyr-book",
+  "worktree": "/Users/christopherdavid/work/openagents-aethyr-book-main",
   "compiler": {
     "version": "coax0 0.46.0",
     "binary_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
@@ -274,8 +274,8 @@
   "full_book_complete": false,
   "current_status_counts": {
     "implemented": 13,
-    "partly_implemented": 3,
-    "design_draft": 70
+    "partly_implemented": 5,
+    "design_draft": 68
   },
   "last_qualified_utc": "2026-11-01T13:07:34.411954+00:00",
   "chapter_9_started_utc": "2026-11-01T12:23:00Z",
@@ -1234,7 +1234,13 @@
       ],
       "history": "Original max expression produced2survivors; implementation rewritten without equivalent marks. Old logs kept. Fresh default ordinary producer build pending.",
       "native": "Actual 190-draw payload passes independently emitted C in debug, O2 and ASan/UBSan. Excess instance, excess index and short node payload each refuse with no partial publication; exact replay and logs are retained in the record.",
-      "record": "docs/verification/data/aethyr-ch11-2026-11-01/everglade-water-spray/qualification.json"
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/everglade-water-spray/qualification.json",
+      "ordinary_308_rebuild": {
+        "status": "stopped_at_deadline",
+        "deadline_seconds": 810,
+        "scope": "Heavy unrelated compiler jobs limited CPU availability. No fresh artifact was published. A separate explicitly pinned1fac build is in progress; old timeout is preserved."
+      },
+      "fresh_runtime": "Still pending: both ordinary308 and explicitly pinned1fac changed-source builds stopped at810second deadlines. No further build was started after the stop request."
     },
     "current_authority_proof_index": "docs/verification/data/aethyr-ch11-2026-11-01/current-authority-gates/index.json",
     "belt_stair_visible_migration": {
@@ -1258,6 +1264,63 @@
       "epoch": "ExacthistoricalRFbackend sourceepoch retained; changedEvergladewateradmission notclaimedascompiledintoRF.",
       "cause": "Read-onlycurrentgeometryaudit finds perpendicularsharedboxedgeandintersectingcapsulebones, notcoplanar duplicatecaps. Independentboxrepair preservesfullvertexpacketmultisets; nativeimageunchanged, browser6smallhalfchannelchangesat5otherpixels.",
       "next": "Design an input-derived precision contract using primary specifications before changing the oracle; no tolerance has been broadened."
+    },
+    "main_integration": {
+      "status": "local_unpublished",
+      "origin_main": "39fa38023775f123173ba6dc3cab8173a311b597",
+      "snapshot_commit": "9df7d74b3638662b413b4a3d52e57de92ff53df1",
+      "snapshot_tree": "a604a45ef0d33f723562d5cdeb3ba7095afa1ebb",
+      "integration_commit": "7c9289b4db25d2df527f6446debadaffe364e7ad",
+      "snapshot_files": 2682,
+      "snapshot_bytes": 199466196,
+      "old_worktree": "/Users/christopherdavid/work/openagents-aethyr-book",
+      "current_worktree": "/Users/christopherdavid/work/openagents-aethyr-book-main",
+      "preserved": "Upstream chapter DAG/statuses, 512-row capacities, font aliases, optional supersampling, compiler semantic changes and published installer. Original checkout, HEAD and index were not changed.",
+      "release_metadata": "Generated files match merged canonical release; scripts/coax-release.sh --check passed with explicitly qualified1fac generator.",
+      "qualified_compiler": "Matching-main full fingerprint447859 remains externally building, published artifact currently404; no mismatched binary was installed or relabelled. Current product builds explicitly pin1fac/B3 and record that older compiler source separately."
+    },
+    "static_visual_invariant": "docs/verification/data/aethyr-ch11-2026-11-01/main-integration/static-visuals/qualification.json",
+    "book_structure": "docs/verification/data/aethyr-ch11-2026-11-01/main-integration/book-structure/qualification.json",
+    "icecream_doorway_geometry": "docs/verification/data/aethyr-ch11-2026-11-01/icecream-doorway-caps/repair.json",
+    "merged_grid_512": {
+      "status": "pass",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/merged-grid-512/qualification.json",
+      "budget_record": "docs/verification/data/aethyr-ch11-2026-11-01/merged-grid-512-check-budget/index.json",
+      "wasm_sha256": "9f229a3395a989ba693826303acdaa5d36e2244f3d6d460406292023dfa9c9ba",
+      "build_seconds": 80.6100884169573,
+      "test_steps_measured": 77453931,
+      "authored_test_steps": 100000000,
+      "memory_pages_required": 999,
+      "memory_maximum_pages": 1024,
+      "conservative_stack_bytes": 1956816,
+      "stack_reserved_bytes": 4194304,
+      "runtime": "Actual browser capture passed. All normalized RFI inputs and GPU readback bytes match the prior strictly qualified 320-row frame; prior numerical observations are reused explicitly. No new CPU backend/source claim."
+    },
+    "deadgears_precision_research": "docs/verification/data/aethyr-ch11-2026-11-01/precision-contract-research/HANDOFF.md",
+    "grid_visual_controls": "docs/verification/data/aethyr-ch11-2026-11-01/grid-visual-controls/qualification.json",
+    "orbit_current_golden": "docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/orbit-current/qualification.json",
+    "icecream_doorway_runtime": {
+      "status": "pass",
+      "record": "docs/verification/data/aethyr-ch11-2026-11-01/icecream-doorway-caps/repair.json",
+      "channels_per_backend": 230400,
+      "failures": 0,
+      "excluded_channels": 0,
+      "nonfinite": 0,
+      "max_normalized_error": 0.00146484375,
+      "source_epoch": "Merged7c9289 product with explicitly qualified1fac/B3; historical308/RF633 backend reuse and unreachable Ever-only Geometry delta stated in receipt.",
+      "visual_scope": "First-frame HOWTO overlay; no full-room/camera survey claim."
+    },
+    "stopping_point": {
+      "requested_by_user": true,
+      "utc": "2026-11-02T04:58:25.352534+00:00",
+      "status": "stopped_with_handoff",
+      "handoff": "docs/verification/aethyr-book-handoff-2026-11-01.md",
+      "local_ref": "refs/codex/aethyr-book-handoff-2026-11-01",
+      "all_agents_stopped": true,
+      "owned_jobs_remaining": 0,
+      "unfinished_work_pushed": false,
+      "chapter11_complete": false,
+      "full_book_complete": false
     }
   }
 }

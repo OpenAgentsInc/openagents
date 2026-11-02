@@ -1,0 +1,17 @@
+FAIL #test a project with as many rows as the live fold hands up is ready, one more is refused (out of steps: 70000000 used, its budget is 70000000, 8343 ms)
+        own steps  share   with calls     calls  procedure
+         26129030  37.3%     33698675     98800  json_string  coax/lib/nostr/json.coax:103
+         23480037  33.5%     62788322    218114  json_next  coax/lib/nostr/json.coax:194
+          4902060   7.0%      4902060    408505  json_utf8  coax/lib/nostr/json.coax:88
+          3292419   4.7%      3292419    121942  json_token  coax/lib/nostr/json.coax:69
+          2897706   4.1%     16406984     63707  json_value  coax/lib/nostr/json.coax:161
+          2244662   3.2%     60814320      9120  hn_field  apps/openagents-web/newland-network.coax:92
+           976436   1.4%     15420683     41937  hn_raw  apps/openagents-web/newland-network.coax:88
+           918684   1.3%       918684      3077  json_raw  coax/lib/nostr/json.coax:347
+     ... 29 more procedures
+coax/lib/nostr/json.coax:70:31: error[E0400]: compile-time evaluation exceeded 70000000 steps, the check's budget (its own #steps)
+    j[0].tok = tok; j[0].from = from; j[0].to = to; j[0].key = false;
+                                ^
+  note: in #test a project with as many rows as the live fold hands up is ready, one more is refused
+1 of 114 checks (--only 'a project with as many rows as the live fold hands up is ready, one more is refused'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

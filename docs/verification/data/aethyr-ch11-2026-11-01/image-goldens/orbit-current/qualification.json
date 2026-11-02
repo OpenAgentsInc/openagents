@@ -1,0 +1,43 @@
+{
+  "status": "pass",
+  "execution": {
+    "status": "pass",
+    "route": "generic",
+    "command": [
+      "bun",
+      "coax/web/goldens.ts",
+      "http://127.0.0.1:51998",
+      "--only",
+      "orbit-league",
+      "--report",
+      "/tmp/aethyr-ch11-stock-orbit-current-generic/report.json"
+    ],
+    "elapsed_seconds": 12.232,
+    "returncode": 0,
+    "scope": "Actual existing production golden walker and saved PNG baselines; HTML rewrites only local artifact/package addresses, routes recorded separately."
+  },
+  "source_changes": [],
+  "served": {
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/orbit-league/index.html": "23ebba021c0e7f731422865e43f7b1417317993515c49237931d4ab250d590e6",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/host.js": "214003ec97f37ce55daab424763a358715574030d533f1caed3853a1e46696af",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy-import.js": "4261bd83bcccb89c94704670c48e843fb4029c706e31df58a6f656545dc04070",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/drop.js": "65264cee54a2de175c0ad3243c18ff2d92ccf8411bc57ea547c324575dd4bb7e",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/uploads.js": "c90e40ec906f1fe790629de9ee563f367718cc57c5650c4e435ba9035a04b6b8",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/docs.js": "50481d8e646625729c115d192e2f1ec8fce205e1655525b5fb3e2ac0f9ac6abb",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/card.js": "6f00f5dc7eee2d935b023a0a6e24c3a21cf48c597fffdf60b43ec2fb4e37cc3b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/voice.js": "d0e56724274cc3d6e6e83f29b86ca3223b6b7e766a2b502bad85740da35d7bd2",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/gpui.js": "89abaa45008457ab1cc822adb0e572b965df7269664cade434a6978a7ab93ef4",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/loader.js": "27c67be471d471abb8d3969639d53ce9964be0c07eb849ab6924b4ff50548ee1",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/http-requests.js": "9b0570e15a9098cfdb8f359c377675b086a14ff74186039b812e2971d086d630",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/render.js": "824e11287b5ba74a7c30855f7e9213552180f01eaaeb5d2648dfd8e504710fc9",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/web/entropy.js": "14a02dc70c7ce8341f364194f973d11d9885170f5a9f0852ad1cd2c1f912f85a",
+    "/tmp/aethyr-ch11-typed-hosts-relinked/orbitleague.wasm": "2b420b5a23d481c8f8a876e80606643606a1592a009d49860d5cf94f6b3fb86b",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/favicon.svg": "0b6d866f118b088b521aa243485dc3f214165dfda885827021abef93998fdd74",
+    "/tmp/aethyr-ch11-packages-current/orbit-league/render.json": "0932424597c04e9d5f5bd0f160dfed13a04f441962b31cb2871590ae2a5fdd2b",
+    "/tmp/aethyr-ch11-packages-current/orbit-league/module-0-9a0c9c664949fd42c4c01213d3e3173f65d156fd46d299c6ef1a5aac7e0b0afc.wgsl": "9a0c9c664949fd42c4c01213d3e3173f65d156fd46d299c6ef1a5aac7e0b0afc",
+    "/Users/christopherdavid/work/openagents-aethyr-book/apps/openagents-web/realms/orbit-league/assets/roadster.bin": "6be9a3c06c8d5535c9ddb4833d647afe156a7b7893773fc39f7944ac612f908c"
+  },
+  "scope": "Actual current retained producer/shared renderer passes the original Orbit League screenshot with6changed blocks at its unchanged6block allowance, plus startup/drawing/analytics. No PNG update and no numerical CPU parity claim. This is the recorded pre-integration producer epoch, not a fresh merged-main rebuild.",
+  "archive_sha256": "c687658fc6c0817a958fa66189d6e51254325f605faf3e37e05e4db958b57acf",
+  "archive_bytes": 2967554
+}

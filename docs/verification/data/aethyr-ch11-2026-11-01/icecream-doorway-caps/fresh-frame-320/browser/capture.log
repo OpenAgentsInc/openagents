@@ -1,0 +1,16 @@
+{
+  "captured": true,
+  "sha256": "d3eed58bc680ce5ddd54b54489558c2a00aae6b5a73269906b9e21e66f36dcca",
+  "draws": 60,
+  "hud": 6492,
+  "render": {
+    "submitted": true,
+    "readiness": 2,
+    "refusal": null,
+    "captureArmed": true,
+    "observed": true,
+    "probed": true
+  },
+  "body": "Ice Cream Man\n\nIce Cream Man",
+  "exceptions": []
+}

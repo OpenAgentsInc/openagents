@@ -1,0 +1,31 @@
+ok   #test models: the demo's counts, bounds and vertices (1 case, 18593227 steps, 2192 ms)
+FAIL #test house: repaired wall bands with the demo's counts and bounds for a set of seeds (70050 ms)
+/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh.coax:33:68: error[E0400]: compile-time aggregate traversal limit exceeded
+  v3mul :: (a: V3, s: f32) -> V3 { return V3.{x = a.x * s, y = a.y * s, z = a.z * s}; }
+                                                                     ^
+  note: in #test house: repaired wall bands with the demo's counts and bounds for a set of seeds
+ok   #test house: repaired wall bands with the demo's counts and bounds, seeds 3 and 4 of the set (1 case, 326355897 steps, 13969 ms)
+ok   #test house: repaired wall bands with the demo's counts and bounds, seeds 5 and 6 of the set (1 case, 326356055 steps, 11335 ms)
+ok   #test house: repaired wall bands with the demo's counts and bounds, seeds 7 and 8 of the set (1 case, 235864453 steps, 6883 ms)
+ok   #test house: repaired wall bands with the demo's counts and bounds, seeds 9 and 10 of the set (1 case, 236168292 steps, 6921 ms)
+ok   #test house: the same seed builds the same geometry, another seed another (1 case, 144397560 steps, 4671 ms)
+ok   #test a full view keeps counting, and writes nothing past its end (1 case, 54186329 steps, 2050 ms)
+ok   #test he ducks under a doorway's lintel, and stands up in the room (1 case, 501996 steps, 25 ms)
+ok   #test room wall bands: closed and doorway spans retain disjoint materials (1 case, 7588030 steps, 302 ms)
+ok   #test room wall bands: mixed palette retains disjoint materials (1 case, 7589152 steps, 312 ms)
+ok   #test room wall bands: Backrooms stripes retain disjoint materials (1 case, 5289228 steps, 293 ms)
+ok   #test room wall bands: every orientation shares exact seams and unchanged trim (1 case, 445616 steps, 16 ms)
+ok   #test room wall bands: short views keep whole triangles and surrounding canaries (1 case, 1109792 steps, 37 ms)
+ok   #test door jamb caps: normal room materials do not overlap (1 case, 3839200 steps, 164 ms)
+ok   #test door jamb caps: mixed room materials do not overlap (1 case, 3839221 steps, 167 ms)
+ok   #test door jamb caps: Backrooms materials do not overlap (1 case, 2694412 steps, 111 ms)
+ok   #test door jamb caps: emitted closed boxes and malformed donors (1 case, 58920 steps, 1 ms)
+ok   #test door jamb caps: actual donor bounds preserve exposed trim overhang (1 case, 399469 steps, 13 ms)
+ok   #test tuning: defaults, bounds and the difficulties (1 case, 41425 steps, 1 ms)
+ok   #test rng: seeded and bounded (1 case, 444034 steps, 12 ms)
+ok   #test geometry: maxNum, rounding and boxes (1 case, 866 steps, 0 ms)
+ok   #forall house: every room reachable, every key walkable (6 cases, 18748862 steps, 786 ms)
+ok   #test house: the same seed, the same house (1 case, 1429577 steps, 62 ms)
+ok   #test rules: closets, health, free roam and the host-driven body (1 case, 2080783 steps, 117 ms)
+ok   #test rules: the fudge freezes him, the keys open the door (1 case, 2362522 steps, 107 ms)
+26 checks, 25 passed, 1 failed

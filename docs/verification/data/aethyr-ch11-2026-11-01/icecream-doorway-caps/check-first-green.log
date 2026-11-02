@@ -1,0 +1,6 @@
+ok   #test door jamb caps: normal room materials do not overlap (1 case, 3839200 steps, 627 ms)
+ok   #test door jamb caps: mixed room materials do not overlap (1 case, 3839221 steps, 695 ms)
+ok   #test door jamb caps: Backrooms materials do not overlap (1 case, 2694412 steps, 481 ms)
+ok   #test door jamb caps: emitted closed boxes and malformed donors (1 case, 58920 steps, 1 ms)
+ok   #test door jamb caps: actual donor bounds preserve exposed trim overhang (1 case, 399469 steps, 13 ms)
+5 of 26 checks (--only 'door jamb caps:'), 5 passed, 0 failed

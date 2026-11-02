@@ -1,0 +1,25 @@
+{
+  "schema": "aethyr.integration.compiler-availability.v1",
+  "worktree": "/Users/christopherdavid/work/openagents-aethyr-book-main",
+  "head": "7c9289b4db25d2df527f6446debadaffe364e7ad",
+  "full_fingerprint": "4478591fbbd7b6a4ea86ce4581addde5b4977ecd76ab7a9f53dbc77d71c4c614",
+  "published_name": "3c5b48f7c8c1750e2083e2f8e3f9a8a685c686446f92de62130311555da43518/darwin-arm64",
+  "cache_path": "/Users/christopherdavid/.cache/coax-release/4478591fbbd7b6a4ea86ce4581addde5b4977ecd76ab7a9f53dbc77d71c4c614",
+  "cache_exists": false,
+  "cache_files": [],
+  "external_lock": {
+    "path": "/Users/christopherdavid/.cache/coax-release/4478591fbbd7b6a4ea86ce4581addde5b4977ecd76ab7a9f53dbc77d71c4c614.building",
+    "exists": true,
+    "pid": 49459,
+    "ps": "49459 49454 25:08   0.0 bash coax/build.sh",
+    "ps_exit": 0,
+    "children": [
+      "50396 49459 25:01   0.0 bash /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T//coax-build-snapshot.hBQRqqcp/coax/bootstrap-build.sh --private-snapshot"
+    ]
+  },
+  "http_status": "404",
+  "curl_exit": 0,
+  "curl_error": "",
+  "published_checksum_url": "https://storage.googleapis.com/openagentsgemini-cli-releases/coax/builds/3c5b48f7c8c1750e2083e2f8e3f9a8a685c686446f92de62130311555da43518/darwin-arm64.tar.gz.sha256",
+  "scope": "Read-only availability and process observations. No lock altered, no process signalled, no build/gate started and no compiler installed."
+}

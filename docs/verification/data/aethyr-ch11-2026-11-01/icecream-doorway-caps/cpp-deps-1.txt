@@ -1,0 +1,4 @@
+mesh.o: /Users/christopherdavid/work/aethyr-demo/src/icecream/mesh.cpp \
+  /Users/christopherdavid/work/aethyr-demo/src/icecream/mesh.h \
+  /Users/christopherdavid/work/aethyr-demo/src/icecream/../vec3.h \
+  /Users/christopherdavid/work/aethyr-demo/src/icecream/rules.h

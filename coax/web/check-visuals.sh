@@ -28,7 +28,7 @@ done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_mo
 # The host and the crypto glue build no UI: no styled or created elements
 # except the keyboard field and the dev note (host.js, localhost) and the
 # loading screen (loader.js), each line marked.
-for f in "$here/host.js" "$here/loader.js" "$here/drop.js" "$here"/unlock/*.ts; do
+for f in "$here/host.js" "$here/render.js" "$here/loader.js" "$here/drop.js" "$here"/unlock/*.ts; do
   [[ -e "$f" ]] || continue
   case "$f" in *.test.ts) continue ;; esac
   marked='// (dev only|keyboard field)$'

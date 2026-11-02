@@ -1,0 +1,638 @@
+{
+  "schema": "aethyr.icecream.mesh-bands.controls.v1",
+  "status": "pass",
+  "scope": "13 named actual-Coax producer controls; successful normal C emission required before native or focused Coax assertion rejection. Not whole-file zero-survivor mutation.",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "tool_sha256": "82e1f84ba431846c7243989c876ece0cb96458232ac0becc9aacf32a3b7eb053",
+  "qualified_receipt_sha256": "06d89fc988a71cfb04dde26ed358d8955389f67cec5d69ca7a1d1e132973c618",
+  "controls": [
+    {
+      "name": "caller-restores-overlap",
+      "status": "caught",
+      "verifier": "mesh",
+      "source_sha256": "d0d7675bc32eb4eccba679cb737f313fc6700664c517526e1620539b68840e4d",
+      "generated_c_sha256": "4e587948651b4cfd7cc8483e8a03b866b01d76b63307e2e5f2abe76178eb579c",
+      "header_sha256": "c5c2d1114e6dd52406a4912b862c3bce688f48e033159faa9e5fd5a7ec904121",
+      "executable_sha256": "f4b8526a7b2505127984d4d79c7861aa525e1c2b6be5ec1f1b4bf51f38737011",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/caller-restores-overlap/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/caller-restores-overlap/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "4e587948651b4cfd7cc8483e8a03b866b01d76b63307e2e5f2abe76178eb579c"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/caller-restores-overlap",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/caller-restores-overlap/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-check.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/caller-restores-overlap/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/caller-restores-overlap/control",
+            "/private/tmp/aethyr-ch11-icecream-jamb-split-qualified/oracle.bin"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "6f6129713b42ccf46bffe101be5ecddac6fcc4477d92fc8fa5217de315d97209"
+        }
+      ]
+    },
+    {
+      "name": "seam-snap-omitted",
+      "status": "caught",
+      "verifier": "bands",
+      "source_sha256": "79e8a3f9e7216846722700d5a6f6a79e92680de2ec11c5ace4e5f38a93fd84e3",
+      "generated_c_sha256": "8133be5f39e9547f3bb45131e354d420a64f74c9d8669ce72a8a97bdb9b11219",
+      "header_sha256": "50bbd89122a9ae72ac735ca82af380f0a7614102999e7cc09fab46eab79085d3",
+      "executable_sha256": "7b662751335e88be2fb5d78eb58f89b38f7928c8cd7d4d94bd84d5dfc62d71cc",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/seam-snap-omitted/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/seam-snap-omitted/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "8133be5f39e9547f3bb45131e354d420a64f74c9d8669ce72a8a97bdb9b11219"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/seam-snap-omitted",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/seam-snap-omitted/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/seam-snap-omitted/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/seam-snap-omitted/control"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "dfe3b8dde05cc51c33e3c78ee5aac08fab79421d8a60c0b18e5865c0dfaff5d5"
+        }
+      ]
+    },
+    {
+      "name": "partial-triangle-guard",
+      "status": "caught",
+      "verifier": "bands",
+      "source_sha256": "955bc18dad754b23299019114c25631357726af13e11291866165a14f1a974ea",
+      "generated_c_sha256": "f769b5c49aeb41fa4e68882c979b8a066ae73f26c112f7295da1d545ce15dfc4",
+      "header_sha256": "96ff8242c187e6223d8fa54f188b67651927b4694124da00c777552b1f6ba4e2",
+      "executable_sha256": "430677f5c7396b9a7928a3a1498006bf15755efb131f2a74f66b6e02b618ab2a",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/partial-triangle-guard/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/partial-triangle-guard/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "f769b5c49aeb41fa4e68882c979b8a066ae73f26c112f7295da1d545ce15dfc4"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/partial-triangle-guard",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/partial-triangle-guard/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/partial-triangle-guard/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/partial-triangle-guard/control"
+          ],
+          "exit": -6,
+          "log": "execution.log",
+          "log_sha256": "f99ce1e2ff310b49c0fed45a5491629bad031cc0d9d2e2ea6ea790ea38375227"
+        }
+      ]
+    },
+    {
+      "name": "upper-trim-colour",
+      "status": "caught",
+      "verifier": "bands",
+      "source_sha256": "8cc3603b65d00e43bdead90a694a9fd9b45a5f4a970eaecbce12703423b106ed",
+      "generated_c_sha256": "e820a0e7e9dcb508c80df795779ae0ab8e215ee7e7e05bb1603d12fe94518bf5",
+      "header_sha256": "824f151a4b665fae1dbe9f3b11610ae92fb610cb07f2c06ca8c4a3ad3740a37c",
+      "executable_sha256": "021e257fe89bb546c9e3edf99b70987ae553feacef73be5253ec4148ab21449b",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/upper-trim-colour/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/upper-trim-colour/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "e820a0e7e9dcb508c80df795779ae0ab8e215ee7e7e05bb1603d12fe94518bf5"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/upper-trim-colour",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/upper-trim-colour/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/upper-trim-colour/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/upper-trim-colour/control"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "310abbe8e68f8b0f0c86364c4ae6497b02b01b716f2130fb21e2711928b75893"
+        }
+      ]
+    },
+    {
+      "name": "lower-trim-omitted",
+      "status": "caught",
+      "verifier": "bands",
+      "source_sha256": "746226467360ef2bb2fe656ebf3655b6077830e2167609b256bca8b464a6e39e",
+      "generated_c_sha256": "9d9aa7ac1c70e6a61e7ebfa15b4142c3ad4e62b0b6a348fd3bae584df52223bc",
+      "header_sha256": "d99464717a448f93aa155be27a82b9d58c87663e504b469cef30766f5bbb82a4",
+      "executable_sha256": "16cfbfcefdf8ceaa9d21b68c085fda8b61f2a8e72a0b49b2d5a009bb8e52efbb",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/lower-trim-omitted/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/lower-trim-omitted/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "9d9aa7ac1c70e6a61e7ebfa15b4142c3ad4e62b0b6a348fd3bae584df52223bc"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/lower-trim-omitted",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/lower-trim-omitted/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/lower-trim-omitted/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/lower-trim-omitted/control"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "f94fe8c0ed59e3aed04b38212472a26fc71fb021417858fdfbdfdf15038ee82b"
+        }
+      ]
+    },
+    {
+      "name": "middle-extent-restored",
+      "status": "caught",
+      "verifier": "bands",
+      "source_sha256": "c3726c36d1748f4b1b7c76b052811c4ae327305273683ca937a0b6812bd5ad2d",
+      "generated_c_sha256": "a2bd82ef7d444a38289d4d54c70d9e7e1eededf1dfcd6f8a907dd0083de20aab",
+      "header_sha256": "798cf0195d7080e240d61d9b96bfb427f5e0247988f6dfaabe0bc82776276a0d",
+      "executable_sha256": "0594b48fb022021f23c395dc5cf9e67c7a51c48f2406e9cb58210db03a6fb2ad",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/middle-extent-restored/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/middle-extent-restored/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "a2bd82ef7d444a38289d4d54c70d9e7e1eededf1dfcd6f8a907dd0083de20aab"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/middle-extent-restored",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/middle-extent-restored/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/middle-extent-restored/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/middle-extent-restored/control"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "c20829fe60e00ca033c0636eed3c78b422e3558f6db5a793c68f9eb2e0a5bcb3"
+        }
+      ]
+    },
+    {
+      "name": "jamb-culling-omitted",
+      "status": "caught",
+      "verifier": "bands",
+      "source_sha256": "d1f3d6b5f5acc68cdc75c3c089785a4fd69dfc889892206e7941345037512b2a",
+      "generated_c_sha256": "215900912e90c8c252f273ed1f41d7245f455654c538bb29e90b5478379c7a9d",
+      "header_sha256": "0cf1f832f25e5856c966cf908cf86b9e37392ab59b6a587848672334198291a6",
+      "executable_sha256": "46f21fe790300c850f753bc772e6c5a43c5f865d66a8d1df4eea307c2469beeb",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-culling-omitted/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-culling-omitted/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "215900912e90c8c252f273ed1f41d7245f455654c538bb29e90b5478379c7a9d"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-culling-omitted",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-culling-omitted/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-culling-omitted/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-culling-omitted/control"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "adaf507f990e8ae08a64a5683ad69cd9b0f5cb79df642c021a22498cbf1dd882"
+        }
+      ]
+    },
+    {
+      "name": "jamb-exposed-top-lowered",
+      "status": "caught",
+      "verifier": "bands",
+      "source_sha256": "12de926f48c45b8ec2870ccda63d1f365b198cf07662816f36077154287fc0b1",
+      "generated_c_sha256": "1eaf681e2d83bb7da5d113fc15a993dcf58e9d22094209aa4f88ad5e1fa9b945",
+      "header_sha256": "3f4528069883c0426e75e071b93d7275314fe69dd0403f0fe52140c3feece122",
+      "executable_sha256": "4886c5880fbe359674fc283dd031c68415e2ec6543e4727b9ae55569c30054b6",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-exposed-top-lowered/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-exposed-top-lowered/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "1eaf681e2d83bb7da5d113fc15a993dcf58e9d22094209aa4f88ad5e1fa9b945"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-exposed-top-lowered",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-exposed-top-lowered/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-exposed-top-lowered/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/jamb-exposed-top-lowered/control"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "adaf507f990e8ae08a64a5683ad69cd9b0f5cb79df642c021a22498cbf1dd882"
+        }
+      ]
+    },
+    {
+      "name": "hidden-cap-retained",
+      "status": "caught",
+      "verifier": "bands",
+      "source_sha256": "932e4efe7e5b29cdc68e4936e45d974c210a2ceba10dd9510854b1bfe6ba7b77",
+      "generated_c_sha256": "63305c070aa316fdc4a9989ee79061f6221ae7644e26fe713334f497a690546e",
+      "header_sha256": "586bd98f458e0cf15b09977ce0f5d6950c40f1b382e343a4df0d1e16f7fffdad",
+      "executable_sha256": "3c76979c166b82baaafe85dfd02b022033f1f025c7fdb75cd598535f7914dcba",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/hidden-cap-retained/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/hidden-cap-retained/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "63305c070aa316fdc4a9989ee79061f6221ae7644e26fe713334f497a690546e"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/hidden-cap-retained",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/hidden-cap-retained/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/hidden-cap-retained/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/hidden-cap-retained/control"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "04399437fd4aa287916b7007f88b338cfe156cab23f4c486a1000aa1b0f257eb"
+        }
+      ]
+    },
+    {
+      "name": "open-publish-partial-triangle",
+      "status": "caught",
+      "verifier": "bands",
+      "source_sha256": "9c1bdf3009a516f4e6a4c2a3a1d8f027b72d8c91d80e0a9f66f39d1e976bdeee",
+      "generated_c_sha256": "c4916cb78ef8e8034ccf1a1074b3a909334eb26f2e4e7799be1fb230fdfebd5f",
+      "header_sha256": "87d5925b3a30f067e32faaaca8cf6e50d800aa664f2df092fc40fe974447a65f",
+      "executable_sha256": "9e4b4a6f1eb2bb5cf5d1b9f4a7f880465347ee01b114d5bdec68b33eb2a6d0ef",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/open-publish-partial-triangle/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/open-publish-partial-triangle/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "c4916cb78ef8e8034ccf1a1074b3a909334eb26f2e4e7799be1fb230fdfebd5f"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/open-publish-partial-triangle",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/open-publish-partial-triangle/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-band-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/open-publish-partial-triangle/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/open-publish-partial-triangle/control"
+          ],
+          "exit": -6,
+          "log": "execution.log",
+          "log_sha256": "d699da41d83f75a46a8dc763cbe844eb79287109a33027ac34e73e2a7c4659e1"
+        }
+      ]
+    },
+    {
+      "name": "wrong-actual-post-published",
+      "status": "caught",
+      "verifier": "mesh",
+      "source_sha256": "5eb85583fb6f40174a18c1d89ca933e4c8fb214f2b9ee95a1c7acb33c90057e6",
+      "generated_c_sha256": "c9ac777edac260479b60e6a70894b1ae04fa7fc73cf1a05772d54d9cf0c281b7",
+      "header_sha256": "162bd74eb0c625a383d69913c7a0875276cc1b4a91f3ada835aa369dfa00f39b",
+      "executable_sha256": "8314d72616d8fec339b192816bd892b09bb94f8519b4ef2371e00f47196458ef",
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/wrong-actual-post-published/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/wrong-actual-post-published/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "c9ac777edac260479b60e6a70894b1ae04fa7fc73cf1a05772d54d9cf0c281b7"
+        },
+        {
+          "args": [
+            "/usr/bin/clang",
+            "-std=c11",
+            "-O2",
+            "-ffp-contract=off",
+            "-I",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/wrong-actual-post-published",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/wrong-actual-post-published/IceCream.c",
+            "/Users/christopherdavid/work/openagents-aethyr-book/verse/icecream/mesh-check.c",
+            "-lm",
+            "-o",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/wrong-actual-post-published/control"
+          ],
+          "exit": 0,
+          "log": "compile.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "args": [
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/wrong-actual-post-published/control",
+            "/private/tmp/aethyr-ch11-icecream-jamb-split-qualified/oracle.bin"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "87ff256af784cd62f83163b9ba2b8b74094b783a4f5b0363cf08a2d43c93c6b7"
+        }
+      ]
+    },
+    {
+      "name": "exposed-overhang-culled",
+      "status": "caught",
+      "verifier": "coax:actual donor bounds preserve exposed trim overhang",
+      "source_sha256": "ae31d1b1f5efd2cbfb411baa18ff6c368bfeff8f56fd666bdc6152ef0406ba33",
+      "generated_c_sha256": "b975a314e9b496862a9e84e79d9ca6a1f69a63bc541ba60e19e9c58b7aa3692d",
+      "header_sha256": "0cc977da205cc72dd31a2db9e69fabc0fa8ef0a6bad7a3dfe31cb01015b1a349",
+      "executable_sha256": null,
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/exposed-overhang-culled/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/exposed-overhang-culled/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "b975a314e9b496862a9e84e79d9ca6a1f69a63bc541ba60e19e9c58b7aa3692d"
+        },
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "test",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/exposed-overhang-culled/verse/icecream/mesh.coax",
+            "--library",
+            "--only",
+            "actual donor bounds preserve exposed trim overhang"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "3012225a0a501965901288d6ea8917869dc054c36010f624ea307977aa4ff2a8"
+        }
+      ]
+    },
+    {
+      "name": "closed-box-winding-unchecked",
+      "status": "caught",
+      "verifier": "coax:emitted closed boxes and malformed donors",
+      "source_sha256": "687ba85c8996fbc442001673ea8c83ebfe78aaebfe0bfa59e54a4cad6b7aed9c",
+      "generated_c_sha256": "4e34a5c987d45dea26e049a23edcaa4640ad23376898141346cf12de9d4a3112",
+      "header_sha256": "8fed489d43eaefd13bdb34e5284ab190042754c6d9e1decd28ee9595e31feaeb",
+      "executable_sha256": null,
+      "commands": [
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "c",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/closed-box-winding-unchecked/verse/icecream/mesh-band-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/closed-box-winding-unchecked/IceCream.h"
+          ],
+          "exit": 0,
+          "log": "IceCream.c",
+          "log_sha256": "4e34a5c987d45dea26e049a23edcaa4640ad23376898141346cf12de9d4a3112"
+        },
+        {
+          "args": [
+            "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+            "test",
+            "/private/tmp/aethyr-ch11-icecream-jamb-controls/closed-box-winding-unchecked/verse/icecream/mesh.coax",
+            "--library",
+            "--only",
+            "emitted closed boxes and malformed donors"
+          ],
+          "exit": 1,
+          "log": "execution.log",
+          "log_sha256": "29b4766844030a1915bde75cd285e63e4cbb9208aae7e92c352517149e2c6c06"
+        }
+      ]
+    }
+  ],
+  "source_changes": [],
+  "elapsed_seconds": 29.671704999986105
+}

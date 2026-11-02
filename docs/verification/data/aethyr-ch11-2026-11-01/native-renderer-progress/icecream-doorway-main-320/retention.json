@@ -1,0 +1,22 @@
+{
+  "status": "Vulkan validation pass; CPU numerical comparison separate",
+  "archive": "/tmp/aethyr-ch11-native-icecream-doorway-main-320/retained-native.tar.gz",
+  "archive_sha256": "6e5d9bca40d672534e6edbb32565d97664597eddb2b505b0fff50fb3c046f4a4",
+  "readback_sha256": "4643f31b844d377102b9a52716b9fb7a22b1778d19aee85015c2e3416c3a80dd",
+  "frame": {
+    "status": "rendered",
+    "profile": 12,
+    "resource": 1,
+    "width": 320,
+    "height": 180,
+    "format": "rgba16f",
+    "bytes": 460800,
+    "draw_commands": 62,
+    "device": "NVIDIA GeForce RTX 4080",
+    "subPixelPrecisionBits": 8,
+    "validation_errors": 0,
+    "validation_warnings": 0
+  },
+  "input_equality": true,
+  "old_worktree_writes": false
+}

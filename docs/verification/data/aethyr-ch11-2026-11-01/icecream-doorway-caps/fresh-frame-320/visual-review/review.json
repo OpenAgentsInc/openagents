@@ -1,0 +1,6 @@
+{
+  "status": "no visible regression in this captured view",
+  "scope": "Exact before/after same-camera frame. HOWTO overlay covers most of the room; HUD, camera and exposed room borders are preserved. This is not an unobstructed room review or a stock-golden qualification.",
+  "layout": "Top WebGPU; bottom Vulkan; left band-only; right doorway caps.",
+  "numerical_gate": "Separate complete strict RGBA receipts; preview conversion is not used in comparison."
+}

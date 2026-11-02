@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-book-main/psionic/tests/book.py", line 252, in <module>
+    main()
+    ~~~~^^
+  File "/Users/christopherdavid/work/openagents-aethyr-book-main/psionic/tests/book.py", line 246, in main
+    examples = check(args.book)
+  File "/Users/christopherdavid/work/openagents-aethyr-book-main/psionic/tests/book.py", line 121, in check
+    assert source in linked and chapter in linked, f"unlinked example/chapter: {source}"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: unlinked example/chapter: /Users/christopherdavid/work/openagents-aethyr-book-main/aethyr/examples/admit-a-frame.coax
