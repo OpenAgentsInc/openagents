@@ -151,11 +151,14 @@ int64_t cxfs_read(void) {
   if (f < 0) return -1;
   struct stat st;
   if (fstat(f, &st) != 0 || !S_ISREG(st.st_mode)) { close(f); return -1; }
-  fs_data = malloc(st.st_size > 0 ? (size_t)st.st_size : 1);
+  /* A file that says it is empty may still hold text the kernel makes as it is read (/proc):
+     read those to their end, up to 1 MiB. A truly empty file still reads as empty. */
+  int64_t want = st.st_size > 0 ? (int64_t)st.st_size : (int64_t)1 << 20;
+  fs_data = malloc((size_t)want);
   if (!fs_data) { close(f); return -1; }
   int64_t got = 0;
-  while (got < st.st_size) {
-    ssize_t r = read(f, fs_data + got, (size_t)(st.st_size - got));
+  while (got < want) {
+    ssize_t r = read(f, fs_data + got, (size_t)(want - got));
     if (r < 0 && errno == EINTR) continue;
     if (r < 0) { close(f); free(fs_data); fs_data = NULL; return -1; }
     if (r == 0) break;

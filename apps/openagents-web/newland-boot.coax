@@ -1,0 +1,167 @@
+// Verse OS's boot sequence over the Grid (docs/os/2026-11-02-verse-os.md, V1): when the machine's
+// session opens the Grid (os/verse-session.coax), it passes what came up as page facts, one line
+// each, `boot=LABEL|VALUE|STATE` (STATE 1 ready, 0 failed, 2 waiting). The screen starts black: a
+// line is drawn across it, a frame assembles round the middle, the lines are typed in one after
+// another, each with READY or FAILED, and then the world fades in under them as they go. A failed
+// line stays red and says why. With no boot facts (the website, every check) nothing changes.
+// Loaded by newland.coax; the face calls coaxial_land_boot_frame after either page's frame.
+
+BOOT_LINES :: 10;
+BOOT_LABEL :: 24; BOOT_VALUE :: 96;
+BOOT_READY :: 1; BOOT_FAILED :: 0; BOOT_WAITING :: 2;
+BOOT_SWEEP :: 0.6;     // seconds: the line across the screen
+BOOT_FRAME :: 0.5;     // the frame assembling, after the sweep
+BOOT_EVERY :: 0.22;    // between one line and the next
+BOOT_HOLD :: 0.9;      // the last line held before the world comes in
+BOOT_FADE :: 0.8;      // the world fading in, and the sequence fading out
+
+LandBoot :: struct {
+  n: int;
+  label: [BOOT_LINES][BOOT_LABEL] u8; label_n: [BOOT_LINES] int;
+  value: [BOOT_LINES][BOOT_VALUE] u8; value_n: [BOOT_LINES] int;
+  state: [BOOT_LINES] int;
+}
+
+// One boot= line's fields into slot k: whether it was well formed.
+boot_line :: (b: [] LandBoot, k: int, line: string) -> bool {
+  bar1 := -1; bar2 := -1;
+  for i: 0..<line.count { if line[i] == '|' { if bar1 < 0 { bar1 = i; } else if bar2 < 0 { bar2 = i; } } }
+  if bar1 < 1 || bar2 < 0 || bar2 + 2 != line.count { return false; }
+  st := line[bar2 + 1];
+  if st != '0' && st != '1' && st != '2' { return false; }
+  ln := lo_int(bar1, BOOT_LABEL); vn := lo_int(bar2 - bar1 - 1, BOOT_VALUE);
+  for i: 0..<ln { b[0].label[k][i] = line[i]; }
+  for i: 0..<vn { b[0].value[k][i] = line[bar1 + 1 + i]; }
+  b[0].label_n[k] = ln; b[0].value_n[k] = vn; b[0].state[k] = cast(int) (st - '0');
+  return true;
+}
+
+// The page facts' boot= lines, in their order; any other line is left to its reader. A second set
+// of facts replaces the first (the session sends them once, before the first frame).
+boot_facts :: (b: [] LandBoot, facts: string) {
+  if b.count != 1 { return; }
+  i := 0; n := 0; any := false;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > 5 && facts[i..<i + 5] == "boot=" {
+      if !any { any = true; }
+      if n < BOOT_LINES && boot_line(b, n, facts[i + 5..<e]) { n += 1; }
+    }
+    i = e + 1;
+  }
+  if any { b[0].n = n; }
+}
+#test "boot facts: well-formed lines in order, the rest left alone" {
+  b: [1] LandBoot;
+  boot_facts(b[..], "now=1\nboot=GPU|NVIDIA GeForce RTX 4080|1\nurl=/x\nboot=WALLET|no wallet yet|0\nboot=bad\nboot=PYLON|starting|2\n");
+  #assert b[0].n == 3 && b[0].state[0] == BOOT_READY && b[0].state[1] == BOOT_FAILED && b[0].state[2] == BOOT_WAITING;
+  #assert cast(string) b[0].label[0][0..<b[0].label_n[0]] == "GPU" && cast(string) b[0].value[1][0..<b[0].value_n[1]] == "no wallet yet";
+  c: [1] LandBoot;
+  boot_facts(c[..], "now=1\ntab=native\n");
+  #assert c[0].n == 0;
+  boot_facts(c[..], "boot=|x|1\nboot=A|x|3\nboot=A|x|1z\nboot=A||1\n");
+  #assert c[0].n == 1 && c[0].value_n[0] == 0;
+  many: [1] LandBoot;
+  for k: 0..<12 { boot_facts(many[..], "boot=A|b|1\nboot=A|b|1\nboot=A|b|1\nboot=A|b|1\nboot=A|b|1\nboot=A|b|1\nboot=A|b|1\nboot=A|b|1\nboot=A|b|1\nboot=A|b|1\nboot=A|b|1\n"); }
+  #assert many[0].n == BOOT_LINES;
+}
+
+// When the last line is in and held: the world starts coming in here.
+boot_end :: (n: int) -> f32 { return BOOT_SWEEP + BOOT_FRAME + cast(f32) n * BOOT_EVERY + BOOT_HOLD; }
+// The world's light at time t (1 when there is no boot sequence).
+boot_world :: (n: int, t: f32) -> f32 {
+  if n <= 0 { return 1; }
+  return ease((t - boot_end(n)) / BOOT_FADE);
+}
+// The sequence's own light: full until the world is in, then gone over BOOT_FADE more.
+boot_light :: (n: int, t: f32) -> f32 {
+  if n <= 0 { return 0; }
+  return 1 - ease((t - boot_end(n) - BOOT_FADE * 0.5) / BOOT_FADE);
+}
+// How many lines show at t.
+boot_shown :: (n: int, t: f32) -> int {
+  if n <= 0 { return 0; }
+  k := cast(int) floor((t - BOOT_SWEEP - BOOT_FRAME) / BOOT_EVERY) + 1;
+  if k < 0 { return 0; }
+  return lo_int(k, n);
+}
+#test "the timeline: black, then the lines, then the world" {
+  #assert boot_world(0, 0) == 1 && boot_light(0, 0) == 0 && boot_shown(0, 5) == 0;
+  #assert boot_world(4, 0) == 0 && boot_light(4, 0) == 1 && boot_shown(4, 0) == 0;
+  #assert boot_shown(4, BOOT_SWEEP + BOOT_FRAME) == 1 && boot_shown(4, BOOT_SWEEP + BOOT_FRAME + BOOT_EVERY * 1.5) == 2;
+  #assert boot_shown(4, 100) == 4 && boot_world(4, boot_end(4)) == 0;
+  #assert boot_world(4, boot_end(4) + BOOT_FADE) == 1 && boot_light(4, boot_end(4) + BOOT_FADE * 2) == 0;
+  #assert boot_light(4, boot_end(4)) == 1;
+}
+
+// The frame's vertices [0, n) dimmed to the world's light, and the sequence drawn over them: the
+// new count. Nothing at all when the session sent no boot lines.
+boot_frame :: (out: [] f32, n: int, uniforms: [] f32, b: [] LandBoot, t: f32, width: f32, height: f32, dpr: f32) -> int {
+  if b.count != 1 || b[0].n <= 0 { return n; }
+  world := boot_world(b[0].n, t);
+  if world < 1 {
+    for q: 0..<n { out[q * VERTEX_FLOATS + 6] *= world; }
+    // the HUD's glass panels (newland.coax glass: alpha at slot 5 of each eight) go with the world
+    for k: 0..<PANELS + EDIT_PANELS { o := 8 + k * 8 + 5; if o < uniforms.count { uniforms[o] *= world; } }
+  }
+  light := boot_light(b[0].n, t);
+  if light <= 0 { return n; }
+  d := hi(dpr, 1);
+  p := Pen.{d = d, fade = 1, time = t, still = false, phone = width < height};
+  cx := width * 0.5; cy := height * 0.5;
+  w := lo(560 * d, width - 48 * d); h := (64 + cast(f32) b[0].n * 26) * d;
+  x0 := cx - w * 0.5; x1 := cx + w * 0.5; y0 := cy - h * 0.5; y1 := cy + h * 0.5;
+  bright := dimmed(ink(p, INK_BRIGHT), light); blue := dimmed(ink(p, INK_BLUE), light);
+  v := n;
+  // the sweep: one line out from the middle to the edges
+  s := ease(t / BOOT_SWEEP);
+  v = rule(out, v, cx - cx * s, cy, cx + cx * s, cy, blue, light * (1 - 0.7 * ease((t - BOOT_SWEEP) / BOOT_FRAME)));
+  // the frame: its brackets drawn in from the corners, then its faint outline
+  f := ease((t - BOOT_SWEEP) / BOOT_FRAME);
+  if f > 0 {
+    arm := 28 * d * f;
+    v = rule(out, v, x0, y0, x0 + arm, y0, bright, light); v = rule(out, v, x0, y0, x0, y0 + arm * 0.6, bright, light);
+    v = rule(out, v, x1, y1, x1 - arm, y1, bright, light); v = rule(out, v, x1, y1, x1, y1 - arm * 0.6, bright, light);
+    faint := dimmed(ink(p, INK_FAINT), light * f);
+    v = rule(out, v, x0 + arm, y0, x1, y0, faint, faint.light); v = rule(out, v, x1, y0, x1, y1 - arm * 0.6, faint, faint.light);
+    v = rule(out, v, x1 - arm, y1, x0, y1, faint, faint.light); v = rule(out, v, x0, y1, x0, y0 + arm * 0.6, faint, faint.light);
+    v = put(out, v, "VERSE OS", x0 + 18 * d, y0 + 26 * d, 9 * d, dimmed(chrome(ink(p, INK_BRIGHT)), light * f));
+  }
+  // the lines, typed in: label, value, and what became of it
+  shown := boot_shown(b[0].n, t);
+  for k: 0..<shown {
+    y := y0 + (54 + cast(f32) k * 26) * d;
+    age := t - (BOOT_SWEEP + BOOT_FRAME + cast(f32) k * BOOT_EVERY);
+    typed := ease(age / 0.18);
+    label := cast(string) b[0].label[k][0..<b[0].label_n[k]];
+    value := cast(string) b[0].value[k][0..<b[0].value_n[k]];
+    v = put(out, v, label, x0 + 18 * d, y, 7 * d, dimmed(ink(p, INK_DIM), light * typed));
+    v = put_fit(out, v, value, x0 + 120 * d, y, 7 * d, dimmed(ink(p, INK_PALE), light * typed), w - 230 * d);
+    st := b[0].state[k];
+    mark := ifx st == BOOT_READY then "READY" else ifx st == BOOT_FAILED then "FAILED" else "WAITING";
+    mk := ifx st == BOOT_READY then blue else dimmed(ink(p, INK_DIM), light);
+    if st == BOOT_FAILED { mk.red = 1.0; mk.green = 0.32; mk.blue = 0.28; mk.light = light; }
+    v = put(out, v, mark, x1 - 18 * d - text_width(mark, 7 * d, mk), y, 7 * d, dimmed(mk, typed));
+  }
+  return v;
+}
+#test "the sequence draws over a black world, then leaves it be" {
+  s: [1] LandState;
+  coaxial_land_message(s[..], 600, "boot=GPU|RTX 4080|1\nboot=WALLET|none yet|0\n");
+  #assert s[0].boot[0].n == 2;
+  out: [600000] f32; u: [UNIFORM_FLOATS] f32;
+  for q: 0..<100 { out[q * VERTEX_FLOATS + 6] = 1; }
+  u[13] = 0.9;
+  m := boot_frame(out[..], 100, u[..], s[0].boot[..], 2.0, 1440, 900, 1);
+  #assert m > 100 && out[6] == 0 && u[13] == 0;
+  u[13] = 0.9;
+  late := boot_frame(out[..], 100, u[..], s[0].boot[..], 30, 1440, 900, 1);
+  #assert late == 100 && u[13] == 0.9f32;
+  none: [1] LandState;
+  #assert boot_frame(out[..], 100, u[..], none[0].boot[..], 0, 1440, 900, 1) == 100;
+}
+
+coaxial_land_boot_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, n: int, width: f32, height: f32, dpr: f32) -> int #export_c {
+  if s.count < 1 || n < 0 { return n; }
+  return boot_frame(out, n, uniforms, s[0].boot[..], s[0].time, width, height, dpr);
+}

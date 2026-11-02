@@ -1,0 +1,150 @@
+// Verse OS's boot lines (docs/os/2026-11-02-verse-os.md, V1): what the machine has, read from the
+// kernel's files when the session starts, as the `boot=LABEL|VALUE|STATE` page facts the Grid draws
+// as its boot sequence (apps/openagents-web/newland-boot.coax). Every line is a fact read now, not
+// decoration: a missing GPU, a dark link or no identity shows FAILED or WAITING and says so.
+// Loaded by os/verse-session.coax. ROOT prefixes every path, so the checks read a made-up tree.
+
+VB_READY :: 1; VB_FAILED :: 0; VB_WAITING :: 2;
+
+VbOut :: struct { b: [4096] u8; n: int; }
+vb_put :: (o: [] VbOut, s: string) { for c: s { if o[0].n < 4096 { o[0].b[o[0].n] = c; o[0].n += 1; } } }
+vb_line :: (o: [] VbOut, label: string, value: string, state: int) {
+  vb_put(o, "boot="); vb_put(o, label); vb_put(o, "|");
+  // a value never carries the separators
+  for c: value { if c != '|' && c != '\n' && o[0].n < 4096 { o[0].b[o[0].n] = c; o[0].n += 1; } }
+  vb_put(o, ifx state == VB_READY then "|1\n" else ifx state == VB_FAILED then "|0\n" else "|2\n");
+}
+#test "a line, and separators kept out of its value" {
+  o: [1] VbOut; vb_line(o[..], "GPU", "a|b\nc", VB_READY); vb_line(o[..], "WALLET", "none", VB_WAITING);
+  #assert cast(string) o[0].b[0..<o[0].n] == "boot=GPU|abc|1\nboot=WALLET|none|2\n";
+}
+
+// The value after "KEY:" on its line in text (spaces trimmed), or "".
+vb_field :: (text: string, key: string) -> string {
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    if e - i > key.count && text[i..<i + key.count] == key && text[i + key.count] == ':' {
+      s := i + key.count + 1; while s < e && (text[s] == ' ' || text[s] == '\t') { s += 1; }
+      t := e; while t > s && (text[t - 1] == ' ' || text[t - 1] == '\t') { t -= 1; }
+      return text[s..<t];
+    }
+    i = e + 1;
+  }
+  return "";
+}
+#test "fields of /proc files" {
+  info := "Model: \t NVIDIA GeForce RTX 4080\nIRQ:   146\n";
+  #assert vb_field(info, "Model") == "NVIDIA GeForce RTX 4080" && vb_field(info, "IRQ") == "146" && vb_field(info, "Bus") == "";
+  #assert vb_field("MemTotal:       65536000 kB\n", "MemTotal") == "65536000 kB";
+}
+// MemTotal's "N kB" as whole gibibytes, rounded: -1 when it is not that.
+vb_gib :: (kb: string) -> int {
+  n := 0; i := 0;
+  while i < kb.count && kb[i] >= '0' && kb[i] <= '9' { n = n * 10 + cast(int) (kb[i] - '0'); i += 1; }
+  if i == 0 || kb[i..<kb.count] != " kB" { return -1; }
+  return (n + 524288) / 1048576;
+}
+#test "memory in GiB" { #assert vb_gib("65536000 kB") == 63 && vb_gib("1048576 kB") == 1 && vb_gib("x kB") == -1 && vb_gib("12 MB") == -1; }
+// A PCI vendor id's maker: the GPU's, when the driver doesn't name the model.
+vb_vendor :: (id: string) -> string {
+  w := vb_trim(id);
+  if w == "0x10de" { return "NVIDIA"; }
+  if w == "0x1002" { return "AMD"; }
+  if w == "0x8086" { return "Intel"; }
+  return "";
+}
+vb_trim :: (s: string) -> string { e := s.count; while e > 0 && (s[e - 1] == '\n' || s[e - 1] == ' ') { e -= 1; } return s[0..<e]; }
+#test "vendors" { #assert vb_vendor("0x10de\n") == "NVIDIA" && vb_vendor("0x1002") == "AMD" && vb_vendor("0x8086") == "Intel" && vb_vendor("0x1234") == ""; }
+// Links that are not the machine's own way out: loopback, containers' bridges, VPN tunnels.
+vb_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+vb_virtual :: (e: string) -> bool {
+  return e == "lo" || vb_starts(e, "docker") || vb_starts(e, "br-") || vb_starts(e, "veth") || vb_starts(e, "virbr") || vb_starts(e, "tailscale") || vb_starts(e, "tun") || vb_starts(e, "wg");
+}
+// Wired and wireless network cards, as systemd names them (or the old eth and wlan names).
+vb_physical :: (e: string) -> bool { return vb_starts(e, "en") || vb_starts(e, "eth") || vb_starts(e, "wl"); }
+#test "which links count" {
+  #assert vb_virtual("lo") && vb_virtual("docker0") && vb_virtual("br-004661f087ea") && vb_virtual("veth6f4d329") && vb_virtual("tailscale0");
+  #assert !vb_virtual("enp4s0") && !vb_virtual("wlo1") && vb_physical("enp4s0") && vb_physical("wlo1") && vb_physical("eth0") && !vb_physical("ppp0");
+}
+// A connector directory's name without its card: "card1-DP-1" is "DP-1".
+vb_connector :: (name: string) -> string {
+  i := 0; while i < name.count && name[i] != '-' { i += 1; }
+  if i == 0 || i + 1 >= name.count || name[0..<4] != "card" { return ""; }
+  return name[i + 1..<name.count];
+}
+#test "connectors" { #assert vb_connector("card1-DP-1") == "DP-1" && vb_connector("card1") == "" && vb_connector("renderD128") == "" && vb_connector("card0-HDMI-A-1") == "HDMI-A-1"; }
+
+vb_read :: (root: string, path: string, out: [] u8) -> string {
+  b: [4096] u8; n := 0;
+  for c: root { if n < 4096 { b[n] = c; n += 1; } }
+  for c: path { if n < 4096 { b[n] = c; n += 1; } }
+  k := fs_read(cast(string) b[0..<n], out);
+  return ifx k > 0 then cast(string) out[0..<k] else "";
+}
+vb_cat :: (out: [] u8, a: string, b: string, c: string) -> string {
+  n := 0;
+  for x: a { if n < out.count { out[n] = x; n += 1; } }
+  for x: b { if n < out.count { out[n] = x; n += 1; } }
+  for x: c { if n < out.count { out[n] = x; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+// The lines, read under root ("" for the machine) and home.
+vb_lines :: (o: [] VbOut, root: string, home: string) {
+  t: [8192] u8; p: [4096] u8; l: [1] FsList;
+  // the GPU: the NVIDIA driver names its model; otherwise the first card's vendor
+  gpu := ""; gb: [256] u8;
+  n := fs_list(vb_cat(p[..], root, "/proc/driver/nvidia/gpus", ""), l[..]);
+  if n > 0 {
+    m := vb_field(vb_read(root, vb_cat(gb[..], "/proc/driver/nvidia/gpus/", fs_entry(l[..], 0), "/information"), t[..]), "Model");
+    k := 0; for c: m { if k < 255 { gb[k] = c; k += 1; } } gpu = cast(string) gb[0..<k];
+  }
+  if gpu.count == 0 {
+    nd := fs_list(vb_cat(p[..], root, "/sys/class/drm", ""), l[..]);
+    for i: 0..<ifx nd > 0 then nd else 0 {
+      e := fs_entry(l[..], i);
+      if e.count < 5 || e.count > 6 || e[0..<4] != "card" { continue; }
+      v := vb_vendor(vb_read(root, vb_cat(gb[..], "/sys/class/drm/", e, "/device/vendor"), t[..]));
+      if v.count > 0 { k := 0; for c: v { gb[k] = c; k += 1; } gpu = cast(string) gb[0..<k]; break; }
+    }
+  }
+  vb_line(o, "GPU", ifx gpu.count > 0 then gpu else "no GPU found", ifx gpu.count > 0 then VB_READY else VB_FAILED);
+  // the display: the first connected connector and its first mode
+  shown := false;
+  nd := fs_list(vb_cat(p[..], root, "/sys/class/drm", ""), l[..]);
+  for i: 0..<ifx nd > 0 then nd else 0 {
+    e := fs_entry(l[..], i); c := vb_connector(e);
+    if c.count == 0 { continue; }
+    st := vb_trim(vb_read(root, vb_cat(gb[..], "/sys/class/drm/", e, "/status"), t[..]));
+    if st != "connected" { continue; }
+    mb: [8192] u8; modes := vb_read(root, vb_cat(gb[..], "/sys/class/drm/", e, "/modes"), mb[..]);
+    j := 0; while j < modes.count && modes[j] != '\n' { j += 1; }
+    vb_line(o, "DISPLAY", vb_cat(p[..], c, " ", modes[0..<j]), VB_READY);
+    shown = true; break;
+  }
+  if !shown { vb_line(o, "DISPLAY", "no screen connected", VB_FAILED); }
+  // memory
+  gib := vb_gib(vb_field(vb_read(root, "/proc/meminfo", t[..]), "MemTotal"));
+  nb: [24] u8; ns := vs_num(ifx gib > 0 then gib else 0, nb[..]);
+  vb_line(o, "MEMORY", ifx gib > 0 then vb_cat(p[..], ns, " GB", "") else "unknown", ifx gib > 0 then VB_READY else VB_WAITING);
+  // the network: a link that is up, other than loopback
+  up := ""; ub: [64] u8;
+  nn := fs_list(vb_cat(p[..], root, "/sys/class/net", ""), l[..]);
+  for pass: 0..<2 {
+    for i: 0..<ifx nn > 0 then nn else 0 {
+      e := fs_entry(l[..], i);
+      if up.count > 0 || e.count > 60 || vb_virtual(e) || (pass == 0 && !vb_physical(e)) { continue; }
+      if vb_trim(vb_read(root, vb_cat(gb[..], "/sys/class/net/", e, "/operstate"), t[..])) == "up" { for k: 0..<e.count { ub[k] = e[k]; } up = cast(string) ub[0..<e.count]; }
+    }
+  }
+  vb_line(o, "NETWORK", ifx up.count > 0 then vb_cat(p[..], "link up on ", up, "") else "no link", ifx up.count > 0 then VB_READY else VB_FAILED);
+  // your identity: the openagents CLI's Nostr key (apps/openagents-cli, ~/.openagents/cli/keys)
+  have_key := home.count > 0 && fs_list(vb_cat(p[..], home, "/.openagents/cli/keys", ""), l[..]) > 0;
+  vb_line(o, "IDENTITY", ifx have_key then "Nostr key on this machine" else "none yet: openagents nostr init", ifx have_key then VB_READY else VB_WAITING);
+  // the Pylon: a join running (apps/openagents-cli/pylon.coax's join.lock/pid)
+  pylon := false;
+  sd := vb_cat(p[..], home, "/.openagents/pylon/state", "");
+  if home.count > 0 && fs_exists(vb_cat(gb[..], sd, "/join.lock/pid", "")) { pylon = true; }
+  vb_line(o, "PYLON", ifx pylon then "serving the mesh" else "idle", ifx pylon then VB_READY else VB_WAITING);
+}

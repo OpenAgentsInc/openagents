@@ -193,8 +193,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_land_uniform_floats()};
   state_at(state)->golden=golden_mode!=0;
   if(!golden_mode)coaxial_land_network_tick(view(state));
-  if(walking(state)){uint32_t m=walk_frame(state,out,u,width,height,dpr,dt,still);drain(state);return m;}
+  if(walking(state)){uint32_t m=walk_frame(state,out,u,width,height,dpr,dt,still);m=(uint32_t)coaxial_land_boot_frame(view(state),out,u,m,width,height,dpr);drain(state);return m;}
   int64_t n = coaxial_land_frame(view(state), out, u, width, height, dpr, dt, still != 0 || golden_mode != 0);
+  n = coaxial_land_boot_frame(view(state), out, u, n, width, height, dpr);   // Verse OS's boot lines, when sent
   drain(state);
   walkers_out(state);
   if(!track_state.page_n)track_init(tr(),track_cstr("home"));

@@ -6,6 +6,9 @@
 // this waits for its VT to come back, to start again where they were.
 //   verse-session --dir DIR [--first REALM] [--tty N] [--leave-to VT] [--state DIR] [--once]
 //   verse-session --dir DIR --window [--fullscreen] [--first REALM] [--state DIR]
+//   verse-session --print-boot [--root DIR]     the boot lines (os/verse-boot.coax), and nothing run
+// The first realm of a session gets the boot lines as page facts (--facts), and the Grid draws them
+// as the boot sequence; a realm reached by travel does not.
 // DIR is what `verse/gpu/realm.sh HOST install DIR` keeps: a directory per realm (its vk-realm,
 // drawdir and given) and the travel file (slug:module pairs). --tty N waits for ttyN to show
 // first (default: start at once); --leave-to VT is the VT shown on leaving (default 1); --state
@@ -17,6 +20,7 @@
 #load "../coax/lib/sys/fs.coax";
 #load "../coax/lib/sys/args.coax";
 #load "../coax/lib/sys/proc.coax";
+#load "verse-boot.coax";
 
 VS_TRAVELLED :: 3;       // vk-realm's status when the realm opened another (--go)
 VS_FOREVER :: 31536000;  // vk-realm --seconds: a year, so only the person ends it
@@ -90,6 +94,20 @@ vs_after :: (status: int, next: string, here: bool) -> string {
   #assert vs_after(0, "newland", true) == "" && vs_after(1, "newland", true) == "" && vs_after(4, "newland", true) == "";
 }
 
+// The realm a session starts in: the one it was in last (kept in the state directory as `realm`)
+// when that one is still here, else --first. A realm named in the file but no longer installed
+// (removed by an update) falls back, so a stale file never strands the session.
+vs_start :: (kept: string, first: string, kept_here: bool) -> string {
+  w: [2] string;
+  if vs_words(kept, w[..]) == 1 && kept_here { return w[0]; }
+  return first;
+}
+#test "where a session starts" {
+  #assert vs_start("verse\n", "newland", true) == "verse";
+  #assert vs_start("verse\n", "newland", false) == "newland";
+  #assert vs_start("", "newland", true) == "newland" && vs_start("a b", "newland", true) == "newland";
+}
+
 vs_cat :: (out: [] u8, a: string, b: string) -> string {
   n := 0;
   for c: a { if n < out.count { out[n] = c; n += 1; } }
@@ -117,7 +135,7 @@ vs_wait_for :: (n: int) {
 }
 
 // One realm on the screen: its exit status, its lines passed through to this program's stdout.
-vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: string, window: string) -> int {
+vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: string, window: string, facts: string) -> int {
   b: [6] [4096] u8;
   rdir := fs_join(dir, realm, b[0][..]);
   drawdir_text: [4096] u8; given_text: [4096] u8;
@@ -132,6 +150,7 @@ vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: stri
   for i: 0..<ndw { ok = ok && proc_arg(h, dw[i]); }
   for i: 0..<ngw { ok = ok && proc_arg(h, gw[i]); }
   ok = ok && proc_arg(h, "--name") && proc_arg(h, realm) && proc_arg(h, "--go") && proc_arg(h, go);
+  if facts.count > 0 { ok = ok && proc_arg(h, "--facts") && proc_arg(h, facts); }
   if window.count > 0 { ok = ok && proc_arg(h, window); }
   else { ok = ok && proc_arg(h, "--leave-to") && proc_arg(h, leave_to); }
   ok = ok && proc_arg(h, "--seconds");
@@ -164,6 +183,11 @@ tool_main :: () -> int #export_c {
   a: [1] Args;
   usage := "usage: verse-session --dir DIR [--first REALM] [--tty N] [--leave-to VT] [--state DIR] [--once] [--window | --fullscreen]";
   if !args_load(a[..]) { tool_errln(usage); return 2; }
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  if args_has(a[..], "--print-boot") {
+    o: [1] VbOut; vb_lines(o[..], args_value(a[..], "--root", ""), home);
+    print("%", cast(string) o[0].b[0..<o[0].n]); return 0;
+  }
   dir := args_value(a[..], "--dir", "");
   tty := args_whole(args_value(a[..], "--tty", "0"));
   leave_to := args_value(a[..], "--leave-to", "1");
@@ -175,13 +199,24 @@ tool_main :: () -> int #export_c {
   nt := fs_read(fs_join(dir, "travel", b[0][..]), travel_text[..]);
   travel := ifx nt > 0 then cast(string) travel_text[0..<nt] else "";
   cur_b: [256] u8;
-  cur := vs_copy(cur_b[..], args_value(a[..], "--first", "newland"));
+  // resume in the realm the last session was in, unless --first names one
+  kept_b: [256] u8; kept := "";
+  realm_file := fs_join(state, "realm", b[2][..]);
+  if state.count > 0 && !args_has(a[..], "--first") { nk := fs_read(realm_file, kept_b[..]); if nk > 0 { kept = cast(string) kept_b[0..<nk]; } }
+  kw: [2] string; kn := vs_words(kept, kw[..]);
+  cur := vs_copy(cur_b[..], vs_start(kept, args_value(a[..], "--first", "newland"), kn == 1 && vs_has_realm(dir, kw[0])));
   if !vs_has_realm(dir, cur) { print("verse-session: no realm % in %\n", cur, dir); return 1; }
   go := fs_join(dir, "go", b[1][..]);
+  // the boot lines, for the session's first realm
+  boot := fs_join(dir, "boot.facts", b[3][..]);
+  bo: [1] VbOut; vb_lines(bo[..], "", home);
+  first_run := fs_write(boot, cast(string) bo[0].b[0..<bo[0].n]);
   while true {
     if window.count == 0 { vs_wait_for(tty); }
     r := fs_remove(go);
-    status := vs_run(dir, cur, leave_to, state, go, window);
+    if state.count > 0 { r = fs_mkdir(state); kept_ok := fs_write(realm_file, cur); }
+    status := vs_run(dir, cur, leave_to, state, go, window, ifx first_run then boot else "");
+    first_run = false;
     slug_b: [256] u8; ns := fs_read(go, slug_b[..]);
     slug := ifx ns > 0 then cast(string) slug_b[0..<ns] else "";
     w: [2] string; if vs_words(slug, w[..]) == 1 { slug = w[0]; } else { slug = ""; }
