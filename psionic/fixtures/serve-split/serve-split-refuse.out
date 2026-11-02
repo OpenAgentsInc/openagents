@@ -1,0 +1,21 @@
+as sent: accepted, 4 frames, 552 bytes, 8 free frames left
+one word short: fewer bytes than declared, 0 frames, 0 bytes, 12 free frames left
+version 2: another snapshot version, 0 frames, 0 bytes, 12 free frames left
+expected model 0: another model, 0 frames, 0 bytes, 12 free frames left
+receiver dim 2: another page geometry, 0 frames, 0 bytes, 12 free frames left
+expected request 3: another request or prompt length, 0 frames, 0 bytes, 12 free frames left
+frame count 5: frame count does not match the positions, 0 frames, 0 bytes, 12 free frames left
+one word extra: more bytes than declared, 0 frames, 0 bytes, 12 free frames left
+one payload bit flipped: checksum does not match, 0 frames, 0 bytes, 12 free frames left
+slot already holding a page: slot already in use, 0 frames, 0 bytes, 11 free frames left
+3 free frames: too few free frames, 0 frames, 0 bytes, 3 free frames left
+hand trace, every second transfer cut in half: 7 transfers, 3 refused, 448 prompt positions run
+  request 0: first token 109720938 ns, refused 0 times, state arrived 112287578 ns, last token 147872522 ns
+  request 1: first token 219441876 ns, refused 1 times, state arrived 551171330 ns, last token 586756274 ns
+  request 2: first token 329162814 ns, refused 0 times, state arrived 331729454 ns, last token 367314398 ns
+  request 3: first token 438883752 ns, refused 2 times, state arrived 773179846 ns, last token 808764790 ns
+2 prefill workers of 2: configuration or traffic out of bounds
+every transfer cut: configuration or traffic out of bounds
+16 events for a run that needs 17: event limit reached
+an arrival before the one ahead of it: arrivals out of order
+placement on 1 worker: 0 prefill, 0 decode

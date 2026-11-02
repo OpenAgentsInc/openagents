@@ -1912,6 +1912,26 @@
       ]
     },
     {
+      "source": "psionic/examples/serve-split.coax",
+      "chapter": "psionic/book/ch182-disaggregate-prefill-and-decode.md",
+      "stdout": "psionic/fixtures/serve-split/serve-split.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/serve-split-refuse.coax",
+      "chapter": "psionic/book/ch182-disaggregate-prefill-and-decode.md",
+      "stdout": "psionic/fixtures/serve-split/serve-split-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-meter.coax",
       "chapter": "psionic/book/ch180-observe-meter-and-price.md",
       "stdout": "psionic/fixtures/serve-meter/serve-meter.out",

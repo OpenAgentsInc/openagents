@@ -1,0 +1,60 @@
+// Chapter 182: a request's state handed from a prefill worker to a decode
+// worker on the stand-in model, the transfer arithmetic for gpt-oss-20b,
+// the hand trace, the placement, and co-located against split workers on
+// the same synthetic traffic at two loads.
+#import "Basic";
+#load "../lib/serve-split.coax";
+
+ABCD :: [4]string.["A","B","C","D"];
+// Nanoseconds as milliseconds with one decimal.
+ms :: (ns:int) {print("%.%",ns/1000000,ns/100000%10);}
+line :: (name:string,c:DgConfig,q:[]DgReq) {
+    s:=dg_sim(c,q);p:=dg_report(s,q);
+    print("  %: first token P50 ",name);ms(p.ttft.p[0]);print(" P95 ");ms(p.ttft.p[2]);
+    print(" ms; gaps P50 ");ms(p.itl.p[0]);print(" P95 ");ms(p.itl.p[2]);print(" P99 ");ms(p.itl.p[3]);
+    print(" ms; % tokens in ",p.tokens);ms(p.span);print(" ms, % tokens/s\n",p.tokens*1000000000/p.span);
+    if p.transfers>0 {print("    % transfers (% refused), % bytes arrived, link busy ",p.transfers,p.refused,p.bytes);ms(p.link);print(" ms, % prompt positions run\n",p.rows);}
+}
+trace :: (name:string,c:DgConfig) {
+    h:=dgx_hand();s:=dg_sim(c,h[..]);
+    print("%:\n",name);
+    for i:0..<4 {
+        f:=s.fate[i];print("  % first token % ns, last % ns",ABCD[i],f.first,f.finish);
+        if f.arrived>=0 {print(", state arrived % ns",f.arrived);}
+        print("\n");
+    }
+    print("  gaps (ns):");for g:0..<s.ngaps {print(" %",s.gaps[g]);}print("\n");
+}
+
+// book:begin main
+main :: () {
+    g:=dg_gptoss();l:=DgLink.{gbit=10,lat_ns=50000};
+    print("gpt-oss-20b state (%): 64 positions % bytes, % ns at 10 Gbit/s; 1024 positions % bytes, % ns\n",
+        DG_PROFILE,dg_bytes(g,64),dg_transfer_ns(l,dg_bytes(g,64)),dg_bytes(g,1024),dg_transfer_ns(l,dg_bytes(g,1024)));
+
+    for hybrid:0..<2 {
+        c:=PgConfig.{page=4,dim=3,hybrid=hybrid==1};c.cap[0]=12;
+        one:=dgx_colocated(c,13,6);two:=dgx_handed(c,13,6);
+        print("stand-in model, hybrid %, 13-position prompt: % frames, % bytes, %\n",hybrid==1,two.frames,two.bytes,dg_refusal_name(two.refusal));
+        print("  one worker:");for t:0..<6 {print(" %",one.tok[t]);}
+        print("; handed off:");for t:0..<6 {print(" %",two.tok[t]);}print("\n");
+    }
+
+    trace("hand trace, 2 workers co-located",dgx_hand_fleet(0));
+    trace("hand trace, 1 prefill and 1 decode",dgx_hand_fleet(1));
+
+    q:[48]DgReq;
+    for gap:[2]int.[400000,300000] {
+        if dgx_traffic(gap,q[..])!=BnStatus.ok {print("traffic refused\n");return;}
+        pl:=dg_place(4,16,q[..]);
+        print("48 requests, mean gap % ms, 4 workers: predicted prefill % ms, decode % ms; placed % prefill, % decode\n",
+            gap/1000,pl.prefill_ns/1000000,pl.decode_ns/1000000,pl.prefill,pl.decode);
+        line("co-located",dgx_fleet(0),q[..]);
+        names:=[3]string.["1 prefill, 3 decode","2 prefill, 2 decode","3 prefill, 1 decode"];
+        for p:1..<4 {line(names[p-1],dgx_fleet(p),q[..]);}
+    }
+    c:=dgx_fleet(3);c.local=128;line("3:1, prompts of 128 or fewer on the decode worker",c,q[..]);
+    c=dgx_fleet(3);c.loss=4;line("3:1, every fourth transfer cut",c,q[..]);
+    c=dgx_fleet(3);c.link.gbit=1;line("3:1 on a 1 Gbit/s link",c,q[..]);
+}
+// book:end main

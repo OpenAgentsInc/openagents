@@ -200,7 +200,7 @@
 - [179. Ship without downtime](ch179-ship-without-downtime.md) — design draft
 - [180. Observe, meter and price](ch180-observe-meter-and-price.md) — partly implemented
 - [181. Survive failures](ch181-survive-failures.md) — design draft
-- [182. Disaggregate prefill and decode](ch182-disaggregate-prefill-and-decode.md) — design draft
+- [182. Disaggregate prefill and decode](ch182-disaggregate-prefill-and-decode.md) — partly implemented
 - [183. Split a model across devices](ch183-split-a-model-across-devices.md) — design draft
 - [184. A pipeline of models](ch184-a-pipeline-of-models.md) — design draft
 - [185. A decision model steers voice](ch185-a-decision-model-steers-voice.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–178, 180, 188, 195, 215–237, 239–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–178, 180, 182, 188, 195, 215–237, 239–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

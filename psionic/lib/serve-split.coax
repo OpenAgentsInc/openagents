@@ -1,0 +1,575 @@
+// Chapter 182: disaggregate prefill and decode. Prefill workers run prompts;
+// decode workers produce the tokens after the first. Between them a request's
+// state moves as a snapshot: its page frames (chapter 176), with the
+// recurrent state of a hybrid model, behind a header naming the version, the
+// model, the request and the geometry, and a checksum over every word. The
+// decode side refuses a snapshot that is short, long, for another model,
+// version, request or geometry, corrupted, or that it has no room for; a
+// refused request is prefilled again. A placement rule splits the workers
+// between the two pools, and a discrete-event simulation compares the split
+// with the same workers co-located, timed by chapter 175's step model and a
+// modeled link.
+// Profile dg-split-v1: integer nanoseconds and bytes; workers, links and
+// transfers are simulated in one process.
+#authority;
+#load "serve-pages.coax";
+#load "bench.coax";
+#load "../tests/serve-split-checks.coax";  // the checks' stand-in prefill and decode, corruptions and traffic
+
+DG_PROFILE :: "dg-split-v1";
+DG_VERSION :: 1;
+// Header words: version, model, request, positions, page, dim, hybrid,
+// frames, checksum.
+DG_HEAD :: 9;
+// The largest snapshot: 16 pages and a recurrent-state frame of
+// (8 + 1) * 4 values, after the header.
+DG_WORDS :: 621;
+DG_REQUESTS :: 64;
+DG_WORKERS :: 8;
+DG_SLOTS :: 16;
+DG_PROMPT :: 4096;
+DG_OUTPUT :: 64;
+DG_GAPS :: 4032;
+DG_EVENTS :: 65536;
+// The longest output the placement weighs: every product it forms stays
+// below 2^53.
+DG_PLACE_OUTPUT :: 65536;
+
+DgStatus :: enum u8 {ok;config;order;events;}
+// book:begin types
+// Why the decode side refused a snapshot: fewer words than it declares (or
+// than a header), another version, another model, a page geometry this
+// worker does not use, another request or prompt length, a frame count that
+// does not match the positions, more words than declared, a checksum that
+// does not match, a slot already holding a request, or too few free frames.
+DgRefusal :: enum u8 {none;partial;version;model;geometry;request;frames;excess;checksum;slot;room;}
+// What the decode side was told to expect when the request was placed.
+DgExpect :: struct {model:int;request:int;positions:int;}
+DgReceived :: struct {refusal:DgRefusal;st:PgStore;frames:int;bytes:int;}
+// book:end types
+// book:begin config
+// The model a timed transfer carries: layers holding every position, layers
+// holding a window of positions, KV heads, their width, bytes per value,
+// and positions per page.
+DgShape :: struct {full:int;windowed:int;window:int;kv_heads:int;head_dim:int;value_bytes:int;page:int;}
+// A link: gigabits per second and a fixed latency per message.
+DgLink :: struct {gbit:int;lat_ns:int;}
+// workers: in all. prefill: how many of them run prompts only (0: every
+// worker does both, co-located). slots: requests one worker runs at once.
+// tokens: positions one step processes. local: prompts this long or shorter
+// run on a decode worker. loss: every loss-th transfer arrives cut in half
+// (0: none). events: the most event times a run may take.
+DgConfig :: struct {workers:int;prefill:int;slots:int;tokens:int;local:int;shape:DgShape;link:DgLink;loss:int;events:int;}
+DgReq :: struct {arrive:int;prompt:int;output:int;}
+// One request: when its first token came out and when its last did, when
+// its state arrived whole at the decode side (-1 if it never moved), when a
+// decode worker took it, transfers refused, bytes that arrived and link
+// time spent.
+DgFate :: struct {first:int;finish:int;arrived:int;decode:int;resent:int;bytes:int;link:int;}
+DgSim :: struct {
+    status:DgStatus;n:int;fate:[64]DgFate;
+    gaps:[4032]int;ngaps:int;tokens:int;rows:int;
+    transfers:int;refused:int;bytes:int;end:int;events:int;
+}
+DgReport :: struct {ttft:BnStats;itl:BnStats;tokens:int;span:int;transfers:int;refused:int;bytes:int;link:int;rows:int;}
+// The split: prefill and decode workers, and each pool's predicted busy
+// nanoseconds for the traffic (0 workers: refused).
+DgPlace :: struct {prefill:int;decode:int;prefill_ns:int;decode_ns:int;}
+// book:end config
+
+// Checks come first. The stand-in model, the corruptions and the traffic
+// are in psionic/tests/serve-split-checks.coax; chapter 182 works the numbers.
+// book:begin check-same
+#test "a handed-off request decodes token for token as it does on one worker" {
+    for hybrid:0..<2 {
+        for prompt:[4]int.[1,5,8,13] {
+            c:=PgConfig.{page=4,dim=3,hybrid=hybrid==1};c.cap[0]=12;
+            one:=dgx_colocated(c,prompt,6);two:=dgx_handed(c,prompt,6);ref:=dgx_alone(c,prompt,6);
+            for t:0..<6 {#assert one.tok[t]==ref[t] && two.tok[t]==ref[t];}
+            #assert two.refusal==DgRefusal.none && two.frames==(prompt+3)/4+hybrid && two.bytes==8*(9+two.frames*15);
+        }
+    }
+}
+// book:end check-same
+// book:begin check-wire
+#test "the snapshot's words, bytes and checksum, by hand" {
+    // Page 2, dim 1, not hybrid: width (2 + 1) * 1 = 3 words a frame; 3 positions need 2 frames.
+    c:=PgConfig.{page=2,dim=1};c.cap[0]=4;mem:[64]f64;st:=dgx_store(c);
+    v:=[3]f64.[1.0,2.0,3.0];st=dgx_fill(st,mem[..],0,v[..]);
+    wire:[32]u64;n:=dg_pack(st,mem[..],0,5,7,3,wire[..]);
+    #assert n==15 && dg_frames(c,3)==2 && 8*n==120;
+    #assert wire[0]==1 && wire[1]==5 && wire[2]==7 && wire[3]==3 && wire[4]==2 && wire[5]==1 && wire[6]==0 && wire[7]==2;
+    #assert wire[9]==f64_bits(1.0) && wire[10]==f64_bits(2.0) && wire[11]==0 && wire[12]==f64_bits(3.0) && wire[13]==0 && wire[14]==0;
+    // Words 0 and 1, high half then low: 0 * 31 + 0 + 1 = 1, 1 * 31 + 1 = 32, 32 * 31 + 1 = 993, 993 * 31 + 2 = 30,785.
+    two:=[2]u64.[0,1];#assert dg_sum(two[..])==30785;
+    // Word 8 is skipped; the high half of 2^32 + 5 is 1, the low half 5.
+    nine:[10]u64;nine[8]=99;nine[9]=4294967301;
+    h:=0;for k:0..<9 {if k!=8 {h=(h*31+1)%PG_HASH;h=(h*31+1)%PG_HASH;}}
+    h=(h*31+2)%PG_HASH;h=(h*31+6)%PG_HASH;#assert dg_sum(nine[..])==h;
+    #assert cast(int)wire[8]==dg_sum(wire[0..<15]);
+    // Too small a buffer, a table that does not cover the positions, no positions.
+    #assert dg_pack(st,mem[..],0,5,7,3,wire[0..<14])== -1 && dg_pack(st,mem[..],0,5,7,3,wire[0..<15])==15;
+    #assert dg_pack(st,mem[..],0,5,7,5,wire[..])== -1 && dg_pack(st,mem[..],0,5,7,4,wire[..])==15 && dg_pack(st,mem[..],0,5,7,0,wire[..])== -1;
+}
+// book:end check-wire
+// book:begin check-refuse
+#test "every refusal, and the one snapshot accepted" {
+    for k:0..<11 {
+        e:=dgx_case(k);
+        #assert e.got.refusal==cast(DgRefusal)cast(u8)k;
+        if k==0 {#assert e.got.frames==4 && e.got.bytes==8*(9+4*15) && e.got.st.pool.nfree[0]==e.free-4;}
+        else {#assert e.got.frames==0 && e.got.bytes==0 && e.got.st.pool.nfree[0]==e.free && e.got.st.table[2].n==e.held;}
+    }
+    // A crafted header for a prompt of no positions, whole and summed: refused as a request.
+    c:=PgConfig.{page=4,dim=3};c.cap[0]=12;d:=dgx_store(c);mem:[64]f64;
+    w:=[9]u64.[1,1,2,0,4,3,0,0,0];w[8]=cast(u64)dg_sum(w[..]);
+    #assert dg_receive(d,mem[..],2,DgExpect.{model=1,request=2,positions=0},w[..]).refusal==DgRefusal.request;
+    // The header alone, 9 words: its own faults first; with none, too short. 8 words: too short.
+    st:=dgx_store(PgConfig.{page=4,dim=3});st.cfg.cap[0]=12;hw:=[9]u64.[2,1,2,13,4,3,0,4,0];
+    #assert dg_check(st.cfg,DgExpect.{model=1,request=2,positions=13},hw[..])==DgRefusal.version;
+    #assert dg_check(st.cfg,DgExpect.{model=1,request=2,positions=13},hw[0..<8])==DgRefusal.partial;
+    hw[0]=1;#assert dg_check(st.cfg,DgExpect.{model=1,request=2,positions=13},hw[..])==DgRefusal.partial;
+    // The count rule alone: fewer, exactly, more.
+    #assert dg_count(10,9)==DgRefusal.partial && dg_count(10,10)==DgRefusal.none && dg_count(10,11)==DgRefusal.excess;
+}
+// book:end check-refuse
+#test "names" {
+    #assert dg_refusal_name(DgRefusal.none)=="accepted" && dg_refusal_name(DgRefusal.partial)=="fewer bytes than declared";
+    #assert dg_refusal_name(DgRefusal.version)=="another snapshot version" && dg_refusal_name(DgRefusal.model)=="another model";
+    #assert dg_refusal_name(DgRefusal.geometry)=="another page geometry" && dg_refusal_name(DgRefusal.request)=="another request or prompt length";
+    #assert dg_refusal_name(DgRefusal.frames)=="frame count does not match the positions" && dg_refusal_name(DgRefusal.excess)=="more bytes than declared";
+    #assert dg_refusal_name(DgRefusal.checksum)=="checksum does not match" && dg_refusal_name(DgRefusal.slot)=="slot already in use";
+    #assert dg_refusal_name(DgRefusal.room)=="too few free frames";
+    #assert dg_status_name(DgStatus.ok)=="ok" && dg_status_name(DgStatus.config)=="configuration or traffic out of bounds";
+    #assert dg_status_name(DgStatus.order)=="arrivals out of order" && dg_status_name(DgStatus.events)=="event limit reached";
+}
+// book:begin check-bytes
+#test "transfer bytes and time for gpt-oss-20b, by hand" {
+    g:=dg_gptoss();l:=DgLink.{gbit=10,lat_ns=50000};
+    // A page of one layer: K and V, 8 heads of 64, 2 bytes, 16 positions = 32,768 bytes.
+    // 1,024 positions: 12 layers of 64 pages and 12 of 8 pages (the 128-position window).
+    #assert dg_bytes(g,1024)==72+32768*(12*64+12*8) && dg_bytes(g,1024)==28311624;
+    // 226,492,992 bits at 10 Gbit/s: 22,649,299.2 ns, rounded up, and 50 us.
+    #assert dg_transfer_ns(l,28311624)==22699300;
+    // 100 positions: 7 pages in every layer. 17 positions: 2 pages. 16: 1.
+    #assert dg_bytes(g,100)==72+32768*24*7 && dg_bytes(g,17)==72+32768*48 && dg_bytes(g,16)==72+32768*24;
+    #assert dg_bytes(g,128)==72+32768*24*8 && dg_bytes(g,129)==72+32768*(12*9+12*8);
+    #assert dg_transfer_ns(DgLink.{gbit=3},1)==3 && dg_transfer_ns(DgLink.{gbit=8},1)==1 && dg_transfer_ns(DgLink.{gbit=8,lat_ns=5},2)==7;
+}
+// book:end check-bytes
+// book:begin check-place
+#test "the placement by hand" {
+    // Two prompts of 512 and outputs of 33: prefill 2 * cb_step_ns(512) = 1,526,868,948 ns;
+    // decode 64 tokens at a sixteenth of a 16-row step each, 64 * 39,680,202 / 16 = 158,720,808 ns.
+    q:=[2]DgReq.[DgReq.{prompt=512,output=33},DgReq.{prompt=512,output=33}];
+    p:=dg_place(4,16,q[..]);#assert p.prefill_ns==1526868948 && p.decode_ns==158720808;
+    // 4 * 1,526,868,948 / 1,685,589,756 = 3.6: 3 prefill workers (509 ms each) against 1 decode (159 ms).
+    #assert p.prefill==3 && p.decode==1;
+    // Outputs of 1,000 tokens: decode 1,998 * 39,680,202 / 16 = 4,955,065,224 ns. 4 * a / (a + b) = 0.94,
+    // so p is 1 or 2: a / 1 or b / 3 against a / 2 or b / 2; 1 prefill worker, 3 decode.
+    q[0].output=1000;q[1].output=1000;p=dg_place(4,16,q[..]);#assert p.prefill==1 && p.decode==3 && p.decode_ns==4955065224;
+    // One slot, prompts of 1 and outputs of 64: 4 * a / (a + b) = 4 / 64, floor 0, kept to 1.
+    o:=[2]DgReq.[DgReq.{prompt=1,output=64},DgReq.{prompt=1,output=64}];p=dg_place(4,1,o[..]);
+    #assert p.prefill==1 && p.prefill_ns==2*17792472 && p.decode_ns==126*17792472;
+    // A tie: prompt 1 and 3 tokens on one slot, b = 2a. One prefill worker: max(3a, 2a) / 3 = a;
+    // two: max(2a, 4a) / 4 = a. Fewer prefill workers win.
+    t:=[1]DgReq.[DgReq.{prompt=1,output=3}];p=dg_place(4,1,t[..]);#assert p.prefill==1 && p.decode==3;
+    t[0].output=4;#assert dg_place(4,1,t[..]).prefill==1;t[0].output=2;#assert dg_place(4,1,t[..]).prefill==2;
+    // Fewer than 2 workers, more than 8, or traffic outside the bounds: no split.
+    #assert dg_place(1,16,q[..]).prefill==0 && dg_place(2,16,q[..]).prefill==1 && dg_place(8,16,q[..]).prefill==2 && dg_place(9,16,q[..]).decode==0;
+    #assert dg_place(4,16,q[0..<0]).prefill==0 && dg_place(4,0,q[..]).prefill==0 && dg_place(4,17,q[..]).prefill==0 && dg_place(4,1,q[..]).prefill==1;
+    many:[65]DgReq;for i:0..<65 {many[i]=t[0];}#assert dg_place(4,1,many[0..<64]).prefill>0 && dg_place(4,1,many[..]).prefill==0;
+    b:=t;b[0].prompt=0;#assert dg_place(4,1,b[..]).decode==0;b[0].prompt=4097;#assert dg_place(4,1,b[..]).decode==0;b[0].prompt=4096;#assert dg_place(4,1,b[..]).decode>0;
+    b=t;b[0].output=0;#assert dg_place(4,1,b[..]).decode==0;b[0].output=65537;#assert dg_place(4,1,b[..]).decode==0;b[0].output=65536;#assert dg_place(4,1,b[..]).decode>0;
+    b[0].output=1;#assert dg_place(4,1,b[..]).prefill==3;
+}
+// book:end check-place
+// book:begin check-hand
+#test "the hand trace: two workers co-located, then one prefill and one decode" {
+    h:=dgx_hand();s:=dg_sim(dgx_hand_fleet(0),h[..]);
+    // Each worker: A's 64 rows (109,720,938 ns); A's second token with C's first 63 rows
+    // (the same); A's last token with C's last row (19,251,654); C's two tokens alone.
+    #assert s.fate[0].first==109720938 && s.fate[0].finish==238693530 && s.fate[2].first==238693530 && s.fate[2].finish==274278474;
+    #assert s.fate[1].first==109720938 && s.fate[1].finish==238693530 && s.fate[3].finish==274278474 && s.fate[3].decode==0;
+    #assert s.gaps[0]==109720938 && s.gaps[2]==19251654 && s.gaps[4]==17792472 && s.ngaps==8 && s.transfers==0 && s.end==274278474;
+    r:=dg_report(s,h[..]);
+    #assert r.ttft.n==4 && r.ttft.p[0]==109720938 && r.ttft.p[3]==238693530 && r.itl.n==8 && r.itl.p[0]==17792472 && r.itl.p[1]==109720938;
+    #assert r.tokens==12 && r.span==274278474 && r.transfers==0 && r.bytes==0 && r.link==0 && r.rows==256;
+    // Split: one prompt a step on worker 0; each 3,145,800-byte state takes 2,566,640 ns;
+    // worker 1 decodes it in one-row steps of 17,792,472 ns.
+    s=dg_sim(dgx_hand_fleet(1),h[..]);
+    for i:0..<4 {f:=s.fate[i];#assert f.first==109720938*(i+1) && f.arrived==f.first+2566640 && f.decode==f.arrived && f.finish==f.arrived+2*17792472 && f.bytes==3145800 && f.link==2566640;}
+    for g:0..<8 {#assert s.gaps[g]==ifx g%2==0 then 20359112 else 17792472;}
+    #assert s.transfers==4 && s.bytes==4*3145800 && s.end==477035336 && s.rows==256 && s.tokens==12;
+    r=dg_report(s,h[..]);#assert r.ttft.p[0]==219441876 && r.itl.p[0]==17792472 && r.itl.p[2]==20359112 && r.link==4*2566640 && r.bytes==4*3145800;
+    // Everything 1,000 ns later: the same run, shifted, in the same 17 events.
+    d:=h;for i:0..<4 {d[i].arrive=1000;}
+    x:=dg_sim(dgx_hand_fleet(1),d[..]);r=dg_report(x,d[..]);
+    #assert x.end==477036336 && x.events==17 && r.span==477035336 && r.ttft.p[0]==219441876 && x.fate[0].decode==112288578;
+    // Every second transfer cut in half: B's (the 2nd) is refused and B is prefilled again;
+    // D's (the 4th, then the 6th) twice.
+    c:=dgx_hand_fleet(1);c.loss=2;s=dg_sim(c,h[..]);
+    #assert s.fate[1].resent==1 && s.fate[3].resent==2 && s.fate[0].resent==0 && s.fate[2].resent==0 && s.refused==3 && s.transfers==7 && s.rows==448;
+    // A cut message brings half its bytes: 4 whole and 3 halves arrive.
+    #assert s.bytes==4*3145800+3*1572900 && s.fate[3].bytes==3145800+2*1572900 && s.fate[3].link==3*2566640;
+    #assert s.fate[1].first==219441876 && s.fate[1].arrived==551171330 && s.fate[1].decode==551171330 && s.fate[3].arrived==773179846 && s.end==808764790;
+    // A prompt of 64 or shorter runs on the decode worker when local is 64, not when it is 63.
+    c=dgx_hand_fleet(1);c.local=64;s=dg_sim(c,h[..]);#assert s.transfers==0 && s.fate[0].decode==0 && s.fate[0].arrived== -1;
+    c.local=63;s=dg_sim(c,h[..]);#assert s.transfers==4;
+    // One output token: done at the prefill worker, nothing moves.
+    o:=h;for i:0..<4 {o[i].output=1;}s=dg_sim(dgx_hand_fleet(1),o[..]);
+    #assert s.transfers==0 && s.fate[3].finish==438883752 && s.fate[3].decode== -1 && s.ngaps==0 && s.tokens==4;
+}
+// book:end check-hand
+#test "configurations and traffic the simulation refuses" {
+    h:=dgx_hand();c:=dgx_hand_fleet(1);
+    #assert dg_sim(c,h[..]).status==DgStatus.ok;
+    x:=c;x.workers=0;x.prefill=0;#assert dg_sim(x,h[..]).status==DgStatus.config;x.workers=1;#assert dg_sim(x,h[..]).status==DgStatus.ok;
+    x.workers=8;x.prefill=7;#assert dg_sim(x,h[..]).status==DgStatus.ok;x.workers=9;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.prefill=-1;#assert dg_sim(x,h[..]).status==DgStatus.config;x.prefill=2;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.slots=0;#assert dg_sim(x,h[..]).status==DgStatus.config;x.slots=16;x.tokens=16;#assert dg_sim(x,h[..]).status==DgStatus.ok;
+    x.slots=17;x.tokens=17;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.tokens=1;#assert dg_sim(x,h[..]).status==DgStatus.config;x.tokens=2;#assert dg_sim(x,h[..]).status==DgStatus.ok;
+    x.tokens=4096;#assert dg_sim(x,h[..]).status==DgStatus.ok;x.tokens=4097;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.local=-1;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.loss=-1;#assert dg_sim(x,h[..]).status==DgStatus.config;x.loss=1;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x.loss=2;#assert dg_sim(x,h[..]).status==DgStatus.ok;
+    x=c;x.events=0;#assert dg_sim(x,h[..]).status==DgStatus.config;x.events=65537;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x.events=65536;#assert dg_sim(x,h[..]).events==17;x.events=17;#assert dg_sim(x,h[..]).status==DgStatus.ok;
+    x.events=16;#assert dg_sim(x,h[..]).status==DgStatus.events;x.events=1;#assert dg_sim(x,h[..]).status==DgStatus.events;
+    x=c;x.shape.full=-1;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.shape.windowed=-1;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.shape.full=0;#assert dg_sim(x,h[..]).status==DgStatus.ok;x.shape.windowed=0;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x.shape.full=1;#assert dg_sim(x,h[..]).status==DgStatus.ok;
+    x=c;x.shape.window=0;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.shape.kv_heads=0;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.shape.head_dim=0;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.shape.value_bytes=0;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.shape.page=0;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.shape=DgShape.{full=1,window=1,kv_heads=1,head_dim=1,value_bytes=1,page=1};#assert dg_sim(x,h[..]).status==DgStatus.ok;
+    x=c;x.link.gbit=0;#assert dg_sim(x,h[..]).status==DgStatus.config;
+    x=c;x.link.lat_ns=-1;#assert dg_sim(x,h[..]).status==DgStatus.config;x.link.lat_ns=0;#assert dg_sim(x,h[..]).status==DgStatus.ok;
+    #assert dg_sim(c,h[0..<0]).status==DgStatus.config && dg_sim(c,h[0..<1]).status==DgStatus.ok;
+    many:[65]DgReq;for i:0..<65 {many[i]=DgReq.{prompt=1,output=1};}
+    #assert dg_sim(c,many[0..<64]).status==DgStatus.ok && dg_sim(c,many[..]).status==DgStatus.config;
+    b:=h;b[1].prompt=0;#assert dg_sim(c,b[..]).status==DgStatus.config;b[1].prompt=4097;#assert dg_sim(c,b[..]).status==DgStatus.config;
+    b[1].prompt=4096;#assert dg_sim(c,b[..]).status==DgStatus.ok;
+    b=h;b[1].output=0;#assert dg_sim(c,b[..]).status==DgStatus.config;b[1].output=65;#assert dg_sim(c,b[..]).status==DgStatus.config;
+    b[1].output=64;#assert dg_sim(c,b[..]).status==DgStatus.ok;
+    b=h;b[0].arrive=-1;#assert dg_sim(c,b[..]).status==DgStatus.order;b[0].arrive=1;#assert dg_sim(c,b[..]).status==DgStatus.order;
+    b=h;b[3].arrive=5;#assert dg_sim(c,b[..]).status==DgStatus.ok;b[2].arrive=6;#assert dg_sim(c,b[..]).status==DgStatus.order;
+    b[3].arrive=6;#assert dg_sim(c,b[..]).status==DgStatus.ok;
+}
+// book:begin check-frozen
+#test "frozen: 48 requests 300 ms apart, co-located on 4 workers" #steps 400000000 {
+    q:=dgx_q(300000);p:=dg_report(dg_sim(dgx_fleet(0),q[..]),q[..]);
+    #assert dgx_frozen(p,812539072,3366199406,20710836,389883882,389883882,17693296578) && p.transfers==0 && p.rows==29440;
+}
+#test "frozen: 300 ms apart, 1 prefill and 3 decode" #steps 400000000 {
+    q:=dgx_q(300000);#assert dgx_frozen(dg_report(dg_sim(dgx_fleet(1),q[..]),q[..]),11499452690,29914032020,17792472,17792472,40491772,45426807989);
+}
+#test "frozen: 300 ms apart, 2 prefill and 2 decode" #steps 400000000 {
+    q:=dgx_q(300000);#assert dgx_frozen(dg_report(dg_sim(dgx_fleet(2),q[..]),q[..]),2523842702,10966546982,17792472,20710836,40491772,26385918498);
+}
+#test "frozen: 300 ms apart, 3 prefill and 1 decode, the placement's split" #steps 400000000 {
+    q:=dgx_q(300000);p:=dg_report(dg_sim(dgx_fleet(3),q[..]),q[..]);
+    #assert dgx_frozen(p,1559535528,5906186870,19251654,25088382,49563444,20310536734);
+    #assert p.transfers==48 && p.refused==0 && p.bytes==874515840 && p.link==702012702 && p.rows==29440;
+    #assert dg_place(4,16,q[..]).prefill==3;
+}
+#test "frozen: 300 ms apart, 3:1, prompts of 128 or fewer run on the decode worker" #steps 400000000 {
+    q:=dgx_q(300000);c:=dgx_fleet(3);c.local=128;p:=dg_report(dg_sim(c,q[..]),q[..]);
+    #assert dgx_frozen(p,779767764,3608655820,20710836,23629200,207486132,18242399044) && p.transfers==30 && p.bytes==761268336;
+}
+#test "frozen: 300 ms apart, 3:1, every fourth transfer cut" #steps 400000000 {
+    q:=dgx_q(300000);c:=dgx_fleet(3);c.loss=4;p:=dg_report(dg_sim(c,q[..]),q[..]);
+    #assert dgx_frozen(p,1725285410,7900007046,19251654,22170018,48630443,25688517392);
+    #assert p.transfers==63 && p.refused==15 && p.rows==39680 && p.bytes==1023938460 && p.link==941838904;
+}
+#test "frozen: 300 ms apart, 3:1 on a 1 Gbit/s link" #steps 400000000 {
+    q:=dgx_q(300000);c:=dgx_fleet(3);c.link.gbit=1;p:=dg_report(dg_sim(c,q[..]),q[..]);
+    #assert dgx_frozen(p,1559535528,5906186870,19251654,25088382,244335464,20547047006) && p.link==6998526720;
+}
+#test "frozen: 400 ms apart, co-located and 3:1" #steps 400000000 {
+    q:=dgx_q(400000);
+    #assert dgx_frozen(dg_report(dg_sim(dgx_fleet(0),q[..]),q[..]),779767764,1600792644,17792472,20710836,389883882,19940198730);
+    #assert dgx_frozen(dg_report(dg_sim(dgx_fleet(3),q[..]),q[..]),779767764,2800424348,19251654,22170018,42800804,20931336612);
+}
+// book:end check-frozen
+
+// Independent checks (psionic/tests/serve-split-checks.coax).
+#forall "a transfer is accepted only whole and unchanged, and moves exactly its frames" seed:0..<400 #steps 200000000 {
+    e:=dgx_random(seed);
+    #assert e.got.refusal==e.want;
+    if e.want==DgRefusal.none {#assert dgx_same(e) && e.got.bytes==8*(DG_HEAD+e.frames*pg_width(e.cfg)) && e.got.st.pool.nfree[0]==e.free-e.frames;}
+    else {#assert e.got.bytes==0 && e.got.st.pool.nfree[0]==e.free;}
+}
+#forall "the placement is the brute-force best split" seed:0..<2000 #steps 20000000 {
+    w:=dgx_place_case(seed);p:=dg_place(w.workers,w.slots,w.req[0..<w.n]);b:=dgx_place_best(w.workers,w.slots,w.req[0..<w.n]);
+    #assert p.prefill==b.prefill && p.decode==b.decode && p.prefill_ns==b.prefill_ns && p.decode_ns==b.decode_ns;
+}
+#forall "co-located on one worker, every arrival at 0, is chapter 175's scheduler to the nanosecond" seed:0..<60 #steps 400000000 {
+    dgx_against_cb(seed);
+}
+#forall "a split run keeps its invariants: whole state before decode, every token, exact bytes" seed:0..<40 #steps 400000000 {
+    w:=dgx_traffic_case(seed);s:=dg_sim(w.cfg,w.req[0..<w.n]);
+    #assert s.status==DgStatus.ok;
+    dgx_sim_check(s,w);
+}
+
+// book:begin wire
+dg_frames :: (c:PgConfig,positions:int)->int {return (positions+c.page-1)/c.page+ifx c.hybrid then 1 else 0;}
+// The checksum: chapter 176's chained hash over both halves of every word
+// but word 8, which holds it.
+dg_sum :: (w:[]u64)->int {
+    h:=0;
+    for k:0..<w.count {
+        if k==8 {continue;}
+        h=(h*31+cast(int)(w[k]>>32)+1)%PG_HASH;
+        h=(h*31+cast(int)(w[k]&cast(u64)4294967295)+1)%PG_HASH;
+    }
+    return h;
+}
+// Pack the first `positions` of request i's table, and its recurrent state
+// when the model is hybrid, frame by frame as the frames hold them. Returns
+// the words written, or -1 when there are no positions, the table does not
+// cover them, or out is too small.
+dg_pack :: (st:PgStore,mem:[]f64,i:int,model:int,request:int,positions:int,out:[]u64)->int {
+    c:=st.cfg;w:=pg_width(c);pages:=(positions+c.page-1)/c.page;frames:=dg_frames(c,positions);n:=DG_HEAD+frames*w;
+    if positions<1 || pages>st.table[i].n || n>out.count {return -1;}
+    head:=[8]int.[DG_VERSION,model,request,positions,c.page,c.dim,ifx c.hybrid then 1 else 0,frames];
+    for k:0..<8 {out[k]=cast(u64)head[k];}
+    for k:0..<frames {
+        f:=ifx k<pages then st.table[i].page[k] else st.live[i];
+        for j:0..<w {out[DG_HEAD+k*w+j]=f64_bits(mem[f*w+j]);}
+    }
+    out[8]=cast(u64)dg_sum(out[0..<n]);
+    return n;
+}
+// book:end wire
+
+// book:begin receive
+// The count rule, shared with the simulation: a message is whole when
+// exactly the declared size arrived.
+dg_count :: (want:int,got:int)->DgRefusal {
+    if got<want {return DgRefusal.partial;}
+    if got>want {return DgRefusal.excess;}
+    return DgRefusal.none;
+}
+// Check a snapshot against what this worker expects, in order: a whole
+// header; the version, the model, the geometry; the request and a prompt of
+// at least one position; the frame count; exactly the size those frames
+// take; the checksum.
+dg_check :: (c:PgConfig,want:DgExpect,wire:[]u64)->DgRefusal {
+    if wire.count<DG_HEAD {return DgRefusal.partial;}
+    h:[9]int;for k:0..<DG_HEAD {h[k]=cast(int)wire[k];}
+    if h[0]!=DG_VERSION {return DgRefusal.version;}
+    if h[1]!=want.model {return DgRefusal.model;}
+    if h[4]!=c.page || h[5]!=c.dim || h[6]!=(ifx c.hybrid then 1 else 0) {return DgRefusal.geometry;}
+    if h[2]!=want.request || h[3]!=want.positions || want.positions<1 {return DgRefusal.request;}
+    frames:=dg_frames(c,want.positions);
+    if h[7]!=frames {return DgRefusal.frames;}
+    r:=dg_count(DG_HEAD+frames*pg_width(c),wire.count);
+    if r!=DgRefusal.none {return r;}
+    if h[8]!=dg_sum(wire) {return DgRefusal.checksum;}
+    return DgRefusal.none;
+}
+// Receive into slot i: refuse, or take one device frame per page (and one
+// for the recurrent state) and write the values back bit for bit. Nothing
+// is held or written on a refusal.
+dg_receive :: (dst:PgStore,mem:[]f64,i:int,want:DgExpect,wire:[]u64)->DgReceived {
+    r:=DgReceived.{refusal=dg_check(dst.cfg,want,wire),st=dst};
+    if r.refusal!=DgRefusal.none {return r;}
+    s:=dst;c:=s.cfg;w:=pg_width(c);frames:=dg_frames(c,want.positions);pages:=(want.positions+c.page-1)/c.page;
+    if s.table[i].n>0 || s.live[i]>=0 {r.refusal=DgRefusal.slot;return r;}
+    if s.pool.nfree[0]<frames {r.refusal=DgRefusal.room;return r;}
+    for k:0..<frames {
+        s.pool=pg_alloc(s.pool,0);f:=s.pool.got;
+        for j:0..<w {mem[f*w+j]=f64_from_bits(wire[DG_HEAD+k*w+j]);}
+        if k<pages {s.table[i].page[k]=f;} else {s.live[i]=f;}
+    }
+    s.table[i].n=pages;
+    return DgReceived.{st=s,frames=frames,bytes=8*wire.count};
+}
+// book:end receive
+
+// book:begin cost
+// gpt-oss-20b (psionic/docs/targets/gpt-oss.md): 24 layers alternating full
+// and 128-position windowed attention, 8 KV heads of 64. Two bytes a value
+// and pages of 16 positions are this chapter's assumptions.
+dg_gptoss :: ()->DgShape {return DgShape.{full=12,windowed=12,window=128,kv_heads=8,head_dim=64,value_bytes=2,page=16};}
+// The bytes a snapshot of `positions` moves: the header, then whole pages
+// of K and V in every layer, a windowed layer holding at most its window.
+dg_bytes :: (s:DgShape,positions:int)->int {
+    page:=2*s.kv_heads*s.head_dim*s.value_bytes*s.page;
+    full:=(positions+s.page-1)/s.page;win:=(cb_min(positions,s.window)+s.page-1)/s.page;
+    return 8*DG_HEAD+page*(s.full*full+s.windowed*win);
+}
+// Nanoseconds on the link: the latency, then the bits at gbit bits a
+// nanosecond, rounded up.
+dg_transfer_ns :: (l:DgLink,bytes:int)->int {return l.lat_ns+(bytes*8+l.gbit-1)/l.gbit;}
+// book:end cost
+
+// book:begin place
+// Predicted busy time for a window of traffic: each prompt as one step of
+// its rows (chapter 175's cb_step_ns), each token after the first as a
+// slots-th share of a full decode step. Split the workers to minimize the
+// larger of the two pools' time per worker, a / p against b / (workers - p);
+// the best p is the floor or the ceiling of workers * a / (a + b). With no
+// decode work, every worker but one runs prompts. A tie goes to fewer
+// prefill workers. Traffic outside the bounds, or fewer than 2 workers,
+// gets no split.
+dg_place :: (workers:int,slots:int,reqs:[]DgReq)->DgPlace {
+    d:DgPlace;
+    if workers<2 || workers>DG_WORKERS || slots<1 || slots>DG_SLOTS || reqs.count<1 || reqs.count>DG_REQUESTS {return d;}
+    for r:reqs {if r.prompt<1 || r.prompt>DG_PROMPT || r.output<1 || r.output>DG_PLACE_OUTPUT {return d;}}
+    for r:reqs {d.prefill_ns+=cb_step_ns(r.prompt);d.decode_ns+=r.output-1;}
+    d.decode_ns=d.decode_ns*cb_step_ns(slots)/slots;
+    a:=d.prefill_ns;b:=d.decode_ns;
+    // lo is at most workers * a / (a + b), so its larger share is prefill's, a / lo;
+    // hi is above it, so its larger share is decode's, b / (workers - hi). hi wins
+    // when b / (workers - hi) < a / lo, compared without dividing: lo = 0 always
+    // loses and hi = workers never wins.
+    lo:=workers*a/(a+b);hi:=lo+1;
+    d.prefill=lo;
+    if b*lo<a*(workers-hi) {d.prefill=hi;}
+    if b==0 {d.prefill=workers-1;}
+    d.decode=workers-d.prefill;
+    return d;
+}
+// book:end place
+
+// book:begin start
+dg_config_ok :: (c:DgConfig)->bool {
+    if c.workers<1 || c.workers>DG_WORKERS || c.prefill<0 || c.prefill>=c.workers || c.slots<1 || c.slots>DG_SLOTS {return false;}
+    if c.tokens<c.slots || c.tokens>CB_TOKENS || c.local<0 || c.loss<0 || c.loss==1 || c.events<1 || c.events>DG_EVENTS {return false;}
+    s:=c.shape;
+    if s.full<0 || s.windowed<0 || s.full+s.windowed<1 || s.window<1 || s.kv_heads<1 || s.head_dim<1 || s.value_bytes<1 || s.page<1 {return false;}
+    return c.link.gbit>=1 && c.link.lat_ns>=0;
+}
+dg_start :: (c:DgConfig,reqs:[]DgReq)->DgStatus {
+    if !dg_config_ok(c) || reqs.count<1 || reqs.count>DG_REQUESTS {return DgStatus.config;}
+    for i:0..<reqs.count {
+        r:=reqs[i];
+        if r.prompt<1 || r.prompt>DG_PROMPT || r.output<1 || r.output>DG_OUTPUT {return DgStatus.config;}
+        if r.arrive<0 || (i>0 && r.arrive<reqs[i-1].arrive) {return DgStatus.order;}
+    }
+    return DgStatus.ok;
+}
+// book:end start
+
+// book:begin sim
+// A discrete-event simulation over workers 0 to workers - 1, the first
+// `prefill` of them prefill workers. At each event time, in this order:
+// steps end (a prefill worker sends each finished prompt down its link, one
+// message after another; a request's last token retires it); transfers end
+// (accepted: the request waits for a decode worker; refused: it waits to
+// be prefilled again); arrivals queue (a prompt longer than `local` for the
+// prefill workers when there are any); then idle workers take requests from
+// their queue, oldest first, one each in turn while they have free slots;
+// and every idle worker with requests starts a step: one row for each
+// decoding request, then prompt chunks in admission order within `tokens`.
+dg_sim :: (cfg:DgConfig,reqs:[]DgReq)->DgSim {
+    s:DgSim;s.status=dg_start(cfg,reqs);
+    if s.status!=DgStatus.ok {return s;}
+    s.n=reqs.count;
+    filled:[64]int;emitted:[64]int;last:[64]int;plan:[64]int;dec:[64]bool;ready:[64]int;cut:[64]bool;moving:[64]bool;
+    busy:[8]int;stepping:[8]bool;nrun:[8]int;slot:[128]int;link:[8]int;queue:[128]int;nq:[2]int;
+    for i:0..<s.n {s.fate[i]=DgFate.{arrived=-1,decode=-1};}
+    a:=0;
+    while true {
+        // The next event: an arrival, a step's end or a transfer's end.
+        t:int;any:=a<s.n;
+        if any {t=reqs[a].arrive;}
+        for k:0..<cfg.workers {if stepping[k] {t=ifx any then cb_min(t,busy[k]) else busy[k];any=true;}}
+        for i:0..<s.n {if moving[i] {t=ifx any then cb_min(t,ready[i]) else ready[i];any=true;}}
+        if !any {break;}
+        s.events+=1;
+        if s.events>cfg.events {s.status=DgStatus.events;return s;}
+        s.end=t;
+        for k:0..<cfg.workers {
+            if !stepping[k] || busy[k]!=t {continue;}
+            stepping[k]=false;m:=0;
+            for j:0..<nrun[k] {
+                i:=slot[k*16+j];r:=reqs[i];
+                if dec[i] {emitted[i]+=1;s.gaps[s.ngaps]=t-last[i];s.ngaps+=1;last[i]=t;}
+                else {
+                    filled[i]+=plan[i];
+                    if filled[i]==r.prompt && emitted[i]==0 {s.fate[i].first=t;last[i]=t;emitted[i]=1;}
+                }
+                if emitted[i]==r.output {s.fate[i].finish=t;s.tokens+=r.output;continue;}
+                if k<cfg.prefill && filled[i]==r.prompt {
+                    b:=dg_bytes(cfg.shape,r.prompt);go:=cb_max(t,link[k]);link[k]=go+dg_transfer_ns(cfg.link,b);ready[i]=link[k];moving[i]=true;
+                    s.transfers+=1;s.fate[i].link+=link[k]-go;
+                    cut[i]=cfg.loss!=0 && s.transfers%cfg.loss==0;
+                    continue;
+                }
+                slot[k*16+m]=i;m+=1;
+            }
+            nrun[k]=m;
+        }
+        for i:0..<s.n {
+            if !moving[i] || ready[i]!=t {continue;}
+            moving[i]=false;b:=dg_bytes(cfg.shape,reqs[i].prompt);got:=b;
+            if cut[i] {got=b/2;}
+            s.bytes+=got;s.fate[i].bytes+=got;w:=1;
+            if dg_count(b,got)==DgRefusal.none {s.fate[i].arrived=t;}
+            else {s.fate[i].resent+=1;s.refused+=1;filled[i]=0;w=0;}
+            queue[w*64+nq[w]]=i;nq[w]+=1;
+        }
+        while a<s.n && reqs[a].arrive==t {
+            w:=1;
+            if cfg.prefill>0 && reqs[a].prompt>cfg.local {w=0;}
+            queue[w*64+nq[w]]=a;nq[w]+=1;a+=1;
+        }
+        // Idle workers take one request each in turn, until slots or queues run out.
+        took:=true;
+        while took {
+            took=false;
+            for k:0..<cfg.workers {
+                w:=ifx k<cfg.prefill then 0 else 1;
+                if stepping[k] || nrun[k]==cfg.slots || nq[w]==0 {continue;}
+                i:=queue[w*64];
+                for j:1..<nq[w] {queue[w*64+j-1]=queue[w*64+j];}
+                nq[w]-=1;slot[k*16+nrun[k]]=i;nrun[k]+=1;took=true;
+                if w==1 {s.fate[i].decode=t;}
+            }
+        }
+        for k:0..<cfg.workers {
+            if stepping[k] || nrun[k]==0 {continue;}
+            left:=cfg.tokens;
+            for j:0..<nrun[k] {i:=slot[k*16+j];dec[i]=filled[i]==reqs[i].prompt;if dec[i] {left-=1;}}
+            for j:0..<nrun[k] {
+                i:=slot[k*16+j];
+                if !dec[i] {plan[i]=cb_min(reqs[i].prompt-filled[i],left);left-=plan[i];s.rows+=plan[i];}
+            }
+            busy[k]=t+cb_step_ns(cfg.tokens-left);stepping[k]=true;
+        }
+    }
+    return s;
+}
+// book:end sim
+
+// book:begin report
+// Nearest-rank time to first token and gaps between tokens in
+// nanoseconds (chapter 172's bn_stats: P50, P90, P95, P99), output tokens,
+// and the span from the first arrival to the last token.
+dg_report :: (s:DgSim,reqs:[]DgReq)->DgReport {
+    p:=DgReport.{tokens=s.tokens,span=s.end-reqs[0].arrive,transfers=s.transfers,refused=s.refused,bytes=s.bytes,rows=s.rows};
+    first:[64]int;
+    for i:0..<s.n {first[i]=s.fate[i].first-reqs[i].arrive;p.link+=s.fate[i].link;}
+    gaps:=s.gaps;p.ttft=bn_stats(first[0..<s.n]);p.itl=bn_stats(gaps[0..<s.ngaps]);
+    return p;
+}
+// book:end report
+
+dg_refusal_name :: (r:DgRefusal)->string {
+    names:=[11]string.["accepted","fewer bytes than declared","another snapshot version","another model","another page geometry",
+        "another request or prompt length","frame count does not match the positions","more bytes than declared","checksum does not match",
+        "slot already in use","too few free frames"];
+    return names[cast(int)r];
+}
+dg_status_name :: (s:DgStatus)->string {
+    names:=[4]string.["ok","configuration or traffic out of bounds","arrivals out of order","event limit reached"];
+    return names[cast(int)s];
+}

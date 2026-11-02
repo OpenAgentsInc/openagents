@@ -1,0 +1,277 @@
+// Chapter 182's check helpers, loaded by psionic/lib/serve-split.coax and
+// owned by its checks: prefill and decode through chapter 176's stand-in
+// paged model on two separate memories, every refusal built by hand, random
+// snapshots with one known corruption each, a brute-force placement that
+// tries every split, chapter 175's scheduler as the reference for one
+// co-located worker, and random traffic with the invariants a finished run
+// must keep.
+
+// An empty trie and free frames, as chapter 176 starts them.
+dgx_store :: (c:PgConfig)->PgStore {
+    s:PgStore;s.cfg=c;s.pool=pg_pool(c);
+    for n:0..<PG_NODES {s.node[n].frame=-1;}
+    for i:0..<PG_REQUESTS {s.live[i]=-1;}
+    return s;
+}
+// Give table i frames for vals.count positions and write vals, dim 1.
+dgx_fill :: (st:PgStore,mem:[]f64,i:int,vals:[]f64)->PgStore {
+    s:=st;c:=s.cfg;w:=pg_width(c);
+    for k:0..<(vals.count+c.page-1)/c.page {s.pool=pg_alloc(s.pool,0);s.table[i].page[k]=s.pool.got;s.table[i].n=k+1;}
+    for p:0..<vals.count {mem[s.table[i].page[p/c.page]*w+p%c.page*c.dim]=vals[p];}
+    return s;
+}
+dgx_tok :: (p:int)->int {return (p*7+3)%16;}
+// Prefill request i's prompt through the stand-in paged model; the last
+// position yields the first output token.
+DgxPre :: struct {st:PgStore;first:int;}
+dgx_prefill :: (c:PgConfig,st:PgStore,mem:[]f64,i:int,prompt:int)->DgxPre {
+    s:=st;w:=pg_width(c);
+    for k:0..<(prompt+c.page-1)/c.page {s.pool=pg_alloc(s.pool,0);s.table[i].page[k]=s.pool.got;s.table[i].n=k+1;}
+    if c.hybrid {s.pool=pg_alloc(s.pool,0);s.live[i]=s.pool.got;for j:0..<w {mem[s.live[i]*w+j]=0;}}
+    att:[4]f64;r:[4]f64;nxt:=0;
+    for p:0..<prompt {nxt=pgx_paged(c,s.table[i],s.live[i],1,mem,p,dgx_tok(p),att[..],r[..]);}
+    return DgxPre.{st=s,first=nxt};
+}
+// Decode count - 1 more tokens after first, taking a frame at each new page.
+dgx_decode :: (c:PgConfig,st:PgStore,mem:[]f64,i:int,prompt:int,first:int,count:int,out:[]int) {
+    s:=st;att:[4]f64;r:[4]f64;out[0]=first;
+    for t:1..<count {
+        p:=prompt+t-1;
+        if p/c.page>=s.table[i].n {s.pool=pg_alloc(s.pool,0);s.table[i].page[s.table[i].n]=s.pool.got;s.table[i].n+=1;}
+        out[t]=pgx_paged(c,s.table[i],s.live[i],1,mem,p,out[t-1],att[..],r[..]);
+    }
+}
+DgxRun :: struct {tok:[8]int;refusal:DgRefusal;frames:int;bytes:int;}
+// One worker: prefill and decode in the same memory.
+dgx_colocated :: (c:PgConfig,prompt:int,count:int)->DgxRun {
+    mem:[1728]f64;x:DgxRun;
+    p:=dgx_prefill(c,dgx_store(c),mem[..],0,prompt);dgx_decode(c,p.st,mem[..],0,prompt,p.first,count,x.tok[..]);
+    return x;
+}
+// Two workers: prefill in one memory, pack, receive into slot 2 of another
+// whose first 3 frames are taken (so every frame number differs), free the
+// sender's table, decode there.
+dgx_handed :: (c:PgConfig,prompt:int,count:int)->DgxRun {
+    a:[1728]f64;b:[1728]f64;x:DgxRun;wire:[640]u64;
+    p:=dgx_prefill(c,dgx_store(c),a[..],0,prompt);
+    n:=dg_pack(p.st,a[..],0,1,5,prompt,wire[..]);
+    sent:=pg_free_table(p.st,0);
+    for f:0..<1728 {a[f]=0.0-1.0;}  // the sender's memory is gone
+    d:=dgx_store(c);for k:0..<3 {d.pool=pg_alloc(d.pool,0);}
+    g:=dg_receive(d,b[..],2,DgExpect.{model=1,request=5,positions=prompt},wire[0..<n]);
+    x.refusal=g.refusal;x.frames=g.frames;x.bytes=g.bytes;
+    #assert sent.pool.nfree[0]==c.cap[0] && g.st.table[2].page[0]==3;
+    dgx_decode(c,g.st,b[..],2,prompt,p.first,count,x.tok[..]);
+    return x;
+}
+// Chapter 176's contiguous reference, with no pages at all.
+dgx_alone :: (c:PgConfig,prompt:int,count:int)->[8]int {
+    s:PgState;s.cfg=c;s.model[0]=1;s.cb.req[0]=CbRequest.{prompt=prompt,output=count};
+    for p:0..<prompt {s.tok[p]=dgx_tok(p);}
+    out:[8]int;pgx_alone(s,0,out[..]);
+    return out;
+}
+
+// The hand-built refusals: page 4, dim 3 (15 words a frame), 13 positions
+// in 4 frames, sent as model 1, request 2. Case k is meant to draw refusal k.
+DgxCase :: struct {got:DgReceived;free:int;held:int;}
+dgx_case :: (k:int)->DgxCase {
+    c:=PgConfig.{page=4,dim=3};c.cap[0]=12;a:[1728]f64;b:[1728]f64;wire:[640]u64;
+    p:=dgx_prefill(c,dgx_store(c),a[..],0,13);n:=dg_pack(p.st,a[..],0,1,2,13,wire[..]);
+    #assert n==69;
+    want:=DgExpect.{model=1,request=2,positions=13};d:=dgx_store(c);
+    if k==1 {n=68;}
+    if k==2 {wire[0]=2;}
+    if k==3 {want.model=0;}
+    if k==4 {d.cfg.dim=2;}
+    if k==5 {want.request=3;}
+    if k==6 {wire[7]=5;}
+    if k==7 {n=70;}
+    if k==8 {wire[40]=wire[40]^cast(u64)1;}
+    if k==9 {d.pool=pg_alloc(d.pool,0);d.table[2].page[0]=d.pool.got;d.table[2].n=1;}
+    if k==10 {for j:0..<9 {d.pool=pg_alloc(d.pool,0);}}
+    return DgxCase.{got=dg_receive(d,b[..],2,want,wire[0..<n]),free=d.pool.nfree[0],held=d.table[2].n};
+}
+
+// A random snapshot and one known corruption (seed % 11 names it), so the
+// refusal it must draw is known before the receiver looks.
+DgxRandom :: struct {cfg:PgConfig;want:DgRefusal;got:DgReceived;frames:int;free:int;sent:[640]u64;rx:[1728]f64;}
+dgx_random :: (seed:int)->DgxRandom {
+    e:DgxRandom;h:=pgx_next(seed*7919+11);kind:=seed%11;e.want=cast(DgRefusal)cast(u8)kind;
+    c:PgConfig;c.page=1+h/65536%8;h=pgx_next(h);c.dim=1+h/65536%4;h=pgx_next(h);c.hybrid=h/65536%2==1;h=pgx_next(h);c.cap[0]=16;
+    hy:=ifx c.hybrid then 1 else 0;
+    pos:=1+h/65536%((16-hy)*c.page);h=pgx_next(h);
+    frames:=(pos+c.page-1)/c.page+hy;w:=pg_width(c);
+    // The sender: the table's frames in a scrambled order, holding random values, some of them -0.
+    a:[1728]f64;st:=dgx_store(c);
+    for k:0..<h/65536%(17-frames) {st.pool=pg_alloc(st.pool,0);}h=pgx_next(h);
+    for k:0..<frames-hy {st.pool=pg_alloc(st.pool,0);st.table[0].page[k]=st.pool.got;}
+    st.table[0].n=frames-hy;
+    if c.hybrid {st.pool=pg_alloc(st.pool,0);st.live[0]=st.pool.got;}
+    for f:0..<16 {for j:0..<w {a[f*w+j]=ifx h/65536%9==0 then -0.0 else cast(f64)(h/65536%2001-1000)/64.0;h=pgx_next(h);}}
+    wire:[640]u64;n:=dg_pack(st,a[..],0,3,9,pos,wire[..]);
+    #assert n==DG_HEAD+frames*w;
+    // What must arrive, read from the sender's frames: its pages in order, then its state frame.
+    for k:0..<frames {f:=ifx k<frames-hy then st.table[0].page[k] else st.live[0];for j:0..<w {e.sent[k*w+j]=f64_bits(a[f*w+j]);}}
+    want:=DgExpect.{model=3,request=9,positions=pos};d:=dgx_store(c);
+    for k:0..<h/65536%(17-frames) {d.pool=pg_alloc(d.pool,0);}h=pgx_next(h);
+    r:=h/65536;h=pgx_next(h);
+    if kind==1 {n=r%n;}
+    if kind==2 {wire[0]=ifx r%2==0 then 0 else cast(u64)(2+r%5);}
+    if kind==3 {want.model=ifx r%2==0 then 2 else 4+r%3;}
+    if kind==4 {
+        if r%3==0 {d.cfg.page=c.page%8+1;}
+        if r%3==1 {d.cfg.dim=c.dim%4+1;}
+        if r%3==2 {d.cfg.hybrid=!c.hybrid;}
+    }
+    if kind==5 {if r%2==0 {want.request=10+r%4;} else {want.positions=pos+1+r%3;}}
+    if kind==6 {wire[7]=cast(u64)(frames+1+r%3);if r%2==0 && frames>1 {wire[7]=cast(u64)(frames-1);}}
+    if kind==7 {n+=1+r%3;}
+    if kind==8 {at:=ifx r%5==0 then 8 else DG_HEAD+r%(n-DG_HEAD);bit:=cast(u64)(h/65536%64);wire[at]=wire[at]^((cast(u64)1)<<bit);}
+    if kind==9 {
+        d.pool=pg_alloc(d.pool,0);
+        if r%2==0 {d.table[4].page[0]=d.pool.got;d.table[4].n=1;} else {d.live[4]=d.pool.got;}
+    }
+    if kind==10 {while d.pool.nfree[0]>0 && d.pool.nfree[0]>frames-1-r%2 {d.pool=pg_alloc(d.pool,0);}}
+    e.cfg=c;e.frames=frames;e.free=d.pool.nfree[0];
+    for f:0..<1728 {e.rx[f]=99.0;}
+    e.got=dg_receive(d,e.rx[..],4,want,wire[0..<n]);
+    return e;
+}
+// Accepted: the receiver's table and state frame hold the sender's frames
+// bit for bit, each frame held once, and nothing outside them was written.
+dgx_same :: (e:DgxRandom)->bool {
+    s:=e.got.st;c:=e.cfg;w:=pg_width(c);pages:=e.frames-(ifx c.hybrid then 1 else 0);mine:[48]bool;
+    if s.table[4].n!=pages || (s.live[4]>=0)!=c.hybrid {return false;}
+    for k:0..<e.frames {
+        f:=ifx k<pages then s.table[4].page[k] else s.live[4];
+        if s.pool.ref[f]!=1 || f>=16 {return false;}
+        mine[f]=true;
+        for j:0..<w {if f64_bits(e.rx[f*w+j])!=e.sent[k*w+j] {return false;}}
+    }
+    for f:0..<48 {if !mine[f] {for j:0..<w {if e.rx[f*w+j]!=99.0 {return false;}}}}
+    return true;
+}
+
+// Random placement questions, a few outside the bounds.
+DgxPlaceCase :: struct {workers:int;slots:int;n:int;req:[8]DgReq;}
+dgx_place_case :: (seed:int)->DgxPlaceCase {
+    w:DgxPlaceCase;h:=pgx_next(seed*104729+5);
+    w.workers=1+h/65536%9;h=pgx_next(h);w.slots=h/65536%18;h=pgx_next(h);w.n=h/65536%9;h=pgx_next(h);
+    for i:0..<w.n {
+        // Prompts long or short and outputs short or long, so the best split lands anywhere.
+        w.req[i]=DgReq.{prompt=1+h/65536%(ifx h/65536/7%2==0 then 4096 else 64)};h=pgx_next(h);
+        w.req[i].output=1+h/65536%(ifx h/65536/7%2==0 then 64 else 20000);h=pgx_next(h);
+    }
+    return w;
+}
+// Every split tried: the step model's constants written out, the larger
+// share of each split compared exactly as fractions, the first smallest
+// kept.
+dgx_place_best :: (workers:int,slots:int,reqs:[]DgReq)->DgPlace {
+    d:DgPlace;
+    if workers<2 || workers>8 || slots<1 || slots>16 || reqs.count==0 {return d;}
+    a:=0;t:=0;
+    for r:reqs {a+=17792472+(r.prompt-1)*1459182;t+=r.output-1;}
+    b:=t*(17792472+(slots-1)*1459182)/slots;
+    bn:=0;bd:=1;
+    for p:1..<workers {
+        num:=a;den:=p;
+        if b*p>a*(workers-p) {num=b;den=workers-p;}
+        if d.prefill==0 || num*bd<bn*den {d.prefill=p;bn=num;bd=den;}
+    }
+    d.decode=workers-d.prefill;d.prefill_ns=a;d.decode_ns=b;
+    return d;
+}
+
+// One co-located worker, every request at 0, one client: chapter 175's
+// cb_run must give the same first and last token times.
+dgx_against_cb :: (seed:int) {
+    h:=pgx_next(seed*31337+7);n:=1+h/65536%12;h=pgx_next(h);
+    c:=DgConfig.{workers=1,slots=1+h/65536%6,shape=dg_gptoss(),link=DgLink.{gbit=10},events=DG_EVENTS};h=pgx_next(h);
+    c.tokens=c.slots+h/65536%300;h=pgx_next(h);
+    b:=CbConfig.{slots=c.slots,tokens=c.tokens,kv=CB_KV,clients=1,steps=CB_STEPS};b.weight[0]=1;
+    q:[12]DgReq;cq:[12]CbRequest;
+    for i:0..<n {q[i]=DgReq.{prompt=1+h/65536%300};h=pgx_next(h);q[i].output=1+h/65536%20;h=pgx_next(h);cq[i]=CbRequest.{prompt=q[i].prompt,output=q[i].output};}
+    s:=dg_sim(c,q[0..<n]);r:=cb_run(b,cq[0..<n]);
+    #assert s.status==DgStatus.ok && r.status==CbStatus.ok && s.end==r.clock;
+    for i:0..<n {#assert s.fate[i].first==r.fate[i].first_ns && s.fate[i].finish==r.fate[i].finish_ns && s.fate[i].decode>=0;}
+}
+
+// Random traffic on a random split or co-located fleet.
+DgxTraffic :: struct {cfg:DgConfig;n:int;req:[24]DgReq;}
+dgx_traffic_case :: (seed:int)->DgxTraffic {
+    w:DgxTraffic;h:=pgx_next(seed*7907+3);
+    c:=DgConfig.{workers=2+h/65536%5,shape=dg_gptoss(),events=DG_EVENTS};h=pgx_next(h);
+    c.prefill=h/65536%c.workers;h=pgx_next(h);c.slots=1+h/65536%8;h=pgx_next(h);c.tokens=c.slots+h/65536%512;h=pgx_next(h);
+    c.local=h/65536%300;h=pgx_next(h);c.loss=h/65536%6;h=pgx_next(h);
+    if c.loss==1 {c.loss=0;}
+    c.link=DgLink.{gbit=1+h/65536%100};h=pgx_next(h);c.link.lat_ns=h/65536%100000;h=pgx_next(h);
+    w.cfg=c;w.n=1+h/65536%24;h=pgx_next(h);at:=0;
+    for i:0..<w.n {
+        at+=h/65536%300*1000000;h=pgx_next(h);
+        w.req[i]=DgReq.{arrive=at,prompt=1+h/65536%1500};h=pgx_next(h);
+        w.req[i].output=1+h/65536%20;h=pgx_next(h);
+    }
+    return w;
+}
+dgx_sim_check :: (s:DgSim,w:DgxTraffic) {
+    c:=w.cfg;tokens:=0;gaps:=0;span:=0;bytes:=0;refused:=0;sent:=0;rows:=0;end:=0;
+    for i:0..<w.n {
+        r:=w.req[i];f:=s.fate[i];
+        #assert f.first>=r.arrive && f.finish>=f.first && (r.output>1 || f.finish==f.first);
+        tokens+=r.output;gaps+=r.output-1;span+=f.finish-f.first;end=cb_max(end,f.finish);rows+=r.prompt*(1+f.resent);
+        moved:=c.prefill>0 && r.prompt>c.local && r.output>1;
+        #assert (f.arrived>=0)==moved;
+        if moved {
+            b:=dg_bytes(c.shape,r.prompt);x:=dg_transfer_ns(c.link,b);
+            // The decode side takes the request only after its whole state arrived.
+            #assert f.decode>=f.arrived && f.arrived>=f.first+x && f.bytes==b+f.resent*(b/2) && f.link==(1+f.resent)*x;
+            sent+=1+f.resent;
+        } else {
+            #assert f.bytes==0 && f.resent==0 && f.link==0;
+            if c.prefill==0 || r.prompt<=c.local {#assert f.decode>=r.arrive && f.decode<=f.first;} else {#assert f.decode== -1;}
+        }
+        if c.loss==0 {#assert f.resent==0;}
+        bytes+=f.bytes;refused+=f.resent;
+    }
+    gsum:=0;for g:0..<s.ngaps {gsum+=s.gaps[g];#assert s.gaps[g]>0;}
+    #assert s.tokens==tokens && s.ngaps==gaps && gsum==span && s.bytes==bytes && s.refused==refused && s.transfers==sent && s.rows==rows && s.end==end;
+}
+
+// Synthetic traffic from chapter 172's load schedule: 48 requests, prompts
+// of 128 to 2,048 positions and outputs of 16 to 64 tokens.
+dgx_workload :: ()->BnWorkload {
+    w:=BnWorkload.{seed=182,requests=48,gap_us=400000,jitter_pct=50,contents=1,samplings=1};
+    w.input=BnLengths.{count=4};w.input.len[0]=128;w.input.len[1]=512;w.input.len[2]=1024;w.input.len[3]=2048;
+    w.input.weight[0]=3;w.input.weight[1]=2;w.input.weight[2]=2;w.input.weight[3]=1;
+    w.output=BnLengths.{count=3};w.output.len[0]=16;w.output.len[1]=32;w.output.len[2]=64;
+    w.output.weight[0]=1;w.output.weight[1]=2;w.output.weight[2]=1;
+    return w;
+}
+dgx_traffic :: (gap_us:int,out:[]DgReq)->BnStatus {
+    w:=dgx_workload();w.gap_us=gap_us;b:[48]BnRequest;st:=bn_schedule(w,b[..]);
+    if st!=BnStatus.ok {return st;}
+    for i:0..<48 {out[i]=DgReq.{arrive=b[i].at_us*1000,prompt=b[i].input,output=b[i].output};}
+    return BnStatus.ok;
+}
+// Four workers, 16 slots, steps of 256 positions, a 10 Gbit/s link with
+// 50 us of latency, gpt-oss-20b's state.
+dgx_fleet :: (prefill:int)->DgConfig {
+    return DgConfig.{workers=4,prefill=prefill,slots=16,tokens=256,shape=dg_gptoss(),link=DgLink.{gbit=10,lat_ns=50000},events=DG_EVENTS};
+}
+
+// The hand trace: four requests at 0, each a 64-position prompt and 3
+// tokens, on two workers with 2 slots and steps of 64 positions.
+dgx_hand :: ()->[4]DgReq {
+    q:[4]DgReq;for i:0..<4 {q[i]=DgReq.{prompt=64,output=3};}
+    return q;
+}
+dgx_hand_fleet :: (prefill:int)->DgConfig {
+    return DgConfig.{workers=2,prefill=prefill,slots=2,tokens=64,shape=dg_gptoss(),link=DgLink.{gbit=10,lat_ns=50000},events=DG_EVENTS};
+}
+// A report against frozen nanoseconds: 48 requests and their 1,632 tokens.
+dgx_frozen :: (p:DgReport,ttft50:int,ttft95:int,itl50:int,itl95:int,itl99:int,span:int)->bool {
+    return p.ttft.n==48 && p.itl.n==1584 && p.tokens==1632 && p.ttft.p[0]==ttft50 && p.ttft.p[2]==ttft95 && p.itl.p[0]==itl50 && p.itl.p[2]==itl95 && p.itl.p[3]==itl99 && p.span==span;
+}
+dgx_q :: (gap_us:int)->[48]DgReq {q:[48]DgReq;#assert dgx_traffic(gap_us,q[..])==BnStatus.ok;return q;}

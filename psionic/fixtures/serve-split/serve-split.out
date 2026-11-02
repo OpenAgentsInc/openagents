@@ -1,0 +1,39 @@
+gpt-oss-20b state (dg-split-v1): 64 positions 3145800 bytes, 2566640 ns at 10 Gbit/s; 1024 positions 28311624 bytes, 22699300 ns
+stand-in model, hybrid false, 13-position prompt: 4 frames, 552 bytes, accepted
+  one worker: 11 11 4 11 11 4; handed off: 11 11 4 11 11 4
+stand-in model, hybrid true, 13-position prompt: 5 frames, 672 bytes, accepted
+  one worker: 11 11 4 11 11 4; handed off: 11 11 4 11 11 4
+hand trace, 2 workers co-located:
+  A first token 109720938 ns, last 238693530 ns
+  B first token 109720938 ns, last 238693530 ns
+  C first token 238693530 ns, last 274278474 ns
+  D first token 238693530 ns, last 274278474 ns
+  gaps (ns): 109720938 109720938 19251654 19251654 17792472 17792472 17792472 17792472
+hand trace, 1 prefill and 1 decode:
+  A first token 109720938 ns, last 147872522 ns, state arrived 112287578 ns
+  B first token 219441876 ns, last 257593460 ns, state arrived 222008516 ns
+  C first token 329162814 ns, last 367314398 ns, state arrived 331729454 ns
+  D first token 438883752 ns, last 477035336 ns, state arrived 441450392 ns
+  gaps (ns): 20359112 17792472 20359112 17792472 20359112 17792472 20359112 17792472
+48 requests, mean gap 400 ms, 4 workers: predicted prefill 43742 ms, decode 3928 ms; placed 3 prefill, 1 decode
+  co-located: first token P50 779.7 P95 1600.7 ms; gaps P50 17.7 P95 20.7 P99 389.8 ms; 1632 tokens in 19940.1 ms, 81 tokens/s
+  1 prefill, 3 decode: first token P50 10250.0 P95 26217.9 ms; gaps P50 17.7 P95 17.7 P99 40.4 ms; 1632 tokens in 45634.8 ms, 35 tokens/s
+    48 transfers (0 refused), 874515840 bytes arrived, link busy 702.0 ms, 29440 prompt positions run
+  2 prefill, 2 decode: first token P50 2061.1 P95 10432.8 ms; gaps P50 17.7 P95 20.7 P99 40.4 ms; 1632 tokens in 30493.9 ms, 53 tokens/s
+    48 transfers (0 refused), 874515840 bytes arrived, link busy 702.0 ms, 29440 prompt positions run
+  3 prefill, 1 decode: first token P50 779.7 P95 2800.4 ms; gaps P50 19.2 P95 22.1 P99 42.8 ms; 1632 tokens in 20931.3 ms, 77 tokens/s
+    48 transfers (0 refused), 874515840 bytes arrived, link busy 702.0 ms, 29440 prompt positions run
+48 requests, mean gap 300 ms, 4 workers: predicted prefill 43742 ms, decode 3928 ms; placed 3 prefill, 1 decode
+  co-located: first token P50 812.5 P95 3366.1 ms; gaps P50 20.7 P95 389.8 P99 389.8 ms; 1632 tokens in 17693.2 ms, 92 tokens/s
+  1 prefill, 3 decode: first token P50 11499.4 P95 29914.0 ms; gaps P50 17.7 P95 17.7 P99 40.4 ms; 1632 tokens in 45426.8 ms, 35 tokens/s
+    48 transfers (0 refused), 874515840 bytes arrived, link busy 702.0 ms, 29440 prompt positions run
+  2 prefill, 2 decode: first token P50 2523.8 P95 10966.5 ms; gaps P50 17.7 P95 20.7 P99 40.4 ms; 1632 tokens in 26385.9 ms, 61 tokens/s
+    48 transfers (0 refused), 874515840 bytes arrived, link busy 702.0 ms, 29440 prompt positions run
+  3 prefill, 1 decode: first token P50 1559.5 P95 5906.1 ms; gaps P50 19.2 P95 25.0 P99 49.5 ms; 1632 tokens in 20310.5 ms, 80 tokens/s
+    48 transfers (0 refused), 874515840 bytes arrived, link busy 702.0 ms, 29440 prompt positions run
+  3:1, prompts of 128 or fewer on the decode worker: first token P50 779.7 P95 3608.6 ms; gaps P50 20.7 P95 23.6 P99 207.4 ms; 1632 tokens in 18242.3 ms, 89 tokens/s
+    30 transfers (0 refused), 761268336 bytes arrived, link busy 610.5 ms, 29440 prompt positions run
+  3:1, every fourth transfer cut: first token P50 1725.2 P95 7900.0 ms; gaps P50 19.2 P95 22.1 P99 48.6 ms; 1632 tokens in 25688.5 ms, 63 tokens/s
+    63 transfers (15 refused), 1023938460 bytes arrived, link busy 941.8 ms, 39680 prompt positions run
+  3:1 on a 1 Gbit/s link: first token P50 1559.5 P95 5906.1 ms; gaps P50 19.2 P95 25.0 P99 244.3 ms; 1632 tokens in 20547.0 ms, 79 tokens/s
+    48 transfers (0 refused), 874515840 bytes arrived, link busy 6998.5 ms, 29440 prompt positions run

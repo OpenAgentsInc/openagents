@@ -1,0 +1,30 @@
+// Chapter 182: what the decode side refuses. One snapshot, 13 positions of
+// the stand-in model in 4 frames, broken ten ways, each drawing its own
+// refusal; a transfer cut in the simulation, refused, and prefilled again;
+// and configurations the simulation refuses.
+#import "Basic";
+#load "../lib/serve-split.coax";
+
+// book:begin main
+main :: () {
+    what:=[11]string.["as sent","one word short","version 2","expected model 0","receiver dim 2","expected request 3",
+        "frame count 5","one word extra","one payload bit flipped","slot already holding a page","3 free frames"];
+    for k:0..<11 {
+        e:=dgx_case(k);
+        print("%: %, % frames, % bytes, % free frames left\n",what[k],dg_refusal_name(e.got.refusal),e.got.frames,e.got.bytes,e.got.st.pool.nfree[0]);
+    }
+
+    h:=dgx_hand();c:=dgx_hand_fleet(1);c.loss=2;s:=dg_sim(c,h[..]);
+    print("hand trace, every second transfer cut in half: % transfers, % refused, % prompt positions run\n",s.transfers,s.refused,s.rows);
+    for i:0..<4 {
+        f:=s.fate[i];
+        print("  request %: first token % ns, refused % times, state arrived % ns, last token % ns\n",i,f.first,f.resent,f.arrived,f.finish);
+    }
+
+    x:=dgx_hand_fleet(2);print("2 prefill workers of 2: %\n",dg_status_name(dg_sim(x,h[..]).status));
+    x=dgx_hand_fleet(1);x.loss=1;print("every transfer cut: %\n",dg_status_name(dg_sim(x,h[..]).status));
+    x=dgx_hand_fleet(1);x.events=16;print("16 events for a run that needs 17: %\n",dg_status_name(dg_sim(x,h[..]).status));
+    b:=h;b[2].arrive=6;print("an arrival before the one ahead of it: %\n",dg_status_name(dg_sim(dgx_hand_fleet(1),b[..]).status));
+    p:=dg_place(1,16,h[..]);print("placement on 1 worker: % prefill, % decode\n",p.prefill,p.decode);
+}
+// book:end main
