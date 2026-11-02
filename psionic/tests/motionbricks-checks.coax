@@ -1,0 +1,160 @@
+// Chapter 149's check references, loaded by psionic/lib/motionbricks.coax.
+// Each is written a second way from the MotionBricks source's description:
+// tensors are kept channel-first as PyTorch keeps them, convolutions loop
+// taps outside channels, embeddings are one-hot products, softmax divides
+// without subtracting the largest score, LayerNorm uses E[x^2] - E[x]^2,
+// and the masking order comes from a full insertion sort.
+
+MBO_C :: 16;   // channels at most
+MBO_P :: 64;   // positions at most
+MboMap :: struct {c:int;p:int;v:[MBO_C][MBO_P]f64;}
+
+mbo_conv :: (w:[]f64,at:int,x:MboMap,cout:int,taps:int,dilation:int)->MboMap {
+    y:MboMap;y.c=cout;y.p=x.p;pad:=dilation*(taps-1)/2;
+    for o:0..<cout {for p:0..<x.p {y.v[o][p]=w[at+cout*x.c*taps+o];}}
+    for j:0..<taps {for o:0..<cout {for i:0..<x.c {for p:0..<x.p {
+        q:=p-pad+j*dilation;if q<0 || q>=x.p {continue;}
+        y.v[o][p]+=w[at+(o*x.c+i)*taps+j]*x.v[i][q];
+    }}}}
+    return y;
+}
+mbo_relu :: (x:MboMap)->MboMap {y:=x;for i:0..<x.c {for p:0..<x.p {y.v[i][p]=mbo_max(x.v[i][p],0.0);}}return y;}
+
+mbo_decode :: (s:MbShape,w:[]f64,b:MbCodebook,q:MbTokens,c:MbCond)->MboMap {
+    p:=mb_decoder_plan(s);wd:=s.width;
+    x:MboMap;x.c=s.heads*s.dim;x.p=q.count;
+    for t:0..<q.count {for h:0..<s.heads {for i:0..<s.dim {x.v[h*s.dim+i][t]=b.value[h][q.code[t][h]][i];}}}
+    m:=mbo_relu(mbo_conv(w,0,x,wd,3,1));
+    for level:0..<2 {
+        per:=4>>level;slice:=wd/per;
+        for f:0..<m.p*per {
+            if !c.has[f] {continue;}
+            for o:0..<slice {
+                v:=0.0;for k:0..<s.pose_in {v+=c.pose[f][k]*w[p.target[level]+o*s.pose_in+k];}
+                m.v[(f%per)*slice+o][f/per]=mbo_max(v+w[p.target[level]+slice*s.pose_in+o],0.0);
+            }
+        }
+        cin:=wd+2*per;n:MboMap;n.c=wd;n.p=m.p;
+        for r:0..<m.p {
+            input:[MB_FEATURE_MAX]f64;
+            for k:0..<wd {input[k]=m.v[k][r];}
+            for f:0..<per {input[wd+2*f]=c.velocity[r*per+f][0];input[wd+2*f+1]=c.velocity[r*per+f][1];}
+            for o:0..<wd {v:=w[p.external[level]+wd*cin+o];for k:0..<cin {v+=w[p.external[level]+o*cin+k]*input[k];}n.v[o][r]=mbo_max(v,0.0);}
+        }
+        m=n;
+        for d:0..<s.depth {
+            dilation:=1;for k:d+1..<s.depth {dilation*=s.growth;}
+            a:=mbo_conv(w,p.block[level][d][1],mbo_relu(mbo_conv(w,p.block[level][d][0],mbo_relu(m),wd,3,dilation)),wd,1,1);
+            for i:0..<wd {for r:0..<m.p {m.v[i][r]+=a.v[i][r];}}
+        }
+        u:MboMap;u.c=wd;u.p=2*m.p;
+        for i:0..<wd {for r:0..<u.p {u.v[i][r]=m.v[i][r/2];}}
+        m=mbo_conv(w,p.up[level],u,wd,3,1);
+    }
+    return mbo_conv(w,p.out,mbo_relu(mbo_conv(w,p.mid,m,wd,3,1)),s.decoded,3,1);
+}
+
+mbo_dot :: (w:[]f64,row:int,x:[]f64,n:int)->f64 {v:=0.0;for i:0..<n {v+=w[row+i]*x[i];}return v;}
+mbo_layer_norm :: (w:[]f64,g:int,x:[]f64,n:int) {
+    m:=0.0;sq:=0.0;for i:0..<n {m+=x[i]/f64(n);sq+=x[i]*x[i]/f64(n);}
+    sd:=sqrt(sq-m*m+0.00001);
+    for i:0..<n {x[i]=w[g+i]*(x[i]-m)/sd+w[g+n+i];}
+}
+mbo_predict :: (s:MbShape,w:[]f64,q:MbTokens,c:MbCond)->[MB_TOKENS][MB_HEADS_MAX][MB_CODES_MAX]f64 {
+    p:=mb_predictor_plan(s);e:=s.embd;quarter:=s.pose_feat/4;rows:=s.heads*(s.codes+1);
+    x:[MB_TOKENS][MB_WIDTH_MAX]f64;
+    for t:0..<s.max_tokens {
+        // The concatenated embeddings as a one-hot row times a block-diagonal table.
+        cat:[MB_WIDTH_MAX]f64;
+        for h:0..<s.heads {for i:0..<s.dim {for r:0..<rows {
+            hot:=ifx r==h*(s.codes+1)+q.code[t][h] then 1.0 else 0.0;
+            cat[h*s.dim+i]+=hot*w[r*s.dim+i];
+        }}}
+        a:[MB_WIDTH_MAX]f64;b:[MB_WIDTH_MAX]f64;feat:[MB_FEATURE_MAX]f64;
+        for o:0..<s.pose_feat {v:=mbo_dot(w,p.mlp[0]+o*s.heads*s.dim,cat[..],s.heads*s.dim)+w[p.mlp[0]+s.pose_feat*s.heads*s.dim+o];a[o]=ifx v<0 then v/100 else v;}
+        for o:0..<s.pose_feat {v:=mbo_dot(w,p.mlp[1]+o*s.pose_feat,a[..],s.pose_feat)+w[p.mlp[1]+s.pose_feat*s.pose_feat+o];b[o]=ifx v<0 then v/100 else v;}
+        for o:0..<s.pose_feat {
+            f:=o/quarter;frame:=t*4+f;
+            if c.has[frame] {
+                pose:[MB_WIDTH_MAX]f64;for k:0..<s.pose_in {pose[k]=c.pose[frame][k];}
+                feat[o]=mbo_dot(w,p.pose+(o%quarter)*s.pose_in,pose[..],s.pose_in)+w[p.pose+quarter*s.pose_in+o%quarter];
+            } else {
+                feat[o]=mbo_dot(w,p.mlp[2]+o*s.pose_feat,b[..],s.pose_feat)+w[p.mlp[2]+s.pose_feat*s.pose_feat+o];
+            }
+        }
+        for o:0..<s.root_feat {
+            v:=w[p.root+s.root_feat*16+o];
+            for f:0..<4 {for k:0..<4 {v+=w[p.root+o*16+f*4+k]*c.root[t*4+f][k];}}
+            feat[s.pose_feat+o]=v;
+        }
+        for o:0..<s.length_feat {feat[s.pose_feat+s.root_feat+o]=w[p.length+(q.count-s.min_tokens)*s.length_feat+o];}
+        width:=s.pose_feat+s.root_feat+s.length_feat;
+        for o:0..<e {
+            v:=mbo_dot(w,p.input+o*width,feat[..],width)+w[p.input+e*width+o];
+            freq:=1.0;for k:0..<(o/2)*2 {freq/=exp(log(10000.0)/f64(e));}
+            x[t][o]=mbo_max(v,0.0)+(ifx o%2==0 then sin(f64(t)*freq) else cos(f64(t)*freq));
+        }
+    }
+    hd:=e/s.attn;
+    for l:0..<s.layers {
+        at:=p.layer[l];op:=at+3*e*e+3*e;l1:=op+e*e+e;l2:=l1+s.ffn*e+s.ffn;nm:=l2+e*s.ffn+e;
+        qm:[MB_TOKENS][MB_WIDTH_MAX]f64;km:[MB_TOKENS][MB_WIDTH_MAX]f64;vm:[MB_TOKENS][MB_WIDTH_MAX]f64;
+        for t:0..<s.max_tokens {for o:0..<e {
+            qm[t][o]=mbo_dot(w,at+o*e,x[t][..],e)+w[at+3*e*e+o];
+            km[t][o]=mbo_dot(w,at+(e+o)*e,x[t][..],e)+w[at+3*e*e+e+o];
+            vm[t][o]=mbo_dot(w,at+(2*e+o)*e,x[t][..],e)+w[at+3*e*e+2*e+o];
+        }}
+        y:[MB_TOKENS][MB_WIDTH_MAX]f64;
+        for t:0..<s.max_tokens {
+            att:[MB_WIDTH_MAX]f64;
+            for a:0..<s.attn {
+                weight:[MB_TOKENS]f64;total:=0.0;
+                for k:0..<q.count {d:=0.0;for i:0..<hd {d+=(qm[t][a*hd+i]/sqrt(f64(hd)))*km[k][a*hd+i];}weight[k]=exp(d);total+=weight[k];}
+                for i:0..<hd {for k:0..<q.count {att[a*hd+i]+=weight[k]/total*vm[k][a*hd+i];}}
+            }
+            r:[MB_WIDTH_MAX]f64;
+            for o:0..<e {r[o]=x[t][o]+mbo_dot(w,op+o*e,att[..],e)+w[op+e*e+o];}
+            mbo_layer_norm(w,nm,r[..],e);
+            hidden:[MB_FFN_MAX]f64;for o:0..<s.ffn {hidden[o]=mbo_max(mbo_dot(w,l1+o*e,r[..],e)+w[l1+s.ffn*e+o],0.0);}
+            for o:0..<e {y[t][o]=r[o]+mbo_dot(w,l2+o*s.ffn,hidden[..],s.ffn)+w[l2+e*s.ffn+o];}
+            mbo_layer_norm(w,nm+2*e,y[t][..],e);
+        }
+        x=y;
+    }
+    out:[MB_TOKENS][MB_HEADS_MAX][MB_CODES_MAX]f64;
+    for t:0..<s.max_tokens {for h:0..<s.heads {for k:0..<s.codes {
+        o:=h*s.codes+k;out[t][h][k]=mbo_dot(w,p.logit+o*e,x[t][..],e)+w[p.logit+s.heads*s.codes*e+o];
+    }}}
+    return out;
+}
+
+// Masking from a full sort of (confidence, position, head), then argmax and
+// the softmax of the chosen code, all from mbo_predict.
+MboGenerate :: struct {q:MbTokens;conf:[MB_TOKENS][MB_HEADS_MAX]f64;changed:[MB_TOKENS]int;}
+mbo_generate :: (s:MbShape,w:[]f64,n:int,c:MbCond,steps:int)->MboGenerate {
+    out:MboGenerate;q:MbTokens;q.count=n;conf:[MB_TOKENS][MB_HEADS_MAX]f64;
+    for t:0..<s.max_tokens {for h:0..<s.heads {q.code[t][h]=s.codes;conf[t][h]=1.0/f64(s.heads);}}
+    for step:0..<steps {
+        order:[MB_TOKENS*MB_HEADS_MAX]int;count:=n*s.heads;
+        for i:0..<count {
+            order[i]=i;j:=i;
+            while j>0 && conf[order[j]/s.heads][order[j]%s.heads]<conf[order[j-1]/s.heads][order[j-1]%s.heads] {tmp:=order[j];order[j]=order[j-1];order[j-1]=tmp;j-=1;}
+        }
+        m:=cast(int)floor(cos(f64(step)/f64(steps)*POSE_PI*0.5)*f64(count));if m<1 {m=1;}
+        for i:0..<m {q.code[order[i]/s.heads][order[i]%s.heads]=s.codes;}
+        last:=out.q;if step==0 {for t:0..<n {for h:0..<s.heads {last.code[t][h]=s.codes;}}}
+        l:=mbo_predict(s,w,q,c);
+        for t:0..<s.max_tokens {for h:0..<s.heads {
+            best:=0;for k:0..<s.codes {if l[t][h][k]>l[t][h][best] {best=k;}}
+            total:=0.0;for k:0..<s.codes {total+=exp(l[t][h][k]);}
+            q.code[t][h]=best;conf[t][h]=exp(l[t][h][best])/total;
+            if t<n && last.code[t][h]!=best {out.changed[step]+=1;}
+        }}
+        out.q=q;
+    }
+    out.conf=conf;
+    return out;
+}
+
+mbo_max :: (a:f64,b:f64)->f64 {return ifx a>b then a else b;}
+mbo_near :: (a:f64,b:f64,rel:f64)->bool {return abs(a-b)<=rel*(1+abs(b));}

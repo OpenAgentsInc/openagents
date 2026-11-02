@@ -1,0 +1,864 @@
+// Chapter 149: execute MotionBricks. The pinned SOMA package's three
+// checkpoints are checked against the architecture tensor by tensor; the
+// pose tokenizer's real codebook packs, unpacks, looks up and re-encodes
+// tokens; and the decoder (DoubleCondDecoder), the masked pose-token
+// transformer and its confidence schedule run on small synthetic weights,
+// each compared with a separately written reference in
+// psionic/tests/motionbricks-checks.coax. Profile cpu-f64-motionbricks-v1:
+// binary64, at most 5 heads of 16 codes of 32 values, 16 tokens of 4
+// frames, synthetic widths up to 16. Decoded motion becomes a chapter 147
+// clip and passes chapter 148's continuity check.
+#load "motion-token.coax";
+#load "../fixtures/motionbricks-manifest.coax";
+#load "../fixtures/motionbricks-codebook.coax";
+#load "../tests/motionbricks-checks.coax";   // the checks' references
+
+MbStatus :: enum u8 {ok;shape;token;length;checkpoint;pose;jump;}
+
+MB_HEADS_MAX :: 5;
+MB_CODES_MAX :: 16;
+MB_DIM_MAX :: 32;
+MB_LATENT_MAX :: 160;
+MB_TOKENS :: 16;
+MB_FRAMES :: 64;        // 16 tokens of 4 frames
+MB_FPT :: 4;            // frames a token: two halvings (down_t = 2)
+MB_WIDTH_MAX :: 16;
+MB_FEATURE_MAX :: 32;
+MB_FFN_MAX :: 32;
+MB_LAYERS_MAX :: 2;
+MB_WEIGHTS_MAX :: 16384;
+
+// ---- The pinned checkpoints ----
+
+// book:begin config
+// The SOMA package's sizes, from its config.yaml files and model card.
+MbConfig :: struct {
+    heads:int;codes:int;head_dim:int;down:int;width:int;depth:int;
+    pose_in:int;decoded:int;external:int;
+    embd:int;layers:int;ffn:int;pose_feat:int;root_feat:int;length_feat:int;root_in:int;mlp_layers:int;
+    min_tokens:int;max_tokens:int;
+}
+mb_soma :: ()->MbConfig {
+    return MbConfig.{heads=5,codes=16,head_dim=32,down=2,width=512,depth=4,pose_in=268,decoded=365,external=2,
+        embd=1024,layers=16,ffn=2048,pose_feat=640,root_feat=256,length_feat=128,root_in=4,mlp_layers=2,min_tokens=6,max_tokens=16};
+}
+// book:end config
+
+mb_put :: (out:[]u8,n:int,s:string)->int {for i:0..<s.count {out[n+i]=s[i];}return n+s.count;}
+mb_put_int :: (out:[]u8,n:int,v:int)->int {
+    digits:[20]u8;k:=0;x:=v;
+    while true {digits[k]=cast(u8)('0'+x%10);k+=1;x/=10;if x==0 {break;}}
+    m:=n;while k>0 {k-=1;out[m]=digits[k];m+=1;}
+    return m;
+}
+// a, then x unless it is negative, then b, then y unless negative, then c.
+mb_stem :: (buf:[]u8,a:string,x:int,b:string,y:int,c:string)->string {
+    n:=mb_put(buf,0,a);if x>=0 {n=mb_put_int(buf,n,x);}n=mb_put(buf,n,b);if y>=0 {n=mb_put_int(buf,n,y);}n=mb_put(buf,n,c);
+    return cast(string)buf[0..<n];
+}
+// One manifest line: stem, leaf, dtype, dimensions joined by commas.
+mb_param :: (out:[]u8,n:int,stem:string,leaf:string,dtype:string,dims:[3]int,rank:int)->int {
+    m:=mb_put(out,n,stem);m=mb_put(out,m,leaf);m=mb_put(out,m," ");m=mb_put(out,m,dtype);m=mb_put(out,m," ");
+    for i:0..<rank {if i>0 {m=mb_put(out,m,",");}m=mb_put_int(out,m,dims[i]);}
+    return mb_put(out,m,"\n");
+}
+mb_linear_lines :: (out:[]u8,n:int,stem:string,o:int,i:int)->int {
+    m:=mb_param(out,n,stem,".weight","F32",[3]int.[o,i,i],2);return mb_param(out,m,stem,".bias","F32",[3]int.[o,o,o],1);
+}
+mb_conv_lines :: (out:[]u8,n:int,stem:string,o:int,i:int,k:int)->int {
+    m:=mb_param(out,n,stem,".weight","F32",[3]int.[o,i,k],3);return mb_param(out,m,stem,".bias","F32",[3]int.[o,o,o],1);
+}
+
+// book:begin vqvae-lines
+// The pose VQ-VAE: a convolutional encoder that halves time twice, a
+// decoder that doubles it twice with residual blocks of dilated
+// convolutions, the two condition projections a doubling, and the
+// multi-head codebook with its training statistics.
+mb_vqvae_lines :: (c:MbConfig,out:[]u8)->int {
+    s:[96]u8;w:=c.width;z:=c.heads*c.head_dim;
+    n:=mb_conv_lines(out,0,"pose_net.encoder.model.0",w,c.pose_in,3);
+    for i:0..<c.down {
+        n=mb_conv_lines(out,n,mb_stem(s[..],"pose_net.encoder.model.",2+i,".0",-1,""),w,w,4);
+        for d:0..<c.depth {
+            n=mb_conv_lines(out,n,mb_stem(s[..],"pose_net.encoder.model.",2+i,".1.model.",d,".conv1"),w,w,3);
+            n=mb_conv_lines(out,n,mb_stem(s[..],"pose_net.encoder.model.",2+i,".1.model.",d,".conv2"),w,w,1);
+        }
+    }
+    n=mb_conv_lines(out,n,mb_stem(s[..],"pose_net.encoder.model.",2+c.down,"",-1,""),z,w,3);
+    n=mb_conv_lines(out,n,"pose_net.decoder.model.0",w,z,3);
+    for i:0..<c.down {
+        for d:0..<c.depth {
+            n=mb_conv_lines(out,n,mb_stem(s[..],"pose_net.decoder.model.",2+i,".0.model.",d,".conv1"),w,w,3);
+            n=mb_conv_lines(out,n,mb_stem(s[..],"pose_net.decoder.model.",2+i,".0.model.",d,".conv2"),w,w,1);
+        }
+        n=mb_conv_lines(out,n,mb_stem(s[..],"pose_net.decoder.model.",2+i,".2",-1,""),w,w,3);
+        per:=1<<(c.down-i);
+        n=mb_linear_lines(out,n,mb_stem(s[..],"pose_net.decoder.external_cond_blocks.",2*i,"",-1,""),w,per*c.external+w);
+        n=mb_linear_lines(out,n,mb_stem(s[..],"pose_net.decoder.target_cond_blocks.",2*i,"",-1,""),w/per,c.pose_in);
+    }
+    n=mb_conv_lines(out,n,mb_stem(s[..],"pose_net.decoder.model.",2+c.down,"",-1,""),w,w,3);
+    n=mb_conv_lines(out,n,mb_stem(s[..],"pose_net.decoder.model.",4+c.down,"",-1,""),c.decoded,w,3);
+    q:="pose_net.quantizer.vq._codebook.";
+    n=mb_param(out,n,q,"cluster_size","F32",[3]int.[c.heads,c.codes,c.codes],2);
+    n=mb_param(out,n,q,"embed","F32",[3]int.[c.heads,c.codes,c.head_dim],3);
+    n=mb_param(out,n,q,"embed_avg","F32",[3]int.[c.heads,c.codes,c.head_dim],3);
+    return mb_param(out,n,q,"initted","F32",[3]int.[1,c.heads,c.heads],1);
+}
+// book:end vqvae-lines
+
+// book:begin pose-lines
+// The pose predictor: per-head token embeddings (16 codes and the mask), a
+// two-layer MLP over them, projections of the pose constraints, the root
+// trajectory and the length, a post-norm transformer encoder and one
+// output layer of 16 logits a head.
+mb_pose_lines :: (c:MbConfig,out:[]u8)->int {
+    s:[96]u8;e:=c.embd;fpt:=1<<c.down;
+    n:=mb_param(out,0,"mmm_net._pose_token_emb",".weight","F32",[3]int.[c.heads*(c.codes+1),c.head_dim,c.head_dim],2);
+    n=mb_param(out,n,"mmm_net._position_emb",".embed","F32",[3]int.[c.max_tokens,1,e],3);
+    n=mb_linear_lines(out,n,"mmm_net._proj_input.0",e,c.pose_feat+c.root_feat+c.length_feat);
+    n=mb_linear_lines(out,n,"mmm_net._proj_local_pose",c.pose_feat/fpt,c.pose_in);
+    n=mb_linear_lines(out,n,"mmm_net._proj_local_root_values",c.root_feat,c.root_in*fpt);
+    n=mb_param(out,n,"mmm_net._proj_num_valid_positions",".weight","F32",[3]int.[c.max_tokens-c.min_tokens+1,c.length_feat,c.length_feat],2);
+    n=mb_linear_lines(out,n,"mmm_net._proj_pose_output_logit",c.heads*c.codes,e);
+    for k:0..<c.mlp_layers {
+        n=mb_linear_lines(out,n,mb_stem(s[..],"mmm_net._proj_pose_token_emb.fc_layers.",k,"",-1,""),c.pose_feat,ifx k==0 then c.heads*c.head_dim else c.pose_feat);
+    }
+    n=mb_linear_lines(out,n,"mmm_net._proj_pose_token_emb.forward_projection",c.pose_feat,c.pose_feat);
+    for l:0..<c.layers {
+        n=mb_param(out,n,mb_stem(s[..],"mmm_net._transformer_model.layers.",l,".self_attn",-1,""),".in_proj_weight","F32",[3]int.[3*e,e,e],2);
+        n=mb_param(out,n,mb_stem(s[..],"mmm_net._transformer_model.layers.",l,".self_attn",-1,""),".in_proj_bias","F32",[3]int.[3*e,e,e],1);
+        n=mb_linear_lines(out,n,mb_stem(s[..],"mmm_net._transformer_model.layers.",l,".self_attn.out_proj",-1,""),e,e);
+        n=mb_linear_lines(out,n,mb_stem(s[..],"mmm_net._transformer_model.layers.",l,".linear1",-1,""),c.ffn,e);
+        n=mb_linear_lines(out,n,mb_stem(s[..],"mmm_net._transformer_model.layers.",l,".linear2",-1,""),e,c.ffn);
+        n=mb_param(out,n,mb_stem(s[..],"mmm_net._transformer_model.layers.",l,".norm1",-1,""),".weight","F32",[3]int.[e,e,e],1);
+        n=mb_param(out,n,mb_stem(s[..],"mmm_net._transformer_model.layers.",l,".norm1",-1,""),".bias","F32",[3]int.[e,e,e],1);
+        n=mb_param(out,n,mb_stem(s[..],"mmm_net._transformer_model.layers.",l,".norm2",-1,""),".weight","F32",[3]int.[e,e,e],1);
+        n=mb_param(out,n,mb_stem(s[..],"mmm_net._transformer_model.layers.",l,".norm2",-1,""),".bias","F32",[3]int.[e,e,e],1);
+    }
+    return mb_param(out,n,"mmm_net.initted","","BOOL",[3]int.[1,e,e],1);
+}
+// book:end pose-lines
+
+// book:begin inventory
+// A manifest matches the expected text when it has exactly the expected
+// lines, each once, in any order. bad names the first expected line that
+// is missing or repeats, or is -1 when every expected line is there once
+// but the manifest has more. parameters counts the F32 values the
+// manifest holds; it is computed for any manifest, so the root
+// predictor's package, whose layout this chapter does not derive, gets a
+// count too. More than MB_LINES_MAX lines are refused unread.
+MbInventory :: struct {status:MbStatus;lines:int;expected:int;parameters:int;bad:int;}
+MB_LINES_MAX :: 512;
+MB_TEXT_MAX :: 32768;
+mb_inventory :: (expected:string,manifest:string)->MbInventory {
+    ends:[513]int;lines:=0;ends[0]= -1;r:MbInventory;r.bad= -1;
+    for i:0..<manifest.count {if manifest[i]=='\n' {
+        if lines==MB_LINES_MAX {r.status=MbStatus.checkpoint;r.lines=lines+1;return r;}
+        lines+=1;ends[lines]=i;
+    }}
+    r.lines=lines;
+    for k:0..<lines {
+        line:=manifest[ends[k]+1..<ends[k+1]];
+        // The dimensions follow the dtype " F32 ".
+        at:= -1;for i:0..<line.count-4 {if at== -1 && cast(string)line[i..<i+5]==" F32 " {at=i+5;}}
+        if at!= -1 {
+            size:=1;v:=0;
+            for i:at..<line.count {if line[i]==',' {size*=v;v=0;} else {v=v*10+cast(int)(line[i]-'0');}}
+            if at<line.count {size*=v;}
+            r.parameters+=size;
+        }
+    }
+    start:=0;
+    for i:0..<expected.count {if expected[i]=='\n' {
+        want:=expected[start..<i];found:=0;
+        for k:0..<lines {from:=ends[k]+1;if ends[k+1]-from==want.count && manifest[from..<ends[k+1]]==want {found+=1;}}
+        if found!=1 && r.bad== -1 {r.bad=r.expected;}
+        r.expected+=1;start=i+1;
+    }}
+    if r.bad!= -1 || lines!=r.expected {r.status=MbStatus.checkpoint;}
+    return r;
+}
+// book:end inventory
+
+// ---- The tokenizer ----
+
+// value[h][e] is code e of head h. A token is one code a head; its latent
+// is the heads' codes laid end to end, head 0 first.
+MbCodebook :: struct {heads:int;codes:int;dim:int;value:[MB_HEADS_MAX][MB_CODES_MAX][MB_DIM_MAX]f64;}
+MbCode :: struct {status:MbStatus;code:[MB_HEADS_MAX]int;}
+MbLatent :: struct {status:MbStatus;value:[MB_LATENT_MAX]f64;}
+// squared[h] is the squared distance from head h's slice to its code.
+MbQuantized :: struct {status:MbStatus;code:[MB_HEADS_MAX]int;squared:[MB_HEADS_MAX]f64;}
+MbSeparation :: struct {first:int;second:int;squared:f64;}
+
+// book:begin codebook
+// The real codebook, read exactly: each F32 bit pattern becomes the binary64
+// number it stands for.
+mb_soma_codebook :: ()->MbCodebook {
+    b:MbCodebook;b.heads=5;b.codes=16;b.dim=32;
+    for h:0..<5 {for e:0..<16 {for i:0..<32 {b.value[h][e][i]=f64(f32_from_bits(MB_SOMA_CODEBOOK_BITS[(h*16+e)*32+i]));}}}
+    return b;
+}
+// book:end codebook
+
+mb_book_ok :: (b:MbCodebook)->bool {return b.heads>=1 && b.heads<=MB_HEADS_MAX && b.codes>=2 && b.codes<=MB_CODES_MAX && b.dim>=1 && b.dim<=MB_DIM_MAX;}
+mb_power :: (base:int,e:int)->int {p:=1;for i:0..<e {p*=base;}return p;}
+
+// book:begin pack
+// A packed token is one integer: head h's code is digit h in base codes,
+// head 0 the least significant, so 16^5 = 1,048,576 tokens in all.
+mb_pack :: (b:MbCodebook,c:MbCode)->int {
+    if !mb_book_ok(b) {return -1;}
+    p:=0;for h:0..<b.heads {if c.code[h]<0 || c.code[h]>=b.codes {return -1;}p+=c.code[h]*mb_power(b.codes,h);}
+    return p;
+}
+mb_unpack :: (b:MbCodebook,packed:int)->MbCode {
+    out:MbCode;
+    if !mb_book_ok(b) {out.status=MbStatus.shape;return out;}
+    if packed<0 || packed>=mb_power(b.codes,b.heads) {out.status=MbStatus.token;return out;}
+    for h:0..<b.heads {out.code[h]=packed%mb_power(b.codes,h+1)/mb_power(b.codes,h);}
+    return out;
+}
+// book:end pack
+
+// book:begin lookup
+// Decoding starts by looking each head's code up and laying the heads end
+// to end. Encoding picks, head by head, the code nearest the latent's slice
+// in squared distance, the lower number on ties.
+mb_dequantize :: (b:MbCodebook,c:MbCode)->MbLatent {
+    out:MbLatent;
+    if !mb_book_ok(b) {out.status=MbStatus.shape;return out;}
+    for h:0..<b.heads {
+        if c.code[h]<0 || c.code[h]>=b.codes {out.status=MbStatus.token;return out;}
+        for i:0..<b.dim {out.value[h*b.dim+i]=b.value[h][c.code[h]][i];}
+    }
+    return out;
+}
+mb_quantize :: (b:MbCodebook,z:[MB_LATENT_MAX]f64)->MbQuantized {
+    out:MbQuantized;
+    if !mb_book_ok(b) {out.status=MbStatus.shape;return out;}
+    for h:0..<b.heads {
+        for e:0..<b.codes {
+            s:=0.0;for i:0..<b.dim {d:=z[h*b.dim+i]-b.value[h][e][i];s+=d*d;}
+            if e==0 || s<out.squared[h] {out.squared[h]=s;out.code[h]=e;}
+        }
+    }
+    return out;
+}
+// book:end lookup
+
+// The closest pair of codes in one head, the lower pair on ties.
+mb_separation :: (b:MbCodebook,h:int)->MbSeparation {
+    out:MbSeparation;out.first= -1;
+    for e:0..<b.codes {for f:e+1..<b.codes {
+        s:=0.0;for i:0..<b.dim {d:=b.value[h][e][i]-b.value[h][f][i];s+=d*d;}
+        if out.first== -1 || s<out.squared {out.squared=s;out.first=e;out.second=f;}
+    }}
+    return out;
+}
+
+// ---- Synthetic shapes ----
+
+// A MotionBricks network at a size the CPU checks can afford. Tokens hold
+// 4 frames (two halvings) as in SOMA; everything else is chosen.
+MbShape :: struct {
+    heads:int;codes:int;dim:int;width:int;depth:int;growth:int;pose_in:int;decoded:int;
+    embd:int;attn:int;layers:int;ffn:int;pose_feat:int;root_feat:int;length_feat:int;min_tokens:int;max_tokens:int;
+}
+mb_small :: ()->MbShape {
+    return MbShape.{heads=2,codes=4,dim=2,width=8,depth=2,growth=3,pose_in=13,decoded=16,
+        embd=8,attn=2,layers=2,ffn=16,pose_feat=8,root_feat=4,length_feat=4,min_tokens=6,max_tokens=16};
+}
+mb_shape_ok :: (s:MbShape)->bool {
+    if s.heads<1 || s.heads>MB_HEADS_MAX || s.codes<2 || s.codes>MB_CODES_MAX || s.dim<1 || s.heads*s.dim>MB_WIDTH_MAX {return false;}
+    if s.width%4!=0 || s.width<4 || s.width/4>4 || s.depth<1 || s.depth>4 || s.growth<1 || s.growth>3 {return false;}
+    if s.pose_in<1 || s.pose_in>MB_WIDTH_MAX || (s.decoded-4)%6!=0 || s.decoded<10 || (s.decoded-4)/6>4 {return false;}
+    if s.embd<2 || s.embd>MB_WIDTH_MAX || s.attn<1 || s.embd%s.attn!=0 || s.layers<1 || s.layers>MB_LAYERS_MAX || s.ffn<1 || s.ffn>MB_FFN_MAX {return false;}
+    if s.pose_feat%4!=0 || s.pose_feat<4 || s.pose_feat/4>4 || s.root_feat<1 || s.length_feat<1 {return false;}
+    if s.pose_feat+s.root_feat+s.length_feat>MB_FEATURE_MAX || s.root_feat>MB_WIDTH_MAX || s.length_feat>MB_WIDTH_MAX {return false;}
+    return s.min_tokens>=1 && s.min_tokens<=s.max_tokens && s.max_tokens<=MB_TOKENS;
+}
+// The codebook of a synthetic shape: code e of head h holds
+// (e + 1) (i + 1) / 4 - h / 2 in place i, distinct for every e.
+mb_small_codebook :: (s:MbShape)->MbCodebook {
+    b:MbCodebook;b.heads=s.heads;b.codes=s.codes;b.dim=s.dim;
+    for h:0..<s.heads {for e:0..<s.codes {for i:0..<s.dim {b.value[h][e][i]=f64((e+1)*(i+1))/4-f64(h)/2;}}}
+    return b;
+}
+
+// ---- The decoder ----
+
+// Offsets into one flat weight array, PyTorch layouts: a convolution is
+// [out][in][tap] then its bias, a linear layer [out][in] then its bias.
+// Block d of a level has dilation growth^(depth - 1 - d): the residual
+// stack runs its widest dilation first.
+MbDecoderPlan :: struct {block:[2][4][2]int;up:[2]int;external:[2]int;target:[2]int;mid:int;out:int;count:int;}
+mb_conv_size :: (o:int,i:int,k:int)->int {return o*i*k+o;}
+mb_decoder_plan :: (s:MbShape)->MbDecoderPlan {
+    p:MbDecoderPlan;w:=s.width;z:=s.heads*s.dim;n:=0;
+    n+=mb_conv_size(w,z,3);
+    for i:0..<2 {
+        for d:0..<s.depth {p.block[i][d][0]=n;n+=mb_conv_size(w,w,3);p.block[i][d][1]=n;n+=mb_conv_size(w,w,1);}
+        p.up[i]=n;n+=mb_conv_size(w,w,3);
+        per:=1<<(2-i);
+        p.external[i]=n;n+=mb_conv_size(w,per*2+w,1);
+        p.target[i]=n;n+=mb_conv_size(w/per,s.pose_in,1);
+    }
+    p.mid=n;n+=mb_conv_size(w,w,3);
+    p.out=n;n+=mb_conv_size(s.decoded,w,3);
+    p.count=n;
+    return p;
+}
+
+// book:begin conv
+// One 1D convolution over positions: x is [position][channel], zero beyond
+// both ends. Output o at position p is bias o plus, for every input
+// channel i and tap j, weight (o, i, j) times x at p + j dilation - pad.
+mb_conv :: (w:[]f64,at:int,x:[]f64,positions:int,cin:int,cout:int,taps:int,dilation:int,out:[]f64) {
+    pad:=dilation*(taps-1)/2;
+    for p:0..<positions {for o:0..<cout {
+        v:=w[at+cout*cin*taps+o];
+        for i:0..<cin {for j:0..<taps {
+            q:=p+j*dilation-pad;
+            if q>=0 && q<positions {v+=w[at+(o*cin+i)*taps+j]*x[q*cin+i];}
+        }}
+        out[p*cout+o]=v;
+    }}
+}
+// book:end conv
+mb_relu1 :: (v:f64)->f64 {return (v+abs(v))/2;}
+mb_relu :: (x:[]f64,n:int) {for i:0..<n {x[i]=mb_relu1(x[i]);}}
+
+// The decoder's inputs besides the tokens, frame by frame: has[t] marks a
+// frame whose pose is constrained, pose[t] its features; velocity[t] is the
+// root's ground velocity; root[t] is the predictor's root trajectory (ground
+// position and heading cosine and sine).
+MbCond :: struct {has:[MB_FRAMES]bool;pose:[MB_FRAMES][MB_WIDTH_MAX]f64;velocity:[MB_FRAMES][2]f64;root:[MB_FRAMES][4]f64;}
+MbMotion :: struct {status:MbStatus;frames:int;value:[MB_FRAMES][MB_FEATURE_MAX]f64;}
+// tokens[p] is token p's code a head.
+MbTokens :: struct {count:int;code:[MB_TOKENS][MB_HEADS_MAX]int;}
+
+// book:begin decode
+// n tokens become 4n frames of features. Before each doubling, every
+// constrained frame overwrites its share of its position's channels with
+// a projection of its pose (a position holds 4, then 2 frames), and every
+// position is re-projected with the ground velocities of its frames; then
+// the residual blocks, the doubling (each position repeated) and a
+// convolution. Two last convolutions give the features.
+mb_decode :: (s:MbShape,w:[]f64,b:MbCodebook,q:MbTokens,c:MbCond)->MbMotion {
+    out:MbMotion;
+    if !mb_shape_ok(s) || b.heads!=s.heads || b.codes!=s.codes || b.dim!=s.dim || w.count<mb_decoder_plan(s).count {out.status=MbStatus.shape;return out;}
+    if q.count<1 || q.count>MB_TOKENS {out.status=MbStatus.length;return out;}
+    p:=mb_decoder_plan(s);wd:=s.width;z:=s.heads*s.dim;
+    x:[MB_FRAMES*MB_WIDTH_MAX]f64;
+    for t:0..<q.count {
+        code:MbCode;for h:0..<s.heads {code.code[h]=q.code[t][h];}
+        l:=mb_dequantize(b,code);if l.status!=MbStatus.ok {out.status=l.status;return out;}
+        for i:0..<z {x[t*z+i]=l.value[i];}
+    }
+    h:[MB_FRAMES*MB_WIDTH_MAX]f64;g:[MB_FRAMES*MB_WIDTH_MAX]f64;
+    positions:=q.count;
+    mb_conv(w,0,x[..],positions,z,wd,3,1,h[..]);mb_relu(h[..],positions*wd);
+    for i:0..<2 {
+        per:=1<<(2-i);slice:=wd/per;
+        for t:0..<positions*per {if c.has[t] {
+            at:=p.target[i];
+            for o:0..<slice {
+                v:=w[at+slice*s.pose_in+o];for k:0..<s.pose_in {v+=w[at+o*s.pose_in+k]*c.pose[t][k];}
+                h[t*slice+o]=mb_relu1(v);
+            }
+        }}
+        cin:=wd+2*per;at:=p.external[i];
+        for r:0..<positions {
+            for o:0..<wd {
+                v:=w[at+wd*cin+o];
+                for k:0..<wd {v+=w[at+o*cin+k]*h[r*wd+k];}
+                for f:0..<per {for k:0..<2 {v+=w[at+o*cin+wd+2*f+k]*c.velocity[r*per+f][k];}}
+                g[r*wd+o]=mb_relu1(v);
+            }
+        }
+        for d:0..<s.depth {
+            dilation:=mb_power(s.growth,s.depth-1-d);
+            for k:0..<positions*wd {h[k]=mb_relu1(g[k]);}
+            mb_conv(w,p.block[i][d][0],h[..],positions,wd,wd,3,dilation,x[..]);mb_relu(x[..],positions*wd);
+            for r:0..<positions {mb_affine(w,p.block[i][d][1],wd,wd,x[r*wd..<MB_FRAMES*MB_WIDTH_MAX],h[r*wd..<MB_FRAMES*MB_WIDTH_MAX]);}
+            for k:0..<positions*wd {g[k]+=h[k];}
+        }
+        for r:0..<positions {for k:0..<wd {h[2*r*wd+k]=g[r*wd+k];h[(2*r+1)*wd+k]=g[r*wd+k];}}
+        positions*=2;
+        mb_conv(w,p.up[i],h[..],positions,wd,wd,3,1,g[..]);
+        for k:0..<positions*wd {h[k]=g[k];}
+    }
+    mb_conv(w,p.mid,h[..],positions,wd,wd,3,1,g[..]);mb_relu(g[..],positions*wd);
+    mb_conv(w,p.out,g[..],positions,wd,s.decoded,3,1,h[..]);
+    out.frames=positions;
+    for t:0..<positions {for k:0..<s.decoded {out.value[t][k]=h[t*s.decoded+k];}}
+    return out;
+}
+// book:end decode
+
+// ---- The pose predictor ----
+
+MbPredictorPlan :: struct {mlp:[3]int;root:int;pose:int;length:int;input:int;layer:[MB_LAYERS_MAX]int;logit:int;count:int;}
+mb_predictor_plan :: (s:MbShape)->MbPredictorPlan {
+    p:MbPredictorPlan;e:=s.embd;n:=0;
+    n+=s.heads*(s.codes+1)*s.dim;
+    p.mlp[0]=n;n+=mb_conv_size(s.pose_feat,s.heads*s.dim,1);
+    p.mlp[1]=n;n+=mb_conv_size(s.pose_feat,s.pose_feat,1);
+    p.mlp[2]=n;n+=mb_conv_size(s.pose_feat,s.pose_feat,1);
+    p.root=n;n+=mb_conv_size(s.root_feat,4*MB_FPT,1);
+    p.pose=n;n+=mb_conv_size(s.pose_feat/MB_FPT,s.pose_in,1);
+    p.length=n;n+=(s.max_tokens-s.min_tokens+1)*s.length_feat;
+    p.input=n;n+=mb_conv_size(e,s.pose_feat+s.root_feat+s.length_feat,1);
+    for l:0..<s.layers {p.layer[l]=n;n+=mb_conv_size(3*e,e,1)+mb_conv_size(e,e,1)+mb_conv_size(s.ffn,e,1)+mb_conv_size(e,s.ffn,1)+4*e;}
+    p.logit=n;n+=mb_conv_size(s.heads*s.codes,e,1);
+    p.count=n;
+    return p;
+}
+// y = W x + b for a [rows][cols] weight at offset at, bias after it.
+// The larger of a and b, without a comparison.
+mb_larger :: (a:f64,b:f64)->f64 {return (a+b+abs(a-b))/2;}
+mb_affine :: (w:[]f64,at:int,rows:int,cols:int,x:[]f64,y:[]f64) {
+    for o:0..<rows {v:=w[at+rows*cols+o];for i:0..<cols {v+=w[at+o*cols+i]*x[i];}y[o]=v;}
+}
+mb_leaky :: (x:[]f64,n:int) {for i:0..<n {x[i]=0.505*x[i]+0.495*abs(x[i]);}}
+// LayerNorm over n values with gain at g, bias at g + n, epsilon 1e-5.
+mb_norm :: (w:[]f64,g:int,x:[]f64,n:int) {
+    m:=0.0;for i:0..<n {m+=x[i];}m/=f64(n);
+    v:=0.0;for i:0..<n {d:=x[i]-m;v+=d*d;}v/=f64(n);
+    r:=1/sqrt(v+0.00001);
+    for i:0..<n {x[i]=(x[i]-m)*r*w[g+i]+w[g+n+i];}
+}
+// The fixed sine and cosine position code: place 2k of position p is
+// sin(p / 10000^(2k/d)) and place 2k + 1 its cosine.
+mb_position :: (p:int,i:int,d:int)->f64 {
+    angle:=f64(p)*exp(-f64(i-i%2)*log(10000.0)/f64(d));
+    return ifx i%2==0 then sin(angle) else cos(angle);
+}
+MbLogits :: struct {status:MbStatus;value:[MB_TOKENS][MB_HEADS_MAX][MB_CODES_MAX]f64;}
+
+// book:begin predict
+// The pose predictor reads max_tokens positions of which the first n are
+// real. A position's input is its pose part (frame by frame: the projected
+// constraint where a frame has one, otherwise that frame's quarter of the
+// MLP of the position's token embeddings), its root part (the projected
+// root trajectory of its 4 frames) and the length's embedding, projected
+// with ReLU, plus the position code. Post-norm encoder layers follow, whose
+// attention never looks at a padded position, then the logits.
+mb_predict :: (s:MbShape,w:[]f64,q:MbTokens,c:MbCond)->MbLogits {
+    out:MbLogits;
+    if !mb_shape_ok(s) || w.count<mb_predictor_plan(s).count {out.status=MbStatus.shape;return out;}
+    if q.count<s.min_tokens || q.count>s.max_tokens {out.status=MbStatus.length;return out;}
+    for t:0..<s.max_tokens {for h:0..<s.heads {if q.code[t][h]<0 || q.code[t][h]>s.codes {out.status=MbStatus.token;return out;}}}
+    p:=mb_predictor_plan(s);e:=s.embd;m:=s.max_tokens;n:=q.count;quarter:=s.pose_feat/MB_FPT;
+    x:[MB_TOKENS][MB_WIDTH_MAX]f64;
+    for t:0..<m {
+        a:[MB_WIDTH_MAX]f64;b:[MB_WIDTH_MAX]f64;cat:[MB_FEATURE_MAX]f64;
+        for h:0..<s.heads {for i:0..<s.dim {a[h*s.dim+i]=w[(h*(s.codes+1)+q.code[t][h])*s.dim+i];}}
+        mb_affine(w,p.mlp[0],s.pose_feat,s.heads*s.dim,a[..],b[..]);mb_leaky(b[..],s.pose_feat);
+        mb_affine(w,p.mlp[1],s.pose_feat,s.pose_feat,b[..],a[..]);mb_leaky(a[..],s.pose_feat);
+        mb_affine(w,p.mlp[2],s.pose_feat,s.pose_feat,a[..],cat[..]);
+        for f:0..<MB_FPT {if c.has[t*MB_FPT+f] {
+            pose:[MB_WIDTH_MAX]f64;for k:0..<s.pose_in {pose[k]=c.pose[t*MB_FPT+f][k];}
+            mb_affine(w,p.pose,quarter,s.pose_in,pose[..],b[..]);
+            for k:0..<quarter {cat[f*quarter+k]=b[k];}
+        }}
+        root:[4*MB_FPT]f64;for f:0..<MB_FPT {for k:0..<4 {root[f*4+k]=c.root[t*MB_FPT+f][k];}}
+        mb_affine(w,p.root,s.root_feat,4*MB_FPT,root[..],b[..]);
+        for k:0..<s.root_feat {cat[s.pose_feat+k]=b[k];}
+        for k:0..<s.length_feat {cat[s.pose_feat+s.root_feat+k]=w[p.length+(n-s.min_tokens)*s.length_feat+k];}
+        mb_affine(w,p.input,e,s.pose_feat+s.root_feat+s.length_feat,cat[..],a[..]);
+        for k:0..<e {x[t][k]=mb_relu1(a[k])+mb_position(t,k,e);}
+    }
+    hd:=e/s.attn;scale:=1/sqrt(f64(hd));
+    for l:0..<s.layers {
+        at:=p.layer[l];out_proj:=at+mb_conv_size(3*e,e,1);lin1:=out_proj+mb_conv_size(e,e,1);lin2:=lin1+mb_conv_size(s.ffn,e,1);norm:=lin2+mb_conv_size(e,s.ffn,1);
+        qkv:[MB_TOKENS][3*MB_WIDTH_MAX]f64;next:[MB_TOKENS][MB_WIDTH_MAX]f64;
+        for t:0..<m {mb_affine(w,at,3*e,e,x[t][..],qkv[t][..]);}
+        for t:0..<m {
+            mix:[MB_WIDTH_MAX]f64;
+            for a:0..<s.attn {
+                score:[MB_TOKENS]f64;top:=0.0;
+                for k:0..<n {v:=0.0;for i:0..<hd {v+=qkv[t][a*hd+i]*qkv[k][e+a*hd+i];}score[k]=v*scale;top=ifx k==0 then score[k] else mb_larger(top,score[k]);}
+                sum:=0.0;for k:0..<n {score[k]=exp(score[k]-top);sum+=score[k];}
+                for i:0..<hd {v:=0.0;for k:0..<n {v+=score[k]*qkv[k][2*e+a*hd+i];}mix[a*hd+i]=v/sum;}
+            }
+            y:[MB_WIDTH_MAX]f64;mb_affine(w,out_proj,e,e,mix[..],y[..]);
+            for k:0..<e {y[k]+=x[t][k];}
+            mb_norm(w,norm,y[..],e);
+            hidden:[MB_FFN_MAX]f64;mb_affine(w,lin1,s.ffn,e,y[..],hidden[..]);mb_relu(hidden[..],s.ffn);
+            z:[MB_WIDTH_MAX]f64;mb_affine(w,lin2,e,s.ffn,hidden[..],z[..]);
+            for k:0..<e {z[k]+=y[k];}
+            mb_norm(w,norm+2*e,z[..],e);
+            for k:0..<e {next[t][k]=z[k];}
+        }
+        x=next;
+    }
+    for t:0..<m {
+        y:[MB_HEADS_MAX*MB_CODES_MAX]f64;mb_affine(w,p.logit,s.heads*s.codes,e,x[t][..],y[..]);
+        for h:0..<s.heads {for k:0..<s.codes {out.value[t][h][k]=y[h*s.codes+k];}}
+    }
+    return out;
+}
+// book:end predict
+
+// ---- Masked generation ----
+
+// book:begin schedule
+// Before step s of S, the masked count is max(1, floor(cos(s pi / 2S) n H))
+// of the n H real tokens: all of them at step 0, then fewer.
+mb_mask_count :: (step:int,steps:int,n:int,heads:int)->int {
+    m:=cast(int)floor(cos(f64(step)/f64(steps)*POSE_PI*0.5)*f64(n*heads));
+    return m+(ifx m==0 then 1 else 0);
+}
+// book:end schedule
+
+// masked[s] is the count masked before step s, changed[s] how many real
+// tokens differ from the step before's predictions (the masks at step 0),
+// last[s] the last token masked (position times heads plus head).
+MbGenerate :: struct {status:MbStatus;tokens:MbTokens;steps:int;masked:[MB_TOKENS]int;last:[MB_TOKENS]int;changed:[MB_TOKENS]int;confidence:[MB_TOKENS][MB_HEADS_MAX]f64;}
+
+// book:begin generate
+// Every token starts as the mask (code number codes); all confidences
+// start equal, and step 0 masks every real token. Each step masks the m least confident real tokens (the lower
+// position, then head, on ties), runs the predictor and takes every
+// token's best code (the lower code on ties) and its softmax probability
+// as the new confidence. Unmasked tokens are predicted again too.
+mb_generate :: (s:MbShape,w:[]f64,n:int,c:MbCond,steps:int)->MbGenerate {
+    out:MbGenerate;out.steps=steps;
+    if !mb_shape_ok(s) || w.count<mb_predictor_plan(s).count {out.status=MbStatus.shape;return out;}
+    if n<s.min_tokens || n>s.max_tokens || steps<1 || steps>MB_TOKENS {out.status=MbStatus.length;return out;}
+    q:MbTokens;q.count=n;prob:[MB_TOKENS][MB_HEADS_MAX]f64;
+    for t:0..<s.max_tokens {for h:0..<s.heads {q.code[t][h]=s.codes;}}
+    for step:0..<steps {
+        m:=mb_mask_count(step,steps,n,s.heads);out.masked[step]=m;
+        before:=q;done:[MB_TOKENS][MB_HEADS_MAX]bool;
+        for r:0..<m {
+            pick:= -1;
+            for t:0..<n {for h:0..<s.heads {if !done[t][h] && (pick== -1 || prob[t][h]<prob[pick/s.heads][pick%s.heads]) {pick=t*s.heads+h;}}}
+            done[pick/s.heads][pick%s.heads]=true;q.code[pick/s.heads][pick%s.heads]=s.codes;out.last[step]=pick;
+        }
+        l:=mb_predict(s,w,q,c);
+        for t:0..<s.max_tokens {for h:0..<s.heads {
+            best:=0;for k:1..<s.codes {if l.value[t][h][k]>l.value[t][h][best] {best=k;}}
+            sum:=0.0;for k:0..<s.codes {sum+=exp(l.value[t][h][k]-l.value[t][h][best]);}
+            q.code[t][h]=best;prob[t][h]=1/sum;
+            if t<n && best!=before.code[t][h] {out.changed[step]+=1;}
+        }}
+    }
+    out.tokens=q;
+    for t:0..<n {for h:0..<s.heads {out.confidence[t][h]=prob[t][h];}}
+    return out;
+}
+// book:end generate
+
+// ---- Features become a clip ----
+
+// book:begin clip
+// The synthetic decoder's features per frame: heading turn (radians),
+// ground velocity along the heading's x and z, root height, then a 6D
+// rotation per joint. The root's heading and position accumulate frame by
+// frame (the first frame's turn and step from the origin included); each
+// 6D pair becomes a rotation by chapter 147's Gram-Schmidt.
+MbClip :: struct {status:MbStatus;detail:PoseStatus;clip:PoseClip;}
+mb_clip :: (s:MbShape,motion:MbMotion)->MbClip {
+    out:MbClip;out.clip.convention=pose_gltf();out.clip.frames=motion.frames;
+    joints:=(s.decoded-4)/6;heading:=0.0;x:=0.0;z:=0.0;
+    if !mb_shape_ok(s) || motion.status!=MbStatus.ok || motion.frames<1 || motion.frames>MB_FRAMES {out.status=MbStatus.shape;return out;}
+    for t:0..<motion.frames {
+        f:=motion.value[t];
+        heading+=f[0];x+=cos(heading)*f[1]+sin(heading)*f[2];z+=cos(heading)*f[2]-sin(heading)*f[1];
+        out.clip.frame[t].root=[3]f64.[x,f[3],z];
+        for j:0..<joints {
+            six:[6]f64;for k:0..<6 {six[k]=f[4+6*j+k];}
+            m:=pose_six_matrix(six);
+            if m.status!=PoseStatus.ok {out.status=MbStatus.pose;out.detail=m.status;return out;}
+            out.clip.frame[t].rotation[j]=pose_matrix_quat(m.value);
+        }
+    }
+    return out;
+}
+// book:end clip
+
+// ---- Synthetic weights ----
+
+// book:begin synthetic
+// Weight k is ((37 k + 11 seed) mod 61 - 30) / 64 times scale, so every
+// value is exact in binary64. The decoder's last convolution's biases are
+// then set to the identity's 6D form, (1, 0, 0, 0, 1, 0) per joint, and a
+// height of 0.9 m; with a small scale the motion stays near standing.
+mb_synthetic :: (w:[]f64,count:int,seed:int,scale:f64) {
+    for k:0..<count {w[k]=f64((37*k+11*seed)%61-30)/64*scale;}
+}
+mb_synthetic_decoder :: (s:MbShape,w:[]f64,seed:int,scale:f64) {
+    p:=mb_decoder_plan(s);mb_synthetic(w,p.count,seed,scale);
+    bias:=p.out+mb_conv_size(s.decoded,s.width,3)-s.decoded;
+    w[bias+3]=0.9;
+    for j:0..<(s.decoded-4)/6 {w[bias+4+6*j]=1;w[bias+4+6*j+4]=1;}
+}
+// book:end synthetic
+
+// A straight walk: frames advance 0.05 m along +Z facing +Z, with the
+// first and last token's frames constrained to standing poses whose
+// features are (0.9, then the identity's 6D form per joint) shifted by
+// shift in every place.
+mb_walk :: (s:MbShape,n:int,shift:f64)->MbCond {
+    c:MbCond;
+    for t:0..<n*MB_FPT {
+        c.root[t]=[4]f64.[0,0.05*f64(t),1,0];c.velocity[t]=[2]f64.[0,0.05];
+        if t<MB_FPT || t>=(n-1)*MB_FPT {
+            c.has[t]=true;c.pose[t][0]=0.9+shift;
+            for k:1..<s.pose_in {c.pose[t][k]=ifx (k-1)%6==0 || (k-1)%6==4 then 1.0+shift else shift;}
+        }
+    }
+    return c;
+}
+// A chain of joints 0.25 m apart along -Y.
+mb_chain :: (joints:int)->PoseSkeleton {
+    k:PoseSkeleton;k.count=joints;
+    for j:0..<joints {k.parent[j]=j-1;if j>0 {k.offset[j]=[3]f64.[0,-0.25,0];}}
+    return k;
+}
+
+// ---- Checks. Expected values are derived in chapter 149. ----
+
+#test "the pinned checkpoints hold the architecture's tensors, line for line" #steps 400000000 {
+    c:=mb_soma();buf:[MB_TEXT_MAX]u8;
+    n:=mb_vqvae_lines(c,buf[..]);r:=mb_inventory(cast(string)buf[0..<n],MB_VQVAE_MANIFEST);
+    #assert r.status==MbStatus.ok && r.lines==94 && r.expected==94 && r.bad== -1 && r.lines==MB_VQVAE_TENSORS && r.parameters==23357918;
+    n=mb_pose_lines(c,buf[..]);r=mb_inventory(cast(string)buf[0..<n],MB_POSE_MANIFEST);
+    #assert r.status==MbStatus.ok && r.lines==210 && r.expected==210 && r.bad== -1 && r.lines==MB_POSE_TENSORS && r.parameters==136520976;
+    // The root predictor's layout is not derived here: only its count.
+    r=mb_inventory("",MB_ROOT_MANIFEST);
+    #assert r.status==MbStatus.checkpoint && r.lines==174 && r.lines==MB_ROOT_TENSORS && r.expected==0 && r.bad== -1 && r.parameters==40418385;
+    // A wrong size names the first line it breaks.
+    d:=c;d.heads=4;n=mb_vqvae_lines(d,buf[..]);r=mb_inventory(cast(string)buf[0..<n],MB_VQVAE_MANIFEST);#assert r.status==MbStatus.checkpoint && r.bad==38 && r.expected==94;
+    d=c;d.decoded=364;n=mb_vqvae_lines(d,buf[..]);r=mb_inventory(cast(string)buf[0..<n],MB_VQVAE_MANIFEST);#assert r.status==MbStatus.checkpoint && r.bad==88;
+    d=c;d.depth=3;n=mb_vqvae_lines(d,buf[..]);r=mb_inventory(cast(string)buf[0..<n],MB_VQVAE_MANIFEST);#assert r.status==MbStatus.checkpoint && r.bad== -1 && r.expected==78;
+    d=c;d.layers=15;n=mb_pose_lines(d,buf[..]);r=mb_inventory(cast(string)buf[0..<n],MB_POSE_MANIFEST);#assert r.status==MbStatus.checkpoint && r.bad== -1 && r.expected==198 && r.lines==210;
+    d=c;d.ffn=4096;n=mb_pose_lines(d,buf[..]);r=mb_inventory(cast(string)buf[0..<n],MB_POSE_MANIFEST);#assert r.status==MbStatus.checkpoint && r.bad==21;
+    d=c;d.mlp_layers=3;n=mb_pose_lines(d,buf[..]);r=mb_inventory(cast(string)buf[0..<n],MB_POSE_MANIFEST);#assert r.status==MbStatus.checkpoint && r.bad==15 && r.expected==212;
+    // A line given twice is not found once.
+    n=mb_vqvae_lines(c,buf[..]);twice:[MB_TEXT_MAX]u8;m:=mb_put(twice[..],0,MB_VQVAE_MANIFEST);m=mb_put(twice[..],m,"pose_net.decoder.model.0.bias F32 512\n");
+    r=mb_inventory(cast(string)buf[0..<n],cast(string)twice[0..<m]);#assert r.status==MbStatus.checkpoint && r.bad==41 && r.lines==95 && r.parameters==23357918+512;
+    // Scalars count one value; other dtypes none.
+    r=mb_inventory("","a F32 \nb F32 3,4\nc BOOL 7\nd I64 2\n");#assert r.lines==4 && r.parameters==13;
+    big:[3000]u8;for i:0..<513 {big[2*i]='x';big[2*i+1]='\n';}
+    r=mb_inventory("",cast(string)big[0..<1026]);#assert r.status==MbStatus.checkpoint && r.lines==513 && r.parameters==0;
+    r=mb_inventory("",cast(string)big[0..<1024]);#assert r.status==MbStatus.checkpoint && r.lines==512;
+}
+#test "the expected lines are distinct" #steps 400000000 {
+    c:=mb_soma();buf:[MB_TEXT_MAX]u8;
+    for which:0..<2 {
+        n:=ifx which==0 then mb_vqvae_lines(c,buf[..]) else mb_pose_lines(c,buf[..]);
+        ends:[256]int;k:=0;for i:0..<n {if buf[i]=='\n' {ends[k]=i;k+=1;}}
+        for a:0..<k {for b:a+1..<k {
+            fa:=ifx a==0 then 0 else ends[a-1]+1;fb:=ifx b==0 then 0 else ends[b-1]+1;
+            #assert !(ends[a]-fa==ends[b]-fb && cast(string)buf[fa..<ends[a]]==cast(string)buf[fb..<ends[b]]);
+        }}
+    }
+}
+#test "names, by hand" {
+    s:[96]u8;#assert mb_stem(s[..],"a.",12,".b.",0,".c")=="a.12.b.0.c" && mb_stem(s[..],"a",-1,"b",-1,"")=="ab";
+    o:[96]u8;n:=mb_param(o[..],0,"x",".w","F32",[3]int.[5,16,32],3);#assert cast(string)o[0..<n]=="x.w F32 5,16,32\n";
+    n=mb_put_int(o[..],0,0);#assert n==1 && o[0]=='0';n=mb_put_int(o[..],0,1048576);#assert cast(string)o[0..<n]=="1048576";
+}
+#test "the SOMA codebook: exact values, separations and self-encoding" #steps 400000000 {
+    b:=mb_soma_codebook();
+    #assert b.value[0][0][0]== -2.8922243118286133 && b.value[0][0][1]== -0.27147236466407776 && b.value[0][0][2]==3.112926721572876;
+    #assert b.value[0][0][3]== -1.2496486902236938;
+    // Closest pairs per head, from an independent Python reading of the same bits.
+    first:=[5]int.[11,7,3,0,8];second:=[5]int.[12,12,4,14,11];
+    squared:=[5]f64.[26.784026447851794,24.075263979691826,27.144676225859993,30.489923395714115,27.962647927499368];
+    for h:0..<5 {p:=mb_separation(b,h);#assert p.first==first[h] && p.second==second[h] && mbo_near(p.squared,squared[h],1e-14);}
+    for h:0..<5 {for e:0..<16 {
+        c:MbCode;for k:0..<5 {c.code[k]=(e+3*k)%16;}c.code[h]=e;
+        l:=mb_dequantize(b,c);#assert l.status==MbStatus.ok;
+        r:=mb_quantize(b,l.value);#assert r.status==MbStatus.ok;
+        for k:0..<5 {#assert r.code[k]==c.code[k] && r.squared[k]==0;}
+        #assert l.value[h*32+31]==b.value[h][e][31] && l.value[h*32]==b.value[h][e][0];
+    }}
+}
+#test "packing: head 0 is the least significant digit" {
+    b:=mb_soma_codebook();c:MbCode;c.code=[5]int.[1,2,3,4,5];
+    #assert mb_pack(b,c)==344865;u:=mb_unpack(b,344865);#assert u.status==MbStatus.ok;for h:0..<5 {#assert u.code[h]==h+1;}
+    #assert mb_unpack(b,1048575).code[4]==15 && mb_unpack(b,1048575).code[0]==15 && mb_unpack(b,0).code[3]==0;
+    #assert mb_unpack(b,1048576).status==MbStatus.token && mb_unpack(b,-1).status==MbStatus.token;
+    c.code[2]=16;#assert mb_pack(b,c)== -1 && mb_dequantize(b,c).status==MbStatus.token;c.code[2]= -1;#assert mb_pack(b,c)== -1;
+    c.code[2]=15;#assert mb_pack(b,c)==1+2*16+15*256+4*4096+5*65536;
+    bad:=b;bad.heads=6;#assert mb_pack(bad,c)== -1 && mb_unpack(bad,0).status==MbStatus.shape && mb_dequantize(bad,c).status==MbStatus.shape;
+    z:[MB_LATENT_MAX]f64;#assert mb_quantize(bad,z).status==MbStatus.shape;
+    bad=b;bad.codes=1;#assert mb_unpack(bad,0).status==MbStatus.shape;bad=b;bad.dim=33;#assert mb_unpack(bad,0).status==MbStatus.shape;
+    bad=b;bad.heads=0;#assert mb_unpack(bad,0).status==MbStatus.shape;bad=b;bad.codes=17;#assert mb_unpack(bad,0).status==MbStatus.shape;
+    bad=b;bad.dim=0;#assert mb_unpack(bad,0).status==MbStatus.shape;
+}
+#forall "packed tokens round-trip through codes and latents" k:0..<1000 #steps 400000000 {
+    b:=mb_soma_codebook();packed:=(k*7919+k*k*31)%1048576;
+    u:=mb_unpack(b,packed);#assert u.status==MbStatus.ok && mb_pack(b,u)==packed;
+    r:=mb_quantize(b,mb_dequantize(b,u).value);for h:0..<5 {#assert r.code[h]==u.code[h];}
+}
+#forall "a nudge below half the closest pair keeps every code" k:0..<200 #steps 400000000 {
+    b:=mb_soma_codebook();u:=mb_unpack(b,(k*104729)%1048576);l:=mb_dequantize(b,u);
+    // Every value moves by 0.43, so each head's slice moves 0.43 sqrt(32) =
+    // 2.432, below 2.453, half of the closest pair in any head.
+    for i:0..<160 {l.value[i]+=ifx (i+k)%2==0 then 0.43 else -0.43;}
+    r:=mb_quantize(b,l.value);
+    for h:0..<5 {#assert r.code[h]==u.code[h] && mbo_near(r.squared[h],32*0.43*0.43,1e-12);}
+}
+#test "the mask schedule, by hand" {
+    #assert mb_mask_count(0,4,6,5)==30 && mb_mask_count(1,4,6,5)==27 && mb_mask_count(2,4,6,5)==21 && mb_mask_count(3,4,6,5)==11;
+    #assert mb_mask_count(0,1,16,5)==80 && mb_mask_count(15,16,6,1)==1 && mb_mask_count(1,2,8,2)==11;
+}
+#forall "the decoder equals the channel-first reference" seed:0..<6,n:1..<5 #steps 400000000 {
+    s:=mb_small();s.dim=2+seed%2;w:[MB_WEIGHTS_MAX]f64;mb_synthetic_decoder(s,w[..],seed,1);b:=mb_small_codebook(s);
+    q:MbTokens;q.count=n;for t:0..<n {for h:0..<2 {q.code[t][h]=(t*3+h+seed)%4;}}
+    c:=mb_walk(s,n,0.125*f64(seed));c.has[1]=seed%2==0;for t:0..<4*n {c.velocity[t][0]=0.01*f64(t%3);}
+    m:=mb_decode(s,w[..],b,q,c);r:=mbo_decode(s,w[..],b,q,c);
+    #assert m.status==MbStatus.ok && m.frames==4*n && r.p==4*n && r.c==16;
+    for t:0..<4*n {for k:0..<16 {#assert mbo_near(m.value[t][k],r.v[k][t],1e-12);}}
+}
+#forall "the predictor equals the one-hot reference" seed:0..<4,n:6..<9 #steps 400000000 {
+    s:=mb_small();s.dim=2+seed%2;w:[MB_WEIGHTS_MAX]f64;mb_synthetic(w[..],mb_predictor_plan(s).count,seed,1);
+    q:MbTokens;q.count=n;for t:0..<16 {for h:0..<2 {q.code[t][h]=(t*5+h*3+seed)%5;}}
+    c:=mb_walk(s,n,0);for t:0..<64 {c.root[t][0]=0.02*f64(t);}
+    l:=mb_predict(s,w[..],q,c);r:=mbo_predict(s,w[..],q,c);#assert l.status==MbStatus.ok;
+    for t:0..<16 {for h:0..<2 {for k:0..<4 {#assert mbo_near(l.value[t][h][k],r[t][h][k],1e-11);}}}
+}
+#forall "generation equals the sorted reference" seed:0..<3,steps:1..<5 #steps 400000000 {
+    s:=mb_small();w:[MB_WEIGHTS_MAX]f64;mb_synthetic(w[..],mb_predictor_plan(s).count,seed,1);
+    c:=mb_walk(s,6,0);g:=mb_generate(s,w[..],6,c,steps);r:=mbo_generate(s,w[..],6,c,steps);
+    #assert g.status==MbStatus.ok && g.tokens.count==6 && g.steps==steps && g.masked[0]==12 && g.changed[0]==12;
+    for i:0..<steps {#assert g.masked[i]==mb_mask_count(i,steps,6,2) && g.changed[i]==r.changed[i];}
+    for t:0..<16 {for h:0..<2 {#assert g.tokens.code[t][h]==r.q.code[t][h];}}
+    for t:0..<6 {for h:0..<2 {#assert mbo_near(g.confidence[t][h],r.conf[t][h],1e-12);}}
+    #assert g.confidence[6][0]==0 && g.masked[steps]==0;
+}
+#test "padding never reaches a real position" #steps 400000000 {
+    s:=mb_small();w:[MB_WEIGHTS_MAX]f64;mb_synthetic(w[..],mb_predictor_plan(s).count,1,1);
+    q:MbTokens;q.count=6;c:=mb_walk(s,6,0);
+    a:=mb_predict(s,w[..],q,c);for t:6..<16 {q.code[t][0]=3;q.code[t][1]=1;c.root[4*t+2]=[4]f64.[9,9,9,9];}
+    b:=mb_predict(s,w[..],q,c);
+    for t:0..<6 {for h:0..<2 {for k:0..<4 {#assert a.value[t][h][k]==b.value[t][h][k];}}}
+    #assert a.value[7][0][0]!=b.value[7][0][0];
+}
+#test "decoding by hand: one token, zero weights but the biases" {
+    // With every weight 0 the features are the last convolution's biases:
+    // height 0.9 and the identity's 6D form, at each of 4 frames.
+    s:=mb_small();w:[MB_WEIGHTS_MAX]f64;mb_synthetic_decoder(s,w[..],0,0);b:=mb_small_codebook(s);
+    q:MbTokens;q.count=1;c:MbCond;m:=mb_decode(s,w[..],b,q,c);
+    #assert m.status==MbStatus.ok && m.frames==4;
+    for t:0..<4 {#assert m.value[t][3]==0.9 && m.value[t][4]==1 && m.value[t][8]==1 && m.value[t][10]==1 && m.value[t][14]==1 && m.value[t][0]==0 && m.value[t][5]==0;}
+    k:=mb_clip(s,m);#assert k.status==MbStatus.ok && k.clip.frames==4 && k.clip.frame[3].root[1]==0.9 && k.clip.frame[3].rotation[1][0]==1;
+    j:=mt_continuity(k.clip,mb_chain(2),0.1,0.1);#assert j.status==MtStatus.ok && j.angle==0 && j.step==0;
+}
+#test "the clip integrates heading and steps" {
+    s:=mb_small();m:MbMotion;m.frames=3;
+    for t:0..<3 {m.value[t][0]=POSE_PI/2;m.value[t][2]=1;m.value[t][3]=0.5;m.value[t][4]=1;m.value[t][8]=1;m.value[t][10]=1;m.value[t][14]=1;}
+    k:=mb_clip(s,m);#assert k.status==MbStatus.ok;
+    // Headings 90, 180, 270 degrees: steps +X, -Z, -X.
+    #assert pose_near(k.clip.frame[0].root[0],1,1e-15) && pose_near(k.clip.frame[1].root[2],-1,1e-15) && pose_near(k.clip.frame[2].root[0],0,1e-15);
+    #assert pose_near(k.clip.frame[2].root[2],-1,1e-15) && k.clip.frame[2].root[1]==0.5;
+    m.value[1][8]=0;m.value[1][9]=0;m.value[1][10]=0;k=mb_clip(s,m);#assert k.status==MbStatus.pose && k.detail==PoseStatus.degenerate;
+    m.status=MbStatus.length;#assert mb_clip(s,m).status==MbStatus.shape;
+    m.status=MbStatus.ok;m.frames=0;#assert mb_clip(s,m).status==MbStatus.shape;m.frames=65;#assert mb_clip(s,m).status==MbStatus.shape;
+}
+#test "bad shapes, lengths and tokens are refused" #steps 400000000 {
+    s:=mb_small();w:[MB_WEIGHTS_MAX]f64;b:=mb_small_codebook(s);c:=mb_walk(s,6,0);q:MbTokens;q.count=6;
+    #assert mb_shape_ok(s) && mb_decoder_plan(s).count==2516 && mb_predictor_plan(s).count==1752;
+    #assert mb_decode(s,w[..],b,q,c).status==MbStatus.ok && mb_predict(s,w[..],q,c).status==MbStatus.ok;
+    q.count=0;#assert mb_decode(s,w[..],b,q,c).status==MbStatus.length;q.count=17;#assert mb_decode(s,w[..],b,q,c).status==MbStatus.length;
+    q.count=5;#assert mb_predict(s,w[..],q,c).status==MbStatus.length && mb_generate(s,w[..],5,c,4).status==MbStatus.length;
+    q.count=17;#assert mb_predict(s,w[..],q,c).status==MbStatus.length && mb_generate(s,w[..],17,c,4).status==MbStatus.length;
+    q.count=6;#assert mb_generate(s,w[..],6,c,0).status==MbStatus.length && mb_generate(s,w[..],6,c,17).status==MbStatus.length;
+    q.code[15][1]=5;#assert mb_predict(s,w[..],q,c).status==MbStatus.token;q.code[15][1]= -1;#assert mb_predict(s,w[..],q,c).status==MbStatus.token;
+    q.code[15][1]=4;#assert mb_predict(s,w[..],q,c).status==MbStatus.ok;
+    q.code[2][0]=4;#assert mb_decode(s,w[..],b,q,c).status==MbStatus.token;q.code[2][0]=0;
+    #assert mb_decode(s,w[0..<2515],b,q,c).status==MbStatus.shape && mb_predict(s,w[0..<1751],q,c).status==MbStatus.shape && mb_generate(s,w[0..<1751],6,c,4).status==MbStatus.shape;
+    e:=b;e.codes=3;#assert mb_decode(s,w[..],e,q,c).status==MbStatus.shape;e=b;e.heads=3;#assert mb_decode(s,w[..],e,q,c).status==MbStatus.shape;
+    e=b;e.dim=3;#assert mb_decode(s,w[..],e,q,c).status==MbStatus.shape;
+    t:=s;t.width=12;#assert mb_shape_ok(t);
+    bad:=[22]MbShape.[s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s];
+    bad[0].heads=0;bad[1].heads=6;bad[2].codes=1;bad[3].codes=17;bad[4].dim=0;bad[5].dim=9;bad[6].width=6;bad[7].width=20;
+    bad[8].depth=0;bad[9].depth=5;bad[10].growth=0;bad[11].growth=4;bad[12].pose_in=0;bad[13].pose_in=17;bad[14].decoded=15;bad[15].decoded=34;
+    bad[16].attn=3;bad[17].layers=3;bad[18].ffn=33;bad[19].pose_feat=10;bad[20].min_tokens=17;bad[21].max_tokens=17;
+    for i:0..<22 {#assert !mb_shape_ok(bad[i]) && mb_decode(bad[i],w[..],b,q,c).status==MbStatus.shape && mb_predict(bad[i],w[..],q,c).status==MbStatus.shape;}
+    more:=[12]MbShape.[s,s,s,s,s,s,s,s,s,s,s,s];
+    more[0].embd=1;more[0].attn=1;more[1].embd=17;more[1].attn=1;more[2].layers=0;more[3].ffn=0;more[4].pose_feat=0;more[5].pose_feat=20;more[6].root_feat=0;more[7].length_feat=0;
+    more[8].root_feat=17;more[9].length_feat=17;more[10].min_tokens=0;more[11].decoded=4;
+    for i:0..<12 {#assert !mb_shape_ok(more[i]);}
+    edge:=s;edge.pose_feat=16;edge.root_feat=8;edge.length_feat=8;#assert mb_shape_ok(edge);edge.length_feat=9;#assert !mb_shape_ok(edge);
+    edge=s;edge.decoded=10;edge.depth=4;edge.growth=3;edge.heads=5;edge.dim=3;edge.codes=16;edge.width=16;edge.embd=16;edge.ffn=32;edge.layers=2;edge.pose_in=16;edge.min_tokens=16;#assert mb_shape_ok(edge);
+    edge.heads=1;edge.dim=16;edge.codes=2;edge.width=4;edge.depth=1;edge.growth=1;edge.pose_in=1;edge.embd=2;edge.attn=2;edge.layers=1;edge.ffn=1;edge.pose_feat=4;edge.root_feat=1;edge.length_feat=1;edge.min_tokens=1;edge.max_tokens=1;#assert mb_shape_ok(edge);
+    edge.decoded=32;#assert !mb_shape_ok(edge);edge.decoded=28;#assert mb_shape_ok(edge);edge.dim=17;#assert !mb_shape_ok(edge);
+}
+#test "the synthetic walk: standing ends and a straight root" {
+    s:=mb_small();c:=mb_walk(s,6,0.5);
+    #assert c.has[0] && c.has[3] && !c.has[4] && !c.has[19] && c.has[20] && c.has[23] && !c.has[24];
+    #assert c.pose[0][0]==1.4 && c.pose[0][1]==1.5 && c.pose[0][2]==0.5 && c.pose[0][5]==1.5 && c.pose[0][7]==1.5 && c.pose[0][11]==1.5 && c.pose[0][12]==0.5;
+    #assert c.root[5][1]==0.25 && c.root[5][2]==1 && c.velocity[23][1]==0.05 && c.velocity[24][1]==0;
+    k:=mb_chain(3);#assert k.count==3 && k.parent[0]== -1 && k.parent[2]==1 && k.offset[2][1]== -0.25 && k.offset[0][1]==0;
+    w:[8]f64;mb_synthetic(w[..],8,1,2);#assert w[0]==(11.0-30)/32 && w[1]==(48.0-30)/32 && w[2]==(85.0-61-30)/32;
+}
+#test "the position code, by hand" {
+    #assert mb_position(0,0,8)==0 && mb_position(0,1,8)==1 && mb_position(3,0,8)==sin(3.0) && mb_position(3,1,8)==cos(3.0);
+    #assert pose_near(mb_position(2,2,8),sin(0.2),1e-15) && pose_near(mb_position(2,3,8),cos(0.2),1e-15);
+}
+#test "edges the other checks do not reach" #steps 400000000 {
+    // Inventory: an empty first line, an empty expected line, a nameless line.
+    r:=mb_inventory("x\n","\nx\n");#assert r.status==MbStatus.checkpoint && r.lines==2 && r.expected==1 && r.bad== -1;
+    r=mb_inventory("\n","\n");#assert r.status==MbStatus.ok && r.expected==1 && r.lines==1;
+    r=mb_inventory(""," F32 5\nxF32 7\n");#assert r.parameters==5;
+    // The smallest codebook; ties go to the lower code and the lower pair.
+    s:=mb_small();t:=s;t.heads=1;t.dim=1;b:=mb_small_codebook(t);
+    #assert b.value[0][0][0]==0.25 && b.value[0][3][0]==1;
+    u:=mb_unpack(b,3);#assert u.status==MbStatus.ok && u.code[0]==3;
+    one:=b;one.codes=2;#assert mb_unpack(one,1).code[0]==1;
+    z:[MB_LATENT_MAX]f64;z[0]=0.375;#assert mb_quantize(b,z).code[0]==0;z[0]=0.875;#assert mb_quantize(b,z).code[0]==2;
+    p:=mb_separation(b,0);#assert p.first==0 && p.second==1 && p.squared==0.0625;
+    big:=mb_small_codebook(s);#assert big.value[0][3][0]==1 && big.value[1][2][1]==1 && big.value[1][0][0]== -0.25 && big.value[1][3][1]==1.5 && big.value[0][0][1]==0.5;
+    // Shapes at their edges.
+    e:=s;e.dim=1;#assert mb_shape_ok(e);e=s;e.width=4;#assert mb_shape_ok(e);e=s;e.attn=1;#assert mb_shape_ok(e);
+    e=s;e.attn=0;#assert !mb_shape_ok(e);e=s;e.decoded=28;#assert mb_shape_ok(e);e=s;e.decoded=10;#assert mb_shape_ok(e);
+    e=s;e.pose_feat=4;e.root_feat=16;e.length_feat=12;#assert mb_shape_ok(e);e=s;e.pose_feat=4;e.root_feat=12;e.length_feat=16;#assert mb_shape_ok(e);
+    e=s;e.pose_feat=16;#assert mb_shape_ok(e);e=s;e.pose_in=16;#assert mb_shape_ok(e);
+    // The plans' offsets, by hand.
+    d:=mb_decoder_plan(s);
+    #assert d.block[0][0][0]==104 && d.block[0][0][1]==304 && d.block[0][1][0]==376 && d.block[0][1][1]==576 && d.up[0]==648;
+    #assert d.external[0]==848 && d.target[0]==984 && d.block[1][0][0]==1012 && d.block[1][1][1]==1484 && d.up[1]==1556 && d.external[1]==1756;
+    #assert d.target[1]==1860 && d.mid==1916 && d.out==2116 && d.count==2516;
+    g:=mb_predictor_plan(s);
+    #assert g.mlp[0]==20 && g.mlp[1]==60 && g.mlp[2]==132 && g.root==204 && g.pose==272 && g.length==300 && g.input==344;
+    #assert g.layer[0]==480 && g.layer[1]==1080 && g.logit==1680 && g.count==1752;
+    // Three values a head: 8 x 6 x 3 + 8 for the first convolution; 2 x 5 x 3
+    // table rows and 8 x 6 + 8 for the first MLP layer.
+    three:=s;three.dim=3;#assert mb_decoder_plan(three).count==2564 && mb_predictor_plan(three).count==1778 && mb_predictor_plan(three).mlp[0]==30;
+    // A convolution never reads past its positions.
+    w:=[4]f64.[1,1,1,0];x:=[3]f64.[1,2,99];y:[2]f64;mb_conv(w[..],0,x[..],2,1,1,3,1,y[..]);#assert y[0]==3 && y[1]==3;
+    // ReLU sends -0 to +0; LeakyReLU keeps a hundredth; the larger of two.
+    #assert f64_bits(mb_relu1(-0.0))==0 && mb_relu1(-2)==0 && mb_relu1(3)==3;
+    l:=[2]f64.[-1,2];mb_leaky(l[..],2);#assert pose_near(l[0],-0.01,1e-15) && pose_near(l[1],2,1e-15);
+    #assert mb_larger(1000,0)==1000 && mb_larger(0,1000)==1000 && mb_larger(-3,-5)== -3;
+    #assert mb_mask_count(3,4,4,1)==1 && mb_mask_count(3,4,1,1)==1 && mb_mask_count(1,4,1,1)==1 && mb_mask_count(0,4,1,1)==1;
+}
+#test "exact lengths, edge counts and large scores" #steps 400000000 {
+    s:=mb_small();w:[MB_WEIGHTS_MAX]f64;mb_synthetic(w[..],mb_predictor_plan(s).count,1,1);b:=mb_small_codebook(s);
+    c:=mb_walk(s,16,0);q:MbTokens;q.count=16;
+    dec:[MB_WEIGHTS_MAX]f64;mb_synthetic_decoder(s,dec[..],3,1);
+    #assert dec[0]==3.0/64 && dec[1]== -21.0/64 && dec[2516]==0 && dec[2116+400-16+3]==0.9 && dec[2116+400-16+4]==1 && dec[2116+400-16+14]==1;
+    #assert mb_decode(s,dec[0..<2516],b,q,c).status==MbStatus.ok && mb_decode(s,dec[..],b,q,c).frames==64;
+    #assert mb_predict(s,w[0..<1752],q,c).status==MbStatus.ok && mb_generate(s,w[0..<1752],16,c,16).status==MbStatus.ok;
+    q.code[0][0]=5;#assert mb_predict(s,w[..],q,c).status==MbStatus.token;
+    // Scores in the millions: the softmax subtracts the largest, so no NaN.
+    loud:[MB_WEIGHTS_MAX]f64;mb_synthetic(loud[..],mb_predictor_plan(s).count,1,64);q.code[0][0]=0;q.count=6;
+    l:=mb_predict(s,loud[..],q,mb_walk(s,6,0));
+    for t:0..<6 {for h:0..<2 {for k:0..<4 {#assert l.value[t][h][k]==l.value[t][h][k];}}}
+    // Zero weights: every logit ties, so code 0 wins at confidence 1/4, and
+    // step 1 masks the first 8 of 12 tokens in order.
+    zero:[MB_WEIGHTS_MAX]f64;g:=mb_generate(s,zero[..],6,mb_walk(s,6,0),2);
+    #assert g.masked[1]==8 && g.last[0]==11 && g.last[1]==7 && g.changed[1]==0 && g.confidence[5][1]==0.25 && g.tokens.code[5][1]==0;
+    // The clip: one frame and 64 frames; a sideways step under a turn.
+    m:MbMotion;m.frames=1;m.value[0][0]=POSE_PI/2;m.value[0][1]=1;m.value[0][4]=1;m.value[0][8]=1;m.value[0][10]=1;m.value[0][14]=1;
+    k:=mb_clip(s,m);#assert k.status==MbStatus.ok && pose_near(k.clip.frame[0].root[2],-1,1e-15) && pose_near(k.clip.frame[0].root[0],0,1e-15);
+    for f:1..<64 {m.value[f]=m.value[0];}m.frames=64;#assert mb_clip(s,m).status==MbStatus.ok;
+    ch:=mb_chain(2);#assert ch.offset[1][1]== -0.25;
+}

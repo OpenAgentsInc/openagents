@@ -172,6 +172,26 @@
       ]
     },
     {
+      "source": "psionic/examples/motionbricks.coax",
+      "chapter": "psionic/book/ch149-execute-motionbricks.md",
+      "stdout": "psionic/fixtures/motionbricks.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/motionbricks-refuse.coax",
+      "chapter": "psionic/book/ch149-execute-motionbricks.md",
+      "stdout": "psionic/fixtures/motionbricks-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/transcribe-tdt.coax",
       "chapter": "psionic/book/ch153-transcribe-with-parakeet.md",
       "stdout": "psionic/fixtures/transcribe-tdt.out",

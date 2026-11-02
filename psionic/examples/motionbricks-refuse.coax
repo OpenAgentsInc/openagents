@@ -1,0 +1,22 @@
+// Chapter 149: a checkpoint read with the wrong head count, a token past
+// the mask, a length below the predictor's six, and decoded motion that
+// jumps, each refused with its status.
+#import "Basic";
+#load "../lib/motionbricks.coax";
+
+// book:begin refuse
+main :: () {
+    wrong:=mb_soma();wrong.heads=4;buf:[MB_TEXT_MAX]u8;
+    n:=mb_vqvae_lines(wrong,buf[..]);r:=mb_inventory(cast(string)buf[0..<n],MB_VQVAE_MANIFEST);
+    print("4 heads: %, first missing line %\n",r.status,r.bad);
+    s:=mb_small();w:[MB_WEIGHTS_MAX]f64;mb_synthetic(w[..],mb_predictor_plan(s).count,1,1);
+    walk:=mb_walk(s,8,0);q:MbTokens;q.count=8;q.code[3][1]=5;
+    print("code 5 with 4 codes and the mask: %\n",mb_predict(s,w[..],q,walk).status);
+    print("5 tokens: %\n",mb_generate(s,w[..],5,walk,4).status);
+    g:=mb_generate(s,w[..],8,walk,4);
+    loud:[MB_WEIGHTS_MAX]f64;mb_synthetic_decoder(s,loud[..],3,1);
+    k:=mb_clip(s,mb_decode(s,loud[..],mb_small_codebook(s),g.tokens,walk));
+    j:=mt_continuity(k.clip,mb_chain(2),10*POSE_PI/180,0.1);
+    print("decoder weights 16 times larger: %, first at frame % joint %\n",j.status,j.frame,j.joint);
+}
+// book:end refuse

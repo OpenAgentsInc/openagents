@@ -1,0 +1,51 @@
+#import "Basic";
+#load "../lib/motionbricks.coax";
+
+// Round to a whole number of millionths for printing.
+mbx_micro :: (x:f64)->int {return cast(int)floor(x*1000000+0.5);}
+mbx_milli :: (x:f64)->int {return cast(int)floor(x*1000+0.5);}
+mbx_tokens :: (label:string,q:MbTokens,heads:int) {
+    print("%",label);
+    for t:0..<q.count {if t>0 {print(" ");}for h:0..<heads {print("%",q.code[t][h]);}}
+    print("\n");
+}
+
+main :: () {
+// book:begin inventory
+    soma:=mb_soma();buf:[MB_TEXT_MAX]u8;
+    n:=mb_vqvae_lines(soma,buf[..]);r:=mb_inventory(cast(string)buf[0..<n],MB_VQVAE_MANIFEST);
+    print("pose VQ-VAE: % of % expected tensors, % F32 values, %\n",r.lines,r.expected,r.parameters,r.status);
+    n=mb_pose_lines(soma,buf[..]);r=mb_inventory(cast(string)buf[0..<n],MB_POSE_MANIFEST);
+    print("pose predictor: % of % expected tensors, % F32 values, %\n",r.lines,r.expected,r.parameters,r.status);
+    r=mb_inventory("",MB_ROOT_MANIFEST);
+    print("root predictor: % tensors, % F32 values (layout not derived)\n",r.lines,r.parameters);
+// book:end inventory
+// book:begin tokens
+    book:=mb_soma_codebook();code:MbCode;code.code=[5]int.[1,2,3,4,5];
+    packed:=mb_pack(book,code);back:=mb_unpack(book,packed);
+    print("codes 1 2 3 4 5 pack to %, unpack to % % % % %\n",packed,back.code[0],back.code[1],back.code[2],back.code[3],back.code[4]);
+    latent:=mb_dequantize(book,back);again:=mb_quantize(book,latent.value);
+    print("latent[0] (millionths) %, re-encoded % % % % %, distances % % % % %\n",mbx_micro(latent.value[0]),
+        again.code[0],again.code[1],again.code[2],again.code[3],again.code[4],
+        again.squared[0],again.squared[1],again.squared[2],again.squared[3],again.squared[4]);
+    for h:0..<5 {p:=mb_separation(book,h);print("head %: closest codes % and %, distance (millionths) %\n",h,p.first,p.second,mbx_micro(sqrt(p.squared)));}
+// book:end tokens
+// book:begin generate
+    s:=mb_small();
+    print("mask counts for 6 tokens, 5 heads, 4 steps: % % % %\n",mb_mask_count(0,4,6,5),mb_mask_count(1,4,6,5),mb_mask_count(2,4,6,5),mb_mask_count(3,4,6,5));
+    predictor:[MB_WEIGHTS_MAX]f64;mb_synthetic(predictor[..],mb_predictor_plan(s).count,1,1);
+    walk:=mb_walk(s,8,0);
+    g:=mb_generate(s,predictor[..],8,walk,4);
+    print("generation: %, masked % % % %, changed % % % %\n",g.status,g.masked[0],g.masked[1],g.masked[2],g.masked[3],g.changed[0],g.changed[1],g.changed[2],g.changed[3]);
+    mbx_tokens("tokens: ",g.tokens,s.heads);
+// book:end generate
+// book:begin decode
+    decoder:[MB_WEIGHTS_MAX]f64;mb_synthetic_decoder(s,decoder[..],3,0.0625);
+    m:=mb_decode(s,decoder[..],mb_small_codebook(s),g.tokens,walk);
+    k:=mb_clip(s,m);
+    print("decoded: % frames, %, clip %\n",m.frames,m.status,k.status);
+    print("last root (mm): % % %\n",mbx_milli(k.clip.frame[31].root[0]),mbx_milli(k.clip.frame[31].root[1]),mbx_milli(k.clip.frame[31].root[2]));
+    j:=mt_continuity(k.clip,mb_chain(2),10*POSE_PI/180,0.1);
+    print("continuity: %, worst turn (millidegrees) % at frame %, worst step (mm) % at frame %\n",j.status,mbx_milli(j.angle*180/POSE_PI),j.turn_frame,mbx_milli(j.step),j.step_frame);
+// book:end decode
+}

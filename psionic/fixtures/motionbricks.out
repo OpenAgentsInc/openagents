@@ -1,0 +1,16 @@
+pose VQ-VAE: 94 of 94 expected tensors, 23357918 F32 values, ok
+pose predictor: 210 of 210 expected tensors, 136520976 F32 values, ok
+root predictor: 174 tensors, 40418385 F32 values (layout not derived)
+codes 1 2 3 4 5 pack to 344865, unpack to 1 2 3 4 5
+latent[0] (millionths) -5122517, re-encoded 1 2 3 4 5, distances 0.0 0.0 0.0 0.0 0.0
+head 0: closest codes 11 and 12, distance (millionths) 5175329
+head 1: closest codes 7 and 12, distance (millionths) 4906655
+head 2: closest codes 3 and 4, distance (millionths) 5210055
+head 3: closest codes 0 and 14, distance (millionths) 5521768
+head 4: closest codes 8 and 11, distance (millionths) 5287972
+mask counts for 6 tokens, 5 heads, 4 steps: 30 27 21 11
+generation: ok, masked 16 14 11 6, changed 16 0 0 0
+tokens: 12 12 12 12 12 32 12 12
+decoded: 32 frames, ok, clip ok
+last root (mm): -233 899 -601
+continuity: ok, worst turn (millidegrees) 63 at frame 31, worst step (mm) 21 at frame 31
