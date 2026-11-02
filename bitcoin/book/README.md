@@ -7,13 +7,16 @@ and the constant-time rules, builds SHA-256, RIPEMD-160, HMAC, HKDF, ChaCha20,
 secp256k1, ECDSA and BIP-340 Schnorr signatures from their specifications,
 then Base58Check, Bech32 and Bech32m, addresses, descriptors, seed phrases and
 hierarchical keys. On those it builds transactions, the script interpreter,
-every signature hash, Taproot, block headers and proof of work, a bounded
-block-validation profile, the P2P layer with BIP-324 encryption, PSBTs and
-wallets, and multi-party signatures (MuSig2, FROST and adaptor signatures).
-Part XIII builds Lightning in Coax: messages, the Noise handshake, channels,
-onions, gossip, payments, invoices and offers. The last parts check the stack
-against published vectors and other implementations, and show where
-OpenAgents uses it.
+every signature hash and Taproot. Parts IX to XIV build a full node:
+every consensus rule, the chain state and its storage, the P2P network with
+BIP-324 encryption, initial block download, the mempool and relay policy,
+and the RPC interface. The node syncs mainnet from genesis to the same UTXO
+set as Bitcoin Core. On the node the book builds PSBTs and wallets,
+multi-party signatures (MuSig2, FROST and adaptor signatures), and Lightning
+in Coax: messages, the Noise handshake, channels, onions, gossip, payments,
+invoices and offers. The last parts check the stack against published
+vectors, Bitcoin Core and other implementations, and show where OpenAgents
+uses it.
 
 [Nostr From Scratch](../../nostr/book/README.md) is the companion book. Nostr
 uses Bitcoin's curve, hashes, signatures and Bech32, so it starts after this
@@ -27,18 +30,20 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 ## Rules
 
 - No outside cryptography, Bitcoin or Lightning library. libsecp256k1,
-  Bitcoin Core and other implementations appear only in Part XIV's tests,
-  never in the code the book builds.
+  Bitcoin Core and other implementations appear only in tests and
+  comparisons, never in the code the book builds.
 - Secrets never decide a branch or an index ([chapter 3](ch003-constant-time-rules.md)).
 - Every chapter names its BIP, BOLT or RFC and the test vectors that pin it.
 - Bitcoin only, following [AGENTS.md](../../AGENTS.md): on-chain Bitcoin and
   Lightning are built; Cashu, Fedimint and other chains are not.
-- The consensus chapters check data against vectors and state the rules
-  their profile leaves out. They are not a node to replace Bitcoin Core.
+- The node must agree with Bitcoin Core on every block. Every consensus
+  rule has a row in chapter 57's rule table, and the node decides no money
+  for OpenAgents on its own until chapters 80, 93 and 118 are done
+  ([plan](PLAN.md#the-full-node)).
 
 ## Status
 
-Of the 85 chapters, 23 are implemented and 62 are planned. The 23
+Of the 124 chapters, 23 are implemented and 101 are planned. The 23
 implemented chapters have runnable examples, qualified on native CPU, and 18
 of them on Wasm. Fifteen of them are the cryptography Nostr already used;
 chapters 5, 6, 7, 10, 12, 17, 19 and 20 are new.
@@ -192,9 +197,9 @@ The key tweak, script trees, the Taproot signature hash and tapscript.
 | 44. Tapscript | Planned | Bitcoin Core's Taproot script tests (`script_assets_test.json`) give their expected results. |
 | 45. Control blocks and script-path spends | Planned | Script-path spends from BIP-341's vectors verify. A control block with the wrong parity or path refuses. |
 
-### Part IX. Blocks and consensus (chapters 46–52)
+### Part IX. Blocks and consensus (chapters 46–57)
 
-Merkle trees, headers and proof of work, a bounded block-validation profile and the UTXO set.
+Merkle trees, headers and proof of work, the chain parameters, every consensus rule with the chapter that checks it, and the UTXO set.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
@@ -202,81 +207,148 @@ Merkle trees, headers and proof of work, a bounded block-validation profile and 
 | 47. Block headers and proof of work | Planned | The genesis header and pinned headers hash below their targets; a header with one changed bit does not. |
 | 48. Compact targets, retargeting and chainwork | Planned | `nBits` round-trips for every mainnet retarget to a pinned height, computed retargets match the chain, and chainwork matches Bitcoin Core's `getblockheader`. |
 | 49. The witness commitment | Planned | The coinbase commitments of pinned segwit blocks match their computed witness roots. |
-| 50. Validate a block (bounded profile) | Planned | Pinned mainnet and signet blocks validate under the bounded profile. Blocks with stated failures refuse with their reasons. The chapter states the consensus rules the profile does not check. |
-| 51. The UTXO set and MuHash3072 | Planned | MuHash3072 of pinned UTXO sets matches Bitcoin Core's `gettxoutsetinfo muhash`. Adding then removing an element restores the hash. |
-| 52. Headers first and the most-work chain | Planned | A header chain from genesis to a pinned height selects the most-work tip; a fork with less work loses. |
+| 50. Chain parameters: mainnet, testnet4, signet and regtest | Planned | Each network's genesis block hashes to its published hash, and its message start, default port, address prefixes and deployment heights match Bitcoin Core's `chainparams.cpp` at the pinned release. A signet block whose solution fails the network's challenge refuses. |
+| 51. Header rules: time, versions and deployments | Planned | Median time past and the two-hour future limit decide pinned headers as Bitcoin Core does, and testnet4's timewarp rule refuses its counterexample. The buried deployments (BIP-34, BIP-65, BIP-66, CSV, segwit and Taproot) activate at the chain parameters' heights, and a header whose version is below an active deployment's minimum refuses. |
+| 52. Transaction checks outside script | Planned | Every case in `tx_invalid.json` that fails before the script interpreter refuses with its reason: no inputs or outputs, a value out of range, an overflowing total (CVE-2010-5139), duplicate inputs (CVE-2018-17144), a coinbase spent before 100 confirmations and a non-final transaction. |
+| 53. Sigops, weight and block limits | Planned | Legacy, P2SH and witness signature-operation costs of pinned transactions and blocks match Bitcoin Core. A block over 4,000,000 weight units or 80,000 sigop cost refuses. |
+| 54. The subsidy and the coinbase | Planned | The subsidy at every halving matches, and is zero from height 6,930,000. A coinbase that claims one satoshi more than subsidy plus fees refuses, and so does a coinbase without its BIP-34 height after activation. |
+| 55. Script flags by height and their exceptions | Planned | The script verification flags for every block of a pinned mainnet range match Bitcoin Core's, including the BIP-16 and Taproot exception blocks, and the two blocks exempt from BIP-30 are handled as Core handles them. |
+| 56. The UTXO set and MuHash3072 | Planned | MuHash3072 of pinned UTXO sets matches Bitcoin Core's `gettxoutsetinfo muhash`. Adding then removing an element restores the hash. |
+| 57. Validate a block: every consensus rule | Planned | Pinned mainnet, testnet4 and signet blocks, among them every soft-fork activation block, validate against the outputs they spend. A crafted block for each consensus rule refuses with Bitcoin Core's reject reason, and the chapter's rule table names the chapter that checks every rule. |
 
-### Part X. The network (chapters 53–57)
+### Part X. Chain state and storage (chapters 58–64)
 
-P2P messages, BIP-324 encrypted transport, compact blocks and block filters.
-
-| Chapter | Status | Result |
-| --- | --- | --- |
-| 53. P2P messages and checksums | Planned | Captured `version`, `inv`, `tx` and `block` messages parse and re-serialize exactly. A bad checksum refuses. |
-| 54. ElligatorSwift | Planned | BIP-324's `ellswift_decode_test_vectors.csv` and `xswiftec_inv_test_vectors.csv` pass. |
-| 55. The v2 encrypted transport | Planned | BIP-324's `packet_encoding_test_vectors.csv` give every ciphertext, including rekeying. |
-| 56. Compact blocks | Planned | Short IDs and block reconstruction for pinned blocks match Bitcoin Core. |
-| 57. Compact block filters | Planned | BIP-158's `testnet-19.json` filters and filter headers match. |
-
-### Part XI. Wallets (chapters 58–62)
-
-PSBTs, coin selection, message signing, silent payments and miniscript.
+Connecting and disconnecting blocks, the block index, reorganizations, block files, a key-value store of our own, the coins cache and pruning.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 58. PSBT | Planned | Every valid and invalid PSBT in BIP-174 and BIP-370 parses or refuses as stated. |
-| 59. Coin selection and change | Planned | Branch-and-bound and fallback selection pass Bitcoin Core's coin-selection cases, and no selection pays more than its stated fee rate allows. |
-| 60. Message signing | Planned | BIP-322's simple and full vectors verify. |
-| 61. Silent payments | Planned | BIP-352's `send_and_receive_test_vectors.json` give every output and scan result. |
-| 62. Miniscript | Planned | The BIP-379 examples type-check, compile to their stated scripts and satisfy. |
+| 58. Connect and disconnect a block | Planned | Connecting then disconnecting each block of a pinned mainnet range restores the UTXO set's MuHash, using only the undo data the connect step wrote. Undo data with a wrong spent output refuses. |
+| 59. The block index and the most-work chain | Planned | A header chain from genesis to a pinned height selects the most-work tip; a fork with less work loses. A header that fails a header rule is marked invalid with all its descendants. |
+| 60. Reorganizations and invalid chains | Planned | On regtest a fork with more work replaces the tip: the node disconnects to the fork point and connects the new branch, and its UTXO set matches Bitcoin Core's after the same reorganization. A fork that contains an invalid block never becomes the tip. |
+| 61. Block files and undo files | Planned | Blocks and undo data are appended to files and read back by position, and the node imports Bitcoin Core's `blk*.dat` files. A file cut mid-record at any byte is detected at start and its damaged tail dropped. |
+| 62. A key-value store for the chainstate | Planned | Reads, writes, deletes and ordered iteration match a reference map on random workloads. A crash at every write of a recorded workload restarts to exactly the last committed batch. |
+| 63. The coins cache and crash-safe flushes | Planned | A crash at any point of a flush restarts to a consistent tip and replays to the same MuHash. The cache stays under its configured memory limit. |
+| 64. Pruning | Planned | A pruned node keeps its block files under the configured target, keeps at least the last 288 blocks, and still reorganizes across them. |
 
-### Part XII. Many signers (chapters 63–66)
+### Part XI. The network (chapters 65–75)
+
+P2P messages, BIP-324 encrypted transport, the handshake, peer discovery and connections, denial-of-service limits, headers sync and block download, compact blocks, filters, and Tor and I2P.
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| 65. P2P messages and checksums | Planned | Captured `version`, `inv`, `tx` and `block` messages parse and re-serialize exactly. A bad checksum refuses. |
+| 66. ElligatorSwift | Planned | BIP-324's `ellswift_decode_test_vectors.csv` and `xswiftec_inv_test_vectors.csv` pass. |
+| 67. The v2 encrypted transport | Planned | BIP-324's `packet_encoding_test_vectors.csv` give every ciphertext, including rekeying. |
+| 68. The handshake and feature negotiation | Planned | The node completes `version` and `verack` with Bitcoin Core over the v1 and v2 transports and negotiates `wtxidrelay`, `sendaddrv2`, `sendheaders`, `sendcmpct` and `feefilter`. A feature message after `verack` is handled as Core handles it. |
+| 69. Addresses and the address manager | Planned | `addr` and `addrv2` messages round-trip for every network BIP-155 names. The address manager's buckets keep one source from filling its tables, and the eclipse cases ported from Bitcoin Core's address-manager tests pass. DNS seeds are queried only when the manager has no usable address. |
+| 70. Connections: outbound, block-relay-only, feelers and eviction | Planned | The node keeps 8 full-relay and 2 block-relay-only outbound connections and makes feeler connections. With its inbound slots full it evicts by Bitcoin Core's protected-peer rules, and Core's eviction cases pass. |
+| 71. Misbehavior, limits and denial of service | Planned | Each message limit (size, `inv` and `addr` counts and rates, unconnecting headers and the low-work headers presync) refuses its oversized case. A peer that sends an invalid block is disconnected, and memory per peer stays under its stated bound under a flood. |
+| 72. Headers sync and block download | Planned | From genesis the node downloads headers by locator, presyncs them against low-work spam, and fetches blocks from many peers through a moving window, replacing a peer that stalls. It syncs regtest and signet from Bitcoin Core peers to their tips. |
+| 73. Compact blocks | Planned | Short IDs and block reconstruction for pinned blocks match Bitcoin Core. |
+| 74. Compact block filters | Planned | BIP-158's `testnet-19.json` filters and filter headers match. |
+| 75. Proxies, Tor and I2P | Planned | The node reaches peers through a SOCKS5 proxy and a local Tor daemon, accepts inbound connections on an onion service, and connects to I2P peers through the SAM bridge. Each network's addresses stay apart in the address manager. |
+
+### Part XII. Initial block download (chapters 76–80)
+
+From genesis to the tip: parallel script checks, faster verification, assumevalid, AssumeUTXO, and a mainnet sync whose UTXO set matches Bitcoin Core's.
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| 76. The signature cache and parallel script checks | Planned | Script checks run on every core and give the same verdicts as one thread over a pinned block range. A transaction verified on mempool entry is not verified again in its block, and the cache is keyed by a salted hash. |
+| 77. Faster verification: the GLV endomorphism | Planned | Verification with the endomorphism and wider windows agrees with chapter 16's path on random and edge inputs, and a pinned block's signatures verify at a measured rate within a stated factor of libsecp256k1 on the same machine. |
+| 78. assumevalid | Planned | Below the pinned assumevalid block the node skips script checks only for ancestors of that block buried under its stated work; every other rule still runs. With assumevalid off the node reaches the same UTXO set. |
+| 79. AssumeUTXO snapshots | Planned | The node loads a pinned mainnet UTXO snapshot whose hash matches the chain parameters, follows the tip from it at once, and validates from genesis in the background. A snapshot with one changed coin refuses. |
+| 80. Sync mainnet from genesis | Planned | The node syncs mainnet from genesis to a pinned height over the public network, and its UTXO set at that height equals Bitcoin Core's `gettxoutsetinfo` (`hash_serialized_3` and `muhash`). The chapter records time, memory and disk on stated hardware next to Bitcoin Core's on the same machine. |
+
+### Part XIII. The mempool and policy (chapters 81–88)
+
+Standardness, mempool acceptance, transaction relay, replacement, packages, eviction, fee estimation and block templates.
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| 81. Policy is not consensus: standardness | Planned | Every standardness rule (output types, size, dust, `OP_RETURN` data and witness limits) refuses its pinned non-standard transaction with Bitcoin Core's reason at the pinned release, and each of those transactions still validates in a block. |
+| 82. Mempool acceptance and limits | Planned | Accept and refuse decisions and reasons match Bitcoin Core's `testmempoolaccept` on a pinned corpus, and the mempool keeps the size and package limits of the pinned release. |
+| 83. Transaction relay and orphans | Planned | Transactions announced by wtxid are requested, accepted and announced onward with Bitcoin Core's randomized delays. A transaction with a missing parent waits in a bounded orphan pool and is accepted when the parent arrives. |
+| 84. Replacement: RBF and TRUC | Planned | Replacements are accepted or refused as Bitcoin Core decides on its replacement cases, including the fee-rate and total-fee rules and the version-3 (TRUC) topology limits. |
+| 85. Packages, CPFP and anchors | Planned | One-parent-one-child packages, and pay-to-anchor outputs with zero-fee parents, are accepted and relayed as Bitcoin Core accepts them. A package below the minimum fee rate refuses. |
+| 86. Eviction, expiry and persistence | Planned | A full mempool evicts the lowest fee-rate transactions first and raises its minimum fee, transactions expire after two weeks, and a restart reloads the saved mempool. |
+| 87. Fee estimation | Planned | Over a replayed history of blocks and mempool entries, estimates for 2, 6 and 144 blocks meet the success rate Bitcoin Core's `estimatesmartfee` targets. |
+| 88. Block templates and mining | Planned | `getblocktemplate` chooses transactions by fee rate within the weight and sigop limits, and a regtest block mined from its template is accepted by Bitcoin Core. |
+
+### Part XIV. Operating the node (chapters 89–93)
+
+The node as a program: configuration and shutdown, the RPC and REST interface, indexes, notifications, and shadow mode beside Bitcoin Core.
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| 89. The node process: configuration, data directory, logs and shutdown | Planned | The node reads its configuration file and flags, keeps its state in one data directory, logs by category, and on a signal at any point shuts down cleanly and restarts at the same tip. |
+| 90. JSON-RPC and REST | Planned | The node answers the Bitcoin Core RPCs that wallets and Lightning implementations call (`getblockchaininfo`, `getblock`, `getblockheader`, `getrawtransaction`, `gettxout`, `sendrawtransaction`, `estimatesmartfee`, `getblocktemplate`, `submitblock` and the others the chapter names) with Core's JSON for the same chain, behind cookie authentication. |
+| 91. Indexes: transactions, filters and coin statistics | Planned | With each index on, `getrawtransaction` finds any confirmed transaction, the node serves BIP-157 filters to light clients, and `gettxoutsetinfo` answers for past heights, each matching Bitcoin Core. |
+| 92. Notifications for wallets and Lightning | Planned | A subscriber receives every connected and disconnected block and every mempool entry and removal in order, across a reorganization, and resumes from its last block after a restart. |
+| 93. Shadow mode beside Bitcoin Core | Planned | Run beside a Bitcoin Core node on the same peers for a stated period, the node gives the same verdict on every header and block and holds the same tip. Any difference stops it and records the block. |
+
+### Part XV. Wallets (chapters 94–99)
+
+PSBTs, coin selection, message signing, silent payments, miniscript and a descriptor wallet on our node.
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| 94. PSBT | Planned | Every valid and invalid PSBT in BIP-174 and BIP-370 parses or refuses as stated. |
+| 95. Coin selection and change | Planned | Branch-and-bound and fallback selection pass Bitcoin Core's coin-selection cases, and no selection pays more than its stated fee rate allows. |
+| 96. Message signing | Planned | BIP-322's simple and full vectors verify. |
+| 97. Silent payments | Planned | BIP-352's `send_and_receive_test_vectors.json` give every output and scan result. |
+| 98. Miniscript | Planned | The BIP-379 examples type-check, compile to their stated scripts and satisfy. |
+| 99. A descriptor wallet on our node | Planned | A descriptor wallet finds its coins by rescan and by notification, builds, signs and broadcasts a spend on signet through our node, and survives a reorganization that removes a payment. |
+
+### Part XVI. Many signers (chapters 100–103)
 
 Multisig, MuSig2, FROST threshold signatures and adaptor signatures.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 63. Multisig | Planned | 2-of-3 P2WSH `sortedmulti` descriptors give their addresses, and a spend signed by two keys validates. |
-| 64. MuSig2 | Planned | Every BIP-327 vector file (key aggregation, nonces, signing, aggregation and tweaks) gives its result. A reused nonce refuses. |
-| 65. FROST threshold signatures | Planned | The FROST draft BIP's vectors give their results. A signature from fewer than t signers refuses. |
-| 66. Adaptor signatures | Planned | An adaptor signature verifies against its point, completes with the secret, and the secret is recovered from the final signature. |
+| 100. Multisig | Planned | 2-of-3 P2WSH `sortedmulti` descriptors give their addresses, and a spend signed by two keys validates. |
+| 101. MuSig2 | Planned | Every BIP-327 vector file (key aggregation, nonces, signing, aggregation and tweaks) gives its result. A reused nonce refuses. |
+| 102. FROST threshold signatures | Planned | The FROST draft BIP's vectors give their results. A signature from fewer than t signers refuses. |
+| 103. Adaptor signatures | Planned | An adaptor signature verifies against its point, completes with the secret, and the secret is recovered from the final signature. |
 
-### Part XIII. Lightning (chapters 67–78)
+### Part XVII. Lightning (chapters 104–115)
 
-Lightning built in Coax: messages, the Noise handshake, channels, onions, gossip, payments, invoices and offers.
-
-| Chapter | Status | Result |
-| --- | --- | --- |
-| 67. Messages and TLVs | Planned | BOLT 1's TLV vectors give their results. An unknown even type refuses. |
-| 68. The Noise handshake | Planned | BOLT 8's handshake and message vectors match byte for byte, including key rotation. |
-| 69. Commitment keys and revocation | Planned | BOLT 3's key-derivation vectors give every key. |
-| 70. Shachain | Planned | BOLT 3's per-commitment secret storage vectors pass, including the cases that must fail. |
-| 71. Commitment and HTLC transactions | Planned | BOLT 3's commitment and HTLC transaction vectors match byte for byte, with and without anchors. |
-| 72. Open, update and close a channel | Planned | Two Coax nodes open, update and close a channel on regtest. The state machine refuses every out-of-order message BOLT 2 names. |
-| 73. Watch the chain | Planned | A revoked commitment broadcast on regtest is swept by the penalty transaction, and an expired HTLC times out. |
-| 74. Onion routing and blinded paths | Planned | BOLT 4's onion and blinded-path vectors match. A tampered onion fails its HMAC. |
-| 75. Gossip and the channel graph | Planned | Announcements from a pinned gossip snapshot verify. An announcement with a bad signature refuses. |
-| 76. Find a route and pay | Planned | A payment routes over a three-node regtest network and settles. A failure returns its error to the sender. |
-| 77. Invoices | Planned | BOLT 11's examples decode to their stated fields and payee. A changed character refuses. |
-| 78. Offers | Planned | BOLT 12's offer, invoice-request and invoice vectors decode and verify. |
-
-### Part XIV. Interop and verification (chapters 79–82)
-
-Test vector provenance, differential tests, fuzzing and formal properties.
+Lightning built in Coax on our node: messages, the Noise handshake, channels, onions, gossip, payments, invoices and offers.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 79. Test vectors and their provenance | Planned | Every vector the book uses is pinned with its source and hash, and the pin check fails on an edited vector. |
-| 80. Differential tests | Planned | Signatures, signature hashes and script results agree with libsecp256k1 and Bitcoin Core on generated inputs. |
-| 81. Fuzzing | Planned | Every parser (transactions, scripts, PSBTs, addresses and invoices) runs under the fuzzer with no crash and no accepted malformed input. |
-| 82. Formal properties | Planned | Each named property (round trips, refusal of non-canonical encodings, the bounded validation profile) has a checked model or a stated boundary. |
+| 104. Messages and TLVs | Planned | BOLT 1's TLV vectors give their results. An unknown even type refuses. |
+| 105. The Noise handshake | Planned | BOLT 8's handshake and message vectors match byte for byte, including key rotation. |
+| 106. Commitment keys and revocation | Planned | BOLT 3's key-derivation vectors give every key. |
+| 107. Shachain | Planned | BOLT 3's per-commitment secret storage vectors pass, including the cases that must fail. |
+| 108. Commitment and HTLC transactions | Planned | BOLT 3's commitment and HTLC transaction vectors match byte for byte, with and without anchors. |
+| 109. Open, update and close a channel | Planned | Two Coax nodes open, update and close a channel on regtest. The state machine refuses every out-of-order message BOLT 2 names. |
+| 110. Watch the chain | Planned | A revoked commitment broadcast on regtest is swept by the penalty transaction, and an expired HTLC times out, with our node as the only chain source. |
+| 111. Onion routing and blinded paths | Planned | BOLT 4's onion and blinded-path vectors match. A tampered onion fails its HMAC. |
+| 112. Gossip and the channel graph | Planned | Announcements from a pinned gossip snapshot verify. An announcement with a bad signature refuses. |
+| 113. Find a route and pay | Planned | A payment routes over a three-node regtest network and settles. A failure returns its error to the sender. |
+| 114. Invoices | Planned | BOLT 11's examples decode to their stated fields and payee. A changed character refuses. |
+| 115. Offers | Planned | BOLT 12's offer, invoice-request and invoice vectors decode and verify. |
 
-### Part XV. Bitcoin in OpenAgents (chapters 83–85)
+### Part XVIII. Interop and verification (chapters 116–120)
 
-Where OpenAgents uses the stack: one seed, agent treasuries and paid requests.
+Test vector provenance, differential tests, Bitcoin Core's functional tests against our node, fuzzing and formal properties.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 83. One seed for Nostr and Bitcoin | Planned | One BIP-39 phrase gives the Nostr key and the wallet keys, and restoring from the phrase gives the same addresses. |
-| 84. Agent treasuries | Planned | A 2-of-3 treasury spend is signed by independent key agents and broadcast on signet, and an independent wallet tool recovers the coins. |
-| 85. Paying for requests | Planned | A request pays a BOLT 11 invoice, and the server releases its response only after settlement. |
+| 116. Test vectors and their provenance | Planned | Every vector the book uses is pinned with its source and hash, and the pin check fails on an edited vector. |
+| 117. Differential tests | Planned | Signatures, signature hashes, script results and block verdicts agree with libsecp256k1 and Bitcoin Core on generated inputs. |
+| 118. Bitcoin Core's functional tests against our node | Planned | The Bitcoin Core functional tests that drive a node over P2P and RPC (`feature_block.py` and the `p2p_*` and `mempool_*` tests the chapter names) pass against our node on one of our own machines, never the owner's Mac. Each test that does not apply is listed with its reason. |
+| 119. Fuzzing | Planned | Every parser (transactions, scripts, P2P messages, PSBTs, addresses and invoices) runs under the fuzzer with no crash and no accepted malformed input. |
+| 120. Formal properties | Planned | Each named property (round trips, refusal of non-canonical encodings and the consensus rule table) has a checked model or a stated boundary. |
+
+### Part XIX. Bitcoin in OpenAgents (chapters 121–124)
+
+Where OpenAgents uses the stack: our node on Pylons and Verse OS, one seed, agent treasuries and paid requests.
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| 121. One seed for Nostr and Bitcoin | Planned | One BIP-39 phrase gives the Nostr key and the wallet keys, and restoring from the phrase gives the same addresses. |
+| 122. Agent treasuries | Planned | A 2-of-3 treasury spend is signed by independent key agents and broadcast on signet, and an independent wallet tool recovers the coins. |
+| 123. Paying for requests | Planned | A request pays a BOLT 11 invoice, and the server releases its response only after settlement. |
+| 124. Our node on Pylons and Verse OS | Planned | A Pylon and a Verse OS machine run the node from its Nix module and sync it, and OpenAgents' on-chain checks query it instead of a third-party chain source. |

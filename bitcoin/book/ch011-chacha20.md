@@ -1,7 +1,7 @@
 # 11. ChaCha20
 
-Bitcoin's v2 P2P transport (BIP-324, chapter 55) and Lightning's Noise
-handshake and onions (chapters 68 and 74) encrypt with ChaCha20. NIP-44
+Bitcoin's v2 P2P transport (BIP-324, chapter 67) and Lightning's Noise
+handshake and onions (chapters 105 and 111) encrypt with ChaCha20. NIP-44
 encrypts with it too, and NIP-49's XChaCha20 starts from it. This
 chapter builds the quarter round, the block function and the stream, and
 the rules about nonces and counters that keep it safe. Every operation is a

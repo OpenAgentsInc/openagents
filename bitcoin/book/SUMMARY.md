@@ -4,7 +4,7 @@
 - [Plan and prerequisites](PLAN.md)
 
 The contents list the chapters written so far. The [plan](PLAN.md) lists all
-85, with what each one needs and what "done" means.
+124, with what each one needs and what "done" means.
 
 **I. Foundations**
 

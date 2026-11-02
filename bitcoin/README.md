@@ -5,7 +5,7 @@ Lightning in [Coax](../coax/README.md), and its examples.
 
 | Path | What |
 | --- | --- |
-| [`book/`](book/README.md) | *Bitcoin From Scratch*: the cryptography, encodings, transactions, script, Taproot, consensus checks, network, wallets, multi-party signatures and Lightning, built in Coax |
+| [`book/`](book/README.md) | *Bitcoin From Scratch*: the cryptography, encodings, transactions, script, Taproot, a full node (consensus, chain state, network, mempool and RPC), wallets, multi-party signatures and Lightning, built in Coax |
 | [`examples/`](examples/) | The book's example programs and their checks |
 | [`fixtures/`](fixtures/) | Each example's expected output |
 
@@ -51,7 +51,7 @@ redirect here. What stays in Nostr: x-only ECDH for NIP-44 (chapter 14),
 NIP-19, the JSON an event ID hashes, NIP-04, NIP-44, NIP-13 proof of work
 and the NIP-06 seed path (chapter 46). The Bitcoin halves of Nostr chapter 46
 (BIP-39 and BIP-32) and chapter 104 (PSBTs, descriptors, signature hashes
-and multisig) are planned here as chapters 31–32, 58 and 63, with the
+and multisig) are planned here as chapters 31–32, 94 and 100, with the
 existing code named in the [plan](book/PLAN.md). Chapter 104's ECDSA signer
 is chapter 20.
 
@@ -78,9 +78,13 @@ Everything Nostr used is built. Bitcoin and Lightning also need:
   Psionic's harness chapters moved to Coder, so every "chapter N" reference
   in Nostr code stays valid. Nostr's parts were renumbered: its old Parts
   III–V became Part I, and VI–XII became II–VIII.
-- **Consensus scope:** script, every signature hash, headers, proof of work
-  and a bounded block-validation profile that states the rules it leaves out.
-  No initial block download, and not a node to replace Bitcoin Core.
+- **A full node** (owner, 2026-11-02): the book builds a complete Bitcoin
+  node in Coax. It covers every consensus rule, chain state and storage, P2P,
+  initial block download, the mempool and RPC. It syncs mainnet to the same
+  UTXO set as Bitcoin Core. This replaces the earlier bounded
+  block-validation profile. Core stays the reference, and our node decides
+  no money on its own until it passes shadow mode and Core's functional
+  tests ([plan](book/PLAN.md#the-full-node)).
 - **Lightning is built in Coax**, channels included. No outside Lightning
   implementation is a dependency.
 - **Bitcoin only:** Cashu, Fedimint and other chains stay out

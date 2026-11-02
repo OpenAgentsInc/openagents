@@ -153,7 +153,7 @@ bitcoin_checksum_matches :: (payload: [] u8, checksum: [] u8) -> bool {
 ```
 
 `bitcoin_checksum_matches` returns false for a checksum that isn't exactly 4
-bytes, so a truncated header never matches. [Chapter 53](PLAN.md) parses
+bytes, so a truncated header never matches. [Chapter 65](PLAN.md) parses
 message headers.
 
 ## Tagged hashes

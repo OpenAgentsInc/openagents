@@ -5,9 +5,9 @@ secret key, an attacker can't predict which inputs collide. Bitcoin uses
 SipHash-2-4 in three places:
 
 - BIP-152 compact blocks name each transaction by a 6-byte short ID cut from
-  a SipHash of its wtxid (chapter 56).
+  a SipHash of its wtxid (chapter 73).
 - BIP-158 block filters hash each script to a number with SipHash before
-  they Golomb-code the set (chapter 57).
+  they Golomb-code the set (chapter 74).
 - Bitcoin Core keys the hash tables of its mempool and coins cache with
   SipHash and a random salt, so a peer can't choose txids that all land in
   one bucket.

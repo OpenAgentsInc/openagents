@@ -5,10 +5,10 @@ it. Poly1305 is the matching one-time authenticator, and RFC 8439 joins the
 two into one AEAD, ChaCha20-Poly1305: authenticated encryption with
 associated data. Bitcoin and Lightning use the AEAD in three places:
 
-- BIP-324's v2 P2P transport encrypts every packet with it (chapter 55).
+- BIP-324's v2 P2P transport encrypts every packet with it (chapter 67).
 - BOLT 8's Noise handshake and every Lightning message after it use it
-  (chapter 68).
-- BOLT 4's blinded paths encrypt the data for each hop with it (chapter 74).
+  (chapter 105).
+- BOLT 4's blinded paths encrypt the data for each hop with it (chapter 111).
 
 NIP-49's XChaCha20-Poly1305 is the same AEAD under a derived key. This
 chapter builds Poly1305 over state that you own, builds the AEAD with RFC
@@ -596,9 +596,9 @@ one-time Poly1305 key, lets an attacker forge tags. The 12-byte nonce is too
 short to pick at random for many messages, so the protocols count:
 
 - BIP-324 puts a packet counter in the nonce and rekeys every 224 packets
-  (chapter 55).
+  (chapter 67).
 - BOLT 8's nonce is 4 zero bytes and a 64-bit little-endian message
-  counter, and each key rotates after 1,000 messages (chapter 68).
+  counter, and each key rotates after 1,000 messages (chapter 105).
 - NIP-49 picks a random 24-byte nonce, long enough for random choice, and
   uses XChaCha20-Poly1305.
 
@@ -1065,4 +1065,4 @@ vector.
   section A.3.1, for the XChaCha20-Poly1305 example.
 - Wycheproof `chacha20_poly1305_test.json`, pinned at revision `d17cc89f`
   in [coax/tests/vectors/SOURCES.md](../../coax/tests/vectors/SOURCES.md).
-- BIP-324, BOLT 8 and BOLT 4, for the uses in chapters 55, 68 and 74.
+- BIP-324, BOLT 8 and BOLT 4, for the uses in chapters 67, 105 and 111.
