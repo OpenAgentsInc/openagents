@@ -1,0 +1,76 @@
+{
+  "schema": "aethyr.render.final-artifacts.v1",
+  "date": "2026-11-02",
+  "status": "passed_for_the_named_artifacts_and_profiles",
+  "source_base": "8c9027ad9c",
+  "scope": "Ordinary builds, eighteen emitted shader packages, normal-C catalogue, actual playable Grid and its complete two-backend image comparison. Everglade GPU/image acceptance is recorded separately; its build here alone makes no numerical claim.",
+  "compiler": {
+    "sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+    "input_fingerprint": "6bd41d0f4b36ab8973042457b5f4a7c565c730fc88c1ab7ab6ac97bf6f814e9e",
+    "source_matching_at_emission": true,
+    "profile": "Owner-approved fast release, COAX_MUTATION=0; selected explicitly, never installed as the ordinary default compiler",
+    "qualification_limit": "Provenance verification and ordinary product authority checks passed. This does not assert full compiler mutation qualification or close GitHub12638. Earlier qualified compiler and executable identities remain in their own records."
+  },
+  "ordinary_producers": {
+    "Grid": {
+      "wasm_sha256": "a06c704a8308b336946ee4344f7b720fcad270ebb59eacb222b63fd9bf0b0246",
+      "bytes": 1005830,
+      "command": "COAX=SELECTED COAXIAL_ADMITTED_DIR=OUT/admitted coax/web/project/build-home.sh OUT/newland.wasm",
+      "units": ["apps/openagents-web/newland.coax", "aethyr/render/carriers/landing-browser.coax", "coax/web/project/landing-fold.coax", "verse/gridwalk.coax"],
+      "exit": 0,
+      "authority_checks_disabled": false
+    },
+    "Everglade": {
+      "wasm_sha256": "6a954ad72695c6c3a0130c91fe8ccbd16bca9e8ab5ec4adab5141eaba2bf08d6",
+      "command": "COAX=SELECTED COAXIAL_ADMITTED_DIR=OUT/admitted coax/web/wasm.sh apps/openagents-web/everglade.coax apps/openagents-web/everglade-face.c OUT/everglade.wasm verse/player.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax",
+      "exit": 0,
+      "authority_checks_disabled": false,
+      "earlier_build": "The95a699b4 artifact remains the earlier source epoch. This refresh includes the upstream watch change; its source profiles and pre-build bodies are retained separately."
+    },
+    "source_readback": "Both complete copied Coax source inventories compare byte-for-byte with the source base after execution; both rsync checksum reports are empty. Admitted C/H, C faces, build wrappers, check inventories and emission profiles are retained."
+  },
+  "catalogue": {
+    "command": "check-catalog.coax with the selected compiler and matching source digest",
+    "status": "pass",
+    "profiles": 18,
+    "shared_consumers": 16,
+    "tracked_unadopted_consumers": 1,
+    "native_modes": ["debug", "release", "ASan+UBSan"],
+    "each": {"logical_bindings": 114, "pipelines": 67, "binding_uses": 181, "detected_producer_faults": 7},
+    "transcript_sha256": "a03d17e21bf0145c7e94f7faede7685e78a6f5140fda3646695f99e8c5ef3ed8",
+    "scope": "Independent frozen catalogue inventory and generated normal-C facts, including all declared fields and negative controls. Anime Lab remains explicitly unadopted and Galaxy remains a fixture."
+  },
+  "shader_packages": {
+    "emitted_profiles": 18,
+    "each_build_exit": 0,
+    "compiler_sha256": "e8c68d778d103e22d7b8d8af8350a7b31d742447b6ce61fa09397dcbcf5c2a22",
+    "old_product_join": "Seventeen profiles have identical WGSL/SPIR-V/tree filenames and bytes to their already-qualified package. For Grid use the owned-Sans package; for Dead Gears use the canonical-box36 package. The initial comparison against their older predecessors is retained too. Only render.json changes in each correct join, recording actual compiler and source identities. Earlier product validators are reused by exact byte identity.",
+    "Galaxy": {
+      "reason_for_new_validation": "The retained fixture also consumes the corrected shared glyph shader; its earlier package differs.",
+      "WGSL": {"profiles": 1, "modules": 1, "errors": 0, "warnings": 0, "status": "pass"},
+      "SPIRV": {"declared": 2, "unique": 2, "accepted": 2, "negative_controls_refused": 2, "status": "pass"},
+      "snapshot": "The frozen eighteen-profile JSON filtered to its Galaxy row; retained as data. Existing maintained Coax validators perform every build/source/product/SDK check. No fixture raster or shipping-page claim is inferred."
+    }
+  },
+  "Grid": {
+    "actual_route": "Homepage WALK AROUND click, actual /realms/the-grid?from=home navigation,960x540 normal-motion frames, no golden flag",
+    "frames": 240,
+    "jumps": 2,
+    "checks": ["movement", "landing", "interpolated camera", "shared submissions", "replay", "missing physical Sans refuses with zero writes/submits", "same-object resource recovery"],
+    "origin": {"final_status": "passed", "requests": 40, "served_files": 33, "original_files_unchanged": true, "finalized": true},
+    "origin_input_bodies": "Every served/pinned file is copied from the finalized source map; original paths, hashes and source bodies remain in the archive.",
+    "numerical_frame": {"width": 320, "height": 180, "format": "rgba16f", "time_advance_on_resize": 0, "HUD_vertices": 33414, "draw_records": 0, "physical_Sans_mips": 5},
+    "same_input_join": "Config,uniforms,HUD,draws,indices,buffer0,physicaltexture0,media text and WebGPU raw image compare byte-for-byte with the previously qualified moving frame. All package products are also identical; only the manifest's provenance differs.",
+    "CPU_executor_sha256": "7e5e65c903bec224d7d88a91b9911669cca39fe87b054a43a62a592fe6ddb6c0",
+    "CPU_emission": "Fresh ordinary authority-checked C/H from selected current-source compiler; Clang O2, ffp-contract=off and fno-fast-math; exact source closure retained",
+    "browser_profile": {"rounding": "nearest-positive", "bits": 8, "xy": "viewport", "guard": 0, "filter": "analytic", "CPU_image_sha256": "7a49d5ee3879cc9699413603c2e4caad14116c5fb83580f41200295824032071", "GPU_image_sha256": "c5520f750dde14fbb394d8cf95b239ddbc61dbc8c9b35c9b8579a85acad5ac2c"},
+    "native_profile": {"rounding": "nearest-even", "bits": 8, "xy": "guard-band", "guard": 65536, "filter": "analytic", "CPU_image_sha256": "cebf68b5f0375e1e404f3739d0f8b98452b46190581d90400b0040aaa6b98774", "GPU_image_sha256": "9e1920842bc752982697e592a8bbbb7436a645244f127120eeedd6c7ed51ca4c"},
+    "each_strict_comparison": {"channels": 230400, "colour_failures": 0, "nonfinite_failures": 0, "masked_pixels": 0, "maximum_normalized_error": 0.0009643201542912247},
+    "native_reuse": "The complete input/resource/product equality joins the retained RTX4080 readback from the earlier native executable84c7222d. That passing GPU measurement was not rerun or relabelled as a freshly emitted native executor. Both freshly emitted CPU outputs are themselves bit-identical to the corresponding earlier CPU outputs.",
+    "stack": {"actual_final_module": true, "defined_functions": 512, "function_exports": 174, "bound_bytes": 1956336, "reservation_bytes": 4194304, "margin_bytes": 2237968, "C_diagnostic_compiles": 9, "C_diagnostic_compile_exits": 0, "unknown_or_dynamic_SP_behavior": 0, "oracle_sha256": "e5218cab9f507033a44ba78f9c61c93646dc94ce97d67c12f6186c68c253c4da"},
+    "diagnostics_retained": ["First stack invocation refused without required C stack-usage inputs; then all nine diagnostics were compiled and the failed oracle invocation retried with them", "An additional nearest-positive/guard-band CPU observation passed, but is not substituted for either named GPU profile", "An archive extraction requested a nonexistent native-stage/screen.raw; the corrected root screen.raw extraction matched the recorded hash. Its failed command is in the session transcript, not a separately saved stderr file"]
+  },
+  "book_example": {"source": "aethyr/examples/admit-a-frame.coax", "debug": "pass", "release": "pass", "exact_transcript": "pass", "source_fence": "unchanged"},
+  "reuse_policy": "Previously passing unchanged mutation, target, mathematical-oracle and image results remain attached to their exact source/artifact identities. No full compiler release or universal hardware rendering theorem is claimed.",
+  "retention": "data/aethyr-ch11-2026-11-02/final-artifacts/retention.json"
+}

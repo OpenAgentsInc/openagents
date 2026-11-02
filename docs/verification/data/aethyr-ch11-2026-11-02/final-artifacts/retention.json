@@ -1,0 +1,10 @@
+{
+  "schema": "aethyr.render.retention.v1",
+  "archive": "artifacts.tar.gz",
+  "sha256": "4384f8838b0ddfffa015eea456a3a4a024b7ee886067f9c41a3ded5c90431ad1",
+  "bytes": 15574861,
+  "members": "archive-members.txt",
+  "readback": {"extract_exit": 0, "whole_tree_diff_exit": 0, "diff_bytes": 0, "log": "readback.log", "symlinks": "compared as links with --no-dereference", "archived_scripts_executed": false},
+  "contains": ["exact ordinary Grid and Everglade Wasm and admitted C/H", "pre-build producer source bodies and source/check profiles", "actual headless Grid route, replay, refusal and recovery, raw full320x180 captures", "both source-matching CPU raster profiles and full strict comparisons", "explicitly historical same-input Vulkan image", "exact final Grid disassembly, nine C stack-usage diagnostics and independent mathematical stack receipt", "all18 emitted shader packages and package identity comparisons", "debug/release/sanitized normal-C catalogue observations and seven producer losses per mode", "new Galaxy WGSL/SPIRV observations and negative controls", "selected fast compiler/provenance and original CPU/native emission source closures", "every Grid origin served/pinned source body and finalized byte ledger", "book example debug/release receipt, merged CDP tests and zero tools-reason gate"],
+  "scope": "Pinned artifact proof at source base8c9027ad9c. The subsequent CPU boolean-execution repair and Everglade runtime/golden/numerical results have their own records and archives. This archive does not silently replace its earlier CPU executable."
+}
