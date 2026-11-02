@@ -1,0 +1,497 @@
+// A seat in a running realm, for an agent (docs/verse/realm-seat.md, #12637, slice 2): opens a made
+// realm in headless Chrome, runs typed actions from a file, one JSON object a line, and prints one
+// observation a line after each, read from the page's probe (myrealm.coax realm_probe) and the
+// realm's spec route, never from pixels.
+//
+//   coax/web/tool.sh realm-seat https://staging.openagents.com SLUG [--actions FILE] [--phone]
+//                    [--player-file FILE] [--shots PREFIX]
+//
+// Actions (each bounded; only what a visitor can do, through the realm's own controls):
+//   {"op":"look","turn":90}                      turn right (negative: left), -180..180 degrees
+//   {"op":"go","to":"Maple"}                     to a character by name, "character:0", "entity:12",
+//   {"op":"go","to":"building"}                    or the nearest of a kind; or {"op":"go","x":4.5,"z":-2}
+//   {"op":"go","to":"well","max":20}             max seconds (default 10, at most 30)
+//   {"op":"say","words":"hello"}                 to the character within 3.5 m; waits for the answer
+//   {"op":"bye"}                                 ends the talk
+//   {"op":"jump"}                                when the realm has jump on
+//   {"op":"shot","out":"here.png"}               a screenshot
+// Without --actions it opens the realm and prints the first observation.
+//
+// The page opens at /realms/built#SLUG, so a private realm works for its owner (--player-file: the
+// browser's playtest player, {"key": ..., "id": ...}, as localStorage verse.player holds it) and a
+// public or unlisted one for anyone. The session carries the automation mark (verse-automation), so
+// analytics leaves it out. Exit 0 when every action ran (a "blocked" walk still ran), 1 otherwise.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+SEAT_SHOT :: 25165824;
+SEAT_NEAR :: 16;
+TALK_NEAR :: 3.5;
+REACH :: 2.0;
+TURN_DEG_S :: 108.86;   // myrealm.coax TURN, 1.9 rad/s
+WALK_M_S :: 3.4;        // myrealm.coax WALK
+CAM_THIRD :: 0; CAM_FIRST :: 1; CAM_TOP :: 2; CAM_SIDE :: 3;
+CAM_NAMES :: [4] string.["third", "first", "top", "side"];
+KIND_NAMES :: [9] string.["tree", "rock", "prop", "building", "house", "dwelling", "lantern", "placed", "centre"];
+TOOL_NAMES :: [6] string.["build", "fly", "jump", "map", "talk", "voice"];
+PEOPLE :: 4; ENTS :: 96;
+
+Buf :: struct { b: [16384] u8; n: int; bad: bool; }
+bput :: (o: [] Buf, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+bint :: (o: [] Buf, v: int) {
+  if v < 0 { bput(o, "-"); bint(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; bput(o, cast(string) e[..]); }
+}
+// One decimal place: 3.14 is "3.1", -0.04 is "0.0".
+bdec :: (o: [] Buf, v: f32) {
+  t := cast(int) (v * 10 + (ifx v < 0 then -0.5f32 else 0.5f32));
+  if t < 0 { bput(o, "-"); t = -t; }
+  bint(o, t / 10); bput(o, "."); bint(o, t % 10);
+}
+btext :: (o: [] Buf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+slug_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > 64 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+origin_of :: (url: string) -> string {
+  i := 0;
+  while i + 2 < url.count && !(url[i] == ':' && url[i + 1] == '/' && url[i + 2] == '/') { i += 1; }
+  if i + 2 >= url.count || i == 0 { return ""; }
+  j := i + 3;
+  while j < url.count && url[j] != '/' && url[j] != '?' && url[j] != '#' { j += 1; }
+  return ifx j > i + 3 then url[0..<j] else "";
+}
+lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+same_words :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if lower(a[i]) != lower(b[i]) { return false; } }
+  return true;
+}
+// A decimal number's text ("-4.5", "12", "3e1" is refused): its value, ok false when it isn't one.
+Dec :: struct { v: f32; ok: bool; }
+dec_of :: (s: string) -> Dec {
+  if s.count == 0 || s.count > 24 { return Dec.{}; }
+  i := 0; neg := false;
+  if s[0] == '-' { neg = true; i = 1; }
+  if i >= s.count { return Dec.{}; }
+  v: f32 = 0; digits := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10 + cast(f32) (s[i] - '0'); i += 1; digits += 1; }
+  if i < s.count && s[i] == '.' {
+    i += 1; k: f32 = 0.1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { v += k * cast(f32) (s[i] - '0'); k /= 10; i += 1; digits += 1; }
+  }
+  if i != s.count || digits == 0 { return Dec.{}; }
+  return Dec.{v = ifx neg then -v else v, ok = true};
+}
+// The angle of (y, x) in degrees, -180..180, within a tenth of a degree.
+atan2_deg :: (y: f32, x: f32) -> f32 {
+  if x == 0 && y == 0 { return 0; }
+  ax := ifx x < 0 then -x else x; ay := ifx y < 0 then -y else y;
+  a := ifx ax > ay then ay / ax else ax / ay;   // 0..1
+  s := a * a;
+  r := ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;   // atan on 0..1, radians
+  if ay > ax { r = 1.57079637 - r; }
+  if x < 0 { r = 3.14159274 - r; }
+  if y < 0 { r = -r; }
+  return r * 57.2957795;
+}
+wrap_deg :: (d: f32) -> f32 {
+  v := d;
+  while v > 180 { v -= 360; }
+  while v <= -180 { v += 360; }
+  return v;
+}
+
+near_deg :: (a: f32, w: f32) -> bool { d := a - w; return d < 0.2 && d > -0.2; }
+
+#test "a seat's pieces" {
+  #assert origin_of("https://staging.openagents.com/realms/x") == "https://staging.openagents.com" && slug_ok("moonlit-marsh") && !slug_ok("a'b");
+  #assert dec_of("-4.5").ok && dec_of("-4.5").v == -4.5 && dec_of("12").v == 12 && !dec_of("1e3").ok && !dec_of("-").ok && !dec_of("").ok;
+  #assert same_words("Old Mott", "old mott") && !same_words("Mott", "Mott ");
+  b: [1] Buf; bdec(b[..], 3.14); bput(b[..], " "); bdec(b[..], -2.25); bput(b[..], " "); bdec(b[..], 0.04);
+  #assert btext(b[..]) == "3.1 -2.3 0.0";
+  #assert near_deg(atan2_deg(1, 0), 90) && near_deg(atan2_deg(0, 1), 0) && near_deg(atan2_deg(0, -1), 180) && near_deg(atan2_deg(-1, 0), -90);
+  #assert near_deg(atan2_deg(1, 1), 45) && near_deg(atan2_deg(-1, -1), -135) && near_deg(atan2_deg(3, 4), 36.87);
+  #assert wrap_deg(270) == -90 && wrap_deg(-190) == 170 && wrap_deg(180) == 180;
+}
+
+// ---- the page
+
+Seat :: struct {
+  phone: bool; w: int; h: int;
+  origin: [256] u8; origin_n: int;
+  slug: [80] u8; slug_n: int;
+  // the spec's characters, in the page's order
+  names: [PEOPLE * 32] u8; name_n: [PEOPLE] int; roles: [PEOPLE * 48] u8; role_n: [PEOPLE] int; spec_people: int;
+  // the last observation
+  x: f32; z: f32; yaw: f32; cam: int; tools: int; talk: int; waiting: bool; lines: int;
+  ent_n: int; ent_kind: [ENTS] int; ent_x: [ENTS] f32; ent_z: [ENTS] f32;
+  people: int; px: [PEOPLE] f32; pz: [PEOPLE] f32;
+  answer: [1200] u8; answer_n: int;
+  result: [200] u8; result_n: int;
+}
+note :: (s: [] Seat, what: string) {
+  s[0].result_n = 0; for c: what { if s[0].result_n < s[0].result.count { s[0].result[s[0].result_n] = c; s[0].result_n += 1; } }
+}
+set_result :: (s: [] Seat, what: string) -> bool { note(s, what); return false; }
+name_of :: (s: [] Seat, p: int) -> string { return cast(string) s[0].names[p * 32..<p * 32 + s[0].name_n[p]]; }
+role_of :: (s: [] Seat, p: int) -> string { return cast(string) s[0].roles[p * 48..<p * 48 + s[0].role_n[p]]; }
+
+js_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
+  v := cdp_evaluate(c, js);
+  if v < 0 { return ""; }
+  n := jv_str(cdp_doc(c), v, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+js_int :: (c: [] Cdp, js: string, fallback: int) -> int {
+  v := cdp_evaluate(c, js);
+  return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+probe :: (c: [] Cdp, field: int) -> int {
+  b: [1] Buf; bput(b[..], "globalThis.coaxial && coaxial.ready ? coaxial.guardProbe("); bint(b[..], field); bput(b[..], ") : -99999");
+  return js_int(c, btext(b[..]), -99999);
+}
+key_event :: (c: [] Cdp, down: bool, key: string, code: string, vk: int) -> bool {
+  p: [1] Buf;
+  bput(p[..], "{\"type\":\""); bput(p[..], ifx down then "keyDown" else "keyUp"); bput(p[..], "\",\"key\":\""); bput(p[..], key);
+  bput(p[..], "\",\"code\":\""); bput(p[..], code); bput(p[..], "\",\"windowsVirtualKeyCode\":"); bint(p[..], vk); bput(p[..], "}");
+  return cdp_call(c, "Input.dispatchKeyEvent", btext(p[..]), CDP_CALL_MS) >= 0;
+}
+hold :: (c: [] Cdp, key: string, code: string, vk: int, ms: int) -> bool {
+  if !key_event(c, true, key, code, vk) { return false; }
+  proc_sleep(ms);
+  return key_event(c, false, key, code, vk);
+}
+press :: (c: [] Cdp, key: string, code: string, vk: int) -> bool { return hold(c, key, code, vk, 60); }
+type_text :: (c: [] Cdp, text: string) -> bool {
+  p: [4096] u8; o: [1] Jo;
+  jo_start(o[..], p[..]); jo_obj(o[..]); jo_key(o[..], "text"); jo_str(o[..], text); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Input.insertText", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+hold_dir :: (c: [] Cdp, d: u8, ms: int) -> bool {
+  if d == 'w' { return hold(c, "w", "KeyW", 87, ms); }
+  if d == 's' { return hold(c, "s", "KeyS", 83, ms); }
+  if d == 'a' { return hold(c, "a", "KeyA", 65, ms); }
+  return hold(c, "d", "KeyD", 68, ms);
+}
+
+// The probe's numbers, in one evaluation: the page's fields as a JSON array (docs/verse/realm-seat.md).
+SCENE_JS :: "(() => { const c = globalThis.coaxial; if (!c || !c.ready || c.guardProbe(0) !== 1 || c.guardProbe(64) <= 0) return ''; const g = (f) => c.guardProbe(f), ents = [], people = [], bytes = []; for (let e = 0; e < g(64) && e < 96; e++) ents.push([g(1400 + e), g(1000 + 2 * e), g(1001 + 2 * e)]); for (let p = 0; p < g(65) && p < 4; p++) people.push([g(1700 + 2 * p), g(1701 + 2 * p)]); for (let i = 0; i < 400; i++) { const b = g(3000 + i); if (b < 0) break; bytes.push(b); } return JSON.stringify({x: g(10), z: g(11), yaw: g(17), cam: g(18), tools: g(69), talk: g(66), wait: g(67), lines: g(68), ents, people, answer: new TextDecoder().decode(Uint8Array.from(bytes))}); })()";
+
+// Reads the page into s; false when the realm isn't laid out yet.
+look_round :: (s: [] Seat, c: [] Cdp) -> bool {
+  raw: [24576] u8;
+  text := js_str(c, SCENE_JS, raw[..]);
+  if text.count == 0 { return false; }
+  nodes: [1200] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return false; }
+  j := d[0];
+  s[0].x = cast(f32) jv_int(j, jv_get(j, 0, "x"), 0) / 100; s[0].z = cast(f32) jv_int(j, jv_get(j, 0, "z"), 0) / 100;
+  s[0].yaw = cast(f32) jv_int(j, jv_get(j, 0, "yaw"), 0) / 100;
+  s[0].cam = jv_int(j, jv_get(j, 0, "cam"), 0); s[0].tools = jv_int(j, jv_get(j, 0, "tools"), 0);
+  s[0].talk = jv_int(j, jv_get(j, 0, "talk"), -1); s[0].waiting = jv_int(j, jv_get(j, 0, "wait"), 0) == 1;
+  s[0].lines = jv_int(j, jv_get(j, 0, "lines"), 0);
+  ents := jv_get(j, 0, "ents"); s[0].ent_n = 0;
+  for e: 0..<jv_len(j, ents) {
+    if s[0].ent_n >= ENTS { break; }
+    row := jv_at(j, ents, e); k := s[0].ent_n;
+    s[0].ent_kind[k] = jv_int(j, jv_at(j, row, 0), -1);
+    s[0].ent_x[k] = cast(f32) jv_int(j, jv_at(j, row, 1), 0) / 100; s[0].ent_z[k] = cast(f32) jv_int(j, jv_at(j, row, 2), 0) / 100;
+    s[0].ent_n = k + 1;
+  }
+  ps := jv_get(j, 0, "people"); s[0].people = 0;
+  for p: 0..<jv_len(j, ps) {
+    if s[0].people >= PEOPLE { break; }
+    row := jv_at(j, ps, p);
+    s[0].px[p] = cast(f32) jv_int(j, jv_at(j, row, 0), 0) / 100; s[0].pz[p] = cast(f32) jv_int(j, jv_at(j, row, 1), 0) / 100;
+    s[0].people = p + 1;
+  }
+  s[0].answer_n = jv_str(j, jv_get(j, 0, "answer"), s[0].answer[..]);
+  if s[0].answer_n < 0 { s[0].answer_n = 0; }
+  return true;
+}
+// Waits until the realm is laid out, up to ms.
+wait_round :: (s: [] Seat, c: [] Cdp, ms: int) -> bool {
+  until := proc_now_ms() + ms;
+  while proc_now_ms() < until { if look_round(s, c) { return true; } proc_sleep(250); }
+  return look_round(s, c);
+}
+
+// The characters' names and roles from the spec route, as the page's player (its "character NAME|ROLE" lines, in order).
+read_spec :: (s: [] Seat, c: [] Cdp) {
+  b: [1] Buf;
+  bput(b[..], "(async () => { let k = ''; try { k = JSON.parse(localStorage.getItem('verse.player')).key; } catch {}\n");
+  bput(b[..], "  const t = await (await fetch('/api/playtest/realms/"); bput(b[..], cast(string) s[0].slug[0..<s[0].slug_n]);
+  bput(b[..], "', {headers: k ? {'X-Verse-Player': k} : {}})).text();\n");
+  bput(b[..], "  return t.split('\\n').filter(l => l.startsWith('character ')).join('\\n'); })().catch(e => '')");
+  out: [4096] u8;
+  text := js_str(c, btext(b[..]), out[..]);
+  s[0].spec_people = 0; i := 0;
+  while i < text.count && s[0].spec_people < PEOPLE {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e]; i = e + 1;
+    if !starts(line, "character ") { continue; }
+    rest := line[10..<line.count]; cut := 0; while cut < rest.count && rest[cut] != '|' { cut += 1; }
+    p := s[0].spec_people;
+    n := 0; for k: 0..<cut { if n < 32 { s[0].names[p * 32 + n] = rest[k]; n += 1; } } s[0].name_n[p] = n;
+    m := 0; if cut + 1 < rest.count { for k: cut + 1..<rest.count { if m < 48 { s[0].roles[p * 48 + m] = rest[k]; m += 1; } } } s[0].role_n[p] = m;
+    s[0].spec_people = p + 1;
+  }
+}
+
+// ---- where things are, from where you stand
+
+Spot :: struct { x: f32; z: f32; ok: bool; }
+dist_to :: (s: [] Seat, x: f32, z: f32) -> f32 { dx := x - s[0].x; dz := z - s[0].z; return sqrt(dx * dx + dz * dz); }
+// The world heading to (x, z) in degrees, as the realm counts yaw: 0 is -z (north), 90 is +x (east).
+heading_to :: (s: [] Seat, x: f32, z: f32) -> f32 { return atan2_deg(x - s[0].x, -(z - s[0].z)); }
+// How far to turn to face (x, z): positive is to the right.
+bearing_to :: (s: [] Seat, x: f32, z: f32) -> f32 { return wrap_deg(heading_to(s, x, z) - s[0].yaw); }
+
+// A go target: a character by name, "character:N", "entity:N", a kind (nearest), or x and z.
+target_of :: (s: [] Seat, to: string, x: Dec, z: Dec) -> Spot {
+  if to.count == 0 { return ifx x.ok && z.ok then Spot.{x = x.v, z = z.v, ok = true} else Spot.{}; }
+  for p: 0..<s[0].people { if p < s[0].spec_people && same_words(name_of(s, p), to) { return Spot.{x = s[0].px[p], z = s[0].pz[p], ok = true}; } }
+  if starts(to, "character:") { n := dec_of(to[10..<to.count]); i := cast(int) n.v; if n.ok && i >= 0 && i < s[0].people { return Spot.{x = s[0].px[i], z = s[0].pz[i], ok = true}; } return Spot.{}; }
+  if starts(to, "entity:") { n := dec_of(to[7..<to.count]); i := cast(int) n.v; if n.ok && i >= 0 && i < s[0].ent_n && s[0].ent_kind[i] >= 0 { return Spot.{x = s[0].ent_x[i], z = s[0].ent_z[i], ok = true}; } return Spot.{}; }
+  best := Spot.{}; bd: f32 = 1000000;
+  if same_words(to, "character") { for p: 0..<s[0].people { d := dist_to(s, s[0].px[p], s[0].pz[p]); if d < bd { bd = d; best = Spot.{x = s[0].px[p], z = s[0].pz[p], ok = true}; } } return best; }
+  for k: 0..<KIND_NAMES.count {
+    if !same_words(to, KIND_NAMES[k]) { continue; }
+    for e: 0..<s[0].ent_n { if s[0].ent_kind[e] == k { d := dist_to(s, s[0].ent_x[e], s[0].ent_z[e]); if d < bd { bd = d; best = Spot.{x = s[0].ent_x[e], z = s[0].ent_z[e], ok = true}; } } }
+  }
+  return best;
+}
+
+// ---- the actions
+
+turn_by :: (c: [] Cdp, deg: f32) -> bool {
+  a := ifx deg < 0 then -deg else deg;
+  if a < 1 { return true; }
+  ms := cast(int) (a / TURN_DEG_S * 1000);
+  return hold_dir(c, ifx deg > 0 then cast(u8) 'd' else cast(u8) 'a', ms);
+}
+do_look :: (s: [] Seat, c: [] Cdp, turn: Dec) -> bool {
+  if !turn.ok || turn.v < -180 || turn.v > 180 { return set_result(s, "turn is -180 to 180 degrees"); }
+  if s[0].cam == CAM_TOP || s[0].cam == CAM_SIDE { return set_result(s, "this realm's camera doesn't turn"); }
+  if !turn_by(c, turn.v) { return set_result(s, "a key wasn't taken"); }
+  proc_sleep(150);
+  return true;
+}
+// Walks with the realm's own controls until within REACH of the target, blocked or out of time.
+do_go :: (s: [] Seat, c: [] Cdp, to: Spot, seconds: int) -> bool {
+  if !to.ok { return set_result(s, "no such place: a character's name, character:N, entity:N, a kind, or x and z"); }
+  if s[0].talk >= 0 { esc := press(c, "Escape", "Escape", 27); proc_sleep(150); seen := look_round(s, c); }
+  until := proc_now_ms() + seconds * 1000; stuck := 0;
+  while proc_now_ms() < until {
+    d := dist_to(s, to.x, to.z);
+    if (s[0].cam == CAM_SIDE && abs(to.x - s[0].x) < REACH) || (s[0].cam != CAM_SIDE && d < REACH) { note(s, "reached"); return true; }
+    was_x := s[0].x; was_z := s[0].z; walked := false;
+    if s[0].cam == CAM_TOP || s[0].cam == CAM_SIDE {
+      dx := to.x - s[0].x; dz := to.z - s[0].z;
+      key: u8 = ifx dx > 0 then cast(u8) 'd' else cast(u8) 'a';
+      far := ifx dx < 0 then -dx else dx;
+      if s[0].cam == CAM_TOP && abs(dz) > far { key = ifx dz < 0 then cast(u8) 'w' else cast(u8) 's'; far = abs(dz); }
+      if !hold_dir(c, key, clamp_ms((far - REACH * 0.5) / WALK_M_S * 1000, 120, 700)) { return set_result(s, "a key wasn't taken"); }
+      walked = true;
+    } else {
+      b := bearing_to(s, to.x, to.z);
+      if abs(b) > 12 { if !turn_by(c, b) { return set_result(s, "a key wasn't taken"); } }
+      else {
+        if !hold_dir(c, 'w', clamp_ms((d - REACH * 0.5) / WALK_M_S * 1000, 120, 700)) { return set_result(s, "a key wasn't taken"); }
+        walked = true;
+      }
+    }
+    proc_sleep(80);
+    if !look_round(s, c) { return set_result(s, "the realm stopped answering"); }
+    if walked { if dist2(s[0].x - was_x, s[0].z - was_z) < 0.0025 { stuck += 1; } else { stuck = 0; } }
+    if stuck >= 2 { note(s, "blocked"); return true; }
+  }
+  note(s, "timeout");
+  return true;
+}
+dist2 :: (dx: f32, dz: f32) -> f32 { return dx * dx + dz * dz; }
+clamp_ms :: (v: f32, lo_ms: int, hi_ms: int) -> int { m := cast(int) v; return ifx m < lo_ms then lo_ms else ifx m > hi_ms then hi_ms else m; }
+
+do_say :: (s: [] Seat, c: [] Cdp, words: string) -> bool {
+  if words.count == 0 || words.count > 400 { return set_result(s, "words are 1 to 400 characters"); }
+  if (s[0].tools & (1 << 4)) == 0 { return set_result(s, "this realm has talk off"); }
+  if s[0].talk < 0 {
+    near := false;
+    for p: 0..<s[0].people { if dist_to(s, s[0].px[p], s[0].pz[p]) < TALK_NEAR { near = true; } }
+    if !near { return set_result(s, "no one near: go to a character first"); }
+    if !press(c, "e", "KeyE", 69) { return set_result(s, "a key wasn't taken"); }
+    proc_sleep(250);
+    if !look_round(s, c) || s[0].talk < 0 { return set_result(s, "the talk didn't open"); }
+  }
+  lines := s[0].lines;
+  if !type_text(c, words) || !press(c, "Enter", "Enter", 13) { return set_result(s, "the words weren't typed"); }
+  until := proc_now_ms() + 45000;
+  while proc_now_ms() < until {
+    proc_sleep(400);
+    if look_round(s, c) && !s[0].waiting && s[0].lines >= lines + 2 { note(s, "answered"); return true; }
+  }
+  return set_result(s, "no answer in 45 s");
+}
+
+// ---- one observation, a JSON line
+
+say_observation :: (s: [] Seat, op: string, ok: bool) {
+  o: [1] Buf;
+  bput(o[..], "{\"op\":\""); bput(o[..], op); bput(o[..], "\",\"ok\":"); bput(o[..], ifx ok then "true" else "false");
+  bput(o[..], ",\"result\":"); jq(o[..], cast(string) s[0].result[0..<s[0].result_n]);
+  bput(o[..], ",\"at\":["); bdec(o[..], s[0].x); bput(o[..], ","); bdec(o[..], s[0].z); bput(o[..], "],\"facing\":"); bdec(o[..], s[0].yaw);
+  bput(o[..], ",\"camera\":\""); bput(o[..], ifx s[0].cam >= 0 && s[0].cam < 4 then CAM_NAMES[s[0].cam] else "unknown"); bput(o[..], "\"");
+  bput(o[..], ",\"tools\":["); first := true;
+  for t: 0..<6 { if (s[0].tools & (1 << t)) != 0 { if !first { bput(o[..], ","); } bput(o[..], "\""); bput(o[..], TOOL_NAMES[t]); bput(o[..], "\""); first = false; } }
+  bput(o[..], "],\"talking\":");
+  if s[0].talk >= 0 && s[0].talk < s[0].spec_people { jq(o[..], name_of(s, s[0].talk)); } else if s[0].talk >= 0 { bput(o[..], "\"character:"); bint(o[..], s[0].talk); bput(o[..], "\""); } else { bput(o[..], "null"); }
+  bput(o[..], ",\"answer\":"); if s[0].answer_n > 0 { jq(o[..], cast(string) s[0].answer[0..<s[0].answer_n]); } else { bput(o[..], "null"); }
+  // what's near, nearest first: characters, then every entity but trees and lanterns past 12 m
+  ids: [PEOPLE + ENTS] int; ds: [PEOPLE + ENTS] f32; n := 0;
+  for p: 0..<s[0].people { ids[n] = -1 - p; ds[n] = dist_to(s, s[0].px[p], s[0].pz[p]); n += 1; }
+  for e: 0..<s[0].ent_n {
+    k := s[0].ent_kind[e]; if k < 0 { continue; }
+    d := dist_to(s, s[0].ent_x[e], s[0].ent_z[e]);
+    if (k == 0 || k == 6) && d > 12 { continue; }
+    ids[n] = e; ds[n] = d; n += 1;
+  }
+  for i: 1..<n { j := i; while j > 0 && ds[j] < ds[j - 1] { ti := ids[j]; td := ds[j]; ids[j] = ids[j - 1]; ds[j] = ds[j - 1]; ids[j - 1] = ti; ds[j - 1] = td; j -= 1; } }
+  bput(o[..], ",\"near\":[");
+  for i: 0..<n {
+    if i >= SEAT_NEAR { break; }
+    if i > 0 { bput(o[..], ","); }
+    id := ids[i]; x: f32 = 0; z: f32 = 0;
+    if id < 0 {
+      p := -1 - id; x = s[0].px[p]; z = s[0].pz[p];
+      bput(o[..], "{\"kind\":\"character\",\"id\":\"character:"); bint(o[..], p); bput(o[..], "\"");
+      if p < s[0].spec_people { bput(o[..], ",\"name\":"); jq(o[..], name_of(s, p)); bput(o[..], ",\"role\":"); jq(o[..], role_of(s, p)); }
+    } else {
+      x = s[0].ent_x[id]; z = s[0].ent_z[id];
+      bput(o[..], "{\"kind\":\""); bput(o[..], KIND_NAMES[s[0].ent_kind[id]]); bput(o[..], "\",\"id\":\"entity:"); bint(o[..], id); bput(o[..], "\"");
+    }
+    bput(o[..], ",\"d\":"); bdec(o[..], ds[i]); bput(o[..], ",\"bearing\":"); bdec(o[..], bearing_to(s, x, z)); bput(o[..], "}");
+  }
+  bput(o[..], "]}");
+  print("%\n", btext(o[..]));
+}
+// A JSON string.
+jq :: (o: [] Buf, s: string) {
+  buf: [2600] u8; j: [1] Jo; jo_start(j[..], buf[..]); jo_str(j[..], s);
+  bput(o, ifx j[0].bad then "\"\"" else jo_text(j[..]));
+}
+
+open_realm :: (s: [] Seat, c: [] Cdp, player: string) -> bool {
+  params: [4096] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], s[0].w); jo_key(o[..], "height"); jo_int(o[..], s[0].h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], ifx s[0].phone then 2 else 1); jo_key(o[..], "mobile"); jo_bool(o[..], s[0].phone); jo_end(o[..]);
+  if cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  if s[0].phone && cdp_call(c, "Emulation.setTouchEmulationEnabled", "{\"enabled\":true,\"maxTouchPoints\":5}", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return false; }
+  if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return false; }
+  origin := cast(string) s[0].origin[0..<s[0].origin_n];
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], "realm-seat");
+  jo_key(o[..], "url"); jo_str(o[..], origin); jo_end(o[..]);
+  if cdp_call(c, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  if player.count > 0 {
+    // the owner's playtest player, in place before the page's scripts run
+    src: [1] Buf; bput(src[..], "try { localStorage.setItem('verse.player', "); jq(src[..], player); bput(src[..], "); } catch {}");
+    jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "source"); jo_str(o[..], btext(src[..])); jo_end(o[..]);
+    if o[0].bad || cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  }
+  u: [1] Buf; bput(u[..], origin); bput(u[..], "/realms/built#"); bput(u[..], cast(string) s[0].slug[0..<s[0].slug_n]);
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], btext(u[..])); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+
+// One action line: runs it and prints its observation. False when it was refused or failed.
+run_action :: (s: [] Seat, c: [] Cdp, line: string, png: [] u8) -> bool {
+  nodes: [64] JvNode; d: [1] Jv;
+  s[0].result_n = 0;
+  if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { note(s, "not a JSON object"); say_observation(s, "?", false); return false; }
+  j := d[0];
+  opb: [16] u8; opn := jv_str(j, jv_get(j, 0, "op"), opb[..]); op := ifx opn > 0 then cast(string) opb[0..<opn] else "";
+  if !look_round(s, c) { note(s, "the realm isn't laid out"); say_observation(s, op, false); return false; }
+  ok := false;
+  if op == "look" { ok = do_look(s, c, dec_of(jv_raw(j, jv_get(j, 0, "turn")))); }
+  else if op == "go" {
+    tb: [64] u8; tn := jv_str(j, jv_get(j, 0, "to"), tb[..]); to := ifx tn > 0 then cast(string) tb[0..<tn] else "";
+    mx := dec_of(jv_raw(j, jv_get(j, 0, "max"))); secs := ifx mx.ok then cast(int) mx.v else 10;
+    if secs < 1 || secs > 30 { note(s, "max is 1 to 30 seconds"); }
+    else { ok = do_go(s, c, target_of(s, to, dec_of(jv_raw(j, jv_get(j, 0, "x"))), dec_of(jv_raw(j, jv_get(j, 0, "z")))), secs); }
+  }
+  else if op == "say" { wb: [1600] u8; wn := jv_str(j, jv_get(j, 0, "words"), wb[..]); ok = do_say(s, c, ifx wn > 0 then cast(string) wb[0..<wn] else ""); }
+  else if op == "bye" { ok = press(c, "Escape", "Escape", 27); proc_sleep(150); }
+  else if op == "jump" {
+    if (s[0].tools & (1 << 2)) == 0 { note(s, "this realm has jump off"); }
+    else { ok = press(c, " ", "Space", 32); proc_sleep(400); }
+  }
+  else if op == "shot" {
+    ob: [256] u8; on := jv_str(j, jv_get(j, 0, "out"), ob[..]);
+    if on <= 0 || !ends_with(cast(string) ob[0..<on], ".png") { note(s, "out names a .png file"); }
+    else { n := cdp_screenshot(c, png); ok = n > 0 && fs_write(cast(string) ob[0..<on], cast(string) png[0..<n]); if !ok { note(s, "the shot wasn't written"); } }
+  }
+  else { note(s, "op is look, go, say, bye, jump or shot"); }
+  _ := look_round(s, c);
+  say_observation(s, ifx op.count > 0 then op else "?", ok);
+  return ok;
+}
+ends_with :: (s: string, p: string) -> bool { return s.count >= p.count && s[s.count - p.count..<s.count] == p; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  origin := origin_of(args_at(a[..], 0)); slug := args_at(a[..], 1);
+  if !ok || origin.count == 0 || origin.count > 255 || !slug_ok(slug) {
+    tool_errln("usage: coax/web/tool.sh realm-seat https://staging.openagents.com SLUG [--actions FILE] [--phone] [--player-file FILE] [--shots PREFIX]");
+    return 2;
+  }
+  s: [1] Seat;
+  s[0].phone = args_has(a[..], "--phone");
+  s[0].w = ifx s[0].phone then 390 else 1440; s[0].h = ifx s[0].phone then 844 else 900;
+  for ch: origin { s[0].origin[s[0].origin_n] = ch; s[0].origin_n += 1; }
+  for ch: slug { s[0].slug[s[0].slug_n] = ch; s[0].slug_n += 1; }
+  actions: [65536] u8; an := 0;
+  path := args_value(a[..], "--actions", "");
+  if path.count > 0 { an = fs_read(path, actions[..]); if an < 0 { tool_err("realm-seat: can't read "); tool_errln(path); return 2; } }
+  player: [2048] u8; pn := 0;
+  pf := args_value(a[..], "--player-file", "");
+  if pf.count > 0 { pn = fs_read(pf, player[..]); if pn <= 0 { tool_err("realm-seat: can't read "); tool_errln(pf); return 2; } }
+  while pn > 0 && (player[pn - 1] == '\n' || player[pn - 1] == ' ') { pn -= 1; }
+  shots := args_value(a[..], "--shots", "");
+  c: [1] Cdp;
+  if !cdp_launch(c[..], s[0].w, s[0].h, "coax-realm-seat-") { tool_err("realm-seat: "); tool_errln(cdp_error(c[..])); return 1; }
+  if !open_realm(s[..], c[..], cast(string) player[0..<pn]) { tool_err("realm-seat: opening the realm: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1; }
+  if !wait_round(s[..], c[..], 60000) { tool_errln("realm-seat: the realm never laid out (private and not yours, or not there)"); cdp_close(c[..]); return 1; }
+  read_spec(s[..], c[..]);
+  note(s[..], "seated");
+  say_observation(s[..], "open", true);
+  png: [SEAT_SHOT] u8;
+  status := 0; i := 0; step := 0;
+  text := cast(string) actions[0..<an];
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e]; i = e + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    step += 1;
+    if !run_action(s[..], c[..], line, png[..]) { status = 1; }
+    if shots.count > 0 {
+      p: [1] Buf; bput(p[..], shots); bput(p[..], "-"); bint(p[..], step); bput(p[..], ".png");
+      n := cdp_screenshot(c[..], png[..]);
+      if n > 0 { _ := fs_write(btext(p[..]), cast(string) png[0..<n]); }
+    }
+  }
+  cdp_close(c[..]);
+  return status;
+}
