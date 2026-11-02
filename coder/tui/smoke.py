@@ -701,6 +701,16 @@ def verbs(check):
             check("watchdog: still repeating after a redirect, it is stopped", any(l["fate"] == "worker stopped: looping" and l.get("session") == "20261102-000000-001" for l in rw2)
                   and os.path.exists(os.path.join(sdir, "20261102-000000-001.stop")))
             check("watchdog: a quiet worker with no decision is reported as stuck", any(l["fate"] == "worker stuck" and "System One key" in l.get("note", "") for l in rw))
+            # with a key but no grant, the log never leaves: the gate refuses and logs it (chapter 18)
+            fake("20261102-000000-004", '{"kind":"tool","label":"Bash(ls)"}\n', True)
+            with open(os.path.join(rdir, "threads"), "a") as f:
+                f.write("gated\t20261102-000000-004\tlocal\n")
+            r = subprocess.run([coder, "router", "--once", "--json", "--stuck", "60"], cwd=REPO, env=dict(nokey, BASETEN_API_KEY="not-a-key"), capture_output=True, text=True, timeout=120)
+            rg = [json.loads(l) for l in r.stdout.splitlines() if l.startswith("{")]
+            cj = json.loads(subprocess.run([coder, "consent", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
+            check("consent: a quiet Worker's log goes to System One only under a session grant; without one the refusal is in the ledger",
+                  any(l["fate"] == "worker stuck" and l.get("session") == "20261102-000000-004" and "coder consent grant system-one" in l.get("note", "") for l in rg)
+                  and cj["grants"] == [] and cj["events"] >= 1)
         finally:
             sleeper.kill()
         # duplex (chapter 20): a follow-up gets its reply while the Thread's long Worker runs; the long result comes later; a stopped one says so

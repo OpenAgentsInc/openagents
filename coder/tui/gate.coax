@@ -12,8 +12,12 @@
 //   ~/.openagents/coder/consent/events.jsonl   the ledger, one event a line
 //
 // A destination is an engine (claude, codex, micro, psionic) with the
-// purpose "delegate". The echo engine is offline: nothing goes out, so it
-// is not gated.
+// purpose "delegate", or System One (system-one), a remote tool with the
+// purpose "call": the Router's watchdog sends it a quiet Worker's task and
+// the end of its log, which is session content. The echo engine is
+// offline: nothing goes out, so it is not gated.
+//
+//   coder consent grant system-one --classes session [--days N]
 
 #load "../../psionic/lib/harness/consent.coax";
 
@@ -26,6 +30,14 @@ GT_FOREVER :: 1000000000000;  // seconds, as chapter 19's facts
 GtStore :: struct { src: [GT_EVENTS] CsEvent; events: [GT_EVENTS] CsEvent; grants: [GT_GRANTS] CsGrant; }
 
 gt_dest :: (engine: int) -> CsDest { return CsDest.{kind = CsKind.agent, id = engine, purpose = CsPurpose.delegate}; }
+
+GT_SYSTEM_ONE :: 1;
+gt_so_dest :: () -> CsDest { return CsDest.{kind = CsKind.tool, id = GT_SYSTEM_ONE, purpose = CsPurpose.call}; }
+
+gt_dest_name :: (d: CsDest) -> string {
+  if d.kind == CsKind.tool && d.id == GT_SYSTEM_ONE { return "system-one"; }
+  return cd_engine_name(d.id);
+}
 
 gt_class_names :: [5] string.["session", "user", "project", "tool", "identity"];
 
@@ -153,11 +165,12 @@ cd_cmd_consent :: (sub: string, what: string, classes: string, days: int, json: 
   if sub == "grant" {
     bits := gt_classes(classes);
     if what.count == 0 || classes.count == 0 || bits <= 0 { tool_errln("coder consent grant ENGINE|all --classes user,project [--days N]   (classes: session, user, project, tool, identity)"); return 2; }
-    engines: [4] int; ne := 0;
-    if what == "all" { engines = [4] int.[ENGINE_CLAUDE, ENGINE_CODEX, ENGINE_MICRO, ENGINE_PSIONIC]; ne = 4; }
-    else { id := gt_engine_id(what); if id < 0 { tool_err("coder consent: no engine "); tool_errln(what); return 2; } engines[0] = id; ne = 1; }
+    dests: [4] CsDest; ne := 0;
+    if what == "all" { for e: [4] int.[ENGINE_CLAUDE, ENGINE_CODEX, ENGINE_MICRO, ENGINE_PSIONIC] { dests[ne] = gt_dest(e); ne += 1; } }
+    else if what == "system-one" { dests[0] = gt_so_dest(); ne = 1; }
+    else { id := gt_engine_id(what); if id < 0 { tool_err("coder consent: no engine "); tool_errln(what); return 2; } dests[0] = gt_dest(id); ne = 1; }
     for i: 0..<ne {
-      w := cs_grant(l[..], gt_dest(engines[i]), bits, now, ifx days > 0 then now + days * 86400 else GT_FOREVER, GT_PERSON, now);
+      w := cs_grant(l[..], dests[i], bits, now, ifx days > 0 then now + days * 86400 else GT_FOREVER, GT_PERSON, now);
       if w != CsWhy.ok { tool_err("coder consent: the grant was refused ("); tool_err(gt_why_name(w)); tool_errln(")"); return 1; }
     }
   } else if sub == "revoke" {
@@ -172,13 +185,13 @@ cd_cmd_consent :: (sub: string, what: string, classes: string, days: int, json: 
     state := ifx g.revoked then "revoked" else ifx now >= g.until then "expired" else "active";
     if json {
       k = json_raw(o[..], k, ifx i > 0 then ",{\"grant\":" else "{\"grant\":"); k = json_write_int(o[..], k, i);
-      k = json_raw(o[..], k, ",\"engine\":"); k = json_write_string(o[..], k, cd_engine_name(g.dest.id));
+      k = json_raw(o[..], k, ",\"engine\":"); k = json_write_string(o[..], k, gt_dest_name(g.dest));
       k = json_raw(o[..], k, ",\"classes\":"); k = json_write_string(o[..], k, gt_class_text(g.classes, cb[..]));
       k = json_raw(o[..], k, ",\"state\":\""); k = json_raw(o[..], k, state);
       k = json_raw(o[..], k, "\",\"sends\":"); k = json_write_int(o[..], k, g.sends);
       k = json_raw(o[..], k, ",\"bytes\":"); k = json_write_int(o[..], k, g.bytes); k = json_raw(o[..], k, "}");
     } else {
-      ln: [512] u8; m := cd_cat(ln[..], 0, cd_itoa(i, ib[..])); m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, cd_engine_name(g.dest.id));
+      ln: [512] u8; m := cd_cat(ln[..], 0, cd_itoa(i, ib[..])); m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, gt_dest_name(g.dest));
       m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, gt_class_text(g.classes, cb[..])); m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, state);
       m = cd_cat(ln[..], m, "  "); m = cd_cat(ln[..], m, cd_itoa(g.sends, ib[..])); m = cd_cat(ln[..], m, " sends, "); m = cd_cat(ln[..], m, cd_itoa(g.bytes, ib[..])); m = cd_cat(ln[..], m, " bytes");
       cd_outln(cast(string) ln[0..<m]);
@@ -187,6 +200,30 @@ cd_cmd_consent :: (sub: string, what: string, classes: string, days: int, json: 
   if json { k = json_raw(o[..], k, "]}"); cd_outln(cast(string) o[0..<k]); }
   else if l[0].granted == 0 { cd_outln("No grants. Remembered facts stay on this machine until you run: coder consent grant all --classes user,project"); }
   return 0;
+}
+
+// The gate on one message of session content to System One: logs the
+// decision and returns true when a grant covers it. why gets the refusal.
+gt_session_to_so :: (text: string, why: [] u8, nwhy: [] int) -> bool {
+  pb: [1400] u8; path := gt_path(pb[..]);
+  if path.count == 0 { nwhy[0] = cd_cat(why, 0, "no $HOME for the consent ledger"); return false; }
+  st: [1] GtStore; l: [1] CsLedger; file: [GT_FILE] u8;
+  w := gt_open(path, st[..], l[..], file[..]);
+  if w.count > 0 { n := cd_cat(why, 0, "the consent ledger: "); nwhy[0] = cd_cat(why, n, w); return false; }
+  now := cxproc_wall_us() / 1000000;
+  if l[0].count > 0 && l[0].events[l[0].count - 1].tick > now { now = l[0].events[l[0].count - 1].tick; }
+  texts := [1] string.[text]; own := [1] int.[1]; labels := [1] int.[1];
+  g := CsGraph.{texts = texts[..], own = own[..], labels = labels[..], count = 1};
+  sb: [40000] u8; se: [4] int; sv: [4] int;
+  s: [1] CsSink; s[0] = CsSink.{bytes = sb[..], ends = se[..], events = sv[..]};
+  parts := [1] int.[0];
+  before := l[0].count;
+  r := cs_send(l[..], g, s[..], CsMessage.{dest = gt_so_dest(), parts = parts[..]}, now);
+  saved := gt_save(path, l[0], before);
+  if r.why == CsWhy.ok && saved { return true; }
+  if !saved { nwhy[0] = cd_cat(why, 0, "the consent ledger could not be written"); return false; }
+  nwhy[0] = cd_cat(why, 0, "no consent to send its log to System One. To allow it: coder consent grant system-one --classes session");
+  return false;
 }
 
 // The gate on a session's remembered facts: parts[i] is fact i's text and

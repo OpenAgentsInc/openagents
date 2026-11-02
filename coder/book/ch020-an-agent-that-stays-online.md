@@ -173,7 +173,10 @@ log has no end line:
   by default), System One reads the task and the end of the log and answers
   whether the Worker is still making real progress. If it isn't, the
   watchdog redirects it. If it is, the watchdog logs that once and leaves
-  it. With no System One key, it logs `worker stuck` with the reason.
+  it. With no System One key, it logs `worker stuck` with the reason. The
+  log excerpt is session content, so it goes to System One only under a
+  consent grant (`coder consent grant system-one --classes session`,
+  chapter 18); without one, the Worker is reported stuck with that command.
 
 #### Provider errors
 

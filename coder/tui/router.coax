@@ -477,6 +477,10 @@ rt_progress :: (task: string, wlog: string, why: [] u8, nwhy: [] int) -> int {
   n = json_raw(sb[..], n, ",\"recent_log\":"); n = json_write_string(sb[..], n, tail);
   n = json_raw(sb[..], n, "}");
   if n < 0 { nwhy[0] = cd_cat(why, 0, "the log is too long to judge"); return -1; }
+  // session content leaves only under a grant (chapter 18), decided once a send could happen at all
+  cb: [1] SoClient; kb: [512] u8; nokey := cd_so_keyed(cb[..], kb[..]);
+  for i: 0..<kb.count { kb[i] = 0; }
+  if nokey.count == 0 && !gt_session_to_so(cast(string) sb[0..<n], why, nwhy) { return -1; }
   return rt_ask(cast(string) sb[0..<n], "The agent's log has not grown for a while. Judging by its recent steps, is it still making real progress toward its task (not looping, stalled or working on something else)?", why, nwhy);
 }
 

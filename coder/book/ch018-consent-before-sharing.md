@@ -10,7 +10,9 @@
 > covered. In Coder, the gate stands between
 > [chapter 19](ch019-remember-a-fact-then-revise-it.md)'s remembered facts
 > and every engine, with `coder consent` to grant and revoke and a ledger
-> on disk that each process replays. Still to come: the gate on
+> on disk that each process replays. It also stands between a quiet
+> Worker's log and System One, which the watchdog asks about it. Still to
+> come: the gate on System One's routing calls,
 > [chapter 16](ch016-speak-the-protocols.md)'s outbound calls, mesh peer
 > links and [Psionic chapter 247](../../psionic/book/ch247-outcomes-become-training-rows.md)'s
 > export, and labels for [chapter 2](ch002-model-visible-means-logged.md)'s
@@ -743,12 +745,39 @@ refused with no grant, refused when only a `user` grant exists for a
 `project` fact, sent under a `project` grant, refused after the revoke,
 and the ledger's counts. The code is in [coder/tui/gate.coax](../tui/gate.coax).
 
+### Session content to System One
+
+The second path is the Router's watchdog (chapter 20). When a Worker's log
+stops growing, the watchdog asks System One, on Baseten, whether the Worker
+is still making progress, and sends it the task and the last 12,000 bytes
+of the Worker's log, tool output included. That is session content, so it
+is one node labelled `session`, and its destination is System One as a
+remote tool with the purpose `call`:
+
+```shell
+coder/tui/coder.sh consent grant system-one --classes session
+```
+
+With no grant, `cs_send` refuses and logs it, nothing is sent, and the
+watchdog reports the Worker as stuck with the command above. The gate runs
+only when a send could happen: with no System One key, the Worker is
+reported stuck for that reason and the ledger is untouched.
+
+In a live run on 2026-11-02, a quiet stand-in Worker with no grant was
+reported as "no consent to send its log to System One". After the grant,
+System One judged two such Workers as still making progress, and the
+grant listed `2 sends, 792 bytes`. The smoke checks the refusal offline,
+with a key that is never used.
+
 ## What this does not do yet
 
-- **The gate guards one path.** Remembered facts to engines go through
-  it. Chapter 16's `tools/call` requests, mesh peer links and Psionic
-  chapter 247's training-row export still need to build a `CsMessage` and
-  go through `cs_send`.
+- **The gate guards two paths.** Remembered facts to engines, and the
+  watchdog's log excerpts to System One, go through it. Other calls to
+  System One are not gated yet: routing sends the task's text to pick an
+  engine (chapter 13), and the Router sends an event's text to decide
+  whether it asks for work (chapter 17). Chapter 16's `tools/call`
+  requests, mesh peer links and Psionic chapter 247's training-row export
+  still need to build a `CsMessage` and go through `cs_send`.
 - **Labels come only from facts.** Coder labels each chapter 19 fact by
   its scope. The text you type in a session and tool output (`session`
   and `tool`) are not yet nodes, so the engine receives them without a
