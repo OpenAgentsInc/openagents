@@ -400,6 +400,480 @@ static int64_t constant_of_expr(const Expr *e) {
   if (e && e->kind == ExprKind::ident && e->constant && e->constant->expr) e = e->constant->expr;
   return e && e->kind == ExprKind::int_lit ? (int64_t)e->int_value : -1;
 }
+
+// ---- 32-bit integers in Metal kernels ----
+// An Apple GPU adds, multiplies and compares 64-bit integers in several
+// 32-bit steps, so `coax metal-compute` emits a second body of each kernel
+// whose int locals, loop counters and operations are 32-bit wherever a
+// bound proves the 64-bit value fits. The entry runs that body only when
+// the launch meets the bounds the proof assumed: the item count and every
+// int parameter the proof relies on at most NARROW_BOUND in magnitude, and,
+// when a 32-bit index checks a view parameter, every view parameter's
+// count below 2^31. Otherwise it runs the 64-bit body. Both bodies compute
+// the same values, so the result never depends on which one ran.
+//
+// The bounds are intervals, flow-insensitive: a local's interval holds
+// every value any of its assignments can store (iterated to a fixed point,
+// a local that keeps growing is unbounded), a loop counter's its bounds',
+// a thread loop's counter [0, T - 1]. An interval carries the parameters
+// it assumed (mask: bit 0 the item count, bit i parameter i, bit 63 the
+// view counts).
+static const int64_t NARROW_BOUND = (int64_t)1 << 20;
+struct NIv {
+  int64_t lo = 1, hi = 0;  // empty until assigned
+  uint64_t mask = 0;
+  bool empty() const { return lo > hi; }
+  bool fits32() const { return !empty() && lo >= INT32_MIN && hi <= INT32_MAX; }
+  bool operator==(const NIv &o) const { return lo == o.lo && hi == o.hi && mask == o.mask; }
+};
+static NIv niv_full() { return {INT64_MIN, INT64_MAX, 0}; }
+static NIv niv_make(__int128 lo, __int128 hi, uint64_t mask) {
+  if (lo < INT64_MIN || hi > INT64_MAX) return niv_full();
+  NIv r; r.lo = (int64_t)lo; r.hi = (int64_t)hi; r.mask = mask;
+  if (r.lo == INT64_MIN && r.hi == INT64_MAX) r.mask = 0;
+  return r;
+}
+static NIv niv_join(const NIv &a, const NIv &b) {
+  if (a.empty()) return b;
+  if (b.empty()) return a;
+  return niv_make(std::min(a.lo, b.lo), std::max(a.hi, b.hi), a.mask | b.mask);
+}
+static NIv niv_range(Type t) {
+  Type b = t->kind == TypeKind::enum_ ? t->elem : t;
+  if (!b || b->kind != TypeKind::integer || b->bits >= 64) return b && !b->is_signed && b->bits >= 64 ? niv_make(0, INT64_MAX, 0) : niv_full();
+  if (b->is_signed) return niv_make(-((__int128)1 << (b->bits - 1)), ((__int128)1 << (b->bits - 1)) - 1, 0);
+  return niv_make(0, ((__int128)1 << b->bits) - 1, 0);
+}
+static NIv niv_binary(Tok op, const NIv &a, const NIv &b) {
+  if (a.empty() || b.empty()) return NIv{};
+  uint64_t m = a.mask | b.mask;
+  __int128 al = a.lo, ah = a.hi, bl = b.lo, bh = b.hi;
+  switch (op) {
+    case Tok::plus: return niv_make(al + bl, ah + bh, m);
+    case Tok::minus: return niv_make(al - bh, ah - bl, m);
+    case Tok::star: {
+      // Each corner fits in 127 bits: the operands are 64-bit.
+      __int128 p[4] = {al * bl, al * bh, ah * bl, ah * bh};
+      return niv_make(std::min(std::min(p[0], p[1]), std::min(p[2], p[3])), std::max(std::max(p[0], p[1]), std::max(p[2], p[3])), m);
+    }
+    case Tok::slash: case Tok::percent: {
+      // A divisor of zero traps, and the checked operation then yields 0.
+      if (b.lo < 0) {
+        // Either sign: |a / b| <= |a|, and |a % b| < |b| with a's sign.
+        if (a.lo == INT64_MIN || b.lo == INT64_MIN) return niv_full();
+        __int128 A = std::max(-al, ah), M = std::max(-bl, bh);
+        if (op == Tok::slash) return niv_make(-A, A, m);
+        return niv_make(a.lo >= 0 ? 0 : -std::min(A, M - 1), a.hi <= 0 ? 0 : std::min(A, M - 1), m);
+      }
+      if (b.hi == 0) return niv_make(0, 0, m);
+      NIv r;
+      if (bl < 1) { bl = 1; r = niv_make(0, 0, m); }
+      if (op == Tok::slash) {
+        __int128 q[4] = {al / bl, al / bh, ah / bl, ah / bh};  // truncation toward zero, as C and Coax
+        return niv_join(r, niv_make(std::min(std::min(q[0], q[1]), std::min(q[2], q[3])), std::max(std::max(q[0], q[1]), std::max(q[2], q[3])), m));
+      }
+      if (a.lo >= 0) return niv_join(r, niv_make(0, std::min(ah, bh - 1), m));  // the remainder takes the dividend's sign
+      if (a.hi <= 0) return niv_join(r, niv_make(std::max(al, -(bh - 1)), 0, m));
+      return niv_join(r, niv_make(-(bh - 1), bh - 1, m));
+    }
+    case Tok::amp:
+      if (a.lo >= 0 && b.lo >= 0) return niv_make(0, std::min(ah, bh), m);
+      if (a.lo >= 0) return niv_make(0, ah, a.mask);
+      if (b.lo >= 0) return niv_make(0, bh, b.mask);
+      return niv_full();
+    case Tok::shr:
+      if (b.lo < 0 || b.hi > 63) return niv_full();
+      if (a.lo >= 0) return niv_make(al >> bh, ah >> bl, m);
+      return niv_make(al >> bl, a.hi >= 0 ? ah >> bl : ah >> bh, m);
+    default: return niv_full();
+  }
+}
+
+struct Narrow {
+  const ProcDecl *proc = nullptr;
+  int64_t threads = 32;                            // a thread loop's counter is below this
+  std::map<const Expr *, const Stmt *> local;      // an identifier's int local (a var or a for counter)
+  std::map<const Expr *, int32_t> param;           // an identifier's parameter
+  std::map<const Expr *, const Stmt *> vlocal;     // an identifier's view local
+  std::set<const Stmt *> vassigned;                // view locals assigned after their declaration
+  // A call to a procedure whose body is one `return` of an int: that
+  // expression's interval, with the callee's parameters at the arguments'.
+  std::map<const Expr *, int32_t> callee_param;
+  std::set<const ProcDecl *> callees_resolved;
+  std::vector<std::vector<NIv>> frames;
+  std::map<const Stmt *, std::vector<const Stmt *>> assigns;  // a local's assignments
+  std::vector<const Stmt *> loops;                 // the loops around the statement being resolved
+  std::map<const Stmt *, size_t> depth;            // a local's: how many loops are around its declaration
+  std::map<const Stmt *, std::vector<const Stmt *>> around;  // an assignment's loops
+  std::set<int32_t> assigned_params;
+  std::map<const Stmt *, NIv> var;                 // each int local's interval
+  std::map<const Expr *, NIv> iv;                  // each integer expression's (the last pass)
+  std::set<const Stmt *> narrow_vars;              // int locals and counters the 32-bit body declares int32_t
+  uint64_t guard = 0;                              // what the 32-bit body assumed
+  bool any = false;
+  bool recording = false;
+
+  bool is_local(const Stmt *s) const { return (s->kind == StmtKind::var || s->kind == StmtKind::for_range) && s->type == T_INT; }
+
+  // Identifiers to their declarations; each local's assignments.
+  void resolve_expr(const Expr *e, std::vector<std::map<std::string, const Stmt *>> &scopes, const std::map<std::string, int32_t> &params) {
+    if (!e) return;
+    if (e->kind == ExprKind::ident && !e->constant) {
+      std::string n(e->text.data, (size_t)e->text.count);
+      bool found = false;
+      for (size_t i = scopes.size(); i-- > 0 && !found;) {
+        auto f = scopes[i].find(n);
+        if (f != scopes[i].end()) {
+          found = true;
+          if (f->second && is_local(f->second)) local[e] = f->second;
+          else if (f->second) vlocal[e] = f->second;
+        }
+      }
+      if (!found) { auto p = params.find(n); if (p != params.end()) param[e] = p->second; }
+    }
+    resolve_expr(e->lhs, scopes, params); resolve_expr(e->rhs, scopes, params); resolve_expr(e->third, scopes, params);
+    for (int32_t k = 0; k < e->args.count; k++) resolve_expr(e->args[k], scopes, params);
+    for (int32_t k = 0; k < e->fields.count; k++) resolve_expr(e->fields[k].value, scopes, params);
+  }
+  void declare(Str name, const Stmt *s, std::vector<std::map<std::string, const Stmt *>> &scopes) {
+    // Any declaration hides a parameter of that name; int scalars and views are tracked.
+    bool view = s && s->kind == StmtKind::var && s->type->kind == TypeKind::view;
+    scopes.back()[std::string(name.data, (size_t)name.count)] = s && (is_local(s) || view) ? s : nullptr;
+  }
+  void resolve(const Stmt *s, std::vector<std::map<std::string, const Stmt *>> &scopes, const std::map<std::string, int32_t> &params) {
+    if (!s) return;
+    switch (s->kind) {
+      case StmtKind::block:
+        scopes.push_back({});
+        for (int32_t k = 0; k < s->body.count; k++) resolve(s->body[k], scopes, params);
+        scopes.pop_back();
+        break;
+      case StmtKind::var:
+        resolve_expr(s->expr, scopes, params);
+        declare(s->name, s, scopes);
+        if (is_local(s)) { assigns[s]; depth[s] = loops.size(); }
+        break;
+      case StmtKind::assign:
+        resolve_expr(s->target, scopes, params); resolve_expr(s->expr, scopes, params);
+        around[s] = loops;
+        if (s->target && s->target->kind == ExprKind::ident) {
+          auto l = local.find(s->target);
+          if (l != local.end()) assigns[l->second].push_back(s);
+          auto p = param.find(s->target);
+          if (p != param.end()) assigned_params.insert(p->second);
+          auto v = vlocal.find(s->target);
+          if (v != vlocal.end()) vassigned.insert(v->second);
+        }
+        break;
+      case StmtKind::for_range:
+        resolve_expr(s->expr, scopes, params); resolve_expr(s->expr2, scopes, params);
+        scopes.push_back({});
+        declare(s->name, s, scopes);
+        if (is_local(s)) assigns[s];
+        loops.push_back(s);
+        resolve(s->then_, scopes, params);
+        loops.pop_back();
+        scopes.pop_back();
+        break;
+      case StmtKind::for_each:
+        resolve_expr(s->expr, scopes, params);
+        scopes.push_back({});
+        declare(s->name, nullptr, scopes);
+        if (s->name2.count) declare(s->name2, nullptr, scopes);
+        loops.push_back(s);
+        resolve(s->then_, scopes, params);
+        loops.pop_back();
+        scopes.pop_back();
+        break;
+      case StmtKind::while_:
+        resolve_expr(s->expr, scopes, params);
+        loops.push_back(s);
+        resolve(s->then_, scopes, params);
+        loops.pop_back();
+        break;
+      default:
+        resolve_expr(s->expr, scopes, params); resolve_expr(s->expr2, scopes, params); resolve_expr(s->target, scopes, params);
+        resolve(s->then_, scopes, params); resolve(s->else_, scopes, params);
+        break;
+    }
+  }
+
+  NIv param_iv(int32_t i) const {
+    Type t = proc->params[i].type;
+    if (t != T_INT) return niv_range(t);
+    if (assigned_params.count(i)) return niv_full();
+    if (i == 0) return niv_make(0, NARROW_BOUND - 1, 1);  // the item: below the item count
+    if (i >= 63) return niv_full();
+    return niv_make(0, NARROW_BOUND, (uint64_t)1 << i);
+  }
+  NIv eval(const Expr *e) {
+    NIv r = eval_inner(e);
+    if (recording && e && is_int(e->type)) iv[e] = r;
+    return r;
+  }
+  NIv eval_inner(const Expr *e) {
+    if (!e || !is_int(e->type)) { if (e && recording) eval_children(e); return niv_full(); }
+    if (e->type != T_INT) { eval_children(e); return e->kind == ExprKind::int_lit ? niv_make((int64_t)e->int_value, (int64_t)e->int_value, 0) : niv_range(e->type); }
+    switch (e->kind) {
+      case ExprKind::int_lit: return niv_make((int64_t)e->int_value, (int64_t)e->int_value, 0);
+      case ExprKind::ident: {
+        if (e->constant) {
+          const Expr *c = e->constant->expr;
+          return c && c->kind == ExprKind::int_lit ? niv_make((int64_t)c->int_value, (int64_t)c->int_value, 0) : niv_full();
+        }
+        auto l = local.find(e);
+        if (l != local.end()) { auto v = var.find(l->second); return v == var.end() ? niv_full() : v->second; }
+        if (!frames.empty()) {
+          auto c = callee_param.find(e);
+          return c == callee_param.end() || c->second >= (int32_t)frames.back().size() ? niv_full() : frames.back()[(size_t)c->second];
+        }
+        auto p = param.find(e);
+        if (p != param.end()) return param_iv(p->second);
+        return niv_full();
+      }
+      case ExprKind::call: {
+        const ProcDecl *f = e->proc;
+        std::vector<NIv> args;
+        for (int32_t k = 0; k < e->args.count; k++) args.push_back(eval(e->args[k]));
+        if (!f || f->foreign || !f->body || f->body->body.count != 1 || frames.size() >= 4) return niv_full();
+        const Stmt *r = f->body->body[0];
+        if (r->kind != StmtKind::ret || !r->expr || r->expr->type != T_INT || f->params.count != e->args.count) return niv_full();
+        if (!callees_resolved.count(f)) {
+          callees_resolved.insert(f);
+          std::map<std::string, int32_t> ps;
+          for (int32_t i = 0; i < f->params.count; i++) ps[std::string(f->params[i].name.data, (size_t)f->params[i].name.count)] = i;
+          std::function<void(const Expr *)> mark = [&](const Expr *x) {
+            if (!x) return;
+            if (x->kind == ExprKind::ident && !x->constant) {
+              auto q = ps.find(std::string(x->text.data, (size_t)x->text.count));
+              if (q != ps.end()) callee_param[x] = q->second;
+            }
+            mark(x->lhs); mark(x->rhs); mark(x->third);
+            for (int32_t k = 0; k < x->args.count; k++) mark(x->args[k]);
+          };
+          mark(r->expr);
+        }
+        bool saved = recording;
+        recording = false;  // the callee's expressions are not this kernel's
+        frames.push_back(args);
+        NIv v = eval(r->expr);
+        frames.pop_back();
+        recording = saved;
+        return v;
+      }
+      case ExprKind::binary: {
+        NIv a = eval(e->lhs), b = eval(e->rhs);
+        return niv_binary(e->op, a, b);
+      }
+      case ExprKind::unary: {
+        NIv a = eval(e->lhs);
+        if (e->op != Tok::minus || a.empty()) return a.empty() ? a : niv_full();
+        return niv_make(-(__int128)a.hi, -(__int128)a.lo, a.mask);
+      }
+      case ExprKind::cast: {
+        NIv a = eval(e->lhs);
+        if (!is_int(e->lhs->type)) return niv_full();
+        if (e->trunc && e->lhs->type->bits > 64) return niv_full();
+        if (e->lhs->type == T_INT || (e->lhs->type->is_signed && e->lhs->type->bits <= 64) || e->lhs->type->bits < 64) return a;
+        return niv_full();
+      }
+      case ExprKind::ifx: {
+        eval(e->lhs);
+        return niv_join(eval(e->rhs), eval(e->third));
+      }
+      case ExprKind::field:
+        eval_children(e);
+        if (e->field_index == -2 && e->lhs->type->kind == TypeKind::view) {
+          if (e->lhs->kind == ExprKind::ident && param.count(e->lhs) && !assigned_params.count(param.at(e->lhs)))
+            return niv_make(0, INT32_MAX, (uint64_t)1 << 63);
+          return niv_make(0, INT64_MAX, 0);
+        }
+        if (e->field_index == -2 && e->lhs->type->kind == TypeKind::array) return niv_make(e->lhs->type->length, e->lhs->type->length, 0);
+        return niv_full();
+      default:
+        eval_children(e);
+        return niv_full();
+    }
+  }
+  void eval_children(const Expr *e) {
+    if (!recording || !e) return;
+    eval(e->lhs); eval(e->rhs); eval(e->third);
+    for (int32_t k = 0; k < e->args.count; k++) eval(e->args[k]);
+    for (int32_t k = 0; k < e->fields.count; k++) eval(e->fields[k].value);
+  }
+  // Every value a local's assignments can store, under the current intervals.
+  NIv defs(const Stmt *l) {
+    NIv r;
+    if (l->kind == StmtKind::for_range) {
+      if (g_warp.thread_loops.count(l)) return niv_make(0, g_warp.thread_loops.at(l) - 1, 0);
+      if (g_warp.lane_loops.count(l)) return niv_make(0, 31, 0);
+      NIv lo = eval(l->expr), hi = eval(l->expr2);
+      if (lo.empty() || hi.empty()) return NIv{};
+      r = niv_make(lo.lo, std::max((__int128)lo.lo, (__int128)hi.hi - 1), lo.mask | hi.mask);
+    } else if (l->expr) r = eval(l->expr);
+    else r = l->uninit ? niv_full() : niv_make(0, 0, 0);
+    // Increments (v += e, v = v + e, e not negative and not reading v) add at
+    // most e's largest value once per pass of the loops between v's
+    // declaration and the increment: a thread loop's body runs once, a
+    // for loop's its bounds' count of times, a while or for-each loop
+    // without a bound.
+    __int128 added = 0;
+    uint64_t added_mask = 0;
+    bool bounded = true;
+    std::vector<const Stmt *> rest;
+    for (const Stmt *a : assigns[l]) {
+      const Expr *inc = increment(a, l);
+      if (!inc || l->kind != StmtKind::var) { rest.push_back(a); continue; }
+      NIv e = eval(inc);
+      if (e.empty()) continue;
+      __int128 trips = 1;
+      const std::vector<const Stmt *> &ls = around[a];
+      for (size_t k = depth[l]; k < ls.size() && bounded; k++) {
+        const Stmt *L = ls[k];
+        if (g_warp.thread_loops.count(L) || g_warp.lane_loops.count(L)) continue;
+        if (L->kind != StmtKind::for_range) { bounded = false; break; }
+        NIv lo = eval(L->expr), hi = eval(L->expr2);
+        if (lo.empty() || hi.empty() || !lo.fits32() || !hi.fits32()) { bounded = false; break; }
+        trips *= std::max((__int128)0, (__int128)hi.hi - lo.lo);
+        added_mask |= lo.mask | hi.mask;
+        if (trips > ((__int128)1 << 40)) bounded = false;
+      }
+      if (e.lo < 0 || !e.fits32()) bounded = false;
+      if (!bounded) break;
+      added += trips * e.hi;
+      added_mask |= e.mask;
+    }
+    if (!bounded) { rest = assigns[l]; added = 0; added_mask = 0; }
+    for (const Stmt *a : rest) {
+      NIv v = eval(a->expr);
+      if (a->op != Tok::equal) {
+        static const std::map<Tok, Tok> base = {{Tok::plus_equal, Tok::plus}, {Tok::minus_equal, Tok::minus}, {Tok::star_equal, Tok::star},
+                                                {Tok::slash_equal, Tok::slash}, {Tok::percent_equal, Tok::percent}, {Tok::amp_equal, Tok::amp},
+                                                {Tok::shr_equal, Tok::shr}};
+        auto b = base.find(a->op);
+        auto cur = var.find(l);
+        v = b == base.end() || cur == var.end() ? niv_full() : niv_binary(b->second, cur->second, v);
+      }
+      r = niv_join(r, v);
+    }
+    if (added && !r.empty()) r = niv_make(r.lo, (__int128)r.hi + added, r.mask | added_mask);
+    return r;
+  }
+  bool reads(const Expr *e, const Stmt *l) const {
+    if (!e) return false;
+    if (e->kind == ExprKind::ident) { auto f = local.find(e); if (f != local.end() && f->second == l) return true; }
+    if (reads(e->lhs, l) || reads(e->rhs, l) || reads(e->third, l)) return true;
+    for (int32_t k = 0; k < e->args.count; k++) if (reads(e->args[k], l)) return true;
+    for (int32_t k = 0; k < e->fields.count; k++) if (reads(e->fields[k].value, l)) return true;
+    return false;
+  }
+  // The amount an assignment adds to l, when it is v += e or v = v + e (e + v).
+  const Expr *increment(const Stmt *a, const Stmt *l) const {
+    if (a->op == Tok::plus_equal) return reads(a->expr, l) ? nullptr : a->expr;
+    if (a->op != Tok::equal || !a->expr || a->expr->kind != ExprKind::binary || a->expr->op != Tok::plus) return nullptr;
+    const Expr *x = a->expr->lhs, *y = a->expr->rhs;
+    auto self = [&](const Expr *v) { auto f = v->kind == ExprKind::ident ? local.find(v) : local.end(); return f != local.end() && f->second == l; };
+    if (self(x) && !reads(y, l)) return y;
+    if (self(y) && !reads(x, l)) return x;
+    return nullptr;
+  }
+  void walk(const Stmt *s) {
+    if (!s) return;
+    eval(s->expr); eval(s->expr2); eval(s->target);
+    for (int32_t k = 0; k < s->body.count; k++) walk(s->body[k]);
+    walk(s->then_); walk(s->else_);
+  }
+
+  void analyze(const ProcDecl *p) {
+    proc = p;
+    std::map<std::string, int32_t> params;
+    for (int32_t i = 0; i < p->params.count; i++) params[std::string(p->params[i].name.data, (size_t)p->params[i].name.count)] = i;
+    std::vector<std::map<std::string, const Stmt *>> scopes;
+    resolve(p->body, scopes, params);
+    // A fixed point: intervals only grow, and a local that grew six times is unbounded.
+    // Every local starts empty (no value yet); one still empty at the fixed
+    // point becomes unbounded, and the iteration goes on from there.
+    std::map<const Stmt *, int> grew;
+    for (auto &[l, unused] : assigns) { (void)unused; var[l] = NIv{}; }
+    for (bool again = true; again;) {
+      for (bool changed = true; changed;) {
+        changed = false;
+        for (auto &[l, unused] : assigns) {
+          (void)unused;
+          NIv n = niv_join(var[l], defs(l));
+          if (n == var[l]) continue;
+          if (++grew[l] > 6) n = niv_full();
+          if (n == var[l]) continue;
+          var[l] = n;
+          changed = true;
+        }
+      }
+      again = false;
+      for (auto &[l, v] : var) if (v.empty()) { v = niv_full(); again = true; }
+    }
+    recording = true;
+    walk(p->body);
+    recording = false;
+    for (auto &[l, v] : var) {
+      if (!v.fits32()) continue;
+      if (l->kind == StmtKind::for_range && !g_warp.thread_loops.count(l) && !g_warp.lane_loops.count(l) &&
+          !(iv.count(l->expr) && iv[l->expr].fits32() && iv.count(l->expr2) && iv[l->expr2].fits32())) continue;
+      narrow_vars.insert(l);
+      guard |= v.mask;
+      if (l->kind == StmtKind::for_range && iv.count(l->expr)) guard |= iv[l->expr].mask | iv[l->expr2].mask;
+      any = true;
+    }
+    sites(p->body);
+  }
+  // e is computed in 32 bits: an int value whose interval fits.
+  bool fits(const Expr *e) const { auto f = iv.find(e); return e && e->type == T_INT && f != iv.end() && f->second.fits32(); }
+  uint64_t mask(const Expr *e) const { auto f = iv.find(e); return f == iv.end() ? 0 : f->second.mask; }
+  static bool comparison(Tok op) { return op == Tok::eqeq || op == Tok::noteq || op == Tok::lt || op == Tok::le || op == Tok::gt || op == Tok::ge; }
+  // A binary operation the 32-bit body computes in 32 bits: + - * of values
+  // that fit with a result that fits, / and % by a positive divisor, or a
+  // comparison of two values that fit.
+  bool binary_site(const Expr *e) const {
+    if (!e || e->kind != ExprKind::binary || !fits(e->lhs) || !fits(e->rhs)) return false;
+    if (comparison(e->op)) return true;
+    if (e->op != Tok::plus && e->op != Tok::minus && e->op != Tok::star && e->op != Tok::slash && e->op != Tok::percent) return false;
+    return fits(e);
+  }
+  // A view parameter, or a view local declared as a slice of one and never
+  // assigned: its count is at most the parameter's.
+  bool view_param(const Expr *v, int depth = 0) const {
+    if (!v || v->kind != ExprKind::ident || depth > 16) return false;
+    auto p = param.find(v);
+    if (p != param.end()) return !assigned_params.count(p->second);
+    auto l = vlocal.find(v);
+    if (l == vlocal.end() || vassigned.count(l->second)) return false;
+    const Expr *init = l->second->expr;
+    return init && init->kind == ExprKind::slice && view_param(init->lhs, depth + 1);
+  }
+  // An index the 32-bit body checks in 32 bits: a fitting index into a
+  // fixed array or a view parameter (whose count the entry checked).
+  bool index_site(const Expr *e) const {
+    if (!e || e->kind != ExprKind::index || !fits(e->rhs)) return false;
+    Type t = e->lhs->type;
+    if (t->kind == TypeKind::array) return t->length <= INT32_MAX;
+    return t->kind == TypeKind::view && view_param(e->lhs);
+  }
+  void sites(const Expr *e) {
+    if (!e) return;
+    if (binary_site(e)) { guard |= mask(e->lhs) | mask(e->rhs) | mask(e); any = true; }
+    if (index_site(e)) { guard |= mask(e->rhs) | (e->lhs->type->kind == TypeKind::view ? (uint64_t)1 << 63 : 0); any = true; }
+    sites(e->lhs); sites(e->rhs); sites(e->third);
+    for (int32_t k = 0; k < e->args.count; k++) sites(e->args[k]);
+    for (int32_t k = 0; k < e->fields.count; k++) sites(e->fields[k].value);
+  }
+  void sites(const Stmt *s) {
+    if (!s) return;
+    sites(s->expr); sites(s->expr2); sites(s->target);
+    for (int32_t k = 0; k < s->body.count; k++) sites(s->body[k]);
+    sites(s->then_); sites(s->else_);
+  }
+};
+std::map<const ProcDecl *, Narrow> g_narrow;
+
 // Set while `coax metal-compute` emits: f64 is the float-float pair coax_ff.
 static bool g_metal_compute = false;
 
@@ -579,6 +1053,7 @@ struct Emitter {
   bool versioned = false;               // a loop was versioned: the output needs IV_RUNTIME
   int version_depth = 0;                // inside either copy of a versioned loop: no nested versioning
   std::set<const Expr *> unchecked;     // the fast copy's indexes, proven in range by its guard
+  const Narrow *n32 = nullptr;          // emitting a Metal kernel's 32-bit body (Narrow)
   std::map<const ProcDecl *, std::string> verification_names;
   std::map<const Expr *, int32_t> verification_ct_ids;
   std::string out;          // the current function body
@@ -833,6 +1308,18 @@ struct Emitter {
 
   std::string ex(const Expr *e) {
     std::string line = std::to_string(e->loc.line);
+    if (n32 && n32->binary_site(e)) {
+      const char *op = e->op == Tok::plus ? " + " : e->op == Tok::minus ? " - " : e->op == Tok::star ? " * " : e->op == Tok::slash ? " / " :
+                       e->op == Tok::percent ? " % " : e->op == Tok::eqeq ? " == " : e->op == Tok::noteq ? " != " : e->op == Tok::lt ? " < " :
+                       e->op == Tok::le ? " <= " : e->op == Tok::gt ? " > " : " >= ";
+      // The intervals prove no 32-bit step overflows (so no INT32_MIN / -1);
+      // a divisor that may be zero or negative keeps the checked helper.
+      bool zero = (e->op == Tok::slash || e->op == Tok::percent) && n32->iv.at(e->rhs).lo <= 0;
+      return ordered({{e->lhs, false}, {e->rhs, false}}, [&](const std::vector<std::string> &x) {
+        if (zero) return std::string(e->op == Tok::slash ? "coax_div32(" : "coax_mod32(") + "(int32_t)(" + x[0] + "), (int32_t)(" + x[1] + "), " + line + ")";
+        return "((int32_t)(" + x[0] + ")" + op + "(int32_t)(" + x[1] + "))";
+      });
+    }
     switch (e->kind) {
       case ExprKind::int_lit: return int_text(e->type, e->int_value);
       case ExprKind::enum_value: return int_text(e->type, e->int_value);
@@ -968,6 +1455,15 @@ struct Emitter {
             return local_name(e->lhs->text) + "[(" + ex(e->rhs) + ") - l_lane * " + std::to_string(at->second) + "]";
         }
         Type lt = e->lhs->type;
+        if (n32 && n32->index_site(e)) {
+          if (lt->kind == TypeKind::view)
+            return ordered({{e->lhs, false}, {e->rhs, false}}, [&](const std::vector<std::string> &t) {
+              return "(*coax_elem32_" + tag(lt) + "(" + t[0] + ", (int32_t)(" + t[1] + "), " + line + "))";
+            }, true);
+          return ordered({{e->lhs, is_place(e->lhs)}, {e->rhs, false}}, [&](const std::vector<std::string> &t) {
+            return "(" + t[0] + ").e[coax_index32((int32_t)(" + t[1] + "), " + std::to_string(lt->length) + ", " + line + ")]";
+          }, is_place(e));
+        }
         if (!unchecked.empty() && unchecked.count(e)) {
           std::string object = ex(e->lhs);
           std::string at = plain_index(e->rhs);
@@ -1222,6 +1718,17 @@ struct Emitter {
       }
       return;
     }
+    // A 32-bit local updated by + - or * of a 32-bit value: the local's
+    // interval holds every value it stores, so the update fits as well.
+    if (n32 && target->kind == ExprKind::ident && (s->op == Tok::plus_equal || s->op == Tok::minus_equal || s->op == Tok::star_equal)) {
+      auto l = n32->local.find(target);
+      if (l != n32->local.end() && n32->narrow_vars.count(l->second) && n32->fits(s->expr)) {
+        std::string t = ex(target);
+        const char *op = s->op == Tok::plus_equal ? " + " : s->op == Tok::minus_equal ? " - " : " * ";
+        line(t + " = (int32_t)(" + t + ")" + op + "(int32_t)(" + ex(s->expr) + ");");
+        return;
+      }
+    }
     // x op= v: the place is evaluated once, then v, then the update.
     Expr place{}, value{}, bin{};
     bool direct = !lowering_compound_staged(target, s->expr, policy());
@@ -1282,7 +1789,7 @@ struct Emitter {
           else { line("__shared__ " + c + " coax_tg_" + n + ";"); line(c + " &" + n + " = coax_tg_" + n + ";"); }
           // An f64 element on Metal is a float-float pair, which 0 does not convert to.
           std::string zero = opts.metal_compute && zero_value(s->type->elem) == "coax_ff_make(0.0f, 0.0f)" ? zero_value(s->type->elem) : "0";
-          line("for (int64_t coax_z = " + std::string(opts.metal_compute ? "(int64_t)coax_lane" : "(int64_t)threadIdx.x") + "; coax_z < " +
+          line(std::string(n32 ? "for (int32_t coax_z = (int32_t)coax_lane" : opts.metal_compute ? "for (int64_t coax_z = (int64_t)coax_lane" : "for (int64_t coax_z = (int64_t)threadIdx.x") + "; coax_z < " +
                std::to_string(s->type->length) + "; coax_z += " + T + ") " + n + ".e[coax_z] = " + zero + ";");
           line(group_barrier());
           break;
@@ -1294,7 +1801,7 @@ struct Emitter {
           line("for (int coax_z = 0; coax_z < 8; coax_z++) " + n + "[coax_z] = make_filled_simdgroup_matrix<float, 8, 8>(0.0f);");
           break;
         }
-        std::string decl = c_type(s->type) + " " + local_name(s->name);
+        std::string decl = (n32 && n32->narrow_vars.count(s) ? std::string("int32_t") : c_type(s->type)) + " " + local_name(s->name);
         if (s->expr) decl += " = " + ex(s->expr);
         else if (!s->uninit) decl += " = " + zero_value(s->type);  // zero or defaults, unless `---`
         line(decl + ";");
@@ -1337,18 +1844,20 @@ struct Emitter {
       case StmtKind::for_range: {
         if (device() && g_warp.lane_loops.count(s)) {
           // Each lane runs the body once, as its own `lane`.
-          loop(s->then_, {"const int64_t " + local_name(s->name) + (opts.metal_compute ? " = (int64_t)coax_lane;" : " = (int64_t)(threadIdx.x & 31u);")});
+          if (n32) loop(s->then_, {"const int32_t " + local_name(s->name) + " = (int32_t)coax_lane;"});
+          else loop(s->then_, {"const int64_t " + local_name(s->name) + (opts.metal_compute ? " = (int64_t)coax_lane;" : " = (int64_t)(threadIdx.x & 31u);")});
           break;
         }
         if (device() && g_warp.thread_loops.count(s)) {
           // A phase: every thread of the group runs the body as its own
           // `thread`, between two barriers.
           line(group_barrier());
-          block_body(s->then_, {"const int64_t " + local_name(s->name) + (opts.metal_compute ? " = (int64_t)coax_lane;" : " = (int64_t)threadIdx.x;")});
+          if (n32) block_body(s->then_, {"const int32_t " + local_name(s->name) + " = (int32_t)coax_lane;"});
+          else block_body(s->then_, {"const int64_t " + local_name(s->name) + (opts.metal_compute ? " = (int64_t)coax_lane;" : " = (int64_t)threadIdx.x;")});
           line(group_barrier());
           break;
         }
-        std::string t = c_type(s->type), n = std::to_string(temp_count++);
+        std::string t = n32 && n32->narrow_vars.count(s) ? "int32_t" : c_type(s->type), n = std::to_string(temp_count++);
         std::string i = local_name(s->name);
         line("{");
         indent++;
@@ -1606,7 +2115,7 @@ struct Emitter {
 
   std::string prototype(const ProcDecl *p, bool header = false) {
     std::string s = (opts.cuda ? "static __device__ " : opts.metal_compute ? "static inline " : header || (p->export_c && !verification) ? "" : p->foreign ? "extern " : "static ") + c_type(p->ret) + " " +
-                    proc_name(p) + "(";
+                    proc_name(p) + (n32 && n32->proc == p ? "_n32" : "") + "(";
     if (p->params.count == 0 && !opts.metal_compute) s += "void";
     for (int32_t i = 0; i < p->params.count; i++) {
       if (i) s += ", ";
@@ -2341,6 +2850,14 @@ COAX_SHIFT_DIV_OPS(uint64_t, u64, 0, 0)
 /* A failed index or slice check reads element 0 of the same view instead. */
 COAX_DEV int64_t coax_index_(int64_t i, int64_t n, int32_t l, COAX_ERR) { if ((uint64_t)i >= (uint64_t)n) { coax_trap_(l, coax_err); return 0; } return i; }
 #define coax_index(i, n, l) coax_index_(i, n, l, coax_err)
+/* The 32-bit body's check: n is below 2^31 (a fixed length, or a view count the entry checked). */
+COAX_DEV int32_t coax_index32_(int32_t i, int32_t n, int32_t l, COAX_ERR) { if ((uint32_t)i >= (uint32_t)n) { coax_trap_(l, coax_err); return 0; } return i; }
+#define coax_index32(i, n, l) coax_index32_(i, n, l, coax_err)
+/* As coax_div_s64 and coax_mod_s64 where the quotient fits: zero traps and yields 0, and x % -1 is 0. */
+COAX_DEV int32_t coax_div32_(int32_t a, int32_t b, int32_t l, COAX_ERR) { if (b == 0) { coax_trap_(l, coax_err); return 0; } return a / b; }
+COAX_DEV int32_t coax_mod32_(int32_t a, int32_t b, int32_t l, COAX_ERR) { if (b == 0) { coax_trap_(l, coax_err); return 0; } if (b == -1) return 0; return a % b; }
+#define coax_div32(a, b, l) coax_div32_(a, b, l, coax_err)
+#define coax_mod32(a, b, l) coax_mod32_(a, b, l, coax_err)
 COAX_DEV bool coax_slice_ok_(int64_t lo, int64_t hi, int64_t n, int32_t l, COAX_ERR) { if ((uint64_t)hi > (uint64_t)n || (uint64_t)lo > (uint64_t)hi) { coax_trap_(l, coax_err); return false; } return true; }
 COAX_DEV int64_t coax_cast_ss_(int64_t v, int64_t lo, int64_t hi, int32_t l, COAX_ERR) { if (v < lo || v > hi) coax_trap_(l, coax_err); return v; }
 COAX_DEV uint64_t coax_cast_su_(int64_t v, uint64_t hi, int32_t l, COAX_ERR) { if (v < 0 || (uint64_t)v > hi) coax_trap_(l, coax_err); return (uint64_t)v; }
@@ -2528,8 +3045,19 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
   g_metal_compute = true;
   Emitter em{file, opts};
   std::vector<const ProcDecl *> procs = cuda_procs(file);
-  std::string functions;
-  for (const ProcDecl *p : procs) functions += em.function(p);
+  std::string functions, narrow_prototypes;
+  g_narrow.clear();
+  for (const ProcDecl *p : procs) {
+    functions += em.function(p);
+    if (!p->export_c || !p->params.count || p->params[0].type != T_INT) continue;
+    Narrow &n = g_narrow[p];
+    n.analyze(p);
+    if (!n.any) { g_narrow.erase(p); continue; }
+    em.n32 = &n;
+    functions += em.function(p);
+    narrow_prototypes += em.prototype(p) + ";\n";
+    em.n32 = nullptr;
+  }
   std::vector<Type> used;
   auto add = [&](Type t) {
     if (t->kind != TypeKind::array && t->kind != TypeKind::view) return;
@@ -2562,6 +3090,8 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
     types += "typedef struct { device " + e + " *data; int64_t count; } " + c + ";\n";
     helpers += "COAX_DEV device " + e + " *coax_elem_" + tg + "_(" + c + " v, int64_t i, int32_t l, COAX_ERR) { return &v.data[coax_index(i, v.count, l)]; }\n";
     helpers += "#define coax_elem_" + tg + "(v, i, l) coax_elem_" + tg + "_(v, i, l, coax_err)\n";
+    helpers += "COAX_DEV device " + e + " *coax_elem32_" + tg + "_(" + c + " v, int32_t i, int32_t l, COAX_ERR) { return &v.data[coax_index32(i, (int32_t)v.count, l)]; }\n";
+    helpers += "#define coax_elem32_" + tg + "(v, i, l) coax_elem32_" + tg + "_(v, i, l, coax_err)\n";
     helpers += "COAX_DEV " + c + " coax_reslice_" + tg + "_(" + c + " v, int64_t lo, int64_t hi, int32_t l, COAX_ERR) {\n"
                "  " + c + " r = {v.data, 0};\n  if (coax_slice_ok_(lo, hi, v.count, l, coax_err)) { r.data = v.data + lo; r.count = hi - lo; }\n  return r;\n}\n";
     helpers += "#define coax_reslice_" + tg + "(v, lo, hi, l) coax_reslice_" + tg + "_(v, lo, hi, l, coax_err)\n";
@@ -2574,6 +3104,7 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
   if (simdgroups) s += METAL_SIMDGROUP_RUNTIME;
   if (em.apple_tensor) s += METAL_TENSOR_RUNTIME;
   for (const ProcDecl *p : procs) s += em.prototype(p) + ";\n";
+  s += narrow_prototypes;
   s += functions;
   s += "\n/* Kernels: one argument block at buffer(0) (the item count, then each parameter\n"
        "   in an 8-byte slot, views in 16), the error words at buffer(1). */\n";
@@ -2612,8 +3143,26 @@ std::string emit_metal_compute(const File *file, const EmitOptions &opts) {
       s += "  int64_t coax_item = (int64_t)(coax_gid >> 5);\n  uint coax_lane = coax_simd_lane;\n";
     else
       s += "  int64_t coax_item = (int64_t)coax_gid;\n  uint coax_lane = coax_simd_lane;\n";
-    s += "  if (coax_item >= coax_a.coax_items) return;\n  uint coax_err[2] = {0, 0};\n  " + call + (p->params.count > 1 ? ", " : ", ") +
-         "coax_lane, coax_err" + shared_args + ");\n"
+    s += "  if (coax_item >= coax_a.coax_items) return;\n  uint coax_err[2] = {0, 0};\n";
+    std::string args = (p->params.count > 1 ? ", " : ", ") + std::string("coax_lane, coax_err") + shared_args + ");\n";
+    auto narrow = g_narrow.find(p);
+    if (narrow != g_narrow.end()) {
+      // The 32-bit body when the launch meets the bounds its intervals assumed (Narrow).
+      uint64_t g = narrow->second.guard;
+      std::string b = std::to_string(NARROW_BOUND), cond = "coax_a.coax_items <= " + b;
+      for (int32_t i = 1; i < p->params.count && i < 63; i++)
+        if (g & ((uint64_t)1 << i)) {
+          std::string f = "coax_a." + em.local_name(p->params[i].name);
+          cond += " && " + f + " >= 0 && " + f + " <= " + b;
+        }
+      if (g >> 63)
+        for (int32_t i = 1; i < p->params.count; i++)
+          if (p->params[i].type->kind == TypeKind::view) cond += " && coax_a." + em.local_name(p->params[i].name) + ".count <= 2147483647";
+      std::string ncall = call;
+      ncall.replace(0, em.proc_name(p).size(), em.proc_name(p) + "_n32");
+      s += "  if (" + cond + ") " + ncall + args + "  else " + call + args;
+    } else s += "  " + call + args;
+    s += ""
          "  if (coax_err[0]) {\n"
          "    atomic_fetch_add_explicit(&coax_errors[0], coax_err[0], memory_order_relaxed);\n"
          "    atomic_fetch_max_explicit(&coax_errors[1], coax_err[1], memory_order_relaxed);\n  }\n}\n";

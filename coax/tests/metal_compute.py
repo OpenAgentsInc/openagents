@@ -44,6 +44,17 @@ GROUP_F64='''k :: (item:int,x:[]f32,out:[]f64) #export_c {
     for thread:0..<128 {out[item*128+thread]=s[127-thread]*2;}
 }
 '''
+# Intervals for the 32-bit body: a product of the item, increments under a
+# bounded loop, a product of two parameters, and a local that doubles in a loop.
+NARROW='''nk :: (item:int,n:int,big:int,x:[]f32,out:[]f32) #export_c {
+    i:=item*4;s:=0;
+    for j:0..<4 {s+=1;if i+j<n {out[i+j]=x[i+j]*2;}}
+    k:=big*big;w:=0;
+    for j:0..<n {w=w*2+1;}
+    d:=n-8;q:=item%d;
+    out[item]+=cast(f32) (s+w+q)+cast(f32) k;
+}
+'''
 def apple(body,arrays='a:[2048]f32;b:[1024]f32;acc:[2048]f32;'):
     return '#load "'+APPLE+'";\nk :: (item:int,w:[]u32,x:[]f32,out:[]f32) #export_c {'+arrays+body+'}'
 APPLE_REFUSALS=[
@@ -140,10 +151,30 @@ class MetalCompute(unittest.TestCase):
         self.assertEqual(r.returncode,0,r.stderr)
         self.assertIn('coax_ff_exp(',r.stdout);self.assertIn('coax_ff_log(',r.stdout)
         self.assertIn('typedef struct { device coax_ff *data; int64_t count; } coax_v_f64;',r.stdout)
+    def test_a_kernel_has_a_32_bit_body_behind_its_bounds(self):
+        r=self.run_metal(NARROW,'--release');self.assertEqual(r.returncode,0,r.stderr)
+        out=r.stdout
+        def body(name):  # the definition, not the prototype
+            at=out.index('static inline void '+name+'(int64_t l_item, int64_t l_n, int64_t l_big, coax_v_f32 l_x, coax_v_f32 l_out, uint coax_lane, thread uint *coax_err) {')
+            return out[at:out.index('\n}\n',at)]
+        n32,wide=body('coax_k_nk_n32'),body('coax_k_nk')
+        self.assertIn('int32_t l_i = ',n32)  # item * 4 fits
+        self.assertIn('int32_t l_s = ',n32)  # four increments of 1 from 0
+        self.assertIn('l_s = (int32_t)(l_s) + (int32_t)(',n32)  # and its update is 32-bit
+        self.assertIn('int32_t l_q = coax_mod32(',n32)  # a divisor of either sign keeps its check
+        self.assertIn('int64_t l_k = ',n32)  # big * big may not
+        self.assertIn('int64_t l_w = ',n32)  # doubles without a bound
+        self.assertIn('coax_elem32_v_f32(l_out, ',n32)
+        self.assertNotIn('int32_t',wide)  # the 64-bit body stays as it was
+        entry=out[out.index('kernel void nk('):]
+        self.assertIn('if (coax_a.coax_items <= 1048576 && coax_a.l_n >= 0 && coax_a.l_n <= 1048576',entry)
+        self.assertIn('coax_a.l_out.count <= 2147483647) coax_k_nk_n32(coax_item',entry)
+        self.assertNotIn('coax_a.l_big >=',entry)  # nothing narrow relied on it
+        self.assertIn('else coax_k_nk(coax_item',entry)
     def test_generated_metal_compiles(self):
         if not metal_toolchain():self.skipTest('no Metal toolchain')
         for source,flags,std in ((KERNEL,[],'metal3.1'),(KERNEL,['--release'],'metal3.1'),(WARP,['--release'],'metal3.1'),(GROUP,[],'metal3.1'),
-                                 (GROUP,['--release'],'metal3.1'),(GROUP_PLACE,[],'metal3.1'),(GROUP_PLACE,['--release'],'metal3.1'),(GROUP_F64,[],'metal3.1'),(SIMDGROUP,[],'metal4.0'),(SIMDGROUP,['--release'],'metal4.0')):
+                                 (GROUP,['--release'],'metal3.1'),(GROUP_PLACE,[],'metal3.1'),(GROUP_PLACE,['--release'],'metal3.1'),(GROUP_F64,[],'metal3.1'),(SIMDGROUP,[],'metal4.0'),(SIMDGROUP,['--release'],'metal4.0'),(NARROW,['--release'],'metal3.1'),(NARROW,[],'metal3.1')):
             r=self.run_metal(source,*flags);self.assertEqual(r.returncode,0,r.stderr)
             with tempfile.TemporaryDirectory() as d:
                 p=Path(d)/'k.metal';p.write_text(r.stdout)

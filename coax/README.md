@@ -324,7 +324,15 @@ apps/openagents-ios/build.sh
   `am_matmul_bf16` (a Metal 4 MetalPerformancePrimitives `matmul2d` tile of
   BF16 weights times f32 activations into f32, `relaxed_precision` off;
   needs Metal language 4.0). Their CPU meanings add each tile's products in
-  f64 and round once. They are E0702 in CUDA. Compile the output
+  f64 and round once. They are E0702 in CUDA. Apple GPUs emulate 64-bit
+  integer arithmetic, so each kernel whose integer work provably fits 32 bits
+  also gets a 32-bit body: an interval analysis bounds every `int` local,
+  assuming the item is below 2^20, each integer parameter is in [0, 2^20]
+  and each view parameter's count is below 2^31. The kernel entry checks
+  those bounds and runs the 32-bit body when they hold, the 64-bit body
+  otherwise; both have the same checks and results. Slice a view once
+  (`row := w[o * n..<w.count]`) and index it with small offsets so the
+  products of two parameters stay out of the loop. Compile the output
   with `MTLMathModeSafe` and precise math functions (the generated pragmas also
   turn contraction off). `psionic/tests/run_metal_kernels.sh` runs the kernels
   against the C build on the GPU.
