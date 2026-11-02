@@ -1,0 +1,15 @@
+#import "Basic";
+#load "../lib/devstral.coax";
+
+// book:begin example
+// A call whose program pops two values when the stack holds one. The
+// grammar refuses it at that byte, inside the program field, and nothing
+// runs; Stack itself would have stopped at the same byte.
+main :: () {
+    tools:=DV_TOOLS;offered:=[2]int.[0,1];box:[1]DvBox;w:=dv_work(box[..]);
+    text:="[TOOL_CALLS]submit[ARGS]{\"code\": \"x+\"}";
+    a:=dv_admit(tools[..],offered[..],text,w);
+    print("refused: %, byte % ('%'), field %\n",a.why,a.at,cast(string)text[a.at..<a.at+1],a.field);
+    v:=dv_eval("x+",5);print("Stack: %, byte %\n",v.stop,v.at);
+}
+// book:end example

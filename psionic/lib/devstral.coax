@@ -1,0 +1,695 @@
+// Chapter 83: a coding agent. Devstral Small 2 (Devstral-Small-2-24B-
+// Instruct-2512) is a Mistral dense decoder with chapter 81's shape rules,
+// stored as FP8 weights with one BF16 scale per matrix. This unit checks the
+// pinned checkpoint's text-decoder inventory against its params.json, plans
+// its memory on this host with chapter 33's planner, writes and reads
+// Mistral's function-calling format byte for byte (tool definitions,
+// [TOOL_CALLS]name[ARGS]{...}, tool results) with chapter 81's Tekken, and
+// compiles the offered tools into chapter 53's byte automaton, so a
+// constrained decoder can only write a call that parses. Calls write
+// programs in Stack, a toy postfix language; a fixed set of eight tasks
+// checks each submitted program against hidden tests, and the Coder book's
+// chapter 22
+// pass@k and Wilson interval measure a seeded stand-in policy over them.
+// Profile devstral-agent-v1: ASCII text; tools run(code, x) and
+// submit(code); a program is 1 to 11 bytes of x, 0-9, +, - and * whose
+// stack never underflows, never holds more than 4 values and ends with 1;
+// x is 0 to 999; up to 3 calls an attempt, 32 pieces a call.
+#load "ministral.coax";
+#load "harness/tools.coax";
+#load "harness/candidates.coax";
+#load "residency.coax";
+#load "../fixtures/devstral-manifest.coax";
+#load "../fixtures/devstral-tekken.coax";
+#load "../tests/devstral-oracle.coax";
+#authority;
+
+DvStatus :: enum u8 {ok;shape;capacity;checkpoint;params;control;tokens;}
+DvResult :: struct {status:DvStatus;written:int;bytes:int;cause:int;}
+
+// book:begin shape
+// Devstral Small 2's text decoder in chapter 81's terms: 40 layers of
+// width 5120, 32 query heads and 8 key-value heads of 128, a SwiGLU block
+// of 32768 and Tekken's 131,072 entries. Unlike Ministral 3 3B, the readout
+// (output.weight) is its own matrix.
+DV_SMALL2 :: MsShape.{width=5120,layers=40,heads=32,kv_heads=8,head_dim=128,hidden=32768,vocab=131072};
+// The params.json fields this chapter does not change: untied readout,
+// rotary base, norm epsilon, context, and the FP8 format with one
+// activation scale per tensor.
+DV_FIXED_PARAMS :: "tied_embeddings false\nrope_theta 100000000.0\nnorm_eps 1e-05\nmax_position_embeddings 393216\nqformat_weight fp8_e4m3\nqscheme_act TENSOR\n";
+DV_PARAM_NAMES :: [7]string.["dim","n_layers","head_dim","hidden_dim","n_heads","n_kv_heads","vocab_size"];
+// The shape as params.json lines; cause is the first byte that differs
+// from params, or -1 when they match.
+dv_params :: (s:MsShape,params:string)->DvResult {
+    if !ms_shape_valid(s) {return DvResult.{status=DvStatus.shape};}
+    buf:[512]u8;n:=0;v:=[7]int.[s.width,s.layers,s.head_dim,s.hidden,s.heads,s.kv_heads,s.vocab];
+    for x,i:DV_PARAM_NAMES {n=ms_put(buf[..],n,x);n=ms_put(buf[..],n," ");n=ms_put_int(buf[..],n,v[i]);n=ms_put(buf[..],n,"\n");}
+    n=ms_put(buf[..],n,DV_FIXED_PARAMS);
+    for i:0..<n {if i==params.count || buf[i]!=params[i] {return DvResult.{status=DvStatus.params,cause=i};}}
+    if params.count!=n {return DvResult.{status=DvStatus.params,cause=n};}
+    return DvResult.{written=n,cause=-1};
+}
+// book:end shape
+
+// book:begin inventory
+// The text decoder's tensors. Each of a layer's seven matrices is three
+// tensors: its FP8 (E4M3) weight and two BF16 scalars, the weight scale and
+// the activation scale. The two norms are BF16 vectors. Then the final
+// norm, the readout and the embedding, BF16. part j of a layer is matrix k
+// of chapter 81's nine names and its kind: 0 activation scale, 1 weight
+// scale, 2 weight, 3 norm; parts follow the names' sorted order.
+DvTensor :: struct {name:string;layer:int;kind:int;dtype:string;rank:int;rows:int;cols:int;}
+DV_PARTS :: 23;
+DV_KIND_NAMES :: [4]string.[".qscale_act",".qscale_weight",".weight",".weight"];
+dv_part :: (j:int)->[2]int {
+    at:=0;
+    for k:0..<9 {
+        n:=ifx k==4 || k==8 then 1 else 3;
+        if j<at+n {return [2]int.[k,ifx n==1 then 3 else j-at];}
+        at+=n;
+    }
+    return [2]int.[-1,-1];
+}
+dv_expected_count :: (s:MsShape)->int {return 3+DV_PARTS*s.layers;}
+dv_expected :: (s:MsShape,e:int)->DvTensor {
+    if e==0 {return DvTensor.{name="norm.weight",layer=-1,dtype="BF16",rank=1,rows=s.width};}
+    if e==1 {return DvTensor.{name="output.weight",layer=-1,dtype="BF16",rank=2,rows=s.vocab,cols=s.width};}
+    if e==2 {return DvTensor.{name="tok_embeddings.weight",layer=-1,dtype="BF16",rank=2,rows=s.vocab,cols=s.width};}
+    layer:=(e-3)/DV_PARTS;p:=dv_part((e-3)%DV_PARTS);
+    m:=ms_expected(s,2+9*layer+p[0]);
+    t:=DvTensor.{name=m.name[0..<m.name.count-7],layer=layer,kind=p[1],dtype="BF16",rank=m.rank,rows=m.rows,cols=m.cols};
+    if p[1]<2 {t.rank=0;}
+    if p[1]==2 {t.dtype="F8_E4M3";}
+    return t;
+}
+// "layers.L.name DTYPE rows[,cols]", or "scalar" for a 0-dimensional tensor.
+dv_line :: (t:DvTensor,out:[]u8)->int {
+    n:=0;if t.layer>=0 {n=ms_put(out,n,"layers.");n=ms_put_int(out,n,t.layer);}
+    n=ms_put(out,n,t.name);if t.layer>=0 {n=ms_put(out,n,DV_KIND_NAMES[t.kind]);}
+    n=ms_put(out,n," ");n=ms_put(out,n,t.dtype);n=ms_put(out,n," ");
+    if t.rank==0 {return ms_put(out,n,"scalar");}
+    n=ms_put_int(out,n,t.rows);
+    if t.rank==2 {n=ms_put(out,n,",");n=ms_put_int(out,n,t.cols);}
+    return n;
+}
+dv_bytes :: (t:DvTensor)->int {
+    if t.rank==0 {return 2;}
+    size:=t.rows;if t.rank==2 {size*=t.cols;}
+    return ifx t.kind==2 then size else 2*size;
+}
+// Which expected tensor a line names, by the text before its first space,
+// or -1. The whole line must then equal that tensor's line.
+DV_LAYERS_MAX :: 44;
+dv_starts :: (s:string,prefix:string)->bool {return s.count>=prefix.count && s[0..<prefix.count]==prefix;}
+dv_name :: (line:string)->int {k:=0;while k<line.count && line[k]!=' ' {k+=1;}return k;}
+DV_GLOBAL_NAMES :: [3]string.["norm.weight","output.weight","tok_embeddings.weight"];
+dv_index :: (s:MsShape,line:string)->int {
+    k:=dv_name(line);name:=line[0..<k];
+    for g,e:DV_GLOBAL_NAMES {if name==g {return e;}}
+    if !dv_starts(name,"layers.") {return -1;}
+    p:=7;layer:=0;while p<k && name[p]>='0' && name[p]<='9' {layer=layer*10+cast(int)(name[p]-'0');p+=1;}
+    if layer>=s.layers {return -1;}
+    for j:0..<DV_PARTS {
+        part:=dv_part(j);base:=MS_LAYER_NAMES[part[0]];base=base[0..<base.count-7];kind:=DV_KIND_NAMES[part[1]];
+        if k-p==base.count+kind.count && name[p..<p+base.count]==base && name[p+base.count..<k]==kind {return 3+layer*DV_PARTS+j;}
+    }
+    return -1;
+}
+// The manifest (one line a tensor, each ending in a newline) holds s's text
+// decoder when every expected line is there exactly once and nothing else
+// is. cause names the first expected tensor missing or repeated, or is
+// -1 - k for line k that is no expected tensor. written counts parameters,
+// bytes the stored bytes.
+dv_inventory :: (s:MsShape,manifest:string)->DvResult {
+    if !ms_shape_valid(s) || s.layers>DV_LAYERS_MAX {return DvResult.{status=DvStatus.shape};}
+    seen:[3+DV_PARTS*DV_LAYERS_MAX]u8;buf:[96]u8;from:=0;line:=0;
+    for i:0..<manifest.count {if manifest[i]=='\n' {
+        text:=manifest[from..<i];e:=dv_index(s,text);
+        if e<0 {return DvResult.{status=DvStatus.checkpoint,cause=-1-line};}
+        n:=dv_line(dv_expected(s,e),buf[..]);
+        if text.count!=n || cast(string)buf[0..<n]!=text {return DvResult.{status=DvStatus.checkpoint,cause=-1-line};}
+        if seen[e]==1 {return DvResult.{status=DvStatus.checkpoint,cause=e};}
+        seen[e]=1;line+=1;from=i+1;
+    }}
+    r:=DvResult.{};
+    for e:0..<dv_expected_count(s) {
+        if seen[e]==0 {return DvResult.{status=DvStatus.checkpoint,cause=e};}
+        t:=dv_expected(s,e);r.bytes+=dv_bytes(t);
+        if t.rank==0 {r.written+=1;}else if t.rank==1 {r.written+=t.rows;}else {r.written+=t.rows*t.cols;}
+    }
+    return r;
+}
+// book:end inventory
+
+// book:begin plan
+// Chapter 33's accounting: weights as stored (FP8 matrices, BF16 vectors,
+// scales, embedding and readout); f32 keys and values at every position
+// of every layer; f32 scratch for a chunk: the residual and its normed
+// copy, the widest intermediate (w1 and w3 together, or q k v), one score
+// row a head, and the logits. The readout is the largest unit that streams.
+DV_HOST_GPU :: 17171480576;
+DV_HOST_RAM :: 134828441600;
+dv_weights :: (s:MsShape)->RpWeights {
+    total:=0;vectors:=0;
+    for e:0..<dv_expected_count(s) {t:=dv_expected(s,e);total+=dv_bytes(t);if t.rank<2 {vectors+=dv_bytes(t);}}
+    return RpWeights.{total=total,vectors=vectors,slot=2*s.vocab*s.width,embedding=2*s.vocab*s.width};
+}
+dv_state :: (s:MsShape,capacity:int)->int {return 4*s.layers*capacity*2*s.kv_heads*s.head_dim;}
+dv_scratch :: (s:MsShape,chunk:int,capacity:int)->int {
+    widest:=rp_max(2*s.hidden,(s.heads+2*s.kv_heads)*s.head_dim);
+    return 4*(chunk*(2*s.width+widest)+s.heads*capacity+s.vocab);
+}
+dv_plan :: (s:MsShape,r:RpRequest,budget:int)->RpPlan {
+    if !ms_shape_valid(s) {return RpPlan.{status=RpStatus.model};}
+    if r.capacity<1 || r.capacity>393216 || r.chunk<1 || r.chunk>r.capacity {return RpPlan.{status=RpStatus.request};}
+    return rp_admit(dv_weights(s),dv_state(s,r.capacity),dv_scratch(s,r.chunk,r.capacity),r.stream,budget);
+}
+// book:end plan
+
+// ---- the function-calling format -------------------------------------------
+
+// book:begin format
+// A tool: its name and description, and whether it takes the input x
+// besides the program. A call: the tool, the program and x.
+DvTool :: struct {name:string;description:string;x:bool;}
+DvCall :: struct {tool:int;code:string;x:int;}
+// One assistant turn: a call, then the tool's result text (empty: none).
+DvTurn :: struct {call:DvCall;result:string;}
+DV_TOOLS :: [2]DvTool.[
+    DvTool.{name="run",description="Run a Stack program on one input.",x=true},
+    DvTool.{name="submit",description="Submit a Stack program for the hidden tests.",x=false}];
+// Control tokens: their text in the rendered conversation and their ids.
+DV_CONTROLS :: [12]string.["<s>","</s>","[INST]","[/INST]","[AVAILABLE_TOOLS]","[/AVAILABLE_TOOLS]","[TOOL_RESULTS]","[/TOOL_RESULTS]","[TOOL_CALLS]","[SYSTEM_PROMPT]","[/SYSTEM_PROMPT]","[ARGS]"];
+DV_CONTROL_IDS :: [12]int.[1,2,3,4,5,6,7,8,9,17,18,32];
+DV_CODE_SCHEMA :: "{\"type\": \"string\", \"pattern\": \"^[x0-9*+-]{1,11}$\"}";
+DV_TEXT_MAX :: 4096;
+// The tools as the chat template's tojson prints them: json.dumps with
+// ", " and ": " between items, keys in the order written.
+dv_tools_json :: (tools:[]DvTool,out:[]u8)->int {
+    n:=ms_put(out,0,"[");
+    for t,i:tools {
+        if i>0 {n=ms_put(out,n,", ");}
+        n=ms_put(out,n,"{\"type\": \"function\", \"function\": {\"name\": \"");n=ms_put(out,n,t.name);
+        n=ms_put(out,n,"\", \"description\": \"");n=ms_put(out,n,t.description);
+        n=ms_put(out,n,"\", \"parameters\": {\"type\": \"object\", \"properties\": {\"code\": ");n=ms_put(out,n,DV_CODE_SCHEMA);
+        if t.x {n=ms_put(out,n,", \"x\": {\"type\": \"integer\", \"minimum\": 0, \"maximum\": 999}}, \"required\": [\"code\", \"x\"]}}}");}
+        else {n=ms_put(out,n,"}, \"required\": [\"code\"]}}}");}
+    }
+    return ms_put(out,n,"]");
+}
+// One call as the model writes it: [TOOL_CALLS]name[ARGS]{"code": "...", "x": N}.
+dv_call :: (tools:[]DvTool,c:DvCall,out:[]u8,at:int)->int {
+    n:=ms_put(out,at,"[TOOL_CALLS]");n=ms_put(out,n,tools[c.tool].name);n=ms_put(out,n,"[ARGS]{\"code\": \"");n=ms_put(out,n,c.code);
+    if tools[c.tool].x {n=ms_put(out,n,"\", \"x\": ");n=ms_put_int(out,n,c.x);return ms_put(out,n,"}");}
+    return ms_put(out,n,"\"}");
+}
+dv_control_at :: (text:string,at:int)->int {
+    for c,k:DV_CONTROLS {if at+c.count<=text.count && cast(string)text[at..<at+c.count]==c {return k;}}
+    return -1;
+}
+dv_plain :: (text:string)->bool {for i:0..<text.count {if dv_control_at(text,i)>=0 {return false;}}return true;}
+// The conversation: <s>, the system prompt, the tools, the user's turn,
+// then each call, closed by </s>, and its result. Text that spells a
+// control token is refused (status control, cause the turn, -1 the system
+// prompt, -2 the user's turn); the renderer never lets text become one.
+dv_render :: (tools:[]DvTool,system:string,user:string,turns:[]DvTurn,out:[]u8)->DvResult {
+    if !dv_plain(system) {return DvResult.{status=DvStatus.control,cause=-1};}
+    if !dv_plain(user) {return DvResult.{status=DvStatus.control,cause=-2};}
+    for t,i:turns {if !dv_plain(t.call.code) || !dv_plain(t.result) {return DvResult.{status=DvStatus.control,cause=i};}}
+    if out.count<DV_TEXT_MAX {return DvResult.{status=DvStatus.capacity};}
+    n:=ms_put(out,0,"<s>[SYSTEM_PROMPT]");n=ms_put(out,n,system);n=ms_put(out,n,"[/SYSTEM_PROMPT][AVAILABLE_TOOLS]");
+    n=dv_tools_json(tools,out[n..<out.count])+n;n=ms_put(out,n,"[/AVAILABLE_TOOLS][INST]");n=ms_put(out,n,user);n=ms_put(out,n,"[/INST]");
+    for t:turns {
+        n=dv_call(tools,t.call,out,n);n=ms_put(out,n,"</s>");
+        if t.result.count>0 {n=ms_put(out,n,"[TOOL_RESULTS]");n=ms_put(out,n,t.result);n=ms_put(out,n,"[/TOOL_RESULTS]");}
+    }
+    return DvResult.{written=n};
+}
+// Rendered text to ids: each control token is its id, and the text between
+// them is chapter 81's Tekken encoding. cause is the failing byte.
+dv_ids :: (t:MsTable,text:string,out:[]int)->DvResult {
+    at:=0;n:=0;
+    while at<text.count {
+        k:=dv_control_at(text,at);
+        if k>=0 {if n==out.count {return DvResult.{status=DvStatus.capacity,cause=at};}out[n]=DV_CONTROL_IDS[k];n+=1;at+=DV_CONTROLS[k].count;continue;}
+        end:=at;while end<text.count && dv_control_at(text,end)<0 {end+=1;}
+        r:=ms_encode(t,text[at..<end],out[n..<out.count]);
+        if r.status!=MsStatus.ok {return DvResult.{status=DvStatus.tokens,cause=at+r.cause};}
+        n+=r.written;at=end;
+    }
+    return DvResult.{written=n};
+}
+// book:end format
+
+// ---- calls under a grammar ---------------------------------------------------
+
+// book:begin grammar
+// Stack: x pushes the input, a digit pushes itself, and + - * pop b then a
+// and push a+b, a-b, a*b. The grammar tracks (bytes so far, stack depth):
+// a push needs depth below 4, an operator depth 2 or more, and the program
+// may end at depth 1. Every edge goes to a newer state, so the language is
+// finite and chapter 53's liveness sweep finishes in one pass.
+// Values and operators alternate in count, so a program's length is odd:
+// six values and five operators, 11 bytes, is the longest.
+DV_CODE_MAX :: 11;
+DV_DEPTH :: 4;
+DV_STATES :: 512;
+DV_EDGES :: 1024;
+dv_code :: (b:[]HtBuild,w:HtWork,s:int,ends:[]int)->int {
+    cur:[DV_DEPTH+1]int;cur[0]=s;have:=[DV_DEPTH+1]bool.[true,false,false,false,false];n:=0;
+    for p:0..<DV_CODE_MAX {
+        next:[DV_DEPTH+1]int;made:[DV_DEPTH+1]bool;
+        for d:0..<DV_DEPTH+1 {if have[d] {
+            if d<DV_DEPTH {
+                if !made[d+1] {next[d+1]=ht_state(b,w);made[d+1]=true;}
+                ht_edge(b,w,cur[d],'x','x',next[d+1]);ht_edge(b,w,cur[d],'0','9',next[d+1]);
+            }
+            if d>=2 {
+                if !made[d-1] {next[d-1]=ht_state(b,w);made[d-1]=true;}
+                ht_edge(b,w,cur[d],'*','+',next[d-1]);ht_edge(b,w,cur[d],'-','-',next[d-1]);
+            }
+        }}
+        if made[1] {ends[n]=next[1];n+=1;}
+        cur=next;have=made;
+    }
+    return n;
+}
+// The offered tools' calls. State owners name the field: -1 the frame, 0
+// the program, 1 x.
+dv_grammar :: (tools:[]DvTool,offered:[]int,w:HtWork)->HtGrammar {
+    b:[1]HtBuild;start:=ht_state(b[..],w);head:=ht_bytes(b[..],w,start,"[TOOL_CALLS]");
+    closing:[8]int;nc:=0;
+    for t:offered {
+        b[0].field= -1;s:=ht_bytes(b[..],w,head,tools[t].name);s=ht_bytes(b[..],w,s,"[ARGS]{\"code\": \"");
+        b[0].field=0;ends:[DV_CODE_MAX]int;ne:=dv_code(b[..],w,s,ends[..]);
+        b[0].field= -1;q:=ht_join(b[..],w,ends[0..<ne],'"');
+        if tools[t].x {
+            b[0].field=1;s=ht_bytes(b[..],w,q,", \"x\": ");
+            values:[HT_DIGITS_MAX+1]int;nv:=ht_value(b[..],w,s,ht_int(3),values[..]);
+            for v:values[0..<nv] {closing[nc]=v;nc+=1;}
+        } else {closing[nc]=q;nc+=1;}
+    }
+    b[0].field= -1;accept:=ht_join(b[..],w,closing[0..<nc],'}');
+    if b[0].states>w.owner.count || b[0].edges>w.edges.count {return HtGrammar.{why=HtWhy.capacity};}
+    // The Coder book's chapter 4 renumbering: state k becomes last-k, so
+    // edges point down. Owners keep the build's numbering: state s's owner
+    // is owner[last-s].
+    last:=b[0].states-1;
+    for i:0..<b[0].edges {x:=w.edges[i];w.edges[i]=NxEdge.{from=last-x.from,low=x.low,high=x.high,to=last-x.to};}
+    final:=[1]int.[last-accept];
+    c:=nx_compile(b[0].states,last,w.edges[0..<b[0].edges],final[..],w.next,w.accept,w.live,false);
+    if c.status!=NxStatus.ok {return HtGrammar.{why=HtWhy.capacity};}
+    return HtGrammar.{grammar=c.grammar};
+}
+// book:end grammar
+
+// book:begin admit
+// A call's text, admitted byte by byte through the grammar of the offered
+// tools. A refusal names the byte and the field it falls in; an admitted
+// call is decoded into its tool, program and x.
+DvWhy :: enum u8 {none;syntax;incomplete;capacity;}
+DvAdmit :: struct {why:DvWhy;at:int=-1;field:int=-1;call:DvCall;}
+dv_admit :: (tools:[]DvTool,offered:[]int,text:string,w:HtWork)->DvAdmit {
+    g:=dv_grammar(tools,offered,w);if g.why!=HtWhy.none {return DvAdmit.{why=DvWhy.capacity};}
+    return dv_read(tools,g.grammar,text,w);
+}
+// The same, through a grammar already compiled into w.
+dv_read :: (tools:[]DvTool,g:NxGrammar,text:string,w:HtWork)->DvAdmit {
+    s:=g.start;
+    for x,i:text {n:=w.next[s*256+cast(int)x];if n<0 {return DvAdmit.{why=DvWhy.syntax,at=i,field=w.owner[g.start-s]};}s=n;}
+    if w.accept[s]!=1 {return DvAdmit.{why=DvWhy.incomplete,at=text.count,field=w.owner[g.start-s]};}
+    // [TOOL_CALLS] is 12 bytes; the name runs to [ARGS]; the program starts
+    // 10 bytes after it and runs to its closing quote.
+    head:=DV_CONTROLS[8].count;p:=head;while text[p]!='[' {p+=1;}
+    c:=DvCall.{};for t,i:tools {if t.name==text[head..<p] {c.tool=i;}}
+    from:=p+16;e:=from;while text[e]!='"' {e+=1;}
+    c.code=text[from..<e];
+    if tools[c.tool].x {for k:e+8..<text.count-1 {c.x=c.x*10+cast(int)(text[k]-'0');}}
+    return DvAdmit.{call=c};
+}
+// book:end admit
+
+// ---- Stack and the task set --------------------------------------------------
+
+// book:begin stack
+// Run a program on x. Programs outside the grammar are refused with the
+// byte: a byte that is no instruction, an operator with fewer than two
+// values, a fifth value, or an end with other than one value.
+DvStop :: enum u8 {ok;byte;underflow;overflow;left;}
+DvValue :: struct {stop:DvStop;value:int;at:int=-1;}
+dv_eval :: (code:string,x:int)->DvValue {
+    st:[DV_DEPTH]int;d:=0;
+    for c,i:code {
+        if c=='x' || (c>='0' && c<='9') {
+            if d==DV_DEPTH {return DvValue.{stop=DvStop.overflow,at=i};}
+            st[d]=ifx c=='x' then x else cast(int)(c-'0');d+=1;continue;
+        }
+        if c!='+' && c!='-' && c!='*' {return DvValue.{stop=DvStop.byte,at=i};}
+        if d<2 {return DvValue.{stop=DvStop.underflow,at=i};}
+        a:=st[d-2];b:=st[d-1];d-=1;
+        st[d-1]=ifx c=='+' then a+b else ifx c=='-' then a-b else a*b;
+    }
+    if d!=1 {return DvValue.{stop=DvStop.left,at=code.count};}
+    return DvValue.{value=st[0]};
+}
+// A task: what f is, the example input shown to the agent, four hidden
+// inputs and their outputs, and one reference program.
+DvTask :: struct {spec:string;shown:int;inputs:[4]int;outputs:[4]int;reference:string;}
+DV_TASKS :: [8]DvTask.[
+    DvTask.{spec="x + 3",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[3,8,43,1002],reference="x3+"},
+    DvTask.{spec="2x",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[0,10,80,1998],reference="x2*"},
+    DvTask.{spec="x squared",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[0,25,1600,998001],reference="xx*"},
+    DvTask.{spec="2x + 1",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[1,11,81,1999],reference="x2*1+"},
+    DvTask.{spec="x squared minus x",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[0,20,1560,997002],reference="xx*x-"},
+    DvTask.{spec="x cubed",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[0,125,64000,997002999],reference="xx*x*"},
+    DvTask.{spec="3x - 5",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[-5,10,115,2992],reference="x3*5-"},
+    DvTask.{spec="(x + 1)(x - 1)",shown=3,inputs=[4]int.[0,5,40,999],outputs=[4]int.[-1,24,1599,998000],reference="x1+x1-*"}];
+// The user's turn for a task, with f at the shown input.
+dv_task_text :: (t:DvTask,out:[]u8)->int {
+    n:=ms_put(out,0,"Write f(x) = ");n=ms_put(out,n,t.spec);
+    n=ms_put(out,n," in Stack. x pushes the input, a digit pushes itself, and + - * pop two values and push the result. Example: f(");
+    n=ms_put_int(out,n,t.shown);n=ms_put(out,n,") = ");n=ms_put_int(out,n,dv_eval(t.reference,t.shown).value);return ms_put(out,n,".");
+}
+// The hidden tests: the program passes when it runs and matches every output.
+dv_passes :: (t:DvTask,code:string)->bool {
+    for x,i:t.inputs {v:=dv_eval(code,x);if v.stop!=DvStop.ok || v.value!=t.outputs[i] {return false;}}
+    return true;
+}
+// book:end stack
+
+// ---- the stand-in policy and the measurement ---------------------------------
+
+// book:begin policy
+// The stand-in model's vocabulary: the call's frame, both names, the
+// program's bytes, three pieces no call contains, and the end piece last
+// (</s>). Its logits for draw i of call k: the Coder book's chapter 4 noise in
+// [0, 8), plus skill on each piece that continues its script, the
+// reference call for that step: run on the shown input first, then submit.
+DV_PIECES :: [28]string.["[TOOL_CALLS]","run","submit","[ARGS]","{\"code\": \"","\"","\", \"x\": ",", \"x\": ","}","\"}",
+    "x","0","1","2","3","4","5","6","7","8","9","*","+","-","a"," ","Q",""];
+DV_END :: 27;
+DV_CALLS :: 3;
+DV_LIMIT :: 32;
+DvPolicy :: struct {seed:u64;skill:f64;constrained:bool;}
+// One attempt: up to three calls. It passes when a submitted program
+// passes the hidden tests. parsed counts calls the grammar admits.
+DvAttempt :: struct {passed:bool;submitted:bool;calls:int;parsed:int;pieces:int;}
+dv_script :: (t:DvTask,k:int,out:[]u8)->int {
+    c:=DvCall.{tool=ifx k==0 then 0 else 1,code=t.reference,x=t.shown};tools:=DV_TOOLS;
+    return dv_call(tools[..],c,out,0);
+}
+dv_logits :: (p:DvPolicy,script:string,made:string,k:int,i:int,logits:[]f32) {
+    ht_noise(p.seed,k,i,logits);
+    pieces:=DV_PIECES;
+    for x,j:pieces {
+        follows:=ifx j==DV_END then made.count==script.count else made.count+x.count<=script.count && cast(string)script[made.count..<made.count+x.count]==x;
+        if follows {logits[j]+=f32(p.skill);}
+    }
+}
+dv_attempt :: (p:DvPolicy,t:DvTask,w:HtWork,sm:HtSampler)->DvAttempt {
+    tools:=DV_TOOLS;pieces:=DV_PIECES;offered:=[2]int.[0,1];a:=DvAttempt.{};
+    g:=dv_grammar(tools[..],offered[..],w);all:[28]u8;for j:0..<28 {all[j]=1;}
+    sbuf:[160]u8;
+    for k:0..<DV_CALLS {
+        script:=cast(string)sbuf[0..<dv_script(t,k,sbuf[..])];
+        run:=NxRun.{limit=DV_LIMIT,random=CrSeed.{seed=cr_bits(p.seed,cast(u64)k)}};state:=g.grammar.start;n:=0;
+        while run.stop==NxStop.running {
+            dv_logits(p,script,cast(string)sm.text[0..<n],k,run.emitted,sm.logits);
+            token:int;
+            if p.constrained {
+                d:=nx_guided(sm.logits,g.grammar,state,pieces[..],DV_END,NxOptions.{},run,false,sm.mask,sm.out,sm.work,false);
+                token=d.token;run=d.run;state=d.state;
+            } else {
+                stops:=[1]int.[DV_END];e:=nx_step(sm.logits,all[..],NxOptions.{},run,stops[..],false,sm.out,sm.work,false);
+                token=e.token;run=e.run;
+            }
+            for x:pieces[token] {sm.text[n]=x;n+=1;}
+        }
+        a.calls+=1;a.pieces+=run.emitted;
+        c:=dv_read(tools[..],g.grammar,cast(string)sm.text[0..<n],w);
+        if c.why!=DvWhy.none {return a;}
+        a.parsed+=1;
+        if c.call.tool==1 {a.submitted=true;a.passed=dv_passes(t,c.call.code);return a;}
+    }
+    return a;
+}
+// book:end policy
+
+// book:begin measure
+// n attempts at each task, attempt q seeded seed + 64 r + q. right[r] counts
+// task r's passes; pass@k is the Coder book's chapter 22 estimator averaged over
+// the tasks, and the Wilson interval is over every attempt.
+DvTally :: struct {status:DvStatus;attempts:int;passed:int;submitted:int;calls:int;parsed:int;pieces:int;right:[8]int;}
+dv_tally :: (p:DvPolicy,n:int,w:HtWork,sm:HtSampler)->DvTally {
+    if n<1 {return DvTally.{status=DvStatus.shape};}
+    tasks:=DV_TASKS;y:=DvTally.{};
+    for t,r:tasks {for q:0..<n {
+        a:=dv_attempt(DvPolicy.{seed=p.seed+cast(u64)(64*r+q),skill=p.skill,constrained=p.constrained},t,w,sm);
+        y.attempts+=1;y.calls+=a.calls;y.parsed+=a.parsed;y.pieces+=a.pieces;
+        if a.submitted {y.submitted+=1;}
+        if a.passed {y.passed+=1;y.right[r]+=1;}
+    }}
+    return y;
+}
+dv_pass_at :: (y:DvTally,n:int,k:int)->CdValue {
+    s:=0.0;for c:y.right {v:=cd_pass_at(n,c,k);if v.status!=CdStatus.ok {return v;}s+=v.value;}
+    return CdValue.{value=s/8};
+}
+// book:end measure
+
+// ---- checks ------------------------------------------------------------------
+
+// Buffers for one grammar and one sampler.
+DvBox :: struct {e:[DV_EDGES]NxEdge;o:[DV_STATES]int;n:[DV_STATES*256]int;a:[DV_STATES]u8;l:[DV_STATES]u8;
+    lg:[28]f32;m:[28]u8;p:[28]f64;s:[28]f64;od:[28]int;t:[28]int;tx:[512]u8;}
+dv_work :: (x:[]DvBox)->HtWork {return ht_work(x[0].e[..],x[0].o[..],x[0].n[..],x[0].a[..],x[0].l[..]);}
+dv_sampler :: (x:[]DvBox)->HtSampler {return ht_sampler(x[0].lg[..],x[0].m[..],x[0].p[..],x[0].s[..],x[0].od[..],x[0].t[..],x[0].tx[..]);}
+DV_SYSTEM :: "You write Stack programs. Call run to try one, then submit your answer.";
+dv_submit :: (code:string,out:[]u8)->string {
+    n:=ms_put(out,0,"[TOOL_CALLS]submit[ARGS]{\"code\": \"");n=ms_put(out,n,code);return cast(string)out[0..<ms_put(out,n,"\"}")];
+}
+
+#test "the shape matches params.json byte for byte" {
+    r:=dv_params(DV_SMALL2,DV_PINNED_PARAMS);#assert r.status==DvStatus.ok && r.written==DV_PINNED_PARAMS.count && r.cause== -1;
+    s:=DV_SMALL2;s.width=5121;r=dv_params(s,DV_PINNED_PARAMS);#assert r.status==DvStatus.params && r.cause==7;
+    s=DV_SMALL2;s.layers=41;r=dv_params(s,DV_PINNED_PARAMS);#assert r.status==DvStatus.params && r.cause==19;
+    s=DV_SMALL2;s.vocab=131071;#assert dv_params(s,DV_PINNED_PARAMS).cause==91;
+    r=dv_params(DV_SMALL2,DV_PINNED_PARAMS[0..<100]);#assert r.status==DvStatus.params && r.cause==100;
+    buf:[300]u8;n:=ms_put(buf[..],0,DV_PINNED_PARAMS);n=ms_put(buf[..],n,"x");
+    r=dv_params(DV_SMALL2,cast(string)buf[0..<n]);#assert r.status==DvStatus.params && r.cause==DV_PINNED_PARAMS.count;
+    s=DV_SMALL2;s.heads=30;#assert dv_params(s,DV_PINNED_PARAMS).status==DvStatus.shape;
+    buf[0]='X';r=dv_params(DV_SMALL2,cast(string)buf[0..<n-1]);#assert r.status==DvStatus.params && r.cause==0;
+}
+#test "the pinned checkpoint holds the 24B text decoder, FP8 with BF16 scales" #steps 2000000000 {
+    r:=dv_inventory(DV_SMALL2,DV_PINNED_MANIFEST);
+    #assert r.status==DvStatus.ok && DV_PINNED_LINES==dv_expected_count(DV_SMALL2) && r.bytes==DV_PINNED_TEXT_BYTES;
+    // By hand: embedding and readout, the final norm, and per layer two
+    // norms, fourteen scales and the seven matrices.
+    q:=4096*5120;kv:=1024*5120;ffn:=32768*5120;
+    #assert r.written==2*131072*5120+5120+40*(2*5120+14+2*q+2*kv+3*ffn);
+    #assert r.bytes==2*(2*131072*5120+5120)+40*(2*2*5120+2*14+2*q+2*kv+3*ffn);
+    #assert DV_PINNED_TEXT_BYTES+DV_PINNED_IMAGE_BYTES<DV_PINNED_BYTES && DV_PINNED_TENSORS==DV_PINNED_LINES+DV_PINNED_IMAGE_TENSORS;
+    d:=DV_SMALL2;d.kv_heads=4;r=dv_inventory(d,DV_PINNED_MANIFEST);#assert r.status==DvStatus.checkpoint && r.cause== -3;
+    d=DV_SMALL2;d.layers=41;r=dv_inventory(d,DV_PINNED_MANIFEST);#assert r.status==DvStatus.checkpoint && r.cause==923;
+    d=DV_SMALL2;d.layers=39;r=dv_inventory(d,DV_PINNED_MANIFEST);#assert r.status==DvStatus.checkpoint && r.cause== -760;
+    d=DV_SMALL2;d.layers=45;#assert dv_inventory(d,DV_PINNED_MANIFEST).status==DvStatus.shape;
+    d=DV_SMALL2;d.layers=44;r=dv_inventory(d,DV_PINNED_MANIFEST);#assert r.status==DvStatus.checkpoint && r.cause==923;
+    r=dv_inventory(DV_SMALL2,"\n");#assert r.status==DvStatus.checkpoint && r.cause== -1;
+    #assert dv_index(DV_SMALL2,"layers.x.ffn_norm.weight BF16")== -1 && dv_index(DV_SMALL2,"layers.40.ffn_norm.weight BF16")== -1;
+    #assert dv_index(DV_SMALL2,"layers.1:.ffn_norm.weight BF16")== -1 && dv_index(DV_SMALL2,"layers.1.ffn_norm.weightX BF16")== -1;
+    #assert dv_index(DV_SMALL2,"layers.39.ffn_norm.weight BF16 5120")==3+39*23+22 && dv_index(DV_SMALL2,"output.weight")==1 && dv_index(DV_SMALL2,"layers.")== -1;
+    #assert dv_index(DV_SMALL2,"vision_encoder.x BF16 1")== -1 && dv_index(DV_SMALL2,"x")== -1;
+    #assert dv_starts("layers.","layers.") && !dv_starts("layers","layers.") && !dv_starts("layerz.1","layers.");
+    d=DV_SMALL2;d.heads=31;#assert dv_inventory(d,DV_PINNED_MANIFEST).status==DvStatus.shape;
+    d=DV_SMALL2;d.vocab=131073;r=dv_inventory(d,DV_PINNED_MANIFEST);#assert r.status==DvStatus.checkpoint && r.cause== -922;
+    buf:[48000]u8;n:=ms_put(buf[..],0,DV_PINNED_MANIFEST);
+    m:=ms_put(buf[..],n,"norm.weight BF16 5120\n");r=dv_inventory(DV_SMALL2,cast(string)buf[0..<m]);#assert r.status==DvStatus.checkpoint && r.cause==0;
+    m=ms_put(buf[..],n,"vision_encoder.x BF16 1\n");r=dv_inventory(DV_SMALL2,cast(string)buf[0..<m]);#assert r.cause== -924;
+    m=ms_put(buf[..],n,"layers.40.ffn_norm.weight BF16 5120\n");r=dv_inventory(DV_SMALL2,cast(string)buf[0..<m]);#assert r.cause== -924;
+    m=ms_put(buf[..],n,"layers.\n");#assert dv_inventory(DV_SMALL2,cast(string)buf[0..<m]).cause== -924;
+    m=ms_put(buf[..],n,"layers.x.ffn_norm.weight BF16 5120\n");#assert dv_inventory(DV_SMALL2,cast(string)buf[0..<m]).cause== -924;
+    m=ms_put(buf[..],n,"layers.1 BF16 5120\n");#assert dv_inventory(DV_SMALL2,cast(string)buf[0..<m]).cause== -924;
+    m=ms_put(buf[..],n,"layers.1.ffn_norm.weight BF16 5120");r=dv_inventory(DV_SMALL2,cast(string)buf[0..<m]);#assert r.status==DvStatus.ok;
+    m=ms_put(buf[..],n,"norm.weight BF16 5120 \n");#assert dv_inventory(DV_SMALL2,cast(string)buf[0..<m]).cause== -924;
+    m=ms_put(buf[..],n,"norm.weightX BF16 5120\n");#assert dv_inventory(DV_SMALL2,cast(string)buf[0..<m]).cause== -924;
+    // The last line is the embedding: without it, tensor 2 is missing.
+    last:=ms_put(buf[..],0,"tok_embeddings.weight BF16 131072,5120\n");
+    r=dv_inventory(DV_SMALL2,DV_PINNED_MANIFEST[0..<DV_PINNED_MANIFEST.count-last]);#assert r.status==DvStatus.checkpoint && r.cause==2;
+    r=dv_inventory(DV_SMALL2,DV_PINNED_MANIFEST[0..<DV_PINNED_MANIFEST.count-1]);#assert r.cause==2;
+    // Parts by hand: matrix, kind.
+    p:=dv_part(0);#assert p[0]==0 && p[1]==0;p=dv_part(2);#assert p[0]==0 && p[1]==2;p=dv_part(3);#assert p[0]==1 && p[1]==0;
+    p=dv_part(11);#assert p[0]==3 && p[1]==2;p=dv_part(12);#assert p[0]==4 && p[1]==3;p=dv_part(13);#assert p[0]==5 && p[1]==0;
+    p=dv_part(21);#assert p[0]==7 && p[1]==2;p=dv_part(22);#assert p[0]==8 && p[1]==3;p=dv_part(23);#assert p[0]== -1 && p[1]== -1;
+    t:=dv_expected(DV_SMALL2,3+23*7+1);n=dv_line(t,buf[..]);#assert cast(string)buf[0..<n]=="layers.7.attention.wk.qscale_weight BF16 scalar" && dv_bytes(t)==2;
+    t=dv_expected(DV_SMALL2,3+23*7+21);n=dv_line(t,buf[..]);#assert cast(string)buf[0..<n]=="layers.7.feed_forward.w3.weight F8_E4M3 32768,5120" && dv_bytes(t)==ffn;
+    t=dv_expected(DV_SMALL2,3+23*7+12);n=dv_line(t,buf[..]);#assert cast(string)buf[0..<n]=="layers.7.attention_norm.weight BF16 5120" && dv_bytes(t)==10240;
+    t=dv_expected(DV_SMALL2,1);n=dv_line(t,buf[..]);#assert cast(string)buf[0..<n]=="output.weight BF16 131072,5120" && dv_bytes(t)==2*131072*5120;
+    #assert dv_name("ab cd")==2 && dv_name("abc")==3 && dv_name("")==0;
+}
+#test "the memory plan: resident in RAM, streamed on the GPU" {
+    s:=DV_SMALL2;r:=RpRequest.{capacity=4096,chunk=256,stream=true};w:=dv_weights(s);
+    #assert w.total==DV_PINNED_TEXT_BYTES && w.vectors==40*(4*5120+28)+2*5120 && w.slot==2*131072*5120 && w.embedding==w.slot && w.expert==0;
+    #assert dv_state(s,4096)==4*40*4096*2*8*128 && dv_scratch(s,256,4096)==4*(256*(2*5120+2*32768)+32*4096+131072);
+    d:=s;d.hidden=1000;#assert dv_scratch(d,1,1)==4*((2*5120+48*128)+32+131072);
+    live:=dv_state(s,4096)+dv_scratch(s,256,4096);
+    ram:=dv_plan(s,r,DV_HOST_RAM);#assert ram.status==RpStatus.ok && ram.mode==RpMode.resident && ram.resident==w.total;
+    gpu:=dv_plan(s,r,DV_HOST_GPU);#assert gpu.status==RpStatus.ok && gpu.mode==RpMode.streamed && gpu.resident==DV_HOST_GPU-live-2*w.slot && gpu.streamed==w.total-gpu.resident;
+    r.stream=false;off:=dv_plan(s,r,DV_HOST_GPU);#assert off.status==RpStatus.weights && off.need==w.total+live;
+    #assert dv_plan(s,RpRequest.{capacity=0,chunk=1},DV_HOST_RAM).status==RpStatus.request;
+    #assert dv_plan(s,RpRequest.{capacity=393217,chunk=1},DV_HOST_RAM).status==RpStatus.request;
+    #assert dv_plan(s,RpRequest.{capacity=393216,chunk=1},1<<40).status==RpStatus.ok;
+    #assert dv_plan(s,RpRequest.{capacity=8,chunk=0},DV_HOST_RAM).status==RpStatus.request;
+    #assert dv_plan(s,RpRequest.{capacity=8,chunk=9},DV_HOST_RAM).status==RpStatus.request;
+    #assert dv_plan(s,RpRequest.{capacity=8,chunk=8},DV_HOST_RAM).status==RpStatus.ok;
+    #assert dv_plan(s,RpRequest.{capacity=1,chunk=1},DV_HOST_RAM).status==RpStatus.ok;
+    d=s;d.heads=31;#assert dv_plan(d,RpRequest.{capacity=8,chunk=8},DV_HOST_RAM).status==RpStatus.model;
+}
+#test "the conversation renders and tokenizes exactly as the chat template and Tekken do" {
+    tools:=DV_TOOLS;buf:[DV_TEXT_MAX]u8;n:=dv_tools_json(tools[..],buf[..]);#assert cast(string)buf[0..<n]==DV_TOOLS_JSON;
+    tb:=DV_TEKKEN_BYTES;tr:=DV_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};
+    tk:=DV_TASKS;ub:[256]u8;user:=cast(string)ub[0..<dv_task_text(tk[3],ub[..])];
+    turns:=[2]DvTurn.[DvTurn.{call=DvCall.{tool=0,code="x2*1+",x=3},result="7"},DvTurn.{call=DvCall.{tool=1,code="x2*1+"}}];
+    r:=dv_render(tools[..],DV_SYSTEM,user,turns[..],buf[..]);#assert r.status==DvStatus.ok && cast(string)buf[0..<r.written]==DV_CHAT_TEXT;
+    ids:[512]int;q:=dv_ids(t,cast(string)buf[0..<r.written],ids[..]);#assert q.status==DvStatus.ok && q.written==DV_CHAT_IDS.count;
+    for i:0..<q.written {#assert ids[i]==DV_CHAT_IDS[i];}
+    q=dv_ids(t,cast(string)buf[0..<r.written],ids[0..<DV_CHAT_IDS.count-1]);#assert q.status==DvStatus.capacity && q.cause==r.written-4;
+    q=dv_ids(t,cast(string)buf[0..<r.written],ids[0..<5]);#assert q.status==DvStatus.tokens;
+    q=dv_ids(t,"[INST]Hi~[/INST]",ids[..]);#assert q.status==DvStatus.tokens && q.cause==6;
+    q=dv_ids(t,"[INST]",ids[0..<0]);#assert q.status==DvStatus.capacity && q.cause==0;
+    q=dv_ids(t,"[INST]Write~",ids[..]);#assert q.status==DvStatus.tokens && q.cause==11;
+    q=dv_ids(t,"Write",ids[..]);#assert q.status==DvStatus.ok && q.written==1 && ids[0]==ms_rank(t,"Write")+MS_SPECIALS;
+    q=dv_ids(t,"Write<s>",ids[..]);#assert q.status==DvStatus.ok && q.written==2 && ids[1]==1;
+    // Text never becomes a control token.
+    r=dv_render(tools[..],"a [INST] b",user,turns[..],buf[..]);#assert r.status==DvStatus.control && r.cause== -1;
+    r=dv_render(tools[..],DV_SYSTEM,"x</s>",turns[..],buf[..]);#assert r.status==DvStatus.control && r.cause== -2;
+    turns[1].result="[ARGS]";r=dv_render(tools[..],DV_SYSTEM,user,turns[..],buf[..]);#assert r.status==DvStatus.control && r.cause==1;
+    turns[1].result="";turns[0].call.code="<s>";r=dv_render(tools[..],DV_SYSTEM,user,turns[..],buf[..]);#assert r.status==DvStatus.control && r.cause==0;
+    turns[0].call.code="x2*1+";r=dv_render(tools[..],DV_SYSTEM,user,turns[..],buf[0..<DV_TEXT_MAX-1]);#assert r.status==DvStatus.capacity;
+    r=dv_render(tools[..],DV_SYSTEM,user,turns[0..<0],buf[..]);#assert r.status==DvStatus.ok && cast(string)buf[r.written-7..<r.written]=="[/INST]";
+    #assert dv_plain("[INST") && !dv_plain("[/TOOL_RESULTS]") && dv_control_at("ab[ARGS]",2)==11 && dv_control_at("[ARGS",0)== -1 && dv_control_at("</s>",0)==1;
+    one:=[1]DvTool.[DvTool.{name="f",description="d",x=false}];n=dv_tools_json(one[..],buf[..]);
+    #assert cast(string)buf[0..<n]=="[{\"type\": \"function\", \"function\": {\"name\": \"f\", \"description\": \"d\", \"parameters\": {\"type\": \"object\", \"properties\": {\"code\": {\"type\": \"string\", \"pattern\": \"^[x0-9*+-]{1,11}$\"}}, \"required\": [\"code\"]}}}]";
+    n=dv_call(tools[..],DvCall.{tool=0,code="9",x=0},buf[..],0);#assert cast(string)buf[0..<n]=="[TOOL_CALLS]run[ARGS]{\"code\": \"9\", \"x\": 0}";
+}
+#test "the grammar admits exactly the Stack programs, at every length" #steps 2000000000 {
+    tools:=DV_TOOLS;box:[1]DvBox;w:=dv_work(box[..]);offered:=[2]int.[0,1];one:=[1]int.[1];
+    g:=dv_grammar(tools[..],one[..],w);#assert g.why==HtWhy.none;
+    sb:[16]u8;cb:[64]u8;accepted:=0;
+    for n:1..<6 {
+        total:=1;for k:0..<n {total*=6;}
+        for i:0..<total {
+            code:=dvo_string("x9*+-a",n,i,sb[..]);
+            ok:=nx_accepts(g.grammar,dv_submit(code,cb[..]));
+            #assert ok==dvo_valid(code) && ok==(dv_eval(code,7).stop==DvStop.ok);
+            if ok {accepted+=1;}
+        }
+    }
+    // Over x, 9 and three operators, programs of 1, 3 and 5 bytes: 2 + 12 + 72 + 72.
+    #assert accepted==2+2*2*3+3*2*2*2*3*2;
+    // The longest program is 11 bytes: six values and five operators.
+    #assert nx_accepts(g.grammar,dv_submit("xx*x*x*x*x*",cb[..])) && !nx_accepts(g.grammar,dv_submit("xx*x*x*x*x*9",cb[..])) && !nx_accepts(g.grammar,dv_submit("xx*x*x*x*x*9+",cb[..]));
+    #assert nx_accepts(g.grammar,dv_submit("xxxx***x+x-",cb[..])) && !nx_accepts(g.grammar,dv_submit("xxxxx****",cb[..]));
+    // The bytes beside each range: y, the colon, the comma and the period.
+    #assert nx_accepts(g.grammar,dv_submit("09-",cb[..])) && !nx_accepts(g.grammar,dv_submit("y",cb[..])) && !nx_accepts(g.grammar,dv_submit(":",cb[..]));
+    #assert !nx_accepts(g.grammar,dv_submit("/",cb[..])) && !nx_accepts(g.grammar,dv_submit("xx,",cb[..])) && !nx_accepts(g.grammar,dv_submit("xx.",cb[..])) && !nx_accepts(g.grammar,dv_submit("xx)",cb[..]));
+    #assert dvo_valid("xx*x*x*x*x*9")==false && !dvo_valid("") && dvo_valid("x");
+    g=dv_grammar(tools[..],offered[..],w);
+    #assert nx_accepts(g.grammar,"[TOOL_CALLS]run[ARGS]{\"code\": \"x\", \"x\": 999}") && !nx_accepts(g.grammar,"[TOOL_CALLS]run[ARGS]{\"code\": \"x\", \"x\": 1000}");
+    #assert nx_accepts(g.grammar,"[TOOL_CALLS]run[ARGS]{\"code\": \"x\", \"x\": 0}") && !nx_accepts(g.grammar,"[TOOL_CALLS]run[ARGS]{\"code\": \"x\", \"x\": 01}");
+    #assert !nx_accepts(g.grammar,"[TOOL_CALLS]run[ARGS]{\"code\": \"x\"}") && !nx_accepts(g.grammar,"[TOOL_CALLS]submit[ARGS]{\"code\": \"x\", \"x\": 1}");
+    // Both tools take 108 states and 193 edges.
+    #assert g.grammar.states==108;
+    small:=ht_work(box[0].e[0..<193],box[0].o[0..<108],box[0].n[0..<108*256],box[0].a[0..<108],box[0].l[0..<108]);#assert dv_grammar(tools[..],offered[..],small).why==HtWhy.none;
+    small=ht_work(box[0].e[0..<192],box[0].o[..],box[0].n[..],box[0].a[..],box[0].l[..]);#assert dv_grammar(tools[..],offered[..],small).why==HtWhy.capacity;
+    small=ht_work(box[0].e[..],box[0].o[0..<107],box[0].n[..],box[0].a[..],box[0].l[..]);#assert dv_grammar(tools[..],offered[..],small).why==HtWhy.capacity;
+    small=ht_work(box[0].e[0..<100],box[0].o[..],box[0].n[..],box[0].a[..],box[0].l[..]);#assert dv_grammar(tools[..],offered[..],small).why==HtWhy.capacity;
+    small=ht_work(box[0].e[..],box[0].o[0..<100],box[0].n[..],box[0].a[..],box[0].l[..]);#assert dv_grammar(tools[..],offered[..],small).why==HtWhy.capacity;
+    small=ht_work(box[0].e[..],box[0].o[..],box[0].n[0..<256],box[0].a[..],box[0].l[..]);#assert dv_grammar(tools[..],offered[..],small).why==HtWhy.capacity;
+}
+#test "admission names the byte and the field, and decodes the call" {
+    tools:=DV_TOOLS;box:[1]DvBox;w:=dv_work(box[..]);offered:=[2]int.[0,1];one:=[1]int.[1];
+    a:=dv_admit(tools[..],offered[..],"[TOOL_CALLS]run[ARGS]{\"code\": \"x2*1+\", \"x\": 30}",w);
+    #assert a.why==DvWhy.none && a.at== -1 && a.call.tool==0 && a.call.code=="x2*1+" && a.call.x==30;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]run[ARGS]{\"code\": \"9\", \"x\": 999}",w);#assert a.why==DvWhy.none && a.call.code=="9" && a.call.x==999;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]submit[ARGS]{\"code\": \"xx*x-\"}",w);#assert a.why==DvWhy.none && a.call.tool==1 && a.call.code=="xx*x-" && a.call.x==0;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]submit[ARGS]{\"code\": \"x+\"}",w);#assert a.why==DvWhy.syntax && a.at==35 && a.field==0;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]submit[ARGS]{\"code\": \"x2*",w);#assert a.why==DvWhy.incomplete && a.at==37 && a.field==0;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]ruin",w);#assert a.why==DvWhy.syntax && a.at==14 && a.field== -1;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]run[ARGS]{\"code\": \"x\", \"x\": 1000}",w);#assert a.why==DvWhy.syntax && a.at==43 && a.field==1;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]run[ARGS]{\"code\": \"x\", \"x\": ",w);#assert a.why==DvWhy.incomplete && a.field==1;
+    a=dv_admit(tools[..],one[..],"[TOOL_CALLS]run[ARGS]{\"code\": \"x\", \"x\": 1}",w);#assert a.why==DvWhy.syntax && a.at==12;
+    a=dv_admit(tools[..],offered[..],"",w);#assert a.why==DvWhy.incomplete && a.at==0 && a.field== -1;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]subx",w);#assert a.why==DvWhy.syntax && a.at==15 && a.field== -1;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]submit[ARGS]{\"code\": \"x\"]",w);#assert a.why==DvWhy.syntax && a.at==36 && a.field== -1;
+    a=dv_admit(tools[..],offered[..],"[TOOL_CALLS]submit[ARGS]{\"code\": \"x",w);#assert a.why==DvWhy.incomplete && a.field==0;
+    two:=[2]int.[1,0];
+    a=dv_admit(tools[..],two[..],"[TOOL_CALLS]run[ARGS]{\"code\": \"x\", \"x\": 1}}",w);#assert a.why==DvWhy.syntax && a.at==42 && a.field== -1;
+    a=dv_admit(tools[..],two[..],"[TOOL_CALLS]run[ARGS]{\"code\": \"x\", \"x\": 12",w);#assert a.why==DvWhy.incomplete && a.field==1;
+    small:=ht_work(box[0].e[0..<10],box[0].o[..],box[0].n[..],box[0].a[..],box[0].l[..]);
+    #assert dv_admit(tools[..],offered[..],"[TOOL_CALLS]",small).why==DvWhy.capacity;
+}
+#test "Stack runs by hand and refuses with the byte" {
+    v:=dv_eval("x2*1+",5);#assert v.stop==DvStop.ok && v.value==11 && v.at== -1;
+    v=dv_eval("x1-",5);#assert v.value==4;v=dv_eval("95-",0);#assert v.value==4;v=dv_eval("23*",0);#assert v.value==6;
+    v=dv_eval("x0-",9);#assert v.value==9;v=dv_eval("09-",0);#assert v.value== -9;v=dv_eval("x8+",1);#assert v.value==9;
+    v=dv_eval("+",5);#assert v.stop==DvStop.underflow && v.at==0;
+    v=dv_eval("x+",5);#assert v.stop==DvStop.underflow && v.at==1;
+    v=dv_eval("xxxxx",5);#assert v.stop==DvStop.overflow && v.at==4;
+    v=dv_eval("xxxx***",2);#assert v.stop==DvStop.ok && v.value==16;
+    v=dv_eval("xx",5);#assert v.stop==DvStop.left && v.at==2;
+    v=dv_eval("",5);#assert v.stop==DvStop.left && v.at==0;
+    v=dv_eval("x2/",5);#assert v.stop==DvStop.byte && v.at==2;
+    v=dv_eval("x:",5);#assert v.stop==DvStop.byte;v=dv_eval("x/",5);#assert v.stop==DvStop.byte;v=dv_eval(",",5);#assert v.stop==DvStop.byte;
+}
+#test "the task set: references pass, outputs follow f, wrong programs fail" {
+    tasks:=DV_TASKS;buf:[256]u8;
+    for t,r:tasks {
+        #assert dv_passes(t,t.reference) && t.shown==3;
+        for x,i:t.inputs {
+            f:=[8]int.[x+3,2*x,x*x,2*x+1,x*x-x,x*x*x,3*x-5,(x+1)*(x-1)];
+            #assert t.outputs[i]==f[r];
+        }
+    }
+    #assert !dv_passes(tasks[3],"x2*") && !dv_passes(tasks[3],"x+") && !dv_passes(tasks[0],"x3-") && dv_passes(tasks[1],"xx+");
+    #assert !dv_passes(tasks[2],"x") && dv_passes(tasks[0],"3x+");
+    n:=dv_task_text(tasks[6],buf[..]);
+    #assert cast(string)buf[0..<n]=="Write f(x) = 3x - 5 in Stack. x pushes the input, a digit pushes itself, and + - * pop two values and push the result. Example: f(3) = 4.";
+}
+#test "the stand-in follows its script on top of the noise" {
+    tasks:=DV_TASKS;buf:[160]u8;n:=dv_script(tasks[3],0,buf[..]);
+    #assert cast(string)buf[0..<n]=="[TOOL_CALLS]run[ARGS]{\"code\": \"x2*1+\", \"x\": 3}";
+    n=dv_script(tasks[3],2,buf[..]);#assert cast(string)buf[0..<n]=="[TOOL_CALLS]submit[ARGS]{\"code\": \"x2*1+\"}";
+    noise:[28]f32;ht_noise(5,1,2,noise[..]);lg:[28]f32;
+    p:=DvPolicy.{seed=5,skill=8};script:=cast(string)buf[0..<n];
+    dv_logits(p,script,"",1,2,lg[..]);
+    for j:0..<28 {#assert lg[j]==noise[j]+f32(ifx j==0 then 8.0 else 0.0);}
+    dv_logits(p,script,script[0..<34],1,2,lg[..]);
+    for j:0..<28 {#assert lg[j]==noise[j]+f32(ifx j==10 then 8.0 else 0.0);}
+    dv_logits(p,script,script[0..<36],1,2,lg[..]);
+    for j:0..<28 {#assert lg[j]==noise[j]+f32(ifx j==21 then 8.0 else 0.0);}
+    dv_logits(p,script,script[0..<n-2],1,2,lg[..]);
+    for j:0..<28 {#assert lg[j]==noise[j]+f32(ifx j==5 || j==9 then 8.0 else 0.0);}
+    dv_logits(p,script,script,1,2,lg[..]);
+    for j:0..<28 {#assert lg[j]==noise[j]+f32(ifx j==DV_END then 8.0 else 0.0);}
+    dv_logits(p,script,script[0..<n-1],1,2,lg[..]);
+    for j:0..<28 {#assert lg[j]==noise[j]+f32(ifx j==8 then 8.0 else 0.0);}
+}
+#test "measured: every constrained call parses; pass@k over the eight tasks" #steps 4000000000 {
+    box:[1]DvBox;w:=dv_work(box[..]);sm:=dv_sampler(box[..]);
+    y:=dv_tally(DvPolicy.{seed=83,skill=8,constrained=true},8,w,sm);
+    #assert y.status==DvStatus.ok && y.attempts==64 && y.calls==128 && y.parsed==128 && y.submitted==64 && y.passed==30 && y.pieces==1794;
+    right:=[8]int.[4,6,2,4,2,4,5,3];for c,r:right {#assert y.right[r]==c;}
+    p1:=dv_pass_at(y,8,1);#assert p1.status==CdStatus.ok && p1.value==30.0/64;
+    p4:=dv_pass_at(y,8,4);s:=0.0;for c:right {s+=cd_pass_at(8,c,4).value;}#assert p4.value==s/8;
+    #assert dv_pass_at(y,8,9).status==CdStatus.shape && dv_pass_at(y,4,1).status==CdStatus.shape;
+    u:=dv_tally(DvPolicy.{seed=83,skill=8},8,w,sm);
+    #assert u.attempts==64 && u.calls==69 && u.parsed==6 && u.submitted==1 && u.passed==1 && u.right[1]==1;
+    // Without skill, seed 16 runs three times and never submits.
+    tasks:=DV_TASKS;zero:=dv_attempt(DvPolicy.{seed=16,constrained=true},tasks[0],w,sm);
+    #assert zero.calls==3 && zero.parsed==3 && !zero.submitted && !zero.passed && zero.pieces==63;
+    #assert u.pieces==1335 && dv_tally(DvPolicy.{seed=83,skill=8},0,w,sm).status==DvStatus.shape;
+    for k:0..<4 {
+        z:=dv_tally(DvPolicy.{seed=cast(u64)(1000+k),skill=f64(2*k),constrained=true},1,w,sm);
+        #assert z.parsed==z.calls && z.calls>=8;
+    }
+}

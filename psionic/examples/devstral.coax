@@ -1,0 +1,33 @@
+#import "Basic";
+#load "../lib/devstral.coax";
+
+// book:begin example
+// The pinned checkpoint against params.json, its memory plan on this host,
+// one conversation in Mistral's format, and the task set under the seeded
+// stand-in, with and without the grammar.
+main :: () {
+    s:=DV_SMALL2;
+    c:=dv_params(s,DV_PINNED_PARAMS);i:=dv_inventory(s,DV_PINNED_MANIFEST);
+    print("params.json: %, % bytes match the shape\n",c.status,c.written);
+    print("inventory: %, % text tensors, % parameters, % bytes as stored\n",i.status,dv_expected_count(s),i.written,i.bytes);
+    r:=RpRequest.{capacity=4096,chunk=256,stream=true};
+    gpu:=dv_plan(s,r,DV_HOST_GPU);ram:=dv_plan(s,r,DV_HOST_RAM);
+    print("plan, 4096 tokens: RAM % (% bytes), GPU % (% resident, % streamed)\n",rp_mode_name(ram.mode),ram.weights+ram.state+ram.scratch,rp_mode_name(gpu.mode),gpu.resident,gpu.streamed);
+
+    tools:=DV_TOOLS;tasks:=DV_TASKS;ub:[256]u8;buf:[DV_TEXT_MAX]u8;ids:[512]int;
+    tb:=DV_TEKKEN_BYTES;tr:=DV_TEKKEN_RANKS;t:=MsTable.{bytes=tb[..],ranks=tr[..]};
+    turns:=[2]DvTurn.[DvTurn.{call=DvCall.{tool=0,code="x2*1+",x=3},result="7"},DvTurn.{call=DvCall.{tool=1,code="x2*1+"}}];
+    v:=dv_render(tools[..],DV_SYSTEM,cast(string)ub[0..<dv_task_text(tasks[3],ub[..])],turns[..],buf[..]);
+    k:=dv_ids(t,cast(string)buf[0..<v.written],ids[..]);
+    print("conversation: % bytes, % tokens, ends %\n",v.written,k.written,cast(string)buf[v.written-45..<v.written]);
+
+    box:[1]DvBox;w:=dv_work(box[..]);sm:=dv_sampler(box[..]);
+    for constrained:[2]bool.[true,false] {
+        y:=dv_tally(DvPolicy.{seed=83,skill=8,constrained=constrained},8,w,sm);
+        print("% : calls %, parsed %, submitted %, passed % of %, pieces %\n",ifx constrained then "constrained  " else "unconstrained",y.calls,y.parsed,y.submitted,y.passed,y.attempts,y.pieces);
+        print("  passes per task:");for x:y.right {print(" %",x);}print("\n");
+        print("  pass@1 %, pass@2 %, pass@4 %, pass@8 %\n",dv_pass_at(y,8,1).value,dv_pass_at(y,8,2).value,dv_pass_at(y,8,4).value,dv_pass_at(y,8,8).value);
+        wi:=cd_wilson(y.passed,y.attempts);print("  Wilson 95%% interval for pass@1: [%, %]\n",wi.low,wi.high);
+    }
+}
+// book:end example

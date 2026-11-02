@@ -2262,6 +2262,26 @@
       ]
     },
     {
+      "source": "psionic/examples/devstral.coax",
+      "chapter": "psionic/book/ch083-a-coding-agent.md",
+      "stdout": "psionic/fixtures/devstral.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/devstral-refuse.coax",
+      "chapter": "psionic/book/ch083-a-coding-agent.md",
+      "stdout": "psionic/fixtures/devstral-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/nemotron-lightning.coax",
       "chapter": "psionic/book/ch164-execute-nemotron-lightning.md",
       "stdout": "psionic/fixtures/nemotron-lightning.out",

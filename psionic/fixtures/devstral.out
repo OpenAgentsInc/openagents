@@ -1,0 +1,12 @@
+params.json: ok, 227 bytes match the shape
+inventory: ok, 923 text tensors, 23572403760 parameters, 24914996320 bytes as stored
+plan, 4096 tokens: RAM resident (26335816800 bytes), GPU streamed (13066305536 resident, 11848690784 streamed)
+conversation: 960 bytes, 283 tokens, ends [TOOL_CALLS]submit[ARGS]{"code": "x2*1+"}</s>
+constrained   : calls 128, parsed 128, submitted 64, passed 30 of 64, pieces 1794
+  passes per task: 4 6 2 4 2 4 5 3
+  pass@1 0.46875, pass@2 0.7232142857142856, pass@4 0.9321428571428572, pass@8 1.0
+  Wilson 95% interval for pass@1: [0.3517578764404486, 0.5892812499952487]
+unconstrained : calls 69, parsed 6, submitted 1, passed 1 of 64, pieces 1335
+  passes per task: 0 1 0 0 0 0 0 0
+  pass@1 0.015625, pass@2 0.03125, pass@4 0.0625, pass@8 0.125
+  Wilson 95% interval for pass@1: [0.0027634707504014047, 0.08334298900290629]

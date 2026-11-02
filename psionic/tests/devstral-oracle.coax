@@ -1,0 +1,23 @@
+// Chapter 83's independent checks: which byte strings are Stack programs,
+// written from the language's definition rather than from the grammar or
+// the interpreter. A program is 1 to 12 instructions; after every prefix
+// the values pushed minus the operators applied is the stack's size, which
+// must stay between 1 and 4 after each operator and push and end at 1.
+dvo_valid :: (code:string)->bool {
+    if code.count<1 || code.count>12 {return false;}
+    pushed:=0;applied:=0;
+    for c:code {
+        push:=c=='x' || (c>='0' && c<='9');
+        op:=c=='+' || c=='-' || c=='*';
+        if !push && !op {return false;}
+        if push {pushed+=1;}else {applied+=1;}
+        size:=pushed-applied;
+        if size<1 || size>4 {return false;}
+    }
+    return pushed-applied==1;
+}
+// The i-th string over alphabet of exactly length n (i in 0 ..< count^n).
+dvo_string :: (alphabet:string,n:int,i:int,out:[]u8)->string {
+    x:=i;for k:0..<n {out[k]=alphabet[x%alphabet.count];x/=alphabet.count;}
+    return cast(string)out[0..<n];
+}
