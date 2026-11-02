@@ -2,7 +2,8 @@
 
 > **Status: unimplemented — design draft.** Today each check is its own
 > script under `coax/web/`: `perf.ts` times Everglade's frames in headless
-> Chrome, `frametime.ts` reads GPU time per pass, `goldens.ts` walks every
+> Chrome, `realm-perf.coax` times every realm in `realms.json` (built,
+> #12649), `frametime.ts` reads GPU time per pass, `goldens.ts` walks every
 > realm against its golden screenshot, and `?probe` reads a frame back.
 > Analytics events come from `apps/openagents-web/analytics.coax`. No
 > realm-wide inspector or shared frame report exists. This chapter plans
@@ -28,7 +29,11 @@ engine; this chapter measures a whole realm as a player sees it.
    over 17.5 ms or any frame is over 33 ms. `perf.ts` opens Everglade at
    four places and times (road at noon, commons at dusk, river at night,
    market at dusk), at device pixel ratios 1 and 2, at 1440x900, and walks
-   about 13 s, casting a meteor every 6.7 s.
+   about 13 s, casting a meteor every 6.7 s. `realm-perf.coax` takes
+   every realm in `realms.json` at dpr 1 and 2 at 1440x900 and as a
+   390x844 phone at dpr 3, walks about 8 s in each, and runs after every
+   release against production as a report compared with the last
+   release's (`releases/<time>/REALMS.tsv`); it never blocks a release.
 2. **A busy machine.** A failing case is tried up to three times beside a
    control page (production's Everglade, standing still). When the control
    misses frames too, the check waits 10 s and tries again, at most 6
@@ -57,7 +62,9 @@ engine; this chapter measures a whole realm as a player sees it.
 
 ## What exists today
 
-- [coax/web/perf.ts](../../coax/web/perf.ts): the 60 FPS cases.
+- [coax/web/perf.ts](../../coax/web/perf.ts): Everglade's 60 FPS cases.
+- [coax/web/realm-perf.coax](../../coax/web/realm-perf.coax): every
+  realm's 60 FPS cases, generated from `realms.json`.
 - [coax/web/frametime.ts](../../coax/web/frametime.ts): GPU time per pass.
 - [coax/web/goldens.ts](../../coax/web/goldens.ts): the realm walk and the
   analytics contract.
@@ -71,8 +78,8 @@ engine; this chapter measures a whole realm as a player sees it.
 - `aethyr/frame-report.coax`: stage timers, budgets per stage and a fixed
   report record.
 - A HUD overlay that draws the report, off by default.
-- A realm list in `perf.ts` built from `realms.json`, so every realm has
-  60 FPS cases, not only Everglade.
+- A realm list built from `realms.json`, so every realm has 60 FPS cases,
+  not only Everglade. Built: `coax/web/realm-perf.coax` (#12649).
 
 ## Acceptance checks and oracles
 

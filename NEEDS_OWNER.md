@@ -46,6 +46,21 @@ changes the machine's configuration, so it waits for you:
    returns to tty1; Ctrl+Alt+F3 resumes. Say whether it should become tty1
    (booting straight into the Verse), which is V0's last step.
 
+## Every realm's 60 FPS report: the first sweep needs a hardware GPU (2026-11-02, #12649)
+
+`coax/web/realm-perf.coax` times every realm in `realms.json` at dpr 1 and
+2 and as a 390x844 phone, and `release.sh` now runs it after each release as
+a report (`releases/<time>/REALMS.tsv` and `REALMS.txt`). On coderos-4080
+headless Chromium gets no WebGPU adapter (Google Chrome gets only
+SwiftShader), so the tool refuses to measure there and no first sweep exists
+yet. Run it on the release Mac, from the repository root, in three parts of
+under 15 minutes each:
+
+    for p in 1 2 3; do coax/web/tool.sh realm-perf https://openagents.com --shard $p/3 --out realms.$p.tsv; done
+
+Or let the next release run it. To measure on coderos-4080, its headless
+Chromium needs a hardware Vulkan WebGPU adapter (the NVIDIA ICD).
+
 ## Background jobs stopped after desktop lockups (2026-11-02)
 
 At the owner's request, the open-issues chat stopped its eight mutation

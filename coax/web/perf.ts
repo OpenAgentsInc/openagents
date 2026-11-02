@@ -1,4 +1,5 @@
 // Everglade's frame rate in headless Chrome: the check that keeps it at 60 FPS.
+// Every other realm in realms.json is timed by coax/web/realm-perf.coax (#12649), a report after each release.
 //   bun coax/web/perf.ts [BASE_URL] [--dpr 1|2] [--seconds S] [--json] [--home-only]
 // BASE_URL defaults to https://staging.openagents.com. For each device pixel
 // ratio (1 and 2, at 1440x900, two Chromes side by side) it opens

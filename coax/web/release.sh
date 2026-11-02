@@ -16,6 +16,10 @@
 # screenshots), then production. The golden walk and the 60 FPS check run AFTER
 # the release is live, against production, as a report (releases/<time>/AFTER):
 # they never hold back a page or stop a release. --gated restores the gate.
+# Then every realm in realms.json, not only Everglade, at dpr 1 and 2 and as a
+# 390x844 phone (coax/web/realm-perf.coax, #12649), in three parts, compared
+# with the last release's report (releases/<time>/REALMS.tsv and REALMS.txt):
+# a report only, never a stop.
 # After them, every Coax suite under apps/openagents-web, verse, coax/web and
 # coax/lib whose sources changed since production's last release runs at the
 # budget its own header declares (`coax test FILE --steps N` there; coax/web/suites.coax), also a
@@ -523,6 +527,21 @@ if ! $gated && [[ -z "$via" ]]; then
       bounded 900 bun "$aft/t/coax/web/perf.ts" https://openagents.com && echo "after: 60 FPS held" || echo "after: 60 FPS missed (report only)"
     } > "$after" 2>&1
     gcloud storage cp "$after" "gs://$prod_bucket/releases/$stamp/AFTER" --quiet > /dev/null 2>&1 || true
+    # Every realm in realms.json at dpr 1 and 2 and as a phone (realm-perf.coax, #12649), in three
+    # parts of at most 15 minutes, compared with the last release's report: a report only.
+    realms="$aft.realms"; prev_tsv="$aft.realms-before.tsv"
+    prev_url="$(gcloud storage ls "gs://$prod_bucket/releases/*/REALMS.tsv" 2>/dev/null | sort | tail -1)"
+    [[ -z "$prev_url" ]] || gcloud storage cp "$prev_url" "$prev_tsv" --quiet > /dev/null 2>&1 || true
+    { if compiler "$aft/t" "$aft/t" > /dev/null; then
+        for part in 1 2 3; do
+          ( cd "$aft/t" && bounded 900 coax/web/tool.sh realm-perf https://openagents.com --shard "$part/3" --previous "$prev_tsv" --out "$realms.$part.tsv" ) || true
+          cat "$realms.$part.tsv" >> "$realms.tsv" 2>/dev/null || true
+        done
+        echo "after: every realm's 60 FPS report (report only): ${prev_url:-no earlier report}"
+      else echo "after: no compiler for the realm frame-rate report"; fi
+    } > "$realms.txt" 2>&1
+    [[ ! -s "$realms.tsv" ]] || gcloud storage cp "$realms.tsv" "gs://$prod_bucket/releases/$stamp/REALMS.tsv" --quiet > /dev/null 2>&1 || true
+    gcloud storage cp "$realms.txt" "gs://$prod_bucket/releases/$stamp/REALMS.txt" --quiet > /dev/null 2>&1 || true
     # Every Coax suite whose sources changed since production's last release, each at the
     # budget its header declares (coax/web/suites.coax), as a report only.
     { compiler "$aft/t" "$aft/t" > /dev/null && ( cd "$aft/t" && bounded 3600 coax/web/tool.sh suites "${since[@]+"${since[@]}"}" ) && echo "after: suites passed" || echo "after: a suite failed (report only; coax/web/tool.sh suites --only PATH)"
@@ -530,7 +549,7 @@ if ! $gated && [[ -z "$via" ]]; then
     gcloud storage cp "$suites" "gs://$prod_bucket/releases/$stamp/SUITES" --quiet > /dev/null 2>&1 || true
     git -C "$repo" worktree remove --force "$aft/t" 2>/dev/null || true ) < /dev/null &
   disown
-  echo "release $commit: goldens and 60 FPS check running after the release (report: $after, then releases/$stamp/AFTER); the changed Coax suites after them ($suites, then releases/$stamp/SUITES)"
+  echo "release $commit: goldens and 60 FPS check running after the release (report: $after, then releases/$stamp/AFTER); every realm's 60 FPS ($aft.realms.txt, then releases/$stamp/REALMS.txt) and the changed Coax suites after them ($suites, then releases/$stamp/SUITES)"
 fi
 # The commit released broke a page itself: the rest is live, but say so with a failure.
 if [[ -n "${held_mine:-}" ]]; then

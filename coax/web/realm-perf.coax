@@ -1,0 +1,466 @@
+// Every realm's frame rate in headless Chrome (GitHub #12649; Aethyr book
+// chapter 84): the 60 FPS report for each realm in realms.json, not only
+// Everglade (perf.ts keeps Everglade's four scenes and the homepage).
+//   coax/web/tool.sh realm-perf [BASE_URL] [--realms FILE] [--shard I/N] [--rounds R]
+//                               [--only SLUG] [--against URL] [--previous FILE] [--out FILE] [--list] [--software-ok]
+//   coax test coax/web/realm-perf.coax          # its own checks
+// Run from the repository root. BASE_URL defaults to https://openagents.com.
+// The cases come from apps/openagents-web/realms.json: every open world with
+// a realm, listed or not, three times: 1440x900 at dpr 1, 1440x900 at dpr 2,
+// and a 390x844 phone at dpr 3 with touch. A realm whose clock turns (cycle
+// or real) is pinned to noon (?clock=0.5) so runs compare. Each case opens
+// /realms/SLUG, waits for its scene to draw (coaxial.sceneReady, at most
+// 30 s) and settle (2 s), then walks (forward, a turn, back; 4.2 s a round,
+// R rounds, default 2) and times every requestAnimationFrame. A case holds
+// 60 FPS when it has more than 30 frames, its 95th percentile frame is at
+// most 17.5 ms and no frame is over 33 ms, as in perf.ts. A case that misses
+// is measured once more and the second measurement kept.
+//
+// --shard I/N measures cases I, I+N, I+2N ... (one Chrome, one case at a
+// time), so the whole sweep (17 realms, 51 cases, ~15 minutes) runs as parts
+// under the 15-minute limit. --against URL measures each case there too, right
+// after (production when BASE_URL is staging): when both miss, the machine's
+// GPU is likely busy, not the page. --previous FILE compares each case with an
+// earlier report (--out's lines): WORSE when it held 60 FPS then and doesn't
+// now, slower or faster when its p95 moved more than 1.5 ms. --out FILE
+// writes the report, one tab-separated line a case:
+//   SLUG FORM ok|FAIL|noscene|failed|error FRAMES P50_US P95_US MAX_US OVER_20MS FPS_TIMES_10
+// release.sh runs it after every release against production, in three
+// shards, compared with the last release's report, and keeps it in
+// releases/<time>/REALMS.tsv and REALMS.txt. It is a report: it never holds
+// back or rolls back a release. Exit 0 when every case held 60 FPS, 1 when
+// one missed, 2 on bad usage or when headless Chrome has no hardware WebGPU adapter
+// (only SwiftShader, as on CoderOS on 2026-11-02): software frame times would mean nothing.
+#import "Basic";
+#load "../lib/media/media.coax";   // its ready test (MEDIA_READY_JS, media_ready_step); it loads cdp.coax
+
+RP_CASES :: 256;            // cases from one table (85 realms)
+RP_FRAMES :: 8192;          // frames timed in one case
+RP_P95_MAX :: 17500;        // microseconds
+RP_FRAME_MAX :: 33000;
+RP_OVER :: 20000;           // a frame over this counts as late in the report
+RP_SLOWER :: 1500;          // a p95 move larger than this is reported
+RP_ROUND_MS :: 4200;        // one round of the walk
+RP_READY_MS :: 30000; RP_SETTLE_MS :: 2000;
+
+// The three forms of a case.
+RP_DPR1 :: 0; RP_DPR2 :: 1; RP_PHONE :: 2;
+RpCase :: struct { slug: string; listed: bool; pin: bool; form: int; }
+RpFrames :: struct { n: int; total: int; p50: int; p95: int; max: int; over: int; }
+RpLine :: struct { found: bool; status: string; f: RpFrames; }
+
+rp_form_name :: (form: int) -> string {
+  if form == RP_DPR1 { return "dpr1"; }
+  if form == RP_DPR2 { return "dpr2"; }
+  return "phone";
+}
+rp_form_text :: (form: int) -> string {
+  if form == RP_DPR1 { return "1440x900 dpr 1"; }
+  if form == RP_DPR2 { return "1440x900 dpr 2"; }
+  return "390x844 phone ";
+}
+rp_slug_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > 64 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+
+// ---- the cases, from realms.json -------------------------------------------
+
+// Every open world's realm, three forms each, into cases: the count, or -1
+// when the text is not the table (not JSON, no worlds array).
+rp_cases :: (text: string, nodes: [] JvNode, cases: [] RpCase) -> int {
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes) { return -1; }
+  v := d[0];
+  worlds := jv_get(v, 0, "worlds");
+  if jv_kind(v, worlds) != JV_ARRAY { return -1; }
+  n := 0; w := v.nodes[worlds].first;
+  while w >= 0 {
+    realm := jv_get(v, w, "realm");
+    slug := jv_raw(v, jv_get(v, realm, "slug"));
+    if jv_kind(v, realm) == JV_OBJECT && jv_raw(v, jv_get(v, w, "kind")) == "open" && rp_slug_ok(slug) {
+      clock := jv_raw(v, jv_get(v, realm, "clock"));
+      listed := jv_kind(v, jv_get(v, w, "listed")) != JV_FALSE;
+      for form: 0..<3 {
+        if n < cases.count { cases[n] = RpCase.{slug = slug, listed = listed, pin = clock == "cycle" || clock == "real", form = form}; n += 1; }
+      }
+    }
+    w = v.nodes[w].next;
+  }
+  return n;
+}
+// Whether case i is in shard k of n (1-based k): cases k-1, k-1+n, ...
+rp_in_shard :: (i: int, k: int, n: int) -> bool { return n <= 1 || i % n == k - 1; }
+// "I/N" with 1 <= I <= N: I and N; [0, 0] otherwise.
+RpShard :: struct { k: int; n: int; }
+rp_shard :: (s: string) -> RpShard {
+  out: RpShard; slash := -1;
+  for i: 0..<s.count { if s[i] == '/' { slash = i; break; } }
+  if slash <= 0 { return out; }
+  k := rp_whole(s[0..<slash]); n := rp_whole(s[slash + 1..<s.count]);
+  if k < 1 || n < 1 || k > n { return out; }
+  out.k = k; out.n = n;
+  return out;
+}
+// A whole number of at most 9 digits, or -1.
+rp_whole :: (s: string) -> int {
+  if s.count == 0 || s.count > 9 { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+
+// ---- frames (microseconds) -----------------------------------------------
+
+rp_stats :: (us: [] int, n: int, work: [] int) -> RpFrames {
+  f: RpFrames;
+  m := ifx n < work.count then n else work.count;
+  if m <= 0 { return f; }
+  for i: 0..<m {
+    x := us[i]; j := i;
+    while j > 0 && work[j - 1] > x { work[j] = work[j - 1]; j -= 1; }
+    work[j] = x;
+    f.total += x;
+    if x > RP_OVER { f.over += 1; }
+  }
+  f.n = m;
+  f.p50 = work[m * 50 / 100]; f.p95 = work[m * 95 / 100]; f.max = work[m - 1];
+  return f;
+}
+rp_holds :: (f: RpFrames) -> bool { return f.n > 30 && f.p95 <= RP_P95_MAX && f.max <= RP_FRAME_MAX; }
+// Frames a second, times ten (600 is 60.0 FPS).
+rp_fps10 :: (f: RpFrames) -> int { return ifx f.total > 0 then (f.n * 100000000 / f.total + 5) / 10 else 0; }
+
+// How a case compares with an earlier measurement of it.
+rp_versus :: (now_ok: bool, now: RpFrames, before: RpLine) -> string {
+  if !before.found { return "new"; }
+  then_ok := before.status == "ok" && rp_holds(before.f);
+  if then_ok && !now_ok { return "WORSE"; }
+  if !then_ok && now_ok { return "better"; }
+  if before.f.n == 0 || now.n == 0 { return "same"; }
+  if now.p95 - before.f.p95 > RP_SLOWER { return "slower"; }
+  if before.f.p95 - now.p95 > RP_SLOWER { return "faster"; }
+  return "same";
+}
+
+// ---- the report's lines ----------------------------------------------------
+
+RpBuf :: struct { b: [65536] u8; n: int; bad: bool; }
+rp_put :: (o: [] RpBuf, t: string) {
+  if o[0].n + t.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<t.count { o[0].b[o[0].n + k] = t[k]; }
+  o[0].n += t.count;
+}
+rp_int :: (o: [] RpBuf, v: int) {
+  if v < 0 { rp_put(o, "-"); rp_int(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; rp_put(o, cast(string) e[..]); }
+}
+// v tenths as "6.5" (v >= 0).
+rp_tenths :: (o: [] RpBuf, v: int) { rp_int(o, v / 10); rp_put(o, "."); rp_int(o, v % 10); }
+// microseconds as milliseconds with one decimal, rounded
+rp_ms :: (o: [] RpBuf, us: int) { rp_tenths(o, (us + 50) / 100); }
+rp_text :: (o: [] RpBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+
+rp_tsv :: (o: [] RpBuf, c: RpCase, status: string, f: RpFrames) {
+  rp_put(o, c.slug); rp_put(o, "\t"); rp_put(o, rp_form_name(c.form)); rp_put(o, "\t"); rp_put(o, status);
+  vals := [6] int.[f.n, f.p50, f.p95, f.max, f.over, rp_fps10(f)];
+  for x: vals { rp_put(o, "\t"); rp_int(o, x); }
+  rp_put(o, "\n");
+}
+rp_show :: (o: [] RpBuf, f: RpFrames) {
+  rp_tenths(o, rp_fps10(f)); rp_put(o, " FPS, p50 "); rp_ms(o, f.p50); rp_put(o, " ms, p95 "); rp_ms(o, f.p95);
+  rp_put(o, " ms, max "); rp_ms(o, f.max); rp_put(o, " ms, "); rp_int(o, f.over); rp_put(o, "/"); rp_int(o, f.n); rp_put(o, " over 20 ms");
+}
+rp_field :: (line: string, k: int) -> string {
+  i := 0; n := 0;
+  while i <= line.count {
+    e := i; while e < line.count && line[e] != '\t' { e += 1; }
+    if n == k { return line[i..<e]; }
+    n += 1; i = e + 1;
+  }
+  return "";
+}
+// The line for slug and form in an earlier report (--out's lines).
+rp_find :: (report: string, slug: string, form: int) -> RpLine {
+  r: RpLine; i := 0;
+  while i < report.count {
+    e := i; while e < report.count && report[e] != '\n' { e += 1; }
+    line := report[i..<e]; i = e + 1;
+    if rp_field(line, 0) != slug || rp_field(line, 1) != rp_form_name(form) { continue; }
+    r.found = true; r.status = rp_field(line, 2);
+    r.f.n = rp_whole(rp_field(line, 3)); r.f.p50 = rp_whole(rp_field(line, 4)); r.f.p95 = rp_whole(rp_field(line, 5));
+    r.f.max = rp_whole(rp_field(line, 6)); r.f.over = rp_whole(rp_field(line, 7));
+    fps10 := rp_whole(rp_field(line, 8));
+    r.f.total = ifx fps10 > 0 then r.f.n * 10000000 / fps10 else 0;
+    if r.f.n < 0 || r.f.p95 < 0 || r.f.max < 0 { r.found = false; }
+    return r;
+  }
+  return r;
+}
+
+#test "cases: every open realm, three forms, clocks that turn pinned" {
+  t := "{\"worlds\":[{\"id\":\"oa\",\"kind\":\"locked\"},{\"id\":\"a\",\"kind\":\"open\",\"realm\":{\"slug\":\"ice-cream\",\"clock\":\"fixed:0.5\"}},{\"id\":\"b\",\"kind\":\"open\",\"listed\":false,\"realm\":{\"slug\":\"everglade\",\"clock\":\"cycle\"}},{\"id\":\"c\",\"kind\":\"soon\",\"realm\":{\"slug\":\"later\"}},{\"id\":\"d\",\"kind\":\"open\",\"realm\":{\"slug\":\"Bad Slug\"}},{\"id\":\"e\",\"kind\":\"open\",\"realm\":{\"slug\":\"fairy\",\"clock\":\"real\"}}]}";
+  nodes: [128] JvNode; cases: [16] RpCase;
+  n := rp_cases(t, nodes[..], cases[..]);
+  #assert n == 9;
+  #assert cases[0].slug == "ice-cream" && cases[0].form == RP_DPR1 && cases[1].form == RP_DPR2 && cases[2].form == RP_PHONE && cases[0].listed && !cases[0].pin;
+  #assert cases[3].slug == "everglade" && !cases[3].listed && cases[3].pin && cases[6].slug == "fairy" && cases[8].pin && cases[8].form == RP_PHONE;
+  #assert rp_cases("[1]", nodes[..], cases[..]) == -1 && rp_cases("{\"worlds\":3}", nodes[..], cases[..]) == -1 && rp_cases("{", nodes[..], cases[..]) == -1;
+  // more cases than room: the room's worth
+  #assert rp_cases(t, nodes[..], cases[0..<4]) == 4;
+  #assert rp_slug_ok("a-1") && !rp_slug_ok("") && !rp_slug_ok("A") && !rp_slug_ok("a/b") && !rp_slug_ok("a_b");
+  #assert rp_form_name(RP_DPR1) == "dpr1" && rp_form_name(RP_DPR2) == "dpr2" && rp_form_name(RP_PHONE) == "phone";
+  #assert rp_form_text(RP_DPR2) == "1440x900 dpr 2" && rp_form_text(RP_DPR1) == "1440x900 dpr 1" && rp_form_text(RP_PHONE) == "390x844 phone ";
+}
+#test "a world as realms.json writes it: nested fields are passed over" {
+  t := "{\"v\":\"openagents.realms.v1\",\"worlds\":[{\"id\":\"house\",\"name\":\"HAUNTED HOUSE\",\"kind\":\"open\",\"orbit\":{\"r\":0.15},\"realm\":{\"slug\":\"haunted-house\",\"assets\":[\"data:/x\"],\"clock\":\"fixed:0.0\"}}]}";
+  nodes: [64] JvNode; cases: [8] RpCase;
+  #assert rp_cases(t, nodes[..], cases[..]) == 3 && cases[2].slug == "haunted-house" && !cases[2].pin;
+}
+#test "shards split the cases with none left out or twice" {
+  #assert rp_shard("2/3").k == 2 && rp_shard("2/3").n == 3 && rp_shard("1/1").n == 1;
+  #assert rp_shard("0/3").n == 0 && rp_shard("4/3").n == 0 && rp_shard("3").n == 0 && rp_shard("/3").n == 0 && rp_shard("a/3").n == 0 && rp_shard("1/").n == 0;
+  for i: 0..<20 {
+    seen := 0;
+    for k: 1..<4 { if rp_in_shard(i, k, 3) { seen += 1; } }
+    #assert seen == 1;
+  }
+  #assert rp_in_shard(0, 1, 3) && rp_in_shard(4, 2, 3) && rp_in_shard(5, 3, 3) && rp_in_shard(7, 1, 1) && rp_in_shard(7, 0, 0);
+  #assert rp_whole("12") == 12 && rp_whole("") == -1 && rp_whole("1x") == -1 && rp_whole("1234567890") == -1 && rp_whole("0") == 0;
+}
+#test "frames: percentiles, late frames and the 60 FPS rule" {
+  us: [40] int; work: [40] int;
+  for i: 0..<40 { us[i] = 16667; }
+  us[3] = 33000; us[9] = 21000; us[11] = 10000;
+  f := rp_stats(us[..], 40, work[..]);
+  #assert f.n == 40 && f.max == 33000 && f.p50 == 16667 && f.p95 == 21000 && f.over == 2 && rp_fps10(f) == 588;
+  #assert !rp_holds(f);                      // p95 21 ms
+  us[9] = 16000;
+  g := rp_stats(us[..], 40, work[..]);
+  #assert g.p95 == 16667 && g.max == 33000 && rp_holds(g);
+  us[3] = 33001;
+  #assert !rp_holds(rp_stats(us[..], 40, work[..]));
+  #assert !rp_holds(rp_stats(us[..], 30, work[..]));     // too few frames
+  us[3] = 16667;
+  #assert rp_holds(rp_stats(us[..], 31, work[..])) && rp_stats(us[..], 0, work[..]).n == 0 && rp_fps10(rp_stats(us[..], 0, work[..])) == 0;
+  // a phone at 30 FPS
+  for i: 0..<40 { us[i] = 33333; }
+  h := rp_stats(us[..], 40, work[..]);
+  #assert rp_fps10(h) == 300 && !rp_holds(h) && h.over == 40;
+  #assert rp_stats(us[..], 99, work[0..<10]).n == 10;
+}
+#test "a report line reads back and compares" {
+  o: [1] RpBuf;
+  c := RpCase.{slug = "dead-gears", form = RP_DPR2};
+  f := RpFrames.{n = 500, total = 8333500, p50 = 16667, p95 = 16900, max = 18200, over = 0};
+  rp_tsv(o[..], RpCase.{slug = "dead-gears", form = RP_DPR1}, "FAIL", RpFrames.{n = 10, total = 333330, p50 = 33333, p95 = 33333, max = 40000, over = 10});
+  rp_tsv(o[..], c, "ok", f);
+  t := rp_text(o[..]);
+  #assert rp_field("a\tb\t\tc", 3) == "c" && rp_field("a\tb", 1) == "b" && rp_field("a", 4) == "";
+  #assert t == "dead-gears\tdpr1\tFAIL\t10\t33333\t33333\t40000\t10\t300\ndead-gears\tdpr2\tok\t500\t16667\t16900\t18200\t0\t600\n";
+  b := rp_find(t, "dead-gears", RP_DPR2);
+  #assert b.found && b.status == "ok" && b.f.n == 500 && b.f.p95 == 16900 && b.f.max == 18200 && rp_holds(b.f);
+  #assert !rp_find(t, "dead-gears", RP_PHONE).found && !rp_find(t, "everglade", RP_DPR2).found && !rp_find("x\tdpr1\tok\tq", "x", RP_DPR1).found;
+  a := rp_find(t, "dead-gears", RP_DPR1);
+  #assert a.found && a.status == "FAIL" && !rp_holds(a.f);
+  #assert rp_versus(true, f, b) == "same" && rp_versus(false, f, b) == "WORSE" && rp_versus(true, f, a) == "better" && rp_versus(true, f, RpLine.{}) == "new";
+  slow := f; slow.p95 = 16900 + 1501;
+  #assert rp_versus(true, slow, b) == "slower";
+  slow.p95 = 16900 + 1500;
+  #assert rp_versus(true, slow, b) == "same";
+  fast := a; fast.f.p95 = 20000;
+  missed := f; missed.p95 = 18000;
+  #assert rp_versus(false, missed, fast) == "faster" && rp_versus(false, a.f, a) == "same";
+  #assert rp_versus(false, RpFrames.{}, a) == "same";
+  s: [1] RpBuf; rp_show(s[..], f);
+  #assert rp_text(s[..]) == "60.0 FPS, p50 16.7 ms, p95 16.9 ms, max 18.2 ms, 0/500 over 20 ms";
+  s[0].n = 0; rp_ms(s[..], 16949); rp_put(s[..], " "); rp_ms(s[..], 16950); rp_put(s[..], " "); rp_int(s[..], -3);
+  #assert rp_text(s[..]) == "16.9 17.0 -3";
+}
+
+// ---- measuring (effects) ---------------------------------------------------
+
+// The walk, run in the page: forward, a turn, back. Frame times in whole microseconds.
+rp_walk :: (o: [] RpBuf, rounds: int) {
+  rp_put(o, "(async () => { const sleep = (t) => new Promise((r) => setTimeout(r, t));");
+  rp_put(o, " const key = (k, down) => dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { key: k, bubbles: true }));");
+  rp_put(o, " const d = []; let last = 0, stop = false;");
+  rp_put(o, " const tick = (t) => { if (last) d.push(Math.round((t - last) * 1000)); last = t; if (!stop) requestAnimationFrame(tick); };");
+  rp_put(o, " requestAnimationFrame(tick);");
+  rp_put(o, " for (let round = 0; round < "); rp_int(o, rounds); rp_put(o, "; round++) {");
+  rp_put(o, " key('w', true); await sleep(1800); key('d', true); await sleep(500); key('d', false); key('w', false); await sleep(600);");
+  rp_put(o, " key('a', true); key('s', true); await sleep(900); key('a', false); key('s', false); await sleep(400); }");
+  rp_put(o, " stop = true; await sleep(20); return d.slice(0, "); rp_int(o, RP_FRAMES); rp_put(o, "); })()");
+}
+rp_call :: (c: [] Cdp, method: string, params: string) -> bool { return cdp_call(c, method, params, 15000) >= 0; }
+rp_viewport :: (c: [] Cdp, form: int) -> bool {
+  phone := form == RP_PHONE;
+  o: [1] RpBuf;
+  rp_put(o[..], "{\"width\":"); rp_int(o[..], ifx phone then 390 else 1440); rp_put(o[..], ",\"height\":"); rp_int(o[..], ifx phone then 844 else 900);
+  rp_put(o[..], ",\"deviceScaleFactor\":"); rp_int(o[..], ifx phone then 3 else ifx form == RP_DPR2 then 2 else 1);
+  rp_put(o[..], ifx phone then ",\"mobile\":true}" else ",\"mobile\":false}");
+  t: [1] RpBuf;
+  rp_put(t[..], ifx phone then "{\"enabled\":true,\"maxTouchPoints\":5}" else "{\"enabled\":false}");
+  return rp_call(c, "Emulation.setDeviceMetricsOverride", rp_text(o[..])) && rp_call(c, "Emulation.setTouchEmulationEnabled", rp_text(t[..]));
+}
+rp_go :: (c: [] Cdp, url: string) -> bool {
+  p: [4096] u8; o: [1] Jo; jo_start(o[..], p[..]);
+  jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  if o[0].bad { return false; }
+  // a retry of the same address loads it again, not just its hash
+  return rp_call(c, "Page.navigate", "{\"url\":\"about:blank\"}") && rp_call(c, "Page.navigate", jo_text(o[..]));
+}
+// One measurement of a case at base: 0 measured (f set), 1 the scene never drew, 2 the browser
+// failed, 3 the page's loading card says it failed (its words in why).
+rp_measure :: (c: [] Cdp, base: string, k: RpCase, rounds: int, f: [] RpFrames, why: [] RpBuf) -> int {
+  u: [1] RpBuf;
+  rp_put(u[..], base); rp_put(u[..], "/realms/"); rp_put(u[..], k.slug);
+  if k.pin { rp_put(u[..], "?clock=0.5"); }
+  if !rp_viewport(c, k.form) || !rp_go(c, rp_text(u[..])) { return 2; }
+  proc_sleep(300);
+  // ready as shot.coax takes it: the scene drawn and the loading card gone
+  t0 := proc_now_ms(); idle_from := -1;
+  while true {
+    word: [512] u8;
+    wn := media_value(c, MEDIA_READY_JS, word[..]);
+    status := ifx wn > 0 then cast(string) word[0..<wn] else "";
+    now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - t0, ifx idle_from < 0 then 0 else now - idle_from, RP_READY_MS);
+    if step == MEDIA_READY { break; }
+    if step == MEDIA_TIMEOUT { return 1; }
+    if step == MEDIA_FAILED { why[0].n = 0; rp_put(why, ifx status.count > 7 then status[7..<status.count] else "it failed"); return 3; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  proc_sleep(RP_SETTLE_MS);
+  w: [1] RpBuf; rp_walk(w[..], rounds);
+  v := cdp_evaluate(c, rp_text(w[..]));
+  d := cdp_doc(c);
+  if jv_kind(d, v) != JV_ARRAY { return 2; }
+  us: [RP_FRAMES] int; n := 0; e := d.nodes[v].first;
+  while e >= 0 && n < RP_FRAMES { us[n] = jv_int(d, e, 0); n += 1; e = d.nodes[e].next; }
+  work: [RP_FRAMES] int;
+  f[0] = rp_stats(us[..], n, work[..]);
+  return 0;
+}
+// A case measured, once more when it misses: its status ("ok", "FAIL", "noscene", "failed",
+// "error") and frames. A page that says it failed is not measured again.
+rp_case :: (c: [] Cdp, base: string, k: RpCase, rounds: int, f: [] RpFrames, why: [] RpBuf) -> string {
+  r := rp_measure(c, base, k, rounds, f, why);
+  if r == 3 { return "failed"; }
+  if r != 0 || !rp_holds(f[0]) { f[0] = RpFrames.{}; r = rp_measure(c, base, k, rounds, f, why); }
+  if r == 3 { return "failed"; }
+  if r == 1 { return "noscene"; }
+  if r == 2 { return "error"; }
+  return ifx rp_holds(f[0]) then "ok" else "FAIL";
+}
+// What WebGPU adapter a page of the site gets: "hardware", or what it gets instead.
+RP_ADAPTER_JS :: "(async () => { const a = await navigator.gpu?.requestAdapter(); if (!a) return 'none'; return a.info?.architecture === 'swiftshader' || a.isFallbackAdapter || a.info?.isFallbackAdapter ? 'software' : 'hardware'; })()";
+rp_adapter :: (c: [] Cdp, base: string) -> string {
+  u: [1] RpBuf; rp_put(u[..], base); rp_put(u[..], "/robots.txt");   // any page of the site: WebGPU needs a secure context
+  if !rp_go(c, rp_text(u[..])) { return "no page to ask for a WebGPU adapter"; }
+  proc_sleep(1000);
+  out: [64] u8; n := media_value(c, RP_ADAPTER_JS, out[..]);
+  word := ifx n > 0 then cast(string) out[0..<n] else "";
+  if word == "hardware" { return "hardware"; }
+  if word == "software" { return "only SwiftShader (software WebGPU)"; }
+  return "no WebGPU adapter";
+}
+rp_trim :: (s: string) -> string { n := s.count; while n > 0 && s[n - 1] == '/' { n -= 1; } return s[0..<n]; }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  base := "https://openagents.com";
+  for i: 0..<args_count(a[..]) {
+    s := args_at(a[..], i);
+    prev := ifx i > 0 then args_at(a[..], i - 1) else "";
+    if s.count > 0 && s[0] != '-' && !(prev.count > 1 && prev[0] == '-' && prev[1] == '-' && prev != "--list") { base = s; break; }
+  }
+  base = rp_trim(base);
+  shard := rp_shard(args_value(a[..], "--shard", "1/1"));
+  rounds := rp_whole(args_value(a[..], "--rounds", "2"));
+  against := rp_trim(args_value(a[..], "--against", ""));
+  only := args_value(a[..], "--only", "");
+  usage := "usage (from the repository root): coax/web/tool.sh realm-perf [BASE_URL] [--realms FILE] [--shard I/N] [--rounds R] [--only SLUG] [--against URL] [--previous FILE] [--out FILE] [--list]";
+  if !ok || shard.n == 0 || rounds < 1 || rounds > 20 { tool_errln(usage); return 2; }
+  table: [1048576] u8;
+  tn := fs_read(args_value(a[..], "--realms", "apps/openagents-web/realms.json"), table[..]);
+  if tn < 0 { tool_errln("realm-perf: cannot read the realms table (run from the repository root, or --realms FILE)"); tool_errln(usage); return 2; }
+  nodes: [65536] JvNode; cases: [RP_CASES] RpCase;
+  n := rp_cases(cast(string) table[0..<tn], nodes[..], cases[..]);
+  if n < 0 { tool_errln("realm-perf: the realms table is not openagents.realms.v1 JSON"); return 2; }
+  prev_path := args_value(a[..], "--previous", "");
+  before: [1048576] u8; bn := 0;
+  if prev_path.count > 0 { bn = fs_read(prev_path, before[..]); if bn < 0 { print("realm-perf: no earlier report at %; every case is new\n", prev_path); bn = 0; } }
+  earlier := cast(string) before[0..<bn];
+  picked := 0;
+  for i: 0..<n { if rp_in_shard(i, shard.k, shard.n) && (only.count == 0 || cases[i].slug == only) { picked += 1; } }
+  if args_has(a[..], "--list") {
+    for i: 0..<n {
+      if !rp_in_shard(i, shard.k, shard.n) || (only.count > 0 && cases[i].slug != only) { continue; }
+      print("% % % %\n", cases[i].slug, rp_form_name(cases[i].form), ifx cases[i].pin then "clock=0.5" else "its-clock", ifx cases[i].listed then "listed" else "unlisted");
+    }
+    return 0;
+  }
+  print("realm-perf: % cases (shard % of %) at %, a % s walk a case, p95 <= 17.5 ms and every frame <= 33 ms\n",
+        picked, shard.k, shard.n, base, rounds * RP_ROUND_MS / 1000);
+  if against.count > 0 { print("realm-perf: each case also at %\n", against); }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 1440, 900, "coax-realm-perf-") { tool_err("realm-perf: "); tool_errln(cdp_error(c[..])); return 1; }
+  // the report is written after every case, so a run stopped at its time limit keeps what it measured
+  out := args_value(a[..], "--out", "");
+  // Frame times mean something only on a hardware GPU: refuse a browser with no WebGPU adapter or
+  // only SwiftShader (software), as CoderOS's headless Chromium gives (2026-11-02).
+  gpu := rp_adapter(c[..], base);
+  // --software-ok runs anyway, to check the tool itself on such a machine; its numbers are not a report
+  if gpu != "hardware" && args_has(a[..], "--software-ok") && gpu != "no WebGPU adapter" {
+    print("realm-perf: % (--software-ok): these numbers check the tool, not the realms\n", gpu);
+  } else if gpu != "hardware" {
+    cdp_close(c[..]);
+    tool_err("realm-perf: headless Chrome here has "); tool_err(gpu);
+    tool_errln(", so frame times would mean nothing; run it where headless Chrome has a hardware WebGPU adapter (the release Mac)");
+    return 2;
+  }
+  report: [1] RpBuf; missed := 0; worse := 0;
+  for i: 0..<n {
+    k := cases[i];
+    if !rp_in_shard(i, shard.k, shard.n) || (only.count > 0 && k.slug != only) { continue; }
+    f: [1] RpFrames;
+    why: [1] RpBuf;
+    status := rp_case(c[..], base, k, rounds, f[..], why[..]);
+    held := status == "ok";
+    if !held { missed += 1; }
+    rp_tsv(report[..], k, status, f[0]);
+    l: [1] RpBuf;
+    rp_put(l[..], ifx held then "ok   " else "FAIL "); rp_put(l[..], rp_form_text(k.form)); rp_put(l[..], " "); rp_put(l[..], k.slug); rp_put(l[..], ": ");
+    if status == "noscene" { rp_put(l[..], "the scene didn't draw in 30 s"); }
+    else if status == "failed" { rp_put(l[..], "the page says it failed: "); rp_put(l[..], rp_text(why[..])); }
+    else if status == "error" { rp_put(l[..], "the browser failed: "); rp_put(l[..], cdp_error(c[..])); }
+    else { rp_show(l[..], f[0]); }
+    if bn > 0 {
+      vs := rp_versus(held, f[0], rp_find(earlier, k.slug, k.form));
+      if vs == "WORSE" { worse += 1; }
+      rp_put(l[..], "; vs before: "); rp_put(l[..], vs);
+    }
+    if against.count > 0 {
+      g: [1] RpFrames;
+      there := rp_case(c[..], against, k, rounds, g[..], why[..]);
+      rp_put(l[..], "\n       at "); rp_put(l[..], against); rp_put(l[..], ": ");
+      if there == "ok" || there == "FAIL" { rp_show(l[..], g[0]); } else { rp_put(l[..], there); }
+      vs := rp_versus(held, f[0], RpLine.{found = true, status = there, f = g[0]});
+      rp_put(l[..], " ("); rp_put(l[..], vs);
+      if !held && there != "ok" { rp_put(l[..], ": it misses there too; the realm, or a busy GPU, not this build"); }
+      rp_put(l[..], ")");
+    }
+    print("%\n", rp_text(l[..]));
+    if out.count > 0 && (report[0].bad || !fs_write(out, rp_text(report[..]))) { tool_err("realm-perf: cannot write "); tool_errln(out); out = ""; }
+  }
+  cdp_close(c[..]);
+  print("realm-perf: % of % cases missed 60 FPS%\n", missed, picked, ifx worse > 0 then " (some held it before: WORSE above)" else "");
+  return ifx missed > 0 then 1 else 0;
+}
