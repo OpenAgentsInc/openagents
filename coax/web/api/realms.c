@@ -33,6 +33,9 @@
 //   POST /api/playtest/realms/<slug>/save {rev, moved} -> 200 {rev, sha256}; 400, 403, 404, 409 {error, rev} (changed since)
 //   POST /api/playtest/realms/<slug>/publish {rev, listed?}   -> 200 {published, rev, sha256, listed}; 400, 403, 404, 409
 //   POST /api/playtest/realms/<slug>/undo {rev}        -> 200 {rev, undo}; 400, 403, 404, 409 {error, rev} (0094: every edit is a step)
+//   GET  /api/playtest/realms/<slug>/published         -> 200 {slug, n, rev, sha256, engine, engine_sha256, why, ms}; 404 not pinned
+//   (0107: a publish pins the engine, /realms/built's app script, with the revision; 503 when the bucket
+//   has no engine page named by content, and nothing is published. The page plays its pin.)
 //   (a visitor's spec, document and fork are the revision published; its owner's are the realm now)
 //   POST /api/playtest/realms/<slug>/fork {name?}      -> 200 {slug, path, name, from, rev}: its document copied, parent and revision kept
 // A realm made or forked by a request with an automation mark (X-Verse-Automation, or the cookie
@@ -239,6 +242,25 @@ static bool remove_page(PGconn *c, const char *slug) {
   return false;   // no page written
 }
 
+// The made-realm engine's page as the site serves it now (/realms/built: its app script names the
+// engine's files by their content), which a publish pins (migrations/0107_realm_engine_pins.sql).
+// OA_ENGINE_TEMPLATE names a file to read instead (checks). NULL: this server has no site bucket,
+// so nothing is pinned; "" (malloc'd): it has one and the page couldn't be read, which refuses.
+static char *engine_template(void) {
+  const char *file = getenv("OA_ENGINE_TEMPLATE");
+  if (file && *file) {
+    FILE *f = fopen(file, "rb");
+    char *t = calloc(65537, 1);
+    size_t n = f && t ? fread(t, 1, 65536, f) : 0;
+    if (f) fclose(f);
+    if (t && n == 65536) t[0] = 0;   // too big to be the page: refused
+    return t ? t : strdup("");
+  }
+  if (!getenv("OA_SITE_BUCKET") || !*getenv("OA_SITE_BUCKET")) return NULL;
+  char *t = drops_site_read("realms/built/index.html");
+  return t ? t : strdup("");
+}
+
 // unhide: the realm was just made private, so a page it had is removed.
 static bool write_page_or_remove(PGconn *c, const char *slug, bool unhide) {
   if (!getenv("OA_SITE_BUCKET") || !*getenv("OA_SITE_BUCKET")) return false;
@@ -252,7 +274,21 @@ static bool write_page_or_remove(PGconn *c, const char *slug, bool unhide) {
     PGresult *r = PQexecParams(c, "SELECT verse.builder_page_written($1)", 1, NULL, v, NULL, NULL, 0); PQclear(r);
     return false;
   }
-  char *page = sql_one(c, "SELECT verse.builder_page($1, $2)", 2, v), *md = sql_one(c, "SELECT verse.builder_md($1)", 1, v);
+  // A published revision not yet pinned (a new realm's first, or one published before 0107) is
+  // pinned to the engine served now before its page names it.
+  char *needs = sql_one(c, "SELECT verse.realm_needs_pin($1)::text", 1, v);
+  if (needs && !strcmp(needs, "true")) {
+    char *t = engine_template();
+    if (t) {
+      const char *w[2] = {slug, t};
+      PGresult *r = PQexecParams(c, "SELECT verse.realm_pin_first($1, $2)", 2, NULL, w, NULL, NULL, 0);
+      if (PQresultStatus(r) != PGRES_TUPLES_OK) api_log("realms: pin %s: %s", slug, PQerrorMessage(c));
+      PQclear(r);
+      free(t);
+    }
+  }
+  free(needs);
+  char *page =sql_one(c, "SELECT verse.builder_page($1, $2)", 2, v), *md = sql_one(c, "SELECT verse.builder_md($1)", 1, v);
   char *list = sql_one(c, "SELECT verse.builder_slugs()", 0, NULL);
   char name[200];
   bool ok = page && md && list;
@@ -899,6 +935,12 @@ bool realms_route(const request *q) {
     sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_doc_of($1, $2, $3::boolean) x", 3, v, "doc");
     return true;
   }
+  if (!strcmp(what, "published")) {   // the publish record: revision, document hash, engine and its hash (0107)
+    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the record\"}"); return true; }
+    const char *v[1] = {slug};
+    sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_published_of($1) x", 1, v, "published");
+    return true;
+  }
   if (!strcmp(what, "panes")) {
     if (post) { api_json(q->fd, 405, "{\"error\":\"GET the panes\"}"); return true; }
     const char *v[3] = {slug, key, admin};
@@ -953,13 +995,14 @@ bool realms_route(const request *q) {
     PQclear(r);
     return true;
   }
-  if (!strcmp(what, "publish")) {   // a fork listed, its page written again (0075)
+  if (!strcmp(what, "publish")) {   // a fork listed, its page written again (0075); a made realm's engine pinned (0107)
     char *body = body_of(q);
     if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
-    const char *v[4] = {slug, body, key, admin};
-    PGresult *r = PQexecParams(db, edit_v1 ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_edit_call($1, $2::jsonb, $3, $4::boolean, 'publish', '') x"
-                                         : "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.fork_publish($1, $2::jsonb, $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
-    free(body);
+    char *template = engine_template();
+    const char *v[6] = {slug, body, key, admin, edit_v1 ? "true" : "false", template};
+    PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_publish_pinned($1, $2::jsonb, $3, $4::boolean, $5::boolean, $6) x",
+                               6, NULL, v, NULL, NULL, 0);
+    free(body); free(template);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
       int status = atoi(PQgetvalue(r, 0, 0));
       if (status == 200) rewrite_page(slug);

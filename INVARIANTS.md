@@ -160,6 +160,25 @@ one save. The first refusal stops a non-atomic batch and reports its committed
 prefix. Checks: `coax/web/api/tests/realm_edit_*.coax`, the catalogue's mutation
 gate and `coax/web/tool.sh cli-journey` against the built CLI.
 
+## A published made realm plays the engine it was published with
+
+Publishing a made realm pins its engine with its revision
+(`coax/web/api/migrations/0107_realm_engine_pins.sql`, #12629). The engine
+is `/realms/built`'s app script; the manifest keeps each attribute as one
+line in the page's order. Every path in it must be named by its content and
+is never deleted from the bucket. The rule is SQL's (`verse.engine_manifest`)
+and Coax's (`aethyr/forge/publish.coax`, `#authority`, mutation-checked).
+They must give the same manifest and hash for the shared fixture. With a
+site bucket, a publish whose engine page can't be read or named by content
+is refused (503) in the same transaction, and nothing is published. The
+realm's page builds the engine from its pin (`data-engine`), never from
+today's template, unless the URL asks `?engine=current`. A fork starts on
+its parent's pin; nothing done to it changes its parent's record. A realm
+with a published revision but no pin is pinned to the engine served when
+its page is next written. Every pin is a row of `verse.realm_publications`,
+never rewritten. Checks: `aethyr/forge/publish.coax` and
+`coax/web/api/tests/realm_engine_pin.coax` (SQL, rolled back).
+
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 
 `psionic/lib/physics/inverse-*.coax` unrolls chapter 109’s exact left-associated

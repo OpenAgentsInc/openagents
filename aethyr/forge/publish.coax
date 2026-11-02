@@ -1,0 +1,432 @@
+// Aethyrforge's publish record (book chapter 54, GitHub #12629): a published made realm plays the
+// engine build and assets it was published with, not whatever the site serves today.
+//
+// The engine a made realm plays is the app script of /realms/built: the host script, the engine's
+// wasm and shaders, the voice engine, the render package and the asset packs, each named by its
+// content (coax/web/deploy.sh) and never deleted from the site's bucket. Publishing reads that tag
+// and keeps it as an engine manifest, one attribute a line, in the page's order:
+//
+//   aethyr-engine 1
+//   type module
+//   src /coaxial/host.9ca333f3d8b0.js
+//   data-app myrealm
+//   ...
+//   data-wasm /build/myrealm.0e7b9526d8a2.wasm
+//
+// Its SHA-256 is the engine's identity. Every path in it must be named by its content, so the
+// manifest names bytes, not a moving location. The server keeps the same rule in SQL
+// (coax/web/api/migrations/0107_realm_engine_pins.sql); this file is its independent check: the
+// same template gives the same manifest and hash in both (one fixture, here and in
+// coax/web/api/tests/realm_engine_pin.sql), and engine_check holds a record read back from the
+// server (GET .../<slug>/published) to exactly what this rule writes.
+//   coax/bin/coax test aethyr/forge/publish.coax --library
+
+#module "aethyr.forge.publish";
+#authority;
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+
+// book:begin engine
+ENGINE_HEADER :: "aethyr-engine 1\n";
+ENGINE_TEXT :: 4096;      // a manifest's bytes at most (the server's limit too)
+ENGINE_ATTRS :: 24;       // attributes at most
+ENGINE_NAME :: 32;        // an attribute name's letters at most
+ENGINE_PATH :: 200;       // a path's characters at most
+ENGINE_HASH :: 12;        // hex digits in a content name: deploy.sh's sha256 prefix
+ENGINE_APP :: "myrealm";  // the made-realm engine; nothing else is pinned here
+ENGINE_OPEN :: "<script type=\"module\" src=\"";
+
+// A manifest being written into a caller's buffer, and what it has seen.
+EngineAcc :: struct {
+  n: int; bad: bool;
+  names: [ENGINE_ATTRS] string; count: int;
+  src: bool; app: bool; wasm: bool; wgsl: bool;
+}
+// book:end engine
+
+ENGINE_LOWER :: "abcdefghijklmnopqrstuvwxyz";
+ENGINE_HEXES :: "0123456789abcdef";
+ENGINE_SPACE :: " \n\t\r";
+ENGINE_PATH_CHARS :: "abcdefghijklmnopqrstuvwxyz0123456789._-";
+ENGINE_WORD_CHARS :: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-:=";
+ENGINE_PREFIX_CHARS :: "abcdefghijklmnopqrstuvwxyz0123456789_-:=";
+ENGINE_NAME_CHARS :: "abcdefghijklmnopqrstuvwxyz-";
+
+engine_in :: (c: u8, set: string) -> bool {
+  for k: 0..<set.count { if set[k] == c { return true; } }
+  return false;
+}
+engine_all :: (s: string, set: string) -> bool {
+  for c: s { if !engine_in(c, set) { return false; } }
+  return true;
+}
+// Where c first is in s, or s.count.
+engine_upto :: (s: string, c: u8) -> int {
+  for i: 0..<s.count { if s[i] == c { return i; } }
+  return s.count;
+}
+engine_at :: (t: string, at: int, word: string) -> bool { return at >= 0 && at + word.count <= t.count && t[at..<at + word.count] == word; }
+engine_has :: (t: string, word: string) -> bool {
+  for i: 0..<t.count { if engine_at(t, i, word) { return true; } }
+  return false;
+}
+
+// A segment of a path that is a content name: NAME.<12 hex>.EXT (something on both sides), or a
+// whole 64-hex directory (a render package's).
+engine_named_segment :: (seg: string) -> bool {
+  if seg.count == 64 && engine_all(seg, ENGINE_HEXES) { return true; }
+  for d: 1..<seg.count - 14 {
+    if seg[d] == '.' && seg[d + 13] == '.' && engine_all(seg[d + 1..<d + 13], ENGINE_HEXES) { return true; }
+  }
+  return false;
+}
+
+// book:begin path
+// A path the manifest may name: from the site's root, plain characters, no empty or dot-dot
+// segments, and named by its content somewhere along it.
+engine_path_ok :: (p: string) -> bool {
+  return p.count <= ENGINE_PATH && engine_at(p, 0, "/") && engine_segments(p[1..<p.count], false);
+}
+// The segments after a slash: none empty, "." or "..", plain characters, one of them (or one
+// before, `named`) a content name.
+engine_segments :: (rest: string, named: bool) -> bool {
+  cut := engine_upto(rest, '/');
+  seg := rest[0..<cut];
+  if seg.count == 0 || seg == "." || seg == ".." || !engine_all(seg, ENGINE_PATH_CHARS) { return false; }
+  now := named || engine_named_segment(seg);
+  return ifx cut == rest.count then now else engine_segments(rest[cut + 1..<rest.count], now);
+}
+// book:end path
+
+// Paths joined by bars, each content-named.
+engine_paths_ok :: (s: string) -> bool {
+  bar := engine_upto(s, '|');
+  if !engine_path_ok(s[0..<bar]) { return false; }
+  return bar == s.count || engine_paths_ok(s[bar + 1..<s.count]);
+}
+// A word of a value: a plain word ("module", "fixed:0.5", "made-realm"), or paths joined by bars
+// after an optional "kind:" or "kind:name=" prefix ("pack:/build/x.df9c027378c8.pack").
+engine_word_ok :: (w: string) -> bool {
+  slash := engine_upto(w, '/');
+  if slash == w.count { return w.count > 0 && engine_all(w, ENGINE_WORD_CHARS); }
+  prefix := w[0..<slash];
+  if prefix.count > 0 && !(engine_all(prefix, ENGINE_PREFIX_CHARS) && engine_in(prefix[prefix.count - 1], ":=")) { return false; }
+  return engine_paths_ok(w[slash..<w.count]);
+}
+// A value: words joined by single spaces.
+engine_value_ok :: (v: string) -> bool {
+  sp := engine_upto(v, ' ');
+  if !engine_word_ok(v[0..<sp]) { return false; }
+  return sp == v.count || engine_value_ok(v[sp + 1..<v.count]);
+}
+engine_name_ok :: (n: string) -> bool {
+  return n.count > 0 && n.count <= ENGINE_NAME && engine_in(n[0], ENGINE_LOWER) && engine_all(n, ENGINE_NAME_CHARS);
+}
+// The host script: /coaxial/host.<12 hex>.js, nothing else.
+engine_host_ok :: (v: string) -> bool {
+  return v.count == 29 && engine_at(v, 0, "/coaxial/host.") && engine_at(v, 26, ".js") && engine_all(v[14..<26], ENGINE_HEXES);
+}
+
+engine_put :: (buf: [] u8, a: [] EngineAcc, text: string) {
+  if a[0].bad || a[0].n + text.count > buf.count { a[0].bad = true; return; }
+  for i: 0..<text.count { buf[a[0].n + i] = text[i]; }
+  a[0].n += text.count;
+}
+
+// book:begin add
+// One attribute into the manifest: its name, then its value with every run of white space one
+// space and none at either end, checked once written. A name seen before, more than
+// ENGINE_ATTRS, or a value naming anything not named by its content spoils the manifest.
+engine_add :: (buf: [] u8, a: [] EngineAcc, name: string, raw: string) {
+  if !engine_name_ok(name) || a[0].count == ENGINE_ATTRS { a[0].bad = true; return; }
+  for k: 0..<a[0].count { if a[0].names[k] == name { a[0].bad = true; } }
+  a[0].names[a[0].count] = name; a[0].count += 1;
+  engine_put(buf, a, name); engine_put(buf, a, " ");
+  start := a[0].n; gap := false;
+  for c: raw {
+    if engine_in(c, ENGINE_SPACE) { gap = a[0].n > start; continue; }
+    if gap { engine_put(buf, a, " "); gap = false; }
+    one := [1] u8.[c]; engine_put(buf, a, cast(string) one[..]);
+  }
+  if a[0].bad { return; }
+  value := cast(string) buf[start..<a[0].n];
+  if !engine_value_ok(value) || (name == "data-app" && value != ENGINE_APP) { a[0].bad = true; return; }
+  if name == "src" { a[0].src = engine_host_ok(value); }
+  if name == "data-app" { a[0].app = true; }
+  if name == "data-wasm" { a[0].wasm = engine_path_ok(value); }
+  if name == "data-wgsl" { a[0].wgsl = engine_path_ok(value); }
+  engine_put(buf, a, "\n");
+}
+// The manifest, or "" when anything spoiled it, it is over ENGINE_TEXT bytes, or the host script,
+// engine, wasm or shaders are missing.
+engine_finish :: (buf: [] u8, a: [] EngineAcc) -> string {
+  if a[0].bad || a[0].n > ENGINE_TEXT || !a[0].src || !a[0].app || !a[0].wasm || !a[0].wgsl { return ""; }
+  return cast(string) buf[0..<a[0].n];
+}
+// book:end add
+
+// book:begin manifest
+// The made-realm engine's script in a page: what follows "<script " in the one tag that opens like
+// the engine's and names data-app="myrealm", to before its ">". "" when there is none, two, or one
+// that doesn't end.
+engine_tag :: (t: string) -> string {
+  found := ""; seen := false;
+  for i: 0..<t.count {
+    if !engine_at(t, i, ENGINE_OPEN) { continue; }
+    end := i + engine_upto(t[i..<t.count], '>');
+    if end == t.count { return ""; }
+    if engine_has(t[i..<end], " data-app=\"myrealm\"") {
+      if seen { return ""; }
+      found = t[i + 8..<end]; seen = true;
+    }
+  }
+  return found;
+}
+// The made-realm engine's manifest from a page (the template /realms/built): every attribute of its
+// script in the page's order, NAME="VALUE" each. "" when the page is refused: no such script, an
+// attribute malformed or repeated, a value naming anything not named by its content, no host
+// script, wasm or shaders, or more than the buffer or ENGINE_TEXT holds.
+engine_manifest :: (template: string, buf: [] u8) -> string {
+  out := buf;
+  a: [1] EngineAcc;
+  engine_put(out, a[..], ENGINE_HEADER);
+  rest := engine_tag(template);
+  while rest.count > 0 {
+    if engine_in(rest[0], ENGINE_SPACE) { rest = rest[1..<rest.count]; continue; }
+    eq := engine_upto(rest, '=');
+    if !engine_at(rest, eq, "=\"") { return ""; }
+    value := rest[eq + 2..<rest.count];
+    close := engine_upto(value, '"');
+    if close == value.count { return ""; }
+    engine_add(out, a[..], rest[0..<eq], value[0..<close]);
+    rest = value[close + 1..<value.count];
+  }
+  return engine_finish(out, a[..]);
+}
+// book:end manifest
+
+// book:begin check
+// A manifest read back (from the server's publish record) holds when it is exactly what
+// engine_manifest writes: written again line by line through the same rule, the same bytes.
+engine_check :: (m: string) -> bool {
+  if !engine_at(m, 0, ENGINE_HEADER) { return false; }
+  buf: [ENGINE_TEXT] u8; a: [1] EngineAcc;
+  engine_put(buf[..], a[..], ENGINE_HEADER);
+  at := ENGINE_HEADER.count;
+  for i: ENGINE_HEADER.count..<m.count {   // each line; text after the last newline is never written again
+    if m[i] != '\n' { continue; }
+    line := m[at..<i]; at = i + 1;
+    sp := engine_upto(line, ' ');
+    if sp == line.count { return false; }
+    engine_add(buf[..], a[..], line[0..<sp], line[sp + 1..<line.count]);
+  }
+  return engine_finish(buf[..], a[..]) == m;
+}
+// book:end check
+
+// The engine's identity: the hex SHA-256 of its manifest's bytes. False when out is too small.
+engine_sha :: (m: string, out: [] u8) -> bool { return S_hex(S_hash(m), out); }
+
+// book:begin record
+// A publish record (GET .../<slug>/published) holds together: a revision, the document's 64-hex
+// hash, a manifest this rule writes, and the engine hash is that manifest's.
+engine_record_ok :: (rev: int, doc_sha: string, engine: string, want: string) -> bool {
+  if rev < 1 || doc_sha.count != 64 || !engine_all(doc_sha, ENGINE_HEXES) || !engine_check(engine) { return false; }
+  h: [64] u8;
+  return engine_sha(engine, h[..]) && cast(string) h[..] == want;
+}
+// book:end record
+
+// The template's app script as the live site served it on 2026-11-02 (deploy.sh's output). The
+// server's check (coax/web/api/tests/realm_engine_pin.sql) has the same page and wants the same hash.
+ENGINE_FIXTURE :: "<!doctype html>\n<html><body>\n<canvas id=\"coaxial\"></canvas>\n<link rel=\"preload\" href=\"/build/myrealm.0e7b9526d8a2.wasm\" as=\"fetch\" crossorigin><script type=\"module\" src=\"/coaxial/host.9ca333f3d8b0.js\" data-app=\"myrealm\" data-realm=\"built\" data-slot=\"built\" data-voice=\"made-realm\" data-style=\"lowpoly\" data-clock=\"fixed:0.5\" data-assets=\"\n  pack:/build/realms/fixture/assets/fixture.df9c027378c8.pack\" data-voice-wasm=\"/build/voice.71d76f28966b.wasm\" data-wasm=\"/build/myrealm.0e7b9526d8a2.wasm\" data-wgsl=\"/build/myrealm.224131021ece.wgsl\"></script>\n</body>\n</html>\n";
+ENGINE_FIXTURE_MANIFEST :: "aethyr-engine 1\ntype module\nsrc /coaxial/host.9ca333f3d8b0.js\ndata-app myrealm\ndata-realm built\ndata-slot built\ndata-voice made-realm\ndata-style lowpoly\ndata-clock fixed:0.5\ndata-assets pack:/build/realms/fixture/assets/fixture.df9c027378c8.pack\ndata-voice-wasm /build/voice.71d76f28966b.wasm\ndata-wasm /build/myrealm.0e7b9526d8a2.wasm\ndata-wgsl /build/myrealm.224131021ece.wgsl\n";
+ENGINE_FIXTURE_SHA :: "1592e30f8f480ae5f99954d1733f6f57cb1b139b6d0d449ad6098e5e2336b006";   // sha256sum agrees
+
+// t with its first `from` replaced by `to`, or "" when t has none or it doesn't fit.
+engine_swap :: (t: string, from: string, to: string, buf: [] u8) -> string {
+  for i: 0..<t.count {
+    if engine_at(t, i, from) {
+      a: [1] EngineAcc;
+      engine_put(buf, a[..], t[0..<i]); engine_put(buf, a[..], to); engine_put(buf, a[..], t[i + from.count..<t.count]);
+      return ifx a[0].bad then "" else cast(string) buf[0..<a[0].n];
+    }
+  }
+  return "";
+}
+
+#test "the helpers: sets, first places, words in text, replacing" {
+  #assert engine_in('a', ENGINE_LOWER) && engine_in('z', ENGINE_LOWER) && !engine_in('A', ENGINE_LOWER) && !engine_in('a', "");
+  #assert engine_all("", ENGINE_LOWER) && engine_all("az", ENGINE_LOWER) && !engine_all("aZ", ENGINE_LOWER) && !engine_all("Za", ENGINE_LOWER);
+  #assert engine_upto("|ab", '|') == 0 && engine_upto("a|b|", '|') == 1 && engine_upto("ab", '|') == 2 && engine_upto("", '|') == 0;
+  #assert engine_at("abc", 0, "ab") && engine_at("abc", 1, "bc") && !engine_at("abc", 2, "cd") && !engine_at("abc", -1, "a") && engine_at("abc", 3, "");
+  #assert engine_has("xab", "ab") && engine_has("abx", "ab") && !engine_has("a b", "ab");
+  b: [8] u8;
+  #assert engine_swap("abc", "a", "xy", b[..]) == "xybc" && engine_swap("abc", "bc", "", b[..]) == "a" && engine_swap("abc", "z", "y", b[..]) == "";
+  #assert engine_swap("abcabc", "b", "B", b[..]) == "aBcabc" && engine_swap("abcabcab", "a", "xx", b[..]) == "";
+  a: [1] EngineAcc;
+  engine_put(b[0..<3], a[..], "abc");
+  #assert !a[0].bad && a[0].n == 3;
+  engine_put(b[0..<3], a[..], "d");
+  #assert a[0].bad && a[0].n == 3;
+}
+
+#test "a content name is twelve hex digits between dots, or a 64-hex directory" {
+  #assert engine_path_ok("/build/myrealm.0e7b9526d8a2.wasm") && engine_path_ok("/coaxial/host.9ca333f3d8b0.js");
+  #assert engine_path_ok("/build/render/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/render.json");
+  #assert engine_path_ok("/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  #assert !engine_path_ok("/build/render/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg/render.json");
+  #assert !engine_path_ok("/build/render/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde/render.json");
+  #assert engine_named_segment("a.000000000000.b") && engine_named_segment("ab.000000000000.cd") && engine_named_segment("a.b.000000000000.c");
+  #assert !engine_named_segment(".000000000000.b") && !engine_named_segment("a.000000000000.") && !engine_named_segment("a.00000000000.b");
+  #assert !engine_named_segment("a.0000000000000.b") && !engine_named_segment("a-000000000000.b") && !engine_named_segment("a.000000000000-b");
+  #assert !engine_named_segment("a.00000000000g.b") && !engine_named_segment("a.g00000000000.b") && !engine_named_segment("");
+  #assert !engine_path_ok("/build/myrealm.wasm") && !engine_path_ok("/realms/built") && !engine_path_ok("build/myrealm.0e7b9526d8a2.wasm");
+  #assert !engine_path_ok("/build/myrealm.0E7B9526D8A2.wasm") && !engine_path_ok("/A.000000000000.b") && !engine_path_ok("/a.000000000000.b/");
+  #assert !engine_path_ok("/build/../myrealm.0e7b9526d8a2.wasm") && !engine_path_ok("/./a.000000000000.b") && !engine_path_ok("//a.000000000000.b");
+  #assert !engine_path_ok("/build//myrealm.0e7b9526d8a2.wasm") && !engine_path_ok("/build/a b.0e7b9526d8a2.wasm") && !engine_path_ok("/a.000000000000.b?v=1");
+  #assert !engine_path_ok("/") && !engine_path_ok("") && !engine_path_ok("/a.000000000000.b/..");
+  #assert engine_path_ok("/a.000000000000.b/.x") && engine_path_ok("/x/a.000000000000.b") && engine_path_ok("/a.000000000000.b/x");
+  // ENGINE_PATH characters at most
+  long: [256] u8; b: [1] EngineAcc;
+  engine_put(long[..], b[..], "/a.000000000000.b/");
+  while b[0].n < ENGINE_PATH + 1 { engine_put(long[..], b[..], "x"); }
+  #assert engine_path_ok(cast(string) long[0..<ENGINE_PATH]) && !engine_path_ok(cast(string) long[0..<ENGINE_PATH + 1]);
+}
+
+#test "words: plain, or prefixed paths joined by bars; values: words joined by one space" {
+  #assert engine_word_ok("module") && engine_word_ok("fixed:0.5") && engine_word_ok("made-realm") && engine_word_ok("10") && engine_word_ok("Z_=");
+  #assert engine_word_ok("pack:/build/x.df9c027378c8.pack") && engine_word_ok("sound:step=/build/s.0123456789ab.ogg");
+  #assert engine_word_ok("/a.000000000000.b") && engine_word_ok("layers:/a.000000000000.png|/b.111111111111.png|/c.222222222222.png");
+  #assert !engine_word_ok("pack:/build/x.pack") && !engine_word_ok("layers:/a.000000000000.png|/b.png") && !engine_word_ok("layers:/a.png|/b.000000000000.png");
+  #assert !engine_word_ok("https://evil.example/x.000000000000.js") && !engine_word_ok("a<b") && !engine_word_ok("") && !engine_word_ok("javascript:alert(1)");
+  #assert !engine_word_ok("Pack:/a.000000000000.b") && !engine_word_ok("pack:/a.000000000000.b|") && !engine_word_ok("pack/a.000000000000.b") && !engine_word_ok("p:x/a.000000000000.b");
+  #assert engine_word_ok("a=/a.000000000000.b") && engine_word_ok(":/a.000000000000.b") && !engine_word_ok("x/a.000000000000.b");
+  #assert engine_value_ok("pack:/a.000000000000.b icons:/c.111111111111.svg") && engine_value_ok("a b c") && engine_value_ok("a");
+  #assert !engine_value_ok("") && !engine_value_ok("a  b") && !engine_value_ok(" a") && !engine_value_ok("a ") && !engine_value_ok("a b <");
+  #assert engine_name_ok("data-wasm") && engine_name_ok("src") && engine_name_ok("a") && engine_name_ok("z-");
+  #assert !engine_name_ok("Data") && !engine_name_ok("-x") && !engine_name_ok("data_wasm") && !engine_name_ok("") && !engine_name_ok("a1");
+  #assert engine_name_ok("abcdefghijklmnopqrstuvwxyzabcdef") && !engine_name_ok("abcdefghijklmnopqrstuvwxyzabcdefg");
+  #assert engine_host_ok("/coaxial/host.9ca333f3d8b0.js") && !engine_host_ok("/coaxial/host.js") && !engine_host_ok("/coaxial/host.9ca333f3d8b0.mjs");
+  #assert !engine_host_ok("/coaxial/hosx.9ca333f3d8b0.js") && !engine_host_ok("/coaxial/host.9ca333f3d8bg.js") && !engine_host_ok("/coaxial/host.9ca333f3d8b0.jx");
+  #assert !engine_host_ok("/coaxial/host.g9ca333f3d8b.js") && !engine_host_ok("/coaxial/host.9ca333f3d8b0.js ");
+}
+
+#test "the live template's engine is its app script, a line an attribute" {
+  b: [ENGINE_TEXT] u8;
+  m := engine_manifest(ENGINE_FIXTURE, b[..]);
+  #assert m == ENGINE_FIXTURE_MANIFEST && engine_check(m);
+  h: [64] u8;
+  #assert engine_sha(m, h[..]) && cast(string) h[..] == ENGINE_FIXTURE_SHA;
+  // the tag first in the page; a script that isn't the engine's is passed over
+  t: [8192] u8; b2: [ENGINE_TEXT] u8;
+  first := engine_swap(ENGINE_FIXTURE, "<!doctype html>\n<html><body>\n<canvas id=\"coaxial\"></canvas>\n<link rel=\"preload\" href=\"/build/myrealm.0e7b9526d8a2.wasm\" as=\"fetch\" crossorigin>", "", t[..]);
+  #assert first.count > 0 && engine_at(first, 0, ENGINE_OPEN) && engine_manifest(first, b2[..]) == ENGINE_FIXTURE_MANIFEST;
+  t2: [8192] u8;
+  other := engine_swap(ENGINE_FIXTURE, "<link", "<script type=\"module\" src=\"/coaxial/host.9ca333f3d8b0.js\" data-app=\"splash\"></script><link", t2[..]);
+  #assert other.count > 0 && engine_manifest(other, b2[..]) == ENGINE_FIXTURE_MANIFEST;
+}
+
+#test "a template is refused when its engine can't be named by content" {
+  b: [ENGINE_TEXT] u8; t: [8192] u8;
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "/build/myrealm.0e7b9526d8a2.wasm\" data-wgsl", "/build/myrealm.wasm\" data-wgsl", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "/build/myrealm.224131021ece.wgsl\"", "/build/myrealm.wgsl\"", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "fixture.df9c027378c8.pack", "fixture.pack", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "src=\"/coaxial/host.9ca333f3d8b0.js\"", "src=\"/coaxial/host.js\"", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, " data-wgsl=\"/build/myrealm.224131021ece.wgsl\"", "", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, " data-wasm=\"/build/myrealm.0e7b9526d8a2.wasm\"", "", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-voice=\"made-realm\"", "data-voice=\"made-realm\" data-voice=\"made-realm\"", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-voice=\"made-realm\"", "data-voice=made-realm", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-voice=\"made-realm\"", "data-voice=\"made-realm", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-voice=\"made-realm\"", "data-voice=\"\"", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-voice=\"made-realm\"", "data-voice=\" \"", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-voice=\"made-realm\"", "data-voice crossorigin", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-voice=\"made-realm\"", "Data-voice=\"made-realm\"", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-voice=\"made-realm\"", "data-voice=\"made realm<\"", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "\"></script>", "\" crossorigin></script>", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "\"></script>", "\"x></script>", t[..]), b[..]) == "";
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "\"></script>", "\" type=\"module\"></script>", t[..]), b[..]) == "";   // the first name again
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "></script>\n</body>\n</html>\n", "", t[..]), b[..]) == "";   // the tag never ends
+  #assert engine_manifest("<html>no engine</html>", b[..]) == "" && engine_manifest("", b[..]) == "";
+  // two engines in one page: not one build
+  two := engine_swap(ENGINE_FIXTURE, "</body>", "<script type=\"module\" src=\"/coaxial/host.9ca333f3d8b0.js\" data-app=\"myrealm\" data-wasm=\"/build/myrealm.0e7b9526d8a2.wasm\" data-wgsl=\"/build/myrealm.224131021ece.wgsl\"></script></body>", t[..]);
+  #assert two.count > 0 && engine_manifest(two, b[..]) == "";
+  small: [64] u8;
+  #assert engine_manifest(ENGINE_FIXTURE, small[..]) == "";
+  exact: [379] u8;   // ENGINE_FIXTURE_MANIFEST.count
+  #assert engine_manifest(ENGINE_FIXTURE, exact[..]) == ENGINE_FIXTURE_MANIFEST;
+  short: [378] u8;
+  #assert engine_manifest(ENGINE_FIXTURE, short[..]) == "";
+}
+
+#test "white space runs in a value are one space; the manifest doesn't depend on the page's layout" {
+  b: [ENGINE_TEXT] u8; t: [8192] u8;
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-assets=\"\n  pack:", "data-assets=\"pack:", t[..]), b[..]) == ENGINE_FIXTURE_MANIFEST;
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, " data-realm=", "\n\t data-realm=", t[..]), b[..]) == ENGINE_FIXTURE_MANIFEST;
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "\"></script>", "\"\r\n></script>", t[..]), b[..]) == ENGINE_FIXTURE_MANIFEST;
+  #assert engine_manifest(engine_swap(ENGINE_FIXTURE, "data-realm=\"built\"", "data-realm=\"built\"data-x=\"y\"", t[..]), b[..]).count == ENGINE_FIXTURE_MANIFEST.count + 9;
+  t2: [8192] u8; b2: [ENGINE_TEXT] u8;
+  two := engine_manifest(engine_swap(ENGINE_FIXTURE, "fixture.df9c027378c8.pack\"", "fixture.df9c027378c8.pack\t\n icons:/i.0123456789ab.svg \"", t2[..]), b2[..]);
+  #assert two.count > 0 && engine_check(two) && engine_has(two, "\ndata-assets pack:/build/realms/fixture/assets/fixture.df9c027378c8.pack icons:/i.0123456789ab.svg\n");
+}
+
+// A page whose engine script has `extra` before its closing quote-and-bracket.
+engine_with :: (extra: string, t: [] u8) -> string { return engine_swap(ENGINE_FIXTURE, "\"></script>", extra, t); }
+
+#test "ENGINE_ATTRS attributes and ENGINE_TEXT bytes at most" {
+  // 12 attributes in the fixture; 12 more is 24, 13 more is 25
+  more := "\" a=\"x\" b=\"x\" c=\"x\" d=\"x\" e=\"x\" f=\"x\" g=\"x\" h=\"x\" i=\"x\" j=\"x\" k=\"x\" l=\"x\"></script>";
+  t: [8192] u8; b: [ENGINE_TEXT] u8;
+  #assert engine_manifest(engine_with(more, t[..]), b[..]).count == ENGINE_FIXTURE_MANIFEST.count + 12 * 4;
+  t2: [8192] u8;
+  #assert engine_manifest(engine_with(engine_swap(more, " l=", " l=\"x\" m=", t2[..]), t[..]), b[..]) == "";
+  // a manifest of exactly ENGINE_TEXT bytes, then one more
+  pad: [ENGINE_TEXT] u8; p: [1] EngineAcc;
+  engine_put(pad[..], p[..], "\" pad=\"");
+  room := ENGINE_TEXT - ENGINE_FIXTURE_MANIFEST.count - 5;   // "pad " and its line's end
+  for i: 0..<room { engine_put(pad[..], p[..], "x"); }
+  engine_put(pad[..], p[..], "\"></script>");
+  big: [ENGINE_TEXT + 8] u8; t3: [8192] u8;
+  fits := engine_manifest(engine_with(cast(string) pad[0..<p[0].n], t3[..]), big[..]);
+  #assert fits.count == ENGINE_TEXT && engine_check(fits);
+  t4: [8192] u8; pad2: [ENGINE_TEXT + 1] u8; q: [1] EngineAcc;
+  engine_put(pad2[..], q[..], "\" pad=\"x");
+  for i: 0..<room { engine_put(pad2[..], q[..], "x"); }
+  engine_put(pad2[..], q[..], "\"></script>");
+  #assert engine_manifest(engine_with(cast(string) pad2[0..<q[0].n], t4[..]), big[..]) == "";
+}
+
+#test "a manifest read back is checked line by line" {
+  m := ENGINE_FIXTURE_MANIFEST;
+  #assert engine_check(m);
+  b: [ENGINE_TEXT] u8;
+  #assert !engine_check(engine_swap(m, "aethyr-engine 1\n", "aethyr-engine 2\n", b[..]));
+  #assert !engine_check(engine_swap(m, "data-wasm /build/myrealm.0e7b9526d8a2.wasm\n", "", b[..]));
+  #assert !engine_check(engine_swap(m, "data-wgsl /build/myrealm.224131021ece.wgsl\n", "", b[..]));
+  #assert !engine_check(engine_swap(m, "src /coaxial/host.9ca333f3d8b0.js\n", "", b[..]));
+  #assert !engine_check(engine_swap(m, "data-app myrealm\n", "data-app splash\n", b[..]));
+  #assert !engine_check(engine_swap(m, "data-app myrealm\n", "", b[..]));
+  #assert !engine_check(engine_swap(m, "data-voice made-realm\n", "data-voice made-realm\ndata-voice made-realm\n", b[..]));
+  #assert !engine_check(engine_swap(m, "data-voice made-realm\n", "data-voice\n", b[..]));
+  #assert !engine_check(engine_swap(m, "data-voice made-realm\n", "data-voice  made-realm\n", b[..]));
+  #assert !engine_check(engine_swap(m, "data-voice made-realm\n", "data-voice made-realm \n", b[..]));
+  #assert !engine_check(engine_swap(m, "data-voice made-realm\n", "data-voice /x.js\n", b[..]));
+  #assert !engine_check(engine_swap(m, "data-voice made-realm\n", "Data-voice made-realm\n", b[..]));
+  #assert !engine_check(engine_swap(m, "myrealm.224131021ece.wgsl\n", "myrealm.224131021ece.wgsl", b[..]));
+  #assert !engine_check("") && !engine_check("aethyr-engine 1\n") && !engine_check(ENGINE_HEADER);
+}
+
+#test "a record's engine hash is its manifest's" {
+  h: [64] u8;
+  #assert engine_sha(ENGINE_FIXTURE_MANIFEST, h[..]);
+  doc := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert engine_record_ok(1, doc, ENGINE_FIXTURE_MANIFEST, cast(string) h[..]) && engine_record_ok(3, doc, ENGINE_FIXTURE_MANIFEST, ENGINE_FIXTURE_SHA);
+  #assert !engine_record_ok(0, doc, ENGINE_FIXTURE_MANIFEST, cast(string) h[..]);
+  #assert !engine_record_ok(3, doc[0..<63], ENGINE_FIXTURE_MANIFEST, cast(string) h[..]);
+  #assert !engine_record_ok(3, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg", ENGINE_FIXTURE_MANIFEST, cast(string) h[..]);
+  #assert !engine_record_ok(3, doc, "aethyr-engine 1\n", cast(string) h[..]);
+  b: [ENGINE_TEXT] u8;
+  #assert !engine_record_ok(3, doc, engine_swap(ENGINE_FIXTURE_MANIFEST, "lowpoly", "painterly", b[..]), cast(string) h[..]);
+  #assert !engine_record_ok(3, doc, ENGINE_FIXTURE_MANIFEST, cast(string) h[0..<63]);
+  small: [63] u8;
+  #assert !engine_sha(ENGINE_FIXTURE_MANIFEST, small[..]);
+}

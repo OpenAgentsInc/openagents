@@ -1,11 +1,14 @@
 # 54. Publish a realm
 
 > **Status: partly implemented.** Visitors of a made realm see the revision
-> its owner published, not the latest save, and the owner reads which
-> version is live. The frozen publish record below (document, module build
-> and assets by hash, gated by checks) is not built: what is published is a
-> document revision, played by the current engine build. Hand-built realms
-> are published from one table (`apps/openagents-web/realms.json`).
+> its owner published, played by the engine build and assets it was
+> published with: the publish record pins the document's hash and the
+> engine's manifest (host script, wasm, shaders, voice engine, render
+> package and asset packs, each named by its content) and its hash
+> ([GitHub #12629](https://github.com/OpenAgentsInc/openagents/issues/12629)).
+> Not built yet: the release gates per version (golden, 60 FPS) and the page
+> text's hash in the record. Hand-built realms are published from one table
+> (`apps/openagents-web/realms.json`) and are not pinned this way.
 
 Publishing turns a realm someone is working on into one other people visit.
 That needs three promises: what visitors get is a fixed version (a document,
@@ -89,11 +92,194 @@ another environment's realms.
   [verse/realm-template/](../../verse/realm-template/index.md).
 
 The made-realm write and the hand-built table are separate code paths with
-separate checks. A published made realm's page plays the published
-document with today's engine; pinning the module build and assets by hash is
-still to do.
+separate checks.
 
-Checks: `test_realm_fork.py` (a save leaves visitors on the revision
+### The engine a made realm is published with
+
+A made realm's page used to fetch `/realms/built` on every visit and copy its
+app script, so a release changed every published realm the moment it
+landed. That script is the engine: every file it names is named by its
+content (`coax/web/deploy.sh`) and never deleted from the site's bucket. So
+publishing keeps the script itself, as an engine manifest, one attribute a
+line in the page's order:
+
+<!-- source: aethyr/forge/publish.coax engine -->
+```jai
+ENGINE_HEADER :: "aethyr-engine 1\n";
+ENGINE_TEXT :: 4096;      // a manifest's bytes at most (the server's limit too)
+ENGINE_ATTRS :: 24;       // attributes at most
+ENGINE_NAME :: 32;        // an attribute name's letters at most
+ENGINE_PATH :: 200;       // a path's characters at most
+ENGINE_HASH :: 12;        // hex digits in a content name: deploy.sh's sha256 prefix
+ENGINE_APP :: "myrealm";  // the made-realm engine; nothing else is pinned here
+ENGINE_OPEN :: "<script type=\"module\" src=\"";
+
+// A manifest being written into a caller's buffer, and what it has seen.
+EngineAcc :: struct {
+  n: int; bad: bool;
+  names: [ENGINE_ATTRS] string; count: int;
+  src: bool; app: bool; wasm: bool; wgsl: bool;
+}
+```
+
+A value may name only paths named by their content: `NAME.<12 hex>.EXT`
+somewhere along it, or a 64-hex directory (a render package's):
+
+<!-- source: aethyr/forge/publish.coax path -->
+```jai
+// A path the manifest may name: from the site's root, plain characters, no empty or dot-dot
+// segments, and named by its content somewhere along it.
+engine_path_ok :: (p: string) -> bool {
+  return p.count <= ENGINE_PATH && engine_at(p, 0, "/") && engine_segments(p[1..<p.count], false);
+}
+// The segments after a slash: none empty, "." or "..", plain characters, one of them (or one
+// before, `named`) a content name.
+engine_segments :: (rest: string, named: bool) -> bool {
+  cut := engine_upto(rest, '/');
+  seg := rest[0..<cut];
+  if seg.count == 0 || seg == "." || seg == ".." || !engine_all(seg, ENGINE_PATH_CHARS) { return false; }
+  now := named || engine_named_segment(seg);
+  return ifx cut == rest.count then now else engine_segments(rest[cut + 1..<rest.count], now);
+}
+```
+
+Each attribute goes through one rule, which both reads a page and checks a
+manifest read back:
+
+<!-- source: aethyr/forge/publish.coax add -->
+```jai
+// One attribute into the manifest: its name, then its value with every run of white space one
+// space and none at either end, checked once written. A name seen before, more than
+// ENGINE_ATTRS, or a value naming anything not named by its content spoils the manifest.
+engine_add :: (buf: [] u8, a: [] EngineAcc, name: string, raw: string) {
+  if !engine_name_ok(name) || a[0].count == ENGINE_ATTRS { a[0].bad = true; return; }
+  for k: 0..<a[0].count { if a[0].names[k] == name { a[0].bad = true; } }
+  a[0].names[a[0].count] = name; a[0].count += 1;
+  engine_put(buf, a, name); engine_put(buf, a, " ");
+  start := a[0].n; gap := false;
+  for c: raw {
+    if engine_in(c, ENGINE_SPACE) { gap = a[0].n > start; continue; }
+    if gap { engine_put(buf, a, " "); gap = false; }
+    one := [1] u8.[c]; engine_put(buf, a, cast(string) one[..]);
+  }
+  if a[0].bad { return; }
+  value := cast(string) buf[start..<a[0].n];
+  if !engine_value_ok(value) || (name == "data-app" && value != ENGINE_APP) { a[0].bad = true; return; }
+  if name == "src" { a[0].src = engine_host_ok(value); }
+  if name == "data-app" { a[0].app = true; }
+  if name == "data-wasm" { a[0].wasm = engine_path_ok(value); }
+  if name == "data-wgsl" { a[0].wgsl = engine_path_ok(value); }
+  engine_put(buf, a, "\n");
+}
+// The manifest, or "" when anything spoiled it, it is over ENGINE_TEXT bytes, or the host script,
+// engine, wasm or shaders are missing.
+engine_finish :: (buf: [] u8, a: [] EngineAcc) -> string {
+  if a[0].bad || a[0].n > ENGINE_TEXT || !a[0].src || !a[0].app || !a[0].wasm || !a[0].wgsl { return ""; }
+  return cast(string) buf[0..<a[0].n];
+}
+```
+
+<!-- source: aethyr/forge/publish.coax manifest -->
+```jai
+// The made-realm engine's script in a page: what follows "<script " in the one tag that opens like
+// the engine's and names data-app="myrealm", to before its ">". "" when there is none, two, or one
+// that doesn't end.
+engine_tag :: (t: string) -> string {
+  found := ""; seen := false;
+  for i: 0..<t.count {
+    if !engine_at(t, i, ENGINE_OPEN) { continue; }
+    end := i + engine_upto(t[i..<t.count], '>');
+    if end == t.count { return ""; }
+    if engine_has(t[i..<end], " data-app=\"myrealm\"") {
+      if seen { return ""; }
+      found = t[i + 8..<end]; seen = true;
+    }
+  }
+  return found;
+}
+// The made-realm engine's manifest from a page (the template /realms/built): every attribute of its
+// script in the page's order, NAME="VALUE" each. "" when the page is refused: no such script, an
+// attribute malformed or repeated, a value naming anything not named by its content, no host
+// script, wasm or shaders, or more than the buffer or ENGINE_TEXT holds.
+engine_manifest :: (template: string, buf: [] u8) -> string {
+  out := buf;
+  a: [1] EngineAcc;
+  engine_put(out, a[..], ENGINE_HEADER);
+  rest := engine_tag(template);
+  while rest.count > 0 {
+    if engine_in(rest[0], ENGINE_SPACE) { rest = rest[1..<rest.count]; continue; }
+    eq := engine_upto(rest, '=');
+    if !engine_at(rest, eq, "=\"") { return ""; }
+    value := rest[eq + 2..<rest.count];
+    close := engine_upto(value, '"');
+    if close == value.count { return ""; }
+    engine_add(out, a[..], rest[0..<eq], value[0..<close]);
+    rest = value[close + 1..<value.count];
+  }
+  return engine_finish(out, a[..]);
+}
+```
+
+<!-- source: aethyr/forge/publish.coax check -->
+```jai
+// A manifest read back (from the server's publish record) holds when it is exactly what
+// engine_manifest writes: written again line by line through the same rule, the same bytes.
+engine_check :: (m: string) -> bool {
+  if !engine_at(m, 0, ENGINE_HEADER) { return false; }
+  buf: [ENGINE_TEXT] u8; a: [1] EngineAcc;
+  engine_put(buf[..], a[..], ENGINE_HEADER);
+  at := ENGINE_HEADER.count;
+  for i: ENGINE_HEADER.count..<m.count {   // each line; text after the last newline is never written again
+    if m[i] != '\n' { continue; }
+    line := m[at..<i]; at = i + 1;
+    sp := engine_upto(line, ' ');
+    if sp == line.count { return false; }
+    engine_add(buf[..], a[..], line[0..<sp], line[sp + 1..<line.count]);
+  }
+  return engine_finish(buf[..], a[..]) == m;
+}
+```
+
+The server keeps the same rule in SQL
+([0107_realm_engine_pins.sql](../../coax/web/api/migrations/0107_realm_engine_pins.sql)):
+`POST .../<slug>/publish` reads `realms/built/index.html` from the bucket,
+and in one transaction publishes the revision and pins the manifest, or,
+when the page can't be read or names anything not by content, publishes
+nothing and answers `503`. Every publish is a row of
+`verse.realm_publications` (revision, document hash, manifest, engine hash,
+why), and `GET .../<slug>/published` answers the latest. The spec gains
+`engine SHA256`. The realm's page carries the manifest (`data-engine`) and
+builds the engine's script from it, so a later release can't change it;
+`?engine=current` tries today's engine. A fork starts on its parent's engine
+and its own publishes leave its parent's record alone. A realm's first
+revision, and every realm published before pins, is pinned to the engine
+served when its page is next written.
+
+<!-- source: aethyr/forge/publish.coax record -->
+```jai
+// A publish record (GET .../<slug>/published) holds together: a revision, the document's 64-hex
+// hash, a manifest this rule writes, and the engine hash is that manifest's.
+engine_record_ok :: (rev: int, doc_sha: string, engine: string, want: string) -> bool {
+  if rev < 1 || doc_sha.count != 64 || !engine_all(doc_sha, ENGINE_HEXES) || !engine_check(engine) { return false; }
+  h: [64] u8;
+  return engine_sha(engine, h[..]) && cast(string) h[..] == want;
+}
+```
+
+What the pin does not cover yet: the API is shared, so a pinned page talks
+to today's server (as a pinned demo does, `coax/web/pin.sh`); a name is the
+hash of a file's bytes before `deploy.sh` strips comments from scripts and
+shaders, so the served bytes of `host.*.js` and `*.wgsl` hash to something
+else (the wasm and packs match their names), and the record does not yet
+keep the served bytes' hashes; built-in realms' forks are not pinned.
+
+Checks: `coax/bin/coax test aethyr/forge/publish.coax --library` (the rule,
+the live page's fixture and its hash, which `sha256sum` agrees with; `coax
+mutate` with no survivors), `coax/web/tool.sh
+coax/web/api/tests/realm_engine_pin.coax` (the same fixture through the SQL
+rule gives the same hash; first pin, publish, refused publishes keeping
+nothing, a fork on its parent's engine, a server without a bucket),
+`test_realm_fork.py` (a save leaves visitors on the revision
 published, their `/doc` is its document, a visitor's fork copies it) and
 `coax/web/tool.sh forge-journey URL` (after SAVE the owner reads "not
 published" and a visitor's spec has the published revision; after PUBLISH,
@@ -101,8 +287,9 @@ published" and a visitor's spec has the published revision; after PUBLISH,
 
 ## What it builds
 
-- `aethyr/forge/publish.coax`: `Published`, its encoding, and the checks a
-  version must pass before it replaces the last.
+- `aethyr/forge/publish.coax`: the engine manifest and the record's check
+  exist; the checks a version must pass before it replaces the last (golden,
+  frame times) and the page text's hash do not yet.
 - The realm table's rules (unique slots, required `index.md`, style and
   clock fields) as Coax checks shared by `realms.ts` and the made-realm
   path.

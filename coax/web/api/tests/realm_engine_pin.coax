@@ -1,0 +1,35 @@
+// Engine pins (migrations/0107_realm_engine_pins.sql, GitHub #12629): runs realm_engine_pin.sql in
+// one rolled-back transaction against PostgreSQL with every migration applied, and wants each of
+// its checks' "ok" lines. No API, bucket, identity or model is used.
+//   PGURL=... PSQL=psql coax/web/tool.sh coax/web/api/tests/realm_engine_pin.coax
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+
+PIN_CHECKS :: 6;
+
+tool_main :: () -> int #export_c {
+  dbb: [1024] u8; pb: [1024] u8; fb: [1024] u8;
+  db := proc_getenv("PGURL", dbb[..]); psql := proc_getenv("PSQL", pb[..]);
+  file := proc_getenv("PIN_SQL", fb[..]);
+  if file == "" { file = "coax/web/api/tests/realm_engine_pin.sql"; }
+  if db == "" || psql == "" { tool_errln("set PGURL and PSQL (a database with every migration applied)"); return 2; }
+  a := [8] string.[psql, "-XAtq", "-v", "ON_ERROR_STOP=1", "--dbname", db, "-f", file];
+  out: [8192] u8; err: [8192] u8;
+  got := proc_run(a[..], 60000, out[..], err[..]);
+  text := cast(string) out[0..<got.out_n];
+  oks := 0; at := 0;
+  for i: 0..<text.count + 1 {
+    if i == text.count || text[i] == '\n' {
+      line := text[at..<i]; at = i + 1;
+      if line.count > 3 && line[0..<3] == "ok " { oks += 1; print("%\n", line); }
+    }
+  }
+  if got.status != 0 || got.timed_out || oks != PIN_CHECKS {
+    tool_err("realm_engine_pin: "); tool_errln(cast(string) err[0..<got.err_n]);
+    print("FAIL % of % checks\n", oks, PIN_CHECKS);
+    return 1;
+  }
+  print("ok engine pins: % checks\n", oks);
+  return 0;
+}

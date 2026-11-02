@@ -33,7 +33,7 @@ speech it is "Aethyr Forge", and that is fine.
 | The voice | migrations 0104-0106 | Switch a feature, open a panel, ask for a thing, ask about the screen (the frame goes to Gemini). |
 | The CLI and MCP | `openagents realm ...` (35 verbs), `openagents mcp` | `new`, `revise`, `switch`, `move`, `place`, `ask`, `undo`, `publish`, `fork`, `shot`, `play`/`look`/`go`/`say`, `apply FILE.jsonl`. Each verb is an MCP tool. |
 | Your own Coder | "Your computer" panel, #12640-#12642 | In progress: the browser pairs with the owner's Coder over NIP-HOST, sends a job for the realm, streams its steps. |
-| Publish and fork | `realm publish`, `realm fork`, migrations 0075, 0101-0102 | Revisions, visibility (private, unlisted, public), forks. Engine build and assets not yet pinned (#12629). |
+| Publish and fork | `realm publish`, `realm fork`, migrations 0075, 0101-0102, 0107 | Revisions, visibility (private, unlisted, public), forks. A publish pins the engine build and assets with the revision (0107, `aethyr/forge/publish.coax`, #12629). |
 | Asked for, not built yet | the feature list's waiting asks | Every thing the catalogue can't draw stays on the list for an agent to build. |
 
 What is missing is not a capability. It is **one screen**: today the builder and the
@@ -201,7 +201,9 @@ like anyone's. Coder gets the realm tools (`openagents mcp`) by default.
 7. **Your agent tab.** The paired Coder (#12642) or the hosted builder; BUILD IT on an
    asked thing.
 8. **Pin the published build** (#12629): a published realm plays the engine build and
-   assets it was published with.
+   assets it was published with. Done for made realms (migration 0107,
+   `aethyr/forge/publish.coax`, book chapter 54); open: the served bytes' own hashes in
+   the record, built-in realms' forks, and the release gates per version.
 
 Slices 1-5 are the MVP. 6 and 7 make the video's last act. 8 is what makes a link
 keep working.
