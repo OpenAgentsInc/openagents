@@ -2071,6 +2071,30 @@ realm_probe :: (s: [] MyRealm, f: int) -> int #export_c {
   if f == 14 { return ifx busy(s) then 1 else 0; }
   if f == 15 { return s[0].forge_status; }
   if f == 16 { return s[0].forge_what; }
+  // the scene, for an agent's seat (docs/verse/realm-seat.md): facing in hundredths of a degree,
+  // the camera, how many entities and characters there are, the talk and the tools on
+  if f == 17 { return cast(int) (s[0].yaw * 18000.0f32 / PI + (ifx s[0].yaw < 0 then -0.5f32 else 0.5f32)); }
+  if f == 18 { return s[0].camera; }
+  if f == 19 { return cast(int) (s[0].pitch * 18000.0f32 / PI + (ifx s[0].pitch < 0 then -0.5f32 else 0.5f32)); }
+  if f == 64 { return ifx s[0].laid then s[0].ent_n else 0; }
+  if f == 65 { return s[0].people; }
+  if f == 66 { return s[0].talk_p; }
+  if f == 67 { return ifx s[0].talk_wait || s[0].ask_due then 1 else 0; }
+  if f == 68 { return s[0].talk_n; }
+  if f == 69 { m := 0; for i: 0..<TOOLS { if s[0].tools[i] { m |= 1 << i; } } return m; }
+  if f >= 1700 && f < 1700 + 2 * PEOPLE {
+    p := (f - 1700) / 2;
+    if !s[0].laid || p >= s[0].people { return PROBE_NONE; }
+    return ifx (f - 1700) % 2 == 0 then cm_of(s[0].person_x[p]) else cm_of(s[0].person_z[p]);
+  }
+  // the character's newest line, a byte a field (-1 past its end, or when it hasn't spoken)
+  if f >= 3000 && f < 3000 + TALK_LINE {
+    for k: 0..<s[0].talk_n {
+      i := s[0].talk_n - 1 - k;
+      if s[0].talk_npc[i] { b := f - 3000; return ifx b < s[0].talk_line_n[i] then cast(int) s[0].talk_line[i * TALK_LINE + b] else -1; }
+    }
+    return -1;
+  }
   if f == 60 { return s[0].placed_n; }
   if f == 61 { return s[0].server_undo; }
   if f == 62 { return live_state(s); }
@@ -3202,6 +3226,31 @@ action_text :: (s: [] MyRealm) -> string { return cast(string) s[0].outbox[0..<s
   s[0].z += 20;
   h := frame_of(s[..], t[..], 2560, 1600);
   #assert s[0].talk_p < 0;
+}
+
+#test "the scene probe an agent's seat reads: facing, camera, entities, characters, the talk, its answer a byte a field, the tools" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", TALKS);
+  by_mott(s[..]);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert realm_probe(s[..], 18) == s[0].camera && realm_probe(s[..], 64) == s[0].ent_n && realm_probe(s[..], 64) > 0;
+  #assert realm_probe(s[..], 65) == s[0].people && s[0].people > 0 && realm_probe(s[..], 66) == -1 && realm_probe(s[..], 3000) == -1;
+  #assert realm_probe(s[..], 1700) == cm_of(s[0].person_x[0]) && realm_probe(s[..], 1701) == cm_of(s[0].person_z[0]);
+  #assert realm_probe(s[..], 1700 + 2 * s[0].people) == PROBE_NONE;
+  #assert (realm_probe(s[..], 69) & (1 << TOOL_TALK)) != 0;
+  s[0].yaw = PI / 2;
+  #assert realm_probe(s[..], 17) == 9000;
+  s[0].yaw = -PI;
+  #assert realm_probe(s[..], 17) == -18000;
+  k := realm_key(s[..], t[..], 'e', true);
+  realm_message(s[..], t[..], MSG_TEXT, "who are you?");
+  e := realm_key(s[..], t[..], KEY_ENTER, true);
+  m := frame_of(s[..], t[..], 2560, 1600);
+  #assert realm_probe(s[..], 66) == 0 && realm_probe(s[..], 67) == 1 && realm_probe(s[..], 3000) == -1;   // asked, no answer yet
+  realm_requested(s[..], 3);
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 3, "200\n{\"text\":\"Hi.\",\"model\":\"m\"}");
+  #assert realm_probe(s[..], 67) == 0 && realm_probe(s[..], 68) == 2;
+  #assert realm_probe(s[..], 3000) == 'H' && realm_probe(s[..], 3001) == 'i' && realm_probe(s[..], 3002) == '.' && realm_probe(s[..], 3003) == -1;
 }
 
 #test "/realms/built's own realm talks too: its answer on the first id is the realm's, not the edit layer's" {

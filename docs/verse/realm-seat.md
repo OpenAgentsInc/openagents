@@ -42,7 +42,8 @@ doesn't change if the runner does.
 
 Every action returns an observation:
 
-- **A typed scene summary**, read from the page's probe, never from pixels:
+- **A typed scene summary**, read from the page's probe and the realm's
+  spec, never from pixels:
   - where the agent stands (x, z, facing) and the camera kind;
   - what's in view and near, nearest first, up to 16: each with its kind
     (`character`, `building`, `tree`, `prop`, `water`, ...), its name when it
@@ -56,20 +57,26 @@ Every action returns an observation:
 The summary is what most agents use; it's small and exact. The shot is for
 judging how something looks.
 
-This needs one new probe in each realm's module, `realm_scene`, written as
-lines like the routes answer:
+The page's probe (`coaxial.guardProbe(field)`, numbers only) gives the
+positions, kinds, facing and talk state. The spec route
+(`GET /api/playtest/realms/<slug>`) gives the names, roles and tools. The
+seat joins the two. Made realms answer these fields (`myrealm.coax`
+`realm_probe`, **built**):
 
-```text
-at 4.2 -1.0 90
-camera third
-near character 3.1 45 Maple|innkeeper
-near building 8.4 10 A log cabin
-tool talk 1
-talking Maple|Welcome! The well is past the barn.
-```
+| Field | Value |
+| --- | --- |
+| 10, 11 | where you stand, x and z, in centimetres |
+| 17, 19 | facing (yaw) and pitch, in hundredths of a degree |
+| 18 | the camera: 0 third person, 1 first, 2 top-down, 3 side |
+| 64 | how many entities; 1000 + 2e and 1001 + 2e their x and z; 1400 + e their kind (tree, rock, prop, building, house, dwelling, lantern, placed, centre) |
+| 65 | how many characters; 1700 + 2p and 1701 + 2p their x and z |
+| 66 | the character you're talking to, or -1 |
+| 67 | 1 while a question waits for its answer |
+| 68 | lines in the talk so far |
+| 69 | the tools on, a bit each: build, fly, jump, map, talk, voice |
+| 3000 + i | byte i of the character's newest line, -1 past its end |
 
-Made realms get it first, in `myrealm.coax`, from the layout it already has
-(`myrealm-shapes.coax`). Each hand-built realm adds it when it wants seats.
+Each hand-built realm adds these fields when it wants seats.
 
 ## What the agent may do
 
@@ -115,7 +122,7 @@ panel) comes after, on the same runner as the project agents.
 
 ## Slices
 
-1. **The scene probe** in `myrealm.coax` (`realm_scene`), with checks.
+1. **The scene probe** in `myrealm.coax`, with checks (**built**).
 2. **`realm-seat.coax`**, a tool like `forge-journey.coax`: opens a realm,
    reads JSON-line actions on stdin, writes one observation a line. This
    is the seat's engine, testable without the CLI.
