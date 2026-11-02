@@ -71,6 +71,7 @@ SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
 
 App :: struct {
   plain: bool;                   // --print: no TUI, plain lines
+  realm_mcp: [1200] u8;          // the openagents CLI as an MCP server for Claude Code (cd_claude_realm_tools)
   // recaps (chapter 36): on a Mac with Apple's on-device model, the status bar says what the agent is doing
   afm: [1] AfmClient;
   use: [2] UsAcct;               // plan usage of Claude Code's and Codex's logins (chapter 36), as Zeron reads it
@@ -794,10 +795,28 @@ cd_claude_send :: (a: [] App, msg: string) {
   cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
   cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools, a[0].pol[0].on || cd_has_hook(a, "tool_call"));
   if a[0].nresume > 0 { a[0].q[0].options.resume = cast(string) a[0].resume[0..<a[0].nresume]; a[0].q[0].options.fork_session = true; }
+  a[0].q[0].options.mcp_servers = cd_claude_realm_tools(a);
   a[0].npending = cd_cat(a[0].pending[..], 0, msg);
   problem := cl_start(a[0].q, a[0].p, "", true, a[0].scratch);
   if problem.count > 0 { cd_finish(a, END_FAILED, problem); return; }
   a[0].live = true;
+}
+
+// Realms as tools: the openagents CLI's MCP server (`openagents mcp`, apps/openagents-cli/mcp.coax),
+// so a Claude Code session in Coder makes and edits realms with the CLI's own checks and key. Its
+// binary is this checkout's build (the `openagents` shell function is not a program Claude Code
+// can start). Off with CODER_REALM_TOOLS=0, or when the CLI isn't built.
+cd_claude_realm_tools :: (a: [] App) -> string {
+  eb: [8] u8; if cl_getenv("CODER_REALM_TOOLS", eb[..]) == "0" { return ""; }
+  rb: [1024] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+  if repo.count == 0 { return ""; }
+  pb: [1100] u8; pn := cd_cat(pb[..], 0, repo); pn = cd_cat(pb[..], pn, "/apps/openagents-cli/build/openagents");
+  exe := cast(string) pb[0..<pn];
+  if !fs_exists(exe) { return ""; }
+  for c: exe { if c == '"' || c == '\\' || c < 32 { return ""; } }
+  out := a[0].realm_mcp[..];
+  n := cd_cat(out, 0, "{\"openagents\":{\"command\":\""); n = cd_cat(out, n, exe); n = cd_cat(out, n, "\",\"args\":[\"mcp\"]}}");
+  return ifx n < out.count then cast(string) out[0..<n] else "";
 }
 
 cd_claude_close :: (a: [] App) {

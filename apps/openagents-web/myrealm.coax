@@ -142,6 +142,10 @@ SIDE_BACK :: 15.0; SIDE_UP :: 6.1; SIDE_LOOK :: 4.0; SIDE_HALF :: 6.0;   // 2D: 
 FOV :: 0.95; STICK :: 60.0; LAMP_HEIGHT :: 1.35;
 GRAVITY :: 14.0; JUMP_SPEED :: 6.0; FLY_HEIGHT :: 7.0;
 WAIT :: 30.0;
+// Edits show up by themselves (from the CLI, Coder, another tab or a phone): the page reads its
+// spec again this often while it is open and idle, and lays the realm out again only when the
+// spec's text changed. The owner sees an edit within about a second; a visitor sees a publish.
+WATCH_OWNER :: 0.5f32; WATCH_VISITOR :: 15.0f32;
 // buttons
 BTN_BACK :: 0; BTN_BUILD :: 3; BTN_MAP :: 4; BTN_FLY :: 5; BTN_JUMP :: 6;
 BTN_CLOSE :: 9; BTN_NEW :: 10; BTN_BYE :: 11; BTN_HOLD :: 12;
@@ -168,6 +172,7 @@ NPC_URL :: "/api/playtest/npc/ask";
 
 MyRealm :: struct {
   started: bool;
+  watched_at: f32; spec_sum: int; spec_sum2: int; spec_len: int;   // the spec last laid out (spec_seen)
   time: f32; width: f32; height: f32; dpr: f32; still: bool;
   x: f32; y: f32; z: f32; yaw: f32; vy: f32; flying: bool;
   camera: int; pitch: f32; turn_y: f32; ortho: bool;
@@ -576,7 +581,9 @@ take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
   s[0].req_id = -1; s[0].req_what = REQ_NONE;
   status := status_of(text); body := answer_of(text);
   if what == REQ_SPEC {
+    if status == 200 && s[0].spec_ready && spec_seen(s, body) { return; }   // the same realm: nothing to lay out
     if status == 200 && read_spec(s, body) {
+      spec_keep(s, body);
       s[0].spec_ready = true; s[0].laid = false; lay_out(s);
       if !s[0].entered {
         // world-enter as every world's page sends it (made-<slug>, the realm's verse.worlds id), then realm-enter
@@ -795,8 +802,25 @@ next_request :: (s: [] MyRealm) {
     return;
   }
   if s[0].slug_n == 0 { return; }
-  if !s[0].asked_spec || s[0].spec_due { s[0].asked_spec = true; s[0].spec_due = false; ask(s, REQ_SPEC, "", 0, false); return; }
+  if !s[0].asked_spec || s[0].spec_due { s[0].asked_spec = true; s[0].spec_due = false; s[0].watched_at = s[0].time; ask(s, REQ_SPEC, "", 0, false); return; }
+  if watch_due(s) { s[0].watched_at = s[0].time; ask(s, REQ_SPEC, "", 0, false); }
 }
+// Time to read the spec again: it was laid out, nobody is mid-talk or typing, and the interval passed.
+watch_due :: (s: [] MyRealm) -> bool {
+  if !s[0].spec_ready || s[0].talk_p >= 0 || redit_typing(s[0].ed[..]) { return false; }
+  return s[0].time - s[0].watched_at >= (ifx s[0].owner then WATCH_OWNER else WATCH_VISITOR);
+}
+// Two sums of the spec's bytes (each mod a prime, so no overflow) and its length.
+spec_sums :: (text: string, out: [] int) {
+  a := 0; b := 0;
+  for c: text { a = (a * 131 + cast(int) c + 1) % 1000000007; b = (b * 257 + cast(int) c + 1) % 998244353; }
+  out[0] = a; out[1] = b;
+}
+spec_seen :: (s: [] MyRealm, text: string) -> bool {
+  v: [2] int; spec_sums(text, v[..]);
+  return text.count == s[0].spec_len && v[0] == s[0].spec_sum && v[1] == s[0].spec_sum2;
+}
+spec_keep :: (s: [] MyRealm, text: string) { v: [2] int; spec_sums(text, v[..]); s[0].spec_len = text.count; s[0].spec_sum = v[0]; s[0].spec_sum2 = v[1]; }
 
 // ---- the pack's catalog
 
@@ -3415,6 +3439,36 @@ note_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].note
 answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   realm_requested(s, id);
   realm_message(s, t, HTTP_ANSWER_KIND + id, text);
+}
+
+#test "edits from elsewhere show up: the owner's page reads its spec again every half second, a visitor's every 15 s" #steps 40000000 {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  #assert s[0].spec_ready && s[0].owner && !busy(s[..]);
+  s[0].time = s[0].watched_at + 0.4; next_request(s[..]); #assert !busy(s[..]);
+  s[0].time = s[0].watched_at + 0.5; next_request(s[..]);
+  #assert busy(s[..]) && url_is(s[..], "/api/playtest/realms/forge-court") && s[0].req_what == REQ_SPEC && (s[0].req_flags & HTTP_POST) == 0;
+  // the same text: nothing is laid out again
+  s[0].trees = 99;
+  sp: [512] u8; sn := put(sp[..], 0, "200\n"); sn = put(sp[..], sn, FORGED);
+  answered(s[..], t[..], 3, cast(string) sp[0..<sn]);
+  #assert !busy(s[..]) && s[0].trees == 99;
+  // an edit (a row switched, lore, a move) changes the text: the realm is read and laid out again
+  s[0].time = s[0].watched_at + 0.5; next_request(s[..]); #assert busy(s[..]);
+  sn = put(sp[..], 0, "200\n"); sn = put(sp[..], sn, "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime night\nowner 1\ntool build 0\nfeature trees round 9\nfeature rocks 4\nrev 4\npublished 0\nlisted 0\n");
+  answered(s[..], t[..], 4, cast(string) sp[0..<sn]);
+  #assert s[0].trees == 9 && s[0].tod == 3 && s[0].server_rev == 4 && s[0].laid;
+  // a failed read keeps what is there
+  s[0].time = s[0].watched_at + 0.5; next_request(s[..]);
+  answered(s[..], t[..], 5, "503\n");
+  #assert s[0].trees == 9 && s[0].spec_ready && !s[0].spec_failed;
+  // not while talking to a character
+  s[0].talk_p = 0; s[0].time = s[0].watched_at + 5; next_request(s[..]); #assert !busy(s[..]);
+  s[0].talk_p = -1;
+  // a visitor's page asks every 15 s
+  s[0].owner = false; s[0].watched_at = s[0].time;
+  s[0].time = s[0].watched_at + 14; next_request(s[..]); #assert !busy(s[..]);
+  s[0].time = s[0].watched_at + 15; next_request(s[..]); #assert busy(s[..]);
 }
 
 #test "MOVE stands the nearest thing in front of you and moves nothing else; UNDO puts it back" #steps 40000000 {
