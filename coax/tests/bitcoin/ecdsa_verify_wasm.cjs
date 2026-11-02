@@ -1,3 +1,4 @@
+// Firm reason: 5 (a thin loader that hands the wasm module the WASI host and compares its outputs)
 // Runs the Coax ECDSA verifier compiled to wasm32 in Node's WASI on every
 // case of the fixture, with the key uncompressed and compressed, and prints
 // how many decisions match the expected result. For
