@@ -4,11 +4,12 @@ Status, 2026-11-01: Psionic's Whisper transcribes end to end
 (`openagents transcribe FILE --backend psionic`), with beam search,
 temperature fallback, language detection and a vocabulary bias
 (`--words`). On the comparison corpus its word error rate is at or below
-whisper.cpp's in total for `tiny.en` and `base.en`. On the CPU it takes
-1.2 to 1.3× whisper.cpp's time; with the encoder on the GPU it takes 2.5 to
-2.8× whisper.cpp's Metal time. The in-game voice host uses it
+whisper.cpp's in total for `tiny.en` and `base.en`. On the CPU it is
+faster than whisper.cpp: 0.92× its time on `tiny.en` and 0.83× on
+`base.en`. On the GPU, where both the encoder and the decoder run on Metal,
+it takes about 2× whisper.cpp's Metal time. The in-game voice host uses it
 (`voice-host --provider psionic`). The default CLI backend stays
-whisper.cpp until Psionic is also faster (#12623). Tracking issue:
+whisper.cpp until Psionic is also faster on the GPU (#12623). Tracking issue:
 [#12614](https://github.com/OpenAgentsInc/openagents/issues/12614).
 
 Speech to text is a primitive of the stack. You call it the same way
@@ -137,7 +138,7 @@ and q4_1 blocks are dequantized at load exactly as ggml's
 | `psionic/lib/whisper/search.coax` | beam search, temperature fallback, language detection, the prompt and the word bias | done, checked |
 | `psionic/lib/whisper/score.coax` | word error rate and timestamp drift for the harness | done, checked |
 | `psionic/lib/whisper/wav.coax` | WAV to mono f32; the resampler | done, checked |
-| `psionic/lib/whisper/device.coax` | the encoder's projections and attention as Metal kernels (`coax metal-compute`) | done, checked |
+| `psionic/lib/whisper/device.coax` | the Metal kernels (`coax metal-compute`): the encoder's projections and attention, and a decoder step's norms, beam products (f32 or f16 weights), split-key attention, residual adds and cache stores | done, checked |
 | `psionic/platform/whisper-face.c` | the host: maps files, owns memory, threads and the GPU, calls the exports (`psionic-whisper info`, `filters`, `pcm`, `transcribe`); with `-DPSIONIC_WHISPER_LIBRARY`, the library `psionic-stt.h` declares | done |
 | `psionic/platform/whisper-build.sh` | builds `psionic-whisper` and `libpsionic-whisper.a` into `psionic/build/whisper` | done |
 
@@ -387,6 +388,22 @@ whisper.cpp's default Metal build):
 | cut.wav | base.en | 395 | 6.08% | 7.09% | 4.42% | 1246 / 3840 ms | 4043 ms | 1171 ms | 660 MB | 421 MB |
 | **all** | base.en | 1300 | 4.15% | 4.46% |  |  | 12719 ms | 4495 ms | | |
 
+After the Coax compiler work, 2026-11-01, totals over the same corpus
+(`fma` and loop versioning in Coax; ggml's four-lane dot products in the
+CPU kernels; each decoder step as one Metal batch of Coax kernels):
+
+| Device | Model | Psionic WER | whisper.cpp WER | Psionic | whisper.cpp |
+| --- | --- | ---: | ---: | ---: | ---: |
+| CPU | `tiny.en` | 6.15% | 6.31% | 10778 ms | 11739 ms |
+| CPU | `base.en` | 4.15% | 4.31% | 15507 ms | 18764 ms |
+| GPU | `tiny.en` | 6.15% | 6.08% | 13102 ms | 6643 ms |
+| GPU | `base.en` | 4.15% | 4.46% | 15605 ms | 7542 ms |
+
+The CPU rows ran on a quiet machine. The GPU rows ran while other jobs
+held the CPU (load average about 50), which slows both backends; on a
+quiet machine Psionic's `base.en` run of `gettysburg.wav` takes 1.5 s
+(2.3 s before the decoder moved to the GPU).
+
 What the numbers say:
 
 - Accuracy. In total, Psionic's word error rate is below whisper.cpp's in
@@ -404,16 +421,19 @@ What the numbers say:
   `--words Psionic,Coax,Nostr,OpenAgents,Coder`, Psionic spells every
   name right on `tiny.en` and `base.en`. `base.en` hears "Psionic" right
   with beam search even without the list.
-- Speed on the CPU. Psionic takes 1.26× whisper.cpp's time on `tiny.en`
-  and 1.22× on `base.en` (it was 2 to 2.5× before). Its products run at
-  about 8 billion multiply-adds a second per core, the limit for Coax's
-  scalar code: bounds checks are always on and the language forbids fused
-  multiply-add, so the compiler does not vectorize them. whisper.cpp uses
-  Accelerate's matrix units.
-- Speed on the GPU. Psionic takes 2.5× whisper.cpp's time on `tiny.en` and
-  2.8× on `base.en`. Psionic runs only the encoder there. The decoder
-  makes about 100 small calls a token, and each Metal launch costs 60 to
-  70 µs, so the decoder needs fused kernels before it gains from the GPU.
+- Speed on the CPU. Psionic takes 0.92× whisper.cpp's time on `tiny.en`
+  and 0.83× on `base.en` (1.26× and 1.22× before the compiler work). Coax
+  gained an explicit `fma` and, at native optimization 1 or more, loops
+  whose indexes are affine check each range once and run without
+  per-element checks, so the four-lane kernels compile to NEON fused
+  multiply-adds.
+- Speed on the GPU. Psionic takes about 2× whisper.cpp's time. A decoder
+  step is one command buffer of about 130 launches and takes about 2.1 ms
+  on `base.en`; the beam products are most of it. Each product launch is
+  short, so its fixed cost (group start, the partial sums in threadgroup
+  memory, the barrier) outweighs its reads. Next: fuse the query, key and
+  value products, encode independent launches concurrently, and move the
+  log-softmax and top-k of each beam onto the GPU.
 - Memory. On the CPU, for files longer than one window, Psionic's peak is
   about 100 MB below whisper.cpp's on `tiny.en` and within 15 MB on
   `base.en`. On short files it is 50 to 170 MB higher, because Psionic
