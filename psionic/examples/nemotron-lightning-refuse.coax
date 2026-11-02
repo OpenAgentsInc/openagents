@@ -1,0 +1,14 @@
+#import "Basic";
+#load "../lib/nemotron-lightning.coax";
+
+// book:begin example
+// A config that says 64 routed experts instead of 128: the first mixture
+// layer's expert line no longer matches the pinned headers. The refusal
+// names the first expected tensor the headers do not hold.
+main :: () {
+    s:=nl_lightning();s.experts=64;
+    r:=nl_inventory(s,NL_PINNED_MANIFEST);
+    buf:[128]u8;n:=nl_line(nl_expected(s,r.bad),buf[..]);
+    print("refused: status %, tensor % not in the pinned headers: %\n",r.status,r.bad,cast(string)buf[0..<n]);
+}
+// book:end example

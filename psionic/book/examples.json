@@ -2222,6 +2222,26 @@
       ]
     },
     {
+      "source": "psionic/examples/nemotron-lightning.coax",
+      "chapter": "psionic/book/ch164-execute-nemotron-lightning.md",
+      "stdout": "psionic/fixtures/nemotron-lightning.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/nemotron-lightning-refuse.coax",
+      "chapter": "psionic/book/ch164-execute-nemotron-lightning.md",
+      "stdout": "psionic/fixtures/nemotron-lightning-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/feed.coax",
       "chapter": "psionic/book/ch121-feed-the-accelerator.md",
       "stdout": "psionic/fixtures/feed/feed.out",

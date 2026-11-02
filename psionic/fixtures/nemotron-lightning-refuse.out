@@ -1,0 +1,1 @@
+refused: status checkpoint, tensor 12 not in the pinned headers: backbone.layers.1.mixer.experts.0..63.down_proj.weight BF16 2688,1856

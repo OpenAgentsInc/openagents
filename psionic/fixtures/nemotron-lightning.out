@@ -1,0 +1,15 @@
+profile nemotron-h-cpu-f64-v1, tolerance 0.00001 x (1 + largest |reference value|), near-tie margin 0.00001
+pinned revision a9904d24bcc1d289a1950fa9d2b978c47cf903b9, 65827374264 shard bytes, header only
+pattern MEMEM*EMEMEM*EMEMEM*EMEMEM*EMEMEM*EMEMEMEM*EMEMEMEME
+  23 Mamba-2, 6 attention, 23 mixture layers; MTP layers *E
+inventory: 417 lines for 6513 tensors, 417 expected, status ok, 32913266240 values in 65826538624 bytes
+config fields match the pinned config.json: true
+hand route: experts 1 and 3, weights 1.9152118 and 0.58478826, margin 0.03788284273999021
+small model: hidden 6; 5 experts of width 3, 2 chosen; shared expert of width 4
+  seed 0: status ok, largest difference 1.0888519477170178e-06 (limit 0.00007299071481600506), greedy tokens [2, 6, 8, 1, 6, 3, 1], 7 of 7 match, smallest router margin 0.17416040688721435
+  seed 1: status ok, largest difference 6.105275947021482e-07 (limit 0.00005268262520012458), greedy tokens [3, 4, 3, 1, 3, 2, 2], 7 of 7 match, smallest router margin 0.047170450041394085
+  seed 2: status ok, largest difference 8.055699778353187e-07 (limit 0.00009484047267815843), greedy tokens [2, 2, 5, 1, 2, 5, 7], 7 of 7 match, smallest router margin 0.006951999832841005
+weights 63155886464 bytes without MTP (1907072 vectors); one expert 19955712; 3226804224 values active a token
+GPU 17171480576 bytes, resident: weights: the weights, state and scratch exceed the budget and streaming is off, need 63273253248, short by 46101772672
+GPU streaming: ok streamed, 15644827648 bytes resident, 47511058816 streamed through two slots of 704643072
+RAM 134828441600 bytes: ok resident, 71555188352 bytes to spare

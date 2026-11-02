@@ -375,14 +375,18 @@ tier) and a budget in bytes:
 rp_plan :: (m:RpModel,r:RpRequest,budget:int)->RpPlan #export_c {
     if !rp_valid(m) {return RpPlan.{status=RpStatus.model};}
     if r.capacity<1 || r.capacity>m.max_tokens || r.chunk<1 || r.chunk>r.capacity {return RpPlan.{status=RpStatus.request};}
+    return rp_admit(rp_weights(m),rp_state(m,r.capacity),rp_scratch(m,r.chunk,r.capacity),r.stream,budget);
+}
+// The same decision for weight, state and scratch bytes counted elsewhere:
+// chapter 164 counts a Mamba-2 and mixture-of-experts hybrid this way.
+rp_admit :: (w:RpWeights,state:int,scratch:int,stream:bool,budget:int)->RpPlan {
     if budget<0 {return RpPlan.{status=RpStatus.budget};}
-    w:=rp_weights(m);
-    p:=RpPlan.{weights=w.total,state=rp_state(m,r.capacity),scratch=rp_scratch(m,r.chunk,r.capacity),slot=w.slot};
+    p:=RpPlan.{weights=w.total,state=state,scratch=scratch,slot=w.slot};
     live:=p.state+p.scratch;all:=w.total+live;least:=w.vectors+live+2*w.slot;
-    p.need=ifx r.stream then rp_min(all,least) else all;
+    p.need=ifx stream then rp_min(all,least) else all;
     if all<=budget {p.mode=RpMode.resident;p.resident=w.total;return p;}
     if live>budget {p.status=RpStatus.state;return p;}
-    if !r.stream {p.status=RpStatus.weights;return p;}
+    if !stream {p.status=RpStatus.weights;return p;}
     if least>budget {p.status=RpStatus.stream;return p;}
     p.mode=RpMode.streamed;p.resident=budget-live-2*w.slot;p.streamed=w.total-p.resident;
     return p;
@@ -397,6 +401,10 @@ vectors, state, scratch and two slots must fit, as on the card in chapter 45;
 otherwise the reason is `stream`. A streamed plan keeps as many weight bytes
 resident as the budget allows and reports how many must stream on every step.
 `need` is always the smallest budget that admits the same request.
+`rp_admit` makes the same decision for byte counts computed elsewhere;
+[chapter 164](ch164-execute-nemotron-lightning.md) counts a Mamba-2 and
+mixture-of-experts hybrid that `RpModel` does not describe and plans it this
+way.
 
 The plan is arithmetic. The caller allocates only after `status` is `ok`, so a
 refusal leaves nothing half-allocated. The `#forall` check confirms that for

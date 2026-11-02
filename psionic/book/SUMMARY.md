@@ -180,7 +180,7 @@
 
 - [162. A recurrence you can inspect](ch162-a-recurrence-you-can-inspect.md)
 - [163. Execute Nemotron Nano](ch163-execute-nemotron-nano.md) — partly implemented
-- [164. Execute Nemotron Lightning](ch164-execute-nemotron-lightning.md) — design draft
+- [164. Execute Nemotron Lightning](ch164-execute-nemotron-lightning.md) — partly implemented
 
 - [165. Sequences of observations](ch165-sequences-of-observations.md) — partly implemented
 - [166. One complete Cosmos3-Edge path](ch166-one-complete-cosmos3-edge-path.md) — design draft
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 84, 86, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–154, 156–159, 161–163, 165, 167–173, 175–183, 186–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 84, 86, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151–154, 156–159, 161–164, 165, 167–173, 175–183, 186–190, 192–196, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

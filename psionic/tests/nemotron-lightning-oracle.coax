@@ -1,0 +1,115 @@
+// Chapter 164's check oracle, loaded by psionic/lib/nemotron-lightning.coax.
+// The mixture-of-experts layer written from its published definition
+// (transformers 5.19.0, models/nemotron_h/modeling_nemotron_h.py,
+// NemotronHTopkRouter and NemotronHMoE, read and not run) in binary64 with
+// nothing narrowed to f32: sigmoid scores, the correction bias added for the
+// choice only, the top k chosen by rank (an expert's rank is the number of
+// experts with a larger choice, or an equal choice and a smaller index),
+// weights from the unbiased scores divided by their sum plus 1e-20, times
+// 2.5; each expert down(relu(up x)^2); the shared expert added unweighted.
+// It shares no code with the library.
+
+// The checks' mixture: hidden 6, 5 experts of width 3, 2 chosen a token, a
+// shared expert of width 4. The rest of the shape is chapter 163's checks'
+// model, so its Mamba-2 and attention oracles drive the small model's other
+// layers.
+NLO_EXPERTS :: 5;NLO_TOP :: 2;NLO_WIDTH :: 3;NLO_SHARED :: 4;
+// Weights in one flat array: norm 6, gate 30, bias 5, up 90, down 90,
+// shared up 24, shared down 24, final norm 6, readout 54.
+NLO_WEIGHTS :: 329;
+NLO_AT :: [10]int.[0,6,36,41,131,221,245,269,275,329];
+nlo_part :: (a:[]f32,k:int)->[]f32 {return a[NLO_AT[k]..<NLO_AT[k+1]];}
+nlo_value :: (seed:int,i:int)->f32 {return f32((i*5+seed*17+i*i%13+seed*i%7)%19-9)/10;}
+nlo_weights :: (seed:int)->[329]f32 {
+    w:[329]f32;
+    scales:=[9]f32.[1,1,0.05,0.5,0.5,0.5,0.5,1,1];
+    for k:0..<9 {p:=nlo_part(w[..],k);for i:0..<p.count {p[i]=nlo_value(seed+k,i)*scales[k];}}
+    for i:0..<6 {w[i]+=1.5;w[269+i]+=1.5;}
+    return w;
+}
+
+nlo_rms :: (x:[]f64,weight:[]f32,out:[]f64) {
+    sum:=0.0;for v:x {sum+=v*v;}
+    r:=sqrt(sum/f64(x.count)+0.00001);
+    for i:0..<x.count {out[i]=x[i]/r*f64(weight[i]);}
+}
+nlo_matvec :: (w:[]f32,x:[]f64,out:[]f64) {
+    for r:0..<out.count {sum:=0.0;for k:0..<x.count {sum+=f64(w[r*x.count+k])*x[k];}out[r]=sum;}
+}
+// down(relu(up x)^2) for an expert of the given width.
+nlo_expert :: (up:[]f32,down:[]f32,width:int,x:[]f64,out:[]f64) {
+    inner:[8]f64;
+    nlo_matvec(up,x,inner[0..<width]);
+    for i:0..<width {if inner[i]<0 {inner[i]=0;}inner[i]*=inner[i];}
+    nlo_matvec(down,inner[0..<width],out);
+}
+// The oracle's route for one normed input: chosen[e] is true for the top
+// NLO_TOP by rank; weight[e] is the chosen expert's weight, else 0.
+NloRoute :: struct { chosen:[5]bool; weight:[5]f64; choice:[5]f64; }
+nlo_route :: (gate:[]f32,bias:[]f32,x:[]f64)->NloRoute {
+    r:NloRoute;logits:[5]f64;nlo_matvec(gate,x,logits[..]);scores:[5]f64;
+    for e:0..<NLO_EXPERTS {scores[e]=1/(1+exp(-logits[e]));r.choice[e]=scores[e]+f64(bias[e]);}
+    sum:=0.0;
+    for e:0..<NLO_EXPERTS {
+        rank:=0;
+        for o:0..<NLO_EXPERTS {if r.choice[o]>r.choice[e] || (r.choice[o]==r.choice[e] && o<e) {rank+=1;}}
+        r.chosen[e]=rank<NLO_TOP;
+        if r.chosen[e] {sum+=scores[e];}
+    }
+    for e:0..<NLO_EXPERTS {if r.chosen[e] {r.weight[e]=scores[e]/(sum+1e-20)*2.5;}}
+    return r;
+}
+// Every token of hidden (tokens x 6) through the mixture layer, as binary64.
+nlo_moe :: (a:[]f32,hidden:[]f32,out:[]f64) {
+    tokens:=hidden.count/6;
+    for t:0..<tokens {
+        x:[6]f64;n:[6]f64;
+        for i:0..<6 {x[i]=f64(hidden[t*6+i]);}
+        nlo_rms(x[..],nlo_part(a,0),n[..]);
+        r:=nlo_route(nlo_part(a,1),nlo_part(a,2),n[..]);
+        sum:[6]f64;y:[6]f64;
+        for e:0..<NLO_EXPERTS {if r.chosen[e] {
+            nlo_expert(nlo_part(a,3)[e*18..<(e+1)*18],nlo_part(a,4)[e*18..<(e+1)*18],NLO_WIDTH,n[..],y[..]);
+            for i:0..<6 {sum[i]+=r.weight[e]*y[i];}
+        }}
+        nlo_expert(nlo_part(a,5),nlo_part(a,6),NLO_SHARED,n[..],y[..]);
+        for i:0..<6 {out[t*6+i]=x[i]+sum[i]+y[i];}
+    }
+}
+// The final norm and readout of each token's hidden row: the index of the
+// largest logit, the lowest index on a tie.
+nlo_readout :: (a:[]f32,hidden:[]f64,logits:[]f64)->int {
+    n:[6]f64;nlo_rms(hidden,nlo_part(a,7),n[..]);nlo_matvec(nlo_part(a,8),n[..],logits);
+    best:=0;for i:1..<logits.count {if logits[i]>logits[best] {best=i;}}
+    return best;
+}
+nlo_round :: (x:[]f64,out:[]f32) {for i:0..<x.count {out[i]=f32(x[i]);}}
+
+// The checks' small Lightning: chapter 163's checks' model with the mixture.
+nlo_shape :: ()->NlShape {
+    return NlShape.{base=nho_shape(),pattern="M*E",mtp="",experts=NLO_EXPERTS,top_k=NLO_TOP,expert_mlp=NLO_WIDTH,shared_mlp=NLO_SHARED};
+}
+nlo_view :: (a:[]f32)->NlMoe {
+    return NlMoe.{norm=nlo_part(a,0),gate=nlo_part(a,1),bias=nlo_part(a,2),up=nlo_part(a,3),down=nlo_part(a,4),shared_up=nlo_part(a,5),shared_down=nlo_part(a,6)};
+}
+nlo_gap :: (got:[]f32,ref:[]f64)->NhoGap {
+    r:NhoGap;big:=0.0;
+    for i:0..<ref.count {if abs(f64(got[i])-ref[i])>r.gap {r.gap=abs(f64(got[i])-ref[i]);}if abs(ref[i])>big {big=abs(ref[i]);}}
+    r.limit=NH_TOLERANCE*(1+big);
+    return r;
+}
+// A route agrees with the oracle's when it chooses the same experts with
+// the same weights; or, for a near tie, when every chosen expert's oracle
+// choice is within NL_MARGIN of the oracle's last chosen one.
+nlo_agrees :: (r:NlRoute,o:NloRoute)->bool {
+    last:=2.0;for e:0..<NLO_EXPERTS {if o.chosen[e] && o.choice[e]<last {last=o.choice[e];}}
+    for slot:0..<r.count {
+        e:=r.ids[slot];
+        if r.margin<NL_MARGIN {
+            if o.choice[e]<last-NL_MARGIN {return false;}
+        } else {
+            if !o.chosen[e] || abs(f64(r.weights[slot])-o.weight[e])>NH_TOLERANCE {return false;}
+        }
+    }
+    return true;
+}
