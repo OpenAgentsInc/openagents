@@ -1,0 +1,29 @@
+// Chapter 184: what the pipeline refuses. A refused turn or configuration
+// runs no stage; a barge-in before the user stopped speaking, or before a
+// tick already run, stops nothing.
+#import "Basic";
+#load "../lib/voice-pipeline.coax";
+
+open :: (what:string,c:VpConfig,u:VpTurn) {
+    r:=[1]VpRun.[vp_open(c,u)];s:=vp_finish(r[..]);
+    print("%: %, % ticks run\n",what,vp_why_name(s.why),r[0].t);
+}
+
+// book:begin main
+main :: () {
+    c:=vpx_config();u:=vpx_turn();
+    v:=u;v.n=0;open("no words",c,v);
+    v=u;v.word[1]=1000;open("word id 1000",c,v);
+    v=u;v.heard[1]=62;open("two words ending at tick 62",c,v);
+    v=u;v.end=79;open("the user stops before the last word ends",c,v);
+    d:=c;d.step=0;open("0 ticks a token",d,u);
+    d=c;d.hop[1]=101;open("a 101-tick hop",d,u);
+    d=c;d.quiet= -1;open("a quiet time of -1",d,u);
+    d=c;d.cap=5;open("a 5-token buffer",d,u);
+    r:=[1]VpRun.[vp_open(c,u)];
+    print("barge-in at 85, as the user stops: %\n",vp_why_name(vp_stop(r[..],85).why));
+    s:=vp_stop(r[..],150);
+    print("barge-in at 150: %, % tokens made\n",vp_why_name(s.why),s.lm);
+    print("barge-in at 140, after 150: %\n",vp_why_name(vp_stop(r[..],140).why));
+}
+// book:end main

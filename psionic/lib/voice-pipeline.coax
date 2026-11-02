@@ -1,0 +1,354 @@
+// Chapter 184: a pipeline of models. One spoken turn passes through four
+// stages: voice activity (the end of the user's turn), a recognizer
+// (partial words, then a final transcript), a language model (a reply,
+// token by token) and a speaker (audio, sentence by sentence). Each stage
+// hands its output to the next over a hop with its own delay. The language
+// model may start on a partial transcript that has been quiet for a while,
+// before the final one arrives; its work is kept if the final transcript
+// is the same, and thrown away and restarted if not. Its tokens wait in a
+// bounded buffer, and the speaker takes a whole sentence when the one it
+// is playing is about to end, so the language model stalls when the
+// buffer is full. A barge-in cancels every stage at one tick and reports
+// what each stage made and what was handed on, emitted and heard.
+// The stages are stand-ins with fixed timing: no audio or weights.
+// Profile vp-pipeline-v1: integer ticks of 10 ms; at most 16 words heard,
+// 3 reply sentences of at most 5 words, a buffer of 6 to 32 tokens.
+#authority;
+#load "../tests/voice-pipeline-checks.coax";  // the checks' event-time oracle, sequential reference and random turns
+
+VP_PROFILE :: "vp-pipeline-v1";
+VP_WORDS :: 16;
+VP_SENTENCES :: 3;
+VP_SENTENCE :: 6;   // the longest sentence: 5 words and its period
+VP_REPLY :: 18;
+VP_CAP :: 32;
+VP_DELAY :: 100;    // the longest delay a stage or hop may have, in ticks
+VP_TIME :: 1000;    // the last tick a word may end on
+VP_AUDIO :: 320;    // bytes of audio a tick: 160 samples of 16-bit audio at 16 kHz
+
+// book:begin types
+VpWhy :: enum u8 {none;words;order;delay;policy;buffer;barge;}
+// The user's turn: word ids (1 to 999), the tick each word's audio ends,
+// and the tick the user stops speaking.
+VpTurn :: struct {n:int;word:[16]int;heard:[16]int;end:int;}
+// Every stage's timing, in ticks of 10 ms. hangover: silence before the
+// end of the turn is declared. asr_lag: a partial word after its audio;
+// asr_final: the final transcript after the end of the turn. quiet: ticks
+// a partial transcript must stay unchanged before the language model
+// starts on it (0: always wait for the final one). prefill, per_word: the
+// language model's start cost, fixed and per input word; step: ticks a
+// token. cap: tokens the buffer holds. tts_first: ticks from taking a
+// sentence to its first audio; word_ticks, pause: audio a word and a
+// period. hop: ASR to LM, LM to TTS, TTS to the listener.
+VpConfig :: struct {hangover:int;asr_lag:int;asr_final:int;quiet:int;prefill:int;per_word:int;step:int;cap:int;
+    tts_first:int;word_ticks:int;pause:int;hop:[3]int;}
+// A reply: tokens (0 is a period) and where each sentence ends.
+VpReply :: struct {n:int;sentences:int;token:[18]int;ends:[3]int;}
+// book:end types
+// The pipeline between ticks. t: the next tick. eot, fin, confirm: the
+// end of the turn, the final transcript, its arrival at the language
+// model. seen, changed: partial words the language model has, and when the
+// last arrived. words: the words the language model is running on; spec:
+// it started before the final transcript; ok: its input is the final
+// transcript. began, left: when it started, and ticks to its next token.
+// made: tokens this run made; period: the tick each sentence's period was
+// made, and sentences: how many periods it made. ready: the first sentence
+// was made and its input confirmed, at tick ready_at. ring, head: the
+// buffer, and tokens the speaker took. taken: the
+// sentences it took; take, audio: when, and the tick its audio starts.
+VpRun :: struct {
+    why:VpWhy;cfg:VpConfig;turn:VpTurn;t:int;eot:int;fin:int;confirm:int;seen:int;changed:int;
+    started:bool;spec:bool;ok:bool;words:int;began:int;left:int;made:int;wasted:int;reply:VpReply;period:[3]int;sentences:int;
+    ready:bool;ready_at:int;
+    ring:[32]int;head:int;taken:int;take:[3]int;audio:[3]int;spoken:[18]int;
+}
+// book:begin report-types
+// What every stage had done when the pipeline stopped at tick at. asr:
+// words the recognizer emitted. lm: tokens the language model made, wasted
+// ones included; buffered: tokens in the buffer; handed: tokens the
+// speaker took. synthesized, emitted, heard: ticks of audio made, sent
+// and heard. words: words heard to their end; cut: a word was cut off.
+// bytes: what crossed each hop.
+VpStop :: struct {why:VpWhy;at:int;asr:int;lm:int;wasted:int;buffered:int;handed:int;synthesized:int;emitted:int;heard:int;
+    words:int;cut:bool;bytes:[3]int;}
+// The time from the end of the user's speech to the first audio heard,
+// split along the path the first sentence took: vad, asr, hop 0, lm,
+// hop 1, tts, hop 2. vp_over sets a bit for each share past its budget.
+VpLatency :: struct {first:int;share:[7]int;}
+// book:end report-types
+
+// Checks come first. Chapter 184 works the hand trace; the oracle, the
+// sequential reference and the random turns are in
+// psionic/tests/voice-pipeline-checks.coax.
+// book:begin check-hand
+#test "the hand trace: a quiet partial, a stall, a barge-in" {
+    c:=vpx_config();u:=vpx_turn();
+    rep:=vp_reply(u.word,3);
+    // A reply whose token ids wrap past 999.
+    w:[16]int;w[0]=998;big:=vp_reply(w,1);
+    #assert big.n==15 && big.sentences==3 && big.ends[0]==4 && big.ends[1]==9 && big.ends[2]==15;
+    #assert big.token[0]==999 && big.token[1]==7 && big.token[2]==14 && big.token[3]==0 && big.token[14]==0;
+    #assert rep.n==13 && rep.sentences==3 && rep.ends[0]==5 && rep.ends[1]==11 && rep.ends[2]==13;
+    #assert rep.token[0]==672 && rep.token[3]==693 && rep.token[4]==0 && rep.token[5]==703 && rep.token[11]==734 && rep.token[12]==0;
+    r:=[1]VpRun.[vp_open(c,u)];
+    #assert r[0].why==VpWhy.none && r[0].eot==105 && r[0].fin==109 && r[0].confirm==111;
+    // The partial transcript is quiet from tick 87; the model starts at 97.
+    vp_until(r[..],97);#assert !r[0].started && r[0].seen==3 && r[0].changed==87;
+    vp_until(r[..],98);#assert r[0].started && r[0].spec && !r[0].ok && r[0].began==97 && r[0].words==3 && r[0].left==15;
+    // Tokens at 112, 115, ...; the final transcript confirms it at 111.
+    vp_until(r[..],112);#assert r[0].ok && r[0].made==0;
+    vp_until(r[..],113);#assert r[0].made==1 && r[0].ring[0]==672;
+    // The first sentence's period at 124; the speaker takes it at 127.
+    vp_until(r[..],127);#assert r[0].period[0]==124 && r[0].taken==0 && r[0].made==5;
+    vp_until(r[..],128);#assert r[0].taken==1 && r[0].take[0]==127 && r[0].audio[0]==135 && r[0].head==5 && r[0].made==6;
+    l:=vp_latency(r[..]);
+    #assert r[0].ready_at==124 && l.first==52 && l.share[0]==20 && l.share[1]==4 && l.share[2]==2 && l.share[3]==13 && l.share[4]==3 && l.share[5]==8 && l.share[6]==2;
+    // The second sentence fills the buffer at 142; token 11 waits until 243.
+    vp_until(r[..],243);#assert r[0].made==11 && r[0].made-r[0].head==0 && r[0].taken==2 && r[0].take[1]==242;
+    vp_until(r[..],244);#assert r[0].made==12;
+    s:=vp_stop(r[..],200);#assert s.why==VpWhy.barge;
+    r[0]=vp_open(c,u);s=vp_stop(r[..],200);#assert r[0].t==200 && vp_stop(r[..],200).lm==11;
+    #assert s.why==VpWhy.none && s.at==200 && s.asr==3 && s.lm==11 && s.wasted==0 && s.buffered==6 && s.handed==5;
+    #assert s.synthesized==115 && s.emitted==65 && s.heard==63 && s.words==2 && s.cut;
+    #assert s.bytes[0]==24 && s.bytes[1]==44 && s.bytes[2]==65*320;
+    // Without a barge-in: all of it, ending at 432.
+    r[0]=vp_open(c,u);s=vp_finish(r[..]);
+    #assert s.at==432 && s.lm==13 && s.handed==13 && s.buffered==0 && s.emitted==295 && s.heard==295 && s.words==10 && !s.cut;
+    #assert r[0].take[2]==382 && r[0].audio[2]==390;
+    for k:0..<13 {#assert r[0].spoken[k]==rep.token[k];}
+}
+// book:end check-hand
+#test "a partial that grows is thrown away and the model restarts" {
+    c:=vpx_config();c.quiet=4;u:=vpx_turn();
+    r:=[1]VpRun.[vp_open(c,u)];
+    // Word 0 reaches the model at 69 and is quiet until 73: a run on one word.
+    vp_until(r[..],74);#assert r[0].started && r[0].spec && r[0].words==1 && r[0].began==73;
+    // At 111 the final transcript has 3 words: 6 tokens of that run are thrown away.
+    vp_until(r[..],111);m:=r[0].made;#assert m==6 && r[0].head==0 && r[0].period[0]==99;
+    vp_until(r[..],112);#assert r[0].wasted==m && r[0].made==0 && r[0].head==0 && r[0].words==3 && r[0].began==111 && r[0].ok && !r[0].spec && r[0].sentences==0 && !r[0].ready;
+    s:=vp_finish(r[..]);#assert s.wasted==6 && s.lm==19 && s.handed==13;
+    l:=vp_latency(r[..]);#assert l.first==66 && l.share[3]==27 && l.share[4]==3;
+    for k:0..<13 {#assert r[0].spoken[k]==vp_reply(u.word,3).token[k];}
+}
+#test "the budget names the stage that missed it" {
+    c:=vpx_config();u:=vpx_turn();r:=[1]VpRun.[vp_open(c,u)];f:=vp_finish(r[..]);#assert f.at==432;
+    b:=[7]int.[20,4,2,13,3,8,2];
+    #assert vp_over(vp_latency(r[..]),b)==0;
+    b[3]=12;#assert vp_over(vp_latency(r[..]),b)==8;
+    b[0]=19;b[6]=1;#assert vp_over(vp_latency(r[..]),b)==1+8+64;
+}
+
+// Independent checks (psionic/tests/voice-pipeline-checks.coax).
+// book:begin check-random
+#forall "the pipeline equals the stages run one after another" seed:0..<300 #steps 40000000 {
+    vpx_sequential_check(seed);
+}
+#forall "a barge-in at any tick reports what the event-time oracle counts" seed:0..<400 #steps 400000000 {
+    vpx_barge_check(seed);
+}
+#forall "the buffer never holds more than its capacity, and holds the reply in order" seed:0..<120 #steps 80000000 {
+    vpx_buffer_check(seed);
+}
+// book:end check-random
+
+// book:begin check-refuse
+#test "turns, configurations and barge-ins the pipeline refuses" {
+    c:=vpx_config();u:=vpx_turn();
+    v:=u;v.n=0;#assert vp_open(c,v).why==VpWhy.words;
+    v=u;for i:0..<16 {v.word[i]=i+1;v.heard[i]=i;}v.n=17;#assert vp_open(c,v).why==VpWhy.words;
+    v=u;v.word[0]=0;#assert vp_open(c,v).why==VpWhy.words;
+    v=u;v.word[1]=0;#assert vp_open(c,v).why==VpWhy.words;
+    v=u;v.word[2]=1000;#assert vp_open(c,v).why==VpWhy.words;
+    v=u;v.heard[1]=62;#assert vp_open(c,v).why==VpWhy.order;
+    v=u;v.heard[0]= -1;#assert vp_open(c,v).why==VpWhy.order;
+    v=u;v.end=79;#assert vp_open(c,v).why==VpWhy.order;
+    v=u;v.end=1001;#assert vp_open(c,v).why==VpWhy.order;
+    v=u;v.heard[2]=1001;v.end=1001;#assert vp_open(c,v).why==VpWhy.order;
+    d:=c;d.step=0;#assert vp_open(d,u).why==VpWhy.delay;
+    d=c;d.word_ticks=0;#assert vp_open(d,u).why==VpWhy.delay;
+    e:=c;e.hangover=100;
+    for k:0..<12 {
+        #assert vp_open(vpx_set(c,k,-1),u).why==VpWhy.delay && vp_open(vpx_set(c,k,101),u).why==VpWhy.delay;
+        #assert vp_open(vpx_set(e,k,100),u).why==VpWhy.none;
+    }
+    // A partial word after the final transcript: hangover 20 and 4 ticks to the final one.
+    d=c;d.asr_lag=24;#assert vp_open(d,u).why==VpWhy.none;
+    d=c;d.asr_lag=25;#assert vp_open(d,u).why==VpWhy.delay;
+    d=c;d.quiet= -1;#assert vp_open(d,u).why==VpWhy.policy;
+    d=c;d.quiet=101;#assert vp_open(d,u).why==VpWhy.policy;
+    d=c;d.cap=5;#assert vp_open(d,u).why==VpWhy.buffer;
+    d=c;d.cap=33;#assert vp_open(d,u).why==VpWhy.buffer;
+    // The edges are accepted.
+    v=u;v.word[0]=1;v.word[1]=999;v.heard[0]=0;v.end=80;#assert vp_open(c,v).why==VpWhy.none;
+    v=u;v.n=16;for i:0..<16 {v.word[i]=i+1;v.heard[i]=i;}v.end=1000;#assert vp_open(c,v).why==VpWhy.none;
+    d=c;d.step=1;d.word_ticks=1;d.cap=6;d.quiet=0;d.hop=[3]int.[0,0,0];#assert vp_open(d,u).why==VpWhy.none;
+    d=c;d.cap=32;d.quiet=100;d.hop=[3]int.[100,100,100];d.hangover=100;d.pause=0;#assert vp_open(d,u).why==VpWhy.none;
+    // A barge-in is the user speaking again: after the end of the turn.
+    r:=[1]VpRun.[vp_open(c,u)];
+    #assert vp_stop(r[..],85).why==VpWhy.barge && r[0].t==0;
+    #assert vp_stop(r[..],86).why==VpWhy.none && r[0].t==86;
+    // A refused pipeline runs nothing.
+    d=c;d.cap=5;r[0]=vp_open(d,u);s:=vp_finish(r[..]);#assert s.why==VpWhy.buffer && r[0].t==0 && s.at==0;
+    s=vp_stop(r[..],200);#assert s.why==VpWhy.buffer && r[0].t==0 && s.at==0;
+    names:=[7]string.["none","words","order","delay","policy","buffer","barge"];
+    for k:0..<7 {#assert vp_why_name(cast(VpWhy)cast(u8)k)==names[k];}
+}
+// book:end check-refuse
+
+// book:begin model
+// The language model stand-in: a fixed reply for each input. h hashes
+// the words; 1 to 3 sentences of 1 to 5 words, each ending in a period,
+// token 0, which the zeroed reply already holds.
+vp_reply :: (word:[16]int,m:int)->VpReply {
+    h:=0;for i:0..<m {h=(h*31+word[i])%1009;}
+    r:VpReply;r.sentences=1+h%3;
+    for s:0..<r.sentences {
+        for w:0..<1+(h/3+s)%5 {r.token[r.n]=1+(h+31*s+7*w)%999;r.n+=1;}
+        r.n+=1;r.ends[s]=r.n;
+    }
+    return r;
+}
+// Ticks of audio a sentence plays: its words and its period.
+vp_duration :: (c:VpConfig,rep:VpReply,s:int)->int {
+    from:=0;if s>0 {from=rep.ends[s-1];}
+    return (rep.ends[s]-from-1)*c.word_ticks+c.pause;
+}
+// The tick the recognizer emits word i, after its audio. vp_check makes
+// sure that is never after the final transcript.
+vp_asr :: (r:VpRun,i:int)->int {return r.turn.heard[i]+r.cfg.asr_lag;}
+// book:end model
+
+// book:begin open
+vp_check :: (c:VpConfig,u:VpTurn)->VpWhy #export_c {
+    if u.n<1 || u.n>VP_WORDS {return VpWhy.words;}
+    for i:0..<u.n {if u.word[i]<1 || u.word[i]>999 {return VpWhy.words;}}
+    if u.heard[0]<0 || u.end<u.heard[u.n-1] || u.end>VP_TIME {return VpWhy.order;}
+    for i:1..<u.n {if u.heard[i]<=u.heard[i-1] {return VpWhy.order;}}
+    d:=[12]int.[c.hangover,c.asr_lag,c.asr_final,c.prefill,c.per_word,c.step,c.tts_first,c.word_ticks,c.pause,c.hop[0],c.hop[1],c.hop[2]];
+    for k:0..<12 {if d[k]<0 || d[k]>VP_DELAY {return VpWhy.delay;}}
+    if c.step<1 || c.word_ticks<1 {return VpWhy.delay;}
+    // A partial word may not arrive after the final transcript that holds it.
+    if c.asr_lag>c.hangover+c.asr_final {return VpWhy.delay;}
+    if c.quiet<0 || c.quiet>VP_DELAY {return VpWhy.policy;}
+    // A smaller buffer could never hold a whole sentence: the model and the speaker would wait on each other.
+    if c.cap<VP_SENTENCE || c.cap>VP_CAP {return VpWhy.buffer;}
+    return VpWhy.none;
+}
+vp_open :: (c:VpConfig,u:VpTurn)->VpRun {
+    r:VpRun;r.why=vp_check(c,u);if r.why!=VpWhy.none {return r;}
+    r.cfg=c;r.turn=u;r.eot=u.end+c.hangover;r.fin=r.eot+c.asr_final;r.confirm=r.fin+c.hop[0];
+    return r;
+}
+// book:end open
+
+// book:begin tick
+// The language model starts on words: no token before the next tick.
+vp_start :: (rv:[]VpRun,words:int,spec:bool) {
+    c:=rv[0].cfg;
+    rv[0].started=true;rv[0].spec=spec;rv[0].ok=!spec;rv[0].words=words;rv[0].began=rv[0].t;
+    rv[0].left=c.prefill+c.per_word*words+c.step;rv[0].made=0;rv[0].sentences=0;
+    rv[0].reply=vp_reply(rv[0].turn.word,words);
+}
+// One tick, three stages in order. First the transcript: partial words
+// arrive; the final one confirms the running model, restarts one that ran
+// on fewer words (its tokens are thrown away, and the buffer held only
+// those), or starts it; a partial quiet for long enough starts it early.
+// Then the model makes a token if its time has come and the buffer has
+// room. Then the speaker takes the next sentence if its period has crossed
+// the hop and the sentence before it is about to end.
+vp_tick :: (rv:[]VpRun) {
+    c:=rv[0].cfg;t:=rv[0].t;
+    while rv[0].seen<rv[0].turn.n && vp_asr(rv[0],rv[0].seen)+c.hop[0]<=t {rv[0].seen+=1;rv[0].changed=t;}
+    if t==rv[0].confirm {
+        if !rv[0].started {vp_start(rv,rv[0].turn.n,false);}
+        else if rv[0].words==rv[0].turn.n {rv[0].ok=true;}
+        else {rv[0].wasted+=rv[0].made;vp_start(rv,rv[0].turn.n,false);}
+    } else if c.quiet>0 && !rv[0].started && rv[0].seen>0 && t-rv[0].changed>=c.quiet {vp_start(rv,rv[0].seen,true);}
+    if rv[0].started && rv[0].began<t && rv[0].made<rv[0].reply.n {
+        if rv[0].left>0 {rv[0].left-=1;}
+        if rv[0].left==0 && rv[0].made-rv[0].head<c.cap {
+            m:=rv[0].made;rv[0].ring[m%c.cap]=rv[0].reply.token[m];rv[0].made=m+1;rv[0].left=c.step;
+            n:=rv[0].sentences;
+            if rv[0].reply.ends[n]==m+1 {rv[0].period[n]=t;rv[0].sentences=n+1;}
+        }
+    }
+    if !rv[0].ready && rv[0].ok && rv[0].sentences>0 {rv[0].ready=true;rv[0].ready_at=t;}
+    k:=rv[0].taken;
+    if rv[0].ok && k<rv[0].sentences && rv[0].period[k]+c.hop[1]<=t {
+        if k==0 || t+c.tts_first>=rv[0].audio[k-1]+vp_duration(c,rv[0].reply,k-1) {
+            while rv[0].head<rv[0].reply.ends[k] {h:=rv[0].head;rv[0].spoken[h]=rv[0].ring[h%c.cap];rv[0].head=h+1;}
+            rv[0].take[k]=t;rv[0].audio[k]=t+c.tts_first;rv[0].taken=k+1;
+        }
+    }
+    rv[0].t=t+1;
+}
+vp_done :: (r:VpRun)->bool {return r.taken>0 && r.taken==r.reply.sentences;}
+// Run every tick before b, or until the speaker has taken the last sentence.
+vp_until :: (rv:[]VpRun,b:int) {while rv[0].t<b && !vp_done(rv[0]) {vp_tick(rv);}}
+// book:end tick
+
+// book:begin stop
+// Barge-in at tick b: every stage stops, and the report counts what each
+// had done in the ticks before b. Audio the speaker took is made in full
+// once its first tick is due; a word is heard if its last tick was.
+vp_stop :: (rv:[]VpRun,b:int)->VpStop {
+    if rv[0].why!=VpWhy.none {return VpStop.{why=rv[0].why};}
+    if b<=rv[0].turn.end || b<rv[0].t {return VpStop.{why=VpWhy.barge};}
+    vp_until(rv,b);
+    c:=rv[0].cfg;r:=rv[0];
+    s:=VpStop.{at=b,lm=r.wasted+r.made,wasted=r.wasted,buffered=r.made-r.head,handed=r.head};
+    partials:=0;
+    for i:0..<r.turn.n {
+        e:=vp_asr(r,i);
+        if e<b {s.asr+=1;}
+        if e<r.fin && e<b {partials+=1;}
+    }
+    s.bytes[0]=4*partials;if r.fin<b {s.bytes[0]+=4*r.turn.n;}
+    s.bytes[1]=4*s.lm;
+    for k:0..<r.taken {
+        d:=vp_duration(c,r.reply,k);a:=r.audio[k];
+        if a<=b {s.synthesized+=d;}
+        for q:0..<d {
+            if a+q<b {s.emitted+=1;}
+            if a+q+c.hop[2]<b {s.heard+=1;}
+        }
+        from:=0;if k>0 {from=r.reply.ends[k-1];}
+        for w:0..<r.reply.ends[k]-from-1 {
+            w0:=a+c.hop[2]+w*c.word_ticks;
+            if w0+c.word_ticks<=b {s.words+=1;} else if w0<b {s.cut=true;}
+        }
+    }
+    s.bytes[2]=VP_AUDIO*s.emitted;
+    return s;
+}
+// No barge-in: run to the end, and report at the tick the last audio is heard.
+vp_finish :: (rv:[]VpRun)->VpStop {
+    if rv[0].why!=VpWhy.none {return VpStop.{why=rv[0].why};}
+    // vp_check refused every configuration that could stall for ever.
+    while !vp_done(rv[0]) {vp_tick(rv);}
+    k:=rv[0].reply.sentences-1;
+    return vp_stop(rv,rv[0].audio[k]+vp_duration(rv[0].cfg,rv[0].reply,k)+rv[0].cfg.hop[2]);
+}
+// book:end stop
+
+// book:begin latency
+// The first sentence's path: the end of the turn, the final transcript,
+// its hop, the model until the sentence was made with its input
+// confirmed, the sentence's hop past that, the speaker's first audio and
+// the last hop.
+vp_latency :: (rv:[]VpRun)->VpLatency {
+    r:=rv[0];c:=r.cfg;l:VpLatency;
+    l.share=[7]int.[r.eot-r.turn.end,c.asr_final,c.hop[0],r.ready_at-r.confirm,r.take[0]-r.ready_at,c.tts_first,c.hop[2]];
+    l.first=r.audio[0]+c.hop[2]-r.turn.end;
+    return l;
+}
+vp_over :: (l:VpLatency,budget:[7]int)->int {
+    m:=0;for k:0..<7 {if l.share[k]>budget[k] {m+=1<<k;}}
+    return m;
+}
+// book:end latency
+
+vp_why_name :: (w:VpWhy)->string {
+    names:=[7]string.["none","words","order","delay","policy","buffer","barge"];
+    return names[cast(int)w];
+}

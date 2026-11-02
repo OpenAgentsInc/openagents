@@ -1,0 +1,188 @@
+// Chapter 184's check helpers, loaded by psionic/lib/voice-pipeline.coax
+// and owned by its checks: the hand-traced turn and configuration, random
+// turns and configurations, an event-time oracle that computes every
+// token, take and audio tick in closed form (searching tick by tick only
+// where the buffer is full) and counts what a barge-in would find, the
+// stages run one after another, and the buffer watched tick by tick.
+
+vpx_next :: (h:int)->int {return (h*1103515245+12345)%2147483648;}
+
+// Three words, ending at 0.62, 0.70 and 0.80 s; the user stops at 0.85 s.
+vpx_turn :: ()->VpTurn {
+    u:VpTurn;u.n=3;u.word[0]=12;u.word[1]=40;u.word[2]=7;u.heard[0]=62;u.heard[1]=70;u.heard[2]=80;u.end=85;
+    return u;
+}
+vpx_config :: ()->VpConfig {
+    return VpConfig.{hangover=20,asr_lag=5,asr_final=4,quiet=10,prefill=6,per_word=2,step=3,cap=6,
+        tts_first=8,word_ticks=25,pause=15,hop=[3]int.[2,3,2]};
+}
+// Field k of the delays, set to v: hangover, asr_lag, asr_final, prefill,
+// per_word, step, tts_first, word_ticks, pause, the three hops.
+vpx_set :: (c:VpConfig,k:int,v:int)->VpConfig {
+    d:=c;
+    if k==0 {d.hangover=v;} else if k==1 {d.asr_lag=v;} else if k==2 {d.asr_final=v;} else if k==3 {d.prefill=v;}
+    else if k==4 {d.per_word=v;} else if k==5 {d.step=v;} else if k==6 {d.tts_first=v;} else if k==7 {d.word_ticks=v;}
+    else if k==8 {d.pause=v;} else {d.hop[k-9]=v;}
+    return d;
+}
+
+VpxCase :: struct {c:VpConfig;u:VpTurn;}
+vpx_pick :: (h:[]int,n:int)->int {h[0]=vpx_next(h[0]);return h[0]/65536%n;}
+vpx_random :: (seed:int)->VpxCase {
+    g:=[1]int.[vpx_next(seed*7919+101)];h:=g[..];
+    x:VpxCase;
+    x.c=VpConfig.{hangover=vpx_pick(h,31),asr_final=vpx_pick(h,21),prefill=vpx_pick(h,21),per_word=vpx_pick(h,6),
+        step=1+vpx_pick(h,8),cap=6+vpx_pick(h,7),tts_first=vpx_pick(h,21),word_ticks=1+vpx_pick(h,30),pause=vpx_pick(h,21)};
+    for k:0..<3 {x.c.hop[k]=vpx_pick(h,11);}
+    most:=x.c.hangover+x.c.asr_final+1;if most>21 {most=21;}x.c.asr_lag=vpx_pick(h,most);
+    if vpx_pick(h,3)>0 {x.c.quiet=1+vpx_pick(h,30);}
+    if vpx_pick(h,8)==0 {x.c.cap=VP_CAP;}
+    x.u.n=1+vpx_pick(h,6);if vpx_pick(h,10)==0 {x.u.n=VP_WORDS;}
+    at:=vpx_pick(h,30);
+    for i:0..<x.u.n {at+=1+vpx_pick(h,40);x.u.word[i]=1+vpx_pick(h,999);x.u.heard[i]=at;}
+    x.u.end=at+vpx_pick(h,21);
+    return x;
+}
+
+// The oracle's account of one language-model run: when each token was
+// made (-1: not before the limit), and when each sentence was taken.
+VpxRun :: struct {rep:VpReply;made:[18]int;take:[3]int;audio:[3]int;}
+vpx_dur :: (c:VpConfig,words:int)->int {return words*c.word_ticks+c.pause;}
+vpx_len :: (rep:VpReply,s:int)->int {if s==0 {return rep.ends[0];}return rep.ends[s]-rep.ends[s-1];}
+// A run started at s0 on m words, whose sentences may be taken from tick
+// okt (never, if okt<0), with no token at or after limit. Token j comes S
+// ticks after the one before (P+S after the start), or at the first tick
+// after that when fewer than cap tokens wait untaken.
+vpx_run :: (c:VpConfig,u:VpTurn,s0:int,m:int,okt:int,limit:int)->VpxRun {
+    x:VpxRun;x.rep=vp_reply(u.word,m);
+    for j:0..<18 {x.made[j]= -1;}
+    for s:0..<3 {x.take[s]= -1;x.audio[s]= -1;}
+    prev:=s0+c.prefill+c.per_word*m;
+    for j:0..<x.rep.n {
+        t:=prev+c.step;
+        while true {
+            waiting:=j;
+            for s:0..<x.rep.sentences {if x.take[s]>=0 && x.take[s]<t {waiting-=vpx_len(x.rep,s);}}
+            if waiting<c.cap || t>=limit {break;}
+            t+=1;
+        }
+        if t>=limit {break;}
+        x.made[j]=t;prev=t;
+        for s:0..<x.rep.sentences {
+            if x.rep.ends[s]==j+1 && okt>=0 {
+                k:=t+c.hop[1];if okt>k {k=okt;}
+                if s>0 {after:=x.audio[s-1]+vpx_dur(c,vpx_len(x.rep,s-1)-1)-c.tts_first;if after>k {k=after;}}
+                x.take[s]=k;x.audio[s]=k+c.tts_first;
+            }
+        }
+    }
+    return x;
+}
+VpxAll :: struct {spec:int;words:int;wasted:VpxRun;run:VpxRun;conf:int;fin:int;eot:int;}
+vpx_plan :: (c:VpConfig,u:VpTurn)->VpxAll {
+    a:VpxAll;a.eot=u.end+c.hangover;a.fin=a.eot+c.asr_final;a.conf=a.fin+c.hop[0];a.spec= -1;
+    if c.quiet>0 {
+        for i:0..<u.n {
+            vis:=u.heard[i]+c.asr_lag;if vis>a.fin {vis=a.fin;}vis+=c.hop[0];
+            next:=a.conf+1;
+            if i+1<u.n {next=u.heard[i+1]+c.asr_lag;if next>a.fin {next=a.fin;}next+=c.hop[0];}
+            if vis+c.quiet<a.conf && next>vis+c.quiet {a.spec=vis+c.quiet;a.words=i+1;break;}
+        }
+    }
+    if a.spec>=0 && a.words==u.n {a.run=vpx_run(c,u,a.spec,u.n,a.conf,1000000);}
+    else {
+        if a.spec>=0 {a.wasted=vpx_run(c,u,a.spec,a.words,-1,a.conf);}
+        a.run=vpx_run(c,u,a.conf,u.n,a.conf,1000000);
+    }
+    return a;
+}
+vpx_before :: (x:VpxRun,b:int)->int {n:=0;for j:0..<x.rep.n {if x.made[j]>=0 && x.made[j]<b {n+=1;}}return n;}
+// What a barge-in at b finds, counted from the event times.
+vpx_oracle :: (c:VpConfig,u:VpTurn,b:int)->VpStop {
+    a:=vpx_plan(c,u);s:VpStop;s.at=b;
+    restarted:=a.spec>=0 && a.words<u.n;
+    if restarted && b<=a.conf {s.lm=vpx_before(a.wasted,b);s.buffered=s.lm;}
+    else {
+        if restarted {s.wasted=vpx_before(a.wasted,a.conf);}
+        made:=vpx_before(a.run,b);
+        for k:0..<a.run.rep.sentences {
+            if a.run.take[k]>=0 && a.run.take[k]<b {
+                s.handed+=vpx_len(a.run.rep,k);
+                words:=vpx_len(a.run.rep,k)-1;d:=vpx_dur(c,words);start:=a.run.audio[k];
+                if start<=b {s.synthesized+=d;}
+                for q:0..<d {if start+q<b {s.emitted+=1;}if start+c.hop[2]+q<b {s.heard+=1;}}
+                for w:0..<words {
+                    from:=start+c.hop[2]+w*c.word_ticks;
+                    if from+c.word_ticks<=b {s.words+=1;}
+                    if from<b && b<from+c.word_ticks {s.cut=true;}
+                }
+            }
+        }
+        s.lm=s.wasted+made;s.buffered=made-s.handed;
+    }
+    for i:0..<u.n {
+        e:=u.heard[i]+c.asr_lag;
+        if e<a.fin && e<b {s.asr+=1;s.bytes[0]+=4;}
+        else if a.fin<b {s.asr+=1;}
+    }
+    if a.fin<b {s.bytes[0]+=4*u.n;}
+    s.bytes[1]=4*s.lm;s.bytes[2]=320*s.emitted;
+    return s;
+}
+vpx_same :: (a:VpStop,b:VpStop)->bool {
+    return a.why==b.why && a.at==b.at && a.asr==b.asr && a.lm==b.lm && a.wasted==b.wasted && a.buffered==b.buffered && a.handed==b.handed
+        && a.synthesized==b.synthesized && a.emitted==b.emitted && a.heard==b.heard && a.words==b.words && a.cut==b.cut
+        && a.bytes[0]==b.bytes[0] && a.bytes[1]==b.bytes[1] && a.bytes[2]==b.bytes[2];
+}
+// The tick the last audio is heard, from the oracle.
+vpx_last :: (c:VpConfig,a:VpxAll)->int {
+    k:=a.run.rep.sentences-1;
+    return a.run.audio[k]+vpx_dur(c,vpx_len(a.run.rep,k)-1)+c.hop[2];
+}
+vpx_barge_check :: (seed:int) {
+    x:=vpx_random(seed);a:=vpx_plan(x.c,x.u);
+    last:=vpx_last(x.c,a);
+    h:=vpx_next(seed+77);
+    for k:0..<4 {
+        h=vpx_next(h);b:=x.u.end+1+h/65536%(last-x.u.end+20);
+        r:=[1]VpRun.[vp_open(x.c,x.u)];
+        #assert r[0].why==VpWhy.none && vpx_same(vp_stop(r[..],b),vpx_oracle(x.c,x.u,b));
+    }
+    // The first audio and its shares.
+    r:=[1]VpRun.[vp_open(x.c,x.u)];f:=vp_finish(r[..]);
+    #assert f.at==last && vpx_same(f,vpx_oracle(x.c,x.u,last));
+    l:=vp_latency(r[..]);e0:=a.run.made[a.run.rep.ends[0]-1];
+    lm:=e0-a.conf;if lm<0 {lm=0;}
+    want:=[7]int.[x.c.hangover,x.c.asr_final,x.c.hop[0],lm,a.run.take[0]-a.conf-lm,x.c.tts_first,x.c.hop[2]];
+    sum:=0;for k:0..<7 {#assert l.share[k]==want[k];sum+=want[k];}
+    #assert l.first==a.run.audio[0]+x.c.hop[2]-x.u.end && l.first==sum;
+}
+
+// The stages one after another: the whole transcript, then the whole
+// reply on it, then every sentence spoken.
+vpx_sequential_check :: (seed:int) {
+    x:=vpx_random(seed);c:=x.c;u:=x.u;
+    rep:=vp_reply(u.word,u.n);
+    words:=rep.n-rep.sentences;audio:=words*c.word_ticks+rep.sentences*c.pause;
+    first:=c.hangover+c.asr_final+c.hop[0]+c.prefill+c.per_word*u.n+c.step*rep.n+c.hop[1]+c.tts_first+c.hop[2];
+    r:=[1]VpRun.[vp_open(c,u)];s:=vp_finish(r[..]);l:=vp_latency(r[..]);
+    #assert s.why==VpWhy.none && s.handed==rep.n && s.buffered==0 && s.emitted==audio && s.heard==audio && s.words==words && !s.cut;
+    for k:0..<rep.n {#assert r[0].spoken[k]==rep.token[k];}
+    #assert l.first<=first && s.at-u.end<=first+audio;
+    // One sentence and no early start: the pipeline is the sequence.
+    if rep.sentences==1 && c.quiet==0 {#assert l.first==first && s.at-u.end==first+audio;}
+}
+
+// Tick by tick: the buffer holds at most cap tokens, the ones not yet
+// taken, in the reply's order; the speaker has the reply's start.
+vpx_buffer_check :: (seed:int) {
+    x:=vpx_random(seed);r:=[1]VpRun.[vp_open(x.c,x.u)];most:=0;
+    while !vp_done(r[0]) {
+        vp_tick(r[..]);q:=r[0];held:=q.made-q.head;
+        #assert held>=0 && held<=x.c.cap;
+        if held>most {most=held;}
+        for j:q.head..<q.made {#assert q.ring[j%x.c.cap]==q.reply.token[j];}
+        for j:0..<q.head {#assert q.ok && q.spoken[j]==q.reply.token[j];}
+    }
+    #assert most<=x.c.cap;
+}

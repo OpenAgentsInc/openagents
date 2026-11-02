@@ -1,0 +1,25 @@
+vp-pipeline-v1: words 12 40 7, heard until 62 70 80, the user stops at 85
+reply: 13 tokens in 3 sentences: 672 679 686 693 0 703 710 717 724 731 0 734 0
+end of turn 105, final transcript 109, at the model 111
+model: started at 97 on 3 words (early: true)
+sentence 0: period at 124, taken at 127, audio from 135 (heard from 137)
+sentence 1: period at 142, taken at 242, audio from 250 (heard from 252)
+sentence 2: period at 246, taken at 382, audio from 390 (heard from 392)
+first audio 52 ticks after the user stopped: vad 20/20 asr 4/4 hop 0 2/2 lm 13/10 hop 1 3/3 tts 8/8 hop 2 2/2
+  over budget: lm
+no barge-in: at tick 432
+  recognizer: 3 words
+  model: 13 tokens made, 0 thrown away, 0 in the buffer, 13 handed to the speaker
+  speaker: 295 ticks made, 295 emitted, 295 heard; 10 words heard, cut off mid-word: false
+  bytes: 24 over hop 0, 52 over hop 1, 94400 over hop 2
+barge-in: at tick 200
+  recognizer: 3 words
+  model: 11 tokens made, 0 thrown away, 6 in the buffer, 5 handed to the speaker
+  speaker: 115 ticks made, 65 emitted, 63 heard; 2 words heard, cut off mid-word: true
+  bytes: 24 over hop 0, 44 over hop 1, 20800 over hop 2
+waiting for the final transcript: first audio 66 ticks after the user stopped: vad 20/20 asr 4/4 hop 0 2/2 lm 27/10 hop 1 3/3 tts 8/8 hop 2 2/2
+  over budget: lm
+starting after 4 quiet ticks: on 1 word, 6 tokens thrown away; first audio 66 ticks after the user stopped: vad 20/20 asr 4/4 hop 0 2/2 lm 27/10 hop 1 3/3 tts 8/8 hop 2 2/2
+  over budget: lm
+a 6-token buffer: the model's last token at 246, the last audio heard at 432
+a 32-token buffer: the model's last token at 148, the last audio heard at 432

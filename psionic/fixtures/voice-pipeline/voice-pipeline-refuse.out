@@ -1,0 +1,11 @@
+no words: words, 0 ticks run
+word id 1000: words, 0 ticks run
+two words ending at tick 62: order, 0 ticks run
+the user stops before the last word ends: order, 0 ticks run
+0 ticks a token: delay, 0 ticks run
+a 101-tick hop: delay, 0 ticks run
+a quiet time of -1: policy, 0 ticks run
+a 5-token buffer: buffer, 0 ticks run
+barge-in at 85, as the user stops: barge
+barge-in at 150: none, 11 tokens made
+barge-in at 140, after 150: barge

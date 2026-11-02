@@ -2072,6 +2072,26 @@
       ]
     },
     {
+      "source": "psionic/examples/voice-pipeline.coax",
+      "chapter": "psionic/book/ch184-a-pipeline-of-models.md",
+      "stdout": "psionic/fixtures/voice-pipeline/voice-pipeline.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/voice-pipeline-refuse.coax",
+      "chapter": "psionic/book/ch184-a-pipeline-of-models.md",
+      "stdout": "psionic/fixtures/voice-pipeline/voice-pipeline-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-client.coax",
       "chapter": "psionic/book/ch174-clients-streams-and-background-jobs.md",
       "stdout": "psionic/fixtures/serve-client/serve-client.out",

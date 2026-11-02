@@ -1,0 +1,56 @@
+// Chapter 184: one spoken turn through four stand-in stages. The language
+// model starts on a quiet partial transcript, the speaker starts on the
+// first sentence while the model keeps going, the model stalls on a full
+// buffer, and a barge-in stops every stage.
+#import "Basic";
+#load "../lib/voice-pipeline.coax";
+
+show :: (what:string,s:VpStop) {
+    print("%: at tick %\n",what,s.at);
+    print("  recognizer: % words\n",s.asr);
+    print("  model: % tokens made, % thrown away, % in the buffer, % handed to the speaker\n",s.lm,s.wasted,s.buffered,s.handed);
+    print("  speaker: % ticks made, % emitted, % heard; % words heard, cut off mid-word: %\n",s.synthesized,s.emitted,s.heard,s.words,s.cut);
+    print("  bytes: % over hop 0, % over hop 1, % over hop 2\n",s.bytes[0],s.bytes[1],s.bytes[2]);
+}
+timeline :: (r:VpRun) {
+    print("end of turn %, final transcript %, at the model %\n",r.eot,r.fin,r.confirm);
+    print("model: started at % on % words (early: %)\n",r.began,r.words,r.spec);
+    for k:0..<r.taken {
+        print("sentence %: period at %, taken at %, audio from % (heard from %)\n",k,r.period[k],r.take[k],r.audio[k],r.audio[k]+r.cfg.hop[2]);
+    }
+}
+latency :: (r:[]VpRun,budget:[7]int) {
+    l:=vp_latency(r);names:=[7]string.["vad","asr","hop 0","lm","hop 1","tts","hop 2"];
+    print("first audio % ticks after the user stopped:",l.first);
+    for k:0..<7 {print(" % %/%",names[k],l.share[k],budget[k]);}
+    m:=vp_over(l,budget);print("\n  over budget:");
+    if m==0 {print(" none");}
+    for k:0..<7 {if m&(1<<k)!=0 {print(" %",names[k]);}}
+    print("\n");
+}
+
+// book:begin main
+main :: () {
+    c:=vpx_config();u:=vpx_turn();
+    print("%: words % % %, heard until % % %, the user stops at %\n",VP_PROFILE,u.word[0],u.word[1],u.word[2],u.heard[0],u.heard[1],u.heard[2],u.end);
+    rep:=vp_reply(u.word,u.n);
+    print("reply: % tokens in % sentences:",rep.n,rep.sentences);
+    for j:0..<rep.n {print(" %",rep.token[j]);}
+    print("\n");
+    budget:=[7]int.[20,4,2,10,3,8,2];
+
+    r:=[1]VpRun.[vp_open(c,u)];
+    s:=vp_finish(r[..]);timeline(r[0]);latency(r[..],budget);show("no barge-in",s);
+    r[0]=vp_open(c,u);show("barge-in",vp_stop(r[..],200));
+
+    w:=c;w.quiet=0;r[0]=vp_open(w,u);s=vp_finish(r[..]);
+    print("waiting for the final transcript: ");latency(r[..],budget);
+    w=c;w.quiet=4;r[0]=vp_open(w,u);s=vp_finish(r[..]);
+    print("starting after 4 quiet ticks: on % word, % tokens thrown away; ",1,s.wasted);latency(r[..],budget);
+    caps:=[2]int.[6,32];
+    for k:0..<2 {
+        w=c;w.cap=caps[k];r[0]=vp_open(w,u);s=vp_finish(r[..]);
+        print("a %-token buffer: the model's last token at %, the last audio heard at %\n",caps[k],r[0].period[2],s.at);
+    }
+}
+// book:end main
