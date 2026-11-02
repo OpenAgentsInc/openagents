@@ -248,7 +248,7 @@ STAGE_LOG :: [100] string.[
   "> OPENAGENTS", "OPENAGENTS.COM", "", "", "",
   "> LIGHTNING", "WAVELENGTH", "1 / S", "10,000 / S", "SIMULATED",
   "> METCALFE  N^2", "REED  2^N", "DUNBAR 150", "AGENTS", "",
-  "> COPILOTS", "AUTOPILOTS", "RECEIPTS", "ROYALTIES", "SIMULATED",
+  "> COPILOTS", "AUTOPILOTS", "RECEIPTS", "SKILL CALLS", "SIMULATED",
   "> EVERGLADE", "", "", "", "",
   "> THE GRID", "", "", "", "",
   "> THE VERSE", "", "", "", ""

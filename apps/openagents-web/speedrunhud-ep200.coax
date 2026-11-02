@@ -222,7 +222,7 @@ st_fleet :: (s: [] SpeedrunHud, out: [] f32, at: int, t: f32, dur: f32) -> int {
 
   // royalties: a skill called all day, sats flowing in
   v = sr_frame(s, out, v, SrBox.{x = 916, y = 572, width = 300, height = 230}, rmp(t, 0.5, 0.7), 12, -1, 0.72, 16);
-  v = sr_label(s, out, v, "ROYALTIES", 936, 594, 13, T_LIGHT, rmp(t, 0.6, 0.5), 607, A_LEFT, 2);
+  v = sr_label(s, out, v, "SKILL CALLS", 936, 594, 13, T_LIGHT, rmp(t, 0.6, 0.5), 607, A_LEFT, 2);
   v = sr_node(s, out, v, 1066, 660, 130, 40, "SKILL", rmp(t, 0.8, 0.6), "", T_CYAN, 620, false);
   for i: 0..<6 {
     y := 630 + f32(i) * 12;
