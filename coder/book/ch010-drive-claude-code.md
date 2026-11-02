@@ -80,7 +80,9 @@ policy instead of skipping them. The policy has chapter 5's shape:
   Default `run`.
 - `--allow EFFECT`: the effect that runs without asking. Default `read`.
 - `--root DIR,DIR`: folders a tool may touch without asking, as well as the
-  working directory.
+  working directory. Each one, and the working directory, also counts in its
+  resolved form: Claude Code reports `/private/var/...` for a folder given as
+  `/var/...`, and that path is inside the grant too.
 
 Effects, weakest first, are `read`, `network`, `write` and `run`. Each
 request gets one verdict, written as an `approval` line in the session log:

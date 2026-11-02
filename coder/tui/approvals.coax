@@ -127,6 +127,30 @@ cd_policy_args :: (p: [] CdPolicy, allow: string, ceiling: string, roots: string
   return "";
 }
 
+// Adds the resolved form of each root and of the working directory, when a
+// symlink makes it differ: an agent reports the paths it touches resolved
+// (/private/var/... for /var/...), and those must match the grant.
+cd_policy_resolve :: (p: [] CdPolicy, cwd: string) {
+  if !p[0].on { return; }
+  given: [4096] u8; gn := cd_cat(given[..], 0, cast(string) p[0].roots[0..<p[0].nroots]);
+  gn = cd_cat(given[..], gn, cwd); gn = cd_cat(given[..], gn, "\n");
+  list := cast(string) given[0..<gn];
+  at := 0;
+  while at < list.count {
+    e := at; while e < list.count && list[e] != 10 { e += 1; }
+    dir := cast(string) list[at..<e];
+    if dir.count > 0 && dir[0] == '/' {
+      argv := [2] string.["/bin/pwd", "-P"];
+      none: [1] string; ob: [4200] u8; ok: [1] bool;
+      real := rt_run_in(argv[..], none[0..<0], dir, 5, ob[..], ok[..]);
+      if ok[0] && real.count > 0 && real[0] == '/' && real != dir && p[0].nroots + real.count + 1 < p[0].roots.count {
+        p[0].nroots = cd_cat(p[0].roots[..], p[0].nroots, real); p[0].nroots = cd_cat(p[0].roots[..], p[0].nroots, "\n");
+      }
+    }
+    at = e + 1;
+  }
+}
+
 // The paths a Claude Code tool input names.
 CD_PATH_FIELDS :: [4] string.["file_path", "path", "notebook_path", "cwd"];
 

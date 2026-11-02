@@ -354,6 +354,18 @@ def verbs(check):
         check("--on ssh: the run happens on the other machine, is recorded here, and status by prefix is forwarded",
               rr.returncode == 0 and any(l.get("text") == "remote-ok" for l in rl) and recs == [rid + ".remote"]
               and any(n.startswith(rid) for n in os.listdir(os.path.join(rhome, ".openagents", "coder", "sessions"))) and rid in rs.stdout and "finished" in rs.stdout)
+        # goals (chapter 14): the check runs after each finished turn; its output is the next turn until it passes
+        gw = tempfile.mkdtemp(prefix="coder-goal-")
+        gm = subprocess.run([coder, "run", "$ echo working", "--engine", "echo", "--json", "--cwd", gw, "--goal", "test -f c || { touch c; echo c-missing; false; }"],
+                            cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+        gl = [json.loads(l) for l in gm.stdout.splitlines() if l.startswith("{")]
+        gu = subprocess.run([coder, "run", "$ echo trying", "--engine", "echo", "--json", "--cwd", gw, "--goal", "false", "--goal-turns", "2"],
+                            cwd=REPO, env=env, capture_output=True, text=True, timeout=300)
+        gx = [json.loads(l) for l in gu.stdout.splitlines() if l.startswith("{")]
+        check("goals: a failing check's output is the next turn until it passes; a cap the person sets ends it unmet",
+              gm.returncode == 0 and [(l["turn"], l["met"]) for l in gl if l["kind"] == "goal"] == [(1, False), (2, True)]
+              and any(l["kind"] == "user" and "c-missing" in l["text"] for l in gl)
+              and gu.returncode == 1 and [(l["turn"], l["met"]) for l in gx if l["kind"] == "goal"] == [(1, False), (2, False)])
         # coder daemon (chapters 20 and 23): queued jobs start within the grant; a job for a machine that does not answer is held, then sent
         dq = lambda *a, e=env: subprocess.run([coder, *a], cwd=REPO, env=e, capture_output=True, text=True, timeout=300)
         dq("queue", "$ echo daemon-ok", "--engine", "echo", "--cwd", home); dq("queue", "x", "--engine", "claude", "--cwd", home)

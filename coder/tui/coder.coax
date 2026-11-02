@@ -870,6 +870,36 @@ cd_hooks_run :: (a: [] App, event: string, ending: string, tool: string, input: 
   return all_ok;
 }
 
+// A goal (chapter 14): a check command that decides when the session's work
+// is done. It runs in the session's folder after each finished turn, through
+// /bin/sh, for at most CD_GOAL_SECONDS; exit 0 is met. Logged as a "goal"
+// line; when it is not met, msg gets the next turn's message.
+CD_GOAL_SECONDS :: 900;
+cd_goal_check :: (a: [] App, check: string, turn: int, msg: [] u8, nmsg: [] int) -> bool {
+  cb: [4200] u8; cn := cd_cat(cb[..], cd_cat(cb[..], 0, check), " 2>&1");
+  argv := [3] string.["/bin/sh", "-c", cast(string) cb[0..<cn]];
+  none: [1] string; ob: [65536] u8; ok: [1] bool;
+  out := rt_run_in(argv[..], none[0..<0], a[0].cwd, CD_GOAL_SECONDS, ob[..], ok[..]);
+  tail := ifx out.count > 2000 then cast(string) out[out.count - 2000..<out.count] else out;
+  hb: [4400] u8; hn := cd_cat(hb[..], 0, "Goal("); hn = cd_cat(hb[..], hn, check); hn = cd_cat(hb[..], hn, ifx ok[0] then ") met" else ") not met yet");
+  cd_commit(a, ifx ok[0] then TUI_FAINT else TUI_DIM, cast(string) hb[0..<hn]);
+  if !ok[0] && tail.count > 0 { cd_commit_prefixed(a, TUI_FAINT, "  ⎿ ", "    ", tail); }
+  o := a[0].log[0].line[..];
+  n := json_raw(o, 0, "{\"kind\":\"goal\",\"check\":"); n = json_write_string(o, n, check);
+  n = json_raw(o, n, ",\"turn\":"); n = json_write_int(o, n, turn);
+  n = json_raw(o, n, ifx ok[0] then ",\"met\":true" else ",\"met\":false");
+  n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, tail);
+  n = json_raw(o, n, "}");
+  if n > 0 { cs_put(a, n); }
+  if !ok[0] {
+    m := cd_cat(msg, 0, "The goal is not met yet: its check `"); m = cd_cat(msg, m, check); m = cd_cat(msg, m, "` failed");
+    m = cd_cat(msg, m, ifx tail.count > 0 then ":\n" else "."); m = cd_cat(msg, m, tail);
+    m = cd_cat(msg, m, "\nKeep working until the check passes.");
+    nmsg[0] = m;
+  }
+  return ok[0];
+}
+
 // Whether an active plugin has a hook on event.
 cd_has_hook :: (a: [] App, event: string) -> bool {
   r := a[0].pl;
@@ -996,10 +1026,10 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--report-to ID]                 its ending and last reply go to session ID\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--once]   attach this machine: start queued jobs within its grant\n       coder queue \"TASK\" [--engine E] [--cwd DIR]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E]                    Coder as an agent for editors (Agent Client Protocol on stdio)\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--once]   attach this machine: start queued jobs within its grant\n       coder queue \"TASK\" [--engine E] [--cwd DIR]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E]                    Coder as an agent for editors (Agent Client Protocol on stdio)\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
 
 // Flags that take a value: their value is not a positional argument.
-CD_VALUE_FLAGS :: [31] string.["--http", "--name", "--engines", "--remote-repo", "--profile", "--options", "--state", "--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
+CD_VALUE_FLAGS :: [33] string.["--goal", "--goal-turns", "--http", "--name", "--engines", "--remote-repo", "--profile", "--options", "--state", "--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
 
 // Positional argument k (0 is the verb), skipping flags and their values.
 cd_positional :: (args: [] Args, k: int) -> string {
@@ -1749,6 +1779,7 @@ tool_main :: () -> int #export_c {
   else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex, micro, psionic, echo or auto"); return 2; }
   perr := cd_policy_args(a[0].pol[..], args_value(args, "--allow", ""), args_value(args, "--ceiling", ""), args_value(args, "--root", ""));
   if perr.count > 0 { tool_errln(perr); return 2; }
+  cd_policy_resolve(a[0].pol[..], a[0].cwd);
   ef := args_value(args, "--effort", "");
   if ef.count > 0 {
     if ef != "low" && ef != "medium" && ef != "high" { tool_errln("coder: --effort is low, medium or high"); return 2; }
@@ -1807,8 +1838,26 @@ tool_main :: () -> int #export_c {
     tsb: [1300] u8; turnstop_file := cs_sibling(a[0].log, ".turnstop", tsb[..]);
     next_look := cd_now(a); stopped := false;
     pfb0: [1300] u8; job_pid_file := cs_sibling(a[0].log, ".pid", pfb0[..]);
+    goal := args_value(args, "--goal", "");
+    goal_turns := cd_atoi(args_value(args, "--goal-turns", "0"));   // a cap the person sets; none by default
+    goal_turn := 1;
     for guard: 0..<100000000 {
       if !a[0].running {
+        // a goal: a finished turn runs the check; until it passes, its output is the next turn
+        if goal.count > 0 && !stopped && a[0].exit == 0 {
+          gm: [8192] u8; gn: [1] int;
+          if cd_goal_check(a, goal, goal_turn, gm[..], gn[..]) { goal = ""; }
+          else if goal_turns > 0 && goal_turn >= goal_turns {
+            tb: [24] u8; lb: [128] u8; ln := cd_cat(lb[..], 0, "goal not met after "); ln = cd_cat(lb[..], ln, cd_itoa(goal_turn, tb[..])); ln = cd_cat(lb[..], ln, ifx goal_turn == 1 then " turn" else " turns");
+            cd_commit(a, TUI_RED, cast(string) lb[0..<ln]);
+            a[0].exit = 1; goal = "";
+          } else {
+            goal_turn += 1;
+            tui_ed_set(a[0].ed[..], cast(string) gm[0..<gn[0]]);
+            cd_submit(a);
+            continue;
+          }
+        }
         // a detached job takes messages left by `coder attach` as its next turns
         if sess.count == 0 || stopped { break; }
         mb: [65536] u8; m := cd_msg_next(cs_id(a[0].log), mb[..]);

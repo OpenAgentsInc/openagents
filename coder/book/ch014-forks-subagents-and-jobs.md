@@ -5,9 +5,10 @@
 > TURN]`), a background job (`coder run "TASK" --detach`, with `--deadline`
 > and `--report-to`), and a subagent that a Claude Code session starts with
 > `--coder-tools`, held to its parent's policy and time. The offline smoke
-> checks all three. Still to come: a fork that reuses the parent's cached
-> prefix on the server instead of resending the turns as text, goals, and
-> the measured gains chapter 21 asks for.
+> checks all three. A goal (`--goal CHECK`) keeps a session working, turn
+> after turn, until its check passes. Still to come: a fork that reuses the
+> parent's cached prefix on the server instead of resending the turns as
+> text, and the measured gains chapter 21 asks for.
 
 An agent sometimes needs a second line of work. This chapter adds four kinds:
 a fork of a session at a turn boundary, a subagent with its own scope and
@@ -117,11 +118,38 @@ a Claude Code session can start another Coder session with `coder_run` or
 The child's session header records `report_to`, `allow`, `ceiling` and
 `deadline_s`.
 
+## Goals
+
+`coder run "TASK" --goal CHECK` records an objective as a shell command that
+decides when it is met. After each finished turn, Coder runs CHECK through
+`/bin/sh` in the session's folder (`cd_goal_check` in
+[coder.coax](../../coder/tui/coder.coax)), for at most 15 minutes. Exit 0 is
+met, and the session ends. Otherwise the next turn's message is the check's
+failure:
+
+```text
+The goal is not met yet: its check `grep -qx 'hello, goal' hello.txt` failed.
+Keep working until the check passes.
+```
+
+with the last 2,000 bytes of the check's output when it printed any. Each
+check is a `goal` line in the session log, with `check`, `turn`, `met` and
+`text`. There is no turn limit unless the person sets one: with
+`--goal-turns N`, a goal still unmet after N turns ends the session with
+"goal not met after N turns" and exit 1. A turn that fails or is stopped
+ends the session without a check. `--detach` passes the goal to the job.
+
+In the live check, Claude Code got "Create hello.txt with a greeting in it."
+and the goal `grep -qx 'hello, goal' hello.txt`. Its first turn wrote
+"Hello, world!", the check failed, and the second turn rewrote the file and
+ran the check itself; the goal was met on turn 2.
+
 ## Checks
 
 ```sh
 coax test coder/tui/coder.coax    # cs_turns_text: a fork's turns up to a boundary
-python3 coder/tui/smoke.py        # fork carries the turns; --detach runs; stop ends it as stopped
+python3 coder/tui/smoke.py        # fork carries the turns; --detach runs; stop ends it as stopped;
+                                  # a goal met on its second turn, and one capped unmet at two
 ```
 
 ## Dependencies
@@ -143,6 +171,8 @@ python3 coder/tui/smoke.py        # fork carries the turns; --detach runs; stop 
   parent's policy and remaining deadline, and the smoke checks its header.
 - [x] A background job that finishes after its turn appends its result, and a job
   past its deadline is reported as expired.
+- [x] A goal's check decides when the session's work is done; the smoke and
+  a live Claude Code run check it.
 - [ ] Each addition shows a measured gain in [Chapter21](ch021-measure-the-harness.md) on tasks it was not built
   from, or it is removed.
 
