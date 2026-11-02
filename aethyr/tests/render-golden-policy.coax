@@ -1,0 +1,16 @@
+// Golden capture admission and exact raw-byte comparison. An image difference
+// is an observation; producer, input, shape or source drift is a refusal.
+#load "../render/tests/tooling-policy.coax";
+#load "render-golden-numbers.coax";
+#authority;
+GgDiff :: struct {ok:bool=true;channels:int;pixels:int;max_byte_delta:int;bytes:int;}
+#load "render-golden-checks.coax";
+gg_join :: (producer:bool,inputs:bool,shape:bool,source_changes:int)->bool {return producer && inputs && shape && source_changes==0;}
+gg_same_shape :: (a:Jv,b:Jv)->bool {for key:[2]string.["width","height"] {left:=jv_get(a,0,key);right:=jv_get(b,0,key);if jv_kind(a,left)!=JV_NUMBER || jv_kind(b,right)!=JV_NUMBER {return false;}x:=gg_integer(jv_raw(a,left),8192);y:=gg_integer(jv_raw(b,right),8192);if x<1 || x!=y {return false;}}return rtq_equal(a,jv_get(a,0,"format"),b,jv_get(b,0,"format"));}
+gg_ready :: (d:Jv,route:string)->bool {return jv_kind(d,jv_path(d,0,"ready.ready"))==JV_TRUE && (route=="legacy" || jv_int(d,jv_path(d,0,"render.readiness"),1)==2);}
+gg_events :: (d:Jv)->bool {return gg_text(d,jv_get(d,0,"method"),"Runtime.exceptionThrown") || (gg_text(d,jv_get(d,0,"method"),"Log.entryAdded") && gg_text(d,jv_path(d,0,"params.entry.level"),"error"));}
+gg_compare :: (prior:GgDiff,a:[]u8,b:[]u8)->GgDiff {r:=prior;if !r.ok {return r;}if a.count!=b.count || a.count%4!=0 {r.ok=false;return r;}for pixel:0..<a.count/4 {different:=false;for lane:0..<4 {at:=pixel*4+lane;delta:=cast(int)abs(cast(f64)a[at]-cast(f64)b[at]);if delta!=0 {r.channels+=1;different=true;}r.max_byte_delta=(r.max_byte_delta+delta+cast(int)abs(cast(f64)(r.max_byte_delta-delta)))/2;}if different {r.pixels+=1;}}r.bytes+=a.count;return r;}
+gg_wasm :: (d:Jv)->int {map:=jv_get(d,0,"source_inputs");if jv_kind(d,map)!=JV_OBJECT {return -1;}row:=d.nodes[map].first;while row!=-1 {key:=jv_key(d,row);if key.count>=5 && key[key.count-5..<key.count]==".wasm" {return row;}row=d.nodes[row].next;}return -1;}
+gg_empty :: (d:Jv,node:int)->bool {return jv_kind(d,node)==JV_ARRAY && jv_len(d,node)==0;}
+gg_artifact :: (d:Jv,node:int,file:string,bytes:int,hash:string)->bool {return bytes>=0 && jv_kind(d,node)==JV_OBJECT && gg_text(d,jv_get(d,node,"file"),file) && jv_int(d,jv_get(d,node,"bytes"),-1)==bytes && gg_text(d,jv_get(d,node,"sha256"),hash);}
+gg_text :: (d:Jv,node:int,text:string)->bool {return jv_kind(d,node)==JV_STRING && jv_raw_eq(jv_raw(d,node),text);}

@@ -1,0 +1,35 @@
+// JavaScript Number's bounded positive-integer controls, without an approximate
+// decimal-to-float conversion. Decimal values compare to exact IEEE64 rounding
+// intervals; this preserves accepted exponent/base spellings and endpoint ties.
+#load "../../coax/lib/net/uri.coax";
+#authority;
+GgDecimal :: struct {valid:bool;digits:string;shift:int;}
+#load "render-golden-number-checks.coax";
+
+gg_space_len :: (text:string,at:int)->int {
+ if at<0 || at>=text.count {return 0;}c:=text[at];if (c>=9 && c<=13) || c==32 {return 1;}if c<194 {return 0;}
+ for space:[19]string.[" "," "," "," "," "," "," "," "," "," "," "," "," "," "," "," "," ","　","﻿"] {if space.count<=text.count-at && text[at..<at+space.count]==space {return space.count;}}return 0;
+}
+
+gg_trim_space :: (text:string)->string {first:=0;while true {n:=gg_space_len(text,first);if n==0 {break;}first+=n;}at:=first;last:=first;while at<text.count {n:=gg_space_len(text,at);if n==0 {last=at+1;at+=1;}else {at+=n;}}return text[first..<last];}
+gg_decimal :: (text:string,out:[]u8)->GgDecimal {
+ at:=0;used:=0;fraction:=0;dot:=false;while at<text.count {c:=text[at];if c=='e' || c=='E' {break;}if c=='.' {if dot {return GgDecimal.{};}dot=true;}else {if c<'0' || c>'9' || used==out.count {return GgDecimal.{};}out[used]=c;used+=1;if dot {fraction+=1;}}at+=1;}if used==0 {return GgDecimal.{};}
+ exponent:=0;if at!=text.count {at+=1;negative:=false;if at<text.count && (text[at]=='+' || text[at]=='-') {negative=text[at]=='-';at+=1;}if at==text.count {return GgDecimal.{};}digits:=0;started:=false;while at<text.count {c:=text[at];if c<'0' || c>'9' {return GgDecimal.{};}at+=1;if !started && c=='0' {continue;}started=true;digits+=1;if digits>6 {return GgDecimal.{};}exponent=exponent*10+cast(int)(c-'0');}if negative {exponent= -exponent;}}
+ first:=0;while first!=used && out[first]=='0' {first+=1;}if first==used {return GgDecimal.{};}shift:=exponent-fraction;while out[used-1]=='0' {used-=1;shift+=1;}return GgDecimal.{valid=true,digits=cast(string)out[first..<used],shift=shift};
+}
+gg_bound :: (number:int,upper:bool,out:[]u8)->GgDecimal {
+ if number<1 || number>8192 {return GgDecimal.{};}q:=53;power:=1;while power*2<=number {power*=2;q-=1;}if !upper && power==number {q+=1;}
+ digits:[80]int;unit:[80]int;unit[0]=1;value:=number;at:=q;while value!=0 {digits[at]=value%10;value/=10;at+=1;}
+ for repeat:0..<q {carry:=0;for i:0..<unit.count {n:=unit[i]*5+carry;unit[i]=n%10;carry=n/10;}}
+ if upper {for i:0..<digits.count {digits[i]+=unit[i];}}else {borrow:=0;for i:0..<digits.count {n:=digits[i]-unit[i]-borrow;if n<0 {digits[i]=n+10;borrow=1;}else {digits[i]=n;borrow=0;}}}
+ count:=digits.count;while digits[count-1]==0 {count-=1;}if count>out.count {return GgDecimal.{};}for i:0..<count {out[i]=cast(u8)('0'+digits[count-1-i]);}return GgDecimal.{valid=true,digits=cast(string)out[0..<count],shift= -q};
+}
+gg_decimal_compare :: (a:GgDecimal,b:GgDecimal)->int {
+ ao:=a.digits.count+a.shift;bo:=b.digits.count+b.shift;if ao<bo {return -1;}if ao>bo {return 1;}i:=0;while i<a.digits.count && i<b.digits.count {x:=a.digits[i];y:=b.digits[i];if x<y {return -1;}if x>y {return 1;}i+=1;}if a.digits.count<b.digits.count {return -1;}if a.digits.count>b.digits.count {return 1;}return 0;
+}
+gg_integer :: (text:string,limit:int)->int {
+ if limit<1 || limit>8192 {return -1;}s:=gg_trim_space(text);if s.count==0 {return -1;}plus:=s[0]=='+';if plus {s=s[1..<s.count];if s.count==0 {return -1;}}
+ base:=ifx uri_prefix(s,"0x") || uri_prefix(s,"0X") then 16 else ifx uri_prefix(s,"0b") || uri_prefix(s,"0B") then 2 else ifx uri_prefix(s,"0o") || uri_prefix(s,"0O") then 8 else 0;if base!=0 {if plus {return -1;}value:=0;for i:2..<s.count {digit:=uri_hex(s[i]);if digit<0 || digit>=base {return -1;}value=value*base+digit;if value>limit {return -1;}}return ifx value>=1 then value else -1;}
+
+ buffer:[131072]u8;d:=gg_decimal(s,buffer[..]);if !d.valid {return -1;}order:=d.digits.count+d.shift;if order<0 {return -1;}whole:=0;for i:0..<order {digit:=ifx i<d.digits.count then cast(int)(d.digits[i]-'0') else 0;whole=whole*10+digit;if whole>limit {return -1;}}for candidate:[2]int.[whole,whole+1] {if candidate>limit {continue;}lower:[80]u8;upper:[80]u8;l:=gg_bound(candidate,false,lower[..]);u:=gg_bound(candidate,true,upper[..]);if l.valid && gg_decimal_compare(d,l)>=0 && gg_decimal_compare(d,u)<=0 {return candidate;}}return -1;
+}

@@ -1,0 +1,25 @@
+// Capture transport and reuse decisions belong to Coax. The byte sinks are
+// bounded separately from the browser's 64 MiB producer-memory boundary.
+#load "render-golden-options.coax";
+#load "render-golden-policy.coax";
+#authority;
+#load "render-golden-transport-checks.coax";
+gg_output_fresh :: (entries:int)->bool {return entries==0;}
+gg_parts :: (n:int)->int {if n<0 || n>536870912 {return -1;}return ifx n==0 then 1 else (n+67108863)/67108864;}
+gg_chunk :: (n:int,index:int)->int {parts:=gg_parts(n);if index<0 || index>=parts {return -1;}return ifx index+1<parts then 67108864 else n-index*67108864;}
+gg_resolve :: (cwd:string,path:string,out:[]u8)->string {
+ if cwd.count==0 || cwd[0]!='/' {return "";}raw:[8192]u8;o:[1]Jo;jo_start(o[..],raw[..]);if path.count==0 || path[0]!='/' {jo_put(o[..],cwd);jo_put(o[..],"/");}jo_put(o[..],path);if o[0].bad {return "";}text:=jo_text(o[..]);buffer:[8192]u8;used:=1;buffer[0]='/';at:=1;
+ while at<text.count {if text[at]=='/' {at+=1;continue;}end:=at;while end<text.count && text[end]!='/' {if text[end]==0 {return "";}end+=1;}part:=text[at..<end];if part==".." {while buffer[used-1]!='/' {used-=1;}if used!=1 {used-=1;}}else if part!="." {if used>1 {buffer[used]='/';used+=1;}for c:part {buffer[used]=c;used+=1;}}at=end;}
+ if used>out.count || used>4096 {return "";}for i:0..<used {out[i]=buffer[i];}return cast(string)out[0..<used];
+}
+gg_nullable :: (d:Jv,node:int,text:string,missing:bool)->bool {if text!="" {return gg_text(d,node,text);}return jv_kind(d,node)==JV_NULL || (missing && node== -1);}
+gg_control_int :: (d:Jv,key:string,want:int,fallback:int)->bool {node:=jv_get(d,0,key);if node== -1 || jv_kind(d,node)==JV_NULL {return want==fallback;}return jv_kind(d,node)==JV_NUMBER && gg_integer(jv_raw(d,node),8192)==want;}
+gg_required_int :: (d:Jv,key:string,want:int)->bool {node:=jv_get(d,0,key);return jv_kind(d,node)==JV_NUMBER && gg_integer(jv_raw(d,node),8192)==want;}
+gg_reuse :: (d:Jv,route:string,p:GgOptions,legacy_shader:string,particles:string,wasm_hash:string)->bool {
+ if !gg_text(d,jv_get(d,0,"route"),route) || !gg_empty(d,jv_get(d,0,"source_changes")) || !gg_empty(d,jv_get(d,0,"errors")) || !gg_empty(d,jv_get(d,0,"exceptions")) || !gg_required_int(d,"frames",p.frames) || jv_kind(d,jv_get(d,0,"start"))!=(ifx p.start then JV_TRUE else JV_FALSE) || !gg_control_int(d,"width",p.width,320) || !gg_control_int(d,"height",p.height,180) {return false;}
+ query:=jv_get(d,0,"query");if !(gg_text(d,query,p.query) || (p.query=="" && (query== -1 || jv_kind(d,query)==JV_NULL))) {return false;}
+ if route=="legacy" && (!gg_nullable(d,jv_get(d,0,"legacy_shader_override"),legacy_shader,false) || !gg_nullable(d,jv_get(d,0,"legacy_particle_override"),particles,true)) {return false;}return gg_text(d,gg_wasm(d),wasm_hash);
+}
+gg_ack :: (d:Jv,url:string,file:string,n:int,hash:string)->bool {
+ a:=jv_get(d,0,"receipt");return jv_kind(d,jv_get(d,0,"status"))==JV_NUMBER && jv_raw(d,jv_get(d,0,"status"))=="200" && jv_kind(d,jv_get(d,0,"ok"))==JV_TRUE && jv_int(d,jv_get(d,0,"sent_bytes"),-1)==n && jv_kind(d,jv_get(d,a,"status"))==JV_NUMBER && jv_raw(d,jv_get(d,a,"status"))=="200" && gg_text(d,jv_get(d,a,"schema"),"aethyr.render-test-origin.post.v1") && jv_kind(d,jv_get(d,a,"published"))==JV_TRUE && jv_kind(d,jv_get(d,a,"staging_removed"))==JV_TRUE && gg_text(d,jv_get(d,a,"path"),url) && gg_text(d,jv_get(d,a,"file"),file) && jv_int(d,jv_get(d,a,"declared_bytes"),-1)==n && jv_int(d,jv_get(d,a,"received_bytes"),-1)==n && jv_int(d,jv_get(d,a,"stored_bytes"),-1)==n && gg_text(d,jv_get(d,a,"sha256"),hash);
+}

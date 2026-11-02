@@ -1,0 +1,88 @@
+{
+  "schema": "aethyr.render.golden-tool-port.v1",
+  "date": "2026-11-02",
+  "status": "passed",
+  "release_qualification": false,
+  "scope": "Complete golden observer CLI port. Coax owns options and Number/query/HTML semantics, anchored instrumentation, route configuration, exact CDP order and readiness, fixed frame steps, all deadlines and Runtime/Log verdicts, byte ranges/POST identity/assembly, producer-input-source joins, reuse and raw difference counters. JavaScript performs browser SDK and typed-array/hash/HTTP effects only.",
+  "entrypoint": "aethyr/tests/check-render-goldens.coax",
+  "original": {
+    "path": "aethyr/tests/check_render_goldens.ts",
+    "sha256": "3bc6185197d61c11ff271ffaf6c8b1f7e261d5accb5aa6ee2c2be25fb4ccb58b",
+    "retained": "legacy-source/aethyr/tests/check_render_goldens.ts",
+    "retirement": "After same-input controls, archive readback and source-byte verification; no runnable TypeScript copy remains in the repository."
+  },
+  "checks_first": {
+    "stubs": "trials/aethyr-golden-{policy,observation,transport}-stubs-20261102.log",
+    "qualification_logs": "trials/aethyr-golden-*-mutation-*.log",
+    "note": "Parser/transport checks precede their implementations. Failed rounds and every survivor remain in the archive; none was waived."
+  },
+  "authority": {
+    "scope": "Each owned policy's root procedures; dependency checks retained.",
+    "numbers": {"mutants": 367, "killed": 367, "survived": 0},
+    "query": {"mutants": 258, "killed": 258, "survived": 0},
+    "options": {"mutants": 107, "killed": 107, "survived": 0},
+    "observation": {"mutants": 117, "killed": 117, "survived": 0},
+    "join_and_raw_comparison": {"mutants": 112, "killed": 112, "survived": 0},
+    "transport_reuse_and_output": {"mutants": 210, "killed": 210, "survived": 0},
+    "total_mutants": 1171,
+    "total_killed": 1171,
+    "survivors": 0,
+    "waivers": 0,
+    "numeric_correction": "A peer review found low-limit radix parsing could accept 0x5 for limit4 through negative division truncation. Coax now admits the bounded accumulated value after each digit; binary/octal/hex controls and final 367/367 mutation qualification cover it."
+  },
+  "same_input": {
+    "producer_sha256": "869cc748738f89b628a03139813a9f89b306dc91d3d8ad21988d56b2379f8d7b",
+    "package_manifest_sha256": "67595872c21d1264d41534f3a4138e6036196c1705f466601dbc0e5a1b79555b",
+    "frozen_host_sha256": "5b1f06251ad712bcf18121cbc13ebf841b156728a0cdfd113da0547b74561954",
+    "production_renderer_sha256": "c524e3f88b955c0721807e9b996c30c00d94c378682ca68fca64679b514b97d6",
+    "instrumented_host_sha256": "54977207c79cff1ed2b6aa5f223917c841a4adf1ddc51011d6e9e7a518b0117e",
+    "pairs": [
+      {"frames": 2, "size": "16x16", "start": false, "query": "clock=12"},
+      {"frames": 1, "size": "8x8", "start": true, "query": "?x=a+b&probe=old&probe=duplicate&golden=1&x=%C0%80", "legacy_scene_and_particle_controls": true},
+      {"frames": 600, "size": "4x4", "start": false, "query": ""}
+    ],
+    "routes_per_pair": 2,
+    "every_capture_and_stable_render_field_equal": true,
+    "every_comparison_field_equal_except_declared_observer_elapsed_and_reuse_paths": true,
+    "all_four_per_route_artifacts_exact_raw_bytes": true,
+    "observed_host_exact_bytes": true,
+    "two_frame_gpu_sha256": "fa55c4891bf8606666d44e125d48943113604fafc20a4335ffebd54935c48502",
+    "masks": 0,
+    "tolerances": 0
+  },
+  "controls": {
+    "reuse_generic_and_legacy": "Both pass, copying the historical receipt unchanged. Their obsolete observer source paths are not reopened or promoted to current-source evidence.",
+    "corrupt_artifact": "Changed GPU byte with unchanged receipt SHA refuses exit1 before capture.",
+    "image_difference_is_diagnostic": "A correctly rehashed reused image differing in one raw channel gives original and Coax exit0, identical=false, exactly one differing channel/group-of-four and max delta1. Every comparison field and raw artifact agrees.",
+    "runtime_exception": "Actual browser exception gives original and Coax exit1 with nonempty raw exceptions; default90 frames exercised.",
+    "log_error": "Actual missing-image network error gives original and Coax exit1 with nonempty error-level Log entries; default90 frames exercised.",
+    "override_routing": "Ten complete HTTP bodies: scene/particle override selection, instrumented host, supplied producer and package manifest across legacy/generic. Every body SHA matches its exact selected file; final origin/source ownership passes.",
+    "fresh_output_guard": "Nonempty output containing the supplied producer at observed-host.js refuses exit2 before writing and preserves the Wasm SHA. The final image's fresh generic route plus frozen legacy reuse matches every retained original field and artifact.",
+    "cli_boundaries": "Pure checks cover first occurrence/unknown controls, frames1..600 including decimal/exponent/radix/Unicode whitespace/IEEE midpoint spellings, arbitrary leading zero viewport digits, malformed/missing/conflicting controls, exact URLSearchParams byte behavior, first/global HTML transforms and anchored capacity failures.",
+    "transport_boundaries": "Zero bytes, exact64MiB edges, eight chunks through512MiB, invalid spans, typed status/count/path/file/hash/publication/cleanup acknowledgement fields, and every reuse control are mutation-qualified. Actual captures transfer eight artifacts per full two-route comparison through declared binary POST sinks."
+  },
+  "provenance": {
+    "compiler_sha256": "1fac3750bcffbb735ef26f4a065d16414b911068fd7d68bc3ca112565d2432aa",
+    "compiler_scope": "Explicit qualified older compiler for observer tooling only. No current-main compiler publication or new product emission claim.",
+    "observing_image_sha256": "78166a789f708efb02e56231e2fff01e7c013373a14dea3ad221cd9fb9c03125",
+    "final_output_guard_image_sha256": "6ec757a4b9069683f3f874b2ae855b73a1e482dabc449814e03d12feed001fcb",
+    "observing_source_closure_files": 60,
+    "final_source_closure_files": 59,
+    "source_readback": "observing-source.sha256 plus observing-relative.sha256 and final-source.sha256 independently check every absolute and relative repository path stamped by the respective capture receipt; all readbacks pass. The observing entry's exact pre-guard bytes are recovered by removing only that one later line and must match both stamped aliases. Actual images, linked native C/H, browser effects, source graph, raw event/counter diagnostics and supplied small products are retained.",
+    "source_changes_in_qualified_captures": 0,
+    "browser": "Muted headless Chrome, exact original three background flags, no launcher window-size override, explicit device metrics. Raw version/argv-related CDP records remain in each epoch."
+  },
+  "retained_red": [
+    "First Coax capture assembled every raw artifact but attempted to serialize absent legacy render status; invalid receipt and valid failure/raw ledger remain as diagnosis only. The corrected observing image passed exact frozen-input comparison.",
+    "The first qualification helper double-quoted a patched receipt hash, so the intended changed-image case correctly refused malformed JSON. Corrected v2 preserves the earlier red and proves original/Coax diagnostic parity without repeating the passing other cases.",
+    "The initial routing verifier reused the shared64KiB GET helper for a101408-byte shader. Its incomplete-read failure is retained. A qualifier-local bounded1MiB receiver then checks all ten complete bodies and selected hashes; shared RTO behavior was unchanged.",
+    "The final nonempty-output safeguard was added after read-only review. Earlier captures retain their exact older source/image epoch; only the changed guard and necessary fresh capture were requalified."
+  ],
+  "limits": [
+    "Small frozen fixture realm only; no new shader/producer/package build, full Grid gate or renderer arithmetic claim.",
+    "Shared CDP/RTO POST and idle-WebSocket effects have separate qualification; this tool consumes those stable APIs and retains final ledgers. It never suppresses Runtime/Log failures.",
+    "Canonical historical artifact leaves are required; malformed physical capture extents are refused. Reused receipts are integrity-checked local evidence, not authentication against a caller fabricating an entire receipt and hashes.",
+    "Exact raw counters retain the original grouping of four bytes even for an RGBA16F image; this observer does not reinterpret channel values or apply a floating tolerance.",
+    "Original180s total browser budget, 60s warmup, 200x25ms readback polls and30s per-CDP deadline remain bounded. Cleanup is awaited separately."
+  ]
+}

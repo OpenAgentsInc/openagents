@@ -1,0 +1,8 @@
+// Exact observation-only source literals from the retained golden driver.
+GG_ANCHOR_0 :: "const readback = probe && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;";
+GG_REPLACEMENT_0 :: "const readback = probe && probeArmed && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;";
+GG_ANCHOR_1 :: "if (readback) report(readback, texture);";
+GG_REPLACEMENT_1 :: "if (readback) report({ ...readback, rendererSnapshot: {\n  admitted_hud: n, admitted_draws: draws, vertex_stride: arena.floats,\n  uniform_bytes: Array.from(new Uint8Array(memory.buffer, arena.uniforms, arena.uniformFloats * 4)),\n  vertex_bytes: Array.from(new Uint8Array(memory.buffer, arena.vertices, n * arena.floats * 4)),\n  draw_bytes: draws ? Array.from(new Uint8Array(memory.buffer, x.coaxial_draws(arena.state), draws * 16)) : [],\n} }, texture);";
+GG_ANCHOR_2 :: "  const x0 = Math.floor(w * 0.3)";
+GG_REPLACEMENT_2 :: "  const tight = new Uint8Array(w * h * pixelBytes);\n  for (let y = 0; y < h; y++) tight.set(px.subarray(y * row, y * row + w * pixelBytes), y * w * pixelBytes);\n  globalThis.coaxial.renderCapture = { schema: \"aethyr.render.legacy-readback.v1\", width: w, height: h,\n    format: texture.format, row_bytes: w * pixelBytes, bytes: Array.from(tight), ...rendererSnapshot };\n  buffer.unmap();buffer.destroy();return;\n  const x0 = Math.floor(w * 0.3)";
+GG_STATUS_SUFFIX :: "\nglobalThis.coaxial.goldenStatus = () => ({engine: !!engine, gpu: !!gpu?.bg,\n  shaders: shaderLoads, scene: !!gpu?.scene, group: !!gpu?.sceneGroup,\n  ready: !!gpu?.bg && shaderLoads === 0 && (!gpu.scene || !!gpu.sceneGroup)});\n";

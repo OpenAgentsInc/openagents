@@ -1,0 +1,16 @@
+#load "render-golden-numbers.coax";
+#load "../render/tests/tooling-policy.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#load "render-golden-observation-templates.coax";
+#authority;
+GgSpan :: struct {valid:bool;from:int;to:int;}
+#load "render-golden-observation-checks.coax";
+
+gg_replace_once :: (text:string,needle:string,replacement:string,out:[]u8)->int {at:=rtq_find(text,needle,0);if at== -1 || rtq_find(text,needle,at+needle.count)!= -1 {return -1;}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],text[0..<at]);jo_put(o[..],replacement);jo_put(o[..],text[at+needle.count..<text.count]);return ifx o[0].bad then -1 else o[0].n;}
+gg_instrument :: (text:string,out:[]u8,scratch:[]u8)->int {n:=gg_replace_once(text,GG_ANCHOR_0,GG_REPLACEMENT_0,scratch);if n== -1 {return -1;}n=gg_replace_once(cast(string)scratch[0..<n],GG_ANCHOR_1,GG_REPLACEMENT_1,out);if n== -1 {return -1;}n=gg_replace_once(cast(string)out[0..<n],GG_ANCHOR_2,GG_REPLACEMENT_2,scratch);if n== -1 {return -1;}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],cast(string)scratch[0..<n]);jo_put(o[..],GG_STATUS_SUFFIX);return ifx o[0].bad then -1 else o[0].n;}
+gg_attribute :: (text:string,prefix:string,from:int)->GgSpan {at:=rtq_find(text,prefix,from);if at== -1 {return GgSpan.{};}end:=rtq_find(text,"\"",at+prefix.count);if end== -1 {return GgSpan.{};}return GgSpan.{valid=true,from=at,to=end+1};}
+gg_attribute_replace :: (text:string,prefix:string,value:string,append:bool,out:[]u8)->int {span:=gg_attribute(text,prefix,0);o:[1]Jo;jo_start(o[..],out);if !span.valid {jo_put(o[..],text);}else {jo_put(o[..],text[0..<span.from]);if append {jo_put(o[..],text[span.from..<span.to]);}jo_put(o[..],value);jo_put(o[..],text[span.to..<text.count]);}return ifx o[0].bad then -1 else o[0].n;}
+gg_legacy_attributes :: (text:string,out:[]u8)->int {
+ o:[1]Jo;jo_start(o[..],out);at:=0;begin:=0;while at!=text.count {space:=gg_space_len(text,at);removed:=false;if space>0 {start:=at+space;for prefix:[2]string.["data-render=\"","data-render-profile=\""] {if uri_prefix(text[start..<text.count],prefix) {span:=gg_attribute(text,prefix,start);if span.valid {jo_put(o[..],text[begin..<at]);at=span.to;begin=at;removed=true;break;}}}}if !removed {if space==0 {space=1;}at+=space;}}jo_put(o[..],text[begin..<text.count]);return ifx o[0].bad then -1 else o[0].n;
+}
+gg_page :: (text:string,legacy:bool,out:[]u8,scratch:[]u8)->int {n:=ifx legacy then gg_legacy_attributes(text,out) else gg_attribute_replace(text,"data-render=\"","data-render=\"/package/render.json\"",false,out);if n== -1 {return -1;}intermediate:=cast(string)out[0..<n];if rtq_find(intermediate,"data-wasm=\"",0)!= -1 {n=gg_attribute_replace(intermediate,"data-wasm=\"","data-wasm=\"/producer.wasm\"",false,scratch);}else {n=gg_attribute_replace(intermediate,"data-app=\""," data-wasm=\"/producer.wasm\"",true,scratch);}if n== -1 {return -1;}o:[1]Jo;jo_start(o[..],out);jo_put(o[..],cast(string)scratch[0..<n]);return ifx o[0].bad then -1 else o[0].n;}

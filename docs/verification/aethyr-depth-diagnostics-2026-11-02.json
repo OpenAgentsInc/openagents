@@ -88,6 +88,8 @@
   "checks": {
     "first_fixture_checks": 5,
     "shader_transport_checks": 1,
+    "shader_checks_with_imported_dependencies": 8,
+    "shader_check_log": "docs/verification/data/aethyr-ch11-2026-11-02/depth-diagnostics/shader-checks.log",
     "heldout_fixture_checks": 2,
     "packet_policy_mutants": 33,
     "packet_policy_killed": 33,
