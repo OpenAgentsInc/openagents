@@ -161,6 +161,36 @@ def verbs(check):
               verdicts == [("Write(a.txt)", "run"), ("Write(/etc/stub-outside.txt)", "ask"), ("Bash(touch b.txt)", "refuse")])
         sent = [json.loads(x)["behavior"] for x in open(answers)] if os.path.exists(answers) else []
         check("policy: Claude Code gets allow, then deny with no one to ask, then deny", sent == ["allow", "deny", "deny"] and '"ending":"finished"' in pol.stdout)
+        # the same asks through coder acp (chapter 16): the editor is asked with session/request_permission, and its answer reaches Claude Code
+        acp_answers = os.path.join(home, "acp-answers")
+        pa = subprocess.Popen([coder, "acp", "--engine", "claude", "--allow", "write", "--ceiling", "write"], cwd=REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1,
+                              env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=acp_answers))
+        def pa_send(o):
+            pa.stdin.write(json.dumps(o) + "\n"); pa.stdin.flush()
+        pa_send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
+        pa_send({"jsonrpc": "2.0", "id": 2, "method": "session/new", "params": {"cwd": work, "mcpServers": []}})
+        pa_send({"jsonrpc": "2.0", "id": 3, "method": "session/prompt", "params": {"sessionId": "s1", "prompt": [{"type": "text", "text": "go"}]}})
+        pgot, pend_t = [], time.time() + 90
+        while time.time() < pend_t:
+            r, _, _ = select.select([pa.stdout], [], [], 0.2)
+            if not r: continue
+            line = pa.stdout.readline()
+            if not line: break
+            m = json.loads(line); pgot.append(m)
+            if m.get("method") == "session/request_permission":
+                pa_send({"jsonrpc": "2.0", "id": m["id"], "result": {"outcome": {"outcome": "selected", "optionId": "allow_once"}}})
+            if m.get("id") == 3: break
+        pa.stdin.close()
+        try:
+            pa.wait(15)
+        except subprocess.TimeoutExpired:
+            pa.kill()
+        preqs = [m for m in pgot if m.get("method") == "session/request_permission"]
+        psent = [json.loads(x)["behavior"] for x in open(acp_answers)] if os.path.exists(acp_answers) else []
+        check("acp: an ask goes to the editor as session/request_permission, and its allow reaches Claude Code",
+              len(preqs) == 1 and preqs[0]["params"]["sessionId"] == "s1" and "stub-outside" in preqs[0]["params"]["toolCall"]["title"]
+              and [o["kind"] for o in preqs[0]["params"]["options"]] == ["allow_once", "allow_always", "reject_once"]
+              and psent == ["allow", "allow", "deny"] and pgot and pgot[-1].get("result") == {"stopReason": "end_turn"})
         mcp_out = os.path.join(home, "mcp-answers")
         subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--cwd", work, "--json"], cwd=REPO,
                        env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=mcp_out, CLAUDE_STUB_MODE="mcp"), capture_output=True, text=True, timeout=120)

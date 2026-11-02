@@ -32,6 +32,7 @@ CdAcpSession :: struct {
 CdAcp :: struct {
   s: [CD_ACP_SESSIONS] CdAcpSession; n: int;
   engine: [16] u8; nengine: int;    // --engine for every turn, or "" for System One's pick
+  pass: [8] [1024] u8; npass: [8] int; np: int;   // --allow, --ceiling, --root, --ask for every turn
 }
 
 cd_acp_send :: (s: string) { cd_outln(s); }
@@ -109,6 +110,20 @@ cd_acp_line :: (s: [] CdAcpSession, line: string, ar: [] ClArena) {
     if n > 0 { cd_acp_update(s, cast(string) ub[0..<n]); }
     return;
   }
+  if kind == "ask" {
+    // the turn waits for the person: ask the editor, and write its answer when it comes (cd_acp_answer)
+    ub: [8192] u8;
+    n := json_raw(ub[..], 0, "{\"jsonrpc\":\"2.0\",\"id\":\"perm-");
+    n = json_raw(ub[..], n, cast(string) s[0].id[0..<s[0].nid]);
+    n = json_raw(ub[..], n, "\",\"method\":\"session/request_permission\",\"params\":{\"sessionId\":");
+    n = json_write_string(ub[..], n, cast(string) s[0].id[0..<s[0].nid]);
+    n = json_raw(ub[..], n, ",\"toolCall\":{\"toolCallId\":\"ask-");
+    n = json_raw(ub[..], n, cd_itoa(s[0].tools + 1, tb[..]));
+    n = json_raw(ub[..], n, "\",\"title\":"); n = json_write_string(ub[..], n, cl_str(ar, line, "text"));
+    n = json_raw(ub[..], n, ",\"status\":\"pending\"},\"options\":[{\"optionId\":\"allow_once\",\"name\":\"Allow\",\"kind\":\"allow_once\"},{\"optionId\":\"allow_always\",\"name\":\"Allow from now on\",\"kind\":\"allow_always\"},{\"optionId\":\"reject_once\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]}}");
+    if n > 0 { cd_acp_send(cast(string) ub[0..<n]); }
+    return;
+  }
   if kind == "end" {
     s[0].nending = cd_cat(s[0].ending[..], 0, cl_str(ar, line, "ending"));
     why := cl_str(ar, line, "text");
@@ -136,6 +151,8 @@ cd_acp_start :: (a: [] CdAcp, s: [] CdAcpSession, text: string) -> bool {
   ok = ok && cl_push(h, CL_FIELD_ARG, "--json");
   if s[0].nlast == 0 && s[0].ncwd > 0 { ok = ok && cl_push(h, CL_FIELD_ARG, "--cwd") && cl_push(h, CL_FIELD_ARG, cast(string) s[0].cwd[0..<s[0].ncwd]); }
   if a[0].nengine > 0 { ok = ok && cl_push(h, CL_FIELD_ARG, "--engine") && cl_push(h, CL_FIELD_ARG, cast(string) a[0].engine[0..<a[0].nengine]); }
+  for i: 0..<a[0].np { ok = ok && cl_push(h, CL_FIELD_ARG, cast(string) a[0].pass[i][0..<a[0].npass[i]]); }
+  ok = ok && cl_push(h, CL_FIELD_ENV, "CODER_ASK_FILE=1");
   if s[0].ncwd > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, cast(string) s[0].cwd[0..<s[0].ncwd]); }
   ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=/usr/bin/true");
   if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); return false; }
@@ -188,6 +205,20 @@ cd_acp_prompt_text :: (ar: [] ClArena, prompt: string, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
+// The editor's answer to session/request_permission "perm-SESSION": the
+// turn's ID.answer file, y for allow_once, a for allow_always, n otherwise
+// (a reject, a cancelled prompt or an error).
+cd_acp_answer :: (a: [] CdAcp, ar: [] ClArena, msg: string) {
+  rid := cl_str(ar, msg, "id");
+  if rid.count < 6 || cast(string) rid[0..<5] != "perm-" { return; }
+  k := cd_acp_find(a, cast(string) rid[5..<rid.count]);
+  if k < 0 || a[0].s[k].nlast == 0 { return; }
+  outcome := cl_str(ar, msg, "result.outcome.outcome");
+  opt := cl_str(ar, msg, "result.outcome.optionId");
+  c := ifx outcome == "selected" && opt == "allow_once" then "y" else ifx outcome == "selected" && opt == "allow_always" then "a" else "n";
+  pb: [1300] u8; x := fs_write(cd_sibling(cast(string) a[0].s[k].last[0..<a[0].s[k].nlast], ".answer", pb[..]), c);
+}
+
 cd_acp_message :: (a: [] CdAcp, msg: string) {
   ab: [262144] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   method := cl_str(ar[..], msg, "method");
@@ -202,6 +233,7 @@ cd_acp_message :: (a: [] CdAcp, msg: string) {
     return;
   }
   if id.count == 0 { return; }                                  // another notification
+  if method.count == 0 { cd_acp_answer(a, ar[..], msg); return; }  // a response to a request of ours
   if method == "initialize" {
     cd_acp_result(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":false,\"promptCapabilities\":{\"image\":false,\"audio\":false,\"embeddedContext\":true}},\"authMethods\":[]}");
     return;
@@ -233,9 +265,10 @@ cd_acp_message :: (a: [] CdAcp, msg: string) {
 }
 
 // coder acp [--engine E]: serves until stdin ends and every turn is over.
-cd_cmd_acp :: (engine: string) -> int {
+cd_cmd_acp :: (engine: string, pass: [] string) -> int {
   a_b: [1] CdAcp; a := a_b[..];
   a[0].nengine = cd_cat(a[0].engine[..], 0, engine);
+  for v: pass { if a[0].np < a[0].pass.count { a[0].npass[a[0].np] = cd_cat(a[0].pass[a[0].np][..], 0, v); a[0].np += 1; } }
   line: [262144] u8; n := 0; eof := false;
   for guard: 0..<1000000000 {
     running := false;

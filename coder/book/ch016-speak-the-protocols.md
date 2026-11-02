@@ -6,7 +6,8 @@
 > chapter4's admission, a remote policy and a hash-chained message log.
 > Coder also serves its verbs as MCP tools over the stdio transport
 > (`coder mcp`, chapter 23), which Claude Code drives live, and runs as an
-> agent for editors over the Agent Client Protocol (`coder acp`). System One
+> agent for editors over the Agent Client Protocol (`coder acp`), which asks
+> the editor when an approval policy asks. System One
 > is a typed tool (`coder decide`, `coder_decide`), chapter 19's memory is
 > two tools (`coder_remember`, `coder_recall`), and `coder mcp` serves
 > each session's log as an MCP resource. The harness's client and server
@@ -692,6 +693,31 @@ exact name), and its result a `tool_call_update` that is `completed` or
 picks (chapter 13). An editor's settings entry is the command
 `openagents coder acp`.
 
+### Permission from the editor
+
+`coder acp` takes the approval flags every turn gets: `--allow`,
+`--ceiling`, `--root` and `--ask` (chapters 5 and 10). When the policy asks
+instead of deciding, the editor asks the person:
+
+1. The turn runs with `CODER_ASK_FILE=1`. Instead of refusing an ask as a
+   job with no one to ask does, it logs `{"kind":"ask","text":"Allow
+   Write(/etc/x)?"}` and waits, still honoring a cancel.
+2. `coder acp` sends the editor `session/request_permission` with that text
+   as the tool call's title and three options: `allow_once`,
+   `allow_always` and `reject_once`.
+3. The editor's response becomes the turn's `ID.answer` file: `y`, `a` or
+   `n` (a reject, a cancelled prompt or an error all mean no). The turn
+   reads it within 100 ms, logs `{"kind":"answer",...}` and gives the
+   answer to the engine. `allow_always` is Claude Code's "from now on",
+   with the permission suggestions it offered.
+
+The smoke drives `coder acp --engine claude --allow write --ceiling write`
+with the stand-in Claude Code from chapter 10. Of its three requests, the
+write inside the folder runs and the command above the ceiling is refused
+without asking. The write outside the folder reaches the "editor" as one
+`session/request_permission`, and its `allow_once` reaches Claude Code as
+`allow`.
+
 ## System One as a tool
 
 A `/v1/systemone` decision from
@@ -813,10 +839,9 @@ The smoke posts an `initialize`, a notification, a `coder_status` call, a
 - **Chapter5's sandbox itself.** Remote calls go through this chapter's
   policy, not `sb_call`, whose approvals, pattern grants, simulated clock
   and replay are bound to chapter4's four built-in bodies.
-- **ACP beyond the basics.** `coder acp` doesn't load past sessions, ask
-  the editor for permission (`session/request_permission`), read files
-  through the editor, or send diffs as ACP diff content. No editor has
-  driven it yet; the smoke drives it as one would.
+- **ACP beyond the basics.** `coder acp` doesn't load past sessions, read
+  files through the editor, or send diffs as ACP diff content. No editor
+  has driven it yet; the smoke drives it as one would.
 - **OpenAgents wire contracts.** This chapter speaks third-party protocols
   only. A protocol OpenAgents publishes starts in `proto/` and
   `docs/protocol/` with a version.
