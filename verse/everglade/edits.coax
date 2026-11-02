@@ -90,6 +90,35 @@ eg_edit_box :: (t: EgThing, out: [] f32) {
   out[4] = EG_EDIT_HALF[k + 2] * t.size;
 }
 
+// Whether a placed thing stands in a walker's way, yours (everglade-voice.coax edit_walls) and the
+// townsfolk's (eg_edit_fences): not one on another's top (the one under it stands in the way), not a
+// patch of flowers or crops, and nothing lower than 0.3 m.
+eg_edit_blocks :: (t: EgThing) -> bool {
+  k := eg_edit_kind(t.kind);
+  return t.lift <= 0.05 && EG_EDIT_SORT[k] != EG_SORT_PATCH && EG_EDIT_HALF[k * 3 + 2] * t.size >= 0.3;
+}
+// The placed things in the townsfolk's way as fences (verse/everglade/watch.coax watch_fences: a
+// segment ax, az, bx, bz and its half thickness), after the n in f: each along its long side and as
+// thick as its short one, so the fence holds the whole of its box. Returns the count with them.
+eg_edit_fences :: (e: EgEdits, f: [] f32, n: int) -> int {
+  m := n;
+  for i: 0..<e.n {
+    if (m + 1) * 5 > f.count { break; }
+    t := e.things[i];
+    if !eg_edit_blocks(t) { continue; }
+    k := eg_edit_kind(t.kind) * 3;
+    hx := EG_EDIT_HALF[k] * t.size; hz := EG_EDIT_HALF[k + 1] * t.size;
+    // its local x runs (cos yaw, -sin yaw) in the world, its local z (sin yaw, cos yaw) (everglade.coax kit3)
+    ux := cos(t.yaw); uz := -sin(t.yaw); long := hx; thick := hz;
+    if hz > hx { ux = sin(t.yaw); uz = cos(t.yaw); long = hz; thick = hx; }
+    f[m * 5] = t.x - ux * long; f[m * 5 + 1] = t.z - uz * long;
+    f[m * 5 + 2] = t.x + ux * long; f[m * 5 + 3] = t.z + uz * long;
+    f[m * 5 + 4] = thick;
+    m += 1;
+  }
+  return m;
+}
+
 // Whether thing i of the list may stand where it is.
 eg_edit_fault :: (e: EgEdits, i: int) -> int {
   if i < 0 || i >= e.n { return EG_FAULT_NONE; }
@@ -446,6 +475,51 @@ eg_one :: (t: EgThing) -> EgEdits { e: EgEdits; e.things[0] = t; e.n = 1; return
   #assert eg_edit_fault(e, 1) == EG_FAULT_THING && eg_edit_fault(e, 0) == EG_FAULT_THING;
   e.things[1].x = 8;
   #assert eg_edit_fault(e, 1) == EG_FAULT_NONE;
+}
+
+// How far (x, z) is from the fence at k in f (0 inside it), as verse/everglade/watch.coax watch_fence_gap.
+eg_test_fence_gap :: (f: [] f32, k: int, x: f32, z: f32) -> f32 {
+  ex := f[k * 5 + 2] - f[k * 5]; ez := f[k * 5 + 3] - f[k * 5 + 1];
+  l2 := hi(ex * ex + ez * ez, 0.0001);
+  u := clamp(((x - f[k * 5]) * ex + (z - f[k * 5 + 1]) * ez) / l2, 0, 1);
+  dx := x - (f[k * 5] + ex * u); dz := z - (f[k * 5 + 1] + ez * u);
+  return hi(sqrt(dx * dx + dz * dz) - f[k * 5 + 4], 0);
+}
+#test "placed things stand in the townsfolk's way as fences, each holding its whole box" {
+  e: EgEdits;
+  e.things[0] = eg_thing(0, 6, -12, 0, 1);                  // a crate
+  e.things[1] = eg_thing(2, 10, -14, 0, 1);                 // a bench, long across
+  e.things[2] = eg_thing(2, 14, -14, f32(PI) / 2, 1);       // a bench turned a quarter: long along z
+  e.things[3] = eg_thing(4, 20, -14, 0.6, 1.5);             // a big stall, turned a little
+  e.things[4] = eg_thing(25, 24, -14, 0, 1);                // flowers: walked through
+  e.things[5] = eg_thing(0, 6, -12, 0, 1); e.things[5].lift = 0.9;   // a crate on the crate: the one under it is the way
+  e.things[6] = eg_thing(7, 26, -14, 0, 1);                 // an apple crate: under 0.3 m, stepped over
+  e.n = 7;
+  f: [40] f32;
+  // after the two fences already there (the spells' walls)
+  n := eg_edit_fences(e, f[..], 2);
+  #assert n == 6;
+  #assert !eg_edit_blocks(e.things[4]) && !eg_edit_blocks(e.things[5]) && !eg_edit_blocks(e.things[6]) && eg_edit_blocks(e.things[0]);
+  // the bench across runs along x, the turned one along z, each as thick as the bench is deep
+  #assert abs(f[3 * 5 + 1] - f[3 * 5 + 3]) < 0.001 && abs(f[3 * 5 + 2] - f[3 * 5] - 2 * 1.39) < 0.001 && abs(f[3 * 5 + 4] - 0.27) < 0.001;
+  #assert abs(f[4 * 5] - f[4 * 5 + 2]) < 0.001 && abs(abs(f[4 * 5 + 3] - f[4 * 5 + 1]) - 2 * 1.39) < 0.001;
+  // every corner and the middle of each thing's turned box is in its fence; a step past its side is not
+  for q: 0..<4 {
+    t := e.things[q];
+    k := eg_edit_kind(t.kind) * 3;
+    hx := EG_EDIT_HALF[k] * t.size; hz := EG_EDIT_HALF[k + 1] * t.size;
+    c := cos(t.yaw); s := sin(t.yaw);
+    #assert eg_test_fence_gap(f[..], 2 + q, t.x, t.z) == 0;
+    for corner: 0..<4 {
+      lx := ifx corner % 2 == 0 then hx else -hx; lz := ifx corner < 2 then hz else -hz;
+      #assert eg_test_fence_gap(f[..], 2 + q, t.x + c * lx + s * lz, t.z - s * lx + c * lz) < 0.001;
+    }
+    out := ifx hx > hz then hz else hx;
+    sx := ifx hx > hz then s else c; sz := ifx hx > hz then c else -s;   // across its short side
+    #assert eg_test_fence_gap(f[..], 2 + q, t.x + sx * (out + 0.5), t.z + sz * (out + 0.5)) > 0.45;
+  }
+  // a full list stops at the room it is given
+  #assert eg_edit_fences(e, f[..], 7) == 8;
 }
 
 #test "a thing on a street is allowed, and said" {

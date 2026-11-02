@@ -973,8 +973,7 @@ edit_walls :: (s: [] Everglade) {
   for i: 0..<s[0].ev.edits.n {
     if w >= WALLS { break; }
     t := s[0].ev.edits.things[i];
-    k := eg_edit_kind(t.kind);
-    if t.lift > 0.05 || EG_EDIT_SORT[k] == EG_SORT_PATCH || EG_EDIT_HALF[k * 3 + 2] * t.size < 0.3 { continue; }
+    if !eg_edit_blocks(t) { continue; }   // the townsfolk walk round the same (eg_edit_fences)
     eg_edit_box(t, box[..]);
     // from under the ground to its top where it's drawn (edit_draw stands it at the ground under its middle)
     g := ground_at(s, t.x, t.z);

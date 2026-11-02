@@ -295,9 +295,9 @@ Watch :: struct {
   day: f32;                       // the town's clock as last read, for the dawn
   beats: [WATCH_NEW] Route; beats_ok: bool;
   solids: [EG_SOLIDS * EG_BOX] f32; solid_n: int;
-  // walls a spell stands up (everglade-abilities.coax Wall of Stone), set each frame: each a
-  // segment (ax, az, bx, bz) and its half thickness; no one stands in one, and a way that runs into
-  // one goes round its nearer end (watch_way)
+  // walls a spell stands up (everglade-abilities.coax Wall of Stone) and the things an admin placed
+  // (edits.coax eg_edit_fences), set each frame: each a segment (ax, az, bx, bz) and its half
+  // thickness; no one stands in one, and a way that runs into one goes round its nearer end (watch_way)
   fences: [WATCH_FENCES * 5] f32; fence_n: int;
   deck: f32;                      // the bridge's deck (plan.coax everglade_deck): where its walkers' feet are
   spears: [SPEARS] Spear;
@@ -325,8 +325,10 @@ Watch :: struct {
   floors: [WATCH_FLOORS * STAND_FLOATS] f32; floor_n: int;
 }
 WATCH_FLOORS :: 96;
-WATCH_FENCES :: 12;   // four Walls of Stone of two panels each, the Wall of Fire and the Wall of Thorns
+WATCH_SPELL_FENCES :: 12;   // four Walls of Stone of two panels each, the Wall of Fire and the Wall of Thorns
+WATCH_FENCES :: WATCH_SPELL_FENCES + 64;   // and the things an admin placed (edits.coax EG_EDIT_MAX)
 WATCH_FENCE_CLEAR :: 0.45;   // m past a fence's end a way round it keeps
+WATCH_FENCE_WAIT :: 1.5;     // m from where their day has them, in a fence, one waits by it
 
 watch_is_guard :: (i: int) -> bool { return i >= EG_SPOTS || (i >= 0 && i < EG_SPOTS && FOLK_PATROL[i] >= 0); }
 watch_is_brave :: (i: int) -> bool { for k: 0..<3 { if WATCH_BRAVE[k] == i { return true; } } return false; }
@@ -513,6 +515,27 @@ watch_fences :: (w: [] Watch, f: [] f32, n: int) {
   w[0].fence_n = ifx m < 0 then 0 else ifx m > WATCH_FENCES then WATCH_FENCES else m;
   for k: 0..<w[0].fence_n * 5 { w[0].fences[k] = f[k]; }
 }
+// Whether (x, z) is within a body's width of a fence.
+watch_fenced :: (w: [] Watch, x: f32, z: f32) -> bool {
+  for k: 0..<w[0].fence_n { if watch_fence_gap(w, k, x, z) < f32(EG_RADIUS) { return true; } }
+  return false;
+}
+// Where one at (x, z), within a body's width of fence k, is put out of it: just past a body's width
+// off its face, on the side (px, pz) is on (where they were last frame), so no one goes through it.
+watch_fence_out :: (w: [] Watch, k: int, x: f32, z: f32, px: f32, pz: f32) -> Point {
+  f := w[0].fences[k * 5..<k * 5 + 5];
+  ex := f[2] - f[0]; ez := f[3] - f[1];
+  l2 := hi(ex * ex + ez * ez, 0.0001);
+  u := clamp(((x - f[0]) * ex + (z - f[1]) * ez) / l2, 0, 1);
+  cx := f[0] + ex * u; cz := f[1] + ez * u;
+  dx := x - cx; dz := z - cz;
+  qx := px - cx; qz := pz - cz;
+  if dx * qx + dz * qz < 0 || dx * dx + dz * dz < 0.000001 { dx = qx; dz = qz; }
+  d := sqrt(dx * dx + dz * dz);
+  if d < 0.000001 { l := sqrt(l2); dx = -ez / l; dz = ex / l; d = 1; }
+  out := f[4] + f32(EG_RADIUS) + 0.02;
+  return v3(cx + dx / d * out, 0, cz + dz / d * out);
+}
 // How far (x, z) is from fence k's face (0 inside it).
 watch_fence_gap :: (w: [] Watch, k: int, x: f32, z: f32) -> f32 {
   f := w[0].fences[k * 5..<k * 5 + 5];
@@ -524,6 +547,10 @@ watch_fence_gap :: (w: [] Watch, k: int, x: f32, z: f32) -> f32 {
 }
 // Whether the straight way from (x, z) to (gx, gz) comes within a body's width of fence k.
 watch_fence_cuts :: (w: [] Watch, k: int, x: f32, z: f32, gx: f32, gz: f32) -> bool {
+  // nowhere near the way's box: no samples (the placed things are many)
+  f := w[0].fences[k * 5..<k * 5 + 5];
+  pad := f[4] + f32(EG_RADIUS);
+  if lo(f[0], f[2]) - pad > hi(x, gx) || hi(f[0], f[2]) + pad < lo(x, gx) || lo(f[1], f[3]) - pad > hi(z, gz) || hi(f[1], f[3]) + pad < lo(z, gz) { return false; }
   d := flat_gap(v3(x, 0, z), v3(gx, 0, gz));
   steps := cast(int) (d / 0.2) + 1;
   if steps > 400 { steps = 400; }
@@ -536,6 +563,8 @@ watch_fence_cuts :: (w: [] Watch, k: int, x: f32, z: f32, gx: f32, gz: f32) -> b
 // The heading from (x, z) toward (gx, gz): straight while nothing stands between; else round the
 // nearer end of the first fence across the way (the end whose way, there and on to the goal, is
 // shorter), worked out afresh each step, so a fence that rises or falls changes the way at once.
+// Round an end means by two corners past it, the one on your side and then the one on the goal's,
+// so the way clears a thick fence's rounded end (a placed bench or stall) as well as a thin wall's.
 watch_way :: (w: [] Watch, x: f32, z: f32, gx: f32, gz: f32) -> f32 {
   tx := gx; tz := gz;
   best := -1.0f32;
@@ -545,13 +574,21 @@ watch_way :: (w: [] Watch, x: f32, z: f32, gx: f32, gz: f32) -> f32 {
     ex := f[2] - f[0]; ez := f[3] - f[1];
     l := hi(sqrt(ex * ex + ez * ez), 0.0001);
     ux := ex / l; uz := ez / l;
+    nx := -uz; nz := ux;
     out := f[4] + f32(EG_RADIUS) + f32(WATCH_FENCE_CLEAR);
+    sa := ifx (x - f[0]) * nx + (z - f[1]) * nz >= 0 then out else -out;
+    sg := ifx (gx - f[0]) * nx + (gz - f[1]) * nz >= 0 then out else -out;
     for end: 0..<2 {
-      px := ifx end == 0 then f[0] - ux * out else f[2] + ux * out;
-      pz := ifx end == 0 then f[1] - uz * out else f[3] + uz * out;
-      if !watch_open(w, px, pz) { continue; }
-      way := flat_gap(v3(x, 0, z), v3(px, 0, pz)) + flat_gap(v3(px, 0, pz), v3(gx, 0, gz));
-      if best < 0 || way < best { best = way; tx = px; tz = pz; }
+      ox := ifx end == 0 then f[0] - ux * out else f[2] + ux * out;
+      oz := ifx end == 0 then f[1] - uz * out else f[3] + uz * out;
+      ax := ox + nx * sa; az := oz + nz * sa;
+      bx := ox + nx * sg; bz := oz + nz * sg;
+      if !watch_open(w, ax, az) || !watch_open(w, bx, bz) { continue; }
+      way := flat_gap(v3(x, 0, z), v3(ax, 0, az)) + flat_gap(v3(ax, 0, az), v3(bx, 0, bz)) + flat_gap(v3(bx, 0, bz), v3(gx, 0, gz));
+      if best >= 0 && way >= best { continue; }
+      best = way;
+      // the goal's corner once the way there is clear of this fence, else your side's first
+      if watch_fence_cuts(w, k, x, z, bx, bz) { tx = ax; tz = az; } else { tx = bx; tz = bz; }
     }
   }
   return atan2(tx - x, tz - z);
@@ -1619,10 +1656,17 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
   // WM_BACK: walk to where their day has them now, then go on with it
   d := flat_gap(v3(a[0].x, 0, a[0].z), v3(a[0].home_x, 0, a[0].home_z));
   // home, or long enough on the way (unless a fence stands where their day has them)
-  if d < 0.35 || (a[0].t > 120 && watch_open(w, a[0].home_x, a[0].home_z)) {
+  fenced := watch_fenced(w, a[0].home_x, a[0].home_z);
+  if (d < 0.35 && !fenced) || (a[0].t > 120 && watch_open(w, a[0].home_x, a[0].home_z)) {
     if watch_is_rein(i) { a[0].homed = false; }   // out of their gate
     a[0].mode = WM_CALM; a[0].t = 0;
     a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw; a[0].clip = -1;
+    return;
+  }
+  // their day has them in a fence (a thing placed on their spot): they wait by it, till it moves on or goes
+  if fenced && d < f32(WATCH_FENCE_WAIT) {
+    a[0].speed = 0; a[0].clip = PEOPLE_IDLE;
+    a[0].yaw = watch_turn(a[0].yaw, a[0].home_yaw, 2 * dt);
     return;
   }
   hw := watch_bridge_way(a[0].x, a[0].z, a[0].home_x, a[0].home_z);
@@ -1992,6 +2036,50 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   watch_harm(w3[..], g, 0, you);
   watch_throw(w3[..], g, v3(9, 3, 0), heights[..]);
   for f: 0..<60 * 8 { watch_tick(w3[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); #assert w3[0].actors[g].body.x < gx + 1.5; }
+}
+
+#test "a thing placed in the way (a fence): one walking back goes round it, never through; one whose day is in it waits by it" #steps 400000000 {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  // a bench (edits.coax eg_edit_fences: 1.39 m each way along, 0.27 m thick) on the commons between
+  // a guard and where their day has them
+  hx := 6.0f32; hz := -12.0f32;
+  bench := [5] f32.[hx - 1.39, hz + 1.5, hx + 1.39, hz + 1.5, 0.27];
+  watch_fences(w[..], bench[..], 1);
+  #assert watch_fenced(w[..], hx, hz + 1.5) && !watch_fenced(w[..], hx, hz) && !watch_fenced(w[..], hx, hz + 3);
+  // put out of it: on the side they came from, clear of it
+  o := watch_fence_out(w[..], 0, hx + 0.3, hz + 1.6, hx + 0.3, hz + 2.4);
+  #assert o.z > hz + 1.5 && watch_fence_gap(w[..], 0, o.x, o.z) >= f32(EG_RADIUS);
+  o = watch_fence_out(w[..], 0, hx + 0.3, hz + 1.4, hx + 0.3, hz + 0.6);
+  #assert o.z < hz + 1.5 && watch_fence_gap(w[..], 0, o.x, o.z) >= f32(EG_RADIUS);
+  g := EG_SPOTS;   // the first of the new watch
+  watch_home(w[..], g, hx, hz, 0, false);
+  a := w[0].actors[g..<g + 1];
+  a[0].mode = WM_BACK; a[0].t = 0; a[0].x = hx; a[0].z = hz + 3;
+  #assert watch_open(w[..], a[0].x, a[0].z);
+  home := false;
+  for f: 0..<60 * 30 {
+    watch_tick(w[..], 1.0 / 60.0, v3(-60, 0, 60), 0.5, nob[..], 0, heights[..]);
+    #assert watch_fence_gap(w[..], 0, a[0].x, a[0].z) > f32(EG_RADIUS) - 0.05;
+    if a[0].mode == WM_CALM { home = true; break; }
+  }
+  #assert home && abs(a[0].x - hx) < 0.01 && abs(a[0].z - hz) < 0.01;
+  // the bench placed on their spot: put out of it, they wait by it, still, and never step in
+  stall := [5] f32.[hx - 0.9, hz, hx + 0.9, hz, 0.47];
+  watch_fences(w[..], stall[..], 1);
+  p := watch_fence_out(w[..], 0, hx, hz, hx, hz + 1);
+  a[0].mode = WM_BACK; a[0].t = 0; a[0].x = p.x; a[0].z = p.z;
+  for f: 0..<60 * 10 {
+    watch_tick(w[..], 1.0 / 60.0, v3(-60, 0, 60), 0.5, nob[..], 0, heights[..]);
+    #assert a[0].mode == WM_BACK && abs(a[0].x - p.x) < 0.001 && abs(a[0].z - p.z) < 0.001;
+  }
+  // taken away: back to their day
+  watch_fences(w[..], stall[..], 0);
+  for f: 0..<60 * 5 { watch_tick(w[..], 1.0 / 60.0, v3(-60, 0, 60), 0.5, nob[..], 0, heights[..]); }
+  #assert a[0].mode == WM_CALM && abs(a[0].x - hx) < 0.01;
 }
 
 #test "you die: you topple and lie there through YOU DIED; a blast that kills you throws your body" #steps 63000000 {

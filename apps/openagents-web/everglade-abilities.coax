@@ -545,9 +545,10 @@ ab_after_step :: (s: [] Everglade) {
 }
 // The townsfolk stop at the panels: each standing pair is a fence on the watch's ground
 // (verse/everglade/watch.coax watch_fences: no one stands in one, and the chase and the walk back go
-// round its nearer end). One on their day whose way runs into a fence steps off their day where they
-// were and walks back to it round the fence (WM_BACK); one off their day caught in a panel as it rose
-// is put out on the side they were on.
+// round its nearer end), and so is each thing an admin placed (verse/everglade/edits.coax
+// eg_edit_fences: the box you can't walk through, as soon as it stands). One on their day whose way
+// runs into a fence steps off their day where they were and walks back to it round the fence (WM_BACK);
+// one caught in a fence as it rose or was placed is put out on the side they were on.
 ab_stone_folk :: (s: [] Everglade) {
   a := ab_of(s);
   if !watch_on(s) { return; }
@@ -562,6 +563,8 @@ ab_stone_folk :: (s: [] Everglade) {
     n += 1;
   }
   n = wd_fences(s, f[..], n);   // Wall of Fire's (everglade-wild.coax)
+  spell_n := n;
+  n = eg_edit_fences(s[0].ev.edits, f[..], n);   // the placed things
   watch_fences(w, f[..], n);
   for i: 0..<WATCH_ACTORS {
     if !watch_here(w, i) { continue; }
@@ -569,17 +572,14 @@ ab_stone_folk :: (s: [] Everglade) {
     act := w[0].actors[i..<i + 1];
     for k: 0..<n {
       if watch_fence_gap(w, k, pl.x, pl.z) >= f32(EG_RADIUS) - 0.02 || act[0].mode == WM_DEAD || ab_tk_holds(a, i) || a[0].bt_held[i] { continue; }
+      if k >= spell_n && act[0].mode == WM_CALM && act[0].home_in { continue; }   // at home indoors: their room's things are theirs
       if act[0].mode == WM_CALM && watch_fence_gap(w, k, a[0].st_px[i], a[0].st_pz[i]) >= f32(EG_RADIUS) - 0.02 {
         act[0].mode = WM_BACK; act[0].t = 0; act[0].swing = -1;
         act[0].x = a[0].st_px[i]; act[0].z = a[0].st_pz[i];
       } else {
         if act[0].mode == WM_CALM { act[0].mode = WM_BACK; act[0].t = 0; act[0].swing = -1; }
-        st := AbWall.{live = true, ax = f[k * 5], az = f[k * 5 + 1], bx = f[k * 5 + 2], bz = f[k * 5 + 3], base = 0, t = 1, seed = 0};
-        o := ab_stone_off(st, pl.x, pl.z);
-        was := ab_stone_off(st, a[0].st_px[i], a[0].st_pz[i]);
-        side := ifx was.off >= 0 then 1.0f32 else -1.0f32;
-        push := side * (f32(AB_ST_THICK) * 0.5 + f32(EG_RADIUS) + 0.02) - o.off;
-        act[0].x = pl.x + push * o.nx; act[0].z = pl.z + push * o.nz;
+        o := watch_fence_out(w, k, pl.x, pl.z, a[0].st_px[i], a[0].st_pz[i]);
+        act[0].x = o.x; act[0].z = o.z;
       }
       if i < EG_SPOTS { s[0].folk[i].x = act[0].x; s[0].folk[i].z = act[0].z; }
       pl.x = act[0].x; pl.z = act[0].z;
