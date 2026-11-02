@@ -11,7 +11,9 @@
 // The server is the authority on what a document is (migrations 0093, 0109); this reader only
 // refuses what it can't hold. What it reads becomes the model's own: moves and shapes as entity overrides, the setup fields as
 // "set:" slots, the tools as "tool:" slots and each placed thing as a "place:N" slot (THING X Z YAW
-// with the document's numbers as written). Rows and lore are the server's: not in this document.
+// with the document's numbers as written). Rows, and lore and quests (in the document since
+// migration 0111), are not read into the model yet: the server keeps them, and its undo log names
+// them as this model's slots do (lore:WHO, quest:GIVER).
 //   coax/bin/coax test aethyr/forge/doc.coax --library
 
 #module "aethyr.forge.doc";

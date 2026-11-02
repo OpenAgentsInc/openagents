@@ -29,7 +29,7 @@ speech it is "Aethyr Forge", and that is fine.
 | The catalogue | `verse.builder_catalogue()` | 20 features: land, buildings, water, trees, plants, lanterns, flocks, props, characters, houses, herds, mist, dwellings, village, enclosure, centre, layout, path, tools; 4 cameras, 3 styles, 6 grounds, 4 times, 4 palettes. |
 | The made realm | `/realms/<slug>`, `myrealm.coax` (3,858 lines + shapes, site, things) | Live. Reads its spec once a second for its owner, so any edit shows within a second (4a0ba95164). |
 | Editing in the realm | `verse/edit/edit.coax`: EDIT, FEATURES, SETTINGS, cards, lore, quests | Live for owners and admins. |
-| Typed edits | `aethyr/forge/edit.coax` (one file, 15 KB) | Moves with their inverses, undo/redo, saves fenced by revision (409 on a stale one). The only code in `aethyr/forge/` today. |
+| Typed edits | `aethyr/forge/edit.coax`; the server's log, `coax/web/api/migrations/0111_realm_edit_log.sql` | Every revision path as one invertible edit, undo/redo, saves fenced by revision (409 on a stale one). The server keeps the same per-slot log: undo and redo apply one step's inverses, and lore and quests are in the document. |
 | The voice | migrations 0104-0106 | Switch a feature, open a panel, ask for a thing, ask about the screen (the frame goes to Gemini). |
 | The CLI and MCP | `openagents realm ...` (35 verbs), `openagents mcp` | `new`, `revise`, `switch`, `move`, `place`, `ask`, `undo`, `publish`, `fork`, `shot`, `play`/`look`/`go`/`say`, `apply FILE.jsonl`. Each verb is an MCP tool. |
 | Your own Coder | "Your computer" panel, #12640-#12642 | In progress: the browser pairs with the owner's Coder over NIP-HOST, sends a job for the realm, streams its steps. |

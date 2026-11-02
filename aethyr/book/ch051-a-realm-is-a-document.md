@@ -94,6 +94,16 @@ A made realm is a document with an identity. `GET
   holds each entity's turn, size and removal, and is in the document only
   when it has an entry, so a document written before it keeps its bytes and
   hash. The spec says `shaped ENTITY YAW SCALE 0|1` and `shapes 1`.
+- `lore` `{WHO: TEXT}` and `quests` `{GIVER: {ask, steps, reward}}`
+  (migration
+  [0111_realm_edit_log.sql](../../coax/web/api/migrations/0111_realm_edit_log.sql))
+  follow the same rule: in the document only when it has some. They used to
+  be rows beside the document, so a publish, a fork and an undo missed them;
+  lore written before moved into each realm's document as one new revision,
+  and every older revision kept its bytes and hash. `GET .../panes` reads
+  them, a visitor's from the revision published. `aethyr/forge/doc.coax`
+  doesn't read them into the model yet; they are slots there (`lore:WHO`,
+  `quest:GIVER`), and the server's undo log names them the same way.
 - [aethyr/forge/doc.coax](../forge/doc.coax) reads a document into the edit
   model and moves an older version forward (version 1 without `shaped` is the
   same realm with none). It refuses a newer version, or anything out of

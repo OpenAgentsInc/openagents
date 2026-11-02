@@ -64,9 +64,14 @@ refused when the fork is made, not ignored when it plays.
   with `"forked_from": {"slug": ..., "rev": N}`; it starts at its own
   revision 1. Its page says "Forked from NAME at revision N." and its spec
   carries `from SLUG REV|NAME`.
+- The copy is the whole document: moves, turns, sizes and removals
+  (`0109_realm_shapes.sql`), and lore and quests (`0111_realm_edit_log.sql`),
+  each of the revision forked.
 - Saving the fork never touches the original: the API test and the journey
   check that the original's document hash and revision are the same after
-  the fork is edited and saved.
+  the fork is edited and saved. `coax/web/api/tests/realm_cli_api.coax` does
+  the same with the built CLI against a local API: a fork's rotate leaves the
+  parent's revision and turn as they were.
 
 Only Everglade has rules a fork switches, its rules are honoured by checks scattered
 through its module, and nothing checks that a rule touches only what it says.
