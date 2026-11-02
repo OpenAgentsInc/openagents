@@ -1,0 +1,14 @@
+manifest: 116 rows match the config; 96085 tensors, 510286023000 bytes
+routed experts 288777830400, Engram 202758032400, draft 7932874632, dense 5782123968, embeddings 2647664640, shared 1416960000, vision 970536960
+plan: GPU streamed with 387 experts; RAM cache 167 slots per layer, 6680 experts; disk 8293 experts
+a token reads 9960433728 bytes on the GPU, 1962316800 over PCIe, 2436151680 from disk: 470260 us, 2126 milli-tokens/s modeled
+verdict: disk: the text checkpoint does not fit on the free disk
+synthetic stack, 7 tokens x 40 layers: routes 560/560, selections 840/840, logits 448/448 identical to the oracle
+step 0: token 3 -> top logit 10 (3.1599278)
+step 1: token 17 -> top logit 2 (3.1962523)
+step 2: token 42 -> top logit 56 (2.6274624)
+step 3: token 5 -> top logit 29 (3.2233024)
+step 4: token 61 -> top logit 28 (3.7668037)
+step 5: token 17 -> top logit 33 (2.8405933)
+step 6: token 8 -> top logit 3 (3.0961647)
+layer 24 at step 6: experts 7 and 4, compressed rows 3 4 5

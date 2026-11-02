@@ -3359,6 +3359,28 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-flash.coax",
+      "chapter": "psionic/book/ch100-execute-deepseek-v41-flash-on-one-machine.md",
+      "stdout": "psionic/fixtures/deepseek-flash/deepseek-flash.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 40000000
+    },
+    {
+      "source": "psionic/examples/deepseek-flash-refuse.coax",
+      "chapter": "psionic/book/ch100-execute-deepseek-v41-flash-on-one-machine.md",
+      "stdout": "psionic/fixtures/deepseek-flash/deepseek-flash-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 40000000
     }
   ],
   "libraries": [

@@ -1,0 +1,8 @@
+NaN scale in layer 7: piece at step 0, layer 7, stage experts, piece status 4
+token 64 of a 64-token vocabulary: token at step 4
+nine tokens in an 8-position cache: shape
+a 1,000-byte arena: capacity
+wkv rows 513 instead of 512: shape at manifest row 21
+this host: disk: the text checkpoint does not fit on the free disk
+an 8 GB GPU: gpu: the never-streamed weights, cache and two expert slots exceed the GPU
+16 GB of RAM and 1 TB free: ok

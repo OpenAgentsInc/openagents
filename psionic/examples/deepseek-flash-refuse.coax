@@ -1,0 +1,29 @@
+// Chapter 100: inputs the composed stack, the manifest check and the plan
+// refuse, each with its typed reason and the place it was found.
+#import "Basic";
+#load "../lib/deepseek/flash-plan.coax";
+#load "../lib/deepseek/flash.coax";
+
+STAGES :: [15]string.["none","embed","engram","hyper","norm","project","rotate","cache","pool","index","select","attend","route","experts","head"];
+RUNS :: [5]string.["ok","shape","capacity","token","piece"];
+CHECKS :: [10]string.["ok","capacity","name","dtype","shape","layers","count","bytes","extra","missing"];
+// book:begin refuse
+main :: () {
+    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;logits:[448]f32;arena:[1968000]u8;trace:=DfTrace.{routes=routes[..],picks=picks[..],logits=logits[..]};
+    stages:=STAGES;runs:=RUNS;checks:=CHECKS;
+    // A 0xFF UE8M0 scale (NaN) in layer 7's shared expert.
+    r:=df_forward(DfTiny.{poison_layer=7},tokens[..],trace,arena[..]);
+    print("NaN scale in layer 7: % at step %, layer %, stage %, piece status %\n",runs[cast(int)r.status],r.step,r.layer,stages[cast(int)r.stage],r.code);
+    bad:=tokens;bad[4]=64;r=df_forward(DfTiny.{},bad[..],trace,arena[..]);print("token 64 of a 64-token vocabulary: % at step %\n",runs[cast(int)r.status],r.step);
+    nine:=[9]int.[1,2,3,4,5,6,7,8,9];r=df_forward(DfTiny.{},nine[..],trace,arena[..]);print("nine tokens in an 8-position cache: %\n",runs[cast(int)r.status]);
+    r=df_forward(DfTiny.{},tokens[..],trace,arena[0..<1000]);print("a 1,000-byte arena: %\n",runs[cast(int)r.status]);
+    // One header row whose shape disagrees with the configuration.
+    rows:=DV_MANIFEST;at:=dv_find(rows[..],"layers.#.attn.wkv.weight",dv_span(40));
+    if at>=0 {rows[at].shape[0]+=1;}c:=dv_check_manifest(dv_flash_config(),rows[..]);
+    print("wkv rows 513 instead of 512: % at manifest row %\n",checks[cast(int)c.status],c.bad);
+    rows=DV_MANIFEST;b:=dv_bytes(rows[..]);h:=dv_this_host();
+    print("this host: %\n",dv_verdict_name(dv_plan(b,h,4096).status));
+    h.gpu=8000000000;print("an 8 GB GPU: %\n",dv_verdict_name(dv_plan(b,h,4096).status));
+    h=dv_this_host();h.ram=16000000000;h.disk_free=1000000000000;print("16 GB of RAM and 1 TB free: %\n",dv_verdict_name(dv_plan(b,h,4096).status));
+}
+// book:end refuse

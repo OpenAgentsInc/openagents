@@ -1,0 +1,252 @@
+// Chapter 100: the pinned DeepSeek V4.1 Flash checkpoint, checked against its
+// configuration from the safetensors headers alone. dv_flash_config holds the
+// text, draft and vision fields of the pinned config.json; dv_expected derives
+// every tensor kind's name, dtype, shape, layer set and expert count from them;
+// dv_check_manifest admits a manifest only when its rows are exactly those, and
+// dv_bytes splits the checkpoint's bytes into the parts a residency plan places.
+// Profile deepseek-v41-manifest-v1: header facts only, no payload read.
+#load "../../fixtures/deepseek/v41-manifest.coax";
+#authority;
+
+DvStatus :: enum u8 {ok;capacity;name;dtype;shape;layers;count;bytes;extra;missing;}
+// Dtype codes as the fixture writes them.
+DV_F32 :: 0;DV_BF16 :: 1;DV_F8 :: 2;DV_E8M0 :: 3;DV_I8 :: 4;
+DV_EXPECTED :: 128;
+DvConfig :: struct {
+    layers:int;drafts:int;width:int;vocab:int;heads:int;kv_heads:int;head:int;rope:int;
+    q_lora:int;o_lora:int;o_groups:int;experts:int;shared:int;k:int;moe:int;window:int;
+    ratios:[43]int;kv_sources:[4]int;index_sources:[8]int;candidate_source:int;candidate_blocks:int;candidate_block:int;
+    index_heads:int;index_dim:int;index_topk:int;hc:int;sinkhorn:int;
+    engram_layers:[2]int;engram_rows:[2]int;engram_ngram:int;engram_heads:int;engram_dim:int;engram_vocab:int;
+    draft_experts:int;draft_k:int;draft_targets:int;markov:int;block:int;
+    vision_layers:int;vision_width:int;vision_mlp:int;patch:int;downsample:int;
+}
+// A check's verdict: the first manifest row (or, for missing, expected row)
+// that fails, the manifest's row count and how many rows the config expects.
+DvCheck :: struct {status:DvStatus;bad:int=-1;rows:int;expected:int;}
+DvTotals :: struct {tensors:int;bytes:int;dtype:[5]int;}
+// Bytes by what a residency plan does with them.
+DvBytes :: struct {routed:int;shared:int;engram:int;dense:int;embed:int;draft:int;vision:int;total:int;}
+
+// book:begin config
+dv_flash_config :: ()->DvConfig #export_c {
+    c:=DvConfig.{layers=40,drafts=3,width=5120,vocab=129280,heads=64,kv_heads=1,head=512,rope=64,
+        q_lora=1280,o_lora=1024,o_groups=8,experts=384,shared=1,k=6,moe=2304,window=128,
+        candidate_source=20,candidate_blocks=2048,candidate_block=8,index_heads=32,index_dim=128,index_topk=512,hc=4,sinkhorn=20,
+        engram_ngram=4,engram_heads=8,engram_dim=256,engram_vocab=99092,draft_experts=128,draft_k=3,draft_targets=3,markov=256,block=32,
+        vision_layers=32,vision_width=1024,vision_mlp=2816,patch=14,downsample=3};
+    for l:2..<40 {c.ratios[l]=ifx l<20 then 2 else 1;}
+    c.kv_sources=[4]int.[2,8,14,20];c.index_sources=[8]int.[2,8,14,20,24,28,32,36];
+    c.engram_layers=[2]int.[1,14];c.engram_rows=[2]int.[384006168,384016682];return c;
+}
+// book:end config
+dv_bit :: (l:int)->u64 {return u64(1)<<u64(l);}
+dv_span :: (n:int)->u64 {return dv_bit(n)-1;}
+dv_popcount :: (m:u64)->int {n:=0;for i:0..<64 {if ((m>>u64(i))&1)==1 {n+=1;}}return n;}
+dv_size :: (dtype:int)->int {sizes:=[5]int.[4,2,1,1,1];return sizes[dtype];}
+dv_row :: (name:string,dtype:int,a:int,b:int,layers:u64,count:int)->DvRow {
+    r:=DvRow.{name=name,dtype=dtype,rank=ifx b==0 then 1 else 2,layers=layers,count=count};r.shape[0]=a;r.shape[1]=b;
+    tensors:=dv_popcount(layers);if tensors==0 {tensors=1;}
+    r.bytes=a*(ifx b==0 then 1 else b)*dv_size(dtype)*count*tensors;return r;
+}
+// An FP8 weight and its UE8M0 scales, one per block x block tile.
+dv_fp8 :: (out:[]DvRow,n:int,weight:string,scale:string,rows:int,cols:int,layers:u64,block:int)->int {
+    out[n]=dv_row(weight,DV_F8,rows,cols,layers,1);out[n+1]=dv_row(scale,DV_E8M0,rows/block,cols/block,layers,1);return n+2;
+}
+dv_attention :: (c:DvConfig,out:[]DvRow,n:int,mtp:bool,m:u64)->int {
+    q:=c.heads*c.head;o:=c.o_groups*c.o_lora;names:[17]string;
+    if mtp {names=[17]string.["mtp.#.attn.attn_sink","mtp.#.attn.kv_norm.weight","mtp.#.attn.q_norm.weight","mtp.#.attn_norm.weight","mtp.#.ffn_norm.weight",
+        "mtp.#.attn.wkv.weight","mtp.#.attn.wkv.scale","mtp.#.attn.wo_a.weight","mtp.#.attn.wo_a.scale","mtp.#.attn.wo_b.weight","mtp.#.attn.wo_b.scale",
+        "mtp.#.attn.wq_a.weight","mtp.#.attn.wq_a.scale","mtp.#.attn.wq_b.weight","mtp.#.attn.wq_b.scale","mtp.#.ffn.gate.bias","mtp.#.ffn.gate.bias_vl"];}
+    else {names=[17]string.["layers.#.attn.attn_sink","layers.#.attn.kv_norm.weight","layers.#.attn.q_norm.weight","layers.#.attn_norm.weight","layers.#.ffn_norm.weight",
+        "layers.#.attn.wkv.weight","layers.#.attn.wkv.scale","layers.#.attn.wo_a.weight","layers.#.attn.wo_a.scale","layers.#.attn.wo_b.weight","layers.#.attn.wo_b.scale",
+        "layers.#.attn.wq_a.weight","layers.#.attn.wq_a.scale","layers.#.attn.wq_b.weight","layers.#.attn.wq_b.scale","layers.#.ffn.gate.bias","layers.#.ffn.gate.bias_vl"];}
+    experts:=ifx mtp then c.draft_experts else c.experts;
+    out[n]=dv_row(names[0],DV_F32,c.heads,0,m,1);out[n+1]=dv_row(names[1],DV_BF16,c.kv_heads*c.head,0,m,1);
+    out[n+2]=dv_row(names[2],DV_BF16,c.q_lora,0,m,1);out[n+3]=dv_row(names[3],DV_BF16,c.width,0,m,1);out[n+4]=dv_row(names[4],DV_BF16,c.width,0,m,1);
+    at:=dv_fp8(out,n+5,names[5],names[6],c.kv_heads*c.head,c.width,m,c.block);
+    at=dv_fp8(out,at,names[7],names[8],o,q/c.o_groups,m,c.block);
+    at=dv_fp8(out,at,names[9],names[10],c.width,o,m,c.block);
+    at=dv_fp8(out,at,names[11],names[12],c.q_lora,c.width,m,c.block);
+    at=dv_fp8(out,at,names[13],names[14],q,c.q_lora,m,c.block);
+    out[at]=dv_row(names[15],DV_F32,experts,0,m,1);out[at+1]=dv_row(names[16],DV_F32,experts,0,m,1);return at+2;
+}
+dv_ffn :: (c:DvConfig,out:[]DvRow,n:int,mtp:bool,m:u64)->int {
+    names:[19]string;
+    if !mtp {names=[19]string.["layers.#.ffn.gate.weight","layers.#.ffn.experts.*.w1.weight","layers.#.ffn.experts.*.w1.scale","layers.#.ffn.experts.*.w2.weight","layers.#.ffn.experts.*.w2.scale",
+        "layers.#.ffn.experts.*.w3.weight","layers.#.ffn.experts.*.w3.scale","layers.#.ffn.shared_experts.w1.weight","layers.#.ffn.shared_experts.w1.scale",
+        "layers.#.ffn.shared_experts.w2.weight","layers.#.ffn.shared_experts.w2.scale","layers.#.ffn.shared_experts.w3.weight","layers.#.ffn.shared_experts.w3.scale",
+        "layers.#.hc_attn_base","layers.#.hc_attn_fn","layers.#.hc_attn_scale","layers.#.hc_ffn_base","layers.#.hc_ffn_fn","layers.#.hc_ffn_scale"];}
+    else {names=[19]string.["mtp.#.ffn.gate.weight","mtp.#.ffn.experts.*.w1.weight","mtp.#.ffn.experts.*.w1.scale","mtp.#.ffn.experts.*.w2.weight","mtp.#.ffn.experts.*.w2.scale",
+        "mtp.#.ffn.experts.*.w3.weight","mtp.#.ffn.experts.*.w3.scale","mtp.#.ffn.shared_experts.w1.weight","mtp.#.ffn.shared_experts.w1.scale",
+        "mtp.#.ffn.shared_experts.w2.weight","mtp.#.ffn.shared_experts.w2.scale","mtp.#.ffn.shared_experts.w3.weight","mtp.#.ffn.shared_experts.w3.scale",
+        "mtp.#.hc_attn_base","mtp.#.hc_attn_fn","mtp.#.hc_attn_scale","mtp.#.hc_ffn_base","mtp.#.hc_ffn_fn","mtp.#.hc_ffn_scale"];}
+    e:=ifx mtp then c.draft_experts else c.experts;b:=c.block;mix:=(2+c.hc)*c.hc;
+    out[n]=dv_row(names[0],DV_BF16,e,c.width,m,1);
+    // Routed experts: FP4 E2M1 packed two to a byte along K, one UE8M0 scale per row and 32 K.
+    out[n+1]=dv_row(names[1],DV_I8,c.moe,c.width/2,m,e);out[n+2]=dv_row(names[2],DV_E8M0,c.moe,c.width/b,m,e);
+    out[n+3]=dv_row(names[3],DV_I8,c.width,c.moe/2,m,e);out[n+4]=dv_row(names[4],DV_E8M0,c.width,c.moe/b,m,e);
+    out[n+5]=dv_row(names[5],DV_I8,c.moe,c.width/2,m,e);out[n+6]=dv_row(names[6],DV_E8M0,c.moe,c.width/b,m,e);
+    at:=dv_fp8(out,n+7,names[7],names[8],c.shared*c.moe,c.width,m,b);
+    at=dv_fp8(out,at,names[9],names[10],c.width,c.shared*c.moe,m,b);
+    at=dv_fp8(out,at,names[11],names[12],c.shared*c.moe,c.width,m,b);
+    out[at]=dv_row(names[13],DV_F32,mix,0,m,1);out[at+1]=dv_row(names[14],DV_F32,mix,c.hc*c.width,m,1);out[at+2]=dv_row(names[15],DV_F32,3,0,m,1);
+    out[at+3]=dv_row(names[16],DV_F32,mix,0,m,1);out[at+4]=dv_row(names[17],DV_F32,mix,c.hc*c.width,m,1);out[at+5]=dv_row(names[18],DV_F32,3,0,m,1);return at+6;
+}
+// book:begin expected
+dv_expected :: (c:DvConfig,out:[]DvRow)->int #export_c {
+    if out.count<DV_EXPECTED {return -1;}
+    all:=dv_span(c.layers);kv:u64;gated:u64;index:u64;engram:u64;
+    for l:c.kv_sources {kv|=dv_bit(l);if c.ratios[l]==2 {gated|=dv_bit(l);}}
+    for l:c.index_sources {index|=dv_bit(l);}
+    for l:c.engram_layers {engram|=dv_bit(l);}
+    n:=dv_attention(c,out,0,false,all);n=dv_ffn(c,out,n,false,all);
+    out[n]=dv_row("layers.#.attn.compressor.norm.weight",DV_BF16,c.head,0,kv,1);
+    out[n+1]=dv_row("layers.#.attn.compressor.wkv.weight",DV_BF16,c.head,c.width,kv,1);
+    out[n+2]=dv_row("layers.#.attn.compressor.wgate.weight",DV_BF16,c.head,c.width,gated,1);
+    out[n+3]=dv_row("layers.#.attn.indexer.k_norm.weight",DV_BF16,c.index_dim,0,kv,1);
+    out[n+4]=dv_row("layers.#.attn.indexer.wk.weight",DV_BF16,c.index_dim,c.head,kv,1);
+    out[n+5]=dv_row("layers.#.attn.indexer.weights_proj.weight",DV_BF16,c.index_heads,c.width,index,1);
+    n=dv_fp8(out,n+6,"layers.#.attn.indexer.wq_b.weight","layers.#.attn.indexer.wq_b.scale",c.index_heads*c.index_dim,c.q_lora,index,c.block);
+    // Engram: one FP8 table row of head width per hashed id, separate per layer.
+    for i:0..<2 {m:=dv_bit(c.engram_layers[i]);out[n]=dv_row("layers.#.engram.embed.weight",DV_F8,c.engram_rows[i],c.engram_dim,m,1);
+        out[n+1]=dv_row("layers.#.engram.embed.scale",DV_E8M0,c.engram_rows[i],c.engram_dim/c.block,m,1);n+=2;}
+    out[n]=dv_row("layers.#.engram.q_weight",DV_BF16,c.hc,c.width,engram,1);out[n+1]=dv_row("layers.#.engram.k_weight",DV_BF16,c.hc,c.width,engram,1);
+    n=dv_fp8(out,n+2,"layers.#.engram.wkv.weight","layers.#.engram.wkv.scale",(c.hc+1)*c.width,(c.engram_ngram-1)*c.engram_heads*c.engram_dim,engram,c.block);
+    drafts:=dv_span(c.drafts);last:=dv_bit(c.drafts-1);
+    n=dv_attention(c,out,n,true,drafts);n=dv_ffn(c,out,n,true,drafts);
+    out[n]=dv_row("mtp.#.main_norm.weight",DV_BF16,c.width,0,1,1);
+    n=dv_fp8(out,n+1,"mtp.#.main_proj.weight","mtp.#.main_proj.scale",c.width,c.draft_targets*c.width,1,c.block);
+    out[n]=dv_row("mtp.#.confidence_head.proj.weight",DV_BF16,1,c.width+c.markov,last,1);
+    out[n+1]=dv_row("mtp.#.markov_head.embed.weight",DV_BF16,c.vocab,c.markov,last,1);
+    out[n+2]=dv_row("mtp.#.markov_head.head.weight",DV_BF16,c.vocab,c.markov,last,1);
+    out[n+3]=dv_row("mtp.#.norm.weight",DV_BF16,c.width,0,last,1);
+    out[n+4]=dv_row("embed.weight",DV_BF16,c.vocab,c.width,0,1);out[n+5]=dv_row("head.weight",DV_BF16,c.vocab,c.width,0,1);
+    out[n+6]=dv_row("norm.weight",DV_BF16,c.width,0,0,1);
+    for i:0..<3 {names:=[3]string.["image_start","image_end","image_newline"];out[n+7+i]=dv_row(names[i],DV_BF16,c.width,0,0,1);}
+    v:=c.vision_width;merged:=v*c.downsample*c.downsample;blocks:=dv_span(c.vision_layers);n+=10;
+    out[n]=dv_row("aligner.w1.weight",DV_BF16,c.width,merged,0,1);out[n+1]=dv_row("aligner.w1.bias",DV_BF16,c.width,0,0,1);
+    out[n+2]=dv_row("aligner.w2.weight",DV_BF16,c.width,c.width,0,1);out[n+3]=dv_row("aligner.w2.bias",DV_BF16,c.width,0,0,1);
+    out[n+4]=dv_row("vision.patch_embed.proj.weight",DV_BF16,v,3*c.patch*c.patch,0,1);out[n+5]=dv_row("vision.patch_embed.proj.bias",DV_BF16,v,0,0,1);
+    out[n+6]=dv_row("vision.norm.weight",DV_BF16,v,0,0,1);
+    out[n+7]=dv_row("vision.blocks.#.attn.wqkv.weight",DV_BF16,3*v,v,blocks,1);out[n+8]=dv_row("vision.blocks.#.attn.wqkv.bias",DV_BF16,3*v,0,blocks,1);
+    out[n+9]=dv_row("vision.blocks.#.attn.wo.weight",DV_BF16,v,v,blocks,1);out[n+10]=dv_row("vision.blocks.#.attn.wo.bias",DV_BF16,v,0,blocks,1);
+    out[n+11]=dv_row("vision.blocks.#.mlp.w1.weight",DV_BF16,2*c.vision_mlp,v,blocks,1);out[n+12]=dv_row("vision.blocks.#.mlp.w2.weight",DV_BF16,v,c.vision_mlp,blocks,1);
+    out[n+13]=dv_row("vision.blocks.#.norm1.weight",DV_BF16,v,0,blocks,1);out[n+14]=dv_row("vision.blocks.#.norm2.weight",DV_BF16,v,0,blocks,1);
+    return n+15;
+}
+// book:end expected
+dv_shape_equal :: (a:DvRow,b:DvRow)->bool {
+    if a.rank!=b.rank {return false;}for i:0..<4 {if a.shape[i]!=b.shape[i] {return false;}}return true;
+}
+// The first field in which a manifest row differs from the expected row.
+dv_differ :: (a:DvRow,b:DvRow)->DvStatus {
+    if a.name!=b.name {return DvStatus.name;}if a.dtype!=b.dtype {return DvStatus.dtype;}if !dv_shape_equal(a,b) {return DvStatus.shape;}
+    if a.layers!=b.layers {return DvStatus.layers;}if a.count!=b.count {return DvStatus.count;}if a.bytes!=b.bytes {return DvStatus.bytes;}return DvStatus.ok;
+}
+// book:begin check
+dv_check_manifest :: (c:DvConfig,rows:[]DvRow)->DvCheck #export_c {
+    expected:[DV_EXPECTED]DvRow;used:[DV_EXPECTED]bool;n:=dv_expected(c,expected[..]);
+    r:=DvCheck.{rows=rows.count,expected=n};
+    for i:0..<rows.count {match:=-1;near:=-1;
+        for j:0..<n {if dv_differ(rows[i],expected[j])==DvStatus.ok && !used[j] {match=j;}
+            if rows[i].name==expected[j].name && (near==-1 || rows[i].layers==expected[j].layers) {near=j;}}
+        if match==-1 {r.bad=i;if near!=-1 {r.status=dv_differ(rows[i],expected[near]);}if r.status==DvStatus.ok {r.status=DvStatus.extra;}return r;}
+        used[match]=true;
+    }
+    for j:0..<n {if !used[j] {r.status=DvStatus.missing;r.bad=j;return r;}}
+    return r;
+}
+// book:end check
+dv_totals :: (rows:[]DvRow)->DvTotals #export_c {
+    t:DvTotals;for r:rows {tensors:=r.count*dv_popcount(r.layers);if r.layers==0 {tensors=r.count;}
+        t.tensors+=tensors;t.bytes+=r.bytes;t.dtype[r.dtype]+=r.bytes;}return t;
+}
+dv_starts :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
+dv_has :: (s:string,p:string)->bool {for i:0..<s.count-p.count+1 {if s[i..<i+p.count]==p {return true;}}return false;}
+// book:begin bytes
+dv_bytes :: (rows:[]DvRow)->DvBytes #export_c {
+    b:DvBytes;
+    for r:rows {
+        if dv_starts(r.name,"mtp.") {b.draft+=r.bytes;}
+        else if dv_starts(r.name,"vision.") || dv_starts(r.name,"aligner.") || dv_starts(r.name,"image_") {b.vision+=r.bytes;}
+        else if dv_has(r.name,".ffn.experts.") {b.routed+=r.bytes;}
+        else if dv_has(r.name,".shared_experts.") {b.shared+=r.bytes;}
+        else if dv_has(r.name,".engram.embed.") {b.engram+=r.bytes;}
+        else if dv_starts(r.name,"layers.") {b.dense+=r.bytes;}
+        else {b.embed+=r.bytes;}
+        b.total+=r.bytes;
+    }return b;
+}
+// book:end bytes
+
+#test "the pinned headers hold exactly the tensors the pinned config implies" {
+    c:=dv_flash_config();m:=DV_MANIFEST;r:=dv_check_manifest(c,m[..]);
+    #assert r.status==DvStatus.ok && r.bad==-1 && r.rows==DV_MANIFEST_ROWS && r.expected==DV_MANIFEST_ROWS && r.rows==116;
+    t:=dv_totals(m[..]);#assert t.tensors==DV_MANIFEST_TENSORS && t.tensors==96085 && t.bytes==DV_MANIFEST_BYTES && t.bytes==510286023000;
+    for i:0..<5 {#assert t.dtype[i]==DV_MANIFEST_DTYPE_BYTES[i];}
+    #assert t.dtype[DV_I8]==278585671680 && t.dtype[DV_F8]==204015223296 && t.dtype[DV_E8M0]==23563015184 && t.dtype[DV_BF16]==3952883712 && t.dtype[DV_F32]==169229128;
+    // The 48 shards add 10,685,312 bytes of headers and length prefixes.
+    #assert DV_MANIFEST_SHARD_BYTES-t.bytes==10685312;
+    out:[DV_EXPECTED]DvRow;#assert dv_expected(c,out[0..<DV_EXPECTED-1])==-1 && dv_expected(c,out[..])==116;
+}
+#test "bytes split into routed experts, Engram tables and the rest exactly" {
+    m:=DV_MANIFEST;b:=dv_bytes(m[..]);
+    #assert b.routed==288777830400 && b.shared==1416960000 && b.engram==202758032400 && b.dense==5782123968;
+    #assert b.embed==2647664640 && b.draft==7932874632 && b.vision==970536960 && b.total==510286023000;
+    #assert b.routed+b.shared+b.engram+b.dense+b.embed+b.draft+b.vision==b.total;
+    // The target notes' rounded figures: 288.8 GB experts, 202.8 GB Engram, 18.7 GB the rest.
+    #assert (b.routed+50000000)/100000000==2888 && (b.engram+50000000)/100000000==2028 && (b.total-b.routed-b.engram)/100000000==187;
+    #assert dv_has("ab.ffn.experts.",".ffn.experts.") && !dv_has("x",".ffn.experts.") && dv_has("ab","b") && dv_has("ab","a") && !dv_has("ab","ba");
+    #assert dv_starts("mtp.","mtp.") && !dv_starts("mt","mtp.") && !dv_starts("xmtp.","mtp.");
+    #assert dv_popcount(0)==0 && dv_popcount(0xffffffffffffffff)==64 && dv_popcount(dv_span(40))==40 && dv_bit(63)==0x8000000000000000;
+}
+dv_find :: (rows:[]DvRow,name:string,layers:u64)->int {for i:0..<rows.count {if rows[i].name==name && rows[i].layers==layers {return i;}}return -1;}
+#test "a corrupted row refuses with its index and the first field that differs" {
+    c:=dv_flash_config();rows:=DV_MANIFEST;n:=DV_MANIFEST_ROWS;
+    for field:0..<8 {rows=DV_MANIFEST;i:=dv_find(rows[..],"layers.#.attn.wkv.weight",dv_span(40));expected:=DvStatus.shape;
+        if field==0 {rows[i].shape[0]=511;}else if field==1 {rows[i].dtype=DV_BF16;expected=DvStatus.dtype;}else if field==2 {rows[i].rank=3;}
+        else if field==3 {rows[i].shape[3]=1;}else if field==4 {rows[i].layers=dv_span(39);expected=DvStatus.layers;}
+        else if field==5 {rows[i].count=2;expected=DvStatus.count;}else if field==6 {rows[i].bytes+=1;expected=DvStatus.bytes;}
+        else {rows[i].name="layers.#.attn.wkv.weights";expected=DvStatus.extra;}
+        r:=dv_check_manifest(c,rows[..]);#assert r.status==expected && r.bad==i && r.rows==n && r.expected==n;}
+    // Two Engram tables share a name: a row is compared with the one for its own layer.
+    rows=DV_MANIFEST;i:=dv_find(rows[..],"layers.#.engram.embed.weight",dv_bit(1));rows[i].bytes+=1;
+    r:=dv_check_manifest(c,rows[..]);#assert r.status==DvStatus.bytes && r.bad==i;
+    rows=DV_MANIFEST;i=dv_find(rows[..],"layers.#.engram.embed.weight",dv_bit(14));rows[i].bytes+=1;
+    r=dv_check_manifest(c,rows[..]);#assert r.status==DvStatus.bytes && r.bad==i;
+    // A row given twice, and a missing row.
+    rows=DV_MANIFEST;rows[n-1]=rows[0];r=dv_check_manifest(c,rows[..]);#assert r.status==DvStatus.extra && r.bad==n-1;
+    m:=DV_MANIFEST;r=dv_check_manifest(c,m[0..<n-1]);#assert r.status==DvStatus.missing && r.rows==n-1;
+    out:[DV_EXPECTED]DvRow;#assert dv_expected(c,out[..])==n && out[r.bad].name==DV_MANIFEST[n-1].name;
+    r=dv_check_manifest(c,m[1..<n]);#assert r.status==DvStatus.missing && out[r.bad].name==DV_MANIFEST[0].name;
+    #assert dv_find(m[..],"aligner.w1.bias",0)==0 && dv_find(m[..],"aligner.w1.bias",1)==-1 && dv_find(m[..],"layers.#.attn.attn_sink",dv_span(40))>0;
+    // Drop the row the config lists first: missing names expected row 0.
+    i=dv_find(m[..],"layers.#.attn.attn_sink",dv_span(40));short:[DV_MANIFEST_ROWS]DvRow;k:=0;
+    for j:0..<n {if j!=i {short[k]=m[j];k+=1;}}r=dv_check_manifest(c,short[0..<n-1]);#assert r.status==DvStatus.missing && r.bad==0 && out[0].name==m[i].name;
+}
+#test "every config field is the pinned config.json value" {
+    c:=dv_flash_config();
+    #assert c.layers==DV_PINNED_LAYERS && c.drafts==DV_PINNED_DRAFTS && c.width==DV_PINNED_WIDTH && c.vocab==DV_PINNED_VOCAB && c.heads==DV_PINNED_HEADS;
+    #assert c.kv_heads==DV_PINNED_KV_HEADS && c.head==DV_PINNED_HEAD && c.rope==DV_PINNED_ROPE && c.q_lora==DV_PINNED_Q_LORA && c.o_lora==DV_PINNED_O_LORA;
+    #assert c.o_groups==DV_PINNED_O_GROUPS && c.experts==DV_PINNED_EXPERTS && c.shared==DV_PINNED_SHARED && c.k==DV_PINNED_K && c.moe==DV_PINNED_MOE && c.window==DV_PINNED_WINDOW;
+    for l:0..<43 {#assert c.ratios[l]==DV_PINNED_RATIOS[l];}for i:0..<4 {#assert c.kv_sources[i]==DV_PINNED_KV_SOURCES[i];}for i:0..<8 {#assert c.index_sources[i]==DV_PINNED_INDEX_SOURCES[i];}
+    #assert c.candidate_source==DV_PINNED_CANDIDATE_SOURCE && c.candidate_blocks==DV_PINNED_CANDIDATE_BLOCKS && c.candidate_block==DV_PINNED_CANDIDATE_BLOCK;
+    #assert c.index_heads==DV_PINNED_INDEX_HEADS && c.index_dim==DV_PINNED_INDEX_DIM && c.index_topk==DV_PINNED_INDEX_TOPK && c.hc==DV_PINNED_HC && c.sinkhorn==DV_PINNED_SINKHORN;
+    for i:0..<2 {#assert c.engram_layers[i]==DV_PINNED_ENGRAM_LAYERS[i] && c.engram_rows[i]==DV_PINNED_ENGRAM_ROWS[i];}
+    #assert c.engram_ngram==DV_PINNED_ENGRAM_NGRAM && c.engram_heads==DV_PINNED_ENGRAM_HEADS && c.engram_dim==DV_PINNED_ENGRAM_DIM && c.engram_vocab==DV_PINNED_ENGRAM_VOCAB;
+    #assert c.draft_experts==DV_PINNED_DRAFT_EXPERTS && c.draft_k==DV_PINNED_DRAFT_K && c.draft_targets==DV_PINNED_DRAFT_TARGETS && c.markov==DV_PINNED_MARKOV && c.block==DV_PINNED_BLOCK;
+    #assert c.vision_layers==DV_PINNED_VISION_LAYERS && c.vision_width==DV_PINNED_VISION_WIDTH && c.vision_mlp==DV_PINNED_VISION_MLP && c.patch==DV_PINNED_PATCH && c.downsample==DV_PINNED_DOWNSAMPLE;
+}
+#test "a config that disagrees with the headers is refused at the first row it changes" {
+    rows:=DV_MANIFEST;
+    for field:0..<8 {c:=dv_flash_config();name:="layers.#.ffn.experts.*.w1.scale";expected:=DvStatus.count;
+        if field==0 {c.experts=256;}else if field==1 {c.moe=2048;expected=DvStatus.shape;}
+        else if field==2 {c.layers=39;name="layers.#.attn.attn_sink";expected=DvStatus.layers;}
+        else if field==3 {c.kv_sources[3]=21;name="layers.#.attn.compressor.norm.weight";expected=DvStatus.layers;}
+        else if field==4 {c.ratios[2]=1;name="layers.#.attn.compressor.wgate.weight";expected=DvStatus.layers;}
+        else if field==5 {c.engram_rows[0]+=1;name="layers.#.engram.embed.scale";expected=DvStatus.shape;}
+        else if field==6 {c.draft_experts=384;name="mtp.#.ffn.experts.*.w1.scale";}
+        else {c.vision_layers=24;name="vision.blocks.#.attn.wo.bias";expected=DvStatus.layers;}
+        r:=dv_check_manifest(c,rows[..]);#assert r.status==expected && rows[r.bad].name==name;}
+}

@@ -1,0 +1,261 @@
+// deepseek-flash-composed-cpu-v1. Chapter 100: one decode step of the whole
+// V4.1 Flash layer stack, composed from chapters 91-98's pieces, on small
+// synthetic weights generated from a fixed hash. Shapes follow the pinned
+// configuration's structure (40 layers with the original compression ratios,
+// KV/index/candidate sharing, Engram at layers 1 and 14, four residual
+// streams, 2-of-8 sqrt-softplus routing with a bias and scale 1.5, FP4 routed
+// and FP8 shared experts, packed FP8/FP4 caches); the widths are small.
+// Host-owned storage: the caller passes one byte arena that holds the two
+// Engram projections (generated once per run); nothing is allocated.
+#load "sparse-chunk.coax";
+#load "hyper.coax";
+#load "router.coax";
+#load "expert.coax";
+#load "engram.coax";
+
+DF_D :: 32;DF_HC :: 4;DF_H :: 2;DF_W :: 32;DF_R :: 8;DF_WIN :: 3;DF_QL :: 32;DF_OL :: 32;DF_G :: 2;DF_IH :: 2;
+DF_E :: 8;DF_K :: 2;DF_F :: 32;DF_V :: 64;DF_L :: 40;DF_CAP :: 8;DF_TOPK :: 3;DF_BLOCK :: 3;DF_BLOCKS :: 2;DF_TR :: 16;
+DF_ENGRAM :: 6144;DF_ENGRAM_OUT :: 160;DF_TABLE :: 984000;DF_ARENA :: 1968000;
+
+DfRun :: enum u8 {ok;shape;capacity;token;piece;}
+DfStage :: enum u8 {none;embed;engram;hyper;norm;project;rotate;cache;pool;index;select;attend;route;experts;head;}
+// One refusal names the step, the layer and the stage that refused, and the
+// piece's own status code.
+DfResult :: struct {status:DfRun;step:int;layer:int;stage:DfStage;code:u8;}
+// layers runs a prefix of the stack (1..40), for checks the compile-time
+// evaluator can afford; engram=false skips the two Engram sub-blocks for the
+// same reason. poison_layer >= 0 writes a 0xFF (NaN) UE8M0 scale into that layer's shared
+// expert: the deliberately broken weights of the refusal example.
+DfTiny :: struct {layers:int=40;engram:bool=true;poison_layer:int=-1;}
+// Per-step records: two routed experts per layer, up to three selected
+// compressed positions per layer (-1 pads), and the logits.
+DfTrace :: struct {routes:[]int;picks:[]int;logits:[]f32;}
+
+// book:begin generate
+df_hash :: (seed:int,i:int)->int {
+    x:=(seed*2654435761+i*40503+12345)&0xffffffff;x=((x^(x>>13))*1274126177)&0xffffffff;return x^(x>>16);
+}
+// FP8 E4M3 codes with exponent field 1..7 and either sign, UE8M0 block
+// scales 2^-6..2^-4: every weight is finite and between 2^-12 and 0.12.
+df_fp8 :: (seed:int,rows:int,cols:int,data:[]u8,scales:[]u8)->DeMatrix {
+    if seed>=0 {for i:0..<rows*cols {h:=df_hash(seed,i);code:=h%56+8;if (h>>8)%2==1 {code+=128;}data[i]=cast(u8)code;}
+    }n:=((rows+31)/32)*(cols/32);if seed>=0 {for b:0..<n {scales[b]=cast(u8)(121+df_hash(seed+500000,b)%3);}}
+    return DeMatrix.{kind=DeKind.fp8,rows=rows,columns=cols,data=data[0..<rows*cols],scales=scales[0..<n]};
+}
+// FP4 E2M1 nibbles, any code, one UE8M0 scale per row and 32 columns.
+// A negative seed leaves the storage as it is.
+df_fp4 :: (seed:int,rows:int,cols:int,data:[]u8,scales:[]u8)->DeMatrix {
+    n:=rows*(cols/32);if seed>=0 {for i:0..<rows*cols/2 {data[i]=cast(u8)(df_hash(seed,i)%256);}for b:0..<n {scales[b]=cast(u8)(122+df_hash(seed+500000,b)%3);}}
+    return DeMatrix.{kind=DeKind.fp4,rows=rows,columns=cols,data=data[0..<rows*cols/2],scales=scales[0..<n]};
+}
+// k/256 for |k| <= 128 and 1 + k/64 for |k| <= 8 are exact BF16 values.
+df_bf16 :: (seed:int,i:int)->u16 {return cast(u16)(f32_bits(f32(f64(df_hash(seed,i)%257-128)/256))>>16);}
+df_norm :: (seed:int,i:int)->u16 {return cast(u16)(f32_bits(f32(1+f64(df_hash(seed,i)%17-8)/64))>>16);}
+df_unit :: (seed:int,i:int,shift:int)->f32 {return f32(f64(df_hash(seed,i)%2001-1000)/f64(1<<shift));}
+df_seed :: (layer:int,id:int)->int {return 1000*(layer+1)+id;}
+// book:end generate
+df_value :: (bits:u16)->f32 {return f32_from_bits(u32(bits)<<16);}
+
+DfMap :: struct {data:[256]u8;}
+df_engram_map :: ()->DfMap {
+    m:DfMap;for i:0..<DF_V {v:=(i*37+11)%99092;for b:0..<4 {m.data[4*i+b]=cast(u8)((v>>(8*b))&255);}}return m;
+}
+// Composition-local refusals keep the component's own status code.
+df_fail :: (step:int,layer:int,stage:DfStage,code:u8)->DfResult {return DfResult.{status=DfRun.piece,step=step,layer=layer,stage=stage,code=code};}
+
+// RMS normalization of an f32 vector rounded to BF16, with a BF16 weight.
+df_rms :: (x:[]f32,seed:int,out:[]f32)->DkStatus {
+    bits:[64]u16;weight:[64]u16;y:[64]u16;stage:[64]u16;n:=x.count;
+    for i:0..<n {b:=dk_bf16(x[i]);if b.status!=DkStatus.ok {return b.status;}bits[i]=b.bits;weight[i]=df_norm(seed,i);}
+    r:=da_norm(bits[0..<n],weight[0..<n],y[0..<n],stage[0..<n],false);if r.status!=DkStatus.ok {return r.status;}
+    for i:0..<n {out[i]=df_value(y[i]);}return DkStatus.ok;
+}
+df_to_bf16 :: (x:[]f32,out:[]u16)->DkStatus {for i:0..<x.count {b:=dk_bf16(x[i]);if b.status!=DkStatus.ok {return b.status;}out[i]=b.bits;}return DkStatus.ok;}
+
+// Views of the caches df_forward owns: per layer a 3-row FP8 window, 8
+// compressed FP4 rows (16-value E4M3 scales), 8 FP4 index keys (32-value
+// UE8M0 scales), the pooling carries, the selected positions and the
+// candidate mask layer 20 publishes.
+DfCaches :: struct {window:[]u8;window_scales:[]u8;comp:[]u8;comp_scales:[]u8;keys:[]u8;key_scales:[]u8;old_kv:[]f32;old_gate:[]f32;picks:[]int;counts:[]int;mask:[]u8;}
+
+// book:begin attention
+df_attention :: (layer:int,p:int,x:[]f32,c:DfCaches,out:[]f32)->DfResult {
+    link:=da_flash_links(layer);if link.status!=DkStatus.ok {return df_fail(p,layer,DfStage.cache,cast(u8)link.status);}
+    data:[2048]u8;scales:[64]u8;quant:[64]f64;stage:[64]f32;xn:[32]f32;
+    status:=df_rms(x,df_seed(layer,60),xn[..]);if status!=DkStatus.ok {return df_fail(p,layer,DfStage.norm,cast(u8)status);}
+    qr:[32]f32;qrn:[32]f32;q:[64]f32;qb:[64]u16;qrot:[64]u16;rs:[64]u16;
+    m:=df_fp8(df_seed(layer,1),DF_QL,DF_D,data[..],scales[..]);r:=de_project(m,xn[..],qr[..],quant[..],stage[..],false);if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}
+    status=df_rms(qr[..],df_seed(layer,62),qrn[..]);if status!=DkStatus.ok {return df_fail(p,layer,DfStage.norm,cast(u8)status);}
+    m=df_fp8(df_seed(layer,2),DF_H*DF_W,DF_QL,data[..],scales[..]);r=de_project(m,qrn[..],q[..],quant[..],stage[..],false);if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}
+    status=df_to_bf16(q[..],qb[..]);if status!=DkStatus.ok {return df_fail(p,layer,DfStage.rotate,cast(u8)status);}
+    compressed:=link.ratio>0;
+    k:=da_rotate(compressed,p,DF_H,DF_W,DF_R,false,qb[..],qrot[..],rs[..],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.rotate,cast(u8)k.status);}
+    // This layer's window row: projected, normalized, rotated, packed as FP8.
+    kv:[32]f32;kvn:[32]f32;kvb:[32]u16;kvr:[32]u16;pack:[66]u8;
+    m=df_fp8(df_seed(layer,3),DF_W,DF_D,data[..],scales[..]);r=de_project(m,xn[..],kv[..],quant[..],stage[..],false);if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}
+    status=df_rms(kv[..],df_seed(layer,63),kvn[..]);if status!=DkStatus.ok {return df_fail(p,layer,DfStage.norm,cast(u8)status);}
+    status=df_to_bf16(kvn[..],kvb[..]);if status!=DkStatus.ok {return df_fail(p,layer,DfStage.rotate,cast(u8)status);}
+    k=da_rotate(compressed,p,1,DF_W,DF_R,false,kvb[..],kvr[..],rs[0..<32],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.rotate,cast(u8)k.status);}
+    window:=DkPacked.{data=c.window[layer*96..<(layer+1)*96],scales=c.window_scales[layer*3..<(layer+1)*3]};
+    k=da_store(0,DF_WIN,DF_W,p%DF_WIN,kvr[..],window,pack[..],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.cache,cast(u8)k.status);}
+    visible:=0;ids:[3]int;count:=0;
+    if compressed {visible=(p+1)/link.ratio;
+        if link.produce_kv {
+            ckv:[32]f32;gate:[32]f32;latent:[32]u16;floats:[64]f32;bits:[96]u16;norm:[32]u16;
+            for i:0..<DF_W {norm[i]=df_norm(df_seed(layer,64),i);}
+            m=df_fp8(df_seed(layer,7),DF_W,DF_D,data[..],scales[..]);r=de_project(m,xn[..],ckv[..],quant[..],stage[..],false);if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}
+            m=df_fp8(df_seed(layer,8),DF_W,DF_D,data[..],scales[..]);r=de_project(m,xn[..],gate[..],quant[..],stage[..],false);if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}
+            carry:=layer*DF_W;old_kv:[32]f32;old_gate:[32]f32;for i:0..<DF_W {old_kv[i]=c.old_kv[carry+i];old_gate[i]=c.old_gate[carry+i];}
+            pooled:=da_pool(link.ratio,p,ckv[..],gate[..],old_kv[..],old_gate[..],norm[..],latent[..],c.old_kv[carry..<carry+DF_W],c.old_gate[carry..<carry+DF_W],DaPoolWork.{floats=floats[..],bits=bits[..]},false);
+            if pooled.status!=DkStatus.ok {return df_fail(p,layer,DfStage.pool,cast(u8)pooled.status);}
+            if pooled.ready {row:=(p+1)/link.ratio-1;unit:[32]u16;key:[32]u16;keyr:[32]u16;latr:[32]u16;ns:[32]u16;
+                for i:0..<DF_W {unit[i]=0x3f80;}
+                k=da_norm(latent[..],unit[..],key[..],ns[..],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.norm,cast(u8)k.status);}
+                k=da_rotate(true,pooled.first,1,DF_W,DF_R,false,key[..],keyr[..],rs[0..<32],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.rotate,cast(u8)k.status);}
+                keys:=DkPacked.{data=c.keys[layer*128..<(layer+1)*128],scales=c.key_scales[layer*8..<(layer+1)*8]};
+                k=da_store(2,DF_CAP,DF_W,row,keyr[..],keys,pack[..],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.cache,cast(u8)k.status);}
+                k=da_rotate(true,pooled.first,1,DF_W,DF_R,false,latent[..],latr[..],rs[0..<32],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.rotate,cast(u8)k.status);}
+                comp:=DkPacked.{data=c.comp[layer*128..<(layer+1)*128],scales=c.comp_scales[layer*16..<(layer+1)*16]};
+                k=da_store(1,DF_CAP,DF_W,row,latr[..],comp,pack[..],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.cache,cast(u8)k.status);}
+            }
+        }
+        if link.produce_index {c.counts[layer]=0;
+            if visible>0 {iq:[64]f32;iqb:[64]u16;iqr:[64]u16;w:[2]f32;wb:[2]u16;qp:[34]u8;qstage:[68]u8;scores:[8]f32;sst:[8]f32;heap:[8]int;mask:[8]u8;
+                m=df_fp8(df_seed(layer,9),DF_IH*DF_W,DF_QL,data[..],scales[..]);r=de_project(m,qrn[..],iq[..],quant[..],stage[..],false);if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}
+                m=df_fp8(df_seed(layer,10),DF_IH,DF_D,data[..],scales[..]);r=de_project(m,xn[..],w[..],quant[..],stage[..],false);if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}
+                status=df_to_bf16(iq[..],iqb[..]);if status==DkStatus.ok {status=df_to_bf16(w[..],wb[..]);}if status!=DkStatus.ok {return df_fail(p,layer,DfStage.index,cast(u8)status);}
+                k=da_rotate(true,p,DF_IH,DF_W,DF_R,false,iqb[..],iqr[..],rs[..],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.rotate,cast(u8)k.status);}
+                packed:=DkPacked.{data=qp[0..<32],scales=qp[32..<34]};
+                k=dk_pack(2,DF_IH,DF_W,iqr[..],packed,qstage[..],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.index,cast(u8)k.status);}
+                owner:=link.kv;keys:=DkPacked.{data=c.keys[owner*128..<(owner+1)*128],scales=c.key_scales[owner*8..<(owner+1)*8]};
+                k=da_index(DF_IH,DF_W,DF_CAP,visible,packed,keys,wb[..],scores[..],sst[..],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.index,cast(u8)k.status);}
+                if link.produce_candidates {cs:[8]u8;blocks:[8]f32;
+                    s:=da_candidates(scores[..],visible,DF_BLOCK,DF_BLOCKS,c.mask[..],cs[..],blocks[..],heap[..],false);if s.status!=DkStatus.ok {return df_fail(p,layer,DfStage.select,cast(u8)s.status);}}
+                for i:0..<DF_CAP {mask[i]=ifx link.candidate>=0 then c.mask[i] else 1;}
+                s:=da_select(scores[..],visible,mask[..],DF_TOPK,c.picks[layer*3..<layer*3+3],heap[..],false);if s.status!=DkStatus.ok {return df_fail(p,layer,DfStage.select,cast(u8)s.status);}
+                c.counts[layer]=s.count;}
+        }
+        count=c.counts[link.index];for i:0..<count {ids[i]=c.picks[link.index*3+i];}
+    }
+    // Attention over the window and the selected compressed rows, then the
+    // output rotation is removed and the grouped low-rank output applies.
+    sink:[2]f32;for h:0..<DF_H {sink[h]=df_unit(df_seed(layer,82),h,9);}
+    answer:[64]u16;scores:[11]f64;abits:[64]u16;rows:=0;owner:=0;if compressed {rows=DF_CAP;owner=link.kv;}
+    comp:=DkPacked.{data=c.comp[owner*128..<owner*128+rows*16],scales=c.comp_scales[owner*16..<owner*16+rows*2]};
+    shape:=DaAttention.{heads=DF_H,width=DF_W,window=DF_WIN,capacity=DF_CAP,ratio=link.ratio};
+    k=da_attend(shape,p,qrot[..],window,rows,comp,ids[0..<count],sink[..],answer[..],DaAttentionWork.{scores=scores[..],bits=abits[..]},false);
+    if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.attend,cast(u8)k.status);}
+    plain:[64]u16;k=da_rotate(compressed,p,DF_H,DF_W,DF_R,true,answer[..],plain[..],rs[..],false);if k.status!=DkStatus.ok {return df_fail(p,layer,DfStage.rotate,cast(u8)k.status);}
+    o:[64]f32;low:[64]f32;for i:0..<64 {o[i]=df_value(plain[i]);}
+    for g:0..<DF_G {m=df_fp8(df_seed(layer,4+g),DF_OL,DF_W,data[..],scales[..]);r=de_project(m,o[g*32..<(g+1)*32],low[g*32..<(g+1)*32],quant[..],stage[..],false);if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}}
+    m=df_fp8(df_seed(layer,6),DF_D,DF_G*DF_OL,data[..],scales[..]);r=de_project(m,low[..],out,quant[..],stage[..],false);if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}
+    return DfResult.{};
+}
+// book:end attention
+
+// book:begin moe
+df_moe :: (t:DfTiny,layer:int,p:int,x:[]f32,routes:[]int,out:[]f32)->DfResult {
+    xn:[32]f32;status:=df_rms(x,df_seed(layer,61),xn[..]);if status!=DkStatus.ok {return df_fail(p,layer,DfStage.norm,cast(u8)status);}
+    logits:[8]f32;bias:[8]f32;
+    for e:0..<DF_E {acc:PsionicAccumulator;for j:0..<DF_D {acc=psionic_ops_accumulate(acc,f64(df_value(df_bf16(df_seed(layer,80),e*DF_D+j)))*f64(xn[j]));}
+        logits[e]=f32(psionic_ops_total(acc));bias[e]=df_unit(df_seed(layer,81),e,12);}
+    scores:[8]f64;ranked:[8]f64;
+    route:=dr_route(DrConfig.{profile=DrProfile.v41,k=DF_K,scale=1.5},logits[..],bias[..],scores[..],ranked[..],false);
+    if route.status!=DrStatus.ok {return df_fail(p,layer,DfStage.route,cast(u8)route.status);}
+    ids:[2]int;weights:[2]f32;for i:0..<DF_K {ids[i]=route.ids[i];weights[i]=f32(route.weights[i]);routes[i]=route.ids[i];}
+    // Only the two routed experts are generated; the other six keep valid
+    // all-zero FP4 storage, as an expert cache's empty slots would.
+    data:[12288]u8;scales:[768]u8;experts:[8]DeExpert;
+    for e:0..<DF_E {at:=e*1536;sat:=e*96;s:=df_seed(layer,20+3*e);if e!=ids[0] && e!=ids[1] {s=-1;}
+        experts[e]=DeExpert.{gate=df_fp4(s,DF_F,DF_D,data[at..<at+512],scales[sat..<sat+32]),up=df_fp4(ifx s<0 then s else s+1,DF_F,DF_D,data[at+512..<at+1024],scales[sat+32..<sat+64]),
+            down=df_fp4(ifx s<0 then s else s+2,DF_D,DF_F,data[at+1024..<at+1536],scales[sat+64..<sat+96])};}
+    sd:[3072]u8;ss:[3]u8;
+    shared:=DeExpert.{gate=df_fp8(df_seed(layer,50),DF_F,DF_D,sd[0..<1024],ss[0..<1]),up=df_fp8(df_seed(layer,51),DF_F,DF_D,sd[1024..<2048],ss[1..<2]),
+        down=df_fp8(df_seed(layer,52),DF_D,DF_F,sd[2048..<3072],ss[2..<3])};
+    if t.poison_layer==layer {ss[2]=255;}
+    floats:[224]f32;wide:[64]f64;acc:[32]PsionicAccumulator;
+    r:=de_mixture(experts[..],shared,xn[..],ids[..],weights[..],10,out,DeWork.{floats=floats[..],wide=wide[..]},acc[..],false);
+    if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.experts,cast(u8)r.status);}
+    return DfResult.{};
+}
+// book:end moe
+
+// book:begin engram
+// Engram (layers 1 and 14): 24 hashed rows, FP8-decoded, one projection to
+// four keys and a shared value, and a per-stream gate that adds the value.
+df_engram :: (m:DeMatrix,layer:int,p:int,ids:[]int,x:[]f32)->DfResult {
+    packet:[6336]u8;bits:[6144]u16;stage:[6144]u16;rows:[6144]f32;
+    for i:0..<24 {row:=ids[i]%DF_TR;for b:0..<264 {h:=df_hash(df_seed(layer,91),row*264+b);
+        packet[i*264+b]=ifx b<256 then cast(u8)(h%56+8+128*((h>>8)%2)) else cast(u8)(124+h%3);}}
+    e:=eg_decode(24,packet[..],bits[..],stage[..],false);if e.status!=EgStatus.ok {return df_fail(p,layer,DfStage.engram,cast(u8)e.status);}
+    for i:0..<DF_ENGRAM {rows[i]=df_value(bits[i]);}
+    quant:[6144]f64;kv:[160]f32;st:[160]f32;
+    r:=de_project(m,rows[..],kv[..],quant[..],st[..],false);
+    if r.status!=DsStatus.ok {return df_fail(p,layer,DfStage.project,cast(u8)r.status);}
+    for c:0..<DF_HC {hs:PsionicAccumulator;ks:PsionicAccumulator;dot:PsionicAccumulator;
+        for j:0..<DF_D {h:=f64(x[c*DF_D+j]);key:=f64(kv[c*DF_D+j]);w:=f64(df_unit(df_seed(layer,92),c*DF_D+j,12))+1;
+            hs=psionic_ops_accumulate(hs,h*h);ks=psionic_ops_accumulate(ks,key*key);dot=psionic_ops_accumulate(dot,h*w*key);}
+        rstd:=(1/sqrt(psionic_ops_total(hs)/f64(DF_D)+1e-20))*(1/sqrt(psionic_ops_total(ks)/f64(DF_D)+1e-20));
+        d:=psionic_ops_total(dot)*rstd/sqrt(f64(DF_D));a:=abs(d);if a<0.000001 {a=0.000001;}z:=sqrt(a);if d<0 {z=-z;}
+        gate:=ifx z>=0 then 1/(1+exp(-z)) else exp(z)/(1+exp(z));
+        for j:0..<DF_D {v:=f64(x[c*DF_D+j])+gate*f64(kv[4*DF_D+j]);if !psionic_ops_fits_f32(v) {return df_fail(p,layer,DfStage.engram,cast(u8)DsStatus.arithmetic);}x[c*DF_D+j]=f32(v);}}
+    return DfResult.{};
+}
+// book:end engram
+
+df_hyper :: (layer:int,id:int,projection:[]f32)->DhWeights {
+    w:DhWeights;for i:0..<96*DF_D {projection[i]=df_unit(df_seed(layer,id),i,15);}w.projection=projection;
+    for i:0..<24 {w.base[i]=df_unit(df_seed(layer,id+1),i,10);}for i:0..<3 {w.scale[i]=f32(f64(df_hash(df_seed(layer,id+2),i)%9)/8+0.25);}return w;
+}
+
+// book:begin forward
+// Every step runs all 40 layers for one token; caches carry between steps.
+df_forward :: (t:DfTiny,tokens:[]int,trace:DfTrace,arena:[]u8)->DfResult {
+    n:=tokens.count;if n<1 || n>DF_CAP || t.layers<1 || t.layers>DF_L {return DfResult.{status=DfRun.shape};}
+    if (t.engram && arena.count<DF_ARENA) || trace.routes.count<n*DF_L*DF_K || trace.picks.count<n*DF_L*DF_TOPK || trace.logits.count<n*DF_V {return DfResult.{status=DfRun.capacity};}
+    for p:0..<n {if tokens[p]<0 || tokens[p]>=DF_V {return DfResult.{status=DfRun.token,step=p};}}
+    window:[3840]u8;window_scales:[120]u8;comp:[5120]u8;comp_scales:[640]u8;keys:[5120]u8;key_scales:[320]u8;old_kv:[1280]f32;old_gate:[1280]f32;picks:[120]int;counts:[40]int;mask:[8]u8;
+    c:=DfCaches.{window=window[..],window_scales=window_scales[..],comp=comp[..],comp_scales=comp_scales[..],keys=keys[..],key_scales=key_scales[..],old_kv=old_kv[..],old_gate=old_gate[..],picks=picks[..],counts=counts[..],mask=mask[..]};
+    tables:[2]DeMatrix;
+    map:=df_engram_map();emap:=EgMap.{raw=DF_V,compressed=99092,pad=2,data=map.data[..]};history:=eg_start();
+    for p:0..<n {
+        hashes:[48]int;hs:[48]int;one:=[1]int.[tokens[p]];live:=[1]u8.[1];
+        e:=eg_hash(emap,history,one[..],live[..],hashes[..],hs[..],false);if e.status!=EgStatus.ok {return df_fail(p,-1,DfStage.engram,cast(u8)e.status);}history=e.next;
+        x:[128]f32;for c4:0..<DF_HC {for j:0..<DF_D {x[c4*DF_D+j]=df_value(df_bf16(7,tokens[p]*DF_D+j));}}
+        carry:=dh_initial();projection:[3072]f32;
+        for layer:0..<t.layers {
+            if t.engram && (layer==1 || layer==14) {slot:=ifx layer==1 then 0 else 1;at:=slot*DF_TABLE;
+                if p==0 {tables[slot]=df_fp8(df_seed(layer,90),DF_ENGRAM_OUT,DF_ENGRAM,arena[at..<at+983040],arena[at+983040..<at+DF_TABLE]);}r:=df_engram(tables[slot],layer,p,hashes[slot*24..<slot*24+24],x[..]);if r.status!=DfRun.ok {return r;}}
+            sub:[32]f32;y:[32]f32;next:[128]f32;work:[128]f32;
+            a:=dh_prepare(DF_D,x[..],carry,df_hyper(layer,70,projection[..]),sub[..],work[0..<32],false);if a.status!=DsStatus.ok {return df_fail(p,layer,DfStage.hyper,cast(u8)a.status);}
+            r:=df_attention(layer,p,sub[..],c,y[..]);if r.status!=DfRun.ok {return r;}
+            f:=dh_finish(DF_D,x[..],y[..],a.mix,next[..],work[..],false);if f.status!=DsStatus.ok {return df_fail(p,layer,DfStage.hyper,cast(u8)f.status);}
+            x=next;
+            b:=dh_prepare(DF_D,x[..],DhCarry.{pre=a.mix.pre},df_hyper(layer,73,projection[..]),sub[..],work[0..<32],false);if b.status!=DsStatus.ok {return df_fail(p,layer,DfStage.hyper,cast(u8)b.status);}
+            at:=(p*DF_L+layer)*DF_K;r=df_moe(t,layer,p,sub[..],trace.routes[at..<at+DF_K],y[..]);if r.status!=DfRun.ok {return r;}
+            f=dh_finish(DF_D,x[..],y[..],b.mix,next[..],work[..],false);if f.status!=DsStatus.ok {return df_fail(p,layer,DfStage.hyper,cast(u8)f.status);}
+            x=next;carry=f.carry;
+            link:=da_flash_links(layer);pick:=(p*DF_L+layer)*DF_TOPK;for i:0..<DF_TOPK {trace.picks[pick+i]=-1;}
+            if link.ratio>0 {for i:0..<c.counts[link.index] {trace.picks[pick+i]=c.picks[link.index*3+i];}}
+        }
+        h:[32]f32;work:[32]f32;hn:[32]f32;
+        k:=dh_collapse(DF_D,x[..],carry,h[..],work[..],false);if k.status!=DsStatus.ok {return df_fail(p,t.layers,DfStage.hyper,cast(u8)k.status);}
+        status:=df_rms(h[..],9,hn[..]);if status!=DkStatus.ok {return df_fail(p,t.layers,DfStage.norm,cast(u8)status);}
+        for v:0..<DF_V {acc:PsionicAccumulator;for j:0..<DF_D {acc=psionic_ops_accumulate(acc,f64(df_value(df_bf16(8,v*DF_D+j)))*f64(hn[j]));}
+            value:=psionic_ops_total(acc);if !psionic_ops_fits_f32(value) {return df_fail(p,t.layers,DfStage.head,cast(u8)DsStatus.arithmetic);}trace.logits[p*DF_V+v]=f32(value);}
+    }
+    return DfResult.{};
+}
+// book:end forward
+
+#load "../../fixtures/deepseek/flash-goldens.coax";
+// The compile-time evaluator affords layers 0-20 without Engram for two
+// steps: window-only layers, ratio-2 gated pooling and its indexers, and the
+// candidate source with ratio-1 pooling at layer 20. The example runs all 40
+// layers with Engram for all seven tokens natively against the same oracle.
+#test "layers 0-20 for two steps match the independent composed oracle" #steps 1000000000 {
+    tokens:=DVG_TOKENS;routes:[160]int;picks:[240]int;logits:[128]f32;arena:[1]u8;
+    r:=df_forward(DfTiny.{layers=21,engram=false},tokens[0..<2],DfTrace.{routes=routes[..],picks=picks[..],logits=logits[..]},arena[..]);#assert r.status==DfRun.ok;
+    for p:0..<2 {for i:0..<21*DF_K {#assert routes[p*DF_L*DF_K+i]==DVG21_ROUTES[p*21*DF_K+i];}for i:0..<21*DF_TOPK {#assert picks[p*DF_L*DF_TOPK+i]==DVG21_PICKS[p*21*DF_TOPK+i];}}
+    for i:0..<128 {want:=f64(f32_from_bits(DVG21_LOGITS[i]));#assert abs(f64(logits[i])-want)<=0.00001*(1+abs(want));}
+}

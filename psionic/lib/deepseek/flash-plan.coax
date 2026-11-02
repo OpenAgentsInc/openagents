@@ -1,0 +1,101 @@
+// deepseek-flash-plan-v1. Chapter 100: where V4.1 Flash's bytes live on one
+// host. The checkpoint's own byte counts (the header manifest), chapter 98's
+// cache budget, chapter 33's admission on the GPU, chapter 96's expert cache
+// in host memory, and the rest mapped from disk. It admits or refuses a host
+// and models one decode token's time from the bytes each tier must move.
+#load "flash-manifest.coax";
+#load "../residency.coax";
+#load "hot-cache.coax";
+#load "cache.coax";
+#authority;
+
+DvHost :: struct {gpu:int;ram:int;reserve:int;disk_free:int;gpu_bw:int;link_bw:int;disk_bw:int;}
+DvVerdict :: enum u8 {ok;bytes;cache;gpu;ram;disk;}
+// Experts by tier, the bytes a token reads from each, the modeled time of
+// one decode token in microseconds and tokens per second times 1,000.
+DvPlan :: struct {status:DvVerdict;gpu:RpPlan;expert:int;text:int;vram:int;ram:int;disk:int;
+    bytes_gpu:int;bytes_link:int;bytes_disk:int;micros:int;milli_tokens:int;}
+
+DV_EXPERTS :: 15360;DV_ACTIVE :: 240;   // 40 layers x 384 routed experts; 40 x 6 per token
+
+// book:begin host
+// This machine on 2026-11-02: an RTX 4080 (16,376 MiB, 716.8 GB/s), 134.8 GB
+// of RAM with 8 GiB kept for the system, 37.6 GB free on the NVMe disk. Disk
+// reads are measured: 4 GiB of 16 MiB direct reads in 0.666 s. The PCIe 4.0
+// x16 host-to-GPU rate is modeled, not measured.
+dv_this_host :: ()->DvHost #export_c {
+    return DvHost.{gpu=17171480576,ram=134828441600,reserve=8589934592,disk_free=37567934464,gpu_bw=716800000000,link_bw=25000000000,disk_bw=6447000000};
+}
+// book:end host
+
+// book:begin plan
+dv_plan :: (b:DvBytes,h:DvHost,context:int)->DvPlan #export_c {
+    if b.routed<DV_EXPERTS || b.routed%DV_EXPERTS!=0 || b.shared<1 || b.engram<1 || b.dense<1 || b.embed<1 {return DvPlan.{status=DvVerdict.bytes};}
+    if h.gpu<1 || h.ram<1 || h.reserve<0 || h.disk_free<0 || h.gpu_bw<1 || h.link_bw<1 || h.disk_bw<1 {return DvPlan.{status=DvVerdict.bytes};}
+    kv:=dk_flash_cache_budget(context,1,0,h.gpu,h.gpu);if kv.status!=DkStatus.ok {return DvPlan.{status=DvVerdict.cache};}
+    p:=DvPlan.{expert=b.routed/DV_EXPERTS,text=b.routed+b.shared+b.engram+b.dense+b.embed};
+    vectors:=b.shared+b.dense+b.embed;
+    // Dense weights, the shared expert and the embeddings never stream; one
+    // routed expert is the stream slot; Engram rows are read from disk.
+    w:=RpWeights.{total=p.text,vectors=vectors,slot=p.expert,embedding=b.embed,expert=p.expert};
+    p.gpu=rp_admit(w,kv.cache,kv.step,true,h.gpu);if p.gpu.status!=RpStatus.ok {p.status=DvVerdict.gpu;return p;}
+    p.vram=rp_min(DV_EXPERTS,(p.gpu.resident-vectors)/p.expert);
+    usable:=h.ram-h.reserve;if usable<40*p.expert {p.status=DvVerdict.ram;return p;}
+    slots:=rp_min(384,(usable/p.expert)/40);
+    cache:=DcConfig.{layers=40,experts=384,slots=slots,stride=p.expert,budget=usable,identity="deepseek-v4.1-flash-1017"};
+    if dc_config(cache)!=DsStatus.ok {p.status=DvVerdict.ram;return p;}
+    p.ram=rp_min(DV_EXPERTS-p.vram,40*slots);p.disk=DV_EXPERTS-p.vram-p.ram;
+    // Uniform routing: a token's 240 expert reads split as the tiers hold experts.
+    p.bytes_gpu=vectors+DV_ACTIVE*p.expert/DV_EXPERTS*p.vram;
+    p.bytes_link=DV_ACTIVE*p.expert/DV_EXPERTS*p.ram;p.bytes_disk=DV_ACTIVE*p.expert/DV_EXPERTS*p.disk;
+    // At least one microsecond, so a tiny model never divides by zero.
+    p.micros=rp_max(1,p.bytes_gpu*1000000/h.gpu_bw+p.bytes_link*1000000/h.link_bw+p.bytes_disk*1000000/h.disk_bw);
+    p.milli_tokens=1000000000/p.micros;
+    if h.disk_free<p.text {p.status=DvVerdict.disk;}
+    return p;
+}
+// book:end plan
+dv_verdict_name :: (v:DvVerdict)->string {
+    names:=[6]string.["ok","bytes: a byte count or host rate is not positive","cache: the KV cache plan refused the context",
+        "gpu: the never-streamed weights, cache and two expert slots exceed the GPU","ram: host memory cannot hold one expert per layer",
+        "disk: the text checkpoint does not fit on the free disk"];
+    return names[cast(int)v];
+}
+
+#test "this host: the GPU admits a streamed plan and the free disk refuses the checkpoint" {
+    rows:=DV_MANIFEST;b:=dv_bytes(rows[..]);p:=dv_plan(b,dv_this_host(),4096);
+    #assert p.status==DvVerdict.disk && p.expert==18800640 && p.text==b.total-b.draft-b.vision;
+    #assert p.gpu.status==RpStatus.ok && p.gpu.mode==RpMode.streamed && p.vram==387 && p.ram==6680 && p.disk==8293;
+    #assert p.bytes_gpu==9960433728 && p.bytes_link==1962316800 && p.bytes_disk==2436151680 && p.micros==470260 && p.milli_tokens==2126;
+    h:=dv_this_host();h.disk_free=p.text;q:=dv_plan(b,h,4096);#assert q.status==DvVerdict.ok && q.micros==p.micros;
+    h.disk_free=p.text-1;#assert dv_plan(b,h,4096).status==DvVerdict.disk;
+}
+#test "every tier refuses with its own verdict" {
+    rows:=DV_MANIFEST;b:=dv_bytes(rows[..]);h:=dv_this_host();h.disk_free=1000000000000;
+    small:=h;small.gpu=9000000000;#assert dv_plan(b,small,4096).status==DvVerdict.gpu;
+    small=h;small.ram=h.reserve+40*18800640-1;#assert dv_plan(b,small,4096).status==DvVerdict.ram;
+    small.ram+=1;p:=dv_plan(b,small,4096);#assert p.status==DvVerdict.ok && p.ram==40;
+    #assert dv_plan(b,h,0).status==DvVerdict.cache && dv_plan(b,h,1048577).status==DvVerdict.cache;
+    c:=b;c.routed+=1;#assert dv_plan(c,h,4096).status==DvVerdict.bytes;
+    for field:0..<12 {c=b;g:=h;if field==0 {c.routed=0;}else if field==1 {c.shared=0;}else if field==2 {c.engram=0;}else if field==3 {c.dense=0;}else if field==4 {c.embed=0;}
+        else if field==5 {g.gpu=0;}else if field==6 {g.ram=0;}else if field==7 {g.reserve=-1;}else if field==8 {g.disk_free=-1;}else if field==9 {g.gpu_bw=0;}else if field==10 {g.link_bw=0;}else {g.disk_bw=0;}
+        #assert dv_plan(c,g,4096).status==DvVerdict.bytes;}
+    g:=h;g.reserve=0;g.disk_free=0;#assert dv_plan(b,g,4096).status==DvVerdict.disk;
+    #assert dv_verdict_name(DvVerdict.disk)=="disk: the text checkpoint does not fit on the free disk" && dv_verdict_name(DvVerdict.ok)=="ok";
+}
+#test "host pins, bounds at one, caps and the time model's constants" {
+    h:=dv_this_host();#assert h.gpu==17171480576 && h.ram==134828441600 && h.reserve==8589934592 && h.disk_free==37567934464;
+    #assert h.gpu_bw==716800000000 && h.link_bw==25000000000 && h.disk_bw==6447000000;
+    rows:=DV_MANIFEST;b:=dv_bytes(rows[..]);h.disk_free=1000000000000;p:=dv_plan(b,h,4096);
+    #assert p.gpu.state==6348800 && p.gpu.scratch==28928 && p.gpu.resident==17127501568;
+    one:=DvBytes.{routed=15360,shared=1,engram=1,dense=1,embed=1};g:=h;g.gpu=1;#assert dv_plan(one,g,4096).status==DvVerdict.cache;g.gpu=6377732;#assert dv_plan(one,g,4096).status==DvVerdict.gpu;g.gpu=6377733;#assert dv_plan(one,g,4096).micros==1;
+    g=h;g.ram=1;g.reserve=0;g.disk_free=0;g.gpu_bw=1;g.link_bw=1;g.disk_bw=1;#assert dv_plan(one,g,4096).status==DvVerdict.ram;g.ram=h.ram;#assert dv_plan(one,g,4096).status==DvVerdict.disk;
+    // A GPU that holds every expert, and RAM that holds every expert.
+    big:=h;big.gpu=1000000000000000;p=dv_plan(b,big,4096);#assert p.status==DvVerdict.ok && p.vram==15360 && p.ram==0 && p.disk==0;
+    big=h;big.ram=1000000000000000;p=dv_plan(b,big,4096);#assert p.status==DvVerdict.ok && p.vram==387 && p.ram==15360-387 && p.disk==0;
+    // An expert past chapter 96's 1 GiB stride refuses the host-memory cache.
+    huge:=b;huge.routed=15360*1073741825;big.gpu=1000000000000000000;#assert dv_plan(huge,big,4096).status==DvVerdict.ram;
+    huge.routed=15360*1073741824;#assert dv_plan(huge,big,4096).status==DvVerdict.disk;
+    slow:=h;slow.gpu_bw=1;slow.link_bw=1;slow.disk_bw=1;p=dv_plan(b,slow,4096);#assert p.micros==(9960433728+1962316800+2436151680)*1000000 && p.milli_tokens==0;
+    fast:=h;fast.gpu_bw=9960433728*1000000;fast.link_bw=1000000000000000000;fast.disk_bw=1000000000000000000;p=dv_plan(b,fast,4096);#assert p.micros==1 && p.milli_tokens==1000000000;
+}

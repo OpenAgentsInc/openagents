@@ -108,7 +108,7 @@
 - [97. Prefill layer by layer](ch097-prefill-layer-by-layer.md)
 - [98. Pack the cache exactly](ch098-pack-the-cache-exactly.md)
 - [99. A decode step with no host waits](ch099-a-decode-step-with-no-host-waits.md) — partly implemented
-- [100. Execute DeepSeek V4.1 Flash on one machine](ch100-execute-deepseek-v41-flash-on-one-machine.md) — design draft
+- [100. Execute DeepSeek V4.1 Flash on one machine](ch100-execute-deepseek-v41-flash-on-one-machine.md) — partly implemented
 - [101. Maya's recipe: V4.1 Flash on one card](ch101-mayas-recipe-v41-flash-on-one-card.md) — design draft
 - [102. Verify drafts by expected gain](ch102-verify-drafts-by-expected-gain.md) — design draft
 
@@ -266,7 +266,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–73, 75–82, 83, 84, 85, 86, 87, 88–99, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–190, 192–196, 215–250 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–73, 75–82, 83, 84, 85, 86, 87, 88–100, 103–112, 114–121, 123, 124, 126–164, 165, 166, 167–190, 192–196, 215–250 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).
