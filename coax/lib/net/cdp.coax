@@ -313,10 +313,54 @@ cdp_head :: (path: string, out: [] u8) -> string {
   return cast(string) out[0..<k];
 }
 
+// ---- how long to wait for a starting browser (pure) -------------------------
+
+// A slow machine (software WebGPU, a cold disk) can take many seconds to
+// write DevToolsActivePort and longer to list its first page. Each wait polls
+// with a doubling sleep from 50 ms, at most 1 s a sleep, until its limit; a
+// launch that still fails is tried once more on a fresh profile.
+CDP_PORT_WAIT_MS :: 45000;     // DevToolsActivePort written
+CDP_TARGET_WAIT_MS :: 20000;   // /json/list names a page
+CDP_LAUNCH_TRIES :: 2;
+#test "waiting for a starting browser backs off to one second and stops at its limit" {
+  #assert cdp_backoff_ms(0) == 50 && cdp_backoff_ms(1) == 100 && cdp_backoff_ms(2) == 200 && cdp_backoff_ms(3) == 400;
+  #assert cdp_backoff_ms(4) == 800 && cdp_backoff_ms(5) == 1000 && cdp_backoff_ms(6) == 1000 && cdp_backoff_ms(60) == 1000;
+  #assert cdp_backoff_ms(-1) == 50;
+  // the next sleep: the backoff, cut to what is left, and -1 once nothing is
+  #assert cdp_next_wait(0, 0, 45000) == 50 && cdp_next_wait(5, 1550, 45000) == 1000 && cdp_next_wait(9, 44900, 45000) == 100;
+  #assert cdp_next_wait(9, 45000, 45000) == -1 && cdp_next_wait(9, 46000, 45000) == -1 && cdp_next_wait(0, 0, 0) == -1;
+  // the sleeps add up to exactly the limit, in a bounded number of polls
+  for limit: [3] int.[CDP_PORT_WAIT_MS, CDP_TARGET_WAIT_MS, 1234] {
+    waited := 0; polls := 0;
+    while true { ms := cdp_next_wait(polls, waited, limit); if ms < 0 { break; } waited += ms; polls += 1; }
+    #assert waited == limit && polls <= 6 + limit / 1000 + 1;
+  }
+  #assert CDP_PORT_WAIT_MS >= 30000 && CDP_TARGET_WAIT_MS >= 15000 && CDP_LAUNCH_TRIES == 2;
+}
+cdp_backoff_ms :: (attempt: int) -> int {
+  ms := 50; i := 0;
+  while i < attempt && ms < 1000 { ms *= 2; i += 1; }
+  return ifx ms < 1000 then ms else 1000;
+}
+cdp_next_wait :: (attempt: int, waited_ms: int, limit_ms: int) -> int {
+  left := limit_ms - waited_ms;
+  if left <= 0 { return -1; }
+  ms := cdp_backoff_ms(attempt);
+  return ifx ms < left then ms else left;
+}
+
 // Starts headless Chrome at w x h on a new profile (a temporary directory
 // named prefix...) and connects to its first page. False with cdp_error
-// set; whatever was started is closed again.
+// set; whatever was started is closed again. A launch that fails (no
+// DevTools port, no page target, no connection) is tried once more.
 cdp_launch :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {
+  for attempt: 0..<CDP_LAUNCH_TRIES {
+    if cdp_launch_once(c, w, h, prefix) { return true; }
+    if c[0].err_n > 0 && cdp_error(c) == "no headless Chromium on this machine; set CHROME" { return false; }
+  }
+  return false;
+}
+cdp_launch_once :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {
   c[0].proc = -1; c[0].h = -1; c[0].used = 0; c[0].id = 0; c[0].err_n = 0;
   bin: [4096] u8;
   chrome := cdp_chrome(bin[..]);
@@ -336,20 +380,34 @@ cdp_launch :: (c: [] Cdp, w: int, h: int, prefix: string) -> bool {
   c[0].proc = p;
   portfile: [1100] u8;
   pf := fs_join(profile, "DevToolsActivePort", portfile[..]);
-  for i: 0..<100 { if fs_kind(pf) == FS_FILE && fs_size(pf) > 0 { break; } proc_sleep(50); }
   text: [4096] u8;
-  n := fs_read(pf, text[..]);
-  port := ifx n > 0 then cdp_port_of(cast(string) text[0..<n]) else -1;
-  if port < 0 { cdp_close(c); return cdp_fail(c, "the browser never opened its DevTools port", ""); }
-  // The page target, from /json/list.
-  body: [262144] u8;
-  r := cdp_get(c, port, "/json/list", body[..]);
-  if r < 0 { cdp_close(c); return false; }
-  d: [1] Jv; nodes: [4096] JvNode;
-  if !jv_parse(d[..], cast(string) body[0..<r], nodes[..]) { cdp_close(c); return cdp_fail(c, "/json/list is not JSON", ""); }
-  t := cdp_page_target(d[0]);
-  url: [2048] u8;
-  un := jv_str(d[0], t, url[..]);
+  port := -1; waited := 0; polls := 0; died := false;
+  while true {
+    if fs_kind(pf) == FS_FILE && fs_size(pf) > 0 {
+      n := fs_read(pf, text[..]);
+      port = ifx n > 0 then cdp_port_of(cast(string) text[0..<n]) else -1;
+      if port > 0 { break; }
+    }
+    if proc_wait(p, 0) != PROC_RUNNING { died = true; break; }
+    ms := cdp_next_wait(polls, waited, CDP_PORT_WAIT_MS);
+    if ms < 0 { break; }
+    proc_sleep(ms); waited += ms; polls += 1;
+  }
+  if port < 0 { cdp_close(c); return cdp_fail(c, ifx died then "the browser quit before it opened its DevTools port" else "the browser never opened its DevTools port", ""); }
+  // The page target, from /json/list: a slow browser lists it after its port.
+  body: [262144] u8; d: [1] Jv; nodes: [4096] JvNode;
+  url: [2048] u8; un := -1;
+  waited = 0; polls = 0;
+  while true {
+    r := cdp_get(c, port, "/json/list", body[..]);
+    if r >= 0 && jv_parse(d[..], cast(string) body[0..<r], nodes[..]) {
+      un = jv_str(d[0], cdp_page_target(d[0]), url[..]);
+      if un >= 0 { break; }
+    }
+    ms := cdp_next_wait(polls, waited, CDP_TARGET_WAIT_MS);
+    if ms < 0 { break; }
+    proc_sleep(ms); waited += ms; polls += 1;
+  }
   if un < 0 { cdp_close(c); return cdp_fail(c, "the browser has no page target", ""); }
   if !cdp_connect(c, cast(string) url[0..<un]) { cdp_close(c); return false; }
   return true;
