@@ -66,21 +66,60 @@ cd_http_origin_ok :: (o: string) -> bool {
   return false;
 }
 
-// What to answer a request: its status, and for 200 the body. Pure, for the tests.
-CdHttpReply :: struct { status: int; body: string; }
+// What to answer a request: its status, for 200 the body, and the session
+// it started. Pure, for the tests: the caller passes a fresh session ID.
+CdHttpReply :: struct { status: int; body: string; session: string; }
 
-cd_http_reply :: (head: string, body: string, out: [] u8) -> CdHttpReply {
+// Sessions (Mcp-Session-Id): an initialize starts one, with a random ID in
+// the response header. Every later request names it; a request without one
+// is 400, an ID this server doesn't hold is 404 (the client then initializes
+// again), and DELETE ends it. The 32 newest are held.
+CD_HTTP_SESSIONS :: 32;
+CdHttpSessions :: struct { id: [CD_HTTP_SESSIONS] [32] u8; nid: [CD_HTTP_SESSIONS] int; next: int; }
+
+cd_http_held :: (ss: [] CdHttpSessions, sid: string) -> int {
+  if sid.count == 0 { return -1; }
+  for i: 0..<CD_HTTP_SESSIONS { if ss[0].nid[i] > 0 && cast(string) ss[0].id[i][0..<ss[0].nid[i]] == sid { return i; } }
+  return -1;
+}
+
+cd_http_reply :: (head: string, body: string, ss: [] CdHttpSessions, fresh: string, out: [] u8) -> CdHttpReply {
   r: CdHttpReply;
   if !cd_http_origin_ok(cd_http_header(head, "origin")) { r.status = 403; return r; }
   target := cd_http_word(head, 1);
   q := 0; while q < target.count && target[q] != '?' { q += 1; }
   if cast(string) target[0..<q] != "/mcp" { r.status = 404; return r; }
-  if cd_http_word(head, 0) != "POST" { r.status = 405; return r; }
+  verb := cd_http_word(head, 0);
+  sid := cd_http_header(head, "mcp-session-id");
+  if verb == "DELETE" {
+    k := cd_http_held(ss, sid);
+    if k < 0 { r.status = ifx sid.count == 0 then 400 else 404; return r; }
+    ss[0].nid[k] = 0; r.status = 200; return r;
+  }
+  if verb != "POST" { r.status = 405; return r; }
   b := 0; while b < body.count && (body[b] == ' ' || body[b] == 9 || body[b] == 13 || body[b] == 10) { b += 1; }
   if b >= body.count || body[b] != '{' { r.status = 400; return r; }    // one message a POST; no batches
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  if cl_str(ar[..], body, "method") == "initialize" {
+    k := ss[0].next; ss[0].next = (k + 1) % CD_HTTP_SESSIONS;
+    ss[0].nid[k] = cd_cat(ss[0].id[k][..], 0, fresh);
+    r.session = cast(string) ss[0].id[k][0..<ss[0].nid[k]];
+  } else if sid.count == 0 { r.status = 400; return r; }
+  else if cd_http_held(ss, sid) < 0 { r.status = 404; return r; }
   r.body = cd_mcp_answer(body, out);
   r.status = ifx r.body.count > 0 then 200 else 202;
   return r;
+}
+
+cxrand_fill :: (n: int) -> int #foreign;
+cxrand_byte :: (i: int) -> int #foreign;
+
+// 16 random bytes as 32 hex digits, from the system's entropy.
+cd_http_fresh :: (out: [] u8) -> string {
+  if cxrand_fill(16) != 0 { return ""; }
+  hx := "0123456789abcdef";
+  for i: 0..<16 { v := cxrand_byte(i); out[2 * i] = hx[(v >> 4) & 15]; out[2 * i + 1] = hx[v & 15]; }
+  return cast(string) out[0..<32];
 }
 
 cd_http_write :: (c: int, s: string) -> bool {
@@ -88,14 +127,26 @@ cd_http_write :: (c: int, s: string) -> bool {
   return true;
 }
 
+cd_http_reason :: (status: int) -> string {
+  if status == 200 { return "OK"; }
+  if status == 202 { return "Accepted"; }
+  if status == 400 { return "Bad Request"; }
+  if status == 403 { return "Forbidden"; }
+  if status == 404 { return "Not Found"; }
+  if status == 405 { return "Method Not Allowed"; }
+  if status == 500 { return "Internal Server Error"; }
+  return "Payload Too Large";
+}
+
 cd_http_send :: (c: int, r: CdHttpReply) {
   tb: [24] u8;
-  reason := ifx r.status == 200 then "OK" else (ifx r.status == 202 then "Accepted" else (ifx r.status == 400 then "Bad Request" else (ifx r.status == 403 then "Forbidden" else (ifx r.status == 404 then "Not Found" else (ifx r.status == 405 then "Method Not Allowed" else "Payload Too Large")))));
+  reason := cd_http_reason(r.status);
   hb: [512] u8;
   n := cd_cat(hb[..], 0, "HTTP/1.1 "); n = cd_cat(hb[..], n, cd_itoa(r.status, tb[..])); n = cd_cat(hb[..], n, " "); n = cd_cat(hb[..], n, reason);
   n = cd_cat(hb[..], n, "\r\nConnection: close\r\nContent-Length: "); n = cd_cat(hb[..], n, cd_itoa(r.body.count, tb[..]));
   if r.body.count > 0 { n = cd_cat(hb[..], n, "\r\nContent-Type: application/json"); }
-  if r.status == 405 { n = cd_cat(hb[..], n, "\r\nAllow: POST"); }
+  if r.session.count > 0 { n = cd_cat(hb[..], n, "\r\nMcp-Session-Id: "); n = cd_cat(hb[..], n, r.session); }
+  if r.status == 405 { n = cd_cat(hb[..], n, "\r\nAllow: POST, DELETE"); }
   n = cd_cat(hb[..], n, "\r\n\r\n");
   ok := cd_http_write(c, cast(string) hb[0..<n]) && cd_http_write(c, r.body);
   f := cxsock_flush(c, 10000);
@@ -110,6 +161,7 @@ cd_cmd_mcp_http :: (port: int) -> int {
   cd_outln(cast(string) lb[0..<m]);
   req: [CD_HTTP_MAX] u8;
   out: [524288] u8;
+  ss: [1] CdHttpSessions;
   for guard: 0..<1000000000 {
     c := cxsock_accept(l, 1000);
     if c < 0 { continue; }
@@ -126,7 +178,11 @@ cd_cmd_mcp_http :: (port: int) -> int {
     }
     r: CdHttpReply;
     if big || (total > req.count) { r.status = 413; }
-    else if head >= 0 && n >= total { r = cd_http_reply(cast(string) req[0..<head], cast(string) req[head..<total], out[..]); }
+    else if head >= 0 && n >= total {
+      fb: [32] u8; fresh := cd_http_fresh(fb[..]);
+      if fresh.count == 0 { r.status = 500; }
+      else { r = cd_http_reply(cast(string) req[0..<head], cast(string) req[head..<total], ss[..], fresh, out[..]); }
+    }
     else { r.status = 400; }
     cd_http_send(c, r);
     x := cxsock_close(c);
@@ -141,13 +197,21 @@ cd_cmd_mcp_http :: (port: int) -> int {
   #assert cd_http_end("POST /mcp HTTP/1.1\r\nHost: x\r\n") == -1;
   #assert cd_http_header(head, "content-length") == "58" && cd_http_header(head, "origin") == "http://localhost:3000" && cd_http_header(head, "mcp-session-id") == "";
   #assert cd_http_word(head, 0) == "POST" && cd_http_word(head, 1) == "/mcp";
-  r := cd_http_reply(head, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}", out[..]);
-  #assert r.status == 200 && r.body == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}";
-  #assert cd_http_reply(head, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", out[..]).status == 202;
-  #assert cd_http_reply(head, "[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}]", out[..]).status == 400;
-  #assert cd_http_reply("GET /mcp HTTP/1.1\r\nAccept: text/event-stream\r\n\r\n", "", out[..]).status == 405;
-  #assert cd_http_reply("POST /other HTTP/1.1\r\n\r\n", "{}", out[..]).status == 404;
-  #assert cd_http_reply("POST /mcp HTTP/1.1\r\nOrigin: https://evil.example\r\n\r\n", "{}", out[..]).status == 403;
+  ss: [1] CdHttpSessions;
+  #assert cd_http_reply(head, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}", ss[..], "f1", out[..]).status == 400;   // no session yet
+  i0 := cd_http_reply(head, "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", ss[..], "abc123", out[..]);
+  #assert i0.status == 200 && i0.session == "abc123";
+  sh := "POST /mcp HTTP/1.1\r\nMcp-Session-Id: abc123\r\n\r\n";
+  r := cd_http_reply(sh, "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}", ss[..], "f2", out[..]);
+  #assert r.status == 200 && r.body == "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}" && r.session.count == 0;
+  #assert cd_http_reply(sh, "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", ss[..], "f3", out[..]).status == 202;
+  #assert cd_http_reply("POST /mcp HTTP/1.1\r\nMcp-Session-Id: nope\r\n\r\n", "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}", ss[..], "f4", out[..]).status == 404;
+  #assert cd_http_reply(sh, "[{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}]", ss[..], "f5", out[..]).status == 400;
+  #assert cd_http_reply("GET /mcp HTTP/1.1\r\nAccept: text/event-stream\r\n\r\n", "", ss[..], "f6", out[..]).status == 405;
+  #assert cd_http_reply("POST /other HTTP/1.1\r\n\r\n", "{}", ss[..], "f7", out[..]).status == 404;
+  #assert cd_http_reply("POST /mcp HTTP/1.1\r\nOrigin: https://evil.example\r\n\r\n", "{}", ss[..], "f8", out[..]).status == 403;
+  #assert cd_http_reply("DELETE /mcp HTTP/1.1\r\nMcp-Session-Id: abc123\r\n\r\n", "", ss[..], "f9", out[..]).status == 200;
+  #assert cd_http_reply(sh, "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}", ss[..], "fa", out[..]).status == 404;   // ended
   #assert cd_http_origin_ok("http://127.0.0.1:8080") && cd_http_origin_ok("") && cd_http_origin_ok("http://[::1]");
   #assert !cd_http_origin_ok("http://localhost.evil.example") && !cd_http_origin_ok("http://localhost:80x") && !cd_http_origin_ok("null");
 }

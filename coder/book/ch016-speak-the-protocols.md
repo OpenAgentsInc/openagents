@@ -806,12 +806,22 @@ prints the URL. Both transports answer through one function,
 
 | Request | Answer |
 | --- | --- |
-| `POST /mcp` with a request | `200`, the response as `application/json` |
+| `POST /mcp` with `initialize` | `200`, and a new session in the `Mcp-Session-Id` header |
+| `POST /mcp` with a request and the session's ID | `200`, the response as `application/json` |
 | `POST /mcp` with a notification or a response | `202`, no body |
+| `POST /mcp` without `Mcp-Session-Id` (other than `initialize`) | `400` |
+| `POST /mcp` with an ID this server doesn't hold | `404`: the client initializes again |
+| `DELETE /mcp` with the session's ID | `200`; the session is over |
 | `POST /mcp` with a JSON array | `400`: one message a POST, since 2025-06-18 has no batches |
 | `GET /mcp` | `405`: the server offers no stream of its own |
 | an `Origin` other than this machine | `403`, against DNS rebinding |
 | another path | `404` |
+
+Claude Code 2.1 keeps the session ID it gets and sends it back: with
+sessions on, `claude -p` again called `coder_status` over HTTP and answered
+with the session's state (2026-11-02). A session ID is 16 bytes from the system's entropy source, as 32 hex
+digits, so one client can't guess another's. The server holds the 32 newest
+sessions; an older one answers `404`, and the client starts a new one.
 
 It listens on the loopback address only. The listener is a small addition
 to the TCP effect, `cxsock_listen` and `cxsock_accept` in
@@ -828,8 +838,8 @@ The smoke posts an `initialize`, a notification, a `coder_status` call, a
 
 - **The HTTP transport in the harness.** Coder serves MCP over HTTP, but
   the harness's own client and server speak stdio only (see
-  [Over stdio](#over-stdio)). Coder's HTTP server keeps no `Mcp-Session-Id`
-  and offers no server-sent events.
+  [Over stdio](#over-stdio)). Coder's HTTP server keeps sessions but
+  offers no server-sent events.
 - **Lists past one message.** The harness client imports a `tools/list`
   of at most 2,048 bytes, so a larger server such as `coder mcp` is refused
   at import with `shape`.

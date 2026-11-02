@@ -990,17 +990,26 @@ def verbs(check):
                                             headers=dict({"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}, **headers))
                 try:
                     with urllib.request.urlopen(rq, timeout=60) as rs:
+                        hsid[0] = rs.headers.get("Mcp-Session-Id") or hsid[0]
                         return rs.status, rs.read().decode()
                 except urllib.error.HTTPError as e:
                     return e.code, ""
+            hsid = [""]
+            hnone = post({"jsonrpc": "2.0", "id": 9, "method": "ping"})
             hi = post({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "smoke", "version": "1"}}})
-            hn = post({"jsonrpc": "2.0", "method": "notifications/initialized"})
-            hs = post({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "coder_status", "arguments": {"id": mid}}})
-            hg = post(None, method="GET")
-            ho = post({"jsonrpc": "2.0", "id": 3, "method": "ping"}, {"Origin": "https://evil.example"})
+            sh = {"Mcp-Session-Id": hsid[0]}
+            hn = post({"jsonrpc": "2.0", "method": "notifications/initialized"}, sh)
+            hs = post({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "coder_status", "arguments": {"id": mid}}}, sh)
+            hg = post(None, sh, method="GET")
+            ho = post({"jsonrpc": "2.0", "id": 3, "method": "ping"}, dict(sh, Origin="https://evil.example"))
+            hu = post({"jsonrpc": "2.0", "id": 4, "method": "ping"}, {"Mcp-Session-Id": "0" * 32})
+            hd = post(None, sh, method="DELETE")
+            ha = post({"jsonrpc": "2.0", "id": 5, "method": "ping"}, sh)
             check("mcp over http: a request answered as JSON, a notification accepted, GET refused, another origin forbidden",
                   hi[0] == 200 and json.loads(hi[1])["result"]["serverInfo"]["name"] == "coder" and hn == (202, "")
                   and hs[0] == 200 and "finished" in json.loads(hs[1])["result"]["content"][0]["text"] and hg[0] == 405 and ho[0] == 403)
+            check("mcp over http: initialize starts a session with a random Mcp-Session-Id; no ID is 400, an unknown one 404, DELETE ends it",
+                  re.fullmatch(r"[0-9a-f]{32}", hsid[0] or "") is not None and hnone[0] == 400 and hu[0] == 404 and hd[0] == 200 and ha[0] == 404)
         finally:
             hp.kill()
         bad = subprocess.run([coder, "status", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
