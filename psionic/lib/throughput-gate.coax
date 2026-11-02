@@ -26,13 +26,21 @@ TG_DECODE_LIMIT :: 5120000000;   // 128 output IDs at 25 tokens/s or faster
 
 // What ran: identity words for the model and for the IDs actually fed in,
 // the lengths, the context capacity and the number of concurrent requests.
+// book:begin batch
+// Chapter 175's evidence for a concurrency above 1: the concurrency it was
+// measured at, how many requests and timed runs, whether every batched
+// request's greedy IDs equalled its IDs run alone in every run (and the
+// fixture prompts alone equalled the reference words), and the build and
+// machine it ran on.
+TgBatch :: struct {concurrency:int;requests:int;runs:int;same:bool;build:u64;machine:u64;}
+// book:end batch
 TgWork :: struct {model:u64;corpus:u64;input:int;output:int;context:int;concurrency:int;}
 // Where and from what it ran: identity words for the build (compiler and
 // generated sources), the commit, the machine and the device, and how many
 // untimed warm-up runs came first.
-TgBind :: struct {build:u64;commit:u64;machine:u64;device:u64;warmup:int;}
+TgBind :: struct {build:u64;commit:u64;machine:u64;device:u64;warmup:int;batch:TgBatch;}
 TgVerdict :: enum u8 {refused;pass;fail;noisy;}
-TgReason :: enum u8 {none;workload;unbound;warmup;outputs;pairs;stats;spread;close;}
+TgReason :: enum u8 {none;workload;unbound;warmup;outputs;pairs;stats;spread;close;batch;}
 // One goal: its verdict and why, the warm-run statistics, the limit and the
 // standard error of the mean.
 TgGoal :: struct {verdict:TgVerdict;reason:TgReason;stats:CmStats;limit:int;se:f64;}
@@ -120,7 +128,8 @@ tg_goal :: (runs:[]int,limit:int)->TgGoal #export_c {
 // A goal that fails decides the gate even when the other is too noisy.
 tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]int)->TgGate #export_c {
     gate:=TgGate.{verdict=TgVerdict.refused};f:=tg_work();
-    if work.model!=f.model || work.corpus!=f.corpus || work.input!=f.input || work.output!=f.output || work.context!=f.context || work.concurrency!=f.concurrency {gate.reason=TgReason.workload;return gate;}
+    if work.model!=f.model || work.corpus!=f.corpus || work.input!=f.input || work.output!=f.output || work.context!=f.context {gate.reason=TgReason.workload;return gate;}
+    c:=tg_concurrency(work,bind);if c!=TgReason.none {gate.reason=c;return gate;}
     if bind.build==0 || bind.commit==0 || bind.machine==0 || bind.device==0 {gate.reason=TgReason.unbound;return gate;}
     if bind.warmup<1 {gate.reason=TgReason.warmup;return gate;}
     if !same_outputs {gate.reason=TgReason.outputs;return gate;}
@@ -135,6 +144,42 @@ tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]i
 }
 // book:end decide
 
+// book:begin concurrency
+// Concurrency 1 needs no evidence. 2 to 8 concurrent requests are admitted
+// only with chapter 175's evidence at that concurrency: at least that many
+// requests, at least 5 timed runs, every request's IDs equal to its IDs
+// alone, on the build and machine this gate is bound to.
+tg_concurrency :: (work:TgWork,bind:TgBind)->TgReason #export_c {
+    if work.concurrency<1 || work.concurrency>8 {return TgReason.workload;}
+    if work.concurrency==1 {return TgReason.none;}
+    b:=bind.batch;
+    if b.concurrency!=work.concurrency || b.requests<work.concurrency || b.runs<CM_RUNS_MIN || !b.same {return TgReason.batch;}
+    if b.build==0 || b.build!=bind.build || b.machine!=bind.machine {return TgReason.batch;}
+    return TgReason.none;
+}
+// book:end concurrency
+
+#test "a concurrency above 1 needs chapter 175's evidence at that concurrency" {
+    w:=tg_work();b:=tg_check_bind();#assert tg_concurrency(w,b)==TgReason.none;
+    w.concurrency=4;#assert tg_concurrency(w,b)==TgReason.batch;
+    b.batch=TgBatch.{concurrency=4,requests=8,runs=5,same=true,build=b.build,machine=b.machine};#assert tg_concurrency(w,b)==TgReason.none;
+    x:=b;x.batch.concurrency=8;#assert tg_concurrency(w,x)==TgReason.batch;
+    x=b;x.batch.requests=3;#assert tg_concurrency(w,x)==TgReason.batch;x.batch.requests=4;#assert tg_concurrency(w,x)==TgReason.none;
+    x=b;x.batch.runs=4;#assert tg_concurrency(w,x)==TgReason.batch;
+    x=b;x.batch.same=false;#assert tg_concurrency(w,x)==TgReason.batch;
+    x=b;x.batch.build+=1;#assert tg_concurrency(w,x)==TgReason.batch;
+    x=b;x.batch.machine+=1;#assert tg_concurrency(w,x)==TgReason.batch;
+    x=b;x.batch.build=0;x.build=0;#assert tg_concurrency(w,x)==TgReason.batch;
+    // Outside 1 to 8 is not the workload at all, evidence or not.
+    w.concurrency=9;x=b;x.batch.concurrency=9;#assert tg_concurrency(w,x)==TgReason.workload;
+    w.concurrency=8;x.batch.concurrency=8;x.batch.requests=8;#assert tg_concurrency(w,x)==TgReason.none;
+    w.concurrency=0;x.batch.concurrency=0;#assert tg_concurrency(w,x)==TgReason.workload;
+    // The gate itself: refused without the evidence, decided with it.
+    runs:=[5]int.[1900000000,1920000000,1940000000,1960000000,1980000000];dec:=[5]int.[4000000000,4010000000,4020000000,4030000000,4040000000];
+    w.concurrency=4;#assert tg_refused(w,tg_check_bind(),true,runs[..],dec[..],TgReason.batch) && tg_decide(w,b,true,runs[..],dec[..]).verdict==TgVerdict.pass;
+    #assert tg_reason_name(TgReason.batch)=="a concurrency above 1 without chapter 175's batch evidence";
+}
+
 #test "the gate refuses anything but the frozen workload, bound and checked" {
     w:=tg_work();b:=tg_check_bind();runs:=[5]int.[1900000000,1920000000,1940000000,1960000000,1980000000];dec:=[5]int.[4000000000,4010000000,4020000000,4030000000,4040000000];
     g:=tg_decide(w,b,true,runs[..],dec[..]);#assert g.verdict==TgVerdict.pass && g.reason==TgReason.none && g.prefill.verdict==TgVerdict.pass && g.decode.verdict==TgVerdict.pass;
@@ -144,7 +189,8 @@ tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]i
     x=w;x.input=1023;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
     x=w;x.output=127;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
     x=w;x.context=4096;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
-    x=w;x.concurrency=4;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
+    x=w;x.concurrency=4;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.batch);
+    x=w;x.concurrency=9;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
     y:=b;y.build=0;#assert tg_refused(w,y,true,runs[..],dec[..],TgReason.unbound);
     y=b;y.commit=0;#assert tg_refused(w,y,true,runs[..],dec[..],TgReason.unbound);
     y=b;y.machine=0;#assert tg_refused(w,y,true,runs[..],dec[..],TgReason.unbound);
@@ -216,9 +262,9 @@ tg_verdict_name :: (v:TgVerdict)->string #export_c {
     return names[cast(int)v];
 }
 tg_reason_name :: (r:TgReason)->string #export_c {
-    names:=[9]string.["none","not the frozen workload","a build, commit, machine or device is not recorded","no warm-up run",
+    names:=[10]string.["none","not the frozen workload","a build, commit, machine or device is not recorded","no warm-up run",
         "greedy outputs differ from the reference path","prefill and decode run counts differ","the timings were refused",
-        "a spread over a tenth of the mean","within two standard errors of the limit"];
+        "a spread over a tenth of the mean","within two standard errors of the limit","a concurrency above 1 without chapter 175's batch evidence"];
     return names[cast(int)r];
 }
 

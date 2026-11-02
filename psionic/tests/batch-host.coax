@@ -1,0 +1,5 @@
+// Chapter 175: the GPT-OSS device host, the batched step and chapter 71's
+// gate, as one native library for psionic/tests/gptoss_batch.c.
+#load "../lib/gptoss/device-host.coax";
+#load "../lib/gptoss/device-batch.coax";
+#load "../lib/throughput-gate.coax";  // tg_id, tg_word, tg_concurrency, and chapter 34's comparator

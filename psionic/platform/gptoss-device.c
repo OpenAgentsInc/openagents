@@ -203,6 +203,15 @@ PcStatus pg_record(PgSession *s,const coax_t_GDOp *ops,const coax_t_GDArg *args,
 failed:pc_program_free(graph);return code;
 }
 PcStatus pg_launch(PgSession *s,PcProgram program){if(s->poisoned)return PC_DRIVER;PcStatus code=pc_program_replay(program,s->stream);if(code)s->poisoned=1;return code;}
+/* Chapter 175: read bytes of an upload slot (1 to 15) that a Coax program
+   wrote, such as one request's control words in its region. Waits. */
+PcStatus pg_fetch(PgSession *s,int buffer,size_t offset,void *out,size_t bytes){
+    if(s->poisoned)return PC_DRIVER;if(buffer<1 || buffer>=16 || !s->buffers[buffer] || offset>(size_t)s->plan.upload.e[buffer] || bytes>(size_t)s->plan.upload.e[buffer]-offset)return PC_ARGUMENT;
+#ifdef PSIONIC_DEVICE_TEST
+    if(s->cpu){memcpy(out,(void*)(uintptr_t)(s->buffers[buffer]+offset),bytes);return PC_OK;}
+#endif
+    PcStatus code=pc_download(out,s->buffers[buffer]+offset,bytes,s->stream);if(code){s->poisoned=1;return code;}return pg_wait(s);
+}
 coax_t_GDPlan pg_plan(const PgSession *s){return s->plan;}
 coax_t_GShape pg_shape(const PgSession *s){return s->shape;}
 const char *pg_error(const PgSession *s){return s->error;}

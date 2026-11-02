@@ -1,7 +1,7 @@
 the frozen workload: pass (none)
 1,023 input IDs: refused (not the frozen workload)
 other input IDs: refused (not the frozen workload)
-four requests at once: refused (not the frozen workload)
+four requests at once: refused (a concurrency above 1 without chapter 175's batch evidence)
 no commit recorded: refused (a build, commit, machine or device is not recorded)
 no warm-up run: refused (no warm-up run)
 greedy outputs changed: refused (greedy outputs differ from the reference path)

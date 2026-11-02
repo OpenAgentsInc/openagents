@@ -5,10 +5,12 @@
 > chunked prefill after decode, and fair shares between clients by virtual
 > time, with a brute-force simulator, starvation and share bounds, and
 > token-for-token equality with solo runs on a stand-in model as its checks.
-> Concurrency 1, 4 and 8 are reported from a timing model fitted to chapter
-> 71's two receipts, not measured. Batched decode of gpt-oss-20b on the RTX
-> 4080, preemption, and wiring into chapters 79, 173 and 180 are not built;
-> the last section lists them.
+> Its steps also run on the original gpt-oss-20b on one RTX 4080 (profile
+> cbd-gptoss20b-v1): each step's rows from several requests go through one
+> batched pass, each request attending to its own KV cache, and every
+> request's greedy IDs are checked against running it alone. Preemption,
+> recurrent state sizes, and wiring into chapters 79, 173 and 180 are not
+> built; the last section lists them.
 
 One request at a time leaves most of a device idle. Chapter 71 measured
 gpt-oss-20b on the RTX 4080 at 56.2 tokens per second for one request, and
@@ -72,7 +74,7 @@ before the step limit.
 ```jai
 // Refuse a configuration or arrival list outside the bounds; otherwise an
 // empty schedule at step 0.
-cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState {
+cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState #export_c {
     s:CbState;s.cfg=cfg;s.status=CbStatus.config;
     if cfg.slots<1 || cfg.slots>CB_SLOTS || cfg.tokens<cfg.slots || cfg.tokens>CB_TOKENS || cfg.kv>CB_KV {return s;}
     if cfg.state<0 || cfg.state>=cfg.kv || cfg.clients<1 || cfg.clients>CB_CLIENTS || cfg.steps<1 || cfg.steps>CB_STEPS {return s;}
@@ -197,7 +199,7 @@ cb_tokens :: (from:CbState)->CbState {
 ```jai
 // One iteration: arrivals, admission, tokens, then retire every request
 // whose last output token came out, freeing its slot and its state.
-cb_step :: (from:CbState)->CbState {
+cb_step :: (from:CbState)->CbState #export_c {
     s:=cb_tokens(cb_admit(cb_arrive(from)));
     s.clock+=cb_step_ns(s.used);
     m:=0;
@@ -509,20 +511,290 @@ Under this model, concurrency 8 almost doubles aggregate throughput over one
 request at a time, and the median time to first token falls by more than
 half. The median latency is worse at 8 than at 4, because each step carries
 both decode rows and prompt chunks, so every running request's steps are
-slower. Whether the device behaves like the model is the measurement this
-chapter still owes.
+slower. The next section measures the device instead.
+
+## Steps on the RTX 4080
+
+[`device-batch.coax`](../lib/gptoss/device-batch.coax) runs the scheduler's
+steps on the original gpt-oss-20b. It is a true ragged batch, not one launch
+per request: chapter 67's batched prefill already takes any number of rows
+through every weight product (norms, QKV, output projection, router and the
+grouped experts), and none of those products mixes rows. Only attention
+needs to know which request a row belongs to. So each layer runs its
+products once over all of the step's rows and runs rotation, scores,
+softmax, context and the cache commit once per segment, a segment being one
+request's rows in this step, on that request's own cache.
+
+Each running request owns a region of upload slot 1: its whole KV cache, in
+the layout of the session's own cache, then its eight control words.
+
+<!-- source: psionic/lib/gptoss/device-batch.coax regions -->
+```jai
+// A region holds a request's whole cache (the layout of slot 16) and then its
+// eight control words, so it is 8-byte aligned.
+cbd_region_bytes :: (p:GDPlan)->int #export_c {return p.counts[16]*4+64;}
+// Regions in upload slot 1. Refused when the plan already uses slot 1, when
+// the tensor-core prefill is on (its products are not checked here), or for
+// 0 or more than 8 regions.
+cbd_with_regions :: (p:GDPlan,s:GShape,regions:int)->GDPlan #export_c {
+    if p.status!=GStatus.ok {return GDPlan.{status=p.status};}
+    if !g_shape(s) || p.mma!=0 || p.upload[1]!=0 || regions<1 || regions>CBD_REGIONS {return GDPlan.{status=GStatus.shape};}
+    r:=p;r.upload[1]=regions*cbd_region_bytes(p);return r;
+}
+cbd_regions :: (p:GDPlan)->int #export_c {return p.upload[1]/cbd_region_bytes(p);}
+cbd_cache :: (p:GDPlan,s:GShape,region:int,layer:int)->GDRef {
+    return GDRef.{buffer=1,offset=region*cbd_region_bytes(p)+g_cache_base(s,layer)*4,count=2*s.kv_heads*64*g_layer_capacity(s,layer),elem=4};
+}
+cbd_control :: (p:GDPlan,region:int)->GDRef {return GDRef.{buffer=1,offset=region*cbd_region_bytes(p)+p.counts[16]*4,count=8,elem=8};}
+// Byte offset of a region's control words, for the host's read.
+cbd_control_offset :: (p:GDPlan,region:int)->int #export_c {return cbd_control(p,region).offset;}
+```
+
+For gpt-oss-20b at a context of 2,048, 12 sliding layers keep 128 positions
+and 12 full layers keep 2,048, and each position holds 8 key and 8 value
+heads of 64 floats, 1,024 floats in all. A region is
+24 × 1,088 × 1,024 × 4 + 64 = 106,954,816 bytes, and eight regions take
+855.6 MB. With them the device holds 15.63 GB of its 16.71 GB.
+
+A step is admitted before any program is built:
+
+<!-- source: psionic/lib/gptoss/device-batch.coax admit -->
+```jai
+// A step is admitted when its segments fit the plan: 1 to 8 segments in
+// distinct regions, 1 to `batch` rows in all, every segment inside the
+// context, and every ID to upload inside the vocabulary.
+cbd_admit :: (s:GShape,p:GDPlan,segs:[]CbdSeg,ids:[]int)->CbdStep #export_c {
+    st:=CbdStep.{status=GStatus.shape};
+    if p.status!=GStatus.ok || !g_shape(s) || p.mma!=0 || cbd_regions(p)<1 {return st;}
+    st.status=GStatus.state;
+    if segs.count<1 {return st;}
+    for j:0..<segs.count {
+        g:=segs[j];
+        if g.region<0 || g.region>=cbd_regions(p) || g.count<1 || g.at<0 || g.at>s.capacity-g.count || g.limit<1 || g.limit>s.capacity {return CbdStep.{status=GStatus.state};}
+        for i:0..<j {if segs[i].region==g.region {return CbdStep.{status=GStatus.state};}}
+        st.rows+=g.count;
+    }
+    if st.rows>p.batch || ids.count!=st.rows {return CbdStep.{status=GStatus.state};}
+    for id:ids {if id<0 || id>=s.vocab {return CbdStep.{status=GStatus.token};}}
+    st.status=GStatus.ok;st.segs=segs.count;return st;
+}
+```
+
+Take step 1 of the hand trace. A has its last prompt position, 4, and C
+its three prompt positions, 0 to 2. Region binding gives A region 0 (from
+step 0) and C region 1, the lowest one no live request holds. The step
+uploads four IDs: A's prompt ID 4 and C's prompt IDs 0, 1 and 2. The step's
+rows are 0 for A and 1 to 3 for C, and both segments emit. C starts a
+prompt, so the head clears region 1's control words before checking that C
+is at position 0. In every layer the products run over 4 rows; A's
+attention runs on row 0 at position 4 over region 0's cache, C's on rows 1
+to 3 at positions 0 to 2 over region 1's. The tail reads out row 0 for A and
+row 3 for C, each into its own region's control words. The checks
+assert exactly these segments, IDs and regions.
+
+<!-- source: psionic/lib/gptoss/device-batch.coax bind -->
+```jai
+// Regions for the requests in a step's rows: a request keeps the region it
+// was given; a new one takes the lowest region that no live request holds.
+// A request is live from its region's assignment until the step it finished
+// in has run. Returns false when no region is free.
+cbd_bind :: (s:CbState,region:[]int,regions:int)->bool #export_c {
+    if region.count<s.n || regions<1 || regions>CBD_REGIONS {return false;}
+    for k:0..<s.nrows {
+        i:=s.rows[k].req;
+        if region[i]<0 {
+            used:[8]bool;
+            for j:0..<s.n {done:=s.fate[j].finish>=0 && s.fate[j].finish<s.step-1;if region[j]>=0 && !done {used[region[j]]=true;}}
+            r:=0;while r<regions && used[r] {r+=1;}
+            if r==regions {return false;}
+            region[i]=r;
+        }
+    }
+    return true;
+}
+// The step's segments, in row order, and the IDs to upload: a prompt row
+// feeds its prompt ID, a decode row the request's last chosen ID. `first`
+// gives each request's first prompt ID in `prompts`; `last` its last ID.
+cbd_segments :: (s:CbState,region:[]int,prompts:[]int,first:[]int,last:[]int,segs:[]CbdSeg,ids:[]int)->int #export_c {
+    if region.count<s.n || first.count<s.n || last.count<s.n || segs.count<s.nrows {return -1;}
+    n:=0;
+    for k:0..<s.nrows {
+        r:=s.rows[k];i:=r.req;p:=s.req[i].prompt;
+        segs[k]=CbdSeg.{region=region[i],at=r.at,count=r.count,emit=r.emit,limit=s.req[i].output};
+        for t:r.at..<r.at+r.count {
+            if n>=ids.count {return -1;}
+            if t<p {if first[i]+t<0 || first[i]+t>=prompts.count {return -1;}ids[n]=prompts[first[i]+t];}else {ids[n]=last[i];}
+            n+=1;
+        }
+    }
+    return n;
+}
+```
+
+<!-- source: psionic/lib/gptoss/device-batch.coax head -->
+```jai
+// Before the layers: a segment that starts a prompt clears its region's
+// control words; every segment checks that its position is the one its
+// control words expect; then all rows' IDs are embedded at once.
+cbd_head :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;
+    for g:segs {
+        control:=cbd_control(p,g.region);
+        if g.at==0 {w=gd_emit(w,1,64,0,1,GDScalars.{},GDViews.{a=GDRef.{buffer=1,offset=control.offset,count=64}});}
+        w=gd_emit(w,0,1,3,1,GDScalars.{a=0,b=g.at,c=s.vocab},GDViews.{a=control});
+    }
+    w=gd_emit(w,24,rows*d,2,4,GDScalars.{a=d,b=0},GDViews.{a=gd_all(p,26),b=gd_weight(params,0,2),c=gd_slice(p,28,0,rows*d),d=gd_all(p,37)});
+    return gd_guard(w,rows*d).result;
+}
+```
+
+<!-- source: psionic/lib/gptoss/device-batch.coax layer -->
+```jai
+// One layer. Every product runs once over all rows; rotation, scores,
+// softmax, context and the cache commit run per segment, on that segment's
+// rows and its own cache, with chapter 67's scalars for its position.
+cbd_layer :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,layer:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;q:=s.heads*64;k:=s.kv_heads*64;h:=s.hidden;z:=s.selected;n:=rows;
+    x:=gd_slice(p,28,0,n*d);normal:=gd_slice(p,29,0,n*d);qkv:=gd_slice(p,30,0,n*(q+2*k));projected:=gd_slice(p,32,0,n*d);router:=gd_slice(p,33,0,n*s.experts);flags:=gd_all(p,37);
+    base:=3+15*layer;ids:=gd_slice(p,14,layer*z,z);weights:=gd_slice(p,15,layer*z,z);trace:=gd_slice(p,13,layer*2*d,d);cap:=g_layer_capacity(s,layer);window:=0;if cap<s.capacity {window=s.window;}
+    w=gd_batch_norm(w,d,n,gd_weight(params,base,2),x,normal);
+    w=gd_batch_bf(w,q+2*k,d,n,gd_weight(params,base+4,8),gd_weight(params,base+3,2),normal,qkv);
+    row:=0;
+    for g:segs {
+        m:=g.count;at:=g.at;cache:=cbd_cache(p,s,g.region,layer);stride:=gs_window(at+m,cap);
+        sq:=gd_slice(p,30,row*(q+2*k),m*(q+2*k));pending:=gd_slice(p,34,row*2*k,m*2*k);attention:=gd_slice(p,31,row*q,m*q);
+        rotations:=m*(s.heads+s.kv_heads)*32;w=gd_emit(w,35,rotations,3,4,GDScalars.{a=s.heads,b=s.kv_heads,c=at},GDViews.{a=sq,b=gd_all(p,25),c=pending,d=flags});w=gd_guard(w,rotations);
+        w=gd_emit(w,36,m*s.heads*stride,6,4,GDScalars.{a=s.heads,b=s.kv_heads,c=at,d=window,e=cap,f=stride},GDViews.{a=sq,b=cache,c=pending,d=gd_all(p,36)});
+        w=gd_emit(w,37,m*s.heads,4,3,GDScalars.{a=s.heads,b=at,c=window,d=stride},GDViews.{a=gd_weight(params,base+5,2),b=gd_all(p,36),c=flags});w=gd_guard(w,m*s.heads);
+        w=gd_emit(w,38,m*q*8,8,4,GDScalars.{a=s.heads,b=s.kv_heads,c=m,d=at,e=window,f=cap,g=stride,h=8},GDViews.{a=gd_all(p,36),b=cache,c=pending,d=gd_all(p,40)});
+        w=gd_emit(w,28,m*q,3,4,GDScalars.{a=q,b=m,c=8},GDViews.{a=gd_all(p,40),b=GDRef.{elem=2},c=attention,d=flags});w=gd_guard(w,m*q);
+        row+=m;
+    }
+    w=gd_batch_bf(w,d,q,n,gd_weight(params,base+2,8),gd_weight(params,base+1,2),gd_slice(p,31,0,n*q),projected);
+    w=gd_emit(w,33,n*d,2,4,GDScalars.{a=d,b=n},GDViews.{a=x,b=projected,c=trace,d=flags});w=gd_guard(w,n*d);
+    w=gd_batch_norm(w,d,n,gd_weight(params,base+10,2),x,normal);
+    w=gd_batch_bf(w,s.experts,d,n,gd_weight(params,base+7,8),gd_weight(params,base+6,2),normal,router);
+    w=gd_emit(w,29,n,3,6,GDScalars.{a=s.experts,b=z,c=n},GDViews.{a=router,b=gd_all(p,45),c=gd_all(p,46),d=ids,e=weights,f=flags});w=gd_guard(w,n);
+    w=gd_emit(w,30,s.experts,3,3,GDScalars.{a=s.experts,b=z,c=n},GDViews.{a=gd_all(p,45),b=gd_all(p,38),c=gd_all(p,39)});
+    w=gd_emit(w,31,1,1,1,GDScalars.{a=s.experts},GDViews.{a=gd_all(p,39)});
+    w=gd_batch_mx(w,2*h,d,n,s.experts,z,0,gd_weight(params,base+11,8),gd_weight(params,base+12,1),gd_weight(params,base+8,2),normal,gd_all(p,41));
+    w=gd_emit(w,10,n*z*h,1,3,GDScalars.{a=h},GDViews.{a=gd_all(p,41),b=gd_all(p,42),c=flags});w=gd_guard(w,n*z*h);
+    w=gd_batch_mx(w,d,h,n,s.experts,z,1,gd_weight(params,base+13,8),gd_weight(params,base+14,1),gd_weight(params,base+9,2),gd_all(p,42),gd_all(p,43));
+    w=gd_emit(w,34,n*d,3,5,GDScalars.{a=d,b=z,c=n},GDViews.{a=x,b=gd_all(p,43),c=gd_all(p,46),d=gd_slice(p,13,(2*layer+1)*d,d),e=flags});w=gd_guard(w,n*d);
+    row=0;
+    for g:segs {
+        m:=g.count;kept:=gs_window(m,cap);
+        w=gd_emit(w,40,kept*2*k,4,2,GDScalars.{a=s.kv_heads,b=g.at,c=m,d=cap},GDViews.{a=gd_slice(p,34,row*2*k,m*2*k),b=cbd_cache(p,s,g.region,layer)});
+        row+=m;
+    }
+    return w.result;
+}
+```
+
+<!-- source: psionic/lib/gptoss/device-batch.coax tail -->
+```jai
+// After the layers: every emitting segment's last row is normed and read out
+// on its own, exactly as chapter 67's prefill reads its last row; the flags
+// of the whole step reach the step's control words (slot 24); every segment
+// advances its position, and an emitting one chooses its next ID greedily.
+cbd_tail :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;row:=0;
+    for g:segs {
+        row+=g.count;
+        control:=cbd_control(p,g.region);
+        if g.emit {
+            w=gd_emit(w,1,p.flags,0,1,GDScalars.{},GDViews.{a=gd_all(p,22)});w.result.flags=0;
+            w=gd_norm(w,d,gd_weight(params,1,2),gd_slice(p,28,(row-1)*d,d),gd_all(p,1));
+            w=gd_bf(w,s.vocab,d,gd_weight(params,2,8),GDRef.{elem=2},gd_all(p,1),gd_all(p,17));
+            summaries:=(w.result.flags+255)/256;w=gd_emit(w,18,summaries,0,2,GDScalars.{},GDViews.{a=gd_slice(p,22,0,w.result.flags),b=gd_slice(p,23,0,summaries)});
+            w=gd_emit(w,19,1,0,2,GDScalars.{},GDViews.{a=gd_slice(p,23,0,summaries),b=gd_all(p,24)});
+        }
+        w=gd_emit(w,42,1,1,1,GDScalars.{a=g.count},GDViews.{a=control});
+        if g.emit {
+            w=gd_emit(w,22,p.counts[27],0,2,GDScalars.{},GDViews.{a=gd_all(p,17),b=gd_all(p,27)});
+            w=gd_emit(w,23,1,1,3,GDScalars.{a=g.limit},GDViews.{a=gd_all(p,17),b=gd_all(p,27),c=control});
+        }
+    }
+    return w.result;
+}
+```
+
+The checks compare the programs, not just their shapes. A single segment's
+layer must equal chapter 67's prefill layer op for op, scalar for scalar
+and view for view, with the prefill's shadow cache replaced by the region;
+in a step of three segments the shared products must equal those of one
+six-row segment and each segment's attention must equal its own
+single-segment layer moved to its rows; a single emitting segment's tail
+must equal the prefill's readout of its last row. `coax mutate` on the unit
+kills all of its mutants. The host
+([`gptoss_batch.c`](../tests/gptoss_batch.c)) adds one call to the engine,
+`pg_fetch`, which reads a region's control words; everything else it does
+is upload IDs, run programs and read clocks.
+
+### The run
+
+```shell
+COAX_CC=gcc psionic/tests/check_device_batch.sh \
+  ~/.cache/psionic/gptoss-original/20b/6cee5e81ee83917806bbde320786a8fb61efebee \
+  5 447e9a1f919e90b3 7c6705e4ab014dfd
+```
+
+The workload is eight requests from four clients, all arriving at step 0:
+chapter 71's two fixture prompts ("Say hi." and "List the integers from 1
+to 100, separated by commas.", rendered with Harmony, up to 256 IDs each),
+and six prompts of chapter 71's IDs, 96 to 416 long, up to 64 IDs each.
+Each request first runs alone on chapter 70's path (one prompt pass, then
+one decode step per token). The two fixture prompts give 24 and 256 IDs
+whose words equal the reference words in chapter 71; the eight requests give
+664 output IDs. Each request's output length is then fixed to its length
+alone, and the scheduler runs all eight with 128 positions per step and 1,
+4 or 8 slots: one untimed warm-up and five timed runs at each concurrency.
+
+**The independent check.** In every run at every concurrency, every
+request's IDs equal its IDs alone, ID for ID and in number. Decode rows
+here go through the batched kernels and alone they go through chapter 66's
+decode kernels, so the equality also shows that the two paths choose the
+same greedy IDs on this workload.
+
+| Concurrency | Steps | Mean time (sd) | Tokens/s | Latency P50 | Latency P95 | First token P50 | First token P95 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 673 | 29.534 s (48.7 ms) | 22.5 | 16.163 s | 29.534 s | 13.824 s | 27.143 s |
+| 4 | 257 | 20.348 s (25.4 ms) | 32.6 | 10.654 s | 20.348 s | 1.204 s | 11.623 s |
+| 8 | 257 | 19.325 s (2.4 ms) | 34.4 | 11.909 s | 19.325 s | 1.498 s | 5.437 s |
+
+Latency and time to first token are measured from the start of the run, when
+all eight requests arrive; each is the mean over the five runs of that run's
+nearest-rank P50 or P95 over the eight requests. The
+[record](../../docs/verification/psionic-ch175-continuous-batching-2026-11-02.md)
+has every run, the build words and the load average.
+
+Batching helps the batched path: concurrency 4 is 1.45 times faster than
+concurrency 1 and concurrency 8 is 1.53 times faster, and chapter 34's
+comparison calls both faster beyond two standard errors. The median time to
+first token falls from 13.8 s to 1.2 s.
+
+**It does not beat one request at a time.** The same eight requests run
+alone, one after another on chapter 70's path, took 15.285 s for 664 IDs,
+43.4 tokens per second, in a single run. That is faster than this batched
+path at any concurrency. Three costs explain it. A decode row in the
+batched kernels costs more than in chapter 66's decode kernels, which are
+tuned for one row: concurrency 1 takes 673 steps in 29.5 s, 43.9 ms a step.
+The host waits for the device at the end of every step, to read the chosen
+IDs, and builds 26 programs per step in that wait. And every step at
+concurrency 4 and 8 is capped at 128 positions, so the long prompts take as
+many steps at 8 as at 4 (257). None of these is measured separately yet.
+
+Chapter 71's gate now admits concurrency 4 and 8 with this evidence (it
+prints the reason `none` for each), but its own timed runs are still the
+one-request workload.
 
 ## What remains
 
-- **Batched decode on the device.** Chapter 71's harness decodes one
-  request at a time; a step with rows from several requests, each with its
-  own KV cache, is not wired on the RTX 4080. Until it is, aggregate and
-  per-request tokens per second at concurrency 1, 4 and 8 for gpt-oss-20b,
-  their receipts and P50/P95 from real transcripts are not reported, and
-  chapter 71's gate still refuses any concurrency but 1.
-- **Batch invariance on the real model.** The equality check runs on a
-  stand-in model. On gpt-oss-20b it needs batched kernels whose reduction
-  order does not depend on the batch, checked against solo greedy runs.
+- **Faster batched decode.** The batched path is slower than one request at
+  a time on chapter 70's path. A row-count-aware decode kernel, a recorded
+  step without the per-step host wait (chapter 99), and the tensor-core
+  prefill products (refused here for now) are the next steps; none is
+  built.
 - **Preemption and priority classes.** Requests are never preempted; a
   priority class is only a weight.
 - **The server.** Chapter 79's Responses server, chapter 173's capability

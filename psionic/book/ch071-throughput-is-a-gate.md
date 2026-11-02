@@ -4,9 +4,9 @@
 > the CPU, and an opt-in harness applies it to the original gpt-oss-20b on
 > one RTX 4080. With chapter 69's tensor-core expert products wired into
 > chapter 67's prefill, both goals pass; with the f32 prefill, prefill fails.
-> P95 and per-phase memory and transfer reports, a packaged reference engine
-> on the same device, and continuous batching at concurrency 4 and 8 are not
-> built; the last section lists them.
+> P95 and per-phase memory and transfer reports and a packaged reference
+> engine on the same device are not built; the last section lists them. A
+> concurrency above 1 is admitted only with chapter 175's batch evidence.
 
 A correct decoder that is too slow is not useful inference. This chapter
 turns gpt-oss-20b speed on the RTX 4080 into a verdict: one fixed workload,
@@ -134,7 +134,8 @@ the two summaries differ by far less than either margin below.
 // A goal that fails decides the gate even when the other is too noisy.
 tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]int)->TgGate #export_c {
     gate:=TgGate.{verdict=TgVerdict.refused};f:=tg_work();
-    if work.model!=f.model || work.corpus!=f.corpus || work.input!=f.input || work.output!=f.output || work.context!=f.context || work.concurrency!=f.concurrency {gate.reason=TgReason.workload;return gate;}
+    if work.model!=f.model || work.corpus!=f.corpus || work.input!=f.input || work.output!=f.output || work.context!=f.context {gate.reason=TgReason.workload;return gate;}
+    c:=tg_concurrency(work,bind);if c!=TgReason.none {gate.reason=c;return gate;}
     if bind.build==0 || bind.commit==0 || bind.machine==0 || bind.device==0 {gate.reason=TgReason.unbound;return gate;}
     if bind.warmup<1 {gate.reason=TgReason.warmup;return gate;}
     if !same_outputs {gate.reason=TgReason.outputs;return gate;}
@@ -155,6 +156,39 @@ separated by commas.", up to 256 IDs each) before and after the timed runs,
 and passes true only when both runs' output words equal the reference path's
 words given on its command line. A faster path that changes a greedy token is
 refused, not timed.
+
+The workload's concurrency is 1 unless chapter 175's batched harness
+supplies evidence for more. That evidence travels in the binding:
+
+<!-- source: psionic/lib/throughput-gate.coax batch -->
+```jai
+// Chapter 175's evidence for a concurrency above 1: the concurrency it was
+// measured at, how many requests and timed runs, whether every batched
+// request's greedy IDs equalled its IDs run alone in every run (and the
+// fixture prompts alone equalled the reference words), and the build and
+// machine it ran on.
+TgBatch :: struct {concurrency:int;requests:int;runs:int;same:bool;build:u64;machine:u64;}
+```
+
+<!-- source: psionic/lib/throughput-gate.coax concurrency -->
+```jai
+// Concurrency 1 needs no evidence. 2 to 8 concurrent requests are admitted
+// only with chapter 175's evidence at that concurrency: at least that many
+// requests, at least 5 timed runs, every request's IDs equal to its IDs
+// alone, on the build and machine this gate is bound to.
+tg_concurrency :: (work:TgWork,bind:TgBind)->TgReason #export_c {
+    if work.concurrency<1 || work.concurrency>8 {return TgReason.workload;}
+    if work.concurrency==1 {return TgReason.none;}
+    b:=bind.batch;
+    if b.concurrency!=work.concurrency || b.requests<work.concurrency || b.runs<CM_RUNS_MIN || !b.same {return TgReason.batch;}
+    if b.build==0 || b.build!=bind.build || b.machine!=bind.machine {return TgReason.batch;}
+    return TgReason.none;
+}
+```
+
+Evidence for concurrency 4 does not admit concurrency 8, and evidence from
+another build or machine admits nothing. A concurrency outside 1 to 8 is not
+the workload at all.
 
 ## Run it on the CPU
 
@@ -210,7 +244,7 @@ decided:
 the frozen workload: pass (none)
 1,023 input IDs: refused (not the frozen workload)
 other input IDs: refused (not the frozen workload)
-four requests at once: refused (not the frozen workload)
+four requests at once: refused (a concurrency above 1 without chapter 175's batch evidence)
 no commit recorded: refused (a build, commit, machine or device is not recorded)
 no warm-up run: refused (no warm-up run)
 greedy outputs changed: refused (greedy outputs differ from the reference path)
@@ -467,8 +501,9 @@ has every run, the build words and the kernel profiles.
   approved and installed.
 - **Continuous batching.** Bounded continuous batching, KV allocation per
   request, and aggregate and per-request rates at concurrency 1, 4 and 8
-  move to [chapter 175](ch175-continuous-batching-and-a-fair-scheduler.md).
-  The gate refuses any concurrency but 1.
+  are measured in [chapter 175](ch175-continuous-batching-and-a-fair-scheduler.md).
+  The gate admits a concurrency above 1 only with that chapter's evidence;
+  its own timed runs are still the one-request workload.
 - **Serving.** Chapter 79's Responses server does not call `pg_mma` yet.
 - **Other devices and clocks.** One RTX 4080; clocks are not pinned.
 

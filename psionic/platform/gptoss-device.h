@@ -35,6 +35,9 @@ PcStatus pg_wait(PgSession *session);
    named kernels of the session's module. Then launch it, without a wait. */
 PcStatus pg_record(PgSession *session,const coax_t_GDOp *ops,const coax_t_GDArg *args,coax_t_GDProgram program,const coax_string *names,int64_t first,int64_t count,PcProgram *out);
 PcStatus pg_launch(PgSession *session,PcProgram program);
+/* Chapter 175 (CUDA engine only): read bytes of upload slot 1 to 15 that a
+   Coax program wrote; waits for the device. */
+PcStatus pg_fetch(PgSession *session,int buffer,size_t offset,void *out,size_t bytes);
 void pg_close(PgSession *session);
 coax_t_GDPlan pg_plan(const PgSession *session);
 coax_t_GShape pg_shape(const PgSession *session);

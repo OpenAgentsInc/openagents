@@ -1,0 +1,403 @@
+// Chapter 175: one batched pass over rows from several requests. Chapter
+// 175's scheduler (serve-batch.coax) gives each step a list of rows: one
+// decode position for every request that is decoding and prompt chunks for
+// the rest. Here those rows become one device pass of gpt-oss-20b: every
+// weight product (norms, QKV, output projection, router, experts, readout)
+// runs once over all rows of the step, and only attention runs per request,
+// over that request's own KV cache. Each request's cache and control words
+// live in a region of upload slot 1. The host executes these programs and
+// uploads what Coax decides; it decides nothing itself.
+#load "device-prefill.coax";
+#load "../serve-batch.coax";
+#load "../../tests/device-batch-checks.coax";  // the checks' program comparisons
+#authority;
+
+// At most 8 regions, one per running request (chapter 175's concurrency 8).
+CBD_REGIONS :: 8;
+// One request's rows in one step: positions at..<at+count, in region
+// `region`; emit when the last row yields an output token, chosen under
+// `limit` output tokens in all.
+CbdSeg :: struct {region:int;at:int;count:int;emit:bool;limit:int;}
+// What a step admitted: its segments and its rows in all.
+CbdStep :: struct {status:GStatus;segs:int;rows:int;}
+
+// book:begin regions
+// A region holds a request's whole cache (the layout of slot 16) and then its
+// eight control words, so it is 8-byte aligned.
+cbd_region_bytes :: (p:GDPlan)->int #export_c {return p.counts[16]*4+64;}
+// Regions in upload slot 1. Refused when the plan already uses slot 1, when
+// the tensor-core prefill is on (its products are not checked here), or for
+// 0 or more than 8 regions.
+cbd_with_regions :: (p:GDPlan,s:GShape,regions:int)->GDPlan #export_c {
+    if p.status!=GStatus.ok {return GDPlan.{status=p.status};}
+    if !g_shape(s) || p.mma!=0 || p.upload[1]!=0 || regions<1 || regions>CBD_REGIONS {return GDPlan.{status=GStatus.shape};}
+    r:=p;r.upload[1]=regions*cbd_region_bytes(p);return r;
+}
+cbd_regions :: (p:GDPlan)->int #export_c {return p.upload[1]/cbd_region_bytes(p);}
+cbd_cache :: (p:GDPlan,s:GShape,region:int,layer:int)->GDRef {
+    return GDRef.{buffer=1,offset=region*cbd_region_bytes(p)+g_cache_base(s,layer)*4,count=2*s.kv_heads*64*g_layer_capacity(s,layer),elem=4};
+}
+cbd_control :: (p:GDPlan,region:int)->GDRef {return GDRef.{buffer=1,offset=region*cbd_region_bytes(p)+p.counts[16]*4,count=8,elem=8};}
+// Byte offset of a region's control words, for the host's read.
+cbd_control_offset :: (p:GDPlan,region:int)->int #export_c {return cbd_control(p,region).offset;}
+// book:end regions
+
+// book:begin admit
+// A step is admitted when its segments fit the plan: 1 to 8 segments in
+// distinct regions, 1 to `batch` rows in all, every segment inside the
+// context, and every ID to upload inside the vocabulary.
+cbd_admit :: (s:GShape,p:GDPlan,segs:[]CbdSeg,ids:[]int)->CbdStep #export_c {
+    st:=CbdStep.{status=GStatus.shape};
+    if p.status!=GStatus.ok || !g_shape(s) || p.mma!=0 || cbd_regions(p)<1 {return st;}
+    st.status=GStatus.state;
+    if segs.count<1 {return st;}
+    for j:0..<segs.count {
+        g:=segs[j];
+        if g.region<0 || g.region>=cbd_regions(p) || g.count<1 || g.at<0 || g.at>s.capacity-g.count || g.limit<1 || g.limit>s.capacity {return CbdStep.{status=GStatus.state};}
+        for i:0..<j {if segs[i].region==g.region {return CbdStep.{status=GStatus.state};}}
+        st.rows+=g.count;
+    }
+    if st.rows>p.batch || ids.count!=st.rows {return CbdStep.{status=GStatus.state};}
+    for id:ids {if id<0 || id>=s.vocab {return CbdStep.{status=GStatus.token};}}
+    st.status=GStatus.ok;st.segs=segs.count;return st;
+}
+// book:end admit
+
+// book:begin head
+// Before the layers: a segment that starts a prompt clears its region's
+// control words; every segment checks that its position is the one its
+// control words expect; then all rows' IDs are embedded at once.
+cbd_head :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;
+    for g:segs {
+        control:=cbd_control(p,g.region);
+        if g.at==0 {w=gd_emit(w,1,64,0,1,GDScalars.{},GDViews.{a=GDRef.{buffer=1,offset=control.offset,count=64}});}
+        w=gd_emit(w,0,1,3,1,GDScalars.{a=0,b=g.at,c=s.vocab},GDViews.{a=control});
+    }
+    w=gd_emit(w,24,rows*d,2,4,GDScalars.{a=d,b=0},GDViews.{a=gd_all(p,26),b=gd_weight(params,0,2),c=gd_slice(p,28,0,rows*d),d=gd_all(p,37)});
+    return gd_guard(w,rows*d).result;
+}
+// book:end head
+
+// book:begin layer
+// One layer. Every product runs once over all rows; rotation, scores,
+// softmax, context and the cache commit run per segment, on that segment's
+// rows and its own cache, with chapter 67's scalars for its position.
+cbd_layer :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,rows:int,layer:int,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;q:=s.heads*64;k:=s.kv_heads*64;h:=s.hidden;z:=s.selected;n:=rows;
+    x:=gd_slice(p,28,0,n*d);normal:=gd_slice(p,29,0,n*d);qkv:=gd_slice(p,30,0,n*(q+2*k));projected:=gd_slice(p,32,0,n*d);router:=gd_slice(p,33,0,n*s.experts);flags:=gd_all(p,37);
+    base:=3+15*layer;ids:=gd_slice(p,14,layer*z,z);weights:=gd_slice(p,15,layer*z,z);trace:=gd_slice(p,13,layer*2*d,d);cap:=g_layer_capacity(s,layer);window:=0;if cap<s.capacity {window=s.window;}
+    w=gd_batch_norm(w,d,n,gd_weight(params,base,2),x,normal);
+    w=gd_batch_bf(w,q+2*k,d,n,gd_weight(params,base+4,8),gd_weight(params,base+3,2),normal,qkv);
+    row:=0;
+    for g:segs {
+        m:=g.count;at:=g.at;cache:=cbd_cache(p,s,g.region,layer);stride:=gs_window(at+m,cap);
+        sq:=gd_slice(p,30,row*(q+2*k),m*(q+2*k));pending:=gd_slice(p,34,row*2*k,m*2*k);attention:=gd_slice(p,31,row*q,m*q);
+        rotations:=m*(s.heads+s.kv_heads)*32;w=gd_emit(w,35,rotations,3,4,GDScalars.{a=s.heads,b=s.kv_heads,c=at},GDViews.{a=sq,b=gd_all(p,25),c=pending,d=flags});w=gd_guard(w,rotations);
+        w=gd_emit(w,36,m*s.heads*stride,6,4,GDScalars.{a=s.heads,b=s.kv_heads,c=at,d=window,e=cap,f=stride},GDViews.{a=sq,b=cache,c=pending,d=gd_all(p,36)});
+        w=gd_emit(w,37,m*s.heads,4,3,GDScalars.{a=s.heads,b=at,c=window,d=stride},GDViews.{a=gd_weight(params,base+5,2),b=gd_all(p,36),c=flags});w=gd_guard(w,m*s.heads);
+        w=gd_emit(w,38,m*q*8,8,4,GDScalars.{a=s.heads,b=s.kv_heads,c=m,d=at,e=window,f=cap,g=stride,h=8},GDViews.{a=gd_all(p,36),b=cache,c=pending,d=gd_all(p,40)});
+        w=gd_emit(w,28,m*q,3,4,GDScalars.{a=q,b=m,c=8},GDViews.{a=gd_all(p,40),b=GDRef.{elem=2},c=attention,d=flags});w=gd_guard(w,m*q);
+        row+=m;
+    }
+    w=gd_batch_bf(w,d,q,n,gd_weight(params,base+2,8),gd_weight(params,base+1,2),gd_slice(p,31,0,n*q),projected);
+    w=gd_emit(w,33,n*d,2,4,GDScalars.{a=d,b=n},GDViews.{a=x,b=projected,c=trace,d=flags});w=gd_guard(w,n*d);
+    w=gd_batch_norm(w,d,n,gd_weight(params,base+10,2),x,normal);
+    w=gd_batch_bf(w,s.experts,d,n,gd_weight(params,base+7,8),gd_weight(params,base+6,2),normal,router);
+    w=gd_emit(w,29,n,3,6,GDScalars.{a=s.experts,b=z,c=n},GDViews.{a=router,b=gd_all(p,45),c=gd_all(p,46),d=ids,e=weights,f=flags});w=gd_guard(w,n);
+    w=gd_emit(w,30,s.experts,3,3,GDScalars.{a=s.experts,b=z,c=n},GDViews.{a=gd_all(p,45),b=gd_all(p,38),c=gd_all(p,39)});
+    w=gd_emit(w,31,1,1,1,GDScalars.{a=s.experts},GDViews.{a=gd_all(p,39)});
+    w=gd_batch_mx(w,2*h,d,n,s.experts,z,0,gd_weight(params,base+11,8),gd_weight(params,base+12,1),gd_weight(params,base+8,2),normal,gd_all(p,41));
+    w=gd_emit(w,10,n*z*h,1,3,GDScalars.{a=h},GDViews.{a=gd_all(p,41),b=gd_all(p,42),c=flags});w=gd_guard(w,n*z*h);
+    w=gd_batch_mx(w,d,h,n,s.experts,z,1,gd_weight(params,base+13,8),gd_weight(params,base+14,1),gd_weight(params,base+9,2),gd_all(p,42),gd_all(p,43));
+    w=gd_emit(w,34,n*d,3,5,GDScalars.{a=d,b=z,c=n},GDViews.{a=x,b=gd_all(p,43),c=gd_all(p,46),d=gd_slice(p,13,(2*layer+1)*d,d),e=flags});w=gd_guard(w,n*d);
+    row=0;
+    for g:segs {
+        m:=g.count;kept:=gs_window(m,cap);
+        w=gd_emit(w,40,kept*2*k,4,2,GDScalars.{a=s.kv_heads,b=g.at,c=m,d=cap},GDViews.{a=gd_slice(p,34,row*2*k,m*2*k),b=cbd_cache(p,s,g.region,layer)});
+        row+=m;
+    }
+    return w.result;
+}
+// book:end layer
+
+// book:begin tail
+// After the layers: every emitting segment's last row is normed and read out
+// on its own, exactly as chapter 67's prefill reads its last row; the flags
+// of the whole step reach the step's control words (slot 24); every segment
+// advances its position, and an emitting one chooses its next ID greedily.
+cbd_tail :: (s:GShape,p:GDPlan,params:[]GDParam,segs:[]CbdSeg,ops:[]GDOp,args:[]GDArg)->GDProgram #export_c {
+    w:=GDWriter.{plan=p,ops=ops,args=args};d:=s.width;row:=0;
+    for g:segs {
+        row+=g.count;
+        control:=cbd_control(p,g.region);
+        if g.emit {
+            w=gd_emit(w,1,p.flags,0,1,GDScalars.{},GDViews.{a=gd_all(p,22)});w.result.flags=0;
+            w=gd_norm(w,d,gd_weight(params,1,2),gd_slice(p,28,(row-1)*d,d),gd_all(p,1));
+            w=gd_bf(w,s.vocab,d,gd_weight(params,2,8),GDRef.{elem=2},gd_all(p,1),gd_all(p,17));
+            summaries:=(w.result.flags+255)/256;w=gd_emit(w,18,summaries,0,2,GDScalars.{},GDViews.{a=gd_slice(p,22,0,w.result.flags),b=gd_slice(p,23,0,summaries)});
+            w=gd_emit(w,19,1,0,2,GDScalars.{},GDViews.{a=gd_slice(p,23,0,summaries),b=gd_all(p,24)});
+        }
+        w=gd_emit(w,42,1,1,1,GDScalars.{a=g.count},GDViews.{a=control});
+        if g.emit {
+            w=gd_emit(w,22,p.counts[27],0,2,GDScalars.{},GDViews.{a=gd_all(p,17),b=gd_all(p,27)});
+            w=gd_emit(w,23,1,1,3,GDScalars.{a=g.limit},GDViews.{a=gd_all(p,17),b=gd_all(p,27),c=control});
+        }
+    }
+    return w.result;
+}
+// book:end tail
+
+// book:begin bind
+// Regions for the requests in a step's rows: a request keeps the region it
+// was given; a new one takes the lowest region that no live request holds.
+// A request is live from its region's assignment until the step it finished
+// in has run. Returns false when no region is free.
+cbd_bind :: (s:CbState,region:[]int,regions:int)->bool #export_c {
+    if region.count<s.n || regions<1 || regions>CBD_REGIONS {return false;}
+    for k:0..<s.nrows {
+        i:=s.rows[k].req;
+        if region[i]<0 {
+            used:[8]bool;
+            for j:0..<s.n {done:=s.fate[j].finish>=0 && s.fate[j].finish<s.step-1;if region[j]>=0 && !done {used[region[j]]=true;}}
+            r:=0;while r<regions && used[r] {r+=1;}
+            if r==regions {return false;}
+            region[i]=r;
+        }
+    }
+    return true;
+}
+// The step's segments, in row order, and the IDs to upload: a prompt row
+// feeds its prompt ID, a decode row the request's last chosen ID. `first`
+// gives each request's first prompt ID in `prompts`; `last` its last ID.
+cbd_segments :: (s:CbState,region:[]int,prompts:[]int,first:[]int,last:[]int,segs:[]CbdSeg,ids:[]int)->int #export_c {
+    if region.count<s.n || first.count<s.n || last.count<s.n || segs.count<s.nrows {return -1;}
+    n:=0;
+    for k:0..<s.nrows {
+        r:=s.rows[k];i:=r.req;p:=s.req[i].prompt;
+        segs[k]=CbdSeg.{region=region[i],at=r.at,count=r.count,emit=r.emit,limit=s.req[i].output};
+        for t:r.at..<r.at+r.count {
+            if n>=ids.count {return -1;}
+            if t<p {if first[i]+t<0 || first[i]+t>=prompts.count {return -1;}ids[n]=prompts[first[i]+t];}else {ids[n]=last[i];}
+            n+=1;
+        }
+    }
+    return n;
+}
+// book:end bind
+
+// book:begin report
+// One measured run: wall time, output tokens, and nearest-rank P50 and P95
+// (chapter 175's cb_rank) of the requests' latencies and times to first
+// token, each from the run's start.
+CbdRun :: struct {ns:int;tokens:int;latency50:int;latency95:int;first50:int;first95:int;}
+cbd_run_report :: (latency:[]int,first:[]int,tokens:int,ns:int)->CbdRun #export_c {
+    return CbdRun.{ns=ns,tokens=tokens,latency50=cb_rank(latency,50),latency95=cb_rank(latency,95),first50=cb_rank(first,50),first95=cb_rank(first,95)};
+}
+// The independent check: a request's IDs in a batched run equal its IDs run
+// alone, one for one and in number.
+cbd_same_tokens :: (batched:[]int,alone:[]int)->bool #export_c {
+    if batched.count!=alone.count {return false;}
+    for i:0..<alone.count {if batched[i]!=alone[i] {return false;}}
+    return true;
+}
+// book:end report
+
+#test "a run's report and the token comparison" {
+    lat:[20]int;first:[20]int;for i:0..<20 {lat[i]=10*((i*7)%20+1);first[i]=(i*3)%20+1;}
+    // Nearest rank: P50 of 20 is the 10th smallest, P95 the 19th.
+    r:=cbd_run_report(lat[..],first[..],664,90);#assert r.ns==90 && r.tokens==664 && r.latency50==100 && r.latency95==190 && r.first50==10 && r.first95==19;
+    a:=[3]int.[5,6,7];b:=[3]int.[5,6,7];#assert cbd_same_tokens(a[..],b[..]) && !cbd_same_tokens(a[0..<2],b[..]) && !cbd_same_tokens(a[..],b[0..<2]);
+    b[2]=8;#assert !cbd_same_tokens(a[..],b[..]);b[2]=7;b[0]=4;#assert !cbd_same_tokens(a[..],b[..]);
+    #assert cbd_same_tokens(a[0..<0],b[0..<0]);
+}
+
+#test "regions: one request's cache and control words each, after the plan's own slots" {
+    o:=g_original_shape(0,2048);large:=G20_ARTIFACTS;p:=gd_plan(o,large[..],17179869184,17179869184);
+    // 12 sliding layers of 128 positions and 12 full ones of 2,048, 1,024
+    // floats a position: 106,954,752 bytes of cache, then 64 of control.
+    #assert cbd_region_bytes(p)==24*1088*1024*4+64 && cbd_region_bytes(p)==106954816;
+    r:=cbd_with_regions(p,o,8);#assert r.status==GStatus.ok && r.upload[1]==8*106954816 && r.upload[0]==p.upload[0] && cbd_regions(r)==8;
+    #assert cbd_with_regions(p,o,0).status==GStatus.shape && cbd_with_regions(p,o,9).status==GStatus.shape && cbd_with_regions(p,o,1).upload[1]==106954816;
+    #assert cbd_with_regions(r,o,1).status==GStatus.shape && cbd_with_regions(GDPlan.{status=GStatus.budget},o,1).status==GStatus.budget;
+    m:=p;m.mma=4;#assert cbd_with_regions(m,o,1).status==GStatus.shape;
+    bad:=o;bad.layers=0;#assert cbd_with_regions(p,bad,1).status==GStatus.shape;
+    // Region 3, layer 5 (full): base (2 * 2176 + 128) * 1024 floats.
+    c:=cbd_cache(r,o,3,5);#assert c.buffer==1 && c.offset==3*106954816+(2*2176+128)*1024*4 && c.count==1024*2048 && c.elem==4 && gd_ref_fits(r,c);
+    c=cbd_cache(r,o,7,22);#assert c.offset==7*106954816+11*2176*1024*4 && c.count==1024*128 && gd_ref_fits(r,c);
+    k:=cbd_control(r,7);#assert k.buffer==1 && k.offset==7*106954816+106954752 && k.count==8 && k.elem==8 && gd_ref_fits(r,k) && cbd_control_offset(r,7)==k.offset;
+    // The last region ends exactly at the end of the slot.
+    #assert k.offset+64==r.upload[1] && !gd_ref_fits(r,GDRef.{buffer=1,offset=k.offset,count=9,elem=8});
+}
+
+#test "a step is admitted only inside the plan, the context and the vocabulary" {
+    pins:=GOWN_ARTIFACTS;p:=cbd_with_regions(gd_plan(GT_SHAPE,pins[..],1000000000,1000000000),GT_SHAPE,3);
+    segs:=[3]CbdSeg.[CbdSeg.{region=2,at=0,count=3,emit=true,limit=4},CbdSeg.{region=0,at=5,count=1,emit=true,limit=8},CbdSeg.{region=1,at=4,count=4,limit=1}];
+    ids:=[8]int.[1,2,3,4,5,6,7,15];
+    st:=cbd_admit(GT_SHAPE,p,segs[..],ids[..]);#assert st.status==GStatus.ok && st.segs==3 && st.rows==8;
+    #assert cbd_admit(GT_SHAPE,p,segs[0..<2],ids[0..<4]).rows==4 && cbd_admit(GT_SHAPE,p,segs[..],ids[0..<7]).status==GStatus.state;
+    // Batch 8: a ninth row does not fit.
+    x:=segs;x[2].at=3;x[2].count=5;nine:[9]int;y0:=cbd_admit(GT_SHAPE,p,x[..],nine[..]);#assert y0.status==GStatus.state && y0.rows==0 && y0.segs==0;
+    // One region and one segment; three of three regions.
+    one:=cbd_with_regions(gd_plan(GT_SHAPE,pins[..],1000000000,1000000000),GT_SHAPE,1);s1:=[1]CbdSeg.[CbdSeg.{region=0,at=0,count=8,limit=8}];
+    #assert cbd_admit(GT_SHAPE,one,s1[..],ids[..]).status==GStatus.ok && cbd_admit(GT_SHAPE,one,s1[..],ids[..]).segs==1;
+    // Positions 4..7 end at the capacity of 8; 5..8 do not.
+    x=segs;x[2].at=5;y:=cbd_admit(GT_SHAPE,p,x[..],ids[..]);#assert y.status==GStatus.state && y.rows==0;
+    x=segs;x[2].at= -1;#assert cbd_admit(GT_SHAPE,p,x[..],ids[..]).status==GStatus.state;
+    x=segs;x[2].count=0;#assert cbd_admit(GT_SHAPE,p,x[..],ids[0..<4]).status==GStatus.state;
+    x=segs;x[1].region=3;#assert cbd_admit(GT_SHAPE,p,x[..],ids[..]).status==GStatus.state;
+    x=segs;x[1].region= -1;#assert cbd_admit(GT_SHAPE,p,x[..],ids[..]).status==GStatus.state;
+    x=segs;x[2].region=2;#assert cbd_admit(GT_SHAPE,p,x[..],ids[..]).status==GStatus.state;
+    x=segs;x[1].limit=0;#assert cbd_admit(GT_SHAPE,p,x[..],ids[..]).status==GStatus.state;
+    x=segs;x[1].limit=8;#assert cbd_admit(GT_SHAPE,p,x[..],ids[..]).status==GStatus.ok;x[1].limit=9;#assert cbd_admit(GT_SHAPE,p,x[..],ids[..]).status==GStatus.state;
+    #assert cbd_admit(GT_SHAPE,p,segs[0..<0],ids[0..<0]).status==GStatus.state;
+    many:[9]CbdSeg;#assert cbd_admit(GT_SHAPE,p,many[..],ids[..]).status==GStatus.state;
+    // IDs: the vocabulary is 16.
+    z:=ids;z[7]=16;t:=cbd_admit(GT_SHAPE,p,segs[..],z[..]);#assert t.status==GStatus.token && t.rows==0;
+    z[7]= -1;#assert cbd_admit(GT_SHAPE,p,segs[..],z[..]).status==GStatus.token;z[7]=0;#assert cbd_admit(GT_SHAPE,p,segs[..],z[..]).status==GStatus.ok;
+    // Plans: no regions, a refused plan, the tensor-core prefill on, a bad shape.
+    plain:=gd_plan(GT_SHAPE,pins[..],1000000000,1000000000);#assert cbd_admit(GT_SHAPE,plain,segs[..],ids[..]).status==GStatus.shape;
+    #assert cbd_admit(GT_SHAPE,GDPlan.{status=GStatus.budget},segs[..],ids[..]).status==GStatus.shape;
+    m:=p;m.mma=1;#assert cbd_admit(GT_SHAPE,m,segs[..],ids[..]).status==GStatus.shape;
+    bad:=GT_SHAPE;bad.layers=0;#assert cbd_admit(bad,p,segs[..],ids[..]).status==GStatus.shape;
+}
+
+#test "one segment's layer is chapter 67's prefill layer on that request's cache" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=cbd_with_regions(gd_plan(GT_SHAPE,pins[..],1000000000,1000000000),GT_SHAPE,3);
+    // Both layers (sliding and full), several positions and lengths.
+    starts:=[4]int.[0,1,5,2];lengths:=[4]int.[3,4,1,6];
+    for c:0..<4 {for layer:0..<2 {
+        at:=starts[c];n:=lengths[c];want_ops:[192]GDOp;want_args:[4608]GDArg;
+        whole:=gd_batch_program(GT_SHAPE,p,params[..],at,0,n,true,4,want_ops[..],want_args[..]);#assert whole.status==GStatus.ok;
+        seg:=[1]CbdSeg.[CbdSeg.{region=2,at=at,count=n,emit=true,limit=4}];ops:[192]GDOp;args:[4608]GDArg;
+        r:=cbd_layer(GT_SHAPE,p,params[..],seg[..],n,layer,ops[..],args[..]);#assert r.status==GStatus.ok;
+        // The prefill program: begin, cache copy, embedding and its guard, then the layers.
+        first:=5+layer*r.ops;
+        #assert cbd_same_layer(GT_SHAPE,p,ops[..],args[..],r.ops,want_ops[..],want_args[..],first,2,layer);
+    }}
+}
+
+#test "segments share every product and attend only to their own rows and caches" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=cbd_with_regions(gd_plan(GT_SHAPE,pins[..],1000000000,1000000000),GT_SHAPE,3);
+    segs:=[3]CbdSeg.[CbdSeg.{region=1,at=4,count=1,emit=true,limit=4},CbdSeg.{region=0,at=0,count=3,emit=true,limit=2},CbdSeg.{region=2,at=6,count=2,limit=3}];
+    d:=GT_SHAPE.width;q:=GT_SHAPE.heads*64;k:=GT_SHAPE.kv_heads*64;
+    for layer:0..<2 {
+        ops:[256]GDOp;args:[6144]GDArg;r:=cbd_layer(GT_SHAPE,p,params[..],segs[..],6,layer,ops[..],args[..]);#assert r.status==GStatus.ok;
+        // Shared ops equal the six-row single-segment layer's; attention ops
+        // equal each segment's own single-segment layer, moved to its rows.
+        one:=[1]CbdSeg.[CbdSeg.{region=0,at=0,count=6}];all_ops:[192]GDOp;all_args:[4608]GDArg;a:=cbd_layer(GT_SHAPE,p,params[..],one[..],6,layer,all_ops[..],all_args[..]);
+        #assert r.ops==a.ops+2*(11+1) && r.args>a.args;
+        // Products before attention: 8 ops.
+        for i:0..<8 {#assert cbd_same_op(ops[..],args[..],i,all_ops[..],all_args[..],i,0,0,0,-1);}
+        at:=8;row:=0;
+        for g:segs {
+            mine:=[1]CbdSeg.[g];s_ops:[192]GDOp;s_args:[4608]GDArg;b:=cbd_layer(GT_SHAPE,p,params[..],mine[..],g.count,layer,s_ops[..],s_args[..]);
+            for i:0..<11 {#assert cbd_same_op(ops[..],args[..],at+i,s_ops[..],s_args[..],8+i,row,q+2*k,2*k,q);}
+            // The commit, at the end of the layer.
+            #assert cbd_same_op(ops[..],args[..],r.ops-3+(at-8)/11,s_ops[..],s_args[..],b.ops-1,row,q+2*k,2*k,q);
+            at+=11;row+=g.count;
+        }
+        // Products after attention, over all six rows.
+        for i:0..<a.ops-8-11-1 {#assert cbd_same_op(ops[..],args[..],at+i,all_ops[..],all_args[..],19+i,0,0,0,-1);}
+        // The output projection reads every row of the attention outputs.
+        #assert args[ops[at].first+5].ref.buffer==16+31 && args[ops[at].first+5].ref.offset==0 && args[ops[at].first+5].ref.count==6*q;
+    }
+    #assert d==GT_SHAPE.width;
+}
+
+#test "the head clears new regions and checks every position; the tail reads out emitting rows" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=cbd_with_regions(gd_plan(GT_SHAPE,pins[..],1000000000,1000000000),GT_SHAPE,3);d:=GT_SHAPE.width;
+    segs:=[3]CbdSeg.[CbdSeg.{region=1,at=4,count=1,emit=true,limit=4},CbdSeg.{region=0,at=0,count=3,emit=true,limit=2},CbdSeg.{region=2,at=6,count=2,limit=3}];
+    ops:[64]GDOp;args:[512]GDArg;h:=cbd_head(GT_SHAPE,p,params[..],segs[..],6,ops[..],args[..]);
+    #assert h.status==GStatus.ok && h.ops==7 && h.flags==0;
+    kinds:=[7]int.[0,1,0,0,24,18,19];items:=[7]int.[1,64,1,1,6*d,(6*d+255)/256,1];counts:=[7]int.[4,1,4,4,6,2,2];
+    for i:0..<7 {#assert ops[i].kind==kinds[i] && ops[i].items==items[i] && ops[i].count==counts[i];}
+    // Begin: ID 0 (fed through the embedding instead), the segment's position, the vocabulary, its control words.
+    a:=args[ops[0].first..<ops[0].first+4];#assert a[0].value==0 && a[1].value==4 && a[2].value==16 && cbd_eq(a[3].ref,cbd_control(p,1));
+    c:=args[ops[1].first].ref;#assert ops[1].items==64 && c.buffer==1 && c.offset==cbd_control(p,0).offset && c.count==64 && c.elem==1;
+    #assert args[ops[2].first+1].value==0 && cbd_eq(args[ops[2].first+3].ref,cbd_control(p,0)) && args[ops[3].first+1].value==6 && cbd_eq(args[ops[3].first+3].ref,cbd_control(p,2));
+    e:=args[ops[4].first..<ops[4].first+6];#assert ops[4].items==6*d && e[0].value==d && e[1].value==0 && e[2].ref.buffer==16+26 && cbd_eq(e[3].ref,gd_weight(params[..],0,2)) && cbd_eq(e[4].ref,gd_slice(p,28,0,6*d)) && e[5].ref.buffer==16+37;
+    #assert args[ops[5].first].ref.count==6*d;
+    t:=cbd_tail(GT_SHAPE,p,params[..],segs[..],ops[..],args[..]);#assert t.status==GStatus.ok;
+    // Per emitting segment: clear, norm (2), product (2), flags (2), advance, argmax, choose; the other only advances.
+    tk:=[21]int.[1,3,4,5,6,18,19,42,22,23,1,3,4,5,6,18,19,42,22,23,42];#assert t.ops==21;
+    for i:0..<21 {#assert ops[i].kind==tk[i];}
+    // Each segment's tail is its own single-segment tail with the hidden rows moved down.
+    at:=0;row:=0;
+    for g:segs {
+        mine:=[1]CbdSeg.[g];s_ops:[32]GDOp;s_args:[256]GDArg;b:=cbd_tail(GT_SHAPE,p,params[..],mine[..],s_ops[..],s_args[..]);
+        for i:0..<b.ops {#assert cbd_same_readout(ops[..],args[..],at+i,s_ops[..],s_args[..],i,row*d*4,cbd_control(p,g.region));}
+        at+=b.ops;row+=g.count;
+    }
+    #assert cbd_eq(args[ops[11].first+1].ref,gd_slice(p,28,3*d,d)) && args[ops[15].first].ref.count==d+16;
+}
+
+#test "one emitting segment reads out as chapter 67's prefill reads out its last row" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=cbd_with_regions(gd_plan(GT_SHAPE,pins[..],1000000000,1000000000),GT_SHAPE,3);d:=GT_SHAPE.width;
+    starts:=[3]int.[0,2,7];lengths:=[3]int.[1,4,1];limits:=[3]int.[4,2,8];
+    for c:0..<3 {
+        n:=lengths[c];want_ops:[192]GDOp;want_args:[4608]GDArg;
+        whole:=gd_batch_program(GT_SHAPE,p,params[..],starts[c],0,n,true,limits[c],want_ops[..],want_args[..]);#assert whole.status==GStatus.ok;
+        seg:=[1]CbdSeg.[CbdSeg.{region=1,at=starts[c],count=n,emit=true,limit=limits[c]}];ops:[32]GDOp;args:[256]GDArg;
+        r:=cbd_tail(GT_SHAPE,p,params[..],seg[..],ops[..],args[..]);#assert r.status==GStatus.ok && r.ops==10;
+        // The prefill's tail: clear, norm, product, flags, publish, advance, argmax, choose.
+        first:=whole.ops-11;
+        for i:0..<7 {#assert cbd_same_readout(ops[..],args[..],i,want_ops[..],want_args[..],first+i,(n-1)*d*4-(n-1)*d*4,cbd_control(p,1));}
+        #assert want_ops[first+7].kind==41;
+        for i:7..<10 {#assert cbd_same_readout(ops[..],args[..],i,want_ops[..],want_args[..],first+i+1,0,cbd_control(p,1));}
+    }
+    // The flag summaries round up to whole groups of 256: 256 flags are one
+    // group, 257 are two.
+    for extra:0..<2 {
+        x:=GT_SHAPE;x.vocab=256-d+extra;one:=[1]CbdSeg.[CbdSeg.{region=0,at=0,count=1,emit=true,limit=2}];f_ops:[32]GDOp;f_args:[256]GDArg;
+        f:=cbd_tail(x,p,params[..],one[..],f_ops[..],f_args[..]);#assert f.status==GStatus.ok && f_ops[5].kind==18 && f_ops[5].items==1+extra && f_args[f_ops[6].first].ref.count==1+extra;
+    }
+    // A segment that does not emit only advances.
+    quiet:=[1]CbdSeg.[CbdSeg.{region=2,at=3,count=2,limit=5}];ops:[32]GDOp;args:[256]GDArg;
+    r:=cbd_tail(GT_SHAPE,p,params[..],quiet[..],ops[..],args[..]);#assert r.ops==1 && ops[0].kind==42 && ops[0].items==1 && args[ops[0].first].value==2 && cbd_eq(args[ops[0].first+1].ref,cbd_control(p,2));
+}
+
+#test "regions and segments for the scheduler's rows" {
+    q:=cb_hand();s:=cb_start(cb_hand_config(),q[..]);region:=[5]int.[-1,-1,-1,-1,-1];
+    prompts:[64]int;for i:0..<64 {prompts[i]=100+i;}first:=[5]int.[0,10,20,30,40];last:=[5]int.[7,8,9,10,11];
+    segs:[16]CbdSeg;ids:[16]int;
+    // Step 0: A in region 0, C in region 1; A feeds prompt IDs 0..3.
+    s=cb_step(s);#assert cbd_bind(s,region[..],2) && region[0]==0 && region[2]== -1 && region[1]== -1;
+    n:=cbd_segments(s,region[..],prompts[..],first[..],last[..],segs[..],ids[..]);
+    #assert n==4 && ids[0]==100 && ids[3]==103 && segs[0].region==0 && segs[0].at==0 && segs[0].count==4 && !segs[0].emit && segs[0].limit==2;
+    // Step 1: A's last prompt ID, then C's three; C finishes in this step and keeps its region.
+    s=cb_step(s);#assert cbd_bind(s,region[..],2) && region[0]==0 && region[2]==1;
+    n=cbd_segments(s,region[..],prompts[..],first[..],last[..],segs[..],ids[..]);
+    #assert n==4 && ids[0]==104 && ids[1]==120 && ids[3]==122 && segs[1].region==1 && segs[1].emit && segs[1].limit==1;
+    // Step 2: A decodes its last ID; E takes region 1, which C no longer holds.
+    s=cb_step(s);#assert cbd_bind(s,region[..],2) && region[4]==1;
+    n=cbd_segments(s,region[..],prompts[..],first[..],last[..],segs[..],ids[..]);
+    #assert n==3 && ids[0]==7 && segs[0].at==5 && segs[0].count==1 && ids[1]==140 && ids[2]==141 && segs[1].region==1;
+    // Step 3: A finished in step 2, so B takes region 0.
+    s=cb_step(s);#assert cbd_bind(s,region[..],2) && region[1]==0;
+    n=cbd_segments(s,region[..],prompts[..],first[..],last[..],segs[..],ids[..]);#assert n==3 && ids[0]==11 && ids[1]==110;
+    // Refusals: too few regions, short arrays.
+    t:=cb_start(cb_hand_config(),q[..]);t=cb_step(cb_step(t));r:=[5]int.[-1,-1,-1,-1,-1];
+    #assert !cbd_bind(t,r[..],1) && r[0]==0 && !cbd_bind(t,r[0..<4],2) && !cbd_bind(t,r[..],0) && !cbd_bind(t,r[..],9);
+    r=[5]int.[-1,-1,-1,-1,-1];#assert cbd_bind(t,r[..],8) && r[0]==0 && r[2]==1;
+    #assert cbd_segments(t,r[0..<4],prompts[..],first[..],last[..],segs[..],ids[..])== -1 && cbd_segments(t,r[..],prompts[..],first[0..<4],last[..],segs[..],ids[..])== -1;
+    #assert cbd_segments(t,r[..],prompts[..],first[..],last[0..<4],segs[..],ids[..])== -1 && cbd_segments(t,r[..],prompts[..],first[..],last[..],segs[0..<1],ids[..])== -1;
+    #assert cbd_segments(t,r[..],prompts[..],first[..],last[..],segs[0..<2],ids[0..<3])== -1 && cbd_segments(t,r[..],prompts[..],first[..],last[..],segs[0..<2],ids[0..<4])==4;
+    #assert cbd_segments(t,r[..],prompts[0..<22],first[..],last[..],segs[..],ids[..])== -1 && cbd_segments(t,r[..],prompts[0..<23],first[..],last[..],segs[..],ids[..])==4;
+    // A request that finished in step 0 frees its region for step 2.
+    c:=CbConfig.{slots=2,tokens=4,kv=14,clients=1,steps=10};c.weight[0]=1;
+    w:=[2]CbRequest.[CbRequest.{prompt=1,output=1},CbRequest.{arrive=2,prompt=1,output=1}];
+    u:=cb_start(c,w[..]);g:=[2]int.[-1,-1];u=cb_step(u);#assert u.fate[0].finish==0 && cbd_bind(u,g[..],1) && g[0]==0;
+    u=cb_step(u);#assert u.nrows==0 && cbd_bind(u,g[..],1);u=cb_step(u);#assert u.nrows==1 && cbd_bind(u,g[..],1) && g[1]==0;
+    // Exactly one region for one request at a time; as many regions as needed.
+    v:=cb_start(cb_hand_config(),q[..]);v=cb_step(v);h:=[5]int.[-1,-1,-1,-1,-1];#assert cbd_bind(v,h[..],1) && h[0]==0 && cbd_bind(v,h[..],8);
+    // Nine requests at once and eight regions: the ninth finds none.
+    nine:=CbConfig.{slots=9,tokens=9,kv=100,clients=1,steps=10};nine.weight[0]=1;nr:[9]CbRequest;for i:0..<9 {nr[i]=CbRequest.{prompt=1,output=2};}
+    ns:=cb_step(cb_start(nine,nr[..]));nreg:[9]int;for i:0..<9 {nreg[i]= -1;}#assert ns.nrows==9 && !cbd_bind(ns,nreg[..],8) && nreg[7]==7 && nreg[8]== -1;
+    f:=first;f[2]= -1;#assert cbd_segments(t,r[..],prompts[..],f[..],last[..],segs[..],ids[..])== -1;
+    f[2]=0;#assert cbd_segments(t,r[..],prompts[..],f[..],last[..],segs[..],ids[..])==4 && ids[1]==100;
+}

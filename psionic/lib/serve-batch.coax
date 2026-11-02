@@ -278,7 +278,7 @@ CbReport :: struct {status:CbStatus;steps:int;tokens:int;ns:int;tok_s:f64;latenc
 // book:begin start
 // Refuse a configuration or arrival list outside the bounds; otherwise an
 // empty schedule at step 0.
-cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState {
+cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState #export_c {
     s:CbState;s.cfg=cfg;s.status=CbStatus.config;
     if cfg.slots<1 || cfg.slots>CB_SLOTS || cfg.tokens<cfg.slots || cfg.tokens>CB_TOKENS || cfg.kv>CB_KV {return s;}
     if cfg.state<0 || cfg.state>=cfg.kv || cfg.clients<1 || cfg.clients>CB_CLIENTS || cfg.steps<1 || cfg.steps>CB_STEPS {return s;}
@@ -380,7 +380,7 @@ cb_tokens :: (from:CbState)->CbState {
 // book:begin step
 // One iteration: arrivals, admission, tokens, then retire every request
 // whose last output token came out, freeing its slot and its state.
-cb_step :: (from:CbState)->CbState {
+cb_step :: (from:CbState)->CbState #export_c {
     s:=cb_tokens(cb_admit(cb_arrive(from)));
     s.clock+=cb_step_ns(s.used);
     m:=0;

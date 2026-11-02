@@ -1,0 +1,56 @@
+// Chapter 175's check helpers, loaded by psionic/lib/gptoss/device-batch.coax
+// and owned by its checks: op-by-op comparisons of batched programs with
+// chapter 67's prefill program and with each other.
+cbd_eq :: (a:GDRef,b:GDRef)->bool {return a.buffer==b.buffer && a.offset==b.offset && a.count==b.count && a.elem==b.elem;}
+// Op i of (ops,args) against op j of (want_ops,want_args), with views into
+// the per-row slots 30 (QKV), 34 (pending) and 31 (attention) moved down by
+// `row` rows of the given widths. width_attention < 0: no slot is moved.
+cbd_same_op :: (ops:[]GDOp,args:[]GDArg,i:int,want_ops:[]GDOp,want_args:[]GDArg,j:int,row:int,wq:int,wp:int,wa:int)->bool {
+    a:=ops[i];b:=want_ops[j];
+    if a.kind!=b.kind || a.items!=b.items || a.count!=b.count || a.block!=b.block {return false;}
+    for t:0..<a.count {
+        x:=args[a.first+t];y:=want_args[b.first+t];
+        if x.view!=y.view || x.value!=y.value {return false;}
+        z:=y.ref;
+        if wa>=0 && z.buffer==16+30 {z.offset+=row*wq*4;}
+        if wa>=0 && z.buffer==16+34 {z.offset+=row*wp*4;}
+        if wa>=0 && z.buffer==16+31 {z.offset+=row*wa*4;}
+        if !cbd_eq(x.ref,z) {return false;}
+    }
+    return true;
+}
+// A layer against chapter 67's prefill layer starting at op `first`: equal
+// except that the prefill's shadow cache (slot 35) is this region's cache.
+cbd_same_layer :: (s:GShape,p:GDPlan,ops:[]GDOp,args:[]GDArg,count:int,want_ops:[]GDOp,want_args:[]GDArg,first:int,region:int,layer:int)->bool {
+    // The prefill commits after the experts, as cbd_layer does.
+    for i:0..<count {
+        a:=ops[i];b:=want_ops[first+i];
+        if a.kind!=b.kind || a.items!=b.items || a.count!=b.count || a.block!=b.block {return false;}
+        for t:0..<a.count {
+            x:=args[a.first+t];y:=want_args[b.first+t];
+            if x.view!=y.view || x.value!=y.value {return false;}
+            z:=y.ref;
+            if z.buffer==16+35 {z=cbd_cache(p,s,region,layer);}
+            if !cbd_eq(x.ref,z) {return false;}
+        }
+    }
+    return true;
+}
+// Readout op i against op j of chapter 67's prefill tail (or another tail):
+// the prefill's published logits (slot 18) are this step's logits (slot 17),
+// the advance and the choice use `control` instead of slot 24, and views of
+// the hidden rows (slot 28) move down by `shift` bytes.
+cbd_same_readout :: (ops:[]GDOp,args:[]GDArg,i:int,want_ops:[]GDOp,want_args:[]GDArg,j:int,shift:int,control:GDRef)->bool {
+    a:=ops[i];b:=want_ops[j];
+    if a.kind!=b.kind || a.items!=b.items || a.count!=b.count || a.block!=b.block {return false;}
+    for t:0..<a.count {
+        x:=args[a.first+t];y:=want_args[b.first+t];
+        if x.view!=y.view || x.value!=y.value {return false;}
+        z:=y.ref;
+        if z.buffer==16+18 {z.buffer=16+17;}
+        if (b.kind==42 || b.kind==23) && z.buffer==16+24 {z=control;}
+        if z.buffer==16+28 {z.offset+=shift;}
+        if !cbd_eq(x.ref,z) {return false;}
+    }
+    return true;
+}
