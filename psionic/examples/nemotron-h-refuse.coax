@@ -1,0 +1,14 @@
+#import "Basic";
+#load "../lib/nemotron-h.coax";
+
+// book:begin example
+// A checkpoint whose config says 32 query heads instead of 40: the first
+// attention tensor no longer matches the pinned header. The refusal names
+// the first expected tensor the header does not hold.
+main :: () {
+    s:=nh_nano();s.attn_heads=32;
+    r:=nh_inventory(s,NH_NANO_PATTERN,NH_PINNED_MANIFEST);
+    buf:[96]u8;n:=nh_line(nh_expected(s,NH_NANO_PATTERN,r.bad),buf[..]);
+    print("refused: status %, tensor % not in the pinned header: %\n",r.status,r.bad,cast(string)buf[0..<n]);
+}
+// book:end example

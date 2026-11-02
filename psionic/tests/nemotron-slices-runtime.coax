@@ -1,0 +1,25 @@
+// Chapter 163's original-weight slice entry: the C harness
+// (psionic/tests/nemotron_slices.c) maps the checkpoint and moves bytes;
+// every decode and every layer is chapter 163's Coax.
+#load "../lib/nemotron-h.coax";
+
+nhs_decode :: (bytes:[]u8,out:[]f32)->bool #export_c {return nh_bf16(bytes,out);}
+nhs_mamba_work :: (tokens:int)->int #export_c {return nh_mamba_work(nh_nano(),tokens);}
+nhs_mamba_fwork :: (chunk:int)->int #export_c {return ss_work_count(nh_nano().ssm,chunk);}
+nhs_attention_work :: ()->int #export_c {return nh_attention_work(nh_nano());}
+nhs_mlp_work :: ()->int #export_c {return nh_mlp_work(nh_nano());}
+nhs_mamba :: (norm:[]f32,in_proj:[]f32,conv:[]f32,conv_bias:[]f32,a_log:[]f32,dt_bias:[]f32,d:[]f32,gate_norm:[]f32,out_proj:[]f32,
+              tokens:int,chunk:int,hidden:[]f32,history:[]f32,state:[]f32,work:[]f32,fwork:[]f64)->u8 #export_c {
+    w:=NhMamba.{norm=norm,in_proj=in_proj,conv=conv,conv_bias=conv_bias,a_log=a_log,dt_bias=dt_bias,d=d,gate_norm=gate_norm,out_proj=out_proj};
+    return cast(u8)nh_mamba(nh_nano(),w,tokens,chunk,hidden,history,state,work,fwork).status;
+}
+nhs_attention :: (norm:[]f32,q:[]f32,k:[]f32,v:[]f32,o:[]f32,tokens:int,start:int,hidden:[]f32,keys:[]f32,values:[]f32,work:[]f32,fwork:[]f64)->u8 #export_c {
+    w:=NhAttention.{norm=norm,q=q,k=k,v=v,o=o};
+    return cast(u8)nh_attention(nh_nano(),w,tokens,start,hidden,keys,values,work,fwork).status;
+}
+nhs_mlp :: (norm:[]f32,up:[]f32,down:[]f32,tokens:int,hidden:[]f32,work:[]f32)->u8 #export_c {
+    return cast(u8)nh_mlp(nh_nano(),NhMlp.{norm=norm,up=up,down=down},tokens,hidden,work).status;
+}
+nhs_readout :: (norm:[]f32,head:[]f32,hidden:[]f32,first:int,logits:[]f32,normed:[]f32)->int #export_c {
+    return nh_readout(norm,head,hidden,first,logits,normed);
+}

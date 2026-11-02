@@ -1,0 +1,1 @@
+refused: status checkpoint, tensor 82 not in the pinned header: backbone.layers.12.mixer.o_proj.weight BF16 3136,4096

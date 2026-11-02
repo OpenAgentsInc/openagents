@@ -1,0 +1,59 @@
+#import "Basic";
+#load "../lib/nemotron-h.coax";
+
+// book:begin example
+main :: () {
+    print("profile nemotron-h-cpu-f64-v1, tolerance % x (1 + largest |reference value|)\n",NH_TOLERANCE);
+    s:=nh_nano();p:=nh_pattern(s,NH_NANO_PATTERN);
+    print("pinned revision %\n",NH_PINNED_REVISION);
+    print("pattern %: % Mamba-2, % attention, % MLP layers\n",NH_NANO_PATTERN,p.counts[NH_MAMBA],p.counts[NH_ATTENTION],p.counts[NH_MLP]);
+    r:=nh_inventory(s,NH_NANO_PATTERN,NH_PINNED_MANIFEST);
+    print("inventory: % lines, % expected, status %, % parameters\n",r.lines,nh_expected_count(s,NH_NANO_PATTERN),r.status,r.parameters);
+    buf:[1024]u8;n:=nh_config_text(s,NH_NANO_PATTERN,buf[..]);
+    print("config fields match the pinned config.json: %\n",cast(string)buf[0..<n]==NH_PINNED_CONFIG);
+    m:=s.ssm;
+    print("Mamba-2 mixer: in_proj % rows = gate % + channels % (x %, B %, C %) + dt %\n",
+        m.heads*m.head_dim+ss_channels(m)+m.heads,m.heads*m.head_dim,ss_channels(m),m.heads*m.head_dim,m.groups*m.state_dim,m.groups*m.state_dim,m.heads);
+    print("  state per request % values, convolution history %, gate norm groups of %\n",ss_states(m),3*ss_channels(m),m.heads*m.head_dim/m.groups);
+
+    // The hand trace: the gate norm of (3, 4) in one group, weights (1, 2).
+    y:=[2]f32.[3,4];w:=[2]f32.[1,2];g:[2]f32;
+    #assert nh_norm(y[..],2,w[..],g[..]);
+    print("gate norm of (3, 4), weights (1, 2): (%, %)\n",g[0],g[1]);
+
+    // The checks' model, seven tokens, against the binary64 oracle.
+    t:=nho_shape();a:=nho_weights(0);hidden:=nho_hidden(0);
+    print("small model: hidden 6, 4 Mamba-2 heads of 2 in 2 groups, state 3; 4 attention heads on 2 key/value heads; MLP 5\n");
+    for chunk:1..<8 {
+        h:=hidden;history:[60]f32;state:[24]f32;work:[412]f32;fwork:[2000]f64;
+        res:=nh_mamba(t,nho_mamba_view(a[..]),7,chunk,h[..],history[..],state[..],work[..],fwork[..]);
+        ref:=nho_mamba(a[..],hidden[..]);gap:=nho_gap(h[..],ref[..]);
+        print("  Mamba-2 in chunks of %: status %, largest difference % (limit %)\n",chunk,res.status,gap.gap,gap.limit);
+    }
+    h:=hidden;keys:[56]f32;values:[56]f32;aw:[44]f32;af:[7]f64;
+    res:=nh_attention(t,nho_attention_view(a[..]),7,0,h[..],keys[..],values[..],aw[..],af[..]);
+    ref:=nho_attention(a[..],hidden[..]);gap:=nho_gap(h[..],ref[..]);
+    print("  attention: status %, largest difference % (limit %)\n",res.status,gap.gap,gap.limit);
+    h=hidden;mw:[17]f32;
+    res=nh_mlp(t,nho_mlp_view(a[..]),7,h[..],mw[..]);
+    ref=nho_mlp(a[..],hidden[..]);gap=nho_gap(h[..],ref[..]);
+    print("  MLP: status %, largest difference % (limit %)\n",res.status,gap.gap,gap.limit);
+
+    // A cached continuation: 4 tokens, then 3 more from the carried state.
+    whole:=hidden;h1:[60]f32;s1:[24]f32;work:[412]f32;fwork:[2000]f64;
+    res=nh_mamba(t,nho_mamba_view(a[..]),7,4,whole[..],h1[..],s1[..],work[..],fwork[..]);
+    split:=hidden;h2:[60]f32;s2:[24]f32;
+    res=nh_mamba(t,nho_mamba_view(a[..]),4,4,split[0..<24],h2[..],s2[..],work[..],fwork[..]);
+    res=nh_mamba(t,nho_mamba_view(a[..]),3,4,split[24..<42],h2[..],s2[..],work[..],fwork[..]);
+    print("Mamba-2 resumed after 4 tokens equals the prompt at once: %\n",nho_same(whole[..],split[..]) && nho_same(s1[..],s2[..]) && nho_same(h1[..],h2[..]));
+    all:=hidden;k1:[56]f32;v1:[56]f32;each:=hidden;k2:[56]f32;v2:[56]f32;
+    res=nh_attention(t,nho_attention_view(a[..]),7,0,all[..],k1[..],v1[..],aw[..],af[..]);
+    for i:0..<7 {res=nh_attention(t,nho_attention_view(a[..]),1,i,each[i*6..<i*6+6],k2[..],v2[..],aw[..],af[..]);}
+    print("attention one token at a time from the cache equals the prompt at once: %\n",nho_same(all[..],each[..]));
+
+    // A deliberately broken input: chunk 0 is chapter 162's range refusal.
+    h=hidden;ss_clear(h1[..],s1[..]);
+    res=nh_mamba(t,nho_mamba_view(a[..]),7,0,h[..],h1[..],s1[..],work[..],fwork[..]);
+    print("refused: chunk 0: %, chapter 162 says %, hidden unchanged %\n",res.status,res.ssm,nho_same(h[..],hidden[..]));
+}
+// book:end example

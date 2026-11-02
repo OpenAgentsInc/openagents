@@ -1,0 +1,21 @@
+profile nemotron-h-cpu-f64-v1, tolerance 0.00001 x (1 + largest |reference value|)
+pinned revision dfaf35de3e30f1867dd8dbc38a7fc9fb52d3914f
+pattern M-M-M-MM-M-M*-M-M*-M-M-M*-M-M-MM*-MMM-M-M-: 21 Mamba-2, 4 attention, 17 MLP layers
+inventory: 263 lines, 263 expected, status ok, 3973556832 parameters
+config fields match the pinned config.json: true
+Mamba-2 mixer: in_proj 17504 rows = gate 7680 + channels 9728 (x 7680, B 1024, C 1024) + dt 96
+  state per request 983040 values, convolution history 29184, gate norm groups of 960
+gate norm of (3, 4), weights (1, 2): (0.8485278, 2.2627409)
+small model: hidden 6, 4 Mamba-2 heads of 2 in 2 groups, state 3; 4 attention heads on 2 key/value heads; MLP 5
+  Mamba-2 in chunks of 1: status ok, largest difference 2.870521891296107e-07 (limit 0.00005591095043640443)
+  Mamba-2 in chunks of 2: status ok, largest difference 2.870521891296107e-07 (limit 0.00005591095043640443)
+  Mamba-2 in chunks of 3: status ok, largest difference 2.870521891296107e-07 (limit 0.00005591095043640443)
+  Mamba-2 in chunks of 4: status ok, largest difference 2.870521891296107e-07 (limit 0.00005591095043640443)
+  Mamba-2 in chunks of 5: status ok, largest difference 2.870521891296107e-07 (limit 0.00005591095043640443)
+  Mamba-2 in chunks of 6: status ok, largest difference 2.870521891296107e-07 (limit 0.00005591095043640443)
+  Mamba-2 in chunks of 7: status ok, largest difference 2.870521891296107e-07 (limit 0.00005591095043640443)
+  attention: status ok, largest difference 1.5569348521538018e-07 (limit 0.00003896688058578273)
+  MLP: status ok, largest difference 2.3891233791317745e-07 (limit 0.00005125748874900987)
+Mamba-2 resumed after 4 tokens equals the prompt at once: true
+attention one token at a time from the cache equals the prompt at once: true
+refused: chunk 0: recurrence, chapter 162 says range, hidden unchanged true

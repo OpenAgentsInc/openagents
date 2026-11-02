@@ -1,0 +1,147 @@
+// Chapter 163's check oracle, loaded by psionic/lib/nemotron-h.coax. Each
+// layer kind is written from its published definition in binary64 with
+// nothing narrowed to f32: the Mamba-2 layer splits in_proj into z, x B C
+// and dt, convolves the raw channels directly (no history register), runs
+// the recurrence S = exp(dt A) S + dt x B, y = C S + D x, gates with
+// silu(z), normalizes in groups and projects out. It shares no code with
+// the library or with chapter 162.
+
+// Profile nemotron-h-cpu-f64-v1, frozen before any comparison: an output
+// may differ from this reference by at most NH_TOLERANCE * (1 + the
+// largest |reference value|).
+// book:begin tolerance
+NH_TOLERANCE :: 0.00001;
+// book:end tolerance
+
+// The checks' model: hidden 6; a Mamba-2 mixer of 4 heads of width 2 in 2
+// groups with state width 3 (8 values, 20 convolved channels, in_proj 32
+// rows); attention with 4 query heads, two to each of 2 key/value heads,
+// all of width 4;
+// an MLP 5 wide; three layers, M - *.
+NHO_TOKENS :: 7;
+nho_shape :: ()->NhShape {
+    return NhShape.{hidden=6,vocab=9,layers=3,ssm=SsShape.{heads=4,head_dim=2,state_dim=3,groups=2},attn_heads=4,kv_heads=2,attn_dim=4,mlp=5};
+}
+NHO_PATTERN :: "M-*";
+// Deterministic values in [-1, 1) from a seed and an index.
+nho_value :: (seed:int,i:int)->f32 {return f32((i*7+seed*13+i*i%11+seed*i%5)%23-11)/12;}
+nho_fill :: (a:[]f32,seed:int,scale:f32) {for i:0..<a.count {a[i]=nho_value(seed,i)*scale;}}
+// Weights of every layer kind in one flat array of NHO_WEIGHTS values:
+// norm 6, in_proj 192, conv 80, conv bias 20, log A 4, dt bias 4, D 4,
+// gate norm 8, out_proj 48, q 96, k 48, v 48, o 96, up 30, down 30.
+NHO_WEIGHTS :: 714;
+NHO_AT :: [16]int.[0,6,198,278,298,302,306,310,318,366,462,510,558,654,684,714];
+nho_part :: (a:[]f32,k:int)->[]f32 {return a[NHO_AT[k]..<NHO_AT[k+1]];}
+nho_weights :: (seed:int)->[714]f32 {
+    w:[714]f32;
+    scales:=[15]f32.[1,0.5,0.5,0.25,1,1,1,1,0.5,0.5,0.5,0.5,0.5,0.5,0.5];
+    for k:0..<15 {nho_fill(nho_part(w[..],k),seed+k,scales[k]);}
+    for i:0..<6 {w[i]+=1.5;}
+    for i:0..<8 {w[310+i]+=1.5;}
+    return w;
+}
+nho_mamba_view :: (a:[]f32)->NhMamba {
+    return NhMamba.{norm=nho_part(a,0),in_proj=nho_part(a,1),conv=nho_part(a,2),conv_bias=nho_part(a,3),a_log=nho_part(a,4),dt_bias=nho_part(a,5),d=nho_part(a,6),gate_norm=nho_part(a,7),out_proj=nho_part(a,8)};
+}
+nho_attention_view :: (a:[]f32)->NhAttention {return NhAttention.{norm=nho_part(a,0),q=nho_part(a,9),k=nho_part(a,10),v=nho_part(a,11),o=nho_part(a,12)};}
+nho_mlp_view :: (a:[]f32)->NhMlp {return NhMlp.{norm=nho_part(a,0),up=nho_part(a,13),down=nho_part(a,14)};}
+nho_hidden :: (seed:int)->[42]f32 {a:[42]f32;nho_fill(a[..],seed+20,2);return a;}
+
+nho_sigmoid :: (x:f64)->f64 {return 1/(1+exp(-x));}
+nho_rms :: (x:[]f64,weight:[]f32,out:[]f64) {
+    sum:=0.0;for v:x {sum+=v*v;}
+    r:=sqrt(sum/f64(x.count)+0.00001);
+    for i:0..<x.count {out[i]=x[i]/r*f64(weight[i]);}
+}
+nho_matvec :: (w:[]f32,x:[]f64,out:[]f64) {
+    for r:0..<out.count {sum:=0.0;for k:0..<x.count {sum+=f64(w[r*x.count+k])*x[k];}out[r]=sum;}
+}
+// Every token of hidden (NHO_TOKENS x 6) through the Mamba-2 layer from a
+// zero start, as binary64.
+nho_mamba :: (a:[]f32,hidden:[]f32)->[42]f64 {
+    w:=nho_mamba_view(a);
+    out:[42]f64;raw:[140]f64;state:[24]f64;
+    for t:0..<NHO_TOKENS {
+        h:[6]f64;for i:0..<6 {h[i]=f64(hidden[t*6+i]);}
+        n:[6]f64;nho_rms(h[..],w.norm,n[..]);
+        p:[32]f64;nho_matvec(w.in_proj,n[..],p[..]);
+        // p: z (8), then the raw channels x (8), B (6), C (6), then dt (4).
+        for ch:0..<20 {raw[t*20+ch]=p[8+ch];}
+        conv:[20]f64;
+        for ch:0..<20 {
+            sum:=f64(w.conv_bias[ch]);
+            for back:0..<4 {if t>=back {sum+=raw[(t-back)*20+ch]*f64(w.conv[ch*4+3-back]);}}
+            conv[ch]=sum*nho_sigmoid(sum);
+        }
+        y:[8]f64;
+        for head:0..<4 {
+            group:=head/2;dt:=log(1+exp(p[28+head]+f64(w.dt_bias[head])));decay:=-exp(f64(w.a_log[head]));
+            for q:0..<2 {
+                x:=conv[head*2+q];sum:=0.0;
+                for k:0..<3 {
+                    i:=(head*2+q)*3+k;
+                    state[i]=exp(dt*decay)*state[i]+dt*x*conv[8+group*3+k];
+                    sum+=conv[14+group*3+k]*state[i];
+                }
+                z:=p[head*2+q];
+                y[head*2+q]=(sum+f64(w.d[head])*x)*z*nho_sigmoid(z);
+            }
+        }
+        g:[8]f64;nho_rms(y[0..<4],w.gate_norm[0..<4],g[0..<4]);nho_rms(y[4..<8],w.gate_norm[4..<8],g[4..<8]);
+        u:[6]f64;nho_matvec(w.out_proj,g[..],u[..]);
+        for i:0..<6 {out[t*6+i]=h[i]+u[i];}
+    }
+    return out;
+}
+// Attention over every token from position 0, as binary64.
+nho_attention :: (a:[]f32,hidden:[]f32)->[42]f64 {
+    w:=nho_attention_view(a);
+    out:[42]f64;keys:[56]f64;values:[56]f64;
+    for t:0..<NHO_TOKENS {
+        h:[6]f64;for i:0..<6 {h[i]=f64(hidden[t*6+i]);}
+        n:[6]f64;nho_rms(h[..],w.norm,n[..]);
+        q:[16]f64;nho_matvec(w.q,n[..],q[..]);
+        nho_matvec(w.k,n[..],keys[t*8..<t*8+8]);nho_matvec(w.v,n[..],values[t*8..<t*8+8]);
+        mixed:[16]f64;
+        for head:0..<4 {
+            kv:=(head/2)*4;
+            weights:[7]f64;total:=0.0;
+            for j:0..<t+1 {
+                dot:=0.0;for d:0..<4 {dot+=q[head*4+d]*keys[j*8+kv+d];}
+                weights[j]=exp(dot/2);total+=weights[j];
+            }
+            for d:0..<4 {sum:=0.0;for j:0..<t+1 {sum+=weights[j]*values[j*8+kv+d];}mixed[head*4+d]=sum/total;}
+        }
+        u:[6]f64;nho_matvec(w.o,mixed[..],u[..]);
+        for i:0..<6 {out[t*6+i]=h[i]+u[i];}
+    }
+    return out;
+}
+// The MLP on every token, as binary64.
+nho_mlp :: (a:[]f32,hidden:[]f32)->[42]f64 {
+    w:=nho_mlp_view(a);
+    out:[42]f64;
+    for t:0..<NHO_TOKENS {
+        h:[6]f64;for i:0..<6 {h[i]=f64(hidden[t*6+i]);}
+        n:[6]f64;nho_rms(h[..],w.norm,n[..]);
+        inner:[5]f64;nho_matvec(w.up,n[..],inner[..]);
+        for i:0..<5 {if inner[i]<0 {inner[i]=0;}inner[i]*=inner[i];}
+        u:[6]f64;nho_matvec(w.down,inner[..],u[..]);
+        for i:0..<6 {out[t*6+i]=h[i]+u[i];}
+    }
+    return out;
+}
+// The largest |difference| between got and the reference, and the limit
+// NH_TOLERANCE * (1 + largest |reference|).
+NhoGap :: struct { gap:f64; limit:f64; }
+nho_gap :: (got:[]f32,ref:[]f64)->NhoGap {
+    r:NhoGap;big:=0.0;
+    for i:0..<ref.count {if abs(f64(got[i])-ref[i])>r.gap {r.gap=abs(f64(got[i])-ref[i]);}if abs(ref[i])>big {big=abs(ref[i]);}}
+    r.limit=NH_TOLERANCE*(1+big);
+    return r;
+}
+nho_same :: (a:[]f32,b:[]f32)->bool {
+    if a.count!=b.count {return false;}
+    for i:0..<a.count {if f32_bits(a[i])!=f32_bits(b[i]) {return false;}}
+    return true;
+}

@@ -2122,6 +2122,26 @@
       ]
     },
     {
+      "source": "psionic/examples/nemotron-h.coax",
+      "chapter": "psionic/book/ch163-execute-nemotron-nano.md",
+      "stdout": "psionic/fixtures/nemotron-h.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/nemotron-h-refuse.coax",
+      "chapter": "psionic/book/ch163-execute-nemotron-nano.md",
+      "stdout": "psionic/fixtures/nemotron-h-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/feed.coax",
       "chapter": "psionic/book/ch121-feed-the-accelerator.md",
       "stdout": "psionic/fixtures/feed/feed.out",
