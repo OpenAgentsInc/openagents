@@ -1038,6 +1038,18 @@ refund_ok :: (paid: int, refund: int) -> bool {
   results were reused (`cached`) and how many units were checked
   (`checked`). The build-only stage0 can't hash itself, so it keeps results
   only while it runs.
+- A compile of a program with an `#authority` unit runs its checks (below).
+  When they all pass, the compile records that in the same cache under the
+  SHA-256 of the compiler binary, the options that change checking (the
+  run-step budget used, so the entry file's `#run_steps` and `--run-steps`,
+  the profile, arithmetic, `--build-profile`, `--library`, Metal or CUDA),
+  each unit's path and SHA-256, the SHA-256 of the whole input after
+  `#import_proto`, and which units' checks were left out as libraries. A
+  later compile with the same key reuses the pass and runs no check; a pass
+  prints nothing, so its output is the same either way. A failure is never
+  recorded: a failing program runs its checks, and reports the same
+  diagnostics, every time. `coax test`, `mutate` and `--evidence` always run
+  them. `--timings` reports `authority_checks` (`cached`, `checked`).
 - `#authority;` marks a file whose rules guard money, signatures or grants.
   Every procedure authored in that physical source unit except `main` and `#foreign` imports must actually execute
   in a check, directly or through calls (E0380). Dead references, short-circuited

@@ -291,6 +291,7 @@ static int run_process(const std::vector<std::string> &args,bool *started=nullpt
 }
 
 static size_t g_library_cached = 0, g_library_checked = 0;  // library checks reused and run (ax-library-check-cache)
+static size_t g_authority_cached = 0, g_authority_checked = 0;  // #authority check runs reused and run (ax-authority-check-cache)
 
 // Observations of the checked Coax selection and host I/O. Hashing uses the
 // existing Coax SHA-256 implementation, never a native fallback.
@@ -366,6 +367,7 @@ static void timings_table(double total) {
     fprintf(stderr,"  checks: %zu run, %.3f s; slowest:\n",g_timings.checks.size(),sum);
     slowest(g_timings.checks,[](const TimedCheck &c){fprintf(stderr,"    %9.3f s %12llu steps  %s %s%s (%s)\n",c.seconds,(unsigned long long)c.steps,c.kind.c_str(),c.name.c_str(),c.passed?"":" FAILED",c.phase.c_str());});
   }
+  if(g_authority_cached)fprintf(stderr,"  authority: every check passed in an earlier compile of these sources; reused, none run\n");
   if(!g_timings.libraries.empty()){
     double ran=0,cached=0;size_t n_ran=0;
     for(const auto &l:g_timings.libraries){if(l.cached)cached+=l.seconds;else {ran+=l.seconds;n_ran++;}}
@@ -379,7 +381,7 @@ static int finish_profile(int status) {
   const double total=seconds_since(g_timings.start);
   if(g_timings.table)timings_table(total);
   if(g_timings.path.empty()) return status;
-  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"library_checks\":{\"cached\":"<<g_library_cached<<",\"checked\":"<<g_library_checked<<"}"<<",\"seconds\":{";
+  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"library_checks\":{\"cached\":"<<g_library_cached<<",\"checked\":"<<g_library_checked<<"}"<<",\"authority_checks\":{\"cached\":"<<g_authority_cached<<",\"checked\":"<<g_authority_checked<<"}"<<",\"seconds\":{";
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
   out<<(first?"":",")<<"\"total\":"<<total<<"},\"detail_seconds\":{";
   first=true;for(const auto &[part,duration]:g_timings.detail) {out<<(first?"":",")<<json_string(part)<<":"<<duration;first=false;}
@@ -943,6 +945,27 @@ static std::string library_cache_dir() {
   return std::string(home && *home ? home : "/tmp") + "/.cache/coax-check";
 }
 
+// The SHA-256 of this compiler's executable, once a process; "" in the
+// build-only stage0, which can't hash itself and so keeps no verdicts.
+static std::string compiler_hash() {
+  static std::string hash;
+  static bool known = false;
+#ifndef COAX_BOOTSTRAP_IMPORTER
+  if (!known) hash = profile_file_hash(executable_path());
+#endif
+  known = true;
+  return hash;
+}
+
+// Writes record to dir/key through a temporary file, so a reader sees all of
+// it or nothing.
+static void cache_record(const std::string &dir, const std::string &key, const std::string &record) {
+  std::error_code ec;
+  if (key.empty() || !(std::filesystem::create_directories(dir, ec), !ec || std::filesystem::is_directory(dir, ec))) return;
+  const std::string temp = dir + "/." + key + "." + std::to_string(getpid());
+  if (write_file(temp, record)) std::rename(temp.c_str(), (dir + "/" + key).c_str());
+}
+
 // The units unit `at` loads, directly or not, itself first, in a fixed order.
 static std::vector<int32_t> library_closure(const Source *src, int32_t at) {
   std::vector<int32_t> out{at};
@@ -1016,6 +1039,55 @@ static bool library_check_standalone(const Source *src, int32_t at, const EmitOp
   return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
+// #authority check verdicts (ax-authority-check-cache). A compile of a
+// program with an #authority unit runs every check it keeps; Everglade's take
+// minutes. When they all pass, the compile records that in the check cache
+// under the SHA-256 of the compiler binary, the options that change checking
+// (the run-step budget used, including the entry file's #run_steps, the
+// profile, arithmetic, build profile, library, Metal or CUDA), each unit's
+// canonical path and SHA-256, the SHA-256 of the whole input after
+// #import_proto, and which units' checks library_units left out. A later
+// compile with the same key skips run_compilation_checks. A failure is never
+// recorded, so a failing program runs its checks, and reports the same
+// diagnostics, every time; a passing one prints nothing either way. coax test,
+// mutate and an --evidence record always run the checks.
+static std::string authority_key(const Source *src, const File *file, const EmitOptions &opts, const std::vector<bool> &dropped) {
+  const std::string compiler = compiler_hash();
+  if (compiler.empty()) return "";
+  std::string text = "coax.authority-check.v1\n" + compiler + "\n";
+  text += "run_steps=" + std::to_string(file->run_steps) + " option_steps=" + std::to_string(opts.run_steps) +
+          " given=" + std::to_string(opts.run_steps_given) + " development=" + std::to_string(opts.development) +
+          " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
+          " library=" + std::to_string(file->library) + " metal=" + std::to_string(opts.metal) + " cuda=" +
+          std::to_string(opts.cuda) + " metal_compute=" + std::to_string(opts.metal_compute) +
+          " quantity_device=" + std::to_string(opts.quantity_device) + "\n";
+  for (size_t u = 0; u < src->units.size(); u++) {
+    const SourceUnit &unit = *src->units[u];
+    const std::string sha = debug_source_hash(unit.text);
+    if (sha.empty()) return "";
+    text += unit.canonical + "\t" + sha + (u < dropped.size() && dropped[u] ? "\tlibrary" : "") + "\n";
+  }
+  const std::string all = debug_source_hash(src->text);
+  if (all.empty()) return "";
+  return debug_source_hash(text + "input\t" + all + "\n");
+}
+
+static bool authority_checks(const Source *src, File *file, const EmitOptions &opts, const std::vector<bool> &dropped, bool mutation_lowering) {
+  static const char PASSED[] = "authority checks pass\n";
+  const std::string key = mutation_lowering || !g_evidence.path.empty() ? "" : authority_key(src, file, opts, dropped);
+  const std::string dir = library_cache_dir();
+  std::string record;
+  if (!key.empty() && read_record(dir + "/" + key, &record) && record == PASSED) {
+    g_authority_cached++;
+    return true;
+  }
+  const int errors = g_error_count;
+  const bool ok = run_compilation_checks(file);
+  g_authority_checked++;
+  if (ok && g_error_count == errors) cache_record(dir, key, PASSED);
+  return ok;
+}
+
 // Which loaded units' check bodies this compile leaves out (library_checks).
 static std::vector<bool> library_units(const Source *src, const std::vector<Token> &tokens, const EmitOptions &opts) {
   const size_t n = src->units.size();
@@ -1028,10 +1100,7 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     if (t.kind == Tok::directive && str_eq(t.text, "import_proto"))
       if (const SourceUnit *u = source_unit_at(src, t.loc))
         for (size_t i = 0; i < n; i++) if (src->units[i].get() == u) proto[i] = true;
-  std::string compiler;
-#ifndef COAX_BOOTSTRAP_IMPORTER
-  compiler = profile_file_hash(executable_path());
-#endif
+  const std::string compiler = compiler_hash();
   const std::string dir = library_cache_dir();
   // Loaded units before their loaders, so a unit's own check reuses its libraries' verdicts.
   std::vector<int32_t> order;
@@ -1061,11 +1130,7 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     } else {
       verdict = library_check_standalone(src, u, opts, run);
       g_library_checked++;
-      std::error_code ec;
-      if (!key.empty() && (std::filesystem::create_directories(dir, ec), !ec || std::filesystem::is_directory(dir, ec))) {
-        const std::string temp = dir + "/." + key + "." + std::to_string(getpid());
-        if (write_file(temp, verdict ? "checks\n" : "does not check alone\n")) std::rename(temp.c_str(), (dir + "/" + key).c_str());
-      }
+      cache_record(dir, key, verdict ? "checks\n" : "does not check alone\n");
     }
     if (g_timings.on()) g_timings.libraries.push_back({canonical, seconds_since(began), g_library_cached != cached_before, verdict});
     g_library_verdicts[canonical + (run ? "\nrun" : "")] = verdict;
@@ -1194,7 +1259,8 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
       TimedPhase phase{"lex"};ok=lex(arena, src, &tokens);
     }
   }
-  if (ok && g_library_checks) {TimedPhase phase{"libraries"};drop_library_checks(src, library_units(src, tokens, opts), &tokens);}
+  std::vector<bool> dropped;
+  if (ok && g_library_checks) {TimedPhase phase{"libraries"};dropped=library_units(src, tokens, opts);drop_library_checks(src, dropped, &tokens);}
   if(!g_semantic.path.empty()) {
     for(const auto &unit:src->units)g_semantic.sources.emplace_back(unit->canonical,debug_source_hash(unit->text));
     // No report is written when the complete input graph could not be read
@@ -1215,7 +1281,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     if(opts.run_steps_given || !file->run_steps) file->run_steps=opts.run_steps;
     if(ok && !parsed) {TimedPhase phase{"evaluate"};g_timings.run_steps=file->run_steps;ok=evaluate(file,file->run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
   }
-  if (ok && !parsed) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=run_compilation_checks(file);}
+  if (ok && !parsed) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=authority_checks(src,file,opts,dropped,mutation_lowering);}
   if (!ok && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
   return ok;
 }

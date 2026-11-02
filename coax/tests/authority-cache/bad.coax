@@ -1,0 +1,7 @@
+// An #authority program whose check fails: its failure is never recorded,
+// so every compile runs the check and reports the same error.
+#load "rule.coax";
+#authority;
+fee_for :: (amount: int) -> int { return amount / 100 + base_fee(); }
+#test "a fee is one percent and nothing more" { #assert fee_for(1000) == 10; }
+main :: () { }

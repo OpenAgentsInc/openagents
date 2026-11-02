@@ -3539,6 +3539,31 @@ that fails when run under `#authority`, still fail the consumer);
 `sources.coax` checks and zero-survivor mutation gate; the bootstrap's seed
 and compiler fixpoints.
 
+## A passing #authority compile is reused only under the same inputs
+
+A compile of a program with an `#authority` unit (`coax c`, `check`, `build`,
+`run`, `lib`, `header`, `metal`, `cuda`) records that its checks passed in
+`~/.cache/coax-check/` (`$COAX_CHECK_CACHE`) and a later compile reuses that
+pass instead of running them. The key is the SHA-256 of the compiler binary,
+the options that change checking (the run-step budget used, including the
+entry file's `#run_steps`, `--run-steps`, the profile, arithmetic, build
+profile, library mode, Metal or CUDA), every unit's canonical path and
+SHA-256, the SHA-256 of the whole input after `#import_proto`, and which
+units' checks were left out as libraries. A failed check, or any error during
+the checks, is never recorded, so a failing program runs its checks and
+reports the same diagnostics every time; a passing one prints nothing either
+way, so a reused and a run pass give the same output, exit status and C.
+`coax test`, `mutate` and `--evidence` always run the checks. The build-only
+stage0 can't hash itself and records nothing. The cache is local trusted
+state, not a signature: anyone who can write it can make a compile skip
+checks.
+
+Check: `coax/tests/authority-cache.coax` (a second check reuses the pass and
+prints what the first printed; `coax c` gives the same C either way; a changed
+loaded unit, `#run_steps`, `--run-steps`, build profile or compiler binary
+runs the checks again; a failing check runs every time with the same
+diagnostics and exit status; `coax test` runs every check).
+
 ## CPU reflection lowers to bounded ordinary values
 
 `type_info`, `field_info` and `enum_info` are implemented in the Coax parser

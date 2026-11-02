@@ -1,0 +1,117 @@
+// #authority check verdicts are reused between compiles (ax-authority-check-cache).
+//   coax/web/tool.sh coax/tests/authority-cache.coax COMPILER
+// Run from coax/. tests/authority-cache/ok.coax is an #authority program
+// whose check passes; it loads rule.coax. bad.coax's check fails. Each step
+// runs the compiler with its own check cache ($COAX_CHECK_CACHE) and reads
+// --timings for how many #authority check runs were reused and run. Then:
+//   - the first coax check runs the checks, the second reuses the verdict,
+//     and both print the same thing and exit 0;
+//   - coax c gives the same C with the verdict reused as with a new cache;
+//   - a changed loaded unit, a changed --run-steps, a changed #run_steps in
+//     the entry file, a changed build profile and a changed compiler binary
+//     each run the checks again;
+//   - a failing check is never recorded: every compile runs it, prints the
+//     same diagnostics and exits 1;
+//   - coax test still runs every check.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// Whether part occurs anywhere in text.
+has :: (text: string, part: string) -> bool {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "has finds a part anywhere and nothing that is not there" {
+  #assert has("abc", "a") && has("abc", "bc") && has("abc", "abc") && has("abc", "");
+  #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
+}
+
+// Runs body in sh with C the compiler, D a scratch directory and the shell
+// function chk (FUNCTIONS); out gets stdout and stderr.
+run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
+  argv := [8] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "sh", compiler, dir, FUNCTIONS, body];
+  err: [1024] u8;
+  return proc_run(argv[..], 120000, out, err[..]);
+}
+
+// chk NAME CACHE COMMAND FILE [ARGS...]: runs the compiler ($COMPILER, else
+// $C) with the cache $D/CACHE, its stdout in $D/NAME.c and stderr in
+// $D/NAME.err, then prints one line: NAME, its exit status and its
+// authority_checks counts, as in "cold status=0 cached=0 checked=1".
+FUNCTIONS :: "chk() { n=$1; k=$2; shift 2; COAX_CHECK_CACHE=\"$D/$k\" \"${COMPILER:-$C}\" \"$@\" --timings \"$D/$n.json\" > \"$D/$n.c\" 2> \"$D/$n.err\"; s=$?; echo \"$n status=$s $(grep -o '\"authority_checks\":{[^}]*}' \"$D/$n.json\" | sed 's/[^0-9,]//g; s/^/cached=/; s/,/ checked=/')\"; }";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: authority-cache.coax COMPILER"); return 2; }
+  compiler := args_at(a[..], 0);
+  bad := 0;
+  out: [65536] u8;
+  dir_out: [4096] u8;
+  r := run(compiler, "", "mktemp -d \"${TMPDIR:-/tmp}/coax-authority-cache.XXXXXX\"", dir_out[..]);
+  if r.status != 0 || r.out_n < 2 { tool_errln("authority-cache: cannot make a scratch directory"); return 1; }
+  dir := cast(string) dir_out[0..<r.out_n];
+  if dir[dir.count - 1] == '\n' { dir = cast(string) dir_out[0..<r.out_n - 1]; }
+
+  // The first check runs the checks and records the pass; the second reuses it.
+  r = run(compiler, dir, "chk cold cache check tests/authority-cache/ok.coax; chk warm cache check tests/authority-cache/ok.coax; cat \"$D\"/cache/* | grep -c 'authority checks pass'", out[..]);
+  t := cast(string) out[0..<r.out_n];
+  bad += check(has(t, "cold status=0 cached=0 checked=1\nwarm status=0 cached=1 checked=0\n1"), "the first check runs the checks and records the pass; the second reuses it");
+  r = run(compiler, dir, "cat \"$D/cold.c\" \"$D/cold.err\" > \"$D/cold.all\"; cat \"$D/warm.c\" \"$D/warm.err\" > \"$D/warm.all\"; cmp \"$D/cold.all\" \"$D/warm.all\" && echo same", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "same"), "a reused pass prints what a run one prints");
+
+  // coax c: the reused verdict gives the C a new cache gives.
+  r = run(compiler, dir, "chk c-fresh fresh c tests/authority-cache/ok.coax; chk c-warm fresh c tests/authority-cache/ok.coax; cmp \"$D/c-fresh.c\" \"$D/c-warm.c\" && cmp \"$D/c-fresh.err\" \"$D/c-warm.err\" && echo same", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "c-fresh status=0 cached=0 checked=1\nc-warm status=0 cached=1 checked=0\nsame"), "coax c gives the same C and output with the verdict reused");
+
+  // A changed loaded unit runs the checks again.
+  r = run(compiler, dir, "mkdir -p \"$D/edit\" && cp tests/authority-cache/*.coax \"$D/edit/\" && chk edit-base cache check \"$D/edit/ok.coax\" && printf '\\n// edited\\n' >> \"$D/edit/rule.coax\" && chk edit cache check \"$D/edit/ok.coax\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "edit-base status=0 cached=0 checked=1\nedit status=0 cached=0 checked=1"), "a changed loaded unit runs the checks again");
+
+  // So does a changed #run_steps in the entry file.
+  r = run(compiler, dir, "sed 's/#run_steps 200000;/#run_steps 300000;/' \"$D/edit/ok.coax\" > \"$D/edit/ok2.coax\" && grep -c 'run_steps 300000' \"$D/edit/ok2.coax\" && chk steps-a cache check \"$D/edit/ok2.coax\" && chk steps-b cache check \"$D/edit/ok2.coax\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "1\nsteps-a status=0 cached=0 checked=1\nsteps-b status=0 cached=1 checked=0"), "a changed #run_steps runs the checks again, then reuses them");
+
+  // And changed options: --run-steps, the build profile.
+  r = run(compiler, dir, "chk opt-steps cache check tests/authority-cache/ok.coax --run-steps 400000; chk opt-release cache check tests/authority-cache/ok.coax --build-profile release; chk opt-again cache check tests/authority-cache/ok.coax --run-steps 400000", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "opt-steps status=0 cached=0 checked=1\nopt-release status=0 cached=0 checked=1\nopt-again status=0 cached=1 checked=0"), "a changed --run-steps or build profile runs the checks again");
+
+  // A changed compiler binary runs them again. A copy with a byte appended
+  // still runs on Linux; where it doesn't (a signed binary), say so.
+  r = run(compiler, dir, "cp \"$C\" \"$D/coax-changed\" && printf '\\n' >> \"$D/coax-changed\" && if \"$D/coax-changed\" --version > /dev/null 2>&1; then COMPILER=\"$D/coax-changed\" chk compiler cache check tests/authority-cache/ok.coax; else echo 'altered compiler does not run'; fi", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  if has(t, "altered compiler does not run") { print("  skip a changed compiler runs the checks again (an altered copy does not run here)\n"); }
+  else { bad += check(has(t, "compiler status=0 cached=0 checked=1"), "a changed compiler runs the checks again"); }
+
+  // A failing check is never recorded: both compiles run it and say the same.
+  r = run(compiler, dir, "chk bad-1 cache check tests/authority-cache/bad.coax; chk bad-2 cache check tests/authority-cache/bad.coax; cmp \"$D/bad-1.err\" \"$D/bad-2.err\" && cmp \"$D/bad-1.c\" \"$D/bad-2.c\" && echo same; cat \"$D/bad-2.err\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "bad-1 status=1 cached=0 checked=1\nbad-2 status=1 cached=0 checked=1\nsame"), "a failing check runs every time and exits 1 with the same diagnostics");
+  bad += check(has(t, "error[E0406]: assertion failed") && has(t, "in #test a fee is one percent and nothing more"), "the failure names the check");
+
+  // coax test runs every check whatever the cache holds.
+  r = run(compiler, dir, "COAX_CHECK_CACHE=\"$D/cache\" \"$C\" test tests/authority-cache/ok.coax 2>&1", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "1 check, 1 passed, 0 failed"), "coax test runs the check");
+
+  r = run(compiler, dir, "rm -rf \"$D\"", out[..]);
+  if bad == 0 { print("authority-cache: ok\n"); return 0; }
+  print("authority-cache: % failed\n", bad);
+  return 1;
+}

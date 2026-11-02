@@ -1,0 +1,8 @@
+// An #authority program whose checks pass: its compile records the verdict,
+// and the next compile of the same sources reuses it.
+#load "rule.coax";
+#authority;
+#run_steps 200000;
+fee_for :: (amount: int) -> int { return amount / 100 + base_fee(); }
+#test "a fee is one percent and the base" { #assert fee_for(1000) == 13 && fee_for(0) == 3; }
+main :: () { }
