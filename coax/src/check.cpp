@@ -167,6 +167,7 @@ static void attach_check_input(File *file,const zvec<coax_t_PS_Node> &nodes,cons
 }
 bool check(Arena *arena,File *file,bool mutation_lowering){
   if(!file->check_input){error_at(file->src,{1,1,0},"E0381","type checker has no indexed syntax input");return false;}
+  TimedLaps laps;  // --timings: check.storage, check.checker (types, borrows, effects inference), check.effects, check.transfer
   auto input=file->check_input;const auto caps=CK_caps(input->used+1,(int64_t)file->src->text.size());const auto extra=CK_meta_capacity({input->nodes.data(),(int64_t)input->nodes.size()},input->used);input->nodes.resize((size_t)(caps.nodes+extra));
   zvec<coax_t_CK_Type> records((size_t)caps.types);zvec<coax_t_CK_Local> locals((size_t)caps.locals);
   zvec<coax_t_CK_Error> errors((size_t)caps.errors);zvec<uint8_t> bytes((size_t)caps.bytes);coax_t_CK_State state{};
@@ -183,9 +184,11 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
   context.retain_reports={nullptr,0};
   zvec<int64_t> result_work((size_t)caps.result_work);
   context.result_work={result_work.data(),(int64_t)result_work.size()};
+  laps.lap("check.storage");
   bool ok=CK_run(context,input->used,{file->library,file->metal,file->authority,file->quantity_device});
-  if(ok && mutation_lowering)ok=CK_prepare_spatial_mutations(context);
-  if(ok)CK_lower_effects(context);
+  laps.lap("check.checker");
+  if(ok && mutation_lowering){ok=CK_prepare_spatial_mutations(context);laps.lap("check.mutation_lowering");}
+  if(ok){CK_lower_effects(context);laps.lap("check.effects");}
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];error_at(file->src,checked_loc(d.loc),checked_text(d.code).c_str(),checked_text(d.message),checked_text(d.fix));}
   if(!ok){if(!state.error_count)error_at(file->src,{1,1,0},"E0381","type checker storage budget rejected");return false;}
   auto &nodes=input->nodes;auto &objects=input->objects;const size_t old_size=objects.size();objects.resize((size_t)state.used+1,nullptr);
@@ -273,6 +276,6 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
     if(nodes[(size_t)id].kind==COAX_CK_Tag_struct_){auto *d=checked_ref<StructDecl>(objects,id);d->end=d->origin->end;if(!d->generic)structs.push_back(d);continue;}
     auto *p=checked_ref<ProcDecl>(objects,id);const auto *o=p->origin;p->end=o->end;p->authority=nodes[(size_t)id].origin==id?false:o->authority;p->root_source=nodes[(size_t)id].origin==id?false:o->root_source;concrete.push_back(p);}
   file->procs=to_slice(arena,concrete);file->generics=to_slice(arena,generic);file->structs=to_slice(arena,structs);file->generic_structs=to_slice(arena,templates);
-  file->check_input.reset();return true;
+  file->check_input.reset();laps.lap("check.transfer");return true;
 }
 } // namespace coax

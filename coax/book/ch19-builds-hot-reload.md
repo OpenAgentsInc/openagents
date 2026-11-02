@@ -389,7 +389,10 @@ which also runs the C compiler and links, takes about 0.22 seconds.
 
 That measurement predates the Haunted House, its buffer gate and HUD module,
 its second Coax Metal module, and the voice libraries. It is not a current whole-app generation
-baseline. Chapter 12 describes how to collect one.
+baseline. Chapter 12 describes how to collect one, and
+[chapter 41](ch41-compile-budgets.md#what-you-can-measure-today) shows the
+per-phase report (`--timings-table`) and the kept baseline for the biggest apps,
+`coax/perf/baseline.json`.
 
 Those numbers are real, but they measure the easy part. The loop you
 actually wait on, from saving a file to seeing the change on screen,

@@ -22,6 +22,17 @@ class Debugging(unittest.TestCase):
   t=json.loads(timing.read_text());self.assertTrue(t['success']);self.assertGreater(t['generated_bytes'],0)
   for phase in ['load','lex','imports','parse','check','evaluate','authority','emit']:
    self.assertIn(phase,t['seconds']);self.assertGreaterEqual(t['seconds'][phase],0)
+ def test_timing_report_parts_checks_and_table(self):
+  source=self.d/'checked.coax';source.write_text('#authority;\ntwice :: (x:int)->int {return x*2;}\n#test "doubles" {#assert twice(21)==42;}\nmain :: () {}\n')
+  report=self.d/'t.json'
+  r=self.call('check',source,'--timings-json',report,'--timings-table')
+  self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stdout,'')
+  t=json.loads(report.read_text())
+  self.assertIn('check.checker',t['detail_seconds']);self.assertNotIn('check.checker',t['seconds'])
+  self.assertEqual([(c['kind'],c['name'],c['phase'],c['passed']) for c in t['checks']],[('#test','doubles','authority',True)])
+  self.assertGreater(t['checks'][0]['steps'],0);self.assertEqual(t['libraries'],[])
+  self.assertIn('coax timings:',r.stderr);self.assertIn('check.checker',r.stderr);self.assertIn('#test doubles (authority)',r.stderr)
+  quiet=self.call('check',source);self.assertEqual(quiet.returncode,0,quiet.stderr);self.assertNotIn('coax timings',quiet.stderr)
  def test_loaded_function_source_step_values_and_stack(self):
   source=self.d/'main.coax';helper=self.d/'helper.coax';mapping=self.d/'map.json';exe=self.d/'app'
   helper.write_text('twice :: (value:int)->int {\n total:=value*2;\n total+=2;\n return total;\n}\n')

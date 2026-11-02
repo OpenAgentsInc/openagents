@@ -11,6 +11,87 @@ entry is never reused, and a valid one is never rebuilt.
 [Chapter 19](ch19-builds-hot-reload.md) introduces the plan; this chapter
 covers it in full.
 
+## What you can measure today
+
+The budgets aren't built, but you can already see where a compile spends its
+time. Add `--timings-table` to any `check`, `c`, `build`, `test` or `run`
+command, and the driver prints each phase's wall time on stderr when it
+finishes:
+
+```shell
+$ coax/bin/coax check apps/openagents-web/newland.coax --timings-table
+coax timings: 1.494 s wall
+  phase                         seconds   share
+  load                            0.070    4.7%
+  lex                             0.047    3.1%
+  imports                         0.003    0.2%
+  libraries                       0.631   42.2%
+  parse                           0.023    1.5%
+  check                           0.718   48.1%
+    check.checker                 0.700   46.8%
+    check.effects                 0.003    0.2%
+    check.storage                 0.009    0.6%
+    check.transfer                0.007    0.5%
+  evaluate                        0.002    0.1%
+  authority                       0.000    0.0%
+  emit                            0.000    0.0%
+  libraries: 27 checked alone (0.608 s), 0 cached (0.000 s); slowest:
+        0.077 s checked verse/edit/edit.coax
+        0.063 s checked apps/openagents-web/newland-network.coax
+        ...
+```
+
+The phases, in order:
+
+| Phase | What runs |
+| --- | --- |
+| `load` | Reading the entry file and every `#load`ed file. |
+| `lex` | Turning the source into tokens. |
+| `imports` | Reading `#import_proto` descriptors and generating their Coax. |
+| `libraries` | Checking each loaded file on its own, once, so its `#test` and `#forall` bodies can be left out of this compile. A verdict is cached in `~/.cache/coax-check` (or `$COAX_CHECK_CACHE`). |
+| `parse` | Building the syntax tree. |
+| `check` | The type checker. `check.checker` is the Coax checker itself: names, types, borrows, effects and generic instances. `check.effects` lowers effects, `check.storage` and `check.transfer` set up its storage and copy its results back. |
+| `evaluate` | Compile-time evaluation: `#run`, constants and defaults. |
+| `authority` | Every `#test` and `#forall` of an `#authority` file, which run on each compile. |
+| `emit` | Lowering and writing C, a header or a report. |
+| `native_compile`, `link` | The C compiler and linker (`build`, `lib`, `run`). |
+
+Below the phases, the table lists the ten slowest checks with their steps
+(for `coax test`, and for an `#authority` file's checks during any
+compile), and the ten slowest library checks.
+
+`--timings-json FILE` (or the older spelling `--timings FILE`) writes the same
+facts as JSON: `seconds` per phase plus `total`, `detail_seconds` for the
+parts of a phase, a `checks` array (`kind`, `name`, `phase`, `seconds`,
+`steps`, `cases`, `passed`) and a `libraries` array (`path`, `seconds`,
+`cached`, `checks_alone`). Don't add `detail_seconds` to `seconds`: the parts
+are already inside their phase. With neither flag, the driver doesn't read the
+clock.
+
+To see which procedures inside a phase cost the time, sample the running
+compiler. On macOS, `sample PID 20` while `coax check` runs lists the
+checker's procedures by their C names (`coax_p_CK_lookup` is the checker's
+`CK_lookup`).
+
+### A baseline for the biggest apps
+
+`coax/perf/baseline.json` records these times for Everglade, newland, myrealm
+and the OpenAgents CLI. Compare the current compiler against it from the
+repository root:
+
+```shell
+coax/web/tool.sh coax/perf/compile-times.coax
+coax/web/tool.sh coax/perf/compile-times.coax --app apps/openagents-web/newland.coax
+```
+
+The tool runs `coax check APP --timings-json` with an empty library-check
+cache, so each run does the same work, and prints each phase beside the
+baseline. A phase that grows by more than a quarter and at least half a
+second is marked `SLOWER`, and the exit status is 1. After a change that makes
+a compile faster or slower on purpose, record a new baseline with `--write`
+(and `--note TEXT` to say how busy the machine was) and commit it. Wall times depend on the machine and its load, so compare on
+the machine the baseline names.
+
 ## What this chapter will cover
 
 - The five iteration cases and their budgets.

@@ -112,6 +112,8 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     // A check's own #steps budget replaces the file's.
     CheckOutcome r = run_check(file, c, c->steps ? c->steps : max_steps, profile);
     const long long ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
+    if (g_timings.on())
+      g_timings.checks.push_back({c->forall ? "#forall" : "#test", to_std(c->name), g_timings.check_phase, seconds_since(began), r.steps, r.cases, r.passed});
     if (paths) paths->push_back(r.executed);
     if (unstable && MS_storage_changed(slots, containers, file->ct_memory->slots, file->ct_memory->containers)) *unstable = true;
     if (steps) steps->push_back(r.steps);

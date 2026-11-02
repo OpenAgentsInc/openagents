@@ -59,7 +59,8 @@ work, using the native C symbols and types.
 | --- | --- |
 | `--debug-info` | Add escaped `#line` directives for physical Coax files. Supported by `c`, `build`, `lib`, `run`. |
 | `--source-map FILE` | Also write schema-1 JSON: canonical source paths, SHA-256 source hashes, procedure names, physical locations and parameter/local/loop variable names and Coax type labels. Implies `--debug-info`. |
-| `--timings FILE` | Write schema-1 JSON with status, generated C byte count and observed phase wall times. Does not change stdout or grant clocks to `#run`. |
+| `--timings FILE`, `--timings-json FILE` | Write schema-1 JSON with status, generated C byte count, observed phase wall times (`seconds`), the parts of a phase (`detail_seconds`), each check run (`checks`) and each library check (`libraries`). Does not change stdout or grant clocks to `#run`. |
+| `--timings-table` | Print the same phase, check and library times as a table on stderr. |
 | `--keep-c` | Preserve the emitted C beside an executable/object for inspection. |
 
 `build`, `lib` and `run` enable line mapping in the default debug profile.

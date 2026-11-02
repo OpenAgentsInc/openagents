@@ -35,6 +35,43 @@
 #include "proto_importer.h"
 #endif
 
+#include <chrono>
+#include <map>
+
+namespace coax {
+// Host phase timings: --timings FILE (or --timings-json FILE) writes JSON,
+// --timings-table prints a table on stderr. Monotonic clock observations are
+// host effects, never interpreted #run work. With neither flag, on() is false
+// and no phase reads the clock.
+struct TimedCheck {std::string kind,name,phase;double seconds;uint64_t steps,cases;bool passed;};
+struct TimedLibrary {std::string path;double seconds;bool cached,checks;};
+struct NativeTimings {
+  std::string path,source_map;
+  bool table=false;
+  std::map<std::string,double> seconds,detail;  // detail: parts of a phase (check.checker ...), never summed with seconds
+  std::vector<TimedCheck> checks;                // each #test/#forall run (coax test, or an #authority file's checks)
+  std::vector<TimedLibrary> libraries;           // each loaded unit's standalone check (cached or run)
+  const char *check_phase="test";
+  size_t generated_bytes=0,instances=0,instance_bytes=0;
+  uint64_t run_steps=100000, evaluated_steps=0, peak_slots=0, peak_containers=0, peak_string_bytes=0, traversal_work=0;
+  std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
+  bool on() const {return !path.empty() || table;}
+} g_timings;
+static double seconds_since(std::chrono::steady_clock::time_point t) {return std::chrono::duration<double>(std::chrono::steady_clock::now()-t).count();}
+struct TimedPhase {
+  const char *name;
+  bool timed=g_timings.on();
+  std::chrono::steady_clock::time_point start=timed?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
+  ~TimedPhase() {if(timed && g_timings.on())g_timings.seconds[name]+=seconds_since(start);}
+};
+// Consecutive parts of one phase: lap(name) adds the time since the last lap to detail[name].
+struct TimedLaps {
+  bool timed=g_timings.on();
+  std::chrono::steady_clock::time_point last=timed?std::chrono::steady_clock::now():std::chrono::steady_clock::time_point{};
+  void lap(const char *name) {if(!timed)return;auto now=std::chrono::steady_clock::now();g_timings.detail[name]+=std::chrono::duration<double>(now-last).count();last=now;}
+};
+}  // namespace coax
+
 #include "check.cpp"
 #include "errors.cpp"
 #include "eval.cpp"
@@ -253,14 +290,6 @@ static int run_process(const std::vector<std::string> &args,bool *started=nullpt
   return 1;
 }
 
-// Monotonic clock observations are host effects, never interpreted #run work.
-struct NativeTimings {
-  std::string path,source_map;
-  std::map<std::string,double> seconds;
-  size_t generated_bytes=0,instances=0,instance_bytes=0;
-  uint64_t run_steps=100000, evaluated_steps=0, peak_slots=0, peak_containers=0, peak_string_bytes=0, traversal_work=0;
-  std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
-} g_timings;
 static size_t g_library_cached = 0, g_library_checked = 0;  // library checks reused and run (ax-library-check-cache)
 
 // Observations of the checked Coax selection and host I/O. Hashing uses the
@@ -309,17 +338,56 @@ static int finish_semantic_report(int status) {
   if(!write_file(g_semantic.path,text)){fprintf(stderr,"coax: cannot write profile report '%s'\n",g_semantic.path.c_str());return 1;}
   return status;
 }
-struct TimedPhase {
-  const char *name;
-  std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
-  ~TimedPhase() {if(!g_timings.path.empty())g_timings.seconds[name]+=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();}
-};
+// The phases in pipeline order; a phase not named here follows them.
+static const char *const TIMED_PHASES[]={"load","lex","imports","libraries","parse","check","evaluate","authority","emit","native_compile","link"};
+static std::string timed_path(const std::string &path) {
+  std::error_code ec;
+  const auto rel=std::filesystem::path(path).lexically_relative(std::filesystem::current_path(ec));
+  return ec || rel.empty() || *rel.begin()==".." ? path : rel.string();
+}
+static void timings_table(double total) {
+  std::vector<std::string> order(std::begin(TIMED_PHASES),std::end(TIMED_PHASES));
+  for(const auto &[phase,duration]:g_timings.seconds)if(std::find(order.begin(),order.end(),phase)==order.end())order.push_back(phase);
+  const double all=total>0?total:1;
+  fprintf(stderr,"coax timings: %.3f s wall\n  %-26s %10s %7s\n",total,"phase","seconds","share");
+  for(const std::string &phase:order){
+    auto at=g_timings.seconds.find(phase);if(at==g_timings.seconds.end())continue;
+    fprintf(stderr,"  %-26s %10.3f %6.1f%%\n",phase.c_str(),at->second,100*at->second/all);
+    for(const auto &[part,duration]:g_timings.detail)
+      if(part.size()>phase.size() && part.compare(0,phase.size()+1,phase+".")==0)fprintf(stderr,"    %-24s %10.3f %6.1f%%\n",part.c_str(),duration,100*duration/all);
+  }
+  auto slowest=[](auto rows,auto print){
+    std::sort(rows.begin(),rows.end(),[](const auto &a,const auto &b){return a.seconds>b.seconds;});
+    for(size_t i=0;i<rows.size() && i<10;i++)print(rows[i]);
+    if(rows.size()>10)fprintf(stderr,"    ... %zu more\n",rows.size()-10);
+  };
+  if(!g_timings.checks.empty()){
+    double sum=0;for(const auto &c:g_timings.checks)sum+=c.seconds;
+    fprintf(stderr,"  checks: %zu run, %.3f s; slowest:\n",g_timings.checks.size(),sum);
+    slowest(g_timings.checks,[](const TimedCheck &c){fprintf(stderr,"    %9.3f s %12llu steps  %s %s%s (%s)\n",c.seconds,(unsigned long long)c.steps,c.kind.c_str(),c.name.c_str(),c.passed?"":" FAILED",c.phase.c_str());});
+  }
+  if(!g_timings.libraries.empty()){
+    double ran=0,cached=0;size_t n_ran=0;
+    for(const auto &l:g_timings.libraries){if(l.cached)cached+=l.seconds;else {ran+=l.seconds;n_ran++;}}
+    fprintf(stderr,"  libraries: %zu checked alone (%.3f s), %zu cached (%.3f s); slowest:\n",n_ran,ran,g_timings.libraries.size()-n_ran,cached);
+    slowest(g_timings.libraries,[](const TimedLibrary &l){fprintf(stderr,"    %9.3f s %-7s %s\n",l.seconds,l.cached?"cached":"checked",timed_path(l.path).c_str());});
+  }
+}
 static int finish_profile(int status) {
   status=finish_semantic_report(status);
+  if(!g_timings.on()) return status;
+  const double total=seconds_since(g_timings.start);
+  if(g_timings.table)timings_table(total);
   if(g_timings.path.empty()) return status;
   std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"library_checks\":{\"cached\":"<<g_library_cached<<",\"checked\":"<<g_library_checked<<"}"<<",\"seconds\":{";
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
-  out<<(first?"":",")<<"\"total\":"<<std::chrono::duration<double>(std::chrono::steady_clock::now()-g_timings.start).count()<<"}}\n";
+  out<<(first?"":",")<<"\"total\":"<<total<<"},\"detail_seconds\":{";
+  first=true;for(const auto &[part,duration]:g_timings.detail) {out<<(first?"":",")<<json_string(part)<<":"<<duration;first=false;}
+  out<<"},\"checks\":[";
+  first=true;for(const auto &c:g_timings.checks) {out<<(first?"":",")<<"{\"kind\":"<<json_string(c.kind)<<",\"name\":"<<json_string(c.name)<<",\"phase\":"<<json_string(c.phase)<<",\"seconds\":"<<c.seconds<<",\"steps\":"<<c.steps<<",\"cases\":"<<c.cases<<",\"passed\":"<<(c.passed?"true":"false")<<"}";first=false;}
+  out<<"],\"libraries\":[";
+  first=true;for(const auto &l:g_timings.libraries) {out<<(first?"":",")<<"{\"path\":"<<json_string(timed_path(l.path))<<",\"seconds\":"<<l.seconds<<",\"cached\":"<<(l.cached?"true":"false")<<",\"checks_alone\":"<<(l.checks?"true":"false")<<"}";first=false;}
+  out<<"]}\n";
   if(!write_file(g_timings.path,out.str())) {fprintf(stderr,"coax: cannot write timing report '%s'\n",g_timings.path.c_str());return 1;}return status;
 }
 
@@ -918,6 +986,7 @@ static bool run_compilation_checks(File *file) {
   } restore{memory, memory.slot_limit, memory.container_limit};
   memory.slot_limit = CB_test_slot_limit();
   memory.container_limit = CB_test_container_limit();
+  g_timings.check_phase = "authority";
   return run_all_checks(file, TEST_STEPS, false);
 }
 
@@ -930,6 +999,7 @@ static bool library_check_standalone(const Source *src, int32_t at, const EmitOp
     int null = open("/dev/null", O_WRONLY);
     if (null >= 0) { dup2(null, 1); dup2(null, 2); }
     g_timings.path.clear();
+    g_timings.table = false;
     g_timings.source_map.clear();
     g_semantic.path.clear();
     g_error_count = 0;
@@ -980,6 +1050,8 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     const std::string &canonical = src->units[(size_t)u]->canonical;
     auto known = g_library_verdicts.find(canonical + (run ? "\nrun" : ""));
     if (known != g_library_verdicts.end()) { out[(size_t)u] = SU_library_checks(false, authority, imports, known->second); continue; }
+    const auto began = std::chrono::steady_clock::now();
+    const size_t cached_before = g_library_cached;
     const std::string key = library_key(src, u, opts, compiler, run);
     std::string record;
     bool verdict;
@@ -995,6 +1067,7 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
         if (write_file(temp, verdict ? "checks\n" : "does not check alone\n")) std::rename(temp.c_str(), (dir + "/" + key).c_str());
       }
     }
+    if (g_timings.on()) g_timings.libraries.push_back({canonical, seconds_since(began), g_library_cached != cached_before, verdict});
     g_library_verdicts[canonical + (run ? "\nrun" : "")] = verdict;
     out[(size_t)u] = SU_library_checks(false, authority, imports, verdict);
   }
@@ -1267,7 +1340,7 @@ static int usage() {
           "       coax version\n"
           "       coax source-digest ROOT          (the hash of ROOT/coax's compiler sources)\n"
           "       coax status [--json]\n"
-          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count\n");
+          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count (JSON; --timings-json FILE is the same)\n       --timings-table prints phase, check and library times on stderr\n");
   return 2;
 }
 
@@ -1500,7 +1573,8 @@ static int main_impl(int argc, char **argv) {
       if(!g_semantic.path.empty() || i+1>=argc || !*argv[i+1] || argv[i+1][0]=='-')return usage();
       g_semantic.path=argv[++i];
     }
-    else if(a=="--timings" && i+1<argc)g_timings.path=argv[++i];
+    else if((a=="--timings" || a=="--timings-json") && i+1<argc)g_timings.path=argv[++i];
+    else if(a=="--timings-table")g_timings.table=true;
     else if (a == "--run-steps") {
       if (run_steps_seen || i + 1 >= argc || cmd == "proto") {
         fprintf(stderr, "coax: --run-steps requires one positive decimal value at most 250000000\n");
