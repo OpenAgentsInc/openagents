@@ -9,8 +9,9 @@
 > and, for a GitHub source that asks for it, posts it on the issue. The
 > offline smoke, a live System One check and a live read-only GitHub poll
 > cover it. The candidates of one pass are decided together, in one System
-> One request. Still to come: chat sources, a Router model for replies that
-> need more than the Worker's result, inline and spill, chain of recall,
+> One request, and a reply cut to fit points to the rest. Still to come:
+> chat sources, a Router model for replies that need more than the Worker's
+> result, inlining related objects into a Worker's task, chain of recall,
 > acting ahead, many-to-many subscriptions, and the ablation.
 
 Chapters1–19 build one session well. A person can follow only three to
@@ -217,6 +218,11 @@ When a Thread's Worker ends, the Router writes the reply once
   Fixed the parser test: …
   ```
 
+A result cut to fit spills: the reply ends with where the rest is. A chat
+reply cut at its word cap ends with "… (more: `coder log SESSION`)" and
+still has at most 100 words. An issue reply cut at 6,000 bytes, on a
+character boundary, ends with "The rest of the result is in the session".
+
 The reply goes to `~/.openagents/coder/outbox/SESSION.json` with its Thread,
 source and channel, where any bridge can pick it up. A GitHub source with
 `"deliver": true` also posts it on the issue with `gh issue comment`; without
@@ -238,7 +244,7 @@ replying twice.
     turns a labelled issue into a Worker; the Worker's reply is posted on the
     issue in the issue format; the Router's own comment is not an event.
 - Unit checks for the last turn's result, the chat word cap and the issue
-  format, and GitHub thread and cursor parsing.
+  format, each with a cut result and its pointer, and GitHub thread and cursor parsing.
   - With ten candidates and no System One key, the first pass sends eight in
     one request and drops them with why, and the next pass takes the other
     two.

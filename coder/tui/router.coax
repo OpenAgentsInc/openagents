@@ -200,6 +200,10 @@ rt_words :: (s: string, max: int, out: [] u8) -> string {
 
 // The reply under its channel's rules. chat: the result in at most 100
 // words. issue: structured and complete: what happened, then the result.
+// A result cut to fit is spilled: the reply ends with where the rest is.
+RT_ISSUE_BYTES :: 6000;
+RT_SPILL_WORDS :: 6;        // the chat pointer's words, kept inside the cap
+
 rt_reply :: (channel: string, id: string, ending: string, steps: int, result: string, out: [] u8) -> string {
   if channel == "issue" {
     tb: [16] u8;
@@ -207,14 +211,22 @@ rt_reply :: (channel: string, id: string, ending: string, steps: int, result: st
     n = cd_cat(out, n, ifx ending == "finished" then "finished" else ending);
     n = cd_cat(out, n, " in "); n = cd_cat(out, n, cd_itoa(steps, tb[..])); n = cd_cat(out, n, ifx steps == 1 then " step" else " steps");
     n = cd_cat(out, n, " (session `"); n = cd_cat(out, n, id); n = cd_cat(out, n, "`).\n\n");
-    n = cd_cat(out, n, ifx result.count > 0 then cast(string) result[0..<ifx result.count > 6000 then 6000 else result.count] else "No result text.");
+    cut := result.count > RT_ISSUE_BYTES;
+    e := ifx cut then RT_ISSUE_BYTES else result.count;
+    if cut { while e > 0 && (result[e] & 192) == 128 { e -= 1; } }        // not inside a UTF-8 character
+    n = cd_cat(out, n, ifx result.count > 0 then cast(string) result[0..<e] else "No result text.");
+    if cut { n = cd_cat(out, n, "\n\n… The rest of the result is in the session: `coder log "); n = cd_cat(out, n, id); n = cd_cat(out, n, "`."); }
     return cast(string) out[0..<n];
   }
   wb: [8192] u8;
-  body := rt_words(ifx result.count > 0 then result else (ifx ending == "finished" then "Done." else ending), RT_CHAT_WORDS, wb[..]);
+  text := ifx result.count > 0 then result else (ifx ending == "finished" then "Done." else ending);
+  body := rt_words(text, RT_CHAT_WORDS, wb[..]);
+  spilled := body.count >= 4 && cast(string) body[body.count - 4..<body.count] == " …";
+  if spilled { body = rt_words(text, RT_CHAT_WORDS - RT_SPILL_WORDS, wb[..]); }
   n := 0;
   if ending != "finished" { n = cd_cat(out, 0, "Stopped ("); n = cd_cat(out, n, ending); n = cd_cat(out, n, "): "); }
   n = cd_cat(out, n, body);
+  if spilled { n = cd_cat(out, n, " (more: `coder log "); n = cd_cat(out, n, id); n = cd_cat(out, n, "`)"); }
   return cast(string) out[0..<n];
 }
 
@@ -1004,7 +1016,14 @@ cd_cmd_watch :: (thread: string, stop: bool, list: bool) -> int {
   chat := rt_reply("chat", "S1", "finished", 3, cast(string) long[0..<n], ob[..]);
   words := 0; inword := false;
   for c: chat { sp := c == ' '; if !sp && !inword { words += 1; } inword = !sp; }
-  #assert words == 101 && chat.count > 4 && cast(string) chat[chat.count - 4..<chat.count] == " …";
+  tail := " … (more: `coder log S1`)";
+  #assert words <= 100 && chat.count > tail.count && cast(string) chat[chat.count - tail.count..<chat.count] == tail;
+  #assert rt_reply("chat", "S1", "finished", 3, "short and done", ob[..]) == "short and done";
+  big: [8000] u8; m := 0;
+  for i: 0..<1500 { m = cd_cat(big[..], m, "line\n"); }
+  issue := rt_reply("issue", "S1", "finished", 2, cast(string) big[0..<m], ob[..]);
+  itail := "session: `coder log S1`.";
+  #assert issue.count < 6200 && cast(string) issue[issue.count - itail.count..<issue.count] == itail;
   #assert rt_reply("chat", "S1", "lost", 0, "", ob[..]) == "Stopped (lost): lost";
   #assert rt_reply("issue", "S1", "finished", 1, "Fixed the parser.", ob[..]) == "**Coder** finished in 1 step (session `S1`).\n\nFixed the parser.";
 }
