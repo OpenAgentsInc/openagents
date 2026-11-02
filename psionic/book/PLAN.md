@@ -732,52 +732,40 @@ handshakes are not evidence of correct execution. Each split earns its own
 parity evidence on the machines that ran it. Joining a public mesh, paying
 peers or offering Large 4 as a service each need owner approval.
 
-## XXI. A harness for Psionic models
+## XXI. Serving a harness
 
-> **Moving.** On 2026-11-01 this part began moving to its own book,
-> [Coder: Coding Agents From Scratch](../../coder/book/README.md), with its code
-> in `lib/harness/`. The [Coder plan](../../coder/book/PLAN.md#what-stays-in-psionic)
-> says which pieces stay here. Until the move, the chapters below are the source.
+The agent harness that was this part moved on 2026-11-01 to its own book,
+[Coder: Coding Agents From Scratch](../../coder/book/README.md): chapters
+200–214, 251 and 252 are now its chapters 1–8 and 14–22
+([the plan](../../coder/book/PLAN.md#where-this-book-came-from)). Their code
+stays in `lib/harness/` for now. What remains here is what needs the model and
+the server, and each piece links to the harness chapter it serves: the prefix
+cache measured from the server side ([176](ch176-paged-state-and-a-tiered-prefix-cache.md)
+for [Coder chapter 3](../../coder/book/ch003-keep-the-prefix-stable.md)),
+tool arguments constrained during generation ([53](ch053-choosing-the-next-token.md)
+for [Coder chapter 4](../../coder/book/ch004-tools-as-typed-capabilities.md)),
+decision models that route work, and what a harness costs a served model in
+tokens. Chapter numbers 200–214, 251 and 252 are not reused.
 
-A harness turns a served model into an agent: it assembles each request, runs
-the tools the model asks for, keeps the session's history and decides when a
-turn is done. DeepSeek publishes its models, its serving system and
-[its harness](../docs/harness.md), and the three are designed together; this
-part builds the Psionic versions in Coax, on Part III's API and Part XIX's
-server. The default is the simplest loop that works. Every addition (a guard,
-a condenser, a plugin) earns its place with a measured gain on tasks it was not
-built from, and is removed otherwise.
-
-| Chapter | What we build and check |
+| Chapter | Now |
 | --- | --- |
-| [200. The simplest loop](ch200-the-simplest-loop.md) — runnable agent loop on chapter 126's engine and chapter 136's calculator, with typed budget stops, cancellation at step boundaries, refusal of malformed calls and replay from seeds (a served model, a wall-clock deadline and cancelling a running stream remain) | One agent loop over Psionic's API: assemble the request, stream the answer, run the tools it calls, repeat until nothing is owed. Turns and steps have exact boundaries, every turn has a deadline, and cancellation stops the model and the tools together. |
-| [201. Model-visible means logged](ch201-model-visible-means-logged.md) — runnable hash-chained session log over chapter 200's loop, with typed events, requests read from the log, a verifier that refuses what the events do not explain, redaction and replay (proto/ schemas, an on-disk format with old-version readers, byte-offset truncation recovery and durable writes remain) | An append-only session log of durable events (turns, steps, user and assistant messages, tool calls and results); the model's history is derived from the log, so every request can be rebuilt byte for byte and replayed. The log format is versioned and old sessions still open. |
-| [202. Keep the prefix stable](ch202-keep-the-prefix-stable.md) — runnable fixed-order assembly over chapter 201's log, a checker that refuses a broken cached prefix with its section and position, and scripted sessions on chapter 176's cache priced with chapter 177's cost model (time to first token on a named host and model, tokenized prompts, longer sessions and condensation remain) | Prompt assembly in a fixed order (system sections, tool schemas, then history) so each turn only appends to the model-visible bytes; request metadata stays outside the model's input. Measured against chapter 176's prefix cache: hit rate, prefill saved and time to first token across a long session. |
-| [203. Tools as typed capabilities](ch203-tools-as-typed-capabilities.md) — runnable typed tool declarations, per-turn grants with call and cost budgets, arguments constrained by chapter 53's automaton, and before/run/after refusals with exact reasons (declarations in proto/, filesystem and process tools and the engine loop remain) | A tool registry whose schemas come from `proto/`, a guarded pipeline (before, run, after) with structured errors, arguments constrained by chapter 53 so a malformed call is never generated, and filesystem and process tools that share one execution world. |
-| [204. A sandbox and approvals](ch204-a-sandbox-and-approvals.md) — runnable sandbox policy as data, decided before every run, with typed approve/deny/expire approvals bound to one session, never past the policy ceiling, logged through chapter 201 and replayed to the same world (real processes and files, OS limits, the repeated-failure guard and approvals through a client remain) | Spawned processes confined to declared roots and resources, an approval policy for anything outside them, per-tool timeouts and a guard against repeating the same failing call. No tool inherits the host's authority by default. |
-| [205. A document tries to become the system prompt](ch205-a-document-tries-to-become-the-system-prompt.md) — partly implemented: source-typed sections behind length headers, labels from data to tool calls, a gate that holds or refuses data-triggered and data-made calls, and a fixed attack corpus against a deterministic stand-in agent, on the CPU | A replayable prompt-injection lab for chapter 57's documentation assistant and the harness: plant hostile instructions in retrieved passages and tool results, including forged role markers, requests to reveal a synthetic sentinel and attempts to expand a tool grant. Local simulated tools, disposable files and a captured outbound sink make every effect inspectable. Deterministic checks send unauthorized calls directly through the capability gate and require zero unauthorized effects; real model runs report attempted calls, admitted effects, answer leakage and legitimate-task completion separately. Compare paired benign and hostile runs, freezing grants, budgets, model/build identities, seeds, acceptance bounds and held-out attack variants before comparison. Retrieved and tool bytes cannot grant authority, and refusing every task cannot pass the utility gate. |
-| [206. Condense the history](ch206-condense-the-history.md) — runnable condensation as logged events over chapter 201's log and chapter 202's requests: a begin event naming each replaced event by digest, a stand-in summary, pinned facts kept, a verifier that admits a prefix break only at a logged condensation, and three schedules on chapter 176's cache (a model summarizer, held-out task success, tool-result pruning and measured time to first token remain) | Older history replaced by one marked summary when the context fills, bracketed in the log so a crash leaves a visible record; tool results pruned by rule. Each condensation breaks the stable prefix, so it is scheduled to minimize recomputed prefill, and that cost is measured. |
-| [207. Programs as tool calls](ch207-programs-as-tool-calls.md) — runnable programs of bindings, conditions and bounded loops over chapter 203's tools, decoded under the granted tools' grammar, checked against the grant, policy and log before running, run with fuel through chapter 204's sandbox, logged and replayed (a served model, its measured requests, tokens and time, resuming after an approval, and host functions beyond the four tools remain) | A model-written program run once against host-provided functions in a bounded, sandboxed runtime, returning one structured result instead of many round trips; output, time and memory limits refuse rather than truncate. |
-| [208. Forks, subagents and jobs](ch208-forks-subagents-and-jobs.md) — design draft | A session forked at a turn boundary from its own log, reusing the parent's cached prefix state on the server; subagents with their own scope and budget; background jobs that outlive a turn; a goal that a session works toward across turns. |
-| [209. Plugins with owned lifecycles](ch209-plugins-with-owned-lifecycles.md) — design draft | Composition from ordered profiles; capabilities with a definition, a provider and consumers; every registration owned by the plugin that made it and revoked when it unloads; visible states (installed, enabled, admitted, active, failed, draining). Third-party plugins run in bounded Wasm, distributed as signed Nostr events. |
-| [210. Speak the protocols](ch210-speak-the-protocols.md) — runnable MCP 2025-06-18 subset and Responses function calls in both directions over byte strings: typed import of tool lists into chapter 203's capabilities, admission, a remote policy, the after stage and a hash-chained message log (live stdio and HTTP transports, the rest of MCP (resources, prompts, pagination), chapter 204's sandbox for remote calls, ACP for editors and System One as a tool remain) | An MCP client for external tools and resources, ACP for editors, native function tools over the Open Responses API, and System One decisions available to the loop as a tool. |
-| [211. Measure the harness](ch211-measure-the-harness.md) — runnable end-to-end task suites through chapter 200's loop with a scripted stand-in: one change at a time on held-out tasks, seed-block noise floors, chapter 241 verdicts and a receipt chain (benchmarks of the harness's own operations, wall-clock P50/P95, a real model and cache hits remain) | Benchmarks for the harness itself (opening a session, folding a long conversation, reconnecting a stream, continuing an agent) and end-to-end task suites with tokens, cost, cache hits and wall-clock per task, each change measured one at a time against the simplest loop. Results report through chapters 239–241. |
-| [212. Generate candidates, then check them](ch212-generate-candidates-then-check-them.md) — runnable best-of-N on chapter 242's tasks: seeded candidates checked cheapest first under a budget, never choosing an unverified one, with unbiased pass@k, Wilson intervals and held-out comparisons against one candidate (real model candidates through chapter 200's loop, candidates run in chapter 204's sandbox, the repair strategy, a learned verifier, and wall-clock and execution cost remain) | Three strategies on independently testable Coax tasks under one total budget: one candidate; several independent candidates and a selection; and generate, run, read the failures and repair. Executable checks come first, and a learned verifier only once labels are trustworthy. Reported separately: whether any candidate was correct, whether selection chose one, and whether a verifier accepted a wrong one, with compilation recorded apart from correctness, visible tests for repair and held-out checks for scoring, against tokens, wall-clock time and execution cost. |
-| [213. Consent before sharing](ch213-consent-before-sharing.md) — partly implemented: labelled session content, grants per class, destination, purpose and window, logged sends and refusals, revocation that records what already left, minimized and redacted alternatives, and replay, on the CPU | No session content leaves the machine unless the person opts in, per session and revocably; attribution metadata is explicit and inspectable. DeepSeek's harness sends session-log suffixes to its API by default; Psionic's never does. |
-| [214. Remember a fact, then revise it](ch214-remember-a-fact-then-revise-it.md) — partly implemented: versioned facts with provenance, scope and window, logged revisions, conflicts, stale citations and verified forgetting, on the CPU | A source-linked memory store for sessions: every remembered fact names where it came from and its project scope, can be corrected or deleted, and is checked by retrieval tests across sessions that a corrected fact never returns in its old form. |
-| [251. One agent, many tasks](ch251-one-agent-many-tasks.md) — design draft | One continuous agent instead of sessions a person juggles: a long-lived Router that talks to people and dispatches but executes nothing, and isolated Workers with full tools that never talk to people. Environmental events (Triggers) pass a code fast path on bounded fields and a System One slow path; Workers subscribe to Threads and get follow-ups directly; queued Triggers batch into the Router's next request; context is inlined by locality and spilled behind pointers, and old tasks come back by a chain of recall over object IDs; policies act ahead and deliver only confirmed results. An ablation against one session with a subagent tool, and a Router batching stress test, decide what stays. |
-| [252. An agent that stays online](ch252-an-agent-that-stays-online.md) — design draft | A full-duplex loop whose long tools start and stop and report back as events; channel rules (100 words in chat, complete structure in pull requests); stateless loop compute resuming from the durable log; per-machine daemons that hold no session state, including the person's own machine and ones that come and go; a scheduled watchdog session that judges progress and drift; daemon grants and credential handles so neither a hostile event nor the loop sees a secret. |
-
-The harness is product logic, so it is Coax, with the host doing processes,
-files and network. Coder's own agent loop can consume these chapters; nothing
-here replaces its simple loop with more machinery.
-Chapters 251 and 252 come from the DeepSeek Harness team's Super-agent
-article: they scale one good session (200–214) into one agent across many
-tasks and channels, and each mechanism in them faces the same measured test.
-Chapter 205 starts after 57 and 200–204; its fixtures and capability gates
-stay local, and its behavioral measurements use a pinned Psionic-served model.
-Any policy change is checked in Coax before the attacks are run. A clean run
-establishes the measured scope, not immunity to every future instruction.
+| 200. Moved | [Coder chapter 1. The simplest loop](../../coder/book/ch001-the-simplest-loop.md) |
+| 201. Moved | [Coder chapter 2. Model-visible means logged](../../coder/book/ch002-model-visible-means-logged.md) |
+| 202. Moved | [Coder chapter 3. Keep the prefix stable](../../coder/book/ch003-keep-the-prefix-stable.md) |
+| 203. Moved | [Coder chapter 4. Tools as typed capabilities](../../coder/book/ch004-tools-as-typed-capabilities.md) |
+| 204. Moved | [Coder chapter 5. A sandbox and approvals](../../coder/book/ch005-a-sandbox-and-approvals.md) |
+| 205. Moved | [Coder chapter 6. A document tries to become the system prompt](../../coder/book/ch006-a-document-tries-to-become-the-system-prompt.md) |
+| 206. Moved | [Coder chapter 7. Condense the history](../../coder/book/ch007-condense-the-history.md) |
+| 207. Moved | [Coder chapter 8. Programs as tool calls](../../coder/book/ch008-programs-as-tool-calls.md) |
+| 208. Moved | [Coder chapter 14. Forks, subagents and jobs](../../coder/book/ch014-forks-subagents-and-jobs.md) |
+| 209. Moved | [Coder chapter 15. Plugins with owned lifecycles](../../coder/book/ch015-plugins-with-owned-lifecycles.md) |
+| 210. Moved | [Coder chapter 16. Speak the protocols](../../coder/book/ch016-speak-the-protocols.md) |
+| 211. Moved | [Coder chapter 21. Measure the harness](../../coder/book/ch021-measure-the-harness.md) |
+| 212. Moved | [Coder chapter 22. Generate candidates, then check them](../../coder/book/ch022-generate-candidates-then-check-them.md) |
+| 213. Moved | [Coder chapter 18. Consent before sharing](../../coder/book/ch018-consent-before-sharing.md) |
+| 214. Moved | [Coder chapter 19. Remember a fact, then revise it](../../coder/book/ch019-remember-a-fact-then-revise-it.md) |
+| 251. Moved | [Coder chapter 17. One agent, many tasks](../../coder/book/ch017-one-agent-many-tasks.md) |
+| 252. Moved | [Coder chapter 20. An agent that stays online](../../coder/book/ch020-an-agent-that-stays-online.md) |
 
 ## XXII. Decisions in production
 
@@ -814,7 +802,7 @@ so the answer carries its proof and anyone can check it by replay. This part
 rebuilds that idea, which the pre-reset work reproduced from Percepta's
 published construction ([notes](../docs/exact-computation.md)). It needs only
 chapters 1–4 and 10 for 226 to 234; 235 to 237 also need chapter 115's training
-and chapter 207's programs as tool calls. A CPU runs these programs orders of
+and [Coder chapter 8](../../coder/book/ch008-programs-as-tool-calls.md)'s programs as tool calls. A CPU runs these programs orders of
 magnitude faster, and every chapter says so beside its own numbers: the point
 is computation inside a model that can be verified, not a faster computer.
 
@@ -973,8 +961,7 @@ Python to tooling. The stable C ABI and DLPack (8) let others build one.
 | Large-scale serving | Measured need from 172 and 175; two or more devices | Disaggregation 182; tensor/expert parallelism 183. |
 | Voice / training scale | 16, 172 and the voice gate / a resumable trainer plus backend | Voice pipeline 184 and decision steering 185 / distributed training 132. |
 | Mesh inference | 186's two-stage parity, 33's measurements and network transport | Packages and placement 187–190 → experts and routing 191–193 → trust and verification 194–195 → Mesh-LLM interoperation 196 → DeepSeek V4.1 across stages 197 → Mistral Large 3 198 → Le Chonk 199. |
-| Harness | Part III's API; chapter 53's constrained decoding; chapter 176's prefix cache for the stable-prefix measurements | The simplest loop 200 → session log 201 → stable prefix 202 → tools, sandbox and condensation 203–206 → programs, forks and plugins 207–209 → protocols, measurement and consent 210–213. |
-| Adversarial harness | 57 and 200–204; a pinned served model for behavioral measurements | Hostile retrieved passages and tool results 205 → checked capability boundaries plus measured legitimate-task completion on held-out attacks. |
+| Harness | Part III's API; chapter 53's constrained decoding; chapter 176's prefix cache | Moved to the [Coder book](../../coder/book/PLAN.md), chapters 1–8 and 14–22. |
 | Decisions in production | 16 and 20–22 for calibration, thresholds and outcomes; 24–26 for Pylon checks; Part III for the encoder branch | Own calibration 215 → cost thresholds 216 → outcomes and drift 217; Pylon self-check 218 → honest-distance limits 219; ONNX 220 → millisecond encoder 222 → distilled router 223 → shadow promotion 224. |
 | Programs compiled into weights | 1–4 and 10; 115 and 207 for the learned chapters; the wallet and Pylon mesh for 238 | Trace machine 226 → exact memory and arithmetic 227–228 → compiler and harness 229–230 → interpreter or baked program, fast decode, softmax limits 231–233 → replay verification 234 → learned execution and a frozen core 235–236 → composable modules 237 → paid verified work 238. |
 | Measure, then improve | 16, then 200, 217 and 234 | Suites, noise floors and gates 239–241 → environments, settings fitting and policy search 242–244 → prompt evolution and judges 245–246 → outcomes as rows and loop accounting 247–248. |

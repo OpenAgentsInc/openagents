@@ -16,12 +16,12 @@ that Psionic does not serve, such as Claude Code and Codex. So the harness
 moves here, and Psionic keeps the parts where model and harness are designed
 together (see [What stays in Psionic](#what-stays-in-psionic)).
 
-**The move is not done yet.** Chapters marked *moving* below still live in
-`psionic/book/` with their code in `psionic/lib/harness/`, because another
-session is implementing them as of 2026-11-01. They move here, with their code
-and their registry entries, in one commit once that work stops. Until then the
-Psionic files are the source, and this book's registry
-([chapters.json](chapters.json)) lists only the chapters that live here.
+The chapters moved here on 2026-11-01, renumbered: Psionic 200–207 are
+chapters 1–8, 208–210 are 14–16, 251 is 17, 213 and 214 are 18 and 19, 252 is
+20, and 211 and 212 are 21 and 22. Their code still lives in
+`psionic/lib/harness/` with its examples and fixtures under `psionic/`, and
+each chapter's registry entry names those paths; the code moves in a later
+commit, checked with the compiler.
 
 ## OpenAgents and Coder
 
@@ -67,14 +67,14 @@ grow together:
 
 | Chapter | What we build and check |
 | --- | --- |
-| 1. The simplest loop — *moving* from [Psionic 200](../../psionic/book/ch200-the-simplest-loop.md) | One loop: assemble the request, stream the answer, run the tools it calls, repeat until nothing is owed, with exact turn and step boundaries, a deadline per turn and cancellation. |
-| 2. Model-visible means logged — *moving* from [Psionic 201](../../psionic/book/ch201-model-visible-means-logged.md) | An append-only, versioned session log from which every request is rebuilt byte for byte and replayed. |
-| 3. Keep the prefix stable — *moving* from [Psionic 202](../../psionic/book/ch202-keep-the-prefix-stable.md) | Prompt assembly that only appends, with metadata outside the model input. The server-side measurement stays in Psionic. |
-| 4. Tools as typed capabilities — *moving* from [Psionic 203](../../psionic/book/ch203-tools-as-typed-capabilities.md) | Tool schemas from `proto/`, a guarded before/run/after pipeline and structured errors. |
-| 5. A sandbox and approvals — *moving* from [Psionic 204](../../psionic/book/ch204-a-sandbox-and-approvals.md) | Confined processes, an approval policy, per-tool timeouts and a guard against repeated failing calls. |
-| 6. A document tries to become the system prompt — *moving* from [Psionic 205](../../psionic/book/ch205-a-document-tries-to-become-the-system-prompt.md) | A replayable prompt-injection lab with zero unauthorized effects at the gate. |
-| 7. Condense the history — *moving* from [Psionic 206](../../psionic/book/ch206-condense-the-history.md) | One marked summary replaces older history, bracketed in the log, with its prefill cost measured. |
-| 8. Programs as tool calls — *moving* from [Psionic 207](../../psionic/book/ch207-programs-as-tool-calls.md) | A model-written program run once against bound host functions; limits refuse rather than truncate. |
+| [1. The simplest loop](ch001-the-simplest-loop.md) — partly implemented | One loop: assemble the request, stream the answer, run the tools it calls, repeat until nothing is owed, with exact turn and step boundaries, a deadline per turn and cancellation. |
+| [2. Model-visible means logged](ch002-model-visible-means-logged.md) — partly implemented | An append-only, versioned session log from which every request is rebuilt byte for byte and replayed. |
+| [3. Keep the prefix stable](ch003-keep-the-prefix-stable.md) — partly implemented | Prompt assembly that only appends, with metadata outside the model input. The server-side measurement stays in Psionic. |
+| [4. Tools as typed capabilities](ch004-tools-as-typed-capabilities.md) — partly implemented | Tool schemas from `proto/`, a guarded before/run/after pipeline and structured errors. |
+| [5. A sandbox and approvals](ch005-a-sandbox-and-approvals.md) — partly implemented | Confined processes, an approval policy, per-tool timeouts and a guard against repeated failing calls. |
+| [6. A document tries to become the system prompt](ch006-a-document-tries-to-become-the-system-prompt.md) — partly implemented | A replayable prompt-injection lab with zero unauthorized effects at the gate. |
+| [7. Condense the history](ch007-condense-the-history.md) — partly implemented | One marked summary replaces older history, bracketed in the log, with its prefill cost measured. |
+| [8. Programs as tool calls](ch008-programs-as-tool-calls.md) — partly implemented | A model-written program run once against bound host functions; limits refuse rather than truncate. |
 
 ## II. Engines
 
@@ -90,25 +90,25 @@ grow together:
 
 | Chapter | What we build and check |
 | --- | --- |
-| 14. Forks, subagents and jobs — *moving* from [Psionic 208](../../psionic/book/ch208-forks-subagents-and-jobs.md) | Forks at a turn boundary, scoped subagents, background jobs and goals. |
-| 15. Plugins with owned lifecycles — *moving* from [Psionic 209](../../psionic/book/ch209-plugins-with-owned-lifecycles.md) | Ordered profiles, owned registrations, visible states and third-party plugins in bounded Wasm signed as Nostr events. |
-| 16. Speak the protocols — *moving* from [Psionic 210](../../psionic/book/ch210-speak-the-protocols.md) | MCP, ACP, Open Responses function tools and System One decisions as a tool. |
-| 17. One agent, many tasks — *moving* from [Psionic 251](../../psionic/book/ch251-one-agent-many-tasks.md) | OpenAgents as the Router and Coder as Workers: Triggers, two-stage filtering, Thread subscription, batching, inline and spill, chain of recall and acting ahead. |
-| 18. Consent before sharing — *moving* from [Psionic 213](../../psionic/book/ch213-consent-before-sharing.md) | No session content leaves the machine without a per-session, revocable opt-in. |
-| 19. Remember a fact, then revise it — *moving* from [Psionic 214](../../psionic/book/ch214-remember-a-fact-then-revise-it.md) | Source-linked memory whose corrected facts never return in their old form. |
+| [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) — design draft | Forks at a turn boundary, scoped subagents, background jobs and goals. |
+| [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — design draft | Ordered profiles, owned registrations, visible states and third-party plugins in bounded Wasm signed as Nostr events. |
+| [16. Speak the protocols](ch016-speak-the-protocols.md) — partly implemented | MCP, ACP, Open Responses function tools and System One decisions as a tool. |
+| [17. One agent, many tasks](ch017-one-agent-many-tasks.md) — design draft | OpenAgents as the Router and Coder as Workers: Triggers, two-stage filtering, Thread subscription, batching, inline and spill, chain of recall and acting ahead. |
+| [18. Consent before sharing](ch018-consent-before-sharing.md) — partly implemented | No session content leaves the machine without a per-session, revocable opt-in. |
+| [19. Remember a fact, then revise it](ch019-remember-a-fact-then-revise-it.md) — partly implemented | Source-linked memory whose corrected facts never return in their old form. |
 
 ## IV. Staying online
 
 | Chapter | What we build and check |
 | --- | --- |
-| 20. An agent that stays online — *moving* from [Psionic 252](../../psionic/book/ch252-an-agent-that-stays-online.md) | Full duplex, channel rules, stateless compute over the log, per-machine daemons, a watchdog and credential handles. |
+| [20. An agent that stays online](ch020-an-agent-that-stays-online.md) — design draft | Full duplex, channel rules, stateless compute over the log, per-machine daemons, a watchdog and credential handles. |
 
 ## V. Measure
 
 | Chapter | What we build and check |
 | --- | --- |
-| 21. Measure the harness — *moving* from [Psionic 211](../../psionic/book/ch211-measure-the-harness.md) | Harness benchmarks and end-to-end suites, one change at a time against the simplest loop. |
-| 22. Generate candidates, then check them — *moving* from [Psionic 212](../../psionic/book/ch212-generate-candidates-then-check-them.md) | One candidate, several with selection, and generate-run-repair under one budget. |
+| [21. Measure the harness](ch021-measure-the-harness.md) — partly implemented | Harness benchmarks and end-to-end suites, one change at a time against the simplest loop. |
+| [22. Generate candidates, then check them](ch022-generate-candidates-then-check-them.md) — partly implemented | One candidate, several with selection, and generate-run-repair under one budget. |
 
 ## VI. The command line
 
@@ -139,6 +139,13 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 | [33. Toad](ch033-toad.md) — planned | A terminal host for agents over ACP, with an embedded shell. |
 | [34. Background Agents](ch034-background-agents.md) — planned | Durable remote sessions, prepared worktrees, a branch per task and pull-request delivery. |
 | [35. Flue and Agent OS](ch035-flue-and-agent-os.md) — planned | Programmable headless agents on Workers, and an in-process agent runtime with isolation. |
+
+## VIII. The terminal
+
+| Chapter | What we build and check |
+| --- | --- |
+| [36. A terminal UI](ch036-a-terminal-ui.md) — planned | Coder inline in the person's terminal, as Claude Code and Codex run: a live region for status, the streaming reply and the composer, and finished turns committed to scrollback. Raw keys, a key decoder with bracketed paste, display width, a composer with history, and a pseudo-terminal smoke test. Code: `coax/lib/tui/tui.coax` and `coder/tui/`. |
+| [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) — planned | A VT emulator in Coax so Coder can run programs that draw to a terminal and read the screen as text, checked against libghostty as an oracle and never linked to it. |
 
 ## What stays in Psionic
 

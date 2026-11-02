@@ -5,14 +5,14 @@
 
 ## I. The loop
 
-- 1\. The simplest loop — *moving* from [Psionic 200](../../psionic/book/ch200-the-simplest-loop.md)
-- 2\. Model-visible means logged — *moving* from [Psionic 201](../../psionic/book/ch201-model-visible-means-logged.md)
-- 3\. Keep the prefix stable — *moving* from [Psionic 202](../../psionic/book/ch202-keep-the-prefix-stable.md)
-- 4\. Tools as typed capabilities — *moving* from [Psionic 203](../../psionic/book/ch203-tools-as-typed-capabilities.md)
-- 5\. A sandbox and approvals — *moving* from [Psionic 204](../../psionic/book/ch204-a-sandbox-and-approvals.md)
-- 6\. A document tries to become the system prompt — *moving* from [Psionic 205](../../psionic/book/ch205-a-document-tries-to-become-the-system-prompt.md)
-- 7\. Condense the history — *moving* from [Psionic 206](../../psionic/book/ch206-condense-the-history.md)
-- 8\. Programs as tool calls — *moving* from [Psionic 207](../../psionic/book/ch207-programs-as-tool-calls.md)
+- [1. The simplest loop](ch001-the-simplest-loop.md) — partly implemented
+- [2. Model-visible means logged](ch002-model-visible-means-logged.md) — partly implemented
+- [3. Keep the prefix stable](ch003-keep-the-prefix-stable.md) — partly implemented
+- [4. Tools as typed capabilities](ch004-tools-as-typed-capabilities.md) — partly implemented
+- [5. A sandbox and approvals](ch005-a-sandbox-and-approvals.md) — partly implemented
+- [6. A document tries to become the system prompt](ch006-a-document-tries-to-become-the-system-prompt.md) — partly implemented
+- [7. Condense the history](ch007-condense-the-history.md) — partly implemented
+- [8. Programs as tool calls](ch008-programs-as-tool-calls.md) — partly implemented
 
 ## II. Engines
 
@@ -24,21 +24,21 @@
 
 ## III. Many tasks
 
-- 14\. Forks, subagents and jobs — *moving* from [Psionic 208](../../psionic/book/ch208-forks-subagents-and-jobs.md)
-- 15\. Plugins with owned lifecycles — *moving* from [Psionic 209](../../psionic/book/ch209-plugins-with-owned-lifecycles.md)
-- 16\. Speak the protocols — *moving* from [Psionic 210](../../psionic/book/ch210-speak-the-protocols.md)
-- 17\. One agent, many tasks — *moving* from [Psionic 251](../../psionic/book/ch251-one-agent-many-tasks.md)
-- 18\. Consent before sharing — *moving* from [Psionic 213](../../psionic/book/ch213-consent-before-sharing.md)
-- 19\. Remember a fact, then revise it — *moving* from [Psionic 214](../../psionic/book/ch214-remember-a-fact-then-revise-it.md)
+- [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) — design draft
+- [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) — design draft
+- [16. Speak the protocols](ch016-speak-the-protocols.md) — partly implemented
+- [17. One agent, many tasks](ch017-one-agent-many-tasks.md) — design draft
+- [18. Consent before sharing](ch018-consent-before-sharing.md) — partly implemented
+- [19. Remember a fact, then revise it](ch019-remember-a-fact-then-revise-it.md) — partly implemented
 
 ## IV. Staying online
 
-- 20\. An agent that stays online — *moving* from [Psionic 252](../../psionic/book/ch252-an-agent-that-stays-online.md)
+- [20. An agent that stays online](ch020-an-agent-that-stays-online.md) — design draft
 
 ## V. Measure
 
-- 21\. Measure the harness — *moving* from [Psionic 211](../../psionic/book/ch211-measure-the-harness.md)
-- 22\. Generate candidates, then check them — *moving* from [Psionic 212](../../psionic/book/ch212-generate-candidates-then-check-them.md)
+- [21. Measure the harness](ch021-measure-the-harness.md) — partly implemented
+- [22. Generate candidates, then check them](ch022-generate-candidates-then-check-them.md) — partly implemented
 
 ## VI. The command line
 
@@ -58,3 +58,8 @@
 - [33. Toad](ch033-toad.md) — planned
 - [34. Background Agents](ch034-background-agents.md) — planned
 - [35. Flue and Agent OS](ch035-flue-and-agent-os.md) — planned
+
+## VIII. The terminal
+
+- [36. A terminal UI](ch036-a-terminal-ui.md) — planned
+- [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) — planned

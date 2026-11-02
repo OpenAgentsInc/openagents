@@ -1,4 +1,4 @@
-# 209. Plugins with owned lifecycles
+# 15. Plugins with owned lifecycles
 
 > **Status: unimplemented — design draft.** Nothing here runs yet.
 
@@ -21,8 +21,8 @@ plugins run in bounded Wasm and are distributed as signed Nostr events.
 
 ## Dependencies
 
-- [Chapter 203](ch203-tools-as-typed-capabilities.md) and [Chapter 204](ch204-a-sandbox-and-approvals.md): tools and grants that plugins register.
-- [Chapter 59](ch059-run-in-the-browser.md): Coax compiled to Wasm.
+- [Chapter4](ch004-tools-as-typed-capabilities.md) and [Chapter5](ch005-a-sandbox-and-approvals.md): tools and grants that plugins register.
+- [Psionic chapter 59](../../psionic/book/ch059-run-in-the-browser.md): Coax compiled to Wasm.
 - `coax/lib/nostr`: signed events (see the Part IV prerequisites in the
   [plan](PLAN.md)).
 
@@ -36,5 +36,5 @@ plugins run in bounded Wasm and are distributed as signed Nostr events.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).

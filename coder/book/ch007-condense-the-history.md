@@ -1,13 +1,13 @@
-# 206. Condense the history
+# 7. Condense the history
 
 > **Status: partly implemented.** Condensation as a logged event, run on
-> the CPU over chapter 201's log and chapter 202's requests (profile
+> the CPU over chapter2's log and chapter3's requests (profile
 > cd-condense-v1): a policy that decides when and what to condense while
 > keeping the frozen prefix, pinned facts and the last turns; a begin event
 > that names each replaced event by digest and a summary from a
 > deterministic stand-in summarizer; a verifier that rebuilds every request
 > from the log and admits a broken prefix only where a logged condensation
-> removed history; and three schedules measured on chapter 176's cache with
+> removed history; and three schedules measured on Psionic chapter 176's cache with
 > a hand-worked break-even. Still to come: a model as the summarizer, task
 > success on held-out long sessions with and without condensation,
 > rule-based pruning of tool results, and time to first token measured on a
@@ -16,8 +16,8 @@
 A long session fills the model's context. When the next request would not
 fit, the harness has to send less: it replaces older history with a short
 summary. Doing that quietly would break two promises the earlier chapters
-made. [Chapter 201](ch201-model-visible-means-logged.md) promised that
-every token the model sees comes from the log. [Chapter 202](ch202-keep-the-prefix-stable.md)
+made. [Chapter2](ch002-model-visible-means-logged.md) promised that
+every token the model sees comes from the log. [Chapter3](ch003-keep-the-prefix-stable.md)
 promised that each request starts with every token the previous request
 held before its cache boundary, and its checker refuses any request that
 does not.
@@ -32,7 +32,7 @@ that a logged condensation removed; any other change is refused at its
 position.
 
 Everything here lives in one `#authority` file,
-[harness/condense.coax](../lib/harness/condense.coax), because it decides
+[harness/condense.coax](../../psionic/lib/harness/condense.coax), because it decides
 what a request may hold and which requests are admitted. Its checks leave
 no mutant alive.
 
@@ -40,16 +40,16 @@ no mutant alive.
 
 This chapter's profile is `cd-condense-v1`:
 
-- Requests are chapter 202's (`px-prefix-v1`): integer tokens, at most 16
+- Requests are chapter3's (`px-prefix-v1`): integer tokens, at most 16
   sections and 64 tokens.
-- The log is chapter 201's, holding text events only: system, user and
+- The log is chapter2's, holding text events only: system, user and
   context. It holds at most 32 events, and the model's view of it at most
   64 tokens.
 - One condensation names at most 8 events. Each named event's 32-byte
   digest is written as eight tokens of four bytes each, low byte first.
 - The summarizer is a deterministic stand-in, not a model (see below).
-- The cache measurement is chapter 202's `px_measure`: chapter 176's cache
-  with pages of 4 positions, and times from chapter 177's cost model in
+- The cache measurement is chapter3's `px_measure`: Psionic chapter 176's cache
+  with pages of 4 positions, and times from Psionic chapter 177's cost model in
   modeled microseconds.
 
 ## The view and the two events
@@ -83,7 +83,7 @@ meant. What matters here is that it is a function of the named events'
 tokens alone, so the verifier recomputes it and refuses a summary that
 differs. A model summarizer would have to be logged the same way, with
 its output as the summary event; checking it would then mean replaying
-the model, as chapter 201's replay does for turns.
+the model, as chapter2's replay does for turns.
 
 <!-- source: psionic/lib/harness/condense.coax types -->
 ```jai
@@ -104,7 +104,7 @@ CdPlan :: struct {status:CdStatus;condense:bool;length:int;after:int;names:int;n
 CdVerdict :: struct {status:CdStatus;request:int;event:int;at:int;shared:int;by:int;breaks:int;}
 ```
 
-`cd_view` verifies the log with chapter 201's `lg_verify`, walks it once
+`cd_view` verifies the log with chapter2's `lg_verify`, walks it once
 and applies each begin event with `cd_apply`. A begin event as the last
 event of the log means the harness stopped between the two events, for
 example in a crash: the log still verifies and opens, and the view reports
@@ -205,7 +205,7 @@ the end of the view stay whole. `cd_plan` does nothing while the next
 request fits. When it would not, it finds the cut, the place in the view
 of the `keep`-th user event from the end, and names the events before the
 cut, oldest first, up to eight, skipping pinned facts. The system text and
-tool schemas are not in the view at all; they are chapter 202's frozen
+tool schemas are not in the view at all; they are chapter3's frozen
 prefix, so no plan can touch them. If the condensed request would still
 not fit, or nothing can be named, the plan is refused with `budget` and
 nothing is logged: the harness does not drop pinned facts or recent turns
@@ -274,7 +274,7 @@ cd_condense :: (l:[]LgLog,s:PxRequest,tail:int,p:CdPolicy)->CdPlan {
 ```
 
 `cd_request` is what the harness runs before each request: condense if
-the policy says so, then assemble chapter 202's request with the view as
+the policy says so, then assemble chapter3's request with the view as
 its history section.
 
 <!-- source: psionic/lib/harness/condense.coax assemble -->
@@ -307,7 +307,7 @@ Every token must match; a refusal names the first position that differs.
 So every model-visible token is either a logged event's or a logged
 summary's, and the summary is itself checked against the events it names.
 
-`cd_admit` is chapter 202's `px_admit` with one exception. It first checks
+`cd_admit` is chapter3's `px_admit` with one exception. It first checks
 the next request with `cd_check`. If the next request keeps every token
 of the previous one before its boundary, it is admitted as before. If not,
 the first difference must be at or after the start of the first event of
@@ -507,7 +507,7 @@ Then the broken inputs. A second log holds the same three turns and turn
 ## Measuring the cost
 
 A condensation shortens every later request, but it breaks the cached
-prefix once. Three schedules run the same six turns through chapter 176's
+prefix once. Three schedules run the same six turns through Psionic chapter 176's
 cache with `px_measure`, pages of 4 positions:
 
 | Schedule | Tokens by request | Blocks reused | Prompt tokens | Cached | Recomputed |
@@ -540,7 +540,7 @@ tenth of a recomputed one (u = 10c). This session ends two requests later,
 and its totals agree: 80c + 34u never condensed against 40c + 47u with
 `keep` = 1, which is cheaper only while u ≤ 40c/13, about 3c.
 
-In chapter 177's time model a step's cost depends only on the rows it
+In Psionic chapter 177's time model a step's cost depends only on the rows it
 computes, not on how long the context is, so in modeled time a
 condensation is only a cost: the condensed schedules have the higher
 prefill times below. What they buy is that every request fits the window
@@ -573,7 +573,7 @@ steps (`keep` = 1) condense twice and recompute 47 tokens; small steps
 
 ## The program
 
-The example, [condense-history.coax](../examples/condense-history.coax),
+The example, [condense-history.coax](../../psionic/examples/condense-history.coax),
 runs the hand session, prints each request and its verdict, the two views
 and the session's replay, then each broken input's refusal, and the three
 schedules on the cache.
@@ -680,7 +680,7 @@ Every number matches the hand work above.
   log does not explain, and seventeen forged condensations, each with its
   status and event.
 - **Views:** a tampered log, a redacted event in the view or named,
-  chapter 201's turn events, a name that an earlier condensation removed,
+  chapter2's turn events, a name that an earlier condensation removed,
   marks in user text and an empty context event,
   and the bounds: 32 events and 33, 64 tokens and 65.
 - **The summarizer and the two events:** empty user events, the digest
@@ -694,7 +694,7 @@ Every number matches the hand work above.
   the view, and a session that names the refused request.
 - **The cache:** each schedule's reused blocks and totals, as in the table.
 - **Every request after a condensation extends the condensed view
-  exactly:** random sessions with chapter 202's random prefixes, random
+  exactly:** random sessions with chapter3's random prefixes, random
   windows and `keep` values, and up to 12 text events of 0 to 3 tokens
   (pinned facts among them), each followed by a request. An oracle keeps
   its own list of what the model sees, with its own policy (which finds the
@@ -703,7 +703,7 @@ Every number matches the hand work above.
   refused plan must log nothing; the begin event must hold exactly the
   oracle's names and digests; each request must be the oracle's prefix,
   view and tail, token for token; every pinned fact must be in the view
-  exactly once; a request without a condensation must pass chapter 202's
+  exactly once; a request without a condensation must pass chapter3's
   `px_admit` unchanged, and one after a condensation may break only at or
   after the first named event, admitted with that condensation; one token
   changed before the boundary must be refused at exactly its position; and
@@ -721,10 +721,10 @@ Mutation of `harness/condense.coax` leaves no survivors.
   or truncate a large output to a stated size), which would be another
   logged event of the same shape.
 - Time to first token measured on a named host and model rather than
-  modeled from chapter 175's step cost, and sessions longer than chapter
+  modeled from Psionic chapter 175's step cost, and sessions longer than chapter
   176's bounds of 16 requests of 32 tokens.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).

@@ -1,4 +1,4 @@
-# 208. Forks, subagents and jobs
+# 14. Forks, subagents and jobs
 
 > **Status: unimplemented — design draft.** Nothing here runs yet.
 
@@ -18,16 +18,16 @@ toward across turns.
 - Goals. A goal is a recorded objective with a check. The session works
   toward it across turns, and the check decides when it is met.
 
-Chapter 252 builds the asynchronous loop on these jobs: long tools start and
+Chapter20 builds the asynchronous loop on these jobs: long tools start and
 stop, and their results return as events while the session keeps answering.
-Chapter 251 runs many Workers, each of which may use this chapter's subagents.
+Chapter17 runs many Workers, each of which may use this chapter's subagents.
 
 ## Dependencies
 
-- [Chapter 201](ch201-model-visible-means-logged.md): forks start from the log.
-- [Chapter 176](ch176-paged-state-and-a-tiered-prefix-cache.md): prefix-state reuse on the server.
-- [Chapter 174](ch174-clients-streams-and-background-jobs.md): asynchronous jobs in the client contract.
-- [Chapter 204](ch204-a-sandbox-and-approvals.md): grants and budgets.
+- [Chapter2](ch002-model-visible-means-logged.md): forks start from the log.
+- [Psionic chapter 176](../../psionic/book/ch176-paged-state-and-a-tiered-prefix-cache.md): prefix-state reuse on the server.
+- [Psionic chapter 174](../../psionic/book/ch174-clients-streams-and-background-jobs.md): asynchronous jobs in the client contract.
+- [Chapter5](ch005-a-sandbox-and-approvals.md): grants and budgets.
 
 ## Done means
 
@@ -36,10 +36,10 @@ Chapter 251 runs many Workers, each of which may use this chapter's subagents.
 - A subagent cannot exceed its parent's grant or budget.
 - A background job that finishes after its turn appends its result, and a job
   past its deadline is reported as expired.
-- Each addition shows a measured gain in [Chapter 211](ch211-measure-the-harness.md) on tasks it was not built
+- Each addition shows a measured gain in [Chapter21](ch021-measure-the-harness.md) on tasks it was not built
   from, or it is removed.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).

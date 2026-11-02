@@ -79,6 +79,10 @@ def check(name="psionic"):
     linked = set()
     listings = 0
     docs = [ROOT / readme, *sorted((ROOT / book).glob("*.md"))]
+    # Chapters that moved to another book (the harness, now Coder chapters
+    # 1-22) keep their examples here until their code moves; check them too.
+    docs += sorted({ROOT / item["chapter"] for item in examples
+                    if not item["chapter"].startswith(book + "/")})
     chapters(name, book)
     pattern = r"<!-- source: ([^ ]+) ([^ ]+) -->\n```jai\n(.*?)\n```"
     for doc in docs:

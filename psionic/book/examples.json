@@ -1663,7 +1663,7 @@
     },
     {
       "source": "psionic/examples/memory.coax",
-      "chapter": "psionic/book/ch214-remember-a-fact-then-revise-it.md",
+      "chapter": "coder/book/ch019-remember-a-fact-then-revise-it.md",
       "stdout": "psionic/fixtures/memory/memory.out",
       "exit_status": 0,
       "modes": [
@@ -1673,7 +1673,7 @@
     },
     {
       "source": "psionic/examples/memory-refuse.coax",
-      "chapter": "psionic/book/ch214-remember-a-fact-then-revise-it.md",
+      "chapter": "coder/book/ch019-remember-a-fact-then-revise-it.md",
       "stdout": "psionic/fixtures/memory/memory-refuse.out",
       "exit_status": 0,
       "modes": [
@@ -2488,7 +2488,7 @@
     },
     {
       "source": "psionic/examples/harness-loop.coax",
-      "chapter": "psionic/book/ch200-the-simplest-loop.md",
+      "chapter": "coder/book/ch001-the-simplest-loop.md",
       "stdout": "psionic/fixtures/harness-loop.out",
       "exit_status": 0,
       "modes": [
@@ -2500,7 +2500,7 @@
     },
     {
       "source": "psionic/examples/harness-log.coax",
-      "chapter": "psionic/book/ch201-model-visible-means-logged.md",
+      "chapter": "coder/book/ch002-model-visible-means-logged.md",
       "stdout": "psionic/fixtures/harness-log.out",
       "exit_status": 0,
       "modes": [
@@ -2512,7 +2512,7 @@
     },
     {
       "source": "psionic/examples/prefix-stable.coax",
-      "chapter": "psionic/book/ch202-keep-the-prefix-stable.md",
+      "chapter": "coder/book/ch003-keep-the-prefix-stable.md",
       "stdout": "psionic/fixtures/prefix-stable.out",
       "exit_status": 0,
       "modes": [
@@ -2524,7 +2524,7 @@
     },
     {
       "source": "psionic/examples/condense-history.coax",
-      "chapter": "psionic/book/ch206-condense-the-history.md",
+      "chapter": "coder/book/ch007-condense-the-history.md",
       "stdout": "psionic/fixtures/condense-history.out",
       "exit_status": 0,
       "modes": [
@@ -2536,7 +2536,7 @@
     },
     {
       "source": "psionic/examples/tool-capabilities.coax",
-      "chapter": "psionic/book/ch203-tools-as-typed-capabilities.md",
+      "chapter": "coder/book/ch004-tools-as-typed-capabilities.md",
       "stdout": "psionic/fixtures/tool-capabilities.out",
       "exit_status": 0,
       "modes": [
@@ -2548,7 +2548,7 @@
     },
     {
       "source": "psionic/examples/sandbox-approvals.coax",
-      "chapter": "psionic/book/ch204-a-sandbox-and-approvals.md",
+      "chapter": "coder/book/ch005-a-sandbox-and-approvals.md",
       "stdout": "psionic/fixtures/sandbox-approvals.out",
       "exit_status": 0,
       "modes": [
@@ -2560,7 +2560,7 @@
     },
     {
       "source": "psionic/examples/program-tool-calls.coax",
-      "chapter": "psionic/book/ch207-programs-as-tool-calls.md",
+      "chapter": "coder/book/ch008-programs-as-tool-calls.md",
       "stdout": "psionic/fixtures/program-tool-calls.out",
       "exit_status": 0,
       "modes": [
@@ -2632,7 +2632,7 @@
     },
     {
       "source": "psionic/examples/protocols.coax",
-      "chapter": "psionic/book/ch210-speak-the-protocols.md",
+      "chapter": "coder/book/ch016-speak-the-protocols.md",
       "stdout": "psionic/fixtures/protocols.out",
       "exit_status": 0,
       "modes": [
@@ -2642,7 +2642,7 @@
     },
     {
       "source": "psionic/examples/consent.coax",
-      "chapter": "psionic/book/ch213-consent-before-sharing.md",
+      "chapter": "coder/book/ch018-consent-before-sharing.md",
       "stdout": "psionic/fixtures/consent/consent.out",
       "exit_status": 0,
       "modes": [
@@ -2652,7 +2652,7 @@
     },
     {
       "source": "psionic/examples/consent-refuse.coax",
-      "chapter": "psionic/book/ch213-consent-before-sharing.md",
+      "chapter": "coder/book/ch018-consent-before-sharing.md",
       "stdout": "psionic/fixtures/consent/consent-refuse.out",
       "exit_status": 0,
       "modes": [
@@ -2662,7 +2662,7 @@
     },
     {
       "source": "psionic/examples/inject.coax",
-      "chapter": "psionic/book/ch205-a-document-tries-to-become-the-system-prompt.md",
+      "chapter": "coder/book/ch006-a-document-tries-to-become-the-system-prompt.md",
       "stdout": "psionic/fixtures/inject/inject.out",
       "exit_status": 0,
       "modes": [
@@ -2672,7 +2672,7 @@
     },
     {
       "source": "psionic/examples/inject-refuse.coax",
-      "chapter": "psionic/book/ch205-a-document-tries-to-become-the-system-prompt.md",
+      "chapter": "coder/book/ch006-a-document-tries-to-become-the-system-prompt.md",
       "stdout": "psionic/fixtures/inject/inject-refuse.out",
       "exit_status": 0,
       "modes": [
@@ -2682,7 +2682,7 @@
     },
     {
       "source": "psionic/examples/candidates.coax",
-      "chapter": "psionic/book/ch212-generate-candidates-then-check-them.md",
+      "chapter": "coder/book/ch022-generate-candidates-then-check-them.md",
       "stdout": "psionic/fixtures/candidates.out",
       "exit_status": 0,
       "modes": [
@@ -2692,7 +2692,7 @@
     },
     {
       "source": "psionic/examples/measure-harness.coax",
-      "chapter": "psionic/book/ch211-measure-the-harness.md",
+      "chapter": "coder/book/ch021-measure-the-harness.md",
       "stdout": "psionic/fixtures/measure-harness.out",
       "exit_status": 0,
       "modes": [

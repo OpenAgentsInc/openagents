@@ -1,4 +1,4 @@
-# 214. Remember a fact, then revise it
+# 19. Remember a fact, then revise it
 
 > **Status: partly implemented.** A memory store run on the CPU (profile
 > mm-memory-v1): facts as versioned records with a provenance, a scope and
@@ -7,7 +7,7 @@
 > whose cited passage changed refused as stale; forgetting that removes
 > the text from the log and the table, with a verifier that proves it; and
 > replay that rebuilds the store from the log. Still to come: checking an
-> event-sourced fact's digest against [chapter 201](ch201-model-visible-means-logged.md)'s
+> event-sourced fact's digest against [chapter2](ch002-model-visible-means-logged.md)'s
 > session log, a store kept on disk and read back by a later process, and
 > retrieval ranked by a query.
 
@@ -21,7 +21,7 @@ the document it came from was edited.
 This chapter builds a small memory store with these rules:
 
 - Every fact names where it came from: the digest of the session event it
-  was said in, or a [chapter 57](ch057-answer-from-current-sources.md)
+  was said in, or a [Psionic chapter 57](../../psionic/book/ch057-answer-from-current-sources.md)
   citation (a passage identity, a byte span and the passage's revision
   digest) whose quoted bytes are the fact's text.
 - Every fact has a scope (a session, a user or a project), the id of that
@@ -38,9 +38,9 @@ This chapter builds a small memory store with these rules:
   in the table. The log still verifies, and the verifier refuses any log in
   which a forgotten text is still readable.
 
-The library is [harness/memory.coax](../lib/harness/memory.coax). It is
+The library is [harness/memory.coax](../../psionic/lib/harness/memory.coax). It is
 `#authority`: it decides which facts a model may be shown. It loads only
-chapter 57's [answer.coax](../lib/book-search/answer.coax), for citations
+Psionic chapter 57's [answer.coax](../../psionic/lib/book-search/answer.coax), for citations
 and SHA-256.
 
 ## Run it
@@ -111,7 +111,7 @@ The event digest covers every field except `redacted`, the content
 digest, and the previous event's digest, so the events form a chain. The
 content digest covers the three lengths and the bytes. Forgetting
 overwrites bytes and sets `redacted` but leaves both digests alone, so the
-chain still verifies after a forget; the same rule as chapter 201's
+chain still verifies after a forget; the same rule as chapter2's
 redaction.
 
 <!-- source: psionic/lib/harness/memory.coax encode -->
@@ -285,7 +285,7 @@ A reader names its session, user and project. `mm_look` answers for one
 key in one scope: `served` with the current version, or why not:
 `missing`, `forgotten`, `conflict`, `early` (before the window), `expired`
 (at or after its end) or `stale` (the citation is not current, with
-chapter 57's reason). `mm_read` lists every fact a reader may be shown: the
+Psionic chapter 57's reason). `mm_read` lists every fact a reader may be shown: the
 current versions in its three scopes that `mm_serve` would serve, in write
 order. A fact owned by another project, user or session is never listed.
 
@@ -442,7 +442,7 @@ reader in project 8, user 2, session 4 is shown nothing.
 
 ## The program
 
-[memory.coax](../examples/memory.coax) runs those steps and prints each
+[memory.coax](../../psionic/examples/memory.coax) runs those steps and prints each
 result, every read, and the versions at the end. The provenance column
 shows the first four bytes of the cited passage's digest or of the event
 digest.
@@ -490,11 +490,11 @@ read at tick 7 (session 4, user 2, project 8), facts served: 0
 
 Every line matches the trace. The book's example check runs the program
 in debug and release builds and compares both outputs with
-[memory.out](../fixtures/memory/memory.out), exit status 0.
+[memory.out](../../psionic/fixtures/memory/memory.out), exit status 0.
 
 ## Refusals
 
-[memory-refuse.coax](../examples/memory-refuse.coax) sends writes the
+[memory-refuse.coax](../../psionic/examples/memory-refuse.coax) sends writes the
 store must refuse, then edits a finished log the ways an attacker or a
 bug would.
 
@@ -547,12 +547,12 @@ the whole log edits an event and recomputes every digest. The chain then
 verifies, but replay applies the write rules again and refuses event 4, a
 revise with no reason. Cutting off the forget event fails for the same
 kind of reason: the redactions it explained are left without one. The
-output is [memory-refuse.out](../fixtures/memory/memory-refuse.out), exit
+output is [memory-refuse.out](../../psionic/fixtures/memory/memory-refuse.out), exit
 status 0, in both builds.
 
 ## Checks
 
-The checks are in [harness-memory-checks.coax](../tests/harness-memory-checks.coax),
+The checks are in [harness-memory-checks.coax](../../psionic/tests/harness-memory-checks.coax),
 apart from the store:
 
 - **The hand trace**, step by step, with every version's state, `by`,
@@ -580,7 +580,7 @@ apart from the store:
   rebuilds the same table. No read in any sequence returns a superseded,
   conflicting, stale or forgotten version. Six sequences that reach every
   write outcome and every read outcome run with the store's checks;
-  [harness-memory-model.coax](../tests/harness-memory-model.coax) runs
+  [harness-memory-model.coax](../../psionic/tests/harness-memory-model.coax) runs
   200 more.
 
 `coax mutate` on `memory.coax` kills all 310 mutants; none survive.
@@ -589,17 +589,17 @@ apart from the store:
 
 - **Event sources are not checked against a session log.** An
   event-sourced fact carries the digest of the event it was said in, but
-  nothing yet confirms that chapter 201's log holds an event with that
+  nothing yet confirms that chapter2's log holds an event with that
   digest. Cited facts are checked against their passage on every read.
 - **The log lives in memory.** A later session in the same process sees
   the store, and replay rebuilds it from the log, but writing the log to
   disk and reading it back in another process is not built.
 - **No ranked retrieval.** Facts are looked up by key or listed by scope.
-  Retrieving the facts that matter for a query, with chapter 54's ranking,
+  Retrieving the facts that matter for a query, with Psionic chapter 54's ranking,
   is not built.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
 - FIPS 180-4, Secure Hash Standard (SHA-256).

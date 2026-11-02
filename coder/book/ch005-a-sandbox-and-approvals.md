@@ -1,4 +1,4 @@
-# 204. A sandbox and approvals
+# 5. A sandbox and approvals
 
 > **Status: partly implemented.** A sandbox runs on the CPU around chapter
 > 203's tools. Its policy is data: an effect ceiling and the rooms of the
@@ -8,35 +8,35 @@
 > runs freely and the ceiling pauses the session until a typed answer
 > arrives: approve, deny or expire, for one call or as a pattern of tool
 > and room. Approval cannot pass the ceiling or a limit. Every call, request
-> and answer is an event in chapter 201's log, and a replay of the log
+> and answer is an event in chapter2's log, and a replay of the log
 > rebuilds the same events and the same world. Still to come: real
 > processes and files (declared roots on disk, memory and process-count
 > limits, stopping a process that overruns), the repeated-failure guard,
 > approvals from a person through a client, and policies and answers as
 > messages in `proto/`.
 
-Chapter 203's grant answers whether a tool may be called in a turn. It does
+Chapter4's grant answers whether a tool may be called in a turn. It does
 not say which parts of the world the tool may touch, how much a session may
 spend, or what happens when a call is risky but not forbidden. This chapter
 adds a sandbox around every call. No tool inherits authority by default:
 the sandbox runs a call only when its policy allows it, or when the policy
 allows it to be asked about and a person approves.
 
-The world is still chapter 203's: a light switch in each of three rooms,
+The world is still chapter4's: a light switch in each of three rooms,
 `hall`, `den` and `study`, read by `get` and written by `set`. The rooms
 stand in for the directories a process would see. A real process sandbox
 needs operating-system confinement, which this chapter does not build; the
 decision logic, the approval flow and the log are what run here.
 
 Everything is in one `#authority` file,
-[harness/sandbox.coax](../lib/harness/sandbox.coax), because it decides
+[harness/sandbox.coax](../../psionic/lib/harness/sandbox.coax), because it decides
 what runs. Its checks leave no mutant alive.
 
 ## The profile
 
 This chapter's profile is `cpu-harness-sandbox-v1`:
 
-- The tools are chapter 203's registry: `add` and `div` (effect none),
+- The tools are chapter4's registry: `add` and `div` (effect none),
   `get` (read) and `set` (write). `get` and `set` name a room in their first
   field. `add` and `div` touch no room.
 - Time is a simulated clock in ticks. Each body takes a fixed number:
@@ -75,7 +75,7 @@ opened with one.
 
 ## Deciding a call
 
-The decision for a call that chapter 203 has admitted goes in a fixed
+The decision for a call that chapter4 has admitted goes in a fixed
 order. The limits come first, then the ceiling. Nothing passes those two,
 not even an approval. Then a pattern the session holds, or an approval, runs
 the call. Otherwise the call asks when its effect is above `allow`, its
@@ -168,10 +168,10 @@ the world.
 
 ## Every outcome is logged
 
-Each outcome is a `context` event in chapter 201's log, so the same hash
+Each outcome is a `context` event in chapter2's log, so the same hash
 chain that covers a model's requests covers the sandbox's decisions. The
 first event holds the policy. A call's event holds the session, the
-verdict, why, chapter 203's tool, the room, chapter 203's outcome and
+verdict, why, chapter4's tool, the room, chapter4's outcome and
 value, the request, and then the call's text, one token per byte. An
 answer's event holds the answer as given and then what took effect.
 
@@ -220,7 +220,7 @@ approve 1, deny 2, expire 3):
 | 10, step 9 | `3 1 3 1 1 11 1 0 1 0 1` |
 
 A call that never enters the session is not logged. That covers three
-cases: text longer than chapter 203's 256 bytes, a world too small for the
+cases: text longer than chapter4's 256 bytes, a world too small for the
 registry's rooms, and a log with no room for the event. The sandbox checks
 for room first, so an effect never happens without its event.
 
@@ -262,7 +262,7 @@ sb_call :: (env:SbTools,s:[]SbSession,text:string,world:[]int,l:[]LgLog)->SbEven
 }
 ```
 
-A call that runs goes through chapter 203's `ht_call` unchanged, so its
+A call that runs goes through chapter4's `ht_call` unchanged, so its
 budgets, its argument grammar and its result type still apply. The sandbox
 charges the session after the run.
 
@@ -272,7 +272,7 @@ An answer names its session and its request. Both must match the pending
 request, and the answer's time may not be earlier than the session's clock.
 An answer with no decision is refused as `answer`, and the request keeps
 waiting. A valid answer closes the request. Deny and expire run nothing. An
-approval runs the call that was paused, admitted again by chapter 203 under
+approval runs the call that was paused, admitted again by chapter4 under
 the grant passed in now, and decided again at the new clock. If the grant
 no longer names the tool, or the wait used up the session's ticks, the
 approved call is refused.
@@ -367,7 +367,7 @@ sb_replay :: (env:SbTools,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck 
 ## The checks
 
 - **Decisions against a table.** A separate file,
-  [harness-sandbox-oracle.coax](../tests/harness-sandbox-oracle.coax),
+  [harness-sandbox-oracle.coax](../../psionic/tests/harness-sandbox-oracle.coax),
   writes the decision as a table of rules in order. It computes each rule's
   condition without the subject's code: room bits by repeated division,
   subsets room by room, and each tool's effect, cost and ticks from this
@@ -388,7 +388,7 @@ sb_replay :: (env:SbTools,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck 
   unchanged. Five patterns replace the oldest.
 - **Before the session.** Text of 257 bytes, a world of 7 rooms, and logs
   with one event or one token too few are refused and not logged; a log
-  with exactly enough room takes the event. A log with an open chapter 200
+  with exactly enough room takes the event. A log with an open chapter1
   turn takes nothing.
 - **Replay refusals.** Thirty-two forged logs, each rechained so the hash chain
   verifies, each change one token of one event, drop tokens, or change its
@@ -398,7 +398,7 @@ sb_replay :: (env:SbTools,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck 
   or log too small are refused too.
 - **Random sessions.** A `#forall` over 12 seeds draws a valid policy and
   16 steps of calls and answers. After every refused, paused or asked step
-  the world, the calls, the bytes and chapter 203's cost are unchanged.
+  the world, the calls, the bytes and chapter4's cost are unchanged.
   Every run is within the ceiling and the limits. An approval that ran is
   refused when sent again and when sent to another session, and the world
   does not change. The log replays to the same world and clock.
@@ -407,7 +407,7 @@ sb_replay :: (env:SbTools,g:LgLog,s:[]SbSession,world:[]int,l:[]LgLog)->SbCheck 
 
 ## Run it
 
-The example, [sandbox-approvals.coax](../examples/sandbox-approvals.coax),
+The example, [sandbox-approvals.coax](../../psionic/examples/sandbox-approvals.coax),
 runs the hand trace's session step by step. It then verifies and replays
 the log, sends session 1's approval to a second session and sends a used
 approval again. Last, it shows two broken inputs: a policy whose `open`
@@ -504,9 +504,9 @@ that event's digest differs from the forged one.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
-- [Chapter 203](ch203-tools-as-typed-capabilities.md): the tool pipeline
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
+- [Chapter4](ch004-tools-as-typed-capabilities.md): the tool pipeline
   that the sandbox wraps.
-- [Chapter 201](ch201-model-visible-means-logged.md): the log that records
+- [Chapter2](ch002-model-visible-means-logged.md): the log that records
   policies, requests and answers.

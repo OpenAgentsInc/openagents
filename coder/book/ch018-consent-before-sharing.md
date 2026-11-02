@@ -1,4 +1,4 @@
-# 213. Consent before sharing
+# 18. Consent before sharing
 
 > **Status: partly implemented.** A consent gate run on the CPU (profile
 > cs-consent-v1): session content as labelled nodes whose labels
@@ -8,11 +8,11 @@
 > records what already went out, minimized and redacted alternatives, and
 > replay that rebuilds the grants from the log and refuses a send no grant
 > covered. Still to come: the gate wired into
-> [chapter 210](ch210-speak-the-protocols.md)'s outbound calls, mesh peer
-> links and [chapter 247](ch247-outcomes-become-training-rows.md)'s
+> [chapter16](ch016-speak-the-protocols.md)'s outbound calls, mesh peer
+> links and [Psionic chapter 247](../../psionic/book/ch247-outcomes-become-training-rows.md)'s
 > export; labels read directly from
-> [chapter 214](ch214-remember-a-fact-then-revise-it.md)'s facts and
-> [chapter 201](ch201-model-visible-means-logged.md)'s log events; and a
+> [chapter19](ch019-remember-a-fact-then-revise-it.md)'s facts and
+> [chapter2](ch002-model-visible-means-logged.md)'s log events; and a
 > ledger kept on disk.
 
 Session content is private by default. A harness sends bytes outward in
@@ -48,7 +48,7 @@ This chapter builds that gate with these rules:
   the message that are covered, or a copy with the other parts replaced by
   `[withheld]`. Either is a new message that goes through the gate again.
 
-The library is [harness/consent.coax](../lib/harness/consent.coax). It is
+The library is [harness/consent.coax](../../psionic/lib/harness/consent.coax). It is
 `#authority`: it decides what may leave the harness. It loads only the
 SHA-256 unit from `coax/lib/crypto`.
 
@@ -69,7 +69,7 @@ psionic/check.sh --only harness/consent
 This chapter's profile is `cs-consent-v1`:
 
 - Five data classes, one bit each in a label: `session` (typed in the
-  session), `user` (a fact about the user, such as chapter 214's
+  session), `user` (a fact about the user, such as chapter19's
   user-scope facts), `project` (project files and facts), `tool` (a
   tool's output) and `identity` (ids and keys).
 - Four kinds of destination (a tool, an agent, a mesh peer, an export),
@@ -510,7 +510,7 @@ replay into an empty ledger rebuilds the same four grants.
 
 ## The program
 
-[consent.coax](../examples/consent.coax) runs those steps and prints each
+[consent.coax](../../psionic/examples/consent.coax) runs those steps and prints each
 decision, the grants, and what reached the sink.
 
 ```text
@@ -560,11 +560,11 @@ replay: ok, 4 grants, same grants: true
 
 Every line matches the trace. The book's example check runs the program
 in debug and release builds and compares both outputs with
-[consent.out](../fixtures/consent/consent.out), exit status 0.
+[consent.out](../../psionic/fixtures/consent/consent.out), exit status 0.
 
 ## Refusals
 
-[consent-refuse.coax](../examples/consent-refuse.coax) makes calls the gate
+[consent-refuse.coax](../../psionic/examples/consent-refuse.coax) makes calls the gate
 must refuse, then edits a finished log.
 
 <!-- source: psionic/examples/consent-refuse.coax refuse -->
@@ -631,12 +631,12 @@ into a send claims bytes went out with no grant at all. Lowering the count
 on the revocation hides a message that already left; replay counts the
 sends again and finds two.
 The output is
-[consent-refuse.out](../fixtures/consent/consent-refuse.out), exit
+[consent-refuse.out](../../psionic/fixtures/consent/consent-refuse.out), exit
 status 0, in both builds.
 
 ## Checks
 
-The checks are in [harness-consent-checks.coax](../tests/harness-consent-checks.coax),
+The checks are in [harness-consent-checks.coax](../../psionic/tests/harness-consent-checks.coax),
 apart from the gate:
 
 - **The hand trace**, step by step: every decision, every event's
@@ -691,36 +691,36 @@ ct_reach :: (own: [] int, starts: [] int, ends: [] int, parents: [] int, node: i
   sendable.
 
 The checks file runs 12 random graphs and 8 random sessions, which reach
-every send decision, `shape`, `unknown`, `person` and `twice`. [harness-consent-model.coax](../tests/harness-consent-model.coax)
+every send decision, `shape`, `unknown`, `person` and `twice`. [harness-consent-model.coax](../../psionic/tests/harness-consent-model.coax)
 runs 400 graphs and 120 sessions; `psionic/check.sh` runs it beside the
 unit. `coax mutate` on `consent.coax` kills all 401 mutants; none
 survive.
 
 ## What this does not do yet
 
-- **The gate is not yet on the outbound paths.** Chapter 210's
-  `tools/call` requests, mesh peer links and chapter 247's training-row
+- **The gate is not yet on the outbound paths.** Chapter16's
+  `tools/call` requests, mesh peer links and Psionic chapter 247's training-row
   export still need to build a `CsMessage` and go through `cs_send`; this
   chapter's sink stands in for them.
 - **Labels are given by the caller.** A harness would make each source
-  node from a chapter 214 fact (its scope gives the class) or a chapter
+  node from a chapter19 fact (its scope gives the class) or a chapter
   201 log event; here the example makes the nodes itself.
 - **The ledger lives in memory.** A later session in the same process sees
   it; a new process starts with no grants.
 
 ## Dependencies
 
-- [Chapter 201](ch201-model-visible-means-logged.md): the hash-chained log
+- [Chapter2](ch002-model-visible-means-logged.md): the hash-chained log
   this ledger is shaped like.
-- [Chapter 204](ch204-a-sandbox-and-approvals.md): approvals that are
+- [Chapter5](ch005-a-sandbox-and-approvals.md): approvals that are
   explicit, bound to what they approve and limited in time.
-- [Chapter 210](ch210-speak-the-protocols.md): the protocols that carry
+- [Chapter16](ch016-speak-the-protocols.md): the protocols that carry
   content to other services.
-- [Chapter 214](ch214-remember-a-fact-then-revise-it.md): facts with a
+- [Chapter19](ch019-remember-a-fact-then-revise-it.md): facts with a
   scope and an owner, the sources of `user` and `project` labels.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
 - FIPS 180-4, Secure Hash Standard (SHA-256).

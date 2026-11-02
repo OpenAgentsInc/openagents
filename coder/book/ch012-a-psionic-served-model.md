@@ -19,8 +19,8 @@ buys.
 
 - [Chapter 3](PLAN.md#i-the-loop) and [Chapter 9](ch009-microcoder.md).
 - Psionic [chapter 53](../../psionic/book/ch053-choosing-the-next-token.md),
-  [chapter 174](../../psionic/book/ch174-clients-streams-and-background-jobs.md) and
-  [chapter 176](../../psionic/book/ch176-paged-state-and-a-tiered-prefix-cache.md).
+  [Psionic chapter 174](../../psionic/book/ch174-clients-streams-and-background-jobs.md) and
+  [Psionic chapter 176](../../psionic/book/ch176-paged-state-and-a-tiered-prefix-cache.md).
 
 ## Done means
 

@@ -220,21 +220,7 @@
 - [198. Mistral Large 4 across a mesh](ch198-mistral-large-4-across-a-mesh.md) — design draft
 - [199. Le Chonk across a mesh](ch199-le-chonk-across-a-mesh.md) — design draft
 
-- [200. The simplest loop](ch200-the-simplest-loop.md) — partly implemented
-- [201. Model-visible means logged](ch201-model-visible-means-logged.md) — partly implemented
-- [202. Keep the prefix stable](ch202-keep-the-prefix-stable.md) — partly implemented
-- [203. Tools as typed capabilities](ch203-tools-as-typed-capabilities.md) — partly implemented
-- [204. A sandbox and approvals](ch204-a-sandbox-and-approvals.md) — partly implemented
-- [205. A document tries to become the system prompt](ch205-a-document-tries-to-become-the-system-prompt.md) — partly implemented
-- [206. Condense the history](ch206-condense-the-history.md) — partly implemented
-- [207. Programs as tool calls](ch207-programs-as-tool-calls.md) — partly implemented
-- [208. Forks, subagents and jobs](ch208-forks-subagents-and-jobs.md) — design draft
-- [209. Plugins with owned lifecycles](ch209-plugins-with-owned-lifecycles.md) — design draft
-- [210. Speak the protocols](ch210-speak-the-protocols.md) — partly implemented
-- [211. Measure the harness](ch211-measure-the-harness.md) — partly implemented
-- [212. Generate candidates, then check them](ch212-generate-candidates-then-check-them.md) — partly implemented
-- [213. Consent before sharing](ch213-consent-before-sharing.md) — partly implemented
-- [214. Remember a fact, then revise it](ch214-remember-a-fact-then-revise-it.md) — partly implemented
+- 200–214, 251, 252: moved to [Coder: Coding Agents From Scratch](../../coder/book/SUMMARY.md), chapters 1–8 and 14–22
 
 - [215. Fit our own calibration, and refuse a stale one](ch215-fit-our-own-calibration.md)
 - [216. Thresholds from written costs](ch216-thresholds-from-written-costs.md)
@@ -274,15 +260,13 @@
 - [248. Is the loop improving?](ch248-is-the-loop-improving.md)
 - [249. An agent optimizes a Psionic kernel](ch249-an-agent-optimizes-a-psionic-kernel.md)
 - [250. Can someone use Psionic instead of PyTorch?](ch250-can-someone-use-psionic-instead-of-pytorch.md) — design draft
-- [251. One agent, many tasks](ch251-one-agent-many-tasks.md) — design draft
-- [252. An agent that stays online](ch252-an-agent-that-stays-online.md) — design draft
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55–57, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 200–207, 210–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55–57, 60–73, 75, 77–80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175–183, 188, 195, 215–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

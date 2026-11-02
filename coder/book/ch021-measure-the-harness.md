@@ -1,8 +1,8 @@
-# 211. Measure the harness
+# 21. Measure the harness
 
 > **Status: partly implemented.** End-to-end task suites run through
-> chapter 200's loop with a scripted stand-in model, one configuration
-> change at a time, with seed blocks, a noise floor, chapter 241's verdicts
+> chapter1's loop with a scripted stand-in model, one configuration
+> change at a time, with seed blocks, a noise floor, Psionic chapter 241's verdicts
 > and a receipt chain. Benchmarks of the harness's own operations, wall-clock
 > time on a named host, real models and cache hits remain; see
 > [What remains](#what-remains).
@@ -11,23 +11,23 @@ Every addition to the harness has to earn its place. An addition earns it
 by doing better than the harness without it, on the same tasks, seeds and
 model, by more than the runs move by themselves. This chapter builds the
 bench that decides that:
-- **a pinned suite:** [chapter 242](ch242-environments-with-checkers.md)'s
-  tasks, fixed by [chapter 239](ch239-a-suite-is-three-digests.md)'s three
+- **a pinned suite:** [Psionic chapter 242](../../psionic/book/ch242-environments-with-checkers.md)'s
+  tasks, fixed by [Psionic chapter 239](../../psionic/book/ch239-a-suite-is-three-digests.md)'s three
   digests, split into development tasks and held-out tasks;
 - **runs through the harness:** each task goes through
-  [chapter 200](ch200-the-simplest-loop.md)'s loop, under one
+  [chapter1](ch001-the-simplest-loop.md)'s loop, under one
   configuration's budgets and tools, once per seed, with a scripted
   stand-in model;
-- **what each run costs:** whether chapter 242's exact checker passes the
-  answer, the steps, the tokens drawn, the tool calls, chapter 200's clock
+- **what each run costs:** whether Psionic chapter 242's exact checker passes the
+  answer, the steps, the tokens drawn, the tool calls, chapter1's clock
   ticks and the stop that ended the turn;
 - **a receipt chain:** each configuration's results on one partition are a
   receipt bound to the suite, harness and configuration digests, in a hash
   chain, and every run replays from its seeds;
 - **verdicts:** one change at a time, on held-out tasks only, beyond
-  [chapter 240](ch240-how-far-a-metric-moves-by-itself.md)'s noise floor
+  [Psionic chapter 240](../../psionic/book/ch240-how-far-a-metric-moves-by-itself.md)'s noise floor
   from the baseline's seed blocks, with
-  [chapter 241](ch241-gates-that-can-say-unverifiable.md)'s passed, failed
+  [Psionic chapter 241](../../psionic/book/ch241-gates-that-can-say-unverifiable.md)'s passed, failed
   or unverifiable.
 
 ```shell
@@ -38,16 +38,16 @@ coax/bin/coax test psionic/lib/harness/measure.coax
 ## The profile
 
 `cpu-harness-bench-v1`:
-- chapter 200's `cpu-harness-loop-v1` with its scripted model, so the loop,
+- chapter1's `cpu-harness-loop-v1` with its scripted model, so the loop,
   its budgets, its calculator tool and its typed stops are the ones under
   test;
-- the stand-in model agent-sim-tools-v1, over chapter 242's agent-sim-v1;
+- the stand-in model agent-sim-tools-v1, over Psionic chapter 242's agent-sim-v1;
 - up to 64 tasks, 16 runs and 32 steps, a window of at most 512 tokens;
-- cost counted in tokens the model draws, and time in chapter 200's logical
+- cost counted in tokens the model draws, and time in chapter1's logical
   clock ticks: the positions each reply reads plus a fixed cost per tool
   call. No wall-clock time is measured;
-- binary64 for means, floors and the bootstrap, as in chapters 240 and 241;
-- digests in chapter 239's encoding, under tags that start with
+- binary64 for means, floors and the bootstrap, as in Psionic chapters 240 and 241;
+- digests in Psionic chapter 239's encoding, under tags that start with
   `psionic.harness-bench`.
 
 ## A task as a prompt
@@ -64,7 +64,7 @@ mh_prompt :: (t:EnTask,ids:[]int)->int {
 }
 ```
 
-A task is one of chapter 242's: sort, remove repeats, or running sums,
+A task is one of Psionic chapter 242's: sort, remove repeats, or running sums,
 over values from 0 to 9. Its prompt names the kind with one letter and
 lists the values. The running-sums task [1 2 3 4] is 13 tokens:
 <|bos|> <|user_start|> `p 1 2 3 4` <|user_end|> <|assistant_start|>.
@@ -98,13 +98,13 @@ mh_script :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int,script:[]int,starts:[]
 ```
 
 The model is a stand-in, so that the harness is what changes between runs
-and every run is exact. Without the calculator it writes chapter 242's
+and every run is exact. Without the calculator it writes Psionic chapter 242's
 attempt: right with probability equal to its skill, otherwise one value
 bumped by one, the last value dropped, or the input handed back. Offered
 the calculator on a running-sums task, it adds one value per call and then
 writes the sums, which are then right.
 
-Chapter 200's scripted model plays a fixed list of replies. That works here
+Chapter1's scripted model plays a fixed list of replies. That works here
 because the calculator is exact: the stand-in knows in advance what each
 call will return. The loop still runs each call, appends its output and
 charges for it, and the run's record holds both.
@@ -142,10 +142,10 @@ mh_turn :: (tb:[]u8,h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int)->MhRun {
 ```
 
 A run is one task under one configuration, at run q's seed. It renders the
-prompt, scripts the stand-in, and hands both to chapter 200's `hl_run`
+prompt, scripts the stand-in, and hands both to chapter1's `hl_run`
 with the configuration's budgets. Only an answer can be right: a turn that
 ends any other way scores 0. An answer is numbers of one to four digits
-separated by single spaces, at most 16 of them, and chapter 242's exact
+separated by single spaces, at most 16 of them, and Psionic chapter 242's exact
 checker decides whether it is right.
 
 ### By hand: the hand suite
@@ -181,7 +181,7 @@ That is 5 + 5 + 5 + 9 = 24 tokens, 3 tool calls, and
 17 + 25 + 33 + 46 + 3 × 3 = 130 ticks, and the answer is right. The sort
 and the repeats are the same as direct, so three runs of six are right.
 
-Tighter budgets end the same turn with chapter 200's typed stops:
+Tighter budgets end the same turn with chapter1's typed stops:
 - **3 steps:** the loop stops before the answer, at `steps`, after 15
   tokens and 17 + 25 + 33 + 9 = 84 ticks.
 - **20 tokens:** step 3 may draw only 5, and ends at `tokens`; it reads up
@@ -207,7 +207,7 @@ mh_run_replay :: (h:MhHarness,c:MhConfig,t:EnTask,r:int,q:int,claimed:MhRun)->bo
 
 A run's digest covers the harness, the configuration, the environment,
 the task and run numbers, the number of scripted replies, the turn's stop
-and counts, whether it was right, each step's seed in chapter 200's record,
+and counts, whether it was right, each step's seed in chapter1's record,
 and every token of the transcript, prompt, replies and tool outputs alike.
 A replay runs it again from the same seeds and accepts the record only
 when every field and the digest come out the same.
@@ -255,14 +255,14 @@ mh_suite_ok :: (s:MhSuite,tasks:[]EnTask)->bool {
 }
 ```
 
-The suite's items digest covers each task as chapter 242's environment
+The suite's items digest covers each task as Psionic chapter 242's environment
 (task, exact checker, one attempt, reference answer) and the split between
 development and held-out tasks. Its questions digest covers every prompt,
 and its gate digest the verdict's settings: bootstrap replicates and seed,
 and limits on tokens and ticks per run. The harness digest covers what
-stays fixed between configurations: chapter 200's window and tool cost,
+stays fixed between configurations: chapter1's window and tool cost,
 the stand-in's skill, and the seed blocks. The configuration digest covers
-what may change: the calculator and each of chapter 200's budgets.
+what may change: the calculator and each of chapter1's budgets.
 
 ## A receipt per configuration
 
@@ -335,7 +335,7 @@ mh_verify :: (store:[]MhReceipt,count:int)->MhCheck {
 }
 ```
 
-Receipts go into a hash chain as in chapter 239: each takes the next
+Receipts go into a hash chain as in Psionic chapter 239: each takes the next
 sequence number and the previous receipt's digest. Verifying the chain
 names the first receipt whose sequence, link or digest does not hold, so a
 receipt that claims one more right run is found.
@@ -402,15 +402,15 @@ verified chain. It refuses, in this order:
 - scores that are not the ones the receipts pinned: `values`.
 
 Otherwise each held-out task's score is its mean over the runs. Chapter
-240's floor comes from the baseline's runs in blocks. Chapter 241 decides on
+240's floor comes from the baseline's runs in blocks. Psionic chapter 241 decides on
 the per-task gains, redrawing whole tasks, and then lets cost and time
 block a pass. Its verdict is passed, failed or unverifiable, with the
-reason. Three tasks are too few for chapter 241, so the hand suite's
+reason. Three tasks are too few for Psionic chapter 241, so the hand suite's
 calculator against direct is unverifiable (`few_tasks`), not refused.
 
 ## Run it
 
-The suite is 40 tasks from chapter 242's generator at seed 211: the first
+The suite is 40 tasks from Psionic chapter 242's generator at seed 211: the first
 10 for development, 30 held out (11 sort, 11 remove repeats, 8 running
 sums). The harness has skill 0.6, seeds 2110 to 2117 in four blocks of
 two, a window of 512 and 4 ticks a call. The gate draws 1,000 replicates at
@@ -422,7 +422,7 @@ configurations:
 - **calculator, 16 steps:** the calculator with 16 steps.
 
 All of this is fixed before any run. The
-[example](../examples/measure-harness.coax) works the hand suite first, then
+[example](../../psionic/examples/measure-harness.coax) works the hand suite first, then
 prints the digests, runs every configuration, gives the verdicts and the
 refusals, and replays the receipts.
 
@@ -578,14 +578,14 @@ The unit's checks:
 - **the suite's digests:** each one moves with what it covers and only that;
 - **verdict refusals** in order, and refusals on development tasks;
 - **verdict rules** (`#forall`, 12 seeds): on 12 held-out tasks with chosen
-  scores in 4 runs, the verdict equals chapter 240's floor and chapter 241's
+  scores in 4 runs, the verdict equals Psionic chapter 240's floor and Psionic chapter 241's
   decision and evaluation computed directly from per-task means worked out
   separately; a pass always means a gain clear of the floor and both limits
   held; a run over a limit always fails; and changing one score is always
   refused.
 
 The hand suite and the checks' helpers live in
-[harness-measure-checks.coax](../tests/harness-measure-checks.coax).
+[harness-measure-checks.coax](../../psionic/tests/harness-measure-checks.coax).
 `coax mutate psionic/lib/harness/measure.coax --root-only` kills all 590
 mutants. Earlier runs left survivors that sharpened the checks: the chain's
 sequence and link checks were only reached together with the digest, so
@@ -596,31 +596,31 @@ own refusal; and pinned digests fix the run, receipt and suite encodings.
 
 - **Benchmarks of the harness's own operations:** opening a session,
   folding a long conversation with
-  [chapter 206](ch206-condense-the-history.md), reconnecting a stream and
+  [chapter7](ch007-condense-the-history.md), reconnecting a stream and
   continuing an agent, each with P50 and P95 wall-clock time on a named
   host. Nothing here measures seconds.
 - **A real model.** The stand-in is scripted. Running the suite with a
-  model behind chapter 200's loop, with real token counts, remains.
+  model behind chapter1's loop, with real token counts, remains.
 - **Cache hits and money.** Cost is tokens drawn and time is logical clock
   ticks, with no cache and no price.
 - **More additions under test.** Prompt assembly from
-  [chapter 202](ch202-keep-the-prefix-stable.md), condensation from
-  chapter 206 and the protocols of
-  [chapter 210](ch210-speak-the-protocols.md) are not yet configurations
-  of this bench; only the calculator and chapter 200's budgets are.
-- **Chapters 251 and 252** add system-level runs (an ablation of Router
+  [chapter3](ch003-keep-the-prefix-stable.md), condensation from
+  chapter7 and the protocols of
+  [chapter16](ch016-speak-the-protocols.md) are not yet configurations
+  of this bench; only the calculator and chapter1's budgets are.
+- **Chapters17 and 20** add system-level runs (an ablation of Router
   and Workers, a Router batching stress test and fault injection for the
   watchdog) that will report through this chapter.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
-- [Chapter 200](ch200-the-simplest-loop.md): the loop, its budgets and its
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
+- [Chapter1](ch001-the-simplest-loop.md): the loop, its budgets and its
   typed stops.
-- [Chapter 239](ch239-a-suite-is-three-digests.md),
-  [chapter 240](ch240-how-far-a-metric-moves-by-itself.md) and
-  [chapter 241](ch241-gates-that-can-say-unverifiable.md): suites, noise
+- [Psionic chapter 239](../../psionic/book/ch239-a-suite-is-three-digests.md),
+  [Psionic chapter 240](../../psionic/book/ch240-how-far-a-metric-moves-by-itself.md) and
+  [Psionic chapter 241](../../psionic/book/ch241-gates-that-can-say-unverifiable.md): suites, noise
   floors and verdicts.
-- [Chapter 242](ch242-environments-with-checkers.md): the tasks, the exact
+- [Psionic chapter 242](../../psionic/book/ch242-environments-with-checkers.md): the tasks, the exact
   checker and the simulated agent.

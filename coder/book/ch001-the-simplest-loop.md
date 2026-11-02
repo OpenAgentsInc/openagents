@@ -1,11 +1,11 @@
-# 200. The simplest loop
+# 1. The simplest loop
 
 > **Status: partly implemented.** The smallest agent loop runs on the CPU
-> over chapter 126's engine and chapter 136's calculator tool: a model turn,
+> over Psionic chapter 126's engine and Psionic chapter 136's calculator tool: a model turn,
 > a typed tool call, the result appended, and again, until the model answers
 > or a budget stops the turn. Every turn ends with one typed stop, every
 > request's input is a prefix of the transcript, and every step replays from
-> its seed. Still to come: a model served through chapters 20, 22 and 79
+> its seed. Still to come: a model served through Psionic chapters 20, 22 and 79
 > instead of one called in process, a deadline on the wall clock instead of
 > a logical clock, and cancellation that interrupts a running model stream
 > and running tools instead of acting between steps.
@@ -15,22 +15,22 @@ the reply, runs the tool the reply asks for, appends the tool's output and
 asks again. It also decides when to stop: when the model gives a final
 answer, or when the turn has used up what it was allowed to spend. This
 chapter builds the smallest loop that does that, and every later chapter in
-Part XXI adds one thing to it.
+Parts I–V of this book adds one thing to it.
 
 Everything here lives in one `#authority` file,
-[harness/loop.coax](../lib/harness/loop.coax), because the loop decides
+[harness/loop.coax](../../psionic/lib/harness/loop.coax), because the loop decides
 what runs and when a turn ends. Its checks leave no mutant alive.
 
 ## The profile
 
 This chapter's profile is `cpu-harness-loop-v1`:
 
-- One model, called in process: chapter 126's `ne_generate`, or a scripted
+- One model, called in process: Psionic chapter 126's `ne_generate`, or a scripted
   stand-in that draws a fixed reply one token at a time through the same
   stop rule. Nothing goes over a network.
-- One tool: chapter 136's calculator, `a op b` with one to four decimal
+- One tool: Psionic chapter 136's calculator, `a op b` with one to four decimal
   digits on each side and `op` one of `+`, `-`, `*`.
-- Tokens are chapter 123's: 320 ordinary tokens and nanochat's nine
+- Tokens are Psionic chapter 123's: 320 ordinary tokens and nanochat's nine
   specials from 320 (`<|bos|>` is 320, `<|assistant_end|>` 324,
   `<|python_start|>` 325, `<|python_end|>` 326, `<|output_start|>` 327,
   `<|output_end|>` 328). The digits and `+ - * ? /` are their own byte IDs.
@@ -45,10 +45,10 @@ one model request plus the tool call its reply ends with, if any. The
 transcript is one token array, `ids`. The prompt fills `ids[0..<prompt]`;
 each reply and each tool output is appended after it. Step `k`'s request is
 exactly `ids[0..<steps[k].seen]`: the model never sees anything the
-transcript does not hold, and later steps only append. Chapters 201 and 202
+transcript does not hold, and later steps only append. Chapters2 and 3
 build on that property.
 
-A reply ends in one of four ways, the same ways chapter 126's engine ends
+A reply ends in one of four ways, the same ways Psionic chapter 126's engine ends
 one: `<|assistant_end|>` (an answer; the stop token is not kept),
 `<|python_end|>` closing a call (a tool call), `<|bos|>` (not kept), or the
 draw limit. The loop turns those, and its own budgets, into exactly one
@@ -132,7 +132,7 @@ The call parses as `37 + 48 = 85`, and the loop appends
 **Step 2.** `at = 27`, 13 drawn, clock 38. Left: 4 tokens,
 `68 - 38 - 27 + 1 = 4` ticks, 21 positions; the limit is 4. The reply draws
 `1 7 0<|assistant_end|>`, 4 draws, and keeps 3: a stop token drawn at the
-limit still ends the reply, as chapter 53's sampler rules. It reads
+limit still ends the reply, as Psionic chapter 53's sampler rules. It reads
 `27 + 4 - 1 = 30` positions, so the clock reaches 68, exactly the
 deadline.
 
@@ -202,8 +202,8 @@ hl_tool :: (table:[]u8,base:int,reply:[]int,out:[]int)->HlTool {
 ## The model behind the loop
 
 Coax has no function values, so the model is a small record: either
-chapter 126's engine over a configuration and weights, or a script. The
-scripted model feeds each token through chapter 126's own `ne_after`, so it
+Psionic chapter 126's engine over a configuration and weights, or a script. The
+scripted model feeds each token through Psionic chapter 126's own `ne_after`, so it
 stops, keeps tokens and counts positions exactly as the engine would. The
 checks hold this to the engine's behavior directly: a 45-token prompt in a
 48-token window stops as `context` after four tokens, as `ne_generate`
@@ -232,7 +232,7 @@ hl_reply :: (m:HlModel,k:int,prompt:[]int,seed:u64,limit:int,out:[]int)->NeReply
 
 ## The loop
 
-Each request draws with its own seed, `cr_bits(seed, k)` from chapter 103's
+Each request draws with its own seed, `cr_bits(seed, k)` from Psionic chapter 103's
 counter generator, so a turn's seed names its whole transcript. Before each
 request the loop checks the cancel, the step count and the limits. After a
 reply it records the step, then decides: an answer stops, a limit stops
@@ -315,10 +315,10 @@ hl_replay :: (m:HlModel,seed:u64,prompt:int,ids:[]int,t:HlTurn,steps:[]HlStep,sc
 
 ## Run it
 
-The example, [harness-loop.coax](../examples/harness-loop.coax), runs the
+The example, [harness-loop.coax](../../psionic/examples/harness-loop.coax), runs the
 hand trace, each budget at its limit and one past it,
-cancellation at each boundary, and then chapter 126's engine in the loop.
-The engine's weights are chapter 136's programmed bigram model: every block
+cancellation at each boundary, and then Psionic chapter 126's engine in the loop.
+The engine's weights are Psionic chapter 136's programmed bigram model: every block
 passes its input through, and seven token pairs make the model call `1+2`
 after `<|assistant_start|>` and answer `3` after `<|output_end|>`. Greedy
 decoding gives that exchange; sampling at temperature 5 from the two
@@ -422,7 +422,7 @@ a reply cap of 0: stop shape, steps 0, transcript 5 tokens, drawn 0, clock 0, to
 4 step records for a 5-step budget: stop shape, steps 0, transcript 5 tokens, drawn 0, clock 0, tool calls 0
 ```
 
-The [transcript](../fixtures/harness-loop.out) is exact for the named build
+The [transcript](../../psionic/fixtures/harness-loop.out) is exact for the named build
 in debug and release, and its hand-trace lines match the worked numbers
 above. With greedy decoding the engine's first request sees the 15-token
 prompt, draws the 5-token call, reads 19 positions, gets 3 back between the
@@ -435,7 +435,7 @@ appended (`tool value 0, appended 0`); a reply that draws `<|bos|>` is
 invalid budget, a zero reply cap, or too few step records is refused as
 `shape` before any request.
 
-The tuned model from chapter 136's short run is not used here: it makes no
+The tuned model from Psionic chapter 136's short run is not used here: it makes no
 exact calls on held-out questions, so a run with it would show only the
 `length` stop. The programmed weights make every step's outcome known in
 advance while the engine still does the real forward pass.
@@ -458,30 +458,30 @@ advance while the engine still does the real forward pass.
   replies of five kinds (answer, valid call, refused call, a ramble past any
   limit, `<|bos|>`), under 400 random budgets, are run through `hl_run` and
   through `ho_loop` in
-  [harness-loop-oracle.coax](../tests/harness-loop-oracle.coax).
+  [harness-loop-oracle.coax](../../psionic/tests/harness-loop-oracle.coax).
   The oracle reasons only about each reply's kind and length, never its
   tokens, and must agree on the stop, steps, transcript length, drawn
   tokens, clock and tool calls; each run must also replay.
-- **The engine:** greedy and sampled runs of chapter 126's engine, with
+- **The engine:** greedy and sampled runs of Psionic chapter 126's engine, with
   their exact stops and lengths, and replay from each seed.
 
 Mutation of `harness/loop.coax` leaves no survivors.
 
 ## What remains
 
-- A model served through chapter 20's API, chapter 22's live service and
-  chapter 79's Responses server, and a run against a pinned resident model
+- A model served through Psionic chapter 20's API, Psionic chapter 22's live service and
+  Psionic chapter 79's Responses server, and a run against a pinned resident model
   such as gpt-oss-20b with its identity and build recorded. Here the model
   is called in process.
 - A deadline on the wall clock. The logical clock makes every boundary
-  exact; a served model needs chapter 28's tickets, deadlines and fencing of
+  exact; a served model needs Psionic chapter 28's tickets, deadlines and fencing of
   late responses.
 - Cancellation that stops a model stream mid-reply and every running tool
   together. Here a cancel takes effect only at a step boundary.
-- More than one tool, typed schemas and constrained arguments (chapter 203),
-  a durable session log (chapter 201) and a sandbox (chapter 204).
+- More than one tool, typed schemas and constrained arguments (chapter4),
+  a durable session log (chapter2) and a sandbox (chapter5).
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).

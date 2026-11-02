@@ -62,12 +62,17 @@ def problems(root):
 # target with no recorded run is not listed) and `adopted_by` (files outside
 # the book that use the chapter's code today). `psionic/tests/book.py` runs
 # the same checks for Psionic, Aethyr and Nostr.
-BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "aethyr/book", "nostr": "nostr/book"}
-STATUSES = ("implemented", "partly implemented", "design draft", "planned")
+BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "aethyr/book", "nostr": "nostr/book",
+         "coder": "coder/book"}
+# A moved chapter keeps its number so the numbering stays 1..N; its title names
+# where it went and it has no file here.
+STATUSES = ("implemented", "partly implemented", "design draft", "planned", "moved")
 TARGETS = ("cpu", "cuda", "metal", "wasm")
 DRAFT = "> **Status: unimplemented — design draft.**"
 PARTLY = "> **Status: partly implemented.**"
 PLANNED = "> Note: This feature is planned and not available in `coax0`."
+# Books other than Coax mark a planned chapter with this line instead.
+PLANNED_OTHER = "> **Status: planned.**"
 SUMMARY_LABEL = {"design draft": " — design draft", "partly implemented": " — partly implemented",
                  "planned": " — planned"}
 
@@ -172,8 +177,10 @@ def registry_problems(book, root=REPO):
         if not isinstance(c["title"], str) or not c["title"].strip():
             errors.append(f"{label}: missing title")
         if name is None:
-            if status != "planned":
-                errors.append(f"{label}: only a planned chapter may have no file")
+            if status not in ("planned", "moved"):
+                errors.append(f"{label}: only a planned or moved chapter may have no file")
+        elif status == "moved":
+            errors.append(f"{label}: a moved chapter has no file in this book")
         elif not (directory / name).is_file():
             errors.append(f"{label}: missing file {name}")
         else:
@@ -185,7 +192,7 @@ def registry_problems(book, root=REPO):
             if isinstance(dep, int):
                 if dep == n or dep not in numbers:
                     errors.append(f"{label}: unknown dependency {dep}")
-            elif not (isinstance(dep, str) and re.fullmatch(r"(coax|psionic|aethyr|nostr):\d+", dep)
+            elif not (isinstance(dep, str) and re.fullmatch(r"(coax|psionic|aethyr|nostr|coder):\d+", dep)
                       and dep.split(":")[0] != book and int(dep.split(":")[1]) in others[dep.split(":")[0]]):
                 errors.append(f"{label}: unknown dependency {dep!r} (use N or book:N)")
         for field in ("source", "adopted_by"):
@@ -211,7 +218,8 @@ def registry_problems(book, root=REPO):
         if not heading or int(heading.group(1)) != c["number"] or heading.group(2) != c["title"]:
             errors.append(f"{name}: heading must be '# {c['number']}. {c['title']}' from the registry")
         third = lines[2] if len(lines) > 2 else ""
-        want = {"design draft": DRAFT, "partly implemented": PARTLY, "planned": PLANNED}.get(c["status"])
+        want = {"design draft": DRAFT, "partly implemented": PARTLY,
+                "planned": PLANNED if book == "coax" else PLANNED_OTHER}.get(c["status"])
         if want and not third.startswith(want):
             errors.append(f"{name}: registry status is {c['status']}; line 3 must start with {want}")
         # A chapter may quote another status's marker in its prose or code; only its opening block counts.

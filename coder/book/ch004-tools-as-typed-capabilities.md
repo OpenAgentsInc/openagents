@@ -1,20 +1,20 @@
-# 203. Tools as typed capabilities
+# 4. Tools as typed capabilities
 
 > **Status: partly implemented.** Tools run on the CPU as typed
 > capabilities: each one declares a name, typed arguments, a typed result,
 > an effect class and a cost. A grant for the turn names the tools, a call
 > budget for each, a cost budget and an effect ceiling. The declarations
-> compile to chapter 53's byte automaton, so masked sampling cannot produce
+> compile to Psionic chapter 53's byte automaton, so masked sampling cannot produce
 > an ungranted tool or arguments of the wrong type. Every call goes through
 > before, run and after stages, and every refusal is a typed error that
 > names the reason, the tool, the field and the byte. Still to come:
 > declarations as versioned messages in `proto/`; filesystem and process
 > tools (the shared world here is three light switches); these calls
-> inside chapter 200's token loop on chapter 126's engine (the turns here
+> inside chapter1's token loop on Psionic chapter 126's engine (the turns here
 > come from a stand-in model and contain only calls); and logging each
-> event through chapter 201.
+> event through chapter2.
 
-Chapter 200's loop has one tool, the calculator, and its grammar is written
+Chapter1's loop has one tool, the calculator, and its grammar is written
 into the loop. A harness needs more than one tool, and it needs to answer
 three questions about each call before anything runs. Is the model allowed
 to call this tool in this turn? Are the arguments the right types? Can the
@@ -23,13 +23,13 @@ instead of a name. The declaration answers the second question. A grant
 answers the first and third.
 
 The declaration also controls generation. Every declaration compiles to a
-byte automaton, and chapter 53's mask lets the model draw only pieces that
+byte automaton, and Psionic chapter 53's mask lets the model draw only pieces that
 keep the call parseable. The harness still checks every call before it
 runs, because calls can also come from places the mask does not cover,
 such as a client or a script.
 
 Everything is in one `#authority` file,
-[harness/tools.coax](../lib/harness/tools.coax), because it decides what
+[harness/tools.coax](../../psionic/lib/harness/tools.coax), because it decides what
 runs. Its checks leave no mutant alive.
 
 ## The profile
@@ -150,7 +150,7 @@ them, and the count refuses the grammar as `capacity`. The checks build
 of each.
 
 The table stores state `k` as `26 - k`. Every edge then points to a lower
-state. Chapter 53's liveness sweep runs upward, so it finishes in one pass
+state. Psionic chapter 53's liveness sweep runs upward, so it finishes in one pass
 instead of one pass per state. The start is therefore state 26 in the
 table and the accepting state is 0.
 
@@ -390,7 +390,7 @@ ht_render :: (tools:[]HtTool,e:HtEvent,out:[]u8)->int {
 
 Before each request, `ht_turn` offers only the granted tools whose call
 budget and cost budget can still pay for them. It compiles their calls into
-the mask and samples a call one piece at a time with chapter 53's
+the mask and samples a call one piece at a time with Psionic chapter 53's
 `nx_guided`. Then the call goes through `ht_call`, the same path as any
 other call. A tool whose budget is spent is no longer offered. When no
 tool is offered, the turn stops as `spent`. When the step budget is
@@ -443,7 +443,7 @@ ht_turn :: (tools:[]HtTool,g:HtGrant,m:HtModel,seed:u64,steps:int,world:[]int,w:
   so two names share a prefix. Each tool has up to two fields of a one-digit
   integer, a boolean, or a choice among words such as `a`, `ab` and `abc`,
   which are prefixes of each other. A separate file,
-  [harness-tools-oracle.coax](../tests/harness-tools-oracle.coax), writes
+  [harness-tools-oracle.coax](../../psionic/tests/harness-tools-oracle.coax), writes
   out every call the schemas allow, up to 200 per registry. Each of them
   must be accepted. The oracle also checks that every edge of the compiled
   table points to a lower state, then counts the accepted strings path by
@@ -462,7 +462,7 @@ ht_turn :: (tools:[]HtTool,g:HtGrant,m:HtModel,seed:u64,steps:int,world:[]int,w:
 
 ## Run it
 
-The example, [tool-capabilities.coax](../examples/tool-capabilities.coax),
+The example, [tool-capabilities.coax](../../psionic/examples/tool-capabilities.coax),
 prints the registry and `get`'s grammar, and refuses a read-only grant that
 names `set`. It prints what the mask offers at four points, runs the
 refusal table through the full pipeline with the usage after each call,
@@ -568,11 +568,11 @@ before it reached 12 steps. The last line limits a call to 3 pieces, so
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
-- [Chapter 53](ch053-choosing-the-next-token.md): the automaton, the mask
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
+- [Psionic chapter 53](../../psionic/book/ch053-choosing-the-next-token.md): the automaton, the mask
   and guided sampling.
-- [Chapter 77](ch077-call-a-tool.md): granted tools and a finite schema on
+- [Psionic chapter 77](../../psionic/book/ch077-call-a-tool.md): granted tools and a finite schema on
   gpt-oss.
-- [Chapter 200](ch200-the-simplest-loop.md): the loop these calls will
+- [Chapter1](ch001-the-simplest-loop.md): the loop these calls will
   run inside.

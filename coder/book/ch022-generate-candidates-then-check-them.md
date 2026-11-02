@@ -1,4 +1,4 @@
-# 212. Generate candidates, then check them
+# 22. Generate candidates, then check them
 
 > **Status: partly implemented.** Best-of-N selection with exact checks,
 > budgets, pass@k and Wilson intervals runs on a simulated sampler. Real
@@ -17,10 +17,10 @@ setting:
 
 The pieces are:
 - **a seeded sampler** that draws candidates for
-  [chapter 242](ch242-environments-with-checkers.md)'s tasks, each candidate
+  [Psionic chapter 242](../../psionic/book/ch242-environments-with-checkers.md)'s tasks, each candidate
   fixed by its seed, task and number;
 - **checks with a cost:** a length screen, a weaker visible check, and
-  chapter 242's exact checker;
+  Psionic chapter 242's exact checker;
 - **a selection** that checks candidates cheapest first, stops at the first
   one that passes, never spends past its budget, and never chooses a
   candidate the check did not pass;
@@ -38,16 +38,16 @@ coax/bin/coax test psionic/tests/candidates-checks.coax
 ## The profile
 
 `cpu-int-candidates-v1`:
-- chapter 242's task-sim-v1 tasks: sort, remove repeats, or running sums
+- Psionic chapter 242's task-sim-v1 tasks: sort, remove repeats, or running sums
   over 4 to 16 values from 0 to 9;
-- up to 8 candidates per task, from sampler-sim-v1 on chapter 242's
+- up to 8 candidates per task, from sampler-sim-v1 on Psionic chapter 242's
   agent-sim-v1;
 - check costs in units: 1 for the length screen, 1 plus half the input
   (rounded up) for the visible check, and 1 plus the input for the exact
   check;
 - binary64 for pass@k and for Wilson intervals at z = 1.96;
 - run digests under the tag `psionic.candidates.v1`, in
-  [chapter 239](ch239-a-suite-is-three-digests.md)'s encoding.
+  [Psionic chapter 239](../../psionic/book/ch239-a-suite-is-three-digests.md)'s encoding.
 
 ## A sampler with seeds
 
@@ -66,7 +66,7 @@ cd_sample :: (s:CdSampler,t:EnTask,r:int,i:int)->EnWork {
 The sampler is a stand-in for a model. It gives each task its own chance
 that one candidate is right, from 0 up to twice the sampler's skill, so some
 tasks are nearly hopeless and others easy. A wrong candidate is one of
-chapter 242's three mistakes: one value bumped by one, the last value
+Psionic chapter 242's three mistakes: one value bumped by one, the last value
 dropped, or the input handed back unchanged.
 
 Candidate i of task r depends on nothing but the seed, r and i. Two things
@@ -99,16 +99,16 @@ cd_passes :: (check:CdCheck,t:EnTask,w:EnWork)->bool {
 ```
 
 There are three checks, each with a cost:
-- **length:** chapter 242's `length_only` checker. It reads one number, so
+- **length:** Psionic chapter 242's `length_only` checker. It reads one number, so
   it costs 1 unit. It cannot accept a right answer by itself: a candidate
   that passes it may still be wrong.
 - **visible:** the length and the first half of the answer. This stands for
   the tests a repair step is allowed to see. It costs 1 plus half the input.
-- **exact:** chapter 242's exact checker, which compares every value with
+- **exact:** Psionic chapter 242's exact checker, which compares every value with
   the reference solution. It costs 1 plus the input, and it is the check
   that scores every strategy here.
 
-Chapter 242 would refuse the visible check as an environment's checker: a
+Psionic chapter 242 would refuse the visible check as an environment's checker: a
 near miss that changes the last value passes it. Here it is used on purpose,
 to measure what selecting with a weaker check than the score costs.
 
@@ -142,7 +142,7 @@ cd_select :: (t:EnTask,c:[]EnWork,check:CdCheck,budget:int)->CdPick #export_c {
 The selection takes the candidates in order. Before the selection check runs
 on a candidate, the length screen runs first, for 1 unit. A candidate of the
 wrong length is dropped without paying for the larger check. This is
-[chapter 244](ch244-search-a-policy-cheapest-first.md)'s idea in its smallest
+[Psionic chapter 244](../../psionic/book/ch244-search-a-policy-cheapest-first.md)'s idea in its smallest
 form: measure everything cheaply, and spend fully only on what survives.
 
 The first candidate that passes is chosen, so ties always go to the lower
@@ -156,7 +156,7 @@ anything.
 ### By hand: the first held-out task
 
 The held-out set is 60 tasks drawn from seed 212, a different seed from
-chapter 242's. Its first task is sort [6 8 0 5 0], with answer [0 0 5 6 8].
+Psionic chapter 242's. Its first task is sort [6 8 0 5 0], with answer [0 0 5 6 8].
 The sampler is seed 2120 with skill 0.3. Its eight candidates are:
 
 | Candidate | Work | Length | Visible | Exact |
@@ -342,7 +342,7 @@ them. "Chosen right" and "chosen wrong" ask it about the chosen candidate.
 
 The chapter tunes nothing on the held-out set; it only measures it. Every
 number below is frozen in
-[candidates-checks.coax](../tests/candidates-checks.coax). A change to the
+[candidates-checks.coax](../../psionic/tests/candidates-checks.coax). A change to the
 sampler, the checks or the selection that moves any of them fails there.
 
 What the run shows:
@@ -370,7 +370,7 @@ What the run shows:
 
 ## Run it
 
-The [example](../examples/candidates.coax) works the hand checks first,
+The [example](../../psionic/examples/candidates.coax) works the hand checks first,
 then the first held-out task: its candidates, the three selections and three
 refusals (no checker, a sampler with skill 0.6, and pass@9 from 8 samples).
 Then it runs every strategy on the held-out set and replays every best-of-8
@@ -449,12 +449,12 @@ replay: 60 of 60 best-of-8 runs replay from their seeds; the first claimed with 
 ```
 
 The example takes about four seconds, most of it checking the units it
-loads. It loads only chapter 242's `env.coax` and its own unit; the heavier
+loads. It loads only Psionic chapter 242's `env.coax` and its own unit; the heavier
 held-out checks live in a separate file it does not load.
 
 ## How it is checked
 
-- **Coax checks** in [candidates.coax](../lib/harness/candidates.coax),
+- **Coax checks** in [candidates.coax](../../psionic/lib/harness/candidates.coax),
   in debug and release, 125 counting the units it loads:
   - the sampler's chance and the first task's eight candidates;
   - each check and cost by hand, with odd and even answers;
@@ -477,10 +477,10 @@ held-out checks live in a separate file it does not load.
     three strategies' tallies, and the mean pass@k by hand: 15/48, 82/168,
     284/420 and 5/6.
 - **Held-out checks** in
-  [candidates-checks.coax](../tests/candidates-checks.coax): the six
+  [candidates-checks.coax](../../psionic/tests/candidates-checks.coax): the six
   strategies and pass@k on all 60 held-out tasks, a replay of every best-of-8
   run, and Wilson intervals for every k ≤ n ≤ 40, equal bit for bit to
-  [chapter 246](ch246-judges-are-components.md)'s `jg_wilson`, which was
+  [Psionic chapter 246](../../psionic/book/ch246-judges-are-components.md)'s `jg_wilson`, which was
   written for a different chapter.
 - **Mutation testing** of `candidates.coax` kills all 308 mutants. The
   first run left 4 survivors, fixed in the checks:
@@ -495,11 +495,11 @@ held-out checks live in a separate file it does not load.
 ## What remains
 
 - **A real model.** The sampler is simulated. Drawing candidates from a
-  model through [chapter 200](ch200-the-simplest-loop.md)'s loop, with real
+  model through [chapter1](ch001-the-simplest-loop.md)'s loop, with real
   token counts, remains.
 - **Running candidates.** The tasks' answers are data checked by a pure
   function. Candidates that are programs, compiled and run in
-  [chapter 204](ch204-a-sandbox-and-approvals.md)'s sandbox, with
+  [chapter5](ch005-a-sandbox-and-approvals.md)'s sandbox, with
   compilation recorded apart from correctness, remain.
 - **The repair strategy.** Generate, run the visible tests, read the
   failures and repair needs a model that reads its failures. The selection
@@ -508,16 +508,16 @@ held-out checks live in a separate file it does not load.
 - **A learned verifier**, added only once its labels are trustworthy.
 - **Wall-clock time and execution cost.** Cost here is check units and
   answer values, not seconds or money.
-- **Chapter 241's gate.** The comparison with one candidate uses whether
-  Wilson intervals overlap, not chapter 241's verdicts with a noise floor.
+- **Psionic chapter 241's gate.** The comparison with one candidate uses whether
+  Wilson intervals overlap, not Psionic chapter 241's verdicts with a noise floor.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
-- [Chapter 242](ch242-environments-with-checkers.md): the tasks, the
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
+- [Psionic chapter 242](../../psionic/book/ch242-environments-with-checkers.md): the tasks, the
   exact checker and the simulated agent.
-- [Chapter 244](ch244-search-a-policy-cheapest-first.md): measuring
+- [Psionic chapter 244](../../psionic/book/ch244-search-a-policy-cheapest-first.md): measuring
   cheaply first.
 - Chen et al., *Evaluating Large Language Models Trained on Code* (2021):
   the unbiased pass@k estimator.

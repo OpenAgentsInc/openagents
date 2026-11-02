@@ -1,14 +1,14 @@
-# 251. One agent, many tasks
+# 17. One agent, many tasks
 
 > **Status: unimplemented — design draft.** Nothing here runs yet.
 
-Chapters 200–214 build one session well. A person can follow only three to
+Chapters1–19 build one session well. A person can follow only three to
 five active sessions at once, so past that point the limit is their attention,
 not the model. This chapter turns the harness into one continuous agent that
 takes work from chat rooms, issues, pull requests and CI, runs many tasks at
 once, and acts on events without waiting to be asked. The design follows the
 DeepSeek Harness team's Super-agent article
-([notes](../docs/harness.md#one-agent-across-many-tasks)).
+([notes](../../psionic/docs/harness.md#one-agent-across-many-tasks)).
 
 The person never picks a session. Sessions become an implementation detail of
 the harness, and the agent they talk to is the same agent in every channel.
@@ -21,8 +21,8 @@ the harness, and the agent they talk to is the same agent in every channel.
     shell or file tools and does not execute tasks, so it stays fast. A
     smaller model can serve it.
   - Each Worker owns one task, has an isolated context and the full tool grant
-    of chapters 203 and 204, and never talks to people. It reports status and
-    conclusions to the Router. A Worker can use chapter 208's subagents
+    of chapters4 and 5, and never talks to people. It reports status and
+    conclusions to the Router. A Worker can use chapter14's subagents
     internally; the Router does not see them.
 - **Triggers.** The agent's input is events from its environment: chat
   messages, issue and review comments, CI results, calendar items and mail.
@@ -51,7 +51,7 @@ the harness, and the agent they talk to is the same agent in every channel.
   and enter the next request together. The Router's steps have long inputs
   and short outputs, so prefill computes the batch in parallel and the time
   per decision falls as the queue grows, up to the context and accuracy
-  limit. Chapter 202's stable prefix keeps those long inputs cached.
+  limit. Chapter3's stable prefix keeps those long inputs cached.
 - **Inline and spill.** The context window is a cache:
   - Start an injected object with its ID and a short summary.
   - Inline what the model is likely to need next by locality: IDs of related
@@ -62,7 +62,7 @@ the harness, and the agent they talk to is the same agent in every channel.
 - **Chain of recall.** Triggers, Threads, Workers and tasks all have IDs, and
   every injected or recalled object inlines the IDs and summaries of the
   objects next to it. The Router recovers an old task's context by following
-  references hop by hop through the reference graph, from chapter 201's log,
+  references hop by hop through the reference graph, from chapter2's log,
   instead of keeping every task in its window.
 - **Acting ahead.** A policy can start a Worker before anyone asks: reproduce
   a reported bug, check a proposed change, draft a reply to an invitation. The
@@ -72,14 +72,14 @@ the harness, and the agent they talk to is the same agent in every channel.
 
 ## Dependencies
 
-- [Chapter 200](ch200-the-simplest-loop.md) and [Chapter 201](ch201-model-visible-means-logged.md): the loop each session runs, and the log that every object ID points into.
-- [Chapter 202](ch202-keep-the-prefix-stable.md): the Router's long, stable prefix.
-- [Chapter 203](ch203-tools-as-typed-capabilities.md) and [Chapter 204](ch204-a-sandbox-and-approvals.md): Worker tool grants; the Router has none that execute.
-- [Chapter 205](ch205-a-document-tries-to-become-the-system-prompt.md): Triggers are untrusted input.
-- [Chapter 208](ch208-forks-subagents-and-jobs.md): subagents and jobs inside a Worker.
-- [Chapter 210](ch210-speak-the-protocols.md): System One decisions for the slow-path filter.
-- [Chapter 211](ch211-measure-the-harness.md): the measurements below.
-- [Chapter 252](ch252-an-agent-that-stays-online.md): the asynchronous loop and channel rules the Router uses.
+- [Chapter1](ch001-the-simplest-loop.md) and [Chapter2](ch002-model-visible-means-logged.md): the loop each session runs, and the log that every object ID points into.
+- [Chapter3](ch003-keep-the-prefix-stable.md): the Router's long, stable prefix.
+- [Chapter4](ch004-tools-as-typed-capabilities.md) and [Chapter5](ch005-a-sandbox-and-approvals.md): Worker tool grants; the Router has none that execute.
+- [Chapter6](ch006-a-document-tries-to-become-the-system-prompt.md): Triggers are untrusted input.
+- [Chapter14](ch014-forks-subagents-and-jobs.md): subagents and jobs inside a Worker.
+- [Chapter16](ch016-speak-the-protocols.md): System One decisions for the slow-path filter.
+- [Chapter21](ch021-measure-the-harness.md): the measurements below.
+- [Chapter20](ch020-an-agent-that-stays-online.md): the asynchronous loop and channel rules the Router uses.
 
 ## Done means
 
@@ -95,7 +95,7 @@ the harness, and the agent they talk to is the same agent in every channel.
   Each run reports task completion time at P50 and P95 (request to result
   message), cache-read tokens across all sessions and Router decisions. The
   chapter records whether design 1 beats designs 3 and 4 on P95 and whether
-  pass-through cuts Router decisions and tokens, with chapter 240's noise
+  pass-through cuts Router decisions and tokens, with Psionic chapter 240's noise
   floor. The DeepSeek team's indicative result was 12.4 and 15.7 minutes
   against 13.8 and 29.0 minutes, with pass-through cutting Router
   cache-read tokens by about 37%; Psionic records its own numbers.
@@ -115,13 +115,13 @@ the harness, and the agent they talk to is the same agent in every channel.
   confirmed.
 - A Worker never writes to a channel directly, checked against the captured
   outbound sink.
-- Each mechanism passes chapter 211 against the simpler design on tasks it was
+- Each mechanism passes chapter21 against the simpler design on tasks it was
   not built from, or it is removed.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
 - DeepSeek Harness team, "Exploring Super-agent Design: Towards a More
   Autonomous Agent System" (Yujia Qiao et al.), and its
   `dsh-superagent-prototype` plugin.

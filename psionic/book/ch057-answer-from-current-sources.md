@@ -4,7 +4,7 @@
 > abstention, the freshness check on every citation, and a held-out
 > measurement run on the CPU over chapter 54's books. Generated answers,
 > answers that state a feature's status or a target's evidence, and
-> chapter 205's prompt-injection attacks are not built yet.
+> [Coder chapter 6](../../coder/book/ch006-a-document-tries-to-become-the-system-prompt.md)'s prompt-injection attacks are not built yet.
 
 This chapter builds a documentation assistant over the Coax, Psionic and
 Aethyr books. It takes a question, retrieves passages with
@@ -614,12 +614,12 @@ runs both examples in both builds against their recorded output, mutates
 - **One revision at a time.** The store holds only the current revision of
   each passage, so a stale answer is refused rather than compared with the
   old revision. Answers that name both revisions are not built.
-- **Chapter 205's attacks** have not been run against this assistant.
+- **Coder chapter 6's attacks** have not been run against this assistant.
 - **The sentence choice is weak**, as measured above.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part VI and Part XXI (chapter 205).
+- [Chapter plan](PLAN.md), Part VI; [Coder chapter 6](../../coder/book/ch006-a-document-tries-to-become-the-system-prompt.md).
 - S. Robertson and H. Zaragoza, "The Probabilistic Relevance Framework:
   BM25 and Beyond", Foundations and Trends in Information Retrieval, 2009
   (the IDF used as word weights).

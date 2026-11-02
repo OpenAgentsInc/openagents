@@ -1,4 +1,4 @@
-# 201. Model-visible means logged
+# 2. Model-visible means logged
 
 > **Status: partly implemented.** A session log runs on the CPU over chapter
 > 200's loop: an append-only, SHA-256 hash-chained list of typed events, in
@@ -6,12 +6,12 @@
 > and the request is read from the log's own token store. A verifier
 > rebuilds every turn and step from the events and refuses a log or a
 > request they do not explain, redaction keeps the chain, and a rebuilt turn
-> replays through chapter 200's `hl_replay`. Still to come: the event
+> replays through chapter1's `hl_replay`. Still to come: the event
 > schemas in `proto/`, a byte format on disk with readers kept for older
 > versions, recovery of a log cut at any byte offset, and a write that is
 > durable before its effect is reported.
 
-The model sees only what the harness sends it. Chapter 200's loop already
+The model sees only what the harness sends it. Chapter1's loop already
 keeps that small: step `k`'s request is a prefix of one token array. This
 chapter makes the array itself a record. The harness writes an append-only
 log of events, each event's tokens are the only way anything enters the
@@ -20,7 +20,7 @@ holds a token the log does not, and every request can be rebuilt from the
 log and checked.
 
 Everything here lives in one `#authority` file,
-[harness/log.coax](../lib/harness/log.coax), because the log decides what
+[harness/log.coax](../../psionic/lib/harness/log.coax), because the log decides what
 a model may be sent. Its checks leave no mutant alive.
 
 ## The profile
@@ -29,11 +29,11 @@ This chapter's profile is `sha256-harness-log-v1`:
 
 - One log in process, in caller-owned storage: an array of events and an
   array of tokens. Nothing is written to disk.
-- SHA-256 from `coax/lib/crypto`, over chapter 239's encoding: integers as
+- SHA-256 from `coax/lib/crypto`, over Psionic chapter 239's encoding: integers as
   little-endian 64-bit words (two's complement for negative numbers), text
   as its length then its bytes.
-- Tokens, the model and the tool are chapter 200's: the scripted model or
-  chapter 126's engine, and the calculator.
+- Tokens, the model and the tool are chapter1's: the scripted model or
+  Psionic chapter 126's engine, and the calculator.
 
 ## Events
 
@@ -53,7 +53,7 @@ and nothing else.
 
 `system`, `user` and `context` are text for the model. `context` is text the
 harness injects, such as a retrieved document; it is logged like any other
-text. The other kinds are one turn of chapter 200's loop: the budget, each
+text. The other kinds are one turn of chapter1's loop: the budget, each
 request's place and seed, each reply and tool output, and the turn's
 `HlTurn`.
 
@@ -128,7 +128,7 @@ lg_say :: (l:[]LgLog,kind:LgKind,text:[]int)->LgStatus {
 }
 ```
 
-`lg_run` is chapter 200's turn with the log as its transcript. Its prompt
+`lg_run` is chapter1's turn with the log as its transcript. Its prompt
 is every token logged so far. Before each request it logs a `request`
 event, then sends exactly `tokens[0..<used]`. The model draws into the
 store past `used`, where nothing is visible: the reply becomes part of
@@ -189,12 +189,12 @@ lg_loop :: (m:HlModel,b:HlBudget,seed:u64,l:[]LgLog,prompt:int)->HlTurn {
 }
 ```
 
-The loop's control flow is chapter 200's, line for line, so the checks
+The loop's control flow is chapter1's, line for line, so the checks
 compare it with `hl_run` on every run rather than trust the copy.
 
 ## A log by hand
 
-Chapter 200's hand trace becomes eleven events: the prompt as one `user`
+Chapter1's hand trace becomes eleven events: the prompt as one `user`
 event, then the turn at seed 7 with the budget `steps 3, tokens 17,
 deadline 68, reply 8, tool 3`, no cancel (`-1`).
 
@@ -214,14 +214,14 @@ deadline 68, reply 8, tool 3`, no cancel (`-1`).
 
 Each number can be rebuilt from the events before it. A request's `seen` is
 the count of tokens logged before it: `5`, then `5 + 7 + 4 = 16`, then
-`16 + 6 + 5 = 27`. Its seed is chapter 53's counter word `cr_bits(7, k)`.
-Each reply's draws follow chapter 200's rule: the tokens kept, plus one when
+`16 + 6 + 5 = 27`. Its seed is Psionic chapter 53's counter word `cr_bits(7, k)`.
+Each reply's draws follow chapter1's rule: the tokens kept, plus one when
 the reply ended on `<|assistant_end|>` or `<|bos|>`, so `7`, `6` and
 `3 + 1 = 4`. The stop's fields are sums over the steps: 3 replies; the
 transcript ends at `27 + 3 = 30`; the last reply started at 27; draws
 `7 + 6 + 4 = 17`; the clock is the positions read plus 3 ticks a tool
 call, `11 + 3 + 21 + 3 + 30 = 68`; and 2 tool calls. These are exactly
-chapter 200's hand-traced numbers.
+chapter1's hand-traced numbers.
 
 Event 0's content digest hashes 86 bytes: the 8-byte length 30, the 30
 bytes of `psionic.harness.log.content.v1`, the count 5, and the five tokens
@@ -229,7 +229,7 @@ bytes of `psionic.harness.log.content.v1`, the count 5, and the five tokens
 bytes: 8 + 28 for the tag, 8 for sequence 0, 32 zero bytes, the kind byte 3,
 8 for the count, the 32-byte content digest, 8 for the seed and 56 for the
 seven fields. An independent reference,
-[harness_log_oracle.py](../tests/harness_log_oracle.py), writes the eleven
+[harness_log_oracle.py](../../psionic/tests/harness_log_oracle.py), writes the eleven
 events from the numbers above, without running any Coax, and hashes them
 with Python's `hashlib`:
 
@@ -360,7 +360,7 @@ and no new turn may be added until it is closed, and `lg_turn` reports it as
 ## Admitting a request
 
 `lg_admit` is the gate for a request built somewhere other than the log,
-such as chapter 202's prompt assembly. Given a `request` event and the
+such as chapter3's prompt assembly. Given a `request` event and the
 tokens that were, or would be, sent, it refuses unless the tokens are
 exactly the tokens of the events before it: the length must equal the
 request's `seen` (`view`), and each event's slice of the request must hash
@@ -431,7 +431,7 @@ lg_offset :: (g:LgLog,index:int)->int {at:=0;for e:g.events[0..<index] {at+=e.co
 
 `lg_replay` rebuilds a turn's `HlTurn` and `HlStep` records from the
 events and hands them, with the log's own tokens as the transcript, to
-chapter 200's `hl_replay`. Replay from the log is therefore chapter 200's
+chapter1's `hl_replay`. Replay from the log is therefore chapter1's
 replay: every reply is redrawn from its logged seed and must match token
 for token, and every tool output is recomputed.
 
@@ -450,10 +450,10 @@ lg_replay :: (m:HlModel,g:LgLog,start:int,steps:[]HlStep,scratch:[]int)->LgStatu
 
 ## Run it
 
-The example, [harness-log.coax](../examples/harness-log.coax), logs the
+The example, [harness-log.coax](../../psionic/examples/harness-log.coax), logs the
 hand trace and prints every event, verifies the log, admits each request,
 tampers with the log in eight ways, redacts the prompt, and runs a second
-turn on chapter 126's engine with chapter 136's programmed bigram weights
+turn on Psionic chapter 126's engine with Psionic chapter 136's programmed bigram weights
 on top of the first.
 
 <!-- source: psionic/examples/harness-log.coax example -->
@@ -543,7 +543,7 @@ engine turn: ok, stop answer, steps 2, transcript 43 tokens, events 12 to 18
 verify: ok; replay turn 1 on the script: ok, turn 2 on the engine: ok, turn 2 on the script: replay
 ```
 
-The [transcript](../fixtures/harness-log.out) is exact for the named build
+The [transcript](../../psionic/fixtures/harness-log.out) is exact for the named build
 in debug and release. The first eleven events and the head are the
 hand-worked values above. Each request admits the tokens it was sent;
 one more token is refused as `view`, and a changed last token as `content`
@@ -565,10 +565,10 @@ script.
 - **Hand-worked digests:** all eleven event digests of the hand trace, its
   content digests, the head, and the content digest of a 100-token event,
   against the values Python's `hashlib` gives in
-  [harness_log_oracle.py](../tests/harness_log_oracle.py), and the
+  [harness_log_oracle.py](../../psionic/tests/harness_log_oracle.py), and the
   transcript equal to `hl_run`'s.
-- **Chapter 200's boundaries, logged:** every budget and window case
-  chapter 200 checks at its limit and one past it, each cancel boundary and
+- **Chapter1's boundaries, logged:** every budget and window case
+  chapter1 checks at its limit and one past it, each cancel boundary and
   a free tool, run through `hl_run` and `lg_run`: the same turn, transcript
   and steps, rebuilt from the log, and replay.
 - **Tampering without rewriting the chain:** every one of the 30 tokens
@@ -577,7 +577,7 @@ script.
   number (`sequence`), a swap, a drop and an insert, and stores whose used
   length is one short or one long.
 - **Tampering with the chain rewritten** by the forger in
-  [harness-log-checks.coax](../tests/harness-log-checks.coax): injected
+  [harness-log-checks.coax](../../psionic/tests/harness-log-checks.coax): injected
   context before the turn (`view`, and a head equal to the Python
   reference's), text of each kind inside a turn, a dropped output, a second
   start, a stop outside a turn, a reply without its request, two requests
@@ -594,7 +594,7 @@ script.
   log, an open turn), text rules, exact room, a model refusal logged as a
   request with no reply, and a second turn whose prompt is the whole log.
 - **Every step's view is rebuilt from the log:** 200 random scripts and
-  budgets from chapter 200's brute-force oracle, with the prompt split into
+  budgets from chapter1's brute-force oracle, with the prompt split into
   one to three text events of random kinds, run through `hl_run` and
   `lg_run`. The turns must be equal, the token store must equal `hl_run`'s
   transcript, the steps rebuilt from the log must equal `hl_run`'s field
@@ -619,5 +619,5 @@ Mutation of `harness/log.coax` leaves no survivors.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).

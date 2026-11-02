@@ -1,4 +1,4 @@
-# 205. A document tries to become the system prompt
+# 6. A document tries to become the system prompt
 
 > **Status: partly implemented.** A prompt-injection lab run on the CPU
 > (profile ij-inject-v1): prompt sections typed by source and framed with
@@ -11,9 +11,9 @@
 > answers, sentinel leaks and task completion. Still to come: runs of a
 > pinned Psionic-served model on held-out attack variants, with grants,
 > seeds and acceptance bounds frozen before the comparison; the gate wired
-> into [chapter 200](ch200-the-simplest-loop.md)'s loop,
-> [chapter 204](ch204-a-sandbox-and-approvals.md)'s approvals and
-> [chapter 210](ch210-speak-the-protocols.md)'s remote calls; and attacks
+> into [chapter1](ch001-the-simplest-loop.md)'s loop,
+> [chapter5](ch005-a-sandbox-and-approvals.md)'s approvals and
+> [chapter16](ch016-speak-the-protocols.md)'s remote calls; and attacks
 > on the `book-search --answer-eval` tool itself rather than on its
 > answerer called directly.
 
@@ -49,13 +49,13 @@ The rules:
 - Every decision is logged before an effect touches a file or the outbound
   sink.
 
-The library is [harness/inject.coax](../lib/harness/inject.coax). It is
+The library is [harness/inject.coax](../../psionic/lib/harness/inject.coax). It is
 `#authority`: it decides which effects happen. It loads nothing but its
 checks. The lab, which includes the corpus, the stand-in agent and the
 measurements, is in
-[harness-inject-checks.coax](../tests/harness-inject-checks.coax). The lab
-uses chapter 57's extractive answerer
-([answer.coax](../lib/book-search/answer.coax)) and the base64 codec in
+[harness-inject-checks.coax](../../psionic/tests/harness-inject-checks.coax). The lab
+uses Psionic chapter 57's extractive answerer
+([answer.coax](../../psionic/lib/book-search/answer.coax)) and the base64 codec in
 `coax/lib/text`.
 
 ## Run it
@@ -574,7 +574,7 @@ by the reader: `triggered`, held. If the person approves it, it runs.
 
 ## The program
 
-[inject.coax](../examples/inject.coax) runs every case, prints each call
+[inject.coax](../../psionic/examples/inject.coax) runs every case, prints each call
 and the gate's decision, and measures the outcomes.
 
 ```text
@@ -663,7 +663,7 @@ summary (framed):
 
 Every line matches the trace. The book's example check runs the program in
 debug and release builds and compares both outputs with
-[inject.out](../fixtures/inject/inject.out), exit status 0.
+[inject.out](../../psionic/fixtures/inject/inject.out), exit status 0.
 
 ## What the attacks still change
 
@@ -694,7 +694,7 @@ fails in other ways, and this chapter has not measured one.
 
 ## Refusals
 
-[inject-refuse.coax](../examples/inject-refuse.coax) gives the reader
+[inject-refuse.coax](../../psionic/examples/inject-refuse.coax) gives the reader
 broken frames, gives the pool impossible values and gives the gate
 malformed calls.
 
@@ -762,13 +762,13 @@ None of the six malformed calls is logged. A permitted write that does not
 fit its file is refused as `capacity` and logs nothing. The same write,
 proposed with a document in view, is logged as `triggered`, because a call
 that will not run takes no room in the file. The output is
-[inject-refuse.out](../fixtures/inject/inject-refuse.out), exit status 0,
+[inject-refuse.out](../../psionic/fixtures/inject/inject-refuse.out), exit status 0,
 in both builds.
 
 ## Checks
 
 The checks are in
-[harness-inject-checks.coax](../tests/harness-inject-checks.coax), apart
+[harness-inject-checks.coax](../../psionic/tests/harness-inject-checks.coax), apart
 from the gate:
 
 - **Frames**: a document that carries both kinds of fake header round-trips
@@ -914,7 +914,7 @@ it_random :: (seed: int, tally: [] int) {
 ```
 
 The checks file runs 6 random graphs, 20 batches of 60 random calls and 40
-random sessions. [harness-inject-model.coax](../tests/harness-inject-model.coax)
+random sessions. [harness-inject-model.coax](../../psionic/tests/harness-inject-model.coax)
 runs 400 graphs, 1,000 batches of calls and 600 sessions;
 `psionic/check.sh` runs it beside the unit. `coax mutate` on `inject.coax`
 kills all 317 mutants, and none survive.
@@ -926,10 +926,10 @@ kills all 317 mutants, and none survive.
   held-out attack variants, with grants, seeds, model and build identities
   and acceptance bounds frozen first, are still to come. Until then, the
   measurements above describe this agent only.
-- **The gate is not in the harness yet.** Chapter 200's loop, chapter 203's
-  tools and chapter 204's approvals still decide calls on their own terms,
-  and chapter 210's remote results are not yet labelled `remote` on their
-  way in. Chapter 213's consent gate also labels data as it moves, and the
+- **The gate is not in the harness yet.** Chapter1's loop, chapter4's
+  tools and chapter5's approvals still decide calls on their own terms,
+  and chapter16's remote results are not yet labelled `remote` on their
+  way in. Chapter18's consent gate also labels data as it moves, and the
   two are not yet joined.
 - **Text is not gated.** An attack that changes the answer is reported, not
   stopped. A granted data flow carries whatever the answer became.
@@ -939,21 +939,21 @@ kills all 317 mutants, and none survive.
 
 ## Dependencies
 
-- [Chapter 57](ch057-answer-from-current-sources.md): the extractive
+- [Psionic chapter 57](../../psionic/book/ch057-answer-from-current-sources.md): the extractive
   answerer the attacks try to steer.
-- [Chapter 202](ch202-keep-the-prefix-stable.md): prompts as typed
+- [Chapter3](ch003-keep-the-prefix-stable.md): prompts as typed
   sections in a fixed order.
-- [Chapter 203](ch203-tools-as-typed-capabilities.md): tools granted per
+- [Chapter4](ch004-tools-as-typed-capabilities.md): tools granted per
   turn and refused before anything runs.
-- [Chapter 204](ch204-a-sandbox-and-approvals.md): a call between what runs
+- [Chapter5](ch005-a-sandbox-and-approvals.md): a call between what runs
   freely and the ceiling pauses for the person's answer.
-- [Chapter 210](ch210-speak-the-protocols.md): remote tools, whose results
+- [Chapter16](ch016-speak-the-protocols.md): remote tools, whose results
   are data.
-- [Chapter 213](ch213-consent-before-sharing.md): labels that carry data
+- [Chapter18](ch018-consent-before-sharing.md): labels that carry data
   classes through a session.
 
 ## Sources
 
-- [Chapter plan](PLAN.md), Part XXI.
-- [Harness notes from DeepSeek Harness](../docs/harness.md).
+- [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
+- [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
 - RFC 4648, The Base16, Base32, and Base64 Data Encodings.
