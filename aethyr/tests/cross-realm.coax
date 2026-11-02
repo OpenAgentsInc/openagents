@@ -1,0 +1,163 @@
+// Cross-realm checks (the Aethyr engine core, GitHub #12609, acceptance "Cross-realm checks").
+// Every walking realm steps the one controller, aethyr/walk.coax, with its own declared
+// collision profile (aethyr/collision-profiles.coax). Each check here runs the same session in
+// every one of them: a walk, a run, two jumps, a 0.4 m step up and back down, at 60 FPS
+// against the walker's 64 Hz steps.
+//
+//   - the camera: the eye drawn each frame moves no further than you can in a frame, and its
+//     move changes by at most CR_LURCH from one frame to the next;
+//   - the feet: the feet the figure is drawn at are the physics feet, between the last two
+//     steps' heights, and on the ground they are the ground's height;
+//   - replay: the session's recorded frames, played into a fresh walker, give the same walker,
+//     bit for bit, every frame;
+//   - the floor grid: aethyr/tests/cross-realm-floor.coax (verse/grid.coax declares names the
+//     walker's modules also use, so it is checked in a file of its own).
+//
+// The drawn-feet probes through each realm's real render path are native:
+// aethyr/tests/check_drawn_feet.py.
+//   coax/bin/coax test aethyr/tests/cross-realm.coax
+
+#load "../walk.coax" as cr;
+
+// The canonical name of each walking renderer (collision-profiles.coax's renderers).
+CR_REALMS :: 7;
+cr_realm :: (k: int) -> string {
+  names := [CR_REALMS] string.["the-grid", "haunted-house", "garden", "fairy-forest", "everglade", "hecates-cemetery", "dead-gears"];
+  return names[k];
+}
+
+CR_FRAMES :: 300;
+CR_FRAME :: 1.0 / 60.0;
+CR_LURCH :: 0.016;    // m: the most the eye's move may change between frames (the Grid's bound)
+
+// One frame of controls, as a realm's face hands them in.
+CrFrame :: struct { key_y: f32; run: bool; jump: bool; dyaw: f32; }
+
+// The session: walk 0.75 s, run and jump, run onto the step and off it, jump again, walk, stop.
+// A look turns the camera at once in the walking realms, so the camera's bound is checked on
+// this session without one; the recording adds a turn (cr_recorded).
+cr_session :: (f: int) -> CrFrame {
+  c: CrFrame;
+  if f < 260 { c.key_y = 1; }
+  c.run = f >= 45 && f < 230;
+  c.jump = f == 60 || f == 200;
+  return c;
+}
+cr_recorded :: (f: int) -> CrFrame {
+  c := cr_session(f);
+  if f >= 230 && f < 260 { c.dyaw = 0.01; }
+  return c;
+}
+
+// A low platform ahead of the start: a 0.4 m box you step onto (under the 0.55 m step) and
+// off again.
+cr_walls :: (out: [] f32) {
+  out[0] = -2; out[1] = 0; out[2] = 9; out[3] = 2; out[4] = 0.4; out[5] = 13;
+}
+
+cr_frame :: (p: cr.Player, c: CrFrame, walls: [] f32, realm: string) -> cr.Player {
+  none: [1] f32;
+  q := cr.walk_input(p, 0, c.key_y, 0, 0, c.run, c.jump, c.dyaw, 0);
+  return cr.walk_advance_in_realm(q, f32(CR_FRAME), none[0..<0], walls, none[0..<0], realm);
+}
+
+cr_len :: (v: cr.Vec3) -> f32 { return sqrt(cr.dot(v, v)); }
+
+#forall "in every walking realm the camera follows a walk, a run, a step and two jumps at 60 FPS without a jump" which: 0..<CR_REALMS {
+  walls: [6] f32; cr_walls(walls[..]);
+  p := cr.walk_place(0, 0, 0, 0);
+  far := sqrt(f32(cr.RUN * cr.RUN + cr.JUMP * cr.JUMP)) * f32(CR_FRAME);   // a run and a jump's climb in a frame
+  was: cr.Vec3; was_move: cr.Vec3;
+  last: cr.Vec3; last_move: cr.Vec3;
+  worst := 0.0f32;
+  lurch := 0.0f32;     // the same, drawing the last step instead of between the last two
+  stepped := false;
+  for f: 0..<CR_FRAMES {
+    p = cr_frame(p, cr_session(f), walls[..], cr_realm(which));
+    #assert cr.walk_collision_status(p) == 0;   // ok
+    eye := cr.walk_eye(p);
+    move := cr.sub(eye, was);
+    shown := cr.add(p.target, cr.times(cr.orbit_offset(p), p.dist));
+    step_move := cr.sub(shown, last);
+    if f >= 3 {
+      #assert cr_len(move) <= far;
+      worst = cr.hi(worst, cr_len(cr.sub(move, was_move)));
+      lurch = cr.hi(lurch, cr_len(cr.sub(step_move, last_move)));
+    }
+    if p.on_ground && p.pos.y == 0.4f32 { stepped = true; }
+    was = eye; was_move = move; last = shown; last_move = step_move;
+  }
+  #assert worst <= f32(CR_LURCH) && worst > 0;
+  #assert lurch > 3 * f32(CR_LURCH);     // the bound is sharp: without interpolation it fails
+  #assert stepped;                       // the session did stand on the step
+}
+
+#forall "in every walking realm the figure's feet are the physics feet, on the ground at the ground's height" which: 0..<CR_REALMS {
+  walls: [6] f32; cr_walls(walls[..]);
+  p := cr.walk_place(0, 0, 0, 0);
+  airborne := 0;
+  grounded := 0;
+  for f: 0..<CR_FRAMES {
+    p = cr_frame(p, cr_session(f), walls[..], cr_realm(which));
+    feet := cr.walk_feet(p);
+    a := cr.alpha(p);
+    #assert a >= 0 && a <= 1;
+    // The drawn feet are the physics feet between the last two steps, nowhere else.
+    #assert feet.y >= cr.lo(p.prev_pos.y, p.pos.y) && feet.y <= cr.hi(p.prev_pos.y, p.pos.y);
+    #assert feet.x == p.prev_pos.x + (p.pos.x - p.prev_pos.x) * a;
+    #assert feet.y == p.prev_pos.y + (p.pos.y - p.prev_pos.y) * a;
+    // Settled on the ground, the physics feet are at the ground under them: the step's top
+    // within the capsule's radius of it, else 0. Stepping down, they ease onto the ground from
+    // above it (locomotion's step_smooth), never below it by more than the sink limit.
+    on_step := p.pos.x >= -2.3 && p.pos.x <= 2.3 && p.pos.z >= 8.7 && p.pos.z <= 13.3;
+    if p.on_ground && p.prev_pos.y == p.pos.y {
+      grounded += 1;
+      #assert p.pos.y == 0 || (on_step && p.pos.y == 0.4f32);
+      #assert feet.y == p.pos.y;
+    }
+    if p.on_ground { #assert p.pos.y >= 0 && p.pos.y <= 0.4f32; }
+    if !p.on_ground { airborne += 1; #assert p.pos.y > 0; }
+  }
+  #assert airborne > 60 && grounded > 100;
+}
+
+// The session's frames as a recording: the controls and the frame time each frame, kept in the
+// order they came. Replaying it is handing the same frames to a fresh walker.
+#forall "in every walking realm a recorded session replays bit for bit, every frame" which: 0..<CR_REALMS #steps 80000000 {
+  walls: [6] f32; cr_walls(walls[..]);
+  record: [CR_FRAMES] CrFrame;
+  cr_dts: [CR_FRAMES] f32;
+  live: [CR_FRAMES] cr.Player;
+  p := cr.walk_place(0, 0, 0, 0);
+  for f: 0..<CR_FRAMES {
+    record[f] = cr_recorded(f);
+    // A stall every 97 frames: the clock's clamp and dropped backlog replay too.
+    cr_dts[f] = ifx f % 97 == 96 then 0.25f32 else f32(CR_FRAME);
+    q := cr.walk_input(p, 0, record[f].key_y, 0, 0, record[f].run, record[f].jump, record[f].dyaw, 0);
+    none: [1] f32;
+    p = cr.walk_advance_in_realm(q, cr_dts[f], none[0..<0], walls[..], none[0..<0], cr_realm(which));
+    live[f] = p;
+  }
+  r := cr.walk_place(0, 0, 0, 0);
+  for f: 0..<CR_FRAMES {
+    q := cr.walk_input(r, 0, record[f].key_y, 0, 0, record[f].run, record[f].jump, record[f].dyaw, 0);
+    none: [1] f32;
+    r = cr.walk_advance_in_realm(q, cr_dts[f], none[0..<0], walls[..], none[0..<0], cr_realm(which));
+    #assert cr.walker_same(r, live[f]);
+    #assert f32_bits(r.dist) == f32_bits(live[f].dist) && f32_bits(r.target.y) == f32_bits(live[f].target.y);
+    e := cr.walk_eye(r); le := cr.walk_eye(live[f]);
+    #assert f32_bits(e.x) == f32_bits(le.x) && f32_bits(e.y) == f32_bits(le.y) && f32_bits(e.z) == f32_bits(le.z);
+  }
+  // A changed frame is found at the first frame it changes.
+  s := cr.walk_place(0, 0, 0, 0);
+  first := -1;
+  for f: 0..<CR_FRAMES {
+    c := record[f];
+    if f == 150 { c.key_y = 0; }   // let go for one frame
+    q := cr.walk_input(s, 0, c.key_y, 0, 0, c.run, c.jump, c.dyaw, 0);
+    none: [1] f32;
+    s = cr.walk_advance_in_realm(q, cr_dts[f], none[0..<0], walls[..], none[0..<0], cr_realm(which));
+    if first < 0 && !cr.walker_same(s, live[f]) { first = f; }
+  }
+  #assert first == 150;
+}

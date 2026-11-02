@@ -1,0 +1,40 @@
+// Cross-realm check (the Aethyr engine core, GitHub #12609): the Grid's floor grid
+// (verse/grid.coax) is one world-space lattice from any position. Its own file because
+// verse/grid.coax has no #module and declares names (Vec3, reach) the walker's modules also use;
+// the other cross-realm checks are aethyr/tests/cross-realm.coax.
+//   coax/bin/coax test aethyr/tests/cross-realm-floor.coax
+
+#load "../../verse/grid.coax";
+
+// The floor grid is the world's: line i is at i * SPACING whoever looks, and the pieces of a
+// line start on multiples of SEGMENT. From positions across the whole floor, fractional ones and
+// ones past the edge included, each line in view is every lattice line within FOG_END inside the
+// edge, and nothing else.
+#forall "the floor grid is one world-space lattice from any position" k: -60..<61 {
+  at := f32(k) * 6.37 + f32(k % 7) * 0.013;
+  r := lines_near(at);
+  n := 0;
+  for i: -70..<71 {
+    inside := i >= -66 && i <= 66;
+    seen := abs(f32(i) * f32(SPACING) - at) <= f32(FOG_END);
+    want := inside && seen;
+    got := i >= r.first && i < r.end;
+    #assert want == got;
+    if got { n += 1; }
+  }
+  #assert n <= LINES;
+  // The pieces cover what is in view, on the 8 m segments, inside the edge.
+  pr := pieces_near(at);
+  if pr.end > pr.first {
+    #assert f32(pr.first) * f32(SEGMENT) <= hi(at - f32(FOG_END), -f32(EDGE));
+    #assert f32(pr.end) * f32(SEGMENT) >= lo(at + f32(FOG_END), f32(EDGE));
+    #assert pr.end - pr.first <= PIECES;
+  }
+  // A step to the side: the lines both places see are the same lines, the pieces both see the
+  // same pieces.
+  next := at + 0.37;
+  rn := lines_near(next);
+  pn := pieces_near(next);
+  #assert rn.first >= r.first && rn.first <= r.first + 1 && rn.end >= r.end && rn.end <= r.end + 1;
+  #assert pn.first >= pr.first && pn.first <= pr.first + 1 && pn.end >= pr.end && pn.end <= pr.end + 1;
+}

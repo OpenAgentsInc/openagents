@@ -305,6 +305,37 @@ through it yet: that is the asset path of
 links it beside another library that loads `sha256-kernel.coax` gets
 `S_hash` and `S_hex` twice (see 691c76ee7f).
 
+## Cross-realm checks (`aethyr/tests/cross-realm.coax`, `cross-realm-floor.coax`)
+
+Every walking realm steps one controller (`aethyr/walk.coax`) with its own
+declared collision profile. `cross-realm.coax` runs one session in each of
+the seven walking renderers (the Grid, the Haunted House, the Garden, Fairy
+Forest, Everglade, Hecate's Cemetery, Dead Gears): a walk, a run, two jumps
+and a 0.4 m step up and off, at 60 FPS against the 64 Hz steps.
+
+- **Camera:** the eye drawn each frame moves no further than a run and a
+  jump's climb in a frame, and its move changes by at most 0.016 m between
+  frames (the Grid's bound). Drawing the last step instead passes three times
+  that, so the bound is sharp. A look turns the camera at once in these
+  realms, so the session for this check has no turn.
+- **Feet:** the feet the figure is drawn at (`walk_feet`) are the physics
+  feet between the last two steps, exactly; settled on the ground they are
+  the ground's height (0, or the step's top within the capsule's radius of
+  it); stepping down they ease from above the ground, never below it. The
+  native probes through each realm's real render path are
+  `aethyr/tests/check_drawn_feet.py`.
+- **Replay:** the session's recorded frames (controls, a turn, the frame
+  time, a 0.25 s stall every 97 frames) played into a fresh walker give the
+  same walker and eye, bit for bit, every frame; a frame changed at 150 is
+  found at 150. Cross-host replay (native against wasm) is the Grid's
+  `coax/web/replay-hosts.coax`.
+- **Floor grid** (`cross-realm-floor.coax`, its own file because
+  `verse/grid.coax` has no `#module`): from 121 positions across the floor,
+  fractional ones and ones past its edge included, the lines in view are
+  exactly the world's 4 m lattice lines within the fog's reach inside the
+  edge, the pieces cover them on the 8 m segments, and a step to the side
+  keeps the same lines and pieces.
+
 ## The Grid on the engine core (`verse/gridwalk.coax`)
 
 The Grid (`/realms/the-grid`) is the first realm whose simulation is one Coax

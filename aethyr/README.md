@@ -70,6 +70,8 @@ migration (ec-migrate).
 coax/bin/coax test aethyr/loop.coax --library
 coax/bin/coax mutate aethyr/loop.coax
 coax/web/tool.sh aethyr/refusals.coax      # mixing spaces fails to compile
+coax/bin/coax test aethyr/tests/cross-realm.coax         # every walking realm: camera, feet, replay
+coax/bin/coax test aethyr/tests/cross-realm-floor.coax   # the floor grid from any position
 python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax   # the book and its examples
 ```
 
