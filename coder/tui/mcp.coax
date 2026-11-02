@@ -62,19 +62,21 @@ cd_mcp_tools :: (out: [] u8) -> string {
 cd_mcp_coder :: (args: [] string, out: [] u8, ok: [] bool) -> string {
   rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
   sb: [4200] u8; sn := cd_cat(sb[..], cd_cat(sb[..], 0, repo), "/coder/tui/coder.sh");
-  argv: [12] string; argv[0] = cast(string) sb[0..<sn];
+  argv: [26] string; argv[0] = cast(string) sb[0..<sn];
   for i: 0..<args.count { argv[i + 1] = args[i]; }
   env := [1] string.["BROWSER=/usr/bin/true"];
   return rt_run_in(argv[0..<args.count + 1], env[..], "", 600, out, ok);
 }
 
 // A tools/call: the verb's output as text content, isError when it failed.
-cd_mcp_call :: (ar: [] ClArena, params: string, out: [] u8) -> string {
+// extra: flags every run or fork this call starts carries, so a session
+// started from inside another reports back to it and stays inside its policy.
+cd_mcp_call :: (ar: [] ClArena, params: string, extra: [] string, out: [] u8) -> string {
   name := cl_str(ar, params, "name");
   args := cl_raw(params, "arguments");
   if args.count == 0 { args = "{}"; }
   id := cl_str(ar, args, "id"); task := cl_str(ar, args, "task");
-  a: [10] string; na := 0;
+  a: [24] string; na := 0;
   text := ""; ok: [1] bool; ok[0] = false;
   ob: [262144] u8;
   if name == "coder_run" {
@@ -83,6 +85,7 @@ cd_mcp_call :: (ar: [] ClArena, params: string, out: [] u8) -> string {
       a[0] = "run"; a[1] = task; a[2] = "--detach"; na = 3;
       eng := cl_str(ar, args, "engine"); if eng.count > 0 { a[na] = "--engine"; a[na + 1] = eng; na += 2; }
       cwd := cl_str(ar, args, "cwd"); if cwd.count > 0 { a[na] = "--cwd"; a[na + 1] = cwd; na += 2; }
+      for x: extra { if na < a.count { a[na] = x; na += 1; } }
       text = cd_mcp_coder(a[0..<na], ob[..], ok[..]);
     }
   } else if name == "coder_ls" { a[0] = "ls"; text = cd_mcp_coder(a[0..<1], ob[..], ok[..]); }
@@ -98,6 +101,7 @@ cd_mcp_call :: (ar: [] ClArena, params: string, out: [] u8) -> string {
       a[0] = "fork"; a[1] = id; a[2] = task; a[3] = "--detach"; na = 4;
       at := cl_int(args, "at"); tb: [16] u8;
       if at.ok && at.value > 0 { a[4] = "--at"; a[5] = cd_itoa(at.value, tb[..]); na = 6; }
+      for x: extra { if na < a.count { a[na] = x; na += 1; } }
       text = cd_mcp_coder(a[0..<na], ob[..], ok[..]);
     }
   } else if name == "coder_send" {
@@ -167,7 +171,7 @@ cd_cmd_mcp :: () -> int {
       else if method == "ping" { cd_mcp_result(id, "{}", out[..]); }
       else if method == "tools/list" { tb: [16384] u8; cd_mcp_result(id, cd_mcp_tools(tb[..]), out[..]); }
       else if method == "tools/call" {
-        cb: [524288] u8; r := cd_mcp_call(ar[..], params, cb[..]);
+        none: [1] string; cb: [524288] u8; r := cd_mcp_call(ar[..], params, none[0..<0], cb[..]);
         if r.count == 0 { cd_mcp_error(id, -32602, "Unknown tool.", out[..]); } else { cd_mcp_result(id, r, out[..]); }
       }
       else { cd_mcp_error(id, -32601, "Method not found.", out[..]); }
@@ -203,8 +207,24 @@ cd_claude_tool_call :: (a: [] App, ev: ClEvent) {
   n := json_raw(pb[..], 0, "{\"name\":"); n = json_write_string(pb[..], n, name);
   n = json_raw(pb[..], n, ",\"arguments\":"); n = json_raw(pb[..], n, ifx ev.arguments.count > 0 then ev.arguments else "{}");
   n = json_raw(pb[..], n, "}");
+  // the child reports here, keeps this session's policy, and gets no more time than is left
+  ex: [10] string; ne := 0;
+  ex[0] = "--report-to"; ex[1] = cs_id(a[0].log); ne = 2;
+  effects := CD_EFFECTS; rootb: [4096] u8; tb: [24] u8;
+  if a[0].pol[0].on {
+    ex[ne] = "--allow"; ex[ne + 1] = effects[a[0].pol[0].allow]; ex[ne + 2] = "--ceiling"; ex[ne + 3] = effects[a[0].pol[0].ceiling]; ne += 4;
+    if a[0].pol[0].nroots > 0 {
+      rn := cd_cat(rootb[..], 0, cast(string) a[0].pol[0].roots[0..<a[0].pol[0].nroots - 1]);
+      for i: 0..<rn { if rootb[i] == 10 { rootb[i] = ','; } }
+      ex[ne] = "--root"; ex[ne + 1] = cast(string) rootb[0..<rn]; ne += 2;
+    }
+  }
+  if a[0].deadline_ms > 0 {
+    left := (a[0].deadline_ms - cd_now(a)) / 1000;
+    ex[ne] = "--deadline"; ex[ne + 1] = cd_itoa(ifx left > 1 then left else 1, tb[..]); ne += 2;
+  }
   rb: [300000] u8;
-  res := ifx n < 0 then "" else cd_mcp_call(q[0].ar[..], cast(string) pb[0..<n], rb[..]);
+  res := ifx n < 0 then "" else cd_mcp_call(q[0].ar[..], cast(string) pb[0..<n], ex[0..<ne], rb[..]);
   if res.count == 0 { cl_tool_answer(q, "[{\"type\":\"text\",\"text\":\"Coder couldn't run that tool.\"}]", true, ""); return; }
   bad := cl_bool(res, "isError");
   cl_tool_answer(q, cl_raw(res, "content"), bad.ok && bad.value, "");

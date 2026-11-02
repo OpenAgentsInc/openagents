@@ -4,7 +4,8 @@ stream-json control protocol to ask for two permissions, a Write inside the
 working directory and a Bash command, and records each answer.
 
 CLAUDE_STUB_OUT names the file the answers go to, one JSON line each.
-CLAUDE_STUB_MODE=mcp calls Coder's in-process coder_ls tool instead."""
+CLAUDE_STUB_MODE=mcp calls Coder's in-process coder_ls tool instead, and
+CLAUDE_STUB_MODE=mcprun starts a child session with coder_run."""
 import json, os, sys
 
 out = os.environ.get("CLAUDE_STUB_OUT", "/dev/null")
@@ -39,10 +40,12 @@ while True:
     if m.get("type") == "user":
         break
 send({"type": "system", "subtype": "init", "session_id": "stub", "cwd": cwd, "tools": [], "model": "stub"})
-if os.environ.get("CLAUDE_STUB_MODE") == "mcp":
-    # call Coder's in-process MCP server's coder_ls, and record its text
+mode = os.environ.get("CLAUDE_STUB_MODE", "")
+if mode in ("mcp", "mcprun"):
+    # call Coder's in-process MCP server: coder_ls, or coder_run of a child task; record the answer
+    call = {"name": "coder_ls", "arguments": {}} if mode == "mcp" else {"name": "coder_run", "arguments": {"task": "child task", "engine": "echo"}}
     send({"type": "control_request", "request_id": "stub-mcp", "request": {"subtype": "mcp_message", "server_name": "coder",
-          "message": {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "coder_ls", "arguments": {}}}}})
+          "message": {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": call}}})
     r = read()
     while r.get("type") != "control_response":
         r = read()

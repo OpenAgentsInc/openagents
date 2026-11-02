@@ -158,8 +158,40 @@ def verbs(check):
         got = [json.loads(x)["mcp"] for x in open(mcp_out)] if os.path.exists(mcp_out) else []
         text = got[0]["result"]["content"][0]["text"] if got and got[0] and "result" in got[0] else ""
         check("--coder-tools: Claude Code's call to coder_ls gets the session list", got and got[0].get("id") == 7 and sid[:15] in text)
+        sub_out = os.path.join(home, "sub-answers")
+        subrun = subprocess.run([coder, "run", "go", "--engine", "claude", "--coder-tools", "--allow", "write", "--ceiling", "write", "--deadline", "60", "--cwd", work, "--json"], cwd=REPO,
+                                env=dict(env, PATH=stub + ":" + env["PATH"], CLAUDE_STUB_OUT=sub_out, CLAUDE_STUB_MODE="mcprun"), capture_output=True, text=True, timeout=120)
+        psid = next((json.loads(l)["id"] for l in subrun.stdout.splitlines() if '"kind":"session"' in l), "")
+        kid = None
+        for _ in range(100):
+            rows = json.loads(subprocess.run([coder, "ls", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
+            kid = next((r for r in rows if r.get("task") == "child task"), None)
+            if kid and kid["state"] != "running":
+                break
+            time.sleep(0.2)
+        head = {}
+        if kid:
+            klog = subprocess.run([coder, "log", kid["id"], "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout
+            head = next((json.loads(l) for l in klog.splitlines() if '"kind":"session"' in l), {})
+        check("a subagent keeps its parent's policy and no more time, and reports back",
+              head.get("report_to") == psid and head.get("allow") == "write" and head.get("ceiling") == "write" and 0 < head.get("deadline_s", 0) <= 60)
         badp = subprocess.run([coder, "run", "hi", "--allow", "run", "--ceiling", "write"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("policy: --allow can't pass --ceiling", badp.returncode == 2 and "--allow can't be above --ceiling" in badp.stderr)
+        # deadlines and reports (chapter 14): a job past its deadline expires; a job's result reaches the session that started it
+        par = subprocess.run([coder, "run", "$ sleep 5", "--engine", "echo", "--detach"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout.strip()
+        exp = subprocess.run([coder, "run", "$ sleep 30", "--engine", "echo", "--deadline", "2", "--report-to", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("--deadline: the job expires, exit 124", exp.returncode == 124 and '"ending":"expired"' in exp.stdout)
+        subprocess.run([coder, "run", "child says hi", "--engine", "echo", "--report-to", par], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        for _ in range(100):
+            st = subprocess.run([coder, "status", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+            if '"running"' not in st.stdout:
+                break
+            time.sleep(0.2)
+        plog = subprocess.run([coder, "log", par, "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout
+        plines = [json.loads(l) for l in plog.splitlines() if l.startswith("{")]
+        jobs = [l["ending"] for l in plines if l["kind"] == "job"]
+        check("--report-to: the parent's log holds both jobs' endings", sorted(jobs) == ["expired", "finished"])
+        check("--report-to: the running parent takes a report as its next turn", any(l["kind"] == "user" and l["text"].startswith("Job ") and "child says hi" in l["text"] for l in plines))
         # a progress bar and colors read back as a terminal shows them (chapter 37)
         bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]

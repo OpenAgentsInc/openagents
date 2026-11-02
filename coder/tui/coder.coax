@@ -53,7 +53,7 @@ CODER_VERSION :: "0.1.0";
 ENGINE_ECHO :: 0; ENGINE_CLAUDE :: 1; ENGINE_CODEX :: 2; ENGINE_MICRO :: 3; ENGINE_PSIONIC :: 4;
 // Microcoder's worker runs both: psionic is Microcoder on a model served on this machine (chapter 12).
 cd_is_micro :: (e: int) -> bool { return e == ENGINE_MICRO || e == ENGINE_PSIONIC; }
-END_FINISHED :: 0; END_STOPPED :: 1; END_FAILED :: 2;
+END_FINISHED :: 0; END_STOPPED :: 1; END_FAILED :: 2; END_EXPIRED :: 3;   // expired: stopped at --deadline (chapter 14)
 COMMAND_MS :: 120000;      // a "$ " command is stopped after two minutes
 SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -70,6 +70,9 @@ App :: struct {
   model: string;
   model_engine: int;             // --model is for the engine it came with
   ask_first: bool;               // --ask: permission prompts instead of skipping them
+  deadline_ms: int;              // --deadline: when the job expires (0: never)
+  expiring: bool;                // the job passed its deadline: its stop ends as expired
+  next_inbox_ms: int;            // the terminal UI looks for job reports this often
   coder_tools: bool;              // --coder-tools: Coder's own verbs as an in-process MCP server in Claude Code (chapter 10)
   pol: [1] CdPolicy;              // --allow, --ceiling, --root: approvals answered by policy (chapters 10 and 11)
   cwd: string;
@@ -296,18 +299,21 @@ cd_reply_commit :: (a: [] App, all: bool) {
   }
 }
 
-cd_finish :: (a: [] App, ending: int, text: string) {
+cd_end_word :: (e: int) -> string { return ifx e == END_STOPPED then "stopped" else ifx e == END_FAILED then "failed" else ifx e == END_EXPIRED then "expired" else "finished"; }
+
+cd_finish :: (a: [] App, ending_in: int, text: string) {
+  ending := ifx ending_in == END_STOPPED && a[0].expiring then END_EXPIRED else ending_in;
   cd_reply_commit(a, true);
   if text.count > 0 && ending == END_FAILED { cd_commit_prefixed(a, TUI_RED, "● ", "  ", text); }
   sb: [256] u8; n := 0; tb: [32] u8;
   n = cd_cat(sb[..], n, "  └ ");
-  n = cd_cat(sb[..], n, ifx ending == END_STOPPED then "stopped" else ifx ending == END_FAILED then "failed" else "finished");
+  n = cd_cat(sb[..], n, cd_end_word(ending));
   n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_seconds_text(cd_now(a) - a[0].started_ms, tb[..]));
   if a[0].steps > 0 { n = cd_cat(sb[..], n, " · "); n = cd_cat(sb[..], n, cd_itoa(a[0].steps, tb[..])); n = cd_cat(sb[..], n, ifx a[0].steps == 1 then " step" else " steps"); }
   cd_commit(a, ifx ending == END_FINISHED then TUI_FAINT else TUI_RED, cast(string) sb[0..<n]);
-  cs_end(a, ifx ending == END_STOPPED then "stopped" else ifx ending == END_FAILED then "failed" else "finished", cd_now(a) - a[0].started_ms, a[0].steps, text);
-  cd_hooks(a, "turn_end", ifx ending == END_STOPPED then "stopped" else ifx ending == END_FAILED then "failed" else "finished");
-  a[0].exit = ifx ending == END_FINISHED then 0 else ifx ending == END_STOPPED then 130 else 1;
+  cs_end(a, cd_end_word(ending), cd_now(a) - a[0].started_ms, a[0].steps, text);
+  cd_hooks(a, "turn_end", cd_end_word(ending));
+  a[0].exit = ifx ending == END_FINISHED then 0 else ifx ending == END_STOPPED then 130 else ifx ending == END_EXPIRED then 124 else 1;
   a[0].running = false; a[0].ask = false;
 }
 
@@ -917,10 +923,10 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp                                 the verbs as MCP tools on stdio, for Claude Code or another agent\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --effort low|medium|high  --model M  --ask  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n                 [--deadline SECONDS]             it expires after this long\n                 [--report-to ID]                 its ending and last reply go to session ID\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp                                 the verbs as MCP tools on stdio, for Claude Code or another agent\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --effort low|medium|high  --model M  --ask  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
 
 // Flags that take a value: their value is not a positional argument.
-CD_VALUE_FLAGS :: [21] string.["--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
+CD_VALUE_FLAGS :: [23] string.["--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
 
 // Positional argument k (0 is the verb), skipping flags and their values.
 cd_positional :: (args: [] Args, k: int) -> string {
@@ -1107,6 +1113,11 @@ cd_render :: (text: string) {
       n = cd_cat(ob[..], 0, "● ");
       for c: t { n = cd_cat(ob[..], n, ifx c == 10 then "\n  " else ""); if c != 10 && n < ob.count { ob[n] = c; n += 1; } }
     }
+    else if kind == "job" {
+      n = cd_cat(ob[..], 0, "  ◆ job "); n = cd_cat(ob[..], n, cl_str(ar[..], line, "id")); n = cd_cat(ob[..], n, " ");
+      n = cd_cat(ob[..], n, cl_str(ar[..], line, "ending"));
+      jt := cl_str(ar[..], line, "text"); if jt.count > 0 { n = cd_cat(ob[..], n, ": "); n = cd_cat(ob[..], n, cast(string) jt[0..<tui_fit(jt, 200)]); }
+    }
     else if kind == "end" {
       tb: [32] u8;
       ms := cl_int(line, "ms"); st := cl_int(line, "steps");
@@ -1117,6 +1128,28 @@ cd_render :: (text: string) {
     }
     if n > 0 { cd_outln(cast(string) ob[0..<n]); }
   }
+}
+
+// --report-to ID: when the job is over, its ending and last reply land in
+// ID's log as a "job" line and in ID's inbox as a message, so a session that
+// is still working (a job, or the terminal UI) takes it as its next turn.
+cd_report_job :: (a: [] App) {
+  l := a[0].log;
+  if l[0].nreport == 0 || l[0].nid == 0 { return; }
+  to := cast(string) l[0].report[0..<l[0].nreport];
+  ending := ifx l[0].nending > 0 then cast(string) l[0].ending[0..<l[0].nending] else "failed";
+  text := cast(string) l[0].last[0..<l[0].nlast];
+  jb: [16384] u8;
+  n := json_raw(jb[..], 0, "{\"kind\":\"job\",\"id\":"); n = json_write_string(jb[..], n, cs_id(l));
+  n = json_raw(jb[..], n, ",\"ending\":"); n = json_write_string(jb[..], n, ending);
+  n = json_raw(jb[..], n, ",\"text\":"); n = json_write_string(jb[..], n, cast(string) text[0..<ifx text.count > 8000 then 8000 else text.count]);
+  n = json_raw(jb[..], n, "}\n");
+  pb: [1300] u8; path := cd_sibling(to, ".jsonl", pb[..]);
+  if n > 0 && path.count > 0 { x := fs_append(path, cast(string) jb[0..<n]); }
+  mb: [16384] u8;
+  m := cd_cat(mb[..], 0, "Job "); m = cd_cat(mb[..], m, cs_id(l)); m = cd_cat(mb[..], m, " ended "); m = cd_cat(mb[..], m, ending);
+  m = cd_cat(mb[..], m, ifx text.count > 0 then ": " else "."); m = cd_cat(mb[..], m, cast(string) text[0..<ifx text.count > 8000 then 8000 else text.count]);
+  qb: [1400] u8; y := cd_msg_put(to, cast(string) mb[0..<m], qb[..]);
 }
 
 // ---------------------------------------------------------------- messages to a job (coder attach)
@@ -1576,6 +1609,18 @@ tool_main :: () -> int #export_c {
   a[0].model = args_value(args, "--model", "");
   a[0].ask_first = args_has(args, "--ask");
   a[0].coder_tools = args_has(args, "--coder-tools");
+  dl := args_value(args, "--deadline", ""); dv := 0;
+  if dl.count > 0 {
+    for c: dl { if c < '0' || c > '9' { dv = -1; break; } dv = dv * 10 + cast(int) (c - '0'); }
+    if dv <= 0 { tool_errln("coder: --deadline takes whole seconds"); return 2; }
+  }
+  rto := args_value(args, "--report-to", "");
+  if rto.count > 0 {
+    rfb: [1300] u8; rpath := cd_sibling(rto, ".jsonl", rfb[..]);
+    // a job started a moment ago may not have written its file yet
+    for w: 0..<30 { if rpath.count == 0 || fs_exists(rpath) { break; } z := cxproc_sleep_ms(100); }
+    if rpath.count == 0 || !fs_exists(rpath) { tool_err("coder: no session "); tool_errln(rto); return 6; }
+  }
   a[0].engine = ENGINE_CLAUDE;
   want := args_value(args, "--engine", "");
   if want == "echo" { a[0].engine = ENGINE_ECHO; }
@@ -1594,6 +1639,8 @@ tool_main :: () -> int #export_c {
   a[0].model_engine = a[0].engine;
 
   log_b: [1] CsLog; a[0].log = log_b[..];
+  if dl.count > 0 { a[0].log[0].deadline_s = dv; }
+  if rto.count > 0 { a[0].log[0].nreport = cd_cat(a[0].log[0].report[..], 0, rto); }
   a[0].pl = pl_b[..];
   task := args_value(args, "--print", "");
   if verb == "run" { task = cd_positional(args, 1); }
@@ -1659,6 +1706,8 @@ tool_main :: () -> int #export_c {
         continue;
       }
       if a[0].ask { cd_claude_answer(a, 'n'); }
+      if a[0].deadline_ms == 0 && a[0].log[0].deadline_s > 0 { a[0].deadline_ms = cd_now(a) + a[0].log[0].deadline_s * 1000; }
+      if !stopped && a[0].deadline_ms > 0 && cd_now(a) >= a[0].deadline_ms { a[0].expiring = true; stopped = true; cd_stop(a); }
       if !stopped && stop_file.count > 0 && cd_now(a) >= next_look {
         next_look = cd_now(a) + 200;
         if fs_exists(stop_file) { stopped = true; cd_stop(a); }
@@ -1666,6 +1715,7 @@ tool_main :: () -> int #export_c {
       if !cd_poll(a) { x := cxproc_sleep_ms(5); }
     }
     if stop_file.count > 0 { x := fs_remove(stop_file); }
+    cd_report_job(a);
     pfb: [1300] u8; pid_file := cs_sibling(a[0].log, ".pid", pfb[..]);
     if sess.count > 0 && pid_file.count > 0 { x := fs_remove(pid_file); }     // a detached job is over
     cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
@@ -1698,6 +1748,12 @@ tool_main :: () -> int #export_c {
     wait := ifx a[0].running then 10 else 40;
     if cd_read_keys(a, wait) { dirty = true; }
     if a[0].quit { break; }
+    // a job this session started reports back (--report-to): its message is the next turn
+    if !a[0].running && a[0].log[0].nid > 0 && a[0].ed[0].n == 0 && cd_now(a) >= a[0].next_inbox_ms {
+      a[0].next_inbox_ms = cd_now(a) + 1000;
+      ib2: [65536] u8; im := cd_msg_next(cs_id(a[0].log), ib2[..]);
+      if im.count > 0 { tui_ed_set(a[0].ed[..], im); cd_submit(a); dirty = true; }
+    }
     if cd_poll(a) { dirty = true; }
     now := cd_now(a);
     if a[0].running && now - last_draw >= 100 { dirty = true; }

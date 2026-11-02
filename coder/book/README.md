@@ -59,7 +59,7 @@ names it.
 | [11. Drive Codex](ch011-drive-codex.md) | Partly implemented: codex-cli 0.163.0 app-server |
 | [12. A Psionic-served model as an engine](ch012-a-psionic-served-model.md) | Partly implemented: `--engine psionic` on a local Chat Completions server |
 | [13. Choose an engine](ch013-choose-an-engine.md) | Partly implemented: mammoth-1 routes 22/22 held out; effort reaches the engine; Decisions API blocked |
-| [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) | Partly implemented: forks and background jobs |
+| [14. Forks, subagents and jobs](ch014-forks-subagents-and-jobs.md) | Partly implemented: forks, jobs with deadlines and reports, subagents held to the parent's policy |
 | [15. Plugins with owned lifecycles](ch015-plugins-with-owned-lifecycles.md) | Partly implemented: owned commands, states, signed installs |
 | [16. Speak the protocols](ch016-speak-the-protocols.md) | Partly implemented: cpu-mcp-2025-06-18-subset-v1, bounded CPU |
 | [17. One agent, many tasks](ch017-one-agent-many-tasks.md) | Partly implemented: a local Router, triggers and Workers |

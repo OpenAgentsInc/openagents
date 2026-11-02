@@ -12,7 +12,8 @@
 //   {"kind":"result","text":T,"error":B}      its result's first line and size
 //   {"kind":"diff","path":P,"adds":N,"dels":N}
 //   {"kind":"reply","text":T}                 the turn's reply, whole
-//   {"kind":"end","ending":E,"ms":N,"steps":N,"text":T}
+//   {"kind":"end","ending":E,"ms":N,"steps":N,"text":T}   E: finished, stopped, failed or expired
+//   {"kind":"job","id":ID,"ending":E,"text":T}  a job this session started ended (--report-to)
 //
 // The ID is the UTC start time and milliseconds (20261102-153012-417): it
 // sorts by time. Nothing here leaves the machine (chapter 18's rule).
@@ -33,6 +34,10 @@ CsLog :: struct {
   parent: [32] u8; nparent: int;    // a fork's parent session
   at: int;                          // and the turns it kept
   pid: int;                         // a detached run's process
+  report: [32] u8; nreport: int;    // --report-to: the session a job's result goes to (chapter 14)
+  deadline_s: int;                  // --deadline: seconds the job may run before it expires
+  last: [8192] u8; nlast: int;      // the last reply, for the report
+  ending: [16] u8; nending: int;    // the last turn's ending
 }
 
 cs_id :: (l: [] CsLog) -> string { return cast(string) l[0].id[0..<l[0].nid]; }
@@ -101,6 +106,13 @@ cs_open :: (a: [] App) {
     n = json_raw(o, n, ",\"at\":"); n = json_write_int(o, n, l[0].at);
   }
   if l[0].pid > 0 { n = json_raw(o, n, ",\"pid\":"); n = json_write_int(o, n, l[0].pid); }
+  if l[0].nreport > 0 { n = json_raw(o, n, ",\"report_to\":"); n = json_write_string(o, n, cast(string) l[0].report[0..<l[0].nreport]); }
+  if a[0].pol[0].on {
+    effects := CD_EFFECTS;
+    n = json_raw(o, n, ",\"allow\":"); n = json_write_string(o, n, effects[a[0].pol[0].allow]);
+    n = json_raw(o, n, ",\"ceiling\":"); n = json_write_string(o, n, effects[a[0].pol[0].ceiling]);
+  }
+  if l[0].deadline_s > 0 { n = json_raw(o, n, ",\"deadline_s\":"); n = json_write_int(o, n, l[0].deadline_s); }
   n = json_raw(o, n, "}");
   cs_put(a, n);
 }
@@ -200,12 +212,14 @@ cs_reply_flush :: (a: [] App) {
   l := a[0].log;
   if l[0].nreply == 0 { return; }
   cs_text(a, "reply", "text", cast(string) l[0].reply[0..<l[0].nreply]);
+  l[0].nlast = cd_cat(l[0].last[..], 0, cast(string) l[0].reply[0..<ifx l[0].nreply < l[0].last.count then l[0].nreply else l[0].last.count]);
   l[0].nreply = 0;
 }
 
 cs_end :: (a: [] App, ending: string, ms: int, steps: int, text: string) {
   cs_reply_flush(a);
   o := a[0].log[0].line[..];
+  a[0].log[0].nending = cd_cat(a[0].log[0].ending[..], 0, ending);
   n := json_raw(o, 0, "{\"kind\":\"end\",\"ending\":"); n = json_write_string(o, n, ending);
   n = json_raw(o, n, ",\"ms\":"); n = json_write_int(o, n, ms);
   n = json_raw(o, n, ",\"steps\":"); n = json_write_int(o, n, steps);

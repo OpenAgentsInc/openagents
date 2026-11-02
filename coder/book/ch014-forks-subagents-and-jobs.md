@@ -1,13 +1,13 @@
 # 14. Forks, subagents and jobs
 
-> **Status: partly implemented.** Two of the four kinds run in Coder: a
+> **Status: partly implemented.** Three of the four kinds run in Coder: a
 > fork of a session at a turn boundary (`coder fork ID "TASK" [--at
-> TURN]`), and a background job (`coder run "TASK" --detach`, then `coder
-> status` and `coder stop`). The offline smoke checks both. Still to come:
-> a fork that reuses the parent's cached prefix on the server instead of
-> resending the turns as text, subagents with their own grant and budget,
-> a job's result returned to the session that started it, deadlines on
-> jobs, and goals.
+> TURN]`), a background job (`coder run "TASK" --detach`, with `--deadline`
+> and `--report-to`), and a subagent that a Claude Code session starts with
+> `--coder-tools`, held to its parent's policy and time. The offline smoke
+> checks all three. Still to come: a fork that reuses the parent's cached
+> prefix on the server instead of resending the turns as text, goals, and
+> the measured gains chapter 21 asks for.
 
 An agent sometimes needs a second line of work. This chapter adds four kinds:
 a fork of a session at a turn boundary, a subagent with its own scope and
@@ -86,6 +86,37 @@ interrupted, and the log ends with `stopped`. If no end line appears within
 10 seconds, `coder stop` ends the job's process and writes the end line
 itself. `coder stop` works on any running session, detached or not.
 
+## Deadlines and reports
+
+`--deadline SECONDS` bounds a run or job. Past it, Coder stops the work and
+the turn ends as `expired`, with exit code 124. `coder ls` and `coder
+status` show the state.
+
+`--report-to ID` names the session that started the job. When the job is
+over, Coder:
+
+- appends a `job` line to that session's log:
+  `{"kind":"job","id":JOB,"ending":"finished","text":LAST_REPLY}`, shown by
+  `coder log` as `◆ job JOB finished: …`;
+- leaves a message in that session's inbox: `Job JOB ended finished: …`.
+
+A session that is still working takes the message as its next turn: a
+detached job between turns, or the terminal UI when its composer is empty.
+
+## Subagents
+
+With `--coder-tools` ([chapter 10](ch010-drive-claude-code.md#coders-tools-in-claude-code)),
+a Claude Code session can start another Coder session with `coder_run` or
+`coder_fork`. Coder adds three things to every session it starts this way:
+
+- `--report-to` the parent, so the result comes back.
+- The parent's policy: the same `--allow`, `--ceiling` and `--root`. The
+  tool's schema has no field for a policy, so the model can't widen it.
+- `--deadline` set to the time the parent has left, when it has a deadline.
+
+The child's session header records `report_to`, `allow`, `ceiling` and
+`deadline_s`.
+
 ## Checks
 
 ```sh
@@ -108,8 +139,9 @@ python3 coder/tui/smoke.py        # fork carries the turns; --detach runs; stop 
   stop` ends it as stopped.
 - [ ] A fork's first request reuses the parent's prefix, measured as prefill tokens
   saved on the server.
-- [ ] A subagent cannot exceed its parent's grant or budget.
-- [ ] A background job that finishes after its turn appends its result, and a job
+- [x] A subagent cannot exceed its parent's grant or budget: it gets the
+  parent's policy and remaining deadline, and the smoke checks its header.
+- [x] A background job that finishes after its turn appends its result, and a job
   past its deadline is reported as expired.
 - [ ] Each addition shows a measured gain in [Chapter21](ch021-measure-the-harness.md) on tasks it was not built
   from, or it is removed.
@@ -117,6 +149,7 @@ python3 coder/tui/smoke.py        # fork carries the turns; --detach runs; stop 
 ## Sources
 
 - `coder/tui/session.coax` (`cs_turns_text`, `cs_sibling`), `coder/tui/coder.coax`
-  (`cd_detach`, `cd_cmd_stop`, the fork in `tool_main`), `coder/tui/smoke.py`.
+  (`cd_detach`, `cd_cmd_stop`, `cd_report_job`, the fork in `tool_main`),
+  `coder/tui/mcp.coax` (`cd_claude_tool_call`), `coder/tui/smoke.py`.
 - [Chapter plan](PLAN.md); moved from Part XXI of the [Psionic book](../../psionic/book/README.md) on 2026-11-01.
 - [Harness notes from DeepSeek Harness](../../psionic/docs/harness.md).
