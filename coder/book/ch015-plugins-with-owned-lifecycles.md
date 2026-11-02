@@ -1,15 +1,15 @@
 # 15. Plugins with owned lifecycles
 
-> **Status: partly implemented.** Coder loads plugins from
+> **Status: implemented.** Coder loads plugins from
 > `~/.openagents/coder/plugins`: each one's commands become slash commands,
 > its states are visible, and disabling it removes everything it
 > registered. A signed plugin installs only when its Nostr signature
 > verifies and its key is trusted. Hooks run on `session_start`,
 > `turn_end` and `tool_call`, and a `tool_call` hook can refuse a call from
 > Claude Code, Codex or Microcoder. Profiles choose and order a session's
-> plugins, capabilities have a definition, one provider and users, and a
-> plugin drains before it stops. Still to come: third-party plugins in
-> bounded Wasm.
+> plugins, capabilities have a definition, one provider and users, a plugin
+> drains before it stops, and a third-party plugin can be a Wasm module that
+> imports only the host functions it was admitted.
 
 Extensions to the harness need clear ownership. This chapter composes the
 harness from ordered profiles and plugins. Every registration belongs to the
@@ -181,6 +181,49 @@ plugins that take the same command name keeps it. Without a profile, every
 plugin in the directory loads, sorted by name. A profile that isn't there
 stops Coder with exit 2.
 
+### Wasm plugins
+
+A third-party plugin can be a Wasm module instead of shell commands. Its
+manifest admits the host functions it may call, and each command names an
+export:
+
+```json
+{"name":"hello",
+ "wasm":{"module":"hello.wasm","imports":["coder_print"],"seconds":3},
+ "commands":[{"name":"hello","export":"hello"},{"name":"spin","export":"spin"}]}
+```
+
+The module is written in Coax ([hello.coax](../../coder/plugins/hello/hello.coax))
+and built with `coder/tui/wasm_plugin.sh hello.coax hello.wasm hello spin`.
+The host offers two functions, `coder_print(s: [] u8)` and
+`coder_now_ms()`; a plugin declares them `#foreign`, and they become its
+`env` imports.
+
+Admission reads the module's bytes (`pl_wasm_check`):
+
+- Every function it imports from `env` must be one the host offers and the
+  manifest admits. Otherwise the plugin fails with, for example, `it
+  imports env.coder_now_ms, which it was not admitted`. It never runs, so
+  it can't call what it wasn't given.
+- Its memory must declare a maximum of at most 16 MB.
+- Each command's export must be one of the module's function exports.
+- A signed plugin's manifest names the module's `sha256`, and the bytes
+  must match, so the signature covers the code as well as the manifest.
+
+A command runs `node coder/tui/wasm_host.cjs MODULE EXPORT IMPORTS SECONDS`.
+The host instantiates the module with only the admitted functions, and
+refuses it again if it imports anything else. It runs the export in a
+worker thread with a 64 MB heap, and ends it after `seconds` (10 by
+default, at most 60) with exit 124. The plugin runs with none of Coder's
+authority: no files, no network and no processes, only the functions it
+was admitted. The WASI functions the Coax runtime links for a failed
+bounds check end the plugin instead of writing anywhere. Node is the one
+part not written in Coax, because Coax has no Wasm engine.
+
+In the check, `/hello` prints `hello from wasm`, `/spin` loops forever and
+is stopped after 3 seconds, and a module built with the `clock` export
+fails admission because it imports `coder_now_ms`.
+
 ### Signed plugins
 
 A plugin file can be a signed Nostr event instead: kind 30078 (NIP-78,
@@ -213,7 +256,7 @@ python3 coder/tui/smoke.py        # a plugin's command runs; disabled, it keeps 
 ## Done means
 
 - [x] After a plugin unloads, no registration it made remains.
-- [ ] A Wasm plugin that calls a capability it was not admitted is refused.
+- [x] A Wasm plugin that calls a capability it was not admitted is refused.
 - [x] A plugin event with a bad signature does not install.
 - [x] The state of each plugin is visible and changes only through the listed
   transitions.

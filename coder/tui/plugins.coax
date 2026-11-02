@@ -73,6 +73,7 @@ PlRegistry :: struct {
   hooks: [PL_HOOKS] PlHook; nhooks: int;
   caps: [PL_CAPS] PlCap; ncaps: int;
   busy: int;                     // the plugin whose command is running, or -1
+  dir: [1100] u8; ndir: int;     // the plugins directory, where a Wasm plugin's module is
   ar: [1] ClArena; arb: [65536] u8;
 }
 
@@ -200,6 +201,15 @@ pl_admit :: (r: [] PlRegistry, k: int, trusted: string) {
   name := cl_str(ar, manifest, "name");
   if name != pl_name(r, k) { pl_fail(r, k, "its name doesn't match its file"); return; }
   x := pl_move(r, k, PL_ADMITTED);
+  // a Wasm plugin: its module's imports are what it was admitted, and no more
+  wasm := cl_raw(manifest, "wasm");
+  wexb: [4096] u8; wexports := "";
+  if wasm.count > 0 {
+    wwhy: [256] u8; wn := pl_wasm_admit(r, k, wasm, wexb[..], wwhy[..]);
+    if wn > 0 { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, cast(string) wwhy[0..<wn]); return; }
+    e := 0; while e < wexb.count && wexb[e] != 0 { e += 1; }
+    wexports = cast(string) wexb[0..<e];
+  }
   cmds := cl_raw(manifest, "commands");
   nc := cl_count(cmds);
   builtin := PL_BUILTIN;
@@ -207,6 +217,7 @@ pl_admit :: (r: [] PlRegistry, k: int, trusted: string) {
   for i: 0..<nc {
     one := cl_json(cmds, cl_item(cmds, i));
     cn := cl_str(ar, one, "name"); run := cl_str(ar, one, "run");
+    if wasm.count > 0 { run = cl_str(ar, one, "export"); if run.count == 0 || !pl_wasm_has_export(wexports, run) { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a Wasm command names an export its module has"); return; } }
     if !pl_name_ok(cn) || run.count == 0 || run.count > 1024 { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a command needs a name of a-z, 0-9, - and _ and a run of at most 1024 bytes"); return; }
     for b: builtin { if cn == b { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a command takes a built-in name"); return; } }
     if pl_find_cmd(r, cn) >= 0 { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a command's name is another plugin's"); return; }
@@ -255,7 +266,8 @@ pl_admit :: (r: [] PlRegistry, k: int, trusted: string) {
     c := r[0].cmds[r[0].ncmds..<r[0].ncmds + 1];
     c[0].owner = k;
     c[0].nname = pl_cat(c[0].name[..], 0, cl_str(ar, one, "name"));
-    c[0].nrun = pl_cat(c[0].run[..], 0, cl_str(ar, one, "run"));
+    if wasm.count > 0 { c[0].nrun = pl_wasm_command(r, wasm, cl_str(ar, one, "export"), c[0].run[..]); }
+    else { c[0].nrun = pl_cat(c[0].run[..], 0, cl_str(ar, one, "run")); }
     r[0].ncmds += 1;
   }
   hooks := cl_raw(manifest, "hooks");
@@ -353,6 +365,7 @@ pl_load :: (r: [] PlRegistry, profile: string) -> string {
   r[0].ar[0] = ClArena.{buf = r[0].arb[..]};
   db: [1100] u8; dir := pl_dir(db[..]);
   if dir.count == 0 { return ""; }
+  r[0].ndir = pl_cat(r[0].dir[..], 0, dir);
   disb: [8192] u8; disabled := pl_read_small(dir, "disabled", disb[..]);
   trb: [16384] u8; trusted := pl_read_small(dir, "trusted", trb[..]);
   names: [PL_MAX * 4] [64] u8; lens: [PL_MAX * 4] int; count := 0;
@@ -524,4 +537,169 @@ pl_test_registry :: (r: [] PlRegistry) { r[0].n = 0; r[0].ncmds = 0; r[0].nhooks
   #assert pl_disable(r[..], k) && r[0].p[k].state == PL_DRAINING && r[0].ncmds == 1;
   pl_done(r[..]);
   #assert r[0].p[k].state == PL_DISABLED && r[0].ncmds == 0 && r[0].busy == -1;
+}
+
+// ---------------------------------------------------------------- Wasm plugins
+// A plugin with "wasm":{"module":"NAME.wasm","imports":["coder_print"],
+// "seconds":10} runs its commands' exports in coder/tui/wasm_host.cjs. At
+// admission Coder reads the module itself: every function it imports from
+// "env" must be one the manifest admits and the host offers, and its memory
+// must declare a maximum of at most PL_WASM_PAGES pages. A signed plugin's
+// manifest also names the module's sha256, so the signature covers the code.
+
+PL_WASM_HOST :: [2] string.["coder_print", "coder_now_ms"];
+PL_WASM_PAGES :: 256;            // 16 MB
+PL_WASM_BYTES :: 4194304;
+PL_WASM_HOST_JS :: "/coder/tui/wasm_host.cjs";   // under the repo
+
+// An unsigned LEB128 at b[at[0]], moving at; -1 when it runs off the end.
+pl_leb :: (b: [] u8, at: [] int) -> int {
+  v := 0; shift := 0;
+  while at[0] < b.count && shift < 35 {
+    c := cast(int) b[at[0]]; at[0] += 1;
+    v += (c & 127) << shift;
+    if c < 128 { return v; }
+    shift += 7;
+  }
+  return -1;
+}
+
+// A Wasm name at b[at[0]]: its length and start; false when it runs off the end.
+pl_wasm_name :: (b: [] u8, at: [] int, out: [] u8) -> string {
+  n := pl_leb(b, at);
+  if n < 0 || at[0] + n > b.count { at[0] = b.count + 1; return ""; }
+  s := cast(string) b[at[0]..<at[0] + n]; at[0] += n;
+  return s;
+}
+
+pl_listed_json :: (list: string, name: string, ar: [] ClArena) -> bool {
+  for i: 0..<cl_count(list) { if cl_text(ar, list, cl_item(list, i)) == name { return true; } }
+  return false;
+}
+
+pl_wasm_has_export :: (exports: string, name: string) -> bool { return pl_trusted(exports, name); }
+
+// Reads the module's imports, exports and memory: "" when it fits what was
+// admitted, else why. exports gets the function exports, one a line.
+pl_wasm_check :: (b: [] u8, admitted: string, ar: [] ClArena, exports: [] u8) -> string {
+  if b.count < 8 || b[0] != 0 || b[1] != 'a' || b[2] != 's' || b[3] != 'm' || b[4] != 1 { return "its module isn't a Wasm module"; }
+  at: [1] int; at[0] = 8;
+  max_ok := false; has_memory := false; ne := 0;
+  for i: 0..<exports.count { exports[i] = 0; }
+  while at[0] < b.count {
+    id := cast(int) b[at[0]]; at[0] += 1;
+    size := pl_leb(b, at[..]);
+    if size < 0 || at[0] + size > b.count { return "its module is cut short"; }
+    end := at[0] + size;
+    if id == 2 {
+      count := pl_leb(b, at[..]);
+      for i: 0..<count {
+        mb: [8] u8; module := pl_wasm_name(b, at[..], mb[..]);
+        fb: [8] u8; field := pl_wasm_name(b, at[..], fb[..]);
+        if at[0] >= end { return "its import section doesn't read"; }
+        kind := cast(int) b[at[0]]; at[0] += 1;
+        if kind == 0 { t := pl_leb(b, at[..]); }
+        else if kind == 2 {
+          has_memory = true;
+          flags := pl_leb(b, at[..]); lo := pl_leb(b, at[..]);
+          if flags & 1 == 1 { hi := pl_leb(b, at[..]); max_ok = hi >= 0 && hi <= PL_WASM_PAGES; }
+        } else { return "it imports a table or a global"; }
+        if kind != 0 { continue; }
+        if module == "wasi_snapshot_preview1" { continue; }      // the host ends the plugin if one is called
+        host := PL_WASM_HOST; offered := false;
+        for h: host { if h == field { offered = true; } }
+        if module != "env" || !offered || !pl_listed_json(admitted, field, ar) {
+          wb := ar[0].buf; n := pl_cat(wb[ar[0].at..<wb.count], 0, "it imports ");
+          n = pl_cat(wb[ar[0].at..<wb.count], n, module); n = pl_cat(wb[ar[0].at..<wb.count], n, ".");
+          n = pl_cat(wb[ar[0].at..<wb.count], n, field); n = pl_cat(wb[ar[0].at..<wb.count], n, ", which it was not admitted");
+          return cast(string) wb[ar[0].at..<ar[0].at + n];
+        }
+      }
+    } else if id == 5 {
+      count := pl_leb(b, at[..]);
+      for i: 0..<count {
+        has_memory = true;
+        flags := pl_leb(b, at[..]); lo := pl_leb(b, at[..]);
+        if flags & 1 == 1 { hi := pl_leb(b, at[..]); max_ok = hi >= 0 && hi <= PL_WASM_PAGES; } else { max_ok = false; }
+      }
+    } else if id == 7 {
+      count := pl_leb(b, at[..]);
+      for i: 0..<count {
+        xb: [8] u8; name := pl_wasm_name(b, at[..], xb[..]);
+        if at[0] >= end { return "its export section doesn't read"; }
+        kind := cast(int) b[at[0]]; at[0] += 1; idx := pl_leb(b, at[..]);
+        if kind == 0 { ne = pl_cat(exports, ne, name); ne = pl_cat(exports, ne, "\n"); }
+      }
+    }
+    at[0] = end;
+  }
+  if has_memory && !max_ok { return "its memory has no maximum of at most 16 MB"; }
+  return "";
+}
+
+pl_hex_of :: (d: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<d.count { out[2 * i] = digits[cast(int) (d[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (d[i] & 15)]; }
+  return cast(string) out[0..<2 * d.count];
+}
+
+// Admits plugin k's module: 0 when it fits, else why's length.
+pl_wasm_admit :: (r: [] PlRegistry, k: int, wasm: string, exports: [] u8, why: [] u8) -> int {
+  ar := r[0].ar[..];
+  module := cl_str(ar, wasm, "module");
+  if module.count < 6 || module.count > 64 || cast(string) module[module.count - 5..<module.count] != ".wasm" || !pl_name_ok(cast(string) module[0..<module.count - 5]) {
+    return pl_cat(why, 0, "its module is NAME.wasm beside its manifest");
+  }
+  admitted := cl_raw(wasm, "imports");
+  for i: 0..<cl_count(admitted) {
+    a := cl_text(ar, admitted, cl_item(admitted, i));
+    host := PL_WASM_HOST; offered := false;
+    for h: host { if h == a { offered = true; } }
+    if !offered { n := pl_cat(why, 0, "it asks for "); n = pl_cat(why, n, a); return pl_cat(why, n, ", which the host doesn't offer"); }
+  }
+  fb: [PL_WASM_BYTES] u8;
+  n := pl_read_small(cast(string) r[0].dir[0..<r[0].ndir], module, fb[..]).count;
+  if n == 0 { m := pl_cat(why, 0, "its module "); m = pl_cat(why, m, module); return pl_cat(why, m, " isn't there"); }
+  want := cl_str(ar, wasm, "sha256");
+  if r[0].p[k].sealed && want.count == 0 { return pl_cat(why, 0, "a signed Wasm plugin names its module's sha256"); }
+  if want.count > 0 {
+    d: [32] u8; e := sha256_hash_checked(fb[0..<n], d[..], false);
+    hb: [64] u8;
+    if e != 0 || pl_hex_of(d[..], hb[..]) != want { return pl_cat(why, 0, "its module's sha256 doesn't match its manifest"); }
+  }
+  w := pl_wasm_check(fb[0..<n], admitted, ar, exports);
+  return pl_cat(why, 0, w);
+}
+
+// node REPO/coder/tui/wasm_host.cjs DIR/MODULE EXPORT IMPORTS SECONDS
+pl_wasm_command :: (r: [] PlRegistry, wasm: string, export: string, out: [] u8) -> int {
+  ar := r[0].ar[..];
+  rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+  n := pl_cat(out, 0, "node '"); n = pl_cat(out, n, repo); n = pl_cat(out, n, PL_WASM_HOST_JS); n = pl_cat(out, n, "' '");
+  n = pl_cat(out, n, cast(string) r[0].dir[0..<r[0].ndir]); n = pl_cat(out, n, "/"); n = pl_cat(out, n, cl_str(ar, wasm, "module"));
+  n = pl_cat(out, n, "' "); n = pl_cat(out, n, export); n = pl_cat(out, n, " ");
+  admitted := cl_raw(wasm, "imports");
+  for i: 0..<cl_count(admitted) { if i > 0 { n = pl_cat(out, n, ","); } n = pl_cat(out, n, cl_text(ar, admitted, cl_item(admitted, i))); }
+  if cl_count(admitted) == 0 { n = pl_cat(out, n, "''"); }
+  sec := cl_int(wasm, "seconds");
+  tb: [16] u8;
+  n = pl_cat(out, n, " "); n = pl_cat(out, n, cd_itoa(ifx sec.ok && sec.value >= 1 && sec.value <= 60 then sec.value else 10, tb[..]));
+  return n;
+}
+
+#test "Wasm: imports beyond what was admitted are refused; a memory needs a maximum" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  ex: [256] u8;
+  // magic, version; import section: env.coder_print (func, type 0); memory section: min 1, max 2; export section: hello
+  m := [60] u8.[0, 'a', 's', 'm', 1, 0, 0, 0,
+    2, 19, 1, 3, 'e', 'n', 'v', 11, 'c', 'o', 'd', 'e', 'r', '_', 'p', 'r', 'i', 'n', 't', 0, 0,
+    5, 4, 1, 1, 1, 2,
+    7, 9, 1, 5, 'h', 'e', 'l', 'l', 'o', 0, 1,
+    0, 12, 4, 'n', 'o', 't', 'e', 1, 2, 3, 4, 5, 6, 7];
+  #assert pl_wasm_check(m[..], "[\"coder_print\"]", ar[..], ex[..]) == "";
+  #assert pl_wasm_has_export(cast(string) ex[0..<6], "hello");
+  #assert pl_wasm_check(m[..], "[]", ar[..], ex[..]) == "it imports env.coder_print, which it was not admitted";
+  m[32] = 0;        // the memory's maximum flag off
+  #assert pl_wasm_check(m[..], "[\"coder_print\"]", ar[..], ex[..]) == "its memory has no maximum of at most 16 MB";
+  #assert pl_wasm_check(m[0..<20], "[\"coder_print\"]", ar[..], ex[..]) == "its module is cut short";
 }

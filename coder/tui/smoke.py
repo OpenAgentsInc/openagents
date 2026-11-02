@@ -340,6 +340,27 @@ def verbs(check):
         nop = subprocess.run([coder, "plugins", "--profile", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("profiles: an unknown profile is refused", nop.returncode == 2 and "no such profile" in nop.stderr)
         os.remove(os.path.join(plugdir, "fmt.json")); os.remove(os.path.join(plugdir, "tidy.json"))
+        # Wasm plugins: built from Coax, run in the bounded host; a module importing more than it was admitted is refused
+        if os.path.exists("/opt/homebrew/opt/llvm/bin/clang") and os.path.isdir("/opt/homebrew/opt/wasi-libc/share/wasi-sysroot"):
+            wsrc = os.path.join(REPO, "coder", "plugins", "hello", "hello.coax"); wsh = os.path.join(HERE, "wasm_plugin.sh")
+            subprocess.run([wsh, wsrc, os.path.join(plugdir, "hello.wasm"), "hello", "spin"], check=True, capture_output=True, timeout=300)
+            subprocess.run([wsh, wsrc, os.path.join(plugdir, "clocky.wasm"), "hello", "clock"], check=True, capture_output=True, timeout=300)
+            with open(os.path.join(plugdir, "hello.json"), "w") as f:
+                f.write(open(os.path.join(REPO, "coder", "plugins", "hello", "hello.json")).read())
+            with open(os.path.join(plugdir, "clocky.json"), "w") as f:
+                f.write('{"name":"clocky","wasm":{"module":"clocky.wasm","imports":["coder_print"]},"commands":[{"name":"clock","export":"clock"}]}')
+            wp = {x["name"]: x for x in json.loads(subprocess.run([coder, "plugins", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)}
+            wh = subprocess.run([coder, "run", "/hello", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+            ws = subprocess.run([coder, "run", "/spin", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+            whr = [json.loads(l) for l in wh.stdout.splitlines() if '"kind":"result"' in l]
+            wsr = [json.loads(l) for l in ws.stdout.splitlines() if '"kind":"result"' in l]
+            check("wasm plugins: a command runs in the host; one that never returns is stopped; an unadmitted import is refused",
+                  wp.get("hello", {}).get("state") == "active" and wp.get("clocky", {}).get("why") == "it imports env.coder_now_ms, which it was not admitted"
+                  and whr and whr[0]["text"] == "hello from wasm" and wsr and wsr[0]["error"] and "stopped after 3s" in wsr[0]["text"])
+            for n in ("hello.wasm", "hello.json", "clocky.wasm", "clocky.json"):
+                os.remove(os.path.join(plugdir, n))
+        else:
+            print("skip wasm plugins: no LLVM with a wasm32 target and wasi-libc")
         # fork: the new session carries the parent's turns, and its header names the parent
         first = subprocess.run([coder, "run", "remember heliotrope", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         pid_ = json.loads(first.stdout.splitlines()[0])["id"]

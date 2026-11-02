@@ -1,0 +1,19 @@
+// A Coder Wasm plugin (Coder book chapter 15): /hello prints a line, /spin
+// never returns, so the host ends it, and /clock asks for the time, which
+// this plugin is not admitted to do. Build it with
+//   coder/tui/wasm_plugin.sh coder/plugins/hello/hello.coax hello.wasm hello spin clock
+// and put hello.wasm beside hello.json in ~/.openagents/coder/plugins.
+coder_print :: (s: [] u8) -> int #foreign;
+coder_now_ms :: () -> int #foreign;
+
+say :: (s: string) { b: [256] u8; n := 0; for c: s { if n < b.count { b[n] = c; n += 1; } } r := coder_print(b[0..<n]); }
+
+hello :: () -> int #export_c { say("hello from wasm"); return 0; }
+
+spin :: () -> int #export_c {
+  n := 0;
+  while true { n = (n + 1) % 1000; if n == 1000 { break; } }
+  return n;
+}
+
+clock :: () -> int #export_c { t := coder_now_ms(); say(ifx t > 0 then "the clock answered" else "no clock"); return 0; }

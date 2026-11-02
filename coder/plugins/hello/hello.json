@@ -1,0 +1,3 @@
+{"name":"hello",
+ "wasm":{"module":"hello.wasm","imports":["coder_print"],"seconds":3},
+ "commands":[{"name":"hello","export":"hello"},{"name":"spin","export":"spin"}]}
