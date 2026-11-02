@@ -1,0 +1,28 @@
+chunks of 16 frames (160 ms), 2 chunks of left context
+utterance 0: 1500 ms of audio
+  chunk 0: heard 160 ms, 1 new:  de
+  chunk 1: heard 320 ms, 1 new:  de de
+  chunk 2: heard 480 ms, 1 new:  de de ba
+  chunk 3: heard 640 ms, 2 new:  de de ba de ko
+  chunk 4: heard 800 ms, 2 new:  de de ba de ko ba de
+  chunk 5: heard 960 ms, 1 new:  de de ba de ko ba de ba
+  chunk 6: heard 1120 ms, 1 new:  de de ba de ko ba de ba ba
+  chunk 7: heard 1280 ms, 1 new:  de de ba de ko ba de ba ba ko
+  chunk 8: heard 1440 ms, 2 new:  de de ba de ko ba de ba ba ko ba de
+  end of turn: heard 1500 ms, 1 new, final:  de de ba de ko ba de ba ba ko ba de ba
+  first partial at 160 ms, longest wait 80 ms, 60 ms released only by the end of turn
+utterance 1: 400 ms of audio
+  chunk 0: heard 160 ms, 1 new:  de
+  chunk 1: heard 320 ms, 1 new:  de ba
+  end of turn: heard 400 ms, 0 new, final:  de ba
+  first partial at 160 ms, longest wait 80 ms, 80 ms released only by the end of turn
+chunk 19 left 0: 19 encoded frames bit for bit: true, transcript the same: true, 10 words
+chunk 2 left 2: 19 encoded frames bit for bit: true, transcript the same: true, 3 edits from the full-context transcript
+chunk  left context  latest first partial  word error against full context
+80 ms  0 ms  160 ms  30/79 = 38.0%
+80 ms  320 ms  160 ms  19/79 = 24.1%
+80 ms  1520 ms  160 ms  14/79 = 17.7%
+160 ms  0 ms  160 ms  34/79 = 43.0%
+160 ms  1440 ms  160 ms  14/79 = 17.7%
+320 ms  1280 ms  320 ms  13/79 = 16.5%
+1600 ms  0 ms  1600 ms  0/79 = 0.0%

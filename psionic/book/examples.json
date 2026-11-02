@@ -192,6 +192,26 @@
       ]
     },
     {
+      "source": "psionic/examples/listen.coax",
+      "chapter": "psionic/book/ch154-transcribe-while-someone-speaks.md",
+      "stdout": "psionic/fixtures/listen.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/listen-refuse.coax",
+      "chapter": "psionic/book/ch154-transcribe-while-someone-speaks.md",
+      "stdout": "psionic/fixtures/listen-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/ministral.coax",
       "chapter": "psionic/book/ch081-execute-ministral-4.md",
       "stdout": "psionic/fixtures/ministral.out",

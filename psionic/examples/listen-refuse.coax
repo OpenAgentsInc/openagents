@@ -1,0 +1,31 @@
+// Chapter 154: chunks that repeat, arrive late, skip ahead or are malformed,
+// each refused with its status and the stream left as it was.
+#import "Basic";
+#load "../lib/listen.coax";
+
+// book:begin refuse
+main :: () {
+    s:=ls_test_shape();w:[2782]f32;#assert cf_init(s,w[..],21)==CfStatus.ok;
+    work:[20000]f32;st:[1]LsStream;tokens:[20]int;x:[256]f32;
+    for i:0..<256 {x[i]=f32(i%7)*0.25-0.75;}
+    c:=LsContext.{chunk=2,left=2};
+    print("before ls_open: %\n",ls_push(st[..],w[..],work[..],x[..],16,0,0,false,tokens[..]).status);
+    print("chunk of 256 frames: %\n",ls_open(s,LsContext.{chunk=256,left=0},w[..],work[..],st[..]));
+    print("33 chunks of 8 frames in context: %\n",ls_open(s,LsContext.{chunk=8,left=32},w[..],work[..],st[..]));
+    print("work one value short: %\n",ls_open(s,c,w[..],work[0..<ls_plan(s,c).work-1],st[..]));
+    #assert ls_open(s,c,w[..],work[..],st[..])==LsStatus.ok;
+    print("chunk 0 of utterance 0: %\n",ls_push(st[..],w[..],work[..],x[..],16,0,0,false,tokens[..]).status);
+    print("chunk 0 again: %\n",ls_push(st[..],w[..],work[..],x[..],16,0,0,false,tokens[..]).status);
+    print("chunk 2 before chunk 1: %\n",ls_push(st[..],w[..],work[..],x[..],16,0,2,false,tokens[..]).status);
+    print("utterance 1 before utterance 0 ends: %\n",ls_push(st[..],w[..],work[..],x[..],16,1,1,false,tokens[..]).status);
+    print("15 frames mid-utterance: %\n",ls_push(st[..],w[..],work[..],x[0..<240],15,0,1,false,tokens[..]).status);
+    print("room for no new tokens: %\n",ls_push(st[..],w[..],work[..],x[..],16,0,1,false,tokens[0..<st[0].tokens]).status);
+    x[37]=1.0e9;print("a feature of 10^9: %\n",ls_push(st[..],w[..],work[..],x[..],16,0,1,false,tokens[..]).status);
+    zero:f32=0;x[37]=zero/zero;print("a NaN feature: %\n",ls_push(st[..],w[..],work[..],x[..],16,0,1,false,tokens[..]).status);
+    x[37]=0;r:=ls_push(st[..],w[..],work[..],x[..],16,0,1,false,tokens[..]);
+    print("chunk 1: %, % tokens so far\n",r.status,r.total);
+    r=ls_push(st[..],w[..],work[..],x[0..<48],3,0,2,true,tokens[..]);print("end of turn with 3 frames: %, final %\n",r.status,r.final);
+    print("chunk 3 of the ended utterance: %\n",ls_push(st[..],w[..],work[..],x[..],16,0,3,false,tokens[..]).status);
+    print("utterance 1 ending with no frames: %\n",ls_push(st[..],w[..],work[..],x[0..<0],0,1,0,true,tokens[..]).status);
+}
+// book:end refuse

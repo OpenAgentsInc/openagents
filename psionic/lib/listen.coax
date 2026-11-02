@@ -1,0 +1,464 @@
+// Chapter 154: transcribe while someone speaks. Chapter 152's encoder made
+// streaming: feature frames arrive in numbered chunks; each chunk is
+// subsampled with one chunk of input overlap, then every Conformer layer runs
+// on the chunk's new frames only, reading the keys and values of its own
+// chunk and a fixed number of chunks before it (chunked attention) and the
+// gated frames of the kernel - 1 frames before it (a causal convolution),
+// both kept in per-layer rings. A frame never changes once its chunk is
+// done, so greedy CTC decoding on it is final: a partial hypothesis only
+// grows. End of turn flushes the last, shorter chunk and closes the
+// utterance. Chunks that repeat, arrive late or skip ahead are refused.
+// Profile psionic-listen-v1: chapter 152's (f32 storage, binary64
+// compensated sums, one rounding to f32 per stored value), within its
+// bounds; at most 255 encoded frames a chunk and 256 frames of context.
+#load "conformer.coax";
+#load "tdt.coax";
+#load "../tests/listen-checks.coax";   // the checks' references
+
+// book:begin types
+LsStatus :: enum u8 {ok;shape;limit;closed;order;duplicate;gap;length;capacity;number;}
+// chunk: encoded frames a chunk carries (8 feature frames each, 80 ms);
+// left: chunks before its own that a frame may attend to.
+LsContext :: struct {chunk:int;left:int;}
+// Offsets into the caller's work array: the position rows of every layer,
+// the key, value and gated-frame rings, the kept tail of input, the
+// subsampling window and its work, and the frames being built.
+LsPlan :: struct {status:LsStatus;cap:int;rows:int;window:int;at_p:int;at_k:int;at_v:int;at_g:int;at_tail:int;at_window:int;
+    at_sub:int;at_enc:int;at_h:int;at_q:int;at_ctx:int;work:int;}
+// The stream between chunks. Latency counts are in feature frames (10 ms).
+LsStream :: struct {open:bool;shape:CfShape;context:LsContext;plan:LsPlan;utterance:int;next:int;frames:int;encoded:int;
+    tail:int;prev:int;tokens:int;first:int;lag:int;}
+// written: tokens this chunk appended; total: tokens in the hypothesis;
+// final: this chunk ended the utterance. On a final chunk, first is the
+// audio heard when the first token appeared (-1 if none), lag the longest
+// any token waited behind its own audio, held the audio only the end of
+// turn released.
+LsResult :: struct {status:LsStatus;written:int;total:int;encoded:int;final:bool;first:int;lag:int;held:int;}
+// book:end types
+
+LS_CHUNK_MAX :: 255;    // a chunk and its 8-frame overlap fit chapter 152's 2,048 frames
+LS_KEYS_MAX :: 256;     // (left + 1) x chunk: chapter 152's CF_TOKENS_MAX
+
+#test "the chunk arithmetic by hand" {
+    // Chunks of 2 encoded frames (16 feature frames, 160 ms), 1 chunk of left context.
+    c:=LsContext.{chunk=2,left=1};
+    k:=ls_keys(c,0,7);#assert k.from==0 && k.to==2;
+    k=ls_keys(c,3,7);#assert k.from==0 && k.to==4;
+    k=ls_keys(c,4,7);#assert k.from==2 && k.to==6;
+    k=ls_keys(c,6,7);#assert k.from==4 && k.to==7;
+    // Relative positions -1 .. 3: five position rows.
+    p:=ls_plan(cf_tiny(),c);#assert p.status==LsStatus.ok && p.rows==5 && p.cap==7 && p.window==24;
+    // 51 feature frames in chunks of 16: 16, 16, 16, then 3 at the end of turn.
+    #assert ls_new_frames(16,0,false)==2 && ls_new_frames(32,2,false)==2 && ls_new_frames(51,6,true)==1;
+    #assert cf_length(51)==7 && ls_new_frames(48,6,true)==0 && ls_new_frames(5,0,true)==1;
+    // The work layout for that context (one layer): 5 position rows and
+    // rings of 7 frames, 8 kept frames, a 24-frame window and its
+    // subsampling work, 3 window outputs, and the chunk's frames, queries
+    // and attention outputs.
+    #assert p.at_k==40 && p.at_v==96 && p.at_g==152 && p.at_tail==208 && p.at_window==336 && p.at_sub==720;
+    sub:=cf_plan(cf_tiny(),1,24).work;
+    #assert p.at_enc==720+sub && p.at_h==p.at_enc+24 && p.at_q==p.at_h+16 && p.at_ctx==p.at_q+16 && p.work==p.at_ctx+16;
+    w4:=ls_plan(cf_tiny(),LsContext.{chunk=4,left=2});#assert w4.cap==15 && w4.rows==15 && w4.window==40;
+    #assert ls_plan(cf_tiny(),LsContext.{chunk=1,left=255}).status==LsStatus.ok && ls_plan(cf_tiny(),LsContext.{chunk=1,left=256}).status==LsStatus.limit;
+}
+
+// A two-layer test encoder with three causal taps, and its utterance.
+ls_test_shape :: ()->CfShape {s:=cf_tiny();s.layers=2;return s;}
+LS_TEST_FRAMES :: 75;   // 10 encoded frames; 0.75 s
+
+#test "a stream equals the masked whole-utterance reference, bit for bit" #steps 2000000000 {
+    s:=ls_test_shape();w:[2782]f32;#assert cf_init(s,w[..],21)==CfStatus.ok;
+    N:=LS_TEST_FRAMES;x:[1200]f32;cf_fixture_features(x[..],16,N,1);
+    rw:[8000]f32;ref:[80]f32;logp:[40]f32;want:[10]int;work:[20000]f32;st:[1]LsStream;
+    chunks:=[6]int.[1,1,2,3,4,10];lefts:=[6]int.[0,3,1,0,2,0];
+    for k:0..<6 {
+        c:=LsContext.{chunk=chunks[k],left=lefts[k]};
+        #assert ls_ref_encode(s,w[..],x[..],N,c.chunk,c.left,ref[..],rw[..])==10;
+        n:=ls_ref_decode(s,w[..],ref[..],10,logp[..],want[..]);
+        #assert ls_open(s,c,w[..],work[..],st[..])==LsStatus.ok;
+        got:[80]f32;tokens:[10]int;r:=ls_ref_stream(st[..],w[..],work[..],x[..],N,0,tokens[..],got[..]);
+        #assert r.status==LsStatus.ok && r.final && r.total==n && px_same(got[..],ref[..]);
+        for i:0..<n {#assert tokens[i]==want[i];}
+    }
+}
+
+#test "with the whole utterance in one chunk, a stream equals chapter 152's encoder" #steps 2000000000 {
+    // One tap: the causal convolution and chapter 152's centred one are the
+    // same, so the stream must match cf_encode, its relative-shift attention
+    // and its CTC decoding exactly.
+    s:=ls_test_shape();s.kernel=1;w:[2750]f32;#assert cf_weight_count(s)==2750 && cf_init(s,w[..],23)==CfStatus.ok;
+    N:=LS_TEST_FRAMES;x:[1200]f32;cf_fixture_features(x[..],16,N,1);
+    p:=cf_plan(s,1,N);cwork:[8000]f32;out:[80]f32;got:[1]int;whole:=[1]int.[N];
+    #assert p.work<=8000 && cf_encode(s,w[..],x[..],whole[..],1,N,cwork[0..<p.work],out[..],got[..],false).status==CfStatus.ok;
+    logp:[40]f32;want:[10]int;n:=ls_ref_decode(s,w[..],out[..],10,logp[..],want[..]);
+    work:[20000]f32;st:[1]LsStream;enc:[80]f32;tokens:[10]int;
+    #assert ls_open(s,LsContext.{chunk=10,left=0},w[..],work[..],st[..])==LsStatus.ok;
+    r:=ls_ref_stream(st[..],w[..],work[..],x[..],N,0,tokens[..],enc[..]);
+    #assert r.status==LsStatus.ok && r.encoded==10 && px_same(enc[..],out[..]) && r.total==n;
+    for i:0..<n {#assert tokens[i]==want[i];}
+    // Limited context changes the frames; so do three causal taps.
+    #assert ls_open(s,LsContext.{chunk=2,left=1},w[..],work[..],st[..])==LsStatus.ok;
+    #assert ls_ref_stream(st[..],w[..],work[..],x[..],N,0,tokens[..],enc[..]).status==LsStatus.ok && !px_same(enc[..],out[..]);
+    s3:=ls_test_shape();w3:[2782]f32;#assert cf_init(s3,w3[..],23)==CfStatus.ok;
+    #assert ls_open(s3,LsContext.{chunk=10,left=0},w3[..],work[..],st[..])==LsStatus.ok;
+    #assert ls_ref_stream(st[..],w3[..],work[..],x[..],N,0,tokens[..],enc[..]).status==LsStatus.ok;
+    #assert cf_encode(s3,w3[..],x[..],whole[..],1,N,cwork[0..<cf_plan(s3,1,N).work],out[..],got[..],false).status==CfStatus.ok && !px_same(enc[..],out[..]);
+}
+#test "a finished utterance leaves nothing behind" #steps 2000000000 {
+    s:=ls_test_shape();w:[2782]f32;#assert cf_init(s,w[..],21)==CfStatus.ok;
+    x:[640]f32;y:[480]f32;cf_fixture_features(x[..],16,40,1);cf_fixture_features(y[..],16,30,1);
+    work:[20000]f32;st:[1]LsStream;c:=LsContext.{chunk=1,left=2};
+    a:[5]int;b:[4]int;fa:[40]f32;fb:[32]f32;fresh:[4]int;ff:[32]f32;
+    #assert ls_open(s,c,w[..],work[..],st[..])==LsStatus.ok;
+    ra:=ls_ref_stream(st[..],w[..],work[..],x[..],40,0,a[..],fa[..]);
+    #assert ra.status==LsStatus.ok && ra.final && st[0].utterance==1 && st[0].next==0 && st[0].tokens==0 && st[0].frames==0;
+    #assert st[0].encoded==0 && st[0].tail==0 && st[0].prev==-1 && st[0].first==-1 && st[0].lag==0 && st[0].open;
+    rb:=ls_ref_stream(st[..],w[..],work[..],y[..],30,1,b[..],fb[..]);
+    #assert ls_open(s,c,w[..],work[..],st[..])==LsStatus.ok;
+    rf:=ls_ref_stream(st[..],w[..],work[..],y[..],30,0,fresh[..],ff[..]);
+    #assert rb.status==LsStatus.ok && rb.total==rf.total && px_same(fb[..],ff[..]);
+    for i:0..<rb.total {#assert b[i]==fresh[i];}
+}
+#test "latency against a recount from the reference" #steps 4000000000 {
+    // The spread head on a calibration utterance, then for several contexts
+    // and lengths: when each token appeared, recounted from the reference's
+    // per-frame classes and the chunk boundaries alone.
+    s:=ls_test_shape();w:[2782]f32;#assert cf_init(s,w[..],21)==CfStatus.ok;
+    x:[1280]f32;work:[20000]f32;st:[1]LsStream;enc:[80]f32;tokens:[10]int;rw:[8000]f32;ref:[80]f32;
+    cf_fixture_features(x[..],16,80,1);
+    #assert ls_open(s,LsContext.{chunk=10,left=0},w[..],work[..],st[..])==LsStatus.ok;
+    #assert ls_ref_stream(st[..],w[..],work[..],x[..],80,0,tokens[..],enc[..]).status==LsStatus.ok;
+    ls_spread_head(s,w[..],enc[..],10,30);
+    chunks:=[4]int.[1,2,3,4];lefts:=[4]int.[0,1,0,2];lengths:=[4]int.[75,64,41,9];
+    for k:0..<4 {
+        c:=LsContext.{chunk=chunks[k],left=lefts[k]};N:=lengths[k];
+        cf_fixture_features(x[..],16,N,1);
+        T:=ls_ref_encode(s,w[..],x[..],N,c.chunk,c.left,ref[..],rw[..]);
+        want:=ls_ref_latency(s,w[..],ref[..],T,N,c.chunk);
+        #assert ls_open(s,c,w[..],work[..],st[..])==LsStatus.ok;
+        r:=ls_ref_stream(st[..],w[..],work[..],x[..],N,0,tokens[..],enc[..]);
+        #assert (want.total>0 || k==3) && r.status==LsStatus.ok && r.total==want.total && r.first==want.first && r.lag==want.lag && r.held==want.held;
+    }
+    // By hand for the last: 9 frames in chunks of 32 never fill one; both
+    // encoded frames wait for the end of turn, which releases all 9.
+    #assert lengths[3]==9 && cf_length(9)==2;
+    r:=ls_ref_stream(st[..],w[..],work[..],x[..],9,1,tokens[..],enc[..]);
+    #assert r.held==9 && (r.total==0 || r.first==9);
+}
+#test "refusals leave the stream alone" #steps 2000000000 {
+    s:=ls_test_shape();w:[2782]f32;#assert cf_init(s,w[..],21)==CfStatus.ok;
+    N:=40;x:[640]f32;cf_fixture_features(x[..],16,N,1);work:[20000]f32;st:[1]LsStream;c:=LsContext.{chunk=2,left=1};
+    tokens:[5]int;buf:[256]f32;ls_ref_slice(x[..],16,N,0,16,buf[..]);
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,0,0,false,tokens[..]).status==LsStatus.closed;
+    // Opening.
+    b:=s;b.heads=3;#assert ls_open(b,c,w[..],work[..],st[..])==LsStatus.shape;
+    b=s;b.dim=130;#assert ls_open(b,c,w[..],work[..],st[..])==LsStatus.limit;
+    #assert ls_open(s,LsContext.{chunk=0,left=0},w[..],work[..],st[..])==LsStatus.shape;
+    #assert ls_open(s,LsContext.{chunk=1,left=-1},w[..],work[..],st[..])==LsStatus.shape;
+    #assert ls_plan(s,LsContext.{chunk=255,left=0}).status==LsStatus.ok && ls_plan(s,LsContext.{chunk=256,left=0}).status==LsStatus.limit;
+    #assert ls_plan(s,LsContext.{chunk=16,left=15}).status==LsStatus.ok && ls_plan(s,LsContext.{chunk=16,left=16}).status==LsStatus.limit;
+    #assert ls_open(s,c,w[0..<2781],work[..],st[..])==LsStatus.shape;
+    two:[2]LsStream;#assert ls_open(s,c,w[..],work[..],two[..])==LsStatus.shape;
+    #assert ls_open(s,c,w[..],work[0..<ls_plan(s,c).work-1],st[..])==LsStatus.capacity;
+    v:=w;v[100]=cf_nan();#assert ls_open(s,c,v[..],work[..],st[..])==LsStatus.number;
+    #assert st[0].open==false;
+    #assert ls_open(s,c,w[..],work[..],st[..])==LsStatus.ok;
+    // Chunks.
+    #assert ls_push(two[..],w[..],work[..],buf[..],16,0,0,false,tokens[..]).status==LsStatus.shape;
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,0,-1,false,tokens[..]).status==LsStatus.shape;
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,0,1,false,tokens[..]).status==LsStatus.gap;
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,1,0,false,tokens[..]).status==LsStatus.gap;
+    #assert ls_push(st[..],w[..],work[..],buf[0..<240],15,0,0,false,tokens[..]).status==LsStatus.shape;
+    #assert ls_push(st[..],w[..],work[..],buf[..],15,0,0,true,tokens[..]).status==LsStatus.shape;
+    big:[272]f32;#assert ls_push(st[..],w[..],work[..],big[..],17,0,0,true,tokens[..]).status==LsStatus.shape;
+    #assert ls_push(st[..],w[..],work[..],buf[0..<0],-1,0,0,true,tokens[..]).status==LsStatus.shape;
+    #assert ls_push(st[..],w[..],work[..],buf[0..<0],0,0,0,true,tokens[..]).status==LsStatus.length;
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,0,0,false,tokens[0..<1]).status==LsStatus.capacity;
+    #assert ls_push(st[..],w[0..<2781],work[..],buf[..],16,0,0,false,tokens[..]).status==LsStatus.shape;
+    #assert ls_push(st[..],w[..],work[0..<st[0].plan.work-1],buf[..],16,0,0,false,tokens[..]).status==LsStatus.shape;
+    keep:=buf[37];buf[37]=cf_nan();#assert ls_push(st[..],w[..],work[..],buf[..],16,0,0,false,tokens[..]).status==LsStatus.number;
+    buf[37]=10000.0625;#assert ls_push(st[..],w[..],work[..],buf[..],16,0,0,false,tokens[..]).status==LsStatus.number;
+    buf[37]=-10000.0625;#assert ls_push(st[..],w[..],work[..],buf[..],16,0,0,false,tokens[..]).status==LsStatus.number;
+    buf[37]=keep;
+    // Nothing above moved the stream: the utterance still decodes as a clean one does.
+    enc:[40]f32;got:[5]int;r:=ls_ref_stream(st[..],w[..],work[..],x[..],N,0,got[..],enc[..]);
+    #assert ls_open(s,c,w[..],work[..],st[..])==LsStatus.ok;
+    clean:[40]f32;want:[5]int;q:=ls_ref_stream(st[..],w[..],work[..],x[..],N,0,want[..],clean[..]);
+    #assert r.status==LsStatus.ok && r.total==q.total && px_same(enc[..],clean[..]);
+    // Repeats, late chunks and the end of the frame budget.
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,1,0,false,tokens[..]).status==LsStatus.ok;
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,1,0,false,tokens[..]).status==LsStatus.duplicate;
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,0,5,false,tokens[..]).status==LsStatus.order;
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,1,1,false,tokens[..]).status==LsStatus.ok;
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,1,0,false,tokens[..]).status==LsStatus.order;
+    #assert ls_push(st[..],w[..],work[..],buf[..],16,1,1,false,tokens[..]).status==LsStatus.duplicate;
+    // The frame budget, on the admission rule alone: 2,048 frames an utterance.
+    u:=st[0];u.frames=2033;#assert ls_admit(u,buf[..],16,1,2,true,tokens[..])==LsStatus.length;
+    many:[300]int;u.frames=2032;#assert ls_admit(u,buf[..],16,1,2,true,many[..])==LsStatus.ok;
+    // 10,000 is still a feature.
+    buf[37]=10000;#assert ls_push(st[..],w[..],work[..],buf[..],16,1,2,false,tokens[..]).status==LsStatus.ok;
+}
+#test "the stream's own state" #steps 2000000000 {
+    s:=ls_test_shape();w:[2782]f32;#assert cf_init(s,w[..],21)==CfStatus.ok;c:=LsContext.{chunk=2,left=1};p:=ls_plan(s,c);
+    work:[20000]f32;st:[1]LsStream;tokens:[8]int;N:=40;x:[640]f32;cf_fixture_features(x[..],16,N,1);buf:[256]f32;
+    // Exactly enough work; a fresh stream has seen no frame and no class.
+    #assert ls_open(s,c,w[..],work[0..<p.work],st[..])==LsStatus.ok && st[0].prev==-1 && st[0].first==-1 && st[0].next==0;
+    // Position rows: relative positions -1 to 3, by chapter 152's reference.
+    pe:[8]f64;pr:[8]f64;
+    for l:0..<2 {for r:0..<p.rows {
+        for e:0..<8 {pe[e]=cf_ref_pe(r-1,e,8);}
+        cf_ref_linear(w[..],cf_layer_at(s,cf_layer_base(s,l)).att.pos,8,8,false,pe[..],pr[..]);
+        #assert cf_worst(work[(l*p.rows+r)*8..<(l*p.rows+r+1)*8],pr[..])<=0.000001;
+    }}
+    // After a chunk the last 8 of its frames are kept, mel by mel.
+    ls_ref_slice(x[..],16,N,0,16,buf[..]);
+    #assert ls_push(st[..],w[..],work[0..<p.work],buf[..],16,0,0,false,tokens[..]).status==LsStatus.ok && st[0].tail==8;
+    for m:0..<16 {for i:0..<8 {#assert work[p.at_tail+m*8+i]==x[m*N+8+i];}}
+    // A one-frame utterance is enough.
+    one:[16]f32;#assert ls_open(s,c,w[..],work[..],st[..])==LsStatus.ok;
+    r:=ls_push(st[..],w[..],work[..],one[..],1,0,0,true,tokens[..]);#assert r.status==LsStatus.ok && r.encoded==1 && r.final;
+    // A head that scores every class the same: the lowest class, 0, wins
+    // every frame, and the frames collapse into one token.
+    flat:=w;ls_spread_head(s,flat[..],x[0..<16],1,0);
+    #assert ls_open(s,c,flat[..],work[..],st[..])==LsStatus.ok;
+    enc:[40]f32;r=ls_ref_stream(st[..],flat[..],work[..],x[..],N,0,tokens[..],enc[..]);
+    #assert r.status==LsStatus.ok && r.total==1 && tokens[0]==0;
+}
+#test "edits, rates and the spread head by hand" #steps 400000000 {
+    a:=[4]int.[0,1,2,1];b:=[3]int.[0,2,1];c:=[5]int.[0,1,2,1,9];
+    #assert ls_edits(a[..],b[..])==1 && ls_edits(a[..],a[..])==0 && ls_edits(a[..],c[..])==1 && ls_edits(b[..],a[0..<0])==3;
+    // 9 and 1 are different tokens but the same word: tokens are named modulo 8.
+    #assert ls_edits(c[3..<4],c[4..<5])==0 && ls_edits(c[4..<5],c[3..<4])==0;
+    #assert ls_rate(1,4)==250 && ls_rate(1,3)==333 && ls_rate(2,3)==667 && ls_rate(0,79)==0 && ls_rate(30,79)==380 && ls_rate(5,9)==556;
+    // After spreading, the mean frame scores every class 0, and each weight is k times its old value.
+    s:=ls_test_shape();w:[2782]f32;#assert cf_init(s,w[..],21)==CfStatus.ok;
+    f:=[16]f32.[1,2,0,0,0,0,0,0, 3,4,0,0,0,0,0,0];
+    v:=w;ls_spread_head(s,v[..],f[..],2,10);at:=cf_head_at(s);
+    #assert v[at]==f32(10*f64(w[at])) && v[at+31]==f32(10*f64(w[at+31])) && v[at-1]==w[at-1];
+    for r:0..<4 {
+        sum:=f64(v[at+32+r])+f64(v[at+r*8])*2+f64(v[at+r*8+1])*3;
+        #assert cf_close(sum,0,0.00001) && cf_close(f64(v[at+32+r]),-2*f64(v[at+r*8])-3*f64(v[at+r*8+1]),0.00001);
+    }
+}
+
+// book:begin keys
+// The keys frame i may read when frames 0 .. known - 1 exist: its own chunk
+// and context.left chunks before it, never a later chunk.
+LsKeys :: struct {from:int;to:int;}
+ls_keys :: (c:LsContext,i:int,known:int)->LsKeys {
+    // max(0, a) is -min(0, -a); chapter 153's tdt_min has no comparison.
+    own:=i/c.chunk;
+    return LsKeys.{from=-tdt_min(0,(c.left-own)*c.chunk),to=tdt_min((own+1)*c.chunk,known)};
+}
+// Encoded frames a chunk completes, given the feature frames heard so far and
+// the encoded frames already made. Mid-utterance a chunk completes
+// frames / 8; the end of turn completes the rest, as chapter 152 counts them.
+ls_new_frames :: (frames:int,encoded:int,end:bool)->int {
+    if end {return cf_length(frames)-encoded;}
+    return frames/8-encoded;
+}
+// book:end keys
+
+// book:begin plan
+ls_plan :: (s:CfShape,c:LsContext)->LsPlan {
+    status:=cf_shape_check(s);if status!=CfStatus.ok {return LsPlan.{status=ifx status==CfStatus.limit then LsStatus.limit else LsStatus.shape};}
+    if c.chunk<1 || c.left<0 {return LsPlan.{status=LsStatus.shape};}
+    if c.chunk>LS_CHUNK_MAX || (c.left+1)*c.chunk>LS_KEYS_MAX {return LsPlan.{status=LsStatus.limit};}
+    d:=s.dim;p:=LsPlan.{cap=(c.left+1)*c.chunk+s.kernel,rows=(c.left+2)*c.chunk-1,window=8*(c.chunk+1)};
+    ring:=s.layers*p.cap*d;
+    p.at_k=s.layers*p.rows*d;p.at_v=p.at_k+ring;p.at_g=p.at_v+ring;p.at_tail=p.at_g+ring;
+    p.at_window=p.at_tail+8*s.mels;p.at_sub=p.at_window+p.window*s.mels;p.at_enc=p.at_sub+cf_plan(s,1,p.window).work;
+    p.at_h=p.at_enc+(c.chunk+1)*d;p.at_q=p.at_h+c.chunk*d;p.at_ctx=p.at_q+c.chunk*d;p.work=p.at_ctx+c.chunk*d;
+    return p;
+}
+// book:end plan
+
+// book:begin open
+// Check the encoder and context, fill each layer's position rows (relative
+// positions -(chunk - 1) to (left + 1) chunk - 1, as chapter 152 maps them),
+// and start utterance 0. Nothing is written on refusal.
+ls_open :: (s:CfShape,c:LsContext,w:[]f32,work:[]f32,st:[]LsStream)->LsStatus {
+    p:=ls_plan(s,c);if p.status!=LsStatus.ok {return p.status;}
+    if w.count!=cf_weight_count(s) || st.count!=1 {return LsStatus.shape;}
+    if work.count<p.work {return LsStatus.capacity;}
+    if !cf_weights_ok(s,w) {return LsStatus.number;}
+    d:=s.dim;x:[CF_DIM_MAX]f32;
+    for l:0..<s.layers {
+        a:=cf_layer_at(s,cf_layer_base(s,l)).att;
+        for r:0..<p.rows {cf_position(r-(c.chunk-1),d,x[..]);cf_linear(w,a.pos,d,d,false,x[..],1,cf_part(work,l*p.rows+r,d));}
+    }
+    st[0]=LsStream.{open=true,shape=s,context=c,plan=p,prev=-1,first=-1};
+    return LsStatus.ok;
+}
+// book:end open
+
+// book:begin admit
+// A chunk is (utterance, seq): the next of the current utterance, or it is
+// refused. Mid-utterance it carries exactly 8 x chunk feature frames; the
+// end-of-turn chunk carries at most that many, and the utterance needs at
+// least one frame and at most chapter 152's 2,048.
+ls_admit :: (st:LsStream,x:[]f32,n:int,utterance:int,seq:int,end:bool,tokens:[]int)->LsStatus {
+    if !st.open {return LsStatus.closed;}
+    if seq<0 {return LsStatus.shape;}
+    if utterance<st.utterance || (utterance==st.utterance && seq<st.next-1) {return LsStatus.order;}
+    if utterance==st.utterance && seq==st.next-1 {return LsStatus.duplicate;}
+    if utterance>st.utterance || seq>st.next {return LsStatus.gap;}
+    s:=st.shape;whole:=8*st.context.chunk;
+    if n<0 || n>whole || (!end && n!=whole) || x.count!=s.mels*n {return LsStatus.shape;}
+    if st.frames+n<1 || st.frames+n>CF_FRAMES_MAX {return LsStatus.length;}
+    if tokens.count<st.tokens+ls_new_frames(st.frames+n,st.encoded,end) {return LsStatus.capacity;}
+    for v:x {if !psionic_tensor_finite_bits(f32_bits(v)) || abs(v)>CF_FEATURE_MAX {return LsStatus.number;}}
+    return LsStatus.ok;
+}
+// book:end admit
+
+// book:begin layer
+// One layer on the count new frames h, which sit at encoded positions e0 ..
+// e0 + count - 1: chapter 152's layer with the attention keys limited to
+// ls_keys and the depthwise taps reading only the past.
+ls_layer :: (st:LsStream,w:[]f32,l:int,h:[]f32,e0:int,count:int,work:[]f32) {
+    s:=st.shape;p:=st.plan;d:=s.dim;cap:=p.cap;L:=cf_layer_at(s,cf_layer_base(s,l));a:=L.att;v:=L.conv;
+    ring:=l*cap;kr:=work[p.at_k..<p.at_v];vr:=work[p.at_v..<p.at_g];gr:=work[p.at_g..<p.at_tail];
+    q:=work[p.at_q..<p.at_ctx];ctx:=work[p.at_ctx..<p.work];x:[CF_DIM_MAX]f32;
+    for t:0..<count {
+        row:=cf_part(h,t,d);cf_feed_forward(s,w,L.ff1,row);cf_norm(w,a.norm,d,row,x[..]);
+        cf_linear(w,a.q,d,d,true,x[..],1,cf_part(q,t,d));
+        slot:=ring+(e0+t)%cap;cf_linear(w,a.k,d,d,true,x[..],1,cf_part(kr,slot,d));cf_linear(w,a.v,d,d,true,x[..],1,cf_part(vr,slot,d));
+    }
+// book:end layer
+// book:begin attention
+    dk:=d/s.heads;scale:=1/sqrt(f64(dk));score:[LS_KEYS_MAX]f64;
+    for hd:0..<s.heads {for t:0..<count {
+        i:=e0+t;keys:=ls_keys(st.context,i,e0+count);n:=keys.to-keys.from;
+        for j:keys.from..<keys.to {
+            ac:PsionicAccumulator;bd:PsionicAccumulator;
+            k:=cf_part(kr,ring+j%cap,d);pos:=cf_part(work,l*p.rows+i-j+st.context.chunk-1,d);
+            for m:hd*dk..<(hd+1)*dk {
+                ac=psionic_ops_accumulate(ac,(f64(q[t*d+m])+f64(w[a.u+m]))*f64(k[m]));
+                bd=psionic_ops_accumulate(bd,(f64(q[t*d+m])+f64(w[a.bias_v+m]))*f64(pos[m]));
+            }
+            score[j-keys.from]=(psionic_ops_total(ac)+psionic_ops_total(bd))*scale;
+        }
+        cf_softmax(score[0..<n]);
+        for m:hd*dk..<(hd+1)*dk {
+            o:PsionicAccumulator;
+            for j:keys.from..<keys.to {o=psionic_ops_accumulate(o,score[j-keys.from]*f64(vr[(ring+j%cap)*d+m]));}
+            ctx[t*d+m]=f32(psionic_ops_total(o));
+        }
+    }}
+    y:[CF_DIM_MAX]f32;
+    for t:0..<count {
+        cf_linear(w,a.o,d,d,true,cf_part(ctx,t,d),1,y[..]);
+        for m:0..<d {h[t*d+m]=f32(f64(h[t*d+m])+f64(y[m]));}
+    }
+// book:end attention
+// book:begin causal
+    // Gated frames go into the ring; tap j of the depthwise convolution reads
+    // frame t - (kernel - 1) + j, and a tap before the utterance reads nothing.
+    two:[2*CF_DIM_MAX]f32;
+    for t:0..<count {
+        cf_norm(w,v.norm,d,cf_part(h,t,d),x[..]);cf_linear(w,v.pw1,2*d,d,true,x[..],1,two[..]);
+        g:=cf_part(gr,ring+(e0+t)%cap,d);for c:0..<d {g[c]=f32(f64(two[c])*cf_sigmoid(f64(two[d+c])));}
+    }
+    for t:0..<count {
+        i:=e0+t;
+        for c:0..<d {
+            acc:PsionicAccumulator;acc=psionic_ops_accumulate(acc,f64(w[v.dw+d*s.kernel+c]));
+            for j:0..<s.kernel {
+                u:=i-(s.kernel-1)+j;if u<0 {continue;}
+                acc=psionic_ops_accumulate(acc,f64(w[v.dw+c*s.kernel+j])*f64(gr[(ring+u%cap)*d+c]));
+            }
+            b:=(psionic_ops_total(acc)-f64(w[v.bn+c]))/sqrt(f64(w[v.bn+d+c])+CF_EPSILON)*f64(w[v.bn+2*d+c])+f64(w[v.bn+3*d+c]);
+            x[c]=f32(cf_silu(b));
+        }
+        cf_linear(w,v.pw2,d,d,true,x[..],1,y[..]);
+        for c:0..<d {h[t*d+c]=f32(f64(h[t*d+c])+f64(y[c]));}
+        row:=cf_part(h,t,d);cf_feed_forward(s,w,L.ff2,row);cf_norm(w,L.out,d,row,x[..]);
+        for c:0..<d {row[c]=x[c];}
+    }
+// book:end causal
+}
+
+// book:begin push
+// Admit one chunk of n feature frames (mel-major: x[m n + t]), encode the
+// frames it completes, decode them greedily onto tokens, and on end of turn
+// close the utterance and open the next. The new encoded frames stay in
+// ls_frames until the next chunk.
+ls_push :: (st:[]LsStream,w:[]f32,work:[]f32,x:[]f32,n:int,utterance:int,seq:int,end:bool,tokens:[]int)->LsResult {
+    if st.count!=1 {return LsResult.{status=LsStatus.shape};}
+    status:=ls_admit(st[0],x,n,utterance,seq,end,tokens);if status!=LsStatus.ok {return LsResult.{status=status};}
+    if w.count!=cf_weight_count(st[0].shape) || work.count<st[0].plan.work {return LsResult.{status=LsStatus.shape};}
+    t:=st[0];s:=t.shape;p:=t.plan;m:=s.mels;d:=s.dim;
+    // The window: the kept 8 frames of the chunk before, then this chunk.
+    wn:=t.tail+n;win:=work[p.at_window..<p.at_window+m*wn];tail:=work[p.at_tail..<p.at_window];
+    for f:0..<m {for i:0..<wn {
+        if i<t.tail {win[f*wn+i]=tail[f*8+i];} else {win[f*wn+i]=x[f*n+i-t.tail];}
+    }}
+    t.frames+=n;count:=ls_new_frames(t.frames,t.encoded,end);
+    h:=work[p.at_h..<p.at_h+count*d];
+    // The window's first encoded frame saw zeros, not the frames before its
+    // overlap; it belongs to the chunk before and is dropped.
+    enc:=work[p.at_enc..<p.at_h];only:=[1]int.[wn];
+    cf_subsample(s,w,win,only[..],1,wn,work[p.at_sub..<p.at_enc],enc);
+    skip:=t.tail/8;for i:0..<count*d {h[i]=enc[skip*d+i];}
+    for l:0..<s.layers {ls_layer(t,w,l,h,t.encoded,count,work);}
+// book:end push
+// book:begin decode
+    // Greedy CTC on the new frames: a frame's best class (the lowest on a
+    // tie) is emitted unless it is the blank or repeats the frame before. The
+    // frame before may be in the previous chunk.
+    k:=s.vocab+1;z:[CF_VOCAB_MAX+1]f32;written:=0;
+    for e:0..<count {
+        cf_head_row(s,w,cf_part(h,e,d),z[0..<k]);
+        best:=0;for c:1..<k {if z[c]>z[best] {best=c;}}
+        if best!=s.vocab && best!=t.prev {
+            tokens[t.tokens+written]=best;written+=1;
+            // How long this token's audio, frames 8 (encoded + e) to
+            // 8 (encoded + e + 1) - 1, waited before it appeared.
+            wait:=t.frames-8*(t.encoded+e+1);t.lag-=tdt_min(0,t.lag-wait);
+            if t.first==-1 {t.first=t.frames;}
+        }
+        t.prev=best;
+    }
+    r:=LsResult.{written=written,total=t.tokens+written,encoded=count,final=end,first=t.first,lag=t.lag,held=t.frames-8*(t.frames/(8*t.context.chunk))*t.context.chunk};
+    t.tokens+=written;t.encoded+=count;t.next=seq+1;
+    // Keep the last 8 frames for the next window.
+    if !end {for f:0..<m {for i:0..<8 {tail[f*8+i]=win[f*wn+wn-8+i];}}t.tail=8;}
+    if end {
+        o:=t;t=LsStream.{open=true,shape=o.shape,context=o.context,plan=o.plan,utterance=o.utterance+1,prev=-1,first=-1};
+    }
+    st[0]=t;
+    return r;
+}
+// The encoded frames the last chunk produced.
+ls_frames :: (st:LsStream,work:[]f32,count:int)->[]f32 {return work[st.plan.at_h..<st.plan.at_h+count*st.shape.dim];}
+// book:end decode
+
+// book:begin divergence
+// Word error rate of hyp against ref, as chapter 153 counts it, with each
+// token a word: ls_edits is the edit distance, the rate is that over ref's
+// length (here in parts per thousand, rounded).
+LS_WORDS :: [8]string.["a","b","c","d","e","f","g","h"];
+ls_edits :: (ref:[]int,hyp:[]int)->int {
+    r:[LS_KEYS_MAX]string;y:[LS_KEYS_MAX]string;row:[LS_KEYS_MAX+1]int;
+    for i:0..<ref.count {r[i]=LS_WORDS[ref[i]%8];}
+    for i:0..<hyp.count {y[i]=LS_WORDS[hyp[i]%8];}
+    return tdt_distance(r[0..<ref.count],y[0..<hyp.count],row[..]);
+}
+ls_rate :: (edits:int,words:int)->int {return (1000*edits+words/2)/words;}
+// Seeded weights leave every encoded frame close to one common frame, so
+// the CTC head would pick the same class everywhere. This rescales the head
+// by k and moves its bias so that it reads each frame's difference from the
+// mean of T calibration frames: the classes then follow the input. It makes
+// a synthetic encoder whose transcripts can disagree; it does not make one
+// that recognizes anything.
+ls_spread_head :: (s:CfShape,w:[]f32,enc:[]f32,T:int,k:f64) {
+    d:=s.dim;at:=cf_head_at(s);rows:=s.vocab+1;mean:[CF_DIM_MAX]f64;
+    for c:0..<d {sum:PsionicAccumulator;for t:0..<T {sum=psionic_ops_accumulate(sum,f64(enc[t*d+c]));}mean[c]=psionic_ops_total(sum)/f64(T);}
+    for r:0..<rows {
+        b:PsionicAccumulator;
+        for c:0..<d {w[at+r*d+c]=f32(k*f64(w[at+r*d+c]));b=psionic_ops_accumulate(b,-f64(w[at+r*d+c])*mean[c]);}
+        w[at+rows*d+r]=f32(psionic_ops_total(b));
+    }
+}
+// book:end divergence

@@ -1,0 +1,16 @@
+before ls_open: closed
+chunk of 256 frames: limit
+33 chunks of 8 frames in context: limit
+work one value short: capacity
+chunk 0 of utterance 0: ok
+chunk 0 again: duplicate
+chunk 2 before chunk 1: gap
+utterance 1 before utterance 0 ends: gap
+15 frames mid-utterance: shape
+room for no new tokens: capacity
+a feature of 10^9: number
+a NaN feature: number
+chunk 1: ok, 1 tokens so far
+end of turn with 3 frames: ok, final true
+chunk 3 of the ended utterance: order
+utterance 1 ending with no frames: length

@@ -1,0 +1,124 @@
+// Chapter 154's check reference, loaded by psionic/lib/listen.coax. Nothing
+// here calls ls_*: the whole utterance is encoded at once, with no chunks,
+// windows or rings. Chapter 152's subsampling runs over every frame; each
+// layer then computes every frame's queries, keys and values, scores each
+// query against every key the mask allows (scanning all keys in order and
+// testing the chunk rule), computes each pair's position row from its
+// sinusoid with no table, and runs the depthwise convolution over the whole
+// gated sequence, reading only the past. With chunk >= the utterance and
+// left 0 the mask allows every key: that is the full-utterance offline
+// encoder with causal convolutions.
+
+// Mask: key j is visible to query i when its chunk is i's or one of the left
+// chunks before it.
+ls_ref_visible :: (i:int,j:int,chunk:int,left:int)->bool {
+    return j/chunk<=i/chunk && j/chunk>=i/chunk-left;
+}
+// Work: chapter 152's subsampling work for the utterance, then 5 x T x dim.
+ls_ref_work :: (s:CfShape,frames:int)->int {return cf_plan(s,1,frames).work+5*cf_length(frames)*s.dim;}
+// Encode the utterance's frames (mel-major, mels x frames) into out (T x
+// dim); returns T.
+ls_ref_encode :: (s:CfShape,w:[]f32,x:[]f32,frames:int,chunk:int,left:int,out:[]f32,rw:[]f32)->int {
+    T:=cf_length(frames);d:=s.dim;at:=cf_plan(s,1,frames).work;n:=T*d;
+    q:=rw[at..<at+n];k:=rw[at+n..<at+2*n];v:=rw[at+2*n..<at+3*n];g:=rw[at+3*n..<at+4*n];ctx:=rw[at+4*n..<at+5*n];
+    whole:=[1]int.[frames];cf_subsample(s,w,x,whole[..],1,frames,rw[0..<at],out);
+    xn:[CF_DIM_MAX]f32;pe:[CF_DIM_MAX]f32;pr:[CF_DIM_MAX]f32;y:[CF_DIM_MAX]f32;two:[2*CF_DIM_MAX]f32;
+    for l:0..<s.layers {
+        L:=cf_layer_at(s,cf_layer_base(s,l));a:=L.att;cv:=L.conv;
+        for t:0..<T {
+            cf_feed_forward(s,w,L.ff1,cf_part(out,t,d));cf_norm(w,a.norm,d,cf_part(out,t,d),xn[..]);
+            cf_linear(w,a.q,d,d,true,xn[..],1,cf_part(q,t,d));cf_linear(w,a.k,d,d,true,xn[..],1,cf_part(k,t,d));
+            cf_linear(w,a.v,d,d,true,xn[..],1,cf_part(v,t,d));
+        }
+        dk:=d/s.heads;scale:=1/sqrt(f64(dk));
+        for hd:0..<s.heads {for i:0..<T {
+            score:[256]f64;seen:[256]int;n2:=0;
+            for j:0..<T {
+                if !ls_ref_visible(i,j,chunk,left) {continue;}
+                cf_position(i-j,d,pe[..]);cf_linear(w,a.pos,d,d,false,pe[..],1,pr[..]);
+                ac:PsionicAccumulator;bd:PsionicAccumulator;
+                for m:hd*dk..<(hd+1)*dk {
+                    ac=psionic_ops_accumulate(ac,(f64(q[i*d+m])+f64(w[a.u+m]))*f64(k[j*d+m]));
+                    bd=psionic_ops_accumulate(bd,(f64(q[i*d+m])+f64(w[a.bias_v+m]))*f64(pr[m]));
+                }
+                score[n2]=(psionic_ops_total(ac)+psionic_ops_total(bd))*scale;seen[n2]=j;n2+=1;
+            }
+            cf_softmax(score[0..<n2]);
+            for m:hd*dk..<(hd+1)*dk {
+                o:PsionicAccumulator;for e:0..<n2 {o=psionic_ops_accumulate(o,score[e]*f64(v[seen[e]*d+m]));}
+                ctx[i*d+m]=f32(psionic_ops_total(o));
+            }
+        }}
+        for t:0..<T {
+            cf_linear(w,a.o,d,d,true,cf_part(ctx,t,d),1,y[..]);
+            for m:0..<d {out[t*d+m]=f32(f64(out[t*d+m])+f64(y[m]));}
+        }
+        for t:0..<T {
+            cf_norm(w,cv.norm,d,cf_part(out,t,d),xn[..]);cf_linear(w,cv.pw1,2*d,d,true,xn[..],1,two[..]);
+            for c:0..<d {g[t*d+c]=f32(f64(two[c])*cf_sigmoid(f64(two[d+c])));}
+        }
+        for t:0..<T {
+            for c:0..<d {
+                acc:PsionicAccumulator;acc=psionic_ops_accumulate(acc,f64(w[cv.dw+d*s.kernel+c]));
+                for j:0..<s.kernel {
+                    u:=t-(s.kernel-1)+j;
+                    if u>=0 {acc=psionic_ops_accumulate(acc,f64(w[cv.dw+c*s.kernel+j])*f64(g[u*d+c]));}
+                }
+                b:=(psionic_ops_total(acc)-f64(w[cv.bn+c]))/sqrt(f64(w[cv.bn+d+c])+CF_EPSILON)*f64(w[cv.bn+2*d+c])+f64(w[cv.bn+3*d+c]);
+                xn[c]=f32(cf_silu(b));
+            }
+            cf_linear(w,cv.pw2,d,d,true,xn[..],1,y[..]);
+            for c:0..<d {out[t*d+c]=f32(f64(out[t*d+c])+f64(y[c]));}
+            cf_feed_forward(s,w,L.ff2,cf_part(out,t,d));cf_norm(w,L.out,d,cf_part(out,t,d),xn[..]);
+            for c:0..<d {out[t*d+c]=xn[c];}
+        }
+    }
+    return T;
+}
+// The reference transcript: chapter 152's CTC head and greedy decoding.
+ls_ref_decode :: (s:CfShape,w:[]f32,enc:[]f32,T:int,logp:[]f32,tokens:[]int)->int {
+    span:=[1]int.[T];
+    #assert cf_head(s,w,enc[0..<T*s.dim],span[..],1,T,logp,false).status==CfStatus.ok;
+    return cf_greedy(logp,T,s.vocab+1,tokens).written;
+}
+// Chunk c of an utterance (mel-major, mels x frames) as its own mel-major
+// array of n frames.
+ls_ref_slice :: (x:[]f32,mels:int,frames:int,from:int,n:int,out:[]f32) {
+    for m:0..<mels {for t:0..<n {out[m*n+t]=x[m*frames+from+t];}}
+}
+// Stream an utterance in chunks of 8 x chunk frames, the last marked end of
+// turn, copying the encoded frames into enc. Returns the final result.
+ls_ref_stream :: (st:[]LsStream,w:[]f32,work:[]f32,x:[]f32,frames:int,utterance:int,tokens:[]int,enc:[]f32)->LsResult {
+    s:=st[0].shape;per:=8*st[0].context.chunk;buf:[4096]f32;at:=0;seq:=0;r:LsResult;
+    while true {
+        n:=frames-at;end:=n<=per;if !end {n=per;}
+        ls_ref_slice(x,s.mels,frames,at,n,buf[0..<s.mels*n]);
+        e0:=st[0].encoded;
+        r=ls_push(st,w,work,buf[0..<s.mels*n],n,utterance,seq,end,tokens);
+        if r.status!=LsStatus.ok {return r;}
+        f:=ls_frames(st[0],work,r.encoded);for i:0..<f.count {enc[e0*s.dim+i]=f[i];}
+        at+=n;seq+=1;
+        if end {return r;}
+    }
+    return r;
+}
+// When each token of the greedy transcript of T reference frames appears if
+// N feature frames arrive in chunks of 8 x chunk, the last at the end of
+// turn: a frame in a complete chunk appears when that chunk arrives, any
+// later frame at the end of turn.
+LsLatency :: struct {total:int;first:int;lag:int;held:int;}
+ls_ref_latency :: (s:CfShape,w:[]f32,enc:[]f32,T:int,N:int,chunk:int)->LsLatency {
+    k:=s.vocab+1;logp:[1024]f32;span:=[1]int.[T];
+    #assert cf_head(s,w,enc[0..<T*s.dim],span[..],1,T,logp[0..<T*k],false).status==CfStatus.ok;
+    per:=8*chunk;full:=N/per;out:=LsLatency.{first=-1,held=N-full*per};prev:=-1;
+    for e:0..<T {
+        best:=0;for c:1..<k {if logp[e*k+c]>logp[e*k+best] {best=c;}}
+        heard:=N;if e/chunk<full {heard=(e/chunk+1)*per;}
+        if best!=s.vocab && best!=prev {
+            out.total+=1;if out.first<0 {out.first=heard;}
+            if heard-8*(e+1)>out.lag {out.lag=heard-8*(e+1);}
+        }
+        prev=best;
+    }
+    return out;
+}
