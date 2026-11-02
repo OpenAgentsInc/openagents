@@ -1,0 +1,77 @@
+// Chapter 204's independent checks: the sandbox's decision written as a
+// table of rules, each rule's condition computed apart from
+// psionic/lib/harness/sandbox.coax (room bits by division, effects as
+// integers, subsets room by room), and the first rule that holds decides.
+// It also writes random sessions: policies, calls and answers drawn from a
+// seed. It reads the subject's types only to hand them over.
+SO_VERDICT_REFUSE :: 0;
+SO_VERDICT_RUN :: 1;
+SO_VERDICT_ASK :: 2;
+// The decision's inputs, as plain integers. effect, ceiling and allow are 0
+// (none), 1 (read) or 2 (write); room is -1 for no room.
+SoCase :: struct {ceiling:int;reach:int;allow:int;open:int;cost:int;calls:int;bytes:int;ticks:int;timeout:int;wait:int;
+    used:int;sent:int;clock:int;effect:int;price:int;duration:int;room:int;n:int;approved:bool;held:bool;}
+SoRule :: struct {holds:bool;verdict:int;why:int;}
+so_bit :: (mask:int,room:int)->bool {x:=mask;for k:0..<room {x=x/2;}return x%2==1;}
+so_within :: (mask:int,room:int)->bool {if room== -1 {return true;}return so_bit(mask,room);}
+so_mask :: (m:int)->bool {return m==0 || m==1 || m==2 || m==3 || m==4 || m==5 || m==6 || m==7;}
+so_valid :: (c:SoCase)->bool {
+    if c.allow>c.ceiling || !so_mask(c.reach) || !so_mask(c.open) {return false;}
+    for k:0..<3 {if so_bit(c.open,k) && !so_bit(c.reach,k) {return false;}}
+    lows:=[6]int.[c.cost,c.calls,c.bytes,c.ticks,c.timeout,c.wait];
+    for x:lows {if x<0 {return false;}}
+    return true;
+}
+// The table, in the order the rules apply. why is SbWhy's index: policy 3,
+// calls 6, bytes 7, timeout 8, time 9, effect 10, scope 11, cost 12.
+so_decide :: (c:SoCase)->SoRule {
+    rules:=[12]SoRule.[
+        SoRule.{holds=!so_valid(c),verdict=SO_VERDICT_REFUSE,why=3},
+        SoRule.{holds=!(c.used<c.calls),verdict=SO_VERDICT_REFUSE,why=6},
+        SoRule.{holds=c.sent+c.n>c.bytes,verdict=SO_VERDICT_REFUSE,why=7},
+        SoRule.{holds=c.timeout<c.duration,verdict=SO_VERDICT_REFUSE,why=8},
+        SoRule.{holds=c.ticks-c.clock<c.duration,verdict=SO_VERDICT_REFUSE,why=9},
+        SoRule.{holds=c.effect>c.ceiling,verdict=SO_VERDICT_REFUSE,why=10},
+        SoRule.{holds=!so_within(c.reach,c.room),verdict=SO_VERDICT_REFUSE,why=11},
+        SoRule.{holds=c.approved || c.held,verdict=SO_VERDICT_RUN,why=0},
+        SoRule.{holds=c.effect>c.allow,verdict=SO_VERDICT_ASK,why=10},
+        SoRule.{holds=!so_within(c.open,c.room),verdict=SO_VERDICT_ASK,why=11},
+        SoRule.{holds=c.price>c.cost,verdict=SO_VERDICT_ASK,why=12},
+        SoRule.{holds=true,verdict=SO_VERDICT_RUN,why=0}];
+    for r:rules {if r.holds {return r;}}
+    return rules[11];
+}
+// A draw in [0, n) for draw k of a seed.
+so_draw :: (seed:u64,k:int,n:int)->int {return cast(int)(cr_bits(seed,cast(u64)(9000+k))%cast(u64)n);}
+// Calls a random session draws from: every tool, every room, a call the
+// grammar refuses, and one past the grant's arguments.
+SO_CALLS :: [12]string.["get{\"room\":\"hall\"}","get{\"room\":\"den\"}","get{\"room\":\"study\"}",
+    "set{\"room\":\"hall\",\"on\":true}","set{\"room\":\"den\",\"on\":true}","set{\"room\":\"study\",\"on\":true}","set{\"room\":\"den\",\"on\":false}",
+    "add{\"a\":4,\"b\":5}","div{\"a\":9,\"b\":0}","div{\"a\":9,\"b\":2}","add{\"a\":999,\"b\":1}","mul{\"a\":1}"];
+// Each tool's effect, cost and ticks, as the chapter's tables state them:
+// add, div, set, get.
+SO_EFFECT :: [4]int.[0,0,2,1];
+SO_PRICE :: [4]int.[1,1,2,1];
+SO_DURATION :: [4]int.[1,2,3,1];
+// A random case near every boundary: limits of 0 to 3 (bytes 0 to 40),
+// the spent amounts near them, any tool, room -1 to 2, masks and effects
+// over their whole range and one past it.
+so_case :: (seed:u64,tool:int)->SoCase {
+    c:=SoCase.{ceiling=so_draw(seed,0,3),reach=so_draw(seed,1,10)-1,allow=so_draw(seed,2,3),open=so_draw(seed,3,10)-1,cost=so_draw(seed,4,4)-1,
+        calls=so_draw(seed,5,4),bytes=so_draw(seed,6,41),ticks=so_draw(seed,7,6),timeout=so_draw(seed,8,5)-1,wait=so_draw(seed,9,3)-1,
+        used=so_draw(seed,10,4),sent=so_draw(seed,11,30),clock=so_draw(seed,12,5),room=so_draw(seed,13,4)-1,n=so_draw(seed,14,20),
+        approved=so_draw(seed,15,4)==0,held=so_draw(seed,16,4)==0};
+    // Mostly valid policies, so the later rules are reached.
+    if so_draw(seed,17,4)!=0 {c.open=so_draw(seed,18,8);c.reach=7;c.allow=so_draw(seed,19,c.ceiling+1);c.wait=1;c.cost=so_draw(seed,20,3);c.timeout=so_draw(seed,21,4);}
+    if so_draw(seed,22,3)==0 {c.reach=so_draw(seed,23,8);c.open=0;}
+    c.effect=SO_EFFECT[tool];c.price=SO_PRICE[tool];c.duration=SO_DURATION[tool];
+    return c;
+}
+// A random answer to session id's pending request: mostly the right session
+// and request, at a clock from 0 to 7 ticks past now.
+so_answer :: (seed:u64,k:int,id:int,asked:int,clock:int)->[6]int {
+    session:=ifx so_draw(seed,100*k+1,6)==0 then id+1 else id;
+    request:=asked-1+ifx so_draw(seed,100*k+2,6)==0 then -1 else 0;
+    at:=clock+so_draw(seed,100*k+3,8)-ifx so_draw(seed,100*k+4,8)==0 then 1 else 0;
+    return [6]int.[session,request,so_draw(seed,100*k+5,4),so_draw(seed,100*k+6,2),at,0];
+}

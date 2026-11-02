@@ -1,0 +1,46 @@
+#import "Basic";
+#load "../lib/harness/sandbox.coax";
+// Chapter 204's example: the hand trace's session under the chapter's
+// policy, call by call and answer by answer; the log verified and replayed
+// into a fresh session; an approval sent to another session and sent again;
+// a policy whose free scope is wider than its ceiling; a forged log.
+sx_event :: (x:SbEvent) {
+    print("% %",x.verdict,x.why);
+    if x.decision!=SbDecision.none {print(", decision %",x.decision);}
+    if x.request>=0 {print(", request %",x.request);}
+    if x.verdict==SbVerdict.run {print(", result % (%)",x.call.value,x.call.why);}
+    if x.why==SbWhy.tool {print(" (%)",x.call.why);}
+}
+// book:begin example
+main :: () {
+    rm:=HT_ROOMS;fs:[5]HtField;r:=ht_registry(rm[..],fs[..]);e:[256]NxEdge;o:[128]int;n:[32768]int;a:[128]u8;lv:[128]u8;
+    g:=[4]int.[0,1,2,3];c:=[4]int.[9,9,9,9];env:=sb_tools(r[..],g[..],c[..],99,ht_work(e[..],o[..],n[..],a[..],lv[..]));
+    p:=SB_POLICY;
+    print("policy: ceiling %, reach %, allow %, open %, cost %, calls %, bytes %, ticks %, timeout %, wait %\n",
+        p.ceiling,p.reach,p.allow,p.open,p.cost,p.calls,p.bytes,p.ticks,p.timeout,p.wait);
+    b:[1]SbLogs;l:=sb_logs(b[..]);s:[1]SbSession;w:[8]int;
+    print("open session 1: %\n",sb_open(1,p,s[..],l[..]));
+    for k:0..<19 {
+        if SB_TRACE_TEXT[k].count>0 {print("% call %: ",k,SB_TRACE_TEXT[k]);}
+        else {x:=SB_TRACE_ANSWER[k];print("% answer session %, request %, % %at %: ",k,x[0],x[1],cast(SbDecision)cast(u8)x[2],ifx x[3]==1 then "pattern " else "",x[4]);}
+        sx_event(sb_step(env,s[..],k,w[..],l[..]));
+        print("  [clock %, calls %, bytes %]\n",s[0].clock,s[0].calls,s[0].bytes);
+    }
+    print("world: hall %, den %, study %; requests %, patterns held %\n",w[0],w[1],w[2],s[0].asked,s[0].held);
+    v:=lg_verify(l[0]);print("log: % events, % tokens, verify %\n",l[0].count,l[0].used,v.status);
+    // Replay: the logged calls and answers, fed to a fresh session.
+    b2:[1]SbLogs;l2:=sb_logs(b2[..]);s2:[1]SbSession;w2:[8]int;k:=sb_replay(env,l[0],s2[..],w2[..],l2[..]);
+    print("replay: % through event %, same head %, world hall %, den %, study %, clock %\n",k.status,k.index,su_same(lg_verify(l2[0]).head,v.head),w2[0],w2[1],w2[2],s2[0].clock);
+    // Approvals do not travel: session 2 asks the same thing, and session 1's answer is refused there.
+    b3:[1]SbLogs;l3:=sb_logs(b3[..]);s3:[1]SbSession;w3:[8]int;x:=sb_open(2,p,s3[..],l3[..]);
+    print("session 2: ");sx_event(sb_call(env,s3[..],SB_SET_DEN,w3[..],l3[..]));print("\n");
+    print("session 1's answer to request 0, sent to session 2: ");sx_event(sb_answer(env,s3[..],sb_yes(1,0,1),w3[..],l3[..]));print("; den %\n",w3[1]);
+    print("session 1's approval of request 3, sent again: ");sx_event(sb_answer(env,s[..],sb_yes(1,3,20),w[..],l[..]));print("; den %\n",w[1]);
+    // Broken inputs: a policy that runs freely where it may never reach, and a forged log.
+    bad:=p;bad.open=4;b4:[1]SbLogs;l4:=sb_logs(b4[..]);s4:[1]SbSession;
+    print("a policy with open % outside reach %: %, % events logged\n",bad.open,bad.reach,sb_open(4,bad,s4[..],l4[..]),l4[0].count);
+    f:[1]SbLogs;lf:=sb_logs(f[..]);sb_forge(l2[0],6,7,0,-1,LgKind.context,lf[..]);
+    b5:[1]SbLogs;l5:=sb_logs(b5[..]);s5:[1]SbSession;w5:[8]int;k=sb_replay(env,lf[0],s5[..],w5[..],l5[..]);
+    print("event 6's reason rewritten from denied to none, rechained: verify %, replay % at event %\n",lg_verify(lf[0]).status,k.status,k.index);
+}
+// book:end example

@@ -2473,6 +2473,18 @@
       "stack_kib": 65536
     },
     {
+      "source": "psionic/examples/sandbox-approvals.coax",
+      "chapter": "psionic/book/ch204-a-sandbox-and-approvals.md",
+      "stdout": "psionic/fixtures/sandbox-approvals.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600,
+      "stack_kib": 65536
+    },
+    {
       "source": "psionic/examples/start-fast.coax",
       "chapter": "psionic/book/ch178-start-fast.md",
       "stdout": "psionic/fixtures/start-fast.out",

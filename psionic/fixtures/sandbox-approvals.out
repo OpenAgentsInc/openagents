@@ -1,0 +1,29 @@
+policy: ceiling write, reach 3, allow read, open 1, cost 1, calls 8, bytes 200, ticks 30, timeout 3, wait 5
+open session 1: none
+0 call get{"room":"hall"}: run none, result 0 (none)  [clock 1, calls 1, bytes 18]
+1 call get{"room":"den"}: ask scope, request 0  [clock 1, calls 1, bytes 18]
+2 call add{"a":1,"b":2}: refuse paused  [clock 1, calls 1, bytes 18]
+3 answer session 1, request 0, approve at 2: run none, decision approve, request 0, result 0 (none)  [clock 3, calls 2, bytes 35]
+4 call set{"room":"den","on":true}: ask effect, request 1  [clock 3, calls 2, bytes 35]
+5 answer session 1, request 1, deny at 4: refuse denied, decision deny, request 1  [clock 4, calls 2, bytes 35]
+6 call set{"room":"den","on":true}: ask effect, request 2  [clock 4, calls 2, bytes 35]
+7 answer session 1, request 2, approve pattern at 10: refuse expired, decision expire, request 2  [clock 10, calls 2, bytes 35]
+8 call set{"room":"den","on":true}: ask effect, request 3  [clock 10, calls 2, bytes 35]
+9 answer session 1, request 3, approve pattern at 11: run none, decision approve, request 3, result 1 (none)  [clock 14, calls 3, bytes 62]
+10 call set{"room":"den","on":true}: run none, result 1 (none)  [clock 17, calls 4, bytes 89]
+11 call set{"room":"den","on":false}: ask effect, request 4  [clock 17, calls 4, bytes 89]
+12 answer session 2, request 4, approve at 17: refuse session  [clock 17, calls 4, bytes 89]
+13 answer session 1, request 3, approve at 18: refuse stale  [clock 17, calls 4, bytes 89]
+14 answer session 1, request 4, approve at 16: refuse order  [clock 17, calls 4, bytes 89]
+15 answer session 1, request 4, expire at 18: refuse expired, decision expire, request 4  [clock 18, calls 4, bytes 89]
+16 call set{"room":"study","on":true}: refuse scope  [clock 18, calls 4, bytes 89]
+17 call div{"a":9,"b":0}: run none, result 0 (run)  [clock 20, calls 5, bytes 105]
+18 answer session 1, request 4, approve at 19: refuse stale  [clock 20, calls 5, bytes 105]
+world: hall 0, den 1, study 0; requests 5, patterns held 1
+log: 20 events, 433 tokens, verify ok
+replay: ok through event 20, same head true, world hall 0, den 1, study 0, clock 20
+session 2: ask effect, request 0
+session 1's answer to request 0, sent to session 2: refuse session; den 0
+session 1's approval of request 3, sent again: refuse stale; den 1
+a policy with open 4 outside reach 3: policy, 0 events logged
+event 6's reason rewritten from denied to none, rechained: verify ok, replay differs at event 6
