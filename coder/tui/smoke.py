@@ -130,6 +130,15 @@ def verbs(check):
         sid = rows[0]["id"] if rows else "none"
         log = subprocess.run([coder, "log", sid[:15]], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         check("log by ID prefix", log.returncode == 0 and "● local-ok" in log.stdout and "Bash(echo local-step)" in log.stdout)
+        # the effort reaches the agent's own flag (chapter 13); a stand-in claude records its arguments
+        fake = os.path.join(home, "fakebin"); os.makedirs(fake, exist_ok=True)
+        with open(os.path.join(fake, "claude"), "w") as f:
+            f.write("#!/bin/sh\necho \"$@\" > " + os.path.join(fake, "args") + "\nexit 1\n")
+        os.chmod(os.path.join(fake, "claude"), 0o755)
+        subprocess.run([coder, "run", "hi", "--engine", "claude", "--effort", "high"], cwd=REPO, env=dict(env, PATH=fake + ":" + env["PATH"]), capture_output=True, text=True, timeout=120)
+        check("--effort reaches Claude Code", os.path.exists(os.path.join(fake, "args")) and "--effort=high" in open(os.path.join(fake, "args")).read())
+        bad = subprocess.run([coder, "run", "hi", "--effort", "huge"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("--effort takes low, medium or high", bad.returncode == 2 and "--effort is low, medium or high" in bad.stderr)
         # a progress bar and colors read back as a terminal shows them (chapter 37)
         bar = subprocess.run([coder, "run", "$ printf '10%%\\r100%%\\n\\033[32mok\\033[0m\\n'", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         res = [json.loads(l) for l in bar.stdout.splitlines() if '"kind":"result"' in l]

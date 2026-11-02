@@ -12,6 +12,7 @@ cd_codex_settings :: (a: [] App) -> CxSettings {
   st: CxSettings;
   st.cwd = a[0].cwd;
   if a[0].model_engine == ENGINE_CODEX { st.model = a[0].model; }
+  st.effort = cd_effort(a);       // low, medium or high: the same words Codex takes
   if a[0].ask_first { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
   else { st.approval_policy = "never"; st.sandbox = "danger-full-access"; }
   return st;

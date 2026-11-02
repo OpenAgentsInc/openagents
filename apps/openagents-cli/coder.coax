@@ -15,7 +15,7 @@ cxproc_exec :: (h: int) -> int #foreign;
 coder_usage :: () {
   print("%\n", "Coder (OpenAgents' coding agent, in this terminal):");
   print("%\n", "  coder                              the terminal UI; Shift-Tab switches agent");
-  print("%\n", "  coder run \"TASK\" [--engine micro|claude|codex|psionic|echo] [--cwd DIR] [--json]");
+  print("%\n", "  coder run \"TASK\" [--engine micro|claude|codex|psionic|echo|auto] [--effort low|medium|high] [--cwd DIR] [--json]");
   print("%\n", "                                     one task, its steps as text or JSON lines");
   print("%\n", "                                     no --engine: System One picks it (coder route \"TASK\" shows the pick)");
   print("%\n", "  coder run \"TASK\" --detach          a background job: prints its ID and returns");

@@ -59,6 +59,8 @@ SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
 App :: struct {
   plain: bool;                   // --print: no TUI, plain lines
   hist: [262144] u8; nhist: int; // the transcript as committed, newest last, for /find (chapter 36)
+  effort_b: [16] u8; neffort: int; // the effort for the engine: --effort, or System One's (chapter 13); none leaves the engine's
+  auto_engine: bool;                  // --engine auto: System One picks the engine at each conversation's first message
   pre: string;                   // a fork's earlier turns, sent ahead of its first message
   vt: [1] Vt;                    // reads a tool's output as a terminal would show it (chapter 37)
   pl: [] PlRegistry;             // plugins: their commands and hooks (chapter 15)
@@ -443,9 +445,10 @@ cd_claude_reset :: (q: [] ClQuery) { fresh: ClQuery; q[0] = fresh; }
 
 // Partial messages so the reply streams; the person's Claude Code login,
 // never an API key from the environment.
-cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool) {
+cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool, effort: string) {
   o: [1] ClOptions;
   o[0].include_partial_messages = true;
+  if effort.count > 0 { o[0].effort = effort; }
   // Tools run without asking, as with claude --dangerously-skip-permissions;
   // --ask sends each permission request to the y/a/n prompt instead.
   if ask { o[0].permission_handler = true; }
@@ -464,7 +467,7 @@ cd_claude_send :: (a: [] App, msg: string) {
   }
   cd_claude_reset(a[0].q);
   cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
-  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first);
+  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first, cd_effort(a));
   a[0].npending = cd_cat(a[0].pending[..], 0, msg);
   problem := cl_start(a[0].q, a[0].p, "", true, a[0].scratch);
   if problem.count > 0 { cd_finish(a, END_FAILED, problem); return; }
@@ -701,7 +704,7 @@ cd_poll :: (a: [] App) -> bool {
 
 // ---------------------------------------------------------------- input
 
-HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine) or echo (offline)\n/find TEXT the transcript's lines that hold TEXT\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
+HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine), echo (offline) or auto (System One picks at the first message)\n/find TEXT the transcript's lines that hold TEXT\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
 
 cd_submit :: (a: [] App) {
   text := tui_ed_text(a[0].ed[..]);
@@ -730,6 +733,7 @@ cd_submit :: (a: [] App) {
     if msg == "/engine codex" { cd_switch(a, ENGINE_CODEX); return; }
     if msg == "/engine microcoder" { cd_switch(a, ENGINE_MICRO); return; }
     if msg == "/engine psionic" { cd_switch(a, ENGINE_PSIONIC); return; }
+    if msg == "/engine auto" { a[0].auto_engine = true; cd_commit(a, TUI_DIM, "  Engine: auto. System One picks the engine at each conversation's first message."); return; }
     if msg == "/plugins" { cd_plugins_show(a); return; }
     if msg.count > 6 && cast(string) msg[0..<6] == "/find " { cd_find(a, cast(string) msg[6..<msg.count]); return; }
     if msg.count > 16 && (cast(string) msg[0..<16] == "/plugin disable " || cast(string) msg[0..<15] == "/plugin enable ") { cd_plugin_toggle(a, msg); return; }
@@ -749,7 +753,8 @@ cd_submit :: (a: [] App) {
     return;
   }
   cd_commit_prefixed(a, TUI_BRIGHT, "› ", "  ", msg);
-  if a[0].log[0].nid == 0 { cs_open(a); cd_hooks(a, "session_start", ""); }
+  if a[0].log[0].nid == 0 && a[0].auto_engine { cd_auto_route(a, msg); }
+  else if a[0].log[0].nid == 0 { cs_open(a); cd_hooks(a, "session_start", ""); }
   cs_user(a, msg);
   cd_start(a, msg);
 }
@@ -898,10 +903,10 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp                                 the verbs as MCP tools on stdio, for Claude Code or another agent\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp                                 the verbs as MCP tools on stdio, for Claude Code or another agent\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --effort low|medium|high  --model M  --ask  --cwd DIR";
 
 // Flags that take a value: their value is not a positional argument.
-CD_VALUE_FLAGS :: [17] string.["--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
+CD_VALUE_FLAGS :: [18] string.["--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
 
 // Positional argument k (0 is the verb), skipping flags and their values.
 cd_positional :: (args: [] Args, k: int) -> string {
@@ -1357,6 +1362,14 @@ cd_cmd_replay :: (id: string, json: bool) -> int {
   return ifx matched == requests then 0 else 1;
 }
 
+cd_effort :: (a: [] App) -> string { return cast(string) a[0].effort_b[0..<a[0].neffort]; }
+
+// After a decision: its engine, and its effort when System One was sure; --effort wins.
+cd_route_apply :: (a: [] App, r: [] CdRoute, effort_flag: bool) {
+  a[0].engine = cd_route_pick(r); a[0].model_engine = a[0].engine;
+  if !effort_flag && r[0].ok && r[0].probability >= CD_ROUTE_SURE { a[0].neffort = cd_cat(a[0].effort_b[..], 0, cast(string) r[0].effort[0..<r[0].neffort]); }
+}
+
 // The engine to run for a decision: System One's pick when it is sure and the
 // agent is here; else Claude Code when it is installed, else Microcoder.
 cd_route_pick :: (r: [] CdRoute) -> int {
@@ -1367,6 +1380,17 @@ cd_route_pick :: (r: [] CdRoute) -> int {
   if e == "codex" { return ifx cd_on_path("codex") then ENGINE_CODEX else fallback; }
   if e == "psionic" { return ENGINE_PSIONIC; }
   return ENGINE_MICRO;
+}
+
+// --engine auto: System One picks this conversation's engine from its first
+// message; with no decision the current engine runs and the route line says why.
+cd_auto_route :: (a: [] App, msg: string) {
+  cb: [16] u8; rt: [1] CdRoute;
+  cd_route(msg, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]);
+  sure := rt[0].ok && rt[0].probability >= CD_ROUTE_SURE;
+  if sure { pick := cd_route_pick(rt[..]); if pick != a[0].engine { cd_switch(a, pick); } cd_route_apply(a, rt[..], false); }
+  cs_open(a); cs_route(a, rt[..]); cd_hooks(a, "session_start", "");
+  rb: [700] u8; cd_commit(a, TUI_FAINT, cd_route_line(a, rt[..], rb[..]));
 }
 
 // "  Engine: codex (0.87) · easy · effort low, chosen by System One"
@@ -1543,7 +1567,13 @@ tool_main :: () -> int #export_c {
   else if want == "codex" { a[0].engine = ENGINE_CODEX; }
   else if want == "microcoder" || want == "micro" { a[0].engine = ENGINE_MICRO; }
   else if want == "psionic" { a[0].engine = ENGINE_PSIONIC; }
-  else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex, micro, psionic or echo"); return 2; }
+  else if want == "auto" { a[0].auto_engine = true; }
+  else if want.count > 0 && want != "claude" { tool_errln("coder: --engine is claude, codex, micro, psionic, echo or auto"); return 2; }
+  ef := args_value(args, "--effort", "");
+  if ef.count > 0 {
+    if ef != "low" && ef != "medium" && ef != "high" { tool_errln("coder: --effort is low, medium or high"); return 2; }
+    a[0].neffort = cd_cat(a[0].effort_b[..], 0, ef);
+  }
   a[0].model_engine = a[0].engine;
 
   log_b: [1] CsLog; a[0].log = log_b[..];
@@ -1585,8 +1615,8 @@ tool_main :: () -> int #export_c {
     if task.count == 0 { tool_errln("coder run: needs a task: coder run \"TASK\""); return 2; }
     tui_ed_set(a[0].ed[..], task);
     // No --engine: System One chooses (chapter 13); the session's first lines say what and why.
-    rt: [1] CdRoute; routed := verb == "run" && want.count == 0;
-    if routed { cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); a[0].engine = cd_route_pick(rt[..]); a[0].model_engine = a[0].engine; cs_open(a); cs_route(a, rt[..]); cd_hooks(a, "session_start", ""); }
+    rt: [1] CdRoute; routed := verb == "run" && (want.count == 0 || want == "auto");
+    if routed { cd_route(task, cl_getenv("PSIONIC_BASE_URL", cb[..]).count > 0, rt[..]); cd_route_apply(a, rt[..], args_has(args, "--effort")); cs_open(a); cs_route(a, rt[..]); cd_hooks(a, "session_start", ""); }
     cd_submit(a);
     if !json { tb: [64] u8; tn := cd_cat(tb[..], 0, "  session "); tn = cd_cat(tb[..], tn, cs_id(a[0].log)); cd_commit(a, TUI_FAINT, cast(string) tb[0..<tn]); }
     if routed && !json { rb: [700] u8; cd_commit(a, TUI_FAINT, cd_route_line(a, rt[..], rb[..])); }
