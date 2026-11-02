@@ -184,6 +184,52 @@ class RunBudgetTests(unittest.TestCase):
         self.assertEqual(data['run_steps'], 123456)
         self.assertEqual(data['evaluated_steps'], 0)
 
+    # GitHub #12660: a program whose tables need more than the default
+    # budget (the openagents CLI) declares it in its entry file.
+    WORK = ('spin :: (n:int)->int {s:=0; for i: 0..<n {s+=i%3;} return s;} '
+            'A :: #run spin(60000); main :: () {}')
+
+    def test_entry_file_declares_its_run_budget(self):
+        r = self.invoke(self.WORK, 'check')
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn('exceeded 100000 steps', r.stderr)
+        report = Path(self.tmp.name) / 'declared.json'
+        r = self.invoke('#run_steps 1000000; ' + self.WORK, 'check', '--timings', str(report))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(report.read_text())['run_steps'], 1000000)
+        r = self.invoke('#run_steps 1000000; main :: () {}', 'deps')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(json.loads(r.stdout)['run_steps'], 1000000)
+
+    def test_command_line_budget_overrides_the_declared_one(self):
+        r = self.invoke('#run_steps 1000000; ' + self.WORK, 'check', '--run-steps', '100000')
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn('exceeded 100000 steps', r.stderr)
+        r = self.invoke('#run_steps 1000; ' + self.WORK, 'check', '--run-steps', '1000000')
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_declared_budget_is_bounded_and_entry_only(self):
+        for bad in ('0', '250000001', '1.5', 'x'):
+            with self.subTest(value=bad):
+                r = self.invoke('#run_steps %s; main :: () {}' % bad, 'check')
+                self.assertEqual(r.returncode, 1, r.stderr)
+                self.assertIn('E0224', r.stderr)
+        r = self.invoke('#run_steps 9; #run_steps 9; main :: () {}', 'check')
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn('E0224', r.stderr)
+        (Path(self.tmp.name) / 'tables.coax').write_text('#run_steps 1000000; ' + self.WORK.replace(' main :: () {}', ''))
+        r = self.invoke('#load "tables.coax"; main :: () {}', 'check')
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn('E0224', r.stderr)
+        self.assertIn('entry file', r.stderr)
+
+    def test_call_trace_names_the_loaded_file_and_its_line(self):
+        (Path(self.tmp.name) / 'tables.coax').write_text('\n\n' + self.WORK.replace(' main :: () {}', ''))
+        r = self.invoke('#load "tables.coax";\nmain :: () {}', 'check')
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assertIn('exceeded 100000 steps', r.stderr)
+        self.assertIn('note: compile-time call at ' + str(Path(self.tmp.name) / 'tables.coax') + ':3:', r.stderr)
+
     def test_deps_records_selected_profile(self):
         r = self.invoke('main :: () {}', 'deps', '--run-steps', '123456')
         self.assertEqual(r.returncode, 0, r.stderr)

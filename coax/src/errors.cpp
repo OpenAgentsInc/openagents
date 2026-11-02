@@ -45,6 +45,7 @@ const ErrorInfo ERRORS[] = {
     {"E0221", "parser resource limit", "The Coax parser requires an EOF-terminated lexer token stream, caller-owned indexed-tree storage and at most 128 active recursive grammar entries. Reduce syntax nesting or supply the capacities returned by PS_caps. No partial syntax tree is admitted after a failure."},
     {"E0223", "malformed struct parameter list", "A generic struct lists its parameters as $NAME, each once, separated by ',': Pair :: struct($T) { a: $T; b: $T; } or Box :: struct($T, $N) { items: [$N] $T; }."},
     {"E0222", "qualified name reaches through an alias", "A qualified name is one module alias and one declaration: hud.Slot, hud.frame(x). Aliases are not reexported, so a.b.Name is refused; load that module with its own alias."},
+    {"E0224", "malformed #run_steps", "#run_steps N; declares the compile-time step budget of the whole compilation, N a whole number from 1 through 250000000: #run_steps 250000000;. Only the entry file declares it, at most once; a loaded file cannot. --run-steps N on the command line overrides it."},
 
     // ---- E03xx: checker ----
     {"E0301", "type not supported yet", "The type is in the plan (spec 6.2) but coax0 does not implement it, for example dynamic arrays '[..] T' or vectors."},
@@ -171,7 +172,7 @@ const ErrorInfo ERRORS[] = {
     {"E0836", "spatial device profile unavailable", "The initial Point3/Vector3 representation and operator profile is qualified only for native C."},
 
     // ---- E04xx: compile-time evaluation ----
-    {"E0400", "compile-time resource budget exceeded", "Compile-time evaluation defaults to 100000 shared steps; --run-steps selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap (1572864 value slots, 131072 arrays and structs; coax test and mutate allow 33554432 and 2097152), and the error names which limit, what was needed and the limit. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N)."},
+    {"E0400", "compile-time resource budget exceeded", "Compile-time evaluation defaults to 100000 shared steps; #run_steps N; in the entry file or --run-steps N (which overrides it) selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap (1572864 value slots, 131072 arrays and structs; coax test and mutate allow 33554432 and 2097152), and the error names which limit, what was needed and the limit. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N)."},
     {"E0401", "compile-time code cannot capture a runtime value", "#run code and constants see only constants and their own locals."},
     {"E0402", "compile-time cycle", "A constant, or a struct's field defaults, depend on themselves while being evaluated."},
     {"E0403", "compile-time depth exceeded", "Compile-time calls and dependencies are bounded at depth 64."},

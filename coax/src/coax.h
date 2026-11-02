@@ -556,6 +556,7 @@ struct File {
   Slice<Expr *> assertions;
   Slice<CheckDecl *> checks;
   bool authority = false;  // at least one authored unit requires checked execution
+  uint64_t run_steps = 0;  // the entry file's #run_steps N; (0: none declared), then the budget used
   bool library = false;  // set by the driver: no C main, main optional
   bool metal = false;    // checked against the Metal scalar profile
   bool quantity_device = false; // observed device-output profile; Coax owns quantity admission
@@ -577,6 +578,7 @@ std::string emit_debug_map(const File *file);
 
 struct EmitOptions {
   uint64_t run_steps = CB_default_steps(); // shared #run and constant evaluation budget
+  bool run_steps_given = false; // --run-steps given: it overrides the entry file's #run_steps
   bool debug_info = false; // opt-in original-source native line tables
   bool wrapping = false; // runtime add/subtract/multiply/negation; evaluator stays checked
   bool development = true; // BUILD_DEBUG source/layout selection only

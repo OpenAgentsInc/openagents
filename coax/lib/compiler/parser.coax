@@ -719,6 +719,48 @@ PS_steps_tokens :: (kind:u32,value:u64,steps:string)->[7] PS_Token {
   id:=PS_check("\"a\" {}",t[0..<4],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
   #assert state[0].code=="" && id!=0 && nodes[id].value==0;
 }
+// #run_steps N; declares the compilation's compile-time step budget, as
+// --run-steps N does (which overrides it). The file node keeps N (value) and
+// where it was declared (loc2); the driver honours it only in the entry file.
+PS_RUN_STEPS_MAX :: 250000000;
+PS_run_steps :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,root:int,at:PS_Token) {
+  if n[root].value!=0 {PS_fail(s,out,at.loc,"E0224","#run_steps is declared more than once","declare one #run_steps N; in the entry file");return;}
+  v:=PS_peek(t,s,0);
+  if v.kind!=3 || v.value==0 || v.value>PS_RUN_STEPS_MAX {PS_fail(s,out,v.loc,"E0224","#run_steps needs a whole number of steps from 1 through 250000000","#run_steps 250000000;");return;}
+  PS_skip(t,s);n[root].value=v.value;n[root].loc2=at.loc;PS_expect(t,s,out,15,"after #run_steps N");
+}
+// Tokens for `#run_steps N;` with the budget token's kind and value.
+PS_run_steps_tokens :: (kind:u32,value:u64)->[4] PS_Token {
+  return [4] PS_Token.[PS_Token.{kind=6,text="run_steps",loc=PS_Loc.{line=2,column=3,offset=7}},
+    PS_Token.{kind=kind,value=value,loc=PS_Loc.{column=14}},PS_Token.{kind=15},PS_Token.{}];
+}
+#test "#run_steps N declares the compile-time budget on the file node" {
+  nodes:[16] PS_Node;state:[1] PS_State;message:[4096] u8;
+  t:=PS_run_steps_tokens(3,250000000);
+  r:=PS_parse("",t[..],nodes[..],state[..],message[..]);
+  #assert r.ok && state[0].code=="" && nodes[r.root].value==250000000 && nodes[r.root].head==0 && !nodes[r.root].flag;
+  #assert nodes[r.root].loc2.line==2 && nodes[r.root].loc2.column==3 && nodes[r.root].loc2.offset==7 && state[0].pos==3;
+  t=PS_run_steps_tokens(3,1);r=PS_parse("",t[..],nodes[..],state[..],message[..]);
+  #assert r.ok && nodes[r.root].value==1;
+}
+#test "#run_steps refuses zero, more than the maximum, a non-integer and a missing ';'" {
+  nodes:[16] PS_Node;state:[1] PS_State;message:[4096] u8;
+  t:=PS_run_steps_tokens(3,0);r:=PS_parse("",t[..],nodes[..],state[..],message[..]);
+  #assert !r.ok && state[0].code=="E0224" && state[0].loc.column==14;
+  t=PS_run_steps_tokens(3,250000001);r=PS_parse("",t[..],nodes[..],state[..],message[..]);
+  #assert !r.ok && state[0].code=="E0224" && state[0].loc.column==14;
+  t=PS_run_steps_tokens(4,9);r=PS_parse("",t[..],nodes[..],state[..],message[..]);
+  #assert !r.ok && state[0].code=="E0224";
+  t=PS_run_steps_tokens(3,9);t[2]=PS_Token.{kind=1,text="x",loc=PS_Loc.{column=24}};r=PS_parse("",t[..],nodes[..],state[..],message[..]);
+  #assert !r.ok && state[0].code=="E0201";
+}
+#test "#run_steps is declared at most once" {
+  nodes:[16] PS_Node;state:[1] PS_State;message:[4096] u8;
+  t:=[7] PS_Token.[PS_Token.{kind=6,text="run_steps"},PS_Token.{kind=3,value=5},PS_Token.{kind=15},
+    PS_Token.{kind=6,text="run_steps",loc=PS_Loc.{column=9}},PS_Token.{kind=3,value=5},PS_Token.{kind=15},PS_Token.{}];
+  r:=PS_parse("",t[..],nodes[..],state[..],message[..]);
+  #assert !r.ok && state[0].code=="E0224" && state[0].loc.column==9;
+}
 PS_parse :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->PS_Result #export_c {
  return PS_parse_build(source,t,n,s,out,true);
 }
@@ -736,6 +778,7 @@ PS_parse_build :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,
       }else if v.text=="assert" {id=PS_new(n,s,out,PS_Tag.decl_assertion,v.loc);n[id].a=PS_expression(t,n,s,out);PS_expect(t,s,out,15,"after #assert");}
       else if v.text=="test" || v.text=="forall" {id=PS_check(source,t,n,s,out,v);}
       else if v.text=="authority" {n[root].flag=true;PS_expect(t,s,out,15,"after #authority");continue;}
+      else if v.text=="run_steps" {PS_run_steps(t,n,s,out,root,v);continue;}
       else {parts:=[3] string.["#",v.text," is not supported by coax0 yet"];PS_error(s,out,v.loc,"E0210","",parts[..]);break;}
     }else if v.kind==1 && PS_peek(t,s,1).kind==17 {
       PS_skip(t,s);PS_skip(t,s);

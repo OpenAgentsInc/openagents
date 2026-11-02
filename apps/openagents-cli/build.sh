@@ -12,7 +12,7 @@ if [[ "$(uname -s)" == Darwin ]]; then cc=(/usr/bin/clang -D_DARWIN_C_SOURCE); l
 . "$p/tls-env.sh"
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > "$work/entropy.c"
-"$coax" c "$here/main.coax" --library --run-steps 250000000 > "$work/openagents.c"
+"$coax" c "$here/main.coax" --library > "$work/openagents.c"   # main.coax declares its #run_steps
 mkdir -p "$here/build"
 # shellcheck disable=SC2086
 "${cc[@]}" -std=c11 -O2 $CXTLS_CFLAGS -I"$work" -I"$p" -o "$work/openagents" "$work/openagents.c" "$here/cli-native.c" \

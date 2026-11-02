@@ -606,7 +606,7 @@ static std::string target_json() {
            return rows;
          }() + "],\"calling_convention\":" + text(t.calling_convention) + "}";
 }
-static std::string modules_report(const Source *src, const File *file, const EmitOptions &opts) {
+static std::string modules_report(const Source *src, const File *file, const EmitOptions &) {
   const size_t n = src->units.size();
   std::vector<std::string> hash(n);
   for (size_t i = 0; i < n; i++) hash[i] = debug_source_hash(src->units[i]->text);
@@ -666,7 +666,7 @@ static std::string modules_report(const Source *src, const File *file, const Emi
     return revision[m];
   };
   std::string out = "{\"schema\":\"coax.modules.v1\",\"profile\":{\"execution_profile\":" + json_string(file->execution_profile) +
-                    ",\"run_steps\":" + std::to_string(opts.run_steps) + "},\"modules\":[";
+                    ",\"run_steps\":" + std::to_string(file->run_steps) + "},\"modules\":[";
   bool first = true;
   for (const auto &entry : owner_unit) {
     const std::string &m = entry.first;
@@ -1211,7 +1211,9 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     file->quantity_device=opts.quantity_device;
     file->execution_profile=std::to_string(opts.profile_identity);
     {TimedPhase phase{"check"};ok=check(arena,file,mutation_lowering);}
-    if(ok && !parsed) {TimedPhase phase{"evaluate"};g_timings.run_steps=opts.run_steps;ok=evaluate(file,opts.run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
+    // --run-steps overrides the entry file's #run_steps; either replaces the default.
+    if(opts.run_steps_given || !file->run_steps) file->run_steps=opts.run_steps;
+    if(ok && !parsed) {TimedPhase phase{"evaluate"};g_timings.run_steps=file->run_steps;ok=evaluate(file,file->run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
   }
   if (ok && !parsed) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=run_compilation_checks(file);}
   if (!ok && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
@@ -1244,7 +1246,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   else if (what == Output::lowering) *text = lowering_report(&src, &file, opts);
   else if (what == Output::effects) {if(!effects_report(&src,&file,opts,g_lower_proc,text))return false;}
   else if (what == Output::deps) {
-    *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(opts.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
+    *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(file.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
     bool first=true;
     for (const auto &unit:src.units) {*text+=(first?"":",")+json_string(unit->canonical);first=false;}
     *text+="],\"descriptors\":[";first=true;
@@ -1587,6 +1589,7 @@ static int main_impl(int argc, char **argv) {
         return 1;
       }
       run_steps_seen = true;
+      opts.run_steps_given = true;
       g_timings.run_steps = opts.run_steps;
     }
     else if (a == "--only" && i + 1 < argc && (cmd == "test" || cmd == "checks-c") && !only) only = argv[++i];

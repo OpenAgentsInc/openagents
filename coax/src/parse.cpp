@@ -174,6 +174,15 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
     p->authority=src->units.empty()?nodes[(size_t)result.root].flag:source_authority(src,p->loc);
     p->root_source=src->units.empty() || source_point(src,p->loc).path==src->units.front()->path;
   }
+  // #run_steps N; is the entry file's to declare: a loaded library does not
+  // raise the budget of every program that loads it.
+  if(nodes[(size_t)result.root].value) {
+    const Loc at=parser_loc(nodes[(size_t)result.root].loc2);
+    if(!src->units.empty() && source_point(src,at).path!=src->units.front()->path) {
+      error_at(src,at,"E0224","#run_steps is declared only in the entry file, not in a loaded file");return false;
+    }
+    out->run_steps=nodes[(size_t)result.root].value;
+  }
   out->src=src;out->authority=nodes[(size_t)result.root].flag;out->imports=to_slice(arena,imports);out->procs=to_slice(arena,procs);
   out->constants=to_slice(arena,constants);out->structs=to_slice(arena,structs);out->enums=to_slice(arena,enums);out->unions=to_slice(arena,unions);out->assertions=to_slice(arena,assertions);out->checks=to_slice(arena,checks);
   attach_check_input(out,nodes,objects,state.used);

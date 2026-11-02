@@ -15,6 +15,9 @@
 // and project-review.coax), transcribe.coax (speech to text), and coder.coax (Coder, the coding
 // agent: it runs coder/tui/coder.sh).
 #import "Basic";
+// Signing needs the secp256k1 generator tables, built at compile time: far
+// more than the default 100000 compile-time steps (GitHub #12660).
+#run_steps 250000000;
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";

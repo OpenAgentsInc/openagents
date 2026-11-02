@@ -891,7 +891,7 @@ Limits for the bootstrap:
 
 | Resource | Limit and diagnostic |
 | --- | --- |
-| Evaluation work | 100,000 steps by default across one compilation; `--run-steps N` selects 1 through 250,000,000. Each evaluated expression or statement and each zero-initialized array element counts; E0400. |
+| Evaluation work | 100,000 steps by default across one compilation; `#run_steps N;` in the entry file or `--run-steps N` (which overrides it) selects 1 through 250,000,000. Each evaluated expression or statement and each zero-initialized array element counts; E0400. |
 | Aggregate storage | At most 1,572,864 live aggregate-vector capacity slots and 131,072 live aggregate containers, independently of the work limit and in every profile; E0400. |
 | Aggregate traversal | At most 134,217,728 visited values/fields per frontend evaluation or individual check, independent of the step budget; E0400. |
 | Frozen string snapshots | At most 67,108,864 live owned bytes per compilation and 268,435,456 materialized bytes per frontend evaluation or individual check; E0400. Each snapshot charges its length plus one terminator; a cast itself copies nothing. |
@@ -907,6 +907,12 @@ Limits for the bootstrap:
 | View in a result | E0409. |
 | Index or slice out of bounds | E0410. |
 | Cast, enum value or shift out of range | E0411. |
+
+A program whose compile-time tables need more than the default declares its
+budget once, at the top level of its entry file: `#run_steps 250000000;`
+(an integer literal, 1 through 250,000,000; E0224 otherwise, for a second
+declaration and for one in a loaded file, so a library never raises the budget
+of every program that loads it). `--run-steps N` replaces the declared value.
 
 The optional decimal `--run-steps N` applies to all compile commands, including
 `test` and `mutate`; it changes frontend evaluation only. It does not change

@@ -22,6 +22,14 @@ was needed and the limit. Checks have their own, larger limits than a compile
 (budget.coax: 33554432 value slots and 2097152 arrays and structs, against
 1572864 and 131072).
 
+An E0400 "compile-time evaluation exceeded 100000 steps" is the compile's
+shared step budget: every `#run` and constant in the program draws on it, and
+each constant is evaluated once. A program whose tables need more (the
+secp256k1 generator table alone is about 63 million steps) declares its budget
+in its entry file, `#run_steps 250000000;`, as `apps/openagents-cli/main.coax`
+does; `--run-steps N` overrides it for one run. The `note: compile-time call
+at` lines name the file and line of each call, loaded files included.
+
 ## Build and inspect
 
 From the repository root:

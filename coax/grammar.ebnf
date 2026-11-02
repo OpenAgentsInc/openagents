@@ -7,7 +7,7 @@
    escaped byte strings; whitespace, line comments and nested block comments.
    A unary minus is a separate token. *)
 
-file = { module | export | load | import | proto-import | procedure | constant | struct | union | enum | assertion | check | authority } ;
+file = { module | export | load | import | proto-import | procedure | constant | struct | union | enum | assertion | check | authority | run-budget } ;
 module = "#module", string, ";" ;
 (* At most one claim per unit: a lowercase dotted logical module ID. *)
 export = "#export", identifier, { ",", identifier }, ";" ;
@@ -57,6 +57,9 @@ enum = identifier, "::", "enum", type, "{", { member }, "}" ;
 member = identifier, [ "=", expression ], ";" ;
 assertion = "#assert", expression, ";" ;
 authority = "#authority", ";" ;
+run-budget = "#run_steps", integer, ";" ;
+(* 1..250000000: the compilation's compile-time step budget. Only the entry
+   file declares it, at most once; --run-steps N overrides it. *)
 check = "#test", string, [ budget ], block
       | "#forall", [ string ], binding, { ",", binding }, [ budget ], block ;
 budget = "#steps", integer ;  (* positive: the check's own step budget *)

@@ -182,9 +182,11 @@ struct Evaluator {
     if (quiet) return;
     error_at(file->src, loc, code, message);
     // A bounded call trace refers to source, not generated C or interpreter code.
-    for (size_t i = calls.size(); i-- > 0;)
-      fprintf(stderr, "  note: compile-time call at %s:%d:%d\n",
-              file->src->path.c_str(), calls[i].line, calls[i].col);
+    // A loaded file's call is named by its own path and line (GitHub #12660).
+    for (size_t i = calls.size(); i-- > 0;) {
+      const SourcePoint at = source_point(file->src, calls[i]);
+      fprintf(stderr, "  note: compile-time call at %s:%d:%d\n", at.path.c_str(), at.loc.line, at.loc.col);
+    }
   }
 
   // Gives back one step a caller charged twice, and the profile's with it.
