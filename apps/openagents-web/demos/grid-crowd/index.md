@@ -1,13 +1,14 @@
 # Grid Crowd
 
-A demo of the Verse engine at https://openagents.com/demos/grid-crowd?stage=crowd: 340 characters on the Grid at once, 200 players and 140 agents, running across it and into the Everglade gate while the camera starts high and wide and drifts down to the portal.
+A demo of the Verse engine at https://openagents.com/demos/grid-crowd?stage=crowd: 380 characters on the Grid at once: 260 players sprinting across it and into the Everglade gate, and 120 agents standing along the way and round the gate to watch them, while the camera starts high and wide and drifts down to the portal.
 
 ## What is here
 
 - The Grid's own art: the floor of lines, the stations, the gym, the Foreman and the Everglade gate with its portal.
-- Players: the human character from the OpenAgents app, walking, running and jumping, each on their own clips.
-- Agents: the Grid's robot, walking at its own pace.
-- Everyone keeps their distance, steers round the stations, and goes through the portal in a lane of their own. Whoever goes through starts again far behind the camera, so the stream doesn't end.
+- Players: the human character from the OpenAgents app, sprinting, some hopping often and some seldom, each on their own clips. The app has one character, so each player gets their own skin tone, hair colour, shirt, trousers and height from the seed.
+- Agents: the Grid's robot, standing beside the players' way and round the gate, idling or waving, turning to face the nearest player. None of them go in.
+- The players keep their distance, steer round the stations and the agents, and go through the portal in a lane of their own. Whoever goes through starts again far behind the camera as someone new, so the stream doesn't end.
+- The page draws at twice its pixels and the browser scales it down, so the robots' lines stay smooth.
 
 The crowd is simulated from a seed, not anyone's presence, and the page sends nothing. The same address gives the same crowd every time, so a clip of it is the same every time.
 

@@ -1,8 +1,14 @@
 // The Grid crowd, openagents.com/demos/grid-crowd?stage=crowd: a staged
 // moment for clips (docs/verse/clips.md). Hundreds of players (the human
-// character from Cast.bin, verse/cast.coax) and agents (the Grid's robot)
-// run across the Grid and into the Everglade gate, under a slow camera:
-// high and wide, then a drift down to the gate.
+// character from Cast.bin, verse/cast.coax) sprint across the Grid and into
+// the Everglade gate, some hopping as they go, while agents (the Grid's
+// robot) stand along the way and round the gate watching them pass, under a
+// slow camera: high and wide, then a drift down to the gate.
+//
+// Cast.bin holds one character (one body, one outfit, one haircut), so each
+// player is made different here, from the seed: a skin tone, a hair colour,
+// a shirt and trousers colour, and a height (gpu/gridcrowd.coax tints the
+// character's texture layers with them; the face scales the joints).
 //
 // The world is the Grid's own art (verse/tools/pack_grid.py: the floor, the
 // stations, the gym, the Everglade gate and its portal, the robot and its
@@ -16,12 +22,13 @@
 // loading steps (a microsecond each) add nothing. Each character seeks its
 // own lane through the portal, keeps its distance from its neighbours
 // (a spatial hash, filled in index order), steers round the stations and
-// the gate's posts, and every so often a player jumps. Whoever crosses the
-// portal is through: they start again far behind the camera, so the stream
-// never ends.
+// the gate's posts and the agents, and every so often a player hops (some
+// often, some seldom). Whoever crosses the portal is through: they start
+// again far behind the camera, as someone new, so the stream never ends. The
+// agents stand still, idling or waving, and turn to face the nearest player.
 //
 // ?stage=crowd sets it up; &players=N and &agents=N change the counts (up to
-// PEOPLE and ROBOTS - 1), &seed=N the draw. Without a stage the Grid stands
+// PEOPLE and ROBOTS - 2), &seed=N the draw. Without a stage the Grid stands
 // empty under the same camera.
 //   coax/bin/coax test apps/openagents-web/gridcrowd.coax
 
@@ -34,20 +41,20 @@ MAX_VERTICES :: 6;     // no strokes yet
 // players' Cast.bin words, joints and first instance
 U_VIEW :: 8; U_EYE :: 24; U_FIELD :: 28; U_PEOPLE :: 32;
 UNIFORM_FLOATS :: 36;
-LINE_PX :: 1.5;
+LINE_PX :: 1.75;       // CSS pixels: the page draws at twice its pixels (data-supersample)
 
 CLIPS :: 4;
-CLIP_WALK :: 0; CLIP_IDLE :: 1;
+CLIP_WALK :: 0; CLIP_IDLE :: 1; CLIP_WAVE :: 2;
 ROBOTS :: 1024;        // store 0's instances; 0 stands for the art and is never a robot
 ROBOT_FLOATS :: 8;     // x, y, z, yaw; scale, frame a, frame b, blend
 PEOPLE :: 1024;        // players drawn (the face's palettes hold as many)
-PERSON_FLOATS :: 6;    // x, y, z, facing, act (0 idle, 1 walk, 2 run, 3 air), whose
+PERSON_FLOATS :: 7;    // x, y, z, facing, act (0 idle, 1 walk, 2 run, 3 air), whose, height
+LOOK_FLOATS :: 16;     // a player's look for the shader: skin, hair, shirt, trousers (linear rgb, 1)
 PERSON_BASE :: 4096;   // a player's instance number in the draw (above every robot's)
 AGENTS :: PEOPLE + ROBOTS;
 DRAWS :: 5;            // the art's faces and lines, the robots' faces and lines, the players
 GPU_ASSETS :: 6;       // grid.vertices, .lines, .bones, .indices, Cast.bin as storage, the sheets
 FOREMAN_X :: 2.8; FOREMAN_Z :: 2.5; FOREMAN_YAW :: -1.079; FOREMAN_SCALE :: 3.0;
-ROBOT_WALK :: 1.46;    // m/s: the robots' walk, as its clip was made for
 
 // The Everglade gate (pack_grid.py's scene): its portal is 3.24 m wide and
 // 4.26 m high, standing at GATE facing ACROSS x NORMAL; the crowd comes at it
@@ -63,14 +70,16 @@ THROUGH :: 0.35;       // m past the portal: through, and gone
 TICKS :: 1200;         // ticks a second
 STEP_TICKS :: 10;      // a 120 Hz step
 STEP :: 1.0 / 120.0;
-PLAYERS_DEFAULT :: 200;
-AGENTS_DEFAULT :: 140;
+PLAYERS_DEFAULT :: 260;
+AGENTS_DEFAULT :: 120;
 SEED_DEFAULT :: 290;
 FAN :: 0.62;           // the crowd's half-width at a distance, per metre (about 32 degrees)
 FAN_NEAR :: 2.0;       // m of half-width at the gate
 PLAYER_FAR :: 135.0;   // m: players come from up to here
-AGENT_FAR :: 90.0;
-RESPAWN_NEAR :: 118.0; // m: a player through the gate starts again this far back (agents 0.8 of it)
+AGENT_FAR :: 80.0;     // m: agents stand from behind the gate to here, more of them near it
+RESPAWN_NEAR :: 118.0; // m: a player through the gate starts again this far back
+WATCH :: 7.0;          // m: an agent turns to the nearest player this near (4 cells)
+TURN :: 2.2;           // an agent's turn, per second
 NEAR_START :: 4.0;     // m: nobody starts nearer the gate than this
 RADIUS :: 0.34;        // m: a body
 SPACE :: 0.95;         // m: the gap neighbours keep between their middles
@@ -79,7 +88,7 @@ PUSH :: 14.0;          // m/s^2 at contact
 PUSH_FALL :: 0.28;     // m: how fast the push fades with the gap
 EASE_IN :: 0.45;       // s to reach the speed you want
 GRAVITY :: 24.0;       // m/s^2 (aethyr/walk.coax)
-JUMP :: 6.2;           // m/s up: a 0.8 m hop
+JUMP :: 6.2;           // m/s up: a 0.8 m hop (each hop 0.75 to 1.15 of it)
 CELL :: 2.0;           // m: the hash's cells
 CELLS :: 4096;
 
@@ -104,7 +113,9 @@ Crowd :: struct {
   lane: [AGENTS] f32;      // m across the portal's middle
   face: [AGENTS] f32;      // yaw, smoothed
   jump_at: [AGENTS] f32;   // s: a player's next hop
-  phase: [AGENTS] f32;     // an agent's walk clip time
+  hops: [AGENTS] f32;      // s: a player's usual time between hops
+  phase: [AGENTS] f32;     // an agent's clip time at 0
+  clip: [AGENTS] int;      // an agent's clip: idle or wave
   whose: [AGENTS] f32;     // a number for who it is now; a new one each time round
   draws: [AGENTS] int;     // the draw's random numbers taken, per character
   head: [CELLS] int; next: [AGENTS] int;
@@ -126,6 +137,7 @@ GridCrowd :: struct {
   draws: [DRAWS * 4] u32;
   robots: [ROBOTS * ROBOT_FLOATS] f32; robot_n: int;
   people: [PEOPLE * PERSON_FLOATS] f32; people_n: int;
+  looks: [PEOPLE * LOOK_FLOATS] f32;
   crowd: [1] Crowd;
   shot: Shot;
 }
@@ -271,30 +283,69 @@ gridcrowd_message :: (s: [] GridCrowd, kind: int, text: string) #export_c {
 
 // ---- the crowd
 
-// Character i, set going at w metres in front of the gate (anywhere across the fan).
+// Player i, set going at w metres in front of the gate (anywhere across the fan).
 place :: (s: [] GridCrowd, i: int, w: f32) {
   c := s[0].crowd[..];
   seed := s[0].seed;
-  player := i < c[0].players;
   side := roll(c, seed, i) * 2 - 1;
   u := side * (w * f32(FAN) + f32(FAN_NEAR));
   p := at_gate(u, w);
   c[0].x[i] = p.x; c[0].z[i] = p.z;
   c[0].y[i] = 0; c[0].vy[i] = 0;
   c[0].lane[i] = clamp(side * f32(LANE) + (roll(c, seed, i) - 0.5) * 0.3, -f32(LANE), f32(LANE));
-  if player {
-    // a quarter walk, the rest run, each at their own pace
-    c[0].want[i] = ifx roll(c, seed, i) < 0.25 then 3.0 + 0.6 * roll(c, seed, i) else 4.6 + 2.6 * roll(c, seed, i);
-  } else {
-    c[0].want[i] = 1.25 + 0.85 * roll(c, seed, i);
-  }
+  // most sprint, each at their own pace; a few run slower
+  c[0].want[i] = ifx roll(c, seed, i) < 0.15 then 4.4 + 0.6 * roll(c, seed, i) else 5.4 + 2.2 * roll(c, seed, i);
   to := at_gate(c[0].lane[i], -1);
   d := unit_or(v3(to.x - p.x, 0, to.z - p.z), v3(f32(NORMAL_X), 0, f32(NORMAL_Z)));
   c[0].vx[i] = d.x * c[0].want[i]; c[0].vz[i] = d.z * c[0].want[i];
   c[0].face[i] = yaw_of(d.x, d.z);
-  c[0].jump_at[i] = gridcrowd_seconds(s) + 1.5 + 8 * roll(c, seed, i);
-  c[0].phase[i] = 2 * roll(c, seed, i);
+  // a third hop every second or three, the rest now and then, and a few hardly ever
+  k := roll(c, seed, i);
+  c[0].hops[i] = ifx k < 0.33 then 1.0 + 2.2 * roll(c, seed, i) else ifx k < 0.8 then 4 + 8 * roll(c, seed, i) else 30.0f32;
+  c[0].jump_at[i] = gridcrowd_seconds(s) + 0.3 + c[0].hops[i] * roll(c, seed, i);
   c[0].whose[i] += 1;
+}
+
+// Agent i, standing to watch: beside the way the players come (just outside
+// their fan) or round the gate, clear of the stations and of the agents
+// already standing (the best of a few spots).
+place_agent :: (s: [] GridCrowd, i: int) {
+  c := s[0].crowd[..];
+  seed := s[0].seed;
+  best_gap := -1.0f32; best_draw := c[0].draws[i];
+  for t: 0..<8 {
+    at := c[0].draws[i];
+    r := roll(c, seed, i);
+    w := -3 + (f32(AGENT_FAR) + 3) * r * r;
+    side := ifx roll(c, seed, i) < 0.5 then -1.0f32 else 1.0f32;
+    u := ifx w > 1.5 then w * f32(FAN) + f32(FAN_NEAR) + 0.9 + 3.5 * roll(c, seed, i) else 3.2 + 4 * roll(c, seed, i);
+    p := at_gate(side * u, w);
+    gap := 1000.0f32;
+    for o: 0..<OBSTACLES {
+      dx := p.x - OBSTACLE[o * 3]; dz := p.z - OBSTACLE[o * 3 + 1];
+      gap = lo(gap, sqrt(dx * dx + dz * dz) - OBSTACLE[o * 3 + 2] - 0.6);
+    }
+    for j: c[0].players..<i {
+      dx := c[0].x[j] - p.x; dz := c[0].z[j] - p.z;
+      gap = lo(gap, sqrt(dx * dx + dz * dz) - 1.3);
+    }
+    if gap > best_gap { best_gap = gap; best_draw = at; }
+    if gap > 0 { break; }
+  }
+  // the best spot again, with the numbers it drew
+  c[0].draws[i] = best_draw;
+  r := roll(c, seed, i);
+  w := -3 + (f32(AGENT_FAR) + 3) * r * r;
+  side := ifx roll(c, seed, i) < 0.5 then -1.0f32 else 1.0f32;
+  u := ifx w > 1.5 then w * f32(FAN) + f32(FAN_NEAR) + 0.9 + 3.5 * roll(c, seed, i) else 3.2 + 4 * roll(c, seed, i);
+  p := at_gate(side * u, w);
+  c[0].x[i] = p.x; c[0].z[i] = p.z; c[0].y[i] = 0;
+  c[0].vx[i] = 0; c[0].vz[i] = 0; c[0].vy[i] = 0; c[0].want[i] = 0;
+  // facing the way, a little towards the gate
+  to := at_gate(0, w * 0.6);
+  c[0].face[i] = yaw_of(to.x - p.x, to.z - p.z);
+  c[0].clip[i] = ifx roll(c, seed, i) < 0.22 then CLIP_WAVE else CLIP_IDLE;
+  c[0].phase[i] = 3 * roll(c, seed, i);
 }
 gridcrowd_seconds :: (s: [] GridCrowd) -> f32 { return f32(s[0].ticks) / f32(TICKS); }
 
@@ -308,7 +359,8 @@ gridcrowd_fill :: (s: [] GridCrowd) #export_c {
   c[0].through = 0; c[0].missed = 0;
   for i: 0..<c[0].n {
     c[0].draws[i] = 0; c[0].whose[i] = f32(i * 4096);
-    far := ifx i < c[0].players then f32(PLAYER_FAR) else f32(AGENT_FAR);
+    if i >= c[0].players { place_agent(s, i); continue; }
+    far := f32(PLAYER_FAR);
     best := 0.0f32; best_gap := -1.0f32; best_draw := 0;
     for t: 0..<6 {
       w := f32(NEAR_START) + (far - f32(NEAR_START)) * roll(c, s[0].seed, i);
@@ -334,10 +386,11 @@ cell_of :: (x: f32, z: f32) -> int {
   return mix32((cx * 92837111) ^ (cz * 689287499)) & (CELLS - 1);
 }
 
-// One 120 Hz step of everyone.
+// One 120 Hz step of everyone: the players run, the agents watch.
 crowd_step :: (s: [] GridCrowd) {
   c := s[0].crowd[..];
   n := c[0].n;
+  players := c[0].players;
   h := f32(STEP);
   now := gridcrowd_seconds(s);
   for k: 0..<CELLS { c[0].head[k] = -1; }
@@ -349,7 +402,7 @@ crowd_step :: (s: [] GridCrowd) {
     i -= 1;
   }
   ax: [AGENTS] f32; az: [AGENTS] f32;
-  for a: 0..<n {
+  for a: 0..<players {
     x := c[0].x[a]; z := c[0].z[a];
     w := front_of(x, z);
     // where it wants to go: its lane, just past the portal; near the gate, straight through it
@@ -415,7 +468,8 @@ crowd_step :: (s: [] GridCrowd) {
     }
     ax[a] = fx; az[a] = fz;
   }
-  for a: 0..<n {
+  for a: players..<n { watch(s, a, h); }
+  for a: 0..<players {
     vx := c[0].vx[a] + ax[a] * h; vz := c[0].vz[a] + az[a] * h;
     top := c[0].want[a] * 1.35;
     v := sqrt(vx * vx + vz * vz);
@@ -426,28 +480,53 @@ crowd_step :: (s: [] GridCrowd) {
       want := yaw_of(vx, vz);
       c[0].face[a] = wrap_angle(c[0].face[a] + wrap_angle(want - c[0].face[a]) * settle(9, h));
     }
-    // a player's hop
-    if a < c[0].players {
-      if c[0].y[a] <= 0 && c[0].vy[a] <= 0 && now >= c[0].jump_at[a] {
-        c[0].vy[a] = f32(JUMP);
-        c[0].jump_at[a] = now + 3 + 9 * roll(c, s[0].seed, a);
-      }
-      if c[0].y[a] > 0 || c[0].vy[a] > 0 {
-        c[0].vy[a] -= f32(GRAVITY) * h;
-        c[0].y[a] += c[0].vy[a] * h;
-        if c[0].y[a] <= 0 { c[0].y[a] = 0; c[0].vy[a] = 0; }
-      }
-    } else {
-      c[0].phase[a] += h * v / f32(ROBOT_WALK);
+    // a hop, each its own height, and the next some while after
+    if c[0].y[a] <= 0 && c[0].vy[a] <= 0 && now >= c[0].jump_at[a] {
+      c[0].vy[a] = f32(JUMP) * (0.75 + 0.4 * roll(c, s[0].seed, a));
+      c[0].jump_at[a] = now + c[0].hops[a] * (0.6 + 0.8 * roll(c, s[0].seed, a));
+    }
+    if c[0].y[a] > 0 || c[0].vy[a] > 0 {
+      c[0].vy[a] -= f32(GRAVITY) * h;
+      c[0].y[a] += c[0].vy[a] * h;
+      if c[0].y[a] <= 0 { c[0].y[a] = 0; c[0].vy[a] = 0; }
     }
     // through the portal: gone, and back at the far edge (one pushed past the arch is gone too, uncounted)
     behind := front_of(c[0].x[a], c[0].z[a]);
     if (behind < -f32(THROUGH) && abs(across_of(c[0].x[a], c[0].z[a])) < 1.62) || behind < -2 {
       if behind >= -2 { c[0].through += 1; } else { c[0].missed += 1; }
-      far := ifx a < c[0].players then f32(RESPAWN_NEAR) else f32(RESPAWN_NEAR) * 0.8;
-      place(s, a, far + 16 * roll(c, s[0].seed, a));
+      place(s, a, f32(RESPAWN_NEAR) + 16 * roll(c, s[0].seed, a));
     }
   }
+}
+
+// Agent a turns, slowly, to the nearest player within WATCH metres; with
+// nobody near it looks back along the way, towards the gate.
+watch :: (s: [] GridCrowd, a: int, h: f32) {
+  c := s[0].crowd[..];
+  x := c[0].x[a]; z := c[0].z[a];
+  best := f32(WATCH * WATCH); tx := 0.0f32; tz := 0.0f32; seen := false;
+  cx := cast(int) floor(x / f32(CELL)); cz := cast(int) floor(z / f32(CELL));
+  reach := 4;   // cells: WATCH metres and the cell you stand in
+  for oz: -reach..<reach + 1 {
+    for ox: -reach..<reach + 1 {
+      b := c[0].head[mix32(((cx + ox) * 92837111) ^ ((cz + oz) * 689287499)) & (CELLS - 1)];
+      while b >= 0 {
+        if b < c[0].players {
+          dx := c[0].x[b] - x; dz := c[0].z[b] - z;
+          dd := dx * dx + dz * dz;
+          if dd < best && dd > 0.01 { best = dd; tx = dx; tz = dz; seen = true; }
+        }
+        b = c[0].next[b];
+      }
+    }
+  }
+  if !seen {
+    to := at_gate(0, front_of(x, z) * 0.6);
+    tx = to.x - x; tz = to.z - z;
+  }
+  if tx * tx + tz * tz < 0.0001 { return; }
+  want := yaw_of(tx, tz);
+  c[0].face[a] = wrap_angle(c[0].face[a] + wrap_angle(want - c[0].face[a]) * settle(f32(TURN), h));
 }
 
 // ---- the robots and the players, as the host draws them
@@ -470,6 +549,40 @@ pose :: (s: [] GridCrowd, i: int, x: f32, y: f32, z: f32, yaw: f32, size: f32, c
   s[0].robots[k + 7] = clamp(f - f32(a), 0, 1);
 }
 
+// The looks a player is drawn with, in linear colour: Cast.bin's one
+// character, its skin, hair and clothes tinted (gpu/gridcrowd.coax).
+SKINS :: 7;
+SKIN :: [21] f32.[1.06, 1.0, 0.96,  1.0, 0.9, 0.82,  0.9, 0.76, 0.64,  0.74, 0.58, 0.45,  0.56, 0.41, 0.31,  0.4, 0.28, 0.2,  0.28, 0.19, 0.14];
+HAIRS :: 8;
+HAIR :: [24] f32.[0.018, 0.016, 0.014,  0.05, 0.026, 0.012,  0.22, 0.11, 0.05,  0.1, 0.055, 0.025,  0.34, 0.09, 0.025,  0.62, 0.45, 0.2,  0.42, 0.42, 0.42,  0.75, 0.68, 0.5];
+SHIRTS :: 14;
+SHIRT :: [42] f32.[
+  0.6, 0.05, 0.04,  0.03, 0.08, 0.3,  0.05, 0.25, 0.07,  0.75, 0.5, 0.05,  0.85, 0.85, 0.82,  0.03, 0.03, 0.035,
+  0.02, 0.35, 0.36,  0.25, 0.06, 0.35,  0.85, 0.25, 0.03,  0.18, 0.42, 0.75,  0.28, 0.28, 0.3,  0.45, 0.02, 0.09,
+  0.55, 0.42, 0.25,  0.8, 0.35, 0.45
+];
+TROUSERS :: 7;
+TROUSER :: [21] f32.[0.04, 0.08, 0.2,  0.02, 0.02, 0.025,  0.38, 0.3, 0.17,  0.14, 0.14, 0.15,  0.12, 0.07, 0.035,  0.14, 0.16, 0.07,  0.08, 0.15, 0.32];
+// Player `whose`'s look into out (skin, hair, shirt, trousers, four floats
+// each), and their height, 0.92 to 1.08 of the character's.
+look :: (seed: int, whose: int, out: [] f32) -> f32 {
+  k := mix32(seed * 7919 + 4099) ^ whose;
+  skin := cast(int) (dice(k, 1, 0) * f32(SKINS)) % SKINS;
+  hair := cast(int) (dice(k, 2, 0) * f32(HAIRS)) % HAIRS;
+  // a grey or white head is likelier on someone older, rarer than the rest
+  if hair >= 6 && dice(k, 3, 0) < 0.6 { hair = cast(int) (dice(k, 4, 0) * 4) % 4; }
+  shirt := cast(int) (dice(k, 5, 0) * f32(SHIRTS)) % SHIRTS;
+  trousers := cast(int) (dice(k, 6, 0) * f32(TROUSERS)) % TROUSERS;
+  for j: 0..<3 {
+    out[j] = SKIN[skin * 3 + j];
+    out[4 + j] = HAIR[hair * 3 + j];
+    out[8 + j] = SHIRT[shirt * 3 + j];
+    out[12 + j] = TROUSER[trousers * 3 + j];
+  }
+  out[3] = 1; out[7] = 1; out[11] = 1; out[15] = 1;
+  return 0.92 + 0.16 * dice(k, 7, 0);
+}
+
 // Everyone this frame: the agents into store 0 after the Foreman, the players into people[].
 cast_crowd :: (s: [] GridCrowd) {
   c := s[0].crowd[..];
@@ -484,10 +597,11 @@ cast_crowd :: (s: [] GridCrowd) {
       speed := sqrt(c[0].vx[i] * c[0].vx[i] + c[0].vz[i] * c[0].vz[i]);
       act := ifx c[0].y[i] > 0 || c[0].vy[i] > 0 then 3 else ifx speed > 4.2 then 2 else ifx speed > 0.5 then 1 else 0;
       p[0] = c[0].x[i]; p[1] = c[0].y[i]; p[2] = c[0].z[i]; p[3] = c[0].face[i]; p[4] = f32(act); p[5] = c[0].whose[i];
+      p[6] = look(s[0].seed, cast(int) c[0].whose[i], s[0].looks[m * LOOK_FLOATS..<m * LOOK_FLOATS + LOOK_FLOATS]);
       m += 1;
     } else {
       if r >= ROBOTS { continue; }
-      pose(s, r, c[0].x[i], c[0].y[i], c[0].z[i], c[0].face[i], s[0].scale, CLIP_WALK, c[0].phase[i]);
+      pose(s, r, c[0].x[i], c[0].y[i], c[0].z[i], c[0].face[i], s[0].scale, c[0].clip[i], c[0].phase[i] + gridcrowd_seconds(s));
       r += 1;
     }
   }
@@ -602,7 +716,7 @@ loaded :: (g: [] GridCrowd, url: string) {
 }
 
 #test "the uniforms line up with gpu/gridcrowd.coax's" {
-  #assert UNIFORM_FLOATS % 4 == 0 && U_PEOPLE == 32 && UNIFORM_FLOATS == 36 && ROBOT_FLOATS == 8;
+  #assert UNIFORM_FLOATS % 4 == 0 && U_PEOPLE == 32 && UNIFORM_FLOATS == 36 && ROBOT_FLOATS == 8 && LOOK_FLOATS == 16;
   #assert PERSON_BASE >= ROBOTS && AGENTS == PEOPLE + ROBOTS;
 }
 
@@ -632,8 +746,33 @@ loaded :: (g: [] GridCrowd, url: string) {
   #assert c[0].crowd[0].n == 50 && c[0].people_n == 30 && c[0].robot_n == 21;
   #assert c[0].draws[11] == 21 && c[0].draws[15] == 21 && c[0].draws[19] == 30 && c[0].draws[18] == 0x80000000 + PERSON_BASE;
   #assert u[U_PEOPLE + 3] == f32(PERSON_BASE) && u[U_FIELD + 2] == 4 && u[7] == 10;
-  // nobody starts inside the portal, and everyone starts in front of it
-  for i: 0..<c[0].crowd[0].n { #assert front_of(c[0].crowd[0].x[i], c[0].crowd[0].z[i]) >= f32(NEAR_START) - 0.01; }
+  // no player starts inside the portal, and every one starts in front of it; the agents stand
+  // outside the players' fan, or beside the gate, never in the portal's way
+  cr := c[0].crowd[..];
+  for i: 0..<cr[0].players { #assert front_of(cr[0].x[i], cr[0].z[i]) >= f32(NEAR_START) - 0.01; }
+  for i: cr[0].players..<cr[0].n {
+    w := front_of(cr[0].x[i], cr[0].z[i]); side := abs(across_of(cr[0].x[i], cr[0].z[i]));
+    #assert w >= -3.01 && (side >= 3.19 && (w <= 1.5 || side >= w * f32(FAN) + f32(FAN_NEAR) + 0.89));
+    #assert cr[0].clip[i] == CLIP_IDLE || cr[0].clip[i] == CLIP_WAVE;
+  }
+}
+
+#test "each player looks their own: skin, hair, clothes and height from the seed" {
+  a: [LOOK_FLOATS] f32; b: [LOOK_FLOATS] f32; c: [LOOK_FLOATS] f32;
+  ha := look(290, 4096, a[..]); hb := look(290, 4096, b[..]);
+  #assert ha == hb && ha >= 0.92 && ha <= 1.08;
+  for j: 0..<LOOK_FLOATS { #assert a[j] == b[j]; }
+  // over a crowd: several skins, hairs, shirts and trousers, and heights both sides of the middle
+  skins := 0; shirts := 0; short := false; tall := false;
+  seen_skin: [SKINS] bool; seen_shirt: [SHIRTS] bool;
+  for w: 0..<120 {
+    hc := look(290, w * 4096 + 1, c[..]);
+    if hc < 0.97 { short = true; }
+    if hc > 1.03 { tall = true; }
+    for k: 0..<SKINS { if c[0] == SKIN[k * 3] && c[1] == SKIN[k * 3 + 1] && !seen_skin[k] { seen_skin[k] = true; skins += 1; } }
+    for k: 0..<SHIRTS { if c[8] == SHIRT[k * 3] && c[9] == SHIRT[k * 3 + 1] && !seen_shirt[k] { seen_shirt[k] = true; shirts += 1; } }
+  }
+  #assert skins >= 5 && shirts >= 10 && short && tall;
 }
 
 #test "ticks: a frame's dt rounds to 1/1200 s and loading steps add none" {
@@ -680,8 +819,11 @@ loaded :: (g: [] GridCrowd, url: string) {
   loaded(g[..], "https://x/y?stage=crowd&players=60&agents=40");
   c := g[0].crowd[..];
   close := 0; checks := 0; inside := 0; jumped := false;
+  ax: [AGENTS] f32; az: [AGENTS] f32;
+  m := gridcrowd_frame(g[..], out[..], u[..], 1920, 1080, 1, 1.0 / 30.0, false);
+  for a: c[0].players..<c[0].n { ax[a] = c[0].x[a]; az[a] = c[0].z[a]; }
   for f: 0..<300 {
-    m := gridcrowd_frame(g[..], out[..], u[..], 1920, 1080, 1, 1.0 / 30.0, false);
+    m = gridcrowd_frame(g[..], out[..], u[..], 1920, 1080, 1, 1.0 / 30.0, false);
     if f % 15 != 14 { continue; }
     for a: 0..<c[0].n {
       if c[0].y[a] > 0.3 { jumped = true; }
@@ -698,6 +840,8 @@ loaded :: (g: [] GridCrowd, url: string) {
   }
   #assert c[0].n == 100 && g[0].people_n == 60 && g[0].robot_n == 41;
   #assert c[0].through >= 12 && c[0].missed == 0;
+  // the agents stood where they were put, the whole time
+  for a: c[0].players..<c[0].n { #assert c[0].x[a] == ax[a] && c[0].z[a] == az[a] && c[0].y[a] == 0; }
   #assert close == 0 && inside == 0 && jumped;
 }
 

@@ -47,9 +47,13 @@ realm, a feature being shown off, or a moment a player really had.
 ## Staged demos
 
 - **Grid Crowd** (`/demos/grid-crowd?stage=crowd`, `apps/openagents-web/gridcrowd.coax`):
-  340 characters (200 players from Cast.bin, 140 Grid robots) run across the
-  Grid into the Everglade gate under a high-wide-then-drift camera. Seeded and
-  stepped on whole ticks, so two recordings are byte-identical frame for frame.
+  380 characters: 260 players from Cast.bin sprint (and hop) across the Grid
+  into the Everglade gate while 120 Grid robots stand along the way and round
+  the gate watching, under a high-wide-then-drift camera. Each player gets a
+  seeded skin tone, hair colour, shirt, trousers and height. The page draws at
+  twice its pixels (`data-supersample="2"` in `coax/web/host.js`), so lines
+  and edges are smooth. Seeded and stepped on whole ticks, so two recordings
+  are byte-identical frame for frame.
   `&players=N&agents=N` (up to 1024 and 1022) and `&seed=N` change it.
 
   ```shell

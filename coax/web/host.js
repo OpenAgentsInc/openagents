@@ -1381,6 +1381,10 @@ const drawn = (deviceWidth) => {
   if (!gpu?.scene3d) return 1;
   return Math.min(1, QUALITY_CAP[quality] / (deviceWidth / canvas.clientWidth));
 };
+// A page may ask to be drawn at 2 or 3 times its device pixels (data-supersample="2"): the browser
+// scales the canvas down, so every pixel shown is the average of 4 (or 9) drawn, and thin lines and
+// edges stay smooth. For staged clips (demos/grid-crowd); no other page asks.
+const SUPERSAMPLE = Math.min(3, Math.max(1, Math.round(Number(script?.dataset.supersample) || 1)));
 // Device pixels per CSS pixel, as the canvas is actually drawn.
 const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.clientWidth : devicePixelRatio || 1);
 
@@ -1407,7 +1411,7 @@ function draw(now) {
   if (!engine || !gpu?.bg) return;
   const dt = last ? (now - last) / 1000 : 0; last = now;
   const [dw, dh] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
-  const f = drawn(dw), w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
+  const f = drawn(dw) * SUPERSAMPLE, w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   const dpr = scale();
   let n = 0;

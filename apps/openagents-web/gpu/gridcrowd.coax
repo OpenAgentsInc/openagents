@@ -95,6 +95,35 @@ gridcrowd_skinned :: (v:u32,r:GridcrowdRobot,u:[]f32,vertices:[]u32,bones:[]V4)-
 }
 GridcrowdS :: struct {pos:V4; world:V3; colour:V3; uv:V2; normal:V3; layer:f32 #flat; }
 // a person's texture layer; -1 the art's flat colour, 255 a person's flat colour
+// Store 1 starts with every player's look, four vec4s each (gridcrowd.coax look): skin, hair,
+// shirt, trousers, in linear colour. Their joint palettes follow.
+GRIDCROWD_LOOKS :: cast(u32)4096;
+GRIDCROWD_HIP :: 1.0f32; // m: the character's clothes are trousers below this in its bind pose, a shirt above
+GRIDCROWD_SHOE :: 0.3f32; // m: and boots below this, leather brown
+// The colour a person's corner is drawn under: the sheet's own tint, made player h's. Skin (slots 0
+// and 5) takes their skin tone, hair (2 and 3) their hair colour, clothes (4) their shirt or trousers
+// by the corner's height, or boots (the fragment keeps the cloth's shading and takes this colour); the eyes
+// (1) stay as they are.
+gridcrowd_look :: (tint:V3,slot:f32,y:f32,h:u32,palette:[]V4)->V3 {
+  at:u32=mul_wrap(h,cast(u32)4);
+  c:V3=gridcrowd_decode(tint);
+  if ((slot<0.5f32)||((slot>4.5f32)&&(slot<5.5f32))) {
+    k:V4=palette[cast(int)at];
+    return gridcrowd_encode(wg_mul_f3f3(c,v3(k.x,k.y,k.z)));
+  }
+  if ((slot>1.5f32)&&(slot<3.5f32)) {
+    k:V4=palette[cast(int)add_wrap(at,cast(u32)1)];
+    return gridcrowd_encode(v3(k.x,k.y,k.z));
+  }
+  if ((slot>3.5f32)&&(slot<4.5f32)) {
+    if (y<=GRIDCROWD_SHOE) {
+      return gridcrowd_encode(v3(0.09f32,0.055f32,0.03f32));
+    }
+    k:V4=palette[cast(int)add_wrap(at,ifx y>GRIDCROWD_HIP then cast(u32)2 else cast(u32)3)];
+    return gridcrowd_encode(v3(k.x,k.y,k.z));
+  }
+  return tint;
+}
 // A person's corner: triangle corner id of Cast.bin's body, skinned with person h's palette.
 gridcrowd_person :: (id:u32,h:u32,u:[]f32,body:[]u32,palette:[]V4)->GridcrowdS {
   o:GridcrowdS;
@@ -112,7 +141,7 @@ gridcrowd_person :: (id:u32,h:u32,u:[]f32,body:[]u32,palette:[]V4)->GridcrowdS {
       if (wg_get_f4(w,cast(int)k)<=0.0f32) {
         {k=add_wrap(k,1); continue;}
       }
-      r:u32=mul_wrap(add_wrap(mul_wrap(h,wg_u32_f(u[34])),wg_u32_f(wg_get_f4(j,cast(int)k)+0.5f32)),cast(u32)3);
+      r:u32=add_wrap(GRIDCROWD_LOOKS,mul_wrap(add_wrap(mul_wrap(h,wg_u32_f(u[34])),wg_u32_f(wg_get_f4(j,cast(int)k)+0.5f32)),cast(u32)3));
       r0:V4=palette[cast(int)r];
       r1:V4=palette[cast(int)add_wrap(r,cast(u32)1)];
       r2:V4=palette[cast(int)add_wrap(r,cast(u32)2)];
@@ -124,7 +153,7 @@ gridcrowd_person :: (id:u32,h:u32,u:[]f32,body:[]u32,palette:[]V4)->GridcrowdS {
   tint:V4=wg_unpack4x8unorm(body[cast(int)add_wrap(b,cast(u32)13)]);
   o.world=at;
   o.pos=gridcrowd_clip(at,u);
-  o.colour=v3(tint.x,tint.y,tint.z);
+  o.colour=gridcrowd_look(v3(tint.x,tint.y,tint.z),tint.w*255.0f32,p.y,h,palette);
   o.uv=v2(gridcrowd_cf(add_wrap(b,cast(u32)6),body),gridcrowd_cf(add_wrap(b,cast(u32)7),body));
   o.normal=nn;
   o.layer=tint.w*255.0f32;
@@ -224,6 +253,11 @@ gridcrowd_scene_fs :: (s:GridcrowdS,u:[]f32,sheets:Tex2DArray,sheet:Sampler)->V4
   colour:V3=s.colour;
   if (s.layer>=0.0f32) {
     colour=ifx s.layer>250.0f32 then gridcrowd_encode(wg_mul_f3f(gridcrowd_decode(s.colour),light)) else gridcrowd_encode(wg_mul_f3f(wg_mul_f3f3(albedo,gridcrowd_decode(s.colour)),light));
+    // clothes: the cloth's shading (its brightness against the sheet's usual) under the player's colour
+    if ((s.layer>3.5f32)&&(s.layer<4.5f32)) {
+      shade:f32=clampf(wg_dot3(albedo,v3(0.2126f32,0.7152f32,0.0722f32))*5.0f32,0.25f32,1.6f32);
+      colour=gridcrowd_encode(wg_mul_f3f(wg_mul_f3f(gridcrowd_decode(s.colour),shade),light));
+    }
   }
   c:V3=wg_mix_f3f3f(colour,GRIDCROWD_FIELD(),(t*t)*(3.0f32-(2.0f32*t)));
   return v4(c.x,c.y,c.z,1.0f32);

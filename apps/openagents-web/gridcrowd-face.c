@@ -4,7 +4,8 @@
 // is only told they came. Cast.bin (asset 5, and 6 as the GPU's copy; 7 its
 // texture sheets) is opened here with verse/cast.coax, which plays each
 // player's clips on the crowd's own clock and writes their joint palettes,
-// store 1. It decides nothing and sends nothing: the crowd is simulated, not
+// scaled to their height, into store 1 after every player's look (the
+// page's colours for them, four vec4s each). It decides nothing and sends nothing: the crowd is simulated, not
 // anyone's presence. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "gridcrowd.h"
@@ -27,7 +28,11 @@ static bool cast_open;
 #define JOINTS_MAX 65
 static coax_t_Anim anims[PEOPLE_MAX];
 static float anim_whose[PEOPLE_MAX];
-static coax_t_Joint palette[PEOPLE_MAX * JOINTS_MAX];
+#define LOOK_FLOATS 16    /* gridcrowd.coax LOOK_FLOATS */
+#define PERSON_FLOATS 7  /* gridcrowd.coax PERSON_FLOATS */
+// store 1: the looks (vec4 0..4095, as gpu/gridcrowd.coax reads them), then the palettes
+static struct { float looks[PEOPLE_MAX * LOOK_FLOATS]; coax_t_Joint palette[PEOPLE_MAX * JOINTS_MAX]; } store1;
+#define palette store1.palette
 static uint32_t palette_bytes;
 
 static coax_t_GridCrowd *crowd(uint32_t state) { return (coax_t_GridCrowd *)(uintptr_t)state; }
@@ -42,8 +47,9 @@ EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (u
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_gridcrowd_uniform_floats(); }
 
 // Each player the page lists, posed: their clips moved on for how they move (verse_cast_update) and
-// their joints placed where they stand (verse_cast_pose), into store 1. A slot that holds someone new
-// starts their clips afresh. The clock is the crowd's, so a clip is the same every time.
+// their joints placed where they stand (verse_cast_pose) and scaled to their height about their feet,
+// into store 1 after the looks. A slot that holds someone new starts their clips afresh. The clock is
+// the crowd's, so a clip is the same every time.
 static void people_out(uint32_t state) {
   coax_t_GridCrowd *g = crowd(state);
   palette_bytes = 0;
@@ -54,13 +60,21 @@ static void people_out(uint32_t state) {
   if (joints <= 0 || joints > JOINTS_MAX) return;
   double t = gridcrowd_time(at(state));
   for (int64_t i = 0; i < n; i++) {
-    const float *p = &g->people.e[i * 6];
+    const float *p = &g->people.e[i * PERSON_FLOATS];
     if (anim_whose[i] != p[5]) { anims[i] = (coax_t_Anim){0}; anims[i].fade_start = -1; anims[i].start = t; anim_whose[i] = p[5]; }
     int64_t act = (int64_t)p[4];
     anims[i] = verse_cast_update(b, cast_set, anims[i], act, act == 3 && p[1] > 0.05f, t);
-    if (!verse_cast_pose(b, cast_set, anims[i], t, p[0], p[1], p[2], p[3], (coax_v_t_Joint){&palette[i * joints], joints})) return;
+    coax_t_Joint *js = &palette[i * joints];
+    if (!verse_cast_pose(b, cast_set, anims[i], t, p[0], p[1], p[2], p[3], (coax_v_t_Joint){js, joints})) return;
+    float k = p[6] > 0.5f && p[6] < 1.5f ? p[6] : 1.0f, foot[3] = {p[0], p[1], p[2]};
+    if (k != 1.0f) for (int64_t j = 0; j < joints; j++)
+      for (int r = 0; r < 3; r++) {
+        float *m = &js[j].m.e[r * 4];
+        m[0] *= k; m[1] *= k; m[2] *= k; m[3] = k * m[3] + (1.0f - k) * foot[r];
+      }
   }
-  palette_bytes = (uint32_t)(n * joints * sizeof(coax_t_Joint));
+  memcpy(store1.looks, g->looks.e, (size_t)n * LOOK_FLOATS * sizeof(float));
+  palette_bytes = (uint32_t)(sizeof store1.looks + n * joints * sizeof(coax_t_Joint));
 }
 
 EXPORT("coaxial_frame")
@@ -76,8 +90,8 @@ EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return crowd(state)->started ? (uint32_t)gridcrowd_draws(at(state)) : 0u; }
 // Store 0 the robots, store 1 the players' joint palettes.
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2; }
-EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 1 ? (uint32_t)sizeof palette : (uint32_t)sizeof(((coax_t_GridCrowd *)0)->robots); }
-EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { return k == 1 ? (uint32_t)(uintptr_t)palette : (uint32_t)(uintptr_t)crowd(state)->robots.e; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 1 ? (uint32_t)sizeof store1 : (uint32_t)sizeof(((coax_t_GridCrowd *)0)->robots); }
+EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { return k == 1 ? (uint32_t)(uintptr_t)&store1 : (uint32_t)(uintptr_t)crowd(state)->robots.e; }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { return k == 1 ? palette_bytes : (uint32_t)gridcrowd_store_bytes(at(state)); }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
