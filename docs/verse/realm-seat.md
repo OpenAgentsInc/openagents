@@ -1,6 +1,9 @@
 # A seat in a running realm (agents that play)
 
-Status: design, 2026-11-02 (#12637). Nothing here is built yet.
+Status: slices 1 to 3 built, 2026-11-02 (#12637): the scene probe, the seat
+engine (`coax/lib/media/realm_seat.coax`, run by `coax/web/tool.sh
+realm-seat`) and `openagents realm play` with its verbs and MCP tools.
+Presence and hosted seats are #12655.
 
 Agents can make and edit realms through the routes and the CLI
 ([realm-edit.md](realm-edit.md), [the CLI spec](../cli/2026-11-01-openagents-cli-v1.md)).
@@ -85,11 +88,11 @@ command table so MCP and the skill get them too:
 
 | Action | Arguments | What happens |
 | --- | --- | --- |
-| `look` | `--turn DEG` (-180..180), `--pitch DEG` (-60..60) | Turns as a drag would. |
+| `look` | `--turn DEG` (-180..180), `--pitch DEG` (-60..60), `--shot OUT.png` | Turns with a mouse drag, as a visitor does, and corrects from the facing the page reports, so a turn lands within 1.5 degrees. Pitch is first person only. |
 | `go` | `TARGET` (a `near` name or kind) or `X Z`; `--max SECONDS` (default 10, at most 30) | Walks with the realm's own controller (held keys, the way a person walks) until within 2 m, blocked, or out of time. Returns where it stopped and why: `reached`, `blocked`, `timeout`. |
 | `say` | `"WORDS"` (400 characters) | Talks to the nearest character within 3.5 m, as E then typing does; returns the answer. Refused with `no one near` otherwise. |
 | `use` | `TOOL` (`jump`, `map`, `build THING`) | Uses a tool the realm has on. A visitor's `build` becomes a proposal for the owner, as now. |
-| `bye` | | Ends the talk. |
+| `bye` | | Ends the talk. With no talk open it does nothing: Esc then would leave the realm. |
 
 There is no free-form "press any key" or "click at x, y". An agent does only
 what a visitor can do, through the realm's own rules, so a seat can't reach
@@ -123,15 +126,34 @@ panel) comes after, on the same runner as the project agents.
 ## Slices
 
 1. **The scene probe** in `myrealm.coax`, with checks (**built**).
-2. **`realm-seat.coax`**, a tool like `forge-journey.coax`: opens a realm,
-   reads JSON-line actions on stdin, writes one observation a line. This
-   is the seat's engine, testable without the CLI.
-3. **`openagents realm play SLUG`**: the CLI verbs `look`, `go`, `say`,
-   `use`, `bye`, and MCP tools for each. This waits for the CLI's command
-   table (#12635), so the verbs are rows, not hand-written commands.
-4. **Presence for made realms**, and the AGENT tag.
-5. **Hosted seats**, for agents with no Chrome and for the web agent panel.
+2. **The seat's engine** (**built**): `coax/lib/media/realm_seat.coax` opens
+   a realm, runs one JSON action, and writes one observation. `coax/web/tool.sh
+   realm-seat ORIGIN SLUG --actions FILE [--shots PREFIX]` runs a file of
+   actions, one a line, and prints an observation after each.
+3. **`openagents realm play SLUG`** (**built**): the verbs `play`, `look`,
+   `go`, `say`, `use`, `bye` and `leave` are rows of the CLI's command table
+   (`apps/openagents-cli/commands.coax`), so each is an MCP tool
+   (`realm_play`, ...) and a line of the skill. `play` starts a detached
+   holder (`apps/openagents-cli/realm-play.coax`) that keeps the page open
+   between commands; see [the CLI spec](../cli/2026-11-01-openagents-cli-v1.md),
+   "Play a realm". `openagents mcp --read-only` offers the verbs that change
+   nothing on the server: all but `say` and `use`.
+4. **Presence for made realms**, and the AGENT tag (#12655).
+5. **Hosted seats**, for agents with no Chrome and for the web agent panel
+   (#12655).
 
-A check walks a seat through one made realm: `go` to a character,
-`say` hello, read the answer, `go` to a building, `look` round, all from
-the summary, then a shot.
+The check, run against staging on 2026-11-02 with the made realm
+`village-green` (a well, two houses and Maple, a baker): `play`, `look
+--turn 90` (facing 90.0), `go Maple` (`reached`, 1.1 m away), `say` (Maple's
+answer in the view), `bye`, `use jump`, `use build barrel` (refused: build
+is off there), `go --x 0 --z 0`, and the same through `openagents mcp`.
+Not yet run live: `use build` in a realm with build on, and `--pitch` in a
+first-person realm.
+
+```sh
+openagents realm play village-green
+openagents realm go village-green Maple
+openagents realm say village-green "What do you bake?"
+openagents --json realm look village-green --turn -90 --shot view.png
+openagents realm leave village-green
+```

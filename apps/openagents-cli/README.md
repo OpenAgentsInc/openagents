@@ -380,6 +380,7 @@ ffmpeg, whisper-cli) is missing.
 | `project-plan-rules.coax` | `plan-rules`: the work seeds' and the coax-nostr plan's rules |
 | `api.coax` | one signed call to the API: the origin, the NIP-98 header, the status as an exit code |
 | `realm.coax` | the `realm` domain: list, show, new, visibility, publish, fork |
+| `realm-play.coax` | a seat in a running realm: `realm play`, `look`, `go`, `say`, `use`, `bye`, `leave`, and the detached holder (`seat-hold`) that keeps the page open in headless Chrome (`coax/lib/media/realm_seat.coax`) |
 | `admin.coax` | the `admin` domain: invites, requests, creators, flags, realms, admin keys |
 | `realm_rules.coax` | `#authority`: slugs, visibilities, flags, counts, keys and account IDs, origins, spec lines, access rows, a plan's board |
 | `project-rules.coax` | `#authority`: hashes, slugs, standing, claims, plans, ranks, the order, relay paging |

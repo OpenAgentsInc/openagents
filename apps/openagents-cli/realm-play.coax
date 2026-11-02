@@ -1,0 +1,368 @@
+// openagents realm play / look / go / say / use / bye / leave: a seat in a running realm
+// (docs/verse/realm-seat.md, #12637). The verbs are the "seat" rows of REALM_COMMANDS
+// (commands.coax), so help, the skill and the MCP tools come from the same rows.
+//
+// `realm play SLUG` starts a seat: this program again, detached (`openagents seat-hold`), holding
+// the realm open in headless Chrome as a visitor (coax/lib/media/realm_seat.coax). It listens on a
+// loopback port and writes where in ~/.openagents/cli/seats/PROFILE (mode 0600, with a token).
+// Each verb sends one action line to it and prints the observation it answers. One seat a
+// profile: a verb for another realm closes the old seat first. A seat closes after 10 minutes
+// without an action, on `realm leave`, or when its browser goes.
+#load "../../coax/lib/media/realm_seat.coax";
+
+SEAT_IDLE_MS :: 600000;
+SEAT_OPEN_MS :: 120000;     // the browser starts and the realm lays out
+SEAT_ACT_MS :: 120000;      // the longest action: a walk (30 s) or an answer (45 s), and slack
+SEAT_LINE :: 65536;
+
+#test "the seat's build list is the CLI's" {
+  #assert SEAT_THINGS.count == CLI_SEAT_THINGS.count;
+  for i: 0..<SEAT_THINGS.count { #assert SEAT_THINGS[i] == CLI_SEAT_THINGS[i]; }
+}
+
+// ---- the seat file: slug, origin, port and token, one "key value" a line
+
+SeatAt :: struct { slug: [80] u8; slug_n: int; origin: [300] u8; origin_n: int; port: int; token: [64] u8; token_n: int; error: [300] u8; error_n: int; }
+seat_at_put :: (to: [] u8, n: [] int, v: string) { m := 0; for c: v { if m < to.count { to[m] = c; m += 1; } } n[0] = m; }
+// The file's text into at; false when it names no seat (an error line is kept in at.error).
+seat_at_read :: (text: string, at: [] SeatAt) -> bool {
+  at[0] = SeatAt.{}; i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e]; i = e + 1;
+    sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
+    if sp >= line.count { continue; }
+    k := line[0..<sp]; v := line[sp + 1..<line.count];
+    n: [1] int;
+    if k == "slug" { seat_at_put(at[0].slug[..], n[..], v); at[0].slug_n = n[0]; }
+    if k == "origin" { seat_at_put(at[0].origin[..], n[..], v); at[0].origin_n = n[0]; }
+    if k == "token" { seat_at_put(at[0].token[..], n[..], v); at[0].token_n = n[0]; }
+    if k == "error" { seat_at_put(at[0].error[..], n[..], v); at[0].error_n = n[0]; }
+    if k == "port" { at[0].port = cli_count(v, 1, 65535); }
+  }
+  return at[0].slug_n > 0 && at[0].origin_n > 0 && at[0].port > 0 && at[0].token_n == 32;
+}
+seat_at_slug :: (at: [] SeatAt) -> string { return cast(string) at[0].slug[0..<at[0].slug_n]; }
+seat_at_origin :: (at: [] SeatAt) -> string { return cast(string) at[0].origin[0..<at[0].origin_n]; }
+seat_at_token :: (at: [] SeatAt) -> string { return cast(string) at[0].token[0..<at[0].token_n]; }
+seat_at_error :: (at: [] SeatAt) -> string { return cast(string) at[0].error[0..<at[0].error_n]; }
+
+#test "the seat file names a slug, an origin, a port and a 32-character token" {
+  at: [1] SeatAt;
+  #assert seat_at_read("slug village-green\norigin https://staging.openagents.com\nport 51234\ntoken 0123456789abcdef0123456789abcdef\n", at[..]);
+  #assert seat_at_slug(at[..]) == "village-green" && seat_at_origin(at[..]) == "https://staging.openagents.com" && at[0].port == 51234;
+  #assert !seat_at_read("slug x\norigin https://a\nport 0\ntoken 0123456789abcdef0123456789abcdef\n", at[..]);
+  #assert !seat_at_read("slug x\norigin https://a\nport 9\ntoken short\n", at[..]);
+  #assert !seat_at_read("error the realm never laid out\n", at[..]) && seat_at_error(at[..]) == "the realm never laid out";
+  #assert !seat_at_read("", at[..]);
+}
+
+seat_file :: (profile: string, out: [] u8) -> string {
+  d: [1024] u8; s: [1024] u8;
+  return fs_join(fs_join(cli_dir(d[..]), "seats", s[..]), profile, out);
+}
+seat_dir_make :: () -> bool {
+  d: [1024] u8; s: [1024] u8;
+  base := cli_dir(d[..]); dir := fs_join(base, "seats", s[..]);
+  return base.count > 0 && dir.count > 0 && cxcli_mkdir_private(d[0..<base.count]) == 0 && cxcli_mkdir_private(s[0..<dir.count]) == 0;
+}
+
+// ---- the action a verb sends (pure)
+
+// The action line for a seat verb, with the seat's token, into out; "" when it doesn't fit.
+seat_action :: (a: [] Args, verb: string, token: string, shot: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "token"); jo_str(o[..], token);
+  op := ifx verb == "play" then "see" else verb;
+  jo_key(o[..], "op"); jo_str(o[..], op);
+  if verb == "look" {
+    if rc_has(a, verb, "--turn") { jo_key(o[..], "turn"); jo_raw(o[..], rc_option(a, verb, "--turn", "0")); }
+    if rc_has(a, verb, "--pitch") { jo_key(o[..], "pitch"); jo_raw(o[..], rc_option(a, verb, "--pitch", "0")); }
+    if shot != "" { jo_key(o[..], "shot"); jo_str(o[..], shot); }
+  }
+  if verb == "go" {
+    if rc_has(a, verb, "--x") { jo_key(o[..], "x"); jo_raw(o[..], rc_option(a, verb, "--x", "0")); jo_key(o[..], "z"); jo_raw(o[..], rc_option(a, verb, "--z", "0")); }
+    else { jo_key(o[..], "to"); jo_str(o[..], rc_pos(a, verb, 3)); }
+    if rc_has(a, verb, "--max") { jo_key(o[..], "max"); jo_raw(o[..], rc_option(a, verb, "--max", "10")); }
+  }
+  if verb == "say" { jo_key(o[..], "words"); jo_str(o[..], rc_pos(a, verb, 3)); }
+  if verb == "use" {
+    jo_key(o[..], "tool"); jo_str(o[..], rc_pos(a, verb, 3));
+    if rc_pos(a, verb, 4) != "" { jo_key(o[..], "thing"); jo_str(o[..], rc_pos(a, verb, 4)); }
+  }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+#test "each seat verb sends its own action" {
+  out: [4096] u8; t := "0123456789abcdef0123456789abcdef";
+  a: [1] Args; for w: [5] string.["realm","look","g","--turn","-45.5"] { #assert args_add(a[..],w); }
+  #assert seat_action(a[..], "look", t, "/tmp/v.png", out[..]) == "{\"token\":\"0123456789abcdef0123456789abcdef\",\"op\":\"look\",\"turn\":-45.5,\"shot\":\"/tmp/v.png\"}";
+  b: [1] Args; for w: [6] string.["realm","go","g","Old Mott","--max","20"] { #assert args_add(b[..],w); }
+  #assert seat_action(b[..], "go", t, "", out[..]) == "{\"token\":\"0123456789abcdef0123456789abcdef\",\"op\":\"go\",\"to\":\"Old Mott\",\"max\":20}";
+  c: [1] Args; for w: [7] string.["realm","go","g","--x","4.5","--z","-2"] { #assert args_add(c[..],w); }
+  #assert seat_action(c[..], "go", t, "", out[..]) == "{\"token\":\"0123456789abcdef0123456789abcdef\",\"op\":\"go\",\"x\":4.5,\"z\":-2}";
+  d: [1] Args; for w: [4] string.["realm","say","g","where's \"the\" well?"] { #assert args_add(d[..],w); }
+  #assert seat_action(d[..], "say", t, "", out[..]) == "{\"token\":\"0123456789abcdef0123456789abcdef\",\"op\":\"say\",\"words\":\"where's \\\"the\\\" well?\"}";
+  e: [1] Args; for w: [5] string.["realm","use","g","build","barrel"] { #assert args_add(e[..],w); }
+  #assert seat_action(e[..], "use", t, "", out[..]) == "{\"token\":\"0123456789abcdef0123456789abcdef\",\"op\":\"use\",\"tool\":\"build\",\"thing\":\"barrel\"}";
+  f: [1] Args; for w: [3] string.["realm","play","g"] { #assert args_add(f[..],w); }
+  #assert seat_action(f[..], "play", t, "", out[..]) == "{\"token\":\"0123456789abcdef0123456789abcdef\",\"op\":\"see\"}";
+  #assert seat_action(f[..], "bye", t, "", out[..]) == "{\"token\":\"0123456789abcdef0123456789abcdef\",\"op\":\"bye\"}";
+  #assert seat_action(f[..], "play", t, "", out[0..<10]) == "";
+}
+
+// ---- an observation as text (pure)
+
+seat_side :: (b: f32, out: [] SeatBuf) {
+  a := ifx b < 0 then -b else b;
+  if a < 15 { seat_put(out, "ahead"); return; }
+  if a > 165 { seat_put(out, "behind"); return; }
+  seat_int(out, cast(int) (a + 0.5)); seat_put(out, ifx b < 0 then " left" else " right");
+}
+// The observation's JSON as a few lines a person reads; "" when it doesn't parse.
+seat_obs_text :: (obs: string, o: [] SeatBuf) -> string {
+  nodes: [1024] JvNode; dd: [1] Jv;
+  o[0].n = 0; o[0].bad = false;
+  if !jv_parse(dd[..], obs, nodes[..]) || jv_kind(dd[0], 0) != JV_OBJECT { return ""; }
+  d := dd[0]; b: [1600] u8;
+  n := jv_str(d, jv_get(d, 0, "realm"), b[..]); if n > 0 { seat_put(o, cast(string) b[0..<n]); seat_put(o, ": "); }
+  n = jv_str(d, jv_get(d, 0, "result"), b[..]); if n > 0 { seat_put(o, cast(string) b[0..<n]); }
+  seat_put(o, "\nat "); at := jv_get(d, 0, "at");
+  seat_put(o, jv_raw(d, jv_at(d, at, 0))); seat_put(o, " "); seat_put(o, jv_raw(d, jv_at(d, at, 1)));
+  seat_put(o, ", facing "); seat_put(o, jv_raw(d, jv_get(d, 0, "facing")));
+  seat_put(o, ", "); seat_put(o, jv_raw(d, jv_get(d, 0, "camera"))); seat_put(o, " camera; tools ");
+  tools := jv_get(d, 0, "tools");
+  if jv_len(d, tools) == 0 { seat_put(o, "none"); }
+  for i: 0..<jv_len(d, tools) { if i > 0 { seat_put(o, ", "); } seat_put(o, jv_raw(d, jv_at(d, tools, i))); }
+  if jv_kind(d, jv_get(d, 0, "talking")) == JV_STRING {
+    seat_put(o, "\ntalking to "); seat_put(o, jv_raw(d, jv_get(d, 0, "talking")));
+    n = jv_str(d, jv_get(d, 0, "answer"), b[..]); if n > 0 { seat_put(o, ": "); seat_put(o, cast(string) b[0..<n]); }
+  }
+  near := jv_get(d, 0, "near");
+  seat_put(o, "\nnear:");
+  if jv_len(d, near) == 0 { seat_put(o, " nothing"); }
+  for i: 0..<jv_len(d, near) {
+    e := jv_at(d, near, i);
+    seat_put(o, ifx i == 0 then " " else "; ");
+    if jv_kind(d, jv_get(d, e, "name")) == JV_STRING {
+      n = jv_str(d, jv_get(d, e, "name"), b[..]); if n > 0 { seat_put(o, cast(string) b[0..<n]); }
+      seat_put(o, " (");
+      n = jv_str(d, jv_get(d, e, "role"), b[..]); seat_put(o, ifx n > 0 then cast(string) b[0..<n] else "character"); seat_put(o, ")");
+    } else { seat_put(o, jv_raw(d, jv_get(d, e, "kind"))); seat_put(o, " "); seat_put(o, jv_raw(d, jv_get(d, e, "id"))); }
+    seat_put(o, " "); seat_put(o, jv_raw(d, jv_get(d, e, "d"))); seat_put(o, " m ");
+    bv := seat_dec_of(jv_raw(d, jv_get(d, e, "bearing")));
+    seat_side(ifx bv.ok then bv.v else 0, o);
+  }
+  seat_put(o, "\n");
+  return ifx o[0].bad then "" else seat_text(o);
+}
+#test "an observation reads as a few lines" {
+  o: [1] SeatBuf;
+  t := seat_obs_text("{\"op\":\"say\",\"ok\":true,\"result\":\"answered\",\"realm\":\"village-green\",\"at\":[2.8,3.1],\"facing\":43.9,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":\"Maple\",\"answer\":\"Fresh loaves!\",\"near\":[{\"kind\":\"character\",\"id\":\"character:0\",\"name\":\"Maple\",\"role\":\"baker\",\"d\":1.0,\"bearing\":-2.7},{\"kind\":\"centre\",\"id\":\"entity:20\",\"d\":6.7,\"bearing\":-68.0},{\"kind\":\"house\",\"id\":\"entity:21\",\"d\":14.0,\"bearing\":170.0}]}", o[..]);
+  #assert t == "village-green: answered\nat 2.8 3.1, facing 43.9, third camera; tools jump, talk\ntalking to Maple: Fresh loaves!\nnear: Maple (baker) 1.0 m ahead; centre entity:20 6.7 m 68 left; house entity:21 14.0 m behind\n";
+  #assert seat_obs_text("not json", o[..]) == "";
+}
+
+// ---- talking to the holder
+
+// Sends one line to the seat on port and reads one line back into out: its length, or -1.
+seat_send :: (port: int, line: string, out: [] u8, wait_ms: int) -> int {
+  for b: "127.0.0.1" { r := cxsock_host_push(cast(int) b); }
+  h := cxsock_connect(port, 3000);
+  if h < 0 { return -1; }
+  ok := true;
+  for c: line { ok = ok && cxsock_write(h, cast(int) c) == 0; }
+  ok = ok && cxsock_write(h, 10) == 0 && cxsock_flush(h, 5000) == 0;
+  n := 0; deadline := proc_now_ms() + wait_ms; done := false;
+  while ok && !done {
+    m := cxsock_read(h, proc_left(deadline, proc_now_ms()));
+    if m <= 0 { break; }
+    for i: 0..<m {
+      c := cast,trunc(u8) cxsock_byte(h, i);
+      if c == 10 { done = true; break; }
+      if n < out.count { out[n] = c; n += 1; }
+    }
+    if proc_now_ms() >= deadline { break; }
+  }
+  x := cxsock_close(h);
+  return ifx done then n else -1;
+}
+
+// The seat named by the profile's file, when its holder answers; false otherwise.
+seat_find :: (profile: string, at: [] SeatAt) -> bool {
+  p: [1024] u8; path := seat_file(profile, p[..]);
+  text: [2048] u8; n := fs_read(path, text[..]);
+  if n <= 0 || !seat_at_read(cast(string) text[0..<n], at) { return false; }
+  // a holder that isn't there any more leaves its file: drop it
+  for b: "127.0.0.1" { r := cxsock_host_push(cast(int) b); }
+  h := cxsock_connect(at[0].port, 2000);
+  if h < 0 { gone := fs_remove(path); return false; }
+  x := cxsock_close(h);
+  return true;
+}
+seat_leave_at :: (at: [] SeatAt) {
+  b: [256] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  jo_key(o[..], "token"); jo_str(o[..], seat_at_token(at)); jo_key(o[..], "op"); jo_str(o[..], "leave"); jo_end(o[..]);
+  out: [4096] u8; n := seat_send(at[0].port, jo_text(o[..]), out[..], 15000);
+}
+
+// Starts a holder for slug at origin and waits for its file: "" when it's up, or why not.
+seat_start :: (a: [] Args, profile: string, slug: string, origin: string, phone: bool, at: [] SeatAt) -> string {
+  if !seat_dir_make() { return "could not make ~/.openagents/cli/seats"; }
+  p: [1024] u8; path := seat_file(profile, p[..]);
+  if fs_exists(path) { gone := fs_remove(path); }
+  exe: [4096] u8; en := cxcli_exe_path(exe[..]);
+  if en <= 0 { return "could not find this program's own path"; }
+  h := proc_new();
+  ok := h >= 0 && proc_arg(h, cast(string) exe[0..<en]) && proc_arg(h, "seat-hold") && proc_arg(h, slug) && proc_arg(h, origin) && proc_arg(h, "--profile") && proc_arg(h, profile);
+  if phone { ok = ok && proc_arg(h, "--phone"); }
+  ok = ok && proc_quiet(h) && proc_detach(h);
+  if !ok || proc_start(h) != 0 { if h >= 0 { r := proc_release(h); } return "could not start the seat"; }
+  released := proc_release(h);
+  until := proc_now_ms() + SEAT_OPEN_MS;
+  text: [2048] u8;
+  while proc_now_ms() < until {
+    proc_sleep(250);
+    n := fs_read(path, text[..]);
+    if n <= 0 { continue; }
+    if seat_at_read(cast(string) text[0..<n], at) { return ""; }
+    if at[0].error_n > 0 { gone := fs_remove(path); return seat_at_error(at); }
+  }
+  return "the seat didn't open in 2 minutes";
+}
+
+// A seat verb: finds (or opens) the profile's seat in slug, sends the verb's action, prints the observation.
+realm_seat :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  slug := rc_pos(a, verb, 2);
+  ob: [300] u8; origin := acct_origin(a, profile, ob[..]);
+  if origin == "" { return fail(r, EXIT_USAGE, "--origin is an https:// address"); }
+  atb: [1] SeatAt; at := atb[..];
+  open := seat_find(profile, at);
+  same := open && seat_at_slug(at) == slug && seat_at_origin(at) == origin;
+  if verb == "leave" {
+    if !same { rep_str(r, "realm", slug); rep_str(r, "result", "no seat open there"); return rep_done(r, EXIT_OK); }
+    seat_leave_at(at);
+    rep_str(r, "realm", slug); rep_str(r, "result", "left"); return rep_done(r, EXIT_OK);
+  }
+  if !same {
+    // a seat is a visitor's, as a shot is: a private realm is 404 to one
+    sb: [API_OUT] u8; sp: [128] u8;
+    seen := api_call(a, profile, "GET", realm_path(slug, "", sp[..]), "", sb[..]);
+    if !api_ok(seen) { return api_fail(r, seen, cast(string) sb[0..<seen.n]); }
+    if cli_spec_value(cast(string) sb[0..<seen.n], "visibility") == "private" {
+      said: [400] u8; n := copy(slug, said[..]);
+      n += copy(" is private, and a seat is a visitor's: make it unlisted or public first: openagents realm visibility ", said[n..<said.count]);
+      n += copy(slug, said[n..<said.count]); n += copy(" unlisted", said[n..<said.count]);
+      return fail(r, EXIT_USAGE, cast(string) said[0..<n]);
+    }
+    if open {
+      seat_leave_at(at);
+      tool_err("openagents: closed the seat in "); tool_err(seat_at_slug(at)); tool_errln(" first (one seat a profile)");
+    }
+    why := seat_start(a, profile, slug, origin, rc_has(a, verb, "--phone"), at);
+    if why != "" { return fail(r, EXIT_FAIL, why); }
+  }
+  // --shot: an absolute path, since the holder runs in the folder it was started in
+  shot := rc_option(a, verb, "--shot", ""); sb: [2200] u8;
+  if shot != "" {
+    if !seat_ends(shot, ".png") { return fail(r, EXIT_USAGE, "--shot names a .png file"); }
+    if shot[0] != '/' { cw: [1024] u8; shot = fs_join(fs_cwd(cw[..]), shot, sb[..]); if shot == "" { return fail(r, EXIT_USAGE, "--shot's path is too long"); } }
+  }
+  line: [8192] u8; act := seat_action(a, verb, seat_at_token(at), shot, line[..]);
+  if act == "" { return fail(r, EXIT_USAGE, "the action is too long"); }
+  out: [SEAT_LINE] u8; n := seat_send(at[0].port, act, out[..], SEAT_ACT_MS);
+  if n < 0 { return fail(r, EXIT_FAIL, "the seat didn't answer (openagents realm play SLUG opens a new one)"); }
+  obs := cast(string) out[0..<n];
+  if obs.count == 0 || obs[0] != '{' { return fail(r, EXIT_FAIL, "the seat's answer isn't JSON"); }
+  ok := acct_has(obs, "\"ok\":true");
+  if r[0].json { print("%\n", obs); }
+  else {
+    tb: [1] SeatBuf; text := seat_obs_text(obs, tb[..]);
+    print("%", ifx text != "" then text else obs);
+  }
+  return ifx ok then EXIT_OK else EXIT_FAIL;
+}
+
+// ---- the holder: `openagents seat-hold SLUG ORIGIN --profile P [--phone]`, started by realm_seat
+
+seat_hold_say :: (path: [] u8, what: string) {
+  t: [400] u8; n := copy("error ", t[..]); m := copy(what, t[n..<t.count - 1]);
+  if m < 0 { m = 0; }
+  t[n + m] = '\n';
+  w := cxcli_write_private(path, t[0..<n + m + 1]);
+}
+seat_hex :: (bytes: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<bytes.count { out[2 * i] = digits[cast(int) (bytes[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (bytes[i] & 15)]; }
+  return cast(string) out[0..<2 * bytes.count];
+}
+// One request line from h into out: its length, or -1.
+seat_read_line :: (h: int, out: [] u8, wait_ms: int) -> int {
+  n := 0; deadline := proc_now_ms() + wait_ms;
+  while true {
+    m := cxsock_read(h, proc_left(deadline, proc_now_ms()));
+    if m <= 0 { return -1; }
+    for i: 0..<m {
+      c := cast,trunc(u8) cxsock_byte(h, i);
+      if c == 10 { return n; }
+      if n >= out.count { return -1; }
+      out[n] = c; n += 1;
+    }
+    if proc_now_ms() >= deadline { return -1; }
+  }
+  return -1;
+}
+seat_reply :: (h: int, text: string) {
+  ok := true;
+  for c: text { ok = ok && cxsock_write(h, cast(int) c) == 0; }
+  ok = ok && cxsock_write(h, 10) == 0 && cxsock_flush(h, 5000) == 0;
+}
+
+seat_hold_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  slug := positional(a, 1); origin := positional(a, 2);
+  p: [1024] u8; path := seat_file(profile, p[..]);
+  if path == "" { return EXIT_FAIL; }
+  pv := p[0..<path.count];
+  s: [1] Seat;
+  if !seat_init(s[..], origin, slug, args_has(a, "--phone")) { seat_hold_say(pv, "the seat's realm or origin doesn't read"); return EXIT_USAGE; }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], s[0].w, s[0].h, "openagents-seat-") { seat_hold_say(pv, cdp_error(c[..])); return EXIT_FAIL; }
+  if !seat_open(s[..], c[..], "") { seat_hold_say(pv, "the realm's page didn't open"); cdp_close(c[..]); return EXIT_FAIL; }
+  if !seat_wait_laid(s[..], c[..], 60000) { seat_hold_say(pv, "the realm never laid out (is it a made realm, and there?)"); cdp_close(c[..]); return EXIT_FAIL; }
+  seat_read_spec(s[..], c[..]);
+  l := cxsock_listen(0);
+  port := ifx l >= 0 then cxsock_port(l) else -1;
+  raw: [16] u8; tb: [32] u8;
+  if port <= 0 || cxrand_draw(raw[..], 16) != 0 { seat_hold_say(pv, "could not listen on a loopback port"); cdp_close(c[..]); return EXIT_FAIL; }
+  token := seat_hex(raw[..], tb[..]);
+  f: [1] SeatBuf;
+  seat_put(f[..], "slug "); seat_put(f[..], slug); seat_put(f[..], "\norigin "); seat_put(f[..], origin);
+  seat_put(f[..], "\nport "); seat_int(f[..], port); seat_put(f[..], "\ntoken "); seat_put(f[..], token); seat_put(f[..], "\n");
+  if cxcli_write_private(pv, f[0].b[0..<f[0].n]) != 0 { x := cxsock_close(l); cdp_close(c[..]); return EXIT_FAIL; }
+  png: [SEAT_SHOT] u8; line: [SEAT_LINE] u8; o: [1] SeatBuf;
+  last := proc_now_ms();
+  while proc_now_ms() - last < SEAT_IDLE_MS {
+    h := cxsock_accept(l, 1000);
+    if h < 0 { continue; }
+    n := seat_read_line(h, line[..], 10000);
+    if n < 0 { x := cxsock_close(h); continue; }
+    text := cast(string) line[0..<n];
+    nodes: [64] JvNode; d: [1] Jv; kb: [64] u8; ob: [16] u8;
+    parsed := jv_parse(d[..], text, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT;
+    kn := ifx parsed then jv_str(d[0], jv_get(d[0], 0, "token"), kb[..]) else -1;
+    if kn != 32 || cast(string) kb[0..<32] != token { seat_reply(h, "{\"ok\":false,\"result\":\"not this seat's token\"}"); x := cxsock_close(h); continue; }
+    last = proc_now_ms();
+    on := jv_str(d[0], jv_get(d[0], 0, "op"), ob[..]);
+    if on == 5 && cast(string) ob[0..<5] == "leave" { seat_reply(h, "{\"ok\":true,\"result\":\"left\"}"); x := cxsock_close(h); break; }
+    acted := seat_act(s[..], c[..], text, png[..], o[..]);
+    seat_reply(h, seat_text(o[..]));
+    x := cxsock_close(h);
+    if c[0].h < 0 { break; }   // the browser went
+  }
+  // the file goes with the seat, unless a newer seat has written its own
+  now: [2048] u8; m := fs_read(path, now[..]); atb: [1] SeatAt; at := atb[..];
+  if m > 0 && seat_at_read(cast(string) now[0..<m], at) && seat_at_token(at) == token { gone := fs_remove(path); }
+  x := cxsock_close(l);
+  cdp_close(c[..]);
+  return EXIT_OK;
+}

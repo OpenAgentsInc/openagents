@@ -431,7 +431,7 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 #load "../../coax/lib/sys/args.coax";
 
 #test "the realm catalogue covers reads and revisioned writes with unique verbs" {
-  #assert REALM_COMMANDS.count == 26;
+  #assert REALM_COMMANDS.count == 33;
   for i: 0..<REALM_COMMANDS.count {
     c := REALM_COMMANDS[i];
     #assert c.domain == "realm" && c.verb.count > 0 && c.help.count > 0;
@@ -487,9 +487,9 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 }
 
 #test "each declared argument and flag kind publishes its exact limits" {
-  kinds := [26] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script","style","time","camera","ground"];
-  lows := [26] int.[1,1,3,-40,-360,1,1,1,0,1,1,0,0,7,3,2,6,0,0,0,0,0,4,3,3,4];
-  highs := [26] int.[48,63,24,40,360,999999999,600,2000,400,40,1024,160,100,64,29,3,8,1,1024,19,120000,131072,9,5,5,6];
+  kinds := [33] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script","style","time","camera","ground","turn","pitch","target","seconds","line","tool","thing"];
+  lows := [33] int.[1,1,3,-40,-360,1,1,1,0,1,1,0,0,7,3,2,6,0,0,0,0,0,4,3,3,4,-180,-60,1,1,1,3,4];
+  highs := [33] int.[48,63,24,40,360,999999999,600,2000,400,40,1024,160,100,64,29,3,8,1,1024,19,120000,131072,9,5,5,6,180,60,40,30,400,5,7];
   for i: 0..<kinds.count { b := rc_bound(kinds[i]); #assert b.min == lows[i] && b.max == highs[i]; }
   for c: REALM_COMMANDS {
     fi := 0;
@@ -510,14 +510,14 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 }
 
 #test "realm routes and methods match the published command contract" {
-  routes := [26] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","batch"];
+  routes := [33] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","batch","seat","seat","seat","seat","seat","seat","seat"];
   for i: 0..<REALM_COMMANDS.count {
     #assert REALM_COMMANDS[i].route == routes[i];
-    method := ifx i == 6 || i == 25 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
+    method := ifx i == 6 || i >= 25 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
     #assert REALM_COMMANDS[i].method == method;
   }
   #assert REALM_COMMANDS[rc_find("new")].arguments == "newwords";
-  for c: REALM_COMMANDS { #assert c.optional == ifx c.verb == "shot" then 1 else 0; }
+  for c: REALM_COMMANDS { #assert c.optional == ifx c.verb == "shot" || c.verb == "use" then 1 else 0; }
 }
 
 #test "text fields and yaw use their full boundary profiles" {
@@ -667,7 +667,9 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 }
 
 CliCommand :: struct { domain: string = "realm"; verb: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; }
-REALM_COMMANDS :: [26] CliCommand.[
+// The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
+// visitor (apps/openagents-cli/realm-play.coax, docs/verse/realm-seat.md).
+REALM_COMMANDS :: [33] CliCommand.[
   CliCommand.{verb="list",method="GET",route="/mine",help="your realms"},
   CliCommand.{verb="show",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page"},
   CliCommand.{verb="new",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan"},
@@ -693,7 +695,14 @@ REALM_COMMANDS :: [26] CliCommand.[
   CliCommand.{verb="accept",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="accept a visitor's proposal"},
   CliCommand.{verb="decline",method="POST",route="/proposals/:id/decline",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="decline a visitor's proposal"},
   CliCommand.{verb="undo",method="POST",route="/undo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="restore the preceding revision as a new revision"},
-  CliCommand.{verb="apply",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",usage="SLUG FILE.jsonl [--rev N]",help="run JSON-line edits in order (below); consecutive moves share one save"}
+  CliCommand.{verb="apply",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",usage="SLUG FILE.jsonl [--rev N]",help="run JSON-line edits in order (below); consecutive moves share one save"},
+  CliCommand.{verb="play",method="LOCAL",route="seat",arguments="slug",flags="--phone:bool",usage="SLUG [--phone]",help="sit in the realm as a visitor (headless Chrome here) and say what you see; the seat stays open for look, go, say, use and bye, and closes after 10 idle minutes"},
+  CliCommand.{verb="look",method="LOCAL",route="seat",arguments="slug",flags="--turn:turn|--pitch:pitch|--shot:shotfile",usage="SLUG [--turn DEG] [--pitch DEG] [--shot OUT.png]",help="turn right (negative: left) up to 180 degrees; --pitch looks up or down in first person; --shot keeps a picture of the view"},
+  CliCommand.{verb="go",method="LOCAL",route="seat",arguments="slug|target",flags="--x:metres|--z:metres|--max:seconds",usage="SLUG TARGET | SLUG --x X --z Z [--max S]",help="walk to a character's name, a kind (house, centre, ...), character:N, entity:N, or X Z metres, until 2 m away, blocked, or --max seconds (10; at most 30)"},
+  CliCommand.{verb="say",method="LOCAL",route="seat",arguments="slug|line",usage="SLUG \"WORDS\"",help="talk to the character within 3.5 m and wait for the answer"},
+  CliCommand.{verb="use",method="LOCAL",route="seat",arguments="slug|tool|thing",optional=1,usage="SLUG jump|map|build [THING]",help="use a tool the realm has on; build THING (crate, barrel, tree, rock, plant, lantern, fence, chest) asks the owner to place it in front of you"},
+  CliCommand.{verb="bye",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="end the talk"},
+  CliCommand.{verb="leave",method="LOCAL",route="seat",arguments="slug",usage="SLUG",help="close the seat and its browser"}
 ];
 
 rc_find :: (verb: string) -> int { for i: 0..<REALM_COMMANDS.count { if REALM_COMMANDS[i].verb == verb { return i; } } return -1; }
@@ -725,6 +734,13 @@ rc_bound :: (kind: string) -> CliBound {
   if kind == "time" { return CliBound.{min=3,max=5}; }
   if kind == "camera" { return CliBound.{min=3,max=5}; }
   if kind == "ground" { return CliBound.{min=4,max=6}; }
+  if kind == "turn" { return CliBound.{min=-180,max=180}; }
+  if kind == "pitch" { return CliBound.{min=-60,max=60}; }
+  if kind == "target" { return CliBound.{min=1,max=40}; }
+  if kind == "seconds" { return CliBound.{min=1,max=30}; }
+  if kind == "line" { return CliBound.{min=1,max=400}; }
+  if kind == "tool" { return CliBound.{min=3,max=5}; }
+  if kind == "thing" { return CliBound.{min=4,max=7}; }
   return CliBound.{};
 }
 rc_value :: (kind: string, value: string) -> bool {
@@ -753,10 +769,67 @@ rc_value :: (kind: string, value: string) -> bool {
   }
   if kind == "waitms" { n := args_whole(value); return n >= 0 && n <= 120000; }
   if kind == "style" || kind == "time" || kind == "camera" || kind == "ground" { return cli_setup_ok(kind, value); }
+  if kind == "turn" || kind == "pitch" { return rc_degrees_ok(value, rc_bound(kind).max); }
+  if kind == "seconds" { return cli_count(value,1,30) >= 1; }
+  if kind == "tool" { return value == "jump" || value == "map" || value == "build"; }
+  if kind == "thing" { for t: CLI_SEAT_THINGS { if t == value { return true; } } return false; }
+  if kind == "target" { for c: value { if c < 32 || c == 127 { return false; } } }
   b := rc_bound(kind);
   return b.max > 0 && value.count >= b.min && value.count <= b.max;
 }
 
+// What a visitor's build pane offers (myrealm.coax THING_NAMES; realm-play.coax checks they agree).
+CLI_SEAT_THINGS :: [8] string.["crate", "barrel", "tree", "rock", "plant", "lantern", "fence", "chest"];
+// Degrees: an optional minus, up to three digits, at most two decimals, within max either way.
+rc_degrees_ok :: (value: string, max: int) -> bool {
+  if value.count == 0 { return false; }
+  neg := value[0] == '-'; i := ifx neg then 1 else 0;
+  whole := 0; digits := 0;
+  while i < value.count && value[i] >= '0' && value[i] <= '9' { whole = whole * 10 + cast(int) (value[i] - '0'); i += 1; digits += 1; }
+  if digits == 0 || digits > 3 { return false; }
+  frac := 0; places := 0;
+  if i < value.count && value[i] == '.' {
+    i += 1;
+    while i < value.count && value[i] >= '0' && value[i] <= '9' { frac = frac * 10 + cast(int) (value[i] - '0'); i += 1; places += 1; }
+    if places == 0 || places > 2 { return false; }
+  }
+  if i != value.count { return false; }
+  return whole < max || (whole == max && frac == 0);
+}
+#test "seat inputs: degrees, targets, seconds, tools and things" {
+  #assert rc_value("turn","90") && rc_value("turn","-180") && rc_value("turn","45.5") && rc_value("turn","-0.25") && rc_value("turn","180.0");
+  #assert !rc_value("turn","181") && !rc_value("turn","180.5") && !rc_value("turn","") && !rc_value("turn","-") && !rc_value("turn","1e2") && !rc_value("turn","9.") && !rc_value("turn","1.234") && !rc_value("turn","+5");
+  #assert rc_value("pitch","-60") && !rc_value("pitch","61") && !rc_value("pitch","60.01");
+  #assert rc_value("seconds","1") && rc_value("seconds","30") && !rc_value("seconds","0") && !rc_value("seconds","31") && !rc_value("seconds","2.5");
+  #assert rc_value("tool","jump") && rc_value("tool","map") && rc_value("tool","build") && !rc_value("tool","fly") && !rc_value("tool","Jump");
+  #assert rc_value("thing","barrel") && rc_value("thing","lantern") && !rc_value("thing","boat") && !rc_value("thing","");
+  #assert rc_value("target","Old Mott") && rc_value("target","character:0") && !rc_value("target","") && !rc_value("target","a\nb");
+  long: [401] u8; for i: 0..<long.count { long[i] = 'a'; }
+  #assert rc_value("line",cast(string) long[0..<400]) && !rc_value("line",cast(string) long[..]) && !rc_value("target",cast(string) long[0..<41]);
+  a: [1] Args;
+  for w: [4] string.["realm","go","village-green","Maple"] { #assert args_add(a[..],w); }
+  #assert rc_validate(a[..],"go") == "";
+  #assert args_add(a[..],"--max") && args_add(a[..],"20") && rc_validate(a[..],"go") == "";
+  b: [1] Args;
+  for w: [7] string.["realm","go","village-green","--x","4.5","--z","-2"] { #assert args_add(b[..],w); }
+  #assert rc_validate(b[..],"go") == "";
+  #assert args_add(b[..],"Maple") && rc_validate(b[..],"go") == "go takes TARGET or --x X --z Z, not both";
+  c: [1] Args;
+  for w: [5] string.["realm","go","village-green","--x","4.5"] { #assert args_add(c[..],w); }
+  #assert rc_validate(c[..],"go") == "go takes TARGET or --x X --z Z, not both";
+  d: [1] Args;
+  for w: [4] string.["realm","use","village-green","build"] { #assert args_add(d[..],w); }
+  #assert rc_validate(d[..],"use") == "use build takes a THING: crate, barrel, tree, rock, plant, lantern, fence or chest";
+  #assert args_add(d[..],"barrel") && rc_validate(d[..],"use") == "";
+  e: [1] Args;
+  for w: [5] string.["realm","use","village-green","jump","barrel"] { #assert args_add(e[..],w); }
+  #assert rc_validate(e[..],"use") == "only build takes a THING";
+  e[0].n = 4; #assert rc_validate(e[..],"use") == "";
+  f: [1] Args;
+  for w: [6] string.["realm","look","village-green","--turn","90","--phone"] { #assert args_add(f[..],w); }
+  #assert rc_validate(f[..],"look") != "";
+  f[0].n = 5; #assert rc_validate(f[..],"look") == "";
+}
 rc_flag_kind :: (c: CliCommand, flag: string) -> string {
   if flag == "--json" { return "bool"; }
   if flag == "--profile" { return "who"; }
@@ -843,6 +916,10 @@ rc_validate :: (a: [] Args, verb: string) -> string {
   fields := 0;
   while cli_field(c.arguments,fields) != "" { expected += 1; fields += 1; }
   if (verb == "ask" && rc_has(a,verb,"--doc")) || (verb == "new" && rc_has(a,verb,"--from")) { expected -= 1; }
+  if verb == "go" && (rc_has(a,verb,"--x") || rc_has(a,verb,"--z")) {
+    if !(rc_has(a,verb,"--x") && rc_has(a,verb,"--z")) || pn != expected - 1 { return "go takes TARGET or --x X --z Z, not both"; }
+    expected -= 1;
+  }
   if pn < expected - c.optional || pn > expected { return "wrong number of realm arguments (openagents help)"; }
   if p[0] != "realm" || p[1] != verb { return "realm command does not match its catalogue row"; }
   for j: 2..<pn {
@@ -853,6 +930,8 @@ rc_validate :: (a: [] Args, verb: string) -> string {
     for f: [4] string.["--style","--time","--camera","--ground"] { if rc_has(a,verb,f) { return "--style, --time, --camera and --ground go with WORDS: a plan made earlier keeps its setup"; } }
   }
   if verb == "ask-done" && !rc_has(a,verb,"--commit") { return "ask-done needs --commit HASH"; }
+  if verb == "use" && pn == expected - 1 && p[3] == "build" { return "use build takes a THING: crate, barrel, tree, rock, plant, lantern, fence or chest"; }
+  if verb == "use" && pn == expected && p[3] != "build" { return "only build takes a THING"; }
   if verb == "settings" && !rc_has(a,verb,"--tools") { return "settings needs --tools build,talk,..."; }
   if verb == "quest" && !rc_has(a,verb,"--ask") { return "quest needs --ask TEXT (empty removes it)"; }
   if verb == "shot" {
@@ -866,8 +945,8 @@ rc_validate :: (a: [] Args, verb: string) -> string {
 
 // What a bad argument or flag value should be, naming it and its bounds.
 #test "a bad argument or flag value is named with its bounds" {
-  kinds := [26] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script","style","time","camera","ground"];
-  names := [26] string.["SLUG ","ROW ","ENTITY ","X and Z ","--yaw ","ID, ","WORDS ","WORDS ","TEXT ","WHO ","FILE ","--ask ","--step ","--commit ","--tools ","the last word ","the visibility ","that flag ","OUT.png ","--size ","--wait ","--eval ","--style ","--time ","--camera ","--ground "];
+  kinds := [33] string.["slug","row","entity","metres","yaw","id","words","newwords","lore","who","file","ask","step","commit","tools","onoff","visibility","bool","shotfile","size","waitms","script","style","time","camera","ground","turn","pitch","target","seconds","line","tool","thing"];
+  names := [33] string.["SLUG ","ROW ","ENTITY ","X and Z ","--yaw ","ID, ","WORDS ","WORDS ","TEXT ","WHO ","FILE ","--ask ","--step ","--commit ","--tools ","the last word ","the visibility ","that flag ","OUT.png ","--size ","--wait ","--eval ","--style ","--time ","--camera ","--ground ","--turn ","--pitch ","TARGET ","--max ","WORDS ","the tool ","THING "];
   for i: 0..<kinds.count {
     w := rc_why(kinds[i]);
     #assert cli_prefix(w, names[i]);
@@ -914,6 +993,13 @@ rc_why :: (kind: string) -> string {
   if kind == "time" { return "--time is day, dawn, dusk or night"; }
   if kind == "camera" { return "--camera is third, first, top or side"; }
   if kind == "ground" { return "--ground is meadow, forest, desert, snow, stone or beach"; }
+  if kind == "turn" { return "--turn is degrees from -180 to 180, such as 90 or -45.5"; }
+  if kind == "pitch" { return "--pitch is degrees from -60 to 60 (up is positive)"; }
+  if kind == "target" { return "TARGET is 1 to 40 bytes: a character's name, a kind such as house, character:N or entity:N"; }
+  if kind == "seconds" { return "--max is whole seconds from 1 to 30"; }
+  if kind == "line" { return "WORDS to a character are 1 to 400 bytes"; }
+  if kind == "tool" { return "the tool is jump, map or build"; }
+  if kind == "thing" { return "THING is crate, barrel, tree, rock, plant, lantern, fence or chest"; }
   return "an argument is outside its bounds (openagents help)";
 }
 

@@ -29,6 +29,7 @@
 #load "account.coax";
 #load "project.coax";
 #load "realm.coax";
+#load "realm-play.coax";
 #load "admin.coax";
 #load "transcribe.coax";
 #load "labs.coax";
@@ -122,5 +123,6 @@ cli_dispatch :: (a: [] Args, r: [] Rep, profile: string, domain: string, verb: s
   if domain == "labs" { return labs_main(a, r, profile, verb); }
   if domain == "mcp" { return mcp_main(a, r, profile); }
   if domain == "skill" { return skill_main(a, r, verb); }
+  if domain == "seat-hold" { return seat_hold_main(a, r, profile); }   // hidden: the seat realm play starts (realm-play.coax)
   return fail(r, EXIT_USAGE, "unknown command (openagents help)");
 }

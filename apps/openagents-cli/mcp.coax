@@ -6,7 +6,7 @@
 // input schema comes from the row's argument and flag kinds and their bounds.
 // A call runs this same program as a child, `openagents realm VERB ... --json`,
 // so a tool does exactly what the command does, with the same checks, key and
-// exit codes. realm_shot also answers with the PNG as an image.
+// exit codes. realm_shot, and realm_look with a shot, also answer with the PNG as an image.
 // skill.coax writes the same table as a Claude skill.
 // Not here: Anime Lab tools (#12634), resources, prompts and paging.
 
@@ -25,11 +25,12 @@ McpCfg :: struct { read_only: bool; profile: string; origin: string; exe: string
 
 mcp_offered :: (c: CliCommand, read_only: bool) -> bool {
   if !read_only { return true; }
-  return c.method == "GET" || c.verb == "shot";
+  // a seat changes nothing on the server, except a character's chat and a visitor's build proposal
+  return c.method == "GET" || c.verb == "shot" || (c.route == "seat" && c.verb != "say" && c.verb != "use");
 }
 // The property a positional argument becomes: metres are x then z.
 mcp_arg_name :: (kind: string, index_of_kind: int) -> string {
-  if kind == "newwords" || kind == "words" { return "words"; }
+  if kind == "newwords" || kind == "words" || kind == "line" { return "words"; }
   if kind == "metres" { return ifx index_of_kind == 0 then "x" else "z"; }
   if kind == "onoff" { return "on"; }
   if kind == "lore" { return "text"; }
@@ -59,7 +60,13 @@ mcp_schema_kind :: (o: [] Jo, kind: string) {
   if kind == "bool" { jo_key(o, "type"); jo_str(o, "boolean"); }
   else if kind == "id" || kind == "waitms" {
     jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
-  } else if kind == "metres" || kind == "yaw" {
+  } else if kind == "seconds" {
+    jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
+  } else if kind == "tool" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); jo_str(o, "jump"); jo_str(o, "map"); jo_str(o, "build"); jo_end(o);
+  } else if kind == "thing" {
+    jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); for t: CLI_SEAT_THINGS { jo_str(o, t); } jo_end(o);
+  } else if kind == "metres" || kind == "yaw" || kind == "turn" || kind == "pitch" {
     jo_key(o, "type"); jo_str(o, "number"); jo_key(o, "minimum"); jo_int(o, b.min); jo_key(o, "maximum"); jo_int(o, b.max);
   } else if kind == "onoff" {
     jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); jo_str(o, "on"); jo_str(o, "off"); jo_end(o);
@@ -75,10 +82,11 @@ mcp_schema_kind :: (o: [] Jo, kind: string) {
   }
   jo_end(o);
 }
-// A positional the caller may leave out: shot's file, new's words with --from, ask's words with --doc.
+// A positional the caller may leave out: shot's file, use's thing, new's words with --from, ask's
+// words with --doc, go's target with x and z.
 mcp_optional_at :: (c: CliCommand, at: int, count: int) -> bool {
   if at >= count - c.optional { return true; }
-  return (c.verb == "new" || c.verb == "ask") && at == 0;
+  return (c.verb == "new" && at == 0) || ((c.verb == "ask" || c.verb == "go") && at == 1);
 }
 mcp_tool :: (o: [] Jo, c: CliCommand) {
   nm: [64] u8; fl: [64] u8;
@@ -232,7 +240,7 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
     jo_key(o[..], "protocolVersion"); jo_str(o[..], ifx pn > 0 then cast(string) pv[0..<pn] else MCP_PROTOCOL);
     jo_key(o[..], "capabilities"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]);
     jo_key(o[..], "serverInfo"); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "openagents"); jo_key(o[..], "version"); jo_str(o[..], CLI_VERSION); jo_end(o[..]);
-    jo_key(o[..], "instructions"); jo_str(o[..], "Make and edit realms on openagents.com. A new realm is private; realm_visibility makes it unlisted or public. Edits take rev (the revision you read) and fail with a conflict when the realm changed since.");
+    jo_key(o[..], "instructions"); jo_str(o[..], "Make and edit realms on openagents.com. A new realm is private; realm_visibility makes it unlisted or public. Edits take rev (the revision you read) and fail with a conflict when the realm changed since. realm_play sits you in a realm as a visitor; realm_look, realm_go, realm_say, realm_use and realm_bye act there and answer with what you see.");
     jo_end(o[..]); jo_end(o[..]);
     return jo_text(o[..]);
   }
@@ -277,6 +285,11 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
     failed := pr.started != 0 || pr.timed_out || pr.status != 0;
     // shot: answer with the picture too
     file := "";
+    if c.verb == "look" && !failed {
+      fb: [1024] u8; at := jv_path(d, 0, "params.arguments.shot");
+      fl := ifx at >= 0 then jv_str(d, at, fb[..]) else -1;
+      if fl > 0 { file = cast(string) fb[0..<fl]; }
+    }
     if c.verb == "shot" && !failed {
       fb: [1024] u8; at := jv_path(d, 0, "params.arguments.out");
       fl := ifx at >= 0 then jv_str(d, at, fb[..]) else -1;
@@ -323,9 +336,16 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(s, "\"required\":[\"slug\",\"entity\",\"x\",\"z\"]");
   #assert acct_has(s, "\"on\":{\"type\":\"string\",\"enum\":[\"on\",\"off\"]}");
   #assert acct_has(s, "\"step\":{\"type\":\"array\"");
+  // the seat's rows: degrees and seconds as numbers, tools and things as their words, go's target optional
+  #assert acct_has(s, "\"turn\":{\"type\":\"number\",\"minimum\":-180,\"maximum\":180}") && acct_has(s, "\"max\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":30}");
+  #assert acct_has(s, "\"tool\":{\"type\":\"string\",\"enum\":[\"jump\",\"map\",\"build\"]}") && acct_has(s, "\"enum\":[\"crate\",\"barrel\",\"tree\",\"rock\",\"plant\",\"lantern\",\"fence\",\"chest\"]");
+  #assert acct_has(s, "\"name\":\"realm_go\"") && acct_has(s, "\"x\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40},\"z\":{\"type\":\"number\",\"minimum\":-40,\"maximum\":40},\"max\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":30}},\"required\":[\"slug\"]");
+  #assert acct_has(s, "\"words\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":400}},\"required\":[\"slug\",\"words\"]");
+  #assert acct_has(s, "\"required\":[\"slug\",\"tool\"]");
   cfg.read_only = true;
   s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], false);
   #assert acct_has(s, "\"name\":\"realm_show\"") && acct_has(s, "\"name\":\"realm_shot\"") && !acct_has(s, "\"name\":\"realm_move\"") && !acct_has(s, "realm_apply");
+  #assert acct_has(s, "\"name\":\"realm_play\"") && acct_has(s, "\"name\":\"realm_go\"") && !acct_has(s, "\"name\":\"realm_say\"") && !acct_has(s, "\"name\":\"realm_use\"");
   #assert acct_has(mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_move\",\"arguments\":{}}}", cfg, out[..], false), "unknown tool");
 }
 #test "mcp: a call becomes the command's own argv" {
@@ -344,6 +364,12 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(s, "realm shot g /tmp/shot.png --phone --json");
   s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_new\",\"arguments\":{\"from\":12}}}", cfg, out[..], false);
   #assert acct_has(s, "realm new --from 12 --json");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_go\",\"arguments\":{\"slug\":\"g\",\"x\":4.5,\"z\":-2,\"max\":20}}}", cfg, out[..], false);
+  #assert acct_has(s, "realm go g --x 4.5 --z -2 --max 20 --json");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_say\",\"arguments\":{\"slug\":\"g\",\"words\":\"hello there\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "realm say g hello there --json");
+  s = mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":13,\"method\":\"tools/call\",\"params\":{\"name\":\"realm_use\",\"arguments\":{\"slug\":\"g\",\"tool\":\"build\",\"thing\":\"barrel\"}}}", cfg, out[..], false);
+  #assert acct_has(s, "realm use g build barrel --json");
 }
 
 // The server: one request a line on stdin, one answer a line on stdout, until stdin ends.

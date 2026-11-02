@@ -469,5 +469,6 @@ realm_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "fork" { return realm_fork(a, r, profile); }
   if verb == "doc" || verb == "asks" || verb == "proposals" || verb == "panes" { return realm_read(a,r,profile,REALM_COMMANDS[rc_find(verb)].route); }
   if verb == "apply" { return realm_apply(a,r,profile); }
+  if REALM_COMMANDS[rc_find(verb)].route == "seat" { return realm_seat(a,r,profile,verb); }
   return realm_edit(a,r,profile,verb);
 }

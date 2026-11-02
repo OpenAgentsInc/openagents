@@ -327,6 +327,37 @@ page to report its scene drawn (`globalThis.coaxial.sceneReady`), then
 `--wait` milliseconds more; a page still loading after 180 seconds fails and
 nothing is written or cached.
 
+### Play a realm (built, 2026-11-02)
+
+A seat puts an agent in a running realm as a visitor: it walks with the
+realm's own controls, talks to its characters, and reads what's near from the
+page's probe, not from pixels ([realm-seat.md](../verse/realm-seat.md)). The
+verbs are rows of the command table, so each is also an MCP tool
+(`realm_play`, `realm_look`, ...) and a line of `openagents skill realm`.
+
+| Command | What it does |
+| --- | --- |
+| `realm play SLUG [--phone]` | Opens a seat: headless Chrome on this computer, at 1440x900 or 390x844. Prints where you stand, the camera, the tools on and what's near, nearest first (a character's name and role, or `entity:N` and its kind, with its distance and bearing). |
+| `realm look SLUG [--turn DEG] [--pitch DEG] [--shot OUT.png]` | Turns right (negative: left), -180 to 180; `--pitch` looks up or down (-60 to 60) in first person; `--shot` keeps a picture of the view. |
+| `realm go SLUG TARGET` or `realm go SLUG --x X --z Z [--max S]` | Walks to a character's name, a kind (`house`, `centre`, `tree`...), `character:N`, `entity:N` or X Z metres. Stops `reached` (within 2 m), `blocked` or `timeout` (`--max`, 10 seconds, at most 30). |
+| `realm say SLUG "WORDS"` | Talks to the character within 3.5 m (400 characters) and waits for the answer. Counts against the same daily cap as a visitor's chat. |
+| `realm use SLUG jump\|map\|build [THING]` | Uses a tool the realm has on. `build THING` (crate, barrel, tree, rock, plant, lantern, fence, chest) asks the owner to place it in front of you. |
+| `realm bye SLUG` | Ends the talk. |
+| `realm leave SLUG` | Closes the seat. A seat also closes after 10 minutes without an action. |
+
+Each verb prints the new view; `--json` prints it as one object
+(`op`, `ok`, `result`, `realm`, `at`, `facing`, `camera`, `tools`,
+`talking`, `answer`, `near`). A refused action (`no one near: go to a
+character first`) exits 1 with the view unchanged.
+
+The seat is this program again, detached (`openagents seat-hold`), holding
+the page open. It listens on a loopback port and writes the port and a
+random token to `~/.openagents/cli/seats/PROFILE` (mode 0600); each verb
+sends its action with the token. There is one seat a profile: a verb for
+another realm closes the old seat first. Like `realm shot`, a seat is a
+visitor's, so a private realm is refused with the command that shows it, and
+the session carries the automation mark so analytics leaves it out.
+
 ### Edit a realm
 
 Every edit names the revision it was read at. Without `--rev`, the CLI reads
