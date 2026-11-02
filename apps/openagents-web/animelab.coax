@@ -34,10 +34,11 @@
 MAX_VERTICES :: 36000;     // the overlay's quads
 VERTEX_FLOATS :: 12;       // a stroke's or a sans glyph's corner, as aethyr/ui/draw.coax and font.coax lay them out
 HOST_FACTS :: 600;
-START_AT :: 701;            // coaxial.send(701, "SECONDS"): play on from that moment (a clip recorded in parts)
+START_AT :: 702;            // coaxial.send(702, "SECONDS"): play on from that moment (a clip recorded in parts)
 PIN_MOMENT :: 700;          // a page script's coaxial.send(700, "SECONDS"): hold that moment (shots; "-1" lets it run)
 LOAD_TAKE :: 701;           // raw bounded anime.v1 JSON, copied into owned take storage
 TAKE_LOADED :: 1; TAKE_REFUSED :: -1; TAKE_RETAINED :: -2;
+#assert START_AT != LOAD_TAKE && START_AT != PIN_MOMENT && LOAD_TAKE != PIN_MOMENT && HOST_FACTS != PIN_MOMENT;   // one meaning per message
 WORLD_VERTICES :: 150000;  // store 0: the academy
 LIVE_VERTICES :: 150000;   // store 1: the cast and the effects, every frame
 DRAWS :: 2;
