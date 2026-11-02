@@ -85,6 +85,12 @@ one.
 
 ## Dependencies
 
-Chapter 23 sorting, chapter 29 coupling, chapter 32 for gradients. From
-Coax: R15 strict reductions, R21 layouts (sparse grids), R24 kernel
-derivatives.
+Chapter 23 sorting supplies the first forward MPM profile. Chapter 27's
+elastic-bounce comparison is an independent cross-solver check once both
+forward solvers exist.
+
+Chapter 29 later adds coupling, and chapter 32 differentiates the forward
+solver. Their checks remain required for coupled or gradient profiles;
+neither is needed to compute the first forward trajectory. From Coax: R15
+strict reductions and R21 layouts (sparse grids); R24 kernel derivatives
+for the gradient extension.

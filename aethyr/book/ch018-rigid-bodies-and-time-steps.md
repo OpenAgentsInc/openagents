@@ -115,5 +115,6 @@ prose and leaves measurement to the user.
 
 Chapter 17's scene, Psionic chapter 4's numerics and Psionic chapter 37's compute subset for
 devices. From Coax: units and frames (R12) for poses and velocities, strict
-math (R15) for the reproducible profiles. Chapter 19 generalizes the free
-body to joints.
+math (R15) for the reproducible profiles. Chapter 19 later generalizes the
+free-body integrator to joints; it is not needed to construct or qualify
+this chapter's free-body profile.

@@ -2,12 +2,14 @@
 
 > **Status: unimplemented — design draft.** Today a realm runs in the
 > browser through [`coax/web/host.js`](../../coax/web/host.js) and WebGPU.
-> A native path is in progress ([docs/verse/native-gpu.md](../../docs/verse/native-gpu.md)):
+> The native Vulkan port has recorded all-realm evidence
+> ([docs/verse/native-gpu.md](../../docs/verse/native-gpu.md#status)):
 > `verse/native/realm-host.c` runs a realm natively and `verse/native/check.sh`
 > compares it with the browser build frame by frame; `verse/gpu/` writes
 > SPIR-V from Coax and draws offscreen and to a window on Vulkan. Each host
 > handles resize, focus and backgrounding its own way. This chapter plans one
-> host contract for Aethyr. Nothing in `aethyr/` runs yet.
+> host contract and recovery behavior for Aethyr. That common contract is
+> not implemented; the native port is an existing baseline, not future work.
 
 A realm should not know which host it runs on. The host owns the window or
 canvas, input devices, audio, files and sockets; the realm owns its state and

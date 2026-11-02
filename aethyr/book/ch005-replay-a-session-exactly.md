@@ -694,9 +694,11 @@ results and loaded assets use the same envelope with their own sources.
 
 [Chapter 1](ch001-a-frame-has-a-fixed-step.md),
 [chapter 3](ch003-state-starts-from-its-defaults.md),
-[chapter 4](ch004-input-becomes-typed-actions.md) and
-[chapter 6](ch006-entities-are-born-and-die.md) (`entity_digest` belongs in
-a realm's state digest). From Coax: R15 strict math and R16 deterministic
+[chapter 4](ch004-input-becomes-typed-actions.md) supply this chapter's
+fixed-state session. When a realm adopts the entities of
+[chapter 6](ch006-entities-are-born-and-die.md), its state digest must also
+include `entity_digest`; that is a later integration, not a prerequisite for
+recording this session. From Coax: R15 strict math and R16 deterministic
 replay and snapshots ([Coax roadmap](../../coax/ROADMAP.md)), and
 determinism ([Coax chapter 16](../../coax/book/ch16-determinism.md)).
 `aethyr/math.coax` does in Aethyr what R15's strict profile will do in the

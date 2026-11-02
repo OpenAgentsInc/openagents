@@ -494,8 +494,11 @@ Nothing in this chapter has run any of them.
    replays a 3,000-event `--store` file at `--store-capacity 13000`
    (COUNT, REQ, search, a new write and a cut partial append), and shows
    the default-sized relay refusing it unchanged. Replay re-verifies every
-   signature at about 25 ms an event, so a 50,000-event import would take
-   about 20 minutes to start: that time, not the size, is what's left.
+   signature at about 25 ms an event; extrapolating that run to 50,000
+   events gives about 20 minutes. That is an estimate, not a production
+   restart qualification. Capacity is configurable now, but the approved
+   export still needs measured count, original-byte, tombstone, memory and
+   startup budgets. A larger configured store alone does not establish them.
 3. An import command writes the relay's `--store` file: `ri_line` with
    `rsd_admit_saved` in place of `rsd_admit`, so the relay starts from the
    imported events and verifies them all again on its first replay.
@@ -648,11 +651,14 @@ Run on 2026-11-01: the checks above, the mutation runs above, and the
 example in debug and release with its transcript. Not run: anything
 against relay.openagents.com or its database, the export, the shadow
 period, the cutover and the rollback rehearsal. They wait for the owner.
-The R1 differential and flood records still describe the relay this would
-cut over to:
+The R1 differential and flood records describe the earlier bounded relay:
 [2026-10-30-coax-relay-r1-rust-differential.md](../../docs/verification/2026-10-30-coax-relay-r1-rust-differential.md)
 and
 [2026-10-30-coax-relay-r1-tailnet-flood.md](../../docs/verification/2026-10-30-coax-relay-r1-tailnet-flood.md).
+They are not production-capacity evidence for a larger configured store.
+The Rust differential must also be refreshed for the COUNT, search and
+NIP-11 wiring added since its run. The [completion route](COMPLETION.md#3-finish-the-relay-and-its-production-migration)
+keeps that qualification separate from the owner-approved migration.
 
 ## Summary
 

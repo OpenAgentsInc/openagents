@@ -82,6 +82,64 @@ def registry_load(book, root=REPO):
     return json.loads((Path(root) / BOOKS[book] / "chapters.json").read_text())
 
 
+def dependency_problems(registries):
+    """Minimum teaching prerequisites form a DAG, including cross-book edges.
+
+    A forward chapter reference is fine. A later integration belongs in prose,
+    rather than creating a cycle in the prerequisites for its own foundation.
+    Unknown dependencies are diagnosed separately by registry_problems.
+    """
+    graph = {f"{book}:{c['number']}": [f"{book}:{d}" if type(d) is int else d
+                                      for d in c["depends_on"]]
+             for book, registry in registries.items() for c in registry["chapters"]}
+    active, done, path, errors = set(), set(), [], []
+
+    def visit(node):
+        if node in active:
+            cycle = path[path.index(node):] + [node]
+            errors.append("chapter prerequisites contain a cycle: " + " -> ".join(cycle)
+                          + "; keep later integrations in chapter/plan prose")
+            return
+        if node in done or node not in graph:
+            return
+        active.add(node)
+        path.append(node)
+        for dep in graph[node]:
+            visit(dep)
+        path.pop()
+        active.remove(node)
+        done.add(node)
+
+    for node in graph:
+        visit(node)
+    return errors
+
+
+def adoption_problems(consumers, root):
+    """A consumer is a repository file, not a teaching or verification artifact.
+
+    Reviewers still establish the actual source-to-consumer relationship and
+    scope. A valid path alone cannot prove runtime adoption or deployment.
+    """
+    root = Path(root).resolve()
+    errors, seen = [], set()
+    for name in consumers:
+        if not isinstance(name, str):
+            errors.append(f"adopted_by requires repository-relative file names: {name!r}")
+            continue
+        p = Path(name)
+        if p.is_absolute() or ".." in p.parts or not (root / p).resolve().is_relative_to(root):
+            errors.append(f"adopted_by must stay inside the repository: {name!r}")
+        elif not (root / p).is_file():
+            errors.append(f"adopted_by names a missing file: {name!r}")
+        elif any(part in ("book", "tests", "examples", "fixtures") for part in p.parts):
+            errors.append(f"adopted_by names teaching/verification evidence, not a consumer: {name!r}")
+        if name in seen:
+            errors.append(f"adopted_by names a duplicate consumer: {name!r}")
+        seen.add(name)
+    return errors
+
+
 def registry_problems(book, root=REPO):
     root = Path(root).resolve()
     directory = root / BOOKS[book]
@@ -134,6 +192,7 @@ def registry_problems(book, root=REPO):
             for item in c[field]:
                 if not isinstance(item, str) or not (root / item).is_file():
                     errors.append(f"{label}: {field} names a missing file {item!r}")
+        errors.extend(f"{label}: {error}" for error in adoption_problems(c["adopted_by"], root))
         if any(t not in TARGETS for t in c["qualified_targets"]) or len(set(c["qualified_targets"])) != len(c["qualified_targets"]):
             errors.append(f"{label}: qualified_targets must be distinct names from {', '.join(TARGETS)}")
         if not running and (c["source"] or c["qualified_targets"] or c["adopted_by"]):
@@ -221,6 +280,7 @@ def registry_problems(book, root=REPO):
             c = by_file.get(name)
             if c and (label.startswith("design draft") != (c["status"] == "design draft")):
                 errors.append(f"PLAN.md: {name} is labelled '{label.strip()[:40]}' but the registry says {c['status']}")
+    errors.extend(dependency_problems({b: registry_load(b, root) for b in BOOKS}))
     return errors
 
 

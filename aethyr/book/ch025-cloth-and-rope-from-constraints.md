@@ -77,5 +77,11 @@ unsupported until chapter 32's tests cover it.
 
 ## Dependencies
 
-Chapter 23 particles, chapter 21 SDF queries, chapter 29 coupling,
-chapter 35 meshes. From Coax: R15, R21, R23.
+Chapter 23 particles and chapter 21 SDF queries. The first rope or cloth
+fixture directly supplies particles, constraints and prescribed collision
+geometry; the rigid body in the penetration check need not respond to it.
+
+Chapter 29 later adds two-way coupling, and chapter 35 supplies imported
+meshes. Those paths need their own coupling and import checks before they
+are admitted; they do not precede the first constraint solve. From Coax:
+R15, R21, R23.

@@ -72,5 +72,14 @@ provenance as part of import.
 
 ## Dependencies
 
-Coax R12 units and frames, R17 robot-model import, R20 provenance. Used by
-chapters 17 to 34.
+Chapter 17 defines the scene asset boundary, and chapter 19 defines the
+link/joint records. Importing, validating and hashing those records does not
+require executing the solvers that later consume them. Coax supplies R12
+units and frames, R17 robot-model import and R20 provenance.
+
+The rigid and material solvers, batch resets, gradients, sensors and
+observation renderer of chapters 18–34 are downstream integrations. They
+must check imported assets against their authored fixtures before claiming
+the imported profile. In particular, chapter 21 adds baked/decomposed
+geometry, chapter 27 adds generated tetrahedra, and chapter 34 needs the
+admitted meshes and textures for its observation images.

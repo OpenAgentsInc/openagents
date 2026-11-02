@@ -101,7 +101,10 @@ everything a state message mentions.
 
 ## Dependencies
 
-Chapters 1, 4, 5 and 6, and chapter 49's rooms and transport. Physics
-sessions use Part IV (chapters 18–22, 36). From Coax: R15 deterministic
+Chapters 1, 4, 5 and 6, and chapter 49's rooms and transport suffice for
+the first deterministic-game session. Physics-bearing sessions additionally
+use Part IV (chapters 18–22, 36) and must qualify their solver and world-replay
+profiles; those integrations are not prerequisites for an ordinary game
+session. From Coax: R15 deterministic
 jobs, R16 deterministic replay and snapshots,
 [chapter 16](../../coax/book/ch16-determinism.md).

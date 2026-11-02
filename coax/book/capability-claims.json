@@ -107,8 +107,8 @@
     {
       "id": "psionic.autodiff.current",
       "document": "psionic/README.md",
-      "scope": "CPU scalar binary64 tape and bounded first-order f32 tensor autodiff only; no device backward or general higher derivatives.",
-      "text_sha256": "c42f352075484dfb4c014c266e2c01cebae03060421d7576c96e0bfdf2e565a1",
+      "scope": "Bounded CPU scalar/tensor autodiff and permanent-IR function transforms through order two; recorded tiny-decoder CUDA backward/optimizer/resume. No arbitrary Coax transforms, general GPU backward coverage, efficient cooperative training or mixed-precision qualification.",
+      "text_sha256": "4451721ef45a771fb60682aa0af7cd88dbaf94c4c021a0cffbbe9e901227cb8f",
       "features": [],
       "evidence": [
         {
@@ -126,14 +126,46 @@
         {
           "path": "docs/verification/psionic-ch071b-2026-10-30.md",
           "sha256": "12b40f00f91d08c6ea9412754efb9b0940e13708a2d290473918ed424e72285a"
+        },
+        {
+          "path": "psionic/book/ch107-transform-functions-not-just-tensors.md",
+          "sha256": "4bf1e7c97caf03d23e58a24377a0fac516ea23f07abe6128bc3795b78fcd43bd"
+        },
+        {
+          "path": "psionic/lib/function-linearize.coax",
+          "sha256": "950dba6b5997ebe6e04b075d7fb15e2d9c71df94377b364ae5cbc9fd2540aa38"
+        },
+        {
+          "path": "psionic/fixtures/function-native-qualification.json",
+          "sha256": "fff61758302cd1269b7eb8148378c31264812534ecab7d42b4b614c426b5c765"
+        },
+        {
+          "path": "docs/verification/psionic-ch107-2026-10-31.md",
+          "sha256": "2ed9931dff6ea8d669cf8112a075d038cd20463774342ff44543ba27e3b9dd11"
+        },
+        {
+          "path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
+          "sha256": "d4e98cfed40123ac4e959cf3b59fe0a43fa74a9de6e61363ea2a5e119814aea7"
+        },
+        {
+          "path": "psionic/lib/transformer/train-kernels.coax",
+          "sha256": "47177c678f88986824577012c195dfab249172e532043b1e5bf086719d553e46"
+        },
+        {
+          "path": "psionic/lib/transformer/gpu-train.coax",
+          "sha256": "22fb960750db0f4af2ff173c607db8178b57ea5b7a939fddb3a5a9e88f8353a9"
+        },
+        {
+          "path": "psionic/tests/gpu_train_device.c",
+          "sha256": "4951d850138f0e99dce53a431aef175f987ec938551f69a84b149cecd0ecb005"
         }
       ]
     },
     {
       "id": "psionic.execution.current",
       "document": "psionic/docs/roadmap.md",
-      "scope": "Dated recorded named model/device profiles; Mammoth Metal, original120b GPU and complete V4.1 remain unqualified.",
-      "text_sha256": "2da6b9b78539306d1b05757ca56e9347f6b38a4b07ce4a67eeafc61ba55f3ce7",
+      "scope": "Retained named model/device profiles and bounded CPU IR/tiny-decoder CUDA training profiles; Mammoth Metal, original120b GPU, complete V4.1 and general efficient GPU training remain unqualified.",
+      "text_sha256": "e2325a7eef60c64370d2713306864b371278916b6fd299c58823996b42b37edb",
       "features": [],
       "evidence": [
         {
@@ -171,6 +203,38 @@
         {
           "path": "docs/verification/psionic-responses-2026-10-29.md",
           "sha256": "8005ebbc47bb09f32abbeeccfa0bdb159fea1a49943943f58df3068a3bb067d2"
+        },
+        {
+          "path": "psionic/book/ch107-transform-functions-not-just-tensors.md",
+          "sha256": "4bf1e7c97caf03d23e58a24377a0fac516ea23f07abe6128bc3795b78fcd43bd"
+        },
+        {
+          "path": "psionic/lib/function-linearize.coax",
+          "sha256": "950dba6b5997ebe6e04b075d7fb15e2d9c71df94377b364ae5cbc9fd2540aa38"
+        },
+        {
+          "path": "psionic/fixtures/function-native-qualification.json",
+          "sha256": "fff61758302cd1269b7eb8148378c31264812534ecab7d42b4b614c426b5c765"
+        },
+        {
+          "path": "docs/verification/psionic-ch107-2026-10-31.md",
+          "sha256": "2ed9931dff6ea8d669cf8112a075d038cd20463774342ff44543ba27e3b9dd11"
+        },
+        {
+          "path": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
+          "sha256": "d4e98cfed40123ac4e959cf3b59fe0a43fa74a9de6e61363ea2a5e119814aea7"
+        },
+        {
+          "path": "psionic/lib/transformer/train-kernels.coax",
+          "sha256": "47177c678f88986824577012c195dfab249172e532043b1e5bf086719d553e46"
+        },
+        {
+          "path": "psionic/lib/transformer/gpu-train.coax",
+          "sha256": "22fb960750db0f4af2ff173c607db8178b57ea5b7a939fddb3a5a9e88f8353a9"
+        },
+        {
+          "path": "psionic/tests/gpu_train_device.c",
+          "sha256": "4951d850138f0e99dce53a431aef175f987ec938551f69a84b149cecd0ecb005"
         }
       ]
     },

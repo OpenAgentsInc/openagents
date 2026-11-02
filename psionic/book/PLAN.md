@@ -121,6 +121,12 @@ DeepSeek, the mesh, a smaller imported model nor the NVIDIA branches blocks
 those two decision models. [Model targets](../docs/targets/model-targets.md)
 defines their exact architecture and acceptance gates.
 
+The [shared completion milestones](../../docs/books/completion.md) group the
+remaining work into complete framework, serving, game and robotics workflows.
+An implemented chapter qualifies its stated profile; it does not close every
+acceptance criterion suggested by its title. Adoption records source-component
+use separately from qualification and deployment.
+
 The contents give a reading order; they do not require finishing every earlier
 part before starting a branch. The prerequisite map below governs that choice.
 Several chapters need Coax compiler features that do not exist yet; the
@@ -209,7 +215,7 @@ Part XXII.
 | [28. A decision arrives while play continues](ch028-a-decision-arrives-while-play-continues.md) — runnable: local ticket and cancellation effects | Bounded Coax consumer tickets, monotonic deadlines, cancellation and late-response fencing; exactly-once game admission with deterministic fallback. First consumer: low-pressure Everglade guards. |
 | [29. A guard asks a Pylon](ch029-a-guard-asks-a-pylon.md) — opt-in shadow path qualified locally and live; usefulness/ambient pending | Authored quiet/greeting/weather options, opt-in shadow then ambient behavior, current-state revalidation and actual end-to-end/quality gates. Patrol and combat stay under local rules. |
 | [30. Measure a guard decision](ch030-measure-a-guard-decision.md) — runnable: measured shadow path; no usefulness gain over quiet | Fixed per-visit latency/outcome telemetry, pre-authored context labels, exact product request replay and honest comparison with quiet. Real cookie-authenticated shadow evidence precedes ambient promotion. |
-| [31. Directions on request](ch031-directions-on-request.md) — runnable: 9/5 finite live smoke, matching the local rule; page integration pending | Explicit authored Directions intent, five frozen route contexts, current-goal semantics and a perfect finite local reference. Separate raw model choice, admission and quiet fallback; qualify fresh live evidence before any player-facing model behavior. |
+| [31. Directions on request](ch031-directions-on-request.md) — runnable: 9/5 finite live smoke, matching the local rule; local-first page integration is delivered in 32 | Explicit authored Directions intent, five frozen route contexts, current-goal semantics and a perfect finite local reference. Separate raw model choice, admission and quiet fallback; qualify fresh live evidence before any player-facing model behavior. |
 | [32. A guard gives directions](ch032-a-guard-gives-directions.md) — implemented: 37/26 actual-Wasm page checks; shadow off by default | Separate Directions/Find Work interaction, immediate local rule and optional authenticated Elephant shadow. Current-frame world, actor, goal and intent gates; cancellation and refusal preserve local help. |
 
 The [Everglade guard delivery plan](../../docs/verse/pylon-guard-decisions.md)
@@ -880,10 +886,11 @@ integrations, and is not claimed.
 **The tensor IR is the center.** One representation, 38's, carries a model
 from Coax source to eager execution (5), modules (117), differentiation (106, 107), compiled
 forward and backward programs (39, 114, 131), custom operators (40),
-distributed layouts (133) and exported artifacts (8, 221). Because Coax is
-compiled and typed, Psionic derives these from the program instead of tracing
-it at run time, as PyTorch has to. Every special model implementation should
-contribute reusable operators to this path where it can.
+distributed layouts (133) and exported artifacts (8, 221). This IR is explicitly
+authored Psionic data: the implemented passes transform it, not arbitrary Coax
+functions. Automatic extraction from general Coax source remains separate work.
+Every special model implementation should contribute reusable operators to
+this path where it can.
 
 **Four acceptance projects** (each reports the quality reached and the
 resources used; divergence from a PyTorch reference is measured, not assumed

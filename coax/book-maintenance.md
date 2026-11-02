@@ -51,9 +51,42 @@ Each book's README states the four things a draft needs before it becomes a
 teaching chapter: a worked calculation or trace, runnable source, a broken
 case with its diagnostic, and an independent check.
 
+`depends_on` records the minimum teaching prerequisites needed to follow the
+chapter. Each complete book graph must be acyclic; validate all four together.
+An integration chapter's references back to a library or future consumer
+belong in prose when they are not teaching prerequisites; do not create dependency cycles to
+describe those relationships. The registry regression checks are:
+
+```sh
+python3 coax/tests/book_registry.py
+```
+
+Treat a chapter's status and `profile` as its named teaching scope. A chapter
+may teach a working bounded implementation and discuss a planned extension;
+its status does not certify the complete specification or a production
+surface. Keep the remaining goal explicit in the chapter and completion route.
+
+Record `adopted_by` only when a file outside that book directly loads, calls or
+binds an identified source or generated interface taught by the chapter. Name
+that source and the consumer's exact use in the chapter or README. Reusing a
+concept, using Coax syntax or naming a future consumer is insufficient. Tests,
+examples and fixtures exercise code and do not count as adoption. A product's
+build or binding code can record a direct component use, with its scope stated.
+Add the shared implementation to `source` when the chapter teaches it. These lists
+are selected recorded relationships, so an empty list does not prove that no
+consumer exists. A component's adoption does not qualify the whole chapter
+profile or add a qualified target by implication.
+
+When reconciling a book, review its README, registry, roadmap or plan, and
+`docs/books/paths.md` together. A structural pass checks their authored
+metadata and links; executable examples, native/device qualification, direct
+adoption and production readiness retain their separate evidence. Preserve
+dated measurements and retained failure records, and link newer qualified
+evidence when an older stopping assessment has been superseded.
+
 ## Review capability claims
 
-Both books use `coax/book/capability-claims.json` for selected current-scope
+Coax and Psionic use `coax/book/capability-claims.json` for selected current-scope
 statements. A `capability-claim` block is bound to its exact reviewed prose,
 selected feature objects from the existing Coax catalogue, and retained
 source/evidence files. The catalogue remains authored in `coax/release.coax`;

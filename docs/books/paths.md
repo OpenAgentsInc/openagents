@@ -8,15 +8,23 @@ lists what you need and the chapters to read, in order, across the books.
 Chapter numbers are each book's own.
 
 Every command on this page runs from the root of the openagents repository.
-Each command was run on 2026-10-31 on a Mac with an Apple M5 Max, 128 GB of
-memory and macOS 26.4, with compiler `coax0 0.45.0`, except where a step says
-it wasn't. Other hosts aren't verified for this page.
+The original command observations are from 2026-10-31 on a Mac with an Apple
+M5 Max, 128 GB of memory and macOS 26.4, with compiler `coax0 0.45.0`, except
+where a step names later evidence. The 2026-11-01 reconciliation updates the
+reading routes from the current chapter registries; it does not rerun these
+commands or qualify a later compiler or another host. Times below are retained
+observations, not current performance guarantees. Retain a passing result only
+while its source, compiler and options still match; rerun the affected examples
+when that closure changes.
 
 A chapter marked *(design draft)* or *(planned)* describes work that doesn't
 run yet. The [chapter registries](../../coax/book/chapters.json) of the
 [four](../../psionic/book/chapters.json)
 [books](../../aethyr/book/chapters.json)
 ([Nostr](../../nostr/book/chapters.json)) record every chapter's status.
+An implemented chapter qualifies its named profile, not every capability in
+its title. See [completion milestones](completion.md) for the remaining
+integration, quality, target and adoption gates.
 
 ## Write current Coax
 
@@ -99,16 +107,21 @@ Chapters, in order:
 
 1. Coax chapters 1–11, then 17 (GPU programs, partly implemented) and 19
    (builds and hot reload, partly implemented).
-2. Aethyr chapters 1–4: the fixed step, spaces and units (native f32 spatial
-   boundaries), state from defaults, and typed input.
-3. Aethyr chapters 65–67: synthesized sound, the beat grid and a mixed
-   soundtrack.
-4. Aethyr chapters 6 and 7: entities that are born and die, and queries
-   for where things are.
-5. Aethyr chapters 5 and 8–16 (design drafts): replay, ground, the
-   character, the camera, rendering, UI and budgets.
-6. Aethyr chapters 56 and 64 (design drafts): the Grid rebuilt from those
-   pieces, and every realm on Aethyr.
+2. Aethyr chapters 1–5: the fixed step, spaces and units (native f32 spatial
+   boundaries), defaults, typed input and replay.
+3. Aethyr chapters 6–10: entities, spatial queries, ground/collision, walking
+   and camera composition. These are implemented within their stated profiles;
+   they do not supply a general rigid-body/contact solver.
+4. Aethyr chapters 65–67: offline synthesized sound, sequencing, mixing and
+   WAV output. Live playback and spatial/voice integration in 68–69 remain
+   design drafts.
+5. Aethyr chapters 11–15 (design drafts) and 16 (partly implemented): shared
+   rendering, materials, light, figures, HUD and asset budgets. Existing realm
+   shaders already emit from Coax; consolidating their shared renderer and
+   independent references remains.
+6. Aethyr chapters 56 and 64 (design drafts): the complete Grid capstone and
+   whole-realm migration. Existing use of shared clocks, walking and queries
+   is adoption of those components, not completion of either capstone.
 
 ## Run an original model
 
@@ -197,9 +210,15 @@ Chapters, in order:
    differentiated decoder.
 5. Psionic chapters 122 and 124: checkpoints that resume exactly, and AdamW
    with explicit precision.
-6. Psionic chapters 114–116 and 128 (design drafts): the compiled backward
-   pass, training the whole tiny decoder, memory budgets and a complete
-   pretraining run.
+6. Psionic chapter 115: the implemented end-to-end tiny-decoder CPU run.
+   Chapters 114 and 116 are partly implemented: compiled backward and
+   memory-budgeted training retain their named CPU profiles and open work.
+7. Psionic chapters 123 and 125–128: learned tokenization, nanochat forward
+   and backward, then the partly implemented complete CPU pretraining run.
+   This is a small measured run, not a nanochat GPU speedrun reproduction.
+8. Psionic chapters 129–131 are partly implemented: actual GPU decoder
+   training, profiling and eager/compiled comparisons. Efficient cooperative
+   kernels, mixed precision and the larger training acceptance projects remain.
 
 ## Sign and verify a Nostr event
 
@@ -233,11 +252,16 @@ They end with `183 checks, 183 passed, 0 failed` and
 Chapters, in order:
 
 1. Coax chapters 1–4, 11 (writing checks) and 18 (the protocol boundary).
-2. Nostr chapters 1–4 (partly implemented): bytes and hex, big integers in
+2. Nostr chapters 1–4: bytes and hex, big integers in
    limbs, constant-time rules and SHA-256.
-3. Nostr chapters 7–13 (partly implemented): the field, scalars, the group
+3. Nostr chapters 7–13: the field, scalars, the group
    law, scalar multiplication, verification, keys and signing.
-4. Nostr chapters 17 and 21 (partly implemented): the exact JSON an event ID
+4. Nostr chapters 17 and 21: the exact JSON an event ID
    hashes, then events, IDs and signatures.
-5. Nostr chapters 22–24 (partly implemented): kinds and tags, filters and
+5. Nostr chapters 22–24: kinds and tags, filters and
    relay messages, before a client (Part VIII) or a relay (Part IX).
+
+These chapters are implemented within their declared profiles. Native/Wasm
+qualification varies by chapter; a native result does not qualify a browser
+secret-handling path. Chapters 103 and 104 remain partly implemented: production
+relay migration/rollback and treasury signing/recovery have separate gates.

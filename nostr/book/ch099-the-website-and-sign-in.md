@@ -41,6 +41,13 @@ The design is [docs/web-log-in.md](../../docs/web-log-in.md). Its passkey
 part is not built. What is built is its last section, "The words account in
 use": the page makes the entropy itself and keeps it in browser storage.
 
+The current registry records `private-face.c` as a direct caller of the Coax
+words-account component and `coax/web/api/nostr.c` as the caller of the Coax
+NIP-98 verifier. These are specific consumer edges. They do not qualify a
+phone-signer profile, audit browser key custody or migrate the hosted runner
+and encrypted presentation opener. Those exits remain in the
+[completion route](COMPLETION.md#2-qualify-the-consumers-and-their-target-boundaries).
+
 ## The words account
 
 A first visit to `/login` asks the browser for 16 random bytes. Those bytes

@@ -44,10 +44,21 @@ The [chapter registry](chapters.json) records each chapter's status (one of
 profile, its dependencies and three separate facts: its implemented source
 (`source`), the targets with recorded evidence for its profile
 (`qualified_targets`), and the code outside the book that uses it today
-(`adopted_by`). The status table below, the contents and each chapter's status
+(`adopted_by`). Dependencies mean the minimum teaching prerequisites;
+[the plan](PLAN.md#minimum-prerequisites-and-later-integrations) also records
+the later integrations needed for each full goal. The status table below, the contents and each chapter's status
 marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
+
+There are 13 implemented chapters (1–10 and 65–67), three partly implemented
+chapters (16, 52 and 54), and 70 design drafts. An implemented chapter is
+qualified for its named profile; it does not imply that every realm adopted
+it or every backend is supported. For example, chapter 8 qualifies native
+kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
+render offline audio; chapter 68 still owns live playback. Existing realm
+features and the native shader port can be working while their consolidation
+into shared Aethyr teaching modules remains a draft.
 
 ## Promoting a draft to a teaching chapter
 
@@ -73,7 +84,11 @@ affine section is an example: a hand calculation, `examples/ch29_frames.coax`,
 a refused program with `E0834`, and a `#test` that compares the result with
 plain arithmetic.
 
-To find a route through the three books (write current Coax, build a playable realm, run an original model or train a small model), see [Paths through the books](../../docs/books/paths.md).
+For a route through the four books, see
+[Paths through the books](../../docs/books/paths.md). The
+[completion plan](../../docs/books/completion.md) coordinates their shared
+milestones; Aethyr's [completion milestones](PLAN.md#completion-milestones)
+separate the playable-realm, Forge and advanced simulation goals.
 
 ## Writing style
 
@@ -154,7 +169,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [11. The WGSL renderer](ch011-the-wgsl-renderer.md) | Unimplemented: design draft | One renderer for every realm: it owns the pass graph and binding table; shaders are Coax procedures emitted as WGSL and SPIR-V and checked against their CPU run, retiring hand-written WGSL. |
+| [11. The WGSL renderer](ch011-the-wgsl-renderer.md) | Unimplemented: design draft | Shared admitted frame/pass/binding plans and a complete CPU reference for supported shader profiles, built on the existing Coax-generated WGSL and native Vulkan port while preserving its draw ABI and parity evidence. |
 | [12. Materials](ch012-materials.md) | Unimplemented: design draft | One typed material record and style table built from `verse/style.coax`, its presets and `look.coax` outlines; missing texture layers are refused at load, and the painterly goldens stay unchanged. |
 | [13. Light and shadow](ch013-light-and-shadow.md) | Unimplemented: design draft | One lighting record per frame: key light from the clock, hemisphere ambient, a texel-snapped shadow map that doesn't shimmer, height fog, tone mapping and bounded local lights. |
 | [14. Figures and animation](ch014-figures-and-animation.md) | Unimplemented: design draft | The Grid's cast, skinned rigs and rounded-bone figures share one pose pipeline: fades blend each joint locally, gaits advance by distance, motions that break joint limits are refused, and bone lengths stay constant. |

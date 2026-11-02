@@ -1,14 +1,19 @@
 # 97. A conformance report
 
 Importing all NIP text does not mean supporting all NIPs. This chapter builds
-the report that says what is supported, on which target, with which evidence.
-It computes the report from the chapter registry and the records behind each
-claim, and it refuses to build the report when a claim has no record.
+a teaching report from copied chapter-registry rows and the records behind
+each claim. It refuses to build that report when a claim has no record.
+The example pins its rows to `73966b6359`; it does not read the current
+`chapters.json`. Its transcript therefore retains that snapshot's draft and
+partial statuses and empty adoption lists. Use the current registry and
+[completion route](COMPLETION.md) for today's status and remaining exits.
 
 Part XI, Interop and verification. Result: A machine-readable support matrix
 per profile (`core-read`, `core-write`, `phone-signer`, `openagents-host`,
 `block-identity`, `block-channel`, `agent-private`, `key-backup`) that refuses
-to advertise a NIP whose runtime gate is missing.
+to advertise a NIP whose runtime gate is missing. The runnable report models
+teaching-profile evidence; it does not certify full implementation of each
+cited NIP or authorize a production consumer.
 
 ## What this chapter teaches
 
@@ -20,8 +25,8 @@ to advertise a NIP whose runtime gate is missing.
 - The rule: a NIP is reported only when an implemented chapter with a record
   cites it, and a claim without a record refuses the whole report.
 - Source pins: the official and Block lanes by commit and file hash, the
-  OpenAgents lane by a digest over its files, and what today's run of the pin
-  check found.
+  OpenAgents lane by a digest over its files, and what the chapter's dated
+  pin-check run found.
 - How the book's report and the product's support matrix, `profiles.json`,
   differ.
 
@@ -54,12 +59,18 @@ that a report reads:
 | `status` | `implemented`, `partly implemented`, `design draft` or `planned` | The four parts of the promotion standard in the [README](README.md#promoting-a-draft-to-a-teaching-chapter); only `implemented` counts as done |
 | `qualified_targets` | A recorded run exists on each named target (`cpu`, `wasm`, and for other books `cuda` or `metal`) | A record: for `cpu`, the chapter's example in `examples.json`, which `book.py` runs in debug and release and compares with its transcript; for `wasm`, a record in `docs/verification/` of a Wasm build that ran the code |
 | `profile` | The same targets as a label: `native C` or `native C and wasm` | The README table and `book.py`, which fail when the label and the targets disagree |
-| `adopted_by` | Files outside the book that use the chapter's code today | The files themselves; today every chapter's list is empty |
+| `adopted_by` | Reviewed direct consumers of a listed source component outside the book | The actual import or host call; this does not establish use of every feature in the chapter |
 
 `book.py` already refuses some combinations: a design draft with a source, a
 qualified target or an adoption, and an implemented chapter with no
 qualified target. It does not check that a qualified target has a record.
 That is the report's job.
+
+The current registry now names direct consumers, including the API bridge,
+homepage reader, CLI and Pylon runtime. The example below preserves the empty
+lists of its pinned snapshot. A shared JSON, event or wallet component can be
+adopted while the enclosing NIP or integration remains incomplete. Do not use
+that component edge alone to advertise a complete consumer profile.
 
 The NIPs a chapter covers come from the spec column of `PLAN.md`. Chapter
 49's row cites [NIP-98](../nips/official/98.md); chapter 23's cites NIP-01
@@ -88,7 +99,7 @@ and conformance fixtures.
 
 ## The rule
 
-A report has one row per NIP and one column per target. Each cell counts
+The teaching report has one row per NIP and one column per target. Each cell counts
 the chapters that cite the NIP and how many of them are *done* on that
 target. A chapter is done on a target when all three hold:
 
@@ -100,7 +111,9 @@ The cell is `done` when every citing chapter is done on the target, `part`
 when some are, and `-` when none are. A profile conforms on a target when
 every NIP in its list is `done` there. It is *advertised* to a consumer
 only when it conforms and some file outside the book uses the code, which
-is what `adopted_by` records.
+is what the snapshot's `adopted` counts model. Actual consumer advertisement
+also needs its full capability, integration and security gates; the current
+registry's direct component edges do not supply those gates.
 
 Before any cell is computed, every claim is checked. A target that a
 chapter claims without a record, or any target that a design draft claims,
@@ -152,7 +165,7 @@ The row is `98   done 2/2   done 2/2   none`.
 Until chapter 99 was promoted, on 2026-11-01 (`73966b6359`), it was partly
 implemented, with the same claims and records. A partly implemented chapter
 is never done, so the row was then `part 1/2` on both targets. NIP-44 is
-that case today: chapter 20 is done on `cpu`, and chapter 100, *Pylons and
+that case in the snapshot: chapter 20 is done on `cpu`, and chapter 100, *Pylons and
 the mesh*, which also cites it, is partly implemented. Its row is
 `part 1/2` on `cpu`, and `-` on `wasm`, where neither chapter claims a run.
 
@@ -352,7 +365,7 @@ without_record :: (r: Registry, k: int) -> Registry {
 
 ## The example
 
-The example is
+The frozen example is
 [nostr/examples/conformance.coax](../examples/conformance.coax). It counts
 the claims and records, prints the report, prints the NIPs that done
 chapters cite, and then builds four broken registries:
@@ -422,7 +435,7 @@ broken: NIP-46 added to key-backup, claimed on cpu
 refused: NIP-46 is not done on cpu
 ```
 
-Read the report like this:
+Read the report as a result for `73966b6359`, not the current registry:
 
 - NIP-01 is cited by 13 chapters. Twelve are implemented with a `cpu`
   record; chapter 33, *A client that survives restarts*, is a design draft.
@@ -436,7 +449,7 @@ Read the report like this:
 - The NIPs that done chapters cite are 01, 19, 42, 44, 49, 59 and 98:
   exactly the rows that are not `-` in some column. NIP-46 is in a profile
   but in no done chapter, so it is reported as `-`, never as supported.
-- Nothing is advertised: no chapter has an adopting file.
+- Nothing is advertised in this snapshot: its adoption counts are all zero.
 
 The broken registries show each refusal:
 
@@ -478,7 +491,7 @@ values are pasted into the checks. They also cover:
   profile's list;
 - the profile lists read from `profiles.coax`, and `advertised` agreeing
   with `np_can_advertise` from `profiles.coax` for all four profiles on both
-  targets (no profile is advertised by either);
+  targets (no profile is advertised by either in the pinned example);
 - adoption counted once per citing chapter, and the list helpers on names
   that share digits.
 
@@ -703,8 +716,9 @@ text, not an edit to the book.
   advertised only with an adopting consumer.
 - A claim without a record, or any claim by a design draft, refuses the
   whole report.
-- For the four official profiles, only `key-backup` conforms (on `cpu` and
-  `wasm`); nothing is advertised.
+- In the pinned teaching snapshot, only `key-backup` conforms among the four
+  official profiles (on `cpu` and `wasm`); nothing is advertised. This is not
+  a current all-NIP or production-conformance result.
 - The support matrix's pin check found that the OpenAgents lane changed
   after its pin was recorded.
 

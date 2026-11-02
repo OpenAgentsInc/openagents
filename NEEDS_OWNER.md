@@ -28,11 +28,14 @@ production. The runbook is in `nostr/book/ch103-replace-relay-openagents-com.md`
    into a throwaway Postgres off the production host and exporting
    `nostr_event` read-only, in `ingest_seq` order, as JSON lines (the query is
    in the chapter). Production's database is never read directly.
-2. **Store capacity and R2 wiring first.** The Coax store holds at most 2,048
-   events and 4 MiB (`RSD_MAX`, `RSD_ARENA`); a larger export imports as
-   incomplete and the cutover can't start. Decide which of the Rust relay's
-   advertised NIPs must be wired into `coax/relay/relay.coax` before cutover
-   (the chapter lists the eleven built but unwired modules).
+2. **Store capacity and required wiring first.** `--store-capacity` now sizes
+   host-allocated slots and bytes; 2,048 events/4 MiB are defaults, not a hard
+   production ceiling (`6f4c722640`). Qualify the chosen limits against the
+   restored export, tombstones, memory, persistence and restart behavior before
+   treating an import as complete. Index/delete/rate/COUNT/search/protection
+   and optional proof-of-work wiring have landed. Decide which remaining
+   advertised features must be wired before cutover: NIP-77, NIP-86, NIP-43
+   and NIP-29 (the chapter tracks the current table).
 3. **Shadow period.** Approve a proxy that sends every write to both relays
    (clients get the Rust relay's answers) and the replay of readers' REQs to
    both, and set its length (the runbook suggests at least a week).

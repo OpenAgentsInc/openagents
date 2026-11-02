@@ -102,6 +102,8 @@ a second, simpler reference.
 ## Dependencies
 
 Chapters 19 (mass matrix, Jacobians), 20 and 21 (pairs and manifolds),
-Psionic chapter 4's Cholesky. Chapter 32 reuses the factorization. From Coax: R15
+Psionic chapter 4's Cholesky. These suffice to qualify the forward contact
+solve. Chapter 32 later reuses and differentiates the factorization; its
+gradient checks remain required for that extended profile. From Coax: R15
 strict reductions, R21 batched layouts, R23 device graphs for the Newton
 loop.

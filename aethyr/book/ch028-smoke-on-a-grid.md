@@ -61,5 +61,7 @@ and as the first consumer of a Poisson solver.
 
 ## Dependencies
 
-Chapter 21 SDFs, Psionic chapter 4 sparse solvers, chapter 33 for scalar sensors.
-From Coax: R21 layouts, R23 device graphs for the CG loop.
+Chapter 21 SDFs and Psionic chapter 4 sparse solvers. Chapter 33 later reads
+scalar fields as sensor outputs; that read-only integration is not a
+prerequisite for the grid-fluid solve. From Coax: R21 layouts, R23 device
+graphs for the CG loop.

@@ -95,4 +95,7 @@ through its module, and nothing checks that a rule touches only what it says.
 [Chapter 5](ch005-replay-a-session-exactly.md),
 [chapter 52](ch052-edit-a-realm-in-place.md) and
 [chapter 54](ch054-publish-a-realm.md). Typed rule modules follow the same
-idea as [chapter 48](ch048-one-world-at-three-fidelities.md)'s.
+idea as [chapter 48](ch048-one-world-at-three-fidelities.md)'s; that comparison
+does not make the spacecraft fidelity ladder a prerequisite for an ordinary
+realm fork. A fork of a spacecraft profile must additionally preserve and
+check that profile's declared rules.

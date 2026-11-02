@@ -136,5 +136,7 @@ Older parts of the builder:
 
 [Chapter 3](ch003-state-starts-from-its-defaults.md) (defaults and
 versions), [chapter 6](ch006-entities-are-born-and-die.md) (stable IDs),
-[chapter 16](ch016-budgets-that-refuse.md) (budgets) and
-[chapter 17](ch017-a-scene-owns-the-state.md) (the scene).
+[chapter 16](ch016-budgets-that-refuse.md) (budgets) suffice for the typed
+document and deterministic layout. A physics-bearing realm later maps that
+document into [chapter 17](ch017-a-scene-owns-the-state.md)'s scene and checks
+that mapping; constructing the document does not require the physics engine.

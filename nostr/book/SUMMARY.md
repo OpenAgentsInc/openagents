@@ -2,6 +2,11 @@
 
 - [Introduction](README.md)
 - [Plan and prerequisites](PLAN.md)
+- [Completion route](COMPLETION.md)
+
+Chapter labels describe the stated teaching profiles. They do not assert full
+implementation of every cited NIP or a production deployment; the completion
+route records those remaining exits.
 
 **I. Foundations**
 

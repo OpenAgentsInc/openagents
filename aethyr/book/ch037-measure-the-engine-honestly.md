@@ -76,6 +76,11 @@ figure.
 
 ## Dependencies
 
-All of Part IV, chapters [17](ch017-a-scene-owns-the-state.md) to
-[36](ch036-record-and-replay-a-world.md). From Coax: R0 measurements, R22
-budgets.
+The measurement method and compatibility ledger can start with the first
+scene profile. Every supported matrix cell and every benchmark must then
+have evidence from the relevant chapters
+[17](ch017-a-scene-owns-the-state.md)–[36](ch036-record-and-replay-a-world.md).
+Completing the full matrix therefore depends on all of Part IV, even though
+starting the ledger does not. An empty ledger or a rigid-only benchmark
+does not complete the whole-engine measurement goal. From Coax: R0
+measurements, R22 budgets.

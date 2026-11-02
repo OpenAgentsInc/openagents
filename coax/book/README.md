@@ -109,11 +109,35 @@ status, profile, dependencies and three separate facts:
   `cuda`, `metal` or `wasm`, with recorded evidence for the chapter's
   profile. Source that might compile for a target doesn't qualify it.
 - **Adoption** (`adopted_by`): code outside the book that uses the chapter's
-  code today. An empty list means no adoption is recorded.
+  code today in an application or reusable library, including direct build
+  and binding code. Each recorded consumer uses an identified source or
+  generated interface described below. Tests, examples and fixtures do not
+  count as adoption. An empty list means no adoption is recorded.
 
 A chapter's status is one of *implemented*, *partly implemented*, *design
 draft* or *planned*. A planned chapter starts with the planned note shown above, and a partly implemented chapter with `**Status: partly implemented.**`; the contents and the list below label both. `python3 coax/book/check-structure.py` fails when a status marker, a
 contents label, the list below or the registry disagree.
+
+Status describes the chapter's named teaching profile. An *implemented*
+chapter can also explain a planned extension: chapter 5 teaches current
+structs and enums alongside planned unions, and chapter 7 teaches current
+failure values and cleanup alongside planned results and optionals. Chapter
+counts therefore measure recorded teaching coverage. They do not measure
+completion of the language specification, a whole product or every target.
+
+### Recorded direct consumers
+
+These are selected source-to-consumer relationships, not an exhaustive usage
+inventory. Adding one records use; it does not extend `qualified_targets` or
+turn a library's bounded profile into the full chapter goal.
+
+| Chapter | Source and direct use outside this book |
+| --- | --- |
+| [8. Generics](ch08-generics.md) | [`coax/lib/bounded.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/bounded.coax) supplies fixed-storage `Bounded` values to [`psionic/lib/shadow.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/lib/shadow.coax)'s model registry and [`verse/fairy-forest/forest.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/verse/fairy-forest/forest.coax)'s blooms. It does not supply owning containers. |
+| [17. GPU programs](ch17-gpu.md) | [`verse/light.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/verse/light.coax)'s scalar functions are emitted as Metal by [`generate.sh`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-ios/generate.sh) and called by the iOS [`Stages.metal`](https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents-ios/OpenAgents/Platform/Stages.metal). This is the existing scalar shader path; it does not qualify every GPU profile in the chapter. |
+| [25. Voice](ch25-case-study-voice.md) | [`verse/platform/voice.c`](https://github.com/OpenAgentsInc/openagents/blob/main/verse/platform/voice.c) directly calls the generated C interfaces of `verse/voice.coax`, `voice-wire.coax`, `voice-floor.coax` and `voice-meter.coax`. The chapter's smaller `ch25_*` examples remain teaching programs. |
+| [26. Libraries](ch26-library-recipes.md) | [`coax/lib/sequence.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/lib/sequence.coax) is loaded by [`verse/gpu/everglade-pass.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/verse/gpu/everglade-pass.coax) to reverse diagnostic digits and by [`psionic/lib/serve-engine.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/lib/serve-engine.coax) to swap bytes during HTTP buffer rotation. These are synchronous caller-owned operations. |
+| [29. Frames](ch29-units-and-frames.md) | [`verse/spacecam.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/verse/spacecam.coax) uses typed world points and a floating origin; [`panda-fk-types.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/lib/robotics/panda-fk-types.coax) and [`panda-fk-math.coax`](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/lib/robotics/panda-fk-math.coax) use typed world positions and affine offsets. The chapter identifies the remaining untyped transforms, joints and spacecraft states. |
 
 ## Promoting a draft to a teaching chapter
 
@@ -139,6 +163,48 @@ affine section is an example: a hand calculation, `examples/ch29_frames.coax`,
 a refused program with `E0834`, and a `#test` that compares the result with
 plain arithmetic.
 
+## Completion route
+
+The current route through chapters 1–28 and chapter 29's affine section is
+usable now. Completing the rest proceeds through the existing roadmap and
+chapter gates. The order below is a priority order; a slice can proceed when
+its own prerequisites and consumer are ready.
+
+1. **Keep the current guide complete for its bounded profile.** Reconcile
+   chapters 5–10, 17, 22 and 27 with delivered language and compiler changes;
+   retain exact examples, diagnostics and the limits in
+   [chapter 23](ch23-verification-boundaries.md). Keep source, target evidence
+   and direct adoption separate in the registry and the
+   [paths through all four books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
+2. **Finish shared application contracts.** Close the roadmap's remaining
+   R0 device, frame-tail, development-loop and independent-review gates. Use
+   chapters [6](ch06-memory.md), [7](ch07-errors.md),
+   [15](ch15-asynchronous-work.md), [20](ch20-interop.md) and
+   [24](ch24-a-complete-boundary.md) to teach handled results and buffer/request
+   ownership through one real fallible asynchronous adapter. Extend chapter
+   17 only with named GPU resource, layout and artifact evidence. The shipped
+   bounded generics, modules and borrow diagnostics remain the starting point.
+3. **Build physical-world facilities through the shared consumers.** Complete
+   chapters 29–37 in their dependency order, using the Verse world, Psionic's
+   Panda loop and the spacecraft scenario. Frames and clocks lead to bounded
+   control, strict integrators and replay, then model import, stamps,
+   supervision, faults and provenance. Chapters
+   [38](ch38-a-simulated-robot.md) and [39](ch39-a-freighter-scenario.md)
+   become worked capstones when those consumers meet their gates; the same
+   facilities support Aethyr's physics and space chapters.
+4. **Give one solver the compute forms.** Complete chapters
+   [40](ch40-logical-tensors.md)–[43](ch43-differentiating-kernels.md) through
+   Aethyr's solver state and Psionic's existing compute consumers: two layouts
+   and batch sizes first, then measured compilation/cache budgets, graph and
+   buffer ownership, and independently checked derivatives.
+5. **Finish the supported toolchain on measured evidence.** Chapter
+   [44](ch44-self-hosting.md) needs a clean bootstrap of real applications and
+   an explicit trust boundary. Chapters [45](ch45-body-replacement.md) and
+   [46](ch46-resident-compilation.md) need a useful unchanged-layout experiment
+   before transactional migration. Chapter [47](ch47-backends.md) remains
+   conditional on a measured backend bottleneck. These tracks can overlap
+   earlier work under the roadmap's dependency rules.
+
 ## Where the examples live
 
 Every program the book runs is a file in
@@ -159,7 +225,9 @@ on your path.
 
 ## Contents at a glance
 
-To find a route through the three books (write current Coax, build a playable realm, run an original model or train a small model), see [Paths through the books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
+To write current Coax, build a playable realm, run an original model, train a
+small model or sign and verify a Nostr event, see
+[Paths through the four books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
 
 
 - [Foreword](foreword.md) and [Introduction](introduction.md)

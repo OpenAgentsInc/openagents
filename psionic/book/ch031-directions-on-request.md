@@ -1,7 +1,9 @@
 # 31. Directions on request
 
 > **Status: partly implemented.** The explicit-help candidate runs and has a
-> separate live smoke evaluation. Integration into the page is pending.
+> separate live smoke evaluation. Chapter 32 now integrates the local rule and
+> optional remote shadow into the page. Broader usefulness and remote-selected
+> behavior remain unqualified.
 
 [Chapter 30](ch030-measure-a-guard-decision.md) separated a valid answer from
 a useful one. Its quiet/greeting/weather cohort gave the model no pressing
@@ -12,8 +14,9 @@ The candidate is [`everglade-directions-v1`](../../verse/everglade/guard-guide.c
 It chooses among five fixed authored tips: quiet, the commons quest board,
 the East Gate, the North Trail and the West Gate. It cannot generate dialogue
 or change movement, quests, crime, combat or rewards. Directions remains an
-isolated candidate; this chapter adds no UI and enables no default or ambient
-model behavior.
+isolated candidate in this chapter's experiment; the later
+[page integration](ch032-a-guard-gives-directions.md) displays the local rule
+and enables no default or ambient model behavior.
 
 ## Start with something the game knows
 
@@ -158,17 +161,18 @@ requires. An ordinary frame tick must not change the semantic version, but each
 new Directions intent must. Cancel and re-request for the same goal cannot
 reuse the old intent's authority. Preserve the ticket sequence across resets.
 
-## Before a page can consume it
+## The page integration boundary
 
-A page integration still needs the explicit authored Directions interaction and
-a current-frame observation after all gameplay mutations. Bind each intent,
+[Chapter 32](ch032-a-guard-gives-directions.md) supplies the explicit authored
+Directions interaction and current-frame observation after gameplay mutations.
+Its session policy binds each intent,
 actor generation, world/route version, current goal and guide-tip/cooldown
 revision into the Gd context. Goal change, a new intent, actor replacement,
 respawn, edits, backgrounding, leaving or an existing tip must revoke pending
 authority. Recheck eligibility and route legality when consuming a staged
 answer, with real monotonic milliseconds rather than frame time.
 
-The consumer also needs bounded request capacity, transport cancellation,
+The consumer must preserve bounded request capacity, transport cancellation,
 exactly-once terminal accounting and fallback under authentication, quota,
 overload, timeout and malformed-answer failures. Remote Directions calls remain
 off by default and in golden/clip/replay. Ambient model behavior stays disabled.
@@ -194,7 +198,8 @@ The five requests used 236–238 tokens and fit the measured resident capacity o
 512. They reached the normal public endpoint through an owned HttpOnly/Secure
 browser session after the separate warm-fleet rollout. These API-only timings
 exclude login, browser startup and the simulation-frame queue. They do not
-claim a live Directions page consumer or actual player-visible admission.
+claim a live Directions page consumer or actual player-visible admission;
+chapter 32 records that later integration separately.
 The verification records name the exact fleet image and packaging history.
 
 The strong local rule remains 5/5 with zero remote calls, versus 0/5 useful tips
@@ -203,8 +208,9 @@ it has shown no advantage over immediate local directions. The two held-out
 cases remain a tiny finite smoke check. Neither their success nor confidence
 values establish calibration, broader reliability or player benefit.
 
-A sensible next page slice can show the local reference immediately and keep
-any remote candidate in explicit shadow mode while qualifying current-frame
-ownership, cancellation and edited-world refusal. Showing remote-selected tips
-needs additional evidence on a task where the model can add value over a strong
-local rule. Default and ambient model behavior remain disabled.
+Chapter 32 implements the local-first page slice with optional remote shadow,
+current-frame ownership, cancellation and route-specific edited-world refusal.
+Its evidence does not retroactively broaden this five-case API experiment.
+Showing remote-selected tips still needs evidence on a task where the model
+adds value over a strong local rule. Default and ambient model behavior remain
+disabled.

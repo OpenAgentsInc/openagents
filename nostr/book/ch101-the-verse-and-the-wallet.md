@@ -1,14 +1,20 @@
 # 101. The Verse and the wallet
 
 The Verse is where people meet: realms that players walk through together,
-and a wallet that pays. This chapter shows how the Verse uses the Nostr
-stack for two things. Players see each other through NIP-MV pose frames
+and a wallet that pays. This chapter composes an offline Nostr example for
+two proposed Verse features. Players see each other through NIP-MV pose frames
 that a Coax relay carries, and one player zaps another in the world, with
 every payment decided by the Spark wallet's existing rules in
 `verse/wallet.coax`. It runs both once, offline, with test keys, fixture
 invoices and a fixed clock, by composing units that earlier chapters built.
 It also says plainly which parts OpenAgents runs in production today and
 which exist only in this book.
+
+The registry's `adopted_by` entry names `SparkHost.swift`, which directly
+calls the existing wallet rules. It records adoption of that component,
+not adoption of the offline NIP-MV, zap or Wallet Connect exchange. Live
+integration depends on [Aethyr's rooms and presence](../../aethyr/book/ch049-rooms-and-presence.md)
+and the [application exits](COMPLETION.md#4-connect-the-offline-integrations-to-applications).
 
 ## What this chapter teaches
 
@@ -769,7 +775,8 @@ equivalent:
 - [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md)
 - [72. Wallet Connect](ch072-wallet-connect.md)
 - [Aethyr chapter 49, Rooms and
-  presence](../../aethyr/book/ch049-rooms-and-presence.md)
+  presence](../../aethyr/book/ch049-rooms-and-presence.md) is required for the
+  later live room integration, not this chapter's qualified offline example.
 
 ## Sources
 

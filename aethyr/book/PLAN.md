@@ -1,10 +1,12 @@
 # Plan and prerequisites
 
-Proposal, 2026-10-31. The [chapter registry](chapters.json) records which
-chapters are written and which are design drafts. The order puts each primitive before anything that uses it, so the
-book can be built front to back, but independent branches can start earlier
-than their position. The [contents](SUMMARY.md) give the reading order and the
-[introduction](README.md) the result of each chapter.
+The [chapter registry](chapters.json) records each chapter's status, qualified
+profile and minimum teaching prerequisites. Chapter numbers give the reading
+order; the dependency graph gives the construction order, including independent
+branches. A chapter can introduce a small profile before a later chapter adds
+imports, coupling or another backend. Those later integrations remain part of
+the chapter's stated completion checks. The [contents](SUMMARY.md) give the
+reading order and the [introduction](README.md) the result of each chapter.
 
 ## The order
 
@@ -46,6 +48,87 @@ Chapter 9 consolidates the walking controller and its declared tuning;
 chapter 64 still owns the complete migration of realm adapters. Part III
 consolidates the existing Coax shader and host paths in `verse/gpu/`.
 
+## Completion milestones
+
+The registry currently has 13 implemented chapters (1–10 and 65–67), three
+partly implemented chapters (16, 52 and 54), and 70 design drafts. These counts
+describe teaching profiles, not a percentage of the engine completed. Existing
+realm code can already provide a feature whose shared Aethyr module is a draft.
+
+1. **Complete one playable route.** Build chapters 11–15 on the existing
+   Coax-generated WGSL and native Vulkan paths, preserving their draw ABI and
+   recorded parity. Finish chapter 16's content-hashed asset admission. Take
+   the Grid through one shared frame, material, pose and HUD contract; retain
+   a native/Wasm session replay, its golden and its frame-time checks.
+2. **Converge the realms and hosts.** Migrate each realm's remaining input,
+   entities, spatial adapters and camera modes, then delete the replaced
+   copies. Chapter 64 needs a replay per realm and a check against private
+   copies returning. Its inventory records Ice Cream Man's remaining
+   `ice_play_frame` clamp/accumulator as an open conformance gap against the
+   [one-clock invariant](../../INVARIANTS.md#a-realms-frame-time-is-what-its-clock-counts-and-no-frame-runs-past-8-steps),
+   to remove without changing the rule traces. Add chapter 68's live
+   synthesized and spatial sound to
+   the existing offline audio. Bring saves, host lifecycle and accessibility
+   (82, 85 and 86) into this route as their dependencies become available.
+   Consolidating current gameplay profiles does not complete the advanced
+   realm rebuilds that require later physics or spacecraft chapters.
+3. **Make Forge publications reproducible.** Complete the typed document
+   (51), one edit log for every operation (52), admitted assets (53), a
+   publication that pins document, engine build and asset hashes (54), and
+   isolated forks (55). Existing revision publication is the starting point;
+   it does not yet freeze the engine build. This route does not require the
+   spacecraft fidelity ladder or the full multi-material physics engine.
+4. **Qualify a rigid simulation profile.** Build the scene and rigid chain
+   (17–22), then rigid batching (31), asset import (35), replay (36), and a
+   Psionic control/environment consumer (167–171). Start chapter 37's
+   compatibility ledger with the first admitted profile. Add sensors (33)
+   and observation images (34) on this bounded profile before extending them
+   to other materials.
+5. **Extend the qualified profiles.** Add particle and mesh solvers (23–28),
+   coupling (29–30), selective gradients (32), and their batch, import and
+   observation integrations. Build streaming and the spacecraft fidelity
+   ladder (38–48) against pinned oracles and stated error. Consolidate the
+   remaining world systems, generation tools and shipping capabilities as
+   their prerequisites settle. Genesis parity is a separate, larger result
+   than a portable playable realm.
+
+Each milestone retains the chapter-promotion requirements in the
+[introduction](README.md#promoting-a-draft-to-a-teaching-chapter). A passing
+example or a working product path alone does not complete the chapter's full
+declared profile.
+
+## Minimum prerequisites and later integrations
+
+`depends_on` records what a chapter's first teaching profile consumes. It is
+not an inventory of every chapter that eventually uses or extends the result.
+The following distinctions keep the graph acyclic without dropping the later
+acceptance work:
+
+| Chapter | Minimum prerequisite decision | Later integration retained |
+| --- | --- | --- |
+| 5, replay | 1, 3 and 4 supply a clock, constructed state and actions; 6 is not needed to record a fixed-state realm. | Once entities exist, include chapter 6's `entity_digest` in the realm digest. Chapter 6 can still use chapter 5 to check a store's replay. |
+| 7, queries | 2 and 6 provide spaces and durable collider identity; remove 20 and 21 as prerequisites. | Physics broad/narrow phases must agree with these queries on shared shapes. |
+| 18, free bodies | 17 supplies the scene; remove the reverse dependency on 19. | Chapter 19 extends the free-body integrator to articulations. |
+| 21, narrow phase | 18 and 20 supply poses and pairs. Authored primitive, convex-hull and SDF fixtures do not need an importer or a reverse pass. | Chapter 35 supplies decomposed/baked assets; chapter 32 consumes the differentiable contact path. Both remain required for those extended profiles. |
+| 22, contact solve | 19–21 supply mass matrices, pairs and manifolds; remove 32 as a prerequisite. | Chapter 32 differentiates the forward factorization. |
+| 24, liquids | 23 supplies particles and neighbours for a fluid with prescribed boundaries; remove 29 and 34 as prerequisites. | Two-way floating-body checks require 29; surface observations require 34. |
+| 25, cloth | 21 and 23 supply prescribed collision queries and particles; author the first constraint mesh directly. | 29 supplies two-way coupling and 35 imports meshes. |
+| 26, MPM | 23 supplies particle sorting; qualify the forward solver first. | 29 adds coupling and 32 adds gradients; neither is a prerequisite for the forward calculation. |
+| 27, FEM | 17 supplies scene arrays; use a directly authored tetrahedral fixture first. | 35 generates/imports meshes, 29–30 add contact and 32 adds gradients. |
+| 31, batching | 17–22 suffice for the first rigid batched profile; remove 23–30 as prerequisites. | Every later material/coupler must pass batch invariance before its matrix cell is admitted. |
+| 32, gradients | Add the forward solvers of 18–27 as prerequisites, as its chapter already states. | Unsupported solver/coupler modes are refused; a later gradient profile needs its own qualification. |
+| 33, sensors | 17–22 suffice for the stated joint, IMU, rigid-contact and primitive-ray checks; remove 23–28 as prerequisites. | Material-field sensors, such as chapter 28's scalar fields, extend the sensor matrix later. |
+| 35, import | 17 supplies the scene format and 19 the link/joint model. Chapters 18, 20–34 are not additional direct prerequisites for parsing and validating that data. | Those solvers, batches, gradients, sensors and observation renderers consume admitted assets and need their own integration checks. Chapter 34 retains its dependency on 35 for meshes/textures. |
+| 50, network sessions | 1, 4, 5, 6 and 49 supply ticks, actions, replay, identity and transport; remove 18–22 and 36 as prerequisites. | Physics-bearing sessions require those Part IV solvers and world replay; ordinary deterministic game sessions do not. |
+| 51, realm document | 3, 6 and 16 suffice for defaults, identity and admission; remove 17 as a prerequisite. | An eventual physics-bearing realm maps the document into chapter 17's scene. |
+| 55, forks | 5, 52 and 54 supply replay, edits and a frozen base; remove 48 as a prerequisite. | Chapter 48's fidelity rules share the rule-module idea; spacecraft-profile forks additionally need that profile. |
+
+Chapter 37's ledger and measurement method can start before the solvers. Its
+complete matrix and benchmark corpus depend on the admitted profiles of
+17–36; an empty ledger is not completed engine measurement. Similarly, a
+chapter may refer forward to an integration without requiring it to construct
+its first example. Read the integration checks before claiming the full goal.
+
 ## Prerequisites, not a waiting list
 
 | Branch | Needs | Path |
@@ -57,7 +140,7 @@ consolidates the existing Coax shader and host paths in `verse/gpu/`.
 | Streaming | 6, 7, 16 and the rigid chapters 18–22 | Cells, rings and a floating origin 38. |
 | Spacecraft and the solar system | Psionic chapters 107, 109, 234 and 242; the `verse/` space modules as the starting game layer; Coax R12–R20 forms as they ship | Ephemerides and frames 39 → propagation with stated error 40 → burns 41 → rendezvous 42; heat 43, ship interiors 44 and delayed sensors 45 in any order → event-stopped time warp 46 → impacts 47 → three fidelities, batched rollouts, surrogates and an admitted environment 48. |
 | Networking | 5 and 6 | Rooms and presence 49 → shared state 50. |
-| Aethyrforge | 3, 5, 6 and 16 | Realm document 51 → editing 52 → assets 53 → publishing 54 → forks 55. |
+| Aethyrforge | 3, 5, 6 and 16; renderer/UI for the editor; 37's measurement method for publication gates | Realm document 51 → editing 52 → assets 53 → publishing 54 → forks 55. Physics-scene mapping is an extension. |
 | Realms | The chapters each realm uses | 56–63 in any order once their chapters exist; 64 last. |
 | Sound | Coax only; 1, 2, 5 and 10 for playback in a realm | Oscillators and envelopes 65 → the beat grid 66 → scores and mixing 67 → playback, space and reaction 68 → voices 69 (also 49). |
 | A living world | 1–16 and the chapters each system uses (water and vehicles 18–22; effects 16 and 23 for contrast; creatures 7 and 45) | 70–78 in any order once their dependencies settle. |
@@ -106,11 +189,15 @@ capability to a chapter and a Coax phase and states where we deliberately
 differ. The solvers are written on Psionic's tensor programs and compute
 subset; Psionic's robot chapters (167–171) and world models use the engine.
 
-Rigid work comes first: 17–22, then batching 31, assets 35, replay 36 and
+Rigid work comes first: 17–22, then rigid batching 31, assets 35, replay 36 and
 Psionic's control chapter 167, which together can replace MuJoCo behind
-Psionic chapter 170. The particle and mesh solvers 24–28 each need 23 (26
-also needs 23's sort) and can follow in any order; coupling 29–30 needs them;
-gradients 32 need 18–27; 33–34 need the scene and 35; 37 runs throughout. The
+Psionic chapter 170. Liquids 24, cloth 25 and MPM 26 need chapter 23's
+particles (26 also needs its sort). FEM 27 starts from scene arrays and an
+authored tetrahedral mesh; grid fluid 28 needs chapter 21's SDFs and sparse
+solvers. Coupling 29–30 needs the forward solvers;
+gradients 32 need 18–27. Rigid sensors 33 need 17–22; observation rendering
+34 adds batching and imported assets. Extend each profile's matrix only after
+its integration checks pass; 37 runs throughout. The
 engine keeps the game-layer modules in `verse/` (rigid bodies, contacts) as
 independent references, not as code to copy, and its Coax prerequisites are
 R12–R20 plus the simulation-compute phases R21–R24.
@@ -163,7 +250,7 @@ their input logs.
 
 | Feature | Status | Chapters | Until it ships |
 | --- | --- | --- | --- |
-| Units and coordinate frames ([roadmap R12](../../coax/ROADMAP.md)) | scalar quantities shipped for native C ([quantity profile](../../coax/QUANTITIES.md)); points and frames planned | 2, 8, 18–22, 39–44 | Scalar quantities where native C allows; otherwise plain `f64`/`f32` fields with units stated in comments and one conversion function per space. |
+| Units and coordinate frames ([roadmap R12](../../coax/ROADMAP.md)) | native scalar quantities ([quantity profile](../../coax/QUANTITIES.md)) and an initial native affine point/vector profile ([spatial profile](../../coax/SPATIAL.md)) shipped; full transforms and realizations remain open | 2, 8, 18–22, 39–44 | Use the admitted native profiles; other targets and full state transforms keep explicit library boundaries and stated units. |
 | Typed clocks and multirate ticks (R13) | planned | 1, 4, 33, 39, 45, 46 | Integer step counters and an explicit fixed step. |
 | Bounded control (R14) | planned | 9, Psionic 167 | Fixed arrays and no allocation by convention, checked by review. |
 | Deterministic schedules and replay (R15–R16) | planned | 5, 20, 22, 23, 36, 46, 50 | Fixed iteration orders, digests per step and recomputation replay under one named profile. |

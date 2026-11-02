@@ -79,5 +79,11 @@ Our plan has the same split, stated in the compatibility matrix.
 
 ## Dependencies
 
-Chapter 35 meshes, Psionic chapter 4 sparse linear algebra, chapter 29 and 30 for
-contact, chapter 32 for gradients. From Coax: R15, R21, R23, R24.
+Chapter 17's scene arrays and Psionic chapter 4's sparse linear algebra.
+A directly authored tetrahedral fixture suffices for the first explicit and
+implicit forward calculations and their deformation checks.
+
+Chapter 35 later provides imported/generated meshes, chapters 29–30 add
+contact, and chapter 32 adds gradients. Each integration still needs its
+declared acceptance evidence; none is needed to calculate the first
+uncontacted tetrahedron. From Coax: R15, R21 and R23; R24 for gradients.

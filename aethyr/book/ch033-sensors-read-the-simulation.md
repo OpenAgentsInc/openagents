@@ -65,5 +65,12 @@ part of every reading.
 
 ## Dependencies
 
-Chapters 17 to 28; ray queries from 21. From Coax: R11 effects, R13
-clocks, R18 stamped sensors, R20 provenance.
+Chapters 17–22 supply the joint, IMU, rigid-contact and primitive-ray checks
+listed here, including chapter 21's ray queries. They suffice for the first
+sensor profile.
+
+Chapters 23–28 later provide material fields and surfaces for additional
+sensor profiles, including chapter 28's scalar fields. Those integrations
+must retain the read-only, timing and noise checks; their absence does not
+block the rigid-sensor calculation. From Coax: R11 effects, R13 clocks,
+R18 stamped sensors, R20 provenance.

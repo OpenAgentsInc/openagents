@@ -22,7 +22,10 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/main.coax",
+    "apps/openagents-web/project-names.coax"
+   ]
   },
   {
    "number": 2,
@@ -43,7 +46,10 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/crypto/secp_group.coax",
+    "coax/lib/crypto/secp_mult_const.coax"
+   ]
   },
   {
    "number": 3,
@@ -88,7 +94,10 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "psionic/lib/model-io/identity.coax",
+    "psionic/lib/pylon/host.coax"
+   ]
   },
   {
    "number": 5,
@@ -108,7 +117,9 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/crypto/hkdf.coax"
+   ]
   },
   {
    "number": 6,
@@ -127,7 +138,9 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/nip44.coax"
+   ]
   },
   {
    "number": 7,
@@ -149,7 +162,10 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/crypto/secp_group.coax",
+    "coax/lib/crypto/secp_group32.coax"
+   ]
   },
   {
    "number": 8,
@@ -169,7 +185,9 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/crypto/secp_mult_const.coax"
+   ]
   },
   {
    "number": 9,
@@ -189,7 +207,9 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/crypto/secp_mult_const.coax"
+   ]
   },
   {
    "number": 10,
@@ -213,7 +233,9 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/crypto/ecdh.coax"
+   ]
   },
   {
    "number": 11,
@@ -237,7 +259,11 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-web/nip01-verify.coax",
+    "coax/web/api/nip98.coax",
+    "coax/web/project/landing-nostr.coax"
+   ]
   },
   {
    "number": 12,
@@ -259,7 +285,10 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "psionic/lib/fleet/runtime.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 13,
@@ -282,7 +311,9 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/event_sign.coax"
+   ]
   },
   {
    "number": 14,
@@ -305,7 +336,9 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/nip44-key.coax"
+   ]
   },
   {
    "number": 15,
@@ -325,7 +358,10 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-web/project-names.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 16,
@@ -344,7 +380,10 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-web/project-names.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 17,
@@ -367,7 +406,11 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-web/project-fold.coax",
+    "psionic/lib/model-io/reader.coax",
+    "psionic/lib/pylon/selfcheck.coax"
+   ]
   },
   {
    "number": 18,
@@ -388,7 +431,9 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/nip44.coax"
+   ]
   },
   {
    "number": 19,
@@ -433,7 +478,11 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "psionic/lib/fleet/runtime.coax",
+    "psionic/lib/mesh/opening.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 21,
@@ -457,7 +506,11 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/main.coax",
+    "coax/web/project/landing-nostr.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 22,
@@ -499,7 +552,9 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/web/project/landing-nostr.coax"
+   ]
   },
   {
    "number": 24,
@@ -521,7 +576,10 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/relay/relay.coax",
+    "coax/web/project/landing-nostr.coax"
+   ]
   },
   {
    "number": 25,
@@ -563,7 +621,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/net/relay_conn_rules.coax"
+   ]
   },
   {
    "number": 27,
@@ -582,7 +642,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/relay_server.coax"
+   ]
   },
   {
    "number": 28,
@@ -606,7 +668,11 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/relay.coax",
+    "psionic/lib/fleet/runtime.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 29,
@@ -627,7 +693,10 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/relay.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 30,
@@ -648,7 +717,10 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/relay.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 31,
@@ -669,7 +741,10 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/relay.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 32,
@@ -735,7 +810,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/relay/relay.coax"
+   ]
   },
   {
    "number": 35,
@@ -761,7 +838,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/store_saved.coax"
+   ]
   },
   {
    "number": 36,
@@ -783,7 +862,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/relay_store.coax"
+   ]
   },
   {
    "number": 37,
@@ -803,7 +884,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/relay/relay.coax"
+   ]
   },
   {
    "number": 38,
@@ -825,7 +908,11 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/relay.coax",
+    "coax/relay/relay.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 39,
@@ -847,7 +934,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/store_saved.coax"
+   ]
   },
   {
    "number": 40,
@@ -868,7 +957,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/relay_store.coax"
+   ]
   },
   {
    "number": 41,
@@ -889,7 +980,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/lib/nostr/relay_store.coax"
+   ]
   },
   {
    "number": 42,
@@ -909,7 +1002,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/relay/relay.coax"
+   ]
   },
   {
    "number": 43,
@@ -955,7 +1050,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/relay/relay.coax"
+   ]
   },
   {
    "number": 45,
@@ -1002,7 +1099,10 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/main.coax",
+    "coax/lib/nostr/weblogin.coax"
+   ]
   },
   {
    "number": 47,
@@ -1065,6 +1165,7 @@
     "coax/lib/nostr/nip98-observe.coax",
     "coax/lib/nostr/nip98-tags.coax",
     "coax/lib/nostr/weblogin.coax",
+    "coax/lib/nostr/nip98_sign.coax",
     "coax/web/api/nip98.coax",
     "nostr/examples/checks/http-auth.coax",
     "nostr/examples/http-auth.coax"
@@ -1073,7 +1174,10 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/api.coax",
+    "coax/web/api/nostr.c"
+   ]
   },
   {
    "number": 50,
@@ -1136,7 +1240,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-web/project-fold.coax"
+   ]
   },
   {
    "number": 53,
@@ -1222,7 +1328,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "coax/relay/relay.coax"
+   ]
   },
   {
    "number": 57,
@@ -1782,7 +1890,11 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/pylon.coax",
+    "coax/web/project/landing-nostr.coax",
+    "psionic/lib/pylon/run.coax"
+   ]
   },
   {
    "number": 83,
@@ -1871,7 +1983,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-desktop/zeron/microcoder.coax"
+   ]
   },
   {
    "number": 87,
@@ -2154,7 +2268,11 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-cli/project-landing.coax",
+    "apps/openagents-cli/project.coax",
+    "apps/openagents-web/project.coax"
+   ]
   },
   {
    "number": 99,
@@ -2169,6 +2287,7 @@
    "source": [
     "apps/openagents-web/nip01-verify.coax",
     "coax/lib/nostr/weblogin.coax",
+    "coax/web/api/nip98.coax",
     "nostr/examples/web-sign-in.coax",
     "nostr/examples/checks/web-sign-in.coax"
    ],
@@ -2176,7 +2295,10 @@
     "cpu",
     "wasm"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-web/private-face.c",
+    "coax/web/api/nostr.c"
+   ]
   },
   {
    "number": 100,
@@ -2200,7 +2322,10 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "psionic/lib/mesh/hooks.coax",
+    "psionic/platform/pylon-build.sh"
+   ]
   },
   {
    "number": 101,
@@ -2211,8 +2336,7 @@
    "depends_on": [
     85,
     71,
-    72,
-    "aethyr:49"
+    72
    ],
    "source": [
     "verse/wallet.coax",
@@ -2227,7 +2351,9 @@
    "qualified_targets": [
     "cpu"
    ],
-   "adopted_by": []
+   "adopted_by": [
+    "apps/openagents-ios/OpenAgents/Wallet/SparkHost.swift"
+   ]
   },
   {
    "number": 102,

@@ -30,7 +30,10 @@ status, profile, dependencies and three separate facts:
   `cuda`, `metal` or `wasm`, with recorded evidence for the chapter's
   profile. Source that might compile for a target doesn't qualify it.
 - **Adoption** (`adopted_by`): code outside the book that uses the chapter's
-  code today. An empty list means no adoption is recorded.
+  implemented components today. A host, build binding or another library can
+  consume one component without adopting the entire profile. Tests, examples
+  and fixtures are evidence, not adoption. An empty list means no reviewed
+  consumer is recorded, not that none exists.
 
 A chapter's status is one of *implemented*, *partly implemented*, *design
 draft* or *planned*. A design draft starts with the quoted design-draft marker above, and a partly implemented chapter with `**Status: partly implemented.**`. `python3 psionic/tests/book.py` fails when a status marker, a
@@ -60,7 +63,30 @@ affine section is an example: a hand calculation, `examples/ch29_frames.coax`,
 a refused program with `E0834`, and a `#test` that compares the result with
 plain arithmetic.
 
-To find a route through the three books (write current Coax, build a playable realm, run an original model or train a small model), see [Paths through the books](../../docs/books/paths.md).
+To find a route through the four books, see [Paths through the
+books](../../docs/books/paths.md). The [shared completion
+milestones](../../docs/books/completion.md) distinguish runnable teaching
+profiles from complete training, serving, game and robotics workflows.
+
+## Recorded adoption and remaining integration
+
+The registry now records reviewed consumers of selected implemented components.
+This is a source inventory, not a new deployment or target qualification.
+
+| Chapters | Component and actual consumer | Boundary |
+| --- | --- | --- |
+| 14, 19–21 | Original decision/session and serving code is reused by the serving library and native build. | A reusable session does not establish every original model/request/backend profile. |
+| 22, 24–25 | The supervisor installer, Pylon join script and public mesh effects bridge consume the managed service, Pylon and fleet paths. | Free public admission and exact model/provider pins retain their existing limits; this is not paid or generally trusted remote execution. |
+| 28–29, 31–32 | Everglade's guard policy/session and actual page host use the ticket and Directions components. | The displayed tip remains the deterministic local rule. Optional remote shadows do not establish usefulness or enable ambient/model-selected behavior. |
+| 37, 44, 46–47 | The native serving build emits the shared device kernels and memory plans. | Use of a common plan does not qualify every checkpoint or mean Mammoth is deployed on Metal. |
+| 66–67, 70, 79 | The resident device host composes kernels, prefill and replay; `serve-gptoss.sh` binds the Responses host. | The original 20b CUDA/Metal and Responses records retain their distinct supported scopes. |
+| 151 | Whisper's frontend loads the spectral component. | Spectral reuse does not implement the planned Parakeet chapters. |
+| 218 | The Pylon runner invokes the self-check component before advertisement. | A self-check is not remote attestation or proof of general model quality. |
+
+The source inventory also names principal runtime units for chapters that
+previously listed only a small example or no source. The trainer/framework,
+production scheduler/cache, multi-device and gait integrations still have the
+open gates in their chapters; adoption does not promote them automatically.
 
 Commands run from the OpenAgents repository root. `psionic/check.sh` checks the
 whole current book and library. Build once with `coax/build.sh` if you want to
@@ -98,7 +124,7 @@ run examples directly without the check command.
 | [28. A decision arrives while play continues](ch028-a-decision-arrives-while-play-continues.md) | Runnable: local ticket and cancellation effects | Bounded consumer tickets, monotonic deadlines, cancellation, late-response fencing and exactly-once game admission with a deterministic fallback. [Delivery plan](../../docs/verse/pylon-guard-decisions.md). |
 | [29. A guard asks a Pylon](ch029-a-guard-asks-a-pylon.md) | Partly implemented: opt-in guard shadow slice, qualified locally and live | Authored quiet, greeting and weather options, current-state revalidation and end-to-end gates. Usefulness and ambient behavior are pending. |
 | [30. Measure a guard decision](ch030-measure-a-guard-decision.md) | Runnable: bounded measurements and real Elephant evaluation; no gain over quiet | Local telemetry, frozen labels and actual cookie-authenticated evidence. |
-| [31. Directions on request](ch031-directions-on-request.md) | Partly implemented: explicit-help candidate; separate live smoke evaluation | Fixed authored routes, strong local reference and current-ticket ownership; page integration remains gated. |
+| [31. Directions on request](ch031-directions-on-request.md) | Partly implemented: explicit-help candidate; separate live smoke evaluation | Fixed authored routes, strong local reference and current-ticket ownership; chapter 32 delivers local-first page integration, while remote usefulness remains gated. |
 | [32. A guard gives directions](ch032-a-guard-gives-directions.md) | Runnable: instant local help and opt-in remote shadow in the actual game | Current-world projection, same-frame HUD handoff and cancellation under changing gameplay. |
 | [33. Measure the work and plan the memory](ch033-measure-the-work-and-plan-the-memory.md) | Partly implemented: rp-plan-v1 exact accounting and residency plan; rf-host-v1 roofline on one host (timed phases of a real run, measured allocation against the plan and a quiet-host repeat remain) | Exact weight, state and scratch bytes, FLOPs and bytes moved per phase for Elephant, Mammoth and gpt-oss; a measured single-thread host roofline; a residency plan that admits, streams or refuses with a typed reason. |
 | [34. Benchmark against llama.cpp and cuBLAS](ch034-benchmark-against-llama-cpp-and-cublas.md) | Partly implemented: cm-warm-v1 comparison protocol; Psionic CUDA projections against opt-in cuBLAS on one host (llama.cpp on the same GGUF file, the llama-bench shapes and a quiet-machine run remain) | One warm-up and at least five warm runs per side, mean and sample standard deviation by two methods checked against an exact integer formula, and a verdict that refuses different files, formats, shapes or machines and unrecorded builds; Psionic's projections reach 76–92% of cuBLAS BF16 at one token and 10–16% at 86. |
@@ -307,7 +333,7 @@ run examples directly without the check command.
 | [237. Composable weight modules](ch237-composable-weight-modules.md) | Runnable: module-v1, bounded CPU binary64 | Chapter 229's blocks pinned by a digest of their shape and weight bits; two link into one block through a glue layer and a range-checked seam, and must replay the chain and the composed graph exactly; labels say how a user can check a module: exact, tests, statistical or none. |
 | [238. Pay for verified work](ch238-pay-for-verified-work.md) | Unimplemented: design draft | A run that pays worker and validator in Bitcoin only for exactly replayed traces, after a self-test, with receipts before settlement and owner caps. |
 | [239. A suite is three digests](ch239-a-suite-is-three-digests.md) | Runnable: sha256-suite-v1, chapter 16's held-out suite | Pin the items with their partitions, the questions and the gate as three SHA-256 digests, keep results in an append-only receipt chain where a locked partition is read once, and compare two results only over the same items, gate and partition, so rewording a question is measured rather than hidden. |
-| [240. How far a metric moves by itself](ch240-how-far-a-metric-moves-by-itself.md) | Runnable: cpu-f64-noise-v1, synthetic suite and Elephant's chapter 12 run | Measure the noise floor from blocks of seeds and the spread of a gain by drawing whole tasks again, show that drawing items understates it, and refuse a partition already within the floor of its ceiling, which refuses accuracy on Elephant's 12-of-12 held-out suite. |
+| [240. How far a metric moves by itself](ch240-how-far-a-metric-moves-by-itself.md) | Runnable: cpu-f64-noise-v1, synthetic suite and Elephant's chapter 16 run | Measure the noise floor from blocks of seeds and the spread of a gain by drawing whole tasks again, show that drawing items understates it, and refuse a partition already within the floor of its ceiling, which refuses accuracy on Elephant's 12-of-12 held-out suite. |
 | [241. Gates that can say unverifiable](ch241-gates-that-can-say-unverifiable.md) | Runnable: cpu-f64-verdict-v1, chapters 16, 215, 216 and 240 reporting | Decision, probability and evaluation gates whose verdicts are passed, failed or unverifiable with a reason: gains only beyond the noise floor on partitions with headroom, log loss and confident errors ranked above calibration error and accuracy (which fails chapter 215's binned map for question 1), and time limits that block chapter 216's background record. |
 | [242. Environments with checkers](ch242-environments-with-checkers.md) | Runnable: cpu-int-env-v1, a simulated agent | A task, a checker, a budget and a reference solution as one digested record, admitted only when the checker fails on empty work, passes the reference and fails a near miss; rollouts whose digest chains every attempt and verdict, accepted only when a replay reproduces them. |
 | [243. Fit settings on recorded answers](ch243-fit-settings-on-recorded-answers.md) | Runnable: cpu-f64-settings-v1, a simulated stall detector | Fit a weight, a threshold and a cut point from recorded answers with no model calls: midpoint candidates, a coordinate search priced by written costs and an optional grouped cross-validation rule; the fitted detector passes chapter 241's gate on a held-out set read once, and cross-validation against fit-set gains alone comes out unverifiable. |
@@ -319,7 +345,14 @@ run examples directly without the check command.
 | [249. An agent optimizes a Psionic kernel](ch249-an-agent-optimizes-a-psionic-kernel.md) | Runnable: DEVICE-F32-CHUNKED-v1 norm, recorded on an NVIDIA L4; CPU checks anywhere | A bounded tuner and then an agent search chapter 37's compute subset for Elephant's offset RMS norm under a declared contract, with held-out cases, bounds traps and bit-for-bit device checks outside the agent's reach: the tuner is 1.73 times faster than chapter 44's kernels, the agent's winner 2.85 times faster than the tuner, and every evaluation, failures included, is kept in a ledger. |
 | [250. Can someone use Psionic instead of PyTorch?](ch250-can-someone-use-psionic-instead-of-pytorch.md) | Unimplemented: design draft | An externally consumable Psionic package and model audit command, tested by rebuilding three PyTorch tutorials with public APIs and zero engine modifications. |
 
-Chapters 103–104 start learning from data on chapter 4's operations, 105 breaks that training six ways and diagnoses each fault, 108 chooses which labels to buy and asks whether that beats random selection, 110 plans, learns and replans in a grid world when a wall moves, 140 post-trains a stand-in decision model with low-rank adapters and promotes one only through both decision and probability gates, 106 differentiates any of chapter 38's tensor programs, 215 fits its own calibration, 216 derives thresholds from written costs, 217 watches them drift, 249 checks a Pylon against shipped answers before it serves, 219 sets how far apart two honest answers may be, 220 reads a bounded ONNX graph and 221 writes one, 224 shadows a new model before promoting it, 239 pins a suite as three digests, 240 measures how far a metric moves by itself, 241 turns that into verdicts, 242 admits environments only with working checkers, 243 fits settings on recorded answers, 244 searches policies cheapest first, 245 evolves a prompt with a reflector under a budget, 246 measures and gates a judge before its grades count, 247 turns outcomes into training rows, 248 asks whether the loop is improving, 249 lets an agent optimize a kernel under an evaluator it cannot touch, 225 uses chapter 103 to learn which model to call, chapters 60–77 start an independent gpt-oss branch, and 226–234 and 237 open Part XXIII, with 235 asking whether gradient descent can learn exact execution and 236 keeping a compiled core exact behind a learned interface (programs compiled into weights); unlisted chapters in 18–59 remain planned.
+The learning route starts with chapters 103–104, then the tensor/function
+transforms in 106–107, the tiny decoder in 112–118 and nanochat in 123–139.
+Their status rows distinguish bounded CPU implementations, actual device
+training and the remaining generality/performance work. Chapter 218 checks a
+Pylon before advertisement; chapters 215–225 and 239–249 supply calibrated,
+measured decision/evaluation components with their stated real or simulated
+inputs. The table and registry, rather than an unlisted-chapter rule, determine
+which chapters are implemented, partial or drafts.
 
 The [contents](SUMMARY.md) list completed chapters; the [chapter plan](PLAN.md)
 sets the proposed full reading order: early Elephant/Mammoth and useful

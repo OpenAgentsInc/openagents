@@ -183,7 +183,7 @@ credentials, or downloads at run time.
 | [book/examples.json](book/examples.json) | Complete runnable example inventory and expected statuses. |
 | [fixtures/](fixtures/) | Stable teaching transcripts. |
 
-Current scope is synchronous CPU execution on the tested Apple LP64 host:
+Chapter 1's initial learning profile is synchronous CPU execution on the tested Apple LP64 host:
 1–16 paired samples, 1–64 updates, a fixed learning rate `1/8`, and inputs,
 targets, initial and candidate weights in `[-16, 16]`. Prediction accepts a
 weight and input in that range. The book documents capacities, failure
@@ -231,11 +231,16 @@ on the RTX 4080 in about 1.6 s, streaming most of its weights over PCIe.
 suffixes as one pass over the weights, bit-identical to forking them one at a
 time: Mammoth's five-question Lab request on the 4080 drops from 9.3 s to 3.3 s.
 <!-- capability-claim: psionic.autodiff.current -->
-Autodiff is implemented in two bounded CPU profiles: the binary64 scalar tape
+Autodiff includes bounded CPU profiles: the binary64 scalar tape
 in [chapter 104](book/ch104-gradients-as-a-program.md) and first derivatives over
 32-node f32 tensor programs in
-[chapter 106](book/ch106-differentiate-any-tensor-program.md). General function
-transforms, higher derivatives and device backward execution remain planned.
+[chapter 106](book/ch106-differentiate-any-tensor-program.md), and
+[chapter 107](book/ch107-transform-functions-not-just-tensors.md)'s permanent-IR
+function transforms through order two. These transform checked graphs, not
+arbitrary Coax functions. [Chapter 129](book/ch129-train-a-whole-model-on-one-gpu.md)
+executes the tiny decoder's forward/backward and optimizer on CUDA with exact
+resume under its recorded profile. Its current device step is slower than the
+CPU; efficient cooperative backward, broader models and mixed precision remain.
 Original gpt-oss 20b GPU execution and a bounded Responses edge are qualified
 separately above; neither extends the autodiff profile.
 <!-- /capability-claim -->

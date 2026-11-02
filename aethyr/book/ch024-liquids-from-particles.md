@@ -80,6 +80,11 @@ offering a stub.
 
 ## Dependencies
 
-Chapter 23's neighbors; chapter 29's coupling for boundary forces.
-Rendering of a surface from particles is chapter 34's. From Coax: R15,
-R21, R23.
+Chapter 23's neighbors supply the first fluid profile, with prescribed
+boundary geometry and motion. It can qualify fluid forces and the dam break
+before another solver responds to the fluid.
+
+Chapter 29 later adds two-way boundary forces: the floating-cube acceptance
+check needs that coupling and remains required for the coupled profile.
+Rendering a surface from particles is chapter 34's observation integration,
+not a prerequisite for computing the fluid state. From Coax: R15, R21, R23.

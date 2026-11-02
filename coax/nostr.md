@@ -1,6 +1,7 @@
 # Coax Nostr: shared crypto, clients and authority
 
-Plan, reconciled 2026-10-28 against remote main `1357c44a52`. The implementation
+Plan, initially reconciled 2026-10-28 against remote main `1357c44a52`;
+consumer inventory reconciled 2026-11-01 against `6f4c722640`. The implementation
 is incremental: the target is one reusable Coax stack for web, iOS, native tools
 and Verse. This document is not a claim that the target already exists.
 
@@ -11,16 +12,22 @@ Published task slugs and event IDs stay stable. `blocked_by` defines readiness;
 finish every optional optimization before another group starts. The Coax language
 roadmap remains the project's first initiative; this is its Nostr initiative.
 
+The [Nostr book completion route](../nostr/book/COMPLETION.md) separates
+implemented teaching profiles, target evidence, direct source adoption and
+production exits. Its 102 implemented chapter labels do not establish full
+implementation of every cited NIP. Dated status entries below remain records
+of their own source, rather than proof that every later consumer is qualified.
+
 ## 1. Baseline and scope
 
 ### 1.1 Already shipped
 
 | Evidence | What it establishes | What it does not establish |
 | --- | --- | --- |
-| `nostr/nips/manifest.json`, `nostr/nips/upstream-lock.json` | Pinned source inventory: 100 official, 20 Block, 36 OpenAgents NIPs | Runtime support for every specification |
+| `nostr/nips/manifest.json`, `nostr/nips/upstream-lock.json`, `profiles.coax` | Pinned upstream inventory: 100 official and 20 Block NIPs. The OpenAgents folder now has 37 specs; the NIP-KEYS addition still needs review and a folder-digest re-pin | Runtime support for every specification or approval of the changed OpenAgents digest |
 | `proto/nostr/README.md`, descriptors, generated Coax codecs | 16 alpha schemas, bounded wire views, presence/oneofs/repeats, unknown retention and protoc interoperability | Signature verification, decryption, membership or executable authority |
 | `coax/lib/crypto/sha256-kernel.coax` | Checked SHA-256 shared by the compiler fingerprint and `sha256.coax` | A qualified streaming crypto API or approved signing path |
-| `coax/web/project/{publish,model,snapshot,relay}.ts` | Real signed project events, NIP-42, verified build-time snapshots, task comments/plans/statuses | Coax crypto, independently authenticated workers or fenced claims |
+| `apps/openagents-cli/project*.coax`, [project-tool migration](../docs/verification/2026-11-01-project-page-coax.md) | Coax project snapshots, indexes, baking, capture and publishing tools replaced the former TypeScript; existing event history is preserved | Independently authenticated workers or fenced claims; verification of every live project-page event |
 | `coax/web/unlock/` | Working TypeScript NIP-44/59 encrypted-deck path | Completed Coax migration |
 | `e2f8432ea2` | Compound assignments through indexed views emit valid C | General compiler correctness |
 | `b9a5f216f0` | u32/u64 `value_barrier` and focused native/Wasm codegen tests | Constant-time or secure-erasure proof |
@@ -53,7 +60,9 @@ Further foundations include crypto bytes (`4fcef5f7c1`), bounded Bech32/NIP-19
 (`c29005554f`), the explicit native vector runner (`1b269c7ae3`), streaming SHA-256
 (`3189fb89db`) and the entropy contract (`7ba394d365`). These do not complete a
 production crypto/signing profile. Entropy has Mac, iOS Simulator and actual
-browser evidence; its Linux branch has not run in the recorded test environment.
+browser evidence. The 2026-11-01 Linux native and muted headless Chromium
+rerun is recorded in the [book audit](../docs/verification/2026-11-01-nostr-book-chapters-11-104.md);
+that rerun skipped iOS and does not expand its runtime evidence.
 
 The new structural JSON adapter/policy and its scope are documented in
 [`docs/verification/coax-nostr-json-admission-2026-10-28.md`](../docs/verification/coax-nostr-json-admission-2026-10-28.md).
@@ -488,7 +497,7 @@ Linux Codex task -> progress/result/PR -> fenced completion. Duplicate delivery,
 revocation during a run, disconnected/unknown result and refusal of unauthorized
 commands are required failures, not just a happy-path connectivity probe.
 
-### Live web surface migration inventory (2026-10-29)
+### Live web surface migration inventory (2026-11-01)
 
 The exit is every deployed Nostr consumer using the reviewed Coax stack, not
 merely having shared algorithms or schemas. The current product paths are:
@@ -496,21 +505,25 @@ merely having shared algorithms or schemas. The current product paths are:
 | Surface | Current path | Coax migration and remaining boundary |
 | --- | --- | --- |
 | Live homepage and warm start (2026-10-30) | `openagents project landing` (apps/openagents-cli/project-landing.coax, since 2026-11-01) drives shared Coax verification/messages/filters/pagination/NIP-19, the existing Coax project fold and Psionic beacon/freshness checks; no TypeScript or Nostr SDK | [Migration record](../docs/verification/2026-10-30-newland-coax-nostr.md). Complete bounded captures replace atomically; expired advertisements lose live capacity. `/` and `/new-land` now independently watch verified Pylons and project changes in-browser, repair bounded histories and publish each project atomically. Git trees remain a deployment snapshot. [Launch record](../docs/verification/2026-10-30-live-network-homepage.md); owner auth and worker names grant no authority |
-| Project pages and snapshots | The page folds live relay data in Coax; `openagents project snapshot`, `index` and `bake` (apps/openagents-cli/project-page.coax, since 2026-11-01) assemble the other views with the same Coax fold | `project-page-verify` must verify each live event before trusted admission; `publish-project-events` migrates the existing project tool and preserves its history |
-| API auth, sign-in and data routes | `coax/web/api/nostr.c` provides the shared NIP-98 verifier used by private projects and phone approval, admin, chat, analytics, player and drops | `web-nostr-api-verifier-parity` checks an isolated Coax adapter without changing auth; `web-nostr-api-verifier-cutover` moves actual decisions after session and independent review gates |
+| Project pages and snapshots | The page folds live relay data in Coax; `openagents project snapshot`, `index` and `bake` (apps/openagents-cli/project-page.coax) assemble the other views with the same Coax fold; the former TypeScript project tools are removed ([record](../docs/verification/2026-11-01-project-page-coax.md)) | `project-page-verify` must still verify each live project-page event before trusted admission; this relay-trusted page path is distinct from the homepage's locally verified watch |
+| API auth, sign-in and data routes | `coax/web/api/nostr.c` already calls `nip98_check_coax` from `nip98.generated.c`; the Coax verifier replaced the C decision at `d4cdfc2e8d` | Keep the former C verifier as the differential oracle, not the active check. Route-specific replay reservation, sessions, account mapping and admission remain separate consumers; [chapter 99](../nostr/book/ch099-the-website-and-sign-in.md#the-coax-and-c-verifiers) records parity and the completed cutover |
 | Project/drop publishing | `coax/web/api/{drops,relay}.c` handle keys, event signing and relay AUTH | `web-nostr-api-publisher` uses reviewed Coax signing and relay interfaces only after the secret-source and signer-boundary gates; preserve identities and sealed-key behavior |
-| Hosted project agents | `coax/web/agent/runner.c` has its own event signing and relay path | `web-nostr-agent-publisher` migrates the real runner after the same gates, with independent relay tests and rollback |
+| Hosted project agents | `coax/web/agent/runner.c` signs NIP-98 HTTPS requests with libsecp256k1; it does not run chapter 102's relay-carried agent exchange | `web-nostr-agent-publisher` must migrate the real runner's signing and relay publication after its review gates, preserving identities and history, with staging evidence and rehearsed rollback |
 | Encrypted presentations | `coax/web/unlock/` still includes the TypeScript gate and NIP-44/59 opener | `unlock-gate-coax` and `unlock-opener-coax` need actual consumer migration and rollback, not only isolated fixture success |
 | External signer interface | `coax/web/drop.js` and unlock can invoke a user's NIP-07 signer | Keep external-signer interoperability as an explicitly named interface; it is not evidence that the external signer is implemented in Coax |
 
-The API bridge task `svc-coax-in-api` links Coax into the service but its
-health probe does not verify requests or authorize users. The final
+The API bridge's health probe alone does not verify requests or authorize
+users; the active `nip98_check_coax` call is the separate verification path.
+Do not leave the API-verifier cutover listed as future work. The final
 `web-nostr-surface-retirement` task covers actual staged and production
-consumers, identities, history, privacy and rollback. Production cutover
-remains blocked on independent review and the explicit source-audit and
-signer-boundary tasks; the earlier automatic cybersecurity-review stop is not
-waived. The current C and TypeScript paths remain available until their own
-reviewed cutovers pass.
+consumers, identities, history, privacy and rollback. The signer source audit
+in [issue 4828](../docs/issue4828.md) has completed; this does not approve
+production keys or qualify every host's key custody. Remaining publisher and
+unlock cutovers retain their independent review and signer-boundary gates.
+Keep each current C or TypeScript path until its own reviewed cutover and
+rollback pass. The Pylon runtime still refuses `--key-file`; the owner's
+decision and safe host key-file implementation remain in
+[NEEDS_OWNER.md](../NEEDS_OWNER.md).
 
 ## 14. Block identity, channels and private-agent state
 

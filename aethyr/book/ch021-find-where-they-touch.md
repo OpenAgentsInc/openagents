@@ -109,6 +109,12 @@ than the default until it is shown to give the same contacts.
 
 ## Dependencies
 
-Chapter 20's candidate pairs; chapter 18's poses; chapter 35 for convex
-decomposition and SDF baking. Chapter 32 needs GJK's differentiable form.
-From Coax: R12 frames, R15 strict math.
+Chapter 20's candidate pairs and chapter 18's poses. The first profile uses
+directly authored primitives, convex hulls and SDF fixtures, so the contact
+calculation can be checked before building an asset pipeline.
+
+Chapter 35 later supplies convex decomposition and SDF baking; that asset
+profile still needs import-to-contact checks. Chapter 32 consumes GJK's
+differentiable form; the backward pass does not precede the forward contact
+calculation. These integrations remain part of the full toolbox described
+here. From Coax: R12 frames, R15 strict math.

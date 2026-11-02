@@ -1,7 +1,7 @@
 # Starting point and roadmap
 
 <!-- capability-claim: psionic.execution.current -->
-Status reviewed 2026-10-31: the recorded CPU profiles execute original Elephant
+Status reconciled 2026-11-01 from retained evidence: the recorded CPU profiles execute original Elephant
 and Mammoth text decisions in [chapters 14](../book/ch014-execute-elephant.md)
 and [15](../book/ch015-execute-mammoth.md). The device records cover Elephant
 on CUDA and Metal, and Mammoth on CUDA; [chapter 47](../book/ch047-elephant-on-metal.md)
@@ -17,9 +17,15 @@ V4.1 component records do not qualify a complete V4.1 model.
 CPU autodiff is implemented as a scalar binary64 tape in
 [chapter 104](../book/ch104-gradients-as-a-program.md) and first derivatives of
 32-node f32 tensor programs in
-[chapter 106](../book/ch106-differentiate-any-tensor-program.md). General
-function transforms, higher derivatives and device backward execution remain
-planned. The [book status table](../book/README.md) names each delivered scope;
+[chapter 106](../book/ch106-differentiate-any-tensor-program.md).
+[Chapter 107](../book/ch107-transform-functions-not-just-tensors.md) adds bounded
+function transforms. [Chapter 129](../book/ch129-train-a-whole-model-on-one-gpu.md)
+executes the tiny decoder's forward/backward, gradient reduction and optimizer
+on CUDA, with exact resume under its recorded profile; that run is slower than
+the CPU. General arbitrary-function transforms, broader higher derivatives,
+efficient cooperative backward kernels, broader model coverage and mixed
+precision remain work. The [book status table](../book/README.md) names each
+delivered scope;
 model quality, broader request coverage and additional targets retain their
 own qualification gates.
 <!-- /capability-claim -->
@@ -32,11 +38,21 @@ original `GR00T-N1.7-LIBERO/libero_10` Metal policy profile for one prepared
 140-token observation and all four flow steps. Its
 [retained record](../../docs/verification/psionic-ch113-2026-10-31.md) qualifies
 the action endpoints while preserving the failed global hidden-trace diagnostic.
-Broader GR00T inference profiles, GR00T training, Panda control semantics and
-closed-loop simulation remain work. Chapter 170's integration builds on Coax's
-planned units and frames, typed clocks, bounded control, replay, robot-model
-import, supervision and fault scenarios (roadmap R12–R19) and on chapters 107,
-109 and 111; real hardware stays a separately authorized later integration.
+[Chapter 170](../book/ch170-close-the-simulated-control-loop.md) now closes the
+original-policy LIBERO/Panda loop using MuJoCo as the evaluation backend and a
+Coax controller. Fixed-source robot queries and an unconstrained Euler map have
+their own checked profiles. A fully owned contact/scene/rendering backend,
+broader GR00T inference/training and compiler-enforced bounded control remain.
+Chapters 107, 109 and 111 provide implemented bounded transform/solver
+foundations; the broader Coax frames, clocks, import, supervision and fault
+contracts retain their own roadmap gates. Chapter 171's longer scalar-LQR run
+meets both frozen goals in all three seeds, while neural actor/critic training,
+quadruped physics, gait, device batching and transfer remain work. Real hardware
+stays a separately authorized later integration.
+
+The [shared completion milestones](../../docs/books/completion.md) order the
+remaining integrations. Chapter statuses qualify named teaching profiles;
+adoption of one component does not establish a whole workflow or deployment.
 
 The [device delivery sequence](../book/PLAN.md#gpt-oss-device-delivery-order)
 keeps the remaining target, scheduling and throughput work separate from those
@@ -136,8 +152,8 @@ of at most 1,048,576 values into shared numerical storage.
 [Verification](../../docs/verification/psionic-ch04-2026-10-29.md) covers owned original
 files, malformed artifacts, digest/index/manifest mismatches, native aliases
 and all BF16 encodings in debug/release with sanitizer and mutation gates.
-The artifact slice of M5 is implemented; optimizer/RNG/data-state resume is
-still planned. This reader chapter does not itself qualify whole-model
+The artifact slice of M5 is implemented; chapter 122 separately implements
+experiment-bound optimizer/RNG/data-state resume. This reader chapter does not itself qualify whole-model
 execution. Chapters 14 and 15 record the separate original Elephant/Mammoth
 CPU execution profiles, using the text and forward contracts below.
 

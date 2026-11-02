@@ -9,6 +9,13 @@ authentication, the labor market, the job transport, the claim, the run
 journal and the Lightning proof. It also says plainly which of these parts
 OpenAgents runs in production today and which exist only in this book.
 
+The implemented label covers this offline teaching profile. It does not
+complete the production agent path, and the registry records no direct
+external consumer of the composed CJ/MKT/COORD/RUN exchange. Follow the
+[completion route](COMPLETION.md#4-connect-the-offline-integrations-to-applications)
+for schema, transport, wallet and staged-runner exits. The pending owner
+review of the narrowed offline done criteria remains in `NEEDS_OWNER.md`.
+
 ## What this chapter teaches
 
 - How an owner's NIP-OA attestation lets an agent key into a relay that

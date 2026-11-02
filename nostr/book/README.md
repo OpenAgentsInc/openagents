@@ -2,14 +2,18 @@
 
 Building Nostr in [Coax](../../coax/book/README.md).
 
-This book builds a complete Nostr implementation in Coax with no outside
-libraries. It starts with bytes and big integers, builds SHA-256, HMAC, HKDF,
+This book builds Nostr in Coax, from protocol primitives to client and relay
+programs. It starts with bytes and big integers, builds SHA-256, HMAC, HKDF,
 secp256k1, BIP-340 Schnorr signatures, Bech32, ChaCha20 and NIP-44 from their
 specifications, and then builds the event model, a WebSocket transport, a
-client and a relay on them. Part X covers every NIP pinned in
+client and a relay on them. Part X examines the NIP families in
 [`nostr/nips/`](../nips/README.md): the official set, the OpenAgents set and
-Block's Buzz set. Part XI checks the stack against published vectors and
-other implementations, and Part XII shows where OpenAgents uses it.
+Block's Buzz set. Chapter 104 adds NIP-KEYS; its source-pin review remains
+pending. Part XI checks the stack against published vectors and
+other implementations, and Part XII separates OpenAgents' current consumers
+from offline integration examples and future deployments. Completing the full
+protocol and production scope is the destination; the chapter labels below
+describe the teaching profiles that exist today.
 
 The C host may link one TLS library so native clients reach `wss://` relays.
 Every protocol decision above the socket, including WebSocket framing, Nostr
@@ -25,23 +29,23 @@ The work to implement every chapter is tracked in [issue #12612](https://github.
 
 ## Status
 
-Most of the cryptography and the core event, client and relay code already
-exists in Coax under `coax/lib/crypto/`, `coax/lib/nostr/` and
-`coax/lib/net/`, with checks and verification records in
-`docs/verification/`. The chapters that cover that code are marked
-*Partly implemented*: the code and its checks exist, and the chapter's
-teaching text, worked trace and runnable example are not written yet. Their
-first line under the title is a quoted `**Status: partly implemented.**`
-marker.
-
-A chapter whose status is *Unimplemented: design draft* is written ahead of
-its code. Its first line under the title is a quoted
-`**Status: unimplemented — design draft.**` marker. It says what the chapter
-teaches, with the kinds, tags and messages from the NIP text, what exists
-today, its dependencies, what "done" means and its spec files. It has no
-source-linked listings or examples.
-
 Of the 104 chapters, 102 are implemented and 2 are partly implemented.
+All 104 have runnable examples. Chapters 103 and 104 have teaching text and
+checked components, but their stated exits still require the relay migration
+and actual treasury signing and recovery, respectively.
+
+An *implemented* chapter meets the promotion standard below for its stated
+scope. It does not establish full support for every feature of a cited NIP.
+For example, chapters 75–92 list protocol records and runtime paths they do
+not build. Chapters 101 and 102 compose offline examples; their label does
+not claim live Verse presence, wallet payment or a migrated hosted agent.
+The [completion route](COMPLETION.md) keeps those exits separate.
+
+The code is under `coax/lib/crypto/`, `coax/lib/nostr/` and `coax/lib/net/`,
+with checks and dated evidence in `docs/verification/`. The registry claims
+native CPU qualification for all 104 chapters and Wasm qualification for 21;
+83 remain native-only. These are claims about each chapter's stated profile,
+not about a complete client, relay or application running on both targets.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -51,6 +55,32 @@ profile, its dependencies and three separate facts: its implemented source
 (`adopted_by`). The status table below, the contents and each chapter's
 status marker must agree with it; `python3 psionic/tests/book.py --book nostr`
 fails when they don't.
+
+`adopted_by` lists reviewed direct consumers of a source component outside
+the book. It is not an end-to-end qualification or approval to use production
+keys. A client importing the shared event reader has not thereby adopted
+every NIP-01 feature. An empty list means no direct consumer is recorded;
+it does not rule out transitive use. The registry includes the API's Coax
+NIP-98 bridge, public homepage reader, CLI and Pylon paths. The complete
+agent exchange and Verse zaps remain offline examples. Chapter 97's runnable
+report uses a pinned historical registry snapshot, rather than reading this
+current registry.
+
+| Direct consumer | Adopted component | Scope still outside that edge |
+| --- | --- | --- |
+| `coax/web/api/nostr.c` | Chapter 49's Coax NIP-98 verification through its generated C | Route-specific replay, sessions and account admission; other signers |
+| `coax/web/project/landing-nostr.coax` | Public event verification, messages, filters, names and beacon checks | Complete relay history or trust in provider declarations |
+| `apps/openagents-cli/main.coax`, `relay.coax`, `api.coax` | Identity derivation, event signing, relay and NIP-98 requests | The hosted runner's migration and rollback |
+| `psionic/lib/pylon/run.coax` | NIP-42, signed events, NIP-44 and the Pylon queue | Production key custody and every deployment target |
+| `apps/openagents-ios/OpenAgents/Wallet/SparkHost.swift` | Chapter 101's existing wallet rules | NIP-MV presence, Verse zaps and Spark-backed Wallet Connect |
+
+### What remains
+
+Follow [Completion route](COMPLETION.md) in order: close recorded integration
+and pin debt, qualify consumer profiles on their actual targets, finish relay
+feature parity and production migration, connect the offline Verse and agent
+examples to applications, and finish treasury signing and independent recovery.
+The route names each required result and the dependencies in the other books.
 
 ## Promoting a draft to a teaching chapter
 
@@ -75,7 +105,8 @@ its label in the [contents](SUMMARY.md) and its row in the table below. The
 registry check fails when they disagree.
 
 To find a route through the four books, see
-[Paths through the books](../../docs/books/paths.md).
+[Paths through the books](../../docs/books/paths.md) and the shared
+[completion milestones](../../docs/books/completion.md).
 
 ## Writing style
 

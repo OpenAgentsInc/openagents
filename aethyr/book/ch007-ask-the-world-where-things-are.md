@@ -648,8 +648,8 @@ give the same answer.
 
 This chapter uses world space from [chapter 2](ch002-spaces-and-units.md).
 Collider IDs that survive spawn and despawn come from
-[chapter 6](ch006-entities-are-born-and-die.md). The physics part adds its
-own broad and narrow phases
+[chapter 6](ch006-entities-are-born-and-die.md). These are the minimum
+teaching prerequisites. The physics part later adds its own broad and narrow phases
 ([chapter 20](ch020-find-the-pairs-that-might-touch.md),
 [chapter 21](ch021-find-where-they-touch.md)), which must agree with these
 queries on shared shapes. From Coax, R12 frames and R15 strict math come

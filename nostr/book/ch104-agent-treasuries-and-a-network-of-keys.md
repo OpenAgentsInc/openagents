@@ -7,6 +7,13 @@
 > built, so the chapter's first two "Done means" lines don't hold yet. See
 > [Not built](#not-built).
 
+The chapter qualifies checking contracts on native CPU. It records no
+external treasury consumer and no Wasm qualification. Those claims stay
+separate from the missing signatures and signet recovery in the
+[completion route](COMPLETION.md#5-finish-treasury-signing-and-independent-recovery).
+The OpenAgents NIP-KEYS source-pin review remains pending; this chapter does
+not approve a replacement digest.
+
 An agent that earns and spends bitcoin needs somewhere safe to keep it. One
 hot key on the agent, or one wallet host, is a single point of failure. This
 chapter builds the checking half of the alternative: a wallet whose coins

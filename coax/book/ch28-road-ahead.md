@@ -26,6 +26,11 @@ points at which the plan says to stop.
 > The stage numbers here remain coarse topic identifiers, not a requirement
 > to finish unrelated work in numerical order. None has a date.
 
+The [book's completion route](README.md#completion-route) connects that roadmap
+to current teaching chapters, shared application contracts, physical-world
+capstones, solver compute and the supported toolchain. A completed teaching
+profile and a completed product or target gate remain separate facts.
+
 ## Where things stand
 
 The current compiler compiles bounded source graphs to C11 using `#load`. It has sized
@@ -64,6 +69,15 @@ generic bodies and their concrete bindings. General user-defined traits
 and operator overloading remain planned, and generic struct bindings
 still reject views and view-containing values. Chapters 8 and 10 and the
 generated status catalogue describe the exact subset and its limits.
+
+Borrow diagnostics have also moved beyond direct local-array returns.
+Supported helper/aggregate returns preserve known origins, and bounded
+retained-store checking rejects known callee-local backing stored in caller
+or static storage. The [returned-borrow](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-return-borrows.md)
+and [retained-store](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-retained-stores.md)
+contracts identify the qualified subsets. Recursive and unmodeled relations,
+helper-write/returned-carrier composition and asynchronous ownership retain
+their separate limits; general lifetime safety has not shipped.
 
 Native C also supports [nominal scalar quantities](https://github.com/OpenAgentsInc/openagents/blob/main/coax/QUANTITIES.md) with
 `f32` or `f64` carriers and explicit binary-scale unit conversion. The Grid's
@@ -127,10 +141,11 @@ code could move onto generated protocol types, and that didn't depend on
 reflection, build programs or effects. Stage 6 expands that foundation; it
 didn't wait for everything ahead of it in the table.
 
-Source composition removes the shell-concatenation workaround in Chapter 10
-and keeps physical-file authority scopes. It is a prerequisite for later
-build workspaces, not a replacement for stage 2's remaining C-header, real
-engine and measured target evidence.
+Source composition, logical modules, qualified names and explicit exports
+provide Chapter 10's current organization model while keeping physical-file
+authority scopes. Generated-work scheduling, richer module configuration and
+build workspaces remain later work. These delivered facilities do not close
+stage 2's remaining C-header and measured adoption/target gates.
 
 ## The rest of stage 2
 

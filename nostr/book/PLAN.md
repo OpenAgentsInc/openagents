@@ -7,6 +7,14 @@ it implements. Spec files are in [`nostr/nips/`](../nips/README.md), pinned by
 `nostr-protocol/nips`, the OpenAgents NIPs, and the Block NIPs from
 `block/buzz`.
 
+The "Done means" column is the exit for a chapter's stated teaching profile.
+An implemented chapter can still leave part of a cited NIP unbuilt; the
+chapter and README result say which part. Target qualification and direct
+consumer adoption are separate fields in [chapters.json](chapters.json).
+Neither one approves a deployment or production keys. The
+[completion route](COMPLETION.md) orders the remaining protocol, application
+and deployment work without changing those chapter labels.
+
 ## What you need first
 
 - The Coax language: [Coax book](../../coax/book/README.md) Parts I–III,
@@ -29,10 +37,10 @@ it implements. Spec files are in [`nostr/nips/`](../nips/README.md), pinned by
 | VI. The event model | 21–25 | Events you can verify and sign, kinds and tags, filters, every relay message and gift wrap. |
 | VII. Transport | 26–28 | A WebSocket client and server in Coax over the host's socket and TLS. |
 | VIII. A client | 29–33 | A client that subscribes, publishes, follows the outbox model and survives restarts. |
-| IX. A relay | 34–44 | A relay with durable storage, indexes, NIP-11, NIP-42, deletion, counts, search, protected events, negentropy and limits. |
-| X. Every NIP | 45–92 | Every pinned NIP, grouped by subject: the official set, the OpenAgents set and the Block set. |
+| IX. A relay | 34–44 | Checked relay components for durable storage, indexes, NIP-11, NIP-42, deletion, counts, search, protected events, negentropy and limits; chapter 103 identifies which the running relay wires in. |
+| X. Every NIP | 45–92 | Every pinned NIP examined by subject, with the implemented subset and omissions stated: the official set, the OpenAgents set and the Block set. |
 | XI. Interop and verification | 93–97 | Pinned vectors, differential tests, fuzzing, stated properties and a conformance report. |
-| XII. Nostr in OpenAgents | 98–104 | Projects, sign-in, Pylons, the Verse, agents, the production relay and agent treasuries on this stack. |
+| XII. Nostr in OpenAgents | 98–104 | Current project, sign-in and Pylon consumers; offline Verse and agent examples; the remaining relay migration and treasury exits. |
 
 Parts I–VI form one chain: each chapter uses only earlier ones. Part VII needs
 Part I and SHA-1 for the handshake. Part VIII builds the client and Part IX the
@@ -47,8 +55,9 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
   `unrecommended` (03, 04, 06, 08, 15, 26, 28, 31, 72, 90, 96, BE and EE) are
   described with their status. NIPs merged into NIP-01 (12, 16, 20 and 33) are
   covered in Part VI.
-- **OpenAgents NIPs** (`nostr/nips/openagents/`): all 36 specs and the shared
-  contracts, in chapters 75–86.
+- **OpenAgents NIPs** (`nostr/nips/openagents/`): 36 specs and the shared
+  contracts in chapters 75–86, plus NIP-KEYS in chapter 104. The added spec
+  makes 37; its review and the folder-digest re-pin remain pending.
 - **Block NIPs** (`nostr/nips/block/`): the 20 Buzz extension specs from
   `block/buzz` (`docs/nips`), in chapters 87–92.
 - **Payments.** Lightning zaps (NIP-57), zap goals (NIP-75), Wallet Connect
@@ -218,7 +227,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | [98. Projects on Nostr](ch098-projects-on-nostr.md) — implemented | 63, 30, 21 | A forged or out-of-scope event never enters the verified view. The fold of a captured relay matches its recorded tables. | [NIP-34](../nips/official/34.md), [NIP-22](../nips/official/22.md) |
 | [99. The website and sign-in](ch099-the-website-and-sign-in.md) — implemented | 46, 49 | The Coax verifier and the C verifier agree on every recorded request. A login event reused after its window refuses. | [NIP-98](../nips/official/98.md), [NIP-06](../nips/official/06.md) |
 | [100. Pylons and the mesh](ch100-pylons-and-the-mesh.md) — implemented | 82, 20, 38, psionic:24 | A Pylon serves a self-test decision through the Coax relay. A request sealed to another provider is not decrypted. | [OpenAgents NIP-PYLON](../nips/openagents/NIP-PYLON.md), [NIP-44](../nips/official/44.md) |
-| [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) — implemented | 85, 71, 72, aethyr:49 | Offline, on a fixed clock: two players see each other's NIP-MV presence through the Coax relay's EVENT path within the latency budget, and one zap goes from request to counted receipt and balance change. A zap request over the wallet's limits is refused by `verse/wallet.coax`'s rules. | [OpenAgents NIP-MV](../nips/openagents/NIP-MV.md), [NIP-57](../nips/official/57.md), [NIP-47](../nips/official/47.md) |
+| [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) — implemented | 85, 71, 72 | Offline, on a fixed clock: two players see each other's NIP-MV presence through the Coax relay's EVENT path within the latency budget, and one zap goes from request to counted receipt and balance change. A zap request over the wallet's limits is refused by `verse/wallet.coax`'s rules. | [OpenAgents NIP-MV](../nips/openagents/NIP-MV.md), [NIP-57](../nips/official/57.md), [NIP-47](../nips/official/47.md) |
 | [102. Agents on Nostr](ch102-agents-on-nostr.md) — implemented | 79, 80, 13, 87, 78, 76 | An agent with an owner attestation authenticates to a relay (NIP-42 and NIP-AA), takes a job (MKT, CJ), claims it once (COORD), journals it (RUN), answers and is paid against a Lightning preimage, offline with test keys and a fixed clock; the unattested key, the stale claim, the wrong worker's result and the payment mismatch refuse. The runner's move to the Coax stack in staging, with a rehearsed rollback, is listed as not built. | [OpenAgents NIP-AGENT](../nips/openagents/NIP-AGENT.md), [OpenAgents NIP-CJ](../nips/openagents/NIP-CJ.md) |
 | [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) — partly implemented | 34, 35, 37, 38, 39, 40, 41, 42, 43, 44, 94 | Event-set equality between the two relays at cutover. A rollback rehearsal restores service from the Rust relay. | [NIP-11](../nips/official/11.md) |
 | [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) — partly implemented | 13, 46, 79, 83 | Three software key agents on signet sign a 2-of-3 spend from requests carried over a Coax relay, and a PSBT whose outputs differ from its request is refused by every signer. A coordinator outage is recovered from one key agent's copy of the descriptor with an independent wallet tool. | [OpenAgents NIP-KEYS](../nips/openagents/NIP-KEYS.md), [OpenAgents NIP-SOV](../nips/openagents/NIP-SOV.md), [OpenAgents NIP-ATT](../nips/openagents/NIP-ATT.md) |

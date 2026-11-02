@@ -73,5 +73,12 @@ and always report per-environment rates next to aggregate ones.
 
 ## Dependencies
 
-Chapters 17 to 30. From Coax: R20 provenance, R21 batch dimension and
-layouts, R23 device graphs.
+Chapters 17–22 supply the first rigid batched profile and its Panda and
+quadruped fixtures. The batch/reset calculation can be qualified before
+particle solvers or material couplers exist.
+
+Chapters 23–30 must each pass batch invariance and reset-isolation checks
+before their batched matrix cells are admitted. They remain part of the
+goal of batching every solver, not prerequisites for batching the rigid
+profile. From Coax: R20 provenance, R21 batch dimension and layouts, R23
+device graphs.

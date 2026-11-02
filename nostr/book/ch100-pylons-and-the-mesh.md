@@ -7,6 +7,12 @@ seal to its key. This chapter follows one job through the Nostr side of a
 Pylon, with test keys and a fixed clock, and shows which parts of the
 exchange are checked and which are only claimed.
 
+The registry records the native Pylon build and the mesh hooks as direct
+consumers of this chapter's source. That adoption does not qualify every host
+or approve production keys. The runtime still refuses `--key-file`; its
+source audit, host key custody and owner approval are separate facts. See the
+[completion route](COMPLETION.md#2-qualify-the-consumers-and-their-target-boundaries).
+
 ## What this chapter teaches
 
 - How a Pylon answers a relay's NIP-42 challenge.

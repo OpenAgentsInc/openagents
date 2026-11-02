@@ -3,8 +3,9 @@
 <!-- coax-release:current:start -->
 Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
-Updated 2026-10-31. Baseline: the current compiler above, including source composition,
-CPU layout reflection and the first R0 benchmark/source-debugging slice. This
+Updated 2026-11-01. Baseline: the current compiler above, including bounded
+generics, logical modules, returned-borrow and retained-store diagnostics,
+source composition, CPU layout reflection and the R0 benchmark/source-debugging slice. This
 revision incorporates the follow-up technical review while retaining the
 evidence and compatibility limits of what has actually shipped. It adds the
 physical-world foundations (R11–R20), including the spacecraft and
@@ -39,17 +40,17 @@ slice as new work. The README's obsolete paynet prerequisite is already fixed.
 
 | Area | Shipped | Still missing |
 | --- | --- | --- |
-| Language core | Scalars, strings, structs/defaults, enums, fixed arrays/views, loops, cleanup, checked casts and ordered evaluation | Tagged results/unions, exhaustive switching, richer procedures, pointers, owned containers and generics |
+| Language core | Scalars, strings, structs/defaults, enums, fixed arrays/views, loops, cleanup, checked casts, ordered evaluation, generic procedures and fixed-storage structs over type/length parameters with built-in constraints | Tagged results/unions, optionals, exhaustive switching, richer procedures, pointers, owned containers, user-defined constraints and operators |
 | Compile-time work | Constants, bounded `#run`, assertions, finite checks, execution coverage for authority units, mutation testing | Typed quotation/insertion, general declaration generation, plugins and a dependency scheduler |
-| Source graph | Checked `#load`, physical-file ownership, bounded graphs, original-file diagnostics/traps, `coax deps` | Namespaces/visibility, parameterized modules, content manifests, packages and incremental invalidation |
-| Reflection | Schema-1 CPU type/field/enum records; constant projections and `#run` tables; a real Haunted House layout consumer | First-class types, stable declaration identity, richer metadata, alternate-target layouts and derivation |
+| Source graph | Checked `#load`, physical-file ownership, bounded graphs, logical module owners, qualified names, explicit exports, nominal declaration IDs, source spans and module content revisions in `coax deps` | Generated-work scheduling, richer module configuration, reexports, parameterized modules, package/lock manifests and general incremental invalidation |
+| Reflection | Schema-1 CPU type/field/enum records; constant projections and `#run` tables; a real Haunted House layout consumer | First-class types, stable field/persistence identities, richer metadata, alternate-target layouts and derivation |
 | Compiler | Coax lexer/parser/checker/source policy, descriptor importer, wire runtime and fingerprinting; explicit reproducible seeds | Coax evaluator, verifier/mutator, emitters and driver; complete debugger/type integration and a resident compiler |
 | Native product | Actual iOS scene/HUD, Grid, movement, animation, wallet rules, Haunted House and voice logic | Measured whole-frame parity against a frozen native reference, broader platform/ABI evidence and complete product migration |
 | Protocols | Selected proto3 descriptor imports, bounded borrowed codecs and real app consumers | Remaining consumer/domain admission paths and consumer-justified schema features |
-| GPU/platforms | Scalar visual functions emitted as Metal; native stage wrappers; Mac/iOS integration; narrow Coaxial Wasm/WebGPU splash | Shared GPU resource declarations, general shader profiles, full engine browser vertical slice and evidence for other targets |
-| Builds/iteration | Single-shot C11 output, shell/Xcode integration, JSON diagnostics, original-source line/name maps and phase timings | Capability-aware `build.coax`, safe editor analysis, cache, transactional reload and additional backends |
+| GPU/platforms | Scalar Metal graphics, bounded CUDA/Metal compute, checked WGSL/SPIR-V graphics emission and existing native/Coaxial consumers | Shared typed GPU resource/layout contracts, further shader profiles and broader target/ABI/device qualification |
+| Builds/iteration | Single-shot C11 output, shell/Xcode integration, JSON diagnostics, original-source line/name maps, phase timings, evidence records and bounded native-check companions | Completed formatting/revision-bound authoring tools, capability-aware `build.coax`, general incremental caching, transactional reload and additional backends |
 | Simulation compute | Bounded CUDA/Metal compute kernels, Psionic's library-level CUDA graph replay and leased DLPack views | Logical shapes separate from physical layouts and placement, visible specialization, measured compile and startup budgets with a correct kernel cache, device graphs and device-side loops as language forms, zero-copy buffer imports with explicit transfers, and kernel differentiation with custom adjoints |
-| Physical-world data | Plain scalar fields with units stated in comments and docs; the simulated robot of Psionic chapter 168; f64 space modules in `verse/` (rigid bodies, contacts, gravity fields including a spinning drum, thrusters and tanks, two-body orbits with a J2000 mean-element ephemeris, patched conics, Lambert transfers and RK4 finite burns, a floating-origin camera) used by Orbit League and Belt 2200 ([space primitives](../docs/verse/space.md)) | Units and frames with full-state and rotating transforms, typed clocks with astronomical time scales, bounded control, deterministic integrators and event location, replay and snapshots, robot-model import, stamped sensors with light-time, supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules |
+| Physical-world data | Nominal/formal scalar quantities, derived units and binary-scale conversions; initial native-C affine points/vectors used by the space camera and Panda FK queries; existing Psionic robot and Verse space simulations still largely use plain numbers and documented conventions ([space primitives](../docs/verse/space.md)) | Full-state and rotating transforms, typed clocks with astronomical time scales, bounded control, strict integrator/event contracts, replay and snapshots, robot-model import, stamped sensors with light-time, supervised simulated actuators, fault scenarios, parameter provenance, fidelity profiles and typed rule modules |
 
 The [source-unit evidence](../docs/verification/coax-source-units-2026-10-28.md)
 and [reflection evidence](../docs/verification/coax-layout-reflection-2026-10-28.md)
@@ -282,8 +283,10 @@ independent numeric, layout and protocol oracles: agreement is not a proof.
 
 ### Early evidence and authoring tools
 
-Start one versioned evidence record using existing commands before waiting for
-plugins or a resident compiler. Bind each claim to source/dependency content,
+Versioned evidence records and bounded native-check companions now ship; see
+[the status catalogue](STATUS.md) and [verification limits](book/ch23-verification-boundaries.md).
+Extend their coverage without waiting for plugins or a resident compiler.
+Bind each claim to source/dependency content,
 compiler/toolchain, target, semantic profile, check/domain selection, execution
 mode, budgets, mutation policy and artifact identities. Keep distinct outcomes:
 **passed**, **counterexample**, **inconclusive**, **infrastructure error** and
@@ -419,12 +422,17 @@ mutating backing bytes or changing domain state can require revalidation.
 
 ## 6. R3 — Make ownership and allocation policies explicit
 
-**First delivery started:** E0383 now rejects straightforward local-array view/string
-returns, simple aliases/slices/casts and conditional arms while preserving
-borrowed parameter returns. [Evidence and limits](verification-local-borrows.md)
-record 553 checker checks and 3,762 killed mutants with zero survivors.
-Interprocedural, aggregate-contained and general region lifetimes remain
-unchecked; the complete borrow/transfer discipline is still work to do.
+**Bounded first deliveries shipped:** E0383 rejects known local backing returned
+directly, through supported helpers or aggregate projections, and known
+callee-local backing retained in caller/static storage. Returned-borrow
+summaries and caller outlives obligations preserve known bad alternatives
+alongside incomplete facts. See the current
+[returned-borrow](verification-return-borrows.md) and
+[retained-store](verification-retained-stores.md) contracts and their qualified
+evidence. The earlier [local-only record](verification-local-borrows.md) retains
+its historical scope. Recursive/unmodeled helper relations, helper-write to
+returned-carrier composition and asynchronous request ownership still need
+separate work; general region and transfer lifetimes remain incomplete.
 **Expansion later:** owning allocations, containers and context after error/cleanup
 and target contracts exist. Early escape diagnostics do not establish general
 memory safety.
@@ -479,16 +487,21 @@ for R15.
 
 ## 7. R4 — Generics, constraints and foundational libraries
 
-**First delivery:** generic copyable values and non-owning operations over fixed
-arrays/views, using R1 identities/targets and the current borrowed ABI. They
-need neither dynamic allocation nor implicit context. Preserve the stated
-lifetime limits; this slice does not infer ownership safety. **Expansion later:**
+**Bounded first delivery shipped:** generic procedures and fixed-storage structs
+over type and length parameters, with built-in `equatable`, `ordered`,
+`numeric` and `copyable` constraints. Shared `coax.bounded` and `coax.sequence`
+consumers use these facilities; [chapter 8](book/ch08-generics.md) and the
+[library contracts](LIBRARIES.md) state their exact limits. They need neither
+dynamic allocation nor implicit context, and do not infer ownership safety.
+**Expansion later:**
 generic owning containers require R2 errors and R3 transfer/invalidation rules.
 
-Implement `$T`/`$N` parameters, generic procedures/types and constraint checking
-with source-level instantiation traces. Specialization keys include resolved
-types, values, targets and relevant options/effects. Bound recursive instances,
-cache repeated work and report instance counts, time and code size.
+Extend the delivered `$T`/`$N` instantiation and diagnostic paths only as
+consumers need them. General user-defined constraints, view-containing generic
+struct bindings and recursive generic calls remain outside the current subset.
+Specialization identity and cost reporting must include resolved types, values,
+targets and relevant options/effects. Keep expansion bounded and report instance
+counts, time and code size.
 
 Add explicit argument baking through the same mechanism. Do not specialize
 every constant call silently. Operator overloads require pure, nonallocating,
@@ -1198,16 +1211,18 @@ dependency or new milestone is justified before that result.
 
 ## 33. Next implementation sequence
 
-This is a priority queue, not a serial barrier. Formatting, scoped evidence
-and simple escape diagnostics can start from current APIs while R0 measurements
-and review remain open; every slice still needs its listed prerequisites.
+This is a priority queue, not a serial barrier. Scoped evidence, native-check
+execution, bounded generics/modules and bounded borrow diagnostics already
+ship. Build on their recorded profiles while R0 measurements and review remain
+open; every new slice still needs its listed prerequisites. The book's
+[completion route](book/README.md#completion-route) maps this queue to chapters.
 
 1. **Finish the existing R0 baseline.** Retain the closed pose median gap,
    frozen reference and current debugging results. Complete device/tail
    budgets, full-loop attribution and independent
    review enforcement. Do not repeat shipped kernel selection/debugging or
    release/status generation, or weaken a budget to close the milestone. Extend
-   the shipped bounded differential tooling; start scoped evidence and the
+   the shipped bounded differential/evidence tooling and add the independent
    authoring-task corpus alongside this work.
 2. **Extend semantic conformance and native check execution.** Preserve the
    0.25.0 independent profile selections and legacy defaults. Expand independent
@@ -1222,19 +1237,22 @@ and review remain open; every slice still needs its listed prerequisites.
 4. **Ship R7 tools early.** Formatting/evidence can use current APIs; typed
    queries and revision-bound fixes use R1. Restricted analysis and useful
    diagnostics must not wait for plugins, macros or owning containers.
-5. **Continue R2 and R3, then owning storage.** Retain the shipped simple
-   local-borrow diagnostics; add typed results, exhaustive cleanup,
+5. **Continue R2 and R3, then owning storage.** Retain the qualified bounded
+   returned-borrow and retained-store diagnostics; finish helper-write/returned
+   carrier composition and request ownership. Add typed results, exhaustive cleanup,
    transfer/deferred-destruction rules and one real
-   asynchronous adapter. R4 non-owning generics and R5 concrete derivation
-   can proceed on their narrower prerequisites; owning libraries wait for R3's
-   expansion.
+   asynchronous adapter. Build on R4's shipped non-owning generics; R5 concrete
+   derivation can proceed on its narrower prerequisites. Owning libraries wait
+   for R3's expansion. Reduce measured analysis cost before growing a nearly
+   exhausted compiler work budget; the retained-store record names the observation.
 6. **Test platform and iteration assumptions early.** Extend Coaxial's existing
    wasm32 probe and run R26's unchanged-layout Mac replacement experiment
    once their exact prerequisites exist. Neither implies full browser support
    or general transactional migration.
-7. **Start the physical-world foundations on the simulated robot.** Once R4's
-   type parameters ship, put the robot's joints and poses on R12 units and
-   frames with built-in operators. Then add R11 effect summaries, R13 clocks
+7. **Extend the physical-world foundations through their consumers.** R4 type
+   parameters and initial R12 scalar/affine types ship. Extend the space
+   camera/Panda FK adoption to full robot joints and poses and the needed frame
+   transforms. Then add R11 effect summaries, R13 clocks
    and R14 bounded control step by step, each through the closed loop of
    Psionic chapters 168–170. Replay (R16) follows R15's strict profiles. Run
    the spacecraft scenario on the same types as they land: full-state frames
