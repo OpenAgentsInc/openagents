@@ -6,9 +6,10 @@
 > registered. A signed plugin installs only when its Nostr signature
 > verifies and its key is trusted. Hooks run on `session_start`,
 > `turn_end` and `tool_call`, and a `tool_call` hook can refuse a call from
-> Claude Code, Codex or Microcoder.
-> Still to come: profiles, capabilities with providers and consumers, the
-> draining state, and third-party plugins in bounded Wasm.
+> Claude Code, Codex or Microcoder. Profiles choose and order a session's
+> plugins, capabilities have a definition, one provider and users, and a
+> plugin drains before it stops. Still to come: third-party plugins in
+> bounded Wasm.
 
 Extensions to the harness need clear ownership. This chapter composes the
 harness from ordered profiles and plugins. Every registration belongs to the
@@ -120,8 +121,9 @@ A command's name must be new: not a built-in (`/help`, `/clear`, `/engine`,
 | active | its registrations are made |
 | failed | admission refused it; the reason is kept and shown |
 | disabled | the person turned it off; it registers nothing |
+| draining | it stops taking new work and finishes what it is running |
 
-`PL_MOVES` lists the nine transitions, and `pl_move` refuses any other.
+`PL_MOVES` lists the twelve transitions, and `pl_move` refuses any other.
 `/plugins` and `coder plugins [--json]` show each plugin's state, its
 commands and hooks, or the reason it failed. `/plugin disable NAME` and
 `/plugin enable NAME` change it, and the `disabled` file keeps the choice.
@@ -130,6 +132,54 @@ commands and hooks, or the reason it failed. `/plugin disable NAME` and
 clash         active    /hello
 demo          failed    a command's name is another plugin's
 ```
+
+### Capabilities
+
+A capability has three roles, each a field of a manifest:
+
+```json
+{"name":"fmt","defines":[{"name":"format","about":"lists files that need formatting"}],
+ "provides":[{"name":"format","run":"gofmt -l ."}]}
+{"name":"tidy","uses":["format"],"commands":[{"name":"tidy","run":"sh -c \"$CODER_CAP_FORMAT\""}]}
+```
+
+- A definition names the capability. Only one active plugin defines a
+  name.
+- A provider gives the command that does it. It needs a definition, and a
+  capability has one provider.
+- A user gets the provider's command as `CODER_CAP_FORMAT` in each of its
+  commands and hooks (the name in capitals, `-` as `_`).
+
+Admission checks all three before it registers anything, so `/tidy` above
+runs `gofmt -l .`. A refusal names the rule: `format already has a
+provider`, `uses lint, which no active plugin provides`, or `it provides
+lint, which no plugin defines`. The capabilities are registrations like the
+commands: each belongs to its plugin and goes with it. `coder plugins`
+lists them (`defines format provides format`, `uses format`).
+
+### Draining
+
+A plugin doesn't stop in the middle of its work. Disabled while its
+command runs, it moves to draining: its commands no longer start and its
+hooks no longer run, but its registrations stay until the command ends,
+then it is disabled. When a provider goes, each plugin that used it drains
+the same way, then fails with `uses format, which lost its provider`.
+Enabling the provider again admits those plugins afresh.
+
+### Profiles
+
+A profile is `~/.openagents/coder/profiles/NAME.json`:
+
+```json
+{"plugins":["fmt","tidy"]}
+```
+
+`--profile NAME` (or `CODER_PROFILE`) loads only the plugins the profile
+names, in its order. Order matters: a plugin is admitted against the ones
+before it, so a user listed before its provider fails, and the first of two
+plugins that take the same command name keeps it. Without a profile, every
+plugin in the directory loads, sorted by name. A profile that isn't there
+stops Coder with exit 2.
 
 ### Signed plugins
 
@@ -147,9 +197,10 @@ openagents nostr sign --kind 30078 --tags '[["d","coder-plugin:NAME"]]' --conten
 ## Checks
 
 ```sh
-coax test coder/tui/coder.coax    # owned registrations, transitions, refusals, signatures
+coax test coder/tui/coder.coax    # owned registrations, transitions, refusals, signatures, capabilities, draining
 python3 coder/tui/smoke.py        # a plugin's command runs; disabled, it keeps no command; hooks run on their events;
-                                  # a hook and the policy refuse Microcoder's command
+                                  # a hook and the policy refuse Microcoder's command; a capability's command reaches
+                                  # its user; a profile loads its plugins in order
 ```
 
 ## Dependencies

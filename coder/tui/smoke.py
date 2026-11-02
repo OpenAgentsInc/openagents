@@ -316,7 +316,7 @@ def verbs(check):
         check("a plugin's command runs", any(json.loads(l).get("text") == "plugin-ok" for l in ran.stdout.splitlines() if '"kind":"result"' in l))
         subprocess.run([coder, "run", "/plugin disable demo", "--engine", "echo"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         pl = json.loads(subprocess.run([coder, "plugins", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
-        check("a disabled plugin keeps no command", pl == [{"name": "demo", "state": "disabled", "signed": False, "commands": []}])
+        check("a disabled plugin keeps no command", pl == [{"name": "demo", "state": "disabled", "signed": False, "commands": [], "defines": [], "provides": [], "uses": []}])
         # a plugin's hooks run on their events, in the session's folder, with the session's context
         with open(os.path.join(plugdir, "hooks.json"), "w") as f:
             f.write('{"name":"hooks","hooks":[{"on":"session_start","run":"echo start-$CODER_EVENT"},{"on":"turn_end","run":"echo end-$CODER_ENDING-$CODER_ENGINE"}]}')
@@ -324,6 +324,22 @@ def verbs(check):
         hl = [json.loads(l) for l in hk.stdout.splitlines() if '"kind":"hook"' in l]
         check("a plugin's hooks run on session_start and turn_end", [(h["on"], h["text"]) for h in hl] == [("session_start", "start-session_start"), ("turn_end", "end-finished-echo")])
         os.remove(os.path.join(plugdir, "hooks.json"))
+        # capabilities and profiles: a user's command gets its provider's command; a profile loads its plugins in order
+        with open(os.path.join(plugdir, "fmt.json"), "w") as f:
+            f.write('{"name":"fmt","defines":[{"name":"format"}],"provides":[{"name":"format","run":"echo formatted"}]}')
+        with open(os.path.join(plugdir, "tidy.json"), "w") as f:
+            f.write('{"name":"tidy","uses":["format"],"commands":[{"name":"tidy","run":"sh -c \\"$CODER_CAP_FORMAT\\""}]}')
+        td = subprocess.run([coder, "run", "/tidy", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
+        check("capabilities: a user's command runs its provider's command", any(json.loads(l).get("text") == "formatted" for l in td.stdout.splitlines() if '"kind":"result"' in l))
+        os.makedirs(os.path.join(home, ".openagents", "coder", "profiles"), exist_ok=True)
+        with open(os.path.join(home, ".openagents", "coder", "profiles", "lean.json"), "w") as f:
+            f.write('{"plugins":["tidy","fmt"]}')
+        lean = json.loads(subprocess.run([coder, "plugins", "--json", "--profile", "lean"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60).stdout)
+        check("profiles: only the named plugins, in order; a user before its provider fails",
+              [(x["name"], x["state"]) for x in lean] == [("tidy", "failed"), ("fmt", "active")] and lean[0]["why"] == "uses format, which no active plugin provides")
+        nop = subprocess.run([coder, "plugins", "--profile", "nope"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
+        check("profiles: an unknown profile is refused", nop.returncode == 2 and "no such profile" in nop.stderr)
+        os.remove(os.path.join(plugdir, "fmt.json")); os.remove(os.path.join(plugdir, "tidy.json"))
         # fork: the new session carries the parent's turns, and its header names the parent
         first = subprocess.run([coder, "run", "remember heliotrope", "--engine", "echo", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=120)
         pid_ = json.loads(first.stdout.splitlines()[0])["id"]

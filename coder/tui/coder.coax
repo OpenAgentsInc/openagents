@@ -315,6 +315,7 @@ cd_end_word :: (e: int) -> string { return ifx e == END_STOPPED then "stopped" e
 cd_finish :: (a: [] App, ending_in: int, text: string) {
   ending := ifx ending_in == END_STOPPED && a[0].expiring then END_EXPIRED else ifx ending_in == END_STOPPED && a[0].redirecting then END_REDIRECTED else ending_in;
   a[0].redirecting = false;
+  if a[0].pl.count > 0 && a[0].pl[0].busy >= 0 { pl_done(a[0].pl); }   // a plugin draining for this command settles
   cd_reply_commit(a, true);
   if text.count > 0 && ending == END_FAILED { cd_commit_prefixed(a, TUI_RED, "● ", "  ", text); }
   sb: [256] u8; n := 0; tb: [32] u8;
@@ -783,8 +784,11 @@ cd_submit :: (a: [] App) {
     w := 1; while w < msg.count && msg[w] != ' ' { w += 1; }
     ci := pl_find_cmd(a[0].pl, cast(string) msg[1..<w]);
     if ci >= 0 {
-      rb: [2400] u8; rn := cd_cat(rb[..], 0, "$ ");
+      rb: [4800] u8; rn := cd_cat(rb[..], 0, "$ ");
+      owner := a[0].pl[0].cmds[ci].owner;
+      eb: [2400] u8; rn = cd_cat(rb[..], rn, pl_cap_env(a[0].pl, owner, eb[..]));     // the capabilities it uses
       rn = cd_cat(rb[..], rn, cast(string) a[0].pl[0].cmds[ci].run[0..<a[0].pl[0].cmds[ci].nrun]);
+      a[0].pl[0].busy = owner;
       rn = cd_cat(rb[..], rn, cast(string) msg[w..<msg.count]);
       if a[0].log[0].nid == 0 { cs_open(a); cd_hooks(a, "session_start", ""); }
       cs_user(a, msg);
@@ -832,7 +836,7 @@ cd_hooks_run :: (a: [] App, event: string, ending: string, tool: string, input: 
     env[3] = cast(string) eb[3][0..<cd_cat(eb[3][..], cd_cat(eb[3][..], 0, "CODER_ENDING="), ending)];
     env[4] = cast(string) eb[4][0..<cd_cat(eb[4][..], cd_cat(eb[4][..], 0, "CODER_TOOL="), tool)];
     env[5] = cast(string) eb[5][0..<cd_cat(eb[5][..], cd_cat(eb[5][..], 0, "CODER_TOOL_INPUT="), cast(string) input[0..<ifx input.count > 4000 then 4000 else input.count])];
-    cb: [1100] u8; cn := cd_cat(cb[..], cd_cat(cb[..], 0, run), " 2>&1");
+    capb: [2400] u8; cb: [3600] u8; cn := cd_cat(cb[..], cd_cat(cb[..], cd_cat(cb[..], 0, pl_cap_env(r, h[0].owner, capb[..])), run), " 2>&1");
     argv := [3] string.["/bin/sh", "-c", cast(string) cb[0..<cn]];
     ob: [65536] u8; ok: [1] bool;
     out := rt_run_in(argv[..], env[..], a[0].cwd, PL_HOOK_SECONDS, ob[..], ok[..]);
@@ -989,10 +993,10 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n                 [--deadline SECONDS]             it expires after this long\n                 [--report-to ID]                 its ending and last reply go to session ID\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp                                 the verbs as MCP tools on stdio, for Claude Code or another agent\n       coder acp [--engine E]                    Coder as an agent for editors (Agent Client Protocol on stdio)\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --effort low|medium|high  --model M  --ask  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n                 [--deadline SECONDS]             it expires after this long\n                 [--report-to ID]                 its ending and last reply go to session ID\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue] [--deliver] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp                                 the verbs as MCP tools on stdio, for Claude Code or another agent\n       coder acp [--engine E]                    Coder as an agent for editors (Agent Client Protocol on stdio)\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run";
 
 // Flags that take a value: their value is not a positional argument.
-CD_VALUE_FLAGS :: [24] string.["--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
+CD_VALUE_FLAGS :: [27] string.["--profile", "--options", "--state", "--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop"];
 
 // Positional argument k (0 is the verb), skipping flags and their values.
 cd_positional :: (args: [] Args, k: int) -> string {
@@ -1678,7 +1682,9 @@ tool_main :: () -> int #export_c {
   if verb == "attach" { return cd_cmd_attach(cd_positional(args, 1), cd_positional(args, 2), json); }
   if verb == "trigger" { return cd_cmd_trigger(cd_positional(args, 1), args_value(args, "--thread", ""), args_value(args, "--source", "local"), args_value(args, "--author", "me"), args_has(args, "--to-agent")); }
   if verb == "router" { return cd_cmd_router(args_has(args, "--once"), cd_atoi(args_value(args, "--stuck", "1800")), json); }
-  pl_b: [1] PlRegistry; pl_load(pl_b[..]);
+  profb: [128] u8;
+  pl_b: [1] PlRegistry; pwhy := pl_load(pl_b[..], args_value(args, "--profile", cl_getenv("CODER_PROFILE", profb[..])));
+  if pwhy.count > 0 { tool_err("coder: "); tool_errln(pwhy); return 2; }
   if verb == "plugins" { return cd_cmd_plugins(pl_b[..], json); }
   if (verb == "run" || verb == "fork") && args_has(args, "--detach") { return cd_detach(args, json); }
   if verb.count > 0 && verb != "run" && verb != "fork" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }

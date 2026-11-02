@@ -2,7 +2,7 @@
 // A policy is data: the strongest effect a session may ever use (the
 // ceiling), the effect that runs without asking (allow), and the roots: the
 // folders a tool may touch without asking. Each permission request from
-// Claude Code or Codex becomes a tool, an effect and a room, and the policy
+// Claude Code, Codex or Microcoder becomes a tool, an effect and a room, and the policy
 // gives one verdict:
 //
 // - refuse: the effect is above the ceiling. No one is asked.

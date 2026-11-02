@@ -14,6 +14,17 @@
 // state is visible (/plugins, coder plugins) and changes only through the
 // transitions in PL_MOVES.
 //
+// Capabilities have three roles. A plugin defines one ("defines":
+// [{"name":"format","about":"..."}]), one plugin provides it ("provides":
+// [{"name":"format","run":"gofmt -l ."}]), and others use it ("uses":
+// ["format"]): their commands and hooks get the provider's command as
+// CODER_CAP_FORMAT. A provider needs a definition, a capability has one
+// provider, and a user needs an active provider, each at admission. When a
+// provider goes, each user drains: it stops taking new work, finishes what it
+// is running, then fails with the reason. A profile
+// (~/.openagents/coder/profiles/NAME.json, {"plugins":["a","b"]}) names the
+// plugins a session loads and the order they are admitted in.
+//
 // A command runs as a "$ " command in the session's folder, so it is in the
 // transcript and the log. Hooks run on their events (session_start,
 // turn_end) in the session's folder; see cd_hooks in coder.coax.
@@ -21,13 +32,16 @@
 #load "../../coax/lib/nostr/event.coax";
 
 PL_DIR :: "/.openagents/coder/plugins";     // under $HOME
-PL_MAX :: 16; PL_CMDS :: 64; PL_HOOKS :: 32;
+PL_MAX :: 16; PL_CMDS :: 64; PL_HOOKS :: 32; PL_CAPS :: 64;
+PL_PROFILES :: "/.openagents/coder/profiles";   // under $HOME
 
-PL_INSTALLED :: 0; PL_ENABLED :: 1; PL_ADMITTED :: 2; PL_ACTIVE :: 3; PL_FAILED :: 4; PL_DISABLED :: 5;
-PL_STATE_NAMES :: [6] string.["installed", "enabled", "admitted", "active", "failed", "disabled"];
+PL_INSTALLED :: 0; PL_ENABLED :: 1; PL_ADMITTED :: 2; PL_ACTIVE :: 3; PL_FAILED :: 4; PL_DISABLED :: 5; PL_DRAINING :: 6;
+PL_STATE_NAMES :: [7] string.["installed", "enabled", "admitted", "active", "failed", "disabled", "draining"];
+PL_DEFINE :: 0; PL_PROVIDE :: 1; PL_USE :: 2;
+PL_ROLES :: [3] string.["defines", "provides", "uses"];
 
 // The transitions a plugin may take, from → to. Nothing else changes a state.
-PL_MOVES :: [9] int.[
+PL_MOVES :: [12] int.[
   PL_INSTALLED * 8 + PL_ENABLED,     // found, and not on the disabled list
   PL_INSTALLED * 8 + PL_DISABLED,    // found, and on it
   PL_ENABLED * 8 + PL_ADMITTED,      // the manifest reads, a signature verifies, no name collides
@@ -36,28 +50,35 @@ PL_MOVES :: [9] int.[
   PL_ACTIVE * 8 + PL_DISABLED,       // the person disabled it: its registrations go
   PL_FAILED * 8 + PL_DISABLED,
   PL_DISABLED * 8 + PL_ENABLED,      // enabled again: admitted afresh
-  PL_FAILED * 8 + PL_ENABLED];
+  PL_FAILED * 8 + PL_ENABLED,
+  PL_ACTIVE * 8 + PL_DRAINING,       // disabled while its command runs, or a capability it uses lost its provider
+  PL_DRAINING * 8 + PL_DISABLED,     // what it was running ended
+  PL_DRAINING * 8 + PL_FAILED];
 
 PlPlugin :: struct {
   name: [64] u8; nname: int;
   state: int;
   sealed: bool;                  // it came as a signed event
+  drain_to: int;                 // a draining plugin's next state: disabled or failed
   why: [256] u8; nwhy: int;      // a failed plugin's reason
   text: [16384] u8; ntext: int;  // the manifest
 }
 PlCmd :: struct { owner: int; name: [32] u8; nname: int; run: [1024] u8; nrun: int; }
 PlHook :: struct { owner: int; on: [32] u8; non: int; run: [1024] u8; nrun: int; }
+PlCap :: struct { owner: int; role: int; name: [32] u8; nname: int; run: [1024] u8; nrun: int; }
 
 PlRegistry :: struct {
   p: [PL_MAX] PlPlugin; n: int;
   cmds: [PL_CMDS] PlCmd; ncmds: int;
   hooks: [PL_HOOKS] PlHook; nhooks: int;
+  caps: [PL_CAPS] PlCap; ncaps: int;
+  busy: int;                     // the plugin whose command is running, or -1
   ar: [1] ClArena; arb: [65536] u8;
 }
 
 pl_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
 pl_name :: (r: [] PlRegistry, k: int) -> string { return cast(string) r[0].p[k].name[0..<r[0].p[k].nname]; }
-pl_state_name :: (s: int) -> string { names := PL_STATE_NAMES; return ifx s >= 0 && s < 6 then names[s] else "?"; }
+pl_state_name :: (s: int) -> string { names := PL_STATE_NAMES; return ifx s >= 0 && s < 7 then names[s] else "?"; }
 
 // Moves plugin k to state to; false, and no change, when that isn't a listed transition.
 pl_move :: (r: [] PlRegistry, k: int, to: int) -> bool {
@@ -76,10 +97,76 @@ pl_unregister :: (r: [] PlRegistry, k: int) {
   j = 0;
   for i: 0..<r[0].nhooks { if r[0].hooks[i].owner != k { r[0].hooks[j] = r[0].hooks[i]; j += 1; } }
   r[0].nhooks = j;
+  j = 0;
+  for i: 0..<r[0].ncaps { if r[0].caps[i].owner != k { r[0].caps[j] = r[0].caps[i]; j += 1; } }
+  r[0].ncaps = j;
+}
+
+pl_cap_name :: (r: [] PlRegistry, i: int) -> string { return cast(string) r[0].caps[i].name[0..<r[0].caps[i].nname]; }
+
+// The capability entry with role and name whose owner is active (or is k), or -1.
+pl_find_cap :: (r: [] PlRegistry, role: int, name: string, k: int) -> int {
+  for i: 0..<r[0].ncaps {
+    c := r[0].caps[i..<i + 1];
+    if c[0].role == role && pl_cap_name(r, i) == name && (c[0].owner == k || r[0].p[c[0].owner].state == PL_ACTIVE) { return i; }
+  }
+  return -1;
+}
+
+// export CODER_CAP_NAME='provider command'; for each capability plugin k
+// uses, as a shell prefix for its commands and hooks.
+pl_cap_env :: (r: [] PlRegistry, k: int, out: [] u8) -> string {
+  n := 0;
+  for i: 0..<r[0].ncaps {
+    if r[0].caps[i].owner != k || r[0].caps[i].role != PL_USE { continue; }
+    pv := pl_find_cap(r, PL_PROVIDE, pl_cap_name(r, i), k);
+    if pv < 0 { continue; }
+    n = pl_cat(out, n, "export CODER_CAP_");
+    for c: pl_cap_name(r, i) { if n < out.count { out[n] = ifx c >= 'a' && c <= 'z' then c - 32 else ifx c == '-' then '_' else c; n += 1; } }
+    n = pl_cat(out, n, "='");
+    for c: cast(string) r[0].caps[pv].run[0..<r[0].caps[pv].nrun] { if c == '\'' { n = pl_cat(out, n, "'\\''"); } else if n < out.count { out[n] = c; n += 1; } }
+    n = pl_cat(out, n, "'; ");
+  }
+  return cast(string) out[0..<n];
+}
+
+// Plugin k stops: draining while its command runs, then to (disabled or failed).
+pl_drain :: (r: [] PlRegistry, k: int, to: int, why: string) {
+  x := pl_move(r, k, PL_DRAINING);
+  r[0].p[k].drain_to = to;
+  if to == PL_FAILED { r[0].p[k].nwhy = pl_cat(r[0].p[k].why[..], 0, why); }
+  if r[0].busy != k { pl_settle(r, k); }
+}
+
+// A draining plugin whose work ended takes its next state and its registrations go.
+pl_settle :: (r: [] PlRegistry, k: int) {
+  if r[0].p[k].state != PL_DRAINING { return; }
+  x := pl_move(r, k, r[0].p[k].drain_to);
+  pl_unregister(r, k);
+  pl_orphans(r);
+}
+
+// Each active plugin that uses a capability with no active provider drains to failed.
+pl_orphans :: (r: [] PlRegistry) {
+  for i: 0..<r[0].ncaps {
+    if i >= r[0].ncaps { break; }
+    c := r[0].caps[i];
+    if c.role != PL_USE || r[0].p[c.owner].state != PL_ACTIVE { continue; }
+    name := cast(string) c.name[0..<c.nname];
+    if pl_find_cap(r, PL_PROVIDE, name, c.owner) >= 0 { continue; }
+    wb: [128] u8; wn := pl_cat(wb[..], 0, "uses "); wn = pl_cat(wb[..], wn, name); wn = pl_cat(wb[..], wn, ", which lost its provider");
+    pl_drain(r, c.owner, PL_FAILED, cast(string) wb[0..<wn]);
+  }
+}
+
+// The plugin's command finished: a plugin draining for it settles.
+pl_done :: (r: [] PlRegistry) {
+  k := r[0].busy; r[0].busy = -1;
+  if k >= 0 { pl_settle(r, k); }
 }
 
 pl_find_cmd :: (r: [] PlRegistry, name: string) -> int {
-  for i: 0..<r[0].ncmds { if cast(string) r[0].cmds[i].name[0..<r[0].cmds[i].nname] == name { return i; } }
+  for i: 0..<r[0].ncmds { if cast(string) r[0].cmds[i].name[0..<r[0].cmds[i].nname] == name && r[0].p[r[0].cmds[i].owner].state != PL_DRAINING { return i; } }
   return -1;
 }
 
@@ -123,6 +210,44 @@ pl_admit :: (r: [] PlRegistry, k: int, trusted: string) {
     if !pl_name_ok(cn) || run.count == 0 || run.count > 1024 { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a command needs a name of a-z, 0-9, - and _ and a run of at most 1024 bytes"); return; }
     for b: builtin { if cn == b { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a command takes a built-in name"); return; } }
     if pl_find_cmd(r, cn) >= 0 { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a command's name is another plugin's"); return; }
+  }
+  // capabilities: a definition is new, a provider has a definition and is the only one, a user has a provider
+  defs := cl_raw(manifest, "defines"); provs := cl_raw(manifest, "provides"); uses := cl_raw(manifest, "uses");
+  wb: [256] u8;
+  for i: 0..<cl_count(defs) {
+    dn := cl_str(ar, cl_json(defs, cl_item(defs, i)), "name");
+    if !pl_name_ok(dn) { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a capability's name is a-z, 0-9, - and _"); return; }
+    if pl_find_cap(r, PL_DEFINE, dn, -1) >= 0 { wn := pl_cat(wb[..], 0, "it defines "); wn = pl_cat(wb[..], wn, dn); wn = pl_cat(wb[..], wn, ", which another plugin defines"); r[0].p[k].state = PL_ENABLED; pl_fail(r, k, cast(string) wb[0..<wn]); return; }
+  }
+  for i: 0..<cl_count(provs) {
+    one := cl_json(provs, cl_item(provs, i));
+    pn := cl_str(ar, one, "name"); prun := cl_str(ar, one, "run");
+    if prun.count == 0 || prun.count > 1024 { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "a provider needs a run of at most 1024 bytes"); return; }
+    defined := pl_find_cap(r, PL_DEFINE, pn, -1) >= 0;
+    for j: 0..<cl_count(defs) { if cl_str(ar, cl_json(defs, cl_item(defs, j)), "name") == pn { defined = true; } }
+    if !defined { wn := pl_cat(wb[..], 0, "it provides "); wn = pl_cat(wb[..], wn, pn); wn = pl_cat(wb[..], wn, ", which no plugin defines"); r[0].p[k].state = PL_ENABLED; pl_fail(r, k, cast(string) wb[0..<wn]); return; }
+    if pl_find_cap(r, PL_PROVIDE, pn, -1) >= 0 { wn := pl_cat(wb[..], 0, pn); wn = pl_cat(wb[..], wn, " already has a provider"); r[0].p[k].state = PL_ENABLED; pl_fail(r, k, cast(string) wb[0..<wn]); return; }
+  }
+  for i: 0..<cl_count(uses) {
+    un := cl_text(ar, uses, cl_item(uses, i));
+    provided := pl_find_cap(r, PL_PROVIDE, un, -1) >= 0;
+    for j: 0..<cl_count(provs) { if cl_str(ar, cl_json(provs, cl_item(provs, j)), "name") == un { provided = true; } }
+    if !provided { wn := pl_cat(wb[..], 0, "uses "); wn = pl_cat(wb[..], wn, un); wn = pl_cat(wb[..], wn, ", which no active plugin provides"); r[0].p[k].state = PL_ENABLED; pl_fail(r, k, cast(string) wb[0..<wn]); return; }
+  }
+  if r[0].ncaps + cl_count(defs) + cl_count(provs) + cl_count(uses) > PL_CAPS { r[0].p[k].state = PL_ENABLED; pl_fail(r, k, "too many capabilities"); return; }
+  for role: 0..<3 {
+    list := ifx role == PL_DEFINE then defs else ifx role == PL_PROVIDE then provs else uses;
+    for i: 0..<cl_count(list) {
+      c := r[0].caps[r[0].ncaps..<r[0].ncaps + 1];
+      c[0] = PlCap.{owner = k, role = role};
+      if role == PL_USE { c[0].nname = pl_cat(c[0].name[..], 0, cl_text(ar, list, cl_item(list, i))); }
+      else {
+        one := cl_json(list, cl_item(list, i));
+        c[0].nname = pl_cat(c[0].name[..], 0, cl_str(ar, one, "name"));
+        if role == PL_PROVIDE { c[0].nrun = pl_cat(c[0].run[..], 0, cl_str(ar, one, "run")); }
+      }
+      r[0].ncaps += 1;
+    }
   }
   for i: 0..<nc {
     if r[0].ncmds == PL_CMDS { break; }
@@ -175,16 +300,30 @@ pl_add :: (r: [] PlRegistry, name: string, text: string, disabled: string, trust
 }
 
 // Disables plugin k: its registrations go. False when it can't be disabled from its state.
+// While its command runs it drains first; the plugins that use what it provides drain to failed.
 pl_disable :: (r: [] PlRegistry, k: int) -> bool {
+  if r[0].p[k].state == PL_ACTIVE { pl_drain(r, k, PL_DISABLED, ""); return true; }
   if !pl_move(r, k, PL_DISABLED) { return false; }
   pl_unregister(r, k);
   return true;
 }
 
+// Enabled again, it is admitted afresh, and so is each plugin that failed for want of a capability.
 pl_enable :: (r: [] PlRegistry, k: int, trusted: string) -> bool {
   if !pl_move(r, k, PL_ENABLED) { return false; }
   r[0].p[k].nwhy = 0; r[0].p[k].sealed = false;
   pl_admit(r, k, trusted);
+  for round: 0..<PL_MAX {
+    again := false;
+    for j: 0..<r[0].n {
+      w := cast(string) r[0].p[j].why[0..<r[0].p[j].nwhy];
+      if r[0].p[j].state != PL_FAILED || w.count < 5 || cast(string) w[0..<5] != "uses " { continue; }
+      x := pl_move(r, j, PL_ENABLED); r[0].p[j].nwhy = 0;
+      pl_admit(r, j, trusted);
+      if r[0].p[j].state == PL_ACTIVE { again = true; }
+    }
+    if !again { break; }
+  }
   return true;
 }
 
@@ -206,22 +345,55 @@ pl_read_small :: (dir: string, name: string, out: [] u8) -> string {
   return ifx n > 0 then cast(string) out[0..<n] else "";
 }
 
-// Loads every NAME.json in the plugins directory.
-pl_load :: (r: [] PlRegistry) {
-  r[0].n = 0; r[0].ncmds = 0; r[0].nhooks = 0;
+// Loads the plugins: with a profile, the ones it names in its order; else
+// every NAME.json in the plugins directory, by name. "" when it went well,
+// else why (a profile that isn't there or doesn't read).
+pl_load :: (r: [] PlRegistry, profile: string) -> string {
+  r[0].n = 0; r[0].ncmds = 0; r[0].nhooks = 0; r[0].ncaps = 0; r[0].busy = -1;
   r[0].ar[0] = ClArena.{buf = r[0].arb[..]};
   db: [1100] u8; dir := pl_dir(db[..]);
-  if dir.count == 0 { return; }
+  if dir.count == 0 { return ""; }
   disb: [8192] u8; disabled := pl_read_small(dir, "disabled", disb[..]);
   trb: [16384] u8; trusted := pl_read_small(dir, "trusted", trb[..]);
-  l_b: [1] FsList; l := l_b[..];
-  n := fs_list(dir, l);
-  for i: 0..<n {
-    name := fs_entry(l, i);
-    if name.count < 6 || cast(string) name[name.count - 5..<name.count] != ".json" { continue; }
-    tb: [16384] u8; text := pl_read_small(dir, name, tb[..]);
-    k := pl_add(r, cast(string) name[0..<name.count - 5], text, disabled, trusted);
+  names: [PL_MAX * 4] [64] u8; lens: [PL_MAX * 4] int; count := 0;
+  if profile.count > 0 {
+    if !pl_name_ok(profile) { return "a profile's name is a-z, 0-9, - and _"; }
+    hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+    pb: [1400] u8; pn := pl_cat(pb[..], 0, home); pn = pl_cat(pb[..], pn, PL_PROFILES);
+    fb: [80] u8; fn := pl_cat(fb[..], 0, profile); fn = pl_cat(fb[..], fn, ".json");
+    xb: [8192] u8; text := pl_read_small(cast(string) pb[0..<pn], cast(string) fb[0..<fn], xb[..]);
+    list := cl_raw(text, "plugins");
+    if text.count == 0 || list.count == 0 { return "no such profile: add ~/.openagents/coder/profiles/NAME.json with {\"plugins\":[...]}"; }
+    for i: 0..<cl_count(list) {
+      if count == names.count { break; }
+      v := cl_text(r[0].ar[..], list, cl_item(list, i));
+      lens[count] = pl_cat(names[count][..], 0, v); count += 1;
+    }
+  } else {
+    l_b: [1] FsList; l := l_b[..];
+    n := fs_list(dir, l);
+    for i: 0..<n {
+      name := fs_entry(l, i);
+      if name.count < 6 || name.count > 69 || cast(string) name[name.count - 5..<name.count] != ".json" || count == names.count { continue; }
+      // sorted by name, so the admission order doesn't depend on the directory
+      at := count; base := cast(string) name[0..<name.count - 5];
+      while at > 0 && pl_less(base, cast(string) names[at - 1][0..<lens[at - 1]]) { names[at] = names[at - 1]; lens[at] = lens[at - 1]; at -= 1; }
+      lens[at] = pl_cat(names[at][..], 0, base); count += 1;
+    }
   }
+  for i: 0..<count {
+    nm := cast(string) names[i][0..<lens[i]];
+    fb: [80] u8; fn := pl_cat(fb[..], 0, nm); fn = pl_cat(fb[..], fn, ".json");
+    tb: [16384] u8; text := pl_read_small(dir, cast(string) fb[0..<fn], tb[..]);
+    if text.count == 0 { continue; }
+    k := pl_add(r, nm, text, disabled, trusted);
+  }
+  return "";
+}
+
+pl_less :: (x: string, y: string) -> bool {
+  for i: 0..<ifx x.count < y.count then x.count else y.count { if x[i] != y[i] { return x[i] < y[i]; } }
+  return x.count < y.count;
 }
 
 // Writes the disabled list from the registry's states.
@@ -242,6 +414,8 @@ pl_line :: (r: [] PlRegistry, k: int, out: [] u8) -> string {
   else {
     for i: 0..<r[0].ncmds { if r[0].cmds[i].owner == k { n = pl_cat(out, n, "/"); n = pl_cat(out, n, cast(string) r[0].cmds[i].name[0..<r[0].cmds[i].nname]); n = pl_cat(out, n, " "); } }
     for i: 0..<r[0].nhooks { if r[0].hooks[i].owner == k { n = pl_cat(out, n, "on "); n = pl_cat(out, n, cast(string) r[0].hooks[i].on[0..<r[0].hooks[i].non]); n = pl_cat(out, n, " "); } }
+    roles := PL_ROLES;
+    for i: 0..<r[0].ncaps { if r[0].caps[i].owner == k { n = pl_cat(out, n, roles[r[0].caps[i].role]); n = pl_cat(out, n, " "); n = pl_cat(out, n, pl_cap_name(r, i)); n = pl_cat(out, n, " "); } }
     if r[0].p[k].sealed { n = pl_cat(out, n, "(signed)"); }
   }
   while n > 0 && out[n - 1] == ' ' { n -= 1; }
@@ -256,7 +430,15 @@ pl_json :: (r: [] PlRegistry, k: int, out: [] u8) -> string {
   n = json_raw(out, n, ",\"commands\":[");
   first := true;
   for i: 0..<r[0].ncmds { if r[0].cmds[i].owner == k { if !first { n = json_raw(out, n, ","); } first = false; n = json_write_string(out, n, cast(string) r[0].cmds[i].name[0..<r[0].cmds[i].nname]); } }
-  n = json_raw(out, n, "]}");
+  n = json_raw(out, n, "]");
+  roles := PL_ROLES;
+  for role: 0..<3 {
+    n = json_raw(out, n, ",\""); n = json_raw(out, n, roles[role]); n = json_raw(out, n, "\":[");
+    f := true;
+    for i: 0..<r[0].ncaps { if r[0].caps[i].owner == k && r[0].caps[i].role == role { if !f { n = json_raw(out, n, ","); } f = false; n = json_write_string(out, n, pl_cap_name(r, i)); } }
+    n = json_raw(out, n, "]");
+  }
+  n = json_raw(out, n, "}");
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 
@@ -266,7 +448,7 @@ pl_json :: (r: [] PlRegistry, k: int, out: [] u8) -> string {
 PL_SIGNED :: "{\"id\":\"f3ae432e0e55da0df10987254c9e1419a2a053b7f575090a5ccac8fc8536a734\",\"pubkey\":\"531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337\",\"created_at\":1793604252,\"kind\":30078,\"tags\":[[\"d\",\"coder-plugin:signed-demo\"]],\"content\":\"{\\\"name\\\":\\\"signed-demo\\\",\\\"commands\\\":[{\\\"name\\\":\\\"hi\\\",\\\"run\\\":\\\"echo signed-ok\\\"}]}\",\"sig\":\"a976d9330687f3f2a4fec2d6542811b66f1066b602cccd82f31d5a0cf2be60f4c667bbd4d4394e3121a4908034d9d0b22a8785fd2a14b6b4419ab8c5c940a845\"}";
 PL_TEST_KEY :: "531fe6068134503d2723133227c867ac8fa6c83c537e9a44c3c5bdbdcb1fe337";
 
-pl_test_registry :: (r: [] PlRegistry) { r[0].n = 0; r[0].ncmds = 0; r[0].nhooks = 0; r[0].ar[0] = ClArena.{buf = r[0].arb[..]}; }
+pl_test_registry :: (r: [] PlRegistry) { r[0].n = 0; r[0].ncmds = 0; r[0].nhooks = 0; r[0].ncaps = 0; r[0].busy = -1; r[0].ar[0] = ClArena.{buf = r[0].arb[..]}; }
 
 #test "a plugin's commands and hooks are its own: disabling it leaves none behind" {
   r: [1] PlRegistry; pl_test_registry(r[..]);
@@ -309,4 +491,37 @@ pl_test_registry :: (r: [] PlRegistry) { r[0].n = 0; r[0].ncmds = 0; r[0].nhooks
   for i: 0..<n - 8 { if bad[i] == 's' && bad[i + 1] == 'i' && bad[i + 2] == 'g' && bad[i + 3] == 'n' && bad[i + 4] == 'e' && bad[i + 5] == 'd' && bad[i + 6] == '-' && bad[i + 7] == 'o' { bad[i + 7] = 'O'; } }
   t := pl_add(r[..], "signed-demo", cast(string) bad[0..<n], "", PL_TEST_KEY);
   #assert r[0].p[t].state == PL_FAILED && cast(string) r[0].p[t].why[0..<r[0].p[t].nwhy] == "its signature doesn't verify";
+}
+
+#test "capabilities: a definition, one provider, users; a user drains when its provider goes" {
+  r: [1] PlRegistry; pl_test_registry(r[..]);
+  d := pl_add(r[..], "fmt", "{\"name\":\"fmt\",\"defines\":[{\"name\":\"format\"}],\"provides\":[{\"name\":\"format\",\"run\":\"gofmt -l .\"}]}", "", "");
+  u := pl_add(r[..], "tidy", "{\"name\":\"tidy\",\"uses\":[\"format\"],\"commands\":[{\"name\":\"tidy\",\"run\":\"sh -c \\\"$CODER_CAP_FORMAT\\\"\"}]}", "", "");
+  x := pl_add(r[..], "dup", "{\"name\":\"dup\",\"provides\":[{\"name\":\"format\",\"run\":\"x\"}]}", "", "");
+  y := pl_add(r[..], "lost", "{\"name\":\"lost\",\"uses\":[\"lint\"]}", "", "");
+  z := pl_add(r[..], "orphan", "{\"name\":\"orphan\",\"provides\":[{\"name\":\"lint\",\"run\":\"x\"}]}", "", "");
+  #assert r[0].p[d].state == PL_ACTIVE && r[0].p[u].state == PL_ACTIVE;
+  #assert r[0].p[x].state == PL_FAILED && cast(string) r[0].p[x].why[0..<r[0].p[x].nwhy] == "format already has a provider";
+  #assert r[0].p[y].state == PL_FAILED && cast(string) r[0].p[y].why[0..<r[0].p[y].nwhy] == "uses lint, which no active plugin provides";
+  #assert r[0].p[z].state == PL_FAILED && cast(string) r[0].p[z].why[0..<r[0].p[z].nwhy] == "it provides lint, which no plugin defines";
+  eb: [256] u8;
+  #assert pl_cap_env(r[..], u, eb[..]) == "export CODER_CAP_FORMAT='gofmt -l .'; ";
+  // the user's command is running when the provider is disabled: it drains, then fails when the command ends
+  r[0].busy = u;
+  #assert pl_disable(r[..], d) && r[0].p[d].state == PL_DISABLED;
+  #assert r[0].p[u].state == PL_DRAINING && pl_find_cmd(r[..], "tidy") < 0;
+  pl_done(r[..]);
+  #assert r[0].p[u].state == PL_FAILED && cast(string) r[0].p[u].why[0..<r[0].p[u].nwhy] == "uses format, which lost its provider";
+  for i: 0..<r[0].ncaps { #assert r[0].caps[i].owner != u && r[0].caps[i].owner != d; }
+  // the provider back: the user is admitted afresh
+  #assert pl_enable(r[..], d, "") && r[0].p[d].state == PL_ACTIVE && r[0].p[u].state == PL_ACTIVE && pl_find_cmd(r[..], "tidy") >= 0;
+}
+
+#test "a plugin disabled while its command runs drains, then is disabled" {
+  r: [1] PlRegistry; pl_test_registry(r[..]);
+  k := pl_add(r[..], "t", "{\"name\":\"t\",\"commands\":[{\"name\":\"t\",\"run\":\"sleep 9\"}]}", "", "");
+  r[0].busy = k;
+  #assert pl_disable(r[..], k) && r[0].p[k].state == PL_DRAINING && r[0].ncmds == 1;
+  pl_done(r[..]);
+  #assert r[0].p[k].state == PL_DISABLED && r[0].ncmds == 0 && r[0].busy == -1;
 }
