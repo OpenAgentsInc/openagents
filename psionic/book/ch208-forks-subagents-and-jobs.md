@@ -18,6 +18,10 @@ toward across turns.
 - Goals. A goal is a recorded objective with a check. The session works
   toward it across turns, and the check decides when it is met.
 
+Chapter 252 builds the asynchronous loop on these jobs: long tools start and
+stop, and their results return as events while the session keeps answering.
+Chapter 251 runs many Workers, each of which may use this chapter's subagents.
+
 ## Dependencies
 
 - [Chapter 201](ch201-model-visible-means-logged.md): forks start from the log.

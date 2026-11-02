@@ -235,6 +235,8 @@
 - [212. Generate candidates, then check them](ch212-generate-candidates-then-check-them.md) — design draft
 - [213. Consent before sharing](ch213-consent-before-sharing.md) — design draft
 - [214. Remember a fact, then revise it](ch214-remember-a-fact-then-revise-it.md) — design draft
+- [251. One agent, many tasks](ch251-one-agent-many-tasks.md) — design draft
+- [252. An agent that stays online](ch252-an-agent-that-stays-online.md) — design draft
 
 - [215. Fit our own calibration, and refuse a stale one](ch215-fit-our-own-calibration.md)
 - [216. Thresholds from written costs](ch216-thresholds-from-written-costs.md)

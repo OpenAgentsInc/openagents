@@ -22,6 +22,10 @@ against [Chapter 200](ch200-the-simplest-loop.md)'s simplest loop.
 - Reporting through the suite digests, noise floors and gates of chapters
   [239](ch239-a-suite-is-three-digests.md), [240](ch240-how-far-a-metric-moves-by-itself.md) and [241](ch241-gates-that-can-say-unverifiable.md).
 
+Chapters 251 and 252 add system-level runs: an ablation of Router and
+Workers against one session with a subagent tool, a Router batching stress
+test and fault injection for the watchdog. They report through this chapter.
+
 ## Dependencies
 
 - [Chapter 200](ch200-the-simplest-loop.md) through [Chapter 210](ch210-speak-the-protocols.md): the additions under test.
