@@ -44,6 +44,8 @@
 #load "myrealm-things.coax";   // the site: walls, a centre, paving and paths (0096; myrealm-site.coax)
 #load "myrealm-site.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
 #load "../../aethyr/budget.coax";
+#load "myrealm-a11y.coax";   // the page's controls as real ones (host.js mirrors them): keyboard and screen reader
+#load "../../aethyr/input.coax";   // a controller's stick and buttons: the engine's one input path (realm_pad)
 #load "myrealm-room.coax";   // who else is here (/api/playtest/presence/made-<slug>), an agent's seat tagged AGENT
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
@@ -151,9 +153,10 @@ WATCH_OWNER :: 0.5f32; WATCH_VISITOR :: 15.0f32;
 BTN_BACK :: 0; BTN_BUILD :: 3; BTN_MAP :: 4; BTN_FLY :: 5; BTN_JUMP :: 6;
 BTN_CLOSE :: 9; BTN_NEW :: 10; BTN_BYE :: 11; BTN_HOLD :: 12;
 BTN_MOVE :: 13; BTN_UNDO :: 14; BTN_SAVE :: 15; BTN_PUBLISH :: 16; BTN_FORK :: 17;   // Aethyrforge: the owner's document, and FORK for anyone
-BUTTONS :: 18;
+BTN_REDO :: 18;   // the step last undone, again (the page's, or the server's: migration 0111)
+BUTTONS :: 19;
 PANE_NONE :: 0; PANE_BUILD :: 3;
-REQ_NONE :: 0; REQ_SPEC :: 1; REQ_PLACE :: 3; REQ_TALK :: 4; REQ_SAVE :: 5; REQ_PUBLISH :: 6; REQ_FORK :: 7; REQ_UNDO :: 8;
+REQ_NONE :: 0; REQ_SPEC :: 1; REQ_PLACE :: 3; REQ_TALK :: 4; REQ_SAVE :: 5; REQ_PUBLISH :: 6; REQ_FORK :: 7; REQ_UNDO :: 8; REQ_REDO :: 9;
 TREES_MOST :: 20;   // read_spec's most trees
 // What a move can shift (book chapter 52): tree i is entity i; the rest follow from TREES_MOST in
 // the order they are laid out. Each is named in the document by its feature and its index there.
@@ -229,6 +232,8 @@ MyRealm :: struct {
   from: [SLUG] u8; from_n: int; from_rev: int; from_name: [TITLE] u8; from_name_n: int;
   moving: int;             // the entity picked to move, -1 none
   server_undo: int;        // steps the server can undo (the spec's "undo N"; book chapter 52)
+  server_redo: int;        // steps the server can redo (the spec's "redo N"; migration 0111)
+  pad_x: f32; pad_y: f32; pad_mended: int; pad_jump: InputPress;   // a controller, through aethyr/input.coax (realm_pad)
   base: [1] ForgeDoc;      // the server's document as last taken: a save's revision moves on past changes that left the moves alone
   kept: [OUTBOX] u8; kept_n: int; kept_seen: bool; kept_due: bool;   // unsaved moves kept in this browser (host.js action 4)
   forge_status: int; forge_what: int;   // the last save, publish or fork: its HTTP status and which
@@ -385,7 +390,7 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
   site_reset(s);
   was := s[0].camera;
   s[0].ground = 0; s[0].tod = 0; s[0].name_n = 0; s[0].camera = CAM_THIRD;
-  s[0].server_rev = 0; s[0].published_rev = 0; s[0].server_undo = 0; s[0].listed = true; s[0].from_n = 0; s[0].from_rev = 0; s[0].from_name_n = 0;
+  s[0].server_rev = 0; s[0].published_rev = 0; s[0].server_undo = 0; s[0].server_redo = 0; s[0].listed = true; s[0].from_n = 0; s[0].from_rev = 0; s[0].from_name_n = 0;
   sp: [1] ForgeDoc; forge_reset(sp[..], 0);   // the document as the server has it
   got := false;
   i := 0;
@@ -404,6 +409,7 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
     if head == "rev" { s[0].server_rev = hi_int(number_word(word_of(line, 1)), 0); sp[0].rev = s[0].server_rev; continue; }
     if head == "published" { s[0].published_rev = hi_int(number_word(word_of(line, 1)), 0); continue; }
     if head == "undo" { s[0].server_undo = hi_int(number_word(word_of(line, 1)), 0); continue; }
+    if head == "redo" { s[0].server_redo = hi_int(number_word(word_of(line, 1)), 0); continue; }
     if head == "listed" { s[0].listed = word_of(line, 1) != "0"; continue; }
     if head == "from" {   // from SLUG REV|NAME: the realm this one was forked from, and its revision then
       fs := word_of(line, 1); cut := 0; while cut < line.count && line[cut] != '|' { cut += 1; }
@@ -601,7 +607,7 @@ take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
     return;
   }
   if what == REQ_TALK { talk_answered(s, status, body); return; }
-  if what == REQ_SAVE || what == REQ_PUBLISH || what == REQ_FORK || what == REQ_UNDO { forge_answered(s, what, status, body); return; }
+  if what == REQ_SAVE || what == REQ_PUBLISH || what == REQ_FORK || what == REQ_UNDO || what == REQ_REDO { forge_answered(s, what, status, body); return; }
   if what == REQ_PLACE {
     if status != 200 { set_note(s, ifx status == 403 then "The owner hasn't let visitors build." else "Not placed. Try again."); return; }
     if s[0].owner { ask_spec(s); } else { set_note(s, "Sent to the owner."); }
@@ -701,6 +707,19 @@ undo_press :: (s: [] MyRealm) {
   n := put(s[0].req_body[..], 0, "{\"rev\":"); n = put_int(s[0].req_body[..], n, s[0].server_rev); n = put(s[0].req_body[..], n, "}");
   ask(s, REQ_UNDO, "/undo", n, true);
 }
+// REDO: the page's step last undone first; then the server's (0111), when nothing is unsaved.
+may_redo :: (s: [] MyRealm) -> bool { return forge_owner(s) && (forge_can_redo(s[0].fd[..]) || (s[0].server_redo > 0 && !forge_dirty(s[0].fd[..]))); }
+redo_press :: (s: [] MyRealm) {
+  if !forge_owner(s) { return; }
+  s[0].moving = -1;
+  if forge_can_redo(s[0].fd[..]) {
+    if forge_redo(s[0].fd[..]) { relay(s); set_note(s, "Redone."); s[0].kept_due = true; }
+    return;
+  }
+  if !may_redo(s) || busy(s) { return; }
+  n := put(s[0].req_body[..], 0, "{\"rev\":"); n = put_int(s[0].req_body[..], n, s[0].server_rev); n = put(s[0].req_body[..], n, "}");
+  ask(s, REQ_REDO, "/redo", n, true);
+}
 save_press :: (s: [] MyRealm) {
   if !forge_owner(s) || busy(s) || !forge_dirty(s[0].fd[..]) { return; }
   n := forge_save_body(s[0].fd[..], s[0].req_body[..]);
@@ -741,8 +760,14 @@ forge_answered :: (s: [] MyRealm, what: int, status: int, body: string) {
     return;
   }
   if what == REQ_UNDO {
-    if status == 200 { s[0].server_undo = hi_int(json_int_of(body, "undo"), 0); set_note(s, "Undone."); ask_spec(s); return; }
+    if status == 200 { s[0].server_undo = hi_int(json_int_of(body, "undo"), 0); s[0].server_redo = hi_int(json_int_of(body, "redo"), 0); set_note(s, "Undone."); ask_spec(s); return; }
     set_note(s, ifx status == 409 then changed else "Not undone. Try again.");
+    ask_spec(s);
+    return;
+  }
+  if what == REQ_REDO {
+    if status == 200 { s[0].server_undo = hi_int(json_int_of(body, "undo"), 0); s[0].server_redo = hi_int(json_int_of(body, "redo"), 0); set_note(s, "Redone."); ask_spec(s); return; }
+    set_note(s, ifx status == 409 then changed else "Not redone. Try again.");
     ask_spec(s);
     return;
   }
@@ -1568,6 +1593,7 @@ realm_step :: (s: [] MyRealm, dt: f32) {
   if (s[0].held & HOLD_LEFT) != 0 { turn -= 1; }
   if (s[0].held & HOLD_RIGHT) != 0 { turn += 1; }
   if s[0].stick { ahead -= s[0].stick_dy; turn += s[0].stick_dx; }
+  ahead += s[0].pad_y; turn += s[0].pad_x;   // a controller's stick (realm_pad), past aethyr/input.coax's dead zone
   ahead = clamp(ahead, -1, 1); turn = clamp(turn, -1, 1);
   if s[0].camera == CAM_TOP || s[0].camera == CAM_SIDE {
     // the screen's way: right is east, up is north (2D: only left and right; up jumps)
@@ -1742,6 +1768,7 @@ realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_
     if key >= 32 { return false; }   // the host sends it as text
   }
   if down && (key == 'e' || key == 'E') && s[0].talk_p < 0 && may_talk(s) { p := near_person(s); if p >= 0 { talk_open(s, t, p); return true; } }
+  if down && realm_pick_key(s, key) { return true; }   // the picked thing: R turns, + and - size, Delete takes away (myrealm-a11y.coax)
   h := hold_of(key);
   if h != 0 { s[0].held = ifx down then s[0].held | h else s[0].held & (15 - h); return true; }
   if !down { return key == ' '; }
@@ -1753,7 +1780,7 @@ realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_
   if key == KEY_ESCAPE { if s[0].pane != PANE_NONE || s[0].map_open { s[0].pane = PANE_NONE; s[0].map_open = false; } else { leave(s); } return true; }
   return false;
 }
-realm_blur :: (s: [] MyRealm) #export_c { talk_let_go(s); s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
+realm_blur :: (s: [] MyRealm) #export_c { s[0].pad_x = 0; s[0].pad_y = 0; s[0].pad_jump = input_release(s[0].pad_jump); talk_let_go(s); s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
 can_build :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && (s[0].owner || s[0].tools[TOOL_BUILD]); }
 leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/worlds"); s[0].action = ACT_NAVIGATE; } }
 go_new :: (s: [] MyRealm) { if s[0].action == 0 && !access_hides_make(s[0].acc[..]) { s[0].out_n = put(s[0].outbox[..], 0, "/worlds/new"); s[0].action = ACT_NAVIGATE; } }
@@ -2025,7 +2052,7 @@ realm_label :: (s: [] MyRealm, x: f32, y: f32) -> string #export_c {
   if b == BTN_BUILD { return "build"; } if b == BTN_MAP { return "map"; } if b == BTN_FLY { return "fly"; } if b == BTN_JUMP { return "jump"; }
   if b == BTN_CLOSE { return "close"; } if b == BTN_NEW { return "new"; }
   if b == BTN_BYE { return "bye"; } if b == BTN_HOLD { return "hold-to-talk"; }
-  if b == BTN_MOVE { return "move"; } if b == BTN_UNDO { return "undo"; } if b == BTN_SAVE { return "save"; }
+  if b == BTN_MOVE { return "move"; } if b == BTN_UNDO { return "undo"; } if b == BTN_REDO { return "redo"; } if b == BTN_SAVE { return "save"; }
   if b == BTN_PUBLISH { return "publish"; } if b == BTN_FORK { return "fork"; }
   if cell_at(s, x, y) >= 0 { return "thing"; }
   return "";
@@ -2041,6 +2068,7 @@ press_button :: (s: [] MyRealm, t: [] Track, b: int) {
   if b == BTN_JUMP { jump(s); }
   if b == BTN_MOVE { move_press(s); }
   if b == BTN_UNDO { undo_press(s); }
+  if b == BTN_REDO { redo_press(s); }
   if b == BTN_SAVE { save_press(s); }
   if b == BTN_PUBLISH { publish_press(s); }
   if b == BTN_FORK { fork_press(s); }
@@ -2364,9 +2392,10 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     bx += tw2 + gap;
   }
   // Aethyrforge's row over the tools: only what applies now (nothing to undo: no UNDO)
-  forge: [5] int; forge_n := 0;
+  forge: [6] int; forge_n := 0;
   if forge_owner(s) && ents_laid(s) > 0 { forge[forge_n] = BTN_MOVE; forge_n += 1; }
   if may_undo(s) { forge[forge_n] = BTN_UNDO; forge_n += 1; }
+  if may_redo(s) { forge[forge_n] = BTN_REDO; forge_n += 1; }
   if forge_owner(s) && forge_dirty(s[0].fd[..]) { forge[forge_n] = BTN_SAVE; forge_n += 1; }
   if may_publish(s) { forge[forge_n] = BTN_PUBLISH; forge_n += 1; }
   if may_fork(s) { forge[forge_n] = BTN_FORK; forge_n += 1; }
@@ -2376,7 +2405,7 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     by = by - bh - gap;
     for i: 0..<forge_n {
       which := forge[i];
-      word := ifx which == BTN_UNDO then "UNDO" else ifx which == BTN_SAVE then "SAVE" else ifx which == BTN_PUBLISH then "PUBLISH" else ifx which == BTN_FORK then "FORK"
+      word := ifx which == BTN_UNDO then "UNDO" else ifx which == BTN_REDO then "REDO" else ifx which == BTN_SAVE then "SAVE" else ifx which == BTN_PUBLISH then "PUBLISH" else ifx which == BTN_FORK then "FORK"
               else ifx s[0].moving >= 0 then (ifx phone then "PUT HERE" else "PUT IT HERE") else "MOVE";
       n = pill(s, out, n, which, Box.{x0 = fx, y0 = by, x1 = fx + fw, y1 = by + bh}, word, (which == BTN_MOVE && s[0].moving >= 0) || which == BTN_SAVE);
       fx += fw + gap;

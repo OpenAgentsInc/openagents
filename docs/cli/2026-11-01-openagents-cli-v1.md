@@ -408,7 +408,8 @@ they do not expand the existing v1 document/undo contract.
 | `realm lore SLUG WHO "TEXT"` | `POST /<slug>/lore` (400 characters; `""` forgets it) |
 | `realm quest SLUG GIVER --ask A --step S1 --step S2 --reward R` | `POST /<slug>/quest` |
 | `realm accept SLUG ID`, `realm decline SLUG ID` | `POST /<slug>/proposals/<id>/accept\|decline` |
-| `realm undo SLUG` | `POST /<slug>/undo {rev}`: puts back the revision before the newest step |
+| `realm undo SLUG` | `POST /<slug>/undo {rev}`: takes back the newest step, only the slots it changed (migration 0111) |
+| `realm redo SLUG` | `POST /<slug>/redo {rev}`: applies the step last undone again; a new edit drops it (0111) |
 | `realm publish SLUG [--listed]` | `POST /<slug>/publish {rev, listed}`: visitors see this revision. Asks for confirmation on a TTY |
 
 Words (`revise`, `ask`, `new`) go to the server's planner, which answers under
@@ -430,7 +431,7 @@ Each line is `{"op":OP, ...}` with exactly that op's fields (`?` optional;
 `place thing x z yaw?`, `revise prompt`, `ask words` or `ask doc`,
 `ask-delete id`, `ask-done id commit`, `row-delete row`, `settings tools`,
 `lore who text`, `quest giver ask steps reward?`, `accept id`, `decline id`,
-`undo`, `publish listed?`, `visibility visibility`. `x`, `z`, `yaw` and `id`
+`undo`, `redo`, `publish listed?`, `visibility visibility`. `x`, `z`, `yaw` and `id`
 are JSON numbers; `on` and `listed` are `true` or `false`; `steps` is an
 array of at most three strings; the rest are strings. A refused line is
 named with its field and what it must be, for example `line 2: field "on"

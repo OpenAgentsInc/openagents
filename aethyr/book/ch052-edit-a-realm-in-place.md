@@ -10,8 +10,11 @@
 > (migration 0109); `openagents realm rotate|resize|remove` and `realm apply`
 > make them. The server keeps the same log: each undo step is the edit's
 > per-slot inverses, under the slot names this chapter uses, and lore and
-> quests are in the document (`0111_realm_edit_log.sql`). The page has no
-> hand gestures for turning, sizing or removing yet, and no REDO button; see
+> quests are in the document (`0111_realm_edit_log.sql`). The page has REDO
+> beside UNDO, and the picked thing turns, grows, shrinks and goes from the
+> keyboard and the accessible layer (`myrealm-a11y.coax`); `openagents realm
+> redo` and the MCP tool `realm_redo` walk the server's log forward. There
+> are no drag gestures for turning or sizing yet; see
 > [Still to do](#still-to-do).
 
 Editing a realm while people walk in it is the same problem as replaying it.
@@ -51,9 +54,9 @@ FORGE_TURN :: 180;     // degrees an entity turns either way, at most
 FORGE_SCALE_MIN :: 25; // percent of its laid-out size, at least
 FORGE_SCALE_MAX :: 400;
 FORGE_SLOT_KEY :: 48;  // a slot's name: "lore:mara"
-FORGE_VAL :: 480;      // a slot's value bytes at most (lore: 400 characters)
-FORGE_SLOTS :: 96;     // slots one document keeps
-FORGE_TEXT :: 32768;   // bytes of slot values the document and its history keep together (64 steps of 400-byte lore fit)
+FORGE_VAL :: 2400;     // a slot's value bytes at most (a quest: 564 characters of up to four bytes; lore: 400)
+FORGE_SLOTS :: 320;    // slots one document keeps (200 placed things, 40 lore, 40 quests, setup, tools)
+FORGE_TEXT :: 65536;   // bytes of slot values the document and its history keep together (40 lore and 40 quests of plain words fit)
 
 // An entity as the document has it: where it stands instead (`at`), its turn and size, and gone.
 // The plain shape (nothing overridden) is the entity as laid out.
@@ -271,6 +274,7 @@ is shown only when it applies:
 | MOVE | the realm has something to move | Picks the thing nearest you: a tree, a rock, a prop, a building, a house, a lantern or a thing placed. A tap on another picks that one. |
 | PUT IT HERE | a thing is picked | Stands it in front of you (2.5 m, further for a big thing), as one undo step. Where any of it would be in a rock or another thing, off the ground or in the water, it says so and keeps the thing picked. Esc lets it go. |
 | UNDO | there is a step to undo | Takes the last unsaved move back. With none left, takes back the server's newest step: a save, a row switched, a thing placed or a card settled. |
+| REDO | there is a step to redo | Applies the page's step last undone again; with none, and nothing unsaved, the server's (`POST .../redo`). |
 | SAVE | there are unsaved changes | Saves from the revision read. |
 
 A thing's pieces, solids, lights, fires and turning parts move with it, and
@@ -345,7 +349,8 @@ shortened to PUT HERE.
   against a local API built from this tree (not a fixture): rotate, resize,
   remove, lore and a quest, a stale rotate refused, three undos taking back
   exactly one edit each, a publish pinned with its engine, a fork whose edit
-  stays its own (22 checks, 2026-11-02).
+  stays its own, and redo and a stale redo (23 checks, 2026-11-02; with the
+  rest in `coax/web/api/realm-gate.sh`, which runs on Linux).
 - `coax/web/api/test.sh` (`test_realm_fork.py`): only the owner saves; a save
   from an older revision is refused with the revision there now; moves are
   validated and rounded to the centimetre; a save, a placement, a row switch,
@@ -361,9 +366,8 @@ shortened to PUT HERE.
 - Revisions by voice and visitor proposals are server-side model calls; the
   server logs what they change as ops, but the call itself is not a slot edit
   a client can replay.
-- Hand gestures for rotate, resize and remove on the page (slice 3's canvas).
-- A REDO control on the page and `openagents realm redo` (the server has
-  `POST .../redo`; the CLI's published command list doesn't have it yet).
+- Drag gestures for turning and sizing on the canvas (slice 3); today the
+  keyboard (R, + and -, Delete) and the accessible layer's buttons do it.
 - The asks ledger's revert rule as a Coax function the server's SQL is
   checked against: for each row an ask changed, put back `before` only if
   the row still holds the ask's `after`.

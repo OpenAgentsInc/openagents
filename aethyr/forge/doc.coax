@@ -7,13 +7,14 @@
 //   version 1 (migration 0093): doc "aethyr.realm", rev, setup, tools, placed, moved
 //   version 1 with "shaped" (migration 0109): turns, sizes and removals. A version 1 document
 //   without it (written before 0109) has none: it is read as the same realm.
+//   version 1 with "lore" and "quests" (migration 0111): a character's lore ("lore:WHO") and a
+//   giver's quest ("quest:GIVER", ASK|STEP|STEP|STEP|REWARD); one without them has none.
 //
 // The server is the authority on what a document is (migrations 0093, 0109); this reader only
 // refuses what it can't hold. What it reads becomes the model's own: moves and shapes as entity overrides, the setup fields as
 // "set:" slots, the tools as "tool:" slots and each placed thing as a "place:N" slot (THING X Z YAW
-// with the document's numbers as written). Rows, and lore and quests (in the document since
-// migration 0111), are not read into the model yet: the server keeps them, and its undo log names
-// them as this model's slots do (lore:WHO, quest:GIVER).
+// with the document's numbers as written), and lore and quests as "lore:" and "quest:" slots, the
+// names the server's undo log uses too (0111). Rows are the server's: not in this document.
 //   coax/bin/coax test aethyr/forge/doc.coax --library
 
 #module "aethyr.forge.doc";
@@ -113,6 +114,33 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
     kb: [24] u8;
     if n < 1 || m < 0 || jv_kind(j[0], jv_get(j[0], e, "x")) != JV_NUMBER || !forge_read_slot(next[..], forge_place_key(i, kb[..]), cast(string) v[0..<m]) { return forge_why("a placed thing out of bounds"); }
   }
+  lore := jv_get(j[0], at, "lore");   // absent before migration 0111: none
+  if lore >= 0 && jv_kind(j[0], lore) != JV_OBJECT { return forge_why("lore not an object"); }
+  for i: 0..<jv_len(j[0], lore) {
+    e := jv_at(j[0], lore, i);
+    kb: [FORGE_SLOT_KEY] u8; k := forge_put(kb[..], 0, "lore:"); k = forge_put(kb[..], k, jv_key(j[0], e));
+    v: [FORGE_VAL] u8; n := jv_str(j[0], e, v[..]);
+    if k < 0 || jv_kind(j[0], e) != JV_STRING || n < 1 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<n]) { return forge_why("lore out of bounds"); }
+  }
+  quests := jv_get(j[0], at, "quests");
+  if quests >= 0 && jv_kind(j[0], quests) != JV_OBJECT { return forge_why("quests not an object"); }
+  for i: 0..<jv_len(j[0], quests) {
+    e := jv_at(j[0], quests, i);
+    kb: [FORGE_SLOT_KEY] u8; k := forge_put(kb[..], 0, "quest:"); k = forge_put(kb[..], k, jv_key(j[0], e));
+    v: [FORGE_VAL] u8; m := 0; bad := jv_kind(j[0], e) != JV_OBJECT;
+    steps := jv_get(j[0], e, "steps");
+    if jv_kind(j[0], steps) != JV_ARRAY || jv_len(j[0], steps) > 3 { bad = true; }
+    for p: 0..<5 {
+      at2 := ifx p == 0 then jv_get(j[0], e, "ask") else ifx p == 4 then jv_get(j[0], e, "reward") else jv_at(j[0], steps, p - 1);
+      if p > 0 { m = forge_put(v[..], m, "|"); }
+      if p >= 1 && p <= 3 && p > jv_len(j[0], steps) { continue; }   // fewer than three steps: blank ones
+      part: [FORGE_VAL] u8; pn := jv_str(j[0], at2, part[..]);
+      if pn < 0 || (p == 0 && pn < 1) { bad = true; break; }
+      for q: 0..<pn { if part[q] == '|' { bad = true; } }
+      m = forge_put(v[..], m, cast(string) part[0..<pn]);
+    }
+    if bad || k < 0 || m < 0 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<m]) { return forge_why("a quest out of bounds"); }
+  }
   d[0] = next[0];
   return ForgeRead.{ok = true, version = version};
 }
@@ -154,6 +182,33 @@ forge_doc_with :: (from: string, to: string, buf: [] u8) -> string {
   bare: [4096] u8; bn := forge_put(bare[..], 0, FORGE_DOC_V1[8..<FORGE_DOC_V1.count - 16]);
   e: [1] ForgeDoc; forge_reset(e[..], 1);
   #assert bn > 0 && forge_read_doc(e[..], cast(string) bare[0..<bn]).ok && e[0].rev == 4 && e[0].move_n == 2;
+}
+
+#test "lore and quests from migration 0111 are read as the slots the server's log names" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  b: [4096] u8;
+  t := forge_doc_with("\"version\": 1,", "\"version\": 1, \"lore\": {\"mara\": \"She keeps the lighthouse.\", \"old-bram\": \"Bakes at dawn.\"}, \"quests\": {\"mara\": {\"ask\": \"Light the lamp\", \"steps\": [\"Find oil\", \"\", \"Climb\"], \"reward\": \"A map\"}, \"bram\": {\"ask\": \"Fetch flour\", \"steps\": [\"Mill\"], \"reward\": \"\"}},", b[..]);
+  #assert forge_read_doc(d[..], t).ok;
+  #assert forge_slot_text(d[..], "lore:mara") == "She keeps the lighthouse." && forge_slot_text(d[..], "lore:old-bram") == "Bakes at dawn.";
+  #assert forge_slot_text(d[..], "quest:mara") == "Light the lamp|Find oil||Climb|A map" && forge_slot_text(d[..], "quest:bram") == "Fetch flour|Mill|||";
+  // the same quest as forge_quest writes it: an edit and its inverse from here are the model's own
+  steps := [3] string.["Find oil", "", "Climb"];
+  #assert !forge_quest(d[..], "mara", "Light the lamp", steps, "A map") && forge_lore(d[..], "mara", "") && !forge_slot_at(d[..], "lore:mara").found;
+  #assert forge_undo(d[..]) && forge_slot_text(d[..], "lore:mara") == "She keeps the lighthouse.";
+  // a document without them has none
+  e: [1] ForgeDoc; forge_reset(e[..], 1);
+  #assert forge_read_doc(e[..], FORGE_DOC_V1).ok && !forge_slot_at(e[..], "lore:mara").found;
+  // broken ones are refused whole
+  bad := [6] string.[
+    "\"lore\": [\"x\"],", "\"lore\": {\"mara\": 3},", "\"lore\": {\"Mara\": \"x\"},",
+    "\"quests\": {\"mara\": {\"ask\": \"a|b\", \"steps\": [], \"reward\": \"\"}},",
+    "\"quests\": {\"mara\": {\"ask\": \"a\", \"steps\": [\"1\", \"2\", \"3\", \"4\"], \"reward\": \"\"}},",
+    "\"quests\": {\"mara\": {\"ask\": \"\", \"steps\": [], \"reward\": \"\"}},"];
+  for i: 0..<bad.count {
+    w: [256] u8; wn := forge_put(w[..], 0, "\"version\": 1, "); wn = forge_put(w[..], wn, bad[i]);
+    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with("\"version\": 1,", cast(string) w[0..<wn], b[..]));
+    #assert cn > 0 && !forge_read_doc(e[..], cast(string) c[0..<cn]).ok && !forge_slot_at(e[..], "lore:mara").found;
+  }
 }
 
 #test "an unknown, newer or broken document is refused whole and the last one stays" {

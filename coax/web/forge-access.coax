@@ -1,0 +1,420 @@
+// A made realm through its usable route in headless Chrome (no window opens, no sound plays),
+// against a local API and the page this checkout builds (GitHub #12629; Aethyr book chapters 52,
+// 82 and 86): keyboard only and the screen reader's basics, host lifecycle, and a guest's keys and
+// controller.
+//
+//   1 KEYBOARD  the owner opens the realm; Tab reaches the accessible layer (myrealm-a11y.coax,
+//               mirrored by host.js); Enter on MOVE picks a thing, TURN IT turns it, SAVE keeps it;
+//               UNDO and REDO walk the server's log; each control has a name, the rows are
+//               checkboxes, the note is a live region and the canvas is aria-hidden
+//   2 LIFECYCLE a change left unsaved, the page left (about:blank) and opened again: the same
+//               revision and the unsaved change are back; the page frozen and resumed keeps running;
+//               after a save, reopened, nothing is unsaved
+//   3 GUEST     with no key the realm opens as a visitor: no owner's controls; W walks; a controller
+//               (navigator.getGamepads, a stand-in pad) walks and its button jumps, through
+//               aethyr/input.coax
+// Every step is checked from the page's state (coaxial.guardProbe: myrealm.coax realm_probe), the
+// DOM the host mirrors, and the server's database, not from pictures.
+//
+// The page is served by `coax/web/serve.sh apps/openagents-web --static` with build/myrealm.wasm
+// built from this checkout; its /api requests are sent on to the local API by DevTools
+// interception, and /realms/built is answered with its own HTML on the legacy shader path (no
+// render package: it needs a release build). The realm is made in SQL, owned by a fresh key.
+//   SITE=http://127.0.0.1:8811 API=http://127.0.0.1:57411 PGURL=... PSQL=psql coax/web/tool.sh forge-access
+// Exit 0 when every check passed, 1 when one failed, 2 for a usage error.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+FA_MS :: 30000;
+FA_HTML :: 65536;
+FA_CMD :: 524288;
+
+Fa :: struct {
+  site: string; api: string; db: string; psql: string;
+  html: [FA_HTML] u8; html_n: int;
+  b64: [FA_CMD] u8; cmd: [FA_CMD] u8; frame: [FA_CMD + 14] u8;
+  failed: int; passed: int; bad: bool; held: int; tell: bool;
+}
+FaBuf :: struct { b: [8192] u8; n: int; bad: bool; }
+fa_put :: (o: [] FaBuf, s: string) { if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; } for i: 0..<s.count { o[0].b[o[0].n + i] = s[i]; } o[0].n += s.count; }
+fa_int :: (o: [] FaBuf, v: int) {
+  if v < 0 { fa_put(o, "-"); fa_int(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for i: 0..<n { e: [1] u8; e[0] = d[n - 1 - i]; fa_put(o, cast(string) e[..]); }
+}
+fa_text :: (o: [] FaBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+fa_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+// A URL's path and query: after the host, before #.
+fa_tail :: (url: string) -> string {
+  i := 0;
+  while i + 2 < url.count && !(url[i] == ':' && url[i + 1] == '/' && url[i + 2] == '/') { i += 1; }
+  if i + 2 >= url.count { return ""; }
+  i += 3; while i < url.count && url[i] != '/' { i += 1; }
+  e := i; while e < url.count && url[e] != '#' { e += 1; }
+  return url[i..<e];
+}
+fa_path :: (tail: string) -> string { e := 0; while e < tail.count && tail[e] != '?' { e += 1; } return tail[0..<e]; }
+// The page's HTML on the legacy shader path: its data-render and data-render-profile taken out.
+fa_legacy :: (html: string, out: [] u8) -> int {
+  n := 0; i := 0;
+  while i < html.count {
+    cut := -1;
+    for drop: [2] string.[" data-render=\"", " data-render-profile=\""] {
+      if i + drop.count <= html.count && html[i..<i + drop.count] == drop { cut = i + drop.count; }
+    }
+    if cut >= 0 { j := cut; while j < html.count && html[j] != '"' { j += 1; } i = j + 1; continue; }
+    if n >= out.count { return -1; }
+    out[n] = html[i]; n += 1; i += 1;
+  }
+  return n;
+}
+#test "forge access: the requests it answers, and the page on the legacy path" {
+  #assert fa_tail("http://127.0.0.1:8811/api/playtest/realms/x?as=lines#y") == "/api/playtest/realms/x?as=lines" && fa_path("/api/a?b") == "/api/a";
+  #assert fa_tail("about:blank") == "" && fa_tail("http://127.0.0.1:8811") == "";
+  o: [256] u8;
+  n := fa_legacy("<script src=\"/h.js\" data-app=\"myrealm\" data-render=\"/build/render/built/render.json\" data-render-profile=\"10\" data-realm=\"built\">", o[..]);
+  #assert cast(string) o[0..<n] == "<script src=\"/h.js\" data-app=\"myrealm\" data-realm=\"built\">";
+}
+
+// ---- DevTools, answering the page's requests on the way -------------------------------
+fa_send_big :: (c: [] Cdp, f: [] Fa, o: [] Jo) -> int {
+  mask: [4] u8;
+  if o[0].bad || c[0].h < 0 || !cdp_draw(4, mask[..]) { return -1; }
+  n := ws_frame_write(WS_OP_TEXT, true, jo_text(o), mask[..], f[0].frame[..]);
+  if n <= 0 || !cdp_put(c, cast(string) f[0].frame[0..<n]) { return -1; }
+  return c[0].id;
+}
+fa_fulfill_html :: (c: [] Cdp, f: [] Fa, req: string) -> bool { return fa_fulfill(c, f, req, 200, "text/html; charset=utf-8", cast(string) f[0].html[0..<f[0].html_n]); }
+fa_fulfill :: (c: [] Cdp, f: [] Fa, req: string, code: int, ctype: string, body: string) -> bool {
+  n := b64_encode(body, f[0].b64[..]);
+  if n < 0 { return false; }
+  c[0].id += 1;
+  o: [1] Jo; jo_start(o[..], f[0].cmd[..]);
+  jo_obj(o[..]); jo_key(o[..], "id"); jo_int(o[..], c[0].id); jo_key(o[..], "method"); jo_str(o[..], "Fetch.fulfillRequest");
+  jo_key(o[..], "params"); jo_obj(o[..]);
+  jo_key(o[..], "requestId"); jo_str(o[..], req); jo_key(o[..], "responseCode"); jo_int(o[..], code);
+  jo_key(o[..], "responseHeaders"); jo_arr(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "Content-Type"); jo_key(o[..], "value"); jo_str(o[..], ctype); jo_end(o[..]);
+  jo_end(o[..]);
+  if body.count > 0 { jo_key(o[..], "body"); jo_str(o[..], cast(string) f[0].b64[0..<n]); }
+  jo_end(o[..]); jo_end(o[..]);
+  return fa_send_big(c, f, o[..]) >= 0;
+}
+fa_on :: (c: [] Cdp, method: string, req: string, url: string) -> int {
+  b: [9216] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "requestId"); jo_str(o[..], req);
+  if url.count > 0 { jo_key(o[..], "url"); jo_str(o[..], url); }
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else cdp_send(c, method, jo_text(o[..]));
+}
+// An /api request asked of the local API here (curl, its method, headers and body as the page sent
+// them) and answered to the page with the API's status, type and body: the page and the API then
+// share one origin, as they do in production.
+fa_proxy :: (c: [] Cdp, f: [] Fa, d: Jv, rq: int, req: string, tail: string) -> bool {
+  mb: [16] u8; mn := jv_str(d, jv_get(d, rq, "method"), mb[..]);
+  url: [1] FaBuf; fa_put(url[..], f[0].api); fa_put(url[..], tail);
+  argv: [48] string; n := 0;
+  argv[n] = "curl"; n += 1; argv[n] = "-s"; n += 1; argv[n] = "-i"; n += 1; argv[n] = "--max-time"; n += 1; argv[n] = "20"; n += 1;
+  argv[n] = "-X"; n += 1; argv[n] = ifx mn > 0 then cast(string) mb[0..<mn] else "GET"; n += 1;
+  hs := jv_get(d, rq, "headers");
+  hb: [16] FaBuf;
+  for i: 0..<jv_len(d, hs) {
+    if i >= 16 || n + 2 > argv.count - 4 { break; }
+    h := jv_at(d, hs, i); name := jv_key(d, h);
+    vb: [4096] u8; vn := jv_str(d, h, vb[..]);
+    if vn < 0 || name == "Accept-Encoding" { continue; }
+    fa_put(hb[i..<i + 1], name); fa_put(hb[i..<i + 1], ": "); fa_put(hb[i..<i + 1], cast(string) vb[0..<vn]);
+    argv[n] = "-H"; n += 1; argv[n] = fa_text(hb[i..<i + 1]); n += 1;
+  }
+  body: [65536] u8; bn := jv_str(d, jv_get(d, rq, "postData"), body[..]);
+  if bn > 0 { argv[n] = "--data-binary"; n += 1; argv[n] = cast(string) body[0..<bn]; n += 1; }
+  argv[n] = fa_text(url[..]); n += 1;
+  out: [262144] u8; err: [1024] u8;
+  got := proc_run(argv[0..<n], 30000, out[..], err[..]);
+  text := cast(string) out[0..<got.out_n];
+  if got.status != 0 || text.count < 12 { return false; }
+  // "HTTP/1.1 200 OK", the headers, a blank line, the body
+  code := 0; for k: 9..<12 { code = code * 10 + cast(int) (text[k] - '0'); }
+  ctype := "text/plain; charset=utf-8"; at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[at..<e]; if line.count > 0 && line[line.count - 1] == '\r' { line = line[0..<line.count - 1]; }
+    at = e + 1;
+    if line.count == 0 { break; }
+    if line.count > 14 && (line[0..<14] == "Content-Type: " || line[0..<14] == "content-type: ") { ctype = line[14..<line.count]; }
+  }
+  rest := ifx at <= text.count then text[at..<text.count] else "";
+  return fa_fulfill(c, f, req, code, ctype, rest);
+}
+fa_message :: (c: [] Cdp, f: [] Fa) {
+  d := cdp_doc(c);
+  if cdp_reply_id(d) >= 0 || cdp_event_method(d) != "Fetch.requestPaused" { return; }
+  p := jv_get(d, 0, "params"); rq := jv_get(d, p, "request");
+  ib: [256] u8; ub: [8192] u8;
+  idn := jv_str(d, jv_get(d, p, "requestId"), ib[..]); un := jv_str(d, jv_get(d, rq, "url"), ub[..]);
+  if idn <= 0 || un < 0 { f[0].bad = true; return; }
+  req := cast(string) ib[0..<idn]; tail := fa_tail(cast(string) ub[0..<un]); path := fa_path(tail);
+  if fa_starts(path, "/api/") {
+    if !fa_proxy(c, f, d, rq, req, tail) { f[0].bad = true; }
+    return;
+  }
+  if path == "/realms/built" || path == "/realms/built/" || path == "/realms/built/index.html" {
+    if !fa_fulfill_html(c, f, req) { f[0].bad = true; }
+    return;
+  }
+  s := fa_on(c, "Fetch.continueRequest", req, "");
+}
+fa_pump :: (c: [] Cdp, f: [] Fa, ms: int) {
+  deadline := proc_now_ms() + ms;
+  while true {
+    left := proc_left(deadline, proc_now_ms());
+    if left <= 0 { return; }
+    k := cdp_poll(c, left);
+    if k == CDP_GOT { fa_message(c, f); continue; }
+    if k != CDP_NONE { f[0].bad = true; proc_sleep(left); }
+    return;
+  }
+}
+fa_call :: (c: [] Cdp, f: [] Fa, method: string, params: string) -> int {
+  id := cdp_send(c, method, params);
+  if id < 0 { return -1; }
+  deadline := proc_now_ms() + FA_MS;
+  while true {
+    k := cdp_poll(c, proc_left(deadline, proc_now_ms()));
+    if k != CDP_GOT { return -1; }
+    d := cdp_doc(c);
+    if cdp_reply_id(d) == id { return cdp_reply_result(d); }
+    fa_message(c, f);
+  }
+  return -1;
+}
+// An expression's value (returned by value): its node in cdp_doc, or -1.
+fa_eval :: (c: [] Cdp, f: [] Fa, expression: string) -> int {
+  b: [8192] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "expression"); jo_str(o[..], expression);
+  jo_key(o[..], "awaitPromise"); jo_bool(o[..], true); jo_key(o[..], "returnByValue"); jo_bool(o[..], true); jo_end(o[..]);
+  if o[0].bad { return -1; }
+  r := fa_call(c, f, "Runtime.evaluate", jo_text(o[..]));
+  return ifx r < 0 then -1 else jv_path(cdp_doc(c), r, "result.value");
+}
+fa_eval_int :: (c: [] Cdp, f: [] Fa, expression: string) -> int { v := fa_eval(c, f, expression); return ifx v >= 0 then jv_int(cdp_doc(c), v, -99) else -99; }
+fa_eval_str :: (c: [] Cdp, f: [] Fa, expression: string, out: [] u8) -> string {
+  v := fa_eval(c, f, expression); if v < 0 { return ""; }
+  n := jv_str(cdp_doc(c), v, out); return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+fa_probe :: (c: [] Cdp, f: [] Fa, field: int) -> int {
+  b: [1] FaBuf; fa_put(b[..], "globalThis.coaxial && coaxial.ready ? coaxial.guardProbe("); fa_int(b[..], field); fa_put(b[..], ") : -99");
+  return fa_eval_int(c, f, fa_text(b[..]));
+}
+fa_wait :: (c: [] Cdp, f: [] Fa, field: int, lo: int, hi: int, ms: int) -> bool {
+  deadline := proc_now_ms() + ms;
+  while true {
+    v := fa_probe(c, f, field);
+    if v >= lo && v <= hi { return true; }
+    if proc_now_ms() >= deadline { return false; }
+    fa_pump(c, f, 200);
+  }
+  return false;
+}
+fa_wait_js :: (c: [] Cdp, f: [] Fa, expression: string, ms: int) -> bool {
+  deadline := proc_now_ms() + ms;
+  while true {
+    if fa_eval_int(c, f, expression) == 1 { return true; }
+    if proc_now_ms() >= deadline { return false; }
+    fa_pump(c, f, 200);
+  }
+  return false;
+}
+fa_go :: (c: [] Cdp, f: [] Fa, url: string) -> bool {
+  b: [2048] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  ok := fa_call(c, f, "Page.navigate", jo_text(o[..])) >= 0;
+  fa_pump(c, f, 500);
+  return ok;
+}
+// A key down and up, as a keyboard sends it (text for one that types).
+fa_key :: (c: [] Cdp, f: [] Fa, key: string, code: string, vk: int, text: string, hold_ms: int) -> bool {
+  ok := true;
+  for kind: [2] string.["keyDown", "keyUp"] {
+    b: [512] u8; o: [1] Jo; jo_start(o[..], b[..]);
+    jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], kind); jo_key(o[..], "key"); jo_str(o[..], key);
+    jo_key(o[..], "code"); jo_str(o[..], code); jo_key(o[..], "windowsVirtualKeyCode"); jo_int(o[..], vk);
+    if kind == "keyDown" && text.count > 0 { jo_key(o[..], "text"); jo_str(o[..], text); }
+    jo_end(o[..]);
+    ok = ok && fa_call(c, f, "Input.dispatchKeyEvent", jo_text(o[..])) >= 0;
+    fa_pump(c, f, ifx kind == "keyDown" then hold_ms else 150);
+  }
+  return ok;
+}
+fa_tab :: (c: [] Cdp, f: [] Fa) -> bool { return fa_key(c, f, "Tab", "Tab", 9, "", 30); }
+fa_enter :: (c: [] Cdp, f: [] Fa) -> bool { r := fa_key(c, f, "Enter", "Enter", 13, "\r", 30); fa_pump(c, f, 300); return r; }
+// Tab until the focused control is named label (at most 40 presses); then Enter. False when never reached.
+fa_press :: (c: [] Cdp, f: [] Fa, label: string) -> bool {
+  q: [1] FaBuf; fa_put(q[..], "(document.activeElement && document.activeElement.closest('#coaxial-a11y') && document.activeElement.textContent === ");
+  jb: [512] u8; o: [1] Jo; jo_start(o[..], jb[..]); jo_str(o[..], label); fa_put(q[..], jo_text(o[..])); fa_put(q[..], ") ? 1 : 0");
+  for i: 0..<40 {
+    if fa_eval_int(c, f, fa_text(q[..])) == 1 { return fa_enter(c, f); }
+    t := fa_tab(c, f);
+  }
+  return false;
+}
+fa_moved :: (x0: int, z0: int, x1: int, z1: int) -> int { dx := x1 - x0; dz := z1 - z0; return (ifx dx < 0 then -dx else dx) + (ifx dz < 0 then -dz else dz); }
+fa_check :: (f: [] Fa, name: string, ok: bool, seen: int) {
+  if ok { print("  ok    %\n", name); f[0].passed += 1; return; }
+  print("  FAIL  %  (saw %)\n", name, seen);
+  f[0].failed += 1;
+  f[0].tell = true;
+}
+fa_ok :: (c: [] Cdp, f: [] Fa, name: string, ok: bool, seen: int) { fa_check(f, name, ok, seen); fa_tell(c, f); }
+// What the page says now (on a failure): where it is, whether it runs, its controls and its last requests.
+fa_tell :: (c: [] Cdp, f: [] Fa) {
+  if !f[0].tell { return; }
+  f[0].tell = false;
+  db: [16384] u8;
+  print("  page: %\n", fa_eval_str(c, f, "JSON.stringify({ready: globalThis.coaxial && coaxial.ready, load: document.getElementById('coaxial-load')?.dataset.state, err: document.getElementById('coaxial-load')?.querySelector('.le')?.textContent, layer: (globalThis.coaxial && document.getElementById('coaxial-a11y')?.innerText || '').slice(0, 600), focus: document.activeElement?.outerHTML?.slice(0, 120), log: (globalThis.__log || []).slice(-8), lost: globalThis.coaxial?.renderDeviceLost, note: document.querySelector('pre[role=status]')?.textContent, rec: globalThis.coaxial?.gpuRecovery, got: performance.getEntriesByType('resource').map(e => e.name.replace(location.origin, '')).slice(-6)})", db[..]));
+}
+
+// ---- the database ------------------------------------------------------------------
+fa_sql :: (f: [] Fa, sql: string, out: [] u8) -> string {
+  a := [8] string.[f[0].psql, "-XAtq", "-v", "ON_ERROR_STOP=1", "--dbname", f[0].db, "-c", sql];
+  err: [4096] u8;
+  got := proc_run(a[..], 60000, out, err[..]);
+  if got.status != 0 || got.timed_out || got.cut { tool_err("forge-access sql: "); tool_errln(cast(string) err[0..<got.err_n]); return ""; }
+  return cast(string) out[0..<got.out_n];
+}
+fa_true :: (f: [] Fa, sql: string) -> bool { o: [16] u8; return fa_sql(f, sql, o[..]) == "t"; }
+fa_doc :: (f: [] Fa, slug: string, cond: string) -> bool {
+  q: [1] FaBuf; fa_put(q[..], "SELECT coalesce(("); fa_put(q[..], cond); fa_put(q[..], "), false) FROM (SELECT verse.realm_doc(r) d, r.rev FROM verse.made_realms r WHERE r.slug = '");
+  fa_put(q[..], slug); fa_put(q[..], "') x");
+  return fa_true(f, fa_text(q[..]));
+}
+
+tool_main :: () -> int #export_c {
+  b1: [256] u8; b2: [256] u8; b3: [1024] u8; b4: [1024] u8;
+  f: [1] Fa;
+  f[0].site = proc_getenv("SITE", b1[..]); f[0].api = proc_getenv("API", b2[..]);
+  f[0].db = proc_getenv("PGURL", b3[..]); f[0].psql = proc_getenv("PSQL", b4[..]);
+  if !fa_starts(f[0].site, "http://127.0.0.1:") || !fa_starts(f[0].api, "http://127.0.0.1:") || f[0].db == "" || f[0].psql == "" {
+    tool_errln("usage: SITE=http://127.0.0.1:PORT API=http://127.0.0.1:PORT PGURL=... PSQL=psql coax/web/tool.sh forge-access   (local only)");
+    return 2;
+  }
+  raw: [FA_HTML] u8; rn := fs_read("apps/openagents-web/realms/built/index.html", raw[..]);
+  f[0].html_n = ifx rn > 0 then fa_legacy(cast(string) raw[0..<rn], f[0].html[..]) else -1;
+  if f[0].html_n <= 0 { tool_errln("forge-access: run it from the repository's root"); return 2; }
+
+  // the realm and its owner, made as MAKE IT makes them
+  stamp := proc_now_ms() % 1000000000;
+  kb: [1] FaBuf; fa_put(kb[..], "forge-access-owner-key-"); fa_int(kb[..], stamp); key := fa_text(kb[..]);
+  sb: [1] FaBuf; fa_put(sb[..], "fa-"); fa_int(sb[..], stamp); slug := fa_text(sb[..]);
+  q: [1] FaBuf;
+  fa_put(q[..], "INSERT INTO verse.players (id, key_sha256, created_ms) VALUES ('p-"); fa_put(q[..], slug); fa_put(q[..], "', encode(sha256(convert_to('"); fa_put(q[..], key);
+  fa_put(q[..], "', 'UTF8')), 'hex'), 1); INSERT INTO verse.worlds (id, owner_player, created_ms) VALUES ('made-"); fa_put(q[..], slug); fa_put(q[..], "', 'p-"); fa_put(q[..], slug);
+  fa_put(q[..], "', 1); INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) VALUES ('"); fa_put(q[..], slug);
+  fa_put(q[..], "', 'made-"); fa_put(q[..], slug); fa_put(q[..], "', 'Forge Access', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"size\":\"some\"},{\"feature\":\"rocks\"}]', '{\"jump\":true}', 1, 'public')");
+  out: [256] u8;
+  made := fa_sql(f[..], fa_text(q[..]), out[..]);
+  fa_check(f[..], "a public made realm and its owner", fa_doc(f[..], slug, "x.rev = 1"), 0);
+
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 1280, 800, "coax-forge-access-") { tool_err("forge-access: "); tool_errln(cdp_error(c[..])); return 1; }
+  armed := fa_call(c[..], f[..], "Fetch.enable", "{\"patterns\":[{\"urlPattern\":\"*/api/*\",\"requestStage\":\"Request\"},{\"urlPattern\":\"*/realms/built*\",\"requestStage\":\"Request\"}]}") >= 0;
+  // a stand-in controller the page reads through navigator.getGamepads (none connected until the check says)
+  pad := "globalThis.__log=[];{const e=console.error,l=console.log;console.error=(...a)=>{__log.push(a.join(' ').slice(0,300));e(...a)};console.log=(...a)=>{__log.push(a.join(' ').slice(0,300));l(...a)};}globalThis.__pad={on:false,x:0,y:0,b:false};navigator.getGamepads=()=>[__pad.on?{connected:true,axes:[__pad.x,__pad.y],buttons:[{pressed:__pad.b}]}:null];";
+  pb: [1024] u8; po: [1] Jo; jo_start(po[..], pb[..]); jo_obj(po[..]); jo_key(po[..], "source"); jo_str(po[..], pad); jo_end(po[..]);
+  armed = armed && fa_call(c[..], f[..], "Page.enable", "{}") >= 0 && fa_call(c[..], f[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(po[..])) >= 0;
+  if !armed { tool_errln("forge-access: the browser refused the interception"); cdp_close(c[..]); return 1; }
+  // a small page: SwiftShader (a machine with no GPU for Chrome) draws it well inside the GPU's watchdog
+  sized := fa_call(c[..], f[..], "Emulation.setDeviceMetricsOverride", "{\"width\":640,\"height\":400,\"deviceScaleFactor\":1,\"mobile\":false}") >= 0;
+
+  page: [1] FaBuf; fa_put(page[..], f[0].site); fa_put(page[..], "/realms/built#"); fa_put(page[..], slug);
+  // the owner's key, as the landing's join keeps it
+  g1 := fa_go(c[..], f[..], fa_text(page[..]));
+  sk: [1] FaBuf; fa_put(sk[..], "localStorage.setItem('verse.player', JSON.stringify({key:'"); fa_put(sk[..], key); fa_put(sk[..], "',id:'p-"); fa_put(sk[..], slug); fa_put(sk[..], "',account:null})), 1");
+  e1 := fa_eval_int(c[..], f[..], fa_text(sk[..]));
+  g2 := fa_go(c[..], f[..], "about:blank"); g3 := fa_go(c[..], f[..], fa_text(page[..]));
+
+  if proc_getenv("FA_DEBUG", sk[0].b[..]) != "" {
+    db0: [8192] u8;
+    print("  fetch: %\n", fa_eval_str(c[..], f[..], "fetch('/api/playtest/access').then(async r => r.status + ' ' + (await r.text()).slice(0, 200)).catch(e => 'error ' + e.message)", db0[..]));
+  }
+  // ---- 1 KEYBOARD
+  print("1 KEYBOARD\n");
+  opened := fa_wait(c[..], f[..], 0, 1, 1, 45000) && fa_wait(c[..], f[..], 1, 1, 1, 5000);
+  fa_ok(c[..], f[..], "the owner opens the realm", opened, fa_probe(c[..], f[..], 0));
+  if !opened {
+    db: [8192] u8;
+    print("  page: %\n", fa_eval_str(c[..], f[..], "JSON.stringify({href: location.href, ready: globalThis.coaxial && coaxial.ready, probes: [0,1,2].map(k => globalThis.coaxial && coaxial.guardProbe(k)), gpu: !!navigator.gpu, cls: document.documentElement.className, load: document.getElementById('coaxial-load')?.dataset.state, err: document.getElementById('coaxial-load')?.querySelector('.le')?.textContent, got: performance.getEntriesByType('resource').map(e => e.name + ' ' + e.responseStatus).slice(-12)})", db[..]));
+    cdp_close(c[..]); print("% passed, % failed\n", f[0].passed, f[0].failed); return 1;
+  }
+  rev0 := fa_probe(c[..], f[..], 2);
+  fa_ok(c[..], f[..], "the canvas is hidden from a screen reader; the controls are a named toolbar",
+           fa_wait_js(c[..], f[..], "document.getElementById('coaxial').getAttribute('aria-hidden') === 'true' && document.querySelector('#coaxial-a11y[role=toolbar][aria-label]') && document.querySelectorAll('#coaxial-a11y button').length > 1 ? 1 : 0", 10000), 0);
+  fa_ok(c[..], f[..], "every control has a name; the board's rows are checkboxes with a state",
+           fa_eval_int(c[..], f[..], "[...document.querySelectorAll('#coaxial-a11y button')].every(b => b.textContent.trim().length > 0) && [...document.querySelectorAll('#coaxial-a11y [role=checkbox]')].length > 0 && [...document.querySelectorAll('#coaxial-a11y [role=checkbox]')].every(b => ['true','false'].includes(b.getAttribute('aria-checked'))) ? 1 : 0") == 1, 0);
+  t := fa_tab(c[..], f[..]);
+  fa_ok(c[..], f[..], "Tab reaches the controls, and they show when focused",
+           fa_eval_int(c[..], f[..], "document.activeElement && document.activeElement.closest('#coaxial-a11y') && getComputedStyle(document.getElementById('coaxial-a11y')).opacity === '1' ? 1 : 0") == 1, 0);
+  fa_ok(c[..], f[..], "Enter on MOVE picks the nearest thing", fa_press(c[..], f[..], "Move the nearest thing") && fa_wait(c[..], f[..], 8, 0, 100000, 5000), fa_probe(c[..], f[..], 8));
+  fa_ok(c[..], f[..], "the note is read out (a polite live region)", fa_wait_js(c[..], f[..], "document.querySelector('#coaxial-a11y-status[role=status][aria-live=polite]').textContent.startsWith('Walk to its new place') ? 1 : 0", 3000), 0);
+  fa_ok(c[..], f[..], "TURN IT turns the picked thing: unsaved", fa_press(c[..], f[..], "Turn it") && fa_wait(c[..], f[..], 4, 1, 1, 3000), fa_probe(c[..], f[..], 4));
+  fa_ok(c[..], f[..], "SAVE keeps it: the server's next revision holds the turn",
+           fa_press(c[..], f[..], "Save") && fa_wait(c[..], f[..], 4, 0, 0, 10000) && fa_wait(c[..], f[..], 2, rev0 + 1, rev0 + 1, 5000) && fa_doc(f[..], slug, "d->'shaped' @> '[{\"yaw\":45}]'"), fa_probe(c[..], f[..], 2));
+  fa_ok(c[..], f[..], "UNDO takes it back on the server (0111)", fa_press(c[..], f[..], "Undo") && fa_wait(c[..], f[..], 2, rev0 + 2, rev0 + 2, 10000) && fa_doc(f[..], slug, "NOT (d ? 'shaped')"), fa_probe(c[..], f[..], 2));
+  fa_ok(c[..], f[..], "REDO puts it back", fa_press(c[..], f[..], "Redo") && fa_wait(c[..], f[..], 2, rev0 + 3, rev0 + 3, 10000) && fa_doc(f[..], slug, "d->'shaped' @> '[{\"yaw\":45}]'"), fa_probe(c[..], f[..], 2));
+  rowq := "(() => { const r = document.querySelector('#coaxial-a11y [role=checkbox]'); if (!r) return -1; r.focus(); return r.getAttribute('aria-checked') === 'true' ? 1 : 0; })()";
+  was := fa_eval_int(c[..], f[..], rowq);
+  en := fa_enter(c[..], f[..]);
+  fa_ok(c[..], f[..], "a row's checkbox switches the feature for everyone, and says so", was >= 0
+           && fa_wait_js(c[..], f[..], ifx was == 1 then "document.querySelector('#coaxial-a11y [role=checkbox]').getAttribute('aria-checked') === 'false' ? 1 : 0" else "document.querySelector('#coaxial-a11y [role=checkbox]').getAttribute('aria-checked') === 'true' ? 1 : 0", 5000)
+           && fa_wait(c[..], f[..], 2, rev0 + 4, rev0 + 4, 10000), fa_probe(c[..], f[..], 2));
+
+  // ---- 2 LIFECYCLE
+  print("2 LIFECYCLE\n");
+  rev1 := fa_probe(c[..], f[..], 2);
+  ok2 := fa_press(c[..], f[..], "Move the nearest thing") && fa_press(c[..], f[..], "Make it bigger") && fa_wait(c[..], f[..], 4, 1, 1, 3000);
+  fa_ok(c[..], f[..], "a change left unsaved", ok2, fa_probe(c[..], f[..], 4));
+  g4 := fa_go(c[..], f[..], "about:blank"); fa_pump(c[..], f[..], 500);
+  g5 := fa_go(c[..], f[..], fa_text(page[..]));
+  fa_ok(c[..], f[..], "left and opened again: the same revision, and the unsaved change is back",
+           fa_wait(c[..], f[..], 0, 1, 1, 45000) && fa_wait(c[..], f[..], 2, rev1, rev1, 5000) && fa_wait(c[..], f[..], 4, 1, 1, 10000), fa_probe(c[..], f[..], 4));
+  x0 := fa_probe(c[..], f[..], 10);
+  fr := fa_call(c[..], f[..], "Page.setWebLifecycleState", "{\"state\":\"frozen\"}") >= 0;
+  fa_pump(c[..], f[..], 500);
+  ac := fa_call(c[..], f[..], "Page.setWebLifecycleState", "{\"state\":\"active\"}") >= 0;
+  fa_pump(c[..], f[..], 500);
+  fa_ok(c[..], f[..], "frozen and resumed, it keeps running and keeps the change", fr && ac && fa_probe(c[..], f[..], 0) == 1 && fa_probe(c[..], f[..], 4) == 1 && fa_probe(c[..], f[..], 10) == x0, fa_probe(c[..], f[..], 4));
+  fa_ok(c[..], f[..], "SAVE, leave, reopen: the saved revision, nothing unsaved",
+           fa_press(c[..], f[..], "Save") && fa_wait(c[..], f[..], 4, 0, 0, 10000) && fa_go(c[..], f[..], "about:blank") && fa_go(c[..], f[..], fa_text(page[..]))
+           && fa_wait(c[..], f[..], 0, 1, 1, 45000) && fa_wait(c[..], f[..], 2, rev1 + 1, rev1 + 1, 5000) && fa_probe(c[..], f[..], 4) == 0
+           && fa_doc(f[..], slug, "d->'shaped' @> '[{\"scale\":125}]'"), fa_probe(c[..], f[..], 2));
+
+  // ---- 3 GUEST
+  print("3 GUEST\n");
+  e2 := fa_eval_int(c[..], f[..], "localStorage.removeItem('verse.player'), 1");
+  g6 := fa_go(c[..], f[..], "about:blank"); g7 := fa_go(c[..], f[..], fa_text(page[..]));
+  guest := fa_wait(c[..], f[..], 0, 1, 1, 45000) && fa_probe(c[..], f[..], 1) == 0;
+  fa_ok(c[..], f[..], "with no key the realm opens as a visitor", guest, fa_probe(c[..], f[..], 1));
+  fa_ok(c[..], f[..], "a visitor's layer has none of the owner's controls",
+           fa_wait_js(c[..], f[..], "[...document.querySelectorAll('#coaxial-a11y button')].every(b => !['Save','Undo','Redo','Publish','Move the nearest thing'].includes(b.textContent)) ? 1 : 0", 3000), 0);
+  xa := fa_probe(c[..], f[..], 10); za := fa_probe(c[..], f[..], 11);
+  w := fa_key(c[..], f[..], "w", "KeyW", 87, "w", 1200);
+  xb := fa_probe(c[..], f[..], 10); zb := fa_probe(c[..], f[..], 11);
+  fa_ok(c[..], f[..], "W walks a guest", w && fa_moved(xa, za, xb, zb) > 50, fa_moved(xa, za, xb, zb));
+  pd := fa_eval_int(c[..], f[..], "(__pad.on = true, __pad.y = -1, 1)");
+  fa_pump(c[..], f[..], 1200);
+  xc := fa_probe(c[..], f[..], 10); zc := fa_probe(c[..], f[..], 11);
+  st := fa_eval_int(c[..], f[..], "(__pad.y = 0, __pad.b = true, 1)");
+  fa_pump(c[..], f[..], 150);
+  sw := fa_eval_int(c[..], f[..], "(__pad.b = false, 1)");
+  fa_pump(c[..], f[..], 400);
+  xd := fa_probe(c[..], f[..], 10); zd := fa_probe(c[..], f[..], 11);
+  fa_ok(c[..], f[..], "a controller's stick walks a guest (aethyr/input.coax)", pd == 1 && fa_moved(xb, zb, xc, zc) > 50, fa_moved(xb, zb, xc, zc));
+  fa_ok(c[..], f[..], "let go, the controller stands still", st == 1 && sw == 1 && fa_moved(xc, zc, xd, zd) < 30, fa_moved(xc, zc, xd, zd));
+  fa_ok(c[..], f[..], "every page request was answered", !f[0].bad, 0);
+
+  cdp_close(c[..]);
+  print("% passed, % failed\n", f[0].passed, f[0].failed);
+  return ifx f[0].failed == 0 then 0 else 1;
+}

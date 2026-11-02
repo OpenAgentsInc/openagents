@@ -166,6 +166,13 @@ ca_run :: (c: [] Ca) -> bool {
   }
   q[0].n = 0; cb_put(q[..], "SELECT strpos(verse.edit_spec(r.slug, auth.caller_key('"); cb_put(q[..], pubkey); cb_put(q[..], "'), false), E'\\nredo 3\\n') > 0 FROM verse.made_realms r WHERE slug = '"); cb_put(q[..], slug); cb_put(q[..], "'");
   if !ca_ok(c, ca_true(c, cb_text(q[..])), "the owner's spec says three steps can be redone") { return false; }
+  // redo and undo again through the CLI: the removal comes back, then goes
+  rd := [5] string.["realm", "redo", slug, "--rev", ca_num(ca_rev(c, slug), rb[..])];
+  if !ca_ok(c, ca_cli(c, rd[..], 0) && ca_doc(c, slug, "d->'shaped' @> '[{\"entity\":\"rocks:0\",\"gone\":true}]' AND NOT (d ? 'lore')"), "realm redo applies the removal again, only it") { return false; }
+  un2 := [5] string.["realm", "undo", slug, "--rev", ca_num(ca_rev(c, slug), rb[..])];
+  sb2: [24] u8; stale := [5] string.["realm", "redo", slug, "--rev", ca_num(ca_rev(c, slug) - 1, sb2[..])];   // its own buffer: un2's text stays
+  if !ca_ok(c, ca_cli(c, un2[..], 0) && ca_cli(c, stale[..], 5) && ca_doc(c, slug, "d->'shaped' = '[{\"entity\":\"trees:1\",\"yaw\":90,\"scale\":150,\"gone\":false}]'"),
+             "undo takes it back again; a redo from a stale revision exits 5") { return false; }
   // publish that revision; fork it; the fork's edit stays its own
   pubw := [6] string.["realm", "publish", slug, "--rev", ca_num(ca_rev(c, slug), rb[..]), "--yes"];
   if !ca_ok(c, ca_cli(c, pubw[..], 0) && ca_true(c, "SELECT true"), "publish the revision") { return false; }

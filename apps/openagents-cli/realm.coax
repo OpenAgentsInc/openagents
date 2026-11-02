@@ -125,7 +125,7 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
   if realm_shape_verb(verb) && cli_spec_value(spec,"shapes") != "1" {
     return realm_edit_refuse(400,"this server keeps no turns, sizes or removals (migration 0109)",current,out);
   }
-  if !realm_save_verb(verb) && verb != "undo" && verb != "publish" && cli_spec_value(spec,"edit_fence") != "1" {
+  if !realm_save_verb(verb) && verb != "undo" && verb != "redo" && verb != "publish" && cli_spec_value(spec,"edit_fence") != "1" {
     return realm_edit_refuse(400,"this server needs revision-fenced edit routes (migration 0102)",current,out);
   }
   if verb == "ask" && rc_has(a,verb,"--doc") { return realm_edit_doc(a,profile,slug,rev,out); }
@@ -174,7 +174,7 @@ realm_edit_run :: (a: [] Args, profile: string, verb: string, expected: int, out
   if o[0].bad { return realm_edit_refuse(400,"the edit body is too large",rev,out); }
   tailbuf: [128] u8; tail := realm_edit_tail(verb,v,tailbuf[..]);
   fenced: [160] u8;
-  if verb != "undo" && (verb != "publish" || fork_publish) { n := forge_put(fenced[..],0,"/edit-v1"); n = forge_put(fenced[..],n,tail); tail = cast(string) fenced[0..<n]; }
+  if verb != "undo" && verb != "redo" && (verb != "publish" || fork_publish) { n := forge_put(fenced[..],0,"/edit-v1"); n = forge_put(fenced[..],n,tail); tail = cast(string) fenced[0..<n]; }
   return api_call(a,profile,"POST",realm_path(slug,tail,path[..]),jo_text(o[..]),out);
 }
 

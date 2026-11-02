@@ -6,9 +6,15 @@
 > page keeps its text in the HTML for screen readers while the canvas is
 > `aria-hidden`. Everglade's voice shows a caption of what it heard
 > (`everglade-voice.coax`). The stroke font draws 77 glyphs, with lowercase
-> drawn as capitals and Latin-1 accents as their base letter. There is no
-> input remapping, no text-size setting, no subtitles for realm sounds and
-> no translation. This chapter plans them. Nothing in `aethyr/` runs yet.
+> drawn as capitals and Latin-1 accents as their base letter. A made realm's
+> controls are also real ones: the page describes them a line each
+> (`apps/openagents-web/myrealm-a11y.coax`) and the host mirrors them as
+> buttons and checkboxes in a named toolbar beside the canvas, first in the
+> tab order, with the page's note as a polite live region, so the made-realm
+> route works keyboard-only and with a screen reader; a controller's stick
+> and button go through `aethyr/input.coax`. There is no input remapping, no
+> text-size setting, no subtitles for realm sounds and no translation. This
+> chapter plans them. Nothing else in `aethyr/` runs yet.
 
 A realm should work for a player who can't hear its sound, can't see small
 text, can't use a mouse, or reads another language. This chapter adds the
@@ -86,6 +92,28 @@ checks with real text in that script.
   the heard caption.
 - [apps/openagents-web/font.coax](../../apps/openagents-web/font.coax):
   the stroke font and its glyph list.
+- [apps/openagents-web/myrealm-a11y.coax](../../apps/openagents-web/myrealm-a11y.coax):
+  a made realm's accessible layer. Every control the canvas draws is a line
+  `ID ROLE STATE LABEL` (`button`, `checkbox`, `status`; pressed, checked or
+  neither); `realm_a11y_do` does what a tap on it does. The owner's MOVE,
+  UNDO, REDO, SAVE and PUBLISH, the picked thing's TURN IT, MAKE IT BIGGER,
+  MAKE IT SMALLER, TAKE IT AWAY and LET IT GO, the BUILD pane's things and
+  the board's rows (checkboxes) are all there; a visitor gets only what a
+  visitor may press. R, + and - and Delete turn, size and take away the
+  picked thing from the keyboard. `realm_pad` takes a controller's stick and
+  first button through `aethyr/input.coax` (its dead zone, a junk number
+  counted as no push, a held button one press).
+- [coax/web/host.js](../../coax/web/host.js) `a11yMirror` and `padPoll`: the
+  host only mirrors. It keeps the module's order, keeps focus in the toolbar
+  when a control goes, lets Tab, Enter and Space be the browser's in it, and
+  hides the toolbar until something in it has focus.
+- [coax/web/forge-access.coax](../../coax/web/forge-access.coax): the check in
+  muted headless Chrome (keyboard only, names and roles, the live region,
+  lifecycle, a guest's keys and a stand-in controller). On coderos-4080 it
+  runs only on SwiftShader, whose WebGPU device Chrome destroys every few
+  seconds, so the run stops when the host gives up after four losses in a
+  minute: its keyboard and accessibility steps passed there; the whole run
+  needs a machine whose Chrome has a real GPU (NEEDS_OWNER.md).
 - [docs/research/game-engine-systems.md](../../docs/research/game-engine-systems.md),
   section 42: the inventory this chapter draws from.
 

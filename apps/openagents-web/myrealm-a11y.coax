@@ -1,0 +1,203 @@
+// A made realm's controls as real ones (Aethyr book chapter 86; GitHub #12629): every control the
+// page draws on the canvas is also described here, a line each, and host.js mirrors the lines as
+// DOM buttons and checkboxes beside the canvas (which stays aria-hidden). A keyboard reaches them
+// with Tab, a screen reader reads them, and pressing one does what tapping it does: the same
+// press_button, the same row switch, the same thing placed. The host decides nothing; it shows the
+// lines and sends back the id pressed (realm_a11y_do).
+//
+// A line: "ID ROLE STATE LABEL", ROLE button, checkbox or status, STATE 1 (pressed or checked), 0
+// (not) or - (neither). Ids: a canvas button is its BTN_* number; a board row is A11Y_ROW + its
+// index; a thing in the BUILD pane is A11Y_CELL + its index; the picked thing's own actions (turn,
+// bigger, smaller, take away, let go) are A11Y_PICK + 0..4; A11Y_STATUS is the note.
+//
+// Also here: a controller (a gamepad's left stick and its first button) through aethyr/input.coax,
+// the engine's one input path (realm_pad), for owners and guests alike; and the picked thing's turn,
+// size and removal (aethyr/forge/edit.coax), which the keyboard reaches too (R turns, + and - size,
+// Delete takes it away) and which SAVE keeps (migration 0109).
+//   coax/bin/coax test apps/openagents-web/myrealm.coax --only a11y
+
+A11Y_ROW :: 100;
+A11Y_CELL :: 200;
+A11Y_PICK :: 300;   // + 0 turn, 1 bigger, 2 smaller, 3 take away, 4 let go
+A11Y_STATUS :: 900;
+A11Y_TURN :: 45;    // degrees a turn adds
+A11Y_SIZE :: 25;    // percent a size step adds or takes
+A11Y_MAX :: 8192;
+
+a11y_word :: (s: [] MyRealm, b: int) -> string {
+  if b == BTN_BACK { return "Back to realms"; }
+  if b == BTN_BUILD { return "Build"; } if b == BTN_MAP { return "Map"; }
+  if b == BTN_FLY { return ifx s[0].flying then "Land" else "Fly"; }
+  if b == BTN_JUMP { return "Jump"; } if b == BTN_CLOSE { return "Close"; }
+  if b == BTN_NEW { return "Build your own realm"; } if b == BTN_BYE { return "Stop talking"; }
+  if b == BTN_HOLD { return "Hold to talk"; }
+  if b == BTN_MOVE { return ifx s[0].moving >= 0 then "Put it here" else "Move the nearest thing"; }
+  if b == BTN_UNDO { return "Undo"; } if b == BTN_REDO { return "Redo"; } if b == BTN_SAVE { return "Save"; }
+  if b == BTN_PUBLISH { return "Publish"; } if b == BTN_FORK { return "Fork"; }
+  return "";
+}
+a11y_pressed :: (s: [] MyRealm, b: int) -> string {
+  if b == BTN_BUILD { return ifx s[0].pane == PANE_BUILD then "1" else "0"; }
+  if b == BTN_MAP { return ifx s[0].map_open then "1" else "0"; }
+  if b == BTN_FLY { return ifx s[0].flying then "1" else "0"; }
+  return "-";
+}
+A11Y_PICK_WORDS :: [5] string.["Turn it", "Make it bigger", "Make it smaller", "Take it away", "Let it go"];
+
+a11y_line :: (buf: [] u8, at: int, id: int, role: string, state: string, label: string) -> int {
+  n := put_int(buf, at, id); n = put(buf, n, " "); n = put(buf, n, role); n = put(buf, n, " "); n = put(buf, n, state);
+  n = put(buf, n, " ");
+  for c: label { if n < 0 || n >= buf.count { return -1; } buf[n] = ifx c == '\n' then ' ' else c; n += 1; }
+  return put(buf, n, "\n");
+}
+// The page's controls now, a line each (the canvas's, as the last frame laid them out).
+realm_a11y :: (s: [] MyRealm, buf: [] u8) -> int #export_c {
+  n := 0;
+  if s[0].note_n > 0 && s[0].time - s[0].note_at < 8 { n = a11y_line(buf, n, A11Y_STATUS, "status", "-", cast(string) s[0].note[0..<s[0].note_n]); }
+  for b: 0..<BUTTONS {
+    if !s[0].shown[b] || a11y_word(s, b) == "" { continue; }
+    n = a11y_line(buf, n, b, "button", a11y_pressed(s, b), a11y_word(s, b));
+  }
+  if s[0].moving >= 0 && forge_owner(s) {
+    for k: 0..<5 { n = a11y_line(buf, n, A11Y_PICK + k, "button", "-", A11Y_PICK_WORDS[k]); }
+  }
+  for c: 0..<THINGS {
+    if !s[0].cell_shown[c] { continue; }
+    lb: [40] u8; m := put(lb[..], 0, "Place a "); m = put(lb[..], m, THING_NAMES[c]);
+    n = a11y_line(buf, n, A11Y_CELL + c, "button", "-", cast(string) lb[0..<m]);
+  }
+  if redit_may(s[0].ed[..]) {
+    for r: 0..<s[0].ed[0].row_n { n = a11y_line(buf, n, A11Y_ROW + r, "checkbox", ifx s[0].ed[0].row_on[r] then "1" else "0", redit_label_of(s[0].ed[..], r)); }
+  }
+  return n;
+}
+// The picked thing's own edits: one undo step each, as a tap's would be.
+a11y_pick :: (s: [] MyRealm, k: int) -> bool {
+  e := s[0].moving;
+  if e < 0 || !forge_owner(s) || !ent_laid(s, e) { return false; }
+  b: [32] u8; key := ent_key(s, e, b[..]);
+  sh := forge_shape_of(s[0].fd[..], key);
+  done := false;
+  if k == 0 { done = forge_rotate(s[0].fd[..], key, sh.yaw + A11Y_TURN); }
+  if k == 1 { done = forge_resize(s[0].fd[..], key, sh.scale + A11Y_SIZE); }
+  if k == 2 { done = forge_resize(s[0].fd[..], key, sh.scale - A11Y_SIZE); }
+  if k == 3 { done = forge_remove(s[0].fd[..], key); if done { s[0].moving = -1; } }
+  if k == 4 { s[0].moving = -1; relay(s); set_note(s, "Let go."); return true; }
+  if !done { set_note(s, ifx k == 1 then "It's as big as it goes." else ifx k == 2 then "It's as small as it goes." else "That can't change."); return false; }
+  relay(s); s[0].kept_due = true;
+  set_note(s, ifx k == 0 then "Turned. Save keeps it." else ifx k == 3 then "Taken away. Undo brings it back." else "Resized. Save keeps it.");
+  return true;
+}
+// A control pressed in the accessible layer: what a tap on it does. False for one not shown now.
+realm_a11y_do :: (s: [] MyRealm, t: [] Track, id: int) -> bool #export_c {
+  if id >= 0 && id < BUTTONS { if !s[0].shown[id] { return false; } press_button(s, t, id); return true; }
+  if id >= A11Y_PICK && id < A11Y_PICK + 5 { return a11y_pick(s, id - A11Y_PICK); }
+  if id >= A11Y_CELL && id < A11Y_CELL + THINGS { if !s[0].cell_shown[id - A11Y_CELL] { return false; } place_thing(s, t, id - A11Y_CELL); return true; }
+  if id >= A11Y_ROW && id < A11Y_ROW + s[0].ed[0].row_n { if !redit_may(s[0].ed[..]) { return false; } redit_switch(s[0].ed[..], id - A11Y_ROW); return true; }
+  return false;
+}
+// The picked thing's keys: R turns it, + and - size it, Delete takes it away. True when taken.
+realm_pick_key :: (s: [] MyRealm, key: int) -> bool {
+  if s[0].moving < 0 || !forge_owner(s) { return false; }
+  if key == 'r' || key == 'R' { done := a11y_pick(s, 0); return true; }
+  if key == '+' || key == '=' { done := a11y_pick(s, 1); return true; }
+  if key == '-' || key == '_' { done := a11y_pick(s, 2); return true; }
+  if key == KEY_DELETE { done := a11y_pick(s, 3); return true; }
+  return false;
+}
+
+// A controller, once a frame: its left stick (x right, y forward, as a pad reads them) and whether
+// its first button is down. aethyr/input.coax decides: the dead zone, a junk number mended to none,
+// a press counted once however long it is held.
+realm_pad :: (s: [] MyRealm, x: f32, y: f32, jump_down: bool) #export_c {
+  i := input_stick(x, y, false, false, false, 0, 0, 0);
+  s[0].pad_x = i.move_x; s[0].pad_y = i.move_y; s[0].pad_mended += i.mended;
+  s[0].pad_jump = input_level(s[0].pad_jump, jump_down);
+  tk := input_take(s[0].pad_jump);
+  if tk.pressed { s[0].pad_jump = tk.edge; jump(s); }
+}
+
+a11y_in :: (text: string, part: string) -> bool {
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+a11y_has :: (s: [] MyRealm, line: string) -> bool {
+  b: [A11Y_MAX] u8; n := realm_a11y(s, b[..]);
+  text := cast(string) b[0..<n];
+  for i: 0..<text.count - line.count + 1 { if (i == 0 || text[i - 1] == '\n') && text[i..<i + line.count] == line { return true; } }
+  return false;
+}
+
+#test "a11y: the owner's controls are lines a keyboard and a screen reader reach; pressing one taps it" #steps 60000000 {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert a11y_has(s[..], "13 button - Move the nearest thing\n") && a11y_has(s[..], "17 button - Fork\n") && !a11y_has(s[..], "14 button");
+  #assert a11y_has(s[..], "3 button 0 Build\n");
+  #assert realm_a11y_do(s[..], t[..], BTN_MOVE) && s[0].moving >= 0;
+  n = frame_of(s[..], t[..], 2560, 1600);
+  #assert a11y_has(s[..], "13 button - Put it here\n") && a11y_has(s[..], "300 button - Turn it\n") && a11y_has(s[..], "304 button - Let it go\n");
+  #assert a11y_has(s[..], "900 status - Walk to its new place, then put it here.\n");
+  // the picked thing turns, grows and is taken away, each one step; undo walks them back
+  e := s[0].moving; b: [32] u8; key := ent_key(s[..], e, b[..]);
+  #assert realm_a11y_do(s[..], t[..], A11Y_PICK + 0) && forge_shape_of(s[0].fd[..], key).yaw == 45;
+  #assert realm_a11y_do(s[..], t[..], A11Y_PICK + 1) && forge_shape_of(s[0].fd[..], key).scale == 125;
+  #assert realm_a11y_do(s[..], t[..], A11Y_PICK + 3) && forge_shape_of(s[0].fd[..], key).gone && s[0].moving < 0;
+  n = frame_of(s[..], t[..], 2560, 1600);
+  #assert a11y_has(s[..], "14 button - Undo\n") && a11y_has(s[..], "15 button - Save\n") && !a11y_has(s[..], "300 button");
+  #assert realm_a11y_do(s[..], t[..], BTN_UNDO) && !forge_shape_of(s[0].fd[..], key).gone;
+  n = frame_of(s[..], t[..], 2560, 1600);
+  #assert a11y_has(s[..], "18 button - Redo\n");
+  #assert realm_a11y_do(s[..], t[..], BTN_REDO) && forge_shape_of(s[0].fd[..], key).gone;
+  // SAVE keeps the shapes; a control not shown does nothing
+  #assert realm_a11y_do(s[..], t[..], BTN_SAVE) && url_is(s[..], "/api/playtest/realms/forge-court/save") && a11y_in(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"shaped\":[{");
+  #assert !realm_a11y_do(s[..], t[..], BTN_PUBLISH) && !realm_a11y_do(s[..], t[..], A11Y_CELL) && !realm_a11y_do(s[..], t[..], 9999);
+}
+
+#test "a11y: a visitor gets no owner's controls; REDO asks the server when nothing is unsaved" #steps 60000000 {
+  v: [1] MyRealm; u: [1] Track;
+  opened(v[..], u[..], "forge-court", "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 0\nfeature trees round 6\nrev 3\npublished 3\n");
+  n := frame_of(v[..], u[..], 2560, 1600);
+  #assert !a11y_has(v[..], "13 button") && !a11y_has(v[..], "18 button") && !realm_a11y_do(v[..], u[..], A11Y_PICK) && !realm_a11y_do(v[..], u[..], A11Y_ROW);
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\nfeature trees round 6\nrev 6\npublished 3\nlisted 0\nundo 1\nredo 2\n");
+  n = frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].server_redo == 2 && s[0].shown[BTN_REDO] && a11y_has(s[..], "18 button - Redo\n");
+  #assert realm_a11y_do(s[..], t[..], BTN_REDO) && url_is(s[..], "/api/playtest/realms/forge-court/redo") && body_is(s[..], "{\"rev\":6}");
+  answered(s[..], t[..], 4, "200\n{\"rev\": 7, \"undo\": 2, \"redo\": 1}");
+  #assert s[0].server_redo == 1 && s[0].server_undo == 2 && note_is(s[..], "Redone.") && s[0].spec_due;
+  s[0].spec_due = false; tap_box(s[..], t[..], s[0].boxes[BTN_REDO]);
+  answered(s[..], t[..], 4, "409\n{\"error\": \"changed since\", \"rev\": 9}");
+  #assert note_is(s[..], "Changed since you opened it. Reload to see it.") && s[0].spec_due;
+}
+
+#test "a11y: keys turn, size and take away the picked thing" #steps 60000000 {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "forge-court", FORGED);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert !realm_pick_key(s[..], 'r');
+  #assert realm_a11y_do(s[..], t[..], BTN_MOVE);
+  e := s[0].moving; b: [32] u8; key := ent_key(s[..], e, b[..]);
+  #assert realm_key(s[..], t[..], 'r', true) && forge_shape_of(s[0].fd[..], key).yaw == 45;
+  #assert realm_key(s[..], t[..], '-', true) && forge_shape_of(s[0].fd[..], key).scale == 75;
+  for i: 0..<3 { #assert realm_key(s[..], t[..], '-', true); }
+  #assert forge_shape_of(s[0].fd[..], key).scale == 25 && note_is(s[..], "It's as small as it goes.");
+  #assert realm_key(s[..], t[..], KEY_DELETE, true) && forge_shape_of(s[0].fd[..], key).gone;
+}
+
+#test "a11y: a controller walks and jumps through aethyr/input.coax, for a guest too" #steps 60000000 {
+  v: [1] MyRealm; u: [1] Track;
+  opened(v[..], u[..], "forge-court", "realm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 0\ntool jump 1\nfeature trees round 6\nrev 3\npublished 3\n");
+  n := frame_of(v[..], u[..], 2560, 1600);
+  x0 := v[0].x; z0 := v[0].z;
+  realm_pad(v[..], 0.1, 0.1, false);   // inside the dead zone: no move
+  #assert v[0].pad_x == 0 && v[0].pad_y == 0;
+  for i: 0..<30 { realm_pad(v[..], 0, 1, false); n = frame_of(v[..], u[..], 2560, 1600); }
+  #assert abs(v[0].x - x0) + abs(v[0].z - z0) > 0.5;
+  realm_pad(v[..], 0.0 / 0.0, 1, false);   // a junk number is no push, and counted
+  #assert v[0].pad_y == 0 && v[0].pad_mended == 1;
+  realm_pad(v[..], 0, 0, true); realm_pad(v[..], 0, 0, true);   // held: one press, one jump
+  #assert v[0].pad_jump.pressed == 1 && v[0].pad_jump.taken == 1;
+  realm_blur(v[..]);
+  #assert v[0].pad_x == 0 && v[0].pad_y == 0 && !v[0].pad_jump.held;
+}

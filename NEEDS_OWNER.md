@@ -1,5 +1,18 @@
 # Owner actions
 
+## Made realm's accessible layer, lifecycle and controller: run on a real GPU (#12629, 2026-11-02)
+
+`coax/web/forge-access.coax` drives a made realm in muted headless Chrome:
+keyboard only through the accessible layer (MOVE, TURN IT, SAVE, UNDO, REDO,
+a row's checkbox), the names, roles and live region a screen reader reads,
+leave and reopen with an unsaved change, freeze and resume, and a guest's W
+key and a stand-in controller. On coderos-4080 it runs only on SwiftShader,
+whose WebGPU device Chrome destroys every few seconds; its keyboard and
+accessibility steps passed there before the host gave up after four losses
+in a minute. On the Mac, build the page's module (`apps/openagents-web/build.sh`,
+or just `build/myrealm.wasm`) and run `COAX=... coax/web/api/realm-gate.sh --page`,
+and add the result to issue #12629. Not blocking.
+
 ## GPU resource ledger: check on a real GPU (#12628, 2026-11-02)
 
 `aethyr/tests/render-ledger.coax` passed on coderos-4080 only on SwiftShader,

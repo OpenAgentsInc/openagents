@@ -27,9 +27,9 @@ FORGE_TURN :: 180;     // degrees an entity turns either way, at most
 FORGE_SCALE_MIN :: 25; // percent of its laid-out size, at least
 FORGE_SCALE_MAX :: 400;
 FORGE_SLOT_KEY :: 48;  // a slot's name: "lore:mara"
-FORGE_VAL :: 480;      // a slot's value bytes at most (lore: 400 characters)
-FORGE_SLOTS :: 96;     // slots one document keeps
-FORGE_TEXT :: 32768;   // bytes of slot values the document and its history keep together (64 steps of 400-byte lore fit)
+FORGE_VAL :: 2400;     // a slot's value bytes at most (a quest: 564 characters of up to four bytes; lore: 400)
+FORGE_SLOTS :: 320;    // slots one document keeps (200 placed things, 40 lore, 40 quests, setup, tools)
+FORGE_TEXT :: 65536;   // bytes of slot values the document and its history keep together (40 lore and 40 quests of plain words fit)
 
 // An entity as the document has it: where it stands instead (`at`), its turn and size, and gone.
 // The plain shape (nothing overridden) is the entity as laid out.
@@ -722,7 +722,7 @@ forge_after :: (a: string, b: string) -> bool {
   #assert forge_apply(d[..], o[..]) && !forge_slot_at(d[..], "set:time").found && !forge_apply(d[..], o[..]);
   #assert forge_slot_key_ok("row:trees") && forge_slot_key_ok("quest:old-mara") && forge_slot_key_ok("place:12");
   #assert !forge_slot_key_ok("rows:trees") && !forge_slot_key_ok("row:") && !forge_slot_key_ok("row:-x") && !forge_slot_key_ok("row:Trees") && !forge_slot_key_ok("trees");
-  long: [500] u8; for i: 0..<500 { long[i] = 'a'; }
+  long: [FORGE_VAL + 1] u8; for i: 0..<FORGE_VAL + 1 { long[i] = 'a'; }
   #assert forge_val_ok(cast(string) long[0..<FORGE_VAL]) && !forge_val_ok(cast(string) long[0..<FORGE_VAL + 1]);
 }
 
@@ -772,7 +772,7 @@ forge_script :: (d: [] ForgeDoc) -> bool {
   // the log's values and the slots fill the text: one more that can't fit is refused, nothing changes
   e: [1] ForgeDoc; forge_reset(e[..], 1);
   b: [16] u8; n := 0; ok := true; who := 0;
-  while ok && who < 90 {
+  while ok && who < 300 {
     n = forge_put(b[..], 0, "w"); n = forge_put_int(b[..], n, who);
     ok = forge_lore(e[..], cast(string) b[0..<n], cast(string) long[..]); who += 1;
   }

@@ -455,7 +455,7 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 #load "../../coax/lib/sys/args.coax";
 
 #test "the realm catalogue covers reads and revisioned writes with unique verbs" {
-  #assert REALM_COMMANDS.count == 36;
+  #assert REALM_COMMANDS.count == 37;
   for i: 0..<REALM_COMMANDS.count {
     c := REALM_COMMANDS[i];
     #assert c.domain == "realm" && c.verb.count > 0 && c.help.count > 0;
@@ -534,10 +534,10 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 }
 
 #test "realm routes and methods match the published command contract" {
-  routes := [36] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","batch","seat","seat","seat","seat","seat","seat","seat"];
+  routes := [37] string.["/mine","","/plan","/visibility","/publish","/fork","shot","/doc","/asks","/proposals","/panes","/switch","/revise","/asks","/asks/:id/delete","/asks/:id/done","/rows/:row/delete","/save","/save","/save","/save","/place","/settings","/lore","/quest","/proposals/:id/accept","/proposals/:id/decline","/undo","/redo","batch","seat","seat","seat","seat","seat","seat","seat"];
   for i: 0..<REALM_COMMANDS.count {
     #assert REALM_COMMANDS[i].route == routes[i];
-    method := ifx i == 6 || i >= 28 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
+    method := ifx i == 6 || i >= 29 then "LOCAL" else ifx i == 0 || i == 1 || (i >= 7 && i <= 10) then "GET" else "POST";
     #assert REALM_COMMANDS[i].method == method;
   }
   #assert REALM_COMMANDS[rc_find("new")].arguments == "newwords";
@@ -693,7 +693,7 @@ cli_edit_next_space :: (line: string, separator: int) -> int {
 CliCommand :: struct { domain: string = "realm"; verb: string; method: string; route: string; arguments: string; optional: int; flags: string; usage: string; help: string; }
 // The seat rows (route "seat") drive one realm open in headless Chrome on this computer, as a
 // visitor (apps/openagents-cli/realm-play.coax, docs/verse/realm-seat.md).
-REALM_COMMANDS :: [36] CliCommand.[
+REALM_COMMANDS :: [37] CliCommand.[
   CliCommand.{verb="list",method="GET",route="/mine",help="your realms"},
   CliCommand.{verb="show",method="GET",route="",arguments="slug",usage="SLUG",help="the realm's spec and page"},
   CliCommand.{verb="new",method="POST",route="/plan",arguments="newwords",flags="--from:id|--style:style|--time:time|--camera:camera|--ground:ground",usage="\"WORDS\" [--style S] [--time T] [--camera C] [--ground G] | --from PLAN",help="plan words and make a private realm; --from PLAN makes an existing plan"},
@@ -721,7 +721,8 @@ REALM_COMMANDS :: [36] CliCommand.[
   CliCommand.{verb="quest",method="POST",route="/quest",arguments="slug|who",flags="--rev:id|--ask:ask|--step:step|--reward:step",usage="SLUG GIVER --ask \"TEXT\" [--step \"TEXT\"]... [--reward \"TEXT\"] [--rev N]",help="set a giver's quest, up to three steps"},
   CliCommand.{verb="accept",method="POST",route="/proposals/:id/accept",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="accept a visitor's proposal"},
   CliCommand.{verb="decline",method="POST",route="/proposals/:id/decline",arguments="slug|id",flags="--rev:id",usage="SLUG ID [--rev N]",help="decline a visitor's proposal"},
-  CliCommand.{verb="undo",method="POST",route="/undo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="restore the preceding revision as a new revision"},
+  CliCommand.{verb="undo",method="POST",route="/undo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="take back the newest step (its own edits only) as a new revision"},
+  CliCommand.{verb="redo",method="POST",route="/redo",arguments="slug",flags="--rev:id",usage="SLUG [--rev N]",help="apply the step last undone again, as a new revision"},
   CliCommand.{verb="apply",method="LOCAL",route="batch",arguments="slug|file",flags="--rev:id",usage="SLUG FILE.jsonl [--rev N]",help="run JSON-line edits in order (below); consecutive moves share one save"},
   CliCommand.{verb="play",method="LOCAL",route="seat",arguments="slug",flags="--phone:bool|--hosted:bool",usage="SLUG [--phone] [--hosted]",help="sit in the realm as your account (headless Chrome here, or the server's with --hosted) and say what you see; others see an agent; the seat stays open for look, go, say, use and bye, and closes after 10 idle minutes"},
   CliCommand.{verb="look",method="LOCAL",route="seat",arguments="slug",flags="--turn:turn|--pitch:pitch|--shot:shotfile",usage="SLUG [--turn DEG] [--pitch DEG] [--shot OUT.png]",help="turn right (negative: left) up to 180 degrees; --pitch looks up or down in first person; --shot keeps a picture of the view"},
@@ -1255,7 +1256,7 @@ RbField :: struct { key: string; kind: int = 1; flag: string; optional: bool; }
 RbSpec :: struct { verb: string; fields: [4] RbField; }
 // kind: 1 string, 2 JSON number, 3 on/off boolean, 4 ordered string array,
 // 5 a boolean flag (false means omit it). The catalogue owns value bounds.
-RB_SPECS :: [19] RbSpec.[
+RB_SPECS :: [20] RbSpec.[
   RbSpec.{verb="move",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="x",kind=2},RbField.{key="z",kind=2},RbField.{}]},
   RbSpec.{verb="rotate",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="yaw",kind=2},RbField.{},RbField.{}]},
   RbSpec.{verb="resize",fields=[4] RbField.[RbField.{key="entity"},RbField.{key="scale",kind=2},RbField.{},RbField.{}]},
@@ -1273,6 +1274,7 @@ RB_SPECS :: [19] RbSpec.[
   RbSpec.{verb="accept",fields=[4] RbField.[RbField.{key="id",kind=2},RbField.{},RbField.{},RbField.{}]},
   RbSpec.{verb="decline",fields=[4] RbField.[RbField.{key="id",kind=2},RbField.{},RbField.{},RbField.{}]},
   RbSpec.{verb="undo"},
+  RbSpec.{verb="redo"},
   RbSpec.{verb="publish",fields=[4] RbField.[RbField.{key="listed",kind=5,flag="--listed",optional=true},RbField.{},RbField.{},RbField.{}]},
   RbSpec.{verb="visibility",fields=[4] RbField.[RbField.{key="visibility"},RbField.{},RbField.{},RbField.{}]}
 ];
@@ -1396,7 +1398,7 @@ rb_check :: (line: string, slug: string, a: [] Args) -> RbWhy {
   out: [1024] u8;
   h := rb_help(out[..]);
   #assert cli_prefix(h, "move entity x z; rotate entity yaw; resize entity scale; remove entity; switch row on; place thing x z yaw?; revise prompt; ask words?|doc?; ask-delete id; ask-done id commit; ");
-  #assert rc_contains(h, "quest giver ask steps reward?; accept id; decline id; undo; publish listed?; visibility visibility") && !rc_contains(h, "  ");
+  #assert rc_contains(h, "quest giver ask steps reward?; accept id; decline id; undo; redo; publish listed?; visibility visibility") && !rc_contains(h, "  ");
   #assert rb_help(out[0..<10]) == "";
 }
 rb_help :: (out: [] u8) -> string {

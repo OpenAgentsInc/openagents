@@ -32,6 +32,10 @@
 //   coaxial_wants_text(state) focus the keyboard field (a phone's keyboard)
 //   coaxial_field(state)      where the app draws that field: 4 floats, device pixels
 //   coaxial_cursor(state)     0 the default, 1 a link, 2 a crosshair, 3 text
+//   coaxial_a11y(state) -> bytes, coaxial_a11y_buf(), coaxial_a11y_do(state, id)
+//                             the app's controls, a line each ("ID ROLE STATE LABEL"), mirrored as DOM
+//                             buttons and checkboxes beside the canvas, and the one pressed there (a11yMirror)
+//   coaxial_pad(state, x, y, button) a controller's left stick (x right, y forward) and first button, once a frame
 //   coaxial_hash(state, length) the location's hash (without '#') in the inbox, at load and on every change
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
 //                             out: 1 navigates to the outbox's URL (under data-root, if the page has one; or an https:// URL), 2 copies its text, 3 makes it the
@@ -1595,8 +1599,81 @@ function frame(now) {
   requestAnimationFrame(frame);
   if (clipping) return;
   if (engine && socketHead < socketQueue.length) drainSockets(Math.max(2, SOCKET_BUDGET_MS - frameCost));
+  padPoll();
   const t0 = performance.now();
   try { draw(now); } finally { frameCost = 0.9 * frameCost + 0.1 * (performance.now() - t0); }
+  a11yMirror(now);
+}
+
+// A controller (a module that exports coaxial_pad): the first pad's left stick (x right, y
+// forward) and its first button, once a frame; the module decides what they do (myrealm:
+// aethyr/input.coax). A pad gone sends one still frame.
+let padLive = false;
+function padPoll() {
+  const x = engine?.exports;
+  if (!x?.coaxial_pad || !navigator.getGamepads) return;
+  const pad = [...navigator.getGamepads()].find((g) => g && g.connected);
+  if (!pad && !padLive) return;
+  padLive = !!pad;
+  x.coaxial_pad(arena.state, pad ? Number(pad.axes[0]) || 0 : 0, pad ? -(Number(pad.axes[1]) || 0) : 0, pad?.buttons[0]?.pressed ? 1 : 0);
+}
+
+// The accessible layer (Aethyr book chapter 86): a module that describes its controls
+// (coaxial_a11y: a line each, "ID ROLE STATE LABEL") gets them as real buttons and checkboxes
+// beside the canvas, which stays aria-hidden, and its note as a polite live region. Tab reaches
+// them; Enter or Space presses one, which sends its id back (coaxial_a11y_do): the module does
+// what a tap on it does. Hidden until something in it has focus. The host only mirrors.
+const a11y = { root: null, status: null, text: null, at: 0, nodes: new Map() };
+function a11yMirror(now) {
+  const x = engine?.exports;
+  if (!x?.coaxial_a11y || now - a11y.at < 150) return;
+  a11y.at = now;
+  const n = x.coaxial_a11y(arena.state);
+  const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_a11y_buf(), Math.max(0, n)).slice());
+  if (text === a11y.text) return;
+  a11y.text = text;
+  if (!a11y.root) {
+    const style = document.createElement("style");
+    style.textContent = "#coaxial-a11y{position:fixed;left:8px;top:8px;z-index:20;display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100vw - 16px);clip-path:inset(50%);opacity:0}"
+      + "#coaxial-a11y:focus-within{clip-path:none;opacity:1}"
+      + "#coaxial-a11y button{font:16px/1.2 system-ui,sans-serif;padding:8px 12px;color:#f0f0f0;background:#141414;border:1px solid #f0f0f0;border-radius:4px}"
+      + "#coaxial-a11y button:focus-visible{outline:3px solid hsl(180,68%,53%);outline-offset:2px}"
+      + "#coaxial-a11y [aria-pressed=true],#coaxial-a11y [aria-checked=true]{background:#2c4a4a}"
+      + "#coaxial-a11y-status{position:fixed;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}";
+    document.head.append(style);
+    a11y.root = Object.assign(document.createElement("div"), { id: "coaxial-a11y" });
+    a11y.root.setAttribute("role", "toolbar"); a11y.root.setAttribute("aria-label", "Realm controls");
+    a11y.root.addEventListener("click", (e) => {
+      const b = e.target.closest?.("button[data-id]");
+      if (!b || !engine?.exports.coaxial_a11y_do) return;
+      engine.exports.coaxial_a11y_do(arena.state, Number(b.dataset.id));
+      a11y.at = 0; after(true);
+    });
+    a11y.status = Object.assign(document.createElement("div"), { id: "coaxial-a11y-status" });
+    a11y.status.setAttribute("role", "status"); a11y.status.setAttribute("aria-live", "polite");
+    document.body.prepend(a11y.root, a11y.status);   // first in the tab order
+  }
+  const seen = new Set();
+  let say = "";
+  for (const line of text.split("\n")) {
+    const m = /^(\d+) (button|checkbox|status) ([01-]) (.*)$/.exec(line);
+    if (!m) continue;
+    const [, id, role, state, label] = m;
+    if (role === "status") { say = label; continue; }
+    seen.add(id);
+    let b = a11y.nodes.get(id);
+    if (!b) { b = Object.assign(document.createElement("button"), { type: "button" }); b.dataset.id = id; a11y.nodes.set(id, b); }
+    if (role === "checkbox") { b.setAttribute("role", "checkbox"); b.setAttribute("aria-checked", state === "1" ? "true" : "false"); b.removeAttribute("aria-pressed"); }
+    else { b.removeAttribute("role"); b.removeAttribute("aria-checked"); if (state === "-") b.removeAttribute("aria-pressed"); else b.setAttribute("aria-pressed", state === "1" ? "true" : "false"); }
+    if (b.textContent !== label) b.textContent = label;
+    a11y.root.append(b);   // in the module's order
+  }
+  for (const [id, b] of a11y.nodes) if (!seen.has(id)) {
+    const had = document.activeElement === b;
+    b.remove(); a11y.nodes.delete(id);
+    if (had) a11y.root.querySelector("button")?.focus();   // focus stays in the layer
+  }
+  if (a11y.status.textContent !== say) a11y.status.textContent = say;
 }
 let frameCost = 0;   // ms of main thread the drawing itself takes, smoothed: socket events get what's left
 function draw(now) {
@@ -2074,6 +2151,8 @@ const keyOf = (e) => KEYS[e.key] ?? ([...e.key].length === 1 ? e.key.codePointAt
 const modsOf = (e) => (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
 addEventListener("keydown", (e) => {
   if (!engine || e.isComposing) return;
+  // the accessible layer's own keys: Tab moves through it, Enter and Space press what has focus
+  if (a11y.root && (e.key === "Tab" || (a11y.root.contains(e.target) && (e.key === "Enter" || e.key === " ")))) return;
   startAudio();
   const named = KEYS[e.key];
   // Paste is the browser's: it lands in the field, whose input event brings the text.

@@ -96,6 +96,22 @@ EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_
 // What a check reads (realm_probe): host.js's coaxial.guardProbe(field).
 EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) { return (int32_t)realm_probe(at(state), field); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)realm_cursor(at(state)); }
+// The accessible layer (myrealm-a11y.coax): the controls as lines host.js mirrors as DOM
+// controls, and the one pressed there; a controller's stick and first button, once a frame.
+static char a11y_text[8192];
+EXPORT("coaxial_a11y_buf") uint32_t coaxial_a11y_buf(void) { return (uint32_t)(uintptr_t)a11y_text; }
+EXPORT("coaxial_a11y") int32_t coaxial_a11y(uint32_t state) {
+  coax_v_u8 out = {(uint8_t *)a11y_text, sizeof a11y_text};
+  int64_t n = realm_a11y(at(state), out);
+  return n < 0 ? 0 : (int32_t)n;
+}
+EXPORT("coaxial_a11y_do") uint32_t coaxial_a11y_do(uint32_t state, int32_t id) {
+  start_track();
+  uint32_t used = realm_a11y_do(at(state), tr(), id) ? 1u : 0u;
+  drain(state);
+  return used;
+}
+EXPORT("coaxial_pad") void coaxial_pad(uint32_t state, float x, float y, int32_t jump) { realm_pad(at(state), x, y, jump != 0); }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
