@@ -519,7 +519,7 @@ cd_claude_reset :: (q: [] ClQuery) { fresh: ClQuery; q[0] = fresh; }
 cd_claude_options :: (q: [] ClQuery, cwd: string, model: string, ask: bool, effort: string, coder_tools: bool, tool_hooks: bool) {
   o: [1] ClOptions;
   o[0].include_partial_messages = true;
-  if tool_hooks { cl_add_hook(o[..], "PreToolUse", "", 60.0); }    // every tool call first passes the plugins' tool_call hooks
+  if tool_hooks { cl_add_hook(o[..], "PreToolUse", "", 60.0); }    // every tool call first passes the policy and the plugins' tool_call hooks
   if coder_tools { cd_claude_coder_server(o[..]); }
   if effort.count > 0 { o[0].effort = effort; }
   // Tools run without asking, as with claude --dangerously-skip-permissions;
@@ -540,7 +540,7 @@ cd_claude_send :: (a: [] App, msg: string) {
   }
   cd_claude_reset(a[0].q);
   cl_init(a[0].q, a[0].qline, a[0].qarena, a[0].qout);
-  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools, cd_has_hook(a, "tool_call"));
+  cd_claude_options(a[0].q, a[0].cwd, ifx a[0].model_engine == ENGINE_CLAUDE then a[0].model else "", a[0].ask_first || a[0].pol[0].on, cd_effort(a), a[0].coder_tools, a[0].pol[0].on || cd_has_hook(a, "tool_call"));
   if a[0].nresume > 0 { a[0].q[0].options.resume = cast(string) a[0].resume[0..<a[0].nresume]; a[0].q[0].options.fork_session = true; }
   a[0].npending = cd_cat(a[0].pending[..], 0, msg);
   problem := cl_start(a[0].q, a[0].p, "", true, a[0].scratch);
@@ -961,16 +961,29 @@ cd_has_hook :: (a: [] App, event: string) -> bool {
   return false;
 }
 
-// Claude Code's PreToolUse hook: the plugins' tool_call hooks may refuse the call.
+// Claude Code's PreToolUse hook: Coder's policy, then the plugins' tool_call hooks, may refuse the call.
 cd_claude_pre_tool :: (a: [] App, ev: ClEvent) {
   q := a[0].q;
   tool := cl_str(q[0].ar[..], ev.arguments, "tool_name");
   input := cl_raw(ev.arguments, "tool_input");
   lb: [1024] u8; label := cd_tool_label(a, tool, input, lb[..]);
+  ob: [1200] u8;
+  // the policy first: Claude Code runs some calls (a read-only Bash command,
+  // say) without a permission request, and a refused one must not run
+  if a[0].pol[0].on {
+    pw: [256] u8; pn: [1] int;
+    if cd_claude_verdict_of(a, tool, input, pw[..], pn[..]) == CD_VERDICT_REFUSE {
+      cd_approval_note(a, label, cd_effect_of(tool), cd_claude_inside(a, input), CD_VERDICT_REFUSE, cast(string) pw[0..<pn[0]]);
+      pr: [400] u8; prn := cd_cat(pr[..], 0, "Coder's policy refuses this: "); prn = cd_cat(pr[..], prn, cast(string) pw[0..<pn[0]]);
+      m := json_raw(ob[..], 0, "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":");
+      m = json_write_string(ob[..], m, cast(string) pr[0..<prn]); m = json_raw(ob[..], m, "}}");
+      cl_hook_answer(q, ifx m > 0 then cast(string) ob[0..<m] else "{}");
+      return;
+    }
+  }
   wb: [400] u8; for i: 0..<wb.count { wb[i] = 0; }
   if cd_hooks_run(a, "tool_call", "", label, input, wb[..]) { cl_hook_answer(q, "{}"); return; }
   k := 0; while k < wb.count && wb[k] != 0 { k += 1; }
-  ob: [1200] u8;
   n := json_raw(ob[..], 0, "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":");
   rb: [600] u8; rn := cd_cat(rb[..], 0, "A Coder plugin refused this. "); rn = cd_cat(rb[..], rn, cast(string) wb[0..<k]);
   n = json_write_string(ob[..], n, cast(string) rb[0..<rn]); n = json_raw(ob[..], n, "}}");
@@ -1480,7 +1493,7 @@ cd_cmd_bench :: (suite: string, json: bool) -> int {
   n = json_raw(jb[..], n, ",\"at_us\":"); n = json_write_int(jb[..], n, t0);
   n = json_raw(jb[..], n, ",\"last\":"); n = json_write_string(jb[..], n, cast(string) last[0..<ifx last.count > 2000 then 2000 else last.count]);
   n = json_raw(jb[..], n, "}");
-  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  hb: [1024] u8; home := cd_state_home(hb[..]);
   if home.count > 0 && n > 0 {
     pb: [1300] u8; pn := cd_cat(pb[..], 0, home); pn = cd_cat(pb[..], pn, "/.openagents/coder/bench"); x := fs_mkdir(cast(string) pb[0..<pn]);
     ib: [32] u8; pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, names[k]); pn = cd_cat(pb[..], pn, "-"); pn = cd_cat(pb[..], pn, cs_make_id(t0, ib[..])); pn = cd_cat(pb[..], pn, ".json");

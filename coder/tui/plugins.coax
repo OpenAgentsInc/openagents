@@ -343,7 +343,7 @@ pl_index :: (r: [] PlRegistry, name: string) -> int { for k: 0..<r[0].n { if pl_
 
 // The plugins directory under $HOME ("" without one); made when missing.
 pl_dir :: (out: [] u8) -> string {
-  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  hb: [1024] u8; home := cd_state_home(hb[..]);
   if home.count == 0 { return ""; }
   n := pl_cat(out, 0, home); n = pl_cat(out, n, "/.openagents"); m := fs_mkdir(cast(string) out[0..<n]);
   n = pl_cat(out, n, "/coder"); m = fs_mkdir(cast(string) out[0..<n]);
@@ -371,7 +371,7 @@ pl_load :: (r: [] PlRegistry, profile: string) -> string {
   names: [PL_MAX * 4] [64] u8; lens: [PL_MAX * 4] int; count := 0;
   if profile.count > 0 {
     if !pl_name_ok(profile) { return "a profile's name is a-z, 0-9, - and _"; }
-    hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+    hb: [1024] u8; home := cd_state_home(hb[..]);
     pb: [1400] u8; pn := pl_cat(pb[..], 0, home); pn = pl_cat(pb[..], pn, PL_PROFILES);
     fb: [80] u8; fn := pl_cat(fb[..], 0, profile); fn = pl_cat(fb[..], fn, ".json");
     xb: [8192] u8; text := pl_read_small(cast(string) pb[0..<pn], cast(string) fb[0..<fn], xb[..]);

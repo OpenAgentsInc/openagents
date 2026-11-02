@@ -8,7 +8,9 @@
 > fixed corpus of eight attacks run against a deterministic stand-in agent
 > that obeys every instruction it reads, and separate measurements of
 > calls, effects, held calls, refusals, unauthorized effects, changed
-> answers, sentinel leaks and task completion. Still to come: runs of a
+> answers, sentinel leaks and task completion. The same eight attacks, in
+> plain language, also run against Claude Code through Coder's Router
+> (chapter20). Still to come: runs of a
 > pinned Psionic-served model on held-out attack variants, with grants,
 > seeds and acceptance bounds frozen before the comparison; the gate wired
 > into [chapter1](ch001-the-simplest-loop.md)'s loop,
@@ -921,8 +923,12 @@ kills all 317 mutants, and none survive.
 
 ## What this does not do yet
 
-- **No model has been measured.** The stand-in agent is deterministic and
-  obeys every instruction. Runs of a pinned Psionic-served model on
+- **No model has been measured in this lab.** The stand-in agent is
+  deterministic and obeys every instruction. Plain-language versions of
+  the corpus have run against Claude Code through Coder's Router under a
+  read ceiling (see [chapter20's containment](ch020-an-agent-that-stays-online.md#containment)):
+  Claude Code tried a tool on four of the eight, and Coder's policy
+  refused or denied each of those calls. That run measures the Router's ceiling, not this gate. Runs of a pinned Psionic-served model on
   held-out attack variants, with grants, seeds, model and build identities
   and acceptance bounds frozen first, are still to come. Until then, the
   measurements above describe this agent only.

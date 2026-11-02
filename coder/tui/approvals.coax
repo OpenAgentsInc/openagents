@@ -205,14 +205,26 @@ cd_approval_note :: (a: [] App, label: string, effect: int, inside: bool, verdic
 
 // The verdict for a Claude Code permission request, noted.
 cd_claude_verdict :: (a: [] App, tool: string, input: string, label: string, why: [] u8, nwhy: [] int) -> int {
-  effect := cd_effect_of(tool);
+  verdict := cd_claude_verdict_of(a, tool, input, why, nwhy);
+  cd_approval_note(a, label, cd_effect_of(tool), cd_claude_inside(a, input), verdict, cast(string) why[0..<nwhy[0]]);
+  return verdict;
+}
+
+// Whether every path in a Claude Code tool's input is inside the roots.
+cd_claude_inside :: (a: [] App, input: string) -> bool {
   inside := true;
   fields := CD_PATH_FIELDS;
   for f: fields { v := cl_str(a[0].q[0].ar[..], input, f); if v.count > 0 && !cd_inside(a[0].pol[..], a[0].cwd, v) { inside = false; } }
+  return inside;
+}
+
+// The verdict alone, not noted: Claude Code's PreToolUse hook asks it of
+// every call, including the ones Claude Code would run without asking.
+cd_claude_verdict_of :: (a: [] App, tool: string, input: string, why: [] u8, nwhy: [] int) -> int {
   for i: 0..<why.count { why[i] = 0; }
-  verdict := cd_policy_decide(a[0].pol[..], effect, inside, why);
+  verdict := cd_policy_decide(a[0].pol[..], cd_effect_of(tool), cd_claude_inside(a, input), why);
   k := 0; while k < why.count && why[k] != 0 { k += 1; }
   nwhy[0] = k;
-  cd_approval_note(a, label, effect, inside, verdict, cast(string) why[0..<k]);
   return verdict;
 }
+

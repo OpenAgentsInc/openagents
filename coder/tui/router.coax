@@ -393,7 +393,7 @@ rt_path :: (p: [] RtPaths, rel: string, out: [] u8) -> string {
 }
 
 rt_init :: (p: [] RtPaths) -> bool {
-  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  hb: [1024] u8; home := cd_state_home(hb[..]);
   if home.count == 0 { return false; }
   n := cd_cat(p[0].root[..], 0, home); n = cd_cat(p[0].root[..], n, "/.openagents"); x := fs_mkdir(cast(string) p[0].root[0..<n]);
   n = cd_cat(p[0].root[..], n, "/coder"); x = fs_mkdir(cast(string) p[0].root[0..<n]);

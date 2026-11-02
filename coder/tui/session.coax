@@ -45,8 +45,17 @@ CsLog :: struct {
 cs_id :: (l: [] CsLog) -> string { return cast(string) l[0].id[0..<l[0].nid]; }
 
 // The sessions directory under $HOME, made when missing: "" when there is no $HOME.
+// Where Coder keeps its state: $CODER_HOME when set, else $HOME. Engines
+// still run with the real $HOME, so a lab can drive them on the person's
+// own logins without touching the person's sessions, Router or memory.
+cd_state_home :: (out: [] u8) -> string {
+  h := cl_getenv("CODER_HOME", out);
+  if h.count > 0 { return h; }
+  return cl_getenv("HOME", out);
+}
+
 cs_dir :: (out: [] u8) -> string {
-  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  hb: [1024] u8; home := cd_state_home(hb[..]);
   if home.count == 0 { return ""; }
   n := cd_cat(out, 0, home);
   n = cd_cat(out, n, "/.openagents"); m := fs_mkdir(cast(string) out[0..<n]);
@@ -386,7 +395,9 @@ cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
       s[0].nlast = cd_cat(s[0].last[..], s[0].nlast, cast(string) t[0..<e2]);
     }
   }
-  if open { s[0].nending = cd_cat(s[0].ending[..], 0, "running"); }
+  // a header with no turn yet is a session starting, not one that ended: a
+  // Router pass that reads it then must not report it (the live lab caught one)
+  if open || (s[0].ok && s[0].turns == 0) { s[0].nending = cd_cat(s[0].ending[..], 0, "running"); }
 }
 
 #test "a fork carries the parent's turns up to a boundary" {
@@ -413,6 +424,9 @@ cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
   #assert s[0].ok && cast(string) s[0].engine[0..<s[0].nengine] == "codex" && cast(string) s[0].task[0..<s[0].ntask] == "fix it";
   #assert s[0].turns == 2 && s[0].steps == 2 && cast(string) s[0].ending[0..<s[0].nending] == "running" && s[0].started_us == 5;
   #assert cast(string) s[0].last[0..<s[0].nlast] == "user: again";
+  h := "{\"kind\":\"session\",\"id\":\"x\",\"engine\":\"claude\",\"cwd\":\"/w\",\"started_us\":5}\n";
+  cs_read(h, s[..], ar[..]);
+  #assert s[0].turns == 0 && cast(string) s[0].ending[0..<s[0].nending] == "running";
 }
 
 #test "session: credential values become [credential], shorter or longer than the mark" {
