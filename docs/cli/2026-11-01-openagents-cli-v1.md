@@ -476,13 +476,14 @@ OpenAgents is the general agent that routes and replies in every channel;
 Coder is the Worker that takes one repository task to a pull request
 ([the split](../../coder/book/PLAN.md#openagents-and-coder)).
 
-Shipped 2026-11-02: `run`, `ls`, `status` and `log`
+Shipped 2026-11-02: `run` (with `--detach`), `ls`, `status`, `log`, `stop`,
+`fork` and `route`
 (`apps/openagents-cli/coder.coax` runs `coder/tui/coder.sh`, which owns the
 verbs). Sessions are JSON-lines files in `~/.openagents/coder/sessions`. `run`
 exits 0 when the task finished, 1 when it failed and 130 when it was stopped;
-`status` and `log` exit 6 for an unknown ID. `run` runs in the foreground
-for now, so `--on` and `--detach` are not there yet. The other verbs are
-still planned.
+`status`, `log`, `stop` and `fork` exit 6 for an unknown ID. Without
+`--engine`, `run` asks System One which engine to use (`route` prints only
+that decision). `--on` isn't there yet. The other verbs are still planned.
 
 | Verb | What it does | Needs a server |
 | --- | --- | --- |

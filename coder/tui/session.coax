@@ -29,6 +29,10 @@ CsLog :: struct {
   path: [1200] u8; npath: int;
   line: [CS_LINE] u8;
   reply: [65536] u8; nreply: int;   // the turn's reply so far
+  want: [32] u8; nwant: int;        // --session: the ID a detached run was given
+  parent: [32] u8; nparent: int;    // a fork's parent session
+  at: int;                          // and the turns it kept
+  pid: int;                         // a detached run's process
 }
 
 cs_id :: (l: [] CsLog) -> string { return cast(string) l[0].id[0..<l[0].nid]; }
@@ -79,7 +83,7 @@ cs_open :: (a: [] App) {
   l := a[0].log;
   db: [1100] u8; dir := cs_dir(db[..]);
   us := cxproc_wall_us();
-  ib: [32] u8; id := cs_make_id(us, ib[..]);
+  ib: [32] u8; id := ifx l[0].nwant > 0 then cast(string) l[0].want[0..<l[0].nwant] else cs_make_id(us, ib[..]);
   l[0].nid = cd_cat(l[0].id[..], 0, id);
   if dir.count > 0 {
     l[0].npath = cd_cat(l[0].path[..], 0, dir); l[0].npath = cd_cat(l[0].path[..], l[0].npath, "/");
@@ -92,8 +96,50 @@ cs_open :: (a: [] App) {
   n = json_raw(o, n, ",\"engine\":"); n = json_write_string(o, n, cd_engine_name(a[0].engine));
   n = json_raw(o, n, ",\"cwd\":"); n = json_write_string(o, n, a[0].cwd);
   n = json_raw(o, n, ",\"started_us\":"); n = json_write_int(o, n, us);
+  if l[0].nparent > 0 {
+    n = json_raw(o, n, ",\"parent\":"); n = json_write_string(o, n, cast(string) l[0].parent[0..<l[0].nparent]);
+    n = json_raw(o, n, ",\"at\":"); n = json_write_int(o, n, l[0].at);
+  }
+  if l[0].pid > 0 { n = json_raw(o, n, ",\"pid\":"); n = json_write_int(o, n, l[0].pid); }
   n = json_raw(o, n, "}");
   cs_put(a, n);
+}
+
+// A sibling of the session's file: ID.stop, the file `coder stop` leaves for a detached run.
+cs_sibling :: (l: [] CsLog, ext: string, out: [] u8) -> string {
+  if !l[0].on || l[0].npath < 6 { return ""; }
+  n := cd_cat(out, 0, cast(string) l[0].path[0..<l[0].npath - 6]); n = cd_cat(out, n, ext);
+  return cast(string) out[0..<n];
+}
+
+CS_FORK_TURN :: 4000;     // bytes of each earlier message and reply a fork carries
+
+// The conversation a fork carries: the parent's first `at` turns (all when
+// at is 0) as text for the new session's first message. How many turns.
+cs_turns_text :: (text: string, at: int, ar: [] ClArena, out: [] u8, n_out: [] int) -> int {
+  n := 0; turns := 0; at_line := 0; inreply := false;
+  while at_line < text.count {
+    e := at_line; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[at_line..<e];
+    at_line = e + 1;
+    if line.count == 0 { continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := cl_str(ar, line, "kind");
+    if kind == "user" {
+      if at > 0 && turns == at { break; }
+      turns += 1; inreply = false;
+      t := cl_str(ar, line, "text");
+      n = cd_cat(out, n, ifx turns == 1 then "User: " else "\n\nUser: ");
+      n = cd_cat(out, n, cast(string) t[0..<tui_fit(t, CS_FORK_TURN)]);
+    } else if kind == "reply" && turns > 0 {
+      t := cl_str(ar, line, "text");
+      n = cd_cat(out, n, ifx inreply then "\n" else "\nYou: ");
+      inreply = true;
+      n = cd_cat(out, n, cast(string) t[0..<tui_fit(t, CS_FORK_TURN)]);
+    }
+  }
+  n_out[0] = n;
+  return turns;
 }
 
 // Appends the line built in l.line[0..<n] (and prints it with --json).
@@ -207,6 +253,16 @@ cs_read :: (text: string, s: [] CsSummary, ar: [] ClArena) {
     }
   }
   if open { s[0].nending = cd_cat(s[0].ending[..], 0, "running"); }
+}
+
+#test "a fork carries the parent's turns up to a boundary" {
+  text := "{\"kind\":\"session\",\"id\":\"p\"}\n{\"kind\":\"user\",\"text\":\"one\"}\n{\"kind\":\"reply\",\"text\":\"a\"}\n{\"kind\":\"tool\",\"label\":\"Bash(ls)\"}\n{\"kind\":\"reply\",\"text\":\"b\"}\n{\"kind\":\"end\",\"ending\":\"finished\"}\n{\"kind\":\"user\",\"text\":\"two\"}\n{\"kind\":\"reply\",\"text\":\"c\"}\n";
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  ob: [1024] u8; n: [1] int;
+  #assert cs_turns_text(text, 0, ar[..], ob[..], n[..]) == 2;
+  #assert cast(string) ob[0..<n[0]] == "User: one\nYou: a\nb\n\nUser: two\nYou: c";
+  #assert cs_turns_text(text, 1, ar[..], ob[..], n[..]) == 1;
+  #assert cast(string) ob[0..<n[0]] == "User: one\nYou: a\nb";
 }
 
 #test "session IDs sort by time: UTC date, time and milliseconds" {

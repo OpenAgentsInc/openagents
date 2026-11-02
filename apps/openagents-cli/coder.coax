@@ -4,7 +4,8 @@
 // the terminal and the verbs print straight to stdout:
 //   openagents coder                       the terminal UI
 //   openagents coder run "TASK" [--json]   one task; exits 0 finished, 1 failed, 130 stopped
-//   openagents coder ls | status ID | log ID [--json]
+//   openagents coder ls | status ID | log ID | stop ID [--json]
+//   openagents coder fork ID "TASK" [--at TURN] | route "TASK" | run "TASK" --detach
 // Sessions are in ~/.openagents/coder/sessions, one JSON-lines file each.
 
 cxproc_exec :: (h: int) -> int #foreign;
@@ -12,8 +13,12 @@ cxproc_exec :: (h: int) -> int #foreign;
 coder_usage :: () {
   print("%\n", "Coder (OpenAgents' coding agent, in this terminal):");
   print("%\n", "  coder                              the terminal UI; Shift-Tab switches agent");
-  print("%\n", "  coder run \"TASK\" [--engine micro|claude|codex|echo] [--cwd DIR] [--json]");
+  print("%\n", "  coder run \"TASK\" [--engine micro|claude|codex|psionic|echo] [--cwd DIR] [--json]");
   print("%\n", "                                     one task, its steps as text or JSON lines");
+  print("%\n", "                                     no --engine: System One picks it (coder route \"TASK\" shows the pick)");
+  print("%\n", "  coder run \"TASK\" --detach          a background job: prints its ID and returns");
+  print("%\n", "  coder fork ID \"TASK\" [--at TURN]   a new session carrying ID's turns");
+  print("%\n", "  coder stop ID                      stop a running session");
   print("%\n", "  coder ls                           sessions, newest first");
   print("%\n", "  coder status ID                    one session's state (ID may be a prefix)");
   print("%\n", "  coder log ID                       one session's log");

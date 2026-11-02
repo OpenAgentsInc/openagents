@@ -52,6 +52,7 @@ SPIN :: [10] string.["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
 
 App :: struct {
   plain: bool;                   // --print: no TUI, plain lines
+  pre: string;                   // a fork's earlier turns, sent ahead of its first message
   engine: int;
   model: string;
   model_engine: int;             // --model is for the engine it came with
@@ -270,17 +271,25 @@ cd_start :: (a: [] App, msg: string) {
   a[0].md[0].in_code = false;
   a[0].turns += 1;
   if msg.count > 2 && msg[0] == '$' && msg[1] == ' ' { cd_command_start(a, cast(string) msg[2..<msg.count]); return; }
+  sent := msg;
+  fb: [40000] u8;
+  if a[0].pre.count > 0 {        // a fork's first message carries the conversation it was forked from
+    n := cd_cat(fb[..], 0, "Earlier in this conversation:\n\n"); n = cd_cat(fb[..], n, a[0].pre);
+    n = cd_cat(fb[..], n, "\n\nNow: "); n = cd_cat(fb[..], n, msg);
+    sent = cast(string) fb[0..<n];
+    a[0].pre = "";
+  }
   if a[0].engine == ENGINE_ECHO {
     a[0].necho = 0; a[0].echo_at = 0; a[0].echo_next_ms = cd_now(a) + 300;
     a[0].necho = cd_cat(a[0].echo[..], 0, "Echo engine, offline. You said: ");
-    a[0].necho = cd_cat(a[0].echo[..], a[0].necho, msg);
+    a[0].necho = cd_cat(a[0].echo[..], a[0].necho, sent);
     a[0].necho = cd_cat(a[0].echo[..], a[0].necho, "\nStart with \"$ \" to run a command here, or press Shift-Tab for Claude Code, Codex or Microcoder.");
     return;
   }
   a[0].nerr = 0;
-  if a[0].engine == ENGINE_CODEX { cd_codex_send(a, msg); return; }
-  if cd_is_micro(a[0].engine) { cd_micro_send(a, msg); return; }
-  cd_claude_send(a, msg);
+  if a[0].engine == ENGINE_CODEX { cd_codex_send(a, sent); return; }
+  if cd_is_micro(a[0].engine) { cd_micro_send(a, sent); return; }
+  cd_claude_send(a, sent);
 }
 
 // ---------------------------------------------------------------- "$ " commands
@@ -704,10 +713,10 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder ls [--json]                         sessions, newest first\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder stop ID                             stop a running session\n       coder ls [--json]                         sessions, newest first\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo  --model M  --ask  --cwd DIR";
 
 // Flags that take a value: their value is not a positional argument.
-CD_VALUE_FLAGS :: [5] string.["--engine", "--model", "--cwd", "--print", "--on"];
+CD_VALUE_FLAGS :: [7] string.["--engine", "--model", "--cwd", "--print", "--on", "--session", "--at"];
 
 // Positional argument k (0 is the verb), skipping flags and their values.
 cd_positional :: (args: [] Args, k: int) -> string {
@@ -755,7 +764,7 @@ cd_session_file :: (id: string, buf: [] u8, idout: [] u8) -> string {
   found := -1;
   for i: 0..<n {
     name := fs_entry(l, i);
-    if name.count > id.count && cast(string) name[0..<id.count] == id { found = i; }    // the newest match
+    if name.count >= id.count + 6 && cast(string) name[0..<id.count] == id && cast(string) name[name.count - 6..<name.count] == ".jsonl" { found = i; }    // the newest match
   }
   if found < 0 { return ""; }
   name := fs_entry(l, found);
@@ -956,6 +965,92 @@ cd_cmd_route :: (task: string, json: bool) -> int {
   return ifx rt[0].ok then 0 else 1;
 }
 
+cxproc_pid_alive :: (pid: int) -> int #foreign;
+cxproc_detach :: (h: int) -> int #foreign;
+cxproc_quiet :: (h: int) -> int #foreign;
+cxproc_pid_signal :: (pid: int, sig: int) -> int #foreign;
+
+cd_atoi :: (s: string) -> int { v := 0; for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); } return v; }
+
+// run or fork --detach: the same command as a job of its own with a session
+// ID given up front; prints the ID and returns. The job's stdout and stderr go
+// nowhere, so it holds none of the caller's pipes; its session file is the record.
+cd_detach :: (args: [] Args, json: bool) -> int {
+  rb: [4096] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+  if repo.count == 0 { tool_errln("coder: CODER_REPO is not set: start Coder with coder/tui/coder.sh"); return 2; }
+  db: [1100] u8; dir := cs_dir(db[..]);
+  if dir.count == 0 { tool_errln("coder: no $HOME"); return 1; }
+  ib: [32] u8; id := cs_make_id(cxproc_wall_us(), ib[..]);
+  sb: [4200] u8; sn := cd_cat(sb[..], cd_cat(sb[..], 0, repo), "/coder/tui/coder.sh");
+  h := cxproc_new();
+  if h < 0 { tool_errln("coder: no process slot is free"); return 1; }
+  ok := cl_push(h, CL_FIELD_ARG, cast(string) sb[0..<sn]);
+  for i: 0..<args_count(args) { v := args_at(args, i); if v != "--detach" && v != "--json" { ok = ok && cl_push(h, CL_FIELD_ARG, v); } }
+  ok = ok && cl_push(h, CL_FIELD_ARG, "--session") && cl_push(h, CL_FIELD_ARG, id);
+  ok = ok && cxproc_detach(h) == 0 && cxproc_quiet(h) == 0;     // holds none of the caller's pipes: the session file is the record
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); tool_errln("coder: the job did not start"); return 1; }
+  pid := cxproc_pid(h);
+  r := cxproc_release(h);
+  pb: [1300] u8; pn := cd_cat(pb[..], 0, dir); pn = cd_cat(pb[..], pn, "/"); pn = cd_cat(pb[..], pn, id); pn = cd_cat(pb[..], pn, ".pid");
+  tb: [24] u8; w := fs_write(cast(string) pb[0..<pn], cd_itoa(pid, tb[..]));
+  if json {
+    ob: [256] u8; n := json_raw(ob[..], 0, "{\"id\":"); n = json_write_string(ob[..], n, id);
+    n = json_raw(ob[..], n, ",\"pid\":"); n = json_write_int(ob[..], n, pid); n = json_raw(ob[..], n, "}");
+    cd_outln(cast(string) ob[0..<n]);
+  } else { cd_outln(id); }
+  return 0;
+}
+
+// A session's sibling file by ID: DIR/ID.ext.
+cd_sibling :: (id: string, ext: string, out: [] u8) -> string {
+  db: [1100] u8; dir := cs_dir(db[..]);
+  n := cd_cat(out, 0, dir); n = cd_cat(out, n, "/"); n = cd_cat(out, n, id); n = cd_cat(out, n, ext);
+  return cast(string) out[0..<n];
+}
+
+// The pid a detached run left, or 0.
+cd_job_pid :: (id: string) -> int {
+  pb: [1300] u8; fb: [32] u8;
+  n := fs_read(cd_sibling(id, ".pid", pb[..]), fb[..]);
+  if n <= 0 { return 0; }
+  v := cd_atoi(cast(string) fb[0..<n]);
+  return ifx v > 0 then v else 0;
+}
+
+// Stops a running session: ID.stop, then up to 10 seconds for its end line; a
+// detached job that doesn't end is killed, and its end is written here.
+cd_cmd_stop :: (id_in: string, json: bool) -> int {
+  fb: [4194304] u8; ib: [128] u8;
+  text := cd_session_file(id_in, fb[..], ib[..]);
+  if text.count == 0 { tool_err("coder: no session "); tool_errln(id_in); return 6; }
+  k := 0; while k < ib.count && ib[k] != 0 { k += 1; }
+  id := cast(string) ib[0..<k];
+  s: [1] CsSummary; ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  cs_read(text, s[..], ar[..]);
+  if cast(string) s[0].ending[0..<s[0].nending] != "running" { cd_outln(ifx json then "{\"stopped\":false,\"why\":\"not running\"}" else "Not running."); return 0; }
+  sb: [1300] u8; stop_file := cd_sibling(id, ".stop", sb[..]);
+  w := fs_write(stop_file, "stop\n");
+  for i: 0..<100 {
+    x := cxproc_sleep_ms(100);
+    t2 := cd_session_file(id, fb[..], ib[..]);
+    cs_read(t2, s[..], ar[..]);
+    if cast(string) s[0].ending[0..<s[0].nending] != "running" { cd_outln(ifx json then "{\"stopped\":true}" else "Stopped."); return 0; }
+  }
+  pid := cd_job_pid(id);
+  if pid > 0 && cxproc_pid_alive(pid) == 1 {
+    x := cxproc_pid_signal(pid, 9);
+    pb: [1300] u8; lb: [256] u8;
+    n := json_raw(lb[..], 0, "{\"kind\":\"end\",\"ending\":\"stopped\",\"ms\":0,\"steps\":0,\"text\":\"coder stop ended the job's process\"}\n");
+    y := fs_append(cd_sibling(id, ".jsonl", pb[..]), cast(string) lb[0..<n]);
+    z := fs_remove(stop_file);
+    cd_outln(ifx json then "{\"stopped\":true,\"killed\":true}" else "Stopped (the job's process was ended).");
+    return 0;
+  }
+  z := fs_remove(stop_file);
+  tool_errln("coder stop: the session did not stop, and it has no job process here to end");
+  return 1;
+}
+
 tool_main :: () -> int #export_c {
   args_b: [1] Args; args := args_b[..];
   if !args_load(args) { tool_errln("coder: bad arguments"); return 2; }
@@ -967,7 +1062,9 @@ tool_main :: () -> int #export_c {
   if verb == "status" { return cd_cmd_status(cd_positional(args, 1), json); }
   if verb == "log" { return cd_cmd_log(cd_positional(args, 1), json); }
   if verb == "route" { return cd_cmd_route(cd_positional(args, 1), json); }
-  if verb.count > 0 && verb != "run" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }
+  if verb == "stop" { return cd_cmd_stop(cd_positional(args, 1), json); }
+  if (verb == "run" || verb == "fork") && args_has(args, "--detach") { return cd_detach(args, json); }
+  if verb.count > 0 && verb != "run" && verb != "fork" { tool_err("coder: unknown verb "); tool_errln(verb); tool_errln(USAGE); return 2; }
   a_b: [1] App; a := a_b[..];
   q: [1] ClQuery; p: [1] ClProcess;
   dft: [1] DfTable; a[0].df_table = dft[..];
@@ -995,7 +1092,36 @@ tool_main :: () -> int #export_c {
   log_b: [1] CsLog; a[0].log = log_b[..];
   task := args_value(args, "--print", "");
   if verb == "run" { task = cd_positional(args, 1); }
-  if verb == "run" || task.count > 0 || args_has(args, "--print") {
+  // fork ID "TASK": the parent's turns ride ahead of the first message (chapter 14)
+  fork_text: [4194304] u8; pre_b: [32768] u8;
+  if verb == "fork" {
+    pid := cd_positional(args, 1); task = cd_positional(args, 2);
+    if task.count == 0 { tool_errln("coder fork: coder fork ID \"TASK\" [--at TURN]"); return 2; }
+    ib: [128] u8;
+    parent := cd_session_file(pid, fork_text[..], ib[..]);
+    if parent.count == 0 { tool_err("coder: no session "); tool_errln(pid); return 6; }
+    k := 0; while k < ib.count && ib[k] != 0 { k += 1; }
+    at := cd_atoi(args_value(args, "--at", "0"));
+    far: [262144] u8; fa: [1] ClArena; fa[0] = ClArena.{buf = far[..]};
+    pn: [1] int;
+    kept := cs_turns_text(parent, at, fa[..], pre_b[..], pn[..]);
+    if at > kept { tool_err("coder fork: the session has "); tb: [16] u8; tool_err(cd_itoa(kept, tb[..])); tool_errln(" turns"); return 2; }
+    a[0].pre = cast(string) pre_b[0..<pn[0]];
+    a[0].log[0].nparent = cd_cat(a[0].log[0].parent[..], 0, cast(string) ib[0..<k]);
+    a[0].log[0].at = kept;
+    // the parent's engine unless --engine
+    if want.count == 0 {
+      s: [1] CsSummary; sar: [65536] u8; sa: [1] ClArena; sa[0] = ClArena.{buf = sar[..]};
+      cs_read(parent, s[..], sa[..]);
+      pe := cast(string) s[0].engine[0..<s[0].nengine];
+      a[0].engine = ifx pe == "codex" then ENGINE_CODEX else ifx pe == "microcoder" then ENGINE_MICRO else ifx pe == "psionic" then ENGINE_PSIONIC else ifx pe == "echo" then ENGINE_ECHO else ENGINE_CLAUDE;
+      a[0].model_engine = a[0].engine;
+      want = pe;
+    }
+  }
+  sess := args_value(args, "--session", "");
+  if sess.count > 0 { a[0].log[0].nwant = cd_cat(a[0].log[0].want[..], 0, sess); }
+  if verb == "run" || verb == "fork" || task.count > 0 || args_has(args, "--print") {
     a[0].plain = true; a[0].cols = 100; a[0].rows = 40;
     a[0].log[0].json = json;
     if task.count == 0 { tool_errln("coder run: needs a task: coder run \"TASK\""); return 2; }
@@ -1006,7 +1132,21 @@ tool_main :: () -> int #export_c {
     cd_submit(a);
     if !json { tb: [64] u8; tn := cd_cat(tb[..], 0, "  session "); tn = cd_cat(tb[..], tn, cs_id(a[0].log)); cd_commit(a, TUI_FAINT, cast(string) tb[0..<tn]); }
     if routed && !json { rb: [700] u8; cd_commit(a, TUI_FAINT, cd_route_line(a, rt[..], rb[..])); }
-    for guard: 0..<100000000 { if !a[0].running { break; } if a[0].ask { cd_claude_answer(a, 'n'); } if !cd_poll(a) { x := cxproc_sleep_ms(5); } }
+    // `coder stop ID` leaves ID.stop: the run stops as if Esc was pressed
+    stb: [1300] u8; stop_file := cs_sibling(a[0].log, ".stop", stb[..]);
+    next_look := cd_now(a); stopped := false;
+    for guard: 0..<100000000 {
+      if !a[0].running { break; }
+      if a[0].ask { cd_claude_answer(a, 'n'); }
+      if !stopped && stop_file.count > 0 && cd_now(a) >= next_look {
+        next_look = cd_now(a) + 200;
+        if fs_exists(stop_file) { stopped = true; cd_stop(a); }
+      }
+      if !cd_poll(a) { x := cxproc_sleep_ms(5); }
+    }
+    if stop_file.count > 0 { x := fs_remove(stop_file); }
+    pfb: [1300] u8; pid_file := cs_sibling(a[0].log, ".pid", pfb[..]);
+    if sess.count > 0 && pid_file.count > 0 { x := fs_remove(pid_file); }     // a detached job is over
     cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
     return a[0].exit;
   }

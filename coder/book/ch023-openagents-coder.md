@@ -1,11 +1,11 @@
 # 23. `openagents coder`
 
-> **Status: partly implemented.** `openagents coder` runs `run`, `ls`,
-> `status` and `log`, with `--json` on each and the spec's exit codes, and
-> with no verb opens the terminal UI. Each conversation is a session file
-> in `~/.openagents/coder/sessions`. Still to come: `attach`, `stop`,
-> `fork`, `replay`, `bench`, the server verbs (`watch`, `policy`, `daemon`,
-> `--on cloud`), `--detach`, and the same verbs as MCP tools.
+> **Status: partly implemented.** `openagents coder` runs `run` (with
+> `--detach`), `ls`, `status`, `log`, `stop`, `fork` and `route`, with
+> `--json` and the spec's exit codes, and with no verb opens the terminal
+> UI. Each conversation is a session file in `~/.openagents/coder/sessions`.
+> Still to come: `attach`, `replay`, `bench`, the server verbs (`watch`,
+> `policy`, `daemon`, `--on cloud`), and the same verbs as MCP tools.
 
 Every chapter in this book ends in a verb. This chapter puts them into the
 `coder` domain of the `openagents` binary.
@@ -93,9 +93,10 @@ such session, 130 stopped.
 
 ## Done means
 
-- [x] `run`, `ls`, `status` and `log` exist with `--json` and the spec's
-  exit codes, and the offline smoke (`python3 coder/tui/smoke.py`) runs
-  them in a fresh `HOME`.
+- [x] `run`, `ls`, `status`, `log`, `stop` and `fork` exist with `--json`
+  and the spec's exit codes, and the offline smoke (`python3
+  coder/tui/smoke.py`) runs them in a fresh `HOME`. `fork` and `stop` are
+  chapter 14's; `route` is chapter 13's.
 - [ ] Each verb exists in the command table with `--json` and the spec's exit
   codes, and a `coder-journey` check runs `run`, `log`, `fork`, `stop` and
   `replay` on a fixture repository.
