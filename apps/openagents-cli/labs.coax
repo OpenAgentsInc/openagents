@@ -832,7 +832,7 @@ labs_cut :: (a: [] Args, r: [] Rep, profile: string) -> int {
   hb: [1024] u8; hm := home(hb[..]);
   if lb_cut_is_json(text) { lb_cut_json(c, text, hm, cw[0].nodes[..]); } else { lb_cut_parse(c, text, hm); }
   dir := fs_dir(file);
-  for i: 0..<c[0].shot_n { c[0].shots[i].src = lb_resolve(c, c[0].shots[i].src, dir); c[0].shots[i].under = lb_resolve(c, c[0].shots[i].under, dir); }
+  for i: 0..<c[0].shot_n { c[0].shots[i].src = lb_resolve(c, c[0].shots[i].src, dir); c[0].shots[i].under = lb_resolve(c, c[0].shots[i].under, dir); c[0].shots[i].over = lb_resolve(c, c[0].shots[i].over, dir); }
   c[0].music = lb_resolve(c, c[0].music, dir); c[0].voice = lb_resolve(c, c[0].voice, dir);
   c[0].side = lb_resolve(c, c[0].side, dir); c[0].captions = lb_resolve(c, c[0].captions, dir);
   if c[0].problems[0].n == 0 {
@@ -846,6 +846,8 @@ labs_cut :: (a: [] Args, r: [] Rep, profile: string) -> int {
       } else { cw[0].src[i].exists = true; }
       up := lb_cut_sp(c, s.under);
       if up.count > 0 && fs_kind(up) != FS_FILE { lb_cut_problem(c, s.line, "no picture under the title at ", up, ""); }
+      op := lb_cut_sp(c, s.over);
+      if op.count > 0 && fs_kind(op) != FS_FILE { lb_cut_problem(c, s.line, "no picture to lay over the shot at ", op, ""); }
       cw[0].em[i] = ifx s.title.n > 0 then lb_title_em(s, lb_cut_sp(c, s.title)) else 0;
     }
     if c[0].music.n > 0 && fs_kind(lb_cut_sp(c, c[0].music)) != FS_FILE { lb_cut_problem(c, 0, "no music at ", lb_cut_sp(c, c[0].music), ""); }
@@ -875,6 +877,7 @@ labs_cut :: (a: [] Args, r: [] Rep, profile: string) -> int {
     sp := lb_cut_sp(c, c[0].shots[i].src);
     if sp.count > 0 && !lb_is_url(sp) { lbi_file(w[..], "src", sp); } else if sp.count > 0 { lbi(w[..], "url", sp); }
     if c[0].shots[i].under.n > 0 { lbi_file(w[..], "under", lb_cut_sp(c, c[0].shots[i].under)); }
+    if c[0].shots[i].over.n > 0 { lbi_file(w[..], "over", lb_cut_sp(c, c[0].shots[i].over)); }
   }
   if c[0].music.n > 0 { lbi_file(w[..], "music", lb_cut_sp(c, c[0].music)); }
   if c[0].voice.n > 0 { lbi_file(w[..], "voice", lb_cut_sp(c, c[0].voice)); }
@@ -991,11 +994,18 @@ lb_cut_render :: (cw: [] LbCutWork, r: [] Rep, work: string, out: string, master
       lba(v[..], "-f"); lba(v[..], "lavfi"); lba(v[..], "-i"); lba(v[..], lbw_text(cww[..]));
     }
     if title_png.count > 0 { lba(v[..], "-loop"); lba(v[..], "1"); lba(v[..], "-framerate"); lba_int(v[..], fps); lba(v[..], "-i"); lba(v[..], title_png); }
+    ov := -1;
+    if s.over.n > 0 { ov = ifx title_png.count > 0 then 2 else 1; lba(v[..], "-ss"); lba_secs(v[..], s.over_in_ms); lba(v[..], "-t"); lba_secs(v[..], slot + 1000); lba(v[..], "-i"); lba(v[..], lb_cut_sp(c, s.over)); }
     lbw_put(g[..], "[0:v]"); if s.vf.n > 0 { lbw_put(g[..], lb_cut_sp(c, s.vf)); lbw_byte(g[..], ','); }
     lbw_put(g[..], "fps="); lbw_int(g[..], fps); lbw_put(g[..], ",scale="); lbw_int(g[..], lw); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
     lbw_put(g[..], ":force_original_aspect_ratio=decrease,pad="); lbw_int(g[..], lw); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
     lbw_put(g[..], ":(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=2");
     if s.src.n == 0 && s.under.n > 0 { lbw_put(g[..], ",eq=brightness=-0.25"); }
+    if ov > 0 {
+      // the layer over the shot, screen-blended: its black leaves the shot as it is
+      lbw_put(g[..], ",format=gbrp[b0];["); lbw_int(g[..], ov); lbw_put(g[..], ":v]fps="); lbw_int(g[..], fps); lbw_put(g[..], ",scale="); lbw_int(g[..], lw); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
+      lbw_put(g[..], ",setsar=1,format=gbrp,tpad=stop_mode=clone:stop_duration=2[ov];[b0][ov]blend=all_mode=screen:shortest=0,format=yuv420p");
+    }
     if title_png.count > 0 { lbw_put(g[..], "[b];[b][1:v]overlay=0:0:format=auto:shortest=0,format=yuv420p"); }
     lbw_put(g[..], "[o]");
     lba(v[..], "-filter_complex"); lba(v[..], lbw_text(g[..])); lba(v[..], "-map"); lba(v[..], "[o]");

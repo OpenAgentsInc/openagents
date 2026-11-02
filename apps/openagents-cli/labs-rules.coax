@@ -317,13 +317,15 @@ lb_pair :: (word: string) -> LbPair {
 // each line; # starts a comment.
 //   cut NAME...                      size WxH          fps N
 //   music PATH [gain=DB] [duck=DB]   voice PATH [gain=DB]   fade [in=S] [out=S]
-//   shot NAME [src=PATH|URL] [in=S] dur=S [xfade=S] [title="TEXT"]... [under=PATH] [under_in=S] [vf="FILTERS"]
+//   shot NAME [src=PATH|URL] [in=S] dur=S [xfade=S] [title="TEXT"]... [under=PATH] [under_in=S] [vf="FILTERS"] [over=PATH] [over_in=S]
 //   side PATH width=W [in=S] [vf="FILTERS"]     captions PATH.srt [box=no]
 // vf= is ffmpeg filters run on the picture first (a crop, a colour LUT). A
 // side panel is a picture W wide stacked right of the shots, from in= on,
 // behind a 2 px rule; the shots, titles and captions fill the rest. captions
 // draws an SRT file's lines instead of transcribing the voice; box=no draws
 // them with a dark halo and no band.
+// over= lays a picture on the shot with a screen blend, so its black is clear:
+// a HUD drawn on black frames the footage under it.
 // Each title= is one line of the title; the lines after the first are drawn at half its size.
 // A shot with a title and no src is a title card (over under= when given).
 // The first shot's xfade fades it in from black.
@@ -333,7 +335,7 @@ LB_TITLE_LINES :: 8;
 // title holds the title's lines, split by newlines; title_cap is the first
 // line's cap height as a share of the frame's height (0: the default), and
 // scale[k] line k's size against the first (0: 1 for the first, 1/2 after).
-LbShot :: struct { line: int; name: LbSpan; src: LbSpan; in_ms: int; dur_ms: int = -1; xfade_ms: int; title: LbSpan; under: LbSpan; under_in_ms: int; vf: LbSpan;
+LbShot :: struct { line: int; name: LbSpan; src: LbSpan; in_ms: int; dur_ms: int = -1; xfade_ms: int; title: LbSpan; under: LbSpan; under_in_ms: int; vf: LbSpan; over: LbSpan; over_in_ms: int;
   title_cap: f32; scale: [LB_TITLE_LINES] f32; }
 lb_line_scale :: (s: LbShot, k: int) -> f32 {
   if k < LB_TITLE_LINES && s.scale[k] > 0 { return s.scale[k]; }
@@ -440,6 +442,7 @@ lb_cut_line :: (c: [] LbCut, line: string, at: int, hm: string) {
       if p.name == "src" { s.src = lb_path(c[0].pool[..], hm, p.value); continue; }
       if p.name == "under" { s.under = lb_path(c[0].pool[..], hm, p.value); continue; }
       if p.name == "vf" { s.vf = lb_add(c[0].pool[..], p.value); continue; }
+      if p.name == "over" { s.over = lb_path(c[0].pool[..], hm, p.value); continue; }
       if p.name == "title" {
         if p.value.count == 0 || lb_has(p.value, "\n") { lb_cut_problem(c, at, "a title line is text in quotes: title=\"TEXT\"", "", ""); continue; }
         if s.title.n == 0 { s.title = lb_add(c[0].pool[..], p.value); continue; }
@@ -449,12 +452,12 @@ lb_cut_line :: (c: [] LbCut, line: string, at: int, hm: string) {
         s.title = lb_add(c[0].pool[..], lbw_text(tw[..])); continue;
       }
       ms := lb_ms(p.value);
-      if p.name == "in" || p.name == "dur" || p.name == "xfade" || p.name == "under_in" {
+      if p.name == "in" || p.name == "dur" || p.name == "xfade" || p.name == "under_in" || p.name == "over_in" {
         if ms < 0 { lb_cut_problem(c, at, p.name, " is a number of seconds, not ", p.value); continue; }
-        if p.name == "in" { s.in_ms = ms; } else if p.name == "dur" { s.dur_ms = ms; } else if p.name == "xfade" { s.xfade_ms = ms; } else { s.under_in_ms = ms; }
+        if p.name == "in" { s.in_ms = ms; } else if p.name == "dur" { s.dur_ms = ms; } else if p.name == "xfade" { s.xfade_ms = ms; } else if p.name == "over_in" { s.over_in_ms = ms; } else { s.under_in_ms = ms; }
         continue;
       }
-      lb_cut_problem(c, at, "unknown word ", p.name, " (a shot takes src, in, dur, xfade, title, under, under_in and vf)");
+      lb_cut_problem(c, at, "unknown word ", p.name, " (a shot takes src, in, dur, xfade, title, under, under_in, vf, over and over_in)");
     }
     c[0].shots[c[0].shot_n] = s; c[0].shot_n += 1;
     return;
@@ -651,7 +654,7 @@ lb_problems_text :: (ps: [] LbProblems, p: [] LbPool, out: [] u8) -> string {
   #assert lb_has(t, "4 gain is a number of dB from -60 to 20\n") && lb_has(t, "4 unknown word loud (music takes gain= and duck=)\n");
   #assert lb_has(t, "5 in is a number of seconds from 0 to 60\n");
   #assert lb_has(t, "6 a shot starts with its name: shot NAME src=... dur=...\n");
-  #assert lb_has(t, "7 in is a number of seconds, not two\n") && lb_has(t, "7 unknown word color (a shot takes src, in, dur, xfade, title, under, under_in and vf)\n");
+  #assert lb_has(t, "7 in is a number of seconds, not two\n") && lb_has(t, "7 unknown word color (a shot takes src, in, dur, xfade, title, under, under_in, vf, over and over_in)\n");
   #assert lb_has(t, "8 unknown word lights (a line starts with cut, size, fps, music, voice, fade, side, captions or shot)\n");
   #assert lb_has(t, "9 a quote is not closed, or the line has more than 32 words\n");
   e: [1] LbCut;
@@ -1096,6 +1099,9 @@ tuning_get :: (t: Tuning, index: int) -> f64 {
   #assert c[0].problems[0].n == 0 && c[0].side_w == 576 && c[0].side_in_ms == 1500 && lb_cut_sp(c[..], c[0].side) == "face.mp4";
   #assert lb_cut_sp(c[..], c[0].side_vf) == "crop=576:1080,eq=contrast=1.07" && lb_cut_sp(c[..], c[0].captions) == "talk.srt" && !c[0].cap_box;
   #assert lb_cut_sp(c[..], c[0].shots[0].vf) == "crop=1194:960:556:115,scale=1344:1080";
+  o: [1] LbCut;
+  lb_cut_parse(o[..], "shot a src=a.mp4 dur=2 over=hud.mp4 over_in=1.25\n", "");
+  #assert o[0].problems[0].n == 0 && lb_cut_sp(o[..], o[0].shots[0].over) == "hud.mp4" && o[0].shots[0].over_in_ms == 1250;
   b: [2048] u8; e: [1] LbCut;
   lb_cut_parse(e[..], "side x.mp4\nside y.mp4 width=7 fast=1\ncaptions a.srt box=maybe\nshot a src=a.mp4 dur=1\n", "");
   t := lb_problems_text(e[0].problems[..], e[0].pool[..], b[..]);

@@ -48,6 +48,7 @@ is your home folder.
 | `title="TEXT"` | A title line drawn in Filament. Repeat `title=` for more lines; each line after the first is half its size. Over a picture, the title sits in the lower third. A shot with a title and no `src` is a title card. |
 | `under=PATH [under_in=S]` | The picture under a title card, darkened. Without it, the card is on the Grid's near-black. |
 | `vf="FILTERS"` | ffmpeg filters run on the source first, such as a crop or a colour LUT. The shot is then fitted to the frame. |
+| `over=PATH [over_in=S]` | A picture laid on the shot with a screen blend, from `over_in` on: its black stays clear, so a HUD drawn on black frames the footage under it. |
 
 ## Checks
 
