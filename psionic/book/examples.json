@@ -3451,6 +3451,18 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-flash-stages.coax",
+      "chapter": "psionic/book/ch197-deepseek-v41-flash-across-stages.md",
+      "stdout": "psionic/fixtures/deepseek-flash/deepseek-flash-stages.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 40000000,
+      "timeout": 600
     }
   ],
   "libraries": [

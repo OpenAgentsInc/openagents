@@ -1,0 +1,440 @@
+// deepseek-flash-split-v1. Chapter 197: DeepSeek V4.1 Flash split into
+// pipeline stages of contiguous layers. Two decisions live here. The
+// boundary contract says exactly what crosses a cut for one token: the four
+// residual streams and the hyper-connection carry, the Engram ids of every
+// Engram layer still ahead, and the compressed-cache rows, index keys,
+// selected positions and candidate mask that a layer after the cut borrows
+// from an owner before it. A message is versioned, bound to the model, the
+// receiver's first layer and the step, lists its parts, and is checksummed;
+// the receiver refuses one that misses, adds or resizes any part. The
+// planner cuts the 40 layers over up to 16 hosts from the checkpoint's own
+// per-layer bytes (the header manifest), counting every stage's weights,
+// window rings, compressed caches over the context, the borrowed rows it
+// mirrors and its two message buffers, and picks the cut whose slowest stage
+// reads the fewest weight bytes per token.
+// Profile deepseek-flash-split-v1: integer bytes; 40 layers, up to 16
+// stages, up to 2^20 positions of context.
+#load "flash-plan.coax";
+#load "sparse-policy.coax";
+#load "../stage-plan.coax";
+#authority;
+#load "../../tests/flash-split-checks.coax";  // the checks' hand-derived reader ranges, messages and brute-force planner
+
+DST_LAYERS :: 40;
+DST_PARTS :: 8;
+DST_HEAD :: 9;
+DST_VERSION :: 1;
+DST_STAGES :: 16;
+DST_STEPS :: 1048576;
+DST_KV :: [4]int.[2,8,14,20];
+DST_INDEX :: [8]int.[2,8,14,20,24,28,32,36];
+DST_ENGRAM :: [2]int.[1,14];
+
+// book:begin parts
+// What one token's message can hold. residual: the four streams after the
+// sender's last layer, f32. carry: the hyper-connection carry (four f32).
+// engram: the 24 hashed row ids of an Engram layer at or after the cut.
+// comp and keys: the compressed row and the index-key row an owner layer
+// wrote at this step (its row number plus one, 0 for none, then the packed
+// bytes).
+// index: an indexer's selected positions (a count, then top-k ids). mask:
+// layer 20's candidate mask, one byte per compressed row.
+DstKind :: enum u8 {residual;carry;engram;comp;keys;index;mask;}
+// The sizes a message is built from: residual width, streams, Engram ids,
+// packed bytes of a compressed row and an index-key row, top-k, mask bytes.
+DstGeometry :: struct {width:int;hc:int;ids:int;comp:int;key:int;topk:int;mask:int;}
+// One part: its kind, the layer it comes from, its data words, and the word
+// where its data starts (after a tag word and a length word).
+DstPart :: struct {kind:DstKind;source:int;words:int;offset:int;}
+DstLayout :: struct {count:int;words:int;parts:[8]DstPart;}
+// book:end parts
+
+// book:begin geometry
+// Chapter 100's synthetic stack: 32-wide streams, 16-byte FP4 rows with two
+// E4M3 scales, 16-byte FP4 keys with one UE8M0 scale, top 3, 8 rows.
+dst_tiny :: ()->DstGeometry {return DstGeometry.{width=32,hc=4,ids=24,comp=18,key=17,topk=3,mask=8};}
+// The pinned checkpoint: 5,120-wide streams, a 512-value FP4 compressed row
+// (256 bytes and 32 E4M3 scales), a 128-value FP4 index key (64 bytes and
+// 4 UE8M0 scales), top 512, and one mask byte per row of the context.
+dst_real :: (context:int)->DstGeometry {return DstGeometry.{width=5120,hc=4,ids=24,comp=288,key=68,topk=512,mask=context};}
+// book:end geometry
+dst_valid :: (g:DstGeometry)->bool {
+    return stg_in(g.width,1,8192) && stg_in(g.hc,1,8) && stg_in(g.ids,1,64) && stg_in(g.comp,1,4096) && stg_in(g.key,1,4096) &&
+        stg_in(g.topk,1,4096) && stg_in(g.mask,1,STG_CONTEXT_MAX);
+}
+dst_words :: (g:DstGeometry,kind:DstKind)->int {
+    words:=[7]int.[g.hc*g.width,g.hc,g.ids,1+(g.comp+3)/4,1+(g.key+3)/4,1+g.topk,(g.mask+3)/4];
+    return words[cast(int)kind];
+}
+
+// book:begin needed
+// Does a layer at or after the cut read this part of owner s? Every layer
+// with compression reads its KV owner's rows; an indexer reads its KV
+// owner's keys; a layer reads its indexer's selection; the indexers after
+// layer 20 read its candidate mask.
+dst_needed :: (cut:int,kind:DstKind,s:int)->bool {
+    for l:cut..<dv_flash_config().layers {k:=da_flash_links(l);
+        if kind==DstKind.comp && k.kv==s {return true;}
+        if kind==DstKind.keys && k.produce_index && k.kv==s {return true;}
+        if kind==DstKind.index && k.index==s {return true;}
+        if kind==DstKind.mask && k.produce_index && k.candidate==s {return true;}
+    }
+    return false;
+}
+// The parts that cross the cut before layer `cut`, in order. An invalid
+// geometry or a cut outside 1..39 gives no parts.
+dst_layout :: (g:DstGeometry,cut:int)->DstLayout {
+    out:DstLayout;if !dst_valid(g) || cut<1 || cut>=DST_LAYERS {return out;}
+    kinds:[8]DstKind;sources:[8]int;kinds[1]=DstKind.carry;sources[0]=cut;sources[1]=cut;n:=2;
+    for e:DST_ENGRAM {if e>=cut {kinds[n]=DstKind.engram;sources[n]=e;n+=1;}}
+    for s:DST_KV {if s<cut {
+        if dst_needed(cut,DstKind.comp,s) {kinds[n]=DstKind.comp;sources[n]=s;n+=1;}
+        if dst_needed(cut,DstKind.keys,s) {kinds[n]=DstKind.keys;sources[n]=s;n+=1;}}}
+    for s:DST_INDEX {if s<cut && dst_needed(cut,DstKind.index,s) {kinds[n]=DstKind.index;sources[n]=s;n+=1;}}
+    if cut>20 && dst_needed(cut,DstKind.mask,20) {kinds[n]=DstKind.mask;sources[n]=20;n+=1;}
+    out.words=DST_HEAD;out.count=n;
+    for i:0..<n {w:=dst_words(g,kinds[i]);out.parts[i]=DstPart.{kind=kinds[i],source=sources[i],words=w,offset=out.words+2};out.words+=2+w;}
+    return out;
+}
+// book:end needed
+dst_message_bytes :: (g:DstGeometry,cut:int)->int {return 4*dst_layout(g,cut).words;}
+dst_tag :: (p:DstPart)->u32 {return cast(u32)(cast(int)p.kind+256*p.source);}
+
+// book:begin boundary
+// The message is 32-bit words: version, the model's digest (two halves),
+// the receiver's first layer, the step, the part count, the width, f32, a
+// checksum over every other word (chapter 186's), then per part a tag
+// (kind + 256 x source layer), its length and its data.
+DstRefusal :: enum u8 {none;partial;version;model;layer;position;geometry;missing;size;extra;excess;checksum;}
+DstExpect :: struct {model:u64;cut:int;step:int;}
+DstVerdict :: struct {refusal:DstRefusal;part:int=-1;}
+// Write the header and the part directory with zeroed data; the sender
+// fills each part at its offset, then seals. -1: no such cut or step, or
+// the buffer is too small.
+dst_frame :: (g:DstGeometry,model:u64,cut:int,step:int,wire:[]u32)->int {
+    l:=dst_layout(g,cut);if l.count==0 || !stg_in(step,0,DST_STEPS-1) || wire.count<l.words {return -1;}
+    head:=[9]u32.[DST_VERSION,cast(u32)(model&4294967295),cast(u32)(model>>32),cast(u32)cut,cast(u32)step,cast(u32)l.count,cast(u32)g.width,STG_F32,0];
+    for k:0..<DST_HEAD {wire[k]=head[k];}
+    for i:0..<l.count {p:=l.parts[i];wire[p.offset-2]=dst_tag(p);wire[p.offset-1]=cast(u32)p.words;for k:0..<p.words {wire[p.offset+k]=0;}}
+    return l.words;
+}
+dst_seal :: (wire:[]u32) {wire[8]=stg_sum(wire);}
+// The receiver's checks, in order: a whole header, version, model, its own
+// first layer, the step it expects, the geometry, then every listed part
+// in place with its length, nothing more, and the checksum.
+dst_check :: (g:DstGeometry,want:DstExpect,wire:[]u32)->DstVerdict {
+    v:DstVerdict;l:=dst_layout(g,want.cut);
+    if wire.count<DST_HEAD {v.refusal=DstRefusal.partial;return v;}
+    if wire[0]!=DST_VERSION {v.refusal=DstRefusal.version;return v;}
+    if wire[1]!=cast(u32)(want.model&4294967295) || wire[2]!=cast(u32)(want.model>>32) {v.refusal=DstRefusal.model;return v;}
+    if cast(int)wire[3]!=want.cut || l.count==0 {v.refusal=DstRefusal.layer;return v;}
+    if cast(int)wire[4]!=want.step {v.refusal=DstRefusal.position;return v;}
+    if cast(int)wire[6]!=g.width || wire[7]!=STG_F32 {v.refusal=DstRefusal.geometry;return v;}
+    parts:=cast(int)wire[5];
+    for i:0..<l.count {p:=l.parts[i];v.part=i;
+        if i>=parts {v.refusal=DstRefusal.missing;return v;}
+        if wire.count<p.offset {v.refusal=DstRefusal.partial;return v;}
+        if wire[p.offset-2]!=dst_tag(p) {v.refusal=DstRefusal.missing;return v;}
+        if wire[p.offset-1]!=cast(u32)p.words {v.refusal=DstRefusal.size;return v;}
+    }
+    v.part=-1;
+    if parts>l.count {v.refusal=DstRefusal.extra;v.part=l.count;return v;}
+    if wire.count<l.words {v.refusal=DstRefusal.partial;return v;}
+    if wire.count>l.words {v.refusal=DstRefusal.excess;return v;}
+    if wire[8]!=stg_sum(wire) {v.refusal=DstRefusal.checksum;}
+    return v;
+}
+// book:end boundary
+dst_refusal_name :: (r:DstRefusal)->string {
+    names:=[12]string.["none","partial","version","model","layer","position","geometry","missing","size","extra","excess","checksum"];
+    return names[cast(int)r];
+}
+dst_kind_name :: (k:DstKind)->string {names:=[7]string.["residual","carry","engram","comp","keys","index","mask"];return names[cast(int)k];}
+
+// ---- the planner -------------------------------------------------------------
+
+// book:begin model
+// Per layer: weight bytes without the Engram table, the Engram table, the
+// weight bytes one token reads (dense and shared weights whole, 6 of 384
+// routed experts, 24 Engram rows), and the compressed-cache bytes per
+// position the layer owns. The embedding goes with the first stage, the
+// readout and final norm with the last.
+DstModel :: struct {weight:[40]int;engram:[40]int;read:[40]int;cache:[40]int;embed:int;head:int;}
+// Packed bytes of one window row (512 FP8 values, 16 UE8M0 scales), one
+// compressed row and one index-key row: chapter 98's layouts.
+DST_WINDOW_ROW :: 528;DST_COMP_ROW :: 288;DST_KEY_ROW :: 68;DST_WINDOW :: 128;
+dst_model :: (rows:[]DvRow)->DstModel {
+    m:DstModel;
+    for r:rows {
+        if r.name=="embed.weight" {m.embed=r.bytes;}
+        if r.name=="head.weight" || r.name=="norm.weight" {m.head+=r.bytes;}
+        if dv_starts(r.name,"layers.") {per:=r.bytes/dv_popcount(r.layers);
+            for l:0..<dv_flash_config().layers {if (r.layers>>cast(u64)l)&1==1 {
+                if dv_has(r.name,".engram.embed.") {m.engram[l]+=per;m.read[l]+=24*r.shape[1]*dv_size(r.dtype);}
+                else {m.weight[l]+=per;m.read[l]+=ifx dv_has(r.name,".ffn.experts.") then per/64 else per;}}}}
+    }
+    for s:DST_KV {m.cache[s]=(DST_COMP_ROW+DST_KEY_ROW)/da_flash_links(s).ratio;}
+    return m;
+}
+// book:end model
+dst_model_valid :: (m:DstModel)->bool {
+    for l:0..<DST_LAYERS {if !stg_in(m.weight[l],1,STG_BIG) || !stg_in(m.engram[l],0,STG_BIG) || !stg_in(m.read[l],1,STG_BIG) || !stg_in(m.cache[l],0,STG_RATE) {return false;}}
+    return stg_in(m.embed,1,STG_BIG) && stg_in(m.head,1,STG_BIG);
+}
+
+// book:begin stage
+// A stage running layers a..<b: its weights (and Engram tables when they
+// are resident), a window ring per layer, the caches it owns over the
+// context, the borrowed rows it mirrors, its incoming and outgoing message
+// buffers, the embedding if first and the readout if last.
+dst_stage_inner :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int {
+    n:=0;
+    for l:a..<b {n+=m.weight[l]+DST_WINDOW*DST_WINDOW_ROW+m.cache[l]*context;if resident {n+=m.engram[l];}}
+    for s:DST_KV {if s<a {r:=da_flash_links(s).ratio;comp:=false;keys:=false;
+        for l:a..<b {k:=da_flash_links(l);if k.kv==s {comp=true;if k.produce_index {keys=true;}}}
+        // Only layer 20 (ratio 1) lends its keys: the indexers after it read them.
+        if comp {n+=DST_COMP_ROW/r*context;}if keys {n+=DST_KEY_ROW*context;}}}
+    if a==0 {n+=m.embed;}
+    if b==DST_LAYERS {n+=m.head;}
+    return n;
+}
+dst_stage_bytes :: (m:DstModel,a:int,b:int,context:int,resident:bool)->int {
+    g:=dst_real(context);return dst_stage_inner(m,a,b,context,resident)+dst_message_bytes(g,a)+dst_message_bytes(g,b);
+}
+// The weight bytes it reads for one token: its layers, one embedding row
+// if first, the whole readout if last.
+dst_stage_read :: (m:DstModel,a:int,b:int)->int {
+    n:=0;for l:a..<b {n+=m.read[l];}
+    if a==0 {n+=m.embed/129280;}
+    if b==DST_LAYERS {n+=m.head;}
+    return n;
+}
+// book:end stage
+
+// book:begin plan
+DstStatus :: enum u8 {ok;model;stages;context;total;split;}
+// Stage i runs layers cut[i]..<cut[i+1]: its bytes, the weight bytes it
+// reads per token, and the message it sends per token. cause: the bytes
+// the hosts lack in total.
+DstPlan :: struct {status:DstStatus;stages:int;cause:int;slowest:int;cut:[17]int;bytes:[16]int;read:[16]int;sent:[16]int;}
+dst_plan :: (m:DstModel,budget:[]int,context:int,resident:bool)->DstPlan {
+    n:=budget.count;p:=DstPlan.{stages=n};
+    if !dst_model_valid(m) {p.status=DstStatus.model;return p;}
+    if n<1 || n>DST_STAGES {p.status=DstStatus.stages;return p;}
+    for b:budget {if !stg_in(b,0,STG_BUDGET_MAX) {p.status=DstStatus.stages;return p;}}
+    if !stg_in(context,1,STG_CONTEXT_MAX) {p.status=DstStatus.context;return p;}
+    // One stage holding everything is the least any split needs in total.
+    need:=dst_stage_bytes(m,0,DST_LAYERS,context,resident);room:=0;for b:budget {room+=b;}
+    if need>room {p.status=DstStatus.total;p.cause=need-room;return p;}
+    // Every stage's bytes, once: sizes[a][b] for layers a..<b. sent[c] is
+    // the message into layer c; none enters layer 0 or leaves layer 39.
+    sent:[40]int;for c:1..<DST_LAYERS {sent[c]=dst_message_bytes(dst_real(context),c);}
+    sizes:[40][41]int;
+    for b:1..<DST_LAYERS+1 {out:=ifx b<DST_LAYERS then sent[b] else 0;for a:0..<b {sizes[a][b]=dst_stage_inner(m,a,b,context,resident)+sent[a]+out;}}
+    // best[i][b]: the smallest slowest stage over stages 0..i when stage i
+    // ends before layer b, if fits[i][b]. On a tie the earlier start wins.
+    best:[16][41]int;start:[16][41]int;fits:[16][41]bool;
+    for i:0..<n {for b:1..<DST_LAYERS+1 {
+        for a:i..<b {
+            reach:=ifx i==0 then a==0 else fits[i-1][a];
+            if !reach || sizes[a][b]>budget[i] {continue;}
+            c:=dst_stage_read(m,a,b);if i>0 {c=stg_max(c,best[i-1][a]);}
+            if !fits[i][b] || c<best[i][b] {best[i][b]=c;start[i][b]=a;fits[i][b]=true;}
+        }
+    }}
+    if !fits[n-1][DST_LAYERS] {p.status=DstStatus.split;return p;}
+    p.cut[n]=DST_LAYERS;p.slowest=best[n-1][DST_LAYERS];
+    for k:0..<n {i:=n-1-k;p.cut[i]=start[i][p.cut[i+1]];}
+    for i:0..<n {a:=p.cut[i];b:=p.cut[i+1];p.bytes[i]=sizes[a][b];p.read[i]=dst_stage_read(m,a,b);if i<n-1 {p.sent[i]=sent[b];}}
+    return p;
+}
+// book:end plan
+dst_status_name :: (s:DstStatus)->string {
+    names:=[6]string.["ok","model: a layer, the embedding or the readout has no bytes","stages: 1 to 16 hosts, each budget 0 to 2^56 bytes",
+        "context: 1 to 1,048,576 positions","total: the hosts together are too small","split: no contiguous split fits the hosts"];
+    return names[cast(int)s];
+}
+
+// ---- checks -------------------------------------------------------------------
+
+#forall "every cut carries exactly the parts whose readers lie past it" cut:1..<40 {
+    g:=dst_tiny();l:=dst_layout(g,cut);
+    #assert l.parts[0].kind==DstKind.residual && l.parts[0].source==cut && l.parts[1].kind==DstKind.carry && l.parts[1].source==cut;
+    n:=2;
+    for r:0..<16 {x:=DSTX_RANGES[r];if cut>=x[2] && cut<=x[3] {#assert cast(int)l.parts[n].kind==x[0] && l.parts[n].source==x[1];n+=1;}}
+    #assert l.count==n;
+    at:=DST_HEAD;for i:0..<n {p:=l.parts[i];#assert p.offset==at+2 && p.words==dst_words(g,p.kind);at+=2+p.words;}
+    #assert l.words==at;
+}
+#test "no parts for a cut outside 1..39 or a bad geometry" {
+    g:=dst_tiny();#assert dst_layout(g,0).count==0 && dst_layout(g,40).count==0 && dst_layout(g,1).count==4 && dst_layout(g,39).count==4;
+    #assert dst_layout(g,0).words==0 && dst_message_bytes(g,40)==0 && dst_message_bytes(g,0)==0;
+    his:=[7]int.[8192,8,64,4096,4096,4096,1048576];
+    for f:0..<7 {for v:0..<4 {b:=g;hi:=his[f];xs:=[4]int.[1,hi,0,hi+1];x:=xs[v];
+        if f==0 {b.width=x;}if f==1 {b.hc=x;}if f==2 {b.ids=x;}if f==3 {b.comp=x;}if f==4 {b.key=x;}if f==5 {b.topk=x;}if f==6 {b.mask=x;}
+        #assert dst_valid(b)==(v<2) && (dst_layout(b,5).count>0)==(v<2);}}
+    #assert dst_needed(39,DstKind.comp,20) && !dst_needed(39,DstKind.keys,20) && dst_needed(36,DstKind.keys,20) && !dst_needed(37,DstKind.mask,20) && dst_needed(36,DstKind.mask,20);
+    #assert !dst_needed(8,DstKind.comp,2) && dst_needed(7,DstKind.comp,2) && dst_needed(7,DstKind.index,2) && !dst_needed(24,DstKind.index,20) && dst_needed(23,DstKind.index,20);
+    #assert !dst_needed(1,DstKind.residual,0) && !dst_needed(3,DstKind.keys,2) && !dst_needed(3,DstKind.comp,3);
+    #assert dst_tag(DstPart.{kind=DstKind.mask,source=20})==5126 && dst_tag(DstPart.{kind=DstKind.engram,source=1})==258;
+}
+#test "bytes per token at each kind of cut, by hand" {
+    // Tiny: residual 4 x 32 words, carry 4; a comp or key row is a row word
+    // and 18 or 17 bytes in 5 words; an index part is a count and 3 ids;
+    // the mask is 8 bytes in 2 words; Engram is 24 ids. Each part adds a
+    // tag and a length word, the header is 9 words.
+    t:=dst_tiny();
+    #assert t.comp==dk_plan(1,1,32).bytes && t.key==dk_plan(2,1,32).bytes && t.comp==18 && t.key==17;
+    #assert dst_words(t,DstKind.residual)==128 && dst_words(t,DstKind.carry)==4 && dst_words(t,DstKind.engram)==24 && dst_words(t,DstKind.comp)==6;
+    #assert dst_words(t,DstKind.keys)==6 && dst_words(t,DstKind.index)==4 && dst_words(t,DstKind.mask)==2;
+    #assert dst_message_bytes(t,20)==4*(9+130+6) && dst_message_bytes(t,20)==580;
+    #assert dst_message_bytes(t,21)==580+4*(8+8+6+4) && dst_message_bytes(t,1)==580+4*2*26 && dst_message_bytes(t,24)==580+4*(8+8+4);
+    // The pinned model at 4,096 positions: 81,920 residual bytes; a 288-byte
+    // row is 72 words, a 68-byte key 17, 512 ids, 4,096 mask bytes 1,024 words.
+    r:=dst_real(4096);
+    #assert dst_words(r,DstKind.residual)==20480 && dst_words(r,DstKind.comp)==73 && dst_words(r,DstKind.keys)==18 && dst_words(r,DstKind.index)==513 && dst_words(r,DstKind.mask)==1024;
+    #assert dst_message_bytes(r,20)==81988 && dst_message_bytes(r,21)==81988+4*(75+20+515+1026) && dst_message_bytes(r,21)==88532;
+    #assert dst_message_bytes(r,24)==86472 && dst_message_bytes(r,1)==82196 && dst_message_bytes(r,3)==84452 && dst_message_bytes(r,39)==84348;
+    #assert dst_words(dst_real(1),DstKind.mask)==1 && dst_words(dst_real(5),DstKind.mask)==2;
+    t.comp=16;t.key=13;#assert dst_words(t,DstKind.comp)==5 && dst_words(t,DstKind.keys)==5;
+}
+#test "a sealed message passes, and is refused for each way it can be wrong" {
+    g:=dst_tiny();w:[300]u32;n:=dstx_message(g,21,5,w[..]);want:=DstExpect.{model=0x0197000000000041,cut=21,step=5};
+    #assert n==171 && w[0]==1 && w[1]==0x41 && w[2]==0x01970000 && w[3]==21 && w[4]==5 && w[5]==6 && w[6]==32 && w[7]==1 && w[8]==stg_sum(w[0..<n]);
+    #assert w[9]==5376 && w[10]==128 && w[139]==5377 && w[140]==4 && w[145]==5123 && w[146]==6;
+    v:=dst_check(g,want,w[0..<n]);#assert v.refusal==DstRefusal.none && v.part==-1;
+    #assert dst_check(g,want,w[0..<8]).refusal==DstRefusal.partial;
+    c0:=w;c0[0]=2;#assert dst_check(g,want,c0[0..<9]).refusal==DstRefusal.version;
+    x:=want;x.model+=1;#assert dst_check(g,x,w[0..<n]).refusal==DstRefusal.model;
+    x=want;x.model+=cast(u64)1<<32;#assert dst_check(g,x,w[0..<n]).refusal==DstRefusal.model;
+    x=want;x.cut=22;#assert dst_check(g,x,w[0..<n]).refusal==DstRefusal.layer;
+    x=want;x.step=4;#assert dst_check(g,x,w[0..<n]).refusal==DstRefusal.position;
+    b:=g;b.width=33;#assert dst_check(b,want,w[0..<n]).refusal==DstRefusal.geometry;
+    c:=w;c[0]=2;#assert dst_check(g,want,c[0..<n]).refusal==DstRefusal.version;
+    c=w;c[7]=2;#assert dst_check(g,want,c[0..<n]).refusal==DstRefusal.geometry;
+    c=w;c[3]=0;x=want;x.cut=0;#assert dst_check(g,x,c[0..<n]).refusal==DstRefusal.layer;
+    c=w;c[3]=40;x.cut=40;#assert dst_check(g,x,c[0..<n]).refusal==DstRefusal.layer;
+    // The directory: a tag that names another part, a wrong length, a cut-off part.
+    l:=dst_layout(g,21);
+    for i:0..<l.count {p:=l.parts[i];
+        c=w;c[p.offset-2]+=256;v=dst_check(g,want,c[0..<n]);#assert v.refusal==DstRefusal.missing && v.part==i;
+        c=w;c[p.offset-1]+=1;v=dst_check(g,want,c[0..<n]);#assert v.refusal==DstRefusal.size && v.part==i;
+        v=dst_check(g,want,w[0..<p.offset-1]);#assert v.refusal==DstRefusal.partial && v.part==i;
+        v=dst_check(g,want,w[0..<p.offset]);#assert v.refusal==DstRefusal.partial && v.part==(ifx i<l.count-1 then i+1 else -1);}
+    c=w;c[5]=7;v=dst_check(g,want,c[0..<n]);#assert v.refusal==DstRefusal.extra && v.part==6;
+    c=w;c[5]=5;v=dst_check(g,want,c[0..<n]);#assert v.refusal==DstRefusal.missing && v.part==5;
+    v=dst_check(g,want,w[0..<n-1]);#assert v.refusal==DstRefusal.partial && v.part==-1;
+    #assert dst_check(g,want,w[0..<n+1]).refusal==DstRefusal.excess;
+    // Any changed word is caught; a changed data word by the checksum.
+    for k:9..<n {c=w;c[k]^=0x80000000;#assert dst_check(g,want,c[0..<n]).refusal!=DstRefusal.none;}
+    c=w;c[n-1]^=1;#assert dst_check(g,want,c[0..<n]).refusal==DstRefusal.checksum;
+    c=w;c[8]^=1;#assert dst_check(g,want,c[0..<n]).refusal==DstRefusal.checksum;
+    // Framing limits.
+    #assert dst_frame(g,1,0,0,w[..])==-1 && dst_frame(g,1,40,0,w[..])==-1 && dst_frame(g,1,21,-1,w[..])==-1 && dst_frame(g,1,21,DST_STEPS,w[..])==-1;
+    #assert dst_frame(g,1,21,DST_STEPS-1,w[..])==171 && dst_frame(g,1,21,0,w[0..<170])==-1 && dst_frame(g,1,21,0,w[0..<171])==171;
+    c=w;for k:0..<300 {c[k]=9;}#assert dst_frame(g,1,21,0,c[..])==171 && c[11]==0 && c[141]==0 && c[20]==0 && c[170]==0 && c[171]==9 && c[8]==0;
+    #assert dst_refusal_name(DstRefusal.missing)=="missing" && dst_refusal_name(DstRefusal.checksum)=="checksum" && dst_kind_name(DstKind.keys)=="keys";
+}
+// Done means: a message missing any listed part is refused, naming it.
+#forall "a message without any one of its parts is refused as missing that part" cut:1..<40 {
+    g:=dst_tiny();w:[300]u32;n:=dstx_message(g,cut,3,w[..]);l:=dst_layout(g,cut);want:=DstExpect.{model=0x0197000000000041,cut=cut,step=3};
+    #assert dst_check(g,want,w[0..<n]).refusal==DstRefusal.none;
+    for i:0..<l.count {p:=l.parts[i];c:[300]u32;m:=0;
+        for k:0..<n {if k<p.offset-2 || k>=p.offset+p.words {c[m]=w[k];m+=1;}}
+        c[5]-=1;dst_seal(c[0..<m]);v:=dst_check(g,want,c[0..<m]);
+        #assert v.refusal==DstRefusal.missing && v.part==i;}
+}
+#test "the checkpoint's bytes, layer by layer" {
+    rows:=DV_MANIFEST;m:=dst_model(rows[..]);b:=dv_bytes(rows[..]);
+    // A plain layer: 7,219,445,760 routed bytes (288.8 GB / 40) and 170,055,128
+    // of the rest; a token reads 1/64 of the routed bytes.
+    #assert m.weight[0]==7219445760+170055128 && m.read[0]==170055128+7219445760/64 && m.read[0]==282858968;
+    #assert m.weight[1]==7547022808 && m.engram[1]==384006168*264 && m.read[1]==440387224 && m.engram[14]==384016682*264 && m.read[14]==456581016;
+    #assert m.read[1]-m.read[0]==m.weight[1]-m.weight[0]+24*264;
+    #assert m.weight[20]==7400451800 && m.weight[24]==7395076568 && m.weight[39]==7389500888 && m.read[24]==288434648;
+    w:=0;e:=0;for l:0..<40 {w+=m.weight[l];e+=m.engram[l];}
+    #assert w==b.routed+b.shared+b.dense && e==b.engram && m.embed+m.head==b.embed && m.embed==1323827200 && m.head==1323837440;
+    for l:0..<40 {c:=0;if l==2 || l==8 || l==14 {c=178;}if l==20 {c=356;}#assert m.cache[l]==c && (m.engram[l]>0)==(l==1 || l==14);}
+    #assert DST_WINDOW*DST_WINDOW_ROW==dk_plan(0,128,512).bytes && DST_COMP_ROW==dk_plan(1,1,512).bytes && DST_KEY_ROW==dk_plan(2,1,128).bytes;
+    #assert dst_model_valid(m);
+    los:=[6]int.[1,0,1,0,1,1];
+    for f:0..<6 {for v:0..<4 {for at:[2]int.[0,39] {x:=m;hi:=ifx f==3 then STG_RATE else STG_BIG;xs:=[4]int.[los[f],hi,los[f]-1,hi+1];k:=xs[v];
+        if f==0 {x.weight[at]=k;}if f==1 {x.engram[at]=k;}if f==2 {x.read[at]=k;}if f==3 {x.cache[at]=k;}if f==4 {x.embed=k;}if f==5 {x.head=k;}
+        #assert dst_model_valid(x)==(v<2);}}}
+}
+#test "a stage's bytes and reads, by hand" {
+    rows:=DV_MANIFEST;m:=dst_model(rows[..]);
+    // Layer 39 alone at 4,096 positions: its weights, a 67,584-byte window,
+    // layer 20's compressed rows mirrored (288 x 4,096), the 84,348-byte
+    // message in, and the readout.
+    #assert dst_stage_bytes(m,39,40,4096,false)==7389500888+67584+288*4096+84348+1323837440 && dst_stage_bytes(m,39,40,4096,true)==8714669908;
+    #assert dst_stage_read(m,39,40)==282858968+1323837440;
+    // Layers 0-2: the embedding, layer 2's cache (178 x 4,096), the message out at 3; Engram resident or not.
+    base:=7389500888+7547022808+7405694680+3*67584+178*4096+1323827200+84452;
+    #assert dst_stage_bytes(m,0,3,4096,false)==base && dst_stage_bytes(m,0,3,4096,true)==base+101377628352;
+    #assert dst_stage_read(m,0,3)==282858968+440387224+299052760+10240;
+    // At one position the mask is one word: messages at 21 and 25 are 84,440
+    // bytes, at 24 82,380. Layers 21-24 mirror layer 20's row and, for
+    // indexer 24, its key row; layers 21-23 only the row.
+    #assert dst_stage_bytes(m,21,25,1,false)==3*7389500888+7395076568+4*67584+288+68+84440+84440;
+    #assert dst_stage_bytes(m,21,24,1,false)==3*7389500888+3*67584+288+84440+82380;
+    // Layers 3-7 mirror layer 2's rows at ratio 2: 144 bytes a position.
+    #assert dst_stage_bytes(m,3,8,2,false)==5*7389500888+5*67584+288+84452+82092;
+    #assert dst_stage_bytes(m,15,16,2,false)-dst_stage_bytes(m,15,16,1,false)==144;
+    #assert dst_stage_bytes(m,9,13,4,false)-dst_stage_bytes(m,9,13,3,false)==144 && dst_stage_bytes(m,8,9,4,false)-dst_stage_bytes(m,8,9,3,false)==178;
+}
+#test "fourteen 24 GiB GPUs hold the text model with Engram on the hosts; thirteen do not" #steps 2000000000 {
+    rows:=DV_MANIFEST;m:=dst_model(rows[..]);h:[16]int;
+    p:=dst_plan(m,dstx_hosts(14,24*DSTX_GIB,h[..]),4096,false);
+    cuts:=[15]int.[0,3,6,9,12,15,18,21,24,27,30,33,36,39,40];
+    #assert p.status==DstStatus.ok && p.stages==14 && p.slowest==1606696408 && p.read[13]==p.slowest;
+    for i:0..<15 {#assert p.cut[i]==cuts[i];}
+    for i:0..<14 {#assert p.bytes[i]==dst_stage_bytes(m,cuts[i],cuts[i+1],4096,false) && p.bytes[i]<=24*DSTX_GIB && p.read[i]==dst_stage_read(m,cuts[i],cuts[i+1]);
+        #assert p.sent[i]==dst_message_bytes(dst_real(4096),cuts[i+1]);}
+    #assert p.bytes[0]==23667061868 && p.sent[6]==88532 && p.sent[7]==86472 && p.sent[13]==0;
+    #assert dst_plan(m,dstx_hosts(13,24*DSTX_GIB,h[..]),4096,false).status==DstStatus.split;
+    q:=dst_plan(m,dstx_hosts(16,16*DSTX_GIB,h[..]),4096,false);#assert q.status==DstStatus.total && q.cause==23753020864;
+    #assert q.cause==dst_stage_bytes(m,0,40,4096,false)-16*16*DSTX_GIB;
+}
+#test "with Engram resident, four RAM hosts cannot split it and five can" #steps 2000000000 {
+    rows:=DV_MANIFEST;m:=dst_model(rows[..]);h:[16]int;
+    #assert dst_plan(m,dstx_hosts(4,DSTX_RAM,h[..]),4096,true).status==DstStatus.split;
+    p:=dst_plan(m,dstx_hosts(5,DSTX_RAM,h[..]),4096,true);cuts:=[6]int.[0,3,14,17,31,40];
+    #assert p.status==DstStatus.ok && p.slowest==3982127824;for i:0..<6 {#assert p.cut[i]==cuts[i];}
+    #assert p.bytes[0]==125044690220 && p.bytes[2]==123723720704 && p.read[3]==p.slowest;
+}
+#test "the planner's refusals and its tightest fits" #steps 2000000000 {
+    rows:=DV_MANIFEST;m:=dst_model(rows[..]);h:[17]int;for i:0..<17 {h[i]=STG_BUDGET_MAX;}
+    #assert dst_plan(m,h[0..<0],4096,false).status==DstStatus.stages && dst_plan(m,h[..],4096,false).status==DstStatus.stages;
+    p:=dst_plan(m,h[0..<16],4096,false);#assert p.status==DstStatus.ok && p.cut[16]==40 && p.cut[15]==39;
+    h[1]=STG_BUDGET_MAX+1;#assert dst_plan(m,h[0..<2],4096,false).status==DstStatus.stages;h[1]=-1;#assert dst_plan(m,h[0..<2],4096,false).status==DstStatus.stages;
+    h[1]=0;#assert dst_plan(m,h[0..<2],4096,false).status==DstStatus.split;h[1]=STG_BUDGET_MAX;
+    #assert dst_plan(m,h[0..<2],0,false).status==DstStatus.context && dst_plan(m,h[0..<2],STG_CONTEXT_MAX+1,false).status==DstStatus.context;
+    #assert dst_plan(m,h[0..<2],STG_CONTEXT_MAX,false).status==DstStatus.ok && dst_plan(m,h[0..<2],1,false).status==DstStatus.ok;
+    bad:=m;bad.head=0;#assert dst_plan(bad,h[0..<2],1,false).status==DstStatus.model;
+    // Exactly the one-stage bytes fit; one byte less is refused with that cause.
+    need:=dst_stage_bytes(m,0,40,4096,false);one:=[1]int.[need];
+    p=dst_plan(m,one[..],4096,false);#assert p.status==DstStatus.ok && p.bytes[0]==need && p.slowest==dst_stage_read(m,0,40) && p.sent[0]==0;
+    one[0]=need-1;p=dst_plan(m,one[..],4096,false);#assert p.status==DstStatus.total && p.cause==1;
+    // A first host with room for layer 0 alone, a last with room for layer 39 alone.
+    two:=[2]int.[dst_stage_bytes(m,0,1,4096,false),STG_BUDGET_MAX];p=dst_plan(m,two[..],4096,false);
+    #assert p.status==DstStatus.ok && p.cut[1]==1 && p.bytes[0]==two[0] && p.sent[0]==dst_message_bytes(dst_real(4096),1);
+    two[0]-=1;#assert dst_plan(m,two[..],4096,false).status==DstStatus.split;
+    two=[2]int.[STG_BUDGET_MAX,dst_stage_bytes(m,39,40,4096,true)];p=dst_plan(m,two[..],4096,true);#assert p.status==DstStatus.ok && p.cut[1]==39 && p.bytes[1]==two[1];
+    two[1]-=1;#assert dst_plan(m,two[..],4096,true).status==DstStatus.split;
+    #assert dst_status_name(DstStatus.split)=="split: no contiguous split fits the hosts" && dst_status_name(DstStatus.ok)=="ok";
+}
+#test "ties go to the earlier cut" #steps 2000000000 {
+    m:DstModel;for l:0..<40 {m.weight[l]=1;m.read[l]=1;}m.embed=1;m.head=1;h:=[2]int.[STG_BUDGET_MAX,STG_BUDGET_MAX];
+    // The stages read a and 40 - a + 1 bytes: cuts 20 and 21 both give 21.
+    p:=dst_plan(m,h[..],1,false);#assert p.status==DstStatus.ok && p.slowest==21 && p.cut[1]==20;
+    three:=[3]int.[STG_BUDGET_MAX,STG_BUDGET_MAX,STG_BUDGET_MAX];p=dst_plan(m,three[..],1,false);#assert p.slowest==14 && p.cut[1]==13 && p.cut[2]==27;
+}
+#forall "the planner's slowest stage is the best of every split" seed:0..<10,n:2..<4 #steps 4000000000 {
+    rows:=DV_MANIFEST;m:=dst_model(rows[..]);h:[3]int;
+    for i:0..<n {h[i]=(ifx n==2 then 140000000000 else 90000000000)+(dstx_hash(seed*5+i)%60)*2000000000;}
+    p:=dst_plan(m,h[0..<n],4096,false);r:=dstx_brute(m,h[0..<n],4096);
+    #assert (p.status==DstStatus.ok)==(r>=0);
+    if r>=0 {#assert p.slowest==r;worst:=0;
+        for i:0..<n {#assert p.bytes[i]<=h[i] && p.cut[i]<p.cut[i+1];if p.read[i]>worst {worst=p.read[i];}}#assert worst==r && p.cut[0]==0 && p.cut[n]==40;}
+}

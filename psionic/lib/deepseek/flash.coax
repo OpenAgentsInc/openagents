@@ -227,6 +227,41 @@ df_hyper :: (layer:int,id:int,projection:[]f32)->DhWeights {
 }
 
 // book:begin forward
+// Layers lo..<hi of step p on the four streams x (written in place), from
+// the carry the layer before left; hashes are the step's 48 Engram ids.
+// Chapter 197's stages each call this on their own layers and caches.
+DfLayers :: struct {result:DfResult;carry:DhCarry;}
+df_layers :: (t:DfTiny,p:int,lo:int,hi:int,x:[]f32,carry:DhCarry,hashes:[]int,c:DfCaches,trace:DfTrace,arena:[]u8)->DfLayers {
+    projection:[3072]f32;now:=carry;
+    for layer:lo..<hi {
+        if t.engram && (layer==1 || layer==14) {slot:=ifx layer==1 then 0 else 1;
+            m:=df_fp8(df_seed(layer,90),DF_ENGRAM_OUT,DF_ENGRAM,arena[0..<DF_ARENA],arena[983040..<DF_ARENA]);r:=df_engram(m,layer,p,hashes[slot*24..<slot*24+24],x);if r.status!=DfRun.ok {return DfLayers.{result=r};}}
+        sub:[32]f32;y:[32]f32;next:[128]f32;work:[128]f32;
+        a:=dh_prepare(DF_D,x,now,df_hyper(layer,70,projection[..]),sub[..],work[..],false);if a.status!=DsStatus.ok {return DfLayers.{result=df_fail(p,layer,DfStage.hyper,cast(u8)a.status)};}
+        r:=df_attention(layer,p,sub[..],c,y[..]);if r.status!=DfRun.ok {return DfLayers.{result=r};}
+        f:=dh_finish(DF_D,x,y[..],a.mix,next[..],work[..],false);if f.status!=DsStatus.ok {return DfLayers.{result=df_fail(p,layer,DfStage.hyper,cast(u8)f.status)};}
+        for i:0..<128 {x[i]=next[i];}
+        b:=dh_prepare(DF_D,x,DhCarry.{pre=a.mix.pre},df_hyper(layer,73,projection[..]),sub[..],work[..],false);if b.status!=DsStatus.ok {return DfLayers.{result=df_fail(p,layer,DfStage.hyper,cast(u8)b.status)};}
+        at:=(p*DF_L+layer)*DF_K;r=df_moe(t,layer,p,sub[..],trace.routes[at..<at+DF_K],y[..]);if r.status!=DfRun.ok {return DfLayers.{result=r};}
+        f=dh_finish(DF_D,x,y[..],b.mix,next[..],work[..],false);if f.status!=DsStatus.ok {return DfLayers.{result=df_fail(p,layer,DfStage.hyper,cast(u8)f.status)};}
+        for i:0..<128 {x[i]=next[i];}now=f.carry;
+        link:=da_flash_links(layer);pick:=(p*DF_L+layer)*DF_TOPK;seen:=(p*DF_L+layer)*DF_CAP;for i:0..<DF_TOPK {trace.picks[pick+i]=-1;}
+        for i:0..<DF_CAP {trace.scores[seen+i]=ifx link.ratio>0 then c.scores[link.index*DF_CAP+i] else 0;}
+        if link.ratio>0 {for i:0..<c.counts[link.index] {trace.picks[pick+i]=c.picks[link.index*3+i];}}
+    }
+    return DfLayers.{carry=now};
+}
+// A step's first streams: four copies of the token's BF16 embedding row.
+df_embed :: (token:int,x:[]f32) {for c4:0..<DF_HC {for j:0..<DF_D {x[c4*DF_D+j]=df_value(df_bf16(7,token*DF_D+j));}}}
+// After the last layer: collapse the streams, the final norm, the 64 logits.
+df_head :: (p:int,last:int,x:[]f32,carry:DhCarry,logits:[]f32)->DfResult {
+    h:[32]f32;work:[32]f32;hn:[32]f32;
+    k:=dh_collapse(DF_D,x,carry,h[..],work[..],false);if k.status!=DsStatus.ok {return df_fail(p,last,DfStage.hyper,cast(u8)k.status);}
+    status:=df_rms(h[..],9,hn[..]);if status!=DkStatus.ok {return df_fail(p,last,DfStage.norm,cast(u8)status);}
+    for v:0..<DF_V {acc:PsionicAccumulator;for j:0..<DF_D {acc=psionic_ops_accumulate(acc,f64(df_value(df_bf16(8,v*DF_D+j)))*f64(hn[j]));}
+        value:=psionic_ops_total(acc);if !psionic_ops_fits_f32(value) {return df_fail(p,last,DfStage.head,cast(u8)DsStatus.arithmetic);}logits[v]=f32(value);}
+    return DfResult.{};
+}
 // Every step runs all 40 layers for one token; caches carry between steps.
 df_forward :: (t:DfTiny,tokens:[]int,trace:DfTrace,arena:[]u8)->DfResult {
     n:=tokens.count;if n<1 || n>DF_CAP || t.first<0 || t.first>=t.layers || t.layers>DF_L {return DfResult.{status=DfRun.shape};}
@@ -239,29 +274,9 @@ df_forward :: (t:DfTiny,tokens:[]int,trace:DfTrace,arena:[]u8)->DfResult {
         // Chapter 94's hash refuses a token outside the vocabulary; every
         // other input to it is fixed here, so that is its only refusal.
         e:=eg_hash(emap,history,one[..],live[..],hashes[..],hs[..],false);if e.status!=EgStatus.ok {return DfResult.{status=DfRun.token,step=p};}history=e.next;
-        x:[128]f32;for c4:0..<DF_HC {for j:0..<DF_D {x[c4*DF_D+j]=df_value(df_bf16(7,tokens[p]*DF_D+j));}}
-        carry:=dh_initial();projection:[3072]f32;
-        for layer:t.first..<t.layers {
-            if t.engram && (layer==1 || layer==14) {slot:=ifx layer==1 then 0 else 1;
-                m:=df_fp8(df_seed(layer,90),DF_ENGRAM_OUT,DF_ENGRAM,arena[0..<DF_ARENA],arena[983040..<DF_ARENA]);r:=df_engram(m,layer,p,hashes[slot*24..<slot*24+24],x[..]);if r.status!=DfRun.ok {return r;}}
-            sub:[32]f32;y:[32]f32;next:[128]f32;work:[128]f32;
-            a:=dh_prepare(DF_D,x[..],carry,df_hyper(layer,70,projection[..]),sub[..],work[..],false);if a.status!=DsStatus.ok {return df_fail(p,layer,DfStage.hyper,cast(u8)a.status);}
-            r:=df_attention(layer,p,sub[..],c,y[..]);if r.status!=DfRun.ok {return r;}
-            f:=dh_finish(DF_D,x[..],y[..],a.mix,next[..],work[..],false);if f.status!=DsStatus.ok {return df_fail(p,layer,DfStage.hyper,cast(u8)f.status);}
-            x=next;
-            b:=dh_prepare(DF_D,x[..],DhCarry.{pre=a.mix.pre},df_hyper(layer,73,projection[..]),sub[..],work[..],false);if b.status!=DsStatus.ok {return df_fail(p,layer,DfStage.hyper,cast(u8)b.status);}
-            at:=(p*DF_L+layer)*DF_K;r=df_moe(t,layer,p,sub[..],trace.routes[at..<at+DF_K],y[..]);if r.status!=DfRun.ok {return r;}
-            f=dh_finish(DF_D,x[..],y[..],b.mix,next[..],work[..],false);if f.status!=DsStatus.ok {return df_fail(p,layer,DfStage.hyper,cast(u8)f.status);}
-            x=next;carry=f.carry;
-            link:=da_flash_links(layer);pick:=(p*DF_L+layer)*DF_TOPK;seen:=(p*DF_L+layer)*DF_CAP;for i:0..<DF_TOPK {trace.picks[pick+i]=-1;}
-            for i:0..<DF_CAP {trace.scores[seen+i]=ifx link.ratio>0 then c.scores[link.index*DF_CAP+i] else 0;}
-            if link.ratio>0 {for i:0..<c.counts[link.index] {trace.picks[pick+i]=c.picks[link.index*3+i];}}
-        }
-        h:[32]f32;work:[32]f32;hn:[32]f32;
-        k:=dh_collapse(DF_D,x[..],carry,h[..],work[..],false);if k.status!=DsStatus.ok {return df_fail(p,t.layers,DfStage.hyper,cast(u8)k.status);}
-        status:=df_rms(h[..],9,hn[..]);if status!=DkStatus.ok {return df_fail(p,t.layers,DfStage.norm,cast(u8)status);}
-        for v:0..<DF_V {acc:PsionicAccumulator;for j:0..<DF_D {acc=psionic_ops_accumulate(acc,f64(df_value(df_bf16(8,v*DF_D+j)))*f64(hn[j]));}
-            value:=psionic_ops_total(acc);if !psionic_ops_fits_f32(value) {return df_fail(p,t.layers,DfStage.head,cast(u8)DsStatus.arithmetic);}trace.logits[p*DF_V+v]=f32(value);}
+        x:[128]f32;df_embed(tokens[p],x[..]);
+        s:=df_layers(t,p,t.first,t.layers,x[..],dh_initial(),hashes[..],c,trace,arena);if s.result.status!=DfRun.ok {return s.result;}
+        r:=df_head(p,t.layers,x[..],s.carry,trace.logits[p*DF_V..<(p+1)*DF_V]);if r.status!=DfRun.ok {return r;}
     }
     return DfResult.{};
 }

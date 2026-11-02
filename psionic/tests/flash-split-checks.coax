@@ -1,0 +1,33 @@
+// Chapter 197's check helpers, loaded by psionic/lib/deepseek/flash-split.coax
+// and owned by its checks: the reader ranges worked out by hand from the
+// layer map, a filled message, host lists, and a brute-force planner that
+// tries every split of two and three stages.
+
+// The reader ranges worked out by hand in chapter 197: kind, owner layer,
+// and the first and last cut the part crosses. KV owners 2, 8, 14 and 20
+// are read through layers 7, 13, 19 and 39; indexers 2, 8, 14, 20, 24, 28,
+// 32 and 36 through 7, 13, 19, 23, 27, 31, 35 and 39; indexers 24-36 read
+// layer 20's keys and mask; Engram sits at layers 1 and 14.
+DSTX_RANGES :: [16][4]int.[
+    [4]int.[2,1,1,1],[4]int.[2,14,1,14],
+    [4]int.[3,2,3,7],[4]int.[3,8,9,13],[4]int.[3,14,15,19],[4]int.[3,20,21,39],[4]int.[4,20,21,36],
+    [4]int.[5,2,3,7],[4]int.[5,8,9,13],[4]int.[5,14,15,19],[4]int.[5,20,21,23],[4]int.[5,24,25,27],[4]int.[5,28,29,31],[4]int.[5,32,33,35],[4]int.[5,36,37,39],
+    [4]int.[6,20,21,36]];
+dstx_message :: (g:DstGeometry,cut:int,step:int,wire:[]u32)->int {
+    n:=dst_frame(g,0x0197000000000041,cut,step,wire);l:=dst_layout(g,cut);
+    for i:0..<l.count {p:=l.parts[i];for k:0..<p.words {wire[p.offset+k]=cast(u32)(p.offset*7+k);}}
+    dst_seal(wire[0..<n]);return n;
+}
+dstx_hosts :: (n:int,each:int,out:[]int)->[]int {for i:0..<n {out[i]=each;}return out[0..<n];}
+DSTX_GIB :: 1073741824;DSTX_RAM :: 134828441600-8589934592;
+// The planner against every split, for two and three hosts.
+dstx_hash :: (i:int)->int {x:=(i*2654435761+12345)&0xffffffff;x=((x^(x>>13))*1274126177)&0xffffffff;return x^(x>>16);}
+dstx_brute :: (m:DstModel,budget:[]int,context:int)->int {
+    best:=-1;n:=budget.count;sent:[41]int;for c:0..<41 {sent[c]=dst_message_bytes(dst_real(context),c);}
+    for a:1..<40 {for b:a+1..<41 {
+        cuts:=[4]int.[0,a,b,40];if n==2 {cuts[2]=40;}worst:=0;fits:=(n==2)==(b==40);
+        for i:0..<n {x:=cuts[i];y:=cuts[i+1];if dst_stage_inner(m,x,y,context,false)+sent[x]+sent[y]>budget[i] {fits=false;}
+            r:=dst_stage_read(m,x,y);if r>worst {worst=r;}}
+        if fits && (best<0 || worst<best) {best=worst;}}}
+    return best;
+}

@@ -21,13 +21,13 @@ if [[ -n $headers ]];then python3 -I psionic/tests/deepseek_v41_manifest.py "$he
 for mode in debug release;do
     flags=(--run-steps 40000000)
     if [[ $mode == release ]];then flags+=(--release);fi
-    for unit in flash-manifest flash-plan flash;do "$coax" test "psionic/lib/deepseek/$unit.coax" "${flags[@]}";done
-    for example in deepseek-flash deepseek-flash-refuse;do
+    for unit in flash-manifest flash-plan flash flash-split flash-stages;do "$coax" test "psionic/lib/deepseek/$unit.coax" "${flags[@]}";done
+    for example in deepseek-flash deepseek-flash-refuse deepseek-flash-stages;do
         "$coax" run "psionic/examples/$example.coax" "${flags[@]}" > "$out/$example.out"
         cmp "psionic/fixtures/deepseek-flash/$example.out" "$out/$example.out"
     done
 done
 if [[ $mutate == 1 ]];then
-    for unit in flash-manifest flash-plan flash;do "$coax" mutate "psionic/lib/deepseek/$unit.coax" --root-only --jobs "$jobs" --run-steps 40000000;done
+    for unit in flash-manifest flash-plan flash flash-split;do "$coax" mutate "psionic/lib/deepseek/$unit.coax" --root-only --jobs "$jobs" --run-steps 40000000;done
 fi
 echo 'V4.1 Flash: manifest, host plan, composed stack against the composed oracle, and both transcripts pass'

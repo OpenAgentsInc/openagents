@@ -1,0 +1,50 @@
+// Chapter 197: DeepSeek V4.1 Flash across stages. The planner splits the
+// pinned checkpoint's 40 layers over hosts from its own per-layer bytes;
+// the boundary contract says what crosses each cut; and chapter 100's
+// synthetic stack, run as a pipeline at every cut, equals the unsplit run
+// bit for bit. The last lines show the messages a stage refuses.
+#import "Basic";
+#load "../lib/deepseek/flash-stages.coax";
+
+// book:begin example
+dfse_run :: (cut:[]int,tokens:[]int,want:DfTrace,arena:[]u8,fault:DfsFault,d:[]u64)->DfsRun {
+    routes:[560]int;picks:[840]int;scores:[2240]f32;logits:[448]f32;wire:[3000]u32;
+    for i:0..<840 {picks[i]=7;}for i:0..<2240 {scores[i]=99;}
+    got:=DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]};
+    r:=dfs_pipeline(DfTiny.{},cut,d[0..<cut.count-1],tokens,got,arena,wire[..],fault);
+    if r.status==DfsStatus.ok {s:=dfs_same(cut,7,got,want);
+        #assert s.routes==560 && s.picks==840 && s.logits==448 && s.scores==s.scored;r.part=s.scored;}
+    return r;
+}
+main :: () {
+    rows:=DV_MANIFEST;m:=dst_model(rows[..]);gib:=1073741824;h:[16]int;
+    print("message bytes per token at 4,096 positions:");for c:[7]int.[1,3,14,20,21,24,39] {print(" cut %: %",c,dst_message_bytes(dst_real(4096),c));}print("\n");
+    for n:[2]int.[14,13] {for i:0..<n {h[i]=24*gib;}p:=dst_plan(m,h[0..<n],4096,false);
+        print("% x 24 GiB GPUs, Engram on the hosts: %\n",n,dst_status_name(p.status));
+        if p.status==DstStatus.ok {for i:0..<n {print("  stage %: layers %-%, % bytes, reads % a token, sends %\n",i,p.cut[i],p.cut[i+1]-1,p.bytes[i],p.read[i],p.sent[i]);}}}
+    for i:0..<16 {h[i]=16*gib;}p:=dst_plan(m,h[0..<16],4096,false);print("16 x 16 GiB GPUs: % (% bytes short)\n",dst_status_name(p.status),p.cause);
+    for n:[2]int.[4,5] {for i:0..<n {h[i]=134828441600-8589934592;}p=dst_plan(m,h[0..<n],4096,true);
+        print("% RAM hosts of 126.2 GB, Engram resident: %",n,dst_status_name(p.status));
+        if p.status==DstStatus.ok {print(", cuts");for i:1..<n {print(" %",p.cut[i]);}print(", slowest stage reads % bytes a token",p.slowest);}print("\n");}
+    // The synthetic stack, unsplit, then split at every cut.
+    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;scores:[2240]f32;logits:[448]f32;arena:[984000]u8;d:[16]u64;for k:0..<16 {d[k]=0x0197;}
+    want:=DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]};
+    #assert df_forward(DfTiny.{},tokens[..],want,arena[..]).status==DfRun.ok;
+    same:=0;
+    for c:1..<40 {cut:=[3]int.[0,c,40];r:=dfse_run(cut[..],tokens[..],want,arena[..],DfsFault.{},d[..]);#assert r.status==DfsStatus.ok;same+=1;
+        if c==1 || c==3 || c==14 || c==20 || c==21 || c==24 {print("cut %: % bytes a token, % messages; routes, selections, logits identical\n",c,r.sent[0],r.messages);}}
+    print("two stages, cuts 1-39: % of 39 runs identical to the unsplit stack\n",same);
+    plan:=[15]int.[0,3,6,9,12,15,18,21,24,27,30,33,36,39,40];r:=dfse_run(plan[..],tokens[..],want,arena[..],DfsFault.{},d[..]);
+    print("the 14-GPU plan's cuts: % stages, % ticks, % messages, % bytes; identical\n",14,r.ticks,r.messages,r.bytes);
+    ram:=[6]int.[0,3,14,17,31,40];r=dfse_run(ram[..],tokens[..],want,arena[..],DfsFault.{},d[..]);
+    print("the 5-host plan's cuts: % stages, % messages, % bytes; identical\n",5,r.messages,r.bytes);
+    // What a stage refuses.
+    cut:=[4]int.[0,14,21,40];
+    r=dfse_run(cut[..],tokens[..],want,arena[..],DfsFault.{stage=1,step=4,part=5},d[..]);
+    print("stage 1 leaves out part 5 (layer 20's mask) at step 4: stage % refuses step %: % part %\n",r.stage,r.step,dst_refusal_name(r.refusal),r.part);
+    r=dfse_run(cut[..],tokens[..],want,arena[..],DfsFault.{stage=0,step=2,word=60},d[..]);
+    print("one bit flips in stage 0's message for step 2: stage % refuses step %: %\n",r.stage,r.step,dst_refusal_name(r.refusal));
+    d[2]=0x0198;r=dfse_run(cut[..],tokens[..],want,arena[..],DfsFault.{},d[..]);
+    print("stage 2 loaded another model: stage % refuses step %: %\n",r.stage,r.step,dst_refusal_name(r.refusal));
+}
+// book:end example

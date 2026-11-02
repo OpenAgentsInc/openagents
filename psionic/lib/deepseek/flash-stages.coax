@@ -1,0 +1,230 @@
+// deepseek-flash-stages-cpu-v1. Chapter 197: chapter 100's synthetic V4.1
+// Flash stack run as a pipeline of stages. Each stage owns its layers'
+// caches and calls chapter 100's df_layers on its range; between stages
+// only chapter 197's boundary messages move (flash-split.coax, #authority):
+// the sender packs the four residual streams, the carry, the Engram ids
+// still needed and the compressed-cache rows its successors borrow, and the
+// receiver checks the message against the model it loaded, its own first
+// layer and the step it expects before it unpacks a word. Steps flow
+// through the stages as a bucket brigade: at tick t stage k works on step
+// t - k. The run must equal the unsplit df_forward bit for bit.
+// Profile deepseek-flash-stages-cpu-v1: chapter 100's composed CPU stack;
+// stages run one after another in one process; up to 16 stages.
+#load "flash.coax";
+#load "flash-split.coax";
+
+DFS_STAGES :: 16;
+DFS_WORDS :: 200;   // the largest synthetic message, at cut 1, is 197 words
+DfsStatus :: enum u8 {ok;shape;capacity;token;refused;piece;}
+// A deliberate fault for the refusal checks: when `stage` sends `step`,
+// leave out part `part` (and seal what remains), or flip bit 0 of `word`
+// after sealing.
+DfsFault :: struct {stage:int=-1;step:int;part:int=-1;word:int=-1;}
+// What happened: the refusal and where (stage, step, part), a piece's own
+// failure, ticks, messages and bytes moved, and each boundary's bytes per token.
+DfsRun :: struct {status:DfsStatus;refusal:DstRefusal;part:int=-1;stage:int=-1;step:int=-1;piece:DfResult;ticks:int;messages:int;bytes:int;sent:[16]int;}
+// One stage's caches, laid out as df_forward's.
+DfsStore :: struct {window:[3840]u8;window_scales:[120]u8;comp:[2688]u8;comp_scales:[336]u8;keys:[2688]u8;key_scales:[168]u8;old_kv:[672]f32;old_gate:[672]f32;picks:[111]int;scores:[296]f32;counts:[37]int;mask:[8]u8;}
+
+// book:begin rows
+// The row an owner wrote at step p, plus one (0: none): every step at
+// ratio 1, every second step at ratio 2.
+dfs_row :: (s:int,p:int)->int {r:=da_flash_links(s).ratio;return ifx (p+1)%r==0 then (p+1)/r else 0;}
+// Bytes in and out of words, little-endian.
+dfs_put :: (bytes:[]u8,words:[]u32) {for i:0..<bytes.count {words[i/4]|=cast(u32)bytes[i]<<cast(u32)(8*(i%4));}}
+dfs_get :: (words:[]u32,bytes:[]u8) {for i:0..<bytes.count {bytes[i]=cast(u8)((words[i/4]>>cast(u32)(8*(i%4)))&255);}}
+// book:end rows
+
+// book:begin pack
+// Fill a framed message from the sender's streams, carry, ids and caches.
+dfs_pack :: (l:DstLayout,p:int,x:[]f32,carry:DhCarry,hashes:[]int,c:DfCaches,wire:[]u32) {
+    for i:0..<l.count {q:=l.parts[i];w:=wire[q.offset..<q.offset+q.words];s:=q.source;
+        if q.kind==DstKind.residual {for j:0..<128 {w[j]=f32_bits(x[j]);}}
+        if q.kind==DstKind.carry {for j:0..<4 {w[j]=f32_bits(carry.pre[j]);}}
+        if q.kind==DstKind.engram {slot:=ifx s==1 then 0 else 1;for j:0..<24 {w[j]=cast(u32)hashes[slot*24+j];}}
+        if q.kind==DstKind.comp || q.kind==DstKind.keys {row:=dfs_row(s,p);w[0]=cast(u32)row;
+            if row>0 && q.kind==DstKind.comp {dfs_put(c.comp[s*128+(row-1)*16..<s*128+row*16],w[1..<5]);dfs_put(c.comp_scales[s*16+(row-1)*2..<s*16+row*2],w[5..<6]);}
+            if row>0 && q.kind==DstKind.keys {dfs_put(c.keys[s*128+(row-1)*16..<s*128+row*16],w[1..<5]);dfs_put(c.key_scales[s*8+row-1..<s*8+row],w[5..<6]);}}
+        if q.kind==DstKind.index {w[0]=cast(u32)c.counts[s];for j:0..<3 {w[1+j]=cast(u32)c.picks[s*3+j];}}
+        if q.kind==DstKind.mask {dfs_put(c.mask[0..<8],w[0..<2]);}
+    }
+}
+// The receiver's side: the streams, carry and ids for this step, and the
+// borrowed rows written into its own copies of the owners' caches.
+dfs_unpack :: (l:DstLayout,wire:[]u32,x:[]f32,hashes:[]int,c:DfCaches)->DhCarry {
+    carry:DhCarry;
+    for i:0..<l.count {q:=l.parts[i];w:=wire[q.offset..<q.offset+q.words];s:=q.source;
+        if q.kind==DstKind.residual {for j:0..<128 {x[j]=f32_from_bits(w[j]);}}
+        if q.kind==DstKind.carry {for j:0..<4 {carry.pre[j]=f32_from_bits(w[j]);}}
+        if q.kind==DstKind.engram {slot:=ifx s==1 then 0 else 1;for j:0..<24 {hashes[slot*24+j]=cast(int)w[j];}}
+        if q.kind==DstKind.comp || q.kind==DstKind.keys {row:=cast(int)w[0];
+            if row>0 && q.kind==DstKind.comp {dfs_get(w[1..<5],c.comp[s*128+(row-1)*16..<s*128+row*16]);dfs_get(w[5..<6],c.comp_scales[s*16+(row-1)*2..<s*16+row*2]);}
+            if row>0 && q.kind==DstKind.keys {dfs_get(w[1..<5],c.keys[s*128+(row-1)*16..<s*128+row*16]);dfs_get(w[5..<6],c.key_scales[s*8+row-1..<s*8+row]);}}
+        if q.kind==DstKind.index {c.counts[s]=cast(int)w[0];for j:0..<3 {c.picks[s*3+j]=cast(int)w[1+j];}}
+        if q.kind==DstKind.mask {dfs_get(w[0..<2],c.mask[0..<8]);}
+    }
+    return carry;
+}
+// book:end pack
+
+// Take part i out of a framed, filled message and seal what remains.
+dfs_drop :: (l:DstLayout,i:int,wire:[]u32)->int {
+    q:=l.parts[i];gone:=2+q.words;for k:q.offset-2..<l.words-gone {wire[k]=wire[k+gone];}
+    wire[5]-=1;dst_seal(wire[0..<l.words-gone]);return l.words-gone;
+}
+
+// book:begin pipeline
+// Run tokens through stages cut[k]..<cut[k+1] (cut[0] is t.first, the last
+// is t.layers); stage k loaded the model whose digest is model[k]. wire
+// holds one mailbox of DFS_WORDS per boundary.
+dfs_pipeline :: (t:DfTiny,cut:[]int,model:[]u64,tokens:[]int,trace:DfTrace,arena:[]u8,wire:[]u32,fault:DfsFault)->DfsRun {
+    n:=cut.count-1;count:=tokens.count;run:DfsRun;
+    if n<1 || n>DFS_STAGES || model.count!=n || count<1 || count>DF_CAP || cut[0]!=t.first || cut[n]!=t.layers || t.first<0 || t.layers>DF_L {run.status=DfsStatus.shape;return run;}
+    for k:0..<n {if cut[k]>=cut[k+1] {run.status=DfsStatus.shape;return run;}}
+    if (t.engram && arena.count<DF_ARENA) || trace.routes.count<count*DF_L*DF_K || trace.picks.count<count*DF_L*DF_TOPK || trace.scores.count<count*DF_L*DF_CAP ||
+        trace.logits.count<count*DF_V || wire.count<(n-1)*DFS_WORDS {run.status=DfsStatus.capacity;return run;}
+    g:=dst_tiny();stores:[16]DfsStore;caches:[16]DfCaches;layouts:[16]DstLayout;sizes:[16]int;
+    for k:0..<n {caches[k]=DfCaches.{window=stores[k].window[..],window_scales=stores[k].window_scales[..],comp=stores[k].comp[..],comp_scales=stores[k].comp_scales[..],
+        keys=stores[k].keys[..],key_scales=stores[k].key_scales[..],old_kv=stores[k].old_kv[..],old_gate=stores[k].old_gate[..],picks=stores[k].picks[..],scores=stores[k].scores[..],
+        counts=stores[k].counts[..],mask=stores[k].mask[..]};layouts[k]=dst_layout(g,cut[k+1]);run.sent[k]=ifx k<n-1 then 4*layouts[k].words else 0;}
+    x:[16][128]f32;carry:[16]DhCarry;hashes:[16][48]int;
+    map:=df_engram_map();emap:=EgMap.{raw=DF_V,compressed=99092,pad=2,data=map.data[..]};history:=eg_start();
+    run.ticks=count+n-1;
+    for tick:0..<run.ticks {for j:0..<n {k:=n-1-j;p:=tick-k;if p<0 || p>=count {continue;}
+        run.stage=k;run.step=p;
+        if k==0 {one:=[1]int.[tokens[p]];live:=[1]u8.[1];hs:[48]int;
+            e:=eg_hash(emap,history,one[..],live[..],hashes[0][..],hs[..],false);if e.status!=EgStatus.ok {run.status=DfsStatus.token;return run;}history=e.next;
+            df_embed(tokens[p],x[0][..]);carry[0]=dh_initial();}
+        else {box:=wire[(k-1)*DFS_WORDS..<(k-1)*DFS_WORDS+sizes[k-1]];
+            v:=dst_check(g,DstExpect.{model=model[k],cut=cut[k],step=p},box);
+            if v.refusal!=DstRefusal.none {run.status=DfsStatus.refused;run.refusal=v.refusal;run.part=v.part;return run;}
+            carry[k]=dfs_unpack(layouts[k-1],box,x[k][..],hashes[k][..],caches[k]);}
+        s:=df_layers(t,p,cut[k],cut[k+1],x[k][..],carry[k],hashes[k][..],caches[k],trace,arena);
+        if s.result.status!=DfRun.ok {run.status=DfsStatus.piece;run.piece=s.result;return run;}
+        carry[k]=s.carry;
+        if k==n-1 {r:=df_head(p,t.layers,x[k][..],carry[k],trace.logits[p*DF_V..<(p+1)*DF_V]);if r.status!=DfRun.ok {run.status=DfsStatus.piece;run.piece=r;return run;}}
+        else {box:=wire[k*DFS_WORDS..<(k+1)*DFS_WORDS];size:=dst_frame(g,model[k],cut[k+1],p,box);
+            dfs_pack(layouts[k],p,x[k][..],carry[k],hashes[k][..],caches[k],box);dst_seal(box[0..<size]);
+            if fault.stage==k && fault.step==p && fault.part>=0 {size=dfs_drop(layouts[k],fault.part,box);}
+            if fault.stage==k && fault.step==p && fault.word>=0 {box[fault.word]^=1;}
+            sizes[k]=size;run.messages+=1;run.bytes+=4*size;}
+    }}
+    run.stage=-1;run.step=-1;return run;
+}
+// book:end pipeline
+dfs_status_name :: (s:DfsStatus)->string {names:=[6]string.["ok","shape","capacity","token","refused","piece"];return names[cast(int)s];}
+
+// How many records of a split run equal the unsplit run's. A layer's index
+// scores are compared where its indexer runs in the same stage; a layer that
+// borrows an earlier stage's selection gets the positions, not the scores.
+DfsSame :: struct {routes:int;picks:int;scores:int;scored:int;logits:int;}
+dfs_same :: (cut:[]int,steps:int,a:DfTrace,b:DfTrace)->DfsSame {
+    r:DfsSame;n:=cut.count-1;
+    for p:0..<steps {for k:0..<n {for l:cut[k]..<cut[k+1] {
+        for i:0..<DF_K {at:=(p*DF_L+l)*DF_K+i;if a.routes[at]==b.routes[at] {r.routes+=1;}}
+        for i:0..<DF_TOPK {at:=(p*DF_L+l)*DF_TOPK+i;if a.picks[at]==b.picks[at] {r.picks+=1;}}
+        link:=da_flash_links(l);if link.ratio==0 || link.index>=cut[k] {r.scored+=DF_CAP;
+            for i:0..<DF_CAP {at:=(p*DF_L+l)*DF_CAP+i;if f32_bits(a.scores[at])==f32_bits(b.scores[at]) {r.scores+=1;}}}}}
+        for v:0..<DF_V {if f32_bits(a.logits[p*DF_V+v])==f32_bits(b.logits[p*DF_V+v]) {r.logits+=1;}}}
+    return r;
+}
+
+
+#load "../../fixtures/deepseek/flash-goldens.coax";
+// The compile-time evaluator affords short ranges; the example runs every
+// cut of all 40 layers with Engram for seven tokens natively. Traces start
+// filled with junk, so every record must be written.
+DFS_ONE :: [1]u64.[0x0197];
+dfsx_digests :: (n:int,out:[]u64)->[]u64 {for k:0..<n {out[k]=0x0197;}return out[0..<n];}
+// Layers 0-20 for two steps against chapter 100's oracle records, cut
+// after the Engram layer (1), inside layer 2's owner group (3), at the
+// second Engram layer (14) and before the candidate source (20).
+#forall "two stages of layers 0-20 match the composed oracle at every kind of cut" which:0..<4 #steps 1000000000 {
+    cut:=[4]int.[1,3,14,20][which];
+    tokens:=DVG_TOKENS;routes:[160]int;picks:[240]int;scores:[640]f32;logits:[128]f32;arena:[1]u8;wire:[200]u32;d:[2]u64;
+    for i:0..<240 {picks[i]=7;}for i:0..<640 {scores[i]=99;}for i:0..<128 {logits[i]=99;}
+    cuts:=[3]int.[0,cut,21];trace:=DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]};
+    r:=dfs_pipeline(DfTiny.{layers=21,engram=false},cuts[..],dfsx_digests(2,d[..]),tokens[0..<2],trace,arena[..],wire[..],DfsFault.{});
+    #assert r.status==DfsStatus.ok && r.ticks==3 && r.messages==2 && r.bytes==2*dst_message_bytes(dst_tiny(),cut) && r.sent[0]==dst_message_bytes(dst_tiny(),cut) && r.sent[1]==0;
+    for p:0..<2 {for i:0..<21*DF_K {#assert routes[p*DF_L*DF_K+i]==DVG21_ROUTES[p*21*DF_K+i];}for i:0..<21*DF_TOPK {#assert picks[p*DF_L*DF_TOPK+i]==DVG21_PICKS[p*21*DF_TOPK+i];}
+        for l:0..<21 {link:=da_flash_links(l);if link.ratio==0 || link.index>=cut || l<cut {for i:0..<DF_CAP {at:=l*DF_CAP+i;#assert f32_bits(scores[p*DF_L*DF_CAP+at])==DVG21_SCORES[p*21*DF_CAP+at];}}}}
+    for i:0..<128 {#assert f32_bits(logits[i])==DVG21_LOGITS[i];}
+}
+// Layers 20-24 for eight steps in three stages: layer 20's compressed rows
+// and index keys cross two boundaries (the second relayed by layers 21-23),
+// its selection reaches 21-23 and its candidate mask, which drops a block
+// from the seventh step, reaches indexer 24.
+#test "three stages relay layer 20's rows, keys, selection and mask" #steps 1000000000 {
+    tokens:=[8]int.[3,17,42,5,61,17,8,29];routes:[640]int;picks:[960]int;scores:[2560]f32;logits:[512]f32;arena:[1]u8;wire:[400]u32;d:[3]u64;
+    for i:0..<960 {picks[i]=7;}cuts:=[4]int.[20,21,24,25];
+    r:=dfs_pipeline(DfTiny.{first=20,layers=25,engram=false},cuts[..],dfsx_digests(3,d[..]),tokens[..],DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]},arena[..],wire[..],DfsFault.{});
+    #assert r.status==DfsStatus.ok && r.ticks==10 && r.messages==16 && r.sent[0]==684 && r.sent[1]==660 && r.bytes==8*(684+660);
+    for p:0..<8 {for i:0..<5*DF_K {#assert routes[(p*DF_L+20)*DF_K+i]==DVG2024_ROUTES[p*5*DF_K+i];}for i:0..<5*DF_TOPK {#assert picks[(p*DF_L+20)*DF_TOPK+i]==DVG2024_PICKS[p*5*DF_TOPK+i];}
+        for i:0..<DF_CAP {#assert f32_bits(scores[(p*DF_L+20)*DF_CAP+i])==DVG2024_SCORES[p*5*DF_CAP+i] && f32_bits(scores[(p*DF_L+24)*DF_CAP+i])==DVG2024_SCORES[(p*5+4)*DF_CAP+i];}}
+    for i:0..<512 {#assert f32_bits(logits[i])==DVG2024_LOGITS[i];}
+}
+// Engram at layer 1 in the second stage: its 24 ids cross the cut for both steps.
+#test "Engram ids cross the cut after layer 0 and match the oracle" #steps 1000000000 {
+    tokens:=DVG_TOKENS;routes:[160]int;picks:[240]int;scores:[640]f32;logits:[128]f32;arena:[984000]u8;wire:[200]u32;d:[2]u64;cuts:=[3]int.[0,1,2];
+    r:=dfs_pipeline(DfTiny.{layers=2},cuts[..],dfsx_digests(2,d[..]),tokens[0..<2],DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]},arena[..],wire[..],DfsFault.{});
+    #assert r.status==DfsStatus.ok && r.sent[0]==788;
+    for p:0..<2 {for i:0..<2*DF_K {#assert routes[p*DF_L*DF_K+i]==DVGE1_ROUTES[p*2*DF_K+i];}}
+    for i:0..<128 {#assert f32_bits(logits[i])==DVGE1_LOGITS[i];}
+}
+#test "rows, byte packing and the comparison count what they should" {
+    #assert dfs_row(2,0)==0 && dfs_row(2,1)==1 && dfs_row(2,2)==0 && dfs_row(2,3)==2 && dfs_row(20,0)==1 && dfs_row(20,6)==7;
+    b:=[6]u8.[1,2,3,4,5,255];w:[2]u32;dfs_put(b[..],w[..]);#assert w[0]==0x04030201 && w[1]==0xff05;
+    o:[6]u8;dfs_get(w[..],o[..]);for i:0..<6 {#assert o[i]==b[i];}
+    ra:[160]int;pa:[240]int;sa:[640]f32;la:[128]f32;rb:[160]int;pb:[240]int;sb:[640]f32;lb:[128]f32;
+    a:=DfTrace.{routes=ra[..],picks=pa[..],scores=sa[..],logits=la[..]};c:=DfTrace.{routes=rb[..],picks=pb[..],scores=sb[..],logits=lb[..]};
+    cuts:=[3]int.[0,21,40];s:=dfs_same(cuts[..],2,a,c);
+    // Layers 21-23 borrow layer 20's selection from stage 0: their scores are not compared.
+    #assert s.routes==160 && s.picks==240 && s.logits==128 && s.scored==2*37*8 && s.scores==s.scored;
+    rb[3]=1;pb[239]=1;sb[0]=1;lb[127]=1;s=dfs_same(cuts[..],2,a,c);#assert s.routes==159 && s.picks==239 && s.scores==s.scored-1 && s.logits==127;
+    sb[21*8]=5;#assert dfs_same(cuts[..],2,a,c).scores==s.scores;sb[24*8]=5;#assert dfs_same(cuts[..],2,a,c).scores==s.scores-1;
+    #assert dfs_status_name(DfsStatus.refused)=="refused" && dfs_status_name(DfsStatus.ok)=="ok";
+}
+#test "a stage refuses a message from another model, one missing a part, one damaged" #steps 1000000000 {
+    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;scores:[2240]f32;logits:[448]f32;arena:[1]u8;wire:[400]u32;
+    trace:=DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]};t:=DfTiny.{first=19,layers=22,engram=false};cuts:=[4]int.[19,20,21,22];
+    d:=[3]u64.[0x0197,0x0197,0x0198];
+    r:=dfs_pipeline(t,cuts[..],d[..],tokens[0..<3],trace,arena[..],wire[..],DfsFault.{});
+    #assert r.status==DfsStatus.refused && r.refusal==DstRefusal.model && r.stage==2 && r.step==0 && r.messages==3;
+    d[2]=0x0197;r=dfs_pipeline(t,cuts[..],d[..],tokens[0..<3],trace,arena[..],wire[..],DfsFault.{stage=1,step=1,part=3});
+    #assert r.status==DfsStatus.refused && r.refusal==DstRefusal.missing && r.part==3 && r.stage==2 && r.step==1;
+    r=dfs_pipeline(t,cuts[..],d[..],tokens[0..<3],trace,arena[..],wire[..],DfsFault.{stage=0,step=2,word=20});
+    #assert r.status==DfsStatus.refused && r.refusal==DstRefusal.checksum && r.part==-1 && r.stage==1 && r.step==2;
+    r=dfs_pipeline(t,cuts[..],d[..],tokens[0..<3],trace,arena[..],wire[..],DfsFault.{stage=1,step=2,word=8});
+    #assert r.status==DfsStatus.refused && r.refusal==DstRefusal.checksum && r.stage==2 && r.step==2;
+    r=dfs_pipeline(t,cuts[..],d[..],tokens[0..<3],trace,arena[..],wire[..],DfsFault.{stage=1,step=3,word=8});#assert r.status==DfsStatus.ok && r.stage==-1 && r.step==-1;
+    // A NaN scale in layer 20's shared expert stops stage 1 at step 0.
+    p:=t;p.poison_layer=20;r=dfs_pipeline(p,cuts[..],d[..],tokens[0..<3],trace,arena[..],wire[..],DfsFault.{});
+    #assert r.status==DfsStatus.piece && r.stage==1 && r.step==0 && r.piece.layer==20 && r.piece.stage==DfStage.experts;
+    bad:=tokens;bad[1]=64;r=dfs_pipeline(t,cuts[..],d[..],bad[0..<3],trace,arena[..],wire[..],DfsFault.{});#assert r.status==DfsStatus.token && r.stage==0 && r.step==1;
+}
+#test "inputs the pipeline refuses before it starts" #steps 400000000 {
+    tokens:=DVG_TOKENS;routes:[560]int;picks:[840]int;scores:[2240]f32;logits:[448]f32;arena:[1]u8;wire:[400]u32;
+    trace:=DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[..]};t:=DfTiny.{first=19,layers=21,engram=false};cuts:=[3]int.[19,20,21];d:=[3]u64.[1,1,1];f:=DfsFault.{};
+    #assert dfs_pipeline(t,cuts[..],d[0..<2],tokens[0..<1],trace,arena[..],wire[0..<200],f).status==DfsStatus.ok;
+    #assert dfs_pipeline(t,cuts[..],d[0..<2],tokens[0..<1],trace,arena[..],wire[0..<199],f).status==DfsStatus.capacity;
+    #assert dfs_pipeline(t,cuts[..],d[0..<3],tokens[0..<1],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    #assert dfs_pipeline(t,cuts[0..<1],d[0..<0],tokens[0..<1],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    #assert dfs_pipeline(t,cuts[..],d[0..<2],tokens[0..<0],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    nine:=[9]int.[1,2,3,4,5,6,7,8,9];#assert dfs_pipeline(t,cuts[..],d[0..<2],nine[..],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    c:=cuts;c[0]=18;#assert dfs_pipeline(t,c[..],d[0..<2],tokens[0..<1],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    c=cuts;c[2]=22;#assert dfs_pipeline(t,c[..],d[0..<2],tokens[0..<1],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    c=cuts;c[1]=19;#assert dfs_pipeline(t,c[..],d[0..<2],tokens[0..<1],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    c=cuts;c[1]=21;#assert dfs_pipeline(t,c[..],d[0..<2],tokens[0..<1],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    u:=t;u.first=-1;c=cuts;c[0]=-1;#assert dfs_pipeline(u,c[..],d[0..<2],tokens[0..<1],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    u=t;u.layers=41;c=cuts;c[2]=41;#assert dfs_pipeline(u,c[..],d[0..<2],tokens[0..<1],trace,arena[..],wire[..],f).status==DfsStatus.shape;
+    u=t;u.engram=true;#assert dfs_pipeline(u,cuts[..],d[0..<2],tokens[0..<1],trace,arena[..],wire[..],f).status==DfsStatus.capacity;
+    #assert dfs_pipeline(t,cuts[..],d[0..<2],tokens[0..<2],DfTrace.{routes=routes[0..<159],picks=picks[..],scores=scores[..],logits=logits[..]},arena[..],wire[..],f).status==DfsStatus.capacity;
+    #assert dfs_pipeline(t,cuts[..],d[0..<2],tokens[0..<2],DfTrace.{routes=routes[..],picks=picks[0..<239],scores=scores[..],logits=logits[..]},arena[..],wire[..],f).status==DfsStatus.capacity;
+    #assert dfs_pipeline(t,cuts[..],d[0..<2],tokens[0..<2],DfTrace.{routes=routes[..],picks=picks[..],scores=scores[0..<639],logits=logits[..]},arena[..],wire[..],f).status==DfsStatus.capacity;
+    #assert dfs_pipeline(t,cuts[..],d[0..<2],tokens[0..<2],DfTrace.{routes=routes[..],picks=picks[..],scores=scores[..],logits=logits[0..<127]},arena[..],wire[..],f).status==DfsStatus.capacity;
+    #assert dfs_pipeline(t,cuts[..],d[0..<2],tokens[0..<2],DfTrace.{routes=routes[0..<160],picks=picks[0..<240],scores=scores[0..<640],logits=logits[0..<128]},arena[..],wire[0..<200],f).status==DfsStatus.ok;
+    // Sixteen stages run; seventeen are refused.
+    s17:[18]int;d17:[17]u64;for k:0..<18 {s17[k]=19+k;}for k:0..<17 {d17[k]=1;}w16:[3000]u32;
+    r:=dfs_pipeline(DfTiny.{first=19,layers=35,engram=false},s17[0..<17],d17[0..<16],tokens[0..<1],trace,arena[..],w16[..],f);#assert r.status==DfsStatus.ok && r.ticks==16 && r.messages==15;
+    #assert dfs_pipeline(DfTiny.{first=19,layers=36,engram=false},s17[..],d17[..],tokens[0..<1],trace,arena[..],w16[..],f).status==DfsStatus.shape;
+}

@@ -1,0 +1,32 @@
+message bytes per token at 4,096 positions: cut 1: 82196 cut 3: 84452 cut 14: 82092 cut 20: 81988 cut 21: 88532 cut 24: 86472 cut 39: 84348
+14 x 24 GiB GPUs, Engram on the hosts: ok
+  stage 0: layers 0-2, 23667061868 bytes, reads 1022309192 a token, sends 84452
+  stage 1: layers 3-5, 22169464144 bytes, reads 848576904 a token, sends 84452
+  stage 2: layers 6-8, 22186387024 bytes, reads 864770696 a token, sends 84452
+  stage 3: layers 9-11, 22169464144 bytes, reads 848576904 a token, sends 84452
+  stage 4: layers 12-14, 22343908840 bytes, reads 1022298952 a token, sends 84348
+  stage 5: layers 15-17, 22169463936 bytes, reads 848576904 a token, sends 84348
+  stage 6: layers 18-20, 22181877208 bytes, reads 859527816 a token, sends 88532
+  stage 7: layers 21-23, 22170060068 bytes, reads 848576904 a token, sends 86472
+  stage 8: layers 24-26, 22175914276 bytes, reads 854152584 a token, sends 88532
+  stage 9: layers 27-29, 22175916336 bytes, reads 854152584 a token, sends 88532
+  stage 10: layers 30-32, 22175916336 bytes, reads 854152584 a token, sends 88532
+  stage 11: layers 33-35, 22170060068 bytes, reads 848576904 a token, sends 86472
+  stage 12: layers 36-38, 22175910092 bytes, reads 854152584 a token, sends 84348
+  stage 13: layers 39-39, 8714669908 bytes, reads 1606696408 a token, sends 0
+13 x 24 GiB GPUs, Engram on the hosts: split: no contiguous split fits the hosts
+16 x 16 GiB GPUs: total: the hosts together are too small (23753020864 bytes short)
+4 RAM hosts of 126.2 GB, Engram resident: split: no contiguous split fits the hosts
+5 RAM hosts of 126.2 GB, Engram resident: ok, cuts 3 14 17 31, slowest stage reads 3982127824 bytes a token
+cut 1: 788 bytes a token, 7 messages; routes, selections, logits identical
+cut 3: 740 bytes a token, 7 messages; routes, selections, logits identical
+cut 14: 684 bytes a token, 7 messages; routes, selections, logits identical
+cut 20: 580 bytes a token, 7 messages; routes, selections, logits identical
+cut 21: 684 bytes a token, 7 messages; routes, selections, logits identical
+cut 24: 660 bytes a token, 7 messages; routes, selections, logits identical
+two stages, cuts 1-39: 39 of 39 runs identical to the unsplit stack
+the 14-GPU plan's cuts: 14 stages, 20 ticks, 91 messages, 62468 bytes; identical
+the 5-host plan's cuts: 5 stages, 28 messages, 19208 bytes; identical
+stage 1 leaves out part 5 (layer 20's mask) at step 4: stage 2 refuses step 4: missing part 5
+one bit flips in stage 0's message for step 2: stage 1 refuses step 2: checksum
+stage 2 loaded another model: stage 2 refuses step 0: model
