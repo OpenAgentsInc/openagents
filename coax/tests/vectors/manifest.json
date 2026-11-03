@@ -225,6 +225,58 @@
       "bytes": 1079
     },
     {
+      "path": "upstream/bip39/vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/trezor/python-mnemonic/b57a5ad77a981e743f4167ab2f7927a55c1e82a8/vectors.json",
+      "revision": "git:b57a5ad77a981e743f4167ab2f7927a55c1e82a8",
+      "license": "MIT",
+      "covers": [
+        "bip39"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "fa3b937b7cff9c9b8ecd3aa011faeb8d6dd67993174b72326e83f4de8fdb30f8",
+      "bytes": 152400
+    },
+    {
+      "path": "upstream/bip39/english.txt",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/trezor/python-mnemonic/b57a5ad77a981e743f4167ab2f7927a55c1e82a8/src/mnemonic/wordlist/english.txt",
+      "revision": "git:b57a5ad77a981e743f4167ab2f7927a55c1e82a8",
+      "license": "MIT",
+      "covers": [
+        "bip39-wordlist"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda",
+      "bytes": 13116
+    },
+    {
+      "path": "upstream/bip39/LICENSE",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/trezor/python-mnemonic/b57a5ad77a981e743f4167ab2f7927a55c1e82a8/LICENSE",
+      "revision": "git:b57a5ad77a981e743f4167ab2f7927a55c1e82a8",
+      "license": "MIT",
+      "covers": [
+        "license"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "d5e3c7c62a84e80073201e2f6e5130e9e6804fa05f8ac4f8b26a13c7d3969697",
+      "bytes": 1084
+    },
+    {
+      "path": "upstream/bip39/bip-0039.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0039.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "MIT (declared in source)",
+      "covers": [
+        "bip39"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "afcbcbed36fe9eb734bd607398a8c124683ded2a75c3830e1b16c47b043a9134",
+      "bytes": 6842
+    },
+    {
       "path": "upstream/wycheproof/LICENSE",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/C2SP/wycheproof/d17cc89fa5c8f4f4d378b5385ebf75da5d0926c9/LICENSE",

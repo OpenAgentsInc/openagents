@@ -664,16 +664,23 @@
   {
    "number": 31,
    "title": "Seed phrases",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch031-seed-phrases.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     4,
     7,
     8
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/crypto/bip39.coax",
+    "bitcoin/examples/seed-phrases.coax",
+    "bitcoin/examples/checks/seed-phrases.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

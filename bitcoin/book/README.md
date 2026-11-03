@@ -43,15 +43,15 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 25 are implemented and 99 are planned. The 25
-implemented chapters have runnable examples, qualified on native CPU, and 20
-of them on Wasm. Fifteen of them are the cryptography Nostr already used;
+Of the 124 chapters, 26 are implemented and 98 are planned. The 26
+implemented chapters have runnable examples, qualified on native CPU, and 21
+of them on Wasm. Sixteen of them are the cryptography Nostr already used;
 chapters 5, 6, 7, 10, 12, 17, 19, 20, 26 and 28 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
-that later chapters will teach already exists in places: BIP-39 and BIP-32
-(`bip39.coax`, `bip32.coax`), and the BIP-143 and BIP-341 signature hashes
+that later chapters will teach already exists in places: BIP-32
+(`bip32.coax`), and the BIP-143 and BIP-341 signature hashes
 (`coax/lib/bitcoin/sighash.coax`), written for Nostr chapter 104's agent
 treasuries.
 
@@ -167,7 +167,7 @@ BIP-39 seed phrases, BIP-32 hierarchical keys and the standard derivation paths.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| 31. Seed phrases | Planned | The BIP-39 English vectors give their entropy, mnemonic and seed through PBKDF2-HMAC-SHA512. A phrase with a bad checksum refuses. |
+| [31. Seed phrases](ch031-seed-phrases.md) | Runnable: native C and wasm | BIP-39 English phrases of 12 to 24 words to entropy and back, and the seed through PBKDF2-HMAC-SHA512, checked against all 24 English vectors of trezor/python-mnemonic, Python's `hashlib` and OpenSSL, natively and in Wasm. Word lookups read the whole list; non-ASCII text refuses instead of skipping NFKD. A phrase with a bad checksum refuses. |
 | 32. Hierarchical deterministic keys | Planned | BIP-32 test vectors 1–5 give every extended key, and vector 5's invalid keys refuse. |
 | 33. Derivation paths | Planned | The BIP-44, BIP-84 and BIP-86 vectors give their addresses, and NIP-06's path gives the Nostr book's chapter 46 key. |
 

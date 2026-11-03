@@ -259,6 +259,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "bitcoin/examples/seed-phrases.coax",
+      "chapter": "bitcoin/book/ch031-seed-phrases.md",
+      "stdout": "bitcoin/fixtures/seed-phrases.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

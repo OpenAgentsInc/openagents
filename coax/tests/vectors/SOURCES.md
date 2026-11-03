@@ -144,6 +144,15 @@ that a maliciously replaced manifest is authentic.
   `segwit_addr.py.txt`, bytes unchanged, so the repository's tools rule
   doesn't read it as one of our tools; `coax/tests/bitcoin/segwit.py`
   loads it after checking its digest and uses it as the oracle.
+- **BIP-39 (Bitcoin chapter 31):** trezor/python-mnemonic's `vectors.json`,
+  its English word list and its license at revision `b57a5ad7`, and the BIP-39
+  text at the same `bitcoin/bips` revision as BIP-32, retrieved 2026-11-02.
+  All 24 English vectors (entropy, phrase and seed with the passphrase
+  `TREZOR`) are used; their `xprv` column belongs to BIP-32 (chapter 32).
+  The first vector of each of the 11 other languages is used to show that the
+  ASCII-only English reader refuses them and that the seed is PBKDF2 of the
+  phrase's bytes. `english.txt` has the SHA-256 that `bip39.coax` checks
+  its inline copy against.
 - **JSON:** RFC 8259 and a deliberately selected nine-file JSONTestSuite subset
   exercise UTF-8, escaped/unescaped controls, malformed escapes, trailing comma,
   numeric spelling, UTF-16 BOM and deep nesting. `i_` cases mean implementation-
@@ -236,6 +245,10 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/key_io_invalid.json`](upstream/bitcoin-core/key_io_invalid.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/data/key_io_invalid.json) | `c3ca74ddad7c01faaca7c26063537feb73ff2be03eb7fc83a42a655d2979261d` |
 | [`upstream/bip350/bip-0350.mediawiki`](upstream/bip350/bip-0350.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0350.mediawiki) | `63634b06aa8bae88b31929674736e74964c4598684269ac2b0b140c43a7a0dec` |
 | [`upstream/sipa-bech32/segwit_addr.py.txt`](upstream/sipa-bech32/segwit_addr.py.txt) | [pinned source](https://raw.githubusercontent.com/sipa/bech32/7a7d7ab158db7078a333384e0e918c90dbc42917/ref/python/segwit_addr.py) | `2884ce04a36c8374c4249177cd90e91e545ac73b5c9260307bbeb74ae2e9de0f` |
+| [`upstream/bip39/vectors.json`](upstream/bip39/vectors.json) | [pinned source](https://raw.githubusercontent.com/trezor/python-mnemonic/b57a5ad77a981e743f4167ab2f7927a55c1e82a8/vectors.json) | `fa3b937b7cff9c9b8ecd3aa011faeb8d6dd67993174b72326e83f4de8fdb30f8` |
+| [`upstream/bip39/english.txt`](upstream/bip39/english.txt) | [pinned source](https://raw.githubusercontent.com/trezor/python-mnemonic/b57a5ad77a981e743f4167ab2f7927a55c1e82a8/src/mnemonic/wordlist/english.txt) | `2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda` |
+| [`upstream/bip39/LICENSE`](upstream/bip39/LICENSE) | [pinned source](https://raw.githubusercontent.com/trezor/python-mnemonic/b57a5ad77a981e743f4167ab2f7927a55c1e82a8/LICENSE) | `d5e3c7c62a84e80073201e2f6e5130e9e6804fa05f8ac4f8b26a13c7d3969697` |
+| [`upstream/bip39/bip-0039.mediawiki`](upstream/bip39/bip-0039.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0039.mediawiki) | `afcbcbed36fe9eb734bd607398a8c124683ded2a75c3830e1b16c47b043a9134` |
 | [`upstream/bitcoin-core/COPYING`](upstream/bitcoin-core/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING) | `b028769f3852a9368ab10bd754ff01ebb741f84a2fa658c9aff82a631bc6ecfc` |
 | [`upstream/btcd/genesis_test.go`](upstream/btcd/genesis_test.go) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/chaincfg/genesis_test.go) | `e188c4fb27cccec22a0853be80f5c9b308e88045baccbf81a2058b01c7155452` |
 | [`upstream/btcd/LICENSE`](upstream/btcd/LICENSE) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/LICENSE) | `10db068dbe11e2b3d652a3d4ae3cdd7998b84b12cdefe3d8083a2b63c295c13f` |

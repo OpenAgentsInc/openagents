@@ -51,9 +51,9 @@ redirect here. What stays in Nostr: x-only ECDH for NIP-44 (chapter 14),
 NIP-19, the JSON an event ID hashes, NIP-04, NIP-44, NIP-13 proof of work
 and the NIP-06 seed path (chapter 46). The Bitcoin halves of Nostr chapter 46
 (BIP-39 and BIP-32) and chapter 104 (PSBTs, descriptors, signature hashes
-and multisig) are planned here as chapters 31–32, 94 and 100, with the
-existing code named in the [plan](book/PLAN.md). Chapter 104's ECDSA signer
-is chapter 20.
+and multisig) are chapters 31–32, 94 and 100. Chapter 31 (BIP-39) is
+written; the rest are planned, with the existing code named in the
+[plan](book/PLAN.md). Chapter 104's ECDSA signer is chapter 20.
 
 ## Cryptography still to build
 

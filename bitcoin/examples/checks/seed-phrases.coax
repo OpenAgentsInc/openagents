@@ -1,0 +1,80 @@
+// The checks of seed-phrases.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/seed-phrases.coax
+#load "../seed-phrases.coax";
+
+// book:begin check
+// Every English vector in trezor/python-mnemonic's vectors.json, both ways,
+// with the work buffer zero after each call and nothing written past the
+// result.
+#forall "the reference vectors, both ways" i: 0..<24 #steps 400000000 {
+  v := BIP39_VECTORS[i]; e: [32] u8; text: [BIP39_MAX_TEXT + 1] u8; back: [33] u8; work: [BIP39_WORK_BYTES] u8;
+  want := decode(v.entropy, e[..]);
+  text[v.phrase.count] = 7; back[want.count] = 7;
+  #assert bip39_encode_ct(want, work[..], text[..]) == v.phrase.count && cast(string) text[0..<v.phrase.count] == v.phrase;
+  #assert all_zero(work[..]) && text[v.phrase.count] == 7;
+  #assert bip39_decode_ct(v.phrase, work[..], back[..]) == want.count && equal_bytes(back[0..<want.count], want);
+  #assert all_zero(work[..]) && back[want.count] == 7;
+}
+// The last vector's seed with the passphrase TREZOR. All 24 seeds are in the
+// example's output and in bip39.py; PBKDF2's 2,048 rounds are slow in the
+// checker, so the checks run one.
+#test "a reference seed" #steps 2000000000 {
+  v := BIP39_VECTORS[23]; seed: [65] u8; want: [64] u8; work: [BIP39_WORK_BYTES] u8;
+  seed[64] = 7;
+  #assert bip39_seed_ct(v.phrase, "TREZOR", work[..], seed[..]) == 64;
+  #assert equal_bytes(seed[0..<64], decode(v.seed, want[..])) && seed[64] == 7 && all_zero(work[..]);
+}
+// The other languages refuse: ASCII ones as unknown words, the rest before
+// any lookup, as not ASCII. The seed procedure refuses the same way.
+#forall "the other languages refuse" i: 0..<11 #steps 400000000 {
+  x := BIP39_OTHERS[i]; back: [32] u8; seed: [64] u8; work: [BIP39_WORK_BYTES] u8;
+  ascii := true;
+  for c: 0..<x.phrase.count { if x.phrase[c] > 0x7f { ascii = false; } }
+  want := ifx ascii then BIP39_UNKNOWN_WORD else BIP39_NOT_ASCII;
+  #assert bip39_decode_ct(x.phrase, work[..], back[..]) == want;
+  #assert bip39_seed_ct(x.phrase, "TREZOR", work[..], seed[..]) == want;
+}
+// The worked example: 16 zero bytes hash to 0x37..., from Python's hashlib.
+#test "the checksum by hand" {
+  e: [16] u8; h: [32] u8; buf: [11] u8;
+  #assert sha256_hash_checked(e[..], h[..], false) == SHA_OK && h[0] == 0x37;
+  #assert bits11(3, buf[..]) == "00000000011" && bits11(2047, buf[..]) == "11111111111" && bits11(1024, buf[..]) == "10000000000";
+  #assert bip39_index("about") == 3;
+}
+// The hamster vector's last word holds 3 entropy bits and the 8-bit
+// checksum. For each of the 8 values of those bits, the word whose low 8 bits
+// are the first hash byte passes, and the word one checksum bit away fails.
+// So exactly 8 of the 2,048 words can end the phrase.
+#test "a 24-word phrase's last word: 3 entropy bits, 8 checksum bits" #steps 400000000 {
+  x := BIP39_VECTORS[14]; work: [BIP39_WORK_BYTES] u8; back: [32] u8; phrase: [BIP39_MAX_TEXT] u8;
+  e: [32] u8; h: [32] u8;
+  #assert decode(x.entropy, e[..]).count == 32;
+  cut := x.phrase.count; while x.phrase[cut - 1] != ' ' { cut -= 1; }
+  for c: 0..<cut { phrase[c] = x.phrase[c]; }
+  for k: 0..<8 {
+    e[31] = cast(u8) ((cast(int) e[31] & 0xf8) | k);
+    #assert sha256_hash_checked(e[..], h[..], false) == SHA_OK;
+    for wrong: 0..<2 {
+      w := bip39_word((k << 8) | (cast(int) h[0] ^ wrong));
+      for c: 0..<w.count { phrase[cut + c] = w[c]; }
+      n := bip39_decode_ct(cast(string) phrase[0..<cut + w.count], work[..], back[..]);
+      if wrong == 0 { #assert n == 32 && equal_bytes(back[..], e[..]); }
+      else { #assert n == BIP39_BAD_CHECKSUM; }
+    }
+  }
+}
+// A changed passphrase gives a different seed; the first bytes are from
+// Python's hashlib (the empty passphrase's seed is in the example's output).
+#test "a passphrase changes the seed" #steps 2000000000 {
+  work: [BIP39_WORK_BYTES] u8; seed: [64] u8;
+  #assert bip39_seed_ct(ZEROS, "TREZOR ", work[..], seed[..]) == 64 && seed[0] == 0x9d && seed[1] == 0x97;
+}
+#test "the helpers" {
+  a := [3] u8.[1, 2, 3]; b := a; z: [3] u8;
+  #assert equal_bytes(a[..], b[..]) && !equal_bytes(a[..], b[0..<2]);
+  b[2] = 9; #assert !equal_bytes(a[..], b[..]);
+  #assert all_zero(z[..]) && !all_zero(a[..]);
+  #assert reason(-1) == "bad size" && reason(-7) == "too long" && reason(0) == "accepted" && reason(64) == "accepted" && reason(-8) == "accepted";
+}
+// book:end check

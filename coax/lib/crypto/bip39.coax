@@ -1,13 +1,310 @@
-// BIP-39 (docs/web-log-in.md uses 12 words): 16 to 32 bytes of entropy to 12
-// to 24 words and back with the checksum, and the seed (PBKDF2-HMAC-SHA512, 2048 rounds,
-// salt "mnemonic" + passphrase). The English list is the iOS app's
-// (apps/openagents-ios/OpenAgents/Resources/bip39-english.txt), checked by its SHA-256.
+// BIP-39 seed phrases (Bitcoin chapter 31; Nostr chapter 46 uses them for
+// NIP-06, and docs/web-log-in.md uses 12 words).
+//
+// - bip39_encode_ct: 16, 20, 24, 28 or 32 bytes of entropy to 12, 15, 18,
+//   21 or 24 English words, with the SHA-256 checksum bits.
+// - bip39_decode_ct: the words back to their entropy, checking each word
+//   and the checksum.
+// - bip39_seed_ct: the 64-byte seed, PBKDF2-HMAC-SHA512 (chapters 7 and 8)
+//   of the checked words with the salt "mnemonic" + passphrase, 2048 rounds.
+//
+// The phrase, the entropy, the passphrase and the seed are secrets
+// (chapter 3). Every word lookup reads the whole list, the phrase is split
+// into words with masks, and the secret intermediates live in a
+// caller-owned work buffer that comes back as zeros. The phrase's length,
+// its word count and the result code are public.
+//
+// BIP-39 normalizes the phrase and the passphrase with Unicode NFKD. This
+// code supports ASCII only, where NFKD changes nothing, and refuses any
+// byte above 0x7f with BIP39_NOT_ASCII instead of hashing unnormalized
+// text. The English list is pinned in coax/tests/vectors/upstream/bip39/
+// (trezor/python-mnemonic's english.txt) and checked by its SHA-256 below.
+//
+// The older bool and -1 procedures at the end (bip39_words,
+// bip39_entropy_len, bip39_entropy, bip39_seed_with, bip39_seed) keep their
+// signatures for NIP-06, the website log-in and the CLI, and call these.
 #load "sha256.coax";
 #load "sha512.coax";
+#authority;
+
+// book:begin codes
 BIP39_LIST_SHA256 :: "2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda";
+BIP39_MAX_PHRASE :: 1024;      // the longest phrase accepted, spaces included
+BIP39_MAX_PASSPHRASE :: 1016;  // "mnemonic" + passphrase fits PBKDF2's 1,024-byte salt
+BIP39_MAX_TEXT :: 215;         // 24 words of at most 8 letters and 23 spaces
+BIP39_SEED_BYTES :: 64;
+BIP39_ROUNDS :: 2048;
+
+// Refusals.
+BIP39_BAD_SIZE :: -1;          // entropy that isn't 16, 20, 24, 28 or 32 bytes
+BIP39_BAD_COUNT :: -2;         // a word count that isn't 12, 15, 18, 21 or 24
+BIP39_UNKNOWN_WORD :: -3;      // a word that isn't in the English list
+BIP39_BAD_CHECKSUM :: -4;      // checksum bits that don't match the entropy's SHA-256
+BIP39_NOT_ASCII :: -5;         // a byte above 0x7f, which would need NFKD
+BIP39_CAPACITY :: -6;          // an output or work buffer that is too small
+BIP39_TOO_LONG :: -7;          // a phrase or passphrase over its limit
+// book:end codes
+
+// The work buffer: one 8-byte slot per word, a flag per word, the bits of
+// the entropy and checksum, the entropy's SHA-256, the phrase joined with
+// single spaces, and the salt.
+B39_SLOTS :: 0;
+B39_FLAGS :: 192;
+B39_BITS :: 216;
+B39_HASH :: 249;
+B39_TEXT :: 281;
+B39_SALT :: 496;
+BIP39_WORK_BYTES :: 1520;
+// The 2,048 English words, one per line, byte for byte the pinned english.txt.
 BIP39_ENGLISH :: "abandon\nability\nable\nabout\nabove\nabsent\nabsorb\nabstract\nabsurd\nabuse\naccess\naccident\naccount\naccuse\nachieve\nacid\nacoustic\nacquire\nacross\nact\naction\nactor\nactress\nactual\nadapt\nadd\naddict\naddress\nadjust\nadmit\nadult\nadvance\nadvice\naerobic\naffair\nafford\nafraid\nagain\nage\nagent\nagree\nahead\naim\nair\nairport\naisle\nalarm\nalbum\nalcohol\nalert\nalien\nall\nalley\nallow\nalmost\nalone\nalpha\nalready\nalso\nalter\nalways\namateur\namazing\namong\namount\namused\nanalyst\nanchor\nancient\nanger\nangle\nangry\nanimal\nankle\nannounce\nannual\nanother\nanswer\nantenna\nantique\nanxiety\nany\napart\napology\nappear\napple\napprove\napril\narch\narctic\narea\narena\nargue\narm\narmed\narmor\narmy\naround\narrange\narrest\narrive\narrow\nart\nartefact\nartist\nartwork\nask\naspect\nassault\nasset\nassist\nassume\nasthma\nathlete\natom\nattack\nattend\nattitude\nattract\nauction\naudit\naugust\naunt\nauthor\nauto\nautumn\naverage\navocado\navoid\nawake\naware\naway\nawesome\nawful\nawkward\naxis\nbaby\nbachelor\nbacon\nbadge\nbag\nbalance\nbalcony\nball\nbamboo\nbanana\nbanner\nbar\nbarely\nbargain\nbarrel\nbase\nbasic\nbasket\nbattle\nbeach\nbean\nbeauty\nbecause\nbecome\nbeef\nbefore\nbegin\nbehave\nbehind\nbelieve\nbelow\nbelt\nbench\nbenefit\nbest\nbetray\nbetter\nbetween\nbeyond\nbicycle\nbid\nbike\nbind\nbiology\nbird\nbirth\nbitter\nblack\nblade\nblame\nblanket\nblast\nbleak\nbless\nblind\nblood\nblossom\nblouse\nblue\nblur\nblush\nboard\nboat\nbody\nboil\nbomb\nbone\nbonus\nbook\nboost\nborder\nboring\nborrow\nboss\nbottom\nbounce\nbox\nboy\nbracket\nbrain\nbrand\nbrass\nbrave\nbread\nbreeze\nbrick\nbridge\nbrief\nbright\nbring\nbrisk\nbroccoli\nbroken\nbronze\nbroom\nbrother\nbrown\nbrush\nbubble\nbuddy\nbudget\nbuffalo\nbuild\nbulb\nbulk\nbullet\nbundle\nbunker\nburden\nburger\nburst\nbus\nbusiness\nbusy\nbutter\nbuyer\nbuzz\ncabbage\ncabin\ncable\ncactus\ncage\ncake\ncall\ncalm\ncamera\ncamp\ncan\ncanal\ncancel\ncandy\ncannon\ncanoe\ncanvas\ncanyon\ncapable\ncapital\ncaptain\ncar\ncarbon\ncard\ncargo\ncarpet\ncarry\ncart\ncase\ncash\ncasino\ncastle\ncasual\ncat\ncatalog\ncatch\ncategory\ncattle\ncaught\ncause\ncaution\ncave\nceiling\ncelery\ncement\ncensus\ncentury\ncereal\ncertain\nchair\nchalk\nchampion\nchange\nchaos\nchapter\ncharge\nchase\nchat\ncheap\ncheck\ncheese\nchef\ncherry\nchest\nchicken\nchief\nchild\nchimney\nchoice\nchoose\nchronic\nchuckle\nchunk\nchurn\ncigar\ncinnamon\ncircle\ncitizen\ncity\ncivil\nclaim\nclap\nclarify\nclaw\nclay\nclean\nclerk\nclever\nclick\nclient\ncliff\nclimb\nclinic\nclip\nclock\nclog\nclose\ncloth\ncloud\nclown\nclub\nclump\ncluster\nclutch\ncoach\ncoast\ncoconut\ncode\ncoffee\ncoil\ncoin\ncollect\ncolor\ncolumn\ncombine\ncome\ncomfort\ncomic\ncommon\ncompany\nconcert\nconduct\nconfirm\ncongress\nconnect\nconsider\ncontrol\nconvince\ncook\ncool\ncopper\ncopy\ncoral\ncore\ncorn\ncorrect\ncost\ncotton\ncouch\ncountry\ncouple\ncourse\ncousin\ncover\ncoyote\ncrack\ncradle\ncraft\ncram\ncrane\ncrash\ncrater\ncrawl\ncrazy\ncream\ncredit\ncreek\ncrew\ncricket\ncrime\ncrisp\ncritic\ncrop\ncross\ncrouch\ncrowd\ncrucial\ncruel\ncruise\ncrumble\ncrunch\ncrush\ncry\ncrystal\ncube\nculture\ncup\ncupboard\ncurious\ncurrent\ncurtain\ncurve\ncushion\ncustom\ncute\ncycle\ndad\ndamage\ndamp\ndance\ndanger\ndaring\ndash\ndaughter\ndawn\nday\ndeal\ndebate\ndebris\ndecade\ndecember\ndecide\ndecline\ndecorate\ndecrease\ndeer\ndefense\ndefine\ndefy\ndegree\ndelay\ndeliver\ndemand\ndemise\ndenial\ndentist\ndeny\ndepart\ndepend\ndeposit\ndepth\ndeputy\nderive\ndescribe\ndesert\ndesign\ndesk\ndespair\ndestroy\ndetail\ndetect\ndevelop\ndevice\ndevote\ndiagram\ndial\ndiamond\ndiary\ndice\ndiesel\ndiet\ndiffer\ndigital\ndignity\ndilemma\ndinner\ndinosaur\ndirect\ndirt\ndisagree\ndiscover\ndisease\ndish\ndismiss\ndisorder\ndisplay\ndistance\ndivert\ndivide\ndivorce\ndizzy\ndoctor\ndocument\ndog\ndoll\ndolphin\ndomain\ndonate\ndonkey\ndonor\ndoor\ndose\ndouble\ndove\ndraft\ndragon\ndrama\ndrastic\ndraw\ndream\ndress\ndrift\ndrill\ndrink\ndrip\ndrive\ndrop\ndrum\ndry\nduck\ndumb\ndune\nduring\ndust\ndutch\nduty\ndwarf\ndynamic\neager\neagle\nearly\nearn\nearth\neasily\neast\neasy\necho\necology\neconomy\nedge\nedit\neducate\neffort\negg\neight\neither\nelbow\nelder\nelectric\nelegant\nelement\nelephant\nelevator\nelite\nelse\nembark\nembody\nembrace\nemerge\nemotion\nemploy\nempower\nempty\nenable\nenact\nend\nendless\nendorse\nenemy\nenergy\nenforce\nengage\nengine\nenhance\nenjoy\nenlist\nenough\nenrich\nenroll\nensure\nenter\nentire\nentry\nenvelope\nepisode\nequal\nequip\nera\nerase\nerode\nerosion\nerror\nerupt\nescape\nessay\nessence\nestate\neternal\nethics\nevidence\nevil\nevoke\nevolve\nexact\nexample\nexcess\nexchange\nexcite\nexclude\nexcuse\nexecute\nexercise\nexhaust\nexhibit\nexile\nexist\nexit\nexotic\nexpand\nexpect\nexpire\nexplain\nexpose\nexpress\nextend\nextra\neye\neyebrow\nfabric\nface\nfaculty\nfade\nfaint\nfaith\nfall\nfalse\nfame\nfamily\nfamous\nfan\nfancy\nfantasy\nfarm\nfashion\nfat\nfatal\nfather\nfatigue\nfault\nfavorite\nfeature\nfebruary\nfederal\nfee\nfeed\nfeel\nfemale\nfence\nfestival\nfetch\nfever\nfew\nfiber\nfiction\nfield\nfigure\nfile\nfilm\nfilter\nfinal\nfind\nfine\nfinger\nfinish\nfire\nfirm\nfirst\nfiscal\nfish\nfit\nfitness\nfix\nflag\nflame\nflash\nflat\nflavor\nflee\nflight\nflip\nfloat\nflock\nfloor\nflower\nfluid\nflush\nfly\nfoam\nfocus\nfog\nfoil\nfold\nfollow\nfood\nfoot\nforce\nforest\nforget\nfork\nfortune\nforum\nforward\nfossil\nfoster\nfound\nfox\nfragile\nframe\nfrequent\nfresh\nfriend\nfringe\nfrog\nfront\nfrost\nfrown\nfrozen\nfruit\nfuel\nfun\nfunny\nfurnace\nfury\nfuture\ngadget\ngain\ngalaxy\ngallery\ngame\ngap\ngarage\ngarbage\ngarden\ngarlic\ngarment\ngas\ngasp\ngate\ngather\ngauge\ngaze\ngeneral\ngenius\ngenre\ngentle\ngenuine\ngesture\nghost\ngiant\ngift\ngiggle\nginger\ngiraffe\ngirl\ngive\nglad\nglance\nglare\nglass\nglide\nglimpse\nglobe\ngloom\nglory\nglove\nglow\nglue\ngoat\ngoddess\ngold\ngood\ngoose\ngorilla\ngospel\ngossip\ngovern\ngown\ngrab\ngrace\ngrain\ngrant\ngrape\ngrass\ngravity\ngreat\ngreen\ngrid\ngrief\ngrit\ngrocery\ngroup\ngrow\ngrunt\nguard\nguess\nguide\nguilt\nguitar\ngun\ngym\nhabit\nhair\nhalf\nhammer\nhamster\nhand\nhappy\nharbor\nhard\nharsh\nharvest\nhat\nhave\nhawk\nhazard\nhead\nhealth\nheart\nheavy\nhedgehog\nheight\nhello\nhelmet\nhelp\nhen\nhero\nhidden\nhigh\nhill\nhint\nhip\nhire\nhistory\nhobby\nhockey\nhold\nhole\nholiday\nhollow\nhome\nhoney\nhood\nhope\nhorn\nhorror\nhorse\nhospital\nhost\nhotel\nhour\nhover\nhub\nhuge\nhuman\nhumble\nhumor\nhundred\nhungry\nhunt\nhurdle\nhurry\nhurt\nhusband\nhybrid\nice\nicon\nidea\nidentify\nidle\nignore\nill\nillegal\nillness\nimage\nimitate\nimmense\nimmune\nimpact\nimpose\nimprove\nimpulse\ninch\ninclude\nincome\nincrease\nindex\nindicate\nindoor\nindustry\ninfant\ninflict\ninform\ninhale\ninherit\ninitial\ninject\ninjury\ninmate\ninner\ninnocent\ninput\ninquiry\ninsane\ninsect\ninside\ninspire\ninstall\nintact\ninterest\ninto\ninvest\ninvite\ninvolve\niron\nisland\nisolate\nissue\nitem\nivory\njacket\njaguar\njar\njazz\njealous\njeans\njelly\njewel\njob\njoin\njoke\njourney\njoy\njudge\njuice\njump\njungle\njunior\njunk\njust\nkangaroo\nkeen\nkeep\nketchup\nkey\nkick\nkid\nkidney\nkind\nkingdom\nkiss\nkit\nkitchen\nkite\nkitten\nkiwi\nknee\nknife\nknock\nknow\nlab\nlabel\nlabor\nladder\nlady\nlake\nlamp\nlanguage\nlaptop\nlarge\nlater\nlatin\nlaugh\nlaundry\nlava\nlaw\nlawn\nlawsuit\nlayer\nlazy\nleader\nleaf\nlearn\nleave\nlecture\nleft\nleg\nlegal\nlegend\nleisure\nlemon\nlend\nlength\nlens\nleopard\nlesson\nletter\nlevel\nliar\nliberty\nlibrary\nlicense\nlife\nlift\nlight\nlike\nlimb\nlimit\nlink\nlion\nliquid\nlist\nlittle\nlive\nlizard\nload\nloan\nlobster\nlocal\nlock\nlogic\nlonely\nlong\nloop\nlottery\nloud\nlounge\nlove\nloyal\nlucky\nluggage\nlumber\nlunar\nlunch\nluxury\nlyrics\nmachine\nmad\nmagic\nmagnet\nmaid\nmail\nmain\nmajor\nmake\nmammal\nman\nmanage\nmandate\nmango\nmansion\nmanual\nmaple\nmarble\nmarch\nmargin\nmarine\nmarket\nmarriage\nmask\nmass\nmaster\nmatch\nmaterial\nmath\nmatrix\nmatter\nmaximum\nmaze\nmeadow\nmean\nmeasure\nmeat\nmechanic\nmedal\nmedia\nmelody\nmelt\nmember\nmemory\nmention\nmenu\nmercy\nmerge\nmerit\nmerry\nmesh\nmessage\nmetal\nmethod\nmiddle\nmidnight\nmilk\nmillion\nmimic\nmind\nminimum\nminor\nminute\nmiracle\nmirror\nmisery\nmiss\nmistake\nmix\nmixed\nmixture\nmobile\nmodel\nmodify\nmom\nmoment\nmonitor\nmonkey\nmonster\nmonth\nmoon\nmoral\nmore\nmorning\nmosquito\nmother\nmotion\nmotor\nmountain\nmouse\nmove\nmovie\nmuch\nmuffin\nmule\nmultiply\nmuscle\nmuseum\nmushroom\nmusic\nmust\nmutual\nmyself\nmystery\nmyth\nnaive\nname\nnapkin\nnarrow\nnasty\nnation\nnature\nnear\nneck\nneed\nnegative\nneglect\nneither\nnephew\nnerve\nnest\nnet\nnetwork\nneutral\nnever\nnews\nnext\nnice\nnight\nnoble\nnoise\nnominee\nnoodle\nnormal\nnorth\nnose\nnotable\nnote\nnothing\nnotice\nnovel\nnow\nnuclear\nnumber\nnurse\nnut\noak\nobey\nobject\noblige\nobscure\nobserve\nobtain\nobvious\noccur\nocean\noctober\nodor\noff\noffer\noffice\noften\noil\nokay\nold\nolive\nolympic\nomit\nonce\none\nonion\nonline\nonly\nopen\nopera\nopinion\noppose\noption\norange\norbit\norchard\norder\nordinary\norgan\norient\noriginal\norphan\nostrich\nother\noutdoor\nouter\noutput\noutside\noval\noven\nover\nown\nowner\noxygen\noyster\nozone\npact\npaddle\npage\npair\npalace\npalm\npanda\npanel\npanic\npanther\npaper\nparade\nparent\npark\nparrot\nparty\npass\npatch\npath\npatient\npatrol\npattern\npause\npave\npayment\npeace\npeanut\npear\npeasant\npelican\npen\npenalty\npencil\npeople\npepper\nperfect\npermit\nperson\npet\nphone\nphoto\nphrase\nphysical\npiano\npicnic\npicture\npiece\npig\npigeon\npill\npilot\npink\npioneer\npipe\npistol\npitch\npizza\nplace\nplanet\nplastic\nplate\nplay\nplease\npledge\npluck\nplug\nplunge\npoem\npoet\npoint\npolar\npole\npolice\npond\npony\npool\npopular\nportion\nposition\npossible\npost\npotato\npottery\npoverty\npowder\npower\npractice\npraise\npredict\nprefer\nprepare\npresent\npretty\nprevent\nprice\npride\nprimary\nprint\npriority\nprison\nprivate\nprize\nproblem\nprocess\nproduce\nprofit\nprogram\nproject\npromote\nproof\nproperty\nprosper\nprotect\nproud\nprovide\npublic\npudding\npull\npulp\npulse\npumpkin\npunch\npupil\npuppy\npurchase\npurity\npurpose\npurse\npush\nput\npuzzle\npyramid\nquality\nquantum\nquarter\nquestion\nquick\nquit\nquiz\nquote\nrabbit\nraccoon\nrace\nrack\nradar\nradio\nrail\nrain\nraise\nrally\nramp\nranch\nrandom\nrange\nrapid\nrare\nrate\nrather\nraven\nraw\nrazor\nready\nreal\nreason\nrebel\nrebuild\nrecall\nreceive\nrecipe\nrecord\nrecycle\nreduce\nreflect\nreform\nrefuse\nregion\nregret\nregular\nreject\nrelax\nrelease\nrelief\nrely\nremain\nremember\nremind\nremove\nrender\nrenew\nrent\nreopen\nrepair\nrepeat\nreplace\nreport\nrequire\nrescue\nresemble\nresist\nresource\nresponse\nresult\nretire\nretreat\nreturn\nreunion\nreveal\nreview\nreward\nrhythm\nrib\nribbon\nrice\nrich\nride\nridge\nrifle\nright\nrigid\nring\nriot\nripple\nrisk\nritual\nrival\nriver\nroad\nroast\nrobot\nrobust\nrocket\nromance\nroof\nrookie\nroom\nrose\nrotate\nrough\nround\nroute\nroyal\nrubber\nrude\nrug\nrule\nrun\nrunway\nrural\nsad\nsaddle\nsadness\nsafe\nsail\nsalad\nsalmon\nsalon\nsalt\nsalute\nsame\nsample\nsand\nsatisfy\nsatoshi\nsauce\nsausage\nsave\nsay\nscale\nscan\nscare\nscatter\nscene\nscheme\nschool\nscience\nscissors\nscorpion\nscout\nscrap\nscreen\nscript\nscrub\nsea\nsearch\nseason\nseat\nsecond\nsecret\nsection\nsecurity\nseed\nseek\nsegment\nselect\nsell\nseminar\nsenior\nsense\nsentence\nseries\nservice\nsession\nsettle\nsetup\nseven\nshadow\nshaft\nshallow\nshare\nshed\nshell\nsheriff\nshield\nshift\nshine\nship\nshiver\nshock\nshoe\nshoot\nshop\nshort\nshoulder\nshove\nshrimp\nshrug\nshuffle\nshy\nsibling\nsick\nside\nsiege\nsight\nsign\nsilent\nsilk\nsilly\nsilver\nsimilar\nsimple\nsince\nsing\nsiren\nsister\nsituate\nsix\nsize\nskate\nsketch\nski\nskill\nskin\nskirt\nskull\nslab\nslam\nsleep\nslender\nslice\nslide\nslight\nslim\nslogan\nslot\nslow\nslush\nsmall\nsmart\nsmile\nsmoke\nsmooth\nsnack\nsnake\nsnap\nsniff\nsnow\nsoap\nsoccer\nsocial\nsock\nsoda\nsoft\nsolar\nsoldier\nsolid\nsolution\nsolve\nsomeone\nsong\nsoon\nsorry\nsort\nsoul\nsound\nsoup\nsource\nsouth\nspace\nspare\nspatial\nspawn\nspeak\nspecial\nspeed\nspell\nspend\nsphere\nspice\nspider\nspike\nspin\nspirit\nsplit\nspoil\nsponsor\nspoon\nsport\nspot\nspray\nspread\nspring\nspy\nsquare\nsqueeze\nsquirrel\nstable\nstadium\nstaff\nstage\nstairs\nstamp\nstand\nstart\nstate\nstay\nsteak\nsteel\nstem\nstep\nstereo\nstick\nstill\nsting\nstock\nstomach\nstone\nstool\nstory\nstove\nstrategy\nstreet\nstrike\nstrong\nstruggle\nstudent\nstuff\nstumble\nstyle\nsubject\nsubmit\nsubway\nsuccess\nsuch\nsudden\nsuffer\nsugar\nsuggest\nsuit\nsummer\nsun\nsunny\nsunset\nsuper\nsupply\nsupreme\nsure\nsurface\nsurge\nsurprise\nsurround\nsurvey\nsuspect\nsustain\nswallow\nswamp\nswap\nswarm\nswear\nsweet\nswift\nswim\nswing\nswitch\nsword\nsymbol\nsymptom\nsyrup\nsystem\ntable\ntackle\ntag\ntail\ntalent\ntalk\ntank\ntape\ntarget\ntask\ntaste\ntattoo\ntaxi\nteach\nteam\ntell\nten\ntenant\ntennis\ntent\nterm\ntest\ntext\nthank\nthat\ntheme\nthen\ntheory\nthere\nthey\nthing\nthis\nthought\nthree\nthrive\nthrow\nthumb\nthunder\nticket\ntide\ntiger\ntilt\ntimber\ntime\ntiny\ntip\ntired\ntissue\ntitle\ntoast\ntobacco\ntoday\ntoddler\ntoe\ntogether\ntoilet\ntoken\ntomato\ntomorrow\ntone\ntongue\ntonight\ntool\ntooth\ntop\ntopic\ntopple\ntorch\ntornado\ntortoise\ntoss\ntotal\ntourist\ntoward\ntower\ntown\ntoy\ntrack\ntrade\ntraffic\ntragic\ntrain\ntransfer\ntrap\ntrash\ntravel\ntray\ntreat\ntree\ntrend\ntrial\ntribe\ntrick\ntrigger\ntrim\ntrip\ntrophy\ntrouble\ntruck\ntrue\ntruly\ntrumpet\ntrust\ntruth\ntry\ntube\ntuition\ntumble\ntuna\ntunnel\nturkey\nturn\nturtle\ntwelve\ntwenty\ntwice\ntwin\ntwist\ntwo\ntype\ntypical\nugly\numbrella\nunable\nunaware\nuncle\nuncover\nunder\nundo\nunfair\nunfold\nunhappy\nuniform\nunique\nunit\nuniverse\nunknown\nunlock\nuntil\nunusual\nunveil\nupdate\nupgrade\nuphold\nupon\nupper\nupset\nurban\nurge\nusage\nuse\nused\nuseful\nuseless\nusual\nutility\nvacant\nvacuum\nvague\nvalid\nvalley\nvalve\nvan\nvanish\nvapor\nvarious\nvast\nvault\nvehicle\nvelvet\nvendor\nventure\nvenue\nverb\nverify\nversion\nvery\nvessel\nveteran\nviable\nvibrant\nvicious\nvictory\nvideo\nview\nvillage\nvintage\nviolin\nvirtual\nvirus\nvisa\nvisit\nvisual\nvital\nvivid\nvocal\nvoice\nvoid\nvolcano\nvolume\nvote\nvoyage\nwage\nwagon\nwait\nwalk\nwall\nwalnut\nwant\nwarfare\nwarm\nwarrior\nwash\nwasp\nwaste\nwater\nwave\nway\nwealth\nweapon\nwear\nweasel\nweather\nweb\nwedding\nweekend\nweird\nwelcome\nwest\nwet\nwhale\nwhat\nwheat\nwheel\nwhen\nwhere\nwhip\nwhisper\nwide\nwidth\nwife\nwild\nwill\nwin\nwindow\nwine\nwing\nwink\nwinner\nwinter\nwire\nwisdom\nwise\nwish\nwitness\nwolf\nwoman\nwonder\nwood\nwool\nword\nwork\nworld\nworry\nworth\nwrap\nwreck\nwrestle\nwrist\nwrite\nwrong\nyard\nyear\nyellow\nyou\nyoung\nyouth\nzebra\nzero\nzone\nzoo\n";
 
-// The i-th word (0..2047), or "".
+// book:begin table
+// The list packed for lookup: word k as a u64 whose
+// byte c is its letter c, with zeros after the last letter. Every English
+// word has 3 to 8 lowercase letters, so each fits and none packs to 0.
+b39_make_table :: () -> [2048] u64 {
+  table: [2048] u64;
+  list := BIP39_ENGLISH;
+  k := 0; c := 0;
+  for i: 0..<list.count {
+    if list[i] == '\n' { k += 1; c = 0; }
+    else { table[k] |= cast(u64) list[i] << cast(u64) (8 * c); c += 1; }
+  }
+  return table;
+}
+// book:end table
+
+// ---- secret data: constant time (chapter 3)
+
+// book:begin ct
+B39_ALL :: CB_MAX64;                               // all ones (bytes.coax)
+// All ones when a == b, else 0, without a branch: x | -x has its top bit
+// set exactly when x is not 0.
+b39_eq_mask :: (a: u64, b: u64) -> u64 {
+  x := a ^ b;
+  return value_barrier(sub_wrap((x | sub_wrap(cast(u64) 0, x)) >> 63, 1));
+}
+// All ones when a < b, for a and b below 2^63.
+b39_less_mask :: (a: u64, b: u64) -> u64 {
+  return value_barrier(sub_wrap(cast(u64) 0, sub_wrap(a, b) >> 63));
+}
+// The index of a packed word in the low 11 bits, with bit 11 set when the
+// list doesn't hold it. It reads all 2,048 entries whatever the word is.
+b39_index_ct :: (word: u64) -> u64 {
+  index: u64 = 0; found: u64 = 0;
+  for k: 0..<2048 {
+    m := b39_eq_mask(word, BIP39_TABLE[k]);
+    index |= m & cast(u64) k; found |= m;
+  }
+  return index | (((found & 1) ^ 1) << 11);
+}
+// The packed word at an index below 2048, reading all 2,048 entries.
+b39_word_ct :: (index: u64) -> u64 {
+  word: u64 = 0;
+  for k: 0..<2048 { word |= b39_eq_mask(index, cast(u64) k) & BIP39_TABLE[k]; }
+  return word;
+}
+// The number of letters in a packed word: its nonzero bytes.
+b39_letters_ct :: (word: u64) -> u64 {
+  n: u64 = 0;
+  for c: 0..<8 { n = add_wrap(n, (add_wrap((word >> cast(u64) (8 * c)) & 255, 255)) >> 8); }
+  return n;
+}
+// Slot s of work as a packed word, and back.
+b39_slot :: (work: [] u8, s: int) -> u64 {
+  word: u64 = 0;
+  for c: 0..<8 { word |= cast(u64) work[B39_SLOTS + 8 * s + c] << cast(u64) (8 * c); }
+  return word;
+}
+b39_put :: (work: [] u8, s: int, word: u64) {
+  for c: 0..<8 { work[B39_SLOTS + 8 * s + c] = cast(u8) ((word >> cast(u64) (8 * c)) & 255); }
+}
+// book:end ct
+
+// book:begin split
+// Splits a phrase at its spaces into work's 24 slots, which must be zero.
+// No branch or address depends on the text: every character is offered to
+// every column of every slot, and a mask lets one take it. A slot's flag
+// marks a word longer than 8 characters or with a character outside
+// '!'..'~'; neither can be in the list. Returns the number of words, with
+// bit 32 set when some byte is above 0x7f. Both are public from here on.
+b39_split :: (phrase: string, work: [] u8) -> u64 {
+  words: u64 = 0; high: u64 = 0;
+  column: u64;                                    // set at each word's first character
+  after_space: u64 = B39_ALL;                       // the text starts after a space
+  at: [8] u64;
+  for j: 0..<phrase.count {
+    c := cast(u64) phrase[j];
+    high |= c >> 7;
+    letter := b39_eq_mask(c, 32) ^ B39_ALL;         // all ones unless a space
+    first := letter & after_space;                  // this character starts a word
+    words = add_wrap(words, first & 1);
+    column = add_wrap(column, 1) & (first ^ B39_ALL);
+    word := sub_wrap(words, 1);                     // the word this character is in
+    odd := b39_less_mask(c, 33) | b39_less_mask(126, c) | b39_less_mask(7, column);
+    for b: 0..<8 { at[b] = b39_eq_mask(column, cast(u64) b); }
+    for s: 0..<24 {
+      mine := letter & b39_eq_mask(word, cast(u64) s);
+      work[B39_FLAGS + s] |= cast(u8) (odd & mine & 1);
+      for b: 0..<8 { work[B39_SLOTS + 8 * s + b] |= cast(u8) (c & mine & at[b]); }
+    }
+    after_space = letter ^ B39_ALL;
+  }
+  return words | ((high & 1) << 32);
+}
+// book:end split
+
+// book:begin join
+// Writes the first count slots into work's text with single spaces between
+// them and returns its length. Where a word goes depends on the lengths of
+// the words before it, so each letter is offered to every position of the
+// text and a mask lets one take it.
+b39_join :: (work: [] u8, count: int) -> int {
+  limit := 9 * count - 1;                           // 8 letters a word and the spaces
+  for t: 0..<limit { work[B39_TEXT + t] = 0; }    // mutant: equivalent (the first word's letter always lands at 0)
+  at: u64 = 0;
+  for s: 0..<count {
+    word := b39_slot(work, s);
+    if s > 0 { b39_place(work, limit, at, 32); at = add_wrap(at, 1); }
+    for c: 0..<8 { b39_place(work, limit, add_wrap(at, cast(u64) c), (word >> cast(u64) (8 * c)) & 255); }
+    at = add_wrap(at, b39_letters_ct(word));
+  }
+  return cast(int) at;
+}
+b39_place :: (work: [] u8, limit: int, at: u64, value: u64) {
+  for t: 0..<limit { work[B39_TEXT + t] |= cast(u8) (value & b39_eq_mask(at, cast(u64) t)); }
+}
+// book:end join
+
+// book:begin encode
+// 16, 20, 24, 28 or 32 bytes of entropy into 12, 15, 18, 21 or 24 words
+// with single spaces. Returns the number of characters written, or
+// BIP39_BAD_SIZE or BIP39_CAPACITY. work holds the secrets on the way and
+// comes back as zeros.
+bip39_encode_ct :: (entropy: [] u8, work: [] u8, out: [] u8) -> int #export_c {
+  n := entropy.count;
+  if n % 4 != 0 || n / 4 < 4 || n / 4 > 8 { return BIP39_BAD_SIZE; }
+  if work.count < BIP39_WORK_BYTES { return BIP39_CAPACITY; }
+  count := n * 3 / 4;                               // 11 * count = 8 * n + n / 4
+  bits := work[B39_BITS..<B39_HASH];               // mutant: equivalent (a longer slice holds the same 33 bytes)
+  for i: 0..<n { bits[i] = entropy[i]; }
+  #assert sha256_hash_checked(entropy, work[B39_HASH..<B39_TEXT], false) == SHA_OK;  // mutant: equivalent (the hash fills the first 32 bytes of any longer slice)
+  bits[n] = work[B39_HASH];                         // its first n / 4 bits are the checksum
+  for i: 0..<count {
+    v: u64 = 0;                                     // bits 11i to 11i + 10, from the top
+    for b: 0..<11 {
+      at := 11 * i + b;
+      v = (v << 1) | ((cast(u64) bits[at / 8] >> cast(u64) (7 - at % 8)) & 1);
+    }
+    b39_put(work, i, b39_word_ct(v));
+  }
+  length := b39_join(work, count);
+  result := length;
+  if out.count < length { result = BIP39_CAPACITY; }
+  else { for i: 0..<length { out[i] = work[B39_TEXT + i]; } }
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0; }
+  return result;
+}
+// book:end encode
+
+// book:begin decode
+// Reads a phrase into work: its words in the slots, and their 11-bit
+// indexes packed into the bits, entropy first and checksum after. Returns
+// the entropy's byte count or a refusal, and leaves work to the caller.
+b39_read :: (phrase: string, work: [] u8, room: int) -> int {
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0; }
+  if phrase.count > BIP39_MAX_PHRASE { return BIP39_TOO_LONG; }
+  split := b39_split(phrase, work);
+  if split >> 32 != 0 { return BIP39_NOT_ASCII; }
+  count := cast(int) split;
+  if count % 3 != 0 || count / 3 < 4 || count / 3 > 8 { return BIP39_BAD_COUNT; }
+  n := count * 4 / 3;
+  if room < n { return BIP39_CAPACITY; }
+  bits := work[B39_BITS..<B39_HASH];               // mutant: equivalent (a longer slice holds the same 33 bytes)
+  unknown: u64 = 0;
+  for s: 0..<count {
+    found := b39_index_ct(b39_slot(work, s));
+    unknown |= (found >> 11) | cast(u64) work[B39_FLAGS + s];
+    for b: 0..<11 {
+      at := 11 * s + b;
+      bits[at / 8] |= cast(u8) (((found >> cast(u64) (10 - b)) & 1) << cast(u64) (7 - at % 8));
+    }
+  }
+  #assert sha256_hash_checked(bits[0..<n], work[B39_HASH..<B39_TEXT], false) == SHA_OK;  // mutant: equivalent (the hash fills the first 32 bytes of any longer slice)
+  // keep the first count / 3 bits
+  keep := cast(u64) ((0xff00 >> (count / 3)) & 0xff);  // mutant: equivalent (0xff01 differs only in bits the shift drops)
+  wrong := cast(u64) (work[B39_HASH] ^ bits[n]) & keep;
+  if unknown != 0 { return BIP39_UNKNOWN_WORD; }
+  if wrong != 0 { return BIP39_BAD_CHECKSUM; }
+  return n;
+}
+// 12, 15, 18, 21 or 24 words, separated by one or more spaces, back into
+// their entropy. Returns its byte count (16 to 32) or a refusal, and
+// writes out only on success. work comes back as zeros.
+bip39_decode_ct :: (phrase: string, work: [] u8, out: [] u8) -> int #export_c {
+  if work.count < BIP39_WORK_BYTES { return BIP39_CAPACITY; }
+  result := b39_read(phrase, work, out.count);
+  if result > 0 { for i: 0..<result { out[i] = work[B39_BITS + i]; } }  // mutant: equivalent (a result is 16 to 32 or negative, never 0 or 1)
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0; }
+  return result;
+}
+// book:end decode
+
+// book:begin seed
+// The 64-byte seed of a checked phrase and a passphrase:
+// PBKDF2-HMAC-SHA512 of the words joined by single spaces, with the salt
+// "mnemonic" + passphrase and 2,048 rounds. Returns 64 or a refusal, and
+// writes out only on success. work comes back as zeros.
+bip39_seed_ct :: (phrase: string, passphrase: string, work: [] u8, out: [] u8) -> int #export_c {
+  return b39_seed(phrase, passphrase, BIP39_ROUNDS, work, out);
+}
+// The same with any number of rounds, so the checks can run one.
+b39_seed :: (phrase: string, passphrase: string, rounds: int, work: [] u8, out: [] u8) -> int {
+  if out.count < BIP39_SEED_BYTES || work.count < BIP39_WORK_BYTES { return BIP39_CAPACITY; }
+  if passphrase.count > BIP39_MAX_PASSPHRASE { return BIP39_TOO_LONG; }
+  high: u64 = 0;
+  for i: 0..<passphrase.count { high |= cast(u64) passphrase[i] >> 7; }
+  if high != 0 { return BIP39_NOT_ASCII; }
+  result := b39_read(phrase, work, 32);            // mutant: equivalent (any room of 32 or more fits the entropy)
+  if result > 0 {                                   // mutant: equivalent (a result is 16 to 32 or negative, never 0 or 1)
+    length := b39_join(work, result * 3 / 4);
+    salt := work[B39_SALT..<B39_SALT + 8 + passphrase.count];
+    prefix := "mnemonic";
+    for i: 0..<8 { salt[i] = prefix[i]; }
+    for i: 0..<passphrase.count { salt[8 + i] = passphrase[i]; }
+    #assert pbkdf2_hmac_sha512(work[B39_TEXT..<B39_TEXT + length], salt, rounds, out);
+    result = BIP39_SEED_BYTES;
+  }
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0; }
+  return result;
+}
+// book:end seed
+
+// ---- the older interface: true or false, or a length or -1
+
+bip39_words :: (entropy: [] u8, out: [] u8) -> int #export_c {
+  work: [BIP39_WORK_BYTES] u8;
+  r := bip39_encode_ct(entropy, work[..], out);
+  return ifx r < 0 then -1 else r;  // mutant: equivalent (r is never 0: a count or a refusal)
+}
+bip39_entropy_len :: (phrase: string, out: [] u8) -> int #export_c {
+  work: [BIP39_WORK_BYTES] u8;
+  r := bip39_decode_ct(phrase, work[..], out);
+  return ifx r < 0 then -1 else r;  // mutant: equivalent (r is never 0: a count or a refusal)
+}
+bip39_entropy :: (phrase: string, out: [] u8) -> bool #export_c {
+  return bip39_entropy_len(phrase, out) > 0;  // mutant: equivalent (the length is 16 to 32 or -1)
+}
+// The seed refuses what bip39_decode_ct refuses: an unchecked phrase has no seed here.
+bip39_seed_with :: (phrase: string, passphrase: string, out: [] u8) -> bool {
+  work: [BIP39_WORK_BYTES] u8;
+  return bip39_seed_ct(phrase, passphrase, work[..], out) == BIP39_SEED_BYTES;
+}
+bip39_seed :: (phrase: string, out: [] u8) -> bool #export_c { return bip39_seed_with(phrase, "", out); }
+
+// ---- public data: variable time
+
+// The i-th word (0..2047), or "". For printing public indexes only.
 bip39_word :: (i: int) -> string {
   list := BIP39_ENGLISH;
   if i < 0 || i > 2047 { return ""; }
@@ -17,192 +314,571 @@ bip39_word :: (i: int) -> string {
   while list[e] != '\n' { e += 1; }
   return list[at..<e];
 }
-// A word's index, or -1.
+// A word's index, or -1. It stops at the match: for public words only.
 bip39_index :: (w: string) -> int {
-  list := BIP39_ENGLISH;
-  if w.count < 3 || w.count > 8 { return -1; }
-  at := 0; k := 0;
-  while at < list.count {
-    e := at;
-    while list[e] != '\n' { e += 1; }
-    if e - at == w.count && list[at..<e] == w { return k; }
-    at = e + 1; k += 1;
-  }
+  if w.count > 8 { return -1; }                     // the empty word packs to 0, which no entry is
+  packed: u64 = 0;
+  for c: 0..<w.count { packed |= cast(u64) w[c] << cast(u64) (8 * c); }
+  for k: 0..<2048 { if BIP39_TABLE[k] == packed { return k; } }
   return -1;
 }
-// BIP-39's sizes: 16, 20, 24, 28 or 32 bytes of entropy, 12, 15, 18, 21 or 24 words.
-bip39_size_ok :: (bytes: int) -> bool { return bytes >= 16 && bytes <= 32 && bytes % 4 == 0; }
-// 16, 20, 24, 28 or 32 bytes into 12 to 24 words, single spaces, into out; the length, or -1.
-bip39_words :: (entropy: [] u8, out: [] u8) -> int #export_c {
-  if !bip39_size_ok(entropy.count) { return -1; }
-  h: [32] u8;
-  if sha256_hash_checked(entropy, h[..], false) != SHA_OK { return -1; }
-  ent := entropy.count * 8;
-  count := entropy.count * 3 / 4;
-  n := 0;
-  for i: 0..<count {
-    // bits 11i .. 11i+10 of entropy || checksum (its first ent/32 bits)
-    v := 0;
-    for b: 0..<11 {
-      bit := i * 11 + b;
-      byte := ifx bit < ent then entropy[bit / 8] else h[0];
-      shift := ifx bit < ent then 7 - bit % 8 else 7 - (bit - ent);
-      v = v * 2 + cast(int) ((byte >> cast(u8) shift) & 1);
-    }
-    w := bip39_word(v);
-    if i > 0 { if n >= out.count { return -1; } out[n] = ' '; n += 1; }
-    if n + w.count > out.count { return -1; }
-    for c: w { out[n] = c; n += 1; }
-  }
-  for i: 0..<32 { h[i] = 0; }
-  return n;
-}
-// 12, 15, 18, 21 or 24 words (any spacing) back into their entropy; its byte
-// count (16 to 32), or -1 for an unknown word, a count BIP-39 doesn't define, a
-// wrong checksum, or an out too small.
-bip39_entropy_len :: (phrase: string, out: [] u8) -> int #export_c {
-  bits: [33] u8;
-  k := 0; at := 0; bad := false;
-  while at < phrase.count && !bad {
-    while at < phrase.count && phrase[at] == ' ' { at += 1; }
-    if at >= phrase.count { break; }
-    e := at;
-    while e < phrase.count && phrase[e] != ' ' { e += 1; }
-    v := ifx k < 24 then bip39_index(phrase[at..<e]) else -1;
-    if v < 0 { bad = true; break; }
-    for b: 0..<11 {
-      bit := k * 11 + b;
-      if (v >> (10 - b)) & 1 == 1 { bits[bit / 8] |= cast(u8) (1 << (7 - bit % 8)); }
-    }
-    k += 1; at = e;
-  }
-  bytes := k * 4 / 3;
-  ok := !bad && k % 3 == 0 && bip39_size_ok(bytes) && out.count >= bytes;
-  // the checksum is the first k/3 bits of the hash, right after the entropy
-  h: [32] u8;
-  if ok {
-    mask := cast(u8) ((255 << (8 - k / 3)) & 255);
-    ok = sha256_hash_checked(bits[0..<bytes], h[..], false) == SHA_OK && (h[0] & mask) == (bits[bytes] & mask);
-  }
-  if ok { for i: 0..<bytes { out[i] = bits[i]; } }
-  for i: 0..<33 { bits[i] = 0; }
-  for i: 0..<32 { h[i] = 0; }
-  return ifx ok then bytes else -1;
-}
-// The same as a yes or no; out holds the entropy when yes.
-bip39_entropy :: (phrase: string, out: [] u8) -> bool #export_c { return bip39_entropy_len(phrase, out) > 0; }
-// The 64-byte seed of words (single spaces between them) and a passphrase.
-bip39_seed_with :: (phrase: string, passphrase: string, out: [] u8) -> bool {
-  if out.count < 64 || phrase.count > 200 || passphrase.count > 200 { return false; }
-  p: [200] u8; s: [208] u8;
-  n := 0; at := 0;
-  while at < phrase.count {
-    while at < phrase.count && phrase[at] == ' ' { at += 1; }
-    if at >= phrase.count { break; }
-    if n > 0 { p[n] = ' '; n += 1; }
-    while at < phrase.count && phrase[at] != ' ' { p[n] = phrase[at]; n += 1; at += 1; }
-  }
-  salt := "mnemonic";
-  for i: 0..<8 { s[i] = salt[i]; }
-  for i: 0..<passphrase.count { s[8 + i] = passphrase[i]; }
-  ok := pbkdf2_hmac_sha512(p[0..<n], s[0..<8 + passphrase.count], 2048, out);
-  for i: 0..<200 { p[i] = 0; }
-  return ok;
-}
-// The seed with no passphrase (what NIP-06 and our login use).
-bip39_seed :: (phrase: string, out: [] u8) -> bool #export_c { return bip39_seed_with(phrase, "", out); }
 
-#test "the English list is the published one (SHA-256), 2048 words, and its ends" {
+// ---- checks
+
+// Hex to bytes in out (test vectors only).
+b39_unhex :: (hex: string, out: [] u8) -> [] u8 {
+  for i: 0..<hex.count / 2 { out[i] = cast(u8) (b39_nibble(hex[2 * i]) * 16 + b39_nibble(hex[2 * i + 1])); }
+  return out[0..<hex.count / 2];
+}
+b39_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+b39_zero :: (work: [] u8) -> bool {
+  for b: work { if b != 0 { return false; } }
+  return true;
+}
+// One vector both ways through the constant-time procedures, with the work
+// buffer zero after each call and one character too little room refused.
+b39_vector :: (hex: string, words: string) {
+  e: [32] u8; out: [BIP39_MAX_TEXT] u8; back: [32] u8; work: [BIP39_WORK_BYTES] u8;
+  entropy := b39_unhex(hex, e[..]);
+  #assert bip39_encode_ct(entropy, work[..], out[0..<words.count]) == words.count;
+  #assert cast(string) out[0..<words.count] == words;
+  #assert b39_zero(work[..]);
+  #assert bip39_encode_ct(entropy, work[..], out[0..<words.count - 1]) == BIP39_CAPACITY;  // mutant: equivalent (any shorter buffer refuses the same way)
+  #assert bip39_decode_ct(words, work[..], back[0..<entropy.count]) == entropy.count;
+  #assert cast(string) back[0..<entropy.count] == cast(string) entropy;
+  #assert b39_zero(work[..]);
+  #assert bip39_decode_ct(words, work[..], back[0..<entropy.count - 1]) == BIP39_CAPACITY;  // mutant: equivalent (any shorter buffer refuses the same way)
+}
+
+#test "the English list is the pinned one, and the table is built from it" #steps 100000000 {
   list := BIP39_ENGLISH;
   buf: [13116] u8; h: [32] u8;
   #assert list.count == 13116;
   for i: 0..<list.count { buf[i] = list[i]; }
   #assert sha256_hash_checked(buf[..], h[..], false) == SHA_OK && sha512_hexeq(h[..], BIP39_LIST_SHA256);
-  #assert bip39_word(0) == "abandon" && bip39_word(2047) == "zoo" && bip39_word(2048) == "" && bip39_word(-1) == "";
-  #assert bip39_index("abandon") == 0 && bip39_index("zoo") == 2047 && bip39_index("zo") == -1 && bip39_index("abandonx") == -1;
-}
-#test "the official vectors: entropy to words and back" {
-  e: [16] u8; out: [200] u8; back: [16] u8;
-  e[0] = 0; e[1] = 0; e[2] = 0; e[3] = 0; e[4] = 0; e[5] = 0; e[6] = 0; e[7] = 0; e[8] = 0; e[9] = 0; e[10] = 0; e[11] = 0; e[12] = 0; e[13] = 0; e[14] = 0; e[15] = 0;
-  n := bip39_words(e[..], out[..]); #assert n > 0 && cast(string) out[0..<n] == "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-  #assert bip39_entropy("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", back[..]); for i: 0..<16 { #assert back[i] == e[i]; }
-  e[0] = 127; e[1] = 127; e[2] = 127; e[3] = 127; e[4] = 127; e[5] = 127; e[6] = 127; e[7] = 127; e[8] = 127; e[9] = 127; e[10] = 127; e[11] = 127; e[12] = 127; e[13] = 127; e[14] = 127; e[15] = 127;
-  n = bip39_words(e[..], out[..]); #assert n > 0 && cast(string) out[0..<n] == "legal winner thank year wave sausage worth useful legal winner thank yellow";
-  #assert bip39_entropy("legal winner thank year wave sausage worth useful legal winner thank yellow", back[..]); for i: 0..<16 { #assert back[i] == e[i]; }
-  e[0] = 128; e[1] = 128; e[2] = 128; e[3] = 128; e[4] = 128; e[5] = 128; e[6] = 128; e[7] = 128; e[8] = 128; e[9] = 128; e[10] = 128; e[11] = 128; e[12] = 128; e[13] = 128; e[14] = 128; e[15] = 128;
-  n = bip39_words(e[..], out[..]); #assert n > 0 && cast(string) out[0..<n] == "letter advice cage absurd amount doctor acoustic avoid letter advice cage above";
-  #assert bip39_entropy("letter advice cage absurd amount doctor acoustic avoid letter advice cage above", back[..]); for i: 0..<16 { #assert back[i] == e[i]; }
-  e[0] = 255; e[1] = 255; e[2] = 255; e[3] = 255; e[4] = 255; e[5] = 255; e[6] = 255; e[7] = 255; e[8] = 255; e[9] = 255; e[10] = 255; e[11] = 255; e[12] = 255; e[13] = 255; e[14] = 255; e[15] = 255;
-  n = bip39_words(e[..], out[..]); #assert n > 0 && cast(string) out[0..<n] == "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
-  #assert bip39_entropy("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong", back[..]); for i: 0..<16 { #assert back[i] == e[i]; }
-  e[0] = 158; e[1] = 136; e[2] = 93; e[3] = 149; e[4] = 42; e[5] = 211; e[6] = 98; e[7] = 202; e[8] = 235; e[9] = 78; e[10] = 254; e[11] = 52; e[12] = 168; e[13] = 233; e[14] = 27; e[15] = 210;
-  n = bip39_words(e[..], out[..]); #assert n > 0 && cast(string) out[0..<n] == "ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic";
-  #assert bip39_entropy("ozone drill grab fiber curtain grace pudding thank cruise elder eight picnic", back[..]); for i: 0..<16 { #assert back[i] == e[i]; }
-  e[0] = 192; e[1] = 186; e[2] = 90; e[3] = 142; e[4] = 145; e[5] = 65; e[6] = 17; e[7] = 33; e[8] = 15; e[9] = 43; e[10] = 209; e[11] = 49; e[12] = 243; e[13] = 213; e[14] = 224; e[15] = 141;
-  n = bip39_words(e[..], out[..]); #assert n > 0 && cast(string) out[0..<n] == "scheme spot photo card baby mountain device kick cradle pact join borrow";
-  #assert bip39_entropy("scheme spot photo card baby mountain device kick cradle pact join borrow", back[..]); for i: 0..<16 { #assert back[i] == e[i]; }
-  // spacing doesn't matter; a wrong checksum, an unknown word or 11 or 13 words does
-  #assert bip39_entropy("  abandon abandon abandon abandon abandon abandon  abandon abandon abandon abandon abandon about ", back[..]);
-  #assert !bip39_entropy("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon", back[..]);
-  #assert !bip39_entropy("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abut", back[..]);
-  #assert !bip39_entropy("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", back[..]);
-  #assert !bip39_entropy("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", back[..]);
-  #assert bip39_words(e[0..<15], out[..]) == -1 && bip39_words(e[..], out[0..<10]) == -1 && !bip39_entropy("x", back[0..<15]);
-  #assert bip39_entropy_len("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", back[0..<15]) == -1;
-}
-// One Trezor vector (or a hashlib-built one) both ways: entropy (hex) to words
-// and back, and one byte too little room refused.
-bip39_vector :: (hex: string, words: string) -> bool {
-  e: [32] u8; out: [300] u8; back: [32] u8;
-  if hex.count % 2 != 0 || hex.count / 2 > 32 || hex.count < 2 { return false; }
-  m := hex.count / 2;
-  for i: 0..<m {
-    hi := cast(int) hex[2 * i]; lo := cast(int) hex[2 * i + 1];
-    hv := ifx hi >= 97 then hi - 87 else hi - 48;
-    lv := ifx lo >= 97 then lo - 87 else lo - 48;
-    e[i] = cast(u8) (hv * 16 + lv);
+  table := b39_make_table();
+  for k: 0..<2048 {
+    #assert table[k] == BIP39_TABLE[k];
+    letters := b39_letters_ct(table[k]);
+    #assert letters >= 3 && letters <= 8;
   }
-  n := bip39_words(e[0..<m], out[..]);
-  if n <= 0 || cast(string) out[0..<n] != words { return false; }
-  if bip39_entropy_len(words, back[..]) != m { return false; }
-  for i: 0..<m { if back[i] != e[i] { return false; } }
-  return bip39_entropy_len(words, back[0..<m - 1]) == -1;
+  // the list is sorted, so words that share their first 4 letters would be neighbours; none are
+  for k: 1..<2048 { #assert (table[k] & 0xffff_ffff) != (table[k - 1] & 0xffff_ffff); }
+  #assert bip39_word(0) == "abandon" && bip39_word(2047) == "zoo" && bip39_word(2048) == "" && bip39_word(-1) == "";
+  #assert bip39_index("abandon") == 0 && bip39_index("zoo") == 2047 && bip39_index("zo") == -1;
+  #assert bip39_index("abandonx") == -1 && bip39_index("abandonxy") == -1 && bip39_index("") == -1;
 }
-#test "15, 18, 21 and 24 words: the Trezor vectors, and two built with hashlib" #steps 400000000 {
-  #assert bip39_vector("000000000000000000000000000000000000000000000000", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon agent");
-  #assert bip39_vector("7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f", "legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal will");
-  #assert bip39_vector("808080808080808080808080808080808080808080808080", "letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter always");
-  #assert bip39_vector("ffffffffffffffffffffffffffffffffffffffffffffffff", "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo when");
-  #assert bip39_vector("6610b25967cdcca9d59875f5cb50b0ea75433311869e930b", "gravity machine north sort system female filter attitude volume fold club stay feature office ecology stable narrow fog");
-  #assert bip39_vector("0000000000000000000000000000000000000000000000000000000000000000", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art");
-  #assert bip39_vector("7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f", "legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth useful legal winner thank year wave sausage worth title");
-  #assert bip39_vector("8080808080808080808080808080808080808080808080808080808080808080", "letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic bless");
-  #assert bip39_vector("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote");
-  #assert bip39_vector("68a79eaca2324873eacc50cb9c6eca8cc68ea5d936f98787c60c7ebc74e6ce7c", "hamster diagram private dutch cause delay private meat slide toddler razor book happy fancy gospel tennis maple dilemma loan word shrug inflict delay length");
-  // 15 and 21 words have no Trezor vector; these come from Python's hashlib and the same list
-  #assert bip39_vector("000102030405060708090a0b0c0d0e0f10111213", "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math exhibit");
-  #assert bip39_vector("6465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f", "good clinic oil speak note cup random punch hunt logic frame tragic elder robot target august kidney swim butter woman zero");
+#forall "the masks: equal and less" a: 0..<20, b: 0..<20 {
+  #assert b39_eq_mask(cast(u64) a, cast(u64) b) == (ifx a == b then B39_ALL else 0);
+  #assert b39_less_mask(cast(u64) a, cast(u64) b) == (ifx a < b then B39_ALL else 0);
+  #assert b39_eq_mask(cast(u64) a << 56, cast(u64) b << 56) == (ifx a == b then B39_ALL else 0);
 }
-#test "the checksum grows with the length; other counts and wrong checksums are refused" #steps 200000000 {
-  back: [32] u8;
-  // each pair below differs only in checksum bits of the last word
+#test "the masks at the top bit" {
+  top: u64 = 0x8000_0000_0000_0000;
+  #assert b39_eq_mask(top, top) == B39_ALL && b39_eq_mask(top, 0) == 0 && b39_eq_mask(0, top) == 0;
+  #assert b39_eq_mask(B39_ALL, B39_ALL) == B39_ALL && b39_eq_mask(B39_ALL, 1) == 0;
+}
+// Each index (a spread of 64 that sets every bit) to its word and back,
+// through the constant-time lookups and the variable-time ones.
+#forall "lookups both ways" i: 0..<64 #steps 20000000 {
+  k := i * 32 + i % 32;
+  word := b39_word_ct(cast(u64) k);
+  #assert word == BIP39_TABLE[k] && b39_index_ct(word) == cast(u64) k;
+  text: [8] u8; n := cast(int) b39_letters_ct(word);
+  for c: 0..<n { text[c] = cast(u8) ((word >> cast(u64) (8 * c)) & 255); }
+  #assert bip39_word(k) == cast(string) text[0..<n] && bip39_index(cast(string) text[0..<n]) == k;
+}
+#test "an unknown word sets bit 11" {
+  #assert b39_index_ct(0) == 2048 && b39_index_ct(cast(u64) 'a') == 2048;
+  #assert b39_index_ct(BIP39_TABLE[5] | (cast(u64) 'x' << 56)) == 2048;
+  #assert b39_word_ct(2048) == 0;
+}
+#test "splitting: spaces, slots and flags" {
+  work: [BIP39_WORK_BYTES] u8;
+  #assert b39_split("  zoo   abandon about ", work[..]) == 3;
+  #assert b39_slot(work[..], 0) == BIP39_TABLE[2047] && b39_slot(work[..], 1) == BIP39_TABLE[0] && b39_slot(work[..], 2) == BIP39_TABLE[3];
+  #assert work[B39_FLAGS] == 0 && work[B39_FLAGS + 1] == 0 && work[B39_FLAGS + 2] == 0 && b39_slot(work[..], 3) == 0;
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0; }
+  // 9 letters, a tab, a DEL, a control byte; 8 letters is fine
+  odd: [29] u8; text := "abandonxy ab\tc abX Y abstract";
+  for i: 0..<29 { odd[i] = text[i]; }
+  odd[17] = 0x7f; odd[19] = 1;
+  #assert b39_split(cast(string) odd[..], work[..]) == 5;
+  #assert work[B39_FLAGS] == 1 && work[B39_FLAGS + 1] == 1 && work[B39_FLAGS + 2] == 1 && work[B39_FLAGS + 3] == 1 && work[B39_FLAGS + 4] == 0;
+  #assert b39_slot(work[..], 0) == (BIP39_TABLE[0] | (cast(u64) 'x' << 56)) && b39_slot(work[..], 4) == BIP39_TABLE[7];
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0; }
+  #assert b39_split("", work[..]) == 0 && b39_split("    ", work[..]) == 0 && b39_zero(work[..]);
+  #assert b39_split("zoo é", work[..]) == (2 | (cast(u64) 1 << 32));
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0; }
+  #assert b39_split("~ !", work[..]) == 2 && work[B39_FLAGS] == 0 && work[B39_FLAGS + 1] == 0;
+  // a 25th word goes into no slot: the flags and bits after the slots stay zero
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0; }
+  #assert b39_split("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo abstract", work[..]) == 25;
+  for i: B39_FLAGS..<B39_TEXT { #assert work[i] == 0; }
+}
+#test "joining puts each word at its place, and writes no further" {
+  work: [BIP39_WORK_BYTES] u8;
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0x5a; }
+  b39_put(work[..], 0, BIP39_TABLE[2047]); b39_put(work[..], 1, BIP39_TABLE[7]); b39_put(work[..], 2, BIP39_TABLE[3]);
+  n := b39_join(work[..], 3);
+  #assert n == 18 && cast(string) work[B39_TEXT..<B39_TEXT + n] == "zoo abstract about";
+  for t: n..<26 { #assert work[B39_TEXT + t] == 0; }
+  #assert work[B39_TEXT + 26] == 0x5a;
+}
+#test "the BIP-39 reference vectors, 12, 18 and 24 words" #steps 200000000 {
+  b39_vector("00000000000000000000000000000000", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about");
+  b39_vector("7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f", "legal winner thank year wave sausage worth useful legal winner thank yellow");
+  b39_vector("ffffffffffffffffffffffffffffffff", "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong");
+  b39_vector("6610b25967cdcca9d59875f5cb50b0ea75433311869e930b", "gravity machine north sort system female filter attitude volume fold club stay feature office ecology stable narrow fog");
+  b39_vector("68a79eaca2324873eacc50cb9c6eca8cc68ea5d936f98787c60c7ebc74e6ce7c", "hamster diagram private dutch cause delay private meat slide toddler razor book happy fancy gospel tennis maple dilemma loan word shrug inflict delay length");
+  // 15 and 21 words have no reference vector; these come from Python's hashlib and the same list
+  b39_vector("000102030405060708090a0b0c0d0e0f10111213", "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math exhibit");
+  b39_vector("6465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f", "good clinic oil speak note cup random punch hunt logic frame tragic elder robot target august kidney swim butter woman zero");
+}
+#test "every refusal has its own code, and writes nothing" #steps 200000000 {
+  work: [BIP39_WORK_BYTES] u8; out: [32] u8; e: [36] u8; text: [BIP39_MAX_TEXT] u8;
+  for i: 0..<32 { out[i] = 7; }
+  // entropy sizes
+  #assert bip39_encode_ct(e[0..<12], work[..], text[..]) == BIP39_BAD_SIZE && bip39_encode_ct(e[0..<18], work[..], text[..]) == BIP39_BAD_SIZE;
+  #assert bip39_encode_ct(e[0..<36], work[..], text[..]) == BIP39_BAD_SIZE && bip39_encode_ct(e[0..<15], work[..], text[..]) == BIP39_BAD_SIZE;
+  #assert bip39_encode_ct(e[0..<0], work[..], text[..]) == BIP39_BAD_SIZE && bip39_encode_ct(e[0..<33], work[..], text[..]) == BIP39_BAD_SIZE;
+  #assert bip39_encode_ct(e[0..<16], work[0..<BIP39_WORK_BYTES - 1], text[..]) == BIP39_CAPACITY;
+  #assert bip39_decode_ct("zoo", work[0..<BIP39_WORK_BYTES - 1], out[..]) == BIP39_CAPACITY;
+  // counts: 11, 13, 14 and 25 words, and none
+  #assert bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", work[..], out[..]) == BIP39_BAD_COUNT;
+  #assert bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", work[..], out[..]) == BIP39_BAD_COUNT;
+  #assert bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", work[..], out[..]) == BIP39_BAD_COUNT;
+  #assert bip39_decode_ct("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote zoo", work[..], out[..]) == BIP39_BAD_COUNT;
+  #assert bip39_decode_ct("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo", work[..], out[..]) == BIP39_BAD_COUNT;
+  #assert bip39_decode_ct("zoo zoo zoo zoo zoo zoo zoo zoo zoo", work[..], out[..]) == BIP39_BAD_COUNT;
+  #assert bip39_decode_ct("", work[..], out[..]) == BIP39_BAD_COUNT && bip39_decode_ct("   ", work[..], out[..]) == BIP39_BAD_COUNT;
+  // an unknown word, a capital, 9 letters, a tab; then each checksum length
+  #assert bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abut", work[..], out[..]) == BIP39_UNKNOWN_WORD;
+  #assert bip39_decode_ct("Abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", work[..], out[..]) == BIP39_UNKNOWN_WORD;
+  #assert bip39_decode_ct("abandonxy abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", work[..], out[..]) == BIP39_UNKNOWN_WORD;
+  #assert bip39_decode_ct("abandon\tabandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", work[..], out[..]) == BIP39_UNKNOWN_WORD;
+  #assert bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon", work[..], out[..]) == BIP39_BAD_CHECKSUM;
   // 15 words, 5 checksum bits: exhibit is 636, exist 638
-  #assert bip39_entropy_len("abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math exist", back[..]) == -1;
-  // 18 words, 6 checksum bits: agent is 39, agree 40
-  #assert bip39_entropy_len("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon agree", back[..]) == -1;
-  // 21 words, 7 checksum bits: zero is 2045, zone 2046
-  #assert bip39_entropy_len("good clinic oil speak note cup random punch hunt logic frame tragic elder robot target august kidney swim butter woman zone", back[..]) == -1;
-  // 24 words, 8 checksum bits: art is 102, arrest 99
-  #assert bip39_entropy_len("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon arrest", back[..]) == -1;
-  // 13, 14 and 25 words, an unknown 25th, and none
-  #assert bip39_entropy_len("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", back[..]) == -1;
-  #assert bip39_entropy_len("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", back[..]) == -1;
-  #assert bip39_entropy_len("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote zoo", back[..]) == -1;
-  #assert bip39_entropy_len("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote xyzzy", back[..]) == -1;
-  #assert bip39_entropy_len("", back[..]) == -1 && bip39_entropy_len("   ", back[..]) == -1;
-  #assert bip39_entropy_len("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong", back[..]) == 16;
-  #assert bip39_size_ok(16) && bip39_size_ok(20) && bip39_size_ok(28) && bip39_size_ok(32);
-  #assert !bip39_size_ok(12) && !bip39_size_ok(15) && !bip39_size_ok(18) && !bip39_size_ok(36);
-  e: [36] u8; out: [400] u8;
-  #assert bip39_words(e[0..<12], out[..]) == -1 && bip39_words(e[0..<18], out[..]) == -1 && bip39_words(e[0..<36], out[..]) == -1;
+  #assert bip39_decode_ct("abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math exist", work[..], out[..]) == BIP39_BAD_CHECKSUM;
+  // 18 words, 6 bits: agent is 39, agree 40
+  #assert bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon agree", work[..], out[..]) == BIP39_BAD_CHECKSUM;
+  // 21 words, 7 bits: zero is 2045, zone 2046
+  #assert bip39_decode_ct("good clinic oil speak note cup random punch hunt logic frame tragic elder robot target august kidney swim butter woman zone", work[..], out[..]) == BIP39_BAD_CHECKSUM;
+  // 24 words, 8 bits: art is 102, arrest 99
+  #assert bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon arrest", work[..], out[..]) == BIP39_BAD_CHECKSUM;
+  // a byte above 0x7f; a phrase over 1,024 bytes
+  #assert bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon aboût", work[..], out[..]) == BIP39_NOT_ASCII;
+  long: [1025] u8; for i: 0..<1025 { long[i] = 32; }
+  #assert bip39_decode_ct(cast(string) long[..], work[..], out[..]) == BIP39_TOO_LONG;
+  #assert bip39_decode_ct(cast(string) long[0..<1024], work[..], out[..]) == BIP39_BAD_COUNT;
+  for i: 0..<32 { #assert out[i] == 7; }
+  #assert b39_zero(work[..]);
 }
+#test "the seed refuses before any work, and refuses what decoding refuses" #steps 100000000 {
+  work: [BIP39_WORK_BYTES] u8; seed: [65] u8;
+  for i: 0..<65 { seed[i] = 7; }
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0x5a; }
+  long: [1017] u8; for i: 0..<1017 { long[i] = 'a'; }
+  #assert bip39_seed_ct("zoo", "", work[..], seed[0..<63]) == BIP39_CAPACITY;
+  #assert bip39_seed_ct("zoo", "", work[0..<BIP39_WORK_BYTES - 1], seed[..]) == BIP39_CAPACITY;
+  #assert bip39_seed_ct("zoo", cast(string) long[..], work[..], seed[..]) == BIP39_TOO_LONG;
+  #assert bip39_seed_ct("zoo", "café", work[..], seed[..]) == BIP39_NOT_ASCII;
+  high := [2] u8.[0x80, 'a'];
+  #assert bip39_seed_ct("zoo", cast(string) high[..], work[..], seed[..]) == BIP39_NOT_ASCII;
+  for i: 0..<BIP39_WORK_BYTES { #assert work[i] == 0x5a; }
+  #assert bip39_seed_ct("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo", "", work[..], seed[..]) == BIP39_BAD_CHECKSUM;
+  #assert b39_zero(work[..]);
+  #assert bip39_seed_ct("zoo zoo zoo", "", work[..], seed[..]) == BIP39_BAD_COUNT;
+  #assert bip39_seed_ct("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo", "", work[..], seed[..]) == BIP39_BAD_CHECKSUM;
+  #assert bip39_seed_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abut", "", work[..], seed[..]) == BIP39_UNKNOWN_WORD;
+  for i: 0..<65 { #assert seed[i] == 7; }
+}
+// One and two rounds against Python's hashlib: the joined words (one space
+// between them however the phrase was typed), the salt, and the limits.
+#test "the seed's password and salt, with one and two rounds" #steps 400000000 {
+  work: [BIP39_WORK_BYTES] u8; seed: [65] u8;
+  for i: 0..<BIP39_WORK_BYTES { work[i] = 0x5a; }
+  seed[64] = 7;
+  #assert b39_seed("  abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon  about ", "TREZOR", 1, work[..], seed[..]) == 64;
+  #assert sha512_hexeq(seed[0..<64], "93b97bc5354ec701eae542a773d5de60660589bf0d9a171061230590acbc1754004a1cd231299f2e3a44ec43472c2b276ae9868caacbc02bcfb662fb3a6f9a46");
+  #assert seed[64] == 7 && b39_zero(work[..]);
+  #assert b39_seed("hamster diagram private dutch cause delay private meat slide toddler razor book happy fancy gospel tennis maple dilemma loan word shrug inflict delay length", "TREZOR", 2, work[..], seed[0..<64]) == 64;
+  #assert sha512_hexeq(seed[0..<64], "2058283e5d8005f3482149148068c5dc7bc3f447019d81f1667ffd85886e64f78e9dfa8ced000d7a93068bb552fae26221a0846ad937a879816278fd4d9df0ec");
+  // 24 words of 8 letters each, 215 characters, and a 1,016-byte passphrase
+  words := "announce artefact attitude bachelor broccoli business category champion cinnamon congress consider convince cupboard daughter december decorate decrease describe dinosaur disagree discover disorder distance bachelor";
+  #assert words.count == BIP39_MAX_TEXT;
+  b39_vector("09419c3a8891c63e0909302905e0bd17c35c6f8e29c8392770f99f63ee7ecfe8", words);
+  long: [1016] u8; for i: 0..<1016 { long[i] = 'a'; }
+  #assert b39_seed(words, cast(string) long[..], 1, work[..], seed[0..<64]) == 64;
+  #assert sha512_hexeq(seed[0..<64], "864888e0f2f253ff572ab9f8f3b33bb49ea476acfa0703d1d69d0450293e386527247625b9eed5b4408a7f05288b588f3829cfcaed9baf7b4e7ad289947d0586");
+  #assert b39_zero(work[..]);
+}
+// The full 2,048 rounds once: the first reference vector with TREZOR.
+#test "the seed of the first reference vector" #steps 2000000000 {
+  seed: [64] u8;
+  // through the older interface, which calls bip39_seed_ct
+  #assert bip39_seed_with("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", "TREZOR", seed[..]);
+  #assert sha512_hexeq(seed[..], "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04");
+}
+#test "b39_zero sees a byte at either end" {
+  z: [3] u8;
+  #assert b39_zero(z[..]) && b39_zero(z[0..<0]);
+  z[0] = 1; #assert !b39_zero(z[..]);
+  z[0] = 0; z[2] = 1; #assert !b39_zero(z[..]);
+}
+#test "the older interface keeps its answers" #steps 200000000 {
+  e: [16] u8; out: [200] u8; back: [32] u8;
+  n := bip39_words(e[..], out[..]);
+  #assert n == 93 && bip39_words(e[0..<15], out[..]) == -1 && bip39_words(e[..], out[0..<10]) == -1;
+  #assert bip39_entropy_len(cast(string) out[0..<n], back[..]) == 16 && bip39_entropy(cast(string) out[0..<n], back[..]);
+  #assert bip39_entropy_len("zoo", back[..]) == -1 && !bip39_entropy("x", back[0..<15]);
+  #assert bip39_entropy_len(cast(string) out[0..<n], back[0..<15]) == -1;
+  #assert !bip39_seed("x", back[..]);
+  #assert !bip39_seed_with(cast(string) out[0..<n], "", back[..]);   // 32 bytes is too small for a seed
+}
+
+// b39_make_table() of the list, written out because a library cannot raise
+// the compile-time step budget; a check compares the two.
+BIP39_TABLE :: [2048] u64.[
+  0x006e6f646e616261, 0x007974696c696261, 0x00000000656c6261, 0x00000074756f6261, 0x00000065766f6261, 0x0000746e65736261,
+  0x000062726f736261, 0x7463617274736261, 0x0000647275736261, 0x0000006573756261, 0x0000737365636361, 0x746e656469636361,
+  0x00746e756f636361, 0x0000657375636361, 0x0065766569686361, 0x0000000064696361, 0x63697473756f6361, 0x0065726975716361,
+  0x000073736f726361, 0x0000000000746361, 0x00006e6f69746361, 0x000000726f746361, 0x0073736572746361, 0x00006c6175746361,
+  0x0000007470616461, 0x0000000000646461, 0x0000746369646461, 0x0073736572646461, 0x00007473756a6461, 0x00000074696d6461,
+  0x000000746c756461, 0x0065636e61766461, 0x0000656369766461, 0x006369626f726561, 0x0000726961666661, 0x000064726f666661,
+  0x0000646961726661, 0x0000006e69616761, 0x0000000000656761, 0x000000746e656761, 0x0000006565726761, 0x0000006461656861,
+  0x00000000006d6961, 0x0000000000726961, 0x0074726f70726961, 0x000000656c736961, 0x0000006d72616c61, 0x0000006d75626c61,
+  0x006c6f686f636c61, 0x0000007472656c61, 0x0000006e65696c61, 0x00000000006c6c61, 0x00000079656c6c61, 0x000000776f6c6c61,
+  0x000074736f6d6c61, 0x000000656e6f6c61, 0x0000006168706c61, 0x0079646165726c61, 0x000000006f736c61, 0x0000007265746c61,
+  0x0000737961776c61, 0x0072756574616d61, 0x00676e697a616d61, 0x000000676e6f6d61, 0x0000746e756f6d61, 0x0000646573756d61,
+  0x007473796c616e61, 0x0000726f68636e61, 0x00746e6569636e61, 0x0000007265676e61, 0x000000656c676e61, 0x0000007972676e61,
+  0x00006c616d696e61, 0x000000656c6b6e61, 0x65636e756f6e6e61, 0x00006c61756e6e61, 0x00726568746f6e61, 0x0000726577736e61,
+  0x00616e6e65746e61, 0x0065757169746e61, 0x0079746569786e61, 0x0000000000796e61, 0x0000007472617061, 0x0079676f6c6f7061,
+  0x0000726165707061, 0x000000656c707061, 0x0065766f72707061, 0x0000006c69727061, 0x0000000068637261, 0x0000636974637261,
+  0x0000000061657261, 0x000000616e657261, 0x0000006575677261, 0x00000000006d7261, 0x00000064656d7261, 0x000000726f6d7261,
+  0x00000000796d7261, 0x0000646e756f7261, 0x0065676e61727261, 0x0000747365727261, 0x0000657669727261, 0x000000776f727261,
+  0x0000000000747261, 0x7463616665747261, 0x0000747369747261, 0x006b726f77747261, 0x00000000006b7361, 0x0000746365707361,
+  0x00746c7561737361, 0x0000007465737361, 0x0000747369737361, 0x0000656d75737361, 0x0000616d68747361, 0x006574656c687461,
+  0x000000006d6f7461, 0x00006b6361747461, 0x0000646e65747461, 0x6564757469747461, 0x0074636172747461, 0x006e6f6974637561,
+  0x0000007469647561, 0x0000747375677561, 0x00000000746e7561, 0x0000726f68747561, 0x000000006f747561, 0x00006e6d75747561,
+  0x0065676172657661, 0x006f6461636f7661, 0x00000064696f7661, 0x000000656b617761, 0x0000006572617761, 0x0000000079617761,
+  0x00656d6f73657761, 0x0000006c75667761, 0x00647261776b7761, 0x0000000073697861, 0x0000000079626162, 0x726f6c6568636162,
+  0x0000006e6f636162, 0x0000006567646162, 0x0000000000676162, 0x0065636e616c6162, 0x00796e6f636c6162, 0x000000006c6c6162,
+  0x00006f6f626d6162, 0x0000616e616e6162, 0x000072656e6e6162, 0x0000000000726162, 0x0000796c65726162, 0x006e696167726162,
+  0x00006c6572726162, 0x0000000065736162, 0x0000006369736162, 0x000074656b736162, 0x0000656c74746162, 0x0000006863616562,
+  0x000000006e616562, 0x0000797475616562, 0x0065737561636562, 0x0000656d6f636562, 0x0000000066656562, 0x000065726f666562,
+  0x0000006e69676562, 0x0000657661686562, 0x0000646e69686562, 0x00657665696c6562, 0x000000776f6c6562, 0x00000000746c6562,
+  0x00000068636e6562, 0x00746966656e6562, 0x0000000074736562, 0x0000796172746562, 0x0000726574746562, 0x006e656577746562,
+  0x0000646e6f796562, 0x00656c6379636962, 0x0000000000646962, 0x00000000656b6962, 0x00000000646e6962, 0x0079676f6c6f6962,
+  0x0000000064726962, 0x0000006874726962, 0x0000726574746962, 0x0000006b63616c62, 0x0000006564616c62, 0x000000656d616c62,
+  0x0074656b6e616c62, 0x0000007473616c62, 0x0000006b61656c62, 0x0000007373656c62, 0x000000646e696c62, 0x000000646f6f6c62,
+  0x006d6f73736f6c62, 0x00006573756f6c62, 0x0000000065756c62, 0x0000000072756c62, 0x0000006873756c62, 0x0000006472616f62,
+  0x0000000074616f62, 0x0000000079646f62, 0x000000006c696f62, 0x00000000626d6f62, 0x00000000656e6f62, 0x00000073756e6f62,
+  0x000000006b6f6f62, 0x00000074736f6f62, 0x0000726564726f62, 0x0000676e69726f62, 0x0000776f72726f62, 0x0000000073736f62,
+  0x00006d6f74746f62, 0x000065636e756f62, 0x0000000000786f62, 0x0000000000796f62, 0x0074656b63617262, 0x0000006e69617262,
+  0x000000646e617262, 0x0000007373617262, 0x0000006576617262, 0x0000006461657262, 0x0000657a65657262, 0x0000006b63697262,
+  0x0000656764697262, 0x0000006665697262, 0x0000746867697262, 0x000000676e697262, 0x0000006b73697262, 0x696c6f63636f7262,
+  0x00006e656b6f7262, 0x0000657a6e6f7262, 0x0000006d6f6f7262, 0x00726568746f7262, 0x0000006e776f7262, 0x0000006873757262,
+  0x0000656c62627562, 0x0000007964647562, 0x0000746567647562, 0x006f6c6166667562, 0x000000646c697562, 0x00000000626c7562,
+  0x000000006b6c7562, 0x000074656c6c7562, 0x0000656c646e7562, 0x000072656b6e7562, 0x00006e6564727562, 0x0000726567727562,
+  0x0000007473727562, 0x0000000000737562, 0x7373656e69737562, 0x0000000079737562, 0x0000726574747562, 0x0000007265797562,
+  0x000000007a7a7562, 0x0065676162626163, 0x0000006e69626163, 0x000000656c626163, 0x0000737574636163, 0x0000000065676163,
+  0x00000000656b6163, 0x000000006c6c6163, 0x000000006d6c6163, 0x00006172656d6163, 0x00000000706d6163, 0x00000000006e6163,
+  0x0000006c616e6163, 0x00006c65636e6163, 0x00000079646e6163, 0x00006e6f6e6e6163, 0x000000656f6e6163, 0x00007361766e6163,
+  0x00006e6f796e6163, 0x00656c6261706163, 0x006c617469706163, 0x006e696174706163, 0x0000000000726163, 0x00006e6f62726163,
+  0x0000000064726163, 0x0000006f67726163, 0x0000746570726163, 0x0000007972726163, 0x0000000074726163, 0x0000000065736163,
+  0x0000000068736163, 0x00006f6e69736163, 0x0000656c74736163, 0x00006c6175736163, 0x0000000000746163, 0x00676f6c61746163,
+  0x0000006863746163, 0x79726f6765746163, 0x0000656c74746163, 0x0000746867756163, 0x0000006573756163, 0x006e6f6974756163,
+  0x0000000065766163, 0x00676e696c696563, 0x00007972656c6563, 0x0000746e656d6563, 0x00007375736e6563, 0x00797275746e6563,
+  0x00006c6165726563, 0x006e696174726563, 0x0000007269616863, 0x0000006b6c616863, 0x6e6f69706d616863, 0x000065676e616863,
+  0x000000736f616863, 0x0072657470616863, 0x0000656772616863, 0x0000006573616863, 0x0000000074616863, 0x0000007061656863,
+  0x0000006b63656863, 0x0000657365656863, 0x0000000066656863, 0x0000797272656863, 0x0000007473656863, 0x006e656b63696863,
+  0x0000006665696863, 0x000000646c696863, 0x0079656e6d696863, 0x00006563696f6863, 0x000065736f6f6863, 0x0063696e6f726863,
+  0x00656c6b63756863, 0x0000006b6e756863, 0x0000006e72756863, 0x0000007261676963, 0x6e6f6d616e6e6963, 0x0000656c63726963,
+  0x006e657a69746963, 0x0000000079746963, 0x0000006c69766963, 0x0000006d69616c63, 0x0000000070616c63, 0x0079666972616c63,
+  0x0000000077616c63, 0x0000000079616c63, 0x0000006e61656c63, 0x0000006b72656c63, 0x0000726576656c63, 0x0000006b63696c63,
+  0x0000746e65696c63, 0x0000006666696c63, 0x000000626d696c63, 0x000063696e696c63, 0x0000000070696c63, 0x0000006b636f6c63,
+  0x00000000676f6c63, 0x00000065736f6c63, 0x00000068746f6c63, 0x00000064756f6c63, 0x0000006e776f6c63, 0x0000000062756c63,
+  0x000000706d756c63, 0x0072657473756c63, 0x0000686374756c63, 0x0000006863616f63, 0x0000007473616f63, 0x0074756e6f636f63,
+  0x0000000065646f63, 0x0000656566666f63, 0x000000006c696f63, 0x000000006e696f63, 0x007463656c6c6f63, 0x000000726f6c6f63,
+  0x00006e6d756c6f63, 0x00656e69626d6f63, 0x00000000656d6f63, 0x0074726f666d6f63, 0x00000063696d6f63, 0x00006e6f6d6d6f63,
+  0x00796e61706d6f63, 0x00747265636e6f63, 0x00746375646e6f63, 0x006d7269666e6f63, 0x73736572676e6f63, 0x007463656e6e6f63,
+  0x72656469736e6f63, 0x006c6f72746e6f63, 0x65636e69766e6f63, 0x000000006b6f6f63, 0x000000006c6f6f63, 0x0000726570706f63,
+  0x0000000079706f63, 0x0000006c61726f63, 0x0000000065726f63, 0x000000006e726f63, 0x0074636572726f63, 0x0000000074736f63,
+  0x00006e6f74746f63, 0x0000006863756f63, 0x007972746e756f63, 0x0000656c70756f63, 0x0000657372756f63, 0x00006e6973756f63,
+  0x0000007265766f63, 0x000065746f796f63, 0x0000006b63617263, 0x0000656c64617263, 0x0000007466617263, 0x000000006d617263,
+  0x000000656e617263, 0x0000006873617263, 0x0000726574617263, 0x0000006c77617263, 0x000000797a617263, 0x0000006d61657263,
+  0x0000746964657263, 0x0000006b65657263, 0x0000000077657263, 0x0074656b63697263, 0x000000656d697263, 0x0000007073697263,
+  0x0000636974697263, 0x00000000706f7263, 0x00000073736f7263, 0x00006863756f7263, 0x00000064776f7263, 0x006c616963757263,
+  0x0000006c65757263, 0x0000657369757263, 0x00656c626d757263, 0x000068636e757263, 0x0000006873757263, 0x0000000000797263,
+  0x006c617473797263, 0x0000000065627563, 0x00657275746c7563, 0x0000000000707563, 0x6472616f62707563, 0x0073756f69727563,
+  0x00746e6572727563, 0x006e696174727563, 0x0000006576727563, 0x006e6f6968737563, 0x00006d6f74737563, 0x0000000065747563,
+  0x000000656c637963, 0x0000000000646164, 0x00006567616d6164, 0x00000000706d6164, 0x00000065636e6164, 0x00007265676e6164,
+  0x0000676e69726164, 0x0000000068736164, 0x7265746867756164, 0x000000006e776164, 0x0000000000796164, 0x000000006c616564,
+  0x0000657461626564, 0x0000736972626564, 0x0000656461636564, 0x7265626d65636564, 0x0000656469636564, 0x00656e696c636564,
+  0x657461726f636564, 0x6573616572636564, 0x0000000072656564, 0x0065736e65666564, 0x0000656e69666564, 0x0000000079666564,
+  0x0000656572676564, 0x00000079616c6564, 0x00726576696c6564, 0x0000646e616d6564, 0x00006573696d6564, 0x00006c61696e6564,
+  0x00747369746e6564, 0x00000000796e6564, 0x0000747261706564, 0x0000646e65706564, 0x007469736f706564, 0x0000006874706564,
+  0x0000797475706564, 0x0000657669726564, 0x6562697263736564, 0x0000747265736564, 0x00006e6769736564, 0x000000006b736564,
+  0x0072696170736564, 0x00796f7274736564, 0x00006c6961746564, 0x0000746365746564, 0x00706f6c65766564, 0x0000656369766564,
+  0x000065746f766564, 0x006d617267616964, 0x000000006c616964, 0x00646e6f6d616964, 0x0000007972616964, 0x0000000065636964,
+  0x00006c6573656964, 0x0000000074656964, 0x0000726566666964, 0x006c617469676964, 0x007974696e676964, 0x00616d6d656c6964,
+  0x000072656e6e6964, 0x727561736f6e6964, 0x0000746365726964, 0x0000000074726964, 0x6565726761736964, 0x7265766f63736964,
+  0x0065736165736964, 0x0000000068736964, 0x007373696d736964, 0x726564726f736964, 0x0079616c70736964, 0x65636e6174736964,
+  0x0000747265766964, 0x0000656469766964, 0x006563726f766964, 0x000000797a7a6964, 0x0000726f74636f64, 0x746e656d75636f64,
+  0x0000000000676f64, 0x000000006c6c6f64, 0x006e6968706c6f64, 0x00006e69616d6f64, 0x00006574616e6f64, 0x000079656b6e6f64,
+  0x000000726f6e6f64, 0x00000000726f6f64, 0x0000000065736f64, 0x0000656c62756f64, 0x0000000065766f64, 0x0000007466617264,
+  0x00006e6f67617264, 0x000000616d617264, 0x0063697473617264, 0x0000000077617264, 0x0000006d61657264, 0x0000007373657264,
+  0x0000007466697264, 0x0000006c6c697264, 0x0000006b6e697264, 0x0000000070697264, 0x0000006576697264, 0x00000000706f7264,
+  0x000000006d757264, 0x0000000000797264, 0x000000006b637564, 0x00000000626d7564, 0x00000000656e7564, 0x0000676e69727564,
+  0x0000000074737564, 0x0000006863747564, 0x0000000079747564, 0x0000006672617764, 0x0063696d616e7964, 0x0000007265676165,
+  0x000000656c676165, 0x000000796c726165, 0x000000006e726165, 0x0000006874726165, 0x0000796c69736165, 0x0000000074736165,
+  0x0000000079736165, 0x000000006f686365, 0x0079676f6c6f6365, 0x00796d6f6e6f6365, 0x0000000065676465, 0x0000000074696465,
+  0x0065746163756465, 0x000074726f666665, 0x0000000000676765, 0x0000007468676965, 0x0000726568746965, 0x000000776f626c65,
+  0x0000007265646c65, 0x6369727463656c65, 0x00746e6167656c65, 0x00746e656d656c65, 0x746e616870656c65, 0x726f746176656c65,
+  0x0000006574696c65, 0x0000000065736c65, 0x00006b7261626d65, 0x000079646f626d65, 0x0065636172626d65, 0x0000656772656d65,
+  0x006e6f69746f6d65, 0x0000796f6c706d65, 0x007265776f706d65, 0x0000007974706d65, 0x0000656c62616e65, 0x0000007463616e65,
+  0x0000000000646e65, 0x007373656c646e65, 0x006573726f646e65, 0x000000796d656e65, 0x0000796772656e65, 0x006563726f666e65,
+  0x0000656761676e65, 0x0000656e69676e65, 0x0065636e61686e65, 0x000000796f6a6e65, 0x00007473696c6e65, 0x00006867756f6e65,
+  0x0000686369726e65, 0x00006c6c6f726e65, 0x0000657275736e65, 0x0000007265746e65, 0x0000657269746e65, 0x0000007972746e65,
+  0x65706f6c65766e65, 0x0065646f73697065, 0x0000006c61757165, 0x0000007069757165, 0x0000000000617265, 0x0000006573617265,
+  0x00000065646f7265, 0x006e6f69736f7265, 0x000000726f727265, 0x0000007470757265, 0x0000657061637365, 0x0000007961737365,
+  0x0065636e65737365, 0x0000657461747365, 0x006c616e72657465, 0x0000736369687465, 0x65636e6564697665, 0x000000006c697665,
+  0x000000656b6f7665, 0x000065766c6f7665, 0x0000007463617865, 0x00656c706d617865, 0x0000737365637865, 0x65676e6168637865,
+  0x0000657469637865, 0x006564756c637865, 0x0000657375637865, 0x0065747563657865, 0x6573696372657865, 0x0074737561687865,
+  0x0074696269687865, 0x000000656c697865, 0x0000007473697865, 0x0000000074697865, 0x00006369746f7865, 0x0000646e61707865,
+  0x0000746365707865, 0x0000657269707865, 0x006e69616c707865, 0x000065736f707865, 0x0073736572707865, 0x0000646e65747865,
+  0x0000006172747865, 0x0000000000657965, 0x00776f7262657965, 0x0000636972626166, 0x0000000065636166, 0x0079746c75636166,
+  0x0000000065646166, 0x000000746e696166, 0x0000006874696166, 0x000000006c6c6166, 0x00000065736c6166, 0x00000000656d6166,
+  0x0000796c696d6166, 0x000073756f6d6166, 0x00000000006e6166, 0x00000079636e6166, 0x00797361746e6166, 0x000000006d726166,
+  0x006e6f6968736166, 0x0000000000746166, 0x0000006c61746166, 0x0000726568746166, 0x0065756769746166, 0x000000746c756166,
+  0x657469726f766166, 0x0065727574616566, 0x7972617572626566, 0x006c617265646566, 0x0000000000656566, 0x0000000064656566,
+  0x000000006c656566, 0x0000656c616d6566, 0x00000065636e6566, 0x6c61766974736566, 0x0000006863746566, 0x0000007265766566,
+  0x0000000000776566, 0x0000007265626966, 0x006e6f6974636966, 0x000000646c656966, 0x0000657275676966, 0x00000000656c6966,
+  0x000000006d6c6966, 0x00007265746c6966, 0x0000006c616e6966, 0x00000000646e6966, 0x00000000656e6966, 0x00007265676e6966,
+  0x00006873696e6966, 0x0000000065726966, 0x000000006d726966, 0x0000007473726966, 0x00006c6163736966, 0x0000000068736966,
+  0x0000000000746966, 0x007373656e746966, 0x0000000000786966, 0x0000000067616c66, 0x000000656d616c66, 0x0000006873616c66,
+  0x0000000074616c66, 0x0000726f76616c66, 0x0000000065656c66, 0x0000746867696c66, 0x0000000070696c66, 0x00000074616f6c66,
+  0x0000006b636f6c66, 0x000000726f6f6c66, 0x00007265776f6c66, 0x0000006469756c66, 0x0000006873756c66, 0x0000000000796c66,
+  0x000000006d616f66, 0x0000007375636f66, 0x0000000000676f66, 0x000000006c696f66, 0x00000000646c6f66, 0x0000776f6c6c6f66,
+  0x00000000646f6f66, 0x00000000746f6f66, 0x0000006563726f66, 0x0000747365726f66, 0x0000746567726f66, 0x000000006b726f66,
+  0x00656e7574726f66, 0x0000006d75726f66, 0x0064726177726f66, 0x00006c6973736f66, 0x0000726574736f66, 0x000000646e756f66,
+  0x0000000000786f66, 0x00656c6967617266, 0x000000656d617266, 0x746e657571657266, 0x0000006873657266, 0x0000646e65697266,
+  0x000065676e697266, 0x00000000676f7266, 0x000000746e6f7266, 0x00000074736f7266, 0x0000006e776f7266, 0x00006e657a6f7266,
+  0x0000007469757266, 0x000000006c657566, 0x00000000006e7566, 0x000000796e6e7566, 0x006563616e727566, 0x0000000079727566,
+  0x0000657275747566, 0x0000746567646167, 0x000000006e696167, 0x00007978616c6167, 0x007972656c6c6167, 0x00000000656d6167,
+  0x0000000000706167, 0x0000656761726167, 0x0065676162726167, 0x00006e6564726167, 0x000063696c726167, 0x00746e656d726167,
+  0x0000000000736167, 0x0000000070736167, 0x0000000065746167, 0x0000726568746167, 0x0000006567756167, 0x00000000657a6167,
+  0x006c6172656e6567, 0x00007375696e6567, 0x00000065726e6567, 0x0000656c746e6567, 0x00656e69756e6567, 0x0065727574736567,
+  0x00000074736f6867, 0x000000746e616967, 0x0000000074666967, 0x0000656c67676967, 0x00007265676e6967, 0x0065666661726967,
+  0x000000006c726967, 0x0000000065766967, 0x0000000064616c67, 0x000065636e616c67, 0x0000006572616c67, 0x0000007373616c67,
+  0x0000006564696c67, 0x006573706d696c67, 0x00000065626f6c67, 0x0000006d6f6f6c67, 0x00000079726f6c67, 0x00000065766f6c67,
+  0x00000000776f6c67, 0x0000000065756c67, 0x0000000074616f67, 0x0073736564646f67, 0x00000000646c6f67, 0x00000000646f6f67,
+  0x00000065736f6f67, 0x00616c6c69726f67, 0x00006c6570736f67, 0x0000706973736f67, 0x00006e7265766f67, 0x000000006e776f67,
+  0x0000000062617267, 0x0000006563617267, 0x0000006e69617267, 0x000000746e617267, 0x0000006570617267, 0x0000007373617267,
+  0x0079746976617267, 0x0000007461657267, 0x0000006e65657267, 0x0000000064697267, 0x0000006665697267, 0x0000000074697267,
+  0x00797265636f7267, 0x00000070756f7267, 0x00000000776f7267, 0x000000746e757267, 0x0000006472617567, 0x0000007373657567,
+  0x0000006564697567, 0x000000746c697567, 0x0000726174697567, 0x00000000006e7567, 0x00000000006d7967, 0x0000007469626168,
+  0x0000000072696168, 0x00000000666c6168, 0x000072656d6d6168, 0x00726574736d6168, 0x00000000646e6168, 0x0000007970706168,
+  0x0000726f62726168, 0x0000000064726168, 0x0000006873726168, 0x0074736576726168, 0x0000000000746168, 0x0000000065766168,
+  0x000000006b776168, 0x00006472617a6168, 0x0000000064616568, 0x000068746c616568, 0x0000007472616568, 0x0000007976616568,
+  0x676f686567646568, 0x0000746867696568, 0x0000006f6c6c6568, 0x000074656d6c6568, 0x00000000706c6568, 0x00000000006e6568,
+  0x000000006f726568, 0x00006e6564646968, 0x0000000068676968, 0x000000006c6c6968, 0x00000000746e6968, 0x0000000000706968,
+  0x0000000065726968, 0x0079726f74736968, 0x0000007962626f68, 0x000079656b636f68, 0x00000000646c6f68, 0x00000000656c6f68,
+  0x00796164696c6f68, 0x0000776f6c6c6f68, 0x00000000656d6f68, 0x00000079656e6f68, 0x00000000646f6f68, 0x0000000065706f68,
+  0x000000006e726f68, 0x0000726f72726f68, 0x0000006573726f68, 0x6c61746970736f68, 0x0000000074736f68, 0x0000006c65746f68,
+  0x0000000072756f68, 0x0000007265766f68, 0x0000000000627568, 0x0000000065677568, 0x0000006e616d7568, 0x0000656c626d7568,
+  0x000000726f6d7568, 0x00646572646e7568, 0x00007972676e7568, 0x00000000746e7568, 0x0000656c64727568, 0x0000007972727568,
+  0x0000000074727568, 0x00646e6162737568, 0x0000646972627968, 0x0000000000656369, 0x000000006e6f6369, 0x0000000061656469,
+  0x796669746e656469, 0x00000000656c6469, 0x000065726f6e6769, 0x00000000006c6c69, 0x006c6167656c6c69, 0x007373656e6c6c69,
+  0x0000006567616d69, 0x0065746174696d69, 0x0065736e656d6d69, 0x0000656e756d6d69, 0x0000746361706d69, 0x000065736f706d69,
+  0x0065766f72706d69, 0x0065736c75706d69, 0x0000000068636e69, 0x006564756c636e69, 0x0000656d6f636e69, 0x6573616572636e69,
+  0x0000007865646e69, 0x6574616369646e69, 0x0000726f6f646e69, 0x7972747375646e69, 0x0000746e61666e69, 0x007463696c666e69,
+  0x00006d726f666e69, 0x0000656c61686e69, 0x0074697265686e69, 0x006c616974696e69, 0x00007463656a6e69, 0x00007972756a6e69,
+  0x00006574616d6e69, 0x00000072656e6e69, 0x746e65636f6e6e69, 0x0000007475706e69, 0x0079726975716e69, 0x0000656e61736e69,
+  0x0000746365736e69, 0x0000656469736e69, 0x0065726970736e69, 0x006c6c6174736e69, 0x0000746361746e69, 0x7473657265746e69,
+  0x000000006f746e69, 0x0000747365766e69, 0x0000657469766e69, 0x0065766c6f766e69, 0x000000006e6f7269, 0x0000646e616c7369,
+  0x006574616c6f7369, 0x0000006575737369, 0x000000006d657469, 0x00000079726f7669, 0x000074656b63616a, 0x000072617567616a,
+  0x000000000072616a, 0x000000007a7a616a, 0x0073756f6c61656a, 0x000000736e61656a, 0x000000796c6c656a, 0x0000006c6577656a,
+  0x0000000000626f6a, 0x000000006e696f6a, 0x00000000656b6f6a, 0x0079656e72756f6a, 0x0000000000796f6a, 0x000000656764756a,
+  0x000000656369756a, 0x00000000706d756a, 0x0000656c676e756a, 0x0000726f696e756a, 0x000000006b6e756a, 0x000000007473756a,
+  0x6f6f7261676e616b, 0x000000006e65656b, 0x000000007065656b, 0x007075686374656b, 0x000000000079656b, 0x000000006b63696b,
+  0x000000000064696b, 0x000079656e64696b, 0x00000000646e696b, 0x006d6f64676e696b, 0x000000007373696b, 0x000000000074696b,
+  0x006e65686374696b, 0x000000006574696b, 0x00006e657474696b, 0x000000006977696b, 0x0000000065656e6b, 0x0000006566696e6b,
+  0x0000006b636f6e6b, 0x00000000776f6e6b, 0x000000000062616c, 0x0000006c6562616c, 0x000000726f62616c, 0x000072656464616c,
+  0x000000007964616c, 0x00000000656b616c, 0x00000000706d616c, 0x65676175676e616c, 0x0000706f7470616c, 0x000000656772616c,
+  0x000000726574616c, 0x0000006e6974616c, 0x000000686775616c, 0x007972646e75616c, 0x000000006176616c, 0x000000000077616c,
+  0x000000006e77616c, 0x007469757377616c, 0x000000726579616c, 0x00000000797a616c, 0x000072656461656c, 0x000000006661656c,
+  0x0000006e7261656c, 0x000000657661656c, 0x006572757463656c, 0x000000007466656c, 0x000000000067656c, 0x0000006c6167656c,
+  0x0000646e6567656c, 0x006572757369656c, 0x0000006e6f6d656c, 0x00000000646e656c, 0x00006874676e656c, 0x00000000736e656c,
+  0x00647261706f656c, 0x00006e6f7373656c, 0x000072657474656c, 0x0000006c6576656c, 0x000000007261696c, 0x007974726562696c,
+  0x007972617262696c, 0x0065736e6563696c, 0x000000006566696c, 0x000000007466696c, 0x000000746867696c, 0x00000000656b696c,
+  0x00000000626d696c, 0x00000074696d696c, 0x000000006b6e696c, 0x000000006e6f696c, 0x000064697571696c, 0x000000007473696c,
+  0x0000656c7474696c, 0x000000006576696c, 0x00006472617a696c, 0x0000000064616f6c, 0x000000006e616f6c, 0x0072657473626f6c,
+  0x0000006c61636f6c, 0x000000006b636f6c, 0x0000006369676f6c, 0x0000796c656e6f6c, 0x00000000676e6f6c, 0x00000000706f6f6c,
+  0x0079726574746f6c, 0x0000000064756f6c, 0x000065676e756f6c, 0x0000000065766f6c, 0x0000006c61796f6c, 0x000000796b63756c,
+  0x006567616767756c, 0x00007265626d756c, 0x00000072616e756c, 0x00000068636e756c, 0x000079727578756c, 0x000073636972796c,
+  0x00656e696863616d, 0x000000000064616d, 0x000000636967616d, 0x000074656e67616d, 0x000000006469616d, 0x000000006c69616d,
+  0x000000006e69616d, 0x000000726f6a616d, 0x00000000656b616d, 0x00006c616d6d616d, 0x00000000006e616d, 0x00006567616e616d,
+  0x00657461646e616d, 0x0000006f676e616d, 0x006e6f69736e616d, 0x00006c61756e616d, 0x000000656c70616d, 0x0000656c6272616d,
+  0x000000686372616d, 0x00006e696772616d, 0x0000656e6972616d, 0x000074656b72616d, 0x656761697272616d, 0x000000006b73616d,
+  0x000000007373616d, 0x000072657473616d, 0x000000686374616d, 0x6c6169726574616d, 0x000000006874616d, 0x000078697274616d,
+  0x000072657474616d, 0x006d756d6978616d, 0x00000000657a616d, 0x0000776f6461656d, 0x000000006e61656d, 0x006572757361656d,
+  0x000000007461656d, 0x63696e616863656d, 0x0000006c6164656d, 0x000000616964656d, 0x000079646f6c656d, 0x00000000746c656d,
+  0x00007265626d656d, 0x000079726f6d656d, 0x006e6f69746e656d, 0x00000000756e656d, 0x000000796372656d, 0x000000656772656d,
+  0x000000746972656d, 0x000000797272656d, 0x000000006873656d, 0x006567617373656d, 0x0000006c6174656d, 0x0000646f6874656d,
+  0x0000656c6464696d, 0x746867696e64696d, 0x000000006b6c696d, 0x006e6f696c6c696d, 0x00000063696d696d, 0x00000000646e696d,
+  0x006d756d696e696d, 0x000000726f6e696d, 0x00006574756e696d, 0x00656c636172696d, 0x0000726f7272696d, 0x000079726573696d,
+  0x000000007373696d, 0x00656b617473696d, 0x000000000078696d, 0x000000646578696d, 0x006572757478696d, 0x0000656c69626f6d,
+  0x0000006c65646f6d, 0x0000796669646f6d, 0x00000000006d6f6d, 0x0000746e656d6f6d, 0x00726f74696e6f6d, 0x000079656b6e6f6d,
+  0x00726574736e6f6d, 0x00000068746e6f6d, 0x000000006e6f6f6d, 0x0000006c61726f6d, 0x0000000065726f6d, 0x00676e696e726f6d,
+  0x6f74697571736f6d, 0x0000726568746f6d, 0x00006e6f69746f6d, 0x000000726f746f6d, 0x6e6961746e756f6d, 0x0000006573756f6d,
+  0x0000000065766f6d, 0x0000006569766f6d, 0x000000006863756d, 0x00006e696666756d, 0x00000000656c756d, 0x796c7069746c756d,
+  0x0000656c6373756d, 0x00006d756573756d, 0x6d6f6f726873756d, 0x000000636973756d, 0x000000007473756d, 0x00006c617574756d,
+  0x0000666c6573796d, 0x007972657473796d, 0x000000006874796d, 0x000000657669616e, 0x00000000656d616e, 0x00006e696b70616e,
+  0x0000776f7272616e, 0x000000797473616e, 0x00006e6f6974616e, 0x000065727574616e, 0x000000007261656e, 0x000000006b63656e,
+  0x000000006465656e, 0x657669746167656e, 0x007463656c67656e, 0x007265687469656e, 0x000077656870656e, 0x000000657672656e,
+  0x000000007473656e, 0x000000000074656e, 0x006b726f7774656e, 0x006c61727475656e, 0x000000726576656e, 0x000000007377656e,
+  0x000000007478656e, 0x000000006563696e, 0x000000746867696e, 0x000000656c626f6e, 0x0000006573696f6e, 0x0065656e696d6f6e,
+  0x0000656c646f6f6e, 0x00006c616d726f6e, 0x0000006874726f6e, 0x0000000065736f6e, 0x00656c6261746f6e, 0x0000000065746f6e,
+  0x00676e6968746f6e, 0x0000656369746f6e, 0x0000006c65766f6e, 0x0000000000776f6e, 0x007261656c63756e, 0x00007265626d756e,
+  0x000000657372756e, 0x000000000074756e, 0x00000000006b616f, 0x000000007965626f, 0x00007463656a626f, 0x00006567696c626f,
+  0x006572756373626f, 0x006576726573626f, 0x00006e696174626f, 0x0073756f6976626f, 0x000000727563636f, 0x0000006e6165636f,
+  0x007265626f74636f, 0x00000000726f646f, 0x000000000066666f, 0x000000726566666f, 0x000065636966666f, 0x0000006e6574666f,
+  0x00000000006c696f, 0x0000000079616b6f, 0x0000000000646c6f, 0x0000006576696c6f, 0x006369706d796c6f, 0x0000000074696d6f,
+  0x0000000065636e6f, 0x0000000000656e6f, 0x0000006e6f696e6f, 0x0000656e696c6e6f, 0x00000000796c6e6f, 0x000000006e65706f,
+  0x000000617265706f, 0x006e6f696e69706f, 0x000065736f70706f, 0x00006e6f6974706f, 0x000065676e61726f, 0x000000746962726f,
+  0x006472616863726f, 0x000000726564726f, 0x7972616e6964726f, 0x0000006e6167726f, 0x0000746e6569726f, 0x6c616e696769726f,
+  0x00006e616870726f, 0x006863697274736f, 0x000000726568746f, 0x00726f6f6474756f, 0x000000726574756f, 0x000074757074756f,
+  0x006564697374756f, 0x000000006c61766f, 0x000000006e65766f, 0x000000007265766f, 0x00000000006e776f, 0x00000072656e776f,
+  0x00006e656779786f, 0x000072657473796f, 0x000000656e6f7a6f, 0x0000000074636170, 0x0000656c64646170, 0x0000000065676170,
+  0x0000000072696170, 0x00006563616c6170, 0x000000006d6c6170, 0x00000061646e6170, 0x0000006c656e6170, 0x00000063696e6170,
+  0x00726568746e6170, 0x0000007265706170, 0x0000656461726170, 0x0000746e65726170, 0x000000006b726170, 0x0000746f72726170,
+  0x0000007974726170, 0x0000000073736170, 0x0000006863746170, 0x0000000068746170, 0x00746e6569746170, 0x00006c6f72746170,
+  0x006e726574746170, 0x0000006573756170, 0x0000000065766170, 0x00746e656d796170, 0x0000006563616570, 0x000074756e616570,
+  0x0000000072616570, 0x00746e6173616570, 0x006e6163696c6570, 0x00000000006e6570, 0x0079746c616e6570, 0x00006c69636e6570,
+  0x0000656c706f6570, 0x0000726570706570, 0x0074636566726570, 0x000074696d726570, 0x00006e6f73726570, 0x0000000000746570,
+  0x000000656e6f6870, 0x0000006f746f6870, 0x0000657361726870, 0x6c61636973796870, 0x0000006f6e616970, 0x000063696e636970,
+  0x0065727574636970, 0x0000006563656970, 0x0000000000676970, 0x00006e6f65676970, 0x000000006c6c6970, 0x000000746f6c6970,
+  0x000000006b6e6970, 0x007265656e6f6970, 0x0000000065706970, 0x00006c6f74736970, 0x0000006863746970, 0x000000617a7a6970,
+  0x0000006563616c70, 0x000074656e616c70, 0x0063697473616c70, 0x0000006574616c70, 0x0000000079616c70, 0x0000657361656c70,
+  0x0000656764656c70, 0x0000006b63756c70, 0x0000000067756c70, 0x000065676e756c70, 0x000000006d656f70, 0x0000000074656f70,
+  0x000000746e696f70, 0x00000072616c6f70, 0x00000000656c6f70, 0x00006563696c6f70, 0x00000000646e6f70, 0x00000000796e6f70,
+  0x000000006c6f6f70, 0x0072616c75706f70, 0x006e6f6974726f70, 0x6e6f697469736f70, 0x656c626973736f70, 0x0000000074736f70,
+  0x00006f7461746f70, 0x0079726574746f70, 0x0079747265766f70, 0x0000726564776f70, 0x0000007265776f70, 0x6563697463617270,
+  0x0000657369617270, 0x0074636964657270, 0x0000726566657270, 0x0065726170657270, 0x00746e6573657270, 0x0000797474657270,
+  0x00746e6576657270, 0x0000006563697270, 0x0000006564697270, 0x007972616d697270, 0x000000746e697270, 0x797469726f697270,
+  0x00006e6f73697270, 0x0065746176697270, 0x000000657a697270, 0x006d656c626f7270, 0x00737365636f7270, 0x00656375646f7270,
+  0x00007469666f7270, 0x006d6172676f7270, 0x007463656a6f7270, 0x0065746f6d6f7270, 0x000000666f6f7270, 0x79747265706f7270,
+  0x00726570736f7270, 0x00746365746f7270, 0x00000064756f7270, 0x00656469766f7270, 0x000063696c627570, 0x00676e6964647570,
+  0x000000006c6c7570, 0x00000000706c7570, 0x00000065736c7570, 0x006e696b706d7570, 0x00000068636e7570, 0x0000006c69707570,
+  0x0000007970707570, 0x6573616863727570, 0x0000797469727570, 0x0065736f70727570, 0x0000006573727570, 0x0000000068737570,
+  0x0000000000747570, 0x0000656c7a7a7570, 0x0064696d61727970, 0x007974696c617571, 0x006d75746e617571, 0x0072657472617571,
+  0x6e6f697473657571, 0x0000006b63697571, 0x0000000074697571, 0x000000007a697571, 0x00000065746f7571, 0x0000746962626172,
+  0x006e6f6f63636172, 0x0000000065636172, 0x000000006b636172, 0x0000007261646172, 0x0000006f69646172, 0x000000006c696172,
+  0x000000006e696172, 0x0000006573696172, 0x000000796c6c6172, 0x00000000706d6172, 0x00000068636e6172, 0x00006d6f646e6172,
+  0x00000065676e6172, 0x0000006469706172, 0x0000000065726172, 0x0000000065746172, 0x0000726568746172, 0x0000006e65766172,
+  0x0000000000776172, 0x000000726f7a6172, 0x0000007964616572, 0x000000006c616572, 0x00006e6f73616572, 0x0000006c65626572,
+  0x00646c6975626572, 0x00006c6c61636572, 0x0065766965636572, 0x0000657069636572, 0x000064726f636572, 0x00656c6379636572,
+  0x0000656375646572, 0x007463656c666572, 0x00006d726f666572, 0x0000657375666572, 0x00006e6f69676572, 0x0000746572676572,
+  0x0072616c75676572, 0x00007463656a6572, 0x00000078616c6572, 0x00657361656c6572, 0x00006665696c6572, 0x00000000796c6572,
+  0x00006e69616d6572, 0x7265626d656d6572, 0x0000646e696d6572, 0x000065766f6d6572, 0x00007265646e6572, 0x00000077656e6572,
+  0x00000000746e6572, 0x00006e65706f6572, 0x0000726961706572, 0x0000746165706572, 0x006563616c706572, 0x000074726f706572,
+  0x0065726975716572, 0x0000657563736572, 0x656c626d65736572, 0x0000747369736572, 0x656372756f736572, 0x65736e6f70736572,
+  0x0000746c75736572, 0x0000657269746572, 0x0074616572746572, 0x00006e7275746572, 0x006e6f696e756572, 0x00006c6165766572,
+  0x0000776569766572, 0x0000647261776572, 0x00006d6874796872, 0x0000000000626972, 0x00006e6f62626972, 0x0000000065636972,
+  0x0000000068636972, 0x0000000065646972, 0x0000006567646972, 0x000000656c666972, 0x0000007468676972, 0x0000006469676972,
+  0x00000000676e6972, 0x00000000746f6972, 0x0000656c70706972, 0x000000006b736972, 0x00006c6175746972, 0x0000006c61766972,
+  0x0000007265766972, 0x0000000064616f72, 0x0000007473616f72, 0x000000746f626f72, 0x0000747375626f72, 0x000074656b636f72,
+  0x0065636e616d6f72, 0x00000000666f6f72, 0x000065696b6f6f72, 0x000000006d6f6f72, 0x0000000065736f72, 0x0000657461746f72,
+  0x0000006867756f72, 0x000000646e756f72, 0x0000006574756f72, 0x0000006c61796f72, 0x0000726562627572, 0x0000000065647572,
+  0x0000000000677572, 0x00000000656c7572, 0x00000000006e7572, 0x00007961776e7572, 0x0000006c61727572, 0x0000000000646173,
+  0x0000656c64646173, 0x007373656e646173, 0x0000000065666173, 0x000000006c696173, 0x00000064616c6173, 0x00006e6f6d6c6173,
+  0x0000006e6f6c6173, 0x00000000746c6173, 0x00006574756c6173, 0x00000000656d6173, 0x0000656c706d6173, 0x00000000646e6173,
+  0x0079667369746173, 0x006968736f746173, 0x0000006563756173, 0x0065676173756173, 0x0000000065766173, 0x0000000000796173,
+  0x000000656c616373, 0x000000006e616373, 0x0000006572616373, 0x0072657474616373, 0x000000656e656373, 0x0000656d65686373,
+  0x00006c6f6f686373, 0x0065636e65696373, 0x73726f7373696373, 0x6e6f6970726f6373, 0x00000074756f6373, 0x0000007061726373,
+  0x00006e6565726373, 0x0000747069726373, 0x0000006275726373, 0x0000000000616573, 0x0000686372616573, 0x00006e6f73616573,
+  0x0000000074616573, 0x0000646e6f636573, 0x0000746572636573, 0x006e6f6974636573, 0x7974697275636573, 0x0000000064656573,
+  0x000000006b656573, 0x00746e656d676573, 0x00007463656c6573, 0x000000006c6c6573, 0x0072616e696d6573, 0x0000726f696e6573,
+  0x00000065736e6573, 0x65636e65746e6573, 0x0000736569726573, 0x0065636976726573, 0x006e6f6973736573, 0x0000656c74746573,
+  0x0000007075746573, 0x0000006e65766573, 0x0000776f64616873, 0x0000007466616873, 0x00776f6c6c616873, 0x0000006572616873,
+  0x0000000064656873, 0x0000006c6c656873, 0x0066666972656873, 0x0000646c65696873, 0x0000007466696873, 0x000000656e696873,
+  0x0000000070696873, 0x0000726576696873, 0x0000006b636f6873, 0x00000000656f6873, 0x000000746f6f6873, 0x00000000706f6873,
+  0x00000074726f6873, 0x7265646c756f6873, 0x00000065766f6873, 0x0000706d69726873, 0x0000006775726873, 0x00656c6666756873,
+  0x0000000000796873, 0x00676e696c626973, 0x000000006b636973, 0x0000000065646973, 0x0000006567656973, 0x0000007468676973,
+  0x000000006e676973, 0x0000746e656c6973, 0x000000006b6c6973, 0x000000796c6c6973, 0x00007265766c6973, 0x0072616c696d6973,
+  0x0000656c706d6973, 0x00000065636e6973, 0x00000000676e6973, 0x0000006e65726973, 0x0000726574736973, 0x0065746175746973,
+  0x0000000000786973, 0x00000000657a6973, 0x0000006574616b73, 0x0000686374656b73, 0x0000000000696b73, 0x0000006c6c696b73,
+  0x000000006e696b73, 0x0000007472696b73, 0x0000006c6c756b73, 0x0000000062616c73, 0x000000006d616c73, 0x0000007065656c73,
+  0x007265646e656c73, 0x0000006563696c73, 0x0000006564696c73, 0x0000746867696c73, 0x000000006d696c73, 0x00006e61676f6c73,
+  0x00000000746f6c73, 0x00000000776f6c73, 0x0000006873756c73, 0x0000006c6c616d73, 0x0000007472616d73, 0x000000656c696d73,
+  0x000000656b6f6d73, 0x000068746f6f6d73, 0x0000006b63616e73, 0x000000656b616e73, 0x0000000070616e73, 0x0000006666696e73,
+  0x00000000776f6e73, 0x0000000070616f73, 0x0000726563636f73, 0x00006c6169636f73, 0x000000006b636f73, 0x0000000061646f73,
+  0x0000000074666f73, 0x00000072616c6f73, 0x00726569646c6f73, 0x00000064696c6f73, 0x6e6f6974756c6f73, 0x00000065766c6f73,
+  0x00656e6f656d6f73, 0x00000000676e6f73, 0x000000006e6f6f73, 0x0000007972726f73, 0x0000000074726f73, 0x000000006c756f73,
+  0x000000646e756f73, 0x0000000070756f73, 0x0000656372756f73, 0x0000006874756f73, 0x0000006563617073, 0x0000006572617073,
+  0x006c616974617073, 0x0000006e77617073, 0x0000006b61657073, 0x006c616963657073, 0x0000006465657073, 0x0000006c6c657073,
+  0x000000646e657073, 0x0000657265687073, 0x0000006563697073, 0x0000726564697073, 0x000000656b697073, 0x000000006e697073,
+  0x0000746972697073, 0x00000074696c7073, 0x0000006c696f7073, 0x00726f736e6f7073, 0x0000006e6f6f7073, 0x00000074726f7073,
+  0x00000000746f7073, 0x0000007961727073, 0x0000646165727073, 0x0000676e69727073, 0x0000000000797073, 0x0000657261757173,
+  0x00657a6565757173, 0x6c65727269757173, 0x0000656c62617473, 0x006d756964617473, 0x0000006666617473, 0x0000006567617473,
+  0x0000737269617473, 0x000000706d617473, 0x000000646e617473, 0x0000007472617473, 0x0000006574617473, 0x0000000079617473,
+  0x0000006b61657473, 0x0000006c65657473, 0x000000006d657473, 0x0000000070657473, 0x00006f6572657473, 0x0000006b63697473,
+  0x0000006c6c697473, 0x000000676e697473, 0x0000006b636f7473, 0x006863616d6f7473, 0x000000656e6f7473, 0x0000006c6f6f7473,
+  0x00000079726f7473, 0x00000065766f7473, 0x7967657461727473, 0x0000746565727473, 0x0000656b69727473, 0x0000676e6f727473,
+  0x656c676775727473, 0x00746e6564757473, 0x0000006666757473, 0x00656c626d757473, 0x000000656c797473, 0x007463656a627573,
+  0x000074696d627573, 0x0000796177627573, 0x0073736563637573, 0x0000000068637573, 0x00006e6564647573, 0x0000726566667573,
+  0x0000007261677573, 0x0074736567677573, 0x0000000074697573, 0x000072656d6d7573, 0x00000000006e7573, 0x000000796e6e7573,
+  0x00007465736e7573, 0x0000007265707573, 0x0000796c70707573, 0x00656d6572707573, 0x0000000065727573, 0x0065636166727573,
+  0x0000006567727573, 0x6573697270727573, 0x646e756f72727573, 0x0000796576727573, 0x0074636570737573, 0x006e696174737573,
+  0x00776f6c6c617773, 0x000000706d617773, 0x0000000070617773, 0x0000006d72617773, 0x0000007261657773, 0x0000007465657773,
+  0x0000007466697773, 0x000000006d697773, 0x000000676e697773, 0x0000686374697773, 0x00000064726f7773, 0x00006c6f626d7973,
+  0x006d6f74706d7973, 0x0000007075727973, 0x00006d6574737973, 0x000000656c626174, 0x0000656c6b636174, 0x0000000000676174,
+  0x000000006c696174, 0x0000746e656c6174, 0x000000006b6c6174, 0x000000006b6e6174, 0x0000000065706174, 0x0000746567726174,
+  0x000000006b736174, 0x0000006574736174, 0x00006f6f74746174, 0x0000000069786174, 0x0000006863616574, 0x000000006d616574,
+  0x000000006c6c6574, 0x00000000006e6574, 0x0000746e616e6574, 0x000073696e6e6574, 0x00000000746e6574, 0x000000006d726574,
+  0x0000000074736574, 0x0000000074786574, 0x0000006b6e616874, 0x0000000074616874, 0x000000656d656874, 0x000000006e656874,
+  0x000079726f656874, 0x0000006572656874, 0x0000000079656874, 0x000000676e696874, 0x0000000073696874, 0x00746867756f6874,
+  0x0000006565726874, 0x0000657669726874, 0x000000776f726874, 0x000000626d756874, 0x007265646e756874, 0x000074656b636974,
+  0x0000000065646974, 0x0000007265676974, 0x00000000746c6974, 0x00007265626d6974, 0x00000000656d6974, 0x00000000796e6974,
+  0x0000000000706974, 0x0000006465726974, 0x0000657573736974, 0x000000656c746974, 0x0000007473616f74, 0x006f636361626f74,
+  0x0000007961646f74, 0x0072656c64646f74, 0x0000000000656f74, 0x7265687465676f74, 0x000074656c696f74, 0x0000006e656b6f74,
+  0x00006f74616d6f74, 0x776f72726f6d6f74, 0x00000000656e6f74, 0x00006575676e6f74, 0x00746867696e6f74, 0x000000006c6f6f74,
+  0x00000068746f6f74, 0x0000000000706f74, 0x0000006369706f74, 0x0000656c70706f74, 0x0000006863726f74, 0x006f64616e726f74,
+  0x6573696f74726f74, 0x0000000073736f74, 0x0000006c61746f74, 0x0074736972756f74, 0x0000647261776f74, 0x0000007265776f74,
+  0x000000006e776f74, 0x0000000000796f74, 0x0000006b63617274, 0x0000006564617274, 0x0063696666617274, 0x0000636967617274,
+  0x0000006e69617274, 0x726566736e617274, 0x0000000070617274, 0x0000006873617274, 0x00006c6576617274, 0x0000000079617274,
+  0x0000007461657274, 0x0000000065657274, 0x000000646e657274, 0x0000006c61697274, 0x0000006562697274, 0x0000006b63697274,
+  0x0072656767697274, 0x000000006d697274, 0x0000000070697274, 0x00007968706f7274, 0x00656c62756f7274, 0x0000006b63757274,
+  0x0000000065757274, 0x000000796c757274, 0x007465706d757274, 0x0000007473757274, 0x0000006874757274, 0x0000000000797274,
+  0x0000000065627574, 0x006e6f6974697574, 0x0000656c626d7574, 0x00000000616e7574, 0x00006c656e6e7574, 0x000079656b727574,
+  0x000000006e727574, 0x0000656c74727574, 0x000065766c657774, 0x000079746e657774, 0x0000006563697774, 0x000000006e697774,
+  0x0000007473697774, 0x00000000006f7774, 0x0000000065707974, 0x006c616369707974, 0x00000000796c6775, 0x616c6c6572626d75,
+  0x0000656c62616e75, 0x0065726177616e75, 0x000000656c636e75, 0x007265766f636e75, 0x0000007265646e75, 0x000000006f646e75,
+  0x0000726961666e75, 0x0000646c6f666e75, 0x0079707061686e75, 0x006d726f66696e75, 0x0000657571696e75, 0x0000000074696e75,
+  0x6573726576696e75, 0x006e776f6e6b6e75, 0x00006b636f6c6e75, 0x0000006c69746e75, 0x006c617573756e75, 0x00006c6965766e75,
+  0x0000657461647075, 0x0065646172677075, 0x0000646c6f687075, 0x000000006e6f7075, 0x0000007265707075, 0x0000007465737075,
+  0x0000006e61627275, 0x0000000065677275, 0x0000006567617375, 0x0000000000657375, 0x0000000064657375, 0x00006c7566657375,
+  0x007373656c657375, 0x0000006c61757375, 0x007974696c697475, 0x0000746e61636176, 0x00006d7575636176, 0x0000006575676176,
+  0x00000064696c6176, 0x000079656c6c6176, 0x00000065766c6176, 0x00000000006e6176, 0x00006873696e6176, 0x000000726f706176,
+  0x0073756f69726176, 0x0000000074736176, 0x000000746c756176, 0x00656c6369686576, 0x00007465766c6576, 0x0000726f646e6576,
+  0x00657275746e6576, 0x00000065756e6576, 0x0000000062726576, 0x0000796669726576, 0x006e6f6973726576, 0x0000000079726576,
+  0x00006c6573736576, 0x006e617265746576, 0x0000656c62616976, 0x00746e6172626976, 0x0073756f69636976, 0x0079726f74636976,
+  0x0000006f65646976, 0x0000000077656976, 0x006567616c6c6976, 0x00656761746e6976, 0x00006e696c6f6976, 0x006c617574726976,
+  0x0000007375726976, 0x0000000061736976, 0x0000007469736976, 0x00006c6175736976, 0x0000006c61746976, 0x0000006469766976,
+  0x0000006c61636f76, 0x0000006563696f76, 0x0000000064696f76, 0x006f6e61636c6f76, 0x0000656d756c6f76, 0x0000000065746f76,
+  0x0000656761796f76, 0x0000000065676177, 0x0000006e6f676177, 0x0000000074696177, 0x000000006b6c6177, 0x000000006c6c6177,
+  0x000074756e6c6177, 0x00000000746e6177, 0x0065726166726177, 0x000000006d726177, 0x00726f6972726177, 0x0000000068736177,
+  0x0000000070736177, 0x0000006574736177, 0x0000007265746177, 0x0000000065766177, 0x0000000000796177, 0x000068746c616577,
+  0x00006e6f70616577, 0x0000000072616577, 0x00006c6573616577, 0x0072656874616577, 0x0000000000626577, 0x00676e6964646577,
+  0x00646e656b656577, 0x0000006472696577, 0x00656d6f636c6577, 0x0000000074736577, 0x0000000000746577, 0x000000656c616877,
+  0x0000000074616877, 0x0000007461656877, 0x0000006c65656877, 0x000000006e656877, 0x0000006572656877, 0x0000000070696877,
+  0x0072657073696877, 0x0000000065646977, 0x0000006874646977, 0x0000000065666977, 0x00000000646c6977, 0x000000006c6c6977,
+  0x00000000006e6977, 0x0000776f646e6977, 0x00000000656e6977, 0x00000000676e6977, 0x000000006b6e6977, 0x000072656e6e6977,
+  0x00007265746e6977, 0x0000000065726977, 0x00006d6f64736977, 0x0000000065736977, 0x0000000068736977, 0x007373656e746977,
+  0x00000000666c6f77, 0x0000006e616d6f77, 0x00007265646e6f77, 0x00000000646f6f77, 0x000000006c6f6f77, 0x0000000064726f77,
+  0x000000006b726f77, 0x000000646c726f77, 0x0000007972726f77, 0x0000006874726f77, 0x0000000070617277, 0x0000006b63657277,
+  0x00656c7473657277, 0x0000007473697277, 0x0000006574697277, 0x000000676e6f7277, 0x0000000064726179, 0x0000000072616579,
+  0x0000776f6c6c6579, 0x0000000000756f79, 0x000000676e756f79, 0x0000006874756f79, 0x000000617262657a, 0x000000006f72657a,
+  0x00000000656e6f7a, 0x00000000006f6f7a];

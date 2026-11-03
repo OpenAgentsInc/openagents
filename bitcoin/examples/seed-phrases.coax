@@ -1,0 +1,151 @@
+// book:begin example
+#load "../../coax/lib/crypto/bip39.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/bip39_vectors.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector table is valid lowercase hex, so an error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+equal_bytes :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+all_zero :: (work: [] u8) -> bool {
+  for b: work { if b != 0 { return false; } }
+  return true;
+}
+// The name of a refusal.
+REASONS :: [7] string.["bad size", "bad count", "unknown word", "bad checksum", "not ASCII", "capacity", "too long"];
+reason :: (status: int) -> string { return ifx status < 0 && status >= -7 then REASONS[-status - 1] else "accepted"; }
+// The 11 bits of an index as text.
+bits11 :: (v: int, out: [] u8) -> string {
+  for b: 0..<11 { out[b] = cast(u8) (ifx (v >> (10 - b)) & 1 == 1 then '1' else '0'); }
+  return cast(string) out[0..<11];
+}
+
+ZEROS :: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+main :: () {
+  work: [BIP39_WORK_BYTES] u8; entropy: [32] u8; back: [32] u8; text: [BIP39_MAX_TEXT] u8;
+  seed: [64] u8; want: [64] u8; h: [32] u8; buf: [11] u8;
+
+  // The checksum by hand: 16 zero bytes. Their SHA-256 starts 0x37, so the
+  // 4 checksum bits are 0011, and the 12th word is 7 zero bits then 0011.
+  print("the checksum by hand\n");
+  #assert sha256_hash_checked(entropy[0..<16], h[..], false) == SHA_OK;
+  show("SHA-256 of 16 zero bytes, first byte", h[0..<1]);
+  print("word 12: 0000000 + 0011 = % = %, \"%\"\n", bits11(3, buf[..]), 3, bip39_word(3));
+  n := bip39_encode_ct(entropy[0..<16], work[..], text[..]);
+  print("%\n", cast(string) text[0..<n]);
+
+  // Each size: words, checksum bits, and the last word of all-zero entropy.
+  print("sizes\n");
+  for bytes: 4..<9 {
+    m := bip39_encode_ct(entropy[0..<4 * bytes], work[..], text[..]);
+    at := m; while text[at - 1] != ' ' { at -= 1; }
+    print("% bytes: % words, % checksum bits, last word %\n", 4 * bytes, 3 * bytes, bytes, cast(string) text[at..<m]);
+  }
+
+  // A phrase back to its indexes and entropy: the hamster vector.
+  print("words to indexes\n");
+  v := BIP39_VECTORS[14];
+  at := 0; k := 0;
+  while at < v.phrase.count && k < 3 {
+    e := at; while e < v.phrase.count && v.phrase[e] != ' ' { e += 1; }
+    i := bip39_index(v.phrase[at..<e]);
+    print("  %: % = %\n", v.phrase[at..<e], i, bits11(i, buf[..]));
+    at = e + 1; k += 1;
+  }
+  m := bip39_decode_ct(v.phrase, work[..], back[..]);
+  show("entropy", back[0..<m]);
+  #assert sha256_hash_checked(back[0..<m], h[..], false) == SHA_OK;
+  show("its SHA-256, first byte, all 8 bits checksum", h[0..<1]);
+
+  // Every English vector both ways and its seed with the passphrase TREZOR.
+  print("trezor/python-mnemonic vectors.json, English\n");
+  to_words := 0; to_entropy := 0; seeds := 0; wiped := 0;
+  for x: BIP39_VECTORS {
+    want_e := decode(x.entropy, entropy[..]);
+    n = bip39_encode_ct(want_e, work[..], text[..]);
+    if n == x.phrase.count && cast(string) text[0..<n] == x.phrase { to_words += 1; }
+    if all_zero(work[..]) { wiped += 1; }
+    m = bip39_decode_ct(x.phrase, work[..], back[..]);
+    if m == want_e.count && equal_bytes(back[0..<m], want_e) { to_entropy += 1; }
+    if all_zero(work[..]) { wiped += 1; }
+    r := bip39_seed_ct(x.phrase, "TREZOR", work[..], seed[..]);
+    if r == 64 && equal_bytes(seed[..], decode(x.seed, want[..])) { seeds += 1; }
+    if all_zero(work[..]) { wiped += 1; }
+  }
+  print("% of 24 entropy to words, % of 24 words to entropy, % of 24 seeds\n", to_words, to_entropy, seeds);
+  print("work buffer zero after % of 72 calls\n", wiped);
+
+  // The seed and its passphrase, the "25th word".
+  print("the passphrase\n");
+  #assert bip39_seed_ct(ZEROS, "", work[..], seed[..]) == 64;
+  show("no passphrase", seed[0..<16]);
+  #assert bip39_seed_ct(ZEROS, "TREZOR", work[..], seed[..]) == 64;
+  show("TREZOR", seed[0..<16]);
+  #assert bip39_seed_ct(ZEROS, "TREZOR ", work[..], seed[..]) == 64;
+  show("TREZOR and a space", seed[0..<16]);
+  #assert bip39_seed_ct(ZEROS, "trezor", work[..], seed[..]) == 64;
+  show("trezor", seed[0..<16]);
+  // PBKDF2 by hand: salt "mnemonicTREZOR", one round and then all 2048.
+  salt := "mnemonicTREZOR"; pw: [1024] u8; sb: [14] u8;
+  #assert pbkdf2_hmac_sha512(sha512_bytes(ZEROS, pw[..]), sha512_bytes(salt, sb[..]), 1, seed[..]);
+  show("PBKDF2, 1 round", seed[0..<16]);
+  #assert pbkdf2_hmac_sha512(sha512_bytes(ZEROS, pw[..]), sha512_bytes(salt, sb[..]), 2048, seed[..]);
+  show("PBKDF2, 2048 rounds", seed[0..<16]);
+
+  // How often a wrong last word passes the checksum.
+  print("every last word\n");
+  for which: 0..<2 {
+    x := BIP39_VECTORS[ifx which == 0 then 0 else 14];
+    e := x.phrase.count; while x.phrase[e - 1] != ' ' { e -= 1; }
+    words := 0; pass := 0;
+    for i: 0..<2048 {
+      w := bip39_word(i); phrase: [BIP39_MAX_TEXT] u8;
+      for c: 0..<e { phrase[c] = x.phrase[c]; }
+      for c: 0..<w.count { phrase[e + c] = w[c]; }
+      if bip39_decode_ct(cast(string) phrase[0..<e + w.count], work[..], back[..]) > 0 { pass += 1; }
+      words += 1;
+    }
+    print("% words, last word replaced by each of %: % pass\n", ifx which == 0 then 12 else 24, words, pass);
+  }
+
+  // The other languages in vectors.json: this code reads English only, and
+  // ASCII only. The seed hashes the phrase's bytes, not the list.
+  print("other languages\n");
+  for x: BIP39_OTHERS {
+    r := bip39_decode_ct(x.phrase, work[..], back[..]);
+    #assert pbkdf2_hmac_sha512(sha512_bytes(x.phrase, pw[..]), sha512_bytes(salt, sb[..]), 2048, seed[..]);
+    print("%: %, PBKDF2 of its bytes is the published seed: %\n", x.language, reason(r), equal_bytes(seed[..], decode(x.seed, want[..])));
+  }
+
+  // Refusals.
+  print("refusals\n");
+  print("15 bytes of entropy: %\n", reason(bip39_encode_ct(entropy[0..<15], work[..], text[..])));
+  print("11 words: %\n", reason(bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", work[..], back[..])));
+  print("abut for about: %\n", reason(bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abut", work[..], back[..])));
+  print("About with a capital: %\n", reason(bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon About", work[..], back[..])));
+  print("abandon for about: %\n", reason(bip39_decode_ct("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon", work[..], back[..])));
+  print("words swapped: %\n", reason(bip39_decode_ct("legal winner thank year wave sausage worth useful legal winner yellow thank", work[..], back[..])));
+  print("a passphrase with an accent: %\n", reason(bip39_seed_ct(ZEROS, "café", work[..], seed[..])));
+  print("12 words into 15 bytes: %\n", reason(bip39_decode_ct(ZEROS, work[..], back[0..<15])));
+  print("a seed into 63 bytes: %\n", reason(bip39_seed_ct(ZEROS, "", work[..], seed[0..<63])));
+  long: [1025] u8; for i: 0..<1025 { long[i] = ' '; }
+  print("1,025 bytes of phrase: %\n", reason(bip39_decode_ct(cast(string) long[..], work[..], back[..])));
+  print("extra spaces: %\n", reason(bip39_decode_ct("  abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon   about ", work[..], back[..])));
+}
+// book:end example

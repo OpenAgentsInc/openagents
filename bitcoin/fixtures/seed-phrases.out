@@ -1,0 +1,53 @@
+the checksum by hand
+SHA-256 of 16 zero bytes, first byte: 37
+word 12: 0000000 + 0011 = 00000000011 = 3, "about"
+abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about
+sizes
+16 bytes: 12 words, 4 checksum bits, last word about
+20 bytes: 15 words, 5 checksum bits, last word address
+24 bytes: 18 words, 6 checksum bits, last word agent
+28 bytes: 21 words, 7 checksum bits, last word admit
+32 bytes: 24 words, 8 checksum bits, last word art
+words to indexes
+  hamster: 837 = 01101000101
+  diagram: 487 = 00111100111
+  private: 1369 = 10101011001
+entropy: 68a79eaca2324873eacc50cb9c6eca8cc68ea5d936f98787c60c7ebc74e6ce7c
+its SHA-256, first byte, all 8 bits checksum: 00
+trezor/python-mnemonic vectors.json, English
+24 of 24 entropy to words, 24 of 24 words to entropy, 24 of 24 seeds
+work buffer zero after 72 of 72 calls
+the passphrase
+no passphrase: 5eb00bbddcf069084889a8ab91555681
+TREZOR: c55257c360c07c72029aebc1b53c05ed
+TREZOR and a space: 9d970e6454c54edc6e22391edcf27a07
+trezor: f5057546039282b59dad6d6470999857
+PBKDF2, 1 round: 93b97bc5354ec701eae542a773d5de60
+PBKDF2, 2048 rounds: c55257c360c07c72029aebc1b53c05ed
+every last word
+12 words, last word replaced by each of 2048: 128 pass
+24 words, last word replaced by each of 2048: 8 pass
+other languages
+chinese_simplified: not ASCII, PBKDF2 of its bytes is the published seed: true
+chinese_traditional: not ASCII, PBKDF2 of its bytes is the published seed: true
+czech: unknown word, PBKDF2 of its bytes is the published seed: true
+french: unknown word, PBKDF2 of its bytes is the published seed: true
+italian: unknown word, PBKDF2 of its bytes is the published seed: true
+japanese: not ASCII, PBKDF2 of its bytes is the published seed: false
+korean: not ASCII, PBKDF2 of its bytes is the published seed: true
+portuguese: unknown word, PBKDF2 of its bytes is the published seed: true
+spanish: not ASCII, PBKDF2 of its bytes is the published seed: true
+russian: not ASCII, PBKDF2 of its bytes is the published seed: true
+turkish: unknown word, PBKDF2 of its bytes is the published seed: true
+refusals
+15 bytes of entropy: bad size
+11 words: bad count
+abut for about: unknown word
+About with a capital: unknown word
+abandon for about: bad checksum
+words swapped: bad checksum
+a passphrase with an accent: not ASCII
+12 words into 15 bytes: capacity
+a seed into 63 bytes: capacity
+1,025 bytes of phrase: too long
+extra spaces: accepted

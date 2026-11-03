@@ -39,7 +39,9 @@ use it; it is listed because the gate and this chapter share the words.
 
 Every procedure takes caller-owned byte views, returns `false` (or `-1` for
 a length) on a bad size, and zeroes the secret locals it used before it
-returns.
+returns. The `bip39` procedures here call the constant-time
+`bip39_encode_ct`, `bip39_decode_ct` and `bip39_seed_ct`, which
+[Bitcoin chapter 31](../../bitcoin/book/ch031-seed-phrases.md) teaches.
 
 ## BIP-39 words
 
@@ -133,9 +135,10 @@ The seed is one 64-byte PBKDF2 block, so `pbkdf2_hmac_sha512` computes
 `bip39_seed` passes the empty string. A passphrase gives a different seed
 and so a different key; nothing records whether one was used.
 
-The seed hashes the words, not the entropy, so a phrase with a wrong
-checksum still has a seed. Checking the words is a separate step, which
-`nip06_key` takes before it derives.
+The seed hashes the words, not the entropy. BIP-39 lets a reader derive a
+seed from words with a wrong checksum after a warning; `bip39_seed` refuses
+them instead (Bitcoin chapter 31), and `nip06_key` also checks the words
+with `bip39_entropy` before it derives.
 
 ## BIP-32 derivation
 
@@ -528,11 +531,11 @@ chapter.
 ### Library checks
 
 [bip39.coax](../../coax/lib/crypto/bip39.coax) checks the English list's
-SHA-256 (`2f5eed53...dbda`, the same check as the iOS app's `BIP39.swift`)
-and six BIP-39 reference vectors from entropy to words and back, the ten
-18- and 24-word Trezor vectors, a 15- and a 21-word phrase built with
-Python's `hashlib`, a wrong checksum bit at each length, and the
-refusals. [sha512.coax](../../coax/lib/crypto/sha512.coax) checks the FIPS
+SHA-256 (`2f5eed53...dbda`, the pinned `english.txt`), reference vectors
+from entropy to words and back, a 15- and a 21-word phrase built with
+Python's `hashlib`, a wrong checksum bit at each length, and each refusal;
+[Bitcoin chapter 31](../../bitcoin/book/ch031-seed-phrases.md) describes
+them. [sha512.coax](../../coax/lib/crypto/sha512.coax) checks the FIPS
 180-4 SHA-512 examples, RFC 4231 HMAC-SHA512 cases 1, 2, 6 and 7, and
 PBKDF2-HMAC-SHA512 at 1 and 2 rounds. The slower vectors, two more Trezor
 seeds, BIP-32 test vectors 1 and 2 and the chain to a signed NIP-98 login,
