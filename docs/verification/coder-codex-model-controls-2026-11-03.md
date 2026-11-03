@@ -45,3 +45,20 @@ missing reasons in `coax/tests/vectors/{check_pins,test_pins}.py`,
 `psionic/tests/decoder_oracle.py` has both a reason and a port-list entry.
 These files and the port list are unchanged from the base. New source and
 checks in this change are Coax.
+
+## Follow-up: one line above the top rail
+
+From base `31094bc132`, place the working status at the left and the model
+and reasoning at the right of one row immediately above the top rail.
+Command hints live in the footer. The new layout check passes at 120, 80,
+60, 40 and 20 columns, including Unicode widths, idle status and tiny
+windows. The three existing Codex options checks pass after extracting the
+shared model/reasoning summary; the native CLI builds successfully.
+
+Native pseudo-terminal checks at 80 and 60 columns resolve the configuration,
+then run `$ sleep 2` without a model prompt. Both show Working and
+`gpt-6.1-sol · reasoning xhigh` on the same row, exactly 79 and 59 columns
+wide, respectively, with the configuration flush right. Both exit cleanly.
+`tools-check` reports the same unchanged failures listed above. The broader
+smoke checks and their baseline watchdog failure are recorded at
+`31094bc132`; they were not repeated for this layout-only change.

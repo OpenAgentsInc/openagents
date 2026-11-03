@@ -25,9 +25,11 @@ coder/tui/coder.sh resume                # this folder's newest session, to cont
 python3 coder/tui/smoke.py               # the offline smoke, in a pseudo-terminal and then without one
 ```
 
-When Shift-Tab selects Codex, a row above the composer shows its model and
-reasoning level, resolved from the installed Codex's configuration before
-the first message. `/model` lists Codex's own available model IDs, reasoning
+When Shift-Tab selects Codex, its model and reasoning level sit at the right
+of the working-step line, directly above the composer's top rail. Both stay
+on one line as the terminal narrows; `/model` and `/effort` hints sit in the
+footer. The configuration resolves before the first message.
+`/model` lists Codex's own available model IDs, reasoning
 levels and defaults; `/model ID [LEVEL]` selects one. `/effort` shows the
 current model's levels, and `/effort LEVEL` changes the next message's
 reasoning. Selecting a model without a level uses that model's default.

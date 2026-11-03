@@ -272,11 +272,29 @@ cd_seconds_text :: (ms: int, out: [] u8) -> string {
 
 // ---------------------------------------------------------------- the live region
 
+// One row: the work at the left, configuration flush with the right edge.
+// Fit by terminal columns, so a narrow window never creates a second row.
+cd_status_join :: (left: string, right: string, cols: int, out: [] u8) -> string {
+  if cols <= 0 { return ""; }
+  if right.count == 0 { n := cd_cat(out, 0, cast(string) left[0..<tui_fit(left, cols)]); return cast(string) out[0..<n]; }
+  rhs := cast(string) right[0..<tui_fit(right, cols)];
+  rw := tui_text_width(rhs);
+  room := cols - rw;
+  if left.count > 0 { room -= 2; }
+  if room < 0 { room = 0; }
+  lhs := cast(string) left[0..<tui_fit(left, room)];
+  n := cd_cat(out, 0, lhs);
+  for i: tui_text_width(lhs)..<cols - rw { n = cd_cat(out, n, " "); }
+  n = cd_cat(out, n, rhs);
+  return cast(string) out[0..<n];
+}
+
 cd_draw :: (a: [] App) {
   if a[0].plain { return; }
   r := a[0].rows_buf[..];
   tui_rows_reset(r);
   cols := a[0].cols - 1;
+  sb: [512] u8; n := 0;
   if a[0].running {
     // the reply's unfinished line, right under the transcript
     if a[0].nrep > a[0].rep_done {
@@ -287,7 +305,6 @@ cd_draw :: (a: [] App) {
     }
     r[0].pad_at = r[0].n;
     // status and any question, just above the composer
-    sb: [512] u8; n := 0;
     spin := SPIN;
     n = cd_cat(sb[..], n, spin[(cd_now(a) / 100) % 10]);
     n = cd_cat(sb[..], n, ifx a[0].ask then " Waiting for you" else ifx a[0].nrecap > 0 then " " else " Working");
@@ -301,13 +318,17 @@ cd_draw :: (a: [] App) {
       w := tui_rows_wrap(r, TUI_BRIGHT, "? ", "  ", cast(string) a[0].ask_text[0..<a[0].nask], cols);
       k := tui_rows_add(r, TUI_DIM, "  y allow · a allow and don't ask again · n deny");
     }
-    st := cast(string) sb[0..<n];
-    k := tui_rows_add(r, TUI_DIM, cast(string) st[0..<tui_fit(st, cols)]);
   }
   db: [400] u8; drow := cd_dct_row(a, db[..]);
   if drow.count > 0 { dk := tui_rows_add(r, ifx a[0].dct_phase == CDD_LISTENING then TUI_BRIGHT else TUI_DIM, cast(string) drow[0..<tui_fit(drow, cols)]); }
-  if a[0].engine == ENGINE_CODEX {
-    cb: [512] u8; w := tui_rows_wrap(r, TUI_DIM, "", "", cd_codex_row(a, cb[..]), cols);
+  if a[0].running || a[0].engine == ENGINE_CODEX {
+    cb: [512] u8; right := "";
+    if a[0].engine == ENGINE_CODEX {
+      st := cd_codex_settings(a);
+      right = ccx_summary(a[0].cx_options[..], st.model, st.effort, cb[..]);
+    }
+    row: [4096] u8;
+    k := tui_rows_add(r, TUI_DIM, cd_status_join(cast(string) sb[0..<n], right, cols, row[..]));
   }
   rule: [4096] u8; nr := 0;
   for i: 0..<cols { nr = cd_cat(rule[..], nr, "─"); }
@@ -318,6 +339,7 @@ cd_draw :: (a: [] App) {
   k = tui_rows_add(r, TUI_FAINT, cast(string) rule[0..<nr]);
   // the agent first, so a narrow row still names it
   hb: [256] u8; hn := cd_cat(hb[..], 0, ifx a[0].engine == ENGINE_ECHO then "echo (offline)" else cd_engine_name(a[0].engine));
+  if a[0].engine == ENGINE_CODEX { hn = cd_cat(hb[..], hn, " · /model · /effort"); }
   if a[0].jobs > 0 { jb: [16] u8; hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, cd_itoa(a[0].jobs, jb[..])); hn = cd_cat(hb[..], hn, ifx a[0].jobs == 1 then " job running" else " jobs running"); }
   if a[0].dct_consent { hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, cdd_gesture_label(a[0].dct_key)); hn = cd_cat(hb[..], hn, " dictate"); }
   hn = cd_cat(hb[..], hn, " · Enter send · Shift-Enter newline · Shift-Tab agent · ↑ history · Esc stop · Ctrl-C quit");

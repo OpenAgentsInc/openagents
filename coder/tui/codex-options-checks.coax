@@ -1,6 +1,32 @@
 #load "coder.coax";
 main :: () {}
 
+#test "Codex status layout: working and model share one right-aligned row at every width" {
+  b: [1024] u8;
+  left := "⠋ Working · step 2 · 3.0s · Esc to stop";
+  right := "gpt-6.1-sol · reasoning xhigh";
+  for cols: [5] int.[120, 80, 60, 40, 20] {
+    row := cd_status_join(left, right, cols, b[..]);
+    #assert tui_text_width(row) == cols;
+    #assert !cd_holds(row, "\n");
+    #assert tui_fit(row, cols) == row.count;
+    if cols >= 40 {
+      #assert cd_holds(row, "⠋ Working");
+      #assert cast(string) row[row.count - right.count..<row.count] == right;
+    }
+    if cols >= 80 { #assert cd_holds(row, "step 2 · 3.0s · Esc to stop"); }
+  }
+  #assert cd_status_join("", right, 80, b[..]).count > right.count;
+  #assert cd_status_join(left, "", 80, b[..]) == left;
+  #assert cd_status_join(left, right, 0, b[..]) == "";
+  #assert cd_status_join(left, right, 1, b[..]) == "g";
+  row := cd_status_join("⠋ 作業中", "模型 · high", 30, b[..]);
+  #assert tui_text_width(row) == 30;
+  #assert cd_holds(row, "⠋ 作業中");
+  tail := "模型 · high";
+  #assert cast(string) row[row.count - tail.count..<row.count] == tail;
+}
+
 #test "Codex terminal: slash commands change the next wire request and preserve each engine's model" {
   a: [1] App; logs: [1] CsLog; pl: [1] PlRegistry;
   a[0].log = logs[..]; a[0].pl = pl[..]; logs[0].json = true;

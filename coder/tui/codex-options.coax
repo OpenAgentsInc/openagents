@@ -98,14 +98,20 @@ ccx_resolved :: (o: [] CdCxOptions, ar: [] ClArena, result: string) {
 ccx_append :: (b: [] u8, at: int, s: string) -> int {
   n := at; for c: s { if n < b.count { b[n] = c; n += 1; } } return n;
 }
-ccx_row :: (o: [] CdCxOptions, model: string, effort: string, b: [] u8) -> string {
+ccx_summary :: (o: [] CdCxOptions, model: string, effort: string, b: [] u8) -> string {
   m := model; ef := effort;
   if m.count == 0 { m = ccx_text(o[0].actual_model[..]); }
   if ef.count == 0 && !o[0].selected { ef = ccx_text(o[0].actual_effort[..]); }
   if m.count == 0 { m = ifx o[0].failed then "model unavailable" else "model loading"; }
   if ef.count == 0 { ef = ifx o[0].resolved then "default" else ifx o[0].failed then "unavailable" else "loading"; }
-  n := ccx_append(b, 0, "codex · "); n = ccx_append(b, n, m);
+  n := ccx_append(b, 0, m);
   n = ccx_append(b, n, " · reasoning "); n = ccx_append(b, n, ef);
+  return cast(string) b[0..<n];
+}
+ccx_row :: (o: [] CdCxOptions, model: string, effort: string, b: [] u8) -> string {
+  summary: [512] u8;
+  n := ccx_append(b, 0, "codex · ");
+  n = ccx_append(b, n, ccx_summary(o, model, effort, summary[..]));
   n = ccx_append(b, n, " · /model · /effort");
   return cast(string) b[0..<n];
 }
