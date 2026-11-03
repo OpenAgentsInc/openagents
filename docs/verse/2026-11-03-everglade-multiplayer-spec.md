@@ -476,12 +476,17 @@ are stamped with it.
 
 - A guest already gets a player key from `POST /api/playtest/player`, kept as
   `localStorage verse.player` (`host.js` action 5; `everglade-face.c`
-  `room_out`). Its server name is `Guest` plus four letters.
-- New: on first visit the page makes a **name** (two words from a fixed,
-  reviewed list, for example `Mossy Heron`) and a **look** (section 5.2), and
-  keeps both in `localStorage coaxial.everglade.character`. The name is sent
-  to `POST /api/playtest/player/name` (new) so the server-side name, which
-  everyone sees, is the same.
+  `room_out`).
+- **One name everywhere** (built, #12714). `verse.player_name` is the name
+  the ticket, the nameplates, chat, presence and the inbox all show
+  (`coax/web/api/migrations/0116_one_player_name.sql`). It is the account's
+  name when that passes the filter (`verse.name_ok`). Otherwise it is the
+  guest's own name, set with `POST /api/playtest/player/name {name}` (the
+  same filter; `""` goes back to the generated name). Otherwise it is
+  `verse.guest_name`: two words from fixed, reviewed lists, for example
+  `Willow Salmon`, the same for the same player id every time. The server is
+  the one generator, and the page asks for no name.
+- The look (section 5.2) comes back with the ticket (#12715).
 - Clearing site data makes a new guest. That is accepted.
 
 ### 4.2 Logged-in players
@@ -519,10 +524,13 @@ are stamped with it.
 
 - **Room tickets** (built, #12712). `POST /api/playtest/room-ticket/<room>`
   needs the player key (`X-Verse-Player`). It returns
-  `{"ticket","id","account","name","expires"}`, and the ticket is
-  `v1.PID.ACCT.NAME64.ROOM.EXPIRES.MAC`:
-  - NAME64 is the account's name (else the name the body asks for) in
-    unpadded base64url, `-` if there is none.
+  `{"ticket","id","account","name","expires"}` (plus `hp`, `wanted`, `look`,
+  `class` and `blocked` when there are any), and the ticket is
+  `v2.PID.ACCT.NAME64.ROOM.EXPIRES.HP.MAC`:
+  - NAME64 is `verse.player_name` (section 4.1) in unpadded base64url, `-` if
+    there is none.
+  - HP is the hit points the player left a room with in the last 10 minutes,
+    `-` if there are none (#12715).
   - EXPIRES is 10 minutes ahead, in wall-clock milliseconds.
   - MAC is the hex HMAC-SHA256 of the text before it.
 
