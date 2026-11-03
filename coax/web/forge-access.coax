@@ -20,7 +20,8 @@
 // built from this checkout; its /api requests are sent on to the local API by DevTools
 // interception, and /realms/built is answered with its own HTML on the legacy shader path (no
 // render package: it needs a release build). The realm is made in SQL, owned by a fresh key.
-//   SITE=http://127.0.0.1:8811 API=http://127.0.0.1:57411 PGURL=... PSQL=psql coax/web/tool.sh forge-access
+//   SITE=http://127.0.0.1:8811 API=http://127.0.0.1:57411 PGURL=... PSQL=psql coax/web/tool.sh forge-access [--require-hardware]
+// It prints the WebGPU adapter the realm got; --require-hardware fails a check unless it is a GPU's.
 // Exit 0 when every check passed, 1 when one failed, 2 for a usage error.
 #import "Basic";
 #load "../lib/net/cdp.coax";
@@ -297,9 +298,10 @@ tool_main :: () -> int #export_c {
   f[0].site = proc_getenv("SITE", b1[..]); f[0].api = proc_getenv("API", b2[..]);
   f[0].db = proc_getenv("PGURL", b3[..]); f[0].psql = proc_getenv("PSQL", b4[..]);
   if !fa_starts(f[0].site, "http://127.0.0.1:") || !fa_starts(f[0].api, "http://127.0.0.1:") || f[0].db == "" || f[0].psql == "" {
-    tool_errln("usage: SITE=http://127.0.0.1:PORT API=http://127.0.0.1:PORT PGURL=... PSQL=psql coax/web/tool.sh forge-access   (local only)");
+    tool_errln("usage: SITE=http://127.0.0.1:PORT API=http://127.0.0.1:PORT PGURL=... PSQL=psql coax/web/tool.sh forge-access [--require-hardware]   (local only)");
     return 2;
   }
+  av: [1] Args; hard := args_load(av[..]) && args_has(av[..], "--require-hardware");
   raw: [FA_HTML] u8; rn := fs_read("apps/openagents-web/realms/built/index.html", raw[..]);
   f[0].html_n = ifx rn > 0 then fa_legacy(cast(string) raw[0..<rn], f[0].html[..]) else -1;
   if f[0].html_n <= 0 { tool_errln("forge-access: run it from the repository's root"); return 2; }
@@ -348,6 +350,9 @@ tool_main :: () -> int #export_c {
     print("  page: %\n", fa_eval_str(c[..], f[..], "JSON.stringify({href: location.href, ready: globalThis.coaxial && coaxial.ready, probes: [0,1,2].map(k => globalThis.coaxial && coaxial.guardProbe(k)), gpu: !!navigator.gpu, cls: document.documentElement.className, load: document.getElementById('coaxial-load')?.dataset.state, err: document.getElementById('coaxial-load')?.querySelector('.le')?.textContent, got: performance.getEntriesByType('resource').map(e => e.name + ' ' + e.responseStatus).slice(-12)})", db[..]));
     cdp_close(c[..]); print("% passed, % failed\n", f[0].passed, f[0].failed); return 1;
   }
+  gpu: [256] u8; adapter := cdp_adapter(c[..], gpu[..]);
+  print("  WebGPU adapter: %\n", adapter);
+  if hard { fa_ok(c[..], f[..], "the realm has a hardware WebGPU adapter (--require-hardware)", cdp_adapter_hardware(adapter), 0); }
   rev0 := fa_probe(c[..], f[..], 2);
   fa_ok(c[..], f[..], "the canvas is hidden from a screen reader; the controls are a named toolbar",
            fa_wait_js(c[..], f[..], "document.getElementById('coaxial').getAttribute('aria-hidden') === 'true' && document.querySelector('#coaxial-a11y[role=toolbar][aria-label]') && document.querySelectorAll('#coaxial-a11y button').length > 1 ? 1 : 0", 10000), 0);

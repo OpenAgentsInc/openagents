@@ -8,9 +8,10 @@
 //   2. Trap: N frames more, the digest, then a real trap in the next frame (its state pointer out
 //      of bounds). The reload message shows and the rescue save is written; its action reloads the
 //      page, which puts the save back: the same digest, and the next frame draws.
-//   COAX=... coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/the-grid/ [--within MS]
-// Headless and muted; never a window. CHROME names the browser: on Linux, where the GPU process
-// dies headless (NEEDS_OWNER.md), one that adds --use-webgpu-adapter=swiftshader.
+//   COAX=... coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/the-grid/ [--within MS] [--require-hardware]
+// Headless and muted; never a window. It prints the WebGPU adapter the realm got (cdp_adapter);
+// --require-hardware fails the check unless that is a GPU's, not SwiftShader. CDP_WEBGPU=swiftshader
+// runs it on SwiftShader.
 // The digest is the region the host owns (coaxial_state_size); state a face keeps in its own
 // statics is not in it (host.js, "a realm that stops").
 #import "Basic";
@@ -30,6 +31,7 @@ GpuRecovery :: struct {
   stopped: bool; saved: bool; offered: bool;
   digest_rescued: [80] u8; rescued_n: int;
   drew_after_rescue: bool;
+  hardware: bool;                                   // the realm's WebGPU adapter is a GPU's (cdp_adapter_hardware)
 }
 gr_same :: (a: [] u8, an: int, b: [] u8, bn: int) -> bool {
   if an != 64 || bn != an {return false;}   // a SHA-256 in hex
@@ -107,6 +109,9 @@ gr_run :: (c: [] Cdp, url: string, r: [] GpuRecovery) -> bool {
   if !gr_param(c, "Page.addScriptToEvaluateOnNewDocument", "source", GR_SETUP) || !gr_param(c, "Page.navigate", "url", url) {return false;}
   print("gpu-recovery: open %\n", url);
   if !gr_until(c, GR_READY) || !gr_step(c, GR_FRAMES) {return false;}
+  gpu: [256] u8; adapter := cdp_adapter(c, gpu[..]);
+  print("gpu-recovery: WebGPU adapter: %\n", adapter);
+  r[0].hardware = cdp_adapter_hardware(adapter);
   r[0].before_n = gr_digest(c, r[0].digest_before[..]);
   print("gpu-recovery: lose the device\n");
   if !gr_true(c, "coaxial.loseDevice()") {return false;}
@@ -148,7 +153,8 @@ tool_main :: () -> int #export_c {
   within := 3000;
   w := args_find(a[..], "--within");
   if w > 0 {n := args_number(args_at(a[..], w + 1)); if !n.ok || n.value < 0.0 {ok = false;} else {within = cast(int) n.value;}}
-  if !ok || !gr_local(url) {tool_errln("usage: coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/SLUG/ [--within MS]"); return 2;}
+  if !ok || !gr_local(url) {tool_errln("usage: coax/web/tool.sh coax/web/gpu-recovery.coax http://127.0.0.1:PORT/realms/SLUG/ [--within MS] [--require-hardware]"); return 2;}
+  need := args_has(a[..], "--require-hardware");
   c: [1] Cdp;
   if !cdp_launch(c[..], 320, 240, "coax-gpu-recovery-") {tool_err("gpu-recovery: "); tool_errln(cdp_error(c[..])); return 1;}
   r: [1] GpuRecovery;
@@ -160,6 +166,7 @@ tool_main :: () -> int #export_c {
   }
   cdp_close(c[..]);
   passed := ran && gr_passed(r[..], within);
-  print("% device loss and engine trap keep the session (within % ms)\n", ifx passed then "pass" else "FAIL", within);
+  if need && !r[0].hardware {tool_errln("gpu-recovery: --require-hardware: the realm had no hardware WebGPU adapter"); passed = false;}
+  print("% device loss and engine trap keep the session (within % ms%)\n", ifx passed then "pass" else "FAIL", within, ifx r[0].hardware then ", on a GPU" else "");
   return ifx passed then 0 else 1;
 }

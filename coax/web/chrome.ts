@@ -43,7 +43,8 @@ export function chrome(): string {
 export function gpuFlags(): string[] {
   return process.platform === "darwin"
     ? ["--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal"]
-    : ["--enable-unsafe-webgpu", "--enable-features=Vulkan,VulkanFromANGLE", "--use-angle=vulkan", "--ignore-gpu-blocklist"]
+    // no Vulkan surface: headless, the GPU process crashes making one (cdp.coax, #12678)
+    : ["--enable-unsafe-webgpu", "--enable-features=Vulkan,VulkanFromANGLE", "--use-angle=vulkan", "--ignore-gpu-blocklist", "--disable-vulkan-surface"]
 }
 
 // Every Chrome launch() started in this process, with its profile.

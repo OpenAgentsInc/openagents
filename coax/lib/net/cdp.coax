@@ -14,7 +14,15 @@
 // binary; otherwise Google Chrome.app on a Mac and the real Chromium on
 // Linux (never a launcher that opens a window, such as CoderOS's
 // coder-browser). WebGPU runs on Metal through ANGLE on a Mac and on Vulkan
-// elsewhere.
+// elsewhere: on Linux with no Vulkan surface (--disable-vulkan-surface), since
+// a headless GPU process that asks the NVIDIA driver for one crashes, and
+// then Chrome has no WebGPU adapter at all (coderos-4080, RTX 4080, #12678:
+// Chromium 152's ui::VulkanSurfaceHeadless calls a null
+// vkCreateHeadlessSurfaceEXT, on NVIDIA and SwiftShader alike). Without the
+// surface Chrome composites in software: WebGPU runs on the GPU, but a WebGPU
+// canvas is left out of a screenshot. CDP_WEBGPU=swiftshader draws it there.
+// cdp_adapter says which adapter a page gets; a check that needs a GPU's
+// numbers refuses "software" (SwiftShader) with cdp_adapter_hardware.
 //
 // Effects: coax/lib/sys/proc.coax and fs.coax, socket-native.c (TCP to
 // 127.0.0.1) and entropy-foreign.c (mask keys). ws.coax frames and checks
@@ -100,11 +108,13 @@ cdp_nix_chromium :: (text: string, from: int) -> string {
   #assert args_at(a[..], 6) == "--enable-unsafe-webgpu" && args_at(a[..], 7) == "--enable-features=Vulkan" && args_at(a[..], 8) == "--use-angle=metal";
   #assert args_at(a[..], 9) == "--window-size=1280,720" && args_at(a[..], 10) == "--remote-debugging-port=0" && args_at(a[..], 11) == "about:blank";
   #assert args_at(a[..], 12) == "";
+  // Linux: Vulkan for ANGLE and Dawn, and no Vulkan surface (headless, the NVIDIA driver's GPU process crashes making one)
   b: [1] Args;
   #assert cdp_flags(b[..], 2, "chromium", "/p", 64, 32) && args_at(b[..], 7) == "--enable-features=Vulkan,VulkanFromANGLE";
-  #assert args_at(b[..], 8) == "--use-angle=vulkan" && args_at(b[..], 9) == "--ignore-gpu-blocklist" && args_at(b[..], 10) == "--window-size=64,32";
-  // CDP_WEBGPU=swiftshader (a machine with no GPU for Chrome: the runner's hosted seats, coderos-4080's
-  // headless pages): WebGPU on SwiftShader, no Vulkan or ANGLE GPU flags
+  #assert args_at(b[..], 8) == "--use-angle=vulkan" && args_at(b[..], 9) == "--ignore-gpu-blocklist" && args_at(b[..], 10) == "--disable-vulkan-surface";
+  #assert args_at(b[..], 11) == "--window-size=64,32" && args_count(b[..]) == 15 && args_at(b[..], 1) == "--headless=new" && args_at(b[..], 2) == "--mute-audio";
+  // CDP_WEBGPU=swiftshader (a machine with no GPU for Chrome: the runner's hosted seats):
+  // WebGPU on SwiftShader, no Vulkan or ANGLE GPU flags
   s: [1] Args;
   #assert cdp_flags(s[..], CDP_OS_SWIFTSHADER, "chromium", "/p", 64, 32) && args_at(s[..], 7) == "--use-angle=swiftshader";
   #assert args_at(s[..], 8) == "--use-webgpu-adapter=swiftshader" && args_at(s[..], 9) == "--enable-unsafe-swiftshader" && args_at(s[..], 10) == "--window-size=64,32";
@@ -126,6 +136,7 @@ cdp_flags :: (a: [] Args, os: int, chrome: string, profile: string, w: int, h: i
     ok = ok && args_add(a, "--use-angle=swiftshader") && args_add(a, "--use-webgpu-adapter=swiftshader") && args_add(a, "--enable-unsafe-swiftshader");
   } else {
     ok = ok && args_add(a, "--enable-features=Vulkan,VulkanFromANGLE") && args_add(a, "--use-angle=vulkan") && args_add(a, "--ignore-gpu-blocklist");
+    ok = ok && args_add(a, "--disable-vulkan-surface");
   }
   size: [64] u8; k := ws_put(size[..], 0, "--window-size="); k = ws_digits(size[..], k, w); k = ws_put(size[..], k, ","); k = ws_digits(size[..], k, h);
   ok = ok && k > 0 && args_add(a, cast(string) size[0..<k]);
@@ -136,7 +147,7 @@ cdp_flags :: (a: [] Args, os: int, chrome: string, profile: string, w: int, h: i
   #assert args_count(a[..])==15 && args_at(a[..],1)=="--headless=new" && args_at(a[..],2)=="--mute-audio";
   #assert args_at(a[..],9)=="--disable-background-timer-throttling" && args_at(a[..],10)=="--disable-renderer-backgrounding" && args_at(a[..],11)=="--disable-backgrounding-occluded-windows" && args_at(a[..],12)=="--remote-debugging-port=0" && args_at(a[..],13)=="about:blank" && args_at(a[..],14)=="";
   for k:0..<args_count(a[..]) {arg:=args_at(a[..],k);#assert !(arg.count>=14 && arg[0..<14]=="--window-size=");}
-  b:[1]Args;#assert cdp_background_flags(b[..],2,"/c","/p",8192,8192) && args_at(b[..],9)=="--ignore-gpu-blocklist" && args_at(b[..],10)=="--disable-background-timer-throttling";
+  b:[1]Args;#assert cdp_background_flags(b[..],2,"/c","/p",8192,8192) && args_at(b[..],9)=="--ignore-gpu-blocklist" && args_at(b[..],10)=="--disable-vulkan-surface" && args_at(b[..],11)=="--disable-background-timer-throttling";
 }
 // The original browser observer profile used by render-host/goldens: the
 // three explicit background flags and no Chrome --window-size override.
@@ -146,6 +157,33 @@ cdp_background_flags :: (a:[]Args,os:int,chrome:string,profile:string,w:int,h:in
   base:[1]Args;if !cdp_flags(base[..],os,chrome,profile,w,h) {return false;}
   for k:0..<args_count(base[..]) {arg:=args_at(base[..],k);if arg.count>=14 && arg[0..<14]=="--window-size=" {continue;}if arg=="--remote-debugging-port=0" {for flag:[3]string.["--disable-background-timer-throttling","--disable-renderer-backgrounding","--disable-backgrounding-occluded-windows"] {if !args_add(a,flag) {return false;}}}if !args_add(a,arg) {return false;}}return true;
 }
+// ---- which WebGPU adapter a page gets ----------------------------------------
+
+// One line for the adapter a page gets: "hardware VENDOR ARCHITECTURE",
+// "software VENDOR ARCHITECTURE" (SwiftShader, or any fallback adapter) or
+// "none". Ask it on a page of a site: about:blank is no secure context and
+// has no navigator.gpu.
+CDP_ADAPTER_JS :: "(async () => { const a = await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' }); if (!a) return 'none'; const i = a.info || {}; const soft = i.architecture === 'swiftshader' || a.isFallbackAdapter || i.isFallbackAdapter; return (soft ? 'software ' : 'hardware ') + (i.vendor || 'unknown') + ' ' + (i.architecture || 'unknown'); })()";
+// true when the page's adapter is hardware: a guard for media_shot (MediaShotOptions.guard)
+CDP_HARDWARE_JS :: "(async () => { const a = await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' }); const i = a?.info || {}; return !!a && !(i.architecture === 'swiftshader' || a.isFallbackAdapter || i.isFallbackAdapter); })()";
+#test "an adapter is hardware only when its line says so" {
+  #assert cdp_adapter_hardware("hardware nvidia lovelace") && cdp_adapter_hardware("hardware apple metal-3");
+  #assert !cdp_adapter_hardware("software google swiftshader") && !cdp_adapter_hardware("none") && !cdp_adapter_hardware("");
+  #assert !cdp_adapter_hardware("hardware") && !cdp_adapter_hardware("hardware ") && !cdp_adapter_hardware("Hardware nvidia x") && !cdp_adapter_hardware("hardwarenvidia");
+}
+cdp_adapter_hardware :: (line: string) -> bool {
+  p := "hardware ";
+  return line.count > p.count && line[0..<p.count] == p;
+}
+// The adapter the current page gets (CDP_ADAPTER_JS's line) into out, or
+// "the page could not be asked" when it could not.
+cdp_adapter :: (c: [] Cdp, out: [] u8) -> string {
+  v := cdp_evaluate(c, CDP_ADAPTER_JS);
+  d := cdp_doc(c);
+  n := ifx v >= 0 && jv_kind(d, v) == JV_STRING then jv_str(d, v, out) else -1;
+  return ifx n > 0 then cast(string) out[0..<n] else cdp_cat2("the page could not be asked", "", out);
+}
+
 // a then b in out, or "" when they do not fit.
 cdp_cat2 :: (a: string, b: string, out: [] u8) -> string {
   if a.count + b.count > out.count { return ""; }
@@ -441,7 +479,35 @@ cdp_launch_once_profile :: (c: [] Cdp, w: int, h: int, prefix: string,background
   }
   if un < 0 { cdp_close(c); return cdp_fail(c, "the browser has no page target", ""); }
   if !cdp_connect(c, cast(string) url[0..<un]) { cdp_close(c); return false; }
+  if os != TOOL_MAC && os != CDP_OS_SWIFTSHADER { warmed := cdp_warm_gpu(c); c[0].err_n = 0; }
   return true;
+}
+
+// Headless Chromium on Linux answers the first WebGPU adapter request its GPU
+// process gets with null (Chromium 152 on the RTX 4080: the request races the
+// GPU process's start; every later one gets the GPU), and a realm page asks
+// once (host.js openDevice). So the launcher asks first, on chrome://gpu (a
+// secure context: about:blank has no navigator.gpu), until an adapter comes
+// or CDP_WARM_TRIES asks went by, then goes back to about:blank. True when an
+// adapter came. A machine with no GPU for Chrome sets CDP_WEBGPU=swiftshader
+// and skips this.
+CDP_WARM_TRIES :: 20;
+CDP_WARM_JS :: "(async () => location.protocol === 'chrome:' && !!(await navigator.gpu?.requestAdapter()))()";
+cdp_warm_gpu :: (c: [] Cdp) -> bool {
+  if cdp_call(c, "Page.navigate", "{\"url\":\"chrome://gpu\"}", CDP_IO_MS) < 0 { return false; }
+  got := false;
+  for i: 0..<CDP_WARM_TRIES {
+    v := cdp_evaluate(c, CDP_WARM_JS);
+    if v >= 0 && jv_kind(cdp_doc(c), v) == JV_TRUE { got = true; break; }
+    proc_sleep(100);
+  }
+  if cdp_call(c, "Page.navigate", "{\"url\":\"about:blank\"}", CDP_IO_MS) < 0 { return false; }
+  for i: 0..<CDP_WARM_TRIES {
+    v := cdp_evaluate(c, "location.href === 'about:blank'");
+    if v >= 0 && jv_kind(cdp_doc(c), v) == JV_TRUE { break; }
+    proc_sleep(50);
+  }
+  return got;
 }
 
 // GET path from 127.0.0.1:port: the body's length in out, or -1 (cdp_error set).

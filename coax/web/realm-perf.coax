@@ -30,7 +30,8 @@
 // releases/<time>/REALMS.tsv and REALMS.txt. It is a report: it never holds
 // back or rolls back a release. Exit 0 when every case held 60 FPS, 1 when
 // one missed, 2 on bad usage or when headless Chrome has no hardware WebGPU adapter
-// (only SwiftShader, as on CoderOS on 2026-11-02): software frame times would mean nothing.
+// (only SwiftShader): software frame times would mean nothing. It prints the
+// adapter it measured on ("realm-perf: WebGPU adapter: hardware nvidia lovelace").
 #import "Basic";
 #load "../lib/media/media.coax";   // its ready test (MEDIA_READY_JS, media_ready_step); it loads cdp.coax
 
@@ -358,17 +359,13 @@ rp_case :: (c: [] Cdp, base: string, k: RpCase, rounds: int, f: [] RpFrames, why
   if r == 2 { return "error"; }
   return ifx rp_holds(f[0]) then "ok" else "FAIL";
 }
-// What WebGPU adapter a page of the site gets: "hardware", or what it gets instead.
-RP_ADAPTER_JS :: "(async () => { const a = await navigator.gpu?.requestAdapter(); if (!a) return 'none'; return a.info?.architecture === 'swiftshader' || a.isFallbackAdapter || a.info?.isFallbackAdapter ? 'software' : 'hardware'; })()";
-rp_adapter :: (c: [] Cdp, base: string) -> string {
+// What WebGPU adapter a page of the site gets, cdp_adapter's line into out: "hardware VENDOR
+// ARCHITECTURE", "software ..." (SwiftShader), "none", or why no page could be asked.
+rp_adapter :: (c: [] Cdp, base: string, out: [] u8) -> string {
   u: [1] RpBuf; rp_put(u[..], base); rp_put(u[..], "/robots.txt");   // any page of the site: WebGPU needs a secure context
   if !rp_go(c, rp_text(u[..])) { return "no page to ask for a WebGPU adapter"; }
   proc_sleep(1000);
-  out: [64] u8; n := media_value(c, RP_ADAPTER_JS, out[..]);
-  word := ifx n > 0 then cast(string) out[0..<n] else "";
-  if word == "hardware" { return "hardware"; }
-  if word == "software" { return "only SwiftShader (software WebGPU)"; }
-  return "no WebGPU adapter";
+  return cdp_adapter(c, out);
 }
 rp_trim :: (s: string) -> string { n := s.count; while n > 0 && s[n - 1] == '/' { n -= 1; } return s[0..<n]; }
 
@@ -415,15 +412,17 @@ tool_main :: () -> int #export_c {
   // the report is written after every case, so a run stopped at its time limit keeps what it measured
   out := args_value(a[..], "--out", "");
   // Frame times mean something only on a hardware GPU: refuse a browser with no WebGPU adapter or
-  // only SwiftShader (software), as CoderOS's headless Chromium gives (2026-11-02).
-  gpu := rp_adapter(c[..], base);
+  // only SwiftShader (software). cdp.coax's Linux flags give the GPU's adapter (coderos-4080: #12678).
+  gb: [256] u8; gpu := rp_adapter(c[..], base, gb[..]);
+  print("realm-perf: WebGPU adapter: %\n", gpu);
+  hardware := cdp_adapter_hardware(gpu);
   // --software-ok runs anyway, to check the tool itself on such a machine; its numbers are not a report
-  if gpu != "hardware" && args_has(a[..], "--software-ok") && gpu != "no WebGPU adapter" {
-    print("realm-perf: % (--software-ok): these numbers check the tool, not the realms\n", gpu);
-  } else if gpu != "hardware" {
+  if !hardware && args_has(a[..], "--software-ok") && gpu.count > 9 && gpu[0..<9] == "software " {
+    print("realm-perf: only SwiftShader (software WebGPU) (--software-ok): these numbers check the tool, not the realms\n");
+  } else if !hardware {
     cdp_close(c[..]);
-    tool_err("realm-perf: headless Chrome here has "); tool_err(gpu);
-    tool_errln(", so frame times would mean nothing; run it where headless Chrome has a hardware WebGPU adapter (the release Mac)");
+    tool_err("realm-perf: headless Chrome here has no hardware WebGPU adapter ("); tool_err(gpu);
+    tool_errln("), so frame times would mean nothing; run it where headless Chrome has a GPU's WebGPU adapter");
     return 2;
   }
   report: [1] RpBuf; missed := 0; worse := 0;
