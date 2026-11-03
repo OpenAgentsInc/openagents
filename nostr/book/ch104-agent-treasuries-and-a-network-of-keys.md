@@ -1259,7 +1259,12 @@ triple's exact retry still returns its outcome. Before the fix that
 request refused as `nonce` and the old triple was gone. The file then
 passed 299 checks, and all 20 root-only shards merged to 2006 mutants,
 2006 killed, 0 survived, none marked equivalent. `nipkeys_sign.coax`
-passed its 503 checks and the example's checks file passed 506.
+passed its 503 checks and the example's checks file passed 506. Later that
+day the copies moved to the standard library's `Kept(8)` (#12696): the file
+passed 345 checks (its own, `kept.coax`'s 6 and the loaded units'), all 20
+root-only shards merged to 1970 mutants, 1970 killed, 0 survived, none
+marked equivalent, and `kept.coax`'s own run killed all 173.
+`nipkeys_sign.coax` passed 509 checks and the example's checks file 512.
 
 The signing files are `#authority` too. On 2026-11-01 root-only mutation
 left zero survivors in `coax/lib/crypto/ecdsa_sign.coax` (224 mutants,
