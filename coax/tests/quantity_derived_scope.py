@@ -6,9 +6,8 @@ This writes a private snapshot only. Run the printed root with the compiler's
 """
 from pathlib import Path
 import argparse
-import hashlib
-import json
-import re
+
+from spatial_mutation_scope import materialize
 
 PROCEDURES = (
     "CK_bind", "CK_unit_constructor", "CK_unit_form", "CK_unit_intern",
@@ -16,49 +15,6 @@ PROCEDURES = (
     "CK_quantity_derived", "CK_quantity_conversion", "CK_quantity_convert",
     "CK_binary", "CK_resolve", "CK_call", "CK_builtin_name", "CK_quantity_binary",
 )
-
-
-def procedure_span(text, name):
-    match = re.search(r"^" + re.escape(name) + r"\s*::", text, re.M)
-    if not match:
-        raise ValueError("missing procedure: " + name)
-    i = text.index("{", match.start())
-    depth = block = 0
-    quoted = line = escaped = False
-    while i < len(text):
-        c, following = text[i], text[i + 1:i + 2]
-        if line:
-            line = c != "\n"
-        elif quoted:
-            if escaped:
-                escaped = False
-            elif c == "\\":
-                escaped = True
-            elif c == '"':
-                quoted = False
-        elif block:
-            if c == "/" and following == "*":
-                block += 1
-                i += 1
-            elif c == "*" and following == "/":
-                block -= 1
-                i += 1
-        elif c == "/" and following == "/":
-            line = True
-            i += 1
-        elif c == "/" and following == "*":
-            block = 1
-            i += 1
-        elif c == '"':
-            quoted = True
-        elif c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0:
-                return match.start(), i + 1
-        i += 1
-    raise ValueError("unterminated procedure: " + name)
 
 
 def main():
@@ -73,32 +29,7 @@ def main():
         parser.error("procedures must be a nonempty, unique subset of the declared scope")
     if output.exists():
         parser.error("output already exists; preserve earlier snapshots and choose a new directory")
-    source = root / "coax/lib/compiler/checker.coax"
-    text = source.read_text()
-    spans = [(name, *procedure_span(text, name)) for name in names]
-    dependency = text
-    for _, first, last in sorted(spans, key=lambda row: row[1], reverse=True):
-        dependency = dependency[:first] + dependency[last:]
-    for name in ("quantity", "unit-algebra", "unit-forms"):
-        dependency = dependency.replace('#load "' + name + '.coax";',
-                                        '#load "' + str(root / ("coax/lib/compiler/" + name + ".coax")) + '";')
-    entry = '#load "dependency.coax";\n#authority;\n'
-    entry += "\n\n".join(text[first:last] for _, first, last in spans) + "\n"
-    output.mkdir(parents=True)
-    (output / "dependency.coax").write_text(dependency)
-    (output / "root.coax").write_text(entry)
-    digest = lambda value: hashlib.sha256(value.encode()).hexdigest()
-    receipt = {
-        "schema": "coax-changed-procedure-mutation-scope-v1",
-        "original": str(source), "source_sha256": digest(text),
-        "root": str(output / "root.coax"), "root_sha256": digest(entry),
-        "dependency_sha256": digest(dependency), "procedure_count": len(spans),
-        "procedures": [{"name": name, "first_line": text[:first].count("\n") + 1,
-                        "sha256": digest(text[first:last])} for name, first, last in spans],
-        "transformation": "Exact selected procedure bodies are root source. Every other body and every original check remain in dependency source. Only three policy load paths become absolute. No waiver or check filtering.",
-    }
-    (output / "scope.json").write_text(json.dumps(receipt, indent=2) + "\n")
-    print(output / "root.coax")
+    print(materialize(root, output, names))
 
 
 if __name__ == "__main__":

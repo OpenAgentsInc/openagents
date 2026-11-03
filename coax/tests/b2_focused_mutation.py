@@ -39,14 +39,25 @@ def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--compiler',required=True,type=Path);p.add_argument('--out',required=True,type=Path);p.add_argument('--jobs',type=int,default=4);p.add_argument('--prepare-only',action='store_true');a=p.parse_args()
  out=a.out.resolve();out.mkdir(parents=True,exist_ok=False);compiler=a.compiler.resolve();source=ROOT/'coax/lib/compiler/checker.coax';files=closure(source)
  before=source_inventory(files);tooling={str(x.relative_to(ROOT)):file_sha(x) for x in [Path(__file__),Path(__file__).with_name('b2_support.py')]};compiler_sha=file_sha(compiler)
- snapshot=out/'runtime-snapshot';raw=source.read_bytes();projected,checks=strip_regions(raw);base=bytearray(projected.encode());moved=[];entry=b'#load "runtime-snapshot/coax/lib/compiler/checker.coax";\n#authority;\n'
+ # The checker is a root plus parts in lib/compiler/checker/ (#12646): its own
+ # sources are the root and those parts; the policy modules are dependencies.
+ own=[path for path in files if path==source or path.parent==source.parent/'checker'];bases={};checks=[]
+ for path in own:
+  projected,facts=strip_regions(files[path]);bases[path]=bytearray(projected.encode());checks+=[dict(fact,path=path) for fact in facts]
+ snapshot=out/'runtime-snapshot';moved=[];entry=b'#load "runtime-snapshot/coax/lib/compiler/checker.coax";\n#authority;\n'
  for name,scope in NAMES.items():
-  start,end=span(raw,name);body=raw[start:end];entry_start=len(entry);entry+=b'\n'+body+b'\n';moved.append(dict(name=name,scope=scope,source_start=start,source_end=end,source_sha256=sha(body),entry_start=entry_start+1,entry_end=len(entry)-1))
+  found=[]
+  for path in own:
+   try:found.append((path,*span(files[path],name)))
+   except ValueError:pass
+  if len(found)!=1:raise ValueError('selected declaration must be in exactly one checker file: '+name)
+  path,start,end=found[0];raw=files[path];base=bases[path]
+  body=raw[start:end];entry_start=len(entry);entry+=b'\n'+body+b'\n';moved.append(dict(name=name,scope=scope,source=str(path.relative_to(ROOT)),source_start=start,source_end=end,source_sha256=sha(body),entry_start=entry_start+1,entry_end=len(entry)-1))
   for i in range(start,end):
    if base[i]!=10:base[i]=32
  selected=[]
  for fact in checks:
-  body=raw[fact['start']:fact['end']]
+  body=files[fact['path']][fact['start']:fact['end']];fact=dict(fact,path=str(fact['path'].relative_to(ROOT)))
   named=re.match(rb'\s*#(?:test|forall)\s+"([^"]+)"',body)
   title=named[1].decode() if named else ''
   if fact['kind'] in ('test','forall') and (title.startswith('B2 ') or title.startswith(AFFECTED_CHECKS)):
@@ -55,7 +66,7 @@ def main():
  regions=[]
  for path,content in files.items():
   target=snapshot/path.relative_to(ROOT);target.parent.mkdir(parents=True,exist_ok=True);text,removed=strip_regions(content)
-  data=bytes(base) if path==source else text.encode();target.write_bytes(data);regions.append(dict(path=str(path.relative_to(ROOT)),source_sha256=sha(content),projected_sha256=sha(data),removed=removed))
+  data=bytes(bases[path]) if path in bases else text.encode();target.write_bytes(data);regions.append(dict(path=str(path.relative_to(ROOT)),source_sha256=sha(content),projected_sha256=sha(data),removed=removed))
  entry_path=out/'b2-helpers.coax';entry_path.write_bytes(entry)
  proof=dict(schema=1,scope=__doc__,selected_helpers=moved,selected_checks=selected,source_before=before,tooling_before=tooling,compiler=dict(path=str(compiler),sha256=compiler_sha),runtime_projection=regions,entry_sha256=sha(entry),status='prepared')
  (out/'projection.json').write_text(json.dumps(proof,indent=2)+'\n')

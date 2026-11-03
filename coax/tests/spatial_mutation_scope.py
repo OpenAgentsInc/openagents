@@ -61,6 +61,68 @@ def procedure_span(text, name):
     raise ValueError("unterminated procedure: " + name)
 
 
+def checker_sources(root):
+    """The checker root and its parts in load order (#12646: a root plus
+    lib/compiler/checker/*.coax). Each part is a contiguous run of the old
+    single file, so a procedure lives in exactly one of them."""
+    source = root / "coax/lib/compiler/checker.coax"
+    text = source.read_text()
+    parts = re.findall(r'^#load "(checker/[^"]+)";$', text, re.M)
+    return source, text, [(part, (source.parent / part).read_text()) for part in parts]
+
+
+def materialize(root, output, names, kind="changed-procedure"):
+    """Write OUTPUT/root.coax (the selected bodies), OUTPUT/dependency.coax (the
+    checker root) and OUTPUT/checker/ (every part, selected bodies removed)."""
+    source, text, parts = checker_sources(root)
+    original = dict(parts)
+    located = []
+    for name in names:
+        found = []
+        for part, body in parts:
+            try:
+                found.append((part, *procedure_span(body, name)))
+            except ValueError:
+                pass
+        if len(found) != 1:
+            raise ValueError("procedure must be in exactly one checker part: " + name)
+        located.append((name, *found[0]))
+    content = dict(parts)
+    for part, _ in parts:
+        spans = sorted((row for row in located if row[1] == part), key=lambda row: row[2], reverse=True)
+        for _, _, first, last in spans:
+            content[part] = content[part][:first] + content[part][last:]
+    # The parts stay relative (they are copied below); every policy module
+    # load becomes absolute.
+    dependency = re.sub(r'^#load "((?!checker/)[^"]+)";$',
+                        lambda m: '#load "' + str(source.parent / m.group(1)) + '";', text, flags=re.M)
+    entry = '#load "dependency.coax";\n#authority;\n'
+    entry += "\n\n".join(original[part][first:last] for _, part, first, last in located) + "\n"
+    output.mkdir(parents=True)
+    for part, body in content.items():
+        (output / part).parent.mkdir(parents=True, exist_ok=True)
+        (output / part).write_text(body)
+    (output / "dependency.coax").write_text(dependency)
+    (output / "root.coax").write_text(entry)
+    digest = lambda value: hashlib.sha256(value.encode()).hexdigest()
+    receipt = {
+        "schema": "coax-" + kind + "-mutation-scope-v2",
+        "original": str(source), "source_sha256": digest(text),
+        "part_sha256": {part: digest(body) for part, body in parts},
+        "root": str(output / "root.coax"), "root_sha256": digest(entry),
+        "dependency_sha256": digest(dependency),
+        "dependency_part_sha256": {part: digest(body) for part, body in content.items()},
+        "procedure_count": len(located),
+        "procedures": [{"name": name, "part": part,
+                        "first_line": original[part][:first].count("\n") + 1,
+                        "sha256": digest(original[part][first:last])}
+                       for name, part, first, last in located],
+        "transformation": "Exact selected procedure bodies are root source. Every other body and every original check remain in dependency source: the checker root and its parts. Only the policy module load paths become absolute. No waiver or check filtering.",
+    }
+    (output / "scope.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    return output / "root.coax"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="new private output directory")
@@ -73,32 +135,7 @@ def main():
         parser.error("procedures must be a nonempty, unique subset of the declared scope")
     if output.exists():
         parser.error("output already exists; preserve earlier snapshots and choose a new directory")
-    source = root / "coax/lib/compiler/checker.coax"
-    text = source.read_text()
-    spans = [(name, *procedure_span(text, name)) for name in names]
-    dependency = text
-    for _, first, last in sorted(spans, key=lambda row: row[1], reverse=True):
-        dependency = dependency[:first] + dependency[last:]
-    for name in ("quantity", "unit-algebra", "unit-forms", "spatial-policy", "spatial-mutation"):
-        dependency = dependency.replace('#load "' + name + '.coax";',
-                                        '#load "' + str(root / ("coax/lib/compiler/" + name + ".coax")) + '";')
-    entry = '#load "dependency.coax";\n#authority;\n'
-    entry += "\n\n".join(text[first:last] for _, first, last in spans) + "\n"
-    output.mkdir(parents=True)
-    (output / "dependency.coax").write_text(dependency)
-    (output / "root.coax").write_text(entry)
-    digest = lambda value: hashlib.sha256(value.encode()).hexdigest()
-    receipt = {
-        "schema": "coax-changed-procedure-mutation-scope-v1",
-        "original": str(source), "source_sha256": digest(text),
-        "root": str(output / "root.coax"), "root_sha256": digest(entry),
-        "dependency_sha256": digest(dependency), "procedure_count": len(spans),
-        "procedures": [{"name": name, "first_line": text[:first].count("\n") + 1,
-                        "sha256": digest(text[first:last])} for name, first, last in spans],
-        "transformation": "Exact selected procedure bodies are root source. Every other body and every original check remain in dependency source. Only five policy load paths become absolute. No waiver or check filtering.",
-    }
-    (output / "scope.json").write_text(json.dumps(receipt, indent=2) + "\n")
-    print(output / "root.coax")
+    print(materialize(root, output, names))
 
 
 if __name__ == "__main__":
