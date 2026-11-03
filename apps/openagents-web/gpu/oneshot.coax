@@ -1,0 +1,35 @@
+// One-Shot's shaders (oneshot.coax): build.sh writes apps/openagents-web/oneshot.wgsl from this
+// with coax/web/wgsl-module.coax (oneshot.module and oneshot.bindings beside it).
+// The scene is 5E Lab's glade, copied as it was (gpu/oneshot-glade.coax): bg_fs draws the glade traced per pixel
+// (the Table Display's 3D scene, view 1) or the flat background (view 0), with the uniform block
+// laid out as that file says. fx_vs/fx_fs draw the strokes oneshot.coax writes: the text, the
+// buttons, the panels and the flat grid's figures.
+#load "oneshot-glade.coax";
+
+oneshot_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+oneshot_bg_fs :: (pos:V4,u:[]f32)->V4 { return glade_bg_fs(pos,u); }
+OneshotV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+oneshot_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+oneshot_fx_vs :: (_vid2:u32,_iid3:u32,in_:oneshot_fx_vs_in,u:[]f32)->OneshotV {
+  a:V4=in_.a;
+  o:OneshotV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=in_.b;
+  o.tint=in_.c;
+  o.bar=in_.d;
+  return o;
+}
+// A capsule: shape.x its length, y its core's half width, z its light, w its glow's reach. A tint
+// with mode (bar.x... the vertex's 12th float) 1 is a filled panel: the whole quad, at its light.
+oneshot_fx_fs :: (v:OneshotV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(scale3(scale3(scale3(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}

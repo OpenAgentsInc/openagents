@@ -1,0 +1,1180 @@
+// The One-Shot table's rules side (docs/dnd/2026-11-03-dnd-campaign-creator-spec.md, phase 1): the
+// campaign a Game Master (GM) writes, the live session the GM runs from the GM Screen, and the
+// frames that carry what the table may see to the Table Display and to each player's My Character.
+// It draws nothing. Every roll, hit, save and hit point comes from the SRD engine
+// (aethyr/rules/srd/); this file only decides whose turn it is, what the log keeps and who sees it.
+//
+//   - A campaign: a title, a starting level and up to OS_SCENES scenes, each with its read-aloud
+//     text, a handout, its art (a title card or the 3D glade) and its encounter, a number of the
+//     SRD's Skeletons (the one monster stat block the engine holds today). A campaign is the GM's
+//     own content, kept apart from the SRD and saved marked `srd: false`.
+//   - The table: the party (one engine creature each, a class from the twelve at level 1 to 6),
+//     the scene running, what is shown, the battle and its initiative order, the dice tray's rolls
+//     (open or hidden) and the session log.
+//   - The wire: the GM's page holds the table; the others hear a view of it over the room
+//     server's relay (coax/web/room/room-relay.coax) as text frames, and send their own requests
+//     (join with a hero, use an ability, roll a die, end a turn). Hidden rolls and a monster's exact
+//     hit points never leave the GM's page.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+//   coax test apps/openagents-web/oneshot-table.coax
+
+#load "../../aethyr/rules/srd/battle.coax";
+
+OS_SCENES :: 4;
+OS_TITLE :: 48; OS_NAME :: 40; OS_TEXT :: 640; OS_HANDOUT :: 360;
+OS_CAMPAIGNS :: 4;
+OS_PARTY :: 6;
+OS_FOES :: 8;              // Skeletons an encounter can hold
+OS_LOG :: 60; OS_LINE :: 120;
+OS_COLS :: 16; OS_ROWS :: 10;   // the table's grid of 5-foot squares
+OS_ENTRIES :: 14;          // creatures a view carries: the party and the foes
+OS_SHOWN_LINES :: 10;      // log lines a view carries
+OS_FRAME :: 4000;          // a frame's bytes, under the relay's 4096
+ART_CARD :: 0; ART_GLADE :: 1;
+// fields a campaign has, for the Campaign Builder's typing
+F_NONE :: 0; F_TITLE :: 1; F_NAME :: 2; F_TEXT :: 3; F_HANDOUT :: 4; F_HERO :: 5; F_CODE :: 6;
+
+OsScene :: struct {
+  name: [OS_NAME] u8; name_n: int;
+  text: [OS_TEXT] u8; text_n: int;          // read aloud by the GM
+  handout: [OS_HANDOUT] u8; handout_n: int; // sent to the table when the GM chooses
+  art: int;
+  foes: int;                                // Skeletons in its encounter (0: none)
+}
+OsCampaign :: struct {
+  live: bool;
+  title: [OS_TITLE] u8; title_n: int;
+  level: int = 3;                           // the heroes' level, 1 to 6
+  scenes: [OS_SCENES] OsScene; scene_n: int;
+}
+
+os_put :: (buf: [] u8, at: int, t: string) -> int { return rs_put(buf, at, t); }
+os_put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v); }
+os_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+os_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+// Text into a field: at most its room, never cutting a character, and never the frame's separators
+// (a bar or a line break becomes a space).
+os_set :: (buf: [] u8, t: string) -> int {
+  n := os_min(t.count, buf.count);
+  if n < t.count { while n > 0 && (t[n] & 0xC0) == 0x80 { n -= 1; } }
+  for i: 0..<n { c := t[i]; buf[i] = ifx c == '|' || c == 10 || c == 13 then cast(u8) 32 else c; }
+  return n;
+}
+// A name's text (a hero's, a monster's): no separators of a frame's list either.
+os_set_name :: (buf: [] u8, t: string) -> int {
+  n := os_set(buf, t);
+  for i: 0..<n { if buf[i] == ',' || buf[i] == ';' { buf[i] = 32; } }
+  return n;
+}
+os_str :: (buf: [] u8, n: int) -> string { return cast(string) buf[0..<n]; }
+os_title :: (c: [] OsCampaign, k: int) -> string { return cast(string) c[k].title[0..<c[k].title_n]; }
+os_scene_name :: (sc: [] OsScene, k: int) -> string { return cast(string) sc[k].name[0..<sc[k].name_n]; }
+os_scene_text :: (sc: [] OsScene, k: int) -> string { return cast(string) sc[k].text[0..<sc[k].text_n]; }
+os_scene_handout :: (sc: [] OsScene, k: int) -> string { return cast(string) sc[k].handout[0..<sc[k].handout_n]; }
+
+os_scene :: (name: string, text: string, handout: string, art: int, foes: int) -> OsScene {
+  sc: [1] OsScene;
+  sc[0].name_n = os_set(sc[0].name[..], name);
+  sc[0].text_n = os_set(sc[0].text[..], text);
+  sc[0].handout_n = os_set(sc[0].handout[..], handout);
+  sc[0].art = art; sc[0].foes = os_min(os_max(foes, 0), OS_FOES);
+  return sc[0];
+}
+
+// ---- the starter one-shot: ours, original, SRD monsters only (three scenes for heroes at level 3)
+
+OS_STARTER_TITLE :: "The Bell in Mossgrave Glade";
+os_starter :: () -> OsCampaign {
+  c: [1] OsCampaign;
+  c[0].live = true;
+  c[0].title_n = os_set(c[0].title[..], OS_STARTER_TITLE);
+  c[0].level = 3;
+  c[0].scenes[0] = os_scene("The Lantern Inn",
+    "The common room of the Lantern Inn falls quiet when the bell rings again, far off in the woods. It is the third night in a row. Old Maren the innkeeper sets down her tray and looks at you. \"That bell hung in the chapel at Mossgrave Glade until the chapel fell, a hundred years ago. Now it rings at dusk, and my grandson Tobin went to see why. He took his bow and a lantern. That was this morning.\" She slides a purse of twenty silver pieces across the table. \"Bring him home.\"",
+    "Tobin's note, left under the purse: Gran, the path past the split oak, then left at the standing stone. I saw lights in the glade. Back by supper. T.",
+    ART_CARD, 0);
+  c[0].scenes[1] = os_scene("The Split Oak",
+    "The path narrows under black pines. At the split oak two figures stand in the road, perfectly still. Their armor has rusted through, and moonlight shows between their ribs. As you come closer, their heads turn toward you with a dry click.",
+    "A broken arrow with green fletching lies in the mud by the oak. It is one of Tobin's.",
+    ART_GLADE, 2);
+  c[0].scenes[2] = os_scene("Mossgrave Glade",
+    "The trees open on a clearing ringed with mossy stones. In the middle, half sunk in the earth, lies a great bronze bell. Tobin is tied to a stone beside it, gagged but alive. Around the bell, bones climb out of the moss and pull themselves upright. The bell rings once, and every skull turns toward you.",
+    "Words cast into the bell's rim, green with age: RING FOR THE DEAD, AND THE DEAD WILL ANSWER.",
+    ART_GLADE, 4);
+  c[0].scene_n = 3;
+  return c[0];
+}
+
+// ---- heroes: the twelve classes the engine builds, at level 1 to 6
+
+OS_CLASSES :: [12] int.[RS_FIGHTER, RS_WIZARD, RS_CLERIC, RS_ROGUE, RS_RANGER, RS_PALADIN,
+                        RS_BARBARIAN, RS_MONK, RS_BARD, RS_DRUID, RS_SORCERER, RS_WARLOCK];
+OS_HERO_NAMES :: [12] string.["Garr", "Ilse", "Aster", "Nim", "Wren", "Oriel", "Brakka", "Sen", "Lark", "Rowan", "Ember", "Vesk"];
+// The SRD 5.2.1 subclass each class has in the engine.
+os_subclass :: (klass: int) -> string {
+  if klass == RS_FIGHTER { return "Champion"; }
+  if klass == RS_WIZARD { return "Evoker"; }
+  if klass == RS_CLERIC { return "Life Domain"; }
+  if klass == RS_ROGUE { return "Thief"; }
+  if klass == RS_RANGER { return "Hunter"; }
+  if klass == RS_PALADIN { return "Oath of Devotion"; }
+  if klass == RS_BARBARIAN { return "Path of the Berserker"; }
+  if klass == RS_MONK { return "Warrior of the Open Hand"; }
+  if klass == RS_BARD { return "College of Lore"; }
+  if klass == RS_DRUID { return "Circle of the Land"; }
+  if klass == RS_SORCERER { return "Draconic Sorcery"; }
+  if klass == RS_WARLOCK { return "Fiend Patron"; }
+  return "";
+}
+os_class_ok :: (klass: int) -> bool {
+  for k: OS_CLASSES { if k == klass { return true; } }
+  return false;
+}
+// A hero from the engine: its class's record at a level (team 0, the party).
+os_hero :: (klass: int, name: string, level: int) -> RsCreature {
+  l := os_min(os_max(level, 1), 6);
+  if klass == RS_WIZARD { return rs_wizard(name, 0, l); }
+  if klass == RS_WARLOCK { return rs_warlock(name, 0, l, SP_ELDRITCH_BLAST); }
+  if klass == RS_BARBARIAN { return rs_barbarian(name, 0, l); }
+  if klass == RS_MONK { return rs_monk(name, 0, l); }
+  if klass == RS_BARD { return rs_bard(name, 0, l); }
+  if klass == RS_CLERIC { return rs_cleric(name, 0, l); }
+  if klass == RS_FIGHTER { return rs_fighter(name, 0, l); }
+  if klass == RS_PALADIN { return rs_paladin(name, 0, l); }
+  if klass == RS_RANGER { return rs_ranger(name, 0, l); }
+  if klass == RS_ROGUE { return rs_rogue(name, 0, l); }
+  if klass == RS_SORCERER { return rs_sorcerer(name, 0, l); }
+  return rs_druid(name, 0, l);
+}
+
+// ---- the hotbar: each class's own abilities (the same list and rules as 5E Lab's Player mode,
+// apps/openagents-web/fivelab.coax, kept here so the table needs nothing of that world)
+
+OS_SLOTS :: 9;
+AB_ATTACK :: 0; AB_DASH :: 1; AB_SPELL :: 2; AB_RECKLESS :: 3; AB_RAGE :: 4; AB_FLURRY :: 5; AB_PATIENT :: 6;
+AB_WIND :: 7; AB_WHOLE :: 8; AB_SECOND :: 9; AB_SURGE :: 10; AB_LAY :: 11; AB_SACRED :: 12; AB_CDASH :: 13;
+AB_AIM :: 14; AB_INNATE :: 15; AB_INSPIRE :: 16; AB_TURN :: 17; AB_PRESERVE :: 18; AB_LANDS :: 19; AB_SHOOT :: 20;
+TG_FOE :: 0; TG_POINT :: 1; TG_SELF :: 2; TG_ALLY :: 3;
+Ab :: struct { kind: int; sp: int; lvl: int; tg: int; name: string; }
+os_ab :: (kind: int, name: string, tg: int) -> Ab { return Ab.{kind = kind, sp = -1, tg = tg, name = name}; }
+os_spell_ab :: (sp: int, lvl: int, tg: int) -> Ab { return Ab.{kind = AB_SPELL, sp = sp, lvl = lvl, tg = tg, name = rs_spell(sp).name}; }
+// A creature's abilities in slot order; a monster attacks with its weapons.
+os_abilities :: (c: RsCreature, out: [] Ab) -> int {
+  kl := c.klass;
+  n := 0;
+  if kl == RS_MONSTER {
+    out[0] = os_ab(AB_ATTACK, rs_weapon(c.weapon).name, TG_FOE); n = 1;
+    if c.ranged >= 0 { out[1] = os_ab(AB_SHOOT, rs_weapon(c.ranged).name, TG_FOE); n = 2; }
+    return n;
+  }
+  if kl == RS_DRUID {
+    out[0] = os_spell_ab(SP_STARRY_WISP, 0, TG_FOE); out[1] = os_spell_ab(SP_PRODUCE_FLAME, 0, TG_SELF); out[2] = os_spell_ab(SP_FLAME_HURL, 0, TG_FOE);
+    out[3] = os_spell_ab(SP_THUNDERWAVE, 1, TG_POINT); out[4] = os_spell_ab(SP_ENTANGLE, 1, TG_POINT); out[5] = os_spell_ab(SP_HEALING_WORD, 1, TG_ALLY);
+    out[6] = os_spell_ab(SP_CALL_LIGHTNING, 3, TG_POINT); out[7] = os_ab(AB_LANDS, "Land's Aid", TG_POINT); n = 8;
+  } else if kl == RS_WIZARD {
+    out[0] = os_spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = os_spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = os_spell_ab(SP_RAY_OF_SICKNESS, 1, TG_FOE);
+    out[3] = os_spell_ab(SP_FALSE_LIFE, 1, TG_SELF); out[4] = os_spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[5] = os_spell_ab(SP_BLINDNESS, 2, TG_FOE);
+    out[6] = os_spell_ab(SP_FIREBALL, 3, TG_POINT); n = 7;
+  } else if kl == RS_WARLOCK {
+    out[0] = os_spell_ab(SP_ELDRITCH_BLAST, 0, TG_FOE); out[1] = os_spell_ab(SP_CHILL_TOUCH, 0, TG_FOE); out[2] = os_spell_ab(SP_HEX, 1, TG_FOE);
+    out[3] = os_spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[4] = os_spell_ab(SP_FIREBALL, 3, TG_POINT); n = 5;
+  } else if kl == RS_SORCERER {
+    out[0] = os_spell_ab(SP_FIRE_BOLT, 0, TG_FOE); out[1] = os_spell_ab(SP_SCORCHING_RAY, 2, TG_FOE); out[2] = os_spell_ab(SP_FIREBALL, 3, TG_POINT);
+    out[3] = os_ab(AB_INNATE, "Innate Sorcery", TG_SELF); n = 4;
+  } else if kl == RS_BARD {
+    out[0] = os_spell_ab(SP_VICIOUS_MOCKERY, 0, TG_FOE); out[1] = os_spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[2] = os_ab(AB_INSPIRE, "Bardic Inspiration", TG_ALLY);
+    out[3] = os_spell_ab(SP_HYPNOTIC_PATTERN, 3, TG_POINT); out[4] = os_spell_ab(SP_FIREBALL, 3, TG_POINT); n = 5;
+  } else if kl == RS_CLERIC {
+    out[0] = os_ab(AB_ATTACK, "Attack", TG_FOE); out[1] = os_spell_ab(SP_SACRED_FLAME, 0, TG_FOE); out[2] = os_spell_ab(SP_GUIDING_BOLT, 1, TG_FOE);
+    out[3] = os_spell_ab(SP_HEALING_WORD, 1, TG_ALLY); out[4] = os_spell_ab(SP_SPIRIT_GUARDIANS, 3, TG_SELF); out[5] = os_ab(AB_TURN, "Turn Undead", TG_SELF);
+    out[6] = os_ab(AB_PRESERVE, "Preserve Life", TG_SELF); n = 7;
+  } else if kl == RS_FIGHTER {
+    out[0] = os_ab(AB_ATTACK, "Attack", TG_FOE); out[1] = os_ab(AB_SECOND, "Second Wind", TG_SELF); out[2] = os_ab(AB_SURGE, "Action Surge", TG_FOE); n = 3;
+  } else if kl == RS_PALADIN {
+    out[0] = os_ab(AB_ATTACK, "Attack", TG_FOE); out[1] = os_spell_ab(SP_DIVINE_SMITE, 1, TG_FOE); out[2] = os_ab(AB_LAY, "Lay On Hands", TG_ALLY);
+    out[3] = os_ab(AB_SACRED, "Sacred Weapon", TG_SELF); out[4] = os_spell_ab(SP_SACRED_FLAME, 0, TG_FOE); n = 5;
+  } else if kl == RS_BARBARIAN {
+    out[0] = os_ab(AB_ATTACK, "Attack", TG_FOE); out[1] = os_ab(AB_RECKLESS, "Reckless Attack", TG_FOE); out[2] = os_ab(AB_RAGE, "Rage", TG_SELF); n = 3;
+  } else if kl == RS_MONK {
+    out[0] = os_ab(AB_ATTACK, "Attack", TG_FOE); out[1] = os_ab(AB_FLURRY, "Flurry of Blows", TG_FOE); out[2] = os_ab(AB_PATIENT, "Patient Defense", TG_SELF);
+    out[3] = os_ab(AB_WHOLE, "Wholeness of Body", TG_SELF); n = 4;
+  } else if kl == RS_ROGUE {
+    out[0] = os_ab(AB_ATTACK, "Attack", TG_FOE); out[1] = os_ab(AB_SHOOT, "Shortbow", TG_FOE); out[2] = os_ab(AB_AIM, "Steady Aim", TG_SELF); n = 3;
+  } else if kl == RS_RANGER {
+    out[0] = os_ab(AB_SHOOT, "Longbow", TG_FOE); out[1] = os_ab(AB_ATTACK, "Shortsword", TG_FOE); out[2] = os_spell_ab(SP_HUNTERS_MARK, 1, TG_FOE); n = 3;
+  } else { out[0] = os_ab(AB_ATTACK, "Attack", TG_FOE); n = 1; }
+  // a spell above the hero's level has no slot to cast it: left off
+  m := 0;
+  for k: 0..<n {
+    a := out[k];
+    if a.kind == AB_SPELL && a.lvl > 0 && c.slots_max[a.lvl] == 0 && c.free_spell != a.sp { continue; }
+    if a.kind == AB_RAGE && c.rages_max == 0 { continue; }
+    if (a.kind == AB_FLURRY || a.kind == AB_PATIENT) && c.focus_max == 0 { continue; }
+    if a.kind == AB_SHOOT && c.ranged < 0 { continue; }
+    if a.kind != AB_SPELL && a.kind != AB_ATTACK && a.kind != AB_SHOOT && a.kind != AB_RAGE && a.kind != AB_FLURRY && a.kind != AB_PATIENT && a.kind != AB_RECKLESS && os_use_of(a.kind) >= 0 && c.uses_max[os_use_of(a.kind)] == 0 { continue; }
+    if a.kind == AB_RECKLESS && c.level < 2 { continue; }
+    if a.kind == AB_AIM && !c.steady_aim { continue; }
+    if a.kind == AB_TURN && !c.turn_undead { continue; }
+    if a.kind == AB_PRESERVE && !c.preserve_life { continue; }
+    if a.kind == AB_SACRED && c.level < 3 { continue; }
+    if a.kind == AB_LANDS && !c.lands_aid { continue; }
+    out[m] = a; m += 1;
+  }
+  return m;
+}
+// The limited use an ability spends (RS_USE_*), or -1.
+os_use_of :: (kind: int) -> int {
+  if kind == AB_WHOLE { return RS_USE_WHOLE; }
+  if kind == AB_SECOND { return RS_USE_WIND; }
+  if kind == AB_SURGE { return RS_USE_SURGE; }
+  if kind == AB_LAY { return RS_USE_LAY; }
+  if kind == AB_INSPIRE { return RS_USE_INSPIRE; }
+  if kind == AB_INNATE { return RS_USE_INNATE; }
+  if kind == AB_LANDS { return RS_USE_WILD; }
+  if kind == AB_TURN || kind == AB_PRESERVE || kind == AB_SACRED { return RS_USE_CHANNEL; }
+  return -1;
+}
+// The lowest free slot of at least level, or 0.
+os_free_slot :: (c: RsCreature, level: int) -> int {
+  for k: level..<10 { if c.slots[k] > 0 { return k; } }
+  return 0;
+}
+os_ab_ready :: (c: RsCreature, a: Ab) -> bool {
+  if a.kind == AB_SPELL { return a.lvl == 0 || os_free_slot(c, a.lvl) > 0 || (c.free_spell == a.sp && c.uses[RS_USE_FREE] > 0); }
+  if a.kind == AB_RAGE { return c.rages > 0 && !c.raging; }
+  if a.kind == AB_FLURRY || a.kind == AB_PATIENT || a.kind == AB_WIND { return c.focus > 0; }
+  u := os_use_of(a.kind);
+  if u >= 0 { return c.uses[u] > 0; }
+  return true;
+}
+// What an ability has left to show: spell slots at its level, uses, Rages or Focus (-1: none).
+os_ab_left :: (c: RsCreature, a: Ab) -> int {
+  if a.kind == AB_SPELL { if a.lvl == 0 { return -1; } sl := os_free_slot(c, a.lvl); return ifx sl > 0 then c.slots[sl] else 0; }
+  if a.kind == AB_RAGE { return c.rages; }
+  if a.kind == AB_FLURRY || a.kind == AB_PATIENT { return c.focus; }
+  u := os_use_of(a.kind);
+  if u >= 0 { return c.uses[u]; }
+  return -1;
+}
+
+// ---- the table
+
+OsLine :: struct { text: [OS_LINE] u8; n: int; hidden: bool; seq: int; kind: int; }
+LN_GM :: 0; LN_ROLL :: 1; LN_RULES :: 2; LN_SCENE :: 3;
+OsTable :: struct {
+  camp: OsCampaign;
+  scene: int = -1;           // the scene the GM is running
+  shown: bool;               // its art is on the Table Display
+  text_shown: bool;          // its read-aloud text too
+  handout: int = -1;         // the scene whose handout is out (-1 none)
+  party_n: int;              // the party: the battle's first creatures
+  klass: [OS_PARTY] int;
+  b: [1] RsBattle;           // the party, and the foes while there is a fight
+  combat: bool;
+  round: int;
+  start_at: f32;             // the battle clock when the fight began
+  seen: int;                 // the engine's events already in the log
+  monsters_hidden: bool = true;   // the GM's monster rolls stay behind the screen
+  log: [OS_LOG] OsLine; log_n: int; log_seq: int;
+  roll_seq: int;             // the last open roll, for the Table Display's banner
+  changed: int;              // bumped on every change the other screens must hear
+}
+os_battle :: (t: [] OsTable) -> [] RsBattle { return t[0].b[..]; }
+os_text :: (l: [] OsLine, k: int) -> string { return cast(string) l[k].text[0..<l[k].n]; }
+
+// A new session for a campaign: the dice seeded (the engine's SplitMix64 stream), no one seated yet.
+os_open :: (t: [] OsTable, c: OsCampaign, seed: u64) {
+  t[0] = OsTable.{};
+  t[0].camp = c;
+  t[0].b[0].dice[0].state = seed;
+  t[0].b[0].w = OS_COLS; t[0].b[0].h = OS_ROWS; t[0].b[0].who = -1;
+  t[0].b[0].beat = f32(RS_ROUND);
+  seq := os_log(t, LN_GM, false, "The session begins");
+}
+os_log :: (t: [] OsTable, kind: int, hidden: bool, text: string) -> int {
+  if t[0].log_n == OS_LOG {
+    for i: 1..<OS_LOG { t[0].log[i - 1] = t[0].log[i]; }
+    t[0].log_n -= 1;
+  }
+  l: OsLine;
+  l.n = os_put(l.text[..], 0, text); l.hidden = hidden; l.kind = kind;
+  t[0].log_seq += 1; l.seq = t[0].log_seq;
+  t[0].log[t[0].log_n] = l; t[0].log_n += 1;
+  if kind == LN_ROLL && !hidden { t[0].roll_seq = l.seq; }
+  t[0].changed += 1;
+  return l.seq;
+}
+// A hidden line shown to the table: it keeps its place in the log.
+os_reveal :: (t: [] OsTable, seq: int) -> bool {
+  for i: 0..<t[0].log_n {
+    if t[0].log[i].seq == seq && t[0].log[i].hidden {
+      t[0].log[i].hidden = false;
+      if t[0].log[i].kind == LN_ROLL { t[0].roll_seq = seq; }
+      t[0].changed += 1;
+      return true;
+    }
+  }
+  return false;
+}
+// What the engine told since the last look, into the log: a monster's rolls behind the screen
+// while the GM keeps them there.
+os_take :: (t: [] OsTable) {
+  book := t[0].b[0].book[..];
+  if book[0].seq == t[0].seen { return; }
+  fresh := rs_min(book[0].seq - t[0].seen, book[0].count);
+  t[0].seen = book[0].seq;
+  k := fresh - 1;
+  while k >= 0 {
+    e := rs_recent_at(book, k);
+    k -= 1;
+    if e.text_n == 0 { continue; }
+    foe := e.by >= t[0].party_n && e.by < t[0].b[0].n;
+    // a monster's attack or what it deals stays hidden; what happens to a hero (its death saves, its
+    // Hit Points dropping) is the table's
+    hidden := t[0].monsters_hidden && foe && e.kind != RS_EV_DOWN && e.kind != RS_EV_DEATH;
+    seq := os_log(t, LN_RULES, hidden, cast(string) e.text[0..<e.text_n]);
+  }
+}
+
+// A seat at the table: a hero joins the party. Its index, or -1 when the party is full or the class
+// isn't one the engine builds.
+os_join :: (t: [] OsTable, klass: int, level: int, name: string) -> int {
+  if t[0].party_n >= OS_PARTY || !os_class_ok(klass) || t[0].combat { return -1; }
+  nm: [RS_NAME] u8; nn := os_set_name(nm[..], name);
+  if nn == 0 { return -1; }
+  h := os_hero(klass, cast(string) nm[0..<nn], level);
+  b := os_battle(t);
+  i := t[0].party_n;
+  // the party stands on the grid's left, a file of three
+  b[0].c[i] = h; b[0].c[i].x = 3 + i / 3; b[0].c[i].y = 3 + i % 3;
+  t[0].klass[i] = klass;
+  t[0].party_n += 1;
+  b[0].n = t[0].party_n;
+  l: [OS_LINE] u8; n := os_put(l[..], 0, cast(string) nm[0..<nn]);
+  n = os_put(l[..], n, " joins the party: "); n = os_put(l[..], n, RS_CLASS[klass]); n = os_put(l[..], n, " ");
+  n = os_put_int(l[..], n, h.level);
+  seq := os_log(t, LN_GM, false, cast(string) l[0..<n]);
+  return i;
+}
+
+// Run it: the scene becomes the one running; nothing shows until the GM says.
+os_run_scene :: (t: [] OsTable, k: int) -> bool {
+  if k < 0 || k >= t[0].camp.scene_n { return false; }
+  if t[0].combat { os_end_combat(t); }
+  t[0].scene = k; t[0].shown = false; t[0].text_shown = false; t[0].handout = -1;
+  l: [OS_LINE] u8; n := os_put(l[..], 0, "Scene: "); n = os_put(l[..], n, os_scene_name(t[0].camp.scenes[..], k));
+  seq := os_log(t, LN_SCENE, true, cast(string) l[0..<n]);
+  return true;
+}
+os_show :: (t: [] OsTable, on: bool) {
+  if t[0].scene < 0 { return; }
+  t[0].shown = on;
+  if !on { t[0].text_shown = false; }
+  if on {
+    l: [OS_LINE] u8; n := os_put(l[..], 0, "Shown to the table: "); n = os_put(l[..], n, os_scene_name(t[0].camp.scenes[..], t[0].scene));
+    seq := os_log(t, LN_SCENE, false, cast(string) l[0..<n]);
+  }
+  t[0].changed += 1;
+}
+os_show_text :: (t: [] OsTable, on: bool) {
+  if t[0].scene < 0 { return; }
+  t[0].text_shown = on;
+  if on { t[0].shown = true; }
+  t[0].changed += 1;
+}
+os_send_handout :: (t: [] OsTable, on: bool) -> bool {
+  if t[0].scene < 0 || (on && t[0].camp.scenes[t[0].scene].handout_n == 0) { return false; }
+  t[0].handout = ifx on then t[0].scene else -1;
+  if on { seq := os_log(t, LN_SCENE, false, "The GM sends a handout"); }
+  t[0].changed += 1;
+  return true;
+}
+
+// Start combat: the scene's foes join the party on the grid and everyone rolls initiative (the
+// engine's: a d20 plus the Dexterity modifier), the order built, the first turn begun.
+os_start_combat :: (t: [] OsTable) -> bool {
+  if t[0].combat || t[0].scene < 0 || t[0].party_n == 0 { return false; }
+  foes := t[0].camp.scenes[t[0].scene].foes;
+  if foes <= 0 { return false; }
+  b := os_battle(t);
+  party: [OS_PARTY] RsCreature;
+  for i: 0..<t[0].party_n { party[i] = b[0].c[i]; }
+  b[0].n = 0;
+  for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
+  for i: 0..<t[0].party_n { h := rs_add(b, party[i], party[i].x, party[i].y); }
+  for f: 0..<foes {
+    nm: [RS_NAME] u8; nn := os_put(nm[..], 0, "Skeleton "); nn = os_put_int(nm[..], nn, f + 1);
+    m := rs_add(b, rs_skeleton(cast(string) nm[0..<nn], 2), 11 + f / 4, 2 + (f % 4) * 2);
+  }
+  rs_begin(b);
+  t[0].combat = true; t[0].round = 1; t[0].start_at = b[0].clock;
+  t[0].shown = true;
+  seq := os_log(t, LN_GM, false, "Combat begins: roll initiative");
+  for k: 0..<b[0].n {
+    l: [OS_LINE] u8; n := os_put(l[..], 0, rs_name(b[0].c[k..<k + 1]));
+    n = os_put(l[..], n, " rolls initiative: "); n = os_put_int(l[..], n, b[0].c[k].initiative);
+    q := os_log(t, LN_ROLL, k >= t[0].party_n && t[0].monsters_hidden, cast(string) l[0..<n]);
+  }
+  os_next_turn(t);
+  return true;
+}
+// The order: everyone still in the fight, the highest initiative first (ties by who joined first).
+os_order :: (t: [] OsTable, out: [] int) -> int {
+  b := os_battle(t);
+  n := 0;
+  for i: 0..<b[0].n {
+    if b[0].c[i].dead && i >= t[0].party_n { continue; }
+    if n >= out.count { break; }
+    out[n] = i; n += 1;
+  }
+  // by initiative, as rs_begin ranked them
+  for a: 1..<n {
+    k := a;
+    while k > 0 && os_before(b, out[k], out[k - 1]) { x := out[k]; out[k] = out[k - 1]; out[k - 1] = x; k -= 1; }
+  }
+  return n;
+}
+os_before :: (b: [] RsBattle, i: int, j: int) -> bool {
+  return b[0].c[i].initiative > b[0].c[j].initiative || (b[0].c[i].initiative == b[0].c[j].initiative && i < j);
+}
+// Next turn: the turn running ends (its repeat saves, its effects' clocks), and the next creature
+// in the order begins its own on the battle clock (a hero at 0 Hit Points rolls its death save).
+os_next_turn :: (t: [] OsTable) {
+  if !t[0].combat { return; }
+  b := os_battle(t);
+  if b[0].who >= 0 { rs_end_turn(b, b[0].who); }
+  next := -1;
+  for i: 0..<b[0].n {
+    if b[0].c[i].dead { continue; }
+    if next < 0 || b[0].c[i].turn_at < b[0].c[next].turn_at { next = i; }
+  }
+  if next < 0 { os_take(t); return; }
+  gap := b[0].c[next].turn_at - b[0].clock;
+  if gap > 0 { rs_tick(b, gap); }
+  round := cast(int) ((b[0].c[next].turn_at - t[0].start_at) / f32(RS_ROUND)) + 1;
+  if round > t[0].round {
+    t[0].round = round;
+    l: [OS_LINE] u8; n := os_put(l[..], 0, "Round "); n = os_put_int(l[..], n, round);
+    seq := os_log(t, LN_GM, false, cast(string) l[0..<n]);
+  }
+  rs_start_turn(b, next);
+  os_take(t);
+  t[0].changed += 1;
+}
+os_turn :: (t: [] OsTable) -> int { return ifx t[0].combat then t[0].b[0].who else -1; }
+// End combat: the foes leave the grid, the heroes keep what the fight left them.
+os_end_combat :: (t: [] OsTable) {
+  if !t[0].combat { return; }
+  b := os_battle(t);
+  if b[0].who >= 0 { rs_end_turn(b, b[0].who); }
+  os_take(t);
+  b[0].n = t[0].party_n; b[0].who = -1;
+  for z: 0..<RS_ZONES { b[0].zone[z] = RsZone.{}; }
+  // the party back in its file
+  for i: 0..<t[0].party_n { b[0].c[i].x = 3 + i / 3; b[0].c[i].y = 3 + i % 3; }
+  t[0].combat = false;
+  seq := os_log(t, LN_GM, false, "Combat ends");
+}
+// Who has won, if the fight is over: 1 the party (every foe down), 2 the foes (every hero down), 0 not yet.
+os_outcome :: (t: [] OsTable) -> int {
+  if !t[0].combat { return 0; }
+  b := os_battle(t);
+  heroes := 0; foes := 0;
+  for i: 0..<b[0].n { if rs_up(b[0].c[i]) { if i < t[0].party_n { heroes += 1; } else { foes += 1; } } }
+  if foes == 0 { return 1; }
+  if heroes == 0 { return 2; }
+  return 0;
+}
+
+// A free square next to creature j for i to step into (theatre of the mind: where everyone stands is
+// the GM's call, so a melee attack brings the attacker beside its target), or false.
+os_beside :: (t: [] OsTable, i: int, j: int) -> bool {
+  b := os_battle(t);
+  if rs_feet_to(b, i, j) <= 5 { return true; }
+  for ring: 0..<8 {
+    ox := [8] int.[-1, 1, 0, 0, -1, 1, -1, 1][ring]; oy := [8] int.[0, 0, -1, 1, -1, -1, 1, 1][ring];
+    x := b[0].c[j].x + ox; y := b[0].c[j].y + oy;
+    if x < 0 || y < 0 || x >= OS_COLS || y >= OS_ROWS || rs_at(b, x, y) >= 0 { continue; }
+    b[0].c[i].x = x; b[0].c[i].y = y;
+    return true;
+  }
+  return false;
+}
+// The ally most hurt (a share of its Hit Points below `share`), or -1.
+os_most_hurt :: (t: [] OsTable, i: int, share: f32) -> int {
+  b := os_battle(t);
+  best := -1; bv := share;
+  for j: 0..<b[0].n {
+    c := b[0].c[j];
+    if c.team != b[0].c[i].team || c.dead { continue; }
+    v := f32(c.hp) / f32(rs_max(c.hp_max, 1));
+    if v < bv { bv = v; best = j; }
+  }
+  return best;
+}
+// Ability `k` of whoever's turn it is, at `target` (a foe or an ally, as the ability aims). What the
+// engine refuses spends nothing; true when something was done.
+os_act :: (t: [] OsTable, i: int, k: int, target: int) -> bool {
+  b := os_battle(t);
+  if !t[0].combat || b[0].who != i || i < 0 { return false; }
+  list: [OS_SLOTS] Ab; n := os_abilities(b[0].c[i], list[..]);
+  if k < 0 || k >= n { return false; }
+  a := list[k];
+  if !os_ab_ready(b[0].c[i], a) { return false; }
+  foe := ifx target >= 0 && target < b[0].n && b[0].c[target].team != b[0].c[i].team && !b[0].c[target].dead then target else -1;
+  ally := ifx target >= 0 && target < b[0].n && b[0].c[target].team == b[0].c[i].team && !b[0].c[target].dead then target else -1;
+  ok := false;
+  if a.kind == AB_ATTACK || a.kind == AB_RECKLESS || a.kind == AB_FLURRY || a.kind == AB_SURGE {
+    if foe < 0 { return false; }
+    if !os_beside(t, i, foe) { return false; }
+    if a.kind == AB_SURGE { ok = rs_action_surge(b, i); if ok && !b[0].turn.action { hit := rs_attack(b, i, foe, false, -1); } }
+    else if a.kind == AB_FLURRY { ok = rs_attack(b, i, foe, false, -1); if rs_up(b[0].c[foe]) { more := rs_flurry(b, i, foe, OH_TOPPLE); ok = ok || more; } }
+    else { ok = rs_attack(b, i, foe, a.kind == AB_RECKLESS, -1); }
+  } else if a.kind == AB_SHOOT {
+    if foe < 0 { return false; }
+    ok = rs_shoot(b, i, foe);
+  } else if a.kind == AB_SPELL {
+    sl := ifx a.lvl == 0 then 0 else os_free_slot(b[0].c[i], a.lvl);
+    if a.lvl > 0 && sl == 0 && b[0].c[i].free_spell == a.sp { sl = 0; }
+    if a.tg == TG_SELF { ok = rs_cast(b, i, a.sp, sl, b[0].c[i].x, b[0].c[i].y, i); }
+    else if a.tg == TG_ALLY {
+      w := ifx ally >= 0 then ally else os_most_hurt(t, i, 1.01);
+      ok = rs_cast(b, i, a.sp, sl, 0, 0, ifx w >= 0 then w else i);
+    } else if foe >= 0 && a.tg == TG_POINT { ok = rs_cast(b, i, a.sp, sl, b[0].c[foe].x, b[0].c[foe].y, -1); }
+    else if foe >= 0 {
+      // a touch spell (Divine Smite rides a melee hit) brings the caster beside its target
+      if rs_spell(a.sp).range_ft <= 5 { near := os_beside(t, i, foe); }
+      ok = rs_cast(b, i, a.sp, sl, 0, 0, foe);
+    }
+  }
+  else if a.kind == AB_RAGE { ok = rs_rage(b, i); }
+  else if a.kind == AB_PATIENT { ok = rs_patient_defense(b, i); }
+  else if a.kind == AB_WHOLE { ok = rs_wholeness(b, i); }
+  else if a.kind == AB_SECOND { ok = rs_second_wind(b, i); }
+  else if a.kind == AB_LAY {
+    w := ifx ally >= 0 then ally else i;
+    if os_beside(t, i, w) || w == i { ok = rs_lay_on_hands(b, i, w, ifx b[0].c[w].hp == 0 then 5 else 10); }
+  }
+  else if a.kind == AB_SACRED { ok = rs_sacred_weapon(b, i); }
+  else if a.kind == AB_AIM { ok = rs_steady_aim(b, i); }
+  else if a.kind == AB_INNATE { ok = rs_innate_sorcery(b, i); }
+  else if a.kind == AB_INSPIRE { w := ifx ally >= 0 && ally != i then ally else -1; if w >= 0 { ok = rs_inspire(b, i, w); } }
+  else if a.kind == AB_TURN { ok = rs_turn_undead(b, i); }
+  else if a.kind == AB_PRESERVE { ok = rs_preserve_life(b, i); }
+  else if a.kind == AB_LANDS { if foe >= 0 { ok = rs_lands_aid(b, i, b[0].c[foe].x, b[0].c[foe].y, os_most_hurt(t, i, 0.7)); } }
+  os_take(t);
+  if ok { t[0].changed += 1; }
+  return ok;
+}
+
+// The dice tray: count dice of `sides` from the engine's dice stream, open or behind the screen.
+OS_DICE :: [7] int.[4, 6, 8, 10, 12, 20, 100];
+os_dice_ok :: (sides: int) -> bool { for d: OS_DICE { if d == sides { return true; } } return false; }
+os_roll :: (t: [] OsTable, who: string, count: int, sides: int, hidden: bool) -> int {
+  if !os_dice_ok(sides) || count < 1 || count > 10 { return -1; }
+  d := t[0].b[0].dice[..];
+  total := 0;
+  l: [OS_LINE] u8; n := os_put(l[..], 0, who); n = os_put(l[..], n, " rolls "); n = os_put_int(l[..], n, count);
+  n = os_put(l[..], n, "d"); n = os_put_int(l[..], n, sides); n = os_put(l[..], n, ": ");
+  for k: 0..<count {
+    f := rs_roll(d, sides); total += f;
+    if count > 1 { if k > 0 { n = os_put(l[..], n, " + "); } n = os_put_int(l[..], n, f); }
+  }
+  if count > 1 { n = os_put(l[..], n, " = "); }
+  n = os_put_int(l[..], n, total);
+  seq := os_log(t, LN_ROLL, hidden, cast(string) l[0..<n]);
+  return total;
+}
+// A physical die: its face typed in, marked as entered by hand.
+os_enter :: (t: [] OsTable, who: string, sides: int, face: int, hidden: bool) -> bool {
+  if !os_dice_ok(sides) || face < 1 || face > sides { return false; }
+  l: [OS_LINE] u8; n := os_put(l[..], 0, who); n = os_put(l[..], n, " rolls a d"); n = os_put_int(l[..], n, sides);
+  n = os_put(l[..], n, " by hand: "); n = os_put_int(l[..], n, face);
+  seq := os_log(t, LN_ROLL, hidden, cast(string) l[0..<n]);
+  return true;
+}
+
+// ---- a monster's health as players see it (spec: exact to the GM, a rough state to players)
+
+HP_UNHURT :: 0; HP_HURT :: 1; HP_BLOODIED :: 2; HP_DOWN :: 3; HP_DEAD :: 4;
+OS_HP_WORD :: [5] string.["Unhurt", "Hurt", "Bloodied", "Down", "Dead"];
+os_health :: (c: RsCreature) -> int {
+  if c.dead { return HP_DEAD; }
+  if c.hp == 0 { return HP_DOWN; }
+  if c.hp * 2 <= c.hp_max { return HP_BLOODIED; }
+  if c.hp < c.hp_max { return HP_HURT; }
+  return HP_UNHURT;
+}
+// A figure's look in 5E Lab's glade (gpu/fivelab.coax): its class's, plus 16 for each team past the first.
+os_look :: (klass: int) -> int {
+  if klass == RS_WARLOCK { return 1; }
+  if klass == RS_BARBARIAN { return 2; }
+  if klass == RS_MONK { return 3; }
+  if klass == RS_MONSTER { return 4; }
+  if klass == RS_WIZARD { return 5; }
+  if klass == RS_BARD { return 6; }
+  if klass == RS_CLERIC { return 7; }
+  if klass == RS_FIGHTER { return 8; }
+  if klass == RS_PALADIN { return 9; }
+  if klass == RS_RANGER { return 10; }
+  if klass == RS_ROGUE { return 11; }
+  if klass == RS_SORCERER { return 12; }
+  return 0;
+}
+os_marks :: (cr: RsCreature) -> int {
+  m := 0;
+  if rs_has(cr, RS_RESTRAINED) { m += 1; }
+  if rs_has(cr, RS_POISONED) { m += 2; }
+  if rs_has(cr, RS_BLINDED) { m += 4; }
+  if rs_effect(cr, EF_ENFEEBLED) { m += 8; }
+  if cr.temp > 0 { m += 16; }
+  if rs_has(cr, RS_PARALYZED) { m += 32; }
+  if rs_effect(cr, EF_HEX) { m += 64; }
+  return m;
+}
+
+// ---- what the table sees: the view every screen draws (the GM's Table Display too)
+
+OsEntry :: struct {
+  name: [RS_NAME] u8; name_n: int;
+  index: int;               // the creature's place in the GM's battle
+  look: int; team: int;
+  hp: int; hp_max: int;     // -1: not shown (a monster's)
+  health: int;
+  x: int; y: int; marks: int;
+  initiative: int;
+  hero: bool;
+  klass: int; level: int;
+  slots: [4] int;           // a hero's spell slots left at levels 1 to 3
+}
+OsView :: struct {
+  live: bool;               // the GM has been heard
+  title: [OS_TITLE] u8; title_n: int;
+  scene: [OS_NAME] u8; scene_n: int;
+  art: int; shown: bool; combat: bool; round: int;
+  turn: int = -1;           // the entry whose turn it is (-1 none)
+  outcome: int;
+  text: [OS_TEXT] u8; text_n: int;          // the read-aloud, when the GM shows it
+  handout: [OS_HANDOUT] u8; handout_n: int; // the handout out, if any
+  entries: [OS_ENTRIES] OsEntry; entry_n: int;
+  lines: [OS_SHOWN_LINES] OsLine; line_n: int;
+  roll: [OS_LINE] u8; roll_n: int; roll_seq: int;   // the latest open roll
+  party_n: int;
+}
+os_entry_name :: (e: [] OsEntry, k: int) -> string { return cast(string) e[k].name[0..<e[k].name_n]; }
+
+// The view of the table: `gm` true shows hidden lines and every hit point (the GM Screen's own).
+os_view :: (t: [] OsTable, v: [] OsView, gm: bool) {
+  v[0] = OsView.{};
+  v[0].live = true;
+  v[0].title_n = os_put(v[0].title[..], 0, os_str(t[0].camp.title[..], t[0].camp.title_n));
+  if t[0].scene >= 0 && (t[0].shown || gm) {
+    k := t[0].scene;
+    v[0].scene_n = os_put(v[0].scene[..], 0, os_scene_name(t[0].camp.scenes[..], k));
+    v[0].art = t[0].camp.scenes[k].art;
+    if t[0].text_shown || gm { v[0].text_n = os_put(v[0].text[..], 0, os_scene_text(t[0].camp.scenes[..], k)); }
+  }
+  v[0].shown = t[0].shown;
+  if t[0].handout >= 0 { v[0].handout_n = os_put(v[0].handout[..], 0, os_scene_handout(t[0].camp.scenes[..], t[0].handout)); }
+  v[0].combat = t[0].combat; v[0].round = t[0].round; v[0].outcome = os_outcome(t);
+  v[0].party_n = t[0].party_n;
+  order: [RS_MAX] int; n := ifx t[0].combat then os_order(t, order[..]) else t[0].party_n;
+  if !t[0].combat { for i: 0..<n { order[i] = i; } }
+  b := os_battle(t);
+  for k: 0..<rs_min(n, OS_ENTRIES) {
+    i := order[k];
+    cr := b[0].c[i];
+    e: OsEntry;
+    e.name_n = os_put(e.name[..], 0, cast(string) cr.name[0..<cr.name_n]);
+    e.index = i; e.look = os_look(cr.klass); e.team = cr.team;
+    e.hero = i < t[0].party_n;
+    e.hp = ifx e.hero || gm then cr.hp else -1;
+    e.hp_max = ifx e.hero || gm then cr.hp_max else -1;
+    e.health = os_health(cr);
+    e.x = cr.x; e.y = cr.y; e.marks = os_marks(cr);
+    e.initiative = ifx t[0].combat then cr.initiative else 0;
+    e.klass = cr.klass; e.level = cr.level;
+    for s: 1..<4 { e.slots[s] = cr.slots[s]; }
+    if t[0].combat && b[0].who == i { v[0].turn = k; }
+    v[0].entries[k] = e;
+    v[0].entry_n = k + 1;
+  }
+  // the newest lines the screen may see
+  m := 0;
+  j := t[0].log_n - 1;
+  tmp: [OS_SHOWN_LINES] OsLine;
+  while j >= 0 && m < OS_SHOWN_LINES {
+    if gm || !t[0].log[j].hidden { tmp[m] = t[0].log[j]; m += 1; }
+    j -= 1;
+  }
+  for q: 0..<m { v[0].lines[q] = tmp[m - 1 - q]; }
+  v[0].line_n = m;
+  for q: 0..<t[0].log_n {
+    l := t[0].log[q];
+    if l.seq == t[0].roll_seq && (gm || !l.hidden) { v[0].roll_n = os_put(v[0].roll[..], 0, os_text(t[0].log[..], q)); v[0].roll_seq = l.seq; }
+  }
+}
+
+// ---- the wire: one frame carries the whole view, fields split by '|', a creature's by ',' and
+// creatures by ';' (names and text never hold them: os_set and os_set_name took them out).
+//   V|title|scene|art|shown|combat|round|turn|outcome|party_n|roll_seq|roll|entries|lines|text|handout
+// with entries "name,index,look,team,hp,hp_max,health,x,y,marks,init,hero,klass,level,s1,s2,s3;..."
+// and lines "seq,kind,text;..." (a line's text never holds ';' or '|': os_log's callers keep them out)
+
+os_put_bool :: (buf: [] u8, at: int, v: bool) -> int { return os_put(buf, at, ifx v then "1" else "0"); }
+os_clean :: (buf: [] u8, at: int, t: string, also: bool) -> int {
+  n := at;
+  for c: t {
+    if n >= buf.count { break; }
+    bad := c == '|' || c == 10 || c == 13 || (also && (c == ';' || c == ','));
+    buf[n] = ifx bad then cast(u8) 32 else c; n += 1;
+  }
+  return n;
+}
+os_encode :: (vs: [] OsView, out: [] u8) -> int {
+  v := vs[0];
+  n := os_put(out, 0, "V|");
+  n = os_clean(out, n, os_str(vs[0].title[..], v.title_n), false); n = os_put(out, n, "|");
+  n = os_clean(out, n, os_str(vs[0].scene[..], v.scene_n), false); n = os_put(out, n, "|");
+  n = os_put_int(out, n, v.art); n = os_put(out, n, "|");
+  n = os_put_bool(out, n, v.shown); n = os_put(out, n, "|");
+  n = os_put_bool(out, n, v.combat); n = os_put(out, n, "|");
+  n = os_put_int(out, n, v.round); n = os_put(out, n, "|");
+  n = os_put_int(out, n, v.turn); n = os_put(out, n, "|");
+  n = os_put_int(out, n, v.outcome); n = os_put(out, n, "|");
+  n = os_put_int(out, n, v.party_n); n = os_put(out, n, "|");
+  n = os_put_int(out, n, v.roll_seq); n = os_put(out, n, "|");
+  n = os_clean(out, n, os_str(vs[0].roll[..], v.roll_n), false); n = os_put(out, n, "|");
+  for k: 0..<v.entry_n {
+    e := v.entries[k];
+    if k > 0 { n = os_put(out, n, ";"); }
+    n = os_clean(out, n, os_entry_name(vs[0].entries[..], k), true);
+    ints := [16] int.[e.index, e.look, e.team, e.hp, e.hp_max, e.health, e.x, e.y, e.marks, e.initiative,
+                      ifx e.hero then 1 else 0, e.klass, e.level, e.slots[1], e.slots[2], e.slots[3]];
+    for q: ints { n = os_put(out, n, ","); n = os_put_int(out, n, q); }
+  }
+  n = os_put(out, n, "|");
+  for k: 0..<v.line_n {
+    l := v.lines[k];
+    if k > 0 { n = os_put(out, n, ";"); }
+    n = os_put_int(out, n, l.seq); n = os_put(out, n, ","); n = os_put_int(out, n, l.kind); n = os_put(out, n, ",");
+    n = os_put_bool(out, n, l.hidden); n = os_put(out, n, ",");
+    n = os_clean(out, n, os_text(vs[0].lines[..], k), true);
+  }
+  n = os_put(out, n, "|");
+  n = os_clean(out, n, os_str(vs[0].text[..], v.text_n), false); n = os_put(out, n, "|");
+  n = os_clean(out, n, os_str(vs[0].handout[..], v.handout_n), false);
+  return n;
+}
+// The k-th piece of t split by sep (from `from`), or "".
+os_piece :: (t: string, sep: u8, k: int) -> string {
+  at := 0; idx := 0;
+  for i: 0..<t.count + 1 {
+    if i == t.count || t[i] == sep {
+      if idx == k { return t[at..<i]; }
+      idx += 1; at = i + 1;
+    }
+  }
+  return "";
+}
+os_count :: (t: string, sep: u8) -> int {
+  if t.count == 0 { return 0; }
+  n := 1;
+  for c: t { if c == sep { n += 1; } }
+  return n;
+}
+os_int :: (t: string) -> int {
+  v := 0; neg := false; i := 0;
+  if i < t.count && t[i] == '-' { neg = true; i += 1; }
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { if v < 100000000 { v = v * 10 + cast(int) (t[i] - '0'); } i += 1; }
+  return ifx neg then -v else v;
+}
+os_decode :: (t: string, v: [] OsView) -> bool {
+  if t.count < 2 || t[0] != 'V' || t[1] != '|' { return false; }
+  v[0] = OsView.{};
+  v[0].live = true;
+  v[0].title_n = os_set(v[0].title[..], os_piece(t, '|', 1));
+  v[0].scene_n = os_set(v[0].scene[..], os_piece(t, '|', 2));
+  v[0].art = os_int(os_piece(t, '|', 3));
+  v[0].shown = os_piece(t, '|', 4) == "1";
+  v[0].combat = os_piece(t, '|', 5) == "1";
+  v[0].round = os_int(os_piece(t, '|', 6));
+  v[0].turn = os_int(os_piece(t, '|', 7));
+  v[0].outcome = os_int(os_piece(t, '|', 8));
+  v[0].party_n = os_int(os_piece(t, '|', 9));
+  v[0].roll_seq = os_int(os_piece(t, '|', 10));
+  v[0].roll_n = os_set(v[0].roll[..], os_piece(t, '|', 11));
+  es := os_piece(t, '|', 12);
+  ne := rs_min(os_count(es, ';'), OS_ENTRIES);
+  for k: 0..<ne {
+    p := os_piece(es, ';', k);
+    e: OsEntry;
+    e.name_n = os_set(e.name[..], os_piece(p, ',', 0));
+    e.index = os_int(os_piece(p, ',', 1)); e.look = os_int(os_piece(p, ',', 2)); e.team = os_int(os_piece(p, ',', 3));
+    e.hp = os_int(os_piece(p, ',', 4)); e.hp_max = os_int(os_piece(p, ',', 5)); e.health = os_int(os_piece(p, ',', 6));
+    e.x = os_int(os_piece(p, ',', 7)); e.y = os_int(os_piece(p, ',', 8)); e.marks = os_int(os_piece(p, ',', 9));
+    e.initiative = os_int(os_piece(p, ',', 10)); e.hero = os_piece(p, ',', 11) == "1";
+    e.klass = os_int(os_piece(p, ',', 12)); e.level = os_int(os_piece(p, ',', 13));
+    e.slots[1] = os_int(os_piece(p, ',', 14)); e.slots[2] = os_int(os_piece(p, ',', 15)); e.slots[3] = os_int(os_piece(p, ',', 16));
+    v[0].entries[k] = e;
+  }
+  v[0].entry_n = ne;
+  ls := os_piece(t, '|', 13);
+  nl := rs_min(os_count(ls, ';'), OS_SHOWN_LINES);
+  for k: 0..<nl {
+    p := os_piece(ls, ';', k);
+    l: OsLine;
+    l.seq = os_int(os_piece(p, ',', 0)); l.kind = os_int(os_piece(p, ',', 1)); l.hidden = os_piece(p, ',', 2) == "1";
+    // the text is the rest, commas and all
+    at := 0; commas := 0;
+    while at < p.count && commas < 3 { if p[at] == ',' { commas += 1; } at += 1; }
+    l.n = os_set(l.text[..], p[at..<p.count]);
+    v[0].lines[k] = l;
+  }
+  v[0].line_n = nl;
+  v[0].text_n = os_set(v[0].text[..], os_piece(t, '|', 14));
+  v[0].handout_n = os_set(v[0].handout[..], os_piece(t, '|', 15));
+  return true;
+}
+
+// What a player's page asks of the GM's, a frame each:
+//   J|klass|level|name      join with this hero
+//   A|hero|ability|target   use an ability on your hero's turn
+//   D|hero|count|sides      roll the dice tray's dice
+//   N|hero|sides|face       a physical die's face
+//   E|hero                  end your turn
+//   S|seat|hero             (GM to all) the seat's hero, after J
+OsAsk :: struct { kind: u8; a: int; b: int; c: int; text: string; }
+os_ask_of :: (t: string) -> OsAsk {
+  q: OsAsk;
+  if t.count < 2 || t[1] != '|' { return q; }
+  q.kind = t[0];
+  q.a = os_int(os_piece(t, '|', 1)); q.b = os_int(os_piece(t, '|', 2)); q.c = os_int(os_piece(t, '|', 3));
+  if q.kind == 'J' { q.text = os_piece(t, '|', 3); }
+  return q;
+}
+os_ask_join :: (out: [] u8, klass: int, level: int, name: string) -> int {
+  n := os_put(out, 0, "J|"); n = os_put_int(out, n, klass); n = os_put(out, n, "|"); n = os_put_int(out, n, level); n = os_put(out, n, "|");
+  return os_clean(out, n, name, true);
+}
+os_ask :: (out: [] u8, kind: string, a: int, b: int, c: int) -> int {
+  n := os_put(out, 0, kind); n = os_put(out, n, "|"); n = os_put_int(out, n, a); n = os_put(out, n, "|"); n = os_put_int(out, n, b);
+  n = os_put(out, n, "|"); return os_put_int(out, n, c);
+}
+// The GM's page answers a player's ask for the hero it holds (a page asks only for its own).
+// The hero a join made, or -1; -2 for any other ask.
+os_answer :: (t: [] OsTable, mine: int, q: OsAsk) -> int {
+  if q.kind == 'J' { return os_join(t, q.a, q.b, q.text); }
+  if mine < 0 || mine >= t[0].party_n || q.a != mine { return -2; }
+  nm := rs_name(t[0].b[0].c[mine..<mine + 1]);
+  if q.kind == 'A' { ok := os_act(t, mine, q.b, q.c); }
+  else if q.kind == 'D' { r := os_roll(t, nm, q.b, q.c, false); }
+  else if q.kind == 'N' { ok := os_enter(t, nm, q.b, q.c, false); }
+  else if q.kind == 'E' { if os_turn(t) == mine { os_next_turn(t); } }
+  return -2;
+}
+
+// ---- saving campaigns: the GM's own content, kept in this browser, marked as not the SRD's
+//   srd: false
+//   C|title|level              a campaign
+//   S|name|art|foes|text|handout   each of its scenes
+
+os_save :: (cs: [] OsCampaign, out: [] u8) -> int {
+  n := os_put(out, 0, "srd: false\n");
+  for k: 0..<cs.count {
+    if !cs[k].live { continue; }
+    n = os_put(out, n, "C|"); n = os_clean(out, n, os_title(cs, k), false); n = os_put(out, n, "|"); n = os_put_int(out, n, cs[k].level); n = os_put(out, n, "\n");
+    for s: 0..<cs[k].scene_n {
+      sc := cs[k].scenes[..];
+      n = os_put(out, n, "S|"); n = os_clean(out, n, os_scene_name(sc, s), false); n = os_put(out, n, "|");
+      n = os_put_int(out, n, sc[s].art); n = os_put(out, n, "|"); n = os_put_int(out, n, sc[s].foes); n = os_put(out, n, "|");
+      n = os_clean(out, n, os_scene_text(sc, s), false); n = os_put(out, n, "|");
+      n = os_clean(out, n, os_scene_handout(sc, s), false); n = os_put(out, n, "\n");
+    }
+  }
+  return n;
+}
+os_load :: (t: string, cs: [] OsCampaign) -> int {
+  for k: 0..<cs.count { cs[k] = OsCampaign.{}; }
+  if t.count < 10 || t[0..<10] != "srd: false" { return 0; }
+  n := 0;
+  at := 0;
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != 10 { e += 1; }
+    line := t[at..<e];
+    at = e + 1;
+    if line.count > 2 && line[0] == 'C' && line[1] == '|' && n < cs.count {
+      cs[n].live = true;
+      cs[n].title_n = os_set(cs[n].title[..], os_piece(line, '|', 1));
+      cs[n].level = os_min(os_max(os_int(os_piece(line, '|', 2)), 1), 6);
+      n += 1;
+    } else if line.count > 2 && line[0] == 'S' && line[1] == '|' && n > 0 && cs[n - 1].scene_n < OS_SCENES {
+      k := cs[n - 1].scene_n;
+      cs[n - 1].scenes[k] = os_scene(os_piece(line, '|', 1), os_piece(line, '|', 4), os_piece(line, '|', 5),
+                                     ifx os_int(os_piece(line, '|', 2)) == ART_GLADE then ART_GLADE else ART_CARD, os_int(os_piece(line, '|', 3)));
+      cs[n - 1].scene_n = k + 1;
+    }
+  }
+  return n;
+}
+
+// ---- the Campaign Builder's edits
+
+// A field's text now.
+os_field :: (cs: [] OsCampaign, k: int, scene: int, f: int) -> string {
+  if k < 0 || k >= cs.count { return ""; }
+  if f == F_TITLE { return os_title(cs, k); }
+  if scene < 0 || scene >= cs[k].scene_n { return ""; }
+  sc := cs[k].scenes[..];
+  if f == F_NAME { return os_scene_name(sc, scene); }
+  if f == F_TEXT { return os_scene_text(sc, scene); }
+  if f == F_HANDOUT { return os_scene_handout(sc, scene); }
+  return "";
+}
+// The field set to text (typing at its end, a Backspace, a paste: the caller makes the new text).
+os_edit :: (cs: [] OsCampaign, k: int, scene: int, f: int, text: string) -> bool {
+  if k < 0 || k >= cs.count || !cs[k].live { return false; }
+  if f == F_TITLE { cs[k].title_n = os_set(cs[k].title[..], text); return true; }
+  if scene < 0 || scene >= cs[k].scene_n { return false; }
+  if f == F_NAME { cs[k].scenes[scene].name_n = os_set(cs[k].scenes[scene].name[..], text); return true; }
+  if f == F_TEXT { cs[k].scenes[scene].text_n = os_set(cs[k].scenes[scene].text[..], text); return true; }
+  if f == F_HANDOUT { cs[k].scenes[scene].handout_n = os_set(cs[k].scenes[scene].handout[..], text); return true; }
+  return false;
+}
+os_add_scene :: (cs: [] OsCampaign, k: int) -> int {
+  if k < 0 || k >= cs.count || !cs[k].live || cs[k].scene_n >= OS_SCENES { return -1; }
+  s := cs[k].scene_n;
+  cs[k].scenes[s] = os_scene("New scene", "", "", ART_CARD, 0);
+  cs[k].scene_n = s + 1;
+  return s;
+}
+os_remove_scene :: (cs: [] OsCampaign, k: int, s: int) -> bool {
+  if k < 0 || k >= cs.count || s < 0 || s >= cs[k].scene_n || cs[k].scene_n <= 1 { return false; }
+  for i: s + 1..<cs[k].scene_n { cs[k].scenes[i - 1] = cs[k].scenes[i]; }
+  cs[k].scene_n -= 1;
+  return true;
+}
+// New one-shot: the starter in the first free place; its index, or -1 when all OS_CAMPAIGNS are in use.
+os_new_one_shot :: (cs: [] OsCampaign) -> int {
+  for k: 0..<cs.count { if !cs[k].live { cs[k] = os_starter(); return k; } }
+  return -1;
+}
+
+// ---- a short code for the table: five letters and digits (no 0, o, 1, l or i), from a number
+
+OS_CODE_LEN :: 5;
+OS_CODE_CHARS :: "abcdefghjkmnpqrstuvwxyz23456789";
+os_code :: (seed: u64, out: [] u8) -> int {
+  d: [1] RsDice; d[0].state = seed;
+  for k: 0..<OS_CODE_LEN { out[k] = OS_CODE_CHARS[rs_roll(d[..], OS_CODE_CHARS.count) - 1]; }
+  return OS_CODE_LEN;
+}
+os_code_ok :: (t: string) -> bool {
+  if t.count != OS_CODE_LEN { return false; }
+  for c: t {
+    ok := false;
+    for a: OS_CODE_CHARS { if a == c { ok = true; } }
+    if !ok { return false; }
+  }
+  return true;
+}
+
+// ---- checks
+
+os_find :: (v: [] OsView, text: string) -> bool {
+  for k: 0..<v[0].line_n {
+    l := os_text(v[0].lines[..], k);
+    if l.count >= text.count { for i: 0..<l.count - text.count + 1 { if l[i..<i + text.count] == text { return true; } } }
+  }
+  return false;
+}
+os_has_text :: (t: [] OsTable, text: string, hidden: bool) -> bool {
+  for k: 0..<t[0].log_n {
+    if t[0].log[k].hidden != hidden { continue; }
+    l := os_text(t[0].log[..], k);
+    if l.count >= text.count { for i: 0..<l.count - text.count + 1 { if l[i..<i + text.count] == text { return true; } } }
+  }
+  return false;
+}
+
+#test "New one-shot makes the starter adventure: three original scenes, SRD Skeletons only" {
+  cs: [OS_CAMPAIGNS] OsCampaign;
+  k := os_new_one_shot(cs[..]);
+  #assert k == 0 && cs[0].live && os_title(cs[..], 0) == OS_STARTER_TITLE && cs[0].scene_n == 3 && cs[0].level == 3;
+  #assert cs[0].scenes[0].foes == 0 && cs[0].scenes[1].foes == 2 && cs[0].scenes[2].foes == 4;
+  #assert cs[0].scenes[0].art == ART_CARD && cs[0].scenes[2].art == ART_GLADE;
+  for s: 0..<3 { #assert cs[0].scenes[s].text_n > 100 && cs[0].scenes[s].handout_n > 20; }
+  for i: 1..<OS_CAMPAIGNS { #assert os_new_one_shot(cs[..]) == i; }
+  #assert os_new_one_shot(cs[..]) == -1;
+}
+#test "the Campaign Builder edits the title, scenes, encounters and read-aloud text, and a save keeps them apart as srd: false" {
+  cs: [OS_CAMPAIGNS] OsCampaign;
+  k := os_new_one_shot(cs[..]);
+  #assert os_edit(cs[..], k, -1, F_TITLE, "The Drowned Bell|Night");
+  #assert os_title(cs[..], k) == "The Drowned Bell Night";
+  #assert os_edit(cs[..], k, 1, F_TEXT, "Rain on the pines.") && os_field(cs[..], k, 1, F_TEXT) == "Rain on the pines.";
+  #assert os_edit(cs[..], k, 1, F_NAME, "The Wet Road") && os_edit(cs[..], k, 1, F_HANDOUT, "A map.");
+  cs[k].scenes[1].foes = 3;
+  s := os_add_scene(cs[..], k);
+  #assert s == 3 && cs[k].scene_n == 4 && os_add_scene(cs[..], k) == -1;
+  #assert os_edit(cs[..], k, 3, F_TEXT, "The end.");
+  #assert os_remove_scene(cs[..], k, 0) && cs[k].scene_n == 3 && os_scene_name(cs[k].scenes[..], 0) == "The Wet Road";
+  #assert !os_edit(cs[..], k, 5, F_TEXT, "nowhere");
+  buf: [20000] u8; n := os_save(cs[..], buf[..]);
+  saved := cast(string) buf[0..<n];
+  #assert saved[0..<11] == "srd: false\n";
+  back: [OS_CAMPAIGNS] OsCampaign;
+  #assert os_load(saved, back[..]) == 1;
+  #assert os_title(back[..], 0) == "The Drowned Bell Night" && back[0].scene_n == 3 && back[0].scenes[0].foes == 3;
+  #assert os_scene_text(back[0].scenes[..], 0) == "Rain on the pines." && os_scene_handout(back[0].scenes[..], 0) == "A map.";
+  #assert os_scene_text(back[0].scenes[..], 2) == "The end." && back[0].scenes[1].art == ART_GLADE;
+  #assert os_load("{\"srd\": true}", back[..]) == 0;
+}
+#test "joining: a ready hero or a quick build from the engine's classes at level 1 to 6" {
+  t: [1] OsTable; os_open(t[..], os_starter(), 7);
+  #assert os_join(t[..], RS_FIGHTER, 3, "Garr") == 0;
+  #assert os_join(t[..], RS_WIZARD, 9, "Ilse") == 1;   // the engine's cap: level 6
+  #assert t[0].b[0].c[1].level == 6 && t[0].b[0].c[0].hp_max == rs_fighter("Garr", 0, 3).hp_max;
+  #assert os_join(t[..], RS_MONSTER, 3, "Bones") == -1 && os_join(t[..], RS_ROGUE, 1, "") == -1;
+  #assert os_join(t[..], RS_ROGUE, 1, "Nim,;|") == 2 && rs_name(t[0].b[0].c[2..<3]) == "Nim   ";
+  for i: 3..<OS_PARTY { #assert os_join(t[..], RS_CLERIC, 2, "Aster") == i; }
+  #assert os_join(t[..], RS_CLERIC, 2, "One too many") == -1;
+  #assert os_has_text(t[..], "Garr joins the party: Fighter 3", false);
+  // every class has a hotbar from the engine at every level, with no spell it has no slot for
+  for k: OS_CLASSES {
+    for lv: 1..<7 {
+      c := os_hero(k, "Test", lv);
+      list: [OS_SLOTS] Ab; n := os_abilities(c, list[..]);
+      #assert n >= 1;
+      for q: 0..<n { if list[q].kind == AB_SPELL && list[q].lvl > 0 { #assert c.slots_max[list[q].lvl] > 0 || c.free_spell == list[q].sp; } }
+    }
+  }
+}
+#test "Run it, show, handouts and initiative: the scene's Skeletons join and everyone rolls" {
+  t: [1] OsTable; os_open(t[..], os_starter(), 11);
+  h0 := os_join(t[..], RS_FIGHTER, 3, "Garr"); h1 := os_join(t[..], RS_CLERIC, 3, "Aster");
+  #assert os_run_scene(t[..], 0) && !t[0].shown;
+  #assert !os_start_combat(t[..]);   // the inn holds no fight
+  os_show(t[..], true);
+  #assert os_send_handout(t[..], true) && t[0].handout == 0;
+  v: [1] OsView; os_view(t[..], v[..], false);
+  #assert cast(string) v[0].scene[0..<v[0].scene_n] == "The Lantern Inn" && v[0].text_n == 0 && v[0].handout_n > 20;
+  os_show_text(t[..], true); os_view(t[..], v[..], false);
+  #assert v[0].text_n > 100;
+  #assert os_run_scene(t[..], 2) && t[0].handout == -1 && !t[0].shown;
+  os_view(t[..], v[..], false);
+  #assert v[0].scene_n == 0;     // not shown yet: the players don't see its name
+  #assert os_start_combat(t[..]) && t[0].combat && t[0].b[0].n == 6 && t[0].shown;
+  // the order is the initiatives, highest first, and the first turn has begun
+  order: [RS_MAX] int; n := os_order(t[..], order[..]);
+  #assert n == 6;
+  for k: 1..<n { #assert t[0].b[0].c[order[k - 1]].initiative >= t[0].b[0].c[order[k]].initiative; }
+  #assert os_turn(t[..]) == order[0];
+  for k: 0..<6 { c := t[0].b[0].c[k]; #assert c.initiative >= 1 + rs_mod(c.score[RS_DEX]) && c.initiative <= 20 + rs_mod(c.score[RS_DEX]); }
+  // a full round: every creature's turn comes once, in order
+  seen := 0;
+  for k: 0..<n { #assert os_turn(t[..]) == order[k]; seen += 1; os_next_turn(t[..]); }
+  #assert seen == 6 && os_turn(t[..]) == order[0] && t[0].round == 2;
+  // the Skeletons' initiative rolls stay behind the screen; the heroes' are open
+  #assert os_has_text(t[..], "Skeleton 1 rolls initiative", true) && os_has_text(t[..], "Garr rolls initiative", false);
+  os_end_combat(t[..]);
+  #assert !t[0].combat && t[0].b[0].n == 2 && os_turn(t[..]) == -1;
+}
+#test "a turn runs on the engine: an attack rolls, the log keeps it, a monster's rolls stay hidden" #steps 400000000 {
+  t: [1] OsTable; os_open(t[..], os_starter(), 5);
+  g := os_join(t[..], RS_FIGHTER, 3, "Garr"); w := os_join(t[..], RS_WIZARD, 3, "Ilse");
+  ok := os_run_scene(t[..], 1); ok = os_start_combat(t[..]);
+  hero_rolled := false; foe_rolled := false;
+  for turn: 0..<40 {
+    i := os_turn(t[..]);
+    if os_outcome(t[..]) != 0 { break; }
+    if i < 0 { break; }
+    c := t[0].b[0].c[i];
+    if rs_can_act(c) {
+      // the first foe still standing
+      foe := -1;
+      for j: 0..<t[0].b[0].n { if t[0].b[0].c[j].team != c.team && rs_up(t[0].b[0].c[j]) && foe < 0 { foe = j; } }
+      if foe >= 0 {
+        did := os_act(t[..], i, 0, foe);
+        #assert did;
+        if i < t[0].party_n { hero_rolled = true; } else { foe_rolled = true; }
+        #assert !os_act(t[..], i, 0, foe) || c.klass == RS_FIGHTER;   // one action a turn (a Fighter may Action Surge)
+      }
+    }
+    os_next_turn(t[..]);
+  }
+  #assert hero_rolled && foe_rolled;
+  #assert os_has_text(t[..], "Garr", false) && os_has_text(t[..], "vs AC", false);
+  #assert os_has_text(t[..], "Skeleton", true);   // a Skeleton's attack line, behind the screen
+  // the players' view never holds a hidden line or a monster's exact hit points
+  v: [1] OsView; os_view(t[..], v[..], false);
+  for k: 0..<v[0].line_n { #assert !v[0].lines[k].hidden; }
+  for k: 0..<v[0].entry_n { if !v[0].entries[k].hero { #assert v[0].entries[k].hp == -1 && v[0].entries[k].hp_max == -1; } else { #assert v[0].entries[k].hp_max > 0; } }
+  gm: [1] OsView; os_view(t[..], gm[..], true);
+  any_hidden := false;
+  for k: 0..<gm[0].line_n { if gm[0].lines[k].hidden { any_hidden = true; } }
+  for k: 0..<gm[0].entry_n { #assert gm[0].entries[k].hp_max > 0; }
+  // revealing a hidden line shows it to the table
+  seq := -1;
+  for k: 0..<t[0].log_n { if t[0].log[k].hidden && seq < 0 { seq = t[0].log[k].seq; } }
+  #assert seq > 0 && os_reveal(t[..], seq) && !os_reveal(t[..], seq);
+}
+#test "the dice tray: open and hidden rolls from the engine's dice, physical dice by hand" {
+  t: [1] OsTable; os_open(t[..], os_starter(), 99);
+  r := os_roll(t[..], "GM", 1, 20, true);
+  #assert r >= 1 && r <= 20 && t[0].roll_seq == 0;   // hidden: no banner for the table
+  r2 := os_roll(t[..], "Lark", 3, 6, false);
+  #assert r2 >= 3 && r2 <= 18 && t[0].roll_seq == t[0].log_seq;
+  #assert os_roll(t[..], "Lark", 1, 7, false) == -1 && os_roll(t[..], "Lark", 0, 6, false) == -1;
+  #assert os_enter(t[..], "Wren", 20, 17, false) && !os_enter(t[..], "Wren", 20, 21, false);
+  #assert os_has_text(t[..], "Wren rolls a d20 by hand: 17", false) && os_has_text(t[..], "GM rolls 1d20: ", true);
+  // the same seed rolls the same
+  a: [1] OsTable; os_open(a[..], os_starter(), 1234);
+  b: [1] OsTable; os_open(b[..], os_starter(), 1234);
+  for k: 0..<10 { #assert os_roll(a[..], "GM", 2, 8, false) == os_roll(b[..], "GM", 2, 8, false); }
+  v: [1] OsView; os_view(t[..], v[..], false);
+  #assert os_find(v[..], "Wren rolls a d20 by hand: 17") && !os_find(v[..], "GM rolls 1d20");
+  #assert cast(string) v[0].roll[0..<v[0].roll_n] == "Wren rolls a d20 by hand: 17";
+}
+#test "the wire: a view crosses as one frame and comes back the same; asks round-trip" #steps 400000000 {
+  t: [1] OsTable; os_open(t[..], os_starter(), 3);
+  g := os_join(t[..], RS_PALADIN, 4, "Oriel"); w := os_join(t[..], RS_BARD, 2, "Lark");
+  ok := os_run_scene(t[..], 2); os_show_text(t[..], true); ok = os_send_handout(t[..], true); ok = os_start_combat(t[..]);
+  r := os_roll(t[..], "Lark", 1, 20, false);
+  v: [1] OsView; os_view(t[..], v[..], false);
+  buf: [OS_FRAME] u8; n := os_encode(v[..], buf[..]);
+  #assert n > 200 && n < OS_FRAME;
+  back: [1] OsView;
+  #assert os_decode(cast(string) buf[0..<n], back[..]);
+  #assert back[0].title_n == v[0].title_n && back[0].scene_n == v[0].scene_n && back[0].combat && back[0].round == v[0].round;
+  #assert back[0].turn == v[0].turn && back[0].entry_n == 6 && back[0].line_n == v[0].line_n && back[0].text_n == v[0].text_n;
+  #assert back[0].handout_n == v[0].handout_n && back[0].roll_seq == v[0].roll_seq && back[0].roll_n == v[0].roll_n;
+  for k: 0..<6 {
+    a := v[0].entries[k]; c := back[0].entries[k];
+    #assert os_entry_name(v[0].entries[..], k) == os_entry_name(back[0].entries[..], k) && a.hp == c.hp && a.health == c.health && a.x == c.x && a.initiative == c.initiative && a.hero == c.hero && a.klass == c.klass && a.slots[1] == c.slots[1];
+  }
+  for k: 0..<v[0].line_n { #assert os_text(v[0].lines[..], k) == os_text(back[0].lines[..], k) && v[0].lines[k].seq == back[0].lines[k].seq; }
+  #assert !os_decode("hello", back[..]);
+  // a player's asks, answered by the GM's page for the hero that page holds
+  q: [80] u8; qn := os_ask_join(q[..], RS_ROGUE, 3, "Nim");
+  ask := os_ask_of(cast(string) q[0..<qn]);
+  #assert ask.kind == 'J' && ask.a == RS_ROGUE && ask.b == 3 && ask.text == "Nim";
+  qn = os_ask(q[..], "D", 1, 2, 6);
+  ask = os_ask_of(cast(string) q[0..<qn]);
+  #assert ask.kind == 'D' && ask.a == 1 && ask.b == 2 && ask.c == 6;
+  #assert os_answer(t[..], 1, ask) == -2 && os_has_text(t[..], "Lark rolls 2d6", false);
+  // someone else's hero isn't theirs to roll for
+  seq := t[0].log_seq;
+  qn = os_ask(q[..], "D", 0, 1, 20);
+  #assert os_answer(t[..], 1, os_ask_of(cast(string) q[0..<qn])) == -2 && t[0].log_seq == seq;
+}
+#test "a short code: five letters and digits, the same for the same number" {
+  a: [8] u8; b: [8] u8;
+  #assert os_code(42, a[..]) == 5 && os_code(42, b[..]) == 5 && cast(string) a[0..<5] == cast(string) b[0..<5];
+  #assert os_code_ok(cast(string) a[0..<5]) && !os_code_ok("abc") && !os_code_ok("abcd0") && !os_code_ok("ABCDE");
+}

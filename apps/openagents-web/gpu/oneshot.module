@@ -1,0 +1,3 @@
+--vertices oneshot_bg_vs,oneshot_fx_vs
+--fragments oneshot_bg_fs,oneshot_fx_fs
+--bindings apps/openagents-web/gpu/oneshot.bindings --strip oneshot_

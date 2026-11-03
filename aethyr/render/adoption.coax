@@ -44,6 +44,12 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
   #assert !route.shared && route.tracked_legacy && route.profile == -1;
   #assert !render_adoption("metahuman-lab", "fivelab").tracked_legacy;
 }
+// One-Shot (the campaign creator's Table) draws with 5E Lab's two passes until it has a catalog profile.
+#test "One-Shot is a tracked legacy consumer" {
+  route := render_adoption("one-shot", "oneshot");
+  #assert !route.shared && route.tracked_legacy && route.profile == -1;
+  #assert !render_adoption("one-shot", "fivelab").tracked_legacy;
+}
 #test "unknown page identities cannot gain a fallback renderer" {
   for slug: [5] string.["", "future-realm", "anime-la", "anime-lab/", "../anime-lab"] {
     route := render_adoption(slug, "animelab");
@@ -61,5 +67,6 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
   if slug == "5e-lab" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "5e-mmo" && app == "fivemmo" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "metahuman-lab" && app == "metahumanlab" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "one-shot" && app == "oneshot" { return RenderAdoption.{tracked_legacy = true}; }
   return RenderAdoption.{};
 }

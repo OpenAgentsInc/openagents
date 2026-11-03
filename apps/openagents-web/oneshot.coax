@@ -1,0 +1,1719 @@
+// One-Shot, openagents.com/worlds/one-shot (unlisted): the campaign creator's first phase
+// (docs/dnd/2026-11-03-dnd-campaign-creator-spec.md, "Build order", phase 1). A Game Master (GM)
+// runs a 5E one-shot for friends at the Table:
+//   - Campaigns: New one-shot copies the starter adventure; each campaign opens in the builder or runs.
+//   - Campaign Builder: the title, the heroes' level, the scenes, their read-aloud text, handout,
+//     art (a title card or the 3D glade) and encounter (the SRD's Skeletons).
+//   - GM Screen: the scenes with Run it, Show to table and Hide, the handout, Start combat and End
+//     combat, the initiative tracker with every creature's hit points, the turn's abilities, the dice
+//     tray (open or hidden, virtual or by hand) and the session log.
+//   - Table Display: the scene (its title card, or 5E Lab's glade in 3D with the figures on the
+//     grid), the initiative order, the latest roll and the handout. No controls.
+//   - My Character: a ready hero or a quick build (class, name, level 1 to 6), the sheet the engine
+//     computes, the hotbar on your turn and the dice.
+// The GM's page holds the table (oneshot-table.coax). Players join by link or code over the room
+// server's relay (coax/web/room/room-relay.coax: four seats a room, the GM's and three more); with
+// no relay, everyone plays on the GM's page, the tabs as seats. Every rule is the SRD engine's
+// (aethyr/rules/srd/), the 3D scene 5E Lab's shader (gpu/fivelab.coax).
+//   coax test apps/openagents-web/oneshot.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+#load "font.coax";
+#load "socket.coax";
+#load "oneshot-table.coax";
+#load "../../aethyr/shot.coax" as ash;
+#load "../../aethyr/space.coax" as asp;
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 160000;
+UNIFORM_FLOATS :: 1768;   // gpu/fivelab.coax's block (442 vec4s)
+U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
+U_EYE :: 16; U_FWD :: 20; U_RIGHT :: 24; U_UP :: 28; U_SUN :: 32; U_TOKENS :: 36; U_ZONES :: 1700; U_BOUNDS :: 1764;
+TOKENS3 :: 208;
+SQ :: 1.524;              // a 5-foot square, metres
+OUTBOX_CAP :: 24576;   // four campaigns kept: their text runs to about 17 KB
+ACT_NAVIGATE :: 1; ACT_COPY :: 2; ACT_KEEP :: 4;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_BACK :: -3; KEY_TAB :: -15;
+HOST_TEXT :: 1; HOST_KEPT :: 4; HOST_PAGE :: 600;
+ROOM_GAME :: "one-shot";
+SEATS :: 4;               // the relay's seats a room (RELAY_SEATS)
+
+ROLE_GM :: 0; ROLE_PLAYER :: 1; ROLE_DISPLAY :: 2;
+V_CAMPAIGNS :: 0; V_BUILDER :: 1; V_GM :: 2; V_DISPLAY :: 3; V_CHARACTER :: 4;
+TAB_NAMES :: [5] string.["CAMPAIGNS", "CAMPAIGN BUILDER", "GM SCREEN", "TABLE DISPLAY", "MY CHARACTER"];
+LINK_OFF :: 0; LINK_JOINING :: 1; LINK_IN :: 2; LINK_NONE :: 3;
+ATTRIBUTION :: "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.";
+
+Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+P3 :: struct { x: f32; y: f32; z: f32; }
+Col :: struct { r: f32; g: f32; b: f32; }
+WHITE :: Col.{r = 0.9, g = 0.92, b = 0.96};
+DIM :: Col.{r = 0.55, g = 0.58, b = 0.63};
+FAINT :: Col.{r = 0.3, g = 0.32, b = 0.36};
+RED :: Col.{r = 1.0, g = 0.3, b = 0.26};
+GREEN :: Col.{r = 0.42, g = 1.0, b = 0.52};
+GOLD :: Col.{r = 1.0, g = 0.8, b = 0.35};
+CYAN :: Col.{r = 0.4, g = 0.88, b = 1.0};
+VIOLET :: Col.{r = 0.75, g = 0.5, b = 1.0};
+TEAM_COL :: [3] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 0.62, g = 0.85, b = 1.0}, Col.{r = 0.92, g = 0.86, b = 0.74}];
+
+// Buttons: drawn each frame with an id (the press they mean) and kept for the next pointer.
+BTNS :: 220;
+B_TAB :: 100; B_WORLDS :: 110; B_NEW :: 120; B_EDIT :: 130; B_RUN :: 140; B_JOIN_FIELD :: 150; B_JOIN :: 151;
+B_FIELD :: 200; B_SCENE :: 210; B_ADD_SCENE :: 220; B_DEL_SCENE :: 221; B_FOES_DOWN :: 222; B_FOES_UP :: 223;
+B_ART :: 224; B_LEVEL_DOWN :: 225; B_LEVEL_UP :: 226; B_BUILD_RUN :: 227;
+B_RUN_SCENE :: 300; B_SHOW :: 310; B_TEXT :: 311; B_HANDOUT :: 312; B_COMBAT :: 313; B_NEXT :: 314;
+B_MONSTERS :: 315; B_INVITE :: 316;
+B_TARGET :: 400; B_AB :: 450; B_DIE :: 470; B_HIDDEN :: 480; B_HAND :: 481; B_FACE :: 500;
+B_CLASS :: 600; B_READY :: 620; B_HLEVEL_DOWN :: 640; B_HLEVEL_UP :: 641; B_HERO_NAME :: 642; B_JOIN_TABLE :: 643;
+B_SEAT :: 650; B_ADD_HERO :: 660; B_END_TURN :: 661;
+B_REVEAL :: 100000;       // + a log line's number
+Btn :: struct { r: Rect; id: int; }
+
+Os :: struct {
+  started: bool;
+  role: int;
+  view: int;
+  camps: [OS_CAMPAIGNS] OsCampaign;
+  dirty: bool;               // the campaigns changed: kept in this browser at the frame's end
+  edit: int = -1; edit_scene: int;
+  focus: int;                // the field typed into (F_*), F_NONE none
+  field_box: [4] f32;        // where it is drawn, for the phone's keyboard
+  table: [1] OsTable;
+  running: int = -1;         // the campaign at the Table (-1: none)
+  seen: [1] OsView;          // what the Table Display and My Character draw
+  gm: [1] OsView;            // the GM Screen's own view, hidden lines and all
+  sent: int = -1; sent_t: f32;
+  seat_hero: [SEATS] int;    // the GM: each relay seat's hero (-1 none)
+  me: int = -1;              // the hero this page plays (the GM's page: the seat picked on My Character)
+  building: bool;            // My Character shows the quick build
+  build_class: int; build_level: int = 3;
+  hero_name: [RS_NAME] u8; hero_name_n: int;
+  asked: bool;               // a player asked to join and waits for its seat
+  target: int = -1;          // the target picked (a creature's index in the GM's battle)
+  hidden_roll: bool = true;  // the GM's dice tray: behind the screen
+  by_hand: bool; hand_sides: int;
+  join_code: [8] u8; join_code_n: int;
+  // the room
+  link: int;
+  code: [8] u8; code_n: int;
+  sock: int = -1; my_seat: int = -1;
+  origin: [160] u8; origin_n: int;
+  page: [240] u8; page_n: int;
+  pipe: [1] Pipe;
+  ping_t: f32;
+  // drawing
+  width: f32; height: f32; dpr: f32;
+  btn: [BTNS] Btn; btn_n: int;
+  pressed: int = -1; down_x: f32; down_y: f32; moved: bool;
+  scroll: [5] f32; content: [5] f32;   // each view's scroll, and how tall it drew
+  clock: f32;
+  golden: bool; staged: bool;
+  seed: u64;
+  // the Table Display's glade: an orbit round the grid
+  yaw: f32 = 0.35; pitch: f32 = 0.62; dist: f32 = 24.0;
+  dragging: bool; drag_x: f32; drag_y: f32;
+  eye: P3; fwd: P3; right: P3; up: P3; focal: f32; cx: f32; cy: f32;
+  note: [96] u8; note_n: int; note_t: f32;
+  outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+}
+
+// ---- small things
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+GAP :: 0.5; SPACE :: 1.2;
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+put :: (buf: [] u8, at: int, text: string) -> int { return rs_put(buf, at, text); }
+put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v); }
+put_signed :: (buf: [] u8, at: int, v: int) -> int { return put_int(buf, ifx v >= 0 then put(buf, at, "+") else at, v); }
+tbl :: (s: [] Os) -> [] OsTable { return s[0].table[..]; }
+say_note :: (s: [] Os, t: string) { s[0].note_n = put(s[0].note[..], 0, t); s[0].note_t = 4; }
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { size = 0.01; dx = 0.01; dy = 0; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    for e: 12..<16 { out[o + e] = 0; }
+  }
+  return true;
+}
+seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, light: f32, c: Col) -> int {
+  if lit(out, n, ax, ay, bx, by, w * 0.55, light, w * 1.8, c.r, c.g, c.b, 0) { return n + 6; }
+  return n;
+}
+// A filled bar: one wide capsule along the rect's middle (its ends round), dim.
+fill :: (out: [] f32, n: int, r: Rect, light: f32, c: Col) -> int {
+  h := (r.y1 - r.y0) / 2;
+  if r.x1 - r.x0 <= 2 * h || h <= 0 { return n; }
+  if lit(out, n, r.x0 + h, (r.y0 + r.y1) / 2, r.x1 - h, (r.y0 + r.y1) / 2, h, light, 0, c.r, c.g, c.b, 0) { return n + 6; }
+  return n;
+}
+box_lines :: (out: [] f32, at: int, r: Rect, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  n = seg(out, n, r.x0, r.y0, r.x1, r.y0, w, light, c);
+  n = seg(out, n, r.x1, r.y0, r.x1, r.y1, w, light, c);
+  n = seg(out, n, r.x1, r.y1, r.x0, r.y1, w, light, c);
+  n = seg(out, n, r.x0, r.y1, r.x0, r.y0, w, light, c);
+  return n;
+}
+pg_ring :: (out: [] f32, at: int, x: f32, y: f32, r: f32, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  for i: 0..<20 {
+    a0 := f32(i) * 6.2831853 / 20; a1 := f32(i + 1) * 6.2831853 / 20;
+    n = seg(out, n, x + cos(a0) * r, y + sin(a0) * r, x + cos(a1) * r, y + sin(a1) * r, w, light, c);
+  }
+  return n;
+}
+ink :: (k: f32, light: f32, c: Col) -> Ink {
+  i: Ink;
+  i.core = 0.6 * k; i.light = light; i.glow = 1.2 * k; i.red = c.r; i.green = c.g; i.blue = c.b; i.mode = 0; i.scale = k;
+  return i;
+}
+say_at :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, n, t, x, base, cap, GAP, SPACE, k, false, false);
+}
+say_mid :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap) / 2, base, cap, k);
+}
+say_right :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap), base, cap, k);
+}
+// Text wrapped to a width from the top-left (x, y): the vertices, and the y below its last line.
+Wrapped :: struct { n: int; y: f32; }
+say_wrap :: (out: [] f32, at: int, t: string, x: f32, y: f32, width: f32, cap: f32, k: Ink, lines: int) -> Wrapped {
+  n := at; i := 0; row := 0; base := y + cap;
+  lh := cap * 1.85;
+  while i < t.count && row < lines {
+    nx: [1] int;
+    e := wrap(t, i, width / cap, GAP, SPACE, false, nx[..]);
+    if e <= i && nx[0] <= i { break; }
+    n = say_at(out, n, t[i..<e], x, base, cap, k);
+    i = nx[0]; row += 1; base += lh;
+  }
+  return Wrapped.{n = n, y = base - lh + cap * 0.9};
+}
+// How many lines t wraps to.
+wrap_lines :: (t: string, width: f32, cap: f32) -> int {
+  i := 0; rows := 0;
+  while i < t.count && rows < 200 {
+    nx: [1] int;
+    e := wrap(t, i, width / cap, GAP, SPACE, false, nx[..]);
+    if e <= i && nx[0] <= i { break; }
+    i = nx[0]; rows += 1;
+  }
+  return rows;
+}
+
+// A button: its box, its label in the middle, lit when on; kept for the pointer when it works.
+button :: (s: [] Os, out: [] f32, at: int, id: int, r: Rect, label: string, on: bool, works: bool) -> int {
+  k := hi(s[0].dpr, 0.5);
+  n := at;
+  pressed := s[0].pressed == id && works;
+  n = fill(out, n, r, ifx on then 0.22 else ifx pressed then 0.2 else 0.07, ifx on then GOLD else WHITE);
+  n = box_lines(out, n, r, 0.7 * k, ifx !works then 0.18 else ifx on || pressed then 0.85 else 0.45, ifx on then GOLD else DIM);
+  cap := lo(9.5 * k, (r.y1 - r.y0) * 0.36);
+  while cap > 5.5 * k && text_width(label, cap) > (r.x1 - r.x0) - 8 * k { cap *= 0.9; }
+  n = say_mid(out, n, label, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2 + cap / 2, cap, ink(k, ifx works then 0.9 else 0.35, ifx on then GOLD else WHITE));
+  if works && s[0].btn_n < BTNS { s[0].btn[s[0].btn_n] = Btn.{r = r, id = id}; s[0].btn_n += 1; }
+  return n;
+}
+// A typed field: its box, its text wrapped inside, a caret when it's the one being typed into.
+field :: (s: [] Os, out: [] f32, at: int, id: int, f: int, r: Rect, label: string, text: string, cap: f32, lines: int) -> int {
+  k := hi(s[0].dpr, 0.5);
+  n := at;
+  on := s[0].focus == f && s[0].focus != F_NONE;
+  n = say_at(out, n, label, r.x0, r.y0 - 5 * k, 7.5 * k, ink(k, 0.6, DIM));
+  n = fill(out, n, r, 0.05, WHITE);
+  n = box_lines(out, n, r, 0.7 * k, ifx on then 0.9 else 0.4, ifx on then GOLD else DIM);
+  w := say_wrap(out, n, text, r.x0 + 7 * k, r.y0 + 7 * k, r.x1 - r.x0 - 14 * k, cap, ink(k, 0.85, WHITE), lines);
+  n = w.n;
+  if on {
+    // the caret, after the text
+    rows := wrap_lines(text, r.x1 - r.x0 - 14 * k, cap);
+    last := 0; i := 0; rr := 0;
+    while i < text.count && rr < rows - 1 { nx: [1] int; e := wrap(text, i, (r.x1 - r.x0 - 14 * k) / cap, GAP, SPACE, false, nx[..]); i = nx[0]; rr += 1; }
+    last = i;
+    cx := r.x0 + 7 * k + text_width(text[last..<text.count], cap) + 2 * k;
+    cy := r.y0 + 7 * k + f32(rs_max(rows - 1, 0)) * cap * 1.85;
+    if fract(s[0].clock * 1.6) < 0.6 || s[0].golden { n = seg(out, n, cx, cy - 1 * k, cx, cy + cap + 1 * k, 1.2 * k, 0.9, GOLD); }
+    s[0].field_box[0] = r.x0; s[0].field_box[1] = r.y0; s[0].field_box[2] = r.x1; s[0].field_box[3] = r.y1;
+  }
+  if s[0].btn_n < BTNS { s[0].btn[s[0].btn_n] = Btn.{r = r, id = id}; s[0].btn_n += 1; }
+  return n;
+}
+fract :: (x: f32) -> f32 { return x - floor(x); }
+rect :: (x0: f32, y0: f32, x1: f32, y1: f32) -> Rect { return Rect.{x0 = x0, y0 = y0, x1 = x1, y1 = y1}; }
+
+// ---- the room (the relay): the GM's page sends the view; the others send their asks
+
+// The page's address: its origin for the socket (or ?relay=ws://localhost:PORT, to try a room
+// server on this machine), and itself without the query for the invite.
+page_url :: (s: [] Os, url: string) {
+  q := url.count;
+  for i: 0..<url.count { if url[i] == '?' || url[i] == '#' { q = i; break; } }
+  s[0].page_n = put(s[0].page[..], 0, url[0..<q]);
+  sl := 0; k := 0;
+  while k < url.count && sl < 3 { if url[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
+  secure := url.count > 5 && url[0..<5] == "https";
+  o := put(s[0].origin[..], 0, ifx secure then "wss://" else "ws://");
+  start := ifx secure then 8 else 7;
+  if start < k { o = put(s[0].origin[..], o, url[start..<k]); }
+  s[0].origin_n = o;
+  relay := query(url, "relay");
+  if relay.count > 15 && relay.count < 40 && relay[0..<15] == "ws://localhost:" {
+    ok := true;
+    for c: relay[15..<relay.count] { if c < '0' || c > '9' { ok = false; } }
+    if ok { s[0].origin_n = put(s[0].origin[..], 0, relay); }
+  }
+}
+// ?KEY=VALUE in a URL: the value, or "".
+query :: (url: string, key: string) -> string {
+  at := 0;
+  while at + key.count + 1 <= url.count {
+    before := ifx at == 0 then cast(u8) 63 else url[at - 1];
+    if (before == 63 || before == 38) && url[at..<at + key.count] == key && url[at + key.count] == 61 {
+      i := at + key.count + 1; e := i;
+      while e < url.count && url[e] != 38 && url[e] != 35 { e += 1; }
+      return url[i..<e];
+    }
+    at += 1;
+  }
+  return "";
+}
+fact :: (t: string, key: string) -> string {
+  at := 0;
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != 10 { e += 1; }
+    line := t[at..<e];
+    if line.count > key.count && line[0..<key.count] == key && line[key.count] == '=' { return line[key.count + 1..<line.count]; }
+    at = e + 1;
+  }
+  return "";
+}
+room_open :: (s: [] Os) {
+  if s[0].origin_n == 0 || s[0].code_n == 0 || s[0].link == LINK_JOINING || s[0].link == LINK_IN { return; }
+  buf: [256] u8;
+  n := put(buf[..], 0, cast(string) s[0].origin[0..<s[0].origin_n]);
+  n = put(buf[..], n, "/api/room/relay/"); n = put(buf[..], n, ROOM_GAME); n = put(buf[..], n, "/");
+  n = put(buf[..], n, cast(string) s[0].code[0..<s[0].code_n]);
+  if pipe_open(s[0].pipe[..], cast(string) buf[0..<n]) { s[0].link = LINK_JOINING; }
+}
+// The face tells which socket the open got (-1: none).
+os_socket_opened :: (s: [] Os, id: int) #export_c {
+  s[0].sock = id;
+  if id < 0 { s[0].link = LINK_NONE; }
+}
+room_send :: (s: [] Os, t: string) {
+  if s[0].sock >= 0 && s[0].link == LINK_IN { ok := pipe_send(s[0].pipe[..], s[0].sock, t); }
+}
+// The GM's view to everyone: when the table changed (not more than five times a second), and every
+// four seconds for whoever just came in.
+room_tell :: (s: [] Os, force: bool) {
+  if s[0].role != ROLE_GM || s[0].running < 0 { return; }
+  ch := s[0].table[0].changed;
+  if !force && ch == s[0].sent && s[0].clock - s[0].sent_t < 4 { return; }
+  if !force && s[0].clock - s[0].sent_t < 0.2 { return; }
+  s[0].sent = ch; s[0].sent_t = s[0].clock;
+  if s[0].link != LINK_IN { return; }
+  v: [1] OsView; os_view(tbl(s), v[..], false);
+  buf: [OS_FRAME] u8; n := os_encode(v[..], buf[..]);
+  room_send(s, cast(string) buf[0..<n]);
+}
+// A number from the front of t (at[0] moves past it and one space).
+take_int :: (t: string, at: [] int) -> int {
+  i := at[0]; v := 0; neg := false;
+  if i < t.count && t[i] == '-' { neg = true; i += 1; }
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { v = v * 10 + cast(int) (t[i] - '0'); i += 1; }
+  if i < t.count && t[i] == ' ' { i += 1; }
+  at[0] = i;
+  return ifx neg then -v else v;
+}
+// What the relay says: y SEAT N (you are in), j SEAT, l SEAT, m SEAT TEXT. True when it was a socket's.
+room_heard :: (s: [] Os, kind: int, t: string) -> bool {
+  ev := socket_event(kind);
+  if ev.id < 0 || ev.id != s[0].sock { return ev.id >= 0; }
+  if ev.event == SOCKET_CLOSED || ev.event == SOCKET_ERROR {
+    s[0].sock = -1; s[0].link = LINK_NONE;
+    say_note(s, ifx s[0].role == ROLE_GM then "No room for other screens: everyone plays on this device" else "The table closed");
+    return true;
+  }
+  if ev.event != SOCKET_FRAME || t.count < 2 { return true; }
+  at: [1] int; at[0] = 2;
+  if t[0] == 'y' {
+    s[0].my_seat = take_int(t, at[..]); s[0].link = LINK_IN;
+    if s[0].role == ROLE_GM { room_tell(s, true); }
+    else if s[0].role == ROLE_DISPLAY { room_send(s, "k|display"); }
+    return true;
+  }
+  if t[0] == 'j' { if s[0].role == ROLE_GM { room_tell(s, true); } return true; }
+  if t[0] == 'l' {
+    seat := take_int(t, at[..]);
+    if s[0].role == ROLE_GM && seat >= 0 && seat < SEATS { s[0].seat_hero[seat] = -1; }
+    return true;
+  }
+  if t[0] != 'm' { return true; }
+  seat := take_int(t, at[..]);
+  body := t[at[0]..<t.count];
+  if s[0].role == ROLE_GM { gm_heard(s, seat, body); return true; }
+  if body.count > 1 && body[0] == 'V' && body[1] == '|' { ok := os_decode(body, s[0].seen[..]); return true; }
+  if body.count > 1 && body[0] == 'S' && body[1] == '|' {
+    if os_int(os_piece(body, '|', 1)) == s[0].my_seat {
+      h := os_int(os_piece(body, '|', 2));
+      s[0].asked = false;
+      if h >= 0 { s[0].me = h; s[0].building = false; say_note(s, "You are at the table"); }
+      else { say_note(s, "The table is full or in a fight: wait for the GM"); }
+    }
+  }
+  return true;
+}
+// A player's ask, on the GM's page: a join seats a hero; the rest are for the seat's own hero.
+gm_heard :: (s: [] Os, seat: int, body: string) {
+  if seat < 0 || seat >= SEATS || s[0].running < 0 { return; }
+  q := os_ask_of(body);
+  if q.kind == 0 { return; }
+  if q.kind == 'J' {
+    h := os_answer(tbl(s), -1, q);
+    if h >= 0 { s[0].seat_hero[seat] = h; }
+    buf: [40] u8; n := put(buf[..], 0, "S|"); n = put_int(buf[..], n, seat); n = put(buf[..], n, "|"); n = put_int(buf[..], n, h);
+    room_send(s, cast(string) buf[0..<n]);
+    room_tell(s, true);
+    return;
+  }
+  r := os_answer(tbl(s), s[0].seat_hero[seat], q);
+}
+
+// ---- what a button does
+
+leave_to :: (s: [] Os, url: string) {
+  if s[0].action != 0 { return; }
+  s[0].out_n = put(s[0].outbox[..], 0, url);
+  s[0].action = ACT_NAVIGATE;
+}
+// Run it: a campaign at the Table, a new table code, the room opened for the other screens.
+run_campaign :: (s: [] Os, k: int) {
+  if k < 0 || k >= OS_CAMPAIGNS || !s[0].camps[k].live { return; }
+  s[0].running = k;
+  s[0].seed = rs_wadd(rs_wmul(s[0].seed, 6364136223846793005), 1442695040888963407);
+  os_open(tbl(s), s[0].camps[k], s[0].seed);
+  for q: 0..<SEATS { s[0].seat_hero[q] = -1; }
+  s[0].me = -1; s[0].target = -1;
+  if s[0].code_n == 0 { s[0].code_n = os_code(s[0].seed ^ 0x5DEECE66D, s[0].code[..]); }
+  room_open(s);
+  s[0].view = V_GM;
+}
+// An ability of the hero this page plays (or, on the GM Screen, of whoever's turn it is).
+use_ability :: (s: [] Os, who: int, k: int) {
+  if s[0].role == ROLE_GM {
+    if !os_act(tbl(s), who, k, s[0].target) { say_note(s, "That can't be done now: pick a target in reach, or another ability"); }
+    return;
+  }
+  buf: [64] u8; n := os_ask(buf[..], "A", who, k, s[0].target);
+  room_send(s, cast(string) buf[0..<n]);
+}
+roll_die :: (s: [] Os, sides: int) {
+  gm_screen := s[0].role == ROLE_GM && s[0].view == V_GM;
+  if s[0].by_hand { s[0].hand_sides = ifx s[0].hand_sides == sides then 0 else sides; return; }
+  if s[0].role == ROLE_GM {
+    if s[0].running < 0 { return; }
+    if gm_screen { r := os_roll(tbl(s), "The GM", 1, sides, s[0].hidden_roll); return; }
+    if s[0].me >= 0 { r := os_roll(tbl(s), rs_name(s[0].table[0].b[0].c[s[0].me..<s[0].me + 1]), 1, sides, false); }
+    return;
+  }
+  if s[0].me < 0 { return; }
+  buf: [64] u8; n := os_ask(buf[..], "D", s[0].me, 1, sides);
+  room_send(s, cast(string) buf[0..<n]);
+}
+enter_face :: (s: [] Os, face: int) {
+  sides := s[0].hand_sides;
+  s[0].hand_sides = 0;
+  if sides <= 0 { return; }
+  gm_screen := s[0].role == ROLE_GM && s[0].view == V_GM;
+  if s[0].role == ROLE_GM {
+    if gm_screen { ok := os_enter(tbl(s), "The GM", sides, face, s[0].hidden_roll); return; }
+    if s[0].me >= 0 { ok := os_enter(tbl(s), rs_name(s[0].table[0].b[0].c[s[0].me..<s[0].me + 1]), sides, face, false); }
+    return;
+  }
+  if s[0].me < 0 { return; }
+  buf: [64] u8; n := os_ask(buf[..], "N", s[0].me, sides, face);
+  room_send(s, cast(string) buf[0..<n]);
+}
+join_table :: (s: [] Os) {
+  klass := OS_CLASSES[s[0].build_class];
+  nm := cast(string) s[0].hero_name[0..<s[0].hero_name_n];
+  if nm.count == 0 { nm = OS_HERO_NAMES[s[0].build_class]; }
+  if s[0].role == ROLE_GM {
+    if s[0].running < 0 { say_note(s, "Run a campaign first: Campaigns, then Run it"); return; }
+    h := os_join(tbl(s), klass, s[0].build_level, nm);
+    if h < 0 { say_note(s, "The party is full, or a fight is on"); return; }
+    s[0].me = h; s[0].building = false;
+    return;
+  }
+  if s[0].link != LINK_IN { say_note(s, "Not at a table yet: open the GM's link or enter the code"); return; }
+  buf: [80] u8; n := os_ask_join(buf[..], klass, s[0].build_level, nm);
+  room_send(s, cast(string) buf[0..<n]);
+  s[0].asked = true;
+}
+ready_hero :: (s: [] Os, c: int) {
+  s[0].build_class = c;
+  s[0].hero_name_n = put(s[0].hero_name[..], 0, OS_HERO_NAMES[c]);
+  s[0].build_level = ifx s[0].running >= 0 then s[0].table[0].camp.level else rs_max(s[0].build_level, 1);
+  if s[0].role != ROLE_GM && s[0].seen[0].live && s[0].seen[0].party_n >= 0 { }
+  join_table(s);
+}
+
+press :: (s: [] Os, id: int) {
+  t := tbl(s);
+  if id != B_FIELD + F_TITLE && id != B_FIELD + F_NAME && id != B_FIELD + F_TEXT && id != B_FIELD + F_HANDOUT && id != B_HERO_NAME && id != B_JOIN_FIELD { s[0].focus = F_NONE; }
+  if id >= B_REVEAL { ok := os_reveal(t, id - B_REVEAL); return; }
+  if id >= B_TAB && id < B_TAB + 5 { s[0].view = id - B_TAB; return; }
+  if id == B_WORLDS { leave_to(s, "/worlds"); return; }
+  if id == B_NEW {
+    k := os_new_one_shot(s[0].camps[..]);
+    if k < 0 { say_note(s, "Four campaigns is the most this browser keeps"); return; }
+    s[0].edit = k; s[0].edit_scene = 0; s[0].view = V_BUILDER; s[0].dirty = true;
+    return;
+  }
+  if id >= B_EDIT && id < B_EDIT + OS_CAMPAIGNS { s[0].edit = id - B_EDIT; s[0].edit_scene = 0; s[0].view = V_BUILDER; return; }
+  if id >= B_RUN && id < B_RUN + OS_CAMPAIGNS { run_campaign(s, id - B_RUN); return; }
+  if id == B_JOIN_FIELD { s[0].focus = F_CODE; return; }
+  if id == B_JOIN {
+    code := cast(string) s[0].join_code[0..<s[0].join_code_n];
+    if !os_code_ok(code) { say_note(s, "A table code is five letters and digits"); return; }
+    buf: [300] u8; n := put(buf[..], 0, cast(string) s[0].page[0..<s[0].page_n]); n = put(buf[..], n, "?join="); n = put(buf[..], n, code);
+    path := cast(string) buf[0..<n];
+    // the page's own path, from the origin on
+    sl := 0; k := 0;
+    while k < path.count && sl < 3 { if path[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
+    leave_to(s, ifx k < path.count then path[k..<path.count] else "/worlds/one-shot?join=");
+    return;
+  }
+  // the Campaign Builder
+  e := s[0].edit;
+  if id >= B_FIELD && id < B_FIELD + 7 { s[0].focus = id - B_FIELD; return; }
+  if id >= B_SCENE && id < B_SCENE + OS_SCENES { s[0].edit_scene = id - B_SCENE; return; }
+  if e >= 0 && e < OS_CAMPAIGNS && s[0].camps[e].live {
+    sc := s[0].edit_scene;
+    if id == B_ADD_SCENE { k := os_add_scene(s[0].camps[..], e); if k >= 0 { s[0].edit_scene = k; s[0].dirty = true; } return; }
+    if id == B_DEL_SCENE { if os_remove_scene(s[0].camps[..], e, sc) { s[0].edit_scene = rs_max(sc - 1, 0); s[0].dirty = true; } return; }
+    if id == B_FOES_DOWN { s[0].camps[e].scenes[sc].foes = rs_max(s[0].camps[e].scenes[sc].foes - 1, 0); s[0].dirty = true; return; }
+    if id == B_FOES_UP { s[0].camps[e].scenes[sc].foes = rs_min(s[0].camps[e].scenes[sc].foes + 1, OS_FOES); s[0].dirty = true; return; }
+    if id == B_ART { s[0].camps[e].scenes[sc].art = 1 - s[0].camps[e].scenes[sc].art; s[0].dirty = true; return; }
+    if id == B_LEVEL_DOWN { s[0].camps[e].level = rs_max(s[0].camps[e].level - 1, 1); s[0].dirty = true; return; }
+    if id == B_LEVEL_UP { s[0].camps[e].level = rs_min(s[0].camps[e].level + 1, 6); s[0].dirty = true; return; }
+    if id == B_BUILD_RUN { run_campaign(s, e); return; }
+  }
+  // the GM Screen
+  if id >= B_RUN_SCENE && id < B_RUN_SCENE + OS_SCENES { ok := os_run_scene(t, id - B_RUN_SCENE); s[0].target = -1; return; }
+  if id == B_SHOW { os_show(t, !t[0].shown); return; }
+  if id == B_TEXT { os_show_text(t, !t[0].text_shown); return; }
+  if id == B_HANDOUT { ok := os_send_handout(t, t[0].handout < 0); return; }
+  if id == B_COMBAT {
+    if t[0].combat { os_end_combat(t); s[0].target = -1; return; }
+    if !os_start_combat(t) { say_note(s, ifx t[0].party_n == 0 then "No heroes yet: players join, or add one on My Character" else "This scene has no encounter: add Skeletons in the builder"); }
+    return;
+  }
+  if id == B_NEXT { os_next_turn(t); return; }
+  if id == B_MONSTERS { t[0].monsters_hidden = !t[0].monsters_hidden; return; }
+  if id == B_INVITE {
+    if s[0].action != 0 || s[0].code_n == 0 { return; }
+    s[0].out_n = put(s[0].outbox[..], 0, cast(string) s[0].page[0..<s[0].page_n]);
+    s[0].out_n = put(s[0].outbox[..], s[0].out_n, "?join="); s[0].out_n = put(s[0].outbox[..], s[0].out_n, cast(string) s[0].code[0..<s[0].code_n]);
+    s[0].action = ACT_COPY;
+    say_note(s, "Invite link copied: send it to your players");
+    return;
+  }
+  if id >= B_TARGET && id < B_TARGET + 50 { tg := id - B_TARGET; s[0].target = ifx s[0].target == tg then -1 else tg; return; }
+  if id >= B_AB && id < B_AB + OS_SLOTS {
+    who := ifx s[0].view == V_GM then os_turn(t) else s[0].me;
+    if s[0].role != ROLE_GM { who = s[0].me; }
+    use_ability(s, who, id - B_AB);
+    return;
+  }
+  if id >= B_DIE && id < B_DIE + 7 { roll_die(s, OS_DICE[id - B_DIE]); return; }
+  if id == B_HIDDEN { s[0].hidden_roll = !s[0].hidden_roll; return; }
+  if id == B_HAND { s[0].by_hand = !s[0].by_hand; s[0].hand_sides = 0; return; }
+  if id >= B_FACE && id <= B_FACE + 20 { enter_face(s, id - B_FACE); return; }
+  // My Character
+  if id >= B_CLASS && id < B_CLASS + 12 { s[0].build_class = id - B_CLASS; s[0].hero_name_n = put(s[0].hero_name[..], 0, OS_HERO_NAMES[id - B_CLASS]); return; }
+  if id >= B_READY && id < B_READY + 12 { ready_hero(s, id - B_READY); return; }
+  if id == B_HLEVEL_DOWN { s[0].build_level = rs_max(s[0].build_level - 1, 1); return; }
+  if id == B_HLEVEL_UP { s[0].build_level = rs_min(s[0].build_level + 1, 6); return; }
+  if id == B_HERO_NAME { s[0].focus = F_HERO; return; }
+  if id == B_JOIN_TABLE { join_table(s); return; }
+  if id >= B_SEAT && id < B_SEAT + OS_PARTY { s[0].me = id - B_SEAT; s[0].building = false; return; }
+  if id == B_ADD_HERO { s[0].building = true; s[0].me = -1; return; }
+  if id == B_END_TURN {
+    if s[0].role == ROLE_GM { if os_turn(t) == s[0].me && s[0].me >= 0 { os_next_turn(t); } return; }
+    buf: [32] u8; n := os_ask(buf[..], "E", s[0].me, 0, 0);
+    room_send(s, cast(string) buf[0..<n]);
+  }
+}
+
+// ---- typing
+
+focused_text :: (s: [] Os, buf: [] u8) -> int {
+  f := s[0].focus;
+  if f == F_HERO { return put(buf, 0, cast(string) s[0].hero_name[0..<s[0].hero_name_n]); }
+  if f == F_CODE { return put(buf, 0, cast(string) s[0].join_code[0..<s[0].join_code_n]); }
+  return put(buf, 0, os_field(s[0].camps[..], s[0].edit, s[0].edit_scene, f));
+}
+set_focused :: (s: [] Os, t: string) {
+  f := s[0].focus;
+  if f == F_HERO { s[0].hero_name_n = os_set_name(s[0].hero_name[..], t); return; }
+  if f == F_CODE {
+    n := 0;
+    for c: t { ch := ifx c >= 'A' && c <= 'Z' then c + 32 else c; if n < OS_CODE_LEN && ch != ' ' { s[0].join_code[n] = ch; n += 1; } }
+    s[0].join_code_n = n; return;
+  }
+  if os_edit(s[0].camps[..], s[0].edit, s[0].edit_scene, f, t) { s[0].dirty = true; }
+}
+type_text :: (s: [] Os, t: string) {
+  if s[0].focus == F_NONE { return; }
+  buf: [OS_TEXT + 64] u8; n := focused_text(s, buf[..]);
+  n = put(buf[..], n, t);
+  set_focused(s, cast(string) buf[0..<n]);
+}
+type_back :: (s: [] Os, all: bool) {
+  buf: [OS_TEXT + 64] u8; n := focused_text(s, buf[..]);
+  if all { n = 0; }
+  else if n > 0 { n -= 1; while n > 0 && (buf[n] & 0xC0) == 0x80 { n -= 1; } }
+  set_focused(s, cast(string) buf[0..<n]);
+}
+
+// ---- drawing: the top bar
+
+tabs_for :: (s: [] Os, out: [] int) -> int {
+  if s[0].role == ROLE_DISPLAY { out[0] = V_DISPLAY; return 1; }
+  if s[0].role == ROLE_PLAYER { out[0] = V_CHARACTER; out[1] = V_DISPLAY; return 2; }
+  for i: 0..<5 { out[i] = i; }
+  return 5;
+}
+top_sub :: (s: [] Os) -> string {
+  if s[0].running >= 0 { return os_str(s[0].table[0].camp.title[..], s[0].table[0].camp.title_n); }
+  if s[0].seen[0].live { return os_str(s[0].seen[0].title[..], s[0].seen[0].title_n); }
+  return "A 5E TABLE";
+}
+// Where the tabs start, and whether they fit beside the title (else a phone: rows of their own).
+tabs_x0 :: (s: [] Os, k: f32) -> f32 { return 14 * k + hi(text_width("ONE-SHOT", 15 * k), text_width(top_sub(s), 8 * k)) + 20 * k; }
+tabs_narrow :: (s: [] Os, w: f32, k: f32) -> bool {
+  tabs: [5] int; nt := tabs_for(s, tabs[..]);
+  avail := (w - 14 * k - 80 * k - tabs_x0(s, k) - 6 * k * f32(nt)) / f32(nt);
+  return avail < 70 * k;
+}
+draw_top :: (s: [] Os, out: [] f32, at: int, w: f32, k: f32) -> int {
+  n := at; pad := 14 * k;
+  n = say_at(out, n, "ONE-SHOT", pad, 30 * k, 15 * k, ink(k, 0.95, WHITE));
+  sub := top_sub(s);
+  n = say_at(out, n, sub, pad, 46 * k, 8 * k, ink(k, 0.55, DIM));
+  tabs: [5] int; nt := tabs_for(s, tabs[..]);
+  x0 := tabs_x0(s, k);
+  per := nt; bw := lo(98 * k, (w - pad - 80 * k - x0 - 6 * k * f32(nt)) / f32(nt));
+  ty0 := 14 * k;
+  if tabs_narrow(s, w, k) {
+    // a phone: the tabs under the title, three to a row
+    x0 = pad; per = rs_min(nt, 3); bw = (w - pad * 2 - 6 * k * f32(per - 1)) / f32(per); ty0 = 58 * k;
+  }
+  for i: 0..<nt {
+    col := i % per; row := i / per;
+    y0 := ty0 + f32(row) * 32 * k;
+    r := rect(x0 + f32(col) * (bw + 6 * k), y0, x0 + f32(col) * (bw + 6 * k) + bw, y0 + 28 * k);
+    n = button(s, out, n, B_TAB + tabs[i], r, TAB_NAMES[tabs[i]], s[0].view == tabs[i], true);
+  }
+  n = button(s, out, n, B_WORLDS, rect(w - pad - 72 * k, 14 * k, w - pad, 42 * k), "WORLDS", false, true);
+  return n;
+}
+top_height :: (s: [] Os, w: f32, k: f32) -> f32 {
+  if !tabs_narrow(s, w, k) { return 58 * k; }
+  tabs: [5] int; nt := tabs_for(s, tabs[..]);
+  return ifx nt > 3 then 128 * k else 96 * k;
+}
+footer :: (s: [] Os, out: [] f32, at: int, x: f32, y: f32, width: f32, k: f32) -> Wrapped {
+  return say_wrap(out, at, ATTRIBUTION, x, y, width, 6.2 * k, ink(k, 0.4, DIM), 6);
+}
+header :: (out: [] f32, at: int, t: string, x: f32, y: f32, k: f32) -> int { return say_at(out, at, t, x, y, 8 * k, ink(k, 0.62, CYAN)); }
+
+// ---- Campaigns
+
+draw_campaigns :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, k: f32) -> f32 {
+  n := at; pad := 14 * k; x := x0 + pad; y := y0 + 18 * k;
+  width := lo(w - pad * 2, 760 * k);
+  n = say_at(out, n, "RUN A 5E GAME FOR YOUR FRIENDS.", x, y + 16 * k, 16 * k, ink(k, 0.95, WHITE));
+  y += 32 * k;
+  wr := say_wrap(out, n, "Make a one-shot from our starter adventure, change what you like, then run it at the Table: you on the GM Screen, the shared picture on the Table Display, and each player's hero on My Character.", x, y, width, 8.5 * k, ink(k, 0.6, DIM), 4);
+  n = wr.n; y = wr.y + 16 * k;
+  n = button(s, out, n, B_NEW, rect(x, y, x + 180 * k, y + 34 * k), "NEW ONE-SHOT", false, true);
+  y += 52 * k;
+  any := false;
+  l: [128] u8;
+  for c: 0..<OS_CAMPAIGNS {
+    if !s[0].camps[c].live { continue; }
+    any = true;
+    card := rect(x, y, x + width, y + 64 * k);
+    n = box_lines(out, n, card, 0.6 * k, 0.35, DIM);
+    n = say_at(out, n, os_title(s[0].camps[..], c), x + 12 * k, y + 24 * k, 11 * k, ink(k, 0.92, WHITE));
+    m := put_int(l[..], 0, s[0].camps[c].scene_n); m = put(l[..], m, " SCENES · HEROES AT LEVEL "); m = put_int(l[..], m, s[0].camps[c].level);
+    m = put(l[..], m, " · YOUR OWN");
+    n = say_at(out, n, cast(string) l[0..<m], x + 12 * k, y + 46 * k, 7.5 * k, ink(k, 0.55, DIM));
+    n = button(s, out, n, B_EDIT + c, rect(card.x1 - 214 * k, y + 16 * k, card.x1 - 116 * k, y + 48 * k), "EDIT", false, true);
+    n = button(s, out, n, B_RUN + c, rect(card.x1 - 106 * k, y + 16 * k, card.x1 - 12 * k, y + 48 * k), ifx s[0].running == c then "AT THE TABLE" else "RUN IT", s[0].running == c, true);
+    y += 74 * k;
+  }
+  if !any { n = say_at(out, n, "NO CAMPAIGNS YET. NEW ONE-SHOT MAKES ONE.", x, y + 10 * k, 8.5 * k, ink(k, 0.5, DIM)); y += 30 * k; }
+  y += 14 * k;
+  n = header(out, n, "JOIN A GAME", x, y, k); y += 10 * k;
+  n = field(s, out, n, B_JOIN_FIELD, F_CODE, rect(x, y + 6 * k, x + 160 * k, y + 36 * k), "", cast(string) s[0].join_code[0..<s[0].join_code_n], 11 * k, 1);
+  n = button(s, out, n, B_JOIN, rect(x + 170 * k, y + 6 * k, x + 260 * k, y + 36 * k), "JOIN", false, true);
+  y += 44 * k;
+  n = say_at(out, n, "ENTER THE TABLE CODE FROM YOUR GM, OR OPEN THE LINK THEY SENT.", x, y + 8 * k, 7 * k, ink(k, 0.45, DIM));
+  s[0].content[V_CAMPAIGNS] = y + 30 * k - y0;
+  s[0].btn_n = s[0].btn_n;
+  return f32(n);
+}
+
+// ---- the Campaign Builder
+
+draw_builder :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f32, k: f32) -> f32 {
+  n := at; pad := 14 * k;
+  e := s[0].edit;
+  if e < 0 || e >= OS_CAMPAIGNS || !s[0].camps[e].live {
+    n = say_at(out, n, "PICK A CAMPAIGN ON CAMPAIGNS, OR MAKE A NEW ONE-SHOT.", x0 + pad, y0 + 30 * k, 9 * k, ink(k, 0.6, DIM));
+    n = button(s, out, n, B_NEW, rect(x0 + pad, y0 + 46 * k, x0 + pad + 180 * k, y0 + 80 * k), "NEW ONE-SHOT", false, true);
+    return f32(n);
+  }
+  narrow := w < 760 * k;
+  lw := ifx narrow then w - pad * 2 else lo(300 * k, w * 0.32);
+  x := x0 + pad; y := y0 + 26 * k;
+  n = field(s, out, n, B_FIELD + F_TITLE, F_TITLE, rect(x, y, x + lw, y + 32 * k), "TITLE", os_title(s[0].camps[..], e), 10 * k, 1);
+  y += 52 * k;
+  l: [64] u8;
+  m := put(l[..], 0, "HEROES AT LEVEL "); m = put_int(l[..], m, s[0].camps[e].level);
+  n = say_at(out, n, cast(string) l[0..<m], x, y + 16 * k, 9 * k, ink(k, 0.85, WHITE));
+  n = button(s, out, n, B_LEVEL_DOWN, rect(x + lw - 70 * k, y, x + lw - 38 * k, y + 26 * k), "-", false, s[0].camps[e].level > 1);
+  n = button(s, out, n, B_LEVEL_UP, rect(x + lw - 32 * k, y, x + lw, y + 26 * k), "+", false, s[0].camps[e].level < 6);
+  y += 40 * k;
+  n = header(out, n, "SCENES", x, y, k); y += 8 * k;
+  for sc: 0..<s[0].camps[e].scene_n {
+    r := rect(x, y, x + lw, y + 30 * k);
+    nm: [64] u8; q := put_int(nm[..], 0, sc + 1); q = put(nm[..], q, ". "); q = put(nm[..], q, os_scene_name(s[0].camps[e].scenes[..], sc));
+    n = button(s, out, n, B_SCENE + sc, r, cast(string) nm[0..<q], s[0].edit_scene == sc, true);
+    y += 36 * k;
+  }
+  n = button(s, out, n, B_ADD_SCENE, rect(x, y, x + lw / 2 - 4 * k, y + 28 * k), "ADD SCENE", false, s[0].camps[e].scene_n < OS_SCENES);
+  n = button(s, out, n, B_DEL_SCENE, rect(x + lw / 2 + 4 * k, y, x + lw, y + 28 * k), "REMOVE SCENE", false, s[0].camps[e].scene_n > 1);
+  y += 44 * k;
+  n = button(s, out, n, B_BUILD_RUN, rect(x, y, x + lw, y + 34 * k), "RUN IT AT THE TABLE", false, true);
+  y += 48 * k;
+  wr := say_wrap(out, n, "Your own content: saved in this browser and kept apart from the SRD. Encounters use the SRD 5.2.1 Skeleton, the one monster the rules engine holds today.", x, y, lw, 7 * k, ink(k, 0.45, DIM), 5);
+  n = wr.n; y = wr.y + 10 * k;
+  // the scene
+  sx := ifx narrow then x else x + lw + 24 * k;
+  sy := ifx narrow then y + 10 * k else y0 + 26 * k;
+  sw := ifx narrow then lw else x0 + w - pad - sx;
+  sc := rs_min(s[0].edit_scene, s[0].camps[e].scene_n - 1);
+  scene := s[0].camps[e].scenes[sc];
+  n = field(s, out, n, B_FIELD + F_NAME, F_NAME, rect(sx, sy, sx + sw, sy + 32 * k), "SCENE NAME", os_scene_name(s[0].camps[e].scenes[..], sc), 10 * k, 1);
+  sy += 50 * k;
+  n = say_at(out, n, "ART", sx, sy + 16 * k, 8 * k, ink(k, 0.6, DIM));
+  n = button(s, out, n, B_ART, rect(sx + 40 * k, sy, sx + 200 * k, sy + 26 * k), ifx scene.art == ART_GLADE then "3D GLADE" else "TITLE CARD", true, true);
+  m = put(l[..], 0, "ENCOUNTER: ");
+  m = ifx scene.foes == 0 then put(l[..], m, "NONE") else put_int(l[..], m, scene.foes);
+  if scene.foes > 0 { m = put(l[..], m, ifx scene.foes == 1 then " SKELETON" else " SKELETONS"); }
+  ex := sx + 220 * k;
+  if sw < 460 * k { ex = sx; sy += 36 * k; }
+  n = say_at(out, n, cast(string) l[0..<m], ex, sy + 16 * k, 8.5 * k, ink(k, 0.85, WHITE));
+  bx_at := text_width("ENCOUNTER: 8 SKELETONS", 8.5 * k) + 14 * k;   // the buttons hold still as the count changes
+  n = button(s, out, n, B_FOES_DOWN, rect(ex + bx_at, sy, ex + bx_at + 32 * k, sy + 26 * k), "-", false, scene.foes > 0);
+  n = button(s, out, n, B_FOES_UP, rect(ex + bx_at + 38 * k, sy, ex + bx_at + 70 * k, sy + 26 * k), "+", false, scene.foes < OS_FOES);
+  sy += 50 * k;
+  th := lo(hi(h - (sy - y0) - 200 * k, 150 * k), 260 * k);
+  n = field(s, out, n, B_FIELD + F_TEXT, F_TEXT, rect(sx, sy, sx + sw, sy + th), "READ-ALOUD TEXT", os_scene_text(s[0].camps[e].scenes[..], sc), 8.5 * k, 16);
+  sy += th + 26 * k;
+  n = field(s, out, n, B_FIELD + F_HANDOUT, F_HANDOUT, rect(sx, sy, sx + sw, sy + 84 * k), "HANDOUT", os_scene_handout(s[0].camps[e].scenes[..], sc), 8.5 * k, 5);
+  sy += 100 * k;
+  s[0].content[V_BUILDER] = hi(y, sy) - y0 + 20 * k;
+  return f32(n);
+}
+
+// ---- the GM Screen
+
+hp_text :: (buf: [] u8, at: int, e: OsEntry) -> int {
+  if e.hp_max < 0 { return put(buf, at, OS_HP_WORD[e.health]); }
+  if e.health == HP_DEAD { return put(buf, at, "DEAD"); }
+  m := put_int(buf, at, e.hp); m = put(buf, m, "/"); return put_int(buf, m, e.hp_max);
+}
+draw_tracker :: (s: [] Os, out: [] f32, at: int, vs: [] OsView, x: f32, y0: f32, w: f32, k: f32, rows: int) -> Wrapped {
+  v := vs[0];
+  n := at; y := y0;
+  l: [96] u8;
+  if v.combat {
+    m := put(l[..], 0, "INITIATIVE · ROUND "); m = put_int(l[..], m, v.round);
+    n = header(out, n, cast(string) l[0..<m], x, y, k);
+  } else { n = header(out, n, "THE PARTY", x, y, k); }
+  y += 8 * k;
+  if v.entry_n == 0 { n = say_at(out, n, "NO HEROES YET", x, y + 16 * k, 8.5 * k, ink(k, 0.5, DIM)); y += 26 * k; }
+  rh := 24 * k;
+  for q: 0..<rs_min(v.entry_n, rows) {
+    e := v.entries[q];
+    r := rect(x, y, x + w, y + rh - 3 * k);
+    turn := v.turn == q;
+    picked := s[0].target == e.index;
+    col := ifx e.health == HP_DEAD then FAINT else ifx e.health == HP_DOWN then DIM else TEAM_COL[rs_min(e.team, 2)];
+    n = fill(out, n, r, ifx turn then 0.2 else ifx picked then 0.14 else 0.05, ifx turn then GOLD else ifx picked then RED else WHITE);
+    if picked { n = box_lines(out, n, r, 0.7 * k, 0.8, RED); }
+    if v.combat { m := put_int(l[..], 0, e.initiative); n = say_right(out, n, cast(string) l[0..<m], x + 24 * k, y + 14 * k, 8.5 * k, ink(k, 0.6, DIM)); }
+    nm := os_str(vs[0].entries[q].name[..], e.name_n);
+    n = say_at(out, n, nm, x + 32 * k, y + 14 * k, 8.8 * k, ink(k, 0.92, col));
+    m := hp_text(l[..], 0, e);
+    n = say_right(out, n, cast(string) l[0..<m], x + w - 8 * k, y + 14 * k, 8 * k, ink(k, 0.8, ifx e.health >= HP_BLOODIED then RED else ifx e.health == HP_HURT then GOLD else GREEN));
+    if s[0].btn_n < BTNS && e.health != HP_DEAD { s[0].btn[s[0].btn_n] = Btn.{r = r, id = B_TARGET + e.index}; s[0].btn_n += 1; }
+    y += rh;
+  }
+  return Wrapped.{n = n, y = y};
+}
+// The hotbar of creature `who` (its abilities from the engine record), with what each has left.
+draw_hotbar :: (s: [] Os, out: [] f32, at: int, c: RsCreature, x: f32, y: f32, w: f32, k: f32, works: bool) -> Wrapped {
+  n := at;
+  list: [OS_SLOTS] Ab; na := os_abilities(c, list[..]);
+  cols := rs_max(cast(int) (w / (112 * k)), 1);
+  bw := (w - f32(cols - 1) * 6 * k) / f32(cols);
+  l: [64] u8;
+  yy := y;
+  for q: 0..<na {
+    col := q % cols; row := q / cols;
+    r := rect(x + f32(col) * (bw + 6 * k), y + f32(row) * 36 * k, x + f32(col) * (bw + 6 * k) + bw, y + f32(row) * 36 * k + 30 * k);
+    left := os_ab_left(c, list[q]);
+    m := put(l[..], 0, list[q].name);
+    if left >= 0 { m = put(l[..], m, " · "); m = put_int(l[..], m, left); }
+    n = button(s, out, n, B_AB + q, r, cast(string) l[0..<m], false, works && os_ab_ready(c, list[q]));
+    yy = r.y1;
+  }
+  return Wrapped.{n = n, y = yy};
+}
+draw_dice :: (s: [] Os, out: [] f32, at: int, x: f32, y: f32, w: f32, k: f32, gm: bool) -> Wrapped {
+  n := at;
+  n = header(out, n, "DICE", x, y, k);
+  yy := y + 8 * k;
+  bw := lo(52 * k, (w - 6 * 6 * k) / 7);
+  names := [7] string.["D4", "D6", "D8", "D10", "D12", "D20", "D100"];
+  for d: 0..<7 {
+    r := rect(x + f32(d) * (bw + 6 * k), yy, x + f32(d) * (bw + 6 * k) + bw, yy + 30 * k);
+    n = button(s, out, n, B_DIE + d, r, names[d], s[0].hand_sides == OS_DICE[d], !(s[0].by_hand && OS_DICE[d] > 20));
+  }
+  yy += 38 * k;
+  tx := x;
+  if gm { n = button(s, out, n, B_HIDDEN, rect(tx, yy, tx + 150 * k, yy + 26 * k), ifx s[0].hidden_roll then "BEHIND THE SCREEN" else "OPEN TO THE TABLE", s[0].hidden_roll, true); tx += 158 * k; }
+  n = button(s, out, n, B_HAND, rect(tx, yy, tx + 130 * k, yy + 26 * k), ifx s[0].by_hand then "PHYSICAL DICE" else "VIRTUAL DICE", s[0].by_hand, true);
+  yy += 32 * k;
+  if s[0].by_hand {
+    if s[0].hand_sides > 0 {
+      l: [48] u8; m := put(l[..], 0, "WHAT DID YOUR D"); m = put_int(l[..], m, s[0].hand_sides); m = put(l[..], m, " SHOW?");
+      n = say_at(out, n, cast(string) l[0..<m], x, yy + 12 * k, 8 * k, ink(k, 0.7, GOLD));
+      yy += 18 * k;
+      fw := lo(32 * k, (w - 9 * 4 * k) / 10);
+      for f: 1..<s[0].hand_sides + 1 {
+        c := (f - 1) % 10; r := (f - 1) / 10;
+        b := rect(x + f32(c) * (fw + 4 * k), yy + f32(r) * 30 * k, x + f32(c) * (fw + 4 * k) + fw, yy + f32(r) * 30 * k + 26 * k);
+        fl: [8] u8; fm := put_int(fl[..], 0, f);
+        n = button(s, out, n, B_FACE + f, b, cast(string) fl[0..<fm], false, true);
+      }
+      yy += f32((s[0].hand_sides + 9) / 10) * 30 * k;
+    } else {
+      n = say_at(out, n, "ROLL YOUR OWN DIE, TAP WHICH ONE, THEN ITS FACE.", x, yy + 12 * k, 7 * k, ink(k, 0.5, DIM)); yy += 18 * k;
+    }
+  }
+  return Wrapped.{n = n, y = yy};
+}
+draw_log :: (s: [] Os, out: [] f32, at: int, vs: [] OsView, x: f32, y: f32, w: f32, h: f32, k: f32, gm: bool) -> int {
+  v := vs[0];
+  n := at;
+  n = header(out, n, "SESSION LOG", x, y, k);
+  cap := 7.6 * k; lh := cap * 1.85;
+  // newest at the foot
+  rows := 0; yy := y + h;
+  q := v.line_n - 1;
+  while q >= 0 && yy > y + 16 * k {
+    l := v.lines[q];
+    txt := os_text(vs[0].lines[..], q);
+    nl := rs_min(wrap_lines(txt, w - (ifx l.hidden then 64 * k else 0), cap), 3);
+    top := yy - f32(nl) * lh;
+    if top < y + 10 * k { break; }
+    col := ifx l.kind == LN_ROLL then GOLD else ifx l.kind == LN_SCENE then CYAN else ifx l.kind == LN_GM then WHITE else DIM;
+    if l.hidden {
+      r := rect(x + w - 58 * k, top + 1 * k, x + w, top + cap + 6 * k);
+      n = button(s, out, n, B_REVEAL + l.seq, r, "SHOW", false, gm);
+      col = Col.{r = col.r * 0.6, g = col.g * 0.6, b = col.b * 0.75};
+    }
+    wr := say_wrap(out, n, txt, x, top, w - (ifx l.hidden then 64 * k else 0), cap, ink(k, ifx l.hidden then 0.55 else 0.85, col), 3);
+    n = wr.n;
+    yy = top - 3 * k; rows += 1;
+    q -= 1;
+  }
+  return n;
+}
+draw_gm :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f32, k: f32) -> f32 {
+  n := at; pad := 14 * k;
+  t := tbl(s);
+  if s[0].running < 0 {
+    n = say_at(out, n, "NO GAME RUNNING. ON CAMPAIGNS, PRESS RUN IT ON A ONE-SHOT.", x0 + pad, y0 + 30 * k, 9 * k, ink(k, 0.6, DIM));
+    n = button(s, out, n, B_TAB + V_CAMPAIGNS, rect(x0 + pad, y0 + 46 * k, x0 + pad + 160 * k, y0 + 80 * k), "CAMPAIGNS", false, true);
+    return f32(n);
+  }
+  os_view(t, s[0].gm[..], true);
+  v := s[0].gm[0];
+  narrow := w < 1000 * k;
+  lw := ifx narrow then w - pad * 2 else w * 0.22;
+  cw := ifx narrow then w - pad * 2 else w * 0.38;
+  rw := ifx narrow then w - pad * 2 else w - lw - cw - pad * 4;
+  lx := x0 + pad; cx := ifx narrow then lx else lx + lw + pad; rx := ifx narrow then lx else cx + cw + pad;
+  y := y0 + 22 * k;
+  l: [128] u8;
+  // the left: the scenes and the room
+  n = header(out, n, "SCENES", lx, y, k);
+  ly := y + 8 * k;
+  for sc: 0..<t[0].camp.scene_n {
+    card := rect(lx, ly, lx + lw, ly + 58 * k);
+    running := t[0].scene == sc;
+    n = fill(out, n, card, ifx running then 0.14 else 0.04, ifx running then GOLD else WHITE);
+    n = box_lines(out, n, card, 0.6 * k, ifx running then 0.75 else 0.3, ifx running then GOLD else DIM);
+    n = say_at(out, n, os_scene_name(t[0].camp.scenes[..], sc), lx + 8 * k, ly + 18 * k, 9 * k, ink(k, 0.92, WHITE));
+    m := put(l[..], 0, ifx t[0].camp.scenes[sc].art == ART_GLADE then "3D GLADE" else "TITLE CARD");
+    f := t[0].camp.scenes[sc].foes;
+    m = put(l[..], m, " · "); if f == 0 { m = put(l[..], m, "NO FIGHT"); } else { m = put_int(l[..], m, f); m = put(l[..], m, ifx f == 1 then " SKELETON" else " SKELETONS"); }
+    n = say_at(out, n, cast(string) l[0..<m], lx + 8 * k, ly + 34 * k, 6.8 * k, ink(k, 0.5, DIM));
+    n = button(s, out, n, B_RUN_SCENE + sc, rect(lx + lw - 84 * k, ly + 36 * k, lx + lw - 6 * k, ly + 54 * k), ifx running then "RUNNING" else "RUN IT", running, true);
+    ly += 64 * k;
+  }
+  ly += 10 * k;
+  n = header(out, n, "TABLE CODE", lx, ly, k);
+  m := put(l[..], 0, cast(string) s[0].code[0..<s[0].code_n]);
+  n = say_at(out, n, cast(string) l[0..<m], lx, ly + 28 * k, 18 * k, ink(k, 0.95, GOLD));
+  ly += 38 * k;
+  seated := 0; for q: 0..<SEATS { if s[0].seat_hero[q] >= 0 { seated += 1; } }
+  m = ifx s[0].link == LINK_IN then put(l[..], 0, "OTHER SCREENS CAN JOIN: THREE SEATS") else ifx s[0].link == LINK_JOINING then put(l[..], 0, "OPENING THE ROOM") else put(l[..], 0, "NO ROOM HERE: PLAY ON THIS DEVICE, A TAB EACH");
+  wr := say_wrap(out, n, cast(string) l[0..<m], lx, ly, lw, 6.8 * k, ink(k, 0.55, DIM), 3);
+  n = wr.n; ly = wr.y + 8 * k;
+  n = button(s, out, n, B_INVITE, rect(lx, ly, lx + lw, ly + 26 * k), "COPY INVITE LINK", false, s[0].link == LINK_IN);
+  ly += 32 * k;
+  n = button(s, out, n, B_MONSTERS, rect(lx, ly, lx + lw, ly + 26 * k), ifx t[0].monsters_hidden then "MONSTER ROLLS: HIDDEN" else "MONSTER ROLLS: OPEN", t[0].monsters_hidden, true);
+  ly += 40 * k;
+  // the centre: the scene running and what the table sees
+  y = ifx narrow then ly else y0 + 22 * k;
+  n = header(out, n, "NOW RUNNING", cx, y, k);
+  cy := y + 10 * k;
+  if t[0].scene < 0 {
+    n = say_at(out, n, "PICK A SCENE AND PRESS RUN IT.", cx, cy + 18 * k, 9 * k, ink(k, 0.6, DIM)); cy += 30 * k;
+  } else {
+    sc := t[0].scene;
+    n = say_at(out, n, os_scene_name(t[0].camp.scenes[..], sc), cx, cy + 18 * k, 14 * k, ink(k, 0.95, WHITE));
+    cy += 30 * k;
+    m = put(l[..], 0, "THE TABLE SEES: ");
+    m = put(l[..], m, ifx !t[0].shown then "NOTHING YET" else ifx t[0].camp.scenes[sc].art == ART_GLADE || t[0].combat then "THE 3D GLADE" else "THE TITLE CARD");
+    if t[0].text_shown { m = put(l[..], m, ", THE TEXT"); }
+    if t[0].handout >= 0 { m = put(l[..], m, ", THE HANDOUT"); }
+    n = say_at(out, n, cast(string) l[0..<m], cx, cy + 6 * k, 7 * k, ink(k, 0.6, ifx t[0].shown then GREEN else DIM));
+    cy += 14 * k;
+    bw := (cw - 18 * k) / 4;
+    btns := [4] int.[B_SHOW, B_TEXT, B_HANDOUT, B_COMBAT];
+    labels := [4] string.[ifx t[0].shown then "HIDE" else "SHOW TO TABLE", ifx t[0].text_shown then "HIDE TEXT" else "SHOW TEXT",
+                          ifx t[0].handout >= 0 then "TAKE BACK HANDOUT" else "SEND HANDOUT", ifx t[0].combat then "END COMBAT" else "START COMBAT"];
+    ons := [4] bool.[t[0].shown, t[0].text_shown, t[0].handout >= 0, t[0].combat];
+    works := [4] bool.[true, true, t[0].camp.scenes[sc].handout_n > 0, t[0].combat || t[0].camp.scenes[sc].foes > 0];
+    for q: 0..<4 { n = button(s, out, n, btns[q], rect(cx + f32(q) * (bw + 6 * k), cy, cx + f32(q) * (bw + 6 * k) + bw, cy + 30 * k), labels[q], ons[q], works[q]); }
+    cy += 42 * k;
+    n = say_at(out, n, "READ ALOUD", cx, cy, 7 * k, ink(k, 0.5, DIM));
+    wr = say_wrap(out, n, os_scene_text(t[0].camp.scenes[..], sc), cx, cy + 6 * k, cw, 8.6 * k, ink(k, 0.88, WHITE), 14);
+    n = wr.n; cy = wr.y + 14 * k;
+    if t[0].camp.scenes[sc].handout_n > 0 {
+      n = say_at(out, n, "HANDOUT", cx, cy, 7 * k, ink(k, 0.5, DIM));
+      wr = say_wrap(out, n, os_scene_handout(t[0].camp.scenes[..], sc), cx + 8 * k, cy + 8 * k, cw - 16 * k, 7.8 * k, ink(k, 0.7, CYAN), 6);
+      n = seg(out, n, cx, cy + 6 * k, cx, wr.y + 2 * k, 1 * k, 0.5, CYAN);
+      n = wr.n; cy = wr.y + 14 * k;
+    }
+  }
+  // the dice tray under the scene
+  dy := hi(cy + 6 * k, ifx narrow then 0 else y0 + h * 0.6);
+  wr = draw_dice(s, out, n, cx, dy, cw, k, true);
+  n = wr.n; cy = wr.y + 10 * k;
+  // the right: the tracker, the turn, the log
+  ry := ifx narrow then cy + 10 * k else y0 + 22 * k;
+  wr = draw_tracker(s, out, n, s[0].gm[..], rx, ry, rw, k, OS_ENTRIES);
+  n = wr.n; ry = wr.y + 12 * k;
+  who := os_turn(t);
+  if t[0].combat {
+    oc := os_outcome(t);
+    if oc != 0 { n = say_at(out, n, ifx oc == 1 then "THE PARTY WINS: END COMBAT WHEN YOU'RE READY" else "THE PARTY HAS FALLEN", rx, ry + 12 * k, 9 * k, ink(k, 0.95, ifx oc == 1 then GREEN else RED)); ry += 22 * k; }
+    if who >= 0 {
+      c := t[0].b[0].c[who];
+      m = put(l[..], 0, "TURN: "); m = put(l[..], m, rs_name(t[0].b[0].c[who..<who + 1]));
+      if who < t[0].party_n { m = put(l[..], m, " (A HERO: ITS PLAYER ACTS, OR YOU)"); }
+      n = say_at(out, n, cast(string) l[0..<m], rx, ry + 12 * k, 8.8 * k, ink(k, 0.92, GOLD));
+      ry += 20 * k;
+      m = put(l[..], 0, "TARGET: ");
+      m = ifx s[0].target >= 0 && s[0].target < t[0].b[0].n then put(l[..], m, rs_name(t[0].b[0].c[s[0].target..<s[0].target + 1])) else put(l[..], m, "TAP A ROW ABOVE");
+      n = say_at(out, n, cast(string) l[0..<m], rx, ry + 8 * k, 7.5 * k, ink(k, 0.7, ifx s[0].target >= 0 then RED else DIM));
+      ry += 16 * k;
+      if rs_can_act(c) { wr = draw_hotbar(s, out, n, c, rx, ry, rw, k, true); n = wr.n; ry = wr.y + 8 * k; }
+      else { n = say_at(out, n, ifx c.hp == 0 then "AT 0 HIT POINTS: ITS DEATH SAVE IS ROLLED" else "IT CAN'T ACT THIS TURN", rx, ry + 10 * k, 7.5 * k, ink(k, 0.6, DIM)); ry += 18 * k; }
+    }
+    n = button(s, out, n, B_NEXT, rect(rx, ry, rx + rw, ry + 32 * k), "NEXT TURN", false, true);
+    ry += 44 * k;
+  }
+  logh := ifx narrow then 260 * k else hi(y0 + h - ry - 60 * k, 120 * k);
+  n = draw_log(s, out, n, s[0].gm[..], rx, ry, rw, logh, k, true);
+  ry += logh + 14 * k;
+  fw := footer(s, out, n, rx, ry, rw, k);
+  n = fw.n;
+  s[0].content[V_GM] = hi(fw.y, cy) - y0 + 20 * k;
+  return f32(n);
+}
+
+// ---- My Character
+
+mod_text :: (buf: [] u8, at: int, v: int) -> int { return put_signed(buf, at, v); }
+// The hero this page plays as the table last said (its entry), or -1.
+my_entry :: (s: [] Os) -> int {
+  v := s[0].seen[..];
+  for q: 0..<v[0].entry_n { if v[0].entries[q].hero && v[0].entries[q].index == s[0].me { return q; } }
+  return -1;
+}
+draw_builder_hero :: (s: [] Os, out: [] f32, at: int, x: f32, y0: f32, w: f32, k: f32) -> Wrapped {
+  n := at; y := y0;
+  n = header(out, n, "PICK A READY HERO", x, y, k); y += 8 * k;
+  lv := ifx s[0].running >= 0 then s[0].table[0].camp.level else s[0].build_level;
+  cols := ifx w > 700 * k then 4 else 2;
+  cw := (w - f32(cols - 1) * 6 * k) / f32(cols);
+  l: [80] u8;
+  for c: 0..<12 {
+    r := rect(x + f32(c % cols) * (cw + 6 * k), y + f32(c / cols) * 40 * k, x + f32(c % cols) * (cw + 6 * k) + cw, y + f32(c / cols) * 40 * k + 34 * k);
+    m := put(l[..], 0, OS_HERO_NAMES[c]); m = put(l[..], m, ", "); m = put(l[..], m, RS_CLASS[OS_CLASSES[c]]); m = put(l[..], m, " ");
+    m = put_int(l[..], m, ifx s[0].role == ROLE_GM then lv else s[0].build_level);
+    n = button(s, out, n, B_READY + c, r, cast(string) l[0..<m], false, !s[0].asked);
+  }
+  y += f32((12 + cols - 1) / cols) * 40 * k + 14 * k;
+  n = header(out, n, "OR A QUICK BUILD", x, y, k); y += 8 * k;
+  ccols := ifx w > 700 * k then 6 else 3;
+  ccw := (w - f32(ccols - 1) * 6 * k) / f32(ccols);
+  for c: 0..<12 {
+    r := rect(x + f32(c % ccols) * (ccw + 6 * k), y + f32(c / ccols) * 32 * k, x + f32(c % ccols) * (ccw + 6 * k) + ccw, y + f32(c / ccols) * 32 * k + 26 * k);
+    n = button(s, out, n, B_CLASS + c, r, RS_CLASS[OS_CLASSES[c]], s[0].build_class == c, true);
+  }
+  y += f32((12 + ccols - 1) / ccols) * 32 * k + 6 * k;
+  m := put(l[..], 0, RS_CLASS[OS_CLASSES[s[0].build_class]]); m = put(l[..], m, ": "); m = put(l[..], m, os_subclass(OS_CLASSES[s[0].build_class]));
+  n = say_at(out, n, cast(string) l[0..<m], x, y + 12 * k, 8 * k, ink(k, 0.7, DIM));
+  y += 22 * k;
+  n = field(s, out, n, B_HERO_NAME, F_HERO, rect(x, y + 10 * k, x + lo(w, 300 * k), y + 40 * k), "NAME", cast(string) s[0].hero_name[0..<s[0].hero_name_n], 10 * k, 1);
+  y += 50 * k;
+  m = put(l[..], 0, "LEVEL "); m = put_int(l[..], m, s[0].build_level);
+  n = say_at(out, n, cast(string) l[0..<m], x, y + 16 * k, 9.5 * k, ink(k, 0.9, WHITE));
+  n = button(s, out, n, B_HLEVEL_DOWN, rect(x + 90 * k, y, x + 122 * k, y + 26 * k), "-", false, s[0].build_level > 1);
+  n = button(s, out, n, B_HLEVEL_UP, rect(x + 128 * k, y, x + 160 * k, y + 26 * k), "+", false, s[0].build_level < 6);
+  y += 36 * k;
+  n = button(s, out, n, B_JOIN_TABLE, rect(x, y, x + lo(w, 300 * k), y + 32 * k), ifx s[0].asked then "WAITING FOR THE GM" else "JOIN THE TABLE", s[0].asked, !s[0].asked);
+  y += 40 * k;
+  n = say_at(out, n, "LEVELS 1 TO 6: THE RULES ENGINE RUNS EACH CLASS THAT FAR TODAY.", x, y + 8 * k, 7 * k, ink(k, 0.45, DIM));
+  y += 20 * k;
+  return Wrapped.{n = n, y = y};
+}
+draw_sheet :: (s: [] Os, out: [] f32, at: int, x: f32, y0: f32, w: f32, k: f32) -> Wrapped {
+  n := at; y := y0;
+  q := my_entry(s);
+  v := s[0].seen[..];
+  if q < 0 { n = say_at(out, n, "WAITING FOR THE TABLE", x, y + 16 * k, 9 * k, ink(k, 0.6, DIM)); return Wrapped.{n = n, y = y + 30 * k}; }
+  e := v[0].entries[q];
+  // the sheet is the engine's record: on the GM's page the live one, else the class at its level
+  c: RsCreature;
+  if s[0].role == ROLE_GM && s[0].me >= 0 && s[0].me < s[0].table[0].b[0].n { c = s[0].table[0].b[0].c[s[0].me]; }
+  else { c = os_hero(e.klass, os_str(v[0].entries[q].name[..], e.name_n), e.level); c.hp = e.hp; c.slots[1] = e.slots[1]; c.slots[2] = e.slots[2]; c.slots[3] = e.slots[3]; }
+  l: [128] u8;
+  n = say_at(out, n, os_str(v[0].entries[q].name[..], e.name_n), x, y + 20 * k, 18 * k, ink(k, 0.95, WHITE));
+  m := put(l[..], 0, RS_CLASS[e.klass]); m = put(l[..], m, " "); m = put_int(l[..], m, e.level); m = put(l[..], m, " · "); m = put(l[..], m, os_subclass(e.klass));
+  n = say_at(out, n, cast(string) l[0..<m], x, y + 38 * k, 8.5 * k, ink(k, 0.6, DIM));
+  y += 52 * k;
+  // the turn
+  if v[0].combat && v[0].turn == q { n = say_at(out, n, "YOUR TURN", x, y + 16 * k, 15 * k, ink(k, 1.0, GOLD)); y += 28 * k; }
+  else if v[0].combat && v[0].turn >= 0 {
+    m = put(l[..], 0, "NOW: "); m = put(l[..], m, os_str(v[0].entries[v[0].turn].name[..], v[0].entries[v[0].turn].name_n));
+    n = say_at(out, n, cast(string) l[0..<m], x, y + 12 * k, 9 * k, ink(k, 0.7, DIM)); y += 22 * k;
+  }
+  // hit points
+  share := lo(1, hi(0, f32(e.hp) / f32(rs_max(e.hp_max, 1))));
+  bw := lo(w, 420 * k);
+  n = seg(out, n, x, y + 8 * k, x + bw, y + 8 * k, 5 * k, 0.15, FAINT);
+  if share > 0 { n = seg(out, n, x, y + 8 * k, x + bw * share, y + 8 * k, 5 * k, 0.9, ifx share > 0.5 then GREEN else ifx share > 0.25 then GOLD else RED); }
+  m = put(l[..], 0, "HIT POINTS "); m = hp_text(l[..], m, e);
+  if e.health == HP_DOWN { m = put(l[..], m, " · DYING: DEATH SAVES ON YOUR TURN"); }
+  n = say_at(out, n, cast(string) l[0..<m], x, y + 28 * k, 9 * k, ink(k, 0.9, WHITE));
+  y += 40 * k;
+  stats := [5] string.["ARMOR CLASS", "SPEED", "PROFICIENCY", "INITIATIVE", "LEVEL"];
+  vals: [5] int; vals[0] = c.ac; vals[1] = c.speed; vals[2] = rs_proficiency(c.level); vals[3] = rs_mod(c.score[RS_DEX]); vals[4] = c.level;
+  sw := (lo(w, 560 * k) - 4 * 6 * k) / 5;
+  for i: 0..<5 {
+    r := rect(x + f32(i) * (sw + 6 * k), y, x + f32(i) * (sw + 6 * k) + sw, y + 44 * k);
+    n = box_lines(out, n, r, 0.6 * k, 0.35, DIM);
+    m = ifx i == 2 || i == 3 then put_signed(l[..], 0, vals[i]) else put_int(l[..], 0, vals[i]);
+    if i == 1 { m = put(l[..], m, " FT"); }
+    n = say_mid(out, n, cast(string) l[0..<m], (r.x0 + r.x1) / 2, y + 22 * k, 11 * k, ink(k, 0.92, WHITE));
+    n = say_mid(out, n, stats[i], (r.x0 + r.x1) / 2, y + 37 * k, 5.6 * k, ink(k, 0.5, DIM));
+  }
+  y += 54 * k;
+  aw := (lo(w, 560 * k) - 5 * 6 * k) / 6;
+  for a: 0..<6 {
+    r := rect(x + f32(a) * (aw + 6 * k), y, x + f32(a) * (aw + 6 * k) + aw, y + 66 * k);
+    n = box_lines(out, n, r, 0.6 * k, 0.35, DIM);
+    n = say_mid(out, n, RS_ABBR[a], (r.x0 + r.x1) / 2, y + 12 * k, 6.5 * k, ink(k, 0.55, CYAN));
+    m = mod_text(l[..], 0, rs_mod(c.score[a]));
+    n = say_mid(out, n, cast(string) l[0..<m], (r.x0 + r.x1) / 2, y + 30 * k, 11 * k, ink(k, 0.92, WHITE));
+    m = put_int(l[..], 0, c.score[a]);
+    n = say_mid(out, n, cast(string) l[0..<m], (r.x0 + r.x1) / 2, y + 45 * k, 6 * k, ink(k, 0.6, DIM));
+    m = put(l[..], 0, "SAVE "); m = put_signed(l[..], m, rs_save_bonus(c, a));
+    n = say_mid(out, n, cast(string) l[0..<m], (r.x0 + r.x1) / 2, y + 58 * k, 5.4 * k, ink(k, ifx c.save_prof[a] then 0.85 else 0.5, ifx c.save_prof[a] then GOLD else DIM));
+  }
+  y += 76 * k;
+  wp := rs_weapon(c.weapon);
+  m = put(l[..], 0, wp.name); m = put(l[..], m, " "); m = put_signed(l[..], m, rs_weapon_attack(c, c.weapon));
+  if wp.dice > 0 { m = put(l[..], m, " · "); m = put_int(l[..], m, wp.dice); m = put(l[..], m, "D"); m = put_int(l[..], m, wp.sides); m = put_signed(l[..], m, rs_mod(c.score[rs_attack_ability(c, c.weapon)])); m = put(l[..], m, " "); m = put(l[..], m, RS_DAMAGE[wp.damage]); }
+  if c.ranged >= 0 { rw := rs_weapon(c.ranged); m = put(l[..], m, "   "); m = put(l[..], m, rw.name); m = put(l[..], m, " "); m = put_signed(l[..], m, rs_weapon_attack(c, c.ranged)); }
+  n = say_at(out, n, cast(string) l[0..<m], x, y + 10 * k, 8.4 * k, ink(k, 0.85, WHITE));
+  y += 20 * k;
+  if c.spell_ability >= 0 {
+    m = put(l[..], 0, "SPELL ATTACK "); m = put_signed(l[..], m, rs_spell_attack(c)); m = put(l[..], m, " · SAVE DC "); m = put_int(l[..], m, rs_spell_dc(c));
+    m = put(l[..], m, " · SLOTS");
+    any := false;
+    for sl: 1..<4 { if c.slots_max[sl] > 0 { m = put(l[..], m, "  "); m = put(l[..], m, RS_ORDINAL[sl]); m = put(l[..], m, " "); m = put_int(l[..], m, c.slots[sl]); m = put(l[..], m, "/"); m = put_int(l[..], m, c.slots_max[sl]); any = true; } }
+    if !any { m = put(l[..], m, " NONE"); }
+    n = say_at(out, n, cast(string) l[0..<m], x, y + 10 * k, 8.4 * k, ink(k, 0.85, VIOLET));
+    y += 20 * k;
+  }
+  y += 8 * k;
+  // the hotbar: on your turn, at the target picked
+  mine := v[0].combat && v[0].turn == q;
+  n = header(out, n, ifx mine then "YOUR ABILITIES: PICK A TARGET, THEN AN ABILITY" else "YOUR ABILITIES (ON YOUR TURN)", x, y, k);
+  y += 8 * k;
+  wr := draw_hotbar(s, out, n, c, x, y, w, k, mine);
+  n = wr.n; y = wr.y + 10 * k;
+  if v[0].combat {
+    n = header(out, n, "TARGETS", x, y, k); y += 8 * k;
+    tcols := rs_max(cast(int) (w / (120 * k)), 1);
+    tw := (w - f32(tcols - 1) * 6 * k) / f32(tcols);
+    shown := 0;
+    for p: 0..<v[0].entry_n {
+      ee := v[0].entries[p];
+      if ee.health == HP_DEAD { continue; }
+      r := rect(x + f32(shown % tcols) * (tw + 6 * k), y + f32(shown / tcols) * 32 * k, x + f32(shown % tcols) * (tw + 6 * k) + tw, y + f32(shown / tcols) * 32 * k + 26 * k);
+      m = put(l[..], 0, os_str(v[0].entries[p].name[..], ee.name_n)); m = put(l[..], m, " · "); m = hp_text(l[..], m, ee);
+      n = button(s, out, n, B_TARGET + ee.index, r, cast(string) l[0..<m], s[0].target == ee.index, true);
+      shown += 1;
+    }
+    y += f32((shown + tcols - 1) / tcols) * 32 * k + 4 * k;
+    n = button(s, out, n, B_END_TURN, rect(x, y, x + lo(w, 220 * k), y + 30 * k), "END MY TURN", false, mine);
+    y += 42 * k;
+  }
+  wr = draw_dice(s, out, n, x, y, lo(w, 560 * k), k, false);
+  n = wr.n; y = wr.y + 10 * k;
+  return Wrapped.{n = n, y = y};
+}
+draw_character :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f32, k: f32) -> f32 {
+  n := at; pad := 14 * k;
+  x := x0 + pad; y := y0 + 22 * k; cw := lo(w - pad * 2, 900 * k);
+  narrow := w < 900 * k;
+  if s[0].role == ROLE_GM {
+    if s[0].running < 0 {
+      n = say_at(out, n, "RUN A ONE-SHOT FIRST: THE HEROES SIT AT ITS TABLE.", x, y + 10 * k, 9 * k, ink(k, 0.6, DIM));
+      s[0].content[V_CHARACTER] = 60 * k;
+      return f32(n);
+    }
+    // on the GM's device the tabs are seats: a hero each, for players without a device of their own
+    n = header(out, n, "SEATS ON THIS DEVICE", x, y, k); y += 8 * k;
+    t := tbl(s);
+    bx := x;
+    for hero_i: 0..<t[0].party_n {
+      nm := rs_name(t[0].b[0].c[hero_i..<hero_i + 1]);
+      bw := text_width(nm, 8.5 * k) + 24 * k;
+      n = button(s, out, n, B_SEAT + hero_i, rect(bx, y, bx + bw, y + 26 * k), nm, s[0].me == hero_i && !s[0].building, true);
+      bx += bw + 6 * k;
+    }
+    n = button(s, out, n, B_ADD_HERO, rect(bx, y, bx + 110 * k, y + 26 * k), "ADD A HERO", s[0].building || s[0].me < 0, t[0].party_n < OS_PARTY && !t[0].combat);
+    y += 40 * k;
+  } else if s[0].link != LINK_IN && !s[0].seen[0].live {
+    m: [96] u8; mn := put(m[..], 0, ifx s[0].link == LINK_NONE then "THE TABLE ISN'T OPEN: CHECK THE CODE WITH YOUR GM" else "JOINING THE TABLE");
+    n = say_at(out, n, cast(string) m[0..<mn], x, y + 10 * k, 9 * k, ink(k, 0.7, ifx s[0].link == LINK_NONE then RED else DIM));
+    y += 30 * k;
+  }
+  wr: Wrapped;
+  if s[0].me < 0 || s[0].building { wr = draw_builder_hero(s, out, n, x, y, cw, k); }
+  else { wr = draw_sheet(s, out, n, x, y, ifx narrow then cw else cw * 0.62, k);
+         // beside the sheet on a wide screen: the order and the table's log
+         if !narrow {
+           sx := x + cw * 0.62 + 24 * k; sw := cw * 0.38 - 24 * k;
+           tr := draw_tracker(s, out, wr.n, s[0].seen[..], sx, y, sw, k, OS_ENTRIES);
+           wr.n = draw_log(s, out, tr.n, s[0].seen[..], sx, tr.y + 14 * k, sw, 240 * k, k, false);
+         } }
+  n = wr.n; y = wr.y + 10 * k;
+  fw := footer(s, out, n, x, y, cw, k);
+  s[0].content[V_CHARACTER] = fw.y - y0 + 20 * k;
+  return f32(fw.n);
+}
+
+// ---- the Table Display
+
+wx :: (x: f32) -> f32 { return (x + 0.5) * f32(SQ) - f32(OS_COLS) * f32(SQ) / 2; }
+wz :: (y: f32) -> f32 { return (y + 0.5) * f32(SQ) - f32(OS_ROWS) * f32(SQ) / 2; }
+norm3 :: (v: P3) -> P3 {
+  l := sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+  if l <= 0 { return P3.{x = 0, y = 0, z = -1}; }
+  return P3.{x = v.x / l, y = v.y / l, z = v.z / l};
+}
+proj :: (s: [] Os, x: f32, y: f32, z: f32) -> P3 {
+  dx := x - s[0].eye.x; dy := y - s[0].eye.y; dz := z - s[0].eye.z;
+  depth := dx * s[0].fwd.x + dy * s[0].fwd.y + dz * s[0].fwd.z;
+  if depth <= 0.05 { return P3.{x = 0, y = 0, z = 0}; }
+  a := (dx * s[0].right.x + dy * s[0].right.y + dz * s[0].right.z) / depth;
+  b := (dx * s[0].up.x + dy * s[0].up.y + dz * s[0].up.z) / depth;
+  return P3.{x = s[0].cx + a * s[0].focal, y = s[0].cy - b * s[0].focal, z = depth};
+}
+// The glade's camera: Aethyr's orbit round the grid's middle (as 5E Lab's), fitted to the screen.
+camera :: (s: [] Os, x0: f32, y0: f32, x1: f32, y1: f32) {
+  s[0].cx = (x0 + x1) / 2; s[0].cy = (y0 + y1) / 2;
+  turn := s[0].yaw + 3.14159265;
+  ray := ash.shot_orbit_ray(asp.world_point(0, 0.5, 0.4), turn, s[0].pitch, s[0].dist, 0);
+  shot := ash.shot_orbit(ray, ray.far, turn, s[0].pitch);
+  s[0].eye = P3.{x = shot.eye.x, y = shot.eye.y, z = shot.eye.z};
+  s[0].fwd = norm3(P3.{x = shot.at.x - shot.eye.x, y = shot.at.y - shot.eye.y, z = shot.at.z - shot.eye.z});
+  s[0].right = norm3(P3.{x = -s[0].fwd.z, y = 0, z = s[0].fwd.x});
+  r := s[0].right; f := s[0].fwd;
+  s[0].up = P3.{x = r.y * f.z - r.z * f.y, y = r.z * f.x - r.x * f.z, z = r.x * f.y - r.y * f.x};
+  s[0].focal = lo((x1 - x0) * 0.95, (y1 - y0) * 1.5);
+}
+// The Table Display draws in 3D now: the glade (a 3D scene, or any fight).
+glade_on :: (v: OsView) -> bool { return v.shown && (v.art == ART_GLADE || v.combat); }
+draw_display :: (s: [] Os, out: [] f32, at: int, x0: f32, y0: f32, w: f32, h: f32, k: f32) -> f32 {
+  n := at; pad := 16 * k;
+  v := s[0].seen[0];
+  l: [128] u8;
+  if !v.live {
+    n = say_mid(out, n, ifx s[0].role == ROLE_DISPLAY && s[0].link == LINK_NONE then "THE TABLE ISN'T OPEN: CHECK THE CODE" else "WAITING FOR THE GM", x0 + w / 2, y0 + h / 2, 14 * k, ink(k, 0.7, DIM));
+    return f32(n);
+  }
+  if glade_on(v) {
+    // names over the figures
+    for q: 0..<v.entry_n {
+      e := v.entries[q];
+      if e.health == HP_DEAD { continue; }
+      p := proj(s, wx(f32(e.x)), ifx e.health == HP_DOWN then 0.8 else 2.25, wz(f32(e.y)));
+      if p.z <= 0 { continue; }
+      col := ifx e.health == HP_DOWN then DIM else TEAM_COL[rs_min(e.team, 2)];
+      n = say_mid(out, n, os_str(v.entries[q].name[..], e.name_n), p.x, p.y - 6 * k, 8.5 * k, ink(k, 0.95, ifx v.turn == q then GOLD else col));
+    }
+  } else if v.shown && v.scene_n > 0 {
+    // the title card
+    n = say_mid(out, n, os_str(s[0].seen[0].scene[..], v.scene_n), x0 + w / 2, y0 + h * 0.3, lo(30 * k, w / 22), ink(k, 0.95, WHITE));
+    n = seg(out, n, x0 + w / 2 - 80 * k, y0 + h * 0.3 + 18 * k, x0 + w / 2 + 80 * k, y0 + h * 0.3 + 18 * k, 1 * k, 0.6, GOLD);
+  } else {
+    n = say_mid(out, n, os_str(s[0].seen[0].title[..], v.title_n), x0 + w / 2, y0 + h * 0.4, lo(26 * k, w / 26), ink(k, 0.9, WHITE));
+    n = say_mid(out, n, "THE GM WILL SHOW THE FIRST SCENE SOON", x0 + w / 2, y0 + h * 0.4 + 30 * k, 9 * k, ink(k, 0.5, DIM));
+  }
+  // the read-aloud text, when the GM shows it
+  if v.text_n > 0 {
+    tw := lo(w - pad * 2, 820 * k);
+    top := ifx glade_on(v) then y0 + h - 30 * k - f32(rs_min(wrap_lines(os_str(s[0].seen[0].text[..], v.text_n), tw, 9 * k), 8)) * 9 * k * 1.85 else y0 + h * 0.3 + 40 * k;
+    wr := say_wrap(out, n, os_str(s[0].seen[0].text[..], v.text_n), x0 + (w - tw) / 2, top, tw, 9 * k, ink(k, 0.9, WHITE), 8);
+    n = wr.n;
+  }
+  // the order along the top
+  if v.combat {
+    m := put(l[..], 0, "ROUND "); m = put_int(l[..], m, v.round);
+    n = say_at(out, n, cast(string) l[0..<m], x0 + pad, y0 + 22 * k, 9 * k, ink(k, 0.7, CYAN));
+    tx_at := x0 + pad + 70 * k;
+    for q: 0..<v.entry_n {
+      e := v.entries[q];
+      if e.health == HP_DEAD { continue; }
+      m = put(l[..], 0, os_str(v.entries[q].name[..], e.name_n));
+      cw := text_width(cast(string) l[0..<m], 8 * k) + 18 * k;
+      if tx_at + cw > x0 + w - pad { break; }
+      r := rect(tx_at, y0 + 8 * k, tx_at + cw, y0 + 42 * k);
+      n = fill(out, n, r, ifx v.turn == q then 0.25 else 0.06, ifx v.turn == q then GOLD else WHITE);
+      n = say_mid(out, n, cast(string) l[0..<m], (r.x0 + r.x1) / 2, y0 + 22 * k, 8 * k, ink(k, 0.9, ifx v.turn == q then GOLD else TEAM_COL[rs_min(e.team, 2)]));
+      m = hp_text(l[..], 0, e);
+      n = say_mid(out, n, cast(string) l[0..<m], (r.x0 + r.x1) / 2, y0 + 36 * k, 6 * k, ink(k, 0.7, ifx e.health >= HP_BLOODIED then RED else DIM));
+      tx_at += cw + 5 * k;
+    }
+    if v.outcome != 0 { n = say_mid(out, n, ifx v.outcome == 1 then "VICTORY" else "THE PARTY HAS FALLEN", x0 + w / 2, y0 + h * 0.22, 26 * k, ink(k, 0.95, ifx v.outcome == 1 then GREEN else RED)); }
+  }
+  // the latest roll, large, at the foot
+  if v.roll_n > 0 {
+    rt := os_str(s[0].seen[0].roll[..], v.roll_n);
+    cap := lo(13 * k, (w - pad * 4) / hi(measure(rt, GAP, SPACE, false), 1));
+    by := ifx v.text_n > 0 && glade_on(v) then y0 + 64 * k else y0 + h - 36 * k;
+    n = say_mid(out, n, rt, x0 + w / 2, by, cap, ink(k, 1.0, GOLD));
+  }
+  // the handout, a card on the right
+  if v.handout_n > 0 {
+    hw := lo(300 * k, w * 0.32);
+    hh := f32(rs_min(wrap_lines(os_str(s[0].seen[0].handout[..], v.handout_n), hw - 24 * k, 8.5 * k), 10)) * 8.5 * k * 1.85 + 44 * k;
+    r := rect(x0 + w - pad - hw, y0 + 60 * k, x0 + w - pad, y0 + 60 * k + hh);
+    n = fill(out, n, r, 0.1, GOLD);
+    n = box_lines(out, n, r, 0.8 * k, 0.7, GOLD);
+    n = say_at(out, n, "HANDOUT", r.x0 + 12 * k, r.y0 + 18 * k, 7 * k, ink(k, 0.7, GOLD));
+    wr := say_wrap(out, n, os_str(s[0].seen[0].handout[..], v.handout_n), r.x0 + 12 * k, r.y0 + 26 * k, hw - 24 * k, 8.5 * k, ink(k, 0.92, WHITE), 10);
+    n = wr.n;
+  }
+  // the newest open lines, small, bottom left
+  ly := y0 + h - 60 * k;
+  shown := 0;
+  q := v.line_n - 1;
+  while q >= 0 && shown < 4 && !(v.text_n > 0 && !glade_on(v)) {
+    txt := os_text(s[0].seen[0].lines[..], q);
+    n = say_at(out, n, txt, x0 + pad, ly, 6.8 * k, ink(k, 0.6 - f32(shown) * 0.1, DIM));
+    ly -= 13 * k; shown += 1; q -= 1;
+  }
+  n = say_wrap(out, n, ATTRIBUTION, x0 + pad, y0 + h - 22 * k, w - pad * 2, 5 * k, ink(k, 0.3, DIM), 2).n;
+  return f32(n);
+}
+
+// ---- the frame
+
+os_start :: (s: [] Os) {
+  if s[0].started { return; }
+  s[0].started = true;
+  for q: 0..<SEATS { s[0].seat_hero[q] = -1; }
+  s[0].seed = 0x9E3779B97F4A7C15;
+  // until the saved campaigns come back (message 4), the starter is there to run
+  if os_new_one_shot(s[0].camps[..]) == 0 { s[0].edit = 0; }
+}
+os_golden :: (s: [] Os, on: bool) #export_c { os_start(s); s[0].golden = on; }
+
+os_frame :: (s: [] Os, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  os_start(s);
+  if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  s[0].width = width; s[0].height = height; s[0].dpr = dpr;
+  k := hi(dpr, 0.5);
+  step := ifx s[0].golden || still then 0.0f32 else lo(dt, 0.1);
+  s[0].clock += step;
+  if s[0].note_t > 0 { s[0].note_t -= step; }
+  // the GM's page: its own view for the Table Display and My Character, and the others told
+  if s[0].role == ROLE_GM && s[0].running >= 0 { os_view(tbl(s), s[0].seen[..], false); room_tell(s, false); }
+  if s[0].role != ROLE_GM && s[0].link == LINK_IN && s[0].clock - s[0].ping_t > 5 { s[0].ping_t = s[0].clock; room_send(s, "k|"); }
+  s[0].btn_n = 0;
+  s[0].field_box[0] = 0; s[0].field_box[1] = 0; s[0].field_box[2] = 0; s[0].field_box[3] = 0;
+  top := top_height(s, width, k);
+  view := s[0].view;
+  gl := view == V_DISPLAY && glade_on(s[0].seen[0]);
+  if gl {
+    if !s[0].dragging && !s[0].golden { s[0].yaw += step * 0.03; }
+    camera(s, 0, top, width, height);
+  }
+  // the view, scrolled
+  sc := s[0].scroll[view];
+  n := 0;
+  body_h := height - top;
+  if view == V_CAMPAIGNS { n = cast(int) draw_campaigns(s, out, n, 0, top - sc, width, k); }
+  else if view == V_BUILDER { n = cast(int) draw_builder(s, out, n, 0, top - sc, width, body_h, k); }
+  else if view == V_GM { n = cast(int) draw_gm(s, out, n, 0, top - sc, width, body_h, k); }
+  else if view == V_CHARACTER { n = cast(int) draw_character(s, out, n, 0, top - sc, width, body_h, k); }
+  else { n = cast(int) draw_display(s, out, n, 0, top, width, body_h, k); s[0].content[V_DISPLAY] = 0; }
+  // the top bar over what scrolled under it: its own glass
+  b0 := s[0].btn_n;
+  n = draw_top(s, out, n, width, k);
+  // buttons scrolled under the top bar don't take a press
+  for q: 0..<b0 { if s[0].btn[q].r.y1 < top { s[0].btn[q].r = Rect.{}; } else if s[0].btn[q].r.y0 < top { s[0].btn[q].r.y0 = top; } }
+  if s[0].note_t > 0 && s[0].note_n > 0 {
+    nt := cast(string) s[0].note[0..<s[0].note_n];
+    nw := text_width(nt, 8.5 * k) + 30 * k;
+    r := rect(width / 2 - nw / 2, height - 44 * k, width / 2 + nw / 2, height - 16 * k);
+    n = fill(out, n, r, 0.25, CYAN);
+    n = say_mid(out, n, nt, width / 2, height - 25 * k, 8.5 * k, ink(k, 1.0, WHITE));
+  }
+  // keep what the GM wrote, in this browser
+  if s[0].dirty && s[0].action == 0 && s[0].role == ROLE_GM && !s[0].golden && !s[0].staged {
+    s[0].out_n = os_save(s[0].camps[..], s[0].outbox[..]);
+    s[0].action = ACT_KEEP; s[0].dirty = false;
+  }
+  // the uniforms: 5E Lab's block (gpu/fivelab.coax)
+  for i: 0..<u.count { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1;
+  // the flat view with no grid: its lines a million pixels apart, off the screen
+  u[U_GRID] = -500000; u[U_GRID + 1] = -500000; u[U_GRID + 2] = 1000000;
+  u[U_CELLS] = 1; u[U_CELLS + 1] = 1;
+  u[U_CELLS + 2] = ifx gl then 1 else 0;
+  u[U_CELLS + 3] = top;
+  u[U_EYE] = s[0].eye.x; u[U_EYE + 1] = s[0].eye.y; u[U_EYE + 2] = s[0].eye.z; u[U_EYE + 3] = s[0].focal;
+  u[U_FWD] = s[0].fwd.x; u[U_FWD + 1] = s[0].fwd.y; u[U_FWD + 2] = s[0].fwd.z; u[U_FWD + 3] = s[0].cx;
+  u[U_RIGHT] = s[0].right.x; u[U_RIGHT + 1] = s[0].right.y; u[U_RIGHT + 2] = s[0].right.z; u[U_RIGHT + 3] = s[0].cy;
+  u[U_UP] = s[0].up.x; u[U_UP + 1] = s[0].up.y; u[U_UP + 2] = s[0].up.z;
+  u[U_SUN] = 0.45; u[U_SUN + 1] = 0.62; u[U_SUN + 2] = 0.38;
+  v := s[0].seen[0];
+  for i: 0..<TOKENS3 {
+    o := U_TOKENS + i * 8;
+    u[o + 2] = -1;
+    if !gl || i >= v.entry_n { continue; }
+    e := v.entries[i];
+    share: f32 = ifx e.hp_max > 0 then f32(e.hp) / f32(e.hp_max) else ifx e.health == HP_UNHURT then 1.0 else ifx e.health == HP_HURT then 0.7 else ifx e.health == HP_BLOODIED then 0.4 else 0.0;
+    u[o] = wx(f32(e.x)); u[o + 1] = wz(f32(e.y)); u[o + 2] = f32(e.look + 16 * rs_min(e.team, 2));
+    u[o + 3] = share;
+    u[o + 4] = ifx e.health == HP_DEAD then 2 else ifx e.health == HP_DOWN then 1 else 0;
+    u[o + 6] = f32(e.marks);
+    u[o + 7] = ifx v.turn == i then 0.6 + 0.4 * sin(s[0].clock * 4) else 0;
+  }
+  u[U_BOUNDS] = f32(OS_COLS) * f32(SQ) / 2; u[U_BOUNDS + 1] = f32(OS_ROWS) * f32(SQ) / 2; u[U_BOUNDS + 2] = f32(SQ);
+  return n;
+}
+
+// ---- input
+
+os_key :: (s: [] Os, key: int, mods: int) -> bool #export_c {
+  os_start(s);
+  if s[0].focus != F_NONE {
+    if key == KEY_ESCAPE || key == KEY_ENTER || key == KEY_TAB { s[0].focus = F_NONE; return true; }
+    if key == KEY_BACK { type_back(s, (mods & 8) != 0); return true; }
+    if (mods & 10) != 0 { return false; }   // Cmd or Ctrl: the browser's (a paste comes as typed text)
+    if key >= 32 {
+      buf: [8] u8; m := encode(cast(u32) key, buf[..], 0);
+      type_text(s, cast(string) buf[0..<m]);
+      return true;
+    }
+    return false;
+  }
+  if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
+  // the GM Screen's keys: N next turn, the dice tray's 1 to 7
+  if s[0].view == V_GM && s[0].role == ROLE_GM && (mods & 10) == 0 {
+    if key == 'n' || key == 'N' { os_next_turn(tbl(s)); return true; }
+  }
+  return false;
+}
+os_key_up :: (s: [] Os, key: int, mods: int) -> bool #export_c { return false; }
+os_blur :: (s: [] Os) #export_c { s[0].pressed = -1; s[0].dragging = false; }
+pg_hit :: (s: [] Os, x: f32, y: f32) -> int {
+  q := s[0].btn_n - 1;
+  while q >= 0 { if in_rect(s[0].btn[q].r, x, y) { return s[0].btn[q].id; } q -= 1; }
+  return -1;
+}
+scroll_by :: (s: [] Os, dy: f32) {
+  v := s[0].view;
+  top := top_height(s, s[0].width, hi(s[0].dpr, 0.5));
+  most := hi(0, s[0].content[v] - (s[0].height - top) + 20);
+  s[0].scroll[v] = lo(most, hi(0, s[0].scroll[v] + dy));
+}
+os_pointer :: (s: [] Os, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  os_start(s);
+  if phase == 0 {
+    s[0].pressed = pg_hit(s, x, y);
+    s[0].down_x = x; s[0].down_y = y; s[0].moved = false;
+    s[0].dragging = true; s[0].drag_x = x; s[0].drag_y = y;
+    return true;
+  }
+  if phase == 1 {
+    if !s[0].dragging { return false; }
+    if abs(x - s[0].down_x) + abs(y - s[0].down_y) > 10 * hi(s[0].dpr, 1) { s[0].moved = true; s[0].pressed = -1; }
+    if s[0].moved {
+      if s[0].view == V_DISPLAY {
+        k := hi(s[0].dpr, 0.5);
+        s[0].yaw -= (x - s[0].drag_x) * 0.005 / k;
+        s[0].pitch = lo(1.3, hi(0.2, s[0].pitch + (y - s[0].drag_y) * 0.004 / k));
+      } else if kind == 1 { scroll_by(s, s[0].drag_y - y); }
+    }
+    s[0].drag_x = x; s[0].drag_y = y;
+    return true;
+  }
+  s[0].dragging = false;
+  was := s[0].pressed; s[0].pressed = -1;
+  if phase == 2 && was >= 0 && !s[0].moved && pg_hit(s, x, y) == was { press(s, was); return true; }
+  if phase == 2 && was < 0 && !s[0].moved { s[0].focus = F_NONE; }
+  return was >= 0;
+}
+os_wheel :: (s: [] Os, dy: f32) -> bool #export_c {
+  os_start(s);
+  if s[0].view == V_DISPLAY { s[0].dist = lo(60, hi(8, s[0].dist * (1 + lo(200, hi(-200, dy)) * 0.0012))); return true; }
+  scroll_by(s, dy * hi(s[0].dpr, 0.5));
+  return true;
+}
+os_cursor :: (s: [] Os) -> int #export_c { return 0; }
+os_wants_text :: (s: [] Os) -> bool #export_c { return s[0].focus != F_NONE; }
+os_field_at :: (s: [] Os, i: int) -> f32 #export_c { return s[0].field_box[i]; }
+os_message :: (s: [] Os, kind: int, t: string) #export_c {
+  os_start(s);
+  if room_heard(s, kind, t) { return; }
+  if kind == HOST_TEXT { type_text(s, t); return; }
+  if kind == HOST_KEPT {
+    back: [OS_CAMPAIGNS] OsCampaign;
+    if os_load(t, back[..]) > 0 { s[0].camps = back; s[0].edit = 0; }
+    return;
+  }
+  if kind == HOST_PAGE { page_facts(s, t); }
+}
+page_facts :: (s: [] Os, t: string) {
+  url := fact(t, "url");
+  page_url(s, url);
+  // the seed: this tab and the time it opened
+  seed: u64 = 1469598103934665603;
+  for c: fact(t, "tab") { seed = rs_wmul(seed ^ cast(u64) c, 1099511628211); }
+  for c: fact(t, "now") { seed = rs_wmul(seed ^ cast(u64) c, 1099511628211); }
+  s[0].seed = seed;
+  join := query(url, "join"); show := query(url, "display");
+  if os_code_ok(join) || os_code_ok(show) {
+    s[0].role = ifx os_code_ok(join) then ROLE_PLAYER else ROLE_DISPLAY;
+    s[0].code_n = put(s[0].code[..], 0, ifx os_code_ok(join) then join else show);
+    s[0].view = ifx s[0].role == ROLE_PLAYER then V_CHARACTER else V_DISPLAY;
+    s[0].building = true;
+    room_open(s);
+    return;
+  }
+  stage := query(url, "stage");
+  if stage.count > 0 { stage_at(s, stage); }
+}
+// A staged table for a still (?stage=gm, display, character, builder, card): the starter with
+// four ready heroes, the last scene's fight a few turns in.
+stage_at :: (s: [] Os, stage: string) {
+  s[0].staged = true;
+  if stage == "builder" { s[0].view = V_BUILDER; s[0].edit = 0; s[0].edit_scene = 2; return; }
+  if stage == "campaigns" { s[0].view = V_CAMPAIGNS; return; }
+  s[0].seed = 20261103;
+  run_campaign(s, 0);
+  t := tbl(s);
+  for c: 0..<4 { h := os_join(t, OS_CLASSES[c], 3, OS_HERO_NAMES[c]); }
+  if stage == "card" { ok := os_run_scene(t, 0); os_show_text(t, true); ok = os_send_handout(t, true); s[0].view = V_DISPLAY; return; }
+  ok := os_run_scene(t, 2);
+  os_show(t, true);
+  ok = os_start_combat(t);
+  // a few turns: each creature attacks the first foe standing
+  for turn: 0..<5 {
+    i := os_turn(t);
+    if i < 0 { break; }
+    foe := -1;
+    for j: 0..<t[0].b[0].n { if t[0].b[0].c[j].team != t[0].b[0].c[i].team && rs_up(t[0].b[0].c[j]) && foe < 0 { foe = j; } }
+    if foe >= 0 && rs_can_act(t[0].b[0].c[i]) { did := os_act(t, i, 0, foe); }
+    os_next_turn(t);
+  }
+  r := os_roll(t, "Ilse", 1, 20, false);
+  s[0].me = 0;
+  s[0].target = t[0].party_n;
+  s[0].view = ifx stage == "display" then V_DISPLAY else ifx stage == "character" then V_CHARACTER else V_GM;
+}
+os_action :: (s: [] Os) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+os_action_done :: (s: [] Os) #export_c { s[0].out_n = 0; }
+
+coaxial_os_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_os_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_os_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+FrameBuf :: struct { out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; }
+frame_at :: (s: [] Os, f: [] FrameBuf, w: f32, h: f32) -> int {
+  return os_frame(s, f[0].out[..], f[0].u[..], w, h, 2, 0.016, false);
+}
+// Presses the button with this id in the last frame, as a tap would.
+tap :: (s: [] Os, id: int) -> bool {
+  for q: 0..<s[0].btn_n {
+    if s[0].btn[q].id == id {
+      r := s[0].btn[q].r;
+      x := (r.x0 + r.x1) / 2; y := (r.y0 + r.y1) / 2;
+      down := os_pointer(s, x, y, 0, 0, 0);
+      return os_pointer(s, x, y, 2, 0, 0);
+    }
+  }
+  return false;
+}
+// Carries the frames a page's pipe would send to the relay on to the other page, as the relay
+// does ("m SEAT TEXT"); the pipe is then empty.
+pass_frames :: (from: [] Os, to: [] Os) {
+  p := from[0].pipe[..];
+  for c: 0..<p[0].n {
+    if p[0].op[c] != PIPE_SEND { continue; }
+    buf: [OS_FRAME + 16] u8; n := put(buf[..], 0, "m "); n = put_int(buf[..], n, from[0].my_seat); n = put(buf[..], n, " ");
+    n = put(buf[..], n, pipe_bytes(p, c));
+    os_message(to, SOCKET_KIND + 4 * to[0].sock + SOCKET_FRAME, cast(string) buf[0..<n]);
+  }
+  pipe_drained(p);
+}
+os_note :: (s: [] Os) -> string { return cast(string) s[0].note[0..<s[0].note_n]; }
+
+#test "Campaigns to the Table: New one-shot, edit it in the builder, Run it, and the GM Screen draws" #steps 2000000000 {
+  s: [1] Os; f: [1] FrameBuf;
+  os_message(s[..], HOST_PAGE, "url=http://127.0.0.1:8807/worlds/one-shot\ntab=abc\nnow=1\n");
+  n := frame_at(s[..], f[..], 1600, 1000);
+  #assert n > 100 && s[0].view == V_CAMPAIGNS;
+  #assert tap(s[..], B_NEW) && s[0].view == V_BUILDER && s[0].edit == 1 && s[0].dirty;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert s[0].action == ACT_KEEP;
+  kept := cast(string) s[0].outbox[0..<s[0].out_n];
+  #assert kept[0..<10] == "srd: false";
+  a := os_action(s[..]); os_action_done(s[..]);
+  // type a new title
+  #assert tap(s[..], B_FIELD + F_TITLE) && s[0].focus == F_TITLE;
+  for i: 0..<40 { ok := os_key(s[..], KEY_BACK, 0); }
+  os_message(s[..], HOST_TEXT, "Night of the Bell");
+  #assert os_title(s[0].camps[..], 1) == "Night of the Bell";
+  ok := os_key(s[..], KEY_ENTER, 0);
+  #assert s[0].focus == F_NONE;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_SCENE + 1) && s[0].edit_scene == 1;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_FOES_UP) && s[0].camps[1].scenes[1].foes == 3;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_BUILD_RUN) && s[0].view == V_GM && s[0].running == 1 && s[0].code_n == 5;
+  // no relay answered: the socket was asked for
+  #assert s[0].link == LINK_JOINING && s[0].pipe[0].n == 1 && s[0].pipe[0].op[0] == PIPE_OPEN;
+  url := pipe_bytes(s[0].pipe[..], 0);
+  #assert url[0..<44] == "ws://127.0.0.1:8807/api/room/relay/one-shot/";
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert n > 1000;
+}
+#test "one device: seats on My Character, initiative, a turn's ability, the dice tray and the log" #steps 2000000000 {
+  s: [1] Os; f: [1] FrameBuf;
+  os_message(s[..], HOST_PAGE, "url=http://127.0.0.1:8807/worlds/one-shot\ntab=abc\nnow=2\n");
+  n := frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_RUN + 0) && s[0].view == V_GM;
+  pipe_drained(s[0].pipe[..]);
+  os_socket_opened(s[..], -1);   // no room server: everyone on this device
+  #assert s[0].link == LINK_NONE;
+  s[0].view = V_CHARACTER;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_READY + 0) && s[0].me == 0 && s[0].table[0].party_n == 1;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_ADD_HERO) && s[0].building;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_CLASS + 1);
+  #assert tap(s[..], B_HLEVEL_UP);
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_JOIN_TABLE) && s[0].me == 1 && s[0].table[0].b[0].c[1].klass == RS_WIZARD && s[0].table[0].b[0].c[1].level == 4;
+  s[0].view = V_GM;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_RUN_SCENE + 1) && s[0].table[0].scene == 1;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_SHOW) && s[0].table[0].shown;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_COMBAT) && s[0].table[0].combat && s[0].table[0].b[0].n == 4;
+  // the dice tray: a hidden roll by default on the GM Screen
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_DIE + 5);
+  #assert os_has_text(s[0].table[..], "The GM rolls 1d20", true);
+  // by hand: d20, then its face
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_HAND) && s[0].by_hand;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_DIE + 5) && s[0].hand_sides == 20;
+  n = frame_at(s[..], f[..], 1600, 1000);
+  #assert tap(s[..], B_FACE + 14);
+  #assert os_has_text(s[0].table[..], "The GM rolls a d20 by hand: 14", true);
+  // whoever's turn it is attacks the first foe standing: a target row, then the first ability
+  for turn: 0..<8 {
+    t := s[0].table[..];
+    i := os_turn(t);
+    if i < 0 || os_outcome(t) != 0 { break; }
+    foe := -1;
+    for j: 0..<t[0].b[0].n { if t[0].b[0].c[j].team != t[0].b[0].c[i].team && rs_up(t[0].b[0].c[j]) && foe < 0 { foe = j; } }
+    n = frame_at(s[..], f[..], 1600, 1000);
+    if foe >= 0 && rs_can_act(t[0].b[0].c[i]) {
+      #assert tap(s[..], B_TARGET + foe) && s[0].target == foe;
+      n = frame_at(s[..], f[..], 1600, 1000);
+      seq := t[0].log_seq;
+      #assert tap(s[..], B_AB + 0) && t[0].log_seq > seq;
+    }
+    n = frame_at(s[..], f[..], 1600, 1000);
+    #assert tap(s[..], B_NEXT);
+    s[0].target = -1;
+  }
+  #assert os_has_text(s[0].table[..], "vs AC", false);
+  // the Table Display and My Character draw from the table's view
+  s[0].view = V_DISPLAY; n = frame_at(s[..], f[..], 1600, 1000);
+  #assert n > 200 && f[0].u[U_CELLS + 2] == 1 && f[0].u[U_TOKENS + 2] >= 0;
+  s[0].view = V_CHARACTER; n = frame_at(s[..], f[..], 780, 1688);
+  #assert n > 200;
+}
+#test "over the relay: a player joins by code, gets a seat and a hero, rolls, and sees only what's open" #steps 2000000000 {
+  gm: [1] Os; pl: [1] Os; f: [1] FrameBuf;
+  os_message(gm[..], HOST_PAGE, "url=https://openagents.com/worlds/one-shot\ntab=gm\nnow=5\n");
+  n := frame_at(gm[..], f[..], 1600, 1000);
+  #assert tap(gm[..], B_RUN + 0);
+  code := cast(string) gm[0].code[0..<gm[0].code_n];
+  #assert os_code_ok(code) && pipe_bytes(gm[0].pipe[..], 0)[0..<39] == "wss://openagents.com/api/room/relay/one";
+  pipe_drained(gm[0].pipe[..]);
+  os_socket_opened(gm[..], 0);
+  os_message(gm[..], SOCKET_KIND + SOCKET_FRAME, "y 0 0");
+  #assert gm[0].link == LINK_IN && gm[0].my_seat == 0;
+  // the player's page: ?join=CODE
+  buf: [200] u8; m := put(buf[..], 0, "url=https://openagents.com/worlds/one-shot?join="); m = put(buf[..], m, code); m = put(buf[..], m, "\ntab=p1\nnow=6\n");
+  os_message(pl[..], HOST_PAGE, cast(string) buf[0..<m]);
+  #assert pl[0].role == ROLE_PLAYER && pl[0].view == V_CHARACTER && pl[0].link == LINK_JOINING;
+  pipe_drained(pl[0].pipe[..]);
+  os_socket_opened(pl[..], 0);
+  os_message(pl[..], SOCKET_KIND + SOCKET_FRAME, "y 1 1");
+  os_message(gm[..], SOCKET_KIND + SOCKET_FRAME, "j 1");
+  pass_frames(gm[..], pl[..]);
+  #assert pl[0].seen[0].live && os_str(pl[0].seen[0].title[..], pl[0].seen[0].title_n) == OS_STARTER_TITLE;
+  // a quick build: the Rogue, level 2, joins
+  n = frame_at(pl[..], f[..], 780, 1688);
+  #assert tap(pl[..], B_CLASS + 3);
+  n = frame_at(pl[..], f[..], 780, 1688);
+  #assert tap(pl[..], B_HLEVEL_DOWN) && pl[0].build_level == 2;
+  n = frame_at(pl[..], f[..], 780, 1688);
+  #assert tap(pl[..], B_JOIN_TABLE) && pl[0].asked;
+  pass_frames(pl[..], gm[..]);
+  #assert gm[0].table[0].party_n == 1 && gm[0].seat_hero[1] == 0 && gm[0].table[0].b[0].c[0].klass == RS_ROGUE;
+  pass_frames(gm[..], pl[..]);
+  #assert pl[0].me == 0 && !pl[0].asked && pl[0].seen[0].entry_n == 1;
+  // the GM runs the fight; the player's page hears it and sees no hidden line
+  t := gm[0].table[..];
+  ok := os_run_scene(t, 2); os_show(t, true); ok = os_start_combat(t);
+  r := os_roll(t, "The GM", 1, 20, true);
+  n = frame_at(gm[..], f[..], 1600, 1000);
+  room_tell(gm[..], true);
+  pass_frames(gm[..], pl[..]);
+  #assert pl[0].seen[0].combat && pl[0].seen[0].entry_n == 5;
+  for q: 0..<pl[0].seen[0].line_n { #assert !pl[0].seen[0].lines[q].hidden; }
+  for q: 0..<pl[0].seen[0].entry_n { e := pl[0].seen[0].entries[q]; if !e.hero { #assert e.hp == -1; } }
+  // the player rolls a d6 from the sheet: the GM's log keeps it, open
+  n = frame_at(pl[..], f[..], 780, 1688);
+  #assert tap(pl[..], B_DIE + 1);
+  pass_frames(pl[..], gm[..]);
+  #assert os_has_text(t, "Nim rolls 1d6", false);
+  // the player's own turn: an attack on a Skeleton through the relay, checked by the GM's page
+  guard := 0;
+  while os_turn(t) != 0 && guard < 10 { os_next_turn(t); guard += 1; }
+  #assert os_turn(t) == 0;
+  n = frame_at(gm[..], f[..], 1600, 1000);
+  gm[0].sent_t = -10; room_tell(gm[..], true);
+  pass_frames(gm[..], pl[..]);
+  n = frame_at(pl[..], f[..], 780, 1688);
+  #assert tap(pl[..], B_TARGET + 1) && pl[0].target == 1;
+  n = frame_at(pl[..], f[..], 780, 1688);
+  seq := t[0].log_seq;
+  #assert tap(pl[..], B_AB + 0);
+  pass_frames(pl[..], gm[..]);
+  #assert t[0].log_seq > seq && os_has_text(t, "Nim", false);
+  // an ask for a hero that isn't this seat's does nothing
+  seq = t[0].log_seq;
+  gm_heard(gm[..], 2, "D|0|1|20");
+  #assert t[0].log_seq == seq;
+}
+#test "the starter's pages: every view draws on a laptop and a phone, staged" #steps 3000000000 {
+  stages := [6] string.["campaigns", "builder", "gm", "display", "character", "card"];
+  for st: stages {
+    s: [1] Os; f: [1] FrameBuf;
+    buf: [160] u8; m := put(buf[..], 0, "url=http://127.0.0.1:8807/worlds/one-shot?stage="); m = put(buf[..], m, st); m = put(buf[..], m, "\n");
+    os_message(s[..], HOST_PAGE, cast(string) buf[0..<m]);
+    #assert frame_at(s[..], f[..], 2400, 1500) > 300;
+    #assert frame_at(s[..], f[..], 780, 1688) > 300;
+  }
+}

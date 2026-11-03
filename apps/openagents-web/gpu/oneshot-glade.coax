@@ -1,0 +1,598 @@
+// One-Shot's copy of 5E Lab's glade shader (gpu/fivelab.coax at 3e1bf16256, before 5E Lab moved its
+// figures to a skinned scene pass): the glade traced per pixel with its capsule figures, or the flat
+// background, on the same uniform block. Kept here so One-Shot's Table Display does not follow 5E
+// Lab's own changes; its procedures carry the glade_ prefix in place of fivelab_.
+
+// 5E Lab's shaders (fivelab.coax): build.sh writes apps/openagents-web/fivelab.wgsl from this
+// with coax/web/wgsl-module.coax (fivelab.module and fivelab.bindings beside it).
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/style.coax";
+
+// bg_fs draws one of two views of the battle, as the page picks (V):
+//  - flat: the bare grid of 5-foot squares, every fourth line brighter;
+//  - glade: the same battle in 3D, in the painterly look Everglade has (docs/verse/art-styles.md):
+//    a grass clearing ringed with trees under a hazy sky, the grid painted faintly on the grass,
+//    the druids standing on their squares, the spells' areas on the ground. It traces each pixel
+//    against the scene's few shapes (spheres and capsules, analytically) and lights it with the
+//    style's soft toon bands, cool shadows and haze (verse/style.coax).
+// Either way the log panel's dark glass goes over it. fx_vs/fx_fs draw the strokes
+// glade_frame writes (capsules): the HUD, the text, and in the glade the labels and effects.
+// GladeU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0: width, height, time, fade
+//   grid 4: the flat grid's top-left corner x, y (device px), px per square, 0
+//   cells 8: columns, rows, the view (0 flat, 1 glade), the HUD strip's height (device px)
+//   panel 12: the log panel (x0, y0, x1, y1), device px; zero width is none
+//   eye 16: the camera's eye xyz (m), its focal length (px)
+//   fwd 20: forward xyz, the image centre's x (px)
+//   right 24: right xyz, the image centre's y (px)
+//   up 28: up xyz, 0
+//   sun 32: toward the sun xyz, 0
+//   tokens 36: two hundred and eight, two vec4s each: (x, z m, look (its class: 0 druid, 1 warlock,
+//              2 barbarian, 3 monk, 4 skeleton, 5 wizard, 6 bard, 7 cleric, 8 fighter, 9 paladin,
+//              10 ranger, 11 rogue, 12 sorcerer; plus 16 times its team: 0 the Circle of Moss, 1 the
+//              Ember Pact, 2 the Restless Dead) or -1 for none, hit point share),
+//              (0 standing, 1 down, 2 dead; outlined; marks, a bit each: Restrained 1, Poisoned 2,
+//              Blinded 4, enfeebled 8, Temporary Hit Points 16,
+//              Paralyzed 32, hexed 64; whose turn just ran 0..1)
+//   zones 1700: eight, two vec4s each: (x0, z0, x1, z1 m), (1 Entangle, 2 Faerie Fire, 0 none; 0; 0; 0)
+//   bounds 1764: the grid's half width and half depth (m), the square (m), 0
+FIVELAB_TOKENS :: 208;
+FIVELAB_ZONES :: 8;
+FIVELAB_TREES :: 16;
+
+glade_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+// How close p is to a square's edge, 1 on it; every fourth line brighter.
+glade_lines :: (p:V2,u:[]f32)->f32 {
+  s:f32=fmax(u[6],1.0f32);
+  x:f32=(p.x-u[4])/s;
+  y:f32=(p.y-u[5])/s;
+  dx:f32=abs(fract(x+0.5f32)-0.5f32)*s;
+  dy:f32=abs(fract(y+0.5f32)-0.5f32)*s;
+  line:f32=1.0f32-smoothstep(0.3f32,1.1f32,fmin(dx,dy));
+  mx:f32=abs(fract((x*0.25f32)+0.5f32)-0.5f32)*s*4.0f32;
+  my:f32=abs(fract((y*0.25f32)+0.5f32)-0.5f32)*s*4.0f32;
+  major:f32=1.0f32-smoothstep(0.4f32,1.4f32,fmin(mx,my));
+  return (line*0.6f32)+(major*0.4f32);
+}
+glade_flat :: (p:V2,u:[]f32)->V3 {
+  q:V2=v2((p.x/u[0])-0.5f32,(p.y/u[1])-0.5f32);
+  r:f32=wg_length2(q);
+  c:V3=scale3(v3(0.03f32,0.034f32,0.04f32),1.0f32-fmin(r,1.0f32));
+  gx1:f32=u[4]+(u[8]*u[6]);
+  gy1:f32=u[5]+(u[9]*u[6]);
+  inside:f32=0.18f32;
+  if ((((p.x>=u[4])&&(p.x<=gx1))&&(p.y>=u[5]))&&(p.y<=gy1)) {
+    inside=1.0f32;
+    c=add3(c,v3(0.012f32,0.016f32,0.014f32));
+  }
+  return add3(c,scale3(v3(0.2f32,0.23f32,0.22f32),glade_lines(p,u)*inside));
+}
+
+// ---- the glade's shapes
+
+// A ray's distance to a sphere, or -1.
+glade_sphere :: (ro:V3,rd:V3,c:V3,r:f32)->f32 {
+  oc:V3=sub3(ro,c);
+  b:f32=dot3(oc,rd);
+  k:f32=dot3(oc,oc)-(r*r);
+  h:f32=(b*b)-k;
+  if (h<0.0f32) { return -1.0f32; }
+  t:f32=(-b)-sqrt(h);
+  if (t<0.0f32) { return -1.0f32; }
+  return t;
+}
+// A ray's distance to a capsule from a to b, radius r, or -1.
+glade_capsule :: (ro:V3,rd:V3,a:V3,b:V3,r:f32)->f32 {
+  ba:V3=sub3(b,a);
+  oa:V3=sub3(ro,a);
+  baba:f32=dot3(ba,ba);
+  bard:f32=dot3(ba,rd);
+  baoa:f32=dot3(ba,oa);
+  rdoa:f32=dot3(rd,oa);
+  oaoa:f32=dot3(oa,oa);
+  qa:f32=baba-(bard*bard);
+  qb:f32=(baba*rdoa)-(baoa*bard);
+  qc:f32=((baba*oaoa)-(baoa*baoa))-((r*r)*baba);
+  h:f32=(qb*qb)-(qa*qc);
+  if (h<0.0f32) { return -1.0f32; }
+  t:f32=((-qb)-sqrt(h))/fmax(qa,0.000001f32);
+  y:f32=baoa+(t*bard);
+  if ((y>0.0f32)&&(y<baba)) {
+    if (t<0.0f32) { return -1.0f32; }
+    return t;
+  }
+  oc:V3=oa;
+  if (y>=baba) { oc=sub3(ro,b); }
+  b2:f32=dot3(rd,oc);
+  c2:f32=dot3(oc,oc)-(r*r);
+  h2:f32=(b2*b2)-c2;
+  if (h2<0.0f32) { return -1.0f32; }
+  t2:f32=(-b2)-sqrt(h2);
+  if (t2<0.0f32) { return -1.0f32; }
+  return t2;
+}
+glade_capsule_n :: (p:V3,a:V3,b:V3)->V3 {
+  ba:V3=sub3(b,a);
+  pa:V3=sub3(p,a);
+  h:f32=saturate(dot3(pa,ba)/fmax(dot3(ba,ba),0.000001f32));
+  return normalize3(sub3(pa,scale3(ba,h)));
+}
+// Where tree i stands: round the clearing, past the grid's corners, a little uneven.
+glade_tree :: (i:int,u:[]f32)->V4 {
+  fi:f32=cast(f32)i;
+  a:f32=(fi*0.3926991f32)+(0.35f32*sin(fi*2.3f32));
+  rx:f32=u[1764]+5.5f32+(2.5f32*verse_style_hash(fi,3.0f32));
+  rz:f32=u[1765]+5.0f32+(2.5f32*verse_style_hash(fi,7.0f32));
+  size:f32=0.8f32+(0.45f32*verse_style_hash(fi,11.0f32));
+  return v4(cos(a)*rx,0.0f32,sin(a)*rz,size);
+}
+// A look's class (its look less 16 for each team), and its team.
+glade_kind :: (look:f32)->f32 { return look-(16.0f32*floor((look+0.5f32)/16.0f32)); }
+glade_team :: (look:f32)->f32 { return floor((look+0.5f32)/16.0f32); }
+glade_is :: (kind:f32,k:f32)->bool { return abs(kind-k)<0.5f32; }
+// A figure's parts: body (robe, mail or bones), head, and what it carries (a staff, a rod, an axe, a
+// lute, a mace, a greatsword, a shield, a bow, a blade or an orb, `sr` its radius), standing, or
+// lying when down. Everything stays inside the 1.5 m sphere round (x, 0.95, z) glade_trace tests.
+GladeBody :: struct {a:V3; b:V3; r:f32; head:V3; hr:f32; sa:V3; sb:V3; sr:f32; }
+glade_body :: (u:[]f32,i:int)->GladeBody {
+  t:V4=wg_at4(u,36+(i*8));
+  s:V4=wg_at4(u,40+(i*8));
+  o:GladeBody;
+  kd:f32=glade_kind(t.z);
+  // a barbarian is broader, a fighter and a paladin in armour a little, a rogue slighter; a monk and a
+  // sorcerer carry nothing in the hand (the third part is put out of reach underground)
+  big:f32=1.0f32;
+  if (glade_is(kd,2.0f32)) { big=1.22f32; }
+  if (glade_is(kd,8.0f32)||glade_is(kd,9.0f32)) { big=1.1f32; }
+  if (glade_is(kd,11.0f32)) { big=0.94f32; }
+  monk:bool=glade_is(kd,3.0f32);
+  bones:bool=glade_is(kd,4.0f32);
+  if (bones) { big=0.62f32; }
+  o.sr=0.04f32;
+  if (s.x>0.5f32) {
+    o.a=v3(t.x-0.55f32,0.24f32,t.y);
+    o.b=v3(t.x+0.45f32,0.24f32,t.y);
+    o.r=0.24f32;
+    o.head=v3(t.x+0.82f32,0.2f32,t.y);
+    o.hr=0.19f32;
+    o.sa=v3(t.x-0.3f32,0.04f32,t.y+0.42f32);
+    o.sb=v3(t.x+1.0f32,0.04f32,t.y+0.55f32);
+    if (monk||glade_is(kd,12.0f32)) { o.sa=v3(t.x,-9.0f32,t.y); o.sb=v3(t.x,-8.0f32,t.y); }
+    return o;
+  }
+  o.a=v3(t.x,0.32f32,t.y);
+  o.b=v3(t.x,1.12f32*fmin(big,1.08f32),t.y);
+  o.r=0.3f32*big;
+  o.head=v3(t.x,1.56f32*fmin(big,1.08f32),t.y);
+  o.hr=0.2f32;
+  o.sa=v3(t.x+(0.42f32*big),0.0f32,t.y+0.08f32);
+  o.sb=v3(t.x+(0.42f32*big),1.85f32,t.y+0.08f32);
+  if (monk) { o.sa=v3(t.x,-9.0f32,t.y); o.sb=v3(t.x,-8.0f32,t.y); }
+  // a skeleton's shortsword, held out at the hip
+  if (bones) { o.b=v3(t.x,1.12f32,t.y); o.head=v3(t.x,1.5f32,t.y); o.hr=0.17f32; o.sa=v3(t.x+0.3f32,0.75f32,t.y+0.1f32); o.sb=v3(t.x+0.45f32,1.4f32,t.y+0.22f32); }
+  // a bard's lute across the body
+  if (glade_is(kd,6.0f32)) { o.sa=v3(t.x-0.1f32,0.84f32,t.y+0.3f32); o.sb=v3(t.x+0.3f32,1.18f32,t.y+0.3f32); o.sr=0.1f32; }
+  // a cleric's mace, held at the side
+  if (glade_is(kd,7.0f32)) { o.sa=v3(t.x+0.4f32,0.6f32,t.y+0.1f32); o.sb=v3(t.x+0.4f32,1.12f32,t.y+0.1f32); o.sr=0.065f32; }
+  // a fighter's greatsword, point up
+  if (glade_is(kd,8.0f32)) { o.sa=v3(t.x+0.42f32,0.35f32,t.y+0.12f32); o.sb=v3(t.x+0.42f32,2.0f32,t.y+0.12f32); o.sr=0.05f32; }
+  // a paladin's shield, on the other arm
+  if (glade_is(kd,9.0f32)) { o.sa=v3(t.x-0.44f32,0.78f32,t.y+0.12f32); o.sb=v3(t.x-0.44f32,1.18f32,t.y+0.12f32); o.sr=0.25f32; }
+  // a ranger's longbow, a little aslant
+  if (glade_is(kd,10.0f32)) { o.sa=v3(t.x+0.42f32,0.38f32,t.y); o.sb=v3(t.x+0.5f32,1.82f32,t.y+0.12f32); o.sr=0.035f32; }
+  // a rogue's shortsword, held low
+  if (glade_is(kd,11.0f32)) { o.sa=v3(t.x+0.34f32,0.62f32,t.y+0.18f32); o.sb=v3(t.x+0.5f32,1.04f32,t.y+0.32f32); o.sr=0.035f32; }
+  // a sorcerer's flame, an orb over the open hand
+  if (glade_is(kd,12.0f32)) { o.sa=v3(t.x+0.46f32,1.3f32,t.y+0.12f32); o.sb=o.sa; o.sr=0.12f32; }
+  return o;
+}
+// What a ray hits first: t (or 1e9), its normal, the material (0 ground, 1 trunk, 2 leaves,
+// 3 robe, 4 skin, 5 staff) and which token or tree.
+GladeHit :: struct {t:f32; n:V3; m:f32; who:f32; }
+glade_trace :: (ro:V3,rd:V3,u:[]f32,shadow:bool)->GladeHit {
+  h:GladeHit;
+  h.t=1000000000.0f32; h.n=v3(0.0f32,1.0f32,0.0f32); h.m=-1.0f32; h.who=-1.0f32;
+  // the ground
+  if (rd.y<(-0.0001f32)) {
+    tg:f32=(-ro.y)/rd.y;
+    if (!shadow) { h.t=tg; h.m=0.0f32; }
+  }
+  {
+    i:int=0;
+    while i<FIVELAB_TREES {
+      tr:V4=glade_tree(i,u);
+      // the trees on the camera's side of the clearing stand aside, so they never hide the battle
+      ex:V2=v2(u[16],u[18]);
+      front:f32=((tr.x*ex.x)+(tr.z*ex.y))/fmax(wg_length2(v2(tr.x,tr.z))*wg_length2(ex),0.001f32);
+      if (front>0.45f32) { tr.y=-1.0f32; }
+      k:f32=tr.w;
+      if (tr.y<0.0f32) { k=0.0f32; }
+      c1:V3=v3(tr.x,4.6f32*k,tr.z);
+      tc:f32=glade_sphere(ro,rd,c1,2.7f32*k);
+      if ((tc>0.0f32)&&(tc<h.t)) { h.t=tc; h.n=normalize3(sub3(add3(ro,scale3(rd,tc)),c1)); h.m=2.0f32; h.who=cast(f32)i; }
+      c2:V3=v3(tr.x+(0.9f32*k),6.3f32*k,tr.z-(0.4f32*k));
+      tc2:f32=glade_sphere(ro,rd,c2,1.9f32*k);
+      if ((tc2>0.0f32)&&(tc2<h.t)) { h.t=tc2; h.n=normalize3(sub3(add3(ro,scale3(rd,tc2)),c2)); h.m=2.0f32; h.who=cast(f32)i; }
+      ta:V3=v3(tr.x,0.0f32,tr.z);
+      tb:V3=v3(tr.x,3.4f32*k,tr.z);
+      tt:f32=glade_capsule(ro,rd,ta,tb,0.32f32*k);
+      if ((tt>0.0f32)&&(tt<h.t)) { h.t=tt; h.n=glade_capsule_n(add3(ro,scale3(rd,tt)),ta,tb); h.m=1.0f32; h.who=cast(f32)i; }
+      i+=1;
+    }
+  }
+  {
+    i:int=0;
+    while i<FIVELAB_TOKENS {
+      tk:V4=wg_at4(u,36+(i*8));
+      // a cheap bound first: a sphere round the whole figure, standing or down; a ray that misses it,
+      // or meets it only past what it has already hit, skips the figure's capsules
+      bo:V3=sub3(ro,v3(tk.x,0.95f32,tk.y));
+      bb:f32=dot3(bo,rd);
+      bh:f32=(bb*bb)-(dot3(bo,bo)-2.25f32);
+      near:bool=false;
+      if (bh>0.0f32) {
+        bs:f32=sqrt(bh);
+        near=(((-bb)+bs)>0.0f32)&&(((-bb)-bs)<h.t);
+      }
+      if ((tk.z>(-0.5f32))&&near) {
+        bd:GladeBody=glade_body(u,i);
+        t1:f32=glade_capsule(ro,rd,bd.a,bd.b,bd.r);
+        if ((t1>0.0f32)&&(t1<h.t)) { h.t=t1; h.n=glade_capsule_n(add3(ro,scale3(rd,t1)),bd.a,bd.b); h.m=3.0f32; h.who=cast(f32)i; }
+        t2:f32=glade_sphere(ro,rd,bd.head,bd.hr);
+        if ((t2>0.0f32)&&(t2<h.t)) { h.t=t2; h.n=normalize3(sub3(add3(ro,scale3(rd,t2)),bd.head)); h.m=4.0f32; h.who=cast(f32)i; }
+        t3:f32=glade_capsule(ro,rd,bd.sa,bd.sb,bd.sr);
+        if ((t3>0.0f32)&&(t3<h.t)) { h.t=t3; h.n=glade_capsule_n(add3(ro,scale3(rd,t3)),bd.sa,bd.sb); h.m=5.0f32; h.who=cast(f32)i; }
+      }
+      i+=1;
+    }
+  }
+  return h;
+}
+
+// Bit k of a token's marks.
+glade_mark :: (marks:f32,k:f32)->bool {
+  return wg_fmod(floor(marks/wg_exp2(k)),2.0f32)>0.5f32;
+}
+
+// ---- the glade's light (the style's: verse/style.coax)
+
+glade_sky :: (rd:V3,sun:V3,t:f32)->V3 {
+  up:f32=fmax(rd.y,0.0f32);
+  st:f32=verse_style_sky_t(up);
+  c:V3=mix3(v3(0.78f32,0.84f32,0.86f32),v3(0.32f32,0.52f32,0.84f32),st);
+  halo:f32=verse_style_halo(dot3(rd,sun),7.0f32);
+  c=add3(c,scale3(v3(1.0f32,0.86f32,0.62f32),halo*0.45f32));
+  disc:f32=verse_style_halo(dot3(rd,sun),900.0f32);
+  c=add3(c,scale3(v3(1.0f32,0.95f32,0.85f32),disc*3.0f32));
+  if (rd.y>0.02f32) {
+    k:f32=300.0f32/rd.y;
+    x:f32=(rd.x*k)+(t*2.0f32);
+    z:f32=rd.z*k;
+    n:f32=verse_style_cloud_field(x,z,0.0032f32,0.0091f32,2.0f32);
+    cover:f32=verse_style_cloud_cover(n,0.4f32,0.48f32,0.62f32)*verse_style_cloud_fade(rd.y);
+    lit:f32=verse_style_cloud_lit(n,verse_style_cloud_field(x+(sun.x*40.0f32),z+(sun.z*40.0f32),0.0032f32,0.0091f32,2.0f32));
+    cloud:V3=mix3(v3(0.62f32,0.66f32,0.76f32),v3(1.0f32,0.97f32,0.92f32),lit);
+    c=mix3(c,cloud,cover);
+  }
+  return c;
+}
+// The grass at (x, z): two greens broken up by noise, dabbed, the grid painted on in the clearing.
+glade_grass :: (x:f32,z:f32,u:[]f32,t:f32)->V3 {
+  n1:f32=verse_style_noise(x*0.35f32,z*0.35f32);
+  n2:f32=verse_style_noise((x*1.7f32)+5.0f32,(z*1.7f32)+2.0f32);
+  dab:f32=verse_style_noise(x*6.0f32,z*6.0f32);
+  c:V3=mix3(v3(0.16f32,0.3f32,0.07f32),v3(0.33f32,0.46f32,0.13f32),(n1*0.65f32)+(n2*0.35f32));
+  c=scale3(c,0.88f32+(0.24f32*dab));
+  hw:f32=u[1764]; hd:f32=u[1765]; sq:f32=fmax(u[1766],0.1f32);
+  inside:f32=(1.0f32-smoothstep(hw,hw+0.3f32,abs(x)))*(1.0f32-smoothstep(hd,hd+0.3f32,abs(z)));
+  // the clearing: shorter, lighter grass
+  c=mix3(c,add3(scale3(c,0.82f32),v3(0.05f32,0.06f32,0.02f32)),inside*0.6f32);
+  gx:f32=(x+hw)/sq; gz:f32=(z+hd)/sq;
+  lx:f32=abs(fract(gx+0.5f32)-0.5f32)*sq;
+  lz:f32=abs(fract(gz+0.5f32)-0.5f32)*sq;
+  line:f32=1.0f32-smoothstep(0.012f32,0.045f32,fmin(lx,lz));
+  c=mix3(c,v3(0.55f32,0.6f32,0.36f32),line*inside*0.5f32);
+  return c;
+}
+
+glade_glade :: (p:V2,u:[]f32)->V3 {
+  t:f32=u[2];
+  eye:V3=wg_at3(u,16);
+  f:f32=fmax(u[19],1.0f32);
+  fwd:V3=wg_at3(u,20);
+  right:V3=wg_at3(u,24);
+  up:V3=wg_at3(u,28);
+  sun:V3=normalize3(wg_at3(u,32));
+  rd:V3=normalize3(add3(fwd,add3(scale3(right,(p.x-u[23])/f),scale3(up,(u[27]-p.y)/f))));
+  h:GladeHit=glade_trace(eye,rd,u,false);
+  if (h.m<0.0f32) { return glade_sky(rd,sun,t); }
+  pos:V3=add3(eye,scale3(rd,h.t));
+  n:V3=h.n;
+  albedo:V3=v3(0.5f32,0.5f32,0.5f32);
+  glow:V3=v3(0.0f32,0.0f32,0.0f32);
+  if (h.m<0.5f32) {
+    albedo=glade_grass(pos.x,pos.z,u,t);
+    // the spells' areas on the ground
+    {
+      i:int=0;
+      while i<FIVELAB_ZONES {
+        za:V4=wg_at4(u,1700+(i*8));
+        zb:V4=wg_at4(u,1704+(i*8));
+        if (zb.x>0.5f32) {
+          if ((((pos.x>=za.x)&&(pos.x<=za.z))&&(pos.z>=za.y))&&(pos.z<=za.w)) {
+            if (zb.x<1.5f32) {
+              vine:f32=verse_style_noise(pos.x*3.0f32,pos.z*3.0f32);
+              albedo=mix3(albedo,v3(0.05f32,0.2f32,0.04f32),0.55f32+(0.35f32*vine));
+              glow=add3(glow,scale3(v3(0.1f32,0.3f32,0.05f32),0.15f32*smoothstep(0.55f32,0.8f32,vine)));
+            } else {
+              mote:f32=verse_style_noise((pos.x*2.0f32)+(t*0.7f32),(pos.z*2.0f32)-(t*0.5f32));
+              glow=add3(glow,scale3(v3(0.55f32,0.3f32,1.0f32),0.18f32+(0.35f32*smoothstep(0.6f32,0.9f32,mote))));
+            }
+          }
+        }
+        i+=1;
+      }
+    }
+    // whose turn just ran: a ring of light round their feet; and every druid's contact shadow
+    {
+      i:int=0;
+      while i<FIVELAB_TOKENS {
+        tk:V4=wg_at4(u,36+(i*8));
+        ts:V4=wg_at4(u,40+(i*8));
+        if (tk.z>(-0.5f32)) {
+          d:f32=wg_length2(v2(pos.x-tk.x,pos.z-tk.y));
+          albedo=scale3(albedo,0.55f32+(0.45f32*smoothstep(0.15f32,0.7f32,d)));
+          ring:f32=1.0f32-smoothstep(0.03f32,0.08f32,abs(d-0.68f32));
+          // the ring in its team's colour
+          tm:f32=glade_team(tk.z);
+          tc:V3=v3(0.35f32,0.95f32,0.45f32);
+          if (tm>0.5f32) { tc=v3(0.55f32,0.85f32,1.0f32); }
+          if (tm>1.5f32) { tc=v3(0.9f32,0.86f32,0.74f32); }
+          if (ts.y<1.5f32) { glow=add3(glow,scale3(tc,ring*(0.25f32+(ts.w*1.6f32)))); }
+        }
+        i+=1;
+      }
+    }
+  } else if (h.m<1.5f32) {
+    albedo=v3(0.24f32,0.15f32,0.08f32);
+    albedo=scale3(albedo,0.8f32+(0.4f32*verse_style_noise(pos.y*4.0f32,(pos.x+pos.z)*6.0f32)));
+  } else if (h.m<2.5f32) {
+    leaf:f32=verse_style_noise((pos.x*1.3f32)+pos.y,(pos.z*1.3f32)-pos.y);
+    albedo=mix3(v3(0.09f32,0.24f32,0.06f32),v3(0.3f32,0.45f32,0.1f32),leaf);
+    // painted leaf masses: the normal nudged by the noise, so the bands break into dabs
+    n=normalize3(add3(n,scale3(v3(leaf-0.5f32,verse_style_noise(pos.x*2.1f32,pos.z*2.1f32)-0.5f32,0.5f32-leaf),0.9f32)));
+  } else {
+    who:int=cast(int)h.who;
+    tk:V4=wg_at4(u,36+(who*8));
+    ts:V4=wg_at4(u,40+(who*8));
+    kd:f32=glade_kind(tk.z);
+    tm:f32=glade_team(tk.z);
+    druid:bool=glade_is(kd,0.0f32);
+    pact:bool=glade_is(kd,1.0f32);
+    barb:bool=glade_is(kd,2.0f32);
+    monk:bool=glade_is(kd,3.0f32);
+    bones:bool=glade_is(kd,4.0f32);
+    wiz:bool=glade_is(kd,5.0f32);
+    bard:bool=glade_is(kd,6.0f32);
+    cler:bool=glade_is(kd,7.0f32);
+    figh:bool=glade_is(kd,8.0f32);
+    pal:bool=glade_is(kd,9.0f32);
+    rang:bool=glade_is(kd,10.0f32);
+    rog:bool=glade_is(kd,11.0f32);
+    sorc:bool=glade_is(kd,12.0f32);
+    if (h.m<3.5f32) {
+      albedo=v3(0.2f32,0.42f32,0.16f32);
+      // a Fiend warlock's robe: ember crimson, with a gold hem and collar
+      if (pact) {
+        albedo=v3(0.32f32,0.04f32,0.05f32);
+        if ((pos.y<0.42f32)||(pos.y>1.3f32)) { albedo=v3(0.75f32,0.55f32,0.16f32); }
+      }
+      // a barbarian: bare arms and chest over a fur kilt; a monk: a saffron robe with a dark sash
+      if (barb) {
+        albedo=v3(0.74f32,0.52f32,0.38f32);
+        if (pos.y<0.8f32) { albedo=scale3(v3(0.36f32,0.25f32,0.15f32),0.8f32+(0.4f32*verse_style_noise(pos.x*14.0f32,pos.y*14.0f32))); }
+      }
+      if (monk) {
+        albedo=v3(0.92f32,0.55f32,0.12f32);
+        if (pos.y>1.15f32) { albedo=v3(0.78f32,0.58f32,0.44f32); }
+      }
+      // a skeleton: old bone, the ribs banded with shadow, the pelvis dark below them
+      if (bones) {
+        albedo=v3(0.86f32,0.82f32,0.7f32);
+        if ((pos.y>0.72f32)&&(pos.y<1.08f32)&&(fract(pos.y*14.0f32)<0.45f32)) { albedo=v3(0.12f32,0.1f32,0.09f32); }
+        if ((pos.y>0.45f32)&&(pos.y<0.62f32)) { albedo=v3(0.25f32,0.22f32,0.18f32); }
+      }
+      // an Evoker's deep blue robe, silver at the hem
+      if (wiz) {
+        albedo=v3(0.12f32,0.17f32,0.45f32);
+        if (pos.y<0.42f32) { albedo=v3(0.7f32,0.72f32,0.8f32); }
+      }
+      // a bard's plum doublet with a gold sash across it
+      if (bard) {
+        albedo=v3(0.5f32,0.13f32,0.38f32);
+        if (abs(fract(((pos.y+(pos.x-tk.x))*2.2f32))-0.5f32)<0.07f32) { albedo=v3(0.9f32,0.72f32,0.25f32); }
+      }
+      // a Life cleric's white vestment with a gold band
+      if (cler) {
+        albedo=v3(0.88f32,0.86f32,0.8f32);
+        if (abs(pos.y-1.02f32)<0.05f32) { albedo=v3(0.9f32,0.72f32,0.25f32); }
+      }
+      // a fighter's chain mail over leather
+      if (figh) {
+        albedo=scale3(v3(0.5f32,0.52f32,0.56f32),0.75f32+(0.5f32*verse_style_noise(pos.y*40.0f32,wg_atan2(pos.z-tk.y,pos.x-tk.x)*9.0f32)));
+        if (pos.y<0.62f32) { albedo=v3(0.3f32,0.22f32,0.14f32); }
+      }
+      // a paladin's bright plate, gold at the shoulders
+      if (pal) {
+        albedo=v3(0.8f32,0.82f32,0.88f32);
+        if (pos.y>1.22f32) { albedo=v3(0.88f32,0.7f32,0.28f32); }
+      }
+      // a ranger's leathers under a forest cloak
+      if (rang) {
+        albedo=v3(0.33f32,0.26f32,0.15f32);
+        if (pos.y>1.0f32) { albedo=v3(0.17f32,0.27f32,0.12f32); }
+      }
+      // a rogue's black leather
+      if (rog) { albedo=v3(0.09f32,0.09f32,0.11f32); }
+      // a draconic sorcerer's copper scales
+      if (sorc) {
+        albedo=v3(0.66f32,0.3f32,0.1f32);
+        if (fract((pos.y*12.0f32)+(0.5f32*fract(wg_atan2(pos.z-tk.y,pos.x-tk.x)*1.6f32)))<0.25f32) { albedo=v3(0.35f32,0.13f32,0.05f32); }
+      }
+      // a belt in its side's colours
+      if ((abs(pos.y-0.82f32)<0.05f32)&&(!bones)) {
+        albedo=v3(0.2f32,0.62f32,0.26f32);
+        if (tm>0.5f32) { albedo=v3(0.28f32,0.5f32,0.86f32); }
+      }
+      if (glade_mark(ts.z,0.0f32)) {
+        vine:f32=fract((pos.y*7.0f32)+(wg_atan2(pos.z-tk.y,pos.x-tk.x)*1.2f32));
+        if ((pos.y<0.9f32)&&(vine<0.3f32)) { albedo=v3(0.08f32,0.32f32,0.05f32); }
+      }
+    } else if (h.m<4.5f32) {
+      albedo=v3(0.78f32,0.58f32,0.44f32);
+      if (pos.y>(1.62f32)) { albedo=v3(0.24f32,0.16f32,0.09f32); }
+      if (monk) { albedo=v3(0.78f32,0.58f32,0.44f32); }
+      // a skull: bone, with two dark sockets facing the camera's way and a glint in them
+      if (bones) {
+        albedo=v3(0.9f32,0.87f32,0.76f32);
+        if ((n.y<0.35f32)&&(n.y>(-0.1f32))&&(abs(fract((wg_atan2(n.z,n.x)*3.0f32)/6.2831853f32)-0.5f32)<0.12f32)) { albedo=v3(0.03f32,0.02f32,0.02f32); glow=add3(glow,v3(0.25f32,0.08f32,0.05f32)); }
+      }
+      // a barbarian's wild hair
+      if (barb && (pos.y>1.66f32)) { albedo=v3(0.55f32,0.25f32,0.08f32); }
+      // hats, helms and hoods on the crown
+      if (n.y>0.3f32) {
+        if (wiz) { albedo=v3(0.12f32,0.17f32,0.45f32); }
+        if (bard) { albedo=v3(0.5f32,0.13f32,0.38f32); }
+        if (figh) { albedo=v3(0.55f32,0.57f32,0.62f32); }
+        if (pal) { albedo=v3(0.82f32,0.84f32,0.9f32); }
+        if (rang) { albedo=v3(0.17f32,0.27f32,0.12f32); }
+        if (rog) { albedo=v3(0.07f32,0.07f32,0.09f32); }
+        if (sorc) { albedo=v3(0.72f32,0.3f32,0.08f32); }
+      }
+      if (rog && (n.y>(-0.2f32))&&(n.y<0.3f32)&&(abs(fract((wg_atan2(n.z,n.x)*3.0f32)/6.2831853f32)-0.5f32)>0.2f32)) { albedo=v3(0.07f32,0.07f32,0.09f32); }
+      if (pact) {
+        // under a crimson hood
+        if (pos.y>1.6f32) { albedo=v3(0.26f32,0.03f32,0.04f32); }
+      }
+      // Blinded: a band of shadow over the eyes
+      if (glade_mark(ts.z,2.0f32)&&(abs(pos.y-1.58f32)<0.045f32)) { albedo=v3(0.02f32,0.02f32,0.03f32); }
+    } else {
+      albedo=v3(0.4f32,0.28f32,0.14f32);
+      if (pos.y>1.75f32) {
+        if (pact) { glow=add3(glow,v3(0.85f32,0.35f32,1.0f32)); }
+        if (druid) { glow=add3(glow,v3(0.6f32,0.9f32,0.5f32)); }
+        if (wiz) { glow=add3(glow,v3(0.6f32,0.8f32,1.0f32)); }
+      }
+      if (bard) { albedo=v3(0.62f32,0.38f32,0.16f32); }
+      if (cler) { albedo=v3(0.35f32,0.24f32,0.12f32); if (pos.y>0.98f32) { albedo=v3(0.72f32,0.74f32,0.78f32); } }
+      if (figh) { albedo=v3(0.76f32,0.78f32,0.84f32); if (pos.y<0.72f32) { albedo=v3(0.15f32,0.1f32,0.06f32); } if (abs(pos.y-0.74f32)<0.03f32) { albedo=v3(0.8f32,0.62f32,0.22f32); } }
+      if (pal) {
+        albedo=v3(0.14f32,0.24f32,0.62f32);
+        if ((abs(pos.y-0.98f32)<0.045f32)||(abs(pos.z-(tk.y+0.12f32))<0.045f32)) { albedo=v3(0.92f32,0.9f32,0.84f32); }
+        if ((pos.y>1.3f32)||(pos.y<0.62f32)) { albedo=v3(0.88f32,0.7f32,0.28f32); }
+      }
+      if (rang) { albedo=v3(0.25f32,0.16f32,0.08f32); }
+      if (rog) { albedo=v3(0.7f32,0.72f32,0.76f32); }
+      if (sorc) { albedo=v3(1.0f32,0.6f32,0.25f32); glow=add3(glow,v3(1.0f32,0.42f32,0.12f32)); }
+      // a black iron rod, the pact's focus
+      if (pact) { albedo=v3(0.06f32,0.05f32,0.06f32); }
+      if (bones) { albedo=v3(0.62f32,0.64f32,0.68f32); }
+      // a greataxe: an ash haft, a steel head at the top
+      if (barb) {
+        albedo=v3(0.42f32,0.3f32,0.16f32);
+        if (pos.y>1.45f32) { albedo=v3(0.7f32,0.72f32,0.76f32); }
+      }
+    }
+    // Poisoned: a sick green cast; enfeebled: drained grey; Temporary Hit Points: a red ward at the rim
+    if (glade_mark(ts.z,1.0f32)) { albedo=mix3(albedo,v3(0.4f32,0.55f32,0.08f32),0.45f32); }
+    if (glade_mark(ts.z,3.0f32)) { albedo=scale3(v3(1.0f32,1.0f32,1.0f32),verse_style_luma(albedo.x,albedo.y,albedo.z)*0.8f32); }
+    if (glade_mark(ts.z,4.0f32)) {
+      wr:f32=pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),3.0f32);
+      glow=add3(glow,scale3(v3(0.9f32,0.15f32,0.25f32),wr*0.9f32));
+    }
+    // Paralyzed: held stiff in a gold sheen; hexed: a violet curse flickering at the rim
+    if (glade_mark(ts.z,5.0f32)) {
+      albedo=mix3(albedo,v3(0.85f32,0.7f32,0.3f32),0.35f32);
+      glow=add3(glow,scale3(v3(1.0f32,0.8f32,0.35f32),pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),2.0f32)*0.8f32));
+    }
+    if (glade_mark(ts.z,6.0f32)) {
+      hx:f32=pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),4.0f32);
+      glow=add3(glow,scale3(v3(0.55f32,0.15f32,0.8f32),hx*(0.7f32+(0.3f32*sin((t*9.0f32)+pos.y*6.0f32)))));
+    }
+    if (ts.x>1.5f32) { albedo=scale3(v3(0.4f32,0.4f32,0.42f32),verse_style_luma(albedo.x,albedo.y,albedo.z)*2.2f32); }
+    if (ts.y>0.5f32) {
+      rim:f32=pow(1.0f32-saturate(dot3(n,scale3(rd,-1.0f32))),2.0f32);
+      glow=add3(glow,scale3(v3(0.7f32,0.4f32,1.0f32),(0.35f32+(0.25f32*sin(t*5.0f32)))+(rim*0.9f32)));
+    }
+  }
+  // the sun: soft toon bands, the shadow ray's answer folded in
+  ndl:f32=dot3(n,sun);
+  lit:f32=1.0f32;
+  if (ndl>0.0f32) {
+    sh:GladeHit=glade_trace(add3(pos,scale3(n,0.02f32)),sun,u,true);
+    if (sh.m>0.0f32) { lit=0.0f32; }
+  }
+  w:f32=verse_style_wrap(ndl)*lit;
+  band:f32=verse_style_bands(w,0.2f32,0.58f32,0.06f32,0.55f32);
+  if (h.m>2.5f32) { band=verse_style_bands2(w,0.4f32,0.08f32); }
+  amb:f32=verse_style_ambient(n.y,1.0f32,0.55f32,1.0f32);
+  shadow_light:V3=scale3(v3(0.36f32,0.44f32,0.62f32),0.62f32*amb);
+  lit_light:V3=add3(scale3(v3(1.0f32,0.9f32,0.74f32),1.25f32),scale3(shadow_light,0.6f32));
+  c:V3=v3(verse_style_shade(albedo.x,shadow_light.x,lit_light.x,band),
+          verse_style_shade(albedo.y,shadow_light.y,lit_light.y,band),
+          verse_style_shade(albedo.z,shadow_light.z,lit_light.z,band));
+  c=add3(c,glow);
+  // haze toward the horizon
+  hz:f32=1.0f32-exp((-h.t)*0.011f32);
+  hc:V3=mix3(v3(0.72f32,0.8f32,0.84f32),v3(1.0f32,0.9f32,0.75f32),verse_style_halo(dot3(rd,sun),5.0f32)*0.5f32);
+  return mix3(c,hc,hz*0.85f32);
+}
+
+glade_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  p:V2=v2(pos.x,pos.y);
+  c:V3=v3(0.0f32,0.0f32,0.0f32);
+  if (u[10]>0.5f32) {
+    c=glade_glade(p,u);
+    // the style's tone and grade, then the display's curve
+    c=v3(verse_style_tone(c.x,1.15f32),verse_style_tone(c.y,1.15f32),verse_style_tone(c.z,1.15f32));
+    l:f32=verse_style_luma(c.x,c.y,c.z);
+    c=v3(verse_style_saturation(c.x,l,1.12f32),verse_style_saturation(c.y,l,1.12f32),verse_style_saturation(c.z,l,1.12f32));
+    // the HUD's strip along the top: dark glass, so its text reads over the sky
+    if (p.y<u[11]) { c=add3(scale3(c,0.22f32),v3(0.01f32,0.012f32,0.016f32)); }
+  } else {
+    c=glade_flat(p,u);
+  }
+  if (u[14]>u[12]) {
+    if ((((p.x>=u[12])&&(p.x<=u[14]))&&(p.y>=u[13]))&&(p.y<=u[15])) {
+      c=add3(scale3(c,0.14f32),v3(0.012f32,0.014f32,0.02f32));
+    }
+  }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+GladeV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+glade_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+glade_fx_vs :: (_vid2:u32,_iid3:u32,in_:glade_fx_vs_in,u:[]f32)->GladeV {
+  a:V4=in_.a;
+  o:GladeV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=in_.b;
+  o.tint=in_.c;
+  o.bar=in_.d;
+  return o;
+}
+// A capsule: shape.x its length, y its core's half width, z its light, w its glow's reach.
+glade_fx_fs :: (v:GladeV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(scale3(scale3(scale3(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- the vector helpers this file calls
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

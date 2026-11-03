@@ -138,6 +138,9 @@ fivelab=$!
 # /worlds/metahuman-lab (unlisted): one figure on the CC0 people rig's skeleton and clips (docs/verse/metahuman-support.md).
 "$here/../../coax/web/wasm.sh" "$here/metahumanlab.coax" "$here/metahumanlab-face.c" "$here/build/metahumanlab.wasm" &
 metahumanlab=$!
+# /worlds/one-shot: the campaign creator's Table (oneshot.coax on oneshot-table.coax and the SRD engine).
+"$here/../../coax/web/wasm.sh" "$here/oneshot.coax" "$here/oneshot-face.c" "$here/build/oneshot.wasm" &
+oneshot=$!
 # /demos/grid-crowd: the Grid's art (verse/tools/pack_grid.py) with a staged crowd of players (verse/cast.coax)
 # and agents running into the Everglade gate, for clips (?stage=crowd, docs/verse/clips.md).
 "$here/../../coax/web/wasm.sh" "$here/gridcrowd.coax" "$here/gridcrowd-face.c" "$here/build/gridcrowd.wasm" \
@@ -258,6 +261,7 @@ wait "$stair"
 wait "$watchtower"
 wait "$fivelab"
 wait "$metahumanlab"
+wait "$oneshot"
 wait "$gridcrowd"
 wait "$speedrunhud"
 wait "$belt"

@@ -382,6 +382,21 @@
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/everglade/assets/everglade.pack", "particles:/everglade-fx.wgsl"]
       } },
+    { "id": "oneshot", "name": "ONE-SHOT", "kind": "open", "listed": false, "orbit": { "r": 0.46, "a": 1.6, "size": 0.02 },
+      "realm": {
+        "slug": "one-shot",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
+        "ruleset": "srd5",
+        "title": "One-Shot",
+        "description": "One-Shot, a Verse world in the browser: a Game Master (GM) makes a short 5E adventure, runs it from the GM Screen, and players join by link or code with a hero the SRD 5e rules engine builds.",
+        "share": "Make a 5E one-shot, run it from the GM Screen, and play it with friends who join by link or code.",
+        "alt": "One-Shot: the GM Screen with scenes, an initiative tracker, the dice tray and the session log",
+        "module": "oneshot",
+        "slot": "one-shot",
+        "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
+        "assets": []
+      } },
     { "id": "metahumanlab", "name": "METAHUMAN LAB", "kind": "open", "listed": false, "orbit": { "r": 0.38, "a": 2.7, "size": 0.02 },
       "realm": {
         "slug": "metahuman-lab",

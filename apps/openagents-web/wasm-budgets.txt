@@ -3,3 +3,4 @@
 # and wasm.sh names its biggest functions. A module growing on purpose raises its
 # line in the same commit, with the reason in the commit message. One module a line:
 #   NAME BYTES
+oneshot 320000
