@@ -1,0 +1,14 @@
+the pack takes 512 bytes
+read: true, 5 entries, 2 sources
+  catalog kind 1 licence 255: 206 bytes at 272
+  vertices kind 2 licence 255: 6 bytes at 480
+  indices kind 3 licence 255: 12 bytes at 488
+  layer0 kind 4 licence 0: 5 bytes at 500
+  door kind 5 licence 1: 3 bytes at 508
+layer0 is asset c579f80088119b4b77f6a8b32c542ce2ab6033574361a03c08ab6c32fb5b9487
+admitted under 232 bytes: true, 5 assets, 232 bytes
+the same pack again: true, 232 bytes, layer0 used 2 times
+under 231 bytes: refused true (asked 232), 0 held
+layer0 under source 1: refused true: an asset without a declared licence (entry 3); the read keeps 0 entries
+a 511-byte budget: over its budget
+one byte short: its stated size isn't its size

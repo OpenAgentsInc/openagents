@@ -1,0 +1,53 @@
+// book:begin example
+#load "../forge/pack.coax";
+#import "Basic";
+
+CATALOG :: "pack tiny\nbudget 600\nbytes 512\nL 0 Kit|CC0 1.0 Universal|https://example.org/\nL 1 Sounds|CC0 1.0 Universal|https://example.org/\nM Crate 0 3 0 -0.500 0.000 -0.500 0.500 1.000 0.500\nT 0 layer3.jpg 0\nS door 1\n";
+
+// The tiny pack's five entries: a crate's catalog, vertices and indices, one texture layer from
+// the kit (source 0) and a door's sound (source 1).
+sources :: (out: [] PackSource, layer_licence: int) {
+  out[0] = PackSource.{kind = PACK_CATALOG, licence = PACK_MANY, name = "catalog", data = CATALOG};
+  out[1] = PackSource.{kind = PACK_VERTICES, licence = PACK_MANY, name = "vertices", data = "vvvvvv"};
+  out[2] = PackSource.{kind = PACK_INDICES, licence = PACK_MANY, name = "indices", data = "iiiiiiiiiiii"};
+  out[3] = PackSource.{kind = PACK_LAYER, licence = layer_licence, name = "layer0", data = "JPEG!"};
+  out[4] = PackSource.{kind = PACK_SOUND, licence = 1, name = "door", data = "mp3"};
+}
+// Why a pack is refused, or "read whole".
+verdict :: (p: string) -> string {
+  r: [1] PackRead;
+  if pack_read(p, r[..]) { return "read whole"; }
+  return r[0].why;
+}
+
+main :: () {
+  s: [5] PackSource; sources(s[..], 0);
+  print("the pack takes % bytes\n", pack_size(s[..]));
+  b: [600] u8; n := pack_write(s[..], 600, b[..]);
+  p := cast(string) b[0..<n];
+  r: [1] PackRead;
+  print("read: %, % entries, % sources\n", pack_read(p, r[..]), r[0].count, r[0].sources);
+  for k: 0..<r[0].count {
+    e := r[0].entries[k];
+    print("  % kind % licence %: % bytes at %\n", e.name, e.kind, e.licence, e.n, e.at);
+  }
+  hex: [64] u8; ok := asset_hex(asset_id(pack_bytes(p, r[..], 3)), hex[..]);
+  print("layer0 is asset %\n", cast(string) hex[..]);
+  // Admitted into a realm's assets: 206 + 6 + 12 + 5 + 3 = 232 bytes.
+  reg: [1] AssetRegistry; reg[0] = asset_registry(232);
+  print("admitted under 232 bytes: %, % assets, % bytes\n", pack_admit(reg[..], p, r[..]) == ASSET_OK, reg[0].held, reg[0].used);
+  print("the same pack again: %, % bytes, layer0 used % times\n", pack_admit(reg[..], p, r[..]) == ASSET_OK, reg[0].used, asset_uses(reg[0], asset_id("JPEG!")));
+  small: [1] AssetRegistry; small[0] = asset_registry(231);
+  print("under 231 bytes: refused % (asked %), % held\n", pack_admit(small[..], p, r[..]) == ASSET_OVER_BYTES, small[0].first.asked, small[0].held);
+  // Broken packs. The layer given the sounds' licence, while its catalog line says the kit's:
+  t: [5] PackSource; sources(t[..], 1);
+  c: [600] u8; m := pack_write(t[..], 600, c[..]);
+  q := cast(string) c[0..<m];
+  bad: [1] PackRead; refused := !pack_read(q, bad[..]);
+  print("layer0 under source 1: refused %: % (entry %); the read keeps % entries\n", refused, bad[0].why, bad[0].entry, bad[0].count);
+  // The same bytes under a 511-byte budget, and one byte cut off the end.
+  d: [600] u8; m = pack_write(s[..], 511, d[..]);
+  print("a 511-byte budget: %\n", verdict(cast(string) d[0..<m]));
+  print("one byte short: %\n", verdict(p[0..<n - 1]));
+}
+// book:end example

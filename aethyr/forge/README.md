@@ -16,6 +16,11 @@ The product spec, what is on screen and what to build, is
   content-named files and pinned with the revision (`#authority`; the server's rule is
   migration 0107). Book chapter 54, #12629.
   `coax/bin/coax test aethyr/forge/publish.coax --library`
+- `pack.coax`: a realm's asset pack (`VPK1`) read whole or refused (budget, layout, a declared
+  licence on every asset), written byte for byte as `verse/tools/pack_realm.py` writes it, and
+  admitted into a realm's assets by content (`#authority`). Book chapter 53.
+  `coax/bin/coax test aethyr/forge/pack.coax --library`
+  `coax/web/tool.sh aethyr/tools/pack-check.coax PACK...` (the committed packs, written again)
 
 The page side lives in `apps/openagents-web/` (`builder.coax` today, `myrealm.coax` as the
 canvas) and the shared edit layer in `verse/edit/edit.coax`.

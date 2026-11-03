@@ -232,6 +232,16 @@
       ]
     },
     {
+      "source": "aethyr/examples/bring-in-assets.coax",
+      "chapter": "aethyr/book/ch053-bring-in-assets.md",
+      "stdout": "aethyr/fixtures/bring-in-assets.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/publish-a-realm.coax",
       "chapter": "aethyr/book/ch054-publish-a-realm.md",
       "stdout": "aethyr/fixtures/publish-a-realm.out",

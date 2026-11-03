@@ -1,0 +1,47 @@
+// Read an asset pack whole with Aethyrforge's reader (aethyr/forge/pack.coax, book chapter 53),
+// write it again from what was read, and admit it into a realm's assets under its own budget.
+//   coax/web/tool.sh aethyr/tools/pack-check.coax PACK...
+// Prints each pack's entries, its sources and its SHA-256 (the hex sha256sum prints), and whether
+// the bytes written again are the file's, byte for byte. The committed packs were written by
+// verse/tools/pack_realm.py, so this holds the Coax writer to the Python one. Exit 1 when any pack
+// is refused, written differently or not admitted.
+#import "Basic";
+#load "../forge/pack.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+
+PACK_CHECK_FILE :: 16777216;   // a pack's bytes at most here (16 MB)
+PACK_KINDS :: [6] string.["", "catalog", "vertices", "indices", "layer", "sound"];
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: pack-check PACK..."); return 2; }
+  bad := 0;
+  data: [PACK_CHECK_FILE] u8; again: [PACK_CHECK_FILE] u8;
+  for i: 0..<args_count(a[..]) {
+    path := args_at(a[..], i);
+    n := fs_read(path, data[..]);
+    if n < 0 { print("FAIL %: can't read it (missing, or over % bytes)\n", path, PACK_CHECK_FILE); bad += 1; continue; }
+    p := cast(string) data[0..<n];
+    r: [1] PackRead;
+    if !pack_read(p, r[..]) { print("FAIL %: refused: % (entry %)\n", path, r[0].why, r[0].entry); bad += 1; continue; }
+    print("%: % bytes of a %-byte budget, % entries, % sources\n", path, r[0].bytes, r[0].budget, r[0].count, r[0].sources);
+    s: [PACK_MAX] PackSource;
+    for k: 0..<r[0].count {
+      e := r[0].entries[k];
+      print("  % % % licence %, % bytes at %\n", k, PACK_KINDS[e.kind], e.name, e.licence, e.n, e.at);
+      s[k] = PackSource.{kind = e.kind, licence = e.licence, name = e.name, data = pack_bytes(p, r[..], k)};
+    }
+    hex: [64] u8; ok := asset_hex(asset_id(p), hex[..]);
+    print("  sha256 %\n", cast(string) hex[..]);
+    w := pack_write(s[0..<r[0].count], r[0].budget, again[..]);
+    same := w == n && cast(string) again[0..<w] == p;
+    print("  written again from what was read: %\n", ifx same then "the same bytes" else "DIFFERENT");
+    reg: [1] AssetRegistry; reg[0] = asset_registry(r[0].budget);
+    took := pack_admit(reg[..], p, r[..]);
+    print("  admitted under its budget: %, % assets, % bytes\n", took == ASSET_OK, reg[0].held, reg[0].used);
+    if !same || took != ASSET_OK || !ok { bad += 1; }
+  }
+  return ifx bad == 0 then 0 else 1;
+}
