@@ -1716,9 +1716,9 @@ flier :: () -> World { w: World; w.flight = flight_profile_lookup("fairy-forest"
 // a beat held into a climb, a beat and a longer climb, a dive and a glide to the ground.
 FLY_WINDOWS :: 18;
 fly_controls :: (p: Player, k: int) -> Player {
-  jump := k == 1 || k == 2 || k == 5 || k == 7 || k == 8;
+  held_up := k == 1 || k == 2 || k == 5 || k == 7 || k == 8;
   dive := k == 10 || k == 11;
-  return walk_fly_input(p, 0, ifx k < 14 then 1.0f32 else 0, 0, 0, false, jump, 0, true, dive);
+  return walk_fly_input(p, 0, ifx k < 14 then 1.0f32 else 0, 0, 0, false, held_up, 0, true, dive);
 }
 // The step a window's controls start on: floor(k * 64 / 6 + 1 / 2).
 fly_window_step :: (k: int) -> int { return (64 * k + 3) / 6; }
@@ -1856,9 +1856,9 @@ fly_uneven :: (f: int) -> f32 {
   a := walk_place(0, 0, 0, 0); b := a;
   for i: 0..<200 {
     jump := i == 5 || i == 30 || i == 31;
-    before := a;
-    a = walk_fly_input(before, 0, 1, 0, 0, false, jump, 0, false, false);
-    #assert walker_same(a, walk_input(before, 0, 1, 0, 0, false, jump, 0, 0));
+    was := a;
+    a = walk_fly_input(was, 0, 1, 0, 0, false, jump, 0, false, false);
+    #assert walker_same(a, walk_input(was, 0, 1, 0, 0, false, jump, 0, 0));
     b = walk_fly_input(b, 0, 1, 0, 0, false, jump, ifx i == 40 then 1 else 0, true, true);
     a = step_once(w, a, STEP); b = step_once(w, b, STEP);
     if i < 40 { #assert walker_same(a, b) && b.beats == 0 && !b.diving; }
