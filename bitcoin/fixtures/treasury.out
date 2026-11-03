@@ -1,0 +1,56 @@
+The keys
+agent: 034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa
+owner: 02466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27
+recovery: 023c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1
+hot: 032c0b7cf95324a07d05398b240174dc0c2be444d96b159aa6c7f7b1e668680991
+The P2WSH treasury, recovery after 4320 blocks
+witness script: 147 bytes
+script: 5221034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa2102466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f2721023c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b153ae736421023c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1ad02e010b268
+address: tb1qafc4p45rnqqvqv4qk5ljhqff8s0hdf32khhdrcm5nhy3fwr0zh9s85qry4
+The Taproot treasury
+MuSig2 internal key (agent, owner): fc23182b2ee6d25438f148c2836a5ca041b4caca3d99202294ae89c790332fb3
+leaf multi_a(2,A,O,R): 204f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aaac20466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27ba203c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1ba529c
+leaf and_v(v:pk(R),older(4320)): 203c72addb4fdf09af94f0c94d7fe92a386a7e70cf8a1d85916386bb2535c7b1b1ad02e010b2
+root: 2a00640980afc9ad8f96c60e669446c1bdd6c15d3ea88a22209059fb494b1a56
+output key: a2b9a50d8d9ee9a1e1be2f79e1e1814666db33d6e6baa18fc78a4379e33e5d25
+address: tb1p52u62rvdnm56rcd79au7rcvpgendkv7ku6a2rr783fphnce7t5jshn59j9
+The hot wallet
+address: tb1py6453jm8063t35dhf6yddhqnf65hel4aryj9sz673xkkqpy73u9syqkqtg
+A refill through PSBT
+hot balance 3000, ceiling 25000, fee cap 1000
+inputs 100000, refill 20000, change 79500, fee 500: ok
+the agent signs: ok
+the owner signs: ok
+final: true
+  txid: 2d640ed3f62d34675dcb16b38579c84d0dc3ffcfc546dc4323b4858cc7ba1ad9
+  witness items: 4
+  script: OK
+What the agent refuses
+refill 30,000: over the ceiling
+a payment to another address: payment
+a fee of 5,000: fee
+a coin of the hot wallet: foreign input
+change only: no refill
+The recovery path
+sequence 4320: the recovery key signs: ok
+final: true
+  txid: 608fa64c609e651b2b6f916e7a68fb676c94f3c8cd8b26c4a86e56c6d61b259e
+  witness items: 5
+  script: OK
+sequence 4319: the recovery key signs: ok
+final: true
+  txid: ce64de2065c4b61620e7911fc92cc3abbda244ab8f8856f893b187300f79a2d4
+  witness items: 5
+  script: UNSATISFIED_LOCKTIME
+the agent's signature alone: final false
+The Taproot key path, MuSig2
+sighash: 7f31d10c762b3c12d5dae03ed1173f460462d4bd40c3fa28320dbf4821b32f4c
+signature: 43b50bfcaa8d830d1eefcdb700b9c8a0e3f1fb4b0f16aad276cf4f498681f12dc604ad0e2a2b3f2016b0ca77e69434b427f510168b1f6f2c70ed12c71542d945
+valid under the output key: true
+The Taproot script path, owner and recovery
+leaf sighash: ebc706ec8393a8064d4f6e7ba8a8f95a2d2eb6c4e0d47ac0518373597d9df159
+owner's signature valid: true, recovery's: true
+control block: c1fc23182b2ee6d25438f148c2836a5ca041b4caca3d99202294ae89c790332fb34ebaffe97ce52ce32d2f192a7d0734af6725deb1b1b75a7e905a0163e8e9e678
+the leaf is in the output: true
+witness: recovery's signature, owner's, an empty item for the agent, the leaf, the control block
+the recovery leaf is in the output: true

@@ -1,0 +1,66 @@
+// book:begin check
+#load "../treasury.coax";
+
+// The keys of the library's checks: agent, owner, recovery, hot.
+pub_of :: (k: int, key: [] u8, pub: [] u8) {
+  #assert psbt_hex(KEYS[k], key).count == 32 && bip32_public(key, pub);
+}
+// The P2WSH treasury with a given delay, its scriptPubKey and the hot
+// wallet's.
+treasury_with :: (delay: int, script: [] u8, wsh: [] u8, hot: [] u8) -> int {
+  k: [32] u8; a: [33] u8; o: [33] u8; r: [33] u8; h: [33] u8;
+  pub_of(0, k[..], a[..]); pub_of(1, k[..], o[..]); pub_of(2, k[..], r[..]); pub_of(3, k[..], h[..]);
+  n := treasury_wsh_script_vartime(a[..], o[..], r[..], delay, script);
+  #assert n > 0 && treasury_wsh_spk_vartime(script[0..<n], wsh) == 34 && p2tr_script_vartime(h[1..<33], hot) == 34;
+  return n;
+}
+
+#forall "any two of the three keys spend the treasury at once" pair: 0..<3 #steps 8000000000 {
+  s: [TY_WSH_MAX] u8; wsh: [34] u8; hot: [34] u8; k: [32] u8; p: [33] u8; aux: [32] u8;
+  m: [1] PsbtMaps; w: [1] PsbtSign;
+  n := treasury_with(DELAY, s[..], wsh[..], hot[..]);
+  tyt_psbt(wsh[..], s[0..<n], 0xfffffffd, hot[..], 99000, wsh[0..<0], 0, m[..]);
+  first := ifx pair == 2 then 1 else 0;
+  second := ifx pair == 0 then 1 else 2;
+  pub_of(first, k[..], p[..]);
+  #assert psbt_sign_vartime(m[..], 0, k[..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+  pub_of(second, k[..], p[..]);
+  #assert psbt_sign_vartime(m[..], 0, k[..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+  #assert treasury_finalize_vartime(m[..], s[0..<n], w[..]);
+  #assert tyt_verify(m[..], wsh[..], w[..]) == SCRIPT_ERR_OK;
+}
+#forall "the recovery key alone spends at the delay and not a block before, for small and large delays" i: 0..<4 #steps 12000000000 {
+  s: [TY_WSH_MAX] u8; wsh: [34] u8; hot: [34] u8; k: [32] u8; p: [33] u8; aux: [32] u8;
+  m: [1] PsbtMaps; w: [1] PsbtSign;
+  delay := ifx i == 0 then 1 else ifx i == 1 then 16 else ifx i == 2 then 17 else 0xffff;
+  n := treasury_with(delay, s[..], wsh[..], hot[..]);
+  pub_of(2, k[..], p[..]);
+  for early: 0..<2 {
+    tyt_psbt(wsh[..], s[0..<n], delay - early, hot[..], 99000, wsh[0..<0], 0, m[..]);
+    #assert psbt_sign_vartime(m[..], 0, k[..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+    #assert treasury_finalize_vartime(m[..], s[0..<n], w[..]);
+    want := ifx early == 0 then SCRIPT_ERR_OK else SCRIPT_ERR_UNSATISFIED_LOCKTIME;
+    #assert tyt_verify(m[..], wsh[..], w[..]) == want;
+  }
+}
+#forall "the agent signs a refill exactly when the hot wallet stays at or under its ceiling" refill: 0..<6 #steps 4000000000 {
+  s: [TY_WSH_MAX] u8; wsh: [34] u8; hot: [34] u8; m: [1] PsbtMaps; w: [1] PsbtSign;
+  n := treasury_with(DELAY, s[..], wsh[..], hot[..]);
+  amount := 20000 + 1000 * refill;                    // 20,000 to 25,000
+  tyt_psbt(wsh[..], s[0..<n], 0xfffffffd, hot[..], amount, wsh[..], 99500 - amount, m[..]);
+  policy := TreasuryPolicy.{hot_balance = 3000, ceiling = 25000, fee_cap = 1000};
+  c := treasury_check_vartime(m[..], wsh[..], hot[..], policy, w[..]);
+  #assert c.fee == 500 && c.refill == amount;
+  #assert (c.code == TY_OK) == (3000 + amount <= 25000);
+  #assert c.code == TY_OK || c.code == TY_OVER_CEILING;
+}
+#test "the Taproot form doesn't depend on which of agent and owner comes first, except in the leaf" #steps 2000000000 {
+  k: [32] u8; a: [33] u8; o: [33] u8; r: [33] u8; t1: [1] TreasuryTr; t2: [1] TreasuryTr;
+  pub_of(0, k[..], a[..]); pub_of(1, k[..], o[..]); pub_of(2, k[..], r[..]);
+  #assert treasury_tr_vartime(a[..], o[..], r[..], DELAY, t1[..]) == TY_OK;
+  #assert treasury_tr_vartime(o[..], a[..], r[..], DELAY, t2[..]) == TY_OK;
+  for j: 0..<32 { #assert t1[0].internal[j] == t2[0].internal[j]; }
+  for j: 0..<66 { #assert t1[0].keys[j] == t2[0].keys[j]; }
+  #assert t1[0].multi[1] != t2[0].multi[1];          // multi_a lists its keys in order
+}
+// book:end check

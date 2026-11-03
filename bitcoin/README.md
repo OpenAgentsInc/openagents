@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-82 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+83 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -97,6 +97,11 @@ Chapter 121's [`oneseed.coax`](../coax/lib/bitcoin/oneseed.coax) takes an
 agent's NIP-06 Nostr key and its BIP-84 and BIP-86 wallets from one BIP-39
 phrase, and checks a restore against a card of the `npub` and the wallets'
 descriptors.
+Chapter 122's [`treasury.coax`](../coax/lib/bitcoin/treasury.coax) holds an
+agent's coins under a 2-of-3 of the agent, its owner and a recovery key,
+with the recovery key alone after a delay, as P2WSH and as Taproot with a
+MuSig2 key path. The agent signs a treasury PSBT only to refill its hot
+wallet under the owner's ceiling and fee cap.
 
 Lightning's code is in [`coax/lib/lightning/`](../coax/lib/lightning/).
 Chapter 104's [`bolt1.coax`](../coax/lib/lightning/bolt1.coax) reads and

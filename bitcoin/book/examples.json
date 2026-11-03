@@ -904,6 +904,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/treasury.coax",
+      "chapter": "bitcoin/book/ch122-agent-treasuries.md",
+      "stdout": "bitcoin/fixtures/treasury.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 600
     }
   ]
 }

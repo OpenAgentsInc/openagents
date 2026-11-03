@@ -740,6 +740,11 @@ above the co-signer's `delay_above_sat` until `delay_seconds` after receipt
 and cancels it on a primary refusal; `ky_topup` refuses a `hot-topup` that
 would take the hot Lightning balance over `hot_ceiling_msat`.
 
+[Bitcoin chapter 122](../../bitcoin/book/ch122-agent-treasuries.md)
+builds the on-chain side of such a treasury: a 2-of-3 with a recovery
+path as P2WSH and as Taproot with a MuSig2 key path, and the refill
+rule an agent applies to a treasury PSBT before it signs.
+
 ## Signatures
 
 A signer that accepted a request still has to sign. A `wsh` input is a

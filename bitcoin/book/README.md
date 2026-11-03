@@ -43,13 +43,13 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 82 are implemented and 42 are planned. The 82 implemented
+Of the 124 chapters, 83 are implemented and 41 are planned. The 83 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
 39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66,
 67, 68, 69, 70, 71, 73, 74, 81, 94, 95, 96, 100, 101, 102, 103, 104, 105, 106,
-107, 108, 109, 111, 112, 114, 115 and 121 are new.
+107, 108, 109, 111, 112, 114, 115, 121 and 122 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -352,6 +352,6 @@ Where OpenAgents uses the stack: our node on Pylons and Verse OS, one seed, agen
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [121. One seed for Nostr and Bitcoin](ch121-one-seed-for-nostr-and-bitcoin.md) | Runnable: native C | One BIP-39 phrase gives the NIP-06 key at `m/44'/1237'/a'/0/0` and BIP-84 and BIP-86 wallets, recorded on a card of the `npub` and two descriptors with key origins, `<0;1>/*` and checksums. NIP-06's two vectors, BIP-39's vector 0 with `TREZOR`, BIP-86's account `xpub` and the six published BIP-84 and BIP-86 addresses come from the card. A restore with the same words gives the same card; a wrong passphrase, account or network gives another, and a wrong checksum refuses the words. A raw signature by the Nostr key verifies under the Nostr key and under no wallet key. Checked against a Python implementation natively. |
-| 122. Agent treasuries | Planned | A 2-of-3 treasury spend is signed by independent key agents and broadcast on signet, and an independent wallet tool recovers the coins. |
+| [122. Agent treasuries](ch122-agent-treasuries.md) | Runnable: native C | An agent's treasury under a 2-of-3 of the agent, the owner and a recovery key, with the recovery key alone after a BIP-68 delay, as a P2WSH script and as a Taproot output with a MuSig2 key path, a `multi_a` leaf and a recovery leaf. The agent's limit is a separate hot wallet; it signs a treasury PSBT only for a refill under the ceiling and the fee cap, and refuses payments, overfills, high fees and foreign coins. A refill by agent and owner, the recovery path at the delay and one block before, and every pair of keys run through chapter 36's interpreter. Checked against a Python implementation natively. Broadcast on signet and recovery with an independent wallet wait for the node (chapters 80, 93, 99 and 118). |
 | 123. Paying for requests | Planned | A request pays a BOLT 11 invoice, and the server releases its response only after settlement. |
 | 124. Our node on Pylons and Verse OS | Planned | A Pylon and a Verse OS machine run the node from its Nix module and sync it, and OpenAgents' on-chain checks query it instead of a third-party chain source. |

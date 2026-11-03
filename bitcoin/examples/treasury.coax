@@ -1,0 +1,222 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/treasury.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, b: [] u8) {
+  digits := "0123456789abcdef";
+  print("%: ", label);
+  for x: b { print("%", digits[cast(int) (x >> 4)..<cast(int) (x >> 4) + 1]); print("%", digits[cast(int) (x & 15)..<cast(int) (x & 15) + 1]); }
+  print("\n");
+}
+// Print the address of a scriptPubKey on the test networks (signet's tb1).
+address :: (spk: [] u8) {
+  out: [100] u8;
+  n := address_encode_vartime(SW_TESTNET, spk, out[..]);
+  #assert n > 0;
+  print("address: %\n", cast(string) out[0..<n]);
+}
+// The four private keys: the agent's, the owner's, the recovery key and
+// the agent's hot wallet key. A real treasury takes each from its own seed
+// (chapter 121); these are chapter 94's style of fixed test keys.
+KEYS :: [4] string.["1111111111111111111111111111111111111111111111111111111111111111",
+  "2222222222222222222222222222222222222222222222222222222222222222",
+  "3333333333333333333333333333333333333333333333333333333333333333",
+  "4444444444444444444444444444444444444444444444444444444444444444"];
+NAMES :: [4] string.["agent", "owner", "recovery", "hot"];
+DELAY :: 4320;                // about 30 days of blocks
+FUNDING :: 100000;            // the treasury coin, in satoshis
+
+// An unsigned transaction: version, one input (txid bytes all equal to
+// prev, output 0, sequence), and outputs of values[k] to spks[k].
+unsigned :: (version: int, prev: int, sequence: int, values: [] int, spks: [] [34] u8, lengths: [] int, out: [] u8) -> [] u8 {
+  out[0] = cast(u8) version; out[1] = 0; out[2] = 0; out[3] = 0;
+  at := tx_compact_write_vartime(out, 4, 1);
+  for k: 0..<32 { out[at + k] = cast(u8) prev; }
+  for k: 0..<4 { out[at + 32 + k] = 0; out[at + 37 + k] = cast(u8) ((sequence >> (8 * k)) & 255); }
+  out[at + 36] = 0; at += 41;
+  at = tx_compact_write_vartime(out, at, values.count);
+  for i: 0..<values.count {
+    for k: 0..<8 { out[at + k] = cast(u8) ((values[i] >> (8 * k)) & 255); }
+    at = tx_compact_write_vartime(out, at + 8, lengths[i]);
+    at = tx_put(out, at, spks[i][0..<lengths[i]]);
+  }
+  for k: 0..<4 { out[at + k] = 0; }
+  return out[0..<at + 4];
+}
+// A PSBT of a transaction spending one coin of amount locked to spk, with
+// the witness script when there is one.
+psbt_of :: (tx: [] u8, amount: int, spk: [] u8, script: [] u8, m: [] PsbtMaps) {
+  #assert psbt_create_vartime(tx, m);
+  u: [64] u8;
+  for k: 0..<8 { u[k] = cast(u8) ((amount >> (8 * k)) & 255); }
+  u[8] = cast(u8) spk.count; for k: 0..<spk.count { u[9 + k] = spk[k]; }
+  #assert psbt_set1_vartime(m, PSBT_INPUT, 0, 0x01, u[0..<9 + spk.count]);
+  if script.count > 0 { #assert psbt_set1_vartime(m, PSBT_INPUT, 0, 0x05, script); }
+}
+// The final transaction of a PSBT, its txid, and input 0 run through
+// chapter 36's interpreter with the consensus and standardness flags.
+verify :: (m: [] PsbtMaps, amount: int, spk: [] u8, w: [] PsbtSign) -> int {
+  net: [4096] u8; ins: [4] TxIn; outs: [4] TxOut; items: [16] TxItem; id: [32] u8; rev: [32] u8;
+  size := psbt_extract_vartime(m, net[..], w);
+  if size < 0 { return -1; }
+  b := net[0..<size];
+  t := tx_read_vartime(b, true, ins[..], outs[..], items[..]);
+  #assert tx_txid_vartime(b, t, id[..]);
+  for k: 0..<32 { rev[k] = id[31 - k]; }
+  show("  txid", rev[..]);
+  print("  witness items: %\n", ins[0].count);
+  sw: [1] ScriptWork;
+  flags := SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S | SCRIPT_VERIFY_STRICTENC
+    | SCRIPT_VERIFY_NULLDUMMY | SCRIPT_VERIFY_CLEANSTACK | SCRIPT_VERIFY_NULLFAIL | SCRIPT_VERIFY_WITNESS_PUBKEYTYPE
+    | SCRIPT_VERIFY_MINIMALIF | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
+  sp := ScriptSpend.{b=b, t=t, ins=ins[..], outs=outs[..], items=items[..], index=0, amount=amount, spk=spk};
+  return script_verify_vartime(sp, flags, sw[..]);
+}
+// A BIP-340 signature of 32 bytes by a key (a script-path key signs as
+// itself), with zero aux.
+sign340 :: (key: [] u8, msg: [] u8, sig: [] u8) {
+  w: [1] SignWork; aux: [32] u8; status := 0;
+  for k: 0..<6 { status = schnorr_sign_step(key, aux[..], msg, w[..], sig, false); }
+  #assert status == SIGN_DONE;
+}
+
+main :: () {
+  keys: [4][32] u8; pubs: [4][33] u8;
+  print("The keys\n");
+  for k: 0..<4 {
+    #assert psbt_hex(KEYS[k], keys[k][..]).count == 32 && bip32_public(keys[k][..], pubs[k][..]);
+    show(NAMES[k], pubs[k][..]);
+  }
+
+  // The P2WSH form.
+  print("The P2WSH treasury, recovery after % blocks\n", DELAY);
+  script: [TY_WSH_MAX] u8; spks: [3][34] u8; lengths: [3] int;
+  n := treasury_wsh_script_vartime(pubs[0][..], pubs[1][..], pubs[2][..], DELAY, script[..]);
+  ws := script[0..<n];
+  print("witness script: % bytes\n", n);
+  show("script", ws);
+  wsh: [34] u8;
+  #assert treasury_wsh_spk_vartime(ws, wsh[..]) == 34;
+  address(wsh[..]);
+
+  // The Taproot form.
+  print("The Taproot treasury\n");
+  tr: [1] TreasuryTr;
+  #assert treasury_tr_vartime(pubs[0][..], pubs[1][..], pubs[2][..], DELAY, tr[..]) == TY_OK;
+  show("MuSig2 internal key (agent, owner)", tr[0].internal[..]);
+  show("leaf multi_a(2,A,O,R)", tr[0].multi[0..<tr[0].multi_n]);
+  show("leaf and_v(v:pk(R),older(4320))", tr[0].late[0..<tr[0].late_n]);
+  show("root", tr[0].tree[0].root[..]);
+  show("output key", tr[0].output[..]);
+  address(tr[0].spk[..]);
+
+  // The hot wallet: the agent's own BIP-86 key, which it spends alone.
+  print("The hot wallet\n");
+  hot: [34] u8;
+  #assert p2tr_script_vartime(pubs[3][1..<33], hot[..]) == 34;
+  address(hot[..]);
+
+  // A refill: 20,000 sat to the hot wallet, 79,500 back to the treasury.
+  print("A refill through PSBT\n");
+  policy := TreasuryPolicy.{hot_balance = 3000, ceiling = 25000, fee_cap = 1000};
+  print("hot balance %, ceiling %, fee cap %\n", policy.hot_balance, policy.ceiling, policy.fee_cap);
+  w: [1] PsbtSign; m: [1] PsbtMaps; txb: [512] u8;
+  spks[0] = hot; spks[1] = wsh; lengths[0] = 34; lengths[1] = 34;
+  values := [2] int.[20000, 79500];
+  tx := unsigned(2, 0xa1, 0xfffffffd, values[..], spks[0..<2], lengths[0..<2], txb[..]);
+  psbt_of(tx, FUNDING, wsh[..], ws, m[..]);
+  c := treasury_check_vartime(m[..], wsh[..], hot[..], policy, w[..]);
+  print("inputs %, refill %, change %, fee %: %\n", c.total, c.refill, c.change, c.fee, TY_REASONS[-c.code]);
+  print("the agent signs: %\n", TY_REASONS[-treasury_agent_sign_vartime(m[..], keys[0][..], wsh[..], hot[..], policy, w[..])]);
+  aux: [32] u8;
+  print("the owner signs: %\n", PSBT_SIGN_REASONS[psbt_sign_vartime(m[..], 0, keys[1][..], aux[..], true, w[..])]);
+  print("final: %\n", treasury_finalize_vartime(m[..], ws, w[..]));
+  print("  script: %\n", SCRIPT_ERR_NAMES[verify(m[..], FUNDING, wsh[..], w[..])]);
+
+  // What the agent refuses to sign.
+  print("What the agent refuses\n");
+  stranger: [34] u8;
+  #assert p2wpkh_script_vartime(pubs[1][..], stranger[..]) == 22;
+  cases := [5] string.["refill 30,000", "a payment to another address", "a fee of 5,000", "a coin of the hot wallet", "change only"];
+  for k: 0..<5 {
+    v := [2] int.[20000, 79500];
+    spks[0] = hot; spks[1] = wsh; lengths[0] = 34; lengths[1] = 34;
+    in_spk := wsh;
+    if k == 0 { v[0] = 30000; v[1] = 69500; }
+    if k == 1 { spks[0] = stranger; lengths[0] = 22; }
+    if k == 2 { v[1] = 75000; }
+    if k == 3 { in_spk = hot; }
+    if k == 4 { v[0] = 99500; spks[0] = wsh; v[1] = 0; }
+    t := unsigned(2, 0xa1, 0xfffffffd, v[0..<ifx k == 4 then 1 else 2], spks[0..<2], lengths[0..<2], txb[..]);
+    psbt_of(t, FUNDING, in_spk[..], ws, m[..]);
+    print("%: %\n", cases[k], TY_REASONS[-treasury_agent_sign_vartime(m[..], keys[0][..], wsh[..], hot[..], policy, w[..])]);
+  }
+
+  // The recovery path: the recovery key alone, once the coin is DELAY
+  // blocks old. BIP-68 reads the input's sequence as that relative age.
+  print("The recovery path\n");
+  rec: [34] u8;
+  lengths[0] = p2wpkh_script_vartime(pubs[2][..], rec[..]);
+  spks[0] = rec;
+  one := [1] int.[99000];
+  for k: 0..<2 {
+    sequence := DELAY - k;
+    t := unsigned(2, 0xa1, sequence, one[..], spks[0..<1], lengths[0..<1], txb[..]);
+    psbt_of(t, FUNDING, wsh[..], ws, m[..]);
+    print("sequence %: the recovery key signs: %\n", sequence, PSBT_SIGN_REASONS[psbt_sign_vartime(m[..], 0, keys[2][..], aux[..], true, w[..])]);
+    print("final: %\n", treasury_finalize_vartime(m[..], ws, w[..]));
+    print("  script: %\n", SCRIPT_ERR_NAMES[verify(m[..], FUNDING, wsh[..], w[..])]);
+  }
+  t := unsigned(2, 0xa1, DELAY, one[..], spks[0..<1], lengths[0..<1], txb[..]);
+  psbt_of(t, FUNDING, wsh[..], ws, m[..]);
+  #assert psbt_sign_vartime(m[..], 0, keys[0][..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+  print("the agent's signature alone: final %\n", treasury_finalize_vartime(m[..], ws, w[..]));
+
+  // The Taproot key path: the agent and the owner sign one BIP-340
+  // signature with MuSig2, for the output key tweaked by the tree.
+  print("The Taproot key path, MuSig2\n");
+  spks[0] = hot; spks[1] = tr[0].spk; lengths[0] = 34; lengths[1] = 34;
+  t = unsigned(2, 0xb2, 0xfffffffd, values[..], spks[0..<2], lengths[0..<2], txb[..]);
+  tp := bt_tx_read(t);
+  amounts := [1] int.[FUNDING]; spent: [1] BtScript; sighash: [32] u8;
+  spent[0].n = 34; for k: 0..<34 { spent[0].b[k] = tr[0].spk[k]; }
+  #assert bt_sighash_taproot(t, tp, 0, amounts[..], spent[..], BT_DEFAULT, sighash[..]);
+  show("sighash", sighash[..]);
+  nw: [1] MsNonceWork; sw: [1] MsSignWork; sec: [194] u8; pub: [132] u8; agg: [66] u8; psigs: [64] u8; sig: [64] u8;
+  sk: [64] u8; pk: [66] u8; rand: [32] u8; xonly := [1] bool.[true];
+  for i: 0..<2 {
+    // KeySort put the signers in this order.
+    who := ifx ps_equal(tr[0].keys[33 * i..<33 * i + 33], pubs[0][..]) then 0 else 1;
+    for j: 0..<32 { sk[32 * i + j] = keys[who][j]; rand[j] = cast(u8) (0xc0 + i); }
+    for j: 0..<33 { pk[33 * i + j] = pubs[who][j]; }
+    #assert ms_nonce_gen(rand[..], sk[32 * i..<32 * i + 32], pk[33 * i..<33 * i + 33], tr[0].output[..], sighash[..], true, rand[0..<0],
+      sec[97 * i..<97 * i + 97], pub[66 * i..<66 * i + 66], nw[..]) == MS_OK;
+  }
+  #assert ms_nonce_agg_vartime(pub[..], agg[..]).code == MS_OK;
+  for i: 0..<2 {
+    #assert ms_sign(sec[97 * i..<97 * i + 97], sk[32 * i..<32 * i + 32], agg[..], tr[0].keys[..], tr[0].tweak[..], xonly[..], sighash[..],
+      psigs[32 * i..<32 * i + 32], sw[..]).code == MS_OK;
+  }
+  #assert ms_partial_agg_vartime(psigs[..], ms_session_vartime(agg[..], tr[0].keys[..], tr[0].tweak[..], xonly[..], sighash[..]), sig[..]).code == MS_OK;
+  show("signature", sig[..]);
+  print("valid under the output key: %\n", taproot_key_path_verify_vartime(tr[0].output[..], sig[..], sighash[..]));
+
+  // The script path: the owner and the recovery key sign the multi_a leaf
+  // when the agent is gone.
+  print("The Taproot script path, owner and recovery\n");
+  leaf: [32] u8; leafsig: [32] u8; s1: [64] u8; s2: [64] u8; cb: [65] u8; xo: [32] u8; xr: [32] u8;
+  #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, tr[0].multi[0..<tr[0].multi_n], leaf[..]) == TR_OK;
+  #assert bt_sighash_taproot_ext(t, tp, 0, amounts[..], spent[..], BT_DEFAULT, t[0..<0], leaf[..], BT_NO_CODESEP, leafsig[..]);
+  show("leaf sighash", leafsig[..]);
+  sign340(keys[1][..], leafsig[..], s1[..]); sign340(keys[2][..], leafsig[..], s2[..]);
+  for j: 0..<32 { xo[j] = pubs[1][1 + j]; xr[j] = pubs[2][1 + j]; }
+  print("owner's signature valid: %, recovery's: %\n", schnorr_verify_vartime(leafsig[..], xo[..], s1[..]), schnorr_verify_vartime(leafsig[..], xr[..], s2[..]));
+  #assert taproot_control_block_vartime(tr[0].tree[..], 0, tr[0].internal[..], TR_LEAF_TAPSCRIPT, cb[..]) == 65;
+  show("control block", cb[..]);
+  print("the leaf is in the output: %\n", taproot_commitment_vartime(cb[..], tr[0].multi[0..<tr[0].multi_n], tr[0].output[..]) == TR_OK);
+  print("witness: recovery's signature, owner's, an empty item for the agent, the leaf, the control block\n");
+  #assert taproot_control_block_vartime(tr[0].tree[..], 1, tr[0].internal[..], TR_LEAF_TAPSCRIPT, cb[..]) == 65;
+  print("the recovery leaf is in the output: %\n", taproot_commitment_vartime(cb[..], tr[0].late[0..<tr[0].late_n], tr[0].output[..]) == TR_OK);
+}
+// book:end example

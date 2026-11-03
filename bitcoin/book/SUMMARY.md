@@ -129,3 +129,4 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **XIX. Bitcoin in OpenAgents**
 
 - [121. One seed for Nostr and Bitcoin](ch121-one-seed-for-nostr-and-bitcoin.md) — implemented
+- [122. Agent treasuries](ch122-agent-treasuries.md) — implemented

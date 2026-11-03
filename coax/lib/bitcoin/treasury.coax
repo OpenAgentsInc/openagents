@@ -1,0 +1,400 @@
+// Agent treasuries (Bitcoin chapter 122): an agent's coins under a 2-of-3
+// of the agent, its owner and a recovery key, with the recovery key alone
+// after a delay, in two forms:
+//
+// - P2WSH: or_d(multi(2,A,O,R),and_v(v:pk(R),older(d))), written out as
+//   script (chapter 36's interpreter runs it);
+// - Taproot: the key path is the MuSig2 key of the agent and the owner
+//   (chapter 101), and two leaves hold multi_a(2,A,O,R) and
+//   and_v(v:pk(R),older(d)) (chapters 42 and 100).
+//
+// The agent's own spending money sits in a separate hot wallet (a BIP-86
+// key of its seed, chapter 121): the limit on what the agent spends alone
+// is what that wallet holds. The treasury refills it, and the agent adds
+// its signature to a treasury PSBT (chapter 94) only for a refill that
+// keeps the hot wallet under its ceiling; every other spend needs the
+// owner and goes through the Nostr book's chapter 104 signer.
+//
+// - treasury_wsh_script_vartime, treasury_wsh_spk_vartime: the P2WSH form.
+// - treasury_tr_vartime: the Taproot form.
+// - treasury_check_vartime: what a treasury PSBT does, and whether it is
+//   a refill the agent may sign.
+// - treasury_agent_sign_vartime: that check, then chapter 94's signer.
+// - treasury_finalize_vartime: the witness of a P2WSH input from its
+//   partial signatures, by the primary path or the recovery path.
+//
+// Keys, scripts and PSBTs are public, so everything here runs in variable
+// time; private keys go only to chapter 94's signer and chapter 101's
+// MuSig2, which keep chapter 3's rules.
+#load "psbt.coax";
+#load "musig.coax";
+#authority;
+
+// book:begin codes
+TY_OK :: 0;
+TY_KEY :: -1;              // a key that isn't a valid 33-byte compressed public key
+TY_DELAY :: -2;            // a delay outside 1 to 65535 blocks: BIP-68's 16-bit block count
+TY_CAPACITY :: -3;         // a buffer that is too small, or a PSBT that doesn't parse
+TY_NO_UTXO :: -4;          // an input whose spent output the PSBT doesn't give
+TY_FOREIGN_INPUT :: -5;    // an input that isn't the treasury's
+TY_PAYMENT :: -6;          // an output to neither the hot wallet nor the treasury: a payment
+TY_OVER_CEILING :: -7;     // the hot wallet would hold more than its ceiling
+TY_FEE :: -8;              // outputs above the inputs, or a fee above the cap
+TY_NO_REFILL :: -9;        // nothing for the hot wallet
+TY_SIGN :: -10;            // chapter 94's signer refused
+TY_REASONS :: [11] string.["ok", "key", "delay", "capacity", "no UTXO", "foreign input", "payment",
+  "over the ceiling", "fee", "no refill", "signer refused"];
+TY_WSH_MAX :: 160;         // 148 bytes for a three-byte delay
+TY_LEAF_MAX :: 110;        // multi_a(2,A,O,R): 3 * 34 + 2
+// book:end codes
+
+// ---- the P2WSH form
+
+// book:begin wsh
+// A push of d as a script number: OP_1 to OP_16, or its minimal bytes.
+ty_number :: (d: int, out: [] u8, at: int) -> int {
+  if d >= 1 && d <= 16 { out[at] = cast(u8) (0x50 + d); return at + 1; }
+  n := script_num_write_vartime(d, out[at + 1..<at + 10]);
+  out[at] = cast(u8) n;
+  return at + 1 + n;
+}
+ty_key :: (k: [] u8, out: [] u8, at: int) -> int {
+  out[at] = 33;
+  for j: 0..<33 { out[at + 1 + j] = k[j]; }
+  return at + 34;
+}
+// or_d(multi(2,A,O,R),and_v(v:pk(R),older(delay))):
+//
+//   2 <A> <O> <R> 3 CHECKMULTISIG IFDUP NOTIF <R> CHECKSIGVERIFY <delay> CHECKSEQUENCEVERIFY ENDIF
+//
+// The primary path is any two of the three; IFDUP leaves its true result
+// as the script's. When the multisig fails, NOTIF runs the recovery path:
+// R's signature, and an input sequence of at least delay blocks (BIP-112).
+// Returns the script's length or a refusal.
+treasury_wsh_script_vartime :: (agent: [] u8, owner: [] u8, recovery: [] u8, delay: int, out: [] u8) -> int {
+  if !pr_compressed(agent) || !pr_compressed(owner) || !pr_compressed(recovery) { return TY_KEY; }
+  if delay < 1 || delay > 0xffff { return TY_DELAY; }
+  if out.count < TY_WSH_MAX { return TY_CAPACITY; }
+  out[0] = 0x52;                                            // OP_2
+  at := ty_key(recovery, out, ty_key(owner, out, ty_key(agent, out, 1)));
+  out[at] = 0x53; out[at + 1] = OP_CHECKMULTISIG; out[at + 2] = 0x73; out[at + 3] = 0x64;   // OP_3, IFDUP, NOTIF
+  at = ty_key(recovery, out, at + 4);
+  out[at] = OP_CHECKSIGVERIFY;
+  at = ty_number(delay, out, at + 1);
+  out[at] = OP_CHECKSEQUENCEVERIFY; out[at + 1] = 0x68;    // ENDIF
+  return at + 2;
+}
+// The P2WSH scriptPubKey of a witness script: OP_0 and its SHA-256.
+treasury_wsh_spk_vartime :: (script: [] u8, out: [] u8) -> int {
+  n := p2wsh_script_vartime(script, out);
+  return ifx n < 0 then TY_CAPACITY else n;
+}
+// book:end wsh
+
+// ---- the Taproot form
+
+// book:begin tr
+// The Taproot form of a treasury: the MuSig2 keys in KeySort order and
+// their aggregate (the internal key), the two leaves and their tree, and
+// the output key with its parity. tweak is the x-only tweak the MuSig2
+// signers apply for the key path: TapTweak(internal || root).
+TreasuryTr :: struct {
+  keys: [66] u8; internal: [32] u8;
+  multi: [TY_LEAF_MAX] u8; multi_n: int; late: [TY_LEAF_MAX] u8; late_n: int;
+  tree: [1] TrTree; output: [32] u8; parity: int; tweak: [32] u8; spk: [34] u8;
+}
+// multi_a(2,A,O,R): <A> CHECKSIG <O> CHECKSIGADD <R> CHECKSIGADD 2 NUMEQUAL,
+// BIP-387's leaf (chapter 100) with the keys' x coordinates in this order.
+// and_v(v:pk(R),older(delay)): <R> CHECKSIGVERIFY <delay> CHECKSEQUENCEVERIFY.
+treasury_tr_vartime :: (agent: [] u8, owner: [] u8, recovery: [] u8, delay: int, t: [] TreasuryTr) -> int {
+  if t.count != 1 { return TY_CAPACITY; }
+  if !pr_compressed(agent) || !pr_compressed(owner) || !pr_compressed(recovery) { return TY_KEY; }
+  if delay < 1 || delay > 0xffff { return TY_DELAY; }
+  fresh: TreasuryTr; t[0] = fresh;
+  for j: 0..<33 { t[0].keys[j] = agent[j]; t[0].keys[33 + j] = owner[j]; }
+  ms_key_sort_vartime(t[0].keys[..]);
+  k := ms_key_agg_vartime(t[0].keys[..]);
+  if k.code != MS_OK { return TY_KEY; }
+  ms_xbytes_vartime(k.q, t[0].internal[..]);
+  at := 0;
+  for i: 0..<3 {
+    key := ifx i == 0 then agent else ifx i == 1 then owner else recovery;
+    t[0].multi[at] = 32;
+    for j: 0..<32 { t[0].multi[at + 1 + j] = key[1 + j]; }
+    t[0].multi[at + 33] = ifx i == 0 then OP_CHECKSIG else 0xba;   // OP_CHECKSIGADD
+    at += 34;
+  }
+  t[0].multi[at] = 0x52; t[0].multi[at + 1] = 0x9c;              // 2 NUMEQUAL
+  t[0].multi_n = at + 2;
+  t[0].late[0] = 32;
+  for j: 0..<32 { t[0].late[1 + j] = recovery[1 + j]; }
+  t[0].late[33] = OP_CHECKSIGVERIFY;
+  n := ty_number(delay, t[0].late[..], 34);
+  t[0].late[n] = OP_CHECKSEQUENCEVERIFY; t[0].late_n = n + 1;
+  leaves: [2][32] u8; depths := [2] int.[1, 1];
+  #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, t[0].multi[0..<t[0].multi_n], leaves[0][..]) == TR_OK;
+  #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, t[0].late[0..<t[0].late_n], leaves[1][..]) == TR_OK;
+  #assert taproot_tree_vartime(depths[..], leaves[..], t[0].tree[..]) == TR_OK;
+  t[0].parity = taproot_output_key_vartime(t[0].internal[..], t[0].tree[0].root[..], t[0].output[..]);
+  #assert ms_taproot_tweak_vartime(t[0].keys[..], t[0].tree[0].root[..], t[0].tweak[..]) == MS_OK;
+  t[0].spk[0] = 0x51; t[0].spk[1] = 32;
+  for j: 0..<32 { t[0].spk[2 + j] = t[0].output[j]; }
+  return TY_OK;
+}
+// book:end tr
+
+// ---- the agent's policy
+
+// book:begin check
+// The hot wallet's state and the limits the owner set.
+TreasuryPolicy :: struct { hot_balance: int; ceiling: int; fee_cap: int; }
+// What a treasury PSBT does: its inputs' total, what it pays the hot
+// wallet, what it returns to the treasury, its fee, and the first rule
+// it breaks (TY_OK when it is a refill the agent may sign).
+TreasuryCheck :: struct { code: int; total: int; refill: int; change: int; fee: int; }
+// The check reads only the PSBT's unsigned transaction and the spent
+// outputs it carries, and compares scripts by their bytes: every input
+// must spend the treasury, and every output must pay the hot wallet or
+// the treasury. A spend that pays anyone else is a payment, which the
+// agent alone never approves.
+treasury_check_vartime :: (m: [] PsbtMaps, treasury: [] u8, hot: [] u8, p: TreasuryPolicy, w: [] PsbtSign) -> TreasuryCheck {
+  c: TreasuryCheck;
+  size := psbt_unsigned_vartime(m, w[0].tx[..]);
+  if size < 0 { c.code = TY_CAPACITY; return c; }
+  b := w[0].tx[0..<size];
+  w[0].t = tx_read_vartime(b, false, w[0].ins[..], w[0].outs[..], w[0].items[0..<0]);
+  for n: 0..<m[0].nin {
+    if !ps_spent(m, n, w) { c.code = TY_NO_UTXO; return c; }
+    if !ps_equal(w[0].spk[0..<w[0].spk_n], treasury) { c.code = TY_FOREIGN_INPUT; return c; }
+    c.total += w[0].amount;
+  }
+  paid := 0;
+  for i: 0..<m[0].nout {
+    o := w[0].outs[i];
+    value := tx_le_vartime(b, o.value, 8); s := b[o.script..<o.script + o.script_n];
+    if ps_equal(s, hot) { c.refill += value; }
+    else if ps_equal(s, treasury) { c.change += value; }
+    else { c.code = TY_PAYMENT; return c; }
+    paid += value;
+  }
+  c.fee = c.total - paid;
+  if c.refill == 0 { c.code = TY_NO_REFILL; }
+  else if c.fee < 0 || c.fee > p.fee_cap { c.code = TY_FEE; }
+  else if p.hot_balance + c.refill > p.ceiling { c.code = TY_OVER_CEILING; }
+  return c;
+}
+// The agent's signer: the check, then chapter 94's signer on every input
+// with the agent's key. Returns TY_OK or the rule that refused; a refusal
+// adds no signature.
+treasury_agent_sign_vartime :: (m: [] PsbtMaps, key: [] u8, treasury: [] u8, hot: [] u8, p: TreasuryPolicy, w: [] PsbtSign) -> int {
+  c := treasury_check_vartime(m, treasury, hot, p, w);
+  if c.code != TY_OK { return c.code; }
+  aux: [32] u8;
+  for n: 0..<m[0].nin { if psbt_sign_vartime(m, n, key, aux[..], true, w) != PSBT_SIGN_OK { return TY_SIGN; } }
+  return TY_OK;
+}
+// book:end check
+
+// ---- the finalizer
+
+// book:begin finalize
+// Chapter 94's finalizer knows multisig scripts; this one knows the
+// treasury's. For each input whose witness script is script: with two of
+// the three keys' partial signatures, the primary path's witness (an
+// empty dummy, the two signatures in key order, the script); with only
+// R's, the recovery path's (R's signature, three empty items that make
+// CHECKMULTISIG fail with NULLFAIL's empty signatures, the script). The
+// recovery path's delay is the script's to check, against the input's
+// sequence. True when every input is final.
+treasury_finalize_vartime :: (m: [] PsbtMaps, script: [] u8, w: [] PsbtSign) -> bool {
+  for n: 0..<m[0].nin {
+    if psbt_final_vartime(m, n) { continue; }
+    ws := psbt_find1_vartime(m, PSBT_INPUT, n, 0x05);
+    if ws < 0 || !ps_equal(pm_value(m, ws), script) { return false; }
+    sig: [3] int; got := 0;
+    for k: 0..<3 { sig[k] = pf_sig(m, n, script[2 + 34 * k..<35 + 34 * k]); if sig[k] >= 0 { got += 1; } }
+    wit: [PSBT_TX] u8; at := 0;
+    if got >= 2 {
+      at = tx_compact_write_vartime(wit[..], 0, 4);
+      at = tx_compact_write_vartime(wit[..], at, 0);
+      used := 0;
+      for k: 0..<3 {
+        if sig[k] < 0 || used == 2 { continue; }
+        v := pm_value(m, sig[k]);
+        at = tx_compact_write_vartime(wit[..], at, v.count); at = tx_put(wit[..], at, v); used += 1;
+      }
+    } else if sig[2] >= 0 {
+      at = tx_compact_write_vartime(wit[..], 0, 5);
+      v := pm_value(m, sig[2]);
+      at = tx_compact_write_vartime(wit[..], at, v.count); at = tx_put(wit[..], at, v);
+      for k: 0..<3 { at = tx_compact_write_vartime(wit[..], at, 0); }
+    } else { return false; }
+    at = tx_compact_write_vartime(wit[..], at, script.count); at = tx_put(wit[..], at, script);
+    if !psbt_set1_vartime(m, PSBT_INPUT, n, 0x08, wit[0..<at]) { return false; }
+  }
+  return true;
+}
+// book:end finalize
+
+// ---- checks
+// Four fixed keys: the agent, the owner, the recovery key and the hot
+// wallet's.
+TYT_KEYS :: [4] string.["1111111111111111111111111111111111111111111111111111111111111111",
+  "2222222222222222222222222222222222222222222222222222222222222222",
+  "3333333333333333333333333333333333333333333333333333333333333333",
+  "4444444444444444444444444444444444444444444444444444444444444444"];
+TYT_DELAY :: 4320;
+TYT_FUNDING :: 100000;
+tyt_key :: (k: int, key: [] u8, pub: [] u8) {
+  #assert psbt_hex(TYT_KEYS[k], key).count == 32 && bip32_public(key, pub);
+}
+// The treasury's script and scriptPubKey, and the hot wallet's.
+tyt_scripts :: (script: [] u8, wsh: [] u8, hot: [] u8) -> int {
+  k: [32] u8; a: [33] u8; o: [33] u8; r: [33] u8; h: [33] u8;
+  tyt_key(0, k[..], a[..]); tyt_key(1, k[..], o[..]); tyt_key(2, k[..], r[..]); tyt_key(3, k[..], h[..]);
+  n := treasury_wsh_script_vartime(a[..], o[..], r[..], TYT_DELAY, script);
+  #assert treasury_wsh_spk_vartime(script[0..<n], wsh) == 34 && p2tr_script_vartime(h[1..<33], hot) == 34;
+  return n;
+}
+// A PSBT of a version-2 transaction spending a coin of TYT_FUNDING locked
+// to spk, with sequence, to one or two outputs.
+tyt_psbt :: (spk: [] u8, script: [] u8, sequence: int, a: [] u8, va: int, b: [] u8, vb: int, m: [] PsbtMaps) {
+  tx: [256] u8;
+  tx[0] = 2; at := tx_compact_write_vartime(tx[..], 4, 1);
+  for k: 0..<32 { tx[at + k] = 0xa1; }
+  for k: 0..<4 { tx[at + 37 + k] = cast(u8) ((sequence >> (8 * k)) & 255); }
+  at = tx_compact_write_vartime(tx[..], at + 41, ifx b.count > 0 then 2 else 1);
+  for k: 0..<8 { tx[at + k] = cast(u8) ((va >> (8 * k)) & 255); }
+  at = tx_put(tx[..], tx_compact_write_vartime(tx[..], at + 8, a.count), a);
+  if b.count > 0 {
+    for k: 0..<8 { tx[at + k] = cast(u8) ((vb >> (8 * k)) & 255); }
+    at = tx_put(tx[..], tx_compact_write_vartime(tx[..], at + 8, b.count), b);
+  }
+  #assert psbt_create_vartime(tx[0..<at + 4], m);
+  u: [64] u8;
+  for k: 0..<8 { f := TYT_FUNDING; u[k] = cast(u8) ((f >> (8 * k)) & 255); }
+  u[8] = cast(u8) spk.count; for k: 0..<spk.count { u[9 + k] = spk[k]; }
+  #assert psbt_set1_vartime(m, PSBT_INPUT, 0, 0x01, u[0..<9 + spk.count]);
+  #assert psbt_set1_vartime(m, PSBT_INPUT, 0, 0x05, script);
+}
+// The extracted transaction's input 0 through chapter 36's interpreter.
+tyt_verify :: (m: [] PsbtMaps, spk: [] u8, w: [] PsbtSign) -> int {
+  net: [2048] u8; ins: [2] TxIn; outs: [2] TxOut; items: [8] TxItem;
+  size := psbt_extract_vartime(m, net[..], w);
+  if size < 0 { return -1; }
+  t := tx_read_vartime(net[0..<size], true, ins[..], outs[..], items[..]);
+  sw: [1] ScriptWork;
+  flags := SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S | SCRIPT_VERIFY_STRICTENC
+    | SCRIPT_VERIFY_NULLDUMMY | SCRIPT_VERIFY_CLEANSTACK | SCRIPT_VERIFY_NULLFAIL | SCRIPT_VERIFY_WITNESS_PUBKEYTYPE
+    | SCRIPT_VERIFY_MINIMALIF | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
+  sp := ScriptSpend.{b=net[0..<size], t=t, ins=ins[..], outs=outs[..], items=items[..], index=0, amount=TYT_FUNDING, spk=spk};
+  return script_verify_vartime(sp, flags, sw[..]);
+}
+
+#test "the P2WSH script: its opcodes, keys and delay, and the delay's minimal push" #steps 400000000 {
+  s: [TY_WSH_MAX] u8; wsh: [34] u8; hot: [34] u8; k: [32] u8; a: [33] u8; o: [33] u8; r: [33] u8;
+  n := tyt_scripts(s[..], wsh[..], hot[..]);
+  #assert n == 147 && s[0] == 0x52 && s[1] == 33 && s[103] == 0x53 && s[104] == 0xae && s[105] == 0x73 && s[106] == 0x64;
+  #assert s[107] == 33 && s[141] == 0xad && s[142] == 2 && s[143] == 0xe0 && s[144] == 0x10 && s[145] == 0xb2 && s[146] == 0x68;
+  #assert wsh[0] == 0 && wsh[1] == 32 && hot[0] == 0x51 && hot[1] == 32;
+  tyt_key(0, k[..], a[..]); tyt_key(1, k[..], o[..]); tyt_key(2, k[..], r[..]);
+  for j: 0..<33 { #assert s[2 + j] == a[j] && s[36 + j] == o[j] && s[70 + j] == r[j] && s[108 + j] == r[j]; }
+  #assert treasury_wsh_script_vartime(a[..], o[..], r[..], 16, s[..]) == 145 && s[142] == 0x60;
+  #assert treasury_wsh_script_vartime(a[..], o[..], r[..], 17, s[..]) == 146 && s[142] == 1 && s[143] == 17;
+  #assert treasury_wsh_script_vartime(a[..], o[..], r[..], 0xffff, s[..]) == 148 && s[142] == 3 && s[145] == 0;
+}
+#test "the Taproot form: both leaves, and the output key of the internal key and the root" #steps 1000000000 {
+  k: [32] u8; a: [33] u8; o: [33] u8; r: [33] u8; t: [1] TreasuryTr; q: [32] u8;
+  tyt_key(0, k[..], a[..]); tyt_key(1, k[..], o[..]); tyt_key(2, k[..], r[..]);
+  #assert treasury_tr_vartime(a[..], o[..], r[..], TYT_DELAY, t[..]) == TY_OK;
+  #assert t[0].multi_n == 104 && t[0].multi[33] == 0xac && t[0].multi[67] == 0xba && t[0].multi[101] == 0xba && t[0].multi[102] == 0x52 && t[0].multi[103] == 0x9c;
+  #assert t[0].late_n == 38 && t[0].late[33] == 0xad && t[0].late[34] == 2 && t[0].late[37] == 0xb2;
+  for j: 0..<32 { #assert t[0].multi[1 + j] == a[1 + j] && t[0].multi[35 + j] == o[1 + j] && t[0].multi[69 + j] == r[1 + j] && t[0].late[1 + j] == r[1 + j]; }
+  #assert t[0].spk[0] == 0x51 && t[0].spk[1] == 32;
+  #assert taproot_output_key_vartime(t[0].internal[..], t[0].tree[0].root[..], q[..]) == t[0].parity;
+  for j: 0..<32 { #assert q[j] == t[0].output[j] && t[0].spk[2 + j] == q[j]; }
+}
+#test "refusals: keys, delays and buffers" #steps 400000000 {
+  k: [32] u8; a: [33] u8; o: [33] u8; r: [33] u8; bad: [33] u8; s: [TY_WSH_MAX] u8; t: [2] TreasuryTr; out: [10] u8;
+  tyt_key(0, k[..], a[..]); tyt_key(1, k[..], o[..]); tyt_key(2, k[..], r[..]);
+  for j: 0..<33 { bad[j] = a[j]; }
+  bad[0] = 4;
+  #assert treasury_wsh_script_vartime(bad[..], o[..], r[..], 10, s[..]) == TY_KEY;
+  #assert treasury_wsh_script_vartime(a[..], o[0..<32], r[..], 10, s[..]) == TY_KEY;
+  #assert treasury_wsh_script_vartime(a[..], o[..], bad[..], 10, s[..]) == TY_KEY;
+  #assert treasury_wsh_script_vartime(a[..], o[..], r[..], 0, s[..]) == TY_DELAY;
+  #assert treasury_wsh_script_vartime(a[..], o[..], r[..], 0x10000, s[..]) == TY_DELAY;
+  #assert treasury_wsh_script_vartime(a[..], o[..], r[..], 10, s[0..<100]) == TY_CAPACITY;
+  #assert treasury_wsh_spk_vartime(s[0..<10], out[..]) == TY_CAPACITY;
+  #assert treasury_tr_vartime(a[..], o[..], r[..], 10, t[..]) == TY_CAPACITY;
+  #assert treasury_tr_vartime(a[..], bad[..], r[..], 10, t[0..<1]) == TY_KEY;
+  #assert treasury_tr_vartime(a[..], o[..], r[..], -1, t[0..<1]) == TY_DELAY;
+}
+#test "a refill: the agent's check passes, agent and owner sign, and the interpreter accepts the spend" #steps 4000000000 {
+  s: [TY_WSH_MAX] u8; wsh: [34] u8; hot: [34] u8; k: [32] u8; p: [33] u8; aux: [32] u8;
+  m: [1] PsbtMaps; w: [1] PsbtSign;
+  n := tyt_scripts(s[..], wsh[..], hot[..]);
+  tyt_psbt(wsh[..], s[0..<n], 0xfffffffd, hot[..], 20000, wsh[..], 79500, m[..]);
+  policy := TreasuryPolicy.{hot_balance = 3000, ceiling = 25000, fee_cap = 1000};
+  c := treasury_check_vartime(m[..], wsh[..], hot[..], policy, w[..]);
+  #assert c.code == TY_OK && c.total == 100000 && c.refill == 20000 && c.change == 79500 && c.fee == 500;
+  #assert !treasury_finalize_vartime(m[..], s[0..<n], w[..]);
+  tyt_key(0, k[..], p[..]);
+  #assert treasury_agent_sign_vartime(m[..], k[..], wsh[..], hot[..], policy, w[..]) == TY_OK;
+  #assert !treasury_finalize_vartime(m[..], s[0..<n], w[..]);
+  tyt_key(1, k[..], p[..]);
+  #assert psbt_sign_vartime(m[..], 0, k[..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+  #assert treasury_finalize_vartime(m[..], s[0..<n], w[..]);
+  #assert tyt_verify(m[..], wsh[..], w[..]) == SCRIPT_ERR_OK;
+}
+#test "the agent refuses a payment, an overfill, a high fee, another coin and no refill" #steps 4000000000 {
+  s: [TY_WSH_MAX] u8; wsh: [34] u8; hot: [34] u8; k: [32] u8; p: [33] u8; other: [34] u8;
+  m: [1] PsbtMaps; w: [1] PsbtSign;
+  n := tyt_scripts(s[..], wsh[..], hot[..]);
+  tyt_key(0, k[..], p[..]);
+  #assert p2wpkh_script_vartime(p[..], other[..]) == 22;
+  policy := TreasuryPolicy.{hot_balance = 3000, ceiling = 25000, fee_cap = 1000};
+  tyt_psbt(wsh[..], s[0..<n], 0xfffffffd, other[0..<22], 20000, wsh[..], 79500, m[..]);
+  #assert treasury_agent_sign_vartime(m[..], k[..], wsh[..], hot[..], policy, w[..]) == TY_PAYMENT;
+  tyt_psbt(wsh[..], s[0..<n], 0xfffffffd, hot[..], 30000, wsh[..], 69500, m[..]);
+  #assert treasury_agent_sign_vartime(m[..], k[..], wsh[..], hot[..], policy, w[..]) == TY_OVER_CEILING;
+  tyt_psbt(wsh[..], s[0..<n], 0xfffffffd, hot[..], 20000, wsh[..], 75000, m[..]);
+  #assert treasury_agent_sign_vartime(m[..], k[..], wsh[..], hot[..], policy, w[..]) == TY_FEE;
+  tyt_psbt(wsh[..], s[0..<n], 0xfffffffd, hot[..], 20000, wsh[..], 81000, m[..]);
+  #assert treasury_check_vartime(m[..], wsh[..], hot[..], policy, w[..]).code == TY_FEE;
+  tyt_psbt(hot[..], s[0..<n], 0xfffffffd, hot[..], 20000, wsh[..], 79500, m[..]);
+  #assert treasury_agent_sign_vartime(m[..], k[..], wsh[..], hot[..], policy, w[..]) == TY_FOREIGN_INPUT;
+  tyt_psbt(wsh[..], s[0..<n], 0xfffffffd, wsh[..], 99500, wsh[0..<0], 0, m[..]);
+  #assert treasury_agent_sign_vartime(m[..], k[..], wsh[..], hot[..], policy, w[..]) == TY_NO_REFILL;
+  #assert !treasury_finalize_vartime(m[..], s[0..<n], w[..]);
+}
+#test "the recovery key alone spends at the delay" #steps 4000000000 {
+  s: [TY_WSH_MAX] u8; wsh: [34] u8; hot: [34] u8; k: [32] u8; p: [33] u8; aux: [32] u8;
+  m: [1] PsbtMaps; w: [1] PsbtSign;
+  n := tyt_scripts(s[..], wsh[..], hot[..]);
+  tyt_key(2, k[..], p[..]);
+  tyt_psbt(wsh[..], s[0..<n], TYT_DELAY, hot[..], 99000, wsh[0..<0], 0, m[..]);
+  #assert psbt_sign_vartime(m[..], 0, k[..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+  #assert treasury_finalize_vartime(m[..], s[0..<n], w[..]);
+  #assert tyt_verify(m[..], wsh[..], w[..]) == SCRIPT_ERR_OK;
+}
+#test "the recovery key alone fails a block before the delay" #steps 4000000000 {
+  s: [TY_WSH_MAX] u8; wsh: [34] u8; hot: [34] u8; k: [32] u8; p: [33] u8; aux: [32] u8;
+  m: [1] PsbtMaps; w: [1] PsbtSign;
+  n := tyt_scripts(s[..], wsh[..], hot[..]);
+  tyt_key(2, k[..], p[..]);
+  tyt_psbt(wsh[..], s[0..<n], TYT_DELAY - 1, hot[..], 99000, wsh[0..<0], 0, m[..]);
+  #assert psbt_sign_vartime(m[..], 0, k[..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+  #assert treasury_finalize_vartime(m[..], s[0..<n], w[..]);
+  #assert tyt_verify(m[..], wsh[..], w[..]) == SCRIPT_ERR_UNSATISFIED_LOCKTIME;
+}
+#test "one signature that isn't the recovery key's finalizes nothing" #steps 4000000000 {
+  s: [TY_WSH_MAX] u8; wsh: [34] u8; hot: [34] u8; k: [32] u8; p: [33] u8; aux: [32] u8;
+  m: [1] PsbtMaps; w: [1] PsbtSign;
+  n := tyt_scripts(s[..], wsh[..], hot[..]);
+  tyt_key(1, k[..], p[..]);
+  tyt_psbt(wsh[..], s[0..<n], TYT_DELAY, hot[..], 99000, wsh[0..<0], 0, m[..]);
+  #assert psbt_sign_vartime(m[..], 0, k[..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+  #assert !treasury_finalize_vartime(m[..], s[0..<n], w[..]);
+  #assert tyt_verify(m[..], wsh[..], w[..]) == -1;
+}
