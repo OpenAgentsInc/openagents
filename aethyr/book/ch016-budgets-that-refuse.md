@@ -307,6 +307,22 @@ Notes on the measurements:
   which compile-time evaluation refuses (`E0412`), so its check takes only
   its arena.
 
+## Fixed limits in chapters 12 to 15
+
+The modules of chapters 12 to 15 hold their own fixed limits, and each
+refuses past its limit the same way: whole, with the reason kept.
+
+| Module | Limit | Past it |
+| --- | ---: | --- |
+| [aethyr/render/material.coax](../render/material.coax) | 256 materials in a realm's table | `material_admit` refuses the whole table (`MATERIAL_TABLE`) |
+| [aethyr/render/light.coax](../render/light.coax) | 16 local lights a frame | `light_local_add` refuses the light and counts it |
+| [aethyr/anim/pose.coax](../anim/pose.coax), [aethyr/skin.coax](../skin.coax) | 96 joints a rig | `skin_advance` and `skin_palette` leave the pose and palette as they were |
+| [aethyr/ui/tree.coax](../ui/tree.coax) | 128 elements in a UI tree | `ui_check` refuses the tree (`UI_COUNT`) |
+
+None of these counts is part of `FrameBudget` yet. A realm that declares
+its local lights or materials against its frame budget, so its budget check
+fails on a frame that refuses one, is still to do.
+
 ## GPU memory has a budget too
 
 The frame budget limits what a realm's writers produce. Its GPU objects have
@@ -392,6 +408,10 @@ which its check pins.
   limit is below the buffer. The renderer's writers
   ([chapter 11](ch011-the-wgsl-renderer.md)) take from the meter directly,
   and a development build shows the report on the HUD.
+- **Lights and materials in the frame budget.** The fixed limits of
+  chapters 12 to 15 above refuse on their own; counting a realm's local
+  lights and materials in its declared budget joins them to the realm's
+  budget check.
 - **Frame time.** GPU time per pass is measured in the browser
   ([coax/web/frametime.ts](../../coax/web/frametime.ts)) and the 60 FPS
   walk in [coax/web/perf.ts](../../coax/web/perf.ts). A per-realm time
