@@ -1,0 +1,51 @@
+// book:begin example
+#load "../voice.coax";
+#import "Basic";
+
+// Aethyrforge's HOLD TO TALK through Aethyr's event gate (aethyr/voice.coax). Each hold is a
+// question the realm asks; the voice host's final transcript (Parakeet, run locally:
+// verse/voice-host --recognizer parakeet) is its answer. The transcripts below are the ones the
+// host returned for the committed fixtures (docs/verification/verse-parakeet-2026-11-02).
+// A duplicate, an answer after a cancel and a silent hold are shown, then the record replays.
+show :: (r: [] VoiceRealm, what: string, verdict: int) {
+  names := [8] string.["accepted", "duplicate", "stale", "unknown", "full", "replaying", "too long", "log full"];
+  print("%: %\n", what, names[verdict]);
+}
+heard :: (r: [] VoiceRealm) {
+  out: [600] u8;
+  n := aethyr_voice_heard(r, out[..]);
+  kind := ifx aethyr_voice_heard_kind(r) == VOICE_NO_SPEECH then "no speech" else "heard";
+  print("  step: hold % % \"%\"\n", aethyr_voice_heard_request(r), kind, cast(string) out[0..<n]);
+}
+main :: () {
+  r: [1] VoiceRealm;
+  aethyr_voice_init(r[..], 12669);
+  steps := 0;
+  // Hold, speak, release: the press applies at the next step and asks question 1.
+  show(r[..], "press", aethyr_voice_control(r[..], VOICE_PRESS));
+  took := aethyr_voice_step(r[..]); steps += 1;
+  q := aethyr_voice_holding(r[..]);
+  show(r[..], "final for hold 1", aethyr_voice_offer(r[..], q, aethyr_voice_epoch(r[..]), "Build a small red house next to a tall tree."));
+  show(r[..], "the same final again", aethyr_voice_offer(r[..], q, aethyr_voice_epoch(r[..]), "Build a small red house next to a tall tree."));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  heard(r[..]);
+  // Hold again, then cancel before the host answers: its late transcript is stale.
+  show(r[..], "press", aethyr_voice_control(r[..], VOICE_PRESS));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  late := aethyr_voice_holding(r[..]);
+  old := aethyr_voice_epoch(r[..]);
+  show(r[..], "cancel", aethyr_voice_control(r[..], VOICE_CANCEL));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  show(r[..], "late final for the cancelled hold", aethyr_voice_offer(r[..], late, old, "Hello Foreman. What are we building today?"));
+  // A silent hold: the host's empty final is "no speech", and still closes the hold.
+  show(r[..], "press", aethyr_voice_control(r[..], VOICE_PRESS));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  show(r[..], "empty final", aethyr_voice_offer(r[..], aethyr_voice_holding(r[..]), aethyr_voice_epoch(r[..]), ""));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  heard(r[..]);
+  print("applied %, refused % duplicate and % stale\n", aethyr_voice_applied(r[..]), aethyr_voice_refused(r[..], REPLAY_DUPLICATE), aethyr_voice_refused(r[..], REPLAY_STALE));
+  // The record replays with no recognizer, host or network.
+  print("replay of % steps matched: %\n", steps, aethyr_voice_replay(r[..], VOICE_INITIAL, steps));
+  heard(r[..]);
+}
+// book:end example

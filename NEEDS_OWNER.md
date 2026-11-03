@@ -595,3 +595,18 @@ open the microphone or request permission. In OpenAgents for Mac:
 
 An unavailable explicit selection must show as unavailable rather than silently
 using another input. [Software record](docs/verification/coder-dictation-devices-2026-11-02/README.md).
+
+### Verse voice host: Parakeet recognition on the Mac (#12669)
+
+The Parakeet recognizer (`verse/voice-host --recognizer parakeet`) was built and
+qualified on coderos-4080 (Linux, CPU path; Parakeet's GPU path is Metal only).
+The Mac was not available to the agent:
+
+- [ ] On the Mac, run `verse/voice-host/build.sh`. It now links both
+      `libpsionic-parakeet.a` and `libpsionic-whisper.a`; confirm the link has no
+      duplicate-symbol error between the two Psionic archives.
+- [ ] Run `coax/web/tool.sh verse/voice-host/parakeet-check.coax` there (Metal by
+      default) and add its latency lines to
+      [the record](docs/verification/verse-parakeet-2026-11-02/README.md).
+- [ ] Hold to talk with the real microphone in Aethyrforge once its forge bar
+      uses the local host; the checks use recorded fixtures only.

@@ -1,0 +1,13 @@
+press: accepted
+final for hold 1: accepted
+the same final again: duplicate
+  step: hold 1 heard "Build a small red house next to a tall tree."
+press: accepted
+cancel: accepted
+late final for the cancelled hold: stale
+press: accepted
+empty final: accepted
+  step: hold 3 no speech ""
+applied 2, refused 1 duplicate and 1 stale
+replay of 6 steps matched: true
+  step: hold 3 no speech ""

@@ -1,0 +1,367 @@
+// The voice host's recognition rules for a local, bounded model (GitHub
+// #12669): which recognizer a host was configured with, how a turn's 16 kHz
+// audio becomes the model's samples, where a long turn is cut into model
+// calls, when a recognition in progress stops, and whether its transcript may
+// be delivered at all. verse/voice-host/host.c and speech.c carry the effects
+// (threads, the resident Parakeet engine, sockets); every decision is here.
+//
+// Parakeet TDT v3 (psionic/docs/parakeet.md) accepts 320 through 327,520
+// samples a call. The host's turn may run 30 s (480,000 samples), so a long
+// turn is cut into at most ASR_WINDOWS calls, each cut placed in the quietest
+// frame near an even split, covering every sample exactly once; a longer turn
+// is refused, never sent as one unsupported call.
+//   coax/bin/coax test verse/voice-asr.coax
+//   coax/bin/coax mutate verse/voice-asr.coax
+#authority;
+
+// ---- Recognizers ----
+// A recognizer's number is its identity on the host's command line and in
+// its logs. The first three keep the numbers (and meaning) of the host's
+// speech_provider: "--provider X" still selects recognizer X and synthesis X.
+// Parakeet is new, recognition only: it never synthesizes.
+ASR_LOCAL :: 0;      // the offline stand-in ("I heard N milliseconds of speech")
+ASR_GOOGLE :: 1;     // Speech-to-Text v2 chirp_3
+ASR_WHISPER :: 2;    // Psionic's Whisper ("--provider psionic")
+ASR_PARAKEET :: 3;   // Psionic's resident Parakeet TDT 0.6B v3 (nvidia/parakeet-tdt-0.6b-v3 @ 541d1f99)
+ASR_KINDS :: 4;
+
+verse_voice_asr_known :: (r: int) -> bool #export_c { return r >= ASR_LOCAL && r < ASR_KINDS; }
+
+// May this recognizer also synthesize replies? Parakeet is recognition only.
+verse_voice_asr_synthesizes :: (r: int) -> bool #export_c {
+  return verse_voice_asr_known(r) && r != ASR_PARAKEET;
+}
+
+// Re-recognizing the open turn every second for PARTIALs and early finals
+// suits a fast or hosted recognizer. A resident local model whose calls
+// serialize recognizes each turn once, when it ends.
+verse_voice_asr_partials :: (r: int) -> bool #export_c {
+  return verse_voice_asr_known(r) && r != ASR_PARAKEET;
+}
+
+#test "recognizer identities" {
+  #assert ASR_LOCAL == 0 && ASR_GOOGLE == 1 && ASR_WHISPER == 2 && ASR_PARAKEET == 3;
+  for r: -2..<6 {
+    k := r >= 0 && r <= 3;
+    #assert verse_voice_asr_known(r) == k;
+    #assert verse_voice_asr_synthesizes(r) == (k && r != 3);
+    #assert verse_voice_asr_partials(r) == (k && r != 3);
+  }
+}
+
+// ---- Samples ----
+ASR_FRAME :: 320;          // 20 ms at 16 kHz: the voice engine's frame
+ASR_MIN :: 320;            // the model's shortest call
+ASR_MAX :: 327520;         // the model's longest call (20.47 s)
+ASR_WINDOWS :: 4;          // calls one turn may take; a longer turn is refused
+ASR_MIN_VOICED :: 8;       // voiced frames (160 ms) before the model is asked at all
+ASR_SEARCH :: 50;          // frames either side of an even split a cut may move (1 s)
+
+// The turn's 16-bit samples as the model's f32 samples in [-1, 1). False,
+// and nothing written, when out is not exactly as long as pcm.
+verse_voice_asr_convert :: (pcm: [] s16, out: [] f32) -> bool #export_c {
+  if out.count != pcm.count { return false; }
+  for i: 0..<pcm.count { out[i] = f32(pcm[i]) / 32768.0; }
+  return true;
+}
+
+#forall "PCM conversion is exact and bounded" v: -32768..<32768 {
+  p: [1] s16; o: [1] f32;
+  p[0] = cast(s16) v;
+  #assert verse_voice_asr_convert(p[..], o[..]);
+  #assert o[0] * 32768.0 == f32(v) && o[0] >= -1.0 && o[0] < 1.0;
+}
+
+#test "conversion refuses a mismatched buffer and writes nothing" {
+  p: [3] s16; o: [4] f32;
+  p[0] = 16384; p[1] = -32768; p[2] = 1;
+  o[0] = 7.0;
+  #assert !verse_voice_asr_convert(p[..], o[..]) && o[0] == 7.0;
+  #assert !verse_voice_asr_convert(p[..], o[0..<2]) && o[0] == 7.0;
+  #assert verse_voice_asr_convert(p[..], o[0..<3]) && o[0] == 0.5 && o[1] == -1.0 && o[2] == 1.0 / 32768.0;
+  #assert verse_voice_asr_convert(p[0..<0], o[0..<0]);
+}
+
+// ---- The plan for one ended turn ----
+// How many model calls the turn takes: 0 for no speech (too short, or fewer
+// than ASR_MIN_VOICED voiced frames: the model is not asked), -1 refused (it
+// would take more than ASR_WINDOWS calls), else 1..ASR_WINDOWS.
+ASR_REFUSED :: -1;
+verse_voice_asr_plan :: (samples: int, voiced_frames: int) -> int #export_c {
+  if samples < ASR_MIN || voiced_frames < ASR_MIN_VOICED { return 0; }
+  k := (samples + ASR_MAX - 1) / ASR_MAX;
+  if k > ASR_WINDOWS { return ASR_REFUSED; }
+  return k;
+}
+
+#test "the plan at its edges" {
+  #assert verse_voice_asr_plan(0, 100) == 0 && verse_voice_asr_plan(319, 100) == 0;
+  #assert verse_voice_asr_plan(320, 8) == 1 && verse_voice_asr_plan(320, 7) == 0;
+  #assert verse_voice_asr_plan(48000, 0) == 0 && verse_voice_asr_plan(48000, 8) == 1;
+  #assert verse_voice_asr_plan(327520, 9) == 1 && verse_voice_asr_plan(327521, 9) == 2;
+  #assert verse_voice_asr_plan(480000, 9) == 2;   // the host's 30 s turn: two calls, never one
+  #assert verse_voice_asr_plan(655040, 9) == 2 && verse_voice_asr_plan(655041, 9) == 3;
+  #assert verse_voice_asr_plan(1310080, 9) == 4 && verse_voice_asr_plan(1310081, 9) == ASR_REFUSED;
+}
+
+// Where the window that starts at `start` ends, with `left` windows (this one
+// included) to cover samples start..<n; speech[f] is frame f's speech
+// likelihood (0..255: the voice engine's speech times 255), one byte for every
+// frame of the turn. The last window ends at n. Otherwise the cut is a frame
+// boundary within ASR_SEARCH frames of the even split's frame that keeps this
+// window and the ones after it within ASR_MIN..ASR_MAX; of those it takes the
+// quietest (the two frames either side added), then the nearest the split,
+// then the earlier. With none, the even split itself. -1 when no plan exists:
+// left < 1, start..<n cannot be covered, or speech has too few frames.
+verse_voice_asr_cut :: (start: int, n: int, left: int, speech: [] u8) -> int #export_c {
+  rest := n - start;
+  if left < 1 || rest < left * ASR_MIN || rest > left * ASR_MAX || speech.count * ASR_FRAME < n { return -1; }
+  if left == 1 { return n; }
+  target := start + rest / left;
+  after := left - 1;
+  best := target;
+  found := false;
+  best_cost: int;
+  best_dist: int;
+  f := target / ASR_FRAME - ASR_SEARCH;
+  while f <= target / ASR_FRAME + ASR_SEARCH {
+    c := f * ASR_FRAME;
+    if c - start >= ASR_MIN && c - start <= ASR_MAX && n - c >= after * ASR_MIN && n - c <= after * ASR_MAX {
+      cost := cast(int) speech[f - 1] + cast(int) speech[f];
+      d := c - target;
+      if !found || cost < best_cost || (cost == best_cost && d * d < best_dist) {
+        found = true;
+        best = c;
+        best_cost = cost;
+        best_dist = d * d;
+      }
+    }
+    f += 1;
+  }
+  return best;
+}
+
+// The cut against a brute-force reading of its rule, with one quiet boundary
+// placed at the search window's and the model's edges.
+#forall "a cut is the rule's best boundary" left: 2..<5, sx: 0..<5, rx: 0..<8, qx: 0..<13 #steps 900000000 {
+  starts := [5] int.[0, 160, 1, 320, 159];
+  start := starts[sx];
+  rests := [8] int.[left * 320, left * 320 + 160, left * 320 + 321, (left - 1) * 327520 + 320,
+                    left * 327520, left * 327520 - 1, left * 327520 - 160, (left - 1) * 300000 + 12345];
+  n := start + rests[rx];
+  frames := (n + 319) / 320;
+  speech: [4200] u8;
+  for i: 0..<frames { speech[i] = 200; }
+  target := start + rests[rx] / left;
+  tf := target / 320;
+  edges := [13] int.[tf - 51, tf - 50, tf + 50, tf + 51, tf + 1,
+                     (start + 320 + 319) / 320, (start + 320 + 319) / 320 - 1,
+                     (start + 327520) / 320, (start + 327520) / 320 + 1,
+                     (n - (left - 1) * 320) / 320, (n - (left - 1) * 320) / 320 + 1,
+                     (n - (left - 1) * 327520 + 319) / 320, (n - (left - 1) * 327520 + 319) / 320 - 1];
+  q := edges[qx];
+  if q >= 1 && q < frames { speech[q - 1] = 0; speech[q] = 0; }
+  // The rule, by brute force over every boundary of the turn.
+  want := target; have := false; wc := 0; wd := 0;
+  for g: 0..<frames + 1 {
+    c := g * 320;
+    ok := c - start >= 320 && c - start <= 327520 && n - c >= (left - 1) * 320 && n - c <= (left - 1) * 327520;
+    ok = ok && g >= tf - 50 && g <= tf + 50;
+    if ok {
+      cost := cast(int) speech[g - 1] + cast(int) speech[g];
+      d := (c - target) * (c - target);
+      if !have || cost < wc || (cost == wc && d < wd) { have = true; want = c; wc = cost; wd = d; }
+    }
+  }
+  #assert verse_voice_asr_cut(start, n, left, speech[0..<frames]) == want;
+}
+
+#forall "every turn is covered exactly once by bounded calls" step: 0..<160, seed: 0..<3 #steps 900000000 {
+  n := 320 + step * 8209 + seed * 97;
+  frames := (n + 319) / 320;
+  speech: [4200] u8;
+  x := seed * 7919 + 17;
+  for f: 0..<frames {
+    x = (x * 1103515245 + 12345) & 2147483647;
+    speech[f] = cast(u8) ((x >> 16) & 255);
+  }
+  k := verse_voice_asr_plan(n, frames + 8);
+  want := (n + 327519) / 327520;
+  if want > 4 { #assert k == ASR_REFUSED; }
+  else {
+    #assert k == want;
+    start := 0;
+    for w: 0..<k {
+      e := verse_voice_asr_cut(start, n, k - w, speech[0..<frames]);
+      size := e - start;
+      #assert size >= 320 && size <= 327520;
+      // A cut is on a frame boundary, unless the model's bound leaves none to choose.
+      if w < k - 1 { #assert e % 320 == 0 || 327520 - size < 320; }
+      start = e;
+    }
+    #assert start == n;   // nothing omitted, nothing repeated
+  }
+}
+
+#test "a cut takes the quietest frame boundary near the even split" {
+  n := 480000;                         // 30 s, 1500 frames: two calls
+  speech: [1500] u8;
+  for f: 0..<1500 { speech[f] = 200; }
+  // An even split is sample 240000 (frame 750). A pause at frames 760..762:
+  // boundaries 761 and 762 have both neighbours quiet; 761 is nearer.
+  speech[760] = 10; speech[761] = 10; speech[762] = 10;
+  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 761 * 320;
+  // An equally quiet boundary nearer the split wins.
+  speech[745] = 10; speech[746] = 10;
+  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 746 * 320;
+  // A quieter one farther away still wins over a nearer one.
+  speech[790] = 3; speech[791] = 3;
+  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 791 * 320;
+  // Both neighbours count: boundary 747 (10 + 0) beats 746 (10 + 10).
+  speech[790] = 200; speech[791] = 200; speech[747] = 0;
+  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 747 * 320;
+  // Beyond ASR_SEARCH frames from the split it is not considered.
+  speech[698] = 0; speech[699] = 0;
+  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 747 * 320;
+  // With speech everywhere the nearest boundary to the split is the cut.
+  for f: 0..<1500 { speech[f] = 200; }
+  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 240000;
+  // Equal cost at equal distance either side of the split: the earlier.
+  speech[748] = 9; speech[749] = 9; speech[751] = 9; speech[752] = 9;
+  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 749 * 320;
+  speech[751] = 8;
+  #assert verse_voice_asr_cut(0, n, 2, speech[..]) == 752 * 320;
+  // The last window ends at the turn's end.
+  #assert verse_voice_asr_cut(240000, n, 1, speech[..]) == n;
+  #assert verse_voice_asr_cut(240001, n, 1, speech[..]) == n;
+}
+
+#test "a cut refuses what it cannot cover" {
+  speech: [4200] u8;
+  #assert verse_voice_asr_cut(0, 1000, 0, speech[..]) == -1;
+  #assert verse_voice_asr_cut(0, 639, 2, speech[..]) == -1 && verse_voice_asr_cut(0, 640, 2, speech[..]) == 320;
+  #assert verse_voice_asr_cut(0, 319, 1, speech[..]) == -1 && verse_voice_asr_cut(0, 320, 1, speech[..]) == 320;
+  #assert verse_voice_asr_cut(0, 327521, 1, speech[..]) == -1 && verse_voice_asr_cut(5, 327525, 1, speech[..]) == 327525;
+  #assert verse_voice_asr_cut(0, 655041, 2, speech[..]) == -1 && verse_voice_asr_cut(0, 655040, 2, speech[..]) == 327520;
+  #assert verse_voice_asr_cut(7, 1300007, 4, speech[..]) > 7;
+  // Too few frames of speech for the turn.
+  #assert verse_voice_asr_cut(0, 6400, 2, speech[0..<19]) == -1 && verse_voice_asr_cut(0, 6400, 2, speech[0..<20]) == 3200;
+  #assert verse_voice_asr_cut(0, 6401, 1, speech[0..<20]) == -1 && verse_voice_asr_cut(0, 6401, 1, speech[0..<21]) == 6401;
+}
+
+// ---- Between calls ----
+// After each call: go on to the next window only while nothing cancelled
+// the turn and every call so far succeeded.
+verse_voice_asr_continue :: (cancelled: bool, ok: bool, done: int, windows: int) -> bool #export_c {
+  return !cancelled && ok && done < windows;
+}
+
+#forall "a recognition stops at cancellation or failure" c: 0..<2, ok: 0..<2, done: 0..<5, k: 1..<5 {
+  #assert verse_voice_asr_continue(c == 1, ok == 1, done, k) == (c == 0 && ok == 1 && done < k);
+}
+
+// Appends one window's text to the turn's transcript (`used` bytes of out),
+// without its leading and trailing spaces, with one space between nonempty
+// pieces. Returns the new length, or -1 (out unchanged past `used`) when the
+// result would not fit out or ASR_TEXT bytes.
+ASR_TEXT :: 600;   // TurnEvent.text max_bytes
+asr_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+verse_voice_asr_append :: (out: [] u8, used: int, piece: string) -> int #export_c {
+  if used < 0 || used > out.count { return -1; }
+  a := 0;
+  b := piece.count;
+  while a < b && asr_space(piece[a]) { a += 1; }
+  while b > a && asr_space(piece[b - 1]) { b -= 1; }
+  if a == b { return used; }
+  sep := ifx used > 0 then 1 else 0;
+  total := used + sep + b - a;
+  if total > ASR_TEXT || total > out.count { return -1; }
+  if sep == 1 { out[used] = ' '; }
+  for i: a..<b { out[used + sep + i - a] = piece[i]; }
+  return total;
+}
+
+#test "window texts join with one space" {
+  out: [700] u8;
+  n := verse_voice_asr_append(out[..], 0, "  Hello Foreman.  ");
+  #assert cast(string) out[0..<n] == "Hello Foreman.";
+  n = verse_voice_asr_append(out[..], n, "\t\n");
+  #assert cast(string) out[0..<n] == "Hello Foreman.";
+  n = verse_voice_asr_append(out[..], n, "\rWhat are we building today?\r\n");
+  #assert cast(string) out[0..<n] == "Hello Foreman. What are we building today?";
+  n = verse_voice_asr_append(out[..], 0, "a   ");
+  #assert cast(string) out[0..<n] == "a";
+  n = verse_voice_asr_append(out[..], n, " b");
+  #assert cast(string) out[0..<n] == "a b";
+  #assert verse_voice_asr_append(out[..], 0, "") == 0 && verse_voice_asr_append(out[..], 0, "   ") == 0;
+  #assert verse_voice_asr_append(out[..], -1, "x") == -1 && verse_voice_asr_append(out[..], 701, "x") == -1;
+  #assert verse_voice_asr_append(out[..], 700, "") == 700 && verse_voice_asr_append(out[..], 600, "") == 600;
+  #assert asr_space(' ') && asr_space('\t') && asr_space('\n') && asr_space('\r') && !asr_space('a') && !asr_space(0);
+}
+
+#test "a transcript past 600 bytes is refused, not cut" {
+  out: [700] u8;
+  big: [599] u8;
+  for i: 0..<599 { big[i] = 'a'; }
+  n := verse_voice_asr_append(out[..], 0, cast(string) big[..]);
+  #assert n == 599;
+  out[599] = 'z';
+  #assert verse_voice_asr_append(out[..], n, "b") == -1 && out[599] == 'z';   // 599 + space + 1
+  #assert verse_voice_asr_append(out[..], 0, cast(string) big[0..<598]) == 598 && verse_voice_asr_append(out[..], 598, "b") == 600;
+  small: [5] u8;
+  #assert verse_voice_asr_append(small[..], 0, "abcde") == 5 && verse_voice_asr_append(small[..], 0, "abcdef") == -1;
+  #assert verse_voice_asr_append(small[..], 2, "cde") == -1 && verse_voice_asr_append(small[..], 2, "cd") == 5;
+}
+
+// ---- Admission ----
+// Whether a finished recognition's transcript may go to the client and on to
+// the agent. The ticket is what the host stamped when the turn ended: its
+// turn number and media epoch. A barge-in or cancel since then (the turn was
+// dropped, the epoch moved, or the job was told to stop) makes it stale or
+// cancelled: it is never delivered. Words never decide admission.
+ASR_FINAL :: 0;        // deliver: FINAL with this text
+ASR_NO_SPEECH :: 1;    // deliver: FINAL with no text, then ENDED (as an empty transcript always was)
+ASR_STALE :: 2;        // drop silently: a newer epoch or a dropped turn owns the floor
+ASR_CANCELLED :: 3;    // drop silently: the client cancelled it
+ASR_FAILED :: 4;       // the provider failed: an ERROR_CODE_PROVIDER, then ENDED
+ASR_TOO_LONG :: 5;     // refused: more than ASR_TEXT bytes, or more than ASR_WINDOWS calls
+verse_voice_asr_admit :: (turn_no: int, dropped_upto: int, epoch: u64, epoch_now: u64, cancelled: bool,
+                          windows: int, ok: bool, text_bytes: int) -> int #export_c {
+  if cancelled { return ASR_CANCELLED; }
+  if turn_no <= dropped_upto || epoch != epoch_now { return ASR_STALE; }
+  if windows == ASR_REFUSED || text_bytes < 0 || text_bytes > ASR_TEXT { return ASR_TOO_LONG; }
+  if windows == 0 { return ASR_NO_SPEECH; }
+  if !ok { return ASR_FAILED; }
+  if text_bytes == 0 { return ASR_NO_SPEECH; }
+  return ASR_FINAL;
+}
+
+#forall "admission" turn: 1..<4, dropped: 0..<4, e: 0..<2, c: 0..<2, w: -1..<3, ok: 0..<2, b: 0..<4 {
+  bytes := ifx b == 0 then 0 else ifx b == 1 then 1 else ifx b == 2 then 600 else 601;
+  v := verse_voice_asr_admit(turn, dropped, 7, cast(u64) (7 + e), c == 1, w, ok == 1, bytes);
+  if c == 1 { #assert v == ASR_CANCELLED; }
+  else if turn <= dropped || e == 1 { #assert v == ASR_STALE; }
+  else if w == -1 || bytes > 600 { #assert v == ASR_TOO_LONG; }
+  else if w == 0 { #assert v == ASR_NO_SPEECH; }
+  else if ok == 0 { #assert v == ASR_FAILED; }
+  else if bytes == 0 { #assert v == ASR_NO_SPEECH; }
+  else { #assert v == ASR_FINAL; }
+  // A transcript is delivered only for the current, uncancelled turn and epoch.
+  if v == ASR_FINAL || v == ASR_NO_SPEECH { #assert c == 0 && turn > dropped && e == 0; }
+}
+
+#test "admission at its edges" {
+  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, true, 12) == ASR_FINAL;
+  #assert verse_voice_asr_admit(3, 3, 5, 5, false, 1, true, 12) == ASR_STALE;
+  #assert verse_voice_asr_admit(3, 2, 5, 6, false, 1, true, 12) == ASR_STALE;
+  #assert verse_voice_asr_admit(3, 2, 6, 5, false, 1, true, 12) == ASR_STALE;
+  #assert verse_voice_asr_admit(3, 2, 5, 5, true, 1, true, 12) == ASR_CANCELLED;
+  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, false, 12) == ASR_FAILED;
+  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 0, false, 0) == ASR_NO_SPEECH;
+  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 2, true, 0) == ASR_NO_SPEECH;
+  #assert verse_voice_asr_admit(3, 2, 5, 5, false, -1, true, 0) == ASR_TOO_LONG;
+  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, true, -1) == ASR_TOO_LONG;
+  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, true, 600) == ASR_FINAL;
+  #assert verse_voice_asr_admit(3, 2, 5, 5, false, 1, true, 601) == ASR_TOO_LONG;
+  #assert verse_voice_asr_admit(1, 0, 0, 0, false, 4, true, 1) == ASR_FINAL;
+}

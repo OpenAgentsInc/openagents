@@ -2,13 +2,15 @@
 # sources, verse/platform/voice.c and .h, and the Coax engine already turned
 # into C by coax/bin/coax). Google's speech and Vertex AI are called with the
 # service's own account, from the metadata server (OA_VOICE_TOKEN=metadata).
+# The hosted service recognizes with Google only: it is built without the local
+# Psionic recognizers (Whisper, Parakeet), which run on the owner's machines.
 FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libcurl4-openssl-dev libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY src/ /src/
 WORKDIR /src
 RUN cp -r /src/platform /platform
 RUN for c in gen/*.c; do gcc -std=c11 -O2 -w -Igen -c "$c" -o "${c%.c}.o"; done \
- && f="-std=c11 -O2 -D_GNU_SOURCE -Wall -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -Wno-sign-compare -Igen -Iplatform" \
+ && f="-std=c11 -O2 -D_GNU_SOURCE -DOA_VOICE_NO_WHISPER -DOA_VOICE_NO_PARAKEET -Wall -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -Wno-sign-compare -Igen -Iplatform" \
  && gcc $f -c platform/voice.c -o voice.o \
  && gcc $f -o /voice-host host.c ws.c wav.c speech.c voice.o gen/*.o -lcurl -lcrypto -lpthread -lm
 

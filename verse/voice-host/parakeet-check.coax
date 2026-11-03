@@ -1,0 +1,240 @@
+// The Parakeet recognizer through the actual voice host into Aethyr's event gate
+// (GitHub #12669), with recorded audio only: no microphone and no speaker.
+//   coax/web/tool.sh verse/voice-host/parakeet-check.coax [MODEL_DIR [CASE]]
+// CASE runs one group only: fixtures, long, silence, cancel or realm.
+// Build first with verse/voice-host/build.sh. It starts build/voice-host with
+// --recognizer parakeet --synthesizer local --agent echo on a free port, then
+// runs build/voice-client --hold --aethyr for each case and checks the exact
+// transcript, what the realm's gate accepted or refused, and what the host
+// says it did with each recognition. Every case is one held turn (hold to talk):
+//   the four committed fixtures, each exactly;
+//   a 21.5 s turn (over 327,520 samples) recognized as two bounded calls;
+//   silence: no speech, decided without a model call;
+//   cancel, and a barge-in's new epoch, while the first turn is recognized:
+//     its transcript is never delivered, and the next turn's is;
+//   a realm that cancelled on its own: the host's late transcript is refused
+//     as stale by Aethyr's gate.
+// Each run is a whole-model decision on original weights; on a Linux host it
+// is the CPU path. Run it to qualify a change, not as a routine check.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../aethyr/audio/wav.coax";
+
+HELLO :: "Hello Foreman. What are we building today?";
+RED :: "Build a small red house next to a tall tree.";
+GARDEN :: "Let's take the long way through the garden, then pick a door.";
+WAIT :: "Wait, stop.";
+// The 21.5 s turn as the host returned it (2026-11-02, two windows): every word of the four
+// clips in order, none split at the cut. Its punctuation differs from the clips heard alone
+// ("Foreman," and "garden. Then"), since the model reads them in a longer context.
+LONG :: "Hello Foreman, what are we building today? Build a small red house next to a tall tree. Let's take the long way through the garden. Then pick a door. Wait, stop.";
+
+Text :: struct { b: [8192] u8; n: int; }
+tx_reset :: (t: [] Text) { t[0].n = 0; }
+tx_add :: (t: [] Text, s: string) { for c: s { if t[0].n < 8192 { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+tx_int :: (t: [] Text, value: int) {
+  v := value;
+  if v < 0 { tx_add(t, "-"); v = -v; }
+  d: [24] u8; k := 0;
+  while true { d[k] = cast(u8) ('0' + v % 10); k += 1; v /= 10; if v == 0 { break; } }
+  for i: 0..<k { tx_add(t, cast(string) d[k - 1 - i..<k - i]); }
+}
+tx_str :: (t: [] Text) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+
+contains :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  i := 0;
+  while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { return true; } i += 1; }
+  return false;
+}
+// The integer after the last `key` in hay, or -1.
+last_int :: (hay: string, key: string) -> int {
+  at := -1; i := 0;
+  while i + key.count <= hay.count { if hay[i..<i + key.count] == key { at = i + key.count; } i += 1; }
+  if at < 0 { return -1; }
+  v := 0; any := false;
+  while at < hay.count && hay[at] >= '0' && hay[at] <= '9' { v = v * 10 + cast(int) (hay[at] - '0'); at += 1; any = true; }
+  return ifx any then v else -1;
+}
+// The line of hay that contains needle last, or "".
+last_line :: (hay: string, needle: string) -> string {
+  at := -1; i := 0;
+  while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { at = i; } i += 1; }
+  if at < 0 { return ""; }
+  a := at; while a > 0 && hay[a - 1] != '\n' { a -= 1; }
+  b := at; while b < hay.count && hay[b] != '\n' { b += 1; }
+  return hay[a..<b];
+}
+
+// A WAV's 16-bit mono samples (after its "data" chunk) appended to pcm from `at`: the new end, or -1.
+Pcm :: struct { s: [500000] int; n: int; }
+read_wav :: (path: string, p: [] Pcm, file: [] u8) -> bool {
+  n := fs_read(path, file);
+  if n < 44 { return false; }
+  i := 12;
+  while i + 8 <= n {
+    size := cast(int) file[i + 4] | (cast(int) file[i + 5] << 8) | (cast(int) file[i + 6] << 16) | (cast(int) file[i + 7] << 24);
+    if cast(string) file[i..<i + 4] == "data" {
+      k := 0;
+      while k + 1 < size && i + 8 + k + 1 < n && p[0].n < 500000 {
+        v := cast(int) file[i + 8 + k] | (cast(int) file[i + 9 + k] << 8);
+        if v >= 32768 { v -= 65536; }
+        p[0].s[p[0].n] = v; p[0].n += 1;
+        k += 2;
+      }
+      return true;
+    }
+    i += 8 + size + (size & 1);
+  }
+  return false;
+}
+silence :: (p: [] Pcm, samples: int) { for i: 0..<samples { if p[0].n < 500000 { p[0].s[p[0].n] = 0; p[0].n += 1; } } }
+
+Run :: struct { out: [262144] u8; err: [65536] u8; host: [65536] u8; }
+
+check :: (ok: bool, what: string) -> int {
+  print("% %\n", ifx ok then "ok  " else "FAIL", what);
+  return ifx ok then 0 else 1;
+}
+
+// One voice-client run; its stdout in r.out (out_n), and the host's stderr since in r.host.
+client :: (argv: [] string, r: [] Run, host: int) -> string {
+  p := proc_run(argv, 840000, r[0].out[..], r[0].err[..]);
+  if p.started != 0 || p.timed_out { print("voice-client did not run: started=% timed_out=%\n", p.started, p.timed_out); }
+  line: [4096] u8;
+  drain := proc_line(host, 300, line[..]);   // let the host's last log lines in
+  return cast(string) r[0].out[0..<p.out_n];
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) > 2 { tool_errln("usage: parakeet-check [MODEL_DIR [fixtures|long|silence|cancel|realm]]"); return 2; }
+  only := ifx args_count(a[..]) == 2 then args_at(a[..], 1) else "";
+  envb: [1024] u8; homeb: [1024] u8;
+  model := ifx args_count(a[..]) >= 1 then args_at(a[..], 0) else proc_getenv("OPENAGENTS_PARAKEET_MODEL", envb[..]);
+  mb: [1] Text;
+  if model.count == 0 {
+    tx_add(mb[..], proc_getenv("HOME", homeb[..]));
+    tx_add(mb[..], "/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99");
+    model = tx_str(mb[..]);
+  }
+  hostbin := "verse/voice-host/build/voice-host";
+  clientbin := "verse/voice-host/build/voice-client";
+  if !fs_exists(hostbin) || !fs_exists(clientbin) { tool_errln("build first: verse/voice-host/build.sh"); return 2; }
+  fx := "verse/voice-host/fixtures";
+  tmpb: [1024] u8;
+  tmp := fs_temp("parakeet-check", tmpb[..]);
+  if tmp == "" { return 3; }
+
+  // The recorded inputs: 1.5 s of silence, and a 21.5 s held turn: the four fixtures, each followed by 1 s of silence.
+  file: [1] Run;
+  bytes: [1100000] u8;
+  pcm: [1] Pcm;
+  silence(pcm[..], 24000);
+  pb: [1100] u8; quiet := fs_join(tmp, "silence.wav", pb[..]);
+  w := wav_write(pcm[0].s[0..<pcm[0].n], 1, 16000, bytes[..]);
+  if w < 0 || !fs_write(quiet, cast(string) bytes[0..<w]) { return 3; }
+  pcm[0].n = 0;
+  names := [4] string.["hello-foreman.wav", "build-red-house.wav", "garden-pause.wav", "wait-stop.wav"];
+  fb: [1100] u8;
+  for nm: names {
+    if !read_wav(fs_join(fx, nm, fb[..]), pcm[..], file[0].out[..]) { tool_errln("cannot read a fixture"); return 3; }
+    silence(pcm[..], 16000);
+  }
+  lb: [1100] u8; long := fs_join(tmp, "long-turn.wav", lb[..]);
+  w = wav_write(pcm[0].s[0..<pcm[0].n], 1, 16000, bytes[..]);
+  if w < 0 || !fs_write(long, cast(string) bytes[0..<w]) { return 3; }
+  long_samples := pcm[0].n;
+  print("long turn: % samples (% ms)\n", long_samples, long_samples / 16);
+
+  // The host, resident model loaded once.
+  h := proc_new();
+  hargs := [14] string.[hostbin, "--listen", "127.0.0.1:0", "--recognizer", "parakeet", "--synthesizer", "local",
+                        "--agent", "echo", "--parakeet-model", model, "--verbose", "--max-speakers", "64"];
+  for x: hargs { ok := proc_arg(h, x); }
+  if proc_start(h) != 0 { tool_errln("cannot start voice-host"); return 3; }
+  line: [4096] u8;
+  t0 := proc_now_ms();
+  n := proc_line(h, 240000, line[..]);
+  if n < 0 { tool_errln("voice-host did not start (no listening line in 240 s)"); errb: [8192] u8; tool_errln(proc_stderr(h, errb[..])); return 4; }
+  port := last_int(cast(string) line[0..<n], "127.0.0.1:");
+  print("host ready on port % in % ms: %\n", port, proc_now_ms() - t0, cast(string) line[0..<n]);
+  ub: [1] Text;
+  tx_add(ub[..], "ws://127.0.0.1:"); tx_int(ub[..], port); tx_add(ub[..], "/");
+  url := tx_str(ub[..]);
+  r: [1] Run;
+  hb: [65536] u8;
+  wavb: [6][1100] u8;
+  hello := fs_join(fx, "hello-foreman.wav", wavb[0][..]);
+  red := fs_join(fx, "build-red-house.wav", wavb[1][..]);
+  garden := fs_join(fx, "garden-pause.wav", wavb[2][..]);
+  wait := fs_join(fx, "wait-stop.wav", wavb[3][..]);
+
+  failures := 0;
+  // 1. Each fixture, exactly, through the host and the realm's gate.
+  files := [4] string.[hello, red, garden, wait];
+  texts := [4] string.[HELLO, RED, GARDEN, WAIT];
+  for k: 0..<ifx only == "" || only == "fixtures" then 4 else 0 {
+    argv := [11] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "600", "--exact", texts[k], "--quiet", files[k]];
+    out := client(argv[..], r[..], h);
+    host := proc_stderr(h, hb[..]);
+    failures += check(contains(out, "exact match") && contains(out, "aethyr offer t1 request=1 epoch=0 ACCEPTED")
+          && contains(out, "aethyr offer-again DUPLICATE") && contains(out, "replay=matched"), texts[k]);
+    print("     %\n     %\n     %\n", last_line(out, "exact "), last_line(host, "t1 parakeet final"), last_line(out, "latency"));
+  }
+
+  // 2. Over one model call: two bounded windows, the words of all four clips.
+  if only == "" || only == "long" {
+    argv := [11] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "800", "--exact", LONG, "--quiet", long];
+    out := client(argv[..], r[..], h);
+    host := proc_stderr(h, hb[..]);
+    fin := last_line(out, "exact ");
+    got := last_line(host, "t1 parakeet final");
+    failures += check(contains(got, "2 of 2 window(s)") && contains(out, "aethyr offer t1 request=1 epoch=0 ACCEPTED") && contains(out, "replay=matched"),
+          "a 21.5 s turn is two bounded calls, never one");
+    failures += check(contains(fin, "exact match"), "the long turn's recorded transcript, exactly, across the cut");
+    print("     %\n     %\n", got, fin);
+  }
+
+  // 3. Silence: no speech, without a model call; the realm hears that nobody spoke.
+  if only == "" || only == "silence" {
+    argv := [9] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "120", "--quiet", quiet];
+    out := client(argv[..], r[..], h);
+    host := proc_stderr(h, hb[..]);
+    failures += check(contains(host, "t1 no speech without a model call") && contains(out, "kind=NO_SPEECH") && contains(out, "replay=matched"),
+          "silence is no speech, decided without a model call");
+  }
+
+  // 4. Cancel and barge-in while the first turn is being recognized.
+  modes := [2] string.["cancel", "barge"];
+  verdicts := [2] string.["t1 parakeet cancelled", "t1 parakeet stale"];
+  for m: 0..<ifx only == "" || only == "cancel" then 2 else 0 {
+    argv := [15] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "600", "--after-end", modes[m],
+                         "--then", wait, "--exact", WAIT, "--quiet", hello];
+    out := client(argv[..], r[..], h);
+    host := proc_stderr(h, hb[..]);
+    failures += check(contains(host, verdicts[m]) && !contains(out, "aethyr offer t1") && contains(out, "exact match")
+          && contains(out, "aethyr offer t2 request=2 epoch=1 ACCEPTED") && last_int(out, "finals=") == 1 && contains(out, "replay=matched"),
+          ifx m == 0 then "cancel: the first transcript is never delivered, the next is" else "barge-in: the first transcript is stale, the next is delivered");
+    print("     %\n", last_line(host, verdicts[m]));
+  }
+
+  // 5. The realm cancelled on its own: the host delivers, Aethyr's gate refuses it as stale.
+  if only == "" || only == "realm" {
+    argv := [17] string.[clientbin, "--url", url, "--hold", "--aethyr", "--timeout", "600", "--after-end", "realm",
+                         "--then", wait, "--exact", WAIT, "--turns", "2", "--quiet", hello];
+    out := client(argv[..], r[..], h);
+    failures += check(contains(out, "aethyr offer t1 request=1 epoch=0 STALE") && contains(out, "aethyr offer t2 request=2 epoch=1 ACCEPTED")
+          && contains(last_line(out, "aethyr record"), " stale=1 ") && contains(out, "replay=matched"), "a late transcript after the realm cancelled is refused as stale");
+    print("     %\n     %\n", last_line(out, "aethyr offer t1"), last_line(out, "aethyr record"));
+  }
+
+  k := proc_kill(h, PROC_SIGTERM);
+  done := proc_release(h);
+  removed := fs_remove(quiet) && fs_remove(long) && fs_remove(tmp);
+  if failures != 0 { print("% failure(s)\n", failures); return 1; }
+  print("all Parakeet voice-host cases passed\n");
+  return 0;
+}

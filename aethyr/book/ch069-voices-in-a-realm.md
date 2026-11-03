@@ -1,13 +1,17 @@
 # 69. Voices in a realm
 
-> **Status: unimplemented — design draft.** Today the voice engine
-> [`verse/voice.coax`](../../verse/voice.coax) decides turns, barge-in and
-> playback for talking to an agent, and the C voice host in
-> [`verse/voice-host/`](../../verse/voice-host/host.c) carries its frames.
-> Players can't hear each other yet: the forwarder and `voice-space.coax`
-> are phase V5 of the [voice plan](../../docs/voice/coax-native-voice.md),
-> not built. This chapter plans voices inside a realm: players, NPCs and
-> agents heard from where they stand. Nothing in `aethyr/` runs yet.
+> **Status: partly implemented.** One piece runs: a spoken request into a
+> realm, [aethyr/voice.coax](../voice.coax) (#12669). A hold to talk is a
+> question on the replay gate and the voice host's final transcript its
+> answer, admitted once and only in its epoch, and replayed with no
+> recognizer. The voice engine [`verse/voice.coax`](../../verse/voice.coax)
+> decides turns, barge-in and playback for talking to an agent, and the C
+> voice host in [`verse/voice-host/`](../../verse/voice-host/host.c) carries
+> its frames (locally recognized by resident Parakeet). Players can't hear
+> each other yet: the forwarder and `voice-space.coax` are phase V5 of the
+> [voice plan](../../docs/voice/coax-native-voice.md), not built. The rest of
+> this chapter plans voices inside a realm: players, NPCs and agents heard
+> from where they stand.
 
 A realm with several people in it needs voice. You hear the person beside
 you clearly and the person across the square faintly, from the side they
@@ -67,6 +71,95 @@ consent and explicit grants, never by the words spoken.
 8. **Privacy as stated.** The host keeps no audio after a turn. TLS to the
    server is not end-to-end between players, and the realm's UI says so.
 
+## A spoken request, as it runs
+
+Aethyrforge's forge bar is HOLD TO TALK. A press is a player control (a
+`REPLAY_ACTIONS` event), so the realm asks its question (`replay_ask` on
+`REPLAY_MODEL`) at the step the press applies, live and in a replay alike. The
+voice host's final transcript for that hold is the answer: its bytes go into
+the realm's text log and the event carries their place, length and FNV-1a
+digest, so a step applies it only if the log still holds exactly those bytes.
+An empty transcript is "no speech" and still closes the hold. A cancel starts a
+new epoch, so a transcript still on its way is stale.
+
+<!-- source: aethyr/examples/hold-to-talk.coax example -->
+```jai
+#load "../voice.coax";
+#import "Basic";
+
+// Aethyrforge's HOLD TO TALK through Aethyr's event gate (aethyr/voice.coax). Each hold is a
+// question the realm asks; the voice host's final transcript (Parakeet, run locally:
+// verse/voice-host --recognizer parakeet) is its answer. The transcripts below are the ones the
+// host returned for the committed fixtures (docs/verification/verse-parakeet-2026-11-02).
+// A duplicate, an answer after a cancel and a silent hold are shown, then the record replays.
+show :: (r: [] VoiceRealm, what: string, verdict: int) {
+  names := [8] string.["accepted", "duplicate", "stale", "unknown", "full", "replaying", "too long", "log full"];
+  print("%: %\n", what, names[verdict]);
+}
+heard :: (r: [] VoiceRealm) {
+  out: [600] u8;
+  n := aethyr_voice_heard(r, out[..]);
+  kind := ifx aethyr_voice_heard_kind(r) == VOICE_NO_SPEECH then "no speech" else "heard";
+  print("  step: hold % % \"%\"\n", aethyr_voice_heard_request(r), kind, cast(string) out[0..<n]);
+}
+main :: () {
+  r: [1] VoiceRealm;
+  aethyr_voice_init(r[..], 12669);
+  steps := 0;
+  // Hold, speak, release: the press applies at the next step and asks question 1.
+  show(r[..], "press", aethyr_voice_control(r[..], VOICE_PRESS));
+  took := aethyr_voice_step(r[..]); steps += 1;
+  q := aethyr_voice_holding(r[..]);
+  show(r[..], "final for hold 1", aethyr_voice_offer(r[..], q, aethyr_voice_epoch(r[..]), "Build a small red house next to a tall tree."));
+  show(r[..], "the same final again", aethyr_voice_offer(r[..], q, aethyr_voice_epoch(r[..]), "Build a small red house next to a tall tree."));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  heard(r[..]);
+  // Hold again, then cancel before the host answers: its late transcript is stale.
+  show(r[..], "press", aethyr_voice_control(r[..], VOICE_PRESS));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  late := aethyr_voice_holding(r[..]);
+  old := aethyr_voice_epoch(r[..]);
+  show(r[..], "cancel", aethyr_voice_control(r[..], VOICE_CANCEL));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  show(r[..], "late final for the cancelled hold", aethyr_voice_offer(r[..], late, old, "Hello Foreman. What are we building today?"));
+  // A silent hold: the host's empty final is "no speech", and still closes the hold.
+  show(r[..], "press", aethyr_voice_control(r[..], VOICE_PRESS));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  show(r[..], "empty final", aethyr_voice_offer(r[..], aethyr_voice_holding(r[..]), aethyr_voice_epoch(r[..]), ""));
+  took = aethyr_voice_step(r[..]); steps += 1;
+  heard(r[..]);
+  print("applied %, refused % duplicate and % stale\n", aethyr_voice_applied(r[..]), aethyr_voice_refused(r[..], REPLAY_DUPLICATE), aethyr_voice_refused(r[..], REPLAY_STALE));
+  // The record replays with no recognizer, host or network.
+  print("replay of % steps matched: %\n", steps, aethyr_voice_replay(r[..], VOICE_INITIAL, steps));
+  heard(r[..]);
+}
+```
+
+```shell
+coax/bin/coax run aethyr/examples/hold-to-talk.coax
+```
+
+```text
+press: accepted
+final for hold 1: accepted
+the same final again: duplicate
+  step: hold 1 heard "Build a small red house next to a tall tree."
+press: accepted
+cancel: accepted
+late final for the cancelled hold: stale
+press: accepted
+empty final: accepted
+  step: hold 3 no speech ""
+applied 2, refused 1 duplicate and 1 stale
+replay of 6 steps matched: true
+  step: hold 3 no speech ""
+```
+
+The same gate runs on live recognition: `verse/voice-host/build/voice-client
+--hold --aethyr` holds recorded audio as one turn, offers each final transcript
+from the voice host (`--recognizer parakeet`) to the gate and replays the
+record at the end ([record](../../docs/verification/verse-parakeet-2026-11-02/README.md)).
+
 ## What exists today
 
 - [verse/voice.coax](../../verse/voice.coax): resampler, levels, voice
@@ -79,6 +172,10 @@ consent and explicit grants, never by the words spoken.
   metering.
 - [verse/voice-host/](../../verse/voice-host/host.c): the C host with
   WebSocket, speech and WAV adapters, run locally on a Mac.
+- [aethyr/voice.coax](../voice.coax): a spoken request into a realm. A hold is a
+  question on the replay gate and the voice host's final transcript its answer
+  (local recognition: resident Parakeet, `verse/voice-host --recognizer parakeet`);
+  [examples/hold-to-talk.coax](../examples/hold-to-talk.coax) runs it.
 - [verse/haunt.coax](../../verse/haunt.coax): a bounded, symmetric gain and
   pan per sound from the eye and heading (`hh_gain`, `hh_pan`).
 - [Coax chapter 25](../../coax/book/ch25-case-study-voice.md): how the voice

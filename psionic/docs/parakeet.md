@@ -158,5 +158,8 @@ This engine is the Parakeet foundation for
 [the Coder voice proposal](../../docs/voice/2026-11-02-coder-voice-from-hex.md).
 The [Mac dictation integration](../../docs/voice/coder-dictation.md) supplies
 opt-in capture, pre-roll/tail, bounded segmentation and guarded composer drafts.
+The [Verse voice host](../../docs/voice/dev.md#parakeet-local-recognition)
+(`--recognizer parakeet`) keeps one engine resident for Verse and Aethyr's
+hold to talk, with its own bounded segmentation and admission.
 Vocabulary rescoring and real streaming remain separate. This engine itself
 neither records a microphone nor executes a transcript.

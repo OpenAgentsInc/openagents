@@ -12,6 +12,7 @@
 #include "speech.h"
 #include "ws.h"
 #include "VoiceReply.h"
+#include "VoiceAsr.h"
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
@@ -39,10 +40,23 @@
 #define OUT_LIMIT (2u << 20)    // a client this far behind is dropped
 #define TARGET_ROUTE 1          // the floor's id for the session's Hello.route
 
-static speech_provider g_provider = PROVIDER_GOOGLE;
-static const char *provider_name(void) {
-  return g_provider == PROVIDER_GOOGLE ? "google" : g_provider == PROVIDER_PSIONIC ? "psionic" : "local";
+// Recognition and synthesis are configured apart (--recognizer, --synthesizer);
+// --provider X sets both to X, as it always has.
+static speech_provider g_recognizer = PROVIDER_GOOGLE, g_synth = PROVIDER_GOOGLE;
+static const char *one_name(speech_provider p) {
+  return p == PROVIDER_GOOGLE ? "google" : p == PROVIDER_PSIONIC ? "psionic" : p == PROVIDER_PARAKEET ? "parakeet" : "local";
 }
+// Welcome.provider: one name when one provider serves both, as before;
+// otherwise "RECOGNIZER+SYNTHESIZER", e.g. "parakeet+local".
+static const char *provider_name(void) {
+  static char both[32];
+  if (g_recognizer == g_synth) return one_name(g_recognizer);
+  snprintf(both, sizeof both, "%s+%s", one_name(g_recognizer), one_name(g_synth));
+  return both;
+}
+// The echo handling for a phone's loudspeaker (quiet turns, resuming a cut
+// reply) assumes real recognition of Google's synthesized replies.
+static bool echo_aware(void) { return g_recognizer == PROVIDER_GOOGLE && g_synth == PROVIDER_GOOGLE; }
 static speech_agent g_agent = AGENT_GEMINI;
 static uint64_t g_budget_msat = 0;
 static bool g_verbose = false;
@@ -144,6 +158,7 @@ typedef enum {
   JOB_SENTENCE,   // an event, not work: one complete reply sentence
   JOB_TTS,        // one sentence of the reply
   JOB_WARM,       // token refresh and connection warm-up
+  JOB_PARAKEET,   // a whole ended turn through Parakeet's bounded windows (verse/voice-asr.coax)
 } job_kind;
 
 typedef struct job {
@@ -164,7 +179,14 @@ typedef struct job {
   char prefix[MAX_TEXT + 1]; // TAIL: the partial's text the tail is appended to
   char text[MAX_TEXT + 1];   // in: transcript (AGENT) or sentence (TTS); out: transcript (STT)
   char reply[MAX_TEXT + 1];  // out (AGENT)
-  volatile int cancel;       // AGENT: set by the main thread to stop the stream
+  volatile int cancel;       // AGENT: set by the main thread to stop the stream; PARAKEET: the client cancelled
+  volatile int stop;         // PARAKEET: the result will be stale (barge-in): stop between windows
+  uint8_t *speech;           // PARAKEET: each 20 ms frame's speech likelihood, 0..255
+  size_t frames;
+  int windows, windows_done; // PARAKEET: model calls planned and made
+  int64_t bytes;             // PARAKEET: transcript bytes, -1 past MAX_TEXT
+  uint64_t epoch;            // PARAKEET: the session's media epoch when the turn ended
+  double infer_ms;           // PARAKEET: the engine's own time, summed over windows
   int tries;                 // AGENT: retried once when the call failed before any reply
   bool ok, cached;
   uint64_t started;
@@ -203,12 +225,51 @@ static void on_sentence(void *ctx, const char *sentence) {
   post_done(e);
 }
 
+// Worker thread: the turn's windows, one bounded model call each, in order.
+// verse/voice-asr.coax places every cut, converts the samples, joins the
+// text and says whether to go on; this only moves bytes and calls the engine.
+static void parakeet_run(job *j) {
+  static __thread float x[327520];
+  char piece[2 * MAX_TEXT + 2];
+  uint8_t text[MAX_TEXT + 1];
+  int64_t used = 0, start = 0;
+  bool ok = true;
+  int done = 0;
+  coax_v_u8 speech = {j->speech, (int64_t)j->frames};
+  while (verse_voice_asr_continue(j->cancel || j->stop, ok, done, j->windows)) {
+    int64_t end = verse_voice_asr_cut(start, (int64_t)j->n, j->windows - done, speech);
+    if (end < 0 || end - start > (int64_t)(sizeof x / sizeof x[0])) {
+      snprintf(j->err, sizeof j->err, "no bounded plan for the turn");
+      ok = false;
+      break;
+    }
+    int64_t w = end - start;
+    coax_v_s16 in = {j->pcm + start, w};
+    coax_v_f32 out = {x, w};
+    double ms = 0;
+    ok = verse_voice_asr_convert(in, out) && speech_parakeet_window(x, (size_t)w, piece, sizeof piece, &ms, j->err, sizeof j->err);
+    j->infer_ms += ms;
+    done++;
+    start = end;
+    if (!ok) break;
+    coax_v_u8 dst = {text, MAX_TEXT};
+    used = verse_voice_asr_append(dst, used, (coax_string){piece, (int64_t)strlen(piece)});
+    if (used < 0) { ok = false; break; }
+  }
+  speech_parakeet_clear();
+  text[used > 0 ? used : 0] = 0;
+  snprintf(j->text, sizeof j->text, "%s", (const char *)text);
+  j->bytes = used;
+  j->windows_done = done;
+  j->ok = ok;
+}
+
 static void job_run(job *j) {
   switch (j->kind) {
   case JOB_RECOGNIZE:
   case JOB_FINAL:
   case JOB_TAIL:
-    j->ok = speech_recognize(g_provider, j->pcm, j->n, j->text, sizeof j->text, j->err, sizeof j->err);
+    j->ok = speech_recognize(g_recognizer, j->pcm, j->n, j->text, sizeof j->text, j->err, sizeof j->err);
     clip_utf8(j->text, MAX_TEXT);
     break;
   case JOB_AGENT:
@@ -218,12 +279,13 @@ static void job_run(job *j) {
     break;
   case JOB_TTS:
     free(j->pcm);
-    j->pcm = speech_synthesize(g_provider, j->prof, j->text, j->rate, &j->n, &j->cached, j->err, sizeof j->err);
+    j->pcm = speech_synthesize(g_synth, j->prof, j->text, j->rate, &j->n, &j->cached, j->err, sizeof j->err);
     j->ok = j->pcm != NULL;
     break;
   case JOB_WARM:
-    speech_warm(g_provider == PROVIDER_GOOGLE, g_agent == AGENT_GEMINI);
+    speech_warm(g_recognizer == PROVIDER_GOOGLE || g_synth == PROVIDER_GOOGLE, g_agent == AGENT_GEMINI);
     break;
+  case JOB_PARAKEET: parakeet_run(j); break;
   case JOB_SENTENCE: break;
   }
 }
@@ -256,6 +318,7 @@ static void submit(job *j) {
 
 static void job_free(job *j) {
   free(j->pcm);
+  free(j->speech);
   free(j);
 }
 
@@ -263,7 +326,7 @@ static void job_free(job *j) {
 // one every 20 s.
 static uint64_t last_warm;
 static void warm(void) {
-  if (g_provider != PROVIDER_GOOGLE && g_agent != AGENT_GEMINI) return;
+  if (g_recognizer != PROVIDER_GOOGLE && g_synth != PROVIDER_GOOGLE && g_agent != AGENT_GEMINI) return;
   uint64_t now = now_ms();
   if (last_warm && now - last_warm < 20000) return;
   last_warm = now;
@@ -333,6 +396,8 @@ typedef struct {
   uint32_t turn_no;        // increases per TURN_START
   int16_t *tb;             // 16 kHz audio for recognition
   size_t tn, tcap;
+  uint8_t *sp;             // each frame of tb: the engine's speech likelihood times 255 (verse/voice-asr.coax)
+  size_t nvoiced;          // frames of tb at or over the speech threshold
   int16_t pend[OA_VOICE_MAX_INPUT_SAMPLES];
   uint32_t pend_n;         // uplink samples waiting to fill a 20 ms frame
   size_t voiced_end;       // tn just after the last frame the engine heard speech in
@@ -346,6 +411,10 @@ typedef struct {
   bool final_pending;
   int16_t *fin;            // that turn's audio
   size_t fin_n, fin_voiced;
+  uint8_t *fin_sp;         // its frames' speech likelihoods
+  size_t fin_nvoiced;
+  job *asr[4];             // Parakeet recognitions in flight, for cancel and barge-in
+  int nasr;
   uint64_t t_end, t_final;
   const char *plan;
   uint32_t dropped_upto;   // replies for turns <= this are discarded (barge-in, cancel)
@@ -482,6 +551,8 @@ static void drop_final(session *s) {
   free(s->fin);
   s->fin = NULL;
   s->fin_n = 0;
+  free(s->fin_sp);
+  s->fin_sp = NULL;
 }
 
 static void session_close(int idx) {
@@ -495,6 +566,7 @@ static void session_close(int idx) {
   free(s->out.p);
   free(s->msg.p);
   free(s->tb);
+  free(s->sp);
   free(s->v);
   free(s->fl);
   if (s->state != S_HTTP) logf_("%s: closed", s->sid);
@@ -527,13 +599,14 @@ static void start_turn(session *s, const oa_voice_control *c) {
   s->turn_no++;
   // Over the reply (the phone plays a little behind this host's clock, so just
   // after it too): quiet until a barge-in says otherwise.
-  if ((s->speaking || (s->spoke_at && now_ms() - s->spoke_at < 600)) && g_provider == PROVIDER_GOOGLE) {
+  if ((s->speaking || (s->spoke_at && now_ms() - s->spoke_at < 600)) && echo_aware()) {
     if (s->nquiet == 8) { memmove(s->quiet, s->quiet + 1, sizeof s->quiet[0] * 7); s->nquiet--; }
     s->quiet[s->nquiet++] = s->turn_no;
   }
   snprintf(s->turn, sizeof s->turn, "%s", turn);
   s->turn_open = true;
   s->tn = 0;
+  s->nvoiced = 0;
   s->pend_n = 0;
   s->partial_at = 0;
   s->voiced_end = 0;
@@ -580,6 +653,7 @@ static size_t flight_max(const session *s) {
 }
 
 static void maybe_recognize(session *s) {
+  if (!verse_voice_asr_partials(g_recognizer)) return;  // a resident local model recognizes each turn once
   if (s->turn_refused || s->tn < OA_VOICE_FRAME_SAMPLES || s->nflight == MAX_FLIGHT) return;
   uint32_t silence = ms_of(s->tn - s->voiced_end);
   size_t cover = s->done_cover > flight_max(s) ? s->done_cover : flight_max(s);
@@ -633,8 +707,65 @@ static void submit_recognition(session *s, job_kind kind, const int16_t *pcm, si
   submit(j);
 }
 
+// Parakeet: the ended turn goes to the resident model once, cut into bounded
+// windows by verse/voice-asr.coax; no speech and a turn too long for its
+// calls are decided there before any model call.
+static void parakeet_final(session *s) {
+  s->final_pending = false;
+  s->plan = "parakeet";
+  int64_t windows = verse_voice_asr_plan((int64_t)s->fin_n, (int64_t)s->fin_nvoiced);
+  uint64_t epoch = oa_voice_epoch(s->v);
+  if (windows <= 0) {
+    int64_t v = verse_voice_asr_admit(s->turn_no, s->dropped_upto, epoch, epoch, false, windows, true, 0);
+    logf_("%s: %s %s without a model call (%zu samples, %zu voiced frames)", s->sid, s->turn,
+          v == 1 ? "no speech" : "refused", s->fin_n, s->fin_nvoiced);
+    if (v == 5) {
+      send_error(s, OA_ERROR_TOO_LONG, "the turn is longer than four Parakeet calls", s->turn);
+      send_turn_event(s, s->turn, OA_TURN_PHASE_ENDED, NULL, 0);
+    } else {
+      deliver_final(s, s->turn_no, s->turn, "");
+    }
+    drop_final(s);
+    return;
+  }
+  uint64_t ms = ms_of(s->fin_n);
+  if (!oa_voice_meter_may_run(s->acct->m, ms, 0)) {
+    send_error(s, OA_ERROR_LIMIT, "the free tier and budget for today are used up", s->turn);
+    send_meter(s);
+    send_turn_event(s, s->turn, OA_TURN_PHASE_ENDED, NULL, 0);
+    drop_final(s);
+    return;
+  }
+  if (s->nasr == (int)(sizeof s->asr / sizeof s->asr[0])) {
+    send_error(s, OA_ERROR_LIMIT, "too many turns waiting for recognition", s->turn);
+    send_turn_event(s, s->turn, OA_TURN_PHASE_ENDED, NULL, 0);
+    drop_final(s);
+    return;
+  }
+  oa_voice_meter_charge(s->acct->m, ms, 0);
+  job *j = calloc(1, sizeof *j);
+  if (!j) { send_error(s, OA_ERROR_INTERNAL, "out of memory", s->turn); drop_final(s); return; }
+  j->kind = JOB_PARAKEET;
+  j->pcm = s->fin;
+  j->n = s->fin_n;
+  j->speech = s->fin_sp;
+  j->frames = s->fin_n / OA_VOICE_FRAME_SAMPLES;
+  s->fin = NULL;
+  s->fin_sp = NULL;
+  j->windows = (int)windows;
+  j->epoch = epoch;
+  j->session = s->serial;
+  j->turn_no = s->turn_no;
+  snprintf(j->turn, sizeof j->turn, "%s", s->turn);
+  s->asr[s->nasr++] = j;
+  if (g_verbose) logf_("%s: %s to parakeet: %zu samples in %d window(s)", s->sid, s->turn, j->n, j->windows);
+  submit(j);
+  drop_final(s);
+}
+
 // Decides the ended turn's final transcript with voice-reply.coax.
 static void plan_final(session *s) {
+  if (g_recognizer == PROVIDER_PARAKEET) { parakeet_final(s); return; }
   size_t voiced = s->fin_voiced ? s->fin_voiced : s->fin_n;  // no voiced frame seen: all of it must be covered
   int64_t p = verse_voice_reply_final_plan(ms_of(voiced), ms_of(s->done_cover), s->done_text[0] != 0,
                                               s->done_cut_ms, ms_of(flight_max(s)));
@@ -676,8 +807,12 @@ static void end_turn(session *s, bool too_long) {
   s->fin = s->tb;  // the turn's audio, kept until its final transcript is decided
   s->fin_n = s->tn;
   s->fin_voiced = s->voiced_end;
+  s->fin_sp = s->sp;
+  s->fin_nvoiced = s->nvoiced;
   s->tb = NULL;
+  s->sp = NULL;
   s->tn = s->tcap = 0;
+  s->nvoiced = 0;
   plan_final(s);
 }
 
@@ -695,13 +830,18 @@ static void uplink_frame(session *s, const int16_t *frame) {
     int16_t *q = realloc(s->tb, c * 2);
     if (!q) return;
     s->tb = q;
+    uint8_t *p = realloc(s->sp, c / OA_VOICE_FRAME_SAMPLES);
+    if (!p) return;
+    s->sp = p;
     s->tcap = c;
   }
   memcpy(s->tb + s->tn, out16k, sizeof out16k);
+  float sp = f.speech < 0 ? 0 : f.speech > 1 ? 1 : f.speech;
+  s->sp[s->tn / OA_VOICE_FRAME_SAMPLES] = (uint8_t)(sp * 255.0f + 0.5f);
   s->tn += OA_VOICE_FRAME_SAMPLES;
   oa_voice_config cfg;
   oa_voice_get_config(s->v, &cfg);
-  if (f.speech >= cfg.speech_threshold) s->voiced_end = s->tn;
+  if (f.speech >= cfg.speech_threshold) { s->voiced_end = s->tn; s->nvoiced++; }
 }
 
 static void on_uplink_audio(session *s, const oa_voice_audio *a) {
@@ -763,6 +903,7 @@ static void cut_speech(session *s, uint64_t client_epoch, bool barge) {
   if (client_epoch > e) e = oa_voice_set_epoch(s->v, client_epoch);
   oa_voice_floor_bump(s->fl);
   s->dropped_upto = s->turn_no - (s->turn_open ? 1 : 0);
+  for (int i = 0; i < s->nasr; i++) s->asr[i]->stop = 1;   // stale now: stop between windows
   if (!s->turn_open) drop_final(s);
   stop_agent(s);
   utter_free_all(s);
@@ -1011,7 +1152,7 @@ static int words_of(const char *text, char w[][32], int n) {
 // A barge-in with no words at all (the mic caught the reply, or a noise) is
 // never someone talking either.
 static bool is_echo(const session *s, const char *text) {
-  if (g_provider != PROVIDER_GOOGLE || !s->cut_at || now_ms() - s->cut_at > 10000) return false;
+  if (!echo_aware() || !s->cut_at || now_ms() - s->cut_at > 10000) return false;
   if (!text[0]) return true;
   static char t[64][32], r[256][32];
   int nt = words_of(text, t, 64), nr = words_of(s->cut_text, r, 256), hit = 0;
@@ -1196,6 +1337,27 @@ static void on_job_done(job *j) {
     job_free(j);
     return;
   }
+  if (j->kind == JOB_PARAKEET) {
+    for (int i = 0; i < s->nasr; i++)
+      if (s->asr[i] == j) { s->asr[i] = s->asr[--s->nasr]; break; }
+    int64_t v = verse_voice_asr_admit(j->turn_no, s->dropped_upto, j->epoch, oa_voice_epoch(s->v), j->cancel != 0,
+                                      j->windows, j->ok, j->bytes);
+    static const char *verdicts[] = {"final", "no speech", "stale", "cancelled", "failed", "too long"};
+    logf_("%s: %s parakeet %s: %d of %d window(s), %zu samples, inference %.0f ms, recognition %llu ms after TURN_END",
+          s->sid, j->turn, v >= 0 && v < 6 ? verdicts[v] : "?", j->windows_done, j->windows, j->n, j->infer_ms,
+          (unsigned long long)(now_ms() - s->t_end));
+    if (v == 0) deliver_final(s, j->turn_no, j->turn, j->text);
+    else if (v == 1) deliver_final(s, j->turn_no, j->turn, "");
+    else if (v == 4) {
+      send_error(s, OA_ERROR_PROVIDER, j->err[0] ? j->err : "parakeet failed", j->turn);
+      send_turn_event(s, j->turn, OA_TURN_PHASE_ENDED, NULL, 0);
+    } else if (v == 5) {
+      send_error(s, OA_ERROR_TOO_LONG, "the transcript is longer than 600 bytes", j->turn);
+      send_turn_event(s, j->turn, OA_TURN_PHASE_ENDED, NULL, 0);
+    }
+    job_free(j);
+    return;
+  }
   if (j->turn_no <= s->dropped_upto) {  // barged or cancelled
     if (s->agent == j) s->agent = NULL;
     job_free(j);
@@ -1350,12 +1512,13 @@ static void on_control(session *s, const oa_voice_control *c) {
     // rather than a gap until the words show which, it goes on quietly now.
     // The phone may send the barge-in before the turn it starts.
     s->barge_wait = false;
-    if (s->cut_pcm && s->cut_at && g_provider == PROVIDER_GOOGLE) {
+    if (s->cut_pcm && s->cut_at && echo_aware()) {
       if (s->turn_open) resume_cut(s, s->turn_no, s->turn, true);
       else s->barge_wait = true;
     }
     break;
   case OA_CONTROL_CANCEL:
+    for (int i = 0; i < s->nasr; i++) s->asr[i]->cancel = 1;
     if (s->turn_open) {
       s->turn_open = false;
       oa_voice_cancel_turn(s->v);
@@ -1581,6 +1744,8 @@ static int listen_on(const char *spec, int *port_out) {
 static void usage(void) {
   fprintf(stderr,
           "usage: voice-host [--listen HOST:PORT] [--provider google|psionic|local] [--agent gemini|echo]\n"
+          "                  [--recognizer google|psionic|parakeet|local] [--synthesizer google|local]\n"
+          "                  [--parakeet-model DIR] [--parakeet-device gpu|cpu]   (parakeet)\n"
           "                  [--model NAME] [--project ID] [--budget-msat N] [--max-speakers N] [--verbose]\n"
           "                  [--whisper-model PATH] [--words A,B,C]   (psionic)\n"
           "  default: --listen 127.0.0.1:8787 --provider google --agent gemini\n");
@@ -1588,15 +1753,38 @@ static void usage(void) {
 
 int main(int argc, char **argv) {
   const char *listen_spec = "127.0.0.1:8787";
+  bool parakeet_device_set = false;
   for (int i = 1; i < argc; i++) {
     const char *a = argv[i];
     const char *v = i + 1 < argc ? argv[i + 1] : NULL;
     if (!strcmp(a, "--listen") && v) { listen_spec = v; i++; }
     else if (!strcmp(a, "--provider") && v) {
-      if (!strcmp(v, "google")) g_provider = PROVIDER_GOOGLE;
-      else if (!strcmp(v, "local")) g_provider = PROVIDER_LOCAL;
-      else if (!strcmp(v, "psionic")) g_provider = PROVIDER_PSIONIC;
+      if (!strcmp(v, "google")) g_recognizer = g_synth = PROVIDER_GOOGLE;
+      else if (!strcmp(v, "local")) g_recognizer = g_synth = PROVIDER_LOCAL;
+      else if (!strcmp(v, "psionic")) g_recognizer = g_synth = PROVIDER_PSIONIC;
+      else { usage(); return 2; }   // parakeet does not synthesize: use --recognizer parakeet
+      i++;
+    } else if (!strcmp(a, "--recognizer") && v) {
+      if (!strcmp(v, "google")) g_recognizer = PROVIDER_GOOGLE;
+      else if (!strcmp(v, "local")) g_recognizer = PROVIDER_LOCAL;
+      else if (!strcmp(v, "psionic")) g_recognizer = PROVIDER_PSIONIC;
+      else if (!strcmp(v, "parakeet")) g_recognizer = PROVIDER_PARAKEET;
       else { usage(); return 2; }
+      i++;
+    } else if (!strcmp(a, "--synthesizer") && v) {
+      if (!strcmp(v, "google")) g_synth = PROVIDER_GOOGLE;
+      else if (!strcmp(v, "local")) g_synth = PROVIDER_LOCAL;
+      else if (!strcmp(v, "parakeet")) g_synth = PROVIDER_PARAKEET;   // refused below: recognition only
+      else { usage(); return 2; }
+      i++;
+    } else if (!strcmp(a, "--parakeet-model") && v) {
+      snprintf(g_speech.parakeet_model, sizeof g_speech.parakeet_model, "%s", v);
+      i++;
+    } else if (!strcmp(a, "--parakeet-device") && v) {
+      if (!strcmp(v, "gpu")) g_speech.parakeet_gpu = 1;
+      else if (!strcmp(v, "cpu")) g_speech.parakeet_gpu = 0;
+      else { usage(); return 2; }
+      parakeet_device_set = true;
       i++;
     } else if (!strcmp(a, "--agent") && v) {
       if (!strcmp(v, "gemini")) g_agent = AGENT_GEMINI;
@@ -1619,14 +1807,34 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, SIG_IGN);
   speech_init();
   g_speech.verbose = g_verbose;
-  if (g_provider == PROVIDER_PSIONIC) {
+  if (!verse_voice_asr_synthesizes(g_synth)) {
+    logf_("%s does not synthesize speech; choose --synthesizer google or local", one_name(g_synth));
+    return 2;
+  }
+  if (!parakeet_device_set) {
+#ifdef __APPLE__
+    g_speech.parakeet_gpu = 1;   // Metal
+#else
+    g_speech.parakeet_gpu = 0;   // Parakeet's GPU path is Metal only; elsewhere the CPU, chosen explicitly
+#endif
+  }
+  if (g_recognizer == PROVIDER_PARAKEET) {
+    char err[512];
+    uint64_t t0 = now_ms();
+    if (!speech_parakeet_open(err, sizeof err)) {
+      logf_("%s (%s); see psionic/docs/parakeet.md for the pinned model", err, g_speech.parakeet_model);
+      return 1;
+    }
+    logf_("parakeet resident on the %s in %llu ms", g_speech.parakeet_gpu ? "GPU" : "CPU", (unsigned long long)(now_ms() - t0));
+  }
+  if (g_recognizer == PROVIDER_PSIONIC) {
     char err[256];
     if (!speech_psionic_open(err, sizeof err)) {
       logf_("%s (%s); fetch it with: openagents transcribe fetch base.en", err, g_speech.whisper_model);
       return 1;
     }
   }
-  if (g_provider == PROVIDER_GOOGLE || g_agent == AGENT_GEMINI) {
+  if (g_recognizer == PROVIDER_GOOGLE || g_synth == PROVIDER_GOOGLE || g_agent == AGENT_GEMINI) {
     char err[256];
     if (!speech_google_ready(err, sizeof err)) {
       logf_("%s; use --provider local --agent echo for offline work", err);

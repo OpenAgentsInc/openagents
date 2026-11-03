@@ -1,7 +1,15 @@
 // voice-client: the dev test client. Streams a WAV to the voice host at real
 // time in 20 ms frames, deciding turns with oa_voice_uplink exactly as the
 // phone does, prints every event, and saves the reply audio. See docs/voice/dev.md.
+//
+// --hold sends the file as one held turn (hold to talk, as Aethyrforge's forge
+// bar does) instead of letting the engine find turns; --then FILE holds a
+// second turn after it, and --after-end cancel|barge|realm cancels the first
+// turn's recognition (on the host, by a barge-in's new epoch, or only in the
+// realm). --aethyr passes each final transcript through Aethyr's event gate
+// (aethyr/voice.coax), as a realm does, and replays the record at the end.
 #include "../platform/voice.h"
+#include "AethyrVoice.h"
 #include "wav.h"
 #include "ws.h"
 #include <arpa/inet.h>
@@ -11,6 +19,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,7 +85,8 @@ static void usage(void) {
   fprintf(stderr,
           "usage: voice-client [--url ws://127.0.0.1:8787/] [--observe] [--out reply.wav] [--expect TEXT]\n"
           "                    [--barge FILE.wav] [--turns N] [--timeout SECONDS] [--rate-out HZ]\n"
-          "                    [--profile ID] [--speaker ID] [--decide-gain DB] [--quiet] FILE.wav\n");
+          "                    [--profile ID] [--speaker ID] [--decide-gain DB] [--quiet] [--exact TEXT]\n"
+          "                    [--hold [--then FILE.wav] [--after-end cancel|barge|realm]] [--aethyr] FILE.wav\n");
 }
 
 typedef struct {
@@ -84,12 +94,28 @@ typedef struct {
   size_t downlink_samples;
   int peak;
   bool matched;
+  int ended, exact_ok;
 } tally;
+
+// The realm's side (aethyr/voice.coax): each held turn is a press, and its
+// final transcript the press's answer.
+static coax_t_VoiceRealm *realm;
+static int realm_steps;
+static coax_v_t_VoiceRealm RV(void) { return (coax_v_t_VoiceRealm){realm, 1}; }
+static const char *verdict_name(int64_t v) {
+  static const char *n[] = {"ACCEPTED", "DUPLICATE", "STALE", "UNKNOWN", "FULL", "REPLAYING", "TOO_LONG", "LOG_FULL"};
+  return v >= 0 && v < 8 ? n[v] : "?";
+}
+static int64_t realm_step(void) { realm_steps++; return aethyr_voice_step(RV()); }
+typedef struct { char turn[16]; int64_t request, epoch; } realm_hold;
+static realm_hold holds[8];
+static int nholds;
 
 int main(int argc, char **argv) {
   const char *url = "ws://127.0.0.1:8787/", *wav = NULL, *barge = NULL, *out_path = NULL, *expect = NULL;
   const char *profile = "", *speaker = "dev";
-  bool observe = false, have_gain = false;
+  bool observe = false, have_gain = false, hold = false;
+  const char *then_wav = NULL, *after_end = NULL, *exact = NULL;
   float gain_db = 0;
   int turns = 0, timeout_s = 30;
   uint32_t rate_out = 24000;
@@ -107,11 +133,22 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--profile") && v) { profile = v; i++; }
     else if (!strcmp(a, "--speaker") && v) { speaker = v; i++; }
     else if (!strcmp(a, "--decide-gain") && v) { have_gain = true; gain_db = (float)atof(v); i++; }
+    else if (!strcmp(a, "--hold")) hold = true;
+    else if (!strcmp(a, "--then") && v) { then_wav = v; i++; }
+    else if (!strcmp(a, "--after-end") && v) { after_end = v; i++; }
+    else if (!strcmp(a, "--exact") && v) { exact = v; i++; }
+    else if (!strcmp(a, "--aethyr")) {
+      realm = calloc(1, (size_t)aethyr_voice_size());
+      if (!realm) return 2;
+      aethyr_voice_init(RV(), 12669);
+    }
     else if (a[0] != '-' && !wav) wav = a;
     else { usage(); return 2; }
   }
   if (!wav) { usage(); return 2; }
   if (!turns) turns = barge ? 2 : 1;
+  if ((then_wav || after_end) && !hold) { fprintf(stderr, "voice-client: --then and --after-end need --hold\n"); return 2; }
+  if (after_end && strcmp(after_end, "cancel") && strcmp(after_end, "barge") && strcmp(after_end, "realm")) { usage(); return 2; }
 
   uint32_t rate = 0, brate = 0;
   size_t ns = 0, nb = 0;
@@ -121,6 +158,13 @@ int main(int argc, char **argv) {
   if (barge) {
     bpcm = wav_read(barge, &brate, &nb);
     if (!bpcm || brate != rate) { fprintf(stderr, "voice-client: cannot read %s at %u Hz\n", barge, rate); return 2; }
+  }
+  int16_t *tpcm = NULL;
+  size_t nt = 0, tpos = 0;
+  if (then_wav) {
+    uint32_t trate = 0;
+    tpcm = wav_read(then_wav, &trate, &nt);
+    if (!tpcm || trate != rate) { fprintf(stderr, "voice-client: cannot read %s at %u Hz\n", then_wav, rate); return 2; }
   }
   oa_voice *v = calloc(1, oa_voice_size());
   oa_voice_init(v, rate);
@@ -147,7 +191,11 @@ int main(int argc, char **argv) {
   freeaddrinfo(ai);
   int one = 1;
   setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+#ifdef SO_NOSIGPIPE
   setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#else
+  signal(SIGPIPE, SIG_IGN);
+#endif
   char req[512];
   send_all((const uint8_t *)req, ws_client_request(host, port, path, req, sizeof req));
   static uint8_t in[1 << 20];
@@ -240,6 +288,32 @@ int main(int argc, char **argv) {
             if (!quiet) printf("turn %.*s %s%s%.*s%s epoch=%llu\n", (int)e->turn.len, e->turn.ptr, phase_name(e->phase),
                                e->text.len ? " \"" : "", (int)e->text.len, e->text.ptr, e->text.len ? "\"" : "",
                                (unsigned long long)e->media_epoch);
+            if (e->phase == OA_TURN_PHASE_ENDED) t.ended++;
+            if (e->phase == OA_TURN_PHASE_FINAL && exact) {
+              bool same = e->text.len == strlen(exact) && !memcmp(e->text.ptr, exact, e->text.len);
+              printf("exact %s \"%.*s\"\n", same ? "match" : "MISMATCH", (int)e->text.len, e->text.ptr);
+              if (same) t.exact_ok++;
+            }
+            if (e->phase == OA_TURN_PHASE_FINAL && realm) {
+              realm_hold *h = NULL;
+              for (int k = 0; k < nholds; k++)
+                if (e->turn.len == strlen(holds[k].turn) && !memcmp(e->turn.ptr, holds[k].turn, e->turn.len)) h = &holds[k];
+              coax_string txt = {(const char *)e->text.ptr, (int64_t)e->text.len};
+              int64_t verdict = h ? aethyr_voice_offer(RV(), h->request, h->epoch, txt) : 3;
+              printf("aethyr offer %.*s request=%lld epoch=%lld %s\n", (int)e->turn.len, e->turn.ptr, h ? (long long)h->request : 0LL,
+                     h ? (long long)h->epoch : 0LL, verdict_name(verdict));
+              if (verdict == 0) {
+                // The same transcript again is refused: one answer per hold.
+                printf("aethyr offer-again %s\n", verdict_name(aethyr_voice_offer(RV(), h->request, h->epoch, txt)));
+                int64_t took = realm_step();
+                char heard[700];
+                coax_v_u8 hv = {(uint8_t *)heard, (int64_t)sizeof heard - 1};
+                int64_t hn = aethyr_voice_heard(RV(), hv);
+                heard[hn > 0 ? hn : 0] = 0;
+                printf("aethyr heard took=%lld request=%lld kind=%s \"%s\"\n", (long long)took, (long long)aethyr_voice_heard_request(RV()),
+                       aethyr_voice_heard_kind(RV()) == 2 ? "NO_SPEECH" : "FINAL", heard);
+              }
+            }
             if (e->phase == OA_TURN_PHASE_FINAL) {
               t.finals++;
               t_final = now;
@@ -366,6 +440,91 @@ int main(int argc, char **argv) {
     playing = now < play_end;
     if (playing != was) oa_voice_playing(v, playing);
 
+    if (hold) {
+      // Hold to talk: the file is one turn from its first frame to its last,
+      // then --then's file is the next; the engine still measures every frame.
+      static int held = 0;   // turns started
+      static bool holding = false;
+      const int16_t *src = held <= 1 ? pcm : tpcm;
+      size_t srcn = held <= 1 ? ns : nt, *sp = held <= 1 ? &pos : &tpos;
+      if (!holding && ((held == 0) || (held == 1 && tpcm && pos >= ns))) {
+        held++;
+        holding = true;
+        snprintf(turn, sizeof turn, "t%d", held);
+        src = held <= 1 ? pcm : tpcm;
+        srcn = held <= 1 ? ns : nt;
+        sp = held <= 1 ? &pos : &tpos;
+        if (realm) {
+          int64_t pv = aethyr_voice_control(RV(), 1);
+          realm_step();
+          snprintf(holds[nholds].turn, sizeof holds[nholds].turn, "%s", turn);
+          holds[nholds].request = aethyr_voice_holding(RV());
+          holds[nholds].epoch = aethyr_voice_epoch(RV());
+          printf("aethyr press %s %s request=%lld epoch=%lld\n", turn, verdict_name(pv), (long long)holds[nholds].request,
+                 (long long)holds[nholds].epoch);
+          nholds++;
+        }
+        oa_voice_msg c = {.kind = OA_MSG_CONTROL};
+        c.u.control.kind = OA_CONTROL_TURN_START;
+        c.u.control.turn = B(turn);
+        c.u.control.media_epoch = oa_voice_epoch(v);
+        send_msg(&c);
+        if (!quiet) printf("hold %s\n", turn);
+      }
+      memset(frame, 0, sizeof frame);
+      if (holding && *sp < srcn) {
+        size_t k = srcn - *sp < fs ? srcn - *sp : fs;
+        memcpy(frame, src + *sp, k * 2);
+        *sp += k;
+      }
+      int16_t out16k[OA_VOICE_FRAME_SAMPLES];
+      oa_voice_features f;
+      (void)oa_voice_uplink(v, frame, out16k, &f);
+      if (holding) {
+        oa_voice_msg a = {.kind = OA_MSG_AUDIO};
+        a.u.audio.turn = B(turn);
+        a.u.audio.sequence = up_seq++;
+        a.u.audio.sample_rate = OA_VOICE_RATE;
+        a.u.audio.codec = OA_CODEC_PCM_S16LE;
+        a.u.audio.data.ptr = (const uint8_t *)out16k;
+        a.u.audio.data.len = sizeof out16k;
+        a.u.audio.media_epoch = oa_voice_epoch(v);
+        send_msg(&a);
+        if (*sp >= srcn) {
+          holding = false;
+          oa_voice_msg c = {.kind = OA_MSG_CONTROL};
+          c.u.control.kind = OA_CONTROL_TURN_END;
+          c.u.control.turn = B(turn);
+          send_msg(&c);
+          t_turn_end = now_ms();
+          if (!quiet) printf("release %s\n", turn);
+          if (held == 1 && after_end) {
+            if (!strcmp(after_end, "cancel")) {
+              oa_voice_msg x = {.kind = OA_MSG_CONTROL};
+              x.u.control.kind = OA_CONTROL_CANCEL;
+              x.u.control.media_epoch = oa_voice_epoch(v);
+              send_msg(&x);
+            } else if (!strcmp(after_end, "barge")) {
+              oa_voice_msg x = {.kind = OA_MSG_CONTROL};
+              x.u.control.kind = OA_CONTROL_BARGE_IN;
+              x.u.control.media_epoch = oa_voice_cut(v);
+              send_msg(&x);
+            }
+            if (realm) {
+              int64_t cv = aethyr_voice_control(RV(), 2);
+              realm_step();
+              printf("aethyr cancel %s epoch=%lld\n", verdict_name(cv), (long long)aethyr_voice_epoch(RV()));
+            }
+            if (!quiet) printf("after-end %s\n", after_end);
+          }
+        }
+      }
+      bool all_sent = pos >= ns && (!tpcm || tpos >= nt) && !holding;
+      if (!done_at && all_sent && t.ended >= turns) done_at = now;
+      if (done_at && now - done_at > 300) break;
+      continue;
+    }
+
     // The next 20 ms of microphone: the WAV, then (with --barge, once reply
     // audio has played 300 ms) the barge-in WAV, then silence.
     if (pos < ns) {
@@ -454,15 +613,24 @@ int main(int argc, char **argv) {
     if (done_at && now - done_at > 300) break;
   }
 
+  if (realm) {
+    int64_t steps = realm_steps;
+    bool matched = aethyr_voice_replay(RV(), 2166136261, steps);
+    printf("aethyr record applied=%lld duplicate=%lld stale=%lld unknown=%lld steps=%lld replay=%s\n",
+           (long long)aethyr_voice_applied(RV()), (long long)aethyr_voice_refused(RV(), 1), (long long)aethyr_voice_refused(RV(), 2),
+           (long long)aethyr_voice_refused(RV(), 3), (long long)steps, matched ? "matched" : "DIVERGED");
+    if (!matched) rc = 1;
+  }
   printf("summary finals=%d partials=%d speeches=%d speech_updates=%d speech_ends=%d interrupted=%d audio_in=%d downlink_samples=%zu "
-         "stale=%d features=%d decisions=%d meters=%d errors=%d peak=%d\n",
+         "stale=%d features=%d decisions=%d meters=%d errors=%d peak=%d ended=%d exact=%d\n",
          t.finals, t.partials, t.speeches, t.speech_updates, t.speech_ends, t.interrupted, t.audio_in, t.downlink_samples, t.stale,
-         t.features, t.decisions, t.meters, t.errors, t.peak);
+         t.features, t.decisions, t.meters, t.errors, t.peak, t.ended, t.exact_ok);
   if (out_path && reply_n) {
     if (!wav_write(out_path, reply, reply_n, rate_out)) { fprintf(stderr, "voice-client: cannot write %s\n", out_path); rc = 1; }
     else if (!quiet) printf("wrote %s (%zu samples at %u Hz)\n", out_path, reply_n, rate_out);
   }
   if (!t.finals) { fprintf(stderr, "voice-client: no final transcript\n"); rc = 1; }
+  if (exact && !t.exact_ok) { fprintf(stderr, "voice-client: no final transcript is exactly \"%s\"\n", exact); rc = 1; }
   if (t.errors) { fprintf(stderr, "voice-client: the host sent %d error(s)\n", t.errors); rc = 1; }
   if (expect && !t.matched) { fprintf(stderr, "voice-client: no final transcript contains \"%s\" (last: \"%s\")\n", expect, final_text); rc = 1; }
   close(fd);

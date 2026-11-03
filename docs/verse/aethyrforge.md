@@ -83,6 +83,10 @@ in the Verse's look (thin lines, plates, capitals; `verse.coax`).
   TYPE, and DROP A DOCUMENT. Under it, one line says what the last sentence did, in
   plain words, each part a chip you can tap to undo just that part. Nothing else
   talks: no "thinking", no "working on it" (docs say no filler).
+  Locally, HOLD TO TALK is recognized by Psionic's resident Parakeet through the voice
+  host (`verse/voice-host --recognizer parakeet`; [setup and measurements](../voice/dev.md#parakeet-local-recognition)),
+  and each final transcript reaches the realm through Aethyr's event gate
+  ([`aethyr/voice.coax`](../../aethyr/voice.coax)): one answer per hold, none after a cancel.
 - **The feature rail (left).** The board, always visible: each feature a row with its
   check and its few words; a tap switches it and the realm changes at once. Under it,
   ASKED FOR: what the catalogue can't draw yet, each with BUILD IT (sends it to your

@@ -4,7 +4,11 @@
 // Providers: "google" (Speech-to-Text v2 chirp_3, Text-to-Speech Chirp 3 HD),
 // "psionic" (Psionic's Whisper on this machine for speech to text, offline;
 // replies use the local tone) and "local" (offline, deterministic, for
-// tests). Agents: "echo" and
+// tests). "parakeet" (Psionic's resident Parakeet TDT 0.6B v3, offline) is
+// recognition only: it never synthesizes, and the host refuses it as a
+// synthesizer. Recognition, synthesis and the agent are configured apart
+// (host.c: --recognizer, --synthesizer, --agent; --provider sets the first
+// two at once, as it always has). Agents: "echo" and
 // "gemini" (Vertex AI generateContent).
 #ifndef OA_VOICE_SPEECH_H
 #define OA_VOICE_SPEECH_H
@@ -12,7 +16,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef enum { PROVIDER_LOCAL = 0, PROVIDER_GOOGLE = 1, PROVIDER_PSIONIC = 2 } speech_provider;
+// The numbers are verse/voice-asr.coax's recognizer identities (ASR_*).
+typedef enum { PROVIDER_LOCAL = 0, PROVIDER_GOOGLE = 1, PROVIDER_PSIONIC = 2, PROVIDER_PARAKEET = 3 } speech_provider;
 typedef enum { AGENT_ECHO = 0, AGENT_GEMINI = 1 } speech_agent;
 
 typedef struct {
@@ -30,6 +35,9 @@ typedef struct {
   char cache_dir[512];       // render cache, default ~/.cache/openagents-voice/renders
   char whisper_model[512];   // psionic: ggml Whisper model, default ~/.cache/openagents/models/whisper/ggml-base.en.bin
   char whisper_words[256];   // psionic: names to spell as given, default Psionic,Verse,OpenAgents,Coax,Coder
+  char parakeet_model[512];  // parakeet: the pinned model directory, default $OPENAGENTS_PARAKEET_MODEL,
+                             // else ~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99
+  int parakeet_gpu;          // parakeet: 1 Metal (macOS default), 0 the CPU (elsewhere); never a fallback
   bool verbose;
 } speech_config;
 
@@ -42,6 +50,17 @@ const speech_profile *speech_find_profile(const char *id);
 // Maps the psionic provider's model once (call from main, before threads
 // start). False with err when the model is missing or unreadable.
 bool speech_psionic_open(char *err, size_t errcap);
+
+// Opens the one resident Parakeet model (call from main, before threads
+// start). False with err when the model is missing, wrong or the device is
+// unavailable; the host then refuses to start rather than falling back.
+bool speech_parakeet_open(char *err, size_t errcap);
+// One bounded model call: n (320..327,520) f32 samples at 16 kHz, already
+// converted by verse/voice-asr.coax. *ms gets the engine's inference time.
+// Calls serialize inside the engine.
+bool speech_parakeet_window(const float *x, size_t n, char *out, size_t cap, double *ms, char *err, size_t errcap);
+// Discards the engine's resident audio, features and text after a turn.
+void speech_parakeet_clear(void);
 
 // True if an access token can be had (google provider usable). Never prints it.
 bool speech_google_ready(char *err, size_t errcap);

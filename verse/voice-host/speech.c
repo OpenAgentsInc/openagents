@@ -2,7 +2,12 @@
 #include "wav.h"
 #include "ws.h"
 #include "VoiceReply.h"
+#ifndef OA_VOICE_NO_WHISPER
 #include "psionic-stt.h"
+#endif
+#ifndef OA_VOICE_NO_PARAKEET
+#include "psionic-parakeet.h"
+#endif
 #ifdef __APPLE__
 #include <CommonCrypto/CommonDigest.h>
 #else
@@ -73,10 +78,55 @@ void speech_init(void) {
   }
   if (!g_speech.whisper_words[0])
     snprintf(g_speech.whisper_words, sizeof g_speech.whisper_words, "Psionic,Verse,OpenAgents,Coax,Coder");
+  if (!g_speech.parakeet_model[0]) {
+    const char *e = getenv("OPENAGENTS_PARAKEET_MODEL"), *home = getenv("HOME");
+    if (e && *e) snprintf(g_speech.parakeet_model, sizeof g_speech.parakeet_model, "%s", e);
+    else
+      snprintf(g_speech.parakeet_model, sizeof g_speech.parakeet_model,
+               "%s/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99", home ? home : "/tmp");
+  }
 }
+
+// ---------------------------------------------------------------- parakeet
+
+#ifndef OA_VOICE_NO_PARAKEET
+static psionic_parakeet *g_parakeet;
+
+bool speech_parakeet_open(char *err, size_t errcap) {
+  g_parakeet = psionic_parakeet_open(g_speech.parakeet_model, g_speech.parakeet_gpu, err, errcap);
+  if (!g_parakeet) return false;
+  if (g_speech.verbose)
+    fprintf(stderr, "voice-host: parakeet %s on the %s, %d decoder threads\n", g_speech.parakeet_model,
+            g_speech.parakeet_gpu ? "GPU" : "CPU", psionic_parakeet_decoder_threads(g_parakeet));
+  return true;
+}
+
+bool speech_parakeet_window(const float *x, size_t n, char *out, size_t cap, double *ms, char *err, size_t errcap) {
+  if (!g_parakeet) { seterr(err, errcap, "parakeet is not open"); return false; }
+  if (!psionic_parakeet_text(g_parakeet, x, (int64_t)n, out, cap, err, errcap)) return false;
+  psionic_parakeet_info info;
+  if (ms) *ms = psionic_parakeet_last_info(g_parakeet, &info) ? info.inference_ms : 0;
+  return true;
+}
+
+void speech_parakeet_clear(void) {
+  if (g_parakeet) psionic_parakeet_clear(g_parakeet);
+}
+#else
+bool speech_parakeet_open(char *err, size_t errcap) {
+  seterr(err, errcap, "this voice-host was built without Parakeet");
+  return false;
+}
+bool speech_parakeet_window(const float *x, size_t n, char *out, size_t cap, double *ms, char *err, size_t errcap) {
+  seterr(err, errcap, "this voice-host was built without Parakeet");
+  return false;
+}
+void speech_parakeet_clear(void) {}
+#endif
 
 // ---------------------------------------------------------------- psionic
 
+#ifndef OA_VOICE_NO_WHISPER
 static psionic_stt *g_psionic;
 
 bool speech_psionic_open(char *err, size_t errcap) {
@@ -96,6 +146,16 @@ static bool psionic_recognize(const int16_t *pcm, size_t n, char *out, size_t ca
   free(x);
   return ok;
 }
+#else
+bool speech_psionic_open(char *err, size_t errcap) {
+  seterr(err, errcap, "this voice-host was built without Psionic's Whisper");
+  return false;
+}
+static bool psionic_recognize(const int16_t *pcm, size_t n, char *out, size_t cap, char *err, size_t errcap) {
+  seterr(err, errcap, "this voice-host was built without Psionic's Whisper");
+  return false;
+}
+#endif
 
 // ---------------------------------------------------------------- access token
 
@@ -408,6 +468,10 @@ bool speech_recognize(speech_provider p, const int16_t *pcm, size_t n, char *out
     return true;
   }
   if (p == PROVIDER_PSIONIC) return psionic_recognize(pcm, n, out, cap, err, errcap);
+  if (p == PROVIDER_PARAKEET) {  // the host runs Parakeet through its bounded windows (JOB_PARAKEET), never here
+    seterr(err, errcap, "parakeet recognizes bounded windows only");
+    return false;
+  }
   char *b64 = malloc(4 * ((n * 2 + 2) / 3) + 1);
   if (!b64) { seterr(err, errcap, "out of memory"); return false; }
   ws_base64((const uint8_t *)pcm, n * 2, b64);

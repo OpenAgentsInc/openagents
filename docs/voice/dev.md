@@ -40,8 +40,12 @@ missing or stale (the same way `apps/openagents-ios/generate.sh` does),
 compiles each `verse/voice*.coax` and `verse/voice-host/*.coax` to a C library with
 `coax c FILE --library --header` (`voice.coax` becomes `VoiceEngine.c/.h`,
 because `Voice.h` would match `voice.h` on a case-insensitive disk; the others
-are `VoiceWire`, `VoiceFloor`, `VoiceMeter`, `VoiceReply`), compiles `verse/platform/voice.c` over
-them, and links the host against libcurl from the macOS SDK. `#authority`
+are `VoiceWire`, `VoiceFloor`, `VoiceMeter`, `VoiceReply`, `VoiceAsr`), compiles `verse/platform/voice.c` over
+them, and links the host against libcurl from the macOS SDK, Psionic's
+Whisper and Psionic's Parakeet. On Linux it uses an existing `coax/bin/coax`,
+takes libcurl and OpenSSL from the system or from Nix, and builds without
+Whisper (which does not build there yet); Parakeet runs on the CPU. The client
+also links Aethyr's spoken-request gate (`aethyr/voice.coax`). `#authority`
 files run their checks inside `coax c`, so a failing check stops the build.
 Outputs go to `verse/voice-host/build/` (ignored by git).
 
@@ -109,6 +113,15 @@ lengths only. `--verbose` adds the text and every applied or dropped decision.
 | `local` speech | Offline and deterministic. Recognition returns "I heard N milliseconds of speech. Thank you." for the audio's length; synthesis returns a rising chirp, 50 ms per byte of text plus 200 ms (at most 12 s) |
 | `gemini` agent | Vertex AI `streamGenerateContent?alt=sse` in us-central1 with the route's instruction, and the session's last 10 exchanges as context |
 | `echo` agent | Replies "You said: TRANSCRIPT" (two sentences with `local` speech, so the sentence path runs offline) |
+| `psionic` speech | Psionic's Whisper on this machine for recognition; replies use the `local` tone |
+| `parakeet` recognizer | Psionic's resident Parakeet TDT 0.6B v3, on this machine, recognition only (see "Parakeet: local recognition") |
+
+Recognition, synthesis and the agent are configured apart: `--recognizer
+google|psionic|parakeet|local`, `--synthesizer google|local`, `--agent
+gemini|echo`. `--provider X` still sets the recognizer and the synthesizer to
+X, so every existing command means what it did. `Welcome.provider` is one name
+when one provider does both, as before, and `RECOGNIZER+SYNTHESIZER`
+otherwise (`parakeet+local`). `--synthesizer parakeet` is refused at start.
 
 The agent's instruction comes from `Hello.route` through one table,
 `ROUTES` in `speech.c`. Its rows: `haunted-house` (the house's VOICE), `everglade` (its voice edits), `guide` (the Agent orb on the /verse landing, the playtest's guide: what the playtest, the Verse and the Haunted House are for), and `foreman`: the Foreman, an
@@ -246,6 +259,57 @@ before it has played. A Chirp 3 HD render takes about 300 ms plus 130 ms per
 second of audio. With an 8-byte first piece ("Hello there!") the
 second sentence wasn't ready in time, playback had a gap, and a barge-in
 during that gap went unnoticed by the client.
+
+### Parakeet: local recognition
+
+```sh
+verse/voice-host/build/voice-host --recognizer parakeet --synthesizer local --agent echo \
+  [--parakeet-model DIR] [--parakeet-device gpu|cpu]
+coax/web/tool.sh verse/voice-host/parakeet-check.coax [MODEL_DIR [CASE]]   # recorded audio only
+```
+
+One model is opened at start and stays resident: the pinned
+`nvidia/parakeet-tdt-0.6b-v3` files from [Psionic's setup](../../psionic/docs/parakeet.md),
+from `--parakeet-model`, else `$OPENAGENTS_PARAKEET_MODEL`, else
+`~/.cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99`. A missing
+or wrong model stops the host; nothing is downloaded. The device is Metal on
+macOS and the CPU elsewhere (Parakeet's GPU path is Metal only); an
+unavailable device is a refusal, never a fallback. Audio never leaves the
+machine, and the free tier is metered as for any recognizer.
+
+[`verse/voice-asr.coax`](../../verse/voice-asr.coax) (`#authority`, zero
+surviving mutants) makes every decision; `host.c` and `speech.c` only move
+bytes, run threads and call the engine:
+
+- **Once per turn.** No PARTIALs and no early recognition: the ended turn goes
+  to the model once (`verse_voice_asr_partials`).
+- **PCM.** The turn's 16 kHz samples become the model's f32 samples in
+  `[-1, 1)` (`verse_voice_asr_convert`).
+- **No speech.** A turn under 320 samples or with fewer than 8 voiced frames
+  (160 ms) is no speech without a model call: FINAL with no text, then ENDED,
+  as an empty transcript always was. Empty model text is the same.
+- **Segmentation.** A model call takes 320 to 327,520 samples (20.47 s); the
+  host's turn may run 30 s. A longer turn is cut into at most four calls, each
+  cut on the quietest 20 ms frame boundary within 1 s of an even split, every
+  sample covered once. A turn needing more than four is refused
+  (`ERROR_CODE_TOO_LONG`), never sent as one call. Window texts are joined with
+  one space; past 600 bytes (TurnEvent.text) the transcript is refused, not cut.
+- **Cancellation and epochs.** The host stamps each recognition with its turn
+  and media epoch. CANCEL marks it cancelled; a barge-in's new epoch makes it
+  stale. Either stops it between windows (a call already running finishes) and
+  `verse_voice_asr_admit` drops its transcript. Words never decide admission.
+- **Resident buffers.** After every turn, `psionic_parakeet_clear` discards the
+  engine's audio, features and text; the weights stay.
+
+To a realm, a final transcript is the answer to the hold that asked for it:
+[`aethyr/voice.coax`](../../aethyr/voice.coax) passes it through Aethyr's event
+gate (once, only in its epoch, and replayable). `voice-client --hold --aethyr`
+does what a realm does, and `aethyr/examples/hold-to-talk.coax` shows the gate
+alone. Measured on coderos-4080's CPU (Linux, shared): 8 to 15 times the audio's
+length, e.g. 30 s for a 3.8 s turn, 9 to 11 s to load the model once
+([record](../verification/verse-parakeet-2026-11-02/README.md)). Metal on a Mac
+is the interactive path. The Cloud Run image is built without the local
+recognizers (`-DOA_VOICE_NO_WHISPER -DOA_VOICE_NO_PARAKEET`); it stays Google.
 
 ### Measured latency
 
