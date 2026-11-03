@@ -144,6 +144,9 @@ fi
 # No comments reach a browser: the staged pages, scripts and shaders lose them
 # here, after the hidden presentations are in.
 bun "$here/strip.ts" "$stage"
+# No private pack ships in a release (a MetaHuman reaches a visitor only through the broker,
+# coax/web/api/verse_packs.c): a file under private/ or a pack naming the MetaHuman licence refuses it.
+python3 -I "$here/private-guard.py" "$stage"
 # The made-realm engine's script gains its served files' own hashes, after the strip changed their
 # bytes (engine-served.coax, #12629): a publish pins them with the script (migration 0107).
 "$here/tool.sh" engine-served write "$stage/site"

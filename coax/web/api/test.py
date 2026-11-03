@@ -32,7 +32,9 @@ check("health reports exact deployment identity", h.get("build") == "1" * 40 and
 check("every migration applied once", sql("select count(*) from schema_migrations") == str(len([f for f in os.listdir(os.path.join(os.path.dirname(__file__), "migrations")) if f.endswith(".sql")])))
 check("an unknown path is a 404", call("GET", "/api/nothing")[0] == 404)
 
-for extra in sorted(f for f in os.listdir(os.path.dirname(os.path.abspath(__file__))) if f.startswith("test_") and f.endswith(".py")):
+# API_TESTS_ONLY=test_a.py,test_b.py runs only those files (a quick check of one route's tests).
+only = set(filter(None, os.environ.get("API_TESTS_ONLY", "").split(",")))
+for extra in sorted(f for f in os.listdir(os.path.dirname(os.path.abspath(__file__))) if f.startswith("test_") and f.endswith(".py") and (not only or f in only)):
     exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), extra)).read())
 
 sys.exit(1 if failed else 0)

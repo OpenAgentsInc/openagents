@@ -54,6 +54,7 @@ bool drops_open_upload(const char *object, const char *type, const char *bytes, 
 void drops_inspect(const char *object, long long *size, char **head_hex);
 void drops_delete_object(const char *object);
 bool villa_route(const request *q);       // villa.c
+bool verse_packs_route(const request *q); // verse_packs.c: private human packs, a key a session
 bool realms_route(const request *q);      // realms.c: build your own realm
 bool makers_route(const request *q);      // makers.c: a realm's maker and their claim
 bool upgrades_route(const request *q);    // makers.c: listed fairy upgrades, bought with sats or credit

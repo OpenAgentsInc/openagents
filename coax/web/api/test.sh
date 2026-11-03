@@ -32,7 +32,7 @@ secp="$(brew --prefix secp256k1 2>/dev/null || true)"
 "$cli_coax" c "$here/seat-policy.coax" --library --header "$work/seat-policy.generated.h" > "$work/seat-policy.generated.c"
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -I"$work" -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
-  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/rooms.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/seats.c "$work"/seat-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c \
+  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/rooms.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/anime.c "$work"/anime-director-policy.generated.c "$here"/seats.c "$work"/seat-policy.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c "$here"/verse_packs.c \
   -L"$pg/lib" -lpq ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lssl -lcrypto -lcurl -lz -lm
 # The Coax NIP-98 check against the former C check, on the corpus and seeded mutations.
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
@@ -83,6 +83,16 @@ export RESEND_PORT=$((48000 + RANDOM % 1000))
 export TOKENINFO_PORT=$((47000 + RANDOM % 1000))
 # /chat (test_zchat.py): its own runner on CHAT_PORT, a $1 daily cap.
 export CHAT_PORT=$((54000 + RANDOM % 1000))
+# Private human packs (test_verse_packs.py): a made-up pack, gzipped and stored under a key of its own
+# as upload_packs.sh does, served by a fake bucket on VERSE_GCS_PORT; three sessions an address an hour.
+export VERSE_GCS_PORT=$((45000 + RANDOM % 1000)) VERSE_PACK_DIR="$work/verse-pack"
+mkdir -p "$VERSE_PACK_DIR"; head -c 300000 /dev/urandom > "$VERSE_PACK_DIR/plain"
+gzip -9 -n -c "$VERSE_PACK_DIR/plain" > "$VERSE_PACK_DIR/plain.gz"
+vk="$(openssl rand -hex 32)" viv="$(openssl rand -hex 8)0000000000000000" vsha="$(shasum -a 256 "$VERSE_PACK_DIR/plain" | cut -c1-64)"
+openssl enc -aes-256-ctr -K "$vk" -iv "$viv" -in "$VERSE_PACK_DIR/plain.gz" -out "$VERSE_PACK_DIR/object"
+export OA_VERSE_PACKS="master $(openssl rand -hex 32)
+pack test-human $vsha $(wc -c < "$VERSE_PACK_DIR/plain" | tr -d ' ') $(wc -c < "$VERSE_PACK_DIR/object" | tr -d ' ') packs/$vsha $vk $viv"
+export OA_VERSE_PACKS_GCS="http://127.0.0.1:$VERSE_GCS_PORT" OA_VERSE_PACKS_BUCKET=verse-test OA_VERSE_PACK_PER_HOUR=3
 # Anime's checks own a separate Coax selector; it has no model credentials.
 export ANIME_PORT=$((46000 + RANDOM % 1000))
 OA_CHAT_RUNNER_URL="http://127.0.0.1:$CHAT_PORT" OA_CHAT_DAILY_USD=1 \

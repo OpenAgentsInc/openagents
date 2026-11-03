@@ -114,12 +114,14 @@
 //                 streamed, that stands for four assets in its place, its catalog (data), vertices
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
 //                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
-//   private:NAME  a private pack (a MetaHuman's, docs/verse/metahuman-support.md) that never ships: only on
-//                 a local address whose URL asks for it (?pack, or ?pack=OTHER for another; &outfit=NAME
-//                 for its NAME outfit, the pack OTHER-NAME), never in a
-//                 golden, /private/NAME.pack from coax/web/serve.c's private builds; its four parts as
-//                 pack:'s. Not asked for, absent or broken, its parts fail quietly (bytes 0, no error, the
-//                 world loads on), so the page draws what it has without it.
+//   private:NAME  a private pack (a MetaHuman's, docs/verse/metahuman-support.md) that never ships as a
+//                 file: on openagents.com (and its subdomains) always, a session from the broker
+//                 (POST /api/verse/packs/NAME, coax/web/api/verse_packs.c) whose bytes are opened in
+//                 privatePack; on a local address only when its URL asks (/private/NAME.pack from
+//                 coax/web/serve.c's private builds). ?pack=OTHER asks for another, &outfit=NAME its NAME
+//                 outfit, the pack OTHER-NAME. Never in a golden, nowhere else. Its four parts as pack:'s.
+//                 Not asked for, absent, refused or broken, its parts fail quietly (bytes 0, no error,
+//                 the world loads on), so the page draws what it has without it.
 //   message 608     a claimed realm's maker's display name (oa-api /api/playtest/makers/<realm>), to draw "Made by <name>" and TIP
 //   mesh:URL      a traced page's mesh (Orbit League's roadster, verse/tools/mesh-bvh.coax): its bytes as
 //                 a read-only storage buffer at group 0 binding 1, for a WGSL that declares
@@ -1181,10 +1183,14 @@ function parseAssets(text) {
     if (kind === "sound") { const e = rest.indexOf("="); list.push({ i, kind, name: rest.slice(0, e), url: rest.slice(e + 1) }); }
     else if (kind === "pack") { const pack = { url: rest }; for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack }); }
     else if (kind === "private") {
-      // ?pack&outfit=NAME: the pack's NAME outfit (pack_human.py --outfit), its own pack, BASE-NAME
-      const q = new URLSearchParams(location.search), pick = dev && !golden ? q.get("pack") : null;
+      // ?pack&outfit=NAME: the pack's NAME outfit (pack_human.py --outfit), its own pack, BASE-NAME.
+      // On a local address only when asked (serve.c's /private/); on openagents.com always, through
+      // the broker (privatePack), never in a golden.
+      const q = new URLSearchParams(location.search), site = /(^|\.)openagents\.com$/.test(location.hostname);
+      const pick = golden ? null : dev ? q.get("pack") : site ? q.get("pack") || rest : null;
       const outfit = pick !== null ? q.get("outfit") : null, name = (pick || rest) + (outfit ? `-${outfit}` : "");
-      const pack = { url: `/private/${name}.pack`, quiet: true, away: pick === null || !/^[a-z0-9-]{1,64}$/.test(name) };
+      const pack = { url: dev ? `/private/${name}.pack` : `/api/verse/packs/${name}`, broker: !dev, quiet: true,
+        away: pick === null || !/^[a-z0-9-]{1,64}$/.test(name) };
       for (const part of PACK_PARTS) list.push({ i: list.length, kind: part, pack });
     }
     else list.push({ i, kind, url: rest, urls: rest.split("|") });
@@ -1198,20 +1204,28 @@ async function loadPack(pack) {
   let entries = null;
   try {
     if (pack.away) throw new Error("private");
-    const r = await fetch(pack.url, pack.quiet ? { cache: "no-store" } : undefined);
+    let session = null;
+    if (pack.broker) {
+      const s = await fetch(pack.url, { method: "POST", cache: "no-store", credentials: "same-origin" });
+      if (!s.ok) throw new Error(`${pack.url}: ${s.status}`);
+      session = await s.json();
+    }
+    const r = await fetch(session ? session.url : pack.url, pack.quiet ? { cache: "no-store" } : undefined);
     if (!r.ok || !r.body) throw new Error(`${pack.url}: ${r.status}`);
     const reader = r.body.getReader(), chunks = [];
-    let loaded = 0, total = Number(r.headers.get("content-length")) || 0, told = 0;
+    let loaded = 0, total = session ? session.size : Number(r.headers.get("content-length")) || 0, told = 0;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value); loaded += value.length;
-      if (loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
+      if (!session && loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
       loading.bytes(pack.url, loaded, total);
       if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); }
     }
-    const bytes = new Uint8Array(loaded);
+    let bytes = new Uint8Array(loaded);
     let at = 0; for (const c of chunks) { bytes.set(c, at); at += c.length; }
+    chunks.length = 0;
+    if (session) bytes = await privatePack(session, bytes);
     send(PACK_KIND, `${loaded} ${loaded}`);
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
     entries = unpack(bytes);
@@ -1236,6 +1250,20 @@ async function loadPack(pack) {
   for (const a of parts) { a.done = true; deliver(a); }
   bindScene();
   loading.assetDone(parts[0].failed && !pack.quiet && `WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
+}
+// A private pack from the broker (coax/web/api/verse_packs.c): the session's bytes are the gzipped
+// pack under its own key (AES-256-CTR, a 64-bit block counter), opened here, unzipped and checked
+// against the digest before anything reads them. The key is the session's alone and used once; the
+// plain pack lives only in this page's memory and the GPU, never in a cache or a file.
+async function privatePack(session, cipher) {
+  const hex = (h) => new Uint8Array(h.match(/../g).map((b) => parseInt(b, 16)));
+  if (cipher.length !== session.size) throw new Error("private pack: cut short");
+  const key = await crypto.subtle.importKey("raw", hex(session.key), "AES-CTR", false, ["decrypt"]);
+  const gz = await crypto.subtle.decrypt({ name: "AES-CTR", counter: hex(session.iv), length: 64 }, key, cipher);
+  const plain = new Uint8Array(await new Response(new Blob([gz]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", plain))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  if (plain.length !== session.bytes || digest !== session.sha256) throw new Error("private pack: not the pack its digest names");
+  return plain;
 }
 // The pack's entries: its header and table checked against its length; nothing outside it is read.
 function unpack(bytes) {

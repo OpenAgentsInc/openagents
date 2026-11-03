@@ -1,6 +1,7 @@
 # MetaHuman support in Aethyr
 
-Status: design report, 2026-11-02. The first pieces are built: MetaHuman
+Status: design report, 2026-11-02; packs shown to every visitor since
+2026-11-03. The first pieces are built: MetaHuman
 Lab and `aethyr/mannequin.coax` (see [MetaHuman Lab](#metahuman-lab)). The
 rest is not built yet. It covers how Aethyr, the Coax engine that every Verse realm runs on, loads,
 animates and draws Epic MetaHuman characters. It also covers a first plan for
@@ -38,8 +39,9 @@ Unreal is at most an offline export tool.
   the MIT notice.
 - The main risk is the licence. Epic's own licence page needs a login, so
   every claim here comes from the pre-Nuke study and from press reports. The
-  owner has to read the terms while logged in and confirm them before a
-  MetaHuman is sent to any browser other than the owner's.
+  owner settled the browser question on 2026-11-03: MetaHumans are shown on
+  openagents.com to every visitor, and the rule is that the asset can't be
+  redistributed. See [Sending packs to browsers](#sending-packs-to-browsers).
 
 ## Binding rules
 
@@ -66,10 +68,12 @@ every phase below.
    (`/trace/{uuid}`) or Labs output. Pack and render provenance sets
    `Provenance.no_training = true` (protocol §10.17).
 3. **They arrive only through the private pipeline.** Packs are stored by
-   content digest under `packs/` in the private bucket. The `verse-assets`
-   broker hands out a signed URL that lasts 300 seconds, and only for a
-   reader key that the asset's manifest lists (a NIP-98 request). Every
-   other client draws the public fallback.
+   content digest under `packs/` in the private bucket, gzipped and
+   encrypted. The broker (`oa-api`'s `/api/verse/packs/`,
+   `coax/web/api/verse_packs.c`) gives each visitor a session: a link that
+   works once, for 120 seconds, to the pack under a key of that session's
+   own, with `Cache-Control: no-store`. No release, static path or file
+   carries a pack. See [Sending packs to browsers](#sending-packs-to-browsers).
 4. **Verse renders them, not Unreal.** Unreal (5.7 or later, headless) is
    used only offline, to create, rig and export characters. No Unreal code
    ships, and the runtime never calls Unreal.
@@ -95,12 +99,12 @@ Open questions the owner must settle while logged in to Epic:
 1. **A custom engine.** The press describes use "in any game engine or DCC
    application". Confirm that a custom engine (Aethyr, in Coax, on WebGPU)
    counts, not just named engines.
-2. **Sending packs to browsers.** A web page that downloads a compiled pack
-   ships asset bytes that anyone can pull out with developer tools. Confirm
-   that a compiled, non-source format inside a product is "distribution in a
-   Product" and not redistribution of source assets. Before the Nuke, Fab
-   kits got the same yes (the licensed-kit class in `private-assets.md`).
-   The private character path was never put on the web.
+2. **Sending packs to browsers. Settled: yes** (owner, 2026-11-03).
+   MetaHumans are shown on production at openagents.com to every visitor;
+   that is the point of the MetaHuman work. The rule is only that the asset
+   can't be redistributed: visitors get a compiled runtime pack inside the
+   product, never DNA, source meshes or a file they can save and reuse. How
+   that is held is in [Sending packs to browsers](#sending-packs-to-browsers).
 3. **Revenue threshold.** Confirm the seat-licence rule and price ($1,850
    per seat a year in 2025, from a secondary source). Record which OpenAgents
    entity holds the licence.
@@ -109,9 +113,132 @@ Open questions the owner must settle while logged in to Epic:
    assumes the strict reading: no MetaHuman render goes into any training
    data.
 
-Until these are settled, MetaHuman packs load only for reader keys the
-owner grants, starting with the owner's own. Every public visitor sees the
-fallback figures.
+MetaHuman packs load for every visitor on openagents.com (and staging),
+through the broker, one session at a time. Goldens, OG cards, local tools
+and any other host see the capsule fallback. Questions 1, 3 and 4 stay open
+for the owner; the strict training reading in 4 applies meanwhile.
+
+## Sending packs to browsers
+
+Owner decision, 2026-11-03: MetaHumans are shown on openagents.com to every
+visitor. The asset must not be redistributable. This section covers how the
+pack reaches a browser, what that protects against, and what it costs.
+
+### The path
+
+1. **Upload (owner-run).** `verse/tools/humans/upload_packs.sh [NAME...]`
+   reads `~/.openagents/verse/private-build/web/NAME.pack`. It takes the
+   pack's SHA-256, gzips it (`-9 -n`) and encrypts it under a fresh random
+   key and iv (AES-256-CTR). It stores the result as
+   `gs://openagentsgemini-verse-private-assets/packs/<sha256>` with
+   `Cache-Control: no-store`. The bucket enforces public access prevention,
+   so an anonymous request gets a 403. The pack's line (name, digest, sizes,
+   object, key, iv) goes into a new version of the Secret Manager secret
+   `verse-private-packs`, along with a session master that is made once. The
+   API reads the new version within a minute, so an upload needs no redeploy.
+   Only `oa-api`'s runtime account (`157437760789-compute@`) may read the
+   secret and `packs/`.
+2. **Session.** The page asks `POST /api/verse/packs/NAME`. The answer is
+   `{url, key, iv, sha256, bytes, size, expires}`. `url` is
+   `/api/verse/packs/fetch/<sid>`, a random 128-bit id that works **once**
+   and only for **120 seconds**. The key is the session's own:
+   HMAC-SHA256(master, `key:` sid). No key is stored per session.
+3. **Bytes.** The fetch is served by a child process of `oa-api`. It reads the
+   stored object from the bucket (in-region, so free), strips the stored key,
+   applies the session's key one chunk at a time and sends the result chunked
+   with `Cache-Control: no-store`. The plain pack is never written to disk on
+   the server and never leaves it unencrypted. A second fetch, or one after
+   120 seconds, gets a 410.
+4. **Page.** `coax/web/host.js` (`privatePack`) imports the key as a
+   non-extractable WebCrypto key. It decrypts, gunzips with
+   `DecompressionStream` and checks the length and SHA-256 against the
+   session before the pack's four parts are admitted as any pack's are. This
+   happens only on `openagents.com` and its subdomains, never in a golden
+   (`coaxialGolden`, `?golden`). On a local address it happens only with
+   `?pack`, through `serve.c`. If the session is refused (404, 429, 503),
+   the digest is wrong or the body is cut off, the parts fail quietly and the
+   capsule body draws.
+5. **Release.** No pack is ever in git or in a release. The page names
+   `private:human`, not a URL. `coax/web/deploy.sh` runs
+   `coax/web/private-guard.py` on the staged site and refuses the release if
+   it finds any file under a `private/` directory, or any VPK1 pack whose
+   catalog names the MetaHuman licence or a MetaHuman body.
+
+What the visitor gets is the compiled runtime pack (VPK1 from
+`pack_human.py`: quantized vertices, octahedral normals, the compiled
+face-rig block and texture layers). It is never DNA, source meshes, grooms or
+the DCC bundle.
+
+### Limits
+
+Each limit answers with a 429 and its reason, and the page then draws the
+capsules:
+
+- 12 sessions per address per hour (`OA_VERSE_PACK_PER_HOUR`). The address
+  is kept only as its SHA-256, and rows are deleted after two days.
+- 40 GB fetched per UTC day across all visitors (`OA_VERSE_PACK_DAILY_GB`),
+  which caps egress at about $4.80 a day, or $144 a month, whatever happens.
+
+### Threat model
+
+- **A casual downloader** saves what the network panel shows. That is the
+  ciphertext under a key used once. A copied link is already spent (410),
+  and nothing reaches a CDN or the browser cache (`no-store`). The bucket
+  has no public object and no public path. A stored object without the
+  manifest is just ciphertext.
+- **A determined user** can still get the pack. They can stop the page in
+  developer tools after `privatePack` returns, or copy the session's key and
+  bytes in the minute they are live. A GPU capture tool records every buffer
+  and texture the GPU draws. No web page can prevent that, and no game that
+  ships MetaHumans prevents it either. What they get is our compiled game
+  format, not a MetaHuman source asset (no DNA, no rig source, no Unreal
+  files). The goal is that the asset is not redistributable as a file, and
+  that anyone who takes it has clearly broken a lock to do so, not that
+  extraction is impossible.
+- **The decryption runs in host.js, not Wasm.** The suggestion was to decrypt
+  only into Wasm memory. That would not change the analysis, because a
+  page's Wasm memory is a JavaScript `ArrayBuffer` and the GPU upload reads
+  it from there. WebCrypto is native and fast, and its key is
+  non-extractable.
+- **No key per session at rest.** The stored object's key is in Secret
+  Manager. A session key is derived from the master and dies with the
+  session.
+
+### Cost
+
+Measured sizes: `human.pack` is 55.5 MB and 35.8 MB stored (gzip). The
+outfits are about 40 MB and 29.2 to 29.7 MB stored. Gzip saves 35% on the
+default pack and 26% on the outfits. The texture layers are already
+compressed images.
+
+| What | Per visitor | Per 1,000 visitors |
+| --- | --- | --- |
+| Opening MetaHuman Lab (`human`, 35.8 MB at $0.12/GB internet egress) | $0.0043 | **$4.30** |
+| Each outfit stepped to (29.5 MB) | $0.0035 | $3.55 |
+| All four (default and three outfits, 124 MB) | $0.015 | $14.90 |
+| `oa-api` CPU while streaming (request-billed, 1 vCPU, a few seconds to half a minute) | under $0.0007 | under $0.70 |
+| Bucket reads, Secret Manager reads, Postgres rows | about zero | about zero |
+
+Visitors who never open a page with a `private:` asset cost nothing.
+Refetching on every visit is the price of `no-store`. The daily budget
+bounds the worst case at $144 a month, well inside the $1,500 cap.
+
+**Only the LOD the client needs (not built yet).** LOD0 is about 70% of the
+geometry (548k of 787k triangles). The face-rig block (most of the 11.7 MB
+catalog) is LOD0 only. A phone pack without LOD0 and without the face block
+would be about 25 MB raw, roughly 45% of the default pack. Building it needs
+`pack_human.py` to write that pack and the lab to pick it on small screens.
+That is follow-up work in the figure code.
+
+### The old `verse-assets` service
+
+The Cloud Run service `verse-assets` (image `verse-assets:c64ad66cfc`,
+account `verse-assets@`) is the pre-Nuke Rust broker. Its source was deleted
+in the Nuke, and it signs URLs only for NIP-98 reader keys. The web path does
+not use it: the broker is now `oa-api`'s `/api/verse/packs/`, which shares
+the openagents.com origin, the API's Postgres for the limits and its deploy.
+`verse-assets` scales to zero and costs nothing idle. Retiring it is the
+owner's call.
 
 ## What existed before the Nuke
 
@@ -490,7 +617,9 @@ levels coarser.
 | Face rig | `aethyr/face-rig.coax` (MIT notice) | Public |
 | LOD and crowd planner | `aethyr/crowd.coax`, using `budget.coax` | Public |
 | Shaders | `verse/gpu/human.coax` (skinned vertex, painterly and photoreal profiles, hair cards, impostors) | Public |
-| Browser loader | `verse/private-load.coax`: a NIP-98 request to `verse-assets`, a digest check, then `assets.coax` admission | Public |
+| Broker | `coax/web/api/verse_packs.c` and migration `0117_verse_pack_sessions.sql` in `oa-api` (built) | Public. Its keys are in Secret Manager. |
+| Browser loader | `coax/web/host.js` `privatePack` (built): a session, its bytes, WebCrypto AES-CTR, gunzip, a SHA-256 check, then the pack's parts | Public |
+| Upload | `verse/tools/humans/upload_packs.sh` (built, owner-run) | Public. It names no asset. |
 | Packs, DNA, maps, grooms, impostor atlases | `~/.openagents/verse/private-build/`, `gs://openagentsgemini-verse-private-assets/packs/` | **Private** |
 | Placements and reader grants | `~/.openagents/verse/private-assets.json`, the manifest's `readers` | **Private** |
 | Rules | Restore `docs/verse/private-assets.md` from `853417f290` with its MetaHuman section | Public |
@@ -526,10 +655,10 @@ No phase commits an asset.
    wrinkle maps for film.
 6. **Costumes.** Garments with real sleeves, weight-transferred onto the
    body. Hair card sets per class.
-7. **Wider delivery.** Only if phase 0 confirmed it: grant more reader keys,
-   or move to the licensed-kit route (a pack served to every client and
-   copied from the bucket at build time). Otherwise MetaHumans stay
-   owner-only, and the public sees phase 1.
+7. **Wider delivery. Done for MetaHuman Lab** (2026-11-03): every visitor
+   on openagents.com gets the pack through the broker. 5E Lab and Everglade
+   figures use the same `private:NAME` asset and the same broker when their
+   packs exist.
 
 ## MetaHuman Lab
 
@@ -744,14 +873,19 @@ It holds no MetaHuman asset and draws with none.
   Fresnel sky reflection on the cornea and a sharp key glint.
 - **Floor shadow.** With a pack in, the floor takes the figure's shadow from
   the mesh's own shadow map; the capsules no longer draw or cast.
-- **Private loading.** The world's assets are `private:human`. `host.js` asks
-  for `/private/NAME.pack` only on a local address whose URL has `?pack`
-  (`?pack=standin` for the stand-in; `&outfit=NAME` for `NAME`'s pack,
-  `human-NAME.pack`), never in a golden; `serve.c` serves
-  `/private/` from `~/.openagents/verse/private-build/web/` and only while
-  watching. Anywhere else, or with no file, the four parts fail quietly and
-  the capsule body draws. The deploy's asset rewrite never matches
-  `private:human`, so no release carries a pack.
+- **Private loading.** The world's assets are `private:human`. On
+  openagents.com (and staging) `host.js` always asks the broker for a
+  session and opens its bytes (see
+  [Sending packs to browsers](#sending-packs-to-browsers)); `?pack=standin`
+  picks the stand-in and `&outfit=NAME` picks `NAME`'s pack,
+  `human-NAME.pack`. On a local address it asks for `/private/NAME.pack`
+  only when the URL has `?pack`; `serve.c` serves `/private/` from
+  `~/.openagents/verse/private-build/web/` and only while watching. Never in
+  a golden, and nowhere else. Refused, absent or broken, the four parts fail
+  quietly and the capsule body draws. The deploy's asset rewrite never
+  matches `private:human`, and `coax/web/private-guard.py` refuses a release
+  with a file under `private/` or any pack whose catalog names the MetaHuman
+  licence.
 - Renders of a private pack are never committed, used as goldens or
   training data. Agents may take and view renders of the private pack to
   review their own work (owner decision, 2026-11-03: these MetaHumans are not
@@ -874,7 +1008,8 @@ asset:
 | The licence does not cover a custom web engine, or does not cover browser delivery | No public MetaHumans | Phase 0 gate. The public stays on CC0 people. |
 | Seat licence above $1M a year | Recurring cost | Settle it in phase 0 |
 | A MetaHuman render reaches training data | A licence breach | `no_training` provenance, `NO-TRAINING.txt`, no MetaHuman goldens in any shared set, private renders out of Labs and traces |
-| Asset bytes extracted from a browser | Possible redistribution | Owner-only reader keys until phase 0 says otherwise. Ship compiled packs only, never DNA or source maps. |
+| Asset bytes extracted from a browser | Possible redistribution | Compiled packs only, never DNA or source maps; one-use, two-minute sessions under their own key, no-store, never a public file; rate limits. A determined user can still capture what the GPU draws (see the threat model). |
+| Egress cost as visitors grow | GCP spend over the $1,500 a month cap | gzip (55 MB to 36 MB), the daily budget in the broker (40 GB, at most about $4.80 a day), and a phone pack without LOD0 next |
 | Epic cloud services (auto-rig, textures) or the stored sign-in change | The export breaks | Keep exports, re-run headless only on copies, and record the UE version per pack in provenance |
 | The UE Python API changes between versions (it changed between 5.7 and 5.8) | Script breakage | Pin the UE version per pipeline run and test scripts after each upgrade |
 | Painterly rules versus realistic MetaHuman faces | They look out of style | The paint pass, Creator proportion controls and the owner's review |

@@ -30,6 +30,7 @@
 //   email, admins only            POST /api/admin/email, through Resend (email.c)
 //   /chat, admins only             /api/chat/*, and the runner's /api/chat/runner/* (chat.c)
 //   realm invites, auth v2         /api/playtest/access, /api/admin/access, /api/auth/v2 (access.c, flags off)
+//   private human packs            /api/verse/packs/<name>, /api/verse/packs/fetch/<sid>, per-session keys (verse_packs.c)
 #include "api.h"
 
 #include <arpa/inet.h>
@@ -289,6 +290,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (chat_route(&q)) return;   // before the rooms: /api/chat/state etc. are /chat's, any other /api/chat/<room> a room's
   if (room_route(&q)) return;
   if (seats_route(&q)) return;
+  if (verse_packs_route(&q)) return;
   if (realms_route(&q)) return;   // before the players': /api/playtest/realms...
   if (player_route(&q)) return;
   if (private_route(&q)) return;
