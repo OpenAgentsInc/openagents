@@ -117,7 +117,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "c764208efffd024749d54b8919b7ed4c85613bb4530c5099010bbe5aa414362e"
+          "sha256": "fb4c0c18cd75af0601ca67c51acd1afc0bb19a90a4407c72fa4ba1eaf52ea752"
         },
         {
           "path": "docs/verification/psionic-ch71-2026-10-29.md",
@@ -345,7 +345,7 @@
         },
         {
           "path": "psionic/lib/autodiff.coax",
-          "sha256": "c764208efffd024749d54b8919b7ed4c85613bb4530c5099010bbe5aa414362e"
+          "sha256": "fb4c0c18cd75af0601ca67c51acd1afc0bb19a90a4407c72fa4ba1eaf52ea752"
         },
         {
           "path": "coax/lib/compiler/wgsl.coax",

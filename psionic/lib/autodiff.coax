@@ -135,6 +135,77 @@
     #assert ad_gradient(t,run.cursor,0,grads[..],g3[..])==AdStatus.ok;
     for j:0..<12 {want:f32=0;if j==0 {want=1;}if j==7 {want=2;}if j==9 {want=3;}#assert g3[j]==want;}
 }
+#test "convolution VJP by hand: a 1x2 kernel sliding over two rows" {
+    // x [1,1,2,3] = 1 2 3 / 4 5 6, w [1,1,1,2] = 1 10, so y [1,1,2,2] is
+    // x[r][c] + 10 x[r][c+1]. With dy all ones, dx[r][c] sums the kernel
+    // taps that touch it and dw[k] sums the inputs tap k sees.
+    p:TiProgram;p.count=3;p.output=2;
+    p.nodes[0]=ti_input(TvShape.{rank=4,dims=[4]int.[1,1,2,3]},0);p.nodes[1]=ti_input(TvShape.{rank=4,dims=[4]int.[1,1,1,2]},6);
+    p.nodes[2]=TiNode.{op=TiOp.conv2d,a=0,b=1};
+    inputs:=[8]f32.[1,2,3,4,5,6,1,10];values:[16]f32;grads:[32]f64;flags:[8]u8;gx:[6]f32;gw:[2]f32;y:[4]f32;
+    mode:AdMode;mode.grad[0]=true;mode.grad[1]=true;t:=ad_tape(p,mode,OrRegistry.{});#assert t.status==AdStatus.ok;
+    run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);#assert run.status==AdStatus.ok && run.cursor.next==t.count;
+    #assert ad_value(t,run.cursor,2,inputs[..],values[..],y[..])==AdStatus.ok && y[0]==21 && y[1]==32 && y[2]==54 && y[3]==65;
+    #assert ad_gradient(t,run.cursor,0,grads[..],gx[..])==AdStatus.ok && ad_gradient(t,run.cursor,1,grads[..],gw[..])==AdStatus.ok;
+    for j:0..<6 {want:f32=11;if j==0 || j==3 {want=1;}if j==2 || j==5 {want=10;}#assert gx[j]==want;}
+    #assert gw[0]==12 && gw[1]==16;
+}
+#forall "convolution VJPs over images, channels, rows and columns equal the gathered sums" config:0..<3 {
+    // x [2,3,4,6] and w [4,3,2,5] give y [2,4,3,2]: no two extents of x or of
+    // w are equal, so an index that walks the wrong axis lands elsewhere.
+    // The output is weighted by dy, so the gradient of the sum is dy's VJP.
+    sx:=TvShape.{rank=4,dims=[4]int.[2,3,4,6]};sw:=TvShape.{rank=4,dims=[4]int.[4,3,2,5]};sy:=TvShape.{rank=4,dims=[4]int.[2,4,3,2]};
+    // Quarter and half steps keep every product and sum exact in f32 and f64.
+    inputs:[312]f32;
+    for j:0..<144 {inputs[j]=f32((j*37+11)%23-11)/4;}
+    for j:0..<120 {inputs[144+j]=f32((j*53+5)%19-9)/4;}
+    for j:0..<48 {inputs[264+j]=f32((j*29+3)%17-8)/2;}
+    {
+        // Config 0 differentiates x and w as inputs. Configs 1 and 2 route x
+        // and w through ReLU first (an identity on positive data), so the
+        // operands the rule reads are tape values, and differentiate only x
+        // (1) or only w (2).
+        positive:=ifx config==0 then 0 else 1;want:=ifx config==0 then 3 else config;
+        data:=inputs;if positive==1 {for j:0..<264 {data[j]=abs(data[j])+0.25;}}
+        p:TiProgram;p.count=5;p.output=4;
+        p.nodes[0]=ti_input(sx,0);p.nodes[1]=ti_input(sw,144);p.nodes[2]=TiNode.{op=TiOp.conv2d,a=0,b=1};
+        p.nodes[3]=ti_input(sy,264);p.nodes[4]=TiNode.{op=TiOp.multiply,a=2,b=3};
+        if positive==1 {
+            p.count=7;p.output=6;p.nodes[2]=TiNode.{op=TiOp.relu,a=0};p.nodes[3]=TiNode.{op=TiOp.relu,a=1};
+            p.nodes[4]=TiNode.{op=TiOp.conv2d,a=2,b=3};p.nodes[5]=ti_input(sy,264);p.nodes[6]=TiNode.{op=TiOp.multiply,a=4,b=5};
+        }
+        mode:AdMode;mode.grad[0]=want%2==1;mode.grad[1]=want>=2;t:=ad_tape(p,mode,OrRegistry.{});#assert t.status==AdStatus.ok;
+        if positive==1 {
+            // x's gradient needs w's value and w's needs x's: each is saved
+            // only when the other operand wants a gradient.
+            #assert t.saved[2]==mode.grad[1] && t.saved[3]==mode.grad[0];
+        }
+        values:[1024]f32;grads:[1024]f64;flags:[256]u8;gx:[144]f32;gw:[120]f32;
+        run:=ad_run(t,AdCursor.{},data[..],values[..],grads[..],flags[..]);#assert run.status==AdStatus.ok && run.cursor.next==t.count;
+        if mode.grad[0] {
+            // dx[n,ch,i,j] gathers w[o,ch,kh,kw] dy[n,o,i-kh,j-kw] over every
+            // tap whose output position exists.
+            #assert ad_gradient(t,run.cursor,0,grads[..],gx[..])==AdStatus.ok;
+            for n:0..<2 {for ch:0..<3 {for i:0..<4 {for j:0..<6 {
+                want_x:f64=0;
+                for o:0..<4 {for kh:0..<2 {for kw:0..<5 {
+                    oh:=i-kh;ow:=j-kw;
+                    if oh>=0 && oh<3 && ow>=0 && ow<2 {want_x+=f64(data[144+((o*3+ch)*2+kh)*5+kw])*f64(data[264+((n*4+o)*3+oh)*2+ow]);}
+                }}}
+                #assert f64(gx[((n*3+ch)*4+i)*6+j])==want_x;
+            }}}}
+        } else {#assert ad_gradient(t,run.cursor,0,grads[..],gx[..])==AdStatus.state;}
+        if mode.grad[1] {
+            // dw[o,ch,kh,kw] gathers x[n,ch,oh+kh,ow+kw] dy[n,o,oh,ow].
+            #assert ad_gradient(t,run.cursor,1,grads[..],gw[..])==AdStatus.ok;
+            for o:0..<4 {for ch:0..<3 {for kh:0..<2 {for kw:0..<5 {
+                want_w:f64=0;
+                for n:0..<2 {for oh:0..<3 {for ow:0..<2 {want_w+=f64(data[((n*3+ch)*4+oh+kh)*6+ow+kw])*f64(data[264+((n*4+o)*3+oh)*2+ow]);}}}
+                #assert f64(gw[((o*3+ch)*2+kh)*5+kw])==want_w;
+            }}}}
+        } else {#assert ad_gradient(t,run.cursor,1,grads[..],gw[..])==AdStatus.state;}
+    }
+}
 #test "a value used twice adds both uses and a shared node is differentiated once" {
     p:TiProgram;p.count=5;p.output=4;v:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};
     p.nodes[0]=ti_input(v,0);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};p.nodes[2]=TiNode.{op=TiOp.relu,a=1};

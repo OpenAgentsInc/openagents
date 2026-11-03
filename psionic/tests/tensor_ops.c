@@ -21,7 +21,8 @@ static void near(float got,double expected,double tolerance,const char *name,con
     if(tolerance==2e-6){if(error>max_forward)max_forward=error;}else if(error>max_gradient)max_gradient=error;
 }
 static coax_t_TvView pack(coax_t_TvStorage owner,coax_t_TvShape s,const float *logical,float *physical,int variant){
-    for(int i=0;i<64;i++)physical[i]=-91;coax_t_TvView v=tv_contiguous(owner,s,0).view;int n=(int)owner.elements;
+    for(int i=0;i<64;i++)physical[i]=-91;
+    coax_t_TvView v=tv_contiguous(owner,s,0).view;int n=(int)owner.elements;
     for(int i=0;i<n;i++)physical[i]=logical[i];
     if(variant==1 && n>0 && s.rank>0 && s.dims.e[s.rank-1]>1){int width=(int)s.dims.e[s.rank-1];v.offset=width-1;v.strides.e[s.rank-1]=-1;
         for(int i=0;i<n;i++)physical[(i/width)*width+width-1-i%width]=logical[i];
@@ -45,13 +46,16 @@ static void oracles(void){
         if(r.status!=OK){fprintf(stderr,"%s forward status=%d variant=%d\n",c->name,r.status,variant);assert(0);}assert(r.written==c->n && r.aux_written==c->aux);
         for(int j=0;j<c->n;j++)near(out[j],c->expected[j],2e-6,c->name,"value",j);
         for(int j=0;j<c->aux;j++)assert(aux[j]==c->expected_aux[j] && aux_stage[j]==aux[j]);
-        for(int j=c->n;j<80;j++)assert(out[j]==-7 && scratch[j]==-9);for(int j=c->aux;j<80;j++)assert(aux[j]==-11 && aux_stage[j]==-13);
+        for(int j=c->n;j<80;j++)assert(out[j]==-7 && scratch[j]==-9);
+        for(int j=c->aux;j<80;j++)assert(aux[j]==-11 && aux_stage[j]==-13);
         coax_t_ToGradient g=to_vjp(c->request,os(owners,2),vs(views,2),f(a,c->na),f(b,c->nb),indices,f((float*)c->dy,c->n),f(ga,80),f(gb,80),f(sa,80),f(sb,80));
         if(c->differentiable){if(g.status!=OK){fprintf(stderr,"%s VJP status=%d variant=%d\n",c->name,g.status,variant);assert(0);}assert(g.written_a==c->na && g.written_b==c->nb);
-            for(int j=0;j<c->na;j++)near(ga[j],c->ga[j],3e-5,c->name,"dA",j);for(int j=0;j<c->nb;j++)near(gb[j],c->gb[j],3e-5,c->name,"dB",j);
+            for(int j=0;j<c->na;j++)near(ga[j],c->ga[j],3e-5,c->name,"dA",j);
+            for(int j=0;j<c->nb;j++)near(gb[j],c->gb[j],3e-5,c->name,"dB",j);
             assert(!memcmp(ga,sa,(size_t)c->na*4) && !memcmp(gb,sb,(size_t)c->nb*4));
         }else{EXPECT(g,nondiff);assert(!g.written_a && !g.written_b);for(int j=0;j<80;j++)assert(ga[j]==-17 && gb[j]==-19 && sa[j]==-23 && sb[j]==-29);}
-        for(int j=c->na;j<80;j++)assert(ga[j]==-17 && sa[j]==-23);for(int j=c->nb;j<80;j++)assert(gb[j]==-19 && sb[j]==-29);
+        for(int j=c->na;j<80;j++)assert(ga[j]==-17 && sa[j]==-23);
+        for(int j=c->nb;j<80;j++)assert(gb[j]==-19 && sb[j]==-29);
         assert(!memcmp(owners,before,sizeof owners) && !memcmp(views,view_before,sizeof views) && !memcmp(a,a_before,sizeof a) && !memcmp(b,b_before,sizeof b));calls++;
     }
     printf("independent scalar/VJP oracle: %d cases x 3 layouts = %d; max scaled forward %.9g, gradient %.9g\n",(int)(sizeof to_oracles/sizeof *to_oracles),calls,max_forward,max_gradient);
