@@ -455,6 +455,7 @@ friends_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
 // hexed foe first.
 pact_turn :: (s: [] Lab, i: int) {
   b := bt(s);
+  pl := 1; for k: 1..<6 { if b[0].c[i].slots_max[k] > 0 { pl = k; } }   // Pact Magic's slot level
   if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
   foe := nearest_foe(s, i);
   if foe < 0 { return; }
@@ -468,10 +469,10 @@ pact_turn :: (s: [] Lab, i: int) {
       if brute < 0 || rs_feet_to(b, i, j) < rs_feet_to(b, i, brute) { brute = j; }
     }
   }
-  if b[0].c[i].conc < 0 && b[0].c[i].slots[2] > 0 {
-    if brute >= 0 && rs_unit(dice(s)) < 0.7 { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, brute); }
-    else if b[0].c[foe].humanoid && rs_feet_to(b, i, foe) <= 60 && !rs_has(b[0].c[foe], RS_PARALYZED) && rs_unit(dice(s)) < 0.35 { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
-    else if rs_feet_to(b, i, foe) <= 90 { ok := rs_cast(b, i, SP_HEX, 2, 0, 0, foe); }
+  if b[0].c[i].conc < 0 && b[0].c[i].slots[pl] > 0 {
+    if brute >= 0 && rs_unit(dice(s)) < 0.7 { ok := rs_cast(b, i, SP_HOLD_PERSON, pl, 0, 0, brute); }
+    else if b[0].c[foe].humanoid && rs_feet_to(b, i, foe) <= 60 && !rs_has(b[0].c[foe], RS_PARALYZED) && rs_unit(dice(s)) < 0.35 { ok := rs_cast(b, i, SP_HOLD_PERSON, pl, 0, 0, foe); }
+    else if rs_feet_to(b, i, foe) <= 90 { ok := rs_cast(b, i, SP_HEX, pl, 0, 0, foe); }
   }
   // a Paralyzed foe within a walk: go and touch it
   held := -1;
@@ -499,9 +500,14 @@ pact_turn :: (s: [] Lab, i: int) {
     }
   }
   d := rs_feet_to(b, i, foe);
-  if !b[0].turn.slot_spent && b[0].c[i].slots[2] > 0 {
-    if b[0].c[i].conc < 0 && d <= 60 && b[0].c[foe].humanoid && !rs_has(b[0].c[foe], RS_PARALYZED) { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
-    else if rs_unit(dice(s)) < 0.6 { ok := rs_cast(b, i, SP_SCORCHING_RAY, 2, 0, 0, foe); }
+  // the swarm: a Fiend's Fireball (from level 5) where it catches three foes and no friend
+  if !b[0].turn.slot_spent && pl >= 3 && b[0].c[i].slots[pl] > 0 {
+    fb := burst_at(s, i, 150, 20, false, 3);
+    if fb >= 0 { ok := rs_cast(b, i, SP_FIREBALL, pl, b[0].c[fb].x, b[0].c[fb].y, -1); }
+  }
+  if !b[0].turn.slot_spent && b[0].c[i].slots[pl] > 0 {
+    if b[0].c[i].conc < 0 && d <= 60 && b[0].c[foe].humanoid && !rs_has(b[0].c[foe], RS_PARALYZED) { ok := rs_cast(b, i, SP_HOLD_PERSON, pl, 0, 0, foe); }
+    else if rs_unit(dice(s)) < 0.6 { ok := rs_cast(b, i, SP_SCORCHING_RAY, pl, 0, 0, foe); }
   }
   if !b[0].turn.action { ok := rs_cast(b, i, SP_ELDRITCH_BLAST, 0, 0, 0, foe); }
 }
@@ -1412,7 +1418,15 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       m = put(l[..], m, "  SURGE "); m = put_int(l[..], m, cr.uses[RS_USE_SURGE]);
     }
     else if kl == RS_ROGUE { m = put(l[..], m, "  SNEAK "); m = put_int(l[..], m, cr.sneak_dice); m = put(l[..], m, "D6"); }
-    else { m = put(l[..], m, "  SLOTS "); m = put_int(l[..], m, cr.slots[1]); m = put(l[..], m, "+"); m = put_int(l[..], m, cr.slots[2]); }
+    else {
+      // the slots it has, lowest level first: 4+3+3 (Pact Magic's are all of one level)
+      m = put(l[..], m, "  SLOTS "); first := true;
+      for sl_: 1..<10 {
+        if cr.slots_max[sl_] <= 0 { continue; }
+        if !first { m = put(l[..], m, "+"); }
+        m = put_int(l[..], m, cr.slots[sl_]); first = false;
+      }
+    }
     if kl == RS_DRUID { m = put(l[..], m, "  LAND'S AID "); m = put_int(l[..], m, cr.uses[RS_USE_WILD]); }
     if kl == RS_BARD { m = put(l[..], m, "  INSP "); m = put_int(l[..], m, cr.uses[RS_USE_INSPIRE]); }
     if kl == RS_CLERIC || kl == RS_PALADIN { m = put(l[..], m, "  CHANNEL "); m = put_int(l[..], m, cr.uses[RS_USE_CHANNEL]); }
@@ -1785,11 +1799,14 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
     if i % 30 == 0 {
       for h: 0..<HEROES {
         c := s[0].battle[0].c[h];
-        any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.rages < c.rages_max || c.focus < c.focus_max;
+        any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.slots[3] < c.slots_max[3] || c.rages < c.rages_max || c.focus < c.focus_max;
         for u: 0..<RS_USES { if c.uses[u] < c.uses_max[u] { any = true; } }
         if c.klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
         if any { spent = spent | (1 << c.klass); }
       }
+      // every class has spent something: enough seen (and under the interpreter's budget)
+      all := true; for r: 0..<12 { if (spent & (1 << ROSTER[r])) == 0 { all = false; } }
+      if all { break; }
     }
     if s[0].over { break; }
   }
@@ -1808,7 +1825,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
     if i % 30 == 0 {
       for h: 0..<HEROES {
         c := s[0].battle[0].c[h];
-        any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.rages < c.rages_max || c.focus < c.focus_max;
+        any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.slots[3] < c.slots_max[3] || c.rages < c.rages_max || c.focus < c.focus_max;
         for u: 0..<RS_USES { if c.uses[u] < c.uses_max[u] { any = true; } }
         if c.klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
         if any { spent = spent | (1 << c.klass); }

@@ -408,6 +408,16 @@ rs_cutting_words :: (b: [] RsBattle, i: int, margin: int) -> int {
   }
   return 0;
 }
+// Dark One's Own Luck (p. 75): a Fiend Warlock adds 1d10 to a save or check it sees fail, when the
+// die can make it; once a roll, a use each time.
+rs_own_luck :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
+  if !b[0].c[j].own_luck || total >= need || total + 10 < need || b[0].c[j].uses[RS_USE_LUCK] <= 0 { return 0; }
+  b[0].c[j].uses[RS_USE_LUCK] -= 1;
+  add := rs_roll(b[0].dice[..], 10);
+  l: [1] RsLine; rs_add_name(l[..], b, j); rs_add_text(l[..], ": Dark One's Own Luck, +"); rs_add_int(l[..], add);
+  rs_tell(b, RS_EV_CONDITION, -1, j, j, add, 0, l[..]);
+  return add;
+}
 // A Bardic Inspiration die a creature holds, rolled on a failed D20 Test of `total` against `need`:
 // the number it adds (0 when it holds none or did not fail).
 rs_inspired_roll :: (b: [] RsBattle, j: int, total: int, need: int) -> int {
@@ -544,6 +554,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       total := d.roll + rs_save_in(b, j, st.a);
       insp := ifx fails then 0 else rs_inspired_roll(b, j, total, dc);
       total += insp;
+      if !fails { total += rs_own_luck(b, j, total, dc); }
       saved = !fails && total >= dc;
       l: [1] RsLine;
       rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " ");
@@ -774,6 +785,7 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
   d := rs_d20(b[0].dice[..], rs_edge(ifx b[0].c[i].raging || b[0].c[i].athlete then 1 else 0, downs));
   total := d.roll + rs_mod(b[0].c[i].score[RS_STR]);
   total += rs_inspired_roll(b, i, total, dc);
+  total += rs_own_luck(b, i, total, dc);
   // Tactical Mind (p. 48): a failed check takes 1d10 from a Second Wind use, spent only if it succeeds
   mind := 0;
   if total < dc && b[0].c[i].tactical && b[0].c[i].uses[RS_USE_WIND] > 0 {
@@ -826,6 +838,7 @@ rs_guardians :: (b: [] RsBattle, j: int) {
     d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_WIS));
     total := d.roll + rs_save_in(b, j, RS_WIS);
     total += rs_inspired_roll(b, j, total, dc);
+    total += rs_own_luck(b, j, total, dc);
     ok := total >= dc;
     amount := rs_sum(b[0].dice[..], 3 + rs_max(g.guard_slot - 3, 0), 8);
     if ok { amount = amount / 2; }
@@ -893,6 +906,7 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
     d := rs_d20(b[0].dice[..], 0);
     total := d.roll + rs_save_in(b, i, e.save);
     total += rs_inspired_roll(b, i, total, e.dc);
+    total += rs_own_luck(b, i, total, e.dc);
     ok := total >= e.dc;
     l: [1] RsLine;
     rs_add_name(l[..], b, i); rs_add_text(l[..], " "); rs_add_text(l[..], RS_ABBR[e.save]); rs_add_text(l[..], " save against ");
@@ -1236,6 +1250,7 @@ rs_stunning_strike :: (b: [] RsBattle, i: int, j: int) {
   d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_CON));
   total := d.roll + rs_save_in(b, j, RS_CON);
   total += rs_inspired_roll(b, j, total, dc);
+  total += rs_own_luck(b, j, total, dc);
   ok := total >= dc;
   until := rs_before_next_turn(b, i) + 0.01;
   l: [1] RsLine;
@@ -1275,6 +1290,7 @@ rs_cunning_effect :: (b: [] RsBattle, i: int, j: int, plan: int) {
   d := rs_d20(b[0].dice[..], rs_save_edge(b, j, ability));
   total := d.roll + rs_save_in(b, j, ability);
   total += rs_inspired_roll(b, j, total, dc);
+  total += rs_own_luck(b, j, total, dc);
   ok := total >= dc;
   if plan == CS_POISON && (b[0].c[j].immune_cond & RS_POISONED) != 0 { ok = true; }
   l: [1] RsLine;
@@ -1609,6 +1625,7 @@ rs_lands_aid :: (b: [] RsBattle, i: int, tx: int, ty: int, heal: int) -> bool {
     d := rs_d20(b[0].dice[..], rs_save_edge(b, j, RS_CON));
     total := d.roll + rs_save_in(b, j, RS_CON);
     total += rs_inspired_roll(b, j, total, dc);
+    total += rs_own_luck(b, j, total, dc);
     ok := total >= dc;
     amount := rs_sum(b[0].dice[..], n6, 6);
     if ok { amount = amount / 2; }
@@ -2693,4 +2710,19 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   #assert rs_font(b[..], a) && b[0].c[a].uses[RS_USE_INSPIRE] == 1 && b[0].c[a].slots[1] == 3 && !b[0].turn.action && !b[0].turn.bonus;
   th := b[0].c[t].hp;
   #assert rs_cast(b[..], a, SP_FIREBALL, 3, 14, 3, -1) && b[0].c[a].slots[3] == 2 && b[0].c[t].hp < th;
+}
+
+#test "a level 6 Fiend Warlock: Charisma 18, two 3rd-level pact slots, Fireball, Dark One's Own Luck on a failed save" {
+  c := rs_warlock("Vex", 0, 6, SP_ELDRITCH_BLAST);
+  #assert c.score[RS_CHA] == 18 && rs_spell_dc(c) == 15 && c.slots_max[3] == 2 && c.slots_max[2] == 0 && c.uses_max[RS_USE_LUCK] == 4 && c.cunning_rite;
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 8; b[0].dice[0].state = 43;
+  w := rs_add(b[..], c, 1, 3);
+  t := rs_add(b[..], rs_skeleton("Skeleton", 2), 14, 3);
+  rs_fresh(b[..], w);
+  th := b[0].c[t].hp;
+  #assert rs_cast(b[..], w, SP_FIREBALL, 3, 14, 3, -1) && b[0].c[w].slots[3] == 1 && b[0].c[t].hp < th;
+  // the luck: a total short by 10 or less, never past one roll's reach
+  #assert rs_own_luck(b[..], w, 5, 30) == 0 && rs_own_luck(b[..], w, 20, 15) == 0 && b[0].c[w].uses[RS_USE_LUCK] == 4;
+  add := rs_own_luck(b[..], w, 12, 15);
+  #assert add >= 1 && add <= 10 && b[0].c[w].uses[RS_USE_LUCK] == 3 && rs_saw(b[..], 0, "Own Luck");
 }

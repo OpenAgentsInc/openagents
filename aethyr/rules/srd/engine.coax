@@ -136,8 +136,8 @@ RS_CLASS :: [13] string.["Druid", "Wizard", "Warlock", "Barbarian", "Monk", "Mon
 // Surge, free casts of one spell (Paladin's Smite, Favored Enemy), Sorcery Points, Innate Sorcery,
 // Wild Shape (spent on Land's Aid), and the Lay On Hands pool (Hit Points).
 RS_USE_CHANNEL :: 0; RS_USE_INSPIRE :: 1; RS_USE_WIND :: 2; RS_USE_SURGE :: 3; RS_USE_FREE :: 4;
-RS_USE_SORCERY :: 5; RS_USE_INNATE :: 6; RS_USE_WILD :: 7; RS_USE_LAY :: 8; RS_USE_WHOLE :: 9;
-RS_USES :: 10;
+RS_USE_SORCERY :: 5; RS_USE_INNATE :: 6; RS_USE_WILD :: 7; RS_USE_LAY :: 8; RS_USE_WHOLE :: 9; RS_USE_LUCK :: 10;
+RS_USES :: 11;
 
 // Weapons a creature attacks with: the SRD's weapon table (p. 90) and Unarmed Strike. A Monk's
 // Unarmed Strike rolls its Martial Arts die in place of the 1 + Strength of anyone else's.
@@ -219,6 +219,7 @@ RsCreature :: struct {
   explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
   ritual: bool; arcane_recovery: bool; scholar: bool; savant: bool; memorize: bool;   // the Wizard's, out of a battle's reach
   sculpt: bool;                    // Sculpt Spells (Evoker)
+  cunning_rite: bool; own_luck: bool;   // Magical Cunning (a 1-minute rite, not in a battle), Dark One's Own Luck
   jack: bool; font: bool; discoveries: [2] int;   // Jack of All Trades (checks only), Font of Inspiration, Magical Discoveries
   companion: bool; resurgence: bool; resurged_slot: bool;   // Wild Companion (a familiar, not modeled), Wild Resurgence and its once-a-rest slot
   sear: bool; blessed_healer: bool;   // Sear Undead (Cleric), Blessed Healer (Life Domain)
@@ -355,6 +356,8 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   c[0].team = team; c[0].level = level;
   c[0].klass = RS_WARLOCK; c[0].humanoid = true; c[0].ranged = -1;
   c[0].score = [6] int.[8, 14, 13, 10, 12, 16];
+  // an Ability Score Improvement at 4 (the feat, p. 87): Charisma +2
+  if level >= 4 { c[0].score[RS_CHA] = rs_min(c[0].score[RS_CHA] + 2, 20); }
   c[0].save_prof[RS_WIS] = true; c[0].save_prof[RS_CHA] = true;
   con := rs_mod(c[0].score[RS_CON]);
   c[0].hp_max = 8 + con + (level - 1) * (5 + con);
@@ -371,6 +374,12 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   c[0].agonizing = -1; c[0].repelling = -1;
   if level >= 2 { c[0].agonizing = blast; c[0].repelling = blast; }
   c[0].dark_blessing = level >= 3;
+  // Magical Cunning at 2 (p. 72) is a 1-minute rite, longer than a fight here; the Fiend Spells at 5
+  // (p. 75) bring Fireball (Stinking Cloud isn't a record yet); Dark One's Own Luck at 6 (p. 75):
+  // 1d10 on a failed save or check, Cha modifier uses. The invocations it gains at 5 past Agonizing
+  // and Repelling Blast aren't modeled.
+  c[0].cunning_rite = level >= 2; c[0].own_luck = level >= 6;
+  if level >= 6 { rs_use_set(c[..], RS_USE_LUCK, rs_max(rs_mod(c[0].score[RS_CHA]), 1)); }
   return c[0];
 }
 
