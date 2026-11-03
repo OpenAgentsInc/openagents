@@ -210,6 +210,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/read-a-realm.coax",
+      "chapter": "aethyr/book/ch051-a-realm-is-a-document.md",
+      "stdout": "aethyr/fixtures/read-a-realm.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -51,8 +51,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 14 implemented chapters (1–11 and 65–67), four partly implemented
-chapters (15, 16, 52 and 54), and 68 design drafts. An implemented chapter is
+There are 14 implemented chapters (1–11 and 65–67), seven partly implemented
+chapters (15, 16, 51, 52, 54, 69 and 72), and 64 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -224,7 +224,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [51. A realm is a document](ch051-a-realm-is-a-document.md) | Unimplemented: design draft | A typed, versioned realm document (setup, catalogue features, wants, placements, tools) built from one catalogue table, laid out deterministically from document and seed, byte-identical natively and in the browser, with every asked thing kept as a feature or a `want` line. |
+| [51. A realm is a document](ch051-a-realm-is-a-document.md) | Partly implemented: native C (a made realm's document read, refused whole) | A typed, versioned realm document (setup, catalogue features, wants, placements, tools) built from one catalogue table, laid out deterministically from document and seed, byte-identical natively and in the browser, with every asked thing kept as a feature or a `want` line. |
 | [52. Edit a realm in place](ch052-edit-a-realm-in-place.md) | Partly implemented: native C (moving any placed thing; every edit undoable) | Edits as invertible operations over the document with server-decided roles, proposals settled once, a replayable edit log, and the asks ledger's revert rule that leaves later changes alone. |
 | [53. Bring in assets](ch053-bring-in-assets.md) | Unimplemented: design draft | One Coax import path for `VPK1` packs, cast and drops, with a licence on every asset, budgets that refuse, unit checks with recorded rescales, admit/upload/scan for uploads, and packs byte-identical to `pack_realm.py`. |
 | [54. Publish a realm](ch054-publish-a-realm.md) | Partly implemented: native C (visitors see the revision published) | A published realm as a frozen record of document, module and asset hashes, checked by `realms.ts`, goldens and the 60 FPS rule, with made realms never overwritten by a release. |

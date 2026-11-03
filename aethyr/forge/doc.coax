@@ -25,9 +25,19 @@
 FORGE_DOC_KIND :: "aethyr.realm";
 FORGE_DOC_NEWEST :: 1;   // the newest version this reader knows
 FORGE_DOC_BYTES :: 262144;
-ForgeRead :: struct { ok: bool; why: string; version: int; }
+FORGE_SLUG :: 64;        // a realm's slug: [a-z0-9][a-z0-9-]{0,63}, the server's rule
+// What a read found: its version, and for a fork the realm and revision it was copied from
+// (from_n 0 and from_rev 0 when it isn't one).
+ForgeRead :: struct { ok: bool; why: string; version: int; from: [FORGE_SLUG] u8; from_n: int; from_rev: int; }
 // book:end read
 
+forge_slug_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > FORGE_SLUG || !(forge_lower(s[0]) || forge_digit(s[0])) { return false; }
+  for c: s { if !(forge_lower(c) || forge_digit(c) || c == '-') { return false; } }
+  return true;
+}
+
+// book:begin metres
 // Metres with at most two decimals, as the server writes them, to whole centimetres; 4001 when not.
 forge_cm_of :: (raw: string) -> int {
   neg := raw.count > 0 && raw[0] == '-';
@@ -42,6 +52,7 @@ forge_cm_of :: (raw: string) -> int {
   cm := v * 100 + frac;
   return ifx neg then -cm else cm;
 }
+// book:end metres
 // A whole number in JSON (no fraction, no exponent) in [lo, hi], or lo - 1.
 forge_whole :: (raw: string, lo: int, hi: int) -> int {
   neg := raw.count > 0 && raw[0] == '-';
@@ -71,6 +82,21 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
   if version > FORGE_DOC_NEWEST { return forge_why("a newer document than this reader knows"); }
   rev := forge_whole(jv_raw(j[0], jv_get(j[0], at, "rev")), 1, 999999999);
   if rev < 1 { return forge_why("no revision"); }
+  got := ForgeRead.{ok = true, version = version};
+  // book:begin fork
+  // A fork names the realm it was copied from and that realm's revision: {"slug": S, "rev": N}.
+  parent := jv_get(j[0], at, "forked_from");   // null, or absent, when it isn't a fork
+  if parent >= 0 && jv_kind(j[0], parent) != JV_NULL {
+    slug: [FORGE_SLUG + 1] u8; sn := jv_str(j[0], jv_get(j[0], parent, "slug"), slug[..]);
+    got.from_rev = forge_whole(jv_raw(j[0], jv_get(j[0], parent, "rev")), 1, 999999999);
+    if jv_kind(j[0], parent) != JV_OBJECT || sn < 1 || !forge_slug_ok(cast(string) slug[0..<sn]) || got.from_rev < 1
+        || jv_kind(j[0], jv_get(j[0], parent, "rev")) != JV_NUMBER {
+      return forge_why("a fork's parent out of bounds");
+    }
+    for i: 0..<sn { got.from[i] = slug[i]; }
+    got.from_n = sn;
+  }
+  // book:end fork
   next: [1] ForgeDoc; forge_reset(next[..], rev);
   moved := jv_get(j[0], at, "moved");
   if jv_kind(j[0], moved) != JV_ARRAY { return forge_why("no moves"); }
@@ -142,7 +168,7 @@ forge_read_doc :: (d: [] ForgeDoc, text: string) -> ForgeRead {
     if bad || k < 0 || m < 0 || !forge_read_slot(next[..], cast(string) kb[0..<k], cast(string) v[0..<m]) { return forge_why("a quest out of bounds"); }
   }
   d[0] = next[0];
-  return ForgeRead.{ok = true, version = version};
+  return got;
 }
 // book:end doc
 
@@ -208,6 +234,32 @@ forge_doc_with :: (from: string, to: string, buf: [] u8) -> string {
     w: [256] u8; wn := forge_put(w[..], 0, "\"version\": 1, "); wn = forge_put(w[..], wn, bad[i]);
     c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with("\"version\": 1,", cast(string) w[0..<wn], b[..]));
     #assert cn > 0 && !forge_read_doc(e[..], cast(string) c[0..<cn]).ok && !forge_slot_at(e[..], "lore:mara").found;
+  }
+}
+
+#test "a fork names the realm and revision it was copied from; a broken parent is refused whole" {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  r := forge_read_doc(d[..], FORGE_DOC_V1);
+  #assert r.ok && r.from_n == 0 && r.from_rev == 0;
+  b: [4096] u8;
+  r = forge_read_doc(d[..], forge_doc_with("\"forked_from\": null", "\"forked_from\": {\"rev\": 4, \"slug\": \"9-lamp-cove\"}", b[..]));
+  #assert r.ok && cast(string) r.from[0..<r.from_n] == "9-lamp-cove" && r.from_rev == 4 && d[0].rev == 4 && d[0].move_n == 2;
+  long: [80] u8; ln := 0;
+  for i: 0..<FORGE_SLUG { long[i] = 'a'; ln += 1; }
+  #assert forge_slug_ok(cast(string) long[0..<ln]) && !forge_slug_ok(cast(string) long[0..<ln + 1]) && forge_slug_ok("a") && forge_slug_ok("0");
+  #assert !forge_slug_ok("") && !forge_slug_ok("-a") && !forge_slug_ok("a_b") && !forge_slug_ok("aB") && forge_slug_ok("a-9");
+  e: [1] ForgeDoc; forge_reset(e[..], 1);
+  #assert forge_read_doc(e[..], FORGE_DOC_V1).ok;
+  bad := [7] string.["{\"rev\": 0, \"slug\": \"lamp-cove\"}", "{\"rev\": \"4\", \"slug\": \"lamp-cove\"}", "{\"rev\": 4, \"slug\": \"Lamp\"}",
+    "{\"rev\": 4, \"slug\": \"\"}", "{\"rev\": 4}", "\"lamp-cove\"", "[\"lamp-cove\", 4]"];
+  for i: 0..<bad.count {
+    w: [128] u8; wn := forge_put(w[..], 0, "\"forked_from\": "); wn = forge_put(w[..], wn, bad[i]);
+    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with("\"forked_from\": null", cast(string) w[0..<wn], b[..]));
+    r = forge_read_doc(e[..], cast(string) c[0..<cn]);
+    #assert cn > 0;
+    #assert !r.ok;
+    #assert r.why == "a fork's parent out of bounds";
+    #assert e[0].rev == 4;
   }
 }
 

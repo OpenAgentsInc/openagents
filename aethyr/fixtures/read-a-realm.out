@@ -1,0 +1,15 @@
+read: true (version 1)
+rev 4
+entity rocks:0 at -4000 7 yaw 0 scale 100
+entity trees:3 at 125 -250 yaw 0 scale 100
+slot place:0 barrel 2 -3.5 90
+slot set:camera third
+slot set:ground meadow
+slot set:palette warm
+slot set:style lowpoly
+slot set:time night
+slot tool:fly 0
+slot tool:jump 1
+"version": 2 -> refused: a newer document than this reader knows; the last document stays: true
+"x": 40.01 -> refused: a move out of bounds; the last document stays: true
+"thing": "" -> refused: a placed thing out of bounds; the last document stays: true

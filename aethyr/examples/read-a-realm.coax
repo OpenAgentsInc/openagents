@@ -1,0 +1,24 @@
+// book:begin example
+#load "../forge/doc.coax";
+#import "Basic";
+
+// Lamp Cove's document at revision 4, as GET .../lamp-cove/doc answers it, read into the edit
+// model and written back as the model's text. Then three documents the reader refuses whole:
+// each refusal names why, and the last document read stays exactly as it was.
+main :: () {
+  d: [1] ForgeDoc; forge_reset(d[..], 1);
+  r := forge_read_doc(d[..], FORGE_DOC_V1);
+  print("read: % (version %)\n", r.ok, r.version);
+  last: [8192] u8; ln := forge_doc_text(d[..], last[..]);
+  print("%", cast(string) last[0..<ln]);
+  b: [4096] u8;
+  froms := [3] string.["\"version\": 1", "\"x\": 1.25", "\"thing\": \"barrel\""];
+  tos := [3] string.["\"version\": 2", "\"x\": 40.01", "\"thing\": \"\""];
+  for i: 0..<3 {
+    c: [4096] u8; cn := forge_put(c[..], 0, forge_doc_with(froms[i], tos[i], b[..]));
+    no := forge_read_doc(d[..], cast(string) c[0..<cn]);
+    now: [8192] u8; nn := forge_doc_text(d[..], now[..]);
+    print("% -> refused: %; the last document stays: %\n", tos[i], no.why, cast(string) now[0..<nn] == cast(string) last[0..<ln]);
+  }
+}
+// book:end example
