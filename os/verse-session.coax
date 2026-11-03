@@ -213,7 +213,8 @@ vs_desk_type :: (p: [] VsPylon, text: string) -> bool {
   return fs_append(fin, cast(string) b[0..<n]);
 }
 // F7: the first press listens (ffmpeg, the default source, at most a minute), the second stops it,
-// transcribes (`CLI transcribe FILE --text`) and types what was heard into the desk.
+// transcribes (`CLI transcribe FILE --backend parakeet --device cpu --text`) and types what was heard
+// into the desk.
 vs_voice :: (p: [] VsPylon) {
   rb: [4096] u8; wav := fs_join(cast(string) p[0].run[0..<p[0].run_n], "voice.wav", rb[..]);
   if p[0].voice_h <= 0 {
@@ -233,7 +234,8 @@ vs_voice :: (p: [] VsPylon) {
   h := p[0].voice_h; p[0].voice_h = 0;
   k := proc_kill(h, PROC_SIGTERM); st := proc_wait(h, 5000); d := proc_release(h);
   if fs_size(wav) <= 44 { print("verse-session: nothing was heard\n"); vs_flush(); return; }
-  argv := [4] string.[cast(string) p[0].cli[0..<p[0].cli_n], "transcribe", wav, "--text"];
+  // Psionic's Parakeet on the CPU: the GPU stays the realm's
+  argv := [8] string.[cast(string) p[0].cli[0..<p[0].cli_n], "transcribe", wav, "--backend", "parakeet", "--device", "cpu", "--text"];
   out: [65536] u8; err: [4096] u8;
   r := proc_run(argv[..], 120000, out[..], err[..]);
   rm := fs_remove(wav);
