@@ -214,6 +214,7 @@ RsCreature :: struct {
   // Points; a battle here starts fresh, so it changes nothing), Slow Fall (falls only), Stunning
   // Strike (stun_ready: the deciding routine wants it on its next hit), Empowered Strikes; a Stunning
   // Strike saved against halves Speed until (halved_until)
+  explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
   aura: bool; steed: bool;          // Aura of Protection; Faithful Steed (Find Steed, a summoning this engine doesn't model)
   metabolism: bool; slow_fall: bool; stunning: bool; stun_ready: bool; empowered: bool; halved_until: f32;
   // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
@@ -570,6 +571,8 @@ rs_paladin :: (name: string, team: int, level: int) -> RsCreature {
 rs_ranger :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   c[0] = rs_hero(name, team, level, RS_RANGER, [6] int.[12, 16, 13, 10, 14, 8], RS_STR, RS_DEX, 10);
+  // an Ability Score Improvement at 4 (the feat, p. 87): Dexterity +2
+  if level >= 4 { c[0].score[RS_DEX] = rs_min(c[0].score[RS_DEX] + 2, 20); }
   c[0].ac = 12 + rs_mod(c[0].score[RS_DEX]);
   c[0].spell_ability = RS_WIS; c[0].weapon = W_SHORTSWORD; c[0].ranged = W_LONGBOW;
   c[0].masteries = (1 << M_SLOW) | (1 << M_VEX);
@@ -577,6 +580,11 @@ rs_ranger :: (name: string, team: int, level: int) -> RsCreature {
   c[0].free_spell = SP_HUNTERS_MARK;
   rs_use_set(c[..], RS_USE_FREE, ifx level >= 17 then 6 else ifx level >= 13 then 5 else ifx level >= 9 then 4 else ifx level >= 5 then 3 else 2);
   c[0].archery = level >= 2; c[0].colossus = level >= 3;
+  // Deft Explorer at 2 (Expertise, languages) and Hunter's Lore at 3 are out of a battle's reach (p.
+  // 59, 61); Extra Attack at 5; Roving at 6: +10 feet, and climb and swim Speeds equal to it
+  c[0].explorer = level >= 2; c[0].lore = level >= 3;
+  if level >= 5 { c[0].extra_attack = 1; }
+  if level >= 6 { c[0].speed += 10; c[0].climb = c[0].speed; c[0].swim = c[0].speed; }
   return c[0];
 }
 // The SRD 5.2.1 Rogue (p. 61-64): Dexterity and Intelligence saves, a d8 hit die, Leather Armor, a

@@ -2417,3 +2417,22 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   b[0].c[p].cond = RS_INCAPACITATED;
   #assert rs_aura(b[..], f) == 0;
 }
+
+#test "a level 6 Hunter Ranger: Dexterity 18, Extra Attack with the Longbow, Roving, three Hunter's Marks without a slot" {
+  c := rs_ranger("Yen", 0, 6);
+  #assert c.score[RS_DEX] == 18 && c.ac == 16 && rs_weapon_attack(c, c.ranged) == 4 + 3 + 2 && c.extra_attack == 1;
+  #assert c.speed == 40 && c.climb == 40 && c.swim == 40 && c.uses_max[RS_USE_FREE] == 3 && c.slots_max[2] == 2 && c.explorer && c.lore;
+  b: [1] RsBattle; b[0].w = 30; b[0].h = 6; b[0].dice[0].state = 6;
+  r := rs_add(b[..], c, 2, 2);
+  t := rs_add(b[..], rs_skeleton("Skeleton", 2), 14, 2);
+  b[0].c[t].hp = 500; b[0].c[t].hp_max = 500;
+  rs_fresh(b[..], r); seq := b[0].book[0].seq;
+  #assert rs_shoot(b[..], r, t);
+  rolls := 0;
+  for e: 0..<(b[0].book[0].seq - seq) {
+    ev := rs_recent(b[0].book[0], e);
+    tx := cast(string) ev.text[0..<ev.text_n];
+    for q: 0..<rs_max(ev.text_n - 6, 0) { if tx[q..<(q + 7)] == " vs AC " { rolls += 1; } }
+  }
+  #assert rolls == 2;
+}
