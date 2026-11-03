@@ -523,7 +523,7 @@ coaxial_everglade_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS;
 
 ground_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return verse_terrain_height(everglade_ground(), s[0].heights[..], x, z); }
 // Where you stand: the ground, the bridge's deck over the river, or ice on the water (everglade-frost.coax).
-walk_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return hi(everglade_walk_height(s[0].heights[..], s[0].deck, x, z), fr_floor(s, x, z)); }
+walk_at :: (s: [] Everglade, x: f32, z: f32) -> f32 { return hi(everglade_walk_height_out(s[0].heights[..], s[0].deck, sp_deck_out_at(s, x, z), x, z), fr_floor(s, x, z)); }
 
 // The face's river (verse/everglade/river.coax), each frame before
 // everglade_frame: your medium, your feet's height in the water, your
@@ -550,8 +550,9 @@ everglade_levels :: (s: [] Everglade, out: [] f32) #export_c {
   if out.count >= EG_CELLS + 1 + EG_PONDS * 4 { everglade_pond_rows(s[0].heights[..], out[EG_CELLS + 1..<out.count]); }
 }
 // On the bridge's deck you walk over the river, not in it.
+// Where its plank is down there is no deck: you are in the river (everglade-spells.coax sp_deck_out).
 everglade_on_bridge :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c {
-  return x >= EG_BRIDGE[0] && x <= EG_BRIDGE[2] && z >= EG_BRIDGE[1] && z <= EG_BRIDGE[3];
+  return everglade_deck_holds(sp_deck_out_at(s, x, z), x, z);
 }
 // Where the river's uniform block and the eye are in the uniforms.
 everglade_water_at :: () -> int #export_c { return U_WATER; }
@@ -1901,7 +1902,8 @@ city :: (s: [] Everglade, u: [] f32) {
   br := EG_BRIDGE;
   deck := s[0].deck;
   mx := (br[0] + br[2]) / 2; mz := (br[1] + br[3]) / 2; long := br[2] - br[0];
-  shape(s, SHAPE_BOX, LOOK_PLANKS, v3(mx, deck - 0.12, mz), 0, 0, long, 0.24, br[3] - br[1], 0.62, 0.45, 0.29);
+  // the deck: the kit's planks once the pack is in (bridge: they break and burn as the town's wood), else a slab
+  if !s[0].pack_ready { shape(s, SHAPE_BOX, LOOK_PLANKS, v3(mx, deck - 0.12, mz), 0, 0, long, 0.24, br[3] - br[1], 0.62, 0.45, 0.29); }
   for side: 0..<2 {
     if s[0].pack_ready { break; }   // the kit's fence (bridge)
     z := ifx side == 0 then br[1] + 0.18 else br[3] - 0.18;

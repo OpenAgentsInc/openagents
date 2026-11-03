@@ -1,0 +1,181 @@
+// The everglade rooms' bridge check (room-world.c, everglade.coax bridge): the bridge over the river
+// is wood and breaks for everyone. A and B walk the streets to the East Gate road (64, 0); B
+// calls Meteor Swarm down on the bridge's deck: both hear the same pieces break. A then walks onto
+// the deck and over: with its planks gone there is nothing to walk on, A is in the river (its p says
+// swimming, G 2) where the deck was, and B sees it there too. A goes back to the west bank; 10 s after
+// the spell B's R stands the town up (both hear e rebuild), and A walks over on the deck, dry.
+//   coax/web/tool.sh coax/web/room/bridge-check.coax [ws://localhost:8830]
+//   (deploy.sh runs it through wss://openagents.com)
+// Prints one JSON line, then "holds" and exits 0, or "falls" and 1.
+#load "room-socket.coax";
+
+BC_SEATS :: 2;
+BC_DECK_X0 :: 84.0; BC_DECK_X1 :: 92.0;   // plan.coax EG_BRIDGE's span over the river
+// What one socket heard.
+BcHeard :: struct {
+  d: int;
+  ax: f32; az: f32; ag: int; a_seen: bool;   // seat 0 (A), as this socket heard it
+  bx: f32; bz: f32; b_seen: bool;             // seat 1 (B)
+  wet_in_span: int;                           // D frames with A swimming (G 2) on the deck's span
+  breaks: int; break_sum: int; rebuilt: bool;
+  casts: int; burns: int;
+  refused: int;                               // r SEQ WHY: a cast or an R refused
+  bad: int;
+}
+bc_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
+bc_hear :: (h: [] BcHeard, t: string) {
+  if rs_starts(t, "r ") { h[0].refused += 1; tool_err("bridge-check: "); tool_errln(t); return; }
+  if !rs_starts(t, "D ") { return; }
+  h[0].d += 1;
+  at := 0; sp := 0;
+  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != ';' { e += 1; }
+    q := t[at..<e];
+    k := rs_field(q, 0);
+    if k == "p" && rs_num(rs_field(q, 1)) == 0 {
+      if rs_field(q, 16).count == 0 { h[0].bad += 1; }
+      h[0].ax = bc_cm(rs_field(q, 2)); h[0].az = bc_cm(rs_field(q, 4)); h[0].ag = rs_num(rs_field(q, 9)); h[0].a_seen = true;
+      if (h[0].ag & 2) != 0 && h[0].ax > BC_DECK_X0 && h[0].ax < BC_DECK_X1 { h[0].wet_in_span += 1; }
+    }
+    if k == "p" && rs_num(rs_field(q, 1)) == 1 { h[0].bx = bc_cm(rs_field(q, 2)); h[0].bz = bc_cm(rs_field(q, 4)); h[0].b_seen = true; }
+    if k == "e" && rs_field(q, 1) == "break" { h[0].breaks += 1; h[0].break_sum += rs_num(rs_field(q, 2)); }
+    if k == "e" && rs_field(q, 1) == "cast" { h[0].casts += 1; }
+    if k == "e" && rs_field(q, 1) == "burn" { h[0].burns += 1; }
+    if k == "e" && rs_field(q, 1) == "rebuild" { h[0].rebuilt = true; }
+    at = e + 1;
+  }
+}
+bc_drain :: (c: [] RelayConn, h: [] BcHeard) {
+  for i: 0..<BC_SEATS {
+    if c[i].h < 0 { continue; }
+    while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT { bc_hear(h[i..<i + 1], cast(string) c[i].text[0..<c[i].text_n]); }
+  }
+}
+// Both send an input each 1/30 s for ms: A heads for (gx, gz) (run when it is far), and B too when
+// `both`, else B stands. Whether they got within 1 m.
+bc_walk :: (c: [] RelayConn, h: [] BcHeard, seq: [] int, gx: f32, gz: f32, ms: int, both: bool, sent: [] bool) -> bool {
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < ms {
+    there := true;
+    for i: 0..<BC_SEATS {
+      x := ifx i == 0 then h[0].ax else h[1].bx;
+      z := ifx i == 0 then h[0].az else h[1].bz;
+      seen := ifx i == 0 then h[0].a_seen else h[1].b_seen;
+      dx := gx - x; dz := gz - z;
+      l := sqrt(dx * dx + dz * dz);
+      moves := i == 0 || both;
+      if moves && (!seen || l >= 1) { there = false; }
+      seq[i] += 1;
+      m: [96] u8;
+      k := rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]);
+      if moves && seen && l > 0.5 {
+        // the sticks in world axes: kx east, ky south (room-world.c world_step)
+        k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (100 * dx / l));
+        k = rs_put(m[..], k, " "); k = rs_int(m[..], k, cast(int) (-100 * dz / l));
+        k = rs_put(m[..], k, ifx l > 6 then " 0 0 0 1" else " 0 0 0 0");
+      } else {
+        k = rs_put(m[..], k, " 0 0 0 0 0 0");
+      }
+      if !relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]) { sent[0] = false; }
+    }
+    if there { return true; }
+    n += 1;
+    while rs_now() - t0 < n * 33 { bc_drain(c, h); proc_sleep(2); }
+  }
+  return false;
+}
+// Both stand for ms, hearing what comes.
+bc_idle :: (c: [] RelayConn, h: [] BcHeard, seq: [] int, ms: int, sent: [] bool) {
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < ms {
+    for i: 0..<BC_SEATS {
+      seq[i] += 1;
+      m: [96] u8;
+      k := rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]);
+      k = rs_put(m[..], k, " 0 0 0 0 0 0");
+      if !relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]) { sent[0] = false; }
+    }
+    n += 1;
+    while rs_now() - t0 < n * 33 { bc_drain(c, h); proc_sleep(2); }
+  }
+}
+// A's way from the spawn to the East Gate road: the streets (plan.coax EG_NODE_XZ 9, 8, 2, 5, 1, 13, 14).
+BC_WAY :: [14] f32.[0, -56,   0, -34,   0, -12,   8, -8,   12, 0,   44, 0,   64, 0];
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("bridge-check: bad arguments"); return 2; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-bridge-", rs_stamp());
+  c: [BC_SEATS] RelayConn; h: [BC_SEATS] BcHeard; seq: [BC_SEATS] int;
+  ua: [1024] u8; ub: [1024] u8;
+  url_a := rs_ticketed(ua[..], url, "p-bridgecheck-a", "Bridge A"); url_b := rs_ticketed(ub[..], url, "p-bridgecheck-b", "Bridge B");
+  if url.count == 0 || url_a.count == 0 || url_b.count == 0 || !relay_conn_open(c[0..<1], url_a) || !relay_conn_open(c[1..<2], url_b) { tool_err("bridge-check: can't open "); tool_errln(url); print("falls\n"); return 1; }
+  sent := [1] bool.[relay_conn_send(c[0..<1], "H 1 ranger.2.1.0 druid 0 Bridge A") && relay_conn_send(c[1..<2], "H 1 ranger.0.0.0 druid 0 Bridge B")];
+  t0 := rs_now();
+  // both to the East Gate road, 24 m from the deck: out of the meteors' way
+  at_road := true;
+  for q: 0..<7 { at_road = bc_walk(c[..], h[..], seq[..], BC_WAY[q * 2], BC_WAY[q * 2 + 1], 12000, true, sent[..]) && at_road; }
+  // B calls Meteor Swarm (slot 0) down on the middle of the deck from there
+  m: [128] u8;
+  k := rs_int(m[..], rs_put(m[..], 0, "C "), seq[1] + 1);
+  seq[1] += 1;
+  aim_x := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 1)) else 8800;
+  aim_z := ifx args_count(a[..]) > 2 then rs_num(args_at(a[..], 2)) else -1150;
+  k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, aim_x); k = rs_put(m[..], k, " 50 "); k = rs_int(m[..], k, aim_z); k = rs_put(m[..], k, " -1");
+  sent[0] = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent[0];
+  cast_at := rs_now();
+  bc_idle(c[..], h[..], seq[..], 5000, sent[..]);
+  breaks_a := h[0].breaks; breaks_b := h[1].breaks;
+  // A walks onto the deck and over: in the river where the planks were
+  _ := bc_walk(c[..], h[..], seq[..], 80, -4, 6000, false, sent[..]);
+  _ = bc_walk(c[..], h[..], seq[..], 82, -11.5, 4000, false, sent[..]);
+  _ = bc_walk(c[..], h[..], seq[..], 96, -11.5, 10000, false, sent[..]);
+  wet_a := h[0].wet_in_span; wet_b := h[1].wet_in_span;
+  // back to the west bank, then R once the spell is 10 s old
+  _ = bc_walk(c[..], h[..], seq[..], 80, -11.5, 12000, false, sent[..]);
+  west := h[0].ax < BC_DECK_X0 - 0.5;
+  bc_idle(c[..], h[..], seq[..], 10500 - (rs_now() - cast_at), sent[..]);
+  k = rs_int(m[..], rs_put(m[..], 0, "R "), seq[1] + 1);
+  seq[1] += 1;
+  sent[0] = relay_conn_send(c[1..<2], cast(string) m[0..<k]) && sent[0];
+  bc_idle(c[..], h[..], seq[..], 800, sent[..]);
+  // over the deck again, stood up: dry the whole way
+  h[0].wet_in_span = 0; h[1].wet_in_span = 0;
+  _ = bc_walk(c[..], h[..], seq[..], 82, -11.5, 3000, false, sent[..]);
+  over := bc_walk(c[..], h[..], seq[..], 96, -11.5, 8000, false, sent[..]);
+  dry := h[0].wet_in_span == 0 && h[1].wet_in_span == 0;
+  ms := rs_now() - t0;
+  ok := sent[0] && at_road && breaks_a > 0 && breaks_a == breaks_b && h[0].break_sum == h[1].break_sum &&
+        wet_a > 0 && wet_b > 0 && west && h[0].rebuilt && h[1].rebuilt && over && dry && h[0].bad + h[1].bad == 0;
+  out: [1024] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "at_road"); jo_bool(o[..], at_road);
+  jo_key(o[..], "breaks_a"); jo_int(o[..], breaks_a);
+  jo_key(o[..], "breaks_b"); jo_int(o[..], breaks_b);
+  jo_key(o[..], "a_wet_in_span"); jo_int(o[..], wet_a);
+  jo_key(o[..], "b_saw_a_wet"); jo_int(o[..], wet_b);
+  jo_key(o[..], "back_west"); jo_bool(o[..], west);
+  jo_key(o[..], "rebuilt"); jo_bool(o[..], h[0].rebuilt && h[1].rebuilt);
+  jo_key(o[..], "crossed_after"); jo_bool(o[..], over);
+  jo_key(o[..], "dry_after"); jo_bool(o[..], dry);
+  jo_key(o[..], "a_x_cm"); jo_int(o[..], cast(int) (h[0].ax * 100));
+  jo_key(o[..], "sent"); jo_bool(o[..], sent[0]);
+  jo_key(o[..], "d_a"); jo_int(o[..], h[0].d);
+  jo_key(o[..], "d_b"); jo_int(o[..], h[1].d);
+  jo_key(o[..], "b_x_cm"); jo_int(o[..], cast(int) (h[1].bx * 100));
+  jo_key(o[..], "b_z_cm"); jo_int(o[..], cast(int) (h[1].bz * 100));
+  jo_key(o[..], "casts_a"); jo_int(o[..], h[0].casts);
+  jo_key(o[..], "burns_a"); jo_int(o[..], h[0].burns);
+  jo_key(o[..], "b_refused"); jo_int(o[..], h[1].refused);
+  jo_key(o[..], "ms"); jo_int(o[..], ms);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  print("%\n", ifx ok then "holds" else "falls");
+  return ifx ok then 0 else 1;
+}

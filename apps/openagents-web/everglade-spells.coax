@@ -161,6 +161,7 @@ Spells :: struct {
   dm: [] DemoWorld;           // the pieces and their debris: the page's face holds it (everglade_attach_demolish); none, nothing breaks
   dice: [1] SrdDice;
   bounds: [KIT_MESHES * 6] f32; have: [KIT_MESHES] bool;
+  plank: [EG_DECK_ACROSS * EG_DECK_ALONG] int;   // the bridge's deck: each plank's piece (plan.coax everglade_deck_plank), -1 none
   wall_keep: [WALLS * 6] f32; keep_n: int;   // the town's own walls (and the bridge's rails after them), whole
   walls_dirty: bool;
   shard_first: [KIT_MESHES] int; shard_n: [KIT_MESHES] int;   // each mesh's run of chunks at SHARD_AT this frame
@@ -270,6 +271,22 @@ sp_object :: (mesh: int) -> SrdObject {
 }
 sp_on :: (s: [] Everglade) -> bool { return s[0].sp.on && s[0].sp.ready && s[0].sp.dm.count > 0; }
 sp_dm :: (s: [] Everglade) -> [] DemoWorld { return s[0].sp.dm; }
+// The bridge's planks down now, a bit each (plan.coax everglade_deck_plank): broken or knocked loose.
+sp_deck_out :: (s: [] Everglade) -> int {
+  out := 0;
+  for q: 0..<EG_DECK_ACROSS * EG_DECK_ALONG { if sp_plank_down(s, q) { out = out | (1 << q); } }
+  return out;
+}
+sp_plank_down :: (s: [] Everglade, q: int) -> bool {
+  if s[0].sp.dm.count < 1 || q < 0 || q >= EG_DECK_ACROSS * EG_DECK_ALONG { return false; }
+  i := s[0].sp.plank[q];
+  return i >= 0 && i < s[0].sp.dm[0].n && s[0].sp.dm[0].pieces[i].state != DP_STANDING;
+}
+// Just the plank under (x, z), as a mask: walk_at's, which runs often.
+sp_deck_out_at :: (s: [] Everglade, x: f32, z: f32) -> int {
+  q := everglade_deck_plank(x, z);
+  return ifx q >= 0 && sp_plank_down(s, q) then 1 << q else 0;
+}
 
 // The page's face hands the city its pieces' storage (it is large, so a
 // city without spells, as most checks, holds none): from then on its town
@@ -306,6 +323,7 @@ spells_cap :: (group: int) -> int { return 0; }
 // At the start, once the town is laid: every town piece's instance.
 spells_start :: (s: [] Everglade) {
   s[0].sp.keep_n = s[0].wall_n;
+  for q: 0..<EG_DECK_ACROSS * EG_DECK_ALONG { s[0].sp.plank[q] = -1; }
   for k: 0..<lo_int((s[0].wall_n + 2) * 6, WALLS * 6) { s[0].sp.wall_keep[k] = s[0].walls[k]; }
   if s[0].sp.dm.count < 1 { return; }
   w := sp_dm(s);
@@ -324,6 +342,10 @@ spells_start :: (s: [] Everglade) {
       for k: 0..<12 { rows[k] = s[0].objects[o * OBJECT_FLOATS + k]; }
       grp := sp_group(rows[3], rows[11]);
       i := demo_add(w, m, o, grp, rows[..]);
+      if i >= 0 && m == M_FLOOR_WOOD && abs(rows[7] - s[0].deck) < 0.5 {
+        pk := everglade_deck_plank(rows[3], rows[11]);
+        if pk >= 0 { s[0].sp.plank[pk] = i; }
+      }
       if i >= 0 { for k: 0..<3 { w[0].tint[i * 3 + k] = s[0].objects[o * OBJECT_FLOATS + 12 + k]; } }
       s[0].sp.group_x[grp] += rows[3]; s[0].sp.group_z[grp] += rows[11]; s[0].sp.group_n[grp] += 1;
     }

@@ -544,10 +544,36 @@ everglade_deck :: (heights: [] f32) -> f32 {
   j := cast(int) ((-11.5 - f32(EG_EDGE)) / f32(EG_CELL));
   return (heights[j * w + EG_RIVER_COL - 2] + heights[j * w + EG_RIVER_COL + 2]) / 2 + f32(EG_DECK);
 }
-everglade_walk_height :: (heights: [] f32, deck: f32, x: f32, z: f32) -> f32 {
+everglade_walk_height :: (heights: [] f32, deck: f32, x: f32, z: f32) -> f32 { return everglade_walk_height_out(heights, deck, 0, x, z); }
+// The same with the deck's planks that are down (`out`, a bit each: everglade_deck_plank): where one
+// is down there is no deck, and you are on the ground under it (the river's bed).
+everglade_walk_height_out :: (heights: [] f32, deck: f32, out: int, x: f32, z: f32) -> f32 {
   h := verse_terrain_height(everglade_ground(), heights, x, z);
-  if x >= EG_BRIDGE[0] && x <= EG_BRIDGE[2] && z >= EG_BRIDGE[1] && z <= EG_BRIDGE[3] { return hi(h, deck); }
+  if everglade_deck_holds(out, x, z) { return hi(h, deck); }
   return h;
+}
+// The bridge is wood and breaks as the town's wood does: its deck is the kit's planks
+// (everglade.coax bridge), EG_DECK_ACROSS over the river by EG_DECK_ALONG along the trail.
+EG_DECK_ACROSS :: 4; EG_DECK_ALONG :: 7;
+// The plank under (x, z), across + along * EG_DECK_ACROSS, or -1 off the deck.
+everglade_deck_plank :: (x: f32, z: f32) -> int {
+  br := EG_BRIDGE;
+  if x < br[0] || x > br[2] || z < br[1] || z > br[3] { return -1; }
+  i := cast(int) floor((x - br[0]) / ((br[2] - br[0]) / f32(EG_DECK_ACROSS)));
+  j := cast(int) floor((z - br[1]) / ((br[3] - br[1]) / f32(EG_DECK_ALONG)));
+  i = ifx i < 0 then 0 else ifx i > EG_DECK_ACROSS - 1 then EG_DECK_ACROSS - 1 else i;
+  j = ifx j < 0 then 0 else ifx j > EG_DECK_ALONG - 1 then EG_DECK_ALONG - 1 else j;
+  return j * EG_DECK_ACROSS + i;
+}
+// Whether the deck holds you at (x, z): on it, and its plank there not down.
+everglade_deck_holds :: (out: int, x: f32, z: f32) -> bool {
+  k := everglade_deck_plank(x, z);
+  return k >= 0 && ((out >> k) & 1) == 0;
+}
+// Whether one can still walk over: a row of planks across the river all standing.
+everglade_deck_crossable :: (out: int) -> bool {
+  for j: 0..<EG_DECK_ALONG { if ((out >> (j * EG_DECK_ACROSS)) & 15) == 0 { return true; } }
+  return false;
 }
 
 // ---- what stands in the way
@@ -866,6 +892,21 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
+#test "the bridge's deck: each plank under its own 2 m by its row; one down drops the walk there to the bed, the rest hold; a line down the middle, no crossing" #steps 400000000 {
+  heights: [EG_GROUND_POINTS] f32;
+  #assert everglade_build_ground(heights[..]);
+  deck := everglade_deck(heights[..]);
+  br := EG_BRIDGE;
+  #assert everglade_deck_plank(br[0] - 0.1, -11) == -1 && everglade_deck_plank(br[0] + 0.5, br[1] + 0.1) == 0 && everglade_deck_plank(br[2] - 0.1, br[3] - 0.1) == EG_DECK_ACROSS * EG_DECK_ALONG - 1;
+  k := everglade_deck_plank(88.5, -11.5);
+  #assert everglade_walk_height_out(heights[..], deck, 0, 88.5, -11.5) == deck;
+  #assert everglade_walk_height_out(heights[..], deck, 1 << k, 88.5, -11.5) < deck - 0.5;
+  #assert everglade_walk_height_out(heights[..], deck, 1 << k, 84.5, -11.5) == deck;
+  #assert everglade_deck_crossable(1 << k);
+  all := 0;
+  for q: 0..<EG_DECK_ACROSS * EG_DECK_ALONG { if q % EG_DECK_ACROSS == 2 { all = all | (1 << q); } }   // a line down the middle
+  #assert !everglade_deck_crossable(all) && everglade_deck_crossable(0);
+}
 #test "the paths connect: one network, through every gate and over the bridge" {
   seen: [EG_NODES] bool;
   for k: 0..<EG_NODES { seen[k] = false; }

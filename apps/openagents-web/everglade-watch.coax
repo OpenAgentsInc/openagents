@@ -137,7 +137,8 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
     s[0].wv.want = 0;
   }
   everglade_captain_frame(s, you);   // the guard captain's plan (everglade-guard-ai.coax)
-  w[0].floor_n = eg_watch_floors(s, w);   // what the bodies in flight come down onto (everglade-stand.coax)
+  w[0].floor_n = eg_watch_floors(s, w);
+  w[0].deck_out = sp_deck_out(s);   // the bridge's planks down: no deck there   // what the bodies in flight come down onto (everglade-stand.coax)
   watch_tick(w, dt, you, c.day, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
   // a hunter's spell threw you: the face adds it to your velocity
   if watch_you(w[..])[0].bound_said == 1 { sp_say(s, "EARTHBIND", -1, ""); }
@@ -847,6 +848,7 @@ everglade_room_town :: (s: [] Everglade, dt: f32, world: f64, seats: [] f32, n: 
     watch_home(w, EG_SPOTS + k, s[0].wv.at[k].x, s[0].wv.at[k].z, s[0].wv.at[k].yaw, false);
   }
   w[0].floor_n = eg_watch_floors(s, w);
+  w[0].deck_out = sp_deck_out(s);   // the bridge's planks down: no deck there
   watch_tick_room(w, dt, c.day, at[0..<m], live[0..<m], s[0].boxes[..], s[0].box_n, s[0].heights[..]);
   for p: 0..<lo_w(m, took.count) {
     took[p] = 0;

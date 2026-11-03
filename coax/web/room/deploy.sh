@@ -120,7 +120,7 @@ shards_ok() { for k in $(seq 1 "$shards"); do [[ "$(curl -s -m 20 "https://opena
 # Through the site's address (the rule takes a minute or two to reach every edge).
 for try in 1 2 3 4 5 6 7 8 9 10; do
   "$here/../tool.sh" "$here/load.coax" wss://openagents.com 4 10 && "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com &&
-    "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com slow && "$here/../tool.sh" "$here/sim-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/load.coax" everglade wss://openagents.com 32 20 &&
+    "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com slow && "$here/../tool.sh" "$here/sim-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/bridge-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/load.coax" everglade wss://openagents.com 32 20 &&
     [[ "$(curl -s -m 20 https://openagents.com/api/playtest/rooms/everglade)" == '{"realm":"everglade"'* ]] &&
     shards_ok &&
     "$here/../tool.sh" "$here/fanout-check.coax" https://openagents.com 17 5 &&

@@ -325,6 +325,7 @@ Watch :: struct {
   // thickness; no one stands in one, and a way that runs into one goes round its nearer end (watch_way)
   fences: [WATCH_FENCES * 5] f32; fence_n: int;
   deck: f32;                      // the bridge's deck (plan.coax everglade_deck): where its walkers' feet are
+  deck_out: int;                  // its planks down now (plan.coax everglade_deck_plank), set each frame: none there to walk on
   spears: [SPEARS] Spear;
   enemy_fire: bool;               // a hunter's spell is hurting people now: no heat for it
   waves: int; spawned: int;       // for the checks
@@ -493,7 +494,7 @@ watch_on_rail :: (x: f32, z: f32, pad: f32) -> bool {
 // Where a walker's feet are at (x, z): the ground, or on the bridge the deck (as the player's: everglade.coax walk_at).
 watch_feet_y :: (w: [] Watch, heights: [] f32, x: f32, z: f32) -> f32 {
   if heights.count < EG_GROUND_POINTS { return 0; }
-  return everglade_walk_height(heights, w[0].deck, x, z);
+  return everglade_walk_height_out(heights, w[0].deck, w[0].deck_out, x, z);
 }
 // What a body with its lowest point at `from` comes down onto at (x, z): the ground or deck under it,
 // or the highest of the floors round it (a roof, the rubble) at or under `from`.
@@ -509,7 +510,11 @@ watch_bank :: (x: f32) -> int { if x < EG_BRIDGE[0] { return -1; } if x > EG_BRI
 WATCH_DETOUR :: 120.0;    // m out of the way a runner goes to cross by the bridge rather than wade
 // Where one at (x, z) heads for (gx, gz): straight there, unless the river is between and the bridge
 // is not too far out of the way, then by the bridge: its near end, along its deck, off its far end.
-watch_bridge_way :: (x: f32, z: f32, gx: f32, gz: f32) -> Point {
+watch_bridge_way :: (x: f32, z: f32, gx: f32, gz: f32) -> Point { return watch_bridge_way_out(0, x, z, gx, gz); }
+// The same with planks down (`out`): with no row of them whole there is no way over, and one goes
+// straight for the goal, into the river and across it.
+watch_bridge_way_out :: (out: int, x: f32, z: f32, gx: f32, gz: f32) -> Point {
+  if !everglade_deck_crossable(out) { return v3(gx, 0, gz); }
   br := EG_BRIDGE;
   from := watch_bank(x); to := watch_bank(gx);
   inner_lo := br[1] + 0.9; inner_hi := br[3] - 0.9;
@@ -680,7 +685,7 @@ watch_cast_step :: (w: [] Watch, i: int, dt: f32, you: Point, feet: f32, gap: f3
   step := f32(BRAVE_RUN) * dt;
   a[0].clip = PEOPLE_IDLE;
   if far > f32(CAST_FAR) || !a[0].sees {
-    by := watch_bridge_way(a[0].x, a[0].z, goal.x, goal.z);
+    by := watch_bridge_way_out(w[0].deck_out, a[0].x, a[0].z, goal.x, goal.z);
     if watch_stride(w, a, watch_way(w, a[0].x, a[0].z, by.x, by.z), lo(step, hi(far - 0.3, 0))) { a[0].speed = f32(BRAVE_RUN); a[0].clip = PEOPLE_RUN; }
   } else if far < f32(CAST_NEAR) {
     if watch_stride(w, a, atan2(a[0].x - goal.x, a[0].z - goal.z), step) { a[0].speed = f32(BRAVE_RUN); a[0].clip = PEOPLE_RUN; }
@@ -1711,7 +1716,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
       if left <= 0.05 { a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt); left = 0; }
     }
     // over the river by the bridge, round a fence
-    by := watch_bridge_way(a[0].x, a[0].z, goal.x, goal.z);
+    by := watch_bridge_way_out(w[0].deck_out, a[0].x, a[0].z, goal.x, goal.z);
     step := lo(run * dt, hi(left, 0));
     if step > 0 && watch_stride(w, a, watch_way(w, a[0].x, a[0].z, by.x, by.z), step) { a[0].speed = step / hi(dt, 0.0001); }
     // a role's spot they can't get to (a house in the way): its time runs out fast, then they press on
@@ -1752,7 +1757,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
     a[0].yaw = watch_turn(a[0].yaw, a[0].home_yaw, 2 * dt);
     return;
   }
-  hw := watch_bridge_way(a[0].x, a[0].z, a[0].home_x, a[0].home_z);
+  hw := watch_bridge_way_out(w[0].deck_out, a[0].x, a[0].z, a[0].home_x, a[0].home_z);
   home := watch_way(w, a[0].x, a[0].z, hw.x, hw.z);
   step := lo(f32(BACK_WALK) * dt, d);
   if watch_stride(w, a, home, step) { a[0].speed = f32(BACK_WALK); }
@@ -2032,6 +2037,41 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   // the bridge's rails stand in a runner's way; its deck between them does not
   #assert !watch_open(w[..], 88, br[1] + 0.18) && !watch_open(w[..], 88, br[3] - 0.18) && watch_open(w[..], 88, -11.5);
   #assert watch_feet_y(w[..], heights[..], 88, -11.5) == w[0].deck && w[0].deck > watch_feet_y(w[..], heights[..], 88, br[1] - 3) + 0.5;
+}
+
+#test "with the bridge's deck broken a guard has no way over it: it goes straight for you through the river, its feet on the bed under where the planks were" #steps 250000000 {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  br := EG_BRIDGE;
+  // the middle two columns of planks down, every row: no way over on the deck
+  out := 0;
+  for q: 0..<EG_DECK_ACROSS * EG_DECK_ALONG { if q % EG_DECK_ACROSS == 1 || q % EG_DECK_ACROSS == 2 { out = out | (1 << q); } }
+  w[0].deck_out = out;
+  #assert watch_feet_y(w[..], heights[..], 88, -11.5) < w[0].deck - 0.5 && watch_feet_y(w[..], heights[..], 84.5, -11.5) == w[0].deck;
+  g := EG_SPOTS + 4;   // the East Gate's guard
+  w[0].actors[g].mode = WM_CHASE; w[0].actors[g].x = br[0] - 8; w[0].actors[g].z = br[1] - 6; w[0].actors[g].cool = 100;
+  you := v3(br[2] + 5, 0, br[3] + 5);
+  you.y = watch_feet_y(w[..], heights[..], you.x, you.z);
+  w[0].actors[g].seen_x = you.x; w[0].actors[g].seen_z = you.z;
+  watch_you(w[..])[0].wanted = true;
+  by := watch_bridge_way_out(out, br[0] - 8, br[1] - 6, you.x, you.z);
+  #assert by.x == you.x && by.z == you.z;   // straight for you, not by the bridge's near end
+  whole := watch_bridge_way_out(0, br[0] - 8, br[1] - 6, you.x, you.z);
+  #assert whole.x == br[0] - 1.2;
+  under := 0;
+  for f: 0..<60 * 30 {
+    watch_you(w[..])[0].unseen = 0;
+    watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
+    a := w[0].actors[g];
+    if a.x > 86.5 && a.x < 89.5 && a.z >= br[1] && a.z <= br[3] { #assert watch_feet_y(w[..], heights[..], a.x, a.z) < w[0].deck - 0.5; under += 1; }
+  }
+  #assert under > 0;   // it went through where the planks were
+  // stood up again (R), the deck holds where it did
+  w[0].deck_out = 0;
+  #assert watch_feet_y(w[..], heights[..], 88, -11.5) == w[0].deck;
 }
 
 #test "out of a sword's reach above them (levitating 6 m up), no blow lands; a guard below throws spears; on the ground they cut" #steps 860000000 {

@@ -54,7 +54,7 @@ EG_FOLK_FLOATS :: 7;            // a townsperson as the world hands them (evergl
 EG_CRIMES :: 16;
 EG_FOLK_STEP :: 0.3; EG_FOLK_TURN :: 0.15;   // m and radians a townsperson moves before a seat hears them again
 EG_REBUILD_QUIET :: 10; EG_REBUILD_EVERY :: 30;   // s: R stands the town up once no spell struck it for 10 s, once in 30 s at most
-EG_PIECES :: 4000;              // the town's pieces at most (verse/demolish.coax DEMO_PIECES)
+EG_PIECES :: 6000;              // the town's pieces at most: verse/demolish.coax DEMO_PIECES, which wave 1 raised (the bridge's are past 4000)
 EG_ENT :: 192;                  // bytes of one cached entry (eg_cache) at most
 
 EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: int; }
