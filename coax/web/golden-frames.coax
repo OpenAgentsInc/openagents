@@ -72,6 +72,7 @@ gf_percent :: (o: [] GfBuf, tenths: int) { gf_int(o, tenths / 10); gf_put(o, "."
 
 // ---- the comparison (goldens.ts's differ and against) ---------------------------------
 
+// book:begin differ
 // Which 8 px blocks differ between two RGBA frames (1 a block): a block differs when the mean of
 // a channel over its pixels moved more than GF_SHADE. Frames of different sizes differ everywhere.
 // The count of blocks (a's), each set in out.
@@ -98,6 +99,7 @@ gf_differ :: (a: [] u8, aw: int, ah: int, b: [] u8, bw: int, bh: int, out: [] u8
   }
   return cols * rows;
 }
+// book:end differ
 GfDiff :: struct { changed: int; moved: int; x0: int; y0: int; x1: int; y1: int; }
 // One RGBA frame: its pixels and size.
 GfView :: struct { px: [] u8; w: int; h: int; }

@@ -290,6 +290,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/profile-a-frame.coax",
+      "chapter": "aethyr/book/ch083-inspect-and-profile-a-running-realm.md",
+      "stdout": "aethyr/fixtures/profile-a-frame.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

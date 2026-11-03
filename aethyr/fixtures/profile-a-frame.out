@@ -1,0 +1,8 @@
+steady: 252 frames, 59.8 FPS, p50 16700 us, p95 16800 us, max 16800 us, 0 over 20 ms: holds 60 FPS
+a hitch: 252 frames, 59.5 FPS, p50 16700 us, p95 16800 us, max 40000 us, 1 over 20 ms: misses 60 FPS
+busy: 252 frames, 57.0 FPS, p50 16700 us, p95 25000 us, max 25000 us, 25 over 20 ms: misses 60 FPS
+a hitch: 271 steps, at most 2 in a frame
+a 3 s stall: 276 steps, at most 8 in a frame
+a frame of 4200 us: 300 us unaccounted, holds: true
+a frame of 4200 us: 700 us unaccounted, holds: false
+a Grid walk of 252 frames: 252 reports hold, steps 271, session digests equal: true

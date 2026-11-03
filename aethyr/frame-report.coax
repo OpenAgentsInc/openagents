@@ -1,0 +1,173 @@
+// A realm's frames, measured (Aethyr book chapter 83): the frame statistics and the 60 FPS rule
+// every realm is held to, and the record of one frame's stages.
+//   - frame_stats: a run of frame times (whole microseconds) as its count, total, median, 95th
+//     percentile, longest frame and frames over 20 ms;
+//   - frame_holds: the 60 FPS rule. More than 30 frames, the 95th percentile at most 17.5 ms
+//     and no frame over 33 ms;
+//   - FrameReport: one frame's own time split into stages (input, the fixed steps, building the
+//     draw, submitting it). It holds when every stage is a time and the stages leave at most
+//     0.5 ms of the frame unaccounted.
+// coax/web/realm-perf.coax measures every realm in headless Chrome and judges each case here.
+//   coax/bin/coax test aethyr/frame-report.coax --library
+//   coax/bin/coax mutate aethyr/frame-report.coax --library
+
+#module "aethyr.frame.report";
+
+// book:begin rule
+FRAME_P95_MAX :: 17500;    // microseconds: the 95th percentile frame at most this
+FRAME_MAX :: 33000;        // and no frame longer than this
+FRAME_LATE :: 20000;       // a frame over this is counted late
+FRAME_LEAST :: 31;         // frames a run needs before it is judged
+FrameStats :: struct { n: int; total: int; p50: int; p95: int; max: int; over: int; }
+
+// The frame at index k of the first n frames sorted, without sorting them: the frame with fewer
+// than k + 1 frames shorter than it and more than k at most as long. -1 when k is not an index.
+frame_at :: (us: [] int, n: int, k: int) -> int {
+  for i: 0..<n {
+    shorter := 0; within := 0;
+    for j: 0..<n {
+      if us[j] < us[i] { shorter += 1; }
+      if us[j] <= us[i] { within += 1; }
+    }
+    if shorter <= k && k < within { return us[i]; }
+  }
+  return -1;
+}
+// The first n frame times of us. A run of none, or more than us holds, is all zero (n 0).
+// Percentile p is the frame at index n * p / 100 of the run sorted.
+frame_stats :: (us: [] int, n: int) -> FrameStats {
+  f: FrameStats;
+  if n < 1 || n > us.count { return f; }
+  for i: 0..<n {
+    f.total += us[i];
+    if us[i] > FRAME_LATE { f.over += 1; }
+  }
+  f.n = n;
+  f.p50 = frame_at(us, n, n * 50 / 100); f.p95 = frame_at(us, n, n * 95 / 100); f.max = frame_at(us, n, n - 1);
+  return f;
+}
+// The 60 FPS rule.
+frame_holds :: (f: FrameStats) -> bool { return f.n >= FRAME_LEAST && f.p95 <= FRAME_P95_MAX && f.max <= FRAME_MAX; }
+// Frames a second, times ten (600 is 60.0 FPS), rounded.
+frame_fps10 :: (f: FrameStats) -> int { return ifx f.total > 0 then (f.n * 100000000 / f.total + 5) / 10 else 0; }
+// book:end rule
+
+// book:begin report
+// One frame's own time (from the frame's start to its submit), in microseconds, by stage.
+FRAME_STAGES :: 4;
+STAGE_INPUT :: 0;    // the devices read into this frame's actions (chapter 4)
+STAGE_STEPS :: 1;    // the fixed steps the frame's time made due (chapter 1)
+STAGE_DRAW :: 2;     // the draw built from the state between the last two steps
+STAGE_SUBMIT :: 3;   // the draw handed to the GPU
+FRAME_SLACK :: 500;  // microseconds of a frame the stages may leave unaccounted
+FRAME_STEPS_MOST :: 8;   // no frame runs more fixed steps than this (INVARIANTS.md)
+FrameReport :: struct { frame_us: int; steps: int; stage_us: [FRAME_STAGES] int; }
+
+// The time no stage accounts for.
+frame_unaccounted :: (r: FrameReport) -> int {
+  left := r.frame_us;
+  for s: r.stage_us { left -= s; }
+  return left;
+}
+// A report holds when its numbers are times and step counts a frame can have, and its stages
+// account for all of the frame but at most FRAME_SLACK.
+frame_report_ok :: (r: FrameReport) -> bool {
+  if r.frame_us < 0 || r.steps < 0 || r.steps > FRAME_STEPS_MOST { return false; }
+  for s: r.stage_us { if s < 0 { return false; } }
+  left := frame_unaccounted(r);
+  return left >= 0 && left <= FRAME_SLACK;
+}
+// book:end report
+
+// ---- checks
+
+#test "frames: percentiles, late frames and the 60 FPS rule" {
+  us: [40] int;
+  for i: 0..<40 { us[i] = 16667; }
+  us[3] = 33000; us[9] = 21000; us[11] = 10000;
+  f := frame_stats(us[..], 40);
+  #assert f.n == 40 && f.total == 37 * 16667 + 33000 + 21000 + 10000;
+  #assert f.max == 33000 && f.p50 == 16667 && f.p95 == 21000 && f.over == 2 && frame_fps10(f) == 588;
+  // sorted: 10000 first, then the 37 frames of 16667, 21000, 33000
+  #assert frame_at(us[..], 40, 0) == 10000 && frame_at(us[..], 40, 1) == 16667 && frame_at(us[..], 40, 37) == 16667;
+  #assert frame_at(us[..], 40, 38) == 21000 && frame_at(us[..], 40, 39) == 33000;
+  #assert frame_at(us[..], 40, 40) == -1 && frame_at(us[..], 40, -1) == -1;
+  #assert !frame_holds(f);                      // p95 21 ms
+  us[9] = 16000;
+  g := frame_stats(us[..], 40);
+  #assert g.p95 == 16667 && g.max == 33000 && frame_holds(g);
+  us[3] = 33001;
+  #assert !frame_holds(frame_stats(us[..], 40));
+  #assert !frame_holds(frame_stats(us[..], 30));     // too few frames
+  us[3] = 16667;
+  #assert frame_holds(frame_stats(us[..], 31)) && frame_stats(us[..], 0).n == 0 && frame_fps10(frame_stats(us[..], 0)) == 0;
+  #assert frame_stats(us[..], -3).n == 0 && frame_stats(us[..], -3).total == 0;
+  // a phone at 30 FPS
+  for i: 0..<40 { us[i] = 33333; }
+  h := frame_stats(us[..], 40);
+  #assert frame_fps10(h) == 300 && !frame_holds(h) && h.over == 40;
+  #assert frame_stats(us[..], 41).n == 0 && frame_stats(us[..], 40).n == 40;
+  // one frame is its own median, 95th percentile and longest
+  one := frame_stats(us[..], 1);
+  #assert one.n == 1 && one.p50 == 33333 && one.p95 == 33333 && one.max == 33333 && one.total == 33333;
+}
+
+#test "the rule's edges: 17.5 ms at the 95th percentile and 33 ms at most hold, a microsecond more doesn't" {
+  us: [100] int;
+  for i: 0..<100 { us[i] = 16000; }
+  // index 95 of 100 sorted is the 96th frame: four frames above it
+  for i: 0..<4 { us[i] = 30000; }
+  us[4] = 17500;
+  f := frame_stats(us[..], 100);
+  #assert f.p95 == 17500 && f.p50 == 16000 && f.max == 30000 && frame_holds(f);
+  us[4] = 17501;
+  #assert frame_stats(us[..], 100).p95 == 17501 && !frame_holds(frame_stats(us[..], 100));
+  us[4] = 16000; us[0] = 33000;
+  #assert frame_holds(frame_stats(us[..], 100));
+  us[0] = 33001;
+  #assert !frame_holds(frame_stats(us[..], 100));
+  // a late frame is one over 20 ms, not at it
+  us[0] = 20000; us[1] = 20001;
+  #assert frame_stats(us[..], 100).over == 3;
+  // the frame rate rounds to the nearest tenth: 12 frames in 0.2 s is 60.0
+  for i: 0..<12 { us[i] = 16666; } us[11] = 16674;
+  #assert frame_fps10(frame_stats(us[..], 12)) == 600;
+  #assert frame_fps10(FrameStats.{n = 1, total = 1000000}) == 10 && frame_fps10(FrameStats.{n = 3, total = 1000000}) == 30;
+  #assert frame_fps10(FrameStats.{n = 1, total = 1052631}) == 10 && frame_fps10(FrameStats.{n = 1, total = 1052632}) == 9;
+  #assert frame_fps10(FrameStats.{n = 1, total = 1052633}) == 9 && frame_fps10(FrameStats.{n = 7, total = 0}) == 0;
+}
+
+#test "percentiles of a run with no two frames alike, in any order" {
+  us: [100] int;
+  // 1 to 100 ms, shuffled: index k of the sorted run is k + 1 ms
+  for i: 0..<100 { us[i] = ((i * 37) % 100 + 1) * 1000; }
+  f := frame_stats(us[..], 100);
+  #assert f.p50 == 51000 && f.p95 == 96000 && f.max == 100000 && f.total == 5050000 && f.over == 80;
+  for k: 0..<100 { #assert frame_at(us[..], 100, k) == (k + 1) * 1000; }
+  // the shorter of two frames found first can't be taken for the longer
+  two := [2] int.[5, 9];
+  #assert frame_at(two[..], 2, 0) == 5 && frame_at(two[..], 2, 1) == 9;
+  g := frame_stats(us[..], 20);
+  #assert g.p50 == frame_at(us[..], 20, 10) && g.p95 == frame_at(us[..], 20, 19) && g.max == g.p95;
+  #assert frame_fps10(FrameStats.{n = 1, total = 1}) == 10000000 && frame_fps10(FrameStats.{n = 5, total = 17}) == 2941176;
+}
+
+#test "a frame's report: its stages are times and account for all of it but half a millisecond" {
+  r := FrameReport.{frame_us = 9000, steps = 2, stage_us = [4] int.[300, 2400, 4100, 1700]};
+  #assert frame_unaccounted(r) == 500 && frame_report_ok(r);
+  r.stage_us[2] = 4099; #assert frame_unaccounted(r) == 501 && !frame_report_ok(r);
+  r.stage_us[2] = 4600; #assert frame_unaccounted(r) == 0 && frame_report_ok(r);
+  r.stage_us[2] = 4601; #assert frame_unaccounted(r) == -1 && !frame_report_ok(r);
+  r.stage_us[2] = 4100;
+  for k: 0..<FRAME_STAGES {
+    s := r; s.stage_us[k] = -1; s.frame_us = s.frame_us - r.stage_us[k] - 1;
+    #assert frame_unaccounted(s) == 500 && !frame_report_ok(s);
+  }
+  s := r; s.steps = 8; #assert frame_report_ok(s);
+  s.steps = 9; #assert !frame_report_ok(s);
+  s.steps = 0; #assert frame_report_ok(s);
+  s.steps = -1; #assert !frame_report_ok(s);
+  s = FrameReport.{}; #assert frame_report_ok(s) && frame_unaccounted(s) == 0;
+  s.frame_us = -1; s.stage_us[0] = 0; #assert !frame_report_ok(s);
+  s.frame_us = 0; #assert frame_report_ok(s);
+}

@@ -1,6 +1,7 @@
 // Every realm's frame rate in headless Chrome (GitHub #12649; Aethyr book
-// chapter 84): the 60 FPS report for each realm in realms.json, not only
-// Everglade (perf.ts keeps Everglade's four scenes and the homepage).
+// chapter 83): the 60 FPS report for each realm in realms.json, not only
+// Everglade (perf.ts keeps Everglade's four scenes and the homepage). The
+// frame statistics and the 60 FPS rule are aethyr/frame-report.coax's.
 //   coax/web/tool.sh realm-perf [BASE_URL] [--realms FILE] [--shard I/N] [--rounds R]
 //                               [--only SLUG] [--against URL] [--previous FILE] [--out FILE] [--list] [--software-ok]
 //   coax test coax/web/realm-perf.coax          # its own checks
@@ -34,12 +35,10 @@
 // adapter it measured on ("realm-perf: WebGPU adapter: hardware nvidia lovelace").
 #import "Basic";
 #load "../lib/media/media.coax";   // its ready test (MEDIA_READY_JS, media_ready_step); it loads cdp.coax
+#load "../../aethyr/frame-report.coax";   // FrameStats, frame_stats, frame_holds, frame_fps10: the 60 FPS rule
 
 RP_CASES :: 256;            // cases from one table (85 realms)
 RP_FRAMES :: 8192;          // frames timed in one case
-RP_P95_MAX :: 17500;        // microseconds
-RP_FRAME_MAX :: 33000;
-RP_OVER :: 20000;           // a frame over this counts as late in the report
 RP_SLOWER :: 1500;          // a p95 move larger than this is reported
 RP_ROUND_MS :: 4200;        // one round of the walk
 RP_READY_MS :: 30000; RP_SETTLE_MS :: 2000;
@@ -47,8 +46,7 @@ RP_READY_MS :: 30000; RP_SETTLE_MS :: 2000;
 // The three forms of a case.
 RP_DPR1 :: 0; RP_DPR2 :: 1; RP_PHONE :: 2;
 RpCase :: struct { slug: string; listed: bool; pin: bool; form: int; }
-RpFrames :: struct { n: int; total: int; p50: int; p95: int; max: int; over: int; }
-RpLine :: struct { found: bool; status: string; f: RpFrames; }
+RpLine :: struct { found: bool; status: string; f: FrameStats; }
 
 rp_form_name :: (form: int) -> string {
   if form == RP_DPR1 { return "dpr1"; }
@@ -114,29 +112,13 @@ rp_whole :: (s: string) -> int {
 
 // ---- frames (microseconds) -----------------------------------------------
 
-rp_stats :: (us: [] int, n: int, work: [] int) -> RpFrames {
-  f: RpFrames;
-  m := ifx n < work.count then n else work.count;
-  if m <= 0 { return f; }
-  for i: 0..<m {
-    x := us[i]; j := i;
-    while j > 0 && work[j - 1] > x { work[j] = work[j - 1]; j -= 1; }
-    work[j] = x;
-    f.total += x;
-    if x > RP_OVER { f.over += 1; }
-  }
-  f.n = m;
-  f.p50 = work[m * 50 / 100]; f.p95 = work[m * 95 / 100]; f.max = work[m - 1];
-  return f;
-}
-rp_holds :: (f: RpFrames) -> bool { return f.n > 30 && f.p95 <= RP_P95_MAX && f.max <= RP_FRAME_MAX; }
-// Frames a second, times ten (600 is 60.0 FPS).
-rp_fps10 :: (f: RpFrames) -> int { return ifx f.total > 0 then (f.n * 100000000 / f.total + 5) / 10 else 0; }
+// A run's statistics and the 60 FPS rule (frame_stats, frame_holds, frame_fps10) are
+// aethyr/frame-report.coax's (Aethyr book chapter 83).
 
 // How a case compares with an earlier measurement of it.
-rp_versus :: (now_ok: bool, now: RpFrames, before: RpLine) -> string {
+rp_versus :: (now_ok: bool, now: FrameStats, before: RpLine) -> string {
   if !before.found { return "new"; }
-  then_ok := before.status == "ok" && rp_holds(before.f);
+  then_ok := before.status == "ok" && frame_holds(before.f);
   if then_ok && !now_ok { return "WORSE"; }
   if !then_ok && now_ok { return "better"; }
   if before.f.n == 0 || now.n == 0 { return "same"; }
@@ -166,14 +148,14 @@ rp_tenths :: (o: [] RpBuf, v: int) { rp_int(o, v / 10); rp_put(o, "."); rp_int(o
 rp_ms :: (o: [] RpBuf, us: int) { rp_tenths(o, (us + 50) / 100); }
 rp_text :: (o: [] RpBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
 
-rp_tsv :: (o: [] RpBuf, c: RpCase, status: string, f: RpFrames) {
+rp_tsv :: (o: [] RpBuf, c: RpCase, status: string, f: FrameStats) {
   rp_put(o, c.slug); rp_put(o, "\t"); rp_put(o, rp_form_name(c.form)); rp_put(o, "\t"); rp_put(o, status);
-  vals := [6] int.[f.n, f.p50, f.p95, f.max, f.over, rp_fps10(f)];
+  vals := [6] int.[f.n, f.p50, f.p95, f.max, f.over, frame_fps10(f)];
   for x: vals { rp_put(o, "\t"); rp_int(o, x); }
   rp_put(o, "\n");
 }
-rp_show :: (o: [] RpBuf, f: RpFrames) {
-  rp_tenths(o, rp_fps10(f)); rp_put(o, " FPS, p50 "); rp_ms(o, f.p50); rp_put(o, " ms, p95 "); rp_ms(o, f.p95);
+rp_show :: (o: [] RpBuf, f: FrameStats) {
+  rp_tenths(o, frame_fps10(f)); rp_put(o, " FPS, p50 "); rp_ms(o, f.p50); rp_put(o, " ms, p95 "); rp_ms(o, f.p95);
   rp_put(o, " ms, max "); rp_ms(o, f.max); rp_put(o, " ms, "); rp_int(o, f.over); rp_put(o, "/"); rp_int(o, f.n); rp_put(o, " over 20 ms");
 }
 rp_field :: (line: string, k: int) -> string {
@@ -234,40 +216,40 @@ rp_find :: (report: string, slug: string, form: int) -> RpLine {
   #assert rp_whole("12") == 12 && rp_whole("") == -1 && rp_whole("1x") == -1 && rp_whole("1234567890") == -1 && rp_whole("0") == 0;
 }
 #test "frames: percentiles, late frames and the 60 FPS rule" {
-  us: [40] int; work: [40] int;
+  us: [40] int;
   for i: 0..<40 { us[i] = 16667; }
   us[3] = 33000; us[9] = 21000; us[11] = 10000;
-  f := rp_stats(us[..], 40, work[..]);
-  #assert f.n == 40 && f.max == 33000 && f.p50 == 16667 && f.p95 == 21000 && f.over == 2 && rp_fps10(f) == 588;
-  #assert !rp_holds(f);                      // p95 21 ms
+  f := frame_stats(us[..], 40);
+  #assert f.n == 40 && f.max == 33000 && f.p50 == 16667 && f.p95 == 21000 && f.over == 2 && frame_fps10(f) == 588;
+  #assert !frame_holds(f);                      // p95 21 ms
   us[9] = 16000;
-  g := rp_stats(us[..], 40, work[..]);
-  #assert g.p95 == 16667 && g.max == 33000 && rp_holds(g);
+  g := frame_stats(us[..], 40);
+  #assert g.p95 == 16667 && g.max == 33000 && frame_holds(g);
   us[3] = 33001;
-  #assert !rp_holds(rp_stats(us[..], 40, work[..]));
-  #assert !rp_holds(rp_stats(us[..], 30, work[..]));     // too few frames
+  #assert !frame_holds(frame_stats(us[..], 40));
+  #assert !frame_holds(frame_stats(us[..], 30));     // too few frames
   us[3] = 16667;
-  #assert rp_holds(rp_stats(us[..], 31, work[..])) && rp_stats(us[..], 0, work[..]).n == 0 && rp_fps10(rp_stats(us[..], 0, work[..])) == 0;
+  #assert frame_holds(frame_stats(us[..], 31)) && frame_stats(us[..], 0).n == 0 && frame_fps10(frame_stats(us[..], 0)) == 0;
   // a phone at 30 FPS
   for i: 0..<40 { us[i] = 33333; }
-  h := rp_stats(us[..], 40, work[..]);
-  #assert rp_fps10(h) == 300 && !rp_holds(h) && h.over == 40;
-  #assert rp_stats(us[..], 99, work[0..<10]).n == 10;
+  h := frame_stats(us[..], 40);
+  #assert frame_fps10(h) == 300 && !frame_holds(h) && h.over == 40;
+  #assert frame_stats(us[..], 99).n == 0;   // more frames than the run holds: refused
 }
 #test "a report line reads back and compares" {
   o: [1] RpBuf;
   c := RpCase.{slug = "dead-gears", form = RP_DPR2};
-  f := RpFrames.{n = 500, total = 8333500, p50 = 16667, p95 = 16900, max = 18200, over = 0};
-  rp_tsv(o[..], RpCase.{slug = "dead-gears", form = RP_DPR1}, "FAIL", RpFrames.{n = 10, total = 333330, p50 = 33333, p95 = 33333, max = 40000, over = 10});
+  f := FrameStats.{n = 500, total = 8333500, p50 = 16667, p95 = 16900, max = 18200, over = 0};
+  rp_tsv(o[..], RpCase.{slug = "dead-gears", form = RP_DPR1}, "FAIL", FrameStats.{n = 10, total = 333330, p50 = 33333, p95 = 33333, max = 40000, over = 10});
   rp_tsv(o[..], c, "ok", f);
   t := rp_text(o[..]);
   #assert rp_field("a\tb\t\tc", 3) == "c" && rp_field("a\tb", 1) == "b" && rp_field("a", 4) == "";
   #assert t == "dead-gears\tdpr1\tFAIL\t10\t33333\t33333\t40000\t10\t300\ndead-gears\tdpr2\tok\t500\t16667\t16900\t18200\t0\t600\n";
   b := rp_find(t, "dead-gears", RP_DPR2);
-  #assert b.found && b.status == "ok" && b.f.n == 500 && b.f.p95 == 16900 && b.f.max == 18200 && rp_holds(b.f);
+  #assert b.found && b.status == "ok" && b.f.n == 500 && b.f.p95 == 16900 && b.f.max == 18200 && frame_holds(b.f);
   #assert !rp_find(t, "dead-gears", RP_PHONE).found && !rp_find(t, "everglade", RP_DPR2).found && !rp_find("x\tdpr1\tok\tq", "x", RP_DPR1).found;
   a := rp_find(t, "dead-gears", RP_DPR1);
-  #assert a.found && a.status == "FAIL" && !rp_holds(a.f);
+  #assert a.found && a.status == "FAIL" && !frame_holds(a.f);
   #assert rp_versus(true, f, b) == "same" && rp_versus(false, f, b) == "WORSE" && rp_versus(true, f, a) == "better" && rp_versus(true, f, RpLine.{}) == "new";
   slow := f; slow.p95 = 16900 + 1501;
   #assert rp_versus(true, slow, b) == "slower";
@@ -276,7 +258,7 @@ rp_find :: (report: string, slug: string, form: int) -> RpLine {
   fast := a; fast.f.p95 = 20000;
   missed := f; missed.p95 = 18000;
   #assert rp_versus(false, missed, fast) == "faster" && rp_versus(false, a.f, a) == "same";
-  #assert rp_versus(false, RpFrames.{}, a) == "same";
+  #assert rp_versus(false, FrameStats.{}, a) == "same";
   s: [1] RpBuf; rp_show(s[..], f);
   #assert rp_text(s[..]) == "60.0 FPS, p50 16.7 ms, p95 16.9 ms, max 18.2 ms, 0/500 over 20 ms";
   s[0].n = 0; rp_ms(s[..], 16949); rp_put(s[..], " "); rp_ms(s[..], 16950); rp_put(s[..], " "); rp_int(s[..], -3);
@@ -317,7 +299,7 @@ rp_go :: (c: [] Cdp, url: string) -> bool {
 }
 // One measurement of a case at base: 0 measured (f set), 1 the scene never drew, 2 the browser
 // failed, 3 the page's loading card says it failed (its words in why).
-rp_measure :: (c: [] Cdp, base: string, k: RpCase, rounds: int, f: [] RpFrames, why: [] RpBuf) -> int {
+rp_measure :: (c: [] Cdp, base: string, k: RpCase, rounds: int, f: [] FrameStats, why: [] RpBuf) -> int {
   u: [1] RpBuf;
   rp_put(u[..], base); rp_put(u[..], "/realms/"); rp_put(u[..], k.slug);
   if k.pin { rp_put(u[..], "?clock=0.5"); }
@@ -344,20 +326,19 @@ rp_measure :: (c: [] Cdp, base: string, k: RpCase, rounds: int, f: [] RpFrames, 
   if jv_kind(d, v) != JV_ARRAY { return 2; }
   us: [RP_FRAMES] int; n := 0; e := d.nodes[v].first;
   while e >= 0 && n < RP_FRAMES { us[n] = jv_int(d, e, 0); n += 1; e = d.nodes[e].next; }
-  work: [RP_FRAMES] int;
-  f[0] = rp_stats(us[..], n, work[..]);
+  f[0] = frame_stats(us[..], n);
   return 0;
 }
 // A case measured, once more when it misses: its status ("ok", "FAIL", "noscene", "failed",
 // "error") and frames. A page that says it failed is not measured again.
-rp_case :: (c: [] Cdp, base: string, k: RpCase, rounds: int, f: [] RpFrames, why: [] RpBuf) -> string {
+rp_case :: (c: [] Cdp, base: string, k: RpCase, rounds: int, f: [] FrameStats, why: [] RpBuf) -> string {
   r := rp_measure(c, base, k, rounds, f, why);
   if r == 3 { return "failed"; }
-  if r != 0 || !rp_holds(f[0]) { f[0] = RpFrames.{}; r = rp_measure(c, base, k, rounds, f, why); }
+  if r != 0 || !frame_holds(f[0]) { f[0] = FrameStats.{}; r = rp_measure(c, base, k, rounds, f, why); }
   if r == 3 { return "failed"; }
   if r == 1 { return "noscene"; }
   if r == 2 { return "error"; }
-  return ifx rp_holds(f[0]) then "ok" else "FAIL";
+  return ifx frame_holds(f[0]) then "ok" else "FAIL";
 }
 // What WebGPU adapter a page of the site gets, cdp_adapter's line into out: "hardware VENDOR
 // ARCHITECTURE", "software ..." (SwiftShader), "none", or why no page could be asked.
@@ -429,7 +410,7 @@ tool_main :: () -> int #export_c {
   for i: 0..<n {
     k := cases[i];
     if !rp_in_shard(i, shard.k, shard.n) || (only.count > 0 && k.slug != only) { continue; }
-    f: [1] RpFrames;
+    f: [1] FrameStats;
     why: [1] RpBuf;
     status := rp_case(c[..], base, k, rounds, f[..], why[..]);
     held := status == "ok";
@@ -447,7 +428,7 @@ tool_main :: () -> int #export_c {
       rp_put(l[..], "; vs before: "); rp_put(l[..], vs);
     }
     if against.count > 0 {
-      g: [1] RpFrames;
+      g: [1] FrameStats;
       there := rp_case(c[..], against, k, rounds, g[..], why[..]);
       rp_put(l[..], "\n       at "); rp_put(l[..], against); rp_put(l[..], ": ");
       if there == "ok" || there == "FAIL" { rp_show(l[..], g[0]); } else { rp_put(l[..], there); }

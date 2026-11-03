@@ -1,0 +1,67 @@
+// book:begin example
+#load "../frame-report.coax";
+#load "../../verse/gridwalk.coax";
+#import "Basic";
+
+FRAMES :: 252;   // what a 4.2 s walk gives at 60 FPS (realm-perf's one round)
+
+// Three runs of frame times, in microseconds, at the 0.1 ms Chrome reports them in: steady (every
+// fifth frame 16.8 ms, the rest 16.7), the same with one 40 ms hitch at frame 120, and a busy
+// machine (every tenth frame 25 ms).
+run :: (kind: int, us: [] int) {
+  for k: 0..<FRAMES {
+    us[k] = ifx k % 5 == 4 then 16800 else 16700;
+    if kind == 1 && k == 120 { us[k] = 40000; }
+    if kind == 2 && k % 10 == 9 { us[k] = 25000; }
+  }
+}
+show :: (name: string, us: [] int) {
+  f := frame_stats(us, FRAMES);
+  print("%: % frames, %.% FPS, p50 % us, p95 % us, max % us, % over 20 ms: %\n", name, f.n, frame_fps10(f) / 10, frame_fps10(f) % 10,
+        f.p50, f.p95, f.max, f.over, ifx frame_holds(f) then "holds 60 FPS" else "misses 60 FPS");
+}
+// The fixed steps each frame of a run makes due on a 1/64 s clock.
+steps :: (name: string, us: [] int) {
+  c := loop_clock(LOOP_STEP_NS);
+  most := 0;
+  for k: 0..<FRAMES {
+    c = loop_ran(loop_accept_ns(c, us[k] * 1000));
+    if c.ran > most { most = c.ran; }
+  }
+  print("%: % steps, at most % in a frame\n", name, c.ticks, most);
+}
+
+main :: () {
+  us: [FRAMES] int;
+  names := [3] string.["steady", "a hitch", "busy"];
+  for kind: 0..<3 { run(kind, us[..]); show(names[kind], us[..]); }
+  run(1, us[..]);
+  steps("a hitch", us[..]);
+  us[120] = 3000000;   // a 3 s stall instead: counted as 0.25 s, at most 8 steps
+  steps("a 3 s stall", us[..]);
+
+  // one frame's report: input, steps, the draw built, submitted
+  r := FrameReport.{frame_us = 4200, steps = 1, stage_us = [4] int.[150, 1900, 1400, 450]};
+  print("a frame of % us: % us unaccounted, holds: %\n", r.frame_us, frame_unaccounted(r), frame_report_ok(r));
+  r.stage_us[STAGE_DRAW] = 1000;
+  print("a frame of % us: % us unaccounted, holds: %\n", r.frame_us, frame_unaccounted(r), frame_report_ok(r));
+
+  // reports kept for every frame of a Grid session change nothing it records
+  run(1, us[..]);
+  with: [1] GridWalk; with[0] = GridWalk.{};
+  without: [1] GridWalk; without[0] = GridWalk.{};
+  gridwalk_place(with[..], 28, 28, -2.35619449, 1.35, 9);
+  gridwalk_place(without[..], 28, 28, -2.35619449, 1.35, 9);
+  reports: [FRAMES] FrameReport; held := 0;
+  for k: 0..<FRAMES {
+    dt := cast(f32) us[k] / 1000000.0;
+    before := gridwalk_steps(with[..]);
+    gridwalk_frame(with[..], 0, 1, k < 90, k == 120 || k == 190, 0, 0, 0, 1000, 2000, 2, dt, false);
+    reports[k] = FrameReport.{steps = gridwalk_steps(with[..]) - before};
+    if frame_report_ok(reports[k]) { held += 1; }
+    gridwalk_frame(without[..], 0, 1, k < 90, k == 120 || k == 190, 0, 0, 0, 1000, 2000, 2, dt, false);
+  }
+  print("a Grid walk of % frames: % reports hold, steps %, session digests equal: %\n", FRAMES, held,
+        gridwalk_steps(with[..]), gridwalk_session(with[..]) == gridwalk_session(without[..]));
+}
+// book:end example
