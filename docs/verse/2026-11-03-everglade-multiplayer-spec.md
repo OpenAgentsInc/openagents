@@ -125,7 +125,7 @@ Non-goals for now: trading, an economy, PvP by default, and voice chat.
   openagents.com to it. It answers on `wss://openagents.com/api/room/...`
   today.
 - Limits that blocked Everglade before #12705 (section 3.3 lists what
-  replaced each; production is now `oa-room-00012-qbp`, concurrency 1000,
+  replaced each; production is now `oa-room-00013-vsb` (the simulated everglade rooms, from f9ef1f0c4c), concurrency 1000,
   512 MiB):
   - `RELAY_SEATS` = 4 and `RELAYS` = 16 (`room-relay.coax:13-14`).
   - The seat is written as **one digit** (`rl_head`, line 89, `'0' + seat`),
