@@ -33,7 +33,7 @@ ledger :: (what:string,awards:[]XpAward,revs:[]XpRevocation) {
   l:=xp_ledger(trusted[..],quests[..],awards,revs,ruled[0..<awards.count],why[..],out[..]);
   print("%\n",what);
   for i:0..<awards.count {print("  award %...: %\n",awards[i].event[0..<8],WHY[cast(int)why[i]]);}
-  for i:0..<l.credits {print("  credit %...: % XP\n",out[i].pubkey[0..<8],out[i].xp);}
+  for i:0..<l.credits {k:[XP_TEXT]u8;n:=xp_bytes(out[i].pubkey,k[..]);print("  credit %...: % XP\n",cast(string)k[0..<8],out[i].xp);}
   if l.credits==0 {print("  no credit\n");}
 }
 // book:end example
