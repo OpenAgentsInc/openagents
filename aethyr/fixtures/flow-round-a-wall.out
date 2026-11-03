@@ -1,0 +1,14 @@
+flow to cell 0: ok, 26 cells settled, 25 costs lowered
+row 4: 4.0 4.4142137 5.4142137 6.4142137 7.4142137 8.414213
+row 3: 3.0 3.4142137 # 7.4142137 7.8284273 8.828427
+row 2: 2.0 2.4142137 # 8.414213 8.828427 9.2426405
+row 1: 1.0 1.4142135 # 9.414213 9.828426 10.2426405
+row 0: 0.0 1.0 # 10.414213 10.828426 11.24264
+settled first: 0 1 6 7 12 13 18 19
+from cell 5: 10 15 21 27 26 25 18 12 6 0 (there)
+with 10 steps: cut, 10 settled
+up to 2 m: ok, 6 settled, cell 18 at 3.0, cell 24 at 1000000.0
+cell 5 walled in: no_way, nearest reachable cell 10, 9.828426 m from the goal
+goal 2: goal_blocked, goal cell -1
+goal 30: goal_off, goal cell -1
+goal -1: goal_off, goal cell -1

@@ -1,0 +1,48 @@
+// book:begin example
+#load "../nav/grid.coax";
+#import "Basic";
+
+// The chapter's 6 by 5 grid: a wall down column 2 with a gap in the top row. One flow field
+// to the south-west corner; the way from the south-east corner, cell by cell; a search cut
+// short and one bounded by cost; a walled-in cell; and three goals the field refuses.
+main :: () {
+  g := NavGrid.{nx = 6, nz = 5, cell = 1, x0 = 0, z0 = 0};
+  walk: [30] bool; cost: [30] f32; heap: [30] s32; slot: [30] s32; order: [30] s32;
+  for c: 0..<30 { walk[c] = c % 6 != 2 || c / 6 == 4; }
+  f := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], order[..], 0, 1000, 30);
+  print("flow to cell 0: %, % cells settled, % costs lowered\n", f.status, f.settled, f.lowered);
+  for r: 0..<5 {
+    z := 4 - r;
+    print("row %:", z);
+    for x: 0..<6 {
+      c := z * 6 + x;
+      if walk[c] { print(" %", cost[c]); } else { print(" #"); }
+    }
+    print("\n");
+  }
+  print("settled first:");
+  for i: 0..<8 { print(" %", order[i]); }
+  print("\n");
+  at := 5;
+  print("from cell 5:");
+  for s: 0..<12 {
+    w := nav_grid_way(g, walk[..], cost[..], f, at);
+    if w.status != NavWayStatus.step { print(" (%)\n", w.status); break; }
+    print(" %", w.next);
+    at = w.next;
+  }
+  cut := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], order[0..<0], 0, 1000, 10);
+  print("with 10 steps: %, % settled\n", cut.status, cut.settled);
+  near := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], order[0..<0], 0, 2, 30);
+  print("up to 2 m: %, % settled, cell 18 at %, cell 24 at %\n", near.status, near.settled, cost[18], cost[24]);
+  walk[4] = false; walk[11] = false;
+  f = nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], order[0..<0], 0, 1000, 30);
+  w := nav_grid_way(g, walk[..], cost[..], f, 5);
+  print("cell 5 walled in: %, nearest reachable cell %, % m from the goal\n", w.status, w.nearest, cost[w.nearest]);
+  goals := [3] int.[2, 30, -1];
+  for k: 0..<3 {
+    r := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], order[0..<0], goals[k], 1000, 30);
+    print("goal %: %, goal cell %\n", goals[k], r.status, r.goal);
+  }
+}
+// book:end example

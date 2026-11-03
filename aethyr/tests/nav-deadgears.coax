@@ -1,0 +1,29 @@
+// Dead Gears' flow fields (verse/deadgears/arena.coax nav_flow_to and nav_downhill) against
+// aethyr/nav/grid.coax on the same deck: every cell's cost bit for bit and every next cell,
+// for goals across the deck. Dead Gears is loaded, not changed.
+//   coax/bin/coax test aethyr/tests/nav-deadgears.coax --library
+#load "../../verse/deadgears/arena.coax";
+#load "../nav/grid.coax";
+
+ndg_goals :: () -> [6] Point {
+  return [6] Point.[v3(-8, 0, -8.4), v3(0, 0, 9), v3(12, 0, -20), v3(-14.6, 0, 12.4), v3(5, 0, 1.2), v3(0.3, 0, -13.1)];
+}
+
+#forall "Dead Gears' fields and the module's are the same, bit for bit, cell for cell" which: 0..<6 #steps 400000000 {
+  deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
+  nav: [1] Nav; n := nav[..];
+  nav_bake(n, a);
+  goals := ndg_goals();
+  #assert nav_flow_to(n, 0, goals[which], 80);
+  g := NavGrid.{nx = NAV_NX, nz = NAV_NZ, cell = f32(NAV_CELL), x0 = f32(NAV_X0), z0 = f32(NAV_Z0)};
+  cost: [NAV_CELLS] f32; heap: [NAV_CELLS] s32; slot: [NAV_CELLS] s32;
+  f := nav_grid_flow(g, n[0].walk[..], cost[..], heap[..], slot[..], heap[0..<0], n[0].flows[0].goal, 80, NAV_CELLS);
+  #assert f.status == NavFlowStatus.ok && f.goal == n[0].flows[0].goal;
+  same := 0; reached := 0;
+  for c: 0..<NAV_CELLS {
+    if cost[c] == n[0].flows[0].cost[c] { same += 1; }
+    if cost[c] < f32(NAV_GRID_FAR) { reached += 1; }
+    #assert nav_grid_downhill(g, n[0].walk[..], cost[..], c) == nav_downhill(n, 0, c);
+  }
+  #assert same == NAV_CELLS && reached > 3000;
+}

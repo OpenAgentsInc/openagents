@@ -360,6 +360,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/flow-round-a-wall.coax",
+      "chapter": "aethyr/book/ch076-find-a-way-through.md",
+      "stdout": "aethyr/fixtures/flow-round-a-wall.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

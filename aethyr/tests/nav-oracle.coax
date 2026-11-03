@@ -1,0 +1,125 @@
+// An independent reference for aethyr/nav/grid.coax (book chapter 76): every cell's walking
+// distance by brute force. It keeps no heap and no order: it relaxes every step out of every
+// cell, cells * 8 times over, until nothing changes, which is Bellman-Ford. The step rules
+// are written again here from the chapter (straight steps cost a cell, diagonals
+// cell * 1.4142135, no diagonal past a blocked corner), not called from the module.
+
+NAV_ORACLE_FAR :: 1000000.0;
+
+nav_oracle_open :: (nx: int, nz: int, walk: [] bool, x: int, z: int) -> bool {
+  return x >= 0 && z >= 0 && x < nx && z < nz && walk[z * nx + x];
+}
+
+// The cell one step from c by (dx, dz), or -1.
+nav_oracle_move :: (nx: int, nz: int, walk: [] bool, c: int, dx: int, dz: int) -> int {
+  x := c % nx; z := c / nx;
+  if !nav_oracle_open(nx, nz, walk, x + dx, z + dz) { return -1; }
+  if dx != 0 && dz != 0 {
+    if !nav_oracle_open(nx, nz, walk, x + dx, z) || !nav_oracle_open(nx, nz, walk, x, z + dz) { return -1; }
+  }
+  return (z + dz) * nx + x + dx;
+}
+
+nav_oracle_costs :: (nx: int, nz: int, cell: f32, walk: [] bool, goal: int, out: [] f32) {
+  cells := nx * nz;
+  for c: 0..<cells { out[c] = f32(NAV_ORACLE_FAR); }
+  out[goal] = 0;
+  for round: 0..<cells * 8 {
+    changed := false;
+    for c: 0..<cells {
+      if !(out[c] < f32(NAV_ORACLE_FAR)) { continue; }
+      for dz: -1..<2 {
+        for dx: -1..<2 {
+          if dx == 0 && dz == 0 { continue; }
+          to := nav_oracle_move(nx, nz, walk, c, dx, dz);
+          if to < 0 { continue; }
+          w := ifx dx != 0 && dz != 0 then cell * 1.4142135 else cell;
+          if out[c] + w < out[to] { out[to] = out[c] + w; changed = true; }
+        }
+      }
+    }
+    if !changed { break; }
+  }
+}
+
+// How many cells a field reached.
+nav_oracle_reached :: (cost: [] f32) -> int {
+  n := 0;
+  for c: 0..<cost.count { if cost[c] < f32(NAV_ORACLE_FAR) { n += 1; } }
+  return n;
+}
+
+// The next cell from c: of the neighbours lower than c, the lowest; among equals the first
+// in the order east, west, north, south, north-east, south-east, north-west, south-west.
+nav_oracle_next :: (nx: int, nz: int, walk: [] bool, cost: [] f32, c: int) -> int {
+  order_x := [8] int.[1, -1, 0, 0, 1, 1, -1, -1];
+  order_z := [8] int.[0, 0, 1, -1, 1, -1, 1, -1];
+  best := -1;
+  for k: 0..<8 {
+    to := nav_oracle_move(nx, nz, walk, c, order_x[k], order_z[k]);
+    if to < 0 || !(cost[to] < cost[c]) { continue; }
+    if best < 0 || cost[to] < cost[best] { best = to; }
+  }
+  return best;
+}
+
+// The reachable cell nearest c by squared cell distance, then by cell number.
+nav_oracle_nearest :: (nx: int, nz: int, cost: [] f32, c: int) -> int {
+  best := -1; bd := 0;
+  for k: 0..<nx * nz {
+    if !(cost[k] < f32(NAV_ORACLE_FAR)) { continue; }
+    dx := k % nx - c % nx; dz := k / nx - c / nx;
+    d := dx * dx + dz * dz;
+    if best < 0 || d < bd { best = k; bd = d; }
+  }
+  return best;
+}
+
+// A seeded grid: about a third of its cells blocked. Returns the stream's last value.
+nav_oracle_fill :: (seed: int, cells: int, walk: [] bool) -> int {
+  r := seed;
+  for c: 0..<cells {
+    r = (r * 1103515245 + 12345) % 2147483648;
+    walk[c] = (r / 65536) % 3 != 0;
+  }
+  return (r * 1103515245 + 12345) % 2147483648 / 65536;
+}
+
+// The reachable cells sorted by cost, then by cell number (a selection sort): the order a
+// search by cost with that tie-break must settle them in. Returns how many.
+nav_oracle_order :: (cost: [] f32, out: [] s32) -> int {
+  n := 0;
+  taken: [256] bool;
+  while true {
+    pick := -1;
+    for c: 0..<cost.count {
+      if taken[c] || !(cost[c] < f32(NAV_ORACLE_FAR)) { continue; }
+      if pick < 0 || cost[c] < cost[pick] { pick = c; }
+    }
+    if pick < 0 { break; }
+    taken[pick] = true; out[n] = s32(pick); n += 1;
+  }
+  return n;
+}
+
+// How many times a search that settles cells in `order` lowers a cell's cost: each settled
+// cell offers each neighbour its own cost plus the step, and a lower offer counts.
+nav_oracle_lowered :: (nx: int, nz: int, cell: f32, walk: [] bool, cost: [] f32, order: [] s32, n: int) -> int {
+  best: [256] f32;
+  for c: 0..<nx * nz { best[c] = f32(NAV_ORACLE_FAR); }
+  best[int(order[0])] = 0;
+  lowered := 0;
+  for i: 0..<n {
+    c := int(order[i]);
+    for dz: -1..<2 {
+      for dx: -1..<2 {
+        if dx == 0 && dz == 0 { continue; }
+        to := nav_oracle_move(nx, nz, walk, c, dx, dz);
+        if to < 0 { continue; }
+        w := ifx dx != 0 && dz != 0 then cell * 1.4142135 else cell;
+        if cost[c] + w < best[to] { best[to] = cost[c] + w; lowered += 1; }
+      }
+    }
+  }
+  return lowered;
+}

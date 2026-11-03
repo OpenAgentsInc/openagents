@@ -1,0 +1,453 @@
+// Walking grids and flow fields (Aethyr book chapter 76). A grid is nx by nz square cells,
+// `cell` metres each, from its south-west corner (x0, z0); cell c is column c % nx and row
+// c / nx. The caller says which cells a character fits in (walk) and owns the storage, so one
+// module serves a 6 by 5 example and Dead Gears' 64 by 76 deck alike.
+//
+// A flow field is every cell's walking distance to one goal: Dijkstra from the goal over the
+// eight neighbours, a straight step costing `cell` and a diagonal one cell * 1.4142135, with
+// no diagonal past a blocked corner. Its heap breaks ties by cost and then by cell number, so
+// the same grid gives the same field on every host, bit for bit. Many characters share one
+// field: each reads the neighbour lowest on it (nav_grid_downhill). The search is bounded by
+// a cost (cells further stay unreached) and by a number of settled cells; a search that runs
+// out of steps says so, and a goal it can't use is refused before anything is written.
+// A query from a cell is typed: there already, a next cell, or no way, with the reachable cell
+// nearest to it.
+//   coax/bin/coax test aethyr/nav/grid.coax --library
+//   coax/bin/coax mutate aethyr/nav/grid.coax --library --root-only
+#module "aethyr.nav.grid";
+#authority;
+#load "../tests/nav-oracle.coax";
+
+// book:begin grid
+NAV_GRID_MOST :: 16384;       // cells a grid may have
+NAV_GRID_FAR :: 1000000.0;    // the cost of a cell the search never reached
+NAV_GRID_DIAG :: 1.4142135;   // a diagonal step, in cells
+
+NavGrid :: struct { nx: int; nz: int; cell: f32; x0: f32; z0: f32; }
+
+NavFlowStatus :: enum u8 { ok; cut; bad_grid; bad_store; goal_off; goal_blocked; }
+// A flow's outcome: whether it was filled (ok), filled until its steps ran out (cut), or
+// refused with nothing written; its goal cell, how many cells it settled, and how many times
+// it lowered a cell's cost (the search's work).
+NavFlow :: struct { status: NavFlowStatus; goal: int = -1; settled: int; lowered: int; }
+
+// The eight neighbours: east, west, north, south, then the diagonals.
+NAV_GRID_DX :: [8] int.[1, -1, 0, 0, 1, 1, -1, -1];
+NAV_GRID_DZ :: [8] int.[0, 0, 1, -1, 1, -1, 1, -1];
+// book:end grid
+
+nav_grid_real :: (a: f32) -> bool { return a == a && a < 1000000.0 && a > -1000000.0; }
+
+// Whether the grid's shape can be used: at least one cell, at most NAV_GRID_MOST, a cell size
+// above zero, and an origin that is a number.
+nav_grid_ok :: (g: NavGrid) -> bool {
+  if g.nx < 1 || g.nz < 1 || g.nx > NAV_GRID_MOST / g.nz { return false; }   // nx * nz <= MOST, without overflow
+  return nav_grid_real(g.cell) && g.cell > 0 && nav_grid_real(g.x0) && nav_grid_real(g.z0);
+}
+nav_grid_cells :: (g: NavGrid) -> int { return g.nx * g.nz; }
+
+// The cell holding (x, z), or -1 off the grid (or not a number).
+nav_grid_cell_at :: (g: NavGrid, x: f32, z: f32) -> int {
+  if !nav_grid_ok(g) || !nav_grid_real(x) || !nav_grid_real(z) { return -1; }
+  cx := int(floor((x - g.x0) / g.cell));
+  cz := int(floor((z - g.z0) / g.cell));
+  if cx < 0 || cz < 0 || cx >= g.nx || cz >= g.nz { return -1; }
+  return cz * g.nx + cx;
+}
+nav_grid_centre_x :: (g: NavGrid, c: int) -> f32 { return g.x0 + (f32(c % g.nx) + 0.5) * g.cell; }
+nav_grid_centre_z :: (g: NavGrid, c: int) -> f32 { return g.z0 + (f32(c / g.nx) + 0.5) * g.cell; }
+
+// book:begin step
+// The cell one step from c in direction k (0 to 7), or -1 when that leaves the grid, isn't
+// walkable, or is a diagonal past a blocked corner.
+nav_grid_step :: (g: NavGrid, walk: [] bool, c: int, k: int) -> int {
+  x := c % g.nx + NAV_GRID_DX[k]; z := c / g.nx + NAV_GRID_DZ[k];
+  if x < 0 || z < 0 || x >= g.nx || z >= g.nz { return -1; }
+  to := z * g.nx + x;
+  if !walk[to] { return -1; }
+  if k >= 4 {
+    if !walk[(c / g.nx) * g.nx + x] || !walk[z * g.nx + c % g.nx] { return -1; }
+  }
+  return to;
+}
+// book:end step
+
+// ---- the heap: cells ordered by cost, then by cell number
+
+nav_grid_less :: (cost: [] f32, a: int, b: int) -> bool { return cost[a] < cost[b] || (cost[a] == cost[b] && a < b); }
+nav_grid_swap :: (heap: [] s32, slot: [] s32, i: int, j: int) {
+  a := heap[i]; b := heap[j];
+  heap[i] = b; heap[j] = a;
+  slot[int(b)] = s32(i); slot[int(a)] = s32(j);
+}
+nav_grid_up :: (cost: [] f32, heap: [] s32, slot: [] s32, at: int) {
+  i := at;
+  while i > 0 {
+    parent := (i - 1) >> 1;
+    if !nav_grid_less(cost, int(heap[i]), int(heap[parent])) { break; }
+    nav_grid_swap(heap, slot, i, parent);
+    i = parent;
+  }
+}
+nav_grid_down :: (cost: [] f32, heap: [] s32, slot: [] s32, size: int) {
+  i := 0;
+  while true {
+    l := i * 2 + 1; r := l + 1; m := i;
+    if l < size && nav_grid_less(cost, int(heap[l]), int(heap[m])) { m = l; }
+    if r < size && nav_grid_less(cost, int(heap[r]), int(heap[m])) { m = r; }
+    if m == i { break; }
+    nav_grid_swap(heap, slot, i, m);
+    i = m;
+  }
+}
+
+// book:begin flow
+// Fills cost with every cell's walking distance to `goal`. A cell settled beyond max_cost
+// ends the search, so cells further away keep NAV_GRID_FAR; after `steps` settled cells it
+// stops and says cut. A bad grid, short storage, or a goal off the grid or not walkable is
+// refused before anything is written. heap and slot are the search's own scratch; order,
+// when it isn't empty, gets the cells in the order they settled.
+nav_grid_flow :: (g: NavGrid, walk: [] bool, cost: [] f32, heap: [] s32, slot: [] s32, order: [] s32,
+                  goal: int, max_cost: f32, steps: int) -> NavFlow {
+  out: NavFlow;
+  if !nav_grid_ok(g) { out.status = NavFlowStatus.bad_grid; return out; }
+  cells := nav_grid_cells(g);
+  if walk.count < cells || cost.count < cells || heap.count < cells || slot.count < cells { out.status = NavFlowStatus.bad_store; return out; }
+  if order.count != 0 && order.count < cells { out.status = NavFlowStatus.bad_store; return out; }
+  if goal < 0 || goal >= cells { out.status = NavFlowStatus.goal_off; return out; }
+  if !walk[goal] { out.status = NavFlowStatus.goal_blocked; return out; }
+  for c: 0..<cells { cost[c] = f32(NAV_GRID_FAR); slot[c] = -1; }
+  out.goal = goal;
+  cost[goal] = 0;
+  size := 1;
+  heap[0] = s32(goal);
+  // Steps cost more than nothing, so a settled cell is never lowered again: no mark is needed.
+  while size > 0 {
+    if out.settled >= steps { out.status = NavFlowStatus.cut; return out; }
+    c := int(heap[0]);
+    size -= 1;
+    nav_grid_swap(heap, slot, 0, size);
+    nav_grid_down(cost, heap, slot, size);
+    if order.count > 0 { order[out.settled] = s32(c); }
+    out.settled += 1;
+    here := cost[c];
+    if here > max_cost { break; }
+    for k: 0..<8 {
+      to := nav_grid_step(g, walk, c, k);
+      if to < 0 { continue; }
+      through := here + ifx k < 4 then g.cell else g.cell * f32(NAV_GRID_DIAG);
+      if through >= cost[to] { continue; }
+      cost[to] = through;
+      out.lowered += 1;
+      if slot[to] == -1 { heap[size] = s32(to); slot[to] = s32(size); size += 1; }
+      nav_grid_up(cost, heap, slot, int(slot[to]));
+    }
+  }
+  return out;
+}
+// book:end flow
+
+// book:begin downhill
+// The neighbour of c lowest on the field (the first of equals in direction order), or -1 when
+// none is lower than c.
+nav_grid_downhill :: (g: NavGrid, walk: [] bool, cost: [] f32, c: int) -> int {
+  best := -1; low := cost[c];
+  for k: 0..<8 {
+    to := nav_grid_step(g, walk, c, k);
+    if to < 0 { continue; }
+    if cost[to] < low { low = cost[to]; best = to; }
+  }
+  return best;
+}
+// book:end downhill
+
+// book:begin way
+NavWayStatus :: enum u8 { there; step; no_way; refused; }
+// From one cell: there (it is the goal), a step to `next`, or no way, with `nearest` the
+// reachable cell nearest it (by squared cell distance, then cell number; -1 when the field
+// reached nothing). `cost` is the walking distance from the cell, or from `nearest`.
+NavWay :: struct { status: NavWayStatus; next: int = -1; nearest: int = -1; cost: f32; }
+
+nav_grid_way :: (g: NavGrid, walk: [] bool, cost: [] f32, flow: NavFlow, from: int) -> NavWay {
+  way: NavWay;
+  way.status = NavWayStatus.refused;
+  if flow.status != NavFlowStatus.ok || !nav_grid_ok(g) { return way; }
+  cells := nav_grid_cells(g);
+  if from < 0 || from >= cells || walk.count < cells || cost.count < cells { return way; }
+  if cost[from] < f32(NAV_GRID_FAR) {
+    way.cost = cost[from];
+    if from == flow.goal { way.status = NavWayStatus.there; return way; }
+    way.next = nav_grid_downhill(g, walk, cost, from);
+    way.status = ifx way.next < 0 then NavWayStatus.no_way else NavWayStatus.step;
+    if way.next < 0 { way.nearest = from; }
+    return way;
+  }
+  way.status = NavWayStatus.no_way;
+  best: int;
+  fx := from % g.nx; fz := from / g.nx;
+  for c: 0..<cells {
+    if !(cost[c] < f32(NAV_GRID_FAR)) { continue; }
+    dx := c % g.nx - fx; dz := c / g.nx - fz;
+    d := dx * dx + dz * dz;
+    if way.nearest < 0 || d < best { best = d; way.nearest = c; }
+  }
+  if way.nearest >= 0 { way.cost = cost[way.nearest]; }
+  return way;
+}
+// book:end way
+
+// ---- Checks (written first) ----
+
+// The 6 by 5 grid of the chapter: a wall down column 2 with a gap at its top row.
+//   row 4  . . . . . .
+//   row 3  . . # . . .
+//   row 2  . . # . . .
+//   row 1  . . # . . .
+//   row 0  . . # . . .
+ng_t_grid :: () -> NavGrid { return NavGrid.{nx = 6, nz = 5, cell = 1, x0 = 0, z0 = 0}; }
+ng_t_walk :: (walk: [] bool) {
+  for c: 0..<30 { walk[c] = c % 6 != 2 || c / 6 == 4; }
+}
+
+#test "a straight step costs a cell and a diagonal 1.4142135 cells, round a wall" {
+  g := ng_t_grid();
+  walk: [30] bool; cost: [30] f32; heap: [30] s32; slot: [30] s32;
+  ng_t_walk(walk[..]);
+  f := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], heap[0..<0], 0, 1000, 30);
+  #assert f.status == NavFlowStatus.ok && f.goal == 0 && f.settled == 26;
+  #assert cost[0] == 0 && cost[1] == 1 && cost[7] == 1.4142135;
+  // across the wall: up column 1 to the gap, through it, and down the far side
+  #assert cost[12] == 2 && cost[13] == cost[7] + 1 && cost[24] == 4;
+  #assert cost[25] > 4.41 && cost[25] < 4.42 && cost[26] > 5.41 && cost[26] < 5.42;
+  #assert cost[2] == f32(NAV_GRID_FAR) && cost[8] == f32(NAV_GRID_FAR);
+  // no diagonal past the wall's top: 19 (row 3, column 1) to 26 cuts the corner at 20
+  #assert nav_grid_step(g, walk[..], 19, 4) == -1 && nav_grid_step(g, walk[..], 25, 5) == -1;
+  #assert nav_grid_step(g, walk[..], 25, 0) == 26 && nav_grid_step(g, walk[..], 26, 0) == 27;
+  #assert nav_grid_step(g, walk[..], 5, 0) == -1 && nav_grid_step(g, walk[..], 0, 1) == -1;
+  #assert nav_grid_step(g, walk[..], 29, 2) == -1 && nav_grid_step(g, walk[..], 3, 3) == -1;
+}
+
+#test "every cell matches the brute-force oracle on the chapter's grid" {
+  g := ng_t_grid();
+  walk: [30] bool; cost: [30] f32; heap: [30] s32; slot: [30] s32; want: [30] f32;
+  ng_t_walk(walk[..]);
+  for goal: 0..<30 {
+    if !walk[goal] { continue; }
+    f := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], heap[0..<0], goal, 1000, 30);
+    nav_oracle_costs(6, 5, 1, walk[..], goal, want[..]);
+    #assert f.status == NavFlowStatus.ok;
+    for c: 0..<30 { #assert cost[c] == want[c]; }
+  }
+}
+
+#forall "seeded grids: every cost and every next cell agree with the oracle, ties included" seed: 0..<90 {
+  nx := 3 + seed % 8; nz := 2 + (seed / 8) % 7;
+  g := NavGrid.{nx = nx, nz = nz, cell = 0.5, x0 = -3, z0 = 2};
+  walk: [128] bool; cost: [128] f32; heap: [128] s32; slot: [128] s32; want: [128] f32;
+  order: [128] s32; want_order: [128] s32;
+  cells := nx * nz;
+  r := nav_oracle_fill(seed * 7919 + 17, cells, walk[..]);
+  goal := r % cells;
+  walk[goal] = true;
+  f := nav_grid_flow(g, walk[0..<cells], cost[0..<cells], heap[0..<cells], slot[0..<cells], order[0..<cells], goal, 1000, cells);
+  nav_oracle_costs(nx, nz, 0.5, walk[0..<cells], goal, want[0..<cells]);
+  #assert f.status == NavFlowStatus.ok && f.settled == nav_oracle_reached(want[0..<cells]);
+  // settled by cost, then by cell number, and every lowering the oracle's search makes
+  n := nav_oracle_order(want[0..<cells], want_order[..]);
+  #assert n == f.settled;
+  for i: 0..<n { #assert order[i] == want_order[i]; }
+  #assert f.lowered == nav_oracle_lowered(nx, nz, 0.5, walk[0..<cells], want[0..<cells], want_order[..], n);
+  for c: 0..<cells {
+    #assert cost[c] == want[c];
+    w := nav_grid_way(g, walk[0..<cells], cost[0..<cells], f, c);
+    if want[c] < f32(NAV_GRID_FAR) {
+      if c == goal { #assert w.status == NavWayStatus.there && w.cost == 0; }
+      else {
+        #assert w.status == NavWayStatus.step && w.next == nav_oracle_next(nx, nz, walk[0..<cells], want[0..<cells], c);
+        #assert w.cost == want[c];
+      }
+    } else {
+      #assert w.status == NavWayStatus.no_way && w.nearest == nav_oracle_nearest(nx, nz, want[0..<cells], c);
+    }
+  }
+}
+
+#test "a search past its cost leaves the far cells unreached; one out of steps says cut" {
+  g := ng_t_grid();
+  walk: [30] bool; cost: [30] f32; heap: [30] s32; slot: [30] s32;
+  ng_t_walk(walk[..]);
+  f := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], heap[0..<0], 0, 2, 30);
+  #assert f.status == NavFlowStatus.ok;
+  // cells at most 2 away settle; one beyond it is settled to stop, its neighbours stay far
+  #assert cost[12] == 2 && cost[13] == cost[7] + 1 && cost[24] == f32(NAV_GRID_FAR);
+  #assert cost[18] == 3 && f.settled == 6;
+  e := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], heap[0..<0], 0, 1000, 26);
+  #assert e.status == NavFlowStatus.ok && e.settled == 26;
+  c := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], heap[0..<0], 0, 1000, 25);
+  #assert c.status == NavFlowStatus.cut && c.settled == 25 && c.goal == 0;
+  #assert nav_grid_way(g, walk[..], cost[..], c, 1).status == NavWayStatus.refused;
+  z := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], heap[0..<0], 0, 1000, 0);
+  #assert z.status == NavFlowStatus.cut && z.settled == 0;
+}
+
+#forall "a bad grid, short storage or an unusable goal is refused and writes nothing" which: 0..<14 {
+  g := ng_t_grid();
+  walk: [30] bool; cost: [30] f32; heap: [30] s32; slot: [30] s32;
+  ng_t_walk(walk[..]);
+  for c: 0..<30 { cost[c] = 7; slot[c] = 5; }
+  nan := 0.0f32; nan = nan / nan;
+  goal := 0; n := 30; want := NavFlowStatus.bad_grid;
+  if which == 0 { g.nx = 0; }
+  if which == 1 { g.nz = 0; }
+  if which == 2 { g.cell = 0; }
+  if which == 3 { g.cell = nan; }
+  if which == 4 { g.x0 = nan; }
+  if which == 5 { g.z0 = -1000000; }
+  if which == 6 { g.nx = 16385; g.nz = 1; }
+  if which == 7 { g.nx = 200; g.nz = 200; }
+  if which == 8 { n = 29; want = NavFlowStatus.bad_store; }
+  if which == 9 { goal = 30; want = NavFlowStatus.goal_off; }
+  if which == 10 { goal = -1; want = NavFlowStatus.goal_off; }
+  if which == 11 { goal = 2; want = NavFlowStatus.goal_blocked; }
+  if which == 12 { g.x0 = 1000000; }
+  if which == 13 { g.cell = 1000000; }
+  f := nav_grid_flow(g, walk[0..<n], cost[..], heap[..], slot[..], heap[0..<0], goal, 1000, 30);
+  #assert f.status == want && f.goal == -1 && f.settled == 0;
+  for c: 0..<30 { #assert cost[c] == 7 && slot[c] == 5; }
+}
+
+#forall "short cost, heap, slot or order storage is refused too" which: 0..<4 {
+  g := ng_t_grid();
+  walk: [30] bool; cost: [30] f32; heap: [30] s32; slot: [30] s32;
+  ng_t_walk(walk[..]);
+  f: NavFlow;
+  if which == 0 { f = nav_grid_flow(g, walk[..], cost[0..<29], heap[..], slot[..], heap[0..<0], 0, 1000, 30); }
+  if which == 1 { f = nav_grid_flow(g, walk[..], cost[..], heap[0..<29], slot[..], heap[0..<0], 0, 1000, 30); }
+  if which == 2 { f = nav_grid_flow(g, walk[..], cost[..], heap[..], slot[0..<29], heap[0..<0], 0, 1000, 30); }
+  order: [30] s32;
+  if which == 3 { f = nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], order[0..<29], 0, 1000, 30); }
+  #assert f.status == NavFlowStatus.bad_store;
+}
+
+#test "the largest grid is allowed, and one cell is its own goal" {
+  g := NavGrid.{nx = 16384, nz = 1, cell = 1, x0 = 0, z0 = 0};
+  #assert nav_grid_ok(g);
+  g.nx = 1; g.nz = 16384; #assert nav_grid_ok(g);
+  g.nz = 16385; #assert !nav_grid_ok(g);
+  g.nx = 128; g.nz = 128; #assert nav_grid_ok(g);
+  g.nz = 129; #assert !nav_grid_ok(g);
+  one := NavGrid.{nx = 1, nz = 1, cell = 1, x0 = -999999, z0 = 999999};
+  walk: [1] bool; cost: [1] f32; heap: [1] s32; slot: [1] s32;
+  walk[0] = true;
+  f := nav_grid_flow(one, walk[..], cost[..], heap[..], slot[..], heap[0..<0], 0, 0, 1);
+  #assert f.status == NavFlowStatus.ok && f.settled == 1 && cost[0] == 0;
+  #assert nav_grid_way(one, walk[..], cost[..], f, 0).status == NavWayStatus.there;
+}
+
+#test "a cell from a point, and its centre" {
+  g := NavGrid.{nx = 64, nz = 76, cell = 0.5, x0 = -16, z0 = -24};
+  #assert nav_grid_cell_at(g, -16, -24) == 0 && nav_grid_cell_at(g, -15.51, -23.51) == 0;
+  #assert nav_grid_cell_at(g, -15.5, -24) == 1 && nav_grid_cell_at(g, -16, -23.5) == 64;
+  #assert nav_grid_cell_at(g, 15.99, 13.99) == 4863;
+  #assert nav_grid_cell_at(g, 16, 0) == -1 && nav_grid_cell_at(g, 0, 14) == -1;
+  #assert nav_grid_cell_at(g, -16.01, 0) == -1 && nav_grid_cell_at(g, 0, -24.01) == -1;
+  nan := 0.0f32; nan = nan / nan;
+  #assert nav_grid_cell_at(g, nan, 0) == -1 && nav_grid_cell_at(g, 0, nan) == -1;
+  bad := g; bad.cell = 0;
+  #assert nav_grid_cell_at(bad, 0, 0) == -1;
+  #assert nav_grid_centre_x(g, 129) == -15.25 && nav_grid_centre_z(g, 129) == -22.75;
+}
+
+#test "a way from a walled-in cell names the reachable cell nearest it" {
+  g := ng_t_grid();
+  walk: [30] bool; cost: [30] f32; heap: [30] s32; slot: [30] s32;
+  ng_t_walk(walk[..]);
+  walk[11] = false; walk[17] = false; walk[23] = false; walk[4] = false;   // column 5 walled off below row 4, 5 alone
+  f := nav_grid_flow(g, walk[..], cost[..], heap[..], slot[..], heap[0..<0], 0, 1000, 30);
+  w := nav_grid_way(g, walk[..], cost[..], f, 5);
+  #assert w.status == NavWayStatus.no_way && w.next == -1 && w.nearest == 10 && w.cost == cost[10];
+  w2 := nav_grid_way(g, walk[..], cost[..], f, 2);   // a wall cell: the nearest reachable is 1
+  #assert w2.status == NavWayStatus.no_way && w2.nearest == 1;
+  #assert nav_grid_way(g, walk[..], cost[..], f, 30).status == NavWayStatus.refused;
+  #assert nav_grid_way(g, walk[..], cost[..], f, -1).status == NavWayStatus.refused;
+  #assert nav_grid_way(g, walk[0..<29], cost[..], f, 1).status == NavWayStatus.refused;
+  #assert nav_grid_way(g, walk[..], cost[0..<29], f, 1).status == NavWayStatus.refused;
+  bad := g; bad.cell = 0;
+  #assert nav_grid_way(bad, walk[..], cost[..], f, 1).status == NavWayStatus.refused;
+  s := nav_grid_way(g, walk[..], cost[..], f, 1);
+  #assert s.status == NavWayStatus.step && s.next == 0 && s.nearest == -1 && s.cost == 1;
+  // a field that reached nothing but its goal: the nearest is the goal itself
+  lone: [30] bool; lone[0] = true;
+  l := nav_grid_flow(g, lone[..], cost[..], heap[..], slot[..], heap[0..<0], 0, 1000, 30);
+  lw := nav_grid_way(g, lone[..], cost[..], l, 29);
+  #assert lw.status == NavWayStatus.no_way && lw.nearest == 0 && lw.cost == 0;
+  // the nearest is cell 0, which isn't the goal, with cell 1 further off
+  lone[1] = true;
+  l2 := nav_grid_flow(g, lone[..], cost[..], heap[..], slot[..], heap[0..<0], 1, 1000, 30);
+  lw2 := nav_grid_way(g, lone[..], cost[..], l2, 6);
+  #assert lw2.status == NavWayStatus.no_way && lw2.nearest == 0 && lw2.cost == 1;
+}
+
+#forall "open seeded grids up to 12 by 12: the settling order and every lowering agree with the oracle" seed: 0..<24 #steps 400000000 {
+  nx := 8 + seed % 5; nz := 9 + (seed / 5) % 4;
+  g := NavGrid.{nx = nx, nz = nz, cell = 1, x0 = 0, z0 = 0};
+  walk: [256] bool; cost: [256] f32; heap: [256] s32; slot: [256] s32; want: [256] f32;
+  order: [256] s32; want_order: [256] s32;
+  cells := nx * nz;
+  r := nav_oracle_fill(seed * 104729 + 3, cells, walk[..]);
+  for c: 0..<cells { if !walk[c] && (c * 7 + seed) % 3 != 0 { walk[c] = true; } }   // a ninth blocked
+  goal := r % cells;
+  walk[goal] = true;
+  f := nav_grid_flow(g, walk[0..<cells], cost[0..<cells], heap[0..<cells], slot[0..<cells], order[0..<cells], goal, 1000, cells);
+  nav_oracle_costs(nx, nz, 1, walk[0..<cells], goal, want[0..<cells]);
+  n := nav_oracle_order(want[0..<cells], want_order[..]);
+  #assert f.status == NavFlowStatus.ok && n == f.settled;
+  for c: 0..<cells { #assert cost[c] == want[c]; }
+  for i: 0..<n { #assert order[i] == want_order[i]; }
+  #assert f.lowered == nav_oracle_lowered(nx, nz, 1, walk[0..<cells], want[0..<cells], want_order[..], n);
+}
+
+#forall "a cell lowered while in the heap moves up from where it is" which: 0..<2 {
+  // two grids (found by search) where a cell already in the heap is lowered after swaps moved it
+  nx := ifx which == 0 then 4 else 6; nz := ifx which == 0 then 6 else 5;
+  goal := ifx which == 0 then 11 else 2;
+  blocked := [5] int.[20, 22, -1, -1, -1];
+  if which == 1 { blocked = [5] int.[27, 28, 19, 4, 5]; }
+  g := NavGrid.{nx = nx, nz = nz, cell = 1, x0 = 0, z0 = 0};
+  walk: [30] bool; cost: [30] f32; heap: [30] s32; slot: [30] s32; want: [30] f32;
+  order: [30] s32; want_order: [30] s32;
+  cells := nx * nz;
+  for c: 0..<cells { walk[c] = true; }
+  for k: 0..<5 { if blocked[k] >= 0 { walk[blocked[k]] = false; } }
+  f := nav_grid_flow(g, walk[0..<cells], cost[0..<cells], heap[0..<cells], slot[0..<cells], order[0..<cells], goal, 1000, cells);
+  nav_oracle_costs(nx, nz, 1, walk[0..<cells], goal, want[0..<cells]);
+  n := nav_oracle_order(want[0..<cells], want_order[..]);
+  #assert f.status == NavFlowStatus.ok && n == f.settled;
+  for c: 0..<cells { #assert cost[c] == want[c]; }
+  for i: 0..<n { #assert order[i] == want_order[i]; }
+}
+
+#test "the heap's order is strict: a cell is never before itself; one cell's order has room for one" {
+  cost: [3] f32; cost[0] = 1; cost[1] = 1; cost[2] = 0.5;
+  #assert !nav_grid_less(cost[..], 1, 1) && nav_grid_less(cost[..], 0, 1) && !nav_grid_less(cost[..], 1, 0);
+  #assert nav_grid_less(cost[..], 2, 0) && !nav_grid_less(cost[..], 0, 2);
+  one := NavGrid.{nx = 1, nz = 1, cell = 1, x0 = 0, z0 = 0};
+  walk: [1] bool; c1: [1] f32; heap: [1] s32; slot: [1] s32; order: [1] s32;
+  walk[0] = true; order[0] = 9;
+  f := nav_grid_flow(one, walk[..], c1[..], heap[..], slot[..], order[..], 0, 10, 1);
+  #assert f.status == NavFlowStatus.ok && order[0] == 0;
+}
+
+#test "a reachable cell with no lower neighbour is no way, at itself" {
+  // a hand-made field: cell 1 lower than all its neighbours but not the goal
+  g := NavGrid.{nx = 3, nz = 1, cell = 1, x0 = 0, z0 = 0};
+  walk: [3] bool; cost: [3] f32;
+  for c: 0..<3 { walk[c] = true; }
+  cost[0] = 5; cost[1] = 1; cost[2] = 3;
+  f: NavFlow; f.status = NavFlowStatus.ok; f.goal = 2;
+  w := nav_grid_way(g, walk[..], cost[..], f, 1);
+  #assert w.status == NavWayStatus.no_way && w.nearest == 1 && w.cost == 1;
+  #assert nav_grid_downhill(g, walk[..], cost[..], 0) == 1;
+  cost[0] = 1;   // equal is not lower
+  #assert nav_grid_downhill(g, walk[..], cost[..], 0) == -1;
+}

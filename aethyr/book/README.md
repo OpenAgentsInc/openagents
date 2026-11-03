@@ -51,8 +51,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 14 implemented chapters (1–11 and 65–67), eighteen
-partly implemented chapters (12–16, 51–56, 64, 69, 72, 75, 80, 81 and 83), and 53 design drafts. An implemented chapter is
+There are 14 implemented chapters (1–11 and 65–67), nineteen
+partly implemented chapters (12–16, 51–56, 64, 69, 72, 75, 76, 80, 81 and 83), and 52 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -264,7 +264,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [73. Things that break](ch073-things-that-break.md) | Unimplemented: design draft | `verse/demolish.coax` on Part IV's bodies and contact: Voronoi fracture into 2–24 chunks, a support graph that topples pieces, budgets for chunks and loose pieces, regrowth, and the destructible-wall integration test. |
 | [74. Wheels on the ground](ch074-wheels-on-the-ground.md) | Unimplemented: design draft | Orbit League's raycast vehicle on Aethyr's queries and rigid bodies: spring-damper suspension, tyres inside the friction circle, steering that fades with speed, game rules declared as rules, and a recorded match that replays to the same digests. |
 | [75. Creatures that follow and watch](ch075-creatures-that-follow-and-watch.md) | Partly implemented: CPU (senses, memory and followers on the fixed step) | Creatures sense, decide and act at a fixed step from typed sight and hearing stimuli kept apart from truth; the flock becomes a general follow, the watch's state machines and seeded dice replay, and a remote decision model picks only from a fixed enum. |
-| [76. Find a way through](ch076-find-a-way-through.md) | Unimplemented: design draft | One navigation module for the three path systems: path graphs with an off-path cost, Dijkstra with fixed tie-breaks, shared flow fields on a 0.5 m grid, avoidance, replanning only where an edit touches, and a typed result for an unreachable target. |
+| [76. Find a way through](ch076-find-a-way-through.md) | Partly implemented: native C (walking grids and flow fields) | Walking grids with no corner cutting and Dijkstra flow fields with a fixed tie-break, bounded by cost and settled cells, with typed results naming the nearest reachable cell, checked cell by cell against a brute-force oracle and equal bit for bit to Dead Gears' fields; path graphs, avoidance, replanning after edits and realm adoption remain a design. |
 | [77. People who talk back](ch077-people-who-talk-back.md) | Unimplemented: design draft | One conversation path for every realm's characters: bounded requests, per-player memory, scripted fallback lines when the model fails, answers that never change game state, and replays that don't call the model. |
 | [78. Cinematics and close-ups](ch078-cinematics-and-close-ups.md) | Unimplemented: design draft | Authored flights, close-ups for pointing at an object, and clips recorded from replays, all as chapter 10 `Shot` producers sharing one blend with a per-frame bound. |
 
