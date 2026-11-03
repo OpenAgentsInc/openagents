@@ -351,6 +351,21 @@
         "slot": "watchtower",
         "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
         "assets": []
+      } },
+    { "id": "fivelab", "name": "5E LAB", "kind": "open", "listed": false, "orbit": { "r": 0.42, "a": 2.1, "size": 0.02 },
+      "realm": {
+        "slug": "5e-lab",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
+        "ruleset": "srd5",
+        "title": "5E Lab",
+        "description": "5E Lab, a Verse world in the browser: two circles of level 3 druids cast SRD 5e spells at each other on a bare grid, and the log shows every roll.",
+        "share": "Druids play the SRD 5e rules against each other on a bare grid, every roll in the log.",
+        "alt": "5E Lab: druid tokens on a square grid, with a tangle of plants and a combat log",
+        "module": "fivelab",
+        "slot": "5e-lab",
+        "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
+        "assets": []
       } }
   ]
 }

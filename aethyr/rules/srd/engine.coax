@@ -1,0 +1,314 @@
+// The SRD 5.2.1 rules engine (docs/dnd/README.md): one system every world shares. It draws
+// nothing and knows no world; a world sends "this creature casts this spell here" and draws
+// the events that come back. Deterministic: the same seed and the same calls roll the same.
+//
+// This first cut holds: the dice, ability modifiers and proficiency, saving throws and ability
+// checks, attack rolls with Advantage and Disadvantage, the 13 damage types, the 15 conditions,
+// hit points, dropping to 0 and death saving throws, concentration, spell slots and upcasting,
+// cantrip scaling, and the SRD's 6-second round run in real time (each creature's turn on its
+// own beat). The spells are records (spells.coax) whose effect programs the engine runs.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+//   coax/bin/coax test --library aethyr/rules/srd/engine.coax
+
+RS_ROUND :: 6.0;        // seconds in a round
+RS_FOOT :: 0.3048;      // metres in a foot
+RS_SQUARE :: 5;         // feet in a grid square
+
+// ---- dice: SplitMix64, every face equally likely (rejection sampling)
+
+RsDice :: struct { state: u64; rolled: int; }
+RS_LOW32 :: 0xFFFFFFFF;
+rs_wmul :: (a: u64, b: u64) -> u64 {
+  al := a & RS_LOW32; ah := a >> 32; bl := b & RS_LOW32; bh := b >> 32;
+  low := al * bl;
+  high := (((ah * bl) & RS_LOW32) + ((al * bh) & RS_LOW32) + (low >> 32)) & RS_LOW32;
+  return (high << 32) | (low & RS_LOW32);
+}
+rs_wadd :: (a: u64, b: u64) -> u64 {
+  low := (a & RS_LOW32) + (b & RS_LOW32);
+  high := ((a >> 32) + (b >> 32) + (low >> 32)) & RS_LOW32;
+  return (high << 32) | (low & RS_LOW32);
+}
+rs_next :: (d: [] RsDice) -> u64 {
+  d[0].state = rs_wadd(d[0].state, 0x9E3779B97F4A7C15);
+  z := d[0].state;
+  z = rs_wmul(z ^ (z >> 30), 0xBF58476D1CE4E5B9);
+  z = rs_wmul(z ^ (z >> 27), 0x94D049BB133111EB);
+  return z ^ (z >> 31);
+}
+rs_roll :: (d: [] RsDice, sides: int) -> int {
+  n := ifx sides < 1 then 1 else sides;
+  d[0].rolled += 1;
+  span: u64 = 4294967296;
+  zone := span - span % cast(u64) n;
+  while true {
+    v := rs_next(d) >> 32;
+    if v < zone { return cast(int) (v % cast(u64) n) + 1; }
+  }
+  return 1;
+}
+rs_sum :: (d: [] RsDice, count: int, sides: int) -> int {
+  t := 0;
+  for i: 0..<count { t += rs_roll(d, sides); }
+  return t;
+}
+rs_unit :: (d: [] RsDice) -> f32 { top: f32 = 16777216.0; return f32(rs_next(d) >> 40) / top; }
+
+// A d20 with Advantage (> 0), Disadvantage (< 0) or neither: two dice, the higher or the lower.
+// Any of each cancel to neither (the SRD's rule), so a caller adds +1 per source and -1 per source
+// and passes the sign.
+RsD20 :: struct { roll: int; other: int; edge: int; }
+rs_d20 :: (d: [] RsDice, edge: int) -> RsD20 {
+  a := rs_roll(d, 20);
+  if edge == 0 { return RsD20.{roll = a, other = 0, edge = 0}; }
+  b := rs_roll(d, 20);
+  if edge > 0 { return RsD20.{roll = ifx a > b then a else b, other = ifx a > b then b else a, edge = 1}; }
+  return RsD20.{roll = ifx a < b then a else b, other = ifx a < b then b else a, edge = -1};
+}
+rs_edge :: (advantages: int, disadvantages: int) -> int {
+  if advantages > 0 && disadvantages == 0 { return 1; }
+  if disadvantages > 0 && advantages == 0 { return -1; }
+  return 0;
+}
+
+// ---- abilities
+
+RS_STR :: 0; RS_DEX :: 1; RS_CON :: 2; RS_INT :: 3; RS_WIS :: 4; RS_CHA :: 5;
+RS_ABILITY :: [6] string.["Strength", "Dexterity", "Constitution", "Intelligence", "Wisdom", "Charisma"];
+RS_ABBR :: [6] string.["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+// The modifier for a score: (score - 10) / 2, rounded down.
+rs_mod :: (score: int) -> int { return score / 2 - 5; }
+// The proficiency bonus by level (or Challenge Rating's level band): +2 at 1-4, +3 at 5-8 ...
+rs_proficiency :: (level: int) -> int { return 2 + (rs_max(level, 1) - 1) / 4; }
+rs_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+rs_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
+
+// ---- damage types
+
+RS_DMG_NONE :: 0; RS_ACID :: 1; RS_BLUDGEONING :: 2; RS_COLD :: 3; RS_FIRE :: 4; RS_FORCE :: 5;
+RS_LIGHTNING :: 6; RS_NECROTIC :: 7; RS_PIERCING :: 8; RS_POISON :: 9; RS_PSYCHIC :: 10;
+RS_RADIANT :: 11; RS_SLASHING :: 12; RS_THUNDER :: 13;
+RS_DAMAGE :: [14] string.["", "Acid", "Bludgeoning", "Cold", "Fire", "Force", "Lightning", "Necrotic",
+                          "Piercing", "Poison", "Psychic", "Radiant", "Slashing", "Thunder"];
+
+// ---- conditions, a bit each
+
+RS_BLINDED :: 1; RS_CHARMED :: 2; RS_DEAFENED :: 4; RS_EXHAUSTION :: 8; RS_FRIGHTENED :: 16;
+RS_GRAPPLED :: 32; RS_INCAPACITATED :: 64; RS_INVISIBLE :: 128; RS_PARALYZED :: 256;
+RS_PETRIFIED :: 512; RS_POISONED :: 1024; RS_PRONE :: 2048; RS_RESTRAINED :: 4096;
+RS_STUNNED :: 8192; RS_UNCONSCIOUS :: 16384;
+RS_CONDITIONS :: 15;
+RS_CONDITION :: [15] string.["Blinded", "Charmed", "Deafened", "Exhaustion", "Frightened", "Grappled",
+                             "Incapacitated", "Invisible", "Paralyzed", "Petrified", "Poisoned", "Prone",
+                             "Restrained", "Stunned", "Unconscious"];
+
+// ---- creatures: a character sheet and a stat block are the same shape
+
+RS_NAME :: 24;
+RsCreature :: struct {
+  name: [RS_NAME] u8; name_n: int;
+  team: int;
+  level: int;
+  score: [6] int;
+  save_prof: [6] bool;
+  ac: int; hp: int; hp_max: int;
+  speed: int;               // feet a turn
+  spell_ability: int;       // the spellcasting ability (-1: none)
+  slots: [10] int; slots_max: [10] int;   // spell slots by level (0 unused)
+  cond: int;                // conditions, bits
+  // effects that last
+  conc: int;                // the spell held by concentration (-1 none)
+  conc_until: f32;          // when it ends, on the world's clock
+  flame_until: f32;         // Produce Flame in hand until (0: none)
+  outlined_until: f32;      // Faerie Fire: attacks against it have Advantage, it can't be Invisible
+  outlined_by: int;         // whose spell (a creature index)
+  wisp_until: f32;          // Starry Wisp's Dim Light
+  restrained_by: int;       // the zone that restrains it (-1 none)
+  // dropping to 0
+  death_ok: int; death_fail: int; stable: bool; dead: bool;
+  // where and when: grid squares, and its next turn on the clock
+  x: int; y: int;
+  initiative: int;
+  turn_at: f32;
+}
+rs_name :: (c: [] RsCreature) -> string { return cast(string) c[0].name[0..<c[0].name_n]; }
+rs_set_name :: (c: [] RsCreature, name: string) {
+  n := 0;
+  for ch: name { if n >= RS_NAME { break; } c[0].name[n] = ch; n += 1; }
+  c[0].name_n = n;
+}
+rs_save_bonus :: (c: RsCreature, ability: int) -> int {
+  b := rs_mod(c.score[ability]);
+  if c.save_prof[ability] { b += rs_proficiency(c.level); }
+  return b;
+}
+rs_spell_attack :: (c: RsCreature) -> int { return rs_proficiency(c.level) + rs_mod(c.score[rs_max(c.spell_ability, 0)]); }
+rs_spell_dc :: (c: RsCreature) -> int { return 8 + rs_proficiency(c.level) + rs_mod(c.score[rs_max(c.spell_ability, 0)]); }
+rs_has :: (c: RsCreature, cond: int) -> bool { return (c.cond & cond) != 0; }
+rs_clear :: (bits: int, bit: int) -> int { return bits - (bits & bit); }
+rs_up :: (c: RsCreature) -> bool { return !c.dead && c.hp > 0; }
+// Can take actions this turn (not Incapacitated, Paralyzed, Petrified, Stunned or Unconscious).
+rs_can_act :: (c: RsCreature) -> bool {
+  return rs_up(c) && (c.cond & (RS_INCAPACITATED | RS_PARALYZED | RS_PETRIFIED | RS_STUNNED | RS_UNCONSCIOUS)) == 0;
+}
+
+// The SRD 5.2.1 Druid at a level, from its class table (Wisdom casting, Intelligence and Wisdom
+// saves, a d8 hit die: 8 + Con at level 1, then 5 + Con a level, the fixed value), in leather armor
+// with a shield (AC 11 + Dex + 2). Its scores are the standard array, Wisdom first.
+rs_druid :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = level;
+  c[0].score = [6] int.[10, 14, 13, 12, 16, 8];
+  c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
+  con := rs_mod(c[0].score[RS_CON]);
+  c[0].hp_max = 8 + con + (level - 1) * (5 + con);
+  c[0].hp = c[0].hp_max;
+  c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]) + 2;
+  c[0].speed = 30;
+  c[0].spell_ability = RS_WIS;
+  // Druid spell slots by level (the class table): level 1 two 1st, 2 three, 3 four 1st and two 2nd.
+  slots1 := [5] int.[0, 2, 3, 4, 4];
+  slots2 := [5] int.[0, 0, 0, 2, 3];
+  l := rs_min(level, 4);
+  c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
+  if level >= 5 { c[0].slots_max[3] = 2; }
+  for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1;
+  return c[0];
+}
+
+// ---- events: what the engine tells a world, a line each
+
+RS_EVENTS :: 64;
+RS_EV_TEXT :: 96;
+RS_EV_CAST :: 1; RS_EV_ATTACK :: 2; RS_EV_SAVE :: 3; RS_EV_DAMAGE :: 4; RS_EV_HEAL :: 5;
+RS_EV_CONDITION :: 6; RS_EV_END :: 7; RS_EV_DOWN :: 8; RS_EV_DEATH :: 9; RS_EV_PUSH :: 10;
+RS_EV_ZONE :: 11; RS_EV_MISS :: 12; RS_EV_STABLE :: 13; RS_EV_UP :: 14; RS_EV_TURN :: 15;
+RsEvent :: struct {
+  kind: int; spell: int; by: int; to: int;
+  amount: int; damage: int;   // the amount and its damage type
+  x: int; y: int;             // a square (an area's corner, a push's end)
+  text: [RS_EV_TEXT] u8; text_n: int;
+  at: f32;
+}
+RsLog :: struct { ev: [RS_EVENTS] RsEvent; head: int; count: int; seq: int; }
+rs_put :: (buf: [] u8, at: int, t: string) -> int {
+  n := at;
+  for ch: t { if n >= buf.count { break; } buf[n] = ch; n += 1; }
+  return n;
+}
+rs_put_int :: (buf: [] u8, at: int, v: int) -> int {
+  n := at; x := v;
+  if x < 0 { n = rs_put(buf, n, "-"); x = -x; }
+  digits: [20] u8; k := 0;
+  if x == 0 { digits[0] = 48; k = 1; }
+  while x > 0 && k < 20 { digits[k] = cast(u8) (48 + x % 10); x = x / 10; k += 1; }
+  while k > 0 { k -= 1; if n < buf.count { buf[n] = digits[k]; n += 1; } }
+  return n;
+}
+rs_emit :: (book: [] RsLog, e: RsEvent) -> int {
+  i := (book[0].head + book[0].count) % RS_EVENTS;
+  if book[0].count == RS_EVENTS { book[0].head = (book[0].head + 1) % RS_EVENTS; i = (book[0].head + RS_EVENTS - 1) % RS_EVENTS; }
+  else { book[0].count += 1; }
+  book[0].ev[i] = e;
+  book[0].seq += 1;
+  return i;
+}
+// The i-th newest event (0: the newest).
+rs_recent :: (book: RsLog, i: int) -> RsEvent {
+  e: RsEvent;
+  if i < 0 || i >= book.count { return e; }
+  return book.ev[(book.head + book.count - 1 - i) % RS_EVENTS];
+}
+
+// ---- hit points
+
+// Damage to a creature, with the SRD's rules at 0: dropping to 0 knocks it Unconscious (and
+// Prone); damage at 0 is a failed death saving throw (two on a critical hit); damage that leaves
+// it at 0 with damage left over equal to its maximum kills it outright.
+RsHurt :: struct { taken: int; dropped: bool; killed: bool; conc_dc: int; }
+rs_hurt :: (c: [] RsCreature, amount: int, crit: bool) -> RsHurt {
+  r: RsHurt;
+  if c[0].dead || amount <= 0 { return r; }
+  r.taken = amount;
+  if c[0].hp <= 0 {
+    c[0].death_fail += ifx crit then 2 else 1;
+    c[0].stable = false;
+    if c[0].death_fail >= 3 || amount >= c[0].hp_max { c[0].dead = true; r.killed = true; }
+    return r;
+  }
+  left := amount - c[0].hp;
+  c[0].hp = rs_max(c[0].hp - amount, 0);
+  if c[0].hp == 0 {
+    r.dropped = true;
+    if left >= c[0].hp_max { c[0].dead = true; r.killed = true; }
+    c[0].cond = c[0].cond | RS_UNCONSCIOUS | RS_PRONE;
+    c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
+  }
+  // concentration: a Constitution save, DC 10 or half the damage (rounded down), up to 30
+  if c[0].conc >= 0 { r.conc_dc = rs_min(rs_max(10, amount / 2), 30); }
+  return r;
+}
+// Healing: back above 0 ends Unconscious (the creature stays Prone until it stands).
+rs_heal :: (c: [] RsCreature, amount: int) -> int {
+  if c[0].dead || amount <= 0 { return 0; }
+  before := c[0].hp;
+  c[0].hp = rs_min(c[0].hp + amount, c[0].hp_max);
+  if before == 0 && c[0].hp > 0 {
+    c[0].cond = rs_clear(c[0].cond, RS_UNCONSCIOUS);
+    c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
+  }
+  return c[0].hp - before;
+}
+// A death saving throw at the start of its turn: 10 or higher succeeds, a 1 counts twice, a 20
+// brings it back with 1 Hit Point; three successes make it Stable, three failures kill it.
+RS_DS_FAIL :: 0; RS_DS_OK :: 1; RS_DS_STABLE :: 2; RS_DS_DEAD :: 3; RS_DS_UP :: 4;
+rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int {
+  r := rs_roll(d, 20);
+  if r == 20 { h := rs_heal(c, 1); return RS_DS_UP; }
+  if r >= 10 { c[0].death_ok += 1; if c[0].death_ok >= 3 { c[0].stable = true; return RS_DS_STABLE; } return RS_DS_OK; }
+  c[0].death_fail += ifx r == 1 then 2 else 1;
+  if c[0].death_fail >= 3 { c[0].dead = true; return RS_DS_DEAD; }
+  return RS_DS_FAIL;
+}
+
+#test "ability modifiers and proficiency follow the SRD's tables" {
+  #assert rs_mod(1) == -5 && rs_mod(8) == -1 && rs_mod(9) == -1 && rs_mod(10) == 0 && rs_mod(11) == 0;
+  #assert rs_mod(16) == 3 && rs_mod(17) == 3 && rs_mod(20) == 5 && rs_mod(30) == 10;
+  #assert rs_proficiency(1) == 2 && rs_proficiency(4) == 2 && rs_proficiency(5) == 3 && rs_proficiency(17) == 6;
+}
+#test "a level 3 Druid: 21 HP (Con 13), AC 15, spell attack +5, save DC 13, four 1st and two 2nd slots" {
+  c := rs_druid("Rowan", 0, 3);
+  #assert c.hp_max == 8 + 1 + 2 * (5 + 1) && c.hp == c.hp_max;
+  #assert c.ac == 15 && rs_spell_attack(c) == 5 && rs_spell_dc(c) == 13;
+  #assert c.slots[1] == 4 && c.slots[2] == 2 && c.slots[3] == 0;
+  #assert rs_save_bonus(c, RS_WIS) == 5 && rs_save_bonus(c, RS_DEX) == 2 && rs_save_bonus(c, RS_STR) == 0;
+}
+#test "dice are fair and repeatable" {
+  a: [1] RsDice; a[0].state = 7; b: [1] RsDice; b[0].state = 7;
+  counts: [21] int;
+  for i: 0..<4200 { r := rs_roll(a[..], 20); #assert r >= 1 && r <= 20; counts[r] += 1; #assert rs_roll(b[..], 20) == r; }
+  for f: 1..<21 { #assert counts[f] > 120 && counts[f] < 300; }
+  adv := rs_d20(a[..], 1); #assert adv.roll >= adv.other;
+  dis := rs_d20(a[..], -1); #assert dis.roll <= dis.other;
+  #assert rs_edge(2, 0) == 1 && rs_edge(0, 1) == -1 && rs_edge(1, 3) == 0;
+}
+#test "dropping to 0, death saves, massive damage and healing" {
+  c: [1] RsCreature; c[0] = rs_druid("Briar", 0, 3);
+  h := rs_hurt(c[..], 30, false);
+  #assert h.dropped && !h.killed && c[0].hp == 0 && rs_has(c[0], RS_UNCONSCIOUS) && rs_has(c[0], RS_PRONE);
+  h = rs_hurt(c[..], 1, true);
+  #assert c[0].death_fail == 2 && !c[0].dead;
+  #assert rs_heal(c[..], 5) == 5 && !rs_has(c[0], RS_UNCONSCIOUS) && c[0].death_fail == 0;
+  d: [1] RsCreature; d[0] = rs_druid("Sable", 1, 3);
+  k := rs_hurt(d[..], d[0].hp + d[0].hp_max, false);
+  #assert k.killed && d[0].dead;
+  e: [1] RsCreature; e[0] = rs_druid("Ash", 1, 3); e[0].conc = 2;
+  #assert rs_hurt(e[..], 4, false).conc_dc == 10 && rs_hurt(e[..], 14, false).conc_dc == 10;
+  e[0].hp = 24; #assert rs_hurt(e[..], 22, false).conc_dc == 11;
+}

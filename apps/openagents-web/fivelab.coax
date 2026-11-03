@@ -1,0 +1,761 @@
+// 5E Lab, openagents.com/worlds/5e-lab (unlisted): a bare grid of 5-foot squares where
+// characters play the SRD 5e rules against each other, so the shared engine
+// (aethyr/rules/srd/, docs/dnd/README.md) can be watched at work. Two circles of
+// level 3 druids cast the engine's spells at each other on the real-time clock:
+// every creature's turn comes round every 6 seconds, staggered by initiative,
+// and the log shows each roll. The druids decide with a small routine here; the
+// rules are all the engine's.
+//
+// Drawn flat: gpu/fivelab.coax's bg_fs draws the grid and the log's glass; the
+// tokens, the areas, the effects and the text are fx strokes (font.coax).
+//   coax/bin/coax test apps/openagents-web/fivelab.coax
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+
+#load "font.coax";
+#load "../../aethyr/loop.coax";
+#load "../../aethyr/rules/srd/battle.coax";
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 90000;
+UNIFORM_FLOATS :: 16;
+U_GRID :: 4; U_CELLS :: 8; U_PANEL :: 12;
+
+STEP :: 0.0166666667;
+LAB_STEP_NS :: 16666667;
+LAB_FRAME_NS :: 100000000;
+OUTBOX_CAP :: 64;
+ACT_NAVIGATE :: 1;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2;
+
+COLS :: 16; ROWS :: 10;
+FAST :: 4.0;
+TEAM_NAME :: [2] string.["CIRCLE OF MOSS", "CIRCLE OF ASH"];
+NAMES :: [6] string.["Rowan", "Briar", "Fern", "Thorn", "Sable", "Wren"];
+START_X :: [6] int.[2, 2, 2, 13, 13, 13];
+START_Y :: [6] int.[3, 5, 7, 2, 5, 8];
+
+LOG_LINES :: 40;
+LINE_CAP :: 96;
+FXS :: 32;
+FX_BOLT :: 1; FX_FLASH :: 2; FX_TEXT :: 3; FX_RING :: 4;
+
+Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+Col :: struct { r: f32; g: f32; b: f32; }
+WHITE :: Col.{r = 0.9, g = 0.92, b = 0.96};
+DIM :: Col.{r = 0.52, g = 0.55, b = 0.6};
+FAINT :: Col.{r = 0.28, g = 0.3, b = 0.34};
+RED :: Col.{r = 1.0, g = 0.25, b = 0.22};
+GREEN :: Col.{r = 0.4, g = 1.0, b = 0.5};
+VIOLET :: Col.{r = 0.75, g = 0.48, b = 1.0};
+GOLD :: Col.{r = 1.0, g = 0.8, b = 0.35};
+CYAN :: Col.{r = 0.35, g = 0.9, b = 1.0};
+TEAM_COL :: [2] Col.[Col.{r = 0.45, g = 0.95, b = 0.55}, Col.{r = 1.0, g = 0.55, b = 0.25}];
+
+Line :: struct { text: [LINE_CAP] u8; n: int; col: Col; }
+Fx :: struct { kind: int; ax: f32; ay: f32; bx: f32; by: f32; t0: f32; life: f32; col: Col; text: [12] u8; n: int; }
+
+Lab :: struct {
+  started: bool;
+  battle: [1] RsBattle;
+  seen: int;                       // the battle log's events already shown
+  seed: u64;
+  round: int;
+  wins: [2] int;
+  over: bool; over_t: f32; winner: int;
+  dx: [RS_MAX] f32; dy: [RS_MAX] f32;   // where each token is drawn, in squares
+  acted: [RS_MAX] f32;             // when each last took its turn
+  lines: [LOG_LINES] Line; line_n: int;
+  fx: [FXS] Fx; fx_at: int;
+  clock: f32;                      // the drawn clock
+  pace: FrameClock;
+  paused: bool; fast: bool;
+  golden: bool; golden_ran: bool;
+  width: f32; height: f32; dpr: f32;
+  portrait: bool;
+  gx: f32; gy: f32; cell: f32;
+  panel: Rect; back: Rect;
+  pressing: int;
+  outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+}
+
+// ---- small things
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+GAP :: 0.5; SPACE :: 1.2;
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+put :: (buf: [] u8, at: int, text: string) -> int { return rs_put(buf, at, text); }
+put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v); }
+bt :: (s: [] Lab) -> [] RsBattle { return s[0].battle[..]; }
+dice :: (s: [] Lab) -> [] RsDice { return s[0].battle[0].dice[..]; }
+
+spell_col :: (sp: int) -> Col {
+  if sp == SP_PRODUCE_FLAME || sp == SP_FLAME_HURL { return Col.{r = 1.0, g = 0.55, b = 0.15}; }
+  if sp == SP_STARRY_WISP { return Col.{r = 1.0, g = 0.95, b = 0.6}; }
+  if sp == SP_POISON_SPRAY { return Col.{r = 0.6, g = 1.0, b = 0.3}; }
+  if sp == SP_CURE_WOUNDS || sp == SP_HEALING_WORD { return GREEN; }
+  if sp == SP_THUNDERWAVE { return Col.{r = 0.55, g = 0.75, b = 1.0}; }
+  if sp == SP_ENTANGLE { return Col.{r = 0.35, g = 0.85, b = 0.3}; }
+  if sp == SP_FAERIE_FIRE { return VIOLET; }
+  return WHITE;
+}
+
+// ---- the log
+
+add_line :: (s: [] Lab, t: string, c: Col) {
+  if s[0].line_n == LOG_LINES {
+    for i: 1..<LOG_LINES { s[0].lines[i - 1] = s[0].lines[i]; }
+    s[0].line_n -= 1;
+  }
+  l: Line;
+  l.n = put(l.text[..], 0, t); l.col = c;
+  s[0].lines[s[0].line_n] = l;
+  s[0].line_n += 1;
+}
+add_fx :: (s: [] Lab, f: Fx) {
+  g := f; g.t0 = s[0].battle[0].clock;
+  s[0].fx[s[0].fx_at] = g;
+  s[0].fx_at = (s[0].fx_at + 1) % FXS;
+}
+// What the battle told since the last look: into the log, and into effects on the grid.
+take_events :: (s: [] Lab) {
+  book := s[0].battle[0].book[0];
+  fresh := rs_min(book.seq - s[0].seen, book.count);
+  s[0].seen = book.seq;
+  k := fresh - 1;
+  while k >= 0 {
+    e := rs_recent(book, k);
+    k -= 1;
+    t := cast(string) e.text[0..<e.text_n];
+    c := DIM;
+    if e.kind == RS_EV_CAST { c = WHITE; }
+    if e.kind == RS_EV_DAMAGE { c = Col.{r = 1.0, g = 0.55, b = 0.4}; }
+    if e.kind == RS_EV_HEAL || e.kind == RS_EV_UP { c = GREEN; }
+    if e.kind == RS_EV_CONDITION { c = VIOLET; }
+    if e.kind == RS_EV_DOWN || e.kind == RS_EV_DEATH { c = RED; }
+    if e.kind == RS_EV_END || e.kind == RS_EV_STABLE { c = FAINT; }
+    if e.text_n > 0 { add_line(s, t, c); }
+    f: Fx;
+    if e.kind == RS_EV_CAST && e.to >= 0 && e.to != e.by {
+      f.kind = FX_BOLT; f.life = 0.55; f.col = spell_col(e.spell);
+      f.ax = f32(s[0].battle[0].c[e.by].x); f.ay = f32(s[0].battle[0].c[e.by].y);
+      f.bx = f32(s[0].battle[0].c[e.to].x); f.by = f32(s[0].battle[0].c[e.to].y);
+      add_fx(s, f);
+    }
+    if e.kind == RS_EV_ZONE {
+      f.kind = FX_FLASH; f.life = 0.7; f.col = spell_col(e.spell);
+      f.ax = f32(e.x); f.ay = f32(e.y); f.bx = f32(e.x + e.amount); f.by = f32(e.y + e.amount);
+      add_fx(s, f);
+    }
+    if e.kind == RS_EV_DAMAGE || e.kind == RS_EV_HEAL || e.kind == RS_EV_MISS {
+      f.kind = FX_TEXT; f.life = 1.2;
+      f.col = ifx e.kind == RS_EV_HEAL then GREEN else ifx e.kind == RS_EV_MISS then DIM else RED;
+      f.ax = f32(s[0].battle[0].c[e.to].x); f.ay = f32(s[0].battle[0].c[e.to].y);
+      if e.kind == RS_EV_MISS { f.n = put(f.text[..], 0, "MISS"); }
+      else { f.n = put(f.text[..], 0, ifx e.kind == RS_EV_HEAL then "+" else "-"); f.n = put_int(f.text[..], f.n, e.amount); }
+      add_fx(s, f);
+    }
+    if e.kind == RS_EV_CONDITION && e.to >= 0 {
+      f.kind = FX_RING; f.life = 0.8; f.col = VIOLET;
+      f.ax = f32(s[0].battle[0].c[e.to].x); f.ay = f32(s[0].battle[0].c[e.to].y);
+      add_fx(s, f);
+    }
+  }
+}
+
+// ---- a battle
+
+new_battle :: (s: [] Lab) {
+  b: RsBattle;
+  s[0].battle[0] = b;
+  s[0].battle[0].w = COLS; s[0].battle[0].h = ROWS;
+  s[0].seed += 1;
+  s[0].battle[0].dice[0].state = s[0].seed * 7919 + 17;
+  for i: 0..<6 {
+    j := rs_add(bt(s), rs_druid(NAMES[i], i / 3, 3), START_X[i], START_Y[i]);
+    s[0].dx[i] = f32(START_X[i]); s[0].dy[i] = f32(START_Y[i]); s[0].acted[i] = -10;
+  }
+  s[0].battle[0].clock = 0;
+  rs_begin(bt(s));
+  s[0].seen = s[0].battle[0].book[0].seq;
+  s[0].over = false; s[0].winner = -1;
+  s[0].round += 1;
+  for i: 0..<FXS { s[0].fx[i].kind = 0; }
+  l: [LINE_CAP] u8;
+  n := put(l[..], 0, "Battle ");
+  n = put_int(l[..], n, s[0].round);
+  n = put(l[..], n, ": three level 3 druids a side. Initiative:");
+  add_line(s, cast(string) l[0..<n], GOLD);
+  for i: 0..<6 {
+    m := put(l[..], 0, "  ");
+    m = put(l[..], m, NAMES[i]);
+    m = put(l[..], m, " ");
+    m = put_int(l[..], m, s[0].battle[0].c[i].initiative);
+    add_line(s, cast(string) l[0..<m], TEAM_COL[i / 3]);
+  }
+}
+lab_start :: (s: [] Lab) {
+  if s[0].started { return; }
+  s[0].started = true;
+  s[0].seed = 5;
+  new_battle(s);
+}
+
+// ---- how a druid decides (the world's; the rules are the engine's)
+
+nearest_foe :: (s: [] Lab, i: int) -> int {
+  best := -1; bd := 100000;
+  for j: 0..<s[0].battle[0].n {
+    c := s[0].battle[0].c[j];
+    if c.team == s[0].battle[0].c[i].team || !rs_up(c) { continue; }
+    d := rs_feet_to(bt(s), i, j);
+    if d < bd { bd = d; best = j; }
+  }
+  return best;
+}
+// The lowest free slot of at least level, or 0.
+free_slot :: (s: [] Lab, i: int, level: int) -> int {
+  for k: level..<10 { if s[0].battle[0].c[i].slots[k] > 0 { return k; } }
+  return 0;
+}
+// Walk square by square: toward the foe to `want` feet, or away when closer than `least`.
+walk :: (s: [] Lab, i: int, foe: int, least: int, want: int) {
+  guard := 0;
+  while s[0].battle[0].turn.move_left > 0 && guard < 12 {
+    guard += 1;
+    d := rs_feet_to(bt(s), i, foe);
+    if d >= least && d <= want { return; }
+    away := d < least;
+    bx := -1; by := -1; bs := -100000;
+    for oy: -1..<2 {
+      for ox: -1..<2 {
+        if ox == 0 && oy == 0 { continue; }
+        x := s[0].battle[0].c[i].x + ox; y := s[0].battle[0].c[i].y + oy;
+        if x < 0 || y < 0 || x >= COLS || y >= ROWS || rs_at(bt(s), x, y) >= 0 { continue; }
+        nd := rs_feet(x, y, s[0].battle[0].c[foe].x, s[0].battle[0].c[foe].y);
+        score := ifx away then nd else -nd;
+        if rs_difficult(bt(s), x, y) { score -= 4; }
+        // keep off the edges when backing away
+        if away && (x == 0 || y == 0 || x == COLS - 1 || y == ROWS - 1) { score -= 3; }
+        if score > bs { bs = score; bx = x; by = y; }
+      }
+    }
+    here := ifx away then d else -d;
+    if bx < 0 || bs <= here { return; }
+    if !rs_step_to(bt(s), i, bx, by) { return; }
+  }
+}
+foes_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
+  n := 0;
+  for j: 0..<s[0].battle[0].n {
+    c := s[0].battle[0].c[j];
+    if c.team != s[0].battle[0].c[i].team && rs_up(c) && rs_feet(x, y, c.x, c.y) <= feet { n += 1; }
+  }
+  return n;
+}
+friends_near :: (s: [] Lab, i: int, x: int, y: int, feet: int) -> int {
+  n := 0;
+  for j: 0..<s[0].battle[0].n {
+    c := s[0].battle[0].c[j];
+    if c.team == s[0].battle[0].c[i].team && !c.dead && rs_feet(x, y, c.x, c.y) <= feet { n += 1; }
+  }
+  return n;
+}
+
+lab_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  rs_start_turn(b, i);
+  s[0].acted[i] = b[0].clock;
+  if !rs_can_act(b[0].c[i]) { rs_end_turn(b, i); return; }
+  roll := rs_unit(dice(s));
+  // held by plants: strain against them half the time, else cast from where it stands
+  if rs_has(b[0].c[i], RS_RESTRAINED) && roll < 0.5 { ok := rs_escape(b, i); }
+  // a friend down or badly hurt: Healing Word (a Bonus Action) from afar, Cure Wounds by touch
+  worst := -1; wv: f32 = 2;
+  for j: 0..<b[0].n {
+    c := b[0].c[j];
+    if c.team != b[0].c[i].team || c.dead || c.stable { continue; }
+    v := f32(c.hp) / f32(rs_max(c.hp_max, 1));
+    if v < wv { wv = v; worst = j; }
+  }
+  if worst >= 0 && wv < 0.4 {
+    slot := free_slot(s, i, 1);
+    if slot > 0 && rs_feet_to(b, i, worst) <= 60 { ok := rs_cast(b, i, SP_HEALING_WORD, slot, 0, 0, worst); }
+  }
+  foe := nearest_foe(s, i);
+  if foe < 0 { rs_end_turn(b, i); return; }
+  conc := b[0].c[i].conc >= 0;
+  slot := ifx b[0].turn.slot_spent then 0 else free_slot(s, i, 1);
+  // a foe in its face: Thunderwave, or step back
+  if rs_feet_to(b, i, foe) <= 5 && slot > 0 && !b[0].turn.action && rs_unit(dice(s)) < 0.75 {
+    ok := rs_cast(b, i, SP_THUNDERWAVE, slot, b[0].c[foe].x, b[0].c[foe].y, -1);
+  }
+  if !rs_has(b[0].c[i], RS_RESTRAINED) {
+    want := ifx !conc && slot > 0 then 45 else 40;
+    walk(s, i, foe, 15, want);
+  }
+  foe = nearest_foe(s, i);
+  if foe < 0 { rs_end_turn(b, i); return; }
+  d := rs_feet_to(b, i, foe);
+  fx := b[0].c[foe].x; fy := b[0].c[foe].y;
+  slot = ifx b[0].turn.slot_spent then 0 else free_slot(s, i, 1);
+  if !b[0].turn.action && !conc && slot > 0 && rs_unit(dice(s)) < 0.45 {
+    // an area spell where it catches foes and spares friends
+    if friends_near(s, i, fx, fy, 15) == 0 {
+      if !rs_has(b[0].c[foe], RS_RESTRAINED) && rs_unit(dice(s)) < 0.55 { ok := rs_cast(b, i, SP_ENTANGLE, slot, fx, fy, -1); }
+      else { ok := rs_cast(b, i, SP_FAERIE_FIRE, slot, fx, fy, -1); }
+    }
+  }
+  if !b[0].turn.action {
+    // a cantrip: Produce Flame lit with the Bonus Action and hurled, or Starry Wisp, or Poison Spray up close
+    if !b[0].turn.bonus && b[0].c[i].flame_until <= b[0].clock && d <= 60 && rs_unit(dice(s)) < 0.35 {
+      ok := rs_cast(b, i, SP_PRODUCE_FLAME, 0, 0, 0, i);
+    }
+    if b[0].c[i].flame_until > b[0].clock && d <= 60 { ok := rs_cast(b, i, SP_FLAME_HURL, 0, 0, 0, foe); }
+    else if d <= 30 && rs_unit(dice(s)) < 0.5 { ok := rs_cast(b, i, SP_POISON_SPRAY, 0, 0, 0, foe); }
+    else if d <= 60 { ok := rs_cast(b, i, SP_STARRY_WISP, 0, 0, 0, foe); }
+  }
+  // a friend at hand and hurt: Cure Wounds would take the action, so only when it is still free
+  if !b[0].turn.action && worst >= 0 && wv < 0.5 && rs_feet_to(b, i, worst) <= 5 {
+    cs := free_slot(s, i, 1);
+    if cs > 0 { ok := rs_cast(b, i, SP_CURE_WOUNDS, cs, 0, 0, worst); }
+  }
+  rs_end_turn(b, i);
+}
+
+step :: (s: [] Lab, dt: f32) {
+  b := bt(s);
+  if s[0].over {
+    b[0].clock += dt;
+    if b[0].clock - s[0].over_t > 6 { new_battle(s); }
+    return;
+  }
+  rs_tick(b, dt);
+  guard := 0;
+  due := rs_due(b);
+  while due >= 0 && guard < 8 {
+    lab_turn(s, due);
+    guard += 1;
+    due = rs_due(b);
+  }
+  take_events(s);
+  for t: 0..<2 {
+    if rs_team_up(b, t) == 0 && !s[0].over {
+      s[0].over = true; s[0].over_t = b[0].clock; s[0].winner = 1 - t;
+      s[0].wins[1 - t] += 1;
+      l: [LINE_CAP] u8;
+      n := put(l[..], 0, TEAM_NAME[1 - t]);
+      n = put(l[..], n, " wins. A new battle in 6 seconds.");
+      add_line(s, cast(string) l[0..<n], GOLD);
+    }
+  }
+  // the tokens slide to their squares
+  for i: 0..<b[0].n {
+    k := lo(1, dt * 9);
+    s[0].dx[i] += (f32(b[0].c[i].x) - s[0].dx[i]) * k;
+    s[0].dy[i] += (f32(b[0].c[i].y) - s[0].dy[i]) * k;
+  }
+}
+
+lab_run :: (s: [] Lab, dt: f32) {
+  c := s[0].pace;
+  c.step_ns = LAB_STEP_NS; c.max_frame_ns = LAB_FRAME_NS;
+  c = loop_accept(c, cast(f64) dt);
+  s[0].clock += cast(f32) loop_counted(c);
+  speed: f32 = ifx s[0].fast then FAST else 1;
+  for k: 0..<loop_due(c) { step(s, f32(STEP) * speed); }
+  s[0].pace = loop_ran(c);
+}
+
+// ---- drawing
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { size = 0.01; dx = 0.01; dy = 0; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    for e: 12..<16 { out[o + e] = 0; }
+  }
+  return true;
+}
+seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, light: f32, c: Col) -> int {
+  if lit(out, n, ax, ay, bx, by, w * 0.55, light, w * 1.8, c.r, c.g, c.b, 0) { return n + 6; }
+  return n;
+}
+ring :: (out: [] f32, at: int, x: f32, y: f32, r: f32, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  sides := 20;
+  for i: 0..<sides {
+    a0 := f32(i) * 6.2831853 / f32(sides); a1 := f32(i + 1) * 6.2831853 / f32(sides);
+    n = seg(out, n, x + cos(a0) * r, y + sin(a0) * r, x + cos(a1) * r, y + sin(a1) * r, w, light, c);
+  }
+  return n;
+}
+box_lines :: (out: [] f32, at: int, r: Rect, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  n = seg(out, n, r.x0, r.y0, r.x1, r.y0, w, light, c);
+  n = seg(out, n, r.x1, r.y0, r.x1, r.y1, w, light, c);
+  n = seg(out, n, r.x1, r.y1, r.x0, r.y1, w, light, c);
+  n = seg(out, n, r.x0, r.y1, r.x0, r.y0, w, light, c);
+  return n;
+}
+ink :: (k: f32, light: f32, c: Col) -> Ink {
+  i: Ink;
+  i.core = 0.6 * k; i.light = light; i.glow = 1.2 * k; i.red = c.r; i.green = c.g; i.blue = c.b; i.mode = 0; i.scale = k;
+  return i;
+}
+say_at :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, n, t, x, base, cap, GAP, SPACE, k, false, false);
+}
+say_mid :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap) / 2, base, cap, k);
+}
+say_right :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap), base, cap, k);
+}
+// A square's middle on the screen.
+scr_x :: (s: [] Lab, x: f32) -> f32 { return s[0].gx + (x + 0.5) * s[0].cell; }
+scr_y :: (s: [] Lab, y: f32) -> f32 { return s[0].gy + (y + 0.5) * s[0].cell; }
+
+layout :: (s: [] Lab, w: f32, h: f32, k: f32) {
+  s[0].portrait = h > w * 1.1;
+  pad := 16 * k;
+  top := ifx s[0].portrait then 92 * k else 64 * k;
+  gw := w - pad * 2; gh := h - top - pad;
+  if s[0].portrait {
+    gh = h * 0.42;
+    s[0].panel = Rect.{x0 = pad, y0 = top + gh + pad, x1 = w - pad, y1 = h - pad};
+  } else {
+    pw := lo(hi(w * 0.34, 300 * k), 560 * k);
+    gw = w - pw - pad * 3;
+    s[0].panel = Rect.{x0 = w - pw - pad, y0 = top, x1 = w - pad, y1 = h - pad};
+  }
+  cell := lo(gw / f32(COLS), gh / f32(ROWS));
+  s[0].cell = cell;
+  s[0].gx = pad + (gw - cell * f32(COLS)) / 2;
+  s[0].gy = top + (gh - cell * f32(ROWS)) / 2;
+  bw := 96 * k;
+  s[0].back = Rect.{x0 = w - pad - bw, y0 = 18 * k, x1 = w - pad, y1 = 46 * k};
+}
+
+draw_zones :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
+  n := at; c := s[0].cell;
+  for z: 0..<RS_ZONES {
+    zo := s[0].battle[0].zone[z];
+    if !zo.on { continue; }
+    col := spell_col(zo.spell);
+    r := Rect.{x0 = s[0].gx + f32(zo.x0) * c, y0 = s[0].gy + f32(zo.y0) * c, x1 = s[0].gx + f32(zo.x1 + 1) * c, y1 = s[0].gy + f32(zo.y1 + 1) * c};
+    r.x0 = hi(r.x0, s[0].gx); r.y0 = hi(r.y0, s[0].gy);
+    r.x1 = lo(r.x1, s[0].gx + c * f32(COLS)); r.y1 = lo(r.y1, s[0].gy + c * f32(ROWS));
+    n = box_lines(out, n, r, 1.2 * k, 0.55, col);
+    for y: zo.y0..<(zo.y1 + 1) {
+      for x: zo.x0..<(zo.x1 + 1) {
+        if x < 0 || y < 0 || x >= COLS || y >= ROWS { continue; }
+        px := s[0].gx + f32(x) * c; py := s[0].gy + f32(y) * c;
+        if zo.spell == SP_ENTANGLE {
+          // plants: a few sprigs to a square
+          w := 0.08 * sin(t * 1.7 + f32(x * 3 + y));
+          n = seg(out, n, px + c * 0.25, py + c * 0.8, px + c * (0.3 + w), py + c * 0.45, 1.0 * k, 0.4, col);
+          n = seg(out, n, px + c * 0.6, py + c * 0.85, px + c * (0.55 - w), py + c * 0.5, 1.0 * k, 0.4, col);
+          n = seg(out, n, px + c * 0.75, py + c * 0.7, px + c * (0.82 + w), py + c * 0.35, 1.0 * k, 0.4, col);
+        } else {
+          // faerie light: motes that drift
+          for m: 0..<2 {
+            ph := t * 0.9 + f32(x * 7 + y * 13 + m * 5);
+            mx := px + c * (0.3 + 0.4 * f32(m)) + sin(ph) * c * 0.12;
+            my := py + c * 0.5 + cos(ph * 1.3) * c * 0.2;
+            n = seg(out, n, mx, my, mx + 0.5, my, 1.6 * k, 0.5 + 0.3 * sin(ph * 2), col);
+          }
+        }
+      }
+    }
+  }
+  return n;
+}
+
+draw_tokens :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
+  n := at; c := s[0].cell;
+  b := s[0].battle[0];
+  for i: 0..<b.n {
+    cr := b.c[i];
+    x := scr_x(s, s[0].dx[i]); y := scr_y(s, s[0].dy[i]);
+    col := TEAM_COL[cr.team];
+    r := c * 0.34;
+    if cr.dead {
+      g := FAINT;
+      n = seg(out, n, x - r * 0.6, y - r * 0.6, x + r * 0.6, y + r * 0.6, 2 * k, 0.5, g);
+      n = seg(out, n, x - r * 0.6, y + r * 0.6, x + r * 0.6, y - r * 0.6, 2 * k, 0.5, g);
+      n = ring(out, n, x, y, r, 1 * k, 0.3, g);
+      continue;
+    }
+    down := cr.hp == 0;
+    light: f32 = ifx down then 0.35 else 0.95;
+    if down { col = DIM; }
+    // whose turn just ran: a white ring that fades
+    since := b.clock - s[0].acted[i];
+    if since >= 0 && since < 1.2 { n = ring(out, n, x, y, r * (1.25 + since * 0.2), 1.4 * k, 0.9 * (1 - since / 1.2), WHITE); }
+    if cr.outlined_by >= 0 { n = ring(out, n, x, y, r * 1.12, 2.2 * k, 0.55 + 0.25 * sin(t * 5), VIOLET); }
+    n = ring(out, n, x, y, r, 2.2 * k, light, col);
+    n = ring(out, n, x, y, r * 0.55, 1.1 * k, light * 0.5, col);
+    if down {
+      // Unconscious: the death saves, as ticks
+      for d: 0..<3 {
+        ok := d < cr.death_ok; bad := d < cr.death_fail;
+        n = seg(out, n, x - r * 0.5 + f32(d) * r * 0.5, y - r * 0.15, x - r * 0.5 + f32(d) * r * 0.5, y - r * 0.15 + 0.5, 3 * k, 0.8, ifx ok then GREEN else FAINT);
+        n = seg(out, n, x - r * 0.5 + f32(d) * r * 0.5, y + r * 0.25, x - r * 0.5 + f32(d) * r * 0.5, y + r * 0.25 + 0.5, 3 * k, 0.8, ifx bad then RED else FAINT);
+      }
+    }
+    if rs_has(cr, RS_RESTRAINED) {
+      g := spell_col(SP_ENTANGLE);
+      for v: 0..<4 {
+        a := f32(v) * 1.5708 + t * 0.4;
+        n = seg(out, n, x + cos(a) * r * 1.05, y + sin(a) * r * 1.05, x + cos(a + 0.9) * r * 0.75, y + sin(a + 0.9) * r * 0.75, 1.6 * k, 0.8, g);
+      }
+    }
+    if cr.flame_until > b.clock {
+      fl := spell_col(SP_PRODUCE_FLAME);
+      fx := x + r * 0.95; fy := y - r * 0.85;
+      n = seg(out, n, fx, fy + 3 * k, fx + sin(t * 9) * 1.5 * k, fy - 5 * k, 3 * k, 0.9, fl);
+    }
+    if cr.wisp_until > b.clock { n = ring(out, n, x, y, r * 0.2, 2 * k, 0.9, spell_col(SP_STARRY_WISP)); }
+    // the name, and the hit points
+    cap := lo(hi(c * 0.15, 8 * k), 14 * k);
+    nm := cast(string) b.c[i].name[0..<b.c[i].name_n];
+    n = say_mid(out, n, nm, x, y - r - 5 * k, cap, ink(k, light * 0.85, col));
+    bw := c * 0.7; by := y + r + 6 * k;
+    share := f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
+    n = seg(out, n, x - bw / 2, by, x + bw / 2, by, 2.4 * k, 0.18, FAINT);
+    hc := ifx share > 0.5 then GREEN else ifx share > 0.25 then GOLD else RED;
+    if share > 0 { n = seg(out, n, x - bw / 2, by, x - bw / 2 + bw * share, by, 2.4 * k, 0.85, hc); }
+    if cr.conc >= 0 {
+      cc := spell_col(cr.conc);
+      n = seg(out, n, x - bw / 2, by + 5 * k, x + bw / 2, by + 5 * k, 1.0 * k, 0.6, cc);
+    }
+  }
+  return n;
+}
+
+draw_fx :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at; c := s[0].cell;
+  now := s[0].battle[0].clock;
+  for i: 0..<FXS {
+    f := s[0].fx[i];
+    if f.kind == 0 { continue; }
+    a := (now - f.t0) / f.life;
+    if a < 0 || a > 1 { continue; }
+    if f.kind == FX_BOLT {
+      ax := scr_x(s, f.ax); ay := scr_y(s, f.ay); bx := scr_x(s, f.bx); by := scr_y(s, f.by);
+      head := lo(1, a * 2.2); tail := lo(1, hi(0, a * 2.2 - 0.5));
+      n = seg(out, n, ax + (bx - ax) * tail, ay + (by - ay) * tail, ax + (bx - ax) * head, ay + (by - ay) * head, 3 * k, 1.0 - a * 0.5, f.col);
+    }
+    if f.kind == FX_FLASH {
+      r := Rect.{x0 = s[0].gx + f.ax * c, y0 = s[0].gy + f.ay * c, x1 = s[0].gx + f.bx * c, y1 = s[0].gy + f.by * c};
+      grow := a * c * 0.3;
+      r.x0 -= grow; r.y0 -= grow; r.x1 += grow; r.y1 += grow;
+      n = box_lines(out, n, r, 3 * k * (1 - a) + 0.5 * k, 1 - a, f.col);
+    }
+    if f.kind == FX_TEXT {
+      x := scr_x(s, f.ax) + c * 0.3; y := scr_y(s, f.ay) - c * 0.3 - a * c * 0.5;
+      n = say_mid(out, n, cast(string) f.text[0..<f.n], x, y, lo(hi(c * 0.22, 11 * k), 20 * k), ink(k, 1 - a * 0.7, f.col));
+    }
+    if f.kind == FX_RING { n = ring(out, n, scr_x(s, f.ax), scr_y(s, f.ay), c * (0.35 + a * 0.4), 2 * k, 1 - a, f.col); }
+  }
+  return n;
+}
+
+draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
+  n := at; p := s[0].panel; b := s[0].battle[0];
+  n = box_lines(out, n, p, 0.6 * k, 0.3, DIM);
+  pad := 12 * k; x := p.x0 + pad; y := p.y0 + pad;
+  cap := 9.5 * k; row := 16 * k;
+  // the characters
+  y += cap;
+  n = say_at(out, n, "CHARACTERS", x, y, cap, ink(k, 0.6, DIM));
+  y += row * 0.6;
+  l: [LINE_CAP] u8;
+  for i: 0..<b.n {
+    cr := b.c[i];
+    y += row;
+    col := ifx cr.dead then FAINT else TEAM_COL[cr.team];
+    n = say_at(out, n, cast(string) cr.name[0..<cr.name_n], x, y, cap, ink(k, 0.85, col));
+    m := put(l[..], 0, "HP ");
+    m = put_int(l[..], m, cr.hp); m = put(l[..], m, "/"); m = put_int(l[..], m, cr.hp_max);
+    m = put(l[..], m, "  AC "); m = put_int(l[..], m, cr.ac);
+    m = put(l[..], m, "  SLOTS "); m = put_int(l[..], m, cr.slots[1]); m = put(l[..], m, "+"); m = put_int(l[..], m, cr.slots[2]);
+    if cr.dead { m = put(l[..], 0, "DEAD"); }
+    else if cr.hp == 0 { m = put(l[..], m, cast(string) (ifx cr.stable then "  STABLE" else "  DYING")); }
+    else if rs_has(cr, RS_RESTRAINED) { m = put(l[..], m, "  RESTRAINED"); }
+    n = say_at(out, n, cast(string) l[0..<m], x + 70 * k, y, cap * 0.9, ink(k, 0.6, DIM));
+    if cr.conc >= 0 {
+      y += row * 0.8;
+      m = put(l[..], 0, "CONCENTRATING: "); m = put(l[..], m, rs_spell(cr.conc).name);
+      n = say_at(out, n, cast(string) l[0..<m], x + 70 * k, y, cap * 0.8, ink(k, 0.55, spell_col(cr.conc)));
+    }
+  }
+  y += row * 1.2;
+  n = seg(out, n, p.x0 + pad, y, p.x1 - pad, y, 0.6 * k, 0.25, DIM);
+  // the log, newest at the bottom
+  foot := p.y1 - pad - 18 * k;
+  lines := int((foot - y - row * 0.5) / row);
+  lines = rs_max(rs_min(lines, s[0].line_n), 0);
+  ly := foot - f32(lines - 1) * row;
+  for j: 0..<lines {
+    ln := s[0].lines[s[0].line_n - lines + j];
+    t := cast(string) ln.text[0..<ln.n];
+    cp := lo(cap, cap * (p.x1 - p.x0 - pad * 2) / hi(text_width(t, cap), 1));
+    n = say_at(out, n, t, x, ly + f32(j) * row, cp, ink(k, 0.8, ln.col));
+  }
+  // the attribution the SRD's licence asks for
+  n = say_at(out, n, "SRD 5.2.1 BY WIZARDS OF THE COAST LLC, CC BY 4.0", x, p.y1 - pad, 7.5 * k, ink(k, 0.4, FAINT));
+  return n;
+}
+
+draw_top :: (s: [] Lab, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
+  n := at; pad := 16 * k;
+  n = say_at(out, n, "5E LAB", pad, 38 * k, 18 * k, ink(k, 0.95, WHITE));
+  l: [LINE_CAP] u8;
+  m := put(l[..], 0, "BATTLE "); m = put_int(l[..], m, s[0].round);
+  m = put(l[..], m, "   "); m = put(l[..], m, TEAM_NAME[0]); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[0]);
+  m = put(l[..], m, "  "); m = put(l[..], m, TEAM_NAME[1]); m = put(l[..], m, " "); m = put_int(l[..], m, s[0].wins[1]);
+  sx0 := ifx s[0].portrait then pad else pad + text_width("5E LAB", 18 * k) + 28 * k;
+  sy0 := ifx s[0].portrait then 62 * k else 34 * k;
+  n = say_at(out, n, cast(string) l[0..<m], sx0, sy0, ifx s[0].portrait then 8.5 * k else 10 * k, ink(k, 0.7, DIM));
+  m = put(l[..], 0, "SPACE "); m = put(l[..], m, ifx s[0].paused then "RESUME" else "PAUSE");
+  m = put(l[..], m, "   F "); m = put(l[..], m, ifx s[0].fast then "NORMAL SPEED" else "FAST");
+  m = put(l[..], m, "   R NEW BATTLE   ESC WORLDS");
+  n = say_at(out, n, cast(string) l[0..<m], sx0, sy0 + 16 * k, ifx s[0].portrait then 7 * k else 8 * k, ink(k, 0.45, FAINT));
+  if s[0].paused { n = say_mid(out, n, "PAUSED", s[0].gx + s[0].cell * f32(COLS) / 2, s[0].gy + 26 * k, 14 * k, ink(k, 0.9, GOLD)); }
+  if s[0].over && s[0].winner >= 0 {
+    mid := s[0].gx + s[0].cell * f32(COLS) / 2; cy := s[0].gy + s[0].cell * f32(ROWS) / 2;
+    m = put(l[..], 0, TEAM_NAME[s[0].winner]); m = put(l[..], m, " WINS");
+    n = say_mid(out, n, cast(string) l[0..<m], mid, cy, 26 * k, ink(k, 0.95, TEAM_COL[s[0].winner]));
+  }
+  b := s[0].back;
+  n = box_lines(out, n, b, 0.8 * k, ifx s[0].pressing == 1 then 0.9 else 0.45, DIM);
+  n = say_mid(out, n, "WORLDS", (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2 + 4.5 * k, 9 * k, ink(k, 0.8, WHITE));
+  return n;
+}
+
+lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  lab_start(s);
+  if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  s[0].width = width; s[0].height = height; s[0].dpr = dpr;
+  k := hi(dpr, 0.5);
+  if s[0].golden && !s[0].golden_ran {
+    // the golden: the same battle, 20 seconds in, every time
+    s[0].golden_ran = true;
+    for i: 0..<1200 { step(s, f32(STEP)); }
+  }
+  step_dt := ifx s[0].golden || still || s[0].paused then 0.0f32 else dt;
+  lab_run(s, step_dt);
+  t := s[0].clock;
+  layout(s, width, height, k);
+  n := 0;
+  n = draw_zones(s, out, n, k, t);
+  n = draw_fx(s, out, n, k);
+  n = draw_tokens(s, out, n, k, t);
+  n = draw_panel(s, out, n, k);
+  n = draw_top(s, out, n, width, k, t);
+  for i: 0..<u.count { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = t; u[3] = 1;
+  u[U_GRID] = s[0].gx; u[U_GRID + 1] = s[0].gy; u[U_GRID + 2] = s[0].cell;
+  u[U_CELLS] = f32(COLS); u[U_CELLS + 1] = f32(ROWS);
+  p := s[0].panel;
+  u[U_PANEL] = p.x0; u[U_PANEL + 1] = p.y0; u[U_PANEL + 2] = p.x1; u[U_PANEL + 3] = p.y1;
+  return n;
+}
+
+// ---- input
+
+leave_to :: (s: [] Lab, url: string) {
+  if s[0].action != 0 { return; }
+  s[0].out_n = put(s[0].outbox[..], 0, url);
+  s[0].action = ACT_NAVIGATE;
+}
+lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
+  lab_start(s);
+  if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
+  if key == ' ' || key == KEY_ENTER { s[0].paused = !s[0].paused; return true; }
+  if key == 'f' || key == 'F' { s[0].fast = !s[0].fast; return true; }
+  if key == 'r' || key == 'R' { new_battle(s); return true; }
+  return false;
+}
+lab_key_up :: (s: [] Lab, key: int, mods: int) -> bool #export_c { return false; }
+lab_blur :: (s: [] Lab) #export_c { s[0].pressing = 0; }
+lab_pointer :: (s: [] Lab, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  lab_start(s);
+  if phase == 0 {
+    if in_rect(s[0].back, x, y) { s[0].pressing = 1; return true; }
+    return false;
+  }
+  if phase == 1 { return false; }
+  held := s[0].pressing; s[0].pressing = 0;
+  if held == 1 { if phase == 2 && in_rect(s[0].back, x, y) { leave_to(s, "/worlds"); } return true; }
+  return false;
+}
+lab_cursor :: (s: [] Lab) -> int #export_c { return 0; }
+lab_message :: (s: [] Lab, kind: int, t: string) #export_c { lab_start(s); }
+lab_golden :: (s: [] Lab, on: bool) #export_c { lab_start(s); s[0].golden = on; }
+lab_action :: (s: [] Lab) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+lab_action_done :: (s: [] Lab) #export_c { s[0].out_n = 0; }
+
+coaxial_lab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_lab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_lab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  return lab_frame(s, out[..], u[..], w, h, dpr, dt, false);
+}
+
+#test "two circles of druids fight a battle to its end on the SRD's rules" #steps 2000000000 {
+  s: [1] Lab;
+  lab_start(s[..]);
+  casts := 0; seen := 0;
+  for i: 0..<(60 * 600) {
+    step(s[..], f32(STEP));
+    if s[0].over { break; }
+  }
+  #assert s[0].over && s[0].winner >= 0;
+  #assert rs_team_up(s[0].battle[..], 1 - s[0].winner) == 0;
+  #assert s[0].line_n > 10;
+}
+
+#test "a frame draws the grid, the tokens and the log on a desktop and on a 390 px phone" #steps 2000000000 {
+  s: [2] Lab;
+  for i: 0..<600 { lab_start(s[0..<1]); step(s[0..<1], f32(STEP)); }
+  a := frame_at(s[0..<1], 1600, 1000, 1, 0.016);
+  #assert a > 300 && a < MAX_VERTICES - 600;
+  b := frame_at(s[1..<2], 390 * 3, 844 * 3, 3, 0.016);
+  #assert b > 100 && b < MAX_VERTICES - 600 && s[1].portrait;
+  #assert s[1].gx >= 0 && s[1].gx + s[1].cell * f32(COLS) <= 390 * 3;
+}
+
+#test "space pauses, F runs fast, R starts a new battle, Escape goes to /worlds" {
+  s: [1] Lab;
+  #assert lab_key(s[..], ' ', 0) && s[0].paused;
+  #assert lab_key(s[..], 'f', 0) && s[0].fast;
+  r := s[0].round;
+  #assert lab_key(s[..], 'r', 0) && s[0].round == r + 1;
+  #assert lab_key(s[..], KEY_ESCAPE, 0) && lab_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/worlds";
+}

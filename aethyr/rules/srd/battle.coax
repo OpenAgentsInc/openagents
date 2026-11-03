@@ -1,0 +1,485 @@
+// A battle on a grid of 5-foot squares (docs/dnd/README.md, "The rules engine" and "The time
+// adapter"): creatures, the lasting areas spells make, and the SRD's turn on a real-time clock.
+// Every creature's turn comes round every 6 seconds on its own beat, staggered by initiative;
+// in its turn it has one action, one Bonus Action, its Speed in movement and one spell slot to
+// spend (the SRD's one-slot-a-turn rule). rs_cast runs any spell record's effect program;
+// the world decides who casts what (its own AI or a player) and draws the events.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+//   coax/bin/coax test --library aethyr/rules/srd/battle.coax
+#load "spells.coax";
+
+RS_MAX :: 8;
+RS_ZONES :: 8;
+RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; }
+RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; }
+RsBattle :: struct {
+  c: [RS_MAX] RsCreature; n: int;
+  zone: [RS_ZONES] RsZone;
+  dice: [1] RsDice;
+  book: [1] RsLog;
+  clock: f32;
+  w: int; h: int;             // the grid, squares
+  who: int;                   // whose turn is running (-1 none)
+  turn: RsTurn;
+}
+
+rs_abs :: (v: int) -> int { return ifx v < 0 then -v else v; }
+rs_sign :: (v: int) -> int { if v > 0 { return 1; } if v < 0 { return -1; } return 0; }
+// Distance in feet on the grid: each square 5 feet, diagonals too (the SRD's grid rule).
+rs_feet :: (ax: int, ay: int, bx: int, by: int) -> int { return rs_max(rs_abs(ax - bx), rs_abs(ay - by)) * RS_SQUARE; }
+rs_feet_to :: (b: [] RsBattle, i: int, j: int) -> int { return rs_feet(b[0].c[i].x, b[0].c[i].y, b[0].c[j].x, b[0].c[j].y); }
+// Who stands on a square (the dead lie where they fell and still fill it), or -1.
+rs_at :: (b: [] RsBattle, x: int, y: int) -> int {
+  for i: 0..<b[0].n { if b[0].c[i].x == x && b[0].c[i].y == y { return i; } }
+  return -1;
+}
+rs_inside :: (z: RsZone, x: int, y: int) -> bool { return z.on && x >= z.x0 && x <= z.x1 && y >= z.y0 && y <= z.y1; }
+rs_difficult :: (b: [] RsBattle, x: int, y: int) -> bool {
+  for k: 0..<RS_ZONES { if b[0].zone[k].difficult && rs_inside(b[0].zone[k], x, y) { return true; } }
+  return false;
+}
+// A hostile creature within 5 feet that can act: ranged attacks have Disadvantage then.
+rs_threatened :: (b: [] RsBattle, i: int) -> bool {
+  for j: 0..<b[0].n {
+    if j != i && b[0].c[j].team != b[0].c[i].team && rs_can_act(b[0].c[j]) && rs_feet_to(b, i, j) <= 5 { return true; }
+  }
+  return false;
+}
+
+// The squares a spell's area covers from caster i toward the point (tx, ty).
+rs_area :: (b: [] RsBattle, i: int, sp: RsSpell, tx: int, ty: int) -> RsZone {
+  z: RsZone;
+  z.on = true; z.by = i; z.spell = -1;
+  k := rs_max(sp.area_ft / RS_SQUARE, 1);
+  cx := b[0].c[i].x; cy := b[0].c[i].y;
+  if sp.area == RS_A_CUBE_SELF {
+    // a cube originating from you: on the side toward the point, against your space
+    ox_ := rs_sign(tx - cx); oy_ := rs_sign(ty - cy);
+    if ox_ == 0 && oy_ == 0 { ox_ = 1; }
+    z.x0 = ifx ox_ > 0 then cx + 1 else ifx ox_ < 0 then cx - k else cx - k / 2;
+    z.y0 = ifx oy_ > 0 then cy + 1 else ifx oy_ < 0 then cy - k else cy - k / 2;
+  } else {
+    z.x0 = tx - (k - 1) / 2; z.y0 = ty - (k - 1) / 2;
+  }
+  z.x1 = z.x0 + k - 1; z.y1 = z.y0 + k - 1;
+  return z;
+}
+
+// ---- telling the world
+
+RsLine :: struct { buf: [RS_EV_TEXT] u8; n: int; }
+rs_line :: () -> RsLine { l: RsLine; return l; }
+rs_add_text :: (l: [] RsLine, t: string) { l[0].n = rs_put(l[0].buf[..], l[0].n, t); }
+rs_add_int :: (l: [] RsLine, v: int) { l[0].n = rs_put_int(l[0].buf[..], l[0].n, v); }
+rs_add_name :: (l: [] RsLine, b: [] RsBattle, i: int) { rs_add_text(l, cast(string) b[0].c[i].name[0..<b[0].c[i].name_n]); }
+rs_tell :: (b: [] RsBattle, kind: int, spell: int, by: int, to: int, amount: int, damage: int, l: [] RsLine) {
+  e: RsEvent;
+  e.kind = kind; e.spell = spell; e.by = by; e.to = to; e.amount = amount; e.damage = damage; e.at = b[0].clock;
+  if to >= 0 { e.x = b[0].c[to].x; e.y = b[0].c[to].y; }
+  for k: 0..<l[0].n { e.text[k] = l[0].buf[k]; }
+  e.text_n = l[0].n;
+  i := rs_emit(b[0].book[..], e);
+}
+RS_ORDINAL :: [10] string.["", "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th"];
+
+// ---- creatures in the battle
+
+rs_add :: (b: [] RsBattle, c: RsCreature, x: int, y: int) -> int {
+  if b[0].n >= RS_MAX { return -1; }
+  i := b[0].n;
+  b[0].c[i] = c; b[0].c[i].x = x; b[0].c[i].y = y;
+  b[0].c[i].initiative = rs_roll(b[0].dice[..], 20) + rs_mod(c.score[RS_DEX]);
+  b[0].n += 1;
+  return i;
+}
+// The turns begin: the highest initiative first, the rest spread over the 6-second round.
+rs_begin :: (b: [] RsBattle) {
+  b[0].who = -1;
+  for i: 0..<b[0].n {
+    rank := 0;
+    for j: 0..<b[0].n {
+      if b[0].c[j].initiative > b[0].c[i].initiative || (b[0].c[j].initiative == b[0].c[i].initiative && j < i) { rank += 1; }
+    }
+    b[0].c[i].turn_at = b[0].clock + 0.4 + f32(rank) * f32(RS_ROUND) / f32(rs_max(b[0].n, 1));
+  }
+}
+// Whose turn is due on the clock, or -1.
+rs_due :: (b: [] RsBattle) -> int {
+  best := -1;
+  for i: 0..<b[0].n {
+    if b[0].c[i].dead || b[0].c[i].turn_at > b[0].clock { continue; }
+    if best < 0 || b[0].c[i].turn_at < b[0].c[best].turn_at { best = i; }
+  }
+  return best;
+}
+
+// Concentration ends: its areas go, and what they held is let go.
+rs_end_concentration :: (b: [] RsBattle, i: int, why: string) {
+  sp := b[0].c[i].conc;
+  if sp < 0 { return; }
+  for k: 0..<RS_ZONES {
+    if b[0].zone[k].on && b[0].zone[k].by == i && b[0].zone[k].spell == sp {
+      b[0].zone[k].on = false;
+      for j: 0..<b[0].n {
+        if b[0].c[j].restrained_by == k { b[0].c[j].restrained_by = -1; b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_RESTRAINED); }
+      }
+    }
+  }
+  for j: 0..<b[0].n { if b[0].c[j].outlined_by == i { b[0].c[j].outlined_by = -1; b[0].c[j].outlined_until = 0; } }
+  b[0].c[i].conc = -1;
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], "'s "); rs_add_text(l[..], rs_spell(sp).name); rs_add_text(l[..], " ends"); rs_add_text(l[..], why);
+  rs_tell(b, RS_EV_END, sp, i, -1, 0, 0, l[..]);
+}
+// Damage, with dropping to 0 and the concentration save the SRD calls for.
+rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: bool, spell: int) {
+  hurt: [1] RsCreature; hurt[0] = b[0].c[j];
+  r := rs_hurt(hurt[..], amount, crit);
+  b[0].c[j] = hurt[0];
+  if r.dropped || r.killed {
+    l: [1] RsLine;
+    rs_add_name(l[..], b, j); rs_add_text(l[..], ifx r.killed then " dies" else " drops to 0 Hit Points");
+    rs_tell(b, ifx r.killed then RS_EV_DEATH else RS_EV_DOWN, spell, by, j, 0, 0, l[..]);
+    rs_end_concentration(b, j, " (Unconscious)");
+    return;
+  }
+  if r.conc_dc > 0 && b[0].c[j].conc >= 0 {
+    roll := rs_roll(b[0].dice[..], 20); total := roll + rs_save_bonus(b[0].c[j], RS_CON);
+    if total < r.conc_dc {
+      l: [1] RsLine;
+      rs_add_text(l[..], " (Con save "); rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], r.conc_dc); rs_add_text(l[..], ")");
+      why := cast(string) l[0].buf[0..<l[0].n];
+      rs_end_concentration(b, j, why);
+    }
+  }
+}
+
+// ---- casting
+
+RS_NO :: 0; RS_OK :: 1;
+// Whether creature i can cast spell sp with a slot of level `slot` now (0 for a cantrip).
+rs_can_cast :: (b: [] RsBattle, i: int, sp: int, slot: int) -> bool {
+  if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i { return false; }
+  s := rs_spell(sp);
+  if s.cast_time == RS_T_ACTION && b[0].turn.action { return false; }
+  if s.cast_time == RS_T_BONUS && b[0].turn.bonus { return false; }
+  if s.part_of == SP_PRODUCE_FLAME && b[0].c[i].flame_until <= b[0].clock { return false; }
+  if s.level > 0 {
+    if slot < s.level || slot > 9 || b[0].c[i].slots[slot] <= 0 || b[0].turn.slot_spent { return false; }
+  }
+  return true;
+}
+// Cast spell sp with a slot of level `slot` (0 for a cantrip) at the point (tx, ty), on creature
+// `target` for a spell with no area. False, and nothing spent, when it can't be cast so.
+rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target: int) -> bool {
+  if !rs_can_cast(b, i, sp, slot) { return false; }
+  s := rs_spell(sp);
+  me := b[0].c[i];
+  if s.area == RS_A_NONE {
+    if target < 0 || target >= b[0].n || b[0].c[target].dead { return false; }
+    if s.range_ft > 0 && rs_feet_to(b, i, target) > s.range_ft { return false; }
+  } else if s.area != RS_A_CUBE_SELF {
+    if rs_feet(me.x, me.y, tx, ty) > s.range_ft { return false; }
+  }
+  // spend
+  if s.cast_time == RS_T_ACTION { b[0].turn.action = true; } else { b[0].turn.bonus = true; }
+  if s.level > 0 { b[0].c[i].slots[slot] -= 1; b[0].turn.slot_spent = true; }
+  if s.concentration { rs_end_concentration(b, i, ""); b[0].c[i].conc = sp; b[0].c[i].conc_until = b[0].clock + s.duration_s; }
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i);
+  rs_add_text(l[..], ifx s.part_of >= 0 then " hurls Produce Flame" else " casts ");
+  if s.part_of < 0 { rs_add_text(l[..], s.name); }
+  if s.level > 0 { rs_add_text(l[..], " ("); rs_add_text(l[..], RS_ORDINAL[slot]); rs_add_text(l[..], "-level slot)"); }
+  if s.area == RS_A_NONE && target != i && s.range_ft > 0 { rs_add_text(l[..], " at "); rs_add_name(l[..], b, target); }
+  if s.area == RS_A_NONE && target != i && s.range_ft == 5 { }
+  rs_tell(b, RS_EV_CAST, sp, i, ifx s.area == RS_A_NONE then target else -1, slot, 0, l[..]);
+  // the area, and what lasts in it
+  area: RsZone;
+  zone_at := -1;
+  if s.area != RS_A_NONE {
+    area = rs_area(b, i, s, tx, ty);
+    area.spell = sp;
+    area.until = b[0].clock + s.duration_s;
+    for k: 0..<s.step_n { if s.steps[k].kind == RS_S_TERRAIN { area.difficult = true; } }
+    if s.duration_s > 0 {
+      for k: 0..<RS_ZONES { if zone_at < 0 && !b[0].zone[k].on { zone_at = k; } }
+      if zone_at >= 0 { b[0].zone[zone_at] = area; }
+    }
+    ev: [1] RsLine; rs_add_text(ev[..], "");
+    e: RsEvent; e.kind = RS_EV_ZONE; e.spell = sp; e.by = i; e.to = -1; e.x = area.x0; e.y = area.y0; e.amount = area.x1 - area.x0 + 1; e.at = b[0].clock;
+    k := rs_emit(b[0].book[..], e);
+  }
+  for k: 0..<s.step_n { if s.steps[k].kind == RS_S_FLAME { b[0].c[i].flame_until = b[0].clock + s.duration_s; } }
+  // each creature it affects
+  for j: 0..<b[0].n {
+    if s.area == RS_A_NONE {
+      if j != target { continue; }
+    } else {
+      if !rs_inside(area, b[0].c[j].x, b[0].c[j].y) || b[0].c[j].dead { continue; }
+      if j == i { continue; }   // "each creature (other than you)"; a cube from you starts beside you
+    }
+    rs_affect(b, i, j, sp, slot, zone_at);
+  }
+  return true;
+}
+
+// The effect program on one creature.
+rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) {
+  s := rs_spell(sp);
+  ran_save := false; saved := false; crit := false;
+  for k: 0..<s.step_n {
+    st := s.steps[k];
+    if st.kind == RS_S_ATTACK {
+      ups := 0; downs := 0;
+      if b[0].c[j].outlined_by >= 0 && b[0].c[j].outlined_until > b[0].clock { ups += 1; }
+      if rs_has(b[0].c[j], RS_RESTRAINED) { ups += 1; }
+      if rs_has(b[0].c[i], RS_RESTRAINED) { downs += 1; }
+      if rs_threatened(b, i) { downs += 1; }
+      if rs_has(b[0].c[j], RS_PRONE) && rs_feet_to(b, i, j) > 5 { downs += 1; }
+      d := rs_d20(b[0].dice[..], rs_edge(ups, downs));
+      total := d.roll + rs_spell_attack(b[0].c[i]);
+      crit = d.roll == 20;
+      hit := d.roll != 1 && (crit || total >= b[0].c[j].ac);
+      l: [1] RsLine;
+      rs_add_text(l[..], "  attack "); rs_add_int(l[..], d.roll);
+      if d.edge > 0 { rs_add_text(l[..], " (Advantage)"); }
+      if d.edge < 0 { rs_add_text(l[..], " (Disadvantage)"); }
+      rs_add_text(l[..], " + "); rs_add_int(l[..], rs_spell_attack(b[0].c[i])); rs_add_text(l[..], " = "); rs_add_int(l[..], total);
+      rs_add_text(l[..], " vs AC "); rs_add_int(l[..], b[0].c[j].ac);
+      rs_add_text(l[..], ifx crit then ": critical hit" else ifx hit then ": hit" else ": miss");
+      rs_tell(b, ifx hit then RS_EV_ATTACK else RS_EV_MISS, sp, i, j, total, 0, l[..]);
+      if !hit { return; }
+    } else if st.kind == RS_S_SAVE {
+      ran_save = true;
+      dc := rs_spell_dc(b[0].c[i]);
+      fails := rs_has(b[0].c[j], RS_UNCONSCIOUS) && (st.a == RS_STR || st.a == RS_DEX);
+      edge := ifx st.a == RS_DEX && rs_has(b[0].c[j], RS_RESTRAINED) then -1 else 0;
+      d := rs_d20(b[0].dice[..], edge);
+      total := d.roll + rs_save_bonus(b[0].c[j], st.a);
+      saved = !fails && total >= dc;
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " ");
+      rs_add_text(l[..], RS_ABBR[st.a]); rs_add_text(l[..], " save ");
+      if fails { rs_add_text(l[..], "fails (Unconscious)"); }
+      else { rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ifx saved then ": success" else ": failure"); }
+      rs_tell(b, RS_EV_SAVE, sp, i, j, total, 0, l[..]);
+    } else if st.kind == RS_S_DAMAGE {
+      count := st.a;
+      if s.level == 0 { count = st.a * rs_cantrip_tier(b[0].c[i].level); }
+      else { count += st.d * rs_max(slot - s.level, 0); }
+      if crit { count *= 2; }
+      amount := rs_sum(b[0].dice[..], count, st.b);
+      if ran_save && saved { amount = ifx s.steps[0].kind == RS_S_SAVE && s.steps[0].b == RS_ON_SAVE_HALF then amount / 2 else 0; }
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " takes "); rs_add_int(l[..], amount);
+      rs_add_text(l[..], " "); rs_add_text(l[..], RS_DAMAGE[st.c]);
+      rs_add_text(l[..], " ("); rs_add_int(l[..], count); rs_add_text(l[..], "d"); rs_add_int(l[..], st.b); rs_add_text(l[..], ")");
+      rs_tell(b, RS_EV_DAMAGE, sp, i, j, amount, st.c, l[..]);
+      rs_damage(b, i, j, amount, st.c, crit, sp);
+    } else if st.kind == RS_S_HEAL {
+      count := st.a + st.d * rs_max(slot - s.level, 0);
+      amount := rs_sum(b[0].dice[..], count, st.b);
+      if st.c == 1 { amount += rs_mod(b[0].c[i].score[rs_max(b[0].c[i].spell_ability, 0)]); }
+      was_down := b[0].c[j].hp == 0;
+      h: [1] RsCreature; h[0] = b[0].c[j];
+      got := rs_heal(h[..], amount);
+      b[0].c[j] = h[0];
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " regains "); rs_add_int(l[..], got); rs_add_text(l[..], " Hit Points");
+      if was_down && b[0].c[j].hp > 0 { rs_add_text(l[..], " and wakes"); }
+      rs_tell(b, RS_EV_HEAL, sp, i, j, got, 0, l[..]);
+    } else if st.kind == RS_S_CONDITION {
+      if ran_save && saved { continue; }
+      b[0].c[j].cond = b[0].c[j].cond | st.a;
+      if st.a == RS_RESTRAINED { b[0].c[j].restrained_by = zone_at; }
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is ");
+      rs_add_text(l[..], ifx st.a == RS_RESTRAINED then "Restrained" else "affected");
+      rs_tell(b, RS_EV_CONDITION, sp, i, j, st.a, 0, l[..]);
+    } else if st.kind == RS_S_PUSH {
+      if ran_save && saved { continue; }
+      if !rs_up(b[0].c[j]) && b[0].c[j].dead { continue; }
+      dx := rs_sign(b[0].c[j].x - b[0].c[i].x); dy := rs_sign(b[0].c[j].y - b[0].c[i].y);
+      moved := 0;
+      for n: 0..<(st.a / RS_SQUARE) {
+        nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
+        if nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
+        b[0].c[j].x = nx; b[0].c[j].y = ny; moved += 1;
+      }
+      if moved > 0 {
+        l: [1] RsLine;
+        rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is pushed "); rs_add_int(l[..], moved * RS_SQUARE); rs_add_text(l[..], " feet");
+        rs_tell(b, RS_EV_PUSH, sp, i, j, moved * RS_SQUARE, 0, l[..]);
+      }
+    } else if st.kind == RS_S_OUTLINE {
+      if ran_save && saved { continue; }
+      b[0].c[j].outlined_by = i; b[0].c[j].outlined_until = b[0].c[i].conc_until;
+      b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_INVISIBLE);
+      l: [1] RsLine;
+      rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is outlined: attacks against it have Advantage");
+      rs_tell(b, RS_EV_CONDITION, sp, i, j, 0, 0, l[..]);
+    } else if st.kind == RS_S_GLOW {
+      b[0].c[j].wisp_until = b[0].c[i].turn_at + f32(RS_ROUND);
+      b[0].c[j].cond = rs_clear(b[0].c[j].cond, RS_INVISIBLE);
+    }
+  }
+}
+
+// A Restrained creature's action against what holds it: a Strength (Athletics) check against the
+// caster's spell save DC (Entangle).
+rs_escape :: (b: [] RsBattle, i: int) -> bool {
+  if b[0].who != i || b[0].turn.action || !rs_has(b[0].c[i], RS_RESTRAINED) { return false; }
+  z := b[0].c[i].restrained_by;
+  if z < 0 || !b[0].zone[z].on { return false; }
+  b[0].turn.action = true;
+  dc := rs_spell_dc(b[0].c[b[0].zone[z].by]);
+  roll := rs_roll(b[0].dice[..], 20); total := roll + rs_mod(b[0].c[i].score[RS_STR]);
+  ok := total >= dc;
+  if ok { b[0].c[i].restrained_by = -1; b[0].c[i].cond = rs_clear(b[0].c[i].cond, RS_RESTRAINED); }
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " strains against the plants: STR (Athletics) "); rs_add_int(l[..], total);
+  rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc); rs_add_text(l[..], ifx ok then ": free" else ": still held");
+  rs_tell(b, RS_EV_CONDITION, -1, i, i, total, 0, l[..]);
+  return ok;
+}
+
+// One square of movement: 5 feet, 10 into Difficult Terrain; none while Restrained or at 0.
+rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
+  if b[0].who != i || !rs_can_act(b[0].c[i]) || rs_has(b[0].c[i], RS_RESTRAINED) { return false; }
+  if rs_feet(b[0].c[i].x, b[0].c[i].y, x, y) != RS_SQUARE { return false; }
+  if x < 0 || y < 0 || x >= b[0].w || y >= b[0].h || rs_at(b, x, y) >= 0 { return false; }
+  cost := ifx rs_difficult(b, x, y) then 2 else 1;
+  if b[0].turn.move_left < cost { return false; }
+  b[0].turn.move_left -= cost;
+  b[0].c[i].x = x; b[0].c[i].y = y;
+  return true;
+}
+
+// The start of i's turn: what has run out ends, a creature at 0 makes its death saving throw, a
+// Prone one stands (half its Speed).
+rs_start_turn :: (b: [] RsBattle, i: int) {
+  b[0].who = i;
+  b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = b[0].c[i].speed / RS_SQUARE};
+  if b[0].c[i].hp == 0 && !b[0].c[i].dead {
+    if b[0].c[i].stable { return; }
+    c: [1] RsCreature; c[0] = b[0].c[i];
+    r := rs_death_save(b[0].dice[..], c[..]);
+    b[0].c[i] = c[0];
+    l: [1] RsLine;
+    rs_add_name(l[..], b, i);
+    if r == RS_DS_UP { rs_add_text(l[..], " rolls a 20 on a death save and is back up with 1 Hit Point"); }
+    else if r == RS_DS_STABLE { rs_add_text(l[..], " is Stable (three death save successes)"); }
+    else if r == RS_DS_DEAD { rs_add_text(l[..], " dies (three death save failures)"); }
+    else { rs_add_text(l[..], ifx r == RS_DS_OK then " death save: success (" else " death save: failure (");
+           rs_add_int(l[..], b[0].c[i].death_ok); rs_add_text(l[..], " of 3 successes, "); rs_add_int(l[..], b[0].c[i].death_fail); rs_add_text(l[..], " of 3 failures)"); }
+    rs_tell(b, ifx r == RS_DS_DEAD then RS_EV_DEATH else ifx r == RS_DS_UP then RS_EV_UP else RS_EV_STABLE, -1, i, i, r, 0, l[..]);
+    if r != RS_DS_UP { return; }
+  }
+  if rs_has(b[0].c[i], RS_PRONE) && rs_can_act(b[0].c[i]) {
+    b[0].c[i].cond = rs_clear(b[0].c[i].cond, RS_PRONE);
+    b[0].turn.move_left = b[0].turn.move_left / 2;
+  }
+}
+rs_end_turn :: (b: [] RsBattle, i: int) {
+  b[0].c[i].turn_at += f32(RS_ROUND);
+  if b[0].who == i { b[0].who = -1; }
+}
+// The clock moves on: what lasts for a time ends when it runs out.
+rs_tick :: (b: [] RsBattle, dt: f32) {
+  b[0].clock += dt;
+  t := b[0].clock;
+  for i: 0..<b[0].n {
+    if b[0].c[i].conc >= 0 && b[0].c[i].conc_until <= t { rs_end_concentration(b, i, " (its duration is up)"); }
+    if b[0].c[i].flame_until > 0 && b[0].c[i].flame_until <= t { b[0].c[i].flame_until = 0; }
+    if b[0].c[i].outlined_by >= 0 && b[0].c[i].outlined_until <= t { b[0].c[i].outlined_by = -1; }
+  }
+}
+rs_team_up :: (b: [] RsBattle, team: int) -> int {
+  n := 0;
+  for i: 0..<b[0].n { if b[0].c[i].team == team && rs_up(b[0].c[i]) { n += 1; } }
+  return n;
+}
+
+#test "Starry Wisp: a ranged spell attack, +5, 1d8 Radiant on a hit" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 11;
+  a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 1);
+  t := rs_add(b[..], rs_druid("Thorn", 1, 3), 8, 1);
+  hits := 0; total := 0;
+  for k: 0..<200 {
+    b[0].c[t].hp = b[0].c[t].hp_max; b[0].c[t].cond = 0;
+    rs_start_turn(b[..], a);
+    #assert rs_cast(b[..], a, SP_STARRY_WISP, 0, 0, 0, t);
+    #assert !rs_cast(b[..], a, SP_STARRY_WISP, 0, 0, 0, t);   // one action a turn
+    rs_end_turn(b[..], a);
+    lost := b[0].c[t].hp_max - b[0].c[t].hp;
+    #assert lost >= 0 && lost <= 16;
+    if lost > 0 { hits += 1; total += lost; }
+  }
+  // +5 against AC 15: 11 or higher hits, 55% (a 20 crits)
+  #assert hits > 80 && hits < 140;
+}
+#test "Cure Wounds heals 2d8 + 3 by touch; a 2nd-level slot heals 4d8 + 3; one slot a turn" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 5;
+  a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 1);
+  f := rs_add(b[..], rs_druid("Briar", 0, 3), 2, 1);
+  far := rs_add(b[..], rs_druid("Fern", 0, 3), 9, 1);
+  b[0].c[f].hp = 1;
+  rs_start_turn(b[..], a);
+  #assert !rs_cast(b[..], a, SP_CURE_WOUNDS, 1, 0, 0, far);   // Touch
+  #assert rs_cast(b[..], a, SP_CURE_WOUNDS, 1, 0, 0, f);
+  #assert b[0].c[f].hp >= 1 + 5 && b[0].c[f].hp <= 1 + 19 && b[0].c[a].slots[1] == 3;
+  #assert !rs_cast(b[..], a, SP_HEALING_WORD, 1, 0, 0, f);    // the one slot this turn is spent
+  rs_end_turn(b[..], a);
+  b[0].c[f].hp = 0; b[0].c[f].cond = RS_UNCONSCIOUS | RS_PRONE;
+  rs_start_turn(b[..], a);
+  #assert rs_cast(b[..], a, SP_HEALING_WORD, 2, 0, 0, f);
+  #assert b[0].c[f].hp >= 4 + 3 && !rs_has(b[0].c[f], RS_UNCONSCIOUS) && b[0].c[a].slots[2] == 1;
+}
+#test "Thunderwave: a 15-foot cube from you, Con save, 2d8 Thunder and pushed 10 feet on a failure" {
+  b: [1] RsBattle; b[0].w = 12; b[0].h = 8; b[0].dice[0].state = 3;
+  a := rs_add(b[..], rs_druid("Rowan", 0, 3), 2, 3);
+  e := rs_add(b[..], rs_druid("Thorn", 1, 3), 3, 3);
+  out := rs_add(b[..], rs_druid("Sable", 1, 3), 7, 3);
+  rs_start_turn(b[..], a);
+  #assert rs_cast(b[..], a, SP_THUNDERWAVE, 1, 3, 3, -1);
+  lost := b[0].c[e].hp_max - b[0].c[e].hp;
+  #assert lost >= 1 && lost <= 16;
+  #assert b[0].c[e].x == 3 || b[0].c[e].x == 5;          // stayed (saved) or pushed two squares
+  #assert b[0].c[out].hp == b[0].c[out].hp_max;          // outside the cube
+}
+#test "Entangle restrains on a failed Strength save; concentration ends it and lets go" {
+  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 9;
+  a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 3);
+  held := 0;
+  for k: 0..<20 {
+    for j: 0..<RS_ZONES { b[0].zone[j].on = false; }
+    b[0].n = 1; b[0].c[a].conc = -1;
+    e := rs_add(b[..], rs_druid("Thorn", 1, 3), 8, 3);
+    rs_start_turn(b[..], a);
+    #assert rs_cast(b[..], a, SP_ENTANGLE, 1 + k % 2, 8, 3, -1);
+    if rs_has(b[0].c[e], RS_RESTRAINED) {
+      held += 1;
+      #assert rs_difficult(b[..], 8, 3);
+      rs_end_concentration(b[..], a, "");
+      #assert !rs_has(b[0].c[e], RS_RESTRAINED) && !rs_difficult(b[..], 8, 3);
+    }
+    b[0].c[a].slots[1] = 4; b[0].c[a].slots[2] = 2;
+    rs_end_turn(b[..], a);
+  }
+  // Str +0 against DC 13: fails on 12 or lower, 60%
+  #assert held >= 6 && held <= 18;
+}
+#test "Produce Flame: the flame first (a Bonus Action), then a Magic action to hurl it" {
+  b: [1] RsBattle; b[0].w = 14; b[0].h = 8; b[0].dice[0].state = 21;
+  a := rs_add(b[..], rs_druid("Rowan", 0, 3), 1, 3);
+  e := rs_add(b[..], rs_druid("Thorn", 1, 3), 9, 3);
+  rs_start_turn(b[..], a);
+  #assert !rs_cast(b[..], a, SP_FLAME_HURL, 0, 0, 0, e);
+  #assert rs_cast(b[..], a, SP_PRODUCE_FLAME, 0, 0, 0, a);
+  #assert rs_cast(b[..], a, SP_FLAME_HURL, 0, 0, 0, e);
+  #assert b[0].c[a].flame_until > b[0].clock;
+}

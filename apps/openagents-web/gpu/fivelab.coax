@@ -1,0 +1,74 @@
+// 5E Lab's shaders (fivelab.coax): build.sh writes apps/openagents-web/fivelab.wgsl from this
+// with coax/web/wgsl-module.coax (fivelab.module and fivelab.bindings beside it).
+#load "../../../verse/gpu/wgsl.coax";
+
+// bg_fs draws the bare grid the battle stands on: 5-foot squares, every fourth line brighter,
+// and the log panel's dark glass. fx_vs/fx_fs draw the strokes fivelab_frame writes (capsules).
+// FivelabU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0, time 2, fade 3
+//   grid 4: its top-left corner x, y (device px), px per square, 0
+//   cells 8: columns, rows, 0, 0
+//   panel 12: the log panel (x0, y0, x1, y1), device px; zero width is none
+fivelab_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+// How close p is to a square's edge, 1 on it; every fourth line brighter.
+fivelab_lines :: (p:V2,u:[]f32)->f32 {
+  s:f32=fmax(u[6],1.0f32);
+  x:f32=(p.x-u[4])/s;
+  y:f32=(p.y-u[5])/s;
+  dx:f32=abs(fract(x+0.5f32)-0.5f32)*s;
+  dy:f32=abs(fract(y+0.5f32)-0.5f32)*s;
+  line:f32=1.0f32-smoothstep(0.3f32,1.1f32,fmin(dx,dy));
+  mx:f32=abs(fract((x*0.25f32)+0.5f32)-0.5f32)*s*4.0f32;
+  my:f32=abs(fract((y*0.25f32)+0.5f32)-0.5f32)*s*4.0f32;
+  major:f32=1.0f32-smoothstep(0.4f32,1.4f32,fmin(mx,my));
+  return (line*0.6f32)+(major*0.4f32);
+}
+fivelab_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  p:V2=v2(pos.x,pos.y);
+  q:V2=v2((p.x/u[0])-0.5f32,(p.y/u[1])-0.5f32);
+  r:f32=wg_length2(q);
+  c:V3=wg_mul_f3f(v3(0.03f32,0.034f32,0.04f32),1.0f32-fmin(r,1.0f32));
+  gx1:f32=u[4]+(u[8]*u[6]);
+  gy1:f32=u[5]+(u[9]*u[6]);
+  inside:f32=0.18f32;
+  if ((((p.x>=u[4])&&(p.x<=gx1))&&(p.y>=u[5]))&&(p.y<=gy1)) {
+    inside=1.0f32;
+    c=wg_add_f3f3(c,v3(0.012f32,0.016f32,0.014f32));
+  }
+  c=wg_add_f3f3(c,wg_mul_f3f(v3(0.2f32,0.23f32,0.22f32),fivelab_lines(p,u)*inside));
+  if (u[14]>u[12]) {
+    if ((((p.x>=u[12])&&(p.x<=u[14]))&&(p.y>=u[13]))&&(p.y<=u[15])) {
+      c=wg_add_f3f3(wg_mul_f3f(c,0.14f32),v3(0.012f32,0.014f32,0.02f32));
+    }
+  }
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+FivelabV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+fivelab_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+fivelab_fx_vs :: (_vid2:u32,_iid3:u32,in_:fivelab_fx_vs_in,u:[]f32)->FivelabV {
+  a:V4=in_.a;
+  o:FivelabV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=in_.b;
+  o.tint=in_.c;
+  o.bar=in_.d;
+  return o;
+}
+// A capsule: shape.x its length, y its core's half width, z its light, w its glow's reach.
+fivelab_fx_fs :: (v:FivelabV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- the vector helpers this file calls
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

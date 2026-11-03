@@ -128,6 +128,9 @@ stair=$!
 # /worlds/watchtower: a cyber defense range: find the intruder, isolate and reimage hosts (docs/research/cybersecurity).
 "$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/watchtower-face.c" "$here/build/watchtower.wasm" &
 watchtower=$!
+# /worlds/5e-lab (unlisted): druids play the SRD 5e rules on a bare grid (aethyr/rules/srd, docs/dnd).
+"$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" &
+fivelab=$!
 # /demos/grid-crowd: the Grid's art (verse/tools/pack_grid.py) with a staged crowd of players (verse/cast.coax)
 # and agents running into the Everglade gate, for clips (?stage=crowd, docs/verse/clips.md).
 "$here/../../coax/web/wasm.sh" "$here/gridcrowd.coax" "$here/gridcrowd-face.c" "$here/build/gridcrowd.wasm" \
@@ -246,6 +249,7 @@ wait "$icecream"
 wait "$deadgears"
 wait "$stair"
 wait "$watchtower"
+wait "$fivelab"
 wait "$gridcrowd"
 wait "$speedrunhud"
 wait "$belt"

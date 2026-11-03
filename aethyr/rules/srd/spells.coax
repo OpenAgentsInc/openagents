@@ -1,0 +1,138 @@
+// SRD 5.2.1 spells as records (docs/dnd/README.md, "SRD content: data, not code"). Each holds the
+// SRD's fields and an effect program: a short list of typed steps from a closed set that
+// battle.coax runs for any world, so no world codes a spell's numbers. The first records are
+// low-level Druid spells; the import tool (aethyr/rules/srd/import.coax, planned) will generate
+// every spell from the PDF in this shape. Texts are the SRD's, word for word.
+//
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards
+// of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the
+// Creative Commons Attribution 4.0 International License, available at
+// https://creativecommons.org/licenses/by/4.0/legalcode.
+//   coax/bin/coax test --library aethyr/rules/srd/spells.coax
+#load "engine.coax";
+
+// casting times
+RS_T_ACTION :: 0; RS_T_BONUS :: 1; RS_T_REACTION :: 2;
+RS_TIME :: [3] string.["Action", "Bonus Action", "Reaction"];
+// areas, in grid squares from the point (or from the caster, for a cube that originates there)
+RS_A_NONE :: 0; RS_A_CUBE_SELF :: 1; RS_A_SQUARE :: 2; RS_A_CUBE :: 3;
+
+// The effect steps. A step after ATTACK applies only on a hit; after SAVE, DAMAGE is halved on a
+// success when the save says so, and CONDITION and PUSH apply only on a failure.
+RS_S_ATTACK :: 1;     // a ranged spell attack against AC
+RS_S_SAVE :: 2;       // a: the ability, b: RS_ON_SAVE_HALF or RS_ON_SAVE_NONE
+RS_S_DAMAGE :: 3;     // a dice of b sides, type c; d more dice for each slot level above the spell's
+RS_S_HEAL :: 4;       // a dice of b sides, plus the caster's spellcasting modifier when c is 1; d more dice a slot level
+RS_S_CONDITION :: 5;  // a: the condition's bit, for the spell's duration
+RS_S_PUSH :: 6;       // a: feet away from the caster
+RS_S_TERRAIN :: 7;    // the area is Difficult Terrain for the spell's duration
+RS_S_OUTLINE :: 8;    // Dim Light a feet, can't benefit from Invisible, attacks against it have Advantage
+RS_S_GLOW :: 9;       // Dim Light a feet until the end of the caster's next turn, can't benefit from Invisible
+RS_S_FLAME :: 10;     // a flame in the caster's hand for the duration: Bright Light a feet and Dim b more; grants the hurl
+RS_S_ESCAPE :: 11;    // a creature it Restrains can take an action to make a check of ability a against the DC
+RS_ON_SAVE_HALF :: 1; RS_ON_SAVE_NONE :: 0;
+
+RsStep :: struct { kind: int; a: int; b: int; c: int; d: int; }
+RS_STEPS :: 6;
+RsSpell :: struct {
+  id: string; name: string;
+  level: int;                 // 0: a cantrip
+  school: string; classes: string;
+  cast_time: int;
+  range_ft: int;              // 0 Self, 5 Touch
+  components: string;
+  duration: string; duration_s: f32; concentration: bool;
+  area: int; area_ft: int;
+  steps: [RS_STEPS] RsStep; step_n: int;
+  part_of: int;               // a part of another spell (Produce Flame's hurl), -1 none
+  page: int;                  // the SRD 5.2.1 page
+  text: string;
+}
+
+SP_PRODUCE_FLAME :: 0; SP_FLAME_HURL :: 1; SP_STARRY_WISP :: 2; SP_POISON_SPRAY :: 3;
+SP_CURE_WOUNDS :: 4; SP_HEALING_WORD :: 5; SP_THUNDERWAVE :: 6; SP_ENTANGLE :: 7; SP_FAERIE_FIRE :: 8;
+RS_SPELLS :: 9;
+
+rs_step :: (kind: int, a: int, b: int, c: int, d: int) -> RsStep { return RsStep.{kind = kind, a = a, b = b, c = c, d = d}; }
+
+rs_spell :: (i: int) -> RsSpell {
+  s: RsSpell;
+  s.part_of = -1;
+  if i == SP_PRODUCE_FLAME {
+    s = RsSpell.{id = "produce-flame", name = "Produce Flame", level = 0, school = "Conjuration", classes = "Druid",
+                 cast_time = RS_T_BONUS, range_ft = 0, components = "V, S", duration = "10 minutes", duration_s = 600,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 157,
+                 text = "A flickering flame appears in your hand and remains there for the duration. While there, the flame emits no heat and ignites nothing, and it sheds Bright Light in a 20-foot radius and Dim Light for an additional 20 feet. The spell ends if you cast it again. Until the spell ends, you can take a Magic action to hurl fire at a creature or an object within 60 feet of you. Make a ranged spell attack. On a hit, the target takes 1d8 Fire damage. Cantrip Upgrade. The damage increases by 1d8 when you reach levels 5 (2d8), 11 (3d8), and 17 (4d8)."};
+    s.steps[0] = rs_step(RS_S_FLAME, 20, 20, 0, 0); s.step_n = 1;
+  } else if i == SP_FLAME_HURL {
+    s = RsSpell.{id = "produce-flame-hurl", name = "Produce Flame", level = 0, school = "Conjuration", classes = "Druid",
+                 cast_time = RS_T_ACTION, range_ft = 60, components = "", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = SP_PRODUCE_FLAME, page = 157,
+                 text = "Until the spell ends, you can take a Magic action to hurl fire at a creature or an object within 60 feet of you. Make a ranged spell attack. On a hit, the target takes 1d8 Fire damage."};
+    s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 8, RS_FIRE, 0); s.step_n = 2;
+  } else if i == SP_STARRY_WISP {
+    s = RsSpell.{id = "starry-wisp", name = "Starry Wisp", level = 0, school = "Evocation", classes = "Bard, Druid",
+                 cast_time = RS_T_ACTION, range_ft = 60, components = "V, S", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 166,
+                 text = "You launch a mote of light at one creature or object within range. Make a ranged spell attack against the target. On a hit, the target takes 1d8 Radiant damage, and until the end of your next turn, it emits Dim Light in a 10-foot radius and can't benefit from the Invisible condition. Cantrip Upgrade. The damage increases by 1d8 when you reach levels 5 (2d8), 11 (3d8), and 17 (4d8)."};
+    s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 8, RS_RADIANT, 0);
+    s.steps[2] = rs_step(RS_S_GLOW, 10, 0, 0, 0); s.step_n = 3;
+  } else if i == SP_POISON_SPRAY {
+    s = RsSpell.{id = "poison-spray", name = "Poison Spray", level = 0, school = "Necromancy", classes = "Druid, Sorcerer, Warlock, Wizard",
+                 cast_time = RS_T_ACTION, range_ft = 30, components = "V, S", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 154,
+                 text = "You spray toxic mist at a creature within range. Make a ranged spell attack against the target. On a hit, the target takes 1d12 Poison damage. Cantrip Upgrade. The damage increases by 1d12 when you reach levels 5 (2d12), 11 (3d12), and 17 (4d12)."};
+    s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 12, RS_POISON, 0); s.step_n = 2;
+  } else if i == SP_CURE_WOUNDS {
+    s = RsSpell.{id = "cure-wounds", name = "Cure Wounds", level = 1, school = "Abjuration", classes = "Bard, Cleric, Druid, Paladin, Ranger",
+                 cast_time = RS_T_ACTION, range_ft = 5, components = "V, S", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 122,
+                 text = "A creature you touch regains a number of Hit Points equal to 2d8 plus your spellcasting ability modifier. Using a Higher-Level Spell Slot. The healing increases by 2d8 for each spell slot level above 1."};
+    s.steps[0] = rs_step(RS_S_HEAL, 2, 8, 1, 2); s.step_n = 1;
+  } else if i == SP_HEALING_WORD {
+    s = RsSpell.{id = "healing-word", name = "Healing Word", level = 1, school = "Abjuration", classes = "Bard, Cleric, Druid",
+                 cast_time = RS_T_BONUS, range_ft = 60, components = "V", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 140,
+                 text = "A creature of your choice that you can see within range regains Hit Points equal to 2d4 plus your spellcasting ability modifier. Using a Higher-Level Spell Slot. The healing increases by 2d4 for each spell slot level above 1."};
+    s.steps[0] = rs_step(RS_S_HEAL, 2, 4, 1, 2); s.step_n = 1;
+  } else if i == SP_THUNDERWAVE {
+    s = RsSpell.{id = "thunderwave", name = "Thunderwave", level = 1, school = "Evocation", classes = "Bard, Druid, Sorcerer, Wizard",
+                 cast_time = RS_T_ACTION, range_ft = 0, components = "V, S", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_CUBE_SELF, area_ft = 15, part_of = -1, page = 170,
+                 text = "You unleash a wave of thunderous energy. Each creature in a 15-foot Cube originating from you makes a Constitution saving throw. On a failed save, a creature takes 2d8 Thunder damage and is pushed 10 feet away from you. On a successful save, a creature takes half as much damage only. In addition, unsecured objects that are entirely within the Cube are pushed 10 feet away from you, and a thunderous boom is audible within 300 feet. Using a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 1."};
+    s.steps[0] = rs_step(RS_S_SAVE, RS_CON, RS_ON_SAVE_HALF, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 8, RS_THUNDER, 1);
+    s.steps[2] = rs_step(RS_S_PUSH, 10, 0, 0, 0); s.step_n = 3;
+  } else if i == SP_ENTANGLE {
+    s = RsSpell.{id = "entangle", name = "Entangle", level = 1, school = "Conjuration", classes = "Druid, Ranger",
+                 cast_time = RS_T_ACTION, range_ft = 90, components = "V, S", duration = "Concentration, up to 1 minute", duration_s = 60,
+                 concentration = true, area = RS_A_SQUARE, area_ft = 20, part_of = -1, page = 129,
+                 text = "Grasping plants sprout from the ground in a 20-foot square within range. For the duration, these plants turn the ground in the area into Difficult Terrain. They disappear when the spell ends. Each creature (other than you) in the area when you cast the spell must succeed on a Strength saving throw or have the Restrained condition until the spell ends. A Restrained creature can take an action to make a Strength (Athletics) check against your spell save DC. On a success, it frees itself from the grasping plants and is no longer Restrained by them."};
+    s.steps[0] = rs_step(RS_S_TERRAIN, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_SAVE, RS_STR, RS_ON_SAVE_NONE, 0, 0);
+    s.steps[2] = rs_step(RS_S_CONDITION, RS_RESTRAINED, 0, 0, 0); s.steps[3] = rs_step(RS_S_ESCAPE, RS_STR, 0, 0, 0); s.step_n = 4;
+  } else if i == SP_FAERIE_FIRE {
+    s = RsSpell.{id = "faerie-fire", name = "Faerie Fire", level = 1, school = "Evocation", classes = "Bard, Druid",
+                 cast_time = RS_T_ACTION, range_ft = 60, components = "V", duration = "Concentration, up to 1 minute", duration_s = 60,
+                 concentration = true, area = RS_A_CUBE, area_ft = 20, part_of = -1, page = 130,
+                 text = "Objects in a 20-foot Cube within range are outlined in blue, green, or violet light (your choice). Each creature in the Cube is also outlined if it fails a Dexterity saving throw. For the duration, objects and affected creatures shed Dim Light in a 10-foot radius and can't benefit from the Invisible condition. Attack rolls against an affected creature or object have Advantage if the attacker can see it."};
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_OUTLINE, 10, 0, 0, 0); s.step_n = 2;
+  }
+  return s;
+}
+// A cantrip's damage dice by the caster's level (Cantrip Upgrade: levels 5, 11 and 17).
+rs_cantrip_tier :: (level: int) -> int {
+  if level >= 17 { return 4; }
+  if level >= 11 { return 3; }
+  if level >= 5 { return 2; }
+  return 1;
+}
+
+#test "the records hold the SRD's numbers" {
+  for i: 0..<RS_SPELLS { s := rs_spell(i); #assert s.name.count > 0 && s.text.count > 40 && s.step_n > 0 && s.page > 100; }
+  cw := rs_spell(SP_CURE_WOUNDS); #assert cw.level == 1 && cw.range_ft == 5 && cw.steps[0].a == 2 && cw.steps[0].b == 8 && cw.steps[0].d == 2;
+  hw := rs_spell(SP_HEALING_WORD); #assert hw.cast_time == RS_T_BONUS && hw.range_ft == 60 && hw.steps[0].b == 4;
+  tw := rs_spell(SP_THUNDERWAVE); #assert tw.area == RS_A_CUBE_SELF && tw.area_ft == 15 && tw.steps[0].a == RS_CON && tw.steps[1].d == 1 && tw.steps[2].a == 10;
+  en := rs_spell(SP_ENTANGLE); #assert en.concentration && en.duration_s == 60 && en.range_ft == 90 && en.area_ft == 20;
+  ps := rs_spell(SP_POISON_SPRAY); #assert ps.range_ft == 30 && ps.steps[1].b == 12 && ps.steps[1].c == RS_POISON;
+  #assert rs_spell(SP_FLAME_HURL).part_of == SP_PRODUCE_FLAME && rs_spell(SP_PRODUCE_FLAME).cast_time == RS_T_BONUS;
+  #assert rs_cantrip_tier(1) == 1 && rs_cantrip_tier(5) == 2 && rs_cantrip_tier(11) == 3 && rs_cantrip_tier(17) == 4;
+}

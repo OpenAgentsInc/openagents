@@ -26,6 +26,12 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
   route := render_adoption("built", "myrealm");
   #assert !route.shared && route.tracked_legacy && route.profile == -1;
 }
+// 5E Lab (the SRD engine's bare grid) draws with its own two passes until it has a catalog profile.
+#test "5E Lab is a tracked legacy consumer" {
+  route := render_adoption("5e-lab", "fivelab");
+  #assert !route.shared && route.tracked_legacy && route.profile == -1;
+  #assert !render_adoption("5e-lab", "watchtower").tracked_legacy;
+}
 #test "unknown page identities cannot gain a fallback renderer" {
   for slug: [5] string.["", "future-realm", "anime-la", "anime-lab/", "../anime-lab"] {
     route := render_adoption(slug, "animelab");
@@ -40,5 +46,6 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
     if p.app == app { return RenderAdoption.{shared = true, profile = index}; }
   }
   if slug == "anime-lab" && app == "animelab" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "5e-lab" && app == "fivelab" { return RenderAdoption.{tracked_legacy = true}; }
   return RenderAdoption.{};
 }
