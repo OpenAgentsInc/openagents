@@ -296,6 +296,16 @@
       ]
     },
     {
+      "source": "bitcoin/examples/hd-keys.coax",
+      "chapter": "bitcoin/book/ch032-hierarchical-deterministic-keys.md",
+      "stdout": "bitcoin/fixtures/hd-keys.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/transactions.coax",
       "chapter": "bitcoin/book/ch034-transactions-and-their-serialization.md",
       "stdout": "bitcoin/fixtures/transactions.out",

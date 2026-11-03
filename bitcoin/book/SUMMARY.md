@@ -51,6 +51,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **VI. Keys from words**
 
 - [31. Seed phrases](ch031-seed-phrases.md) — implemented
+- [32. Hierarchical deterministic keys](ch032-hierarchical-deterministic-keys.md) — implemented
 
 **VII. Transactions and script**
 

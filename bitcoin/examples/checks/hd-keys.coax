@@ -1,0 +1,60 @@
+// The checks of hd-keys.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/hd-keys.coax
+#load "../hd-keys.coax";
+
+// book:begin check
+// Test vectors 1 to 4: every chain from its seed, as its xprv, and N of it
+// as its xpub, with the work buffer zero after each call.
+#forall "test vectors 1 to 4, every chain" i: 0..<17 #steps 2000000000 {
+  c := BIP32_CHAINS[i]; sb: [64] u8; work: [BIP32_WORK_BYTES] u8; m: [BIP32_NODE_BYTES] u8; node: [BIP32_NODE_BYTES] u8;
+  text: [BIP32_TEXT] u8; path := c.indexes;
+  #assert bip32_master_ct(decode(BIP32_SEEDS[c.vector - 1], sb[..]), false, work[..], m[..]) == BIP32_NODE_BYTES;
+  #assert bip32_descend_ct(m[..], path[0..<c.depth], work[..], node[..]) == BIP32_NODE_BYTES && all_zero(work[..]);
+  #assert text_of(node[..], text[..]) == c.xprv && cast(int) node[HDK_DEPTH] == c.depth;
+  #assert bip32_neuter_ct(node[..], work[..], node[..]) == BIP32_NODE_BYTES && text_of(node[..], text[..]) == c.xpub;
+}
+// Test vector 5: each invalid key refuses, with the code that matches the
+// reason BIP-32 gives.
+#forall "test vector 5, every invalid key" i: 0..<16 #steps 100000000 {
+  x := BIP32_INVALID[i]; work: [BIP32_WORK_BYTES] u8; node: [BIP32_NODE_BYTES] u8;
+  want := BIP32_BAD_PREFIX;
+  if x.reason == "zero depth with non-zero parent fingerprint" || x.reason == "zero depth with non-zero index" { want = BIP32_BAD_DEPTH; }
+  if x.reason == "unknown extended key version" { want = BIP32_BAD_VERSION; }
+  if x.reason == "private key 0 not in 1..n-1" || x.reason == "private key n not in 1..n-1" { want = BIP32_INVALID_KEY; }
+  if x.reason == "invalid pubkey 020000000000000000000000000000000000000000000000000000000000000007" { want = BIP32_INVALID_KEY; }
+  if x.reason == "invalid checksum" { want = BIP32_BAD_CHECKSUM; }
+  #assert bip32_decode_ct(x.text, work[..], node[..]) == want && all_zero(work[..]) && all_zero(node[..]);
+}
+// The xprv column of trezor/python-mnemonic's vectors.json.
+#forall "each BIP-39 seed's master" i: 0..<24 #steps 100000000 {
+  x := BIP32_TREZOR[i]; sb: [64] u8; work: [BIP32_WORK_BYTES] u8; m: [BIP32_NODE_BYTES] u8; text: [BIP32_TEXT] u8;
+  #assert bip32_master_ct(decode(x.seed, sb[..]), false, work[..], m[..]) == BIP32_NODE_BYTES && text_of(m[..], text[..]) == x.xprv;
+}
+// The leak: vector 1's N(m/0H) and the private key of m/0H/1 give m/0H's
+// private key. For the hardened child m/0H, N(m) and its key don't give m's.
+#test "an xpub and a normal child's private key give the parent's" #steps 400000000 {
+  p: [BIP32_NODE_BYTES] u8; b: [BIP32_NODE_BYTES] u8; a: [BIP32_NODE_BYTES] u8; m: [BIP32_NODE_BYTES] u8; k: [32] u8;
+  #assert node_of(BIP32_CHAINS[1].xpub, p[..]).count > 0 && node_of(BIP32_CHAINS[2].xprv, b[..]).count > 0;
+  #assert node_of(BIP32_CHAINS[1].xprv, a[..]).count > 0;
+  #assert parent_key(p[..], b[HDK_KEY + 1..<BIP32_NODE_BYTES], 1, k[..]) && equal_bytes(k[..], a[HDK_KEY + 1..<BIP32_NODE_BYTES]);
+  #assert parent_key(p[..], b[HDK_KEY + 1..<BIP32_NODE_BYTES], 2, k[..]) && !equal_bytes(k[..], a[HDK_KEY + 1..<BIP32_NODE_BYTES]);
+  #assert node_of(BIP32_CHAINS[0].xpub, p[..]).count > 0 && node_of(BIP32_CHAINS[0].xprv, m[..]).count > 0;
+  #assert parent_key(p[..], a[HDK_KEY + 1..<BIP32_NODE_BYTES], BIP32_HARDENED, k[..]) && !equal_bytes(k[..], m[HDK_KEY + 1..<BIP32_NODE_BYTES]);
+}
+// CKDpub from vector 2's master xpub gives m/0's xpub, and the hardened
+// child below it refuses.
+#test "CKDpub from an xpub" #steps 400000000 {
+  p: [BIP32_NODE_BYTES] u8; work: [BIP32_WORK_BYTES] u8; text: [BIP32_TEXT] u8;
+  #assert BIP32_CHAINS[6].vector == 2 && BIP32_CHAINS[7].depth == 1;
+  #assert bip32_ckd_ct(node_of(BIP32_CHAINS[6].xpub, p[..]), 0, work[..], p[..]) == BIP32_NODE_BYTES && text_of(p[..], text[..]) == BIP32_CHAINS[7].xpub;
+  #assert bip32_ckd_ct(p[..], 2147483647 + BIP32_HARDENED, work[..], p[..]) == BIP32_NEEDS_PRIVATE && all_zero(work[..]);
+}
+#test "the helpers" {
+  a := [3] u8.[1, 2, 3]; b := a; z: [3] u8;
+  #assert equal_bytes(a[..], b[..]) && !equal_bytes(a[..], b[0..<2]);
+  b[2] = 9; #assert !equal_bytes(a[..], b[..]);
+  #assert all_zero(z[..]) && !all_zero(a[..]);
+  #assert reason(-1) == "bad size" && reason(-10) == "bad depth" && reason(0) == "accepted" && reason(78) == "accepted" && reason(-11) == "accepted";
+}
+// book:end check

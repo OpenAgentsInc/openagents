@@ -1,0 +1,210 @@
+// book:begin example
+#load "../../coax/lib/crypto/bip32.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/tests/bitcoin/bip32_vectors.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex into out and return the filled part. Every literal here and
+// in the vector table is valid lowercase hex, so an error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+equal_bytes :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+all_zero :: (work: [] u8) -> bool {
+  for b: work { if b != 0 { return false; } }
+  return true;
+}
+// The name of a refusal.
+REASONS :: [10] string.["bad size", "bad index", "invalid key", "needs private", "capacity",
+  "bad text", "bad checksum", "bad version", "bad prefix", "bad depth"];
+reason :: (status: int) -> string { return ifx status < 0 && status >= -10 then REASONS[-status - 1] else "accepted"; }
+// A node as its xprv, xpub, tprv or tpub, into out.
+text_of :: (node: [] u8, out: [] u8) -> string {
+  work: [BIP32_WORK_BYTES] u8;
+  #assert bip32_encode_ct(node, work[..], out) == BIP32_TEXT;
+  return cast(string) out[0..<BIP32_TEXT];
+}
+// A node from its text, which must decode.
+node_of :: (text: string, out: [] u8) -> [] u8 {
+  work: [BIP32_WORK_BYTES] u8;
+  #assert bip32_decode_ct(text, work[..], out) == BIP32_NODE_BYTES;
+  return out[0..<BIP32_NODE_BYTES];
+}
+// The six fields of a node.
+show_fields :: (node: [] u8) {
+  show("  version", node[HDK_VERSION..<HDK_DEPTH]);
+  print("  depth: %\n", cast(int) node[HDK_DEPTH]);
+  show("  parent fingerprint", node[HDK_PARENT..<HDK_INDEX]);
+  print("  index: %\n", hdk_get32(node, HDK_INDEX));
+  show("  chain code", node[HDK_CHAIN..<HDK_KEY]);
+  show("  key", node[HDK_KEY..<BIP32_NODE_BYTES]);
+}
+// k_child - I_L mod n: the parent's private key, from the parent's public
+// key and chain code and one child's private key at index. Returns false
+// when a scalar is out of range.
+parent_key :: (xpub: [] u8, child_key: [] u8, index: int, out: [] u8) -> bool {
+  data: [37] u8; i: [64] u8;
+  for j: 0..<33 { data[j] = xpub[HDK_KEY + j]; }
+  hdk_put32(data[..], 33, index);
+  #assert hmac_sha512(xpub[HDK_CHAIN..<HDK_KEY], data[..], i[..]);
+  il := sc_load(i[0..<32]); k := sc_load(child_key);
+  return il.ok && k.ok && sc_store(sc_sub(k.value, il.value), out);
+}
+
+main :: () {
+  work: [BIP32_WORK_BYTES] u8; sb: [64] u8; i: [64] u8; h: [20] u8; fp: [4] u8;
+  m: [BIP32_NODE_BYTES] u8; a: [BIP32_NODE_BYTES] u8; b: [BIP32_NODE_BYTES] u8; p: [BIP32_NODE_BYTES] u8;
+  q: [BIP32_NODE_BYTES] u8; text: [BIP32_TEXT] u8; k: [32] u8;
+
+  // The master by hand: HMAC-SHA512 with the key "Bitcoin seed".
+  print("the master by hand\n");
+  seed := decode(BIP32_SEEDS[0], sb[..]);
+  show("seed", seed);
+  label := "Bitcoin seed"; lb: [12] u8;
+  for j: 0..<12 { lb[j] = label[j]; }
+  #assert hmac_sha512(lb[..], seed, i[..]);
+  show("I_L, the master key", i[0..<32]);
+  show("I_R, the master chain code", i[32..<64]);
+  #assert bip32_master_ct(seed, false, work[..], m[..]) == BIP32_NODE_BYTES;
+  print("the 78 bytes\n");
+  show_fields(m[..]);
+  print("m: %\n", text_of(m[..], text[..]));
+
+  // N(m), and the fingerprint: HASH160 of the public key, first 4 bytes.
+  print("public node and fingerprint\n");
+  #assert bip32_neuter_ct(m[..], work[..], p[..]) == BIP32_NODE_BYTES;
+  show("  key", p[HDK_KEY..<BIP32_NODE_BYTES]);
+  print("N(m): %\n", text_of(p[..], text[..]));
+  #assert hash160_checked(p[HDK_KEY..<BIP32_NODE_BYTES], h[..], false) == RMD_OK;
+  show("HASH160 of m's key", h[..]);
+  #assert bip32_fingerprint_ct(m[..], work[..], fp[..]) == 4;
+  show("m's fingerprint", fp[..]);
+
+  // A hardened child and a normal one.
+  print("children\n");
+  #assert bip32_ckd_ct(m[..], BIP32_HARDENED, work[..], a[..]) == BIP32_NODE_BYTES;
+  print("m/0H: %\n", text_of(a[..], text[..]));
+  show_fields(a[..]);
+  #assert bip32_ckd_ct(a[..], 1, work[..], b[..]) == BIP32_NODE_BYTES;
+  print("m/0H/1: %\n", text_of(b[..], text[..]));
+  #assert bip32_neuter_ct(b[..], work[..], q[..]) == BIP32_NODE_BYTES;
+  print("N(m/0H/1): %\n", text_of(q[..], text[..]));
+  // CKDpub from N(m/0H) gives N(m/0H/1) without a private key.
+  #assert bip32_neuter_ct(a[..], work[..], p[..]) == BIP32_NODE_BYTES;
+  print("N(m/0H): %\n", text_of(p[..], text[..]));
+  #assert bip32_ckd_ct(p[..], 1, work[..], p[..]) == BIP32_NODE_BYTES;
+  print("CKDpub(N(m/0H), 1) is N(m/0H/1): %\n", equal_bytes(p[..], q[..]));
+  #assert bip32_neuter_ct(a[..], work[..], p[..]) == BIP32_NODE_BYTES;
+  print("CKDpub(N(m/0H), 0H): %\n", reason(bip32_ckd_ct(p[..], BIP32_HARDENED, work[..], q[..])));
+  print("work buffer zero: %\n", all_zero(work[..]));
+
+  // The leak: N(m/0H) and m/0H/1's private key give m/0H's private key.
+  print("an xpub and one normal child's private key\n");
+  #assert parent_key(p[..], b[HDK_KEY + 1..<BIP32_NODE_BYTES], 1, k[..]);
+  show("k of m/0H/1", b[HDK_KEY + 1..<BIP32_NODE_BYTES]);
+  show("k of m/0H/1 - I_L", k[..]);
+  print("is m/0H's private key: %\n", equal_bytes(k[..], a[HDK_KEY + 1..<BIP32_NODE_BYTES]));
+  // Put the key into the xpub's node: the result is m/0H's xprv, and with
+  // it every child, hardened ones included.
+  hdk_put32(p[..], HDK_VERSION, BIP32_XPRV);
+  p[HDK_KEY] = 0;
+  for j: 0..<32 { p[HDK_KEY + 1 + j] = k[j]; }
+  print("rebuilt: %\n", text_of(p[..], text[..]));
+  #assert bip32_ckd_ct(p[..], BIP32_HARDENED + 5, work[..], q[..]) == BIP32_NODE_BYTES;
+  #assert bip32_ckd_ct(a[..], BIP32_HARDENED + 5, work[..], p[..]) == BIP32_NODE_BYTES;
+  print("its child 5H is m/0H/5H: %\n", equal_bytes(p[..], q[..]));
+  // The same sum for a hardened child gives nothing: I_L of m/0H hashed
+  // m's private key, which the xpub doesn't hold.
+  #assert bip32_neuter_ct(m[..], work[..], p[..]) == BIP32_NODE_BYTES;
+  #assert parent_key(p[..], a[HDK_KEY + 1..<BIP32_NODE_BYTES], BIP32_HARDENED, k[..]);
+  print("N(m) and m/0H's key give m's private key: %\n", equal_bytes(k[..], m[HDK_KEY + 1..<BIP32_NODE_BYTES]));
+
+  // Test vectors 1 to 4: every chain from its seed, its xpub with N, both
+  // texts back to the same node, and CKDpub where the last index is normal.
+  print("BIP-32 test vectors 1 to 4\n");
+  prv := 0; pub := 0; back := 0; ckdpub := 0; normal := 0;
+  for c: BIP32_CHAINS {
+    s := decode(BIP32_SEEDS[c.vector - 1], sb[..]);
+    #assert bip32_master_ct(s, false, work[..], m[..]) == BIP32_NODE_BYTES;
+    path := c.indexes;
+    #assert bip32_descend_ct(m[..], path[0..<c.depth], work[..], a[..]) == BIP32_NODE_BYTES;
+    if text_of(a[..], text[..]) == c.xprv { prv += 1; }
+    #assert bip32_neuter_ct(a[..], work[..], q[..]) == BIP32_NODE_BYTES;
+    if text_of(q[..], text[..]) == c.xpub { pub += 1; }
+    if equal_bytes(node_of(c.xprv, b[..]), a[..]) && equal_bytes(node_of(c.xpub, p[..]), q[..]) { back += 2; }
+    if c.depth > 0 && c.indexes[c.depth - 1] < BIP32_HARDENED {
+      normal += 1;
+      #assert bip32_descend_ct(m[..], path[0..<c.depth - 1], work[..], p[..]) == BIP32_NODE_BYTES;
+      #assert bip32_neuter_ct(p[..], work[..], p[..]) == BIP32_NODE_BYTES;
+      #assert bip32_ckd_ct(p[..], c.indexes[c.depth - 1], work[..], p[..]) == BIP32_NODE_BYTES;
+      if text_of(p[..], text[..]) == c.xpub { ckdpub += 1; }
+    }
+  }
+  print("% of % xprv, % of % xpub, % of % texts decoded to the same node\n", prv, BIP32_CHAINS.count, pub, BIP32_CHAINS.count, back, 2 * BIP32_CHAINS.count);
+  print("CKDpub from the parent's xpub: % of % normal children\n", ckdpub, normal);
+  last := BIP32_CHAINS[11];
+  print("vector %, %, depth %: %\n", last.vector, last.path, last.depth, last.xprv);
+
+  // Test vector 5: invalid extended keys.
+  print("BIP-32 test vector 5\n");
+  for x: BIP32_INVALID { print("  %: %\n", x.reason, reason(bip32_decode_ct(x.text, work[..], a[..]))); }
+
+  // The xprv column of trezor/python-mnemonic's vectors.json: each seed's master.
+  masters := 0;
+  for x: BIP32_TREZOR {
+    #assert bip32_master_ct(decode(x.seed, sb[..]), false, work[..], m[..]) == BIP32_NODE_BYTES;
+    if text_of(m[..], text[..]) == x.xprv { masters += 1; }
+  }
+  print("vectors.json: % of % masters\n", masters, BIP32_TREZOR.count);
+
+  // Skipping an index. No published seed or index reaches either case; these
+  // run the two checks directly.
+  print("the cases BIP-32 skips\n");
+  n: [32] u8; n1: [32] u8; g: [33] u8; out: [33] u8;
+  #assert decode("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", n[..]).count == 32;
+  #assert decode("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140", n1[..]).count == 32;
+  #assert decode("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", g[..]).count == 33;
+  one: [32] u8; one[31] = 1;
+  print("I_L = n: %\n", reason(hdk_tweak_ct(n[..], one[..], out[..])));
+  print("I_L = n - 1, k = 1, so k_i = 0: %\n", reason(hdk_tweak_ct(n1[..], one[..], out[..])));
+  print("I_L = n - 1, K = G, so K_i is infinity: %\n", reason(hdk_add_point(n1[..], g[..], out[..])));
+
+  // The test networks.
+  print("testnet\n");
+  #assert bip32_master_ct(decode(BIP32_SEEDS[0], sb[..]), true, work[..], m[..]) == BIP32_NODE_BYTES;
+  print("m: %\n", text_of(m[..], text[..]));
+  #assert bip32_neuter_ct(m[..], work[..], p[..]) == BIP32_NODE_BYTES;
+  print("N(m): %\n", text_of(p[..], text[..]));
+
+  // Refusals.
+  print("refusals\n");
+  print("a 15-byte seed: %\n", reason(bip32_master_ct(sb[0..<15], false, work[..], m[..])));
+  #assert bip32_master_ct(decode(BIP32_SEEDS[0], sb[..]), false, work[..], m[..]) == BIP32_NODE_BYTES;
+  print("index 2^32: %\n", reason(bip32_ckd_ct(m[..], 4294967296, work[..], a[..])));
+  print("index -1: %\n", reason(bip32_ckd_ct(m[..], -1, work[..], a[..])));
+  print("a node into 77 bytes: %\n", reason(bip32_ckd_ct(m[..], 0, work[..], a[0..<77])));
+  long := BIP32_CHAINS[0].xprv; cut: [BIP32_TEXT] u8;
+  for j: 0..<BIP32_TEXT { cut[j] = long[j]; }
+  print("110 characters: %\n", reason(bip32_decode_ct(cast(string) cut[0..<110], work[..], a[..])));
+  cut[7] = 'l';
+  print("an l, outside the alphabet: %\n", reason(bip32_decode_ct(cast(string) cut[..], work[..], a[..])));
+  cut[7] = long[7]; cut[110] = 'j';
+  print("the last character changed: %\n", reason(bip32_decode_ct(cast(string) cut[..], work[..], a[..])));
+  for j: 0..<BIP32_NODE_BYTES { a[j] = m[j]; }
+  a[HDK_DEPTH] = 255;
+  print("a child past depth 255: %\n", reason(bip32_ckd_ct(a[..], 0, work[..], b[..])));
+  print("work buffer zero: %\n", all_zero(work[..]));
+}
+// book:end example

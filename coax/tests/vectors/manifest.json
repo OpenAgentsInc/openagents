@@ -232,6 +232,7 @@
       "revision": "git:b57a5ad77a981e743f4167ab2f7927a55c1e82a8",
       "license": "MIT",
       "covers": [
+        "bip32",
         "bip39"
       ],
       "retrieved": "2026-11-02",

@@ -43,17 +43,17 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 31 are implemented and 93 are planned. The 31
-implemented chapters have runnable examples, qualified on native CPU, and 26
-of them on Wasm. Sixteen of them are the cryptography Nostr already used;
+Of the 124 chapters, 32 are implemented and 92 are planned. The 32
+implemented chapters have runnable examples, qualified on native CPU, and 27
+of them on Wasm. Seventeen of them are the cryptography Nostr already used;
 chapters 5, 6, 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 34, 46 and 47 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
-that later chapters will teach already exists in places: BIP-32
-(`bip32.coax`), and the BIP-143 and BIP-341 signature hashes
-(`coax/lib/bitcoin/sighash.coax`), written for Nostr chapter 104's agent
-treasuries. Its transaction reader now runs on chapter 34's.
+that later chapters will teach already exists in places: the BIP-143 and
+BIP-341 signature hashes (`coax/lib/bitcoin/sighash.coax`), written for Nostr
+chapter 104's agent treasuries. Its transaction reader now runs on chapter
+34's.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -168,7 +168,7 @@ BIP-39 seed phrases, BIP-32 hierarchical keys and the standard derivation paths.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [31. Seed phrases](ch031-seed-phrases.md) | Runnable: native C and wasm | BIP-39 English phrases of 12 to 24 words to entropy and back, and the seed through PBKDF2-HMAC-SHA512, checked against all 24 English vectors of trezor/python-mnemonic, Python's `hashlib` and OpenSSL, natively and in Wasm. Word lookups read the whole list; non-ASCII text refuses instead of skipping NFKD. A phrase with a bad checksum refuses. |
-| 32. Hierarchical deterministic keys | Planned | BIP-32 test vectors 1–5 give every extended key, and vector 5's invalid keys refuse. |
+| [32. Hierarchical deterministic keys](ch032-hierarchical-deterministic-keys.md) | Runnable: native C and wasm | BIP-32 master keys, CKDpriv, CKDpub, fingerprints and the 78-byte `xprv`, `xpub`, `tprv` and `tpub` serialization, checked against BIP-32 test vectors 1–5, the `xprv` column of trezor/python-mnemonic's vectors and a separate Python implementation, natively and in Wasm. Private derivation and `xprv` text run in constant time; every vector 5 key refuses with its own code. |
 | 33. Derivation paths | Planned | The BIP-44, BIP-84 and BIP-86 vectors give their addresses, and NIP-06's path gives the Nostr book's chapter 46 key. |
 
 ### Part VII. Transactions and script (chapters 34–40)

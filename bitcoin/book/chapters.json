@@ -709,16 +709,23 @@
   {
    "number": 32,
    "title": "Hierarchical deterministic keys",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch032-hierarchical-deterministic-keys.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     6,
     16,
     31
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/crypto/bip32.coax",
+    "bitcoin/examples/hd-keys.coax",
+    "bitcoin/examples/checks/hd-keys.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

@@ -1,0 +1,77 @@
+the master by hand
+seed: 000102030405060708090a0b0c0d0e0f
+I_L, the master key: e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35
+I_R, the master chain code: 873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508
+the 78 bytes
+  version: 0488ade4
+  depth: 0
+  parent fingerprint: 00000000
+  index: 0
+  chain code: 873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508
+  key: 00e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35
+m: xprv9s21ZrQH143K3QTDL4LXw2F7HEK3wJUD2nW2nRk4stbPy6cq3jPPqjiChkVvvNKmPGJxWUtg6LnF5kejMRNNU3TGtRBeJgk33yuGBxrMPHi
+public node and fingerprint
+  key: 0339a36013301597daef41fbe593a02cc513d0b55527ec2df1050e2e8ff49c85c2
+N(m): xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8
+HASH160 of m's key: 3442193e1bb70916e914552172cd4e2dbc9df811
+m's fingerprint: 3442193e
+children
+m/0H: xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCesnDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7
+  version: 0488ade4
+  depth: 1
+  parent fingerprint: 3442193e
+  index: 2147483648
+  chain code: 47fdacbd0f1097043b78c63c20c34ef4ed9a111d980047ad16282c7ae6236141
+  key: 00edb2e14f9ee77d26dd93b4ecede8d16ed408ce149b6cd80b0715a2d911a0afea
+m/0H/1: xprv9wTYmMFdV23N2TdNG573QoEsfRrWKQgWeibmLntzniatZvR9BmLnvSxqu53Kw1UmYPxLgboyZQaXwTCg8MSY3H2EU4pWcQDnRnrVA1xe8fs
+N(m/0H/1): xpub6ASuArnXKPbfEwhqN6e3mwBcDTgzisQN1wXN9BJcM47sSikHjJf3UFHKkNAWbWMiGj7Wf5uMash7SyYq527Hqck2AxYysAA7xmALppuCkwQ
+N(m/0H): xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw
+CKDpub(N(m/0H), 1) is N(m/0H/1): true
+CKDpub(N(m/0H), 0H): needs private
+work buffer zero: true
+an xpub and one normal child's private key
+k of m/0H/1: 3c6cb8d0f6a264c91ea8b5030fadaa8e538b020f0a387421a12de9319dc93368
+k of m/0H/1 - I_L: edb2e14f9ee77d26dd93b4ecede8d16ed408ce149b6cd80b0715a2d911a0afea
+is m/0H's private key: true
+rebuilt: xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCesnDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7
+its child 5H is m/0H/5H: true
+N(m) and m/0H's key give m's private key: false
+BIP-32 test vectors 1 to 4
+17 of 17 xprv, 17 of 17 xpub, 34 of 34 texts decoded to the same node
+CKDpub from the parent's xpub: 6 of 6 normal children
+vector 2, m/0/2147483647H/1/2147483646H/2, depth 5: xprvA2nrNbFZABcdryreWet9Ea4LvTJcGsqrMzxHx98MMrotbir7yrKCEXw7nadnHM8Dq38EGfSh6dqA9QWTyefMLEcBYJUuekgW4BYPJcr9E7j
+BIP-32 test vector 5
+  pubkey version / prvkey mismatch: bad prefix
+  prvkey version / pubkey mismatch: bad prefix
+  invalid pubkey prefix 04: bad prefix
+  invalid prvkey prefix 04: bad prefix
+  invalid pubkey prefix 01: bad prefix
+  invalid prvkey prefix 01: bad prefix
+  zero depth with non-zero parent fingerprint: bad depth
+  zero depth with non-zero parent fingerprint: bad depth
+  zero depth with non-zero index: bad depth
+  zero depth with non-zero index: bad depth
+  unknown extended key version: bad version
+  unknown extended key version: bad version
+  private key 0 not in 1..n-1: invalid key
+  private key n not in 1..n-1: invalid key
+  invalid pubkey 020000000000000000000000000000000000000000000000000000000000000007: invalid key
+  invalid checksum: bad checksum
+vectors.json: 24 of 24 masters
+the cases BIP-32 skips
+I_L = n: invalid key
+I_L = n - 1, k = 1, so k_i = 0: invalid key
+I_L = n - 1, K = G, so K_i is infinity: invalid key
+testnet
+m: tprv8ZgxMBicQKsPeDgjzdC36fs6bMjGApWDNLR9erAXMs5skhMv36j9MV5ecvfavji5khqjWaWSFhN3YcCUUdiKH6isR4Pwy3U5y5egddBr16m
+N(m): tpubD6NzVbkrYhZ4XgiXtGrdW5XDAPFCL9h7we1vwNCpn8tGbBcgfVYjXyhWo4E1xkh56hjod1RhGjxbaTLV3X4FyWuejifB9jusQ46QzG87VKp
+refusals
+a 15-byte seed: bad size
+index 2^32: bad index
+index -1: bad index
+a node into 77 bytes: capacity
+110 characters: bad text
+an l, outside the alphabet: bad text
+the last character changed: bad checksum
+a child past depth 255: bad depth
+work buffer zero: true

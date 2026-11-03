@@ -30,7 +30,7 @@ private key, its public key and its `npub`.
 | | `bip39_seed(phrase, out)`, `bip39_seed_with(phrase, passphrase, out)` | the 64-byte seed |
 | | `bip39_word(i)`, `bip39_index(w)` | the English list, checked against its published SHA-256 |
 | [sha512.coax](../../coax/lib/crypto/sha512.coax) | `sha512`, `hmac_sha512`, `pbkdf2_hmac_sha512` | the hash, the MAC and the one-block PBKDF2 that BIP-39 uses |
-| [bip32.coax](../../coax/lib/crypto/bip32.coax) | `bip32_master`, `bip32_child`, `bip32_path`, `bip32_public` | private derivation on Bitcoin chapter 16's constant-time multiplication |
+| [bip32.coax](../../coax/lib/crypto/bip32.coax) | `bip32_master`, `bip32_child`, `bip32_path`, `bip32_public` | private derivation on Bitcoin chapter 16's constant-time multiplication; they call the constant-time `bip32_master_ct`, `bip32_ckd_ct` and `bip32_descend_ct`, which [Bitcoin chapter 32](../../bitcoin/book/ch032-hierarchical-deterministic-keys.md) teaches |
 | [nip06.coax](../../coax/lib/nostr/nip06.coax) | `nip06_key(phrase, key)`, `nip06_npub(key, out)` | the NIP-06 key of checked words, and its `npub` (chapter 16) |
 
 [pbkdf2.coax](../../coax/lib/crypto/pbkdf2.coax) is a different PBKDF2: a
@@ -155,9 +155,10 @@ and a 32-byte chain code `c`.
   - For a **normal** index, `i < 2^31`, the data is the 33-byte compressed
     public key `k·G` (Bitcoin chapter 16's constant-time multiplication).
 
-`bip32_child` refuses an index below 0 or above `2^32 - 1`, an `I_L` that is
-`n` or more, and a child key of zero. `bip32_master` refuses a seed shorter
-than 16 or longer than 64 bytes. Each refusal is `false`.
+`bip32_child` refuses an index below 0 or above `2^32 - 1`, a parent key of
+zero or `n` or more, an `I_L` that is `n` or more, and a child key of zero.
+`bip32_master` refuses a seed shorter than 16 or longer than 64 bytes. Each
+refusal is `false`.
 
 An index written `44'` means `44 + 2^31`. A hardened child can't be derived
 from the parent's public key and chain code alone, so a leaked child key and
@@ -537,7 +538,12 @@ Python's `hashlib`, a wrong checksum bit at each length, and each refusal;
 [Bitcoin chapter 31](../../bitcoin/book/ch031-seed-phrases.md) describes
 them. [sha512.coax](../../coax/lib/crypto/sha512.coax) checks the FIPS
 180-4 SHA-512 examples, RFC 4231 HMAC-SHA512 cases 1, 2, 6 and 7, and
-PBKDF2-HMAC-SHA512 at 1 and 2 rounds. The slower vectors, two more Trezor
+PBKDF2-HMAC-SHA512 at 1 and 2 rounds.
+[bip32.coax](../../coax/lib/crypto/bip32.coax) checks BIP-32 test vector 1's
+master and two children, every test vector 5 key, each refusal and the
+older procedures' answers;
+[Bitcoin chapter 32](../../bitcoin/book/ch032-hierarchical-deterministic-keys.md)
+describes them. The slower vectors, two more Trezor
 seeds, BIP-32 test vectors 1 and 2 and the chain to a signed NIP-98 login,
 are in [weblogin_vectors.coax](../../coax/tests/nostr/weblogin_vectors.coax):
 

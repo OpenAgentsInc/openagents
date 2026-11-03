@@ -93,8 +93,11 @@ that a maliciously replaced manifest is authentic.
   values in the same appendix are not claimed.
 - **BIP-32:** the BIP text at the same `bitcoin/bips` revision as BIP-173.
   Bitcoin chapter 6 decodes its extended keys and checks that HASH160 of each
-  parent public key starts with the child's parent fingerprint. The key
-  derivation itself is not claimed here.
+  parent public key starts with the child's parent fingerprint. Bitcoin
+  chapter 32 uses all of test vectors 1 to 5: every chain of vectors 1 to 4
+  as an `xprv` and an `xpub` from its seed, and each of vector 5's 16 invalid
+  keys with the reason BIP-32 gives. `coax/tests/bitcoin/make_bip32_vectors.py`
+  reads them from this file after checking its SHA-256.
 - **NIP-44:** the complete published corpus is obtained from the Unlicense
   JavaScript subtree. Its digest is exactly the checksum in the pinned NIP-44:
   `269ed0f69e4c192512cc779e78c555090cebc7c785b609e338a62afc3ce25040`.
