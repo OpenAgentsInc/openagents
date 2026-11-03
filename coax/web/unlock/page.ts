@@ -4,7 +4,7 @@
 // relay as that key, opens it (lib.ts) and hands the slides to the page's
 // Coax code, which draws them, and the key prompt (ui.coax).
 import { bech32 } from "@scure/base"   // NIP-19 nsec only (nostr-effect/nip19 brings all of Effect)
-import { deckLines, fetchEvent, localOpener, openDeck, type Opener } from "./lib.ts"
+import { coaxNostr, deckLines, fetchEvent, localOpener, openDeck, useNostr, type Opener } from "./lib.ts"
 import { send, type Action, type Pointer } from "./gate.ts"
 
 const MSG_KEY_NEEDED = 19, MSG_KEY_WRONG = 20, MSG_LOADING = 21, MSG_DECK = 22, MSG_NOTICE = 23
@@ -90,10 +90,22 @@ function askForKey(recipient: string): Promise<Opener | null> {
   })
 }
 
-export async function open(pointer: Pointer) {
+/** The switch: with a Coax module's URL (the deploy's COAXIAL_UNLOCK_SIGNER=coax),
+ * the opener signs and verifies with unlock-nostr.coax; without one, with
+ * nostr-effect, as before. A module that doesn't load stops the opening: it
+ * never falls back without saying so. */
+async function chooseNostr(wasm?: string) {
+  if (!wasm) { useNostr(null); return }
+  const r = await fetch(wasm)
+  if (!r.ok) throw new Error("Couldn't load the verifier.")
+  useNostr(await coaxNostr(await r.arrayBuffer()))
+}
+
+export async function open(pointer: Pointer, nostrWasm?: string) {
   let cancelled = false
   const stop = actions(({ code }) => { if (code === ACT_CANCEL) cancelled = true })
   try {
+    await chooseNostr(nostrWasm)
     const opener = (await signerFor(pointer.recipient)) ?? (await askForKey(pointer.recipient))
     if (!opener || cancelled) return
     send(MSG_LOADING)

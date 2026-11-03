@@ -1,0 +1,155 @@
+// The unlock opener's Nostr in Coax (#12630): the signing and verifying that
+// coax/web/unlock/lib.ts does with nostr-effect, as one Wasm module the
+// TypeScript opener calls (unlock-nostr-face.c; built by
+// coax/web/unlock/build-nostr.sh). With the switch on (COAXIAL_UNLOCK_SIGNER=coax
+// at deploy, or useCoaxNostr in lib.ts), the opener derives its public key,
+// signs its NIP-42 AUTH, verifies the gift wrap's and the seal's signatures and
+// checks the artifact's id here; nostr-effect stays the default and is the
+// rollback. NIP-44 still comes from nostr-effect.
+//
+// The TypeScript side passes JSON text and bytes and reads back a verdict or
+// a signed event: it decides nothing. A verdict is the whole check: the id
+// recomputed from the event's fields (event.coax) and, for unlock_verify, the
+// BIP-340 signature (schnorr_fast.coax), as the project page checks each
+// relay frame (apps/openagents-web/project-verify.coax).
+//   coax test coax/web/unlock/unlock-nostr.coax
+#authority;
+#run_steps 250000000;
+#load "../../lib/nostr/event_sign.coax";
+#load "../../lib/crypto/schnorr_fast.coax";
+#load "../../lib/crypto/bip32.coax";
+
+UN_OK :: 0;
+UN_BAD_ID :: 1;         // not an event, or its id isn't the hash of its fields
+UN_BAD_SIGNATURE :: 2;  // the id holds; the signature doesn't
+
+// The x-only public key of secret into out (32 bytes). False for a bad key.
+unlock_pubkey :: (secret: [] u8, out: [] u8) -> bool #export_c {
+  if out.count != 32 { return false; }
+  pub: [33] u8;   // bip32_public refuses a secret that isn't 32 bytes or isn't a key
+  if !bip32_public(secret, pub[..]) { return false; }
+  for i: 0..<32 { out[i] = pub[i + 1]; }
+  return true;
+}
+
+// One event signed with secret: kind, created_at, tags (a JSON array of
+// string arrays) and content, into out as NIP-01 JSON. aux is 32 fresh random
+// bytes from the host. Its length, or -1 (EVENT_REFUSED). Each step either
+// advances event_sign.coax's four stages or refuses, so the loop ends.
+unlock_sign :: (secret: [] u8, aux: [] u8, created_at: int, kind: int, tags: [] u8, content: [] u8, out: [] u8) -> int #export_c {
+  work: [1] NostrSignWork; scratch: [65536] u8;
+  r := EVENT_MORE;
+  while r == EVENT_MORE {
+    r = nostr_event_sign_step(secret, aux, created_at, kind, cast(string) tags, cast(string) content, work[..], scratch[..], out, false);
+  }
+  return r;
+}
+
+// An event's verdict: UN_OK when its id is the hash of its fields and its
+// signature verifies under its pubkey; otherwise why not.
+unlock_verify :: (event: [] u8) -> int #export_c {
+  scratch: [NE_MAX_OUTPUT] u8;
+  e := nostr_event_read(cast(string) event, scratch[..], false);
+  if e.error != NE_OK { return UN_BAD_ID; }
+  return ifx nostr_fast_verify_vartime(e.id[..], e.public_key[..], e.signature[..]) then UN_OK else UN_BAD_SIGNATURE;
+}
+
+// Whether an event's id is the hash of its fields, its signature unchecked:
+// a NIP-59 rumor is unsigned (the seal authenticates it), so the opener
+// passes it with any 64-byte sig and only its id counts.
+unlock_id_matches :: (event: [] u8) -> bool #export_c {
+  scratch: [NE_MAX_OUTPUT] u8;
+  return nostr_event_read(cast(string) event, scratch[..], false).error == NE_OK;
+}
+
+// ---- checks (test keys only)
+
+un_bytes :: (s: string, out: [] u8) -> [] u8 { for i: 0..<s.count { out[i] = s[i]; } return out[0..<s.count]; }
+// The test key k: 31 zero bytes and k (k = 1 is the generator's scalar), in a fresh (zero) buffer or one only un_key wrote.
+un_key :: (k: u8, out: [] u8) { out[31] = k; }
+UN_TAGS :: "[[\"relay\",\"wss://relay.example\"],[\"challenge\",\"c-1\"]]";
+// The generator's x coordinate: the public key of scalar 1.
+UN_G :: [32] u8.[0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb, 0xac, 0x55, 0xa0, 0x62, 0x95, 0xce, 0x87, 0x0b, 0x07,
+                0x02, 0x9b, 0xfc, 0xdb, 0x2d, 0xce, 0x28, 0xd9, 0x59, 0xf2, 0x81, 0x5b, 0x16, 0xf8, 0x17, 0x98];
+
+#test "a test key's public key, and bad keys and views refused" #steps 4000000000 {
+  key: [32] u8; pub: [32] u8;
+  un_key(1, key[..]);
+  #assert unlock_pubkey(key[..], pub[..]);
+  for i: 0..<32 { #assert pub[i] == UN_G[i]; }
+  un_key(0, key[..]);
+  #assert !unlock_pubkey(key[..], pub[..]);                 // zero is not a key
+  un_key(3, key[..]);
+  #assert !unlock_pubkey(key[0..<31], pub[..]) && !unlock_pubkey(key[..], pub[0..<31]);
+  wide: [33] u8;
+  #assert !unlock_pubkey(key[..], wide[..]);
+}
+
+#test "an AUTH signed with a test key verifies, carries that key, and any changed byte is refused" #steps 4000000000 {
+  key: [32] u8; aux: [32] u8; pub: [32] u8; tb: [128] u8; cb: [8] u8; out: [1024] u8;
+  un_key(3, key[..]); aux[0] = 7;
+  #assert unlock_pubkey(key[..], pub[..]);
+  n := unlock_sign(key[..], aux[..], 1790000000, 22242, un_bytes(UN_TAGS, tb[..]), un_bytes("", cb[..]), out[..]);
+  #assert n > 0;
+  #assert unlock_verify(out[0..<n]) == UN_OK && unlock_id_matches(out[0..<n]);
+  scratch: [4096] u8;
+  e := nostr_event_read(cast(string) out[0..<n], scratch[..], false);
+  #assert e.error == NE_OK && e.kind == 22242 && e.created_at == 1790000000;
+  for i: 0..<32 { #assert e.public_key[i] == pub[i]; }
+  // the challenge changed: a new id is due, so the old one is refused
+  at := 0; while at + 3 <= n && cast(string) out[at..<at + 3] != "c-1" { at += 1; }
+  #assert at + 3 <= n;
+  out[at + 2] = '2';
+  #assert unlock_verify(out[0..<n]) == UN_BAD_ID && !unlock_id_matches(out[0..<n]);
+  out[at + 2] = '1';
+  #assert unlock_verify(out[0..<n]) == UN_OK;
+  // one signature digit changed: the id holds, the signature doesn't
+  s := n - 3;   // the sig's last hex digit, before "\"}"
+  #assert out[s + 1] == '"' && out[s + 2] == '}';
+  out[s] = ifx out[s] == '0' then '1' else '0';
+  #assert unlock_verify(out[0..<n]) == UN_BAD_SIGNATURE && unlock_id_matches(out[0..<n]);
+}
+
+#test "a seal's content is signed whole: one changed content byte is refused" #steps 4000000000 {
+  key: [32] u8; aux: [32] u8; tb: [8] u8; cb: [64] u8; out: [1024] u8;
+  un_key(5, key[..]);
+  content := "AgAbCdEf+/sealed==";
+  n := unlock_sign(key[..], aux[..], 1790000001, 13, un_bytes("[]", tb[..]), un_bytes(content, cb[..]), out[..]);
+  #assert n > 0 && unlock_verify(out[0..<n]) == UN_OK;
+  at := 0; while at + 4 <= n && cast(string) out[at..<at + 4] != "AgAb" { at += 1; }
+  #assert at + 4 <= n;
+  out[at] = 'B';
+  #assert unlock_verify(out[0..<n]) == UN_BAD_ID;
+}
+
+#test "another key's signature over the same id is refused" #steps 4000000000 {
+  a: [32] u8; b: [32] u8; aux: [32] u8; tb: [8] u8; cb: [8] u8; x: [1024] u8; y: [1024] u8;
+  un_key(5, a[..]); un_key(6, b[..]);
+  n := unlock_sign(a[..], aux[..], 1, 1059, un_bytes("[]", tb[..]), un_bytes("x", cb[..]), x[..]);
+  m := unlock_sign(b[..], aux[..], 1, 1059, un_bytes("[]", tb[..]), un_bytes("x", cb[..]), y[..]);
+  #assert n > 0 && m == n;
+  // x's fields and id with y's signature (the last 128 hex digits before "\"}")
+  for i: n - 130..<n - 2 { x[i] = y[i]; }
+  #assert unlock_verify(x[0..<n]) == UN_BAD_SIGNATURE;
+}
+
+#test "bad inputs: keys, aux, tags, output room, and text that isn't one event" #steps 4000000000 {
+  key: [32] u8; aux: [32] u8; tb: [8] u8; cb: [8] u8; out: [512] u8;
+  un_key(1, key[..]);
+  t := un_bytes("[]", tb[..]); c := un_bytes("", cb[..]);
+  #assert unlock_sign(key[0..<31], aux[..], 1, 1, t, c, out[..]) == -1;
+  #assert unlock_sign(key[..], aux[0..<31], 1, 1, t, c, out[..]) == -1;
+  #assert unlock_sign(key[..], aux[..], -1, 1, t, c, out[..]) == -1;
+  #assert unlock_sign(key[..], aux[..], 1, 65536, t, c, out[..]) == -1;
+  bad: [8] u8;
+  #assert unlock_sign(key[..], aux[..], 1, 1, un_bytes("[[1]]", bad[..]), c, out[..]) == -1;
+  #assert unlock_sign(key[..], aux[..], 1, 1, t, c, out[0..<10]) == -1;
+  #assert unlock_sign(key[..], aux[..], 1, 1, t, c, out[..]) > 0;
+  zero: [32] u8;
+  #assert unlock_sign(zero[..], aux[..], 1, 1, t, c, out[..]) == -1;
+  e: [256] u8;
+  #assert unlock_verify(un_bytes("", e[..])) == UN_BAD_ID && !unlock_id_matches(un_bytes("", e[..]));
+  #assert unlock_verify(un_bytes("{}", e[..])) == UN_BAD_ID;
+  #assert unlock_verify(un_bytes("[\"EVENT\",\"x\",{}]", e[..])) == UN_BAD_ID;
+  #assert UN_OK == 0 && UN_BAD_ID == 1 && UN_BAD_SIGNATURE == 2;
+}

@@ -59,8 +59,10 @@ protocol feature in a chapter.
 
 The API's `nostr.c` already calls `nip98_check_coax` from the checked generated
 C. Preserve its route-specific replay, session and account rules. The hosted
-runner still signs with libsecp256k1, and `coax/web/unlock/lib.ts` still uses
-`nostr-effect` for the presentation opener. Migrate those actual consumers
+runner still signs with libsecp256k1 by default, and `coax/web/unlock/lib.ts`
+still uses `nostr-effect` for the presentation opener by default; each has a
+Coax path behind a switch (`OA_RUNNER_SIGNER=coax`, `COAXIAL_UNLOCK_SIGNER=coax`)
+whose production use is the owner's. Migrate those actual consumers
 with their existing identities, privacy behavior and rehearsed rollback.
 The [web inventory](../../coax/nostr.md#live-web-surface-migration-inventory-2026-11-01)
 separates the completed verification cutover from these remaining signers.
@@ -69,7 +71,8 @@ Qualify complete named consumer profiles on the native and browser targets
 they will use. `coax/lib/nostr/consumers.coax` now names ten consumers and,
 for each, how it signs, verifies, keeps keys and carries events, in which
 file and with which record; dated reports generated from it are in
-[reports/](reports/README.md). On 2026-11-03 none of the ten is complete. A Wasm arithmetic run, an iOS compile or an external NIP-07
+[reports/](reports/README.md). The latest, consumers-2026-11-03-3, finds 3 of
+the ten complete: the API's NIP-98 check, the homepage and the project page. A Wasm arithmetic run, an iOS compile or an external NIP-07
 signer does not qualify the complete phone-signer or browser client profile.
 The signer source audit has completed, but real Pylon keys still require the
 owner decision and a safe host key-file path: `psionic/lib/pylon/run.coax`

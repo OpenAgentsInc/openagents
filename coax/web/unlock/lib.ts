@@ -7,6 +7,13 @@
 // The seal and wrap are built here from nostr-effect's NIP-44 v2 and event
 // signing, not its nip59 module: that module's NIP-44 leaves the nonce out of
 // the MAC, so its wraps don't open with spec NIP-44 or a NIP-07 signer.
+//
+// The opener's signing and verifying (its public key, its NIP-42 AUTH, the
+// wrap's and the seal's signatures and the artifact's id) go through `nostr`:
+// nostr-effect by default, or Coax (unlock-nostr.coax as Wasm, coaxNostr) once
+// useNostr installs it, as page.ts does when the deploy set
+// COAXIAL_UNLOCK_SIGNER=coax. Unset, the opener is as it was: the rollback.
+// NIP-44 and the sealer (sealDeck, publish) stay on nostr-effect.
 import { getConversationKey, encrypt as nip44Encrypt, decrypt as nip44Decrypt } from "nostr-effect/nip44"
 import { finalizeEvent, generateSecretKey, getEventHash, getPublicKey, verifyEvent, type Event, type EventTemplate } from "nostr-effect/pure"
 import { sha256 } from "@noble/hashes/sha256"
@@ -22,6 +29,71 @@ const MAX_BODY = 1_048_576
 export type Slide = { title: string; subtitle?: string; bullets?: string[]; body?: string; notes?: string }
 export type Deck = { v: typeof DECK_SCHEMA; title: string; slides: Slide[] }
 
+/** The signing and verifying the opener does: nostr-effect's, or Coax's. */
+export interface Nostr {
+  name: "nostr-effect" | "coax"
+  getPublicKey(secret: Uint8Array): string
+  finalizeEvent(template: EventTemplate, secret: Uint8Array): Event
+  /** The id is the hash of the fields and the signature verifies. */
+  verifyEvent(event: Event): boolean
+  /** The id is the hash of the fields (a NIP-59 rumor is unsigned). */
+  idMatches(event: Omit<Event, "sig">): boolean
+}
+export const effectNostr: Nostr = {
+  name: "nostr-effect",
+  getPublicKey,
+  finalizeEvent,
+  verifyEvent: (event) => verifyEvent(event),
+  idMatches: (event) => getEventHash(event) === event.id,
+}
+let nostr: Nostr = effectNostr
+/** Installs the opener's Nostr (null: back to nostr-effect); returns it. */
+export function useNostr(n: Nostr | null): Nostr { nostr = n ?? effectNostr; return nostr }
+export const currentNostr = () => nostr
+
+const UN_OK = 0
+/** unlock-nostr.coax, compiled to Wasm (unlock-nostr-face.c), as a Nostr.
+ * This side copies bytes in and out; every verdict is the Coax one. */
+export async function coaxNostr(wasm: BufferSource): Promise<Nostr> {
+  const module = await WebAssembly.compile(wasm)
+  const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 })
+  const imports: Record<string, Record<string, unknown>> = { env: { memory } }
+  // wasi-libc's stdio imports: nothing here prints, and a call fails (ENOSYS)
+  for (const i of WebAssembly.Module.imports(module))
+    if (i.kind === "function") (imports[i.module] ??= {})[i.name] = () => 52
+  const x = (await WebAssembly.instantiate(module, imports as WebAssembly.Imports)).exports as Record<string, any>
+  x._initialize?.()
+  const enc = new TextEncoder(), dec = new TextDecoder()
+  const cap = x.un_in_cap() as number
+  const put = (slot: number, text: string): number => {
+    const bytes = enc.encode(text)
+    if (bytes.length > cap) throw new Error("too large")
+    new Uint8Array(memory.buffer, x.un_in(slot), bytes.length).set(bytes)
+    return bytes.length
+  }
+  const withSecret = <T>(secret: Uint8Array, f: () => T): T => {
+    if (secret.length !== 32) throw new Error("a key is 32 bytes")
+    try { new Uint8Array(memory.buffer, x.un_secret(), 32).set(secret); return f() } finally { x.un_wipe() }
+  }
+  const hex = (b: Uint8Array) => [...b].map((v) => v.toString(16).padStart(2, "0")).join("")
+  return {
+    name: "coax",
+    getPublicKey: (secret) => withSecret(secret, () => {
+      if (x.un_pubkey() !== 1) throw new Error("not a key")
+      return hex(new Uint8Array(memory.buffer, x.un_out(), 32).slice())
+    }),
+    finalizeEvent: (template, secret) => withSecret(secret, () => {
+      crypto.getRandomValues(new Uint8Array(memory.buffer, x.un_aux(), 32))
+      const t = put(0, JSON.stringify(template.tags)), c = put(1, template.content)
+      const n = x.un_sign(BigInt(template.created_at), template.kind, t, c) as number
+      if (n <= 0) throw new Error("couldn't sign")
+      return JSON.parse(dec.decode(new Uint8Array(memory.buffer, x.un_out(), n))) as Event
+    }),
+    verifyEvent: (event) => x.un_verify(put(0, JSON.stringify(event))) === UN_OK,
+    idMatches: (event) => x.un_id_matches(put(0, JSON.stringify({ ...event, sig: "0".repeat(128) }))) === 1,
+  }
+}
+
 /** Whoever can open things on this device: a local key or a NIP-07 signer. */
 export interface Opener {
   pubkey: string
@@ -30,11 +102,11 @@ export interface Opener {
 }
 
 export function localOpener(secret: Uint8Array): Opener {
-  const pubkey = getPublicKey(secret)
+  const pubkey = nostr.getPublicKey(secret)
   return {
     pubkey,
     decrypt: async (peer, ciphertext) => nip44Decrypt(ciphertext, getConversationKey(secret, peer)),
-    sign: async (template) => finalizeEvent(template, secret),
+    sign: async (template) => nostr.finalizeEvent(template, secret),
   }
 }
 
@@ -140,13 +212,13 @@ export function sealDeck(deck: Deck, author: Uint8Array, recipient: string, now 
  * signatures, that the seal's author wrote the artifact, that it is addressed
  * to us, and that the inline deck matches its digest and size. */
 export async function openDeck(wrap: Event, opener: Opener): Promise<{ deck: Deck; author: string }> {
-  if (wrap.kind !== WRAP_KIND || !verifyEvent(wrap)) throw new Error("not a valid gift wrap")
+  if (wrap.kind !== WRAP_KIND || !nostr.verifyEvent(wrap)) throw new Error("not a valid gift wrap")
   if (!wrap.tags.some((t) => t[0] === "p" && t[1] === opener.pubkey)) throw new Error("not addressed to this key")
   const seal = JSON.parse(await opener.decrypt(wrap.pubkey, wrap.content)) as Event
-  if (seal.kind !== SEAL_KIND || !verifyEvent(seal)) throw new Error("not a valid seal")
+  if (seal.kind !== SEAL_KIND || !nostr.verifyEvent(seal)) throw new Error("not a valid seal")
   const rumor = JSON.parse(await opener.decrypt(seal.pubkey, seal.content)) as Event
   if (rumor.pubkey !== seal.pubkey) throw new Error("the seal and the artifact disagree on the author")
-  if (getEventHash(rumor) !== rumor.id) throw new Error("the artifact's id doesn't match it")
+  if (!nostr.idMatches(rumor)) throw new Error("the artifact's id doesn't match it")
   if (rumor.kind !== ARTIFACT_KIND) throw new Error("not a private artifact")
   const tag = (name: string) => rumor.tags.filter((t) => t[0] === name)
   if (tag("p").length !== 1 || tag("p")[0][1] !== opener.pubkey || tag("h").length !== 1 || !/^[0-9a-f]{64}$/.test(tag("h")[0][1]) ||

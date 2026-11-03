@@ -37,6 +37,18 @@ static void drain(State *st) {
   p->n = 0; p->used = 0;
 }
 
+// Read-only facts for headless checks (host.js coaxial.fieldProbe; coax/web/nostr-consumers-browser.coax):
+// 0 the line's state (LIVE_*), 1 frames refused by project_frame_verified (forged), 2 events kept,
+// 3 frames heard, 4 why the last sync is incomplete (0: it isn't), 5 events the store refused, 6 the catch-up
+// stage, 7 its pages, 8 the query open (1 history, 2 ids), 9 ids asked, 10 the watches ended (bits). -1 otherwise.
+EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_t field) {
+  coax_t_Live *l = &state_at(state)->live;
+  int64_t v = field == 0 ? l->state : field == 1 ? l->forged : field == 2 ? l->store.e[0].n : field == 3 ? l->frames
+            : field == 4 ? l->incomplete : field == 5 ? l->store.e[0].dropped : field == 6 ? l->stage : field == 7 ? l->pages
+            : field == 8 ? l->query : field == 9 ? l->batch_n : field == 10 ? l->ended : -1;
+  return (int32_t)v;
+}
+
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->live.inbox.e; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return (uint32_t)coaxial_project_inbox_cap(); }
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, int32_t length) {

@@ -378,8 +378,13 @@ lc_2 :: () {
     if mode == 0 {
       y: [1] LcFix; y[0] = x[0]; r := y[0].set[..];
       big: [20000] u8; for i: 0..<20000 { big[i] = 'x'; }
+      // A 20 KB note on the task in progress (issue 2, claimed by old-worker): WORK_PLAN_INFO
+      // carries a working task's latest note, and that table (INFO_CAP, 16 KB) still refuses
+      // a row that doesn't fit, so the candidate isn't complete. Since 80eb4249bd the
+      // activity log keeps its newest rows that fit instead, so the same note on a task
+      // nobody works on (issue 4, as this was) is left out of the log and the view completes.
       e: [1] LcTags; lc_t2(e[..], "by", "large-note");
-      up := lc_comment(r, 50000, y[0].issue[4], e[..], cast(string) big[..]);
+      up := lc_comment(r, 50000, y[0].issue[2], e[..], cast(string) big[..]);
       lc_event(u[..], "comments", r, up); lc_frame(u[..]);
       #assert u[0].lv[0].incomplete == 5;
     } else {

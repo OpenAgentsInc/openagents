@@ -1,0 +1,422 @@
+// Browser runs of two Nostr consumers (#12630, nostr/book/reports/consumers-*), in
+// headless, muted Chrome on its own temporary profile, against pages served on this
+// machine (coax serve) and test keys only:
+//
+//   export OUT.jsonl            the Coax project's events from --frames FILE (what
+//                               `openagents project capture` writes as coax_relay.jsonl: the
+//                               public relay's frames for the page's five subscriptions), one
+//                               per line, for the local relay's --import, without the comment
+//                               held for the live run; prints the held and the changed
+//                               comment's ids. Every verb takes the same --frames FILE. A
+//                               capture as old as the build's baked snapshot or newer: the
+//                               page keeps the baked tasks' ids, and a relay without one of
+//                               them never completes a sync (incomplete 4, as it should)
+//   project URL RELAY MODE      the project page (URL: http://127.0.0.1:PORT/projects/coax/)
+//                               with its relay socket sent to RELAY (ws://127.0.0.1:PORT, a
+//                               local Coax relay loaded from export). MODE:
+//                               control  every frame as the relay sent it: the page goes live,
+//                                        keeps every event and refuses none
+//                               sync     one comment's frame has one content byte changed on
+//                                        its way in during the catch-up: refused, and the
+//                                        view isn't completed with it
+//                               live     the page goes live without the held comment; it is
+//                                        then published to RELAY (on a connection whose NIP-42 AUTH
+//                                        is test key 7's, which the relay asks before any write)
+//                                        and reaches the page with one
+//                                        content byte changed: refused, nothing kept
+//   signin URL                  /login (URL: http://127.0.0.1:PORT/login): the page makes a
+//                               throwaway words account in this fresh profile, signs its NIP-98
+//                               login in Coax (Wasm) and posts it through the browser's fetch.
+//                               The request is held at the network layer (CDP Fetch) and
+//                               answered here, so nothing leaves the machine; its
+//                               Authorization is checked with the API's own NIP-98 check
+//                               (coax/web/api/nip98.coax), and with one byte changed and for
+//                               another URL, refused
+//
+// --require-hardware fails a run whose page has no hardware WebGPU adapter. The relay
+// frames are changed in the page (a WebSocket wrapper the run adds before the page
+// loads): the relay itself verifies what it stores, so a relay that tampers is
+// stood in for there; the page's own code, host.js and the Wasm are as served.
+// Keys and the account's words are never printed.
+//   coax/web/tool.sh coax/web/nostr-consumers-browser.coax project http://127.0.0.1:8800/projects/coax/ ws://127.0.0.1:7447 sync --frames CAPTURE.jsonl --require-hardware
+//   coax test coax/web/nostr-consumers-browser.coax --run-steps 250000000   (its own checks)
+// tool.sh: run-steps 250000000
+#import "Basic";
+#load "../lib/net/cdp.coax";
+#load "api/nip98.coax";
+#load "../lib/nostr/event_sign.coax";
+
+NB_WAIT_MS :: 90000;
+NB_LIVE :: 3;   // project-live.coax's LIVE_LIVE
+
+// ---- pure: names, verdicts --------------------------------------------------
+
+nb_local :: (url: string) -> bool {
+  return (url.count > 17 && url[0..<17] == "http://127.0.0.1:") || (url.count > 17 && url[0..<17] == "http://localhost:");
+}
+nb_local_ws :: (url: string) -> bool { return url.count > 15 && url[0..<15] == "ws://127.0.0.1:"; }
+#test "runs only against this machine" {
+  #assert nb_local("http://127.0.0.1:8800/projects/coax/") && nb_local("http://localhost:8800/login");
+  #assert !nb_local("https://openagents.com/login") && !nb_local("http://127.0.0.1.evil:80") && !nb_local("");
+  #assert nb_local_ws("ws://127.0.0.1:7447") && !nb_local_ws("wss://relay.openagents.com") && !nb_local_ws("ws://127.0.0.1");
+}
+
+NB_CONTROL :: 0; NB_SYNC :: 1; NB_LIVE_RUN :: 2;
+nb_mode :: (s: string) -> int { return ifx s == "control" then NB_CONTROL else ifx s == "sync" then NB_SYNC else ifx s == "live" then NB_LIVE_RUN else -1; }
+
+// What a project run saw: the page's own facts (project-face.c, coaxial.fieldProbe) and the wrapper's.
+NbProject :: struct {
+  state: int; forged: int; kept: int; frames: int; incomplete: int;
+  stage: int; pages: int; query: int; asked: int; ended: int;   // the catch-up's place (fields 6 to 10)
+  changed: int;          // frames the wrapper changed
+  redirected: bool;      // the page's relay socket went to the local relay
+  published: bool;       // live: the held comment was accepted by the relay
+  forged_before: int; kept_before: int; state_before: int;
+  ever_live: bool;       // sync: the page was live at any poll of the window
+}
+// The verdict for a mode, given the events the relay holds (total).
+nb_project_passed :: (mode: int, r: NbProject, total: int) -> bool {
+  if !r.redirected { return false; }
+  if mode == NB_CONTROL { return r.state == NB_LIVE && r.forged == 0 && r.changed == 0 && r.kept == total && r.incomplete == 0; }
+  // each catch-up the changed frame reaches is refused; one on a socket already closed is passed over unread
+  if mode == NB_SYNC { return r.changed >= 2 && r.forged >= 2 && r.forged <= r.changed && !r.ever_live && r.state != NB_LIVE && r.kept < total; }
+  if mode == NB_LIVE_RUN {
+    return r.state_before == NB_LIVE && r.forged_before == 0 && r.kept_before == total && r.published &&
+      r.changed == 1 && r.forged == 1 && r.kept == r.kept_before && r.state == NB_LIVE;
+  }
+  return false;
+}
+#test "each mode passes only on what it claims" {
+  c: NbProject; c.redirected = true; c.state = NB_LIVE; c.kept = 236;
+  #assert nb_project_passed(NB_CONTROL, c, 236) && !nb_project_passed(NB_CONTROL, c, 237);
+  c.forged = 1; #assert !nb_project_passed(NB_CONTROL, c, 236); c.forged = 0;
+  c.redirected = false; #assert !nb_project_passed(NB_CONTROL, c, 236); c.redirected = true;
+  s: NbProject; s.redirected = true; s.changed = 3; s.forged = 2; s.state = 4; s.kept = 230;
+  #assert nb_project_passed(NB_SYNC, s, 236);
+  s.state = NB_LIVE; #assert !nb_project_passed(NB_SYNC, s, 236); s.state = 4;
+  s.ever_live = true; #assert !nb_project_passed(NB_SYNC, s, 236); s.ever_live = false;
+  s.forged = 1; #assert !nb_project_passed(NB_SYNC, s, 236); s.forged = 4; #assert !nb_project_passed(NB_SYNC, s, 236); s.forged = 2;
+  s.kept = 236; #assert !nb_project_passed(NB_SYNC, s, 236); s.kept = 230;
+  s.changed = 0; s.forged = 0; #assert !nb_project_passed(NB_SYNC, s, 236);
+  l: NbProject; l.redirected = true; l.state_before = NB_LIVE; l.kept_before = 235; l.published = true;
+  l.changed = 1; l.forged = 1; l.kept = 235; l.state = NB_LIVE;
+  #assert nb_project_passed(NB_LIVE_RUN, l, 235);
+  l.kept = 236; #assert !nb_project_passed(NB_LIVE_RUN, l, 235); l.kept = 235;
+  l.published = false; #assert !nb_project_passed(NB_LIVE_RUN, l, 235); l.published = true;
+  l.forged = 0; #assert !nb_project_passed(NB_LIVE_RUN, l, 235);
+  #assert nb_mode("control") == NB_CONTROL && nb_mode("sync") == NB_SYNC && nb_mode("live") == NB_LIVE_RUN && nb_mode("x") == -1;
+  #assert !nb_project_passed(7, c, 236);
+}
+
+// ---- the captured events ----------------------------------------------------
+
+NB_EVENTS :: 8192;
+NbEvents :: struct { text: string; n: int; from: [NB_EVENTS] int; to: [NB_EVENTS] int; id: [NB_EVENTS * 64] u8; kind: [NB_EVENTS] int; content_n: [NB_EVENTS] int; }
+nb_id :: (e: [] NbEvents, k: int) -> string { return cast(string) e[0].id[k * 64..<k * 64 + 64]; }
+nb_event :: (e: [] NbEvents, k: int) -> string { return e[0].text[e[0].from[k]..<e[0].to[k]]; }
+// Every EVENT frame's event in text (a frame a line), once each, in the order the relay sent them.
+nb_events :: (e: [] NbEvents, text: string) -> bool {
+  nodes: [8192] JvNode; d: [1] Jv;
+  at := 0; e[0].text = text;
+  while at < text.count {
+    stop := at; while stop < text.count && text[stop] != '\n' { stop += 1; }
+    line := text[at..<stop];
+    if line.count > 10 && line[0..<9] == "[\"EVENT\"," {
+      if !jv_parse(d[..], line, nodes[..]) { return false; }
+      o := jv_at(d[0], 0, 2);
+      idb: [80] u8; n := jv_str(d[0], jv_get(d[0], o, "id"), idb[..]);
+      if n != 64 { return false; }
+      seen := false;
+      for k: 0..<e[0].n { if nb_id(e, k) == cast(string) idb[0..<64] { seen = true; } }
+      if !seen {
+        if e[0].n >= NB_EVENTS { return false; }
+        k := e[0].n; e[0].n += 1;
+        e[0].from[k] = at + d[0].nodes[o].from; e[0].to[k] = at + d[0].nodes[o].to;
+        for i: 0..<64 { e[0].id[k * 64 + i] = idb[i]; }
+        e[0].kind[k] = jv_int(d[0], jv_get(d[0], o, "kind"), -1);
+        cb: [16384] u8; e[0].content_n[k] = jv_str(d[0], jv_get(d[0], o, "content"), cb[..]);
+      }
+    }
+    at = stop + 1;
+  }
+  return e[0].n > 0;
+}
+// The comment held back for the live run: the shortest comment with content.
+nb_held :: (e: [] NbEvents) -> int {
+  best := -1;
+  for k: 0..<e[0].n { if e[0].kind[k] == 1111 && e[0].content_n[k] > 0 && (best < 0 || e[0].to[k] - e[0].from[k] < e[0].to[best] - e[0].from[best]) { best = k; } }
+  return best;
+}
+// The comment changed in the sync run: the first comment with content that isn't the held one.
+nb_target :: (e: [] NbEvents, held: int) -> int {
+  for k: 0..<e[0].n { if e[0].kind[k] == 1111 && e[0].content_n[k] > 0 && k != held { return k; } }
+  return -1;
+}
+
+// ---- the browser, with the network's events handled while waiting ---------
+
+NB_HTTP :: 16384;
+NbSeen :: struct {
+  viewer: int; other: int; posts: int;
+  auth: [NB_HTTP] u8; auth_n: int; url: [2048] u8; url_n: int; method: [16] u8; method_n: int; body: [4096] u8; body_n: int;
+}
+nb_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && s[s.count - tail.count..<s.count] == tail; }
+nb_path :: (url: string) -> string {
+  q := 0; while q < url.count && url[q] != '?' { q += 1; }
+  return url[0..<q];
+}
+// A held request (Fetch.requestPaused, in cdp_doc): /api/auth/viewer answers 200 with
+// nothing (no one is signed in), the login POST is kept and answered 401, anything
+// else 404. Nothing is forwarded.
+nb_paused :: (c: [] Cdp, s: [] NbSeen) {
+  d := c[0].doc[0];
+  p := jv_get(d, 0, "params");
+  rid: [256] u8; rn := jv_str(d, jv_get(d, p, "requestId"), rid[..]);
+  if rn <= 0 { return; }
+  url: [2048] u8; un := jv_str(d, jv_path(d, p, "request.url"), url[..]);
+  m: [16] u8; mn := jv_str(d, jv_path(d, p, "request.method"), m[..]);
+  u := ifx un > 0 then nb_path(cast(string) url[0..<un]) else "";
+  method := ifx mn > 0 then cast(string) m[0..<mn] else "";
+  code := 404;
+  if nb_ends(u, "/api/auth/viewer") { code = 200; s[0].viewer += 1; }
+  else if nb_ends(u, "/api/auth/key") && method == "POST" {
+    code = 401; s[0].posts += 1;
+    if s[0].posts == 1 {
+      s[0].auth_n = jv_str(d, jv_path(d, p, "request.headers.Authorization"), s[0].auth[..]);
+      s[0].body_n = jv_str(d, jv_path(d, p, "request.postData"), s[0].body[..]);
+      for i: 0..<un { s[0].url[i] = url[i]; } s[0].url_n = un;
+      for i: 0..<mn { s[0].method[i] = m[i]; } s[0].method_n = mn;
+    }
+  } else { s[0].other += 1; }
+  buf: [512] u8; o: [1] Jo;
+  jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], "requestId"); jo_str(o[..], cast(string) rid[0..<rn]);
+  jo_key(o[..], "responseCode"); jo_int(o[..], code); jo_end(o[..]);
+  sent := cdp_send(c, "Fetch.fulfillRequest", jo_text(o[..]));
+}
+// cdp_call, answering held requests while it waits (cdp_call passes events over).
+nb_call :: (c: [] Cdp, s: [] NbSeen, method: string, params: string, timeout_ms: int) -> int {
+  id := cdp_send(c, method, params);
+  if id < 0 { return -1; }
+  until := proc_now_ms() + timeout_ms;
+  while proc_now_ms() < until {
+    k := cdp_poll(c, until - proc_now_ms());
+    if k != CDP_GOT { return -1; }
+    d := c[0].doc[0];
+    if cdp_reply_id(d) == id { return cdp_reply_result(d); }
+    if cdp_reply_id(d) < 0 && cdp_event_method(d) == "Fetch.requestPaused" { nb_paused(c, s); }
+  }
+  return -1;
+}
+// Runtime.evaluate (awaited, by value): the value's node in cdp_doc, or -1.
+nb_eval :: (c: [] Cdp, s: [] NbSeen, expr: string) -> int {
+  params: [CDP_REQ] u8; o: [1] Jo; jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "expression"); jo_str(o[..], expr);
+  jo_key(o[..], "awaitPromise"); jo_bool(o[..], true); jo_key(o[..], "returnByValue"); jo_bool(o[..], true); jo_end(o[..]);
+  if o[0].bad { return -1; }
+  r := nb_call(c, s, "Runtime.evaluate", jo_text(o[..]), 60000);
+  return ifx r < 0 then -1 else jv_path(c[0].doc[0], r, "result.value");
+}
+nb_int :: (c: [] Cdp, s: [] NbSeen, expr: string) -> int { at := nb_eval(c, s, expr); return ifx at >= 0 then jv_int(c[0].doc[0], at, -1) else -1; }
+nb_true :: (c: [] Cdp, s: [] NbSeen, expr: string) -> bool { at := nb_eval(c, s, expr); return at >= 0 && jv_raw(c[0].doc[0], at) == "true"; }
+nb_until :: (c: [] Cdp, s: [] NbSeen, expr: string, ms: int) -> bool {
+  until := proc_now_ms() + ms;
+  while proc_now_ms() < until { if nb_true(c, s, expr) { return true; } proc_sleep(100); }
+  return false;
+}
+nb_param :: (c: [] Cdp, s: [] NbSeen, method: string, key: string, value: string) -> bool {
+  buf: [CDP_REQ] u8; o: [1] Jo;
+  jo_start(o[..], buf[..]); jo_obj(o[..]); jo_key(o[..], key); jo_str(o[..], value); jo_end(o[..]);
+  return !o[0].bad && nb_call(c, s, method, jo_text(o[..]), 30000) >= 0;
+}
+// parts joined into out.
+nb_cat :: (out: [] u8, parts: [] string) -> string {
+  n := 0;
+  for p: parts { for ch: p { if n < out.count { out[n] = ch; n += 1; } } }
+  return cast(string) out[0..<n];
+}
+nb_launch :: (c: [] Cdp, s: [] NbSeen) -> bool {
+  return cdp_launch(c, 640, 480, "coax-nostr-consumers-") && nb_call(c, s, "Page.enable", "", 30000) >= 0 && nb_call(c, s, "Runtime.enable", "", 30000) >= 0;
+}
+// The adapter the page got, asked on the page (about:blank has no WebGPU), with no request held.
+nb_adapter :: (c: [] Cdp, out: [] u8) -> string {
+  line := cdp_adapter(c, out);
+  print("nostr-consumers-browser: WebGPU adapter: %\n", line);
+  return line;
+}
+
+// ---- project ------------------------------------------------------------------
+
+// The page's relay socket goes to the local relay; with an id, that event's frame has
+// one content byte changed on its way in.
+NB_WRAP_A :: "(()=>{const L=";
+NB_WRAP_B :: ",T={id:";
+NB_WRAP_C :: ",seen:0,changed:0,urls:[]};globalThis.__oaTamper=T;const W=globalThis.WebSocket;globalThis.__oaW=W;class S extends W{constructor(u,p){const v=String(u);T.urls.push(v);super(v.startsWith('wss://relay.openagents.com')?L:v,p)}set onmessage(f){super.onmessage=f&&((m)=>{const d=m.data;if(T.id&&typeof d==='string'&&d.startsWith('[\"EVENT\"')&&d.includes('\"id\":\"'+T.id+'\"')){T.seen++;const k=d.indexOf('\"content\":\"')+11;if(k>10&&d[k]!=='\"'){T.changed++;return f.call(this,new MessageEvent('message',{data:d.slice(0,k)+(d[k]==='x'?'y':'x')+d.slice(k+1)}))}}return f.call(this,m)})}get onmessage(){return super.onmessage}}globalThis.WebSocket=S})()";
+
+nb_field :: (c: [] Cdp, s: [] NbSeen, f: int) -> int {
+  b: [64] u8; d: [4] u8; n := 0;
+  if f >= 10 { d[n] = cast(u8) (48 + f / 10); n += 1; }
+  d[n] = cast(u8) (48 + f % 10); n += 1;
+  parts := [3] string.["(globalThis.coaxial?.fieldProbe?.(", cast(string) d[0..<n], ") ?? -1)"];
+  return nb_int(c, s, nb_cat(b[..], parts[..]));
+}
+nb_facts :: (c: [] Cdp, s: [] NbSeen, r: [] NbProject) {
+  r[0].state = nb_field(c, s, 0); r[0].forged = nb_field(c, s, 1); r[0].kept = nb_field(c, s, 2);
+  r[0].frames = nb_field(c, s, 3); r[0].incomplete = nb_field(c, s, 4);
+  r[0].stage = nb_field(c, s, 6); r[0].pages = nb_field(c, s, 7); r[0].query = nb_field(c, s, 8); r[0].asked = nb_field(c, s, 9); r[0].ended = nb_field(c, s, 10);
+  r[0].changed = nb_int(c, s, "globalThis.__oaTamper?.changed ?? -1");
+}
+nb_say :: (what: string, r: NbProject) {
+  print("nostr-consumers-browser: % state % (3 live) forged % kept % frames % incomplete % changed %; catch-up stage % pages % query % ids % watches ended %\n", what, r.state, r.forged, r.kept, r.frames, r.incomplete, r.changed, r.stage, r.pages, r.query, r.asked, r.ended);
+}
+// A NIP-42 AUTH for challenge on relay, signed with the test key 7 (31 zero bytes, then 7): its length in out, or -1.
+nb_auth :: (challenge: string, relay: string, now: int, out: [] u8) -> int {
+  key: [32] u8; key[31] = 7; aux: [32] u8;
+  tb: [1024] u8; o: [1] Jo; jo_start(o[..], tb[..]);
+  jo_arr(o[..]); jo_arr(o[..]); jo_str(o[..], "relay"); jo_str(o[..], relay); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "challenge"); jo_str(o[..], challenge); jo_end(o[..]); jo_end(o[..]);
+  if o[0].bad { return -1; }
+  work: [1] NostrSignWork; scratch: [16384] u8;
+  r := EVENT_MORE;
+  while r == EVENT_MORE { r = nostr_event_sign_step(key[..], aux[..], now, 22242, jo_text(o[..]), "", work[..], scratch[..], out, false); }
+  return r;
+}
+nb_project :: (c: [] Cdp, s: [] NbSeen, url: string, relay: string, mode: int, e: [] NbEvents, held: int, target: int, r: [] NbProject) -> bool {
+  lq: [128] u8; tq: [128] u8; wrap: [4096] u8;
+  tamper := ifx mode == NB_SYNC then nb_id(e, target) else ifx mode == NB_LIVE_RUN then nb_id(e, held) else "";
+  lp := [3] string.["'", relay, "'"]; tp := [3] string.["'", tamper, "'"];
+  parts := [5] string.[NB_WRAP_A, nb_cat(lq[..], lp[..]), NB_WRAP_B, nb_cat(tq[..], tp[..]), NB_WRAP_C];
+  if !nb_param(c, s, "Page.addScriptToEvaluateOnNewDocument", "source", nb_cat(wrap[..], parts[..])) { return false; }
+  if !nb_param(c, s, "Page.navigate", "url", url) { return false; }
+  print("nostr-consumers-browser: open % (relay socket to %)\n", url, relay);
+  // the engine in, then live or, for sync, settled: offline after a refused frame, or 60 s
+  if !nb_until(c, s, "!!globalThis.coaxial?.ready && (globalThis.coaxial.fieldProbe?.(0) ?? -1) >= 0", NB_WAIT_MS) { return false; }
+  // sync: three catch-ups that met the changed frame (each refused, then a retry after its backoff),
+  // noting whether the page was ever live in between
+  wait := ifx mode == NB_SYNC then "((globalThis.__oaEverLive ||= globalThis.coaxial.fieldProbe(0) === 3), (globalThis.__oaTamper?.changed ?? 0) >= 3 && globalThis.coaxial.fieldProbe(0) !== 2)"
+    else "globalThis.coaxial.fieldProbe(0) === 3 && globalThis.coaxial.fieldProbe(4) === 0";
+  live := nb_until(c, s, wait, NB_WAIT_MS);
+  r[0].ever_live = nb_true(c, s, "globalThis.__oaEverLive === true || globalThis.coaxial.fieldProbe(0) === 3");
+  proc_sleep(2000);   // the cross-project asks after live, and any retry
+  r[0].redirected = nb_true(c, s, "(globalThis.__oaTamper?.urls ?? []).some((u)=>u.startsWith('wss://relay.openagents.com'))");
+  nb_facts(c, s, r);
+  nb_say(ifx mode == NB_LIVE_RUN then "before the held comment:" else "settled:", r[0]);
+  if mode != NB_LIVE_RUN { return live || mode == NB_SYNC; }
+  if !live { return false; }
+  r[0].state_before = r[0].state; r[0].forged_before = r[0].forged; r[0].kept_before = r[0].kept;
+  // publish the held comment to the local relay, as its author signed it; the page's watch hears it.
+  // The relay takes writes only on a connection with an authenticated key, any key: a test key's
+  // NIP-42 AUTH, signed here, then the comment.
+  ch: [256] u8; op := [3] string.["new Promise((r)=>{const w=globalThis.__oaPub=new globalThis.__oaW('", relay,
+    "');w.onmessage=(m)=>{const a=JSON.parse(m.data);if(a[0]==='AUTH')r(a[1])};w.onerror=()=>r('');setTimeout(()=>r(''),5000)})"];
+  pub: [16384] u8; cv := nb_eval(c, s, nb_cat(pub[..], op[..]));
+  cn := ifx cv >= 0 then jv_str(c[0].doc[0], cv, ch[..]) else -1;
+  auth: [1024] u8; an := ifx cn > 0 then nb_auth(cast(string) ch[0..<cn], relay, nb_int(c, s, "Math.floor(Date.now()/1000)"), auth[..]) else -1;
+  if an <= 0 { print("nostr-consumers-browser: no AUTH challenge from the local relay\n"); return false; }
+  pp := [5] string.["new Promise((r)=>{const w=globalThis.__oaPub;let authed=false;w.onmessage=(m)=>{const a=JSON.parse(m.data);if(a[0]!=='OK')return;if(!authed){authed=true;if(a[2]!==true){r('auth refused: '+a[3]);return}w.send(JSON.stringify(['EVENT',",
+    nb_event(e, held), "]));return}r(a[2]===true?'ok':'refused: '+a[3]);w.close()};w.send(JSON.stringify(['AUTH',",
+    cast(string) auth[0..<an], "]));setTimeout(()=>r('no answer'),5000)})"];
+  said: [512] u8; at := nb_eval(c, s, nb_cat(pub[..], pp[..]));
+  sn := ifx at >= 0 then jv_str(c[0].doc[0], at, said[..]) else -1;
+  answer := ifx sn > 0 then cast(string) said[0..<sn] else "no answer";
+  r[0].published = answer == "ok";
+  print("nostr-consumers-browser: published the held comment % to the local relay: %\n", nb_id(e, held), answer);
+  heard := nb_until(c, s, "(globalThis.__oaTamper?.changed ?? 0) >= 1 && globalThis.coaxial.fieldProbe(1) >= 1", 15000);
+  proc_sleep(1000);
+  nb_facts(c, s, r);
+  nb_say("after the held comment:", r[0]);
+  return heard;
+}
+
+// ---- sign-in ------------------------------------------------------------------
+
+// The API's own NIP-98 check (oa-api runs nip98.coax as nip98.generated.c).
+nb_nip98 :: (auth: string, url: string, body: [] u8, now: int, pub: [] u8) -> int {
+  work: [N98_WORK] u8; out: [N98_OUT] u8;
+  r := nip98_check_coax(auth, "POST", url, body, now, work[..], out[..]);
+  if r.error == N98_OK { for i: 0..<64 { pub[i] = out[64 + i]; } }
+  return r.error;
+}
+nb_signin :: (c: [] Cdp, s: [] NbSeen, url: string) -> bool {
+  if nb_call(c, s, "Fetch.enable", "{\"patterns\":[{\"urlPattern\":\"*/api/*\"}]}", 30000) < 0 { return false; }
+  if !nb_param(c, s, "Page.navigate", "url", url) { return false; }
+  print("nostr-consumers-browser: open % (its /api/ requests held here)\n", url);
+  until := proc_now_ms() + NB_WAIT_MS;
+  while proc_now_ms() < until && s[0].posts == 0 { at := nb_eval(c, s, "1"); proc_sleep(200); }
+  return s[0].posts > 0 && s[0].auth_n > 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  verb := args_at(a[..], 0);
+  hardware := args_has(a[..], "--require-hardware");
+  e: [1] NbEvents;
+  fi := args_find(a[..], "--frames");
+  frames: [8388608] u8; fn := ifx fi > 0 then fs_read(args_at(a[..], fi + 1), frames[..]) else -1;
+  if fn <= 0 || !nb_events(e[..], cast(string) frames[0..<fn]) {
+    tool_errln("nostr-consumers-browser: --frames FILE: a capture that reads (openagents project capture's coax_relay.jsonl)"); return 2;
+  }
+  held := nb_held(e[..]); target := nb_target(e[..], held);
+  if held < 0 || target < 0 { tool_errln("nostr-consumers-browser: no comments to hold and change"); return 1; }
+  if ok && verb == "export" && args_at(a[..], 1).count > 0 {
+    out: [8388608] u8; n := 0;
+    for k: 0..<e[0].n {
+      if k == held { continue; }
+      for ch: nb_event(e[..], k) { out[n] = ch; n += 1; }
+      out[n] = 10; n += 1;
+    }
+    if !fs_write(args_at(a[..], 1), cast(string) out[0..<n]) { tool_errln("nostr-consumers-browser: couldn't write the export"); return 1; }
+    print("nostr-consumers-browser: % events (% captured, the held comment out) in %\n", e[0].n - 1, e[0].n, args_at(a[..], 1));
+    print("held %\nchanged %\n", nb_id(e[..], held), nb_id(e[..], target));
+    return 0;
+  }
+  project := ok && verb == "project" && nb_local(args_at(a[..], 1)) && nb_local_ws(args_at(a[..], 2)) && nb_mode(args_at(a[..], 3)) >= 0;
+  signin := ok && verb == "signin" && nb_local(args_at(a[..], 1));
+  if !project && !signin {
+    tool_errln("usage: coax/web/tool.sh coax/web/nostr-consumers-browser.coax export OUT.jsonl | project URL ws://127.0.0.1:PORT control|sync|live | signin URL  --frames CAPTURE.jsonl [--require-hardware]");
+    return 2;
+  }
+  c: [1] Cdp; s: [1] NbSeen; gpu: [256] u8;
+  if !nb_launch(c[..], s[..]) { tool_err("nostr-consumers-browser: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1; }
+  passed := false; adapter := "";
+  if project {
+    mode := nb_mode(args_at(a[..], 3));
+    r: [1] NbProject;
+    ran := nb_project(c[..], s[..], args_at(a[..], 1), args_at(a[..], 2), mode, e[..], held, target, r[..]);
+    adapter = nb_adapter(c[..], gpu[..]);
+    total := e[0].n - 1;   // the relay holds every captured event but the held comment
+    passed = ran && nb_project_passed(mode, r[0], total);
+    print("% project page, %: % events on the relay\n", ifx passed then "pass" else "FAIL", args_at(a[..], 3), total);
+  } else {
+    ran := nb_signin(c[..], s[..], args_at(a[..], 1));
+    now := nb_int(c[..], s[..], "Math.floor(Date.now()/1000)");
+    stored := nb_true(c[..], s[..], "new Promise((r)=>{const q=indexedDB.open('coaxial',1);q.onerror=()=>r(false);q.onsuccess=()=>{try{const g=q.result.transaction('kept').objectStore('kept').getAll();g.onsuccess=()=>r(g.result.some((v)=>typeof v==='string'&&/^[0-9a-f]{32}$/.test(v)));g.onerror=()=>r(false)}catch{r(false)}}})");
+    released := nb_call(c[..], s[..], "Fetch.disable", "", 30000) >= 0;
+    adapter = nb_adapter(c[..], gpu[..]);
+    cdp_close(c[..]);
+    if !ran { tool_errln("nostr-consumers-browser: no login was posted"); return 1; }
+    auth := cast(string) s[0].auth[0..<s[0].auth_n]; u := cast(string) s[0].url[0..<s[0].url_n]; body := cast(string) s[0].body[0..<s[0].body_n];
+    print("nostr-consumers-browser: % % with Authorization (% bytes, %...) and body %; viewer asks %, other /api/ %\n",
+      cast(string) s[0].method[0..<s[0].method_n], u, auth.count, auth[0..<12], body, s[0].viewer, s[0].other);
+    pub: [64] u8;
+    v := nb_nip98(auth, u, s[0].body[0..<s[0].body_n], now, pub[..]);
+    print("nostr-consumers-browser: the API's NIP-98 check: % (signer %)\n", ifx v == N98_OK then "ok" else nip98_error_text(v), ifx v == N98_OK then cast(string) pub[..] else "-");
+    // one base64 byte changed (well inside the event), and the same header for another URL
+    bad: [NB_HTTP] u8; for i: 0..<auth.count { bad[i] = auth[i]; }
+    k := auth.count / 2; bad[k] = ifx bad[k] == 'A' then 'B' else 'A';
+    p2: [64] u8;
+    v2 := nb_nip98(cast(string) bad[0..<auth.count], u, s[0].body[0..<s[0].body_n], now, p2[..]);
+    print("nostr-consumers-browser: one byte changed: %\n", ifx v2 == N98_OK then "ok" else nip98_error_text(v2));
+    ob: [2048] u8; op := [2] string.[u, "x"];
+    v3 := nb_nip98(auth, nb_cat(ob[..], op[..]), s[0].body[0..<s[0].body_n], now, p2[..]);
+    print("nostr-consumers-browser: another URL: %\n", ifx v3 == N98_OK then "ok" else nip98_error_text(v3));
+    print("nostr-consumers-browser: the account's entropy is kept in this profile's IndexedDB (coaxial/kept) as 32 hex digits: %\n", stored);
+    passed = v == N98_OK && v2 != N98_OK && v3 != N98_OK && s[0].posts >= 1;
+    print("% web sign-in: signed in the page's Wasm, carried by the browser's fetch, accepted by the API's check\n", ifx passed then "pass" else "FAIL");
+    if hardware && !cdp_adapter_hardware(adapter) { tool_errln("nostr-consumers-browser: --require-hardware: no hardware WebGPU adapter"); return 1; }
+    return ifx passed then 0 else 1;
+  }
+  cdp_close(c[..]);
+  if hardware && !cdp_adapter_hardware(adapter) { tool_errln("nostr-consumers-browser: --require-hardware: no hardware WebGPU adapter"); return 1; }
+  return ifx passed then 0 else 1;
+}

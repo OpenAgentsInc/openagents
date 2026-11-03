@@ -460,6 +460,14 @@ Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
    with `apps/openagents-ios/build.sh`, sign in with a phone key on the
    simulator against a local relay or staging, and keep the log. This
    machine is Linux and can't run it.
+9. **The unlock opener's Coax signer (#12630).** The hidden-presentation
+   opener can sign its NIP-42 AUTH, verify the gift wrap's and the seal's
+   signatures and check the artifact's id with `coax/web/unlock/unlock-nostr.coax`
+   (Wasm) instead of nostr-effect: deploy with `COAXIAL_UNLOCK_SIGNER=coax`
+   (`coax/web/deploy.sh` builds the module; unset is the rollback). Checked
+   with test keys only (`docs/verification/2026-11-03-nostr-consumers-3.md`).
+   It signs with the recipient's key, so switching production is yours: say
+   when, and the next deploy sets it. NIP-44 stays nostr-effect's either way.
 
 ## Nostr chapter 103: export, shadow period, cutover and rollback rehearsal for relay.openagents.com (2026-11-01)
 

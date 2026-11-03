@@ -6,7 +6,8 @@
 // key from the phrase. Only a code that passes the check is stretched and
 // tried; then the opener module loads.
 export type Entry = { salt: string; check: string; iv: string; data: string }
-export type Unlocks = { module: string; entries: Entry[] }
+// nostr: the Coax module the opener signs and verifies with (COAXIAL_UNLOCK_SIGNER=coax at deploy); absent, nostr-effect
+export type Unlocks = { module: string; entries: Entry[]; nostr?: string }
 export type Pointer = { relay: string; id: string; recipient: string }
 
 export const ROUNDS = 210_000
@@ -83,7 +84,7 @@ export function arm(unlocks: Unlocks) {
     const pointer = typed.length >= MIN && typed.length <= MAX ? await match(typed, unlocks.entries, ROUNDS, true) : null
     if (!pointer) return send(MSG_REFUSED)
     send(MSG_GRANTED)
-    ;(await import(unlocks.module)).open(pointer)
+    ;(await import(unlocks.module)).open(pointer, unlocks.nostr)
   })
   if (host()?.ready) send(MSG_ARMED)
 }

@@ -1999,7 +1999,9 @@ function send(kind, text = "") {
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
   captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
-  guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0 };
+  guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0,
+  // a page's read-only facts for headless checks, where its face exports them (project-face.c)
+  fieldProbe: (field = 0) => engine?.exports.coaxial_field_probe?.(arena.state, field) ?? -1 };
 // Headless verification observes effects without exposing renderer policy.
 if (dev) {
   // Read-only transport from the real Grid face for headless journeys.
