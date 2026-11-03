@@ -916,6 +916,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/glv.coax",
+      "chapter": "bitcoin/book/ch077-faster-verification-the-glv-endomorphism.md",
+      "stdout": "bitcoin/fixtures/glv.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

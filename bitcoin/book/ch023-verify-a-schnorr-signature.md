@@ -57,7 +57,9 @@ signature `sig = r || s`:
    compile time by `#run`; `sv_challenge_vartime` streams the five pieces
    through SHA-256 without copying them.
 5. **The equation.** `R = s·G - e·P`, which `ecmult_vartime(s, P, -e)` of
-   chapter 16 computes as one sum.
+   chapter 16 computes as one sum. `sv_prepared_matches_vartime` calls
+   chapter 77's `ecmult_glv_vartime`, which gives the same point with about
+   half the doublings.
 6. **The comparison.** Refuse if `R` is infinity, if `y(R)` is odd, or if
    `x(R) ≠ r`. Otherwise accept.
 
@@ -476,8 +478,9 @@ coax/bin/coax test bitcoin/examples/checks/schnorr-verify.coax
 coax/bin/coax mutate bitcoin/examples/checks/schnorr-verify.coax --root-only
 ```
 
-`coax test` runs 167 checks, including the loaded files' own checks, in
-about 3 minutes on 2026-11-01. A full verification on both paths takes
+`coax test` runs 177 checks, including the loaded files' own checks and
+those of chapter 77's `secp_glv.coax`, on 2026-11-03; on 2026-11-01 it ran
+167 in about 3 minutes. A full verification on both paths takes
 tens of millions of interpreter steps, so the two signature checks have a
 budget of 4 billion steps each; they used 1.44 and 1.73 billion. Root-only mutation kills all 8 mutants in the checks file;
 the example's own procedures were not mutated for this chapter.
@@ -508,7 +511,10 @@ native profile and 102,536 Nostr cases, with no mismatch. `schnorr.py` and
 mismatch: 790 fast-path cases per build, native and wasm, and 8 of 8
 `schnorr.py` tests
 ([2026-11-01-libsecp-crosscheck.md](../../docs/verification/2026-11-01-libsecp-crosscheck.md)).
-The hour run was not repeated. The earlier records are
+After chapter 77 moved the reference path's equation to the endomorphism
+path, `schnorr.py` (8 of 8 tests) and `schnorr_fast.py` (790 cases per
+build) were rerun on 2026-11-03 with no mismatch. The hour run was not
+repeated. The earlier records are
 [coax-schnorr-verify-2026-10-28.md](../../docs/verification/coax-schnorr-verify-2026-10-28.md)
 and [2026-10-29-schnorr-fast.md](../../docs/verification/2026-10-29-schnorr-fast.md).
 

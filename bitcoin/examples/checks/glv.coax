@@ -1,0 +1,32 @@
+// The checks of glv.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/glv.coax
+#load "../glv.coax";
+
+// book:begin check
+// For seeded scalars a and b and a seeded point P, both paths give the same
+// a·G + b·P, every half of the two splits is below 2^128, and the
+// endomorphism path spends at most 129 doublings and fewer additions.
+#forall "both paths agree on seeded inputs, with half the doublings" seed: 0..<6 #steps 2000000000 {
+  a := sc_mul(sc_small(cast(u32) (seed * 2654435761 % 4294967291 + 1)), GLV_G1); a = sc_mul(a, a);
+  b := sc_add(sc_mul(sc_small(cast(u32) (seed * 40503 + 7)), GLV_G2), sc_small(cast(u32) seed));
+  p := ecmult_vartime(sc_small(cast(u32) (seed + 2)), sg_infinity(), sc_small(0)).value;
+  for k: 0..<2 {
+    s := glv_split_vartime(ifx k == 0 then a else b);
+    #assert glv_half_vartime(s.r1).value.limbs[4] == 0 && glv_half_vartime(s.r2).value.limbs[4] == 0;
+  }
+  old := glv_strauss_count_vartime(a, b); new := glv_ecmult_counted_vartime(a, p, b);
+  #assert new.doubles <= 129 && new.additions < old.additions;
+  #assert same(ecmult_vartime(a, p, b).value, new.value);
+}
+// Chapter 19's signature verifies, and each one-bit change to the hash, r
+// or s is refused, on the endomorphism path that ecdsa_verify_vartime now
+// takes.
+#forall "chapter 19's signature verifies and its one-bit changes refuse" bit: 0..<3 #steps 2000000000 {
+  key: [33] u8; sig: [64] u8; hash: [32] u8;
+  k := decode(KEY_1, key[..]); s := decode(SIG_1, sig[..]); z := decode(HASH_1, hash[..]);
+  #assert ecdsa_verify_vartime(z, k, s, true);
+  if bit == 0 { hash[0] ^= 1; } else if bit == 1 { sig[31] ^= 1; } else { sig[63] ^= 1; }
+  #assert !ecdsa_verify_vartime(z, k, s, true);
+}
+// book:end check

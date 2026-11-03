@@ -1,0 +1,48 @@
+// Byte-level entries for glv.py (Bitcoin chapter 77): the split, both
+// multiplication paths, and chapter 19's and 23's verifiers on chapter 16's
+// path, so that the two paths can be compared and timed from Python. Tests
+// only; nothing here is a library entry.
+#run_steps 1000000;
+#load "../../lib/crypto/ecdsa_verify.coax";
+#load "../../lib/crypto/schnorr.coax";
+
+// r1 and r2 of k, each as 32 big-endian bytes of the value mod n.
+glv_bench_split :: (k: [] u8, out: [] u8) -> bool #export_c {
+  if k.count != 32 || out.count != 64 { return false; }
+  s := glv_split_vartime(sc_reduce_bytes(k).value);
+  return sc_store(s.r1, out[0..<32]) && sc_store(s.r2, out[32..<64]);
+}
+// a·G + b·P for a compressed P, on the endomorphism path or chapter 16's,
+// written compressed (33 bytes) or as the single byte 0 for infinity.
+glv_bench_ecmult :: (a: [] u8, point: [] u8, b: [] u8, glv: bool, out: [] u8) -> int #export_c {
+  if a.count != 32 || b.count != 32 || out.count != 33 { return -1; }
+  p := sg_decode_public(point);
+  if !p.ok { return -1; }
+  x := sc_reduce_bytes(a).value; y := sc_reduce_bytes(b).value;
+  r := ifx glv then ecmult_glv_vartime(x, p.value, y) else ecmult_vartime(x, p.value, y);
+  if !r.ok { return -1; }
+  e := sg_encode_public(r.value);
+  if !e.ok { return -1; }
+  for i: 0..<e.length { out[i] = e.bytes[i]; }
+  return e.length;
+}
+// Chapter 19's verifier with chapter 16's multiplication.
+glv_bench_ecdsa_strauss :: (hash: [] u8, public_key: [] u8, signature: [] u8) -> bool #export_c {
+  key := se_decode(public_key);
+  if !key.ok { return false; }
+  prepared := ev_prepare_vartime(hash, key.value, signature, true);
+  zero: SecpField;
+  if !prepared.ready || sf_equal_mask(prepared.point.z, zero) != 0 { return false; }
+  affine := sg_to_affine(ecmult_vartime(prepared.u1, prepared.point, prepared.u2).value).value;
+  if affine.infinity != 0 { return false; }
+  x: [32] u8;
+  #assert sf_store(affine.x, x[..]);
+  return sc_equal(sc_reduce_bytes(x[..]).value, prepared.r);
+}
+// Chapter 23's verifier with chapter 16's multiplication.
+glv_bench_schnorr_strauss :: (message: [] u8, public_key: [] u8, signature: [] u8) -> bool #export_c {
+  prepared := sv_prepare_vartime(message, public_key, signature);
+  if !prepared.ready { return false; }
+  result := ecmult_vartime(prepared.s, prepared.point, prepared.negative_e);
+  return sv_affine_matches_vartime(prepared.r, sg_to_affine(result.value).value);
+}

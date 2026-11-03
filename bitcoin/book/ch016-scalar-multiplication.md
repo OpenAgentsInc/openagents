@@ -352,8 +352,9 @@ limbs. The two other levers are the ones libsecp256k1 uses:
 - **Larger tables.** A window-15 table for `G` in verification, as
   libsecp256k1 builds, costs about a megabyte.
 
-Neither is built. They wait for chapter 77, where initial block download
-verifies hundreds of millions of signatures and measures the gain.
+[Chapter 77](ch077-faster-verification-the-glv-endomorphism.md) builds
+GLV for the verification path and measures the gain; it keeps the small
+tables.
 
 ## How the code is checked
 

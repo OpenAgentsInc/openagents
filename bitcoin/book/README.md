@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 83 are implemented and 41 are planned. The 83 implemented
+Of the 124 chapters, 84 are implemented and 40 are planned. The 84 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66,
-67, 68, 69, 70, 71, 73, 74, 81, 94, 95, 96, 100, 101, 102, 103, 104, 105, 106,
+39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66, 67,
+68, 69, 70, 71, 73, 74, 77, 81, 94, 95, 96, 100, 101, 102, 103, 104, 105, 106,
 107, 108, 109, 111, 112, 114, 115, 121 and 122 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
@@ -258,7 +258,7 @@ From genesis to the tip: parallel script checks, faster verification, assumevali
 | Chapter | Status | Result |
 | --- | --- | --- |
 | 76. The signature cache and parallel script checks | Planned | Script checks run on every core and give the same verdicts as one thread over a pinned block range. A transaction verified on mempool entry is not verified again in its block, and the cache is keyed by a salted hash. |
-| 77. Faster verification: the GLV endomorphism | Planned | Verification with the endomorphism and wider windows agrees with chapter 16's path on random and edge inputs, and a pinned block's signatures verify at a measured rate within a stated factor of libsecp256k1 on the same machine. |
+| [77. Faster verification: the GLV endomorphism](ch077-faster-verification-the-glv-endomorphism.md) | Runnable: native C | secp256k1's endomorphism `λ·(x, y) = (β·x, y)`: libsecp256k1's scalar split into two halves below `2^128`, and four width-5 wNAF terms over `G`, `λG`, `P` and `λP` on one chain of about 128 doublings. Chapters 19 and 23 verify on it with the same results; it is about 1.6 times faster than chapter 16's path, and libsecp256k1 about 45 times faster still. |
 | 78. assumevalid | Planned | Below the pinned assumevalid block the node skips script checks only for ancestors of that block buried under its stated work; every other rule still runs. With assumevalid off the node reaches the same UTXO set. |
 | 79. AssumeUTXO snapshots | Planned | The node loads a pinned mainnet UTXO snapshot whose hash matches the chain parameters, follows the tip from it at once, and validates from genesis in the background. A snapshot with one changed coin refuses. |
 | 80. Sync mainnet from genesis | Planned | The node syncs mainnet from genesis to a pinned height over the public network, and its UTXO set at that height equals Bitcoin Core's `gettxoutsetinfo` (`hash_serialized_3` and `muhash`). The chapter records time, memory and disk on stated hardware next to Bitcoin Core's on the same machine. |

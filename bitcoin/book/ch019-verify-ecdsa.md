@@ -104,7 +104,9 @@ the signature `(r, s)`, as SEC 1 section 4.1.4 specifies it:
 5. **The scalars.** Read `z` as a 256-bit integer and reduce it mod `n`.
    Compute `w = s^-1 mod n`, `u1 = z·w mod n` and `u2 = r·w mod n`.
 6. **The point.** `R = u1·G + u2·Q`, which `ecmult_vartime(u1, Q, u2)`
-   computes as one sum with a shared doubling chain.
+   computes as one sum with a shared doubling chain. The verifier calls
+   chapter 77's `ecmult_glv_vartime`, which gives the same point with about
+   half the doublings.
 7. **The comparison.** Refuse if `R` is infinity. Otherwise convert `R` to
    affine coordinates and accept exactly when `x(R) mod n = r`.
 
@@ -131,11 +133,13 @@ ev_prepare_vartime :: (hash: [] u8, point: SgPoint, signature: [] u8, low_s: boo
 ```jai
 // R = u1·G + u2·Q. Accept only a finite R with x(R) mod n = r. Q must not
 // be infinity: then R = u1·G, which anyone can match without a key.
+// Chapter 77's ecmult_glv_vartime gives the same R as chapter 16's
+// ecmult_vartime, with about half the doublings.
 ev_prepared_matches_vartime :: (prepared: EvPrepared) -> bool {
   zero: SecpField;
   if !prepared.ready || sf_equal_mask(prepared.point.z, zero) != 0 { return false; }
   // An invalid Q gives a refused result, which is canonical infinity.
-  affine := sg_to_affine(ecmult_vartime(prepared.u1, prepared.point, prepared.u2).value).value;
+  affine := sg_to_affine(ecmult_glv_vartime(prepared.u1, prepared.point, prepared.u2).value).value;
   if affine.infinity != 0 { return false; }
   x: [32] u8;
   #assert sf_store(affine.x, x[..]);
@@ -711,8 +715,9 @@ coax/bin/coax test bitcoin/examples/checks/ecdsa-verify.coax
 coax/bin/coax mutate bitcoin/examples/checks/ecdsa-verify.coax --root-only
 ```
 
-`coax test` runs 121 checks, including the loaded files' own checks, in
-about 4 minutes on 2026-11-02. A full verification takes about 80 million
+`coax test` runs 130 checks, including the loaded files' own checks and
+those of chapter 77's `secp_glv.coax`, on 2026-11-03; on 2026-11-02 it ran
+121 in about 4 minutes. A full verification takes about 80 million
 interpreter steps, so the checks that verify have budgets of up to 4
 billion steps. Root-only mutation kills all 13 mutants in the checks file;
 the example's own procedures were not mutated for this chapter.
@@ -752,6 +757,9 @@ forms in Node. On 2026-11-02 every case gave the same result in all four Coax bu
 the Python verifier and libsecp256k1: the 464 Wycheproof cases, three
 low-S variants of each of the 162 valid ones, and 60 signatures with four
 changes each. The run took 290 seconds.
+
+On 2026-11-03, after chapter 77 moved the equation to the endomorphism
+path, the same run agreed on every case again.
 
 ```shell
 python3 tools/coax-nostr/fuzz/build_oracle.py --fetch --reviewed   # once: libsecp256k1 v0.8.0

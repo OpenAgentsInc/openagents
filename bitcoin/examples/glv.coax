@@ -1,0 +1,123 @@
+// The libraries this program loads build their tag hashes and tables at
+// compile time, near the default limit of 100,000 steps.
+#run_steps 1000000;
+// book:begin example
+#load "../../coax/lib/crypto/ecdsa_verify.coax";
+#load "../../coax/lib/crypto/schnorr.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [64] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+show_field :: (label: string, f: SecpField) {
+  b: [32] u8;
+  if sf_store(sf_normalize(f), b[..]) { show(label, b[..]); }
+}
+show_scalar :: (label: string, s: ScScalar) {
+  b: [32] u8;
+  if sc_store(s, b[..]) { show(label, b[..]); }
+}
+// Decode hex into out and return the filled part. Every literal here is
+// valid hex, so a decoding error stops the program.
+decode :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+scalar :: (text: string) -> ScScalar { b: [32] u8; return sc_reduce_bytes(decode(text, b[..])).value; }
+// The number of bits in a scalar's value.
+bits :: (s: ScScalar) -> int {
+  for i: 0..<256 { at := 255 - i; if ((s.limbs[at/32] >> cast(u32) (at%32)) & 1) != 0 { return at + 1; } }
+  return 0;
+}
+// One half of a split, as a sign and a 128-bit magnitude.
+show_half :: (label: string, r: ScScalar) {
+  h := glv_half_vartime(r); b: [32] u8;
+  #assert sc_store(h.value, b[..]);
+  text: [32] u8;
+  e := hex_encode_checked(cast(string) b[16..<32], text[..], false);
+  print("%: % %  (bit length %)\n", label, ifx h.negative then "-" else "+", cast(string) text[0..<e.written], bits(h.value));
+}
+split :: (label: string, k: ScScalar) {
+  show_scalar(label, k);
+  s := glv_split_vartime(k);
+  show_half("  r1", s.r1);
+  show_half("  r2", s.r2);
+  print("  r1 + lambda*r2 = k: %\n", sc_equal(sc_add(s.r1, sc_mul(s.r2, GLV_LAMBDA)), k));
+}
+same :: (a: SgPoint, b: SgPoint) -> bool { return sg_equal_mask(a, b) == CB_MAX64; }
+
+// Chapter 19's signature: libsecp256k1's, for the key 1 and
+// SHA-256("Satoshi Nakamoto"), and chapter 23's BIP-340 vector 1.
+SIG_1 :: "934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d82442ce9d2b916064108014783e923ec36b49743e2ffa1c4496f01a512aafd9e5";
+HASH_1 :: "a0dc65ffca799873cbea0ac274015b9526505daaaed385155425f7337704883e";
+KEY_1 :: "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+BIP340_KEY :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+BIP340_MSG :: "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89";
+BIP340_SIG :: "6896bd60eeae296db48a229ff71dfe071bde413e6d43f917dc8dcf8c78de33418906d11ac976abccb20b091292bff4ea897efcb639ea871cfa95f6de339e4b0a";
+
+main :: () {
+  // The endomorphism: beta and lambda are cube roots of one.
+  one: SecpField; one.limb[0] = 1;
+  show_field("beta", GLV_BETA);
+  show_scalar("lambda", GLV_LAMBDA);
+  print("beta^3 = 1 mod p: %\n", sf_equal_mask(sf_multiply(sf_square(GLV_BETA), GLV_BETA), one) == CB_MAX64);
+  lambda2 := sc_mul(GLV_LAMBDA, GLV_LAMBDA);
+  print("lambda^3 = 1 mod n: %, lambda^2 + lambda + 1 = 0: %\n",
+        sc_equal(sc_mul(lambda2, GLV_LAMBDA), sc_small(1)), sc_is_zero(sc_add(sc_add(lambda2, GLV_LAMBDA), sc_small(1))));
+  slow := sg_to_affine(ecmult_vartime(GLV_LAMBDA, sg_infinity(), sc_small(0)).value).value;
+  fast := sg_to_affine(glv_lambda_point(sg_generator())).value;
+  show_field("x(lambda*G) by 256 doublings", slow.x);
+  show_field("beta * x(G)                 ", fast.x);
+  print("same point: %\n", same(sg_from_affine_valid(slow), sg_from_affine_valid(fast)));
+
+  // Splits: chapter 19's u1 and u2, n - 1, lambda, and the scalar near
+  // libsecp256k1's bound with the longest half.
+  key: [33] u8; sig: [64] u8; hash: [32] u8;
+  public_key := decode(KEY_1, key[..]); signature := decode(SIG_1, sig[..]); z := decode(HASH_1, hash[..]);
+  prepared := ev_prepare_vartime(z, sg_generator(), signature, true);
+  split("u1", prepared.u1);
+  split("u2", prepared.u2);
+  split("n - 1", sc_negate(sc_small(1)));
+  split("lambda", GLV_LAMBDA);
+  split("near the bound", scalar("7fffffffffffffffffffffffffffffffd576e73557a4501ddfe92f46681b20a0"));
+
+  // Chapter 19's R = u1*G + u2*Q, both ways, with the work each takes.
+  old := glv_strauss_count_vartime(prepared.u1, prepared.u2);
+  new := glv_ecmult_counted_vartime(prepared.u1, prepared.point, prepared.u2);
+  print("chapter 16, wNAF widths 2 and 5:         % doublings, % additions\n", old.doubles, old.additions);
+  print("chapter 77, four width-5 wNAFs on halves: % doublings, % additions\n", new.doubles, new.additions);
+  r_old := ecmult_vartime(prepared.u1, prepared.point, prepared.u2).value;
+  print("same R: %\n", same(r_old, new.value));
+  x: [32] u8; #assert sf_store(sg_to_affine(new.value).value.x, x[..]);
+  show("x(R)", x[..]);
+  show("r   ", signature[0..<32]);
+  print("ecdsa_verify_vartime: %\n", ecdsa_verify_vartime(z, public_key, signature, true));
+
+  // A broken case: one bit of the hash changed. Both paths still agree on
+  // R, and its x is no longer r, so the signature is refused.
+  hash[31] ^= 1;
+  bad := ev_prepare_vartime(z, sg_generator(), signature, true);
+  r_bad := glv_ecmult_counted_vartime(bad.u1, bad.point, bad.u2).value;
+  print("hash bit changed: same R: %\n", same(ecmult_vartime(bad.u1, bad.point, bad.u2).value, r_bad));
+  #assert sf_store(sg_to_affine(r_bad).value.x, x[..]);
+  show("x(R)", x[..]);
+  print("ecdsa_verify_vartime: %\n", ecdsa_verify_vartime(z, public_key, signature, true));
+  hash[31] ^= 1;
+
+  // BIP-340 vector 1: R = s*G - e*P.
+  k: [32] u8; m: [32] u8; s: [64] u8;
+  bk := decode(BIP340_KEY, k[..]); bm := decode(BIP340_MSG, m[..]); bs := decode(BIP340_SIG, s[..]);
+  sp := sv_prepare_vartime(bm, bk, bs);
+  old = glv_strauss_count_vartime(sp.s, sp.negative_e);
+  new = glv_ecmult_counted_vartime(sp.s, sp.point, sp.negative_e);
+  print("BIP-340 vector 1: chapter 16 % doublings, % additions; chapter 77 % doublings, % additions\n",
+        old.doubles, old.additions, new.doubles, new.additions);
+  print("same R: %\n", same(ecmult_vartime(sp.s, sp.point, sp.negative_e).value, new.value));
+  print("schnorr_verify_vartime: %\n", schnorr_verify_vartime(bm, bk, bs));
+}
+// book:end example

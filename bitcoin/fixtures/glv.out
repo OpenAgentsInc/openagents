@@ -1,0 +1,39 @@
+beta: 7ae96a2b657c07106e64479eac3434e99cf0497512f58995c1396c28719501ee
+lambda: 5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72
+beta^3 = 1 mod p: true
+lambda^3 = 1 mod n: true, lambda^2 + lambda + 1 = 0: true
+x(lambda*G) by 256 doublings: bcace2e99da01887ab0102b696902325872844067f15e98da7bba04400b88fcb
+beta * x(G)                 : bcace2e99da01887ab0102b696902325872844067f15e98da7bba04400b88fcb
+same point: true
+u1: 5f5aa92cdd8788480fc88a00e9bdccece7b4c4a3f7a3e748d597da03af5520ce
+  r1: + 400e16af8a8ede8880b6a47dbc2a8397  (bit length 127)
+  r2: - 15db6ddc8fed8963539b67ab5e8203e2  (bit length 125)
+  r1 + lambda*r2 = k: true
+u2: 111b2f67088463219984f59cf80ca643ae04231d752d9260fbd17e4dabefc35e
+  r1: + 34fd233dcbc25ee0af02157ca0ac0cd4  (bit length 126)
+  r2: - 3837565729a9a982a57c96a266f4a7e7  (bit length 126)
+  r1 + lambda*r2 = k: true
+n - 1: fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140
+  r1: - 00000000000000000000000000000001  (bit length 1)
+  r2: + 00000000000000000000000000000000  (bit length 0)
+  r1 + lambda*r2 = k: true
+lambda: 5363ad4cc05c30e0a5261c028812645a122e22ea20816678df02967c1b23bd72
+  r1: + 00000000000000000000000000000000  (bit length 0)
+  r2: + 00000000000000000000000000000001  (bit length 1)
+  r1 + lambda*r2 = k: true
+near the bound: 7fffffffffffffffffffffffffffffffd576e73557a4501ddfe92f46681b20a0
+  r1: - 2a8918caa85bafe22016d0b917e4dd77  (bit length 126)
+  r2: + 59de565a2c9d0e2d4373f7623c1d7cd7  (bit length 127)
+  r1 + lambda*r2 = k: true
+chapter 16, wNAF widths 2 and 5:         256 doublings, 128 additions
+chapter 77, four width-5 wNAFs on halves: 126 doublings, 88 additions
+same R: true
+x(R): 934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d8
+r   : 934b1ea10a4b3c1757e2b0c017d0b6143ce3c9a7e6a4a49860d7a6ab210ee3d8
+ecdsa_verify_vartime: true
+hash bit changed: same R: true
+x(R): 620af8a37927e9d868270b8eff4dc626b3e2397bf59e712212fff24e71e04a8e
+ecdsa_verify_vartime: false
+BIP-340 vector 1: chapter 16 256 doublings, 132 additions; chapter 77 128 doublings, 86 additions
+same R: true
+schnorr_verify_vartime: true

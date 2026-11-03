@@ -441,7 +441,8 @@
    "source": [
     "coax/lib/crypto/ecdsa_verify.coax",
     "bitcoin/examples/ecdsa-verify.coax",
-    "bitcoin/examples/checks/ecdsa-verify.coax"
+    "bitcoin/examples/checks/ecdsa-verify.coax",
+    "coax/lib/crypto/secp_glv.coax"
    ],
    "qualified_targets": [
     "cpu",
@@ -540,7 +541,8 @@
     "coax/lib/crypto/schnorr_admission.coax",
     "coax/lib/crypto/schnorr_fast.coax",
     "bitcoin/examples/schnorr-verify.coax",
-    "bitcoin/examples/checks/schnorr-verify.coax"
+    "bitcoin/examples/checks/schnorr-verify.coax",
+    "coax/lib/crypto/secp_glv.coax"
    ],
    "qualified_targets": [
     "cpu",
@@ -1620,16 +1622,24 @@
   {
    "number": 77,
    "title": "Faster verification: the GLV endomorphism",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch077-faster-verification-the-glv-endomorphism.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     16,
     19,
     23
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/crypto/secp_glv.coax",
+    "bitcoin/examples/glv.coax",
+    "bitcoin/examples/checks/glv.coax",
+    "coax/tests/bitcoin/glv.py",
+    "coax/tests/bitcoin/glv_bench.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

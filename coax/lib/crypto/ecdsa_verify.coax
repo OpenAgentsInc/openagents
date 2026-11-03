@@ -9,7 +9,7 @@
 // Bitcoin script's BIP-66 rules (the sighash byte, the size bounds and the
 // history) are chapter 21's. This file reads exactly one DER signature and
 // refuses every encoding that is not the single canonical one.
-#load "secp_mult.coax";
+#load "secp_glv.coax";
 #load "secp_encode.coax";
 
 EvScalars :: struct { r: ScScalar; s: ScScalar; ok: bool; }
@@ -167,11 +167,13 @@ ev_prepare_vartime :: (hash: [] u8, point: SgPoint, signature: [] u8, low_s: boo
 // book:begin matches
 // R = u1·G + u2·Q. Accept only a finite R with x(R) mod n = r. Q must not
 // be infinity: then R = u1·G, which anyone can match without a key.
+// Chapter 77's ecmult_glv_vartime gives the same R as chapter 16's
+// ecmult_vartime, with about half the doublings.
 ev_prepared_matches_vartime :: (prepared: EvPrepared) -> bool {
   zero: SecpField;
   if !prepared.ready || sf_equal_mask(prepared.point.z, zero) != 0 { return false; }
   // An invalid Q gives a refused result, which is canonical infinity.
-  affine := sg_to_affine(ecmult_vartime(prepared.u1, prepared.point, prepared.u2).value).value;
+  affine := sg_to_affine(ecmult_glv_vartime(prepared.u1, prepared.point, prepared.u2).value).value;
   if affine.infinity != 0 { return false; }
   x: [32] u8;
   #assert sf_store(affine.x, x[..]);

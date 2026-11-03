@@ -1,7 +1,7 @@
 // Public BIP-340 verification. Variable-time throughout: never pass secrets.
 // Prepared records and mathematical helper results are internal data, NOT
 // verified authority. Only the complete byte-view entry performs verification.
-#load "secp_mult.coax";
+#load "secp_glv.coax";
 #load "sha256.coax";
 #load "../../tests/nostr/schnorr_checks.coax";
 #authority;
@@ -50,7 +50,8 @@ sv_affine_matches_vartime :: (r: SecpField,affine: SgAffine) -> bool {
 // prepared record is NOT a verified signature. It stays non-exported.
 sv_prepared_matches_vartime :: (prepared: SvPrepared) -> bool {
   if !prepared.ready { return false; }
-  result := ecmult_vartime(prepared.s,prepared.point,prepared.negative_e);
+  // Chapter 77's endomorphism path: the same point as ecmult_vartime.
+  result := ecmult_glv_vartime(prepared.s,prepared.point,prepared.negative_e);
   // Group APIs map every refusal to canonical infinity; affine conversion
   // preserves a nonzero infinity flag, which the comparison rejects.
   affine := sg_to_affine(result.value);

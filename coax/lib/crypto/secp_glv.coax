@@ -1,0 +1,270 @@
+// Faster public multiplication with the secp256k1 endomorphism (Bitcoin
+// chapter 77). Gallant, Lambert and Vanstone's method: λ·(x, y) = (β·x, y)
+// costs one field multiplication, so a 256-bit scalar k splits into two
+// halves of about 128 bits with k = r1 + λ·r2, and a·G + b·P becomes four
+// half-length terms that share one chain of doublings.
+//
+// Verification arithmetic only: ALL scalars, points, digits and table
+// indices here are public, and the work depends on them. Never use it for
+// signing, key generation or ECDH (chapter 3).
+#load "secp_mult.coax";
+#authority;
+
+GlvSplit :: struct { r1: ScScalar; r2: ScScalar; }
+GlvHalf :: struct { value: ScScalar; negative: bool; }
+GlvCount :: struct { value: SgPoint; doubles: int; additions: int; }
+
+// book:begin constants
+// β is a cube root of 1 modulo p, and λ the matching cube root of 1
+// modulo n: λ·(x, y) = (β·x, y) for every point. Both exist because
+// p ≡ 1 and n ≡ 1 (mod 3). Field limbs are 26 bits, little-endian
+// (chapter 13); scalar limbs are 32 bits, little-endian (chapter 14).
+GLV_BETA :: SecpField.{limb=[10] u64.[26542574,39520796,10050579,30690262,27062345,51187002,38042090,1851833,36398460,2013786]};
+GLV_LAMBDA :: ScScalar.{limbs=[8] u32.[455327090,3741488764,545351288,305013482,2282906714,2770738178,3227267296,1399041356]};
+// libsecp256k1's secp256k1_scalar_split_lambda: -b1 and -b2 from the
+// reduced lattice basis {a1 + b1·λ, a2 + b2·λ} of the multiples of n, and
+// g1 = round(2^384·b2/n), g2 = round(2^384·(-b1)/n).
+GLV_MINUS_B1 :: ScScalar.{limbs=[8] u32.[180348099,1867808681,17729576,3829628630,0,0,0,0]};
+GLV_MINUS_B2 :: ScScalar.{limbs=[8] u32.[1035032108,3613773224,125056109,2317880005,4294967294,4294967295,4294967295,4294967295]};
+GLV_G1 :: ScScalar.{limbs=[8] u32.[1172025393,3901956250,1911081599,1034586644,2458184469,3899429092,2815716301,814141985]};
+GLV_G2 :: ScScalar.{limbs=[8] u32.[2328133489,359773358,2650080966,571607212,180348100,1867808681,17729576,3829628630]};
+// book:end constants
+
+// ---- checks
+glv_unhex :: (text: string) -> ScScalar {
+  bytes: [32] u8;
+  for i: 0..<32 { bytes[i] = cast(u8) (glv_nibble(text[2*i])*16 + glv_nibble(text[2*i+1])); }
+  return sc_reduce_bytes(bytes[..]).value;
+}
+glv_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+glv_small_half :: (h: GlvHalf) -> bool {
+  return h.value.limbs[4] == 0 && h.value.limbs[5] == 0 && h.value.limbs[6] == 0 && h.value.limbs[7] == 0;
+}
+#test "beta and lambda are cube roots of one, and lambda·G = (beta·x, y)" #steps 400000000 {
+  one: SecpField; one.limb[0] = 1;
+  beta3 := sf_multiply(sf_square(GLV_BETA), GLV_BETA);
+  #assert sf_equal_mask(beta3, one) == CB_MAX64 && sf_equal_mask(GLV_BETA, one) == 0;
+  lambda2 := sc_mul(GLV_LAMBDA, GLV_LAMBDA);
+  #assert sc_equal(sc_mul(lambda2, GLV_LAMBDA), sc_small(1)) && !sc_equal(GLV_LAMBDA, sc_small(1));
+  #assert sc_is_zero(sc_add(sc_add(lambda2, GLV_LAMBDA), sc_small(1)));       // λ² + λ + 1 = 0
+  slow := ecmult_vartime(GLV_LAMBDA, sg_infinity(), sc_small(0));
+  #assert slow.ok && sg_equal_mask(glv_lambda_point(sg_generator()), slow.value) == CB_MAX64;
+  #assert sg_equal_mask(glv_lambda_point(sg_infinity()), sg_infinity()) == CB_MAX64;
+}
+#test "the stored G tables equal the computed ones" #steps 400000000 {
+  computed := glv_odd_table_vartime(sg_generator()); lambda := glv_lambda_table(computed);
+  for i: 0..<8 {
+    #assert sg_equal_mask(GLV_G_TABLE[i], computed[i]) == CB_MAX64;
+    #assert sg_equal_mask(GLV_G_LAMBDA_TABLE[i], lambda[i]) == CB_MAX64;
+  }
+}
+#test "the 384-bit shift rounds at bit 383" {
+  // 2^383 · 1 rounds up to 1; 2^383 - 1 rounds down to 0.
+  half: ScScalar; half.limbs[7] = 0x80000000;            // 2^255
+  big: ScScalar; big.limbs[4] = 1;                        // 2^128
+  #assert sc_equal(glv_mul_shift_vartime(half, big), sc_small(1));
+  below: ScScalar; for i: 0..<8 { below.limbs[i] = 0xffffffff; } below.limbs[7] = 0x7fffffff;
+  #assert sc_is_zero(glv_mul_shift_vartime(below, big));
+  #assert sc_equal(glv_mul_shift_vartime(big, big), ScScalar.{}) ;   // 2^256 >> 384 = 0
+}
+// libsecp256k1's tests.c scalars_near_split_bounds: the scalars whose
+// halves come closest to 2^128.
+GLV_NEAR_BOUNDS :: [20] string.[
+  "d938a5667f479e3eb5b3c7faefdb37493aa0585cc5ea2367e1b660db0209e6fc", "d938a5667f479e3eb5b3c7faefdb37493aa0585cc5ea2367e1b660db0209e6fd",
+  "d938a5667f479e3eb5b3c7faefdb37493aa0585cc5ea2367e1b660db0209e6fe", "d938a5667f479e3eb5b3c7faefdb37493aa0585cc5ea2367e1b660db0209e6ff",
+  "2c9c52b33fa3cf1f5ad9e3fd77ed9ba5b294b8933722e9a500e698ca4cf7632d", "2c9c52b33fa3cf1f5ad9e3fd77ed9ba5b294b8933722e9a500e698ca4cf7632e",
+  "2c9c52b33fa3cf1f5ad9e3fd77ed9ba5b294b8933722e9a500e698ca4cf7632f", "2c9c52b33fa3cf1f5ad9e3fd77ed9ba5b294b8933722e9a500e698ca4cf76330",
+  "7fffffffffffffffffffffffffffffffd576e73557a4501ddfe92f46681b209f", "7fffffffffffffffffffffffffffffffd576e73557a4501ddfe92f46681b20a0",
+  "7fffffffffffffffffffffffffffffffd576e73557a4501ddfe92f46681b20a1", "7fffffffffffffffffffffffffffffffd576e73557a4501ddfe92f46681b20a2",
+  "d363ad4cc05c30e0a5261c0288126459f85915d77825b696beebc5c2833ede11", "d363ad4cc05c30e0a5261c0288126459f85915d77825b696beebc5c2833ede12",
+  "d363ad4cc05c30e0a5261c0288126459f85915d77825b696beebc5c2833ede13", "d363ad4cc05c30e0a5261c0288126459f85915d77825b696beebc5c2833ede14",
+  "26c75a9980b861c14a4c38051024c8b4704d760ee95e7cd3de1bfdb1ce2c5a42", "26c75a9980b861c14a4c38051024c8b4704d760ee95e7cd3de1bfdb1ce2c5a43",
+  "26c75a9980b861c14a4c38051024c8b4704d760ee95e7cd3de1bfdb1ce2c5a44", "26c75a9980b861c14a4c38051024c8b4704d760ee95e7cd3de1bfdb1ce2c5a45"];
+#forall "the split recombines and both halves are below 2^128 near the bounds" i: 0..<24 {
+  k := ifx i < 20 then glv_unhex(GLV_NEAR_BOUNDS[i]) else ScScalar.{};
+  if i == 21 { k = sc_small(1); } else if i == 22 { k = sc_negate(sc_small(1)); } else if i == 23 { k = GLV_LAMBDA; }
+  split := glv_split_vartime(k);
+  #assert sc_equal(sc_add(split.r1, sc_mul(split.r2, GLV_LAMBDA)), k);
+  #assert glv_small_half(glv_half_vartime(split.r1)) && glv_small_half(glv_half_vartime(split.r2));
+}
+#forall "the split recombines for seeded scalars" seed: 0..<64 {
+  k := sc_mul(sc_small(cast(u32) (seed * 2654435761 % 4294967291 + 1)), GLV_G2);
+  k = sc_add(sc_mul(k, k), sc_small(cast(u32) seed));
+  split := glv_split_vartime(k);
+  #assert sc_equal(sc_add(split.r1, sc_mul(split.r2, GLV_LAMBDA)), k);
+  a := glv_half_vartime(split.r1); b := glv_half_vartime(split.r2);
+  #assert glv_small_half(a) && glv_small_half(b);
+  #assert sc_equal(ifx a.negative then sc_negate(a.value) else a.value, split.r1);
+}
+#test "a half takes the shorter of r and n - r" {
+  h := glv_half_vartime(sc_negate(sc_small(5)));
+  #assert h.negative && sc_equal(h.value, sc_small(5));
+  h = glv_half_vartime(sc_small(5)); #assert !h.negative && sc_equal(h.value, sc_small(5));
+  h = glv_half_vartime(ScScalar.{}); #assert !h.negative && sc_is_zero(h.value);
+}
+#forall "the endomorphism path equals chapter 16's path" seed: 0..<6 #steps 1000000000 {
+  a := sc_add(sc_mul(sc_small(cast(u32) (seed * 7919 + 3)), GLV_G1), sc_small(cast(u32) seed));
+  b := sc_add(sc_mul(sc_small(cast(u32) (seed * 104729 + 11)), GLV_MINUS_B2), GLV_LAMBDA);
+  p := ecmult_vartime(sc_small(cast(u32) (seed + 2)), sg_infinity(), sc_small(0)).value;
+  slow := ecmult_vartime(a, p, b); fast := ecmult_glv_vartime(a, p, b);
+  #assert slow.ok && fast.ok && sg_equal_mask(slow.value, fast.value) == CB_MAX64;
+}
+#test "edge inputs: zero scalars, infinity, n - 1 and an invalid point" #steps 1000000000 {
+  g := sg_generator(); minus := sc_negate(sc_small(1));
+  r := ecmult_glv_vartime(sc_small(0), g, sc_small(0)); #assert r.ok && sg_equal_mask(r.value, sg_infinity()) == CB_MAX64;
+  r = ecmult_glv_vartime(sc_small(3), sg_infinity(), sc_small(7));
+  #assert r.ok && sg_equal_mask(r.value, ecmult_vartime(sc_small(3), g, sc_small(0)).value) == CB_MAX64;
+  r = ecmult_glv_vartime(minus, g, sc_small(1)); #assert r.ok && sg_equal_mask(r.value, sg_infinity()) == CB_MAX64;
+  r = ecmult_glv_vartime(sc_small(1), g, minus); #assert r.ok && sg_equal_mask(r.value, sg_infinity()) == CB_MAX64;
+  r = ecmult_glv_vartime(GLV_LAMBDA, g, sc_small(0));
+  #assert r.ok && sg_equal_mask(r.value, glv_lambda_point(g)) == CB_MAX64;
+  bad: SgPoint; refused := ecmult_glv_vartime(sc_small(1), bad, sc_small(1));
+  #assert !refused.ok && sg_equal_mask(refused.value, sg_infinity()) == CB_MAX64;
+}
+#test "operation counts: about half the doublings of chapter 16" #steps 1000000000 {
+  a := glv_unhex(GLV_NEAR_BOUNDS[0]); b := glv_unhex(GLV_NEAR_BOUNDS[9]);
+  old := glv_strauss_count_vartime(a, b);
+  new := glv_ecmult_counted_vartime(a, sg_generator(), b);
+  #assert old.doubles >= 250 && new.doubles <= 130 && new.additions < old.additions;
+  #assert sg_equal_mask(new.value, ecmult_vartime(a, sg_generator(), b).value) == CB_MAX64;
+}
+
+// ---- the split
+// book:begin shift
+// round(k·g / 2^384) for k < n and a 256-bit g: the top 128 bits of the
+// 512-bit product, plus bit 383 to round. The result fits in 129 bits.
+glv_mul_shift_vartime :: (k: ScScalar, g: ScScalar) -> ScScalar {
+  wide: [16] u32;
+  for i: 0..<8 {
+    carry := cast(u64) 0;
+    for j: 0..<8 {
+      t := mul_wrap(cast(u64) k.limbs[i], cast(u64) g.limbs[j]) + cast(u64) wide[i+j] + carry;
+      wide[i+j] = cast,trunc(u32) (t); carry = t >> 32;
+    }
+    wide[i+8] = cast,trunc(u32) (carry);
+  }
+  result: ScScalar; carry := cast(u64) (wide[11] >> 31);
+  for i: 0..<8 {
+    word := ifx i < 4 then cast(u64) wide[12+i] else cast(u64) 0;
+    t := word + carry; result.limbs[i] = cast,trunc(u32) (t); carry = t >> 32;
+  }
+  return result;
+}
+// book:end shift
+// book:begin split
+// k = r1 + λ·r2 (mod n), with r1 and r2 each within 2^128 of 0 or of n
+// (libsecp256k1's secp256k1_scalar_split_lambda). c1 and c2 estimate
+// k·b2/n and k·(-b1)/n, so r2 = -(c1·b1 + c2·b2) and r1 = k - λ·r2.
+glv_split_vartime :: (k: ScScalar) -> GlvSplit {
+  key := sc_normalize(k);
+  c1 := sc_mul(glv_mul_shift_vartime(key, GLV_G1), GLV_MINUS_B1);
+  c2 := sc_mul(glv_mul_shift_vartime(key, GLV_G2), GLV_MINUS_B2);
+  r2 := sc_add(c1, c2);
+  r1 := sc_add(key, sc_negate(sc_mul(r2, GLV_LAMBDA)));
+  return GlvSplit.{r1=r1,r2=r2};
+}
+// The shorter of r and n - r, and which one it is. After a split, the value
+// is below 2^128; a negative half negates its point instead.
+glv_half_vartime :: (r: ScScalar) -> GlvHalf {
+  wide: [9] u32; carry: u32;
+  for i: 0..<8 { wide[i] = (r.limbs[i] << 1) | carry; carry = r.limbs[i] >> 31; }
+  wide[8] = carry;
+  if sc_subtract_n(wide).borrow == 0 { return GlvHalf.{value=sc_negate(r),negative=true}; }   // 2r >= n
+  return GlvHalf.{value=r,negative=false};
+}
+// book:end split
+
+// ---- the multiplication
+// book:begin lambda
+// λ·P = (β·x, y). In Jacobian coordinates x = X/Z², so βX does the same.
+// Infinity stays the canonical infinity.
+glv_lambda_point :: (point: SgPoint) -> SgPoint {
+  r := sg_normalize(point); r.x = sf_normalize(sf_multiply(r.x, GLV_BETA));
+  return sg_canonical_infinity(r);
+}
+glv_lambda_table :: (table: [8] SgPoint) -> [8] SgPoint {
+  r: [8] SgPoint;
+  for i: 0..<8 { r[i] = glv_lambda_point(table[i]); }
+  return r;
+}
+// P, 3P, ..., 15P, normalized so that negating y needs no reduction.
+glv_odd_table_vartime :: (point: SgPoint) -> [8] SgPoint {
+  table := sm_odd_table_vartime(point);
+  for i: 0..<8 { table[i] = sg_normalize(table[i]); }
+  return table;
+}
+// book:end lambda
+// G, 3G, ..., 15G and λ times each, in affine form (Z = 1), computed with
+// Python integers. The checks above recompute them with sm_odd_table_vartime.
+GLV_G_TABLE :: [8] SgPoint.[
+  SgPoint.{x=SecpField.{limb=[10] u64.[49813400,10507973,42833311,57456440,50502652,60932801,33958236,49197398,41875932,1994649]},y=SecpField.{limb=[10] u64.[51434680,32777214,21076420,19044885,16586676,58999338,38780864,51484022,41363107,1183414]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[14694137,8144111,26937440,18222526,28651976,36131978,54851679,51134756,33657432,4082722]},y=SecpField.{limb=[10] u64.[12117618,41901409,36812491,40162056,40173737,42859733,36929122,60837951,51340077,926686]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[37810148,37050988,28015802,49770886,15240068,43455562,55210576,8539478,38607367,778999]},y=SecpField.{limb=[10] u64.[44851926,35606185,42208714,7253045,49776679,28471561,29007322,59726675,36058853,3549960]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[46463420,49773426,37342866,33033411,37568923,12230275,26162783,47426190,6581853,1519484]},y=SecpField.{limb=[10] u64.[7496922,34179586,41638480,48254967,61346768,25597238,24696536,23429772,37796389,1751794]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[2608318,63193983,40979509,39661919,31496086,64317103,47282345,64572454,14872775,2831649]},y=SecpField.{limb=[10] u64.[38771767,50956977,14741596,43048318,28170376,26138746,58758935,57144720,18985127,3345634]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[27265227,50717271,59317182,3118853,5654936,3249835,54675127,17070459,66607273,1954489]},y=SecpField.{limb=[10] u64.[22267419,56439410,23757569,59473895,20393393,32369881,4052333,24667145,3337067,3563816]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[20994728,58188742,26009070,52003897,28341755,14492052,18686044,10628895,63101301,3973596]},y=SecpField.{limb=[10] u64.[50589057,24302774,43119259,57231486,54139398,24341457,2174646,2762198,3050888,175140]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[41814030,57622072,58319946,29159959,20047252,39320836,6663728,61495657,21986627,3531923]},y=SecpField.{limb=[10] u64.[44198744,20391933,20601936,11493979,65683631,36903803,4385826,30054926,7514220,1443722]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}}];
+GLV_G_LAMBDA_TABLE :: [8] SgPoint.[
+  SgPoint.{x=SecpField.{limb=[10] u64.[12095435,48763136,43571835,1702999,25634884,27527369,1059689,6430380,48864672,3091256]},y=SecpField.{limb=[10] u64.[51434680,32777214,21076420,19044885,16586676,58999338,38780864,51484022,41363107,1183414]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[52456239,1876765,14798719,9116530,59437536,42614411,14212338,40709687,50557727,3660727]},y=SecpField.{limb=[10] u64.[12117618,41901409,36812491,40162056,40173737,42859733,36929122,60837951,51340077,926686]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[27801192,52056485,24953144,16483138,27280745,53367196,32853948,19365854,48475354,843476]},y=SecpField.{limb=[10] u64.[44851926,35606185,42208714,7253045,49776679,28471561,29007322,59726675,36058853,3549960]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[39042196,18488211,61514684,59260605,34421536,2453531,65817884,3006099,41241578,326811]},y=SecpField.{limb=[10] u64.[7496922,34179586,41638480,48254967,61346768,25597238,24696536,23429772,37796389,1751794]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[26557010,56904601,5116428,64470453,11888077,51784392,39160574,60843501,228932,2223361]},y=SecpField.{limb=[10] u64.[38771767,50956977,14741596,43048318,28170376,26138746,58758935,57144720,18985127,3345634]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[52468967,64015662,56757343,47983999,41518491,61851273,9946139,45119030,64034589,1342772]},y=SecpField.{limb=[10] u64.[22267419,56439410,23757569,59473895,20393393,32369881,4052333,24667145,3337067,3563816]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[56604280,45849233,5645834,56436980,53645438,37690894,4637783,37914652,3623864,3953494]},y=SecpField.{limb=[10] u64.[50589057,24302774,43119259,57231486,54139398,24341457,2174646,2762198,3050888,175140]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}},
+  SgPoint.{x=SecpField.{limb=[10] u64.[28423092,2687772,40080300,52889346,379963,4905554,28607061,18163768,17167865,2103236]},y=SecpField.{limb=[10] u64.[44198744,20391933,20601936,11493979,65683631,36903803,4385826,30054926,7514220,1443722]},z=SecpField.{limb=[10] u64.[1,0,0,0,0,0,0,0,0,0]}}];
+// book:begin strauss
+// Add the term for one signed digit d: |d|·T from the odd table, negated
+// when d and the half's sign differ.
+glv_add_digit :: (result: SgPoint, table: [8] SgPoint, digit: int, negative: bool) -> SgPoint {
+  d := ifx negative then -digit else digit;
+  selected := table[((ifx d < 0 then -d else d) - 1) / 2];
+  if d < 0 { selected.y = sf_negate(selected.y); }
+  return sg_add_valid(result, selected);
+}
+// a·G + b·P with a = a1 + λ·a2 and b = b1 + λ·b2: four width-5 wNAFs of
+// at most 129 digits over G, λG, P and λP, sharing one chain of doublings
+// (Strauss, also called Shamir's trick). P must be valid.
+glv_ecmult_counted_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> GlvCount {
+  p_table := glv_odd_table_vartime(point); l_table := glv_lambda_table(p_table);
+  sa := glv_split_vartime(a); sb := glv_split_vartime(b);
+  a1 := glv_half_vartime(sa.r1); a2 := glv_half_vartime(sa.r2);
+  b1 := glv_half_vartime(sb.r1); b2 := glv_half_vartime(sb.r2);
+  w1 := sm_wnaf_vartime(a1.value, SM_P_WINDOW); w2 := sm_wnaf_vartime(a2.value, SM_P_WINDOW);
+  w3 := sm_wnaf_vartime(b1.value, SM_P_WINDOW); w4 := sm_wnaf_vartime(b2.value, SM_P_WINDOW);
+  length := sm_joint_length_vartime(w1, w2);
+  other := sm_joint_length_vartime(w3, w4);
+  if other > length { length = other; }
+  r := GlvCount.{value=sg_infinity()};
+  for round: 0..<length {
+    bit := length-1-round;
+    if round > 0 { r.value = sg_double_valid(r.value); r.doubles += 1; }
+    if w1.digits[bit] != 0 { r.value = glv_add_digit(r.value, GLV_G_TABLE, w1.digits[bit], a1.negative); r.additions += 1; }
+    if w2.digits[bit] != 0 { r.value = glv_add_digit(r.value, GLV_G_LAMBDA_TABLE, w2.digits[bit], a2.negative); r.additions += 1; }
+    if w3.digits[bit] != 0 { r.value = glv_add_digit(r.value, p_table, w3.digits[bit], b1.negative); r.additions += 1; }
+    if w4.digits[bit] != 0 { r.value = glv_add_digit(r.value, l_table, w4.digits[bit], b2.negative); r.additions += 1; }
+  }
+  return r;
+}
+// The same result as chapter 16's ecmult_vartime, with an invalid point
+// refused the same way.
+ecmult_glv_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> SgResult #export_c {
+  if sg_valid_mask(point) != CB_MAX64 { return SgResult.{value=sg_infinity()}; }
+  return SgResult.{value=glv_ecmult_counted_vartime(a, point, b).value,ok=true};
+}
+// book:end strauss
+// The doublings and additions chapter 16's ecmult_vartime spends on a and
+// b: one doubling per digit (the first doubles infinity), and one addition
+// per nonzero digit of the width-2 wNAF of a and the width-5 wNAF of b.
+glv_strauss_count_vartime :: (a: ScScalar, b: ScScalar) -> GlvCount {
+  g := sm_wnaf_vartime(a, SM_G_WINDOW); p := sm_wnaf_vartime(b, SM_P_WINDOW);
+  r := GlvCount.{value=sg_infinity()};
+  length := sm_joint_length_vartime(g, p);
+  r.doubles = length;
+  for bit: 0..<length {
+    if g.digits[bit] != 0 { r.additions += 1; }
+    if p.digits[bit] != 0 { r.additions += 1; }
+  }
+  return r;
+}
