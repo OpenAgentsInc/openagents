@@ -18,6 +18,7 @@
 
 TICKET_KEY :: 128;        // the key's most bytes
 TICKET_TEXT :: 256;       // a ticket's most bytes
+TICKET_MAC_TEXT :: 4096;  // the most bytes tk_mac signs: a shard's signed reports (vitals for 64 seats) are longer than a ticket
 TICKET_PID :: 40;
 TICKET_NAME :: 24;
 TICKET_LIFE_MS :: 600000; // what the API signs (player.c TICKET_MS)
@@ -86,8 +87,8 @@ tk_hex :: (d: int) -> u8 { return ifx d < 10 then cast(u8) ('0' + d) else cast(u
 
 // The MAC of text under key, as 64 lowercase hex characters into out; false if it failed.
 tk_mac :: (key: string, text: string, out: [] u8) -> bool {
-  if key.count > TICKET_KEY || text.count > TICKET_TEXT || out.count < 64 { return false; }
-  k: [TICKET_KEY] u8; t: [TICKET_TEXT] u8; mac: [32] u8;
+  if key.count > TICKET_KEY || text.count > TICKET_MAC_TEXT || out.count < 64 { return false; }
+  k: [TICKET_KEY] u8; t: [TICKET_MAC_TEXT] u8; mac: [32] u8;
   for i: 0..<key.count { k[i] = key[i]; }
   for i: 0..<text.count { t[i] = text[i]; }
   if hmac_sha256_checked(k[0..<key.count], t[0..<text.count], mac[..], false) != SHA_OK { return false; }
@@ -273,4 +274,13 @@ tk_sign_on :: (key: string, pid: string, account: bool, name: string, room: stri
   #assert tk_query("GET /api/room/relay/everglade/dawn?relay=x&t=v1.a.b HTTP/1.1\r\n") == "v1.a.b";
   #assert tk_query("GET /api/room/relay/everglade/dawn HTTP/1.1\r\nX: ?t=no\r\n") == "";
   #assert tk_query("GET /api/room/relay/everglade/dawn?tt=1 HTTP/1.1") == "";
+}
+
+#test "ticket: tk_mac signs a report longer than a ticket, as the vitals post for many seats is (#12717)" {
+  key := "0123456789abcdef0123456789abcdef";
+  body: [1200] u8; for i: 0..<body.count { body[i] = cast(u8) ('a' + i % 26); }
+  out: [64] u8;
+  #assert tk_mac(key, cast(string) body[..], out[..]);
+  over: [TICKET_MAC_TEXT + 1] u8;
+  #assert !tk_mac(key, cast(string) over[..], out[..]);
 }
