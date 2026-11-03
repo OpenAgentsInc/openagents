@@ -7,6 +7,8 @@ you, October 29 (eg-people). The city is
 walkable at https://openagents.com/realms/everglade (listed at
 https://openagents.com/realms). The order of the work after
 this is in [realms-port.md](realms-port.md).
+Multiplayer (everyone in a room seeing everyone, and one shared town) is
+specified in [2026-11-03-everglade-multiplayer-spec.md](2026-11-03-everglade-multiplayer-spec.md).
 The previous Everglade, on the Rust engine, is kept for parity in
 [`verse/everglade/previous/`](../../verse/everglade/previous/README.md): its map and specifications.
 
