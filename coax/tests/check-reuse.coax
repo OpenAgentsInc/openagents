@@ -1,0 +1,164 @@
+// A compile reuses each passing #authority check whose inputs didn't change
+// (ax-check-reuse), and its output is a cold compile's.
+//   coax/web/tool.sh coax/tests/check-reuse.coax COMPILER
+// Run from coax/. tests/check-reuse/main.coax is an #authority program with
+// five checks: one reaches base() in a.coax, one rate() and RATE in b.coax,
+// one names never() in b.coax but never calls it, one reads SEVEN, which
+// make() computes at compile time, and a #forall reaches scale() in a.coax. Each step edits a copy, compiles it with the cache the
+// earlier steps filled, and reads --timings for how many checks were reused
+// and run. Every compile is also run with a new, empty cache: the two must
+// print the same stdout and stderr, exit the same way, report the same steps
+// for every check and, for coax c, emit the same C.
+//   - a cold compile runs all five; editing base() runs only its check, and
+//     editing RATE only rate's;
+//   - editing make(), which only compile time runs, runs SEVEN's check;
+//   - the check reused while fee's check ran still counts fee's procedures
+//     as executed (no E0380);
+//   - editing the body of never(), which no check runs, runs nothing;
+//     changing its parameter type runs the check that names it;
+//   - moving declarations (lines added above them) runs nothing;
+//   - a failing check is never recorded: it runs every time with a cold
+//     compile's diagnostics, and putting the source back reuses the pass;
+//   - --run-steps, the build profile and the compiler binary each run all
+//     five again;
+//   - coax test runs every check;
+//   - the cache stays within COAX_CHECK_CACHE_FILES entries, oldest out first.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// Whether part occurs anywhere in text.
+has :: (text: string, part: string) -> bool {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "has finds a part anywhere and nothing that is not there" {
+  #assert has("abc", "a") && has("abc", "bc") && has("abc", "abc") && has("abc", "");
+  #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
+}
+
+// Runs body in sh with C the compiler, D a scratch directory and the shell
+// functions (FUNCTIONS); out gets stdout and stderr.
+run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
+  argv := [8] string.["sh", "-c", "C=$1; D=$2; eval \"$3\"; eval \"$4\"", "sh", compiler, dir, FUNCTIONS, body];
+  err: [1024] u8;
+  return proc_run(argv[..], 120000, out, err[..]);
+}
+
+// chk NAME CMD [ARGS...]: compiles $D/w/main.coax with CMD ($COMPILER, else
+// $C) and the cache $D/cache, then again with the new cache $D/cold-NAME,
+// and prints one line: NAME, the exit status, the check_reuse counts of the
+// cached compile, and "same" when both compiles' stdout, stderr, status and
+// per-check steps agree (else "different"; a compile that reused the whole
+// pass lists no checks, so only the rest is compared).
+// edit FILE FROM TO: replaces the line FROM in $D/w/FILE with TO.
+FUNCTIONS :: "one() { ok=$1; on=$2; shift 2; COAX_CHECK_CACHE=\"$D/$ok\" \"${COMPILER:-$C}\" \"$@\" --timings \"$D/$on.json\" > \"$D/$on.out\" 2> \"$D/$on.err\"; echo $? > \"$D/$on.status\"; grep -o '\"steps\":[0-9]*' \"$D/$on.json\" > \"$D/$on.steps\"; }; chk() { n=$1; c=$2; shift 2; one cache $n $c \"$D/w/main.coax\" \"$@\"; one cold-$n cold-$n $c \"$D/w/main.coax\" \"$@\"; same=different; cmp -s \"$D/$n.out\" \"$D/cold-$n.out\" && cmp -s \"$D/$n.err\" \"$D/cold-$n.err\" && cmp -s \"$D/$n.status\" \"$D/cold-$n.status\" && { [ ! -s \"$D/$n.steps\" ] || cmp -s \"$D/$n.steps\" \"$D/cold-$n.steps\"; } && same=same; echo \"$n status=$(cat \"$D/$n.status\") $(grep -o '\"check_reuse\":{[^}]*}' \"$D/$n.json\" | sed 's/[^0-9,]//g; s/^/reused=/; s/,/ run=/') $same\"; }; edit() { sed \"s|^$2\\$|$3|\" \"$D/w/$1\" > \"$D/w/$1.new\" && mv \"$D/w/$1.new\" \"$D/w/$1\"; }";
+
+// The corpus step: for each file, cold and warm coax c into one cache; for an
+// #authority file, a copy of its directory with a comment appended to it,
+// compiled with that cache and with a new one. Prints "corpus differs=N
+// files=M" and the files that differ.
+CORPUS :: "d=0; m=0; same3() { cmp -s \"$1.out\" \"$2.out\" && cmp -s \"$1.err\" \"$2.err\" && cmp -s \"$1.status\" \"$2.status\"; }; c1() { COAX_CHECK_CACHE=\"$1\" \"$C\" c \"$2\" > \"$3.out\" 2> \"$3.err\"; echo $? > \"$3.status\"; }; for f in tests/pass/*.coax tests/fail/*.coax tests/diagnostics/*.coax tests/parallel-checks/*.coax tests/authority-cache/*.coax tests/library-checks/*.coax tests/check-reuse/main.coax; do m=$((m + 1)); k=\"$D/corpus/$m\"; mkdir -p \"$k\"; c1 \"$k/cache\" \"$f\" \"$k/cold\"; c1 \"$k/cache\" \"$f\" \"$k/warm\"; same3 \"$k/cold\" \"$k/warm\" || { d=$((d + 1)); echo \"differs warm $f\"; }; if grep -q '^#authority;' \"$f\"; then cp -R \"$(dirname \"$f\")\" \"$k/src\"; g=\"$k/src/$(basename \"$f\")\"; printf '\\n// edited\\n' >> \"$g\"; c1 \"$k/cache\" \"$g\" \"$k/edit\"; c1 \"$k/new\" \"$g\" \"$k/edit-cold\"; same3 \"$k/edit\" \"$k/edit-cold\" || { d=$((d + 1)); echo \"differs edited $f\"; }; fi; done; echo \"corpus differs=$d files=$m\"";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: check-reuse.coax COMPILER"); return 2; }
+  compiler := args_at(a[..], 0);
+  bad := 0;
+  out: [65536] u8;
+  dir_out: [4096] u8;
+  r := run(compiler, "", "mktemp -d \"${TMPDIR:-/tmp}/coax-check-reuse.XXXXXX\"", dir_out[..]);
+  if r.status != 0 || r.out_n < 2 { tool_errln("check-reuse: cannot make a scratch directory"); return 1; }
+  dir := cast(string) dir_out[0..<r.out_n];
+  if dir[dir.count - 1] == '\n' { dir = cast(string) dir_out[0..<r.out_n - 1]; }
+
+  // A cold compile runs every check; a second reuses the whole pass (no
+  // check is looked at); coax c emits the C a cold compile emits.
+  r = run(compiler, dir, "mkdir -p \"$D/w\" && cp tests/check-reuse/*.coax \"$D/w/\" && chk cold check; chk c c && cmp \"$D/c.out\" \"$D/cold-c.out\" && echo same-c", out[..]);
+  t := cast(string) out[0..<r.out_n];
+  bad += check(has(t, "cold status=0 reused=0 run=5 same\nc status=0 reused=0 run=0 same\nsame-c"), "a cold compile runs every check; a second reuses the whole pass");
+
+  // An edited base() runs fee's check again and reuses the other three.
+  r = run(compiler, dir, "edit a.coax 'base :: () -> int { return 3; }' 'base :: () -> int { return 2 + 1; }' && chk base check && chk base-c c && cmp \"$D/base-c.out\" \"$D/cold-base-c.out\" && echo same-c", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "base status=0 reused=4 run=1 same\nbase-c status=0 reused=0 run=0 same\nsame-c"), "an edited procedure runs only the check that reaches it, and the C is a cold compile's");
+
+  // An edited RATE runs rate's check; fee's check is reused and fee still
+  // counts as executed.
+  r = run(compiler, dir, "edit b.coax 'RATE :: 5;' 'RATE :: 6;' && chk rate check; cat \"$D/rate.err\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "rate status=0 reused=4 run=1 same") && !has(t, "E0380"), "an edited constant runs only the check that reads it; reused checks still cover what they ran");
+
+  // never() is named but never called: its body is no input; its signature is.
+  r = run(compiler, dir, "edit b.coax 'never :: (n: int) -> int { return n; }' 'never :: (n: int) -> int { return n + 0; }' && chk never-body check; edit b.coax 'never :: (n: int) -> int { return n + 0; }' 'never :: (n: s64) -> int { return n + 0; }' && chk never-type check", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "never-body status=0 reused=5 run=0 same"), "the body of a procedure no check runs is no check's input");
+  bad += check(has(t, "never-type status=0 reused=4 run=1 same"), "its parameter types are an input of the check that names it");
+
+  // Moving declarations changes no check's inputs.
+  r = run(compiler, dir, "{ printf '// moved\\n\\n\\n'; cat \"$D/w/a.coax\"; } > \"$D/w/a.new\" && mv \"$D/w/a.new\" \"$D/w/a.coax\" && chk moved check", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "moved status=0 reused=5 run=0 same"), "moving declarations runs nothing again");
+
+  // make() runs at compile time (SEVEN :: #run make()), never in a check, yet
+  // its body is an input of the check that reads SEVEN.
+  r = run(compiler, dir, "edit b.coax 'make :: () -> int { return 7; }' 'make :: () -> int { return 3 + 4; }' && chk made check", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "made status=0 reused=4 run=1 same"), "a procedure a constant runs at compile time is an input of the check that reads the constant");
+
+  // A failing check is never recorded; putting the source back reuses the pass
+  // recorded before the failure (RATE changes too, so the whole pass is not reused).
+  r = run(compiler, dir, "edit a.coax 'base :: () -> int { return 2 + 1; }' 'base :: () -> int { return 4; }' && chk fail-1 check; chk fail-2 check; cat \"$D/fail-2.err\"; edit a.coax 'base :: () -> int { return 4; }' 'base :: () -> int { return 2 + 1; }' && edit b.coax 'RATE :: 6;' 'RATE :: 7;' && chk back check", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "fail-1 status=1 reused=4 run=1 same\nfail-2 status=1 reused=4 run=1 same\n"), "a failing check runs every time, with a cold compile's diagnostics and exit 1");
+  bad += check(has(t, "error[E0406]: assertion failed") && has(t, "in #test fee adds the base"), "the failure names the check");
+  bad += check(has(t, "back status=0 reused=4 run=1 same"), "putting the source back (and editing RATE) reuses the pass recorded before the failure");
+
+  // Options that change checking, and the compiler binary, run every check.
+  r = run(compiler, dir, "edit b.coax 'RATE :: 7;' 'RATE :: 8;' && chk opt-steps check --run-steps 400000; edit b.coax 'RATE :: 8;' 'RATE :: 9;' && chk opt-release check --build-profile release", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "opt-steps status=0 reused=0 run=5 same\nopt-release status=0 reused=0 run=5 same"), "a changed --run-steps or build profile runs every check");
+  // A copy with a byte appended still runs on Linux; where it doesn't (a
+  // signed binary), say so.
+  r = run(compiler, dir, "cp \"$C\" \"$D/coax-changed\" && printf '\\n' >> \"$D/coax-changed\" && if \"$D/coax-changed\" --version > /dev/null 2>&1; then edit b.coax 'RATE :: 9;' 'RATE :: 10;' && COMPILER=\"$D/coax-changed\" chk compiler check; else echo 'altered compiler does not run'; fi", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  if has(t, "altered compiler does not run") { print("  skip a changed compiler runs every check (an altered copy does not run here)\n"); }
+  else { bad += check(has(t, "compiler status=0 reused=0 run=5 same"), "a changed compiler runs every check"); }
+
+  // coax test runs every check whatever the cache holds.
+  r = run(compiler, dir, "COAX_CHECK_CACHE=\"$D/cache\" \"$C\" test \"$D/w/main.coax\" 2>&1", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "5 checks, 5 passed, 0 failed"), "coax test runs every check");
+
+  // The cache keeps at most COAX_CHECK_CACHE_FILES entries; a compile after
+  // an eviction is still a cold one's.
+  r = run(compiler, dir, "export COAX_CHECK_CACHE_FILES=5; for v in 11 12 13 14; do edit b.coax \"RATE :: $((v - 1));\" \"RATE :: $v;\"; chk small-$v check > /dev/null; echo \"files=$(ls \"$D/cache\" | wc -l | tr -d ' ')\"; done; chk small check", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "files=5\nfiles=5\nfiles=5\nfiles=5\nsmall status=0 reused=") && has(t, " same"), "the cache stays within its limit and a compile after an eviction is a cold one's");
+
+  // The corpora: every pass, fail and diagnostics program, and every check
+  // fixture, compiled with coax c twice into one cache (the second reuses
+  // what the first recorded) and once more after a comment is appended to
+  // each of its units (the whole pass is no longer reused; each check may
+  // be), against a new cache each time: stdout, stderr and status agree.
+  r = run(compiler, dir, CORPUS, out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, "corpus differs=0 "), "the corpora compile the same with a cache as with none, before and after an edit");
+  if !has(t, "corpus differs=0 ") { print("%", t); }
+
+  r = run(compiler, dir, "rm -rf \"$D\"", out[..]);
+  if bad == 0 { print("check-reuse: ok\n"); return 0; }
+  print("check-reuse: % failed\n", bad);
+  return 1;
+}

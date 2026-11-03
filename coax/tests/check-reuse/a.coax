@@ -1,0 +1,3 @@
+// Loaded by main.coax: fee's base, and scale.
+base :: () -> int { return 3; }
+scale :: (n: int) -> int { return n * 2; }

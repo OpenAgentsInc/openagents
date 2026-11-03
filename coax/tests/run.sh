@@ -97,6 +97,7 @@ unit_query() { web/tool.sh tests/query.coax "$COAX_ABS"; }
 unit_steps() { web/tool.sh tests/steps.coax "$COAX_ABS"; }
 unit_library_checks() { web/tool.sh tests/library-checks.coax "$COAX_ABS"; }
 unit_authority_cache() { web/tool.sh tests/authority-cache.coax "$COAX_ABS"; }
+unit_check_reuse() { web/tool.sh tests/check-reuse.coax "$COAX_ABS"; }
 unit_parallel_checks() { web/tool.sh tests/parallel-checks.coax "$COAX_ABS"; }
 unit_release() { python3 tests/release.py; }
 unit_mutation_schedule() {
@@ -231,7 +232,7 @@ unit_spatial() {
 
 # Every unit, in the order the whole suite runs them.
 UNITS=(pass fail examples pulse python native native_checks lexer parser budget strings traversal
-  provenance query steps library_checks authority_cache parallel_checks release mutation_schedule
+  provenance query steps library_checks authority_cache check_reuse parallel_checks release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
   sequence bounded debugging nostr constant_time wrapping mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks

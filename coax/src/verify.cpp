@@ -30,6 +30,10 @@
 #include <fcntl.h>
 #include <cstring>
 #include <set>
+#include <filesystem>
+#include <map>
+#include <unordered_map>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace coax {
@@ -104,6 +108,7 @@ struct PassedCheck {
   bool passed = false;
   uint64_t steps = 0, cases = 0, budget = 0;
   double seconds = 0;
+  bool reused = false;  // taken from the check cache (ax-check-reuse), not run
   std::vector<const ProcDecl *> executed;
 };
 
@@ -140,7 +145,7 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     const double seconds = child ? child->seconds : seconds_since(began);
     const long long ms = (long long)(seconds * 1000);
     if (g_timings.on())
-      g_timings.checks.push_back({c->forall ? "#forall" : "#test", to_std(c->name), g_timings.check_phase, seconds, r.steps, r.cases, r.passed});
+      g_timings.checks.push_back({c->forall ? "#forall" : "#test", to_std(c->name), g_timings.check_phase, seconds, r.steps, r.cases, r.passed, child && child->reused});
     if (paths) paths->push_back(r.executed);
     if (unstable && MS_storage_changed(slots, containers, file->ct_memory->slots, file->ct_memory->containers)) *unstable = true;
     if (steps) steps->push_back(r.steps);
@@ -580,6 +585,354 @@ static uint64_t check_jobs() {
   return std::max<uint64_t>(1, std::min<uint64_t>(jobs, available_cores()));
 }
 
+// Reusing passing checks one at a time (ax-check-reuse). When an #authority
+// compile's whole-program verdict isn't in the check cache (an edit since the
+// last pass), parallel_checks still takes each check that passed before with
+// the same inputs from the cache instead of running it. A check's inputs are
+// the declarations its result can depend on, found by name from its own
+// tokens:
+//   - its own body, in full;
+//   - every procedure it, or a procedure it ran, names: in full when the
+//     check ran it, and only its signature (parameter and result types, up
+//     to its body) when it didn't, since then only overload resolution
+//     reads it;
+//   - every other declaration so named (constants, structs, enums, unions,
+//     and what their tokens name, with the procedures in full: they may run
+//     at compile time), and everything a body holding #run names, in full;
+//   - every token outside a named declaration (#load, #module, #import,
+//     #authority, top-level #run and #assert ...), and the units' paths.
+// A name is matched to every top-level declaration that spells it, in any
+// unit, so a new declaration a check's code could bind to is a new input.
+// The procedures a check ran come from the run that recorded it: if every
+// input is the same, the evaluator takes the same steps and runs the same
+// procedures. The key also holds the compiler's SHA-256, the options that
+// change checking, the units left out as libraries, the step budget, the
+// storage limits and the compile-time storage every check starts with.
+// Content is the tokens (kind, spelling, value), so comments and moving a
+// declaration change nothing. A failing check is never recorded. The record
+// keeps the check's steps, cases, peak and final storage and the procedures it
+// ran, so a reused check stands in for a child's report and the rest of
+// parallel_checks (the sequential-equivalence rules, E0380 coverage) is
+// unchanged. Declarations are found by splitting the tokens at depth-0 `;`
+// and `}`, and that split is checked against the parser's: each declaration
+// must start an item that spells its name and no item may hold two. When it
+// isn't, or a procedure a check ran can't be named, nothing is reused or
+// recorded for that check (or that program).
+static bool read_record(const std::string &path, std::string *out);
+struct CheckReuse {
+  bool on = false;
+  std::string dir, prefix;  // prefix: the compiler, the options and the left-out units, as a key's first lines
+  const Source *src = nullptr;
+  const std::vector<Token> *tokens = nullptr;
+  size_t reused = 0, ran = 0;
+};
+static CheckReuse g_check_reuse;
+
+// Marks a cache record as just used, so the cache evicts the least recently used first.
+static void cache_touch(const std::string &path) { utimensat(AT_FDCWD, path.c_str(), nullptr, 0); }
+static void check_cache_used(const std::string &dir);  // main.cpp: evicts old records when this process ends
+
+struct ReuseIndex {
+  enum : uint8_t { NONE, SIG, EXEC, FULL };
+  struct Item {
+    int32_t first = 0, last = -1, sig_last = -1;  // tokens [first, last]; a procedure's signature is [first, sig_last]
+    int32_t unit = -1;
+    std::string name, id;
+    bool named = false, proc = false, check = false, run = false, sig_run = false;  // run: its tokens hold #run (sig_run: its signature's)
+    std::vector<int32_t> uses, sig_uses;  // the named items its tokens (its signature's) spell
+    std::string full, sig;                 // digests, when first needed
+  };
+  const Source *src = nullptr;
+  const std::vector<Token> *tokens = nullptr;
+  std::vector<Item> items;
+  std::string global;
+  std::map<const ProcDecl *, std::string> proc_id;
+  std::map<std::string, const ProcDecl *> proc_by_id;
+  std::map<const ProcDecl *, int32_t> proc_item;
+  std::map<const CheckDecl *, int32_t> check_item;
+  std::string why;  // why nothing is reused in this program ("" when the index is sound)
+
+  static void put(std::string &out, const Token &t) {
+    out += (char)t.kind;
+    auto str = [&](Str s) { uint32_t n = (uint32_t)s.count; out.append((const char *)&n, sizeof n); out.append(s.data, (size_t)s.count); };
+    str(t.text);
+    if (t.kind == Tok::int_lit || t.kind == Tok::float_lit || t.kind == Tok::string_lit) {
+      out.append((const char *)&t.int_value, sizeof t.int_value);
+      out.append((const char *)&t.float_value, sizeof t.float_value);
+      out += (char)t.float_bits;
+      str(t.string_value);
+    }
+  }
+  std::string digest(int32_t first, int32_t last) const {
+    std::string bytes;
+    for (int32_t k = first; k <= last; k++) put(bytes, (*tokens)[(size_t)k]);
+    return debug_source_hash(bytes);
+  }
+  const std::string &full_digest(int32_t k) { Item &it = items[(size_t)k]; if (it.full.empty()) it.full = digest(it.first, it.last); return it.full; }
+  const std::string &sig_digest(int32_t k) { Item &it = items[(size_t)k]; if (it.sig.empty()) it.sig = digest(it.first, it.sig_last); return it.sig; }
+
+  // The item whose tokens span offset, or -1.
+  int32_t item_at(int32_t offset) const {
+    size_t lo = 0, hi = items.size();
+    while (lo < hi) {
+      size_t mid = (lo + hi) / 2;
+      if ((*tokens)[(size_t)items[mid].first].loc.offset <= offset) lo = mid + 1; else hi = mid;
+    }
+    if (lo == 0) return -1;
+    const Item &it = items[lo - 1];
+    return offset <= (*tokens)[(size_t)it.last].loc.offset ? (int32_t)(lo - 1) : -1;
+  }
+
+  bool build(const File *file) {
+    const std::vector<Token> &tk = *tokens;
+    // Units by where they begin in the composed text.
+    std::vector<std::pair<int32_t, int32_t>> starts;
+    for (size_t u = 0; u < src->units.size(); u++) starts.push_back({src->units[u]->begin, (int32_t)u});
+    std::sort(starts.begin(), starts.end());
+    auto unit_of = [&](int32_t offset) -> int32_t {
+      auto at = std::upper_bound(starts.begin(), starts.end(), std::make_pair(offset, INT32_MAX));
+      if (at == starts.begin()) return -1;
+      const int32_t u = (at - 1)->second;
+      return offset < src->units[(size_t)u]->end ? u : -1;
+    };
+    // Items: a run of tokens that ends at a depth-0 `;`, or at the `}` that
+    // returns to depth 0 (with a `;` straight after it), or where its unit ends.
+    int32_t last_offset = -1;
+    for (size_t i = 0; i < tk.size();) {
+      if (tk[i].kind == Tok::eof) { i++; continue; }
+      Item it;
+      it.first = (int32_t)i;
+      it.unit = unit_of(tk[i].loc.offset);
+      int depth = 0;
+      size_t j = i;
+      for (; j < tk.size(); j++) {
+        const Token &t = tk[j];
+        if (t.kind == Tok::eof || (j > i && unit_of(t.loc.offset) != it.unit)) break;
+        if (t.loc.offset <= last_offset) { why = "tokens out of order"; return false; }
+        last_offset = t.loc.offset;
+        if (t.kind == Tok::lparen || t.kind == Tok::lbracket || t.kind == Tok::lbrace) depth++;
+        else if (t.kind == Tok::rparen || t.kind == Tok::rbracket || t.kind == Tok::rbrace) depth--;
+        if (depth < 0) { why = "unbalanced tokens"; return false; }
+        if (depth == 0 && t.kind == Tok::semicolon) { j++; break; }
+        if (depth == 0 && t.kind == Tok::rbrace) {
+          j++;
+          if (j < tk.size() && tk[j].kind == Tok::semicolon && unit_of(tk[j].loc.offset) == it.unit) { last_offset = tk[j].loc.offset; j++; }
+          break;
+        }
+      }
+      it.last = (int32_t)j - 1;
+      const Token &head = tk[i];
+      if (head.kind == Tok::ident) { it.named = true; it.name = to_std(head.text); }
+      if (head.kind == Tok::directive && (str_eq(head.text, "test") || str_eq(head.text, "forall"))) it.check = true;
+      for (int32_t k = it.first; k <= it.last; k++) it.run = it.run || (tk[(size_t)k].kind == Tok::directive && str_eq(tk[(size_t)k].text, "run"));
+      items.push_back(std::move(it));
+      i = j;
+    }
+    // The parser's declarations must each start an item that spells their
+    // name, one an item; a procedure with a body has its signature before it.
+    std::vector<const void *> owner(items.size(), nullptr);
+    auto claim = [&](const void *decl, Loc loc, const Str *name) -> int32_t {
+      const int32_t k = item_at(loc.offset);
+      if (k < 0) { why = "a declaration outside every item"; return -1; }
+      if (owner[(size_t)k] && owner[(size_t)k] != decl) { why = "two declarations in one item"; return -1; }
+      owner[(size_t)k] = decl;
+      if (name && (!items[(size_t)k].named || items[(size_t)k].name != to_std(*name))) { why = "an item that doesn't spell its declaration's name"; return -1; }
+      return k;
+    };
+    auto procedure = [&](const ProcDecl *p) -> bool {
+      const int32_t k = claim(p, p->loc, &p->name);
+      if (k < 0) return false;
+      Item &it = items[(size_t)k];
+      if (p->foreign || !p->body) return true;
+      // The body is the brace group that ends the item, and holds the body's location.
+      int32_t close = it.last;
+      if (tk[(size_t)close].kind == Tok::semicolon) close--;
+      if (close <= it.first || tk[(size_t)close].kind != Tok::rbrace) return true;
+      int depth = 0;
+      for (int32_t t = close; t > it.first; t--) {
+        const Tok kind = tk[(size_t)t].kind;
+        if (kind == Tok::rparen || kind == Tok::rbracket || kind == Tok::rbrace) depth++;
+        else if (kind == Tok::lparen || kind == Tok::lbracket || kind == Tok::lbrace) depth--;
+        if (depth == 0) {
+          if (kind == Tok::lbrace && p->body->loc.offset >= tk[(size_t)t].loc.offset && p->body->loc.offset <= tk[(size_t)close].loc.offset) {
+            it.proc = true;
+            it.sig_last = t - 1;
+          }
+          break;
+        }
+      }
+      return true;
+    };
+    for (const StructDecl *d : file->structs) if (!d->origin && claim(d, d->loc, &d->name) < 0) return false;
+    for (const StructDecl *d : file->generic_structs) if (claim(d, d->loc, &d->name) < 0) return false;
+    for (const EnumDecl *d : file->enums) if (claim(d, d->loc, &d->name) < 0) return false;
+    for (const UnionDecl *d : file->unions) if (claim(d, d->loc, &d->name) < 0) return false;
+    for (const ConstDecl *d : file->constants) if (claim(d, d->loc, &d->name) < 0) return false;
+    for (const ProcDecl *p : file->procs) if (!p->origin && !procedure(p)) return false;
+    for (const ProcDecl *p : file->generics) if (!procedure(p)) return false;
+    for (const CheckDecl *c : file->checks) {
+      const int32_t k = claim(c->proc ? (const void *)c->proc : (const void *)c, c->loc, nullptr);
+      if (k < 0) return false;
+      if (!items[(size_t)k].check) { why = "a check outside a check item"; return false; }
+      check_item[c] = k;
+    }
+    // Identities: unit, name and which of the unit's items so named.
+    std::map<std::pair<int32_t, std::string>, int32_t> seen;
+    std::unordered_map<std::string, std::vector<int32_t>> by_name;
+    for (size_t k = 0; k < items.size(); k++) {
+      Item &it = items[k];
+      if (!it.named && !it.check) continue;
+      std::string name = it.named ? it.name : "#check";
+      if (it.check) {
+        for (const auto &[c, at] : check_item) if (at == (int32_t)k) name = std::string(c->forall ? "#forall " : "#test ") + to_std(c->name);
+      }
+      const int32_t ordinal = seen[{it.unit, name}]++;
+      it.id = (it.unit < 0 ? std::string("?") : src->units[(size_t)it.unit]->canonical) + "\x1f" + name + "\x1f" + std::to_string(ordinal);
+      if (it.id.find('\n') != std::string::npos) it.id.clear();  // no record can name it
+      if (it.named) by_name[it.name].push_back((int32_t)k);
+    }
+    for (Item &it : items) {
+      auto names = [&](int32_t last, std::vector<int32_t> *out) {
+        for (int32_t t = it.first; t <= last; t++) {
+          if (tk[(size_t)t].kind != Tok::ident) continue;
+          auto at = by_name.find(to_std(tk[(size_t)t].text));
+          if (at != by_name.end()) out->insert(out->end(), at->second.begin(), at->second.end());
+        }
+        std::sort(out->begin(), out->end());
+        out->erase(std::unique(out->begin(), out->end()), out->end());
+      };
+      names(it.last, &it.uses);
+      if (it.proc) names(it.sig_last, &it.sig_uses);
+      for (int32_t t = it.first; it.proc && t <= it.sig_last; t++) it.sig_run = it.sig_run || (tk[(size_t)t].kind == Tok::directive && str_eq(tk[(size_t)t].text, "run"));
+    }
+    // Every procedure, by its template's item and its instance's bindings.
+    for (const ProcDecl *p : file->procs) {
+      const ProcDecl *base = p->origin ? p->origin : p;
+      const int32_t k = item_at(base->loc.offset);
+      if (k < 0 || items[(size_t)k].id.empty()) continue;
+      std::string id = items[(size_t)k].id + "\x1f" + (p->origin ? to_std(p->key) : std::string());
+      if (id.find('\n') != std::string::npos) continue;
+      proc_item[p] = k;
+      proc_id[p] = id;
+      proc_by_id[id] = p;
+    }
+    // Everything outside a named item, by unit, and the units.
+    std::string bytes;
+    for (const auto &unit : src->units) bytes += unit->canonical + "\n";
+    for (const Item &it : items) {
+      if (it.named || it.check) continue;
+      bytes += "\x1e" + std::to_string(it.unit) + "\n";
+      for (int32_t t = it.first; t <= it.last; t++) put(bytes, tk[(size_t)t]);
+    }
+    global = debug_source_hash(bytes);
+    if (global.empty()) { why = "no hash in this compiler"; return false; }
+    return true;
+  }
+
+  // The key of a check's inputs, given the items of the procedures it ran.
+  std::string key(int32_t check, const std::set<int32_t> &ran, const std::string &head) {
+    std::vector<uint8_t> mode(items.size(), NONE);
+    std::vector<int32_t> work{check};
+    mode[(size_t)check] = EXEC;
+    auto visit = [&](int32_t k, uint8_t m) {
+      if (!items[(size_t)k].proc) m = FULL;
+      if (m <= mode[(size_t)k]) return;
+      mode[(size_t)k] = m;
+      work.push_back(k);
+    };
+    while (!work.empty()) {
+      const int32_t k = work.back();
+      work.pop_back();
+      const Item &it = items[(size_t)k];
+      const uint8_t m = mode[(size_t)k];
+      // A procedure a declaration, or tokens holding #run, name may run at
+      // compile time: all of it. One a signature names is read for its own
+      // signature (a default's type); one a body the check ran names, all of
+      // it when the check ran it too, else its signature.
+      const bool deep = m == FULL || (m == SIG ? it.sig_run : it.run);
+      for (int32_t j : m == SIG ? it.sig_uses : it.uses)
+        visit(j, !items[(size_t)j].proc || deep ? FULL : m == SIG ? SIG : ran.count(j) ? EXEC : SIG);
+    }
+    std::string text = "coax.check-reuse.v1\n" + head + "global\t" + global + "\ncheck\t" + items[(size_t)check].id + "\n";
+    for (size_t k = 0; k < items.size(); k++) {
+      if (!mode[k]) continue;
+      if (items[k].id.empty()) return "";
+      text += std::string(mode[k] == SIG ? "S\t" : mode[k] == EXEC ? "E\t" : "F\t") + items[k].id + "\t" +
+              (mode[k] == SIG ? sig_digest((int32_t)k) : full_digest((int32_t)k)) + "\n";
+    }
+    return debug_source_hash(text);
+  }
+};
+
+// The record of one program's reusable checks: one file in the check cache
+// under the SHA-256 of its entry unit and the key's first lines, holding a
+// table of procedure identities and, for each check that passed, its key and
+// what its child reported.
+struct ReuseRecord {
+  enum { STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS, END_SLOTS, END_CONTAINERS, END_STRINGS, NUMBERS };
+  struct Entry { std::string key; uint64_t numbers[NUMBERS] = {}; std::vector<std::string> ran; };
+  std::map<std::string, Entry> entries;  // by the check's identity
+  void load(const std::string &path) {
+    std::string text;
+    if (!read_record(path, &text) || text.compare(0, 20, "coax.check-reuse.v1\n") != 0) return;
+    cache_touch(path);
+    std::vector<std::string> table;
+    for (size_t at = 20; at < text.size();) {
+      const size_t end = text.find('\n', at);
+      if (end == std::string::npos) break;
+      const std::string line = text.substr(at, end - at);
+      at = end + 1;
+      if (line.compare(0, 2, "p\t") == 0) { table.push_back(line.substr(2)); continue; }
+      if (line.compare(0, 2, "c\t") != 0) return;
+      std::vector<std::string> f;
+      for (size_t s = 2;;) {
+        const size_t tab = line.find('\t', s);
+        f.push_back(line.substr(s, tab == std::string::npos ? std::string::npos : tab - s));
+        if (tab == std::string::npos) break;
+        s = tab + 1;
+      }
+      if (f.size() != 3 + NUMBERS) return;
+      Entry e;
+      e.key = f[1];
+      for (size_t i = 0; i < NUMBERS; i++) e.numbers[i] = strtoull(f[2 + i].c_str(), nullptr, 10);
+      const std::string &list = f[2 + NUMBERS];
+      for (size_t s = 0; s < list.size();) {
+        size_t comma = list.find(',', s);
+        if (comma == std::string::npos) comma = list.size();
+        const size_t index = strtoull(list.c_str() + s, nullptr, 10);
+        if (index >= table.size()) return;
+        e.ran.push_back(table[index]);
+        s = comma + 1;
+      }
+      entries[f[0]] = std::move(e);
+    }
+  }
+  bool save(const std::string &dir, const std::string &path) const {
+    std::map<std::string, size_t> index;
+    std::string table, rows;
+    for (const auto &[check, e] : entries) {
+      rows += "c\t" + check + "\t" + e.key;
+      for (uint64_t v : e.numbers) rows += "\t" + std::to_string(v);
+      rows += "\t";
+      for (size_t i = 0; i < e.ran.size(); i++) {
+        auto at = index.find(e.ran[i]);
+        if (at == index.end()) { at = index.emplace(e.ran[i], index.size()).first; table += "p\t" + e.ran[i] + "\n"; }
+        rows += (i ? "," : "") + std::to_string(at->second);
+      }
+      rows += "\n";
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    const std::string temp = dir + "/." + path.substr(path.rfind('/') + 1) + "." + std::to_string(getpid());
+    FILE *f = fopen(temp.c_str(), "wb");
+    if (!f) return false;
+    const std::string text = "coax.check-reuse.v1\n" + table + rows;
+    const bool ok = fwrite(text.data(), 1, text.size(), f) == text.size();
+    if (fclose(f) != 0 || !ok || std::rename(temp.c_str(), path.c_str()) != 0) { unlink(temp.c_str()); return false; }
+    return true;
+  }
+};
+
 // Parallel #authority checks (ax-parallel-checks). A compile of an #authority
 // program runs every check it keeps, one after another, in the evaluator.
 // parallel_checks runs each check instead in a forked child of this process,
@@ -638,10 +991,66 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     if (at != times->end()) known[i] = at->second;
   }
   std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return known[a] > known[b]; });
+  // Checks that passed before with the same inputs (ax-check-reuse): their
+  // recorded reports stand in for a child's.
+  std::vector<bool> prefilled(n, false);
+  ReuseIndex index;
+  ReuseRecord record;
+  std::string record_path, head;
+  std::vector<std::string> check_ids(n);
+  const bool reuse = g_check_reuse.on && g_check_reuse.tokens && !g_check_reuse.prefix.empty() &&
+                     (index.src = g_check_reuse.src, index.tokens = g_check_reuse.tokens, index.build(file));
+  if (getenv("COAX_CHECK_REUSE_DEBUG") && g_check_reuse.on && !index.why.empty()) fprintf(stderr, "check reuse off: %s\n", index.why.c_str());
+  if (reuse) {
+    head = g_check_reuse.prefix + "start\t" + std::to_string(slots) + " " + std::to_string(containers) + " " + std::to_string(strings) + " " +
+           std::to_string(frozen) + " " + std::to_string(pending) + " limits " + std::to_string(memory.slot_limit) + " " +
+           std::to_string(memory.container_limit) + " " + std::to_string(CB_string_live_limit()) + " steps " + std::to_string(max_steps) + "\n";
+    record_path = g_check_reuse.dir + "/" + debug_source_hash("coax.check-reuse-record.v1\n" + g_check_reuse.src->units[0]->canonical + "\n" + g_check_reuse.prefix);
+    record.load(record_path);
+    for (size_t i = 0; i < n; i++) {
+      const auto at = index.check_item.find(file->checks[(int32_t)i]);
+      if (at == index.check_item.end() || index.items[(size_t)at->second].id.empty()) continue;
+      check_ids[i] = debug_source_hash(index.items[(size_t)at->second].id);
+      const auto e = record.entries.find(check_ids[i]);
+      if (e == record.entries.end()) continue;
+      std::set<int32_t> ran;
+      std::vector<const ProcDecl *> procs;
+      bool known_all = true;
+      for (const std::string &id : e->second.ran) {
+        const auto p = index.proc_by_id.find(id);
+        if (p == index.proc_by_id.end()) { known_all = false; break; }
+        procs.push_back(p->second);
+        ran.insert(index.proc_item[p->second]);
+      }
+      if (!known_all || index.key(at->second, ran, head) != e->second.key) continue;
+      const uint64_t *v = e->second.numbers;
+      std::vector<uint64_t> report(FIELDS + procs.size());
+      report[MAGIC] = REPORT;
+      report[PASSED] = 1;
+      report[STEPS] = v[ReuseRecord::STEPS];
+      report[CASES] = v[ReuseRecord::CASES];
+      report[BUDGET] = v[ReuseRecord::BUDGET];
+      report[SECONDS] = 0;  // reused: no time spent
+      report[PEAK_SLOTS] = v[ReuseRecord::PEAK_SLOTS];
+      report[PEAK_CONTAINERS] = v[ReuseRecord::PEAK_CONTAINERS];
+      report[PEAK_STRINGS] = v[ReuseRecord::PEAK_STRINGS];
+      report[END_SLOTS] = v[ReuseRecord::END_SLOTS];
+      report[END_CONTAINERS] = v[ReuseRecord::END_CONTAINERS];
+      report[END_STRINGS] = v[ReuseRecord::END_STRINGS];
+      report[SHARED] = 0;
+      report[EXECUTED] = procs.size();
+      for (size_t k = 0; k < procs.size(); k++) report[FIELDS + k] = (uint64_t)(uintptr_t)procs[k];
+      reports[i] = std::move(report);
+      prefilled[i] = true;
+      g_check_reuse.reused++;
+    }
+  }
+  if (g_check_reuse.on) g_check_reuse.ran += n - (size_t)std::count(prefilled.begin(), prefilled.end(), true);
   size_t next = 0;
   fflush(stdout);
   fflush(stderr);
   auto start = [&](size_t index) -> bool {
+    if (prefilled[index]) return true;
     int pipe_fds[2];
     if (pipe(pipe_fds) != 0) return false;
     pid_t pid = fork();
@@ -724,6 +1133,42 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     for (Child &c : running) { kill(c.pid, SIGKILL); close(c.fd); int status; waitpid(c.pid, &status, 0); }
     return sequential("a child process could not start");
   }
+  // Record each check that passed in a child, and every procedure it ran, for
+  // the next compile; drop the records of checks this program no longer has.
+  if (reuse) {
+    ReuseRecord kept;
+    bool changed = false;
+    for (size_t i = 0; i < n; i++) {
+      if (check_ids[i].empty()) continue;
+      const auto old = record.entries.find(check_ids[i]);
+      const std::vector<uint64_t> &report = reports[i];
+      if (prefilled[i] || report.empty() || !report[PASSED] || report[SHARED]) {
+        if (old != record.entries.end()) kept.entries[check_ids[i]] = old->second;
+        continue;
+      }
+      ReuseRecord::Entry e;
+      std::set<int32_t> ran;
+      bool named = true;
+      for (size_t k = FIELDS; k < report.size(); k++) {
+        const ProcDecl *p = (const ProcDecl *)(uintptr_t)report[k];
+        const auto id = index.proc_id.find(p);
+        if (id == index.proc_id.end()) { named = false; break; }
+        e.ran.push_back(id->second);
+        ran.insert(index.proc_item[p]);
+      }
+      if (named) e.key = index.key(index.check_item[file->checks[(int32_t)i]], ran, head);
+      if (e.key.empty()) {
+        if (old != record.entries.end()) kept.entries[check_ids[i]] = old->second;
+        continue;
+      }
+      const size_t from[ReuseRecord::NUMBERS] = {STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS,
+                                                 END_SLOTS, END_CONTAINERS, END_STRINGS};
+      for (size_t k = 0; k < ReuseRecord::NUMBERS; k++) e.numbers[k] = report[from[k]];
+      kept.entries[check_ids[i]] = std::move(e);
+      changed = true;
+    }
+    if (changed || kept.entries.size() != record.entries.size()) kept.save(g_check_reuse.dir, record_path);
+  }
   times->clear();
   for (size_t i = 0; i < n; i++)
     if (!reports[i].empty()) {
@@ -759,6 +1204,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     passed.cases = report[CASES];
     passed.budget = report[BUDGET];
     memcpy(&passed.seconds, &report[SECONDS], sizeof passed.seconds);
+    passed.reused = prefilled[i];
     for (size_t k = FIELDS; k < report.size(); k++) {
       const ProcDecl *p = (const ProcDecl *)(uintptr_t)report[k];
       if (procedures.count(p)) passed.executed.push_back(p);

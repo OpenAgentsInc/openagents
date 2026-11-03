@@ -1,0 +1,16 @@
+// An #authority program whose checks reach different declarations
+// (tests/check-reuse.coax): an edit runs again only the checks that reach it.
+#load "a.coax";
+#load "b.coax";
+#authority;
+fee :: (amount: int) -> int { return amount / 100 + base(); }
+#test "fee adds the base" { #assert fee(1000) == 13 && fee(0) == 3; }
+#test "rate uses its constant" { #assert rate(10) == 10 * RATE; }
+#test "a named procedure that never runs" {
+  n := 0;
+  if n > 0 { #assert never(n) == n; }
+  #assert n == 0;
+}
+#test "a constant made at compile time" { #assert SEVEN == 7; }
+#forall "scale keeps order" n: 0..<8 { #assert scale(n) <= scale(n + 1); }
+main :: () { }

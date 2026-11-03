@@ -1,0 +1,7 @@
+// Loaded by main.coax: a rate with its constant, a procedure a check
+// names but never calls, and a constant made at compile time.
+RATE :: 5;
+rate :: (n: int) -> int { return n * RATE; }
+never :: (n: int) -> int { return n; }
+make :: () -> int { return 7; }
+SEVEN :: #run make();

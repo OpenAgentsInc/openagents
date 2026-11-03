@@ -43,7 +43,7 @@ namespace coax {
 // --timings-table prints a table on stderr. Monotonic clock observations are
 // host effects, never interpreted #run work. With neither flag, on() is false
 // and no phase reads the clock.
-struct TimedCheck {std::string kind,name,phase;double seconds;uint64_t steps,cases;bool passed;};
+struct TimedCheck {std::string kind,name,phase;double seconds;uint64_t steps,cases;bool passed,reused=false;};
 struct TimedLibrary {std::string path;double seconds;bool cached,checks;};
 struct NativeTimings {
   std::string path,source_map;
@@ -412,9 +412,11 @@ static void timings_table(double total) {
     if(rows.size()>10)fprintf(stderr,"    ... %zu more\n",rows.size()-10);
   };
   if(!g_timings.checks.empty()){
-    double sum=0;for(const auto &c:g_timings.checks)sum+=c.seconds;
-    fprintf(stderr,"  checks: %zu run, %.3f s; slowest:\n",g_timings.checks.size(),sum);
-    slowest(g_timings.checks,[](const TimedCheck &c){fprintf(stderr,"    %9.3f s %12llu steps  %s %s%s (%s)\n",c.seconds,(unsigned long long)c.steps,c.kind.c_str(),c.name.c_str(),c.passed?"":" FAILED",c.phase.c_str());});
+    double sum=0;size_t reused=0;for(const auto &c:g_timings.checks){sum+=c.seconds;reused+=c.reused;}
+    std::vector<TimedCheck> ran;for(const auto &c:g_timings.checks)if(!c.reused)ran.push_back(c);
+    if(reused)fprintf(stderr,"  checks: %zu run, %.3f s, %zu reused (passed before with the same inputs); slowest:\n",ran.size(),sum,reused);
+    else fprintf(stderr,"  checks: %zu run, %.3f s; slowest:\n",g_timings.checks.size(),sum);
+    slowest(ran,[](const TimedCheck &c){fprintf(stderr,"    %9.3f s %12llu steps  %s %s%s (%s)\n",c.seconds,(unsigned long long)c.steps,c.kind.c_str(),c.name.c_str(),c.passed?"":" FAILED",c.phase.c_str());});
   }
   if(!g_capacity.empty()){
     fprintf(stderr,"  capacities: highest use of each limit\n");
@@ -436,12 +438,12 @@ static int finish_profile(int status) {
   const double total=seconds_since(g_timings.start);
   if(g_timings.table)timings_table(total);
   if(g_timings.path.empty()) return status;
-  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"library_checks\":{\"cached\":"<<g_library_cached<<",\"checked\":"<<g_library_checked<<"}"<<",\"authority_checks\":{\"cached\":"<<g_authority_cached<<",\"checked\":"<<g_authority_checked<<"}"<<",\"parallel_checks\":"<<json_string(g_timings.parallel)<<",\"seconds\":{";
+  std::ostringstream out;out<<std::setprecision(17)<<"{\"schema_version\":1,\"compiler\":"<<json_string(VERSION)<<",\"success\":"<<(status==0?"true":"false")<<",\"exit_status\":"<<status<<",\"generated_bytes\":"<<g_timings.generated_bytes<<",\"instances\":"<<g_timings.instances<<",\"instance_generated_bytes\":"<<g_timings.instance_bytes<<",\"run_steps\":"<<g_timings.run_steps<<",\"evaluated_steps\":"<<g_timings.evaluated_steps<<",\"aggregate_peak_slots\":"<<g_timings.peak_slots<<",\"aggregate_peak_containers\":"<<g_timings.peak_containers<<",\"string_peak_bytes\":"<<g_timings.peak_string_bytes<<",\"aggregate_traversal_work\":"<<g_timings.traversal_work<<",\"library_checks\":{\"cached\":"<<g_library_cached<<",\"checked\":"<<g_library_checked<<"}"<<",\"authority_checks\":{\"cached\":"<<g_authority_cached<<",\"checked\":"<<g_authority_checked<<"}"<<",\"check_reuse\":{\"reused\":"<<g_check_reuse.reused<<",\"run\":"<<g_check_reuse.ran<<"}"<<",\"parallel_checks\":"<<json_string(g_timings.parallel)<<",\"seconds\":{";
   bool first=true;for(const auto &[phase,duration]:g_timings.seconds) {out<<(first?"":",")<<json_string(phase)<<":"<<duration;first=false;}
   out<<(first?"":",")<<"\"total\":"<<total<<"},\"detail_seconds\":{";
   first=true;for(const auto &[part,duration]:g_timings.detail) {out<<(first?"":",")<<json_string(part)<<":"<<duration;first=false;}
   out<<"},\"checks\":[";
-  first=true;for(const auto &c:g_timings.checks) {out<<(first?"":",")<<"{\"kind\":"<<json_string(c.kind)<<",\"name\":"<<json_string(c.name)<<",\"phase\":"<<json_string(c.phase)<<",\"seconds\":"<<c.seconds<<",\"steps\":"<<c.steps<<",\"cases\":"<<c.cases<<",\"passed\":"<<(c.passed?"true":"false")<<"}";first=false;}
+  first=true;for(const auto &c:g_timings.checks) {out<<(first?"":",")<<"{\"kind\":"<<json_string(c.kind)<<",\"name\":"<<json_string(c.name)<<",\"phase\":"<<json_string(c.phase)<<",\"seconds\":"<<c.seconds<<",\"steps\":"<<c.steps<<",\"cases\":"<<c.cases<<",\"passed\":"<<(c.passed?"true":"false")<<",\"reused\":"<<(c.reused?"true":"false")<<"}";first=false;}
   out<<"],\"capacities\":[";
   first=true;for(const auto &[name,c]:g_capacity) {out<<(first?"":",")<<"{\"name\":"<<json_string(name)<<",\"code\":"<<json_string(c.code)<<",\"used\":"<<c.used<<",\"limit\":"<<c.limit<<",\"near\":"<<(CB_near(c.used,c.limit)?"true":"false")<<"}";first=false;}
   out<<"],\"libraries\":[";
@@ -996,10 +998,61 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
                       bool run_checks, bool mutation_lowering, struct QueryParsed *parsed);
 
 static std::string library_cache_dir() {
-  const char *dir = getenv("COAX_CHECK_CACHE");
-  if (dir && *dir) return dir;
+  const char *env = getenv("COAX_CHECK_CACHE");
   const char *home = getenv("HOME");
-  return std::string(home && *home ? home : "/tmp") + "/.cache/coax-check";
+  const std::string dir = env && *env ? env : std::string(home && *home ? home : "/tmp") + "/.cache/coax-check";
+  check_cache_used(dir);
+  return dir;
+}
+
+// The check cache is bounded (ax-check-cache-bound): when a process that used
+// it ends, it removes the least recently used records (by modification time; a
+// record read is touched) until at most $COAX_CHECK_CACHE_FILES records
+// (default 4096) and $COAX_CHECK_CACHE_BYTES bytes (default 256 MiB) are left,
+// and any temporary file older than an hour. A record that is gone only costs
+// the work it saved. Forked children leave with _exit and evict nothing.
+static std::string *g_check_cache_dir = nullptr;
+static uint64_t cache_limit(const char *name, uint64_t fallback) {
+  uint64_t v = 0;
+  const char *env = getenv(name);
+  return env && parse_count(env, &v) ? v : fallback;
+}
+static void check_cache_evict() {
+  if (!g_check_cache_dir) return;
+  const uint64_t files = cache_limit("COAX_CHECK_CACHE_FILES", 4096), bytes = cache_limit("COAX_CHECK_CACHE_BYTES", 256ull << 20);
+  struct Entry { int64_t when; std::string path; uint64_t size; };
+  std::vector<Entry> entries;
+  uint64_t total = 0;
+  std::error_code ec;
+  const auto now = std::chrono::system_clock::now();
+  for (auto it = std::filesystem::directory_iterator(*g_check_cache_dir, ec); !ec && it != std::filesystem::directory_iterator(); it.increment(ec)) {
+    struct stat st;
+    const std::string path = it->path().string(), name = it->path().filename().string();
+    if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) continue;
+    if (!name.empty() && name[0] == '.') {
+      if (std::chrono::system_clock::to_time_t(now) - st.st_mtime > 3600) unlink(path.c_str());
+      continue;
+    }
+#ifdef __APPLE__
+    const int64_t when = (int64_t)st.st_mtimespec.tv_sec * 1000000000 + st.st_mtimespec.tv_nsec;
+#else
+    const int64_t when = (int64_t)st.st_mtim.tv_sec * 1000000000 + st.st_mtim.tv_nsec;
+#endif
+    entries.push_back({when, path, (uint64_t)st.st_size});
+    total += (uint64_t)st.st_size;
+  }
+  if (entries.size() <= files && total <= bytes) return;
+  std::sort(entries.begin(), entries.end(), [](const Entry &a, const Entry &b) { return a.when != b.when ? a.when < b.when : a.path < b.path; });
+  size_t left = entries.size();
+  for (const Entry &e : entries) {
+    if (left <= files && total <= bytes) break;
+    if (unlink(e.path.c_str()) == 0 || errno == ENOENT) { left--; total -= e.size; }
+  }
+}
+static void check_cache_used(const std::string &dir) {
+  if (g_check_cache_dir) return;
+  g_check_cache_dir = new std::string(dir);
+  atexit(check_cache_evict);
 }
 
 // The SHA-256 of this compiler's executable, once a process; "" in the
@@ -1174,17 +1227,23 @@ static bool library_check_finish(pid_t pid) {
 // recorded, so a failing program runs its checks, and reports the same
 // diagnostics, every time; a passing one prints nothing either way. coax test,
 // mutate and an --evidence record always run the checks.
-static std::string authority_key(const Source *src, const File *file, const EmitOptions &opts, const std::vector<bool> &dropped) {
+// The compiler and the options that change checking, as a key's first lines
+// ("" when this compiler can't hash itself).
+static std::string authority_options(const File *file, const EmitOptions &opts) {
   const std::string compiler = compiler_hash();
   if (compiler.empty()) return "";
-  std::string text = "coax.authority-check.v1\n" + compiler + "\n";
-  text += "run_steps=" + std::to_string(file->run_steps) + " option_steps=" + std::to_string(opts.run_steps) +
-          " given=" + std::to_string(opts.run_steps_given) + " development=" + std::to_string(opts.development) +
-          " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
-          " library=" + std::to_string(file->library) + " metal=" + std::to_string(opts.metal) + " cuda=" +
-          std::to_string(opts.cuda) + " metal_compute=" + std::to_string(opts.metal_compute) +
-          " quantity_device=" + std::to_string(opts.quantity_device) + " check_slots=" +
-          std::to_string(g_check_slots ? g_check_slots : CB_test_slot_limit()) + "\n";
+  return compiler + "\n" + "run_steps=" + std::to_string(file->run_steps) + " option_steps=" + std::to_string(opts.run_steps) +
+         " given=" + std::to_string(opts.run_steps_given) + " development=" + std::to_string(opts.development) +
+         " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
+         " library=" + std::to_string(file->library) + " metal=" + std::to_string(opts.metal) + " cuda=" +
+         std::to_string(opts.cuda) + " metal_compute=" + std::to_string(opts.metal_compute) +
+         " quantity_device=" + std::to_string(opts.quantity_device) + " check_slots=" +
+         std::to_string(g_check_slots ? g_check_slots : CB_test_slot_limit()) + "\n";
+}
+static std::string authority_key(const Source *src, const File *file, const EmitOptions &opts, const std::vector<bool> &dropped) {
+  const std::string options = authority_options(file, opts);
+  if (options.empty()) return "";
+  std::string text = "coax.authority-check.v1\n" + options;
   for (size_t u = 0; u < src->units.size(); u++) {
     const SourceUnit &unit = *src->units[u];
     const std::string sha = debug_source_hash(unit.text);
@@ -1196,17 +1255,33 @@ static std::string authority_key(const Source *src, const File *file, const Emit
   return debug_source_hash(text + "input\t" + all + "\n");
 }
 
-static bool authority_checks(const Source *src, File *file, const EmitOptions &opts, const std::vector<bool> &dropped, bool mutation_lowering) {
+// When the whole-program verdict isn't cached, parallel_checks may still
+// reuse each check that passed before with the same inputs (ax-check-reuse);
+// its keys start with the compiler, the options and the left-out units.
+static bool authority_checks(const Source *src, File *file, const EmitOptions &opts, const std::vector<bool> &dropped, bool mutation_lowering,
+                             const std::vector<Token> &tokens) {
   static const char PASSED[] = "authority checks pass\n";
   const std::string key = mutation_lowering || !g_evidence.path.empty() ? "" : authority_key(src, file, opts, dropped);
   const std::string dir = library_cache_dir();
   std::string record;
   if (!key.empty() && read_record(dir + "/" + key, &record) && record == PASSED) {
+    cache_touch(dir + "/" + key);
     g_authority_cached++;
     return true;
   }
   const int errors = g_error_count;
+  if (!key.empty()) {
+    std::string prefix = authority_options(file, opts);
+    for (size_t u = 0; u < dropped.size(); u++) if (dropped[u]) prefix += "library\t" + src->units[u]->canonical + "\n";
+    g_check_reuse.on = true;
+    g_check_reuse.dir = dir;
+    g_check_reuse.prefix = prefix;
+    g_check_reuse.src = src;
+    g_check_reuse.tokens = &tokens;
+  }
   const bool ok = run_compilation_checks(file);
+  g_check_reuse.on = false;
+  g_check_reuse.tokens = nullptr;
   g_authority_checked++;
   if (ok && g_error_count == errors) cache_record(dir, key, PASSED);
   return ok;
@@ -1250,6 +1325,7 @@ static std::vector<bool> library_units(const Source *src, const std::vector<Toke
     const std::string key = library_key(src, u, opts, compiler, run);
     std::string record;
     if (!key.empty() && read_record(dir + "/" + key, &record) && (record == "checks\n" || record == "does not check alone\n")) {
+      cache_touch(dir + "/" + key);
       const bool verdict = record == "checks\n";
       g_library_cached++;
       if (g_timings.on()) timed[(size_t)u] = {canonical, seconds_since(began), true, verdict};
@@ -1467,7 +1543,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     if(opts.run_steps_given || !file->run_steps) file->run_steps=opts.run_steps;
     if(ok && !parsed) {TimedPhase phase{"evaluate"};g_timings.run_steps=file->run_steps;ok=evaluate(file,file->run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
   }
-  if (ok && !parsed) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=authority_checks(src,file,opts,dropped,mutation_lowering);}
+  if (ok && !parsed) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=authority_checks(src,file,opts,dropped,mutation_lowering,tokens);}
   if (!ok && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
   return ok;
 }

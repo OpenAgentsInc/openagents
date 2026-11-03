@@ -1069,6 +1069,26 @@ refund_ok :: (paid: int, refund: int) -> bool {
   recorded: a failing program runs its checks, and reports the same
   diagnostics, every time. `coax test`, `mutate` and `--evidence` always run
   them. `--timings` reports `authority_checks` (`cached`, `checked`).
+- When that whole pass isn't cached (an edit since it), each check that
+  passed before with the same inputs is still reused instead of run
+  (#12647). A check's inputs are the top-level declarations it can depend
+  on, found by name from its own tokens: its body; each procedure it ran, in
+  full; each procedure those bodies name but it didn't run, by its signature
+  only; every constant, type or other declaration so named, and everything
+  that declaration (or a body holding `#run`) names, in full; and every token
+  outside a named declaration (`#load`, `#module`, `#import`, top-level
+  directives). The key adds the compiler's SHA-256, the options above, the
+  units left out as libraries, the step budget, the storage limits and the
+  compile-time storage the checks start with. Declarations are compared by
+  their tokens, so a comment or a moved declaration changes nothing. The
+  record keeps the steps, cases, storage and procedures the check ran, so the
+  compile's output, exit status and E0380 coverage are a cold compile's. A
+  failing check is never recorded. `--timings` reports `check_reuse`
+  (`reused`, `run`) and marks each reused check.
+- The check cache is bounded: when a compile ends it removes the least
+  recently used records until at most `$COAX_CHECK_CACHE_FILES` (default
+  4096) records and `$COAX_CHECK_CACHE_BYTES` bytes (default 256 MiB) are
+  left.
 - `#authority;` marks a file whose rules guard money, signatures or grants.
   Every procedure authored in that physical source unit except `main` and `#foreign` imports must actually execute
   in a check, directly or through calls (E0380). Dead references, short-circuited

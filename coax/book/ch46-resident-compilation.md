@@ -43,6 +43,48 @@ only if that experiment showed value.
    their signing and deployment rules. No stack migration or device
    code-loading bypass is implied.
 
+## What exists, and what a resident check server would need
+
+`coax0` has no resident process yet. Since #12647 it does have the first
+piece of the cache: a compile reuses each `#authority` check whose inputs
+didn't change, keyed by the tokens of the declarations the check reaches by
+name, the procedures it ran, the compiler, the options and the storage it
+starts with (`ReuseIndex` in `coax/src/verify.cpp`; INVARIANTS.md, "A reused
+check is one whose every input is unchanged"). After a one-constant edit to
+an Everglade realm file, `coax check apps/openagents-web/everglade.coax`
+runs 31 of its 302 checks instead of all of them. What is left of a warm
+check is the front end: about 0.6 s to load, 0.5 s to lex, 0.25 s to parse
+and 0.75 s to type-check, every time, for every unit.
+
+A resident server for agents ([chapter 22](ch22-agents.md)) would keep that
+front end's results in memory between requests. It would need:
+
+1. **A protocol.** A local socket, one request per edit (`check FILE`,
+   `query ...`), answers in the same `coax.diagnostic.v1` lines and exit
+   statuses as the command line, and a compiler identity in every answer so a
+   stale server is never used after a rebuild.
+2. **File identity.** Each request names the units' revisions, with the same
+   bound-revision rule as `fmt --write --revision`. Watching the file system
+   can only tell the server to look again, never stand in for that check.
+3. **Per-unit lexing and parsing kept warm.** Tokens and parse trees per
+   unit, keyed by its SHA-256. The parser already works per unit; the
+   checker doesn't, because it resolves names across the whole program. So
+   the server reparses only edited units and re-runs the checker on the
+   whole graph (about 0.75 s for Everglade today) until the checker can take
+   a previous typed graph and the set of changed declarations.
+4. **The same keys as the check cache.** The per-check keys above are the
+   invalidation rule. The server would keep the item index in memory instead
+   of rebuilding it (about 1 s for Everglade's 302 keys today).
+5. **Bounded memory and a way back.** A cap on retained graphs, eviction by
+   last use, and `coax check` with no server as the reference: any answer the
+   server gives must be byte-identical to a cold run's, checked the way
+   `tests/check-reuse.coax` checks the cache.
+
+When an edit leaves every check's inputs alone, Everglade's check takes
+about 3.2 s. A server holding tokens, parse trees and the index would save
+about 2.3 s of that and still pay the checker's 0.75 s. Going below that
+needs the checker's incremental input first.
+
 ## The consumer and the gate
 
 The consumer is a real world or controller and its shader. The gate:

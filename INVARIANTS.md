@@ -3660,6 +3660,56 @@ loaded unit, `#run_steps`, `--run-steps`, build profile or compiler binary
 runs the checks again; a failing check runs every time with the same
 diagnostics and exit status; `coax test` runs every check).
 
+## A reused check is one whose every input is unchanged
+
+When an `#authority` compile's whole pass isn't cached, `parallel_checks`
+takes a check that passed before from the check cache, instead of running
+it, only when a key over all its inputs is the one it passed under (#12647,
+`ReuseIndex` in `coax/src/verify.cpp`). The tokens are split into top-level
+items at depth-0 `;` and `}`. The split is used only when every parsed
+declaration starts an item that spells its name and no item holds two;
+otherwise nothing is reused. A check's inputs, by name from its tokens, are:
+
+- its body, in full;
+- each procedure it ran, in full, and what that body names;
+- each procedure such a body names but the check didn't run, by its
+  signature (the tokens before its body) only;
+- any other declaration so named, in full, with every procedure it or a
+  body holding `#run` names in full (those run at compile time);
+- every token outside a named item, and the units' paths.
+
+A name matches every top-level declaration that spells it, in any unit, so a
+new declaration a check's code could bind to changes the key. The procedures
+a check ran come from the run that recorded it. If every input is
+unchanged, the check takes the same steps and runs the same procedures. The
+key also holds the compiler's SHA-256, the checking options, the units left
+out as libraries, the step budget, the storage limits and the storage every
+check starts with. Content is token kind, spelling and value, never source
+position. A record holds only a passing, unshared report (steps, cases,
+peak and final storage, the procedures run), which stands in for a child's.
+The sequential-equivalence rules and E0380 then apply unchanged, so the
+diagnostics, exit status and C are a cold compile's. A failing check is
+never recorded. A procedure an executed check ran that has no item, or a
+name with a newline, means that check isn't recorded.
+
+The check cache is bounded. When a process that used it exits, it evicts
+the least recently modified records (a hit touches its record) until at
+most `$COAX_CHECK_CACHE_FILES` (4096) records and `$COAX_CHECK_CACHE_BYTES`
+(256 MiB) remain, and removes temporary files older than an hour.
+
+Check: `coax/tests/check-reuse.coax`. An edited procedure, constant,
+compile-time-run procedure or called signature runs only the checks that
+reach it. A body no check runs, or a moved declaration, runs nothing.
+Options and the compiler binary run every check. A failure is never
+recorded, and putting the source back reuses the earlier pass. Coverage
+holds from reused checks, `coax test` runs every check, and the cache stays
+within its limit. Each step is compared with a new cache: stdout, stderr,
+status, per-check steps and `coax c` output are the same. The pass, fail,
+diagnostics and check-fixture corpora compile the same cold, warm and,
+for `#authority` files, after an edit. `coax c` of Everglade, Newland and
+the CLI gives byte-identical C cold, warm and after an edit (the commit
+records it).
+
 ## CPU reflection lowers to bounded ordinary values
 
 `type_info`, `field_info` and `enum_info` are implemented in the Coax parser
