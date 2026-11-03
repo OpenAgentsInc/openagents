@@ -131,7 +131,10 @@ checker explicitly and exclude the receipt's buyer/provider as checkers.
 readers, applies explicit provider/buyer/checker allowlists, and calls
 [`mt_recompute`](../lib/mesh/totals.coax). Empty lists count nothing. Public
 policy is window-independent canonical JSON; its SHA-256 digest is the
-pool's policy ID.
+pool's policy ID. The totals keep their own copy of each counted event ID
+(`mt_bytes` reads one back). A string only borrows the caller's bytes, so
+without the copy a caller that reused its input buffers would find the
+listed IDs changed while the digests still committed to the old ones.
 
 Pass a closed whole-minute Unix-second window `[from,to)`, at most an hour.
 Choose a window containing both the work and its check after that window

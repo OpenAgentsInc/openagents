@@ -15,7 +15,7 @@ main :: () {
   print("pylons %, free % of % slots\n",totals.pylons_online,totals.slots_free,totals.slots_total);
   print("buyer-reported accepted jobs %, units %, rate %\n",totals.jobs_reported,totals.units_jobs,totals.rate);
   print("trusted checker observations: pass %, fail %, inconclusive %\n",totals.checks_pass,totals.checks_fail,totals.checks_inconclusive);
-  print("counted receipt %\n",totals.receipt_ids[0]);
+  id:[MT_TEXT]u8;n:=mt_bytes(totals.receipt_ids[0],id[..]);print("counted receipt %\n",cast(string)id[0..<n]);
   p.checkers=checkers[0..<0];totals=mt_recompute(p,b[..],r[..],c[..]);
   #assert totals.jobs_reported==1 && totals.check_count==0 && totals.checks_fail==0;
   print("without trusted checkers: reported jobs %, checker observations %\n",totals.jobs_reported,totals.check_count);
