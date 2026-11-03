@@ -106,6 +106,7 @@ EgNet :: struct {
   out: [WIRE_FRAME] u8;
   frames_in: int; frames_out: int; played: int; hits: int; replays: int;
   creature_hits: int; creature_deaths: int;   // hits on and deaths of the server's creatures heard
+  feet_y: f32;                                // your feet's height as the face last gave it (net_step's fy)
 }
 
 everglade_attach_net :: (s: [] Everglade, n: [] EgNet) #export_c { s[0].net = n; }
@@ -575,6 +576,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   if !net_on(s) { return; }
   n := net_of(s);
   n[0].mono = mono;
+  n[0].feet_y = fy;
   y := fy + walk_at(s, x, z);
   if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && n[0].url_n > 0 {
     // each open takes a fresh seat ticket (the room refuses a join without one): asked for, then used
@@ -999,7 +1001,8 @@ net_self_max :: (s: [] Everglade) -> int {
 // out, 8 and 9 the first other player's x and z in cm, 10 effects played, 11 the jitter buffer's delay
 // ms, 12 your last acked input, 13 hits heard, 14 re-runs from the server's word, 15 inputs sent,
 // 16 the server's summoned creatures here, 17 their Hit Points together, 18 hits heard on them, 19
-// their deaths heard. 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
+// their deaths heard, 20 the server's y for you (cm), 21 your feet's y as the face gives it, 22 the
+// floor's height under you. 200 + SLOT casts bar slot SLOT (net_cast, as a click does) at the nearest
 // summoned creature, else 3 m ahead of you: 1 when it went out.
 net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if !net_on(s) { return -1; }
@@ -1029,6 +1032,9 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
     return ifx field == 16 then c else hp;
   }
   if field == 18 { return n[0].creature_hits; }
+  if field == 20 { return ifx n[0].fix.ok then wire_cm(n[0].fix.y) else -999999; }
+  if field == 21 { return wire_cm(n[0].feet_y); }
+  if field == 22 { return wire_cm(walk_at(s, s[0].feet.x, s[0].feet.z)); }
   if field == 19 { return n[0].creature_deaths; }
   if field >= 200 && field < 200 + SP_SLOTS + AB_N {
     you := ab_you(s);
