@@ -252,7 +252,7 @@ mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->M
   if (probe>0.5f32) {
     // a probe view: black, and on 3 magenta wherever a capsule of the figure would be drawn
     c=v3(0.0f32,0.0f32,0.0f32);
-    if ((probe>2.5f32)&&(h.m>0.5f32)) { c=v3(1.0f32,0.0f32,1.0f32); }
+    if ((probe>2.5f32)&&(probe<3.5f32)&&(h.m>0.5f32)) { c=v3(1.0f32,0.0f32,1.0f32); }
   }
   return MhlabBg.{c=v4(c.x,c.y,c.z,1.0f32),depth=depth};
 }
@@ -264,7 +264,7 @@ mhlab_bg_fs :: (pos:V4,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->M
 //   264: the shadow's box: centre xyz, 1 / half its size; 268: its right; 272: its up; 276: toward the key, bias
 //   280: 24 materials (rgb tint, roughness: the roughness map's scale), by material number less one
 //   376: the fill's direction xyz, strength; 380: the rim's, strength; 384: the key's strength, exposure
-//   386: the probe view (0: lit; 1: albedo, 2: uv and base layer, 3: capsules magenta), for scripts
+//   386: the probe view (0: lit; 1: albedo, 2: uv and base layer, 3: capsules magenta, 4: material), for scripts
 //        that check a frame without looking at it
 // A vertex, 8 words (pack_human.py vertex): x y (unorm16 each), z (unorm16) | material << 16 |
 // the bitangent's sign << 31, the normal and the tangent (octahedral unorm16 pairs), uv (unorm16
@@ -483,10 +483,11 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   m:u32=s.material;
   mat:V4=wg_at4(u,280+(cast(int)(clamp_u(m,1,24))-1)*4);
   base:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,s.layers&255,v4(1.0f32,1.0f32,1.0f32,1.0f32));
-  // hair and brow cards fade by an ordered 4x4 dither (a static stand-in for alpha to coverage,
-  // which needs no sorting); everything else cuts at 0.35
+  // hair and brow cards: the faintest texels (a flyaway's thin edge) go, the solid ones stay, and
+  // between the two an ordered 4x4 dither fades them (a stable, sort-free stand-in for alpha to
+  // coverage: the same pixels every frame); everything else cuts at 0.35
   if ((m==3)||(m==4)) {
-    if (base.w<mhlab_bayer(cast(int)(s.pos.x),cast(int)(s.pos.y))) { gpu_demote_helper(); }
+    if (base.w<(0.25f32+(0.5f32*mhlab_bayer(cast(int)(s.pos.x),cast(int)(s.pos.y))))) { gpu_demote_helper(); }
   } else if (m!=1) {
     if (base.w<0.35f32) { gpu_demote_helper(); }
   }
@@ -499,6 +500,12 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   n:V3=ng;
   tg:V3=normalize3(sub3(v3(s.tangent.x,s.tangent.y,s.tangent.z),scale3(ng,dot3(ng,v3(s.tangent.x,s.tangent.y,s.tangent.z)))));
   strand:V3=scale3(cross3(ng,tg),s.tangent.w);
+  // a hair card's own normal flips from card to card; the hair is lit as the head's shape instead,
+  // its normal bent toward the way out from the head's middle
+  if (m==3) {
+    radial:V3=normalize3(sub3(s.world,wg_at3(u,40)));
+    ng=normalize3(add3(scale3(ng,0.35f32),scale3(radial,0.65f32)));
+  }
   nm:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,(s.layers>>8)&255,v4(0.5f32,0.5f32,1.0f32,1.0f32));
   if (((s.layers>>8)&255)!=255) {
     // the layer is sRGB-decoded on the way in; a normal map is raw numbers, so encode it back
@@ -518,10 +525,26 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   c:V3=mhlab_light_one(n,v,key,albedo,rough,m,scale3(v3(1.0f32,0.95f32,0.88f32),u[384]*sh),strand);
   c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,376)),albedo,rough,m,scale3(v3(0.75f32,0.82f32,1.0f32),u[379]),strand));
   c=add3(c,mhlab_light_one(n,v,normalize3(wg_at3(u,380)),albedo,rough,m,scale3(v3(0.9f32,0.95f32,1.0f32),u[383]),strand));
-  // the sky and the floor's bounce, an ambient from above and below; the cavities darker
+  // the studio's light all round (its sky above, the floor's bounce below, as a low-order
+  // spherical-harmonics irradiance would give), the cavities darker
   sky:f32=(0.5f32+(0.5f32*n.y));
   amb:V3=add3(scale3(v3(0.36f32,0.4f32,0.48f32),sky*0.55f32),scale3(v3(0.22f32,0.2f32,0.18f32),(1.0f32-sky)*0.35f32));
+  amb=add3(amb,scale3(v3(0.05f32,0.045f32,0.04f32),saturate(dot3(n,normalize3(wg_at3(u,276))))));
   c=add3(c,scale3(v3(albedo.x*amb.x,albedo.y*amb.y,albedo.z*amb.z),ao));
+  // and its reflection: the sky's colour off the surface, by Fresnel and how smooth it is
+  if ((m!=3)&&(m!=4)) {
+    rr:V3=reflect3(scale3(v,-1.0f32),n);
+    nv0:f32=saturate(dot3(n,v));
+    f0s:f32=0.04f32; if (m==1) { f0s=0.028f32; }
+    fs:f32=f0s+((1.0f32-f0s)*pow(1.0f32-nv0,5.0f32)*(1.0f32-rough));
+    env:V3=mix3(v3(0.2f32,0.19f32,0.18f32),v3(0.4f32,0.44f32,0.52f32),saturate((rr.y*0.5f32)+0.5f32));
+    c=add3(c,scale3(env,fs*(1.0f32-(rough*rough))*ao*0.6f32));
+  }
+  // cloth: a soft sheen where the weave turns from the eye
+  if (m>=8) {
+    sheen:f32=pow(1.0f32-saturate(dot3(n,v)),3.0f32)*0.22f32;
+    c=add3(c,scale3(v3(0.4f32+albedo.x,0.4f32+albedo.y,0.4f32+albedo.z),sheen*(0.35f32+(0.65f32*sh))));
+  }
   // the eye's wet gloss: the sky's reflection on the cornea
   if (m==2) {
     // the cornea over it: a mirror-smooth coat on the eye's own shape (ng, not the iris's map) that
@@ -538,7 +561,9 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   // the probe views a script reads: the albedo as the screen's sRGB, or uv and the base layer
   if ((u[386]>0.5f32)&&(u[386]<1.5f32)) { c=v3(mhlab_srgb(albedo.x),mhlab_srgb(albedo.y),mhlab_srgb(albedo.z)); }
   if ((u[386]>1.5f32)&&(u[386]<2.5f32)) { c=v3(fract(s.uv.x),fract(s.uv.y),cast(f32)(s.layers&255)/255.0f32); }
-  if (u[386]>2.5f32) { c=v3(0.0f32,0.0f32,0.0f32); }
+  if ((u[386]>2.5f32)&&(u[386]<3.5f32)) { c=v3(0.0f32,0.0f32,0.0f32); }
+  // 4: the material's number, so a script can see which pieces take the skin's scatter
+  if (u[386]>3.5f32) { c=v3(cast(f32)(m)/255.0f32,0.0f32,0.0f32); }
   return v4(c.x,c.y,c.z,1.0f32);
 }
 clamp_u :: (x:u32,a:u32,b:u32)->u32 {

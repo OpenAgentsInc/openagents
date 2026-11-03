@@ -70,7 +70,7 @@ Lab :: struct {
   clip: int = PEOPLE_IDLE;
   female: bool;
   bones: bool;                       // the skeleton overlay
-  probe: int;                        // V (unlisted, for scripts): 0 lit, 1 albedo, 2 uv, 3 capsules
+  probe: int;                        // V (unlisted, for scripts): 0 lit, 1 albedo, 2 uv, 3 capsules, 4 material
   paused: bool;
   // the figure on the floor: its feet's place and the way it faces (yaw 0 faces +Z)
   fx: f32; fz: f32; fyaw: f32;
@@ -469,7 +469,7 @@ lab_key :: (s: [] Lab, key: int, mods: int) -> bool #export_c {
   if key == KEY_ESCAPE { leave_to(s, "/worlds"); return true; }
   if key == ' ' || key == KEY_ENTER { s[0].paused = !s[0].paused; return true; }
   if key == 'k' || key == 'K' { s[0].bones = !s[0].bones; return true; }
-  if key == 'v' || key == 'V' { s[0].probe = (s[0].probe + 1) % 4; return true; }
+  if key == 'v' || key == 'V' { s[0].probe = (s[0].probe + 1) % 5; return true; }
   if key == 'n' || key == 'N' { cycle_clip(s, 1); return true; }
   if key == 'p' || key == 'P' { cycle_clip(s, -1); return true; }
   if key == 'g' || key == 'G' { switch_body(s); return true; }
