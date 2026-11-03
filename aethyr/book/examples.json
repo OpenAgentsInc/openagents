@@ -230,6 +230,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/walk-the-grid.coax",
+      "chapter": "aethyr/book/ch056-the-grid.md",
+      "stdout": "aethyr/fixtures/walk-the-grid.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

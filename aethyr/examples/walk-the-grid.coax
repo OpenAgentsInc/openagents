@@ -1,0 +1,34 @@
+// book:begin example
+#load "../../verse/gridwalk.coax";
+#import "Basic";
+
+cm :: (m: f32) -> int { return cast(int) (m * 100 + ifx m < 0 then -0.5f32 else 0.5f32); }
+
+// The Grid's own session, as the page's face drives it: placed at (28, 28) facing the places'
+// middle, then 240 frames at 60 FPS of the forward key, Shift held for the first 90 and Space on
+// frames 120 and 190. Then the record replays from its start into a second session, and again
+// with one frame's forward push changed.
+main :: () {
+  g: [1] GridWalk; g[0] = GridWalk.{};
+  gridwalk_place(g[..], 28, 28, -2.35619449, 1.35, 9);
+  top := 0.0f32; air := 0;
+  for f: 0..<240 {
+    gridwalk_frame(g[..], 0, 1, f < 90, f == 120 || f == 190, 0, 0, 0, 1000, 2000, 2, 1.0 / 60.0, false);
+    y := gridwalk_feet(g[..]).y;
+    if y > 0 { air += 1; }
+    if y > top { top = y; }
+  }
+  feet := gridwalk_feet(g[..]);
+  print("frames 240, steps %, jumps %, frames with the feet off the floor %, highest % cm\n",
+        gridwalk_steps(g[..]), g[0].you.jumps.taken, air, cm(top));
+  print("feet at (% cm, % cm, % cm), on the ground: %\n", cm(feet.x), cm(feet.y), cm(feet.z), g[0].you.on_ground);
+  print("session digest %\n", gridwalk_session(g[..]));
+  again: [1] GridWalk;
+  print("replayed from the record's start: %, same digest: %\n", gridwalk_replay(g[..], again[..]),
+        gridwalk_session(again[..]) == gridwalk_session(g[..]));
+  k := 100;
+  g[0].events[k].words[1] = replay_bits(-1);   // frame 100's forward push, recorded as backward
+  print("frame % changed: replays %, first divergent step %\n", k, gridwalk_replay(g[..], again[..]),
+        replay_diverged(gw_session(again[..])));
+}
+// book:end example

@@ -78,7 +78,7 @@
 
 **VII. Realms**
 
-- [56. The Grid](ch056-the-grid.md) — design draft
+- [56. The Grid](ch056-the-grid.md) — partly implemented
 - [57. Made realms](ch057-made-realms.md) — design draft
 - [58. Everglade](ch058-everglade.md) — design draft
 - [59. Dead Gears](ch059-dead-gears.md) — design draft

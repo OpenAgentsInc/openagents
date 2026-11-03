@@ -51,8 +51,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 14 implemented chapters (1–11 and 65–67), eight partly implemented
-chapters (15, 16, 51, 52, 54, 55, 69 and 72), and 63 design drafts. An implemented chapter is
+There are 14 implemented chapters (1–11 and 65–67), nine partly implemented
+chapters (15, 16, 51, 52, 54–56, 69 and 72), and 62 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -234,7 +234,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [56. The Grid](ch056-the-grid.md) | Unimplemented: design draft | The Grid rebuilt from the foundation chapters: a world-space floor that looks the same from any position, a smooth jump, feet at the physics height, and live people from the room. |
+| [56. The Grid](ch056-the-grid.md) | Partly implemented: native C and Wasm (the Grid's session on the engine core) | The Grid rebuilt from the foundation chapters: a world-space floor that looks the same from any position, a smooth jump, feet at the physics height, and live people from the room. |
 | [57. Made realms](ch057-made-realms.md) | Unimplemented: design draft | One made-realm player of chapter 51's document, with composition aimed at a first visit, four cameras over one controller, budgets, and dropped-model realms, all on Aethyr. |
 | [58. Everglade](ch058-everglade.md) | Unimplemented: design draft | The forest city rebuilt from Aethyr's chapters: plan, streamed forest, people, the watch, quests, effects, edits and forks, holding `perf.ts`'s 60 FPS cases. |
 | [59. Dead Gears](ch059-dead-gears.md) | Unimplemented: design draft | The ship survival game on Aethyr's entities and loop (its ECS becomes chapter 6's design), with every ported demo check passing and 200 creatures held to 2 ms a frame. |

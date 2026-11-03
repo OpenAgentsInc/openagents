@@ -1,0 +1,5 @@
+frames 240, steps 256, jumps 2, frames with the feet off the floor 73, highest 111 cm
+feet at (1124 cm, 0 cm, 1124 cm), on the ground: true
+session digest 3036777944
+replayed from the record's start: true, same digest: true
+frame 100 changed: replays false, first divergent step 106
