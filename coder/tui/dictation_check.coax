@@ -1,0 +1,375 @@
+// Coder's terminal dictation through the real command route (GitHub #12668).
+// Each case runs coder/tui/coder.sh on the offline echo engine in a
+// pseudo-terminal (100x30, headless), types keys into it as a person would,
+// and reads the screen through the VT emulator. The gesture starts the real
+// `openagents dictate --events` (apps/openagents-cli/build/openagents) with
+// the recorded-audio capture backend (verse/voice-host/fixtures/wait-stop.wav,
+// paced in real time), so Coder's own Enter stops it and its own Esc cancels
+// it. No microphone is opened, no sound is played and no window is shown.
+// Every case also reads CODER_DICTATION_TRACE: the no-submit counters
+// (cd_submit calls, Enter keys that asked to send, turns started) must stay 0.
+//
+//   apps/openagents-cli/build.sh && coax/web/tool.sh coder/tui/dictation_check.coax [model] [CASE]
+//
+// Without "model" a stand-in recognizer answers (OPENAGENTS_DICTATE_FIXTURE_TEXT);
+// with it one more case recognizes the recording with the pinned Parakeet
+// model on the GPU (`model model` runs only that one). CASE runs only the
+// cases whose name contains it. The GPU case keeps HOME (CUDA's kernel cache);
+// the others run Coder in a fresh one.
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/tui/vt.coax";
+#load "../../aethyr/audio/wav.coax";
+
+cxproc_pty :: (h: int, cols: int, rows: int) -> int #foreign;
+cxproc_read_bytes :: (h: int, timeout_ms: int, out: [] u8) -> int #foreign;
+
+DC_COLS :: 100; DC_ROWS :: 30;
+DC_ENVS :: 12;
+Dc :: struct {
+  repo: string; tmp: string; only: string; model: bool; real_home: bool;   // real_home: the GPU case keeps HOME, where CUDA keeps its compiled kernels
+  env: [DC_ENVS] [9200] u8; nenv: [DC_ENVS] int; k: int;
+  trace: [1200] u8; ntrace: int;
+  path: [9000] u8; npath: int;     // PATH=stand-in recorders that fail first, then the inherited PATH
+  h: int; v: [1] Vt; scr: [16384] u8; buf: [8192] u8;
+  pass: int; fail: int;
+}
+
+has :: (hay: string, needle: string) -> bool {
+  i := 0;
+  while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { return true; } i += 1; }
+  return false;
+}
+cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+
+// The environment for the next case: KEY=VALUE entries.
+env_reset :: (d: [] Dc) { d[0].k = 0; }
+env_add :: (d: [] Dc, a: string, b: string) {
+  if d[0].k >= DC_ENVS { return; }
+  n := cat(d[0].env[d[0].k][..], 0, a); n = cat(d[0].env[d[0].k][..], n, b);
+  d[0].nenv[d[0].k] = n; d[0].k += 1;
+}
+
+// Starts Coder in a pseudo-terminal with args ("|"-separated) and the case's environment.
+start :: (d: [] Dc, args: string) -> bool {
+  d[0].ntrace = cat(d[0].trace[..], cat(d[0].trace[..], 0, d[0].tmp), "/trace.jsonl");
+  x := fs_remove(cast(string) d[0].trace[0..<d[0].ntrace]);
+  vt_init(d[0].v[..], DC_COLS, DC_ROWS, false);
+  h := proc_new();
+  cb: [1200] u8; coder := cast(string) cb[0..<cat(cb[..], cat(cb[..], 0, d[0].repo), "/coder/tui/coder.sh")];
+  ok := h >= 0 && cxproc_pty(h, DC_COLS, DC_ROWS) == 0 && proc_arg(h, coder) && proc_arg(h, "--engine") && proc_arg(h, "echo");
+  i := 0;
+  while ok && i < args.count { j := i; while j < args.count && args[j] != '|' { j += 1; } ok = proc_arg(h, args[i..<j]); i = j + 1; }
+  hb: [1200] u8; tb: [1300] u8;
+  ok = ok && (d[0].real_home || proc_env(h, cast(string) hb[0..<cat(hb[..], cat(hb[..], 0, "HOME="), d[0].tmp)])) && proc_env(h, "TERM=xterm-256color") && proc_env(h, "CODER_USAGE_KEYCHAIN=0")
+    && proc_env(h, cast(string) d[0].path[0..<d[0].npath]);
+  ok = ok && proc_env(h, cast(string) tb[0..<cat(tb[..], cat(tb[..], 0, "CODER_DICTATION_TRACE="), cast(string) d[0].trace[0..<d[0].ntrace])]);
+  ok = ok && proc_unset(h, "CODER_DICTATION") && proc_unset(h, "CODER_DICTATION_KEY") && proc_unset(h, "CODER_DICTATION_ARGS") && proc_cwd(h, d[0].repo);
+  for e: 0..<d[0].k { ok = ok && proc_env(h, cast(string) d[0].env[e][0..<d[0].nenv[e]]); }
+  if !ok || proc_start(h) != 0 { if h >= 0 { r := proc_release(h); } return false; }
+  d[0].h = h;
+  return wait_screen(d, "/help for commands.", 60000);
+}
+
+// Reads what Coder drew for up to ms; true once the screen holds needle.
+// A missed wait names its needle and shows the screen as it was.
+wait_screen :: (d: [] Dc, needle: string, ms: int) -> bool {
+  if read_until(d, needle, ms) { return true; }
+  tool_err("  waited for: "); tool_errln(needle); tool_errln("  the screen then:"); tool_errln(screen(d));
+  return false;
+}
+read_until :: (d: [] Dc, needle: string, ms: int) -> bool {
+  t0 := proc_now_ms();
+  while true {
+    if needle != "" && has(screen(d), needle) { return true; }
+    left := ms - (proc_now_ms() - t0);
+    if left <= 0 { return false; }
+    n := cxproc_read_bytes(d[0].h, ifx left < 100 then left else 100, d[0].buf[..]);
+    if n < 0 { return needle != "" && has(screen(d), needle); }
+    if n > 0 { vt_feed(d[0].v[..], cast(string) d[0].buf[0..<n]); }
+  }
+  return false;
+}
+// Reads for ms, whatever comes.
+settle :: (d: [] Dc, ms: int) { x := read_until(d, "", ms); }
+keys :: (d: [] Dc, s: string) { x := proc_send(d[0].h, s); }
+// A control byte (Esc is 27), then text: one write.
+ctl :: (d: [] Dc, b: int, rest: string) { kb: [64] u8; kb[0] = cast,trunc(u8) b; n := cat(kb[..], 1, rest); keys(d, cast(string) kb[0..<n]); }
+screen :: (d: [] Dc) -> string { return vt_screen(d[0].v[..], d[0].scr[..]); }
+
+// Ctrl-C until Coder quits (a request open takes one, a draft one, then quit); its exit status.
+quit :: (d: [] Dc) -> int {
+  st := PROC_RUNNING;
+  for i: 0..<4 {
+    ctl(d, 3, "");
+    settle(d, 300);
+    st = proc_wait(d[0].h, 200);
+    if st != PROC_RUNNING { break; }
+  }
+  if st == PROC_RUNNING { x := proc_kill(d[0].h, PROC_SIGKILL); st = proc_wait(d[0].h, 2000); }
+  r := proc_release(d[0].h);
+  return st;
+}
+
+// The trace Coder left: one JSON line per request event, then "exit".
+trace :: (d: [] Dc, out: [] u8) -> string {
+  n := fs_read(cast(string) d[0].trace[0..<d[0].ntrace], out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+QUIET :: "\"submits\":0,\"enters\":0,\"starts\":0,\"turns\":0";
+
+check :: (d: [] Dc, name: string, ok: bool, tr: string) {
+  if ok { d[0].pass += 1; tool_err("ok    "); tool_errln(name); return; }
+  d[0].fail += 1; tool_err("FAIL  "); tool_errln(name);
+  tool_errln("  screen:"); tool_errln(screen(d)); tool_errln("  trace:"); tool_errln(tr);
+}
+want :: (d: [] Dc, name: string) -> bool { return d[0].only == "" || has(name, d[0].only); }
+
+// The environment of a dictation case: the CLI, the recording and its stand-in words.
+fixture_env :: (d: [] Dc, wav: string, words: string, fault: string) {
+  env_reset(d);
+  cb: [1200] u8; env_add(d, "CODER_DICTATE=", cast(string) cb[0..<cat(cb[..], cat(cb[..], 0, d[0].repo), "/apps/openagents-cli/build/openagents")]);
+  env_add(d, "OPENAGENTS_DICTATE_FIXTURE=", wav);
+  env_add(d, "OPENAGENTS_DICTATE_FIXTURE_PACE=", "1");
+  // the recorded-audio backend, always: without it the helper would open the microphone
+  env_add(d, "CODER_DICTATION_ARGS=", "--capture fixture");
+  if words != "" { env_add(d, "OPENAGENTS_DICTATE_FIXTURE_TEXT=", words); }
+  if fault != "" { env_add(d, "OPENAGENTS_DICTATE_FIXTURE_FAULT=", fault); }
+}
+
+listen_ctl :: (d: [] Dc, b: int) -> bool { ctl(d, b, ""); return wait_screen(d, "● Listening", 15000); }
+// Types draft, starts dictation, and waits until it listens.
+listen :: (d: [] Dc, draft: string, gesture: string) -> bool {
+  keys(d, draft); settle(d, 150);
+  keys(d, gesture);
+  return wait_screen(d, "● Listening", 15000);
+}
+
+tool_main :: () -> int #export_c {
+  args_b: [1] Args; args := args_b[..];
+  if !args_load(args) { return 2; }
+  d_b: [1] Dc; d := d_b[..];
+  rb: [1024] u8; d[0].repo = fs_cwd(rb[..]);
+  if !fs_exists(fs_join(d[0].repo, "coder/tui/coder.sh", d[0].scr[..])) { tool_errln("run from the repository root"); return 2; }
+  if !fs_exists(fs_join(d[0].repo, "apps/openagents-cli/build/openagents-dictate", d[0].scr[..])) { tool_errln("build the CLI first: apps/openagents-cli/build.sh"); return 2; }
+  i := 0;
+  while i < args_count(args) { a := args_at(args, i); if a == "model" && !d[0].model { d[0].model = true; } else { d[0].only = a; } i += 1; }
+  pb: [1100] u8; d[0].tmp = fs_temp("coder-dictation-check", pb[..]);
+  if d[0].tmp == "" { tool_errln("no temporary folder"); return 2; }
+  // Recorders on PATH that fail at once: should a case ever miss the recorded
+  // backend, the helper finds these, never a real microphone recorder.
+  nb: [1200] u8; norec := fs_join(d[0].tmp, "norec", nb[..]); mk := fs_mkdir(norec);
+  r1: [1300] u8; r2: [1300] u8; r3: [1300] u8;
+  recs := [3] string.[fs_join(norec, "pw-record", r1[..]), fs_join(norec, "parec", r2[..]), fs_join(norec, "arecord", r3[..])];
+  okr := true; for r: recs { okr = okr && fs_write(r, "#!/bin/sh\nexit 3\n"); }
+  co: [256] u8; ce: [256] u8; chmod := [5] string.["chmod", "+x", recs[0], recs[1], recs[2]]; cr := proc_run(chmod[..], 10000, co[..], ce[..]);
+  if !mk || !okr || cr.status != 0 { tool_errln("cannot prepare the stand-in recorders"); return 2; }
+  ip: [8000] u8; inherited := proc_getenv("PATH", ip[..]);
+  d[0].npath = cat(d[0].path[..], 0, "PATH="); d[0].npath = cat(d[0].path[..], d[0].npath, norec);
+  d[0].npath = cat(d[0].path[..], d[0].npath, ":"); d[0].npath = cat(d[0].path[..], d[0].npath, inherited);
+  wb: [1200] u8; wav := fs_join(d[0].repo, "verse/voice-host/fixtures/wait-stop.wav", wb[..]);
+  // 4 s of digital silence, as a recorded input
+  qb: [1200] u8; quiet := fs_join(d[0].tmp, "silence.wav", qb[..]);
+  pcm: [64000] int; bytes: [128100] u8; w := wav_write(pcm[..], 1, 16000, bytes[..]);
+  if w < 0 || !fs_write(quiet, cast(string) bytes[0..<w]) { tool_errln("cannot write the silence fixture"); return 2; }
+  // Build Coder once, outside the terminal.
+  vb: [1200] u8; ob: [4096] u8; eb: [65536] u8;
+  argv := [2] string.[fs_join(d[0].repo, "coder/tui/coder.sh", vb[..]), "--version"];
+  built := proc_run(argv[..], 600000, ob[..], eb[..]);
+  if built.started != 0 || built.status != 0 { tool_errln("coder did not build:"); tool_errln(cast(string) eb[0..<built.err_n]); return 2; }
+  trb: [65536] u8;
+  words := "the code.\nsend\npress enter";
+
+  if want(d, "insert") {
+    // The words go in at the cursor, newlines literal; nothing is sent; Ctrl+Z takes them back.
+    fixture_env(d, wav, words, "");
+    ok := start(d, "--dictation") && has(screen(d), "Ctrl+Space dictate") && listen(d, "Please inspect", "\0");
+    settle(d, 3000);
+    keys(d, "\0");
+    ok = ok && wait_screen(d, "Dictated into the draft", 15000);
+    s := screen(d);
+    ok = ok && has(s, "› Please inspect the code.\n  send\n  press enter") && !has(s, "Working");
+    ctl(d, 26, "");
+    ok = ok && wait_screen(d, "› Please inspect\n", 3000) && !has(screen(d), "the code.");
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"start\",\"ticket\":1,") && has(tr, "{\"event\":\"inserted\",\"ticket\":1,\"submits\":0,\"enters\":0,\"starts\":0,\"turns\":0,\"draft_bytes\":41,");
+    ok = ok && has(tr, "{\"event\":\"exit\",\"ticket\":1,\"submits\":0,\"enters\":0,\"starts\":0,\"turns\":0,");
+    check(d, "insert: the final transcript enters the draft at the cursor as literal lines, never sent; Ctrl+Z takes it back", ok, tr);
+  }
+  if want(d, "gesture") {
+    // A configured gesture: Ctrl+G starts and stops; Ctrl+Space then does nothing.
+    fixture_env(d, wav, "hello", "");
+    ok := start(d, "--dictation|--dictation-key|ctrl-g") && has(screen(d), "Ctrl+G dictate");
+    keys(d, "\0"); settle(d, 500);
+    ok = ok && !has(screen(d), "Listening") && listen_ctl(d, 7);
+    settle(d, 3000); ctl(d, 7, "");
+    ok = ok && wait_screen(d, "› hello", 15000);
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "\"event\":\"inserted\",\"ticket\":1,") && has(tr, QUIET);
+    check(d, "gesture: --dictation-key ctrl-g toggles; Ctrl+Space is no longer dictation", ok, tr);
+  }
+  if want(d, "consent") {
+    // Without --dictation the gesture says how to turn it on and starts nothing.
+    fixture_env(d, wav, "hello", "");
+    ok := start(d, "") && !has(screen(d), "dictate ·");
+    keys(d, "\0");
+    ok = ok && wait_screen(d, "Dictation is off.", 3000);
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && !has(tr, "\"event\":\"start\"") && has(tr, "{\"event\":\"exit\",\"ticket\":0,\"submits\":0,\"enters\":0,\"starts\":0,");
+    check(d, "consent: dictation is off by default; the gesture opens no helper", ok, tr);
+  }
+  if want(d, "enter") {
+    // Enter while listening cancels and sends nothing, then sends only when pressed again.
+    fixture_env(d, wav, "hello", "");
+    ok := start(d, "--dictation") && listen(d, "draft", "\0");
+    keys(d, "\r");
+    ok = ok && wait_screen(d, "nothing was sent", 5000) && has(screen(d), "› draft");
+    tr := trace(d, trb[..]);
+    ok = ok && has(tr, "{\"event\":\"cancelled\",\"ticket\":1,\"submits\":0,\"enters\":0,\"starts\":0,\"turns\":0,\"draft_bytes\":5,");
+    keys(d, "\r");
+    ok = ok && wait_screen(d, "You said: draft", 5000);
+    st := quit(d); tr = trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"exit\",\"ticket\":1,\"submits\":1,\"enters\":1,\"starts\":1,\"turns\":1,");
+    check(d, "enter: Enter during a request cancels it and sends nothing; the next Enter sends the draft as typed", ok, tr);
+  }
+  if want(d, "esc") {
+    fixture_env(d, wav, "hello", "");
+    ok := start(d, "--dictation") && listen(d, "draft", "\0");
+    ctl(d, 27, "");
+    ok = ok && wait_screen(d, "Dictation cancelled; the draft is unchanged.", 5000) && has(screen(d), "› draft");
+    settle(d, 3000);       // a late answer cannot arrive: the helper is gone
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"cancelled\",\"ticket\":1,") && !has(tr, "inserted") && has(tr, QUIET);
+    check(d, "esc: Esc cancels while listening; the draft is unchanged", ok, tr);
+  }
+  if want(d, "typing") {
+    fixture_env(d, wav, "hello", "");
+    ok := start(d, "--dictation") && listen(d, "draft", "\0");
+    keys(d, "x");
+    ok = ok && wait_screen(d, "Dictation cancelled: the draft changed.", 5000) && has(screen(d), "› draftx");
+    settle(d, 3000);
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"invalidated\",\"ticket\":1,") && !has(tr, "inserted") && has(tr, QUIET);
+    check(d, "typing: a key typed while listening cancels the request and is typed", ok, tr);
+  }
+  if want(d, "stale") {
+    // The stop and an edit in one read: the helper still answers, and its words are dropped.
+    fixture_env(d, wav, "hello", "");
+    ok := start(d, "--dictation") && listen(d, "draft", "\0");
+    settle(d, 3000);
+    keys(d, "\0y");
+    ok = ok && wait_screen(d, "Dictation cancelled: the draft changed.", 5000);
+    settle(d, 2000);
+    ok = ok && has(screen(d), "› drafty") && !has(screen(d), "hello");
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"invalidated\",\"ticket\":1,") && !has(tr, "inserted") && has(tr, QUIET);
+    check(d, "stale: an edit after the stop drops the result that follows", ok, tr);
+  }
+  if want(d, "undo") {
+    // Undo during a second request takes back the first insertion and ends the second.
+    fixture_env(d, wav, "hello", "");
+    ok := start(d, "--dictation") && listen(d, "one", "\0");
+    settle(d, 3000); keys(d, "\0");
+    ok = ok && wait_screen(d, "› one hello", 15000);
+    keys(d, "\0"); ok = ok && wait_screen(d, "● Listening", 15000);
+    ctl(d, 26, "");
+    ok = ok && wait_screen(d, "Dictation cancelled: the draft changed.", 5000) && wait_screen(d, "› one\n", 3000);
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"inserted\",\"ticket\":1,") && has(tr, "{\"event\":\"invalidated\",\"ticket\":2,") && has(tr, QUIET);
+    check(d, "undo: Undo during a request ends it and takes back the earlier insertion", ok, tr);
+  }
+  if want(d, "navigate") {
+    fixture_env(d, wav, "hello", "");
+    ok := start(d, "--dictation") && listen(d, "draft", "\0");
+    ctl(d, 27, "[Z");
+    ok = ok && wait_screen(d, "Agent: Claude Code", 5000) && has(screen(d), "Dictation cancelled: the draft changed.");
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"invalidated\",\"ticket\":1,") && has(tr, QUIET);
+    check(d, "navigate: Shift-Tab to another agent cancels the request", ok, tr);
+  }
+  if want(d, "focus") {
+    fixture_env(d, wav, "hello", "");
+    ok := start(d, "--dictation") && listen(d, "draft", "\0");
+    ctl(d, 27, "[O");
+    ok = ok && wait_screen(d, "the terminal lost focus", 5000) && has(screen(d), "› draft");
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"cancelled\",\"ticket\":1,") && has(tr, QUIET);
+    check(d, "focus: a focus-out report cancels the request", ok, tr);
+  }
+  if want(d, "silence") {
+    fixture_env(d, quiet, "hello", "");
+    ok := start(d, "--dictation") && listen(d, "keep me", "\0");
+    settle(d, 1500); keys(d, "\0");
+    ok = ok && wait_screen(d, "No speech detected; the draft is unchanged.", 15000) && has(screen(d), "› keep me\n");
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"no_speech\",\"ticket\":1,\"submits\":0,\"enters\":0,\"starts\":0,\"turns\":0,\"draft_bytes\":7,");
+    check(d, "silence: no speech leaves the draft and sends nothing", ok, tr);
+  }
+  if want(d, "failure") {
+    fixture_env(d, wav, "hello", "device");
+    ok := start(d, "--dictation");
+    keys(d, "keep me"); settle(d, 150); keys(d, "\0");
+    ok = ok && wait_screen(d, "Dictation failed: the input or recognition device is not available. The draft is unchanged.", 15000) && has(screen(d), "› keep me\n");
+    st := quit(d); tr := trace(d, trb[..]);
+    ok1 := ok && st == 0 && has(tr, "{\"event\":\"failed\",\"ticket\":1,\"submits\":0,\"enters\":0,\"starts\":0,\"turns\":0,\"draft_bytes\":7,");
+    fixture_env(d, wav, "hello", "recognition");
+    ok = start(d, "--dictation") && listen(d, "keep me", "\0");
+    settle(d, 3000); keys(d, "\0");
+    ok = ok && wait_screen(d, "Dictation failed: recognition failed. The draft is unchanged.", 15000) && has(screen(d), "› keep me\n");
+    st = quit(d); tr = trace(d, trb[..]);
+    ok = ok1 && ok && st == 0 && has(tr, "{\"event\":\"failed\",\"ticket\":1,") && has(tr, QUIET);
+    check(d, "failure: a device or recognition failure leaves the draft and sends nothing", ok, tr);
+  }
+  if want(d, "overflow") {
+    // 9000 pasted bytes and 8000 dictated ones do not fit the 16384-byte draft.
+    big: [8000] u8; for k: 0..<big.count { big[k] = 'a'; }
+    fixture_env(d, wav, cast(string) big[..], "");
+    ok := start(d, "--dictation");
+    // a bracketed paste, in pieces the terminal's input queue takes whole
+    ctl(d, 27, "[200~");
+    chunk: [1000] u8; for k: 0..<chunk.count { chunk[k] = 'b'; }
+    for k: 0..<9 { keys(d, cast(string) chunk[..]); settle(d, 40); }
+    ctl(d, 27, "[201~"); settle(d, 500);
+    keys(d, "\0"); ok = ok && wait_screen(d, "● Listening", 15000);
+    settle(d, 3000); keys(d, "\0");
+    ok = ok && wait_screen(d, "Dictation refused: the transcript doesn't fit the draft.", 15000);
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"refused\",\"ticket\":1,\"submits\":0,\"enters\":0,\"starts\":0,\"turns\":0,\"draft_bytes\":9000,");
+    // the helper refuses a transcript over 8000 bytes itself
+    long: [8001] u8; for k: 0..<long.count { long[k] = 'a'; }
+    fixture_env(d, wav, cast(string) long[..], "");
+    ok2 := start(d, "--dictation") && listen(d, "keep me", "\0");
+    settle(d, 3000); keys(d, "\0");
+    ok2 = ok2 && wait_screen(d, "Dictation failed: the transcript is too long for the draft. The draft is unchanged.", 15000) && has(screen(d), "› keep me\n");
+    st = quit(d); tr2: [65536] u8; t2 := trace(d, tr2[..]);
+    ok = ok && ok2 && st == 0 && has(t2, "{\"event\":\"failed\",\"ticket\":1,") && has(t2, QUIET);
+    check(d, "overflow: a transcript that doesn't fit, or is over 8000 bytes, leaves the draft and sends nothing", ok, tr);
+  }
+  if d[0].model && want(d, "model") {
+    // The pinned Parakeet model on the GPU recognizes the recording itself.
+    fixture_env(d, wav, "", "");
+    hb: [1024] u8; mb: [1300] u8; d[0].real_home = true;
+    env_add(d, "OPENAGENTS_PARAKEET_MODEL=", fs_join(proc_getenv("HOME", hb[..]), ".cache/openagents/models/parakeet/parakeet-tdt-0.6b-v3-541d1f99", mb[..]));
+    ok := start(d, "--dictation|--dictation-args|--capture fixture --device gpu") && listen(d, "Heard:", "\0");
+    settle(d, 3000); keys(d, "\0");
+    ok = ok && wait_screen(d, "Dictated into the draft", 120000) && has(screen(d), "› Heard: Wait, stop.\n");
+    st := quit(d); tr := trace(d, trb[..]);
+    ok = ok && st == 0 && has(tr, "{\"event\":\"inserted\",\"ticket\":1,") && has(tr, QUIET);
+    check(d, "model: Parakeet on the GPU puts \"Wait, stop.\" into the draft, never sent", ok, tr);
+  }
+  tool_err("dictation check: "); cnt: [24] u8;
+  tool_err(int_text_dc(d[0].pass, cnt[..])); tool_err(" passed, "); tool_err(int_text_dc(d[0].fail, cnt[..])); tool_errln(" failed");
+  return ifx d[0].fail == 0 && d[0].pass > 0 then 0 else 1;
+}
+
+int_text_dc :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  t: [24] u8; k := 0; x := v;
+  while x > 0 { t[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; }
+  for i: 0..<k { out[i] = t[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}

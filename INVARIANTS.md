@@ -3229,6 +3229,17 @@ WebSocket binary message, encoded and decoded only by the generated Coax codec
   Enter, Escape, Ctrl-C, `--seconds` or the 60-second cap end it. It prints
   the final text (or one JSON result) and never pastes, types, sends or writes
   audio. A named input or recognition device never falls back to another.
+  Coder's terminal composer is a fourth, default-off path (`--dictation`,
+  `CODER_DICTATION=1` or `/dictation on`): its gesture (Ctrl+Space unless
+  `--dictation-key`) runs `openagents dictate --events` as a helper, so the
+  microphone and the model never live in Coder's process. A toggle, never a
+  hold: terminals don't report key release. The final text enters the draft
+  only through the `#authority` `coder/tui/dictation.coax` guard: the same
+  draft, cursor, editor generation, send count, navigation, focus and consent
+  as when the request began; valid UTF-8 whose only control byte is a line
+  feed; one undoable insertion. Enter, Esc, Ctrl-C, Ctrl-D and a focus-out
+  report cancel an open request and send nothing; any other key cancels it
+  and then acts as usual. Nothing on this path calls the send path.
 
 Coder dictation's `apps/shared/dictation-policy.coax` is `#authority`: it gates
 readiness/consent, 450 ms pre-roll, 300 ms minimum hold, 200 ms tail, a 60-second

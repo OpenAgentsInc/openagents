@@ -1,5 +1,27 @@
 # Owner actions
 
+## Dictation in Coder's terminal composer: a real microphone (#12668, 2026-11-03)
+
+Coder's terminal dictation passes 14 recorded-audio cases in a headless pty,
+including real Parakeet on the GPU
+(`docs/verification/coder-terminal-dictation-2026-11-03/README.md`). No
+microphone was opened. To accept it:
+
+- [ ] Build both: `apps/openagents-cli/build.sh`, then start
+      `coder/tui/coder.sh --dictation` in your own terminal.
+- [ ] Type a few words, press **Ctrl+Space**, speak, press **Ctrl+Space**
+      again. The words appear after the draft and nothing is sent. Press
+      **Ctrl+Z**: they go away.
+- [ ] Press Ctrl+Space, then Esc: "Dictation cancelled". Press Ctrl+Space,
+      then Enter: cancelled, and the draft is not sent.
+- [ ] If your terminal reports focus, switch away while listening: the
+      request is cancelled. Note whether it did; Coder can't tell when a
+      terminal doesn't report focus.
+- [ ] If Ctrl+Space doesn't reach Coder in your terminal (some send nothing
+      for it), try `--dictation-key ctrl-g` and note which terminal it was.
+- [ ] On the Mac this also needs the `dictate-mac.m` build in the
+      `openagents dictate` item below.
+
 ## Dictation vocabulary and code text in Coder for Mac (#12670, 2026-11-03)
 
 `openagents dictate --terms FILE --format code` works on Linux. Its record

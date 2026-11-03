@@ -1,0 +1,400 @@
+// Coder's terminal dictation (GitHub #12668, proposal phase D1): the rules.
+// A configurable key (Ctrl+Space by default) toggles dictation: once to
+// start listening, again to stop; Esc or Ctrl-C cancels. Terminals do not
+// report key releases reliably, so this is a toggle, never the Mac's hold.
+// Capture and recognition are `openagents dictate --events` (#12667), a
+// helper process that links the shared controller (apps/shared/dictation.coax)
+// and the resident Parakeet engine; Coder reads its status lines and its one
+// result. Final text only; partial text waits for streaming (#12673).
+//
+// What this file decides:
+//   - the gesture's name and label, and the helper's extra arguments;
+//   - what every key means while a request is open: the gesture stops it,
+//     Esc, Ctrl-C, Enter, Ctrl-D and focus loss cancel it and do nothing
+//     else, and any other key (typing, moving, paste, Undo, Shift-Tab to
+//     another agent) cancels it and then does what it always does;
+//   - the request's phases from the helper's status lines, its result kinds,
+//     its error texts and when it is overdue;
+//   - the guard: the final transcript goes into the composer only when the
+//     draft, cursor, editor generation, send count, session navigation,
+//     focus and consent are exactly what they were when the request began,
+//     as one undoable insertion joined like Coder for Mac's
+//     (apps/shared/dictation-join.coax), and only when every byte is valid
+//     UTF-8 text whose only control byte is a line feed. It never submits:
+//     nothing here calls the send path, and a line feed is a draft byte.
+//   coax/bin/coax test coder/tui/dictation.coax --library
+//   coax/bin/coax mutate coder/tui/dictation.coax --root-only
+#load "../../coax/lib/tui/tui.coax";
+#load "../../apps/shared/dictation-join.coax";
+#authority;
+
+CDD_IDLE :: 0; CDD_STARTING :: 1; CDD_LISTENING :: 2; CDD_FINISHING :: 3; CDD_RECOGNIZING :: 4;
+CDD_PASS :: 0; CDD_START :: 1; CDD_STOP :: 2; CDD_CANCEL :: 3; CDD_DROP :: 4; CDD_EDIT :: 5; CDD_REFUSE :: 6;
+CDD_R_NONE :: 0; CDD_R_INSERT :: 1; CDD_R_NO_SPEECH :: 2; CDD_R_CANCELLED :: 3; CDD_R_FAILED :: 4;
+CDD_A_OK :: 0; CDD_A_STALE :: 1; CDD_A_TEXT :: 2; CDD_A_FULL :: 3;
+CDD_TEXT_MAX :: 8000;     // the shared controller's transcript limit
+
+// ---- the gesture ----
+// A key name for --dictation-key or CODER_DICTATION_KEY, as its control
+// byte; -1 for a name that is not one of these. "" is Ctrl+Space.
+cdd_gesture :: (name: string) -> int {
+  if name == "" || name == "ctrl-space" { return 0; }
+  if name == "ctrl-g" { return 7; }
+  if name == "ctrl-o" { return 15; }
+  if name == "ctrl-t" { return 20; }
+  if name == "ctrl-x" { return 24; }
+  return -1;
+}
+cdd_gesture_label :: (code: int) -> string {
+  if code == 0 { return "Ctrl+Space"; }
+  if code == 7 { return "Ctrl+G"; }
+  if code == 15 { return "Ctrl+O"; }
+  if code == 20 { return "Ctrl+T"; }
+  if code == 24 { return "Ctrl+X"; }
+  return "";
+}
+
+#test "the gesture: five named control keys, Ctrl+Space by default, nothing else" {
+  names := [6] string.["", "ctrl-space", "ctrl-g", "ctrl-o", "ctrl-t", "ctrl-x"];
+  codes := [6] int.[0, 0, 7, 15, 20, 24];
+  labels := [6] string.["Ctrl+Space", "Ctrl+Space", "Ctrl+G", "Ctrl+O", "Ctrl+T", "Ctrl+X"];
+  for i: 0..<6 { #assert cdd_gesture(names[i]) == codes[i] && cdd_gesture_label(codes[i]) == labels[i]; }
+  for bad: [9] string.["Ctrl-Space", "space", "ctrl-c", "ctrl-d", "ctrl-j", "ctrl-m", "enter", "ctrl-z", "ctrl-a"] { #assert cdd_gesture(bad) == -1; }
+  for c: 1..<40 { if c != 7 && c != 15 && c != 20 && c != 24 { #assert cdd_gesture_label(c) == ""; } }
+  #assert cdd_gesture_label(-1) == "";
+}
+
+// ---- keys ----
+// What key k means at phase: CDD_PASS (not dictation's: it goes on as
+// usual), CDD_START, CDD_STOP, CDD_CANCEL (ends the request and does nothing
+// else), CDD_DROP (nothing), CDD_EDIT (ends the request, then goes on as
+// usual) or CDD_REFUSE (the gesture without consent).
+cdd_key :: (phase: int, consent: bool, gesture: int, k: TuiKey) -> int {
+  kd := k.kind;
+  mine := kd == TUI_K_CTRL_KEY && k.cp == gesture;
+  if phase == CDD_IDLE {
+    if !mine { return CDD_PASS; }
+    return ifx consent then CDD_START else CDD_REFUSE;
+  }
+  if mine { return ifx phase == CDD_LISTENING then CDD_STOP else ifx phase == CDD_STARTING then CDD_CANCEL else CDD_DROP; }
+  if kd == TUI_K_NONE || kd == TUI_K_CLEAR || kd == TUI_K_FOCUS_IN { return CDD_PASS; }
+  if kd == TUI_K_ESC || kd == TUI_K_CTRL_C || kd == TUI_K_ENTER || kd == TUI_K_CTRL_D || kd == TUI_K_FOCUS_OUT { return CDD_CANCEL; }
+  return CDD_EDIT;
+}
+
+#test "keys: the gesture starts with consent, stops while listening; Enter never passes during a request" {
+  sp := TuiKey.{kind = TUI_K_CTRL_KEY, cp = 0}; g := TuiKey.{kind = TUI_K_CTRL_KEY, cp = 7};
+  #assert cdd_key(CDD_IDLE, true, 0, sp) == CDD_START && cdd_key(CDD_IDLE, false, 0, sp) == CDD_REFUSE;
+  #assert cdd_key(CDD_IDLE, true, 7, sp) == CDD_PASS && cdd_key(CDD_IDLE, true, 7, g) == CDD_START;
+  #assert cdd_key(CDD_IDLE, true, 0, TuiKey.{kind = TUI_K_CHAR, cp = 0}) == CDD_PASS;
+  #assert cdd_key(CDD_LISTENING, true, 0, sp) == CDD_STOP && cdd_key(CDD_STARTING, true, 0, sp) == CDD_CANCEL;
+  #assert cdd_key(CDD_FINISHING, true, 0, sp) == CDD_DROP && cdd_key(CDD_RECOGNIZING, true, 0, sp) == CDD_DROP;
+  #assert cdd_key(CDD_LISTENING, false, 0, sp) == CDD_STOP;
+  for kd: 0..<28 {
+    k := TuiKey.{kind = kd, cp = 'a'};
+    #assert cdd_key(CDD_IDLE, true, 0, k) == CDD_PASS && cdd_key(CDD_IDLE, false, 0, k) == CDD_PASS;
+    neutral := kd == TUI_K_NONE || kd == TUI_K_CLEAR || kd == TUI_K_FOCUS_IN;
+    ends := kd == TUI_K_ESC || kd == TUI_K_CTRL_C || kd == TUI_K_ENTER || kd == TUI_K_CTRL_D || kd == TUI_K_FOCUS_OUT;
+    for phase: 1..<5 {
+      want := ifx neutral then CDD_PASS else ifx ends then CDD_CANCEL else CDD_EDIT;
+      #assert cdd_key(phase, true, 0, k) == want;
+    }
+  }
+  // another control key, or the gesture's byte as a character, is an edit
+  #assert cdd_key(CDD_LISTENING, true, 0, g) == CDD_EDIT && cdd_key(CDD_LISTENING, true, 0, TuiKey.{kind = TUI_K_CHAR, cp = 0}) == CDD_EDIT;
+}
+
+// ---- the helper ----
+// The phase after a status line's state.
+cdd_status :: (phase: int, state: string) -> int {
+  if phase == CDD_STARTING && state == "listening" { return CDD_LISTENING; }
+  if (phase == CDD_LISTENING || phase == CDD_FINISHING) && state == "finishing" { return CDD_FINISHING; }
+  if (phase == CDD_LISTENING || phase == CDD_FINISHING) && state == "recognizing" { return CDD_RECOGNIZING; }
+  return phase;
+}
+
+// What a result line means at phase: words go in only after recognizing.
+cdd_result :: (phase: int, kind: string, exit: int) -> int {
+  if phase == CDD_IDLE { return CDD_R_NONE; }
+  if kind == "final" && exit == 0 && phase == CDD_RECOGNIZING { return CDD_R_INSERT; }
+  if kind == "no_speech" && exit == 9 { return CDD_R_NO_SPEECH; }
+  if kind == "cancelled" && exit == 130 { return CDD_R_CANCELLED; }
+  return CDD_R_FAILED;
+}
+
+// A request with no news for this long is ended as failed: the model may
+// load for minutes the first time; the helper itself stops listening at 60 s.
+cdd_overdue :: (phase: int, now: int, since: int) -> bool {
+  if phase == CDD_LISTENING { return now - since > 65000; }
+  if phase == CDD_IDLE { return false; }
+  return now - since > 180000;
+}
+
+// The text shown for the helper's error name: fixed words, never the
+// helper's own bytes, so nothing it prints reaches the terminal.
+cdd_error_text :: (name: string) -> string {
+  if name == "permission" { return "microphone access is denied for this terminal"; }
+  if name == "model_missing" { return "the pinned Parakeet model is not installed (psionic/docs/parakeet.md)"; }
+  if name == "model" { return "the Parakeet model could not be opened"; }
+  if name == "device" { return "the input or recognition device is not available"; }
+  if name == "program" { return "the recorder program is not installed"; }
+  if name == "capture" { return "the input stopped delivering audio"; }
+  if name == "format" { return "the input's audio format is not supported"; }
+  if name == "recognition" { return "recognition failed"; }
+  if name == "too_long" { return "the transcript is too long for the draft"; }
+  return "dictation failed";
+}
+
+// Extra helper arguments (--dictation-args or CODER_DICTATION_ARGS): pairs
+// of a flag openagents dictate takes and a value, separated by single
+// spaces. Output, control and timing flags are Coder's own and refused.
+CDD_FLAGS :: [6] string.["--device", "--capture", "--input", "--model-dir", "--format", "--terms"];
+cdd_flag :: (s: string) -> bool { for f: CDD_FLAGS { if s == f { return true; } } return false; }
+cdd_args_ok :: (args: string) -> bool {
+  if args.count == 0 { return true; }
+  at := 0; pieces := 0;
+  while at <= args.count {
+    end := at; while end < args.count && args[end] != ' ' { end += 1; }
+    if end == at { return false; }      // an empty piece: a leading, trailing or double space
+    t := args[at..<end];
+    if pieces % 2 == 0 {
+      if !cdd_flag(t) { return false; }
+    } else {
+      if t[0] == '-' { return false; }
+      for c: t { if c < 33 || c > 126 { return false; } }
+    }
+    pieces += 1; at = end + 1;
+  }
+  return pieces % 2 == 0 && pieces / 2 <= 6;
+}
+
+#test "the helper: status lines move the phase forward only" {
+  #assert cdd_status(CDD_STARTING, "loading_model") == CDD_STARTING && cdd_status(CDD_STARTING, "opening_input") == CDD_STARTING;
+  #assert cdd_status(CDD_STARTING, "listening") == CDD_LISTENING && cdd_status(CDD_STARTING, "finishing") == CDD_STARTING;
+  #assert cdd_status(CDD_STARTING, "recognizing") == CDD_STARTING && cdd_status(CDD_IDLE, "listening") == CDD_IDLE;
+  #assert cdd_status(CDD_LISTENING, "finishing") == CDD_FINISHING && cdd_status(CDD_FINISHING, "finishing") == CDD_FINISHING;
+  #assert cdd_status(CDD_LISTENING, "recognizing") == CDD_RECOGNIZING && cdd_status(CDD_FINISHING, "recognizing") == CDD_RECOGNIZING;
+  #assert cdd_status(CDD_RECOGNIZING, "listening") == CDD_RECOGNIZING && cdd_status(CDD_RECOGNIZING, "finishing") == CDD_RECOGNIZING;
+  #assert cdd_status(CDD_LISTENING, "listening") == CDD_LISTENING && cdd_status(CDD_IDLE, "recognizing") == CDD_IDLE;
+  #assert cdd_status(CDD_IDLE, "finishing") == CDD_IDLE && cdd_status(CDD_LISTENING, "Recognizing") == CDD_LISTENING;
+}
+#test "the helper: a final inserts only after recognizing; other endings never insert" {
+  #assert cdd_result(CDD_RECOGNIZING, "final", 0) == CDD_R_INSERT;
+  for phase: 1..<4 { #assert cdd_result(phase, "final", 0) == CDD_R_FAILED; }
+  #assert cdd_result(CDD_RECOGNIZING, "final", 1) == CDD_R_FAILED && cdd_result(CDD_IDLE, "final", 0) == CDD_R_NONE;
+  for phase: 1..<5 {
+    #assert cdd_result(phase, "no_speech", 9) == CDD_R_NO_SPEECH && cdd_result(phase, "no_speech", 0) == CDD_R_FAILED;
+    #assert cdd_result(phase, "cancelled", 130) == CDD_R_CANCELLED && cdd_result(phase, "cancelled", 0) == CDD_R_FAILED;
+    #assert cdd_result(phase, "error", 1) == CDD_R_FAILED && cdd_result(phase, "", 0) == CDD_R_FAILED && cdd_result(phase, "status", 0) == CDD_R_FAILED;
+  }
+  #assert cdd_result(CDD_IDLE, "no_speech", 9) == CDD_R_NONE && cdd_result(CDD_IDLE, "error", 1) == CDD_R_NONE;
+}
+#test "the helper: overdue after 65 s listening or 180 s elsewhere, never when idle" {
+  #assert !cdd_overdue(CDD_LISTENING, 65000, 0) && cdd_overdue(CDD_LISTENING, 65001, 0) && !cdd_overdue(CDD_LISTENING, 70000, 5000);
+  for phase: [3] int.[CDD_STARTING, CDD_FINISHING, CDD_RECOGNIZING] { #assert !cdd_overdue(phase, 180000, 0) && cdd_overdue(phase, 180001, 0) && !cdd_overdue(phase, 180001, 1); }
+  #assert !cdd_overdue(CDD_IDLE, 1000000000, 0);
+}
+#test "the helper: errors read as fixed text" {
+  names := [10] string.["permission", "model_missing", "model", "device", "program", "capture", "format", "recognition", "too_long", "[2J"];
+  seen: [10] string;
+  for i: 0..<10 {
+    t := cdd_error_text(names[i]); seen[i] = t;
+    #assert t.count > 0;
+    for c: t { #assert c >= 32 && c < 127; }
+    for j: 0..<i { #assert seen[j] != t; }
+  }
+  #assert cdd_error_text("") == "dictation failed" && cdd_error_text("Permission") == "dictation failed";
+}
+#test "the helper: extra arguments are known flags with plain values" {
+  for ok: [5] string.["", "--device cpu", "--capture alsa --input hw:1", "--format code --terms /tmp/t.tsv", "--model-dir /m --device gpu --capture pulse --input x --format plain --terms t"] { #assert cdd_args_ok(ok); }
+  for bad: [15] string.["--device", "cpu", "--json x", "--events 1", "--seconds 5", "--wait-for-enter x", " --device cpu", "--device cpu ", "--device  cpu", "--device -x", "--device é", "--device cpu --capture", "--device --capture", "cpu --device", "--device cpu --device cpu --device cpu --device cpu --device cpu --device cpu --device cpu"] { #assert !cdd_args_ok(bad); }
+  for f: CDD_FLAGS { #assert cdd_flag(f); }
+  #assert !cdd_flag("--json") && !cdd_flag("") && cdd_args_ok("--device ~") && cdd_args_ok("--device !");
+  #assert cdd_args_ok("--device cpu --device cpu --device cpu --device cpu --device cpu --device cpu");
+  v := [10] u8.['-', '-', 'd', 'e', 'v', 'i', 'c', 'e', ' ', 'x'];
+  for c: [4] u8.[1, 31, 127, 0xc3] { v[9] = c; #assert !cdd_args_ok(cast(string) v[..]); }
+}
+
+// ---- the guard ----
+CddGuard :: struct {
+  active: bool; ticket: int; sent: int; nav: int; gen: int; n: int; cur: int;
+  snapshot: [TUI_EDIT_BYTES] u8;
+}
+
+// Opens a request's guard on the composer as it is now.
+cdd_begin :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool) -> bool {
+  g[0].active = false;
+  if ticket <= 0 || !focused || !consent || e[0].n < 0 || e[0].n > TUI_EDIT_BYTES || e[0].cur < 0 || e[0].cur > e[0].n { return false; }
+  g[0].ticket = ticket; g[0].sent = sent; g[0].nav = nav; g[0].gen = e[0].gen; g[0].n = e[0].n; g[0].cur = e[0].cur;
+  for i: 0..<e[0].n { g[0].snapshot[i] = e[0].buf[i]; }
+  g[0].active = true;
+  return true;
+}
+cdd_cancel :: (g: [] CddGuard) { g[0].active = false; }
+
+// True while the composer, the send count, navigation, focus and consent are
+// exactly as they were when ticket began.
+cdd_current :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool) -> bool {
+  if !g[0].active || ticket != g[0].ticket || !focused || !consent || sent != g[0].sent || nav != g[0].nav { return false; }
+  if e[0].gen != g[0].gen || e[0].n != g[0].n || e[0].cur != g[0].cur { return false; }
+  for i: 0..<g[0].n { if e[0].buf[i] != g[0].snapshot[i] { return false; } }
+  return true;
+}
+
+// Whether text may become draft bytes: 1 to CDD_TEXT_MAX bytes of valid
+// UTF-8 (shortest forms, no surrogates, at most U+10FFFF) with no control
+// character but the line feed: no NUL, CR, tab, Esc, DEL or C1 control.
+cdd_text_ok :: (text: string) -> bool {
+  if text.count < 1 || text.count > CDD_TEXT_MAX { return false; }
+  i := 0;
+  while i < text.count {
+    c := cast(int) text[i];
+    if c < 128 {
+      if (c < 32 && c != 10) || c == 127 { return false; }
+      i += 1; continue;
+    }
+    // a lead past 0xf4 reads as a code point past U+10FFFF below
+    k := ifx c >= 0xc2 && c <= 0xdf then 2 else ifx c >= 0xe0 && c <= 0xef then 3 else ifx c >= 0xf0 then 4 else 0;
+    if k == 0 || i + k > text.count { return false; }
+    cp := ifx k == 2 then c & 0x1f else c & 0x0f;
+    for j: 1..<k {
+      b := cast(int) text[i + j];
+      if (b & 0xc0) != 0x80 { return false; }
+      cp = (cp << 6) | (b & 0x3f);
+    }
+    if (k == 3 && cp < 0x800) || (k == 4 && cp < 0x10000) || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) || (cp >= 0x80 && cp <= 0x9f) { return false; }
+    i += k;
+  }
+  return true;
+}
+
+// Puts ticket's transcript at the cursor as one undoable insertion, joined
+// to the words around it, and ends the request: CDD_A_OK, or CDD_A_STALE,
+// CDD_A_TEXT or CDD_A_FULL with the composer untouched.
+cdd_apply :: (g: [] CddGuard, e: [] TuiEditor, ticket: int, sent: int, nav: int, focused: bool, consent: bool, text: string) -> int {
+  if ticket != g[0].ticket { return CDD_A_STALE; }
+  current := cdd_current(g, e, ticket, sent, nav, focused, consent);
+  g[0].active = false;
+  if !current { return CDD_A_STALE; }
+  if !cdd_text_ok(text) { return CDD_A_TEXT; }
+  at := e[0].cur; left := 0; right := 0;
+  if at > 0 && dj_gap(e[0].buf[at - 1], text[0]) { left = 1; }
+  if at < e[0].n && dj_gap(text[text.count - 1], e[0].buf[at]) { right = 1; }
+  d: [CDD_TEXT_MAX + 2] u8; n := 0;
+  if left == 1 { d[n] = ' '; n += 1; }
+  for b: text { d[n] = b; n += 1; }
+  if right == 1 { d[n] = ' '; n += 1; }
+  if !tui_ed_insert_undoable(e, cast(string) d[0..<n]) { return CDD_A_FULL; }
+  return CDD_A_OK;
+}
+
+cdd_ed :: (e: [] TuiEditor, s: string, cur: int) { tui_ed_set(e, s); e[0].cur = cur; }
+
+#test "the guard: words go in at the cursor as one undoable edit and nothing is sent" {
+  e: [1] TuiEditor; g: [1] CddGuard;
+  cdd_ed(e[..], "Please inspect", 14);
+  #assert cdd_begin(g[..], e[..], 1, 3, 2, true, true) && cdd_current(g[..], e[..], 1, 3, 2, true, true);
+  #assert cdd_apply(g[..], e[..], 1, 3, 2, true, true, "the code.") == CDD_A_OK && tui_ed_text(e[..]) == "Please inspect the code.";
+  #assert e[0].cur == 24 && !g[0].active && e[0].browse == 0;
+  #assert cdd_apply(g[..], e[..], 1, 3, 2, true, true, "again") == CDD_A_STALE && tui_ed_text(e[..]) == "Please inspect the code.";
+  #assert tui_ed_key(e[..], TuiKey.{kind = TUI_K_UNDO}) == TUI_ED_KEPT && tui_ed_text(e[..]) == "Please inspect" && e[0].cur == 14;
+  // inside a word's gap both sides join; at the very start only the right
+  cdd_ed(e[..], "ab", 1);
+  #assert cdd_begin(g[..], e[..], 2, 0, 0, true, true) && cdd_apply(g[..], e[..], 2, 0, 0, true, true, "x") == CDD_A_OK && tui_ed_text(e[..]) == "a x b" && e[0].cur == 4;
+  cdd_ed(e[..], "tail", 0);
+  #assert cdd_begin(g[..], e[..], 3, 0, 0, true, true) && cdd_apply(g[..], e[..], 3, 0, 0, true, true, "head") == CDD_A_OK && tui_ed_text(e[..]) == "head tail";
+  cdd_ed(e[..], "", 0);
+  #assert cdd_begin(g[..], e[..], 4, 0, 0, true, true) && cdd_apply(g[..], e[..], 4, 0, 0, true, true, "x") == CDD_A_OK && tui_ed_text(e[..]) == "x";
+  cdd_ed(e[..], "word!", 4);
+  #assert cdd_begin(g[..], e[..], 5, 0, 0, true, true) && cdd_apply(g[..], e[..], 5, 0, 0, true, true, ",") == CDD_A_OK && tui_ed_text(e[..]) == "word,!";
+}
+#test "the guard: newlines and Unicode stay literal draft bytes, never Enter" {
+  e: [1] TuiEditor; g: [1] CddGuard;
+  #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true);
+  #assert cdd_apply(g[..], e[..], 1, 0, 0, true, true, "Écouter 👋\nrm -rf /\nsend\n") == CDD_A_OK && tui_ed_text(e[..]) == "Écouter 👋\nrm -rf /\nsend\n";
+  #assert e[0].nh == 0 && e[0].browse == 0;      // nothing was remembered as sent
+  #assert tui_ed_undo(e[..]) && e[0].n == 0;
+}
+#test "the guard: a changed draft, cursor, key, send, navigation, focus or consent refuses without a change" {
+  for fault: 0..<11 {
+    e: [1] TuiEditor; g: [1] CddGuard;
+    cdd_ed(e[..], "draft", 5);
+    #assert cdd_begin(g[..], e[..], 5, 2, 1, true, true);
+    sent := 2; nav := 1; focused := true; consent := true;
+    if fault == 0 { e[0].buf[0] = 'D'; }
+    if fault == 1 { e[0].buf[4] = 'T'; }
+    if fault == 2 { tui_ed_insert(e[..], "x"); }
+    if fault == 3 { e[0].cur = 0; }
+    if fault == 4 { e[0].gen += 1; }
+    if fault == 5 { sent = 3; }
+    if fault == 6 { nav = 2; }
+    if fault == 7 { focused = false; }
+    if fault == 8 { consent = false; }
+    if fault == 9 { x := tui_ed_key(e[..], TuiKey.{kind = TUI_K_LEFT}); x = tui_ed_key(e[..], TuiKey.{kind = TUI_K_RIGHT}); }   // back to the same cursor
+    if fault == 10 { x := tui_ed_key(e[..], TuiKey.{kind = TUI_K_CHAR, cp = 'x'}); x = tui_ed_key(e[..], TuiKey.{kind = TUI_K_BACKSPACE}); }   // the same text again
+    before := e[0];
+    #assert !cdd_current(g[..], e[..], 5, sent, nav, focused, consent);
+    #assert cdd_apply(g[..], e[..], 5, sent, nav, focused, consent, "late") == CDD_A_STALE && !g[0].active;
+    #assert tui_ed_text(e[..]) == cast(string) before.buf[0..<before.n] && e[0].cur == before.cur && e[0].gen == before.gen && e[0].undo_on == before.undo_on;
+  }
+}
+#test "the guard: stale tickets and cancellation cannot insert, and begin needs a sane composer" {
+  e: [1] TuiEditor; g: [1] CddGuard;
+  cdd_ed(e[..], "draft", 5);
+  #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true) && cdd_begin(g[..], e[..], 2, 0, 0, true, true);
+  #assert !cdd_current(g[..], e[..], 1, 0, 0, true, true) && cdd_apply(g[..], e[..], 1, 0, 0, true, true, "old") == CDD_A_STALE && g[0].active;
+  cdd_cancel(g[..]);
+  #assert !cdd_current(g[..], e[..], 2, 0, 0, true, true) && cdd_apply(g[..], e[..], 2, 0, 0, true, true, "cancelled") == CDD_A_STALE && tui_ed_text(e[..]) == "draft";
+  for fault: 0..<8 {
+    f: [1] TuiEditor; h: [1] CddGuard; cdd_ed(f[..], "draft", 2); ticket := 3; focused := true; consent := true;
+    #assert cdd_begin(h[..], f[..], 1, 0, 0, true, true);
+    if fault == 0 { ticket = 0; } if fault == 1 { ticket = -1; } if fault == 2 { focused = false; } if fault == 3 { consent = false; }
+    if fault == 4 { f[0].n = -1; } if fault == 5 { f[0].n = TUI_EDIT_BYTES + 1; } if fault == 6 { f[0].cur = -1; } if fault == 7 { f[0].cur = 6; }
+    #assert !cdd_begin(h[..], f[..], ticket, 0, 0, focused, consent) && !h[0].active;
+  }
+  f: [1] TuiEditor; h: [1] CddGuard; cdd_ed(f[..], "ab", 2);
+  #assert cdd_begin(h[..], f[..], 9, 0, 0, true, true) && h[0].n == 2 && h[0].cur == 2 && h[0].ticket == 9;
+  big: [TUI_EDIT_BYTES] u8; for i: 0..<big.count { big[i] = 'a'; }
+  cdd_ed(f[..], cast(string) big[..], TUI_EDIT_BYTES);
+  #assert cdd_begin(h[..], f[..], 9, 0, 0, true, true) && h[0].n == TUI_EDIT_BYTES;
+}
+#test "the guard: empty, malformed, control and oversized text refuse before touching the draft" {
+  // each case: its byte count, then its bytes
+  bad_b := [89] u8.[0, 1, 0, 3, 'a', 13, 'b', 3, 'a', 9, 'b', 2, 27, '[', 2, 'a', 127, 1, 0xc3, 2, 0xc3, '(',
+    2, 0xc0, 0xaf, 3, 0xe0, 0x80, 0xaf, 3, 0xed, 0xa0, 0x80, 4, 0xf4, 0x90, 0x80, 0x80, 4, 0xf0, 0x80, 0x80, 0x80,
+    2, 0xc2, 0x9b, 2, 0xc2, 0x80, 1, 0x80, 2, 0xe2, 0x82, 2, 'x', 1, 1, 31, 2, 0xc1, 0xbf, 3, 0xed, 0xbf, 0xbf, 2, 0xc2, 0x9f,
+    4, 0xf5, 0x80, 0x80, 0x80, 4, 0xf8, 0x88, 0x80, 0x80, 4, 0xff, 0x80, 0x80, 0x80, 4, 0xc1, 0x80, 0x80, 0x80];
+  good_b := [49] u8.[1, 'a', 1, 10, 2, 0xc3, 0xa9, 2, 0xc2, 0xa0, 2, 0xdf, 0xbf, 3, 0xe0, 0xa0, 0x80, 3, 0xef, 0xbf, 0xbf,
+    4, 0xf0, 0x90, 0x80, 0x80, 4, 0xf4, 0x8f, 0xbf, 0xbf, 3, 0xed, 0x9f, 0xbf, 3, 0xee, 0x80, 0x80, 1, '~',
+    4, 0xf1, 0x80, 0x80, 0x80, 2, 0xd2, 0x9b];
+  i := 0; bads := 0;
+  while i < bad_b.count { n := cast(int) bad_b[i]; #assert !cdd_text_ok(cast(string) bad_b[i + 1..<i + 1 + n]); i += 1 + n; bads += 1; }
+  #assert i == bad_b.count && bads == 26;
+  i = 0; goods := 0;
+  while i < good_b.count { n := cast(int) good_b[i]; #assert cdd_text_ok(cast(string) good_b[i + 1..<i + 1 + n]); i += 1 + n; goods += 1; }
+  #assert i == good_b.count && goods == 14;
+  // a four-byte form cut short
+  #assert !cdd_text_ok(cast(string) good_b[22..<25]) && cdd_text_ok("~ !");
+  big: [CDD_TEXT_MAX + 1] u8; for k: 0..<big.count { big[k] = 'a'; }
+  #assert cdd_text_ok(cast(string) big[0..<CDD_TEXT_MAX]) && !cdd_text_ok(cast(string) big[..]);
+  bad := [6] string.["", "a\rb", "a\tb", "\0", "x\n\r", "ok\t"];
+  for t: bad {
+    e: [1] TuiEditor; g: [1] CddGuard; cdd_ed(e[..], "draft", 5); before := e[0].gen;
+    #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true) && cdd_apply(g[..], e[..], 1, 0, 0, true, true, t) == CDD_A_TEXT;
+    #assert tui_ed_text(e[..]) == "draft" && e[0].gen == before && !e[0].undo_on && !g[0].active;
+  }
+}
+#test "the guard: an insertion that does not fit, join spaces counted, leaves the draft whole" {
+  big: [TUI_EDIT_BYTES] u8; for i: 0..<big.count { big[i] = 'a'; }
+  for n: TUI_EDIT_BYTES - 4..<TUI_EDIT_BYTES - 1 {
+    e: [1] TuiEditor; g: [1] CddGuard;
+    cdd_ed(e[..], cast(string) big[0..<n], 1); before := e[0].gen;
+    #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true);
+    r := cdd_apply(g[..], e[..], 1, 0, 0, true, true, "x");
+    #assert (r == CDD_A_OK) == (n <= TUI_EDIT_BYTES - 3);
+    if r == CDD_A_OK { #assert e[0].n == n + 3 && cast(string) e[0].buf[0..<5] == "a x a"; }
+    else { #assert r == CDD_A_FULL && e[0].n == n && e[0].gen == before && e[0].buf[1] == 'a' && e[0].cur == 1; }
+  }
+  e: [1] TuiEditor; g: [1] CddGuard; cdd_ed(e[..], cast(string) big[0..<TUI_EDIT_BYTES - 1], TUI_EDIT_BYTES - 1);
+  #assert cdd_begin(g[..], e[..], 1, 0, 0, true, true) && cdd_apply(g[..], e[..], 1, 0, 0, true, true, ".") == CDD_A_OK && e[0].n == TUI_EDIT_BYTES;
+}

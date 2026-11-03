@@ -4,6 +4,7 @@
 // pasted as one undoable draft edit; this module never submits a message.
 #load "../../shared/zeron/composer.coax";
 #load "../../../coax/lib/proto/wire.coax";
+#load "../../shared/dictation-join.coax";
 #authority;
 ZrDictationGuard :: struct {
   active:bool;ticket:int;sent:int;anchor:int;caret:int;n:int;
@@ -104,10 +105,8 @@ zdi_current :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int)->bool {
  for i:0..<g[0].n {if c[0].text[i]!=g[0].snapshot[i] {return false;}}
  return true;
 }
-zdi_space :: (b:u8)->bool {return b==' ' || b==9 || b==10 || b==13;}
-zdi_open :: (b:u8)->bool {return b=='(' || b=='[' || b=='{';}
-zdi_close :: (b:u8)->bool {return b=='.' || b==',' || b==';' || b==':' || b=='?' || b=='!' || b==')' || b==']' || b=='}';}
-zdi_gap :: (left:u8,right:u8)->bool {return !zdi_space(left) && !zdi_space(right) && !zdi_open(left) && !zdi_close(right);}
+// The join rule is shared with Coder's terminal composer (apps/shared/dictation-join.coax).
+zdi_gap :: (left:u8,right:u8)->bool {return dj_gap(left,right);}
 zdi_apply :: (g:[]ZrDictationGuard,c:[]Composer,ticket:int,text:string)->bool {
  if ticket!=g[0].ticket {return false;}
  current:=zdi_current(g,c,ticket);g[0].active=false;

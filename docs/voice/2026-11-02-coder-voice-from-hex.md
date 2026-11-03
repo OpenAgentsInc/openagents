@@ -127,7 +127,7 @@ Two measured facts from Hex matter most for us:
 | Psionic Parakeet TDT 0.6B v3 in Coax | Resident native API and explicit CLI backend; Metal encoder, CPU decoder; all 29 frozen recordings match actual NeMo tokens/text and intermediate tensors meet tolerance, with 25-language smoke scores | [Engine guide](../../psionic/docs/parakeet.md), [chapter 153](../../psionic/book/ch153-transcribe-with-parakeet.md) |
 | Psionic text to speech | Rule-based teaching version only | `psionic/lib/speak.coax`, ch. 155 |
 | Zeron's dictation in Coder Desktop (Rust): Parakeet v3 INT8 on ONNX, hold Cmd+D, at most 60 s, transcribes into the draft and never sends | Shipped in the sibling repo; not ported to the Coax Mac app | `~/work/coder-desktop/crates/voice`, `crates/ui/src/dictation.rs` |
-| Coder terminal UI and CLI | Shipped, no voice | `coder/tui/coder.coax` (submit is `cd_submit`, line 1076) |
+| Coder terminal UI and CLI | Shipped; final-only dictation behind `--dictation` (#12668) | `coder/tui/coder.coax` (submit is `cd_submit`), `coder/tui/dictate.coax`, `coder/tui/dictation.coax` |
 | OpenAgents Mac app (Coax port of Zeron) | Local Parakeet hold-to-talk drafts; explicit opt-in and final-only insertion | `apps/openagents-desktop/`, [dictation guide](coder-dictation.md) |
 
 [coax-native-voice.md](coax-native-voice.md) decided Google speech for
@@ -315,10 +315,12 @@ Each phase ends with its checks passing and a measurement committed.
   for the timeline and gates, `psionic-stt.h` for recognition. Flags:
   `--model`, `--words`, `--seconds`, `--stream` (JSON lines: `partial`,
   `final`, `no_speech`), `--json`. Exit 0 with text, 4 with no speech.
-- **D1. Coder terminal UI.** Ctrl+Space toggles dictation through
-  `openagents dictate --stream`; partials in the status line; the final into
-  the editor before `cd_submit` ever runs. The invariant amendment lands
-  here.
+- **D1. Coder terminal UI.** Implemented (#12668), final text only: with
+  `--dictation`, Ctrl+Space (or `--dictation-key`) toggles
+  `openagents dictate --events` as a helper; the status row shows its state;
+  the final goes into the editor at the cursor as one undoable edit and never
+  reaches `cd_submit`. Partials wait for streaming (#12673). The invariant
+  amendment landed with it; see the [guide](coder-dictation.md#in-the-terminal).
 - **D2. Mac app — implemented core.** The composer's microphone and ⌘D hold
   to talk insert a final, editable draft without sending. A default-off menu
   toggle admits capture; Swift owns microphone effects and the resident

@@ -92,5 +92,55 @@ Repository vocabulary rescoring and spoken formatting exist for
 The Mac app does not use them yet. The [Hex proposal](2026-11-02-coder-voice-from-hex.md)
 still has later work: partial
 text while speaking, streaming and measured key-release latency. The terminal
-UI's toggle gesture and a standalone `openagents dictate` command are separate.
+UI's toggle gesture (below) and the standalone `openagents dictate` command are separate.
 No 300 ms dictation-latency or representative multilingual-quality claim is made.
+
+## In the terminal
+
+Coder's terminal UI (`coder/tui/coder.sh`) has the same final-only dictation
+(GitHub #12668). Terminals don't reliably report when a key is released, so
+it is a toggle, not a hold.
+
+1. Build the CLI: `apps/openagents-cli/build.sh`. Coder runs
+   `apps/openagents-cli/build/openagents dictate --events` as a helper
+   (`CODER_DICTATE` names another copy). The microphone and the model live in
+   that helper, never in Coder.
+2. Turn dictation on: start Coder with `--dictation`, set
+   `CODER_DICTATION=1`, or type `/dictation on`. It is off by default.
+3. Press **Ctrl+Space**. The row above the composer shows the model loading,
+   then **Listening**. Speak, then press **Ctrl+Space** again. **Esc**
+   cancels.
+4. The words go into the draft at the cursor, with a space to join them to
+   the words around it. A line feed stays text in the draft. Read the draft,
+   then press Enter to send it yourself. **Ctrl+Z** (or Ctrl+_) takes the
+   dictated words back while nothing else has changed.
+
+The gesture is configurable: `--dictation-key` or `CODER_DICTATION_KEY` takes
+`ctrl-space` (default), `ctrl-g`, `ctrl-o`, `ctrl-t` or `ctrl-x`. Use another
+key if your terminal sends nothing for Ctrl+Space. `--dictation-args` or
+`CODER_DICTATION_ARGS` passes the helper's `--device`, `--capture`, `--input`,
+`--model-dir`, `--format` and `--terms`, as `FLAG VALUE` pairs.
+
+While a request is open:
+
+- Enter, Esc, Ctrl-C, Ctrl-D and a focus-out report cancel it and do nothing
+  else. Enter doesn't send the draft; press it again to send.
+- Any other key cancels it and then does what it always does. This includes
+  typing, moving the cursor, pasting, Undo and Shift-Tab to another agent.
+- Coder asks the terminal for focus reports. Where the terminal sends them,
+  switching away cancels the request.
+- A result that arrives after the draft, the cursor, the send count, the
+  agent or the session changed is dropped.
+
+No speech, an error (permission, model, device, recorder, capture, format,
+recognition), a transcript over 8000 bytes or one that doesn't fit the draft
+leaves the draft as it was and sends nothing. The composer row says which.
+Error text is Coder's own fixed wording; nothing the helper prints reaches the
+terminal.
+
+The rules are `#authority` in `coder/tui/dictation.coax`: the gesture, what
+each key means, the phases, the result kinds and the guard. The guard admits
+only valid UTF-8 whose one control byte is a line feed, and joins words with
+the Mac's rule (`apps/shared/dictation-join.coax`). The effects are in
+`coder/tui/dictate.coax`. [Record](../verification/coder-terminal-dictation-2026-11-03/README.md).
+Partial text while speaking waits for streaming (#12673).

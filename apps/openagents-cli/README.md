@@ -414,6 +414,11 @@ openagents dictate --device cpu --capture alsa --input hw:1   # Linux: name the 
 - `openagents dictate` runs `build/openagents-dictate` beside it (built by
   `build.sh`): the dictation host links Psionic's engine, whose generated C
   exports names the CLI's signing code also exports.
+- Each JSON line is flushed as it is written, so a parent reading `--events`
+  sees each state as it happens. Coder's terminal composer runs the command
+  this way ([guide](../../docs/voice/coder-dictation.md#in-the-terminal)).
+  `OPENAGENTS_DICTATE_FIXTURE_PACE=1` plays the recorded fixture in real time,
+  so a parent's Enter or Esc ends it.
 - Checks use recorded audio through a test capture backend (`--capture
   fixture` with `OPENAGENTS_DICTATE_FIXTURE=FILE.wav`), never your microphone:
   `coax/web/tool.sh apps/openagents-cli/tests/dictate-check.coax [MODEL_DIR]`.

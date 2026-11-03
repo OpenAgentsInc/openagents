@@ -19,7 +19,9 @@
 // the terminal cannot report Shift-Enter) adds a line, Up and
 // Down walk history, Shift-Tab switches agent, Esc stops a run, Ctrl-C stops a run, clears the
 // composer, or quits; Ctrl-D on an empty composer quits. /help lists the
-// slash commands.
+// slash commands. With --dictation (or /dictation on), Ctrl+Space starts
+// local dictation and stops it again; the transcript becomes draft text and
+// is never sent (dictate.coax, GitHub #12668). Ctrl+Z takes it back.
 
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
@@ -48,6 +50,8 @@
 #load "memory.coax";
 #load "gate.coax";
 #load "credential.coax";
+#load "dictation.coax";
+#load "dictate.coax";
 
 cxterm_keys :: (on: int) -> int #foreign;
 cxproc_sleep_ms :: (ms: int) -> int #foreign;
@@ -154,6 +158,14 @@ App :: struct {
   exit: int;                      // coder run's exit code: the last turn's ending
   turns: int;
   cost: f64;
+  // dictation (dictate.coax): consent, the gesture's control byte, the helper's extra arguments
+  dct_consent: bool; dct_key: int; dct_args: [512] u8; ndct_args: int;
+  dct_phase: int; dct_h: int = -1; dct_ticket: int; dct_since: int; dct_focused: bool = true;
+  dct_guard: [1] CddGuard;
+  dct_line: [65536] u8; dct_arb: [65536] u8; dct_ar: [1] ClArena;
+  dct_note: [256] u8; ndct_note: int;
+  // what the send path did: cd_submit calls, Enter keys that asked to send, turns and commands started; navigation
+  submits: int; enters: int; starts: int; nav: int;
 }
 
 cd_engine_name :: (e: int) -> string { return ifx e == ENGINE_CLAUDE then "claude" else ifx e == ENGINE_CODEX then "codex" else ifx e == ENGINE_MICRO then "microcoder" else ifx e == ENGINE_PSIONIC then "psionic" else "echo"; }
@@ -286,6 +298,8 @@ cd_draw :: (a: [] App) {
     st := cast(string) sb[0..<n];
     k := tui_rows_add(r, TUI_DIM, cast(string) st[0..<tui_fit(st, cols)]);
   }
+  db: [400] u8; drow := cd_dct_row(a, db[..]);
+  if drow.count > 0 { dk := tui_rows_add(r, ifx a[0].dct_phase == CDD_LISTENING then TUI_BRIGHT else TUI_DIM, cast(string) drow[0..<tui_fit(drow, cols)]); }
   rule: [4096] u8; nr := 0;
   for i: 0..<cols { nr = cd_cat(rule[..], nr, "─"); }
   k := tui_rows_add(r, TUI_FAINT, cast(string) rule[0..<nr]);
@@ -296,6 +310,7 @@ cd_draw :: (a: [] App) {
   // the agent first, so a narrow row still names it
   hb: [256] u8; hn := cd_cat(hb[..], 0, ifx a[0].engine == ENGINE_ECHO then "echo (offline)" else cd_engine_name(a[0].engine));
   if a[0].jobs > 0 { jb: [16] u8; hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, cd_itoa(a[0].jobs, jb[..])); hn = cd_cat(hb[..], hn, ifx a[0].jobs == 1 then " job running" else " jobs running"); }
+  if a[0].dct_consent { hn = cd_cat(hb[..], hn, " · "); hn = cd_cat(hb[..], hn, cdd_gesture_label(a[0].dct_key)); hn = cd_cat(hb[..], hn, " dictate"); }
   hn = cd_cat(hb[..], hn, " · Enter send · Shift-Enter newline · Shift-Tab agent · ↑ history · Esc stop · Ctrl-C quit");
   hint := cast(string) hb[0..<hn];
   // the binding plan limit of this agent's login, at the row's right end (Zeron's composer usage ring)
@@ -635,6 +650,7 @@ cd_cmd_apple_fm :: (prompt: string) -> int {
 CD_CONTEXT_MAX :: 8192;
 
 cd_start :: (a: [] App, msg: string) {
+  a[0].starts += 1;
   a[0].running = true; a[0].started_ms = cd_now(a); a[0].steps = 0;
   a[0].nrecap = 0; a[0].recap_ms = cd_now(a); a[0].recap_seen = -1; a[0].recent_at = 0;
   a[0].nrecap_task = cd_cat(a[0].recap_task[..], 0, cast(string) msg[0..<ifx msg.count > 600 then 600 else msg.count]);
@@ -1071,9 +1087,10 @@ cd_poll :: (a: [] App) -> bool {
 
 // ---------------------------------------------------------------- input
 
-HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine), echo (offline) or auto (System One picks at the first message)\n/find TEXT the transcript's lines that hold TEXT\n/usage     how much of Claude Code's and Codex's plan limits is used, and when each resets\n/resume    this folder's sessions; /resume ID continues one, /resume claude this folder's newest Claude Code session\n/theme T   dark, light (for a light background) or none (no colors)\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
+HELP :: "/help      this list\n/clear     forget the conversation and clear the screen\n/engine E  claude (Claude Code on its own login), codex (Codex on its own login), microcoder (OpenAgents' own loop),\n           psionic (Microcoder on a model server on this machine), echo (offline) or auto (System One picks at the first message)\n/find TEXT the transcript's lines that hold TEXT\n/usage     how much of Claude Code's and Codex's plan limits is used, and when each resets\n/resume    this folder's sessions; /resume ID continues one, /resume claude this folder's newest Claude Code session\n/theme T   dark, light (for a light background) or none (no colors)\n/plugins   plugins and their states; /plugin enable|disable NAME; /NAME runs a plugin's command\n/dictation on|off  local dictation: Ctrl+Space (or --dictation-key) starts and stops listening, Esc cancels;\n           the words go into the draft at the cursor and are never sent; Ctrl+Z takes them back\nShift-Tab  switch agent: claude, codex, microcoder; each keeps its own conversation\n/quit      leave (Ctrl-C or Ctrl-D on an empty line too)";
 
 cd_submit :: (a: [] App) {
+  a[0].submits += 1;
   text := tui_ed_text(a[0].ed[..]);
   // trim
   s := 0; e := text.count;
@@ -1089,7 +1106,7 @@ cd_submit :: (a: [] App) {
     if msg == "/quit" || msg == "/exit" { a[0].quit = true; return; }
     if msg == "/help" { cd_commit_prefixed(a, TUI_DIM, "  ", "  ", HELP); return; }
     if msg == "/clear" {
-      cd_claude_close(a); cd_codex_close(a); cd_micro_close(a);
+      cd_claude_close(a); cd_codex_close(a); cd_micro_close(a); a[0].nav += 1;
       if !a[0].plain { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); tui_live_cleared(a[0].lv[..]); }
       a[0].log[0].nid = 0; a[0].log[0].on = false;     // the next message opens a new session file
       cd_commit(a, TUI_FAINT, "  The conversation is cleared; the next message starts a new session.");
@@ -1111,6 +1128,9 @@ cd_submit :: (a: [] App) {
       return;
     }
     if msg == "/plugins" { cd_plugins_show(a); return; }
+    if msg == "/dictation on" { cd_dct_consent(a, true); return; }
+    if msg == "/dictation off" { cd_dct_consent(a, false); return; }
+    if msg == "/dictation" { cd_commit(a, TUI_DIM, ifx a[0].dct_consent then "  Dictation is on. /dictation off turns it off." else "  Dictation is off. /dictation on turns it on."); return; }
     if msg == "/usage" { cd_usage_show(a); return; }
     if msg.count > 6 && cast(string) msg[0..<6] == "/find " { cd_find(a, cast(string) msg[6..<msg.count]); return; }
     if msg.count > 16 && (cast(string) msg[0..<16] == "/plugin disable " || cast(string) msg[0..<15] == "/plugin enable ") { cd_plugin_toggle(a, msg); return; }
@@ -1213,6 +1233,7 @@ cd_resumed_note :: (a: [] App, turns: int) {
 
 // /resume [ID | claude [ID]]: lists this folder's sessions, or continues one.
 cd_resume_cmd :: (a: [] App, arg_in: string) {
+  a[0].nav += 1;
   if a[0].running { cd_commit(a, TUI_RED, "  A turn is running; /resume once it ends."); return; }
   arg := arg_in;
   if arg.count == 0 {
@@ -1411,6 +1432,7 @@ cd_cmd_plugins :: (r: [] PlRegistry, json: bool) -> int {
 
 // Switches the agent. Each agent's session stays open with its own conversation.
 cd_switch :: (a: [] App, e: int) {
+  a[0].nav += 1;
   a[0].engine = e;
   ua := cd_usage_of(a, e); if ua >= 0 && !a[0].plain { us_force(a[0].use[ua..<ua + 1]); }
   if a[0].log[0].nid > 0 { cs_agent(a, e); }
@@ -1419,6 +1441,7 @@ cd_switch :: (a: [] App, e: int) {
 
 cd_key :: (a: [] App, k: TuiKey) {
   if k.kind == TUI_K_NONE { return; }
+  if cd_dct_key(a, k) { return; }        // dictation first: its gesture, and the keys that end a request
   if a[0].ask && k.kind == TUI_K_CHAR { cd_claude_answer(a, k.cp); return; }
   if k.kind == TUI_K_BACKTAB {
     if a[0].running { return; }      // one agent per run; switch once it is done
@@ -1436,6 +1459,7 @@ cd_key :: (a: [] App, k: TuiKey) {
   if k.kind == TUI_K_CLEAR { tui_csi(a[0].o[..], "2J"); tui_csi(a[0].o[..], "H"); tui_live_cleared(a[0].lv[..]); return; }
   r := tui_ed_key(a[0].ed[..], k);
   if r == TUI_ED_SUBMIT {
+    a[0].enters += 1;
     if a[0].running && a[0].cmd_h >= 0 {
       // a running command takes the line as typed input, through its terminal
       line := tui_ed_text(a[0].ed[..]);
@@ -1488,10 +1512,10 @@ cd_size :: (a: [] App) {
 
 // ---------------------------------------------------------------- start
 
-USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n                 [--context FILE]                 related objects (an issue, its comments) ahead of the first message\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder resume [ID]                         the terminal UI on session ID (this folder's newest by default), to continue it\n       coder resume claude [ID]                  the same for a Claude Code session of this folder (its newest by default), imported first\n       coder import claude [ID]                  a Claude Code session of this folder as a Coder session; prints its ID\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--credentials A,B] [--once]   attach this machine: start queued jobs within its grant\n       coder credential add NAME VAR < file | ls | rm NAME   a secret kept here; jobs name it, never see it in their logs\n       coder queue \"TASK\" [--engine E] [--cwd DIR] [--credential A,B]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue|pr|mail|doc] [--deliver] [--to ADDR [--send]] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder host [list|allow ID|deny ID|forget ID|key]   serve NIP-HOST browser pairing and realm jobs over the relay (coder/tui/host.coax)\n       coder usage [--json]                      how much of Claude Code's and Codex's plan limits is used, and when each resets\n       coder apple-fm [\"PROMPT\"]                  whether Apple's on-device model answers here (the status bar's recaps), and its answer to PROMPT\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E] [--allow E] [--ceiling E] [--root D] [--ask]   Coder as an agent for editors (Agent Client Protocol on stdio); asks go to the editor\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n                 [--session ID [--at LINE]]       where it was said: that line of the session's log (the last one typed), checked on every read\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder consent [grant ENGINE|all --classes user,project [--days N] | revoke N] [--json]   which engines may receive remembered facts\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --no-memory (no remembered facts in the first message)  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run  --realm-tools (the realm tools run under any ceiling)";
+USAGE :: "usage: coder                                  the terminal UI\n       coder run \"TASK\" [--json]                one task, its steps as text or JSON lines; System One picks the engine unless --engine\n       coder route \"TASK\" [--json]              only the engine System One would pick\n       coder decide \"QUESTION\" --options A,B [--state TEXT]   one typed decision from System One\n       coder run \"TASK\" --detach                a background job: prints its ID and returns\n       coder VERB ... --on ssh:DEST|cloud [--remote-repo DIR]   the verb with Coder on another machine (a GCE pool host for cloud)\n                 [--deadline SECONDS]             it expires after this long\n                 [--goal CHECK [--goal-turns N]]  keep working, turn after turn, until the shell command CHECK exits 0\n                 [--report-to ID]                 its ending and last reply go to session ID\n                 [--context FILE]                 related objects (an issue, its comments) ahead of the first message\n       coder fork ID \"TASK\" [--at TURN]         a new session that carries ID's first TURN turns (all by default)\n       coder resume [ID]                         the terminal UI on session ID (this folder's newest by default), to continue it\n       coder resume claude [ID]                  the same for a Claude Code session of this folder (its newest by default), imported first\n       coder import claude [ID]                  a Claude Code session of this folder as a Coder session; prints its ID\n       coder stop ID                             stop a running session\n       coder attach ID [\"MESSAGE\"] [--json]    follow a session; a message becomes the job's next turn\n       coder trigger \"TEXT\" [--thread T] [--source S] [--author A] [--to-agent]   an event for the Router\n       coder router [--once] [--stuck SECONDS] [--json]   the Router: starts Workers for events, keeps them online\n       coder replay ID [--json]                  rebuild every request from the log and compare bytes\n       coder daemon [--name N] [--engines E,F] [--root DIR,DIR] [--credentials A,B] [--once]   attach this machine: start queued jobs within its grant\n       coder credential add NAME VAR < file | ls | rm NAME   a secret kept here; jobs name it, never see it in their logs\n       coder queue \"TASK\" [--engine E] [--cwd DIR] [--credential A,B]   a job for this machine's daemon (with --on, that machine's; held here while it does not answer)\n       coder jobs [--json]                       the daemon's heartbeat and its jobs\n       coder policy list|add NAME --mode M [--authors A,B] [--engine E] [--label L] [--channel chat|issue|pr|mail|doc] [--deliver] [--to ADDR [--send]] [--ci] [--text P]|rm NAME\n       coder watch THREAD | --stop THREAD | --list   events on a watched Thread are addressed to the agent\n       coder host [list|allow ID|deny ID|forget ID|key]   serve NIP-HOST browser pairing and realm jobs over the relay (coder/tui/host.coax)\n       coder usage [--json]                      how much of Claude Code's and Codex's plan limits is used, and when each resets\n       coder apple-fm [\"PROMPT\"]                  whether Apple's on-device model answers here (the status bar's recaps), and its answer to PROMPT\n       coder bench [SUITE] [--json]              run a suite (harness, checks, smoke) and report it\n       coder mcp [--http PORT]                   the verbs as MCP tools on stdio, or Streamable HTTP on 127.0.0.1:PORT, for Claude Code or another agent\n       coder acp [--engine E] [--allow E] [--ceiling E] [--root D] [--ask]   Coder as an agent for editors (Agent Client Protocol on stdio); asks go to the editor\n       coder remember KEY \"TEXT\" [--project] [--days N]   a fact Coder keeps across sessions (yours, or with --project this folder's)\n                 [--session ID [--at LINE]]       where it was said: that line of the session's log (the last one typed), checked on every read\n       coder revise KEY \"TEXT\" [--reason correction|update|resolve]   a new version that supersedes the old\n       coder forget KEY [--project]              the fact's text is hidden in every earlier event\n       coder recall [\"QUERY\"] [--top N] [--json]   the facts, ranked by embedding similarity to QUERY\n       coder consent [grant ENGINE|all --classes user,project [--days N] | revoke N] [--json]   which engines may receive remembered facts\n       coder ls [--json]                         sessions, newest first\n       coder plugins [--json]                    plugins and their states\n       coder status ID [--json]                  one session's state\n       coder log ID [--json]                     one session's log\noptions: --engine claude|codex|micro|psionic|echo|auto  --profile NAME (plugins: ~/.openagents/coder/profiles/NAME.json)  --effort low|medium|high  --model M  --ask  --no-memory (no remembered facts in the first message)  --cwd DIR  --coder-tools (Claude Code gets Coder's verbs as tools)  --theme dark|light|none\n         --dictation (local dictation into the draft, never sent)  --dictation-key ctrl-space|ctrl-g|ctrl-o|ctrl-t|ctrl-x  --dictation-args \"FLAG VALUE ...\" (openagents dictate's --device, --capture, --input, --model-dir, --format, --terms)\n         --allow EFFECT  --ceiling EFFECT  --root DIR,DIR   approvals by policy; effects: read, network, write, run  --realm-tools (the realm tools run under any ceiling)";
 
 // Flags that take a value: their value is not a positional argument.
-CD_VALUE_FLAGS :: [41] string.["--to", "--goal", "--goal-turns", "--http", "--name", "--engines", "--remote-repo", "--profile", "--options", "--state", "--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop", "--days", "--reason", "--top", "--classes", "--credentials", "--credential", "--context"];
+CD_VALUE_FLAGS :: [43] string.["--dictation-key", "--dictation-args", "--to", "--goal", "--goal-turns", "--http", "--name", "--engines", "--remote-repo", "--profile", "--options", "--state", "--theme", "--deadline", "--report-to", "--allow", "--ceiling", "--root", "--effort", "--engine", "--model", "--cwd", "--print", "--on", "--session", "--at", "--thread", "--source", "--author", "--stuck", "--mode", "--authors", "--label", "--channel", "--text", "--stop", "--days", "--reason", "--top", "--classes", "--credentials", "--credential", "--context"];
 
 // Positional argument k (0 is the verb), skipping flags and their values.
 cd_positional :: (args: [] Args, k: int) -> string {
@@ -2359,6 +2383,14 @@ tool_main :: () -> int #export_c {
     if tv < 0 { tool_errln("coder: --theme is dark, light or none"); return 2; }
     a[0].o[0].theme = tv;
   }
+  // dictation: off unless --dictation or CODER_DICTATION=1; the gesture and the helper's extra arguments
+  dkb: [32] u8; dcb: [8] u8; dab: [512] u8;
+  a[0].dct_consent = args_has(args, "--dictation") || cl_getenv("CODER_DICTATION", dcb[..]) == "1";
+  a[0].dct_key = cdd_gesture(args_value(args, "--dictation-key", cl_getenv("CODER_DICTATION_KEY", dkb[..])));
+  if a[0].dct_key < 0 { tool_errln("coder: --dictation-key is ctrl-space, ctrl-g, ctrl-o, ctrl-t or ctrl-x"); return 2; }
+  dargs := args_value(args, "--dictation-args", cl_getenv("CODER_DICTATION_ARGS", dab[..]));
+  if !cdd_args_ok(dargs) || dargs.count > a[0].dct_args.count { tool_errln("coder: --dictation-args is FLAG VALUE pairs of openagents dictate's --device, --capture, --input, --model-dir, --format and --terms"); return 2; }
+  a[0].ndct_args = cd_cat(a[0].dct_args[..], 0, dargs);
   cb: [4096] u8;
   a[0].cwd = args_value(args, "--cwd", cl_getenv("PWD", cb[..]));
   a[0].model = args_value(args, "--model", "");
@@ -2557,12 +2589,13 @@ tool_main :: () -> int #export_c {
       if jn != a[0].jobs { a[0].jobs = jn; dirty = true; }
     }
     // a job this session started reports back (--report-to): its message is the next turn
-    if !a[0].running && a[0].log[0].nid > 0 && a[0].ed[0].n == 0 && cd_now(a) >= a[0].next_inbox_ms {
+    if !a[0].running && a[0].dct_phase == CDD_IDLE && a[0].log[0].nid > 0 && a[0].ed[0].n == 0 && cd_now(a) >= a[0].next_inbox_ms {
       a[0].next_inbox_ms = cd_now(a) + 1000;
       ib2: [65536] u8; im := cd_msg_next(cs_id(a[0].log), ib2[..]);
       if im.count > 0 { tui_ed_set(a[0].ed[..], im); cd_submit(a); dirty = true; }
     }
     if cd_poll(a) { dirty = true; }
+    if cd_dct_poll(a) { dirty = true; }
     if cd_recap_tick(a) { dirty = true; }
     if cd_usage_tick(a) { dirty = true; }
     now := cd_now(a);
@@ -2570,6 +2603,8 @@ tool_main :: () -> int #export_c {
     if dirty { cd_draw(a); last_draw = now; }
   }
   if a[0].running { cd_stop(a); }
+  if a[0].dct_phase != CDD_IDLE { cd_dct_end(a, "", "quit"); }
+  cd_dct_trace(a, "exit");
   cd_claude_close(a); cd_codex_close(a); cd_micro_close(a); afm_stop(a[0].afm[..]);
   tui_live_erase(a[0].o[..], a[0].lv[..]);
   tui_csi(a[0].o[..], TUI_KEYS_OFF);

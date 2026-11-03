@@ -20,12 +20,15 @@
 // OPENAGENTS_DICTATE_FIXTURE_FAULT (permission, device, program, stall,
 // ended, format, recognition) and OPENAGENTS_DICTATE_FIXTURE_TEXT (a
 // stand-in recognizer, reported as "fixture", never as Parakeet) shape it.
+// OPENAGENTS_DICTATE_FIXTURE_PACE=1 waits up to 20 ms for a key per 20 ms
+// of audio, so a parent process stops or cancels it as a person would.
 // The controller is its own C library unit (Verse's voice engine names would
 // collide with this program's); its policy constants are loaded here.
 #load "../shared/dictation-policy.coax";
 #load "../shared/dictation-text.coax";
 #load "dictate-rules.coax";
 
+cxtool_out_flush :: () -> int #foreign;
 cxdict_now_ms :: () -> int #foreign;
 cxdict_control_open :: () -> int #foreign;
 cxdict_control_poll :: (timeout_ms: int) -> int #foreign;
@@ -75,7 +78,7 @@ DC_OUT_TEXT :: 0; DC_OUT_JSON :: 1; DC_OUT_EVENTS :: 2;
 DC_FX_PCM :: 1440000;
 DictFixture :: struct {
   pcm: [DC_FX_PCM] f32; n: int; rate: int; at: int; ms: int;
-  fault: string; control: string; text: string; recognizer: bool;
+  fault: string; control: string; text: string; recognizer: bool; paced: bool;
 }
 Dict :: struct {
   out: int; capture: int; gpu: int; format: int; terms: int; raw: [8000] u8; raw_n: int; raw_bad: bool; seconds: int; wait: bool; input: string; model: string;
@@ -98,7 +101,8 @@ dict_json_head :: (r: [] Rep, kind: string) {
 dict_json_str :: (r: [] Rep, key: string, v: string) { rep_byte(r, ','); rep_quoted(r, key); rep_byte(r, ':'); rep_quoted(r, v); }
 dict_json_int :: (r: [] Rep, key: string, v: int) { t: [24] u8; rep_byte(r, ','); rep_quoted(r, key); rep_byte(r, ':'); rep_put(r, int_text(v, t[..])); }
 dict_json_bool :: (r: [] Rep, key: string, v: bool) { rep_byte(r, ','); rep_quoted(r, key); rep_byte(r, ':'); rep_put(r, ifx v then "true" else "false"); }
-dict_json_end :: (r: [] Rep) { rep_put(r, "}\n"); print("%", cast(string) r[0].buf[0..<r[0].n]); }
+// Each line leaves at once: a parent reading --events (Coder's terminal dictation) sees each state as it happens.
+dict_json_end :: (r: [] Rep) { rep_put(r, "}\n"); print("%", cast(string) r[0].buf[0..<r[0].n]); f := cxtool_out_flush(); }
 
 // A status event: what the command is doing, never words heard.
 dict_status :: (d: [] Dict, state: string, human: string) {
@@ -210,8 +214,11 @@ dict_key :: (d: [] Dict, f: [] DictFixture, started: bool, fired: [] bool) -> in
     names := [3] string.["start", "stop", "cancel"]; keys := [3] int.[DC_KEY_START, DC_KEY_STOP, DC_KEY_CANCEL];
     for k: 0..<3 { at := dict_fixture_at(f[0].control, names[k]); if !fired[k] && at >= 0 && f[0].ms >= at { fired[k] = true; return keys[k]; } }
   }
+  // A paced fixture waits for its keys about as long as its audio lasts, so a
+  // parent's Enter or Esc (Coder's terminal dictation check) can end it.
+  wait := ifx d[0].capture == DC_FIXTURE && f[0].paced then 20 else 0;
   while true {
-    b := cxdict_control_poll(0);
+    b := cxdict_control_poll(wait); wait = 0;
     if b == -1 || b == -2 { return DC_KEY_NONE; }
     k := dc_key(b, started);
     if k != DC_KEY_NONE { return k; }
@@ -400,12 +407,13 @@ dictate_main :: (a: [] Args, r: [] Rep) -> int {
   }
   d[0].wait = args_has(a, "--wait-for-enter");
   d[0].tty = cxcli_isatty(2) == 1;
-  fc: [512] u8; ff: [64] u8; ft: [1024] u8;
+  fc: [512] u8; ff: [64] u8; ft: [8200] u8;
   if d[0].capture == DC_FIXTURE {
     if !dict_fixture_load(fixture, f[..]) { return fail(r, EXIT_USAGE, "OPENAGENTS_DICTATE_FIXTURE must be a 16-bit PCM WAV file"); }
     f[0].control = dict_env("OPENAGENTS_DICTATE_FIXTURE_CONTROL", fc[..]);
     f[0].fault = dict_env("OPENAGENTS_DICTATE_FIXTURE_FAULT", ff[..]);
     f[0].text = dict_env("OPENAGENTS_DICTATE_FIXTURE_TEXT", ft[..]);
+    fp: [8] u8; f[0].paced = dict_env("OPENAGENTS_DICTATE_FIXTURE_PACE", fp[..]) == "1";
     f[0].recognizer = f[0].text != "" || f[0].fault == "recognition";
   }
 

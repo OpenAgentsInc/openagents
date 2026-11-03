@@ -1,0 +1,30 @@
+// How a dictated transcript joins the draft around it (GitHub #12663, shared
+// with the terminal composer in #12668): one space goes between the draft's
+// byte and the transcript's when neither side is whitespace, the left side
+// does not open a bracket and the right side does not close a sentence or a
+// bracket. Coder for Mac's guard (apps/openagents-desktop/zeron/dictation.coax)
+// and Coder's terminal guard (coder/tui/dictation.coax) both join this way.
+//   coax/bin/coax test apps/shared/dictation-join.coax --library
+//   coax/bin/coax mutate apps/shared/dictation-join.coax
+#authority;
+
+dj_space :: (b: u8) -> bool { return b == ' ' || b == 9 || b == 10 || b == 13; }
+dj_open :: (b: u8) -> bool { return b == '(' || b == '[' || b == '{'; }
+dj_close :: (b: u8) -> bool { return b == '.' || b == ',' || b == ';' || b == ':' || b == '?' || b == '!' || b == ')' || b == ']' || b == '}'; }
+dj_gap :: (left: u8, right: u8) -> bool { return !dj_space(left) && !dj_space(right) && !dj_open(left) && !dj_close(right); }
+
+#test "a space joins words, never whitespace, an opening bracket or closing punctuation" {
+  left := [12] u8.['a', 'z', ' ', 9, 10, 13, '(', '[', '{', '.', '"', 0xc3];
+  right := [17] u8.['a', 'z', ' ', 9, 10, 13, '.', ',', ';', ':', '?', '!', ')', ']', '}', '(', 0xc3];
+  for i: 0..<left.count { for j: 0..<right.count {
+    lspace := i >= 2 && i <= 5; ropen := j >= 6 && j <= 14;
+    expected := !lspace && !(j >= 2 && j <= 5) && !(i >= 6 && i <= 8) && !ropen;
+    #assert dj_gap(left[i], right[j]) == expected;
+  }}
+  for b: 0..<256 {
+    c := cast,trunc(u8) b;
+    #assert dj_space(c) == (b == 32 || b == 9 || b == 10 || b == 13);
+    #assert dj_open(c) == (b == 40 || b == 91 || b == 123);
+    #assert dj_close(c) == (b == 46 || b == 44 || b == 59 || b == 58 || b == 63 || b == 33 || b == 41 || b == 93 || b == 125);
+  }
+}

@@ -1,0 +1,193 @@
+// Dictation in Coder's terminal composer (GitHub #12668): the effects around
+// dictation.coax's rules. The gesture (Ctrl+Space unless --dictation-key)
+// starts `openagents dictate --events` (#12667) as a helper process: it loads
+// the pinned Parakeet model, opens the microphone, and listens until Coder
+// writes Enter to its input (the gesture again); Esc writes Esc to it, which
+// cancels. Coder reads its status lines (states, never words) and its one
+// result, and the guard puts a final transcript into the composer at the
+// cursor as one undoable insertion. Nothing here calls cd_submit or cd_start:
+// the person reads the draft and sends it with Enter.
+//
+// The microphone and the model live in the helper, never in this process.
+// Dictation is off until --dictation, CODER_DICTATION=1 or /dictation on.
+// While a request is open the terminal is asked for focus reports (CSI ? 1004 h),
+// so focus loss cancels it where the terminal reports focus.
+// CODER_DICTATE names the openagents CLI (default: the repository's
+// apps/openagents-cli/build/openagents). CODER_DICTATION_TRACE=FILE appends
+// one JSON line per request ending with Coder's send counters, for checks; it
+// never holds words.
+
+CD_DCT_CLI :: "/apps/openagents-cli/build/openagents";     // under CODER_REPO
+
+cd_dct_note :: (a: [] App, s: string) { a[0].ndct_note = cd_cat(a[0].dct_note[..], 0, s); }
+
+// The openagents CLI to run, or "" when it is not there.
+cd_dct_cli :: (a: [] App, out: [] u8) -> string {
+  eb: [2048] u8; s := cl_getenv("CODER_DICTATE", eb[..]);
+  n := 0;
+  if s.count > 0 { n = cd_cat(out, 0, s); }
+  else {
+    rb: [2048] u8; repo := cl_getenv("CODER_REPO", rb[..]);
+    if repo.count == 0 { return ""; }
+    n = cd_cat(out, cd_cat(out, 0, repo), CD_DCT_CLI);
+  }
+  p := cast(string) out[0..<n];
+  return ifx fs_kind(p) == FS_FILE then p else "";
+}
+
+cd_dct_trace :: (a: [] App, event: string) {
+  tb: [1024] u8; path := cl_getenv("CODER_DICTATION_TRACE", tb[..]);
+  if path.count == 0 { return; }
+  ob: [512] u8; nb: [24] u8;
+  n := cd_cat(ob[..], 0, "{\"event\":\""); n = cd_cat(ob[..], n, event);
+  n = cd_cat(ob[..], n, "\",\"ticket\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].dct_ticket, nb[..]));
+  n = cd_cat(ob[..], n, ",\"submits\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].submits, nb[..]));
+  n = cd_cat(ob[..], n, ",\"enters\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].enters, nb[..]));
+  n = cd_cat(ob[..], n, ",\"starts\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].starts, nb[..]));
+  n = cd_cat(ob[..], n, ",\"turns\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].turns, nb[..]));
+  n = cd_cat(ob[..], n, ",\"draft_bytes\":"); n = cd_cat(ob[..], n, cd_itoa(a[0].ed[0].n, nb[..]));
+  n = cd_cat(ob[..], n, ",\"running\":"); n = cd_cat(ob[..], n, ifx a[0].running then "true" else "false");
+  n = cd_cat(ob[..], n, "}\n");
+  x := fs_append(path, cast(string) ob[0..<n]);
+}
+
+// Ends the open request: the helper is told to cancel and then stopped, the
+// guard closes, focus reports go off. note is what the person sees.
+cd_dct_end :: (a: [] App, note: string, event: string) {
+  if a[0].dct_h >= 0 {
+    h := a[0].dct_h;
+    if cxproc_write(h, 27) == 0 { x := cxproc_flush(h); }
+    x := cxproc_close_stdin(h);
+    w := cxproc_wait(h, 250);
+    if w < 0 { k := cxproc_kill(h, CL_SIGTERM); w = cxproc_wait(h, 500); }
+    if w < 0 { k := cxproc_kill(h, CL_SIGKILL); w = cxproc_wait(h, 2000); }
+    r := cxproc_release(h);
+    a[0].dct_h = -1;
+  }
+  cdd_cancel(a[0].dct_guard[..]);
+  a[0].dct_phase = CDD_IDLE;
+  if !a[0].plain { tui_csi(a[0].o[..], "?1004l"); }
+  if note.count > 0 { cd_dct_note(a, note); }
+  cd_dct_trace(a, event);
+}
+
+cd_dct_start :: (a: [] App) {
+  cb: [2200] u8; cli := cd_dct_cli(a, cb[..]);
+  if cli.count == 0 { cd_dct_note(a, "Dictation needs the openagents CLI: build it with apps/openagents-cli/build.sh (or set CODER_DICTATE)."); return; }
+  a[0].dct_ticket += 1;
+  if !cdd_begin(a[0].dct_guard[..], a[0].ed[..], a[0].dct_ticket, a[0].submits, a[0].nav, a[0].dct_focused, a[0].dct_consent) {
+    cd_dct_note(a, "Dictation can't start here."); return;
+  }
+  h := cxproc_new();
+  if h < 0 { cdd_cancel(a[0].dct_guard[..]); cd_dct_note(a, "Dictation can't start: no process slot is free."); return; }
+  ok := cl_push(h, CL_FIELD_ARG, cli) && cl_push(h, CL_FIELD_ARG, "dictate") && cl_push(h, CL_FIELD_ARG, "--events");
+  extra := cast(string) a[0].dct_args[0..<a[0].ndct_args];
+  i := 0;
+  while ok && i < extra.count {
+    j := i; while j < extra.count && extra[j] != ' ' { j += 1; }
+    ok = cl_push(h, CL_FIELD_ARG, cast(string) extra[i..<j]);
+    i = j + 1;
+  }
+  if !ok || cxproc_spawn(h) != 0 { r := cxproc_release(h); cdd_cancel(a[0].dct_guard[..]); cd_dct_note(a, "Dictation can't start: openagents dictate did not run."); return; }
+  a[0].dct_h = h; a[0].dct_phase = CDD_STARTING; a[0].dct_since = cd_now(a); a[0].ndct_note = 0;
+  if !a[0].plain { tui_csi(a[0].o[..], "?1004h"); }
+  cd_dct_trace(a, "start");
+}
+
+cd_dct_stop :: (a: [] App) {
+  if a[0].dct_h < 0 { return; }
+  if cxproc_write(a[0].dct_h, 10) != 0 || cxproc_flush(a[0].dct_h) != 0 { cd_dct_end(a, "Dictation failed: the helper is gone; the draft is unchanged.", "failed"); return; }
+  a[0].dct_phase = CDD_FINISHING; a[0].dct_since = cd_now(a);
+}
+
+// A key, before the composer sees it; true when dictation used it up.
+cd_dct_key :: (a: [] App, k: TuiKey) -> bool {
+  if k.kind == TUI_K_FOCUS_IN { a[0].dct_focused = true; }
+  if k.kind == TUI_K_FOCUS_OUT { a[0].dct_focused = false; }
+  if k.kind != TUI_K_NONE && k.kind != TUI_K_FOCUS_IN && k.kind != TUI_K_FOCUS_OUT { a[0].ndct_note = 0; }
+  act := cdd_key(a[0].dct_phase, a[0].dct_consent, a[0].dct_key, k);
+  if act == CDD_PASS { return k.kind == TUI_K_FOCUS_IN || k.kind == TUI_K_FOCUS_OUT; }
+  if act == CDD_START { cd_dct_start(a); return true; }
+  if act == CDD_STOP { cd_dct_stop(a); return true; }
+  if act == CDD_CANCEL {
+    cd_dct_end(a, ifx k.kind == TUI_K_FOCUS_OUT then "Dictation cancelled: the terminal lost focus. The draft is unchanged." else ifx k.kind == TUI_K_ENTER then "Dictation cancelled; nothing was sent. Press Enter again to send the draft." else "Dictation cancelled; the draft is unchanged.", "cancelled");
+    return true;
+  }
+  if act == CDD_EDIT { cd_dct_end(a, "Dictation cancelled: the draft changed.", "invalidated"); return false; }
+  if act == CDD_REFUSE {
+    lb: [200] u8; n := cd_cat(lb[..], 0, "Dictation is off. Start Coder with --dictation, or type /dictation on, then press ");
+    n = cd_cat(lb[..], n, cdd_gesture_label(a[0].dct_key)); n = cd_cat(lb[..], n, ".");
+    cd_dct_note(a, cast(string) lb[0..<n]);
+    return true;
+  }
+  return true;     // CDD_DROP
+}
+
+// Turns dictation's consent on or off (/dictation on|off); off ends a request.
+cd_dct_consent :: (a: [] App, on: bool) {
+  a[0].dct_consent = on;
+  if !on && a[0].dct_phase != CDD_IDLE { cd_dct_end(a, "", "consent"); }
+  lb: [200] u8; n := 0;
+  if on { n = cd_cat(lb[..], 0, "  Dictation is on: "); n = cd_cat(lb[..], n, cdd_gesture_label(a[0].dct_key)); n = cd_cat(lb[..], n, " starts and stops listening, Esc cancels. Speech is recognized on this computer and goes into the draft; it never sends."); }
+  else { n = cd_cat(lb[..], 0, "  Dictation is off."); }
+  cd_commit(a, TUI_DIM, cast(string) lb[0..<n]);
+}
+
+cd_dct_result :: (a: [] App, line: string, kind: string) {
+  ex := cl_int(line, "exit");
+  r := cdd_result(a[0].dct_phase, kind, ifx ex.ok then ex.value else -1);
+  if r == CDD_R_NONE { return; }
+  if r == CDD_R_INSERT {
+    text := cl_str(a[0].dct_ar[..], line, "text");
+    res := ifx a[0].dct_ar[0].full then CDD_A_TEXT else cdd_apply(a[0].dct_guard[..], a[0].ed[..], a[0].dct_ticket, a[0].submits, a[0].nav, a[0].dct_focused, a[0].dct_consent, text);
+    note := ifx res == CDD_A_OK then "Dictated into the draft. Review it, then press Enter to send (Ctrl+Z takes it back)."
+      else ifx res == CDD_A_STALE then "Dictation discarded: the draft changed while it was recognized."
+      else ifx res == CDD_A_FULL then "Dictation refused: the transcript doesn't fit the draft. The draft is unchanged."
+      else "Dictation refused: the transcript holds bytes a draft can't. The draft is unchanged.";
+    cd_dct_end(a, note, ifx res == CDD_A_OK then "inserted" else "refused");
+    return;
+  }
+  if r == CDD_R_NO_SPEECH { cd_dct_end(a, "No speech detected; the draft is unchanged.", "no_speech"); return; }
+  if r == CDD_R_CANCELLED { cd_dct_end(a, "Dictation cancelled; the draft is unchanged.", "cancelled"); return; }
+  lb: [300] u8; n := cd_cat(lb[..], 0, "Dictation failed: ");
+  n = cd_cat(lb[..], n, cdd_error_text(ifx kind == "error" then cl_str(a[0].dct_ar[..], line, "error") else ""));
+  n = cd_cat(lb[..], n, ". The draft is unchanged.");
+  cd_dct_end(a, cast(string) lb[0..<n], "failed");
+}
+
+// One poll of the helper; true when something changed.
+cd_dct_poll :: (a: [] App) -> bool {
+  if a[0].dct_h < 0 { return false; }
+  if cdd_overdue(a[0].dct_phase, cd_now(a), a[0].dct_since) { cd_dct_end(a, "Dictation stopped: the helper did not answer in time. The draft is unchanged.", "failed"); return true; }
+  changed := false;
+  for guard: 0..<16 {
+    if a[0].dct_h < 0 { break; }
+    n := cxproc_read_line(a[0].dct_h, 0);
+    if n == CL_TIMEOUT { break; }
+    changed = true;
+    if n == CL_EOF || (n < 0 && n != CL_TOO_LONG) { cd_dct_end(a, "Dictation failed: the helper ended without a result. The draft is unchanged.", "failed"); break; }
+    if n == CL_TOO_LONG || n > a[0].dct_line.count { cd_dct_end(a, "Dictation refused: the helper's answer is too long. The draft is unchanged.", "refused"); break; }
+    for i: 0..<n { a[0].dct_line[i] = cast(u8) cxproc_line_byte(a[0].dct_h, i); }
+    line := cast(string) a[0].dct_line[0..<n];
+    a[0].dct_ar[0] = ClArena.{buf = a[0].dct_arb[..]};
+    if cl_str(a[0].dct_ar[..], line, "schema") != "openagents.dictation.v1" { continue; }
+    kind := cl_str(a[0].dct_ar[..], line, "type");
+    if kind == "status" {
+      p := cdd_status(a[0].dct_phase, cl_str(a[0].dct_ar[..], line, "state"));
+      if p != a[0].dct_phase { a[0].dct_phase = p; a[0].dct_since = cd_now(a); }
+      continue;
+    }
+    cd_dct_result(a, line, kind);
+  }
+  return changed;
+}
+
+// The row above the composer: the request's state, or the last ending.
+cd_dct_row :: (a: [] App, out: [] u8) -> string {
+  n := 0; ph := a[0].dct_phase; label := cdd_gesture_label(a[0].dct_key);
+  if ph == CDD_STARTING { n = cd_cat(out, 0, "◌ Dictation: loading the model, then the microphone · Esc cancel"); }
+  else if ph == CDD_LISTENING { n = cd_cat(out, 0, "● Listening · "); n = cd_cat(out, n, label); n = cd_cat(out, n, " stop · Esc cancel"); }
+  else if ph == CDD_FINISHING || ph == CDD_RECOGNIZING { n = cd_cat(out, 0, "◌ Recognizing on this computer · Esc cancel"); }
+  else if a[0].ndct_note > 0 { n = cd_cat(out, 0, cast(string) a[0].dct_note[0..<a[0].ndct_note]); }
+  return cast(string) out[0..<n];
+}

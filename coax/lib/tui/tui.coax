@@ -130,6 +130,9 @@ TUI_K_NONE :: 0; TUI_K_CHAR :: 1; TUI_K_ENTER :: 2; TUI_K_NEWLINE :: 3; TUI_K_BA
 TUI_K_LEFT :: 6; TUI_K_RIGHT :: 7; TUI_K_UP :: 8; TUI_K_DOWN :: 9; TUI_K_HOME :: 10; TUI_K_END :: 11;
 TUI_K_CTRL_C :: 12; TUI_K_CTRL_D :: 13; TUI_K_KILL_LINE :: 14; TUI_K_KILL_END :: 15; TUI_K_KILL_WORD :: 16;
 TUI_K_ESC :: 17; TUI_K_WORD_LEFT :: 18; TUI_K_WORD_RIGHT :: 19; TUI_K_TAB :: 20; TUI_K_CLEAR :: 21; TUI_K_PASTE :: 22; TUI_K_BACKTAB :: 23;
+// Another control key (cp: its byte, 0 for Ctrl-Space), Undo (Ctrl-Z or Ctrl-_), and the
+// terminal's focus reports (CSI I and CSI O, sent while focus reporting, CSI ? 1004 h, is on).
+TUI_K_CTRL_KEY :: 24; TUI_K_UNDO :: 25; TUI_K_FOCUS_IN :: 26; TUI_K_FOCUS_OUT :: 27;
 
 // A key; for TUI_K_CHAR, cp; for TUI_K_PASTE, text (into the decoder's paste buffer).
 TuiKey :: struct { kind: int; cp: int; text: string; }
@@ -161,6 +164,8 @@ tui_ctrl :: (c: int, used: int) -> TuiKeyRead {
   if c == 12 { return tui_named(TUI_K_CLEAR, used); }          // Ctrl-L
   if c == 16 { return tui_named(TUI_K_UP, used); }             // Ctrl-P
   if c == 14 { return tui_named(TUI_K_DOWN, used); }           // Ctrl-N
+  if c == 26 || c == 31 { return tui_named(TUI_K_UNDO, used); } // Ctrl-Z, Ctrl-_ (Ctrl-/ in most terminals)
+  if c >= 0 && c < 32 && c != 27 { return TuiKeyRead.{key = TuiKey.{kind = TUI_K_CTRL_KEY, cp = c}, used = used}; }   // Ctrl-Space is 0
   return tui_named(TUI_K_NONE, 0);
 }
 
@@ -190,6 +195,8 @@ tui_csi_u :: (p: string, used: int) -> TuiKeyRead {
   if cp == 9 { return tui_named(ifx shift then TUI_K_BACKTAB else TUI_K_TAB, used); }
   if cp == 127 || cp == 8 { return tui_named(ifx alt || ctrl then TUI_K_KILL_WORD else TUI_K_BACKSPACE, used); }
   if ctrl && cp >= 'a' && cp <= 'z' { r := tui_ctrl(cp - 'a' + 1, used); if r.used > 0 { return r; } return tui_named(TUI_K_NONE, used); }
+  if ctrl && !alt && cp == ' ' { return tui_ctrl(0, used); }
+  if ctrl && !alt && (cp == '/' || cp == '_') { return tui_named(TUI_K_UNDO, used); }
   if alt && cp == 'b' { return tui_named(TUI_K_WORD_LEFT, used); }
   if alt && cp == 'f' { return tui_named(TUI_K_WORD_RIGHT, used); }
   if cp >= 32 && !ctrl && !alt { return TuiKeyRead.{key = TuiKey.{kind = TUI_K_CHAR, cp = cp}, used = used}; }
@@ -263,6 +270,8 @@ tui_key :: (k: [] TuiKeys, b: string, at: int, more: bool) -> TuiKeyRead {
     if f == 'H' { return tui_named(TUI_K_HOME, used); }
     if f == 'F' { return tui_named(TUI_K_END, used); }
     if f == 'Z' { return tui_named(TUI_K_BACKTAB, used); }   // Shift-Tab
+    if p == "" && f == 'I' { return tui_named(TUI_K_FOCUS_IN, used); }
+    if p == "" && f == 'O' { return tui_named(TUI_K_FOCUS_OUT, used); }
     return tui_named(TUI_K_NONE, used);
   }
   if c < 32 { return tui_named(TUI_K_NONE, 1); }
@@ -287,6 +296,9 @@ TuiEditor :: struct {
   nh: int;                       // entries held (newest at (top - 1) mod TUI_HISTORY)
   top: int;
   browse: int;                   // 0: editing; k: showing the k-th newest entry
+  gen: int;                      // counts every change of the text or the cursor, and every key
+  // one undoable insertion (tui_ed_insert_undoable): its bytes at undo_at, and the cursor before
+  undo_on: bool; undo_at: int; undo_n: int; undo_cur: int; undo_gen: int;
 }
 
 tui_ed_text :: (e: [] TuiEditor) -> string { return cast(string) e[0].buf[0..<e[0].n]; }
@@ -294,17 +306,37 @@ tui_ed_text :: (e: [] TuiEditor) -> string { return cast(string) e[0].buf[0..<e[
 tui_ed_set :: (e: [] TuiEditor, s: string) {
   n := ifx s.count < TUI_EDIT_BYTES then s.count else TUI_EDIT_BYTES;
   for i: 0..<n { e[0].buf[i] = s[i]; }
-  e[0].n = n; e[0].cur = n;
+  e[0].n = n; e[0].cur = n; e[0].gen += 1;
 }
 
-tui_ed_clear :: (e: [] TuiEditor) { e[0].n = 0; e[0].cur = 0; e[0].browse = 0; }
+tui_ed_clear :: (e: [] TuiEditor) { e[0].n = 0; e[0].cur = 0; e[0].browse = 0; e[0].gen += 1; }
 
 tui_ed_insert :: (e: [] TuiEditor, s: string) {
   if e[0].n + s.count > TUI_EDIT_BYTES { return; }
   i := e[0].n - 1;
   while i >= e[0].cur { e[0].buf[i + s.count] = e[0].buf[i]; i -= 1; }
   for j: 0..<s.count { e[0].buf[e[0].cur + j] = s[j]; }
-  e[0].n += s.count; e[0].cur += s.count;
+  e[0].n += s.count; e[0].cur += s.count; e[0].gen += 1;
+}
+
+// Inserts s at the cursor as one edit that Undo takes back while nothing
+// else has changed; false, and nothing changed, when it does not fit.
+tui_ed_insert_undoable :: (e: [] TuiEditor, s: string) -> bool {
+  if s.count == 0 || e[0].n + s.count > TUI_EDIT_BYTES { return false; }
+  at := e[0].cur;
+  tui_ed_insert(e, s);
+  e[0].undo_on = true; e[0].undo_at = at; e[0].undo_n = s.count; e[0].undo_cur = at; e[0].undo_gen = e[0].gen;
+  return true;
+}
+
+// Takes back the last undoable insertion; false when there is none, or the
+// text or cursor changed after it.
+tui_ed_undo :: (e: [] TuiEditor) -> bool {
+  if !e[0].undo_on || e[0].undo_gen != e[0].gen { e[0].undo_on = false; return false; }
+  e[0].undo_on = false;
+  tui_ed_delete(e, e[0].undo_at, e[0].undo_at + e[0].undo_n);
+  e[0].cur = e[0].undo_cur;
+  return true;
 }
 
 tui_ed_insert_cp :: (e: [] TuiEditor, cp: int) {
@@ -320,7 +352,7 @@ tui_ed_delete :: (e: [] TuiEditor, from: int, to: int) {
   if from >= to { return; }
   d := to - from;
   for i: to..<e[0].n { e[0].buf[i - d] = e[0].buf[i]; }
-  e[0].n -= d;
+  e[0].n -= d; e[0].gen += 1;
   if e[0].cur >= to { e[0].cur -= d; } else if e[0].cur > from { e[0].cur = from; }
 }
 
@@ -382,6 +414,8 @@ TUI_ED_KEPT :: 0; TUI_ED_SUBMIT :: 1; TUI_ED_IGNORED :: 2;
 // Applies an editing key; TUI_ED_SUBMIT when Enter asks to send the text.
 tui_ed_key :: (e: [] TuiEditor, k: TuiKey) -> int {
   kd := k.kind;
+  if kd == TUI_K_UNDO { return ifx tui_ed_undo(e) then TUI_ED_KEPT else TUI_ED_IGNORED; }
+  e[0].gen += 1;          // any other key may move the cursor: an older insertion is no longer Undo's
   if kd == TUI_K_CHAR { tui_ed_insert_cp(e, k.cp); return TUI_ED_KEPT; }
   if kd == TUI_K_PASTE { tui_ed_insert(e, k.text); return TUI_ED_KEPT; }
   if kd == TUI_K_NEWLINE { tui_ed_insert(e, "\n"); return TUI_ED_KEPT; }
@@ -1154,6 +1188,48 @@ tui_tb :: (s: string, out: [] u8) -> string {
   #assert tui_key(k, tui_tb("`[1;", tb11[..]), 0, true).used == 0;
   r := tui_key(k, "é", 0, false); #assert r.key.kind == TUI_K_CHAR && r.key.cp == 0xe9 && r.used == 2;
   half := "é"; #assert tui_key(k, cast(string) half[0..<1], 0, true).used == 0;
+}
+
+#test "keys: Ctrl-Space and other free control keys, Undo, focus reports" {
+  k_b: [1] TuiKeys; k := k_b[..]; b: [1] u8; ku: [16] u8;
+  for c: 0..<32 {
+    b[0] = cast,trunc(u8) c;
+    r := tui_key(k, cast(string) b[..], 0, false);
+    #assert r.used == 1;
+    free := c == 0 || c == 7 || c == 15 || c == 17 || c == 18 || c == 19 || c == 20 || c == 22 || c == 24 || c == 25 || c == 28 || c == 29 || c == 30;
+    #assert (r.key.kind == TUI_K_CTRL_KEY) == free;
+    if free { #assert r.key.cp == c; }
+    #assert (r.key.kind == TUI_K_UNDO) == (c == 26 || c == 31);
+  }
+  sp := tui_key(k, tui_tb("`[32;5u", ku[..]), 0, false); #assert sp.key.kind == TUI_K_CTRL_KEY && sp.key.cp == 0 && sp.used == 7;
+  g := tui_key(k, tui_tb("`[103;5u", ku[..]), 0, false); #assert g.key.kind == TUI_K_CTRL_KEY && g.key.cp == 7;
+  #assert tui_key(k, tui_tb("`[32;7u", ku[..]), 0, false).key.kind == TUI_K_NONE;      // Ctrl-Alt-Space is not Ctrl-Space
+  #assert tui_key(k, tui_tb("`[32u", ku[..]), 0, false).key.cp == ' ';
+  #assert tui_key(k, tui_tb("`[122;5u", ku[..]), 0, false).key.kind == TUI_K_UNDO;
+  #assert tui_key(k, tui_tb("`[47;5u", ku[..]), 0, false).key.kind == TUI_K_UNDO && tui_key(k, tui_tb("`[95;5u", ku[..]), 0, false).key.kind == TUI_K_UNDO;
+  #assert tui_key(k, tui_tb("`[47;7u", ku[..]), 0, false).key.kind == TUI_K_NONE;
+  #assert tui_key(k, tui_tb("`[I", ku[..]), 0, false).key.kind == TUI_K_FOCUS_IN && tui_key(k, tui_tb("`[O", ku[..]), 0, false).key.kind == TUI_K_FOCUS_OUT;
+  #assert tui_key(k, tui_tb("`[1O", ku[..]), 0, false).key.kind == TUI_K_NONE && tui_key(k, tui_tb("`OI", ku[..]), 0, false).key.kind == TUI_K_NONE;
+}
+
+#test "the composer: an undoable insertion, taken back only while nothing else changed" {
+  e_b: [1] TuiEditor; e := e_b[..];
+  tui_ed_set(e, "ab"); x := tui_ed_key(e, TuiKey.{kind = TUI_K_LEFT});
+  #assert tui_ed_key(e, TuiKey.{kind = TUI_K_UNDO}) == TUI_ED_IGNORED && tui_ed_text(e) == "ab";
+  #assert tui_ed_insert_undoable(e, "x\ny") && tui_ed_text(e) == "ax\nyb" && e[0].cur == 4;
+  #assert tui_ed_key(e, TuiKey.{kind = TUI_K_UNDO}) == TUI_ED_KEPT && tui_ed_text(e) == "ab" && e[0].cur == 1;
+  #assert !tui_ed_undo(e) && tui_ed_text(e) == "ab";
+  // any later key, typed text or a cursor move, ends it
+  #assert tui_ed_insert_undoable(e, "z"); x = tui_ed_key(e, TuiKey.{kind = TUI_K_RIGHT});
+  #assert !tui_ed_undo(e) && tui_ed_text(e) == "azb";
+  #assert tui_ed_insert_undoable(e, "q"); tui_ed_insert(e, "r"); #assert !tui_ed_undo(e) && tui_ed_text(e) == "azbqr";
+  #assert tui_ed_insert_undoable(e, "s"); tui_ed_clear(e); #assert !tui_ed_undo(e) && e[0].n == 0;
+  // nothing, or too much, changes nothing
+  g := e[0].gen; #assert !tui_ed_insert_undoable(e, "") && e[0].gen == g && !e[0].undo_on;
+  big: [TUI_EDIT_BYTES] u8; for i: 0..<big.count { big[i] = 'a'; }
+  tui_ed_set(e, cast(string) big[0..<TUI_EDIT_BYTES - 1]); g = e[0].gen;
+  #assert !tui_ed_insert_undoable(e, "bc") && e[0].n == TUI_EDIT_BYTES - 1 && e[0].gen == g;
+  #assert tui_ed_insert_undoable(e, "b") && e[0].n == TUI_EDIT_BYTES && tui_ed_undo(e) && e[0].n == TUI_EDIT_BYTES - 1;
 }
 
 #test "bracketed paste arrives as one key, newlines kept, even split across reads" {
