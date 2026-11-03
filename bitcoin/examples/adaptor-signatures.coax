@@ -1,0 +1,88 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/adaptor.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+put_hex :: (b: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+line :: (label: string, b: [] u8) { print("  %: ", label); put_hex(b); print("\n"); }
+yes :: (b: bool) -> string { return ifx b then "yes" else "no"; }
+
+main :: () {
+  w: [1] AdsWork; c := ads_case(0); msg := c.m[0..<c.n];
+  presig: [65] u8; sig: [64] u8; t: [32] u8;
+  print("Alice pre-signs a payment locked to Bob's point T = t G\n");
+  line("message", msg);
+  line("Alice's key P", c.px[..]);
+  line("Bob's point T", c.adaptor[..]);
+  #assert ads_presign(c.sk[..], msg, c.adaptor[..], c.aux[..], presig[..], w[..]) == ADS_OK;
+  line("R = k G + T", presig[0..<33]);
+  line("s'", presig[33..<65]);
+  print("  it pre-verifies under P and T: %\n", ADS_REASONS[ads_preverify_vartime(c.px[..], msg, c.adaptor[..], presig[..])]);
+  other := ads_case(1);
+  print("  under another point: %\n", ADS_REASONS[ads_preverify_vartime(c.px[..], msg, other.adaptor[..], presig[..])]);
+  print("  x(R) || s' is a BIP-340 signature: %\n", yes(schnorr_verify_vartime(msg, c.px[..], presig[1..<65])));
+
+  print("Bob completes it with t and publishes it\n");
+  #assert ads_adapt(presig[..], c.t[..], sig[..]) == ADS_OK;
+  line("signature", sig[..]);
+  print("  BIP-340 verifies it: %\n", yes(schnorr_verify_vartime(msg, c.px[..], sig[..])));
+
+  print("Alice reads t from the signature\n");
+  print("  extract: %\n", ADS_REASONS[ads_extract_vartime(presig[..], sig[..], c.adaptor[..], t[..])]);
+  line("t", t[..]);
+  print("  Bob's t: %\n", yes(bt_same(t[..], c.t[..])));
+  print("  with another point: %\n", ADS_REASONS[ads_extract_vartime(presig[..], sig[..], other.adaptor[..], t[..])]);
+
+  print("Completing with a wrong secret\n");
+  wrong := c.t; wrong[31] ^= 1;
+  #assert ads_adapt(presig[..], wrong[..], sig[..]) == ADS_OK;
+  print("  BIP-340 verifies it: %\n", yes(schnorr_verify_vartime(msg, c.px[..], sig[..])));
+
+  print("Every vector\n");
+  for i: 0..<ADS_VECTORS.count {
+    v := ads_case(i); p: [65] u8; s: [64] u8; back: [32] u8;
+    #assert ads_presign(v.sk[..], v.m[0..<v.n], v.adaptor[..], v.aux[..], p[..], w[..]) == ADS_OK;
+    ok := ads_preverify_vartime(v.px[..], v.m[0..<v.n], v.adaptor[..], p[..]) == ADS_OK;
+    ok = ok && ads_adapt(p[..], v.t[..], s[..]) == ADS_OK && schnorr_verify_vartime(v.m[0..<v.n], v.px[..], s[..]);
+    ok = ok && ads_extract_vartime(p[..], s[..], v.adaptor[..], back[..]) == ADS_OK && bt_same(back[..], v.t[..]);
+    print("  %: % message bytes, R's y %, round trip %\n", i, v.n, ifx p[0] == 3 then "odd" else "even", yes(ok));
+  }
+
+  print("Nonce reuse: Alice pre-signs two messages with one nonce\n");
+  nonce: [32] u8; for i: 0..<32 { nonce[i] = 0x5a; }
+  second := ads_case(2); msg2 := second.m[0..<second.n];
+  p1: [65] u8; p2: [65] u8; key: [32] u8; px: [32] u8;
+  #assert ads_presign_with_nonce(c.sk[..], msg, c.adaptor[..], nonce[..], p1[..], w[..]) == ADS_OK;
+  #assert ads_presign_with_nonce(c.sk[..], msg2, c.adaptor[..], nonce[..], p2[..], w[..]) == ADS_OK;
+  print("  both pre-verify: %, the same R: %\n",
+        yes(ads_preverify_vartime(c.px[..], msg, c.adaptor[..], p1[..]) == ADS_OK && ads_preverify_vartime(c.px[..], msg2, c.adaptor[..], p2[..]) == ADS_OK),
+        yes(bt_same(p1[0..<33], p2[0..<33])));
+  #assert ads_recover_key_vartime(c.px[..], msg, p1[..], msg2, p2[..], key[..]) == ADS_OK;
+  line("(s1' - s2') / (e1 - e2)", key[..]);
+  #assert ads_pubkey(key[..], px[..], w[..]) == ADS_OK;
+  print("  its key is P: %\n", yes(bt_same(px[..], c.px[..])));
+
+  print("Statement reuse: Alice locks two payments to the same T\n");
+  #assert ads_presign(c.sk[..], msg2, c.adaptor[..], second.aux[..], p2[..], w[..]) == ADS_OK;
+  print("  the second pre-verifies: %\n", ADS_REASONS[ads_preverify_vartime(c.px[..], msg2, c.adaptor[..], p2[..])]);
+  #assert ads_adapt(presig[..], c.t[..], sig[..]) == ADS_OK;
+  print("  Bob completes the first; Carol, who holds both pre-signatures, reads t: %\n",
+        ADS_REASONS[ads_extract_vartime(presig[..], sig[..], c.adaptor[..], t[..])]);
+  s2: [64] u8;
+  #assert ads_adapt(p2[..], t[..], s2[..]) == ADS_OK;
+  line("Carol's signature of the second", s2[..]);
+  print("  BIP-340 verifies it: %\n", yes(schnorr_verify_vartime(msg2, c.px[..], s2[..])));
+
+  print("Refused\n");
+  zero: [32] u8; bad: [33] u8; bad[0] = 2;
+  print("  a secret key of 0: %\n", ADS_REASONS[ads_presign(zero[..], msg, c.adaptor[..], c.aux[..], p1[..], w[..])]);
+  print("  T not on the curve: %\n", ADS_REASONS[ads_presign(c.sk[..], msg, bad[..], c.aux[..], p1[..], w[..])]);
+  print("  adapting with t = 0: %\n", ADS_REASONS[ads_adapt(presig[..], zero[..], sig[..])]);
+  #assert ads_adapt(presig[..], c.t[..], sig[..]) == ADS_OK;
+  print("  extracting from another R's signature: %\n", ADS_REASONS[ads_extract_vartime(p2[..], sig[..], c.adaptor[..], t[..])]);
+}
+// book:end example

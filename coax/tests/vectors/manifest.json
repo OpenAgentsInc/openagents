@@ -615,7 +615,8 @@
       "license": "BSD-2-Clause OR MIT OR CC0-1.0 (bip-0340/LICENSE)",
       "covers": [
         "bip340-reference-python",
-        "bip341-reference-python"
+        "bip341-reference-python",
+        "adaptor-signatures"
       ],
       "retrieved": "2026-11-03",
       "sha256": "4b1d4ad9e60820df4a6d239733d52b014bc03e4c47afd757a2fe4d3b586d892c",

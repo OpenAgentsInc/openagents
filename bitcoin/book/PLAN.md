@@ -288,7 +288,7 @@ there is a need.
 | [100. Multisig](ch100-multisig.md) — implemented | 30, 36 | 2-of-3 P2WSH `sortedmulti` descriptors give their addresses, and a spend signed by two keys validates. | BIP-11, BIP-67 |
 | [101. MuSig2](ch101-musig2.md) — implemented | 24, 41 | Every BIP-327 vector file (key aggregation, nonces, signing, aggregation and tweaks) gives its result. A reused nonce refuses. | BIP-327 |
 | 102. FROST threshold signatures — planned | 101 | The FROST draft BIP's vectors give their results. A signature from fewer than t signers refuses. | RFC 9591, FROST draft BIPs |
-| 103. Adaptor signatures — planned | 24 | An adaptor signature verifies against its point, completes with the secret, and the secret is recovered from the final signature. | BIP-340 |
+| [103. Adaptor signatures](ch103-adaptor-signatures.md) — implemented | 24 | A BIP-340 pre-signature for a point T pre-verifies against its key, message and T and not against others, completes with t into a signature that BIP-340 verifies, and gives t back from that signature. A reused nonce recovers the key and a reused point lets a third party complete a second pre-signature. Six vectors from an independent Python implementation on BIP-340's pinned reference.py match byte for byte, and every line agrees with it. | BIP-340 |
 
 ### Part XVII. Lightning
 

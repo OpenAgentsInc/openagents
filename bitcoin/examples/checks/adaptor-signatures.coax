@@ -1,0 +1,30 @@
+// The checks of adaptor-signatures.coax. They live apart so that running
+// the example doesn't also run them. The example walks through one
+// payment; these check properties over every vector.
+// Checks: coax test bitcoin/examples/checks/adaptor-signatures.coax
+#load "../adaptor-signatures.coax";
+
+// book:begin check
+// A pre-signature binds its key, its point and its message: with the next
+// vector's key, point or message in place of its own, it does not
+// pre-verify.
+#forall "a pre-signature verifies only under its own key, point and message" k: 0..<6 #steps 3000000000 {
+  a := ads_case(k); b := ads_case((k + 1) % 6); w: [1] AdsWork; p: [65] u8;
+  msg := a.m[0..<a.n];
+  #assert ads_presign(a.sk[..], msg, a.adaptor[..], a.aux[..], p[..], w[..]) == ADS_OK;
+  #assert ads_preverify_vartime(b.px[..], msg, a.adaptor[..], p[..]) == ADS_INVALID;
+  #assert ads_preverify_vartime(a.px[..], msg, b.adaptor[..], p[..]) == ADS_INVALID;
+  #assert ads_preverify_vartime(a.px[..], b.m[0..<b.n], a.adaptor[..], p[..]) == ADS_INVALID;
+}
+// Adapting and extracting undo each other: the secret read back from the
+// signature is the one that completed it, whichever parity R has, and a
+// pre-signature alone is never a valid signature.
+#forall "extract returns the secret adapt used" k: 0..<6 #steps 3000000000 {
+  a := ads_case(k); w: [1] AdsWork; p: [65] u8; s: [64] u8; t: [32] u8;
+  msg := a.m[0..<a.n];
+  #assert ads_presign(a.sk[..], msg, a.adaptor[..], a.aux[..], p[..], w[..]) == ADS_OK;
+  #assert !schnorr_verify_vartime(msg, a.px[..], p[1..<65]);
+  #assert ads_adapt(p[..], a.t[..], s[..]) == ADS_OK && schnorr_verify_vartime(msg, a.px[..], s[..]);
+  #assert ads_extract_vartime(p[..], s[..], a.adaptor[..], t[..]) == ADS_OK && bt_same(t[..], a.t[..]);
+}
+// book:end check

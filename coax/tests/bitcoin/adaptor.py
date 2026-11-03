@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+# Firm reason: 2 (independent oracle: adaptor signatures on BIP-340's pinned reference.py decide every value outside Coax)
+"""The vectors and the cross-check of Bitcoin chapter 103.
+
+There is no BIP with adaptor signature vectors, so this script makes
+them. It implements pre-signing, pre-verification, adapting and
+extraction on the point and hash functions of BIP-340's pinned
+reference.py, and checks every final signature with that file's
+schnorr_verify. It shares no code with Coax.
+
+  python3 -I coax/tests/bitcoin/adaptor.py --write                 # write adaptor_vectors.coax
+  python3 -I coax/tests/bitcoin/adaptor.py                         # compare it and the fixture
+  python3 -I coax/tests/bitcoin/adaptor.py --coax coax/bin/coax    # also run the example
+"""
+import hashlib
+import subprocess
+import sys
+import types
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REPO = HERE.parents[2]
+REF = HERE.parent / 'vectors/upstream/bip340/reference.py'
+PIN = '4b1d4ad9e60820df4a6d239733d52b014bc03e4c47afd757a2fe4d3b586d892c'
+VECTORS = HERE / 'adaptor_vectors.coax'
+FIXTURE = REPO / 'bitcoin/fixtures/adaptor-signatures.out'
+EXAMPLE = 'bitcoin/examples/adaptor-signatures.coax'
+RUN_STEPS = '250000000'
+
+
+def load():
+    raw = REF.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == PIN, 'bip340/reference.py differs from its pin'
+    module = types.ModuleType('bip340_reference')
+    exec(compile(raw, str(REF), 'exec'), module.__dict__)
+    return module
+
+
+R = load()
+N = R.n
+
+
+def cbytes(P):
+    return bytes([2 + (R.y(P) & 1)]) + R.bytes_from_int(R.x(P))
+
+
+def cpoint(b):
+    P = R.lift_x(int.from_bytes(b[1:], 'big'))
+    assert b[0] in (2, 3) and P is not None
+    return P if (R.y(P) & 1) == (b[0] & 1) else (R.x(P), R.p - R.y(P))
+
+
+def neg(P):
+    return None if P is None else (R.x(P), R.p - R.y(P))
+
+
+def challenge(rx, px, m):
+    return int.from_bytes(R.tagged_hash('BIP0340/challenge', rx + px + m), 'big') % N
+
+
+def key(sk):
+    d0 = int.from_bytes(sk, 'big')
+    assert 1 <= d0 < N
+    P = R.point_mul(R.G, d0)
+    return (d0 if R.has_even_y(P) else N - d0), R.bytes_from_point(P)
+
+
+def presign_k(sk, m, T, k0):
+    d, px = key(sk)
+    Rp = R.point_add(R.point_mul(R.G, k0), cpoint(T))
+    assert Rp is not None
+    k = N - k0 if R.y(Rp) & 1 else k0
+    return cbytes(Rp) + R.bytes_from_int((k + challenge(R.bytes_from_int(R.x(Rp)), px, m) * d) % N)
+
+
+def presign(sk, m, T, aux):
+    d, px = key(sk)
+    rand = R.xor_bytes(R.bytes_from_int(d), R.tagged_hash('BIP0340/aux', aux))
+    k0 = int.from_bytes(R.tagged_hash('SchnorrAdaptor/nonce', rand + T + px + m), 'big') % N
+    assert k0
+    return presign_k(sk, m, T, k0)
+
+
+def preverify(px, m, T, pre):
+    """'OK' or 'INVALID': s' G - e P against R - T (T - R for an odd R)."""
+    P, Rp, s = R.lift_x(int.from_bytes(px, 'big')), cpoint(pre[:33]), int.from_bytes(pre[33:], 'big')
+    if s >= N:
+        return 'INVALID'
+    e = challenge(pre[1:33], px, m)
+    lhs = R.point_add(R.point_mul(R.G, s), neg(R.point_mul(P, e)))
+    rhs = R.point_add(Rp, neg(cpoint(T)))
+    if pre[0] == 3:
+        rhs = neg(rhs)
+    return 'OK' if lhs == rhs else 'INVALID'
+
+
+def adapt(pre, t):
+    s = int.from_bytes(pre[33:], 'big')
+    t = int.from_bytes(t, 'big')
+    return pre[1:33] + R.bytes_from_int((s - t if pre[0] == 3 else s + t) % N)
+
+
+def extract(pre, sig, T):
+    """t, or the reason it is refused."""
+    if sig[:32] != pre[1:33]:
+        return 'MISMATCH'
+    t = (int.from_bytes(sig[32:], 'big') - int.from_bytes(pre[33:], 'big')) % N
+    if pre[0] == 3:
+        t = N - t if t else 0
+    if t == 0 or cbytes(R.point_mul(R.G, t)) != T:
+        return 'MISMATCH'
+    return R.bytes_from_int(t)
+
+
+def recover(px, m1, p1, m2, p2):
+    e1, e2 = challenge(p1[1:33], px, m1), challenge(p2[1:33], px, m2)
+    s1, s2 = int.from_bytes(p1[33:], 'big'), int.from_bytes(p2[33:], 'big')
+    return R.bytes_from_int((s1 - s2) * pow(e1 - e2, -1, N) % N)
+
+
+# ---- the vectors: keys, nonces' aux, secrets and messages from SHA-256 of a label
+
+def h(label):
+    return hashlib.sha256(label.encode()).digest()
+
+
+MESSAGES = [h('Alice pays Bob 1 BTC'), b'', b'\x00', h('a') + h('b'), b'adaptor', h('swap leg 2')]
+
+
+def vectors():
+    out = []
+    for i, m in enumerate(MESSAGES):
+        sk, aux, t = h(f'adaptor sk {i}'), h(f'adaptor aux {i}'), h(f'adaptor t {i}')
+        T = cbytes(R.point_mul(R.G, int.from_bytes(t, 'big')))
+        pre = presign(sk, m, T, aux)
+        sig = adapt(pre, t)
+        px = key(sk)[1]
+        assert preverify(px, m, T, pre) == 'OK' and R.schnorr_verify(m, px, sig) and extract(pre, sig, T) == t
+        out.append(dict(sk=sk, aux=aux, t=t, adaptor=T, px=px, msg=m, presig=pre, sig=sig))
+    # Both parities of R and of P appear.
+    assert {v['presig'][0] for v in out} == {2, 3}
+    assert {R.has_even_y(R.point_mul(R.G, int.from_bytes(v['sk'], 'big'))) for v in out} == {True, False}
+    return out
+
+
+def vectors_text():
+    lines = ['// Generated by coax/tests/bitcoin/adaptor.py: adaptor signatures made on',
+             "// BIP-340's pinned reference.py, each final signature checked with its",
+             '// schnorr_verify. There is no BIP with adaptor vectors. Test data only.',
+             'AdsVector :: struct { sk: string; aux: string; t: string; adaptor: string; px: string; msg: string; presig: string; sig: string; }',
+             f'ADS_VECTORS :: [{len(MESSAGES)}] AdsVector.[']
+    for v in vectors():
+        f = ', '.join(f'{k}="{v[k].hex()}"' for k in ('sk', 'aux', 't', 'adaptor', 'px', 'msg', 'presig', 'sig'))
+        lines.append(f'  AdsVector.{{{f}}},')
+    return '\n'.join(lines + ['];']) + '\n'
+
+
+def transcript():
+    vs = vectors()
+    c, other, second = vs[0], vs[1], vs[2]
+    m, px, T = c['msg'], c['px'], c['adaptor']
+    out = ['Alice pre-signs a payment locked to Bob\'s point T = t G',
+           f'  message: {m.hex()}', f"  Alice's key P: {px.hex()}", f"  Bob's point T: {T.hex()}"]
+    pre = presign(c['sk'], m, T, c['aux'])
+    out += [f'  R = k G + T: {pre[:33].hex()}', f"  s': {pre[33:].hex()}",
+            f'  it pre-verifies under P and T: {preverify(px, m, T, pre)}',
+            f'  under another point: {preverify(px, m, other["adaptor"], pre)}',
+            f"  x(R) || s' is a BIP-340 signature: {'yes' if R.schnorr_verify(m, px, pre[1:]) else 'no'}"]
+    sig = adapt(pre, c['t'])
+    yes = lambda b: 'yes' if b else 'no'
+    out += ['Bob completes it with t and publishes it', f'  signature: {sig.hex()}',
+            f'  BIP-340 verifies it: {yes(R.schnorr_verify(m, px, sig))}']
+    t = extract(pre, sig, T)
+    out += ['Alice reads t from the signature', '  extract: OK', f'  t: {t.hex()}', f"  Bob's t: {yes(t == c['t'])}",
+            f'  with another point: {extract(pre, sig, other["adaptor"])}']
+    wrong = c['t'][:31] + bytes([c['t'][31] ^ 1])
+    out += ['Completing with a wrong secret', f'  BIP-340 verifies it: {yes(R.schnorr_verify(m, px, adapt(pre, wrong)))}']
+    out.append('Every vector')
+    for i, v in enumerate(vs):
+        out.append(f"  {i}: {len(v['msg'])} message bytes, R's y {'odd' if v['presig'][0] == 3 else 'even'}, round trip yes")
+    out.append('Nonce reuse: Alice pre-signs two messages with one nonce')
+    k0 = int.from_bytes(b'\x5a' * 32, 'big')
+    m2 = second['msg']
+    p1, p2 = presign_k(c['sk'], m, T, k0), presign_k(c['sk'], m2, T, k0)
+    out.append(f'  both pre-verify: {yes(preverify(px, m, T, p1) == preverify(px, m2, T, p2) == "OK")}, '
+               f'the same R: {yes(p1[:33] == p2[:33])}')
+    d = recover(px, m, p1, m2, p2)
+    out += [f"  (s1' - s2') / (e1 - e2): {d.hex()}", f'  its key is P: {yes(key(d)[1] == px)}']
+    out.append('Statement reuse: Alice locks two payments to the same T')
+    p2 = presign(c['sk'], m2, T, second['aux'])
+    out.append(f'  the second pre-verifies: {preverify(px, m2, T, p2)}')
+    t = extract(pre, sig, T)
+    out.append(f'  Bob completes the first; Carol, who holds both pre-signatures, reads t: '
+               f'{"OK" if isinstance(t, bytes) else t}')
+    s2 = adapt(p2, t)
+    out += [f"  Carol's signature of the second: {s2.hex()}", f'  BIP-340 verifies it: {yes(R.schnorr_verify(m2, px, s2))}']
+    out += ['Refused', '  a secret key of 0: BAD_KEY', '  T not on the curve: BAD_POINT', '  adapting with t = 0: BAD_SECRET',
+            f'  extracting from another R\'s signature: {extract(p2, sig, T)}']
+    return out
+
+
+def main():
+    text = vectors_text()
+    if '--write' in sys.argv:
+        VECTORS.write_text(text)
+        print(f'wrote {VECTORS.name}')
+        return
+    assert VECTORS.read_text() == text, f'{VECTORS.name} differs from what this script writes'
+    lines = transcript()
+    if '--print' in sys.argv:
+        print('\n'.join(lines))
+        return
+    want = FIXTURE.read_text().splitlines()
+    assert lines == want, '\n'.join(f'{x!r} != {y!r}' for x, y in zip(lines, want) if x != y) or 'line counts differ'
+    print(f'{len(MESSAGES)} vectors agree; {len(lines)} lines agree with {FIXTURE.name}')
+    if '--coax' in sys.argv:
+        coax = sys.argv[sys.argv.index('--coax') + 1]
+        for mode in ([], ['--release']):
+            got = subprocess.run([coax, 'run', EXAMPLE, *mode, '--run-steps', RUN_STEPS], cwd=REPO,
+                                 capture_output=True, text=True, check=True)
+            assert got.stdout.splitlines() == lines, f'coax run {" ".join(mode)} differs'
+            print(f'coax run {" ".join(mode) or "(debug)"}: {len(lines)} lines agree')
+
+
+if __name__ == '__main__':
+    main()

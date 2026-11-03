@@ -1,0 +1,289 @@
+// Adaptor signatures (Bitcoin chapter 103): a BIP-340 Schnorr signature,
+// locked to a point T = t G. The signer makes a pre-signature with its key
+// and T. Anyone can check that it is one, but it is not a signature: only
+// someone who knows t can turn it into one (adapt), and once that
+// signature is published, anyone holding the pre-signature learns t
+// (extract). The final signature is an ordinary BIP-340 signature that
+// chapter 23 verifies; nothing on chain shows T.
+//
+// The pre-signature is R || s', 65 bytes: R = k G + T compressed, its y
+// parity included, and s' = k + e d with k negated when R has an odd y,
+// e = hash_BIP0340/challenge(x(R) || x(P) || m) and d the secret key with
+// BIP-340's even-y normalization. Adapting adds t (or subtracts it, when R
+// is odd), so s = s' + t is the signature (x(R), s) of nonce k + t.
+//
+// There is no BIP for this format. It follows the construction of
+// secp256k1-zkp's adaptor module and the scriptless-scripts writeups, and
+// its vectors come from an independent Python implementation on BIP-340's
+// reference code (coax/tests/bitcoin/adaptor.py). The secret key, the
+// nonce and t go through chapter 24's constant-time scalar and fixed-base
+// code; everything public uses chapter 16's ecmult_vartime.
+#load "musig.coax";
+#load "../../tests/bitcoin/adaptor_vectors.coax";
+#authority;
+
+// book:begin codes
+ADS_OK :: 0;
+ADS_BAD_KEY :: 1;           // a secret key of 0 or at least n
+ADS_BAD_POINT :: 2;         // an adaptor point, public key or R that is not a point
+ADS_BAD_SECRET :: 3;        // an adaptor secret of 0 or at least n
+ADS_INFINITY :: 4;          // k G + T is the point at infinity
+ADS_INVALID :: 5;           // a pre-signature or signature that does not verify
+ADS_MISMATCH :: 6;          // a signature of another R, or a secret whose point is not T
+ADS_CAPACITY :: 7;          // a wrong length
+ADS_REASONS :: [8] string.["OK", "BAD_KEY", "BAD_POINT", "BAD_SECRET", "INFINITY", "INVALID", "MISMATCH", "CAPACITY"];
+ADS_PRESIG :: 65;           // R (33 bytes) || s' (32)
+// book:end codes
+
+// book:begin challenge
+// BIP-340's challenge e = hash_BIP0340/challenge(x(R) || x(P) || m) mod n.
+ads_challenge :: (rx: [] u8, px: [] u8, msg: [] u8) -> ScScalar {
+  w: [1] ShaOwned;
+  ms_tag(w[..], "BIP0340/challenge"); ms_add(w[..], rx); ms_add(w[..], px); ms_add(w[..], msg);
+  return ms_reduce(w[..]);
+}
+// The x-only key's point, with an even y (BIP-340's lift_x).
+ads_lift_vartime :: (px: [] u8) -> SgResult {
+  if px.count != 32 { return SgResult.{}; }
+  return sg_lift_x_public(px);
+}
+// book:end challenge
+
+// book:begin presign
+// The secret workspace of a pre-signature. Each return clears it.
+AdsWork :: struct { sha: [1] ShaOwned; aux: [32] u8; rand: [32] u8; h: [32] u8; d: [1] SignScalar; point: [1] SignPoint; pk: [33] u8; r: [33] u8; }
+ads_clear :: (w: [] AdsWork, code: int) -> int { fresh: AdsWork; w[0] = fresh; return code; }
+// The x-only public key of sk into px (32 bytes): the key a pre-signature
+// and its signature verify under.
+ads_pubkey :: (sk: [] u8, px: [] u8, w: [] AdsWork) -> int {
+  if w.count != 1 || sk.count != 32 || px.count != 32 { return ADS_CAPACITY; }
+  #assert ss_key(sk, w[0].d[..], false);
+  if !ec_declassify(w[0].d[0].valid) { return ads_clear(w, ADS_BAD_KEY); }
+  ms_nonce_point(w[0].d[0].safe, w[0].point[..], w[0].pk[..]);
+  for i: 0..<32 { px[i] = w[0].pk[1 + i]; }
+  return ads_clear(w, ADS_OK);
+}
+// The pre-signature of msg under sk for the adaptor point T (33 bytes),
+// into presig (65 bytes). As in BIP-340, aux is 32 fresh random bytes that
+// are masked with the key: rand = d XOR hash_BIP0340/aux(aux). The nonce
+// is k = hash_SchnorrAdaptor/nonce(rand || T || x(P) || m) mod n. T is in
+// the hash, so pre-signing one message for two points gives two nonces.
+ads_presign :: (sk: [] u8, msg: [] u8, adaptor: [] u8, aux: [] u8, presig: [] u8, w: [] AdsWork) -> int {
+  if w.count != 1 || sk.count != 32 || adaptor.count != 33 || aux.count != 32 || presig.count != ADS_PRESIG { return ADS_CAPACITY; }
+  if !ms_cpoint_vartime(adaptor).ok { return ADS_BAD_POINT; }
+  #assert ss_key(sk, w[0].d[..], false);
+  if !ec_declassify(w[0].d[0].valid) { return ads_clear(w, ADS_BAD_KEY); }
+  ms_nonce_point(w[0].d[0].safe, w[0].point[..], w[0].pk[..]);
+  d := ss_even(w[0].d[0].safe, w[0].point[0].odd);
+  s := w[0].sha[..];
+  ms_tag(s, "BIP0340/aux"); ms_add(s, aux); ms_end(s, w[0].aux[..]);
+  #assert ss_write(d, w[0].h[..]);
+  for i: 0..<32 { w[0].rand[i] = w[0].h[i] ^ w[0].aux[i]; }
+  ms_tag(s, "SchnorrAdaptor/nonce"); ms_add(s, w[0].rand[..]); ms_add(s, adaptor); ms_add(s, w[0].pk[1..<33]); ms_add(s, msg);
+  ms_end(s, w[0].h[..]);
+  k := sc_reduce_bytes(w[0].h[..]).value;
+  // k = 0 happens with negligible probability.
+  #assert ec_declassify(ec_nonzero(k));
+  return ads_clear(w, ads_finish(d, k, msg, adaptor, presig, w));
+}
+// The rest of a pre-signature, once the key d (even-y) and the nonce k are
+// known: R = k G + T, then s' = (k, negated when R is odd) + e d.
+ads_finish :: (d: ScScalar, k: ScScalar, msg: [] u8, adaptor: [] u8, presig: [] u8, w: [] AdsWork) -> int {
+  ms_nonce_point(k, w[0].point[..], w[0].r[..]);              // k G: R - T, so public
+  r := sg_add(ms_cpoint_vartime(w[0].r[..]).value, ms_cpoint_vartime(adaptor).value).value;
+  if !ms_finite_vartime(r) { return ADS_INFINITY; }
+  ms_cbytes_vartime(r, presig[0..<33]);
+  e := ads_challenge(presig[1..<33], w[0].pk[1..<33], msg);
+  odd := cast(u64) (presig[0] & 1);                            // public
+  #assert ss_write(sc_add(ss_even(k, odd), sc_mul(e, d)), presig[33..<65]);
+  return ADS_OK;
+}
+// book:end presign
+
+// book:begin preverify
+// Checks a pre-signature against the x-only key, the message and T:
+// s' G - e P must be R - T, or T - R when R has an odd y.
+ads_preverify_vartime :: (px: [] u8, msg: [] u8, adaptor: [] u8, presig: [] u8) -> int {
+  if px.count != 32 || adaptor.count != 33 || presig.count != ADS_PRESIG { return ADS_CAPACITY; }
+  p := ads_lift_vartime(px); t := ms_cpoint_vartime(adaptor); r := ms_cpoint_vartime(presig[0..<33]);
+  if !p.ok || !t.ok || !r.ok { return ADS_BAD_POINT; }
+  s := sc_load(presig[33..<65]);
+  if !s.ok { return ADS_INVALID; }
+  e := ads_challenge(presig[1..<33], px, msg);
+  lhs := ecmult_vartime(s.value, p.value, sc_negate(e)).value;
+  k := sg_add(r.value, sg_negate(t.value).value).value;
+  if presig[0] == 3 { k = sg_negate(k).value; }
+  return ifx sg_equal_mask(lhs, k) == CB_MAX64 then ADS_OK else ADS_INVALID;
+}
+// book:end preverify
+
+// book:begin adapt
+// Completes a pre-signature with the adaptor secret t: the BIP-340
+// signature x(R) || s' + t (s' - t when R is odd) into sig (64 bytes).
+// It does not check that t matches T or that the pre-signature is valid:
+// pre-verify first, and verify the signature after.
+ads_adapt :: (presig: [] u8, secret: [] u8, sig: [] u8) -> int {
+  if presig.count != ADS_PRESIG || secret.count != 32 || sig.count != 64 { return ADS_CAPACITY; }
+  if !ms_cpoint_vartime(presig[0..<33]).ok { return ADS_BAD_POINT; }
+  s := sc_load(presig[33..<65]);
+  if !s.ok { return ADS_INVALID; }
+  t: [1] SignScalar;
+  #assert ss_key(secret, t[..], false);
+  if !ec_declassify(t[0].valid) { fresh: SignScalar; t[0] = fresh; return ADS_BAD_SECRET; }
+  for i: 0..<32 { sig[i] = presig[1 + i]; }
+  #assert ss_write(sc_add(s.value, ss_even(t[0].safe, cast(u64) (presig[0] & 1))), sig[32..<64]);
+  fresh: SignScalar; t[0] = fresh;
+  return ADS_OK;
+}
+// book:end adapt
+
+// book:begin extract
+// Recovers t from a pre-signature and the signature made from it: t = s -
+// s' (s' - s when R is odd), checked against T. Into secret (32 bytes).
+ads_extract_vartime :: (presig: [] u8, sig: [] u8, adaptor: [] u8, secret: [] u8) -> int {
+  if presig.count != ADS_PRESIG || sig.count != 64 || adaptor.count != 33 || secret.count != 32 { return ADS_CAPACITY; }
+  big_t := ms_cpoint_vartime(adaptor);
+  if !big_t.ok || !ms_cpoint_vartime(presig[0..<33]).ok { return ADS_BAD_POINT; }
+  if !bt_same(sig[0..<32], presig[1..<33]) { return ADS_MISMATCH; }
+  s := sc_load(sig[32..<64]); sp := sc_load(presig[33..<65]);
+  if !s.ok || !sp.ok { return ADS_INVALID; }
+  t := sc_sub(s.value, sp.value);
+  if presig[0] == 3 { t = sc_negate(t); }
+  q := ecmult_vartime(t, sg_infinity(), sc_small(0)).value;
+  if sg_equal_mask(q, big_t.value) != CB_MAX64 { return ADS_MISMATCH; }
+  #assert sc_store(t, secret);
+  return ADS_OK;
+}
+// book:end extract
+
+// book:begin danger
+// Only to show why a nonce must never be reused: a pre-signature with a
+// nonce the caller chooses (32 bytes). ads_presign never reuses one,
+// because its nonce hashes the key, T and the message.
+ads_presign_with_nonce :: (sk: [] u8, msg: [] u8, adaptor: [] u8, nonce: [] u8, presig: [] u8, w: [] AdsWork) -> int {
+  if w.count != 1 || sk.count != 32 || adaptor.count != 33 || nonce.count != 32 || presig.count != ADS_PRESIG { return ADS_CAPACITY; }
+  if !ms_cpoint_vartime(adaptor).ok { return ADS_BAD_POINT; }
+  k := sc_load(nonce);
+  if !k.ok || sc_is_zero(k.value) { return ADS_BAD_SECRET; }
+  #assert ss_key(sk, w[0].d[..], false);
+  if !ec_declassify(w[0].d[0].valid) { return ads_clear(w, ADS_BAD_KEY); }
+  ms_nonce_point(w[0].d[0].safe, w[0].point[..], w[0].pk[..]);
+  d := ss_even(w[0].d[0].safe, w[0].point[0].odd);
+  return ads_clear(w, ads_finish(d, k.value, msg, adaptor, presig, w));
+}
+// Two pre-signatures with the same R and different challenges give away
+// the key: s1' - s2' = (e1 - e2) d. The even-y key into out (32 bytes).
+ads_recover_key_vartime :: (px: [] u8, msg1: [] u8, presig1: [] u8, msg2: [] u8, presig2: [] u8, out: [] u8) -> int {
+  if px.count != 32 || presig1.count != ADS_PRESIG || presig2.count != ADS_PRESIG || out.count != 32 { return ADS_CAPACITY; }
+  if !bt_same(presig1[0..<33], presig2[0..<33]) { return ADS_MISMATCH; }
+  s1 := sc_load(presig1[33..<65]); s2 := sc_load(presig2[33..<65]);
+  if !s1.ok || !s2.ok { return ADS_INVALID; }
+  de := sc_sub(ads_challenge(presig1[1..<33], px, msg1), ads_challenge(presig2[1..<33], px, msg2));
+  inv := sc_inverse(de);
+  if !inv.ok || sc_is_zero(de) { return ADS_MISMATCH; }
+  d := sc_mul(sc_sub(s1.value, s2.value), inv.value);
+  #assert sc_store(d, out);
+  return ADS_OK;
+}
+// book:end danger
+
+// ---- checks
+ads_hex :: (h: string, out: [] u8) -> [] u8 { return bt_unhex(h, out); }
+
+#test "every vector pre-signs, pre-verifies, adapts, verifies and extracts" #steps 4000000000 {
+  for i: 0..<ADS_VECTORS.count {
+    v := ADS_VECTORS[i]; w: [1] AdsWork;
+    sk: [32] u8; aux: [32] u8; m: [64] u8; t: [32] u8; tp: [33] u8; px: [32] u8; want: [65] u8; sigw: [64] u8;
+    msg := ads_hex(v.msg, m[..]);
+    k := ads_hex(v.sk, sk[..]); k = ads_hex(v.aux, aux[..]); k = ads_hex(v.t, t[..]); k = ads_hex(v.adaptor, tp[..]);
+    k = ads_hex(v.px, px[..]); k = ads_hex(v.presig, want[..]); k = ads_hex(v.sig, sigw[..]);
+    got: [32] u8;
+    #assert ads_pubkey(sk[..], got[..], w[..]) == ADS_OK && bt_same(got[..], px[..]);
+    presig: [65] u8;
+    #assert ads_presign(sk[..], msg, tp[..], aux[..], presig[..], w[..]) == ADS_OK && bt_same(presig[..], want[..]);
+    #assert ads_preverify_vartime(px[..], msg, tp[..], presig[..]) == ADS_OK;
+    sig: [64] u8;
+    #assert ads_adapt(presig[..], t[..], sig[..]) == ADS_OK && bt_same(sig[..], sigw[..]);
+    #assert schnorr_verify_vartime(msg, px[..], sig[..]);
+    back: [32] u8;
+    #assert ads_extract_vartime(presig[..], sig[..], tp[..], back[..]) == ADS_OK && bt_same(back[..], t[..]);
+  }
+}
+
+// A loaded vector, for the checks below.
+AdsCase :: struct { sk: [32] u8; aux: [32] u8; t: [32] u8; adaptor: [33] u8; px: [32] u8; m: [64] u8; n: int; }
+ads_case :: (i: int) -> AdsCase {
+  c: AdsCase; v := ADS_VECTORS[i];
+  k := ads_hex(v.sk, c.sk[..]); k = ads_hex(v.aux, c.aux[..]); k = ads_hex(v.t, c.t[..]);
+  k = ads_hex(v.adaptor, c.adaptor[..]); k = ads_hex(v.px, c.px[..]);
+  c.n = ads_hex(v.msg, c.m[..]).count;
+  return c;
+}
+#test "one nonce for two messages gives away the key" #steps 2000000000 {
+  a := ads_case(0); b := ads_case(2); w: [1] AdsWork;
+  nonce: [32] u8; for i: 0..<32 { nonce[i] = 0x5a; }
+  p1: [65] u8; p2: [65] u8; d: [32] u8; px: [32] u8;
+  #assert ads_presign_with_nonce(a.sk[..], a.m[0..<a.n], a.adaptor[..], nonce[..], p1[..], w[..]) == ADS_OK;
+  #assert ads_presign_with_nonce(a.sk[..], b.m[0..<b.n], a.adaptor[..], nonce[..], p2[..], w[..]) == ADS_OK;
+  #assert ads_preverify_vartime(a.px[..], b.m[0..<b.n], a.adaptor[..], p2[..]) == ADS_OK && bt_same(p1[0..<33], p2[0..<33]);
+  #assert ads_recover_key_vartime(a.px[..], a.m[0..<a.n], p1[..], b.m[0..<b.n], p2[..], d[..]) == ADS_OK;
+  #assert ads_pubkey(d[..], px[..], w[..]) == ADS_OK && bt_same(px[..], a.px[..]);
+  // The same message twice gives the same challenge: nothing to recover.
+  #assert ads_recover_key_vartime(a.px[..], a.m[0..<a.n], p1[..], a.m[0..<a.n], p1[..], d[..]) == ADS_MISMATCH;
+  // Without a shared R there is no equation to solve.
+  #assert ads_presign(a.sk[..], b.m[0..<b.n], a.adaptor[..], a.aux[..], p2[..], w[..]) == ADS_OK;
+  #assert ads_recover_key_vartime(a.px[..], a.m[0..<a.n], p1[..], b.m[0..<b.n], p2[..], d[..]) == ADS_MISMATCH;
+  zero: [32] u8;
+  #assert ads_presign_with_nonce(a.sk[..], a.m[0..<a.n], a.adaptor[..], zero[..], p1[..], w[..]) == ADS_BAD_SECRET;
+}
+#test "one point for two pre-signatures lets anyone complete the second" #steps 2000000000 {
+  a := ads_case(0); b := ads_case(2); w: [1] AdsWork;
+  p1: [65] u8; p2: [65] u8; s1: [64] u8; s2: [64] u8; t: [32] u8;
+  #assert ads_presign(a.sk[..], a.m[0..<a.n], a.adaptor[..], a.aux[..], p1[..], w[..]) == ADS_OK;
+  #assert ads_presign(a.sk[..], b.m[0..<b.n], a.adaptor[..], b.aux[..], p2[..], w[..]) == ADS_OK;
+  #assert ads_adapt(p1[..], a.t[..], s1[..]) == ADS_OK;
+  #assert ads_extract_vartime(p1[..], s1[..], a.adaptor[..], t[..]) == ADS_OK;
+  #assert ads_adapt(p2[..], t[..], s2[..]) == ADS_OK && schnorr_verify_vartime(b.m[0..<b.n], a.px[..], s2[..]);
+  // The nonce hashes T: the same message under another point gets another R.
+  #assert ads_presign(a.sk[..], a.m[0..<a.n], b.adaptor[..], a.aux[..], p2[..], w[..]) == ADS_OK && !bt_same(p1[1..<33], p2[1..<33]);
+}
+#test "bad keys, points, secrets, lengths and signatures are refused" #steps 1000000000 {
+  a := ads_case(0); w: [1] AdsWork; msg := a.m[0..<a.n];
+  p: [65] u8; s: [64] u8; t: [32] u8; zero: [32] u8; px: [32] u8; bad: [33] u8; bad[0] = 2;
+  n: [32] u8; for i: 0..<32 { n[i] = 0xff; }                       // at least n
+  #assert ads_presign(zero[..], msg, a.adaptor[..], a.aux[..], p[..], w[..]) == ADS_BAD_KEY;
+  #assert ads_presign(n[..], msg, a.adaptor[..], a.aux[..], p[..], w[..]) == ADS_BAD_KEY;
+  #assert ads_pubkey(zero[..], px[..], w[..]) == ADS_BAD_KEY && ads_pubkey(zero[0..<31], px[..], w[..]) == ADS_CAPACITY;
+  #assert ads_presign(a.sk[..], msg, bad[..], a.aux[..], p[..], w[..]) == ADS_BAD_POINT;
+  #assert ads_presign(a.sk[..], msg, a.adaptor[0..<32], a.aux[..], p[..], w[..]) == ADS_CAPACITY;
+  #assert ads_presign(a.sk[..], msg, a.adaptor[..], a.aux[..], p[..], w[..]) == ADS_OK;
+  // T = -(k G) would make R infinity; a caller-chosen nonce shows it.
+  k: [32] u8; k[31] = 1; minus_g: [33] u8; g := sg_encode_public(sg_negate(sg_generator()).value);
+  for i: 0..<33 { minus_g[i] = g.bytes[i]; }
+  #assert ads_presign_with_nonce(a.sk[..], msg, minus_g[..], k[..], s[0..<0], w[..]) == ADS_CAPACITY;
+  q: [65] u8;
+  #assert ads_presign_with_nonce(a.sk[..], msg, minus_g[..], k[..], q[..], w[..]) == ADS_INFINITY;
+  #assert ads_preverify_vartime(a.px[..], msg, bad[..], p[..]) == ADS_BAD_POINT;
+  #assert ads_preverify_vartime(a.px[0..<31], msg, a.adaptor[..], p[..]) == ADS_CAPACITY;
+  q = p; for i: 33..<65 { q[i] = 0xff; }
+  #assert ads_preverify_vartime(a.px[..], msg, a.adaptor[..], q[..]) == ADS_INVALID;
+  q = p; q[40] ^= 1;
+  #assert ads_preverify_vartime(a.px[..], msg, a.adaptor[..], q[..]) == ADS_INVALID;
+  #assert ads_adapt(p[..], zero[..], s[..]) == ADS_BAD_SECRET && ads_adapt(p[..], n[..], s[..]) == ADS_BAD_SECRET;
+  #assert ads_adapt(q[..], a.t[..], s[0..<63]) == ADS_CAPACITY;
+  q = p; for i: 33..<65 { q[i] = 0xff; }
+  #assert ads_adapt(q[..], a.t[..], s[..]) == ADS_INVALID;
+  q = p; q[0] = 4;
+  #assert ads_adapt(q[..], a.t[..], s[..]) == ADS_BAD_POINT;
+  #assert ads_adapt(p[..], a.t[..], s[..]) == ADS_OK;
+  #assert ads_extract_vartime(q[..], s[..], a.adaptor[..], t[..]) == ADS_BAD_POINT;
+  #assert ads_extract_vartime(p[..], s[..], a.adaptor[..], t[0..<31]) == ADS_CAPACITY;
+  s[0] ^= 1;
+  #assert ads_extract_vartime(p[..], s[..], a.adaptor[..], t[..]) == ADS_MISMATCH;
+  s[0] ^= 1; for i: 32..<64 { s[i] = 0xff; }
+  #assert ads_extract_vartime(p[..], s[..], a.adaptor[..], t[..]) == ADS_INVALID;
+  #assert ads_recover_key_vartime(a.px[..], msg, p[..], msg, p[0..<64], t[..]) == ADS_CAPACITY;
+  q = p; for i: 33..<65 { q[i] = 0xff; }
+  #assert ads_recover_key_vartime(a.px[..], msg, p[..], msg, q[..], t[..]) == ADS_INVALID;
+  #assert ads_lift_vartime(a.px[0..<31]).ok == false;
+}

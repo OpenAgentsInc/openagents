@@ -1,0 +1,40 @@
+Alice pre-signs a payment locked to Bob's point T = t G
+  message: 123684d93fa44e3d3aefc69c02950f4aabf8c56f6176d981d4266ccfee4f88bd
+  Alice's key P: f5dd8b2cb05845d9ada7403fbf73402378f2daeb2175c7dd50786381658ab085
+  Bob's point T: 03d6b2818f5d795afe2f79b65c1a34bf7267f6b28a3ceec197233fd5a6d2e60e93
+  R = k G + T: 02dbeb5270b87ce647fdbc51eb659d3a92ce9bb0f138fcc6ba49eb4eefb5ae5183
+  s': 67abdffdb20a2ef2b4205b0f72972298cba5465d35d4e3c3c58c3c9a8a9e5296
+  it pre-verifies under P and T: OK
+  under another point: INVALID
+  x(R) || s' is a BIP-340 signature: no
+Bob completes it with t and publishes it
+  signature: dbeb5270b87ce647fdbc51eb659d3a92ce9bb0f138fcc6ba49eb4eefb5ae5183b8a8655d918f51688208843d4071b225a10d80cb18db1895ca5c67e99663bada
+  BIP-340 verifies it: yes
+Alice reads t from the signature
+  extract: OK
+  t: 50fc855fdf852275cde8292dcdda8f8cd5683a6de30634d204d02b4f0bc56844
+  Bob's t: yes
+  with another point: MISMATCH
+Completing with a wrong secret
+  BIP-340 verifies it: no
+Every vector
+  0: 32 message bytes, R's y even, round trip yes
+  1: 0 message bytes, R's y even, round trip yes
+  2: 1 message bytes, R's y odd, round trip yes
+  3: 64 message bytes, R's y odd, round trip yes
+  4: 7 message bytes, R's y odd, round trip yes
+  5: 32 message bytes, R's y odd, round trip yes
+Nonce reuse: Alice pre-signs two messages with one nonce
+  both pre-verify: yes, the same R: yes
+  (s1' - s2') / (e1 - e2): eb5ef26ad2aaf2b3812094299a35feb0493e8165c0ce9182fb3d97d264858fef
+  its key is P: yes
+Statement reuse: Alice locks two payments to the same T
+  the second pre-verifies: OK
+  Bob completes the first; Carol, who holds both pre-signatures, reads t: OK
+  Carol's signature of the second: bd96d8bf4be24b80ea6e4271b36a755b8941a32fb3f2c0af9947aeb56d48974ee71a76f27ba9771ad008e566d1104c07d28ad4ba2591fadf986aa63ea90e6157
+  BIP-340 verifies it: yes
+Refused
+  a secret key of 0: BAD_KEY
+  T not on the curve: BAD_POINT
+  adapting with t = 0: BAD_SECRET
+  extracting from another R's signature: MISMATCH

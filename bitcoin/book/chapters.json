@@ -2046,14 +2046,22 @@
   {
    "number": 103,
    "title": "Adaptor signatures",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch103-adaptor-signatures.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     24
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/adaptor.coax",
+    "bitcoin/examples/adaptor-signatures.coax",
+    "bitcoin/examples/checks/adaptor-signatures.coax",
+    "coax/tests/bitcoin/adaptor_vectors.coax",
+    "coax/tests/bitcoin/adaptor.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

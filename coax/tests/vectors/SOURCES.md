@@ -329,6 +329,14 @@ that a maliciously replaced manifest is authentic.
   `ada34196`. `make_musig_vectors.py` copies every case into Coax data;
   `musig.py` runs the pinned `reference.py` over the pinned files and
   writes the example's transcript with its functions.
+- **Adaptor signatures (Bitcoin chapter 103):** no BIP publishes adaptor
+  signature vectors, so `coax/tests/bitcoin/adaptor.py` generates them.
+  It implements pre-signing, pre-verification, adapting and extraction on
+  the point and hash functions of BIP-340's pinned `reference.py`
+  (`upstream/bip340/reference.py`, checked by hash), checks every final
+  signature with that file's `schnorr_verify`, and writes
+  `coax/tests/bitcoin/adaptor_vectors.coax`. Its keys, aux bytes, secrets
+  and messages are SHA-256 of fixed labels. Test data only.
 - **The subsidy and the coinbase (Bitcoin chapter 54):** Bitcoin Core's
   `test/validation_tests.cpp` at revision `ddea9196`, with the already
   pinned `validation.cpp`, `script.h`, `amount.h` and `chainparams.cpp`.
