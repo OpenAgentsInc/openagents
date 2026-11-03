@@ -840,7 +840,7 @@ Everglade not yet), and the haze row needs the horizon's row, so those three
 are still to come. Everglade today, `road`, `river` and `commons`: desktop
 fine detail 0.024 to 0.044 (the grass blades push the day views over
 0.035), ink and near black in range, saturation 0.29 to 0.39; phones over on
-fine detail (0.039 to 0.057). `release.sh --style-check` runs it as a report.
+fine detail (0.039 to 0.057). Run it by hand against staging; it is a report.
 
 **Everglade under the limit** (October 29). The Breath of the Wild
 references measure 0.016 (the forest floor) and 0.019 (the vista) on the

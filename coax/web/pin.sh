@@ -45,17 +45,11 @@ if [[ -z "${1:-}" ]]; then
   exit 0
 fi
 
-# One writer at a time on this machine, shared with release.sh: both write
-# the production bucket.
-lock="${TMPDIR:-/tmp}/coaxial-release.lock"
-until mkdir "$lock" 2>/dev/null; do
-  holder="$(cat "$lock/pid" 2>/dev/null || true)"
-  if [[ -n "$holder" ]] && ! kill -0 "$holder" 2>/dev/null; then rm -rf "$lock"; continue; fi
-  echo "pin: waiting for release ${holder:-?} to finish"; sleep 5
-done
-echo $$ > "$lock/pid"
+# One writer of the production bucket at a time, on any machine: release.sh's lock.
+source "$here/release-lib.sh"
+take_lock "pin"
 tree="" stage=""
-cleanup() { [[ -z "$tree" ]] || git -C "$repo" worktree remove --force "$tree" 2>/dev/null || true; [[ -z "$stage" ]] || rm -rf "$stage"; rm -rf "$lock"; }
+cleanup() { [[ -z "$tree" ]] || git -C "$repo" worktree remove --force "$tree" 2>/dev/null || true; [[ -z "$stage" ]] || rm -rf "$stage"; drop_lock; }
 trap cleanup EXIT
 
 # Serve kept pin STAMP at demo/NAME/, then smoke it.

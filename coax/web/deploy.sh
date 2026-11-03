@@ -24,7 +24,10 @@ export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
 now() { [[ -n "${EPOCHREALTIME:-}" ]] && echo "${EPOCHREALTIME//[.,]/}" || echo $(( $(date +%s) * 1000000 )); }   # microseconds
 lap() { local d=$(( $(now) - $2 )); printf '  %-8s %4s s\n' "$1" "$(( d / 1000000 )).$(( d % 1000000 / 100000 ))"; }
 
-"$here/check-visuals.sh" "$app"   # INVARIANTS.md: everything visible is Coax
+# INVARIANTS.md: everything visible is Coax. release.sh runs it as a report
+# (COAX_VISUALS=report): only what breaks staging against production stops a release.
+if [[ "${COAX_VISUALS:-}" == report ]]; then "$here/check-visuals.sh" "$app" || echo "deploy: check-visuals fails (a report here)" >&2
+else "$here/check-visuals.sh" "$app"; fi
 t=$(now); COAXIAL_MODE=release "$app/build.sh"; lap build "$t"
 
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT

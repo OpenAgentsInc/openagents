@@ -3703,7 +3703,8 @@ Allowed HTML, none of it visible to a WebGPU visitor:
   and holds nothing else.
 
 Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every
-upload) refuses visible elements, inline styling of UI, and DOM-built UI in
+upload; `release.sh` runs it as a report, since only what breaks staging
+against production stops a release) refuses visible elements, inline styling of UI, and DOM-built UI in
 the app's HTML, the host and `coax/web/unlock/`; the loading screen's block
 may hold only its own elements, and `loader.js` styles only marked lines.
 
@@ -3754,16 +3755,16 @@ the Grid's, Everglade's and Fairy Forest's page-view, world-enter, load-engine
 and world-leave (migration 0069). What people do inside a realm is recorded
 with `analytics.coax`'s track_act, track_once, track_tally and track_walk:
 counted, batched and sent at most every 30 s for the frequent ones, never
-per frame, no words but a chat's length. A release never promotes a build whose staging
-walk stops sending one: `coax/web/goldens.ts` plays the journey in headless
+per frame, no words but a chat's length. The golden walk after every release
+(`coax/web/after-release.sh`, releases/<time>/AFTER) reports a page that stops
+sending one: `coax/web/goldens.ts` plays the journey in headless
 Chrome, runs in through the house's front door, clicks and leaves, reads
 every batch the pages send (a realm's after its own walk, then leaves it)
-and names what is missing, and `release.sh` stops
-before production. The journey through the house is walked in full on
+and names what is missing. The journey through the house is walked in full on
 every release; a realm the walk skips as unchanged since production's last
 staged release (its golden comparison only) still opens, starts, draws and
-sends its contract. Production gets a brief start check by default and the
-full walk with `release.sh --thorough`. In production the Health card on /admin/analytics shows,
+sends its contract. Staging and production get the brief start check
+(`goldens.ts --starts`); the full walk runs after the release. In production the Health card on /admin/analytics shows,
 per surface, the last event, the last hour and day, and which contract
 events no page sent in a day. Changing the contract changes both lists in one
 commit.

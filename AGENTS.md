@@ -33,8 +33,8 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
   six reasons in that doc: browser glue, an independent oracle, a reference
   implementation, the bootstrap, a thin wrapper with no logic, or a
   Swift-only or other non-C SDK. "Faster in TypeScript" is not one.
-  `coax/web/release.sh` runs `coax/web/tool.sh tools-check` and stops on a
-  file with neither; run it yourself before you push.
+  Run `coax/web/tool.sh tools-check` yourself before you push;
+  `coax/web/release.sh` reports a file with neither but doesn't stop.
 - **Coax first.** New product logic goes in Coax. The host language (Swift,
   C) does platform effects only: lifecycle, Keychain, network, GPU
   bindings. Avoid toolchains outside Coax and the host C compiler. Python

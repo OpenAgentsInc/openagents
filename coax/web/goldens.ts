@@ -12,7 +12,7 @@
 // been sent by its page, or the walk fails and names what is missing
 // (INVARIANTS.md, "Analytics never lose visibility").
 // release.sh runs it on staging before promoting (goldens and all) and on
-// production after: --starts by default, --walk with release.sh --thorough;
+// production after: --starts (release.sh), the full walk after the release (after-release.sh);
 // pin.sh walks a pinned demo (--walk --root).
 // The walk runs in lanes side by side, each in its own headless tab
 // (GOLDENS_POOL tabs, default 4; GOLDENS_CHROMES=1 for one Chrome a lane):

@@ -285,22 +285,25 @@ the same voice host the phone uses.
 One command ships openagents.com, and it always goes through staging:
 
 ```sh
-coax/web/release.sh                  # origin/main → staging → smoke → production → smoke
-coax/web/release.sh --staging-only   # stop after staging
-coax/web/release.sh --thorough       # production gets the full walk too
-coax/web/release.sh --full-walk      # staging compares every page with its golden
+coax/web/release.sh                  # origin/main → staging → production
+coax/web/release.sh --ref COMMIT     # a specific commit
+coax/web/release.sh --staging-only   # stop after staging's checks
 coax/web/rollback.sh [<time>]        # list kept releases, or put one back
 ```
 
-1. **Build once, from committed code.** A clean worktree of `origin/main` (or `--ref`), never a working directory other agents are editing.
-2. **Staging.** `deploy.sh` uploads to the staging bucket; `smoke.sh` checks the page, every file it names (status, type, caching, wasm magic), the hidden text, HTTP to HTTPS and the 404. Then `goldens.ts` walks the playtest flow in headless Chrome (the landing, ENTER, the galaxy, a click on the Haunted House, the house): each page must start, report no error, draw, and match its golden screenshot in `coax/web/goldens/`. A visual change fails until approved: look at the shot it prints, run `bun coax/web/goldens.ts https://staging.openagents.com --update`, and commit the goldens with the change. The pages walk side by side in four headless tabs (`GOLDENS_POOL`), each lane with its own checks: the journey with the house's analytics contract, each other realm from the galaxy, the Garden. A page whose HTML and every file it names or fetches are byte-identical to what production serves, when production's newest release was staged and went live (`releases/<time>/PASSED`) and the page's golden, its numbers in `realms.json` and `goldens.ts` are unchanged since that commit, skips its golden comparison: those bytes already passed it. It still opens by its address and must start, show no errors and draw, and a realm still sends its analytics contract. The walk names each skipped page; `--full-walk` (or `GOLDENS_FULL=1`) compares them all.
-3. **Promote the same bytes.** The staging bucket is copied into production's, files first and pages last, so a page never names a file that isn't there yet. Production's previous pages are kept under `releases/<time>/`.
-   With `--style-check`, staging's painterly realms are then measured (`coax/web/style-check.ts`, docs/verse/art-styles.md 15): each realm's `style_views` (realms.json) at noon, dusk and night, at 1440×900 and 390×844, for fine detail, dark ink, near black and saturation, with the side-by-side sheet beside the style fixture written to `coax/web/style/style-<slug>.png` (not committed). It reports and holds nothing back until Everglade passes it (eg-paint-review). By hand: `bun coax/web/style-check.ts https://staging.openagents.com --only everglade`. The measures are `coax/web/style-measures.ts`, tested on synthetic images.
-4. **Production check**, in one of two modes. FAST, the default: the same HTTP checks plus a brief check that each page answers and its engine starts with no errors (`goldens.ts --starts`, seconds, no screenshots). THOROUGH (`--thorough`): the HTTP checks plus the full walk (`goldens.ts --walk`: starts and draws, no golden compare). In both, a failure puts the previous pages back on its own; a release that passes writes `releases/<time>/PASSED`.
+**One rule stops a release:** a check that fails on staging and passes on production, confirmed by a retry. Nothing else does (owner, 2026-11-02).
 
-Releases queue on a lock in `$TMPDIR`. One that gets the lock when production already runs a commit containing its ref exits 0 and says so; one still waiting whose commit is inside another waiting release's leaves it to that one. The release compiler must match the tree's compiler inputs (`coax/provenance.sh`); checked builds are kept in `~/.cache/coax-release/<fingerprint>/`, and a missing one is bootstrapped once (`coax/build.sh`, its full gates) by the first release that needs it, with `CC=cc CXX=c++`.
+1. **Lock.** One release at a time across every machine and agent: `gs://openagentsgemini-openagents-web/release.lock`, created only if absent (`coax/web/release-lib.sh`). It names its holder. A waiting release ships `origin/main` as it is when it gets the lock, or exits when production already has it. A lock whose process is gone on its host, or older than 90 minutes, is taken over. `pin.sh` takes the same lock.
+2. **Build once, from committed code.** A clean worktree of the commit. The compiler matches the tree's compiler inputs (`coax/provenance.sh`); checked builds are cached in `~/.cache/coax-release-fast/<fingerprint>/`, and a missing one is bootstrapped once without mutation gates.
+3. **Reports, never a stop:** the release metadata check (`scripts/coax-release.sh --check`), `tools-check` and `check-visuals`. A failure is printed and kept under `releases/<time>/`.
+4. **Staging.** `deploy.sh` uploads to the staging bucket. Meanwhile the two checks run on production to record what it fails today: `smoke.sh` (the page, every file it names, the hidden text, HTTP to HTTPS, the 404) and `goldens.ts --starts` (every page answers, its engine starts, no errors). Then both run on staging. A failure production also has never stops the release; a new one, page by page, does.
+5. **Promote the same bytes.** Production's pages are kept under `releases/<time>/`, staging's files are copied first and its pages last. What people publish (projects, made worlds) is never overwritten from staging, and the pinned demos must not change.
+6. **Production.** The same two checks against the same baseline. A new failure puts the previous pages back on its own (`rollback.sh`). A release that passes writes `releases/<time>/PASSED`.
+7. **After the release**, in the background (`after-release.sh`): the golden walk, Everglade's 60 FPS, the live homepage, the maker journey, every world's frame rate, the changed Coax suites and the review report. Reports only, written to `releases/<time>/`.
 
-Skipping staging takes `--skip-staging --yes-skip-staging`, for emergencies.
+Golden screenshots: approve a visual change with `bun coax/web/goldens.ts https://staging.openagents.com --update` after `release.sh --staging-only`, and commit `coax/web/goldens/`. The style check runs by hand: `bun coax/web/style-check.ts https://staging.openagents.com`.
+
+**Agents:** run `release.sh` and let it finish. Never kill another agent's release, delete the lock it holds, or change a release script to get your own change out; fix your change instead.
 
 **Routing.** One global load balancer (`coaxial-openagents-web-staging`, IP 136.69.24.60) serves both hosts:
 - staging.openagents.com goes to the staging bucket;
