@@ -84,6 +84,7 @@
 #load "everglade-forge.coax";   // EDIT opens Aethyrforge's panels (docs/verse/aethyrforge.md)
 #load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (aethyr/stand.coax)
 #load "everglade-track.coax";   // what players do, for analytics.coax
+#load "everglade-quality.coax";   // the graphics quality: tier, governor, knobs (aethyr/quality.coax)
 #load "../../verse/style-preset.coax";
 #load "../../aethyr/budget.coax";
 
@@ -365,6 +366,8 @@ Everglade :: struct {
   warp: bool;               // the face should put you at spawn (a hash named a place)
   spawn: Point; spawn_face: f32;
   map_button: Box; map_finger: int;
+  // the graphics quality (everglade-quality.coax): its governor, the device it started from, its control
+  q: [1] Quality; q_dev: QualityDevice; q_ready: bool; q_tell: bool; q_box: Box; q_finger: int = -1; q_base: f32;
   heights: [EG_GROUND_POINTS] f32;
   ground_store: [EG_GROUND_POINTS * 2] f32;   // store 0: the heights, then the sky each point sees (everglade-sky.coax)
   objects: [ALL_OBJECTS * OBJECT_FLOATS] f32;
@@ -932,6 +935,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
     if !s[0].started { everglade_start(s); }
     take_visit(s, text); take_player(s, text);
     spells_facts(s, text);
+    eg_quality_facts(s, text);
     fork_facts(s, text);
     weather_facts(s, text);
     forge_facts(s, fact(text, "url"));   // ?forge on a local server (everglade-forge.coax)
@@ -1272,6 +1276,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
     s[0].sp.slot_held = -1; s[0].sp.slot_finger = -1;
   }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
+  if eg_quality_pointer(s, x, y, phase, id) { return true; }   // the graphics tier, bottom right
   // Aethyrforge's panels in edit mode: only they and edit mode's own presses (everglade-forge.coax)
   forge := forge_on(s);
   if forge && forge_pointer(s, x, y, phase) { return true; }
@@ -2507,8 +2512,10 @@ KIT_BUCKETS :: 12;
 forest :: (s: [] Everglade, u: [] f32, eye: Point) {
   for g: 0..<KIT_FOREST { s[0].kit_used[g] = 0; }
   kit_on := s[0].pack_ready;
-  reach := ifx phone(s) then f32(KIT_NEAR_PHONE) else f32(KIT_NEAR);
-  cap := ifx phone(s) then KIT_CAP_PHONE else KIT_CAP;
+  // the far trees: the graphics quality's share of them (everglade-quality.coax)
+  scenery := eg_knobs(s).scenery;
+  reach := (ifx phone(s) then f32(KIT_NEAR_PHONE) else f32(KIT_NEAR)) * scenery;
+  cap := quality_share(ifx phone(s) then KIT_CAP_PHONE else KIT_CAP, scenery, 8);
   // How many of each kind stand in view at each distance, so the nearest win.
   seen: [KIT_TREES * KIT_BUCKETS] int;
   for k: 0..<KIT_TREES * KIT_BUCKETS { seen[k] = 0; }
@@ -3605,6 +3612,7 @@ board_panel :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
 hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
+  s[0].q_box = Box.{};
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
   if forge_on(s) { s[0].map_button = Box.{}; return forge_hud(s, out, u, 0); }   // EDIT: Aethyrforge's panels alone (everglade-forge.coax)
   n := ifx s[0].paint_only || eg_pane_open(s) then 0 else labels(s, out, u, 0, you);   // the feature list's pane open: no place names over it
@@ -3669,6 +3677,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   y1 -= breathing;
   // the spell bar (everglade-spells.coax), with the ruleset: over the hint
   n = spells_hud(s, out, u, n, y1 - hs - 28 * k);
+  n = eg_quality_hud(s, out, u, n);   // the graphics tier, bottom right, clear of the bar (everglade-quality.coax)
   // the damage numbers over who was hit (everglade-watch.coax), their shades from the plates the bar left
   if sp_on(s) && !s[0].above && s[0].wv.started { n = watch_pops_draw(s, out, u, n); }
   y1 -= s[0].sp.lift;

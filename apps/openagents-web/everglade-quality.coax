@@ -1,0 +1,170 @@
+// Everglade's graphics quality (docs/verse/2026-11-03-adaptive-graphics-quality.md): the realm's
+// side of aethyr/quality.coax. The page's facts start it (the device, ?quality= in the URL, and
+// the tier this browser kept, host.js verse.quality); each frame's length runs its governor
+// (everglade_quality_frame, from the face); and the knobs it is at set the spells' debris and
+// puffs (everglade-spells.coax), the far trees (everglade.coax forest) and the pixels the host
+// draws (everglade_pixel_budget, the face's coaxial_pixel_budget). It shows, small at the bottom
+// right, as "GFX AUTO · MED"; a click or a tap on it picks the next: AUTO, HIGH, MED, LOW.
+//   coax/bin/coax test apps/openagents-web/everglade.coax --only "graphics quality"
+
+#load "../../aethyr/quality.coax";
+
+ACT_QUALITY :: 6;   // host.js: the tier to keep in verse.quality (and draw at)
+
+eg_quality_facts :: (s: [] Everglade, text: string) {
+  url := fact(text, "url");
+  mode := -1;
+  for m: 0..<4 { if eg_query_is(url, "quality", QUALITY_HOST[m]) { mode = m; } }
+  if eg_query_is(url, "quality", "med") { mode = QUALITY_MEDIUM; }
+  // the URL's tier is the player's pick too: the host keeps it (and draws at its pixels)
+  s[0].q_tell = mode >= 0 && QUALITY_HOST[mode] != fact(text, "quality");
+  if mode < 0 { mode = quality_parse(fact(text, "quality")); }
+  d: QualityDevice;
+  d.css_w = cast(f32) fact_num(fact(text, "vw")); d.css_h = cast(f32) fact_num(fact(text, "vh"));
+  d.dpr = cast(f32) fact_num(fact(text, "dpr"));
+  d.touch = fact(text, "coarse") == "1" || fact_num(fact(text, "touch")) > 0;
+  d.cores = cast(int) fact_num(fact(text, "cores"));
+  d.memory = cast(f32) fact_num(fact(text, "memory"));
+  s[0].q_dev = d;
+  quality_start(s[0].q[..], d, mode);
+  s[0].q_ready = true;
+}
+
+// One frame of dt seconds (the page's, before any clamp). Golden frames hold the device's tier,
+// from its screen alone, so a picture is the same on every machine.
+everglade_quality_frame :: (s: [] Everglade, dt: f32, golden: bool) #export_c {
+  if !s[0].q_ready || golden {
+    d := s[0].q_dev;
+    if !s[0].q_ready { d.touch = phone(s); }
+    d.cores = 0; d.memory = 0;
+    s[0].q[0].start = quality_device_rung(d); s[0].q[0].rung = s[0].q[0].start;
+    return;
+  }
+  _ := quality_frame(s[0].q[..], dt);
+  if s[0].q_tell && s[0].action == 0 {
+    s[0].out_n = quality_put(s[0].outbox[..], 0, QUALITY_HOST[s[0].q[0].mode]);
+    s[0].action = ACT_QUALITY; s[0].q_tell = false;
+  }
+}
+
+// The pixels a frame draws at most (host.js coaxial_pixel_budget), for a canvas of w by h device
+// pixels drawn at dpr of them a CSS pixel.
+everglade_pixel_budget :: (s: [] Everglade, w: f32, h: f32, dpr: f32) -> int #export_c {
+  k := hi(dpr, 0.01);
+  return quality_pixels(s[0].q[..], w / k, h / k);
+}
+
+eg_knobs :: (s: [] Everglade) -> QualityKnobs { return quality_knobs(s[0].q[..]); }
+
+// The tier, small at the bottom right over the bar; the face's FPS counter (everglade5e.coax
+// e5_fps_draw) sits to its left on the same line.
+eg_quality_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  s[0].q_box = Box.{};
+  if s[0].guide.golden || s[0].paint_only { return at; }
+  k := hi(s[0].dpr, 0.5);
+  gutter := 16 * k; cap := 7 * k;
+  l: [32] u8;
+  t := quality_label(s[0].q[..], l[..]);
+  tw := text_width(t, cap);
+  x0 := s[0].width - gutter - tw; y := s[0].height - 10 * k;
+  for b: 0..<SP_BAR + 1 {
+    bx := s[0].sp.boxes[b];
+    if bx.x1 <= bx.x0 { continue; }
+    if bx.x1 > x0 - 6 * k && bx.y1 > y - cap - 6 * k { y = lo(y, bx.y0 - 8 * k); }
+  }
+  s[0].q_box = Box.{x0 = x0 - 8 * k, y0 = y - cap - 8 * k, x1 = x0 + tw + 8 * k, y1 = y + 6 * k};
+  s[0].q_base = y;
+  return draw_text(out, at, t, x0, y, cap, GAP, SPACE, ink(k, ifx s[0].q_finger >= 0 then 1.0f32 else 0.75f32, PARCH_R, PARCH_G, PARCH_B), false, false);
+}
+
+// A click or a tap on the tier picks the next one, and the host keeps it for this browser.
+eg_quality_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if phase == 0 {
+    if !in_box(s[0].q_box, x, y) { return false; }
+    s[0].q_finger = id; return true;
+  }
+  if s[0].q_finger < 0 || id != s[0].q_finger { return false; }
+  if phase >= 2 {
+    s[0].q_finger = -1;
+    if phase == 2 && in_box(s[0].q_box, x, y) { eg_quality_pick(s, quality_next(s[0].q[0].mode)); }
+  }
+  return true;
+}
+eg_quality_pick :: (s: [] Everglade, mode: int) {
+  quality_choose(s[0].q[..], mode);
+  s[0].q_ready = true; s[0].q_tell = true;
+}
+
+// What a frame costs, for a headless check (globalThis.coaxial.quality() in the face's page,
+// coax/web/destroy-fps.coax): 0 the rung, 1 the mode, 2 the puffs drawn, 3 the debris chunks,
+// 4 the bodies awake, 5 the splinters, 6 the dust, 7 the chunk budget, 8 the 30 FPS budget (1).
+everglade_quality_probe :: (s: [] Everglade, field: int) -> int #export_c {
+  if field == 0 { return s[0].q[0].rung; }
+  if field == 1 { return s[0].q[0].mode; }
+  if field == 2 { return s[0].sp.sprite_n; }
+  if field == 8 { return ifx s[0].q[0].budget > 20 then 1 else 0; }
+  if !s[0].sp.ready || s[0].sp.dm.count < 1 { return 0; }
+  w := sp_dm(s);
+  if field == 3 { return demo_chunks(w); }
+  if field == 4 { return demo_awake(w); }
+  if field == 5 { m := 0; for k: 0..<DEMO_BITS { if w[0].bits[k].live { m += 1; } } return m; }
+  if field == 6 { m := 0; for k: 0..<DEMO_DUST { if w[0].dust[k].live { m += 1; } } return m; }
+  if field == 7 { return w[0].chunk_cap; }
+  return 0;
+}
+
+#test "graphics quality: the puffs are thinned to the rung's share, evenly, the far first still" {
+  g: [1] Everglade;
+  quality_choose(g[0].q[..], QUALITY_LOW);
+  for i: 0..<1000 { g[0].sp.stage[i * SP_FX_FLOATS] = f32(i); g[0].sp.fx_far[i] = f32(i % 90); }
+  keep := quality_share(SP_FX, eg_knobs(g[..]).fx, SP_FX_KEEP);
+  #assert keep == 280;
+  n := sp_fx_thin(g[..], 1000, keep);
+  #assert n == keep;
+  for i: 1..<n { #assert g[0].sp.stage[i * SP_FX_FLOATS] > g[0].sp.stage[(i - 1) * SP_FX_FLOATS]; }
+  // a glow kept is brighter for those dropped (stage 4..6 its colour, here 0 and the kind FX_GLOW)
+  h: [1] Everglade;
+  for i: 0..<400 { o := i * SP_FX_FLOATS; h[0].sp.stage[o + 4] = 0.5; h[0].sp.stage[o + 11] = f32(FX_GLOW); h[0].sp.stage[o + 7] = 0.5; }
+  #assert sp_fx_thin(h[..], 400, 200) == 200 && h[0].sp.stage[4] > 0.7 && h[0].sp.stage[4] <= 0.5 * f32(SP_FX_GAIN) && h[0].sp.stage[7] == 0.5;
+  #assert g[0].sp.stage[(n - 1) * SP_FX_FLOATS] >= 990;   // through the whole frame, not its first half
+  #assert sp_fx_thin(g[..], 120, keep) == 120;
+}
+
+#test "graphics quality: the facts start it; ?quality= wins over the kept tier; a tap picks the next and tells the host" {
+  g: [1] Everglade;
+  eg_quality_facts(g[..], "url=https://openagents.com/worlds/everglade\nvw=390\nvh=844\ndpr=3\ncoarse=1\ntouch=5\ncores=8\nmemory=4\nquality=");
+  #assert quality_auto(g[0].q[..]) && quality_tier(g[0].q[..]) == QUALITY_MEDIUM;
+  #assert everglade_pixel_budget(g[..], 1170, 2532, 3) == cast(int) (390.0 * 844.0 * 2.25);
+  eg_quality_facts(g[..], "url=https://openagents.com/worlds/everglade\nvw=1440\nvh=900\ndpr=2\ncoarse=0\ntouch=0\ncores=10\nquality=low");
+  #assert !quality_auto(g[0].q[..]) && quality_tier(g[0].q[..]) == QUALITY_LOW && !g[0].q_tell;
+  eg_quality_facts(g[..], "url=https://openagents.com/worlds/everglade?quality=med#market\nvw=1440\nvh=900\ndpr=2\ncores=10\nquality=low");
+  #assert !quality_auto(g[0].q[..]) && quality_tier(g[0].q[..]) == QUALITY_MEDIUM && g[0].q_tell;
+  eg_quality_facts(g[..], "url=https://openagents.com/worlds/everglade?quality=auto\nvw=1440\nvh=900\ndpr=2\ncores=10\nquality=low");
+  #assert quality_auto(g[0].q[..]) && quality_tier(g[0].q[..]) == QUALITY_HIGH;
+  // the control
+  g[0].width = 1440; g[0].height = 900; g[0].dpr = 1; g[0].q_finger = -1;
+  out: [4000] f32; u: [UNIFORM_FLOATS] f32;
+  _ := eg_quality_hud(g[..], out[..], u[..], 0);
+  b := g[0].q_box;
+  #assert b.x1 > b.x0 && b.x1 <= 1440 && b.y1 <= 900;
+  cx := (b.x0 + b.x1) / 2; cy := (b.y0 + b.y1) / 2;
+  #assert eg_quality_pointer(g[..], cx, cy, 0, 7) && eg_quality_pointer(g[..], cx, cy, 2, 7);
+  #assert !quality_auto(g[0].q[..]) && quality_tier(g[0].q[..]) == QUALITY_HIGH && g[0].q_finger == -1;
+  g[0].action = 0;
+  everglade_quality_frame(g[..], 1.0 / 60.0, false);
+  #assert g[0].action == ACT_QUALITY && cast(string) g[0].outbox[0..<g[0].out_n] == "high";
+  #assert !eg_quality_pointer(g[..], 1, 1, 0, 8);   // elsewhere: not the control's
+}
+
+#test "graphics quality: golden frames hold the screen's tier on any machine; before the facts a phone is MED" {
+  g: [1] Everglade;
+  g[0].width = 390 * 3; g[0].height = 844 * 3; g[0].dpr = 3;
+  everglade_quality_frame(g[..], 1.0 / 60.0, false);
+  #assert quality_tier(g[0].q[..]) == QUALITY_MEDIUM;
+  eg_quality_facts(g[..], "url=https://openagents.com/worlds/everglade\nvw=1440\nvh=900\ndpr=1\ncores=2\nmemory=2");
+  #assert quality_tier(g[0].q[..]) == QUALITY_MEDIUM;   // a weak computer
+  everglade_quality_frame(g[..], 1.0 / 60.0, true);
+  #assert quality_tier(g[0].q[..]) == QUALITY_HIGH;     // the same screen in a golden: its cores don't count
+  for i: 0..<600 { everglade_quality_frame(g[..], 0.05, true); }
+  #assert quality_tier(g[0].q[..]) == QUALITY_HIGH;
+}

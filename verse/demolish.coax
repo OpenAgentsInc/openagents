@@ -228,6 +228,9 @@ DemoWorld :: struct {
   // each chunk's cell: DEMO_PLANES planes (x y z d: inside where x·p ≤ d) in its piece's mesh space
   cell: [DEMO_BODIES * DEMO_CELL_FLOATS] f32;
   chunk_cap: int; loose_cap: int;
+  // a realm's graphics quality (aethyr/quality.coax, demo_caps): the most chunks one break makes,
+  // the dust and splinters alive at once, and how long a splinter lies (0: the whole budget)
+  cut_cap: int; dust_cap: int; bit_cap: int; bit_life: f32;
   clock: f64; tick: u64;
   steps: FrameClock;   // the fixed steps (aethyr/loop.coax): 1/60 s, a frame clamped to 0.25 s, at most 6
   seed: int;
@@ -334,6 +337,36 @@ demo_tier :: (w: [] DemoWorld, small_screen: bool) {
   w[0].chunk_cap = ifx small_screen then DEMO_CHUNKS / 2 else DEMO_CHUNKS;
   w[0].loose_cap = ifx small_screen then DEMO_LOOSE / 2 else DEMO_LOOSE;
 }
+// The budgets a realm's graphics quality sets (aethyr/quality.coax): `debris` of the chunks and
+// loose pieces alive at once and of the chunks a break makes, `fine` of the dust and splinters and
+// of a splinter's time lying, each a share from 0 to 1. A break still breaks, into fewer and
+// bigger chunks; past the chunk budget the oldest rubble lying still goes first (demo_free_body),
+// and a budget lowered under what is there now takes the oldest lying chunks away at once, so the
+// debris is never over it for longer than its moving chunks take to come to rest.
+demo_caps :: (w: [] DemoWorld, debris: f32, fine: f32) {
+  d := clamp(debris, 0.05, 1); f := clamp(fine, 0.05, 1);
+  w[0].chunk_cap = hi_int(cast(int) (f32(DEMO_CHUNKS) * d + 0.5), 8);
+  w[0].loose_cap = hi_int(cast(int) (f32(DEMO_LOOSE) * d + 0.5), 4);
+  w[0].cut_cap = hi_int(cast(int) (f32(DEMO_CUTS) * d + 0.5), 4);
+  w[0].dust_cap = hi_int(cast(int) (f32(DEMO_DUST) * f + 0.5), 4);
+  w[0].bit_cap = hi_int(cast(int) (f32(DEMO_BITS) * f + 0.5), 4);
+  w[0].bit_life = f32(DEMO_BIT_LIFE) * f;
+  chunks := demo_chunks(w);
+  while chunks > w[0].chunk_cap {
+    oldest := -1;
+    for b: 0..<DEMO_BODIES {
+      if w[0].meta[b].kind != DEMO_CHUNK || !demo_asleep(w, b) { continue; }
+      if oldest < 0 || w[0].meta[b].born < w[0].meta[oldest].born { oldest = b; }
+    }
+    if oldest < 0 { break; }
+    w[0].meta[oldest].kind = 0;
+    chunks -= 1;
+  }
+}
+demo_cut_cap :: (w: [] DemoWorld) -> int { return ifx w[0].cut_cap > 0 then lo_int(w[0].cut_cap, DEMO_CUTS) else DEMO_CUTS; }
+demo_dust_cap :: (w: [] DemoWorld) -> int { return ifx w[0].dust_cap > 0 then lo_int(w[0].dust_cap, DEMO_DUST) else DEMO_DUST; }
+demo_bit_cap :: (w: [] DemoWorld) -> int { return ifx w[0].bit_cap > 0 then lo_int(w[0].bit_cap, DEMO_BITS) else DEMO_BITS; }
+demo_bit_life :: (w: [] DemoWorld) -> f32 { return ifx w[0].bit_life > 0 then w[0].bit_life else f32(DEMO_BIT_LIFE); }
 
 // A placed piece: its mesh, its instance (the realm's object index), its
 // group and its rest rows. Returns its index, or -1 when full.
@@ -1042,7 +1075,7 @@ demo_break :: (w: [] DemoWorld, i: int, from: Point, speed: f32) {
     cut := cuts[ci];
     wu := cut.u1 - cut.u0; wv := cut.v1 - cut.v0;
     area := wu * wv * scale * scale;
-    seeds_n := lo_int(hi_int(cast(int) (area / f32(DEMO_CUT_AREA) + 0.5), 2), DEMO_CUTS / ncut);
+    seeds_n := lo_int(hi_int(cast(int) (area / f32(DEMO_CUT_AREA) + 0.5), 2), hi_int(demo_cut_cap(w) / ncut, 2));
     if area < 0.12 { seeds_n = 2; }
     // where the blow meets the face, kept on it
     bu := clamp(dot(sub(blow, cut.o), cut.u), cut.u0, cut.u1);
@@ -1279,12 +1312,12 @@ demo_settle :: (w: [] DemoWorld) -> int {
 
 demo_dust :: (w: [] DemoWorld, at: Point, vel: Point, size: f32, colour: Point) {
   k := 0;
-  for i: 0..<DEMO_DUST { if !w[0].dust[i].live { k = i; break; } if w[0].dust[i].t / w[0].dust[i].life > w[0].dust[k].t / w[0].dust[k].life { k = i; } }
+  for i: 0..<demo_dust_cap(w) { if !w[0].dust[i].live { k = i; break; } if w[0].dust[i].t / w[0].dust[i].life > w[0].dust[k].t / w[0].dust[k].life { k = i; } }
   w[0].dust[k] = DemoDust.{live = true, at = at, vel = vel, t = 0, life = 2.6 + 2.2 * demo_rand(w), size = size, colour = colour};
 }
 demo_bit :: (w: [] DemoWorld, at: Point, vel: Point, colour: Point) {
   k := 0;
-  for i: 0..<DEMO_BITS { if !w[0].bits[i].live { k = i; break; } if w[0].bits[i].t > w[0].bits[k].t { k = i; } }
+  for i: 0..<demo_bit_cap(w) { if !w[0].bits[i].live { k = i; break; } if w[0].bits[i].t > w[0].bits[k].t { k = i; } }
   w[0].bits[k] = DemoBit.{live = true, at = at, vel = vel, spin = v3(demo_signed(w) * 9, demo_signed(w) * 9, demo_signed(w) * 9), t = 0,
                           size = 0.05 + 0.07 * demo_rand(w), stretch = 1.6 + 2.4 * demo_rand(w), colour = colour, resting = false};
 }
@@ -1306,7 +1339,7 @@ demo_fine :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
     if !w[0].bits[i].live { continue; }
     b := w[0].bits[i];
     b.t += dt;
-    if b.t > f32(DEMO_BIT_LIFE) { w[0].bits[i].live = false; continue; }
+    if b.t > demo_bit_life(w) { w[0].bits[i].live = false; continue; }
     fa := demo_field_accel(w, dp3(b.at), dp3(b.vel), 0.01, -1, w[0].clock);
     if b.resting && fa.y > 0.0 { b.resting = false; }
     if !b.resting {
@@ -1335,7 +1368,7 @@ demo_dust_at :: (w: [] DemoWorld, k: int, at: [] Point, size: [] f32, colour: []
 demo_bit_at :: (w: [] DemoWorld, k: int, box: [] DemoBox) -> bool {
   if k < 0 || k >= DEMO_BITS || !w[0].bits[k].live { return false; }
   b := w[0].bits[k];
-  fade := clamp((f32(DEMO_BIT_LIFE) - b.t) / 3, 0, 1);
+  fade := clamp((demo_bit_life(w) - b.t) / 3, 0, 1);
   // its turn: its spin over its flight, frozen when it lies (lying flat)
   a := ifx b.resting then 0.0f32 else b.t;
   q := dq_euler_xyz(f64(b.spin.x * a), f64(b.spin.y * a), f64(b.spin.z * a));
@@ -2147,6 +2180,34 @@ demo_dressed :: (w: [] DemoWorld) -> int {
   #assert demo_chunks(w[..]) <= DEMO_CHUNKS / 2;
   for k: 0..<60 { demo_step(w[..], g, heights[..], 1.0 / 60.0); }
   #assert demo_chunks(w[..]) <= DEMO_CHUNKS / 2 && demo_chunks(w[..]) > DEMO_CHUNKS / 4;
+}
+
+#test "demolish: a quality's budgets hold through a burst of breaks, and a lowered one takes the oldest rubble away" #steps 400000000 {
+  w: [1] DemoWorld;
+  g := Ground.{n = 8, cell = 40, west = -160, south = -160};
+  heights: [81] f32;
+  demo_cottage(w[..]);
+  demo_caps(w[..], 0.3, 0.25);
+  #assert w[0].chunk_cap == 78 && w[0].cut_cap == 7 && w[0].dust_cap == 14 && w[0].bit_cap == 30;
+  // every piece broken at once, each blow its own break: never past the budget, frame by frame
+  for i: 0..<33 {
+    _ := demo_damage(w[..], i, 99, v3(0, 1, 0), 6);
+    #assert demo_chunks(w[..]) <= w[0].chunk_cap && demo_loose(w[..]) <= w[0].loose_cap;
+  }
+  dust := 0; bits := 0;
+  for k: 0..<DEMO_DUST { if w[0].dust[k].live { dust += 1; } }
+  for k: 0..<DEMO_BITS { if w[0].bits[k].live { bits += 1; } }
+  #assert dust <= w[0].dust_cap && bits <= w[0].bit_cap && w[0].broken_n > 0;
+  for k: 0..<240 { demo_step(w[..], g, heights[..], 1.0 / 60.0); #assert demo_chunks(w[..]) <= w[0].chunk_cap; }
+  before := demo_chunks(w[..]);
+  #assert before > 8;
+  // the budget lowered: what lies still over it goes at once
+  demo_caps(w[..], 0.05, 0.05);
+  #assert demo_chunks(w[..]) <= w[0].chunk_cap + demo_awake(w[..]) && demo_chunks(w[..]) < before;
+  #assert demo_cut_cap(w[..]) == 4 && demo_bit_life(w[..]) == f32(DEMO_BIT_LIFE) * 0.05;
+  // and a world nobody set budgets on has them all
+  v: [1] DemoWorld;
+  #assert demo_cut_cap(v[..]) == DEMO_CUTS && demo_dust_cap(v[..]) == DEMO_DUST && demo_bit_cap(v[..]) == DEMO_BITS && demo_bit_life(v[..]) == f32(DEMO_BIT_LIFE);
 }
 
 #test "demolish: a loose piece is drawn where its body is, turned with it" {

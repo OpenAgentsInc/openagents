@@ -179,6 +179,15 @@ EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return 
 
 // golden mode (goldens.ts): the frame runs still, so the clock holds at noon and the river and leaves hold one moment
 static bool golden;
+// The graphics quality (everglade-quality.coax): the pixels the host draws at most (host.js drawn),
+// and what a frame costs, for a headless check (globalThis.coaxial.quality(field)).
+static uint32_t quality_state;
+EXPORT("coaxial_pixel_budget") uint32_t coaxial_pixel_budget(void) {
+  if (!quality_state || golden) return 0;
+  int64_t px = everglade_pixel_budget(at(quality_state), width, height, dpr);
+  return px > 0 ? (uint32_t)px : 0u;
+}
+EXPORT("coaxial_quality_probe") int32_t coaxial_quality_probe(uint32_t state, int32_t field) { return (int32_t)everglade_quality_probe(at(state), field); }
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 // Where you stand, for a headless walk (globalThis.coaxial.probe()): x and z to a tenth of a metre,
 // as (x + 500) * 10 * 10000 + (z + 500) * 10.
@@ -194,6 +203,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Everglade *g = city(state);
   width = w; height = h; dpr = scale;
   float frame = dt;   /* the player's clock (aethyr/loop.coax) steps it; the rest moves by what it counts */
+  quality_state = state;
+  everglade_quality_frame(at(state), frame, golden);   /* the graphics quality's governor (everglade-quality.coax) */
   dt = verse_player_counts(player, frame);
   if (!golden) now += dt;
   everglade_controls(at(state), dt, sticks.dyaw, sticks.dpitch);

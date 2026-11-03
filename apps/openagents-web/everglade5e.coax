@@ -704,6 +704,8 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
     if bx.x1 <= bx.x0 { continue; }
     if bx.x1 > x0 - 6 * k && bx.y1 > y - cap - 6 * k { y = lo(y, bx.y0 - 8 * k); }
   }
+  // to the left of the graphics tier, on its line (everglade-quality.coax eg_quality_hud)
+  if s[0].q_box.x1 > s[0].q_box.x0 { x0 = s[0].q_box.x0 - 6 * k - tw; y = s[0].q_base; }
   rgb := ifx v[0].fps >= 50 then E5_GREEN else ifx v[0].fps >= 30 then E5_GOLD else E5_RED;
   return e5_text(out, at, t, x0, y, cap, k, 0.9, rgb);
 }

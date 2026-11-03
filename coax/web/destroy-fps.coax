@@ -1,0 +1,97 @@
+// A page's frame rate around a scripted moment (a destroy in Everglade), in headless Chrome with a
+// phone's screen and, optionally, a slower CPU: docs/verse/2026-11-03-adaptive-graphics-quality.md.
+//   coax/web/tool.sh destroy-fps URL --eval JS [--size 390x844] [--dpr 3] [--cpu 4] [--wait 3000] [--shot OUT.png] [--before JS] [--profile OUT.json]
+// The page is opened at WxH CSS pixels with DPR device pixels each (a touch phone's when W is under
+// 600), the CPU slowed DPR times by Chrome's own throttle (--cpu 1 is the machine's speed), and once
+// it is ready and WAIT ms more have passed, JS (an async expression) runs and what it returns is
+// printed (a string as it is, anything else as compact JSON); --shot then captures the page. Frames are paced by the display's
+// clock, as a phone's are, so 60 FPS is the most a run reports. Nothing opens on screen and no
+// sound plays.
+#import "Basic";
+#load "../lib/media/media.coax";
+
+FPS_READY_MS :: 180000;
+
+fps_metrics :: (c: [] Cdp, w: int, h: int, dpr: int) -> bool {
+  params: [512] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], w); jo_key(o[..], "height"); jo_int(o[..], h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], dpr); jo_key(o[..], "mobile"); jo_bool(o[..], w < 600); jo_end(o[..]);
+  if cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
+  if w >= 600 { return true; }
+  return cdp_call(c, "Emulation.setTouchEmulationEnabled", "{\"enabled\":true,\"maxTouchPoints\":5}", CDP_CALL_MS) >= 0;
+}
+
+fps_throttle :: (c: [] Cdp, rate: int) -> bool {
+  params: [128] u8; o: [1] Jo;
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "rate"); jo_int(o[..], rate); jo_end(o[..]);
+  return cdp_call(c, "Emulation.setCPUThrottlingRate", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  e := args_find(a[..], "--eval");
+  script := ifx e > 0 then args_at(a[..], e + 1) else "";
+  size := "390x844"; k := args_find(a[..], "--size"); if k > 0 { size = args_at(a[..], k + 1); }
+  dpr := 3.0; k = args_find(a[..], "--dpr"); if k > 0 { n := args_number(args_at(a[..], k + 1)); if n.ok { dpr = n.value; } }
+  cpu := 1.0; k = args_find(a[..], "--cpu"); if k > 0 { n := args_number(args_at(a[..], k + 1)); if n.ok { cpu = n.value; } }
+  wait := 3000.0; k = args_find(a[..], "--wait"); if k > 0 { n := args_number(args_at(a[..], k + 1)); if n.ok { wait = n.value; } }
+  wh := args_size(size);
+  if !ok || url.count == 0 || script.count == 0 || !wh.ok || dpr < 1.0 || cpu < 1.0 {
+    tool_errln("usage: coax/web/tool.sh destroy-fps URL --eval JS [--size WxH] [--dpr N] [--cpu N] [--wait MS] [--shot OUT.png] [--before JS] [--profile OUT.json]");
+    return 2;
+  }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], wh.w, wh.h, "coax-fps-") { tool_err("destroy-fps: "); tool_errln(cdp_error(c[..])); return 1; }
+  if !fps_metrics(c[..], wh.w, wh.h, cast(int) dpr) || !fps_throttle(c[..], cast(int) cpu) {
+    tool_err("destroy-fps: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1;
+  }
+  // --before JS runs in the page before its own scripts (a stand-in, a timer round an export)
+  k = args_find(a[..], "--before");
+  if k > 0 && cdp_call(c[..], "Page.enable", "{}", CDP_CALL_MS) >= 0 {
+    src: [65536] u8; b: [1] Jo;
+    jo_start(b[..], src[..]); jo_obj(b[..]); jo_key(b[..], "source"); jo_str(b[..], args_at(a[..], k + 1)); jo_end(b[..]);
+    if b[0].bad || cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(b[..]), CDP_CALL_MS) < 0 { tool_errln("destroy-fps: could not add the --before script"); cdp_close(c[..]); return 1; }
+  }
+  params: [8192] u8; j: [1] Jo;
+  jo_start(j[..], params[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], url); jo_end(j[..]);
+  if j[0].bad || cdp_call(c[..], "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 { tool_errln("destroy-fps: could not open the page"); cdp_close(c[..]); return 1; }
+  start := proc_now_ms(); idle_from := -1;
+  word: [512] u8;
+  while true {
+    n := media_value(c[..], MEDIA_READY_JS, word[..]);
+    status := ifx n > 0 then cast(string) word[0..<n] else "";
+    now := proc_now_ms();
+    if status == "idle" { if idle_from < 0 { idle_from = now; } } else { idle_from = -1; }
+    step := media_ready_step(status, now - start, ifx idle_from < 0 then 0 else now - idle_from, FPS_READY_MS);
+    if step == MEDIA_READY { break; }
+    if step != MEDIA_WAIT { tool_err("destroy-fps: the page never became ready: "); tool_errln(status); cdp_close(c[..]); return 1; }
+    proc_sleep(MEDIA_POLL_MS);
+  }
+  proc_sleep(cast(int) wait);
+  // --profile OUT.json: Chrome's CPU profile of the script's run (Profiler.stop's reply as it came)
+  pk := args_find(a[..], "--profile");
+  if pk > 0 {
+    ok = cdp_call(c[..], "Profiler.enable", "{}", CDP_CALL_MS) >= 0 && cdp_call(c[..], "Profiler.setSamplingInterval", "{\"interval\":250}", CDP_CALL_MS) >= 0;
+    ok = ok && cdp_call(c[..], "Profiler.start", "{}", CDP_CALL_MS) >= 0;
+    if !ok { tool_errln("destroy-fps: the profiler did not start"); }
+  }
+  value: [1048576] u8;
+  n := media_value(c[..], script, value[..]);
+  if pk > 0 {
+    _ := cdp_call(c[..], "Profiler.stop", "{}", CDP_CALL_MS);   // too big to parse; the reply is kept as text
+    if c[0].msg_n <= 0 || !fs_write(args_at(a[..], pk + 1), cast(string) c[0].msg[0..<c[0].msg_n]) { tool_errln("destroy-fps: could not write the profile"); }
+  }
+  k = args_find(a[..], "--shot");
+  if k > 0 {
+    png: [MEDIA_PNG] u8;
+    m := cdp_screenshot(c[..], png[..]);
+    if m < 0 || !fs_write(args_at(a[..], k + 1), cast(string) png[0..<m]) { tool_errln("destroy-fps: could not write the shot"); }
+  }
+  cdp_close(c[..]);
+  if n < 0 { tool_errln("destroy-fps: the script failed"); return 1; }
+  print("%\n", cast(string) value[0..<n]);
+  return 0;
+}

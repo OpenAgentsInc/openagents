@@ -730,6 +730,7 @@ function pageFacts() {
     ref: document.referrer, ua: navigator.userAgent, lang: navigator.language, tz, sw: screen.width, sh: screen.height,
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
+    cores: navigator.hardwareConcurrency || 0, memory: navigator.deviceMemory || 0, quality: storedQuality(),
     focused: document.hasFocus() ? 1 : 0,
     clip: globalThis.coaxialClip === true ? 1 : 0,
     webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
@@ -1626,13 +1627,16 @@ function observeSize() {
 // Graphics on a page with a 3D scene: HIGH draws every device pixel, MEDIUM at most 1.5 a CSS
 // pixel, LOW 1 (the browser scales the canvas up). Phones start at MEDIUM: their screens have up to
 // 9 times the pixels of the page, and a scene's shaders run on each. The app's action 6 names a new
-// one and coaxial_quality(state, 0|1|2) tells the app the one in force; kept in localStorage
-// verse.quality. Goldens always draw HIGH.
-const QUALITY = ["high", "medium", "low"], QUALITY_CAP = [Infinity, 1.5, 1];
+// one and coaxial_quality(state, 0|1|2|3) tells the app the one in force; kept in localStorage
+// verse.quality. AUTO (3) caps nothing: the app's governor sets its pixels (coaxial_pixel_budget,
+// aethyr/quality.coax). Goldens always draw HIGH.
+const QUALITY = ["high", "medium", "low", "auto"], QUALITY_CAP = [Infinity, 1.5, 1, Infinity];
 let quality = (() => {
   try { const q = QUALITY.indexOf(localStorage.getItem("verse.quality")); if (q >= 0) return q; } catch {}
   return matchMedia("(pointer: coarse)").matches ? 1 : 0;
 })();
+// The graphics tier this browser kept (verse.quality), or "" when none.
+function storedQuality() { try { const q = localStorage.getItem("verse.quality"); return QUALITY.includes(q) ? q : ""; } catch { return ""; } }
 function setQuality(name) {
   const q = QUALITY.indexOf(name);
   if (q < 0) return;
@@ -2056,6 +2060,7 @@ function send(kind, text = "") {
   after(false);
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
+  quality: (field = 0) => engine?.exports.coaxial_quality_probe?.(arena.state, field) ?? -1,
   captureFrame: () => { if (captureRequested) { probeArmed = true;if (gpu) gpu.probed = false; }return probeArmed; },
   guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0,
   // a page's read-only facts for headless checks, where its face exports them (project-face.c)

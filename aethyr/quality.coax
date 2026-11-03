@@ -1,0 +1,356 @@
+// Aethyr's graphics quality (docs/verse/2026-11-03-adaptive-graphics-quality.md): how much a realm
+// draws, set from the device at the start and then by the frames themselves. A realm keeps one
+// `Quality`, gives it its page's facts once (`quality_start`), every frame's length
+// (`quality_frame`), and reads the knobs the quality is at (`quality_knobs`). It never decides
+// its own graphics anywhere else.
+//
+// The quality is a rung on a ladder of QUALITY_RUNGS. Each rung down turns down one kind of cost,
+// the costliest first: the pixels drawn, then what a destroy leaves (debris, splinters, dust) and
+// the fire and smoke puffs, then the far scenery. The player sees the tier the rung is in (HIGH,
+// MED or LOW) and whether it is AUTO, and can pick a tier, which holds the rung there.
+//
+// In AUTO a governor moves the rung. It keeps a short and a long average of the frame's length
+// and steps:
+//   - down one rung when the long average is over budget for QUALITY_DOWN_S, or at once when the
+//     short one is far over (a destroy's burst);
+//   - up one rung after QUALITY_UP_S of frames on time. A rung it had to leave again soon after
+//     stepping up to it waits twice as long the next time (up to QUALITY_UP_MAX_S), so the
+//     quality settles instead of going up and down.
+// A page that can't hold 60 FPS even on the lowest rung gets a 30 FPS budget instead, and goes
+// back to 60 once its frames are on time at 60 again.
+//   coax/bin/coax test aethyr/quality.coax --library
+
+#module "aethyr.quality";
+
+// The tiers, in host.js verse.quality's order: 0 high, 1 medium, 2 low, 3 auto.
+QUALITY_HIGH :: 0; QUALITY_MEDIUM :: 1; QUALITY_LOW :: 2; QUALITY_AUTO :: 3;
+QUALITY_NAMES :: [4] string.["HIGH", "MED", "LOW", "AUTO"];
+QUALITY_HOST :: [4] string.["high", "medium", "low", "auto"];   // the names host.js keeps
+
+// book:begin ladder
+// The ladder, rung 0 the cheapest. Each rung up raises one knob over the rung below it.
+//   scale:   CSS pixels drawn per CSS pixel at most (the host draws fewer and scales up)
+//   debris:  the share of the realm's debris budget: pieces alive at once, pieces per break
+//   fine:    the share of its splinters and dust, and how long a splinter lies
+//   fx:      the share of its fire, smoke and glow puffs a frame
+//   scenery: the share of its far scenery's reach and count (trees)
+QUALITY_RUNGS :: 7;
+QUALITY_SCALE :: [7] f32.[0.75, 1.0, 1.0, 1.5, 1.5, 2.0, 3.0];
+QUALITY_DEBRIS :: [7] f32.[0.3, 0.3, 0.4, 0.5, 1.0, 1.0, 1.0];
+QUALITY_FINE :: [7] f32.[0.25, 0.25, 0.4, 0.5, 1.0, 1.0, 1.0];
+QUALITY_FX :: [7] f32.[0.15, 0.2, 0.3, 0.4, 1.0, 1.0, 1.0];
+QUALITY_SCENERY :: [7] f32.[0.7, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0];
+// the rung each tier holds, and the tier each rung is shown as
+QUALITY_TIER_RUNG :: [3] int.[6, 3, 1];
+QUALITY_RUNG_TIER :: [7] int.[2, 2, 1, 1, 1, 0, 0];
+// book:end ladder
+
+QUALITY_WARM_S :: 3.0;       // s at the start (shaders, the pack streaming in) the governor only watches
+QUALITY_LONG_S :: 2.0;       // s: the long average's time constant
+QUALITY_SHORT_S :: 0.25;     // s: the short average's
+QUALITY_OVER :: 1.12;        // the long average over budget by this share is over (60 FPS: 18.7 ms)
+QUALITY_BURST :: 1.8;        // the short one over by this share is a burst (60 FPS: 30 ms)
+QUALITY_ON_TIME :: 1.05;     // the long average under budget by this share is on time
+QUALITY_DOWN_S :: 1.0;       // s over budget before a step down
+QUALITY_BURST_S :: 0.25;     // s in a burst before a step down
+QUALITY_SETTLE_S :: 0.5;     // s after a step before the next step down
+QUALITY_UP_S :: 5.0;         // s on time before a step up
+QUALITY_UP_MAX_S :: 80.0;    // the longest a rung that failed waits
+QUALITY_FAILED_S :: 10.0;    // s: a step down this soon after a step up marks the rung failed
+QUALITY_SLOW_S :: 3.0;       // s over budget on the lowest rung before the 30 FPS budget
+QUALITY_FAST_S :: 10.0;      // s on time at 60 FPS before the 60 FPS budget again
+QUALITY_GAP_S :: 0.25;       // a frame longer than this (a hidden tab, a stall) isn't counted
+QUALITY_60 :: 16.6667;       // ms a frame at 60 FPS
+QUALITY_30 :: 33.3333;
+
+// What the page says about its device (host.js pageFacts): its CSS size and pixel ratio, whether
+// it is touched, its cores (navigator.hardwareConcurrency) and memory in GB
+// (navigator.deviceMemory), 0 for one it doesn't say.
+QualityDevice :: struct { css_w: f32; css_h: f32; dpr: f32 = 1; touch: bool; cores: int; memory: f32; }
+
+QualityKnobs :: struct { scale: f32 = 3; debris: f32 = 1; fine: f32 = 1; fx: f32 = 1; scenery: f32 = 1; }
+
+Quality :: struct {
+  mode: int = QUALITY_AUTO;   // AUTO, or the tier the player picked
+  rung: int = QUALITY_RUNGS - 1;
+  start: int = QUALITY_RUNGS - 1;   // the rung the device starts at (quality_device_rung)
+  time: f32;                  // s of frames counted
+  slow_avg: f32 = QUALITY_60; // ms, the long average (QUALITY_LONG_S) and the short one
+  fast_avg: f32 = QUALITY_60;
+  over: f32; burst: f32; on_time: f32;   // s each has held
+  since: f32 = 1000;          // s since the last step
+  up_at: f32 = -1000;         // when the last step up was
+  wait: [QUALITY_RUNGS] f32;  // s on time each rung waits for before a step up to it (0: QUALITY_UP_S)
+  slow: f32; fast: f32;       // s toward the 30 FPS budget, and back to 60
+  budget: f32 = QUALITY_60;
+  steps: int;                 // steps taken, up or down
+}
+
+quality_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+quality_hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+
+// The rung a device starts at. A phone (touched, or under 700 CSS pixels across) starts no higher
+// than MED, and at LOW with 4 cores or fewer or 3 GB or less; a computer starts at HIGH, and at MED
+// with 2 cores or fewer or 2 GB or less. A number the page doesn't give counts for nothing.
+quality_device_rung :: (d: QualityDevice) -> int {
+  handheld := d.touch || (d.css_w > 0 && d.css_w < 700);
+  if handheld {
+    weak := (d.cores > 0 && d.cores <= 4) || (d.memory > 0 && d.memory <= 3);
+    return ifx weak then QUALITY_TIER_RUNG[QUALITY_LOW] else QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  }
+  weak := (d.cores > 0 && d.cores <= 2) || (d.memory > 0 && d.memory <= 2);
+  return ifx weak then QUALITY_TIER_RUNG[QUALITY_MEDIUM] else QUALITY_TIER_RUNG[QUALITY_HIGH];
+}
+
+// A tier's name as the page's URL (?quality=) or host.js gives it: high, med or medium, low,
+// auto. -1 for anything else.
+quality_parse :: (text: string) -> int {
+  if text == "high" || text == "HIGH" { return QUALITY_HIGH; }
+  if text == "med" || text == "medium" || text == "MED" || text == "MEDIUM" { return QUALITY_MEDIUM; }
+  if text == "low" || text == "LOW" { return QUALITY_LOW; }
+  if text == "auto" || text == "AUTO" { return QUALITY_AUTO; }
+  return -1;
+}
+
+// The start: the device's rung, and the mode the player picked (from the URL, else the one this
+// browser kept), AUTO when neither names one.
+quality_start :: (q: [] Quality, d: QualityDevice, mode: int) {
+  q[0].start = quality_device_rung(d);
+  quality_choose(q, ifx mode >= 0 && mode <= QUALITY_AUTO then mode else QUALITY_AUTO);
+}
+
+// The player picks a tier (held there) or AUTO (the governor starts again at the device's rung).
+quality_choose :: (q: [] Quality, mode: int) {
+  if mode < 0 || mode > QUALITY_AUTO { return; }
+  q[0].mode = mode;
+  q[0].rung = ifx mode == QUALITY_AUTO then q[0].start else QUALITY_TIER_RUNG[mode];
+  q[0].over = 0; q[0].burst = 0; q[0].on_time = 0; q[0].since = 0; q[0].slow = 0; q[0].fast = 0;
+  q[0].budget = QUALITY_60;
+  for r: 0..<QUALITY_RUNGS { q[0].wait[r] = 0; }
+}
+// The control's next choice: AUTO, HIGH, MED, LOW, then AUTO again.
+quality_next :: (mode: int) -> int {
+  if mode == QUALITY_AUTO { return QUALITY_HIGH; }
+  if mode == QUALITY_HIGH { return QUALITY_MEDIUM; }
+  if mode == QUALITY_MEDIUM { return QUALITY_LOW; }
+  return QUALITY_AUTO;
+}
+
+quality_tier :: (q: [] Quality) -> int { return QUALITY_RUNG_TIER[q[0].rung]; }
+quality_auto :: (q: [] Quality) -> bool { return q[0].mode == QUALITY_AUTO; }
+
+quality_knobs :: (q: [] Quality) -> QualityKnobs {
+  r := q[0].rung;
+  return QualityKnobs.{scale = QUALITY_SCALE[r], debris = QUALITY_DEBRIS[r], fine = QUALITY_FINE[r], fx = QUALITY_FX[r], scenery = QUALITY_SCENERY[r]};
+}
+
+// A share of a budget, at least `least`.
+quality_share :: (whole: int, share: f32, least: int) -> int {
+  n := cast(int) (f32(whole) * share + 0.5);
+  if n < least { return least; }
+  if n > whole { return whole; }
+  return n;
+}
+
+// The pixels a frame draws at most, for host.js (coaxial_pixel_budget): the page's CSS pixels
+// times the rung's scale, squared. 0 before the page has a size.
+quality_pixels :: (q: [] Quality, css_w: f32, css_h: f32) -> int {
+  if !(css_w > 0) || !(css_h > 0) { return 0; }
+  s := QUALITY_SCALE[q[0].rung];
+  return cast(int) (css_w * css_h * s * s);
+}
+
+quality_step :: (q: [] Quality, by: int) {
+  r := q[0].rung + by;
+  if r < 0 || r >= QUALITY_RUNGS { return; }
+  if by < 0 && q[0].time - q[0].up_at < f32(QUALITY_FAILED_S) {
+    // the rung it just stepped up to didn't hold: it waits twice as long next time
+    was := q[0].rung;
+    q[0].wait[was] = quality_lo(f32(QUALITY_UP_MAX_S), 2 * quality_hi(q[0].wait[was], f32(QUALITY_UP_S)));
+  }
+  if by > 0 { q[0].up_at = q[0].time; }
+  q[0].rung = r;
+  q[0].steps += 1;
+  q[0].since = 0; q[0].over = 0; q[0].burst = 0; q[0].on_time = 0;
+  // the slow frames before a step down were the old rung's: the new one starts at the budget
+  q[0].slow_avg = quality_lo(q[0].slow_avg, q[0].budget); q[0].fast_avg = quality_lo(q[0].fast_avg, q[0].budget);
+}
+
+// One frame of dt seconds. Returns whether the rung changed.
+quality_frame :: (q: [] Quality, dt: f32) -> bool {
+  if !(dt > 0) || dt > f32(QUALITY_GAP_S) { q[0].over = 0; q[0].burst = 0; return false; }
+  ms := dt * 1000;
+  q[0].time += dt; q[0].since += dt;
+  q[0].slow_avg += (ms - q[0].slow_avg) * dt / (f32(QUALITY_LONG_S) + dt);
+  q[0].fast_avg += (ms - q[0].fast_avg) * dt / (f32(QUALITY_SHORT_S) + dt);
+  if q[0].mode != QUALITY_AUTO || q[0].time < f32(QUALITY_WARM_S) { return false; }
+  was := q[0].rung;
+  b := q[0].budget;
+  // the budget: 30 FPS for a page that can't hold 60 at the bottom, 60 again once it can
+  if b < f32(QUALITY_30) - 1 && q[0].rung == 0 && q[0].slow_avg > b * f32(QUALITY_OVER) {
+    q[0].slow += dt;
+    if q[0].slow >= f32(QUALITY_SLOW_S) { q[0].budget = QUALITY_30; q[0].slow = 0; q[0].fast = 0; q[0].over = 0; q[0].on_time = 0; return false; }
+  } else { q[0].slow = 0; }
+  if b > f32(QUALITY_60) + 1 {
+    if q[0].slow_avg <= f32(QUALITY_60) * f32(QUALITY_ON_TIME) { q[0].fast += dt; } else { q[0].fast = 0; }
+    if q[0].fast >= f32(QUALITY_FAST_S) { q[0].budget = QUALITY_60; q[0].fast = 0; q[0].on_time = 0; return false; }
+  }
+  b = q[0].budget;
+  if q[0].fast_avg > b * f32(QUALITY_BURST) { q[0].burst += dt; } else { q[0].burst = 0; }
+  if q[0].slow_avg > b * f32(QUALITY_OVER) { q[0].over += dt; q[0].on_time = 0; }
+  else {
+    q[0].over = 0;
+    if q[0].slow_avg <= b * f32(QUALITY_ON_TIME) { q[0].on_time += dt; } else { q[0].on_time = 0; }
+  }
+  if q[0].since >= f32(QUALITY_SETTLE_S) && (q[0].burst >= f32(QUALITY_BURST_S) || q[0].over >= f32(QUALITY_DOWN_S)) {
+    quality_step(q, -1);
+  } else if q[0].rung + 1 < QUALITY_RUNGS && q[0].on_time >= quality_hi(q[0].wait[q[0].rung + 1], f32(QUALITY_UP_S)) {
+    quality_step(q, 1);
+  }
+  return q[0].rung != was;
+}
+
+quality_put :: (out: [] u8, at: int, s: string) -> int {
+  m := at;
+  for c: s { if m < out.count { out[m] = c; m += 1; } }
+  return m;
+}
+// "AUTO · MED", or the tier the player picked ("LOW"), for the corner of the screen.
+quality_label :: (q: [] Quality, out: [] u8) -> string {
+  n := quality_put(out, 0, "GFX ");
+  if q[0].mode == QUALITY_AUTO { n = quality_put(out, n, "AUTO · "); }
+  n = quality_put(out, n, QUALITY_NAMES[quality_tier(q)]);
+  return cast(string) out[0..<n];
+}
+
+// ---- checks
+
+// frames of `ms` for `seconds`
+quality_run :: (q: [] Quality, ms: f32, seconds: f32) -> int {
+  changes := 0;
+  t := 0.0f32;
+  while t < seconds { if quality_frame(q, ms / 1000) { changes += 1; } t += ms / 1000; }
+  return changes;
+}
+
+#test "quality: a phone starts no higher than MED, a weak one LOW, a computer HIGH" {
+  #assert quality_device_rung(QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true, cores = 6, memory = 4}) == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  #assert quality_device_rung(QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}) == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  #assert quality_device_rung(QualityDevice.{css_w = 390, css_h = 844, dpr = 2, touch = true, cores = 4}) == QUALITY_TIER_RUNG[QUALITY_LOW];
+  #assert quality_device_rung(QualityDevice.{css_w = 640, css_h = 900, dpr = 2, memory = 2}) == QUALITY_TIER_RUNG[QUALITY_LOW];
+  #assert quality_device_rung(QualityDevice.{css_w = 1440, css_h = 900, dpr = 2, cores = 10, memory = 16}) == QUALITY_TIER_RUNG[QUALITY_HIGH];
+  #assert quality_device_rung(QualityDevice.{css_w = 1440, css_h = 900, dpr = 1, cores = 2}) == QUALITY_TIER_RUNG[QUALITY_MEDIUM];
+  #assert QUALITY_RUNG_TIER[QUALITY_TIER_RUNG[QUALITY_HIGH]] == QUALITY_HIGH && QUALITY_RUNG_TIER[QUALITY_TIER_RUNG[QUALITY_MEDIUM]] == QUALITY_MEDIUM;
+  #assert QUALITY_RUNG_TIER[QUALITY_TIER_RUNG[QUALITY_LOW]] == QUALITY_LOW;
+  #assert quality_parse("med") == QUALITY_MEDIUM && quality_parse("medium") == QUALITY_MEDIUM && quality_parse("auto") == QUALITY_AUTO && quality_parse("ultra") == -1;
+  #assert quality_next(QUALITY_AUTO) == QUALITY_HIGH && quality_next(QUALITY_HIGH) == QUALITY_MEDIUM && quality_next(QUALITY_MEDIUM) == QUALITY_LOW && quality_next(QUALITY_LOW) == QUALITY_AUTO;
+}
+
+#test "quality: each rung down costs no more than the one above it" {
+  for r: 1..<QUALITY_RUNGS {
+    #assert QUALITY_SCALE[r - 1] <= QUALITY_SCALE[r] && QUALITY_DEBRIS[r - 1] <= QUALITY_DEBRIS[r] && QUALITY_FINE[r - 1] <= QUALITY_FINE[r];
+    #assert QUALITY_FX[r - 1] <= QUALITY_FX[r] && QUALITY_SCENERY[r - 1] <= QUALITY_SCENERY[r];
+    changed := 0;
+    if QUALITY_SCALE[r - 1] != QUALITY_SCALE[r] { changed += 1; }
+    if QUALITY_DEBRIS[r - 1] != QUALITY_DEBRIS[r] || QUALITY_FINE[r - 1] != QUALITY_FINE[r] || QUALITY_FX[r - 1] != QUALITY_FX[r] { changed += 1; }
+    if QUALITY_SCENERY[r - 1] != QUALITY_SCENERY[r] { changed += 1; }
+    #assert changed >= 1;   // a rung that changes nothing would be a step that buys nothing
+  }
+  q: [1] Quality;
+  quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
+  #assert quality_auto(q[..]) && quality_tier(q[..]) == QUALITY_MEDIUM && quality_pixels(q[..], 390, 844) == cast(int) (390.0 * 844.0 * 2.25);
+  #assert quality_pixels(q[..], 0, 844) == 0 && quality_share(260, 0.3, 2) == 78 && quality_share(24, 0.01, 2) == 2;
+  l: [32] u8;
+  #assert quality_label(q[..], l[..]) == "GFX AUTO · MED";
+  quality_choose(q[..], QUALITY_LOW);
+  #assert quality_label(q[..], l[..]) == "GFX LOW";
+}
+
+#test "quality: sustained slow frames step it down, a rung at a time, after a second" {
+  q: [1] Quality;
+  quality_start(q[..], QualityDevice.{css_w = 1440, css_h = 900, dpr = 2, cores = 10}, -1);
+  #assert q[0].rung == 6;
+  _ := quality_run(q[..], 16.7, 4);    // past the warm-up, on time
+  #assert q[0].rung == 6;
+  _ = quality_run(q[..], 25, 0.5);     // half a second over: not yet
+  #assert q[0].rung == 6;
+  _ = quality_run(q[..], 25, 1.7);
+  #assert q[0].rung == 5;
+  _ = quality_run(q[..], 25, 3);
+  #assert q[0].rung <= 3 && q[0].rung >= 1;   // a step about every second it stays over
+  _ = quality_run(q[..], 25, 10);
+  #assert q[0].rung == 0;
+}
+
+#test "quality: a destroy's burst steps it down at once; frames lost to a hidden tab don't count" {
+  q: [1] Quality;
+  quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
+  _ := quality_run(q[..], 16.7, 4);
+  #assert q[0].rung == 3;
+  _ = quality_run(q[..], 50, 0.6);     // 20 FPS for well under the second the long average needs
+  #assert q[0].rung == 2;
+  q2: [1] Quality;
+  quality_start(q2[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
+  _ = quality_run(q2[..], 16.7, 4);
+  for i: 0..<20 { #assert !quality_frame(q2[..], 2.0); }   // the tab hidden: 2 s frames
+  #assert q2[0].rung == 3;
+  #assert !quality_frame(q2[..], -1) && !quality_frame(q2[..], 0);
+}
+
+#test "quality: on-time frames step it up after 5 s; a rung that fails waits twice as long, so it settles" {
+  q: [1] Quality;
+  quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
+  _ := quality_run(q[..], 16.7, 3);
+  #assert q[0].rung == 3;
+  _ = quality_run(q[..], 16.7, 4.5);
+  #assert q[0].rung == 3;
+  _ = quality_run(q[..], 16.7, 1);
+  #assert q[0].rung == 4;
+  // A device that holds 60 FPS up to rung 4 and not above: the governor tries rung 5, is pushed
+  // back, and tries it less and less often. Over ten minutes it changes a handful of times.
+  changes := 0; t := 0.0f32;
+  while t < 600 {
+    ms := ifx q[0].rung >= 5 then 24.0f32 else 16.7f32;
+    if quality_frame(q[..], ms / 1000) { changes += 1; }
+    t += ms / 1000;
+  }
+  #assert q[0].rung == 4 || q[0].rung == 5;
+  #assert changes <= 30 && q[0].wait[5] >= f32(QUALITY_UP_MAX_S) - 0.01;
+  // and at rung 4 it stays: the last minute has at most one try of rung 5
+  changes = 0; t = 0;
+  while t < 60 {
+    ms := ifx q[0].rung >= 5 then 24.0f32 else 16.7f32;
+    if quality_frame(q[..], ms / 1000) { changes += 1; }
+    t += ms / 1000;
+  }
+  #assert changes <= 2;
+}
+
+#test "quality: the player's pick wins over the governor, and AUTO gives it back" {
+  q: [1] Quality;
+  quality_start(q[..], QualityDevice.{css_w = 1440, css_h = 900, dpr = 2}, QUALITY_LOW);
+  #assert !quality_auto(q[..]) && q[0].rung == QUALITY_TIER_RUNG[QUALITY_LOW];
+  #assert quality_run(q[..], 16.7, 30) == 0 && quality_run(q[..], 60, 30) == 0;
+  #assert q[0].rung == QUALITY_TIER_RUNG[QUALITY_LOW];
+  quality_choose(q[..], QUALITY_HIGH);
+  #assert quality_run(q[..], 60, 30) == 0 && quality_tier(q[..]) == QUALITY_HIGH;
+  quality_choose(q[..], QUALITY_AUTO);
+  #assert quality_auto(q[..]) && q[0].rung == q[0].start;
+  _ := quality_run(q[..], 60, 5);
+  #assert q[0].rung < q[0].start;
+  quality_choose(q[..], 9);   // not a tier: nothing changes
+  #assert quality_auto(q[..]);
+}
+
+#test "quality: a page that can't hold 60 FPS on the lowest rung is held to 30, and goes back to 60" {
+  q: [1] Quality;
+  quality_start(q[..], QualityDevice.{css_w = 390, css_h = 844, dpr = 3, touch = true}, -1);
+  _ := quality_run(q[..], 33.3, 10);
+  #assert q[0].rung == 0 && q[0].budget > 30;
+  // at 30 FPS, on time: it climbs again
+  _ = quality_run(q[..], 33.3, 12);
+  #assert q[0].rung >= 1;
+  // and frames on time at 60 bring the 60 FPS budget back
+  _ = quality_run(q[..], 16.7, 20);
+  #assert q[0].budget < 17;
+}
