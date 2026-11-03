@@ -1,0 +1,121 @@
+// HTTP routing/admission for the read-only explorer v1 projection.
+#authority;
+EX_TIP :: 1; EX_BLOCK :: 2; EX_TX :: 3; EX_ADDRESS :: 4; EX_SEARCH :: 5; EX_RPC :: 6;
+ExRoute :: struct { status: int; kind: int; key: string; }
+ExHttp :: struct { status: int; complete: bool; method: string; path: string; body: string; }
+
+#test "explorer route: exact methods, paths and bounded keys" {
+  #assert ex_route("GET","/api/v1/tip").kind == EX_TIP;
+  #assert ex_route("POST","/api/v1/rpc").kind == EX_RPC;
+  #assert ex_route("GET","/api/v1/block/0").kind == EX_BLOCK && ex_route("GET","/api/v1/block/0").key == "0";
+  #assert ex_route("GET","/api/v1/transaction/aa").kind == EX_TX;
+  #assert ex_route("GET","/api/v1/address/bc1q").kind == EX_ADDRESS;
+  #assert ex_route("GET","/api/v1/search/123").kind == EX_SEARCH;
+  for path: [5] string.["/api/v1/block/","/api/v1/tip/","/api/v1/blocks/1","/api/v1/tip?x=1","/api/v1/block/1/x"] { #assert ex_route("GET",path).status == 404; }
+  #assert ex_route("POST","/api/v1/tip").status == 405 && ex_route("GET","/api/v1/rpc").status == 405;
+  #assert ex_route("DELETE","/api/v1/block/0").status == 405;
+  #assert ex_route("GET","/api/v1/search/%00").status == 400;
+  s: [141] u8; for i: 0..<s.count { s[i] = 'a'; }
+  #assert ex_key_ok(cast(string)s[0..<140]) && !ex_key_ok(cast(string)s[..]) && !ex_key_ok("");
+  s[0] = 0; #assert !ex_key_ok(cast(string)s[0..<1]); s[0] = 127; #assert !ex_key_ok(cast(string)s[0..<1]);
+  s[0] = ' '; #assert !ex_key_ok(cast(string)s[0..<1]);
+}
+#test "explorer decimal: reject overflow before arithmetic" {
+  #assert ex_decimal("0") == 0 && ex_decimal("000") == 0 && ex_decimal("2147483647") == 2147483647;
+  for s: [8] string.["","-1","+1","1.0","2147483648","9999999999","00000000000","x"] { #assert ex_decimal(s) == -1; }
+  #assert ex_decimal("1x") == -1 && ex_decimal("/") == -1 && ex_decimal(":") == -1;
+  #assert ex_decimal("9") == 9;
+}
+#test "explorer text: complete ASCII and trimming boundaries" {
+  #assert ex_key_ok("!") && ex_key_ok("~") && !ex_key_ok("?") && !ex_key_ok("#") && !ex_key_ok("/");
+  #assert ex_lower_equal("A","a") && ex_lower_equal("Z","z") && ex_lower_equal("[","[") && ex_lower_equal("@","@");
+  #assert !ex_lower_equal("a","b") && !ex_lower_equal("A","A") && !ex_lower_equal("a","aa");
+  #assert ex_trim("") == "" && ex_trim(" ") == "" && ex_trim("x") == "x" && ex_trim("  x  ") == "x";
+  #assert ex_trim("x ") == "x";
+  #assert ex_find_text("abc",0,"b") == 1 && ex_find_text("a",0,"a") == 0 && ex_find_text("ab",1,"b") == 1;
+}
+#test "explorer HTTP: partial, exact framing and single request" {
+  full := "POST /api/v1/rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: 2\r\n\r\n{}";
+  for n: 0..<full.count { r := ex_http(full[0..<n]); #assert r.status == 0 && !r.complete; }
+  r := ex_http(full); #assert r.status == 200 && r.complete && r.method == "POST" && r.path == "/api/v1/rpc" && r.body == "{}";
+  get := ex_http("GET /api/v1/tip HTTP/1.1\r\nHost: x\r\n\r\n"); #assert get.status == 200 && get.complete && get.body.count == 0;
+  #assert ex_http("GET / HTTP/1.0\r\nHost: x\r\n\r\n").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\nHost: x\r\nContent-Length: x\r\n\r\n").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\nHost: x\r\nContent-Length: 16385\r\n\r\n").status == 413;
+  #assert ex_http("GET / HTTP/1.1\r\nHost: x\r\nHost: y\r\n\r\n").status == 400;
+  #assert ex_http("POST / HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nContent-Length: 0\r\n\r\n").status == 400;
+  #assert ex_http("POST / HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\n\r\n").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\nHost x\r\n\r\n").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\nHost: x\r\n\r\nx").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\nhOsT: x\r\n\r\n").status == 200;
+}
+
+#test "explorer HTTP: exact size limits and malformed delimiters" {
+  #assert ex_http("\r\n\r\n").status == 400;
+  #assert ex_http("\r\nGET / HTTP/1.1\r\nHost:x\r\n\r\n").status == 400;
+  #assert ex_http(" G / HTTP/1.1\r\nHost:x\r\n\r\n").status == 400;
+  #assert ex_http("G / HTTP/1.1\r\nHost:x\r\n\r\n").status == 200;
+  #assert ex_http("GET  / HTTP/1.1\r\nHost:x\r\n\r\n").status == 400;
+  #assert ex_http("GET  HTTP/1.1\r\nHost:x\r\n\r\n").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\nHost:x\r\nX:y\r\n\r\n").status == 200;
+  #assert ex_http("GET / HTTP/1.1\r\nHost:x\r\n:x:y\r\n\r\n").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\nHost:x\r\n:x\r\n\r\n").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\nHost:\r\n\r\n").status == 400;
+  #assert ex_http("GET / HTTP/1.1\r\nHost:x\r\nContent-Length:0\r\n\r\n").status == 200;
+  huge: [32769] u8; for i: 0..<huge.count { huge[i] = 'x'; }
+  #assert ex_http(cast(string)huge[..]).status == 413 && ex_http(cast(string)huge[0..<32768]).status == 0;
+  prefix := "POST /api/v1/rpc HTTP/1.1\r\nHost:x\r\nContent-Length:16384\r\n\r\n";
+  for i: 0..<prefix.count { huge[i] = prefix[i]; }
+  #assert ex_http(cast(string)huge[0..<prefix.count+16384]).status == 200;
+}
+ex_decimal :: (s: string) -> int {
+  if s.count == 0 || s.count > 10 { return -1; } n := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } d := cast(int)(c-'0'); if n > (2147483647-d)/10 { return -1; } n = 10*n+d; } return n;
+}
+ex_key_ok :: (key: string) -> bool {
+  if key.count < 1 || key.count > 140 { return false; }
+  for c: key { if c <= 32 || c >= 127 || c == '%' || c == '?' || c == '/' || c == '#' { return false; } } return true;
+}
+ex_route :: (method: string, path: string) -> ExRoute #export_c {
+  if path == "/api/v1/rpc" { return ifx method == "POST" then ExRoute.{kind=EX_RPC} else ExRoute.{status=405}; }
+  if method != "GET" { return ExRoute.{status=405}; }
+  if path == "/api/v1/tip" { return ExRoute.{kind=EX_TIP}; }
+  names := [4] string.["/api/v1/block/","/api/v1/transaction/","/api/v1/address/","/api/v1/search/"];
+  for i: 0..<4 {
+    prefix := names[i];
+    if path.count <= prefix.count || path[0..<prefix.count] != prefix { continue; }
+    key := path[prefix.count..<path.count];
+    for c: key { if c == '/' { return ExRoute.{status=404}; } }
+    if !ex_key_ok(key) { return ExRoute.{status=400}; } return ExRoute.{kind=EX_BLOCK+i,key=key};
+  }
+  return ExRoute.{status=404};
+}
+ex_lower_equal :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { c := a[i]; if c >= 'A' && c <= 'Z' { c += 32; } if c != b[i] { return false; } } return true;
+}
+ex_find_text :: (s: string, from: int, what: string) -> int {
+  for i: from..<s.count-what.count+1 { if s[i..<i+what.count] == what { return i; } } return -1;
+}
+ex_trim :: (s: string) -> string { a := 0; b := s.count; while a < b && s[a] == ' ' { a += 1; } while b > a && s[b-1] == ' ' { b -= 1; } return s[a..<b]; }
+ex_http :: (s: string) -> ExHttp #export_c {
+  if s.count > 32768 { return ExHttp.{status=413}; }
+  end := ex_find_text(s,0,"\r\n\r\n"); if end < 0 { return ExHttp.{}; }
+  first := ex_find_text(s,0,"\r\n"); line := s[0..<first]; a := ex_find_text(line,0," ");
+  if a < 1 { return ExHttp.{status=400}; } b := ex_find_text(line,a+1," ");
+  if b <= a+1 || line[b+1..<line.count] != "HTTP/1.1" { return ExHttp.{status=400}; }
+  r := ExHttp.{method=line[0..<a],path=line[a+1..<b]};
+  at := first+2; hosts := 0; lengths := 0; length := 0;
+  while at < end+2 {
+    next := ex_find_text(s,at,"\r\n"); header := s[at..<next]; colon := ex_find_text(header,0,":");
+    if colon < 1 { return ExHttp.{status=400}; } name := header[0..<colon]; value := ex_trim(header[colon+1..<header.count]);
+    if ex_lower_equal(name,"host") { hosts += 1; if value.count == 0 { return ExHttp.{status=400}; } }
+    if ex_lower_equal(name,"content-length") { lengths += 1; length = ex_decimal(value); if length < 0 { return ExHttp.{status=400}; } }
+    if ex_lower_equal(name,"transfer-encoding") { return ExHttp.{status=400}; } at = next+2;
+  }
+  if hosts != 1 || lengths > 1 { return ExHttp.{status=400}; }
+  if length > 16384 { return ExHttp.{status=413}; }
+  total := end+4+length; if s.count < total { return ExHttp.{}; } if s.count > total { return ExHttp.{status=400}; }
+  r.body = s[end+4..<total]; r.complete = true; r.status = 200; return r;
+}

@@ -118,6 +118,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 **XIV. Operating the node**
 
+- [90. JSON-RPC and REST](ch090-json-rpc-and-rest.md) — partly implemented
 - [91. Indexes: transactions, filters and coin statistics](ch091-indexes-transactions-filters-and-coin-statistics.md) — partly implemented
 
 **XV. Wallets**

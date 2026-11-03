@@ -1905,15 +1905,32 @@
   {
    "number": 90,
    "title": "JSON-RPC and REST",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch090-json-rpc-and-rest.md",
+   "status": "partly implemented",
+   "profile": "native C (read-only explorer HTTP)",
    "depends_on": [
+    29,
     59,
-    82
+    61,
+    62,
+    91,
+    125
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "proto/openagents/bitcoin/explorer/v1alpha1/explorer.proto",
+    "docs/protocol/bitcoin-explorer-v1.md",
+    "coax/lib/bitcoin/explorer-request.coax",
+    "coax/lib/bitcoin/explorer-rpc.coax",
+    "coax/lib/bitcoin/explorer-store.coax",
+    "coax/lib/bitcoin/explorer-body.coax",
+    "coax/lib/bitcoin/explorer-json.coax",
+    "bitcoin/examples/explorer-api.coax",
+    "bitcoin/examples/live/explorer-api.coax",
+    "coax/tests/bitcoin/explorer.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

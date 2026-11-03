@@ -1,5 +1,24 @@
 # Invariants
 
+## Explorer responses describe one committed snapshot
+
+`coax/lib/bitcoin/explorer-{request,rpc,store,body,json}.coax` and
+`bitcoin/examples/live/explorer-api.coax` expose read-only HTTP v1. Every
+successful data object identifies the synchronized light/transaction/address
+cursor and its pow-only profile. Readers never repair writer files or return
+partial histories as complete. Raw blocks and transactions must match their
+indexed framing, header, transaction boundary, txid and activated witness
+commitment before serialization. A changed snapshot invalidates related
+client views, including same-height reorgs.
+
+Request framing refuses ambiguous lengths and duplicate host fields. Valid
+JSON-RPC notifications produce no JSON response. Storage and capacity failures
+are explicit; error responses reveal no file paths. The source projection is
+`proto/openagents/bitcoin/explorer/v1alpha1/explorer.proto`; the envelope is
+`docs/protocol/bitcoin-explorer-v1.md`. Chapter 90, root mutation gates and
+`coax/tests/bitcoin/explorer.py` bind this boundary to independent raw-block
+replay, both reorg directions and real durable files under ASan/UBSan.
+
 ## Address histories and spend links share the light chain's cursor
 
 `coax/lib/bitcoin/addrindex.coax`, `addrindex-stage.coax` and

@@ -1,0 +1,191 @@
+// Read-only explorer HTTP service. All parsing and chain decisions are Coax.
+// Usage: explorer-api CHAIN STATE BLOCKFILE_OR_DIRECTORY PORT [REQUEST_LIMIT]
+// tool.sh: run-steps 250000000
+#run_steps 250000000;
+#load "../../../coax/lib/bitcoin/explorer-body.coax";
+#load "../../../coax/lib/bitcoin/explorer-json.coax";
+#load "../../../coax/lib/bitcoin/explorer-rpc.coax";
+#load "../../../coax/lib/bitcoin/blockfiles.coax";
+#load "../../../coax/lib/bitcoin/chainparams.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/net/socket_foreign.coax";
+#import "Basic";
+cxtool_out_flush :: () -> int #foreign;
+
+ExplorerServer :: struct {
+  table: [67108864] u8; log: [268435456] u8; used: int; loaded: bool; size: int; stamp: int;
+  raw: [4000000] u8; n: int; count: int;
+  ins: [30000] TxIn; outs: [120000] TxOut; items: [100000] TxItem;
+  ids: [2240000] u8; wids: [2240000] u8; work: [2240000] u8;
+  states: [120000] ExOutput; address_outs: [16384] AxiOutput; history: [16384] AxiTx;
+  answer: [33554432] u8; reply: [33555456] u8; request: [32768] u8; key: [140] u8; nodes: [128] JvNode;
+  genesis: [32] u8; tip: LcTip;
+}
+api_reload :: (s: [] ExplorerServer, path: string, chain: int) -> bool {
+  size := fs_size(path); stamp := fs_mtime_ns(path);
+  if s[0].loaded && size == s[0].size && stamp == s[0].stamp { return true; }
+  s[0].loaded = false; n := fs_read(path,s[0].log[..]); if n < 0 { return false; }
+  opened := kv_open_vartime(s[0].log[0..<n],s[0].table[..]);
+  if opened.code != KV_OK || axi_context_vartime(s[0].table[..],opened.used) != LC_OK { return false; }
+  tip := lc_tip_vartime(s[0].table[..],opened.used); if tip.chain != chain { return false; }
+  s[0].used = opened.used; s[0].tip = tip; s[0].size = size; s[0].stamp = stamp; s[0].loaded = true; return true;
+}
+api_block_path :: (base: string, file: int, out: [] u8) -> string {
+  if fs_kind(base) == FS_FILE { return ifx file == 0 then base else ""; }
+  name: [32] u8; o: [1] Jo; jo_start(o[..],name[..]); jo_put(o[..],"blk");
+  if file < 10000 { jo_put(o[..],"0"); } if file < 1000 { jo_put(o[..],"0"); } if file < 100 { jo_put(o[..],"0"); } if file < 10 { jo_put(o[..],"0"); }
+  jo_int(o[..],file); jo_put(o[..],".dat"); return fs_join(base,jo_text(o[..]),out);
+}
+api_block_read :: (s: [] ExplorerServer, store: string, p: ChainParams, b: ExBlock) -> bool {
+  n := b.record.n;
+  if b.record.file == -1 { n = chain_genesis_block_vartime(p.genesis,s[0].raw[..]); }
+  else {
+    pathbuf: [4096] u8; path := api_block_path(store,b.record.file,pathbuf[..]); head: [8] u8;
+    if path.count == 0 || fs_read_at(path,b.record.pos-8,head[..]) != 8 { return false; }
+    magic := p.magic; frame := bf_next_vartime(head[..],b.record.pos-8,fs_size(path),BF_BLOCK,cb_load_le32(magic[..],0).value,0);
+    if frame.code != BF_OK || frame.n != n { return false; }
+    if fs_read_at(path,b.record.pos,s[0].raw[0..<n]) != n { return false; }
+  }
+  info := b; info.record.n = n;
+  checked := ex_body_check(info,s[0].raw[0..<n],chain_deployment_active(p,DEP_SEGWIT,b.record.height),s[0].ins[..],s[0].outs[..],s[0].items[..],s[0].ids[..],s[0].wids[..],s[0].work[..]);
+  if checked.code != LC_OK { return false; } s[0].n = n; s[0].count = checked.count; return true;
+}
+api_tx :: (s: [] ExplorerServer, store: string, p: ChainParams, key: string, o: [] Jo) -> int {
+  id: [32] u8; if !ex_id(key,id[..]) { return 400; }
+  hit := txi_find_vartime(s[0].table[..],s[0].used,id[..],false);
+  if hit.code == TXI_MISS {
+    // Genesis is deliberately absent from Core-style txindex/UTXO state.
+    // Its immutable bytes still belong in the explorer.
+    b := ExBlock.{active=true,hash=s[0].genesis,record=TxiBlock.{file=-1}};
+    if !api_block_read(s,store,p,b) { return 503; }
+    if !lc_same(id[..],s[0].ids[0..<32]) { return 404; }
+    hit = TxiHit.{active=true,block=s[0].genesis,offset=tx_compact_read_vartime(s[0].raw[0..<s[0].n],80).next}; hit.n = s[0].n-hit.offset;
+  } else {
+    if hit.code != LC_OK { return 503; } hash := hit.block;
+    b := ex_block_hash(s[0].table[..],s[0].used,hash[..]); if b.code != LC_OK || !api_block_read(s,store,p,b) { return 503; }
+  }
+  body := s[0].raw[0..<s[0].n]; span := ex_tx_span(hit,id[..],body,s[0].ins[..],s[0].outs[..],s[0].items[..]);
+  if span.code != LC_OK { return 503; } raw := body[hit.offset..<hit.offset+hit.n]; t := span.tx;
+  wtxid: [32] u8; #assert tx_wtxid_vartime(raw,t,wtxid[..]);
+  for i: 0..<t.nout {
+    out := s[0].outs[i]; point: [36] u8; for k: 0..<32 { point[k] = id[k]; } kv_put32(point[..],32,i);
+    s[0].states[i] = ifx hit.height == 0 then ExOutput.{status=3} else ex_output(s[0].table[..],s[0].used,point[..],hit.height,tx_le_vartime(raw,out.value,8),raw[out.script..<out.script+out.script_n],hit.active);
+    if s[0].states[i].code != LC_OK { return 503; }
+  }
+  ex_json_transaction(o,s[0].tip,hit,span.order,id[..],wtxid[..],raw,t,s[0].ins[..],s[0].outs[..],s[0].states[0..<t.nout]); return 200;
+}
+api_address :: (s: [] ExplorerServer, key: string, o: [] Jo, search: bool) -> int {
+  script: [42] u8; network := ex_network(s[0].tip.chain); decoded := address_decode_vartime(network,key,script[..]);
+  if decoded.length < 0 { return 400; } bytes := script[0..<decoded.length]; canonical: [128] u8;
+  n := address_encode_vartime(network,bytes,canonical[..]); if n < 0 { return 503; }
+  if search { ex_json_search(o,s[0].tip,EX_ADDRESS,cast(string)canonical[0..<n]); return 200; }
+  q := axi_query_vartime(s[0].table[..],s[0].used,bytes,s[0].address_outs[..],s[0].history[..]); if q.code != LC_OK { return 503; }
+  ex_json_address(o,s[0].tip,cast(string)canonical[0..<n],bytes,q,s[0].address_outs[..],s[0].history[..]); return 200;
+}
+api_hash_text :: (id: [] u8, out: [] u8) -> string {
+  for i: 0..<32 { out[2*i] = "0123456789abcdef"[id[31-i]>>4]; out[2*i+1] = "0123456789abcdef"[id[31-i]&15]; } return cast(string)out[0..<64];
+}
+api_data :: (s: [] ExplorerServer, store: string, p: ChainParams, route: ExRoute, o: [] Jo) -> int {
+  if route.kind == EX_TIP { ex_json_tip(o,s[0].tip); return 200; }
+  if route.kind == EX_ADDRESS { return api_address(s,route.key,o,false); }
+  if route.kind == EX_TX { return api_tx(s,store,p,route.key,o); }
+  if route.kind == EX_BLOCK {
+    b := ex_block_key(s[0].table[..],s[0].used,route.key,s[0].genesis[..]);
+    if b.code != LC_OK { return ifx b.code == TXI_MISS then 404 else (ifx b.code == LC_CONTEXT then 400 else 503); }
+    if !api_block_read(s,store,p,b) { return 503; } ex_json_block(o,s[0].tip,b,s[0].raw[0..<s[0].n],s[0].ids[0..<32*s[0].count]); return 200;
+  }
+  if route.kind == EX_SEARCH {
+    id: [32] u8; numeric := ex_decimal(route.key) >= 0; hash := ex_id(route.key,id[..]);
+    if numeric || hash {
+      b := ex_block_key(s[0].table[..],s[0].used,route.key,s[0].genesis[..]);
+      if b.code == LC_OK {
+        text: [64] u8; h := b.hash; ex_json_search(o,s[0].tip,EX_BLOCK,api_hash_text(h[..],text[..])); return 200;
+      }
+      if b.code != TXI_MISS { return 503; } if numeric { return 404; }
+      hit := txi_find_vartime(s[0].table[..],s[0].used,id[..],false);
+      if hit.code == LC_OK { text: [64] u8; ex_json_search(o,s[0].tip,EX_TX,api_hash_text(id[..],text[..])); return 200; }
+      if hit.code != TXI_MISS { return 503; }
+      // Genesis transaction lookup follows the same fallback as /transaction.
+      status := api_tx(s,store,p,route.key,o);
+      if status == 200 { text: [64] u8; jo_start(o,s[0].answer[..]); ex_json_search(o,s[0].tip,EX_TX,api_hash_text(id[..],text[..])); return 200; }
+      if status != 404 { return status; } return 404;
+    }
+    return api_address(s,route.key,o,true);
+  }
+  return 404;
+}
+api_error :: (o: [] Jo, status: int) {
+  jo_obj(o); jo_key(o,"error"); jo_obj(o); jo_key(o,"code"); jo_str(o,ifx status == 404 then "not_found" else (ifx status == 503 then "unavailable" else "invalid_request"));
+  jo_key(o,"message"); jo_str(o,ifx status == 404 then "No matching object" else (ifx status == 503 then "Explorer data unavailable" else "Request refused")); jo_end(o); jo_end(o);
+}
+api_rpc_error :: (o: [] Jo, id: string, code: int) {
+  jo_obj(o); jo_key(o,"jsonrpc"); jo_str(o,"2.0"); jo_key(o,"id"); jo_raw(o,id); jo_key(o,"error"); jo_obj(o); jo_key(o,"code"); jo_int(o,code);
+  jo_key(o,"message"); jo_str(o,ifx code == -32004 then "No matching object" else (ifx code == -32003 then "Explorer data unavailable" else "Request refused")); jo_end(o); jo_end(o);
+}
+api_write :: (h: int, text: string, deadline: int) -> bool {
+  for i: 0..<text.count {
+    if cxsock_write(h,cast(int)text[i]) < 0 { return false; }
+    if i % 16384 == 16383 || i == text.count-1 { left := deadline-cxsock_now_ms(); if left <= 0 || cxsock_flush(h,left) < 0 { return false; } }
+  }
+  return true;
+}
+api_send :: (h: int, status: int, body: string) {
+  if status == 204 {
+    sent := api_write(h,"HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",cxsock_now_ms()+10000); return;
+  }
+  buffer: [512] u8; o: [1] Jo; jo_start(o[..],buffer[..]); jo_put(o[..],"HTTP/1.1 "); jo_int(o[..],status);
+  jo_put(o[..],ifx status == 200 then " OK" else " Error"); jo_put(o[..],"\r\nContent-Type: application/json; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\nContent-Length: "); jo_int(o[..],body.count); jo_put(o[..],"\r\n\r\n");
+  deadline := cxsock_now_ms()+10000; if api_write(h,jo_text(o[..]),deadline) { sent := api_write(h,body,deadline); }
+}
+api_connection :: (s: [] ExplorerServer, h: int, state: string, store: string, p: ChainParams) {
+  n := 0; request: ExHttp; deadline := cxsock_now_ms()+3000;
+  while true {
+    left := deadline-cxsock_now_ms(); if left <= 0 { request.status = 408; break; }
+    got := cxsock_read(h,left); if got <= 0 { request.status = 408; break; }
+    if got > s[0].request.count-n { request.status = 413; break; }
+    for i: 0..<got { s[0].request[n+i] = cast(u8)cxsock_byte(h,i); } n += got;
+    request = ex_http(cast(string)s[0].request[0..<n]);
+    if request.status != 0 || request.complete { break; }
+    if n == s[0].request.count { request.status = 413; break; }
+  }
+  o: [1] Jo; jo_start(o[..],s[0].answer[..]); status := request.status;
+  rpc: ExRpc; is_rpc := false;
+  if status == 200 {
+    route := ex_route(request.method,request.path); status = route.status;
+    if status == 0 && route.kind == EX_RPC {
+      if ex_rpc_notification(request.body,s[0].nodes[..]) { api_send(h,204,""); return; }
+      is_rpc = true; rpc = ex_rpc(request.body,s[0].key[..],s[0].nodes[..]); route = ExRoute.{kind=rpc.kind,key=rpc.key};
+    }
+    if status == 0 && (!is_rpc || rpc.error == 0) {
+      if !api_reload(s,state,p.chain) { status = 503; } else { status = api_data(s,store,p,route,o[..]); }
+      if o[0].bad { status = 503; }
+    }
+  }
+  if is_rpc {
+    wrapper: [1] Jo; jo_start(wrapper[..],s[0].reply[..]);
+    if rpc.error != 0 { api_rpc_error(wrapper[..],rpc.id,rpc.error); }
+    else {
+      if status != 200 { api_rpc_error(wrapper[..],rpc.id,ifx status == 404 then -32004 else (ifx status == 400 then -32602 else -32003)); }
+      else { jo_obj(wrapper[..]); jo_key(wrapper[..],"jsonrpc"); jo_str(wrapper[..],"2.0"); jo_key(wrapper[..],"id"); jo_raw(wrapper[..],rpc.id); jo_key(wrapper[..],"result"); jo_raw(wrapper[..],jo_text(o[..])); jo_end(wrapper[..]); }
+    }
+    api_send(h,200,jo_text(wrapper[..])); return;
+  }
+  if status != 200 { jo_start(o[..],s[0].answer[..]); api_error(o[..],status); } api_send(h,status,jo_text(o[..]));
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 4 || args_count(a[..]) > 5 { tool_errln("usage: explorer-api CHAIN STATE BLOCKFILE_OR_DIRECTORY PORT [REQUEST_LIMIT]"); return 2; }
+  chain := 0; for i: 1..<6 { if args_at(a[..],0) == CHAIN_NAMES[i] { chain = i; } }
+  port := ex_decimal(args_at(a[..],3)); limit := ifx args_count(a[..]) == 5 then ex_decimal(args_at(a[..],4)) else 0;
+  if chain == 0 || port < 0 || port > 65535 || limit < 0 { return 2; }
+  p := chain_params(chain); s: [1] ExplorerServer; #assert ex_id(p.genesis.hash,s[0].genesis[..]);
+  state := args_at(a[..],1); store := args_at(a[..],2);
+  if !api_reload(s[..],state,chain) { tool_errln("explorer state unavailable"); return 1; }
+  listener := cxsock_listen(port); if listener < 0 { return 1; }
+  print("explorer-api http://127.0.0.1:% chain % profile pow-only\n",cxsock_port(listener),CHAIN_NAMES[chain]); flushed := cxtool_out_flush(); count := 0;
+  while limit == 0 || count < limit {
+    h := cxsock_accept(listener,1000); if h < 0 { continue; }
+    api_connection(s[..],h,state,store,p); closed := cxsock_close(h); count += 1;
+  }
+  closed := cxsock_close(listener); return 0;
+}

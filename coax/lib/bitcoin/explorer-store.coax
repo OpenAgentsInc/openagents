@@ -1,0 +1,119 @@
+// Read-only explorer lookup and output-state admission.
+#load "addrindex-store.coax";
+#load "lightpolicy.coax";
+#load "explorer-request.coax";
+#load "../nostr/hex.coax";
+#authority;
+ExBlock :: struct { code: int; active: bool; hash: [32] u8; record: TxiBlock; }
+ExOutput :: struct { code: int; status: int; spend: AxiSpend; }
+
+#test "explorer store: displayed hashes and network selection" {
+  id: [32] u8; text := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+  #assert ex_id(text,id[..]); for i: 0..<32 { #assert cast(int)id[i] == 31-i; }
+  #assert !ex_id(text,id[0..<31]) && !ex_id(text[0..<63],id[..]);
+  wide: [33] u8; #assert !ex_id(text,wide[..]);
+  #assert !ex_id("z00102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",id[..]);
+  #assert ex_network(1) == 1 && ex_network(5) == 3;
+  for i: 2..<5 { #assert ex_network(i) == 2; }
+}
+#test "explorer store: genesis, height, hash, active/stale and damaged receipts" {
+  table: [8192] u8; stage: [8192] u8; batch: [8192] u8; g: [32] u8; g[0] = 23; hash: [32] u8; hash[0] = 7;
+  #assert ex_block_key(table[..],0,"1",g[..]).code == LC_CONTEXT;
+  r := axi_init_vartime(5,g[..],table[..],0,stage[..],batch[..]); for k: 0..<r.used { table[k] = stage[k]; }
+  c := [1] LcCursor.[LcCursor.{used=r.used,n=kv_batch_new(batch[..])}];
+  b := ex_block_key(table[..],c[0].used,"0",g[..]); #assert b.code == LC_OK && b.active && b.record.height == 0 && b.record.file == -1 && lc_same(b.hash[..],g[..]);
+  b = ex_block_key(table[..],c[0].used,"0000000000000000000000000000000000000000000000000000000000000017",g[..]);
+  #assert b.code == LC_OK && b.active && b.record.height == 0 && b.hash[0] == 23;
+  #assert ex_block_key(table[..],c[0].used,"0",g[0..<31]).code == LC_CONTEXT;
+  #assert ex_block_key(table[..],c[0].used,"hello",g[..]).code == LC_CONTEXT;
+  #assert ex_block_key(table[..],c[0].used,"1",g[..]).code == TXI_MISS;
+  #assert txi_put_block_vartime(table[..],c[..],batch[..],hash[..],TxiBlock.{height=1,count=1,seq=0,file=17,pos=256,n=100});
+  hk: [33] u8; txi_blockkey('H',hash[..],hk[..]); hv: [80] u8; kv_put32(hv[..],0,1); kv_put32(hv[..],4,1);
+  #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+  b = ex_block_key(table[..],c[0].used,"1",g[..]);
+  #assert b.code == LC_OK && b.active && b.record.height == 1 && b.record.file == 17 && b.record.pos == 256 && b.record.n == 100 && b.hash[0] == 7;
+  text := "0000000000000000000000000000000000000000000000000000000000000007";
+  b = ex_block_key(table[..],c[0].used,text,g[..]); #assert b.code == LC_OK && b.active && b.hash[0] == 7;
+  c[0].used = kv_delete_vartime(table[..],c[0].used,hk[..]);
+  #assert !ex_block_key(table[..],c[0].used,text,g[..]).active && ex_block_key(table[..],c[0].used,"1",g[..]).code == TXI_MISS;
+  hv[0] = 2; #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+  #assert ex_block_key(table[..],c[0].used,text,g[..]).code == TXI_CORRUPT;
+  #assert ex_block_key(table[..],c[0].used,"1",g[..]).code == TXI_CORRUPT;
+  hv[0] = 1; #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+  badkey := [1] u8.['J']; badvalue := [1] u8.[1]; #assert lc_put_vartime(table[..],c[..],batch[..],badkey[..],badvalue[..]);
+  #assert ex_block_key(table[..],c[0].used,"2",g[..]).code == TXI_CORRUPT;
+}
+#test "explorer store: output statuses and inconsistent spend/coin refusal" {
+  table: [8192] u8; stage: [8192] u8; batch: [8192] u8; g: [32] u8; point: [36] u8; point[0] = 19;
+  script := [1] u8.[0x51]; burn := [1] u8.[0x6a];
+  #assert ex_output(table[..],0,point[..],1,1234,script[..],true).code == LC_CONTEXT;
+  #assert ex_output(table[..],0,point[..],1,1234,script[..],false).code == LC_CONTEXT;
+  r := axi_init_vartime(5,g[..],table[..],0,stage[..],batch[..]); for k: 0..<r.used { table[k] = stage[k]; }
+  c := [1] LcCursor.[LcCursor.{used=r.used,n=kv_batch_new(batch[..])}];
+  #assert ex_output(table[..],c[0].used,point[0..<35],1,1234,script[..],true).code == LC_CONTEXT;
+  #assert ex_output(table[..],c[0].used,point[..],1,-1,script[..],true).code == LC_CONTEXT;
+  #assert ex_output(table[..],c[0].used,point[..],1,2100000000000001,script[..],true).code == LC_CONTEXT;
+  #assert ex_output(table[..],c[0].used,point[..],1,1234,script[..],false).status == 4;
+  #assert ex_output(table[..],c[0].used,point[..],1,1234,burn[..],true).status == 3;
+  #assert ex_output(table[..],c[0].used,point[..],1,1234,script[..],true).status == 2;
+  ck: [37] u8; ck[0] = 'C'; for k: 0..<36 { ck[1+k] = point[k]; } coin: [14] u8; kv_put32(coin[..],8,1); kv_put64(coin[..],0,1234); coin[13] = 0x51;
+  #assert lc_put_vartime(table[..],c[..],batch[..],ck[..],coin[..]);
+  outcome := ex_output(table[..],c[0].used,point[..],1,1234,script[..],true); #assert outcome.code == LC_OK && outcome.status == 0;
+  #assert lc_put_vartime(table[..],c[..],batch[..],ck[..],coin[0..<13]);
+  outcome = ex_output(table[..],c[0].used,point[..],1,1234,script[0..<0],true); #assert outcome.code == LC_OK && outcome.status == 0;
+  #assert lc_put_vartime(table[..],c[..],batch[..],ck[..],coin[..]);
+  #assert ex_output(table[..],c[0].used,point[..],1,1235,script[..],true).code == TXI_CORRUPT;
+  #assert ex_output(table[..],c[0].used,point[..],1,1234,burn[0..<0],true).code == TXI_CORRUPT;
+  sk: [73] u8; sk[0] = 'G'; for k: 0..<36 { sk[1+k] = point[k]; } kv_put32(sk[..],37,1); sk[41] = 7;
+  sv: [44] u8; sv[0] = 9; kv_put32(sv[..],32,17); kv_put32(sv[..],36,2);
+  #assert lc_put_vartime(table[..],c[..],batch[..],sk[..],sv[..]);
+  hk: [33] u8; hk[0] = 'H'; hk[1] = 7; hv: [80] u8; kv_put32(hv[..],0,1); kv_put32(hv[..],4,2);
+  #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+  #assert ex_output(table[..],c[0].used,point[..],1,1234,script[..],true).code == TXI_CORRUPT;
+  c[0].used = kv_delete_vartime(table[..],c[0].used,ck[..]);
+  s := ex_output(table[..],c[0].used,point[..],1,1234,script[..],true); #assert s.code == LC_OK && s.status == 1 && s.spend.txid[0] == 9 && s.spend.block[0] == 7 && s.spend.vin == 17 && s.spend.height == 2;
+  hv[0] = 2; #assert lc_put_vartime(table[..],c[..],batch[..],hk[..],hv[..]);
+  #assert ex_output(table[..],c[0].used,point[..],1,1234,script[..],true).code == TXI_CORRUPT;
+}
+
+ex_id :: (text: string, out: [] u8) -> bool {
+  if text.count != 64 || out.count != 32 { return false; }
+  if hex_decode_checked(text,out,false).error != NC_OK { return false; }
+  for i: 0..<16 { a := out[i]; out[i] = out[31-i]; out[31-i] = a; } return true;
+}
+ex_network :: (chain: int) -> int { return ifx chain == 1 then 1 else (ifx chain == 5 then 3 else 2); }
+ex_block_hash :: (table: [] u8, used: int, hash: [] u8) -> ExBlock {
+  b := txi_block_vartime(table,used,hash); if b.code != LC_OK { return ExBlock.{code=b.code}; }
+  active := axi_active_vartime(table,used,hash,b.height); if active < 0 { return ExBlock.{code=TXI_CORRUPT}; }
+  r := ExBlock.{active=active == 1,record=b}; for k: 0..<32 { r.hash[k] = hash[k]; } return r;
+}
+ex_block_key :: (table: [] u8, used: int, key: string, genesis: [] u8) -> ExBlock #export_c {
+  if axi_context_vartime(table,used) != LC_OK || genesis.count != 32 { return ExBlock.{code=LC_CONTEXT}; }
+  height := ex_decimal(key); hash: [32] u8;
+  if height < 0 {
+    if !ex_id(key,hash[..]) { return ExBlock.{code=LC_CONTEXT}; }
+    if !lc_same(hash[..],genesis) { return ex_block_hash(table,used,hash[..]); } height = 0;
+  }
+  if height == 0 { r := ExBlock.{active=true,record=TxiBlock.{file=-1}}; for k: 0..<32 { r.hash[k] = genesis[k]; } return r; }
+  at := 0;
+  while at < used {
+    e := kv_entry_vartime(table,used,at); at = e.next; if e.key[0] != 'J' { continue; }
+    if e.key.count != 33 { return ExBlock.{code=TXI_CORRUPT}; }
+    b := ex_block_hash(table,used,e.key[1..<33]); if b.code != LC_OK { return b; }
+    if b.active && b.record.height == height { return b; }
+  }
+  return ExBlock.{code=TXI_MISS};
+}
+ex_output :: (table: [] u8, used: int, point: [] u8, height: int, value: int, script: [] u8, active: bool) -> ExOutput #export_c {
+  if axi_context_vartime(table,used) != LC_OK || point.count != 36 || !lc_amount_ok(value) { return ExOutput.{code=LC_CONTEXT}; }
+  if !active { return ExOutput.{status=4}; }
+  if lc_unspendable(script) { return ExOutput.{status=3}; }
+  spend := axi_spend_vartime(table,used,point,height);
+  if spend.code != LC_OK && spend.code != TXI_MISS { return ExOutput.{code=spend.code}; }
+  ck: [37] u8; ck[0] = 'C'; for k: 0..<36 { ck[1+k] = point[k]; } coin := lc_value_vartime(table,used,ck[..]);
+  unspent := coin.count >= 13 && kv_get32(coin,8) == height;
+  if spend.code == LC_OK { return ifx unspent then ExOutput.{code=TXI_CORRUPT} else ExOutput.{status=1,spend=spend}; }
+  if !unspent { return ExOutput.{status=2}; }
+  if kv_get64(coin,0) != cast(u64)value || !lc_same(coin[13..<coin.count],script) { return ExOutput.{code=TXI_CORRUPT}; }
+  return ExOutput.{};
+}

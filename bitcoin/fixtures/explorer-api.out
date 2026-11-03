@@ -1,0 +1,3 @@
+{"snapshot":{"chain":"regtest","height":0,"hash":"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206","profile":"pow-only"}}
+{"snapshot":{"chain":"regtest","height":0,"hash":"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206","profile":"pow-only"},"hash":"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206","height":0,"previous":"0000000000000000000000000000000000000000000000000000000000000000","time":1296688602,"size":285,"active":true,"confirmations":1,"txids":["4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"]}
+altered header identity: refused 11

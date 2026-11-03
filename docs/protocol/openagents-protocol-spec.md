@@ -25,6 +25,12 @@ bounded caller-buffer codecs since 0.4.0; [the importer contract](../../coax/pro
 records supported shapes, strict duplicate semantics and native/protoc tests.
 Product adapters, domain validation and live admission remain separate gates.
 
+The [Bitcoin explorer HTTP v1 contract](bitcoin-explorer-v1.md) adds a new
+`openagents.bitcoin.explorer.v1alpha1` projection for read-only block,
+transaction and address queries. Its JSON objects identify one committed
+proof-of-work-only snapshot. It does not change a published contract or
+claim full consensus validation.
+
 The [engine rename migration](../../proto/migrations/README.md) names old IDs, new
 canonical IDs and the required reader/writer transition. `legacy/<key>` in
 this catalog refers to that registry, never to a literal wire ID. Frozen

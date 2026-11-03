@@ -2,6 +2,17 @@
   "schema": 1,
   "examples": [
     {
+      "source": "bitcoin/examples/explorer-api.coax",
+      "chapter": "bitcoin/book/ch090-json-rpc-and-rest.md",
+      "stdout": "bitcoin/fixtures/explorer-api.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
+    },
+    {
       "source": "bitcoin/examples/script-flags.coax",
       "chapter": "bitcoin/book/ch055-script-flags-by-height-and-their-exceptions.md",
       "stdout": "bitcoin/fixtures/script-flags.out",

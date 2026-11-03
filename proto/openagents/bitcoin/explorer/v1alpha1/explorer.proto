@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package openagents.bitcoin.explorer.v1alpha1;
+
+// The explorer's read-only projection. HTTP v1 is specified in
+// docs/protocol/bitcoin-explorer-v1.md; its JSON is not protobuf JSON.
+// Hash strings use the conventional reversed display order. Amounts are
+// integer satoshis. "pow-only" does not assert full consensus validation.
+message Snapshot {
+  string chain = 1;
+  uint32 height = 2;
+  string hash = 3;
+  string profile = 4;
+}
+
+message Occurrence {
+  string txid = 1;
+  string block = 2;
+  uint32 height = 3;
+  uint32 order = 4;
+}
+
+message Spend {
+  string txid = 1;
+  string block = 2;
+  uint32 vin = 3;
+  uint32 height = 4;
+}
+
+message Output {
+  uint32 vout = 1;
+  uint64 value_sat = 2;
+  string script_hex = 3;
+  optional string address = 4;
+  // unspent | spent | replaced | unspendable | stale
+  string status = 5;
+  optional Spend spend = 6;
+}
+
+message Block {
+  Snapshot snapshot = 1;
+  string hash = 2;
+  uint32 height = 3;
+  string previous = 4;
+  uint32 time = 5;
+  uint32 size = 6;
+  bool active = 7;
+  uint32 confirmations = 8;
+  repeated string txids = 9;
+}
+
+message Input {
+  string txid = 1;
+  uint32 vout = 2;
+  bool coinbase = 3;
+}
+
+message Transaction {
+  Snapshot snapshot = 1;
+  Occurrence occurrence = 2;
+  string wtxid = 3;
+  string raw = 4;
+  bool active = 5;
+  uint32 confirmations = 6;
+  repeated Input inputs = 7;
+  repeated Output outputs = 8;
+}
+
+message AddressOutput {
+  Occurrence occurrence = 1;
+  Output output = 2;
+}
+
+message Address {
+  Snapshot snapshot = 1;
+  string address = 2;
+  string script_hex = 3;
+  uint64 balance_sat = 4;
+  repeated Occurrence transactions = 5;
+  repeated AddressOutput outputs = 6;
+}
+
+message Search {
+  Snapshot snapshot = 1;
+  string kind = 2; // block | transaction | address
+  string key = 3;
+}

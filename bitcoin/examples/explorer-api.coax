@@ -1,0 +1,16 @@
+#run_steps 250000000;
+#load "../../coax/lib/bitcoin/explorer-body.coax";
+#load "../../coax/lib/bitcoin/explorer-json.coax";
+#import "Basic";
+main :: () {
+  bytes: [1024] u8; raw := tx_unhex(LC_PREFIX[0],bytes[..]); g: [32] u8; #assert sha256d_checked(raw[0..<80],g[..],false) == SHA_OK;
+  table: [8192] u8; stage: [8192] u8; batch: [8192] u8;
+  init := axi_init_vartime(5,g[..],table[..],0,stage[..],batch[..]); #assert init.code == LC_OK;
+  tip := lc_tip_vartime(stage[..],init.used); buffer: [2048] u8; o: [1] Jo; jo_start(o[..],buffer[..]); ex_json_tip(o[..],tip); print("%\n",jo_text(o[..]));
+  b := ex_block_key(stage[..],init.used,"0",g[..]); b.record.n = raw.count;
+  ins: [8] TxIn; outs: [8] TxOut; items: [8] TxItem; ids: [256] u8; wids: [256] u8; work: [256] u8;
+  checked := ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]); #assert checked.code == LC_OK;
+  jo_start(o[..],buffer[..]); ex_json_block(o[..],tip,b,raw,ids[0..<32*checked.count]); print("%\n",jo_text(o[..]));
+  b.hash[0] ^= 1; refused := ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]);
+  #assert refused.code == TXI_MISMATCH; print("altered header identity: refused %\n",refused.code);
+}

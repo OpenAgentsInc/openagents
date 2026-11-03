@@ -1,0 +1,92 @@
+// Authenticate stored block identity and indexed transaction boundaries.
+#load "explorer-store.coax";
+#load "witness.coax";
+#load "../../tests/bitcoin/lightchain_vectors.coax";
+#authority;
+ExBody :: struct { code: int; count: int; }
+ExSpan :: struct { code: int; order: int; tx: Tx; }
+
+#test "explorer body: complete block, exact transaction span and every refusal" {
+  bytes: [1024] u8; raw := tx_unhex(LC_PREFIX[1],bytes[..]); hash: [32] u8; #assert sha256d_checked(raw[0..<80],hash[..],false) == SHA_OK;
+  b := ExBlock.{record=TxiBlock.{n=raw.count}}; b.hash = hash;
+  ins: [8] TxIn; outs: [8] TxOut; items: [8] TxItem; ids: [256] u8; wids: [256] u8; work: [256] u8;
+  r := ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]); #assert r.code == LC_OK && r.count == 1;
+  id: [32] u8; for k: 0..<32 { id[k] = ids[k]; }
+  hit := TxiHit.{offset=81,n=raw.count-81,block=hash};
+  t := ex_tx_span(hit,id[..],raw,ins[..],outs[..],items[..]); #assert t.code == LC_OK && t.order == 0 && t.tx.total == hit.n && t.tx.nout == 2;
+  hit.offset += 1; #assert ex_tx_span(hit,id[..],raw,ins[..],outs[..],items[..]).code == TXI_CORRUPT; hit.offset -= 1;
+  hit.n -= 1; #assert ex_tx_span(hit,id[..],raw,ins[..],outs[..],items[..]).code == LC_CONTEXT; hit.n += 1;
+  id[0] ^= 1; #assert ex_tx_span(hit,id[..],raw,ins[..],outs[..],items[..]).code == TXI_MISMATCH; id[0] ^= 1;
+  #assert ex_tx_span(hit,id[..],raw,ins[0..<0],outs[..],items[..]).code == LC_CAPACITY;
+  #assert ex_body_check(b,raw[0..<80],true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_CONTEXT;
+  b.hash[0] ^= 1; #assert ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == TXI_MISMATCH; b.hash = hash;
+  #assert ex_body_check(b,raw,true,ins[0..<0],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_CAPACITY;
+  #assert ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[0..<0]).code == LC_CAPACITY;
+  bytes[raw.count-1] ^= 1; #assert ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_BLOCK;
+  bytes[85] = 253; #assert ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_BLOCK;
+}
+#test "explorer body: profile extents, a 64-byte transaction and witness spans" {
+  bytes: [1024] u8; raw := tx_unhex(LC_PREFIX[1],bytes[..]); b := ExBlock.{record=TxiBlock.{n=raw.count}};
+  #assert sha256d_checked(raw[0..<80],b.hash[..],false) == SHA_OK;
+  ins: [8] TxIn; outs: [8] TxOut; items: [8] TxItem; ids: [256] u8; wids: [256] u8; work: [256] u8;
+  b.code = TXI_MISS; #assert ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_CONTEXT; b.code = LC_OK;
+  b.record.n += 1; #assert ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_CONTEXT;
+  b.record.n = 80; #assert ex_body_check(b,raw[0..<80],true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_CONTEXT;
+  // Body identity is tested independently of chain admission here.
+  txraw: [64] u8; tx := tx_unhex(MK_TX64,txraw[..]); for i: 0..<64 { bytes[81+i] = tx[i]; } bytes[80] = 1;
+  #assert sha256d_checked(tx,bytes[36..<68],false) == SHA_OK && sha256d_checked(bytes[0..<80],b.hash[..],false) == SHA_OK;
+  b.record.n = 145; #assert ex_body_check(b,bytes[0..<145],true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_BLOCK;
+  bytes[80] = 0; b.record.n = 81;
+  #assert ex_body_check(b,bytes[0..<81],true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_BLOCK; bytes[80] = 1;
+  witness: [512] u8; w := tx_unhex(TX_MAINNET[3].tx,witness[..]); for i: 0..<w.count { bytes[81+i] = w[i]; }
+  t := tx_read_vartime(w,true,ins[..],outs[..],items[..]); id: [32] u8; #assert t.segwit && tx_txid_vartime(w,t,id[..]);
+  hit := TxiHit.{offset=81,n=w.count}; #assert sha256d_checked(bytes[0..<80],hit.block[..],false) == SHA_OK;
+  span := ex_tx_span(hit,id[..],bytes[0..<81+w.count],ins[..],outs[..],items[..]); #assert span.code == LC_OK && span.tx.segwit && span.tx.total == w.count;
+}
+#test "explorer body: original witness block and witness-only corruption" #steps 100000000 {
+  bytes: [6000] u8; raw := tx_unhex(MK_BLOCK_514999,bytes[..]); b := ExBlock.{record=TxiBlock.{n=raw.count}};
+  #assert sha256d_checked(raw[0..<80],b.hash[..],false) == SHA_OK;
+  ins: [8] TxIn; outs: [8] TxOut; items: [8] TxItem; ids: [1024] u8; wids: [1024] u8; work: [1024] u8;
+  #assert ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_OK;
+  #assert ex_body_check(b,raw,false,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_BLOCK;
+  at := tx_compact_read_vartime(raw,80).next; t := tx_parse_vartime(raw[at..<raw.count],true,ins[..],outs[..],items[..]);
+  #assert t.segwit && t.nitems > 0; bytes[at+items[0].at] ^= 1;
+  #assert ex_body_check(b,raw,true,ins[..],outs[..],items[..],ids[..],wids[..],work[..]).code == LC_BLOCK;
+}
+#test "explorer body: later transaction ordinal and malformed body" {
+  bytes: [1024] u8; raw := tx_unhex(LC_BRANCH[0],bytes[..]); hash: [32] u8; #assert sha256d_checked(raw[0..<80],hash[..],false) == SHA_OK;
+  ins: [8] TxIn; outs: [8] TxOut; items: [8] TxItem; at := tx_compact_read_vartime(raw,80).next;
+  for i: 0..<3 {
+    t := tx_parse_vartime(raw[at..<raw.count],true,ins[..],outs[..],items[..]); id: [32] u8; #assert tx_txid_vartime(raw[at..<raw.count],t,id[..]);
+    s := ex_tx_span(TxiHit.{offset=at,n=t.total,block=hash},id[..],raw,ins[..],outs[..],items[..]); #assert s.code == LC_OK && s.order == i && s.tx.total == t.total; at += t.total;
+  }
+  hit := TxiHit.{offset=81,n=10}; id: [32] u8;
+  #assert ex_tx_span(hit,id[..],raw[0..<80],ins[..],outs[..],items[..]).code == LC_CONTEXT;
+  bytes[80] = 253; #assert ex_tx_span(hit,id[..],raw[0..<81],ins[..],outs[..],items[..]).code == LC_BLOCK;
+  bytes[80] = 3; bytes[85] = 253; #assert ex_tx_span(hit,id[..],raw,ins[..],outs[..],items[..]).code == LC_BLOCK;
+}
+
+ex_body_check :: (b: ExBlock, raw: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, ids: [] u8, wids: [] u8, work: [] u8) -> ExBody #export_c {
+  if !lc_body_extent(raw.count) || b.code != LC_OK || raw.count != b.record.n { return ExBody.{code=LC_CONTEXT}; }
+  hash: [32] u8; #assert sha256d_checked(raw[0..<80],hash[..],false) == SHA_OK; expected := b.hash;
+  if !lc_same(hash[..],expected[..]) { return ExBody.{code=TXI_MISMATCH}; }
+  checked := witness_mutated_vartime(raw,segwit,ins,outs,items,ids,wids,work);
+  if checked.code == WITNESS_CAPACITY { return ExBody.{code=LC_CAPACITY}; }
+  if checked.code != WITNESS_OK || checked.count < 1 { return ExBody.{code=LC_BLOCK}; }
+  return ExBody.{count=checked.count};
+}
+ex_tx_span :: (hit: TxiHit, id: [] u8, raw: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxItem) -> ExSpan #export_c {
+  if raw.count < 81 { return ExSpan.{code=LC_CONTEXT}; }
+  count := tx_compact_read_vartime(raw,80); if count.code != TX_OK { return ExSpan.{code=LC_BLOCK}; } at := count.next;
+  for i: 0..<count.value {
+    tx := tx_parse_vartime(raw[at..<raw.count],true,ins,outs,items);
+    if tx.code == TX_CAPACITY { return ExSpan.{code=LC_CAPACITY}; } if tx.code != TX_OK { return ExSpan.{code=LC_BLOCK}; }
+    if at == hit.offset {
+      if hit.n != tx.total { return ExSpan.{code=LC_CONTEXT}; }
+      code := txi_check_tx_vartime(hit,id,raw[0..<80],raw[at..<at+tx.total],ins,outs,items);
+      return ExSpan.{code=code,order=i,tx=tx};
+    }
+    at += tx.total;
+  }
+  return ExSpan.{code=TXI_CORRUPT};
+}

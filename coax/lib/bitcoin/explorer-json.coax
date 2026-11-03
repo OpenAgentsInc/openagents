@@ -1,0 +1,84 @@
+// Explorer v1 JSON formatting of admitted read-only snapshots. These
+// procedures format typed data; explorer-store/request own admission.
+#run_steps 250000000;
+#load "explorer-store.coax";
+#load "address.coax";
+#load "../json/json.coax";
+EX_CHAIN_NAMES :: [6] string.["","main","test","testnet4","signet","regtest"];
+EX_OUTPUT_NAMES :: [5] string.["unspent","spent","replaced","unspendable","stale"];
+
+#test "explorer JSON: snapshot, exact integer satoshis and both hash orders" {
+  buffer: [1024] u8; o: [1] Jo; tip := LcTip.{chain=5,height=17}; tip.hash[31] = 0xab;
+  jo_start(o[..],buffer[..]); jo_obj(o[..]); ex_json_snapshot(o[..],tip); jo_key(o[..],"value_sat"); jo_int(o[..],2100000000000000); jo_end(o[..]);
+  #assert jo_text(o[..]) == "{\"snapshot\":{\"chain\":\"regtest\",\"height\":17,\"hash\":\"ab00000000000000000000000000000000000000000000000000000000000000\",\"profile\":\"pow-only\"},\"value_sat\":2100000000000000}";
+  raw := [2] u8.[0x12,0xab]; jo_start(o[..],buffer[..]); ex_json_hex(o[..],raw[..],false); #assert jo_text(o[..]) == "\"12ab\"";
+  jo_start(o[..],buffer[0..<3]); ex_json_hex(o[..],raw[..],true); #assert o[0].bad;
+}
+#test "explorer JSON: a spent output carries its input number and exact script" {
+  buffer: [2048] u8; o: [1] Jo; script := [1] u8.[0x51]; state := ExOutput.{status=1}; state.spend.vin = 19; state.spend.height = 7;
+  jo_start(o[..],buffer[..]); ex_json_output(o[..],2,13,0,script[..],state);
+  nodes: [64] JvNode; d: [1] Jv; #assert jv_parse(d[..],jo_text(o[..]),nodes[..]); v := d[0];
+  #assert jv_int(v,jv_get(v,0,"vout"),-1) == 13 && jv_int(v,jv_get(v,0,"value_sat"),-1) == 0;
+  #assert jv_raw(v,jv_get(v,0,"script_hex")) == "51" && jv_raw(v,jv_get(v,0,"status")) == "spent" && jv_get(v,0,"address") == -1;
+  s := jv_get(v,0,"spend"); #assert jv_int(v,jv_get(v,s,"vin"),-1) == 19 && jv_int(v,jv_get(v,s,"height"),-1) == 7;
+}
+ex_json_hex :: (o: [] Jo, bytes: [] u8, reverse: bool) {
+  digits := "0123456789abcdef"; jo_value(o); jo_byte(o,'"');
+  for i: 0..<bytes.count { b := bytes[ifx reverse then bytes.count-1-i else i]; jo_byte(o,digits[b>>4]); jo_byte(o,digits[b&15]); } jo_byte(o,'"');
+}
+ex_json_snapshot :: (o: [] Jo, tip: LcTip) {
+  jo_key(o,"snapshot"); jo_obj(o); jo_key(o,"chain"); jo_str(o,EX_CHAIN_NAMES[tip.chain]); jo_key(o,"height"); jo_int(o,tip.height);
+  jo_key(o,"hash"); hash := tip.hash; ex_json_hex(o,hash[..],true); jo_key(o,"profile"); jo_str(o,"pow-only"); jo_end(o);
+}
+ex_json_occurrence :: (o: [] Jo, id: [] u8, hash: [] u8, height: int, order: int) {
+  jo_obj(o); jo_key(o,"txid"); ex_json_hex(o,id,true); jo_key(o,"block"); ex_json_hex(o,hash,true);
+  jo_key(o,"height"); jo_int(o,height); jo_key(o,"order"); jo_int(o,order); jo_end(o);
+}
+ex_json_spend :: (o: [] Jo, spend: AxiSpend) {
+  id := spend.txid; hash := spend.block; jo_obj(o); jo_key(o,"txid"); ex_json_hex(o,id[..],true); jo_key(o,"block"); ex_json_hex(o,hash[..],true);
+  jo_key(o,"vin"); jo_int(o,spend.vin); jo_key(o,"height"); jo_int(o,spend.height); jo_end(o);
+}
+ex_json_output :: (o: [] Jo, network: int, vout: int, value: int, script: [] u8, state: ExOutput) {
+  jo_obj(o); jo_key(o,"vout"); jo_int(o,vout); jo_key(o,"value_sat"); jo_int(o,value); jo_key(o,"script_hex"); ex_json_hex(o,script,false);
+  address: [128] u8; n := address_encode_vartime(network,script,address[..]);
+  if n >= 0 { jo_key(o,"address"); jo_str(o,cast(string)address[0..<n]); }
+  jo_key(o,"status"); jo_str(o,EX_OUTPUT_NAMES[state.status]);
+  if state.status == 1 { jo_key(o,"spend"); ex_json_spend(o,state.spend); } jo_end(o);
+}
+ex_json_tip :: (o: [] Jo, tip: LcTip) { jo_obj(o); ex_json_snapshot(o,tip); jo_end(o); }
+ex_json_block :: (o: [] Jo, tip: LcTip, b: ExBlock, raw: [] u8, ids: [] u8) {
+  hash := b.hash; jo_obj(o); ex_json_snapshot(o,tip); jo_key(o,"hash"); ex_json_hex(o,hash[..],true);
+  jo_key(o,"height"); jo_int(o,b.record.height); jo_key(o,"previous"); ex_json_hex(o,raw[4..<36],true);
+  jo_key(o,"time"); jo_int(o,tx_le_vartime(raw,68,4)); jo_key(o,"size"); jo_int(o,raw.count);
+  jo_key(o,"active"); jo_bool(o,b.active); jo_key(o,"confirmations"); jo_int(o,ifx b.active then tip.height-b.record.height+1 else 0);
+  jo_key(o,"txids"); jo_arr(o); for i: 0..<ids.count/32 { ex_json_hex(o,ids[32*i..<32*i+32],true); } jo_end(o); jo_end(o);
+}
+ex_json_transaction :: (o: [] Jo, tip: LcTip, hit: TxiHit, order: int, id: [] u8, wtxid: [] u8, raw: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, states: [] ExOutput) {
+  hash := hit.block; jo_obj(o); ex_json_snapshot(o,tip); jo_key(o,"occurrence");
+  ex_json_occurrence(o,id,hash[..],hit.height,order);
+  jo_key(o,"wtxid"); ex_json_hex(o,wtxid,true); jo_key(o,"raw"); ex_json_hex(o,raw,false);
+  jo_key(o,"active"); jo_bool(o,hit.active); jo_key(o,"confirmations"); jo_int(o,ifx hit.active then tip.height-hit.height+1 else 0);
+  jo_key(o,"inputs"); jo_arr(o);
+  for i: 0..<t.nin {
+    at := ins[i].outpoint; jo_obj(o); jo_key(o,"txid"); ex_json_hex(o,raw[at..<at+32],true); jo_key(o,"vout"); jo_int(o,tx_le_vartime(raw,at+32,4));
+    jo_key(o,"coinbase"); jo_bool(o,tx_coinbase_vartime(raw,t,ins)); jo_end(o);
+  }
+  jo_end(o); jo_key(o,"outputs"); jo_arr(o);
+  for i: 0..<t.nout { out := outs[i]; ex_json_output(o,ex_network(tip.chain),i,tx_le_vartime(raw,out.value,8),raw[out.script..<out.script+out.script_n],states[i]); }
+  jo_end(o); jo_end(o);
+}
+ex_json_address :: (o: [] Jo, tip: LcTip, address: string, script: [] u8, q: AxiResult, outs: [] AxiOutput, txs: [] AxiTx) {
+  jo_obj(o); ex_json_snapshot(o,tip); jo_key(o,"address"); jo_str(o,address); jo_key(o,"script_hex"); ex_json_hex(o,script,false);
+  jo_key(o,"balance_sat"); jo_int(o,q.balance); jo_key(o,"transactions"); jo_arr(o);
+  for i: 0..<q.transactions { t := txs[i]; ex_json_occurrence(o,t.txid[..],t.block[..],t.height,t.order); } jo_end(o);
+  jo_key(o,"outputs"); jo_arr(o);
+  for i: 0..<q.outputs {
+    out := outs[i]; jo_obj(o); jo_key(o,"occurrence"); ex_json_occurrence(o,out.txid[..],out.block[..],out.height,out.order);
+    jo_key(o,"output"); ex_json_output(o,ex_network(tip.chain),out.vout,out.value,script,ExOutput.{status=out.status,spend=out.spend}); jo_end(o);
+  }
+  jo_end(o); jo_end(o);
+}
+ex_json_search :: (o: [] Jo, tip: LcTip, kind: int, key: string) {
+  names := [6] string.["","","block","transaction","address",""];
+  jo_obj(o); ex_json_snapshot(o,tip); jo_key(o,"kind"); jo_str(o,names[kind]); jo_key(o,"key"); jo_str(o,key); jo_end(o);
+}

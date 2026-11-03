@@ -1,0 +1,108 @@
+// JSON-RPC 2.0 envelope for the read-only explorer methods.
+#load "explorer-request.coax";
+#load "../json/json.coax";
+#authority;
+ExRpc :: struct { error: int; kind: int; key: string; id: string = "null"; }
+
+#test "explorer RPC: notifications have no response object" {
+  nodes: [64] JvNode;
+  #assert ex_rpc_notification("{\"jsonrpc\":\"2.0\",\"method\":\"explorer.tip\"}",nodes[..]);
+  #assert ex_rpc_notification("{\"jsonrpc\":\"2.0\",\"method\":\"unknown\",\"params\":[]}",nodes[..]);
+  #assert ex_rpc_notification("{\"jsonrpc\":\"2.0\",\"method\":\"explorer.tip\",\"params\":{}}",nodes[..]);
+  for text: [9] string.["{","[]","{}","{\"jsonrpc\":2.0,\"method\":\"explorer.tip\"}","{\"jsonrpc\":\"1.0\",\"method\":\"explorer.tip\"}","{\"jsonrpc\":\"2.0\",\"method\":17}","{\"jsonrpc\":\"2.0\",\"method\":\"explorer.tip\",\"params\":7}","{\"jsonrpc\":\"2.0\",\"method\":\"explorer.tip\",\"other\":7}","{\"jsonrpc\":\"2.0\",\"method\":\"explorer.tip\",\"id\":null}"] {
+    #assert !ex_rpc_notification(text,nodes[..]);
+  }
+  #assert !ex_rpc_notification("{\"jsonrpc\":\"2.0\",\"method\":\"explorer.tip\",\"params\":{},\"params\":{}}",nodes[..]);
+}
+ex_rpc_notification :: (text: string, nodes: [] JvNode) -> bool {
+  d: [1] Jv; if !jv_parse(d[..],text,nodes) { return false; } v := d[0];
+  version := jv_get(v,0,"jsonrpc");
+  if jv_kind(v,version) != JV_STRING || !jv_raw_eq(jv_raw(v,version),"2.0") || jv_kind(v,jv_get(v,0,"method")) != JV_STRING { return false; }
+  p := jv_get(v,0,"params");
+  if p == -1 { return jv_len(v,0) == 2; }
+  return jv_len(v,0) == 3 && (jv_kind(v,p) == JV_OBJECT || jv_kind(v,p) == JV_ARRAY);
+}
+
+#test "explorer RPC: exact methods, parameters and preserved identifiers" {
+  nodes: [64] JvNode; key: [140] u8;
+  methods := [5] string.["explorer.tip","explorer.block","explorer.transaction","explorer.address","explorer.search"];
+  out: [512] u8; o: [1] Jo;
+  for i: 0..<5 {
+    jo_start(o[..],out[..]); jo_obj(o[..]); jo_key(o[..],"jsonrpc"); jo_str(o[..],"2.0"); jo_key(o[..],"id"); jo_int(o[..],17);
+    jo_key(o[..],"method"); jo_str(o[..],methods[i]); jo_key(o[..],"params"); jo_obj(o[..]);
+    if i != 0 { jo_key(o[..],"key"); jo_str(o[..],"123"); } jo_end(o[..]); jo_end(o[..]);
+    r := ex_rpc(jo_text(o[..]),key[..],nodes[..]); #assert r.error == 0 && r.kind == i+1 && r.id == "17";
+    #assert r.key == ifx i == 0 then "" else "123";
+  }
+  text := "{\"jsonrpc\":\"2.0\",\"id\":\"a\\\"b\",\"method\":\"explorer.block\",\"params\":{\"key\":\"123\"}}";
+  r := ex_rpc(text,key[0..<3],nodes[..]); #assert r.error == 0 && r.id == "\"a\\\"b\"" && r.key == "123";
+  #assert ex_rpc(text,key[0..<2],nodes[..]).error == -32602;
+  #assert ex_rpc("{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"explorer.tip\",\"params\":{}}",key[..],nodes[..]).error == 0;
+  #assert ex_rpc("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"explorer.tip\",\"params\":{}}",key[..],nodes[..]).id == "0";
+}
+#test "explorer RPC: parse, invalid request, method and parameter errors" {
+  nodes: [64] JvNode; key: [140] u8;
+  #assert ex_rpc("{",key[..],nodes[..]).error == -32700;
+  for bad: [10] string.["[]","null","{}",
+    "{\"jsonrpc\":\"1.0\",\"id\":1,\"method\":\"explorer.tip\",\"params\":{}}",
+    "{\"jsonrpc\":\"2.0\",\"method\":\"explorer.tip\",\"params\":{}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"explorer.tip\",\"params\":{}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"explorer.tip\",\"params\":{}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":17,\"params\":{}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"id\":2,\"method\":\"explorer.tip\",\"params\":{}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"other\":3,\"params\":{}}"] {
+    r := ex_rpc(bad,key[..],nodes[..]); #assert r.error == -32600 && r.id == "null";
+  }
+  r := ex_rpc("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"getblockchaininfo\",\"params\":{}}",key[..],nodes[..]); #assert r.error == -32601 && r.id == "4";
+  for bad: [5] string.[
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.tip\",\"params\":{\"key\":\"x\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.block\",\"params\":{}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.block\",\"params\":{\"key\":2}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.block\",\"params\":{\"key\":\"a/b\"}}",
+    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.block\",\"params\":[]}"] {
+    r = ex_rpc(bad,key[..],nodes[..]); #assert r.error == -32602 && r.id == "1";
+  }
+}
+#test "explorer RPC: integer identifier edges and all required members" {
+  for raw: [9] string.["0","-0","9","-9","9007199254740991","-9007199254740991","9007199254740990","1000000000000000","8007199254740992"] { #assert ex_rpc_integer_id(raw); }
+  for raw: [9] string.["","-","1.0","1e0","9007199254740992","-9007199254740992","10000000000000000","/",":"] { #assert !ex_rpc_integer_id(raw); }
+  nodes: [64] JvNode; key: [140] u8;
+  #assert ex_rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.tip\",\"unknown\":{}}",key[..],nodes[..]).error == -32600;
+  #assert ex_rpc("{\"jsonrpc\":\"2.0\",\"unknown\":1,\"method\":\"explorer.tip\",\"params\":{}}",key[..],nodes[..]).error == -32600;
+  #assert ex_rpc("{\"jsonrpc\":2.0,\"id\":1,\"method\":\"explorer.tip\",\"params\":{}}",key[..],nodes[..]).error == -32600;
+  #assert ex_rpc("{\"jsonrpc\":\"2\\u002e0\",\"id\":-9007199254740991,\"method\":\"explorer.tip\",\"params\":{}}",key[..],nodes[..]).error == 0;
+  #assert ex_rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.Tip\",\"params\":{}}",key[..],nodes[..]).error == -32601;
+  #assert ex_rpc("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"explorer.block\",\"params\":{\"key\":\"\"}}",key[..],nodes[..]).error == -32602;
+}
+ex_rpc_integer_id :: (raw: string) -> bool {
+  if raw.count == 0 { return false; } at := ifx raw[0] == '-' then 1 else 0; n := raw.count-at;
+  if n < 1 || n > 16 { return false; }
+  for i: at..<raw.count { if raw[i] < '0' || raw[i] > '9' { return false; } }
+  if n < 16 { return true; } limit := "9007199254740991";
+  for i: 0..<16 { if raw[at+i] < limit[i] { return true; } if raw[at+i] > limit[i] { return false; } } return true;
+}
+
+ex_rpc :: (text: string, key: [] u8, nodes: [] JvNode) -> ExRpc #export_c {
+  d: [1] Jv;
+  if !jv_parse(d[..],text,nodes) { return ExRpc.{error=-32700}; } v := d[0];
+  if jv_kind(v,0) != JV_OBJECT || jv_len(v,0) != 4 { return ExRpc.{error=-32600}; }
+  version := jv_get(v,0,"jsonrpc"); method := jv_get(v,0,"method"); id := jv_get(v,0,"id"); params := jv_get(v,0,"params");
+  if jv_kind(v,version) != JV_STRING || !jv_raw_eq(jv_raw(v,version),"2.0") || jv_kind(v,method) != JV_STRING || params == -1 { return ExRpc.{error=-32600}; }
+  ik := jv_kind(v,id);
+  if ik != JV_NULL && ik != JV_STRING && ik != JV_NUMBER { return ExRpc.{error=-32600}; }
+  if ik == JV_NUMBER {
+    if !ex_rpc_integer_id(jv_raw(v,id)) { return ExRpc.{error=-32600}; }
+  }
+  r := ExRpc.{id=ifx ik == JV_STRING then text[v.nodes[id].from-1..<v.nodes[id].to+1] else jv_raw(v,id)};
+  methods := [5] string.["explorer.tip","explorer.block","explorer.transaction","explorer.address","explorer.search"];
+  for i: 0..<5 { if jv_raw_eq(jv_raw(v,method),methods[i]) { r.kind = i+1; } }
+  if r.kind == 0 { r.error = -32601; return r; }
+  if jv_kind(v,params) != JV_OBJECT { r.error = -32602; return r; }
+  if r.kind == EX_TIP {
+    if jv_len(v,params) != 0 { r.error = -32602; } return r;
+  }
+  if jv_len(v,params) != 1 { r.error = -32602; return r; }
+  n := jv_str(v,jv_get(v,params,"key"),key);
+  if n == -1 { r.error = -32602; return r; }
+  r.key = cast(string)key[0..<n]; if !ex_key_ok(r.key) { r.error = -32602; } return r;
+}
