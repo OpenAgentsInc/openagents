@@ -50,7 +50,7 @@ stdenv.mkDerivation {
          units=(render-host.c render-realm.c render-media.c render-textures.c RenderTexture.c)
          flags="$flags -ffunction-sections -fdata-sections"; link=(-Wl,--gc-sections)
        fi
-       for s in "''${sources[@]}" "''${units[@]}" realm-host.c verse-panel.c; do gcc $flags -c $s -o ''${s%.c}.o; done
+       for s in "''${sources[@]}" "''${units[@]}" realm-host.c verse-panel.c verse-hands.c; do gcc $flags -c $s -o ''${s%.c}.o; done
        gcc $flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o
        gcc $flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
        gcc $flags "''${link[@]}" -Ikms -I../wl $(pkg-config --cflags libdrm wayland-client) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o $math \

@@ -40,6 +40,7 @@
 #include "vkd.h"
 #include "vkw.h"
 #include "vkdesk.h"
+#include "vkhands.h"
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -212,6 +213,22 @@ static void to_pointer_screen(void *user, float x, float y, int phase) {
   if (pointer_to_desk(sx, sy, phase)) { touched = 1; return; }
   to_pointer(user, x, y, phase);
 }
+static int windowed_now;      // the window's path (to_pointer_window) or the bare screen's
+static VkHands hands;         // --hands: the camera's hand as the pointer (vkhands.h)
+static void to_pointer_window(void *user, float x, float y, int phase);
+// the hand's point, in the screen's pixels, into the path a mouse's would take
+static void hand_to(float x, float y, int phase) {
+  touched = 1;
+  // VERSE_HANDS_LOG: each press and release, and every 30th move, on stderr (for checking a hand)
+  static int moves; static int log_on = -1;
+  if (log_on < 0) log_on = getenv("VERSE_HANDS_LOG") != NULL;
+  if (log_on && (phase != 1 || moves++ % 30 == 0)) fprintf(stderr, "vk-realm: hand %s at %.0f, %.0f\n", phase == 0 ? "down" : phase == 2 ? "up" : "moves", x, y);
+  if (windowed_now) { to_pointer_window(NULL, x, y, phase); return; }
+  if (pointer_to_desk(x, y, phase)) return;
+  float dx = screen_p && screen_p->w ? x * draw_w / (float)screen_p->w : x, dy = screen_p && screen_p->h ? y * draw_h / (float)screen_p->h : y;
+  mice.x = dx; mice.y = dy; mice.down = phase != 2;
+  to_pointer(NULL, dx, dy, phase);
+}
 static void to_pointer_window(void *user, float x, float y, int phase) {
   if (pointer_to_desk(x, y, phase)) { touched = 1; return; }
   float sx = window_p && window_p->w ? draw_w / (float)window_p->w : 1, sy = window_p && window_p->h ? draw_h / (float)window_p->h : 1;
@@ -331,7 +348,7 @@ static void press_keys(const char *keys, int frame) {
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden] [--seconds N] [--demo] [--shot OUT.ppm] [--net DIR] [--origin HOST[:PORT]] [--name NAME] "
-                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT] [--facts-once FILE] [--activity FILE] [--agents FILE] [--desk DIR [--desk-size WxH]]\n");
+                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT] [--facts-once FILE] [--activity FILE] [--agents FILE] [--desk DIR [--desk-size WxH] [--desk-mode docked|flat]] [--hands SOCKET]\n");
     return 2;
   }
   const char *dir = argv[1], *pack = argv[2], *facts = NULL, *extra = "", *shot = NULL, *out = NULL,*raw_out=NULL;
@@ -339,7 +356,7 @@ int main(int argc, char **argv) {
   float scale = 1;
   uint32_t w = 0, h = 0;
   int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0, facts_once = 0;
-  const char *desk_dir = NULL, *desk_size = NULL, *desk_mode = NULL;
+  const char *desk_dir = NULL, *desk_size = NULL, *desk_mode = NULL, *hands_path = NULL;
   const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
   int page = 0;
   for (int i = 3; i < argc; i++) {
@@ -369,7 +386,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--agents")) agents_file = val, i++;                // the machine's agents, sent as they change
     else if (!strcmp(a, "--desk")) desk_dir = val, i++;                     // Linux programs on a panel (vkdesk.h)
     else if (!strcmp(a, "--desk-size")) desk_size = val, i++;
-    else if (!strcmp(a, "--desk-mode")) desk_mode = val, i++;              // how the desk starts: docked or flat (default closed)  // the boot session: hold this VT, show VT N on leaving
+    else if (!strcmp(a, "--desk-mode")) desk_mode = val, i++;              // how the desk starts: docked or flat (default closed)
+    else if (!strcmp(a, "--hands")) hands_path = val, i++;                  // the camera daemon's hands socket: your hand as the pointer  // the boot session: hold this VT, show VT N on leaving
     else if (!strcmp(a, "--go")) go = val, i++;      // travel: another realm's slug written here, and it leaves (status 3)
     else if (!strcmp(a, "--keys")) keys = val, i++;  // headless: realm-run's F:KEY:DOWN, a key held or let go at frame F
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
@@ -535,6 +553,9 @@ int main(int argc, char **argv) {
     }
     MiceTo to = {to_pointer_screen, to_wheel, NULL};
     if (!windowed) { screen_p = &p; draw_w = (float)w; draw_h = (float)h; keyboards_hook = vkdesk_key; }
+    windowed_now = windowed;
+    vkhands_open(&hands, hands_path);
+    if (hands_path) cursor = 1;   // the hand's point is drawn, as the mice's is
     if (desk_dir) {
       uint32_t ddw = 1280, ddh = 720;
       if (desk_size) sscanf(desk_size, "%ux%u", &ddw, &ddh);
@@ -574,6 +595,7 @@ int main(int argc, char **argv) {
       touch_activity(t);
       agents_poll(t);
       vkdesk_pump(&desk, t);
+      vkhands_poll(&hands, t, p.w, p.h, hand_to);
       double dt = t - prev;
       prev = t;
       if (dt > 0.1) dt = 0.1;
@@ -649,6 +671,7 @@ int main(int argc, char **argv) {
   else {
     vkp_close(&v, &p);
     vkdesk_close(&v, &desk);
+    vkhands_close(&hands);
     if (windowed) vkw_close(&v, &win);
     else {
       vkd_close(&v, &screen);

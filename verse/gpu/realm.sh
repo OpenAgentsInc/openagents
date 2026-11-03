@@ -139,6 +139,9 @@ for realm in "${realms[@]}"; do
      "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$here"/vkw.h "$here"/vkdesk.h "$ship/"
   # the desk panel's policy (os/verse-panel.coax), linked into vk-realm
   (cd "$root" && "${COAX:-$root/coax/bin/coax}" c os/verse-panel.coax --library --header "$ship/verse-panel.h") > "$ship/verse-panel.c"
+  # your hand as the pointer (os/verse-hands.coax), linked into vk-realm too
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c os/verse-hands.coax --library --header "$ship/verse-hands.h") > "$ship/verse-hands.c"
+  cp "$here"/vkhands.h "$ship/"
   # the kms headers apart: a module has a realm.h of its own (the realm module's), and keys.h finds its sibling first
   mkdir -p "$ship/kms" && cp "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$ship/kms/"
   [[ "$realm" == everglade ]] && cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$ship/"
@@ -211,7 +214,7 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
        flags=\"\$flags -ffunction-sections -fdata-sections\"; link_flags=(-Wl,--gc-sections)
      fi
      pids=()
-     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
+     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c verse-hands.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
      for pid in \"\${pids[@]}\"; do wait \$pid; done
      gcc \$flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o && gcc \$flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
      gcc \$flags \"\${link_flags[@]}\" -Ikms -I../wl \$(pkg-config --cflags libdrm wayland-client) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm wayland-client) -lvulkan -lm -o vk-realm

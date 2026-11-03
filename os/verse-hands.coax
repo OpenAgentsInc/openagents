@@ -1,0 +1,107 @@
+// Verse OS: your hand as the pointer (docs/os/2026-11-02-verse-os.md, V6). The camera daemon
+// (os/camera-serve.coax, its hand tracker os/hands.coax) publishes a line per frame on its hands
+// socket: {"timestamp":..,"hands":[{"landmarks":[21 of {"x":..,"y":..,"z":..}],"pose":".."}],..}.
+// vk-realm.c --hands SOCKET reads them and asks this where the pointer is and whether it is down:
+//   - the index fingertip (landmark 8) is the pointer; the camera sees you as a mirror does, so x
+//     is flipped; the middle 70% of its view spans the whole screen, so the screen's edges are in
+//     reach without leaving the frame;
+//   - it is smoothed, a fifth of the way to the new point each frame, so tracking jitter does not
+//     shake it;
+//   - a pinch (os/hands.coax's pose "pinch") held two frames is the button down; three frames of
+//     anything else let it go, so one misread frame neither clicks nor drops a drag.
+// Coordinates go out as whole millionths of the screen (0..1000000) so the C host does no
+// arithmetic of its own beyond scaling. Library: verse-hands.h.
+
+HANDS_NONE :: 0; HANDS_POINT :: 1; HANDS_PINCH :: 2;
+HANDS_SPAN :: 0.7;       // the share of the camera's view that spans the screen
+HANDS_EASE :: 0.2;       // how far to the new point each frame
+HANDS_DOWN_FRAMES :: 2; HANDS_UP_FRAMES :: 3;
+
+// The number at text[i..] (digits, a point, digits; JSON's landmarks are 0..1): its value, and
+// in end[0] where it stopped (-1 when there was none).
+hands_number :: (text: string, i: int, end: [] int) -> f64 {
+  v: f64 = 0; k := i; seen := false;
+  while k < text.count && text[k] >= '0' && text[k] <= '9' { v = v * 10 + cast(f64) (text[k] - '0'); k += 1; seen = true; }
+  if k < text.count && text[k] == '.' {
+    k += 1; place: f64 = 0.1;
+    while k < text.count && text[k] >= '0' && text[k] <= '9' { v += place * cast(f64) (text[k] - '0'); place = place * 0.1; k += 1; seen = true; }
+  }
+  if k < text.count && (text[k] == 'e' || text[k] == 'E') { return -1; }   // never in the tracker's 0..1
+  end[0] = ifx seen then k else -1;
+  return v;
+}
+// Where pattern first occurs in text at or after from, or -1.
+hands_find :: (text: string, pattern: string, from: int) -> int {
+  i := from;
+  while i + pattern.count <= text.count { if text[i..<i + pattern.count] == pattern { return i; } i += 1; }
+  return -1;
+}
+// One line: what the first hand shows (k 0: HANDS_NONE, HANDS_POINT or HANDS_PINCH; 1: the
+// fingertip's x in millionths of the camera's view; 2: its y), -1 for a coordinate of no hand.
+verse_hands_read :: (text: string, k: int) -> int #export_c {
+  lm := hands_find(text, "\"landmarks\":[", 0);
+  if lm < 0 { return ifx k == 0 then HANDS_NONE else -1; }
+  // the ninth {"x": is landmark 8, the index fingertip
+  at := lm; for j: 0..<9 { at = hands_find(text, "{\"x\":", at + 1); if at < 0 { return ifx k == 0 then HANDS_NONE else -1; } }
+  e: [1] int;
+  x := hands_number(text, at + 5, e[..]); if e[0] < 0 || x < 0 || x > 1 { return ifx k == 0 then HANDS_NONE else -1; }
+  yi := hands_find(text, "\"y\":", e[0]); if yi < 0 { return ifx k == 0 then HANDS_NONE else -1; }
+  y := hands_number(text, yi + 4, e[..]); if e[0] < 0 || y < 0 || y > 1 { return ifx k == 0 then HANDS_NONE else -1; }
+  if k == 0 { return ifx hands_find(text, "\"pose\":\"pinch\"", 0) >= 0 then HANDS_PINCH else HANDS_POINT; }
+  return cast(int) ((ifx k == 1 then x else y) * 1000000 + 0.5);
+}
+#test "a line: the fingertip and whether it pinches" {
+  line := "{\"timestamp\":1.0,\"hands\":[{\"landmarks\":[{\"x\":0.1,\"y\":0.1,\"z\":0.0},{\"x\":0.1,\"y\":0.1,\"z\":0.0},{\"x\":0.1,\"y\":0.1,\"z\":0.0},{\"x\":0.1,\"y\":0.1,\"z\":0.0},{\"x\":0.1,\"y\":0.1,\"z\":0.0},{\"x\":0.1,\"y\":0.1,\"z\":0.0},{\"x\":0.1,\"y\":0.1,\"z\":0.0},{\"x\":0.1,\"y\":0.1,\"z\":0.0},{\"x\":0.25,\"y\":0.75,\"z\":0.0}],\"pose\":\"pinch\"}],\"status\":\"ok\",\"dropped\":0}";
+  #assert verse_hands_read(line, 0) == HANDS_PINCH && verse_hands_read(line, 1) == 250000 && verse_hands_read(line, 2) == 750000;
+  none := "{\"timestamp\":1.0,\"hands\":[],\"status\":\"No hands detected\",\"dropped\":2}";
+  #assert verse_hands_read(none, 0) == HANDS_NONE && verse_hands_read(none, 1) == -1;
+  open := "{\"hands\":[{\"landmarks\":[{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":1.0,\"y\":0.0}],\"pose\":\"open hand\"}]}";
+  #assert verse_hands_read(open, 0) == HANDS_POINT && verse_hands_read(open, 1) == 1000000 && verse_hands_read(open, 2) == 0;
+  short := "{\"hands\":[{\"landmarks\":[{\"x\":0.1,\"y\":0.1}],\"pose\":\"pinch\"}]}";
+  #assert verse_hands_read(short, 0) == HANDS_NONE;
+  bad := "{\"hands\":[{\"landmarks\":[{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":0.1,\"y\":0.1},{\"x\":1.5,\"y\":0.0}]}]}";
+  #assert verse_hands_read(bad, 0) == HANDS_NONE;
+}
+
+// The camera's point (millionths) on the screen (millionths): mirrored, the middle HANDS_SPAN of
+// the view stretched to the whole screen, clamped to it. axis 0 is x (mirrored), 1 is y.
+verse_hands_screen :: (v: int, axis: int) -> int #export_c {
+  f := cast(f64) v / 1000000;
+  if axis == 0 { f = 1 - f; }
+  lo: f64 = (1 - HANDS_SPAN) / 2;
+  s := (f - lo) / HANDS_SPAN;
+  if s < 0 { s = 0; } if s > 1 { s = 1; }
+  return cast(int) (s * 1000000 + 0.5);
+}
+#test "mirrored, the middle of the view to the whole screen" {
+  #assert verse_hands_screen(500000, 0) == 500000 && verse_hands_screen(500000, 1) == 500000;
+  #assert verse_hands_screen(150000, 1) == 0 && verse_hands_screen(850000, 1) == 1000000;
+  #assert verse_hands_screen(150000, 0) == 1000000 && verse_hands_screen(850000, 0) == 0;
+  #assert verse_hands_screen(0, 1) == 0 && verse_hands_screen(1000000, 1) == 1000000;
+}
+// The smoothed pointer: a fifth of the way from was to now (millionths); -1 was is the first point.
+verse_hands_ease :: (was: int, now: int) -> int #export_c {
+  if was < 0 { return now; }
+  return was + cast(int) (cast(f64) (now - was) * HANDS_EASE);
+}
+#test "smoothing" { #assert verse_hands_ease(-1, 300) == 300 && verse_hands_ease(0, 1000) == 200 && verse_hands_ease(1000, 0) == 800 && verse_hands_ease(5, 5) == 5; }
+// The button after this frame: down after HANDS_DOWN_FRAMES pinched frames in a row, up after
+// HANDS_UP_FRAMES unpinched ones. run is how many frames in a row the pinch has (positive) or
+// has not (negative) been seen, this frame included.
+verse_hands_down :: (was_down: bool, run: int) -> bool #export_c {
+  if !was_down { return run >= HANDS_DOWN_FRAMES; }
+  return !(run <= -HANDS_UP_FRAMES);
+}
+// The run after a frame that pinched or not.
+verse_hands_run :: (run: int, pinched: bool) -> int #export_c {
+  if pinched { return ifx run > 0 then run + 1 else 1; }
+  return ifx run < 0 then run - 1 else -1;
+}
+#test "a pinch held two frames presses, three without it let go" {
+  r := verse_hands_run(0, true); #assert r == 1 && !verse_hands_down(false, r);
+  r = verse_hands_run(r, true); #assert r == 2 && verse_hands_down(false, r);
+  r = verse_hands_run(r, false); #assert r == -1 && verse_hands_down(true, r);
+  r = verse_hands_run(r, false); #assert verse_hands_down(true, r);
+  r = verse_hands_run(r, false); #assert r == -3 && !verse_hands_down(true, r);
+  r = verse_hands_run(r, true); #assert r == 1 && !verse_hands_down(false, r);
+}

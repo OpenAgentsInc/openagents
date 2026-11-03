@@ -299,6 +299,10 @@ vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: stri
   // the desk (V3): Linux programs on a panel, F9 and F10, when the install has its compositor
   dk: [4096] u8; dc: [4096] u8; desk := fs_join(dir, "desk", dk[..]);
   if fs_exists(fs_join(desk, "compositor", dc[..])) { ok = ok && proc_arg(h, "--desk") && proc_arg(h, desk); }
+  // your hand (V6): the camera daemon's hands socket, when it is there (hands publish only while on)
+  hb2: [1024] u8; rt2 := proc_getenv("XDG_RUNTIME_DIR", hb2[..]); hs: [1100] u8;
+  hands := vs_cat(hs[..], rt2, "/coderos-camera/hands.sock");
+  if rt2.count > 0 && fs_exists(hands) { ok = ok && proc_arg(h, "--hands") && proc_arg(h, hands); }
   ok = ok && proc_arg(h, "--seconds");
   sb: [24] u8; ok = ok && proc_arg(h, vs_num(VS_FOREVER, sb[..]));
   if state.count > 0 { ok = ok && proc_arg(h, "--net") && proc_arg(h, state); }
