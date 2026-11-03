@@ -474,8 +474,11 @@ CB_reset_heads :: (b:CB_Context)->bool {
  for id:2..<c.state[0].used+1 {tag:=c.nodes[id].kind;if tag==CK_Tag.proc || tag==CK_Tag.param || tag==CK_Tag.stmt_var || tag==CK_Tag.stmt_each || tag==CK_Tag.case_binding {if !CB_tick(b,c.nodes[id].loc) {return false;}c.nodes[id].borrow_query=0;}}
  return true;
 }
-CB_run :: (c:CK_Context,queries:[]CK_BorrowQuery,origins:[]BS_Origin) {
- if !CB_workspace_admitted(queries.count,origins.count) {CK_resource(c,CK_Loc.{line=1,column=1});return;}state:[1]CB_State;b:=CB_Context.{c=c,queries=queries,origins=origins,state=state[..]};
+CB_run :: (c:CK_Context,queries:[]CK_BorrowQuery,origins:[]BS_Origin) {state:[1]CB_State;CB_run_with(c,queries,origins,state[..]);}
+// The pass on a fresh, zeroed state that the caller owns, so a check can read
+// what the pass cost and which caches it used.
+CB_run_with :: (c:CK_Context,queries:[]CK_BorrowQuery,origins:[]BS_Origin,state:[]CB_State) {
+ if !CB_workspace_admitted(queries.count,origins.count) {CK_resource(c,CK_Loc.{line=1,column=1});return;}b:=CB_Context.{c=c,queries=queries,origins=origins,state=state};
  if !CB_reset_heads(b) {return;}
  CB_walk(b,c.nodes[1].head,false);if c.state[0].fatal || c.state[0].error_count>0 {return;}CB_walk(b,c.state[0].instances,true);if c.state[0].fatal || c.state[0].error_count>0 {return;}b.literal_cache=true;b.query_index=CB_index_begin(b);CR_run(b);
 }

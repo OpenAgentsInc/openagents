@@ -82,16 +82,19 @@ class SpatialOperators(unittest.TestCase):
 
     def test_normal_program_at_instance_limit_refuses_incomplete_mutation_preparation(self):
         prelude='#load "'+str(ROOT/'coax/tests/spatial/operator-types.coax')+'";\n'
-        declarations=''.join('CapacityTag'+str(i)+' :: struct {value:f64;}\n' for i in range(254))
-        body=''.join('v'+str(i)+':CapacityTag'+str(i)+';r'+str(i)+':=keep(v'+str(i)+');' for i in range(254))
-        source=prelude+declarations+"""
-keep :: (x:$T:copyable)->$T {return x;}
-capacity_work :: () {BODY}
+        # The instance limit is sized from the program (#12653): 256 below 2056
+        # syntax nodes, then one per 8 more. So the 254 instances are struct
+        # parameters, 3 syntax nodes each (as in tests/generics.py), to keep the
+        # program small and its limit at the 256 floor.
+        params=', '.join('a'+str(i)+':CapacityTag('+str(i)+')' for i in range(1,255))
+        source=prelude+"""
+CapacityTag :: struct($N) {values:[$N]f64;}
+capacity_work :: (PARAMS) {}
 scale_at_limit :: (v:Vector3(World,u.Metre,f64),s:f64)->Vector3(World,u.Metre,f64) {return v*s;}
 #test "normal instance ceiling stays admissible until mutation preparation" {
- capacity_work();v:Vector3(World,u.Metre,f64);v.x=8;r:=scale_at_limit(v,2);#assert r.x==16;
+ v:Vector3(World,u.Metre,f64);v.x=8;r:=scale_at_limit(v,2);#assert r.x==16;
 }
-""".replace('BODY',body)
+""".replace('PARAMS',params)
         path=self.work/'capacity.coax';path.write_text(source)
         baseline=subprocess.run([str(COMPILER),'c',str(path),'--library'],cwd=ROOT,text=True,capture_output=True,timeout=120)
         (self.work/'normal.c').write_text(baseline.stdout);(self.work/'normal.stderr').write_text(baseline.stderr)
