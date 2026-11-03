@@ -124,6 +124,8 @@ NoaHeld :: struct {read:bool; kinds:bool; times:bool;}
   // The empty conditions string reads.
   #assert noa_rstatus(noa_tags(NOA_T_OWNER,"",NOA_T_SIG,buf[..]))==NOA_UNCHECKED;
   // Reading evaluates no clause: a kind 7 event, a time past the window.
+  // noa_tags above wrote into buf, where tags points: write tags again
+  tags=noa_tags(NOA_T_OWNER,NOA_T_CONDS,NOA_T_SIG,buf[..]);
   #assert noa_read(noa_ev(NOA_T_AGENT,7,1713957000,tags)).status==NOA_UNCHECKED;
   #assert noa_rstatus(noa_tags(NOA_T_OWNER,"created_at>1713956400",NOA_T_SIG,buf[..]))==NOA_UNCHECKED;
   // A value longer than any key unescapes past the buffer and refuses.
@@ -142,7 +144,7 @@ NoaHeld :: struct {read:bool; kinds:bool; times:bool;}
   // A trailing delimiter, a leading zero.
   #assert noa_cstatus("kind=1&")==NOA_CONDITIONS && noa_cstatus("kind=01")==NOA_CONDITIONS;
   // Self-attestation.
-  self:=noa_tags(NOA_T_AGENT,NOA_T_CONDS,NOA_T_SIG,buf[..]);
+  sb:[1024]u8;self:=noa_tags(NOA_T_AGENT,NOA_T_CONDS,NOA_T_SIG,sb[..]);   // its own buffer: tags, used below, points into buf
   #assert noa_rstatus(self)==NOA_SELF;
   // An event that isn't verified, or isn't parsed.
   e:=noa_ev(NOA_T_AGENT,1,NOA_T_TIME,tags);e.verified=false;#assert noa_read(e).status==NOA_EVENT;

@@ -128,6 +128,8 @@ Nip37Keys :: struct {ec:[1]EcdhScratch; self:[32]u8; ck:[32]u8;}
   #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"30023\"]]","",ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_DELETED;
   bad:[1024]u8;for i:0..<N37_PAYLOAD_1.count {bad[i]=N37_PAYLOAD_1[i];} bad[60]=ifx bad[60]=='A' then cast(u8)'B' else cast(u8)'A';
   #assert nip37_open(k[..],n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"30023\"]]",cast(string)bad[0..<N37_PAYLOAD_1.count],ev[..]),keys[..],s[..],work[..],out[..],false).error==N37_PAYLOAD;
+  // the wraps above were written into ev, where w points: write w again
+  w=n37_wrap(N37_PUB_1,N37_WRAP,"[[\"d\",\"x\"],[\"k\",\"30023\"]]",N37_PAYLOAD_1,ev[..]);
   #assert nip37_open(k[..],w,keys[..],s[..],work[..],out[0..<10],false).error==N37_OUTPUT;
   // The k tag disagrees with the draft's kind: 1 against 30023, 0 against
   // 30023, 1 against 0. out is wiped.

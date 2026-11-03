@@ -340,7 +340,8 @@ N57Zap :: struct {
   #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"lnurl1other").status==N57_LNURL;
   #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",h,N57_T_REQUEST,zeros,tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_PREIMAGE;
   // the same tag twice: p or e that differ, or P, preimage, bolt11, description even when equal
-  more:[3000]u8;
+  // n57_receipt_tags above wrote over tags, which t points into: build t again
+  t=n57_good_tags(tags[..]);more:[3000]u8;
   #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_RECIPIENT;
   #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"e\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_TARGET;
   #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_OK;

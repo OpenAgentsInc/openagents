@@ -79,12 +79,13 @@ SP_VERSION :: 1;
         for i:0..<text.count {if text[i]=='\n' {lines+=1;}}
         #assert lines==5+r.count;
         // Each tensor line's hash is the SHA-256 of the bytes its range names.
-        start:=0;seen:=0;
+        // th, not model: sha points into model, and sp_stage below needs it
+        start:=0;seen:=0;th:[64]u8;
         for i:0..<text.count {if text[i]=='\n' {
             l:=cast(string)text[start..<i];start=i+1;
             if l.count<7 || l[0..<7]!="tensor " {continue;}
             t:=sc.inventory[sc.picked[seen]];seen+=1;
-            #assert l[l.count-64..<l.count]==spx_hex(file[t.begin..<t.end],model[..]);
+            #assert l[l.count-64..<l.count]==spx_hex(file[t.begin..<t.end],th[..]);
         }}
         #assert seen==r.count;
         dg:[64]u8;layers:[6]MsLayer;
@@ -253,7 +254,7 @@ SP_VERSION :: 1;
     t=s;t.layers=3;three:[3]MsLayer;c=sp_stage(good,digest,file,sha,p,1,t,2,sc,three[..]);
     #assert c.status==SpStatus.shape && c.life.at==CsState.map && c.tensor==0;
     // A file lacking tensors the plan needs: layer 1 of a one-layer file.
-    f1:SpxWork;n1:=spx_file(1,f1.file[..]);one_sha:=spx_hex(f1.file[0..<n1],model[..]);
+    f1:SpxWork;n1:=spx_file(1,f1.file[..]);one_hex:[64]u8;one_sha:=spx_hex(f1.file[0..<n1],one_hex[..]);
     q:=sp_build(f1.file[0..<n1],one_sha,p,1,sc,w.text[..]);#assert q.status==SpStatus.ok && q.count==2;
     tx:=w.text[0..<q.length];c=sp_stage(tx,spx_hex(tx,dg[..]),f1.file[0..<n1],one_sha,p,1,s,2,sc,layers[..]);
     #assert c.status==SpStatus.shape && c.life.at==CsState.map && c.tensor==2 && c.tensors==0;

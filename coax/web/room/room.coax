@@ -259,7 +259,10 @@ rm_players :: (v: [] RmServer) -> int #export_c {
   #assert !v[0].rooms[0].live && rm_players(v[..]) == 1;
 }
 
-#test "QUICK MATCH: two players asking for a 1v1 land in the same match, a third starts the next; a 2v2 waits, then bots take its empty seats and drive (ol-quick-match)" {
+// Its budget: the 2v2 room's three bots drive and the ball steps at 120 Hz
+// through the ten-second wait, the kickoff and 1.5 s of play, 870 ticks of
+// about 172,000 steps each (149,997,566 measured).
+#test "QUICK MATCH: two players asking for a 1v1 land in the same match, a third starts the next; a 2v2 waits, then bots take its empty seats and drive (ol-quick-match)" #steps 200000000 {
   v: [1] RmServer;
   rm_init(v[..]);
   q1 := "GET /api/room/orbit-league/quick-1v1 HTTP/1.1\r\n\r\n";
@@ -277,7 +280,12 @@ rm_players :: (v: [] RmServer) -> int #export_c {
   a: [1] OrbitLeague; game_reset(a[..]); a[0].online = true; a[0].no_bot = true;
   room_take(a[..], cast(string) v[0].out[0..<n]);
   #assert a[0].cars_n == CARS && a[0].phase == PHASE_KICKOFF && a[0].phase_t < 0.0;
-  for t: 0..<cast(int) ((QUICK_WAIT + KICKOFF + 1.5) * 60.0) { rm_tick(v[..]); }
+  // the 1v1 players are done: they leave, and their rooms close on the next tick
+  r1 := v[0].conns[0].room; r2 := v[0].conns[2].room;
+  rm_left(v[..], 0); rm_left(v[..], 1); rm_left(v[..], 2);
+  rm_tick(v[..]);
+  #assert !v[0].rooms[r1].live && !v[0].rooms[r2].live && v[0].rooms[r].live;
+  for t: 1..<cast(int) ((QUICK_WAIT + KICKOFF + 1.5) * 60.0) { rm_tick(v[..]); }
   m := v[0].rooms[r];
   #assert m.s[0].phase == PHASE_PLAY;
   for seat: 1..<ROOM_PLAYERS { #assert d3_len(m.cars[seat].vel) > 3.0 && m.cars[seat].pos.y > 0.0 && m.cars[seat].pos.y < 3.0; }

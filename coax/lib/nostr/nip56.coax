@@ -94,6 +94,7 @@ N56Tally :: struct {
 }
 #test "tally: trusted reporters per type, others ignored" {
   buf:[8][1024]u8;set:[8]NostrEvent;
+  more:[4][1024]u8;   // the later events own buffers: an event points into its buffer, and set[k] into buf[k]
   target:[32]u8;for i:0..<32 {target[i]=0xaa;}
   on_e:="[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"spam\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]";
   set[0]=n32_at(n32_event_in(1984,on_e,buf[0][..]),0x01,0x10);   // trusted, spam
@@ -114,17 +115,17 @@ N56Tally :: struct {
   t=n56_tally(set[..],trusted[0..<0],target);#assert t.counts[N56_SPAM]==0 && t.counts[N56_ILLEGAL]==0 && t.ignored==5 && t.duplicates==0;
   // A note report and a blob report about other things don't count.
   away:[2]NostrEvent;
-  away[0]=n32_at(n32_event_in(1984,"[[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"spam\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",buf[2][..]),0x01,0x30);
-  away[1]=n32_at(n32_event_in(1984,"[[\"x\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"malware\"],[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",buf[3][..]),0x01,0x31);
+  away[0]=n32_at(n32_event_in(1984,"[[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"spam\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",more[0][..]),0x01,0x30);
+  away[1]=n32_at(n32_event_in(1984,"[[\"x\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"malware\"],[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",more[1][..]),0x01,0x31);
   t=n56_tally(away[..],trusted[..],target);#assert t.counts[N56_SPAM]==0 && t.counts[N56_MALWARE]==0 && t.refused==0;
   // A blob target.
-  blob:[1]NostrEvent;blob[0]=n32_at(n32_event_in(1984,"[[\"x\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"malware\"],[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"malware\"]]",buf[0][..]),0x01,0x20);
+  blob:[1]NostrEvent;blob[0]=n32_at(n32_event_in(1984,"[[\"x\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"malware\"],[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"malware\"]]",more[2][..]),0x01,0x20);
   t=n56_tally(blob[..],trusted[..],target);#assert t.counts[N56_MALWARE]==1;
   // A refused report by a trusted reporter is not a duplicate source.
   pair:[2]NostrEvent;pair[0]=set[6];pair[1]=n32_at(set[4],0x02,0x18);
   t=n56_tally(pair[..],trusted[..],target);#assert t.counts[N56_ILLEGAL]==1 && t.duplicates==0 && t.refused==1;
   // A report about another target by the same reporter and type is no duplicate.
-  pair[0]=n32_at(set[5],0x02,0x19);pair[1]=n32_at(n32_event_in(1984,"[[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"nudity\"]]",buf[1][..]),0x02,0x1a);
+  pair[0]=n32_at(set[5],0x02,0x19);pair[1]=n32_at(n32_event_in(1984,"[[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"nudity\"]]",more[3][..]),0x02,0x1a);
   t=n56_tally(pair[..],trusted[..],target);#assert t.counts[N56_NUDITY]==1 && t.duplicates==0;
   // Nor is an earlier untrusted report of the same type.
   pair[0]=set[2];pair[1]=set[0];t=n56_tally(pair[..],trusted[..],target);#assert t.counts[N56_SPAM]==1 && t.duplicates==0 && t.ignored==1;
