@@ -165,6 +165,7 @@ TOWN_CAP :: [71] int.[
 TOWN_OBJECTS :: 4119;     // the sum of TOWN_CAP
 OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS + EDIT_OBJECTS + SP_DEBRIS_OBJECTS + WATCH_OBJECTS;   // and an admin's placed things (everglade-items.coax), the spells' debris, and the watch's swords and shields (everglade-watch.coax)
 RANGER_AT :: OBJECTS;     // you, the Ranger: one object after everything else
+REMOTE_AT :: OBJECTS + 1; // then the others in the room as Rangers, the same draw (everglade-rangers.coax)
 // Lathed stone (the fountain's basin and column): a profile turned about its axis (everglade.wgsl
 // lathe_vertex), drawn in LATHE_WEDGES instances of LATHE_SECTORS sectors and LATHE_SEGMENTS
 // segments each, so an instance stays inside the pack's 1,024 identity indices.
@@ -172,7 +173,7 @@ SHAPE_LATHE :: 7;
 LATHE_WEDGES :: 8; LATHE_SECTORS :: 6; LATHE_SEGMENTS :: 28;
 LATHE_VERTICES :: LATHE_SECTORS * LATHE_SEGMENTS * 6;
 LATHE_SLOTS :: 2 * LATHE_WEDGES;
-LATHE_AT :: OBJECTS + 1;
+LATHE_AT :: REMOTE_AT + REMOTE_BODIES;
 PROFILE_BASIN :: 0; PROFILE_COLUMN :: 1;
 LOOK_CARVED :: 9;
 LOOK_PLANKS :: 11;        // a deck of planks (everglade.wgsl planks): boards, gaps, staggered ends, grain
@@ -206,7 +207,8 @@ ALL_OBJECTS :: LOD_AT + LOD_OBJECTS;
 PERSON_ROWS :: PEOPLE_JOINTS * 3 + 3;
 // A person is a skinned shape like you, told apart by colour.z (yours is 1).
 PERSON_MARK :: 2.0;
-PALETTE_FLOATS :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4;
+// Then the others' Rangers' (everglade-rangers.coax REMOTE_PAL_AT).
+PALETTE_FLOATS :: RANGER_JOINTS * 12 + PEOPLE_SHOWN * PERSON_ROWS * 4 + REMOTE_PALETTE;
 OBJECT_FLOATS :: 16;
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_WATER :: 4; LOOK_KIT :: 5;
 // The kit's rocks (Rock_Medium_1 and _2: the undergrowth's and the waystone's): the kit's texture, darkened
@@ -447,6 +449,7 @@ Everglade :: struct {
   ev: EditVoice;                           // an admin's voice edits and what's published over the plan (everglade-voice.coax)
   room: [1] RoomState;                     // the others in the realm's room and its chat (everglade-room.coax)
   net: [] EgNet;                           // the room's relay socket, when the face attaches it (everglade-net.coax)
+  rangers: [1] Rangers;                    // the others' bodies (everglade-rangers.coax)
   chat: EgChat;
   lod: Lod;                                // the small pieces drawn near you (everglade-lod.coax)
   doors: Doors;                            // every door you open and close with E (everglade-doors.coax)
@@ -627,6 +630,7 @@ everglade_start :: (s: [] Everglade) {
   people_load(s[0].people_rig[..]);
   for i: 0..<EG_SPOTS { folk_start(s[0].folk[i..<i + 1], i); }
   for k: 0..<PEOPLE_SHOWN { s[0].poses[k] = Skin.{}; s[0].pose_of[k] = -1; }
+  rangers_start(s[0].rangers[..]);
   s[0].answered = 1000;
   build_scenery(s);
   plant_forest(s);
@@ -874,7 +878,7 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
   for m: 0..<KIT_MESHES { s[0].kit_first[m] = 0; s[0].kit_count[m] = 0; }
   for k: 0..<KIT_TREES * 3 { s[0].canopy_rgb[k] = 0; }
   s[0].identity_first = -1;
-  s[0].ranger_first = 0; s[0].ranger_count = 0; s[0].ranger_word = 0;
+  s[0].ranger_first = 0; s[0].ranger_count = 0; s[0].ranger_word = 0; s[0].rangers[0].layer = -1;
   for k: 0..<PEOPLE_PARTS { s[0].part_first[k] = 0; s[0].part_count[k] = 0; s[0].part_word[k] = 0; }
   i := 0;
   while i < text.count {
@@ -882,6 +886,7 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
     line := text[i..<e];
     i = e + 1;
     if line.count < 4 || line[1] != ' ' { continue; }
+    if line[0] == 'T' { rangers_catalog_line(s[0].rangers[..], line); continue; }   // the Ranger's layers (everglade-rangers.coax)
     if line[0] == 'I' {
       first := whole_at(line, 2); after := word_end(line, 2);
       if first >= 0 && whole_at(line, after) >= 1024 { s[0].identity_first = first; }
@@ -3742,7 +3747,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, face, speed, act == 3, t, still);
   if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown, t, still);
-  room_frame(s, t); room_draw(s, shown);   // the others in the realm's room (everglade-room.coax)
+  room_frame(s, t); room_draw(s, u, shown, t);   // the others in the realm's room (everglade-room.coax)
   s[0].answered += t;
   s[0].smoke_still = still;
   city(s, u);
@@ -3782,10 +3787,13 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   d := RANGER_DRAW * 4;
   s[0].draws[d] = cast(u32) s[0].ranger_first;
   s[0].draws[d + 1] = cast(u32) s[0].ranger_count;
-  s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + RANGER_AT);
-  // not in a beast's shape (everglade-circle.coax), nor zoomed into your head (first person, aethyr/camera.coax)
-  s[0].draws[d + 3] = cast(u32) (ifx s[0].ranger_count > 0 && ci_you_shown(s) && !you_inside(s) then 1 else 0);
-  s[0].kit_triangles += s[0].ranger_count / 3;
+  // you not in a beast's shape (everglade-circle.coax), nor zoomed into your head (first person,
+  // aethyr/camera.coax); then the others' (everglade-rangers.coax)
+  you_on := s[0].ranger_count > 0 && ci_you_shown(s) && !you_inside(s);
+  s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + (ifx you_on then RANGER_AT else REMOTE_AT));
+  bodies := ifx s[0].ranger_count > 0 then (ifx you_on then 1 else 0) + s[0].rangers[0].n else 0;
+  s[0].draws[d + 3] = cast(u32) bodies;
+  s[0].kit_triangles += s[0].ranger_count / 3 * bodies;
   d = LATHE_DRAW * 4;
   s[0].draws[d] = first;
   s[0].draws[d + 1] = cast(u32) LATHE_VERTICES;

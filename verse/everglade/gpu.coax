@@ -670,7 +670,7 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
         o.shard=add_wrap(sub_wrap(instance,mul_wrap(n,n)),1);
       }
     } else if _sw3==6 {
-      if (m.colour.z>1.5f32) {
+      if ((m.colour.z>1.5f32)&&(m.colour.z<2.5f32)) {
         // One of the city's people (verse/everglade/folk.coax, colour.z 2): a part's 24-byte vertex
         // (verse/tools/people.py vertex), skinned by up to four joints of its person's block of
         // the pose, which starts at row colour.y; after the joints, their skin tone and the
@@ -718,6 +718,14 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
         ranger=true;
       } else {
         // The Ranger: the pack's 32-byte character vertex, skinned by up to four joints of the pose.
+        // Yours (colour.z 1) is the pose's first block; another player's (colour.z 3,
+        // everglade-rangers.coax) starts at row colour.y, and its look is the two rows the kind word
+        // carries over 256: their skin tone and the Ranger's first texture layer (its outfit), then
+        // their cloak's and leather's dyes (24-bit, eg_dye24).
+        base:u32=0;
+        if (m.colour.z>2.5f32) {
+          base=wg_u32_f(m.colour.y);
+        }
         b:u32=add_wrap(wg_u32_f(m.colour.x),mul_wrap(id,8));
         at:V4=v4(eg_word(b,vertices),eg_word(add_wrap(b,1),vertices),eg_word(add_wrap(b,2),vertices),1.0f32);
         nw:V3=wg_sw_xyz_f4(wg_unpack4x8snorm(vertices[cast(int)add_wrap(b,3)]));
@@ -728,7 +736,7 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
         {
           k:u32=0;
           while k<4 {
-            r:u32=mul_wrap(wg_get_u4(j,cast(int)k),3);
+            r:u32=add_wrap(base,mul_wrap(wg_get_u4(j,cast(int)k),3));
             a:V4=pose[cast(int)r];
             c:V4=pose[cast(int)add_wrap(r,1)];
             e:V4=pose[cast(int)add_wrap(r,2)];
@@ -741,6 +749,22 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
         o.uv=v2(eg_word(add_wrap(b,4),vertices),eg_word(add_wrap(b,5),vertices));
         o.slice=vertices[cast(int)add_wrap(b,3)]>>24;
         tint=v3(1.0f32,1.0f32,1.0f32);
+        if (m.colour.z>2.5f32) {
+          lr:u32=(wg_u32_f(m.colour.w))/256;
+          l0:V4=pose[cast(int)lr];
+          l1:V4=pose[cast(int)add_wrap(lr,1)];
+          // dye.w 8: their look (eg_person_dye rule 3)
+          o.dye=v4(0.0f32,0.0f32,0.0f32,8.0f32);
+          if (l0.w>=0.0f32) {
+            rel:s32=(cast,trunc(s32)(o.slice))-(wg_i32_f(l0.w));
+            if ((rel==1)||(rel==4)) {
+              tint=v3(l0.x,l0.y,l0.z);
+            }
+            if (rel==0) {
+              o.dye=v4(l1.x,l1.y,0.0f32,o.dye.w);
+            }
+          }
+        }
         ranger=true;
       }
     } else if _sw3==7 {
@@ -1100,10 +1124,36 @@ eg_shade_shadows :: (p:V2,u:[]f32)->f32 {
 // share) the pale cloth, pale and unsaturated texels, as the peasant's shirts; rule 2 (dye.w 4 plus
 // the share) the green cloth, texels green over red and blue, as the ranger's tunic. A dyed texel is the dye
 // at the texel's own lightness against the cloth's usual, so folds and seams stay.
+// One of the 24-bit cloth dyes another player's look carries (everglade-rangers.coax look_dye24):
+// each byte the square root of a linear channel.
+eg_dye24 :: (c:u32)->V3 {
+  r:f32=(cast(f32)(c&255))/255.0f32;
+  g:f32=(cast(f32)((c>>8)&255))/255.0f32;
+  b:f32=(cast(f32)((c>>16)&255))/255.0f32;
+  return v3(r*r,g*g,b*b);
+}
 eg_person_dye :: (t:V3,dye:V4)->V3 {
   // dye.w: 2 + share on a pale cloth, 4 + share on a green one (case 6u's people), 0 for no dye
   if (dye.w<2.0f32) {
     return t;
+  }
+  if (dye.w>=8.0f32) {
+    // rule 3, another player's Ranger in their look (dye.w 8): the outfit's green cloth takes
+    // the cloak's dye (dye.x), its warm leather the trim's (dye.y); 0 keeps the Ranger's own. A dyed
+    // texel is the dye at the texel's lightness against that cloth's usual, so folds and seams stay.
+    light3:f32=wg_dot3(t,v3(0.2126f32,0.7152f32,0.0722f32));
+    cloth:f32=smoothstep(0.015f32,0.045f32,t.y-fmax(t.x,t.z));
+    hide:f32=smoothstep(0.03f32,0.07f32,t.x-t.z)*(ifx t.x>=t.y then 1.0f32 else 0.0f32)*(1.0f32-cloth);
+    c3:V3=t;
+    cloak:u32=wg_u32_f(dye.x);
+    trim:u32=wg_u32_f(dye.y);
+    if (cloak!=0) {
+      c3=wg_mix_f3f3f(c3,wg_mul_f3f(eg_dye24(cloak),clampf(light3/0.061f32,0.0f32,1.6f32)),cloth);
+    }
+    if (trim!=0) {
+      c3=wg_mix_f3f3f(c3,wg_mul_f3f(eg_dye24(trim),clampf(light3/0.059f32,0.0f32,1.6f32)),hide);
+    }
+    return wg_max_f3f3(c3,v3(0.0f32,0.0f32,0.0f32));
   }
   if (dye.w>=6.0f32) {
     // petals (dye.w 6): any texel more red or blue than green takes the dye, kept as light or dark as

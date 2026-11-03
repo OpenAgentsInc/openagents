@@ -2,21 +2,19 @@
 // players walking it with you (verse/everglade/previous/everglade.md). Here the page joins the
 // realm's room, "everglade" (room.coax; coax/web/api/room.c, the playtest service's rooms, no new
 // server): the face posts where you are about every second and is answered with everyone else seen
-// there in the last few seconds and the chat's lines since. The others are drawn where the room says,
-// eased from where they were, as a hooded ranger with their name over them (the nearest
-// ROOM_DRAWN, within ROOM_NEAR). The chat: on a computer Enter opens a line to type, Enter says it,
+// there in the last few seconds and the chat's lines since: the roster, and the chat. The others are
+// drawn from the room's relay (everglade-net.coax) as who they are, animated, in their looks, their
+// names over their heads (everglade-rangers.coax). The chat: on a computer Enter opens a line to type, Enter says it,
 // Esc closes it; the last lines show over the bar at the bottom left. On a phone the latest line
 // shows under the place's name (and under your HP and WANTED), and a tap on it opens the line to type. Destruction and the watch
 // stay each page's own.
 
 #load "room.coax";
+#load "everglade-rangers.coax";
 
 EG_ROOM :: "everglade";
-ROOM_DRAWN :: 8;           // others drawn at most, the nearest
-ROOM_NEAR :: 80.0;         // m
 ROOM_SHOWN :: 4;           // chat lines over the bar on a computer
 ROOM_FRESH :: 30.0;        // s a line stays on screen
-CLOAK_RGB :: Point.{x = 0.16, y = 0.3, z = 0.14};
 
 EgChat :: struct {
   typing: bool;            // the line is open (what you type goes in s[0].typed, as a talk's does)
@@ -50,7 +48,7 @@ chat_say :: (s: [] Everglade) {
   chat_close(s);
 }
 
-// Each frame: the others eased toward where they are, and who to draw.
+// Each frame: the HTTP roster's others eased toward where it says (the chat's and the 5E panel's).
 room_frame :: (s: [] Everglade, dt: f32) {
   r := s[0].room[..];
   room_ease(r, dt);
@@ -58,46 +56,18 @@ room_frame :: (s: [] Everglade, dt: f32) {
   else { s[0].chat.fresh += dt; }
 }
 
-// The others: a hooded figure each, the nearest first, within ROOM_NEAR.
-room_draw :: (s: [] Everglade, you: Point) {
-  r := s[0].room[..];
-  drawn := 0;
-  taken: [ROOM_OTHERS] bool;
-  for pass: 0..<ROOM_DRAWN {
-    best := -1; most := f32(ROOM_NEAR);
-    for i: 0..<r[0].others {
-      if taken[i] { continue; }
-      d := flat_gap(v3(r[0].at[i * 4], 0, r[0].at[i * 4 + 2]), you);
-      if d < most { most = d; best = i; }
-    }
-    if best < 0 { break; }
-    taken[best] = true;
-    x := r[0].at[best * 4]; z := r[0].at[best * 4 + 2]; yaw := r[0].at[best * 4 + 3];
-    g := walk_at(s, x, z) + r[0].at[best * 4 + 1];
-    shape(s, SHAPE_BOX, LOOK_MATTE, v3(x, g + 0.42, z), yaw, 0, 0.34, 0.84, 0.22, 0.2, 0.15, 0.1);
-    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + 1.17, z), yaw, 0, 0.5, 0.72, 0.38, CLOAK_RGB.x, CLOAK_RGB.y, CLOAK_RGB.z);
-    shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(x + sin(yaw) * 0.04, g + 1.66, z + cos(yaw) * 0.04), yaw, 0, 0.26, 0.28, 0.26, 0.78, 0.6, 0.48);
-    shape(s, SHAPE_CONE, LOOK_MATTE, v3(x, g + 1.86, z), yaw, 0, 0.36, 0.42, 0.36, CLOAK_RGB.x, CLOAK_RGB.y, CLOAK_RGB.z);
-    drawn += 1;
-  }
+// The others' bodies, from the relay's remote entities (everglade-rangers.coax).
+room_draw :: (s: [] Everglade, u: [] f32, you: Point, dt: f32) {
+  rs: [REMOTE_SEATS] RemoteBody;
+  n := remote_bodies(s, rs[..]);
+  rangers_draw(s, u, you, dt, rs[0..<n]);
 }
 
-// Their names over them, for labels(): how many written into ls from c.
+// Their names over their heads, for labels(): how many written into ls from c.
 room_labels :: (s: [] Everglade, ls: [] Label, c: int, you: Point, k: f32) -> int {
-  r := s[0].room[..];
-  m := c;
-  for i: 0..<r[0].others {
-    if m >= ls.count { break; }
-    x := r[0].at[i * 4]; z := r[0].at[i * 4 + 2];
-    p := v3(x, walk_at(s, x, z) + r[0].at[i * 4 + 1] + 2.35, z);
-    d := flat_gap(p, you);
-    if d > f32(NAME_NEAR) { continue; }
-    name := room_other_name(r, i);
-    if name.count == 0 { continue; }
-    light := 0.85 * clamp01((f32(NAME_NEAR) - d) / f32(NAME_FADE));
-    ls[m] = Label.{text = name, p = p, cap = 6.5 * k, light = light, gold = true, d = d, done = false, person = true}; m += 1;
-  }
-  return m;
+  rs: [REMOTE_SEATS] RemoteBody;
+  n := remote_bodies(s, rs[..]);
+  return rangers_labels(s, ls, c, you, k, rs[0..<n]);
 }
 
 // The chat on screen: the last lines over the bar (a computer) or the latest under the place's name (a
@@ -173,7 +143,7 @@ chat_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   #assert everglade_key(g[..], KEY_ENTER, 0) && !g[0].chat.typing;
   #assert everglade_chat_take(g[..]) == "hi all" && everglade_chat_take(g[..]) == "";
   #assert everglade_key(g[..], KEY_ENTER, 0) && everglade_key(g[..], KEY_ESCAPE, 0) && !g[0].chat.typing && everglade_chat_take(g[..]) == "";
-  // someone else in the room is drawn where the room says, their name over them
+  // someone else in the room: the roster holds their name, and their line goes on the panel
   answer := "200\n{\"others\":[{\"id\":\"p2\",\"name\":\"WREN\",\"x\":1,\"y\":0,\"z\":-80,\"yaw\":0}],\"messages\":[{\"n\":3,\"name\":\"WREN\",\"text\":\"hello\"}]}";
   #assert room_take(g[0].room[..], answer) == 200;
   #assert g[0].room[0].others == 1 && room_other_name(g[0].room[..], 0) == "WREN" && g[0].room[0].lines == 1;
