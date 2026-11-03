@@ -75,9 +75,9 @@ LOOK_SKINS :: 5;               // SKIN_TONE's rows
 
 // What a look says, read from "ranger.SKIN.DYE.TRIM"; another body, or a number out of range, is the
 // Ranger's own look there.
-Look :: struct { skin: int = 1; dye: int; trim: int; }
-look_parse :: (t: string) -> Look {
-  l := Look.{};
+RangerLook :: struct { skin: int = 1; dye: int; trim: int; }
+look_parse :: (t: string) -> RangerLook {
+  l := RangerLook.{};
   if t.count < 7 || t[0..<7] != "ranger." { return l; }
   nums: [3] int; n := 0; v := 0; digits := 0;
   for k: 7..<t.count {
@@ -116,7 +116,7 @@ RemoteBody :: struct {
   form: int;                  // CI_FORM_*: a beast's shape
   alive: bool;
   swing: f32 = 100000;        // s since their last spell went off (they swing as they cast)
-  look: Look;
+  look: RangerLook;
 }
 
 // A body's gear in its own space (before its turn and place), from its pose: the staff's foot and head.
@@ -391,7 +391,7 @@ rangers_fixture :: (s: [] Everglade, out: [] RemoteBody, n: int) -> int {
     x := -3.0f32 + f32(i) * 0.7; z := -78.0f32 + f32(i % 2);
     out[m] = RemoteBody.{seat = 100 + i, name = ifx i % 2 == 0 then "WREN" else "Mossy Heron", account = i % 2 == 0,
                          p = v3(x, walk_at(s, x, z), z), yaw = 3.1, v = v3(0, 0, 0), alive = true,
-                         look = Look.{skin = i % LOOK_SKINS, dye = 1 + i, trim = 2 + i}};
+                         look = RangerLook.{skin = i % LOOK_SKINS, dye = 1 + i, trim = 2 + i}};
     m += 1;
   }
   return m;
