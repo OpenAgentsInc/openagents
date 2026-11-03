@@ -137,7 +137,9 @@ def verbs(check):
         lines = [json.loads(l) for l in run.stdout.splitlines() if l.startswith("{")]
         kinds = [l["kind"] for l in lines]
         check("run --json exits 0", run.returncode == 0)
-        check("run --json: session, user, request, tool, result, reply, end", kinds == ["session", "user", "request", "tool", "result", "reply", "end"])
+        check("run --json: session, user, request, tool, result, reply, end",
+              [k for k in kinds if k != "attempt"] == ["session", "user", "request", "tool", "result", "reply", "end"]
+              and kinds.count("attempt") == 2)
         check("run --json: the local model answered", any(l.get("text") == "local-ok" for l in lines) and lines[-1].get("ending") == "finished")
         ls = subprocess.run([coder, "ls", "--json"], cwd=REPO, env=env, capture_output=True, text=True, timeout=60)
         rows = json.loads(ls.stdout) if ls.returncode == 0 else []
