@@ -1,0 +1,62 @@
+// Book chapter 15: a realm's HUD as one UI tree on a 320 by 700 phone with a 34-point home
+// indicator. Its hotbar slots come from verse_hud_slot, the function that draws them; the same
+// boxes are hit-tested and focused. The keyboard opens the settings, changes them, closes them
+// and lands back on the settings button; a tap and the key give the same action; a tree with an
+// unlabelled button is refused.
+#load "../../verse/hud.coax";
+#load "../ui/tree.coax";
+#import "Basic";
+
+// book:begin example
+// Action IDs; labels are the realm's text IDs.
+SLOT_1 :: 1; SETTINGS :: 10; TEXT_SCALE :: 11; REDUCED_MOTION :: 12; CLOSE :: 13;
+DIALOG :: 4;   // the settings dialog's index; the tree is built each frame, with it only when open
+
+slot_box :: (i: int) -> HudBox {
+  r := verse_hud_slot(320, 700, 34, i, 3);
+  return HudBox.{x = r.x, y = r.y, width = r.width, height = r.height};
+}
+
+main :: () {
+  t: [8] UiNode;
+  t[0] = UiNode.{box = HudBox.{x = 268, y = 50, width = 44, height = 44}, role = UI_BUTTON, label = 204, action = SETTINGS};
+  for i: 0..<3 { t[1 + i] = UiNode.{box = slot_box(i), role = UI_BUTTON, label = 100 + i, action = SLOT_1 + i}; }
+  t[4] = UiNode.{box = HudBox.{x = 20, y = 200, width = 280, height = 240}, role = UI_DIALOG, label = 200};
+  t[5] = UiNode.{box = HudBox.{x = 40, y = 240, width = 240, height = 44}, role = UI_SLIDER, label = 201, action = TEXT_SCALE, parent = DIALOG, low = 1, high = 2, value = 1};
+  t[6] = UiNode.{box = HudBox.{x = 40, y = 300, width = 240, height = 44}, role = UI_TOGGLE, label = 202, action = REDUCED_MOTION, parent = DIALOG};
+  t[7] = UiNode.{box = HudBox.{x = 40, y = 380, width = 100, height = 44}, role = UI_BUTTON, label = 203, action = CLOSE, parent = DIALOG};
+  closed := t[0..<4];
+  print("closed tree of %: problem %; open tree of %: problem %\n", closed.count, ui_reason_name(ui_check(closed).reason), t.count, ui_reason_name(ui_check(t[..]).reason));
+  b := t[1].box;
+  print("slot 1 drawn at % % (% by %), above the indicator: %\n", b.x, b.y, b.width, b.height, b.y + b.height <= 700 - 34);
+
+  // The keyboard: focus starts at the top of the screen, then reads down to the slots.
+  f := ui_focus_next(closed, UI_NONE, false, UI_NONE);
+  n1 := ui_focus_next(closed, f, false, UI_NONE); n2 := ui_focus_next(closed, n1, false, UI_NONE);
+  print("focus order: element % (action %), then % and %\n", f, closed[f].action, n1, n2);
+  opener := f;
+  open := t[..];
+  trap := UI_NONE;
+  if ui_activate(closed, f, UI_NONE) == SETTINGS { trap = DIALOG; f = ui_focus_next(open, UI_NONE, false, trap); }
+  print("settings open: focus on element %, the text scale\n", f);
+  if ui_activate(open, f, trap) == TEXT_SCALE { open[f].value = 1.5; }
+  f = ui_focus_next(open, f, false, trap);
+  if ui_activate(open, f, trap) == REDUCED_MOTION { open[f].pressed = !open[f].pressed; }
+  print("text scale %, reduced motion %\n", open[5].value, open[6].pressed);
+  visits: [8] int;
+  g := f;
+  for k: 0..<6 { g = ui_focus_next(open, g, false, trap); visits[g] += 1; }
+  print("six presses of next inside the dialog visit: % % % (and outside it %)\n", visits[5], visits[6], visits[7], visits[0] + visits[1] + visits[2] + visits[3]);
+  print("a tap on slot 1 while it's open gives %\n", ui_tap(open, b.x + 1, b.y + 1, trap));
+  // back: the dialog closes and focus returns to the button that opened it
+  f = opener;
+  print("closed: focus on element %, action %\n", f, closed[f].action);
+  print("tap on slot 2 gives %, its key gives %\n", ui_tap(closed, t[2].box.x + 20, t[2].box.y + 20, UI_NONE), ui_activate(closed, 2, UI_NONE));
+
+  // A button with no label can't be reached by a screen reader: the tree is refused.
+  broken := t;
+  broken[3].label = 0;
+  q := ui_check(broken[..]);
+  print("with an unlabelled slot: refused %, element %\n", ui_reason_name(q.reason), q.index);
+}
+// book:end example

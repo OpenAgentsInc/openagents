@@ -1,0 +1,269 @@
+// Aethyr's UI tree (book chapter 15): the screen's elements as one table that is drawn, hit-tested
+// and focused from the same rectangles, so no realm keeps separate touch geometry. Each element has
+// a role, a label (a text ID), its state and the action `activate` produces. The table is also the
+// accessibility tree: an interactive element without a label is refused, focus moves in reading
+// order, a dialog traps it, and when the focused element goes, focus moves on, never to nothing.
+// Rectangles are screen points, y down, half-open (aethyr/ui/hud.coax).
+//   coax/bin/coax test aethyr/ui/tree.coax --library
+//   coax/bin/coax mutate aethyr/ui/tree.coax --library --root-only
+
+#load "hud.coax";
+
+// book:begin node
+UI_TEXT :: 0; UI_IMAGE :: 1;                       // not interactive
+UI_BUTTON :: 2; UI_TOGGLE :: 3; UI_SLIDER :: 4;    // interactive
+UI_LIST_ITEM :: 5; UI_TAB :: 6;
+UI_DIALOG :: 7;                                    // a container that traps focus
+UI_ROLES :: 8;
+UI_NONE :: -1;
+UI_MAX :: 128;    // elements in one tree
+
+// One element. `label` is a text ID in the realm's string table (chapter 85), 0 for none;
+// `parent` is the index of the dialog it is in, or UI_NONE.
+UiNode :: struct {
+  box: HudBox;
+  role: int;
+  label: int;
+  action: int;            // what activating it produces, 0 for nothing
+  parent: int = UI_NONE;
+  enabled: bool = true;
+  pressed: bool;          // a toggle's or a tab's state
+  value: f32; low: f32; high: f32;   // a slider's
+  decorative: bool;       // an image that carries nothing: skipped
+}
+
+ui_interactive :: (n: UiNode) -> bool { return n.role >= UI_BUTTON && n.role <= UI_TAB; }
+// What the keyboard and the screen reader can reach: interactive and enabled.
+ui_focusable :: (n: UiNode) -> bool { return ui_interactive(n) && n.enabled; }
+// book:end node
+
+// book:begin check
+UI_OK :: 0;
+UI_ROLE :: 1;       // a role that isn't one
+UI_LABEL :: 2;      // an interactive element, or an image that carries something, with no label
+UI_ACTION :: 3;     // an interactive element that does nothing
+UI_PARENT :: 4;     // a parent that isn't an earlier dialog
+UI_RANGE :: 5;      // a slider whose value is outside its range
+UI_COUNT :: 6;      // no elements, or more than UI_MAX
+UiProblem :: struct { index: int = UI_NONE; reason: int = UI_OK; }
+
+// The first element the tree can't have, and why; a tree is drawn only when there is none.
+ui_check :: (t: [] UiNode) -> UiProblem {
+  if t.count == 0 || t.count > UI_MAX { return UiProblem.{reason = UI_COUNT}; }
+  for i: 0..<t.count {
+    n := t[i];
+    why := UI_OK;
+    if n.role < 0 || n.role >= UI_ROLES { why = UI_ROLE; }
+    else if n.label <= 0 && (ui_interactive(n) || (n.role == UI_IMAGE && !n.decorative)) { why = UI_LABEL; }
+    else if ui_interactive(n) && n.action <= 0 { why = UI_ACTION; }
+    else if n.parent != UI_NONE && (n.parent < 0 || n.parent >= i || t[n.parent].role != UI_DIALOG) { why = UI_PARENT; }
+    else if n.role == UI_SLIDER && !(n.low <= n.value && n.value <= n.high) { why = UI_RANGE; }
+    if why != UI_OK { return UiProblem.{index = i, reason = why}; }
+  }
+  return UiProblem.{};
+}
+// book:end check
+
+ui_reason_name :: (why: int) -> string {
+  if why == UI_OK { return "none"; }
+  if why == UI_ROLE { return "role"; }
+  if why == UI_LABEL { return "label"; }
+  if why == UI_ACTION { return "action"; }
+  if why == UI_PARENT { return "parent"; }
+  if why == UI_RANGE { return "range"; }
+  if why == UI_COUNT { return "count"; }
+  return "unknown";
+}
+
+// book:begin focus
+// Whether element a comes before b in reading order: top to bottom by their top edges, then start
+// to end along the line, then the table's order.
+ui_before :: (t: [] UiNode, a: int, b: int) -> bool {
+  if t[a].box.y < t[b].box.y { return true; }
+  if t[a].box.y > t[b].box.y { return false; }
+  if t[a].box.x < t[b].box.x { return true; }
+  if t[a].box.x > t[b].box.x { return false; }
+  return a < b;
+}
+
+// Whether focus may stand on element i while `trap` (a dialog's index, or UI_NONE) is open:
+// inside an open dialog, only its own elements.
+ui_reachable :: (t: [] UiNode, i: int, trap: int) -> bool {
+  return ui_focusable(t[i]) && (trap == UI_NONE || t[i].parent == trap);
+}
+
+// The next element focus moves to from `current` (UI_NONE: none yet), forward or back in reading
+// order, wrapping at the ends; UI_NONE when nothing is reachable. A dialog traps it.
+ui_focus_next :: (t: [] UiNode, current_: int, back: bool, trap: int) -> int {
+  current := ifx current_ >= 0 && current_ < t.count then current_ else UI_NONE;   // outside the table: none
+  best := UI_NONE;    // the nearest reachable element past current, in the direction
+  wrap := UI_NONE;    // the first (forward) or last (back) reachable one, for wrapping
+  for i: 0..<t.count {
+    if i == current || !ui_reachable(t, i, trap) { continue; }
+    past := current == UI_NONE || (ifx back then ui_before(t, i, current) else ui_before(t, current, i));
+    if past && (best == UI_NONE || (ifx back then ui_before(t, best, i) else ui_before(t, i, best))) { best = i; }
+    if wrap == UI_NONE || (ifx back then ui_before(t, wrap, i) else ui_before(t, i, wrap)) { wrap = i; }
+  }
+  if best != UI_NONE { return best; }
+  if wrap != UI_NONE { return wrap; }
+  if current != UI_NONE && ui_reachable(t, current, trap) { return current; }
+  return UI_NONE;
+}
+
+// Where focus goes when the focused element `gone` is removed (or disabled): the next reachable
+// element after it in reading order, or else the dialog it was in. Never nowhere while something
+// is left to stand on.
+ui_focus_after :: (t: [] UiNode, gone: int, trap: int) -> int {
+  next := ui_focus_next(t, gone, false, trap);
+  if next != UI_NONE && next != gone { return next; }
+  return trap;   // the dialog it was in, or UI_NONE outside one
+}
+// book:end focus
+
+// book:begin act
+// A tap at (x, y): the action of the last reachable element whose drawn rectangle holds it, the
+// one drawn on top; 0 for none. The same rectangles were drawn, so what you see is what you touch.
+ui_tap :: (t: [] UiNode, x: f32, y: f32, trap: int) -> int {
+  action := 0;
+  for i: 0..<t.count { if ui_reachable(t, i, trap) && hud_contains(t[i].box, x, y) { action = t[i].action; } }
+  return action;
+}
+// The keyboard's or the screen reader's `activate` on the focused element: the same action a tap
+// on it produces.
+ui_activate :: (t: [] UiNode, focus: int, trap: int) -> int {
+  if focus < 0 || focus >= t.count || !ui_reachable(t, focus, trap) { return 0; }
+  return t[focus].action;
+}
+// book:end act
+
+// ---- checks
+ui_button :: (x: f32, y: f32, label: int, action: int) -> UiNode {
+  return UiNode.{box = HudBox.{x = x, y = y, width = 44, height = 44}, role = UI_BUTTON, label = label, action = action};
+}
+#test "a tree is refused at its first element without a role, label, action, dialog or range" {
+  t: [6] UiNode;
+  t[0] = UiNode.{role = UI_TEXT};                                   // text needs no label here
+  t[1] = UiNode.{role = UI_IMAGE, decorative = true};               // nor a decorative image
+  t[2] = ui_button(0, 0, 7, 1);
+  t[3] = UiNode.{role = UI_DIALOG, label = 8};
+  t[4] = ui_button(0, 50, 9, 2); t[4].parent = 3;
+  t[5] = UiNode.{role = UI_SLIDER, label = 10, action = 3, low = 0, high = 1, value = 1};
+  ok := ui_check(t[..]);
+  #assert ok.index == UI_NONE && ok.reason == UI_OK;
+  b := t; b[2].label = 0; r := ui_check(b[..]); #assert r.index == 2 && r.reason == UI_LABEL;
+  b = t; b[1].decorative = false; r = ui_check(b[..]); #assert r.index == 1 && r.reason == UI_LABEL;
+  b = t; b[2].action = 0; r = ui_check(b[..]); #assert r.index == 2 && r.reason == UI_ACTION;
+  b = t; b[0].role = UI_ROLES; r = ui_check(b[..]); #assert r.index == 0 && r.reason == UI_ROLE;
+  b = t; b[0].role = -1; r = ui_check(b[..]); #assert r.index == 0 && r.reason == UI_ROLE;
+  b = t; b[4].parent = 2; r = ui_check(b[..]); #assert r.index == 4 && r.reason == UI_PARENT;   // not a dialog
+  b = t; b[4].parent = 4; r = ui_check(b[..]); #assert r.index == 4 && r.reason == UI_PARENT;   // not earlier
+  b = t; b[4].parent = -2; r = ui_check(b[..]); #assert r.index == 4 && r.reason == UI_PARENT;
+  b = t; b[5].value = 1.01; r = ui_check(b[..]); #assert r.index == 5 && r.reason == UI_RANGE;
+  b = t; b[5].value = -0.01; r = ui_check(b[..]); #assert r.index == 5 && r.reason == UI_RANGE;
+  b = t; b[5].value = 0; #assert ui_check(b[..]).reason == UI_OK;
+  b = t; b[5].value = 0.0f32 / 0.0f32; #assert ui_check(b[..]).reason == UI_RANGE;
+  #assert ui_check(t[0..<0]).reason == UI_COUNT && ui_check(t[0..<0]).index == UI_NONE;
+  big: [UI_MAX + 1] UiNode;
+  #assert ui_check(big[0..<UI_MAX]).reason == UI_OK && ui_check(big[..]).reason == UI_COUNT;
+  // every interactive role needs a label and an action; a dialog and text don't
+  for role: UI_BUTTON..<UI_TAB + 1 {
+    n := [1] UiNode.[UiNode.{role = role, label = 1, action = 1, high = 1}];
+    #assert ui_check(n[..]).reason == UI_OK;
+    n[0].label = 0; #assert ui_check(n[..]).reason == UI_LABEL;
+  }
+  d := [1] UiNode.[UiNode.{role = UI_DIALOG}]; #assert ui_check(d[..]).reason == UI_OK;
+  // a dialog first in the table can hold the next element; a dialog can't hold itself
+  first := [2] UiNode.[UiNode.{role = UI_DIALOG, label = 1}, ui_button(0, 0, 2, 2)];
+  first[1].parent = 0; #assert ui_check(first[..]).reason == UI_OK;
+  first[0].parent = 0; r = ui_check(first[..]); #assert r.index == 0 && r.reason == UI_PARENT;
+  #assert ui_button(0, 0, 1, 1).role == UI_BUTTON;
+}
+#test "every reason has its own name" {
+  for a: 0..<8 { for b: 0..<8 { if a != b { #assert ui_reason_name(a) != ui_reason_name(b); } } }
+  #assert ui_reason_name(UI_OK) == "none" && ui_reason_name(UI_ROLE) == "role" && ui_reason_name(UI_LABEL) == "label";
+  #assert ui_reason_name(UI_ACTION) == "action" && ui_reason_name(UI_PARENT) == "parent" && ui_reason_name(UI_RANGE) == "range";
+  #assert ui_reason_name(UI_COUNT) == "count" && ui_reason_name(-1) == "unknown" && ui_reason_name(7) == "unknown";
+}
+#test "reading order: top to bottom, then along the line, then the table's order" {
+  t := [4] UiNode.[ui_button(100, 10, 1, 1), ui_button(10, 10, 2, 2), ui_button(10, 60, 3, 3), ui_button(10, 60, 4, 4)];
+  #assert ui_before(t[..], 1, 0) && !ui_before(t[..], 0, 1);   // same line: x decides
+  #assert ui_before(t[..], 0, 2) && !ui_before(t[..], 2, 0);   // lower lines come later, whatever x
+  #assert ui_before(t[..], 2, 3) && !ui_before(t[..], 3, 2);   // the same place: the table decides
+  #assert !ui_before(t[..], 2, 2);
+  // the same line exactly: the start of the line first; the same column: the higher first
+  #assert ui_before(t[..], 1, 0) && ui_before(t[..], 1, 2) && !ui_before(t[..], 2, 1);
+}
+#test "focus moves in reading order, wraps, skips what it can't reach, and a dialog traps it" {
+  t: [7] UiNode;
+  t[0] = ui_button(200, 10, 1, 1);    // second on the top line
+  t[1] = ui_button(10, 10, 2, 2);     // first
+  t[2] = ui_button(10, 80, 3, 3); t[2].enabled = false;
+  t[3] = UiNode.{role = UI_TEXT, box = HudBox.{x = 10, y = 120, width = 100, height = 20}};
+  t[4] = ui_button(10, 160, 4, 4);    // last outside the dialog
+  t[5] = UiNode.{role = UI_DIALOG, label = 5, box = HudBox.{x = 50, y = 50, width = 200, height = 200}};
+  t[6] = ui_button(60, 60, 6, 6); t[6].parent = 5;
+  // forward from nothing: the first in reading order; then on, past the disabled and the text
+  #assert ui_focus_next(t[..], UI_NONE, false, UI_NONE) == 1;
+  #assert ui_focus_next(t[..], 1, false, UI_NONE) == 0;
+  #assert ui_focus_next(t[..], 0, false, UI_NONE) == 6;   // the dialog's button reads at y 60
+  #assert ui_focus_next(t[..], 6, false, UI_NONE) == 4;
+  #assert ui_focus_next(t[..], 4, false, UI_NONE) == 1;   // wraps
+  // back: the reverse, wrapping from the first to the last
+  #assert ui_focus_next(t[..], UI_NONE, true, UI_NONE) == 4;
+  #assert ui_focus_next(t[..], 4, true, UI_NONE) == 6 && ui_focus_next(t[..], 6, true, UI_NONE) == 0;
+  #assert ui_focus_next(t[..], 0, true, UI_NONE) == 1 && ui_focus_next(t[..], 1, true, UI_NONE) == 4;
+  // the dialog open: only its button, whichever way, even from outside it
+  #assert ui_focus_next(t[..], 6, false, 5) == 6 && ui_focus_next(t[..], 6, true, 5) == 6;
+  #assert ui_focus_next(t[..], UI_NONE, false, 5) == 6 && ui_focus_next(t[..], 1, false, 5) == 6;
+  // nothing reachable: none; a lone element keeps focus
+  none := [2] UiNode.[UiNode.{role = UI_TEXT}, t[2]];
+  #assert ui_focus_next(none[..], UI_NONE, false, UI_NONE) == UI_NONE && ui_focus_next(none[..], 1, true, UI_NONE) == UI_NONE;
+  one := [1] UiNode.[ui_button(0, 0, 1, 1)];
+  #assert ui_focus_next(one[..], 0, false, UI_NONE) == 0 && ui_focus_next(one[..], 0, true, UI_NONE) == 0;
+  #assert ui_focus_next(one[..], 3, false, UI_NONE) == 0 && ui_focus_next(one[..], 1, false, UI_NONE) == 0;
+}
+#test "focus visits every reachable element exactly once a round, both ways" {
+  t: [6] UiNode;
+  for i: 0..<6 { t[i] = ui_button(cast(f32) ((i * 37) % 5) * 50, cast(f32) ((i * 11) % 3) * 50, i + 1, i + 1); }
+  for back: 0..<2 {
+    seen: [6] int;
+    f := UI_NONE;
+    for k: 0..<6 { f = ui_focus_next(t[..], f, back == 1, UI_NONE); seen[f] += 1; }
+    for i: 0..<6 { #assert seen[i] == 1; }
+    #assert ui_focus_next(t[..], f, back == 1, UI_NONE) == ui_focus_next(t[..], UI_NONE, back == 1, UI_NONE);
+  }
+}
+#test "when the focused element goes, focus moves to the next, or to its dialog, never to nothing" {
+  t: [4] UiNode;
+  t[0] = ui_button(10, 10, 1, 1);
+  t[1] = ui_button(10, 60, 2, 2);
+  t[2] = UiNode.{role = UI_DIALOG, label = 3};
+  t[3] = ui_button(10, 110, 4, 4); t[3].parent = 2;
+  #assert ui_focus_after(t[..], 0, UI_NONE) == 1;
+  t[1].enabled = false;
+  #assert ui_focus_after(t[..], 1, UI_NONE) == 3;    // the next one on from where it was
+  t[3].enabled = false;
+  #assert ui_focus_after(t[..], 3, 2) == 2;          // the dialog's last button: to the dialog
+  only := [1] UiNode.[ui_button(0, 0, 1, 1)];
+  only[0].enabled = false;
+  #assert ui_focus_after(only[..], 0, UI_NONE) == UI_NONE;   // nothing left at all
+  pair := [2] UiNode.[ui_button(0, 0, 1, 1), ui_button(0, 50, 2, 2)];
+  #assert ui_focus_after(pair[..], 1, UI_NONE) == 0;   // the last: round to the first
+}
+#test "a tap and the key on the focused element give the same action; the top one owns an overlap" {
+  t: [4] UiNode;
+  t[0] = ui_button(10, 10, 1, 11);
+  t[1] = ui_button(30, 30, 2, 12);   // over t[0]'s corner, drawn after it
+  t[2] = UiNode.{role = UI_DIALOG, label = 3, box = HudBox.{x = 0, y = 100, width = 100, height = 100}};
+  t[3] = ui_button(10, 110, 4, 14); t[3].parent = 2;
+  #assert ui_tap(t[..], 20, 20, UI_NONE) == 11 && ui_activate(t[..], 0, UI_NONE) == 11;
+  #assert ui_tap(t[..], 40, 40, UI_NONE) == 12 && ui_activate(t[..], 1, UI_NONE) == 12;
+  #assert ui_tap(t[..], 54, 54, UI_NONE) == 12 && ui_tap(t[..], 74, 74, UI_NONE) == 0;   // half-open
+  // with the dialog open, what's outside it can't be touched or activated
+  #assert ui_tap(t[..], 20, 20, 2) == 0 && ui_activate(t[..], 0, 2) == 0;
+  #assert ui_tap(t[..], 20, 120, 2) == 14 && ui_activate(t[..], 3, 2) == 14;
+  t[1].enabled = false;
+  #assert ui_tap(t[..], 40, 40, UI_NONE) == 11 && ui_activate(t[..], 1, UI_NONE) == 0;
+  #assert ui_activate(t[..], -1, UI_NONE) == 0 && ui_activate(t[..], 4, UI_NONE) == 0;
+  #assert ui_activate(t[..], 2, UI_NONE) == 0;   // a dialog isn't a control
+}

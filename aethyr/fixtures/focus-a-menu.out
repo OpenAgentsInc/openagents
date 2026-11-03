@@ -1,0 +1,10 @@
+closed tree of 4: problem none; open tree of 8: problem none
+slot 1 drawn at 88.0 610.0 (44.0 by 44.0), above the indicator: true
+focus order: element 0 (action 10), then 1 and 2
+settings open: focus on element 5, the text scale
+text scale 1.5, reduced motion true
+six presses of next inside the dialog visit: 2 2 2 (and outside it 0)
+a tap on slot 1 while it's open gives 0
+closed: focus on element 0, action 10
+tap on slot 2 gives 2, its key gives 2
+with an unlabelled slot: refused label, element 3

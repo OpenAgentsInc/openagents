@@ -232,6 +232,16 @@
       ]
     },
     {
+      "source": "aethyr/examples/focus-a-menu.coax",
+      "chapter": "aethyr/book/ch015-ui-and-the-hud.md",
+      "stdout": "aethyr/fixtures/focus-a-menu.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/hold-to-talk.coax",
       "chapter": "aethyr/book/ch069-voices-in-a-realm.md",
       "stdout": "aethyr/fixtures/hold-to-talk.out",
