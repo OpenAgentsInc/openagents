@@ -117,12 +117,12 @@ e5rr_people :: (r: [] E5rRoom, folk: [] f32, folk_n: int) #export_c {
     f := j * E5R_FOLK_FLOATS;
     if j >= folk_n || folk[f] < 0.5 { b[0].c[i].x = E5R_AWAY; b[0].c[i].y = E5R_AWAY; continue; }
     block := clamp_r(cast(int) folk[f + 7], 0, E5R_BLOCKS - 1);
-    fmax := rs_max(cast(int) folk[f + 5], 1);
-    if r[0].block[j] != block || b[0].c[i].hp_max != fmax {
+    folk_max := rs_max(cast(int) folk[f + 5], 1);
+    if r[0].block[j] != block || b[0].c[i].hp_max != folk_max {
       r[0].block[j] = block;
       t := b[0].c[i].turn_at; ro := b[0].c[i].round_at;
-      b[0].c[i] = fb_folk(E5R_BLOCK_NAME[block], 1, cast(int) folk[f + 6], fmax, e5r_scores(block));
-      b[0].c[i].hp = rs_min(rs_max(cast(int) folk[f + 3], 0), fmax);
+      b[0].c[i] = fb_folk(E5R_BLOCK_NAME[block], 1, cast(int) folk[f + 6], folk_max, e5r_scores(block));
+      b[0].c[i].hp = rs_min(rs_max(cast(int) folk[f + 3], 0), folk_max);
       b[0].c[i].dead = b[0].c[i].hp <= 0;
       b[0].c[i].turn_at = t; b[0].c[i].round_at = ro;
     }
@@ -166,12 +166,12 @@ e5rr_helps :: (a: FbAb) -> bool {
 e5rr_most_hurt :: (r: [] E5rRoom, s: int) -> int {
   b := r[0].b[..];
   me := E5RR_SEAT + s;
-  best := me; most := b[0].c[me].hp_max - b[0].c[me].hp;
+  best := me; worst := b[0].c[me].hp_max - b[0].c[me].hp;
   for o: 0..<E5RR_SEATS {
     i := E5RR_SEAT + o;
     c := b[0].c[i];
     if o == s || !r[0].live[o] || c.dead || rs_feet_to(b, me, i) > 60 { continue; }
-    if c.hp_max - c.hp > most { most = c.hp_max - c.hp; best = i; }
+    if c.hp_max - c.hp > worst { worst = c.hp_max - c.hp; best = i; }
   }
   return best;
 }
@@ -284,10 +284,10 @@ e5rr_zone :: (r: [] E5rRoom, q: int, out: [] f32) -> int #export_c {
 e5rr_events :: (r: [] E5rRoom, out: [] f32) -> int #export_c {
   if !r[0].started { return 0; }
   b := r[0].b[..];
-  fresh := rs_min(b[0].book[0].seq - r[0].seen, RS_EVENTS);
+  unread := rs_min(b[0].book[0].seq - r[0].seen, RS_EVENTS);
   r[0].seen = b[0].book[0].seq;
   n := 0;
-  q := fresh - 1;
+  q := unread - 1;
   while q >= 0 {
     e := rs_recent_at(b[0].book[..], q);
     q -= 1;
