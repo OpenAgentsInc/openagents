@@ -165,6 +165,24 @@ static coax_v_t_Everglade at(uint32_t state) {
   }
   return v;
 }
+/* The seat ticket the room's socket opens with (everglade-net.coax net_ticket, #12712): its POST waits for
+   the player key (minted first when there is none), and its answer goes back to the net. */
+static int32_t ticket_id = -1;
+static bool ticket_due;
+static char ticket_url[96]; static uint32_t ticket_url_n;
+static void ticket_out(void) {
+  if (!ticket_due || ticket_id >= 0 || !facts_seen) return;   /* a golden page asks for none: its net wants no socket */
+  if (!has_player && !mint_tried) {
+    mint_tried = true;
+    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    if (mint_id < 0) mint_id = -1;
+    return;
+  }
+  if (mint_id >= 0 || !has_player) return;
+  ticket_due = false;
+  ticket_id = coaxial_http((uint32_t)(uintptr_t)ticket_url, ticket_url_n, (uint32_t)(uintptr_t)"{}", 2, 1 | 4 | 8);
+  if (ticket_id < 0) { ticket_id = -1; ticket_due = true; }
+}
 /* The room socket's commands (socket.coax's pipe) to the host, in order; then the pipe is empty. */
 static void net_drain(uint32_t state) {
   coax_t_Pipe *p = &net_state.pipe.e[0];
@@ -175,6 +193,7 @@ static void net_drain(uint32_t state) {
     if (p->op.e[k] == 1) net_opened(at(state), coaxial_socket_open(from, len));
     else if (p->op.e[k] == 2) coaxial_socket_send(id, from, len);
     else if (p->op.e[k] == 3) coaxial_socket_close(id);
+    else if (p->op.e[k] == 4 && len < sizeof ticket_url) { memcpy(ticket_url, &p->buf.e[p->from.e[k]], len); ticket_url_n = len; ticket_due = true; }
   }
   p->n = 0; p->used = 0;
 }
@@ -395,6 +414,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     net_step(at(state), (int64_t)guard_now_ms(), feet.x, feet.y, feet.z, verse_player_face(player), show_vx, show_vz,
              !player.on_ground, swim.medium, river.aboard >= 0, verse_player_act(player));
     net_drain(state);
+    ticket_out();
   }
   if (n > 0) {
     // the river's uniform block, after the page's frame has written the rest
@@ -674,6 +694,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     }
     return;
   }
+  if (ticket_id >= 0 && kind == 512 + ticket_id) { ticket_id = -1; net_ticket(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (world_id >= 0 && kind == 512 + world_id) {
     world_id = -1;
     guide_world_outer = ggp_world_answer((coax_string){(const char *)inbox,length});

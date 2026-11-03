@@ -268,8 +268,12 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int) -> 
   for i: 0..<players {
     k := rs_put(nm[..], 0, "pair-load-"); k = rs_int(nm[..], k, stamp); k = rs_put(nm[..], k, "-"); k = rs_int(nm[..], k, room);
     n := rs_put(u[..], 0, base); n = rs_put(u[..], n, "/api/room/relay/everglade/"); n = rs_put(u[..], n, cast(string) nm[0..<k]);
+    // each socket its own seat ticket (room-ticket.coax), when the environment has the key
+    id: [48] u8; ik := rs_put(id[..], 0, "p-load-"); ik = rs_int(id[..], ik, room); ik = rs_put(id[..], ik, "-"); ik = rs_int(id[..], ik, i);
+    ut: [1024] u8;
+    url := rs_ticketed(ut[..], cast(string) u[0..<n], cast(string) id[0..<ik], "");
     up := false;
-    for attempt: 0..<3 { if !up && relay_conn_open(c[i..<i + 1], cast(string) u[0..<n]) { up = true; } }
+    for attempt: 0..<3 { if !up && url.count > 0 && relay_conn_open(c[i..<i + 1], url) { up = true; } }
     if up { open += 1; }
     // read as we go, so nobody's output waits
     for j: 0..<i + 1 { if c[j].h >= 0 { while relay_conn_poll(c[j..<j + 1], 0) == RC_TEXT { eg_hear(p[j..<j + 1], run[..], cast(string) c[j].text[0..<c[j].text_n], rs_now()); } } }

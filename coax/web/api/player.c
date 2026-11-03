@@ -196,7 +196,7 @@ static void room_ticket(const request *q, PGconn *db, const char *key, const cha
   }
   if (!key || !key[0]) { api_json(q->fd, 401, "{\"error\":\"a player key\"}"); return; }
   const char *v[2] = {key, body};
-  PGresult *r = PQexecParams(db, "SELECT p.id, p.account IS NOT NULL, coalesce(nullif(a.name, ''), $2::jsonb->>'name', '') "
+  PGresult *r = PQexecParams(db, "SELECT p.id, p.account IS NOT NULL, coalesce(nullif(a.name, ''), nullif($2, '')::jsonb->>'name', '') "
                                  "FROM verse.players p LEFT JOIN verse.accounts a ON a.id = p.account "
                                  "WHERE p.key_sha256 = encode(sha256(convert_to($1, 'UTF8')), 'hex')", 2, NULL, v, NULL, NULL, 0);
   if (PQresultStatus(r) != PGRES_TUPLES_OK) {

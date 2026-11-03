@@ -19,6 +19,7 @@
 #load "../../../apps/openagents-web/everglade5e-room-rules.coax";
 #load "../../../apps/openagents-web/everglade-wire.coax";
 #load "room-everglade.coax";
+#load "room-ticket.coax";
 
 ROOMS :: 8;
 CONNS :: 512;
@@ -31,6 +32,7 @@ RmConn :: struct {
   // a relay socket's rate limits (room-relay.coax rl_allow): tokens in thousandths, when they were refilled,
   // whether it is over (since when, its last drop), frames dropped, and whether the host should close it
   ftok: int; btok: int; refill_at: int; over: bool; over_since: int; last_drop: int; dropped: int; kicked: bool;
+  ticket: Ticket;      // who its seat ticket says it is (room-ticket.coax; ok false in a room that needs none)
 }
 RmRoom :: struct {
   name: [ROOM_NAME] u8; name_n: int;
@@ -55,6 +57,8 @@ RmServer :: struct {
   dropped: int;             // frames the rate limits dropped
   jout: [RELAY_JSON] u8;    // rm_rooms' answer
   eg: [EG_ROOMS] EgRoom;    // the everglade rooms' simulations (room-everglade.coax)
+  tkey: [TICKET_KEY] u8; tkey_n: int;   // the seat-ticket key (rm_ticket_key): set, an everglade join's ticket must check
+  tkey_must: bool;                       // and a join without one is refused (else it sits with no id, "-")
 }
 
 // Every field's default (seats -1, the game's own defaults): the host calls
@@ -65,6 +69,16 @@ rm_init :: (v: [] RmServer) #export_c {
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
   for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
+}
+
+// The seat-ticket key (the host's OA_ROOM_TICKET_KEY): from then on an everglade join's ticket must
+// be signed with it (room-ticket.coax), and with must a join without a ticket is refused too (until
+// every page asks for one, a ticketless join sits with no id). A key under 32 bytes is ignored.
+rm_ticket_key :: (v: [] RmServer, key: string, must: bool) #export_c {
+  if key.count < 32 || key.count > TICKET_KEY { return; }
+  v[0].tkey_must = must;
+  for i: 0..<key.count { v[0].tkey[i] = key[i]; }
+  v[0].tkey_n = key.count;
 }
 
 // The room name in "GET /api/room/orbit-league/NAME HTTP/1.1": its bytes into
@@ -343,4 +357,54 @@ rm_players :: (v: [] RmServer) -> int #export_c {
   #assert a[0].seat == 0 && a[0].paints[1] == 0 && a[0].cars_n == 2;
   rm_left(v[..], 0);
   #assert rm_join(v[..], 2, req) == 0 && v[0].rooms[v[0].conns[2].room].paint[0] == 0;
+}
+
+// Seat tickets at the join (room-ticket.coax, #12712).
+tk_test_ask :: (r: [] u8, t: [] u8, n: int) -> string {
+  k := tk_add(r, 0, "GET /api/room/relay/everglade/pair-tk?relay=x&t="); k = tk_add(r, k, cast(string) t[0..<n]); k = tk_add(r, k, " HTTP/1.1\r\n\r\n");
+  return cast(string) r[0..<k];
+}
+#test "ticket: with a key an everglade join needs this room's ticket; the seat carries its id, name and account, not the hello's" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  rm_ticket_key(v[..], key, true);
+  // no ticket, a forged one, another room's: no seat
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-tk HTTP/1.1\r\n\r\n") < 0;
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-tk?t=v1.p-0011223344556677.1.-.pair-tk.1762190100000.0000000000000000000000000000000000000000000000000000000000000000 HTTP/1.1\r\n\r\n") < 0;
+  t: [256] u8; r: [512] u8;
+  n := tk_sign(key, "p-0011223344556677", true, "Ash Vale", "pair-zz", now + 60000, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) < 0;
+  // an expired one
+  n = tk_sign(key, "p-0011223344556677", true, "Ash Vale", "pair-tk", now - 1, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) < 0;
+  // signed under another key (a forged id)
+  n = tk_sign("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210", "p-0011223344556677", true, "Ash Vale", "pair-tk", now + 60000, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) < 0;
+  // the real ones seat, and the hello cannot rename them or claim an account
+  n = tk_sign(key, "p-0011223344556677", true, "Ash Vale", "pair-tk", now + 60000, t[..]);
+  #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
+  n = tk_sign(key, "p-8899aabbccddeeff", false, "", "pair-tk", now + 60000, t[..]);
+  #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1;
+  box: [1] EgInbox;
+  eg_test_drain(v[..], box[..]);
+  k := eg_room_at(v[..], v[0].conns[0].relay);
+  #assert k >= 0;
+  rm_heard(v[..], 0, "H 1 ranger.2.1.0 druid 0 Someone Else");
+  rm_heard(v[..], 1, "H 1 ranger.0.0.0 druid 3 Guest");
+  eg_test_tick(v[..], k); eg_test_tick(v[..], k);
+  eg_test_drain(v[..], box[..]);
+  a := eg_test_of(box[..], 1);
+  #assert eg_test_has(a, ";n 0 p-0011223344556677 ranger.2.1.0 druid 2 Ash Vale") && eg_test_has(a, ";n 1 p-8899aabbccddeeff ranger.0.0.0 druid 1 Guest");
+}
+#test "ticket: a key without must lets a ticketless join sit with no id, but still refuses a forged ticket" #steps 2000000000 {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  now := 1762190000000;
+  rm_clock(v[..], 0, now);
+  rm_ticket_key(v[..], "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", false);
+  #assert rm_join(v[..], 0, "GET /api/room/relay/everglade/pair-tk2 HTTP/1.1\r\n\r\n") == 0 && !v[0].conns[0].ticket.ok;
+  #assert rm_join(v[..], 1, "GET /api/room/relay/everglade/pair-tk2?t=v1.p-0011223344556677.1.-.pair-tk2.1762190100000.0000000000000000000000000000000000000000000000000000000000000000 HTTP/1.1\r\n\r\n") < 0;
 }

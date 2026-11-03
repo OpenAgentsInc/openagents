@@ -230,6 +230,12 @@ int main(int argc, char **argv) {
   server = calloc(1, sizeof *server);
   if (!server) { fprintf(stderr, "room: out of memory\n"); return 1; }
   rm_init(view());
+  /* the seat-ticket key (Secret Manager oa-room-ticket-key): set, an everglade join needs a ticket (room-ticket.coax) */
+  const char *tkey = getenv("OA_ROOM_TICKET_KEY");
+  const char *must = getenv("OA_ROOM_TICKET_REQUIRED");   /* "0": a join without a ticket sits with no id (while pages roll out) */
+  bool required = !(must && !strcmp(must, "0"));
+  if (tkey && strlen(tkey) >= 32) { rm_ticket_key(view(), (coax_string){tkey, (int64_t)strlen(tkey)}, required); printf("room: seat tickets checked%s\n", required ? ", required" : ""); }
+  else printf("room: no OA_ROOM_TICKET_KEY, seat tickets not checked\n");
   int lfd = socket(AF_INET, SOCK_STREAM, 0);
   int one = 1; setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
   struct sockaddr_in a = {0};

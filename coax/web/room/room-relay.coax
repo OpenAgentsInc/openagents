@@ -131,6 +131,16 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
     if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
     return -1;
   }
+  // a seat ticket for this room, when the server has a key (room-ticket.coax): forged, expired or another room's, no seat
+  tk := Ticket.{};
+  given := tk_query(request);
+  if v[0].relays[r].limited && v[0].tkey_n > 0 && (given.count > 0 || v[0].tkey_must) {
+    tk = tk_check(cast(string) v[0].tkey[0..<v[0].tkey_n], given, cast(string) code[0..<ns[1]], v[0].wall_ms);
+    if !tk.ok {
+      if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
+      return -1;
+    }
+  }
   seat := rl_seat(v, r);
   if seat < 0 {
     // full: a room nobody is in yet stays closed
@@ -138,7 +148,7 @@ rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
     return -1;
   }
   now := v[0].mono_ms;
-  v[0].conns[conn] = RmConn.{live = true, relay = r, seat = seat, ftok = RL_BURST * 1000, btok = RL_BYTES * 1000, refill_at = now};
+  v[0].conns[conn] = RmConn.{live = true, relay = r, seat = seat, ftok = RL_BURST * 1000, btok = RL_BYTES * 1000, refill_at = now, ticket = tk};
   h: [16] u8;
   rest: [48] u8; k := put(rest[..], 0, " "); k = put_int(rest[..], k, rl_people(v, r) - 1);
   k = put(rest[..], k, " "); k = put_int(rest[..], k, v[0].wall_ms);

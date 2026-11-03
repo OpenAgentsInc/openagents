@@ -36,7 +36,8 @@ gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$im
   --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > "$stage/build.log" 2>&1 || { grep -E "error|undefined reference" "$stage/build.log" | head -30; exit 1; }
 g run deploy "$service" --image "$image" --region "$region" \
   --allow-unauthenticated --port 8080 --cpu 1 --memory 512Mi \
-  --min-instances 0 --max-instances 1 --concurrency 1000 --timeout 3600 --session-affinity 2>&1 | grep -E "ERROR|revision" || true
+  --min-instances 0 --max-instances 1 --concurrency 1000 --timeout 3600 --session-affinity \
+  --set-secrets OA_ROOM_TICKET_KEY=oa-room-ticket-key:latest --set-env-vars "OA_ROOM_TICKET_REQUIRED=${OA_ROOM_TICKET_REQUIRED:-1}" 2>&1 | grep -E "ERROR|revision" || true
 url="$(g run services describe "$service" --region "$region" --format 'value(status.url)')"
 [[ "$(curl -s -m 20 "$url/health")" == ok* ]] || { echo "room: $url/health is not ok" >&2; exit 1; }
 echo "room: $url/health ok"
@@ -80,6 +81,9 @@ PY
 g compute url-maps validate --global --source "$tmp" --format 'value(result.loadSucceeded)' 2>&1 | grep -qi true ||
   { echo "room: the new url map doesn't validate" >&2; exit 1; }
 g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR" && exit 1
+# The checks join everglade rooms, which need seat tickets (room-ticket.coax): they sign their own
+# with the key, which stays in this process's environment and is never printed.
+OA_ROOM_TICKET_KEY="$(g secrets versions access latest --secret oa-room-ticket-key)"; export OA_ROOM_TICKET_KEY
 # Through the site's address (the rule takes a minute or two to reach every edge).
 for try in 1 2 3 4 5 6 7 8 9 10; do
   "$here/../tool.sh" "$here/load.coax" wss://openagents.com 4 10 && "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com &&

@@ -38,6 +38,8 @@ NET_RING :: 4;
 NET_HIST :: 64;            // your inputs kept for the server's ACK
 NET_FX :: 8;               // casts waiting for their time
 NET_ID :: 24; NET_NAME :: 40; NET_LOOK :: 32; NET_CODE :: 24; NET_URL :: 200;
+NET_TICKET :: 256;   // a seat ticket's most bytes (coax/web/room/room-ticket.coax)
+NET_PIPE_TICKET :: 4;   // the pipe's ask for a seat ticket: its bytes the API path to POST (the face carries it)
 NET_BASE :: 40; NET_LOW :: 80; NET_HIGH :: 300;   // ms: the jitter buffer's delay
 NET_AHEAD :: 150;          // ms past its newest state an entity goes on by its velocity
 NET_SNAP :: 0.5;           // m: a re-run's difference this big is taken at once
@@ -75,6 +77,9 @@ EgNet :: struct {
   state: int; sock: int = -1; tries: int; retry: int;
   url: [NET_URL] u8; url_n: int;
   code: [NET_CODE] u8; code_n: int;
+  // the seat ticket the socket opens with (?t=, #12712): asked of the API before each open, used once;
+  // free: a local relay (?relay=ws://localhost:PORT), which joins without one
+  ticket: [NET_TICKET] u8; ticket_n: int; ticket_asked: bool; free: bool;
   pid: [NET_ID] u8; pid_n: int; account: bool;
   look: [NET_LOOK] u8; look_n: int;
   mono: int;                 // this frame's monotonic ms
@@ -166,7 +171,7 @@ net_facts :: (s: [] Everglade, facts: string, room: string, golden: bool) #expor
   if relay.count > 15 && relay.count < 40 && relay[0..<15] == "ws://localhost:" {
     ok := true;
     for c: relay[15..<relay.count] { if c < '0' || c > '9' { ok = false; } }
-    if ok { m = wire_put(n[0].url[..], 0, relay); }
+    if ok { m = wire_put(n[0].url[..], 0, relay); n[0].free = true; }
   }
   m = wire_put(n[0].url[..], m, "/api/room/relay/");
   m = wire_put(n[0].url[..], m, NET_GAME);
@@ -195,6 +200,27 @@ net_player :: (s: [] Everglade, record: string) #export_c {
     if n[0].state == NET_OPEN { n[0].hello_due = true; }
     return;
   }
+}
+// The API's answer to the seat-ticket ask ("200\n{"ticket":"...",...}", anything else a refusal): the
+// next open uses it; a refusal waits as a closed socket does, then asks again.
+net_ticket :: (s: [] Everglade, answer: string) #export_c {
+  if !net_on(s) { return; }
+  n := net_of(s);
+  n[0].ticket_asked = false;
+  key := "\"ticket\":\"";
+  if answer.count > 4 && answer[0..<4] == "200\n" {
+    for i: 4..<answer.count {
+      if i + key.count > answer.count || answer[i..<i + key.count] != key { continue; }
+      e := i + key.count;
+      while e < answer.count && answer[e] != '"' { e += 1; }
+      if e < answer.count && e - i - key.count > 0 && e - i - key.count <= NET_TICKET {
+        n[0].ticket_n = net_copy(n[0].ticket[..], answer[i + key.count..<e]);
+        return;
+      }
+    }
+  }
+  n[0].ticket_n = 0;
+  net_down(n);
 }
 // The room's name (the chat's too).
 net_room :: (s: [] Everglade, room: string) -> string #export_c {
@@ -539,7 +565,18 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   n[0].mono = mono;
   y := fy + walk_at(s, x, z);
   if n[0].want && (n[0].state == NET_OFF || (n[0].state == NET_DOWN && mono >= n[0].retry)) && n[0].url_n > 0 {
-    if pipe_open(n[0].pipe[..], cast(string) n[0].url[0..<n[0].url_n]) { n[0].state = NET_OPENING; n[0].sock = -1; }
+    // each open takes a fresh seat ticket (the room refuses a join without one): asked for, then used
+    if n[0].free {
+      if pipe_open(n[0].pipe[..], cast(string) n[0].url[0..<n[0].url_n]) { n[0].state = NET_OPENING; n[0].sock = -1; }
+    } else if n[0].ticket_n > 0 {
+      u: [NET_URL + NET_TICKET + 4] u8;
+      k := wire_put(u[..], 0, cast(string) n[0].url[0..<n[0].url_n]); k = wire_put(u[..], k, "?t="); k = wire_put(u[..], k, cast(string) n[0].ticket[0..<n[0].ticket_n]);
+      if pipe_open(n[0].pipe[..], cast(string) u[0..<k]) { n[0].state = NET_OPENING; n[0].sock = -1; n[0].ticket_n = 0; }
+    } else if !n[0].ticket_asked {
+      t: [64] u8;
+      k := wire_put(t[..], 0, "/api/playtest/room-ticket/"); k = wire_put(t[..], k, cast(string) n[0].code[0..<n[0].code_n]);
+      if pipe_put(n[0].pipe[..], NET_PIPE_TICKET, -1, cast(string) t[0..<k]) { n[0].ticket_asked = true; }
+    }
   }
   if n[0].said_t > 0 { n[0].said_t -= 0.016; }
   now := net_now(n);
@@ -949,8 +986,9 @@ net_test_page :: (s: [] Everglade, n: [] EgNet, sock: int, pid: string, mono: in
   m = wire_put(facts[..], m, pid);
   m = wire_put(facts[..], m, "\nnow=5000000\nnav=0\n");
   net_facts(s, cast(string) facts[0..<m], "everglade", false);
+  n[0].ticket_n = net_copy(n[0].ticket[..], "tk");   // its seat ticket, as the API would answer
   net_step(s, mono, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
-  opened := n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == PIPE_OPEN && pipe_bytes(n[0].pipe[..], 0) == "wss://openagents.com/api/room/relay/everglade/pair-a";
+  opened := n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == PIPE_OPEN && pipe_bytes(n[0].pipe[..], 0) == "wss://openagents.com/api/room/relay/everglade/pair-a?t=tk";
   pipe_drained(n[0].pipe[..]);
   net_opened(s, sock);
   return opened && net_event(s, SOCKET_KIND + 4 * sock + SOCKET_OPENED, "");
@@ -990,6 +1028,32 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   return ok && net_test_hear(a, 0, net_test_frame(room)) && net_test_hear(b, 1, net_test_frame(room));
 }
 
+#test "net: a page asks the API for a seat ticket before each open and opens with it once; a refusal waits and asks again" {
+  a: [1] Everglade; na: [1] EgNet;
+  everglade_attach_net(a[..], na[..]);
+  net_facts(a[..], "url=https://openagents.com/worlds/everglade?room=pair-a\nplayer=pa\nnow=5000000\nnav=0\n", "everglade", false);
+  net_step(a[..], 100, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET && pipe_bytes(na[0].pipe[..], 0) == "/api/playtest/room-ticket/pair-a";
+  pipe_drained(na[0].pipe[..]);
+  net_step(a[..], 116, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].pipe[0].n == 0;   // asked once
+  net_ticket(a[..], "200\n{\"ticket\":\"v1.p-1.0.-.pair-a.9.ab\",\"id\":\"p-1\"}");
+  net_step(a[..], 132, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == PIPE_OPEN && pipe_bytes(na[0].pipe[..], 0) == "wss://openagents.com/api/room/relay/everglade/pair-a?t=v1.p-1.0.-.pair-a.9.ab";
+  pipe_drained(na[0].pipe[..]);
+  // the socket closes: the next open asks again (a ticket is used once)
+  net_opened(a[..], 0);
+  #assert net_event(a[..], SOCKET_KIND + SOCKET_CLOSED, "");
+  net_step(a[..], 140000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET;
+  pipe_drained(na[0].pipe[..]);
+  // refused: no open, and it asks again after the wait
+  net_ticket(a[..], "403\n{\"error\":\"unknown player key\"}");
+  net_step(a[..], 140016, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].pipe[0].n == 0 && net_probe(a[..], 0) == NET_DOWN;
+  net_step(a[..], 300000, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+  #assert na[0].pipe[0].n == 1 && na[0].pipe[0].op[0] == NET_PIPE_TICKET;
+}
 #test "net: two pages in one room see each other move, as the server says, a jitter buffer behind it" {
   a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet; room: [1] NetTestRoom;
   #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_page(b[..], nb[..], 1, "pb", 100);

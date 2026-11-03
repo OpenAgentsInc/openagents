@@ -223,6 +223,18 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   }
   while m > 0 && st[0].name[m - 1] == ' ' { m -= 1; }
   st[0].name_n = ifx m == 1 && st[0].name[0] == '-' then 0 else m;
+  // a seat ticket's name and account bit outrank the hello's (room-ticket.coax, #12712)
+  tk := eg_ticket(v, k, seat);
+  if tk.ok {
+    st[0].flags = (st[0].flags & 253) | (ifx tk.account then 2 else 0);
+    if tk.name_n > 0 { for i: 0..<tk.name_n { st[0].name[i] = tk.name[i]; } st[0].name_n = tk.name_n; }
+  }
+}
+// The seat's ticket (ok false: none, in a room that needs none).
+eg_ticket :: (v: [] RmServer, k: int, seat: int) -> Ticket {
+  c := v[0].eg[k].seat[seat].conn;
+  if c < 0 || c >= CONNS || !v[0].conns[c].live { return Ticket.{}; }
+  return v[0].conns[c].ticket;
 }
 // C SEQ SLOT AX AY AZ TGT: a cast at the aim. Checked, announced (e cast), then rolled at its strike.
 eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
@@ -417,7 +429,8 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
     h := eg_hash(cast(string) e[0..<n]);
     // your own every frame: its ACK is where your page replays from
     if q == s || h != st[0].heard_p[q] { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); st[0].heard_p[q] = h; }
-    n = wire_put_n(e[..], 0, WireN.{ss = q, id = "-", look = ifx other.look_n > 0 then cast(string) other.look[0..<other.look_n] else "ranger.0.0.0",
+    tq := eg_ticket(v, k, q);
+    n = wire_put_n(e[..], 0, WireN.{ss = q, id = ifx tq.ok then cast(string) tq.pid[0..<tq.pid_n] else "-", look = ifx other.look_n > 0 then cast(string) other.look[0..<other.look_n] else "ranger.0.0.0",
                                     kind = ifx other.klass_n > 0 then cast(string) other.klass[0..<other.klass_n] else "druid",
                                     flags = other.flags, name = ifx other.name_n > 0 then cast(string) other.name[0..<other.name_n] else "-"});
     h = eg_hash(cast(string) e[0..<n]);
