@@ -1,0 +1,151 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/address.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Hex into a buffer.
+unhex :: (hex: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(hex, out, false);
+  #assert r.error == NC_OK;
+  return out[0..<r.written];
+}
+KIND_NAMES :: [7] string.["", "P2PKH", "P2SH", "P2WPKH", "P2WSH", "P2TR", "witness"];
+NETWORK_NAMES :: [5] string.["", "mainnet", "testnet", "regtest", "network 4"];
+// The name of a refusal.
+refusal :: (code: int) -> string {
+  own := [8] string.["bad network", "wrong network", "no address", "bad key", "uncompressed key",
+                     "script too long", "bad tweak", "capacity"];
+  base58 := [7] string.["Base58 bad character", "Base58 bad checksum", "Base58 bad length",
+                        "Base58 unknown version", "Base58 bad flag", "Base58 capacity", "Base58 too long"];
+  segwit := [12] string.["segwit too long", "segwit mixed case", "segwit bad format", "segwit bad checksum",
+                         "segwit unknown HRP", "segwit no version", "segwit bad version", "segwit wrong variant",
+                         "segwit bad padding", "segwit bad length", "segwit bad v0 length", "segwit capacity"];
+  if code < 0 && code >= -8 { return own[-code - 1]; }
+  if code < AD_BASE58 && code >= AD_BASE58 - 7 { return base58[AD_BASE58 - code - 1]; }
+  if code < AD_SEGWIT && code >= AD_SEGWIT - 12 { return segwit[AD_SEGWIT - code - 1]; }
+  return "?";
+}
+// A scriptPubKey, its kind and its address on each network.
+show_script :: (label: string, script: [] u8) {
+  show(label, script);
+  kind := script_kind_vartime(script);
+  if kind < 0 { print("  %\n", refusal(kind)); return; }
+  print("  kind: %\n", KIND_NAMES[kind]);
+  text: [90] u8;
+  for network: SW_MAINNET..<SW_REGTEST + 1 {
+    n := address_encode_vartime(network, script, text[..]);
+    print("  %: %\n", NETWORK_NAMES[network], cast(string) text[0..<n]);
+  }
+}
+// Decode an address on a network and print its scriptPubKey, or the refusal.
+try_decode :: (network: int, text: string) {
+  script: [AD_SCRIPT_MAX] u8;
+  a := address_decode_vartime(network, text, script[..]);
+  if a.length < 0 { print("% on %: %\n", text, NETWORK_NAMES[network], refusal(a.length)); return; }
+  print("% on %: %, ", text, NETWORK_NAMES[network], KIND_NAMES[a.kind]);
+  show("script", script[0..<a.length]);
+}
+
+// G compressed and uncompressed: the public key of the private key 1.
+G_C :: "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+G_U :: "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
+// BIP-49's key and BIP-86's first internal key.
+BIP49_KEY :: "03a1af804ac108a8a51782198c2d034b28bf90c8803f5a53f76276fa69a4eae77f";
+BIP86_INTERNAL :: "cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115";
+
+main :: () {
+  b1: [65] u8; b2: [65] u8; script: [AD_SCRIPT_MAX] u8; hash: [32] u8;
+  compressed := unhex(G_C, b1[..]);
+  uncompressed := unhex(G_U, b2[..]);
+
+  // P2PKH: one key, two addresses.
+  print("P2PKH\n");
+  #assert hash160_checked(compressed, hash[0..<20], false) == RMD_OK;
+  show("HASH160(G compressed)", hash[0..<20]);
+  show_script("scriptPubKey", script[0..<p2pkh_script_vartime(compressed, script[..])]);
+  #assert hash160_checked(uncompressed, hash[0..<20], false) == RMD_OK;
+  show("HASH160(G uncompressed)", hash[0..<20]);
+  show_script("scriptPubKey", script[0..<p2pkh_script_vartime(uncompressed, script[..])]);
+
+  // P2WPKH: the same HASH160, as a version 0 program.
+  print("P2WPKH\n");
+  show_script("scriptPubKey", script[0..<p2wpkh_script_vartime(compressed, script[..])]);
+  print("uncompressed: %\n", refusal(p2wpkh_script_vartime(uncompressed, script[..])));
+
+  // P2SH-P2WPKH, BIP-49's vector.
+  print("P2SH-P2WPKH\n");
+  b3: [33] u8; redeem: [22] u8;
+  key := unhex(BIP49_KEY, b3[..]);
+  #assert hash160_checked(key, hash[0..<20], false) == RMD_OK;
+  show("key hash", hash[0..<20]);
+  n := p2wpkh_script_vartime(key, redeem[..]);
+  show("redeem script", redeem[0..<n]);
+  #assert hash160_checked(redeem[..], hash[0..<20], false) == RMD_OK;
+  show("HASH160(redeem script)", hash[0..<20]);
+  show_script("scriptPubKey", script[0..<p2sh_p2wpkh_script_vartime(key, script[..])]);
+
+  // P2SH and P2WSH of the one-byte script OP_TRUE.
+  print("P2SH and P2WSH of OP_TRUE (51)\n");
+  op_true := [1] u8.[0x51];
+  show_script("P2SH", script[0..<p2sh_script_vartime(op_true[..], script[..])]);
+  show_script("P2WSH", script[0..<p2wsh_script_vartime(op_true[..], script[..])]);
+  long: [521] u8;
+  print("a 521-byte redeem script: %\n", refusal(p2sh_script_vartime(long[..], script[..])));
+
+  // P2TR: BIP-86's first key, tweaked with no script tree.
+  print("P2TR\n");
+  b4: [32] u8; q: [32] u8;
+  internal := unhex(BIP86_INTERNAL, b4[..]);
+  show("internal key P", internal);
+  #assert bitcoin_tagged_checked(BH_TAPTWEAK, internal, hash[..], false) == SHA_OK;
+  show("t = H_TapTweak(P)", hash[..]);
+  parity := taproot_tweak_vartime(internal, q[..]);
+  show("Q = P + tG, x", q[..]);
+  print("Q's y parity: %\n", parity);
+  show_script("scriptPubKey", script[0..<p2tr_script_vartime(internal, script[..])]);
+  print("G compressed as an internal key: %\n", refusal(p2tr_script_vartime(compressed, script[..])));
+
+  // A future witness version: an address, and no meaning yet.
+  print("Unknown witness versions\n");
+  v2 := [18] u8.[0x52, 16, 0x75, 0x1e, 0x76, 0xe8, 0x19, 0x91, 0x96, 0xd4, 0x54, 0x94, 0x1c, 0x45, 0xd1, 0xb3, 0xa3, 0x23];
+  show_script("version 2", v2[..]);
+
+  // Scripts with no address.
+  print("No address\n");
+  p2pk := [35] u8.[0x21, 0x02, 0x79, 0xbe, 0x66, 0x7e, 0xf9, 0xdc, 0xbb, 0xac, 0x55, 0xa0, 0x62, 0x95, 0xce, 0x87,
+                   0x0b, 0x07, 0x02, 0x9b, 0xfc, 0xdb, 0x2d, 0xce, 0x28, 0xd9, 0x59, 0xf2, 0x81, 0x5b, 0x16, 0xf8,
+                   0x17, 0x98, 0xac];
+  show_script("P2PK", p2pk[..]);
+  op_return := [6] u8.[0x6a, 4, 0xde, 0xad, 0xbe, 0xef];
+  show_script("OP_RETURN", op_return[..]);
+  v0_21 := [23] u8.[0, 21, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+  show_script("version 0, 21 bytes", v0_21[..]);
+
+  // Addresses back to scriptPubKeys.
+  print("Decoding\n");
+  try_decode(SW_MAINNET, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH");
+  try_decode(SW_TESTNET, "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2");
+  try_decode(SW_REGTEST, "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2");
+  try_decode(SW_MAINNET, "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4");
+  try_decode(SW_MAINNET, "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr");
+  try_decode(SW_MAINNET, "BC1SW50QGDZ25J");
+  try_decode(SW_REGTEST, "bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9");
+
+  // Refusals.
+  print("Refusals\n");
+  try_decode(4, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH");
+  try_decode(SW_MAINNET, "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2");
+  try_decode(SW_TESTNET, "bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9");
+  try_decode(SW_MAINNET, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMJ");
+  try_decode(SW_MAINNET, "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd");
+  b5: [24] u8;
+  print("P2PKH into 24 bytes: %\n", refusal(address_decode_vartime(SW_MAINNET, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH", b5[..]).length));
+  print("bad key: %\n", refusal(p2pkh_script_vartime(compressed[1..<33], script[..])));
+}
+// book:end example

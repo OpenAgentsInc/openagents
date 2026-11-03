@@ -1,0 +1,540 @@
+// Addresses (Bitcoin chapter 29): the five standard output types, the
+// scriptPubKey each one makes and the address that names it.
+//
+// - p2pkh_script_vartime, p2wpkh_script_vartime, p2sh_script_vartime,
+//   p2wsh_script_vartime, p2sh_p2wpkh_script_vartime and
+//   p2tr_script_vartime: a scriptPubKey from what it commits to (a public
+//   key, a redeem script, a witness script or a Taproot internal key).
+// - taproot_tweak_vartime: BIP-341's key-path tweak Q = P + H_TapTweak(P)G
+//   for a key with no script tree.
+// - script_kind_vartime: which output type a scriptPubKey is, if any.
+// - address_encode_vartime and address_decode_vartime: a scriptPubKey to
+//   and from its address on mainnet, testnet or regtest, through chapter
+//   26's Base58Check and chapter 28's segwit encoding.
+//
+// Keys, scripts and addresses here are public, so everything may branch and
+// index on its input. Every procedure that writes takes a caller-owned
+// buffer and returns a count, or one negative AD_* refusal. A refusal writes
+// nothing.
+#load "base58.coax";
+#load "segwit.coax";
+#load "hash160.coax";
+#load "../crypto/secp_encode.coax";
+#load "../crypto/secp_mult.coax";
+#authority;
+
+// book:begin kinds
+// The output types. A witness program of version 1 to 16 that is not
+// Taproot's has an address but no meaning yet: AD_WITNESS.
+AD_P2PKH :: 1; AD_P2SH :: 2; AD_P2WPKH :: 3; AD_P2WSH :: 4; AD_P2TR :: 5; AD_WITNESS :: 6;
+AD_SCRIPT_MAX :: 42;        // the longest scriptPubKey with an address: OP_16, a push of 40, 40 bytes
+AD_REDEEM_MAX :: 520;       // the largest push, so the largest P2SH redeem script
+AD_WITNESS_MAX :: 10000;    // the largest P2WSH witness script (BIP-141)
+// book:end kinds
+
+// book:begin refusals
+AD_BAD_NETWORK :: -1;       // a network outside 1-3
+AD_WRONG_NETWORK :: -2;     // a valid address for another network
+AD_NO_ADDRESS :: -3;        // a scriptPubKey that no address encodes
+AD_BAD_KEY :: -4;           // not a public key: a wrong length or prefix, or a point not on the curve
+AD_UNCOMPRESSED :: -5;      // an uncompressed key where segwit wants a compressed one
+AD_SCRIPT_TOO_LONG :: -6;   // a redeem script over 520 bytes or a witness script over 10,000
+AD_BAD_TWEAK :: -7;         // a TapTweak hash of at least n, or Q at infinity
+AD_CAPACITY :: -8;          // the output buffer is too small
+// Refusals from the encodings underneath keep their own codes, offset:
+AD_BASE58 :: -20;           // plus chapter 26's B58_* code: -21 to -27
+AD_SEGWIT :: -40;           // plus chapter 28's SW_* code: -41 to -52
+// book:end refusals
+
+// A decoded address: the scriptPubKey's length (or a refusal) and its kind.
+Address_Script :: struct { length: int; kind: int; }
+
+// ---- checks
+ad_unhex :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count/2 { out[i] = cast(u8) (ad_nibble(text[2*i])*16 + ad_nibble(text[2*i+1])); }
+  return out[0..<text.count/2];
+}
+ad_nibble :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+ad_hex_is :: (bytes: [] u8, hex: string) -> bool {
+  digits := "0123456789abcdef";
+  if hex.count != bytes.count * 2 { return false; }
+  for i: 0..<bytes.count {
+    if hex[2*i] != digits[bytes[i] >> 4] || hex[2*i+1] != digits[bytes[i] & 15] { return false; }
+  }
+  return true;
+}
+// A script builder's output for a hex input, compared with hex; empty
+// want means a refusal is wanted, with nothing written.
+AD_BY_KEY_P2PKH :: 1; AD_BY_KEY_P2WPKH :: 2; AD_BY_KEY_P2SH_P2WPKH :: 3; AD_BY_P2SH :: 4; AD_BY_P2WSH :: 5; AD_BY_P2TR :: 6;
+ad_builds :: (how: int, input: string, want: string) -> int {
+  in: [65] u8; out: [AD_SCRIPT_MAX] u8;
+  for i: 0..<AD_SCRIPT_MAX { out[i] = 0xa5; }
+  x := ad_unhex(input, in[..]);
+  n := AD_NO_ADDRESS;
+  if how == AD_BY_KEY_P2PKH { n = p2pkh_script_vartime(x, out[..]); }
+  if how == AD_BY_KEY_P2WPKH { n = p2wpkh_script_vartime(x, out[..]); }
+  if how == AD_BY_KEY_P2SH_P2WPKH { n = p2sh_p2wpkh_script_vartime(x, out[..]); }
+  if how == AD_BY_P2SH { n = p2sh_script_vartime(x, out[..]); }
+  if how == AD_BY_P2WSH { n = p2wsh_script_vartime(x, out[..]); }
+  if how == AD_BY_P2TR { n = p2tr_script_vartime(x, out[..]); }
+  if want.count == 0 {
+    for b: out { if b != 0xa5 { return 0; } }
+    return n;
+  }
+  if n != want.count / 2 || !ad_hex_is(out[0..<n], want) { return 0; }
+  return n;
+}
+// A scriptPubKey in hex encodes to exactly text on a network.
+ad_encodes :: (network: int, script: string, text: string) -> bool {
+  s: [AD_SCRIPT_MAX] u8; back: [90] u8;
+  n := address_encode_vartime(network, ad_unhex(script, s[..]), back[..]);
+  if n != text.count { return false; }
+  for i: 0..<n { if back[i] != text[i] { return false; } }
+  return true;
+}
+// An address on a network decodes to the script in hex with this kind, and
+// the script encodes to encoded: the address itself, or in lower case.
+ad_round_trip :: (network: int, text: string, kind: int, script: string, encoded: string) -> bool {
+  out: [AD_SCRIPT_MAX] u8;
+  a := address_decode_vartime(network, text, out[..]);
+  if a.length != script.count / 2 || a.kind != kind || !ad_hex_is(out[0..<a.length], script) { return false; }
+  return ad_encodes(network, script, encoded);
+}
+// An address on a network refuses with code, with nothing written.
+ad_refuses :: (network: int, text: string, code: int) -> bool {
+  out: [AD_SCRIPT_MAX] u8;
+  for i: 0..<AD_SCRIPT_MAX { out[i] = 0xa5; }
+  a := address_decode_vartime(network, text, out[..]);
+  for b: out { if b != 0xa5 { return false; } }
+  return a.length == code && a.kind == 0;
+}
+
+G_COMPRESSED :: "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+G_UNCOMPRESSED :: "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
+
+#test "the check helpers notice every difference" {
+  b: [3] u8;
+  x := ad_unhex("0a1b2c", b[..]);
+  #assert ad_hex_is(x, "0a1b2c") && !ad_hex_is(x, "0a1b2d") && !ad_hex_is(x, "1a1b2c") && !ad_hex_is(x, "0a1b");
+  #assert !ad_hex_is(x, "0a1c2c") && x[0] == 10 && x[2] == 44;
+  P := "76a914751e76e8199196d454941c45d1b3a323f1433bd688ac";
+  A := "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH";
+  #assert ad_builds(AD_BY_KEY_P2PKH, G_COMPRESSED, P) == 25;
+  #assert ad_builds(AD_BY_KEY_P2PKH, G_COMPRESSED, "76a914751e76e8199196d454941c45d1b3a323f1433bd688ad") == 0;
+  #assert ad_builds(AD_BY_KEY_P2PKH, G_COMPRESSED, "76a914751e76e8199196d454941c45d1b3a323f1433bd688") == 0;
+  #assert ad_builds(AD_BY_KEY_P2PKH, G_COMPRESSED, "") == 0;
+  #assert ad_builds(7, G_COMPRESSED, "") == AD_NO_ADDRESS;
+  #assert ad_encodes(SW_MAINNET, P, A) && !ad_encodes(SW_MAINNET, P, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMJ");
+  #assert !ad_encodes(SW_MAINNET, P, "2BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH") && !ad_encodes(SW_MAINNET, P, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAM");
+  #assert ad_round_trip(SW_MAINNET, A, AD_P2PKH, P, A);
+  #assert !ad_round_trip(SW_MAINNET, A, AD_P2SH, P, A);
+  #assert !ad_round_trip(SW_MAINNET, A, AD_P2PKH, "76a914751e76e8199196d454941c45d1b3a323f1433bd688", A);
+  #assert !ad_round_trip(SW_MAINNET, A, AD_P2PKH, "76a914751e76e8199196d454941c45d1b3a323f1433bd688ad", A);
+  #assert !ad_round_trip(SW_TESTNET, A, AD_P2PKH, P, A);
+  #assert !ad_round_trip(SW_MAINNET, A, AD_P2PKH, P, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMJ");
+  #assert ad_refuses(SW_TESTNET, A, AD_WRONG_NETWORK);
+  #assert !ad_refuses(SW_TESTNET, A, AD_BAD_NETWORK) && !ad_refuses(SW_MAINNET, A, AD_WRONG_NETWORK);
+}
+
+#test "scriptPubKeys from keys: G compressed and uncompressed" {
+  // HASH160 of G compressed is 751e76e8...; of G uncompressed, 91b24bf9...
+  #assert ad_builds(AD_BY_KEY_P2PKH, G_UNCOMPRESSED, "76a91491b24bf9f5288532960ac687abb035127b1d28a588ac") == 25;
+  #assert ad_builds(AD_BY_KEY_P2WPKH, G_COMPRESSED, "0014751e76e8199196d454941c45d1b3a323f1433bd6") == 22;
+  #assert ad_builds(AD_BY_KEY_P2WPKH, G_UNCOMPRESSED, "") == AD_UNCOMPRESSED;
+  #assert ad_builds(AD_BY_KEY_P2SH_P2WPKH, G_UNCOMPRESSED, "") == AD_UNCOMPRESSED;
+  // BIP-49's test vector: the key, its P2WPKH redeem script, and that
+  // script's HASH160 in a P2SH scriptPubKey.
+  #assert ad_builds(AD_BY_KEY_P2SH_P2WPKH, "03a1af804ac108a8a51782198c2d034b28bf90c8803f5a53f76276fa69a4eae77f",
+                    "a914336caa13e08b96080a32b5d818d59b4ab3b3674287") == 23;
+  #assert ad_builds(AD_BY_P2SH, "001438971f73930f6c141d977ac4fd4a727c854935b3", "a914336caa13e08b96080a32b5d818d59b4ab3b3674287") == 23;
+  // Not keys: x-only, a hybrid prefix, x not on the curve, the wrong prefix.
+  #assert ad_builds(AD_BY_KEY_P2PKH, "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "") == AD_BAD_KEY;
+  #assert ad_builds(AD_BY_KEY_P2PKH, "0679be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8", "") == AD_BAD_KEY;
+  #assert ad_builds(AD_BY_KEY_P2WPKH, "020000000000000000000000000000000000000000000000000000000000000005", "") == AD_BAD_KEY;
+  #assert ad_builds(AD_BY_KEY_P2SH_P2WPKH, "0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "") == AD_BAD_KEY;
+}
+
+#test "scriptPubKeys from scripts: P2SH and P2WSH" #steps 200000000 {
+  // OP_TRUE (0x51): HASH160 da1745e9..., SHA-256 4ae81572...
+  #assert ad_builds(AD_BY_P2SH, "51", "a914da1745e9b549bd0bfa1a569971c77eba30cd5a4b87") == 23;
+  #assert ad_builds(AD_BY_P2WSH, "51", "00204ae81572f06e1b88fd5ced7a1a000945432e83e1551e6f721ee9c00b8cc33260") == 34;
+  #assert ad_builds(AD_BY_P2SH, "", "a914b472a266d0bd89c13706a4132ccfb16f7c3b9fcb87") == 23;
+  long: [10001] u8; out: [34] u8;
+  for i: 0..<34 { out[i] = 0xa5; }
+  #assert p2sh_script_vartime(long[0..<521], out[..]) == AD_SCRIPT_TOO_LONG;
+  #assert p2wsh_script_vartime(long[..], out[..]) == AD_SCRIPT_TOO_LONG;
+  #assert p2sh_script_vartime(long[0..<520], out[0..<22]) == AD_CAPACITY;
+  #assert p2wsh_script_vartime(long[0..<10000], out[0..<33]) == AD_CAPACITY;
+  for b: out { #assert b == 0xa5; }
+  #assert p2sh_script_vartime(long[0..<520], out[0..<23]) == 23 && p2wsh_script_vartime(long[0..<10000], out[..]) == 34;
+  key: [33] u8;
+  #assert ad_unhex(G_COMPRESSED, key[..]).count == 33;
+  for i: 0..<34 { out[i] = 0xa5; }
+  #assert p2pkh_script_vartime(key[..], out[0..<24]) == AD_CAPACITY && p2wpkh_script_vartime(key[..], out[0..<21]) == AD_CAPACITY;
+  #assert p2sh_p2wpkh_script_vartime(key[..], out[0..<22]) == AD_CAPACITY && p2tr_script_vartime(key[1..<33], out[0..<33]) == AD_CAPACITY;
+  for b: out { #assert b == 0xa5; }
+  #assert p2wpkh_script_vartime(key[..], out[0..<22]) == 22 && p2tr_script_vartime(key[1..<33], out[0..<34]) == 34;
+}
+
+// Each tweak is a scalar multiplication at compile time, so the tweaks are
+// spread over three checks.
+#test "the Taproot tweak: BIP-86 and BIP-341 with no script tree" #steps 600000000 {
+  // BIP-86 m/86'/0'/0'/0/0 and BIP-341's scriptPubKey vector 0.
+  #assert ad_builds(AD_BY_P2TR, "cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115",
+                    "5120a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c") == 34;
+  #assert ad_builds(AD_BY_P2TR, "d6889cb081036e0faefa3a35157ad71086b123b2b144b649798b494c300a961d",
+                    "512053a1f6e454df1aa2776a2814a721372d6258050de330b3c6d10ee8f4e0dda343") == 34;
+  // m/86'/0'/0'/0/1, whose Q has an even y.
+  #assert ad_builds(AD_BY_P2TR, "83dfe85a3151d2517290da461fe2815591ef69f2b18a2ce63f01697a8b313145",
+                    "5120a82f29944d65b86ae6b5e5cc75e294ead6c59391a1edc5e016e3498c67fc7bbb") == 34;
+}
+#test "the Taproot tweak: G, and refusals" #steps 400000000 {
+  // G's x as the internal key, computed with Python integers and hashlib.
+  #assert ad_builds(AD_BY_P2TR, "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                    "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21") == 34;
+  // x = 5 has no point; a compressed key is not x-only.
+  #assert ad_builds(AD_BY_P2TR, "0000000000000000000000000000000000000000000000000000000000000005", "") == AD_BAD_KEY;
+  #assert ad_builds(AD_BY_P2TR, G_COMPRESSED, "") == AD_BAD_KEY;
+  internal: [32] u8; q: [33] u8;
+  for i: 0..<33 { q[i] = 0xa5; }
+  #assert taproot_tweak_vartime(internal[0..<31], q[..]) == AD_BAD_KEY && q[0] == 0xa5;
+  #assert ad_unhex("cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115", internal[..]).count == 32;
+  #assert taproot_tweak_vartime(internal[..], q[0..<31]) == AD_CAPACITY && q[0] == 0xa5;
+}
+#test "the Taproot tweak returns Q's parity" #steps 400000000 {
+  // BIP-86's m/86'/0'/0'/0/0 gives a Q with odd y, and m/86'/0'/0'/0/1
+  // one with even y (the parities computed with Python integers).
+  internal: [32] u8; q: [33] u8;
+  for i: 0..<33 { q[i] = 0xa5; }
+  #assert ad_unhex("cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115", internal[..]).count == 32;
+  #assert taproot_tweak_vartime(internal[..], q[..]) == 1 && q[32] == 0xa5;
+  #assert ad_hex_is(q[0..<32], "a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c");
+  #assert ad_unhex("83dfe85a3151d2517290da461fe2815591ef69f2b18a2ce63f01697a8b313145", internal[..]).count == 32;
+  #assert taproot_tweak_vartime(internal[..], q[..]) == 0;
+  #assert ad_hex_is(q[0..<32], "a82f29944d65b86ae6b5e5cc75e294ead6c59391a1edc5e016e3498c67fc7bbb");
+}
+
+#test "script kinds" {
+  s: [43] u8;
+  #assert script_kind_vartime(ad_unhex("76a914751e76e8199196d454941c45d1b3a323f1433bd688ac", s[..])) == AD_P2PKH;
+  #assert script_kind_vartime(ad_unhex("a914751e76e8199196d454941c45d1b3a323f1433bd687", s[..])) == AD_P2SH;
+  #assert script_kind_vartime(ad_unhex("0014751e76e8199196d454941c45d1b3a323f1433bd6", s[..])) == AD_P2WPKH;
+  #assert script_kind_vartime(ad_unhex("00204ae81572f06e1b88fd5ced7a1a000945432e83e1551e6f721ee9c00b8cc33260", s[..])) == AD_P2WSH;
+  #assert script_kind_vartime(ad_unhex("512053a1f6e454df1aa2776a2814a721372d6258050de330b3c6d10ee8f4e0dda343", s[..])) == AD_P2TR;
+  #assert script_kind_vartime(ad_unhex("5202751e", s[..])) == AD_WITNESS;
+  #assert script_kind_vartime(ad_unhex("6002751e", s[..])) == AD_WITNESS;
+  #assert script_kind_vartime(ad_unhex("5110751e76e8199196d454941c45d1b3a323", s[..])) == AD_WITNESS;
+  #assert script_kind_vartime(ad_unhex("5128751e76e8199196d454941c45d1b3a323f1433bd6751e76e8199196d454941c45d1b3a323f1433bd6", s[..])) == AD_WITNESS;
+  // Not addresses: P2PK, OP_RETURN, version 0 of 21 bytes, a 1-byte or
+  // 41-byte program, OP_1NEGATE (0x4f) and OP_16 + 1 (0x61) as versions, a push
+  // length that does not match, and each P2PKH and P2SH byte changed.
+  #assert script_kind_vartime(ad_unhex("210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac", s[..])) == AD_NO_ADDRESS;
+  #assert script_kind_vartime(ad_unhex("6a0400000000", s[..])) == AD_NO_ADDRESS;
+  #assert script_kind_vartime(ad_unhex("0015751e76e8199196d454941c45d1b3a323f1433bd600", s[..])) == AD_NO_ADDRESS;
+  #assert script_kind_vartime(ad_unhex("510175", s[..])) == AD_NO_ADDRESS;
+  #assert script_kind_vartime(ad_unhex("5129751e76e8199196d454941c45d1b3a323f1433bd6751e76e8199196d454941c45d1b3a323f1433bd600", s[..])) == AD_NO_ADDRESS;
+  #assert script_kind_vartime(ad_unhex("4f02751e", s[..])) == AD_NO_ADDRESS && script_kind_vartime(ad_unhex("6102751e", s[..])) == AD_NO_ADDRESS;
+  #assert script_kind_vartime(ad_unhex("5203751e", s[..])) == AD_NO_ADDRESS && script_kind_vartime(ad_unhex("5201751e", s[..])) == AD_NO_ADDRESS;
+  #assert script_kind_vartime(ad_unhex("0021751e76e8199196d454941c45d1b3a323f1433bd6751e76e8199196d454941c45d1b3", s[..])) == AD_NO_ADDRESS;
+  #assert script_kind_vartime(s[0..<0]) == AD_NO_ADDRESS;
+  p2pkh := "76a914751e76e8199196d454941c45d1b3a323f1433bd688ac";
+  for at: [5] int.[0, 1, 2, 23, 24] {
+    x := ad_unhex(p2pkh, s[..]); x[at] ^= 1;
+    #assert script_kind_vartime(x) == AD_NO_ADDRESS;
+  }
+  p2sh := "a914751e76e8199196d454941c45d1b3a323f1433bd687";
+  for at: [3] int.[0, 1, 22] {
+    x := ad_unhex(p2sh, s[..]); x[at] ^= 1;
+    #assert script_kind_vartime(x) == AD_NO_ADDRESS;
+  }
+}
+
+#test "addresses both ways on all three networks" {
+  #assert ad_round_trip(SW_MAINNET, "1EHNa6Q4Jz2uvNExL497mE43ikXhwF6kZm", AD_P2PKH, "76a91491b24bf9f5288532960ac687abb035127b1d28a588ac", "1EHNa6Q4Jz2uvNExL497mE43ikXhwF6kZm");
+  // Bitcoin Core key_io_valid.json entries.
+  #assert ad_round_trip(SW_MAINNET, "36j4NfKv6Akva9amjWrLG6MuSQym1GuEmm", AD_P2SH, "a914373b819a068f32b7a6b38b6b38729647cfde01c287", "36j4NfKv6Akva9amjWrLG6MuSQym1GuEmm");
+  #assert ad_round_trip(SW_TESTNET, "mzK2FFDEhxqHcmrJw1ysqFkVyhUULo45hZ", AD_P2PKH, "76a914ce28b26c57472737f5c3561a1761185bd8589a4388ac", "mzK2FFDEhxqHcmrJw1ysqFkVyhUULo45hZ");
+  #assert ad_round_trip(SW_REGTEST, "2MxFajLApXpYk4VodBSZSt7rw8y4ryABkfA", AD_P2SH, "a91436e9f191e0b75036a77f65e2eaa4752443233fbe87", "2MxFajLApXpYk4VodBSZSt7rw8y4ryABkfA");
+  #assert ad_round_trip(SW_REGTEST, "n4fajahJrAuKbN7uNsKjLjQkz9Qn5ewJXQ", AD_P2PKH, "76a914fdeca3b08e38af53d7c4c60e3ad208ce5066441088ac", "n4fajahJrAuKbN7uNsKjLjQkz9Qn5ewJXQ");
+  #assert ad_round_trip(SW_TESTNET, "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2", AD_P2SH, "a914336caa13e08b96080a32b5d818d59b4ab3b3674287", "2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2");
+  #assert ad_round_trip(SW_MAINNET, "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", AD_P2WPKH, "0014751e76e8199196d454941c45d1b3a323f1433bd6", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4");
+  #assert ad_round_trip(SW_MAINNET, "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4", AD_P2WPKH, "0014751e76e8199196d454941c45d1b3a323f1433bd6", "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4");
+  #assert ad_round_trip(SW_TESTNET, "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", AD_P2WSH,
+                        "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262", "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7");
+  #assert ad_round_trip(SW_MAINNET, "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr", AD_P2TR,
+                        "5120a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c", "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr");
+  #assert ad_round_trip(SW_MAINNET, "BC1SW50QGDZ25J", AD_WITNESS, "6002751e", "bc1sw50qgdz25j");
+  #assert ad_round_trip(SW_REGTEST, "bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9", AD_P2WPKH, "00146f58bac9506f9bfb821d62e69330410bb56f0085", "bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9");
+  #assert ad_round_trip(SW_REGTEST, "bcrt1s489d9fhmyel0vzfqsrmew4x7r80asuqesm5hgqacy35daflcyufh3j8cgdtflvt99ph05m", AD_WITNESS,
+                        "6028a9cad2a6fb267ef6092080f79754de19dfd8701986e97403b82468dea7f8271378c8f843569fb165", "bcrt1s489d9fhmyel0vzfqsrmew4x7r80asuqesm5hgqacy35daflcyufh3j8cgdtflvt99ph05m");
+}
+
+#test "each refusal, with nothing written" {
+  #assert ad_refuses(0, "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", AD_BAD_NETWORK);
+  #assert ad_refuses(4, "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", AD_BAD_NETWORK);
+  // Segwit on another network: mainnet, testnet and regtest each refuse the others.
+  #assert ad_refuses(SW_TESTNET, "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", AD_WRONG_NETWORK);
+  #assert ad_refuses(SW_REGTEST, "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7", AD_WRONG_NETWORK);
+  #assert ad_refuses(SW_TESTNET, "bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9", AD_WRONG_NETWORK);
+  #assert ad_refuses(SW_MAINNET, "bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9", AD_WRONG_NETWORK);
+  // Base58 on another network: test versions on mainnet, main versions on regtest.
+  #assert ad_refuses(SW_MAINNET, "2MxFajLApXpYk4VodBSZSt7rw8y4ryABkfA", AD_WRONG_NETWORK);
+  #assert ad_refuses(SW_MAINNET, "mzK2FFDEhxqHcmrJw1ysqFkVyhUULo45hZ", AD_WRONG_NETWORK);
+  #assert ad_refuses(SW_REGTEST, "36j4NfKv6Akva9amjWrLG6MuSQym1GuEmm", AD_WRONG_NETWORK);
+  // The encodings' own refusals, offset.
+  #assert ad_refuses(SW_MAINNET, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMJ", AD_BASE58 + B58_BAD_CHECKSUM);
+  #assert ad_refuses(SW_MAINNET, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAM0", AD_BASE58 + B58_BAD_CHAR);
+  #assert ad_refuses(SW_MAINNET, "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5", AD_SEGWIT + SW_BAD_CHECKSUM);
+  #assert ad_refuses(SW_MAINNET, "Bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", AD_SEGWIT + SW_MIXED_CASE);
+  #assert ad_refuses(SW_MAINNET, "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd", AD_SEGWIT + SW_WRONG_VARIANT);
+  #assert ad_refuses(SW_MAINNET, "BC1QR508D6QEJXTDG4Y5R3ZARVARYV98GJ9P", AD_SEGWIT + SW_BAD_V0_LENGTH);
+  // An unknown HRP is not read as segwit, so Base58 refuses it.
+  #assert ad_refuses(SW_MAINNET, "tc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq5zuyut", AD_BASE58 + B58_BAD_CHAR);
+  #assert ad_refuses(SW_MAINNET, "", AD_BASE58 + B58_BAD_LENGTH);
+  // A string that ends in its separator is still read as segwit.
+  #assert ad_refuses(SW_MAINNET, "bc1", AD_SEGWIT + SW_BAD_FORMAT);
+  short: [25] u8;
+  a := address_decode_vartime(SW_MAINNET, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH", short[0..<24]);
+  #assert a.length == AD_CAPACITY && a.kind == 0;
+  for b: short { #assert b == 0; }
+  a = address_decode_vartime(SW_MAINNET, "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", short[0..<21]);
+  #assert a.length == AD_CAPACITY && a.kind == 0;
+  for b: short { #assert b == 0; }
+  #assert address_decode_vartime(SW_MAINNET, "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", short[0..<22]).length == 22;
+  #assert address_decode_vartime(SW_MAINNET, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH", short[..]).length == 25;
+}
+
+#test "encoding refusals write nothing" {
+  s: [43] u8; out: [90] u8;
+  for i: 0..<90 { out[i] = 0xa5; }
+  p2pkh := ad_unhex("76a914751e76e8199196d454941c45d1b3a323f1433bd688ac", s[..]);
+  #assert address_encode_vartime(0, p2pkh, out[..]) == AD_BAD_NETWORK && address_encode_vartime(4, p2pkh, out[..]) == AD_BAD_NETWORK;
+  #assert address_encode_vartime(SW_MAINNET, p2pkh, out[0..<33]) == AD_CAPACITY;
+  #assert address_encode_vartime(SW_MAINNET, p2pkh[0..<24], out[..]) == AD_NO_ADDRESS;
+  for b: out { #assert b == 0xa5; }
+  #assert address_encode_vartime(SW_MAINNET, p2pkh, out[0..<34]) == 34;
+  #assert ad_hex_is(out[0..<4], "31426747") && out[34] == 0xa5;   // "1BgG"
+  #assert address_encode_vartime(SW_TESTNET, p2pkh, out[..]) == 34 && out[0] == 'm';
+  #assert address_encode_vartime(SW_REGTEST, p2pkh, out[..]) == 34 && out[0] == 'm';
+  p2sh := ad_unhex("a914336caa13e08b96080a32b5d818d59b4ab3b3674287", s[..]);
+  #assert address_encode_vartime(SW_MAINNET, p2sh, out[..]) == 34 && out[0] == '3';
+  #assert address_encode_vartime(SW_REGTEST, p2sh, out[..]) == 35 && out[0] == '2';
+  for i: 0..<90 { out[i] = 0xa5; }
+  p2wpkh := ad_unhex("0014751e76e8199196d454941c45d1b3a323f1433bd6", s[..]);
+  #assert address_encode_vartime(SW_MAINNET, p2wpkh, out[0..<41]) == AD_CAPACITY;
+  for b: out { #assert b == 0xa5; }
+  #assert address_encode_vartime(SW_MAINNET, p2wpkh, out[0..<42]) == 42;
+  #assert address_encode_vartime(SW_REGTEST, p2wpkh, out[..]) == 44 && out[3] == 't';
+}
+
+// Every witness version and program length makes a scriptPubKey that
+// encodes to an address on each network, or has none, and the address
+// decodes back to the same script and kind.
+#forall version: 0..<17, length: 0..<42 #steps 200000000 {
+  script: [44] u8; text: [90] u8; back: [44] u8;
+  script[0] = cast(u8) (ifx version == 0 then 0 else 0x50 + version);
+  script[1] = cast(u8) length;
+  for i: 0..<length { script[2 + i] = cast(u8) ((i * 41 + version * 7 + length) % 256); }
+  kind := script_kind_vartime(script[0..<length + 2]);
+  for network: 1..<4 {
+    n := address_encode_vartime(network, script[0..<length + 2], text[..]);
+    if sw_program_rule(version, length) < 0 {
+      #assert kind == AD_NO_ADDRESS && n == AD_NO_ADDRESS;
+    } else {
+      #assert n > 0;
+      a := address_decode_vartime(network, cast(string) text[0..<n], back[..]);
+      #assert a.length == length + 2 && a.kind == kind;
+      for i: 0..<length + 2 { #assert back[i] == script[i]; }
+      want := AD_WITNESS;
+      if version == 0 && length == 20 { want = AD_P2WPKH; }
+      if version == 0 && length == 32 { want = AD_P2WSH; }
+      if version == 1 && length == 32 { want = AD_P2TR; }
+      #assert kind == want;
+      other := 1 + network % 3;
+      #assert address_decode_vartime(other, cast(string) text[0..<n], back[..]).length == AD_WRONG_NETWORK;
+    }
+  }
+}
+
+// ---- building scriptPubKeys
+
+// book:begin templates
+// The two legacy templates around a 20-byte hash, and a witness program:
+// the version as one opcode (OP_0, or OP_1 to OP_16 as 0x51 to 0x60), then
+// one push of the program.
+ad_hash_script :: (p2pkh: bool, hash: [] u8, out: [] u8) -> int {
+  n := ifx p2pkh then 25 else 23;
+  if out.count < n { return AD_CAPACITY; }
+  at := 0;
+  if p2pkh { out[0] = 0x76; at = 1; }                    // OP_DUP
+  out[at] = 0xa9; out[at + 1] = 20;                      // OP_HASH160, push 20
+  for i: 0..<20 { out[at + 2 + i] = hash[i]; }
+  if p2pkh { out[23] = 0x88; out[24] = 0xac; }           // OP_EQUALVERIFY OP_CHECKSIG
+  else { out[22] = 0x87; }                               // OP_EQUAL
+  return n;
+}
+ad_witness_script :: (version: int, program: [] u8, out: [] u8) -> int {
+  if out.count < program.count + 2 { return AD_CAPACITY; }
+  out[0] = cast(u8) (ifx version == 0 then 0 else 0x50 + version);
+  out[1] = cast(u8) program.count;
+  for i: 0..<program.count { out[2 + i] = program[i]; }
+  return program.count + 2;
+}
+// book:end templates
+
+// book:begin keys
+// P2PKH commits to HASH160 of the key as given, compressed (33 bytes) or
+// uncompressed (65): the two forms of one key are two different addresses.
+p2pkh_script_vartime :: (key: [] u8, out: [] u8) -> int #export_c {
+  if !se_decode(key).ok { return AD_BAD_KEY; }
+  hash: [20] u8;
+  #assert hash160_checked(key, hash[..], false) == RMD_OK;
+  return ad_hash_script(true, hash[..], out);
+}
+// P2WPKH is version 0 with HASH160 of the key, which must be compressed.
+p2wpkh_script_vartime :: (key: [] u8, out: [] u8) -> int #export_c {
+  if !se_decode(key).ok { return AD_BAD_KEY; }
+  if key.count != SE_COMPRESSED { return AD_UNCOMPRESSED; }
+  hash: [20] u8;
+  #assert hash160_checked(key, hash[..], false) == RMD_OK;
+  return ad_witness_script(0, hash[..], out);
+}
+// book:end keys
+
+// book:begin scripts
+// P2SH commits to HASH160 of a redeem script; the spender reveals the
+// script, so it must fit in one 520-byte push.
+p2sh_script_vartime :: (redeem: [] u8, out: [] u8) -> int #export_c {
+  if redeem.count > AD_REDEEM_MAX { return AD_SCRIPT_TOO_LONG; }
+  hash: [20] u8;
+  #assert hash160_checked(redeem, hash[..], false) == RMD_OK;
+  return ad_hash_script(false, hash[..], out);
+}
+// P2WSH is version 0 with SHA-256 of a witness script: 32 bytes, so a
+// collision costs 2^128 work instead of HASH160's 2^80.
+p2wsh_script_vartime :: (witness_script: [] u8, out: [] u8) -> int #export_c {
+  if witness_script.count > AD_WITNESS_MAX { return AD_SCRIPT_TOO_LONG; }
+  hash: [32] u8;
+  #assert sha256_hash_checked(witness_script, hash[..], false) == SHA_OK;
+  return ad_witness_script(0, hash[..], out);
+}
+// P2SH-P2WPKH: the P2WPKH scriptPubKey becomes a P2SH redeem script, so a
+// wallet that only knows Base58 addresses can pay a segwit key.
+p2sh_p2wpkh_script_vartime :: (key: [] u8, out: [] u8) -> int #export_c {
+  redeem: [22] u8;
+  n := p2wpkh_script_vartime(key, redeem[..]);
+  if n != 22 { return n; }
+  return p2sh_script_vartime(redeem[..], out);
+}
+// book:end scripts
+
+// book:begin tweak
+// BIP-341's key-path tweak with no script tree: P = lift_x(internal),
+// t = H_TapTweak(internal) and Q = P + tG. Writes Q's x (32 bytes) and
+// returns Q's y parity, 0 or 1, which a script-path spend reveals in its
+// control block.
+taproot_tweak_vartime :: (internal: [] u8, output: [] u8) -> int #export_c {
+  if output.count < SE_XONLY { return AD_CAPACITY; }
+  if internal.count != SE_XONLY { return AD_BAD_KEY; }
+  p := se_decode_xonly(internal);
+  if !p.ok { return AD_BAD_KEY; }
+  t: [32] u8;
+  #assert bitcoin_tagged_checked(BH_TAPTWEAK, internal, t[..], false) == SHA_OK;
+  tweak := sc_load(t[..]);
+  // t >= n has probability below 2^-127, and Q = infinity needs tG = -P:
+  // no known key reaches either, but BIP-341 refuses both.
+  if !tweak.ok { return AD_BAD_TWEAK; }  // mutant: equivalent (unreachable for any known key)
+  q := ecmult_vartime(tweak.value, p.value, sc_small(1));   // tG + 1P
+  c: [33] u8;
+  if se_encode(q.value, SE_COMPRESSED, c[..]) != SE_COMPRESSED { return AD_BAD_TWEAK; }  // mutant: equivalent (as above)
+  for i: 0..<32 { output[i] = c[1 + i]; }
+  return cast(int) (c[0] & 1);
+}
+// P2TR is version 1 with the tweaked key's x.
+p2tr_script_vartime :: (internal: [] u8, out: [] u8) -> int #export_c {
+  if out.count < 34 { return AD_CAPACITY; }
+  q: [32] u8;
+  parity := taproot_tweak_vartime(internal, q[..]);
+  if parity < 0 { return parity; }
+  return ad_witness_script(1, q[..], out);
+}
+// book:end tweak
+
+// ---- scriptPubKeys and addresses
+
+// book:begin classify
+// The output type of a scriptPubKey, or AD_NO_ADDRESS. A witness program is
+// a version opcode then one push of 2 to 40 bytes that ends the script;
+// version 0 has only two lengths.
+script_kind_vartime :: (s: [] u8) -> int #export_c {
+  n := s.count;
+  if n == 25 && s[0] == 0x76 && s[1] == 0xa9 && s[2] == 20 && s[23] == 0x88 && s[24] == 0xac { return AD_P2PKH; }
+  if n == 23 && s[0] == 0xa9 && s[1] == 20 && s[22] == 0x87 { return AD_P2SH; }
+  if n < 4 || n > AD_SCRIPT_MAX || cast(int) s[1] != n - 2 { return AD_NO_ADDRESS; }
+  if s[0] == 0 {
+    if n == 22 { return AD_P2WPKH; }
+    if n == 34 { return AD_P2WSH; }
+    return AD_NO_ADDRESS;
+  }
+  if s[0] < 0x51 || s[0] > 0x60 { return AD_NO_ADDRESS; }
+  if s[0] == 0x51 && n == 34 { return AD_P2TR; }
+  return AD_WITNESS;
+}
+// book:end classify
+
+// book:begin encode
+// The address of a scriptPubKey on a network. Testnet and regtest share
+// the Base58 versions; segwit gives each its own HRP.
+address_encode_vartime :: (network: int, script: [] u8, out: [] u8) -> int #export_c {
+  if network < SW_MAINNET || network > SW_REGTEST { return AD_BAD_NETWORK; }
+  kind := script_kind_vartime(script);
+  if kind < AD_P2PKH { return kind; }
+  n: int;
+  if kind == AD_P2PKH {
+    n = base58_address_encode_vartime(ifx network == SW_MAINNET then B58_MAIN_P2PKH else B58_TEST_P2PKH, script[3..<23], out);
+  } else if kind == AD_P2SH {
+    n = base58_address_encode_vartime(ifx network == SW_MAINNET then B58_MAIN_P2SH else B58_TEST_P2SH, script[2..<22], out);
+  } else {
+    version := ifx script[0] == 0 then 0 else cast(int) script[0] - 0x50;
+    n = segwit_encode_vartime(network, version, script[2..<script.count], out);
+  }
+  // The kind is checked, so the only refusal left is the buffer's size.
+  if n == B58_CAPACITY || n == SW_CAPACITY { return AD_CAPACITY; }
+  return n;
+}
+// book:end encode
+
+// book:begin decode
+// Whether text is read as segwit: the part before its last '1' is bc, tb
+// or bcrt in either case. A Base58 address with a known version starts
+// with 1, 3, m, n or 2, so it never is.
+ad_is_segwit :: (text: string) -> bool {
+  if text.count == 0 { return false; }
+  at := text.count - 1;
+  while at > 0 && text[at] != '1' { at -= 1; }  // mutant: equivalent (stopping at 0 or 1 leaves no HRP)
+  return sw_network(text[0..<at]) != SW_UNKNOWN_HRP;
+}
+// The scriptPubKey an address names on a network, and its kind.
+address_decode_vartime :: (network: int, text: string, script_out: [] u8) -> Address_Script #export_c {
+  if network < SW_MAINNET || network > SW_REGTEST { return Address_Script.{length = AD_BAD_NETWORK}; }
+  script: [AD_SCRIPT_MAX] u8;
+  n: int;
+  if ad_is_segwit(text) {
+    program: [40] u8;
+    a := segwit_decode_vartime(text, program[..]);
+    if a.length < 0 { return Address_Script.{length = AD_SEGWIT + a.length}; }  // mutant: equivalent (a program is never empty)
+    if a.network != network { return Address_Script.{length = AD_WRONG_NETWORK}; }
+    n = ad_witness_script(a.version, program[0..<a.length], script[..]);
+  } else {
+    hash: [20] u8;
+    kind := base58_address_decode_vartime(text, hash[..]);
+    if kind < B58_MAIN_P2PKH { return Address_Script.{length = AD_BASE58 + kind}; }
+    mainnet := kind == B58_MAIN_P2PKH || kind == B58_MAIN_P2SH;
+    if mainnet != (network == SW_MAINNET) { return Address_Script.{length = AD_WRONG_NETWORK}; }
+    n = ad_hash_script(kind == B58_MAIN_P2PKH || kind == B58_TEST_P2PKH, hash[..], script[..]);
+  }
+  if script_out.count < n { return Address_Script.{length = AD_CAPACITY}; }
+  for i: 0..<n { script_out[i] = script[i]; }
+  return Address_Script.{length = n, kind = script_kind_vartime(script[0..<n])};
+}
+// book:end decode

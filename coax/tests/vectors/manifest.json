@@ -898,6 +898,46 @@
       "bytes": 5022
     },
     {
+      "path": "upstream/bip86/bip-0086.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0086.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in source)",
+      "covers": [
+        "taproot-key-path",
+        "segwit-address"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "d8d01dee331da07c2562615bc1f064c1868ec3fce61184973da76d1196c7f5b0",
+      "bytes": 5896
+    },
+    {
+      "path": "upstream/bip84/bip-0084.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0084.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "CC0-1.0 (declared in source)",
+      "covers": [
+        "segwit-address"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "1900feec6cafca65b8c09906ca0658d2d742b4c9b44cb15678996985b6bfe627",
+      "bytes": 4648
+    },
+    {
+      "path": "upstream/bip49/bip-0049.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0049.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "Public domain (declared in source)",
+      "covers": [
+        "p2sh-segwit-address"
+      ],
+      "retrieved": "2026-11-02",
+      "sha256": "307b62faf7b9927233b5112e93d591272ba0c48303b5dbb6f0bbfbaf2347e695",
+      "bytes": 5546
+    },
+    {
       "path": "upstream/bitcoin-core/COPYING",
       "kind": "upstream",
       "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING",

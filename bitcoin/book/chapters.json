@@ -657,17 +657,24 @@
   {
    "number": 29,
    "title": "Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch029-addresses.md",
+   "status": "implemented",
+   "profile": "native C and wasm",
    "depends_on": [
     6,
     17,
     26,
     28
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/address.coax",
+    "bitcoin/examples/addresses.coax",
+    "bitcoin/examples/checks/addresses.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
    "adopted_by": []
   },
   {

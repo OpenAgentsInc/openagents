@@ -60,7 +60,8 @@ chapter 34's.
 
 ## Cryptography still to build
 
-Everything Nostr used is built. Bitcoin and Lightning also need:
+Everything Nostr used is built, and so are the five address types and the
+Taproot key-path tweak. Bitcoin and Lightning also need:
 
 - Batch Schnorr verification, Taproot script trees and tapscript.
 - MuHash3072. Merkle trees with the duplicate-leaf flaw are built in

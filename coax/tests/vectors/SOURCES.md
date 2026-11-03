@@ -186,6 +186,16 @@ that a maliciously replaced manifest is authentic.
   ASCII-only English reader refuses them and that the seed is PBKDF2 of the
   phrase's bytes. `english.txt` has the SHA-256 that `bip39.coax` checks
   its inline copy against.
+- **Addresses (Bitcoin chapter 29):** BIP-86, BIP-84 and BIP-49 at the same
+  revision as BIP-350's, retrieved 2026-11-02. Chapter 29 copies BIP-86's
+  three internal keys with their output keys, scriptPubKeys and addresses,
+  BIP-84's three public keys with their P2WPKH addresses, and BIP-49's
+  public key, key hash, redeem script, script hash and P2SH-P2WPKH testnet
+  address. The extended keys and mnemonics in the same texts are not used.
+  It also reads the one `scriptPubKey` case of BIP-341's
+  `wallet-test-vectors.json` that has no script tree (its tweak, output key,
+  scriptPubKey and address), all 54 addresses of `key_io_valid.json` with
+  their scriptPubKeys, and all 70 strings of `key_io_invalid.json`.
 - **Transactions (Bitcoin chapter 34):** Bitcoin Core's `tx_invalid.json`
   beside `tx_valid.json`, and the sources the chapter transliterates, all at
   the same revision: `primitives/transaction.h` (`UnserializeTransaction`,
@@ -252,8 +262,8 @@ execution, fuzzing, secret handling and production review remain separate tasks.
 
 ## License and source notices
 
-BIP-340 is BSD-2-Clause OR MIT OR CC0-1.0; BIP-173 and BIP-350 declare BSD-2-Clause in their
-text, and BIP-341 declares BSD-3-Clause in its text. Bitcoin Core is MIT,
+BIP-340 is BSD-2-Clause OR MIT OR CC0-1.0; BIP-173, BIP-350 and BIP-86 declare BSD-2-Clause in their
+text, BIP-84 declares CC0-1.0 and BIP-49 declares itself public domain, and BIP-341 declares BSD-3-Clause in its text. Bitcoin Core is MIT,
 btcd is ISC, rust-bitcoin is CC0-1.0 and BIP-54 is CC0-1.0; their license files are retained. The
 mainnet transactions and blocks are public blockchain data. SipHash is CC0-1.0, MIT or
 Apache-2.0 with LLVM exception; its CC0 file is retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
@@ -269,7 +279,7 @@ index is OpenAgents Apache-2.0; it does not relicense upstream material.
 ## Inventory
 
 All dates below are retrieval dates (2026-10-28; the RIPEMD-160 and BIP-32
-files, the Bitcoin chapter 5, 17, 26, 28 and 34 files and the SipHash files, 2026-11-02), not claims about
+files, the Bitcoin chapter 5, 17, 26, 28, 29 and 34 files and the SipHash files, 2026-11-02), not claims about
 publication.
 The complete revision/license/archive fields are in `manifest.json`.
 
@@ -325,6 +335,9 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip39/english.txt`](upstream/bip39/english.txt) | [pinned source](https://raw.githubusercontent.com/trezor/python-mnemonic/b57a5ad77a981e743f4167ab2f7927a55c1e82a8/src/mnemonic/wordlist/english.txt) | `2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda` |
 | [`upstream/bip39/LICENSE`](upstream/bip39/LICENSE) | [pinned source](https://raw.githubusercontent.com/trezor/python-mnemonic/b57a5ad77a981e743f4167ab2f7927a55c1e82a8/LICENSE) | `d5e3c7c62a84e80073201e2f6e5130e9e6804fa05f8ac4f8b26a13c7d3969697` |
 | [`upstream/bip39/bip-0039.mediawiki`](upstream/bip39/bip-0039.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0039.mediawiki) | `afcbcbed36fe9eb734bd607398a8c124683ded2a75c3830e1b16c47b043a9134` |
+| [`upstream/bip86/bip-0086.mediawiki`](upstream/bip86/bip-0086.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0086.mediawiki) | `d8d01dee331da07c2562615bc1f064c1868ec3fce61184973da76d1196c7f5b0` |
+| [`upstream/bip84/bip-0084.mediawiki`](upstream/bip84/bip-0084.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0084.mediawiki) | `1900feec6cafca65b8c09906ca0658d2d742b4c9b44cb15678996985b6bfe627` |
+| [`upstream/bip49/bip-0049.mediawiki`](upstream/bip49/bip-0049.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0049.mediawiki) | `307b62faf7b9927233b5112e93d591272ba0c48303b5dbb6f0bbfbaf2347e695` |
 | [`upstream/bitcoin-core/COPYING`](upstream/bitcoin-core/COPYING) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/COPYING) | `b028769f3852a9368ab10bd754ff01ebb741f84a2fa658c9aff82a631bc6ecfc` |
 | [`upstream/btcd/genesis_test.go`](upstream/btcd/genesis_test.go) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/chaincfg/genesis_test.go) | `e188c4fb27cccec22a0853be80f5c9b308e88045baccbf81a2058b01c7155452` |
 | [`upstream/btcd/LICENSE`](upstream/btcd/LICENSE) | [pinned source](https://raw.githubusercontent.com/btcsuite/btcd/dd169fe0c32a56087d28b92fff3b8cf4fb43477a/LICENSE) | `10db068dbe11e2b3d652a3d4ae3cdd7998b84b12cdefe3d8083a2b63c295c13f` |

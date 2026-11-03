@@ -1,0 +1,81 @@
+P2PKH
+HASH160(G compressed): 751e76e8199196d454941c45d1b3a323f1433bd6
+scriptPubKey: 76a914751e76e8199196d454941c45d1b3a323f1433bd688ac
+  kind: P2PKH
+  mainnet: 1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH
+  testnet: mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r
+  regtest: mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r
+HASH160(G uncompressed): 91b24bf9f5288532960ac687abb035127b1d28a5
+scriptPubKey: 76a91491b24bf9f5288532960ac687abb035127b1d28a588ac
+  kind: P2PKH
+  mainnet: 1EHNa6Q4Jz2uvNExL497mE43ikXhwF6kZm
+  testnet: mtoKs9V381UAhUia3d7Vb9GNak8Qvmcsme
+  regtest: mtoKs9V381UAhUia3d7Vb9GNak8Qvmcsme
+P2WPKH
+scriptPubKey: 0014751e76e8199196d454941c45d1b3a323f1433bd6
+  kind: P2WPKH
+  mainnet: bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4
+  testnet: tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx
+  regtest: bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080
+uncompressed: uncompressed key
+P2SH-P2WPKH
+key hash: 38971f73930f6c141d977ac4fd4a727c854935b3
+redeem script: 001438971f73930f6c141d977ac4fd4a727c854935b3
+HASH160(redeem script): 336caa13e08b96080a32b5d818d59b4ab3b36742
+scriptPubKey: a914336caa13e08b96080a32b5d818d59b4ab3b3674287
+  kind: P2SH
+  mainnet: 36NvZTcMsMowbt78wPzJaHHWaNiyR73Y4g
+  testnet: 2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2
+  regtest: 2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2
+P2SH and P2WSH of OP_TRUE (51)
+P2SH: a914da1745e9b549bd0bfa1a569971c77eba30cd5a4b87
+  kind: P2SH
+  mainnet: 3MaB7QVq3k4pQx3BhsvEADgzQonLSBwMdj
+  testnet: 2ND8PB9RrfCaAcjfjP1Y6nAgFd9zWHYX4DN
+  regtest: 2ND8PB9RrfCaAcjfjP1Y6nAgFd9zWHYX4DN
+P2WSH: 00204ae81572f06e1b88fd5ced7a1a000945432e83e1551e6f721ee9c00b8cc33260
+  kind: P2WSH
+  mainnet: bc1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsq2gp3gp
+  testnet: tb1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsqaqh7jw
+  regtest: bcrt1qft5p2uhsdcdc3l2ua4ap5qqfg4pjaqlp250x7us7a8qqhrxrxfsqseac85
+a 521-byte redeem script: script too long
+P2TR
+internal key P: cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115
+t = H_TapTweak(P): 2ca01ed85cf6b6526f73d39a1111cd80333bfdc00ce98992859848a90a6f0258
+Q = P + tG, x: a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c
+Q's y parity: 1
+scriptPubKey: 5120a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c
+  kind: P2TR
+  mainnet: bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr
+  testnet: tb1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqp3mvzv
+  regtest: bcrt1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqvg32hk
+G compressed as an internal key: bad key
+Unknown witness versions
+version 2: 5210751e76e8199196d454941c45d1b3a323
+  kind: witness
+  mainnet: bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs
+  testnet: tb1zw508d6qejxtdg4y5r3zarvaryv5p829g
+  regtest: bcrt1zw508d6qejxtdg4y5r3zarvaryv2wuatf
+No address
+P2PK: 210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac
+  no address
+OP_RETURN: 6a04deadbeef
+  no address
+version 0, 21 bytes: 00150102030405060708090a0b0c0d0e0f101112131415
+  no address
+Decoding
+1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH on mainnet: P2PKH, script: 76a914751e76e8199196d454941c45d1b3a323f1433bd688ac
+2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2 on testnet: P2SH, script: a914336caa13e08b96080a32b5d818d59b4ab3b3674287
+2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2 on regtest: P2SH, script: a914336caa13e08b96080a32b5d818d59b4ab3b3674287
+BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4 on mainnet: P2WPKH, script: 0014751e76e8199196d454941c45d1b3a323f1433bd6
+bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr on mainnet: P2TR, script: 5120a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c
+BC1SW50QGDZ25J on mainnet: witness, script: 6002751e
+bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9 on regtest: P2WPKH, script: 00146f58bac9506f9bfb821d62e69330410bb56f0085
+Refusals
+1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH on network 4: bad network
+2Mww8dCYPUpKHofjgcXcBCEGmniw9CoaiD2 on mainnet: wrong network
+bcrt1qdavt4j2sd7dlhqsavtnfxvzppw6k7qy97tmnu9 on testnet: wrong network
+1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMJ on mainnet: Base58 bad checksum
+bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd on mainnet: segwit wrong variant
+P2PKH into 24 bytes: capacity
+bad key: bad key

@@ -799,7 +799,7 @@ python3 coax/tests/bitcoin/segwit.py
 
 - Address types: which scriptPubKey a version and program make, and
   P2PKH, P2SH, P2WPKH, P2WSH and P2TR side by side. That is
-  chapter 29 in the [plan](PLAN.md).
+  [chapter 29](ch029-addresses.md).
 - Error location. BIP-350 describes how a wallet can point at the likely
   wrong characters by trying both constants. This code only detects.
 - Bech32 strings longer than 90 characters, such as Lightning invoices.

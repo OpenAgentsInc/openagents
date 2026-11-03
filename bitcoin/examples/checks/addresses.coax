@@ -1,0 +1,106 @@
+// The checks of addresses.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/addresses.coax
+#load "../addresses.coax";
+#load "../../../coax/tests/bitcoin/bech32m_vectors.coax";
+#load "../../../coax/tests/bitcoin/address_vectors.coax";
+
+// book:begin check
+// Every address in key_io_valid.json decodes on its network to its
+// scriptPubKey and encodes back exactly; a segwit one also decodes in
+// upper case. On another network it refuses, except that testnet and
+// regtest share the Base58 versions.
+#forall "every address in key_io_valid.json, both ways" i: 0..<54 #steps 200000000 {
+  c := AD_KEY_IO[i];
+  script: [AD_SCRIPT_MAX] u8; want: [AD_SCRIPT_MAX] u8; text: [90] u8;
+  a := address_decode_vartime(c.network, c.text, script[..]);
+  w := unhex(c.script, want[..]);
+  #assert a.length == w.count && a.kind == script_kind_vartime(w) && a.kind > 0;
+  for k: 0..<w.count { #assert script[k] == w[k]; }
+  n := address_encode_vartime(c.network, w, text[..]);
+  #assert n == c.text.count;
+  for k: 0..<n { #assert text[k] == c.text[k]; }
+  if c.flip {
+    for k: 0..<n { text[k] = ifx text[k] >= 'a' && text[k] <= 'z' then text[k] - 32 else text[k]; }
+    #assert address_decode_vartime(c.network, cast(string) text[0..<n], script[..]).length == w.count;
+  }
+  for other: SW_MAINNET..<SW_REGTEST + 1 {
+    shared := !ad_is_segwit(c.text) && other != SW_MAINNET && c.network != SW_MAINNET;
+    r := address_decode_vartime(other, c.text, script[..]);
+    if other == c.network || shared { #assert r.length == w.count && r.kind == a.kind; }
+    else { #assert r.length == AD_WRONG_NETWORK; }
+  }
+}
+#forall "every string in key_io_invalid.json refuses on every network" i: 0..<70, network: 1..<4 #steps 200000000 {
+  out: [AD_SCRIPT_MAX] u8;
+  code := address_decode_vartime(network, SW_KEY_IO_INVALID[i], out[..]).length;
+  #assert code < 0 && ad_refuses(network, SW_KEY_IO_INVALID[i], code);
+}
+// Every BIP-350 and BIP-173 segwit address: a valid one gives the
+// scriptPubKey of its version and program and encodes back in lower case;
+// an invalid one refuses with chapter 28's code, offset.
+#forall "every BIP-173 and BIP-350 segwit address" i: 0..<71 #steps 200000000 {
+  c := SW_CASES[i];
+  script: [AD_SCRIPT_MAX] u8; program: [40] u8; text: [90] u8;
+  if c.code == 0 {
+    a := address_decode_vartime(c.network, c.text, script[..]);
+    p := sw_unhex(c.program, program[..]);
+    #assert a.length == p.count + 2 && script[0] == cast(u8) (ifx c.version == 0 then 0 else 0x50 + c.version);
+    #assert cast(int) script[1] == p.count && sw_same(script[2..<a.length], cast(string) p);
+    n := address_encode_vartime(c.network, script[0..<a.length], text[..]);
+    #assert n == c.text.count;
+    for k: 0..<n { #assert text[k] == b32_lower(c.text[k]); }
+  } else {
+    code := address_decode_vartime(SW_MAINNET, c.text, script[..]).length;
+    #assert code < 0 && ad_refuses(SW_MAINNET, c.text, code);
+    if ad_is_segwit(c.text) { #assert code == AD_SEGWIT + c.code; }
+  }
+}
+// BIP-86's three key-path outputs and BIP-341's case with no script tree:
+// the internal key tweaks to the output key, which makes the scriptPubKey
+// and the address, and the address decodes back.
+#forall "BIP-86 and BIP-341 key-path Taproot outputs" i: 0..<4 #steps 1000000000 {
+  c := ifx i < 3 then AD_BIP86[i] else AD_BIP341;
+  internal: [32] u8; q: [32] u8; script: [AD_SCRIPT_MAX] u8; text: [90] u8; want: [32] u8;
+  #assert taproot_tweak_vartime(unhex(c.internal, internal[..]), q[..]) >= 0;
+  #assert sw_same(q[..], cast(string) unhex(c.output, want[..]));
+  n := p2tr_script_vartime(internal[..], script[..]);
+  #assert n == 34 && ad_hex_is(script[0..<n], c.script);
+  m := address_encode_vartime(SW_MAINNET, script[0..<n], text[..]);
+  #assert m == c.address.count && sw_same(text[0..<m], c.address);
+  #assert ad_round_trip(SW_MAINNET, c.address, AD_P2TR, c.script, c.address);
+}
+#test "BIP-341's TapTweak hash" {
+  internal: [32] u8; t: [32] u8;
+  #assert bitcoin_tagged_checked(BH_TAPTWEAK, unhex(AD_BIP341.internal, internal[..]), t[..], false) == SHA_OK;
+  #assert ad_hex_is(t[..], AD_BIP341_TWEAK);
+}
+// BIP-84's keys make its P2WPKH addresses. The same keys uncompressed
+// refuse as P2WPKH, and as P2PKH give a different hash from the compressed
+// form's.
+#forall "BIP-84's P2WPKH addresses, and the uncompressed keys" i: 0..<3 #steps 400000000 {
+  key: [33] u8; full: [65] u8; script: [AD_SCRIPT_MAX] u8; other: [AD_SCRIPT_MAX] u8; text: [90] u8;
+  k := unhex(AD_BIP84[i].key, key[..]);
+  n := p2wpkh_script_vartime(k, script[..]);
+  m := address_encode_vartime(SW_MAINNET, script[0..<n], text[..]);
+  #assert n == 22 && m == AD_BIP84[i].address.count && sw_same(text[0..<m], AD_BIP84[i].address);
+  #assert se_recode(k, SE_UNCOMPRESSED, full[..]) == 65;
+  #assert p2wpkh_script_vartime(full[..], other[..]) == AD_UNCOMPRESSED;
+  #assert p2sh_p2wpkh_script_vartime(full[..], other[..]) == AD_UNCOMPRESSED;
+  #assert p2pkh_script_vartime(full[..], other[..]) == 25 && p2pkh_script_vartime(k, script[..]) == 25;
+  #assert !sw_same(other[3..<23], cast(string) script[3..<23]);
+}
+// BIP-49's worked P2SH-P2WPKH example, step by step.
+#test "BIP-49's P2SH-P2WPKH address" {
+  key: [33] u8; hash: [20] u8; redeem: [22] u8; script: [AD_SCRIPT_MAX] u8; text: [40] u8;
+  k := unhex(AD_BIP49_KEY, key[..]);
+  #assert hash160_checked(k, hash[..], false) == RMD_OK && ad_hex_is(hash[..], AD_BIP49_KEYHASH);
+  #assert p2wpkh_script_vartime(k, redeem[..]) == 22 && ad_hex_is(redeem[..], AD_BIP49_REDEEM);
+  #assert hash160_checked(redeem[..], hash[..], false) == RMD_OK && ad_hex_is(hash[..], AD_BIP49_HASH);
+  n := p2sh_p2wpkh_script_vartime(k, script[..]);
+  #assert n == 23 && ad_hex_is(script[2..<22], AD_BIP49_HASH);
+  m := address_encode_vartime(SW_TESTNET, script[0..<n], text[..]);
+  #assert m == AD_BIP49_ADDRESS.count && sw_same(text[0..<m], AD_BIP49_ADDRESS);
+  #assert ad_round_trip(SW_TESTNET, AD_BIP49_ADDRESS, AD_P2SH, "a914336caa13e08b96080a32b5d818d59b4ab3b3674287", AD_BIP49_ADDRESS);
+}
+// book:end check
