@@ -12,10 +12,10 @@
 //   coax/bin/coax test --library aethyr/rules/srd/battle.coax
 #load "spells.coax";
 
-RS_MAX :: 12;
+RS_MAX :: 24;
 RS_ZONES :: 8;
 RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1: int; until: f32; difficult: bool; }
-RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; }
+RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; cleaved: bool; frenzied: bool; struck: bool; }
 RsBattle :: struct {
   c: [RS_MAX] RsCreature; n: int;
   zone: [RS_ZONES] RsZone;
@@ -209,7 +209,7 @@ rs_damage :: (b: [] RsBattle, by: int, j: int, amount: int, kind: int, crit: boo
 RS_NO :: 0; RS_OK :: 1;
 // Whether creature i can cast spell sp with a slot of level `slot` now (0 for a cantrip).
 rs_can_cast :: (b: [] RsBattle, i: int, sp: int, slot: int) -> bool {
-  if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i { return false; }
+  if i < 0 || i >= b[0].n || !rs_can_act(b[0].c[i]) || b[0].who != i || b[0].c[i].raging { return false; }
   s := rs_spell(sp);
   if s.cast_time == RS_T_ACTION && b[0].turn.action { return false; }
   if s.cast_time == RS_T_BONUS && b[0].turn.bonus { return false; }
@@ -283,6 +283,46 @@ rs_cast :: (b: [] RsBattle, i: int, sp: int, slot: int, tx: int, ty: int, target
   return true;
 }
 
+// Advantage (1), Disadvantage (-1) or neither on i's attack roll against j: every source the SRD
+// names for what the battle tracks, cancelling as the SRD says. Uses up a pending EF_WEAK.
+rs_attack_edge :: (b: [] RsBattle, i: int, j: int, melee: bool, strength: bool) -> int {
+  ups := 0; downs := 0;
+  t := b[0].clock;
+  if b[0].c[j].outlined_by >= 0 && b[0].c[j].outlined_until > t { ups += 1; }
+  if rs_has(b[0].c[j], RS_RESTRAINED) { ups += 1; }
+  if rs_has(b[0].c[i], RS_RESTRAINED) { downs += 1; }
+  if rs_has(b[0].c[i], RS_POISONED) { downs += 1; }
+  if rs_has(b[0].c[i], RS_BLINDED) { downs += 1; }
+  if rs_has(b[0].c[j], RS_BLINDED) { ups += 1; }
+  if rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS) { ups += 1; }
+  if rs_take_weak(b, i) { downs += 1; }
+  if !melee && rs_threatened(b, i) { downs += 1; }
+  if rs_has(b[0].c[j], RS_PRONE) { if melee && rs_feet_to(b, i, j) <= 5 { ups += 1; } else { downs += 1; } }
+  // Reckless Attack: Advantage on its Strength attacks, and on attacks against it
+  if b[0].c[j].reckless_until > t { ups += 1; }
+  if strength && b[0].c[i].reckless_until > t { ups += 1; }
+  // the Dodge action
+  if b[0].c[j].dodge_until > t && rs_can_act(b[0].c[j]) { downs += 1; }
+  return rs_edge(ups, downs);
+}
+// Rage's Resistance to Bludgeoning, Piercing and Slashing: half the damage, rounded down.
+rs_resisted :: (b: [] RsBattle, j: int, amount: int, kind: int) -> int {
+  if b[0].c[j].raging && (kind == RS_BLUDGEONING || kind == RS_PIERCING || kind == RS_SLASHING) { return amount / 2; }
+  return amount;
+}
+
+// Advantage or Disadvantage on j's saving throw of an ability.
+rs_save_edge :: (b: [] RsBattle, j: int, ability: int) -> int {
+  ups := 0; downs := 0;
+  c := b[0].c[j];
+  if ability == RS_DEX && rs_has(c, RS_RESTRAINED) { downs += 1; }
+  if ability == RS_STR && rs_effect(c, EF_ENFEEBLED) { downs += 1; }
+  if ability == RS_STR && c.raging { ups += 1; }
+  if ability == RS_DEX && c.danger_sense && !rs_has(c, RS_INCAPACITATED) && rs_can_act(c) { ups += 1; }
+  if ability == RS_DEX && c.dodge_until > b[0].clock && rs_can_act(c) { ups += 1; }
+  return rs_edge(ups, downs);
+}
+
 // The effect program on one creature.
 rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) {
   s := rs_spell(sp);
@@ -291,20 +331,9 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
   for k: 0..<s.step_n {
     st := s.steps[k];
     if st.kind == RS_S_ATTACK {
-      ups := 0; downs := 0;
-      if b[0].c[j].outlined_by >= 0 && b[0].c[j].outlined_until > b[0].clock { ups += 1; }
-      if rs_has(b[0].c[j], RS_RESTRAINED) { ups += 1; }
-      if rs_has(b[0].c[i], RS_RESTRAINED) { downs += 1; }
-      if rs_has(b[0].c[i], RS_POISONED) { downs += 1; }
-      if rs_has(b[0].c[i], RS_BLINDED) { downs += 1; }
-      if rs_has(b[0].c[j], RS_BLINDED) { ups += 1; }
-      helpless := rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS);
-      if helpless { ups += 1; }
-      if rs_take_weak(b, i) { downs += 1; }
       melee := st.a == 1;
-      if !melee && rs_threatened(b, i) { downs += 1; }
-      if rs_has(b[0].c[j], RS_PRONE) { if melee && rs_feet_to(b, i, j) <= 5 { ups += 1; } else { downs += 1; } }
-      d := rs_d20(b[0].dice[..], rs_edge(ups, downs));
+      helpless := rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS);
+      d := rs_d20(b[0].dice[..], rs_attack_edge(b, i, j, melee, false));
       total := d.roll + rs_spell_attack(b[0].c[i]);
       crit = d.roll == 20;
       hit := d.roll != 1 && (crit || total >= b[0].c[j].ac);
@@ -324,9 +353,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       ran_save = true;
       dc := rs_spell_dc(b[0].c[i]);
       fails := (rs_has(b[0].c[j], RS_UNCONSCIOUS) || rs_has(b[0].c[j], RS_PARALYZED)) && (st.a == RS_STR || st.a == RS_DEX);
-      edge := ifx st.a == RS_DEX && rs_has(b[0].c[j], RS_RESTRAINED) then -1 else 0;
-      if st.a == RS_STR && rs_effect(b[0].c[j], EF_ENFEEBLED) { edge = -1; }
-      d := rs_d20(b[0].dice[..], edge);
+      d := rs_d20(b[0].dice[..], rs_save_edge(b, j, st.a));
       total := d.roll + rs_save_bonus(b[0].c[j], st.a);
       saved = !fails && total >= dc;
       l: [1] RsLine;
@@ -354,6 +381,7 @@ rs_affect :: (b: [] RsBattle, i: int, j: int, sp: int, slot: int, zone_at: int) 
       if agony != 0 { rs_add_text(l[..], " + "); rs_add_int(l[..], agony); }
       if weak > 0 { rs_add_text(l[..], ", -"); rs_add_int(l[..], weak); rs_add_text(l[..], " enfeebled"); }
       rs_add_text(l[..], ")");
+      if rs_resisted(b, j, amount, st.c) != amount { amount = rs_resisted(b, j, amount, st.c); rs_add_text(l[..], ", halved by Rage"); }
       rs_tell(b, RS_EV_DAMAGE, sp, i, j, amount, st.c, l[..]);
       // Hex: 1d6 Necrotic more when its caster hits the target with an attack roll
       hexed := false;
@@ -506,8 +534,9 @@ rs_escape :: (b: [] RsBattle, i: int) -> bool {
   if z < 0 || !b[0].zone[z].on { return false; }
   b[0].turn.action = true;
   dc := rs_spell_dc(b[0].c[b[0].zone[z].by]);
-  edge := ifx rs_has(b[0].c[i], RS_POISONED) || rs_effect(b[0].c[i], EF_ENFEEBLED) then -1 else 0;
-  d := rs_d20(b[0].dice[..], edge);
+  downs := ifx rs_has(b[0].c[i], RS_POISONED) || rs_effect(b[0].c[i], EF_ENFEEBLED) then 1 else 0;
+  for k: 0..<RS_EFFECTS { if b[0].c[i].eff[k].kind == EF_HEX && b[0].c[i].eff[k].cond == RS_STR { downs += 1; } }
+  d := rs_d20(b[0].dice[..], rs_edge(ifx b[0].c[i].raging then 1 else 0, downs));
   total := d.roll + rs_mod(b[0].c[i].score[RS_STR]);
   ok := total >= dc;
   if ok { b[0].c[i].restrained_by = -1; b[0].c[i].cond = rs_clear(b[0].c[i].cond, RS_RESTRAINED); }
@@ -535,6 +564,8 @@ rs_step_to :: (b: [] RsBattle, i: int, x: int, y: int) -> bool {
 rs_start_turn :: (b: [] RsBattle, i: int) {
   b[0].who = i;
   b[0].turn = RsTurn.{action = false, bonus = false, slot_spent = false, move_left = b[0].c[i].speed / RS_SQUARE};
+  b[0].c[i].reacted = false;
+  if b[0].c[i].raging && !rs_can_act(b[0].c[i]) { rs_rage_end(b, i, " (Incapacitated)"); }
   if b[0].c[i].hp == 0 && !b[0].c[i].dead {
     if b[0].c[i].stable { return; }
     c: [1] RsCreature; c[0] = b[0].c[i];
@@ -580,6 +611,12 @@ rs_end_turn :: (b: [] RsBattle, i: int) {
       }
     }
   }
+  // Rage lasts until the end of its next turn; an attack roll against an enemy (or a Bonus Action)
+  // in that turn extends it
+  if b[0].c[i].raging {
+    if b[0].c[i].rage_kept || b[0].turn.struck { b[0].c[i].rage_kept = false; }
+    else { rs_rage_end(b, i, ""); }
+  }
   b[0].c[i].turn_at += f32(RS_ROUND);
   if b[0].who == i { b[0].who = -1; }
 }
@@ -598,6 +635,231 @@ rs_team_up :: (b: [] RsBattle, team: int) -> int {
   n := 0;
   for i: 0..<b[0].n { if b[0].c[i].team == team && rs_up(b[0].c[i]) { n += 1; } }
   return n;
+}
+
+// ---- weapons and martial features
+
+rs_rage_end :: (b: [] RsBattle, i: int, why: string) {
+  if !b[0].c[i].raging { return; }
+  b[0].c[i].raging = false; b[0].c[i].rage_kept = false;
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], "'s Rage ends"); rs_add_text(l[..], why);
+  rs_tell(b, RS_EV_END, -1, i, -1, 0, 0, l[..]);
+}
+// Rage: a Bonus Action, one of its uses. While it lasts: Resistance to Bludgeoning, Piercing and
+// Slashing, its Rage Damage on Strength attacks, Advantage on Strength checks and saves, no
+// Concentration and no spells.
+rs_rage :: (b: [] RsBattle, i: int) -> bool {
+  if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].rages <= 0 || b[0].c[i].raging { return false; }
+  b[0].turn.bonus = true;
+  b[0].c[i].rages -= 1; b[0].c[i].raging = true; b[0].c[i].rage_kept = true;
+  rs_end_concentration(b, i, " (Rage)");
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " enters a Rage");
+  rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
+  return true;
+}
+
+// One attack roll with i's weapon at j, and its damage. `bare` drops the ability modifier from the
+// damage (Cleave's second attack); `frenzy` lets the Berserker's Frenzy add its dice. True on a hit.
+rs_strike :: (b: [] RsBattle, i: int, j: int, w: int, bare: bool) -> bool {
+  wp := rs_weapon(w);
+  me := b[0].c[i];
+  ab := rs_attack_ability(me, w);
+  strength := ab == RS_STR;
+  b[0].turn.struck = true;
+  d := rs_d20(b[0].dice[..], rs_attack_edge(b, i, j, true, strength));
+  bonus := rs_weapon_attack(me, w);
+  total := d.roll + bonus;
+  crit := d.roll == 20;
+  hit := d.roll != 1 && (crit || total >= b[0].c[j].ac);
+  if hit && (rs_has(b[0].c[j], RS_PARALYZED) || rs_has(b[0].c[j], RS_UNCONSCIOUS)) { crit = true; }
+  l: [1] RsLine;
+  rs_add_name(l[..], b, i); rs_add_text(l[..], " attacks "); rs_add_name(l[..], b, j); rs_add_text(l[..], " with ");
+  rs_add_text(l[..], ifx w == W_UNARMED then "an Unarmed Strike" else wp.name);
+  rs_add_text(l[..], ": "); rs_add_int(l[..], d.roll);
+  if d.edge > 0 { rs_add_text(l[..], " (Advantage)"); }
+  if d.edge < 0 { rs_add_text(l[..], " (Disadvantage)"); }
+  rs_add_text(l[..], " + "); rs_add_int(l[..], bonus); rs_add_text(l[..], " = "); rs_add_int(l[..], total);
+  rs_add_text(l[..], " vs AC "); rs_add_int(l[..], b[0].c[j].ac);
+  rs_add_text(l[..], ifx crit then ": critical hit" else ifx hit then ": hit" else ": miss");
+  rs_tell(b, ifx hit then RS_EV_ATTACK else RS_EV_MISS, -1, i, j, total, 0, l[..]);
+  if !hit { return false; }
+  // the damage: the weapon's dice (a Monk's Martial Arts die unarmed; 1 + Strength for anyone else)
+  ndice := wp.dice; sides := wp.sides;
+  if w == W_UNARMED && me.martial_die > 0 { ndice = 1; sides = me.martial_die; }
+  mult := ifx crit then 2 else 1;
+  rolled := ifx ndice > 0 then rs_sum(b[0].dice[..], ndice * mult, sides) else 1;
+  mod := rs_mod(me.score[ab]);
+  amount := rolled;
+  if !bare || mod < 0 { amount += mod; }
+  rage := 0;
+  if me.raging && strength { rage = me.rage_bonus; amount += rage; }
+  frenzy := 0;
+  if me.frenzy && me.raging && strength && me.reckless_until > b[0].clock && !b[0].turn.frenzied {
+    b[0].turn.frenzied = true;
+    frenzy = rs_sum(b[0].dice[..], me.rage_bonus * mult, 6); amount += frenzy;
+  }
+  weak := 0;
+  if rs_effect(me, EF_ENFEEBLED) { weak = rs_roll(b[0].dice[..], 8); amount = rs_max(amount - weak, 0); }
+  amount = rs_max(amount, 0);
+  dl: [1] RsLine;
+  rs_add_text(dl[..], "  "); rs_add_name(dl[..], b, j); rs_add_text(dl[..], " takes ");
+  // Deflect Attacks: a Monk's Reaction cuts Bludgeoning, Piercing or Slashing damage from a hit
+  cut := 0;
+  tg := b[0].c[j];
+  if tg.deflect && !tg.reacted && rs_can_act(tg) && (wp.damage == RS_BLUDGEONING || wp.damage == RS_PIERCING || wp.damage == RS_SLASHING) {
+    b[0].c[j].reacted = true;
+    cut = rs_roll(b[0].dice[..], 10) + rs_mod(tg.score[RS_DEX]) + tg.level;
+  }
+  dealt := rs_max(amount - cut, 0);
+  dealt = rs_resisted(b, j, dealt, wp.damage);
+  rs_add_int(dl[..], dealt); rs_add_text(dl[..], " "); rs_add_text(dl[..], RS_DAMAGE[wp.damage]); rs_add_text(dl[..], " (");
+  if ndice > 0 { rs_add_int(dl[..], ndice * mult); rs_add_text(dl[..], "d"); rs_add_int(dl[..], sides); } else { rs_add_text(dl[..], "1"); }
+  if !bare || mod < 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], mod); }
+  if rage > 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], rage); rs_add_text(dl[..], " Rage"); }
+  if frenzy > 0 { rs_add_text(dl[..], " + "); rs_add_int(dl[..], frenzy); rs_add_text(dl[..], " Frenzy"); }
+  if weak > 0 { rs_add_text(dl[..], ", -"); rs_add_int(dl[..], weak); rs_add_text(dl[..], " enfeebled"); }
+  if cut > 0 { rs_add_text(dl[..], ", Deflect Attacks -"); rs_add_int(dl[..], cut); }
+  if tg.raging && dealt != rs_max(amount - cut, 0) { rs_add_text(dl[..], ", halved by Rage"); }
+  rs_add_text(dl[..], ")");
+  rs_tell(b, RS_EV_DAMAGE, -1, i, j, dealt, wp.damage, dl[..]);
+  rs_damage(b, i, j, dealt, wp.damage, crit, -1);
+  // Hex holds for any attack roll its caster hits with
+  for ek: 0..<RS_EFFECTS {
+    if b[0].c[j].eff[ek].kind == EF_HEX && b[0].c[j].eff[ek].by == i && !b[0].c[j].dead {
+      extra := rs_sum(b[0].dice[..], mult, 6);
+      h: [1] RsLine;
+      rs_add_text(h[..], "  "); rs_add_name(h[..], b, j); rs_add_text(h[..], " takes "); rs_add_int(h[..], extra); rs_add_text(h[..], " Necrotic from Hex");
+      rs_tell(b, RS_EV_DAMAGE, SP_HEX, i, j, extra, RS_NECROTIC, h[..]);
+      rs_damage(b, i, j, extra, RS_NECROTIC, crit, SP_HEX);
+    }
+  }
+  // all damage cut away: the Monk may spend a Focus Point to send the force back at a melee attacker
+  if cut > 0 && amount - cut <= 0 && b[0].c[j].focus > 0 && rs_up(b[0].c[j]) && rs_up(b[0].c[i]) {
+    b[0].c[j].focus -= 1;
+    sd := rs_d20(b[0].dice[..], rs_save_edge(b, i, RS_DEX));
+    st := sd.roll + rs_save_bonus(b[0].c[i], RS_DEX);
+    dc := rs_focus_dc(b[0].c[j]);
+    rl: [1] RsLine;
+    rs_add_name(rl[..], b, j); rs_add_text(rl[..], " redirects the blow: "); rs_add_name(rl[..], b, i);
+    rs_add_text(rl[..], " DEX save "); rs_add_int(rl[..], st); rs_add_text(rl[..], " vs DC "); rs_add_int(rl[..], dc);
+    if st >= dc { rs_add_text(rl[..], ": success"); rs_tell(b, RS_EV_SAVE, -1, j, i, st, 0, rl[..]); }
+    else {
+      back := rs_sum(b[0].dice[..], 2, b[0].c[j].martial_die) + rs_mod(b[0].c[j].score[RS_DEX]);
+      rs_add_text(rl[..], ": failure, "); rs_add_int(rl[..], back); rs_add_text(rl[..], " "); rs_add_text(rl[..], RS_DAMAGE[wp.damage]);
+      rs_tell(b, RS_EV_DAMAGE, -1, j, i, back, wp.damage, rl[..]);
+      rs_damage(b, j, i, rs_resisted(b, i, back, wp.damage), wp.damage, false, -1);
+    }
+  }
+  return true;
+}
+
+// The Attack action: one attack with its weapon at j (5 feet away). `reckless` attacks recklessly
+// (a Barbarian's first attack in a turn); `cleave_to`, when the weapon's Cleave mastery applies, is
+// a second creature within 5 feet of j and of the attacker (-1 none).
+rs_attack :: (b: [] RsBattle, i: int, j: int, reckless: bool, cleave_to: int) -> bool {
+  if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) { return false; }
+  if j < 0 || j >= b[0].n || b[0].c[j].dead || j == i || rs_feet_to(b, i, j) > 5 { return false; }
+  b[0].turn.action = true;
+  w := b[0].c[i].weapon;
+  if reckless && b[0].c[i].level >= 2 && b[0].c[i].klass == RS_BARBARIAN && b[0].c[i].reckless_until <= b[0].clock {
+    b[0].c[i].reckless_until = rs_before_next_turn(b, i) + 0.01;
+    l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " attacks recklessly");
+    rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
+  }
+  hit := rs_strike(b, i, j, w, false);
+  wp := rs_weapon(w);
+  k := cleave_to;
+  if hit && wp.mastery == M_CLEAVE && (b[0].c[i].masteries & (1 << M_CLEAVE)) != 0 && !b[0].turn.cleaved && k >= 0 && k != j && k != i
+     && !b[0].c[k].dead && b[0].c[k].team != b[0].c[i].team && rs_feet_to(b, i, k) <= 5 && rs_feet_to(b, j, k) <= 5 {
+    b[0].turn.cleaved = true;
+    l: [1] RsLine; rs_add_text(l[..], "  Cleave carries on into "); rs_add_name(l[..], b, k);
+    rs_tell(b, RS_EV_CONDITION, -1, i, k, 0, 0, l[..]);
+    ok := rs_strike(b, i, k, w, true);
+  }
+  return true;
+}
+
+// Martial Arts: an Unarmed Strike as a Bonus Action.
+rs_bonus_strike :: (b: [] RsBattle, i: int, j: int) -> bool {
+  if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].martial_die <= 0 { return false; }
+  if j < 0 || j >= b[0].n || b[0].c[j].dead || rs_feet_to(b, i, j) > 5 { return false; }
+  b[0].turn.bonus = true;
+  ok := rs_strike(b, i, j, W_UNARMED, false);
+  return true;
+}
+// Open Hand Technique, on a creature hit by Flurry of Blows.
+OH_ADDLE :: 0; OH_PUSH :: 1; OH_TOPPLE :: 2;
+rs_open_hand :: (b: [] RsBattle, i: int, j: int, how: int) {
+  if !b[0].c[i].open_hand || b[0].c[j].dead || b[0].c[j].hp == 0 { return; }
+  l: [1] RsLine;
+  if how == OH_ADDLE {
+    rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " is addled: no Opportunity Attacks until its next turn");
+    rs_tell(b, RS_EV_CONDITION, -1, i, j, 0, 0, l[..]);
+    return;
+  }
+  ab := ifx how == OH_PUSH then RS_STR else RS_DEX;
+  dc := rs_focus_dc(b[0].c[i]);
+  fails := (rs_has(b[0].c[j], RS_UNCONSCIOUS) || rs_has(b[0].c[j], RS_PARALYZED));
+  d := rs_d20(b[0].dice[..], rs_save_edge(b, j, ab));
+  total := d.roll + rs_save_bonus(b[0].c[j], ab);
+  saved := !fails && total >= dc;
+  rs_add_text(l[..], "  "); rs_add_name(l[..], b, j); rs_add_text(l[..], " "); rs_add_text(l[..], RS_ABBR[ab]); rs_add_text(l[..], " save ");
+  rs_add_int(l[..], total); rs_add_text(l[..], " vs DC "); rs_add_int(l[..], dc);
+  if saved { rs_add_text(l[..], ": success"); rs_tell(b, RS_EV_SAVE, -1, i, j, total, 0, l[..]); return; }
+  if how == OH_TOPPLE {
+    b[0].c[j].cond = b[0].c[j].cond | RS_PRONE;
+    rs_add_text(l[..], ": knocked Prone");
+    rs_tell(b, RS_EV_CONDITION, -1, i, j, RS_PRONE, 0, l[..]);
+    return;
+  }
+  dx := rs_sign(b[0].c[j].x - b[0].c[i].x); dy := rs_sign(b[0].c[j].y - b[0].c[i].y);
+  moved := 0;
+  for n: 0..<3 {
+    nx := b[0].c[j].x + dx; ny := b[0].c[j].y + dy;
+    if nx < 0 || ny < 0 || nx >= b[0].w || ny >= b[0].h || rs_at(b, nx, ny) >= 0 { break; }
+    b[0].c[j].x = nx; b[0].c[j].y = ny; moved += 1;
+  }
+  rs_add_text(l[..], ": pushed "); rs_add_int(l[..], moved * RS_SQUARE); rs_add_text(l[..], " feet");
+  rs_tell(b, RS_EV_PUSH, -1, i, j, moved * RS_SQUARE, 0, l[..]);
+}
+// Flurry of Blows: 1 Focus Point, two Unarmed Strikes as a Bonus Action; each hit can carry an
+// Open Hand Technique.
+rs_flurry :: (b: [] RsBattle, i: int, j: int, how: int) -> bool {
+  if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].focus <= 0 { return false; }
+  if j < 0 || j >= b[0].n || b[0].c[j].dead || rs_feet_to(b, i, j) > 5 { return false; }
+  b[0].turn.bonus = true; b[0].c[i].focus -= 1;
+  l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on Flurry of Blows");
+  rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
+  for k: 0..<2 {
+    if b[0].c[j].dead || rs_feet_to(b, i, j) > 5 { break; }
+    if rs_strike(b, i, j, W_UNARMED, false) { rs_open_hand(b, i, j, how); }
+  }
+  return true;
+}
+// Patient Defense with a Focus Point: Disengage and Dodge as a Bonus Action.
+rs_patient_defense :: (b: [] RsBattle, i: int) -> bool {
+  if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].focus <= 0 { return false; }
+  b[0].turn.bonus = true; b[0].c[i].focus -= 1;
+  b[0].c[i].dodge_until = rs_before_next_turn(b, i);
+  l: [1] RsLine; rs_add_name(l[..], b, i); rs_add_text(l[..], " spends a Focus Point on Patient Defense: Disengage and Dodge");
+  rs_tell(b, RS_EV_CONDITION, -1, i, i, 0, 0, l[..]);
+  return true;
+}
+// Step of the Wind without a Focus Point: Dash as a Bonus Action (its Speed again).
+rs_step_of_the_wind :: (b: [] RsBattle, i: int) -> bool {
+  if b[0].who != i || b[0].turn.bonus || !rs_can_act(b[0].c[i]) || b[0].c[i].focus_max <= 0 { return false; }
+  b[0].turn.bonus = true;
+  b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE;
+  return true;
+}
+// The Dash action: its Speed again.
+rs_dash :: (b: [] RsBattle, i: int) -> bool {
+  if b[0].who != i || b[0].turn.action || !rs_can_act(b[0].c[i]) { return false; }
+  b[0].turn.action = true;
+  b[0].turn.move_left += b[0].c[i].speed / RS_SQUARE;
+  return true;
 }
 
 #test "Starry Wisp: a ranged spell attack, +5, 1d8 Radiant on a hit" {
@@ -866,4 +1128,111 @@ rs_team_up :: (b: [] RsBattle, team: int) -> int {
   b[0].c[near].hp = 1;
   rs_damage(b[..], ally, near, 4, RS_FORCE, false, -1);
   #assert b[0].c[a].temp == 6;
+}
+#test "Rage: a Bonus Action; +2 damage on Greataxe hits, Bludgeoning/Piercing/Slashing halved; it ends on a turn without an attack" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 12;
+  a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
+  m := rs_add(b[..], rs_monk("Sen", 1, 3), 4, 3);
+  rs_start_turn(b[..], a);
+  #assert rs_rage(b[..], a) && b[0].c[a].raging && b[0].c[a].rages == 2 && !rs_rage(b[..], a);
+  // a monk's 1d6 + 3 Bludgeoning is halved
+  b[0].c[m].deflect = false;
+  rs_end_turn(b[..], a);
+  got := false;
+  for k: 0..<20 {
+    b[0].c[a].hp = 32;
+    rs_start_turn(b[..], m);
+    seq := b[0].book[0].seq;
+    #assert rs_attack(b[..], m, a, false, -1);
+    rs_end_turn(b[..], m);
+    if b[0].c[a].hp < 32 { #assert 32 - b[0].c[a].hp <= 9 / 2 + 3; got = true; break; }
+  }
+  #assert got && b[0].c[a].raging;
+  // its own turn passes with an attack: it holds; a turn without one: it ends
+  rs_start_turn(b[..], a);
+  #assert rs_attack(b[..], a, m, false, -1);
+  rs_end_turn(b[..], a);
+  #assert b[0].c[a].raging;
+  rs_start_turn(b[..], a);
+  rs_end_turn(b[..], a);
+  #assert !b[0].c[a].raging;
+}
+#test "Reckless Attack: Advantage on its Strength attacks and on attacks against it; Frenzy adds 2d6 to the first hit" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 8;
+  a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
+  m := rs_add(b[..], rs_monk("Sen", 1, 3), 4, 3);
+  rs_start_turn(b[..], a);
+  #assert rs_rage(b[..], a);
+  #assert rs_attack(b[..], a, m, true, -1);
+  #assert b[0].c[a].reckless_until > b[0].clock;
+  #assert rs_attack_edge(b[..], m, a, true, false) == 1;
+  frenzy := false;
+  for k: 0..<10 {
+    ev := rs_recent(b[0].book[0], k);
+    if ev.kind == RS_EV_DAMAGE { s := cast(string) ev.text[0..<ev.text_n]; for c: 0..<(ev.text_n - 6) { if s[c..<(c + 6)] == "Frenzy" { frenzy = true; } } }
+    if ev.kind == RS_EV_MISS { frenzy = true; }   // a miss: nothing to add
+  }
+  #assert frenzy;
+  rs_end_turn(b[..], a);
+  // gone at the start of its next turn
+  rs_tick(b[..], b[0].c[a].turn_at - b[0].clock);
+  #assert b[0].c[a].reckless_until <= b[0].clock;
+}
+#test "Cleave: a Greataxe hit carries into a second foe beside the first, without the Strength modifier" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 3;
+  a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
+  m := rs_add(b[..], rs_warlock("Vesk", 1, 3, SP_ELDRITCH_BLAST), 4, 3);
+  n := rs_add(b[..], rs_warlock("Ilse", 1, 3, SP_ELDRITCH_BLAST), 4, 4);
+  cleft := false;
+  for k: 0..<20 {
+    b[0].c[m].hp = 21; b[0].c[n].hp = 21; b[0].c[m].temp = 0;
+    rs_start_turn(b[..], a);
+    #assert rs_attack(b[..], a, m, false, n);
+    rs_end_turn(b[..], a);
+    if b[0].c[n].hp < 21 { #assert 21 - b[0].c[n].hp <= 24; cleft = true; break; }
+  }
+  #assert cleft;
+}
+#test "Flurry of Blows: 1 Focus Point, two Unarmed Strikes (1d6 + 3); Topple knocks a foe Prone on a failed Dex save" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 19;
+  m := rs_add(b[..], rs_monk("Sen", 1, 3), 3, 3);
+  t := rs_add(b[..], rs_warlock("Vesk", 0, 3, SP_ELDRITCH_BLAST), 4, 3);
+  b[0].c[t].hp = 200; b[0].c[t].hp_max = 200;
+  prone := false;
+  for k: 0..<10 {
+    b[0].c[m].focus = 3; b[0].c[t].cond = 0;
+    rs_start_turn(b[..], m);
+    seq := b[0].book[0].seq;
+    #assert rs_flurry(b[..], m, t, OH_TOPPLE) && b[0].c[m].focus == 2 && !rs_flurry(b[..], m, t, OH_TOPPLE);
+    strikes := 0;
+    for e: 0..<(b[0].book[0].seq - seq) { ev := rs_recent(b[0].book[0], e); if ev.kind == RS_EV_ATTACK || ev.kind == RS_EV_MISS { strikes += 1; } }
+    #assert strikes == 2;
+    rs_end_turn(b[..], m);
+    if rs_has(b[0].c[t], RS_PRONE) { prone = true; break; }
+  }
+  #assert prone;
+}
+#test "Deflect Attacks: a Monk's Reaction cuts 1d10 + Dex + level from a Greataxe hit, once until its turn" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 6;
+  a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
+  m := rs_add(b[..], rs_monk("Sen", 1, 3), 4, 3);
+  for k: 0..<20 {
+    b[0].c[m].hp = 21; b[0].c[m].reacted = false; b[0].c[m].focus = 0;
+    rs_start_turn(b[..], a);
+    #assert rs_attack(b[..], a, m, false, -1);
+    rs_end_turn(b[..], a);
+    if b[0].c[m].reacted { break; }
+  }
+  #assert b[0].c[m].reacted && 21 - b[0].c[m].hp <= 12 + 3 - (1 + 3 + 3);
+}
+#test "Patient Defense: Dodge until its next turn, Disadvantage on attacks against it and Advantage on Dex saves" {
+  b: [1] RsBattle; b[0].w = 16; b[0].h = 8; b[0].dice[0].state = 6;
+  a := rs_add(b[..], rs_barbarian("Thorn", 0, 3), 3, 3);
+  m := rs_add(b[..], rs_monk("Sen", 1, 3), 4, 3);
+  rs_start_turn(b[..], m);
+  #assert rs_patient_defense(b[..], m) && b[0].c[m].focus == 2;
+  #assert rs_attack_edge(b[..], a, m, true, true) == -1 && rs_save_edge(b[..], m, RS_DEX) == 1;
+  rs_end_turn(b[..], m);
+  rs_tick(b[..], b[0].c[m].turn_at - b[0].clock);
+  #assert rs_attack_edge(b[..], a, m, true, true) == 0;
 }

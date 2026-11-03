@@ -117,6 +117,16 @@ RS_CONDITION :: [15] string.["Blinded", "Charmed", "Deafened", "Exhaustion", "Fr
 // ends at `until` on the world's clock, or when the creature succeeds on the save it repeats at
 // the end of each of its turns (`save`, an ability, against `dc`; -1 for none).
 EF_NONE :: 0; EF_COND :: 1; EF_ENFEEBLED :: 2; EF_WEAK :: 3; EF_NOHEAL :: 4; EF_HEX :: 5;
+
+// The classes a creature can be built as (-1 for a stat block).
+RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4;
+RS_CLASS :: [5] string.["Druid", "Wizard", "Warlock", "Barbarian", "Monk"];
+
+// Weapons a creature attacks with: the SRD's weapon table (p. 90) and Unarmed Strike. A Monk's
+// Unarmed Strike rolls its Martial Arts die in place of the 1 + Strength of anyone else's.
+RsWeapon :: struct { id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; }
+W_UNARMED :: 0; W_GREATAXE :: 1;
+M_NONE :: 0; M_CLEAVE :: 1;
 RS_EFFECTS :: 6;
 RsEffect :: struct { kind: int; cond: int; by: int; spell: int; until: f32; save: int; dc: int; }
 
@@ -148,6 +158,18 @@ RsCreature :: struct {
   agonizing: int; repelling: int;
   dark_blessing: bool;
   hex_free: bool; hex_free_after: f32;
+  klass: int;
+  weapon: int;              // what it attacks with (W_*)
+  masteries: int;           // the weapon mastery properties it can use, bits of 1 << M_*
+  reacted: bool;            // its Reaction is spent until its next turn starts
+  dodge_until: f32;         // the Dodge action: attacks against it have Disadvantage, Advantage on Dex saves
+  // Barbarian: Rage, Reckless Attack, Danger Sense, the Berserker's Frenzy
+  rages: int; rage_bonus: int; raging: bool; rage_kept: bool;
+  reckless_until: f32;
+  danger_sense: bool; frenzy: bool;
+  // Monk: the Martial Arts die, Focus Points, Deflect Attacks, the Open Hand's techniques
+  martial_die: int; focus: int; focus_max: int;
+  deflect: bool; open_hand: bool;
   // dropping to 0
   death_ok: int; death_fail: int; stable: bool; dead: bool;
   // where and when: grid squares, and its next turn on the clock
@@ -183,6 +205,7 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
+  c[0].klass = RS_DRUID;
   c[0].score = [6] int.[10, 14, 13, 12, 16, 8];
   c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
   con := rs_mod(c[0].score[RS_CON]);
@@ -210,6 +233,7 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
+  c[0].klass = RS_WIZARD;
   c[0].score = [6] int.[8, 14, 13, 16, 12, 10];
   c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
   con := rs_mod(c[0].score[RS_CON]);
@@ -240,6 +264,7 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   c: [1] RsCreature;
   rs_set_name(c[..], name);
   c[0].team = team; c[0].level = level;
+  c[0].klass = RS_WARLOCK;
   c[0].score = [6] int.[8, 14, 13, 10, 12, 16];
   c[0].save_prof[RS_WIS] = true; c[0].save_prof[RS_CHA] = true;
   con := rs_mod(c[0].score[RS_CON]);
@@ -259,6 +284,73 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   c[0].dark_blessing = level >= 3;
   return c[0];
 }
+
+// The SRD 5.2.1 Barbarian at a level (Strength and Constitution saves, a d12 hit die: 12 + Con at
+// level 1, then 7 + Con a level), unarmored (Unarmored Defense: 10 + Dex + Con) with a Greataxe and
+// its Cleave mastery. Rage (3 uses at level 3, +2 damage), Danger Sense and Reckless Attack from
+// level 2, and the Path of the Berserker's Frenzy at 3. Its scores are the standard array,
+// Strength first.
+rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = level; c[0].klass = RS_BARBARIAN;
+  c[0].score = [6] int.[16, 13, 14, 8, 12, 10];
+  c[0].save_prof[RS_STR] = true; c[0].save_prof[RS_CON] = true;
+  con := rs_mod(c[0].score[RS_CON]);
+  c[0].hp_max = 12 + con + (level - 1) * (7 + con);
+  c[0].hp = c[0].hp_max;
+  c[0].ac = 10 + rs_mod(c[0].score[RS_DEX]) + con;
+  c[0].speed = 30;
+  c[0].spell_ability = -1;
+  c[0].weapon = W_GREATAXE; c[0].masteries = 1 << M_CLEAVE;
+  rages := [21] int.[0, 2, 2, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 6, 6];
+  c[0].rages = rages[rs_min(rs_max(level, 1), 20)];
+  c[0].rage_bonus = ifx level >= 16 then 4 else ifx level >= 9 then 3 else 2;
+  c[0].danger_sense = level >= 2; c[0].frenzy = level >= 3;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  return c[0];
+}
+
+// The SRD 5.2.1 Monk at a level (Strength and Dexterity saves, a d8 hit die), unarmored
+// (Unarmored Defense: 10 + Dex + Wis) and fighting with Unarmed Strikes: Martial Arts (the die, a
+// Bonus Action strike, Dexterous Attacks), Focus Points from level 2 (Flurry of Blows, Patient
+// Defense, Step of the Wind), Unarmored Movement (+10 feet), Deflect Attacks at 3 and the Warrior of
+// the Open Hand's Open Hand Technique. Its scores are the standard array, Dexterity first.
+rs_monk :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = level; c[0].klass = RS_MONK;
+  c[0].score = [6] int.[12, 16, 13, 10, 14, 8];
+  c[0].save_prof[RS_STR] = true; c[0].save_prof[RS_DEX] = true;
+  con := rs_mod(c[0].score[RS_CON]);
+  c[0].hp_max = 8 + con + (level - 1) * (5 + con);
+  c[0].hp = c[0].hp_max;
+  c[0].ac = 10 + rs_mod(c[0].score[RS_DEX]) + rs_mod(c[0].score[RS_WIS]);
+  c[0].speed = 30 + ifx level >= 2 then 10 else 0;
+  c[0].spell_ability = -1;
+  c[0].weapon = W_UNARMED;
+  c[0].martial_die = ifx level >= 17 then 12 else ifx level >= 11 then 10 else ifx level >= 5 then 8 else 6;
+  c[0].focus_max = ifx level >= 2 then level else 0; c[0].focus = c[0].focus_max;
+  c[0].deflect = level >= 3; c[0].open_hand = level >= 3;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  return c[0];
+}
+
+rs_weapon :: (w: int) -> RsWeapon {
+  if w == W_GREATAXE { return RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE}; }
+  return RsWeapon.{id = "unarmed-strike", name = "Unarmed Strike", dice = 0, sides = 0, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE};
+}
+// The ability an attack with weapon w uses: Strength, or Dexterity for a Finesse weapon or a Monk's
+// Martial Arts when it is the higher.
+rs_attack_ability :: (c: RsCreature, w: int) -> int {
+  wp := rs_weapon(w);
+  dex_ok := wp.finesse || (c.klass == RS_MONK && (w == W_UNARMED || wp.dice > 0));
+  if dex_ok && c.score[RS_DEX] > c.score[RS_STR] { return RS_DEX; }
+  return RS_STR;
+}
+rs_weapon_attack :: (c: RsCreature, w: int) -> int { return rs_proficiency(c.level) + rs_mod(c.score[rs_attack_ability(c, w)]); }
+// A creature's Wisdom-based Monk save DC (8 + Wis + Proficiency).
+rs_focus_dc :: (c: RsCreature) -> int { return 8 + rs_proficiency(c.level) + rs_mod(c.score[RS_WIS]); }
 
 // ---- effects that last
 
@@ -412,6 +504,16 @@ rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int {
   #assert c.agonizing == SP_ELDRITCH_BLAST && c.repelling == SP_ELDRITCH_BLAST && c.dark_blessing;
   one := rs_warlock("Vesk", 1, 1, SP_ELDRITCH_BLAST); #assert one.slots[1] == 1 && one.agonizing < 0 && !one.dark_blessing;
   five := rs_warlock("Vesk", 1, 5, SP_ELDRITCH_BLAST); #assert five.slots[3] == 2 && five.slots[2] == 0;
+}
+#test "a level 3 Berserker Barbarian: 32 HP, AC 13 unarmored, Greataxe +5, three Rages at +2" {
+  c := rs_barbarian("Thorn", 0, 3);
+  #assert c.hp_max == 12 + 2 + 2 * (7 + 2) && c.ac == 13 && rs_weapon_attack(c, c.weapon) == 5 && c.rages == 3 && c.rage_bonus == 2;
+  #assert c.frenzy && c.danger_sense && c.save_prof[RS_STR] && c.save_prof[RS_CON] && (c.masteries & (1 << M_CLEAVE)) != 0;
+}
+#test "a level 3 Open Hand Monk: 21 HP, AC 15 unarmored, Unarmed Strike +5 (Dex) for 1d6, 3 Focus Points, Speed 40" {
+  c := rs_monk("Sen", 1, 3);
+  #assert c.hp_max == 21 && c.ac == 15 && rs_weapon_attack(c, W_UNARMED) == 5 && c.martial_die == 6 && c.focus == 3 && c.speed == 40;
+  #assert rs_focus_dc(c) == 12 && c.deflect && c.open_hand;
 }
 #test "Temporary Hit Points soak damage first; a grip that stops healing stops it" {
   c: [1] RsCreature; c[0] = rs_wizard("Mordra", 1, 3);
