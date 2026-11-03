@@ -1,0 +1,76 @@
+// The checks of lightning-pay.coax. They live apart so that running the
+// example doesn't also run them. The example runs one scenario; these
+// check properties of the payer's search and of what it learns.
+// Checks: coax test bitcoin/examples/checks/lightning-pay.coax
+#load "../lightning-pay.coax";
+
+// book:begin check
+// Four nodes: the payer 0, the payee 3, and the paths
+// 0 > 1 > 3 (1,000 msat + 100 ppm, 40 blocks) and 0 > 2 > 3 (500 msat +
+// 50 ppm, 80 blocks). The payer believes 2 > 3 carries at most 400,000
+// sat, so the risk penalty grows faster there. The search only compares
+// node IDs, so real keys are made only when an onion needs them.
+four :: (m: [] PayMap, real: bool) -> [4] [33] u8 {
+  ids: [4] [33] u8; s: [32] u8;
+  for k: 0..<4 {
+    s[31] = cast(u8) (k + 1);
+    if real { ids[k] = gsp_public(s[..]); } else { ids[k][0] = 2; ids[k][32] = cast(u8) (k + 1); }
+  }
+  m[0] = PayMap.{};
+  from := [4] int.[0, 1, 0, 2]; to := [4] int.[1, 3, 2, 3];
+  for e: 0..<4 {
+    k := pay_add_edge(m, cast(u64) (e + 1), ids[from[e]][..], ids[to[e]][..], 900000000);
+    m[0].edges[k].htlc_min = 1000; m[0].edges[k].htlc_max = 900000000;
+    m[0].edges[k].fee_base = ifx e == 1 then 1000 else ifx e == 3 then 500 else 0;
+    m[0].edges[k].fee_ppm = ifx e == 1 then 100 else ifx e == 3 then 50 else 0;
+    m[0].edges[k].cltv = ifx e == 1 then 40 else ifx e == 3 then 80 else 0;
+  }
+  m[0].edges[3].hi = 400000000;
+  return ids;
+}
+// The cost of the path through edge first, then edge second, by hand.
+by_hand :: (m: [] PayMap, first: int, second: int, amount: int) -> int {
+  e := m[0].edges[second];
+  if !pay_usable(e, amount) { return -1; }
+  fee := pay_fee(e.fee_base, e.fee_ppm, amount);
+  if !pay_usable(m[0].edges[first], amount + fee) { return -1; }
+  return fee + PAY_HOP_PENALTY + pay_risk(e, amount) + pay_risk(m[0].edges[first], amount + fee);
+}
+// For amounts from 1,000,000 to 1,225,000,000 msat, the search's route
+// is the cheaper of the two by hand, or none when neither carries it, and
+// its amounts and expiries follow BOLT 7 hop by hop.
+cheapest :: (k: int) {
+  m: [1] PayMap; ids := four(m[..], false);
+  amount := 1000000 * (k * k + 1);
+  r := pay_find_route(m[..], ids[0][..], ids[3][..], amount, 1018, 1000);
+  a := by_hand(m[..], 0, 1, amount); b := by_hand(m[..], 2, 3, amount);
+  if a < 0 && b < 0 { #assert r.code == PAY_NO_ROUTE; return; }
+  best := ifx a < 0 then b else ifx b < 0 then a else ifx a < b then a else b;
+  #assert r.code == PAY_OK && r.hops == 2 && r.cost == best && r.amount[1] == amount && r.cltv[1] == 1018;
+  e := m[0].edges[r.edge[1]];
+  #assert r.amount[0] == amount + pay_fee(e.fee_base, e.fee_ppm, amount) && r.cltv[0] == 1018 + e.cltv;
+  #assert r.fee == r.amount[0] - amount;
+}
+#forall k: 0..<36 { cheapest(k); }
+// After a temporary_channel_failure from node 2 with amount on 2 > 3,
+// the payer knows that channel carries less than amount: no route for
+// amount or more uses it, and the payment moves to 1 > 3.
+learned :: (k: int) {
+  m: [1] PayMap; ids := four(m[..], true);
+  amount := 50000000 * (k + 1);
+  r := pay_find_route(m[..], ids[0][..], ids[3][..], amount, 1018, 1000);
+  p: [1] PayPayment; p[0].parts[0] = PayPart.{route = r}; p[0].parts[0].session[0] = 7;
+  route: [1] OnionRoute; pubkeys: [66] u8; f: [4] u8; packet: [292] u8;
+  for h: 0..<2 { for b: 0..<33 { pubkeys[33 * h + b] = m[0].edges[r.edge[h]].to[b]; } }
+  session := p[0].parts[0].session;
+  #assert onion_route(session[..], pubkeys[..], route[..]) == ONION_OK;
+  n := onion_error_create(route[0].ss[0..<32], f[0..<pay_failure(PAY_TEMPORARY_CHANNEL_FAILURE, 0, 0, f[..])], 256, packet[..]);
+  for h: 0..<2 { m[0].edges[r.edge[h]].inflight += r.amount[h]; }
+  pay_learn(m[..], p[..], 0, packet[0..<n]);
+  pay_settle_part(m[..], p[..], 0);
+  #assert r.edge[1] == 3 && m[0].edges[3].hi == amount - 1 && m[0].edges[3].inflight == 0;
+  again := pay_find_route(m[..], ids[0][..], ids[3][..], amount, 1018, 1000);
+  #assert again.code == PAY_OK && again.edge[1] == 1;
+}
+#forall k: 0..<6 #steps 4000000000 { learned(k); }
+// book:end check

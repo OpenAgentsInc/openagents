@@ -130,6 +130,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [109. Open, update and close a channel](ch109-open-update-and-close-a-channel.md) — implemented
 - [111. Onion routing and blinded paths](ch111-onion-routing-and-blinded-paths.md) — implemented
 - [112. Gossip and the channel graph](ch112-gossip-and-the-channel-graph.md) — implemented
+- [113. Find a route and pay](ch113-find-a-route-and-pay.md) — implemented
 - [114. Invoices](ch114-invoices.md) — implemented
 - [115. Offers](ch115-offers.md) — implemented
 

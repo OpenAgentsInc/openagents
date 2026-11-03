@@ -1,0 +1,129 @@
+// book:begin example
+#load "../../coax/lib/lightning/pay.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex.
+show :: (b: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+NAMES :: [5] string.["Alice", "Bob", "Carol", "Dave", "Erin"];
+CODES :: [9] string.["OK", "PENDING", "NO_ROUTE", "REFUSED", "STUCK", "TOO_MANY", "CAPACITY", "BAD_INVOICE", "CHANNEL"];
+// A secret of 32 bytes made from two small numbers, for the example.
+secret :: (k: int, c: int) -> [32] u8 {
+  out: [32] u8;
+  for i: 0..<32 { out[i] = cast(u8) ((k * i + c) & 255); }
+  return out;
+}
+failure_name :: (code: int) -> string {
+  if code == PAY_TEMPORARY_CHANNEL_FAILURE { return "temporary_channel_failure"; }
+  if code == PAY_INCORRECT_OR_UNKNOWN { return "incorrect_or_unknown_payment_details"; }
+  if code == PAY_UNKNOWN_NEXT_PEER { return "unknown_next_peer"; }
+  if code == PAY_FEE_INSUFFICIENT { return "fee_insufficient"; }
+  return "another failure";
+}
+name_of :: (net: [] PayNet, id: [] u8) -> string {
+  for k: 0..<net[0].n { if lnh_same(net[0].nodes[k].id[..], id) { return NAMES[k]; } }
+  return "?";
+}
+scid_show :: (v: u64) { t: [23] u8; print("%", cast(string) t[0..<gossip_scid_text(v, t[..])]); }
+// Each part: its amount and route, the fees and expiries, the onion's
+// hash, and what came of it.
+parts :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment) {
+  for i: 0..<p[0].parts_n {
+    part := p[0].parts[i]; r := part.route;
+    print("  part %: % msat via Alice", i + 1, part.amount);
+    for h: 0..<r.hops { print(" > %", name_of(net, m[0].edges[r.edge[h]].to[..])); }
+    print(", fee % msat\n    channels", r.fee);
+    for h: 0..<r.hops { print(" "); scid_show(m[0].edges[r.edge[h]].scid); print(" % msat to %", r.amount[h], r.cltv[h]); }
+    print("\n    onion "); show(part.onion_hash[0..<8]);
+    if part.state == PAY_PART_SETTLED { print(": settled\n"); continue; }
+    if part.fail_hop < 0 { print(": refused by Alice's own channel\n"); continue; }
+    print(": failed at %, % (0x", name_of(net, m[0].edges[r.edge[part.fail_hop]].to[..]), failure_name(part.fail_code));
+    b := [2] u8.[cast(u8) (part.fail_code >> 8), cast(u8) (part.fail_code & 255)];
+    show(b[..]); print(")\n");
+  }
+}
+// Pays an invoice from Alice and prints what happened.
+pay :: (net: [] PayNet, m: [] PayMap, text: [] u8) {
+  inv: [1] Invoice;
+  code := invoice_decode_vartime(cast(string) text, inv[..]);
+  print("  invoice: % characters, %, % msat to %, % route hint hops\n", text.count,
+        ifx code == INV_OK then "signature verifies" else "refused", inv[0].amount_msat, name_of(net, inv[0].payee[..]), inv[0].hops_n);
+  code = pay_map_hints(m, inv[..]);
+  p: [1] PayPayment;
+  code = pay_begin(p[..], 0, inv[..], net[0].height);
+  print("  multi-part allowed: %\n", p[0].mpp);
+  rounds := 0;
+  while pay_round(net, m, p[..]) == PAY_PENDING { rounds += 1; }
+  parts(net, m, p[..]);
+  h: [32] u8; want := p[0].hash; lnh_sha(p[0].preimage[..], h[..]);
+  print("  result: %, rounds: %, settled: % msat, preimage matches the hash: %\n", CODES[p[0].code], rounds + 1,
+        p[0].settled, lnh_same(h[..], want[..]));
+}
+
+main :: () {
+  net: [1] PayNet; net[0].height = 1000;
+  for k: 0..<5 { s := secret(k + 3, 2 * k + 1); n := pay_node(net[..], s[..]); }
+  print("nodes\n");
+  for k: 0..<5 { print("  % ", NAMES[k]); show(net[0].nodes[k].id[..]); print("\n"); }
+
+  print("channels, opened with chapter 109's messages\n");
+  // Each channel's opener, the other end, and its funding in satoshis.
+  from := [5] int.[0, 1, 0, 2, 3]; to := [5] int.[1, 3, 2, 3, 4];
+  funding := [5] int.[2000000, 1000000, 2000000, 1000000, 1000000];
+  for l: 0..<5 {
+    code := pay_open(net[..], from[l], to[l], funding[l], 0, gossip_scid(cast(u64) (101 + l), 1, 0), l != 4);
+    print("  % - % ", NAMES[from[l]], NAMES[to[l]]); scid_show(net[0].links[l].scid);
+    print(": % sat from %, %, %\n", funding[l], NAMES[from[l]], ifx code == LNH_OK then "open" else "refused",
+          ifx l == 4 then "private" else "announced");
+  }
+  // Bob forwards at 1,000 msat + 100 ppm and 40 blocks, Carol at 500 msat
+  // + 50 ppm and 80 blocks, Dave at 1,000 msat + 1,000 ppm and 144 blocks.
+  for l: 0..<5 {
+    for s: 0..<2 {
+      k := net[0].links[l].node[s];
+      base := ifx k == 2 then 500 else 1000; ppm := ifx k == 2 then 50 else ifx k == 3 then 1000 else 100;
+      cltv := ifx k == 2 then 80 else ifx k == 3 then 144 else 40;
+      pay_policy(net[..], l, s, base, ppm, cltv, (funding[l] - 10000) * 1000);
+    }
+  }
+
+  print("gossip\n");
+  g: [1] GspGraph; chain: [32] u8; t := tx_unhex(LNH_CHAIN, chain[..]);
+  gossip_graph_begin(g[..], chain[..]);
+  for l: 0..<4 { print("  "); scid_show(net[0].links[l].scid); print(": %\n", ifx pay_announce(net[..], l, g[..], 1762156800, -1) == GSP_OK then "announced, both updates added" else "refused"); }
+  m: [1] PayMap;
+  code := pay_map_graph(m[..], g[..]);
+  print("  Alice's map: % channels, % directions\n", g[0].count, m[0].n);
+
+  text: [1000] u8; hint: [1] InvHop;
+  print("1. Alice pays Dave 50,000 sat\n");
+  n := pay_write_invoice(net[..], 3, 50000000, 1, hint[0..<0], text[..]);
+  pay(net[..], m[..], text[0..<n]);
+  print("2. Alice pays Dave 1,400,000 sat: more than any one route carries\n");
+  n = pay_write_invoice(net[..], 3, 1400000000, 2, hint[0..<0], text[..]);
+  pay(net[..], m[..], text[0..<n]);
+  print("3. Alice pays Dave 280,000 sat: Carol's side has only 250,000\n");
+  n = pay_write_invoice(net[..], 3, 280000000, 3, hint[0..<0], text[..]);
+  pay(net[..], m[..], text[0..<n]);
+  print("4. Alice pays Erin 100,000 sat over Dave's private channel\n");
+  hint[0] = InvHop.{pubkey = net[0].nodes[3].id, scid = net[0].links[4].scid, fee_base = 1000, fee_ppm = 1000, cltv = 144};
+  n = pay_write_invoice(net[..], 4, 100000000, 4, hint[..], text[..]);
+  pay(net[..], m[..], text[0..<n]);
+  print("5. Alice pays an invoice Dave has forgotten\n");
+  n = pay_write_invoice(net[..], 3, 10000000, 5, hint[0..<0], text[..]);
+  net[0].nodes[3].invoices_n -= 1;
+  pay(net[..], m[..], text[0..<n]);
+
+  print("balances, msat, as each side's commitment says\n");
+  for l: 0..<5 {
+    a := net[0].links[l].node[0]; b := net[0].links[l].node[1];
+    print("  "); scid_show(net[0].links[l].scid);
+    print(": % %, % %; agree: %\n", NAMES[a], pay_balance(net[..], l, 0), NAMES[b], pay_balance(net[..], l, 1),
+          lnh_spec(pay_end(net[..], l, 1), true, LNH_NOW).to_remote_msat == pay_balance(net[..], l, 0));
+  }
+}
+// book:end example

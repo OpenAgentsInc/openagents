@@ -2285,16 +2285,23 @@
   {
    "number": 113,
    "title": "Find a route and pay",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch113-find-a-route-and-pay.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     109,
     111,
-    112
+    112,
+    114
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/lightning/pay.coax",
+    "bitcoin/examples/lightning-pay.coax",
+    "bitcoin/examples/checks/lightning-pay.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

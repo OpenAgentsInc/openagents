@@ -1,0 +1,65 @@
+nodes
+  Alice 021379cc96aa0aa0f16d54bacc78dca79c4ef9cbb1d898f0f1a2eea3521c7ec38a
+  Bob 030f222aee3aed39ebed8cd0c93601ed5e1385c45f359569e8327bc6d4a6b988fa
+  Carol 02522e9a5fa836149555d96e2cbbf397be69628e906ef6c72e80aba0877ba899d9
+  Dave 03cdff513b8c55d6710751128eeb8a09a57c388fa18d08978871e987396c2fd9e6
+  Erin 03780e2df933bf0e2d7cb6ccad772254036563488a314f579f4d93e40228709897
+channels, opened with chapter 109's messages
+  Alice - Bob 101x1x0: 2000000 sat from Alice, open, announced
+  Bob - Dave 102x1x0: 1000000 sat from Bob, open, announced
+  Alice - Carol 103x1x0: 2000000 sat from Alice, open, announced
+  Carol - Dave 104x1x0: 1000000 sat from Carol, open, announced
+  Dave - Erin 105x1x0: 1000000 sat from Dave, open, private
+gossip
+  101x1x0: announced, both updates added
+  102x1x0: announced, both updates added
+  103x1x0: announced, both updates added
+  104x1x0: announced, both updates added
+  Alice's map: 4 channels, 8 directions
+1. Alice pays Dave 50,000 sat
+  invoice: 266 characters, signature verifies, 50000000 msat to Dave, 0 route hint hops
+  multi-part allowed: true
+  part 1: 50000000 msat via Alice > Carol > Dave, fee 3000 msat
+    channels 103x1x0 50003000 msat to 1098 104x1x0 50000000 msat to 1018
+    onion e5f37ce9a85db772: settled
+  result: OK, rounds: 1, settled: 50000000 msat, preimage matches the hash: true
+2. Alice pays Dave 1,400,000 sat: more than any one route carries
+  invoice: 265 characters, signature verifies, 1400000000 msat to Dave, 0 route hint hops
+  multi-part allowed: true
+  part 1: 700000000 msat via Alice > Carol > Dave, fee 35500 msat
+    channels 103x1x0 700035500 msat to 1098 104x1x0 700000000 msat to 1018
+    onion 92405c6f54b08650: settled
+  part 2: 700000000 msat via Alice > Bob > Dave, fee 71000 msat
+    channels 101x1x0 700071000 msat to 1058 102x1x0 700000000 msat to 1018
+    onion 03bb27c197758bcd: settled
+  result: OK, rounds: 1, settled: 1400000000 msat, preimage matches the hash: true
+3. Alice pays Dave 280,000 sat: Carol's side has only 250,000
+  invoice: 267 characters, signature verifies, 280000000 msat to Dave, 0 route hint hops
+  multi-part allowed: true
+  part 1: 280000000 msat via Alice > Carol > Dave, fee 14500 msat
+    channels 103x1x0 280014500 msat to 1098 104x1x0 280000000 msat to 1018
+    onion 7e3b080ee369e8e3: failed at Carol, temporary_channel_failure (0x1007)
+  part 2: 280000000 msat via Alice > Bob > Dave, fee 29000 msat
+    channels 101x1x0 280029000 msat to 1058 102x1x0 280000000 msat to 1018
+    onion 280715720c32bcf6: settled
+  result: OK, rounds: 2, settled: 280000000 msat, preimage matches the hash: true
+4. Alice pays Erin 100,000 sat over Dave's private channel
+  invoice: 349 characters, signature verifies, 100000000 msat to Erin, 1 route hint hops
+  multi-part allowed: true
+  part 1: 100000000 msat via Alice > Carol > Dave > Erin, fee 106505 msat
+    channels 103x1x0 100106505 msat to 1242 104x1x0 100101000 msat to 1162 105x1x0 100000000 msat to 1018
+    onion ea3324dd3998aaed: settled
+  result: OK, rounds: 1, settled: 100000000 msat, preimage matches the hash: true
+5. Alice pays an invoice Dave has forgotten
+  invoice: 266 characters, signature verifies, 10000000 msat to Dave, 0 route hint hops
+  multi-part allowed: true
+  part 1: 10000000 msat via Alice > Carol > Dave, fee 1000 msat
+    channels 103x1x0 10001000 msat to 1098 104x1x0 10000000 msat to 1018
+    onion 78d6f0449b452cec: failed at Dave, incorrect_or_unknown_payment_details (0x400f)
+  result: REFUSED, rounds: 1, settled: 0 msat, preimage matches the hash: false
+balances, msat, as each side's commitment says
+  101x1x0: Alice 1019900000, Bob 980100000; agree: true
+  102x1x0: Bob 20000000, Dave 980000000; agree: true
+  103x1x0: Alice 1149854995, Carol 850145005; agree: true
+  104x1x0: Carol 149899000, Dave 850101000; agree: true
+  105x1x0: Dave 900000000, Erin 100000000; agree: true

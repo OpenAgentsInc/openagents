@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-84 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+85 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -130,7 +130,10 @@ writes BOLT 11 invoices and recovers the payee from the signature. Chapter 115's
 [`offers.coax`](../coax/lib/lightning/offers.coax) reads, checks and
 writes BOLT 12 offers, invoice requests, invoices and payer proofs. Chapter 112's
 [`gossip.coax`](../coax/lib/lightning/gossip.coax) reads, checks and
-writes BOLT 7's gossip and query messages and keeps a channel graph.
+writes BOLT 7's gossip and query messages and keeps a channel graph. Chapter 113's
+[`pay.coax`](../coax/lib/lightning/pay.coax) finds routes over that graph,
+forwards and settles payments across chapter 109's channels, splits them
+into parts and retries from error onions.
 
 ```sh
 python3 psionic/tests/book.py --book bitcoin                     # structure and registry
@@ -188,12 +191,13 @@ and Lightning also need:
   `coax/lib/bitcoin/musig.coax`, FROST in chapter 102,
   `coax/lib/bitcoin/frost.coax`, and adaptor signatures in chapter
   103, `coax/lib/bitcoin/adaptor.coax`.)
-- Lightning: routing. (BOLT 1's messages and TLVs are built in chapter
-  104, the BOLT 8 Noise handshake in chapter 105, BOLT 3's keys and
+- Lightning: watching the chain for a channel's transactions (chapter
+  110). (BOLT 1's messages and TLVs are built in chapter 104, the BOLT 8 Noise handshake in chapter 105, BOLT 3's keys and
   revocation in chapter 106, shachain in chapter 107, commitment and HTLC
   transactions in chapter 108, BOLT 2 channels in chapter 109, BOLT 4
   onions with blinded paths in chapter 111, BOLT 7 gossip in chapter 112,
-  BOLT 11 invoices in chapter 114, and BOLT 12 offers in chapter 115.)
+  routing and payment in chapter 113, BOLT 11 invoices in chapter 114,
+  and BOLT 12 offers in chapter 115.)
 
 ## Decisions
 
