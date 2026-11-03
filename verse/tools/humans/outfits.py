@@ -207,7 +207,7 @@ def source(outfit, sex="female"):
                       "rough": pbr.get("roughnessFactor", 1.0),
                       "images": (img(pbr.get("baseColorTexture")), img(m.get("normalTexture")), img(pbr.get("metallicRoughnessTexture"))),
                       "verts": verts(pr), "tris": pr["tris"], "own_weights": False}
-                if not any(k in name for k in SNUG_SKIP):
+                if not any(k in name for k in SNUG_SKIP + SUBDIVIDE_SKIP):
                     while len(pc["tris"]) < SUBDIVIDE_TRIS:
                         pc = subdivided(pc)
                 pieces.append(pc)
@@ -224,6 +224,9 @@ def source(outfit, sex="female"):
 
 
 SUBDIVIDE_TRIS = 12000   # a trunk piece is split until it has at least this many triangles
+# The legs aren't split: their crotch triangles span both thighs, and split ones stretch further
+# apart in a stride than the whole ones do (the stand-in's walk and slash tore them).
+SUBDIVIDE_SKIP = ("Legs",)
 
 
 def subdivided(pc):

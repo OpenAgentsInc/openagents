@@ -853,7 +853,7 @@ It holds no MetaHuman asset and draws with none.
   surface. It works from the shoulders down to the hips, fading out over
   12 cm below them, and measures against skin that faces the same way as
   the cloth, so a vest bridging the bust's underside is drawn in to the
-  waist below it instead of to the bust. Pieces under 12,000 triangles are
+  waist below it instead of to the bust. Pieces under 12,000 triangles (not the legs, whose crotch would tear in a stride) are
   split 1 to 4 first (`outfits.subdivided`), so the bust is a curve and not
   a faceted cone; the moves are smoothed over the cloth's neighbours (more
   passes on denser pieces), and the normals are recomputed with creases kept.
