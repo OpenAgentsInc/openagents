@@ -5,8 +5,11 @@ deploy.sh runs it on the staged site before anything is uploaded:
     python3 coax/web/private-guard.py STAGE_DIR
 
 A MetaHuman pack reaches visitors only through the broker (coax/web/api/verse_packs.c), a session
-at a time, never as a file. So the release fails on any file under a private/ directory, and on any
-VPK1 pack whose catalog names the MetaHuman licence or a MetaHuman body, whatever it is called.
+at a time, never as a file. So the release fails on any file under the site's own private/ directory
+(where serve.c keeps local packs, /private/NAME.pack), on any .pack under a private/ directory
+anywhere, and on any VPK1 pack whose catalog names the MetaHuman licence or a MetaHuman body,
+whatever it is called. A page that merely lives at a path named private (/projects/private/) is not
+a pack and ships.
 """
 import os, struct, sys
 
@@ -38,7 +41,9 @@ def main(stage):
         for name in files:
             path = os.path.join(root, name)
             rel = os.path.relpath(path, stage)
-            if "private" in rel.split(os.sep)[:-1] or private_pack(path):
+            dirs = rel.split(os.sep)[:-1]
+            served = dirs[1:] if dirs[:1] == ["site"] else dirs
+            if served[:1] == ["private"] or ("private" in dirs and name.endswith(".pack")) or private_pack(path):
                 bad.append(rel)
     for rel in bad:
         print(f"private-guard: {rel} is a private pack or under private/; MetaHumans ship only through the broker", file=sys.stderr)
