@@ -1,0 +1,48 @@
+The card of NIP-06's first phrase, account 0
+nostr m/44h/1237h/0h/0/0 npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu
+wpkh([ae957285/84h/0h/0h]xpub6Byf6wvtJs2NobE6DV9fCPmNXCa5fxZ6EhcEhgXpJKfqr2Bzyeznmq26kTxUCyNgUS9ZQKXPUTFsWMqcpEuHaAsGmoYRbkF2ZXxim5fsGT1/<0;1>/*)#mcpgfhwv
+tr([ae957285/86h/0h/0h]xpub6BkvVbW4aaRfBmgjc4Yg1oG7hDMs1sL6a3P6pP1LJtRQKB9fe22RCbp3ifSSMye9ziPQUH2YRk38oqzKUiXoKCb1R6keV3X57qBFDx4e7eG/<0;1>/*)#a8gvn82u
+npub is NIP-06's: true
+Addresses from the card alone
+wpkh 0/0: bc1q8zxz5kl6q30y2mzhx86gcwcz0t0hgzl2f2jpm5
+wpkh 0/1: bc1qc42v7hwyvumnwglrlrr3xufwjj7qhmq7xhzay8
+wpkh 1/0: bc1qspfxfzq76qdh3xlcanasx94ag9t0qxm8jsapmf
+tr 0/0: bc1ppp2h2mqq4r8al4n8y800qfe53hvuamg3eqz4kz299eyqx6u7c9esfpualz
+tr 0/1: bc1pqdqz3cgeqze7mj4c3ru3ltt6yh9ac2qpsxyeufzc5t5pnx5tmrvqcq3czh
+tr 1/0: bc1ps5t2n3nq5mk2qxrgmzstehn7fyljftxwnt27ah3lne04uvd0nslshqxr0r
+Restore
+same words, no passphrase: the same card
+same words, passphrase x: mismatch
+same words, account 1: mismatch
+last word beauty: words refused
+The card of BIP-84's and BIP-86's phrase
+nostr m/44h/1237h/0h/0/0 npub1az708q3kd9zy6z6f44zav5ygvdwelkzspf6mtusttx47lft2z38sghk0w7
+wpkh([73c5da0a/84h/0h/0h]xpub6CatWdiZiodmUeTDp8LT5or8nmbKNcuyvz7WyksVFkKB4RHwCD3XyuvPEbvqAQY3rAPshWcMLoP2fMFMKHPJ4ZeZXYVUhLv1VMrjPC7PW6V/<0;1>/*)#qf45pmyh
+tr([73c5da0a/86h/0h/0h]xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ/<0;1>/*)#xf07c0qd
+wpkh 0/0: bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu
+wpkh 0/1: bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g
+wpkh 1/0: bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el
+tr 0/0: bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr
+tr 0/1: bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh
+tr 1/0: bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7
+The passphrase TREZOR
+seed: c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04
+nostr m/44h/1237h/0h/0/0 npub17v46v50fwtwq5rdc6xqxjznk6w2pqrk2k6u4jjcf2r5h5ua7k7hq2q3erf
+wpkh([b4e3f5ed/84h/0h/0h]xpub6Crgkie5Rb7wDabkf4Uf6A2qnuERMA3p2QrnmHNQDrsXTaGvz9zugU38Apne8WqrcbSjdLwbhtfHrzWjNCJPVAkkNoQhMfzhBm8rKMA8KxH/<0;1>/*)#72x53tc6
+tr([b4e3f5ed/86h/0h/0h]xpub6CvFPYhCVDRVnfFhxGZH5WXD79vRUoR1Mqh7o1uSaG7Qya2Z4vm67vihWr8io7zcfy4ehfAuZ5k2Bzk8pT1wAehqhZVEyfHwsWVMud7omCf/<0;1>/*)#nh3grzr2
+The same phrase on testnet
+nostr m/44h/1237h/0h/0/0 npub1az708q3kd9zy6z6f44zav5ygvdwelkzspf6mtusttx47lft2z38sghk0w7
+wpkh([73c5da0a/84h/1h/0h]tpubDC8msFGeGuwnKG9Upg7DM2b4DaRqg3CUZa5g8v2SRQ6K4NSkxUgd7HsL2XVWbVm39yBA4LAxysQAm397zwQSQoQgewGiYZqrA9DsP4zbQ1M/<0;1>/*)#lxek0ef2
+tr([73c5da0a/86h/1h/0h]tpubDDfvzhdVV4unsoKt5aE6dcsNsfeWbTgmLZPi8LQDYU2xixrYemMfWJ3BaVneH3u7DBQePdTwhpybaKRU95pi6PMUtLPBJLVQRpzEnjfjZzX/<0;1>/*)#ewv9va06
+npub line unchanged: true
+Separate keys
+nostr key m/44'/1237'/0'/0/0: e8bcf3823669444d0b49ad45d65088635d9fd8500a75b5f20b59abefa56a144f
+wallet key m/86'/0'/0'/0/0: cc8a4bc64d897bddc5fbc2f670f7a8ba0b386779106cf1223c6fc5d7cd6fc115
+the wallet key's BIP-86 output key: a60869f0dbcf1dc659c9cecbaf8050135ea9e8cdc487053f1dc6880949dc684c
+the nostr key's BIP-86 output key: 6d90a6e15606a12b3b1ca1271744bdbf7c062fb0092bf3afa051b859761d0927
+A raw 32-byte signature request to the Nostr key
+message: 852311f6554abb9a0dbde68a35c13fbbfdf67003bda3764c64839a445bb13869
+valid under the nostr key, as in a <key> OP_CHECKSIG leaf: true
+valid under the nostr key's output key: false
+valid under the wallet key: false
+valid under the wallet key's output key: false

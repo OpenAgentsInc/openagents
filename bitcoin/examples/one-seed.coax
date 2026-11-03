@@ -1,0 +1,135 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/oneseed.coax";
+#load "../../coax/lib/crypto/schnorr_sign.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+REFUSALS :: [5] string.["words refused", "bad field", "capacity", "mismatch", "derivation"];
+result :: (code: int) -> string { return ifx code == OS_OK then "the same card" else REFUSALS[-code - 1]; }
+// The address of a card's descriptor line at branch and index.
+address :: (line: string, network: int, branch: int, index: int, out: [] u8) -> string {
+  script: [AD_SCRIPT_MAX] u8;
+  n := descriptor_script_vartime(line, network, branch, index, 0, script[..]);
+  #assert n > 0;
+  m := address_encode_vartime(network, script[0..<n], out);
+  #assert m > 0;
+  return cast(string) out[0..<m];
+}
+// Print a card's addresses: two receiving and one change, per descriptor.
+addresses :: (card: string, network: int) {
+  addr: [90] u8;
+  for d: 1..<3 {
+    line := oneseed_line_vartime(card, d);
+    name := ifx d == 1 then "wpkh" else "tr";
+    print("% 0/0: %\n", name, address(line, network, 0, 0, addr[..]));
+    print("% 0/1: %\n", name, address(line, network, 0, 1, addr[..]));
+    print("% 1/0: %\n", name, address(line, network, 1, 0, addr[..]));
+  }
+}
+// The private key at a path string below a seed.
+key_at :: (seed: [] u8, path: string, key: [] u8) {
+  work: [BIP32_WORK_BYTES] u8; node: [BIP32_NODE_BYTES] u8;
+  #assert path_derive_ct(seed, false, path, work[..], node[..]) == BIP32_NODE_BYTES;
+  for j: 0..<32 { key[j] = node[HDK_KEY + 1 + j]; }
+}
+// A BIP-340 signature of 32 bytes by a key, with zero aux.
+sign :: (key: [] u8, message: [] u8, sig: [] u8) {
+  w: [1] SignWork; aux: [32] u8; status := 0;
+  for k: 0..<6 { status = schnorr_sign_step(key, aux[..], message, w[..], sig, false); }
+  #assert status == SIGN_DONE;
+}
+// The x-only public key of a private key.
+xonly :: (key: [] u8, out: [] u8) {
+  pub: [33] u8;
+  #assert bip32_public(key, pub[..]);
+  for j: 0..<32 { out[j] = pub[1 + j]; }
+}
+
+NIP06_WORDS :: "leader monkey parrot ring guide accident before fence cannon height naive bean";
+NIP06_NPUB :: "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
+ABANDON :: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+main :: () {
+  work: [OS_WORK_BYTES] u8; card: [OS_CARD_MAX] u8; other: [OS_CARD_MAX] u8;
+
+  // One phrase, three keys: NIP-06's first phrase gives its published
+  // npub and two wallets.
+  print("The card of NIP-06's first phrase, account 0\n");
+  n := oneseed_card_ct(NIP06_WORDS, "", SW_MAINNET, 0, work[..], card[..]);
+  c := cast(string) card[0..<n];
+  print("%", c);
+  first := oneseed_line_vartime(c, 0);
+  print("npub is NIP-06's: %\n", ost_same(first[first.count - NIP06_NPUB.count..<first.count], NIP06_NPUB));
+  print("Addresses from the card alone\n");
+  addresses(c, SW_MAINNET);
+
+  // A restore rebuilds the card from the words and compares.
+  print("Restore\n");
+  print("same words, no passphrase: %\n", result(oneseed_restore_ct(NIP06_WORDS, "", SW_MAINNET, 0, c, work[..])));
+  print("same words, passphrase x: %\n", result(oneseed_restore_ct(NIP06_WORDS, "x", SW_MAINNET, 0, c, work[..])));
+  print("same words, account 1: %\n", result(oneseed_restore_ct(NIP06_WORDS, "", SW_MAINNET, 1, c, work[..])));
+  print("last word beauty: %\n", result(oneseed_restore_ct(
+    "leader monkey parrot ring guide accident before fence cannon height naive beauty", "", SW_MAINNET, 0, c, work[..])));
+
+  // BIP-84's and BIP-86's phrase: the card's descriptors give their
+  // published addresses.
+  print("The card of BIP-84's and BIP-86's phrase\n");
+  n = oneseed_card_ct(ABANDON, "", SW_MAINNET, 0, work[..], card[..]);
+  c = cast(string) card[0..<n];
+  print("%", c);
+  addresses(c, SW_MAINNET);
+
+  // The passphrase is part of the seed: with TREZOR the phrase gives
+  // BIP-39's vector 0 seed, and another npub and other wallets.
+  print("The passphrase TREZOR\n");
+  seed: [64] u8;
+  #assert oneseed_seed_ct(ABANDON, "TREZOR", work[..], seed[..]) == 64;
+  show("seed", seed[..]);
+  m := oneseed_card_ct(ABANDON, "TREZOR", SW_MAINNET, 0, work[..], other[..]);
+  print("%", cast(string) other[0..<m]);
+
+  // Testnet: the wallets move to coin type 1 and tpub; the npub stays.
+  print("The same phrase on testnet\n");
+  m = oneseed_card_ct(ABANDON, "", SW_TESTNET, 0, work[..], other[..]);
+  t := cast(string) other[0..<m];
+  print("%", t);
+  print("npub line unchanged: %\n", ost_same(oneseed_line_vartime(t, 0), oneseed_line_vartime(c, 0)));
+
+  // Separate paths: the Nostr key and a wallet key share only m.
+  print("Separate keys\n");
+  #assert oneseed_seed_ct(ABANDON, "", work[..], seed[..]) == 64;
+  nostr: [32] u8; wallet: [32] u8; np: [32] u8; wp: [32] u8; wq: [32] u8; nq: [32] u8;
+  #assert oneseed_nostr_ct(seed[..], 0, work[..], nostr[..]) == 32;
+  key_at(seed[..], "m/86'/0'/0'/0/0", wallet[..]);
+  xonly(nostr[..], np[..]); xonly(wallet[..], wp[..]);
+  show("nostr key m/44'/1237'/0'/0/0", np[..]);
+  show("wallet key m/86'/0'/0'/0/0", wp[..]);
+  #assert taproot_output_key_vartime(wp[..], wp[0..<0], wq[..]) >= 0;
+  show("the wallet key's BIP-86 output key", wq[..]);
+  #assert taproot_output_key_vartime(np[..], np[0..<0], nq[..]) >= 0;
+  show("the nostr key's BIP-86 output key", nq[..]);
+
+  // A 32-byte message signed on request: here a TapSighash-tagged hash
+  // standing for a sighash.
+  print("A raw 32-byte signature request to the Nostr key\n");
+  spend := "a spend the agent never approved";
+  bytes: [64] u8;
+  for j: 0..<spend.count { bytes[j] = spend[j]; }
+  h: [32] u8; sig: [64] u8;
+  #assert bitcoin_tagged_checked(BH_TAPSIGHASH, bytes[0..<spend.count], h[..], false) == SHA_OK;
+  show("message", h[..]);
+  sign(nostr[..], h[..], sig[..]);
+  print("valid under the nostr key, as in a <key> OP_CHECKSIG leaf: %\n", schnorr_verify_vartime(h[..], np[..], sig[..]));
+  print("valid under the nostr key's output key: %\n", schnorr_verify_vartime(h[..], nq[..], sig[..]));
+  print("valid under the wallet key: %\n", schnorr_verify_vartime(h[..], wp[..], sig[..]));
+  print("valid under the wallet key's output key: %\n", schnorr_verify_vartime(h[..], wq[..], sig[..]));
+  for j: 0..<32 { nostr[j] = 0; wallet[j] = 0; }
+  for j: 0..<64 { seed[j] = 0; }
+}
+// book:end example

@@ -124,3 +124,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [112. Gossip and the channel graph](ch112-gossip-and-the-channel-graph.md) — implemented
 - [114. Invoices](ch114-invoices.md) — implemented
 - [115. Offers](ch115-offers.md) — implemented
+
+**XIX. Bitcoin in OpenAgents**
+
+- [121. One seed for Nostr and Bitcoin](ch121-one-seed-for-nostr-and-bitcoin.md) — implemented

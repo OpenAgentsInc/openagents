@@ -1,0 +1,59 @@
+// book:begin check
+#load "../one-seed.coax";
+
+// BIP-84's and BIP-86's seed (chapter 33's), so the checks below skip
+// PBKDF2.
+ABANDON_SEED :: "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4";
+seed_bytes :: (out: [] u8) -> [] u8 {
+  digits := "0123456789abcdef";
+  for i: 0..<64 {
+    hi := 0; lo := 0;
+    for d: 0..<16 { if digits[d] == ABANDON_SEED[2 * i] { hi = d; } if digits[d] == ABANDON_SEED[2 * i + 1] { lo = d; } }
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return out[0..<64];
+}
+
+#forall "the Nostr key of account a is the key at m/44'/1237'/a'/0/0" a: 0..<3 #steps 1000000000 {
+  sb: [64] u8; work: [OS_WORK_BYTES] u8; key: [32] u8; want: [32] u8;
+  seed := seed_bytes(sb[..]);
+  #assert oneseed_nostr_ct(seed, a, work[..], key[..]) == 32;
+  path := ifx a == 0 then "m/44'/1237'/0'/0/0" else ifx a == 1 then "m/44'/1237'/1'/0/0" else "m/44'/1237'/2'/0/0";
+  key_at(seed, path, want[..]);
+  for j: 0..<32 { #assert key[j] == want[j]; }
+}
+// The script of a card descriptor at branch and index, and chapter 33's
+// script of the same account xpub; true when they are the same.
+descriptor_is_path :: (purpose: int, branch: int, index: int) -> bool {
+  sb: [64] u8; work: [OS_WORK_BYTES] u8; xpub: [BIP32_NODE_BYTES] u8; fp: [4] u8; line: [OS_LINE_MAX] u8;
+  s1: [AD_SCRIPT_MAX] u8; s2: [AD_SCRIPT_MAX] u8;
+  seed := seed_bytes(sb[..]);
+  #assert oneseed_account_ct(seed, SW_MAINNET, purpose, 0, work[..], xpub[..], fp[..]) == BIP32_NODE_BYTES;
+  n := oneseed_descriptor_ct(purpose, SW_MAINNET, 0, fp[..], xpub[..], work[..], line[..]);
+  a := descriptor_script_vartime(cast(string) line[0..<n], SW_MAINNET, branch, index, 0, s1[..]);
+  b := path_account_script_ct(purpose, xpub[..], branch, index, work[..], s2[..]);
+  if a <= 0 || a != b { return false; }
+  for j: 0..<a { if s1[j] != s2[j] { return false; } }
+  return true;
+}
+#forall "the wpkh descriptor's receive and change scripts are chapter 33's" branch: 0..<2 #steps 4000000000 {
+  #assert descriptor_is_path(84, branch, 3 * branch + 1);
+}
+#forall "the tr descriptor's receive and change scripts are chapter 33's" branch: 0..<2 #steps 4000000000 {
+  #assert descriptor_is_path(86, branch, 3 * branch + 1);
+}
+#forall "a signature by the Nostr key is never valid under a wallet key" i: 0..<2 #steps 8000000000 {
+  sb: [64] u8; work: [OS_WORK_BYTES] u8; nostr: [32] u8; wallet: [32] u8; np: [32] u8; wp: [32] u8; wq: [32] u8;
+  h: [32] u8; sig: [64] u8;
+  seed := seed_bytes(sb[..]);
+  #assert oneseed_nostr_ct(seed, 0, work[..], nostr[..]) == 32;
+  path := ifx i == 0 then "m/84'/0'/0'/0/0" else "m/86'/0'/0'/0/0";
+  key_at(seed, path, wallet[..]);
+  xonly(nostr[..], np[..]); xonly(wallet[..], wp[..]);
+  #assert taproot_output_key_vartime(wp[..], wp[0..<0], wq[..]) >= 0;
+  for j: 0..<32 { h[j] = cast(u8) (j * 7 + i); }
+  sign(nostr[..], h[..], sig[..]);
+  #assert schnorr_verify_vartime(h[..], np[..], sig[..]);
+  #assert !schnorr_verify_vartime(h[..], wp[..], sig[..]) && !schnorr_verify_vartime(h[..], wq[..], sig[..]);
+}
+// book:end check

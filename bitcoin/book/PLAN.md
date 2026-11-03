@@ -321,7 +321,7 @@ there is a need.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| 121. One seed for Nostr and Bitcoin — planned | 31, 33 | One BIP-39 phrase gives the Nostr key and the wallet keys, and restoring from the phrase gives the same addresses. | BIP-39, NIP-06 |
+| [121. One seed for Nostr and Bitcoin](ch121-one-seed-for-nostr-and-bitcoin.md) — implemented | 31, 33 | One BIP-39 phrase gives the Nostr key and the wallet keys, and restoring from the phrase gives the same addresses. | BIP-39, NIP-06 |
 | 122. Agent treasuries — planned | 94, 100, 101 | A 2-of-3 treasury spend is signed by independent key agents and broadcast on signet, and an independent wallet tool recovers the coins. | NIP-KEYS |
 | 123. Paying for requests — planned | 113, 114 | A request pays a BOLT 11 invoice, and the server releases its response only after settlement. | x402, BOLT 11 |
 | 124. Our node on Pylons and Verse OS — planned | 89, 93 | A Pylon and a Verse OS machine run the node from its Nix module and sync it, and OpenAgents' on-chain checks query it instead of a third-party chain source. | — |

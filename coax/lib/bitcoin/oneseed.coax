@@ -1,0 +1,345 @@
+// One seed for Nostr and Bitcoin (Bitcoin chapter 121): one BIP-39 phrase
+// gives an agent's Nostr key (NIP-06) and its wallets (BIP-84 and BIP-86),
+// and a public card says which paths are in use, so a restore can check
+// that the words and passphrase give the same keys and addresses.
+//
+// - oneseed_seed_ct: the words, checked (chapter 31), and the passphrase
+//   to the 64-byte seed.
+// - oneseed_nostr_ct: the NIP-06 key of an account, m/44'/1237'/a'/0/0.
+// - oneseed_account_ct: a wallet's account xpub, m/84'/c'/a' or
+//   m/86'/c'/a', and the master fingerprint.
+// - oneseed_descriptor_ct: that account as a BIP-380 descriptor with its
+//   origin, receive and change branches and checksum (chapter 30).
+// - oneseed_card_ct: the card of a phrase: the npub and its path, and the
+//   two descriptors. oneseed_line_vartime reads one line of it.
+// - oneseed_restore_ct: whether a phrase and passphrase give a card.
+//
+// The words, the passphrase, the seed and the private keys go only through
+// chapters 31 and 32's constant-time procedures; the card is public, so
+// the code that writes and reads it branches on it. Each procedure returns
+// a count or one negative OS_* refusal, and a refusal writes nothing.
+#load "descriptor.coax";
+#load "../nostr/nip06.coax";
+#authority;
+
+// book:begin codes
+OS_WORK_BYTES :: BIP39_WORK_BYTES;   // the larger of chapter 31's and chapter 32's work buffers
+OS_CARD_MAX :: 512;                  // three lines: 88, about 160 and about 160 characters
+OS_LINE_MAX :: 200;
+OS_NOSTR_COIN :: 1237;               // SLIP-44's coin type for Nostr
+
+// Refusals.
+OS_WORDS :: -1;       // words chapter 31 refuses: an unknown word, a count it doesn't define, a wrong checksum
+OS_FIELD :: -2;       // an account of 2^31 or more, a network outside 1-3, or a purpose other than 84 or 86
+OS_CAPACITY :: -3;    // a buffer that is too small
+OS_MISMATCH :: -4;    // a card that these words and this passphrase don't give
+OS_DERIVE :: -5;      // a BIP-32 refusal on the way: an invalid child, odds about 1 in 2^127
+// book:end codes
+
+// ---- the seed and the keys
+
+// book:begin seed
+// The seed of checked words and a passphrase into seed[0..<64]. Chapter 31
+// leaves the checksum to the caller; a phrase with a wrong checksum still
+// has a seed, so this procedure decodes the words first and refuses them.
+// Returns 64 or a refusal. work (OS_WORK_BYTES) comes back as zeros.
+oneseed_seed_ct :: (phrase: string, passphrase: string, work: [] u8, seed: [] u8) -> int {
+  if work.count < OS_WORK_BYTES || seed.count < 64 { return OS_CAPACITY; }
+  entropy: [32] u8;
+  n := bip39_decode_ct(phrase, work, entropy[..]);
+  for i: 0..<32 { entropy[i] = 0; }
+  if n < 0 { return OS_WORDS; }
+  return ifx bip39_seed_ct(phrase, passphrase, work, seed) == 64 then 64 else OS_WORDS;
+}
+// book:end seed
+
+// book:begin nostr
+// The NIP-06 private key of account at m/44'/1237'/account'/0/0 into
+// key[0..<32]. Returns 32 or a refusal. Nostr has no network: the path is
+// the same for mainnet and testnet wallets.
+oneseed_nostr_ct :: (seed: [] u8, account: int, work: [] u8, key: [] u8) -> int {
+  if account < 0 || account >= BIP32_HARDENED { return OS_FIELD; }
+  if key.count < 32 || work.count < BIP32_WORK_BYTES { return OS_CAPACITY; }
+  path: [5] int;
+  path[0] = 44 + BIP32_HARDENED; path[1] = OS_NOSTR_COIN + BIP32_HARDENED;
+  path[2] = account + BIP32_HARDENED; path[3] = 0; path[4] = 0;
+  node: [BIP32_NODE_BYTES] u8;
+  r := bip32_master_ct(seed, false, work, node[..]);
+  if r > 0 { r = bip32_descend_ct(node[..], path[..], work, node[..]); }
+  if r > 0 { for j: 0..<32 { key[j] = node[HDK_KEY + 1 + j]; } }
+  for j: 0..<BIP32_NODE_BYTES { node[j] = 0; }
+  return ifx r > 0 then 32 else OS_DERIVE;
+}
+// book:end nostr
+
+// book:begin account
+// The public account node m/purpose'/coin'/account' into xpub (78 bytes;
+// an xpub, or a tpub for the test networks), and the master key's
+// fingerprint into fingerprint[0..<4]. purpose is 84 (P2WPKH) or 86
+// (key-path P2TR); coin is 0 on mainnet and 1 on the test networks.
+oneseed_account_ct :: (seed: [] u8, network: int, purpose: int, account: int, work: [] u8, xpub: [] u8, fingerprint: [] u8) -> int {
+  if purpose != 84 && purpose != 86 { return OS_FIELD; }
+  indexes: [5] int;
+  if path_standard_vartime(purpose, network, account, 0, 0, indexes[..]) != 5 { return OS_FIELD; }
+  if xpub.count < BIP32_NODE_BYTES || fingerprint.count < 4 || work.count < BIP32_WORK_BYTES { return OS_CAPACITY; }
+  master: [BIP32_NODE_BYTES] u8; node: [BIP32_NODE_BYTES] u8; fp: [4] u8;
+  r := bip32_master_ct(seed, network != SW_MAINNET, work, master[..]);
+  if r > 0 { r = bip32_fingerprint_ct(master[..], work, fp[..]); }
+  if r > 0 { r = bip32_descend_ct(master[..], indexes[0..<3], work, node[..]); }
+  if r > 0 { r = bip32_neuter_ct(node[..], work, node[..]); }
+  if r > 0 {
+    for j: 0..<BIP32_NODE_BYTES { xpub[j] = node[j]; }
+    for j: 0..<4 { fingerprint[j] = fp[j]; }
+  }
+  for j: 0..<BIP32_NODE_BYTES { master[j] = 0; node[j] = 0; }
+  return ifx r > 0 then BIP32_NODE_BYTES else OS_DERIVE;
+}
+// book:end account
+
+// ---- the card
+
+// book:begin descriptor
+// Text into out at at; the new end, or -1 when it doesn't fit.
+os_put :: (out: [] u8, at: int, text: string) -> int {
+  if at < 0 || at + text.count > out.count { return -1; }
+  for k: 0..<text.count { out[at + k] = text[k]; }
+  return at + text.count;
+}
+// The descriptor of an account: wpkh() for BIP-84 or tr() for BIP-86, the
+// key's origin [fingerprint/purpose'/coin'/account'] with h for hardened,
+// the account xpub, <0;1>/* for the receive and change chains (BIP-389),
+// then # and the checksum. Returns its length or a refusal.
+oneseed_descriptor_ct :: (purpose: int, network: int, account: int, fingerprint: [] u8, xpub: [] u8, work: [] u8, out: [] u8) -> int {
+  if purpose != 84 && purpose != 86 { return OS_FIELD; }
+  indexes: [5] int;
+  if path_standard_vartime(purpose, network, account, 0, 0, indexes[..]) != 5 { return OS_FIELD; }
+  if fingerprint.count != 4 || xpub.count != BIP32_NODE_BYTES || work.count < BIP32_WORK_BYTES { return OS_CAPACITY; }
+  text: [OS_LINE_MAX] u8; n := 0; digits := "0123456789abcdef";
+  n = os_put(text[..], n, ifx purpose == 84 then "wpkh([" else "tr([");
+  for j: 0..<4 { text[n] = digits[cast(int) (fingerprint[j] >> 4)]; text[n + 1] = digits[cast(int) (fingerprint[j] & 15)]; n += 2; }
+  path: [32] u8;
+  m := path_format_vartime(indexes[0..<3], 'h', path[..]);
+  n = os_put(text[..], n, cast(string) path[1..<m]);           // the path without its m
+  n = os_put(text[..], n, "]");
+  if bip32_encode_ct(xpub, work, text[n..<n + BIP32_TEXT]) != BIP32_TEXT { return OS_DERIVE; }
+  n = os_put(text[..], n + BIP32_TEXT, "/<0;1>/*)");
+  sum: [DS_CHECKSUM_CHARS] u8;
+  #assert descriptor_checksum_vartime(cast(string) text[0..<n], sum[..]) == DS_CHECKSUM_CHARS;
+  n = os_put(text[..], n, "#");
+  n = os_put(text[..], n, cast(string) sum[..]);
+  if out.count < n { return OS_CAPACITY; }
+  for k: 0..<n { out[k] = text[k]; }
+  return n;
+}
+// book:end descriptor
+
+// book:begin card
+// The card of a phrase for one account on one network, three lines, each
+// ending in a newline:
+//
+//   nostr m/44h/1237h/<account>h/0/0 <npub>
+//   wpkh([<fingerprint>/84h/<coin>h/<account>h]<xpub>/<0;1>/*)#<checksum>
+//   tr([<fingerprint>/86h/<coin>h/<account>h]<xpub>/<0;1>/*)#<checksum>
+//
+// Everything on it is public: the npub is the agent's name, and the
+// descriptors let a watch-only wallet see its coins. Returns its length or
+// a refusal. work (OS_WORK_BYTES) comes back as zeros.
+oneseed_card_ct :: (phrase: string, passphrase: string, network: int, account: int, work: [] u8, out: [] u8) -> int {
+  if network < SW_MAINNET || network > SW_REGTEST || account < 0 || account >= BIP32_HARDENED { return OS_FIELD; }
+  if work.count < OS_WORK_BYTES { return OS_CAPACITY; }
+  seed: [64] u8; key: [32] u8; card: [OS_CARD_MAX] u8; n := 0;
+  r := oneseed_seed_ct(phrase, passphrase, work, seed[..]);
+  if r > 0 { r = oneseed_nostr_ct(seed[..], account, work, key[..]); }
+  if r > 0 {
+    path: [5] int; text: [64] u8;
+    path[0] = 44 + BIP32_HARDENED; path[1] = OS_NOSTR_COIN + BIP32_HARDENED;
+    path[2] = account + BIP32_HARDENED; path[3] = 0; path[4] = 0;
+    n = os_put(card[..], 0, "nostr ");
+    n = os_put(card[..], n, cast(string) text[0..<path_format_vartime(path[..], 'h', text[..])]);
+    n = os_put(card[..], n, " ");
+    npub: [64] u8;
+    m := nip06_npub(key[..], npub[..]);
+    r = ifx m > 0 then 32 else OS_DERIVE;
+    if r > 0 { n = os_put(card[..], n, cast(string) npub[0..<m]); n = os_put(card[..], n, "\n"); }
+  }
+  purposes := [2] int.[84, 86];
+  for purpose: purposes {
+    xpub: [BIP32_NODE_BYTES] u8; fp: [4] u8;
+    if r > 0 { r = oneseed_account_ct(seed[..], network, purpose, account, work, xpub[..], fp[..]); }
+    if r > 0 { r = oneseed_descriptor_ct(purpose, network, account, fp[..], xpub[..], work, card[n..<OS_CARD_MAX]); }
+    if r > 0 { n = os_put(card[..], n + r, "\n"); }
+  }
+  for j: 0..<64 { seed[j] = 0; }
+  for j: 0..<32 { key[j] = 0; }
+  for j: 0..<work.count { work[j] = 0; }
+  if r < 0 { return r; }
+  if out.count < n { return OS_CAPACITY; }
+  for k: 0..<n { out[k] = card[k]; }
+  return n;
+}
+// Line k of a card (0, 1 or 2) without its newline; empty when there is
+// no such line.
+oneseed_line_vartime :: (card: string, k: int) -> string {
+  start := 0; line := 0;
+  for i: 0..<card.count {
+    if card[i] == '\n' {
+      if line == k { return card[start..<i]; }
+      line += 1; start = i + 1;
+    }
+  }
+  return card[0..<0];
+}
+// book:end card
+
+// book:begin restore
+// Whether phrase and passphrase give card for account on network: OS_OK
+// (0), OS_MISMATCH, or a refusal from the words. A wrong passphrase has
+// no checksum to catch it; it makes another seed and so another card,
+// which is how a restore finds it.
+OS_OK :: 0;
+oneseed_restore_ct :: (phrase: string, passphrase: string, network: int, account: int, card: string, work: [] u8) -> int {
+  mine: [OS_CARD_MAX] u8;
+  n := oneseed_card_ct(phrase, passphrase, network, account, work, mine[..]);
+  if n < 0 { return n; }
+  if n != card.count { return OS_MISMATCH; }
+  for k: 0..<n { if mine[k] != card[k] { return OS_MISMATCH; } }
+  return OS_OK;
+}
+// book:end restore
+
+// ---- checks
+// NIP-06's two vectors (nostr/nips/official/06.md).
+OST_NIP06_1 :: "leader monkey parrot ring guide accident before fence cannon height naive bean";
+OST_NIP06_1_KEY :: "7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a";
+OST_NIP06_1_NPUB :: "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
+OST_NIP06_2 :: "what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade";
+OST_NIP06_2_KEY :: "c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add";
+OST_NIP06_2_NPUB :: "npub16sdj9zv4f8sl85e45vgq9n7nsgt5qphpvmf7vk8r5hhvmdjxx4es8rq74h";
+// BIP-84's and BIP-86's phrase, their account keys and addresses
+// (coax/tests/vectors/upstream/bip84/ and bip86/), and chapter 31's pinned
+// BIP-39 vector 0 with the passphrase TREZOR.
+OST_ABANDON :: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+OST_BIP86_XPUB :: "xpub6BgBgsespWvERF3LHQu6CnqdvfEvtMcQjYrcRzx53QJjSxarj2afYWcLteoGVky7D3UKDP9QyrLprQ3VCECoY49yfdDEHGCtMMj92pReUsQ";
+OST_BIP84 :: [3] string.["bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu", "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g", "bc1q8c6fshw2dlwun7ekn9qwf37cu2rn755upcp6el"];
+OST_BIP86 :: [3] string.["bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr", "bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh", "bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7"];
+OST_TREZOR_SEED :: "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04";
+
+ost_same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+ost_hex_is :: (bytes: [] u8, hex: string) -> bool {
+  if bytes.count * 2 != hex.count { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<bytes.count { if digits[cast(int) (bytes[i] >> 4)] != hex[2 * i] || digits[cast(int) (bytes[i] & 15)] != hex[2 * i + 1] { return false; } }
+  return true;
+}
+// The address of branch (0 receive, 1 change) and index of a card's
+// descriptor line, as chapter 30 expands it.
+ost_address :: (line: string, network: int, branch: int, index: int, out: [] u8) -> string {
+  script: [AD_SCRIPT_MAX] u8;
+  n := descriptor_script_vartime(line, network, branch, index, 0, script[..]);
+  if n < 0 { return cast(string) out[0..<0]; }
+  m := address_encode_vartime(network, script[0..<n], out);
+  return ifx m < 0 then cast(string) out[0..<0] else cast(string) out[0..<m];
+}
+
+#test "NIP-06 vector 1: account 0 is the published key, and nip06_key agrees" #steps 1500000000 {
+  work: [OS_WORK_BYTES] u8; seed: [64] u8; key: [32] u8; other: [32] u8;
+  #assert oneseed_seed_ct(OST_NIP06_1, "", work[..], seed[..]) == 64;
+  #assert oneseed_nostr_ct(seed[..], 0, work[..], key[..]) == 32;
+  #assert ost_hex_is(key[..], OST_NIP06_1_KEY);
+  #assert nip06_key(OST_NIP06_1, other[..]);
+  for j: 0..<32 { #assert key[j] == other[j]; }
+  for j: 0..<work.count { #assert work[j] == 0; }
+}
+#test "NIP-06 vector 2: 24 words, account 0" #steps 1500000000 {
+  work: [OS_WORK_BYTES] u8; seed: [64] u8; key: [32] u8;
+  #assert oneseed_seed_ct(OST_NIP06_2, "", work[..], seed[..]) == 64;
+  #assert oneseed_nostr_ct(seed[..], 0, work[..], key[..]) == 32;
+  #assert ost_hex_is(key[..], OST_NIP06_2_KEY);
+}
+#test "BIP-39 vector 0 with TREZOR: the passphrase is part of the seed" #steps 1500000000 {
+  work: [OS_WORK_BYTES] u8; seed: [64] u8;
+  #assert oneseed_seed_ct(OST_ABANDON, "TREZOR", work[..], seed[..]) == 64;
+  #assert ost_hex_is(seed[..], OST_TREZOR_SEED);
+}
+#test "BIP-86's account xpub, and the fingerprint 73c5da0a" #steps 1500000000 {
+  work: [OS_WORK_BYTES] u8; seed: [64] u8; xpub: [BIP32_NODE_BYTES] u8; fp: [4] u8; text: [BIP32_TEXT] u8;
+  #assert oneseed_seed_ct(OST_ABANDON, "", work[..], seed[..]) == 64;
+  #assert oneseed_account_ct(seed[..], SW_MAINNET, 86, 0, work[..], xpub[..], fp[..]) == BIP32_NODE_BYTES;
+  #assert bip32_encode_ct(xpub[..], work[..], text[..]) == BIP32_TEXT && dp_same(text[..], OST_BIP86_XPUB);
+  #assert ost_hex_is(fp[..], "73c5da0a");
+}
+#test "the card of BIP-84's phrase gives BIP-84's and BIP-86's addresses" #steps 3000000000 {
+  work: [OS_WORK_BYTES] u8; card: [OS_CARD_MAX] u8; addr: [90] u8;
+  n := oneseed_card_ct(OST_ABANDON, "", SW_MAINNET, 0, work[..], card[..]);
+  #assert n > 0 && card[n - 1] == '\n';
+  c := cast(string) card[0..<n];
+  #assert oneseed_line_vartime(c, 0).count == 88 && oneseed_line_vartime(c, 3).count == 0;
+  wpkh := oneseed_line_vartime(c, 1); tr := oneseed_line_vartime(c, 2);
+  #assert descriptor_info_vartime(wpkh, SW_MAINNET).branches == 2 && descriptor_info_vartime(tr, SW_MAINNET).ranged;
+  #assert ost_same(ost_address(wpkh, SW_MAINNET, 0, 0, addr[..]), OST_BIP84[0]);
+  #assert ost_same(ost_address(wpkh, SW_MAINNET, 0, 1, addr[..]), OST_BIP84[1]);
+  #assert ost_same(ost_address(wpkh, SW_MAINNET, 1, 0, addr[..]), OST_BIP84[2]);
+  #assert ost_same(ost_address(tr, SW_MAINNET, 0, 0, addr[..]), OST_BIP86[0]);
+  #assert ost_same(ost_address(tr, SW_MAINNET, 0, 1, addr[..]), OST_BIP86[1]);
+  #assert ost_same(ost_address(tr, SW_MAINNET, 1, 0, addr[..]), OST_BIP86[2]);
+}
+// The card of NIP-06's first phrase, account 0 on mainnet, then one
+// restore of it; each check builds two cards, inside the compile-time
+// work limit.
+ost_restore :: (passphrase: string, network: int, account: int, cut: int) -> int {
+  work: [OS_WORK_BYTES] u8; card: [OS_CARD_MAX] u8;
+  n := oneseed_card_ct(OST_NIP06_1, "", SW_MAINNET, 0, work[..], card[..]);
+  c := cast(string) card[0..<n - cut];
+  #assert ost_same(oneseed_line_vartime(c, 0), "nostr m/44h/1237h/0h/0/0 npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu");
+  return oneseed_restore_ct(OST_NIP06_1, passphrase, network, account, c, work[..]);
+}
+#test "a restore: the same words and passphrase give the same card" #steps 4000000000 {
+  #assert ost_restore("", SW_MAINNET, 0, 0) == OS_OK;
+}
+#test "a restore: a passphrase that differs gives another card" #steps 4000000000 {
+  #assert ost_restore("x", SW_MAINNET, 0, 0) == OS_MISMATCH;
+}
+#test "a restore: another account gives another card" #steps 4000000000 {
+  #assert ost_restore("", SW_MAINNET, 1, 0) == OS_MISMATCH;
+}
+#test "a restore: another network gives another card" #steps 4000000000 {
+  #assert ost_restore("", SW_TESTNET, 0, 0) == OS_MISMATCH;
+}
+#test "a restore: a card with a byte missing doesn't match" #steps 4000000000 {
+  #assert ost_restore("", SW_MAINNET, 0, 1) == OS_MISMATCH;
+}
+#test "refusals: words, fields and buffers, and a refusal writes nothing" #steps 3000000000 {
+  work: [OS_WORK_BYTES] u8; seed: [64] u8; key: [32] u8; xpub: [BIP32_NODE_BYTES] u8; fp: [4] u8; out: [OS_CARD_MAX] u8;
+  for j: 0..<64 { seed[j] = 0x5a; }
+  #assert oneseed_seed_ct("leader monkey parrot ring guide accident before fence cannon height naive beauty", "", work[..], seed[..]) == OS_WORDS;
+  #assert seed[0] == 0x5a && seed[63] == 0x5a;
+  #assert oneseed_seed_ct(OST_NIP06_1, "", work[0..<10], seed[..]) == OS_CAPACITY;
+  #assert oneseed_seed_ct(OST_NIP06_1, "", work[..], seed[0..<63]) == OS_CAPACITY;
+  #assert oneseed_restore_ct("abandon abandon", "", SW_MAINNET, 0, "", work[..]) == OS_WORDS;
+  #assert oneseed_nostr_ct(seed[..], BIP32_HARDENED, work[..], key[..]) == OS_FIELD;
+  #assert oneseed_nostr_ct(seed[..], -1, work[..], key[..]) == OS_FIELD;
+  #assert oneseed_nostr_ct(seed[..], 0, work[..], key[0..<31]) == OS_CAPACITY;
+  #assert oneseed_nostr_ct(seed[0..<8], 0, work[..], key[..]) == OS_DERIVE;
+  #assert oneseed_account_ct(seed[..], SW_MAINNET, 44, 0, work[..], xpub[..], fp[..]) == OS_FIELD;
+  #assert oneseed_account_ct(seed[..], 4, 84, 0, work[..], xpub[..], fp[..]) == OS_FIELD;
+  #assert oneseed_account_ct(seed[..], SW_MAINNET, 84, BIP32_HARDENED, work[..], xpub[..], fp[..]) == OS_FIELD;
+  #assert oneseed_account_ct(seed[..], SW_MAINNET, 84, 0, work[..], xpub[0..<77], fp[..]) == OS_CAPACITY;
+  #assert oneseed_account_ct(seed[0..<8], SW_MAINNET, 84, 0, work[..], xpub[..], fp[..]) == OS_DERIVE;
+  #assert oneseed_account_ct(seed[..], SW_TESTNET, 84, 0, work[..], xpub[..], fp[..]) == BIP32_NODE_BYTES;
+  #assert oneseed_descriptor_ct(49, SW_MAINNET, 0, fp[..], xpub[..], work[..], out[..]) == OS_FIELD;
+  #assert oneseed_descriptor_ct(84, 0, 0, fp[..], xpub[..], work[..], out[..]) == OS_FIELD;
+  #assert oneseed_descriptor_ct(84, SW_TESTNET, 0, fp[0..<3], xpub[..], work[..], out[..]) == OS_CAPACITY;
+  #assert oneseed_descriptor_ct(84, SW_TESTNET, 0, fp[..], xpub[..], work[..], out[0..<20]) == OS_CAPACITY;
+  n := oneseed_descriptor_ct(84, SW_TESTNET, 0, fp[..], xpub[..], work[..], out[..]);
+  #assert n > 0 && out[n - 9] == '#' && descriptor_info_vartime(cast(string) out[0..<n], SW_TESTNET).result == 0;
+  #assert descriptor_info_vartime(cast(string) out[0..<n], SW_MAINNET).result == DS_WRONG_NETWORK;
+  #assert oneseed_card_ct(OST_NIP06_1, "", 0, 0, work[..], out[..]) == OS_FIELD;
+  #assert oneseed_card_ct(OST_NIP06_1, "", SW_MAINNET, -1, work[..], out[..]) == OS_FIELD;
+  #assert oneseed_card_ct(OST_NIP06_1, "", SW_MAINNET, 0, work[0..<100], out[..]) == OS_CAPACITY;
+  #assert oneseed_card_ct(OST_NIP06_1, "", SW_MAINNET, 0, work[..], out[0..<100]) == OS_CAPACITY;
+  #assert os_put(out[0..<4], 2, "abc") == -1 && os_put(out[0..<4], -1, "") == -1;
+}

@@ -33,6 +33,10 @@ private key, its public key and its `npub`.
 | [bip32.coax](../../coax/lib/crypto/bip32.coax) | `bip32_master`, `bip32_child`, `bip32_path`, `bip32_public` | private derivation on Bitcoin chapter 16's constant-time multiplication; they call the constant-time `bip32_master_ct`, `bip32_ckd_ct` and `bip32_descend_ct`, which [Bitcoin chapter 32](../../bitcoin/book/ch032-hierarchical-deterministic-keys.md) teaches |
 | [nip06.coax](../../coax/lib/nostr/nip06.coax) | `nip06_key(phrase, key)`, `nip06_npub(key, out)` | the NIP-06 key of checked words, and its `npub` (chapter 16) |
 
+[Bitcoin chapter 121](../../bitcoin/book/ch121-one-seed-for-nostr-and-bitcoin.md)
+takes this key and an agent's Bitcoin wallets from the same words, and
+shows why they must stay on separate paths.
+
 [pbkdf2.coax](../../coax/lib/crypto/pbkdf2.coax) is a different PBKDF2: a
 resumable PBKDF2-HMAC-SHA256 for the website's phrase gate. NIP-06 doesn't
 use it; it is listed because the gate and this chapter share the words.

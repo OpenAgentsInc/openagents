@@ -2386,15 +2386,25 @@
   {
    "number": 121,
    "title": "One seed for Nostr and Bitcoin",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch121-one-seed-for-nostr-and-bitcoin.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     31,
     33
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/one-seed.coax",
+    "bitcoin/examples/checks/one-seed.coax",
+    "coax/lib/bitcoin/oneseed.coax",
+    "coax/lib/bitcoin/descriptor.coax",
+    "coax/lib/bitcoin/path.coax",
+    "coax/lib/nostr/nip06.coax",
+    "coax/tests/bitcoin/oneseed.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
