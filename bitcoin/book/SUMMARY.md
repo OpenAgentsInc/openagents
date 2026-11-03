@@ -80,3 +80,4 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 **XI. The network**
 
 - [65. P2P messages and checksums](ch065-p2p-messages-and-checksums.md) — implemented
+- [66. ElligatorSwift](ch066-elligatorswift.md) — implemented

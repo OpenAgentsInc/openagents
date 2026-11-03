@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-45 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+46 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -29,7 +29,9 @@ makes the standard BIP-44, 49, 84 and 86 addresses. Chapter 41's
 tweak and the key path, then script trees and control blocks (chapter
 42). Chapter 65's
 [`p2p.coax`](../coax/lib/bitcoin/p2p.coax) reads and writes the peer-to-peer
-messages: the 24-byte header and the payloads a node exchanges.
+messages: the 24-byte header and the payloads a node exchanges. Chapter
+66's [`ellswift.coax`](../coax/lib/bitcoin/ellswift.coax) encodes keys as
+BIP-324's ElligatorSwift and derives its shared secret.
 
 ```sh
 python3 psionic/tests/book.py --book bitcoin                     # structure and registry
@@ -80,7 +82,8 @@ and Lightning also need:
   chapter 46 (`coax/lib/bitcoin/merkle.coax`), compact targets in chapter
   47 (`coax/lib/bitcoin/pow.coax`), and retargeting and chainwork in
   chapter 48 (`coax/lib/bitcoin/retarget.coax`).
-- ElligatorSwift and the BIP-324 transport, Golomb-coded block filters.
+- The BIP-324 transport (ElligatorSwift is built in chapter 66,
+  `coax/lib/bitcoin/ellswift.coax`), Golomb-coded block filters.
 - MuSig2, FROST, adaptor signatures and silent payments.
 - Lightning: BOLT 1 TLVs, the BOLT 8 Noise handshake, BOLT 3 keys,
   revocation and shachain, commitment and HTLC transactions, BOLT 2 channels,

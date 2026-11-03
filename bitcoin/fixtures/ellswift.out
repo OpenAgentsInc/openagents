@@ -1,0 +1,31 @@
+decode: 76 of 76 BIP-324 encodings give their x
+  row 0: u 00000000..., t 00000000... -> x edd1fd3e327ce90cc7a3542614289aee9682003e9cf7dcc9cf2ca9743be5aa0c
+  row 1: u 00000000..., t 01d3475b... -> x b5da00b73cd6560520e7c364086e7cd23a34bf60d0e707be9fc34d4cd5fdfa2c
+  row 75: u ffffffff..., t ffffffff... -> x 1c92ccdfcf4ac550c28db57cff0c8515cb26936c786584a70114008d6c33a34b
+inverse: 32 rows, 256 cases; 256 agree with BIP-324, and all 98 t decode back to x
+  case 0: 12 found, 20 refused
+  case 1: 12 found, 20 refused
+  case 2: 14 found, 18 refused
+  case 3: 11 found, 21 refused
+  case 4: 12 found, 20 refused
+  case 5: 12 found, 20 refused
+  case 6: 14 found, 18 refused
+  case 7: 11 found, 21 refused
+  row 0, x 80cdf63774ec7022c89a5a8558e373a279170285e0ab27412dbce510bdfe23fc
+    case 0: none
+    case 1: none
+    case 2: 45654798ece071ba79286d04f7f3eb1c3f1d17dd883610f2ad2efd82a287466b
+    case 3: 0aeaa886f6b76c7158452418cbf5033adc5747e9e9b5d3b2303db96936528557
+    case 4: none
+    case 5: none
+    case 6: ba9ab867131f8e4586d792fb080c14e3c0e2e82277c9ef0d52d1027c5d78b5c4
+    case 7: f51557790948938ea7badbe7340afcc523a8b816164a2c4dcfc24695c9ad76d8
+exchange: 7 of 7 rows give their x, shared x and shared secret
+initiator, key 1: c865403d1346a2ed5c486faa0a27b62823add9a39473e21da9b59ba761806ea873d0c663605b826f26bc67ef4e25f381ea98428f787eb0a6f9659cab583ac70b
+  decodes to 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 (the generator's x)
+responder, key 2: 1a1c89a939043a07b4c54d717e77b4d293d4665cd18c8428d2f3ae2ab12a47ae5c698447e3cc3f40fa58ec5c59e2fda05fa70ab17a0610321c6517708724e436
+  decodes to c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
+initiator's secret: 6726a6e6c976ec69f5150e4ab5a5de18bda6310f72efdf55fa8de94790e0c9b6
+responder's secret: 6726a6e6c976ec69f5150e4ab5a5de18bda6310f72efdf55fa8de94790e0c9b6
+  the same: true
+  with the roles swapped on one side: 822fc24e78f04df6eb98bedd4b650add080a5a88f2381adfac9449ee17762d4c

@@ -1322,15 +1322,21 @@
   {
    "number": 66,
    "title": "ElligatorSwift",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch066-elligatorswift.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     15,
     17
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/ellswift.coax",
+    "bitcoin/examples/ellswift.coax",
+    "bitcoin/examples/checks/ellswift.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

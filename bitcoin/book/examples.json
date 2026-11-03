@@ -481,6 +481,17 @@
         "release"
       ],
       "timeout": 480
+    },
+    {
+      "source": "bitcoin/examples/ellswift.coax",
+      "chapter": "bitcoin/book/ch066-elligatorswift.md",
+      "stdout": "bitcoin/fixtures/ellswift.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

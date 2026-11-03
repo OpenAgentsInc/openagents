@@ -1,0 +1,95 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/ellswift.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex, at most 256 of them.
+show :: (b: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+show_field :: (a: SecpField) { b: [32] u8; #assert sf_store(a, b[..]); show(b[..]); }
+
+main :: () {
+  // ---- decoding: every published encoding gives its x
+  good := 0;
+  for row: ELLSWIFT_DECODE {
+    ell: [64] u8; x: [32] u8;
+    if ellswift_decode(es_unhex(row.ellswift, ell[..]), x[..]) && es_hex_is(x[..], row.x) { good += 1; }
+  }
+  print("decode: % of % BIP-324 encodings give their x\n", good, ELLSWIFT_DECODE.count);
+  for k: [3] int.[0, 1, 75] {
+    row := ELLSWIFT_DECODE[k]; ell: [64] u8; x: [32] u8;
+    ok := ellswift_decode(es_unhex(row.ellswift, ell[..]), x[..]);
+    print("  row %: u ", k); show(ell[0..<4]); print("..., t "); show(ell[32..<36]);
+    print("... -> x "); show(x[..]); print("\n");
+  }
+
+  // ---- inversion: every case of every published (u, x)
+  found: [8] int; refused: [8] int; agree := 0; back := 0;
+  for row: ELLSWIFT_INVERSE {
+    x := es_field(row.x); u := es_field(row.u);
+    for which: 0..<8 {
+      got := ellswift_xswiftec_inv(x, u, which);
+      want := row.t[which];
+      if got.ok == CB_MAX64 {
+        found[which] += 1;
+        b: [32] u8; stored := sf_store(got.t, b[..]);
+        if es_hex_is(b[..], want) { agree += 1; }
+        if sf_equal_mask(ellswift_xswiftec(u, got.t), x) == CB_MAX64 { back += 1; }
+      } else {
+        refused[which] += 1;
+        if want.count == 0 { agree += 1; }
+      }
+    }
+  }
+  print("inverse: % rows, % cases; % agree with BIP-324, and all % t decode back to x\n",
+    ELLSWIFT_INVERSE.count, ELLSWIFT_INVERSE.count * 8, agree, back);
+  for which: 0..<8 { print("  case %: % found, % refused\n", which, found[which], refused[which]); }
+  row := ELLSWIFT_INVERSE[0]; x := es_field(row.x); u := es_field(row.u);
+  print("  row 0, x "); show_field(x); print("\n");
+  for which: 0..<8 {
+    got := ellswift_xswiftec_inv(x, u, which);
+    print("    case %: ", which);
+    if got.ok == CB_MAX64 { show_field(got.t); } else { print("none"); }
+    print("\n");
+  }
+
+  // ---- the key exchange of BIP-324's packet vectors
+  match := 0;
+  for r: ELLSWIFT_XDH {
+    ours: [64] u8; theirs: [64] u8; key: [32] u8; out: [32] u8; xo: [32] u8; xt: [32] u8;
+    work: [1] EcdhScratch;
+    code := ellswift_xdh(es_unhex(r.ours, ours[..]), es_unhex(r.theirs, theirs[..]),
+      es_unhex(r.secret, key[..]), r.initiating, out[..], work[..]);
+    shared_ok := es_hex_is(work[0].staged[..], r.x_shared);
+    work[0] = EcdhScratch.{};
+    if code == EC_OK && shared_ok && es_hex_is(out[..], r.shared_secret)
+      && ellswift_decode(ours[..], xo[..]) && es_hex_is(xo[..], r.x_ours)
+      && ellswift_decode(theirs[..], xt[..]) && es_hex_is(xt[..], r.x_theirs) { match += 1; }
+  }
+  print("exchange: % of % rows give their x, shared x and shared secret\n", match, ELLSWIFT_XDH.count);
+
+  // ---- two keys of our own: encode, decode, agree
+  a: [32] u8; a[31] = 1; b: [32] u8; b[31] = 2;
+  ra: [32] u8; rb: [32] u8; for i: 0..<32 { ra[i] = cast(u8) i; rb[i] = cast(u8) (32 + i); }
+  ea: [64] u8; eb: [64] u8; work: [1] EcdhScratch; x1: [32] u8;
+  ca := ellswift_create(a[..], ra[..], ea[..], work[..]); work[0] = EcdhScratch.{};
+  cb := ellswift_create(b[..], rb[..], eb[..], work[..]); work[0] = EcdhScratch.{};
+  print("initiator, key 1: "); show(ea[..]); print("\n");
+  dec := ellswift_decode(ea[..], x1[..]); print("  decodes to "); show(x1[..]); print(" (the generator's x)\n");
+  print("responder, key 2: "); show(eb[..]); print("\n");
+  dec = ellswift_decode(eb[..], x1[..]); print("  decodes to "); show(x1[..]); print("\n");
+  sa: [32] u8; sb: [32] u8;
+  codea := ellswift_xdh(ea[..], eb[..], a[..], true, sa[..], work[..]); work[0] = EcdhScratch.{};
+  codeb := ellswift_xdh(eb[..], ea[..], b[..], false, sb[..], work[..]); work[0] = EcdhScratch.{};
+  print("initiator's secret: "); show(sa[..]); print("\n");
+  print("responder's secret: "); show(sb[..]); print("\n");
+  same := true; for i: 0..<32 { if sa[i] != sb[i] { same = false; } }
+  print("  the same: %\n", same);
+  sc: [32] u8;
+  codec := ellswift_xdh(ea[..], eb[..], a[..], false, sc[..], work[..]); work[0] = EcdhScratch.{};
+  print("  with the roles swapped on one side: "); show(sc[..]); print("\n");
+}
+// book:end example

@@ -1990,6 +1990,74 @@
           "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
         }
       ]
+    },
+    {
+      "path": "upstream/bip324/bip-0324.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324.mediawiki",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "BSD-3-Clause",
+      "covers": [
+        "bitcoin-ellswift",
+        "bitcoin-v2-transport"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "14de484a709946348effa8264991cf124a34ecdaf0a3f9d68a42313287625ad8",
+      "bytes": 67644
+    },
+    {
+      "path": "upstream/bip324/ellswift_decode_test_vectors.csv",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/ellswift_decode_test_vectors.csv",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "BSD-3-Clause",
+      "covers": [
+        "bitcoin-ellswift"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "a238a66b093bed3c571d5b57cb2bb1f69487788f0f872f7ea7501b5b98be20b0",
+      "bytes": 17323
+    },
+    {
+      "path": "upstream/bip324/xswiftec_inv_test_vectors.csv",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/xswiftec_inv_test_vectors.csv",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "BSD-3-Clause",
+      "covers": [
+        "bitcoin-ellswift"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "b5e8e0e9edfdee14c3ec4db3c6763543a9f17290a84a93de0ae2671c16f4432a",
+      "bytes": 16029
+    },
+    {
+      "path": "upstream/bip324/packet_encoding_test_vectors.csv",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/packet_encoding_test_vectors.csv",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "BSD-3-Clause",
+      "covers": [
+        "bitcoin-ellswift",
+        "bitcoin-v2-transport"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "61704507945e2fa99e6c799fab888593eb7a2c3d2018f42ee4a3c3abe0684269",
+      "bytes": 18133
+    },
+    {
+      "path": "upstream/bip324/reference.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/reference.py",
+      "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
+      "license": "BSD-3-Clause",
+      "covers": [
+        "bitcoin-ellswift",
+        "bitcoin-v2-transport"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "cb074b4e64bcb096ff4a2f1ee3a0580c383bb1d02662b7dccdd4968bc6b7af4f",
+      "bytes": 23049
     }
   ]
 }

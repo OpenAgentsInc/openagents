@@ -1,0 +1,58 @@
+// The checks of ellswift.coax. They live apart so that running the
+// example doesn't also run them. The example itself checks every
+// published vector; these pick the rows that reach each special path.
+// Checks: coax test bitcoin/examples/checks/ellswift.coax
+#load "../ellswift.coax";
+
+// book:begin check
+// Decoding rows that reach each path: u = t = 0, u^3 - t^2 + 7 = 0,
+// u^3 + t^2 + 7 = 0 (where t doubles), each of the three candidates, and
+// u and t at or above p.
+DECODE_PICKS :: [7] int.[0, 4, 11, 13, 30, 31, 75];
+#forall "BIP-324 decode rows on each path" k: 0..<7 #steps 60000000 {
+  row := ELLSWIFT_DECODE[DECODE_PICKS[k]]; ell: [64] u8; x: [32] u8;
+  #assert ellswift_decode(es_unhex(row.ellswift, ell[..]), x[..]) && es_hex_is(x[..], row.x);
+}
+// Inverse rows with the rarer refusals: r = 0 in the odd cases of row 13,
+// and s = 0 in row 26.
+INVERSE_PICKS :: [2] int.[13, 26];
+#forall "BIP-324 inverse rows with r = 0 and s = 0" k: 0..<2 #steps 400000000 {
+  row := ELLSWIFT_INVERSE[INVERSE_PICKS[k]]; x := es_field(row.x); u := es_field(row.u);
+  for which: 0..<8 {
+    got := ellswift_xswiftec_inv(x, u, which);
+    #assert (got.ok == CB_MAX64) == (row.t[which].count > 0);
+    if got.ok == CB_MAX64 { b: [32] u8; #assert sf_store(got.t, b[..]) && es_hex_is(b[..], row.t[which]); }
+  }
+}
+// Every 64 bytes are some key: a published encoding with any one byte
+// changed still decodes to a valid x.
+#forall "a changed encoding still decodes to a point" k: 0..<4 #steps 60000000 {
+  ell: [64] u8; x: [32] u8;
+  e := es_unhex(ELLSWIFT_DECODE[30].ellswift, ell[..]); ell[k * 21] ^= 0x5a;
+  #assert ellswift_decode(ell[..], x[..]) && es_valid_x(sf_load(x[..]).value) == CB_MAX64;
+}
+// The encoder's output decodes to its input, for two random strings.
+#forall "encodings of the generator decode to it" k: 0..<2 #steps 400000000 {
+  gx := ECDH_TEST_PEER; rnd: [32] u8; for i: 0..<32 { rnd[i] = cast(u8) (k * 101 + i); }
+  ell: [64] u8; x: [32] u8;
+  #assert ellswift_encode(gx[..], rnd[..], ell[..]) && ellswift_decode(ell[..], x[..]);
+  for i: 0..<32 { #assert x[i] == gx[i]; }
+}
+// Two parties with keys 1 and 2 and the example's encodings reach the
+// same secret, and only when they agree on who initiated.
+EA :: "c865403d1346a2ed5c486faa0a27b62823add9a39473e21da9b59ba761806ea873d0c663605b826f26bc67ef4e25f381ea98428f787eb0a6f9659cab583ac70b";
+EB :: "1a1c89a939043a07b4c54d717e77b4d293d4665cd18c8428d2f3ae2ab12a47ae5c698447e3cc3f40fa58ec5c59e2fda05fa70ab17a0610321c6517708724e436";
+#test "both sides reach the same secret" #steps 400000000 {
+  ea: [64] u8; eb: [64] u8; a: [32] u8; a[31] = 1; b: [32] u8; b[31] = 2;
+  sa: [32] u8; sb: [32] u8; sc: [32] u8; work: [1] EcdhScratch;
+  pa := es_unhex(EA, ea[..]); pb := es_unhex(EB, eb[..]);
+  #assert ellswift_xdh(ea[..], eb[..], a[..], true, sa[..], work[..]) == EC_OK;
+  #assert ellswift_xdh(eb[..], ea[..], b[..], false, sb[..], work[..]) == EC_OK;
+  #assert ellswift_xdh(eb[..], ea[..], b[..], true, sc[..], work[..]) == EC_OK;
+  work[0] = EcdhScratch.{};
+  #assert es_hex_is(sa[..], "6726a6e6c976ec69f5150e4ab5a5de18bda6310f72efdf55fa8de94790e0c9b6");
+  same := true; differs := false;
+  for i: 0..<32 { if sa[i] != sb[i] { same = false; } if sa[i] != sc[i] { differs = true; } }
+  #assert same && differs;
+}
+// book:end check

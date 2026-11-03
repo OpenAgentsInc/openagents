@@ -274,6 +274,14 @@ that a maliciously replaced manifest is authentic.
   gives the annotated hexdumps of a `verack` header and of the `getblocks`,
   `headers`, `inv`, `addr`, `addrv2`, `feefilter`, `ping` and `version`
   payloads; `make_p2p_vectors.py` reads them from the pinned bytes.
+- **ElligatorSwift (Bitcoin chapter 66):** BIP-324's text, its
+  `reference.py` and its three test-vector files, all at the bips revision
+  `927b6de9`. `ellswift_decode_test_vectors.csv` gives 76 encodings and
+  their x, `xswiftec_inv_test_vectors.csv` 32 pairs of u and x with the t
+  of each of the eight cases, and `packet_encoding_test_vectors.csv` seven
+  key exchanges, whose decoded x, shared x and shared secret chapter 66
+  claims. `make_ellswift_vectors.py` reads all three, and `ellswift.py`
+  runs `reference.py` as the cross-check's oracle.
 - **Chain parameters (Bitcoin chapter 50):** Bitcoin Core's
   `kernel/chainparams.cpp` (every network's class), `kernel/signet.h`
   (`SIGNET_DEFAULT_CHALLENGE`, `GetSignetMessageStart`), `signet.cpp`
@@ -313,7 +321,8 @@ btcd is ISC, rust-bitcoin is CC0-1.0 and BIP-54 is CC0-1.0; their license files 
 mainnet transactions and blocks are public blockchain data. SipHash is CC0-1.0, MIT or
 Apache-2.0 with LLVM exception; its CC0 file is retained. The NIP-44 JavaScript subtree is Unlicense; Wycheproof is Apache-2.0;
 JSONTestSuite is MIT. The Bitcoin developer reference
-(developer.bitcoin.org) is MIT and BIP-155 declares BSD-2-Clause in its text. Their provided license files are retained. `segwit_addr.py`
+(developer.bitcoin.org) is MIT, BIP-155 declares BSD-2-Clause in its text and BIP-324,
+with its test vectors and `reference.py`, declares BSD-3-Clause. Their provided license files are retained. `segwit_addr.py`
 carries its MIT notice in its own header. RFCs retain
 complete IETF/Internet Society copyright and redistribution notices (including
 the older RFC 4231 terms). NIST's U.S. Government archive supplies CAVS notices
@@ -475,4 +484,9 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/messages.py`](upstream/bitcoin-core/messages.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/messages.py) | `44e3b8c702916c8ab7820db65cf38af801dd5b5a457e91cabdff95eba5d412a5` |
 | [`upstream/bip155/bip-0155.mediawiki`](upstream/bip155/bip-0155.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0155.mediawiki) | `acf8a589041612260ec073dd7d74e4842928cb78204c4a9c8656e1b0618cf174` |
 | [`upstream/developer-bitcoin-org/p2p_networking.rst`](upstream/developer-bitcoin-org/p2p_networking.rst) | [pinned source](https://raw.githubusercontent.com/bitcoin-dot-org/developer.bitcoin.org/813ba3fb5eae85cfdfffe91d12f2df653ea8b725/reference/p2p_networking.rst) | `6284673665cdf619238a828d1df15cffbe35f8ab1026583a280fb81a105ac379` |
+| [`upstream/bip324/bip-0324.mediawiki`](upstream/bip324/bip-0324.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324.mediawiki) | `14de484a709946348effa8264991cf124a34ecdaf0a3f9d68a42313287625ad8` |
+| [`upstream/bip324/ellswift_decode_test_vectors.csv`](upstream/bip324/ellswift_decode_test_vectors.csv) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/ellswift_decode_test_vectors.csv) | `a238a66b093bed3c571d5b57cb2bb1f69487788f0f872f7ea7501b5b98be20b0` |
+| [`upstream/bip324/xswiftec_inv_test_vectors.csv`](upstream/bip324/xswiftec_inv_test_vectors.csv) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/xswiftec_inv_test_vectors.csv) | `b5e8e0e9edfdee14c3ec4db3c6763543a9f17290a84a93de0ae2671c16f4432a` |
+| [`upstream/bip324/packet_encoding_test_vectors.csv`](upstream/bip324/packet_encoding_test_vectors.csv) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/packet_encoding_test_vectors.csv) | `61704507945e2fa99e6c799fab888593eb7a2c3d2018f42ee4a3c3abe0684269` |
+| [`upstream/bip324/reference.py`](upstream/bip324/reference.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/reference.py) | `cb074b4e64bcb096ff4a2f1ee3a0580c383bb1d02662b7dccdd4968bc6b7af4f` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |
