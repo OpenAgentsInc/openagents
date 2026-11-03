@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-79 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+80 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -81,7 +81,11 @@ under P2SH, P2WSH and P2SH-P2WSH, BIP-67's sorted keys, and BIP-387's
 `multi_a` tapscript leaves with their script-path signatures.
 Chapter 101's [`musig.coax`](../coax/lib/bitcoin/musig.coax) is BIP-327's
 MuSig2: many signers make one BIP-340 signature under one aggregate key,
-which can be a Taproot output key. Chapter 103's
+which can be a Taproot output key. Chapter 102's
+[`frost.coax`](../coax/lib/bitcoin/frost.coax) is FROST, the draft
+BIP-445: any t of n participants make one BIP-340 signature under one
+threshold key, from shares made by a trusted dealer or a Pedersen DKG.
+Chapter 103's
 [`adaptor.coax`](../coax/lib/bitcoin/adaptor.coax) makes BIP-340
 adaptor signatures: a pre-signature locked to a point, completed with
 its secret, which the final signature then reveals.
@@ -164,9 +168,10 @@ and Lightning also need:
 
 - Batch Schnorr verification and tapscript. (ElligatorSwift and the
   BIP-324 transport are built in chapters 66 and 67.)
-- FROST and silent payments. (MuSig2 is built in chapter 101,
-  `coax/lib/bitcoin/musig.coax`, and adaptor signatures in chapter 103,
-  `coax/lib/bitcoin/adaptor.coax`.)
+- Silent payments. (MuSig2 is built in chapter 101,
+  `coax/lib/bitcoin/musig.coax`, FROST in chapter 102,
+  `coax/lib/bitcoin/frost.coax`, and adaptor signatures in chapter
+  103, `coax/lib/bitcoin/adaptor.coax`.)
 - Lightning: routing. (BOLT 1's messages and TLVs are built in chapter
   104, the BOLT 8 Noise handshake in chapter 105, BOLT 3's keys and
   revocation in chapter 106, shachain in chapter 107, commitment and HTLC

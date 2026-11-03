@@ -109,6 +109,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [100. Multisig](ch100-multisig.md) — implemented
 - [101. MuSig2](ch101-musig2.md) — implemented
+- [102. FROST threshold signatures](ch102-frost-threshold-signatures.md) — implemented
 - [103. Adaptor signatures](ch103-adaptor-signatures.md) — implemented
 
 **XVII. Lightning**

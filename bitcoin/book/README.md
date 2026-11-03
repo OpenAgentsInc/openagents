@@ -43,13 +43,13 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 79 are implemented and 45 are planned. The 79 implemented
+Of the 124 chapters, 80 are implemented and 44 are planned. The 80 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66, 67,
-68, 69, 70, 71, 73, 74, 81, 94, 95, 100, 101, 103, 104, 105, 106, 107, 108,
-109, 111, 112, 114 and 115 are new.
+39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66,
+67, 68, 69, 70, 71, 73, 74, 81, 94, 95, 100, 101, 102, 103, 104, 105, 106,
+107, 108, 109, 111, 112, 114 and 115 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
 `coax/lib/lightning/`, with examples in `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -311,7 +311,7 @@ Multisig, MuSig2, FROST threshold signatures and adaptor signatures.
 | --- | --- | --- |
 | [100. Multisig](ch100-multisig.md) | Runnable: native C | m-of-n `OP_CHECKMULTISIG` scripts written as Bitcoin Core writes them, with BIP-67's sorted keys, and read back as Core's `MatchMultisig` reads them: all four BIP-67 vectors give their scripts and addresses, and twenty near misses match or refuse as Core decides. One `sortedmulti` 2-of-3 is locked bare, under P2SH, P2WSH and P2SH-P2WSH, signed by two keys through PSBT, finalized and extracted, and every input passes the script interpreter. BIP-387's `multi_a` leaves give every published scriptPubKey; a `sortedmulti_a` 2-of-3 is spent on the script path with two BIP-340 signatures, and one signature or swapped signatures fail. Checked against Python natively. |
 | [101. MuSig2](ch101-musig2.md) | Runnable: native C | BIP-327 in full: KeyAgg with coefficient hashing and the second-key optimization, KeySort, plain and x-only tweaks, NonceGen with secret inputs kept in an erased workspace, NonceAgg, Sign, PartialSigVerify, PartialSigAgg and DeterministicSign. Every case of BIP-327's eight vector files, refusals included, gives its stated result. A secnonce signs once and a second Sign refuses; three signatures from a copied secnonce give the secret key away. The aggregate key tweaked by TapTweak is chapter 41's output key, and its key-path signature verifies. Checked against BIP-327's reference.py natively. |
-| 102. FROST threshold signatures | Planned | The FROST draft BIP's vectors give their results. A signature from fewer than t signers refuses. |
+| [102. FROST threshold signatures](ch102-frost-threshold-signatures.md) | Runnable: native C | BIP-445 (the FROST draft BIP, revision `ba299bad`) in full: threshold info validation, NonceGen, NonceAgg, the session with its signer-set binding factor, Sign, PartialSigVerify, PartialSigAgg and DeterministicSign, with plain and x-only tweaks. Every case of its seven vector files, refusals included, gives its stated result. Shamir shares from the trusted dealer recover the secret from any two of three, and a Pedersen DKG with Feldman commitments and BIP-340 proofs of possession makes a 2-of-3 with no dealer. A signer set below t refuses; the threshold key tweaked by TapTweak is chapter 41's output key and its key-path signature verifies. Checked against the BIP's reference implementation natively. |
 | [103. Adaptor signatures](ch103-adaptor-signatures.md) | Runnable: native C | Schnorr adaptor signatures on BIP-340: pre-signing for a point T with the final nonce's parity in the pre-signature, pre-verification, adapting with t into a BIP-340 signature, and extracting t from it; nonce reuse recovers the key, and statement reuse lets anyone complete a second lock. Six vectors from an independent Python implementation on BIP-340's pinned reference.py match byte for byte, and every line agrees with it. |
 
 ### Part XVII. Lightning (chapters 104–115)

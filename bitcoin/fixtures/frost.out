@@ -1,0 +1,65 @@
+A trusted dealer splits a secret 2-of-3:
+  threshold key: 0284bf7562262bbd6940085748f3be6afa52ae317155181ece31b66351ccffa4b0
+  participant 0: secret share dbf30a9a6710a74a6515c9c8053400c33cc216d10c75a7c6ed934ee975a90b87, public share 03808496e2ff7af458eb3524369817a9f366384b4c4f3b19bf1e229e2e34632fc3
+  participant 1: secret share b6e41230c91b478cc1218883fd59f277adc33da7548c983a023a2429fdfdb6ad, public share 02fac06ffce838c5d9e3a6de5e10d04e379d281846935219fb0544f1eb6208c227
+  participant 2: secret share 91d519c72b25e7cf1d2d473ff57fe42c1ec4647d9ca388ad16e0f96a865261d3, public share 03d184f36db97d4c7e5560792e46670ab3eb7f6a4c6f51a9bf1d94b5c346acbeb8
+  the shares lie on one line through the key: ok
+  with shares 0 and 1 swapped: The provided key material is incorrect: the public shares do not lie on a single polynomial.
+Lagrange interpolation at x = 0:
+  participants 0 and 1: lambda 0000000000000000000000000000000000000000000000000000000000000002, fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140; the secret: yes
+  participants 1 and 2: lambda 0000000000000000000000000000000000000000000000000000000000000003, fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd036413f; the secret: yes
+  participants 0 and 2: lambda 7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a2, 7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0; the secret: yes
+Participants 0 and 2 sign one message:
+  participant 0's nonce: 03c3303740c0a0d55df11832e8ed0ab43d89ff8823c205eb7b9a20159d30f9a743030decdf21af28888ae57dc95912f399cbd1a25e0537bc0098d723a8cf8a6251d8
+  participant 2's nonce: 03a61cbc8d572a1cc81efbf4423c444058c610993181911c3ebf2d24c95095348903718967ad67f05f9b64b061a3725488b489e44910482ed7c39830b52b0caca9b0
+  aggnonce: 02c730f65735aae095e45f064e714900d66b4f666593bf62d915b190c94cd3434602697e4b861e3703757e849d902d9c7a5dcfb269d32d273b74f9d108ee9e26c8e0
+  b: fa6319889a60edccce1813d9ec12c105c0c8f489cded478d013ae96debd44761
+  R = R1 + b R2: 03e74577325302e699b1837f4d151ef35ae9726628f200c79912af2832d8434dc6
+  e: ef9b62fab27a352dbe89bceeaef8921a56eed104f26329c929b8345e9c3ca1b8
+  the threshold key has an even y, so g is 1
+  participant 0: lambda 7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a2, partial signature 62ab8fd385a1a6fc6a6fb5a38116989a110798baaafa47d2fac4fda60709fa8b
+    verifies: ok
+  participant 2: lambda 7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0, partial signature d797674c982f6e33a137b310481241655381258ce374ed2f16568cf50d660bb6
+    verifies: ok
+  participant 0's with its last bit changed: invalid
+  signature: e74577325302e699b1837f4d151ef35ae9726628f200c79912af2832d8434dc63a42f7201dd115300ba768b3c928da00a9d9e160df2694c651492c0e4439c500
+  a valid BIP-340 signature under the threshold key: yes
+  b for the same nonces with participants 0 and 1: 385fabb2ab7eccaffe588c3d3b2b213e784eefd0348a7f4a381d2ccbd91c1c5d
+  participant 0 alone: The number of signers must satisfy t <= u <= n.
+The threshold key as a Taproot internal key:
+  TapTweak(Q): d26bbcab3f1f1dffd9e2a652ad0f1d529255f460de5ed5f8b27ace9e679b34e1
+  output key: 4a95770effc923dbe8125e951a8e0f7a667ae1512eac4a933d8be96fbd591127
+  gacc is 1
+  chapter 41's output key of the same internal key: yes
+  address: bc1pf22hwrhley3ah6qjt6234rs00fn84c2396ky4yea305kl02ezyns3k932r
+  key-path signature: b45127e2a1e803b21e19912cda3718721d5c5fe7902ad60e84cd76c6260bdecff019486be131e887fb659d016c9829070b1a8cc44f6a655c520ef48a366a2f0d
+  verifies under the output key: yes
+A 2-of-3 Pedersen DKG:
+  participant 0 commits 028040a13e1ee62d5a76573b788f7515e89560c422d2696894f2311d2f92989f74 and 03031e7a0990e15f06af05f545879f4feb7887bbfe8d190b44b34392de642f6cdb
+    proof of possession 12602b4794317686c4eeed43ce30bcd4756eafc782d269d4e868d3f9760f047ffd1be4f53423ae8e954921e8141431dfcfeff7d4e9d6bd3f221ae8a28698ae43
+  participant 1 commits 0204f8084da2e58430fe4eaf7b277a5da5a0aa9de9c43f5d8173fe30037dfb43c9 and 0302bd8e6564e60adcaa3ee7de5ee766bee74f4bc1a20fe1c86a570fffcb006d09
+    proof of possession 56ef7906925d60e769ef2cbb74256ab2f5100f412f41d958ea9a20ec5cd7bcc04200e20bd4bd891ed29c0ff66e824faa403f5d39fe19502e2f856b130cc833e9
+  participant 2 commits 0269e7db3e13a0613edbe69e689546a379be59496c4d4e7668326b6ed4514e2dfc and 03f00829ed7bec00c342aa809ecd89279812f4f003f90d208e3e50a3ac37cb1764
+    proof of possession d55be8faed19b59690761568a708c9dba041a5c8ae11544ee3400039c47daf1bffb9592996c3d6bcaa624a75a768c9bc8945f1f80ae16fe0a85686c8feabdccf
+  checks that pass, of 9: 9
+  participant 0's proof checked as participant 1's: proof of possession
+  threshold key: 02c9ba1428eb243e467e0e169ca6506bb16800cbd8e53e34153a6cf5fdde9a34b8
+  participant 0's public share: 03a97d88721295f9446e0ca6c53fc6861c01f4db8103a0b22d2342434992536cca
+  participant 1's public share: 031d1acf02a182cc4d29623e2d154edbee8634e950d8d089cb930e14306a7059f2
+  participant 2's public share: 0246c3da89d235317ebdb6fef11f1d2dae07ae15bba7a394bb1b35e18b03b7a424
+  every participant computed the same key and shares: yes
+  threshold info: ok
+  participants 1 and 2 sign: 11e4e0f62d920a12fa0fc270ac8c65600eca721843964a46be1fc60fa31c3fe7e733634aac6e8b069cea5264c0b5c5e6e8a636b01f404b7cb80f6a3cc6721e56
+  a valid BIP-340 signature under the DKG's key: yes
+DeterministicSign (det_sign_vectors case 1):
+  pubnonce: 03ccc678cbd9cfcd74288c66e6c74a344919d1fc50277f2fa468a89c7b67edd1630377649f7c793c4afbaecdddfb511825665d7c596050b4f6808ad4cee50fd0c2bf
+  psig: 88f89e281154168d33bfe509245da049cf083df0255e21ec04dd6bfa3066307c
+  ok, as published: yes
+BIP-445's vector files, cases giving their stated result:
+  nonce_gen_vectors: 6 of 6
+  nonce_agg_vectors: 5 of 5
+  sign_verify_vectors and tweak_vectors, Sign: 124 of 124
+  sign_verify_vectors and tweak_vectors, PartialSigVerify: 68 of 68
+  det_sign_vectors: 88 of 88
+  sig_agg_vectors: 28 of 28
+  threshold_info_vectors: 41 of 41

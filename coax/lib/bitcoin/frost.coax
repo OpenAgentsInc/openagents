@@ -1,0 +1,1208 @@
+// FROST (Bitcoin chapter 102): threshold signatures whose result is one
+// BIP-340 signature under one x-only key. Any t of n participants sign;
+// fewer than t cannot. This file follows the FROST draft BIP, BIP-445
+// ("FROST Signing Protocol for BIP340 Signatures", version 0.12.1, at
+// siv2r/bip-frost-signing ba299bad): RFC 9591's FROST3 signing with
+// BIP-340's x-only keys and even-y nonces, the plain and x-only tweaks of
+// BIP-327, partial signature verification and deterministic signing.
+//
+// Key generation is outside BIP-445. This file builds two ways to make
+// the shares it signs with: the trusted dealer the BIP's vectors were made
+// with (Shamir's secret sharing with coefficients hashed from the secret),
+// and a Pedersen distributed key generation in which every participant
+// deals a secret of its own, commits to its polynomial (Feldman's
+// verifiable secret sharing) and proves possession of its secret with a
+// BIP-340 signature. The DKG's tag and message are this book's choice; no
+// BIP fixes them yet.
+//
+// Public values (keys, shares' public points, nonces, partial signatures,
+// messages, identifiers) use the _vartime procedures of chapter 101 and
+// chapter 16. The secret share, the secret nonces and the polynomial
+// coefficients follow chapter 3's rules as chapter 101 does: they are
+// hashed with chapter 24's erasable SHA-256, multiplied by G with the
+// fixed-base sp_base, range-checked with masks and kept in workspaces
+// every return clears. By-value scalar copies are not covered.
+//
+// coax/tests/bitcoin/frost.py checks every published vector with the
+// BIP's reference implementation and replays the example.
+#load "musig.coax";
+#load "../../tests/bitcoin/frost_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes. The reference raises InvalidContributionError naming the
+// signer (its position in ids) or the coordinator and what was sent, or
+// ValueError with a message. A message with "%" names an index, carried
+// in FrResult.signer.
+FR_OK :: 0;
+FR_BAD_PUBNONCE :: 1;        // InvalidContributionError(i, "pubnonce")
+FR_BAD_AGGNONCE :: 2;        // InvalidContributionError(None, "aggnonce")
+FR_BAD_AGGOTHERNONCE :: 3;   // InvalidContributionError(None, "aggothernonce")
+FR_BAD_PSIG :: 4;            // InvalidContributionError(i, "psig")
+FR_THRESHOLD :: 5;
+FR_TOO_MANY :: 6;
+FR_THRESH_PK :: 7;
+FR_PUBSHARE :: 8;
+FR_TOO_FEW_SHARES :: 9;
+FR_NOT_ON_POLY :: 10;
+FR_KEY_MISMATCH :: 11;
+FR_THRESH_INFINITY :: 12;
+FR_TWEAK_RANGE :: 13;
+FR_TWEAK_INFINITY :: 14;
+FR_TWEAK_LISTS :: 15;
+FR_SIGNER_COUNT :: 16;
+FR_PUBSHARE_LISTS :: 17;
+FR_ID_RANGE :: 18;
+FR_ID_DUPLICATE :: 19;
+FR_SECNONCE_1 :: 20;
+FR_SECNONCE_2 :: 21;
+FR_SECSHARE :: 22;
+FR_ID_MISSING :: 23;
+FR_PUBSHARE_MISMATCH :: 24;
+FR_AGGOTHER_OMIT :: 25;
+FR_AGGOTHER_PRESENT :: 26;
+FR_PSIG_LISTS :: 27;
+FR_INVALID :: 28;            // a partial signature that does not verify
+FR_CAPACITY :: 29;           // a wrong length, or more than these arrays hold
+FR_DKG_POP :: 30;            // a DKG proof of possession that does not verify
+FR_DKG_SHARE :: 31;          // a DKG share that does not match its commitments
+FR_REASONS :: [32] string.["ok", "pubnonce", "aggnonce", "aggothernonce", "psig",
+  "The threshold must be 1 <= t <= n.",
+  "The number of participants must be n <= 128.",
+  "The thresh_pk is not a valid point.",
+  "The pubshare at index % is not a valid point.",
+  "At least t pubshares must be present.",
+  "The provided key material is incorrect: the public shares do not lie on a single polynomial.",
+  "The provided key material is incorrect: the public shares do not match the threshold public key.",
+  "The threshold public key must not be the point at infinity.",
+  "The tweak value is out of range.",
+  "The tweaked threshold public key must not be the point at infinity.",
+  "The tweaks and is_xonly lists must have the same length.",
+  "The number of signers must satisfy t <= u <= n.",
+  "The pubshares and ids lists must have the same length.",
+  "The id at index % must satisfy 0 <= id <= n - 1.",
+  "The ids list contains duplicate elements.",
+  "The first half of secnonce is out of range.",
+  "The second half of secnonce is out of range.",
+  "The secshare is out of range.",
+  "The signer's id is missing from the ids list.",
+  "The signer's pubshare does not match its entry in the pubshares list.",
+  "The aggothernonce must be omitted when u = 1.",
+  "The aggothernonce must be present and a 66-byte array when u > 1.",
+  "The psigs and ids lists must have the same length.",
+  "invalid", "capacity", "proof of possession", "share"];
+FR_MAX :: 128;               // participants: the BIP's bound on n
+FR_TWEAKS :: 8;              // tweaks of one threshold key
+// A code and the index it names, -1 for none.
+FrResult :: struct { code: int; signer: int; }
+// book:end codes
+fr_ok :: () -> FrResult { return FrResult.{code=FR_OK, signer=-1}; }
+fr_fail :: (code: int, signer: int) -> FrResult { return FrResult.{code=code, signer=signer}; }
+
+// ---- identifiers and interpolation
+// book:begin lagrange
+// An identifier, or a difference of two, as a scalar: x may be negative.
+fr_scalar :: (x: int) -> ScScalar {
+  if x >= 0 { return sc_small(cast(u32) x); }
+  return sc_negate(sc_small(cast(u32) (0 - x)));
+}
+// Participant id holds the polynomial's value at x = id + 1; the secret
+// is the value at x = 0, which is id -1. The interpolating value of id
+// in the set ids, for x = 0:
+// lambda = prod (id_k + 1) / prod (id_k - id) over the other ids.
+fr_lambda_vartime :: (ids: [] int, id: int) -> ScScalar {
+  num := sc_small(1); den := sc_small(1);
+  for k: 0..<ids.count {
+    if ids[k] == id { continue; }
+    num = sc_mul(num, fr_scalar(ids[k] + 1));
+    den = sc_mul(den, fr_scalar(ids[k] - id));
+  }
+  inv := sc_inverse(den);
+  #assert inv.ok;
+  return sc_mul(num, inv.value);
+}
+// The public share at identifier x, interpolated from the points of
+// ids: sum of L_i(x) X_i with L_i(x) = prod (x - id_k) / (id_i - id_k).
+// It may be infinity.
+fr_share_at_vartime :: (ids: [] int, points: [] SgPoint, x: int) -> SgPoint {
+  q := sg_infinity();
+  for i: 0..<ids.count {
+    num := sc_small(1); den := sc_small(1);
+    for k: 0..<ids.count {
+      if k == i { continue; }
+      num = sc_mul(num, fr_scalar(x - ids[k]));
+      den = sc_mul(den, fr_scalar(ids[i] - ids[k]));
+    }
+    inv := sc_inverse(den);
+    #assert inv.ok;
+    q = sg_add(q, ecmult_vartime(sc_small(0), points[i], sc_mul(num, inv.value)).value).value;
+  }
+  return q;
+}
+// The threshold public key: the share at id -1, into out (33 bytes).
+fr_thresh_pk_vartime :: (ids: [] int, points: [] SgPoint, out: [] u8) -> int {
+  q := fr_share_at_vartime(ids, points, -1);
+  if !ms_finite_vartime(q) { return FR_THRESH_INFINITY; }
+  ms_cbytes_vartime(q, out);
+  return FR_OK;
+}
+// book:end lagrange
+
+// book:begin info
+// ValidateThresholdInfo: t, the threshold key and n public shares
+// (present[i] false for a share that is not known, 33 bytes of anything
+// in its place). Every present share must lie on the polynomial the
+// first t present shares fix, and that polynomial's secret must be the
+// threshold key.
+fr_validate_info_vartime :: (t: int, thresh_pk: [] u8, pubshares: [] u8, present: [] bool) -> FrResult {
+  n := present.count;
+  if pubshares.count != 33 * n { return fr_fail(FR_CAPACITY, -1); }
+  if t < 1 || t > n { return fr_fail(FR_THRESHOLD, -1); }
+  if n > FR_MAX { return fr_fail(FR_TOO_MANY, -1); }
+  if !ms_cpoint_vartime(thresh_pk).ok { return fr_fail(FR_THRESH_PK, -1); }
+  ids: [FR_MAX] int; points: [FR_MAX] SgPoint; count := 0;
+  for i: 0..<n {
+    if !present[i] { continue; }
+    p := ms_cpoint_vartime(pubshares[33*i..<33*i+33]);
+    if !p.ok { return fr_fail(FR_PUBSHARE, i); }
+    ids[count] = i; points[count] = p.value; count += 1;
+  }
+  if count < t { return fr_fail(FR_TOO_FEW_SHARES, -1); }
+  a: [33] u8; b: [33] u8;
+  for j: t..<count {
+    ms_cbytes_vartime(fr_share_at_vartime(ids[0..<t], points[0..<t], ids[j]), a[..]);
+    ms_cbytes_vartime(points[j], b[..]);
+    if !bt_same(a[..], b[..]) { return fr_fail(FR_NOT_ON_POLY, -1); }
+  }
+  code := fr_thresh_pk_vartime(ids[0..<t], points[0..<t], a[..]);
+  if code != FR_OK { return fr_fail(code, -1); }
+  if !bt_same(a[..], thresh_pk) { return fr_fail(FR_KEY_MISMATCH, -1); }
+  return fr_ok();
+}
+// book:end info
+
+// ---- tweaks
+// book:begin tweak
+// The tweak context: Q, and the accumulated sign gacc and tweak tacc, as
+// in chapter 101. Each tweak gives Q' = g Q + t G, with g = n - 1 for an
+// x-only tweak of a Q with an odd y and 1 otherwise.
+FrTweak :: struct { code: int; q: SgPoint; gacc: ScScalar; tacc: ScScalar; }
+fr_tweaks_vartime :: (thresh_pk: [] u8, tweaks: [] u8, xonly: [] bool) -> FrTweak {
+  if tweaks.count % 32 != 0 || xonly.count > FR_TWEAKS { return FrTweak.{code=FR_CAPACITY}; }
+  if tweaks.count != 32 * xonly.count { return FrTweak.{code=FR_TWEAK_LISTS}; }
+  p := ms_cpoint_vartime(thresh_pk);
+  if !p.ok { return FrTweak.{code=FR_THRESH_PK}; }
+  k := FrTweak.{code=FR_OK, q=p.value, gacc=sc_small(1)};
+  for i: 0..<xonly.count {
+    g := ifx xonly[i] then ms_parity_vartime(k.q) else sc_small(1);
+    t := sc_load(tweaks[32*i..<32*i+32]);
+    if !t.ok { return FrTweak.{code=FR_TWEAK_RANGE}; }
+    q := ecmult_vartime(t.value, k.q, g).value;
+    if !ms_finite_vartime(q) { return FrTweak.{code=FR_TWEAK_INFINITY}; }
+    k = FrTweak.{code=FR_OK, q=q, gacc=sc_mul(g, k.gacc), tacc=sc_add(t.value, sc_mul(g, k.tacc))};
+  }
+  return k;
+}
+// The x-only tweak that makes the threshold key a Taproot output key
+// (chapter 41): TapTweak(xbytes(Q) || merkle), merkle empty or 32 bytes.
+fr_taproot_tweak_vartime :: (thresh_pk: [] u8, merkle: [] u8, out: [] u8) -> int {
+  if (merkle.count != 0 && merkle.count != 32) || out.count != 32 { return FR_CAPACITY; }
+  p := ms_cpoint_vartime(thresh_pk);
+  if !p.ok { return FR_THRESH_PK; }
+  m: [64] u8;
+  ms_xbytes_vartime(p.value, m[0..<32]);
+  for i: 0..<merkle.count { m[32 + i] = merkle[i]; }
+  bt_tagged(BH_TAPTWEAK, m[0..<32+merkle.count], out);
+  return FR_OK;
+}
+// book:end tweak
+
+// ---- the signer set
+// book:begin signers
+// The signer set of one session: n participants, threshold t, the u
+// signers' ids and, when known, their public shares (33 bytes each).
+FrSigners :: struct { n: int; t: int; ids: [] int; pubshares: [] u8; has_pubshares: bool; thresh_pk: [] u8; }
+// ValidateSignersCtx: t <= u <= n <= 128, ids in range and distinct, and
+// the public shares, when given, interpolate to the threshold key.
+fr_validate_signers_vartime :: (s: FrSigners) -> FrResult {
+  u := s.ids.count;
+  if s.t < 1 || s.t > s.n { return fr_fail(FR_THRESHOLD, -1); }
+  if s.n > FR_MAX { return fr_fail(FR_TOO_MANY, -1); }
+  if u < s.t || u > s.n { return fr_fail(FR_SIGNER_COUNT, -1); }
+  if s.has_pubshares && s.pubshares.count % 33 != 0 { return fr_fail(FR_CAPACITY, -1); }
+  if s.has_pubshares && s.pubshares.count != 33 * u { return fr_fail(FR_PUBSHARE_LISTS, -1); }
+  points: [FR_MAX] SgPoint;
+  for i: 0..<u {
+    if s.ids[i] < 0 || s.ids[i] > s.n - 1 { return fr_fail(FR_ID_RANGE, i); }
+    if s.has_pubshares {
+      p := ms_cpoint_vartime(s.pubshares[33*i..<33*i+33]);
+      if !p.ok { return fr_fail(FR_PUBSHARE, i); }
+      points[i] = p.value;
+    }
+  }
+  for i: 0..<u { for k: 0..<i { if s.ids[i] == s.ids[k] { return fr_fail(FR_ID_DUPLICATE, -1); } } }
+  if s.has_pubshares {
+    q: [33] u8;
+    code := fr_thresh_pk_vartime(s.ids, points[0..<u], q[..]);
+    if code != FR_OK { return fr_fail(code, -1); }
+    if !bt_same(q[..], s.thresh_pk) { return fr_fail(FR_KEY_MISMATCH, -1); }
+  }
+  return fr_ok();
+}
+// The position of id in ids, or -1.
+fr_position :: (ids: [] int, id: int) -> int {
+  for i: 0..<ids.count { if ids[i] == id { return i; } }
+  return -1;
+}
+// The ids, sorted, 4 bytes each, added to a hash: the signers are a set,
+// so their order does not change b or a deterministic nonce.
+fr_add_ids :: (w: [] ShaOwned, ids: [] int) {
+  sorted: [FR_MAX] int;
+  for i: 0..<ids.count {
+    j := i;
+    while j > 0 && sorted[j-1] > ids[i] { sorted[j] = sorted[j-1]; j -= 1; }
+    sorted[j] = ids[i];
+  }
+  for i: 0..<ids.count { ms_add_length(w, sorted[i], 4); }
+}
+// book:end signers
+
+// ---- nonces
+// book:begin noncegen
+// k_i = hash_BIP0445/nonce(rand || len(id) || id || len(pubshare) ||
+// pubshare || len(thresh_pk) || thresh_pk || msg_prefixed ||
+// len(extra_in) || extra_in || i) mod n: chapter 101's NonceGen with the
+// signer's id and public share in place of its key. Lengths are public;
+// rand is secret.
+fr_nonce_hash :: (w: [] MsNonceWork, signer_id: int, pubshare: [] u8, xonly: [] u8, msg: [] u8, has_msg: bool, extra: [] u8, i: int) -> ScScalar {
+  s := w[0].sha[..];
+  ms_tag(s, "BIP0445/nonce"); ms_add(s, w[0].rand[..]);
+  if signer_id < 0 { ms_add_length(s, 0, 1); }
+  else { ms_add_length(s, 4, 1); ms_add_length(s, signer_id, 4); }
+  ms_add_length(s, pubshare.count, 1); ms_add(s, pubshare);
+  ms_add_length(s, xonly.count, 1); ms_add(s, xonly);
+  if has_msg { ms_add_length(s, 1, 1); ms_add_length(s, msg.count, 8); ms_add(s, msg); }
+  else { ms_add_length(s, 0, 1); }
+  ms_add_length(s, extra.count, 4); ms_add(s, extra);
+  ms_add_length(s, i, 1);
+  ms_end(s, w[0].h[..]);
+  return sc_reduce_bytes(w[0].h[..]).value;
+}
+// NonceGen. rand_ is 32 fresh random bytes, never used again. secshare
+// (0 or 32 bytes), signer_id (-1 for none), pubshare (0 or 33), xonly,
+// the tweaked threshold key (0 or 32), msg (when has_msg) and extra are
+// optional inputs that make a repeated rand_ less harmful. Writes
+// secnonce (k_1 and k_2, 64 bytes), which stays secret and signs once,
+// and pubnonce (k_1 G and k_2 G, 66 bytes), which goes to the others.
+fr_nonce_gen :: (rand_: [] u8, secshare: [] u8, signer_id: int, pubshare: [] u8, xonly: [] u8, msg: [] u8, has_msg: bool, extra: [] u8, secnonce: [] u8, pubnonce: [] u8, w: [] MsNonceWork) -> int {
+  if w.count != 1 || rand_.count != 32 || (secshare.count != 0 && secshare.count != 32) || signer_id < -1 || signer_id >= FR_MAX { return FR_CAPACITY; }
+  if (pubshare.count != 0 && pubshare.count != 33) || (xonly.count != 0 && xonly.count != 32) { return FR_CAPACITY; }
+  if secnonce.count != 64 || pubnonce.count != 66 || extra.count > 0xffffffff { return FR_CAPACITY; }
+  for j: 0..<32 { w[0].rand[j] = rand_[j]; }
+  if secshare.count == 32 {
+    ms_tag(w[0].sha[..], "BIP0445/aux"); ms_add(w[0].sha[..], rand_); ms_end(w[0].sha[..], w[0].aux[..]);
+    for j: 0..<32 { w[0].rand[j] = secshare[j] ^ w[0].aux[j]; }
+  }
+  w[0].valid = 1;
+  for i: 0..<2 {
+    k := fr_nonce_hash(w, signer_id, pubshare, xonly, msg, has_msg, extra, i);
+    nonzero := ec_nonzero(k);
+    w[0].valid &= nonzero;
+    w[0].k[i] = sc_select(nonzero, k, sc_small(1));
+  }
+  #assert ec_declassify(w[0].valid);
+  for i: 0..<2 {
+    ms_nonce_point(w[0].k[i], w[0].point[..], pubnonce[33*i..<33*i+33]);
+    #assert ss_write(w[0].k[i], secnonce[32*i..<32*i+32]);
+  }
+  ms_nonce_clear(w);
+  return FR_OK;
+}
+// book:end noncegen
+
+// book:begin nonceagg
+// NonceAgg: R_j is the sum of every signer's j-th nonce point, written
+// with cbytes_ext, so the sum may be infinity. Into out (66 bytes). A
+// nonce that does not decode refuses, naming its signer's position.
+fr_nonce_agg_vartime :: (pubnonces: [] u8, out: [] u8) -> FrResult {
+  u := pubnonces.count / 66;
+  if pubnonces.count % 66 != 0 || u < 1 || u > FR_MAX || out.count != 66 { return fr_fail(FR_CAPACITY, -1); }
+  for j: 0..<2 {
+    r := sg_infinity();
+    for i: 0..<u {
+      p := ms_cpoint_vartime(pubnonces[66*i+33*j..<66*i+33*j+33]);
+      if !p.ok { return fr_fail(FR_BAD_PUBNONCE, i); }
+      r = sg_add(r, p.value).value;
+    }
+    ms_cbytes_vartime(r, out[33*j..<33*j+33]);
+  }
+  return fr_ok();
+}
+// book:end nonceagg
+
+// ---- the session
+// book:begin session
+// GetSessionValues: the signer set checked, the tweaked key,
+// b = hash_BIP0445/noncecoef(u || sorted ids || aggnonce || xbytes(Q) ||
+// msg), the final nonce R = R_1 + b R_2 (G if that is infinity) and
+// BIP-340's challenge e. Unlike MuSig2's b, FROST's binds the signer set:
+// the same nonces in a different set give a different R.
+FrSession :: struct { code: int; signer: int; q: SgPoint; gacc: ScScalar; tacc: ScScalar; b: ScScalar; r: SgPoint; e: ScScalar; }
+fr_session_vartime :: (s: FrSigners, aggnonce: [] u8, tweaks: [] u8, xonly: [] bool, msg: [] u8) -> FrSession {
+  x: FrSession; x.signer = -1;
+  v := fr_validate_signers_vartime(s);
+  if v.code != FR_OK { x.code = v.code; x.signer = v.signer; return x; }
+  k := fr_tweaks_vartime(s.thresh_pk, tweaks, xonly);
+  if k.code != FR_OK { x.code = k.code; return x; }
+  if aggnonce.count != 66 { x.code = FR_CAPACITY; return x; }
+  x.q = k.q; x.gacc = k.gacc; x.tacc = k.tacc;
+  qx: [32] u8; rx: [32] u8; w: [1] ShaOwned;
+  ms_xbytes_vartime(k.q, qx[..]);
+  ms_tag(w[..], "BIP0445/noncecoef");
+  ms_add_length(w[..], s.ids.count, 4); fr_add_ids(w[..], s.ids);
+  ms_add(w[..], aggnonce); ms_add(w[..], qx[..]); ms_add(w[..], msg);
+  x.b = ms_reduce(w[..]);
+  r1 := ms_cpoint_ext_vartime(aggnonce[0..<33]);
+  r2 := ms_cpoint_ext_vartime(aggnonce[33..<66]);
+  if !r1.ok || !r2.ok { x.code = FR_BAD_AGGNONCE; return x; }
+  r := sg_add(r1.value, ecmult_vartime(sc_small(0), r2.value, x.b).value).value;
+  x.r = ifx ms_finite_vartime(r) then r else sg_generator();
+  ms_xbytes_vartime(x.r, rx[..]);
+  ms_tag(w[..], "BIP0340/challenge"); ms_add(w[..], rx[..]); ms_add(w[..], qx[..]); ms_add(w[..], msg);
+  x.e = ms_reduce(w[..]);
+  x.code = FR_OK;
+  return x;
+}
+// book:end session
+
+// ---- signing
+// book:begin signshare
+// Sign: s = k_1 + b k_2 + e lambda d mod n, where the k_i are negated when
+// R has an odd y, lambda is the signer's interpolating value in this
+// signer set, and d is the secret share times g (n - 1 when Q has an odd
+// y) and gacc. Into psig (32 bytes). It zeroes secnonce once its halves
+// are read, so a secnonce signs at most once.
+fr_sign :: (secnonce: [] u8, secshare: [] u8, signer_id: int, s: FrSigners, aggnonce: [] u8, tweaks: [] u8, xonly: [] bool, msg: [] u8, psig: [] u8, w: [] MsSignWork) -> FrResult {
+  if w.count != 1 || secnonce.count != 64 || secshare.count != 32 || psig.count != 32 { return fr_fail(FR_CAPACITY, -1); }
+  x := fr_session_vartime(s, aggnonce, tweaks, xonly, msg);
+  if x.code != FR_OK { return fr_fail(x.code, x.signer); }
+  #assert ss_key(secnonce[0..<32], w[0].k[0..<1], false) && ss_key(secnonce[32..<64], w[0].k[1..<2], false);
+  if !ec_declassify(w[0].k[0].valid) { return fr_sign_clear(w, FR_SECNONCE_1); }
+  if !ec_declassify(w[0].k[1].valid) { return fr_sign_clear(w, FR_SECNONCE_2); }
+  for j: 0..<64 { secnonce[j] = 0; }
+  #assert ss_key(secshare, w[0].d[..], false);
+  if !ec_declassify(w[0].d[0].valid) { return fr_sign_clear(w, FR_SECSHARE); }
+  // The signer's public share, d G, must be its entry in the list.
+  ms_nonce_point(w[0].d[0].safe, w[0].point[..], w[0].pk[..]);
+  at := fr_position(s.ids, signer_id);
+  if at < 0 { return fr_sign_clear(w, FR_ID_MISSING); }
+  if s.has_pubshares && !bt_same(s.pubshares[33*at..<33*at+33], w[0].pk[..]) { return fr_sign_clear(w, FR_PUBSHARE_MISMATCH); }
+  lambda := fr_lambda_vartime(s.ids, signer_id);
+  r_odd := cast(u64) (ifx ms_odd_vartime(x.r) then 1 else 0);   // public
+  k1 := ss_even(w[0].k[0].safe, r_odd);
+  k2 := ss_even(w[0].k[1].safe, r_odd);
+  d := sc_mul(sc_mul(ms_parity_vartime(x.q), x.gacc), w[0].d[0].safe);
+  w[0].s = sc_add(sc_add(k1, sc_mul(x.b, k2)), sc_mul(sc_mul(x.e, lambda), d));
+  #assert ss_write(w[0].s, psig);
+  return fr_sign_clear(w, FR_OK);
+}
+fr_sign_clear :: (w: [] MsSignWork, code: int) -> FrResult { fresh: MsSignWork; w[0] = fresh; return fr_fail(code, -1); }
+// book:end signshare
+
+// book:begin verify
+// PartialSigVerifyInternal: s G = Re + e lambda g gacc X, where Re = R_1 +
+// b R_2 from this signer's nonce, negated when R has an odd y, and X is
+// its public share. Anything that does not decode is FR_INVALID.
+fr_partial_verify_session_vartime :: (psig: [] u8, signer_id: int, pubnonce: [] u8, pubshare: [] u8, x: FrSession, ids: [] int) -> FrResult {
+  s := sc_load(psig);
+  if psig.count != 32 || !s.ok || pubnonce.count != 66 { return fr_fail(FR_INVALID, -1); }
+  r1 := ms_cpoint_vartime(pubnonce[0..<33]);
+  r2 := ms_cpoint_vartime(pubnonce[33..<66]);
+  if !r1.ok || !r2.ok { return fr_fail(FR_INVALID, -1); }
+  re := sg_add(r1.value, ecmult_vartime(sc_small(0), r2.value, x.b).value).value;
+  if ms_odd_vartime(x.r) { re = sg_negate(re).value; }
+  p := ms_cpoint_vartime(pubshare);
+  if !p.ok { return fr_fail(FR_INVALID, -1); }
+  if fr_position(ids, signer_id) < 0 { return fr_fail(FR_ID_MISSING, -1); }
+  c := sc_mul(sc_mul(x.e, fr_lambda_vartime(ids, signer_id)), sc_mul(ms_parity_vartime(x.q), x.gacc));
+  lhs := ecmult_vartime(s.value, p.value, sc_negate(c)).value;
+  return ifx sg_equal_mask(lhs, re) == CB_MAX64 then fr_ok() else fr_fail(FR_INVALID, -1);
+}
+// PartialSigVerify: the partial signature of the signer at position i,
+// from everyone's public nonces and the session's public shares.
+fr_partial_verify_vartime :: (psig: [] u8, pubnonces: [] u8, s: FrSigners, tweaks: [] u8, xonly: [] bool, msg: [] u8, i: int) -> FrResult {
+  u := s.ids.count;
+  if !s.has_pubshares || pubnonces.count != 66 * u || s.pubshares.count != 33 * u || i < 0 || i >= u { return fr_fail(FR_CAPACITY, -1); }
+  if tweaks.count != 32 * xonly.count { return fr_fail(FR_TWEAK_LISTS, -1); }
+  v := fr_validate_signers_vartime(s);
+  if v.code != FR_OK { return v; }
+  agg: [66] u8;
+  a := fr_nonce_agg_vartime(pubnonces, agg[..]);
+  if a.code != FR_OK { return a; }
+  x := fr_session_vartime(s, agg[..], tweaks, xonly, msg);
+  if x.code != FR_OK { return fr_fail(x.code, x.signer); }
+  return fr_partial_verify_session_vartime(psig, s.ids[i], pubnonces[66*i..<66*i+66], s.pubshares[33*i..<33*i+33], x, s.ids);
+}
+// book:end verify
+
+// book:begin aggregate
+// PartialSigAgg: s = s_1 + ... + s_u + e g tacc mod n, and the BIP-340
+// signature xbytes(R) || s into out (64 bytes).
+fr_partial_agg_vartime :: (psigs: [] u8, x: FrSession, u: int, out: [] u8) -> FrResult {
+  if x.code != FR_OK { return fr_fail(x.code, x.signer); }
+  if psigs.count % 32 != 0 || out.count != 64 { return fr_fail(FR_CAPACITY, -1); }
+  if psigs.count / 32 != u { return fr_fail(FR_PSIG_LISTS, -1); }
+  s: ScScalar;
+  for i: 0..<u {
+    si := sc_load(psigs[32*i..<32*i+32]);
+    if !si.ok { return fr_fail(FR_BAD_PSIG, i); }
+    s = sc_add(s, si.value);
+  }
+  s = sc_add(s, sc_mul(sc_mul(x.e, ms_parity_vartime(x.q)), x.tacc));
+  ms_xbytes_vartime(x.r, out[0..<32]);
+  #assert sc_store(s, out[32..<64]);
+  return fr_ok();
+}
+// book:end aggregate
+
+// book:begin detsign
+// The workspace of DeterministicSign. Each return clears it.
+FrDetWork :: struct { nonce: [1] MsNonceWork; d: [1] SignScalar; masked: [32] u8; secnonce: [64] u8; sign: [1] MsSignWork; }
+fr_det_clear :: (w: [] FrDetWork, r: FrResult) -> FrResult { fresh: FrDetWork; w[0] = fresh; return r; }
+// DeterministicSign, for the last signer, who has seen every other nonce
+// (aggother, their NonceAgg; absent when it signs alone) and has no
+// randomness: k_i = hash_BIP0445/deterministic/nonce(d' || id || u ||
+// sorted ids || len(aggother) || aggother || xbytes(Q) || len(msg) || msg
+// || i) mod n, with d' = g gacc d, XORed with hash_BIP0445/aux(aux) when
+// aux (0 or 32 bytes) is given. Writes pubnonce (66 bytes) and psig (32).
+fr_det_sign :: (secshare: [] u8, signer_id: int, aggother: [] u8, has_aggother: bool, s: FrSigners, tweaks: [] u8, xonly: [] bool, msg: [] u8, aux: [] u8, has_aux: bool, pubnonce: [] u8, psig: [] u8, w: [] FrDetWork) -> FrResult {
+  if w.count != 1 || pubnonce.count != 66 || psig.count != 32 { return fr_fail(FR_CAPACITY, -1); }
+  v := fr_validate_signers_vartime(s);
+  if v.code != FR_OK { return v; }
+  u := s.ids.count;
+  if u == 1 && has_aggother { return fr_fail(FR_AGGOTHER_OMIT, -1); }
+  if u > 1 && (!has_aggother || aggother.count != 66) { return fr_fail(FR_AGGOTHER_PRESENT, -1); }
+  if secshare.count != 32 || (has_aux && aux.count != 32) { return fr_fail(FR_CAPACITY, -1); }
+  k := fr_tweaks_vartime(s.thresh_pk, tweaks, xonly);
+  if k.code != FR_OK { return fr_fail(k.code, -1); }
+  aggpk: [32] u8;
+  ms_xbytes_vartime(k.q, aggpk[..]);
+  #assert ss_key(secshare, w[0].d[..], false);
+  if !ec_declassify(w[0].d[0].valid) { return fr_det_clear(w, fr_fail(FR_SECSHARE, -1)); }
+  #assert ss_write(sc_mul(sc_mul(ms_parity_vartime(k.q), k.gacc), w[0].d[0].safe), w[0].masked[..]);
+  n := w[0].nonce[..]; h := n[0].sha[..];
+  if has_aux {
+    ms_tag(h, "BIP0445/aux"); ms_add(h, aux); ms_end(h, n[0].aux[..]);
+    for j: 0..<32 { w[0].masked[j] ^= n[0].aux[j]; }
+  }
+  other := ifx has_aggother then aggother else aggother[0..<0];
+  n[0].valid = 1;
+  for i: 0..<2 {
+    ms_tag(h, "BIP0445/deterministic/nonce"); ms_add(h, w[0].masked[..]);
+    ms_add_length(h, signer_id, 4); ms_add_length(h, u, 4); fr_add_ids(h, s.ids);
+    ms_add_length(h, other.count, 1); ms_add(h, other); ms_add(h, aggpk[..]);
+    ms_add_length(h, msg.count, 8); ms_add(h, msg); ms_add_length(h, i, 1);
+    ms_end(h, n[0].h[..]);
+    ki := sc_reduce_bytes(n[0].h[..]).value;
+    nonzero := ec_nonzero(ki);
+    n[0].valid &= nonzero;
+    n[0].k[i] = sc_select(nonzero, ki, sc_small(1));
+  }
+  #assert ec_declassify(n[0].valid);
+  for i: 0..<2 {
+    ms_nonce_point(n[0].k[i], n[0].point[..], pubnonce[33*i..<33*i+33]);
+    #assert ss_write(n[0].k[i], w[0].secnonce[32*i..<32*i+32]);
+  }
+  agg: [66] u8;
+  if has_aggother {
+    both: [132] u8;
+    for j: 0..<66 { both[j] = pubnonce[j]; both[66 + j] = aggother[j]; }
+    if fr_nonce_agg_vartime(both[..], agg[..]).code != FR_OK { return fr_det_clear(w, fr_fail(FR_BAD_AGGOTHERNONCE, -1)); }
+  } else {
+    for j: 0..<66 { agg[j] = pubnonce[j]; }
+  }
+  return fr_det_clear(w, fr_sign(w[0].secnonce[..], secshare, signer_id, s, agg[..], tweaks, xonly, msg, psig, w[0].sign[..]));
+}
+// book:end detsign
+
+// ---- key generation
+// book:begin dealer
+// The polynomial of a dealer with secret a_0: f(x) = a_0 + a_1 x + ... +
+// a_{t-1} x^{t-1}, its coefficients hashed from the secret,
+// a_k = hash_BIP0445/trusted/keygen(a_0 || (t - k) as 4 bytes), as the
+// BIP's trusted_dealer.py does. The workspace holds them; each caller
+// clears it before it returns.
+FrDealWork :: struct { sha: [1] ShaOwned; key: [1] SignScalar; c: [FR_MAX] ScScalar; h: [32] u8; y: ScScalar; point: [1] SignPoint; valid: u64; }
+fr_deal_clear :: (w: [] FrDealWork, code: int) -> int { fresh: FrDealWork; w[0] = fresh; return code; }
+fr_poly :: (secret: [] u8, t: int, w: [] FrDealWork) -> bool {
+  #assert ss_key(secret, w[0].key[..], false);
+  w[0].c[0] = w[0].key[0].safe;
+  w[0].valid = w[0].key[0].valid;
+  for k: 1..<t {
+    ms_tag(w[0].sha[..], "BIP0445/trusted/keygen"); ms_add(w[0].sha[..], secret); ms_add_length(w[0].sha[..], t - k, 4);
+    ms_end(w[0].sha[..], w[0].h[..]);
+    #assert ss_key(w[0].h[..], w[0].key[..], false);
+    w[0].valid &= w[0].key[0].valid;   // a hash of 0 or above n: negligible
+    w[0].c[k] = w[0].key[0].safe;
+  }
+  return ec_declassify(w[0].valid);
+}
+// f(x) by Horner's rule, from the highest coefficient down.
+fr_poly_at :: (w: [] FrDealWork, t: int, x: int) -> ScScalar {
+  y: ScScalar;
+  for k: 0..<t { y = sc_add(sc_mul(y, fr_scalar(x)), w[0].c[t - 1 - k]); }
+  return y;
+}
+// The trusted dealer: from a secret (32 bytes, 0 < secret < n), the
+// threshold key (33 bytes), each participant's secret share f(id + 1)
+// (32 bytes each) and public share (33 bytes each). Whoever runs it
+// knows the secret: every share comes from one machine.
+fr_dealer :: (secret: [] u8, n: int, t: int, thresh_pk: [] u8, secshares: [] u8, pubshares: [] u8, w: [] FrDealWork) -> int {
+  if w.count != 1 || secret.count != 32 || t < 1 || t > n || n > FR_MAX || thresh_pk.count != 33 || secshares.count != 32 * n || pubshares.count != 33 * n { return FR_CAPACITY; }
+  if !fr_poly(secret, t, w) { return fr_deal_clear(w, FR_SECSHARE); }
+  ms_nonce_point(w[0].c[0], w[0].point[..], thresh_pk);
+  for j: 0..<n {
+    w[0].y = fr_poly_at(w, t, j + 1);
+    #assert ec_declassify(ec_nonzero(w[0].y));   // a share of 0: negligible
+    #assert ss_write(w[0].y, secshares[32*j..<32*j+32]);
+    ms_nonce_point(w[0].y, w[0].point[..], pubshares[33*j..<33*j+33]);
+  }
+  return fr_deal_clear(w, FR_OK);
+}
+// Any t shares give the secret back: sum of lambda_i s_i. This is what
+// FROST never does; the chapter uses it to show the shares are Shamir's.
+fr_combine :: (secshares: [] u8, ids: [] int, out: [] u8) -> bool {
+  if secshares.count != 32 * ids.count || out.count != 32 { return false; }
+  k: [1] SignScalar; s: ScScalar;
+  for i: 0..<ids.count {
+    #assert ss_key(secshares[32*i..<32*i+32], k[..], false);
+    s = sc_add(s, sc_mul(fr_lambda_vartime(ids, ids[i]), k[0].safe));
+  }
+  fresh: SignScalar; k[0] = fresh;
+  return ss_write(s, out);
+}
+// book:end dealer
+
+// book:begin dkg
+// A Pedersen DKG: participant i deals a secret of its own to everyone.
+// Round 1: from a 32-byte secret seed, it publishes commitments to its
+// polynomial's coefficients, C_k = a_k G (33 bytes each, t of them), and
+// a proof of possession of a_0: a BIP-340 signature by a_0 of
+// hash_FROST/dkg/pop(context || i || C_0 || ... || C_{t-1}). It sends
+// participant j the share f_i(j + 1) privately (32 bytes each, n).
+FrDkgWork :: struct { deal: [1] FrDealWork; sign: [1] SignWork; msg: [32] u8; key: [32] u8; }
+fr_dkg_message_vartime :: (context: [] u8, index: int, commit: [] u8, out: [] u8) {
+  w: [1] ShaOwned;
+  ms_tag(w[..], "FROST/dkg/pop"); ms_add(w[..], context); ms_add_length(w[..], index, 4); ms_add(w[..], commit);
+  ms_end(w[..], out);
+}
+fr_dkg_round1 :: (seed: [] u8, index: int, n: int, t: int, context: [] u8, commit: [] u8, pop: [] u8, shares: [] u8, w: [] FrDkgWork) -> int {
+  if w.count != 1 || seed.count != 32 || t < 1 || t > n || n > FR_MAX || index < 0 || index >= n { return FR_CAPACITY; }
+  if commit.count != 33 * t || pop.count != 64 || shares.count != 32 * n { return FR_CAPACITY; }
+  d := w[0].deal[..];
+  if !fr_poly(seed, t, d) { fresh: FrDkgWork; w[0] = fresh; return FR_SECSHARE; }
+  for k: 0..<t { ms_nonce_point(d[0].c[k], d[0].point[..], commit[33*k..<33*k+33]); }
+  for j: 0..<n {
+    d[0].y = fr_poly_at(d, t, j + 1);
+    #assert ss_write(d[0].y, shares[32*j..<32*j+32]);
+  }
+  fr_dkg_message_vartime(context, index, commit, w[0].msg[..]);
+  #assert ss_write(d[0].c[0], w[0].key[..]);
+  aux: [32] u8;
+  status := SIGN_REFUSED;
+  for k: 0..<6 { status = schnorr_sign_step(w[0].key[..], aux[..], w[0].msg[..], w[0].sign[..], pop, false); }
+  fresh: FrDkgWork; w[0] = fresh;
+  return ifx status == SIGN_DONE then FR_OK else FR_CAPACITY;
+}
+// Receiver j checks sender i: the proof of possession verifies under
+// xbytes(C_0), and its share s satisfies s G = sum (j + 1)^k C_k.
+fr_dkg_check_vartime :: (commit: [] u8, pop: [] u8, context: [] u8, index: int, share: [] u8, j: int) -> int {
+  t := commit.count / 33;
+  if commit.count % 33 != 0 || t < 1 || t > FR_MAX || pop.count != 64 || share.count != 32 || j < 0 { return FR_CAPACITY; }
+  m: [32] u8; c0: [32] u8;
+  fr_dkg_message_vartime(context, index, commit, m[..]);
+  for k: 0..<32 { c0[k] = commit[1 + k]; }
+  if !schnorr_verify_vartime(m[..], c0[..], pop) { return FR_DKG_POP; }
+  want := fr_dkg_point_vartime(commit, j);
+  k: [1] SignScalar; p: [1] SignPoint; got: [33] u8; expect: [33] u8;
+  #assert ss_key(share, k[..], false);
+  ok := ec_declassify(k[0].valid);
+  ms_nonce_point(k[0].safe, p[..], got[..]);
+  fresh: SignScalar; k[0] = fresh;
+  ms_cbytes_vartime(want, expect[..]);
+  return ifx ok && bt_same(got[..], expect[..]) then FR_OK else FR_DKG_SHARE;
+}
+// sum (j + 1)^k C_k: participant j's public share of one dealer.
+fr_dkg_point_vartime :: (commit: [] u8, j: int) -> SgPoint {
+  q := sg_infinity(); x := sc_small(1);
+  for k: 0..<commit.count/33 {
+    c := ms_cpoint_vartime(commit[33*k..<33*k+33]);
+    #assert c.ok;
+    q = sg_add(q, ecmult_vartime(sc_small(0), c.value, x).value).value;
+    x = sc_mul(x, fr_scalar(j + 1));
+  }
+  return q;
+}
+// Round 2, for participant j, once every check passed: its secret share
+// is the sum of the n shares it received (32 bytes each, in order of
+// sender), the threshold key is the sum of the C_0, and every public
+// share is the sum of the dealers' public shares. commits holds the n
+// senders' commitments, 33 t bytes each.
+fr_dkg_finish :: (received: [] u8, commits: [] u8, n: int, t: int, secshare: [] u8, thresh_pk: [] u8, pubshares: [] u8) -> int {
+  if received.count != 32 * n || commits.count != 33 * t * n || secshare.count != 32 || thresh_pk.count != 33 || pubshares.count != 33 * n || n > FR_MAX { return FR_CAPACITY; }
+  k: [1] SignScalar; s: ScScalar;
+  for i: 0..<n {
+    #assert ss_key(received[32*i..<32*i+32], k[..], false);
+    s = sc_add(s, k[0].safe);
+  }
+  fresh: SignScalar; k[0] = fresh;
+  #assert ss_write(s, secshare);
+  q := sg_infinity();
+  for i: 0..<n {
+    c := ms_cpoint_vartime(commits[33*t*i..<33*t*i+33]);
+    if !c.ok { return FR_THRESH_PK; }
+    q = sg_add(q, c.value).value;
+  }
+  if !ms_finite_vartime(q) { return FR_THRESH_INFINITY; }
+  ms_cbytes_vartime(q, thresh_pk);
+  for j: 0..<n {
+    p := sg_infinity();
+    for i: 0..<n { p = sg_add(p, fr_dkg_point_vartime(commits[33*t*i..<33*t*(i+1)], j)).value; }
+    ms_cbytes_vartime(p, pubshares[33*j..<33*j+33]);
+  }
+  return FR_OK;
+}
+// book:end dkg
+
+// ---- checks
+// ids from hex, one byte each.
+fr_ids :: (h: string, out: [] int) -> [] int {
+  b: [256] u8;
+  x := bt_unhex(h, b[..]);
+  for i: 0..<x.count { out[i] = cast(int) x[i]; }
+  return out[0..<x.count];
+}
+// x-only flags or presence flags from 't' and 'f'.
+fr_flags :: (s: string, out: [] bool) -> [] bool { return ms_flags(s, out); }
+// book:begin vectors
+// Each vector file of the BIP: the number of its cases that give their
+// stated result, a value or the refusal with the index it names.
+frv_nonce_gen :: () -> int {
+  passed := 0; w: [1] MsNonceWork;
+  for i: 0..<FR_NONCE_GEN.count {
+    c := FR_NONCE_GEN[i];
+    r: [32] u8; sk: [32] u8; pk: [33] u8; xo: [32] u8; msg: [64] u8; extra: [64] u8; sec: [64] u8; pub: [66] u8;
+    code := fr_nonce_gen(ms_hex(c.rand, r[..]), ms_hex(c.secshare, sk[..]), c.signer_id, ms_hex(c.pubshare, pk[..]), ms_hex(c.xonly, xo[..]),
+      ms_hex(c.msg, msg[..]), c.has_msg, ms_hex(c.extra, extra[..]), sec[..], pub[..], w[..]);
+    if code == FR_OK && bt_hex_is(sec[..], c.secnonce) && bt_hex_is(pub[..], c.pubnonce) { passed += 1; }
+  }
+  return passed;
+}
+frv_nonce_agg :: () -> int {
+  passed := 0;
+  for i: 0..<FR_NONCE_AGG.count {
+    c := FR_NONCE_AGG[i];
+    n: [512] u8; out: [66] u8;
+    r := fr_nonce_agg_vartime(ms_hex(c.nonces, n[..]), out[..]);
+    if r.code == c.code && r.signer == c.signer && (r.code != FR_OK || bt_hex_is(out[..], c.expected)) { passed += 1; }
+  }
+  return passed;
+}
+// Sign, from sign_verify_vectors and tweak_vectors, cases lo to hi - 1.
+// A case that signs also refuses a second time with the same secnonce.
+frv_sign :: (lo: int, hi: int) -> int {
+  passed := 0; w: [1] MsSignWork;
+  for i: lo..<hi {
+    c := FR_SIGN[i];
+    ids: [16] int; ps: [528] u8; tp: [33] u8; sec: [64] u8; sk: [32] u8; agg: [66] u8; t: [256] u8; f: [8] bool; m: [64] u8; psig: [32] u8;
+    s := FrSigners.{n=c.n, t=c.t, ids=fr_ids(c.ids, ids[..]), pubshares=ms_hex(c.pubshares, ps[..]), has_pubshares=c.has_pubshares, thresh_pk=ms_hex(c.thresh_pk, tp[..])};
+    tweaks := ms_hex(c.tweaks, t[..]); xonly := fr_flags(c.xonly, f[..]); msg := ms_hex(c.msg, m[..]);
+    r := fr_sign(ms_hex(c.secnonce, sec[..]), ms_hex(c.secshare, sk[..]), c.signer_id, s, ms_hex(c.aggnonce, agg[..]), tweaks, xonly, msg, psig[..], w[..]);
+    ok := r.code == c.code && r.signer == c.signer;
+    if r.code == FR_OK {
+      ok = ok && bt_hex_is(psig[..], c.expected);
+      ok = ok && fr_sign(sec[..], sk[..], c.signer_id, s, agg[..], tweaks, xonly, msg, psig[..], w[..]).code == FR_SECNONCE_1;
+    }
+    if ok { passed += 1; }
+  }
+  return passed;
+}
+// PartialSigVerify, cases lo to hi - 1.
+frv_verify :: (lo: int, hi: int) -> int {
+  passed := 0;
+  for i: lo..<hi {
+    c := FR_VERIFY[i];
+    ids: [16] int; ps: [528] u8; tp: [33] u8; n: [1056] u8; t: [256] u8; f: [8] bool; m: [64] u8; sig: [32] u8;
+    s := FrSigners.{n=c.n, t=c.t, ids=fr_ids(c.ids, ids[..]), pubshares=ms_hex(c.pubshares, ps[..]), has_pubshares=c.has_pubshares, thresh_pk=ms_hex(c.thresh_pk, tp[..])};
+    r := fr_partial_verify_vartime(ms_hex(c.psig, sig[..]), ms_hex(c.pubnonces, n[..]), s, ms_hex(c.tweaks, t[..]), fr_flags(c.xonly, f[..]), ms_hex(c.msg, m[..]), c.index);
+    if r.code == c.code && r.signer == c.signer { passed += 1; }
+  }
+  return passed;
+}
+// DeterministicSign, cases lo to hi - 1. A partial signature it makes
+// also verifies.
+frv_det_sign :: (lo: int, hi: int) -> int {
+  passed := 0; w: [1] FrDetWork;
+  for i: lo..<hi {
+    c := FR_DET_SIGN[i];
+    ids: [16] int; ps: [528] u8; tp: [33] u8; sk: [32] u8; o: [66] u8; t: [256] u8; f: [8] bool; m: [64] u8; ax: [32] u8; pub: [66] u8; psig: [32] u8;
+    s := FrSigners.{n=c.n, t=c.t, ids=fr_ids(c.ids, ids[..]), pubshares=ms_hex(c.pubshares, ps[..]), has_pubshares=c.has_pubshares, thresh_pk=ms_hex(c.thresh_pk, tp[..])};
+    tweaks := ms_hex(c.tweaks, t[..]); xonly := fr_flags(c.xonly, f[..]); msg := ms_hex(c.msg, m[..]); other := ms_hex(c.aggother, o[..]);
+    key := ms_hex(c.secshare, sk[..]);
+    r := fr_det_sign(key, c.signer_id, other, c.has_aggother, s, tweaks, xonly, msg, ms_hex(c.aux, ax[..]), c.has_aux, pub[..], psig[..], w[..]);
+    ok := r.code == c.code && r.signer == c.signer;
+    if r.code == FR_OK {
+      ok = ok && bt_hex_is(pub[..], c.pubnonce) && bt_hex_is(psig[..], c.psig);
+      agg: [66] u8;
+      if c.has_aggother {
+        both: [132] u8;
+        for j: 0..<66 { both[j] = pub[j]; both[66 + j] = other[j]; }
+        ok = ok && fr_nonce_agg_vartime(both[..], agg[..]).code == FR_OK;
+      } else {
+        for j: 0..<66 { agg[j] = pub[j]; }
+      }
+      // The signer knows its own public share even without the list.
+      own: [33] u8; kw: [1] SignScalar; pw: [1] SignPoint;
+      #assert ss_key(key, kw[..], false);
+      ms_nonce_point(kw[0].safe, pw[..], own[..]);
+      x := fr_session_vartime(s, agg[..], tweaks, xonly, msg);
+      ok = ok && fr_partial_verify_session_vartime(psig[..], c.signer_id, pub[..], own[..], x, s.ids).code == FR_OK;
+    }
+    if ok { passed += 1; }
+  }
+  return passed;
+}
+// PartialSigAgg, cases lo to hi - 1. Each signature it makes is a valid
+// BIP-340 signature under the tweaked threshold key.
+frv_sig_agg :: (lo: int, hi: int) -> int {
+  passed := 0;
+  for i: lo..<hi {
+    c := FR_SIG_AGG[i];
+    ids: [16] int; ps: [528] u8; tp: [33] u8; agg: [66] u8; t: [256] u8; f: [8] bool; p: [512] u8; m: [64] u8; sig: [64] u8; q: [32] u8;
+    s := FrSigners.{n=c.n, t=c.t, ids=fr_ids(c.ids, ids[..]), pubshares=ms_hex(c.pubshares, ps[..]), has_pubshares=c.has_pubshares, thresh_pk=ms_hex(c.thresh_pk, tp[..])};
+    tweaks := ms_hex(c.tweaks, t[..]); xonly := fr_flags(c.xonly, f[..]); msg := ms_hex(c.msg, m[..]);
+    x := fr_session_vartime(s, ms_hex(c.aggnonce, agg[..]), tweaks, xonly, msg);
+    r := fr_partial_agg_vartime(ms_hex(c.psigs, p[..]), x, s.ids.count, sig[..]);
+    ok := r.code == c.code && r.signer == c.signer;
+    if r.code == FR_OK {
+      ms_xbytes_vartime(x.q, q[..]);
+      ok = ok && bt_hex_is(sig[..], c.expected) && schnorr_verify_vartime(msg, q[..], sig[..]);
+    }
+    if ok { passed += 1; }
+  }
+  return passed;
+}
+// ValidateThresholdInfo, cases lo to hi - 1.
+frv_info :: (lo: int, hi: int) -> int {
+  passed := 0;
+  for i: lo..<hi {
+    c := FR_INFO[i];
+    tp: [33] u8; ps: [4300] u8; f: [130] bool;
+    r := fr_validate_info_vartime(c.t, ms_hex(c.thresh_pk, tp[..]), ms_hex(c.pubshares, ps[..]), fr_flags(c.present, f[..]));
+    if r.code == c.code && r.signer == c.signer { passed += 1; }
+  }
+  return passed;
+}
+// book:end vectors
+#test "BIP-445 nonce_gen_vectors and nonce_agg_vectors" #steps 4000000000 {
+  #assert frv_nonce_gen() == FR_NONCE_GEN.count && frv_nonce_agg() == FR_NONCE_AGG.count;
+  w: [1] MsNonceWork; b: [66] u8;
+  #assert fr_nonce_gen(b[0..<31], b[0..<0], -1, b[0..<0], b[0..<0], b[0..<0], false, b[0..<0], b[0..<64], b[..], w[..]) == FR_CAPACITY;
+  #assert fr_nonce_gen(b[0..<32], b[0..<0], FR_MAX, b[0..<0], b[0..<0], b[0..<0], false, b[0..<0], b[0..<64], b[..], w[..]) == FR_CAPACITY;
+  #assert fr_nonce_agg_vartime(b[0..<65], b[..]).code == FR_CAPACITY;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 1 to 4" #steps 8000000000 {
+  #assert frv_sign(0, 4) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 5 to 8" #steps 8000000000 {
+  #assert frv_sign(4, 8) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 9 to 12" #steps 8000000000 {
+  #assert frv_sign(8, 12) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 13 to 16" #steps 8000000000 {
+  #assert frv_sign(12, 16) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 17 to 20" #steps 8000000000 {
+  #assert frv_sign(16, 20) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 21 to 24" #steps 8000000000 {
+  #assert frv_sign(20, 24) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 25 to 28" #steps 8000000000 {
+  #assert frv_sign(24, 28) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 29 to 32" #steps 8000000000 {
+  #assert frv_sign(28, 32) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 33 to 36" #steps 8000000000 {
+  #assert frv_sign(32, 36) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 37 to 40" #steps 8000000000 {
+  #assert frv_sign(36, 40) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 41 to 44" #steps 8000000000 {
+  #assert frv_sign(40, 44) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 45 to 48" #steps 8000000000 {
+  #assert frv_sign(44, 48) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 49 to 52" #steps 8000000000 {
+  #assert frv_sign(48, 52) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 53 to 56" #steps 8000000000 {
+  #assert frv_sign(52, 56) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 57 to 60" #steps 8000000000 {
+  #assert frv_sign(56, 60) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 61 to 64" #steps 8000000000 {
+  #assert frv_sign(60, 64) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 65 to 68" #steps 8000000000 {
+  #assert frv_sign(64, 68) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 69 to 72" #steps 8000000000 {
+  #assert frv_sign(68, 72) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 73 to 76" #steps 8000000000 {
+  #assert frv_sign(72, 76) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 77 to 80" #steps 8000000000 {
+  #assert frv_sign(76, 80) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 81 to 84" #steps 8000000000 {
+  #assert frv_sign(80, 84) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 85 to 88" #steps 8000000000 {
+  #assert frv_sign(84, 88) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 89 to 92" #steps 8000000000 {
+  #assert frv_sign(88, 92) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 93 to 96" #steps 8000000000 {
+  #assert frv_sign(92, 96) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 97 to 100" #steps 8000000000 {
+  #assert frv_sign(96, 100) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 101 to 104" #steps 8000000000 {
+  #assert frv_sign(100, 104) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 105 to 108" #steps 8000000000 {
+  #assert frv_sign(104, 108) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 109 to 112" #steps 8000000000 {
+  #assert frv_sign(108, 112) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 113 to 116" #steps 8000000000 {
+  #assert frv_sign(112, 116) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 117 to 120" #steps 8000000000 {
+  #assert frv_sign(116, 120) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: Sign, and a secnonce signs once, cases 121 to 124" #steps 8000000000 {
+  #assert frv_sign(120, 124) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 1 to 4" #steps 8000000000 {
+  #assert frv_verify(0, 4) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 5 to 8" #steps 8000000000 {
+  #assert frv_verify(4, 8) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 9 to 12" #steps 8000000000 {
+  #assert frv_verify(8, 12) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 13 to 16" #steps 8000000000 {
+  #assert frv_verify(12, 16) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 17 to 20" #steps 8000000000 {
+  #assert frv_verify(16, 20) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 21 to 24" #steps 8000000000 {
+  #assert frv_verify(20, 24) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 25 to 28" #steps 8000000000 {
+  #assert frv_verify(24, 28) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 29 to 32" #steps 8000000000 {
+  #assert frv_verify(28, 32) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 33 to 36" #steps 8000000000 {
+  #assert frv_verify(32, 36) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 37 to 40" #steps 8000000000 {
+  #assert frv_verify(36, 40) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 41 to 44" #steps 8000000000 {
+  #assert frv_verify(40, 44) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 45 to 48" #steps 8000000000 {
+  #assert frv_verify(44, 48) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 49 to 52" #steps 8000000000 {
+  #assert frv_verify(48, 52) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 53 to 56" #steps 8000000000 {
+  #assert frv_verify(52, 56) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 57 to 60" #steps 8000000000 {
+  #assert frv_verify(56, 60) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 61 to 64" #steps 8000000000 {
+  #assert frv_verify(60, 64) == 4;
+}
+#test "BIP-445 sign_verify and tweak vectors: PartialSigVerify, cases 65 to 68" #steps 8000000000 {
+  #assert frv_verify(64, 68) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 1 to 4" #steps 8000000000 {
+  #assert frv_det_sign(0, 4) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 5 to 8" #steps 8000000000 {
+  #assert frv_det_sign(4, 8) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 9 to 12" #steps 8000000000 {
+  #assert frv_det_sign(8, 12) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 13 to 16" #steps 8000000000 {
+  #assert frv_det_sign(12, 16) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 17 to 20" #steps 8000000000 {
+  #assert frv_det_sign(16, 20) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 21 to 24" #steps 8000000000 {
+  #assert frv_det_sign(20, 24) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 25 to 28" #steps 8000000000 {
+  #assert frv_det_sign(24, 28) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 29 to 32" #steps 8000000000 {
+  #assert frv_det_sign(28, 32) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 33 to 36" #steps 8000000000 {
+  #assert frv_det_sign(32, 36) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 37 to 40" #steps 8000000000 {
+  #assert frv_det_sign(36, 40) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 41 to 44" #steps 8000000000 {
+  #assert frv_det_sign(40, 44) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 45 to 48" #steps 8000000000 {
+  #assert frv_det_sign(44, 48) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 49 to 52" #steps 8000000000 {
+  #assert frv_det_sign(48, 52) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 53 to 56" #steps 8000000000 {
+  #assert frv_det_sign(52, 56) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 57 to 60" #steps 8000000000 {
+  #assert frv_det_sign(56, 60) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 61 to 64" #steps 8000000000 {
+  #assert frv_det_sign(60, 64) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 65 to 68" #steps 8000000000 {
+  #assert frv_det_sign(64, 68) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 69 to 72" #steps 8000000000 {
+  #assert frv_det_sign(68, 72) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 73 to 76" #steps 8000000000 {
+  #assert frv_det_sign(72, 76) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 77 to 80" #steps 8000000000 {
+  #assert frv_det_sign(76, 80) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 81 to 84" #steps 8000000000 {
+  #assert frv_det_sign(80, 84) == 4;
+}
+#test "BIP-445 det_sign_vectors, cases 85 to 88" #steps 8000000000 {
+  #assert frv_det_sign(84, 88) == 4;
+}
+#test "BIP-445 sig_agg_vectors: each a valid BIP-340 signature, cases 1 to 4" #steps 8000000000 {
+  #assert frv_sig_agg(0, 4) == 4;
+}
+#test "BIP-445 sig_agg_vectors: each a valid BIP-340 signature, cases 5 to 8" #steps 8000000000 {
+  #assert frv_sig_agg(4, 8) == 4;
+}
+#test "BIP-445 sig_agg_vectors: each a valid BIP-340 signature, cases 9 to 12" #steps 8000000000 {
+  #assert frv_sig_agg(8, 12) == 4;
+}
+#test "BIP-445 sig_agg_vectors: each a valid BIP-340 signature, cases 13 to 16" #steps 8000000000 {
+  #assert frv_sig_agg(12, 16) == 4;
+}
+#test "BIP-445 sig_agg_vectors: each a valid BIP-340 signature, cases 17 to 20" #steps 8000000000 {
+  #assert frv_sig_agg(16, 20) == 4;
+}
+#test "BIP-445 sig_agg_vectors: each a valid BIP-340 signature, cases 21 to 24" #steps 8000000000 {
+  #assert frv_sig_agg(20, 24) == 4;
+}
+#test "BIP-445 sig_agg_vectors: each a valid BIP-340 signature, cases 25 to 28" #steps 8000000000 {
+  #assert frv_sig_agg(24, 28) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 1 to 4" #steps 8000000000 {
+  #assert frv_info(0, 4) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 5 to 8" #steps 8000000000 {
+  #assert frv_info(4, 8) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 9 to 12" #steps 8000000000 {
+  #assert frv_info(8, 12) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 13 to 16" #steps 8000000000 {
+  #assert frv_info(12, 16) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 17 to 20" #steps 8000000000 {
+  #assert frv_info(16, 20) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 21 to 24" #steps 8000000000 {
+  #assert frv_info(20, 24) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 25 to 28" #steps 8000000000 {
+  #assert frv_info(24, 28) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 29 to 32" #steps 8000000000 {
+  #assert frv_info(28, 32) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 33 to 36" #steps 8000000000 {
+  #assert frv_info(32, 36) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 37 to 40" #steps 8000000000 {
+  #assert frv_info(36, 40) == 4;
+}
+#test "BIP-445 threshold_info_vectors, cases 41 to 41" #steps 8000000000 {
+  #assert frv_info(40, 41) == 1;
+}
+#test "the vector tables have the published counts" {
+  #assert FR_NONCE_GEN.count == 6 && FR_NONCE_AGG.count == 5 && FR_SIGN.count == 124 && FR_VERIFY.count == 68;
+  #assert FR_DET_SIGN.count == 88 && FR_SIG_AGG.count == 28 && FR_INFO.count == 41;
+}
+#test "capacity refusals" #steps 4000000000 {
+  b: [132] u8; f: [9] bool; ids := [2] int.[0, 1];
+  s := FrSigners.{n=3, t=2, ids=ids[..], thresh_pk=b[0..<33]};
+  #assert fr_tweaks_vartime(b[0..<33], b[0..<31], f[0..<0]).code == FR_CAPACITY;
+  #assert fr_tweaks_vartime(b[0..<33], b[0..<32], f[0..<2]).code == FR_TWEAK_LISTS;
+  #assert fr_tweaks_vartime(b[0..<33], b[0..<0], f[0..<9]).code == FR_CAPACITY;
+  #assert fr_taproot_tweak_vartime(b[0..<33], b[0..<1], b[0..<32]) == FR_CAPACITY;
+  #assert fr_taproot_tweak_vartime(b[0..<33], b[0..<0], b[0..<32]) == FR_THRESH_PK;
+  #assert fr_validate_info_vartime(1, b[0..<33], b[0..<32], f[0..<1]).code == FR_CAPACITY;
+  s.has_pubshares = true; s.pubshares = b[0..<32];
+  #assert fr_validate_signers_vartime(s).code == FR_CAPACITY;
+  s.pubshares = b[0..<33];
+  #assert fr_validate_signers_vartime(s).code == FR_PUBSHARE_LISTS;
+  x: FrSession; mw: [1] MsSignWork; dw: [1] FrDetWork;
+  #assert fr_session_vartime(s, b[0..<66], b[0..<0], f[0..<0], b[0..<0]).code == FR_PUBSHARE_LISTS;
+  s.has_pubshares = false;
+  #assert fr_session_vartime(s, b[0..<65], b[0..<0], f[0..<0], b[0..<0]).code == FR_THRESH_PK;
+  #assert fr_sign(b[0..<63], b[0..<32], 0, s, b[0..<66], b[0..<0], f[0..<0], b[0..<0], b[0..<32], mw[..]).code == FR_CAPACITY;
+  #assert fr_partial_verify_vartime(b[0..<32], b[0..<132], s, b[0..<0], f[0..<0], b[0..<0], 0).code == FR_CAPACITY;
+  #assert fr_partial_verify_session_vartime(b[0..<31], 0, b[0..<66], b[0..<33], x, ids[..]).code == FR_INVALID;
+  #assert fr_partial_agg_vartime(b[0..<64], x, 2, b[0..<64]).code == FR_OK || true;
+  x.code = FR_CAPACITY;
+  #assert fr_partial_agg_vartime(b[0..<64], x, 2, b[0..<64]).code == FR_CAPACITY;
+  x.code = FR_OK;
+  #assert fr_partial_agg_vartime(b[0..<63], x, 2, b[0..<64]).code == FR_CAPACITY;
+  #assert fr_partial_agg_vartime(b[0..<32], x, 2, b[0..<64]).code == FR_PSIG_LISTS;
+  #assert fr_det_sign(b[0..<32], 0, b[0..<66], true, s, b[0..<0], f[0..<0], b[0..<0], b[0..<0], false, b[0..<65], b[0..<32], dw[..]).code == FR_CAPACITY;
+  #assert fr_combine(b[0..<31], ids[..], b[0..<32]) == false;
+  #assert sc_equal(fr_scalar(-1), sc_negate(sc_small(1))) && sc_equal(fr_scalar(5), sc_small(5));
+  #assert fr_position(ids[..], 1) == 1 && fr_position(ids[..], 2) == -1;
+}
+// A 2-of-3 from the trusted dealer: any two signers make a signature
+// under the Taproot output key of the threshold key; one alone refuses.
+fr_test_session :: (secshares: [] u8, pubshares: [] u8, thresh_pk: [] u8, ids: [] int, tweaks: [] u8, xonly: [] bool, msg: [] u8, sig: [] u8) -> int {
+  u := ids.count;
+  ps: [99] u8; pub: [198] u8; sec: [192] u8; psigs: [96] u8; agg: [66] u8; rand: [32] u8; q: [32] u8;
+  for i: 0..<u { for j: 0..<33 { ps[33*i+j] = pubshares[33*ids[i]+j]; } }
+  s := FrSigners.{n=3, t=2, ids=ids, pubshares=ps[0..<33*u], has_pubshares=true, thresh_pk=thresh_pk};
+  ms_xbytes_vartime(fr_tweaks_vartime(thresh_pk, tweaks, xonly).q, q[..]);
+  nw: [1] MsNonceWork; sw: [1] MsSignWork;
+  for i: 0..<u {
+    for j: 0..<32 { rand[j] = cast(u8) (ids[i] + 40); }
+    #assert fr_nonce_gen(rand[..], secshares[32*ids[i]..<32*ids[i]+32], ids[i], ps[33*i..<33*i+33], q[..], msg, true, rand[0..<0], sec[64*i..<64*i+64], pub[66*i..<66*i+66], nw[..]) == FR_OK;
+  }
+  #assert fr_nonce_agg_vartime(pub[0..<66*u], agg[..]).code == FR_OK;
+  for i: 0..<u {
+    r := fr_sign(sec[64*i..<64*i+64], secshares[32*ids[i]..<32*ids[i]+32], ids[i], s, agg[..], tweaks, xonly, msg, psigs[32*i..<32*i+32], sw[..]);
+    if r.code != FR_OK { return r.code; }
+    #assert fr_partial_verify_vartime(psigs[32*i..<32*i+32], pub[0..<66*u], s, tweaks, xonly, msg, i).code == FR_OK;
+  }
+  return fr_partial_agg_vartime(psigs[0..<32*u], fr_session_vartime(s, agg[..], tweaks, xonly, msg), u, sig).code;
+}
+#test "a 2-of-3 from the trusted dealer signs a Taproot key path" #steps 8000000000 {
+  secret: [32] u8; tp: [33] u8; sec: [96] u8; pub: [99] u8; w: [1] FrDealWork;
+  for j: 0..<32 { secret[j] = cast(u8) (j + 1); }
+  #assert fr_dealer(secret[..], 3, 2, tp[..], sec[..], pub[..], w[..]) == FR_OK;
+  #assert ec_nonzero(w[0].c[0]) == 0 && ec_nonzero(w[0].c[1]) == 0;
+  #assert fr_dealer(secret[0..<31], 3, 2, tp[..], sec[..], pub[..], w[..]) == FR_CAPACITY;
+  zero: [32] u8;
+  #assert fr_dealer(zero[..], 3, 2, tp[..], sec[..], pub[..], w[..]) == FR_SECSHARE;
+  present := [3] bool.[true, true, true];
+  #assert fr_validate_info_vartime(2, tp[..], pub[..], present[..]).code == FR_OK;
+  // Any two shares give the secret back; the shares are Shamir's.
+  pairs := [6] int.[0, 1, 1, 2, 0, 2];
+  for p: 0..<3 {
+    two: [64] u8; out: [32] u8;
+    for j: 0..<32 { two[j] = sec[32*pairs[2*p]+j]; two[32+j] = sec[32*pairs[2*p+1]+j]; }
+    #assert fr_combine(two[..], pairs[2*p..<2*p+2], out[..]) && bt_same(out[..], secret[..]);
+  }
+  // The Taproot tweak of the threshold key, and a key-path signature.
+  t: [32] u8; internal: [32] u8; out: [32] u8; msg: [32] u8; sig: [64] u8; xf := [1] bool.[true];
+  #assert fr_taproot_tweak_vartime(tp[..], t[0..<0], t[..]) == FR_OK;
+  for j: 0..<32 { internal[j] = tp[1 + j]; msg[j] = cast(u8) (7 * j); }
+  #assert taproot_output_key_vartime(internal[..], t[0..<0], out[..]) >= 0;
+  ids := [2] int.[2, 0];
+  #assert fr_test_session(sec[..], pub[..], tp[..], ids[..], t[..], xf[..], msg[..], sig[..]) == FR_OK;
+  #assert taproot_key_path_verify_vartime(out[..], sig[..], msg[..]);
+  // One signer is fewer than t: the session refuses.
+  #assert fr_test_session(sec[..], pub[..], tp[..], ids[0..<1], t[..], xf[..], msg[..], sig[..]) == FR_SIGNER_COUNT;
+}
+// Round 1 of a 2-of-3 DKG for the checks: three participants with seeds
+// 5, 8, 11, ... deal under the context "chapter 102 DKG".
+fr_test_dkg :: (ctx: [] u8, commits: [] u8, pops: [] u8, shares: [] u8) {
+  seeds: [96] u8; w: [1] FrDkgWork;
+  for i: 0..<96 { seeds[i] = cast(u8) ((3 * i + 5) & 255); }
+  for i: 0..<3 {
+    #assert fr_dkg_round1(seeds[32*i..<32*i+32], i, 3, 2, ctx, commits[66*i..<66*i+66], pops[64*i..<64*i+64], shares[96*i..<96*i+96], w[..]) == FR_OK;
+  }
+  #assert fr_dkg_round1(seeds[0..<31], 0, 3, 2, ctx, commits[0..<66], pops[0..<64], shares[0..<96], w[..]) == FR_CAPACITY;
+}
+#forall "a 2-of-3 Pedersen DKG: every receiver checks every sender" i: 0..<3 #steps 8000000000 {
+  cx: [16] u8; ctx := ms_hex("636861707465722031303220444b47", cx[..]);
+  commits: [198] u8; pops: [192] u8; shares: [288] u8;
+  fr_test_dkg(ctx, commits[..], pops[..], shares[..]);
+  for j: 0..<3 {
+    #assert fr_dkg_check_vartime(commits[66*i..<66*i+66], pops[64*i..<64*i+64], ctx, i, shares[96*i+32*j..<96*i+32*j+32], j) == FR_OK;
+  }
+}
+#test "a 2-of-3 Pedersen DKG: a proof for another index or a changed share refuses" #steps 8000000000 {
+  cx: [16] u8; ctx := ms_hex("636861707465722031303220444b47", cx[..]);
+  commits: [198] u8; pops: [192] u8; shares: [288] u8;
+  fr_test_dkg(ctx, commits[..], pops[..], shares[..]);
+  #assert fr_dkg_check_vartime(commits[0..<66], pops[0..<64], ctx, 1, shares[0..<32], 0) == FR_DKG_POP;
+  bad: [32] u8;
+  for j: 0..<32 { bad[j] = shares[j]; } bad[31] ^= 1;
+  #assert fr_dkg_check_vartime(commits[0..<66], pops[0..<64], ctx, 0, bad[..], 0) == FR_DKG_SHARE;
+  #assert fr_dkg_check_vartime(commits[0..<65], pops[0..<64], ctx, 0, shares[0..<32], 0) == FR_CAPACITY;
+}
+#test "a 2-of-3 Pedersen DKG: everyone agrees on the key, and two sign" #steps 8000000000 {
+  cx: [16] u8; ctx := ms_hex("636861707465722031303220444b47", cx[..]);
+  commits: [198] u8; pops: [192] u8; shares: [288] u8;
+  fr_test_dkg(ctx, commits[..], pops[..], shares[..]);
+  sec: [96] u8; tp: [99] u8; pub: [297] u8; got: [96] u8;
+  for j: 0..<3 {
+    for i: 0..<3 { for k: 0..<32 { got[32*i+k] = shares[96*i+32*j+k]; } }
+    #assert fr_dkg_finish(got[..], commits[..], 3, 2, sec[32*j..<32*j+32], tp[33*j..<33*j+33], pub[99*j..<99*j+99]) == FR_OK;
+  }
+  #assert bt_same(tp[0..<33], tp[33..<66]) && bt_same(tp[0..<33], tp[66..<99]);
+  #assert bt_same(pub[0..<99], pub[99..<198]) && bt_same(pub[0..<99], pub[198..<297]);
+  #assert fr_dkg_finish(got[0..<95], commits[..], 3, 2, sec[0..<32], tp[0..<33], pub[0..<99]) == FR_CAPACITY;
+  present := [3] bool.[true, true, true];
+  #assert fr_validate_info_vartime(2, tp[0..<33], pub[0..<99], present[..]).code == FR_OK;
+  ids := [2] int.[1, 2]; msg: [32] u8; sig: [64] u8; q: [32] u8; f: [1] bool;
+  #assert fr_test_session(sec[..], pub[0..<99], tp[0..<33], ids[..], msg[0..<0], f[0..<0], msg[..], sig[..]) == FR_OK;
+  for j: 0..<32 { q[j] = tp[1 + j]; }
+  #assert schnorr_verify_vartime(msg[..], q[..], sig[..]);
+}

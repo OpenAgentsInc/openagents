@@ -1,0 +1,177 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/frost.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+put_hex :: (b: [] u8) {
+  text: [300] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+line :: (label: string, b: [] u8) { print("  %: ", label); put_hex(b); print("\n"); }
+scalar_line :: (label: string, s: ScScalar) { b: [32] u8; #assert sc_store(s, b[..]); line(label, b[..]); }
+point_line :: (label: string, p: SgPoint) { b: [33] u8; ms_cbytes_vartime(p, b[..]); line(label, b[..]); }
+yes :: (b: bool) -> string { return ifx b then "yes" else "no"; }
+reason :: (r: FrResult) -> string { return FR_REASONS[r.code]; }
+
+main :: () {
+  // A trusted dealer splits a secret 2-of-3.
+  print("A trusted dealer splits a secret 2-of-3:\n");
+  secret: [32] u8; tp: [33] u8; sec: [96] u8; pub: [99] u8; dw: [1] FrDealWork;
+  for j: 0..<32 { secret[j] = cast(u8) (j + 1); }
+  #assert fr_dealer(secret[..], 3, 2, tp[..], sec[..], pub[..], dw[..]) == FR_OK;
+  line("threshold key", tp[..]);
+  for i: 0..<3 {
+    print("  participant %: secret share ", i); put_hex(sec[32*i..<32*i+32]);
+    print(", public share "); put_hex(pub[33*i..<33*i+33]); print("\n");
+  }
+  present := [3] bool.[true, true, true];
+  print("  the shares lie on one line through the key: %\n", reason(fr_validate_info_vartime(2, tp[..], pub[..], present[..])));
+  swapped: [99] u8;
+  for j: 0..<99 { swapped[j] = pub[j]; }
+  for j: 0..<33 { swapped[j] = pub[33 + j]; swapped[33 + j] = pub[j]; }
+  print("  with shares 0 and 1 swapped: %\n", reason(fr_validate_info_vartime(2, tp[..], swapped[..], present[..])));
+
+  // Lagrange: any two shares give the secret back.
+  print("Lagrange interpolation at x = 0:\n");
+  pairs := [6] int.[0, 1, 1, 2, 0, 2];
+  for p: 0..<3 {
+    ids := pairs[2*p..<2*p+2];
+    print("  participants % and %: lambda ", ids[0], ids[1]);
+    b: [32] u8; #assert sc_store(fr_lambda_vartime(ids, ids[0]), b[..]); put_hex(b[..]);
+    print(", ");
+    #assert sc_store(fr_lambda_vartime(ids, ids[1]), b[..]); put_hex(b[..]);
+    two: [64] u8; out: [32] u8;
+    for j: 0..<32 { two[j] = sec[32*ids[0]+j]; two[32+j] = sec[32*ids[1]+j]; }
+    #assert fr_combine(two[..], ids, out[..]);
+    print("; the secret: %\n", yes(bt_same(out[..], secret[..])));
+  }
+
+  // Participants 0 and 2 sign.
+  print("Participants 0 and 2 sign one message:\n");
+  msg: [32] u8;
+  for j: 0..<32 { msg[j] = cast(u8) (0xb0 + j); }
+  ids := [2] int.[0, 2];
+  ps: [66] u8; nonces: [132] u8; agg: [66] u8; psigs: [64] u8; sig: [64] u8; q: [32] u8; nf: [1] bool;
+  for i: 0..<2 { for j: 0..<33 { ps[33*i+j] = pub[33*ids[i]+j]; } }
+  s := FrSigners.{n=3, t=2, ids=ids[..], pubshares=ps[..], has_pubshares=true, thresh_pk=tp[..]};
+  session(sec[..], s, msg[0..<0], nf[0..<0], msg[..], 1, nonces[..], agg[..], psigs[..], sig[..]);
+  for i: 0..<2 { print("  participant %'s nonce: ", ids[i]); put_hex(nonces[66*i..<66*i+66]); print("\n"); }
+  line("aggnonce", agg[..]);
+  x := fr_session_vartime(s, agg[..], msg[0..<0], nf[0..<0], msg[..]);
+  scalar_line("b", x.b);
+  point_line("R = R1 + b R2", x.r);
+  scalar_line("e", x.e);
+  print("  the threshold key has an % y, so g is %\n", ifx ms_odd_vartime(x.q) then "odd" else "even", ifx ms_odd_vartime(x.q) then "n - 1" else "1");
+  for i: 0..<2 {
+    print("  participant %: lambda ", ids[i]);
+    b: [32] u8; #assert sc_store(fr_lambda_vartime(ids[..], ids[i]), b[..]); put_hex(b[..]);
+    print(", partial signature "); put_hex(psigs[32*i..<32*i+32]); print("\n");
+    print("    verifies: %\n", reason(fr_partial_verify_vartime(psigs[32*i..<32*i+32], nonces[..], s, msg[0..<0], nf[0..<0], msg[..], i)));
+  }
+  psigs[31] ^= 1;
+  print("  participant 0's with its last bit changed: %\n", reason(fr_partial_verify_vartime(psigs[0..<32], nonces[..], s, msg[0..<0], nf[0..<0], msg[..], 0)));
+  psigs[31] ^= 1;
+  line("signature", sig[..]);
+  for j: 0..<32 { q[j] = tp[1 + j]; }
+  print("  a valid BIP-340 signature under the threshold key: %\n", yes(schnorr_verify_vartime(msg[..], q[..], sig[..])));
+  // The same nonces in another signer set give another b.
+  other := [2] int.[0, 1];
+  ps2: [66] u8;
+  for i: 0..<2 { for j: 0..<33 { ps2[33*i+j] = pub[33*other[i]+j]; } }
+  s2 := FrSigners.{n=3, t=2, ids=other[..], pubshares=ps2[..], has_pubshares=true, thresh_pk=tp[..]};
+  scalar_line("b for the same nonces with participants 0 and 1", fr_session_vartime(s2, agg[..], msg[0..<0], nf[0..<0], msg[..]).b);
+  one := FrSigners.{n=3, t=2, ids=ids[0..<1], pubshares=ps[0..<33], has_pubshares=true, thresh_pk=tp[..]};
+  print("  participant 0 alone: %\n", FR_REASONS[fr_session_vartime(one, agg[..], msg[0..<0], nf[0..<0], msg[..]).code]);
+
+  // The threshold key as a Taproot internal key.
+  print("The threshold key as a Taproot internal key:\n");
+  tweak: [32] u8; output: [32] u8; addr: [100] u8; xf := [1] bool.[true];
+  #assert fr_taproot_tweak_vartime(tp[..], msg[0..<0], tweak[..]) == FR_OK;
+  line("TapTweak(Q)", tweak[..]);
+  k := fr_tweaks_vartime(tp[..], tweak[..], xf[..]);
+  ms_xbytes_vartime(k.q, output[..]);
+  line("output key", output[..]);
+  print("  gacc is %\n", ifx sc_equal(k.gacc, sc_small(1)) then "1" else "n - 1");
+  out2: [32] u8;
+  #assert taproot_output_key_vartime(q[..], msg[0..<0], out2[..]) >= 0;
+  print("  chapter 41's output key of the same internal key: %\n", yes(bt_same(output[..], out2[..])));
+  n := segwit_encode_vartime(SW_MAINNET, 1, output[..], addr[..]);
+  print("  address: %\n", cast(string) addr[0..<n]);
+  session(sec[..], s, tweak[..], xf[..], msg[..], 11, nonces[..], agg[..], psigs[..], sig[..]);
+  line("key-path signature", sig[..]);
+  print("  verifies under the output key: %\n", yes(taproot_key_path_verify_vartime(output[..], sig[..], msg[..])));
+
+  // A Pedersen DKG with no dealer.
+  print("A 2-of-3 Pedersen DKG:\n");
+  cx: [16] u8; ctx := ms_hex("636861707465722031303220444b47", cx[..]);
+  seeds: [96] u8; commits: [198] u8; pops: [192] u8; shares: [288] u8; kw: [1] FrDkgWork;
+  for i: 0..<96 { seeds[i] = cast(u8) ((3 * i + 5) & 255); }
+  for i: 0..<3 {
+    #assert fr_dkg_round1(seeds[32*i..<32*i+32], i, 3, 2, ctx, commits[66*i..<66*i+66], pops[64*i..<64*i+64], shares[96*i..<96*i+96], kw[..]) == FR_OK;
+    print("  participant % commits ", i); put_hex(commits[66*i..<66*i+33]); print(" and "); put_hex(commits[66*i+33..<66*i+66]); print("\n");
+    print("    proof of possession "); put_hex(pops[64*i..<64*i+64]); print("\n");
+  }
+  checks := 0;
+  for i: 0..<3 { for j: 0..<3 {
+    if fr_dkg_check_vartime(commits[66*i..<66*i+66], pops[64*i..<64*i+64], ctx, i, shares[96*i+32*j..<96*i+32*j+32], j) == FR_OK { checks += 1; }
+  } }
+  print("  checks that pass, of 9: %\n", checks);
+  print("  participant 0's proof checked as participant 1's: %\n", FR_REASONS[fr_dkg_check_vartime(commits[0..<66], pops[0..<64], ctx, 1, shares[0..<32], 0)]);
+  dsec: [96] u8; dtp: [99] u8; dpub: [297] u8; got: [96] u8;
+  for j: 0..<3 {
+    for i: 0..<3 { for b: 0..<32 { got[32*i+b] = shares[96*i+32*j+b]; } }
+    #assert fr_dkg_finish(got[..], commits[..], 3, 2, dsec[32*j..<32*j+32], dtp[33*j..<33*j+33], dpub[99*j..<99*j+99]) == FR_OK;
+  }
+  line("threshold key", dtp[0..<33]);
+  for i: 0..<3 { print("  participant %'s public share: ", i); put_hex(dpub[33*i..<33*i+33]); print("\n"); }
+  print("  every participant computed the same key and shares: %\n", yes(bt_same(dtp[0..<33], dtp[33..<66]) && bt_same(dtp[0..<33], dtp[66..<99]) && bt_same(dpub[0..<99], dpub[99..<198]) && bt_same(dpub[0..<99], dpub[198..<297])));
+  print("  threshold info: %\n", reason(fr_validate_info_vartime(2, dtp[0..<33], dpub[0..<99], present[..])));
+  dids := [2] int.[1, 2]; dps: [66] u8;
+  for i: 0..<2 { for j: 0..<33 { dps[33*i+j] = dpub[33*dids[i]+j]; } }
+  ds := FrSigners.{n=3, t=2, ids=dids[..], pubshares=dps[..], has_pubshares=true, thresh_pk=dtp[0..<33]};
+  session(dsec[..], ds, msg[0..<0], nf[0..<0], msg[..], 21, nonces[..], agg[..], psigs[..], sig[..]);
+  line("participants 1 and 2 sign", sig[..]);
+  for j: 0..<32 { q[j] = dtp[1 + j]; }
+  print("  a valid BIP-340 signature under the DKG's key: %\n", yes(schnorr_verify_vartime(msg[..], q[..], sig[..])));
+
+  // DeterministicSign.
+  print("DeterministicSign (det_sign_vectors case 1):\n");
+  w: [1] FrDetWork; c := FR_DET_SIGN[0];
+  vi: [16] int; vps: [528] u8; vtp: [33] u8; key: [32] u8; o: [66] u8; m: [64] u8; ax: [32] u8; dn: [66] u8; dpsig: [32] u8; tf: [1] bool;
+  vs := FrSigners.{n=c.n, t=c.t, ids=fr_ids(c.ids, vi[..]), pubshares=ms_hex(c.pubshares, vps[..]), has_pubshares=c.has_pubshares, thresh_pk=ms_hex(c.thresh_pk, vtp[..])};
+  r := fr_det_sign(ms_hex(c.secshare, key[..]), c.signer_id, ms_hex(c.aggother, o[..]), c.has_aggother, vs, msg[0..<0], tf[0..<0], ms_hex(c.msg, m[..]),
+    ms_hex(c.aux, ax[..]), c.has_aux, dn[..], dpsig[..], w[..]);
+  line("pubnonce", dn[..]); line("psig", dpsig[..]);
+  print("  %, as published: %\n", reason(r), yes(bt_hex_is(dn[..], c.pubnonce) && bt_hex_is(dpsig[..], c.psig)));
+
+  // Every published vector.
+  print("BIP-445's vector files, cases giving their stated result:\n");
+  print("  nonce_gen_vectors: % of %\n", frv_nonce_gen(), FR_NONCE_GEN.count);
+  print("  nonce_agg_vectors: % of %\n", frv_nonce_agg(), FR_NONCE_AGG.count);
+  print("  sign_verify_vectors and tweak_vectors, Sign: % of %\n", frv_sign(0, FR_SIGN.count), FR_SIGN.count);
+  print("  sign_verify_vectors and tweak_vectors, PartialSigVerify: % of %\n", frv_verify(0, FR_VERIFY.count), FR_VERIFY.count);
+  print("  det_sign_vectors: % of %\n", frv_det_sign(0, FR_DET_SIGN.count), FR_DET_SIGN.count);
+  print("  sig_agg_vectors: % of %\n", frv_sig_agg(0, FR_SIG_AGG.count), FR_SIG_AGG.count);
+  print("  threshold_info_vectors: % of %\n", frv_info(0, FR_INFO.count), FR_INFO.count);
+}
+// One session: each signer makes a nonce from rand bytes seed + its id,
+// signs, and the partial signatures are added into sig. secshares holds
+// every participant's share, indexed by id.
+session :: (secshares: [] u8, s: FrSigners, tweaks: [] u8, xonly: [] bool, msg: [] u8, seed: int, pub: [] u8, agg: [] u8, psigs: [] u8, sig: [] u8) {
+  nw: [1] MsNonceWork; sw: [1] MsSignWork; sec: [128] u8; rand: [32] u8; q: [32] u8;
+  u := s.ids.count;
+  ms_xbytes_vartime(fr_tweaks_vartime(s.thresh_pk, tweaks, xonly).q, q[..]);
+  for i: 0..<u {
+    id := s.ids[i];
+    for j: 0..<32 { rand[j] = cast(u8) (seed + id); }
+    #assert fr_nonce_gen(rand[..], secshares[32*id..<32*id+32], id, s.pubshares[33*i..<33*i+33], q[..], msg, true, rand[0..<0], sec[64*i..<64*i+64], pub[66*i..<66*i+66], nw[..]) == FR_OK;
+  }
+  #assert fr_nonce_agg_vartime(pub[0..<66*u], agg).code == FR_OK;
+  for i: 0..<u {
+    id := s.ids[i];
+    #assert fr_sign(sec[64*i..<64*i+64], secshares[32*id..<32*id+32], id, s, agg, tweaks, xonly, msg, psigs[32*i..<32*i+32], sw[..]).code == FR_OK;
+  }
+  #assert fr_partial_agg_vartime(psigs[0..<32*u], fr_session_vartime(s, agg, tweaks, xonly, msg), u, sig).code == FR_OK;
+}
+// book:end example

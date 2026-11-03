@@ -1,0 +1,44 @@
+// The checks of frost.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/frost.coax --run-steps 250000000
+#load "../frost.coax";
+
+// book:begin check
+// Threshold: every pair of the dealer's three participants signs under
+// the one threshold key, and each of them alone refuses.
+#forall "any two of three sign; one alone refuses" p: 0..<3 #steps 8000000000 {
+  secret: [32] u8; tp: [33] u8; sec: [96] u8; pub: [99] u8; dw: [1] FrDealWork;
+  for j: 0..<32 { secret[j] = cast(u8) (j + 1); }
+  #assert fr_dealer(secret[..], 3, 2, tp[..], sec[..], pub[..], dw[..]) == FR_OK;
+  ids := [2] int.[p, (p + 1) % 3];
+  ps: [66] u8; nonces: [132] u8; agg: [66] u8; psigs: [64] u8; sig: [64] u8; msg: [32] u8; q: [32] u8; nf: [1] bool;
+  for i: 0..<2 { for j: 0..<33 { ps[33*i+j] = pub[33*ids[i]+j]; } }
+  s := FrSigners.{n=3, t=2, ids=ids[..], pubshares=ps[..], has_pubshares=true, thresh_pk=tp[..]};
+  session(sec[..], s, msg[0..<0], nf[0..<0], msg[..], 30 + p, nonces[..], agg[..], psigs[..], sig[..]);
+  for j: 0..<32 { q[j] = tp[1 + j]; }
+  #assert schnorr_verify_vartime(msg[..], q[..], sig[..]);
+  s.ids = ids[0..<1]; s.pubshares = ps[0..<33];
+  #assert fr_session_vartime(s, agg[..], msg[0..<0], nf[0..<0], msg[..]).code == FR_SIGNER_COUNT;
+}
+// Any one changed bit of a published partial signature fails
+// PartialSigVerify for its signer.
+#forall "a changed partial signature fails" bit: 0..<8 #steps 8000000000 {
+  c := FR_VERIFY[0];
+  ids: [16] int; ps: [528] u8; tp: [33] u8; n: [1056] u8; f: [1] bool; m: [64] u8; sig: [32] u8;
+  s := FrSigners.{n=c.n, t=c.t, ids=fr_ids(c.ids, ids[..]), pubshares=ms_hex(c.pubshares, ps[..]), has_pubshares=c.has_pubshares, thresh_pk=ms_hex(c.thresh_pk, tp[..])};
+  psig := ms_hex(c.psig, sig[..]);
+  psig[(bit * 13) % 32] ^= cast(u8) (1 << bit);
+  #assert fr_partial_verify_vartime(psig, ms_hex(c.pubnonces, n[..]), s, m[0..<0], f[0..<0], ms_hex(c.msg, m[..]), c.index).code == FR_INVALID;
+}
+// A secnonce signs once: after each of the first published signing
+// cases, the same secnonce refuses, whatever the message.
+#forall "a secnonce signs once" i: 0..<4 #steps 8000000000 {
+  c := FR_SIGN[i]; w: [1] MsSignWork;
+  ids: [16] int; ps: [528] u8; tp: [33] u8; sec: [64] u8; sk: [32] u8; agg: [66] u8; f: [1] bool; m: [64] u8; psig: [32] u8;
+  s := FrSigners.{n=c.n, t=c.t, ids=fr_ids(c.ids, ids[..]), pubshares=ms_hex(c.pubshares, ps[..]), has_pubshares=c.has_pubshares, thresh_pk=ms_hex(c.thresh_pk, tp[..])};
+  nonce := ms_hex(c.secnonce, sec[..]); key := ms_hex(c.secshare, sk[..]); aggnonce := ms_hex(c.aggnonce, agg[..]);
+  #assert fr_sign(nonce, key, c.signer_id, s, aggnonce, m[0..<0], f[0..<0], ms_hex(c.msg, m[..]), psig[..], w[..]).code == FR_OK;
+  m[0] ^= 1;
+  #assert fr_sign(nonce, key, c.signer_id, s, aggnonce, m[0..<0], f[0..<0], m[0..<32], psig[..], w[..]).code == FR_SECNONCE_1;
+}
+// book:end check

@@ -3954,6 +3954,266 @@
       "retrieved": "2026-11-03",
       "sha256": "3b9db74479742398ae15d8448f41ea67381611fa7bdced26f92116b0f22f0225",
       "bytes": 1976
+    },
+    {
+      "path": "upstream/bip445/bip-0445.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/README.md",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "CC0-1.0 (BIP-445 header)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "f345267e83070c31588a2812ed0ca014338b0a9c4127283e664d66f27f740458",
+      "bytes": 81674
+    },
+    {
+      "path": "upstream/bip445/COPYING",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/COPYING",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "0365c83e8f98eeb409d344b1662fdec720325db7f7946a7a4b92e0e39b6671f1",
+      "bytes": 1095
+    },
+    {
+      "path": "upstream/bip445/python/frost_ref/__init__.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/frost_ref/__init__.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "dc909d8252ffa08dda4d0e39b296df4de69199492d3c805bede5ebf3f004c768",
+      "bytes": 1045
+    },
+    {
+      "path": "upstream/bip445/python/frost_ref/signing.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/frost_ref/signing.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "60d40549b66acb130c65e36fb528e4297b8543482bdf3cee0d64d3dfc0b62a1c",
+      "bytes": 23964
+    },
+    {
+      "path": "upstream/bip445/python/secp256k1lab/COPYING",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/secp256k1lab/COPYING",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "8f13f6dc042fbc546d7217ed87f1639a9f95ba8ba0248364899564c5d4f32576",
+      "bytes": 1190
+    },
+    {
+      "path": "upstream/bip445/python/secp256k1lab/src/secp256k1lab/__init__.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/secp256k1lab/src/secp256k1lab/__init__.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "upstream/bip445/python/secp256k1lab/src/secp256k1lab/bip340.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/secp256k1lab/src/secp256k1lab/bip340.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "428ee8110175b32b67d22a88efe07a44cede2419d0f547949164f2a8f9d76b96",
+      "bytes": 2492
+    },
+    {
+      "path": "upstream/bip445/python/secp256k1lab/src/secp256k1lab/ecdh.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/secp256k1lab/src/secp256k1lab/ecdh.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "8ee93a3442bce4c438bd6373565071a09fd7c1075e998b7e90b51ae17a8df0e1",
+      "bytes": 522
+    },
+    {
+      "path": "upstream/bip445/python/secp256k1lab/src/secp256k1lab/keys.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/secp256k1lab/src/secp256k1lab/keys.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "25a7c9d4d70dec7acea57245a529ef5f8454616d075a31fe27964d3e237c2860",
+      "bytes": 548
+    },
+    {
+      "path": "upstream/bip445/python/secp256k1lab/src/secp256k1lab/secp256k1.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/secp256k1lab/src/secp256k1lab/secp256k1.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "e68560295918b5aee07f38a2dbe5d8fce355ed46b50cfe3240c7d91508dc0b04",
+      "bytes": 17423
+    },
+    {
+      "path": "upstream/bip445/python/secp256k1lab/src/secp256k1lab/util.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/secp256k1lab/src/secp256k1lab/util.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (secp256k1lab COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3aeccf814f0bd67cdfb0791a6bf054b367c580942acd44942fdf505e5a1af707",
+      "bytes": 645
+    },
+    {
+      "path": "upstream/bip445/python/tests.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/tests.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "233b155e61dd3a0edd0a25de2dc8c60e798f2867374587b01fe6ac2a4837603a",
+      "bytes": 28780
+    },
+    {
+      "path": "upstream/bip445/python/trusted_dealer.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/trusted_dealer.py",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "f5958392b2ede59d2ad4652d015d66b625482da1e8fbba19b5ad18b477bf8358",
+      "bytes": 6413
+    },
+    {
+      "path": "upstream/bip445/python/vectors/det_sign_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/vectors/det_sign_vectors.json",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "8b324d6bce17e4c12d65f720832a486954baf2b821febf05906ea2ca81d09843",
+      "bytes": 91967
+    },
+    {
+      "path": "upstream/bip445/python/vectors/nonce_agg_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/vectors/nonce_agg_vectors.json",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "bf4ff95a4c07e4c803ce1b599600de55be26e68f804396998a05cee6b1b6172d",
+      "bytes": 2780
+    },
+    {
+      "path": "upstream/bip445/python/vectors/nonce_gen_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/vectors/nonce_gen_vectors.json",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "b86c932a1edd955c0fba8eba0be34b3266205ab41dc13b01eae58f1be07907d2",
+      "bytes": 5793
+    },
+    {
+      "path": "upstream/bip445/python/vectors/sig_agg_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/vectors/sig_agg_vectors.json",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "5b35cf5679cf76268c05ef9ca92188cc796a79fefed43a35a21c892b5a5f28b9",
+      "bytes": 33447
+    },
+    {
+      "path": "upstream/bip445/python/vectors/sign_verify_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/vectors/sign_verify_vectors.json",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "cebf115cd8fd0cf3b642d45c0686d5bd2d32a54e6635078eff2d9b008861b246",
+      "bytes": 99771
+    },
+    {
+      "path": "upstream/bip445/python/vectors/threshold_info_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/vectors/threshold_info_vectors.json",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "18a33d5b9da1f0d71b46c9896da0524cb32762f92e1fbdcf40f503e925e03519",
+      "bytes": 26676
+    },
+    {
+      "path": "upstream/bip445/python/vectors/tweak_vectors.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/siv2r/bip-frost-signing/ba299badfbe647e670686de75578dd501a627028/python/vectors/tweak_vectors.json",
+      "revision": "git:ba299badfbe647e670686de75578dd501a627028",
+      "license": "MIT (COPYING)",
+      "covers": [
+        "bitcoin-frost"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "94448fedf061ee1fe8286f4174de04eca59db9d1776216f5a1161fa9cb5b1fe8",
+      "bytes": 42177
     }
   ]
 }

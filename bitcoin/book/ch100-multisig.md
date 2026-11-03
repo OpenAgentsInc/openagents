@@ -762,7 +762,8 @@ On 2026-11-03 all four BIP-67 vectors and all ten BIP-387 scripts recompute, all
 - Signing `multi_a` leaves through PSBT fields (BIP-371's type `0x14`):
   the leaf here is signed directly.
 - MuSig2's aggregate key, which hides an n-of-n behind one key:
-  [chapter 101](ch101-musig2.md). FROST threshold signatures: chapter 102.
+  [chapter 101](ch101-musig2.md). FROST threshold signatures:
+  [chapter 102](ch102-frost-threshold-signatures.md).
 
 ## Summary
 

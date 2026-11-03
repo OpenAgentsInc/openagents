@@ -2033,14 +2033,25 @@
   {
    "number": 102,
    "title": "FROST threshold signatures",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch102-frost-threshold-signatures.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     101
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/frost.coax",
+    "bitcoin/examples/checks/frost.coax",
+    "coax/lib/bitcoin/frost.coax",
+    "coax/lib/bitcoin/musig.coax",
+    "coax/lib/bitcoin/taproot.coax",
+    "coax/tests/bitcoin/frost_vectors.coax",
+    "coax/tests/bitcoin/make_frost_vectors.py",
+    "coax/tests/bitcoin/frost.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

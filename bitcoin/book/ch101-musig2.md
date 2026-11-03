@@ -1223,7 +1223,7 @@ On 2026-11-03 the reference passes every pinned vector file and six random sessi
 
 ## What this chapter leaves out
 
-- Threshold signatures, t of n: chapter 102.
+- Threshold signatures, t of n: [chapter 102](ch102-frost-threshold-signatures.md).
 - Adaptor signatures, which MuSig2 sessions in Lightning use: chapter
   103.
 - The PSBT fields for MuSig2 participants, nonces and partial signatures
