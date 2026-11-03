@@ -286,6 +286,19 @@ The native sanitizer suite compares the compiled Coax hash with independent
 used in these test/oracle tools, never the bootstrap or an import. Fingerprints
 remain reproducibility evidence, not signatures or authorization.
 
+The sanitized native importer check imports every descriptor in
+`proto/descriptors/` and `coax/tests/proto/types.pb` unchanged, plus a fixed
+subset of a seeded sweep: random inputs of 0-63 bytes and every 64th size to
+1023, and 8 of the 64 bit-flip mutants of each descriptor, one per bit
+position. That is 295 imports, about 22 s on a 28-core Linux machine at
+73 ms per import, and the test prints its count and cost.
+`COAX_PROTO_SANITIZER_FULL=1 python3 coax/tests/proto_import.py` runs the
+full sweep, all 1024 random inputs and all 64 mutants of each descriptor
+(about 2,600 imports, 3 to 4 minutes). Most of the sanitized cost is ASan's
+stack-use-after-return fake stack, which GCC 15 turns on by default (about
+3.3x on `owned.pb`), and the generated-name collision check, which compares
+each of `owned.pb`'s 4,960 generated names with every earlier one.
+
 
 The legacy declaration-characterization suite pins the pre-voice `owned.pb`
 as `tests/proto/legacy-owned.pb` at the recorded reference commit. The live

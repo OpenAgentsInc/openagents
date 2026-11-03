@@ -430,20 +430,38 @@ main :: () {a:[4] u8;b:[4] u8;
         self.assertEqual(r.returncode,1);self.assertEqual(json.loads(r.stderr)['code'],'E0502')
 
     def test_native_importer_under_sanitizers(self):
+        # The full sweep is 1024 random inputs plus 64 bit-flip mutants of each
+        # descriptor: about 2,600 imports, 3 to 4 minutes under ASan+UBSan on a
+        # 28-core Linux machine (owned.pb alone is about 1.1 s per sanitized
+        # import, 14x its unsanitized cost; #12683). By default the harness
+        # runs a fixed subset of that same sweep: the generator still produces
+        # every input and mutant from seed 17, in the same order, so the subset
+        # is exactly a selection of the full sweep. It imports every descriptor
+        # unchanged, every random input of 0-63 bytes and each 64th size after
+        # (127, 191, ..., 1023), and mutants 0, 9, ..., 63 of each descriptor,
+        # one per flipped bit position (bit i%8). COAX_PROTO_SANITIZER_FULL=1
+        # runs the full sweep. The harness reports its import count and cost.
+        full=os.environ.get('COAX_PROTO_SANITIZER_FULL')=='1'
         harness=self.d/'native.cpp'
-        code='#include '+json.dumps(str(ROOT/'coax/src/proto.cpp'))+'\n#include <cassert>\n#include <fstream>\n#include <iterator>\nint main(int argc,char **argv){\n'
+        code='#include '+json.dumps(str(ROOT/'coax/src/proto.cpp'))+'\n#include <cassert>\n#include <chrono>\n#include <cstring>\n#include <fstream>\n#include <iterator>\nint main(int argc,char **argv){\n'
         code+='assert(S_hash({nullptr,-1}).error==1);assert(S_hash({nullptr,2305843009213693952LL}).error==1);\n'
         # Independent hashlib oracle, including both SHA padding boundaries.
         for size in (0,3,55,56,57,63,64,65,1000):
             data=b'x'*size
             code+='{std::string input('+str(size)+",'x');uint8_t hex[64];auto digest=S_hash({input.data(),(int64_t)input.size()});assert(S_hex(digest,{hex,64}));assert(std::string((char*)hex,64)=="+json.dumps(hashlib.sha256(data).hexdigest())+');}\n'
-        code+='''uint32_t state=17;std::string random;
+        code+='''assert(argc>=2);const bool full=std::strcmp(argv[1],"full")==0;assert(full||std::strcmp(argv[1],"sampled")==0);
+long imports=0;const auto started=std::chrono::steady_clock::now();
+uint32_t state=17;std::string random;
 for(int n=0;n<1024;n++){random.resize((size_t)n);for(char &c:random){state=state*1664525+1013904223;c=(char)(state>>24);}
- auto result=coax::proto::import_descriptor(random,"Fuzz","test");assert(result.source.size()<=(size_t)F_capacities().source);}
-for(int arg=1;arg<argc;arg++){std::ifstream file(argv[arg],std::ios::binary);std::string raw((std::istreambuf_iterator<char>(file)),{});
- assert(!raw.empty());assert(coax::proto::import_descriptor(raw,"Fuzz","test").error.empty());
+ if(!full && n>=64 && n%64!=63)continue;
+ auto result=coax::proto::import_descriptor(random,"Fuzz","test");imports++;assert(result.source.size()<=(size_t)F_capacities().source);}
+for(int arg=2;arg<argc;arg++){std::ifstream file(argv[arg],std::ios::binary);std::string raw((std::istreambuf_iterator<char>(file)),{});
+ assert(!raw.empty());assert(coax::proto::import_descriptor(raw,"Fuzz","test").error.empty());imports++;
  for(int i=0;i<64;i++){std::string changed=raw;state=state*1664525+1013904223;size_t pos=state%changed.size();changed[pos]^=(char)(1u<<(i%8));
-  auto result=coax::proto::import_descriptor(changed,"Fuzz","test");assert(result.source.size()<=(size_t)F_capacities().source);}}
+  if(!full && i%9!=0)continue;
+  auto result=coax::proto::import_descriptor(changed,"Fuzz","test");imports++;assert(result.source.size()<=(size_t)F_capacities().source);}}
+const double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+std::printf("%s %ld imports %.0f ms %.1f ms/import\\n",full?"full":"sampled",imports,ms,ms/(double)imports);
 return 0;}'''
         harness.write_text(code)
         executable=self.d/'native-sanitized'
@@ -451,8 +469,13 @@ return 0;}'''
         checked([os.environ.get('CC','cc'),'-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-c',ARTIFACTS/'proto_importer.c','-o',native])
         checked([os.environ.get('CXX','c++'),'-std=c++20','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I',ARTIFACTS,harness,native,'-o',executable])
         descriptors=sorted((ROOT/'proto/descriptors').glob('*.pb'))+[ROOT/'coax/tests/proto/types.pb']
-        r=run([executable,*descriptors],env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0',UBSAN_OPTIONS='halt_on_error=1'))
+        r=S.run(list(map(str,[executable,'full' if full else 'sampled',*descriptors])),capture_output=True,timeout=900 if full else 60,
+                env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0',UBSAN_OPTIONS='halt_on_error=1'))
         self.assertEqual(r.returncode,0,r.stderr.decode())
+        mode,imports,_,ms,_,per,_=r.stdout.decode().split()
+        expected=(1024+65*len(descriptors)) if full else (79+9*len(descriptors))
+        self.assertEqual((mode,int(imports)),('full' if full else 'sampled',expected))
+        print(f'\nnative importer under ASan+UBSan: {mode}, {imports} imports of {len(descriptors)} descriptors in {float(ms)/1000:.1f} s, {per} ms per import',file=sys.stderr)
 
     def test_sanitizer_target_and_fuzz(self):
         # Run generated C, not the host importer, under ASan+UBSan.
