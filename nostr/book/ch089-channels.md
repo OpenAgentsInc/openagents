@@ -992,7 +992,8 @@ part_cw :: () {
     print("% %… at T0+%: %, depth %, broadcast %\n",names[i],id8(r.id,h[..]),r.created_at-T0,CW_WORDS[s],r.depth,r.broadcast);
   }
   q:CwRequest;q.channels=1;q.has_limit=true;q.limit=2;idx:[8]int;
-  bounds:[1]CwBounds;sent:[160]u8;
+  // The next request's cursor views hex, so hex outlives every page.
+  bounds:[1]CwBounds;sent:[160]u8;hex:[64]u8;
   for page:1..<4 {
     p:=cw_window(rows[..],n[0],q,true,idx[..]);
     print("page %:\n",page);show_page(rows[..],p,idx[..]);
@@ -1000,7 +1001,7 @@ part_cw :: () {
     bounds[0]=cw_read_bounds(cast(string)sent[0..<dn],cast(string)b[0..<bn]);
     print("  the client sees %\n",VIEW_WORDS[cw_view(bounds[..],cast(string)sent[0..<dn],p.head,p.n)]);
     if !p.has_more {break;}
-    hex:[64]u8;x:=cw_put_hex(hex[..],0,p.next_id);
+    x:=cw_put_hex(hex[..],0,p.next_id);
     q.has_until=true;q.until=p.next_at;q.has_before=true;q.before=cast(string)hex[0..<64];
   }
   t:CwRequest;t.thread=true;t.channels=1;t.roots=1;t.root=rows[2].id;t.kinds[0]=9;t.kinds_n=1;
@@ -1187,6 +1188,8 @@ PY_NEXT :: [3]string.["1790000060:1c1bfdde732181ce195077eb6180fdb516a7f62319db10
   #assert CHV_PAGE1==PY_PAGES[0] && CHV_PAGE2==PY_PAGES[1] && CHV_PAGE3==PY_PAGES[2];
   #assert CHV_PAGE1_NEXT==PY_NEXT[0] && CHV_PAGE2_NEXT==PY_NEXT[1] && CHV_PAGE3_NEXT==PY_NEXT[2];
   q:CwRequest;q.channels=1;q.has_limit=true;q.limit=2;idx:[4]int;
+  // The next request's cursor views hex, so hex outlives every page.
+  hex:[64]u8;
   for page:0..<3 {
     p:=cw_window(rows[..],n[0],q,true,idx[..]);
     got:[64]u8;g:=0;
@@ -1195,7 +1198,7 @@ PY_NEXT :: [3]string.["1790000060:1c1bfdde732181ce195077eb6180fdb516a7f62319db10
     next:[96]u8;k:=json_raw(next[..],0,"null");
     if p.has_more {k=cw_put_int(next[..],0,p.next_at);k=json_raw(next[..],k,":");k=cw_put_hex(next[..],k,p.next_id);}
     #assert cast(string)next[0..<k]==PY_NEXT[page];
-    hex:[64]u8;x:=cw_put_hex(hex[..],0,p.next_id);
+    x:=cw_put_hex(hex[..],0,p.next_id);
     q.has_until=true;q.until=p.next_at;q.has_before=true;q.before=cast(string)hex[..];
   }
   m:=verified(CHV_META,out[..]);#assert m.verified && cl_read(m,key_of(CHV_RELAY)).created==T0;
