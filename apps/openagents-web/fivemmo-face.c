@@ -142,6 +142,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (kept.x != player.pos.x || kept.z != player.pos.z) {
     player.pos.x = kept.x; player.pos.z = kept.z; player.prev_pos = player.pos;
   }
+  /* the controller's floor is flat at 0; stand on the green's terrain, which rises above it */
+  { float gy = mmo_ground(at(state), player.pos.x, player.pos.z);
+    if (player.pos.y < gy) { player.pos.y = gy; player.prev_pos.y = gy; if (player.vel.y < 0) player.vel.y = 0; } }
   coax_t_Vec3 feet = verse_player_feet(player);
   int64_t sq = mmo_square(feet.x, feet.z);
   mb_want(mb(), sq / 100, sq % 100);

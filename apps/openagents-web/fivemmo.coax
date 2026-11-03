@@ -165,6 +165,9 @@ mmo_drift :: (m: [] Mmo, x: f32, z: f32) -> f32 #export_c {
   w := mm_world(m[0].sx[me], m[0].sy[me]);
   return hi(abs(x - w.x), abs(z - w.z)) / f32(MM_SQ);
 }
+// The ground's height under a point (Everglade's terrain): the walking controller's floor is flat at
+// 0, and this green rises above it, so the face stands you on this.
+mmo_ground :: (s: [] Everglade, x: f32, z: f32) -> f32 #export_c { return ground_at(s, x, z); }
 mmo_home :: (m: [] Mmo) -> Point #export_c { me := clamp_i(m[0].me, 0, MM_N - 1); return mm_world(m[0].sx[me], m[0].sy[me]); }
 
 // The others' bodies for the walking controller, 7 numbers each (a capsule: two ends and a radius),
