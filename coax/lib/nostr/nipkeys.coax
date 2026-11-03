@@ -34,6 +34,7 @@
 #load "../crypto/sha256.coax";
 #load "../crypto/bip32.coax";
 #load "../crypto/secp_mult.coax";
+#load "../bitcoin/tx.coax";
 #load "../kept.coax";
 #authority;
 
@@ -666,16 +667,15 @@ at_slug_ky :: (s:string)->bool {
 
 // ---- PSBT v0
 // A compact size at b[at]: its value and the next position (ok false, value
-// 0, when malformed). Only the one- and three-byte forms; nothing this
-// reader needs is larger.
+// 0, when malformed or when at is outside b). Bitcoin chapter 34's
+// ReadCompactSize reads it, in all its forms, each only in its shortest
+// encoding and none above MAX_SIZE.
 KyVar :: struct {ok:bool;value:int;next:int;}
 ky_var :: (b:[]u8,at:int)->KyVar {
-  if at<0 || at>=b.count {return KyVar.{};}
-  if b[at]<0xfd {return KyVar.{ok=true,value=cast(int)b[at],next=at+1};}
-  if b[at]>0xfd || at+3>b.count {return KyVar.{};}
-  v:=cast(int)b[at+1]|(cast(int)b[at+2]<<8);
-  if v<0xfd {return KyVar.{};}
-  return KyVar.{ok=true,value=v,next=at+3};
+  if at<0 {return KyVar.{};}
+  c:=tx_compact_read_vartime(b,at);
+  if c.code!=TX_OK {return KyVar.{};}
+  return KyVar.{ok=true,value=c.value,next=c.next};
 }
 ky_le :: (b:[]u8,at:int,n:int)->int {v:=0;for k:0..<n {v|=cast(int)b[at+k]<<(8*k);}return v;}
 // value (8 bytes little-endian) then a script; the next position, or -1.
@@ -1383,6 +1383,11 @@ ky_topup :: (hot_msat:int,amount_sat:int,ceiling_msat:int)->KyCode {
   c[104]=65;#assert ky_psbt_read(c[0..<ps.count]).code==KyCode.psbt;c[104]=22;
   v=[3]u8.[0xfd,0x00,0x01];#assert ky_var(v[..],0).value==256;
   v[0]=0xfe;#assert !ky_var(v[..],0).ok;
+  // the five-byte form, from 0x10000 to MAX_SIZE (Bitcoin chapter 94)
+  v5:=[5]u8.[0xfe,0x00,0x00,0x01,0x00];#assert ky_var(v5[..],0).value==0x10000 && ky_var(v5[..],0).next==5;
+  v5[3]=0;v5[2]=0xff;#assert !ky_var(v5[..],0).ok;                      // 0xff00 belongs in three bytes
+  v5[2]=0;v5[3]=0;v5[4]=0x02;#assert ky_var(v5[..],0).value==0x02000000;   // MAX_SIZE
+  v5[1]=1;#assert !ky_var(v5[..],0).ok;                                  // MAX_SIZE + 1
   #assert ky_psbt_read(ps[0..<4]).code==KyCode.psbt && ky_at(ps,ps.count)==-1 && ky_at(ps,0)=='p';
   #assert ky_le(ps,0,4)==0x74627370;
   // the global version key: 0 is v0, 2 is v2 (not built)

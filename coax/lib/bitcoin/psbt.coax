@@ -1,0 +1,1451 @@
+// Partially signed Bitcoin transactions (Bitcoin chapter 94): BIP-174's
+// PSBT version 0, BIP-370's version 2, BIP-371's Taproot fields and the
+// six roles that pass one transaction between the people who build it,
+// complete it and sign it.
+//
+// The reader follows Bitcoin Core's PartiallySignedTransaction,
+// PSBTInput and PSBTOutput Unserialize (psbt.h) and DecodeRawPSBT
+// (psbt.cpp) at the pinned revision, and gives each of Core's failures
+// its own code with Core's message: duplicate keys, a key of the wrong
+// length for its type, a value whose stated size isn't what was read,
+// invalid public keys and signatures, the fields one version allows and
+// the other refuses or requires, and BIP-373's MuSig2 fields, which Core
+// checks too. A read PSBT is a Psbt plus one PsbtField per key-value
+// pair, each a position in the caller's bytes; nothing is copied.
+//
+// The roles work on PsbtMaps, the pairs copied into one arena: the
+// Creator (psbt_create_vartime), the Updater (psbt_set_vartime), the
+// Signer (psbt_sign_vartime: P2PKH, P2WPKH, P2SH and P2WSH multisig with
+// ECDSA, and P2TR key paths with BIP-340), the Combiner, the Input
+// Finalizer and the Transaction Extractor, with BIP-370's lock time and
+// unsigned transaction. psbt_write_vartime writes a PSBT in the order
+// Core's Serialize writes it.
+//
+// PSBTs and transactions are public; the signer's key is secret and goes
+// only to chapter 20's and chapter 24's constant-time signers.
+// coax/tests/bitcoin/psbt.py checks the reasons against the pinned Core
+// sources and replays the example.
+#load "script.coax";
+#load "taproot.coax";
+#load "../crypto/bip32.coax";
+#load "../nostr/base64.coax";
+#load "../../tests/bitcoin/psbt_vectors.coax";
+#authority;
+
+// book:begin codes
+// Result codes, numbered as psbt.py numbers them, and Core's messages.
+// PSBT_KEY_SIZE's message names the expected size and the type:
+// psbt_key_size_vartime and psbt_key_name_vartime give them.
+PSBT_OK :: 0;
+PSBT_BASE64 :: 1;
+PSBT_MAGIC :: 2;
+PSBT_TRUNCATED :: 3;
+PSBT_NONCANONICAL :: 4;
+PSBT_SIZE_TOO_LARGE :: 5;
+PSBT_TX_FLAG :: 6;
+PSBT_TX_NO_WITNESS :: 7;
+PSBT_DUP_GLOBAL :: 8;
+PSBT_DUP_INPUT :: 9;
+PSBT_DUP_OUTPUT :: 10;
+PSBT_KEY_SIZE :: 11;
+PSBT_VALUE_SIZE :: 12;
+PSBT_TX_NOT_EMPTY :: 13;
+PSBT_PUBKEY :: 14;
+PSBT_KEYPATH_LENGTH :: 15;
+PSBT_BIP32_KEY_SIZE :: 16;
+PSBT_PARTIAL_KEY_SIZE :: 17;
+PSBT_SIG_ENCODING :: 18;
+PSBT_VERSION :: 19;
+PSBT_SEP_GLOBAL :: 20;
+PSBT_SEP_INPUT :: 21;
+PSBT_SEP_OUTPUT :: 22;
+PSBT_NO_TX :: 23;
+PSBT_V0_TX_VERSION :: 24;
+PSBT_V0_FALLBACK :: 25;
+PSBT_V0_INPUT_COUNT :: 26;
+PSBT_V0_OUTPUT_COUNT :: 27;
+PSBT_V0_MODIFIABLE :: 28;
+PSBT_V1 :: 29;
+PSBT_V2_TX_VERSION :: 30;
+PSBT_V2_INPUT_COUNT :: 31;
+PSBT_V2_OUTPUT_COUNT :: 32;
+PSBT_V2_TX :: 33;
+PSBT_UTXO_HASH :: 34;
+PSBT_UTXO_INDEX :: 35;
+PSBT_INPUT_COUNT :: 36;
+PSBT_OUTPUT_COUNT :: 37;
+PSBT_EXTRA :: 38;
+PSBT_V0_PREV_TXID :: 39;
+PSBT_V0_PREV_INDEX :: 40;
+PSBT_V0_SEQUENCE :: 41;
+PSBT_V0_TIME :: 42;
+PSBT_TIME_LOW :: 43;
+PSBT_V0_HEIGHT :: 44;
+PSBT_HEIGHT_HIGH :: 45;
+PSBT_HEIGHT_ZERO :: 46;
+PSBT_TAP_KEY_SHORT :: 47;
+PSBT_TAP_KEY_LONG :: 48;
+PSBT_TAP_SCRIPT_SHORT :: 49;
+PSBT_TAP_SCRIPT_LONG :: 50;
+PSBT_LEAF_KEY_SHORT :: 51;
+PSBT_LEAF_CONTROL :: 52;
+PSBT_LEAF_EMPTY :: 53;
+PSBT_IN_TAP_PATH :: 54;
+PSBT_IN_MUSIG_AGG :: 55;
+PSBT_OUT_MUSIG_AGG :: 56;
+PSBT_IN_MUSIG_PART :: 57;
+PSBT_OUT_MUSIG_PART :: 58;
+PSBT_IN_MUSIG_MULTIPLE :: 59;
+PSBT_OUT_MUSIG_MULTIPLE :: 60;
+PSBT_MUSIG_AGG :: 61;
+PSBT_MUSIG_PART :: 62;
+PSBT_NONCE_KEY :: 63;
+PSBT_NONCE_VALUE :: 64;
+PSBT_PSIG_KEY :: 65;
+PSBT_V2_PREV_TXID :: 66;
+PSBT_V2_PREV_INDEX :: 67;
+PSBT_V0_AMOUNT :: 68;
+PSBT_V0_SCRIPT :: 69;
+PSBT_TREE_EMPTY :: 70;
+PSBT_TREE_DEPTH :: 71;
+PSBT_TREE_LEAF_VERSION :: 72;
+PSBT_TREE_MALFORMED :: 73;
+PSBT_OUT_TAP_PATH :: 74;
+PSBT_V2_AMOUNT :: 75;
+PSBT_V2_SCRIPT :: 76;
+PSBT_CAPACITY :: 77;      // more fields, inputs, outputs or bytes than the caller's arrays hold
+PSBT_REASONS :: [78] string.[
+  "ok",
+  "invalid base64",
+  "Invalid PSBT magic bytes",
+  "end of data",
+  "non-canonical ReadCompactSize()",
+  "ReadCompactSize(): size too large",
+  "Unknown transaction optional data",
+  "Superfluous witness record",
+  "Duplicate Key, global key already provided",
+  "Duplicate Key, input key already provided",
+  "Duplicate Key, output key already provided",
+  "Size of key was not the expected size",
+  "Size of value was not the stated size",
+  "Unsigned tx does not have empty scriptSigs and scriptWitnesses.",
+  "Invalid pubkey",
+  "Invalid length for HD key path",
+  "Size of key was not the expected size for the type BIP32 keypath",
+  "Size of key was not the expected size for the type partial signature pubkey",
+  "Signature is not a valid encoding",
+  "Unsupported version number",
+  "Separator is missing at the end of the global map",
+  "Separator is missing at the end of an input map",
+  "Separator is missing at the end of an output map",
+  "No unsigned transaction was provided",
+  "PSBT_GLOBAL_TX_VERSION is not allowed in PSBTv0",
+  "PSBT_GLOBAL_FALLBACK_LOCKTIME is not allowed in PSBTv0",
+  "PSBT_GLOBAL_INPUT_COUNT is not allowed in PSBTv0",
+  "PSBT_GLOBAL_OUTPUT_COUNT is not allowed in PSBTv0",
+  "PSBT_GLOBAL_TX_MODIFIABLE is not allowed in PSBTv0",
+  "There is no PSBT version 1",
+  "PSBT_GLOBAL_TX_VERSION is required in PSBTv2",
+  "PSBT_GLOBAL_INPUT_COUNT is required in PSBTv2",
+  "PSBT_GLOBAL_OUTPUT_COUNT is required in PSBTv2",
+  "PSBT_GLOBAL_UNSIGNED_TX is not allowed in PSBTv2",
+  "Non-witness UTXO does not match outpoint hash",
+  "Input specifies output index that does not exist",
+  "Inputs provided does not match the number of inputs in transaction.",
+  "Outputs provided does not match the number of outputs in transaction.",
+  "extra data after PSBT",
+  "Previous txid is not allowed in PSBTv0",
+  "Previous output's index is not allowed in PSBTv0",
+  "Sequence is not allowed in PSBTv0",
+  "Required time based locktime is not allowed in PSBTv0",
+  "Required time based locktime is invalid (less than 500000000)",
+  "Required height based locktime is not allowed in PSBTv0",
+  "Required height based locktime is invalid (greater than or equal to 500000000)",
+  "Required height based locktime is invalid (0)",
+  "Input Taproot key path signature is shorter than 64 bytes",
+  "Input Taproot key path signature is longer than 65 bytes",
+  "Input Taproot script path signature is shorter than 64 bytes",
+  "Input Taproot script path signature is longer than 65 bytes",
+  "Input Taproot leaf script key is not at least 34 bytes",
+  "Input Taproot leaf script key's control block size is not valid",
+  "Input Taproot leaf script must be at least 1 byte",
+  "Input Taproot BIP32 keypath has an invalid length",
+  "Input musig2 aggregate pubkey is invalid",
+  "Output musig2 aggregate pubkey is invalid",
+  "Input musig2 participant pubkey is invalid",
+  "Output musig2 participant pubkey is invalid",
+  "Input musig2 participants pubkeys value size is not a multiple of 33",
+  "Output musig2 participants pubkeys value size is not a multiple of 33",
+  "musig2 aggregate pubkey is invalid",
+  "musig2 participant pubkey is invalid",
+  "Input musig2 pubnonce key is not expected size of 67 or 99 bytes",
+  "Input musig2 pubnonce value is not 66 bytes",
+  "Input musig2 partial sig key is not expected size of 67 or 99 bytes",
+  "Previous TXID is required in PSBTv2",
+  "Previous output's index is required in PSBTv2",
+  "Output amount is not allowed in PSBTv0",
+  "Output script is not allowed in PSBTv0",
+  "Output Taproot tree must not be empty",
+  "Output Taproot tree has as leaf greater than Taproot maximum depth",
+  "Output Taproot tree has a leaf with an invalid leaf version",
+  "Output Taproot tree is malformed",
+  "Output Taproot BIP32 keypath has an invalid length",
+  "Output amount is required in PSBTv2",
+  "Output script is required in PSBTv2",
+  "capacity",
+];
+// book:end codes
+
+// book:begin layout
+// The three kinds of map.
+PSBT_GLOBAL :: 0; PSBT_INPUT :: 1; PSBT_OUTPUT :: 2;
+PSBT_IO :: 512;          // inputs or outputs of one transaction the reader holds
+PSBT_ITEMS :: 2048;      // witness items of one transaction
+// One key-value pair: its map (and which input or output), its type, the
+// key (type included) at key, key_n bytes, and the value at value, value_n
+// bytes, without the lengths in front of them.
+PsbtField :: struct { map: int; index: int; type: int; key: int; key_n: int; value: int; value_n: int; }
+// A read PSBT, or the refusal code found at byte at; for PSBT_KEY_SIZE,
+// the map and type whose key was the wrong size. version is 0 or 2, and
+// fields[0..<nfields] are its pairs in the order they came. For version
+// 0, tx is where the unsigned transaction's value starts and tx_n its
+// length.
+Psbt :: struct { code: int; at: int; map: int; type: int; version: int; nin: int; nout: int; nfields: int; tx: int; tx_n: int; }
+// The reader's workspace: the global transaction's inputs, and room to
+// read each non-witness UTXO.
+PsbtRead :: struct {
+  gins: [PSBT_IO] TxIn; gouts: [PSBT_IO] TxOut; gt: Tx;
+  ins: [PSBT_IO] TxIn; outs: [PSBT_IO] TxOut; items: [PSBT_ITEMS] TxItem;
+}
+// book:end layout
+
+// ---- the expected key sizes (Core's ExpectedKeySize)
+// book:begin keysize
+// The key length a type must have, or 0 when the type is checked another
+// way (or not at all).
+psbt_key_size_vartime :: (map: int, t: int) -> int #export_c {
+  if map == PSBT_GLOBAL {
+    if t == 0x01 { return 79; }
+    if t == 0x00 || (t >= 0x02 && t <= 0x06) || t == 0xfb { return 1; }
+  } else if map == PSBT_INPUT {
+    if t == 0x0a || t == 0x0c { return 21; }
+    if t == 0x0b || t == 0x0d || t == 0x16 { return 33; }
+    if t == 0x14 { return 65; }
+    if t == 0x1a { return 34; }
+    if t == 0x00 || t == 0x01 || t == 0x03 || t == 0x04 || t == 0x05 || t == 0x07 || t == 0x08 { return 1; }
+    if (t >= 0x0e && t <= 0x13) || t == 0x17 || t == 0x18 { return 1; }
+  } else {
+    if t == 0x07 { return 33; }
+    if t == 0x08 { return 34; }
+    if t == 0x00 || t == 0x01 || (t >= 0x03 && t <= 0x06) { return 1; }
+  }
+  return 0;
+}
+// book:end keysize
+// The type's name in Core's message.
+psbt_key_name_vartime :: (map: int, t: int) -> string {
+  if map == PSBT_GLOBAL {
+    names := [7] string.["Global Unsigned TX", "Global XPUB", "Global Transaction Version", "Global Fallback Locktime",
+      "Global Input Count", "Global Output Count", "Global TX Modifiable Flags"];
+    if t >= 0 && t <= 6 { return names[t]; }
+    if t == 0xfb { return "Global PSBT Version"; }
+  } else if map == PSBT_INPUT {
+    names := [25] string.["Input Non-witness UTXO", "Input Witness UTXO", "", "Input Sighash Type", "Input redeemScript",
+      "Input witnessScript", "", "Input Final scriptSig", "Input Final scriptWitness", "", "Input RIPEMD160 Preimage",
+      "Input SHA256 Preimage", "Input Hash160 Preimage", "Input Hash256 Preimage", "Input Previous TXID",
+      "Input Previous Output's Index", "Input Sequence", "Input Required Time Based Locktime",
+      "Input Required Height Based Locktime", "Input Taproot Key Path Signature", "Input Taproot Script Path Signature",
+      "", "Input Taproot BIP32 Keypath", "Input Taproot Internal Key", "Input Taproot Merkle Root"];
+    if t >= 0 && t < 25 { return names[t]; }
+    if t == 0x1a { return "Input MuSig2 Participants Pubkeys"; }
+  } else {
+    names := [9] string.["Output redeemScript", "Output witnessScript", "", "Output Amount", "Output Script",
+      "Output Taproot Internal Key", "Output Taproot Tree Key", "Output Taproot BIP32 Keypath", "Output MuSig2 Participants Pubkeys"];
+    if t >= 0 && t < 9 { return names[t]; }
+  }
+  return "";
+}
+
+// ---- reading
+// The first refusal wins; later ones are ignored. Returns -1, the
+// position a failed step gives back.
+pr_note :: (r: [] Psbt, code: int, at: int) {
+  if r[0].code == PSBT_OK { r[0].code = code; r[0].at = at; }
+}
+pr_fail :: (r: [] Psbt, code: int, at: int) -> int { pr_note(r, code, at); return -1; }
+pr_refuse :: (r: [] Psbt, code: int, at: int) -> Psbt { pr_note(r, code, at); return r[0]; }
+// The reader's code for a refusal of chapter 34's reader.
+pr_tx_code :: (code: int) -> int {
+  if code == TX_TRUNCATED { return PSBT_TRUNCATED; }
+  if code == TX_NONCANONICAL { return PSBT_NONCANONICAL; }
+  if code == TX_SIZE_TOO_LARGE { return PSBT_SIZE_TOO_LARGE; }
+  if code == TX_UNKNOWN_FLAG { return PSBT_TX_FLAG; }
+  if code == TX_NO_WITNESS { return PSBT_TX_NO_WITNESS; }
+  return PSBT_CAPACITY;
+}
+// book:begin stream
+// ReadCompactSize at b[at]: the value, and next, where reading goes on,
+// or -1 after a refusal.
+pr_size :: (b: [] u8, at: int, r: [] Psbt) -> TxCompact {
+  c := tx_compact_read_vartime(b, at);
+  if c.code != TX_OK { c.next = pr_fail(r, pr_tx_code(c.code), at); }
+  return c;
+}
+// n bytes at at: where reading goes on, or -1 when b ends first.
+pr_take :: (b: [] u8, at: int, n: int, r: [] Psbt) -> int {
+  if n > b.count - at { return pr_fail(r, PSBT_TRUNCATED, at); }
+  return at + n;
+}
+// A vector: a CompactSize length, then that many bytes at .at.
+pr_vector :: (b: [] u8, at: int, r: [] Psbt) -> TxSpan {
+  n := pr_size(b, at, r);
+  if n.next < 0 { return TxSpan.{next=-1}; }
+  if pr_take(b, n.next, n.value, r) < 0 { return TxSpan.{next=-1}; }
+  return TxSpan.{at=n.next, n=n.value, next=n.next+n.value};
+}
+// UnserializeFromVector of an n-byte object: the stated size, n bytes
+// whatever it says, then the two compared.
+pr_sized :: (b: [] u8, at: int, n: int, r: [] Psbt, kat: int) -> int {
+  stated := pr_size(b, at, r);
+  if stated.next < 0 || pr_take(b, stated.next, n, r) < 0 { return -1; }
+  if stated.value != n { return pr_fail(r, PSBT_VALUE_SIZE, kat); }
+  return stated.next + n;
+}
+// The end of UnserializeFromVector: the object read from start ended at
+// end, which must be the stated size past it.
+pr_stated :: (start: TxCompact, end: int, r: [] Psbt, kat: int) -> int {
+  if end < 0 { return -1; }
+  if end - start.next != start.value { return pr_fail(r, PSBT_VALUE_SIZE, kat); }
+  return end;
+}
+// A transaction at b[at], with what follows left alone, as Core's stream
+// reads one; its total is where it ends, relative to at.
+pr_tx :: (b: [] u8, at: int, witness: bool, ins: [] TxIn, outs: [] TxOut, items: [] TxItem, r: [] Psbt) -> Tx {
+  t := tx_parse_vartime(b[at..<b.count], witness, ins, outs, items);
+  if t.code != TX_OK { pr_note(r, pr_tx_code(t.code), at + t.at); }
+  return t;
+}
+// book:end stream
+
+// book:begin checks
+// CPubKey's IsFullyValid on a key's bytes: the length its first byte
+// names (33 for 02 and 03, 65 for 04, 06 and 07), then a point on the
+// curve. A hybrid key (06 or 07) names y's parity in its prefix too.
+psbt_pubkey_valid_vartime :: (k: [] u8) -> bool #export_c {
+  if k.count == 0 { return false; }
+  p := cast(int) k[0];
+  want := ifx p == 2 || p == 3 then 33 else ifx p == 4 || p == 6 || p == 7 then 65 else 0;
+  if k.count != want { return false; }
+  if p < 6 { return se_decode(k).ok; }
+  if (cast(int) k[64] & 1) != (p & 1) { return false; }
+  point: [65] u8;
+  for i: 0..<65 { point[i] = k[i]; }
+  point[0] = 4;
+  return se_decode(point[..]).ok;
+}
+// A MuSig2 key: compressed, then valid.
+pr_compressed :: (k: [] u8) -> bool { return k.count == 33 && (k[0] == 2 || k[0] == 3) && psbt_pubkey_valid_vartime(k); }
+// A key origin: a CompactSize length, a multiple of 4 and not 0 (the
+// fingerprint, then 4 bytes per step), then those bytes.
+pr_origin :: (b: [] u8, at: int, length: int, r: [] Psbt, kat: int) -> int {
+  if length % 4 != 0 || length == 0 { return pr_fail(r, PSBT_KEYPATH_LENGTH, kat); }
+  return pr_take(b, at, length, r);
+}
+// TaprootBuilder's shape check over a tree's leaves in order, one depth
+// at a time: branch[d] says depth d has a node waiting for its sibling.
+// Returns valid after this leaf; IsComplete is psbt_tree_done.
+PsbtTree :: struct { branch: [130] bool; n: int; valid: bool; }
+pr_tree_add :: (t: [] PsbtTree, leaf: int) {
+  if !t[0].valid { return; }
+  depth := leaf;
+  if depth + 1 < t[0].n { t[0].valid = false; return; }
+  while t[0].n > depth && t[0].branch[depth] {
+    t[0].n -= 1;
+    if depth == 0 { t[0].valid = false; return; }
+    depth -= 1;
+  }
+  while t[0].n <= depth { t[0].branch[t[0].n] = false; t[0].n += 1; }
+  t[0].branch[depth] = true;
+}
+psbt_tree_done :: (t: PsbtTree) -> bool {
+  return t.valid && (t.n == 0 || (t.n == 1 && t.branch[0]));
+}
+// book:end checks
+
+// book:begin value
+// One value of type t in a map of kind map (the key is k, read at kat):
+// Core's checks for that type, in Core's order. Returns where reading
+// goes on, or -1.
+pr_value :: (b: [] u8, at: int, map: int, version: int, t: int, k: TxSpan, w: [] PsbtRead, r: [] Psbt, kat: int) -> int {
+  key := b[k.at..<k.next];
+  g := map == PSBT_GLOBAL; i := map == PSBT_INPUT; o := map == PSBT_OUTPUT;
+  size := psbt_key_size_vartime(map, t);
+  if size != 0 && k.n != size {
+    r[0].map = map; r[0].type = t;
+    return pr_fail(r, PSBT_KEY_SIZE, kat);
+  }
+  if g && t == 0x00 {
+    // The unsigned transaction, in the legacy form, with every scriptSig empty.
+    stated := pr_size(b, at, r);
+    if stated.next < 0 { return -1; }
+    tx := pr_tx(b, stated.next, false, w[0].gins[..], w[0].gouts[..], w[0].items[0..<0], r);
+    if tx.code != TX_OK { return -1; }
+    end := pr_stated(stated, stated.next + tx.total, r, kat);
+    if end < 0 { return -1; }
+    for j: 0..<tx.nin { if w[0].gins[j].script_n != 0 { return pr_fail(r, PSBT_TX_NOT_EMPTY, kat); } }
+    w[0].gt = tx; r[0].tx = stated.next; r[0].tx_n = stated.value;
+    return end;
+  }
+  if g && (t == 0x02 || t == 0x03) { return pr_sized(b, at, 4, r, kat); }
+  if g && (t == 0x04 || t == 0x05) {
+    stated := pr_size(b, at, r);
+    if stated.next < 0 { return -1; }
+    return pr_stated(stated, pr_size(b, stated.next, r).next, r, kat);
+  }
+  if g && t == 0x06 { return pr_sized(b, at, 1, r, kat); }
+  if g && t == 0x01 {
+    // An xpub: depth 0 has no parent and no index.
+    depth := key[5]; zero := true;
+    for j: 6..<14 { if key[j] != 0 { zero = false; } }
+    if !psbt_pubkey_valid_vartime(key[46..<79]) || (depth == 0 && !zero) { return pr_fail(r, PSBT_PUBKEY, kat); }
+    n := pr_size(b, at, r);
+    if n.next < 0 { return -1; }
+    return pr_origin(b, n.next, n.value, r, kat);
+  }
+  if g && t == 0xfb {
+    end := pr_sized(b, at, 4, r, kat);
+    if end >= 0 && tx_le_vartime(b, end - 4, 4) > 2 { return pr_fail(r, PSBT_VERSION, kat); }
+    return end;
+  }
+  if i && t == 0x00 {
+    stated := pr_size(b, at, r);
+    if stated.next < 0 { return -1; }
+    tx := pr_tx(b, stated.next, true, w[0].ins[..], w[0].outs[..], w[0].items[..], r);
+    if tx.code != TX_OK { return -1; }
+    return pr_stated(stated, stated.next + tx.total, r, kat);
+  }
+  if i && t == 0x01 {
+    // A witness UTXO: an 8-byte amount, then a script.
+    stated := pr_size(b, at, r);
+    if stated.next < 0 || pr_take(b, stated.next, 8, r) < 0 { return -1; }
+    return pr_stated(stated, pr_vector(b, stated.next + 8, r).next, r, kat);
+  }
+  if i && t == 0x02 {
+    // A partial signature: the key a public key, the value DER with a
+    // defined hash type.
+    if k.n != 34 && k.n != 66 { return pr_fail(r, PSBT_PARTIAL_KEY_SIZE, kat); }
+    if !psbt_pubkey_valid_vartime(key[1..<k.n]) { return pr_fail(r, PSBT_PUBKEY, kat); }
+    sig := pr_vector(b, at, r);
+    if sig.next < 0 { return -1; }
+    s := b[sig.at..<sig.next];
+    if s.count == 0 || der_check_vartime(s) != DER_OK || !der_hashtype_defined_vartime(s) { return pr_fail(r, PSBT_SIG_ENCODING, kat); }
+    return sig.next;
+  }
+  if i && t == 0x03 { return pr_sized(b, at, 4, r, kat); }
+  if (i && (t == 0x04 || t == 0x05 || t == 0x07)) || (o && (t == 0x00 || t == 0x01)) { return pr_vector(b, at, r).next; }
+  if (i && t == 0x06) || (o && t == 0x02) {
+    // A BIP-32 derivation: the key a public key, the value its origin.
+    if k.n != 34 && k.n != 66 { return pr_fail(r, PSBT_BIP32_KEY_SIZE, kat); }
+    if !psbt_pubkey_valid_vartime(key[1..<k.n]) { return pr_fail(r, PSBT_PUBKEY, kat); }
+    n := pr_size(b, at, r);
+    if n.next < 0 { return -1; }
+    return pr_origin(b, n.next, n.value, r, kat);
+  }
+  if i && t == 0x08 {
+    // The final witness: a count of items, then each item.
+    stated := pr_size(b, at, r);
+    if stated.next < 0 { return -1; }
+    count := pr_size(b, stated.next, r);
+    end := count.next;
+    for j: 0..<count.value { if end >= 0 { end = pr_vector(b, end, r).next; } }
+    return pr_stated(stated, end, r, kat);
+  }
+  if i && t >= 0x0a && t <= 0x0d { return pr_vector(b, at, r).next; }
+  if i && t >= 0x0e && t <= 0x12 {
+    // BIP-370's input fields: version 2 only, and lock times in range.
+    if version < 2 {
+      codes := [5] int.[PSBT_V0_PREV_TXID, PSBT_V0_PREV_INDEX, PSBT_V0_SEQUENCE, PSBT_V0_TIME, PSBT_V0_HEIGHT];
+      return pr_fail(r, codes[t - 0x0e], kat);
+    }
+    end := pr_sized(b, at, ifx t == 0x0e then 32 else 4, r, kat);
+    if end < 0 || t == 0x0e { return end; }
+    v := tx_le_vartime(b, end - 4, 4);
+    if t == 0x11 && v < 500000000 { return pr_fail(r, PSBT_TIME_LOW, kat); }
+    if t == 0x12 && v >= 500000000 { return pr_fail(r, PSBT_HEIGHT_HIGH, kat); }
+    if t == 0x12 && v == 0 { return pr_fail(r, PSBT_HEIGHT_ZERO, kat); }
+    return end;
+  }
+  if i && (t == 0x13 || t == 0x14) {
+    // A Schnorr signature, 64 bytes or 65 with a hash type.
+    sig := pr_vector(b, at, r);
+    if sig.next < 0 { return -1; }
+    if sig.n < 64 { return pr_fail(r, ifx t == 0x13 then PSBT_TAP_KEY_SHORT else PSBT_TAP_SCRIPT_SHORT, kat); }
+    if sig.n > 65 { return pr_fail(r, ifx t == 0x13 then PSBT_TAP_KEY_LONG else PSBT_TAP_SCRIPT_LONG, kat); }
+    return sig.next;
+  }
+  if i && t == 0x15 {
+    // A leaf script: the key holds a control block (33 + 32m bytes).
+    if k.n < 34 { return pr_fail(r, PSBT_LEAF_KEY_SHORT, kat); }
+    if (k.n - 2) % 32 != 0 { return pr_fail(r, PSBT_LEAF_CONTROL, kat); }
+    leaf := pr_vector(b, at, r);
+    if leaf.next < 0 { return -1; }
+    if leaf.n == 0 { return pr_fail(r, PSBT_LEAF_EMPTY, kat); }
+    return leaf.next;
+  }
+  if (i && t == 0x16) || (o && t == 0x07) {
+    // A Taproot derivation: leaf hashes (32 bytes each), then the origin,
+    // all inside the stated size.
+    stated := pr_size(b, at, r);
+    if stated.next < 0 { return -1; }
+    count := pr_size(b, stated.next, r);
+    end := count.next;
+    for j: 0..<count.value { if end >= 0 { end = pr_take(b, end, 32, r); } }
+    if end < 0 { return -1; }
+    if end - stated.next > stated.value { return pr_fail(r, ifx i then PSBT_IN_TAP_PATH else PSBT_OUT_TAP_PATH, kat); }
+    return pr_origin(b, end, stated.value - (end - stated.next), r, kat);
+  }
+  if (i && (t == 0x17 || t == 0x18)) || (o && t == 0x05) { return pr_sized(b, at, 32, r, kat); }
+  if (i && t == 0x1a) || (o && t == 0x08) {
+    // MuSig2 participants (BIP-373): the aggregate key, then 33 bytes each.
+    if !pr_compressed(key[1..<34]) { return pr_fail(r, ifx i then PSBT_IN_MUSIG_AGG else PSBT_OUT_MUSIG_AGG, kat); }
+    v := pr_vector(b, at, r);
+    if v.next < 0 { return -1; }
+    whole := v.n - v.n % 33;
+    for j: 0..<whole / 33 {
+      if !pr_compressed(b[v.at+33*j..<v.at+33*j+33]) { return pr_fail(r, ifx i then PSBT_IN_MUSIG_PART else PSBT_OUT_MUSIG_PART, kat); }
+    }
+    if v.n % 33 != 0 { return pr_fail(r, ifx i then PSBT_IN_MUSIG_MULTIPLE else PSBT_OUT_MUSIG_MULTIPLE, kat); }
+    return v.next;
+  }
+  if i && (t == 0x1b || t == 0x1c) {
+    // A MuSig2 public nonce or partial signature: participant, aggregate
+    // key and an optional leaf hash in the key.
+    if k.n != 67 && k.n != 99 { return pr_fail(r, ifx t == 0x1b then PSBT_NONCE_KEY else PSBT_PSIG_KEY, kat); }
+    if !pr_compressed(key[34..<67]) { return pr_fail(r, PSBT_MUSIG_AGG, kat); }
+    if !pr_compressed(key[1..<34]) { return pr_fail(r, PSBT_MUSIG_PART, kat); }
+    if t == 0x1c { return pr_sized(b, at, 32, r, kat); }
+    v := pr_vector(b, at, r);
+    if v.next >= 0 && v.n != 66 { return pr_fail(r, PSBT_NONCE_VALUE, kat); }
+    return v.next;
+  }
+  if o && (t == 0x03 || t == 0x04) {
+    if version < 2 { return pr_fail(r, ifx t == 0x03 then PSBT_V0_AMOUNT else PSBT_V0_SCRIPT, kat); }
+    if t == 0x03 { return pr_sized(b, at, 8, r, kat); }
+    return pr_vector(b, at, r).next;
+  }
+  if o && t == 0x06 {
+    // A Taproot tree: depth, leaf version and script per leaf, in
+    // depth-first order, which must make a whole tree.
+    v := pr_vector(b, at, r);
+    if v.next < 0 { return -1; }
+    if v.n == 0 { return pr_fail(r, PSBT_TREE_EMPTY, kat); }
+    tree := b[v.at..<v.next];
+    shape := [1] PsbtTree.[PsbtTree.{valid=true}];
+    p := 0;
+    while p < tree.count {
+      if pr_take(tree, p, 2, r) < 0 { return -1; }
+      depth := cast(int) tree[p]; leaf := cast(int) tree[p+1];
+      p = pr_vector(tree, p + 2, r).next;
+      if p < 0 { return -1; }
+      if depth > 128 { return pr_fail(r, PSBT_TREE_DEPTH, kat); }
+      if (leaf & 1) != 0 { return pr_fail(r, PSBT_TREE_LEAF_VERSION, kat); }
+      pr_tree_add(shape[..], depth);
+    }
+    if !psbt_tree_done(shape[0]) { return pr_fail(r, PSBT_TREE_MALFORMED, kat); }
+    return v.next;
+  }
+  if t == 0xfc {
+    // A proprietary key: an identifier and a subtype after the type.
+    first := tx_compact_read_vartime(key, 0).next;
+    id := pr_vector(key, first, r);
+    if id.next < 0 || pr_size(key, id.next, r).next < 0 { return -1; }
+  }
+  return pr_vector(b, at, r).next;
+}
+// book:end value
+
+// book:begin map
+// One map, from at to its separator: each key once, each value checked,
+// each pair added to fields. found[t] says a pair of type t was read.
+// Returns where the next map starts, or -1.
+pr_map :: (b: [] u8, at: int, map: int, index: int, version: int, fields: [] PsbtField, w: [] PsbtRead, r: [] Psbt, found: [] bool) -> int {
+  for t: 0..<256 { found[t] = false; }
+  first := r[0].nfields;
+  pos := at;
+  while pos < b.count {
+    kat := pos;
+    k := pr_vector(b, pos, r);
+    if k.next < 0 { return -1; }
+    if k.n == 0 {
+      // The separator; version 2 maps have required fields.
+      if map == PSBT_INPUT && version >= 2 {
+        if !found[0x0e] { return pr_fail(r, PSBT_V2_PREV_TXID, k.next); }
+        if !found[0x0f] { return pr_fail(r, PSBT_V2_PREV_INDEX, k.next); }
+      }
+      if map == PSBT_OUTPUT && version >= 2 {
+        if !found[0x03] { return pr_fail(r, PSBT_V2_AMOUNT, k.next); }
+        if !found[0x04] { return pr_fail(r, PSBT_V2_SCRIPT, k.next); }
+      }
+      return k.next;
+    }
+    for j: first..<r[0].nfields {
+      f := fields[j];
+      same := f.key_n == k.n;
+      for x: 0..<k.n { if same && b[f.key+x] != b[k.at+x] { same = false; } }
+      if same { return pr_fail(r, PSBT_DUP_GLOBAL + map, kat); }
+    }
+    tc := tx_compact_read_vartime(b[k.at..<k.next], 0);
+    if tc.code != TX_OK { return pr_fail(r, pr_tx_code(tc.code), k.at); }
+    t := tc.value;
+    next := pr_value(b, k.next, map, version, t, k, w, r, kat);
+    if next < 0 { return -1; }
+    if r[0].nfields == fields.count { return pr_fail(r, PSBT_CAPACITY, kat); }
+    v := tx_compact_read_vartime(b, k.next);
+    fields[r[0].nfields] = PsbtField.{map=map, index=index, type=t, key=k.at, key_n=k.n, value=v.next, value_n=v.value};
+    r[0].nfields += 1;
+    if t < 256 { found[t] = true; }
+    pos = next;
+  }
+  return pr_fail(r, PSBT_SEP_GLOBAL + map, pos);
+}
+// book:end map
+
+// The value of the one-byte key of type t in map (index), or -1.
+pr_find :: (fields: [] PsbtField, n: int, map: int, index: int, t: int) -> int {
+  for j: 0..<n {
+    f := fields[j];
+    if f.map == map && f.index == index && f.type == t && f.key_n == 1 { return j; }
+  }
+  return -1;
+}
+
+// book:begin read
+// DecodeRawPSBT: the magic, the global map, then one map per input and
+// one per output, and nothing after. Version 0 takes the counts from the
+// unsigned transaction, version 2 from its count fields. An input's
+// non-witness UTXO must be the transaction its outpoint names, with the
+// output it spends.
+psbt_read_vartime :: (b: [] u8, fields: [] PsbtField, w: [] PsbtRead) -> Psbt #export_c {
+  r := [1] Psbt.[Psbt.{}];
+  found: [256] bool;
+  if b.count < 5 { return pr_refuse(r[..], PSBT_TRUNCATED, 0); }
+  if b[0] != 'p' || b[1] != 's' || b[2] != 'b' || b[3] != 't' || b[4] != 0xff { return pr_refuse(r[..], PSBT_MAGIC, 0); }
+  at := pr_map(b, 5, PSBT_GLOBAL, 0, 0, fields, w, r[..], found[..]);
+  if at < 0 { return r[0]; }
+  n := r[0].nfields;
+  fv := pr_find(fields, n, PSBT_GLOBAL, 0, 0xfb);
+  version := ifx fv >= 0 then tx_le_vartime(b, fields[fv].value, 4) else 0;
+  has_tx := found[0x00];
+  if version == 0 {
+    if !has_tx { return pr_refuse(r[..], PSBT_NO_TX, at); }
+    for t: 2..<7 { if found[t] { return pr_refuse(r[..], PSBT_V0_TX_VERSION + t - 2, at); } }
+  }
+  if version == 1 { return pr_refuse(r[..], PSBT_V1, at); }
+  if version == 2 {
+    if !found[0x02] { return pr_refuse(r[..], PSBT_V2_TX_VERSION, at); }
+    if !found[0x04] { return pr_refuse(r[..], PSBT_V2_INPUT_COUNT, at); }
+    if !found[0x05] { return pr_refuse(r[..], PSBT_V2_OUTPUT_COUNT, at); }
+    if has_tx { return pr_refuse(r[..], PSBT_V2_TX, at); }
+  }
+  r[0].version = version;
+  nin := 0; nout := 0;
+  if version < 2 { nin = w[0].gt.nin; nout = w[0].gt.nout; }
+  else {
+    nin = tx_compact_read_vartime(b, fields[pr_find(fields, n, PSBT_GLOBAL, 0, 0x04)].value).value;
+    nout = tx_compact_read_vartime(b, fields[pr_find(fields, n, PSBT_GLOBAL, 0, 0x05)].value).value;
+  }
+  i := 0;
+  while at < b.count && i < nin {
+    at = pr_map(b, at, PSBT_INPUT, i, version, fields, w, r[..], found[..]);
+    if at < 0 { return r[0]; }
+    if found[0x00] {
+      u := fields[pr_find(fields, r[0].nfields, PSBT_INPUT, i, 0x00)];
+      prev := b[u.value..<u.value+u.value_n];
+      t := tx_read_vartime(prev, true, w[0].ins[..], w[0].outs[..], w[0].items[..]);
+      txid: [32] u8;
+      #assert tx_txid_vartime(prev, t, txid[..]);
+      spent := 0; same := true;
+      if version < 2 {
+        o := r[0].tx + w[0].gins[i].outpoint;
+        for j: 0..<32 { if txid[j] != b[o+j] { same = false; } }
+        spent = tx_le_vartime(b, o + 32, 4);
+      } else {
+        h := fields[pr_find(fields, r[0].nfields, PSBT_INPUT, i, 0x0e)].value;
+        for j: 0..<32 { if txid[j] != b[h+j] { same = false; } }
+        spent = tx_le_vartime(b, fields[pr_find(fields, r[0].nfields, PSBT_INPUT, i, 0x0f)].value, 4);
+      }
+      if !same { return pr_refuse(r[..], PSBT_UTXO_HASH, at); }
+      if spent >= t.nout { return pr_refuse(r[..], PSBT_UTXO_INDEX, at); }
+    }
+    i += 1;
+  }
+  if i != nin { return pr_refuse(r[..], PSBT_INPUT_COUNT, at); }
+  i = 0;
+  while at < b.count && i < nout {
+    at = pr_map(b, at, PSBT_OUTPUT, i, version, fields, w, r[..], found[..]);
+    if at < 0 { return r[0]; }
+    i += 1;
+  }
+  if i != nout { return pr_refuse(r[..], PSBT_OUTPUT_COUNT, at); }
+  if at != b.count { return pr_refuse(r[..], PSBT_EXTRA, at); }
+  r[0].nin = nin; r[0].nout = nout;
+  return r[0];
+}
+// DecodeBase64PSBT: Core's strict Base64 (a multiple of 4 characters, at
+// most two '=', no bits left over), into out; the bytes, or a view of
+// length 0 with code[0] set to PSBT_BASE64 or PSBT_CAPACITY.
+psbt_base64_vartime :: (text: string, out: [] u8, code: [] int) -> [] u8 {
+  n := base64_decode_size(text);
+  if n < 0 { code[0] = PSBT_BASE64; return out[0..<0]; }
+  if n > out.count { code[0] = PSBT_CAPACITY; return out[0..<0]; }
+  #assert base64_decode_checked(text, out[0..<n], false).error == NC_OK;
+  code[0] = PSBT_OK;
+  return out[0..<n];
+}
+// book:end read
+
+// ---- the maps, for the roles
+// book:begin pairs
+PSBT_PAIRS :: 512;       // pairs in one PSBT
+PSBT_ARENA :: 65536;     // bytes of their keys and values
+PSBT_TX :: 16384;        // the longest transaction a role builds
+// One pair: its map and index, its key and value in the arena.
+PsbtPair :: struct { map: int; index: int; key: int; key_n: int; value: int; value_n: int; }
+// A PSBT as its pairs: the version, the counts, pairs[0..<n] and the
+// arena's first used bytes. The roles read and change this.
+PsbtMaps :: struct { version: int; nin: int; nout: int; n: int; used: int; pairs: [PSBT_PAIRS] PsbtPair; arena: [PSBT_ARENA] u8; }
+pm_key :: (m: [] PsbtMaps, j: int) -> [] u8 { p := m[0].pairs[j]; return m[0].arena[p.key..<p.key+p.key_n]; }
+pm_value :: (m: [] PsbtMaps, j: int) -> [] u8 { p := m[0].pairs[j]; return m[0].arena[p.value..<p.value+p.value_n]; }
+pm_type :: (m: [] PsbtMaps, j: int) -> int { return tx_compact_read_vartime(pm_key(m, j), 0).value; }
+pm_copy :: (m: [] PsbtMaps, s: [] u8) -> int {
+  at := m[0].used;
+  for i: 0..<s.count { m[0].arena[at+i] = s[i]; }
+  m[0].used += s.count;
+  return at;
+}
+// The pair with this key in map (index), or -1.
+psbt_find_vartime :: (m: [] PsbtMaps, map: int, index: int, key: [] u8) -> int {
+  for j: 0..<m[0].n {
+    p := m[0].pairs[j];
+    if p.map == map && p.index == index && p.key_n == key.count {
+      same := true;
+      for x: 0..<key.count { if m[0].arena[p.key+x] != key[x] { same = false; } }
+      if same { return j; }
+    }
+  }
+  return -1;
+}
+// The pair of the one-byte key t, or -1.
+psbt_find1_vartime :: (m: [] PsbtMaps, map: int, index: int, t: int) -> int {
+  k := [1] u8.[cast(u8) t];
+  return psbt_find_vartime(m, map, index, k[..]);
+}
+// The Updater: key's value in map (index) becomes value, added when the
+// key is new. False when the arena or the pairs are full.
+psbt_set_vartime :: (m: [] PsbtMaps, map: int, index: int, key: [] u8, value: [] u8) -> bool #export_c {
+  if m[0].used + key.count + value.count > PSBT_ARENA { return false; }
+  j := psbt_find_vartime(m, map, index, key);
+  if j < 0 {
+    if m[0].n == PSBT_PAIRS { return false; }
+    j = m[0].n; m[0].n += 1;
+    m[0].pairs[j] = PsbtPair.{map=map, index=index, key=pm_copy(m, key), key_n=key.count};
+  }
+  m[0].pairs[j].value = pm_copy(m, value); m[0].pairs[j].value_n = value.count;
+  return true;
+}
+psbt_set1_vartime :: (m: [] PsbtMaps, map: int, index: int, t: int, value: [] u8) -> bool {
+  k := [1] u8.[cast(u8) t];
+  return psbt_set_vartime(m, map, index, k[..], value);
+}
+// A read PSBT's pairs, in the order they came.
+psbt_maps_vartime :: (b: [] u8, p: Psbt, fields: [] PsbtField, m: [] PsbtMaps) -> bool #export_c {
+  if p.code != PSBT_OK { return false; }
+  m[0].version = p.version; m[0].nin = p.nin; m[0].nout = p.nout; m[0].n = 0; m[0].used = 0;
+  for j: 0..<p.nfields {
+    f := fields[j];
+    if !psbt_set_vartime(m, f.map, f.index, b[f.key..<f.key+f.key_n], b[f.value..<f.value+f.value_n]) { return false; }
+  }
+  return true;
+}
+// book:end pairs
+
+// ---- writing
+// book:begin write
+// The order Core's Serialize writes each map's types in; any other type
+// comes last. Within a type, keys sort as bytes, except partial
+// signatures, which Core keys by the public key's HASH160.
+PSBT_ORDER_GLOBAL :: [9] int.[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0xfb, 0xfc];
+PSBT_ORDER_INPUT :: [28] int.[0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x0a, 0x0b, 0x0c, 0x0d, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+  0x1a, 0x1b, 0x1c, 0x07, 0x08, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0xfc];
+PSBT_ORDER_OUTPUT :: [10] int.[0x00, 0x01, 0x02, 0x03, 0x04, 0xfc, 0x05, 0x06, 0x07, 0x08];
+pw_rank :: (map: int, t: int) -> int {
+  if map == PSBT_GLOBAL { for k: 0..<9 { if PSBT_ORDER_GLOBAL[k] == t { return k; } } return 9; }
+  if map == PSBT_INPUT { for k: 0..<28 { if PSBT_ORDER_INPUT[k] == t { return k; } } return 28; }
+  for k: 0..<10 { if PSBT_ORDER_OUTPUT[k] == t { return k; } }
+  return 10;
+}
+// Bytes as Python compares them: the first difference, else the shorter.
+pw_less_bytes :: (a: [] u8, b: [] u8) -> bool {
+  for k: 0..<a.count {
+    if k == b.count { return false; }
+    if a[k] != b[k] { return a[k] < b[k]; }
+  }
+  return a.count < b.count;
+}
+// Whether pair i is written before pair j of the same map.
+pw_less :: (m: [] PsbtMaps, i: int, j: int) -> bool {
+  map := m[0].pairs[i].map;
+  ti := pm_type(m, i); tj := pm_type(m, j);
+  ri := pw_rank(map, ti); rj := pw_rank(map, tj);
+  if ri != rj { return ri < rj; }
+  if map == PSBT_INPUT && ti == 0x02 {
+    hi: [20] u8; hj: [20] u8; ki := pm_key(m, i); kj := pm_key(m, j);
+    #assert hash160_checked(ki[1..<ki.count], hi[..], false) == RMD_OK && hash160_checked(kj[1..<kj.count], hj[..], false) == RMD_OK;
+    return pw_less_bytes(hi[..], hj[..]);
+  }
+  return pw_less_bytes(pm_key(m, i), pm_key(m, j));
+}
+// An input's signing fields: a finalized input drops them.
+psbt_signing_type :: (t: int) -> bool {
+  return (t >= 0x02 && t <= 0x06) || (t >= 0x0a && t <= 0x0d) || (t >= 0x13 && t <= 0x18) || (t >= 0x1a && t <= 0x1c);
+}
+// Whether input index has a final scriptSig or witness.
+psbt_final_vartime :: (m: [] PsbtMaps, index: int) -> bool {
+  return psbt_find1_vartime(m, PSBT_INPUT, index, 0x07) >= 0 || psbt_find1_vartime(m, PSBT_INPUT, index, 0x08) >= 0;
+}
+// One map, sorted, then its separator.
+pw_map :: (m: [] PsbtMaps, map: int, index: int, out: [] u8, at: int) -> int {
+  order: [PSBT_PAIRS] int; n := 0;
+  for j: 0..<m[0].n { if m[0].pairs[j].map == map && m[0].pairs[j].index == index { order[n] = j; n += 1; } }
+  for a: 1..<n {
+    x := order[a]; c := a;
+    while c > 0 && pw_less(m, x, order[c-1]) { order[c] = order[c-1]; c -= 1; }
+    order[c] = x;
+  }
+  final := map == PSBT_INPUT && psbt_final_vartime(m, index);
+  pos := at;
+  for a: 0..<n {
+    j := order[a];
+    if final && psbt_signing_type(pm_type(m, j)) { continue; }
+    k := pm_key(m, j); v := pm_value(m, j);
+    if pos + 18 + k.count + v.count > out.count { return -1; }
+    pos = tx_compact_write_vartime(out, pos, k.count); pos = tx_put(out, pos, k);
+    pos = tx_compact_write_vartime(out, pos, v.count); pos = tx_put(out, pos, v);
+  }
+  if pos >= out.count { return -1; }
+  out[pos] = 0;
+  return pos + 1;
+}
+// Serialize: the magic, then the maps. Returns the length, or -1 when out
+// is too short.
+psbt_write_vartime :: (m: [] PsbtMaps, out: [] u8) -> int #export_c {
+  if out.count < 5 { return -1; }
+  out[0] = 'p'; out[1] = 's'; out[2] = 'b'; out[3] = 't'; out[4] = 0xff;
+  at := pw_map(m, PSBT_GLOBAL, 0, out, 5);
+  for i: 0..<m[0].nin { if at >= 0 { at = pw_map(m, PSBT_INPUT, i, out, at); } }
+  for i: 0..<m[0].nout { if at >= 0 { at = pw_map(m, PSBT_OUTPUT, i, out, at); } }
+  return at;
+}
+// book:end write
+
+// ---- the Creator, and the unsigned transaction
+// book:begin creator
+// The Creator: a version 0 PSBT for an unsigned transaction, which must
+// read in the legacy form with every scriptSig empty.
+psbt_create_vartime :: (unsigned: [] u8, m: [] PsbtMaps) -> bool #export_c {
+  w: [1] PsbtRead;
+  t := tx_read_vartime(unsigned, false, w[0].ins[..], w[0].outs[..], w[0].items[0..<0]);
+  if t.code != TX_OK { return false; }
+  for k: 0..<t.nin { if w[0].ins[k].script_n != 0 { return false; } }
+  m[0].version = 0; m[0].nin = t.nin; m[0].nout = t.nout; m[0].n = 0; m[0].used = 0;
+  return psbt_set1_vartime(m, PSBT_GLOBAL, 0, 0x00, unsigned);
+}
+// BIP-370's Determining Lock Time: with no input requiring one, the
+// fallback (or 0); else the largest height when every input that
+// requires a lock time accepts a height, else the largest time when every
+// one accepts a time; -1 when neither.
+psbt_locktime_vartime :: (m: [] PsbtMaps) -> int #export_c {
+  height := 0; time := 0; any_height := true; any_time := true; seen := false;
+  for i: 0..<m[0].nin {
+    h := psbt_find1_vartime(m, PSBT_INPUT, i, 0x12); t := psbt_find1_vartime(m, PSBT_INPUT, i, 0x11);
+    if h < 0 && t < 0 { continue; }
+    seen = true;
+    if h >= 0 { v := tx_le_vartime(pm_value(m, h), 0, 4); if v > height { height = v; } } else { any_height = false; }
+    if t >= 0 { v := tx_le_vartime(pm_value(m, t), 0, 4); if v > time { time = v; } } else { any_time = false; }
+  }
+  if !seen {
+    f := psbt_find1_vartime(m, PSBT_GLOBAL, 0, 0x03);
+    return ifx f >= 0 then tx_le_vartime(pm_value(m, f), 0, 4) else 0;
+  }
+  if any_height { return height; }
+  if any_time { return time; }
+  return -1;
+}
+// The unsigned transaction into out: version 0's global one, or version
+// 2's built from its fields (empty scriptSigs, sequences 0xffffffff
+// unless given, BIP-370's lock time). Its length, or -1 when no lock time
+// satisfies every input or out is too short.
+psbt_unsigned_vartime :: (m: [] PsbtMaps, out: [] u8) -> int #export_c {
+  if m[0].version < 2 {
+    j := psbt_find1_vartime(m, PSBT_GLOBAL, 0, 0x00);
+    v := pm_value(m, j);
+    if v.count > out.count { return -1; }
+    return tx_put(out, 0, v);
+  }
+  lt := psbt_locktime_vartime(m);
+  if lt < 0 { return -1; }
+  at := tx_put(out, 0, pm_value(m, psbt_find1_vartime(m, PSBT_GLOBAL, 0, 0x02)));
+  at = tx_compact_write_vartime(out, at, m[0].nin);
+  for i: 0..<m[0].nin {
+    if at + 41 > out.count { return -1; }
+    at = tx_put(out, at, pm_value(m, psbt_find1_vartime(m, PSBT_INPUT, i, 0x0e)));
+    at = tx_put(out, at, pm_value(m, psbt_find1_vartime(m, PSBT_INPUT, i, 0x0f)));
+    out[at] = 0; at += 1;
+    s := psbt_find1_vartime(m, PSBT_INPUT, i, 0x10);
+    if s >= 0 { at = tx_put(out, at, pm_value(m, s)); }
+    else { for k: 0..<4 { out[at+k] = 0xff; } at += 4; }
+  }
+  at = tx_compact_write_vartime(out, at, m[0].nout);
+  for i: 0..<m[0].nout {
+    s := pm_value(m, psbt_find1_vartime(m, PSBT_OUTPUT, i, 0x04));
+    if at + 17 + s.count > out.count { return -1; }
+    at = tx_put(out, at, pm_value(m, psbt_find1_vartime(m, PSBT_OUTPUT, i, 0x03)));
+    at = tx_compact_write_vartime(out, at, s.count);
+    at = tx_put(out, at, s);
+  }
+  if at + 4 > out.count { return -1; }
+  for k: 0..<4 { out[at+k] = cast(u8) ((lt >> (8 * k)) & 255); }
+  return at + 4;
+}
+// book:end creator
+
+// ---- the Signer
+// book:begin signer
+// The Signer's results: ok, or the check that refused.
+PSBT_SIGN_OK :: 0;
+PSBT_SIGN_NO_UTXO :: 1;          // no UTXO for this input (or, for Taproot, for another)
+PSBT_SIGN_WITNESS_UTXO :: 2;     // a witness UTXO for a non-witness input
+PSBT_SIGN_REDEEM :: 3;           // the redeemScript doesn't match the scriptPubKey
+PSBT_SIGN_WITNESS_SCRIPT :: 4;   // the witnessScript doesn't match, or isn't wanted
+PSBT_SIGN_SIGHASH :: 5;          // a hash type the signer doesn't sign
+PSBT_SIGN_NOT_MINE :: 6;         // the key isn't in the script
+PSBT_SIGN_FINAL :: 7;            // the input is already finalized
+PSBT_SIGN_LOCKTIME :: 8;         // no lock time satisfies every input
+PSBT_SIGN_CAPACITY :: 9;         // a transaction or script larger than the workspace
+PSBT_SIGN_REASONS :: [10] string.["ok", "no UTXO", "a witness UTXO for a non-witness input", "redeemScript does not match the scriptPubKey",
+  "witnessScript does not match the scriptPubKey or redeemScript", "unacceptable sighash type", "key not in the script",
+  "already finalized", "no lock time satisfies every input", "capacity"];
+// The signer's workspace: the unsigned transaction and its parts, the
+// spent outputs, and the two signers' workspaces.
+PsbtSign :: struct {
+  tx: [PSBT_TX] u8; ins: [PSBT_IO] TxIn; outs: [PSBT_IO] TxOut; items: [1] TxItem; t: Tx;
+  pins: [PSBT_IO] TxIn; pouts: [PSBT_IO] TxOut; pitems: [PSBT_ITEMS] TxItem;
+  amount: int; spk: [SCRIPT_MAX_SIZE] u8; spk_n: int; witness_utxo: bool;
+  ecdsa: [1] EcdsaWork; tap: [1] BtTapWork;
+}
+// The output input n spends, into w.amount and w.spk: from its witness
+// UTXO, else from its non-witness UTXO. False when it has neither.
+ps_spent :: (m: [] PsbtMaps, n: int, w: [] PsbtSign) -> bool {
+  u := psbt_find1_vartime(m, PSBT_INPUT, n, 0x01);
+  s: [] u8;
+  if u >= 0 {
+    v := pm_value(m, u);
+    w[0].amount = tx_le_vartime(v, 0, 8);
+    c := tx_compact_read_vartime(v, 8);
+    s = v[c.next..<c.next+c.value];
+    w[0].witness_utxo = true;
+  } else {
+    p := psbt_find1_vartime(m, PSBT_INPUT, n, 0x00);
+    if p < 0 { return false; }
+    prev := pm_value(m, p);
+    t := tx_read_vartime(prev, true, w[0].pins[..], w[0].pouts[..], w[0].pitems[..]);
+    o := w[0].pouts[tx_le_vartime(w[0].tx[..], w[0].ins[n].outpoint + 32, 4)];
+    w[0].amount = tx_le_vartime(prev, o.value, 8);
+    s = prev[o.script..<o.script+o.script_n];
+    w[0].witness_utxo = false;
+  }
+  if s.count > SCRIPT_MAX_SIZE { return false; }
+  for k: 0..<s.count { w[0].spk[k] = s[k]; }
+  w[0].spk_n = s.count;
+  return true;
+}
+// ALL, NONE or SINGLE, with or without ANYONECANPAY.
+ps_hashtype :: (h: int) -> bool { return (h >= 1 && h <= 3) || (h >= 0x81 && h <= 0x83); }
+ps_p2wpkh :: (s: [] u8) -> bool { return s.count == 22 && s[0] == 0 && s[1] == 20; }
+ps_p2wsh :: (s: [] u8) -> bool { return s.count == 34 && s[0] == 0 && s[1] == 32; }
+ps_p2tr :: (s: [] u8) -> bool { return s.count == 34 && s[0] == 0x51 && s[1] == 32; }
+ps_p2pkh :: (s: [] u8) -> bool { return s.count == 25 && s[0] == 0x76 && s[1] == 0xa9 && s[2] == 20 && s[23] == 0x88 && s[24] == 0xac; }
+// The P2PKH script of a 20-byte hash into out.
+ps_p2pkh_of :: (h: [] u8, out: [] u8) -> [] u8 {
+  out[0] = 0x76; out[1] = 0xa9; out[2] = 20;
+  for k: 0..<20 { out[3+k] = h[k]; }
+  out[23] = 0x88; out[24] = 0xac;
+  return out[0..<25];
+}
+ps_equal :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for k: 0..<a.count { if a[k] != b[k] { return false; } }
+  return true;
+}
+// Whether needle occurs in s.
+ps_contains :: (s: [] u8, needle: [] u8) -> bool {
+  for k: 0..<s.count - needle.count + 1 { if ps_equal(s[k..<k+needle.count], needle) { return true; } }
+  return false;
+}
+// BIP-174's simple signer for input n with one key, the checks it lists
+// first: an ECDSA partial signature (types 02) for P2PKH, P2WPKH, P2SH
+// and P2WSH scripts, a BIP-340 key-path signature (type 13) for P2TR. A
+// partial signature the input already has for this key is kept, as Core
+// keeps it. grind selects Core's low-R signatures (ecdsa_sign_low_r);
+// BIP-174's worked example signs without it. aux is BIP-340's auxiliary
+// randomness.
+psbt_sign_vartime :: (m: [] PsbtMaps, n: int, key: [] u8, aux: [] u8, grind: bool, w: [] PsbtSign) -> int #export_c {
+  if psbt_final_vartime(m, n) { return PSBT_SIGN_FINAL; }
+  size := psbt_unsigned_vartime(m, w[0].tx[..]);
+  if size < 0 { return PSBT_SIGN_LOCKTIME; }
+  b := w[0].tx[0..<size];
+  w[0].t = tx_read_vartime(b, false, w[0].ins[..], w[0].outs[..], w[0].items[0..<0]);
+  if !ps_spent(m, n, w) { return PSBT_SIGN_NO_UTXO; }
+  spk := w[0].spk[0..<w[0].spk_n];
+  ht := psbt_find1_vartime(m, PSBT_INPUT, n, 0x03);
+  if ps_p2tr(spk) { return ps_sign_taproot(m, n, b, key, aux, ht, w); }
+  hashtype := ifx ht >= 0 then tx_le_vartime(pm_value(m, ht), 0, 4) else 1;
+  if !ps_hashtype(hashtype) { return PSBT_SIGN_SIGHASH; }
+  // The script the key signs: the redeemScript under P2SH, P2WPKH's
+  // P2PKH form, the witnessScript under P2WSH.
+  script := spk; witness := false; code: [25] u8;
+  redeem := psbt_find1_vartime(m, PSBT_INPUT, n, 0x04);
+  if redeem >= 0 {
+    r := pm_value(m, redeem); h: [20] u8;
+    #assert hash160_checked(r, h[..], false) == RMD_OK;
+    if !script_p2sh_vartime(spk) || !ps_equal(h[..], spk[2..<22]) { return PSBT_SIGN_REDEEM; }
+    script = r;
+  }
+  ws := psbt_find1_vartime(m, PSBT_INPUT, n, 0x05);
+  if ps_p2wpkh(script) { script = ps_p2pkh_of(script[2..<22], code[..]); witness = true; }
+  else if ps_p2wsh(script) {
+    if ws < 0 { return PSBT_SIGN_WITNESS_SCRIPT; }
+    h: [32] u8; #assert sha256_hash_checked(pm_value(m, ws), h[..], false) == SHA_OK;
+    if !ps_equal(h[..], script[2..<34]) { return PSBT_SIGN_WITNESS_SCRIPT; }
+    script = pm_value(m, ws); witness = true;
+  } else if ws >= 0 { return PSBT_SIGN_WITNESS_SCRIPT; }
+  if !witness && w[0].witness_utxo { return PSBT_SIGN_WITNESS_UTXO; }
+  pub: [34] u8; pub[0] = 33;
+  if !bip32_public(key, pub[1..<34]) { return PSBT_SIGN_NOT_MINE; }
+  mine := false;
+  if ps_p2pkh(script) { h: [20] u8; #assert hash160_checked(pub[1..<34], h[..], false) == RMD_OK; mine = ps_equal(h[..], script[3..<23]); }
+  else { mine = ps_contains(script, pub[..]); }
+  if !mine { return PSBT_SIGN_NOT_MINE; }
+  pub[0] = 0x02;                                           // the key of a partial signature: type 02, then the public key
+  if psbt_find_vartime(m, PSBT_INPUT, n, pub[..]) >= 0 { return PSBT_SIGN_OK; }
+  sp := ScriptSpend.{b=b, t=w[0].t, ins=w[0].ins[..], outs=w[0].outs[..], items=w[0].items[0..<0], index=n, amount=w[0].amount, spk=spk};
+  digest: [32] u8;
+  if witness { script_sighash_v0_vartime(sp, script, hashtype, digest[..]); }
+  else { script_sighash_legacy_vartime(sp, script, hashtype, digest[..]); }
+  compact: [64] u8;
+  signed := ifx grind then ecdsa_sign_low_r(key, digest[..], w[0].ecdsa[..], compact[..], false)
+    else ecdsa_sign(key, digest[..], w[0].ecdsa[..], compact[..], false);
+  if !signed { return PSBT_SIGN_NOT_MINE; }
+  der: [73] u8;
+  k := ecdsa_der(compact[..], der[..]);
+  der[k] = cast(u8) hashtype;
+  return ifx psbt_set_vartime(m, PSBT_INPUT, n, pub[..], der[0..<k+1]) then PSBT_SIGN_OK else PSBT_SIGN_CAPACITY;
+}
+// BIP-371's key-path signer: the hash type (SIGHASH_DEFAULT when none is
+// given), every input's spent output for BIP-341's signature hash, then
+// a signature by the key tweaked with the input's Merkle root (none for a
+// key with no scripts). The key is the input's when the signature
+// verifies under the scriptPubKey's output key.
+ps_sign_taproot :: (m: [] PsbtMaps, n: int, b: [] u8, key: [] u8, aux: [] u8, ht: int, w: [] PsbtSign) -> int {
+  hashtype := ifx ht >= 0 then tx_le_vartime(pm_value(m, ht), 0, 4) else 0;
+  if hashtype != 0 && !ps_hashtype(hashtype) { return PSBT_SIGN_SIGHASH; }
+  tp := bt_tx_read(b);
+  if !tp.ok || m[0].nin > BT_IO { return PSBT_SIGN_CAPACITY; }
+  amounts: [BT_IO] int; spks: [BT_IO] BtScript; output: [32] u8;
+  for i: 0..<m[0].nin {
+    if !ps_spent(m, i, w) { return PSBT_SIGN_NO_UTXO; }
+    if w[0].spk_n > BT_SPK { return PSBT_SIGN_CAPACITY; }
+    amounts[i] = w[0].amount; spks[i].n = w[0].spk_n;
+    for k: 0..<w[0].spk_n { spks[i].b[k] = w[0].spk[k]; }
+  }
+  for k: 0..<32 { output[k] = spks[n].b[2+k]; }
+  sighash: [32] u8;
+  if !bt_sighash_taproot(b, tp, n, amounts[0..<m[0].nin], spks[0..<m[0].nin], hashtype, sighash[..]) { return PSBT_SIGN_SIGHASH; }
+  merkle := psbt_find1_vartime(m, PSBT_INPUT, n, 0x18);
+  root := ifx merkle >= 0 then pm_value(m, merkle) else key[0..<0];
+  sig: [65] u8;
+  if !bt_taproot_sign(key, root, sighash[..], aux, w[0].tap[..], sig[0..<64], false) { return PSBT_SIGN_NOT_MINE; }
+  if !taproot_key_path_verify_vartime(output[..], sig[0..<64], sighash[..]) { return PSBT_SIGN_NOT_MINE; }
+  sig[64] = cast(u8) hashtype;
+  return ifx psbt_set1_vartime(m, PSBT_INPUT, n, 0x13, sig[0..<ifx hashtype == 0 then 64 else 65]) then PSBT_SIGN_OK else PSBT_SIGN_CAPACITY;
+}
+// book:end signer
+
+// ---- the Combiner
+// book:begin combiner
+// The Combiner: a's pairs, then each pair of b's whose key a lacks, into
+// out. False when the two aren't PSBTs of one unsigned transaction.
+psbt_combine_vartime :: (a: [] PsbtMaps, b: [] PsbtMaps, out: [] PsbtMaps) -> bool #export_c {
+  ta: [PSBT_TX] u8; tb: [PSBT_TX] u8;
+  na := psbt_unsigned_vartime(a, ta[..]); nb := psbt_unsigned_vartime(b, tb[..]);
+  if na < 0 || !ps_equal(ta[0..<na], tb[0..<nb]) { return false; }
+  out[0].version = a[0].version; out[0].nin = a[0].nin; out[0].nout = a[0].nout; out[0].n = 0; out[0].used = 0;
+  for j: 0..<a[0].n { p := a[0].pairs[j]; if !psbt_set_vartime(out, p.map, p.index, pm_key(a, j), pm_value(a, j)) { return false; } }
+  for j: 0..<b[0].n {
+    p := b[0].pairs[j];
+    if psbt_find_vartime(out, p.map, p.index, pm_key(b, j)) < 0 && !psbt_set_vartime(out, p.map, p.index, pm_key(b, j), pm_value(b, j)) { return false; }
+  }
+  return true;
+}
+// book:end combiner
+
+// ---- the Input Finalizer
+// book:begin finalizer
+// A push of data, in the shortest form for its length.
+pf_push :: (data: [] u8, out: [] u8, at: int) -> int {
+  pos := at;
+  if data.count == 0 { out[pos] = 0; return pos + 1; }
+  if data.count < 0x4c { out[pos] = cast(u8) data.count; pos += 1; }
+  else if data.count <= 0xff { out[pos] = 0x4c; out[pos+1] = cast(u8) data.count; pos += 2; }
+  else { out[pos] = 0x4d; out[pos+1] = cast(u8) (data.count & 255); out[pos+2] = cast(u8) (data.count >> 8); pos += 3; }
+  return tx_put(out, pos, data);
+}
+// The partial signature of public key k (33 or 65 bytes), or -1.
+pf_sig :: (m: [] PsbtMaps, n: int, k: [] u8) -> int {
+  key: [66] u8; key[0] = 0x02;
+  for x: 0..<k.count { key[1+x] = k[x]; }
+  return psbt_find_vartime(m, PSBT_INPUT, n, key[0..<1+k.count]);
+}
+// The stack that satisfies script from input n's partial signatures, as
+// the indexes of the pairs it pushes (a -2 is the public key, a -3 the
+// empty dummy): P2PKH takes a signature and its key, k-of-n
+// CHECKMULTISIG the dummy and k signatures in the script's key order.
+// Returns the stack's size, or -1.
+pf_satisfy :: (m: [] PsbtMaps, n: int, script: [] u8, stack: [] int, key: [] int) -> int {
+  if ps_p2pkh(script) {
+    for j: 0..<m[0].n {
+      p := m[0].pairs[j];
+      if p.map != PSBT_INPUT || p.index != n || pm_type(m, j) != 0x02 { continue; }
+      h: [20] u8; k := pm_key(m, j);
+      #assert hash160_checked(k[1..<k.count], h[..], false) == RMD_OK;
+      if ps_equal(h[..], script[3..<23]) { stack[0] = j; stack[1] = -2; key[0] = j; return 2; }
+    }
+    return -1;
+  }
+  if script.count < 3 || script[script.count-1] != 0xae || script[0] < 0x51 || script[0] > 0x60 { return -1; }
+  need := cast(int) script[0] - 0x50;
+  at := 1; keys := 0; got := 0;
+  stack[0] = -3;
+  while at < script.count - 2 {
+    size := cast(int) script[at];
+    if (size != 33 && size != 65) || at + 1 + size > script.count - 2 { return -1; }
+    j := pf_sig(m, n, script[at+1..<at+1+size]);
+    if j >= 0 && got < need { got += 1; stack[got] = j; }
+    keys += 1; at += 1 + size;
+  }
+  if at != script.count - 2 || cast(int) script[at] != 0x50 + keys || need > keys { return -1; }
+  return ifx got == need then need + 1 else -1;
+}
+// The stack's items: a pair's value, the public key in a P2PKH spend
+// (its partial signature's key without the type), or nothing.
+pf_item :: (m: [] PsbtMaps, item: int, key: int) -> [] u8 {
+  if item == -2 { k := pm_key(m, key); return k[1..<k.count]; }
+  if item == -3 { return m[0].arena[0..<0]; }
+  return pm_value(m, item);
+}
+// The Input Finalizer for input n: its final scriptSig (type 07) and
+// witness (type 08) from its partial signatures and scripts, for P2PKH,
+// P2WPKH, multisig, P2SH, P2WSH and P2SH-P2WSH, and from its key-path
+// signature for P2TR. True when the input is final.
+psbt_finalize_input_vartime :: (m: [] PsbtMaps, n: int, w: [] PsbtSign) -> bool #export_c {
+  if psbt_final_vartime(m, n) { return true; }
+  size := psbt_unsigned_vartime(m, w[0].tx[..]);
+  if size < 0 { return false; }
+  w[0].t = tx_read_vartime(w[0].tx[0..<size], false, w[0].ins[..], w[0].outs[..], w[0].items[0..<0]);
+  if !ps_spent(m, n, w) { return false; }
+  spk := w[0].spk[0..<w[0].spk_n];
+  wit: [PSBT_TX] u8;
+  if ps_p2tr(spk) {
+    s := psbt_find1_vartime(m, PSBT_INPUT, n, 0x13);
+    if s < 0 { return false; }
+    at := tx_compact_write_vartime(wit[..], 0, 1);
+    at = tx_compact_write_vartime(wit[..], at, pm_value(m, s).count);
+    at = tx_put(wit[..], at, pm_value(m, s));
+    return psbt_set1_vartime(m, PSBT_INPUT, n, 0x08, wit[0..<at]);
+  }
+  script := spk; p2sh := script_p2sh_vartime(spk); code: [25] u8;
+  redeem := psbt_find1_vartime(m, PSBT_INPUT, n, 0x04);
+  if p2sh {
+    if redeem < 0 { return false; }
+    script = pm_value(m, redeem);
+  }
+  stack: [32] int; key: [1] int; sig: [PSBT_TX] u8; sn := 0; wn := 0; count := 0; ws := -1;
+  if ps_p2wpkh(script) {
+    count = pf_satisfy(m, n, ps_p2pkh_of(script[2..<22], code[..]), stack[..], key[..]);
+  } else if ps_p2wsh(script) {
+    ws = psbt_find1_vartime(m, PSBT_INPUT, n, 0x05);
+    if ws < 0 { return false; }
+    count = pf_satisfy(m, n, pm_value(m, ws), stack[..], key[..]);
+  } else {
+    count = pf_satisfy(m, n, script, stack[..], key[..]);
+    if count < 0 { return false; }
+    for k: 0..<count { sn = pf_push(pf_item(m, stack[k], key[0]), sig[..], sn); }
+    count = -2;                                               // no witness
+  }
+  if count == -1 { return false; }
+  if count >= 0 {
+    wn = tx_compact_write_vartime(wit[..], 0, count + ifx ws >= 0 then 1 else 0);
+    for k: 0..<count {
+      item := pf_item(m, stack[k], key[0]);
+      wn = tx_compact_write_vartime(wit[..], wn, item.count); wn = tx_put(wit[..], wn, item);
+    }
+    if ws >= 0 { wn = tx_compact_write_vartime(wit[..], wn, pm_value(m, ws).count); wn = tx_put(wit[..], wn, pm_value(m, ws)); }
+  }
+  if p2sh { sn = pf_push(script, sig[..], sn); }
+  if sn > 0 && !psbt_set1_vartime(m, PSBT_INPUT, n, 0x07, sig[0..<sn]) { return false; }
+  if wn > 0 && !psbt_set1_vartime(m, PSBT_INPUT, n, 0x08, wit[0..<wn]) { return false; }
+  return true;
+}
+// Every input; true when all are final.
+psbt_finalize_vartime :: (m: [] PsbtMaps, w: [] PsbtSign) -> bool #export_c {
+  all := true;
+  for n: 0..<m[0].nin { if !psbt_finalize_input_vartime(m, n, w) { all = false; } }
+  return all;
+}
+// book:end finalizer
+
+// ---- the Transaction Extractor
+// book:begin extractor
+// The Transaction Extractor: the unsigned transaction with each input's
+// final scriptSig and witness, in BIP-144's form when any input has a
+// witness. Its length in out, or -1 when an input isn't final or out is
+// too short.
+psbt_extract_vartime :: (m: [] PsbtMaps, out: [] u8, w: [] PsbtSign) -> int #export_c {
+  size := psbt_unsigned_vartime(m, w[0].tx[..]);
+  if size < 0 { return -1; }
+  b := w[0].tx[0..<size];
+  t := tx_read_vartime(b, false, w[0].ins[..], w[0].outs[..], w[0].items[0..<0]);
+  segwit := false;
+  for i: 0..<t.nin {
+    if !psbt_final_vartime(m, i) { return -1; }
+    if psbt_find1_vartime(m, PSBT_INPUT, i, 0x08) >= 0 { segwit = true; }
+  }
+  need := size + 2;
+  for j: 0..<m[0].n { need += m[0].pairs[j].value_n + 9; }
+  if need > out.count { return -1; }
+  at := tx_put(out, 0, b[0..<4]);
+  if segwit { out[at] = 0; out[at+1] = 1; at += 2; }
+  at = tx_compact_write_vartime(out, at, t.nin);
+  for i: 0..<t.nin {
+    at = tx_put(out, at, b[w[0].ins[i].outpoint..<w[0].ins[i].outpoint+36]);
+    s := psbt_find1_vartime(m, PSBT_INPUT, i, 0x07);
+    script := ifx s >= 0 then pm_value(m, s) else b[0..<0];
+    at = tx_compact_write_vartime(out, at, script.count); at = tx_put(out, at, script);
+    at = tx_put(out, at, b[w[0].ins[i].sequence..<w[0].ins[i].sequence+4]);
+  }
+  outputs := ifx t.nin > 0 then w[0].ins[t.nin-1].sequence + 4 else 5;   // the output count, then the outputs
+  at = tx_put(out, at, b[outputs..<t.locktime]);
+  if segwit {
+    for i: 0..<t.nin {
+      s := psbt_find1_vartime(m, PSBT_INPUT, i, 0x08);
+      if s >= 0 { at = tx_put(out, at, pm_value(m, s)); } else { out[at] = 0; at += 1; }
+    }
+  }
+  return tx_put(out, at, b[t.locktime..<t.total]);
+}
+// book:end extractor
+
+// ---- checks
+psbt_hex :: (h: string, out: [] u8) -> [] u8 { return tx_unhex(h, out); }
+// The code a hex PSBT reads with.
+psbt_code_hex :: (h: string) -> int {
+  b: [4096] u8; f: [64] PsbtField; w: [1] PsbtRead;
+  return psbt_read_vartime(psbt_hex(h, b[..]), f[..], w[..]).code;
+}
+// BIP-174's unsigned transaction: version 2, the creator's two inputs
+// (empty scriptSigs, sequence 0xffffffff) and two outputs, lock time 0.
+psbt_bip174_unsigned :: (out: [] u8) -> [] u8 {
+  out[0] = 2; out[1] = 0; out[2] = 0; out[3] = 0;
+  at := tx_compact_write_vartime(out, 4, PSBT_BIP174_INPUTS.count);
+  for i: 0..<PSBT_BIP174_INPUTS.count {
+    id: [32] u8; #assert psbt_hex(PSBT_BIP174_INPUTS[i].txid, id[..]).count == 32;
+    for k: 0..<32 { out[at+k] = id[31-k]; }                    // txids are shown reversed
+    for k: 0..<4 { out[at+32+k] = cast(u8) ((PSBT_BIP174_INPUTS[i].index >> (8 * k)) & 255); out[at+37+k] = 0xff; }
+    out[at+36] = 0; at += 41;
+  }
+  at = tx_compact_write_vartime(out, at, PSBT_BIP174_OUTPUTS.count);
+  for i: 0..<PSBT_BIP174_OUTPUTS.count {
+    for k: 0..<8 { out[at+k] = cast(u8) ((PSBT_BIP174_OUTPUTS[i].amount >> (8 * k)) & 255); }
+    s: [64] u8; script := psbt_hex(PSBT_BIP174_OUTPUTS[i].script, s[..]);
+    at = tx_compact_write_vartime(out, at + 8, script.count); at = tx_put(out, at, script);
+  }
+  for k: 0..<4 { out[at+k] = 0; }
+  return out[0..<at+4];
+}
+#test "the Creator writes BIP-174's first PSBT" {
+  tx: [256] u8; m: [1] PsbtMaps; out: [512] u8; want: [512] u8;
+  #assert psbt_create_vartime(psbt_bip174_unsigned(tx[..]), m[..]);
+  n := psbt_write_vartime(m[..], out[..]);
+  #assert ps_equal(out[0..<n], psbt_hex(PSBT_BIP174_RESULTS[0], want[..]));
+  bad := psbt_bip174_unsigned(tx[..]); bad[41] = 1;                    // a scriptSig's length
+  #assert !psbt_create_vartime(bad, m[..]);
+  #assert psbt_write_vartime(m[..], out[0..<4]) == -1;
+}
+#test "the codes and their messages line up" {
+  #assert PSBT_REASONS.count == PSBT_CAPACITY + 1 && PSBT_REASONS[PSBT_EXTRA] == "extra data after PSBT";
+  #assert PSBT_DUP_GLOBAL + PSBT_INPUT == PSBT_DUP_INPUT && PSBT_SEP_GLOBAL + PSBT_OUTPUT == PSBT_SEP_OUTPUT;
+  #assert PSBT_V0_TX_VERSION + 4 == PSBT_V0_MODIFIABLE;
+  #assert psbt_key_size_vartime(PSBT_GLOBAL, 0x01) == 79 && psbt_key_name_vartime(PSBT_GLOBAL, 0x01) == "Global XPUB";
+  #assert psbt_key_size_vartime(PSBT_INPUT, 0x14) == 65 && psbt_key_name_vartime(PSBT_INPUT, 0x14) == "Input Taproot Script Path Signature";
+  #assert psbt_key_size_vartime(PSBT_OUTPUT, 0x08) == 34 && psbt_key_name_vartime(PSBT_OUTPUT, 0x08) == "Output MuSig2 Participants Pubkeys";
+  #assert psbt_key_size_vartime(PSBT_INPUT, 0x02) == 0 && psbt_key_size_vartime(PSBT_OUTPUT, 0x09) == 0;
+}
+#test "the smallest PSBTs: magic, separators and counts" {
+  // An unsigned transaction with no inputs and no outputs, then nothing.
+  #assert psbt_code_hex("70736274ff01000a0000000000000000000000") == PSBT_OK;
+  #assert psbt_code_hex("70736274ff01000a00000000000000000000") == PSBT_SEP_GLOBAL;
+  #assert psbt_code_hex("70736274ff01000a0000000000000000000000ff") == PSBT_EXTRA;
+  #assert psbt_code_hex("70736274fe") == PSBT_MAGIC && psbt_code_hex("70736274") == PSBT_TRUNCATED;
+  #assert psbt_code_hex("70736274ff00") == PSBT_NO_TX;
+  #assert psbt_code_hex("70736274ff01000a0000000000000000000001000a0000000000000000000000") == PSBT_DUP_GLOBAL;
+  #assert psbt_code_hex("70736274ff02000a0a000000000000000000000000") == PSBT_KEY_SIZE;
+  #assert psbt_code_hex("70736274ff01000b000000000000000000000000") == PSBT_VALUE_SIZE;
+  #assert psbt_code_hex("70736274ff01000a0000000000000000000001fb040100000000") == PSBT_V1;
+  #assert psbt_code_hex("70736274ff01000a0000000000000000000001fb040200000000") == PSBT_V2_TX_VERSION;
+  #assert psbt_code_hex("70736274ff01000a0000000000000000000001fb040300000000") == PSBT_VERSION;
+  #assert psbt_code_hex("70736274ff01fb0401000000") == PSBT_SEP_GLOBAL;
+}
+#test "pubkeys: compressed, uncompressed and hybrid" {
+  g: [65] u8;
+  #assert psbt_hex("0479be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8", g[..]).count == 65;
+  #assert psbt_pubkey_valid_vartime(g[..]) && psbt_pubkey_valid_vartime(g[0..<33]) == false;
+  g[0] = 6; #assert psbt_pubkey_valid_vartime(g[..]);       // y is even
+  g[0] = 7; #assert !psbt_pubkey_valid_vartime(g[..]);
+  g[0] = 2; #assert psbt_pubkey_valid_vartime(g[0..<33]) && !psbt_pubkey_valid_vartime(g[..]);
+  g[0] = 5; #assert !psbt_pubkey_valid_vartime(g[0..<33]);
+  #assert !psbt_pubkey_valid_vartime(g[0..<0]);
+}
+#test "Taproot trees: whole, unfinished and too deep" {
+  t := [1] PsbtTree.[PsbtTree.{valid=true}];
+  pr_tree_add(t[..], 1); pr_tree_add(t[..], 1); #assert psbt_tree_done(t[0]);
+  t[0] = PsbtTree.{valid=true}; pr_tree_add(t[..], 0); #assert psbt_tree_done(t[0]);
+  pr_tree_add(t[..], 0); #assert !psbt_tree_done(t[0]);                    // a second root
+  t[0] = PsbtTree.{valid=true}; pr_tree_add(t[..], 1); #assert !psbt_tree_done(t[0]);   // no sibling yet
+  pr_tree_add(t[..], 2); pr_tree_add(t[..], 2); #assert psbt_tree_done(t[0]);
+  t[0] = PsbtTree.{valid=true}; pr_tree_add(t[..], 2); pr_tree_add(t[..], 0); #assert !psbt_tree_done(t[0]);
+  t[0] = PsbtTree.{valid=true}; #assert psbt_tree_done(t[0]);           // no leaves: an empty builder
+}
+// Every published case: its verdict, and Core's message where Core gives one.
+#forall "every published PSBT reads or refuses as published" i: 0..<PSBT_CASES.count #steps 2000000000 {
+  c := PSBT_CASES[i];
+  raw: [4096] u8; f: [64] PsbtField; w: [1] PsbtRead; code: [1] int;
+  b := psbt_base64_vartime(c.text, raw[..], code[..]);
+  p := Psbt.{code=code[0]};
+  if code[0] == PSBT_OK { p = psbt_read_vartime(b, f[..], w[..]); }
+  #assert (p.code == PSBT_OK) == (c.kind != PSBT_CASE_INVALID);
+  #assert p.code == c.code && (p.code != PSBT_KEY_SIZE || (p.map == c.map && p.type == c.type));
+}
+#forall "BIP-370's lock times" i: 0..<PSBT_CASES.count #steps 2000000000 {
+  c := PSBT_CASES[i];
+  if c.kind == PSBT_CASE_LOCKTIME {
+    raw: [4096] u8; f: [64] PsbtField; w: [1] PsbtRead; code: [1] int; m: [1] PsbtMaps;
+    b := psbt_base64_vartime(c.text, raw[..], code[..]);
+    #assert psbt_maps_vartime(b, psbt_read_vartime(b, f[..], w[..]), f[..], m[..]) && psbt_locktime_vartime(m[..]) == c.locktime;
+  }
+}
+#forall "Core's signer cases sign as Core signs" i: 0..<PSBT_CORE_SIGNERS.count #steps 4000000000 {
+  c := PSBT_CORE_SIGNERS[i];
+  raw: [4096] u8; f: [64] PsbtField; rw: [1] PsbtRead; code: [1] int; m: [1] PsbtMaps; w: [1] PsbtSign;
+  b := psbt_base64_vartime(c.psbt, raw[..], code[..]);
+  #assert psbt_maps_vartime(b, psbt_read_vartime(b, f[..], rw[..]), f[..], m[..]);
+  keys: [64] u8; aux: [32] u8;
+  #assert psbt_hex(c.keys, keys[..]).count == c.keys.count / 2;
+  for k: 0..<c.keys.count / 64 { for n: 0..<m[0].nin { #assert psbt_sign_vartime(m[..], n, keys[32*k..<32*k+32], aux[..], true, w[..]) != PSBT_SIGN_CAPACITY; } }
+  out: [4096] u8; want: [4096] u8;
+  n := psbt_write_vartime(m[..], out[..]);
+  e := psbt_base64_vartime(c.result, want[..], code[..]);
+  #assert ps_equal(out[0..<n], e);
+}
+#test "Core's combiner, finalizer and extractor cases" #steps 2000000000 {
+  for i: 0..<PSBT_CORE_COMBINERS.count {
+    c := PSBT_CORE_COMBINERS[i];
+    ra: [4096] u8; rb: [4096] u8; f: [64] PsbtField; rw: [1] PsbtRead; code: [1] int; a: [1] PsbtMaps; b: [1] PsbtMaps; out: [1] PsbtMaps;
+    x := psbt_base64_vartime(c.a, ra[..], code[..]); y := psbt_base64_vartime(c.b, rb[..], code[..]);
+    #assert psbt_maps_vartime(x, psbt_read_vartime(x, f[..], rw[..]), f[..], a[..]) && psbt_maps_vartime(y, psbt_read_vartime(y, f[..], rw[..]), f[..], b[..]);
+    o: [4096] u8; want: [4096] u8;
+    e := psbt_base64_vartime(c.result, want[..], code[..]);
+    #assert psbt_combine_vartime(a[..], b[..], out[..]); n := psbt_write_vartime(out[..], o[..]); #assert ps_equal(o[0..<n], e);
+    #assert psbt_combine_vartime(b[..], a[..], out[..]); n = psbt_write_vartime(out[..], o[..]); #assert ps_equal(o[0..<n], e);
+  }
+  raw: [4096] u8; f: [64] PsbtField; rw: [1] PsbtRead; code: [1] int; m: [1] PsbtMaps; w: [1] PsbtSign;
+  x := psbt_base64_vartime(PSBT_CORE_FINALIZE, raw[..], code[..]);
+  #assert psbt_maps_vartime(x, psbt_read_vartime(x, f[..], rw[..]), f[..], m[..]) && psbt_finalize_vartime(m[..], w[..]);
+  o: [4096] u8; want: [4096] u8;
+  n := psbt_write_vartime(m[..], o[..]);
+  #assert ps_equal(o[0..<n], psbt_base64_vartime(PSBT_CORE_FINALIZED, want[..], code[..]));
+  x = psbt_base64_vartime(PSBT_CORE_EXTRACT, raw[..], code[..]);
+  #assert psbt_maps_vartime(x, psbt_read_vartime(x, f[..], rw[..]), f[..], m[..]);
+  n = psbt_extract_vartime(m[..], o[..], w[..]);
+  #assert ps_equal(o[0..<n], psbt_hex(PSBT_CORE_EXTRACTED, want[..]));
+}
+#test "Core's low-R grinding equals libsecp256k1's extra data" #steps 4000000000 {
+  // tiny-secp256k1's extraEntropy rows: ndata 0, 1, n and 2^256 - 1.
+  for i: 0..<PSBT_EXTRA_ENTROPY.count {
+    c := PSBT_EXTRA_ENTROPY[i];
+    for k: 0..<4 { #assert ec_signs_data(c.d, c.m, c.data[k], c.sig[k]); }
+  }
+}
+#test "the signer refuses what BIP-174 says to check" #steps 2000000000 {
+  // A key that isn't in the script, a finalized input, a hash type it won't sign.
+  raw: [4096] u8; f: [64] PsbtField; rw: [1] PsbtRead; code: [1] int; m: [1] PsbtMaps; w: [1] PsbtSign;
+  c := PSBT_CORE_SIGNERS[0];
+  x := psbt_base64_vartime(c.psbt, raw[..], code[..]);
+  #assert psbt_maps_vartime(x, psbt_read_vartime(x, f[..], rw[..]), f[..], m[..]);
+  key: [32] u8; aux: [32] u8; key[31] = 1;
+  #assert psbt_sign_vartime(m[..], 0, key[..], aux[..], true, w[..]) == PSBT_SIGN_NOT_MINE;
+  bad := [4] u8.[0x04, 0, 0, 0];
+  #assert psbt_set1_vartime(m[..], PSBT_INPUT, 0, 0x03, bad[..]) && psbt_sign_vartime(m[..], 0, key[..], aux[..], true, w[..]) == PSBT_SIGN_SIGHASH;
+  #assert psbt_set1_vartime(m[..], PSBT_INPUT, 0, 0x07, bad[0..<1]) && psbt_sign_vartime(m[..], 0, key[..], aux[..], true, w[..]) == PSBT_SIGN_FINAL;
+  #assert psbt_finalize_input_vartime(m[..], 0, w[..]);
+}
+#test "chapter 34's refusals map to the reader's codes" {
+  #assert pr_tx_code(TX_TRUNCATED) == PSBT_TRUNCATED && pr_tx_code(TX_NONCANONICAL) == PSBT_NONCANONICAL;
+  #assert pr_tx_code(TX_SIZE_TOO_LARGE) == PSBT_SIZE_TOO_LARGE && pr_tx_code(TX_UNKNOWN_FLAG) == PSBT_TX_FLAG;
+  #assert pr_tx_code(TX_NO_WITNESS) == PSBT_TX_NO_WITNESS && pr_tx_code(TX_OK) == PSBT_CAPACITY;
+}
+#test "the signer signs a P2TR key path, and only with its key" #steps 4000000000 {
+  // One coin locked to key 0x33..33 with no scripts, spent back to itself.
+  key: [32] u8; other: [32] u8; pub: [33] u8; spk: [34] u8; aux: [32] u8;
+  for k: 0..<32 { key[k] = 0x33; other[k] = 0x11; }
+  #assert bip32_public(key[..], pub[..]) && p2tr_script_vartime(pub[1..<33], spk[..]) == 34;
+  tx: [128] u8; v := 69000; amount := 70000;
+  tx[0] = 2; at := tx_compact_write_vartime(tx[..], 4, 1);
+  for k: 0..<32 { tx[at+k] = 3; }
+  for k: 0..<4 { tx[at+32+k] = 0; tx[at+37+k] = 0xff; }
+  tx[at+36] = 0; at = tx_compact_write_vartime(tx[..], at + 41, 1);
+  for k: 0..<8 { tx[at+k] = cast(u8) ((v >> (8 * k)) & 255); }
+  at = tx_compact_write_vartime(tx[..], at + 8, 34); at = tx_put(tx[..], at, spk[..]);
+  for k: 0..<4 { tx[at+k] = 0; }
+  m: [1] PsbtMaps; w: [1] PsbtSign;
+  #assert psbt_create_vartime(tx[0..<at+4], m[..]);
+  #assert psbt_sign_vartime(m[..], 0, key[..], aux[..], true, w[..]) == PSBT_SIGN_NO_UTXO;
+  u: [43] u8;
+  for k: 0..<8 { u[k] = cast(u8) ((amount >> (8 * k)) & 255); }
+  u[8] = 34; for k: 0..<34 { u[9+k] = spk[k]; }
+  #assert psbt_set1_vartime(m[..], PSBT_INPUT, 0, 0x01, u[..]);
+  #assert psbt_sign_vartime(m[..], 0, other[..], aux[..], true, w[..]) == PSBT_SIGN_NOT_MINE;
+  #assert psbt_sign_vartime(m[..], 0, key[..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+  s := psbt_find1_vartime(m[..], PSBT_INPUT, 0, 0x13);
+  #assert s >= 0 && pm_value(m[..], s).count == 64;
+  // The signature verifies under the output key for BIP-341's hash.
+  tp := bt_tx_read(tx[0..<at+4]); amounts := [1] int.[70000]; spent: [1] BtScript; sighash: [32] u8;
+  spent[0].n = 34; for k: 0..<34 { spent[0].b[k] = spk[k]; }
+  #assert bt_sighash_taproot(tx[0..<at+4], tp, 0, amounts[..], spent[..], 0, sighash[..]);
+  #assert taproot_key_path_verify_vartime(spk[2..<34], pm_value(m[..], s), sighash[..]);
+  // SIGHASH_ALL spelled out gives a 65-byte signature; type 4 isn't one.
+  all := [4] u8.[1, 0, 0, 0];
+  #assert psbt_set1_vartime(m[..], PSBT_INPUT, 0, 0x03, all[..]) && psbt_sign_vartime(m[..], 0, key[..], aux[..], true, w[..]) == PSBT_SIGN_OK;
+  #assert pm_value(m[..], psbt_find1_vartime(m[..], PSBT_INPUT, 0, 0x13)).count == 65;
+  all[0] = 4;
+  #assert psbt_set1_vartime(m[..], PSBT_INPUT, 0, 0x03, all[..]) && psbt_sign_vartime(m[..], 0, key[..], aux[..], true, w[..]) == PSBT_SIGN_SIGHASH;
+}

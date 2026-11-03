@@ -48,7 +48,7 @@ it. This chapter audits it, teaches it and adds its vectors and checks.
 | File | Procedure | What it does |
 | --- | --- | --- |
 | [ecdsa_sign.coax](../../coax/lib/crypto/ecdsa_sign.coax) | `ecdsa_sign(key, hash, w, out, overlap)` | signs a 32-byte hash into the compact `r \|\| s` (`#authority`) |
-| | `ec_candidates`, `ec_step`, `ec_next`, `ec_hmac` | RFC 6979's HMAC-SHA256 generator: the first two nonce candidates |
+| | `ec_candidates`, `ec_seed`, `ec_step`, `ec_next`, `ec_hmac` | RFC 6979's HMAC-SHA256 generator: the first two nonce candidates |
 | | `ec_pick` | the first candidate in `[1, n-1]`, chosen with a mask |
 | | `ec_sign` | the signer body that `ecdsa_sign` and chapter 22's `ecdsa_sign_recoverable` share |
 | | `ec_high`, `ec_low` | whether `s` is in the high half, and `n - s` then, chosen with a mask |
@@ -128,19 +128,24 @@ ec_step :: (w: [] EcdsaWork, tag: u8, n: int) {
 }
 ```
 
-`ec_candidates` runs the steps and keeps the first two candidates:
+`ec_seed` runs the steps and keeps the first two candidates. `ec_candidates`
+is `ec_seed` with no extra data:
 
 <!-- source: coax/lib/crypto/ecdsa_sign.coax rfc6979 -->
 ```jai
 // RFC 6979 section 3.2 for SHA-256 and secp256k1's 256-bit order: the
 // first two candidates for key and hash, into w.first and w.second.
-// bits2octets(h) is h mod n. buf holds V || tag || key || h.
-ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) {
+// bits2octets(h) is h mod n. data is empty or 32 bytes of extra data
+// (section 3.6). buf holds V || tag || key || h || data.
+ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) { ec_seed(key, hash, hash[0..<0], w); }
+ec_seed :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork) {
   z := sc_reduce_bytes(hash);                      // the message hash is public
   for i: 0..<32 { w[0].hv[i] = 1; w[0].hk[i] = 0; w[0].buf[33+i] = key[i]; }   // b, c: V = 01..01, K = 00..00
   #assert ss_write(z.value, w[0].buf[65..<97]);
-  ec_step(w, 0, 97);                               // d, e: K = HMAC_K(V || 00 || key || h), V = HMAC_K(V)
-  ec_step(w, 1, 97);                               // f, g: K = HMAC_K(V || 01 || key || h), V = HMAC_K(V)
+  for i: 0..<data.count { w[0].buf[97+i] = data[i]; }   // public: a counter
+  n := 97 + data.count;
+  ec_step(w, 0, n);                                // d, e: K = HMAC_K(V || 00 || key || h || data), V = HMAC_K(V)
+  ec_step(w, 1, n);                                // f, g: K = HMAC_K(V || 01 || key || h || data), V = HMAC_K(V)
   ec_next(w);                                      // h: V = HMAC_K(V), the first candidate
   for i: 0..<32 { w[0].first[i] = w[0].hv[i]; }
   ec_step(w, 0, 33);                               // h, retry: K = HMAC_K(V || 00), V = HMAC_K(V)
@@ -216,11 +221,12 @@ example below is high.
 <!-- source: coax/lib/crypto/ecdsa_sign.coax ecdsa -->
 ```jai
 // The signature of a 32-byte message hash under a 32-byte key, with RFC
-// 6979's nonce, into out: r || s (32 bytes each, s in the low half), then
-// the recovery ID when out has 65 bytes. The caller checks the views.
-ec_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
+// 6979's nonce (with data as extra data when it isn't empty), into out:
+// r || s (32 bytes each, s in the low half), then the recovery ID when out
+// has 65 bytes. The caller checks the views.
+ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
   #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
-  ec_candidates(key, hash, w);
+  ec_seed(key, hash, data, w);
   ec_pick(w);                                            // k
   #assert sp_base(w[0].k, w[0].point[..]) && sp_x(w[0].point[..], w[0].x[..]);
   w[0].r = sc_reduce_bytes(w[0].x[..]).value;            // r = x(kG) mod n
@@ -242,7 +248,7 @@ ec_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
 // only when the result is true; the workspace is cleared either way.
 ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
   if !ec_views(key, hash, w, out, overlap, 64) { return false; }
-  return ec_sign(key, hash, w, out);
+  return ec_sign(key, hash, hash[0..<0], w, out);
 }
 ```
 
@@ -310,10 +316,12 @@ libsecp256k1's `secp256k1_ecdsa_sign` takes optional extra data, `ndata`,
 3.6). Bitcoin Core uses it to grind for a low `r`: when the first
 signature's `r` has its top bit set, it signs again with a counter as
 `ndata`, so that `r` needs no `00` byte in DER and the transaction is one
-byte smaller. This signer doesn't support extra data, so it's out of scope
-here. Its output is libsecp256k1's signature with `ndata` absent, which is
-Bitcoin Core's whenever the first `r` is already low, about half the time.
-The pinned file's `extraEntropy` rows are not used.
+byte smaller. `ec_seed` takes that extra data (empty here), and `ec_sign`
+passes it through. `ecdsa_sign` passes none, so its output is
+libsecp256k1's signature with `ndata` absent, which is Bitcoin Core's
+whenever the first `r` is already low, about half the time. Chapter 94's
+`ecdsa_sign_low_r` grinds as Core does and checks itself against the
+pinned file's `extraEntropy` rows.
 
 ## Why a reused or biased nonce gives the key away
 

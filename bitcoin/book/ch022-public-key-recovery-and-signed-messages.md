@@ -268,11 +268,12 @@ ec_low :: (s: ScScalar) -> ScScalar {
 <!-- source: coax/lib/crypto/ecdsa_sign.coax ecdsa -->
 ```jai
 // The signature of a 32-byte message hash under a 32-byte key, with RFC
-// 6979's nonce, into out: r || s (32 bytes each, s in the low half), then
-// the recovery ID when out has 65 bytes. The caller checks the views.
-ec_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
+// 6979's nonce (with data as extra data when it isn't empty), into out:
+// r || s (32 bytes each, s in the low half), then the recovery ID when out
+// has 65 bytes. The caller checks the views.
+ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
   #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
-  ec_candidates(key, hash, w);
+  ec_seed(key, hash, data, w);
   ec_pick(w);                                            // k
   #assert sp_base(w[0].k, w[0].point[..]) && sp_x(w[0].point[..], w[0].x[..]);
   w[0].r = sc_reduce_bytes(w[0].x[..]).value;            // r = x(kG) mod n
@@ -294,7 +295,7 @@ ec_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
 // only when the result is true; the workspace is cleared either way.
 ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
   if !ec_views(key, hash, w, out, overlap, 64) { return false; }
-  return ec_sign(key, hash, w, out);
+  return ec_sign(key, hash, hash[0..<0], w, out);
 }
 ```
 
@@ -327,7 +328,7 @@ ec_recid :: (w: [] EcdsaWork) -> u8 {
 // r || s || id. Everything else is ecdsa_sign's.
 ecdsa_sign_recoverable :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
   if !ec_views(key, hash, w, out, overlap, 65) { return false; }
-  return ec_sign(key, hash, w, out);
+  return ec_sign(key, hash, hash[0..<0], w, out);
 }
 ```
 

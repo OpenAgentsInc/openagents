@@ -1,0 +1,332 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/psbt.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+put_hex :: (b: [] u8) {
+  text: [256] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+yes :: (b: bool) -> string { return ifx b then "yes" else "no"; }
+plural :: (n: int, one: string, many: string) -> string { return ifx n == 1 then one else many; }
+// Core's message for a refusal.
+put_reason :: (p: Psbt) {
+  if p.code == PSBT_KEY_SIZE { print("Size of key was not % for the type %", psbt_key_size_vartime(p.map, p.type), psbt_key_name_vartime(p.map, p.type)); }
+  else { print("%", PSBT_REASONS[p.code]); }
+}
+// A Base64 PSBT read into m; its Psbt.
+Reader :: struct { raw: [8192] u8; fields: [128] PsbtField; w: [1] PsbtRead; }
+load :: (text: string, rd: [] Reader, m: [] PsbtMaps) -> Psbt {
+  code: [1] int;
+  b := psbt_base64_vartime(text, rd[0].raw[..], code[..]);
+  if code[0] != PSBT_OK { return Psbt.{code=code[0]}; }
+  p := psbt_read_vartime(b, rd[0].fields[..], rd[0].w[..]);
+  if p.code == PSBT_OK { #assert psbt_maps_vartime(b, p, rd[0].fields[..], m); }
+  return p;
+}
+// Whether m, written, is the PSBT whose hex or Base64 is want.
+same_hex :: (m: [] PsbtMaps, want: string) -> bool {
+  out: [8192] u8; w: [8192] u8;
+  n := psbt_write_vartime(m, out[..]);
+  return n > 0 && ps_equal(out[0..<n], psbt_hex(want, w[..]));
+}
+same_base64 :: (m: [] PsbtMaps, want: string) -> bool {
+  out: [8192] u8; w: [8192] u8; code: [1] int;
+  n := psbt_write_vartime(m, out[..]);
+  return n > 0 && ps_equal(out[0..<n], psbt_base64_vartime(want, w[..], code[..]));
+}
+// The key at m/a'/b'/c' below the BIP-174 master key, into key.
+derive :: (path: [3] int, key: [] u8) {
+  work: [BIP32_WORK_BYTES] u8; master: [BIP32_NODE_BYTES] u8; node: [BIP32_NODE_BYTES] u8;
+  #assert bip32_decode_ct(PSBT_BIP174_TPRV, work[..], master[..]) == BIP32_NODE_BYTES;
+  steps := [3] int.[path[0] + BIP32_HARDENED, path[1] + BIP32_HARDENED, path[2] + BIP32_HARDENED];
+  #assert bip32_descend_ct(master[..], steps[..], work[..], node[..]) == BIP32_NODE_BYTES;
+  for k: 0..<32 { key[k] = node[HDK_KEY + 1 + k]; }
+}
+
+main :: () {
+  rd: [1] Reader; m: [1] PsbtMaps; w: [1] PsbtSign;
+
+  // Every published PSBT: Core's verdict, and what reads.
+  print("Every published PSBT, read as Bitcoin Core reads it:\n");
+  kinds := [4] string.["invalid", "valid", "valid, fails the signer's checks", "lock-time case"];
+  refused := 0; differ := 0;
+  for i: 0..<PSBT_CASES.count {
+    c := PSBT_CASES[i];
+    p := load(c.text, rd[..], m[..]);
+    print("  % % (%): ", i + 1, c.source, kinds[c.kind]);
+    if p.code != PSBT_OK { put_reason(p); refused += 1; }
+    else {
+      out: [8192] u8;
+      n := psbt_write_vartime(m[..], out[..]);
+      print("v%, % %, % %, % %, written back %", p.version, p.nin, plural(p.nin, "input", "inputs"), p.nout,
+        plural(p.nout, "output", "outputs"), p.nfields, plural(p.nfields, "pair", "pairs"), ifx ps_equal(out[0..<n], rd[0].raw[0..<n]) then "the same" else "in Core's order");
+      if c.kind == PSBT_CASE_LOCKTIME {
+        lt := psbt_locktime_vartime(m[..]);
+        if lt < 0 { print("; no lock time satisfies every input"); } else { print("; lock time %", lt); }
+      }
+    }
+    print("\n");
+    if (p.code == PSBT_OK) != (c.kind != PSBT_CASE_INVALID) || p.code != c.code { differ += 1; }
+  }
+  print("  % PSBTs: % refused, % read; % differ from the published verdicts\n", PSBT_CASES.count, refused, PSBT_CASES.count - refused, differ);
+
+  // BIP-174's worked example, from its master key.
+  print("BIP-174's worked example, from its master key %:\n", PSBT_BIP174_TPRV);
+  work: [BIP32_WORK_BYTES] u8; master: [BIP32_NODE_BYTES] u8; fp: [4] u8;
+  #assert bip32_decode_ct(PSBT_BIP174_TPRV, work[..], master[..]) == BIP32_NODE_BYTES;
+  #assert bip32_fingerprint_ct(master[..], work[..], fp[..]) == 4;
+  all := true;
+  for i: 0..<PSBT_BIP174_PATHS.count {
+    key: [32] u8; pub: [33] u8; want: [33] u8;
+    derive(PSBT_BIP174_PATHS[i].path, key[..]);
+    #assert bip32_public(key[..], pub[..]);
+    if !ps_equal(pub[..], psbt_hex(PSBT_BIP174_PATHS[i].key, want[..])) { all = false; }
+  }
+  print("  the master key's fingerprint: "); put_hex(fp[..]);
+  print("; its six public keys at their paths are the published ones: %\n", yes(all));
+  all = true;
+  for i: 0..<PSBT_BIP174_SIGNERS.count {
+    key: [32] u8; want: [32] u8;
+    derive(PSBT_BIP174_SIGNERS[i].path, key[..]);
+    if !ps_equal(key[..], psbt_hex(PSBT_BIP174_SIGNERS[i].key, want[..])) { all = false; }
+  }
+  print("  the signers' keys at their paths are their WIFs': %\n", yes(all));
+  tx: [256] u8;
+  #assert psbt_create_vartime(psbt_bip174_unsigned(tx[..]), m[..]);
+  print("  Creator: %\n", yes(same_hex(m[..], PSBT_BIP174_RESULTS[0])));
+  update(m[..], fp[..]);
+  print("  Updater: %\n", yes(same_hex(m[..], PSBT_BIP174_RESULTS[1])));
+  all1 := [4] u8.[1, 0, 0, 0];
+  for n: 0..<m[0].nin { #assert psbt_set1_vartime(m[..], PSBT_INPUT, n, 0x03, all1[..]); }
+  print("  SIGHASH_ALL on every input: %\n", yes(same_hex(m[..], PSBT_BIP174_RESULTS[2])));
+  signed: [2] PsbtMaps;
+  for s: 0..<2 {
+    signed[s] = m[0];
+    for k: 0..<2 {
+      key: [32] u8; aux: [32] u8;
+      derive(PSBT_BIP174_SIGNERS[2*s+k].path, key[..]);
+      for n: 0..<m[0].nin {
+        r := psbt_sign_vartime(signed[s..<s+1], n, key[..], aux[..], false, w[..]);
+        print("  Signer %, key m/0'/0'/%', input %: %\n", s + 1, PSBT_BIP174_SIGNERS[2*s+k].path[2], n, PSBT_SIGN_REASONS[r]);
+      }
+    }
+    print("  Signer %: %\n", s + 1, yes(same_hex(signed[s..<s+1], PSBT_BIP174_RESULTS[3+s])));
+  }
+  both: [1] PsbtMaps; other: [1] PsbtMaps;
+  #assert psbt_combine_vartime(signed[0..<1], signed[1..<2], both[..]) && psbt_combine_vartime(signed[1..<2], signed[0..<1], other[..]);
+  print("  Combiner, in either order: %\n", yes(same_hex(both[..], PSBT_BIP174_RESULTS[5]) && same_hex(other[..], PSBT_BIP174_RESULTS[5])));
+  print("  Input Finalizer: final %, %\n", yes(psbt_finalize_vartime(both[..], w[..])), yes(same_hex(both[..], PSBT_BIP174_RESULTS[6])));
+  net: [8192] u8; want: [8192] u8;
+  n := psbt_extract_vartime(both[..], net[..], w[..]);
+  print("  Transaction Extractor: %, % bytes\n", yes(ps_equal(net[0..<n], psbt_hex(PSBT_BIP174_RESULTS[7], want[..]))), n);
+  combine_hex(PSBT_BIP174_RESULTS[8], PSBT_BIP174_RESULTS[9], PSBT_BIP174_RESULTS[10], "  Combiner, keys only one side has");
+  combine_hex(PSBT_BIP174_RESULTS[11], PSBT_BIP174_RESULTS[12], PSBT_BIP174_RESULTS[13], "  Combiner, a key both sides have");
+
+  // BIP-174's signer checks, each input signed with the first signer's key.
+  print("BIP-174's signer checks, each input signed with m/0'/0'/0':\n");
+  key0: [32] u8; aux: [32] u8;
+  derive(PSBT_BIP174_SIGNERS[0].path, key0[..]);
+  for i: 0..<PSBT_CASES.count {
+    if PSBT_CASES[i].kind != PSBT_CASE_SIGNER { continue; }
+    p := load(PSBT_CASES[i].text, rd[..], m[..]);
+    print("  case %:", i + 1);
+    for k: 0..<p.nin { print(" input %, %;", k, PSBT_SIGN_REASONS[psbt_sign_vartime(m[..], k, key0[..], aux[..], true, w[..])]); }
+    print("\n");
+  }
+
+  // Core's cases for the other roles.
+  print("Bitcoin Core's role cases (rpc_psbt.json):\n");
+  for i: 0..<PSBT_CORE_SIGNERS.count {
+    c := PSBT_CORE_SIGNERS[i];
+    p := load(c.psbt, rd[..], m[..]);
+    keys: [64] u8;
+    #assert psbt_hex(c.keys, keys[..]).count == c.keys.count / 2;
+    print("  walletprocesspsbt %:", i + 1);
+    for k: 0..<c.keys.count / 64 { for x: 0..<p.nin { print(" %", psbt_sign_vartime(m[..], x, keys[32*k..<32*k+32], aux[..], true, w[..])); } }
+    print("; the published result: %\n", yes(same_base64(m[..], c.result)));
+  }
+  for i: 0..<PSBT_CORE_COMBINERS.count {
+    c := PSBT_CORE_COMBINERS[i];
+    a: [1] PsbtMaps; b: [1] PsbtMaps;
+    #assert load(c.a, rd[..], a[..]).code == PSBT_OK && load(c.b, rd[..], b[..]).code == PSBT_OK;
+    #assert psbt_combine_vartime(a[..], b[..], both[..]) && psbt_combine_vartime(b[..], a[..], other[..]);
+    print("  combinepsbt %, in either order: %\n", i + 1, yes(same_base64(both[..], c.result) && same_base64(other[..], c.result)));
+  }
+  #assert load(PSBT_CORE_FINALIZE, rd[..], m[..]).code == PSBT_OK;
+  print("  finalizepsbt: final %, %\n", yes(psbt_finalize_vartime(m[..], w[..])), yes(same_base64(m[..], PSBT_CORE_FINALIZED)));
+  #assert load(PSBT_CORE_EXTRACT, rd[..], m[..]).code == PSBT_OK;
+  n = psbt_extract_vartime(m[..], net[..], w[..]);
+  print("  finalizepsbt with extract: %\n", yes(ps_equal(net[0..<n], psbt_hex(PSBT_CORE_EXTRACTED, want[..]))));
+
+  // Our own spend: P2WPKH, P2WSH 2-of-2 and a P2TR key path.
+  own(w[..]);
+}
+// book:end example
+
+// BIP-174's Updater, given what its example gives it: for each input, the
+// previous transaction whose txid it spends, the redeemScript and
+// witnessScript that hash to its scripts, and the paths of the keys in
+// them; for each P2WPKH output, the path of its key.
+update :: (m: [] PsbtMaps, fp: [] u8) {
+  tx: [256] u8; ins: [4] TxIn; outs: [4] TxOut; items: [1] TxItem;
+  b := psbt_unsigned_vartime(m, tx[..]);
+  t := tx_read_vartime(tx[0..<b], false, ins[..], outs[..], items[0..<0]);
+  for n: 0..<t.nin {
+    script: [256] u8; sn := 0; spk: [64] u8; spk_n := 0; amount: [8] u8;
+    for j: 0..<PSBT_BIP174_PREV.count {
+      raw: [512] u8; pins: [4] TxIn; pouts: [4] TxOut; pitems: [8] TxItem; id: [32] u8;
+      prev := psbt_hex(PSBT_BIP174_PREV[j], raw[..]);
+      pt := tx_read_vartime(prev, true, pins[..], pouts[..], pitems[..]);
+      #assert tx_txid_vartime(prev, pt, id[..]);
+      if !ps_equal(id[..], tx[ins[n].outpoint..<ins[n].outpoint+32]) { continue; }
+      o := pouts[tx_le_vartime(tx[..], ins[n].outpoint + 32, 4)];
+      for k: 0..<8 { amount[k] = prev[o.value+k]; }
+      spk_n = o.script_n; for k: 0..<spk_n { spk[k] = prev[o.script+k]; script[k] = prev[o.script+k]; }
+      sn = spk_n;
+      for r: 0..<PSBT_BIP174_REDEEM.count {
+        rb: [256] u8; redeem := psbt_hex(PSBT_BIP174_REDEEM[r], rb[..]); h: [20] u8;
+        #assert hash160_checked(redeem, h[..], false) == RMD_OK;
+        if ps_equal(h[..], spk[2..<22]) {
+          #assert psbt_set1_vartime(m, PSBT_INPUT, n, 0x04, redeem);
+          sn = redeem.count; for k: 0..<sn { script[k] = redeem[k]; }
+        }
+      }
+      if ps_p2wsh(script[0..<sn]) || ps_p2wpkh(script[0..<sn]) {
+        u: [64] u8; for k: 0..<8 { u[k] = amount[k]; }
+        u[8] = cast(u8) spk_n; for k: 0..<spk_n { u[9+k] = spk[k]; }
+        #assert psbt_set1_vartime(m, PSBT_INPUT, n, 0x01, u[0..<9+spk_n]);
+      } else { #assert psbt_set1_vartime(m, PSBT_INPUT, n, 0x00, prev); }
+      if ps_p2wsh(script[0..<sn]) {
+        for x: 0..<PSBT_BIP174_WITNESS.count {
+          wb: [256] u8; ws := psbt_hex(PSBT_BIP174_WITNESS[x], wb[..]); h: [32] u8;
+          #assert sha256_hash_checked(ws, h[..], false) == SHA_OK;
+          if ps_equal(h[..], script[2..<34]) {
+            #assert psbt_set1_vartime(m, PSBT_INPUT, n, 0x05, ws);
+            sn = ws.count; for k: 0..<sn { script[k] = ws[k]; }
+          }
+        }
+      }
+    }
+    for i: 0..<PSBT_BIP174_PATHS.count {
+      key: [34] u8; key[0] = 33;
+      #assert psbt_hex(PSBT_BIP174_PATHS[i].key, key[1..<34]).count == 33;
+      if ps_contains(script[0..<sn], key[..]) {
+        key[0] = 0x06;
+        origin: [16] u8; origin_of(fp, PSBT_BIP174_PATHS[i].path, origin[..]);
+        #assert psbt_set_vartime(m, PSBT_INPUT, n, key[..], origin[..]);
+      }
+    }
+  }
+  for n: 0..<t.nout {
+    s := tx[outs[n].script..<outs[n].script+outs[n].script_n];
+    for i: 0..<PSBT_BIP174_PATHS.count {
+      key: [34] u8; key[0] = 0x02; h: [20] u8;
+      #assert psbt_hex(PSBT_BIP174_PATHS[i].key, key[1..<34]).count == 33;
+      #assert hash160_checked(key[1..<34], h[..], false) == RMD_OK;
+      if ps_p2wpkh(s) && ps_equal(h[..], s[2..<22]) {
+        origin: [16] u8; origin_of(fp, PSBT_BIP174_PATHS[i].path, origin[..]);
+        #assert psbt_set_vartime(m, PSBT_OUTPUT, n, key[..], origin[..]);
+      }
+    }
+  }
+}
+// A key origin: the master's fingerprint, then each hardened step, little-endian.
+origin_of :: (fp: [] u8, path: [3] int, out: [] u8) {
+  for k: 0..<4 { out[k] = fp[k]; }
+  for s: 0..<3 {
+    v := path[s] + BIP32_HARDENED;
+    for k: 0..<4 { out[4+4*s+k] = cast(u8) ((v >> (8 * k)) & 255); }
+  }
+}
+// Two hex PSBTs combined, against the published result.
+combine_hex :: (a: string, b: string, result: string, label: string) {
+  ra: [2048] u8; rb: [2048] u8; f: [64] PsbtField; rw: [1] PsbtRead; x: [1] PsbtMaps; y: [1] PsbtMaps; out: [1] PsbtMaps;
+  pa := psbt_hex(a, ra[..]); pb := psbt_hex(b, rb[..]);
+  #assert psbt_maps_vartime(pa, psbt_read_vartime(pa, f[..], rw[..]), f[..], x[..]);
+  #assert psbt_maps_vartime(pb, psbt_read_vartime(pb, f[..], rw[..]), f[..], y[..]);
+  #assert psbt_combine_vartime(x[..], y[..], out[..]);
+  print("%: %\n", label, yes(same_hex(out[..], result)));
+}
+
+// book:begin own
+// Three coins, one each of P2WPKH (key A), P2WSH 2-of-2 (keys A and B)
+// and P2TR with no scripts (key C), spent to one P2WPKH output: created,
+// updated with the coins and the witness script, signed, finalized,
+// extracted, and each input verified the way a node verifies it.
+OWN_KEYS :: [3] string.["1111111111111111111111111111111111111111111111111111111111111111",
+  "2222222222222222222222222222222222222222222222222222222222222222", "3333333333333333333333333333333333333333333333333333333333333333"];
+OWN_AMOUNTS :: [3] int.[50000, 60000, 70000];
+own :: (w: [] PsbtSign) {
+  print("Our own spend of P2WPKH, P2WSH 2-of-2 and P2TR coins:\n");
+  keys: [3][32] u8; pubs: [3][33] u8; xonly: [32] u8; spks: [3][34] u8; spk_n: [3] int; ws: [71] u8;
+  for k: 0..<3 { #assert psbt_hex(OWN_KEYS[k], keys[k][..]).count == 32 && bip32_public(keys[k][..], pubs[k][..]); }
+  spk_n[0] = p2wpkh_script_vartime(pubs[0][..], spks[0][..]);
+  ws[0] = 0x52; ws[1] = 33; ws[35] = 33; ws[69] = 0x52; ws[70] = 0xae;    // 2 <A> <B> 2 CHECKMULTISIG
+  for k: 0..<33 { ws[2+k] = pubs[0][k]; ws[36+k] = pubs[1][k]; }
+  spk_n[1] = p2wsh_script_vartime(ws[..], spks[1][..]);
+  for k: 0..<32 { xonly[k] = pubs[2][1+k]; }
+  spk_n[2] = p2tr_script_vartime(xonly[..], spks[2][..]);
+  // The unsigned transaction: three inputs (txids 01..01, 02..02 and
+  // 03..03, output 0), one output paying 179,000 to key B's P2WPKH.
+  tx: [256] u8; out: [22] u8;
+  tx[0] = 2; at := tx_compact_write_vartime(tx[..], 4, 3);
+  for i: 0..<3 {
+    for k: 0..<32 { tx[at+k] = cast(u8) (i + 1); }
+    for k: 0..<4 { tx[at+32+k] = 0; tx[at+37+k] = 0xff; }
+    tx[at+36] = 0; at += 41;
+  }
+  at = tx_compact_write_vartime(tx[..], at, 1);
+  total := 179000;
+  for k: 0..<8 { tx[at+k] = cast(u8) ((total >> (8 * k)) & 255); }
+  n := p2wpkh_script_vartime(pubs[1][..], out[..]);
+  at = tx_compact_write_vartime(tx[..], at + 8, n); at = tx_put(tx[..], at, out[0..<n]);
+  for k: 0..<4 { tx[at+k] = 0; }
+  unsigned := tx[0..<at+4];
+  m: [1] PsbtMaps; buf: [4096] u8;
+  #assert psbt_create_vartime(unsigned, m[..]);
+  for i: 0..<3 {
+    u: [64] u8;
+    for k: 0..<8 { u[k] = cast(u8) ((OWN_AMOUNTS[i] >> (8 * k)) & 255); }
+    u[8] = cast(u8) spk_n[i]; for k: 0..<spk_n[i] { u[9+k] = spks[i][k]; }
+    #assert psbt_set1_vartime(m[..], PSBT_INPUT, i, 0x01, u[0..<9+spk_n[i]]);
+  }
+  #assert psbt_set1_vartime(m[..], PSBT_INPUT, 1, 0x05, ws[..]);
+  print("  Creator and Updater: % bytes\n", psbt_write_vartime(m[..], buf[..]));
+  aux: [32] u8;
+  inputs := [4] int.[0, 1, 1, 2]; signer := [4] int.[0, 0, 1, 2];   // each input, and the key that signs it
+  names := [3] string.["A", "B", "C"];
+  for s: 0..<4 {
+    i := inputs[s]; k := signer[s];
+    print("  Signer, input % with key %: %\n", i, names[k], PSBT_SIGN_REASONS[psbt_sign_vartime(m[..], i, keys[k][..], aux[..], true, w)]);
+  }
+  print("  key A on the P2TR input: %\n", PSBT_SIGN_REASONS[psbt_sign_vartime(m[..], 2, keys[0][..], aux[..], true, w)]);
+  print("  signed: % bytes\n", psbt_write_vartime(m[..], buf[..]));
+  print("  Input Finalizer: final %, % bytes\n", yes(psbt_finalize_vartime(m[..], w)), psbt_write_vartime(m[..], buf[..]));
+  net: [8192] u8; ins: [4] TxIn; outs: [4] TxOut; items: [16] TxItem;
+  size := psbt_extract_vartime(m[..], net[..], w);
+  b := net[0..<size];
+  t := tx_read_vartime(b, true, ins[..], outs[..], items[..]);
+  id: [32] u8; rev: [32] u8;
+  #assert tx_txid_vartime(b, t, id[..]);
+  for k: 0..<32 { rev[k] = id[31-k]; }
+  print("  Transaction Extractor: % bytes, weight %, txid ", size, tx_weight_vartime(t)); put_hex(rev[..]); print("\n");
+  // Each input as a node checks it: chapter 39's interpreter for the
+  // segwit v0 inputs, chapter 43's key-path check for the P2TR one.
+  sw: [1] ScriptWork;
+  flags := SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DERSIG | SCRIPT_VERIFY_LOW_S | SCRIPT_VERIFY_STRICTENC
+    | SCRIPT_VERIFY_NULLDUMMY | SCRIPT_VERIFY_CLEANSTACK | SCRIPT_VERIFY_NULLFAIL | SCRIPT_VERIFY_WITNESS_PUBKEYTYPE;
+  for i: 0..<2 {
+    sp := ScriptSpend.{b=b, t=t, ins=ins[..], outs=outs[..], items=items[..], index=i, amount=OWN_AMOUNTS[i], spk=spks[i][0..<spk_n[i]]};
+    e := script_verify_vartime(sp, flags, sw[..]);
+    print("  input %: %\n", i, SCRIPT_ERR_NAMES[e]);
+  }
+  tp := bt_tx_read(unsigned);
+  amounts: [3] int; spent: [3] BtScript; sighash: [32] u8;
+  for i: 0..<3 { amounts[i] = OWN_AMOUNTS[i]; spent[i].n = spk_n[i]; for k: 0..<spk_n[i] { spent[i].b[k] = spks[i][k]; } }
+  #assert bt_sighash_taproot(unsigned, tp, 2, amounts[..], spent[..], BT_DEFAULT, sighash[..]);
+  sig := b[items[ins[2].first].at..<items[ins[2].first].at+items[ins[2].first].n];
+  print("  input 2: a % byte key-path signature, valid %\n", sig.count, yes(taproot_key_path_verify_vartime(spks[2][2..<34], sig, sighash[..])));
+}
+// book:end own

@@ -20,7 +20,13 @@
 // never depends on the key; when both are invalid (probability below
 // 2^-254) it refuses instead of looping. r = 0 and s = 0 refuse the same
 // way, where libsecp256k1 would try the next candidate (probability below
-// 2^-255). Extra entropy (libsecp256k1's ndata) is not supported.
+// 2^-255).
+//
+// ecdsa_sign_low_r (Bitcoin chapter 94) is Bitcoin Core's signer: while
+// r's top bit is set, it signs again with a counter as libsecp256k1's
+// extra data (ndata), 32 bytes that follow the key and the hash in RFC
+// 6979's seed (section 3.6). r is published, so the retries reveal
+// nothing a signature doesn't.
 //
 // ecdsa_sign_recoverable (Bitcoin chapter 22) is the same signer with a
 // 65th output byte, the recovery ID: R's y parity, flipped when low-S
@@ -33,7 +39,7 @@
 #authority;
 
 EcdsaWork :: struct {
-  hk:[32]u8;hv:[32]u8;t:[32]u8;buf:[97]u8;   // RFC 6979's K, V, a new K, the HMAC input
+  hk:[32]u8;hv:[32]u8;t:[32]u8;buf:[129]u8;  // RFC 6979's K, V, a new K, the HMAC input
   first:[32]u8;second:[32]u8;                 // the two candidates
   a:[1]SignScalar;b:[1]SignScalar;key:[1]SignScalar;
   point:[1]SignPoint;x:[32]u8;
@@ -124,6 +130,44 @@ ec_signs_id :: (key:string,hash:string,sig:string,id:u8)->bool {
   two:[2]EcdsaWork;#assert !ecdsa_sign(key[..],h[..],two[..],out[0..<64],false) && !ecdsa_sign(key[..],h[..],two[0..<0],out[0..<64],false);
   #assert ecdsa_sign(key[..],h[..],w[..],out[0..<64],false) && out[0]!=7 && w[0].hk[0]==0 && w[0].valid==0;
 }
+// ecdsa_sign_low_r over hex key and hash: is the result sig?
+ec_signs_low_r :: (key:string,hash:string,sig:string)->bool {
+  w:[1]EcdsaWork;k:[32]u8;h:[32]u8;out:[64]u8;
+  if !ecdsa_sign_low_r(bt_unhex(key,k[..]),bt_unhex(hash,h[..]),w[..],out[..],false) {return false;}
+  return bt_hex_is(out[..],sig) && w[0].hk[0]==0;
+}
+// ec_sign with 32 bytes of extra data: is the result sig?
+ec_signs_data :: (key:string,hash:string,data:string,sig:string)->bool {
+  w:[1]EcdsaWork;k:[32]u8;h:[32]u8;d:[32]u8;out:[64]u8;
+  #assert ec_sign(bt_unhex(key,k[..]),bt_unhex(hash,h[..]),bt_unhex(data,d[..]),w[..],out[..]);
+  return bt_hex_is(out[..],sig);
+}
+#test "extra data equals libsecp256k1's ndata" #steps 2000000000 {
+  // tiny-secp256k1's extraEntropy rows (the pinned ecdsa.json): ndata
+  // 00..01 and ff..ff for its first row, 00..01 for its second.
+  #assert ec_signs_data("47df31753e5db1db1a04513c000328d81007cbc9af6d328ae6b6acae02343c69","235c1d402d5f36619d93b7bf82da697e17a6597af1386dfa2d3e5303603040d4",
+    "0000000000000000000000000000000000000000000000000000000000000001",
+    "784a37a119b66407847a581b71365b2c88670843c98e3d472f3316ae0b4f7b367eb6346045bb3322686289141cadb4236d6ee37a9a481309db672a628a36c925");
+  #assert ec_signs_data("47df31753e5db1db1a04513c000328d81007cbc9af6d328ae6b6acae02343c69","235c1d402d5f36619d93b7bf82da697e17a6597af1386dfa2d3e5303603040d4",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "96c0fbc421b02cb7e7ce17d046f7c14617451b816dd128ed04e6d595356a6b6f402cbf988ab6b79725c09a956e3acdb6a2c83d54ae3914c051c5af91dac2eafc");
+  #assert ec_signs_data("0985adbec207a500836fe4728b835bc3608a589dce599d0d02bf996a3f83e56a","85cc1dbdf5cb872b3f8a309dda3a4ab664655a47f4e0c411e47f6d5e72002e71",
+    "0000000000000000000000000000000000000000000000000000000000000001",
+    "82a51c191a86afbbeecd0893ed65ea7c6676c8b4cb6172d5657f978cb81552a91e7c8482a1e77fd647f5ff7157dcb956823d8d00777048fd76881b3909af9aa9");
+}
+#test "low R: no retry, one retry and five, as Python grinds" #steps 4000000000 {
+  // Key 1 and SHA-256 of the bytes 01, 07 and 05 (psbt_reference.py's ecdsa).
+  #assert ec_signs_low_r("0000000000000000000000000000000000000000000000000000000000000001","4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+    "5fee345e860d1b65e1ccab8cc74a8fc75f7147218006568c914d3d81e71a19943f329259992ae9139eeeffe3ca073bfa715a259ae22714cb391beb367bbf53dc");
+  #assert ec_signs_low_r("0000000000000000000000000000000000000000000000000000000000000001","ca358758f6d27e6cf45272937977a748fd88391db679ceda7dc7bf1f005ee879",
+    "4a2a7b6af350525ca2cbdc6835457c7e777802bc4aab74a691105fe929966e117a1955ea0b0c60ea1b2a2a8dbac5740f01fcdec6fc92c1bf95ed61488ccd69a2");
+  #assert ec_signs_low_r("0000000000000000000000000000000000000000000000000000000000000001","e77b9a9ae9e30b0dbdb6f510a264ef9de781501d7b6b92ae89eb059c5ab743db",
+    "327d6f50438797c536d8e527a48847e88bf4014b73f6fe259a1c32e90e5dcfc1248b416da257321362a753d6a5ab6997906737c05880fa9e3fe10322a9a6fa31");
+  // A zero key and a short or overlapping view refuse without output.
+  w:[1]EcdsaWork;key:[32]u8;h:[32]u8;out:[64]u8;out[0]=7;
+  #assert !ecdsa_sign_low_r(key[..],h[..],w[..],out[..],false) && out[0]==7;
+  key[31]=1;#assert !ecdsa_sign_low_r(key[..],h[..],w[..],out[0..<63],false) && !ecdsa_sign_low_r(key[..],h[..],w[..],out[..],true) && out[0]==7;
+}
 #test "the second candidate is taken when the first is outside [1, n-1]" {
   w:[1]EcdsaWork;w[0].second[31]=5;
   ec_pick(w[..]);#assert w[0].valid==1 && sc_equal(w[0].k,sc_small(5));
@@ -185,13 +229,17 @@ ec_step :: (w: [] EcdsaWork, tag: u8, n: int) {
 // book:begin rfc6979
 // RFC 6979 section 3.2 for SHA-256 and secp256k1's 256-bit order: the
 // first two candidates for key and hash, into w.first and w.second.
-// bits2octets(h) is h mod n. buf holds V || tag || key || h.
-ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) {
+// bits2octets(h) is h mod n. data is empty or 32 bytes of extra data
+// (section 3.6). buf holds V || tag || key || h || data.
+ec_candidates :: (key: [] u8, hash: [] u8, w: [] EcdsaWork) { ec_seed(key, hash, hash[0..<0], w); }
+ec_seed :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork) {
   z := sc_reduce_bytes(hash);                      // the message hash is public
   for i: 0..<32 { w[0].hv[i] = 1; w[0].hk[i] = 0; w[0].buf[33+i] = key[i]; }   // b, c: V = 01..01, K = 00..00
   #assert ss_write(z.value, w[0].buf[65..<97]);
-  ec_step(w, 0, 97);                               // d, e: K = HMAC_K(V || 00 || key || h), V = HMAC_K(V)
-  ec_step(w, 1, 97);                               // f, g: K = HMAC_K(V || 01 || key || h), V = HMAC_K(V)
+  for i: 0..<data.count { w[0].buf[97+i] = data[i]; }   // public: a counter
+  n := 97 + data.count;
+  ec_step(w, 0, n);                                // d, e: K = HMAC_K(V || 00 || key || h || data), V = HMAC_K(V)
+  ec_step(w, 1, n);                                // f, g: K = HMAC_K(V || 01 || key || h || data), V = HMAC_K(V)
   ec_next(w);                                      // h: V = HMAC_K(V), the first candidate
   for i: 0..<32 { w[0].first[i] = w[0].hv[i]; }
   ec_step(w, 0, 33);                               // h, retry: K = HMAC_K(V || 00), V = HMAC_K(V)
@@ -233,11 +281,12 @@ ec_views :: (key:[]u8,hash:[]u8,w:[]EcdsaWork,out:[]u8,overlap:bool,size:int)->b
 }
 // book:begin ecdsa
 // The signature of a 32-byte message hash under a 32-byte key, with RFC
-// 6979's nonce, into out: r || s (32 bytes each, s in the low half), then
-// the recovery ID when out has 65 bytes. The caller checks the views.
-ec_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
+// 6979's nonce (with data as extra data when it isn't empty), into out:
+// r || s (32 bytes each, s in the low half), then the recovery ID when out
+// has 65 bytes. The caller checks the views.
+ec_sign :: (key: [] u8, hash: [] u8, data: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
   #assert ss_key(key, w[0].key[..], false);              // d, or 1 with valid = 0
-  ec_candidates(key, hash, w);
+  ec_seed(key, hash, data, w);
   ec_pick(w);                                            // k
   #assert sp_base(w[0].k, w[0].point[..]) && sp_x(w[0].point[..], w[0].x[..]);
   w[0].r = sc_reduce_bytes(w[0].x[..]).value;            // r = x(kG) mod n
@@ -259,7 +308,7 @@ ec_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8) -> bool {
 // only when the result is true; the workspace is cleared either way.
 ecdsa_sign :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
   if !ec_views(key, hash, w, out, overlap, 64) { return false; }
-  return ec_sign(key, hash, w, out);
+  return ec_sign(key, hash, hash[0..<0], w, out);
 }
 // book:end ecdsa
 
@@ -280,9 +329,32 @@ ec_recid :: (w: [] EcdsaWork) -> u8 {
 // r || s || id. Everything else is ecdsa_sign's.
 ecdsa_sign_recoverable :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
   if !ec_views(key, hash, w, out, overlap, 65) { return false; }
-  return ec_sign(key, hash, w, out);
+  return ec_sign(key, hash, hash[0..<0], w, out);
 }
 // book:end recoverable
+
+// ---- low R (Bitcoin chapter 94)
+// book:begin grind
+// Bitcoin Core's CKey::Sign: ecdsa_sign, then, while r's top bit is set,
+// again with the counter 1, 2, 3, ... as extra data, 32 bytes
+// little-endian. A low r needs no 00 byte in DER, so the signature is
+// 71 bytes or fewer with its hash type. Each try passes with probability
+// 1/2; after 256 failures (probability 2^-256) it refuses. out is
+// written only when the result is true.
+ecdsa_sign_low_r :: (key: [] u8, hash: [] u8, w: [] EcdsaWork, out: [] u8, overlap: bool) -> bool #export_c {
+  if !ec_views(key, hash, w, out, overlap, 64) { return false; }
+  data: [32] u8; sig: [64] u8;
+  for counter: 0..<256 {
+    data[0] = cast(u8) counter;
+    if !ec_sign(key, hash, data[0..<ifx counter == 0 then 0 else 32], w, sig[..]) { return false; }
+    if sig[0] < 0x80 {                                  // r is public: published in the signature
+      for i: 0..<64 { out[i] = sig[i]; }
+      return true;
+    }
+  }
+  return false;
+}
+// book:end grind
 
 // ---- DER (BIP-66): public data
 // One INTEGER from a nonzero big-endian v: 0x02, length, the bytes without

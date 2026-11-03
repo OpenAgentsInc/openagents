@@ -1,0 +1,27 @@
+// The checks of psbt.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/psbt.coax
+#load "../psbt.coax";
+
+// book:begin check
+// Every published PSBT that reads, written in Core's order, reads again
+// and writes the same bytes: writing settles after one pass.
+#forall "a written PSBT reads back and writes the same" i: 0..<PSBT_CASES.count #steps 2000000000 {
+  rd: [1] Reader; m: [1] PsbtMaps; again: [1] PsbtMaps;
+  if load(PSBT_CASES[i].text, rd[..], m[..]).code == PSBT_OK {
+    out: [8192] u8; twice: [8192] u8; f: [128] PsbtField; rw: [1] PsbtRead;
+    n := psbt_write_vartime(m[..], out[..]);
+    b := out[0..<n];
+    p := psbt_read_vartime(b, f[..], rw[..]);
+    #assert p.code == PSBT_OK && psbt_maps_vartime(b, p, f[..], again[..]);
+    #assert psbt_write_vartime(again[..], twice[..]) == n && ps_equal(twice[0..<n], b);
+  }
+}
+// BIP-174's updated PSBT cut short at any byte refuses; whole, it reads.
+#forall "a PSBT cut short refuses" k: 0..<1000 #steps 4000000000 {
+  raw: [2048] u8; f: [64] PsbtField; rw: [1] PsbtRead;
+  b := psbt_hex(PSBT_BIP174_RESULTS[1], raw[..]);
+  if k < b.count { #assert psbt_read_vartime(b[0..<k], f[..], rw[..]).code != PSBT_OK; }
+  else if k == b.count { #assert psbt_read_vartime(b, f[..], rw[..]).code == PSBT_OK; }
+}
+// book:end check

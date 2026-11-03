@@ -3026,6 +3026,110 @@
       "retrieved": "2026-11-03",
       "sha256": "27ffbf1ae436f257bff3f255b4d1e4d4bbf8597fb1e2533d7ff9b66f4fe38d43",
       "bytes": 194359
+    },
+    {
+      "path": "upstream/bip174/bip-0174.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0174.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in source)",
+      "covers": [
+        "bitcoin-psbt"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "f2a8e1a9c9e31cc7f607b3c7e2419c63eeccc4bd5b725968cde54ab8cfa1d410",
+      "bytes": 136028
+    },
+    {
+      "path": "upstream/bip370/bip-0370.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0370.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in source)",
+      "covers": [
+        "bitcoin-psbt"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "b2b6e9099592fa04179383f9a1fd8b201fbeef4470f4c3f1c050d25589979c57",
+      "bytes": 79165
+    },
+    {
+      "path": "upstream/bip371/bip-0371.mediawiki",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0371.mediawiki",
+      "revision": "git:5aadddb511a5dcfe4599531bd8ae5e5b96d0f793",
+      "license": "BSD-2-Clause (declared in source)",
+      "covers": [
+        "bitcoin-psbt"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "c2e8143a3c9aee0ee38d863cf40947ddf8ee67b4f40a748fb6925ccc5ad4b791",
+      "bytes": 33681
+    },
+    {
+      "path": "upstream/bitcoin-core/psbt.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/psbt.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-psbt"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "75e292495ed2e8796e38f832ad0367ecb8fd2e044c588288381df5620ae65987",
+      "bytes": 70567
+    },
+    {
+      "path": "upstream/bitcoin-core/psbt.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/psbt.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-psbt"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "34d2216140d63ff021e4f5d41028e390c8cc9b5a5e5149484e2b8ff1c80b34f4",
+      "bytes": 36168
+    },
+    {
+      "path": "upstream/bitcoin-core/rpc_psbt.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/data/rpc_psbt.json",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-psbt"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "6dc130e0ead807b7521e0f55dc60b6b8a6c10ffaf6c623eb524d814deda0c9ce",
+      "bytes": 131926
+    },
+    {
+      "path": "upstream/bitcoin-core/psbt_wallet_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/test/psbt_wallet_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-psbt"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "e15530b0262b7114f2cb0a6552a516f7d5f9ce3a8ec714461ddfaf6ca4d7cfd1",
+      "bytes": 6568
+    },
+    {
+      "path": "upstream/bitcoin-core/pubkey.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/pubkey.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-psbt"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "b586b35e4749579e9dad6c6c56c1d7ceecce20ddbd7e066b5c86cadf5d16bb71",
+      "bytes": 13249
     }
   ]
 }

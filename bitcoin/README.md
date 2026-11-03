@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-64 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+65 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -58,7 +58,10 @@ signature operations and checks a block's limits: Core's `CheckBlock`, the
 weight rule and the sigop cost `ConnectBlock` charges.
 Chapter 54's [`subsidy.coax`](../coax/lib/bitcoin/subsidy.coax) holds the
 coinbase rules: Core's `GetBlockSubsidy`, the BIP-34 height and the claim
-of subsidy plus fees.
+of subsidy plus fees. Chapter 94's [`psbt.coax`](../coax/lib/bitcoin/psbt.coax)
+reads and writes PSBTs (BIP-174, BIP-370 and BIP-371) as Core does, with
+the Creator, Updater, Signer, Combiner, Input Finalizer and Transaction
+Extractor.
 
 Lightning's code is in [`coax/lib/lightning/`](../coax/lib/lightning/).
 Chapter 104's [`bolt1.coax`](../coax/lib/lightning/bolt1.coax) reads and

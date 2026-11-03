@@ -331,6 +331,16 @@ that a maliciously replaced manifest is authentic.
   list; `make_subsidy_vectors.py` proves each coinbase in its header, links
   each pair of neighbouring blocks by the previous-block hash, and checks
   each claim against the reward and each BIP-34 height.
+- **PSBT (Bitcoin chapter 94):** BIP-174, BIP-370 and BIP-371 at bips
+  revision `5aadddb5`, whose test-vector sections hold every published
+  valid and invalid PSBT and BIP-174's worked example; Bitcoin Core's
+  `psbt.h`, `psbt.cpp`, `pubkey.h`, `wallet/test/psbt_wallet_tests.cpp`
+  and `test/functional/data/rpc_psbt.json` at revision `ddea9196`, with
+  the already pinned tiny-secp256k1 `ecdsa.json` for the `extraEntropy`
+  rows. `make_psbt_vectors.py` decides each of the 155 distinct PSBTs with
+  `psbt_reference.py` and checks the verdict against the published one,
+  replays Core's signer, combiner, finalizer and extractor cases, and
+  recomputes each `extraEntropy` signature.
 - **Header rules (Bitcoin chapter 51):** Bitcoin Core's `validation.cpp`
   (`ContextualCheckBlockHeader`), `chain.h`, `consensus/consensus.h`,
   `versionbits.h`, `versionbits_impl.h` and `versionbits.cpp` at revision
@@ -552,6 +562,14 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/miner_tests.cpp`](upstream/bitcoin-core/miner_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/miner_tests.cpp) | `2e8ec65462c8b6cae821bd22b95407c6c94a4710edea2f4b4f7d785a27f2c783` |
 | [`upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.spent.json`](upstream/mainnet/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097.spent.json) | [mempool.space API](https://mempool.space/api/block/00000000000000000008fda0e5bb3105dab72605332085684c42dceb0ea61097/txs/0) | `f65a8fa8f6284871947a4a45838a93c20b7254816204f7c670c1db3034ae2e09` |
 | [`upstream/bitcoin-core/validation_tests.cpp`](upstream/bitcoin-core/validation_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/validation_tests.cpp) | `174ebba0af246a7b5e3d7769be4a504f00f6d5b47a80935b57d4a8a58b648dbf` |
+| [`upstream/bip174/bip-0174.mediawiki`](upstream/bip174/bip-0174.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0174.mediawiki) | `f2a8e1a9c9e31cc7f607b3c7e2419c63eeccc4bd5b725968cde54ab8cfa1d410` |
+| [`upstream/bip370/bip-0370.mediawiki`](upstream/bip370/bip-0370.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0370.mediawiki) | `b2b6e9099592fa04179383f9a1fd8b201fbeef4470f4c3f1c050d25589979c57` |
+| [`upstream/bip371/bip-0371.mediawiki`](upstream/bip371/bip-0371.mediawiki) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/5aadddb511a5dcfe4599531bd8ae5e5b96d0f793/bip-0371.mediawiki) | `c2e8143a3c9aee0ee38d863cf40947ddf8ee67b4f40a748fb6925ccc5ad4b791` |
+| [`upstream/bitcoin-core/psbt.h`](upstream/bitcoin-core/psbt.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/psbt.h) | `75e292495ed2e8796e38f832ad0367ecb8fd2e044c588288381df5620ae65987` |
+| [`upstream/bitcoin-core/psbt.cpp`](upstream/bitcoin-core/psbt.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/psbt.cpp) | `34d2216140d63ff021e4f5d41028e390c8cc9b5a5e5149484e2b8ff1c80b34f4` |
+| [`upstream/bitcoin-core/rpc_psbt.json`](upstream/bitcoin-core/rpc_psbt.json) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/data/rpc_psbt.json) | `6dc130e0ead807b7521e0f55dc60b6b8a6c10ffaf6c623eb524d814deda0c9ce` |
+| [`upstream/bitcoin-core/psbt_wallet_tests.cpp`](upstream/bitcoin-core/psbt_wallet_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/wallet/test/psbt_wallet_tests.cpp) | `e15530b0262b7114f2cb0a6552a516f7d5f9ce3a8ec714461ddfaf6ca4d7cfd1` |
+| [`upstream/bitcoin-core/pubkey.h`](upstream/bitcoin-core/pubkey.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/pubkey.h) | `b586b35e4749579e9dad6c6c56c1d7ceecce20ddbd7e066b5c86cadf5d16bb71` |
 | [`upstream/mainnet/coinbase-proofs.json`](upstream/mainnet/coinbase-proofs.json) | [mempool.space API](https://mempool.space/api/block-height/840000) | `3a10ff94f45a2fbef360731be48c468ec7c2ecc3da760fb2861b97721aeb5efb` |
 | [`upstream/bitcoin-core/versionbits.cpp`](upstream/bitcoin-core/versionbits.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.cpp) | `4394f6fdf7656e0e6e4eb90a11c44875dab506345bde9a54d84ed9337d524ec8` |
 | [`upstream/bitcoin-core/versionbits.h`](upstream/bitcoin-core/versionbits.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/versionbits.h) | `babd3b786f7d787f88b47da1effd47f631b3e37cba95c1d501f1a553c960f100` |

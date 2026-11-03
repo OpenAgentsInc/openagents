@@ -1842,16 +1842,28 @@
   {
    "number": 94,
    "title": "PSBT",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch094-psbt.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     34,
     38,
     43
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/psbt.coax",
+    "bitcoin/examples/checks/psbt.coax",
+    "coax/lib/bitcoin/psbt.coax",
+    "coax/lib/crypto/ecdsa_sign.coax",
+    "coax/tests/bitcoin/psbt_vectors.coax",
+    "coax/tests/bitcoin/make_psbt_vectors.py",
+    "coax/tests/bitcoin/psbt_cases.py",
+    "coax/tests/bitcoin/psbt_reference.py",
+    "coax/tests/bitcoin/psbt.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
