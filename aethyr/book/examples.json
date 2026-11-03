@@ -240,6 +240,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/save-and-come-back.coax",
+      "chapter": "aethyr/book/ch081-save-and-come-back.md",
+      "stdout": "aethyr/fixtures/save-and-come-back.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

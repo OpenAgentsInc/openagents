@@ -51,6 +51,7 @@ save_varint :: (out: [] u8, at: int, v: int) -> int {
   return -1;
 }
 
+// book:begin pack
 // payload packed into out as a progress container; its length, or -1 when it doesn't fit.
 save_pack :: (world: string, schema: int, payload: [] u8, n: int, out: [] u8) -> int #export_c {
   if out.count < 16 + world.count + n || n < 0 || n > payload.count { return -1; }
@@ -68,6 +69,7 @@ save_pack :: (world: string, schema: int, payload: [] u8, n: int, out: [] u8) ->
   for k: 0..<4 { out[i + k] = cast(u8) ((crc >> cast(u32) (8 * k)) & 255); }
   return i + 4;
 }
+// book:end pack
 
 SaveOpened :: struct { ok: bool; schema: int; at: int; count: int; }   // the payload: bytes[at..<at+count]
 
@@ -82,6 +84,7 @@ save_read_varint :: (b: [] u8, n: int, at: [] int) -> int {
   return -1;
 }
 
+// book:begin open
 // A container's payload, when its magic, version, layer, CRC and world are
 // right and its schema is one this build knows (at most max_schema).
 save_open :: (b: [] u8, n: int, world: string, max_schema: int) -> SaveOpened #export_c {
@@ -101,6 +104,7 @@ save_open :: (b: [] u8, n: int, world: string, max_schema: int) -> SaveOpened #e
   if pn < 0 || at[0] + pn != n - 4 { return no; }
   return SaveOpened.{ok = true, schema = schema, at = at[0], count = pn};
 }
+// book:end open
 
 // ---- base64 (RFC 4648, padded), for the record and the server
 SAVE_B64 :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -236,6 +240,7 @@ save_put_number :: (out: [] u8, at: int, v: f64) -> int {
   return at + n + 1;
 }
 
+// book:begin pick
 SavePick :: struct { which: int; at: int; count: int; schema: int; time: f64; }   // which: 0 none, 1 current, 2 previous
 // The save to load, trying the current one first (from `from`: 1, or 2 when
 // the current one opened but its house didn't), then the last good one.
@@ -252,6 +257,7 @@ save_pick :: (bytes: [] u8, s: SaveSlots, world: string, max_schema: int, from: 
   }
   return none;
 }
+// book:end pick
 
 // ---- the server: {"current": {"at", "bytes"}, "previous": ...} into the same slots
 save_find :: (text: string, from: int, what: string) -> int {

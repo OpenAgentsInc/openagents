@@ -1,0 +1,43 @@
+// book:begin example
+#load "../../apps/openagents-web/save.coax";
+#import "Basic";
+
+hex :: (b: [] u8, n: int) {
+  digits := "0123456789abcdef";
+  for i: 0..<n {
+    hi := cast(int) (b[i] >> 4); lo := cast(int) (b[i] & 15);
+    print("%", digits[hi..<hi + 1]); print("%", digits[lo..<lo + 1]);
+  }
+  print("\n");
+}
+
+// Two saves of the Garden's vase kept as the browser keeps them, then loaded back: the current
+// one, the last good one when the current one is damaged, and refusals of another world's save
+// and of a schema newer than this build.
+main :: () {
+  first := "vase 3"; second := "vase 4";
+  p: [16] u8;
+  for k: 0..<first.count { p[k] = first[k]; }
+  a: [64] u8; an := save_pack("garden", 1, p[..], first.count, a[..]);
+  print("container: % bytes: ", an); hex(a[..], an);
+  for k: 0..<second.count { p[k] = second[k]; }
+  b: [64] u8; bn := save_pack("garden", 1, p[..], second.count, b[..]);
+  none: SaveSlots; empty: [1] u8;
+  r1: [512] u8; n1 := save_record(a[..], an, 1000, empty[..], none, "garden", 1, r1[..]);
+  slots: [256] u8; s1 := save_read(cast(string) r1[0..<n1], slots[..]);
+  r2: [512] u8; n2 := save_record(b[..], bn, 2000, slots[..], s1, "garden", 1, r2[..]);
+  print("record:\n%", cast(string) r2[0..<n2]);
+  back: [256] u8; s := save_read(cast(string) r2[0..<n2], back[..]);
+  k := save_pick(back[..], s, "garden", 1, 1);
+  print("load: slot %, schema %, saved at %, payload \"%\"\n", k.which, k.schema, cast(int) k.time, cast(string) back[k.at..<k.at + k.count]);
+  back[s.cur + 20] ^= 1;   // the low bit of the current save's first payload byte: "vase 4" reads "wase 4"
+  k = save_pick(back[..], s, "garden", 1, 1);
+  print("current damaged -> load: slot %, saved at %, payload \"%\"\n", k.which, cast(int) k.time, cast(string) back[k.at..<k.at + k.count]);
+  print("another world's save opens: %\n", save_open(a[..], an, "haunted-house", 1).ok);
+  newer: [64] u8; nn := save_pack("garden", 2, p[..], second.count, newer[..]);
+  print("a schema 2 save in a schema 1 build opens: %; in a schema 2 build: %\n", save_open(newer[..], nn, "garden", 1).ok, save_open(newer[..], nn, "garden", 2).ok);
+  old: [16] u8; o := save_read("0a0b0cff", old[..]);
+  k = save_pick(old[..], o, "garden", 1, 1);
+  print("a bare-hex save from before containers: slot %, schema %, % bytes\n", k.which, k.schema, k.count);
+}
+// book:end example

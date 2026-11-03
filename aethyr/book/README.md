@@ -51,8 +51,8 @@ marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
 when they don't. When an engine-core task lands its chapter, update the
 chapter's registry entry, contents label and table row in the same commit.
 
-There are 14 implemented chapters (1–11 and 65–67), nine partly implemented
-chapters (15, 16, 51, 52, 54–56, 69 and 72), and 62 design drafts. An implemented chapter is
+There are 14 implemented chapters (1–11 and 65–67), ten partly implemented
+chapters (15, 16, 51, 52, 54–56, 69, 72 and 81), and 61 design drafts. An implemented chapter is
 qualified for its named profile; it does not imply that every realm adopted
 it or every backend is supported. For example, chapter 8 qualifies native
 kinematic contacts, not the rigid solver planned in Part IV. Chapters 65–67
@@ -279,7 +279,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [81. Save and come back](ch081-save-and-come-back.md) | Unimplemented: design draft | One save layer over today's `AESV` container with a CRC-32 and two slots: only declared fields are saved, older schemas migrate forward, a newer schema is refused, and the newer of the browser and server copies wins. |
+| [81. Save and come back](ch081-save-and-come-back.md) | Partly implemented: native C (the AESV container and its two slots) | One save layer over today's `AESV` container with a CRC-32 and two slots: only declared fields are saved, older schemas migrate forward, a newer schema is refused, and conflicts found by revision, never by clock time. |
 | [82. Change code while it runs](ch082-change-code-while-it-runs.md) | Unimplemented: design draft | Live iteration in four tiers (data, shaders, logic, layout changes) with a save-to-frame target for each; layout fingerprints decide whether to swap, migrate or reset, a broken edit keeps the old module running, and production never loads code. |
 | [83. Inspect and profile a running realm](ch083-inspect-and-profile-a-running-realm.md) | Unimplemented: design draft | The same frame report, overlay, probes and goldens for every realm, the 60 FPS rule (95th percentile under 17.5 ms, no frame over 33 ms) extended to every listed realm, separate from chapter 37's physics measurements. |
 | [84. One realm on every host](ch084-one-realm-on-every-host.md) | Unimplemented: design draft | One versioned host contract and lifecycle events (resize, blur, hidden, shown, leave) on every host, byte-for-byte parity checks for every realm, and the native-GPU phases G0–G6. |

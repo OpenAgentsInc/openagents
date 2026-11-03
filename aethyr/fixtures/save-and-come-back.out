@@ -1,0 +1,12 @@
+container: 30 bytes: 4145535602020000010000000667617264656e06766173652033abc97436
+record:
+verse-save 1
+2000
+QUVTVgICAAABAAAABmdhcmRlbgZ2YXNlIDQIXBCo
+1000
+QUVTVgICAAABAAAABmdhcmRlbgZ2YXNlIDOryXQ2
+load: slot 1, schema 1, saved at 2000, payload "vase 4"
+current damaged -> load: slot 2, saved at 1000, payload "vase 3"
+another world's save opens: false
+a schema 2 save in a schema 1 build opens: false; in a schema 2 build: true
+a bare-hex save from before containers: slot 1, schema 0, 4 bytes
