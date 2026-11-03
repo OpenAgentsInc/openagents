@@ -1,0 +1,67 @@
+// zwp_linux_dmabuf_v1 v4, used by os/compositor.coax. One-plane ARGB/XRGB only,
+// from the render driver's advertised importable catalogue. Feedback tables are sealed memfds.
+cx_dma_error :: (x: [] Cx, ci: int, obj: int, why: string) {
+  g := x[0].g[..]; mg_begin(g, 1, 0); mg_put(g, obj); mg_put(g, 0); mg_str(g, why); mg_end(g); mg_flush(x, ci, -1);
+  cx_drop_client(x, ci);
+}
+cx_dma_feedback :: (x: [] Cx, ci: int, id: int) {
+  tab: [4096] u8;
+  for i: 0..<x[0].ngpu {
+    vals := [4] int.[cxgpu_format(i, 0), 0, cxgpu_format(i, 2), cxgpu_format(i, 1)];
+    for j: 0..<4 { for b: 0..<4 { tab[i * 16 + j * 4 + b] = cast,trunc(u8) ((vals[j] >> (8 * b)) & 255); } }
+  }
+  fd := cxwl_memfd(tab[0..<x[0].ngpu * 16]);
+  if fd < 0 { cx_dma_error(x, ci, id, "cannot create format table"); return; }
+  g := x[0].g[..];
+  mg_begin(g, id, 1); mg_put(g, x[0].ngpu * 16); mg_end(g); mg_flush(x, ci, fd); closed := cxwl_close_fd(fd);
+  device := cxgpu_device();
+  mg_begin(g, id, 2); mg_put(g, 8); mg_put(g, device & 4294967295); mg_put(g, device >> 32); mg_end(g);
+  mg_begin(g, id, 4); mg_put(g, 8); mg_put(g, device & 4294967295); mg_put(g, device >> 32); mg_end(g);
+  mg_begin(g, id, 6); mg_put(g, 0); mg_end(g);
+  mg_begin(g, id, 5); mg_put(g, x[0].ngpu * 2);
+  for i: 0..<(x[0].ngpu + 1) / 2 { a := i * 2; b := ifx a + 1 < x[0].ngpu then a + 1 else 0; mg_put(g, a | (b << 16)); }
+  mg_end(g);
+  mg_begin(g, id, 3); mg_end(g); mg_begin(g, id, 0); mg_end(g); mg_flush(x, ci, -1);
+}
+cx_dma_advertised :: (x: [] Cx, fmt: int, hi: int, lo: int) -> bool {
+  for i: 0..<x[0].ngpu { if cxgpu_format(i, 0) == fmt && cxgpu_format(i, 1) == hi && cxgpu_format(i, 2) == lo { return true; } }
+  return false;
+}
+cx_dma_params :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
+  p := x[0].clients[ci].objs[obj].ix; q := x[0].params[p];
+  if op == 0 {
+    if q.fd >= 0 { r := cxwl_close_fd(q.fd); }
+    x[0].params[p].live = false; cx_delete(x, ci, obj); return;
+  }
+  if op == 1 {
+    fd := cx_take_fd(x, ci);
+    if a.count != 28 || !desk_plane(q.consumed, q.plane, cx_rd(a, 8), fd) {
+      if fd >= 0 { r := cxwl_close_fd(fd); }
+      cx_dma_error(x, ci, obj, "one unused RGB plane required"); return;
+    }
+    x[0].params[p].fd = fd; x[0].params[p].plane = true;
+    x[0].params[p].offset = cx_rd(a, 12); x[0].params[p].stride = cx_rd(a, 16);
+    x[0].params[p].hi = cx_rd(a, 20); x[0].params[p].lo = cx_rd(a, 24); return;
+  }
+  if q.consumed || !q.plane || (op != 2 && op != 3) || (op == 2 && a.count != 24) || (op == 3 && a.count != 28) {
+    cx_dma_error(x, ci, obj, "invalid or already used buffer parameters"); return;
+  }
+  at := ifx op == 3 then 12 else 8; id := ifx op == 3 then cx_rd(a, 8) else 0;
+  w := cx_rdi(a, at); h := cx_rdi(a, at + 4); fmt := cx_rd(a, at + 8); flags := cx_rd(a, at + 12);
+  x[0].params[p].consumed = true;
+  slot := -1;
+  if desk_buffer(w, h, q.stride, q.offset, fmt, flags, cx_dma_advertised(x, fmt, q.hi, q.lo)) {
+    for b: 0..<CX_BUFS { if !x[0].bufs[b].used { slot = b; break; } }
+  }
+  gpu := ifx slot >= 0 then cxgpu_import(q.fd, w, h, q.stride, q.offset, fmt, q.hi, q.lo) else -1;
+  r := cxwl_close_fd(q.fd); x[0].params[p].fd = -1;
+  if gpu < 0 {
+    if op == 3 { cx_dma_error(x, ci, obj, "GPU buffer refused or import failed"); }
+    else { g := x[0].g[..]; mg_begin(g, obj, 1); mg_end(g); mg_flush(x, ci, -1); }
+    return;
+  }
+  if op == 2 { id = CX_DMA_SERVER + slot; }
+  else if !cx_set(x, ci, id, K_BUFFER, slot, 1) { r2 := cxgpu_drop(gpu); cx_dma_error(x, ci, obj, "invalid buffer id"); return; }
+  x[0].bufs[slot] = CxBuf.{used = true, client = ci, id = id, pool = -1, w = w, h = h, stride = w * 4, fmt = ifx fmt == DESK_XR24 then 1 else 0, gpu = gpu};
+  if op == 2 { g := x[0].g[..]; mg_begin(g, obj, 0); mg_put(g, id); mg_end(g); mg_flush(x, ci, -1); }
+}

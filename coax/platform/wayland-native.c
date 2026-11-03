@@ -21,6 +21,7 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
+#include "wayland-gpu.h"
 
 #ifndef MSG_CMSG_CLOEXEC
 #define MSG_CMSG_CLOEXEC 0
@@ -425,7 +426,10 @@ int64_t cxwl_xwayland(void) {
       snprintf(ws, sizeof ws, "%d", wl[1]); snprintf(wf, sizeof wf, "%d", wm[1]); snprintf(lf2, sizeof lf2, "%d", l); snprintf(disp, sizeof disp, ":%d", n);
       setenv("WAYLAND_SOCKET", ws, 1); unsetenv("WAYLAND_DISPLAY"); unsetenv("DISPLAY");
       int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); }
-      execlp("Xwayland", "Xwayland", disp, "-rootless", "-core", "-shm", "-listenfd", lf2, "-wm", wf, (char *)NULL);
+      if (cxgpu_device() >= 0)
+        execlp("Xwayland", "Xwayland", disp, "-rootless", "-core", "-listenfd", lf2, "-wm", wf, (char *)NULL);
+      else
+        execlp("Xwayland", "Xwayland", disp, "-rootless", "-core", "-shm", "-listenfd", lf2, "-wm", wf, (char *)NULL);
       _exit(127);
     }
     _exit(0);

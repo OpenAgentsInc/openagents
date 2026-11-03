@@ -65,8 +65,10 @@
 
       # `nix flake check ./os/nix` evaluates the example host to its system:
       # the options type-check, the assertions hold, the login script renders.
-      checks.${system}.example = example.config.system.build.toplevel;
-      # the image evaluates to its system (building the disk is `config.system.build.image`)
-      checks.${system}.image = image.config.system.build.toplevel;
+      checks.${system} = {
+        example = example.config.system.build.toplevel;
+        # the image evaluates to its system (building the disk is `config.system.build.image`)
+        image = image.config.system.build.toplevel;
+      };
     };
 }

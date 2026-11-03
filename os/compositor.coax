@@ -40,6 +40,18 @@
 #load "../coax/lib/sys/args.coax";
 #load "wm.coax";
 #load "xwm.coax";
+#load "desk-buffer-policy.coax";
+#load "desk-dmabuf.coax";
+
+cxgpu_open :: (node: [] u8) -> int #foreign;
+cxgpu_format :: (i: int, field: int) -> int #foreign;
+cxgpu_device :: () -> int #foreign;
+cxgpu_import :: (fd: int, w: int, h: int, stride: int, offset: int, fmt: int, hi: int, lo: int) -> int #foreign;
+cxgpu_capture :: (slot: int) -> int #foreign;
+cxgpu_read :: (slot: int, offset: int, out: [] u8) -> int #foreign;
+cxgpu_drop :: (slot: int) -> int #foreign;
+cxgpu_close :: () -> int #foreign;
+cxgpu_stat :: (field: int) -> int #foreign;
 
 cxwl_listen :: (path: [] u8) -> int #foreign;
 cxwl_unlisten :: (path: [] u8) -> int #foreign;
@@ -101,6 +113,8 @@ CX_MAXW :: 3840; CX_MAXH :: 2160;
 K_NONE :: 0; K_DISPLAY :: 1; K_REGISTRY :: 2; K_CALLBACK :: 3; K_COMPOSITOR :: 4; K_SUBCOMP :: 5; K_SHM :: 6; K_POOL :: 7;
 K_BUFFER :: 8; K_SURFACE :: 9; K_REGION :: 10; K_SEAT :: 11; K_KEYBOARD :: 12; K_POINTER :: 13; K_OUTPUT :: 14;
 K_WMBASE :: 15; K_XDGSURF :: 16; K_TOPLEVEL :: 17; K_POSITIONER :: 18; K_POPUP :: 19; K_SUBSURF :: 20; K_TOUCH :: 21; K_DDM :: 22; K_DSOURCE :: 23; K_DDEV :: 24; K_DECOMGR :: 25; K_DECO :: 26;
+K_DMA :: 27; K_PARAMS :: 28; K_FEEDBACK :: 29;
+CX_DMA_GLOBAL :: 24; CX_DMA_SERVER :: 4244635648;
 // A surface's role.
 R_NONE :: 0; R_TOPLEVEL :: 1; R_SUB :: 2; R_POPUP :: 3; R_CURSOR :: 4; R_X11 :: 5;   // R_X11: an Xwayland window's surface
 
@@ -115,7 +129,8 @@ CxClient :: struct {
   ptrs: [8] int; npt: int; outs: [8] int; outsc: [8] int; no: int;   // outsc: the screen each bound output is
 }
 CxPool :: struct { used: bool; client: int; fd: int; map: int; size: int; dead: bool; refs: int; }
-CxBuf :: struct { used: bool; client: int; id: int; pool: int; offset: int; w: int; h: int; stride: int; fmt: int; }
+CxBuf :: struct { used: bool; client: int; id: int; pool: int; offset: int; w: int; h: int; stride: int; fmt: int; gpu: int; }
+CxParams :: struct { live: bool; client: int; consumed: bool; plane: bool; fd: int; offset: int; stride: int; hi: int; lo: int; }
 CxSurf :: struct {
   used: bool; client: int; id: int;
   cur: int; pend: int; pend_set: bool;
@@ -178,6 +193,7 @@ Cx :: struct {
   xw: [1] CxXw;
   quit: bool; dirty: bool; screen: bool; show_pointer: bool;
   desk_on: bool; desks: [CX_DESKS] CxDesk;   // --desk-socket: the desk protocol's clients
+  ngpu: int; params: [256] CxParams;
 }
 CX_DESKS :: 8;
 CxDesk :: struct { on: bool; buf: [8192] u8; n: int; }
@@ -336,6 +352,7 @@ cx_pool_drop :: (x: [] Cx, p: int) {
 cx_buf_free :: (x: [] Cx, b: int) {
   for s: 0..<CX_SURFS { if x[0].surfs[s].used { if x[0].surfs[s].cur == b { x[0].surfs[s].cur = -1; } if x[0].surfs[s].pend == b { x[0].surfs[s].pend = -1; } } }
   p := x[0].bufs[b].pool; x[0].bufs[b].used = false;
+  if p < 0 { r := cxgpu_drop(x[0].bufs[b].gpu); return; }
   x[0].pools[p].refs -= 1; cx_pool_drop(x, p);
 }
 // A toplevel leaves the window policy.
@@ -358,7 +375,8 @@ cx_surf_free :: (x: [] Cx, s: int) {
 }
 cx_drop_client :: (x: [] Cx, ci: int) {
   for s: 0..<CX_SURFS { if x[0].surfs[s].used && x[0].surfs[s].client == ci { cx_surf_free(x, s); } }
-  for b: 0..<CX_BUFS { if x[0].bufs[b].used && x[0].bufs[b].client == ci { x[0].pools[x[0].bufs[b].pool].dead = true; cx_buf_free(x, b); } }
+  for b: 0..<CX_BUFS { if x[0].bufs[b].used && x[0].bufs[b].client == ci { p := x[0].bufs[b].pool; if p >= 0 { x[0].pools[p].dead = true; } cx_buf_free(x, b); } }
+  for p: 0..<256 { if x[0].params[p].live && x[0].params[p].client == ci { if x[0].params[p].fd >= 0 { r := cxwl_close_fd(x[0].params[p].fd); } x[0].params[p].live = false; } }
   for p: 0..<CX_POOLS { if x[0].pools[p].used && x[0].pools[p].client == ci { x[0].pools[p].dead = true; x[0].pools[p].refs = 0; cx_pool_drop(x, p); } }
   k := 0; for i: 0..<x[0].ndue { if x[0].due[i].client != ci { x[0].due[k] = x[0].due[i]; k += 1; } } x[0].ndue = k;
   for i: 0..<x[0].clients[ci].nfd { r := cxwl_close_fd(x[0].clients[ci].fds[i]); }
@@ -380,17 +398,18 @@ cx_set :: (x: [] Cx, ci: int, id: int, kind: int, ix: int, ver: int) -> bool {
   return true;
 }
 cx_globals :: (i: int) -> string {
+  if i == CX_DMA_GLOBAL { return "zwp_linux_dmabuf_v1"; }
   if i > 8 { return "wl_output"; }
   if i == 1 { return "wl_compositor"; } if i == 2 { return "wl_subcompositor"; } if i == 3 { return "wl_shm"; }
   if i == 4 { return "wl_seat"; } if i == 5 { return "wl_output"; } if i == 6 { return "xdg_wm_base"; }
   if i == 7 { return "wl_data_device_manager"; } if i == 8 { return "zxdg_decoration_manager_v1"; }
   return "";
 }
-cx_global_ver :: (i: int) -> int { if i > 8 { return 3; } if i == 1 { return 4; } if i == 7 { return 3; } if i == 4 { return 5; } if i == 5 { return 3; } if i == 6 { return 2; } return 1; }
+cx_global_ver :: (i: int) -> int { if i == CX_DMA_GLOBAL { return 4; } if i > 8 { return 3; } if i == 1 { return 4; } if i == 7 { return 3; } if i == 4 { return 5; } if i == 5 { return 3; } if i == 6 { return 2; } return 1; }
 // Globals past 8 are the outputs of screens 2 and on; 5 is the first screen's.
 cx_globals_n :: (x: [] Cx) -> int { return 8 + x[0].wm[0].ns - 1; }
 cx_output_screen :: (name: int) -> int { return ifx name == 5 then 0 else name - 8; }
-cx_global_kind :: (i: int) -> int { if i > 8 { return K_OUTPUT; } if i == 1 { return K_COMPOSITOR; } if i == 2 { return K_SUBCOMP; } if i == 3 { return K_SHM; } if i == 4 { return K_SEAT; } if i == 5 { return K_OUTPUT; } if i == 7 { return K_DDM; } if i == 8 { return K_DECOMGR; } return K_WMBASE; }
+cx_global_kind :: (i: int) -> int { if i == CX_DMA_GLOBAL { return K_DMA; } if i > 8 { return K_OUTPUT; } if i == 1 { return K_COMPOSITOR; } if i == 2 { return K_SUBCOMP; } if i == 3 { return K_SHM; } if i == 4 { return K_SEAT; } if i == 5 { return K_OUTPUT; } if i == 7 { return K_DDM; } if i == 8 { return K_DECOMGR; } return K_WMBASE; }
 // A popup's place relative to its parent's window geometry (xdg_positioner, without constraints).
 cx_popup_place :: (p: CxPos, out: [] int) {
   a := p.anchor; gr := p.gravity;
@@ -402,6 +421,11 @@ cx_popup_place :: (p: CxPos, out: [] int) {
 
 // One request from client ci to object obj.
 cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
+  if obj >= CX_DMA_SERVER && obj < CX_DMA_SERVER + CX_BUFS {
+    b := obj - CX_DMA_SERVER;
+    if op == 0 && x[0].bufs[b].used && x[0].bufs[b].client == ci && x[0].bufs[b].id == obj { cx_buf_free(x, b); }
+    return;
+  }
   if obj >= CX_SERVER_ID && obj < CX_SERVER_ID + 64 { cx_offer_request(x, ci, obj - CX_SERVER_ID, op, a); return; }
   if obj <= 0 || obj >= CX_OBJS { return; }
   o := x[0].clients[ci].objs[obj]; g := x[0].g[..];
@@ -413,15 +437,23 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
     else if op == 1 {
       reg := cx_rd(a, at); r := cx_set(x, ci, reg, K_REGISTRY, 0, 1);
       for i: 1..<cx_globals_n(x) + 1 { mg_begin(g, reg, 0); mg_put(g, i); mg_str(g, cx_globals(i)); mg_put(g, cx_global_ver(i)); mg_end(g); }
+      if x[0].ngpu > 0 { mg_begin(g, reg, 0); mg_put(g, CX_DMA_GLOBAL); mg_str(g, cx_globals(CX_DMA_GLOBAL)); mg_put(g, 4); mg_end(g); }
       mg_flush(x, ci, -1);
     }
   } else if k == K_REGISTRY && op == 0 {
     name := cx_rd(a, at); sl := cx_rd(a, at + 4); at += 8 + sl + (4 - sl % 4) % 4;
     ver := cx_min(cx_rd(a, at), cx_global_ver(name)); id := cx_rd(a, at + 4);
-    if name < 1 || name > cx_globals_n(x) { return; }
+    if name < 1 || (name > cx_globals_n(x) && !(name == CX_DMA_GLOBAL && x[0].ngpu > 0)) { return; }
     kind := cx_global_kind(name);
     if !cx_set(x, ci, id, kind, 0, ver) { return; }
-    if kind == K_SHM { mg_begin(g, id, 0); mg_put(g, 0); mg_end(g); mg_begin(g, id, 0); mg_put(g, 1); mg_end(g); }
+    if kind == K_DMA {
+      if ver < 4 { for i: 0..<x[0].ngpu {
+        fmt := cxgpu_format(i, 0);
+        mg_begin(g, id, 0); mg_put(g, fmt); mg_end(g);
+        if ver >= 3 { mg_begin(g, id, 1); mg_put(g, fmt); mg_put(g, cxgpu_format(i, 1)); mg_put(g, cxgpu_format(i, 2)); mg_end(g); }
+      } }
+    }
+    else if kind == K_SHM { mg_begin(g, id, 0); mg_put(g, 0); mg_end(g); mg_begin(g, id, 0); mg_put(g, 1); mg_end(g); }
     else if kind == K_SEAT { mg_begin(g, id, 0); mg_put(g, 3); mg_end(g); if ver >= 2 { mg_begin(g, id, 1); mg_str(g, "seat0"); mg_end(g); } }
     else if kind == K_OUTPUT {
       sc := cx_output_screen(name); c := x[0].wm[0].screens[sc];
@@ -431,6 +463,23 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
       if x[0].clients[ci].no < 8 { x[0].clients[ci].outs[x[0].clients[ci].no] = id; x[0].clients[ci].outsc[x[0].clients[ci].no] = sc; x[0].clients[ci].no += 1; }
     }
     mg_flush(x, ci, -1);
+  } else if k == K_DMA {
+    if op == 0 { cx_delete(x, ci, obj); }
+    else if op == 1 && a.count == 12 {
+      for p: 0..<256 { if !x[0].params[p].live {
+        if cx_set(x, ci, cx_rd(a, 8), K_PARAMS, p, o.ver) { x[0].params[p] = CxParams.{live = true, client = ci, fd = -1}; }
+        return;
+      } }
+      cx_dma_error(x, ci, obj, "DMA-BUF params exhausted");
+    } else if (op == 2 && a.count == 12) || (op == 3 && a.count == 16) {
+      id := cx_rd(a, 8);
+      if op == 3 { so := cx_rd(a, 12); if so <= 0 || so >= CX_OBJS || x[0].clients[ci].objs[so].kind != K_SURFACE { cx_dma_error(x, ci, obj, "unknown feedback surface"); return; } }
+      if cx_set(x, ci, id, K_FEEDBACK, 0, 1) { cx_dma_feedback(x, ci, id); }
+    } else { cx_dma_error(x, ci, obj, "invalid DMA-BUF request"); }
+  } else if k == K_FEEDBACK {
+    if op == 0 { cx_delete(x, ci, obj); }
+  } else if k == K_PARAMS {
+    cx_dma_params(x, ci, obj, op, a);
   } else if k == K_COMPOSITOR {
     if op == 0 { id := cx_rd(a, at); s := cx_new_surf(x, ci, id); if s >= 0 { r := cx_set(x, ci, id, K_SURFACE, s, o.ver); } }
     else if op == 1 { r := cx_set(x, ci, cx_rd(a, at), K_REGION, 0, o.ver); }
@@ -476,6 +525,7 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
     else if op == 1 {
       bo := cx_rd(a, at); b := -1;
       if bo > 0 && bo < CX_OBJS && x[0].clients[ci].objs[bo].kind == K_BUFFER { b = x[0].clients[ci].objs[bo].ix; }
+      if bo >= CX_DMA_SERVER && bo < CX_DMA_SERVER + CX_BUFS { bb := bo - CX_DMA_SERVER; if x[0].bufs[bb].used && x[0].bufs[bb].client == ci && x[0].bufs[bb].id == bo { b = bb; } }
       x[0].surfs[s].pend = b; x[0].surfs[s].pend_set = true;
     } else if op == 3 {
       cb := cx_rd(a, at); r := cx_set(x, ci, cb, K_CALLBACK, 0, 1);
@@ -681,22 +731,24 @@ cx_draw_surf :: (x: [] Cx, o: [] CxFrame, s: int, ox: int, oy: int, ax0: int, ay
   cx0 := cx_max(ax0, x[0].clip[0]); cy0 := cx_max(ay0, x[0].clip[1]); cx1 := cx_min(ax1, x[0].clip[2]); cy1 := cx_min(ay1, x[0].clip[3]);
   b := x[0].surfs[s].cur;
   if b >= 0 && x[0].bufs[b].used {
-    bf := x[0].bufs[b]; p := x[0].pools[bf.pool];
+    bf := x[0].bufs[b]; p: CxPool;
+    if bf.pool >= 0 { p = x[0].pools[bf.pool]; }
     rowbytes := cx_min(bf.w * 4, 65536);
     // one size check for the whole buffer, then plain row copies; a buffer past its pool is not drawn
-    whole := bf.h > 0 && bf.offset >= 0 && cxwl_fits(p.map, p.fd, bf.offset + (bf.h - 1) * bf.stride + bf.w * 4) == 1;
+    whole := ifx bf.pool < 0 then cxgpu_capture(bf.gpu) == 0 else bf.h > 0 && bf.offset >= 0 && cxwl_fits(p.map, p.fd, bf.offset + (bf.h - 1) * bf.stride + bf.w * 4) == 1;
     rows := ifx whole then bf.h else 0;   // its subsurfaces and popups are still drawn
     for r: 0..<rows {
       dy := oy + r; if dy < cy0 || dy >= cy1 { continue; }
       c0 := cx_max(0, cx0 - ox); c1 := cx_min(bf.w, cx1 - ox);   // the columns that land inside the clip
       if c1 <= c0 { continue; }
-      got := cxwl_read(p.map, -1, bf.offset + r * bf.stride + 4 * c0, x[0].row[0..<cx_min(4 * (c1 - c0), rowbytes)]);
+      got := ifx bf.pool < 0 then cxgpu_read(bf.gpu, (desk_gpu_row(r, bf.h) * bf.w + c0) * 4, x[0].row[0..<4 * (c1 - c0)]) else cxwl_read(p.map, -1, bf.offset + r * bf.stride + 4 * c0, x[0].row[0..<cx_min(4 * (c1 - c0), rowbytes)]);
       at := 3 * (dy * x[0].w + ox + c0);
       opaque := bf.fmt == 1;
       for c: 0..<got / 4 {
         q := 4 * c;
-        bb := cast(int) x[0].row[q]; gg := cast(int) x[0].row[q + 1]; rr := cast(int) x[0].row[q + 2]; aa := ifx opaque then 255 else cast(int) x[0].row[q + 3];
-        if aa == 255 { o[0].b[at] = x[0].row[q + 2]; o[0].b[at + 1] = x[0].row[q + 1]; o[0].b[at + 2] = x[0].row[q]; }
+        ri := ifx bf.pool < 0 then q else q + 2; bi := ifx bf.pool < 0 then q + 2 else q;
+        bb := cast(int) x[0].row[bi]; gg := cast(int) x[0].row[q + 1]; rr := cast(int) x[0].row[ri]; aa := ifx opaque then 255 else cast(int) x[0].row[q + 3];
+        if aa == 255 { o[0].b[at] = x[0].row[ri]; o[0].b[at + 1] = x[0].row[q + 1]; o[0].b[at + 2] = x[0].row[bi]; }
         else if aa != 0 || rr + gg + bb != 0 {   // premultiplied: src + dst * (1 - alpha)
           k := 255 - aa;
           o[0].b[at] = cast,trunc(u8) cx_min(rr + cast(int) o[0].b[at] * k / 255, 255);
@@ -1611,6 +1663,11 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
     cx_say(cast(string) b2[0..<n2]);
   }
   else if c == "quit" { x[0].quit = true; cx_say("bye"); }
+  else if c == "gpu" {
+    msg: [256] u8; n := cx_put(msg[..], 0, "gpu live "); n = cx_num_into(msg[..], n, cxgpu_stat(0));
+    n = cx_put(msg[..], n, " imports "); n = cx_num_into(msg[..], n, cxgpu_stat(1));
+    n = cx_put(msg[..], n, " captures "); n = cx_num_into(msg[..], n, cxgpu_stat(2)); cx_say(cast(string) msg[0..<n]);
+  }
   else { cx_say("unknown command"); }
 }
 
@@ -1631,7 +1688,7 @@ cx_screens_parse :: (text: string, w: [] int, h: [] int) -> int {
 }
 tool_main :: () -> int #export_c {
   a: [1] Args; ok := args_load(a[..]);
-  desk_sock := "";
+  desk_sock := ""; render_node := "/dev/dri/renderD128";
   pos: [5] string; np := 0; want_screen := false; input := ""; screens := ""; want_x := false; check := false; ai := 0; leave_to := 0;
   while ok && ai < args_count(a[..]) {
     v := args_at(a[..], ai);
@@ -1639,6 +1696,7 @@ tool_main :: () -> int #export_c {
     else if v == "--input" && ai + 1 < args_count(a[..]) { ai += 1; input = args_at(a[..], ai); }
     else if v == "--screens" && ai + 1 < args_count(a[..]) { ai += 1; screens = args_at(a[..], ai); }
     else if v == "--xwayland" { want_x = true; }
+    else if v == "--render-node" && ai + 1 < args_count(a[..]) { ai += 1; render_node = args_at(a[..], ai); }
     else if v == "--leave-to" && ai + 1 < args_count(a[..]) { ai += 1; leave_to = cx_num(args_at(a[..], ai)); }
     else if v == "--check" { check = true; }
     else if v == "--desk-socket" && ai + 1 < args_count(a[..]) { ai += 1; desk_sock = args_at(a[..], ai); }   // start up (socket, keymap, rules), say ready, and leave: the update agent's trial
@@ -1694,6 +1752,8 @@ tool_main :: () -> int #export_c {
   if r < 0 { tool_errln("compositor: cannot listen on the socket"); return 1; }
   x[0].xw[0].client = -1;
   if want_x {   // Xwayland, rootless, before the start list so it sees DISPLAY
+    node: [256] u8; nn := cx_min(render_node.count, 255); for i: 0..<nn { node[i] = render_node[i]; }
+    x[0].ngpu = cx_max(0, cxgpu_open(node[0..<nn]));
     xn := cxwl_xwayland();
     if xn < 0 { tool_errln("compositor: cannot start Xwayland"); }
     else { x[0].xw[0].on = true; x[0].xw[0].display = xn; xw_setup(x[0].xw[0].o[..]); cx_xw_flush(x); }
@@ -1770,6 +1830,7 @@ tool_main :: () -> int #export_c {
   }
   for ci: 0..<CX_CLIENTS { if x[0].clients[ci].used { cx_drop_client(x, ci); } }
   r = cxwl_unlisten(sp[0..<sn]); r = cxwl_xwayland_stop();
+  r = cxgpu_close();
   if input_open || want_screen || input.count > 0 { r = cxin_close(); }
   if x[0].screen { r = cxscr_close(); r = cxvt_close(leave_to); }
   return 0;

@@ -170,6 +170,7 @@ coax="${COAX:-$root/coax/bin/coax}"
 mkdir -p "$work/ship/desk"
 (cd "$root" && "$coax" c os/compositor.coax --library) > "$work/ship/desk/compositor.c"
 cp "$root/os/compositor-us.xkb" "$work/ship/desk/"
+cp "$root/coax/platform/wayland-gpu.h" "$work/ship/net-src/"
 for f in wayland-native screen-native; do cp "$root/coax/platform/$f.c" "$root/coax/platform/$f.h" "$work/ship/net-src/"; done
 for f in tool-native process-native store-file-native read-file-native socket-native tls-native entropy-native entropy-foreign; do
   cp "$root/coax/platform/$f.c" "$root/coax/platform/$f.h" "$work/ship/net-src/"
@@ -187,7 +188,7 @@ if [[ "$mode" == ship ]]; then
 fi
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$work/ship" -cf - . | there "set -e
 d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; tar -x -C \"\$d\" 2>/dev/null; cd \"\$d\"
-nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validation-layers openssl wayland wayland-scanner wayland-protocols --run '
+nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader vulkan-validation-layers openssl wayland wayland-scanner wayland-protocols --run '
   set -e
   # the window (vkw.h): xdg-shell and server-side decorations, generated for the wayland here
   wp=\$(pkg-config --variable=pkgdatadir wayland-protocols); mkdir -p wl
@@ -204,8 +205,8 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-transcript
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. gpu-limits.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
      entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../gpu-limits
-   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -w -I. \$(pkg-config --cflags libdrm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
-     socket-native.c entropy-native.c entropy-foreign.c entropy.c wayland-native.c screen-native.c \$(pkg-config --libs libdrm) -lpthread -lm -o ../desk/compositor)
+   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -DCOAX_WAYLAND_GPU -w -I. \$(pkg-config --cflags libdrm egl glesv2 gbm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
+     socket-native.c entropy-native.c entropy-foreign.c entropy.c wayland-native.c screen-native.c \$(pkg-config --libs libdrm egl glesv2 gbm) -lpthread -lm -o ../desk/compositor)
   # each realm as realm-run builds it: no PIE (its pointers fit 32 bits), no contraction
   flags=\"-std=gnu11 -O2 -no-pie -ffp-contract=off -fno-fast-math -w -I.\"
   # the math of the wasm (musl, verse/native/musl-math.sh) ahead of glibc, as realm-run links it

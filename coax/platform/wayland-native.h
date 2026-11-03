@@ -58,6 +58,15 @@ int64_t cxwl_xwayland_handle(void);
 int64_t cxx_send(coax_v_u8 b);
 int64_t cxx_recv(coax_v_u8 out);
 int64_t cxwl_xwayland_stop(void);
+int64_t cxgpu_open(coax_v_u8 node);
+int64_t cxgpu_format(int64_t index, int64_t field);
+int64_t cxgpu_device(void);
+int64_t cxgpu_import(int64_t fd, int64_t width, int64_t height, int64_t stride, int64_t offset, int64_t format, int64_t modifier_hi, int64_t modifier_lo);
+int64_t cxgpu_capture(int64_t slot);
+int64_t cxgpu_read(int64_t slot, int64_t offset, coax_v_u8 out);
+int64_t cxgpu_drop(int64_t slot);
+int64_t cxgpu_stat(int64_t field);
+int64_t cxgpu_close(void);
 #ifdef __cplusplus
 }
 #endif

@@ -6,7 +6,7 @@
 # transcendental math ahead of glibc's so a realm computes what its wasm computes) and installs the
 # tree to $out/share/verse-os, the directory verse-session runs (`--dir`). Nothing here is Coax: the
 # Coax compiler already ran, on the machine that shipped `src`.
-{ lib, stdenv, pkg-config, libdrm, vulkan-headers, vulkan-loader, wayland, wayland-scanner, wayland-protocols, openssl, musl, foot, src }:
+{ lib, stdenv, pkg-config, libdrm, libglvnd, libgbm, vulkan-headers, vulkan-loader, wayland, wayland-scanner, wayland-protocols, openssl, musl, foot, src }:
 
 stdenv.mkDerivation {
   pname = "verse-realms";
@@ -14,7 +14,7 @@ stdenv.mkDerivation {
   inherit src;
 
   nativeBuildInputs = [ pkg-config wayland-scanner ];
-  buildInputs = [ libdrm vulkan-headers vulkan-loader wayland wayland-protocols openssl ];
+  buildInputs = [ libdrm libglvnd libgbm vulkan-headers vulkan-loader wayland wayland-protocols openssl ];
 
   dontConfigure = true;
 
@@ -36,8 +36,8 @@ stdenv.mkDerivation {
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. gpu-limits.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
        entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../gpu-limits
      # the desk's headless compositor (os/compositor.coax), which vk-realm --desk runs
-     gcc -std=c11 -O2 -D_DEFAULT_SOURCE -w -I. $(pkg-config --cflags libdrm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
-       socket-native.c entropy-native.c entropy-foreign.c entropy.c wayland-native.c screen-native.c $(pkg-config --libs libdrm) -lpthread -lm -o ../desk/compositor)
+     gcc -std=c11 -O2 -D_DEFAULT_SOURCE -DCOAX_WAYLAND_GPU -w -I. $(pkg-config --cflags libdrm egl glesv2 gbm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
+       socket-native.c entropy-native.c entropy-foreign.c entropy.c wayland-native.c screen-native.c $(pkg-config --libs libdrm egl glesv2 gbm) -lpthread -lm -o ../desk/compositor)
     # musl's math (verse/native/musl-math.sh), taken from its libc.a
     mkdir musl-math
     names=""

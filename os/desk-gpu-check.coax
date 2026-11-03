@@ -1,0 +1,61 @@
+// Headless accelerated-client integration. Runs a private compositor and upstream GLX clients,
+// never a visible desktop. Run in a shell containing Xwayland, glxinfo and glxgears:
+// coax/web/tool.sh os/desk-gpu-check.coax COMPOSITOR KEYMAP [OUTPUT-DIR]
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/proc.coax";
+
+dg_has :: (s: string, needle: string) -> bool {
+  for i: 0..<s.count - needle.count + 1 { if s[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+dg_wait :: (h: int, wanted: string, ms: int) -> bool {
+  line: [8192] u8; until := proc_now_ms() + ms;
+  while proc_now_ms() < until {
+    n := proc_line(h, 100, line[..]);
+    if n >= 0 { s := cast(string) line[0..<n]; if s.count < 512 { print("%\n", s); } if dg_has(s, wanted) { return true; } }
+    else if n == PROC_EOF || n == PROC_ERROR { break; }
+  }
+  return false;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: desk-gpu-check COMPOSITOR KEYMAP [OUTPUT-DIR]"); return 2; }
+  tmp: [4096] u8; dir := ifx args_count(a[..]) > 2 then args_at(a[..], 2) else fs_temp("verse-desk-gpu-", tmp[..]);
+  if dir.count == 0 || !fs_mkdir(dir) { return 1; }
+  b: [4] [4096] u8;
+  sock := fs_join(dir, "wayland", b[0][..]); shot := fs_join(dir, "first.ppm", b[1][..]); second := fs_join(dir, "second.ppm", b[2][..]);
+  start := fs_join(dir, "start", b[3][..]);
+  ok := fs_write(start, "#!/bin/sh\n# Firm reason: 5 (upstream accelerated test client)\nexec glxgears -info -geometry 640x480\n");
+  out: [8192] u8; err: [65536] u8;
+  chmod := [3] string.["chmod", "700", start]; cr := proc_run(chmod[..], 3000, out[..], err[..]);
+  h := proc_new(); if h < 0 { return 1; }
+  argv := [7] string.[args_at(a[..], 0), sock, args_at(a[..], 1), dir, "800", "600", "--xwayland"];
+  for v: argv { ok = ok && proc_arg(h, v); }
+  ok = ok && proc_unset(h, "DISPLAY") && proc_unset(h, "WAYLAND_DISPLAY");
+  if !ok || cr.status != 0 || proc_start(h) != 0 { r := proc_release(h); return 1; }
+  ok = dg_wait(h, "ready", 10000);
+  // The GLX client reports the actual renderer. Refuse a software-only result.
+  ok = ok && dg_wait(h, "GL_RENDERER", 15000);
+  sent := proc_send(h, "list\n"); proc_sleep(500);
+  cmd: [8192] u8; n := 0;
+  for c: "shot " { cmd[n] = c; n += 1; } for c: shot { cmd[n] = c; n += 1; } cmd[n] = '\n'; n += 1;
+  sent = proc_send(h, cast(string) cmd[0..<n]); ok = ok && dg_wait(h, "shot", 5000);
+  sent = proc_send(h, "wm fullscreen\n"); ok = ok && dg_wait(h, "ok", 3000);
+  proc_sleep(500); n = 0;
+  for c: "shot " { cmd[n] = c; n += 1; } for c: second { cmd[n] = c; n += 1; } cmd[n] = '\n'; n += 1;
+  sent = proc_send(h, cast(string) cmd[0..<n]); ok = ok && dg_wait(h, "shot", 5000);
+  first: [1440016] u8; next: [1440016] u8;
+  n1 := fs_read(shot, first[..]); n2 := fs_read(second, next[..]);
+  changed := n1 > 0 && n1 == n2 && cast(string) first[0..<n1] != cast(string) next[0..<n2];
+  sent = proc_send(h, "gpu\n"); ok = ok && dg_wait(h, "captures 2", 3000);
+  sent = proc_send(h, "close\n"); proc_sleep(500);
+  sent = proc_send(h, "quit\n"); drained := dg_wait(h, "end-of-process-output", 5000); status := proc_wait(h, 1000);
+  errors := proc_stderr(h, err[..]); print("%\n", errors);
+  ok = ok && changed && status == 0 && dg_has(errors, "desk GPU:") && dg_has(errors, "desk GPU closed: live 0") && !dg_has(errors, "llvmpipe");
+  r := proc_release(h);
+  print("desk GPU: frames changed %, compositor exit %, artifacts %\n", changed, status, dir);
+  return ifx ok then 0 else 1;
+}
