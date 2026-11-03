@@ -478,8 +478,17 @@ cdp_draw :: (n: int, out: [] u8) -> bool {
   // One call: the host writes out[0..<n] in place or nothing (entropy-foreign.h).
   return out.count >= n && cxrand_draw(out, n) == 0;
 }
+// The socket's send buffer holds 1 MiB (socket-native.h CXSOCK_MAX_OUT), so a bigger message (a
+// realm module answered whole by Fetch.fulfillRequest, about 1.2 MB in base64) goes in parts of
+// CDP_PUT_PART bytes, each sent before the next is buffered.
+CDP_PUT_PART :: 65536;
 cdp_put :: (c: [] Cdp, bytes: string) -> bool {
-  for b: bytes { if cxsock_write(c[0].h, cast(int) b) != 0 { return false; } }
+  k := 0;
+  for b: bytes {
+    if k == CDP_PUT_PART { if cxsock_flush(c[0].h, CDP_IO_MS) != 0 { return false; } k = 0; }
+    if cxsock_write(c[0].h, cast(int) b) != 0 { return false; }
+    k += 1;
+  }
   return cxsock_flush(c[0].h, CDP_IO_MS) == 0;
 }
 cdp_fill :: (c: [] Cdp, wait_ms: int) -> int {
@@ -587,6 +596,19 @@ cdp_call :: (c: [] Cdp, method: string, params: string, timeout_ms: int) -> int 
     if cdp_reply_id(d) < 0 { c[0].events += 1; }
   }
   return -1;
+}
+// Under CDP_WEBGPU=swiftshader, Chromium 152 on Linux (coderos-4080) has no shared image for a WebGPU
+// canvas's swap chain ("Could not find SharedImageBackingFactory ... WebgpuSwapChainTexture"): the
+// first frame a page presents loses its device, and a realm then reports "WORLD FAILED TO LOAD"
+// (its pack's layers were going up on the lost device). Before the next page loads, this asks a
+// local page (host.js: 127.0.0.1 or localhost only) to draw into an offscreen texture instead
+// (coaxialRenderCapture), as the render checks do. Its probe, input and DOM are the same; a
+// screenshot shows no world. False only when the browser refused it.
+CDP_OFFSCREEN :: "{\"source\":\"globalThis.coaxialRenderCapture=true;globalThis.coaxialRenderCaptureFormat='rgba8unorm';\"}";
+cdp_swiftshader_offscreen :: (c: [] Cdp) -> bool {
+  wg: [32] u8;
+  if proc_getenv("CDP_WEBGPU", wg[..]) != "swiftshader" { return true; }
+  return cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", CDP_OFFSCREEN, CDP_CALL_MS) >= 0;
 }
 // Waits for an event called method: true when it came (its message is in
 // cdp_doc). Events before it, and replies, are passed over.

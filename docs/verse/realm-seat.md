@@ -7,6 +7,9 @@ Slice 4, presence in made realms with the AGENT tag, built 2026-11-02
 (#12655). Seats as their account (a private realm seats its owner and site
 admins) and slice 5, hosted seats, built locally 2026-11-02 (#12655); not
 deployed. The agent pane (YOUR AGENT) built 2026-11-02 (#12655); not deployed.
+Its headless page check passes on coderos-4080 against a local API, and
+`look --pitch` and `use build` were run there against local made realms
+("Local runs" below).
 
 Agents can make and edit realms through the routes and the CLI
 ([realm-edit.md](realm-edit.md), [the CLI spec](../cli/2026-11-01-openagents-cli-v1.md)).
@@ -228,17 +231,68 @@ Checks:
 - `coax/web/api/test_room.py`: a logged-in page opens, acts in and closes a
   hosted seat. The session sent from another site's page is refused, and so
   are a POST without this site's Origin, an unknown session and the player key.
-- `coax/web/tool.sh agent-pane API TOKEN MODULE [SHOTS]`: the page in
-  headless Chrome against a local oa-api and a stand-in runner. Its header
-  lists what to start first.
+- `PGURL=... PSQL=psql coax/web/tool.sh agent-pane ORIGIN [SHOTS]`: the
+  page in headless Chrome against a local oa-api and a stand-in runner,
+  both behind one local origin (`coax/web/tool.sh local-origin`, below). It
+  makes its owner in SQL (an account, a logged-in session, a player key and
+  a private made realm), so the browser sends its own `oa_session` cookie
+  and Origin. It opens EDIT > AGENT, starts the agent, sends `look left`,
+  closes it, checks the database's seat (the session's account's, hosted,
+  closed) and opens the pane at phone width. Its header lists what to start.
+  Passed 9/9 on coderos-4080 on 2026-11-02 with `CDP_WEBGPU=swiftshader`.
+
+## Local runs: one origin for the site and the API
+
+`coax/web/tool.sh local-origin --listen PORT --api http://127.0.0.1:API
+[--module MYREALM.wasm]` serves this checkout's pages and files (as `coax
+serve --static` does; the made realm's page on its legacy shader path) and
+sends every `/api` request on to a local oa-api with its method, headers and
+body. Start oa-api with `OA_API_ORIGIN=http://127.0.0.1:PORT`: a page then
+meets the API on its own origin, with its cookie and Origin, and the CLI can
+use it with `--origin http://127.0.0.1:PORT`. `local-origin --listen PORT
+--stand-in-runner` answers the runner's `/seat/open|act|close` (point
+`OA_AGENT_WAKE_URL` at `http://127.0.0.1:PORT/wake`).
+
+Why the earlier agent-pane check failed on coderos-4080: it opened staging's
+page under a made-up localhost origin and swapped in this checkout's module.
+Staging now answers `/realms/SLUG` with a redirect to `/worlds/SLUG`, so the
+page left for staging's own origin. From there the module, rewritten to a
+local URL, was refused by Chrome's local network access check
+(`LocalNetworkAccessPermissionDenied`, the "failed to fetch"). Sent through
+DevTools instead, the module (1.0 to 1.2 MB in base64) didn't fit the 1 MiB socket
+buffer `cdp_put` wrote it into, so the connection looked broken; `cdp_put`
+now sends a big message in 64 KiB parts. And staging's host was built from a
+different checkout than the module ("engine has no compatible Coax renderer
+facade"). The local origin avoids all four.
+
+**SwiftShader on coderos-4080.** Headless Chromium 152 here can't present a
+WebGPU canvas at all, on SwiftShader or the GPU: Chrome logs "Could not find
+SharedImageBackingFactory ... WebgpuSwapChainTexture" at the first frame and
+the device is lost. A made realm's pack is uploading its texture layers at
+that moment, so the page says "WORLD FAILED TO LOAD: fixture.*.pack" (the
+staging error seen from here); the pack itself is fine. With
+`CDP_WEBGPU=swiftshader`, `cdp_swiftshader_offscreen` (`coax/lib/net/cdp.coax`)
+asks a local page to draw into an offscreen texture instead (host.js
+`coaxialRenderCapture`, 127.0.0.1 and localhost only). The seat and the
+agent-pane check use it. The realm runs and the probe reads it, but
+screenshots show no world. Whether the runner image's Chromium can present
+on SwiftShader is not known yet (NEEDS_OWNER.md).
 
 The check, run against staging on 2026-11-02 with the made realm
 `village-green` (a well, two houses and Maple, a baker): `play`, `look
 --turn 90` (facing 90.0), `go Maple` (`reached`, 1.1 m away), `say` (Maple's
 answer in the view), `bye`, `use jump`, `use build barrel` (refused: build
 is off there), `go --x 0 --z 0`, and the same through `openagents mcp`.
-Not yet run live: `use build` in a realm with build on, and `--pitch` in a
-first-person realm.
+
+Run on coderos-4080 on 2026-11-02 through a local origin, with the CLI's own
+key owning `seat-fp` (first person, build and jump on): `play` (camera
+`first`, tools `build`, `jump`), `look --pitch 20` (pitch 20.0), `look
+--pitch -35 --turn 45` (pitch -15.0, facing 45.0: pitch is relative, like
+turn), `look --pitch 90` (refused: -60 to 60), `use build barrel` (`placed`:
+the realm's revision went from 1 to 2 with a barrel 2.2 m ahead), `leave`.
+That run found a bug, now fixed: the seat's holder called the server at the
+profile's origin, not the seat's, so a profile with no origin kept sent its
+seat to openagents.com. The holder now gets `--origin`.
 
 ```sh
 openagents realm play village-green

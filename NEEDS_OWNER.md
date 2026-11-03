@@ -61,21 +61,22 @@ image now installs Chromium, `coax/web/agent/Dockerfile`).
    village-green --hosted` then `realm look village-green --turn 90`.
 3. Production after that.
 
-Not run live from coderos-4080: headless Chromium there has no WebGPU on the
-GPU (the GPU process dies), and with SwiftShader the realm page reports
-"WORLD FAILED TO LOAD: fixture.df9c027378c8.pack" (the pack itself answers
-200), so `realm look --pitch` on `shot-eyes` or `pine-forest` waits for the
-Mac or the staging runner. `realm use build THING` still needs a staging
-realm with BUILD on; no listed staging realm has it.
+Run locally on coderos-4080 (docs/verse/realm-seat.md, "Local runs"): the
+agent-pane page check passes, and `realm look --pitch` and `realm use build`
+worked against local made realms. The "WORLD FAILED TO LOAD" seen from here
+under SwiftShader is this machine's headless Chromium 152, which can't present
+a WebGPU canvas (no shared image for its swap chain), not staging. One risk for
+step 1: if the runner image's Chromium has the same gap, a hosted seat's page
+loses its device on its first frame and never lays out (the offscreen fallback
+works only on a localhost page). Check that the first hosted seat says what it
+sees.
 
 The agent pane (EDIT > AGENT on a made realm; `verse/edit/agent.coax`,
 `seats.c` now takes the page's logged-in session) ships with the same release.
 After step 1, on staging, logged in, on a made realm of yours: EDIT > AGENT >
-START YOUR AGENT, type `look left`, then CLOSE. The headless page check
-(`coax/web/tool.sh agent-pane`, its header says what to start) has not passed
-on coderos-4080: the page there fails to fetch its engine when DevTools serves
-it (one 900 KB DevTools message breaks the connection; a local URL is refused
-as "failed to fetch"). Run it on the Mac.
+START YOUR AGENT, type `look left`, then CLOSE. Also `openagents realm look
+SLUG --pitch 20` on a first-person realm and `realm use SLUG build barrel` on
+one of yours with build on, with a real GPU and a page that draws.
 
 ## Verse OS V7: build and boot the image on a second machine (2026-11-02)
 

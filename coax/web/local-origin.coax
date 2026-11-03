@@ -1,0 +1,324 @@
+// One local origin for the site and the API, as production serves them: the pages and their files
+// from this checkout (as `coax serve --static` serves apps/openagents-web), and every /api request
+// sent on to a local oa-api with its method, headers and body, its answer given back. A page,
+// `openagents realm play --origin`, or a hosted seat then meets the API on the page's own origin,
+// with the page's cookie and Origin, as on openagents.com (GitHub #12655).
+//
+//   coax/web/tool.sh local-origin --listen PORT --api http://127.0.0.1:PORT [--module MYREALM.wasm]
+//   coax/web/tool.sh local-origin --listen PORT --stand-in-runner
+//
+// Run it from the repository's root. Start oa-api with OA_API_ORIGIN=http://127.0.0.1:PORT (this
+// origin): seats.c takes a page's session only with this site's Origin, and NIP-98 signs this URL.
+// The made realm's page (/realms/built, /worlds/built) is answered on the legacy shader path (its
+// data-render attributes taken out: a render package needs a release build). --module serves that
+// file as /build/myrealm.wasm (and /build/myrealm.HASH.wasm), so apps/openagents-web/build needs
+// no full build.
+//
+// --stand-in-runner is the project agents' runner's seat routes (coax/web/agent/seat-runner.c) and
+// nothing else: POST /seat/open, /seat/act (an observation of a third-person realm with two things
+// near) and /seat/close. Point oa-api's OA_AGENT_WAKE_URL at http://127.0.0.1:PORT/wake. It runs
+// as its own process: oa-api calls it while this origin waits on oa-api.
+//
+// One request at a time, each connection closed after its answer. Loopback only.
+// tool.sh: tls
+#import "Basic";
+#load "../lib/net/http.coax";
+#load "../lib/json/json.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+LO_FILE_MAX :: 16777216;
+LO_REQ_MAX :: 81920;
+LO_API_MS :: 60000;
+LO_READ_MS :: 10000;
+
+Lo :: struct {
+  file: [LO_FILE_MAX] u8; page: [LO_FILE_MAX] u8;
+  req: [LO_REQ_MAX] u8;
+  hw: [1] HttpWork; answer: [HTTP_BODY_MAX] u8;
+  api: [256] u8; api_n: int; wasm: [1024] u8; wasm_n: int;
+  served: int; sent_on: int;
+}
+LoBuf :: struct { b: [4096] u8; n: int; bad: bool; }
+lo_put :: (o: [] LoBuf, s: string) {
+  if o[0].n + s.count > o[0].b.count { o[0].bad = true; return; }
+  for k: 0..<s.count { o[0].b[o[0].n + k] = s[k]; }
+  o[0].n += s.count;
+}
+lo_int :: (o: [] LoBuf, v: int) {
+  if v < 0 { lo_put(o, "-"); lo_int(o, -v); return; }
+  d: [20] u8; n := 0; x := v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
+  for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; lo_put(o, cast(string) e[..]); }
+}
+lo_text :: (o: [] LoBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
+lo_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+lo_ends :: (s: string, p: string) -> bool { return s.count >= p.count && s[s.count - p.count..<s.count] == p; }
+lo_has :: (s: string, p: string) -> bool {
+  if p.count == 0 { return true; }
+  for i: 0..<s.count - p.count + 1 { if s[i..<i + p.count] == p { return true; } }
+  return false;
+}
+
+// ---- the request: its line, headers and body
+
+LoReq :: struct { ok: bool; method: string; target: string; head_n: int; length: int; }
+// The request head in text (through its blank line): the method, the target and Content-Length.
+lo_head :: (text: string) -> LoReq {
+  r: LoReq;
+  e := 0;
+  while e + 3 < text.count && !(text[e] == 13 && text[e + 1] == 10 && text[e + 2] == 13 && text[e + 3] == 10) { e += 1; }
+  if e + 3 >= text.count { return r; }
+  r.head_n = e + 4;
+  sp := 0; while sp < e && text[sp] != ' ' { sp += 1; }
+  sp2 := sp + 1; while sp2 < e && text[sp2] != ' ' { sp2 += 1; }
+  if sp == 0 || sp2 >= e || sp2 == sp + 1 { return r; }
+  r.method = text[0..<sp]; r.target = text[sp + 1..<sp2];
+  if r.target[0] != '/' { return r; }
+  l := http_header(text[0..<r.head_n], "content-length");
+  for ch: l { if ch < '0' || ch > '9' { return r; } r.length = r.length * 10 + cast(int) (ch - '0'); }
+  r.ok = r.length >= 0 && r.length <= LO_REQ_MAX;
+  return r;
+}
+// The path: the target before its query.
+lo_path :: (target: string) -> string { e := 0; while e < target.count && target[e] != '?' && target[e] != '#' { e += 1; } return target[0..<e]; }
+#test "local origin: a request's line, length and path" {
+  r := lo_head("POST /api/playtest/seats HTTP/1.1\r\nHost: 127.0.0.1:47998\r\nContent-Length: 12\r\nOrigin: http://127.0.0.1:47998\r\n\r\n{\"slug\":\"x\"}");
+  #assert r.ok && r.method == "POST" && r.target == "/api/playtest/seats" && r.length == 12 && r.head_n == 112;
+  g := lo_head("GET /realms/built?x=1 HTTP/1.1\r\nHost: h\r\n\r\n");
+  #assert g.ok && g.length == 0 && lo_path(g.target) == "/realms/built";
+  #assert !lo_head("GET /x HTTP/1.1\r\nHost: h\r\n").ok && !lo_head("GET x HTTP/1.1\r\n\r\n").ok && !lo_head("GET  HTTP/1.1\r\n\r\n").ok;
+  #assert !lo_head("POST /x HTTP/1.1\r\nContent-Length: 9x\r\n\r\n").ok && !lo_head("POST /x HTTP/1.1\r\nContent-Length: 999999999\r\n\r\n").ok;
+}
+// The headers sent on to the API: each of the request's lines http_request takes (not Host,
+// Content-Length, Connection, Accept-Encoding or Transfer-Encoding), at most HTTP_HEADERS.
+lo_forward :: (head: string, out: [] string) -> int {
+  n := 0; at := 0;
+  while at + 1 < head.count && !(head[at] == 13 && head[at + 1] == 10) { at += 1; }
+  at += 2;
+  while at < head.count && n < out.count {
+    e := at;
+    while e + 1 < head.count && !(head[e] == 13 && head[e + 1] == 10) { e += 1; }
+    if e + 1 >= head.count || e == at { break; }
+    line := head[at..<e];
+    if http_header_ok(line) { out[n] = line; n += 1; }
+    at = e + 2;
+  }
+  return n;
+}
+#test "local origin: the page's cookie, Origin and key go on to the API; its framing doesn't" {
+  h: [HTTP_HEADERS] string;
+  n := lo_forward("POST /api/x HTTP/1.1\r\nHost: 127.0.0.1:1\r\nContent-Length: 2\r\nCookie: oa_session=abc\r\nOrigin: http://127.0.0.1:1\r\nX-Verse-Player: k\r\nConnection: keep-alive\r\nAccept-Encoding: gzip\r\n\r\n", h[..]);
+  #assert n == 3 && h[0] == "Cookie: oa_session=abc" && h[1] == "Origin: http://127.0.0.1:1" && h[2] == "X-Verse-Player: k";
+}
+
+// ---- the site's files
+
+// A path's file, as coax/web/serve.c resolves it: /coaxial/* from coax/web, /worlds and /worlds/*
+// from the app's realms/, anything else from the app. No "..", no
+// dotfiles. "" when the path isn't one. (A directory found there: lo_index.)
+lo_file :: (app: string, path: string, out: [] u8) -> string {
+  if path.count == 0 || path[0] != '/' || lo_has(path, "..") || lo_has(path, "/.") { return ""; }
+  o: [1] LoBuf;
+  if path == "/" { lo_put(o[..], app); lo_put(o[..], "/index.html"); }
+  else if lo_starts(path, "/coaxial/") { lo_put(o[..], "coax/web/"); lo_put(o[..], path["/coaxial/".count..<path.count]); }
+  else if path == "/worlds" || lo_starts(path, "/worlds/") { lo_put(o[..], app); lo_put(o[..], "/realms"); lo_put(o[..], path["/worlds".count..<path.count]); }
+  else { lo_put(o[..], app); lo_put(o[..], path); }
+  if o[0].bad || o[0].n + 11 > out.count { return ""; }
+  for i: 0..<o[0].n { out[i] = o[0].b[i]; }
+  return cast(string) out[0..<o[0].n];
+}
+// A directory's file: its index.html (file is in out, which has room for it).
+lo_index :: (file: string, out: [] u8) -> string {
+  n := file.count;
+  tail := ifx n > 0 && out[n - 1] == '/' then "index.html" else "/index.html";
+  for i: 0..<tail.count { out[n + i] = tail[i]; }
+  return cast(string) out[0..<n + tail.count];
+}
+lo_type :: (path: string) -> string {
+  ends := [10] string.[".html", ".js", ".wasm", ".wgsl", ".md", ".svg", ".json", ".png", ".jpg", ".bin"];
+  types := [10] string.["text/html; charset=utf-8", "text/javascript; charset=utf-8", "application/wasm", "text/plain; charset=utf-8",
+                        "text/markdown; charset=utf-8", "image/svg+xml", "application/json", "image/png", "image/jpeg", "application/octet-stream"];
+  for i: 0..<10 { if lo_ends(path, ends[i]) { return types[i]; } }
+  return "text/plain; charset=utf-8";
+}
+// The made realm's page: /realms/built or /worlds/built (with or without its index.html).
+lo_is_built :: (path: string) -> bool {
+  for p: [6] string.["/realms/built", "/realms/built/", "/realms/built/index.html", "/worlds/built", "/worlds/built/", "/worlds/built/index.html"] { if path == p { return true; } }
+  return false;
+}
+// /build/myrealm.wasm or /build/myrealm.HASH.wasm.
+lo_is_module :: (path: string) -> bool {
+  if path == "/build/myrealm.wasm" { return true; }
+  if !lo_starts(path, "/build/myrealm.") || !lo_ends(path, ".wasm") { return false; }
+  hash := path["/build/myrealm.".count..<path.count - ".wasm".count];
+  if hash.count == 0 { return false; }
+  for ch: hash { if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) { return false; } }
+  return true;
+}
+// The page on the legacy shader path: its data-render and data-render-profile taken out.
+lo_legacy :: (html: string, out: [] u8) -> int {
+  n := 0; i := 0;
+  while i < html.count {
+    cut := -1;
+    for drop: [2] string.[" data-render=\"", " data-render-profile=\""] {
+      if i + drop.count <= html.count && html[i..<i + drop.count] == drop { cut = i + drop.count; }
+    }
+    if cut >= 0 { j := cut; while j < html.count && html[j] != '"' { j += 1; } i = j + 1; continue; }
+    if n >= out.count { return -1; }
+    out[n] = html[i]; n += 1; i += 1;
+  }
+  return n;
+}
+#test "local origin: which file a path is" {
+  o: [1024] u8;
+  #assert lo_file("apps/openagents-web", "/coaxial/host.js", o[..]) == "coax/web/host.js";
+  #assert lo_file("apps/openagents-web", "/myrealm.wgsl", o[..]) == "apps/openagents-web/myrealm.wgsl";
+  #assert lo_file("apps/openagents-web", "/worlds/fixture/assets/fixture.pack", o[..]) == "apps/openagents-web/realms/fixture/assets/fixture.pack";
+  #assert lo_index(lo_file("a", "/realms/built/", o[..]), o[..]) == "a/realms/built/index.html" && lo_index(lo_file("a", "/realms/built", o[..]), o[..]) == "a/realms/built/index.html";
+  #assert lo_file("apps/openagents-web", "/../x", o[..]) == "" && lo_file("apps/openagents-web", "/.git/config", o[..]) == "" && lo_file("apps/openagents-web", "x", o[..]) == "";
+  #assert lo_type("/build/myrealm.wasm") == "application/wasm" && lo_type("/x.pack") == "text/plain; charset=utf-8" && lo_type("/a.html") == "text/html; charset=utf-8";
+  #assert lo_is_built("/realms/built") && lo_is_built("/worlds/built/") && !lo_is_built("/realms/builtx") && !lo_is_built("/realms/pine-forest");
+  #assert lo_is_module("/build/myrealm.wasm") && lo_is_module("/build/myrealm.5a1af91632c3.wasm") && !lo_is_module("/build/myrealm..wasm") && !lo_is_module("/build/realm.wasm");
+  p: [256] u8;
+  n := lo_legacy("<script src=\"/h.js\" data-app=\"myrealm\" data-render=\"/build/render/built/render.json\" data-render-profile=\"10\" data-realm=\"built\">", p[..]);
+  #assert cast(string) p[0..<n] == "<script src=\"/h.js\" data-app=\"myrealm\" data-realm=\"built\">";
+}
+
+// ---- answers
+
+lo_send :: (h: int, bytes: string) -> bool {
+  at := 0;
+  while at < bytes.count {
+    e := ifx bytes.count - at > 65536 then at + 65536 else bytes.count;
+    for b: bytes[at..<e] { if cxsock_write(h, cast(int) b) != 0 { return false; } }
+    if cxsock_flush(h, 10000) != 0 { return false; }
+    at = e;
+  }
+  return true;
+}
+lo_reason :: (code: int) -> string {
+  if code == 200 { return "OK"; } if code == 204 { return "No Content"; } if code == 404 { return "Not Found"; }
+  if code == 400 { return "Bad Request"; } if code == 502 { return "Bad Gateway"; }
+  return "Status";
+}
+// An answer, with the headers coax/web/serve.c gives every file.
+lo_reply :: (h: int, code: int, ctype: string, body: string) -> bool {
+  o: [1] LoBuf;
+  lo_put(o[..], "HTTP/1.1 "); lo_int(o[..], code); lo_put(o[..], " "); lo_put(o[..], lo_reason(code));
+  lo_put(o[..], "\r\nContent-Type: "); lo_put(o[..], ctype); lo_put(o[..], "\r\nContent-Length: "); lo_int(o[..], body.count);
+  lo_put(o[..], "\r\nCache-Control: no-store\r\nCross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Embedder-Policy: require-corp\r\n");
+  lo_put(o[..], "X-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n");
+  return !o[0].bad && lo_send(h, lo_text(o[..])) && lo_send(h, body);
+}
+// The stand-in runner's answer to one of its routes; "" for any other.
+lo_runner :: (path: string, body: string, out: [] u8) -> string {
+  o: [1] LoBuf;
+  if path == "/seat/open" { lo_put(o[..], "{\"open\":true}"); }
+  else if path == "/seat/close" { lo_put(o[..], "{\"closed\":true}"); }
+  else if path == "/seat/act" {
+    nodes: [64] JvNode; d: [1] Jv; ob: [16] u8;
+    on := ifx jv_parse(d[..], body, nodes[..]) then jv_str(d[0], jv_get(d[0], jv_get(d[0], 0, "action"), "op"), ob[..]) else -1;
+    op := ifx on > 0 then cast(string) ob[0..<on] else "?";
+    lo_put(o[..], "{\"op\":\""); lo_put(o[..], op); lo_put(o[..], "\",\"ok\":true,\"result\":\"");
+    lo_put(o[..], ifx op == "look" || op == "see" then "looked" else "done");
+    lo_put(o[..], "\",\"realm\":\"stand-in\",\"at\":[2.5,-1.0],\"facing\":90.0,\"camera\":\"third\",\"tools\":[\"jump\",\"talk\"],\"talking\":null,\"answer\":null,\"others\":0,\"agents\":0,");
+    lo_put(o[..], "\"near\":[{\"kind\":\"tree\",\"id\":\"entity:3\",\"d\":2.2,\"bearing\":10.0},{\"kind\":\"house\",\"id\":\"entity:1\",\"d\":6.0,\"bearing\":-40.0}]}");
+  } else { return ""; }
+  for i: 0..<o[0].n { out[i] = o[0].b[i]; }
+  return cast(string) out[0..<o[0].n];
+}
+#test "local origin: the stand-in runner's seat routes" {
+  o: [4096] u8;
+  #assert lo_runner("/seat/open", "{}", o[..]) == "{\"open\":true}" && lo_runner("/seat/close", "{\"id\":1}", o[..]) == "{\"closed\":true}";
+  a := lo_runner("/seat/act", "{\"id\":1,\"action\":{\"op\":\"look\",\"turn\":-90}}", o[..]);
+  #assert lo_starts(a, "{\"op\":\"look\",\"ok\":true,\"result\":\"looked\",") && lo_has(a, "\"near\":[");
+  #assert lo_starts(lo_runner("/seat/act", "{\"action\":{\"op\":\"go\"}}", o[..]), "{\"op\":\"go\",\"ok\":true,\"result\":\"done\"");
+  #assert lo_runner("/wake", "{}", o[..]) == "";
+}
+
+// One connection: its request read, answered, closed.
+lo_serve :: (f: [] Lo, h: int, app: string, runner: bool) {
+  used := 0; r: LoReq;
+  deadline := proc_now_ms() + LO_READ_MS;
+  while true {
+    if r.ok && used >= r.head_n + r.length { break; }
+    if proc_now_ms() >= deadline { return; }
+    n := cxsock_read(h, proc_left(deadline, proc_now_ms()));
+    if n <= 0 || used + n > LO_REQ_MAX { return; }
+    for k: 0..<n { f[0].req[used + k] = cast,trunc(u8) cxsock_byte(h, k); }
+    used += n;
+    if !r.ok { r = lo_head(cast(string) f[0].req[0..<used]); }
+  }
+  head := cast(string) f[0].req[0..<r.head_n];
+  body := cast(string) f[0].req[r.head_n..<r.head_n + r.length];
+  path := lo_path(r.target);
+  if runner {
+    a := lo_runner(path, body, f[0].answer[..]);
+    ok := ifx a.count > 0 then lo_reply(h, 200, "application/json", a) else lo_reply(h, 404, "application/json", "{\"error\":\"not found\"}");
+    return;
+  }
+  if lo_starts(path, "/api/") {
+    to: [1] LoBuf; lo_put(to[..], cast(string) f[0].api[0..<f[0].api_n]); lo_put(to[..], r.target);
+    hs: [HTTP_HEADERS] string;
+    k := lo_forward(head, hs[..]);
+    got := http_do(f[0].hw[..], r.method, lo_text(to[..]), hs[0..<k], body, LO_API_MS, 0, f[0].answer[..]);
+    f[0].sent_on += 1;
+    if got.error != HTTP_OK { ok := lo_reply(h, 502, "application/json", "{\"error\":\"the local API didn't answer\"}"); return; }
+    ct := http_header(cast(string) f[0].hw[0].head[0..<f[0].hw[0].head_n], "content-type");
+    ok := lo_reply(h, got.code, ifx ct.count > 0 then ct else "application/json", cast(string) f[0].answer[0..<got.n]);
+    return;
+  }
+  if r.method != "GET" && r.method != "HEAD" { ok := lo_reply(h, 405, "text/plain", "GET only\n"); return; }
+  if f[0].wasm_n > 0 && lo_is_module(path) {
+    n := fs_read(cast(string) f[0].wasm[0..<f[0].wasm_n], f[0].file[..]);
+    ok := ifx n > 0 then lo_reply(h, 200, "application/wasm", cast(string) f[0].file[0..<n]) else lo_reply(h, 404, "text/plain", "not found\n");
+    f[0].served += 1;
+    return;
+  }
+  fb: [2048] u8;
+  file := lo_file(app, path, fb[..]);
+  if file.count > 0 && fs_kind(file) == FS_DIR { file = lo_index(file, fb[..]); }
+  n := ifx file.count > 0 && fs_kind(file) == FS_FILE then fs_read(file, f[0].file[..]) else -1;
+  if n < 0 { ok := lo_reply(h, 404, "text/plain", "not found\n"); return; }
+  f[0].served += 1;
+  if lo_is_built(path) {
+    m := lo_legacy(cast(string) f[0].file[0..<n], f[0].page[..]);
+    ok := lo_reply(h, 200, "text/html; charset=utf-8", cast(string) f[0].page[0..<m]);
+    return;
+  }
+  ok := lo_reply(h, 200, lo_type(file), cast(string) f[0].file[0..<n]);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  loaded := args_load(a[..]);
+  port := args_whole(args_value(a[..], "--listen", ""));
+  runner := args_has(a[..], "--stand-in-runner");
+  api := args_value(a[..], "--api", "");
+  module := args_value(a[..], "--module", "");
+  app := args_value(a[..], "--app", "apps/openagents-web");
+  api_ok := lo_starts(api, "http://127.0.0.1:") || lo_starts(api, "http://localhost:");
+  if !loaded || port <= 0 || port > 65535 || (!runner && !api_ok) || api.count > 255 || module.count > 1023 {
+    tool_errln("usage: coax/web/tool.sh local-origin --listen PORT --api http://127.0.0.1:PORT [--module MYREALM.wasm] [--app DIR]");
+    tool_errln("       coax/web/tool.sh local-origin --listen PORT --stand-in-runner");
+    return 2;
+  }
+  if !runner && fs_kind(app) != FS_DIR { tool_err("local-origin: no app at "); tool_err(app); tool_errln(" (run it from the repository's root)"); return 2; }
+  f: [1] Lo;
+  for i: 0..<api.count { f[0].api[i] = api[i]; } f[0].api_n = api.count;
+  for i: 0..<module.count { f[0].wasm[i] = module[i]; } f[0].wasm_n = module.count;
+  l := cxsock_listen(port);
+  if l < 0 { tool_errln("local-origin: the port is taken"); return 1; }
+  print("local-origin: http://127.0.0.1:% (%)\n", port, ifx runner then "a stand-in runner" else "the site and the API");
+  while true {
+    h := cxsock_accept(l, 1000);
+    if h < 0 { continue; }
+    lo_serve(f[..], h, app, runner);
+    x := cxsock_close(h);
+  }
+  return 0;
+}

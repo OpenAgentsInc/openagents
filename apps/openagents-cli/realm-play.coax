@@ -290,6 +290,24 @@ seat_leave_at :: (a: [] Args, profile: string, at: [] SeatAt) {
   out: [4096] u8; n := seat_send(at[0].port, jo_text(o[..]), out[..], 15000);
 }
 
+// The holder's command line. --origin names the seat's origin for its own server calls too (the
+// seat, its presence, keep and close), so they go where its page is, not to the profile's origin
+// (a profile with none kept would send them to openagents.com).
+seat_hold_argv :: (a: [] Args, exe: string, slug: string, origin: string, profile: string, phone: bool) -> bool {
+  ok := args_add(a, exe) && args_add(a, "seat-hold") && args_add(a, slug) && args_add(a, origin);
+  ok = ok && args_add(a, "--origin") && args_add(a, origin) && args_add(a, "--profile") && args_add(a, profile);
+  if phone { ok = ok && args_add(a, "--phone"); }
+  return ok;
+}
+#test "a seat's holder calls the server at the seat's origin" {
+  h: [1] Args;
+  #assert seat_hold_argv(h[..], "/bin/openagents", "seat-fp", "http://127.0.0.1:47920", "default", true);
+  #assert args_count(h[..]) == 9 && args_value(h[..], "--origin", "") == "http://127.0.0.1:47920" && args_has(h[..], "--phone");
+  // the holder reads its slug and origin as its first positionals past the program, flags skipped
+  rest: [1] Args;
+  for i: 1..<args_count(h[..]) { #assert args_add(rest[..], args_at(h[..], i)); }
+  #assert positional(rest[..], 1) == "seat-fp" && positional(rest[..], 2) == "http://127.0.0.1:47920" && positional(rest[..], 3) == "";
+}
 // Starts a holder for slug at origin and waits for its file: "" when it's up, or why not.
 seat_start :: (a: [] Args, profile: string, slug: string, origin: string, phone: bool, at: [] SeatAt) -> string {
   if !seat_dir_make() { return "could not make ~/.openagents/cli/seats"; }
@@ -298,8 +316,9 @@ seat_start :: (a: [] Args, profile: string, slug: string, origin: string, phone:
   exe: [4096] u8; en := cxcli_exe_path(exe[..]);
   if en <= 0 { return "could not find this program's own path"; }
   h := proc_new();
-  ok := h >= 0 && proc_arg(h, cast(string) exe[0..<en]) && proc_arg(h, "seat-hold") && proc_arg(h, slug) && proc_arg(h, origin) && proc_arg(h, "--profile") && proc_arg(h, profile);
-  if phone { ok = ok && proc_arg(h, "--phone"); }
+  argv: [1] Args;
+  ok := h >= 0 && seat_hold_argv(argv[..], cast(string) exe[0..<en], slug, origin, profile, phone);
+  for i: 0..<args_count(argv[..]) { ok = ok && proc_arg(h, args_at(argv[..], i)); }
   ok = ok && proc_quiet(h) && proc_detach(h);
   if !ok || proc_start(h) != 0 { if h >= 0 { r := proc_release(h); } return "could not start the seat"; }
   released := proc_release(h);
@@ -393,7 +412,7 @@ realm_seat :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   return ifx ok then EXIT_OK else EXIT_FAIL;
 }
 
-// ---- the holder: `openagents seat-hold SLUG ORIGIN --profile P [--phone]`, started by realm_seat
+// ---- the holder: `openagents seat-hold SLUG ORIGIN --origin ORIGIN --profile P [--phone]`, started by realm_seat
 
 seat_hold_say :: (path: [] u8, what: string) {
   t: [400] u8; n := copy("error ", t[..]); m := copy(what, t[n..<t.count - 1]);

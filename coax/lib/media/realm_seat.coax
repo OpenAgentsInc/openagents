@@ -635,6 +635,7 @@ seat_open :: (s: [] Seat, c: [] Cdp, player: string) -> bool {
   jo_key(o[..], "url"); jo_str(o[..], seat_origin(s)); jo_end(o[..]);
   if cdp_call(c, "Network.setCookie", jo_text(o[..]), CDP_CALL_MS) < 0 { return false; }
   if player.count > 0 && !seat_player_script(c, player) { return false; }
+  if !cdp_swiftshader_offscreen(c) { return false; }
   u: [1] SeatBuf; seat_put(u[..], seat_origin(s)); seat_put(u[..], "/realms/built#"); seat_put(u[..], seat_slug(s));
   jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], seat_text(u[..])); jo_end(o[..]);
   return !o[0].bad && cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) >= 0;

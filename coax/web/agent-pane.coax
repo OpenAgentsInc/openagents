@@ -1,43 +1,35 @@
-// YOUR AGENT, played in headless Chrome (no window opens) against a local oa-api and a stand-in
-// runner (openagents#12655; docs/verse/realm-seat.md "The agent pane"). The page is the made realm
-// pine-forest from staging, opened at a localhost origin whose reads DevTools interception sends on
-// to staging, with these answers swapped in: the realm module is the one built from this checkout;
-// the realm's spec says we own it; every /api/playtest/seats request goes to the local oa-api
-// instead, with the page's session cookie (oa_session) and its Origin, as the site's own page sends
-// them; every other write (a POST) is answered here with 204 and never leaves the browser.
+// YOUR AGENT, played in headless Chrome (no window opens, no sound plays) against a local oa-api and
+// a stand-in runner (openagents#12655; docs/verse/realm-seat.md "The agent pane"). The page is the
+// made realm's page this checkout builds, on one local origin with the API (coax/web/local-origin.coax),
+// so the page sends its own session cookie (oa_session) and Origin with every seat request, as the
+// site's page does on openagents.com.
 //
-// The owner opens EDIT > AGENT and presses START: oa-api opens a hosted seat on its runner (the
-// stand-in), and the first look comes back into the pane. A verb typed goes to the seat and its
-// observation comes in under it; CLOSE ends the seat; a phone-width page shows the pane. It reads the
-// pane through coaxial.guardProbe(2400 + f) (verse/edit/edit.coax redit_probe: 4 * b + 0..3 button
-// b's box, 96 the pane, 88 the seat's state, 89 the lines in its log).
+// The tool makes its owner first, in SQL: an account (a throwaway key), a logged-in session for it, a
+// player key of that account for the page, and a private made realm the account owns. The owner opens
+// EDIT > AGENT and presses START: oa-api opens a hosted seat on its runner (the stand-in), and the
+// first look comes back into the pane. A verb typed goes to the seat and its observation comes in
+// under it; CLOSE ends the seat, and the database says the seat was the session's account's, hosted,
+// and is closed; a phone-width page shows the pane. It reads the pane through
+// coaxial.guardProbe(2400 + f) (verse/edit/edit.coax redit_probe: 4 * b + 0..3 button b's box, 96
+// the pane, 88 the seat's state, 89 the lines in its log).
 //
-// The local oa-api runs with OA_API_ORIGIN=http://golden.localhost:47998 (the page's origin, so its
-// Origin is this site's), OA_AGENT_WAKE_URL at a stand-in runner that answers /seat/open, /seat/act
-// with an observation and /seat/close, a row in signin.sessions for TOKEN's account, and the made
-// realm pine-forest owned by that account (coax/web/api/test_room.py does the same for its seats).
+// Start, from the repository's root (ports are examples):
 //   COAXIAL_RUN_STEPS=250000000 coax/web/wasm.sh apps/openagents-web/myrealm.coax apps/openagents-web/myrealm-face.c \
 //     /tmp/myrealm.wasm verse/edit/computer-wire.coax coax/lib/crypto/entropy.coax
-//   coax/web/tool.sh agent-pane http://127.0.0.1:PORT TOKEN /tmp/myrealm.wasm [SHOTS_DIR]
+//   coax/web/tool.sh local-origin --listen 47921 --stand-in-runner
+//   OA_API_DATABASE=... OA_API_ORIGIN=http://127.0.0.1:47920 OA_AGENT_WAKE_URL=http://127.0.0.1:47921/wake \
+//     OA_AGENT_WAKE_TOKEN=x API_BINARY --listen 127.0.0.1:57190 --migrations coax/web/api/migrations
+//   coax/web/tool.sh local-origin --listen 47920 --api http://127.0.0.1:57190 --module /tmp/myrealm.wasm
+//   PGURL=... PSQL=psql coax/web/tool.sh agent-pane http://127.0.0.1:47920 [SHOTS_DIR]
+// On coderos-4080 add CDP_WEBGPU=swiftshader: the page then draws offscreen (cdp.coax
+// cdp_swiftshader_offscreen), so the shots show the pane but no world.
 //
 // Exit 0 when every check passed, 1 when one failed, 2 for a usage error.
-// tool.sh: tls
 #import "Basic";
 #load "../lib/net/cdp.coax";
-#load "../lib/net/http.coax";
 
-AP_ORIGIN :: "https://staging.openagents.com";
-AP_HERE :: "http://golden.localhost:47998";   // the page's origin: nothing listens there; every request is answered or sent on
-AP_SPEC :: "/api/playtest/realms/pine-forest";
-AP_PAGE :: "/realms/pine-forest";
-AP_SEATS :: "/api/playtest/seats";
-AP_WASM_MAX :: 4194304;
-AP_B64_MAX :: AP_WASM_MAX / 3 * 4 + 8;
-AP_CMD_MAX :: AP_B64_MAX + 8192;
-AP_SPEC_MAX :: 1048576;
-AP_PNG_MAX :: 25165824;
-AP_PEND :: 8;
 AP_MS :: 30000;
+AP_PNG_MAX :: 25165824;
 
 // The pane (verse/edit/edit.coax, verse/edit/agent.coax) as the check reads it.
 AB_EDIT :: 0; AB_ATAB :: 18; AB_AMAIN :: 19; AB_ACLOSE :: 20; AB_AFIELD :: 21;
@@ -45,15 +37,8 @@ AP_PANE :: 96; AP_STATE :: 88; AP_LINES :: 89; AP_AGENT_PANE :: 7;
 AS_NONE :: 0; AS_OPEN :: 2;
 
 Pane :: struct {
-  wasm: [AP_WASM_MAX] u8; wasm_n: int;
-  b64: [AP_B64_MAX] u8;
-  cmd: [AP_CMD_MAX] u8; frame: [AP_CMD_MAX + 14] u8;
-  spec: [AP_SPEC_MAX] u8; spec2: [AP_SPEC_MAX] u8;
   png: [AP_PNG_MAX] u8;
-  api: [256] u8; api_n: int; token: [128] u8; token_n: int; module_url: [256] u8; module_url_n: int;
-  hw: [1] HttpWork; answer: [65536] u8;   // a seat request, made here to the local API
-  pend_id: [AP_PEND] int; pend_req: [AP_PEND * 256] u8; pend_n: [AP_PEND] int;
-  served_wasm: int; served_spec: int; held_posts: int; to_api: int;
+  origin: string; db: string; psql: string;
   failed: int; bad: bool;
 }
 
@@ -70,198 +55,58 @@ ap_int :: (o: [] ApBuf, v: int) {
   while x > 0 { d[n] = cast(u8) ('0' + x % 10); x /= 10; n += 1; }
   for k: 0..<n { e: [1] u8; e[0] = d[n - 1 - k]; ap_put(o, cast(string) e[..]); }
 }
+// v in exactly w digits, zeros in front (v >= 0).
+ap_digits :: (o: [] ApBuf, v: int, w: int) {
+  d: [64] u8; x := v;
+  for k: 0..<w { d[w - 1 - k] = cast(u8) ('0' + x % 10); x /= 10; }
+  ap_put(o, cast(string) d[0..<w]);
+}
 ap_text :: (o: [] ApBuf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
 ap_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
-ap_ends :: (s: string, p: string) -> bool { return s.count >= p.count && s[s.count - p.count..<s.count] == p; }
-// A URL's path and query: after the host, before #.
-ap_target :: (url: string) -> string {
-  i := 0;
-  while i + 2 < url.count && !(url[i] == ':' && url[i + 1] == '/' && url[i + 2] == '/') { i += 1; }
-  if i + 2 >= url.count { return ""; }
-  i += 3;
-  while i < url.count && url[i] != '/' { i += 1; }
-  e := i;
-  while e < url.count && url[e] != '#' { e += 1; }
-  return url[i..<e];
-}
-ap_path :: (url: string) -> string {
-  t := ap_target(url); e := 0;
-  while e < t.count && t[e] != '?' { e += 1; }
-  return t[0..<e];
-}
-ap_is_module :: (path: string) -> bool {
-  if !ap_starts(path, "/build/myrealm.") || !ap_ends(path, ".wasm") { return false; }
-  hash := path["/build/myrealm.".count..<path.count - ".wasm".count];
-  if hash.count == 0 { return false; }
-  for ch: hash { if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) { return false; } }
-  return true;
-}
-// A seat request: /api/playtest/seats, or /api/playtest/seats/ID/OP.
-ap_is_seats :: (path: string) -> bool { return path == AP_SEATS || ap_starts(path, "/api/playtest/seats/"); }
-// The local API: http://127.0.0.1:PORT or http://localhost:PORT, no path.
-ap_api_ok :: (api: string) -> bool {
+// The local origin: http://127.0.0.1:PORT or http://localhost:PORT, no path.
+ap_origin_ok :: (o: string) -> bool {
   for p: [2] string.["http://127.0.0.1:", "http://localhost:"] {
-    if api.count > p.count && api.count <= p.count + 5 && ap_starts(api, p) {
+    if o.count > p.count && o.count <= p.count + 5 && ap_starts(o, p) {
       ok := true;
-      for ch: api[p.count..<api.count] { if ch < '0' || ch > '9' { ok = false; } }
+      for ch: o[p.count..<o.count] { if ch < '0' || ch > '9' { ok = false; } }
       if ok { return true; }
     }
   }
   return false;
 }
-ap_token_ok :: (t: string) -> bool {
-  if t.count < 32 || t.count > 128 { return false; }
-  for ch: t { if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z')) { return false; } }
-  return true;
+// The owner, made in SQL: an account for a throwaway key (auth.caller_key), its logged-in session,
+// a player key of that account, and a private made realm it owns. stamp keeps each run's apart.
+ap_owner_sql :: (o: [] ApBuf, stamp: int) {
+  ap_put(o, "SELECT auth.caller_key('"); ap_digits(o, stamp, 64); ap_put(o, "') IS NOT NULL; ");
+  ap_put(o, "INSERT INTO signin.sessions (token_sha256, pubkey, created_ms, expires_ms) VALUES (encode(sha256('"); ap_digits(o, stamp + 1, 64);
+  ap_put(o, "'), 'hex'), '"); ap_digits(o, stamp, 64); ap_put(o, "', 0, 9999999999999); ");
+  ap_put(o, "INSERT INTO verse.players (id, key_sha256, account, created_ms) VALUES ('p-ap"); ap_int(o, stamp);
+  ap_put(o, "', encode(sha256(convert_to('agent-pane-owner-key-"); ap_int(o, stamp); ap_put(o, "', 'UTF8')), 'hex'), auth.account_of('"); ap_digits(o, stamp, 64); ap_put(o, "'), 1); ");
+  ap_put(o, "INSERT INTO verse.worlds (id, owner_account, created_ms) VALUES ('made-ap-"); ap_int(o, stamp); ap_put(o, "', auth.account_of('"); ap_digits(o, stamp, 64); ap_put(o, "'), 1); ");
+  ap_put(o, "INSERT INTO verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms, visibility) VALUES ('ap-"); ap_int(o, stamp);
+  ap_put(o, "', 'made-ap-"); ap_int(o, stamp); ap_put(o, "', 'Agent Pane', 'lowpoly', 'grass', 'day', '[{\"feature\":\"trees\",\"size\":\"some\"},{\"feature\":\"rocks\"}]', '{\"jump\":true}', 1, 'private');");
 }
-#test "agent pane: which requests go where" {
-  #assert ap_path("https://staging.openagents.com/api/playtest/realms/pine-forest?x=1") == AP_SPEC;
-  #assert ap_target("http://golden.localhost:47998/api/playtest/seats/41/act") == "/api/playtest/seats/41/act";
-  #assert ap_is_seats("/api/playtest/seats") && ap_is_seats("/api/playtest/seats/41/close") && !ap_is_seats("/api/playtest/seatsx") && !ap_is_seats("/api/playtest/realms/x");
-  #assert ap_is_module("/build/myrealm.5a1af91632c3.wasm") && !ap_is_module("/build/realm.5a.wasm");
-  #assert ap_api_ok("http://127.0.0.1:57411") && ap_api_ok("http://localhost:8") && !ap_api_ok("https://openagents.com") && !ap_api_ok("http://127.0.0.1:57411/x");
-  #assert ap_token_ok("dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd") && !ap_token_ok("short") && !ap_token_ok("dddddddddddddddddddddddddddddddd;x");
+#test "agent pane: the origin it plays on, and the owner it makes" {
+  #assert ap_origin_ok("http://127.0.0.1:47920") && ap_origin_ok("http://localhost:8") && !ap_origin_ok("https://openagents.com") && !ap_origin_ok("http://127.0.0.1:47920/x");
+  o: [1] ApBuf;
+  ap_digits(o[..], 42, 6);
+  #assert ap_text(o[..]) == "000042";
+  q: [1] ApBuf;
+  ap_owner_sql(q[..], 7);
+  t := ap_text(q[..]);
+  #assert !q[0].bad && ap_starts(t, "SELECT auth.caller_key('0000000000000000000000000000000000000000000000000000000000000007') IS NOT NULL; INSERT INTO signin.sessions");
+  #assert t[t.count - 11..<t.count] == "'private');";
 }
 
-// ---- DevTools, with the page's requests answered on the way
+// ---- DevTools
 
-ap_send_big :: (c: [] Cdp, f: [] Pane, o: [] Jo) -> int {
-  mask: [4] u8;
-  if o[0].bad || c[0].h < 0 || !cdp_draw(4, mask[..]) { return -1; }
-  n := ws_frame_write(WS_OP_TEXT, true, jo_text(o), mask[..], f[0].frame[..]);
-  if n <= 0 || !cdp_put(c, cast(string) f[0].frame[0..<n]) { return -1; }
-  return c[0].id;
-}
-ap_fulfill :: (c: [] Cdp, f: [] Pane, req: string, code: int, ctype: string, body: string) -> bool {
-  n := b64_encode(body, f[0].b64[..]);
-  if n < 0 { return false; }
-  c[0].id += 1;
-  o: [1] Jo; jo_start(o[..], f[0].cmd[..]);
-  jo_obj(o[..]); jo_key(o[..], "id"); jo_int(o[..], c[0].id); jo_key(o[..], "method"); jo_str(o[..], "Fetch.fulfillRequest");
-  jo_key(o[..], "params"); jo_obj(o[..]);
-  jo_key(o[..], "requestId"); jo_str(o[..], req); jo_key(o[..], "responseCode"); jo_int(o[..], code);
-  jo_key(o[..], "responseHeaders"); jo_arr(o[..]);
-  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "Content-Type"); jo_key(o[..], "value"); jo_str(o[..], ctype); jo_end(o[..]);
-  jo_end(o[..]);
-  if body.count > 0 { jo_key(o[..], "body"); jo_str(o[..], cast(string) f[0].b64[0..<n]); }
-  jo_end(o[..]); jo_end(o[..]);
-  return ap_send_big(c, f, o[..]) >= 0;
-}
-ap_header :: (o: [] Jo, name: string, value: string) { jo_obj(o); jo_key(o, "name"); jo_str(o, name); jo_key(o, "value"); jo_str(o, value); jo_end(o); }
-// A seat request, made here to the local API as this site's own logged-in page sends it (its
-// session cookie and Origin), and its answer given to the page.
-ap_to_api :: (c: [] Cdp, f: [] Pane, req: string, url: string, verb: string, body: string) -> bool {
-  to: [1] ApBuf; ap_put(to[..], cast(string) f[0].api[0..<f[0].api_n]); ap_put(to[..], ap_target(url));
-  ck: [1] ApBuf; ap_put(ck[..], "Cookie: oa_session="); ap_put(ck[..], cast(string) f[0].token[0..<f[0].token_n]);
-  og: [1] ApBuf; ap_put(og[..], "Origin: "); ap_put(og[..], AP_HERE);
-  if to[0].bad || ck[0].bad { return false; }
-  hdr: [3] string; hdr[0] = "Content-Type: application/json"; hdr[1] = ap_text(og[..]); hdr[2] = ap_text(ck[..]);
-  r := http_do(f[0].hw[..], verb, ap_text(to[..]), hdr[..], body, AP_MS, 0, f[0].answer[..]);
-  f[0].to_api += 1;
-  if r.error != HTTP_OK { return ap_fulfill(c, f, req, 502, "application/json", "{\"error\":\"the local API didn't answer\"}"); }
-  return ap_fulfill(c, f, req, r.code, "application/json", cast(string) f[0].answer[0..<r.n]);
-}
-ap_onward :: (c: [] Cdp, req: string, url: string) -> int {
-  b: [9216] u8; o: [1] Jo; jo_start(o[..], b[..]);
-  jo_obj(o[..]); jo_key(o[..], "requestId"); jo_str(o[..], req); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
-  return ifx o[0].bad then -1 else cdp_send(c, "Fetch.continueRequest", jo_text(o[..]));
-}
-ap_on :: (c: [] Cdp, method: string, req: string) -> int {
-  b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]);
-  jo_obj(o[..]); jo_key(o[..], "requestId"); jo_str(o[..], req); jo_end(o[..]);
-  return ifx o[0].bad then -1 else cdp_send(c, method, jo_text(o[..]));
-}
-ap_spec_body :: (c: [] Cdp, f: [] Pane, d: Jv, req: string) {
-  r := cdp_reply_result(d);
-  n := jv_str(d, jv_get(d, r, "body"), f[0].spec[..]);
-  if n < 0 { f[0].bad = true; s1 := ap_on(c, "Fetch.continueRequest", req); return; }
-  m := n;
-  if jv_bool(d, jv_get(d, r, "base64Encoded")) {
-    m = b64_decode(cast(string) f[0].spec[0..<n], f[0].spec2[..]);
-    if m < 0 { f[0].bad = true; s2 := ap_on(c, "Fetch.continueRequest", req); return; }
-    for i: 0..<m { f[0].spec[i] = f[0].spec2[i]; }
-  }
-  if m > 0 && f[0].spec[m - 1] != '\n' && m < AP_SPEC_MAX { f[0].spec[m] = '\n'; m += 1; }
-  owner := "role owner\nowner 1\n";
-  if m + owner.count > AP_SPEC_MAX { f[0].bad = true; s3 := ap_on(c, "Fetch.continueRequest", req); return; }
-  for i: 0..<owner.count { f[0].spec[m + i] = owner[i]; }
-  m += owner.count;
-  if !ap_fulfill(c, f, req, 200, "text/plain; charset=utf-8", cast(string) f[0].spec[0..<m]) { f[0].bad = true; }
-  f[0].served_spec += 1;
-}
-ap_message :: (c: [] Cdp, f: [] Pane) {
-  d := cdp_doc(c);
-  rid := cdp_reply_id(d);
-  if rid >= 0 {
-    for i: 0..<AP_PEND {
-      if f[0].pend_id[i] == rid {
-        f[0].pend_id[i] = 0;
-        rq: [256] u8; k := f[0].pend_n[i];
-        for j: 0..<k { rq[j] = f[0].pend_req[i * 256 + j]; }
-        ap_spec_body(c, f, d, cast(string) rq[0..<k]);
-      }
-    }
-    return;
-  }
-  if cdp_event_method(d) != "Fetch.requestPaused" { return; }
-  p := jv_get(d, 0, "params"); rqn := jv_get(d, p, "request");
-  ib: [256] u8; ub: [8192] u8; mb: [32] u8;
-  idn := jv_str(d, jv_get(d, p, "requestId"), ib[..]);
-  un := jv_str(d, jv_get(d, rqn, "url"), ub[..]);
-  vn := jv_str(d, jv_get(d, rqn, "method"), mb[..]);
-  if idn <= 0 { f[0].bad = true; return; }
-  req := cast(string) ib[0..<idn];
-  url := ifx un > 0 then cast(string) ub[0..<un] else "";
-  verb := ifx vn > 0 then cast(string) mb[0..<vn] else "";
-  path := ap_path(url);
-  if jv_get(d, p, "responseStatusCode") >= 0 {
-    if path == AP_SPEC && jv_int(d, jv_get(d, p, "responseStatusCode"), 0) == 200 {
-      for i: 0..<AP_PEND {
-        if f[0].pend_id[i] == 0 {
-          id := ap_on(c, "Fetch.getResponseBody", req);
-          if id < 0 { f[0].bad = true; return; }
-          f[0].pend_id[i] = id; f[0].pend_n[i] = idn;
-          for j: 0..<idn { f[0].pend_req[i * 256 + j] = req[j]; }
-          return;
-        }
-      }
-      f[0].bad = true;
-    }
-    s4 := ap_on(c, "Fetch.continueRequest", req);
-    return;
-  }
-  if ap_is_module(path) {
-    // from a local server (a module too big for one DevTools message to this Chromium), else in the reply
-    if f[0].module_url_n > 0 { if ap_onward(c, req, cast(string) f[0].module_url[0..<f[0].module_url_n]) < 0 { f[0].bad = true; } }
-    else if !ap_fulfill(c, f, req, 200, "application/wasm", cast(string) f[0].wasm[0..<f[0].wasm_n]) { tool_errln("agent-pane: the module wasn't served: serve it locally and name its URL"); f[0].bad = true; }
-    f[0].served_wasm += 1;
-    return;
-  }
-  if ap_starts(url, AP_HERE) && ap_is_seats(path) {
-    pd: [16384] u8;
-    pn := jv_str(d, jv_get(d, rqn, "postData"), pd[..]);
-    if !ap_to_api(c, f, req, url, verb, ifx pn > 0 then cast(string) pd[0..<pn] else "") { f[0].bad = true; }
-    return;
-  }
-  if verb != "GET" && verb != "HEAD" && ap_starts(path, "/api/") {
-    f[0].held_posts += 1;
-    if !ap_fulfill(c, f, req, 204, "text/plain", "") { f[0].bad = true; }
-    return;
-  }
-  if ap_starts(url, AP_HERE) {
-    to: [1] ApBuf; ap_put(to[..], AP_ORIGIN); ap_put(to[..], url[AP_HERE.count..<url.count]);
-    if to[0].bad || ap_onward(c, req, ap_text(to[..])) < 0 { f[0].bad = true; }
-    return;
-  }
-  s5 := ap_on(c, "Fetch.continueRequest", req);
-}
 ap_pump :: (c: [] Cdp, f: [] Pane, ms: int) {
   deadline := proc_now_ms() + ms;
   while true {
     left := proc_left(deadline, proc_now_ms());
     if left <= 0 { return; }
     k := cdp_poll(c, left);
-    if k == CDP_GOT { ap_message(c, f); continue; }
+    if k == CDP_GOT { continue; }
     if k != CDP_NONE { if !f[0].bad { tool_err("agent-pane: the browser connection: "); tool_errln(cdp_error(c)); } f[0].bad = true; proc_sleep(left); }
     return;
   }
@@ -275,7 +120,6 @@ ap_call :: (c: [] Cdp, f: [] Pane, method: string, params: string) -> int {
     if k != CDP_GOT { if !f[0].bad && k != CDP_NONE { tool_err("agent-pane: the browser connection: "); tool_errln(cdp_error(c)); f[0].bad = true; } return -1; }
     d := cdp_doc(c);
     if cdp_reply_id(d) == id { return cdp_reply_result(d); }
-    ap_message(c, f);
   }
   return -1;
 }
@@ -287,6 +131,26 @@ ap_eval :: (c: [] Cdp, f: [] Pane, expression: string) -> int {
   r := ap_call(c, f, "Runtime.evaluate", jo_text(o[..]));
   if r < 0 { return -1; }
   return jv_path(cdp_doc(c), r, "result.value");
+}
+ap_go :: (c: [] Cdp, f: [] Pane, url: string) -> bool {
+  b: [2048] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  ok := ap_call(c, f, "Page.navigate", jo_text(o[..])) >= 0;
+  ap_pump(c, f, 500);
+  return ok;
+}
+ap_cookie :: (c: [] Cdp, f: [] Pane, name: string, value: string) -> bool {
+  b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], name); jo_key(o[..], "value"); jo_str(o[..], value);
+  jo_key(o[..], "url"); jo_str(o[..], f[0].origin); jo_end(o[..]);
+  return ap_call(c, f, "Network.setCookie", jo_text(o[..])) >= 0;
+}
+ap_sql :: (f: [] Pane, sql: string, out: [] u8) -> string {
+  a := [8] string.[f[0].psql, "-XAtq", "-v", "ON_ERROR_STOP=1", "--dbname", f[0].db, "-c", sql];
+  err: [4096] u8;
+  got := proc_run(a[..], 60000, out, err[..]);
+  if got.status != 0 || got.timed_out || got.cut { tool_err("agent-pane sql: "); tool_errln(cast(string) err[0..<got.err_n]); f[0].bad = true; return ""; }
+  return cast(string) out[0..<got.out_n];
 }
 
 // ---- the page
@@ -341,13 +205,9 @@ ap_size :: (c: [] Cdp, f: [] Pane, w: int, h: int, mobile: bool) -> bool {
   return ap_call(c, f, "Emulation.setDeviceMetricsOverride", jo_text(o[..])) >= 0;
 }
 // Opens the realm and its AGENT pane.
-ap_open :: (c: [] Cdp, f: [] Pane) -> bool {
-  u: [1] ApBuf; ap_put(u[..], AP_HERE); ap_put(u[..], AP_PAGE);
-  b: [1024] u8; o: [1] Jo; jo_start(o[..], b[..]);
-  jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], ap_text(u[..])); jo_end(o[..]);
-  if ap_call(c, f, "Page.navigate", jo_text(o[..])) < 0 { return false; }
-  ap_pump(c, f, 500);
-  r1 := ap_wait(c, f, 4 * AB_EDIT, 0, 1000000, 45000);      // EDIT is up once the spec says we own it
+ap_open :: (c: [] Cdp, f: [] Pane, page: string) -> bool {
+  r0 := ap_go(c, f, "about:blank") && ap_go(c, f, page);
+  r1 := ap_wait(c, f, 4 * AB_EDIT, 0, 1000000, 60000);      // EDIT is up once the spec says we own it
   r2 := ap_tap(c, f, AB_EDIT);
   r3 := ap_wait(c, f, 4 * AB_ATAB, 0, 1000000, 5000);
   r4 := ap_tap(c, f, AB_ATAB);
@@ -367,40 +227,58 @@ ap_check :: (f: [] Pane, name: string, ok: bool, seen: int) {
   print("  FAIL  %  (saw %)\n", name, seen);
   f[0].failed += 1;
 }
+// A browser with the owner's session (cookie) and player key (localStorage) on this origin.
+ap_browser :: (c: [] Cdp, f: [] Pane, page: string, token: string, key_js: string) -> bool {
+  if !cdp_launch(c, 1440, 900, "coax-agent-pane-") { tool_err("agent-pane: "); tool_errln(cdp_error(c)); return false; }
+  armed := ap_cookie(c, f, "verse-automation", "agent-pane") && ap_cookie(c, f, "oa_session", token);
+  // a page that can't present a WebGPU canvas here draws offscreen (cdp_swiftshader_offscreen)
+  armed = armed && ap_call(c, f, "Page.enable", "{}") >= 0 && cdp_swiftshader_offscreen(c);
+  armed = armed && ap_go(c, f, page) && ap_eval(c, f, key_js) >= 0;
+  if !armed { tool_errln("agent-pane: the browser refused the session or the player key"); cdp_close(c); }
+  return armed;
+}
+// After a failed step: what the page says (ready, the GPU's recovery, its words on screen).
+AP_STATE_JS :: "JSON.stringify({url: location.href, ready: globalThis.coaxial?.ready, rec: globalThis.coaxial?.gpuRecovery, size: [innerWidth, innerHeight], text: (document.body?.innerText || '').slice(0, 200)})";
+ap_page :: (c: [] Cdp, f: [] Pane) {
+  v := ap_eval(c, f, AP_STATE_JS);
+  print("        page: %\n", ifx v >= 0 then jv_raw(cdp_doc(c), v) else "(no answer)");
+}
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
   loaded := args_load(a[..]);
-  api := args_at(a[..], 0); token := args_at(a[..], 1); module := args_at(a[..], 2); shots := args_at(a[..], 3);
-  if !loaded || !ap_api_ok(api) || !ap_token_ok(token) || module.count == 0 {
-    tool_errln("usage: coax/web/tool.sh agent-pane http://127.0.0.1:PORT SESSION_TOKEN MYREALM.wasm|http://127.0.0.1:PORT/MYREALM.wasm [SHOTS_DIR]");
+  origin := args_at(a[..], 0); shots := args_at(a[..], 1);
+  b1: [1024] u8; b2: [256] u8;
+  f: [1] Pane;
+  f[0].origin = origin; f[0].db = proc_getenv("PGURL", b1[..]); f[0].psql = proc_getenv("PSQL", b2[..]);
+  if !loaded || !ap_origin_ok(origin) || f[0].db.count == 0 || f[0].psql.count == 0 {
+    tool_errln("usage: PGURL=... PSQL=psql coax/web/tool.sh agent-pane http://127.0.0.1:PORT [SHOTS_DIR]   (the local origin: coax/web/local-origin.coax)");
     return 2;
   }
-  f: [1] Pane;
-  if ap_starts(module, "http://127.0.0.1:") || ap_starts(module, "http://localhost:") {
-    if module.count > f[0].module_url.count { return 2; }
-    for i: 0..<module.count { f[0].module_url[i] = module[i]; } f[0].module_url_n = module.count;
-  } else {
-    f[0].wasm_n = fs_read(module, f[0].wasm[..]);
-    if f[0].wasm_n <= 0 { tool_err("agent-pane: can't read the module (at most 4 MiB): "); tool_errln(module); return 2; }
-  }
-  for i: 0..<api.count { f[0].api[i] = api[i]; } f[0].api_n = api.count;
-  for i: 0..<token.count { f[0].token[i] = token[i]; } f[0].token_n = token.count;
 
+  // the owner, logged in, and their realm
+  stamp := proc_now_ms() % 1000000000;
+  q: [1] ApBuf; ap_owner_sql(q[..], stamp);
+  sq: [256] u8;
+  made := ap_sql(f[..], ap_text(q[..]), sq[..]);
+  ap_check(f[..], "a logged-in owner and their private made realm", !f[0].bad && made == "t", 0);
+  if f[0].bad { return 1; }
+  tok: [1] ApBuf; ap_digits(tok[..], stamp + 1, 64);
+  key: [1] ApBuf; ap_put(key[..], "agent-pane-owner-key-"); ap_int(key[..], stamp);
+  pg: [1] ApBuf; ap_put(pg[..], origin); ap_put(pg[..], "/realms/built#ap-"); ap_int(pg[..], stamp);
+  page := ap_text(pg[..]);
+
+  // the page's player key, kept as the landing's join keeps it
+  sk: [1] ApBuf; ap_put(sk[..], "localStorage.setItem('verse.player', JSON.stringify({key:'"); ap_put(sk[..], ap_text(key[..]));
+  ap_put(sk[..], "',id:'p-ap"); ap_int(sk[..], stamp); ap_put(sk[..], "',account:null})), 1");
   c: [1] Cdp;
-  if !cdp_launch(c[..], 1440, 900, "coax-agent-pane-") { tool_err("agent-pane: "); tool_errln(cdp_error(c[..])); return 1; }
-  ck: [1024] u8; o: [1] Jo; jo_start(o[..], ck[..]);
-  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "verse-automation"); jo_key(o[..], "value"); jo_str(o[..], "agent-pane");
-  jo_key(o[..], "url"); jo_str(o[..], AP_HERE); jo_end(o[..]);
-  armed := ap_call(c[..], f[..], "Network.setCookie", jo_text(o[..])) >= 0;
-  patterns := "{\"patterns\":[{\"urlPattern\":\"*/api/playtest/realms/pine-forest*\",\"requestStage\":\"Response\"},{\"urlPattern\":\"*\",\"requestStage\":\"Request\"}]}";
-  armed = armed && ap_call(c[..], f[..], "Fetch.enable", patterns) >= 0;
-  if !armed { tool_errln("agent-pane: the browser refused the request interception"); cdp_close(c[..]); return 1; }
+  if !ap_browser(c[..], f[..], page, ap_text(tok[..]), ap_text(sk[..])) { return 1; }
 
   sz := ap_size(c[..], f[..], 1440, 900, false);
-  p_up := ap_open(c[..], f[..]);
+  p_up := ap_open(c[..], f[..], page);
   if !p_up && c[0].h < 0 { tool_err("agent-pane: the browser: "); tool_errln(cdp_error(c[..])); }
   ap_check(f[..], "the owner opens EDIT > AGENT", p_up, ap_probe(c[..], f[..], AP_PANE));
+  if !p_up { ap_page(c[..], f[..]); }
   v := ap_probe(c[..], f[..], AP_STATE);
   ap_check(f[..], "no agent yet: START YOUR AGENT", v == AS_NONE && ap_probe(c[..], f[..], 4 * AB_AMAIN) >= 0, v);
   ap_shot(c[..], f[..], shots, "1-start.png");
@@ -417,16 +295,28 @@ tool_main :: () -> int #export_c {
   ap_shot(c[..], f[..], shots, "3-verb.png");
   t5 := ap_tap(c[..], f[..], AB_ACLOSE);
   ap_check(f[..], "CLOSE ends the seat", ap_wait(c[..], f[..], AP_STATE, AS_NONE, AS_NONE, 20000), ap_probe(c[..], f[..], AP_STATE));
+  // the server's record: one seat, the session's account's, hosted, closed by its holder
+  sr: [1] ApBuf;
+  ap_put(sr[..], "SELECT count(*) || ' ' || bool_and(hosted) || ' ' || bool_and(closed_ms IS NOT NULL) FROM verse.seats WHERE slug = 'ap-"); ap_int(sr[..], stamp);
+  ap_put(sr[..], "' AND account = auth.account_of('"); ap_digits(sr[..], stamp, 64); ap_put(sr[..], "')");
+  so: [256] u8;
+  seats := ap_sql(f[..], ap_text(sr[..]), so[..]);
+  ap_check(f[..], "the server's seat was the session's account's, hosted, and is closed", seats == "1 true true", 0);
+  if seats != "1 true true" { print("        the seats: %\n", seats); }
 
+  // the phone in a browser of its own: on SwiftShader (coderos-4080) the first browser's page
+  // stopped answering DevTools after the desktop steps (why is not known)
+  cdp_close(c[..]);
+  if !ap_browser(c[..], f[..], page, ap_text(tok[..]), ap_text(sk[..])) { return 1; }
   sz = ap_size(c[..], f[..], 390, 844, true);
-  phone := ap_open(c[..], f[..]);
+  phone := ap_open(c[..], f[..], page);
   x1 := ap_probe(c[..], f[..], 4 * AB_AMAIN + 2);
   ap_check(f[..], "on a phone width the pane opens, START inside it", phone && x1 > 0 && x1 <= 390, x1);
+  if !phone { ap_page(c[..], f[..]); }
   ap_shot(c[..], f[..], shots, "4-phone.png");
   cdp_close(c[..]);
 
-  if f[0].bad { tool_errln("agent-pane: a page request was not answered as planned"); f[0].failed += 1; }
-  print("module served % times, spec % times, % seat requests to the API, % other writes held in the browser\n", f[0].served_wasm, f[0].served_spec, f[0].to_api, f[0].held_posts);
+  if f[0].bad { tool_errln("agent-pane: the browser or the database did not answer as planned"); f[0].failed += 1; }
   if f[0].failed > 0 { print("agent pane: % failed\n", f[0].failed); return 1; }
   print("agent pane: passed\n");
   return 0;
