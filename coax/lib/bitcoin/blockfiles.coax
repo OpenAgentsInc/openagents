@@ -1,0 +1,279 @@
+// Bitcoin chapter 61: Core-compatible blk/rev framing and torn-tail recovery.
+// Public bytes, variable time. I/O and exclusive file ownership belong to the
+// caller. Bodies are serialized blocks / CBlockUndo, not consensus decisions.
+#load "hash.coax";
+#authority;
+
+// book:begin layout
+BF_OK :: 0; BF_END :: 1; BF_TORN :: 2; BF_MAGIC :: 3;
+BF_SIZE :: 4; BF_CHECKSUM :: 5; BF_ARGUMENT :: 6; BF_CAPACITY :: 7;
+BF_BLOCK :: 0; BF_UNDO :: 1;
+BF_MAX_BODY :: 33554432;       // Core serialize.h MAX_SIZE
+BF_MAX_FILE :: 134217728;      // Core's ordinary 128 MiB rollover target
+BfFrame :: struct { code: int; size: int; n: int; }
+BfRecovery :: struct { code: int; keep: int; records: int; cut: bool; }
+// book:end layout
+
+// Checks precede the implementation. The Python oracle also checks every
+// byte, actual files, large bodies and Bitcoin Core's independent framing.
+#test "block framing, positions, XOR offsets and refusal publication" {
+  body: [81] u8; prev: [32] u8; record: [160] u8; out: [100] u8;
+  for i: 0..<81 { body[i] = cast(u8) i; }
+  for key: [2] u64.[0, 0x0807060504030201] {
+    for at: 0..<8 {
+      for i: 0..<160 { record[i] = 165; }
+      n := bf_write_vartime(BF_BLOCK, 0xd9b4bef9, key, at, body[..], prev[0..<0], record[..]);
+      #assert n == 89 && record[89] == 165;
+      f := bf_next_vartime(record[0..<8], at, at + n, BF_BLOCK, 0xd9b4bef9, key);
+      #assert f.code == BF_OK && f.n == 81 && f.size == 89;
+      #assert bf_read_vartime(record[0..<n], at, BF_BLOCK, 0xd9b4bef9, key, prev[0..<0], out[..]) == 81;
+      for i: 0..<81 { #assert out[i] == body[i]; }
+      #assert bf_next_vartime(record[0..<8], at, at + n - 1, BF_BLOCK, 0xd9b4bef9, key).code == BF_TORN;
+    }
+  }
+  #assert bf_byte(record[..], 0, 0, 0) == record[0];
+  #assert bf_write_vartime(BF_BLOCK, 0xd9b4bef9, 0, 0, body[..], prev[..], record[..]) == 89;
+  #assert record[0] == 249 && record[1] == 190 && record[2] == 180 && record[3] == 217;
+  #assert record[4] == 81 && record[5] == 0 && record[6] == 0 && record[7] == 0;
+  for i: 0..<100 { out[i] = 165; }
+  #assert bf_read_vartime(record[0..<89], 0, BF_BLOCK, 0xd9b4bef9, 0, prev[..], out[0..<80]) == -BF_CAPACITY;
+  #assert bf_read_vartime(record[0..<88], 0, BF_BLOCK, 0xd9b4bef9, 0, prev[..], out[..]) == -BF_TORN;
+  record[0] ^= 1;
+  #assert bf_read_vartime(record[0..<89], 0, BF_BLOCK, 0xd9b4bef9, 0, prev[..], out[..]) == -BF_MAGIC;
+  for i: 0..<100 { #assert out[i] == 165; }
+}
+#test "undo checksum binds the previous block and every body and digest byte" #steps 200000000 {
+  prev: [32] u8; body: [70] u8; record: [112] u8; out: [70] u8;
+  for i: 0..<32 { prev[i] = cast(u8) i; }
+  for i: 0..<70 { body[i] = cast(u8) (i + 32); }
+  n := bf_write_vartime(BF_UNDO, 0xdab5bffa, 0x0807060504030201, 11, body[..], prev[..], record[..]);
+  #assert n == 110;
+  #assert bf_read_vartime(record[0..<n], 11, BF_UNDO, 0xdab5bffa, 0x0807060504030201, prev[..], out[..]) == 70;
+  for i: 0..<70 { #assert out[i] == body[i]; }
+  for j: 8..<110 {
+    record[j] ^= 1;
+    for i: 0..<70 { out[i] = 165; }
+    #assert bf_read_vartime(record[0..<n], 11, BF_UNDO, 0xdab5bffa, 0x0807060504030201, prev[..], out[..]) == -BF_CHECKSUM;
+    for i: 0..<70 { #assert out[i] == 165; }
+    record[j] ^= 1;
+  }
+  for j: 0..<32 {
+    prev[j] ^= 1;
+    #assert bf_read_vartime(record[0..<n], 11, BF_UNDO, 0xdab5bffa, 0x0807060504030201, prev[..], out[..]) == -BF_CHECKSUM;
+    prev[j] ^= 1;
+  }
+  #assert bf_read_vartime(record[0..<n], 11, BF_UNDO, 0xdab5bffa, 0x0807060504030201, prev[0..<31], out[..]) == -BF_ARGUMENT;
+}
+#test "every physical cut keeps exactly the preceding complete records" #steps 200000000 {
+  file: [256] u8; body: [81] u8; prev: [32] u8;
+  for kind: 0..<2 {
+    for key: [2] u64.[0, 0x123456789abcdef0] {
+      n := bf_write_vartime(kind, 0xdab5bffa, key, 0, body[..], prev[..], file[..]);
+      m := bf_write_vartime(kind, 0xdab5bffa, key, n, body[..], prev[..], file[n..<file.count]);
+      for end: 0..<n+m+1 {
+        r := bf_recover_vartime(file[0..<end], kind, 0xdab5bffa, key);
+        want := ifx end < n then 0 else ifx end < n + m then n else n + m;
+        #assert r.code == BF_OK && r.keep == want && r.records == (ifx end < n then 0 else ifx end < n+m then 1 else 2);
+        #assert r.cut == (end != want);
+      }
+    }
+  }
+  n := bf_write_vartime(BF_BLOCK, 0xdab5bffa, 0, 0, body[..], prev[..], file[..]);
+  for i: n..<256 { file[i] = 0; }
+  r := bf_recover_vartime(file[..], BF_BLOCK, 0xdab5bffa, 0);
+  #assert r.code == BF_OK && r.keep == n && r.records == 1 && r.cut;
+  file[255] = 1;
+  r = bf_recover_vartime(file[..], BF_BLOCK, 0xdab5bffa, 0);
+  #assert r.code == BF_MAGIC && r.keep == n && !r.cut;
+  file[255] = 0; file[0] ^= 1;
+  #assert bf_recover_vartime(file[0..<n], BF_BLOCK, 0xdab5bffa, 0).code == BF_MAGIC;
+}
+#test "invalid kinds, extents, sizes and short outputs refuse before writing" {
+  body: [81] u8; prev: [32] u8; out: [128] u8; head: [8] u8;
+  for i: 0..<128 { out[i] = 165; }
+  #assert bf_write_vartime(2, 1, 0, 0, body[..], prev[..], out[..]) == -BF_ARGUMENT;
+  #assert bf_write_vartime(-1, 1, 0, 0, body[..], prev[..], out[..]) == -BF_ARGUMENT;
+  #assert bf_write_vartime(0, 1, 0, -1, body[..], prev[..], out[..]) == -BF_ARGUMENT;
+  #assert bf_write_vartime(0, 1, 0, 4294967296, body[..], prev[..], out[..]) == -BF_ARGUMENT;
+  #assert bf_write_vartime(0, 1, 0, 4294967295 - 88, body[..], prev[..], out[..]) == -BF_ARGUMENT;
+  #assert bf_write_vartime(0, 1, 0, 0, body[0..<80], prev[..], out[..]) == -BF_SIZE;
+  #assert bf_write_vartime(1, 1, 0, 0, body[0..<0], prev[..], out[..]) == -BF_SIZE;
+  #assert bf_write_vartime(1, 1, 0, 0, body[..], prev[0..<31], out[..]) == -BF_ARGUMENT;
+  #assert bf_write_vartime(0, 1, 0, 0, body[..], prev[..], out[0..<88]) == -BF_CAPACITY;
+  #assert bf_write_vartime(1, 1, 0, 0, body[..], prev[..], out[0..<120]) == -BF_CAPACITY;
+  for i: 0..<128 { #assert out[i] == 165; }
+  #assert bf_next_vartime(head[0..<0], 0, 0, 0, 1, 0).code == BF_END;
+  #assert bf_next_vartime(head[..], -1, 0, 0, 1, 0).code == BF_ARGUMENT;
+  #assert bf_next_vartime(head[..], 1, 0, 0, 1, 0).code == BF_ARGUMENT;
+  #assert bf_next_vartime(head[..], 0, 4294967296, 0, 1, 0).code == BF_ARGUMENT;
+  #assert bf_next_vartime(head[..], 0, 8, 2, 1, 0).code == BF_ARGUMENT;
+  #assert bf_next_vartime(head[0..<7], 0, 8, 0, 1, 0).code == BF_ARGUMENT;
+  #assert bf_next_vartime(head[..], 0, 7, 0, 1, 0).code == BF_ARGUMENT;
+  head[0] = 1;
+  #assert bf_next_vartime(head[..], 0, 8, 0, 1, 0).code == BF_SIZE;
+  head[7] = 2;
+  #assert bf_next_vartime(head[..], 0, 8, 0, 1, 0).code == BF_TORN;
+  head[4] = 1;
+  #assert bf_next_vartime(head[..], 0, 8, 0, 1, 0).code == BF_SIZE;
+  #assert bf_recover_vartime(head[..], 3, 1, 0).code == BF_ARGUMENT;
+}
+#test "wide length fields and both serialization boundaries" {
+  head := [8] u8.[249, 190, 180, 217, 0, 0, 0, 2];
+  f := bf_next_vartime(head[..], 0, 33554440, BF_BLOCK, 0xd9b4bef9, 0);
+  #assert f.code == BF_OK && f.n == BF_MAX_BODY && f.size == 33554440;
+  head[4] = 1;
+  #assert bf_next_vartime(head[..], 0, 33554441, BF_BLOCK, 0xd9b4bef9, 0).code == BF_SIZE;
+  head[4] = 255; head[5] = 255; head[6] = 255; head[7] = 1;
+  f = bf_next_vartime(head[..], 9, 33554480, BF_UNDO, 0xd9b4bef9, 0);
+  #assert f.code == BF_OK && f.n == 33554431 && f.size == 33554471;
+  head[4] = 1; head[5] = 0; head[6] = 0; head[7] = 0;
+  f = bf_next_vartime(head[..], 0, 41, BF_UNDO, 0xd9b4bef9, 0);
+  #assert f.code == BF_OK && f.n == 1 && f.size == 41;
+  #assert bf_next_vartime(head[..], 0, 40, BF_UNDO, 0xd9b4bef9, 0).code == BF_TORN;
+  #assert bf_next_vartime(head[0..<1], 0, 1, BF_BLOCK, 0xd9b4bef9, 0).code == BF_TORN;
+  out: [1] u8; out[0] = 165; prev: [32] u8;
+  #assert bf_read_vartime(head[..], -1, BF_BLOCK, 0xd9b4bef9, 0, prev[..], out[..]) == -BF_ARGUMENT;
+  #assert bf_read_vartime(head[..], 4294967288, BF_BLOCK, 0xd9b4bef9, 0, prev[..], out[..]) == -BF_ARGUMENT;
+  #assert bf_read_vartime(head[..], 9223372036854775807, BF_BLOCK, 0xd9b4bef9, 0, prev[..], out[..]) == -BF_ARGUMENT;
+  #assert out[0] == 165;
+  #assert bf_next_vartime(head[0..<0], 4294967295, 4294967295, 0, 1, 0).code == BF_END;
+  #assert bf_size_vartime(0, BF_MAX_BODY) && !bf_size_vartime(0, BF_MAX_BODY + 1);
+  #assert bf_size_vartime(1, 1) && !bf_size_vartime(1, 0);
+  block: [81] u8; file: [121] u8; decoded: [81] u8;
+  n := bf_write_vartime(BF_BLOCK, 1, 0, 4294967206, block[..], prev[..], file[..]);
+  #assert n == 89 && bf_read_vartime(file[0..<n], 4294967206, BF_BLOCK, 1, 0, prev[..], decoded[..]) == 81;
+  #assert bf_write_vartime(BF_UNDO, 1, 0, 0, block[0..<1], prev[..], file[..]) == 41;
+  #assert bf_recover_vartime(out[0..<0], 3, 1, 0).code == BF_ARGUMENT;
+  out[0] = 0;
+  #assert bf_recover_vartime(out[..], 3, 1, 0).code == BF_ARGUMENT;
+}
+#test "XOR bytes match the independent little-endian eight-byte key" {
+  zero: [20] u8;
+  for at: 0..<8 { for i: 0..<20 {
+    #assert bf_byte(zero[..], i, 0x0807060504030201, at) == cast(u8) (1 + ((at + i) % 8));
+  } }
+}
+#test "streamed undo crosses a hash chunk and matches an independent digest" #steps 50000000 {
+  body: [4097] u8; previous: [32] u8; file: [4137] u8; out: [4097] u8;
+  for i: 0..<4097 { body[i] = cast,trunc(u8) i; }
+  #assert bf_write_vartime(BF_UNDO, 0xd9b4bef9, 0, 7, body[..], previous[..], file[..]) == 4137;
+  // This comparison uses the existing SHA256d path, without bf_digest's
+  // streaming or obfuscation. The Python oracle separately uses hashlib.
+  joined: [4129] u8; digest: [32] u8;
+  for i: 0..<4097 { joined[32+i] = body[i]; }
+  #assert sha256d_checked(joined[..], digest[..], false) == SHA_OK;
+  for i: 0..<32 { #assert file[4105+i] == digest[i]; }
+  #assert bf_read_vartime(file[..], 7, BF_UNDO, 0xd9b4bef9, 0, previous[..], out[..]) == 4097;
+  for i: 0..<4097 { #assert out[i] == body[i]; }
+}
+
+// One byte of Core's position-dependent XOR (xor.dat is a little-endian u64).
+bf_byte :: (data: [] u8, i: int, key: u64, offset: int) -> u8 {
+  return data[i] ^ cast,trunc(u8) (key >> (8 * ((offset + i) & 7)));
+}
+// book:begin next
+// head contains at least the header, or exactly the remaining bytes at a
+// short EOF. It may include the body. Never substitute an I/O short read.
+// Position is the record header; Core's data position is at+8.
+bf_next_vartime :: (head: [] u8, at: int, total: int, kind: int, magic: u32, key: u64) -> BfFrame #export_c {
+  if kind < 0 || kind > 1 || at < 0 || total < at || total > 4294967295 { return BfFrame.{code = BF_ARGUMENT}; }
+  remain := total - at;
+  if head.count > remain || (head.count < 8 && head.count != remain) { return BfFrame.{code = BF_ARGUMENT}; }
+  if remain == 0 { return BfFrame.{code = BF_END}; }
+  for i: 0..<4 {
+    if i >= head.count { break; }
+    if bf_byte(head, i, key, at) != cast,trunc(u8) (magic >> (8 * i)) { return BfFrame.{code = BF_MAGIC}; }
+  }
+  if remain < 8 { return BfFrame.{code = BF_TORN}; }
+  n := 0;
+  for i: 0..<4 { n |= (cast(int) bf_byte(head, i + 4, key, at)) << (8 * i); }
+  if !bf_size_vartime(kind, n) { return BfFrame.{code = BF_SIZE}; }
+  size := 8 + n + (ifx kind == BF_UNDO then 32 else 0);
+  if size > remain { return BfFrame.{code = BF_TORN}; }
+  return BfFrame.{size = size, n = n};
+}
+// book:end next
+bf_size_vartime :: (kind: int, n: int) -> bool {
+  return n >= (ifx kind == BF_BLOCK then 81 else 1) && n <= BF_MAX_BODY;
+}
+
+// SHA256d(previous_hash || decoded_undo), streaming past the one-shot
+// hash's 1 MiB input limit. The private helper receives admitted views.
+bf_digest :: (body: [] u8, previous: [] u8, key: u64, offset: int, out: [] u8) {
+  state: [112] u8; first: [32] u8;
+  s := sha256_init(state[..]);
+  s = sha256_update_checked(state[..], previous, false);
+  w := sha256_unpack(state[..]);
+  for i: 0..<body.count {
+    w.block[w.used] = bf_byte(body, i, key, offset); w.used += 1;
+    if w.used == 64 { S_compress(w.h[..], cast(string) w.block[..], 0, w.block.count); w.used = 0; }
+  }
+  w.total += cast(u64) body.count;
+  s = sha256_pack(w, state[..]);
+  s = sha256_final_checked(state[..], first[..], false);
+  s = sha256_hash_checked(first[..], out, false);
+}
+// book:begin write
+// Returns frame length or -BF_*. Disjoint input/output views are required.
+// No output byte changes on refusal. Publish at+8 only after durable append.
+bf_write_vartime :: (kind: int, magic: u32, key: u64, at: int, body: [] u8, previous: [] u8, out: [] u8) -> int #export_c {
+  if kind < 0 || kind > 1 || at < 0 { return -BF_ARGUMENT; }
+  if !bf_size_vartime(kind, body.count) { return -BF_SIZE; }
+  if kind == BF_UNDO && previous.count != 32 { return -BF_ARGUMENT; }
+  n := 8 + body.count + (ifx kind == BF_UNDO then 32 else 0);
+  if at > 4294967295 - n { return -BF_ARGUMENT; }
+  if out.count < n { return -BF_CAPACITY; }
+  digest: [32] u8;
+  if kind == BF_UNDO { bf_digest(body, previous, 0, at, digest[..]); }
+  for i: 0..<4 {
+    out[i] = cast,trunc(u8) (magic >> (8 * i));
+    out[i+4] = cast,trunc(u8) (body.count >> (8 * i));
+  }
+  for i: 0..<body.count { out[8+i] = body[i]; }
+  if kind == BF_UNDO { for i: 0..<32 { out[8+body.count+i] = digest[i]; } }
+  for i: 0..<n { out[i] = bf_byte(out, i, key, at); }
+  return n;
+}
+// book:end write
+// book:begin read
+// record starts at the header. It may include later records. A read by
+// Core data position p supplies file[p-8..] and at=p-8, after checking p>=8.
+bf_read_vartime :: (record: [] u8, at: int, kind: int, magic: u32, key: u64, previous: [] u8, out: [] u8) -> int #export_c {
+  // Wrapped signed overflow makes total < at, which the shared extent
+  // boundary refuses, as it does negatives and totals above uint32_t.
+  total := cast,trunc(int) add_wrap(cast,trunc(u64) at, cast(u64) record.count);
+  f := bf_next_vartime(record, at, total, kind, magic, key);
+  if f.code != BF_OK { return -f.code; }
+  if kind == BF_UNDO && previous.count != 32 { return -BF_ARGUMENT; }
+  if out.count < f.n { return -BF_CAPACITY; }
+  if kind == BF_UNDO {
+    digest: [32] u8;
+    // Eight header bytes leave the eight-byte XOR key at the same phase.
+    bf_digest(record[8..<8+f.n], previous, key, at, digest[..]);
+    for i: 0..<32 { if digest[i] != bf_byte(record, 8 + f.n + i, key, at) { return -BF_CHECKSUM; } }
+  }
+  for i: 0..<f.n { out[i] = bf_byte(record, 8 + i, key, at); }
+  return f.n;
+}
+// book:end read
+// book:begin recovery
+// Recovery checks record extents, NOT block contents or undo checksums
+// (those require the block index's previous hashes). Only an EOF inside a
+// valid record or entirely zero physical preallocation may be discarded.
+bf_recover_vartime :: (file: [] u8, kind: int, magic: u32, key: u64) -> BfRecovery #export_c {
+  r: BfRecovery;
+  while true {
+    f := bf_next_vartime(file[r.keep..<file.count], r.keep, file.count, kind, magic, key);
+    if f.code == BF_END { return r; }
+    if f.code == BF_TORN { r.cut = true; return r; }
+    if f.code != BF_OK {
+      zero := f.code != BF_ARGUMENT;
+      for i: r.keep..<file.count { if file[i] != 0 { zero = false; break; } }
+      if zero { r.cut = true; return r; }
+      r.code = f.code; return r;
+    }
+    r.keep += f.size; r.records += 1;
+  }
+  return r;
+}
+// book:end recovery

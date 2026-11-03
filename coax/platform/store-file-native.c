@@ -226,6 +226,20 @@ static int full_sync(int f) {
   return fsync(f);
 }
 
+/* A file effect only. Coax decides the recovery boundary. Never extend a
+   file, truncate a non-regular file, or follow a symlink for this mutation. */
+int64_t cxfs_truncate(int64_t size) {
+  const char *p = take_path();
+  if (!p || size < 0) return -1;
+  int f = open(p, O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
+  if (f < 0) return -1;
+  struct stat st;
+  int ok = fstat(f, &st) == 0 && S_ISREG(st.st_mode) && size <= st.st_size;
+  if (ok) ok = ftruncate(f, (off_t)size) == 0 && full_sync(f) == 0;
+  if (close(f) != 0) ok = 0;
+  return ok ? 0 : -1;
+}
+
 /* mode 0 replaces, 1 appends; 2 and 3 do the same and return only once the
    data, and for a file that was empty or new its folder entry, are on storage. */
 int64_t cxfs_write(int64_t mode) {

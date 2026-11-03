@@ -1,0 +1,114 @@
+// Chapter 61's file adapter. Run with coax/web/tool.sh. One exclusive owner
+// per output file; no concurrent writer, rename, unlink or key change.
+// scan/recover KIND FILE MAGIC [--xor xor.dat]
+// append KIND FILE MAGIC BODY [--prev WIRE_HASH_HEX] [--xor xor.dat]
+// read KIND FILE MAGIC DATA_POSITION OUT [--prev WIRE_HASH_HEX] [--xor xor.dat]
+// import block FILE MAGIC OUT [--xor xor.dat]  (new plain Core-format file)
+#load "../../../coax/lib/bitcoin/blockfiles.coax";
+#import "Basic";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/nostr/hex.coax";
+
+BF_IO :: 8;
+// Stream a file's framing; physical preallocation is tested in bounded chunks.
+disk_scan :: (path: string, kind: int, magic: u32, key: u64) -> BfRecovery {
+  total := fs_size(path); before := fs_mtime_ns(path);
+  if total < 0 { return BfRecovery.{code = BF_IO}; }
+  r: BfRecovery; head: [8] u8; chunk: [4096] u8;
+  while r.keep < total {
+    n := ifx total - r.keep < 8 then total - r.keep else 8;
+    if fs_read_at(path, r.keep, head[0..<n]) != n { r.code = BF_IO; return r; }
+    f := bf_next_vartime(head[0..<n], r.keep, total, kind, magic, key);
+    if f.code == BF_TORN { r.cut = true; break; }
+    if f.code != BF_OK {
+      zero := f.code == BF_MAGIC || f.code == BF_SIZE; at := r.keep;
+      while zero && at < total {
+        take := ifx total - at < chunk.count then total - at else chunk.count;
+        if fs_read_at(path, at, chunk[0..<take]) != take { r.code = BF_IO; return r; }
+        for i: 0..<take { if chunk[i] != 0 { zero = false; break; } }
+        at += take;
+      }
+      if zero { r.cut = true; break; }
+      r.code = f.code; return r;
+    }
+    r.keep += f.size; r.records += 1;
+  }
+  if fs_size(path) != total || fs_mtime_ns(path) != before { r.code = BF_IO; r.cut = false; }
+  return r;
+}
+decimal :: (s: string) -> int {
+  if s.count == 0 || s.count > 10 { return -1; }
+  n := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 4 { tool_errln("usage: block-files scan|recover|append|read|import block|undo FILE MAGIC_HEX [BODY|POSITION OUT|OUT] [--xor xor.dat] [--prev WIRE_HASH_HEX]"); return 2; }
+  action := args_at(a[..], 0); k := args_at(a[..], 1); path := args_at(a[..], 2);
+  kind := ifx k == "block" then BF_BLOCK else BF_UNDO;
+  if k != "block" && k != "undo" { return 2; }
+  mb: [4] u8;
+  if hex_decode_checked(args_at(a[..], 3), mb[..], false).written != 4 || args_at(a[..], 3).count != 8 { return 2; }
+  magic := cb_load_le32(mb[..], 0).value;
+  key := cast(u64) 0; kb: [8] u8; key_path := args_value(a[..], "--xor", "");
+  if key_path.count > 0 {
+    if fs_read(key_path, kb[..]) != 8 { tool_errln("xor.dat must contain exactly eight bytes"); return 2; }
+    key = cb_load_le64(kb[..], 0).value;
+  }
+  prev: [32] u8; p := args_value(a[..], "--prev", "");
+  if kind == BF_UNDO && (action == "append" || action == "read") {
+    if p.count != 64 || hex_decode_checked(p, prev[..], false).written != 32 { return 2; }
+  }
+  // The tool host gives this program a 1 GiB stack. Pure library callers
+  // instead choose their own buffers, up to Core's 32 MiB deserialization cap.
+  frame: [BF_MAX_BODY + 40] u8; body: [BF_MAX_BODY] u8;
+  if action == "read" {
+    pos := decimal(args_at(a[..], 4)); dest := args_at(a[..], 5);
+    if pos < 8 || dest.count == 0 || fs_exists(dest) { return 2; }
+    head: [8] u8; total := fs_size(path);
+    if fs_read_at(path, pos - 8, head[..]) != 8 { return 1; }
+    f := bf_next_vartime(head[..], pos - 8, total, kind, magic, key);
+    if f.code != BF_OK || fs_read_at(path, pos - 8, frame[0..<f.size]) != f.size { return 1; }
+    n := bf_read_vartime(frame[0..<f.size], pos - 8, kind, magic, key, prev[..], body[..]);
+    if n < 0 { print("refused: %\n", -n); return 1; }
+    if !fs_write(dest, cast(string) body[0..<n]) { return 1; }
+    print("read: position %, % bytes\n", pos, n); return 0;
+  }
+  missing := fs_kind(path) == FS_NONE;
+  r := ifx missing && action == "append" then BfRecovery.{} else disk_scan(path, kind, magic, key);
+  if r.code != BF_OK { print("refused: %, keep %\n", r.code, r.keep); return 1; }
+  if action == "scan" { print("scan: % records, keep %, cut %\n", r.records, r.keep, r.cut); return 0; }
+  if action == "recover" {
+    if r.cut && !fs_truncate(path, r.keep) { return 1; }
+    print("recover: % records, keep %, cut %\n", r.records, r.keep, r.cut); return 0;
+  }
+  if action == "append" {
+    if r.cut { tool_errln("recover the torn tail before appending"); return 1; }
+    n := fs_read(args_at(a[..], 4), body[..]);
+    if n < 0 { return 1; }
+    size := bf_write_vartime(kind, magic, key, r.keep, body[0..<n], prev[..], frame[..]);
+    if size < 0 { print("refused: %\n", -size); return 1; }
+    if !fs_append_durable(path, cast(string) frame[0..<size]) { return 1; }
+    print("append: position %, % bytes\n", r.keep + 8, n); return 0;
+  }
+  if action == "import" && kind == BF_BLOCK {
+    dest := args_at(a[..], 4);
+    if dest.count == 0 || fs_exists(dest) { return 2; }
+    at := 0; head: [8] u8;
+    while at < r.keep {
+      if fs_read_at(path, at, head[..]) != 8 { return 1; }
+      f := bf_next_vartime(head[..], at, r.keep, BF_BLOCK, magic, key);
+      if f.code != BF_OK || fs_read_at(path, at, frame[0..<f.size]) != f.size { return 1; }
+      n := bf_read_vartime(frame[0..<f.size], at, BF_BLOCK, magic, key, prev[..], body[..]);
+      if n < 0 { return 1; }
+      size := bf_write_vartime(BF_BLOCK, magic, 0, at, body[0..<n], prev[..], frame[..]);
+      if size < 0 || !fs_append_durable(dest, cast(string) frame[0..<size]) { return 1; }
+      at += f.size;
+    }
+    if at == 0 && !fs_append_durable(dest, "") { return 1; }
+    print("import: % blocks, % bytes, source tail dropped %\n", r.records, r.keep, r.cut); return 0;
+  }
+  return 2;
+}

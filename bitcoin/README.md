@@ -14,13 +14,16 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-92 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+94 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
 [`coax/lib/bitcoin/`](../coax/lib/bitcoin/). Chapter 36's script
 interpreter, [`script.coax`](../coax/lib/bitcoin/script.coax), runs the
 scripts every later chapter checks, from legacy script through segwit v0.
+Chapter 61's [`blockfiles.coax`](../coax/lib/bitcoin/blockfiles.coax) stores
+Core-format blocks and undo records, checks undo's previous-hash binding,
+imports XOR-obfuscated Core block files and recovers physically torn tails.
 Chapters 37 and 38 explain its legacy and BIP-143 signature hashes, and
 chapter 39 its timelocks, with [`locktime.coax`](../coax/lib/bitcoin/locktime.coax). Chapter 33's
 [`path.coax`](../coax/lib/bitcoin/path.coax) reads derivation paths and

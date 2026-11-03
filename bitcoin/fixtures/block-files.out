@@ -1,0 +1,9 @@
+regtest genesis: 285 bytes, record 293 bytes, data position 8
+storage header: fabfb5da1d010000
+read block hash: 0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206
+two records: 2, keep 586, second data position 301
+second append at 293 lengths: 292 torn tails, all keep the first record
+XOR header at file offset 3: febab3dd15000203
+empty CBlockUndo checksum: 2228d16e17f5c12fb0d6e40fedd17f7ca18001331156329d084b8ee4e86c5806
+wrong previous block: refusal 5, output remains 165
+damaged magic: refusal 3, cut false

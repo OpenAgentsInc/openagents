@@ -532,6 +532,16 @@
       "timeout": 300
     },
     {
+      "source": "bitcoin/examples/block-files.coax",
+      "chapter": "bitcoin/book/ch061-block-files-and-undo-files.md",
+      "stdout": "bitcoin/fixtures/block-files.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "bitcoin/examples/chainstate-store.coax",
       "chapter": "bitcoin/book/ch062-a-key-value-store-for-the-chainstate.md",
       "stdout": "bitcoin/fixtures/chainstate-store.out",

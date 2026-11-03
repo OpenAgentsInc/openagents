@@ -1,0 +1,52 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/blockfiles.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// The serialized regtest genesis, also captured from Core in
+// bitcoin/fixtures/block-files-core.json. No block validation is implied.
+GENESIS :: "0100000000000000000000000000000000000000000000000000000000000000000000003ba3edfd7a7b12b27ac72c3e67768f617fc81bc3888a51323a9fb8aa4b1e5e4adae5494dffff7f20020000000101000000010000000000000000000000000000000000000000000000000000000000000000ffffffff4d04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73ffffffff0100f2052a01000000434104678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5fac00000000";
+
+show :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+main :: () {
+  genesis: [285] u8; file: [1024] u8; previous: [32] u8; out: [285] u8;
+  decoded := hex_decode_checked(GENESIS, genesis[..], false);
+  #assert decoded.error == 0 && decoded.written == 285;
+  n := bf_write_vartime(BF_BLOCK, 0xdab5bffa, 0, 0, genesis[..], previous[..], file[..]);
+  print("regtest genesis: % bytes, record % bytes, data position 8\n", decoded.written, n);
+  show("storage header", file[0..<8]);
+  #assert bf_read_vartime(file[0..<n], 0, BF_BLOCK, 0xdab5bffa, 0, previous[..], out[..]) == 285;
+  for i: 0..<285 { #assert out[i] == genesis[i]; }
+  digest: [32] u8; display: [32] u8;
+  #assert sha256d_checked(out[0..<80], digest[..], false) == SHA_OK;
+  #assert bitcoin_reverse32(digest[..], display[..]) == SHA_OK;
+  show("read block hash", display[..]);
+  m := bf_write_vartime(BF_BLOCK, 0xdab5bffa, 0, n, genesis[..], previous[..], file[n..<file.count]);
+  recovered := bf_recover_vartime(file[0..<n+m], BF_BLOCK, 0xdab5bffa, 0);
+  print("two records: %, keep %, second data position %\n", recovered.records, recovered.keep, n + 8);
+  cuts := 0;
+  for end: n..<n+m {
+    r := bf_recover_vartime(file[0..<end], BF_BLOCK, 0xdab5bffa, 0);
+    #assert r.code == BF_OK && r.keep == n && r.records == 1;
+    if r.cut { cuts += 1; }
+  }
+  print("second append at % lengths: % torn tails, all keep the first record\n", m, cuts);
+  masked: [293] u8;
+  #assert bf_write_vartime(BF_BLOCK, 0xdab5bffa, 0x0807060504030201, 3, genesis[..], previous[..], masked[..]) == 293;
+  show("XOR header at file offset 3", masked[0..<8]);
+  undo: [1] u8; rev: [41] u8; coin: [1] u8;
+  #assert bf_write_vartime(BF_UNDO, 0xdab5bffa, 0, 0, undo[..], digest[..], rev[..]) == 41;
+  show("empty CBlockUndo checksum", rev[9..<41]);
+  #assert bf_read_vartime(rev[..], 0, BF_UNDO, 0xdab5bffa, 0, digest[..], coin[..]) == 1;
+  digest[0] ^= 1; coin[0] = 165;
+  refused := bf_read_vartime(rev[..], 0, BF_UNDO, 0xdab5bffa, 0, digest[..], coin[..]);
+  print("wrong previous block: refusal %, output remains %\n", -refused, coin[0]);
+  file[0] ^= 1;
+  recovered = bf_recover_vartime(file[0..<n], BF_BLOCK, 0xdab5bffa, 0);
+  print("damaged magic: refusal %, cut %\n", recovered.code, recovered.cut);
+}
+// book:end example

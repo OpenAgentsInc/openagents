@@ -58,6 +58,7 @@ int64_t cxfs_put(int64_t byte);
 int64_t cxfs_write(int64_t mode);   /* 0 replace, 1 append; 2, 3 the same, synced to storage */
 int64_t cxfs_kind(void);
 int64_t cxfs_size(void);
+int64_t cxfs_truncate(int64_t size);
 int64_t cxfs_mkdir(void);
 int64_t cxfs_temp(void);
 int64_t cxfs_name_byte(int64_t i);

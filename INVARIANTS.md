@@ -1,5 +1,21 @@
 # Invariants
 
+## Bitcoin file framing never grants chain validity
+
+`coax/lib/bitcoin/blockfiles.coax` owns Core-compatible block/undo framing,
+uint32 file extents, position-dependent XOR and the previous-block-bound
+undo checksum. Refused writes and reads leave output bytes unchanged; an
+undo body publishes only after its full checksum matches. Callers provide
+live disjoint views and exclusive file ownership. A framing scan identifies
+physical truncation or entirely zero preallocation, never authenticates block
+contents or undo bodies, and refuses malformed nonzero framing without
+authorizing truncation. The Coax file tool publishes an append position only
+after storage sync and truncates only a reported recoverable tail. It assumes
+no concurrent writer, rename, unlink or key change. Block validation, undo
+construction and chainstate commit order remain later chapters. Evidence:
+chapter 61, its mutation checks and `coax/tests/bitcoin/blockfiles.py` against
+Python, captured Core records and real files under ASan/UBSan.
+
 ## Coder reads foreign conversations as bounded inert data
 
 `coder_session_read` and `coder session-read` share one typed request and

@@ -1350,15 +1350,22 @@
   {
    "number": 61,
    "title": "Block files and undo files",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch061-block-files-and-undo-files.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
-    34,
-    58
+    5,
+    34
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/blockfiles.coax",
+    "bitcoin/examples/block-files.coax",
+    "bitcoin/examples/live/block-files.coax",
+    "coax/tests/bitcoin/blockfiles.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
