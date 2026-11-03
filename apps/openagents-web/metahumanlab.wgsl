@@ -222,9 +222,19 @@ fn coax_p_scene_fs(p_s: coax_t14, p_front: bool) -> vec4f {
   l_m = l_s.f6;
   l_mat = coax_p_wg_at4((280i + ((i32(coax_p_clamp_u(l_m, 1u, 16u)) - 1i) * 4i)));
   l_base = coax_p_mhlab_layer(l_s.f4, l_dx, l_dy, (l_s.f5 & 255u), coax_p_v4(0x1.000000p0f, 0x1.000000p0f, 0x1.000000p0f, 0x1.000000p0f));
-  if ((l_base.w < 0x1.666666p-2f))
+  if (((l_m == 3u) || (l_m == 4u)))
   {
-    discard;
+    if ((l_base.w < coax_p_mhlab_bayer(i32(l_s.x.x), i32(l_s.x.y))))
+    {
+      discard;
+    }
+  }
+  else
+  {
+    if ((l_base.w < 0x1.666666p-2f))
+    {
+      discard;
+    }
   }
   l_albedo = coax_p_v3((l_base.x * l_mat.x), (l_base.y * l_mat.y), (l_base.z * l_mat.z));
   l_ng = coax_p_normalize3(l_s.z);
@@ -580,6 +590,21 @@ fn coax_p_mhlab_layer(p_uv: vec2f, p_dx: vec2f, p_dy: vec2f, p_layer: u32, p_non
     return l_none;
   }
   return coax_p_render_sample_layer8_grad(l_uv, i32(l_layer), l_dx, l_dy, 0.0f);
+}
+fn coax_p_mhlab_bayer(p_x: i32, p_y: i32) -> f32 {
+  var l_x: i32 = p_x;
+  var l_y: i32 = p_y;
+  var l_x0: i32;
+  var l_x1: i32;
+  var l_y0: i32;
+  var l_y1: i32;
+  var l_k: i32;
+  l_x0 = (l_x % 2i);
+  l_x1 = ((l_x / 2i) % 2i);
+  l_y0 = (l_y % 2i);
+  l_y1 = ((l_y / 2i) % 2i);
+  l_k = ((((((l_x0 + l_y0) % 2i) * 8i) + (l_y0 * 4i)) + (((l_x1 + l_y1) % 2i) * 2i)) + l_y1);
+  return ((f32(l_k) + 0x1.000000p-1f) / 0x1.000000p4f);
 }
 fn coax_p_sub3(p_a: vec3f, p_b: vec3f) -> vec3f {
   var l_a: vec3f = p_a;

@@ -448,6 +448,12 @@ mhlab_light_one :: (n:V3,v:V3,l:V3,albedo:V3,rough:f32,material:u32,colour:V3,st
   }
   return v3(colour.x*(diff.x+spec),colour.y*(diff.y+spec),colour.z*(diff.z+spec));
 }
+// The 4x4 Bayer threshold at a pixel, in (0, 1).
+mhlab_bayer :: (x:int,y:int)->f32 {
+  x0:int=x%2; x1:int=(x/2)%2; y0:int=y%2; y1:int=(y/2)%2;
+  k:int=(((x0+y0)%2)*8)+(y0*4)+(((x1+y1)%2)*2)+y1;
+  return (cast(f32)(k)+0.5f32)/16.0f32;
+}
 mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
   dx:V2=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));
   dy:V2=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
@@ -456,7 +462,13 @@ mhlab_scene_fs :: (s:MhlabS,front:bool,u:[]f32,sheets:Tex2DArray,sheet:Sampler,s
   m:u32=s.material;
   mat:V4=wg_at4(u,280+(cast(int)(clamp_u(m,1,16))-1)*4);
   base:V4=mhlab_layer(sheets,sheet,s.uv,dx,dy,s.layers&255,v4(1.0f32,1.0f32,1.0f32,1.0f32));
-  if (base.w<0.35f32) { gpu_demote_helper(); }
+  // hair and brow cards fade by an ordered 4x4 dither (a static stand-in for alpha to coverage,
+  // which needs no sorting); everything else cuts at 0.35
+  if ((m==3)||(m==4)) {
+    if (base.w<mhlab_bayer(cast(int)(s.pos.x),cast(int)(s.pos.y))) { gpu_demote_helper(); }
+  } else {
+    if (base.w<0.35f32) { gpu_demote_helper(); }
+  }
   albedo:V3=v3(base.x*mat.x,base.y*mat.y,base.z*mat.z);
   ng:V3=normalize3(s.normal);
   if (!front) { ng=scale3(ng,-1.0f32); }
