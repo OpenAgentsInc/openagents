@@ -179,6 +179,28 @@ worktree and agent on the machine.
   jobs (the installed compiler), most of it the baseline. A survivor still
   runs every check, about 180 s of one core each, so each survivor left costs
   a cold schedule on every run.
+- **The likely-killer order** (#12646, 2026-11-03). Because only a mutant's
+  first failing check matters, and each check runs fresh under the same
+  budget, `coax mutate` now runs a mutant's checks in the order most likely
+  to kill it. First comes its recorded killer. Next come the file's other
+  killers of its procedure, then the killers of mutants of the same
+  procedure already finished in this run (shared between workers), then the
+  run's most frequent killers. After those come the checks that reach the
+  mutated procedure, cheapest first, and then the rest. `--source-order`
+  (implied by `--mutation-trace`) keeps the old order.
+
+  Measured at load average 60 to 70 on 28 cores, with no killers file, on
+  the same tree side by side:
+
+  | Run | New order | Source order |
+  | --- | --- | --- |
+  | `--unit checker/records.coax`, 125 mutants, 0 survivors, 7 jobs | 1,220 check runs, 322 s | 17,166 check runs, 769 s |
+  | `literal-projection-cache` on the pre-#12638 tree, shard 2/6, 12 mutants, 3 survivors | 3,697 check runs | 11,688 check runs |
+
+  In both runs the report, the survivors and every mutant's verdict were
+  identical between the two orders. Shard 1/6 finished in 783 s in the new
+  order and hit the 890 s cap in source order. A survivor still runs every
+  check, so the survivors left set the floor.
 
 The build log prints each gate's time, or `reused` with its command.
 `COAX_BUILD_FRESH=1` ignores both caches. A cached gate result is a record

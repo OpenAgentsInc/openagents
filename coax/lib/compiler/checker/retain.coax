@@ -72,7 +72,7 @@ CR_address :: (b:CB_Context,id:int,path:BS_Path,slot_type:int,out:[]BS_Origin)->
 CR_pending_insert :: (staging:[]RP_Obligation,used:int,value:RP_Obligation)->int {
  if used<0 || used>staging.count || staging.count>CR_MAX_EFFECTS {return -1;}at:=used;
  for i:0..<used {comparison:=rp_compare(staging[i],value);if comparison<0 {continue;}if comparison==0 {return used;}at=i;break;}
- if used>=staging.count || used>=CR_MAX_EFFECTS {return -1;}i:=used;while i>at {staging[i]=staging[i-1];i-=1;}staging[at]=value;return used+1;
+ if used>=staging.count {return -1;}i:=used;while i>at {staging[i]=staging[i-1];i-=1;}staging[at]=value;return used+1;
 }
 CR_effect :: (r:CR_Context,owner:int,site:int,row:RP_Obligation) {
  b:=r.b;link:=b.c.nodes[owner].retain_head;
@@ -93,7 +93,7 @@ CR_pairs :: (r:CR_Context,owner:int,site:int,key:int,sources:[]BS_Origin,sc:bool
  result:=CR_Result.{complete=prior.complete && decision.facts_complete,relation=prior.relation && decision.relation_complete,pending=prior.pending};
  // Both callers own256 pending slots; their accumulated pairs are a subset of
  // this owner's canonical256-effect relation. Admit that relation before insert.
- for i:0..<decision.obligation_count {CR_effect(r,owner,site,rows[i]);if b.c.state[0].fatal {return CR_Result.{};}inserted:=CR_pending_insert(pending,result.pending,rows[i]);if inserted<0 {CK_resource(b.c,b.c.nodes[site].loc);return CR_Result.{};}result.pending=inserted;}
+ for i:0..<decision.obligation_count {CR_effect(r,owner,site,rows[i]);if b.c.state[0].fatal {return CR_Result.{};}inserted:=CR_pending_insert(pending,result.pending,rows[i]);if inserted== -1 {CK_resource(b.c,b.c.nodes[site].loc);return CR_Result.{};}result.pending=inserted;}
  // Pending pairs can later discharge at callers. A local/manual relation
  // remains a separate sticky private fact, not indistinguishable from pending.
  for i:0..<sources.count {for j:0..<addresses.count {
@@ -174,10 +174,11 @@ CR_mutable :: (b:CB_Context,type:int)->bool {
  work[0].work=0;types[16].length=ifx mode==1 then 64 else 65;CR_run(b);#assert !state[0].fatal && CR_join_arrays(b,16)==(mode!=1) && state[0].error_count==0;
 }
 
+// CB_leaf_count is a count up to 64, or 128 for more than that.
 CR_join_arrays :: (b:CB_Context,type:int)->bool {
  if b.c.state[0].fatal {return false;}if type<1 || type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return false;}
  cached:=b.c.types[type].retain_join;if cached==1 {return false;}if cached==2 {return true;}if cached!=0 {CK_resource(b.c,b.state[0].loc);return false;}
- result:=CB_leaf_count(b,type)>64;if b.c.state[0].fatal {return false;}b.c.types[type].retain_join=ifx result then cast(u8)2 else cast(u8)1;return result;
+ result:=CB_leaf_count(b,type)==128;if b.c.state[0].fatal {return false;}b.c.types[type].retain_join=ifx result then cast(u8)2 else cast(u8)1;return result;
 }
 
 CR_leaf :: (r:CR_Context,owner:int,write:int,type:int,path:BS_Path) {

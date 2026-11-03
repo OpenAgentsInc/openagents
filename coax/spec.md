@@ -1168,6 +1168,20 @@ before. Survivors, counts and exit status are those of a run without the
 file; the trace may name the recorded killer and the statistics count fewer
 checks.
 
+The order of a mutant's checks is otherwise free, because only the first
+failure matters and every check runs from a fresh evaluator under the same
+budget. By default each mutant tries, in order: its recorded killer; the
+file's other killers of its procedure, most frequent first; the killers of
+mutants of the same procedure already finished in this run, by any worker;
+the most frequent killers in this run; the checks whose baseline entered the
+mutated procedure, cheapest first; then the rest, cheapest first. A check
+the schedule would skip is still skipped. So the verdicts, survivors, report
+and exit status are those of the source order; the killer a shard record or
+`--killers` file names, and the statistics, may differ between runs.
+`--source-order`, implied by `--mutation-trace`, keeps the source order
+after the recorded killer, so the trace names the first killing check in
+source order and is the same for every `--jobs` and shard split.
+
 These gates do not prove a program correct. Execution coverage is not branch
 coverage or a connection between an output and its assertion. Quantification
 covers only the stated finite instance, and mutation covers the implemented

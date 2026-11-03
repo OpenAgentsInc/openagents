@@ -515,6 +515,7 @@ struct MutationOptions {
   std::vector<std::string> merge;  // shard records to combine instead of running
   std::string unit;                // --unit: mutate only this source unit's procedures
   std::string killers;             // --killers: try each mutant's last killing check first
+  bool source_order = false;       // --source-order: the checks in source order after the recorded killer
 };
 
 struct MutantResult {
@@ -523,6 +524,15 @@ struct MutantResult {
   uint64_t invocations = 0, skipped = 0;
 };
 
+// A finished mutant's slot, written so that a worker reading `done` with
+// acquire (likely_order) also sees its killer.
+static void publish_result(MutantResult *slot, const MutantResult &r) {
+  slot->killer = r.killer;
+  slot->invocations = r.invocations;
+  slot->skipped = r.skipped;
+  __atomic_store_n(&slot->done, 1, __ATOMIC_RELEASE);
+}
+
 struct MutationRun {
   File *file;
   const std::vector<Mutant> *mutants;
@@ -530,14 +540,84 @@ struct MutationRun {
   const std::vector<std::vector<const ProcDecl *>> *paths;
   bool selective;
   const std::vector<int32_t> *hints;  // per mutant: the check to try first, or -1
+  // The likely-killer order (#12646); null `cheap` keeps source order.
+  const std::vector<std::vector<int32_t>> *likely;  // per mutant: the file's killers of its procedure
+  const std::vector<int32_t> *cheap;                // every check, cheapest unmutated run first
+  const std::vector<size_t> *owned;                 // this run's mutants by position
+  const MutantResult *slots;                        // their results by position, as they finish
 };
 
-static MutantResult evaluate_mutant(const MutationRun &run, size_t index) {
+// The order a mutant's checks run in when the order is free (#12646). Only
+// the order: every check the schedule runs is still run until one fails, so
+// the verdict is the source-order verdict. First the check that killed this
+// mutant last time, then the file's other killers of its procedure, then the
+// killers of mutants of the same procedure finished in this run (in any
+// worker), then the most frequent killers in this run, then the checks that
+// enter the mutated procedure, cheapest first, then the rest, cheapest first.
+static std::vector<int32_t> likely_order(const MutationRun &run, size_t index, size_t position) {
+  const Mutant &mu = (*run.mutants)[index];
+  int32_t count = run.file->checks.count;
+  std::vector<int32_t> order;
+  std::vector<char> seen((size_t)count, 0);
+  auto add = [&](int32_t c) {
+    if (c < 0 || c >= count || seen[(size_t)c]) return;
+    seen[(size_t)c] = 1;
+    order.push_back(c);
+  };
+  if (run.hints) add((*run.hints)[index]);
+  if (run.likely) for (int32_t c : (*run.likely)[index]) add(c);
+  if (run.slots) {
+    std::vector<uint32_t> frequency((size_t)count, 0);
+    size_t same = 0;
+    for (size_t p = position; p-- > 0;) {
+      const MutantResult &s = run.slots[p];
+      if (!__atomic_load_n(&s.done, __ATOMIC_ACQUIRE)) continue;
+      int32_t k = s.killer;
+      if (k < 0 || k >= count) continue;
+      frequency[(size_t)k]++;
+      if ((*run.mutants)[(*run.owned)[p]].owner == mu.owner && same < 16) { add(k); same++; }
+    }
+    for (int t = 0; t < 8; t++) {
+      int32_t best = -1;
+      for (int32_t c = 0; c < count; c++)
+        if (frequency[(size_t)c] && (best < 0 || frequency[(size_t)c] > frequency[(size_t)best])) best = c;
+      if (best < 0) break;
+      add(best);
+      frequency[(size_t)best] = 0;
+    }
+  }
+  std::vector<int32_t> later;
+  for (int32_t c : *run.cheap) {
+    if (seen[(size_t)c]) continue;
+    const auto &path = (*run.paths)[(size_t)c];
+    if (!mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end()) add(c);
+    else later.push_back(c);
+  }
+  for (int32_t c : later) add(c);
+  return order;
+}
+
+static MutantResult evaluate_mutant(const MutationRun &run, size_t index, size_t position) {
   const Mutant &mu = (*run.mutants)[index];
   File *file = run.file;
   MutantResult r;
   mu.apply();
   bool killed = false;
+  if (run.cheap) {
+    for (int32_t i : likely_order(run, index, position)) {
+      const auto &path = (*run.paths)[(size_t)i];
+      bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
+      if (!MS_run(run.selective, entered)) { ++r.skipped; continue; }
+      uint64_t budget = std::max<uint64_t>(10000, (*run.base)[(size_t)i] * 10);
+      if (file->checks[i]->steps) budget = std::min(budget, file->checks[i]->steps);
+      ++r.invocations;
+      killed = !run_check(file, file->checks[i], budget).passed;
+      if (killed) { r.killer = i; break; }
+    }
+    mu.undo();
+    r.done = 1;
+    return r;
+  }
   // --killers: the check that killed this mutant last time runs first, if the
   // schedule below would run it at all. Its failure is a kill on this graph,
   // so the verdict is the one the loop gives; a pass only costs one check.
@@ -1241,17 +1321,28 @@ static_assert(std::atomic<uint64_t>::is_always_lock_free, "mutation workers shar
 // Evaluates `owned` (global mutant indices) with up to `workers` forked
 // processes pulling the next index from a shared counter. Returns false, with
 // a message, if a worker could not finish.
-static bool evaluate_parallel(const MutationRun &run, const std::vector<size_t> &owned, uint64_t workers,
+// Evaluates `owned` in this process, in order.
+static void evaluate_serial(MutationRun run, const std::vector<size_t> &owned, std::vector<MutantResult> *results) {
+  std::vector<MutantResult> slots(owned.size());
+  run.owned = &owned;
+  run.slots = slots.data();
+  for (size_t k = 0; k < owned.size(); k++) publish_result(&slots[k], evaluate_mutant(run, owned[k], k));
+  for (size_t k = 0; k < owned.size(); k++) (*results)[owned[k]] = slots[k];
+}
+
+static bool evaluate_parallel(MutationRun run, const std::vector<size_t> &owned, uint64_t workers,
                               std::vector<MutantResult> *results) {
   size_t bytes = 64 + owned.size() * sizeof(MutantResult);
   void *shared = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
   if (shared == MAP_FAILED) {
-    for (size_t k : owned) (*results)[k] = evaluate_mutant(run, k);
+    evaluate_serial(run, owned, results);
     return true;
   }
   auto *next = new (shared) std::atomic<uint64_t>(0);
   auto *slots = (MutantResult *)((char *)shared + 64);
   for (size_t k = 0; k < owned.size(); k++) new (&slots[k]) MutantResult();
+  run.owned = &owned;
+  run.slots = slots;
   fflush(stdout);
   fflush(stderr);
   std::vector<pid_t> pids;
@@ -1267,7 +1358,7 @@ static bool evaluate_parallel(const MutationRun &run, const std::vector<size_t> 
         if (getppid() != parent) _exit(1);
         uint64_t k = next->fetch_add(1);
         if (k >= owned.size()) break;
-        slots[k] = evaluate_mutant(run, owned[k]);
+        publish_result(&slots[k], evaluate_mutant(run, owned[k], (size_t)k));
       }
       _exit(0);
     }
@@ -1284,7 +1375,7 @@ static bool evaluate_parallel(const MutationRun &run, const std::vector<size_t> 
   }
   // No worker could start: evaluate in this process.
   if (pids.empty())
-    for (size_t k = 0; k < owned.size(); k++) slots[k] = evaluate_mutant(run, owned[k]);
+    for (size_t k = 0; k < owned.size(); k++) publish_result(&slots[k], evaluate_mutant(run, owned[k], k));
   bool ok = true;
   for (size_t k = 0; k < owned.size(); k++) {
     if (!slots[k].done) {
@@ -1455,8 +1546,12 @@ static std::vector<std::string> mutant_keys(const File *file, const std::vector<
   }
   return keys;
 }
-static std::vector<int32_t> read_killers(const File *file, const std::string &path, const std::vector<std::string> &keys) {
+// `likely` gets, per mutant, the checks the file records as killing other
+// mutants of its procedure, most often first (at most 8).
+static std::vector<int32_t> read_killers(const File *file, const std::string &path, const std::vector<std::string> &keys,
+                                         std::vector<std::vector<int32_t>> *likely) {
   std::vector<int32_t> hints(keys.size(), -1);
+  likely->assign(keys.size(), {});
   std::string text;
   if (!read_record(path, &text)) return hints;  // none yet: every mutant runs the whole schedule
   std::map<std::string, int32_t> checks;
@@ -1472,9 +1567,23 @@ static std::vector<int32_t> read_killers(const File *file, const std::string &pa
     auto check = checks.find(line.substr(at + 1));
     if (check != checks.end()) recorded[line.substr(0, at)] = check->second;
   }
+  // A mutant's procedure is its key's first two fields: unit and name.
+  auto procedure = [](const std::string &key) { return key.substr(0, key.find('\t', key.find('\t') + 1)); };
+  std::map<std::string, std::map<int32_t, uint32_t>> by_procedure;
+  for (const auto &row : recorded) by_procedure[procedure(row.first)][row.second]++;
+  std::map<std::string, std::vector<int32_t>> ranked;
+  for (const auto &proc : by_procedure) {
+    std::vector<std::pair<uint32_t, int32_t>> rows;
+    for (const auto &c : proc.second) rows.push_back({c.second, c.first});
+    std::stable_sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+    auto &top = ranked[proc.first];
+    for (size_t k = 0; k < rows.size() && k < 8; k++) top.push_back(rows[k].second);
+  }
   for (size_t i = 0; i < keys.size(); i++) {
     auto hit = recorded.find(keys[i]);
     if (hit != recorded.end()) hints[i] = hit->second;
+    auto top = ranked.find(procedure(keys[i]));
+    if (top != ranked.end()) (*likely)[i] = top->second;
   }
   return hints;
 }
@@ -1552,24 +1661,29 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     for (size_t i = 0; i < total; i++)
       if (!sharded || MS_shard_owns(i, opt.shard, opt.shards)) owned.push_back(i);
     std::vector<int32_t> hints;
-    if (!opt.killers.empty()) hints = read_killers(file, opt.killers, mutant_keys(file, m.mutants));
-    MutationRun run{file, &m.mutants, &base, &paths, facts.selective, hints.empty() ? nullptr : &hints};
+    std::vector<std::vector<int32_t>> likely;
+    if (!opt.killers.empty()) hints = read_killers(file, opt.killers, mutant_keys(file, m.mutants), &likely);
+    // The likely-killer order unless --source-order, or --mutation-trace,
+    // which names each mutant's first killing check in source order.
+    std::vector<int32_t> cheap;
+    if (!opt.source_order && !opt.trace) {
+      for (int32_t i = 0; i < file->checks.count; i++) cheap.push_back(i);
+      std::stable_sort(cheap.begin(), cheap.end(), [&](int32_t a, int32_t b) { return base[(size_t)a] < base[(size_t)b]; });
+    }
+    MutationRun run{file, &m.mutants, &base, &paths, facts.selective, hints.empty() ? nullptr : &hints,
+                    likely.empty() || cheap.empty() ? nullptr : &likely, cheap.empty() ? nullptr : &cheap, nullptr, nullptr};
     uint64_t jobs = opt.jobs;
     if (!jobs) {
       const char *env = getenv("COAX_MUTATE_JOBS");
       if (!env || !parse_count(env, &jobs) || !MS_jobs_valid(jobs)) jobs = std::min<uint64_t>(available_cores(), 1024);
     }
     uint64_t workers = std::min<uint64_t>(jobs, owned.size());
-    if (workers <= 1) {
-      for (size_t i : owned) {
-        results[i] = evaluate_mutant(run, i);
-        if (opt.trace) fprintf(stderr, "mutation-outcome %zu %d\n", i, results[i].killer);
-      }
-    } else if (!evaluate_parallel(run, owned, workers, &results)) {
+    if (workers <= 1) evaluate_serial(run, owned, &results);
+    else if (!evaluate_parallel(run, owned, workers, &results)) {
       g_evidence.infrastructure = true;
       return 1;
     }
-    if (workers > 1 && opt.trace)
+    if (opt.trace)
       for (size_t i : owned) fprintf(stderr, "mutation-outcome %zu %d\n", i, results[i].killer);
   }
   if (merging && opt.trace)

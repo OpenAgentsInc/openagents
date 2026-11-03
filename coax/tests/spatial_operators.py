@@ -43,7 +43,7 @@ class SpatialOperators(unittest.TestCase):
         self.passed(parallel,12);self.assertEqual(serial.stdout,parallel.stdout);self.assertEqual(self.trace(serial),self.trace(parallel))
         records=[]
         for shard in [1,2]:
-            r=self.invoke('operators.coax',f'shard-{shard}','--jobs','2','--shard',f'{shard}/2')
+            r=self.invoke('operators.coax',f'shard-{shard}','--jobs','2','--shard',f'{shard}/2','--source-order')
             self.assertEqual(r.returncode,0,r.stdout+r.stderr)
             self.assertTrue(r.stdout.startswith('coax-mutation-shard v1\n'),r.stdout)
             path=self.work/f'{shard}.rec';path.write_text(r.stdout);records.append(path)

@@ -90,7 +90,7 @@ def mutate(source, *extra):
 def sharded(source, shards, workdir, jobs='2'):
     records = []
     for s in range(1, shards + 1):
-        r = run([COMPILER, 'mutate', source, '--shard', f'{s}/{shards}', '--jobs', jobs])
+        r = run([COMPILER, 'mutate', source, '--shard', f'{s}/{shards}', '--jobs', jobs, '--source-order'])
         assert r.stdout.startswith('coax-mutation-shard v1\n'), (r.stdout, r.stderr)
         path = Path(workdir) / f'shard-{s}-of-{shards}.rec'
         path.write_text(r.stdout)
@@ -116,6 +116,11 @@ class Conformance(unittest.TestCase):
         for n in shard_counts:
             merged, _ = sharded(source, n, self.tmp.name)
             self.assertEqual(observed(merged), observed(serial), f'{n} shards')
+        # The likely-killer order (no trace, no --source-order) changes which
+        # check kills and how many run, never the report or the status.
+        for jobs in ('1', '8'):
+            reordered = run([COMPILER, 'mutate', source, '--jobs', jobs])
+            self.assertEqual((reordered.returncode, reordered.stdout), observed(serial)[:2], f'reordered, --jobs {jobs}')
         return serial, t1 - t0, t2 - t1
 
     def test_synthetic_cases(self):

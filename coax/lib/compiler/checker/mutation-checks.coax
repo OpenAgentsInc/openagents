@@ -333,3 +333,235 @@
  #assert state[0].fatal==(bad!=0) && link==rw[1];
  if bad!=0 {#assert errors[0].code=="E0381" && errors[0].loc.line==62;}
 }
+
+// checker/borrow.coax
+#forall "a sum's default projects through its default variant, variant 0 included" pick:0..<4 {
+ // pick 0: default 0, path variant 0; 1: default 0, variant 1; 2: default 1, variant 1; 3: no default
+ nodes:[16]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=24}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=75,column=3}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[19]=CK_Type.{kind=CK_Kind.struct_,decl=5};
+ nodes[5]=CK_Node.{kind=CK_Tag.struct_,head=6};nodes[6]=CK_Node.{kind=CK_Tag.field,type=16,b=7};nodes[7]=CK_Node.{kind=CK_Tag.expr_string,type=16,loc=CK_Loc.{line=74,column=2}};
+ types[20]=CK_Type.{kind=CK_Kind.union_,decl=8,sum_default=ifx pick==3 then -1 else ifx pick==2 then 1 else 0};
+ nodes[8]=CK_Node.{kind=CK_Tag.union_,head=9};nodes[9]=CK_Node.{kind=CK_Tag.variant,value=0,type=19,next=10};nodes[10]=CK_Node.{kind=CK_Tag.variant,value=1,type=19};
+ path:=BS_Path.{count=2};path.steps[0]=BS_Step.{kind=BS_VARIANT,index=ifx pick==0 then 0 else 1};path.steps[1]=BS_Step.{kind=BS_FIELD,index=0};
+ out:[64]BS_Origin;got:=CB_default(b,20,path,out[..]);
+ #assert got.count==(ifx pick==0 || pick==2 then 1 else 0) && got.incomplete==(pick==3) && !state[0].fatal && state[0].error_count==0;
+ if got.count==1 {#assert out[0].kind==BS_STATIC && out[0].root==7;}
+}
+#forall "a try expression borrows from its operand's success payload: variant 0 of a Result, 1 of an optional" optional:bool {
+ nodes:[16]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=24}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=76,column=3}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.result,elem=16,sum_error=12};types[18]=CK_Type.{kind=CK_Kind.optional,elem=16};
+ nodes[3]=CK_Node.{kind=CK_Tag.expr_try,type=16,a=4,loc=CK_Loc.{line=77,column=4}};
+ nodes[4]=CK_Node.{kind=ifx optional then CK_Tag.expr_some else CK_Tag.expr_sum,type=ifx optional then 18 else 17,sum_variant=ifx optional then 1 else 0,a=5};
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_string,type=16,loc=CK_Loc.{line=77,column=9}};
+ out:[64]BS_Origin;got:=CB_expr(b,3,BS_Path.{},false,out[..]);
+ #assert got.count==1 && !got.incomplete && out[0].kind==BS_STATIC && out[0].root==5 && !state[0].fatal && state[0].error_count==0;
+}
+#forall "a returned try propagates a Result's error borrow, and nothing through an optional's null" optional:bool {
+ nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=19}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};
+ types[18]=CK_Type.{kind=CK_Kind.result,elem=11,sum_error=16,size=24,alignment=8,sum_payload_offset=8};
+ if optional {types[18]=CK_Type.{kind=CK_Kind.optional,elem=16,size=24,alignment=8,sum_payload_offset=8};}
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=18,head=3,b=6,borrow_returns=4};nodes[3]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_try,type=ifx optional then 16 else 11,a=5,propagate_type=18,loc=CK_Loc.{line=78,column=9}};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],queries=queries[..],origins=origins[..]};
+ path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_VARIANT,index=1};out:[4]BS_Origin;r:=CB_query(b,1,2,path,out[..]);
+ #assert !state[0].fatal && state[0].error_count==0 && !r.incomplete && r.count==(ifx optional then 0 else 1);
+ if !optional {#assert out[0].kind==BS_PARAMETER && out[0].root==0;}
+}
+#forall "a struct's leaf count is the over-budget 128 once the pass is fatal, out of work, or a field is malformed" mode:0..<4 {
+ // mode 0: fatal; 1: retained pass out of work; 2: a field node is not a field; 3: one view leaf
+ nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=18}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=79,column=2}}];for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=8};
+ nodes[8]=CK_Node.{kind=CK_Tag.struct_,head=9};nodes[9]=CK_Node.{kind=ifx mode==2 then CK_Tag.stmt_var else CK_Tag.field,type=16};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],retain_fields=mode==1};
+ if mode==0 {state[0].fatal=true;}if mode==1 {work[0].work=2097152;}
+ #assert CB_leaf_count(b,17)==(ifx mode==3 then 1 else 128);
+ #assert state[0].error_count==(ifx mode==1 || mode==2 then 1 else 0);
+}
+#test "a retained pass asks a sum payload's borrow presence through its memo when counting leaves" {
+ nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=19}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[18]=CK_Type.{kind=CK_Kind.optional,elem=16,size=24,alignment=8,sum_payload_offset=8};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=18,b=6,borrow_returns=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_return,a=5};
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_some,type=18,sum_variant=1,a=7};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block};nodes[7]=CK_Node.{kind=CK_Tag.expr_string,type=16};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],queries=queries[..],origins=origins[..],retain_fields=true};
+ leaves:=[1]int.[0];
+ #assert CB_leaves(b,2,18,BS_Path.{},leaves[..]) && leaves[0]==1 && !state[0].fatal && state[0].error_count==0;
+ #assert types[16].retain_presence==2 && types[1].retain_presence==1;
+}
+
+#test "a projection's variant step applies only to a sum, and a sum takes no other step" {
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=18}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=86,column=4}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.optional,elem=16};
+ path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_DEREFERENCE,index=0};
+ #assert CB_type(b,17,path)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==86;
+}
+#test "borrow discovery in a sum stops with no borrow once a payload's discovery fails" {
+ nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=19}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=87,column=4}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ // Variant 0 holds a struct whose field list is malformed; variant 1 holds a view.
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.struct_,decl=5};nodes[5]=CK_Node.{kind=CK_Tag.struct_,head=6};nodes[6]=CK_Node.{kind=CK_Tag.stmt_var,type=16};
+ types[18]=CK_Type.{kind=CK_Kind.union_,decl=8};nodes[8]=CK_Node.{kind=CK_Tag.union_,head=9};nodes[9]=CK_Node.{kind=CK_Tag.variant,value=0,type=17,next=10};nodes[10]=CK_Node.{kind=CK_Tag.variant,value=1,type=16};
+ #assert !CB_discover(b,18,0,false) && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";
+}
+#test "a sum's leaves are incomplete when a variant's are" {
+ // f returns a local union with no initializer and no default variant: each variant's origins are unknown.
+ nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=18}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.union_,decl=8,sum_default= -1,size=24,alignment=8,sum_payload_offset=8};
+ nodes[8]=CK_Node.{kind=CK_Tag.union_,head=9};nodes[9]=CK_Node.{kind=CK_Tag.variant,value=0,type=16,next=10};nodes[10]=CK_Node.{kind=CK_Tag.variant,value=1,type=16};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=17,b=6,borrow_returns=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_return,a=5};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=7};
+ nodes[6]=CK_Node.{kind=CK_Tag.stmt_block};nodes[7]=CK_Node.{kind=CK_Tag.stmt_var,type=17,borrow_owner=2};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],queries=queries[..],origins=origins[..]};
+ leaves:=[1]int.[0];
+ #assert !CB_leaves(b,2,17,BS_Path.{},leaves[..]) && leaves[0]==2 && !state[0].fatal && state[0].error_count==0;
+}
+
+#forall "a variant's payload comes only from a sum, and must be a type in the table" pick:0..<3 {
+ // pick 0: a view is not a sum; 1: the variant's payload is the first type past the table; 2: an optional's null holds void
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=19}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=90,column=4}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.union_,decl=4};types[18]=CK_Type.{kind=CK_Kind.optional,elem=16};
+ nodes[4]=CK_Node.{kind=CK_Tag.union_,head=5};nodes[5]=CK_Node.{kind=CK_Tag.variant,value=0,type=19};
+ got:=CB_variant(b,ifx pick==0 then 16 else ifx pick==1 then 17 else 18,0);
+ #assert got==(ifx pick==2 then 1 else 0) && state[0].fatal==(pick<2) && state[0].error_count==(ifx pick<2 then 1 else 0);
+}
+#test "a projection past an optional's null payload is refused" {
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=18}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=91,column=4}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.optional,elem=16};
+ path:=BS_Path.{count=2};path.steps[0]=BS_Step.{kind=BS_VARIANT,index=0};path.steps[1]=BS_Step.{kind=BS_FIELD,index=0};
+ #assert CB_type(b,17,path)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==91;
+}
+#forall "a leaf count refuses a type outside the table, a string other than the builtin, and a malformed variant" pick:0..<4 {
+ // pick 0: type 0; 1: a type of string kind that is not type 3; 2: a union whose variant has no payload type; 3: type 3, one leaf
+ nodes:[8]CK_Node;types:[24]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=18}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=92,column=4}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.string_};types[17]=CK_Type.{kind=CK_Kind.union_,decl=4};nodes[4]=CK_Node.{kind=CK_Tag.union_,head=5};nodes[5]=CK_Node.{kind=CK_Tag.variant,value=0,type=0};
+ got:=CB_leaf_count(b,ifx pick==0 then 0 else ifx pick==1 then 16 else ifx pick==2 then 17 else 3);
+ #assert got==(ifx pick==3 then 1 else 0) && state[0].fatal==(pick<3) && state[0].error_count==(ifx pick<3 then 1 else 0);
+}
+#test "a retained pass counts a sum payload's leaves through its presence memo" {
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=18}];work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],retain_fields=true};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.optional,elem=16};
+ #assert CB_leaf_count(b,17)==1 && !state[0].fatal && types[16].retain_presence==2 && types[1].retain_presence==1;
+}
+#test "a returned try through an optional borrows nothing for its null" {
+ nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=19}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[18]=CK_Type.{kind=CK_Kind.optional,elem=16,size=24,alignment=8,sum_payload_offset=8};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=18,head=3,b=6,borrow_returns=4};nodes[3]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};
+ nodes[4]=CK_Node.{kind=CK_Tag.expr_try,type=16,a=5,propagate_type=18,loc=CK_Loc.{line=93,column=9}};nodes[5]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],queries=queries[..],origins=origins[..]};
+ path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_VARIANT,index=0};out:[4]BS_Origin;r:=CB_query(b,1,2,path,out[..]);
+ #assert !state[0].fatal && state[0].error_count==0 && !r.incomplete && r.count==0;
+}
+#test "a sum's leaves stop at the first variant that returns local storage" {
+ // f returns U.first(local[..]): variant 0's leaf is refused, and variant 1 is never asked.
+ nodes:[16]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=15,type_count=19}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.union_,decl=8,sum_default= -1,size=24,alignment=8,sum_payload_offset=8};types[18]=CK_Type.{kind=CK_Kind.array,elem=12,length=1};
+ nodes[8]=CK_Node.{kind=CK_Tag.union_,head=9};nodes[9]=CK_Node.{kind=CK_Tag.variant,value=0,type=16,next=10};nodes[10]=CK_Node.{kind=CK_Tag.variant,value=1,type=16};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=17,b=6,borrow_returns=4};nodes[4]=CK_Node.{kind=CK_Tag.stmt_return,a=5};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block};
+ nodes[5]=CK_Node.{kind=CK_Tag.expr_sum,type=17,sum_variant=0,a=11,loc=CK_Loc.{line=94,column=9}};nodes[11]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=12};nodes[12]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=13};nodes[13]=CK_Node.{kind=CK_Tag.stmt_var,type=18,borrow_owner=2};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..],queries=queries[..],origins=origins[..]};
+ leaves:=[1]int.[0];
+ #assert !CB_leaves(b,2,17,BS_Path.{},leaves[..]) && leaves[0]==1 && !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383";
+}
+
+// checker/retain.coax
+#test "a retained write of a sum reaches a borrowing variant after a variant that holds none" {
+ nodes:[128]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;state:=[1]CK_State.[CK_State.{used=127,type_count=22}];work:[1]CB_State;queries:[256]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[8]CK_RetainObservation;cr:[1]CR_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[21]=CK_Type.{kind=CK_Kind.optional,elem=16,size=24,alignment=8,sum_payload_offset=8};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5,borrow_writes=11,loc=CK_Loc.{line=80,column=2}};
+ nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;
+ nodes[6]=CK_Node.{kind=CK_Tag.stmt_var,type=21,borrow_owner=2};nodes[7]=CK_Node.{kind=CK_Tag.expr_ident,type=21,borrow_binding=6};
+ nodes[8]=CK_Node.{kind=CK_Tag.expr_some,type=21,sum_variant=1,a=9,loc=CK_Loc.{line=81,column=7}};nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=3};
+ nodes[11]=CK_Node.{kind=CK_Tag.stmt_assign,c=7,a=8,borrow_owner=2,loc=CK_Loc.{line=81,column=3}};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=cr[..]};
+ CR_leaf(r,2,11,21,BS_Path.{});
+ #assert cr[0].leaves==1 && !state[0].fatal && state[0].error_count==0;
+}
+#forall "a retained write stops at its first refused leaf in a struct, an array or a sum" shape:0..<3 {
+ // p[0] = a value of type 17 whose first leaf borrows a local array; shape 0: struct, 1: array, 2: union
+ nodes:[128]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;state:=[1]CK_State.[CK_State.{used=127,type_count=21}];work:[1]CB_State;queries:[256]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[8]CK_RetainObservation;cr:[1]CR_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[18]=CK_Type.{kind=CK_Kind.view,elem=17};types[19]=CK_Type.{kind=CK_Kind.array,elem=12,length=1};
+ types[17]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=41};nodes[41]=CK_Node.{kind=CK_Tag.field,type=16,next=42};nodes[42]=CK_Node.{kind=CK_Tag.field,type=16};
+ if shape==1 {types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=2};}
+ if shape==2 {types[17]=CK_Type.{kind=CK_Kind.union_,decl=40,sum_default= -1};nodes[40]=CK_Node.{kind=CK_Tag.union_,head=41};nodes[41]=CK_Node.{kind=CK_Tag.variant,value=0,type=16,next=42};nodes[42]=CK_Node.{kind=CK_Tag.variant,value=1,type=16};}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[8]=CK_Node.{kind=CK_Tag.expr_index,type=17,a=6,b=7};
+ nodes[104]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=105,next=107};nodes[107]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=105};nodes[105]=CK_Node.{kind=CK_Tag.expr_ident,type=19,borrow_binding=106};nodes[106]=CK_Node.{kind=CK_Tag.stmt_var,type=19,borrow_owner=2};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_struct,type=17,head=60,loc=CK_Loc.{line=82,column=7}};nodes[60]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=104,next=61};nodes[61]=CK_Node.{kind=CK_Tag.field_init,field_index=1,a=107};
+ if shape==1 {nodes[9]=CK_Node.{kind=CK_Tag.expr_array,type=17,head=104,loc=CK_Loc.{line=82,column=7}};}
+ if shape==2 {nodes[9]=CK_Node.{kind=CK_Tag.expr_sum,type=17,sum_variant=0,a=104,loc=CK_Loc.{line=82,column=7}};}
+ nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=9,c=8,borrow_owner=2,loc=CK_Loc.{line=82,column=3}};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=cr[..]};
+ CR_leaf(r,2,10,17,BS_Path.{});
+ #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && cr[0].leaves==1;
+}
+#test "seeding a retained write restores the pass location after choosing array precision" {
+ // The write has no location of its own, so running out of work in its first leaf reports where the pass was.
+ nodes:[32]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;state:=[1]CK_State.[CK_State.{used=31,type_count=19}];work:=[1]CB_State.[CB_State.{work=2097151,loc=CK_Loc.{line=84,column=5}}];queries:[64]CK_BorrowQuery;origins:[256]BS_Origin;effects:[16]CK_RetainEffect;reports:[4]CK_RetainObservation;cr:[1]CR_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12,retain_presence=2,retain_join=1};types[18]=CK_Type.{kind=CK_Kind.view,elem=16};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5,borrow_writes=10,loc=CK_Loc.{line=85,column=1}};nodes[3]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[8]=CK_Node.{kind=CK_Tag.expr_index,type=16,a=6,b=7};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_string,type=16};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=9,c=8,borrow_owner=2};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=cr[..]};
+ CR_seed(r,2);
+ #assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==84 && errors[0].loc.column==5 && cr[0].leaves==0;
+}
+#forall "choosing array precision refuses a type outside the table and remembers its answer for one inside" pick:0..<5 {
+ // pick 0: negative; 1: past the storage; 2: the first type past the table, whose stale memo says join; 3: void; 4: an array of 65 views
+ nodes:[4]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=18}];work:=[1]CB_State.[CB_State.{loc=CK_Loc.{line=88,column=6}}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=65};types[18]=CK_Type.{kind=CK_Kind.view,elem=12,retain_join=2};
+ types_at:=[5]int.[-1,20,18,1,17];type:=types_at[pick];
+ got:=CR_join_arrays(b,type);
+ if pick<3 {#assert !got && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==88;}
+ else {#assert got==(pick==4) && !state[0].fatal && state[0].error_count==0 && types[type].retain_join==cast(u8)(ifx pick==4 then 2 else 1);}
+}
+#test "a retained pair whose pending obligations do not fit is refused" {
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=7,type_count=17}];work:[1]CB_State;queries:[8]CK_BorrowQuery;origins:[8]BS_Origin;effects:[8]CK_RetainEffect;reports:[4]CK_RetainObservation;cr:[1]CR_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};
+ nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,next=4};nodes[4]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;
+ nodes[6]=CK_Node.{kind=CK_Tag.stmt_assign,borrow_owner=2,loc=CK_Loc.{line=89,column=3}};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=cr[..]};
+ // The first parameter's bytes are stored through the second parameter: one obligation, and no room to stage it.
+ src:=[1]BS_Origin.[BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_DESCRIPTOR,type=12}];
+ dst:=[1]BS_Origin.[BS_Origin.{kind=BS_PARAMETER,root=1,role=BS_DESCRIPTOR,type=3,path=BS_Path.{count=1}}];dst[0].path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};
+ room:[1]RP_Obligation;
+ fits:=CR_pairs(r,2,6,12,src[..],true,dst[..],true,room[..],CR_Result.{complete=true,relation=true});
+ #assert !state[0].fatal && state[0].error_count==0 && fits.pending==1;
+ refused:=CR_pairs(r,2,6,12,src[..],true,dst[..],true,room[0..<0],CR_Result.{complete=true,relation=true});
+ #assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==89 && refused.pending==0;
+}
+#forall "a retained array write joins its elements exactly when they would pass 64 leaves" length:0..<2 {
+ // p[0] = q for q:[N]string with N 64 (one leaf each) or 65 (one joined leaf)
+ nodes:[32]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;state:=[1]CK_State.[CK_State.{used=31,type_count=19}];work:[1]CB_State;queries:[256]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[256]CK_RetainEffect;reports:[8]CK_RetainObservation;cr:[1]CR_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ n:=ifx length==0 then 64 else 65;types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.array,elem=16,length=n};types[18]=CK_Type.{kind=CK_Kind.view,elem=17};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2,next=4};nodes[4]=CK_Node.{kind=CK_Tag.param,type=17,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[8]=CK_Node.{kind=CK_Tag.expr_index,type=17,a=6,b=7};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_ident,type=17,borrow_binding=4};nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=9,c=8,borrow_owner=2,loc=CK_Loc.{line=95,column=3}};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=cr[..]};
+ CR_leaf(r,2,10,17,BS_Path.{});
+ #assert !state[0].fatal && state[0].error_count==0 && cr[0].leaves==(ifx length==0 then 64 else 1);
+}
+#test "a warm retained struct write stops at its first refused leaf" {
+ // The first write caches the struct's leaf shape; the second, through that shape, is refused at its first field.
+ nodes:[128]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;state:=[1]CK_State.[CK_State.{used=127,type_count=21}];work:[1]CB_State;queries:[256]CK_BorrowQuery;origins:[2048]BS_Origin;effects:[128]CK_RetainEffect;reports:[8]CK_RetainObservation;cr:[1]CR_State;for i:0..<16 {types[i]=CK_builtin(i);}
+ types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[18]=CK_Type.{kind=CK_Kind.view,elem=17};types[19]=CK_Type.{kind=CK_Kind.array,elem=12,length=1};
+ types[17]=CK_Type.{kind=CK_Kind.struct_,decl=40};nodes[40]=CK_Node.{kind=CK_Tag.struct_,head=41};nodes[41]=CK_Node.{kind=CK_Tag.field,type=16,next=42};nodes[42]=CK_Node.{kind=CK_Tag.field,type=16};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,head=3,b=5,borrow_writes=10};nodes[3]=CK_Node.{kind=CK_Tag.param,type=18,borrow_owner=2,next=4};nodes[4]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};nodes[5].kind=CK_Tag.stmt_block;
+ nodes[6]=CK_Node.{kind=CK_Tag.expr_ident,type=18,borrow_binding=3};nodes[7]=CK_Node.{kind=CK_Tag.expr_int,type=11};nodes[8]=CK_Node.{kind=CK_Tag.expr_index,type=17,a=6,b=7};
+ nodes[104]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=105};nodes[107]=CK_Node.{kind=CK_Tag.expr_slice,type=16,a=105};nodes[105]=CK_Node.{kind=CK_Tag.expr_ident,type=19,borrow_binding=106};nodes[106]=CK_Node.{kind=CK_Tag.stmt_var,type=19,borrow_owner=2};
+ nodes[108]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=4};nodes[109]=CK_Node.{kind=CK_Tag.expr_ident,type=16,borrow_binding=4};
+ nodes[9]=CK_Node.{kind=CK_Tag.expr_struct,type=17,head=60};nodes[60]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=104,next=61};nodes[61]=CK_Node.{kind=CK_Tag.field_init,field_index=1,a=107};
+ nodes[12]=CK_Node.{kind=CK_Tag.expr_struct,type=17,head=62};nodes[62]=CK_Node.{kind=CK_Tag.field_init,field_index=0,a=108,next=63};nodes[63]=CK_Node.{kind=CK_Tag.field_init,field_index=1,a=109};
+ nodes[10]=CK_Node.{kind=CK_Tag.stmt_assign,a=9,c=8,borrow_owner=2,loc=CK_Loc.{line=96,column=3}};nodes[11]=CK_Node.{kind=CK_Tag.stmt_assign,a=12,c=8,borrow_owner=2,loc=CK_Loc.{line=97,column=3}};
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..],retain_effects=effects[..],retain_reports=reports[..]};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};r:=CR_Context.{b=b,effects=effects[..],reports=reports[..],state=cr[..]};
+ CR_leaf(r,2,11,17,BS_Path.{});
+ #assert !state[0].fatal && state[0].error_count==0 && cr[0].leaves==2 && cr[0].shape.count==2;
+ CR_leaf(r,2,10,17,BS_Path.{});
+ #assert !state[0].fatal && state[0].error_count==1 && errors[0].code=="E0383" && cr[0].leaves==3;
+}

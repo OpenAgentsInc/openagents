@@ -853,6 +853,15 @@ the killer. A stale, edited or foreign file costs time, never a verdict.
 `--killers` may be the recorded one rather than the first in order, and
 `--mutation-stats` counts fewer checks.
 
+The rest of a mutant's checks run in the order most likely to kill it
+first: the file's other killers of its procedure, then the checks that
+killed its neighbours in the same procedure earlier in this run, then the
+checks that reach the mutated procedure at all, cheapest first. Only the
+first failure matters and every check runs fresh under the same budget, so
+this changes the work, never the report. `--source-order` runs them in
+source order instead, and `--mutation-trace` implies it, so a trace is the
+same for every `--jobs` and shard split.
+
 Use `coax mutate split.coax --mutation-reference` to force the full runner.
 `--mutation-stats` reports check counts and fallback facts;
 `--mutation-trace` reports the first killing check for each mutant.
