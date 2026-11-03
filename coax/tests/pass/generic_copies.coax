@@ -1,0 +1,35 @@
+// A generic procedure that calls many generic procedures, instantiated at
+// several sizes (#12699). Each instance copies its template into the
+// checker's node store, so a program that is mostly template, used at k
+// sizes, needs k + 1 copies of it beside the program: more than the 3
+// records per syntax node the store first has. The checker runs again with
+// a larger store rather than failing with E0381.
+#import "Basic";
+Words :: struct($W) { n: int; w: [$W] u64; }
+fill :: (t: [] Words($W), v: u64) { for i: 0..<t[0].w.count { t[0].w[i] = v + cast(u64) i; } t[0].n = t[0].w.count; }
+sum :: (t: Words($W)) -> u64 { s: u64 = 0; for i: 0..<t.w.count { s += t.w[i]; } return s; }
+same :: (a: Words($W), b: Words($W)) -> bool { if a.n != b.n { return false; } for i: 0..<a.w.count { if a.w[i] != b.w[i] { return false; } } return true; }
+swap :: (a: [] Words($W), b: [] Words($W)) { t := a[0]; a[0] = b[0]; b[0] = t; }
+// Every line calls generics: each instance of round copies all of them.
+round :: (a: [] Words($W), b: [] Words($W), x: u64, y: u64) -> int {
+  n := 0; fill(a, x); fill(b, y);
+  if same(a[0], b[0]) == (x == y) { n += 1; } if sum(a[0]) == sum(a[0]) { n += 2; } if same(b[0], b[0]) { n += 4; }
+  swap(a, b);
+  if a[0].w[0] == y && b[0].w[0] == x { n += 8; } if same(a[0], b[0]) == (x == y) { n += 16; }
+  fill(a, y); if same(a[0], b[0]) == (x == y) && sum(a[0]) == sum(a[0]) { n += 32; }
+  swap(a, b); swap(a, b); fill(b, y);
+  if same(a[0], b[0]) && sum(a[0]) == sum(b[0]) { n += 64; } if same(b[0], b[0]) && same(a[0], a[0]) { n += 128; }
+  fill(a, y); fill(b, x); swap(a, b);
+  if a[0].w[0] == x && b[0].w[0] == y && same(a[0], b[0]) == (x == y) && sum(b[0]) == sum(b[0]) { n += 256; }
+  return n;
+}
+run1 :: (x: u64, y: u64) -> int { a: [1] Words(1); b: [1] Words(1); return round(a[..], b[..], x, y); }
+run2 :: (x: u64, y: u64) -> int { a: [1] Words(2); b: [1] Words(2); return round(a[..], b[..], x, y); }
+run3 :: (x: u64, y: u64) -> int { a: [1] Words(3); b: [1] Words(3); return round(a[..], b[..], x, y); }
+run4 :: (x: u64, y: u64) -> int { a: [1] Words(4); b: [1] Words(4); return round(a[..], b[..], x, y); }
+#test "every instance of round agrees" {
+  #assert run1(1, 2) == 511 && run2(3, 3) == 511 && run3(5, 9) == 511 && run4(0, 7) == 511;
+}
+main :: () {
+  print("% % % %\n", run1(1, 2), run2(3, 3), run3(5, 9), run4(0, 7));
+}

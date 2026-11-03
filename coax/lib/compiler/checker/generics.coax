@@ -15,16 +15,50 @@
 // failed allocation is fatal, so the check stops and nothing is bridged.
 // The instance limit is sized from the input: one instance per 8 syntax nodes
 // in a program of more than CK_INSTANCE_SIZED nodes, else CK_INSTANCE_LIMIT.
-// Its memory bound is the node store, 3 records per syntax node, allocated
-// before checking: every instance copies its template into that store, so a
-// larger limit allocates nothing more. A state whose instance_limit is 0 (not
-// set by CK_run) has CK_INSTANCE_LIMIT.
+// Instances live in the node store (below), so a larger limit allocates
+// nothing more. A state whose instance_limit is 0 (not set by CK_run) has
+// CK_INSTANCE_LIMIT.
 CK_INSTANCE_LIMIT :: 256;
 CK_INSTANCE_SIZED :: 2056;
 CK_instance_limit :: (nodes:int)->int #export_c {if nodes<=CK_INSTANCE_SIZED {return CK_INSTANCE_LIMIT;}return nodes/8;}
 #test "the generic instance limit grows with the program and has a floor" {
  #assert CK_instance_limit(0)==256 && CK_instance_limit(2048)==256 && CK_instance_limit(2056)==256 && CK_instance_limit(2057)==257;
  #assert CK_instance_limit(-8)==256 && CK_instance_limit(80000)==10000 && CK_instance_limit(2147483646)==268435455;
+}
+// The node store (#12699). CK_caps reserves 3 records per syntax node, but
+// every instance copies its template: a program of N nodes whose templates
+// hold T of them, each used at k bindings, needs about N + (k + 1) T, so a
+// program that is mostly template, used at a few bindings, fills it (E0381).
+// A run that ends fatal with the store full runs again from its input with
+// twice the store, up to CK_NODE_GROWTH times its first size: at most 48
+// records per syntax node, plus 16 times the reflection tables' reservation
+// (CK_meta_capacity). A CK_Node is about 560 bytes, so the bound is about
+// 27 KiB per syntax node. The driver reserves the store zeroed and writes a
+// record only when it is used, so a larger store costs memory only as it
+// fills. The near-limit report names the bound ("checker node store"). An
+// input without a type placeholder makes no instance, so it never runs again.
+CK_NODE_GROWTH :: 16;
+// The store size to run again with, after a run that used `used` records of
+// `capacity`, or 0: the run did not fail for want of a record, or the store
+// is at its bound.
+CK_node_retry :: (used:int,capacity:int,fatal:bool,first:int)->int #export_c {
+  if !fatal || used+1<capacity || capacity>first*(CK_NODE_GROWTH/2) {return 0;}
+  return capacity*2;
+}
+CK_node_bound :: (first:int)->int #export_c {return first*CK_NODE_GROWTH;}
+// Whether the input graph (node 0 is null) has a type placeholder.
+CK_generic_input :: (nodes:[] CK_Node)->bool #export_c {for id:1..<nodes.count {if nodes[id].kind==CK_Tag.type_param {return true;}}return false;}
+#test "a run that fills the node store runs again with twice the store, up to 16 times the first" {
+ #assert CK_node_retry(99,100,true,100)==200 && CK_node_retry(100,100,true,100)==200 && CK_node_retry(98,100,true,100)==0 && CK_node_retry(99,100,false,100)==0;
+ #assert CK_node_retry(799,800,true,100)==1600 && CK_node_retry(800,801,true,100)==0 && CK_node_retry(1599,1600,true,100)==0;
+ #assert CK_node_bound(100)==1600 && CK_node_bound(3109)==49744 && CK_node_retry(3108,3109,true,3109)==6218;
+}
+#test "only an input with a type placeholder can make an instance" {
+ nodes:[5]CK_Node;
+ #assert !CK_generic_input(nodes[..]) && !CK_generic_input(nodes[0..<0]);
+ nodes[0].kind=CK_Tag.type_param;#assert !CK_generic_input(nodes[..]);
+ nodes[4].kind=CK_Tag.type_param;#assert CK_generic_input(nodes[..]) && !CK_generic_input(nodes[0..<4]);
+ nodes[4].kind=CK_Tag.type_named;nodes[1].kind=CK_Tag.type_param;#assert CK_generic_input(nodes[0..<2]) && !CK_generic_input(nodes[0..<1]);
 }
 CK_has_param :: (c:CK_Context,id:int)->bool {
   t:=c.nodes[id];if t.kind==CK_Tag.type_param {return true;}
