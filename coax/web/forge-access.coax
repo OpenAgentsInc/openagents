@@ -354,8 +354,8 @@ tool_main :: () -> int #export_c {
   fa_ok(c[..], f[..], "every control has a name; the board's rows are checkboxes with a state",
            fa_eval_int(c[..], f[..], "[...document.querySelectorAll('#coaxial-a11y button')].every(b => b.textContent.trim().length > 0) && [...document.querySelectorAll('#coaxial-a11y [role=checkbox]')].length > 0 && [...document.querySelectorAll('#coaxial-a11y [role=checkbox]')].every(b => ['true','false'].includes(b.getAttribute('aria-checked'))) ? 1 : 0") == 1, 0);
   t := fa_tab(c[..], f[..]);
-  fa_ok(c[..], f[..], "Tab reaches the controls, and they show when focused",
-           fa_eval_int(c[..], f[..], "document.activeElement && document.activeElement.closest('#coaxial-a11y') && getComputedStyle(document.getElementById('coaxial-a11y')).opacity === '1' ? 1 : 0") == 1, 0);
+  fa_ok(c[..], f[..], "Tab reaches the controls, which stay clipped out of sight (the canvas draws)",
+           fa_eval_int(c[..], f[..], "document.activeElement && document.activeElement.closest('#coaxial-a11y') && getComputedStyle(document.getElementById('coaxial-a11y')).clipPath !== 'none' ? 1 : 0") == 1, 0);
   fa_ok(c[..], f[..], "Enter on MOVE picks the nearest thing", fa_press(c[..], f[..], "Move the nearest thing") && fa_wait(c[..], f[..], 8, 0, 100000, 5000), fa_probe(c[..], f[..], 8));
   fa_ok(c[..], f[..], "the note is read out (a polite live region)", fa_wait_js(c[..], f[..], "document.querySelector('#coaxial-a11y-status[role=status][aria-live=polite]').textContent.startsWith('Walk to its new place') ? 1 : 0", 3000), 0);
   fa_ok(c[..], f[..], "TURN IT turns the picked thing: unsaved", fa_press(c[..], f[..], "Turn it") && fa_wait(c[..], f[..], 4, 1, 1, 3000), fa_probe(c[..], f[..], 4));

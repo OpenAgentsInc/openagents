@@ -1633,15 +1633,11 @@ function a11yMirror(now) {
   if (text === a11y.text) return;
   a11y.text = text;
   if (!a11y.root) {
-    const style = document.createElement("style");
-    style.textContent = "#coaxial-a11y{position:fixed;left:8px;top:8px;z-index:20;display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100vw - 16px);clip-path:inset(50%);opacity:0}"
-      + "#coaxial-a11y:focus-within{clip-path:none;opacity:1}"
-      + "#coaxial-a11y button{font:16px/1.2 system-ui,sans-serif;padding:8px 12px;color:#f0f0f0;background:#141414;border:1px solid #f0f0f0;border-radius:4px}"
-      + "#coaxial-a11y button:focus-visible{outline:3px solid hsl(180,68%,53%);outline-offset:2px}"
-      + "#coaxial-a11y [aria-pressed=true],#coaxial-a11y [aria-checked=true]{background:#2c4a4a}"
-      + "#coaxial-a11y-status{position:fixed;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}";
-    document.head.append(style);
-    a11y.root = Object.assign(document.createElement("div"), { id: "coaxial-a11y" });
+    // Screen-reader text clipped out of sight, like <main> (INVARIANTS.md "Coaxial pages draw
+    // everything in Coax"): the canvas draws what a sighted visitor sees, focus included.
+    const hide = "position:fixed;left:0;top:0;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap";
+    a11y.root = Object.assign(document.createElement("div"), { id: "coaxial-a11y" });   // accessible layer
+    a11y.root.setAttribute("style", hide);
     a11y.root.setAttribute("role", "toolbar"); a11y.root.setAttribute("aria-label", "Realm controls");
     a11y.root.addEventListener("click", (e) => {
       const b = e.target.closest?.("button[data-id]");
@@ -1649,7 +1645,8 @@ function a11yMirror(now) {
       engine.exports.coaxial_a11y_do(arena.state, Number(b.dataset.id));
       a11y.at = 0; after(true);
     });
-    a11y.status = Object.assign(document.createElement("div"), { id: "coaxial-a11y-status" });
+    a11y.status = Object.assign(document.createElement("div"), { id: "coaxial-a11y-status" });   // accessible layer
+    a11y.status.setAttribute("style", hide);
     a11y.status.setAttribute("role", "status"); a11y.status.setAttribute("aria-live", "polite");
     document.body.prepend(a11y.root, a11y.status);   // first in the tab order
   }
@@ -1662,7 +1659,7 @@ function a11yMirror(now) {
     if (role === "status") { say = label; continue; }
     seen.add(id);
     let b = a11y.nodes.get(id);
-    if (!b) { b = Object.assign(document.createElement("button"), { type: "button" }); b.dataset.id = id; a11y.nodes.set(id, b); }
+    if (!b) { b = Object.assign(document.createElement("button"), { type: "button" }); b.dataset.id = id; a11y.nodes.set(id, b); }   // accessible layer
     if (role === "checkbox") { b.setAttribute("role", "checkbox"); b.setAttribute("aria-checked", state === "1" ? "true" : "false"); b.removeAttribute("aria-pressed"); }
     else { b.removeAttribute("role"); b.removeAttribute("aria-checked"); if (state === "-") b.removeAttribute("aria-pressed"); else b.setAttribute("aria-pressed", state === "1" ? "true" : "false"); }
     if (b.textContent !== label) b.textContent = label;

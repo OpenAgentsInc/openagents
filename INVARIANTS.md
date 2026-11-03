@@ -3683,6 +3683,10 @@ Allowed HTML, none of it visible to a WebGPU visitor:
 - the `<canvas>`;
 - text for search engines, agents and screen readers, clipped out of sight
   while the GPU draws (the `.gpu main` rule);
+- the accessible layer (`host.js` a11yMirror): a module's controls mirrored
+  as buttons, checkboxes and a polite live region for screen readers and the
+  keyboard, always clipped out of sight; the canvas draws what a sighted
+  visitor sees, focus included;
 - the text fallback a browser without WebGPU sees instead (an owner
   decision, 2026-10-28);
 - an invisible `<input>` over a Coax-drawn text field (the rect Coax reports),
