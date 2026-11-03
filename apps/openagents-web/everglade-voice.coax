@@ -1010,6 +1010,18 @@ ev_hint :: () -> string {
   return "";   // nothing to say until you talk
 }
 
+// How much of the top row TALK takes left of EDIT, with its gap; 0 when it isn't drawn or goes under MAP.
+talk_button_room :: (s: [] Everglade) -> f32 {
+  if !voice_on(s) || s[0].ev.editing || s[0].talk >= 0 || s[0].board || s[0].above { return 0; }
+  k := hi(s[0].dpr, 0.5);
+  word := ifx s[0].ev.held then "LISTENING" else ifx phone(s) then "TALK" else "TALK · V";
+  bw := text_width(word, 9 * k) + 32 * k;
+  mb := s[0].map_button;
+  ew := ifx eg_builder(s) then text_width("EDIT", 9 * k) + 40 * k else 0.0f32;
+  fb := ifx fk_has(s) then s[0].fk[0].boxes[FB_OPEN] else Box.{};
+  if fb.x1 > fb.x0 && mb.x0 - ew - 8 * k - bw < fb.x1 + 8 * k { return 0; }
+  return bw + 8 * k;
+}
 // TALK, a small button left of EDIT at the top; what was heard and done goes over the hint, only when there is some.
 everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
   s[0].ev.button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};

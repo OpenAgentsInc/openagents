@@ -2663,7 +2663,8 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
   kit_on := s[0].pack_ready;
   // the far trees: the graphics quality's share of them (everglade-quality.coax)
   scenery := eg_knobs(s).scenery;
-  reach := (ifx phone(s) then f32(KIT_NEAR_PHONE) else f32(KIT_NEAR)) * scenery;
+  // the kit's trees reach as far on every tier, so no near tree turns into its cone; a lower tier draws fewer
+  reach := ifx phone(s) then f32(KIT_NEAR_PHONE) else f32(KIT_NEAR);
   cap := quality_share(ifx phone(s) then KIT_CAP_PHONE else KIT_CAP, scenery, 8);
   // How many of each kind stand in view at each distance, so the nearest win.
   seen: [KIT_TREES * KIT_BUCKETS] int;

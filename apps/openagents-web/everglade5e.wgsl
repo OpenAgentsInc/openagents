@@ -1152,8 +1152,16 @@ fn coax_p_eg_place(p_id: u32, p_instance: u32) -> coax_t15 {
                 l_v = coax_p_eg_cone_vertex(l_id);
                 if (((coax_p_wg_u32_f(l_m.w.w) / 8u) == 1u))
                 {
-                  l_v.y = coax_p_eg_canopy_n(l_v.y, coax_p_wg_normalize3(coax_p_wg_add_f3f3(l_v.x, coax_p_v3(0.0f, 0x1.a36e2ep-14f, 0.0f))));
-                  l_cone = true;
+                  l_v = coax_p_eg_far_tree_vertex(l_id);
+                  if ((l_id < 48u))
+                  {
+                    l_v.y = coax_p_eg_canopy_n(l_v.y, coax_p_wg_normalize3(coax_p_wg_add_f3f3(l_v.x, coax_p_v3(0.0f, 0x1.a36e2ep-14f, 0.0f))));
+                    l_cone = true;
+                  }
+                  else
+                  {
+                    l_tint = coax_p_v3(0x1.99999ap-3f, 0x1.1eb852p-3f, 0x1.70a3d8p-4f);
+                  }
                 }
               }
             }
@@ -3509,6 +3517,46 @@ fn coax_p_eg_cone_vertex(p_id: u32) -> coax_t32 {
   }
   l_a_6 = (((f32(l_t) + f32((l_k - 1u))) / 0x1.000000p4f) * 0x1.921fb6p2f);
   return coax_t32(coax_p_v3((cos(l_a_6) * 0x1.000000p-1f), (-0x1.000000p-1f), (sin(l_a_6) * 0x1.000000p-1f)), l_n);
+}
+fn coax_p_eg_far_tree_vertex(p_id: u32) -> coax_t32 {
+  var l_id: u32 = p_id;
+  var l_low: bool;
+  var l_j: u32;
+  var l_t: u32;
+  var l_k: u32;
+  var l_top: f32;
+  var l_foot: f32;
+  var l_r: f32;
+  var l_lean: f32;
+  var l_mid: f32;
+  var l_a: f32;
+  var l_q: u32;
+  var l_c: vec2f;
+  var l_a_13: f32;
+  var l_n: vec3f;
+  if ((l_id < 48u))
+  {
+    l_low = (l_id >= 24u);
+    l_j = (l_id % 24u);
+    l_t = (l_j / 3u);
+    l_k = (l_j % 3u);
+    l_top = select(0x1.000000p-1f, 0x1.70a3d8p-3f, l_low);
+    l_foot = select((-0x1.47ae14p-4f), (-0x1.000000p-1f), l_low);
+    l_r = select(0x1.70a3d8p-2f, 0x1.000000p-1f, l_low);
+    l_lean = (l_r / (l_top - l_foot));
+    if ((l_k == 0u))
+    {
+      l_mid = (((f32(l_t) + 0x1.000000p-1f) / 0x1.000000p3f) * 0x1.921fb6p2f);
+      return coax_t32(coax_p_v3(0.0f, l_top, 0.0f), coax_p_wg_normalize3(coax_p_v3(cos(l_mid), l_lean, sin(l_mid))));
+    }
+    l_a = (((f32(l_t) + f32((l_k - 1u))) / 0x1.000000p3f) * 0x1.921fb6p2f);
+    return coax_t32(coax_p_v3((cos(l_a) * l_r), l_foot, (sin(l_a) * l_r)), coax_p_wg_normalize3(coax_p_v3(cos(l_a), l_lean, sin(l_a))));
+  }
+  l_q = (l_id - 48u);
+  l_c = coax_p_eg_quad((l_q % 6u));
+  l_a_13 = (((f32((l_q / 6u)) + l_c.x) / 0x1.000000p3f) * 0x1.921fb6p2f);
+  l_n = coax_p_v3(cos(l_a_13), 0.0f, sin(l_a_13));
+  return coax_t32(coax_p_v3((l_n.x * 0x1.eb851ep-5f), ((-0x1.000000p-1f) - (0x1.99999ap-2f * (0x1.000000p0f - l_c.y))), (l_n.z * 0x1.eb851ep-5f)), l_n);
 }
 fn coax_p_eg_canopy_sway(p_at: vec3f, p_share: f32) -> vec3f {
   var l_at: vec3f = p_at;

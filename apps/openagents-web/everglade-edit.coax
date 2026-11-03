@@ -337,6 +337,14 @@ edit_button :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, b: int, box: B
 // EDIT by MAP for an admin; in edit mode EDITING and what happened over the
 // middle, the picked thing named over it, its row and the hotbar over the
 // hint (whose top is bottom). Returns the vertices drawn so far.
+// How much of the top row EDIT (or BUILD, DONE) takes left of MAP, with its gap; 0 when it isn't drawn.
+// join_hud (everglade-join.coax) lays INVITE and CHARACTER out left of it.
+edit_button_room :: (s: [] Everglade) -> f32 {
+  if !eg_builder(s) || s[0].talk >= 0 || s[0].board || s[0].above || forge_on(s) { return 0; }
+  k := hi(s[0].dpr, 0.5);
+  word := ifx s[0].ev.editing then "DONE" else ifx !s[0].ev.admin then "BUILD" else "EDIT";
+  return text_width(word, 9 * k) + 32 * k + 8 * k;
+}
 everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
   for b: 0..<EB_N { s[0].ev.boxes[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
   s[0].ev.eye_x = u[U_EYE]; s[0].ev.eye_z = u[U_EYE + 2];

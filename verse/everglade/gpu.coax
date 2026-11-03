@@ -445,6 +445,33 @@ eg_cone_vertex :: (id:u32)->EgVert {
   a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,1))))/16.0f32)*EG_TAU;
   return EgVert.{p=v3(cos(a)*0.5f32,-0.5f32,sin(a)*0.5f32),n=n};
 }
+// A far tree from the cone's 96 vertices, so it reads as a tree and not a triangle: two tiers of
+// boughs (8 sides each, the upper one narrower) and, under them, a trunk down to the ground (the
+// cone's box stands lift above it: everglade.coax far_tree). `trunk` says which part a vertex is.
+EG_FAR_TRUNK_R :: 0.06f32; EG_FAR_TRUNK_LEN :: 0.4f32;
+eg_far_tree_vertex :: (id:u32)->EgVert {
+  if (id<48) {
+    low:bool=id>=24;
+    j:u32=id%24;
+    t:u32=j/3;
+    k:u32=j%3;
+    top:f32=ifx low then 0.18f32 else 0.5f32;
+    foot:f32=ifx low then -0.5f32 else -0.08f32;
+    r:f32=ifx low then 0.5f32 else 0.36f32;
+    lean:f32=r/(top-foot);
+    if (k==0) {
+      mid:f32=(((cast(f32)(t))+0.5f32)/8.0f32)*EG_TAU;
+      return EgVert.{p=v3(0.0f32,top,0.0f32),n=wg_normalize3(v3(cos(mid),lean,sin(mid)))};
+    }
+    a:f32=(((cast(f32)(t))+(cast(f32)(sub_wrap(k,1))))/8.0f32)*EG_TAU;
+    return EgVert.{p=v3(cos(a)*r,foot,sin(a)*r),n=wg_normalize3(v3(cos(a),lean,sin(a)))};
+  }
+  q:u32=sub_wrap(id,48);
+  c:V2=eg_quad(q%6);
+  a:f32=(((cast(f32)(q/6))+c.x)/8.0f32)*EG_TAU;
+  n:V3=v3(cos(a),0.0f32,sin(a));
+  return EgVert.{p=v3(n.x*EG_FAR_TRUNK_R,-0.5f32-(EG_FAR_TRUNK_LEN*(1.0f32-c.y)),n.z*EG_FAR_TRUNK_R),n=n};
+}
 // Carved stone (the fountain's): coursed blocks 0.26 m high and 0.6 m long, every other course
 // offset by half, each block its own tone, the joints dark; weathered in streaks running down; wet
 // and darker under the water and a little above it, with a mossy band at the waterline.
@@ -776,10 +803,16 @@ eg_place :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,heights:[]f32,objects:[]
       o.uv=v2(a*wg_length2(v2(v.p.x,v.p.z)),v.p.y);
     } else {
       v=eg_cone_vertex(id);
-      // a far tree's cone shades as the kit's canopy does: its normal leans to the blob round its middle
+      // a far tree's cone: two tiers of boughs on a trunk, the boughs shaded as the kit's canopy
+      // is (the normal leans to the blob round its middle), the trunk bark-dark
       if (((wg_u32_f(m.colour.w))/8)==1) {
-        v.n=eg_canopy_n(v.n,wg_normalize3(wg_add_f3f3(v.p,v3(0.0f32,0.0001f32,0.0f32))));
-        cone=true;
+        v=eg_far_tree_vertex(id);
+        if (id<48) {
+          v.n=eg_canopy_n(v.n,wg_normalize3(wg_add_f3f3(v.p,v3(0.0f32,0.0001f32,0.0f32))));
+          cone=true;
+        } else {
+          tint=v3(0.2f32,0.14f32,0.09f32);
+        }
       }
     }
   }

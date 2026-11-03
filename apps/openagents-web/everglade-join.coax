@@ -241,7 +241,8 @@ join_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, mb: Box, left: f3
   bh := mb.y1 - mb.y0;
   wi := text_width(iw, 9 * k) + 32 * k; wc := text_width(cw, 9 * k) + 32 * k;
   gap := 8 * k;
-  x1 := mb.x0 - gap; y0 := mb.y0;
+  // left of MAP and of EDIT and TALK, when an admin or builder has them (everglade-edit.coax, everglade-voice.coax)
+  x1 := mb.x0 - edit_button_room(s) - talk_button_room(s) - gap; y0 := mb.y0;
   if x1 - wi - gap - wc < left + gap {
     // a second row under MAP, right-aligned
     x1 = mb.x1; y0 = mb.y1 + gap;
@@ -480,6 +481,23 @@ join_key :: (s: [] Everglade, key: int) -> bool {
   net_ticket(r[..], "200\n{\"ticket\":\"v2.x\",\"id\":\"p1\",\"account\":true,\"name\":\"Ash\",\"expires\":1,\"look\":\"ranger.2.3.4\"}");
   #assert !join_picking(r[..]) && jn_ready(rn[..]) && rn[0].join[0].skin == 2 && rn[0].join[0].dye == 3;
   net_facts(r[..], "url=https://openagents.com/worlds/everglade?room=pair-zz\nplayer=p1\n", "everglade", false);
+}
+#test "join: INVITE and CHARACTER sit left of an admin's EDIT, never on it" {
+  g: [1] Everglade; nn: [1] EgNet;
+  everglade_attach_net(g[..], nn[..]);
+  net_facts(g[..], "url=https://openagents.com/worlds/everglade\nplayer=p1\n", "everglade", false);
+  net_step(g[..], 100, 0, 0, -84, 0, 0, 0, false, 0, false, 0);
+  net_rooms(g[..], "200\n{\"join\":\"everglade-2\"}");
+  g[0].dpr = 1; g[0].width = 1440; g[0].talk = -1; g[0].ev.admin = true;
+  mb := Box.{x0 = 1340, y0 = 16, x1 = 1424, y1 = 54};
+  g[0].map_button = mb;
+  #assert edit_button_room(g[..]) > 0;
+  out: [4096] f32; u: [4096] f32;
+  n := join_hud(g[..], out[..], u[..], 0, mb, 200);
+  ib := nn[0].join[0].boxes[JB_INVITE];
+  #assert ib.x1 > ib.x0 && ib.x1 <= mb.x0 - edit_button_room(g[..]) - talk_button_room(g[..]);
+  g[0].ev.admin = false;
+  #assert edit_button_room(g[..]) == 0 && talk_button_room(g[..]) == 0;
 }
 #test "join: INVITE copies the link to your instance" {
   g: [1] Everglade; nn: [1] EgNet;
