@@ -42,3 +42,7 @@ A Verse world at https://openagents.com/worlds/5e-lab, not listed on the worlds 
 - `apps/openagents-web/fivelab.coax` is the world: each class's decisions, the drawing and its checks. `fivelab-face.c` binds it for the browser, and `fivelab.wgsl` (from `gpu/fivelab.coax`) draws either view: the flat grid, or the glade traced per pixel against its trees and figures and lit with the painterly style's functions (`verse/style.coax`).
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
+
+## The Horde
+
+The Horde is the default battle. All 48 heroes fight as one company, the Living, in the middle of the glade: the casting classes inside an 8 by 6 block and the rest round its rim. 160 Skeletons start on the grid's two outer rings and run at them, taking the Dash action until they're within reach. When one falls, a fresh Skeleton runs in from a free square on the edge a second later, until the Horde has sent 1,000. The Living win if they outlast all 1,000. Press H to switch between the Horde and the two armies.
