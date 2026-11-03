@@ -510,7 +510,8 @@ E5_GREY :: [3] f32.[0.55, 0.53, 0.5];
 // others' Hit Points. After everglade_finish_frame: `at` is its vertex count, and the plates go on.
 e5_finish :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> int #export_c {
   n := at;
-  if !s[0].started || at <= 0 || u.count < UNIFORM_FLOATS || !sp_on(s) || s[0].above || !v[0].hero_ok { return n; }
+  // EDIT: Aethyrforge's panels alone, as on Everglade (everglade-forge.coax)
+  if !s[0].started || at <= 0 || u.count < UNIFORM_FLOATS || !sp_on(s) || s[0].above || !v[0].hero_ok || forge_on(s) { return n; }
   k := hi(s[0].dpr, 0.5);
   wd := s[0].width; ht := s[0].height;
   gutter := 16 * k;
@@ -684,4 +685,17 @@ e5_conds :: (out: [] f32, at: int, c: int, x: f32, y: f32, cap: f32, k: f32) -> 
   #assert e5_num_at(t, at) == 2048;
   #assert e5_starts(t, E5_SYNC) && !e5_starts("hello", E5_SYNC);
   #assert e5_room_name() == "everglade-5e";
+}
+#test "Everglade 5E: EDIT is Aethyrforge's panels alone, the rules' panel and the bar's numbers gone" #steps 337000000 {
+  s: [1] Everglade; v: [1] E5;
+  everglade_start(s[..]);
+  s[0].width = 1600; s[0].height = 900; s[0].dpr = 1;
+  s[0].sp.on = true; s[0].sp.ready = true;
+  dm: [1] DemoWorld; s[0].sp.dm = dm[..];
+  v[0].hero_ok = true; v[0].bar_ok = true; v[0].hero[3] = 15;
+  out: [60000 * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  #assert e5_finish(s[..], v[..], out[..], u[..], 6) > 6;
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  #assert everglade_key(s[..], 'b', 0) && forge_on(s[..]);
+  #assert e5_finish(s[..], v[..], out[..], u[..], 6) == 6;
 }

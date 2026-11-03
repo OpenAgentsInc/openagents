@@ -175,7 +175,11 @@ forge_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   plate(s, u, hb, 0.8, 0);
   n = fg_frame(s, out, n, hb, verse_hud_cut(1) * k, 1, true);
   n = fg_text(s, out, n, "AETHYRFORGE", hb.x0 + 16 * k, hb.y0 + 26 * k, 12 * k, fg_grey(k, 0.97, 0));
-  said := ifx s[0].fg.local then "EVERGLADE · LOCAL PREVIEW" else "EVERGLADE · LIVE";
+  // the realm it edits: Everglade, Everglade 5E or a fork's name (everglade-fork.coax fork_title)
+  said_b: [96] u8;
+  said_n := fk_put(said_b[..], 0, fork_title(s));
+  said_n = fk_put(said_b[..], said_n, ifx s[0].fg.local then " · LOCAL PREVIEW" else " · LIVE");
+  said := cast(string) said_b[0..<said_n];
   n = fg_text(s, out, n, said, hb.x0 + 16 * k, hb.y0 + 44 * k, 7 * k, fg_cyan(k, 0.95));
   // the live dot, slowly breathing
   dx := hb.x1 - 22 * k; dy := hb.y0 + 22 * k;
