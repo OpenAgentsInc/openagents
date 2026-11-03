@@ -1,0 +1,60 @@
+// The checks of v2-transport.coax. They live apart so that running the
+// example doesn't also run them. The example runs every BIP-324 packet
+// vector; these check the properties around them.
+// Checks: coax test bitcoin/examples/checks/v2-transport.coax
+#load "../v2-transport.coax";
+
+// book:begin check
+// A sender and a receiver in step, from two fixed keys: no key exchange,
+// so each check starts cheaply.
+pair :: (c: [] V2Cipher, d: [] V2Cipher) {
+  l: [32] u8; p: [32] u8; for i: 0..<32 { l[i] = cast(u8) i; p[i] = cast(u8) (100 + i); }
+  c[0].send_l[0] = v2_stream(l); c[0].send_p[0] = V2Aead.{key = p};
+  d[0].recv_l[0] = v2_stream(l); d[0].recv_p[0] = V2Aead.{key = p};
+}
+// BIP-324's rows 0 and 2 from their keys: every byte of the ciphertext.
+#forall "BIP-324 packet rows 0 and 2 from the keys" k: 0..<2 #steps 400000000 {
+  row := V2_PACKETS[k * 2]; c: [1] V2Cipher; p: [5000] u8; aad: [4096] u8; part: [64] u8; empty: [1] u8;
+  #assert row_cipher(row, row.initiating, c[..]);
+  for i: 0..<row.idx { n := send(c[..], 0, empty[0..<0], true, part[..]); }
+  unit := v2_unhex(row.contents, part[..]); for j: 0..<unit.count { p[4 + j] = unit[j]; }
+  m := send(c[..], unit.count, v2_unhex(row.aad, aad[..]), row.ignore, p[..]);
+  #assert v2_hex_is(p[0..<m], row.ciphertext);
+}
+// Every one of the 168 single-bit changes to a 21-byte packet is refused:
+// a changed length reads as another size, a changed body fails the tag.
+#forall "one changed bit of a packet" bit: 0..<168 #steps 20000000 {
+  c: [1] V2Cipher; d: [1] V2Cipher; pair(c[..], d[..]); p: [64] u8; empty: [1] u8;
+  p[4] = 18; m := send(c[..], 1, empty[0..<0], false, p[..]);
+  p[bit / 8] ^= cast(u8) (1 << (bit % 8));
+  #assert receive(d[..], empty[0..<0], p[0..<m]).code != V2_OK;
+}
+// The first packet's AAD is the garbage: a changed garbage byte fails it.
+#forall "the garbage is authenticated" at: 0..<7 #steps 20000000 {
+  c: [1] V2Cipher; d: [1] V2Cipher; pair(c[..], d[..]); p: [64] u8;
+  garbage := [7] u8.['g', 'a', 'r', 'b', 'a', 'g', 'e']; seen := garbage; seen[at] ^= 0x20;
+  m := send(c[..], 10, garbage[..], true, p[..]);
+  #assert receive(d[..], seen[..], p[0..<m]).code == V2_BAD_TAG;
+}
+// 230 packets cross the rekey after 224 on both ciphers and all open.
+#test "packets open across the rekey" #steps 300000000 {
+  c: [1] V2Cipher; d: [1] V2Cipher; pair(c[..], d[..]); p: [64] u8; empty: [1] u8;
+  first := c[0].send_p[0].key;
+  for i: 0..<230 {
+    a := cast(u8) (i % 256); b := cast(u8) ((i * 7) % 256); p[4] = a; p[5] = b;
+    m := send(c[..], 2, empty[0..<0], i % 2 == 0, p[..]);
+    got := receive(d[..], empty[0..<0], p[0..<m]);
+    #assert got.code == V2_OK && got.n == 2 && got.ignore == (i % 2 == 0) && p[4] == a && p[5] == b;
+  }
+  #assert !same(first, c[0].send_p[0].key) && same(c[0].send_p[0].key, d[0].recv_p[0].key);
+}
+// Every message with a short ID writes as one byte and reads back.
+#forall "each short ID round-trips" id: 1..<38 {
+  name := V2_MESSAGE_IDS[id]; out: [32] u8; payload := [1] u8.[0x5a];
+  if name.count > 0 {
+    n := v2_contents_write_vartime(name, payload[..], out[..]);
+    r := v2_contents_read_vartime(out[0..<n]);
+    #assert n == 2 && out[0] == cast(u8) id && r.code == V2_OK && r.id == id && out[r.payload] == 0x5a;
+  }
+}
+// book:end check

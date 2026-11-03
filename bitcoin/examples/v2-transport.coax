@@ -1,0 +1,155 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/v2transport.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex, at most 256 of them.
+show :: (b: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+CODES :: [8] string.["ok", "truncated", "no terminator", "too large", "bad tag", "bad type", "capacity", "keys"];
+MAINNET :: [4] u8.[0xf9, 0xbe, 0xb4, 0xd9];
+
+// One side of a vector row, from its key: chapter 66's shared secret,
+// then this chapter's keys.
+row_cipher :: (row: V2Row, initiating: bool, c: [] V2Cipher) -> bool {
+  key: [32] u8; ours: [64] u8; theirs: [64] u8; secret: [32] u8; work: [1] EcdhScratch;
+  code := ellswift_xdh(v2_unhex(row.ours, ours[..]), v2_unhex(row.theirs, theirs[..]),
+    v2_unhex(row.priv, key[..]), row.initiating, secret[..], work[..]);
+  work[0] = EcdhScratch.{}; for i: 0..<32 { key[i] = 0; }
+  ok := code == EC_OK && v2_cipher_init(c, secret[..], MAINNET, initiating) == V2_OK;
+  for i: 0..<32 { secret[i] = 0; }
+  return ok;
+}
+// Send a packet whose contents are already in place at p[4..].
+send :: (c: [] V2Cipher, n: int, aad: [] u8, ignore: bool, p: [] u8) -> int { return v2_packet_seal(c, n, aad, ignore, p); }
+// Receive one packet in place: its contents are p[4..<4+n].
+V2Got :: struct { code: int; n: int; ignore: bool; }
+receive :: (c: [] V2Cipher, aad: [] u8, p: [] u8) -> V2Got {
+  l := v2_packet_length_vartime(c, p[0..<3]);
+  if l.code != V2_OK { return V2Got.{code = l.code, n = l.n}; }
+  if l.n + V2_EXPANSION > p.count { return V2Got.{code = V2_TRUNCATED, n = l.n}; }
+  o := v2_packet_open(c, aad, p[3..<l.n + V2_EXPANSION]);
+  return V2Got.{code = o.code, n = l.n, ignore = o.ignore};
+}
+
+same :: (a: [32] u8, b: [32] u8) -> bool { for i: 0..<32 { if a[i] != b[i] { return false; } } return true; }
+
+main :: () {
+  // ---- BIP-324's packet vectors, from the keys to the ciphertext and back
+  big: [16777235] u8; empty: [1] u8; aad: [4096] u8; part: [512] u8;
+  print("packet vectors\n");
+  for k: 0..<V2_PACKETS.count {
+    row := V2_PACKETS[k];
+    c: [1] V2Cipher; d: [1] V2Cipher;
+    ok := row_cipher(row, row.initiating, c[..]) && row_cipher(row, !row.initiating, d[..]);
+    keys := ok && v2_hex_is(c[0].session_id[..], row.session_id)
+      && v2_hex_is(c[0].send_terminator[..], row.send_terminator) && v2_hex_is(c[0].recv_terminator[..], row.recv_terminator);
+    // The row's index: that many empty decoys first, each opened by the peer.
+    for i: 0..<row.idx {
+      n := send(c[..], 0, empty[0..<0], true, part[..]);
+      got := receive(d[..], empty[0..<0], part[0..<n]);
+      if got.code != V2_OK || !got.ignore { ok = false; }
+    }
+    unit := v2_unhex(row.contents, part[..]); n := unit.count * row.multiply;
+    for i: 0..<row.multiply { for j: 0..<unit.count { big[4 + i * unit.count + j] = unit[j]; } }
+    a := v2_unhex(row.aad, aad[..]);
+    m := send(c[..], n, a, row.ignore, big[..]);
+    match := ifx row.ciphertext.count > 0 then v2_hex_is(big[0..<m], row.ciphertext)
+      else v2_hex_is(big[m - 128..<m], row.endswith);
+    got := receive(d[..], a, big[0..<m]);
+    // Opened, the contents are back in place; a decoy says so.
+    if got.code == V2_OK {
+      if got.n != n || got.ignore != row.ignore { got.code = V2_BAD_TYPE; }
+      for i: 0..<row.multiply { for j: 0..<unit.count { if big[4 + i * unit.count + j] != unit[j] { got.code = V2_BAD_TYPE; } } }
+    }
+    print("  row %: packet % from the %, % byte% %: keys %, % %; opened: %\n", k, row.idx,
+      ifx row.initiating then "initiator" else "responder", n, ifx n == 1 then "" else "s",
+      ifx row.ignore then "(a decoy)" else "(data)", ok && keys,
+      ifx row.ciphertext.count > 0 then "ciphertext" else "last 128 bytes", match, CODES[got.code]);
+  }
+
+  // ---- a handshake between keys 1 and 2, in memory
+  print("a handshake\n");
+  ka: [32] u8; ka[31] = 1; kb: [32] u8; kb[31] = 2; ea: [64] u8; eb: [64] u8; work: [1] EcdhScratch;
+  ra: [32] u8; rb: [32] u8; for i: 0..<32 { ra[i] = cast(u8) i; rb[i] = cast(u8) (32 + i); }
+  created := ellswift_create(ka[..], ra[..], ea[..], work[..]) == EC_OK && ellswift_create(kb[..], rb[..], eb[..], work[..]) == EC_OK;
+  work[0] = EcdhScratch.{};
+  // The initiator's first bytes: its key and 7 bytes of garbage.
+  wire: [4096] u8; w := 0;
+  for i: 0..<64 { wire[w] = ea[i]; w += 1; }
+  garbage_a := "garbage"; for i: 0..<garbage_a.count { wire[w] = garbage_a[i]; w += 1; }
+  print("  initiator sends % bytes: its key and % bytes of garbage\n", w, garbage_a.count);
+  print("  the responder's v1 check on the first 16 bytes: %\n", v2_looks_like_v1_vartime(wire[0..<16], MAINNET));
+  // The responder answers: its key, no garbage, its terminator, its version packet.
+  sa: [32] u8; sb: [32] u8; ca: [1] V2Cipher; cb: [1] V2Cipher;
+  xb := ellswift_xdh(eb[..], wire[0..<64], kb[..], false, sb[..], work[..]); work[0] = EcdhScratch.{};
+  ib := v2_cipher_init(cb[..], sb[..], MAINNET, false);
+  back: [4096] u8; r := 0;
+  for i: 0..<64 { back[r] = eb[i]; r += 1; }
+  for i: 0..<16 { back[r] = cb[0].send_terminator[i]; r += 1; }
+  r += send(cb[..], 0, back[64..<64], false, back[r..<4096]);   // version: empty contents, AAD = no garbage
+  print("  responder sends % bytes: key, terminator, version packet\n", r);
+  // The initiator derives the same keys and finds the terminator.
+  xa := ellswift_xdh(ea[..], back[0..<64], ka[..], true, sa[..], work[..]); work[0] = EcdhScratch.{};
+  ia := v2_cipher_init(ca[..], sa[..], MAINNET, true);
+  g := v2_garbage_vartime(back[64..<r], ca[0].recv_terminator);
+  print("  initiator finds the terminator: %, after % bytes of garbage\n", CODES[g.code], g.n);
+  at := 64 + g.n + V2_TERMINATOR;
+  got := receive(ca[..], back[64..<64 + g.n], back[at..<r]);
+  print("  and reads the version packet: %, % bytes of contents\n", CODES[got.code], got.n);
+  print("  both sides have session id "); show(ca[0].session_id[..]); print(": %\n", same(ca[0].session_id, cb[0].session_id));
+  // The initiator's terminator, a decoy carrying its garbage as AAD, then its version packet.
+  for i: 0..<16 { wire[w] = ca[0].send_terminator[i]; w += 1; }
+  start := w;
+  for i: 0..<10 { wire[w + 4 + i] = 0; }
+  w += send(ca[..], 10, wire[64..<64 + garbage_a.count], true, wire[w..<4096]);
+  w += send(ca[..], 0, empty[0..<0], false, wire[w..<4096]);
+  g = v2_garbage_vartime(wire[64..<w], cb[0].recv_terminator);
+  print("  responder finds the terminator after % bytes of garbage\n", g.n);
+  got = receive(cb[..], wire[64..<64 + g.n], wire[start..<w]);
+  print("  a decoy: %, % bytes, ignore %\n", CODES[got.code], got.n, got.ignore);
+  got = receive(cb[..], empty[0..<0], wire[start + 30..<w]);
+  print("  the version packet: %, ignore %\n", CODES[got.code], got.ignore);
+
+  // ---- messages after the handshake
+  print("messages\n");
+  nonce := [8] u8.[1, 2, 3, 4, 5, 6, 7, 8]; p: [128] u8;
+  n := v2_contents_write_vartime("ping", nonce[..], p[4..<128]); id := p[4];
+  m := send(ca[..], n, empty[0..<0], false, p[..]);
+  v1: [64] u8; v1n := p2p_frame_write_vartime(MAINNET, "ping", nonce[..], v1[..]);
+  print("  ping: short ID %, % bytes of contents, % bytes on the wire (v1: %)\n", id, n, m, v1n);
+  got = receive(cb[..], empty[0..<0], p[0..<m]);
+  t := v2_contents_read_vartime(p[4..<4 + got.n]);
+  print("  received: %, message %, payload ", CODES[got.code], V2_MESSAGE_IDS[t.id]); show(p[4 + t.payload..<4 + got.n]); print("\n");
+  n = v2_contents_write_vartime("sendaddrv2", empty[0..<0], p[4..<128]);
+  m = send(ca[..], n, empty[0..<0], false, p[..]);
+  print("  sendaddrv2 has no short ID: % bytes of contents, % on the wire\n", n, m);
+  got = receive(cb[..], empty[0..<0], p[0..<m]);
+  t = v2_contents_read_vartime(p[4..<4 + got.n]);
+  print("  received: %, message %\n", CODES[got.code], cast(string) p[5..<5 + t.command_n]);
+  p[4] = 200;
+  print("  contents with ID 200: %\n", CODES[v2_contents_read_vartime(p[4..<5]).code]);
+
+  // ---- rekeying
+  print("rekeying\n");
+  key := ca[0].send_p[0].key; lkey := ca[0].send_l[0].key; sent := ca[0].send_p[0].packet;
+  while ca[0].send_p[0].packet % V2_REKEY != 0 {
+    m = send(ca[..], 0, empty[0..<0], true, p[..]);
+    got = receive(cb[..], empty[0..<0], p[0..<m]);
+  }
+  print("  the initiator had sent % packets; % decoys later it has sent %\n", sent, ca[0].send_p[0].packet - sent, ca[0].send_p[0].packet);
+  print("  the packet key changed: %, the length key changed: %\n", !same(key, ca[0].send_p[0].key), !same(lkey, ca[0].send_l[0].key));
+  p[4] = 18; for i: 0..<8 { p[5 + i] = nonce[i]; }
+  m = send(ca[..], 9, empty[0..<0], false, p[..]);
+  print("  packet 224, the first with the new keys: "); show(p[0..<m]); print("\n");
+  q := p;
+  got = receive(cb[..], empty[0..<0], p[0..<m]);
+  print("  the responder opens it: %, message %\n", CODES[got.code], V2_MESSAGE_IDS[cast(int) p[4]]);
+  // The same bytes again: the responder's ciphers have moved on.
+  got = receive(cb[..], empty[0..<0], q[0..<m]);
+  print("  the same packet replayed: %, its length reads as %\n", CODES[got.code], got.n);
+}
+// book:end example

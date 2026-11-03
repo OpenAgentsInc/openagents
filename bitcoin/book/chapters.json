@@ -1349,17 +1349,23 @@
   {
    "number": 67,
    "title": "The v2 encrypted transport",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch067-the-v2-encrypted-transport.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     9,
     12,
     65,
     66
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/v2transport.coax",
+    "bitcoin/examples/v2-transport.coax",
+    "bitcoin/examples/checks/v2-transport.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

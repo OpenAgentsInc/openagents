@@ -82,3 +82,4 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [65. P2P messages and checksums](ch065-p2p-messages-and-checksums.md) — implemented
 - [66. ElligatorSwift](ch066-elligatorswift.md) — implemented
+- [67. The v2 encrypted transport](ch067-the-v2-encrypted-transport.md) — implemented

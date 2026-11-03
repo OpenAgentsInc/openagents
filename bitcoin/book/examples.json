@@ -503,6 +503,18 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "bitcoin/examples/v2-transport.coax",
+      "chapter": "bitcoin/book/ch067-the-v2-encrypted-transport.md",
+      "stdout": "bitcoin/fixtures/v2-transport.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "stack_kib": 24576,
+      "timeout": 300
     }
   ]
 }

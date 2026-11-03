@@ -289,6 +289,17 @@ that a maliciously replaced manifest is authentic.
   key exchanges, whose decoded x, shared x and shared secret chapter 66
   claims. `make_ellswift_vectors.py` reads all three, and `ellswift.py`
   runs `reference.py` as the cross-check's oracle.
+- **The v2 transport (Bitcoin chapter 67):** BIP-324's
+  `packet_encoding_test_vectors.csv` and `reference.py`, pinned above for
+  chapter 66, give seven packets with every derived key, terminator and
+  session ID, and the whole ciphertext or its last 128 bytes. Bitcoin
+  Core's `bip324.cpp` (`BIP324Cipher`) at revision `ddea9196` is pinned
+  for the cipher's structure; `net.cpp` (`V2Transport`, `V2_MESSAGE_IDS`,
+  `GetMessageType`, `ProcessReceivedGarbageBytes`), `net.h`, `protocol.h`
+  and `serialize.h`, pinned above, give the message-ID table and the
+  limits. `make_v2transport_vectors.py` reads the vectors, and
+  `v2transport.py` runs `reference.py` and reads the Core files as the
+  cross-check's oracle.
 - **Chain parameters (Bitcoin chapter 50):** Bitcoin Core's
   `kernel/chainparams.cpp` (every network's class), `kernel/signet.h`
   (`SIGNET_DEFAULT_CHALLENGE`, `GetSignetMessageStart`), `signet.cpp`
@@ -505,4 +516,5 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip324/xswiftec_inv_test_vectors.csv`](upstream/bip324/xswiftec_inv_test_vectors.csv) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/xswiftec_inv_test_vectors.csv) | `b5e8e0e9edfdee14c3ec4db3c6763543a9f17290a84a93de0ae2671c16f4432a` |
 | [`upstream/bip324/packet_encoding_test_vectors.csv`](upstream/bip324/packet_encoding_test_vectors.csv) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/packet_encoding_test_vectors.csv) | `61704507945e2fa99e6c799fab888593eb7a2c3d2018f42ee4a3c3abe0684269` |
 | [`upstream/bip324/reference.py`](upstream/bip324/reference.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/reference.py) | `cb074b4e64bcb096ff4a2f1ee3a0580c383bb1d02662b7dccdd4968bc6b7af4f` |
+| [`upstream/bitcoin-core/bip324.cpp`](upstream/bitcoin-core/bip324.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/bip324.cpp) | `58aaf7d2a2ab98679bbb1e1d4c40d0c3e4021822fd1f628099c1a178e4494685` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

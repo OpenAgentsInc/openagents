@@ -39,6 +39,19 @@ def load_reference():
     return module
 
 
+def encode(R, x, rnd):
+    """The chapter's encoder: attempt i draws u from SHA-256(rnd || i || 0)
+    and the case from SHA-256(rnd || i || 1)."""
+    for attempt in range(1024):
+        seed = rnd + attempt.to_bytes(4, 'little')
+        u = R.FE(int.from_bytes(hashlib.sha256(seed + b'\x00').digest(), 'big'))
+        case = hashlib.sha256(seed + b'\x01').digest()[0] & 7
+        t = R.xswiftec_inv(x, u, case)
+        if t is not None and u != 0:
+            return u.to_bytes() + t.to_bytes()
+    raise AssertionError('no encoding')
+
+
 def transcript():
     R = load_reference()
     FE = R.FE
@@ -92,19 +105,9 @@ def transcript():
         match += ok
     out(f'exchange: {match} of {len(packets)} rows give their x, shared x and shared secret')
 
-    def encode(x, rnd):
-        for attempt in range(1024):
-            seed = rnd + attempt.to_bytes(4, 'little')
-            u = FE(int.from_bytes(hashlib.sha256(seed + b'\x00').digest(), 'big'))
-            case = hashlib.sha256(seed + b'\x01').digest()[0] & 7
-            t = R.xswiftec_inv(x, u, case)
-            if t is not None and u != 0:
-                return u.to_bytes() + t.to_bytes()
-        raise AssertionError('no encoding')
-
     a, b = (1).to_bytes(32, 'big'), (2).to_bytes(32, 'big')
-    ea = encode((1 * R.SECP256K1_G).x, bytes(range(32)))
-    eb = encode((2 * R.SECP256K1_G).x, bytes(range(32, 64)))
+    ea = encode(R, (1 * R.SECP256K1_G).x, bytes(range(32)))
+    eb = encode(R, (2 * R.SECP256K1_G).x, bytes(range(32, 64)))
     out(f'initiator, key 1: {ea.hex()}')
     out(f'  decodes to {R.ellswift_decode(ea).hex()} (the generator\'s x)')
     out(f'responder, key 2: {eb.hex()}')

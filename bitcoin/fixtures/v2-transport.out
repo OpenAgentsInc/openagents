@@ -1,0 +1,30 @@
+packet vectors
+  row 0: packet 1 from the initiator, 1 byte (data): keys true, ciphertext true; opened: ok
+  row 1: packet 999 from the responder, 17 bytes (data): keys true, ciphertext true; opened: ok
+  row 2: packet 0 from the initiator, 63 bytes (data): keys true, ciphertext true; opened: ok
+  row 3: packet 223 from the responder, 128 bytes (a decoy): keys true, last 128 bytes true; opened: ok
+  row 4: packet 448 from the initiator, 193 bytes (data): keys true, last 128 bytes true; opened: ok
+  row 5: packet 673 from the responder, 4000001 bytes (data): keys true, last 128 bytes true; opened: ok
+  row 6: packet 1024 from the initiator, 16777215 bytes (a decoy): keys true, last 128 bytes true; opened: too large
+a handshake
+  initiator sends 71 bytes: its key and 7 bytes of garbage
+  the responder's v1 check on the first 16 bytes: false
+  responder sends 100 bytes: key, terminator, version packet
+  initiator finds the terminator: ok, after 0 bytes of garbage
+  and reads the version packet: ok, 0 bytes of contents
+  both sides have session id 1d4d114f7ded609f67be356e5bc8f18f4aa864871fd7f66ec72713ad86bf453c: true
+  responder finds the terminator after 7 bytes of garbage
+  a decoy: ok, 10 bytes, ignore true
+  the version packet: ok, ignore false
+messages
+  ping: short ID 18, 9 bytes of contents, 29 bytes on the wire (v1: 32)
+  received: ok, message ping, payload 0102030405060708
+  sendaddrv2 has no short ID: 13 bytes of contents, 33 on the wire
+  received: ok, message sendaddrv2
+  contents with ID 200: bad type
+rekeying
+  the initiator had sent 4 packets; 220 decoys later it has sent 224
+  the packet key changed: true, the length key changed: true
+  packet 224, the first with the new keys: e4140e18dee69123c7d4f0eeb8d57fadd4561fef0a0dd89de0bdf7a279
+  the responder opens it: ok, message ping
+  the same packet replayed: truncated, its length reads as 2780197

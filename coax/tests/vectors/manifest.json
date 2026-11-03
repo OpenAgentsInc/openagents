@@ -672,7 +672,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-transactions"
+        "bitcoin-transactions",
+        "bitcoin-v2-transport"
       ],
       "retrieved": "2026-11-02",
       "sha256": "9acb4bab2fe63ef351429b19d6ed75a9e719705060999c4e5dba78ce7c08db6f",
@@ -1881,7 +1882,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-p2p"
+        "bitcoin-p2p",
+        "bitcoin-v2-transport"
       ],
       "retrieved": "2026-11-03",
       "sha256": "92d6290df90eaea49b4a110b518ff34be914666471a5dee7e5eaa26832986738",
@@ -1907,7 +1909,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-p2p"
+        "bitcoin-p2p",
+        "bitcoin-v2-transport"
       ],
       "retrieved": "2026-11-03",
       "sha256": "c268325ae03f4f80e8427af80eb794265b08e3686923b7a5a8b850416bed213b",
@@ -1920,7 +1923,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-p2p"
+        "bitcoin-p2p",
+        "bitcoin-v2-transport"
       ],
       "retrieved": "2026-11-03",
       "sha256": "05e8ce20762e9c23e060d428fb5218cb32fea599afbd40b2417b9bd2a236d7a6",
@@ -2177,6 +2181,19 @@
       "retrieved": "2026-11-03",
       "sha256": "cb074b4e64bcb096ff4a2f1ee3a0580c383bb1d02662b7dccdd4968bc6b7af4f",
       "bytes": 23049
+    },
+    {
+      "path": "upstream/bitcoin-core/bip324.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/bip324.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-v2-transport"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "58aaf7d2a2ab98679bbb1e1d4c40d0c3e4021822fd1f628099c1a178e4494685",
+      "bytes": 4548
     }
   ]
 }
