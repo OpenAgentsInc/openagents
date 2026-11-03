@@ -272,6 +272,29 @@ class RunBudgetTests(unittest.TestCase):
         self.assertEqual(d['aggregate_slot_limit'], 1572864)
         self.assertEqual(d['aggregate_container_limit'], 131072)
 
+    # Retained-store summaries walk the call graph without a depth limit
+    # (#12681): a 33-call chain used to stop with E0381.
+    def test_call_chains_have_no_checker_depth_limit(self):
+        for length in (33, 71, 1000, 10000):
+            with self.subTest(length=length):
+                source = ''.join('g%d :: ()->int {return g%d();}\n' % (i, i + 1) for i in range(length - 1))
+                source += 'g%d :: ()->int {return 1;}\nmain :: () { x := g0(); }\n' % (length - 1)
+                r = self.invoke(source, 'check')
+                self.assertEqual((r.returncode, r.stderr), (0, ''))
+
+    def test_a_retained_store_is_found_through_a_deep_relay_chain(self):
+        for length in (40, 500):
+            with self.subTest(length=length):
+                source = ('Slot :: struct { view: []u8; }\n'
+                          'bad :: (dst: []Slot) {\n  local: [4]u8;\n  relay0(dst, local[..]);\n}\n')
+                source += ''.join('relay%d :: (dst: []Slot, input: []u8) { relay%d(dst, input); }\n' % (i, i + 1) for i in range(length))
+                source += 'relay%d :: (dst: []Slot, input: []u8) { dst[0].view = input; }\nmain :: () {}\n' % length
+                r = self.invoke(source, 'check')
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn('case.coax:4:', r.stderr)
+                self.assertIn('error[E0383]', r.stderr)
+                self.assertNotIn('E0381', r.stderr)
+
 class CapacityTests(unittest.TestCase):
     """The near-limit report (spec 16.2) at 75% and 100% of each compile-time
     and nesting limit: a note above three quarters, success at the limit,

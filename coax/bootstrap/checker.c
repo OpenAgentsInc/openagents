@@ -2,21 +2,21 @@
 static const char *coax_source_path = "lib/compiler/checker.coax";
 struct coax_source_range { int first, last, base, fixed; const char *path; };
 static const struct coax_source_range coax_source_ranges[] = {
-  {1,86552,1,0,"lib/compiler/checker.coax"},
-  {86553,86612,1,0,"lib/compiler/query-index.coax"},
-  {86613,86651,1,0,"lib/compiler/literal-projection-cache.coax"},
-  {86652,86981,1,0,"lib/compiler/borrow-summary.coax"},
-  {86982,87043,1,0,"lib/compiler/query-projection-cache.coax"},
-  {87044,87358,1,0,"lib/compiler/sum-types.coax"},
-  {87359,87418,1,0,"lib/compiler/sum-layout.coax"},
-  {87419,87738,1,0,"lib/compiler/result-handling.coax"},
-  {87739,87811,1,0,"lib/compiler/result-flow.coax"},
-  {87812,88006,1,0,"lib/compiler/retain-policy.coax"},
-  {88007,88096,1,0,"lib/compiler/quantity.coax"},
-  {88097,88236,1,0,"lib/compiler/unit-algebra.coax"},
-  {88237,88359,1,0,"lib/compiler/unit-forms.coax"},
-  {88360,88480,1,0,"lib/compiler/spatial-policy.coax"},
-  {88481,88550,1,0,"lib/compiler/spatial-mutation.coax"},
+  {1,86599,1,0,"lib/compiler/checker.coax"},
+  {86600,86659,1,0,"lib/compiler/query-index.coax"},
+  {86660,86698,1,0,"lib/compiler/literal-projection-cache.coax"},
+  {86699,87028,1,0,"lib/compiler/borrow-summary.coax"},
+  {87029,87090,1,0,"lib/compiler/query-projection-cache.coax"},
+  {87091,87405,1,0,"lib/compiler/sum-types.coax"},
+  {87406,87465,1,0,"lib/compiler/sum-layout.coax"},
+  {87466,87785,1,0,"lib/compiler/result-handling.coax"},
+  {87786,87858,1,0,"lib/compiler/result-flow.coax"},
+  {87859,88053,1,0,"lib/compiler/retain-policy.coax"},
+  {88054,88143,1,0,"lib/compiler/quantity.coax"},
+  {88144,88283,1,0,"lib/compiler/unit-algebra.coax"},
+  {88284,88406,1,0,"lib/compiler/unit-forms.coax"},
+  {88407,88527,1,0,"lib/compiler/spatial-policy.coax"},
+  {88528,88597,1,0,"lib/compiler/spatial-mutation.coax"},
 };
 static const struct coax_source_range *coax_find_source(int line) {
   for (unsigned i=0;i<sizeof(coax_source_ranges)/sizeof(coax_source_ranges[0]);i++) if (line>=coax_source_ranges[i].first && line<=coax_source_ranges[i].last) return &coax_source_ranges[i];
@@ -354,7 +354,7 @@ typedef uint8_t coax_t_CR_Phase;
 #define COAX_CR_Phase_active ((coax_t_CR_Phase)UINT64_C(1))
 #define COAX_CR_Phase_done ((coax_t_CR_Phase)UINT64_C(2))
 #define COAX_CR_Phase_seeded ((coax_t_CR_Phase)UINT64_C(3))
-struct coax_t_CK_Node { coax_t_CK_Tag kind; coax_t_CK_Loc loc; coax_string name; coax_string name2; coax_t_CK_Loc loc2; int64_t a; int64_t b; int64_t c; int64_t d; int64_t head; int64_t tail; int64_t next; uint32_t op; _Bool flag; _Bool flag2; uint64_t value; uint64_t floating; int64_t type; int64_t field_index; int64_t proc; int64_t constant; _Bool negative; _Bool folded; _Bool builtin_print; uint32_t byte_intrinsic; uint32_t intrinsic; int64_t mark; _Bool reached; _Bool metal_done; _Bool metal_active; _Bool skip_authority; int64_t scope; _Bool collides; int64_t clash; uint8_t effects; uint8_t own_effects; _Bool effects_known; _Bool generic; int64_t origin; int64_t pristine; int64_t chain; coax_string key; uint8_t quantity; coax_t_Q_Unit unit; int64_t unit_form; int64_t unit_link; _Bool unit_generated; _Bool frame_decl; coax_t_SP_Frame frame; int64_t spatial_link; coax_t_CK_Lowering lowering; coax_t_CK_Mutation mutation_status; uint32_t mutation_op; int64_t mutation_proc; int64_t borrow_binding; int64_t borrow_owner; int64_t borrow_writes; int64_t borrow_returns; int64_t borrow_calls; int64_t borrow_next; uint8_t borrow_status; int64_t borrow_query; int64_t retain_head; int64_t retain_count; coax_t_CR_Phase retain_mark; _Bool retain_incomplete; _Bool retain_relation; _Bool effect_present; _Bool pure_decl; int64_t effect_head; coax_t_CK_Loc effect_loc; int64_t sum_variant; int64_t propagate_type; int64_t source_unit; };
+struct coax_t_CK_Node { coax_t_CK_Tag kind; coax_t_CK_Loc loc; coax_string name; coax_string name2; coax_t_CK_Loc loc2; int64_t a; int64_t b; int64_t c; int64_t d; int64_t head; int64_t tail; int64_t next; uint32_t op; _Bool flag; _Bool flag2; uint64_t value; uint64_t floating; int64_t type; int64_t field_index; int64_t proc; int64_t constant; _Bool negative; _Bool folded; _Bool builtin_print; uint32_t byte_intrinsic; uint32_t intrinsic; int64_t mark; _Bool reached; _Bool metal_done; _Bool metal_active; _Bool skip_authority; int64_t scope; _Bool collides; int64_t clash; uint8_t effects; uint8_t own_effects; _Bool effects_known; _Bool generic; int64_t origin; int64_t pristine; int64_t chain; coax_string key; uint8_t quantity; coax_t_Q_Unit unit; int64_t unit_form; int64_t unit_link; _Bool unit_generated; _Bool frame_decl; coax_t_SP_Frame frame; int64_t spatial_link; coax_t_CK_Lowering lowering; coax_t_CK_Mutation mutation_status; uint32_t mutation_op; int64_t mutation_proc; int64_t borrow_binding; int64_t borrow_owner; int64_t borrow_writes; int64_t borrow_returns; int64_t borrow_calls; int64_t borrow_next; uint8_t borrow_status; int64_t borrow_query; int64_t retain_head; int64_t retain_count; coax_t_CR_Phase retain_mark; _Bool retain_incomplete; _Bool retain_relation; _Bool effect_present; _Bool pure_decl; int64_t effect_head; coax_t_CK_Loc effect_loc; int64_t sum_variant; int64_t propagate_type; int64_t source_unit; int64_t retain_return; };
 typedef uint8_t coax_t_CK_Kind;
 #define COAX_CK_Kind_invalid ((coax_t_CK_Kind)UINT64_C(0))
 #define COAX_CK_Kind_void_ ((coax_t_CK_Kind)UINT64_C(1))
@@ -437,7 +437,7 @@ typedef struct { coax_t_CB_State *data; int64_t count; } coax_v_t_CB_State;
 struct coax_t_CB_Context { coax_t_CK_Context c; coax_v_t_CK_BorrowQuery queries; coax_v_t_BS_Origin origins; coax_v_t_CB_State state; _Bool retain_classes; _Bool retain_fields; _Bool literal_cache; _Bool query_index; };
 struct coax_t_CB_Place { int64_t decl; coax_t_BS_Path path; };
 struct coax_t_CR_Shape { int64_t type; int64_t decl; int64_t head; int64_t count; int64_t max_field; int64_t max_type; coax_a8_s64 fields; coax_a8_s64 ordinals; };
-struct coax_t_CR_State { int64_t effects; int64_t reports; int64_t depth; coax_t_CR_Shape shape; coax_t_CR_Shape shape_previous; int64_t leaves; _Bool join_arrays; };
+struct coax_t_CR_State { int64_t effects; int64_t reports; coax_t_CR_Shape shape; coax_t_CR_Shape shape_previous; int64_t leaves; _Bool join_arrays; };
 typedef struct { coax_t_CR_State *data; int64_t count; } coax_v_t_CR_State;
 struct coax_t_CR_Context { coax_t_CB_Context b; coax_v_t_CK_RetainEffect effects; coax_v_t_CK_RetainObservation reports; coax_v_t_CR_State state; };
 struct coax_t_CR_Result { _Bool complete; _Bool relation; int64_t pending; };
@@ -1333,6 +1333,8 @@ typedef struct { coax_t_CK_RetainObservation e[16]; } coax_a16_t_CK_RetainObserv
 typedef struct { coax_t_BS_Origin e[65]; } coax_a65_t_BS_Origin;
 typedef struct { coax_t_BS_Origin e[4096]; } coax_a4096_t_BS_Origin;
 typedef struct { coax_t_CK_RetainObservation e[16384]; } coax_a16384_t_CK_RetainObservation;
+typedef struct { coax_t_CK_Node e[384]; } coax_a384_t_CK_Node;
+typedef struct { coax_t_CK_RetainObservation e[256]; } coax_a256_t_CK_RetainObservation;
 typedef struct { coax_t_CK_Node e[320]; } coax_a320_t_CK_Node;
 typedef struct { coax_t_CB_State e[2]; } coax_a2_t_CB_State;
 typedef struct { coax_t_CK_Type e[19]; } coax_a19_t_CK_Type;
@@ -1347,7 +1349,6 @@ typedef struct { coax_t_CK_Node e[400]; } coax_a400_t_CK_Node;
 typedef struct { coax_t_CK_Node e[336]; } coax_a336_t_CK_Node;
 typedef struct { int64_t e[42]; } coax_a42_s64;
 typedef struct { _Bool e[42]; } coax_a42_bool;
-typedef struct { coax_t_CK_Node e[384]; } coax_a384_t_CK_Node;
 typedef struct { coax_t_CK_RetainEffect e[127]; } coax_a127_t_CK_RetainEffect;
 typedef struct { coax_t_CK_Type e[300]; } coax_a300_t_CK_Type;
 typedef struct { coax_t_CK_Node e[600]; } coax_a600_t_CK_Node;
@@ -1408,7 +1409,7 @@ COAX_LAYOUT(sizeof(coax_t_CK_Loc) == 24 && _Alignof(coax_t_CK_Loc) == 8, "layout
 COAX_LAYOUT(offsetof(coax_t_CK_Loc, line) == 0, "offset of CK_Loc.line");
 COAX_LAYOUT(offsetof(coax_t_CK_Loc, column) == 8, "offset of CK_Loc.column");
 COAX_LAYOUT(offsetof(coax_t_CK_Loc, offset) == 16, "offset of CK_Loc.offset");
-COAX_LAYOUT(sizeof(coax_t_CK_Node) == 576 && _Alignof(coax_t_CK_Node) == 8, "layout of CK_Node");
+COAX_LAYOUT(sizeof(coax_t_CK_Node) == 584 && _Alignof(coax_t_CK_Node) == 8, "layout of CK_Node");
 COAX_LAYOUT(offsetof(coax_t_CK_Node, kind) == 0, "offset of CK_Node.kind");
 COAX_LAYOUT(offsetof(coax_t_CK_Node, loc) == 8, "offset of CK_Node.loc");
 COAX_LAYOUT(offsetof(coax_t_CK_Node, name) == 32, "offset of CK_Node.name");
@@ -1483,6 +1484,7 @@ COAX_LAYOUT(offsetof(coax_t_CK_Node, effect_loc) == 528, "offset of CK_Node.effe
 COAX_LAYOUT(offsetof(coax_t_CK_Node, sum_variant) == 552, "offset of CK_Node.sum_variant");
 COAX_LAYOUT(offsetof(coax_t_CK_Node, propagate_type) == 560, "offset of CK_Node.propagate_type");
 COAX_LAYOUT(offsetof(coax_t_CK_Node, source_unit) == 568, "offset of CK_Node.source_unit");
+COAX_LAYOUT(offsetof(coax_t_CK_Node, retain_return) == 576, "offset of CK_Node.retain_return");
 COAX_LAYOUT(sizeof(coax_t_CK_Type) == 192 && _Alignof(coax_t_CK_Type) == 8, "layout of CK_Type");
 COAX_LAYOUT(offsetof(coax_t_CK_Type, kind) == 0, "offset of CK_Type.kind");
 COAX_LAYOUT(offsetof(coax_t_CK_Type, name) == 8, "offset of CK_Type.name");
@@ -1676,14 +1678,13 @@ COAX_LAYOUT(offsetof(coax_t_CR_Shape, max_field) == 32, "offset of CR_Shape.max_
 COAX_LAYOUT(offsetof(coax_t_CR_Shape, max_type) == 40, "offset of CR_Shape.max_type");
 COAX_LAYOUT(offsetof(coax_t_CR_Shape, fields) == 48, "offset of CR_Shape.fields");
 COAX_LAYOUT(offsetof(coax_t_CR_Shape, ordinals) == 112, "offset of CR_Shape.ordinals");
-COAX_LAYOUT(sizeof(coax_t_CR_State) == 392 && _Alignof(coax_t_CR_State) == 8, "layout of CR_State");
+COAX_LAYOUT(sizeof(coax_t_CR_State) == 384 && _Alignof(coax_t_CR_State) == 8, "layout of CR_State");
 COAX_LAYOUT(offsetof(coax_t_CR_State, effects) == 0, "offset of CR_State.effects");
 COAX_LAYOUT(offsetof(coax_t_CR_State, reports) == 8, "offset of CR_State.reports");
-COAX_LAYOUT(offsetof(coax_t_CR_State, depth) == 16, "offset of CR_State.depth");
-COAX_LAYOUT(offsetof(coax_t_CR_State, shape) == 24, "offset of CR_State.shape");
-COAX_LAYOUT(offsetof(coax_t_CR_State, shape_previous) == 200, "offset of CR_State.shape_previous");
-COAX_LAYOUT(offsetof(coax_t_CR_State, leaves) == 376, "offset of CR_State.leaves");
-COAX_LAYOUT(offsetof(coax_t_CR_State, join_arrays) == 384, "offset of CR_State.join_arrays");
+COAX_LAYOUT(offsetof(coax_t_CR_State, shape) == 16, "offset of CR_State.shape");
+COAX_LAYOUT(offsetof(coax_t_CR_State, shape_previous) == 192, "offset of CR_State.shape_previous");
+COAX_LAYOUT(offsetof(coax_t_CR_State, leaves) == 368, "offset of CR_State.leaves");
+COAX_LAYOUT(offsetof(coax_t_CR_State, join_arrays) == 376, "offset of CR_State.join_arrays");
 COAX_LAYOUT(sizeof(coax_t_CR_Context) == 344 && _Alignof(coax_t_CR_Context) == 8, "layout of CR_Context");
 COAX_LAYOUT(offsetof(coax_t_CR_Context, b) == 0, "offset of CR_Context.b");
 COAX_LAYOUT(offsetof(coax_t_CR_Context, effects) == 296, "offset of CR_Context.effects");
@@ -2345,11 +2346,11 @@ static coax_a2359_t_CK_Type coax_init_a2359_t_CK_Type(void);
 static coax_a72_t_CK_Node coax_init_a72_t_CK_Node(void);
 static coax_a224_t_CK_Node coax_init_a224_t_CK_Node(void);
 static coax_a21_t_CK_Type coax_init_a21_t_CK_Type(void);
+static coax_a384_t_CK_Node coax_init_a384_t_CK_Node(void);
 static coax_a320_t_CK_Node coax_init_a320_t_CK_Node(void);
 static coax_a19_t_CK_Type coax_init_a19_t_CK_Type(void);
 static coax_a400_t_CK_Node coax_init_a400_t_CK_Node(void);
 static coax_a336_t_CK_Node coax_init_a336_t_CK_Node(void);
-static coax_a384_t_CK_Node coax_init_a384_t_CK_Node(void);
 static coax_a300_t_CK_Type coax_init_a300_t_CK_Type(void);
 static coax_a600_t_CK_Node coax_init_a600_t_CK_Node(void);
 static coax_a23_t_CK_Type coax_init_a23_t_CK_Type(void);
@@ -3718,6 +3719,12 @@ static coax_a21_t_CK_Type coax_init_a21_t_CK_Type(void) {
   for (int64_t i = 0; i < 21; i++) v.e[i] = coax_init_t_CK_Type();
   return v;
 }
+static coax_a384_t_CK_Node coax_init_a384_t_CK_Node(void) {
+  coax_a384_t_CK_Node v;
+  memset(&v, 0, sizeof v);
+  for (int64_t i = 0; i < 384; i++) v.e[i] = coax_init_t_CK_Node();
+  return v;
+}
 static coax_a320_t_CK_Node coax_init_a320_t_CK_Node(void) {
   coax_a320_t_CK_Node v;
   memset(&v, 0, sizeof v);
@@ -3740,12 +3747,6 @@ static coax_a336_t_CK_Node coax_init_a336_t_CK_Node(void) {
   coax_a336_t_CK_Node v;
   memset(&v, 0, sizeof v);
   for (int64_t i = 0; i < 336; i++) v.e[i] = coax_init_t_CK_Node();
-  return v;
-}
-static coax_a384_t_CK_Node coax_init_a384_t_CK_Node(void) {
-  coax_a384_t_CK_Node v;
-  memset(&v, 0, sizeof v);
-  for (int64_t i = 0; i < 384; i++) v.e[i] = coax_init_t_CK_Node();
   return v;
 }
 static coax_a300_t_CK_Type coax_init_a300_t_CK_Type(void) {
@@ -4060,7 +4061,7 @@ static void coax_p_CR_leaf(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_wri
 static _Bool coax_p_CR_eligible(_Bool l_generic, int64_t l_body);
 static void coax_p_CR_seed(coax_t_CR_Context l_r, int64_t l_owner);
 static void coax_p_CR_apply(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_call, _Bool l_active);
-static void coax_p_CR_summary(coax_t_CR_Context l_r, int64_t l_owner);
+static void coax_p_CR_summary(coax_t_CR_Context l_r, int64_t l_root);
 static void coax_p_CR_walk(coax_t_CR_Context l_r, int64_t l_head, _Bool l_instances, _Bool l_seed);
 static _Bool coax_p_CR_workspace_admitted(int64_t l_effect_count, int64_t l_report_count);
 static void coax_p_CR_execute(coax_t_CB_Context l_b, coax_v_t_CK_RetainEffect l_effects);
@@ -15034,12 +15035,12 @@ static _Bool coax_p_CR_shape_matches(coax_t_CR_Shape l_shape, int64_t l_type, in
 
 static void coax_p_CR_shape_keep(coax_t_CR_Context l_r, coax_t_CR_Shape l_shape) {
   coax_t_CR_Shape * coax_t674;
-  if (!coax_p_CR_shape_matches(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85243))).shape, (l_shape).type, (l_shape).decl, (l_shape).head))
+  if (!coax_p_CR_shape_matches(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85275))).shape, (l_shape).type, (l_shape).decl, (l_shape).head))
   {
-    coax_t674 = &(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85243))).shape_previous);
-    *coax_t674 = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85243))).shape;
+    coax_t674 = &(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85275))).shape_previous);
+    *coax_t674 = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85275))).shape;
   }
-  ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85244))).shape = l_shape;
+  ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85276))).shape = l_shape;
 }
 
 coax_t_CK_RetainCaps CK_retain_caps(int64_t l_nodes) {
@@ -15047,16 +15048,16 @@ coax_t_CK_RetainCaps CK_retain_caps(int64_t l_nodes) {
   {
     return ((coax_t_CK_RetainCaps){0});
   }
-  int64_t l_n = coax_mul_s64(l_nodes, INT64_C(2), 85248);
-  int64_t l_delta = coax_sub_s64(l_n, INT64_C(128), 85248);
-  l_n = coax_add_s64(INT64_C(128), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85248) ^ INT64_C(-1))))), 85248);
-  l_delta = coax_sub_s64(INT64_C(16384), l_n, 85248);
-  l_n = coax_sub_s64(INT64_C(16384), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85248) ^ INT64_C(-1))))), 85248);
+  int64_t l_n = coax_mul_s64(l_nodes, INT64_C(2), 85280);
+  int64_t l_delta = coax_sub_s64(l_n, INT64_C(128), 85280);
+  l_n = coax_add_s64(INT64_C(128), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85280) ^ INT64_C(-1))))), 85280);
+  l_delta = coax_sub_s64(INT64_C(16384), l_n, 85280);
+  l_n = coax_sub_s64(INT64_C(16384), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85280) ^ INT64_C(-1))))), 85280);
   int64_t l_reports = l_nodes;
-  l_delta = coax_sub_s64(l_reports, INT64_C(128), 85249);
-  l_reports = coax_add_s64(INT64_C(128), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85249) ^ INT64_C(-1))))), 85249);
-  l_delta = coax_sub_s64(INT64_C(16384), l_reports, 85249);
-  l_reports = coax_sub_s64(INT64_C(16384), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85249) ^ INT64_C(-1))))), 85249);
+  l_delta = coax_sub_s64(l_reports, INT64_C(128), 85281);
+  l_reports = coax_add_s64(INT64_C(128), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85281) ^ INT64_C(-1))))), 85281);
+  l_delta = coax_sub_s64(INT64_C(16384), l_reports, 85281);
+  l_reports = coax_sub_s64(INT64_C(16384), ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85281) ^ INT64_C(-1))))), 85281);
   return ((coax_t_CK_RetainCaps){.effects = l_n, .reports = l_reports, .work = INT64_C(2097152)});
 }
 
@@ -15065,13 +15066,13 @@ static void coax_p_CR_record(coax_t_CR_Context l_r, uint8_t l_kind, int64_t l_ow
   {
     return;
   }
-  if (((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85254))).reports >= ((l_r).reports).count)
+  if (((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85286))).reports >= ((l_r).reports).count)
   {
-    coax_p_CK_resource(((l_r).b).c, ((*coax_elem_v_t_CK_Node((((l_r).b).c).nodes, l_site, 85254))).loc);
+    coax_p_CK_resource(((l_r).b).c, ((*coax_elem_v_t_CK_Node((((l_r).b).c).nodes, l_site, 85286))).loc);
     return;
   }
-  (*coax_elem_v_t_CK_RetainObservation((l_r).reports, ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85255))).reports, 85255)) = ((coax_t_CK_RetainObservation){.kind = l_kind, .owner = l_owner, .site = l_site, .facts_complete = l_complete, .relation_complete = l_relation, .pending = l_pending});
-  ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85255))).reports = coax_add_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85255))).reports, INT64_C(1), 85255);
+  (*coax_elem_v_t_CK_RetainObservation((l_r).reports, ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85287))).reports, 85287)) = ((coax_t_CK_RetainObservation){.kind = l_kind, .owner = l_owner, .site = l_site, .facts_complete = l_complete, .relation_complete = l_relation, .pending = l_pending});
+  ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85287))).reports = coax_add_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85287))).reports, INT64_C(1), 85287);
 }
 
 static coax_t_CB_Result coax_p_CR_address(coax_t_CB_Context l_b, int64_t l_id, coax_t_BS_Path l_path, int64_t l_slot_type, coax_v_t_BS_Origin l_out) {
@@ -15080,74 +15081,74 @@ static coax_t_CB_Result coax_p_CR_address(coax_t_CB_Context l_b, int64_t l_id, c
   int64_t coax_t679;
   uint8_t coax_t682;
   int64_t coax_t683;
-  if ((((l_id < INT64_C(2)) || (l_id > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85258))).used)) || (!BS_path_valid(l_path))) || (!coax_p_CB_tick(l_b, ((coax_t_CK_Loc){0}))))
+  if ((((l_id < INT64_C(2)) || (l_id > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85290))).used)) || (!BS_path_valid(l_path))) || (!coax_p_CB_tick(l_b, ((coax_t_CK_Loc){0}))))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85258))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85290))).loc);
     return ((coax_t_CB_Result){0});
   }
-  if (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth >= INT64_C(32))
+  if (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth >= INT64_C(32))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).loc);
     return ((coax_t_CB_Result){0});
   }
-  ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_add_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
-  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_id, 85259));
-  if (((l_e).type < INT64_C(1)) || ((l_e).type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85260))).type_count))
+  ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_add_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
+  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_id, 85291));
+  if (((l_e).type < INT64_C(1)) || ((l_e).type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85292))).type_count))
   {
     coax_p_CK_resource((l_b).c, (l_e).loc);
     coax_ret = ((coax_t_CB_Result){0});
-    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
     return coax_ret;
   }
   if ((l_e).kind == ((coax_t_CK_Tag)UINT64_C(25)))
   {
     coax_ret = coax_p_CR_address(l_b, (l_e).a, coax_p_CB_prepend(l_b, l_path, ((uint8_t)UINT64_C(1)), (l_e).field_index), l_slot_type, l_out);
-    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
     return coax_ret;
   }
   if ((l_e).kind == ((coax_t_CK_Tag)UINT64_C(26)))
   {
-    coax_t_CK_Type l_base = (*coax_elem_v_t_CK_Type(((l_b).c).types, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).a, 85262))).type, 85262));
+    coax_t_CK_Type l_base = (*coax_elem_v_t_CK_Type(((l_b).c).types, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).a, 85294))).type, 85294));
     int64_t l_index = INT64_C(2147483647);
-    if ((((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).b, 85262))).kind == ((coax_t_CK_Tag)UINT64_C(16))) && (coax_shr_u64(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).b, 85262))).value, (int64_t)(UINT64_C(31)), 85262) == UINT64_C(0)))
+    if ((((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).b, 85294))).kind == ((coax_t_CK_Tag)UINT64_C(16))) && (coax_shr_u64(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).b, 85294))).value, (int64_t)(UINT64_C(31)), 85294) == UINT64_C(0)))
     {
-      l_index = ((int64_t)coax_cast_us((uint64_t)(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).b, 85262))).value), INT64_C(9223372036854775807), 85262));
+      l_index = ((int64_t)coax_cast_us((uint64_t)(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).b, 85294))).value), INT64_C(9223372036854775807), 85294));
     }
     coax_ret = coax_p_CR_address(l_b, (l_e).a, coax_p_CB_prepend(l_b, l_path, (((l_base).kind == ((coax_t_CK_Kind)UINT64_C(11))) ? ((uint8_t)UINT64_C(3)) : ((uint8_t)UINT64_C(2))), (((l_base).kind == ((coax_t_CK_Kind)UINT64_C(11))) ? INT64_C(0) : l_index)), l_slot_type, l_out);
-    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
     return coax_ret;
   }
   if ((l_e).kind == ((coax_t_CK_Tag)UINT64_C(30)))
   {
     coax_ret = coax_p_CR_address(l_b, (l_e).a, l_path, l_slot_type, l_out);
-    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
     return coax_ret;
   }
   if ((l_e).kind == ((coax_t_CK_Tag)UINT64_C(27)))
   {
-    if (((l_path).count == INT64_C(0)) || ((((l_path).steps).e[coax_index(INT64_C(0), 24, 85265)]).kind != ((uint8_t)UINT64_C(3))))
+    if (((l_path).count == INT64_C(0)) || ((((l_path).steps).e[coax_index(INT64_C(0), 24, 85297)]).kind != ((uint8_t)UINT64_C(3))))
     {
       coax_ret = ((coax_t_CB_Result){.incomplete = 1});
-      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
       return coax_ret;
     }
-    if (((*coax_elem_v_t_CK_Type(((l_b).c).types, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).a, 85266))).type, 85266))).kind == ((coax_t_CK_Kind)UINT64_C(10)))
+    if (((*coax_elem_v_t_CK_Type(((l_b).c).types, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).a, 85298))).type, 85298))).kind == ((coax_t_CK_Kind)UINT64_C(10)))
     {
       coax_ret = coax_p_CR_address(l_b, (l_e).a, coax_p_CB_prepend(l_b, coax_p_CB_tail(l_path), ((uint8_t)UINT64_C(2)), INT64_C(2147483647)), l_slot_type, l_out);
-      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
       return coax_ret;
     }
     coax_ret = coax_p_CR_address(l_b, (l_e).a, l_path, l_slot_type, l_out);
-    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
     return coax_ret;
   }
   if ((l_e).kind == ((coax_t_CK_Tag)UINT64_C(31)))
   {
     coax_t_CB_Result l_result = coax_p_CR_address(l_b, (l_e).b, l_path, l_slot_type, l_out);
     coax_a64_t_BS_Origin l_temp = ((coax_a64_t_BS_Origin){0});
-    coax_t_CB_Result l_other = coax_p_CR_address(l_b, (l_e).c, l_path, l_slot_type, coax_mkview_v_t_BS_Origin((l_temp).e, 64, 0, 64, 85269));
-    coax_ret = coax_p_CB_merge(l_b, l_out, l_result, coax_mkview_v_t_BS_Origin((l_temp).e, 64, 0, 64, 85269), l_other);
-    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+    coax_t_CB_Result l_other = coax_p_CR_address(l_b, (l_e).c, l_path, l_slot_type, coax_mkview_v_t_BS_Origin((l_temp).e, 64, 0, 64, 85301));
+    coax_ret = coax_p_CB_merge(l_b, l_out, l_result, coax_mkview_v_t_BS_Origin((l_temp).e, 64, 0, 64, 85301), l_other);
+    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
     return coax_ret;
   }
   if ((l_e).kind == ((coax_t_CK_Tag)UINT64_C(21)))
@@ -15155,20 +15156,20 @@ static coax_t_CB_Result coax_p_CR_address(coax_t_CB_Context l_b, int64_t l_id, c
     if ((l_e).proc == INT64_C(0))
     {
       coax_ret = ((coax_t_CB_Result){.incomplete = 1});
-      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
       return coax_ret;
     }
-    if ((((l_e).proc < INT64_C(2)) || ((l_e).proc > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85275))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85275))).kind != ((coax_t_CK_Tag)UINT64_C(64))))
+    if ((((l_e).proc < INT64_C(2)) || ((l_e).proc > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85307))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85307))).kind != ((coax_t_CK_Tag)UINT64_C(64))))
     {
       coax_p_CK_resource((l_b).c, (l_e).loc);
       coax_ret = ((coax_t_CB_Result){0});
-      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
       return coax_ret;
     }
-    if (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85276))).borrow_returns == INT64_C(0))
+    if (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85308))).borrow_returns == INT64_C(0))
     {
       coax_ret = ((coax_t_CB_Result){.incomplete = 1});
-      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
       return coax_ret;
     }
   }
@@ -15178,7 +15179,7 @@ static coax_t_CB_Result coax_p_CR_address(coax_t_CB_Context l_b, int64_t l_id, c
     int64_t coax_hi675 = (l_path).count;
     for (int64_t l_i = coax_lo675; l_i < coax_hi675; l_i++)
     {
-      if ((((l_path).steps).e[coax_index(l_i, 24, 85278)]).kind == ((uint8_t)UINT64_C(3)))
+      if ((((l_path).steps).e[coax_index(l_i, 24, 85310)]).kind == ((uint8_t)UINT64_C(3)))
       {
         l_cross = l_i;
       }
@@ -15189,31 +15190,31 @@ static coax_t_CB_Result coax_p_CR_address(coax_t_CB_Context l_b, int64_t l_id, c
     if (((l_e).kind == ((coax_t_CK_Tag)UINT64_C(20))) && ((l_e).borrow_binding != INT64_C(0)))
     {
       int64_t l_decl = (l_e).borrow_binding;
-      if ((l_decl < INT64_C(2)) || (l_decl > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85283))).used))
+      if ((l_decl < INT64_C(2)) || (l_decl > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85315))).used))
       {
         coax_p_CK_resource((l_b).c, (l_e).loc);
         coax_ret = ((coax_t_CB_Result){0});
-        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
         return coax_ret;
       }
-      coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 85283));
+      coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 85315));
       int64_t l_owner = (l_n).borrow_owner;
-      if (((((((l_n).kind != ((coax_t_CK_Tag)UINT64_C(68))) && ((l_n).kind != ((coax_t_CK_Tag)UINT64_C(42)))) && ((l_n).kind != ((coax_t_CK_Tag)UINT64_C(48)))) && ((l_n).kind != ((coax_t_CK_Tag)UINT64_C(81)))) || ((l_n).type != (l_e).type)) || (l_slot_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85284))).type_count))
+      if (((((((l_n).kind != ((coax_t_CK_Tag)UINT64_C(68))) && ((l_n).kind != ((coax_t_CK_Tag)UINT64_C(42)))) && ((l_n).kind != ((coax_t_CK_Tag)UINT64_C(48)))) && ((l_n).kind != ((coax_t_CK_Tag)UINT64_C(81)))) || ((l_n).type != (l_e).type)) || (l_slot_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85316))).type_count))
       {
         coax_p_CK_resource((l_b).c, (l_e).loc);
         coax_ret = ((coax_t_CB_Result){0});
-        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
         return coax_ret;
       }
-      if (((l_owner < INT64_C(2)) || (l_owner > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85285))).used)) || ((((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85285))).kind != ((coax_t_CK_Tag)UINT64_C(64))) && (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85285))).kind != ((coax_t_CK_Tag)UINT64_C(73)))))
+      if (((l_owner < INT64_C(2)) || (l_owner > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85317))).used)) || ((((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85317))).kind != ((coax_t_CK_Tag)UINT64_C(64))) && (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85317))).kind != ((coax_t_CK_Tag)UINT64_C(73)))))
       {
         coax_p_CK_resource((l_b).c, (l_e).loc);
         coax_ret = ((coax_t_CB_Result){0});
-        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
         return coax_ret;
       }
       coax_ret = coax_p_CB_put(l_b, l_out, ((coax_t_CB_Result){0}), ((coax_t_BS_Origin){.kind = ((uint8_t)UINT64_C(2)), .root = l_decl, .type = l_slot_type, .path = l_path}));
-      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
       return coax_ret;
     }
     coax_t_CB_Result l_result = coax_p_CB_expr(l_b, l_id, l_path, 1, l_out);
@@ -15222,11 +15223,11 @@ static coax_t_CB_Result coax_p_CR_address(coax_t_CB_Context l_b, int64_t l_id, c
       int64_t coax_hi676 = (l_result).count;
       for (int64_t l_i = coax_lo676; l_i < coax_hi676; l_i++)
       {
-        ((*coax_elem_v_t_BS_Origin(l_out, l_i, 85288))).type = l_slot_type;
+        ((*coax_elem_v_t_BS_Origin(l_out, l_i, 85320))).type = l_slot_type;
       }
     }
     coax_ret = l_result;
-    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
     return coax_ret;
   }
   coax_t_BS_Path l_prefix = ((coax_t_BS_Path){0});
@@ -15235,25 +15236,25 @@ static coax_t_CB_Result coax_p_CR_address(coax_t_CB_Context l_b, int64_t l_id, c
     int64_t coax_hi677 = l_cross;
     for (int64_t l_i = coax_lo677; l_i < coax_hi677; l_i++)
     {
-      l_prefix = (coax_t678 = (((l_path).steps).e[coax_index(l_i, 24, 85290)]).kind, coax_t679 = (((l_path).steps).e[coax_index(l_i, 24, 85290)]).index, coax_p_CB_add_path(l_b, l_prefix, coax_t678, coax_t679));
+      l_prefix = (coax_t678 = (((l_path).steps).e[coax_index(l_i, 24, 85322)]).kind, coax_t679 = (((l_path).steps).e[coax_index(l_i, 24, 85322)]).index, coax_p_CB_add_path(l_b, l_prefix, coax_t678, coax_t679));
     }
   }
   coax_a64_t_BS_Origin l_backing = ((coax_a64_t_BS_Origin){0});
-  coax_t_CB_Result l_known = coax_p_CB_expr(l_b, l_id, l_prefix, 0, coax_mkview_v_t_BS_Origin((l_backing).e, 64, 0, 64, 85294));
+  coax_t_CB_Result l_known = coax_p_CB_expr(l_b, l_id, l_prefix, 0, coax_mkview_v_t_BS_Origin((l_backing).e, 64, 0, 64, 85326));
   coax_t_CB_Result l_result = ((coax_t_CB_Result){.incomplete = ((l_known).incomplete || ((l_known).count == INT64_C(0)))});
   {
     int64_t coax_lo680 = INT64_C(0);
     int64_t coax_hi680 = (l_known).count;
     for (int64_t l_i = coax_lo680; l_i < coax_hi680; l_i++)
     {
-      coax_t_BS_Origin l_owner = (l_backing).e[coax_index(l_i, 64, 85296)];
+      coax_t_BS_Origin l_owner = (l_backing).e[coax_index(l_i, 64, 85328)];
       (l_owner).path = coax_p_CB_add_path(l_b, (l_owner).path, (((l_owner).kind == ((uint8_t)UINT64_C(3))) ? ((uint8_t)UINT64_C(3)) : ((uint8_t)UINT64_C(2))), (((l_owner).kind == ((uint8_t)UINT64_C(3))) ? INT64_C(0) : INT64_C(2147483647)));
       {
-        int64_t coax_lo681 = coax_add_s64(l_cross, INT64_C(1), 85297);
+        int64_t coax_lo681 = coax_add_s64(l_cross, INT64_C(1), 85329);
         int64_t coax_hi681 = (l_path).count;
         for (int64_t l_j = coax_lo681; l_j < coax_hi681; l_j++)
         {
-          (l_owner).path = (coax_t682 = (((l_path).steps).e[coax_index(l_j, 24, 85297)]).kind, coax_t683 = (((l_path).steps).e[coax_index(l_j, 24, 85297)]).index, coax_p_CB_add_path(l_b, (l_owner).path, coax_t682, coax_t683));
+          (l_owner).path = (coax_t682 = (((l_path).steps).e[coax_index(l_j, 24, 85329)]).kind, coax_t683 = (((l_path).steps).e[coax_index(l_j, 24, 85329)]).index, coax_p_CB_add_path(l_b, (l_owner).path, coax_t682, coax_t683));
         }
       }
       (l_owner).type = l_slot_type;
@@ -15261,9 +15262,9 @@ static coax_t_CB_Result coax_p_CR_address(coax_t_CB_Context l_b, int64_t l_id, c
     }
   }
   coax_ret = l_result;
-  ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+  ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
   return coax_ret;
-  ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85259))).depth, INT64_C(1), 85259);
+  ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth = coax_sub_s64(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85291))).depth, INT64_C(1), 85291);
 }
 
 static int64_t coax_p_CR_pending_insert(coax_v_t_RP_Obligation l_staging, int64_t l_used, coax_t_RP_Obligation l_value) {
@@ -15278,7 +15279,7 @@ static int64_t coax_p_CR_pending_insert(coax_v_t_RP_Obligation l_staging, int64_
     int64_t coax_hi684 = l_used;
     for (int64_t l_i = coax_lo684; l_i < coax_hi684; l_i++)
     {
-      int64_t l_comparison = coax_p_rp_compare((*coax_elem_v_t_RP_Obligation(l_staging, l_i, 85304)), l_value);
+      int64_t l_comparison = coax_p_rp_compare((*coax_elem_v_t_RP_Obligation(l_staging, l_i, 85336)), l_value);
       if (l_comparison < INT64_C(0))
       {
         continue;
@@ -15298,12 +15299,12 @@ static int64_t coax_p_CR_pending_insert(coax_v_t_RP_Obligation l_staging, int64_
   int64_t l_i = l_used;
   while (l_i > l_at)
   {
-    coax_t685 = &((*coax_elem_v_t_RP_Obligation(l_staging, l_i, 85305)));
-    *coax_t685 = (*coax_elem_v_t_RP_Obligation(l_staging, coax_sub_s64(l_i, INT64_C(1), 85305), 85305));
-    l_i = coax_sub_s64(l_i, INT64_C(1), 85305);
+    coax_t685 = &((*coax_elem_v_t_RP_Obligation(l_staging, l_i, 85337)));
+    *coax_t685 = (*coax_elem_v_t_RP_Obligation(l_staging, coax_sub_s64(l_i, INT64_C(1), 85337), 85337));
+    l_i = coax_sub_s64(l_i, INT64_C(1), 85337);
   }
-  (*coax_elem_v_t_RP_Obligation(l_staging, l_at, 85305)) = l_value;
-  return coax_add_s64(l_used, INT64_C(1), 85305);
+  (*coax_elem_v_t_RP_Obligation(l_staging, l_at, 85337)) = l_value;
+  return coax_add_s64(l_used, INT64_C(1), 85337);
 }
 
 static void coax_p_CR_effect(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_site, coax_t_RP_Obligation l_row) {
@@ -15312,43 +15313,43 @@ static void coax_p_CR_effect(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_s
   _Bool coax_t688;
   int64_t * coax_t689;
   coax_t_CB_Context l_b = (l_r).b;
-  int64_t l_link = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85308))).retain_head;
+  int64_t l_link = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85340))).retain_head;
   while (l_link != INT64_C(0))
   {
-    if (((l_link < INT64_C(1)) || (l_link > ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85309))).effects)) || (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85309))).loc)))
+    if (((l_link < INT64_C(1)) || (l_link > ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85341))).effects)) || (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85341))).loc)))
     {
-      coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85309))).loc);
+      coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85341))).loc);
       return;
     }
-    coax_t_CK_RetainEffect l_old = (*coax_elem_v_t_CK_RetainEffect((l_r).effects, coax_sub_s64(l_link, INT64_C(1), 85309), 85309));
+    coax_t_CK_RetainEffect l_old = (*coax_elem_v_t_CK_RetainEffect((l_r).effects, coax_sub_s64(l_link, INT64_C(1), 85341), 85341));
     if ((coax_p_bs_compare((l_old).source, ((l_row).source).origin) == INT64_C(0)) && (coax_p_bs_compare((l_old).destination, (((l_row).destination).storage).origin) == INT64_C(0)))
     {
       return;
     }
     l_link = (l_old).next;
   }
-  if ((((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85310))).retain_count >= INT64_C(256)) || (((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85310))).effects >= ((l_r).effects).count))
+  if ((((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85342))).retain_count >= INT64_C(256)) || (((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85342))).effects >= ((l_r).effects).count))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85310))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85342))).loc);
     return;
   }
-  int64_t l_formal = coax_p_CB_at(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85312))).head, (((l_row).source).origin).root);
-  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85312))).fatal)
-  {
-    return;
-  }
-  int64_t l_place = coax_p_CB_type(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_formal, 85312))).type, (((l_row).source).origin).path);
-  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85312))).fatal)
+  int64_t l_formal = coax_p_CB_at(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85344))).head, (((l_row).source).origin).root);
+  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85344))).fatal)
   {
     return;
   }
-  int64_t l_at = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85313))).effects;
-  coax_t686 = &((*coax_elem_v_t_CK_RetainEffect((l_r).effects, l_at, 85313)));
-  *coax_t686 = (coax_t687 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85313))).retain_head, coax_t688 = (((*coax_elem_v_t_CK_Type(((l_b).c).types, l_place, 85313))).kind == ((coax_t_CK_Kind)UINT64_C(10))), ((coax_t_CK_RetainEffect){.source = ((l_row).source).origin, .destination = (((l_row).destination).storage).origin, .value_type = ((l_row).destination).value_type, .witness = l_site, .next = coax_t687, .source_storage = coax_t688}));
-  ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85313))).effects = coax_add_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85313))).effects, INT64_C(1), 85313);
-  coax_t689 = &(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85313))).retain_head);
-  *coax_t689 = coax_add_s64(l_at, INT64_C(1), 85313);
-  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85313))).retain_count = coax_add_s64(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85313))).retain_count, INT64_C(1), 85313);
+  int64_t l_place = coax_p_CB_type(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_formal, 85344))).type, (((l_row).source).origin).path);
+  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85344))).fatal)
+  {
+    return;
+  }
+  int64_t l_at = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85345))).effects;
+  coax_t686 = &((*coax_elem_v_t_CK_RetainEffect((l_r).effects, l_at, 85345)));
+  *coax_t686 = (coax_t687 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85345))).retain_head, coax_t688 = (((*coax_elem_v_t_CK_Type(((l_b).c).types, l_place, 85345))).kind == ((coax_t_CK_Kind)UINT64_C(10))), ((coax_t_CK_RetainEffect){.source = ((l_row).source).origin, .destination = (((l_row).destination).storage).origin, .value_type = ((l_row).destination).value_type, .witness = l_site, .next = coax_t687, .source_storage = coax_t688}));
+  ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85345))).effects = coax_add_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85345))).effects, INT64_C(1), 85345);
+  coax_t689 = &(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85345))).retain_head);
+  *coax_t689 = coax_add_s64(l_at, INT64_C(1), 85345);
+  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85345))).retain_count = coax_add_s64(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85345))).retain_count, INT64_C(1), 85345);
 }
 
 static coax_t_CR_Result coax_p_CR_pairs(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_site, int64_t l_key, coax_v_t_BS_Origin l_sources, _Bool l_sc, coax_v_t_BS_Origin l_addresses, _Bool l_dc, coax_v_t_RP_Obligation l_pending, coax_t_CR_Result l_prior) {
@@ -15363,7 +15364,7 @@ static coax_t_CR_Result coax_p_CR_pairs(coax_t_CR_Context l_r, int64_t l_owner, 
   coax_v_t_RP_Obligation coax_t700;
   _Bool * coax_t704;
   coax_t_CB_Context l_b = (l_r).b;
-  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85316))).error_count > INT64_C(0))
+  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85348))).error_count > INT64_C(0))
   {
     return ((coax_t_CR_Result){0});
   }
@@ -15371,7 +15372,7 @@ static coax_t_CR_Result coax_p_CR_pairs(coax_t_CR_Context l_r, int64_t l_owner, 
   coax_a64_t_RP_Address l_dst = ((coax_a64_t_RP_Address){0});
   if (((((l_sources).count < INT64_C(0)) || ((l_sources).count > INT64_C(64))) || ((l_addresses).count < INT64_C(0))) || ((l_addresses).count > INT64_C(64)))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85317))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85349))).loc);
     return ((coax_t_CR_Result){0});
   }
   {
@@ -15379,8 +15380,8 @@ static coax_t_CR_Result coax_p_CR_pairs(coax_t_CR_Context l_r, int64_t l_owner, 
     int64_t coax_hi690 = (l_sources).count;
     for (int64_t l_i = coax_lo690; l_i < coax_hi690; l_i++)
     {
-      coax_t691 = &((l_src).e[coax_index(l_i, 64, 85318)]);
-      *coax_t691 = (coax_t692 = ((((*coax_elem_v_t_BS_Origin(l_sources, l_i, 85318))).kind == ((uint8_t)UINT64_C(1))) ? INT64_C(0) : l_owner), coax_t693 = (*coax_elem_v_t_BS_Origin(l_sources, l_i, 85318)), ((coax_t_RP_Term){.frame = coax_t692, .origin = coax_t693}));
+      coax_t691 = &((l_src).e[coax_index(l_i, 64, 85350)]);
+      *coax_t691 = (coax_t692 = ((((*coax_elem_v_t_BS_Origin(l_sources, l_i, 85350))).kind == ((uint8_t)UINT64_C(1))) ? INT64_C(0) : l_owner), coax_t693 = (*coax_elem_v_t_BS_Origin(l_sources, l_i, 85350)), ((coax_t_RP_Term){.frame = coax_t692, .origin = coax_t693}));
     }
   }
   {
@@ -15388,20 +15389,20 @@ static coax_t_CR_Result coax_p_CR_pairs(coax_t_CR_Context l_r, int64_t l_owner, 
     int64_t coax_hi694 = (l_addresses).count;
     for (int64_t l_i = coax_lo694; l_i < coax_hi694; l_i++)
     {
-      coax_t695 = &((l_dst).e[coax_index(l_i, 64, 85319)]);
-      *coax_t695 = ((coax_t_RP_Address){.storage = (coax_t696 = ((((*coax_elem_v_t_BS_Origin(l_addresses, l_i, 85319))).kind == ((uint8_t)UINT64_C(1))) ? INT64_C(0) : l_owner), coax_t697 = (*coax_elem_v_t_BS_Origin(l_addresses, l_i, 85319)), ((coax_t_RP_Term){.frame = coax_t696, .origin = coax_t697})), .value_type = l_key});
+      coax_t695 = &((l_dst).e[coax_index(l_i, 64, 85351)]);
+      *coax_t695 = ((coax_t_RP_Address){.storage = (coax_t696 = ((((*coax_elem_v_t_BS_Origin(l_addresses, l_i, 85351))).kind == ((uint8_t)UINT64_C(1))) ? INT64_C(0) : l_owner), coax_t697 = (*coax_elem_v_t_BS_Origin(l_addresses, l_i, 85351)), ((coax_t_RP_Term){.frame = coax_t696, .origin = coax_t697})), .value_type = l_key});
     }
   }
   coax_a64_t_RP_Obligation l_rows = ((coax_a64_t_RP_Obligation){0});
-  coax_t_RP_Result l_decision = (coax_t698 = coax_mkview_v_t_RP_Term((l_src).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_sources).count), 85320), coax_t699 = coax_mkview_v_t_RP_Address((l_dst).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_addresses).count), 85320), coax_t700 = coax_mkview_v_t_RP_Obligation((l_rows).e, 64, 0, 64, 85320), RP_check(l_owner, l_key, coax_t698, l_sc, coax_t699, l_dc, coax_t700));
+  coax_t_RP_Result l_decision = (coax_t698 = coax_mkview_v_t_RP_Term((l_src).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_sources).count), 85352), coax_t699 = coax_mkview_v_t_RP_Address((l_dst).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_addresses).count), 85352), coax_t700 = coax_mkview_v_t_RP_Obligation((l_rows).e, 64, 0, 64, 85352), RP_check(l_owner, l_key, coax_t698, l_sc, coax_t699, l_dc, coax_t700));
   if ((l_decision).status != ((coax_t_RP_Status)UINT64_C(0)))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85321))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85353))).loc);
     return ((coax_t_CR_Result){0});
   }
   if ((l_decision).forbidden)
   {
-    coax_p_CK_error((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85322))).loc, COAX_STR("E0383", 5), COAX_STR("retained borrow may refer to callee-local inline storage", 56), COAX_STR("keep retained backing in the caller and satisfy its outlives obligation", 71));
+    coax_p_CK_error((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85354))).loc, COAX_STR("E0383", 5), COAX_STR("retained borrow may refer to callee-local inline storage", 56), COAX_STR("keep retained backing in the caller and satisfy its outlives obligation", 71));
     return ((coax_t_CR_Result){0});
   }
   coax_t_CR_Result l_result = ((coax_t_CR_Result){.complete = ((l_prior).complete && (l_decision).facts_complete), .relation = ((l_prior).relation && (l_decision).relation_complete), .pending = (l_prior).pending});
@@ -15410,15 +15411,15 @@ static coax_t_CR_Result coax_p_CR_pairs(coax_t_CR_Context l_r, int64_t l_owner, 
     int64_t coax_hi701 = (l_decision).obligation_count;
     for (int64_t l_i = coax_lo701; l_i < coax_hi701; l_i++)
     {
-      coax_p_CR_effect(l_r, l_owner, l_site, (l_rows).e[coax_index(l_i, 64, 85326)]);
-      if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85326))).fatal)
+      coax_p_CR_effect(l_r, l_owner, l_site, (l_rows).e[coax_index(l_i, 64, 85358)]);
+      if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85358))).fatal)
       {
         return ((coax_t_CR_Result){0});
       }
-      int64_t l_inserted = coax_p_CR_pending_insert(l_pending, (l_result).pending, (l_rows).e[coax_index(l_i, 64, 85326)]);
+      int64_t l_inserted = coax_p_CR_pending_insert(l_pending, (l_result).pending, (l_rows).e[coax_index(l_i, 64, 85358)]);
       if (l_inserted < INT64_C(0))
       {
-        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85326))).loc);
+        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85358))).loc);
         return ((coax_t_CR_Result){0});
       }
       (l_result).pending = l_inserted;
@@ -15434,34 +15435,34 @@ static coax_t_CR_Result coax_p_CR_pairs(coax_t_CR_Context l_r, int64_t l_owner, 
         int64_t coax_hi703 = (l_addresses).count;
         for (int64_t l_j = coax_lo703; l_j < coax_hi703; l_j++)
         {
-          if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85330))).loc))
+          if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_site, 85362))).loc))
           {
             return ((coax_t_CR_Result){0});
           }
-          if (coax_p_rp_local_source((l_src).e[coax_index(l_i, 64, 85333)]) && (!coax_p_rp_external((l_dst).e[coax_index(l_j, 64, 85333)])))
+          if (coax_p_rp_local_source((l_src).e[coax_index(l_i, 64, 85365)]) && (!coax_p_rp_external((l_dst).e[coax_index(l_j, 64, 85365)])))
           {
-            ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85333))).retain_relation = 0;
+            ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85365))).retain_relation = 0;
           }
         }
       }
     }
   }
-  coax_t704 = &(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85335))).retain_incomplete);
-  *coax_t704 = (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85335))).retain_incomplete || (!(l_decision).facts_complete));
+  coax_t704 = &(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85367))).retain_incomplete);
+  *coax_t704 = (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85367))).retain_incomplete || (!(l_decision).facts_complete));
   return l_result;
 }
 
 static _Bool coax_p_CR_presence(coax_t_CB_Context l_b, int64_t l_type) {
-  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85354))).fatal)
+  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85386))).fatal)
   {
     return 0;
   }
-  if ((l_type < INT64_C(1)) || (l_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85354))).type_count))
+  if ((l_type < INT64_C(1)) || (l_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85386))).type_count))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85354))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85386))).loc);
     return 0;
   }
-  uint8_t l_cached = ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85355))).retain_presence;
+  uint8_t l_cached = ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85387))).retain_presence;
   if (l_cached == ((uint8_t)UINT64_C(1)))
   {
     return 0;
@@ -15471,24 +15472,24 @@ static _Bool coax_p_CR_presence(coax_t_CB_Context l_b, int64_t l_type) {
     return 1;
   }
   _Bool l_result = coax_p_CB_discover(l_b, l_type, INT64_C(0), 0);
-  if (!((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85356))).fatal)
+  if (!((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85388))).fatal)
   {
-    ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85356))).retain_presence = (l_result ? ((uint8_t)UINT64_C(2)) : ((uint8_t)UINT64_C(1)));
+    ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85388))).retain_presence = (l_result ? ((uint8_t)UINT64_C(2)) : ((uint8_t)UINT64_C(1)));
   }
   return l_result;
 }
 
 static _Bool coax_p_CR_mutable(coax_t_CB_Context l_b, int64_t l_type) {
-  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85360))).fatal)
+  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85392))).fatal)
   {
     return 0;
   }
-  if ((l_type < INT64_C(1)) || (l_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85360))).type_count))
+  if ((l_type < INT64_C(1)) || (l_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85392))).type_count))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85360))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85392))).loc);
     return 0;
   }
-  uint8_t l_cached = ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85361))).retain_mutable;
+  uint8_t l_cached = ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85393))).retain_mutable;
   if (l_cached == ((uint8_t)UINT64_C(1)))
   {
     return 0;
@@ -15498,24 +15499,24 @@ static _Bool coax_p_CR_mutable(coax_t_CB_Context l_b, int64_t l_type) {
     return 1;
   }
   _Bool l_result = coax_p_CB_discover(l_b, l_type, INT64_C(0), 1);
-  if (!((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85362))).fatal)
+  if (!((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85394))).fatal)
   {
-    ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85362))).retain_mutable = (l_result ? ((uint8_t)UINT64_C(2)) : ((uint8_t)UINT64_C(1)));
+    ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85394))).retain_mutable = (l_result ? ((uint8_t)UINT64_C(2)) : ((uint8_t)UINT64_C(1)));
   }
   return l_result;
 }
 
 static _Bool coax_p_CR_join_arrays(coax_t_CB_Context l_b, int64_t l_type) {
-  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85408))).fatal)
+  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85440))).fatal)
   {
     return 0;
   }
-  if ((l_type < INT64_C(1)) || (l_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85408))).type_count))
+  if ((l_type < INT64_C(1)) || (l_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85440))).type_count))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85408))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85440))).loc);
     return 0;
   }
-  uint8_t l_cached = ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85409))).retain_join;
+  uint8_t l_cached = ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85441))).retain_join;
   if (l_cached == ((uint8_t)UINT64_C(1)))
   {
     return 0;
@@ -15526,15 +15527,15 @@ static _Bool coax_p_CR_join_arrays(coax_t_CB_Context l_b, int64_t l_type) {
   }
   if (l_cached != ((uint8_t)UINT64_C(0)))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85409))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85441))).loc);
     return 0;
   }
   _Bool l_result = (coax_p_CB_leaf_count(l_b, l_type) > INT64_C(64));
-  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85410))).fatal)
+  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85442))).fatal)
   {
     return 0;
   }
-  ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85410))).retain_join = (l_result ? ((uint8_t)UINT64_C(2)) : ((uint8_t)UINT64_C(1)));
+  ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85442))).retain_join = (l_result ? ((uint8_t)UINT64_C(2)) : ((uint8_t)UINT64_C(1)));
   return l_result;
 }
 
@@ -15554,35 +15555,35 @@ static void coax_p_CR_leaf(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_wri
   int64_t coax_t719;
   int64_t coax_t720;
   coax_t_CB_Context l_b = (l_r).b;
-  if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85414))).loc))
+  if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85446))).loc))
   {
     return;
   }
-  if ((l_type < INT64_C(1)) || (l_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85414))).type_count))
+  if ((l_type < INT64_C(1)) || (l_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85446))).type_count))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85414))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85446))).loc);
     return;
   }
-  coax_t_CK_Type l_t = (*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85414));
+  coax_t_CK_Type l_t = (*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85446));
   if ((l_type == INT64_C(3)) || ((l_t).kind == ((coax_t_CK_Kind)UINT64_C(11))))
   {
-    ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85416))).leaves = coax_add_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85416))).leaves, INT64_C(1), 85416);
-    int64_t l_rhs = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85416))).a;
-    int64_t l_target = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85416))).c;
-    coax_t705 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85416))).loc);
-    *coax_t705 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_rhs, 85416))).loc;
+    ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85448))).leaves = coax_add_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85448))).leaves, INT64_C(1), 85448);
+    int64_t l_rhs = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85448))).a;
+    int64_t l_target = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85448))).c;
+    coax_t705 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85448))).loc);
+    *coax_t705 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_rhs, 85448))).loc;
     coax_a64_t_BS_Origin l_source = ((coax_a64_t_BS_Origin){0});
     coax_a64_t_BS_Origin l_address = ((coax_a64_t_BS_Origin){0});
     coax_t_CB_Context l_source_b = l_b;
     (l_source_b).retain_classes = 1;
-    coax_t_CB_Result l_values = coax_p_CB_expr(l_source_b, l_rhs, l_path, 0, coax_mkview_v_t_BS_Origin((l_source).e, 64, 0, 64, 85418));
-    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85418))).error_count > INT64_C(0))
+    coax_t_CB_Result l_values = coax_p_CB_expr(l_source_b, l_rhs, l_path, 0, coax_mkview_v_t_BS_Origin((l_source).e, 64, 0, 64, 85450));
+    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85450))).error_count > INT64_C(0))
     {
       return;
     }
-    coax_t_CB_Result l_storage = coax_p_CR_address(l_b, l_target, l_path, l_type, coax_mkview_v_t_BS_Origin((l_address).e, 64, 0, 64, 85418));
+    coax_t_CB_Result l_storage = coax_p_CR_address(l_b, l_target, l_path, l_type, coax_mkview_v_t_BS_Origin((l_address).e, 64, 0, 64, 85450));
     coax_a64_t_RP_Obligation l_pending = ((coax_a64_t_RP_Obligation){0});
-    coax_t_CR_Result l_ignored = (coax_t706 = coax_p_CB_descriptor_key(l_b, l_type), coax_t707 = coax_mkview_v_t_BS_Origin((l_source).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_values).count), 85418), coax_t708 = (!(l_values).incomplete), coax_t709 = coax_mkview_v_t_BS_Origin((l_address).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_storage).count), 85418), coax_t710 = (!(l_storage).incomplete), coax_t711 = coax_mkview_v_t_RP_Obligation((l_pending).e, 64, 0, 64, 85418), coax_t712 = ((coax_t_CR_Result){0}), coax_p_CR_pairs(l_r, l_owner, l_rhs, coax_t706, coax_t707, coax_t708, coax_t709, coax_t710, coax_t711, coax_t712));
+    coax_t_CR_Result l_ignored = (coax_t706 = coax_p_CB_descriptor_key(l_b, l_type), coax_t707 = coax_mkview_v_t_BS_Origin((l_source).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_values).count), 85450), coax_t708 = (!(l_values).incomplete), coax_t709 = coax_mkview_v_t_BS_Origin((l_address).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_storage).count), 85450), coax_t710 = (!(l_storage).incomplete), coax_t711 = coax_mkview_v_t_RP_Obligation((l_pending).e, 64, 0, 64, 85450), coax_t712 = ((coax_t_CR_Result){0}), coax_p_CR_pairs(l_r, l_owner, l_rhs, coax_t706, coax_t707, coax_t708, coax_t709, coax_t710, coax_t711, coax_t712));
     return;
   }
   if (coax_p_CK_sum((l_b).c, l_type))
@@ -15601,7 +15602,7 @@ static void coax_p_CR_leaf(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_wri
         {
           coax_p_CR_leaf(l_r, l_owner, l_write, l_payload, coax_p_CB_add_path(l_b, l_path, ((uint8_t)UINT64_C(4)), l_variant));
         }
-        if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85420))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85420))).error_count > INT64_C(0)))
+        if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85452))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85452))).error_count > INT64_C(0)))
         {
           return;
         }
@@ -15613,16 +15614,16 @@ static void coax_p_CR_leaf(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_wri
   {
     int64_t l_field = coax_p_CB_fields(l_b, l_type);
     int64_t l_ordinal = INT64_C(0);
-    coax_t_CR_Shape l_shape = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85424))).shape;
+    coax_t_CR_Shape l_shape = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85456))).shape;
     if (!coax_p_CR_shape_matches(l_shape, l_type, (l_t).decl, l_field))
     {
-      l_shape = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85425))).shape_previous;
+      l_shape = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85457))).shape_previous;
     }
     if (coax_p_CR_shape_matches(l_shape, l_type, (l_t).decl, l_field))
     {
-      if (((((((l_shape).count < INT64_C(1)) || ((l_shape).count > INT64_C(8))) || (l_field < INT64_C(2))) || ((l_shape).max_field < l_field)) || ((l_shape).max_field > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85427))).used)) || ((l_shape).max_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85427))).type_count))
+      if (((((((l_shape).count < INT64_C(1)) || ((l_shape).count > INT64_C(8))) || (l_field < INT64_C(2))) || ((l_shape).max_field < l_field)) || ((l_shape).max_field > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85459))).used)) || ((l_shape).max_type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85459))).type_count))
       {
-        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85427))).loc);
+        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85459))).loc);
         return;
       }
       {
@@ -15630,20 +15631,20 @@ static void coax_p_CR_leaf(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_wri
         int64_t coax_hi714 = (l_shape).count;
         for (int64_t l_i = coax_lo714; l_i < coax_hi714; l_i++)
         {
-          int64_t l_selected = ((l_shape).fields).e[coax_index(l_i, 8, 85429)];
-          int64_t l_at = ((l_shape).ordinals).e[coax_index(l_i, 8, 85429)];
-          if (((((((l_selected < INT64_C(2)) || (l_selected > (l_shape).max_field)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 85430))).kind != ((coax_t_CK_Tag)UINT64_C(69)))) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 85430))).type > (l_shape).max_type)) || (l_at < INT64_C(0))) || ((l_i > INT64_C(0)) && (l_at <= ((l_shape).ordinals).e[coax_index(coax_sub_s64(l_i, INT64_C(1), 85430), 8, 85430)]))) || (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85430))).loc)))
+          int64_t l_selected = ((l_shape).fields).e[coax_index(l_i, 8, 85461)];
+          int64_t l_at = ((l_shape).ordinals).e[coax_index(l_i, 8, 85461)];
+          if (((((((l_selected < INT64_C(2)) || (l_selected > (l_shape).max_field)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 85462))).kind != ((coax_t_CK_Tag)UINT64_C(69)))) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 85462))).type > (l_shape).max_type)) || (l_at < INT64_C(0))) || ((l_i > INT64_C(0)) && (l_at <= ((l_shape).ordinals).e[coax_index(coax_sub_s64(l_i, INT64_C(1), 85462), 8, 85462)]))) || (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85462))).loc)))
           {
-            coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85430))).loc);
+            coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85462))).loc);
             return;
           }
-          if (!coax_p_CR_presence(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 85431))).type))
+          if (!coax_p_CR_presence(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 85463))).type))
           {
-            coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85431))).loc);
+            coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85463))).loc);
             return;
           }
-          (coax_t715 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 85432))).type, coax_t716 = coax_p_CB_add_path(l_b, l_path, ((uint8_t)UINT64_C(1)), l_at), coax_p_CR_leaf(l_r, l_owner, l_write, coax_t715, coax_t716));
-          if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85433))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85433))).error_count > INT64_C(0)))
+          (coax_t715 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 85464))).type, coax_t716 = coax_p_CB_add_path(l_b, l_path, ((uint8_t)UINT64_C(1)), l_at), coax_p_CR_leaf(l_r, l_owner, l_write, coax_t715, coax_t716));
+          if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85465))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85465))).error_count > INT64_C(0)))
           {
             return;
           }
@@ -15655,38 +15656,38 @@ static void coax_p_CR_leaf(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_wri
     coax_t_CR_Shape l_staged = ((coax_t_CR_Shape){.type = l_type, .decl = (l_t).decl, .head = l_field});
     while (l_field != INT64_C(0))
     {
-      if (((l_field < INT64_C(2)) || (l_field > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85438))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85438))).kind != ((coax_t_CK_Tag)UINT64_C(69))))
+      if (((l_field < INT64_C(2)) || (l_field > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85470))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85470))).kind != ((coax_t_CK_Tag)UINT64_C(69))))
       {
-        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85438))).loc);
+        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85470))).loc);
         return;
       }
-      if (coax_p_CR_presence(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85439))).type))
+      if (coax_p_CR_presence(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85471))).type))
       {
         if ((l_staged).count < INT64_C(8))
         {
-          ((l_staged).fields).e[coax_index((l_staged).count, 8, 85440)] = l_field;
-          ((l_staged).ordinals).e[coax_index((l_staged).count, 8, 85440)] = l_ordinal;
+          ((l_staged).fields).e[coax_index((l_staged).count, 8, 85472)] = l_field;
+          ((l_staged).ordinals).e[coax_index((l_staged).count, 8, 85472)] = l_ordinal;
         }
-        (l_staged).count = coax_add_s64((l_staged).count, INT64_C(1), 85440);
-        (coax_t717 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85441))).type, coax_t718 = coax_p_CB_add_path(l_b, l_path, ((uint8_t)UINT64_C(1)), l_ordinal), coax_p_CR_leaf(l_r, l_owner, l_write, coax_t717, coax_t718));
+        (l_staged).count = coax_add_s64((l_staged).count, INT64_C(1), 85472);
+        (coax_t717 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85473))).type, coax_t718 = coax_p_CB_add_path(l_b, l_path, ((uint8_t)UINT64_C(1)), l_ordinal), coax_p_CR_leaf(l_r, l_owner, l_write, coax_t717, coax_t718));
       }
       else
       {
-        if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85442))).loc))
+        if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85474))).loc))
         {
           return;
         }
       }
-      if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85443))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85443))).error_count > INT64_C(0)))
+      if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85475))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85475))).error_count > INT64_C(0)))
       {
         return;
       }
-      int64_t l_delta = coax_sub_s64(l_field, (l_staged).max_field, 85445);
-      (l_staged).max_field = coax_add_s64((l_staged).max_field, ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85445) ^ INT64_C(-1))))), 85445);
-      l_delta = coax_sub_s64(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85446))).type, (l_staged).max_type, 85446);
-      (l_staged).max_type = coax_add_s64((l_staged).max_type, ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85446) ^ INT64_C(-1))))), 85446);
-      l_field = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85447))).next;
-      l_ordinal = coax_add_s64(l_ordinal, INT64_C(1), 85447);
+      int64_t l_delta = coax_sub_s64(l_field, (l_staged).max_field, 85477);
+      (l_staged).max_field = coax_add_s64((l_staged).max_field, ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85477) ^ INT64_C(-1))))), 85477);
+      l_delta = coax_sub_s64(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85478))).type, (l_staged).max_type, 85478);
+      (l_staged).max_type = coax_add_s64((l_staged).max_type, ((int64_t)(l_delta & ((int64_t)(coax_shr_s64(l_delta, (int64_t)(INT64_C(63)), 85478) ^ INT64_C(-1))))), 85478);
+      l_field = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 85479))).next;
+      l_ordinal = coax_add_s64(l_ordinal, INT64_C(1), 85479);
     }
     if (((l_staged).count > INT64_C(0)) && ((l_staged).count <= INT64_C(8)))
     {
@@ -15695,7 +15696,7 @@ static void coax_p_CR_leaf(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_wri
   }
   if (((l_t).kind == ((coax_t_CK_Kind)UINT64_C(10))) && coax_p_CR_presence(l_b, (l_t).elem))
   {
-    if (((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85455))).join_arrays || ((coax_t719 = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85455))).leaves, coax_t720 = coax_mul_s64((l_t).length, coax_p_CB_leaf_count(l_b, (l_t).elem), 85455), coax_add_s64(coax_t719, coax_t720, 85455)) > INT64_C(64)))
+    if (((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85487))).join_arrays || ((coax_t719 = ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85487))).leaves, coax_t720 = coax_mul_s64((l_t).length, coax_p_CB_leaf_count(l_b, (l_t).elem), 85487), coax_add_s64(coax_t719, coax_t720, 85487)) > INT64_C(64)))
     {
       coax_p_CR_leaf(l_r, l_owner, l_write, (l_t).elem, coax_p_CB_add_path(l_b, l_path, ((uint8_t)UINT64_C(2)), INT64_C(2147483647)));
       return;
@@ -15706,7 +15707,7 @@ static void coax_p_CR_leaf(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_wri
       for (int64_t l_i = coax_lo721; l_i < coax_hi721; l_i++)
       {
         coax_p_CR_leaf(l_r, l_owner, l_write, (l_t).elem, coax_p_CB_add_path(l_b, l_path, ((uint8_t)UINT64_C(2)), l_i));
-        if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85457))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85457))).error_count > INT64_C(0)))
+        if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85489))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85489))).error_count > INT64_C(0)))
         {
           return;
         }
@@ -15723,12 +15724,12 @@ static void coax_p_CR_seed(coax_t_CR_Context l_r, int64_t l_owner) {
   coax_t_CK_Loc * coax_t722;
   _Bool * coax_t723;
   coax_t_CB_Context l_b = (l_r).b;
-  if (((l_owner < INT64_C(2)) || (l_owner > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85465))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85465))).kind != ((coax_t_CK_Tag)UINT64_C(64))))
+  if (((l_owner < INT64_C(2)) || (l_owner > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85497))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85497))).kind != ((coax_t_CK_Tag)UINT64_C(64))))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85465))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85497))).loc);
     return;
   }
-  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85465));
+  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85497));
   if (!coax_p_CR_eligible((l_n).generic, (l_n).b))
   {
     return;
@@ -15737,43 +15738,43 @@ static void coax_p_CR_seed(coax_t_CR_Context l_r, int64_t l_owner) {
   {
     return;
   }
-  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85466))).retain_mark = ((coax_t_CR_Phase)UINT64_C(3));
-  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85466))).retain_relation = 1;
+  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85498))).retain_mark = ((coax_t_CR_Phase)UINT64_C(3));
+  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85498))).retain_relation = 1;
   int64_t l_write = (l_n).borrow_writes;
   while (l_write != INT64_C(0))
   {
-    if (((((l_write < INT64_C(2)) || (l_write > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85468))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85468))).kind != ((coax_t_CK_Tag)UINT64_C(43)))) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85468))).borrow_owner != l_owner)) || (!coax_p_CB_tick(l_b, (l_n).loc)))
+    if (((((l_write < INT64_C(2)) || (l_write > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85500))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85500))).kind != ((coax_t_CK_Tag)UINT64_C(43)))) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85500))).borrow_owner != l_owner)) || (!coax_p_CB_tick(l_b, (l_n).loc)))
     {
       coax_p_CK_resource((l_b).c, (l_n).loc);
       return;
     }
-    int64_t l_target = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85469))).c;
-    int64_t l_rhs = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85469))).a;
-    if ((((l_target < INT64_C(2)) || (l_target > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85469))).used)) || (l_rhs < INT64_C(2))) || (l_rhs > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85469))).used))
+    int64_t l_target = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85501))).c;
+    int64_t l_rhs = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85501))).a;
+    if ((((l_target < INT64_C(2)) || (l_target > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85501))).used)) || (l_rhs < INT64_C(2))) || (l_rhs > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85501))).used))
     {
-      coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85469))).loc);
+      coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85501))).loc);
       return;
     }
-    if (coax_p_CR_presence(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_target, 85470))).type))
+    if (coax_p_CR_presence(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_target, 85502))).type))
     {
-      ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85470))).leaves = INT64_C(0);
-      coax_t_CK_Loc l_prior_loc = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85470))).loc;
-      coax_t722 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85470))).loc);
-      *coax_t722 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85470))).loc;
-      coax_t723 = &(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85470))).join_arrays);
-      *coax_t723 = coax_p_CR_join_arrays(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_target, 85470))).type);
-      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85470))).loc = l_prior_loc;
-      if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85470))).fatal)
+      ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85502))).leaves = INT64_C(0);
+      coax_t_CK_Loc l_prior_loc = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85502))).loc;
+      coax_t722 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85502))).loc);
+      *coax_t722 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85502))).loc;
+      coax_t723 = &(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85502))).join_arrays);
+      *coax_t723 = coax_p_CR_join_arrays(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_target, 85502))).type);
+      ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85502))).loc = l_prior_loc;
+      if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85502))).fatal)
       {
         return;
       }
-      coax_p_CR_leaf(l_r, l_owner, l_write, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_target, 85470))).type, ((coax_t_BS_Path){0}));
+      coax_p_CR_leaf(l_r, l_owner, l_write, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_target, 85502))).type, ((coax_t_BS_Path){0}));
     }
-    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85471))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85471))).error_count > INT64_C(0)))
+    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85503))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85503))).error_count > INT64_C(0)))
     {
       return;
     }
-    l_write = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85471))).borrow_writes;
+    l_write = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_write, 85503))).borrow_writes;
   }
 }
 
@@ -15786,8 +15787,8 @@ static void coax_p_CR_apply(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_ca
   _Bool * coax_t729;
   _Bool * coax_t730;
   coax_t_CB_Context l_b = (l_r).b;
-  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85483));
-  coax_t_CK_Node l_callee = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85483));
+  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85515));
+  coax_t_CK_Node l_callee = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85515));
   if (((l_callee).retain_count < INT64_C(0)) || ((l_callee).retain_count > INT64_C(256)))
   {
     coax_p_CK_resource((l_b).c, (l_e).loc);
@@ -15799,12 +15800,12 @@ static void coax_p_CR_apply(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_ca
   int64_t l_remaining = (l_callee).retain_count;
   while (l_remaining > INT64_C(0))
   {
-    if (((l_link < INT64_C(1)) || (l_link > ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85486))).effects)) || (!coax_p_CB_tick(l_b, (l_e).loc)))
+    if (((l_link < INT64_C(1)) || (l_link > ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85518))).effects)) || (!coax_p_CB_tick(l_b, (l_e).loc)))
     {
       coax_p_CK_resource((l_b).c, (l_e).loc);
       return;
     }
-    coax_t_CK_RetainEffect l_effect = (*coax_elem_v_t_CK_RetainEffect((l_r).effects, coax_sub_s64(l_link, INT64_C(1), 85486), 85486));
+    coax_t_CK_RetainEffect l_effect = (*coax_elem_v_t_CK_RetainEffect((l_r).effects, coax_sub_s64(l_link, INT64_C(1), 85518), 85518));
     int64_t l_next = (l_effect).next;
     if ((((l_effect).source).kind != ((uint8_t)UINT64_C(3))) || (((l_effect).source).role != ((uint8_t)UINT64_C(2))))
     {
@@ -15815,8 +15816,8 @@ static void coax_p_CR_apply(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_ca
     coax_a64_t_BS_Origin l_sources = ((coax_a64_t_BS_Origin){0});
     coax_t_CB_Context l_source_b = l_b;
     (l_source_b).retain_classes = 1;
-    coax_t_CB_Result l_values = coax_p_CB_expr(l_source_b, l_arg, ((l_effect).source).path, (l_effect).source_storage, coax_mkview_v_t_BS_Origin((l_sources).e, 64, 0, 64, 85489));
-    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85489))).error_count > INT64_C(0))
+    coax_t_CB_Result l_values = coax_p_CB_expr(l_source_b, l_arg, ((l_effect).source).path, (l_effect).source_storage, coax_mkview_v_t_BS_Origin((l_sources).e, 64, 0, 64, 85521));
+    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85521))).error_count > INT64_C(0))
     {
       return;
     }
@@ -15824,7 +15825,7 @@ static void coax_p_CR_apply(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_ca
     coax_t_CB_Result l_storage = ((coax_t_CB_Result){0});
     if (((l_effect).destination).kind == ((uint8_t)UINT64_C(1)))
     {
-      (l_addresses).e[coax_index(INT64_C(0), 64, 85490)] = (l_effect).destination;
+      (l_addresses).e[coax_index(INT64_C(0), 64, 85522)] = (l_effect).destination;
       (l_storage).count = INT64_C(1);
     }
     else
@@ -15835,39 +15836,39 @@ static void coax_p_CR_apply(coax_t_CR_Context l_r, int64_t l_owner, int64_t l_ca
         return;
       }
       int64_t l_target = coax_p_CB_at(l_b, (l_e).head, ((l_effect).destination).root);
-      l_storage = coax_p_CR_address(l_b, l_target, ((l_effect).destination).path, ((l_effect).destination).type, coax_mkview_v_t_BS_Origin((l_addresses).e, 64, 0, 64, 85491));
+      l_storage = coax_p_CR_address(l_b, l_target, ((l_effect).destination).path, ((l_effect).destination).type, coax_mkview_v_t_BS_Origin((l_addresses).e, 64, 0, 64, 85523));
     }
-    l_result = (coax_t724 = coax_mkview_v_t_BS_Origin((l_sources).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_values).count), 85492), coax_t725 = (!(l_values).incomplete), coax_t726 = coax_mkview_v_t_BS_Origin((l_addresses).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_storage).count), 85492), coax_t727 = (!(l_storage).incomplete), coax_t728 = coax_mkview_v_t_RP_Obligation((l_pending).e, 256, 0, 256, 85492), coax_p_CR_pairs(l_r, l_owner, l_call, (l_effect).value_type, coax_t724, coax_t725, coax_t726, coax_t727, coax_t728, l_result));
-    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85493))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85493))).error_count > INT64_C(0)))
+    l_result = (coax_t724 = coax_mkview_v_t_BS_Origin((l_sources).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_values).count), 85524), coax_t725 = (!(l_values).incomplete), coax_t726 = coax_mkview_v_t_BS_Origin((l_addresses).e, 64, (int64_t)(INT64_C(0)), (int64_t)((l_storage).count), 85524), coax_t727 = (!(l_storage).incomplete), coax_t728 = coax_mkview_v_t_RP_Obligation((l_pending).e, 256, 0, 256, 85524), coax_p_CR_pairs(l_r, l_owner, l_call, (l_effect).value_type, coax_t724, coax_t725, coax_t726, coax_t727, coax_t728, l_result));
+    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85525))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85525))).error_count > INT64_C(0)))
     {
       return;
     }
     l_link = l_next;
-    l_remaining = coax_sub_s64(l_remaining, INT64_C(1), 85493);
+    l_remaining = coax_sub_s64(l_remaining, INT64_C(1), 85525);
   }
   if (l_link != INT64_C(0))
   {
     coax_p_CK_resource((l_b).c, (l_e).loc);
     return;
   }
-  coax_t729 = &(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85496))).retain_incomplete);
-  *coax_t729 = (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85496))).retain_incomplete || (!(l_result).complete));
-  coax_t730 = &(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85496))).retain_relation);
-  *coax_t730 = (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85496))).retain_relation && (l_callee).retain_relation);
+  coax_t729 = &(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85528))).retain_incomplete);
+  *coax_t729 = (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85528))).retain_incomplete || (!(l_result).complete));
+  coax_t730 = &(((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85528))).retain_relation);
+  *coax_t730 = (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85528))).retain_relation && (l_callee).retain_relation);
   coax_p_CR_record(l_r, ((uint8_t)UINT64_C(2)), l_owner, l_call, (l_result).complete, (l_result).relation, (l_result).pending);
 }
 
-static void coax_p_CR_summary(coax_t_CR_Context l_r, int64_t l_owner) {
+static void coax_p_CR_summary(coax_t_CR_Context l_r, int64_t l_root) {
   _Bool coax_t731;
   _Bool coax_t732;
   int64_t coax_t733;
   coax_t_CB_Context l_b = (l_r).b;
-  if (((l_owner < INT64_C(2)) || (l_owner > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85500))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85500))).kind != ((coax_t_CK_Tag)UINT64_C(64))))
+  if (((l_root < INT64_C(2)) || (l_root > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85537))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_root, 85537))).kind != ((coax_t_CK_Tag)UINT64_C(64))))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85500))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85537))).loc);
     return;
   }
-  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85500));
+  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_root, 85537));
   if (!coax_p_CR_eligible((l_n).generic, (l_n).b))
   {
     return;
@@ -15876,89 +15877,104 @@ static void coax_p_CR_summary(coax_t_CR_Context l_r, int64_t l_owner) {
   {
     return;
   }
-  if (((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth >= INT64_C(32))
-  {
-    coax_p_CK_resource((l_b).c, (l_n).loc);
-    return;
-  }
-  ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth = coax_add_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth, INT64_C(1), 85501);
   if ((l_n).retain_mark != ((coax_t_CR_Phase)UINT64_C(3)))
   {
     coax_p_CK_resource((l_b).c, (l_n).loc);
-    ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth = coax_sub_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth, INT64_C(1), 85501);
     return;
   }
-  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85501))).retain_mark = ((coax_t_CR_Phase)UINT64_C(1));
+  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_root, 85538))).retain_mark = ((coax_t_CR_Phase)UINT64_C(1));
+  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_root, 85538))).retain_return = INT64_C(0);
+  int64_t l_owner = l_root;
   int64_t l_call = (l_n).borrow_calls;
-  while (l_call != INT64_C(0))
+  while (1)
   {
-    if (((((l_call < INT64_C(2)) || (l_call > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85503))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85503))).kind != ((coax_t_CK_Tag)UINT64_C(21)))) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85503))).borrow_owner != l_owner)) || (!coax_p_CB_tick(l_b, (l_n).loc)))
+    if (l_call == INT64_C(0))
     {
-      coax_p_CK_resource((l_b).c, (l_n).loc);
-      ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth = coax_sub_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth, INT64_C(1), 85501);
-      return;
-    }
-    coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85503));
-    if ((l_e).proc == INT64_C(0))
-    {
-      ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85506))).retain_incomplete = 1;
-      coax_p_CR_record(l_r, ((uint8_t)UINT64_C(2)), l_owner, l_call, 0, 1, INT64_C(0));
+      ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85541))).retain_mark = ((coax_t_CR_Phase)UINT64_C(2));
+      (coax_t731 = (!((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85541))).retain_incomplete), coax_t732 = (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85541))).retain_relation && (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85541))).retain_count == INT64_C(0))), coax_t733 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85541))).retain_count, coax_p_CR_record(l_r, ((uint8_t)UINT64_C(1)), l_owner, l_owner, coax_t731, coax_t732, coax_t733));
+      int64_t l_back = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85542))).retain_return;
+      if ((l_back == INT64_C(0)) || ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85542))).fatal)
+      {
+        return;
+      }
+      l_owner = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_back, 85543))).borrow_owner;
+      coax_p_CR_apply(l_r, l_owner, l_back, 0);
+      l_call = l_back;
     }
     else
     {
-      if ((((l_e).proc < INT64_C(2)) || ((l_e).proc > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85508))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85508))).kind != ((coax_t_CK_Tag)UINT64_C(64))))
+      if (((((l_call < INT64_C(2)) || (l_call > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85545))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85545))).kind != ((coax_t_CK_Tag)UINT64_C(21)))) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85545))).borrow_owner != l_owner)) || (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85545))).loc)))
       {
-        coax_p_CK_resource((l_b).c, (l_e).loc);
-        ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth = coax_sub_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth, INT64_C(1), 85501);
+        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85545))).loc);
         return;
       }
-      if (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85509))).flag2)
+      coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85545));
+      if ((l_e).proc == INT64_C(0))
       {
-        ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85509))).retain_incomplete = 1;
+        ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85548))).retain_incomplete = 1;
         coax_p_CR_record(l_r, ((uint8_t)UINT64_C(2)), l_owner, l_call, 0, 1, INT64_C(0));
       }
       else
       {
-        _Bool l_active = (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85510))).retain_mark == ((coax_t_CR_Phase)UINT64_C(1)));
-        if (!l_active)
+        if ((((l_e).proc < INT64_C(2)) || ((l_e).proc > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85550))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85550))).kind != ((coax_t_CK_Tag)UINT64_C(64))))
         {
-          coax_p_CR_summary(l_r, (l_e).proc);
-        }
-        if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85510))).error_count > INT64_C(0))
-        {
-          ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth = coax_sub_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth, INT64_C(1), 85501);
+          coax_p_CK_resource((l_b).c, (l_e).loc);
           return;
         }
-        coax_p_CR_apply(l_r, l_owner, l_call, l_active);
+        coax_t_CK_Node l_callee = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85550));
+        if ((l_callee).flag2)
+        {
+          ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85551))).retain_incomplete = 1;
+          coax_p_CR_record(l_r, ((uint8_t)UINT64_C(2)), l_owner, l_call, 0, 1, INT64_C(0));
+        }
+        else
+        if ((l_callee).retain_mark == ((coax_t_CR_Phase)UINT64_C(1)))
+        {
+          coax_p_CR_apply(l_r, l_owner, l_call, 1);
+        }
+        else
+        if (coax_p_CR_eligible((l_callee).generic, (l_callee).b) && ((l_callee).retain_mark != ((coax_t_CR_Phase)UINT64_C(2))))
+        {
+          if ((l_callee).retain_mark != ((coax_t_CR_Phase)UINT64_C(3)))
+          {
+            coax_p_CK_resource((l_b).c, (l_callee).loc);
+            return;
+          }
+          ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85555))).retain_mark = ((coax_t_CR_Phase)UINT64_C(1));
+          ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_e).proc, 85555))).retain_return = l_call;
+          l_owner = (l_e).proc;
+          l_call = (l_callee).borrow_calls;
+          continue;
+        }
+        else
+        {
+          coax_p_CR_apply(l_r, l_owner, l_call, 0);
+        }
       }
     }
-    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85512))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85512))).error_count > INT64_C(0)))
+    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85560))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85560))).error_count > INT64_C(0)))
     {
-      ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth = coax_sub_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth, INT64_C(1), 85501);
       return;
     }
-    l_call = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85512))).borrow_next;
+    l_call = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_call, 85560))).borrow_next;
   }
-  ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85514))).retain_mark = ((coax_t_CR_Phase)UINT64_C(2));
-  (coax_t731 = (!((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85514))).retain_incomplete), coax_t732 = (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85514))).retain_relation && (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85514))).retain_count == INT64_C(0))), coax_t733 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_owner, 85514))).retain_count, coax_p_CR_record(l_r, ((uint8_t)UINT64_C(1)), l_owner, l_owner, coax_t731, coax_t732, coax_t733));
-  ((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth = coax_sub_s64(((*coax_elem_v_t_CR_State((l_r).state, INT64_C(0), 85501))).depth, INT64_C(1), 85501);
 }
 
 static void coax_p_CR_walk(coax_t_CR_Context l_r, int64_t l_head, _Bool l_instances, _Bool l_seed) {
   coax_t_CB_Context l_b = (l_r).b;
-  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85517))).error_count > INT64_C(0))
+  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85564))).error_count > INT64_C(0))
   {
     return;
   }
   int64_t l_id = l_head;
   while (l_id != INT64_C(0))
   {
-    if (((l_id < INT64_C(2)) || (l_id > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85519))).used)) || (!coax_p_CB_tick(l_b, ((coax_t_CK_Loc){0}))))
+    if (((l_id < INT64_C(2)) || (l_id > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85566))).used)) || (!coax_p_CB_tick(l_b, ((coax_t_CK_Loc){0}))))
     {
-      coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85519))).loc);
+      coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85566))).loc);
       return;
     }
-    coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_id, 85519));
+    coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_id, 85566));
     int64_t l_owner = (((l_n).kind == ((coax_t_CK_Tag)UINT64_C(73))) ? (l_n).a : l_id);
     if (((l_n).kind == ((coax_t_CK_Tag)UINT64_C(64))) || ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(73))))
     {
@@ -15971,7 +15987,7 @@ static void coax_p_CR_walk(coax_t_CR_Context l_r, int64_t l_head, _Bool l_instan
         coax_p_CR_summary(l_r, l_owner);
       }
     }
-    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85521))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85521))).error_count > INT64_C(0)))
+    if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85568))).fatal || (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85568))).error_count > INT64_C(0)))
     {
       return;
     }
@@ -15992,61 +16008,61 @@ static void coax_p_CR_execute(coax_t_CB_Context l_b, coax_v_t_CK_RetainEffect l_
     return;
   }
   coax_a1_t_CR_State l_state = ((coax_a1_t_CR_State){0});
-  coax_t_CR_Context l_r = ((coax_t_CR_Context){.b = l_b, .effects = l_effects, .reports = (l_c).retain_reports, .state = coax_mkview_v_t_CR_State((l_state).e, 1, 0, 1, 85527)});
+  coax_t_CR_Context l_r = ((coax_t_CR_Context){.b = l_b, .effects = l_effects, .reports = (l_c).retain_reports, .state = coax_mkview_v_t_CR_State((l_state).e, 1, 0, 1, 85574)});
   {
     int64_t coax_lo734 = INT64_C(2);
-    int64_t coax_hi734 = coax_add_s64(((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85530))).used, INT64_C(1), 85530);
+    int64_t coax_hi734 = coax_add_s64(((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85577))).used, INT64_C(1), 85577);
     for (int64_t l_id = coax_lo734; l_id < coax_hi734; l_id++)
     {
-      if (((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85530))).kind == ((coax_t_CK_Tag)UINT64_C(64)))
+      if (((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85577))).kind == ((coax_t_CK_Tag)UINT64_C(64)))
       {
-        if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85530))).loc))
+        if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85577))).loc))
         {
           return;
         }
-        ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85530))).retain_head = INT64_C(0);
-        ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85530))).retain_count = INT64_C(0);
-        ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85530))).retain_mark = ((coax_t_CR_Phase)UINT64_C(0));
-        ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85530))).retain_incomplete = 0;
+        ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85577))).retain_head = INT64_C(0);
+        ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85577))).retain_count = INT64_C(0);
+        ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85577))).retain_mark = ((coax_t_CR_Phase)UINT64_C(0));
+        ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85577))).retain_incomplete = 0;
       }
     }
   }
-  coax_p_CR_walk(l_r, ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 85531))).head, 0, 1);
-  coax_p_CR_walk(l_r, ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85531))).instances, 1, 1);
-  coax_p_CR_walk(l_r, ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 85534))).head, 0, 0);
-  coax_p_CR_walk(l_r, ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85534))).instances, 1, 0);
-  if (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85534))).fatal || (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85534))).error_count > INT64_C(0)))
+  coax_p_CR_walk(l_r, ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 85578))).head, 0, 1);
+  coax_p_CR_walk(l_r, ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85578))).instances, 1, 1);
+  coax_p_CR_walk(l_r, ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 85581))).head, 0, 0);
+  coax_p_CR_walk(l_r, ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85581))).instances, 1, 0);
+  if (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85581))).fatal || (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85581))).error_count > INT64_C(0)))
   {
     return;
   }
-  coax_t735 = &(((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85534))).retain_report_count);
-  *coax_t735 = ((l_state).e[coax_index(INT64_C(0), 1, 85534)]).reports;
+  coax_t735 = &(((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85581))).retain_report_count);
+  *coax_t735 = ((l_state).e[coax_index(INT64_C(0), 1, 85581)]).reports;
 }
 
 static void coax_p_CR_run(coax_t_CB_Context l_b) {
-  ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85537))).retain_report_count = INT64_C(0);
+  ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85584))).retain_report_count = INT64_C(0);
   coax_t_CB_Context l_raw = l_b;
   (l_raw).retain_classes = 0;
   {
     int64_t coax_lo736 = INT64_C(1);
-    int64_t coax_hi736 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85539))).type_count;
+    int64_t coax_hi736 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 85586))).type_count;
     for (int64_t l_type = coax_lo736; l_type < coax_hi736; l_type++)
     {
-      if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85539))).loc))
+      if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 85586))).loc))
       {
         return;
       }
-      ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85539))).retain_presence = ((uint8_t)UINT64_C(0));
-      ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85539))).retain_mutable = ((uint8_t)UINT64_C(0));
-      ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85539))).retain_join = ((uint8_t)UINT64_C(0));
-      ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85539))).retain_fields = INT64_C(0);
+      ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85586))).retain_presence = ((uint8_t)UINT64_C(0));
+      ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85586))).retain_mutable = ((uint8_t)UINT64_C(0));
+      ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85586))).retain_join = ((uint8_t)UINT64_C(0));
+      ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_type, 85586))).retain_fields = INT64_C(0);
     }
   }
   (l_raw).retain_fields = 1;
   if ((((l_b).c).retain_effects).count == INT64_C(0))
   {
     coax_a128_t_CK_RetainEffect l_effects = ((coax_a128_t_CK_RetainEffect){0});
-    coax_p_CR_execute(l_raw, coax_mkview_v_t_CK_RetainEffect((l_effects).e, 128, 0, 128, 85541));
+    coax_p_CR_execute(l_raw, coax_mkview_v_t_CK_RetainEffect((l_effects).e, 128, 0, 128, 85588));
   }
   else
   {
@@ -16056,67 +16072,67 @@ static void coax_p_CR_run(coax_t_CB_Context l_b) {
 
 static void coax_p_CB2_fixture(coax_t_CK_Context l_c) {
   coax_t_CK_Type * coax_t738;
-  (*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85876)) = ((coax_t_CK_State){.used = INT64_C(95), .type_count = INT64_C(21)});
+  (*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 85923)) = ((coax_t_CK_State){.used = INT64_C(95), .type_count = INT64_C(21)});
   {
     int64_t coax_lo737 = INT64_C(0);
     int64_t coax_hi737 = INT64_C(16);
     for (int64_t l_i = coax_lo737; l_i < coax_hi737; l_i++)
     {
-      coax_t738 = &((*coax_elem_v_t_CK_Type((l_c).types, l_i, 85876)));
+      coax_t738 = &((*coax_elem_v_t_CK_Type((l_c).types, l_i, 85923)));
       *coax_t738 = CK_builtin(l_i);
     }
   }
-  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(16), 85877)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(11)), .alignment = INT64_C(1), .elem = INT64_C(12), .sum_default = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(17), 85877)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(8)), .alignment = INT64_C(1), .decl = INT64_C(34), .sum_default = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(18), 85877)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(10)), .alignment = INT64_C(1), .elem = INT64_C(17), .length = INT64_C(1), .sum_default = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(19), 85877)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(11)), .alignment = INT64_C(1), .elem = INT64_C(17), .sum_default = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(20), 85877)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(10)), .alignment = INT64_C(1), .elem = INT64_C(12), .length = INT64_C(4), .sum_default = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 85878)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(74)), .head = INT64_C(2), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(2), 85878)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(64)), .b = INT64_C(51), .head = INT64_C(3), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_returns = INT64_C(10), .borrow_calls = INT64_C(22), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(3), 85878)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .next = INT64_C(4), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(4), 85878)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(8), 85879)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(42)), .type = INT64_C(18), .field_index = INT64_C(-1), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(9), 85879)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(42)), .type = INT64_C(20), .field_index = INT64_C(-1), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(10), 85879)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(44)), .a = INT64_C(11), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(11), 85879)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(25)), .loc = ((coax_t_CK_Loc){.line = INT64_C(90), .column = INT64_C(5)}), .a = INT64_C(12), .type = INT64_C(16), .field_index = INT64_C(0), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(12), 85879)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(26)), .a = INT64_C(24), .b = INT64_C(45), .type = INT64_C(17), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(22), 85880)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(21)), .head = INT64_C(23), .type = INT64_C(1), .field_index = INT64_C(-1), .proc = INT64_C(30), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(23), 85880)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(27)), .a = INT64_C(24), .next = INT64_C(25), .type = INT64_C(19), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(24), 85880)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .type = INT64_C(18), .field_index = INT64_C(-1), .borrow_binding = INT64_C(8), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(25), 85880)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .next = INT64_C(26), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_binding = INT64_C(3), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(26), 85880)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(27)), .a = INT64_C(27), .type = INT64_C(16), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(27), 85880)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .type = INT64_C(20), .field_index = INT64_C(-1), .borrow_binding = INT64_C(9), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(30), 85881)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(64)), .b = INT64_C(50), .head = INT64_C(31), .type = INT64_C(1), .field_index = INT64_C(-1), .borrow_writes = INT64_C(40), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(31), 85881)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .next = INT64_C(32), .type = INT64_C(19), .field_index = INT64_C(-1), .borrow_owner = INT64_C(30), .borrow_writes = INT64_C(40), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(32), 85881)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .next = INT64_C(33), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_owner = INT64_C(30), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(33), 85881)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_owner = INT64_C(30), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(34), 85881)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(66)), .head = INT64_C(35), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(35), 85881)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(69)), .next = INT64_C(36), .type = INT64_C(16), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(36), 85881)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(69)), .type = INT64_C(16), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(40), 85882)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(43)), .a = INT64_C(46), .c = INT64_C(42), .field_index = INT64_C(-1), .borrow_owner = INT64_C(30), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(42), 85882)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(25)), .a = INT64_C(43), .type = INT64_C(16), .field_index = INT64_C(0), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(43), 85882)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(26)), .a = INT64_C(44), .b = INT64_C(45), .type = INT64_C(17), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(44), 85882)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .type = INT64_C(19), .field_index = INT64_C(-1), .borrow_binding = INT64_C(31), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(45), 85882)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(16)), .type = INT64_C(11), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(46), 85882)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .loc = ((coax_t_CK_Loc){.line = INT64_C(81), .column = INT64_C(24)}), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_binding = INT64_C(32), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(49), 85882)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_binding = INT64_C(33), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(50), 85882)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(40)), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
-  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(51), 85882)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(40)), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(16), 85924)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(11)), .alignment = INT64_C(1), .elem = INT64_C(12), .sum_default = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(17), 85924)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(8)), .alignment = INT64_C(1), .decl = INT64_C(34), .sum_default = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(18), 85924)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(10)), .alignment = INT64_C(1), .elem = INT64_C(17), .length = INT64_C(1), .sum_default = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(19), 85924)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(11)), .alignment = INT64_C(1), .elem = INT64_C(17), .sum_default = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Type((l_c).types, INT64_C(20), 85924)) = ((coax_t_CK_Type){.kind = ((coax_t_CK_Kind)UINT64_C(10)), .alignment = INT64_C(1), .elem = INT64_C(12), .length = INT64_C(4), .sum_default = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 85925)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(74)), .head = INT64_C(2), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(2), 85925)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(64)), .b = INT64_C(51), .head = INT64_C(3), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_returns = INT64_C(10), .borrow_calls = INT64_C(22), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(3), 85925)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .next = INT64_C(4), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(4), 85925)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(8), 85926)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(42)), .type = INT64_C(18), .field_index = INT64_C(-1), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(9), 85926)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(42)), .type = INT64_C(20), .field_index = INT64_C(-1), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(10), 85926)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(44)), .a = INT64_C(11), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(11), 85926)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(25)), .loc = ((coax_t_CK_Loc){.line = INT64_C(90), .column = INT64_C(5)}), .a = INT64_C(12), .type = INT64_C(16), .field_index = INT64_C(0), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(12), 85926)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(26)), .a = INT64_C(24), .b = INT64_C(45), .type = INT64_C(17), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(22), 85927)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(21)), .head = INT64_C(23), .type = INT64_C(1), .field_index = INT64_C(-1), .proc = INT64_C(30), .borrow_owner = INT64_C(2), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(23), 85927)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(27)), .a = INT64_C(24), .next = INT64_C(25), .type = INT64_C(19), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(24), 85927)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .type = INT64_C(18), .field_index = INT64_C(-1), .borrow_binding = INT64_C(8), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(25), 85927)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .next = INT64_C(26), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_binding = INT64_C(3), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(26), 85927)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(27)), .a = INT64_C(27), .type = INT64_C(16), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(27), 85927)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .type = INT64_C(20), .field_index = INT64_C(-1), .borrow_binding = INT64_C(9), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(30), 85928)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(64)), .b = INT64_C(50), .head = INT64_C(31), .type = INT64_C(1), .field_index = INT64_C(-1), .borrow_writes = INT64_C(40), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(31), 85928)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .next = INT64_C(32), .type = INT64_C(19), .field_index = INT64_C(-1), .borrow_owner = INT64_C(30), .borrow_writes = INT64_C(40), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(32), 85928)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .next = INT64_C(33), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_owner = INT64_C(30), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(33), 85928)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(68)), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_owner = INT64_C(30), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(34), 85928)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(66)), .head = INT64_C(35), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(35), 85928)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(69)), .next = INT64_C(36), .type = INT64_C(16), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(36), 85928)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(69)), .type = INT64_C(16), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(40), 85929)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(43)), .a = INT64_C(46), .c = INT64_C(42), .field_index = INT64_C(-1), .borrow_owner = INT64_C(30), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(42), 85929)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(25)), .a = INT64_C(43), .type = INT64_C(16), .field_index = INT64_C(0), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(43), 85929)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(26)), .a = INT64_C(44), .b = INT64_C(45), .type = INT64_C(17), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(44), 85929)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .type = INT64_C(19), .field_index = INT64_C(-1), .borrow_binding = INT64_C(31), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(45), 85929)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(16)), .type = INT64_C(11), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(46), 85929)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .loc = ((coax_t_CK_Loc){.line = INT64_C(81), .column = INT64_C(24)}), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_binding = INT64_C(32), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(49), 85929)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(20)), .type = INT64_C(16), .field_index = INT64_C(-1), .borrow_binding = INT64_C(33), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(50), 85929)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(40)), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
+  (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(51), 85929)) = ((coax_t_CK_Node){.kind = ((coax_t_CK_Tag)UINT64_C(40)), .field_index = INT64_C(-1), .sum_variant = INT64_C(-1)});
 }
 
 static void coax_p_CB2_reowner(coax_t_CK_Context l_c, int64_t l_owner) {
   coax_t_CK_Node * coax_t739;
-  coax_t739 = &((*coax_elem_v_t_CK_Node((l_c).nodes, l_owner, 85917)));
-  *coax_t739 = (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(2), 85917));
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 85917))).head = l_owner;
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(22), 85917))).borrow_owner = l_owner;
+  coax_t739 = &((*coax_elem_v_t_CK_Node((l_c).nodes, l_owner, 85964)));
+  *coax_t739 = (*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(2), 85964));
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 85964))).head = l_owner;
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(22), 85964))).borrow_owner = l_owner;
   {
     coax_a4_s64 coax_c740_value = ((coax_a4_s64){{INT64_C(3), INT64_C(4), INT64_C(8), INT64_C(9)}});
     coax_a4_s64 *coax_c740 = &coax_c740_value;
     for (int64_t coax_i740 = 0; coax_i740 < 4; coax_i740++)
     {
       int64_t l_id = coax_c740->e[coax_i740];
-      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85917))).borrow_owner = l_owner;
+      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 85964))).borrow_owner = l_owner;
     }
   }
 }
@@ -16126,50 +16142,50 @@ static int64_t coax_p_CB_index_bucket(uint8_t l_kind, coax_t_BS_Path l_path) {
   int64_t coax_t743;
   int64_t coax_t744;
   int64_t coax_t745;
-  int64_t l_hash = ((int64_t)coax_cast_us((uint64_t)(l_kind), INT64_C(9223372036854775807), 86561));
+  int64_t l_hash = ((int64_t)coax_cast_us((uint64_t)(l_kind), INT64_C(9223372036854775807), 86608));
   {
     int64_t coax_lo741 = INT64_C(0);
     int64_t coax_hi741 = (l_path).count;
     for (int64_t l_i = coax_lo741; l_i < coax_hi741; l_i++)
     {
-      l_hash = ((int64_t)((coax_t742 = (coax_t743 = coax_shl_s64(l_hash, (int64_t)(INT64_C(1)), 86561), coax_t744 = ((int64_t)coax_cast_us((uint64_t)((((l_path).steps).e[coax_index(l_i, 24, 86561)]).kind), INT64_C(9223372036854775807), 86561)), ((int64_t)(coax_t743 ^ coax_t744))), coax_t745 = (((l_path).steps).e[coax_index(l_i, 24, 86561)]).index, ((int64_t)(coax_t742 ^ coax_t745))) & INT64_C(7)));
+      l_hash = ((int64_t)((coax_t742 = (coax_t743 = coax_shl_s64(l_hash, (int64_t)(INT64_C(1)), 86608), coax_t744 = ((int64_t)coax_cast_us((uint64_t)((((l_path).steps).e[coax_index(l_i, 24, 86608)]).kind), INT64_C(9223372036854775807), 86608)), ((int64_t)(coax_t743 ^ coax_t744))), coax_t745 = (((l_path).steps).e[coax_index(l_i, 24, 86608)]).index, ((int64_t)(coax_t742 ^ coax_t745))) & INT64_C(7)));
     }
   }
   return l_hash;
 }
 
 static _Bool coax_p_CB_index_begin(coax_t_CB_Context l_b) {
-  if (((l_b).queries).count > coax_div_s64((((l_b).c).result_work).count, INT64_C(10), 86564))
+  if (((l_b).queries).count > coax_div_s64((((l_b).c).result_work).count, INT64_C(10), 86611))
   {
     return 0;
   }
   {
     int64_t coax_lo746 = INT64_C(0);
-    int64_t coax_hi746 = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86568))).queries;
+    int64_t coax_hi746 = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86615))).queries;
     for (int64_t l_slot = coax_lo746; l_slot < coax_hi746; l_slot++)
     {
-      if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86568))).loc))
+      if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86615))).loc))
       {
         break;
       }
-      (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(l_slot, INT64_C(10), 86568), INT64_C(9), 86568), 86568)) = INT64_C(0);
+      (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(l_slot, INT64_C(10), 86615), INT64_C(9), 86615), 86615)) = INT64_C(0);
     }
   }
-  return (!((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86569))).fatal);
+  return (!((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86616))).fatal);
 }
 
 static void coax_p_CB_index_probe(coax_t_CB_Context l_b, int64_t l_decl, int64_t l_link) {
-  if ((l_link < INT64_C(1)) || (l_link > ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86573))).queries))
+  if ((l_link < INT64_C(1)) || (l_link > ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86620))).queries))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86573))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86620))).loc);
   }
   else
-  if (coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86574))).loc))
+  if (coax_p_CB_tick(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86621))).loc))
   {
-    coax_t_CK_BorrowQuery l_q = (*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64(l_link, INT64_C(1), 86575), 86575));
+    coax_t_CK_BorrowQuery l_q = (*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64(l_link, INT64_C(1), 86622), 86622));
     if (((((((((l_q).decl != l_decl) || ((l_q).kind < ((uint8_t)UINT64_C(1)))) || (((l_q).kind > ((uint8_t)UINT64_C(3))) && ((l_q).kind != ((uint8_t)UINT64_C(5))))) || ((l_q).status < ((uint8_t)UINT64_C(1)))) || ((l_q).status > ((uint8_t)UINT64_C(3)))) || ((l_q).next < INT64_C(0))) || ((l_q).next >= l_link)) || (!BS_path_valid((l_q).path)))
     {
-      coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86576))).loc);
+      coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86623))).loc);
     }
   }
 }
@@ -16181,12 +16197,12 @@ static int64_t coax_p_CB_index_start(coax_t_CB_Context l_b, int64_t l_decl, int6
     return INT64_C(0);
   }
   coax_p_CB_index_probe(l_b, l_decl, l_head);
-  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86584))).fatal)
+  if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86631))).fatal)
   {
     return l_head;
   }
-  int64_t l_base = coax_mul_s64(coax_sub_s64(l_head, INT64_C(1), 86584), INT64_C(10), 86584);
-  int64_t l_marker = (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(l_base, INT64_C(9), 86584), 86584));
+  int64_t l_base = coax_mul_s64(coax_sub_s64(l_head, INT64_C(1), 86631), INT64_C(10), 86631);
+  int64_t l_marker = (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(l_base, INT64_C(9), 86631), 86631));
   if (l_marker == INT64_C(0))
   {
     coax_a8_s64 l_heads = ((coax_a8_s64){0});
@@ -16197,24 +16213,24 @@ static int64_t coax_p_CB_index_start(coax_t_CB_Context l_b, int64_t l_decl, int6
       if (l_link != l_head)
       {
         coax_p_CB_index_probe(l_b, l_decl, l_link);
-        if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86588))).fatal)
+        if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86635))).fatal)
         {
           return l_link;
         }
       }
-      coax_t_CK_BorrowQuery l_q = (*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64(l_link, INT64_C(1), 86588), 86588));
+      coax_t_CK_BorrowQuery l_q = (*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64(l_link, INT64_C(1), 86635), 86635));
       int64_t l_at = coax_p_CB_index_bucket((l_q).kind, (l_q).path);
-      int64_t l_prior = (l_tails).e[coax_index(l_at, 8, 86588)];
+      int64_t l_prior = (l_tails).e[coax_index(l_at, 8, 86635)];
       if (l_prior == INT64_C(0))
       {
-        (l_heads).e[coax_index(l_at, 8, 86589)] = l_link;
+        (l_heads).e[coax_index(l_at, 8, 86636)] = l_link;
       }
       else
       {
-        (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(coax_sub_s64(l_prior, INT64_C(1), 86589), INT64_C(10), 86589), INT64_C(8), 86589), 86589)) = l_link;
+        (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(coax_sub_s64(l_prior, INT64_C(1), 86636), INT64_C(10), 86636), INT64_C(8), 86636), 86636)) = l_link;
       }
-      (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(coax_sub_s64(l_link, INT64_C(1), 86589), INT64_C(10), 86589), INT64_C(8), 86589), 86589)) = INT64_C(0);
-      (l_tails).e[coax_index(l_at, 8, 86589)] = l_link;
+      (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(coax_sub_s64(l_link, INT64_C(1), 86636), INT64_C(10), 86636), INT64_C(8), 86636), 86636)) = INT64_C(0);
+      (l_tails).e[coax_index(l_at, 8, 86636)] = l_link;
       l_link = (l_q).next;
     }
     {
@@ -16222,32 +16238,32 @@ static int64_t coax_p_CB_index_start(coax_t_CB_Context l_b, int64_t l_decl, int6
       int64_t coax_hi747 = INT64_C(8);
       for (int64_t l_i = coax_lo747; l_i < coax_hi747; l_i++)
       {
-        coax_t748 = &((*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(l_base, l_i, 86592), 86592)));
-        *coax_t748 = (l_heads).e[coax_index(l_i, 8, 86592)];
+        coax_t748 = &((*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(l_base, l_i, 86639), 86639)));
+        *coax_t748 = (l_heads).e[coax_index(l_i, 8, 86639)];
       }
     }
-    (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(l_base, INT64_C(9), 86592), 86592)) = l_head;
+    (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(l_base, INT64_C(9), 86639), 86639)) = l_head;
   }
   else
   if (l_marker != l_head)
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86593))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86640))).loc);
     return l_head;
   }
-  int64_t l_link = (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(l_base, l_bucket, 86594), 86594));
+  int64_t l_link = (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(l_base, l_bucket, 86641), 86641));
   if ((l_link < INT64_C(0)) || (l_link > l_head))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86594))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86641))).loc);
     return l_link;
   }
   return l_link;
 }
 
 static int64_t coax_p_CB_index_next(coax_t_CB_Context l_b, int64_t l_decl, int64_t l_link, coax_t_CK_BorrowQuery l_q, int64_t l_bucket) {
-  int64_t l_next = (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(coax_sub_s64(l_link, INT64_C(1), 86597), INT64_C(10), 86597), INT64_C(8), 86597), 86597));
+  int64_t l_next = (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(coax_sub_s64(l_link, INT64_C(1), 86644), INT64_C(10), 86644), INT64_C(8), 86644), 86644));
   if (((l_next < INT64_C(0)) || (l_next > (l_q).next)) || (coax_p_CB_index_bucket((l_q).kind, (l_q).path) != l_bucket))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86601))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86648))).loc);
   }
   return l_next;
 }
@@ -16269,16 +16285,16 @@ static _Bool coax_p_CB_index_prepare(coax_t_CB_Context l_b, int64_t l_slot, uint
       int64_t coax_hi749 = INT64_C(8);
       for (int64_t l_i = coax_lo749; l_i < coax_hi749; l_i++)
       {
-        coax_t750 = &((l_heads).e[coax_index(l_i, 8, 86605)]);
-        *coax_t750 = (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(coax_sub_s64(l_head, INT64_C(1), 86605), INT64_C(10), 86605), l_i, 86605), 86605));
+        coax_t750 = &((l_heads).e[coax_index(l_i, 8, 86652)]);
+        *coax_t750 = (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(coax_sub_s64(l_head, INT64_C(1), 86652), INT64_C(10), 86652), l_i, 86652), 86652));
       }
     }
   }
   int64_t l_bucket = coax_p_CB_index_bucket(l_kind, l_path);
-  int64_t l_next = (l_heads).e[coax_index(l_bucket, 8, 86606)];
-  coax_t751 = &((l_heads).e[coax_index(l_bucket, 8, 86606)]);
-  *coax_t751 = coax_add_s64(l_slot, INT64_C(1), 86606);
-  if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86609))).loc))
+  int64_t l_next = (l_heads).e[coax_index(l_bucket, 8, 86653)];
+  coax_t751 = &((l_heads).e[coax_index(l_bucket, 8, 86653)]);
+  *coax_t751 = coax_add_s64(l_slot, INT64_C(1), 86653);
+  if (!coax_p_CB_tick(l_b, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86656))).loc))
   {
     return 0;
   }
@@ -16287,13 +16303,13 @@ static _Bool coax_p_CB_index_prepare(coax_t_CB_Context l_b, int64_t l_slot, uint
     int64_t coax_hi752 = INT64_C(8);
     for (int64_t l_i = coax_lo752; l_i < coax_hi752; l_i++)
     {
-      coax_t753 = &((*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(l_slot, INT64_C(10), 86610), l_i, 86610), 86610)));
-      *coax_t753 = (l_heads).e[coax_index(l_i, 8, 86610)];
+      coax_t753 = &((*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(l_slot, INT64_C(10), 86657), l_i, 86657), 86657)));
+      *coax_t753 = (l_heads).e[coax_index(l_i, 8, 86657)];
     }
   }
-  (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(l_slot, INT64_C(10), 86611), INT64_C(8), 86611), 86611)) = l_next;
-  coax_t754 = &((*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(l_slot, INT64_C(10), 86611), INT64_C(9), 86611), 86611)));
-  *coax_t754 = coax_add_s64(l_slot, INT64_C(1), 86611);
+  (*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(l_slot, INT64_C(10), 86658), INT64_C(8), 86658), 86658)) = l_next;
+  coax_t754 = &((*coax_elem_v_s64(((l_b).c).result_work, coax_add_s64(coax_mul_s64(l_slot, INT64_C(10), 86658), INT64_C(9), 86658), 86658)));
+  *coax_t754 = coax_add_s64(l_slot, INT64_C(1), 86658);
   return 1;
 }
 
@@ -16302,24 +16318,24 @@ static _Bool coax_p_CB_literal_same(coax_t_CB_LiteralBlock l_p, int64_t l_id, in
 }
 
 static _Bool coax_p_CB_literal_stageable(_Bool l_enabled, int64_t l_index, int64_t l_block) {
-  return ((l_enabled && (l_index >= INT64_C(0))) && (coax_div_s64(l_index, INT64_C(8), 86623) == l_block));
+  return ((l_enabled && (l_index >= INT64_C(0))) && (coax_div_s64(l_index, INT64_C(8), 86670) == l_block));
 }
 
 static void coax_p_CB_literal_keep(coax_t_CB_Context l_b, coax_t_CB_LiteralBlock l_p) {
   coax_t_CB_LiteralBlock * coax_t755;
-  if (coax_p_CB_literal_same(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86626))).literal_current, (l_p).id, (l_p).type, (l_p).head, (l_p).used, (l_p).types, (l_p).block))
+  if (coax_p_CB_literal_same(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86673))).literal_current, (l_p).id, (l_p).type, (l_p).head, (l_p).used, (l_p).types, (l_p).block))
   {
-    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86626))).literal_current = l_p;
+    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86673))).literal_current = l_p;
     return;
   }
-  if (coax_p_CB_literal_same(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86627))).literal_previous, (l_p).id, (l_p).type, (l_p).head, (l_p).used, (l_p).types, (l_p).block))
+  if (coax_p_CB_literal_same(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86674))).literal_previous, (l_p).id, (l_p).type, (l_p).head, (l_p).used, (l_p).types, (l_p).block))
   {
-    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86627))).literal_previous = l_p;
+    ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86674))).literal_previous = l_p;
     return;
   }
-  coax_t755 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86629))).literal_previous);
-  *coax_t755 = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86629))).literal_current;
-  ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86629))).literal_current = l_p;
+  coax_t755 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86676))).literal_previous);
+  *coax_t755 = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86676))).literal_current;
+  ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86676))).literal_current = l_p;
 }
 
 static int64_t coax_p_CB_literal_field(coax_t_CB_Context l_b, int64_t l_id, int64_t l_index) {
@@ -16329,28 +16345,28 @@ static int64_t coax_p_CB_literal_field(coax_t_CB_Context l_b, int64_t l_id, int6
   int64_t coax_t759;
   int64_t coax_t760;
   int64_t coax_t761;
-  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_id, 86632));
+  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_id, 86679));
   _Bool l_enabled = ((l_b).literal_cache && (l_index >= INT64_C(0)));
   int64_t l_block = ((int64_t)0);
   if (l_enabled)
   {
-    l_block = coax_div_s64(l_index, INT64_C(8), 86632);
-    coax_t_CB_LiteralBlock l_p = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86633))).literal_current;
-    if (!(coax_t756 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86633))).used, coax_t757 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86633))).type_count, coax_p_CB_literal_same(l_p, l_id, (l_e).type, (l_e).head, coax_t756, coax_t757, l_block)))
+    l_block = coax_div_s64(l_index, INT64_C(8), 86679);
+    coax_t_CB_LiteralBlock l_p = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86680))).literal_current;
+    if (!(coax_t756 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86680))).used, coax_t757 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86680))).type_count, coax_p_CB_literal_same(l_p, l_id, (l_e).type, (l_e).head, coax_t756, coax_t757, l_block)))
     {
-      l_p = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86633))).literal_previous;
+      l_p = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86680))).literal_previous;
     }
-    if (coax_t758 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86634))).used, coax_t759 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86634))).type_count, coax_p_CB_literal_same(l_p, l_id, (l_e).type, (l_e).head, coax_t758, coax_t759, l_block))
+    if (coax_t758 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86681))).used, coax_t759 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86681))).type_count, coax_p_CB_literal_same(l_p, l_id, (l_e).type, (l_e).head, coax_t758, coax_t759, l_block))
     {
-      int64_t l_selected = ((l_p).fields).e[coax_index(coax_mod_s64(l_index, INT64_C(8), 86638), 8, 86638)];
-      if ((l_selected >= INT64_C(2)) && (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 86638))).field_index == l_index))
+      int64_t l_selected = ((l_p).fields).e[coax_index(coax_mod_s64(l_index, INT64_C(8), 86685), 8, 86685)];
+      if ((l_selected >= INT64_C(2)) && (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_selected, 86685))).field_index == l_index))
       {
         _Bool l_charged = coax_p_CB_tick(l_b, (l_e).loc);
         return l_selected;
       }
     }
   }
-  coax_t_CB_LiteralBlock l_staged = (coax_t760 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86641))).used, coax_t761 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86641))).type_count, ((coax_t_CB_LiteralBlock){.id = l_id, .type = (l_e).type, .head = (l_e).head, .used = coax_t760, .types = coax_t761, .block = l_block}));
+  coax_t_CB_LiteralBlock l_staged = (coax_t760 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86688))).used, coax_t761 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86688))).type_count, ((coax_t_CB_LiteralBlock){.id = l_id, .type = (l_e).type, .head = (l_e).head, .used = coax_t760, .types = coax_t761, .block = l_block}));
   int64_t l_field = (l_e).head;
   while (l_field != INT64_C(0))
   {
@@ -16358,13 +16374,13 @@ static int64_t coax_p_CB_literal_field(coax_t_CB_Context l_b, int64_t l_id, int6
     {
       return l_field;
     }
-    coax_t_CK_Node l_f = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 86644));
+    coax_t_CK_Node l_f = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 86691));
     if (coax_p_CB_literal_stageable(l_enabled, (l_f).field_index, l_block))
     {
-      int64_t l_slot = coax_mod_s64((l_f).field_index, INT64_C(8), 86647);
-      if (((l_staged).fields).e[coax_index(l_slot, 8, 86647)] == INT64_C(0))
+      int64_t l_slot = coax_mod_s64((l_f).field_index, INT64_C(8), 86694);
+      if (((l_staged).fields).e[coax_index(l_slot, 8, 86694)] == INT64_C(0))
       {
-        ((l_staged).fields).e[coax_index(l_slot, 8, 86647)] = l_field;
+        ((l_staged).fields).e[coax_index(l_slot, 8, 86694)] = l_field;
       }
     }
     if ((l_f).field_index == l_index)
@@ -16390,7 +16406,7 @@ _Bool BS_path_valid(coax_t_BS_Path l_path) {
     int64_t coax_hi762 = INT64_C(24);
     for (int64_t l_i = coax_lo762; l_i < coax_hi762; l_i++)
     {
-      coax_t_BS_Step l_step = ((l_path).steps).e[coax_index(l_i, 24, 86867)];
+      coax_t_BS_Step l_step = ((l_path).steps).e[coax_index(l_i, 24, 86914)];
       if (l_i >= (l_path).count)
       {
         if (((l_step).kind != ((uint8_t)UINT64_C(0))) || ((l_step).index != INT64_C(0)))
@@ -16453,7 +16469,7 @@ _Bool BS_origin_valid(coax_t_BS_Origin l_origin) {
     int64_t coax_hi763 = ((l_origin).path).count;
     for (int64_t l_i = coax_lo763; l_i < coax_hi763; l_i++)
     {
-      if ((((((l_origin).path).steps).e[coax_index(l_i, 24, 86880)]).kind == ((uint8_t)UINT64_C(3))) && (((l_origin).kind != ((uint8_t)UINT64_C(3))) || ((l_origin).role != ((uint8_t)UINT64_C(2)))))
+      if ((((((l_origin).path).steps).e[coax_index(l_i, 24, 86927)]).kind == ((uint8_t)UINT64_C(3))) && (((l_origin).kind != ((uint8_t)UINT64_C(3))) || ((l_origin).role != ((uint8_t)UINT64_C(2)))))
       {
         return 0;
       }
@@ -16495,7 +16511,7 @@ static _Bool coax_p_bs_path_equal(coax_t_BS_Path l_a, coax_t_BS_Path l_b) {
     int64_t coax_hi765 = (l_a).count;
     for (int64_t l_i = coax_lo765; l_i < coax_hi765; l_i++)
     {
-      if ((coax_t766 = (((l_a).steps).e[coax_index(l_i, 24, 86890)]).kind, coax_t767 = (((l_b).steps).e[coax_index(l_i, 24, 86890)]).kind, (coax_t766 != coax_t767)) || (coax_t768 = (((l_a).steps).e[coax_index(l_i, 24, 86890)]).index, coax_t769 = (((l_b).steps).e[coax_index(l_i, 24, 86890)]).index, (coax_t768 != coax_t769)))
+      if ((coax_t766 = (((l_a).steps).e[coax_index(l_i, 24, 86937)]).kind, coax_t767 = (((l_b).steps).e[coax_index(l_i, 24, 86937)]).kind, (coax_t766 != coax_t767)) || (coax_t768 = (((l_a).steps).e[coax_index(l_i, 24, 86937)]).index, coax_t769 = (((l_b).steps).e[coax_index(l_i, 24, 86937)]).index, (coax_t768 != coax_t769)))
       {
         return 0;
       }
@@ -16529,36 +16545,36 @@ static int64_t coax_p_bs_compare(coax_t_BS_Origin l_a, coax_t_BS_Origin l_b) {
   int64_t coax_t788;
   if ((l_a).kind != (l_b).kind)
   {
-    return (coax_t770 = ((int64_t)coax_cast_us((uint64_t)((l_a).kind), INT64_C(9223372036854775807), 86895)), coax_t771 = ((int64_t)coax_cast_us((uint64_t)((l_b).kind), INT64_C(9223372036854775807), 86895)), coax_sub_s64(coax_t770, coax_t771, 86895));
+    return (coax_t770 = ((int64_t)coax_cast_us((uint64_t)((l_a).kind), INT64_C(9223372036854775807), 86942)), coax_t771 = ((int64_t)coax_cast_us((uint64_t)((l_b).kind), INT64_C(9223372036854775807), 86942)), coax_sub_s64(coax_t770, coax_t771, 86942));
   }
   if ((l_a).root != (l_b).root)
   {
-    return (coax_t772 = (l_a).root, coax_t773 = (l_b).root, coax_sub_s64(coax_t772, coax_t773, 86896));
+    return (coax_t772 = (l_a).root, coax_t773 = (l_b).root, coax_sub_s64(coax_t772, coax_t773, 86943));
   }
   if ((l_a).role != (l_b).role)
   {
-    return (coax_t774 = ((int64_t)coax_cast_us((uint64_t)((l_a).role), INT64_C(9223372036854775807), 86897)), coax_t775 = ((int64_t)coax_cast_us((uint64_t)((l_b).role), INT64_C(9223372036854775807), 86897)), coax_sub_s64(coax_t774, coax_t775, 86897));
+    return (coax_t774 = ((int64_t)coax_cast_us((uint64_t)((l_a).role), INT64_C(9223372036854775807), 86944)), coax_t775 = ((int64_t)coax_cast_us((uint64_t)((l_b).role), INT64_C(9223372036854775807), 86944)), coax_sub_s64(coax_t774, coax_t775, 86944));
   }
   if ((l_a).type != (l_b).type)
   {
-    return (coax_t776 = (l_a).type, coax_t777 = (l_b).type, coax_sub_s64(coax_t776, coax_t777, 86898));
+    return (coax_t776 = (l_a).type, coax_t777 = (l_b).type, coax_sub_s64(coax_t776, coax_t777, 86945));
   }
   if (((l_a).path).count != ((l_b).path).count)
   {
-    return (coax_t778 = ((l_a).path).count, coax_t779 = ((l_b).path).count, coax_sub_s64(coax_t778, coax_t779, 86899));
+    return (coax_t778 = ((l_a).path).count, coax_t779 = ((l_b).path).count, coax_sub_s64(coax_t778, coax_t779, 86946));
   }
   {
     int64_t coax_lo780 = INT64_C(0);
     int64_t coax_hi780 = ((l_a).path).count;
     for (int64_t l_i = coax_lo780; l_i < coax_hi780; l_i++)
     {
-      if (coax_t781 = ((((l_a).path).steps).e[coax_index(l_i, 24, 86901)]).kind, coax_t782 = ((((l_b).path).steps).e[coax_index(l_i, 24, 86901)]).kind, (coax_t781 != coax_t782))
+      if (coax_t781 = ((((l_a).path).steps).e[coax_index(l_i, 24, 86948)]).kind, coax_t782 = ((((l_b).path).steps).e[coax_index(l_i, 24, 86948)]).kind, (coax_t781 != coax_t782))
       {
-        return (coax_t783 = ((int64_t)coax_cast_us((uint64_t)(((((l_a).path).steps).e[coax_index(l_i, 24, 86901)]).kind), INT64_C(9223372036854775807), 86901)), coax_t784 = ((int64_t)coax_cast_us((uint64_t)(((((l_b).path).steps).e[coax_index(l_i, 24, 86901)]).kind), INT64_C(9223372036854775807), 86901)), coax_sub_s64(coax_t783, coax_t784, 86901));
+        return (coax_t783 = ((int64_t)coax_cast_us((uint64_t)(((((l_a).path).steps).e[coax_index(l_i, 24, 86948)]).kind), INT64_C(9223372036854775807), 86948)), coax_t784 = ((int64_t)coax_cast_us((uint64_t)(((((l_b).path).steps).e[coax_index(l_i, 24, 86948)]).kind), INT64_C(9223372036854775807), 86948)), coax_sub_s64(coax_t783, coax_t784, 86948));
       }
-      if (coax_t785 = ((((l_a).path).steps).e[coax_index(l_i, 24, 86902)]).index, coax_t786 = ((((l_b).path).steps).e[coax_index(l_i, 24, 86902)]).index, (coax_t785 != coax_t786))
+      if (coax_t785 = ((((l_a).path).steps).e[coax_index(l_i, 24, 86949)]).index, coax_t786 = ((((l_b).path).steps).e[coax_index(l_i, 24, 86949)]).index, (coax_t785 != coax_t786))
       {
-        return (coax_t787 = ((((l_a).path).steps).e[coax_index(l_i, 24, 86902)]).index, coax_t788 = ((((l_b).path).steps).e[coax_index(l_i, 24, 86902)]).index, coax_sub_s64(coax_t787, coax_t788, 86902));
+        return (coax_t787 = ((((l_a).path).steps).e[coax_index(l_i, 24, 86949)]).index, coax_t788 = ((((l_b).path).steps).e[coax_index(l_i, 24, 86949)]).index, coax_sub_s64(coax_t787, coax_t788, 86949));
       }
     }
   }
@@ -16573,7 +16589,7 @@ static coax_t_BS_Result coax_p_bs_insert(coax_v_t_BS_Origin l_staging, int64_t l
     int64_t coax_hi789 = l_used;
     for (int64_t l_i = coax_lo789; l_i < coax_hi789; l_i++)
     {
-      int64_t l_comparison = coax_p_bs_compare((*coax_elem_v_t_BS_Origin(l_staging, l_i, 86909)), l_value);
+      int64_t l_comparison = coax_p_bs_compare((*coax_elem_v_t_BS_Origin(l_staging, l_i, 86956)), l_value);
       if (l_comparison < INT64_C(0))
       {
         continue;
@@ -16593,12 +16609,12 @@ static coax_t_BS_Result coax_p_bs_insert(coax_v_t_BS_Origin l_staging, int64_t l
   int64_t l_i = l_used;
   while (l_i > l_at)
   {
-    coax_t790 = &((*coax_elem_v_t_BS_Origin(l_staging, l_i, 86911)));
-    *coax_t790 = (*coax_elem_v_t_BS_Origin(l_staging, coax_sub_s64(l_i, INT64_C(1), 86911), 86911));
-    l_i = coax_sub_s64(l_i, INT64_C(1), 86911);
+    coax_t790 = &((*coax_elem_v_t_BS_Origin(l_staging, l_i, 86958)));
+    *coax_t790 = (*coax_elem_v_t_BS_Origin(l_staging, coax_sub_s64(l_i, INT64_C(1), 86958), 86958));
+    l_i = coax_sub_s64(l_i, INT64_C(1), 86958);
   }
-  (*coax_elem_v_t_BS_Origin(l_staging, l_at, 86912)) = l_value;
-  return ((coax_t_BS_Result){.count = coax_add_s64(l_used, INT64_C(1), 86912)});
+  (*coax_elem_v_t_BS_Origin(l_staging, l_at, 86959)) = l_value;
+  return ((coax_t_BS_Result){.count = coax_add_s64(l_used, INT64_C(1), 86959)});
 }
 
 static coax_t_BS_Result coax_p_bs_commit(coax_v_t_BS_Origin l_staging, int64_t l_used, coax_v_t_BS_Origin l_out) {
@@ -16612,8 +16628,8 @@ static coax_t_BS_Result coax_p_bs_commit(coax_v_t_BS_Origin l_staging, int64_t l
     int64_t coax_hi791 = l_used;
     for (int64_t l_i = coax_lo791; l_i < coax_hi791; l_i++)
     {
-      coax_t792 = &((*coax_elem_v_t_BS_Origin(l_out, l_i, 86916)));
-      *coax_t792 = (*coax_elem_v_t_BS_Origin(l_staging, l_i, 86916));
+      coax_t792 = &((*coax_elem_v_t_BS_Origin(l_out, l_i, 86963)));
+      *coax_t792 = (*coax_elem_v_t_BS_Origin(l_staging, l_i, 86963));
     }
   }
   return ((coax_t_BS_Result){.count = l_used});
@@ -16635,7 +16651,7 @@ coax_t_BS_Result BS_union(coax_v_t_BS_Origin l_left, _Bool l_left_complete, coax
     for (int64_t coax_i793 = 0; coax_i793 < coax_c793.count; coax_i793++)
     {
       coax_t_BS_Origin l_item = coax_c793.data[coax_i793];
-      coax_t_BS_Result l_r = coax_p_bs_insert(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86923), l_used, l_item);
+      coax_t_BS_Result l_r = coax_p_bs_insert(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86970), l_used, l_item);
       if ((l_r).status != ((coax_t_BS_Status)UINT64_C(0)))
       {
         return l_r;
@@ -16648,7 +16664,7 @@ coax_t_BS_Result BS_union(coax_v_t_BS_Origin l_left, _Bool l_left_complete, coax
     for (int64_t coax_i794 = 0; coax_i794 < coax_c794.count; coax_i794++)
     {
       coax_t_BS_Origin l_item = coax_c794.data[coax_i794];
-      coax_t_BS_Result l_r = coax_p_bs_insert(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86924), l_used, l_item);
+      coax_t_BS_Result l_r = coax_p_bs_insert(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86971), l_used, l_item);
       if ((l_r).status != ((coax_t_BS_Status)UINT64_C(0)))
       {
         return l_r;
@@ -16656,7 +16672,7 @@ coax_t_BS_Result BS_union(coax_v_t_BS_Origin l_left, _Bool l_left_complete, coax
       l_used = (l_r).count;
     }
   }
-  return coax_p_bs_commit(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86925), l_used, l_out);
+  return coax_p_bs_commit(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86972), l_used, l_out);
 }
 
 static _Bool coax_p_bs_binding_valid(coax_t_BS_Binding l_binding, coax_v_t_BS_Origin l_pool) {
@@ -16677,7 +16693,7 @@ static _Bool coax_p_bs_binding_valid(coax_t_BS_Binding l_binding, coax_v_t_BS_Or
   {
     return (((l_binding).start == INT64_C(0)) && ((l_binding).count == INT64_C(0)));
   }
-  if ((((((l_binding).start < INT64_C(0)) || ((l_binding).start > (l_pool).count)) || ((l_binding).count < INT64_C(0))) || ((l_binding).count > INT64_C(64))) || ((l_binding).count > coax_sub_s64((l_pool).count, (l_binding).start, 86933)))
+  if ((((((l_binding).start < INT64_C(0)) || ((l_binding).start > (l_pool).count)) || ((l_binding).count < INT64_C(0))) || ((l_binding).count > INT64_C(64))) || ((l_binding).count > coax_sub_s64((l_pool).count, (l_binding).start, 86980)))
   {
     return 0;
   }
@@ -16686,7 +16702,7 @@ static _Bool coax_p_bs_binding_valid(coax_t_BS_Binding l_binding, coax_v_t_BS_Or
     int64_t coax_hi795 = (l_binding).count;
     for (int64_t l_i = coax_lo795; l_i < coax_hi795; l_i++)
     {
-      if (((*coax_elem_v_t_BS_Origin(l_pool, coax_add_s64((l_binding).start, l_i, 86934), 86934))).type != (l_formal).type)
+      if (((*coax_elem_v_t_BS_Origin(l_pool, coax_add_s64((l_binding).start, l_i, 86981), 86981))).type != (l_formal).type)
       {
         return 0;
       }
@@ -16701,7 +16717,7 @@ static int64_t coax_p_bs_find(coax_t_BS_Origin l_origin, coax_v_t_BS_Binding l_b
     int64_t coax_hi796 = (l_bindings).count;
     for (int64_t l_i = coax_lo796; l_i < coax_hi796; l_i++)
     {
-      if (coax_p_bs_slot_equal(l_origin, ((*coax_elem_v_t_BS_Binding(l_bindings, l_i, 86938))).formal))
+      if (coax_p_bs_slot_equal(l_origin, ((*coax_elem_v_t_BS_Binding(l_bindings, l_i, 86985))).formal))
       {
         return l_i;
       }
@@ -16722,7 +16738,7 @@ static _Bool coax_p_bs_substitution_valid(coax_v_t_BS_Origin l_summary, coax_v_t
     int64_t coax_hi797 = (l_bindings).count;
     for (int64_t l_i = coax_lo797; l_i < coax_hi797; l_i++)
     {
-      if (!coax_p_bs_binding_valid((*coax_elem_v_t_BS_Binding(l_bindings, l_i, 86944)), l_pool))
+      if (!coax_p_bs_binding_valid((*coax_elem_v_t_BS_Binding(l_bindings, l_i, 86991)), l_pool))
       {
         return 0;
       }
@@ -16731,7 +16747,7 @@ static _Bool coax_p_bs_substitution_valid(coax_v_t_BS_Origin l_summary, coax_v_t
         int64_t coax_hi798 = l_i;
         for (int64_t l_j = coax_lo798; l_j < coax_hi798; l_j++)
         {
-          if (coax_t799 = ((*coax_elem_v_t_BS_Binding(l_bindings, l_i, 86945))).formal, coax_t800 = ((*coax_elem_v_t_BS_Binding(l_bindings, l_j, 86945))).formal, coax_p_bs_slot_equal(coax_t799, coax_t800))
+          if (coax_t799 = ((*coax_elem_v_t_BS_Binding(l_bindings, l_i, 86992))).formal, coax_t800 = ((*coax_elem_v_t_BS_Binding(l_bindings, l_j, 86992))).formal, coax_p_bs_slot_equal(coax_t799, coax_t800))
           {
             return 0;
           }
@@ -16747,7 +16763,7 @@ static _Bool coax_p_bs_substitution_valid(coax_v_t_BS_Origin l_summary, coax_v_t
       if ((l_origin).kind == ((uint8_t)UINT64_C(3)))
       {
         int64_t l_index = coax_p_bs_find(l_origin, l_bindings);
-        if ((l_index >= INT64_C(0)) && ((l_origin).type != (((*coax_elem_v_t_BS_Binding(l_bindings, l_index, 86947))).formal).type))
+        if ((l_index >= INT64_C(0)) && ((l_origin).type != (((*coax_elem_v_t_BS_Binding(l_bindings, l_index, 86994))).formal).type))
         {
           return 0;
         }
@@ -16780,20 +16796,20 @@ coax_t_BS_Result BS_substitute(coax_v_t_BS_Origin l_summary, _Bool l_summary_com
         }
         else
         {
-          coax_t_BS_Binding l_binding = (*coax_elem_v_t_BS_Binding(l_bindings, l_index, 86957));
+          coax_t_BS_Binding l_binding = (*coax_elem_v_t_BS_Binding(l_bindings, l_index, 87004));
           if (!(l_binding).complete)
           {
             l_missing = 1;
           }
           else
           {
-            l_candidates = coax_add_s64(l_candidates, (((l_origin).role == ((uint8_t)UINT64_C(1))) ? INT64_C(1) : (l_binding).count), 86957);
+            l_candidates = coax_add_s64(l_candidates, (((l_origin).role == ((uint8_t)UINT64_C(1))) ? INT64_C(1) : (l_binding).count), 87004);
           }
         }
       }
       else
       {
-        l_candidates = coax_add_s64(l_candidates, INT64_C(1), 86958);
+        l_candidates = coax_add_s64(l_candidates, INT64_C(1), 87005);
       }
     }
   }
@@ -16814,7 +16830,7 @@ coax_t_BS_Result BS_substitute(coax_v_t_BS_Origin l_summary, _Bool l_summary_com
       coax_t_BS_Origin l_origin = coax_c803.data[coax_i803];
       if ((l_origin).kind != ((uint8_t)UINT64_C(3)))
       {
-        coax_t_BS_Result l_r = coax_p_bs_insert(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86964), l_used, l_origin);
+        coax_t_BS_Result l_r = coax_p_bs_insert(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 87011), l_used, l_origin);
         if ((l_r).status != ((coax_t_BS_Status)UINT64_C(0)))
         {
           return l_r;
@@ -16823,11 +16839,11 @@ coax_t_BS_Result BS_substitute(coax_v_t_BS_Origin l_summary, _Bool l_summary_com
       }
       else
       {
-        coax_t_BS_Binding l_binding = (*coax_elem_v_t_BS_Binding(l_bindings, coax_p_bs_find(l_origin, l_bindings), 86966));
+        coax_t_BS_Binding l_binding = (*coax_elem_v_t_BS_Binding(l_bindings, coax_p_bs_find(l_origin, l_bindings), 87013));
         if ((l_origin).role == ((uint8_t)UINT64_C(1)))
         {
           coax_t_BS_Origin l_local = ((coax_t_BS_Origin){.kind = ((uint8_t)UINT64_C(2)), .root = (l_binding).callee_root, .type = (l_origin).type, .path = (l_origin).path});
-          coax_t_BS_Result l_r = coax_p_bs_insert(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86968), l_used, l_local);
+          coax_t_BS_Result l_r = coax_p_bs_insert(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 87015), l_used, l_local);
           if ((l_r).status != ((coax_t_BS_Status)UINT64_C(0)))
           {
             return l_r;
@@ -16841,7 +16857,7 @@ coax_t_BS_Result BS_substitute(coax_v_t_BS_Origin l_summary, _Bool l_summary_com
             int64_t coax_hi804 = (l_binding).count;
             for (int64_t l_i = coax_lo804; l_i < coax_hi804; l_i++)
             {
-              coax_t_BS_Result l_r = (coax_t805 = coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86970), coax_t806 = (*coax_elem_v_t_BS_Origin(l_pool, coax_add_s64((l_binding).start, l_i, 86970), 86970)), coax_p_bs_insert(coax_t805, l_used, coax_t806));
+              coax_t_BS_Result l_r = (coax_t805 = coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 87017), coax_t806 = (*coax_elem_v_t_BS_Origin(l_pool, coax_add_s64((l_binding).start, l_i, 87017), 87017)), coax_p_bs_insert(coax_t805, l_used, coax_t806));
               if ((l_r).status != ((coax_t_BS_Status)UINT64_C(0)))
               {
                 return l_r;
@@ -16853,20 +16869,20 @@ coax_t_BS_Result BS_substitute(coax_v_t_BS_Origin l_summary, _Bool l_summary_com
       }
     }
   }
-  return coax_p_bs_commit(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 86974), l_used, l_out);
+  return coax_p_bs_commit(coax_mkview_v_t_BS_Origin((l_staging).e, 64, 0, 64, 87021), l_used, l_out);
 }
 
 static _Bool coax_p_CB_projection_hit(coax_t_CB_Context l_b, coax_t_CB_QueryProjection l_p, uint8_t l_kind, int64_t l_decl, coax_t_BS_Path l_path) {
   int64_t * coax_t809;
-  if ((((((l_p).classes != (l_b).retain_classes) || ((l_p).root != ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86990))).type)) || ((l_p).used != ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86990))).used)) || ((l_p).types != ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86990))).type_count)) || ((l_p).head != ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 86990))).borrow_query))
+  if ((((((l_p).classes != (l_b).retain_classes) || ((l_p).root != ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 87037))).type)) || ((l_p).used != ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87037))).used)) || ((l_p).types != ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87037))).type_count)) || ((l_p).head != ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 87037))).borrow_query))
   {
     return 0;
   }
-  if (((l_p).query < INT64_C(1)) || ((l_p).query > ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 86991))).queries))
+  if (((l_p).query < INT64_C(1)) || ((l_p).query > ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87038))).queries))
   {
     return 0;
   }
-  coax_t_CK_BorrowQuery l_memo = (*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64((l_p).query, INT64_C(1), 86991), 86991));
+  coax_t_CK_BorrowQuery l_memo = (*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64((l_p).query, INT64_C(1), 87038), 87038));
   if ((((((l_memo).decl != l_decl) || ((l_memo).kind != l_kind)) || ((l_memo).status != ((uint8_t)UINT64_C(2)))) || (!coax_p_bs_path_equal((l_memo).path, l_path))) || (!(((l_memo).retain_classes == (l_b).retain_classes) || (!(l_memo).retain_classes))))
   {
     return 0;
@@ -16877,77 +16893,77 @@ static _Bool coax_p_CB_projection_hit(coax_t_CB_Context l_b, coax_t_CB_QueryProj
     int64_t coax_hi807 = (l_path).count;
     for (int64_t l_i = coax_lo807; l_i < coax_hi807; l_i++)
     {
-      coax_t_CB_ProjectionStep l_w = ((l_p).steps).e[coax_index(l_i, 24, 86996)];
-      coax_t_BS_Step l_step = ((l_path).steps).e[coax_index(l_i, 24, 86996)];
+      coax_t_CB_ProjectionStep l_w = ((l_p).steps).e[coax_index(l_i, 24, 87043)];
+      coax_t_BS_Step l_step = ((l_path).steps).e[coax_index(l_i, 24, 87043)];
       if ((l_w).type != l_t)
       {
         return 0;
       }
-      coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type(((l_b).c).types, l_t, 86996));
+      coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type(((l_b).c).types, l_t, 87043));
       if (((l_step).kind == ((uint8_t)UINT64_C(1))) && ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(8))))
       {
-        if (((((((l_r).decl != (l_w).decl) || ((l_r).decl < INT64_C(2))) || ((l_r).decl > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 86998))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_r).decl, 86998))).kind != ((coax_t_CK_Tag)UINT64_C(66)))) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_r).decl, 86998))).head != (l_w).head)) || ((l_r).retain_fields != (l_w).field_head))
+        if (((((((l_r).decl != (l_w).decl) || ((l_r).decl < INT64_C(2))) || ((l_r).decl > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87045))).used)) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_r).decl, 87045))).kind != ((coax_t_CK_Tag)UINT64_C(66)))) || (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_r).decl, 87045))).head != (l_w).head)) || ((l_r).retain_fields != (l_w).field_head))
         {
           return 0;
         }
-        if (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_w).head, 87000))).kind != ((coax_t_CK_Tag)UINT64_C(69)))
+        if (((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_w).head, 87047))).kind != ((coax_t_CK_Tag)UINT64_C(69)))
         {
-          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87000))).loc);
-          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87000))).fatal;
+          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87047))).loc);
+          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87047))).fatal;
         }
-        if (((((l_w).row < INT64_C(1)) || ((l_w).row > ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87001))).queries)) || ((l_w).field_head < INT64_C(1))) || ((l_w).field_head > ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87001))).queries))
+        if (((((l_w).row < INT64_C(1)) || ((l_w).row > ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87048))).queries)) || ((l_w).field_head < INT64_C(1))) || ((l_w).field_head > ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87048))).queries))
         {
-          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87001))).loc);
-          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87001))).fatal;
+          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87048))).loc);
+          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87048))).fatal;
         }
-        _Bool l_charged = coax_p_CB_tick(l_b, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87002))).loc);
+        _Bool l_charged = coax_p_CB_tick(l_b, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87049))).loc);
         if (!l_charged)
         {
           return l_charged;
         }
-        coax_t_CK_BorrowQuery l_q = (*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64((l_w).row, INT64_C(1), 87002), 87002));
-        if (((((((((((l_q).kind != ((uint8_t)UINT64_C(4))) || ((l_q).decl != l_t)) || ((l_q).type != (l_r).decl)) || ((l_q).status != ((uint8_t)UINT64_C(2)))) || ((l_q).count != (l_w).head)) || (l_q).retain_classes) || ((l_q).start != coax_div_s64((l_step).index, INT64_C(8), 87003))) || (((l_q).path).count != INT64_C(0))) || ((l_q).next < INT64_C(0))) || ((l_q).next >= (l_w).row))
+        coax_t_CK_BorrowQuery l_q = (*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64((l_w).row, INT64_C(1), 87049), 87049));
+        if (((((((((((l_q).kind != ((uint8_t)UINT64_C(4))) || ((l_q).decl != l_t)) || ((l_q).type != (l_r).decl)) || ((l_q).status != ((uint8_t)UINT64_C(2)))) || ((l_q).count != (l_w).head)) || (l_q).retain_classes) || ((l_q).start != coax_div_s64((l_step).index, INT64_C(8), 87050))) || (((l_q).path).count != INT64_C(0))) || ((l_q).next < INT64_C(0))) || ((l_q).next >= (l_w).row))
         {
-          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87003))).loc);
-          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87003))).fatal;
+          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87050))).loc);
+          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87050))).fatal;
         }
         {
           int64_t coax_lo808 = INT64_C(0);
           int64_t coax_hi808 = INT64_C(24);
           for (int64_t l_j = coax_lo808; l_j < coax_hi808; l_j++)
           {
-            if ((((((l_q).path).steps).e[coax_index(l_j, 24, 87004)]).kind != ((uint8_t)UINT64_C(0))) || ((l_j >= INT64_C(8)) && (((((l_q).path).steps).e[coax_index(l_j, 24, 87004)]).index != INT64_C(0))))
+            if ((((((l_q).path).steps).e[coax_index(l_j, 24, 87051)]).kind != ((uint8_t)UINT64_C(0))) || ((l_j >= INT64_C(8)) && (((((l_q).path).steps).e[coax_index(l_j, 24, 87051)]).index != INT64_C(0))))
             {
-              coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87004))).loc);
+              coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87051))).loc);
               return l_charged;
             }
           }
         }
-        if (((((l_q).path).steps).e[coax_index(coax_mod_s64((l_step).index, INT64_C(8), 87005), 24, 87005)]).index != (l_w).field)
+        if (((((l_q).path).steps).e[coax_index(coax_mod_s64((l_step).index, INT64_C(8), 87052), 24, 87052)]).index != (l_w).field)
         {
           return 0;
         }
-        if (((l_w).field < INT64_C(2)) || ((l_w).field > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87006))).used))
+        if (((l_w).field < INT64_C(2)) || ((l_w).field > ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87053))).used))
         {
-          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87006))).loc);
-          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87006))).fatal;
+          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87053))).loc);
+          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87053))).fatal;
         }
-        coax_t_CK_Node l_f = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_w).field, 87007));
-        if ((((l_f).kind != ((coax_t_CK_Tag)UINT64_C(69))) || ((l_f).type < INT64_C(1))) || ((l_f).type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87007))).type_count))
+        coax_t_CK_Node l_f = (*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_w).field, 87054));
+        if ((((l_f).kind != ((coax_t_CK_Tag)UINT64_C(69))) || ((l_f).type < INT64_C(1))) || ((l_f).type >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87054))).type_count))
         {
-          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87007))).loc);
-          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87007))).fatal;
+          coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87054))).loc);
+          return ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87054))).fatal;
         }
         if ((l_f).type != (l_w).next_type)
         {
           return 0;
         }
         l_t = (l_f).type;
-        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87009))).field_type = (l_w).type;
-        coax_t809 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87009))).field_block);
-        *coax_t809 = coax_div_s64((l_step).index, INT64_C(8), 87009);
-        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87009))).field_head = (l_w).field_head;
-        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87009))).field_row = (l_w).row;
+        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87056))).field_type = (l_w).type;
+        coax_t809 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87056))).field_block);
+        *coax_t809 = coax_div_s64((l_step).index, INT64_C(8), 87056);
+        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87056))).field_head = (l_w).field_head;
+        ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87056))).field_row = (l_w).row;
       }
       else
       if ((((l_step).kind == ((uint8_t)UINT64_C(2))) && ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(10)))) && (((l_step).index == INT64_C(2147483647)) || ((l_step).index < (l_r).length)))
@@ -16965,7 +16981,7 @@ static _Bool coax_p_CB_projection_hit(coax_t_CB_Context l_b, coax_t_CB_QueryProj
       }
     }
   }
-  return (((l_t == (l_p).type) && (l_t >= INT64_C(1))) && (l_t < ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87014))).type_count));
+  return (((l_t == (l_p).type) && (l_t >= INT64_C(1))) && (l_t < ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87061))).type_count));
 }
 
 static int64_t coax_p_CB_query_project(coax_t_CB_Context l_b, uint8_t l_kind, int64_t l_decl, coax_t_BS_Path l_path, coax_v_t_CB_QueryProjection l_record) {
@@ -16978,7 +16994,7 @@ static int64_t coax_p_CB_query_project(coax_t_CB_Context l_b, uint8_t l_kind, in
     int64_t coax_hi810 = (l_path).count;
     for (int64_t l_i = coax_lo810; l_i < coax_hi810; l_i++)
     {
-      if ((((((l_path).steps).e[coax_index(l_i, 24, 87024)]).kind != ((uint8_t)UINT64_C(1))) && ((((l_path).steps).e[coax_index(l_i, 24, 87024)]).kind != ((uint8_t)UINT64_C(2)))) && ((((l_path).steps).e[coax_index(l_i, 24, 87024)]).kind != ((uint8_t)UINT64_C(3))))
+      if ((((((l_path).steps).e[coax_index(l_i, 24, 87071)]).kind != ((uint8_t)UINT64_C(1))) && ((((l_path).steps).e[coax_index(l_i, 24, 87071)]).kind != ((uint8_t)UINT64_C(2)))) && ((((l_path).steps).e[coax_index(l_i, 24, 87071)]).kind != ((uint8_t)UINT64_C(3))))
       {
         l_eligible = 0;
       }
@@ -16986,31 +17002,31 @@ static int64_t coax_p_CB_query_project(coax_t_CB_Context l_b, uint8_t l_kind, in
   }
   if (!l_eligible)
   {
-    return coax_p_CB_type(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 87025))).type, l_path);
+    return coax_p_CB_type(l_b, ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 87072))).type, l_path);
   }
   {
     int64_t coax_lo811 = INT64_C(0);
     int64_t coax_hi811 = INT64_C(2);
     for (int64_t l_i = coax_lo811; l_i < coax_hi811; l_i++)
     {
-      coax_t_CB_QueryProjection l_p = (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87026))).projections).e[coax_index(l_i, 2, 87026)];
+      coax_t_CB_QueryProjection l_p = (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87073))).projections).e[coax_index(l_i, 2, 87073)];
       _Bool l_hit = coax_p_CB_projection_hit(l_b, l_p, l_kind, l_decl, l_path);
-      if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87026))).fatal)
+      if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87073))).fatal)
       {
         return (l_p).type;
       }
       if (l_hit)
       {
-        (*coax_elem_v_t_CB_QueryProjection(l_record, INT64_C(0), 87026)) = l_p;
+        (*coax_elem_v_t_CB_QueryProjection(l_record, INT64_C(0), 87073)) = l_p;
         return (l_p).type;
       }
     }
   }
-  coax_t_CB_QueryProjection l_p = (coax_t812 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 87028))).type, coax_t813 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87028))).used, coax_t814 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87028))).type_count, ((coax_t_CB_QueryProjection){.decl = l_decl, .kind = l_kind, .classes = (l_b).retain_classes, .root = coax_t812, .path = l_path, .used = coax_t813, .types = coax_t814}));
+  coax_t_CB_QueryProjection l_p = (coax_t812 = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_decl, 87075))).type, coax_t813 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87075))).used, coax_t814 = ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87075))).type_count, ((coax_t_CB_QueryProjection){.decl = l_decl, .kind = l_kind, .classes = (l_b).retain_classes, .root = coax_t812, .path = l_path, .used = coax_t813, .types = coax_t814}));
   int64_t l_t = (l_p).root;
   if (!BS_path_valid(l_path))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87029))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87076))).loc);
     return (l_p).type;
   }
   {
@@ -17018,27 +17034,27 @@ static int64_t coax_p_CB_query_project(coax_t_CB_Context l_b, uint8_t l_kind, in
     int64_t coax_hi815 = (l_path).count;
     for (int64_t l_i = coax_lo815; l_i < coax_hi815; l_i++)
     {
-      if ((l_t < INT64_C(16)) || (l_t >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87031))).type_count))
+      if ((l_t < INT64_C(16)) || (l_t >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87078))).type_count))
       {
-        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87031))).loc);
+        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87078))).loc);
         return (l_p).type;
       }
-      coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type(((l_b).c).types, l_t, 87031));
-      coax_t_BS_Step l_step = ((l_path).steps).e[coax_index(l_i, 24, 87031)];
+      coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type(((l_b).c).types, l_t, 87078));
+      coax_t_BS_Step l_step = ((l_path).steps).e[coax_index(l_i, 24, 87078)];
       coax_t_CB_ProjectionStep l_w = ((coax_t_CB_ProjectionStep){.type = l_t});
       if (((l_step).kind == ((uint8_t)UINT64_C(1))) && ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(8))))
       {
         int64_t l_field = coax_p_CB_field(l_b, l_t, (l_step).index);
-        if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87032))).fatal)
+        if (((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87079))).fatal)
         {
           return l_field;
         }
         (l_w).decl = (l_r).decl;
-        (l_w).head = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_r).decl, 87032))).head;
-        (l_w).field_head = ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_t, 87032))).retain_fields;
-        (l_w).row = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87032))).field_row;
+        (l_w).head = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_r).decl, 87079))).head;
+        (l_w).field_head = ((*coax_elem_v_t_CK_Type(((l_b).c).types, l_t, 87079))).retain_fields;
+        (l_w).row = ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87079))).field_row;
         (l_w).field = l_field;
-        l_t = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 87032))).type;
+        l_t = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, l_field, 87079))).type;
       }
       else
       if ((((l_step).kind == ((uint8_t)UINT64_C(2))) && ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(10)))) && (((l_step).index == INT64_C(2147483647)) || ((l_step).index < (l_r).length)))
@@ -17052,71 +17068,71 @@ static int64_t coax_p_CB_query_project(coax_t_CB_Context l_b, uint8_t l_kind, in
       }
       else
       {
-        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87035))).loc);
+        coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87082))).loc);
         return (l_p).type;
       }
       (l_w).next_type = l_t;
-      ((l_p).steps).e[coax_index(l_i, 24, 87035)] = l_w;
+      ((l_p).steps).e[coax_index(l_i, 24, 87082)] = l_w;
     }
   }
-  if ((l_t < INT64_C(1)) || (l_t >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87037))).type_count))
+  if ((l_t < INT64_C(1)) || (l_t >= ((*coax_elem_v_t_CK_State(((l_b).c).state, INT64_C(0), 87084))).type_count))
   {
-    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87037))).loc);
+    coax_p_CK_resource((l_b).c, ((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87084))).loc);
     return l_t;
   }
   (l_p).type = l_t;
-  (*coax_elem_v_t_CB_QueryProjection(l_record, INT64_C(0), 87037)) = l_p;
+  (*coax_elem_v_t_CB_QueryProjection(l_record, INT64_C(0), 87084)) = l_p;
   return l_t;
 }
 
 static void coax_p_CB_projection_commit(coax_t_CB_Context l_b, coax_t_CB_QueryProjection l_pending, int64_t l_query) {
   _Bool * coax_t817;
-  if (((l_pending).decl == INT64_C(0)) || (((*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64(l_query, INT64_C(1), 87040), 87040))).status != ((uint8_t)UINT64_C(2))))
+  if (((l_pending).decl == INT64_C(0)) || (((*coax_elem_v_t_CK_BorrowQuery((l_b).queries, coax_sub_s64(l_query, INT64_C(1), 87087), 87087))).status != ((uint8_t)UINT64_C(2))))
   {
     return;
   }
   coax_t_CB_QueryProjection l_p = l_pending;
   (l_p).query = l_query;
-  (l_p).head = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_p).decl, 87040))).borrow_query;
+  (l_p).head = ((*coax_elem_v_t_CK_Node(((l_b).c).nodes, (l_p).decl, 87087))).borrow_query;
   {
     int64_t coax_lo816 = INT64_C(0);
     int64_t coax_hi816 = INT64_C(2);
     for (int64_t l_i = coax_lo816; l_i < coax_hi816; l_i++)
     {
-      coax_t_CB_QueryProjection l_old = (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87041))).projections).e[coax_index(l_i, 2, 87041)];
+      coax_t_CB_QueryProjection l_old = (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87088))).projections).e[coax_index(l_i, 2, 87088)];
       if (((((l_old).decl == (l_p).decl) && ((l_old).kind == (l_p).kind)) && ((l_old).classes == (l_p).classes)) && coax_p_bs_path_equal((l_old).path, (l_p).path))
       {
-        (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87041))).projections).e[coax_index(l_i, 2, 87041)] = l_p;
+        (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87088))).projections).e[coax_index(l_i, 2, 87088)] = l_p;
         return;
       }
     }
   }
-  int64_t l_slot = (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87042))).projection_next ? INT64_C(1) : INT64_C(0));
-  (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87042))).projections).e[coax_index(l_slot, 2, 87042)] = l_p;
-  coax_t817 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87042))).projection_next);
-  *coax_t817 = (!((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87042))).projection_next);
+  int64_t l_slot = (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87089))).projection_next ? INT64_C(1) : INT64_C(0));
+  (((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87089))).projections).e[coax_index(l_slot, 2, 87089)] = l_p;
+  coax_t817 = &(((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87089))).projection_next);
+  *coax_t817 = (!((*coax_elem_v_t_CB_State((l_b).state, INT64_C(0), 87089))).projection_next);
 }
 
 static _Bool coax_p_CK_sum(coax_t_CK_Context l_c, int64_t l_t) {
-  coax_t_CK_Kind l_k = ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87217))).kind;
+  coax_t_CK_Kind l_k = ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87264))).kind;
   return (((l_k == ((coax_t_CK_Kind)UINT64_C(13))) || (l_k == ((coax_t_CK_Kind)UINT64_C(14)))) || (l_k == ((coax_t_CK_Kind)UINT64_C(15))));
 }
 
 static _Bool coax_p_CK_sum_tick(coax_t_CK_Context l_c, coax_v_t_CK_SumBudget l_budget) {
   int64_t coax_t818;
   int64_t coax_t819;
-  if (coax_t818 = ((*coax_elem_v_t_CK_SumBudget(l_budget, INT64_C(0), 87223))).used, coax_t819 = ((*coax_elem_v_t_CK_SumBudget(l_budget, INT64_C(0), 87223))).limit, (coax_t818 >= coax_t819))
+  if (coax_t818 = ((*coax_elem_v_t_CK_SumBudget(l_budget, INT64_C(0), 87270))).used, coax_t819 = ((*coax_elem_v_t_CK_SumBudget(l_budget, INT64_C(0), 87270))).limit, (coax_t818 >= coax_t819))
   {
     coax_p_CK_resource(l_c, ((coax_t_CK_Loc){0}));
     return 0;
   }
-  ((*coax_elem_v_t_CK_SumBudget(l_budget, INT64_C(0), 87224))).used = coax_add_s64(((*coax_elem_v_t_CK_SumBudget(l_budget, INT64_C(0), 87224))).used, INT64_C(1), 87224);
+  ((*coax_elem_v_t_CK_SumBudget(l_budget, INT64_C(0), 87271))).used = coax_add_s64(((*coax_elem_v_t_CK_SumBudget(l_budget, INT64_C(0), 87271))).used, INT64_C(1), 87271);
   return 1;
 }
 
 static _Bool coax_p_CK_sum_scan(coax_t_CK_Context l_c, int64_t l_t, int64_t l_mode, int64_t l_limit) {
   int64_t * coax_t820;
-  if (((l_t < INT64_C(16)) || ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87231))).fatal) || (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87231))).error_count > INT64_C(0)))
+  if (((l_t < INT64_C(16)) || ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87278))).fatal) || (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87278))).error_count > INT64_C(0)))
   {
     return 0;
   }
@@ -17128,22 +17144,22 @@ static _Bool coax_p_CK_sum_scan(coax_t_CK_Context l_c, int64_t l_t, int64_t l_mo
   coax_a256_t_CK_SumFrame l_frames = ((coax_a256_t_CK_SumFrame){0});
   coax_a256_s64 l_visited = ((coax_a256_s64){0});
   int64_t l_seen_count = INT64_C(1);
-  (l_visited).e[coax_index(INT64_C(0), 256, 87233)] = l_t;
+  (l_visited).e[coax_index(INT64_C(0), 256, 87280)] = l_t;
   int64_t l_top = INT64_C(0);
-  ((l_frames).e[coax_index(INT64_C(0), 256, 87233)]).type = l_t;
+  ((l_frames).e[coax_index(INT64_C(0), 256, 87280)]).type = l_t;
   coax_a1_t_CK_SumBudget l_budget = ((coax_a1_t_CK_SumBudget){{((coax_t_CK_SumBudget){.limit = l_limit})}});
   while (l_top >= INT64_C(0))
   {
-    if (!coax_p_CK_sum_tick(l_c, coax_mkview_v_t_CK_SumBudget((l_budget).e, 1, 0, 1, 87235)))
+    if (!coax_p_CK_sum_tick(l_c, coax_mkview_v_t_CK_SumBudget((l_budget).e, 1, 0, 1, 87282)))
     {
       return 1;
     }
-    coax_t_CK_SumFrame l_f = (l_frames).e[coax_index(l_top, 256, 87235)];
-    coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, (l_f).type, 87235));
+    coax_t_CK_SumFrame l_f = (l_frames).e[coax_index(l_top, 256, 87282)];
+    coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, (l_f).type, 87282));
     int64_t l_child = ((int64_t)0);
     if (!(l_f).entered)
     {
-      ((l_frames).e[coax_index(l_top, 256, 87237)]).entered = 1;
+      ((l_frames).e[coax_index(l_top, 256, 87284)]).entered = 1;
       _Bool l_sum = coax_p_CK_sum(l_c, (l_f).type);
       if (((l_mode == INT64_C(0)) && ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(14)))) || (((l_mode == INT64_C(1)) || (l_mode == INT64_C(2))) && l_sum))
       {
@@ -17155,7 +17171,7 @@ static _Bool coax_p_CK_sum_scan(coax_t_CK_Context l_c, int64_t l_t, int64_t l_mo
         {
           return 1;
         }
-        l_top = coax_sub_s64(l_top, INT64_C(1), 87238);
+        l_top = coax_sub_s64(l_top, INT64_C(1), 87285);
         continue;
       }
       if ((((l_r).kind == ((coax_t_CK_Kind)UINT64_C(10))) || (((l_r).kind == ((coax_t_CK_Kind)UINT64_C(11))) && (l_mode < INT64_C(2)))) || (((l_r).kind == ((coax_t_CK_Kind)UINT64_C(15))) && (l_mode == INT64_C(0))))
@@ -17165,13 +17181,13 @@ static _Bool coax_p_CK_sum_scan(coax_t_CK_Context l_c, int64_t l_t, int64_t l_mo
       else
       if (((l_r).kind == ((coax_t_CK_Kind)UINT64_C(8))) || ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(13))))
       {
-        coax_t820 = &(((l_frames).e[coax_index(l_top, 256, 87240)]).field);
-        *coax_t820 = ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_r).decl, 87240))).head;
+        coax_t820 = &(((l_frames).e[coax_index(l_top, 256, 87287)]).field);
+        *coax_t820 = ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_r).decl, 87287))).head;
         continue;
       }
       else
       {
-        l_top = coax_sub_s64(l_top, INT64_C(1), 87241);
+        l_top = coax_sub_s64(l_top, INT64_C(1), 87288);
         continue;
       }
     }
@@ -17180,11 +17196,11 @@ static _Bool coax_p_CK_sum_scan(coax_t_CK_Context l_c, int64_t l_t, int64_t l_mo
     {
       if ((l_f).field == INT64_C(0))
       {
-        l_top = coax_sub_s64(l_top, INT64_C(1), 87243);
+        l_top = coax_sub_s64(l_top, INT64_C(1), 87290);
         continue;
       }
-      coax_t_CK_Node l_field = (*coax_elem_v_t_CK_Node((l_c).nodes, (l_f).field, 87243));
-      ((l_frames).e[coax_index(l_top, 256, 87243)]).field = (l_field).next;
+      coax_t_CK_Node l_field = (*coax_elem_v_t_CK_Node((l_c).nodes, (l_f).field, 87290));
+      ((l_frames).e[coax_index(l_top, 256, 87290)]).field = (l_field).next;
       if ((l_mode == INT64_C(3)) && ((l_field).b != INT64_C(0)))
       {
         continue;
@@ -17193,7 +17209,7 @@ static _Bool coax_p_CK_sum_scan(coax_t_CK_Context l_c, int64_t l_t, int64_t l_mo
     }
     else
     {
-      l_top = coax_sub_s64(l_top, INT64_C(1), 87244);
+      l_top = coax_sub_s64(l_top, INT64_C(1), 87291);
       continue;
     }
     if (l_child < INT64_C(16))
@@ -17206,11 +17222,11 @@ static _Bool coax_p_CK_sum_scan(coax_t_CK_Context l_c, int64_t l_t, int64_t l_mo
       int64_t coax_hi821 = l_seen_count;
       for (int64_t l_i = coax_lo821; l_i < coax_hi821; l_i++)
       {
-        if (!coax_p_CK_sum_tick(l_c, coax_mkview_v_t_CK_SumBudget((l_budget).e, 1, 0, 1, 87246)))
+        if (!coax_p_CK_sum_tick(l_c, coax_mkview_v_t_CK_SumBudget((l_budget).e, 1, 0, 1, 87293)))
         {
           return 1;
         }
-        if ((l_visited).e[coax_index(l_i, 256, 87246)] == l_child)
+        if ((l_visited).e[coax_index(l_i, 256, 87293)] == l_child)
         {
           l_seen = 1;
           break;
@@ -17223,21 +17239,21 @@ static _Bool coax_p_CK_sum_scan(coax_t_CK_Context l_c, int64_t l_t, int64_t l_mo
     }
     if (l_seen_count < INT64_C(256))
     {
-      (l_visited).e[coax_index(l_seen_count, 256, 87249)] = l_child;
-      l_seen_count = coax_add_s64(l_seen_count, INT64_C(1), 87249);
+      (l_visited).e[coax_index(l_seen_count, 256, 87296)] = l_child;
+      l_seen_count = coax_add_s64(l_seen_count, INT64_C(1), 87296);
     }
     else
     {
       {
         int64_t coax_lo822 = INT64_C(0);
-        int64_t coax_hi822 = coax_add_s64(l_top, INT64_C(1), 87250);
+        int64_t coax_hi822 = coax_add_s64(l_top, INT64_C(1), 87297);
         for (int64_t l_i = coax_lo822; l_i < coax_hi822; l_i++)
         {
-          if (!coax_p_CK_sum_tick(l_c, coax_mkview_v_t_CK_SumBudget((l_budget).e, 1, 0, 1, 87250)))
+          if (!coax_p_CK_sum_tick(l_c, coax_mkview_v_t_CK_SumBudget((l_budget).e, 1, 0, 1, 87297)))
           {
             return 1;
           }
-          if (((l_frames).e[coax_index(l_i, 256, 87250)]).type == l_child)
+          if (((l_frames).e[coax_index(l_i, 256, 87297)]).type == l_child)
           {
             l_seen = 1;
             break;
@@ -17249,13 +17265,13 @@ static _Bool coax_p_CK_sum_scan(coax_t_CK_Context l_c, int64_t l_t, int64_t l_mo
         continue;
       }
     }
-    if (coax_add_s64(l_top, INT64_C(1), 87251) >= INT64_C(256))
+    if (coax_add_s64(l_top, INT64_C(1), 87298) >= INT64_C(256))
     {
       coax_p_CK_resource(l_c, ((coax_t_CK_Loc){0}));
       return 1;
     }
-    l_top = coax_add_s64(l_top, INT64_C(1), 87251);
-    (l_frames).e[coax_index(l_top, 256, 87251)] = ((coax_t_CK_SumFrame){.type = l_child});
+    l_top = coax_add_s64(l_top, INT64_C(1), 87298);
+    (l_frames).e[coax_index(l_top, 256, 87298)] = ((coax_t_CK_SumFrame){.type = l_child});
   }
   return 0;
 }
@@ -17265,9 +17281,9 @@ static _Bool coax_p_CK_sum_contains(coax_t_CK_Context l_c, int64_t l_t, _Bool l_
 }
 
 static int64_t coax_p_CK_sum_count(coax_t_CK_Context l_c, int64_t l_t) {
-  if (((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87256))).kind == ((coax_t_CK_Kind)UINT64_C(13)))
+  if (((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87303))).kind == ((coax_t_CK_Kind)UINT64_C(13)))
   {
-    return coax_p_CK_list_count(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87256))).decl, 87256))).head);
+    return coax_p_CK_list_count(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87303))).decl, 87303))).head);
   }
   return INT64_C(2);
 }
@@ -17277,10 +17293,10 @@ static int64_t coax_p_CK_sum_payload(coax_t_CK_Context l_c, int64_t l_t, int64_t
   {
     return INT64_C(0);
   }
-  coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_t, 87258));
+  coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_t, 87305));
   if ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(13)))
   {
-    return ((*coax_elem_v_t_CK_Node((l_c).nodes, coax_p_CK_at(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_r).decl, 87259))).head, l_ordinal), 87259))).type;
+    return ((*coax_elem_v_t_CK_Node((l_c).nodes, coax_p_CK_at(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_r).decl, 87306))).head, l_ordinal), 87306))).type;
   }
   if ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(14)))
   {
@@ -17302,10 +17318,10 @@ static int64_t coax_p_CK_sum_payload(coax_t_CK_Context l_c, int64_t l_t, int64_t
 }
 
 static coax_string coax_p_CK_sum_name(coax_t_CK_Context l_c, int64_t l_t, int64_t l_ordinal) {
-  coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_t, 87264));
+  coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_t, 87311));
   if ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(13)))
   {
-    return ((*coax_elem_v_t_CK_Node((l_c).nodes, coax_p_CK_at(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_r).decl, 87264))).head, l_ordinal), 87264))).name;
+    return ((*coax_elem_v_t_CK_Node((l_c).nodes, coax_p_CK_at(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_r).decl, 87311))).head, l_ordinal), 87311))).name;
   }
   if ((l_r).kind == ((coax_t_CK_Kind)UINT64_C(14)))
   {
@@ -17323,7 +17339,7 @@ static coax_string coax_p_CK_sum_name(coax_t_CK_Context l_c, int64_t l_t, int64_
 }
 
 static int64_t coax_p_CK_sum_inner(coax_t_CK_Context l_c, int64_t l_id) {
-  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87267));
+  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87314));
   if (((((l_n).kind == ((coax_t_CK_Tag)UINT64_C(1))) && (coax_string_eq((l_n).name, COAX_STR("void", 4)))) && (((l_n).name2).count == INT64_C(0))) && ((l_n).head == INT64_C(0)))
   {
     return INT64_C(1);
@@ -17351,29 +17367,29 @@ static int64_t coax_p_CK_sum_type(coax_t_CK_Context l_c, coax_t_CK_Kind l_kind, 
   }
   {
     int64_t coax_lo823 = INT64_C(16);
-    int64_t coax_hi823 = ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87271))).type_count;
+    int64_t coax_hi823 = ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87318))).type_count;
     for (int64_t l_i = coax_lo823; l_i < coax_hi823; l_i++)
     {
-      coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_i, 87271));
+      coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_i, 87318));
       if ((((l_r).kind == l_kind) && ((l_r).elem == l_elem)) && ((l_r).sum_error == l_error))
       {
         return l_i;
       }
     }
   }
-  coax_a2_s64 l_sizes = (coax_t824 = ((*coax_elem_v_t_CK_Type((l_c).types, l_elem, 87272))).size, coax_t825 = ((*coax_elem_v_t_CK_Type((l_c).types, l_error, 87272))).size, ((coax_a2_s64){{coax_t824, coax_t825}}));
-  coax_a2_s64 l_aligns = (coax_t826 = ((*coax_elem_v_t_CK_Type((l_c).types, l_elem, 87272))).alignment, coax_t827 = ((*coax_elem_v_t_CK_Type((l_c).types, l_error, 87272))).alignment, ((coax_a2_s64){{coax_t826, coax_t827}}));
-  coax_t_SL_Layout l_l = (coax_t828 = coax_mkview_v_s64((l_sizes).e, 2, 0, 2, 87276), coax_t829 = coax_mkview_v_s64((l_aligns).e, 2, 0, 2, 87276), coax_p_SL_layout(coax_t828, coax_t829));
+  coax_a2_s64 l_sizes = (coax_t824 = ((*coax_elem_v_t_CK_Type((l_c).types, l_elem, 87319))).size, coax_t825 = ((*coax_elem_v_t_CK_Type((l_c).types, l_error, 87319))).size, ((coax_a2_s64){{coax_t824, coax_t825}}));
+  coax_a2_s64 l_aligns = (coax_t826 = ((*coax_elem_v_t_CK_Type((l_c).types, l_elem, 87319))).alignment, coax_t827 = ((*coax_elem_v_t_CK_Type((l_c).types, l_error, 87319))).alignment, ((coax_a2_s64){{coax_t826, coax_t827}}));
+  coax_t_SL_Layout l_l = (coax_t828 = coax_mkview_v_s64((l_sizes).e, 2, 0, 2, 87323), coax_t829 = coax_mkview_v_s64((l_aligns).e, 2, 0, 2, 87323), coax_p_SL_layout(coax_t828, coax_t829));
   if (!(l_l).valid)
   {
     coax_p_CK_resource(l_c, l_loc);
     return INT64_C(0);
   }
-  coax_string l_name = coax_p_CK_join2(l_c, ((*coax_elem_v_t_CK_Type((l_c).types, l_elem, 87277))).name, COAX_STR("\077", 1));
+  coax_string l_name = coax_p_CK_join2(l_c, ((*coax_elem_v_t_CK_Type((l_c).types, l_elem, 87324))).name, COAX_STR("\077", 1));
   int64_t l_default = INT64_C(0);
   if (l_kind == ((coax_t_CK_Kind)UINT64_C(14)))
   {
-    l_name = (coax_t830 = ((*coax_elem_v_t_CK_Type((l_c).types, l_elem, 87278))).name, coax_t831 = coax_p_CK_join3(l_c, COAX_STR(", ", 2), ((*coax_elem_v_t_CK_Type((l_c).types, l_error, 87278))).name, COAX_STR(")", 1)), coax_p_CK_join3(l_c, COAX_STR("Result(", 7), coax_t830, coax_t831));
+    l_name = (coax_t830 = ((*coax_elem_v_t_CK_Type((l_c).types, l_elem, 87325))).name, coax_t831 = coax_p_CK_join3(l_c, COAX_STR(", ", 2), ((*coax_elem_v_t_CK_Type((l_c).types, l_error, 87325))).name, COAX_STR(")", 1)), coax_p_CK_join3(l_c, COAX_STR("Result(", 7), coax_t830, coax_t831));
     l_default = INT64_C(-1);
   }
   return coax_p_CK_new_type(l_c, ((coax_t_CK_Type){.kind = l_kind, .name = l_name, .size = (l_l).size, .alignment = (l_l).alignment, .bits = INT64_C(32), .elem = l_elem, .sum_error = l_error, .sum_payload_offset = (l_l).offset, .sum_default = l_default}));
@@ -17388,7 +17404,7 @@ static _Bool coax_p_CK_sum_can_propagate(int64_t l_current, coax_t_CK_Kind l_kin
 }
 
 static int64_t coax_p_CK_result_syntax(coax_t_CK_Context l_c, int64_t l_id) {
-  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87286));
+  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87333));
   if (coax_p_CK_list_count(l_c, (l_e).head) != INT64_C(2))
   {
     coax_p_CK_error(l_c, (l_e).loc, COAX_STR("E0900", 5), COAX_STR("Result requires exactly success and error type arguments", 56), COAX_STR("", 0));
@@ -17397,16 +17413,16 @@ static int64_t coax_p_CK_result_syntax(coax_t_CK_Context l_c, int64_t l_id) {
   int64_t l_arg = (l_e).head;
   while (l_arg != INT64_C(0))
   {
-    uint32_t l_tag = ((uint32_t)coax_cast_uu((uint64_t)(((*coax_elem_v_t_CK_Node((l_c).nodes, l_arg, 87287))).kind), UINT64_C(4294967295), 87287));
+    uint32_t l_tag = ((uint32_t)coax_cast_uu((uint64_t)(((*coax_elem_v_t_CK_Node((l_c).nodes, l_arg, 87334))).kind), UINT64_C(4294967295), 87334));
     if (!coax_p_CK_sum_type_tag(l_tag))
     {
-      coax_p_CK_error(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_arg, 87287))).loc, COAX_STR("E0900", 5), COAX_STR("Result arguments must both be types, not length or value arguments", 66), COAX_STR("", 0));
+      coax_p_CK_error(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_arg, 87334))).loc, COAX_STR("E0900", 5), COAX_STR("Result arguments must both be types, not length or value arguments", 66), COAX_STR("", 0));
       return INT64_C(0);
     }
-    l_arg = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_arg, 87287))).next;
+    l_arg = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_arg, 87334))).next;
   }
   int64_t l_a = coax_p_CK_sum_inner(l_c, (l_e).head);
-  int64_t l_b = coax_p_CK_sum_inner(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_e).head, 87288))).next);
+  int64_t l_b = coax_p_CK_sum_inner(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_e).head, 87335))).next);
   return coax_p_CK_sum_type(l_c, ((coax_t_CK_Kind)UINT64_C(14)), l_a, l_b, (l_e).loc);
 }
 
@@ -17416,7 +17432,7 @@ static void coax_p_CK_union_layout(coax_t_CK_Context l_c, int64_t l_id) {
   int64_t * coax_t834;
   coax_v_s64 coax_t835;
   coax_v_s64 coax_t836;
-  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87291));
+  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87338));
   if ((l_n).mark == INT64_C(2))
   {
     return;
@@ -17430,7 +17446,7 @@ static void coax_p_CK_union_layout(coax_t_CK_Context l_c, int64_t l_id) {
   {
     return;
   }
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87292))).mark = INT64_C(1);
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87339))).mark = INT64_C(1);
   int64_t l_count = coax_p_CK_list_count(l_c, (l_n).head);
   if (((l_count < INT64_C(1)) || (l_count > INT64_C(64))) || ((l_n).d != INT64_C(0)))
   {
@@ -17442,17 +17458,17 @@ static void coax_p_CK_union_layout(coax_t_CK_Context l_c, int64_t l_id) {
   coax_a64_s64 l_aligns = ((coax_a64_s64){0});
   int64_t l_field = (l_n).head;
   int64_t l_at = INT64_C(0);
-  while ((l_field != INT64_C(0)) && (!((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87295))).fatal))
+  while ((l_field != INT64_C(0)) && (!((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87342))).fatal))
   {
-    coax_t_CK_Node l_f = (*coax_elem_v_t_CK_Node((l_c).nodes, l_field, 87296));
+    coax_t_CK_Node l_f = (*coax_elem_v_t_CK_Node((l_c).nodes, l_field, 87343));
     int64_t l_prior = (l_n).head;
     while (l_prior != l_field)
     {
-      if (coax_string_eq(((*coax_elem_v_t_CK_Node((l_c).nodes, l_prior, 87296))).name, (l_f).name))
+      if (coax_string_eq(((*coax_elem_v_t_CK_Node((l_c).nodes, l_prior, 87343))).name, (l_f).name))
       {
         coax_p_CK_error(l_c, (l_f).loc, COAX_STR("E0900", 5), COAX_STR("duplicate union alternative", 27), COAX_STR("", 0));
       }
-      l_prior = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_prior, 87296))).next;
+      l_prior = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_prior, 87343))).next;
     }
     int64_t l_ty = INT64_C(1);
     if ((l_f).a != INT64_C(0))
@@ -17470,17 +17486,17 @@ static void coax_p_CK_union_layout(coax_t_CK_Context l_c, int64_t l_id) {
       coax_p_CK_leave(l_c);
       return;
     }
-    ((*coax_elem_v_t_CK_Node((l_c).nodes, l_field, 87299))).type = l_ty;
-    coax_t832 = &(((*coax_elem_v_t_CK_Node((l_c).nodes, l_field, 87299))).value);
-    *coax_t832 = ((uint64_t)coax_cast_su((int64_t)(l_at), UINT64_C(18446744073709551615), 87299));
-    coax_t833 = &((l_sizes).e[coax_index(l_at, 64, 87299)]);
-    *coax_t833 = ((*coax_elem_v_t_CK_Type((l_c).types, l_ty, 87299))).size;
-    coax_t834 = &((l_aligns).e[coax_index(l_at, 64, 87299)]);
-    *coax_t834 = ((*coax_elem_v_t_CK_Type((l_c).types, l_ty, 87299))).alignment;
+    ((*coax_elem_v_t_CK_Node((l_c).nodes, l_field, 87346))).type = l_ty;
+    coax_t832 = &(((*coax_elem_v_t_CK_Node((l_c).nodes, l_field, 87346))).value);
+    *coax_t832 = ((uint64_t)coax_cast_su((int64_t)(l_at), UINT64_C(18446744073709551615), 87346));
+    coax_t833 = &((l_sizes).e[coax_index(l_at, 64, 87346)]);
+    *coax_t833 = ((*coax_elem_v_t_CK_Type((l_c).types, l_ty, 87346))).size;
+    coax_t834 = &((l_aligns).e[coax_index(l_at, 64, 87346)]);
+    *coax_t834 = ((*coax_elem_v_t_CK_Type((l_c).types, l_ty, 87346))).alignment;
     l_field = (l_f).next;
-    l_at = coax_add_s64(l_at, INT64_C(1), 87299);
+    l_at = coax_add_s64(l_at, INT64_C(1), 87346);
   }
-  coax_t_SL_Layout l_l = (coax_t835 = coax_mkview_v_s64((l_sizes).e, 64, (int64_t)(INT64_C(0)), (int64_t)(l_count), 87301), coax_t836 = coax_mkview_v_s64((l_aligns).e, 64, (int64_t)(INT64_C(0)), (int64_t)(l_count), 87301), coax_p_SL_layout(coax_t835, coax_t836));
+  coax_t_SL_Layout l_l = (coax_t835 = coax_mkview_v_s64((l_sizes).e, 64, (int64_t)(INT64_C(0)), (int64_t)(l_count), 87348), coax_t836 = coax_mkview_v_s64((l_aligns).e, 64, (int64_t)(INT64_C(0)), (int64_t)(l_count), 87348), coax_p_SL_layout(coax_t835, coax_t836));
   if (!(l_l).valid)
   {
     coax_p_CK_resource(l_c, (l_n).loc);
@@ -17488,11 +17504,11 @@ static void coax_p_CK_union_layout(coax_t_CK_Context l_c, int64_t l_id) {
     return;
   }
   int64_t l_t = (l_n).type;
-  ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87302))).size = (l_l).size;
-  ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87302))).alignment = (l_l).alignment;
-  ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87302))).bits = INT64_C(32);
-  ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87302))).sum_payload_offset = (l_l).offset;
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87302))).mark = INT64_C(2);
+  ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87349))).size = (l_l).size;
+  ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87349))).alignment = (l_l).alignment;
+  ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87349))).bits = INT64_C(32);
+  ((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87349))).sum_payload_offset = (l_l).offset;
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87349))).mark = INT64_C(2);
   coax_p_CK_leave(l_c);
 }
 
@@ -17509,13 +17525,13 @@ static int64_t coax_p_CK_sum_construct(coax_t_CK_Context l_c, int64_t l_id, int6
   {
     return INT64_C(0);
   }
-  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87308));
+  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87355));
   if (coax_p_CK_list_count(l_c, (l_e).head) != INT64_C(1))
   {
     coax_p_CK_error(l_c, (l_e).loc, COAX_STR("E0901", 5), COAX_STR("construct exactly one sum alternative", 37), COAX_STR("", 0));
     return INT64_C(0);
   }
-  coax_t_CK_Node l_init = (*coax_elem_v_t_CK_Node((l_c).nodes, (l_e).head, 87309));
+  coax_t_CK_Node l_init = (*coax_elem_v_t_CK_Node((l_c).nodes, (l_e).head, 87356));
   int64_t l_ordinal = INT64_C(-1);
   {
     int64_t coax_lo837 = INT64_C(0);
@@ -17556,30 +17572,30 @@ static int64_t coax_p_CK_sum_construct(coax_t_CK_Context l_c, int64_t l_id, int6
     }
     if (l_a != l_payload)
     {
-      coax_p_CK_error(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_init).a, 87312))).loc, COAX_STR("E0901", 5), COAX_STR("sum payload type does not match its alternative", 47), COAX_STR("", 0));
+      coax_p_CK_error(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_init).a, 87359))).loc, COAX_STR("E0901", 5), COAX_STR("sum payload type does not match its alternative", 47), COAX_STR("", 0));
       return INT64_C(0);
     }
   }
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87313))).kind = ((coax_t_CK_Tag)UINT64_C(34));
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87313))).name = (l_init).name;
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87313))).a = (l_init).a;
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87313))).head = INT64_C(0);
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87313))).tail = INT64_C(0);
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87313))).sum_variant = l_ordinal;
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87360))).kind = ((coax_t_CK_Tag)UINT64_C(34));
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87360))).name = (l_init).name;
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87360))).a = (l_init).a;
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87360))).head = INT64_C(0);
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87360))).tail = INT64_C(0);
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87360))).sum_variant = l_ordinal;
   return l_t;
 }
 
 static int64_t coax_p_CK_some(coax_t_CK_Context l_c, int64_t l_id, coax_t_CK_Hint l_want) {
-  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87316));
+  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87363));
   if (coax_p_CK_list_count(l_c, (l_e).head) != INT64_C(1))
   {
     coax_p_CK_error(l_c, (l_e).loc, COAX_STR("E0910", 5), COAX_STR("some takes exactly one payload", 30), COAX_STR("", 0));
     return INT64_C(0);
   }
   int64_t l_inner = INT64_C(0);
-  if (((*coax_elem_v_t_CK_Type((l_c).types, (l_want).type, 87317))).kind == ((coax_t_CK_Kind)UINT64_C(15)))
+  if (((*coax_elem_v_t_CK_Type((l_c).types, (l_want).type, 87364))).kind == ((coax_t_CK_Kind)UINT64_C(15)))
   {
-    l_inner = ((*coax_elem_v_t_CK_Type((l_c).types, (l_want).type, 87317))).elem;
+    l_inner = ((*coax_elem_v_t_CK_Type((l_c).types, (l_want).type, 87364))).elem;
   }
   int64_t l_t = coax_p_CK_value(l_c, (l_e).head, ((coax_t_CK_Hint){.type = l_inner}));
   if (l_t == INT64_C(0))
@@ -17596,24 +17612,24 @@ static int64_t coax_p_CK_some(coax_t_CK_Context l_c, int64_t l_id, coax_t_CK_Hin
   {
     return INT64_C(0);
   }
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87319))).kind = ((coax_t_CK_Tag)UINT64_C(36));
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87319))).a = (l_e).head;
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87319))).head = INT64_C(0);
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87319))).tail = INT64_C(0);
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87319))).sum_variant = INT64_C(1);
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87366))).kind = ((coax_t_CK_Tag)UINT64_C(36));
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87366))).a = (l_e).head;
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87366))).head = INT64_C(0);
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87366))).tail = INT64_C(0);
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87366))).sum_variant = INT64_C(1);
   return l_r;
 }
 
 static int64_t coax_p_CK_sum_expression(coax_t_CK_Context l_c, int64_t l_id, coax_t_CK_Hint l_want) {
-  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87322));
+  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87369));
   if ((l_e).kind == ((coax_t_CK_Tag)UINT64_C(35)))
   {
-    if (((*coax_elem_v_t_CK_Type((l_c).types, (l_want).type, 87322))).kind != ((coax_t_CK_Kind)UINT64_C(15)))
+    if (((*coax_elem_v_t_CK_Type((l_c).types, (l_want).type, 87369))).kind != ((coax_t_CK_Kind)UINT64_C(15)))
     {
       coax_p_CK_error(l_c, (l_e).loc, COAX_STR("E0910", 5), COAX_STR("null requires an optional type context", 38), COAX_STR("", 0));
       return INT64_C(0);
     }
-    ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87322))).sum_variant = INT64_C(0);
+    ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87369))).sum_variant = INT64_C(0);
     return (l_want).type;
   }
   if (((l_e).kind == ((coax_t_CK_Tag)UINT64_C(34))) || ((l_e).kind == ((coax_t_CK_Tag)UINT64_C(36))))
@@ -17625,7 +17641,7 @@ static int64_t coax_p_CK_sum_expression(coax_t_CK_Context l_c, int64_t l_id, coa
   {
     return INT64_C(0);
   }
-  coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_t, 87324));
+  coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_t, 87371));
   if (((l_r).kind != ((coax_t_CK_Kind)UINT64_C(14))) && ((l_r).kind != ((coax_t_CK_Kind)UINT64_C(15))))
   {
     coax_p_CK_error(l_c, (l_e).loc, COAX_STR("E0905", 5), COAX_STR("try and or_else require Result or optional", 42), COAX_STR("", 0));
@@ -17636,47 +17652,47 @@ static int64_t coax_p_CK_sum_expression(coax_t_CK_Context l_c, int64_t l_id, coa
     int64_t l_f = coax_p_CK_value(l_c, (l_e).b, ((coax_t_CK_Hint){.type = (l_r).elem}));
     if ((l_f != INT64_C(0)) && (l_f != (l_r).elem))
     {
-      coax_p_CK_error(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_e).b, 87326))).loc, COAX_STR("E0906", 5), COAX_STR("or_else fallback must have the success payload type", 51), COAX_STR("", 0));
+      coax_p_CK_error(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_e).b, 87373))).loc, COAX_STR("E0906", 5), COAX_STR("or_else fallback must have the success payload type", 51), COAX_STR("", 0));
       return INT64_C(0);
     }
     return (l_r).elem;
   }
-  if (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87327))).defer_depth != INT64_C(0))
+  if (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87374))).defer_depth != INT64_C(0))
   {
     coax_p_CK_error(l_c, (l_e).loc, COAX_STR("E0361", 5), COAX_STR("try cannot leave a deferred block", 33), COAX_STR("", 0));
     return INT64_C(0);
   }
-  int64_t l_ret = ((*coax_elem_v_t_CK_Node((l_c).nodes, ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87328))).current, 87328))).type;
-  coax_t_CK_Type l_out = (*coax_elem_v_t_CK_Type((l_c).types, l_ret, 87328));
-  if (!coax_p_CK_sum_can_propagate(((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87329))).current, (l_r).kind, (l_r).sum_error, (l_out).kind, (l_out).sum_error))
+  int64_t l_ret = ((*coax_elem_v_t_CK_Node((l_c).nodes, ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87375))).current, 87375))).type;
+  coax_t_CK_Type l_out = (*coax_elem_v_t_CK_Type((l_c).types, l_ret, 87375));
+  if (!coax_p_CK_sum_can_propagate(((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87376))).current, (l_r).kind, (l_r).sum_error, (l_out).kind, (l_out).sum_error))
   {
     coax_p_CK_error(l_c, (l_e).loc, COAX_STR("E0905", 5), COAX_STR("try requires the same propagation family and exact error type", 61), COAX_STR("", 0));
     return INT64_C(0);
   }
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87330))).propagate_type = l_ret;
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87377))).propagate_type = l_ret;
   coax_p_CK_borrow_return(l_c, l_id);
-  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87330))).sum_variant = (((l_r).kind == ((coax_t_CK_Kind)UINT64_C(14))) ? INT64_C(1) : INT64_C(0));
+  ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87377))).sum_variant = (((l_r).kind == ((coax_t_CK_Kind)UINT64_C(14))) ? INT64_C(1) : INT64_C(0));
   return (l_r).elem;
 }
 
 static void coax_p_CK_literal_defaults(coax_t_CK_Context l_c, int64_t l_id, int64_t l_decl) {
-  int64_t l_field = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_decl, 87333))).head;
+  int64_t l_field = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_decl, 87380))).head;
   while (l_field != INT64_C(0))
   {
-    coax_t_CK_Node l_f = (*coax_elem_v_t_CK_Node((l_c).nodes, l_field, 87333));
+    coax_t_CK_Node l_f = (*coax_elem_v_t_CK_Node((l_c).nodes, l_field, 87380));
     _Bool l_found = 0;
-    int64_t l_a = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87333))).head;
+    int64_t l_a = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87380))).head;
     while (l_a != INT64_C(0))
     {
-      if (coax_string_eq(((*coax_elem_v_t_CK_Node((l_c).nodes, l_a, 87333))).name, (l_f).name))
+      if (coax_string_eq(((*coax_elem_v_t_CK_Node((l_c).nodes, l_a, 87380))).name, (l_f).name))
       {
         l_found = 1;
       }
-      l_a = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_a, 87333))).next;
+      l_a = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_a, 87380))).next;
     }
     if (((!l_found) && ((l_f).b == INT64_C(0))) && (!coax_p_CK_defaultable(l_c, (l_f).type)))
     {
-      coax_p_CK_error(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87334))).loc, COAX_STR("E0902", 5), COAX_STR("a nondefaultable field requires an initializer", 46), COAX_STR("", 0));
+      coax_p_CK_error(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87381))).loc, COAX_STR("E0902", 5), COAX_STR("a nondefaultable field requires an initializer", 46), COAX_STR("", 0));
     }
     l_field = (l_f).next;
   }
@@ -17685,28 +17701,28 @@ static void coax_p_CK_literal_defaults(coax_t_CK_Context l_c, int64_t l_id, int6
 static void coax_p_CK_switch(coax_t_CK_Context l_c, int64_t l_id) {
   coax_string coax_t839;
   coax_t_CK_Loc coax_t840;
-  coax_t_CK_Node l_s = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87337));
+  coax_t_CK_Node l_s = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87384));
   int64_t l_t = coax_p_CK_value(l_c, (l_s).a, ((coax_t_CK_Hint){0}));
   if (l_t == INT64_C(0))
   {
     return;
   }
   _Bool l_is_sum = coax_p_CK_sum(l_c, l_t);
-  coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_t, 87337));
+  coax_t_CK_Type l_r = (*coax_elem_v_t_CK_Type((l_c).types, l_t, 87384));
   if ((!l_is_sum) && ((l_r).kind != ((coax_t_CK_Kind)UINT64_C(9))))
   {
     coax_p_CK_error(l_c, (l_s).loc, COAX_STR("E0904", 5), COAX_STR("switch requires a tagged sum or enum", 36), COAX_STR("", 0));
     return;
   }
-  int64_t l_count = coax_p_CK_list_count(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_r).decl, 87339))).head);
+  int64_t l_count = coax_p_CK_list_count(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_r).decl, 87386))).head);
   if (l_is_sum)
   {
     l_count = coax_p_CK_sum_count(l_c, l_t);
   }
   int64_t l_at = (l_s).head;
-  while ((l_at != INT64_C(0)) && (!((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87340))).fatal))
+  while ((l_at != INT64_C(0)) && (!((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87387))).fatal))
   {
-    coax_t_CK_Node l_branch = (*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87341));
+    coax_t_CK_Node l_branch = (*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87388));
     int64_t l_ordinal = INT64_C(-1);
     int64_t l_payload = INT64_C(1);
     uint64_t l_tag = ((uint64_t)0);
@@ -17728,16 +17744,16 @@ static void coax_p_CK_switch(coax_t_CK_Context l_c, int64_t l_id) {
       if (l_valid)
       {
         l_payload = coax_p_CK_sum_payload(l_c, l_t, l_ordinal);
-        l_tag = ((uint64_t)coax_cast_su((int64_t)(l_ordinal), UINT64_C(18446744073709551615), 87342));
+        l_tag = ((uint64_t)coax_cast_su((int64_t)(l_ordinal), UINT64_C(18446744073709551615), 87389));
       }
     }
     else
     {
       int64_t l_v = coax_p_CK_value(l_c, (l_branch).d, ((coax_t_CK_Hint){.type = l_t}));
-      l_valid = ((l_v == l_t) && (((*coax_elem_v_t_CK_Node((l_c).nodes, (l_branch).d, 87343))).kind == ((coax_t_CK_Tag)UINT64_C(32))));
+      l_valid = ((l_v == l_t) && (((*coax_elem_v_t_CK_Node((l_c).nodes, (l_branch).d, 87390))).kind == ((coax_t_CK_Tag)UINT64_C(32))));
       if (l_valid)
       {
-        l_tag = ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_branch).d, 87343))).value;
+        l_tag = ((*coax_elem_v_t_CK_Node((l_c).nodes, (l_branch).d, 87390))).value;
       }
     }
     if (!l_valid)
@@ -17748,34 +17764,34 @@ static void coax_p_CK_switch(coax_t_CK_Context l_c, int64_t l_id) {
     int64_t l_previous = (l_s).head;
     while (l_previous != l_at)
     {
-      if (((*coax_elem_v_t_CK_Node((l_c).nodes, l_previous, 87345))).value == l_tag)
+      if (((*coax_elem_v_t_CK_Node((l_c).nodes, l_previous, 87392))).value == l_tag)
       {
         coax_p_CK_error(l_c, (l_branch).loc, COAX_STR("E0904", 5), COAX_STR("duplicate switch case", 21), COAX_STR("", 0));
         return;
       }
-      l_previous = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_previous, 87345))).next;
+      l_previous = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_previous, 87392))).next;
     }
     if (((l_payload == INT64_C(1)) && ((l_branch).a != INT64_C(0))) || ((l_payload != INT64_C(1)) && ((l_branch).a == INT64_C(0))))
     {
       coax_p_CK_error(l_c, (l_branch).loc, COAX_STR("E0904", 5), COAX_STR("payload cases require one binding; unit and enum cases have none", 64), COAX_STR("", 0));
       return;
     }
-    ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87347))).value = l_tag;
+    ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87394))).value = l_tag;
     if (l_is_sum)
     {
-      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87347))).sum_variant = l_ordinal;
+      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87394))).sum_variant = l_ordinal;
     }
-    int64_t l_mark = ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87348))).local_count;
+    int64_t l_mark = ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87395))).local_count;
     if ((l_branch).a != INT64_C(0))
     {
       int64_t l_binding = (l_branch).a;
-      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87348))).type = l_payload;
-      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87348))).sum_variant = l_ordinal;
-      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87348))).a = (l_s).a;
-      (coax_t839 = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87348))).name, coax_t840 = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87348))).loc, coax_p_CK_declare_id(l_c, coax_t839, l_payload, coax_t840, COAX_STR("case payload", 12), l_binding));
+      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87395))).type = l_payload;
+      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87395))).sum_variant = l_ordinal;
+      ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87395))).a = (l_s).a;
+      (coax_t839 = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87395))).name, coax_t840 = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_binding, 87395))).loc, coax_p_CK_declare_id(l_c, coax_t839, l_payload, coax_t840, COAX_STR("case payload", 12), l_binding));
     }
     coax_p_CK_stmt(l_c, (l_branch).b);
-    ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87349))).local_count = l_mark;
+    ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87396))).local_count = l_mark;
     l_at = (l_branch).next;
   }
   if (coax_p_CK_list_count(l_c, (l_s).head) != l_count)
@@ -17785,8 +17801,8 @@ static void coax_p_CK_switch(coax_t_CK_Context l_c, int64_t l_id) {
 }
 
 static int64_t coax_p_CK_null_comparison(coax_t_CK_Context l_c, int64_t l_id) {
-  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87354));
-  _Bool l_left = (((*coax_elem_v_t_CK_Node((l_c).nodes, (l_e).a, 87354))).kind == ((coax_t_CK_Tag)UINT64_C(35)));
+  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node((l_c).nodes, l_id, 87401));
+  _Bool l_left = (((*coax_elem_v_t_CK_Node((l_c).nodes, (l_e).a, 87401))).kind == ((coax_t_CK_Tag)UINT64_C(35)));
   int64_t l_other = (l_e).a;
   if (l_left)
   {
@@ -17797,7 +17813,7 @@ static int64_t coax_p_CK_null_comparison(coax_t_CK_Context l_c, int64_t l_id) {
   {
     return INT64_C(0);
   }
-  if ((((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87355))).kind != ((coax_t_CK_Kind)UINT64_C(15))) || (((l_e).op != ((uint32_t)UINT64_C(44))) && ((l_e).op != ((uint32_t)UINT64_C(45)))))
+  if ((((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87402))).kind != ((coax_t_CK_Kind)UINT64_C(15))) || (((l_e).op != ((uint32_t)UINT64_C(44))) && ((l_e).op != ((uint32_t)UINT64_C(45)))))
   {
     coax_p_CK_error(l_c, (l_e).loc, COAX_STR("E0910", 5), COAX_STR("null compares only for equality with an optional", 48), COAX_STR("", 0));
     return INT64_C(0);
@@ -17827,17 +17843,17 @@ static coax_t_SL_Layout coax_p_SL_layout(coax_v_s64 l_sizes, coax_v_s64 l_aligns
     int64_t coax_hi841 = (l_sizes).count;
     for (int64_t l_i = coax_lo841; l_i < coax_hi841; l_i++)
     {
-      int64_t l_n = (*coax_elem_v_s64(l_sizes, l_i, 87404));
-      int64_t l_a = (*coax_elem_v_s64(l_aligns, l_i, 87404));
-      if ((((((int64_t)(l_n & INT64_C(2147483647))) != l_n) || (l_a == INT64_C(0))) || (((int64_t)(l_a & INT64_C(2147483647))) != l_a)) || (((int64_t)(l_a & coax_sub_s64(l_a, INT64_C(1), 87407))) != INT64_C(0)))
+      int64_t l_n = (*coax_elem_v_s64(l_sizes, l_i, 87451));
+      int64_t l_a = (*coax_elem_v_s64(l_aligns, l_i, 87451));
+      if ((((((int64_t)(l_n & INT64_C(2147483647))) != l_n) || (l_a == INT64_C(0))) || (((int64_t)(l_a & INT64_C(2147483647))) != l_a)) || (((int64_t)(l_a & coax_sub_s64(l_a, INT64_C(1), 87454))) != INT64_C(0)))
       {
         return ((coax_t_SL_Layout){0});
       }
-      if (l_n >= coax_add_s64(l_size, INT64_C(1), 87408))
+      if (l_n >= coax_add_s64(l_size, INT64_C(1), 87455))
       {
         l_size = l_n;
       }
-      if (l_a >= coax_add_s64(l_alignment, l_alignment, 87408))
+      if (l_a >= coax_add_s64(l_alignment, l_alignment, 87455))
       {
         l_alignment = l_a;
       }
@@ -17848,7 +17864,7 @@ static coax_t_SL_Layout coax_p_SL_layout(coax_v_s64 l_sizes, coax_v_s64 l_aligns
     return ((coax_t_SL_Layout){.valid = 1, .size = INT64_C(4), .alignment = INT64_C(4)});
   }
   int64_t l_offset = l_alignment;
-  int64_t l_total = coax_mul_s64(coax_div_s64(coax_sub_s64(coax_add_s64(coax_add_s64(l_offset, l_size, 87415), l_alignment, 87415), INT64_C(1), 87415), l_alignment, 87415), l_alignment, 87415);
+  int64_t l_total = coax_mul_s64(coax_div_s64(coax_sub_s64(coax_add_s64(coax_add_s64(l_offset, l_size, 87462), l_alignment, 87462), INT64_C(1), 87462), l_alignment, 87462), l_alignment, 87462);
   if (l_total >= INT64_C(2147483648))
   {
     return ((coax_t_SL_Layout){0});
@@ -17857,13 +17873,13 @@ static coax_t_SL_Layout coax_p_SL_layout(coax_v_s64 l_sizes, coax_v_s64 l_aligns
 }
 
 static _Bool coax_p_CF_result(coax_t_CK_Context l_c, int64_t l_t) {
-  return (((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87529))).kind == ((coax_t_CK_Kind)UINT64_C(14)));
+  return (((*coax_elem_v_t_CK_Type((l_c).types, l_t, 87576))).kind == ((coax_t_CK_Kind)UINT64_C(14)));
 }
 
 static _Bool coax_p_CF_has_results(coax_t_CK_Context l_c) {
   {
     int64_t coax_lo842 = INT64_C(16);
-    int64_t coax_hi842 = ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87530))).type_count;
+    int64_t coax_hi842 = ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87577))).type_count;
     for (int64_t l_i = coax_lo842; l_i < coax_hi842; l_i++)
     {
       if (coax_p_CF_result(l_c, l_i))
@@ -17876,7 +17892,7 @@ static _Bool coax_p_CF_has_results(coax_t_CK_Context l_c) {
 }
 
 static _Bool coax_p_CF_ok(coax_t_CF_Context l_f) {
-  return (((!((*coax_elem_v_t_CK_State(((l_f).c).state, INT64_C(0), 87531))).fatal) && (((*coax_elem_v_t_CK_State(((l_f).c).state, INT64_C(0), 87531))).error_count == INT64_C(0))) && (((*coax_elem_v_t_RF_State(((l_f).flow).state, INT64_C(0), 87531))).reason == ((coax_t_RF_Reason)UINT64_C(0))));
+  return (((!((*coax_elem_v_t_CK_State(((l_f).c).state, INT64_C(0), 87578))).fatal) && (((*coax_elem_v_t_CK_State(((l_f).c).state, INT64_C(0), 87578))).error_count == INT64_C(0))) && (((*coax_elem_v_t_RF_State(((l_f).flow).state, INT64_C(0), 87578))).reason == ((coax_t_RF_Reason)UINT64_C(0))));
 }
 
 static void coax_p_CF_collect(coax_t_CF_Context l_f, int64_t l_id, int64_t l_depth) {
@@ -17884,7 +17900,7 @@ static void coax_p_CF_collect(coax_t_CF_Context l_f, int64_t l_id, int64_t l_dep
   {
     return;
   }
-  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_id, 87534));
+  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_id, 87581));
   if (!coax_p_CK_enter((l_f).c, (l_n).loc))
   {
     return;
@@ -17893,17 +17909,17 @@ static void coax_p_CF_collect(coax_t_CF_Context l_f, int64_t l_id, int64_t l_dep
   {
     if (((l_f).flow).count > INT64_C(0))
     {
-      _Bool l_ignored = coax_p_RF_register((l_f).flow, ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87535))).collected, l_id, l_depth);
+      _Bool l_ignored = coax_p_RF_register((l_f).flow, ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87582))).collected, l_id, l_depth);
     }
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87535))).collected = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87535))).collected, INT64_C(1), 87535);
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87582))).collected = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87582))).collected, INT64_C(1), 87582);
   }
   if ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(40)))
   {
     int64_t l_at = (l_n).head;
     while (l_at != INT64_C(0))
     {
-      coax_p_CF_collect(l_f, l_at, coax_add_s64(l_depth, INT64_C(1), 87536));
-      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87536))).next;
+      coax_p_CF_collect(l_f, l_at, coax_add_s64(l_depth, INT64_C(1), 87583));
+      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87583))).next;
     }
   }
   else
@@ -17923,8 +17939,8 @@ static void coax_p_CF_collect(coax_t_CF_Context l_f, int64_t l_id, int64_t l_dep
     int64_t l_at = (l_n).head;
     while (l_at != INT64_C(0))
     {
-      coax_p_CF_collect(l_f, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87539))).b, l_depth);
-      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87539))).next;
+      coax_p_CF_collect(l_f, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87586))).b, l_depth);
+      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87586))).next;
     }
   }
   coax_p_CK_leave((l_f).c);
@@ -17935,7 +17951,7 @@ static void coax_p_CF_exit(coax_t_CF_Context l_f, int64_t l_scope, coax_t_CK_Loc
   {
     return;
   }
-  if (((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87542))).arguments)
+  if (((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87589))).arguments)
   {
     coax_p_CK_error((l_f).c, l_loc, COAX_STR("E0907", 5), COAX_STR("try would abandon a pending Result argument before the call begins", 66), COAX_STR("", 0));
     return;
@@ -17957,7 +17973,7 @@ static void coax_p_CF_exit(coax_t_CF_Context l_f, int64_t l_scope, coax_t_CK_Loc
 static void coax_p_CF_join(coax_t_CF_Context l_f, int64_t l_base, coax_t_CK_Loc l_loc) {
   if (coax_p_CF_ok(l_f) && (!coax_p_RF_equal((l_f).flow, l_base)))
   {
-    if (((*coax_elem_v_t_RF_State(((l_f).flow).state, INT64_C(0), 87545))).reason == ((coax_t_RF_Reason)UINT64_C(0)))
+    if (((*coax_elem_v_t_RF_State(((l_f).flow).state, INT64_C(0), 87592))).reason == ((coax_t_RF_Reason)UINT64_C(0)))
     {
       coax_p_CK_error((l_f).c, l_loc, COAX_STR("E0909", 5), COAX_STR("continuing branches disagree about a Result transfer", 52), COAX_STR("", 0));
     }
@@ -17986,20 +18002,20 @@ static void coax_p_CF_choice(coax_t_CF_Context l_f, int64_t l_a, int64_t l_b, co
   {
     return;
   }
-  _Bool l_left_alive = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87550))).alive;
+  _Bool l_left_alive = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87597))).alive;
   int64_t l_left = coax_p_RF_save((l_f).flow);
   if (l_left < INT64_C(0))
   {
     return;
   }
   _Bool l_ignored = coax_p_RF_restore((l_f).flow, l_base);
-  ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87551))).alive = 1;
+  ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87598))).alive = 1;
   coax_p_CF_visit(l_f, l_b, l_mode);
   if (!coax_p_CF_ok(l_f))
   {
     return;
   }
-  if (l_left_alive && ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87553))).alive)
+  if (l_left_alive && ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87600))).alive)
   {
     coax_p_CF_join(l_f, l_left, l_loc);
   }
@@ -18007,7 +18023,7 @@ static void coax_p_CF_choice(coax_t_CF_Context l_f, int64_t l_a, int64_t l_b, co
   if (l_left_alive)
   {
     l_ignored = coax_p_RF_restore((l_f).flow, l_left);
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87553))).alive = 1;
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87600))).alive = 1;
   }
   l_ignored = coax_p_RF_drop((l_f).flow, l_base);
 }
@@ -18025,7 +18041,7 @@ static void coax_p_CF_expr(coax_t_CF_Context l_f, int64_t l_id, _Bool l_consume)
   {
     return;
   }
-  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_id, 87559));
+  coax_t_CK_Node l_e = (*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_id, 87606));
   if ((!coax_p_RF_tick((l_f).flow)) || (!coax_p_CK_enter((l_f).c, (l_e).loc)))
   {
     return;
@@ -18050,7 +18066,7 @@ static void coax_p_CF_expr(coax_t_CF_Context l_f, int64_t l_id, _Bool l_consume)
       coax_p_CK_leave((l_f).c);
       return;
     }
-    if (((((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87564))).defer_scope > INT64_C(0)) && (coax_t844 = coax_p_RF_scope((l_f).flow, l_at), coax_t845 = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87564))).defer_scope, (coax_t844 < coax_t845))) || ((l_consume && (((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87564))).loop_scope > INT64_C(0))) && (coax_t846 = coax_p_RF_scope((l_f).flow, l_at), coax_t847 = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87564))).loop_scope, (coax_t846 < coax_t847))))
+    if (((((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87611))).defer_scope > INT64_C(0)) && (coax_t844 = coax_p_RF_scope((l_f).flow, l_at), coax_t845 = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87611))).defer_scope, (coax_t844 < coax_t845))) || ((l_consume && (((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87611))).loop_scope > INT64_C(0))) && (coax_t846 = coax_p_RF_scope((l_f).flow, l_at), coax_t847 = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87611))).loop_scope, (coax_t846 < coax_t847))))
     {
       coax_p_CK_error((l_f).c, (l_e).loc, COAX_STR("E0909", 5), COAX_STR("an outer Result cannot be captured by defer or consumed inside a loop", 69), COAX_STR("", 0));
       coax_p_CK_leave((l_f).c);
@@ -18105,25 +18121,25 @@ static void coax_p_CF_expr(coax_t_CF_Context l_f, int64_t l_id, _Bool l_consume)
   }
   if ((l_e).kind == ((coax_t_CK_Tag)UINT64_C(21)))
   {
-    _Bool l_saved = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87572))).arguments;
-    int64_t l_parameter = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, (l_e).proc, 87574))).head;
+    _Bool l_saved = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87619))).arguments;
+    int64_t l_parameter = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, (l_e).proc, 87621))).head;
     int64_t l_at = (l_e).head;
     while ((l_at != INT64_C(0)) && coax_p_CF_ok(l_f))
     {
-      _Bool l_transfers = coax_p_CF_result((l_f).c, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_parameter, 87574))).type);
+      _Bool l_transfers = coax_p_CF_result((l_f).c, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_parameter, 87621))).type);
       if (l_transfers)
       {
         coax_p_CF_expr(l_f, l_at, 1);
-        ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87574))).arguments = 1;
+        ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87621))).arguments = 1;
       }
       else
       {
         coax_p_CF_read(l_f, l_at);
       }
-      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87574))).next;
-      l_parameter = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_parameter, 87574))).next;
+      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87621))).next;
+      l_parameter = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_parameter, 87621))).next;
     }
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87572))).arguments = l_saved;
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87619))).arguments = l_saved;
   }
   else
   {
@@ -18134,7 +18150,7 @@ static void coax_p_CF_expr(coax_t_CF_Context l_f, int64_t l_id, _Bool l_consume)
     while ((l_at != INT64_C(0)) && coax_p_CF_ok(l_f))
     {
       coax_p_CF_read(l_f, l_at);
-      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87575))).next;
+      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87622))).next;
     }
   }
   if ((l_result && (!l_consume)) && coax_p_CF_ok(l_f))
@@ -18150,40 +18166,40 @@ static void coax_p_CF_stmt(coax_t_CF_Context l_f, int64_t l_id) {
   int64_t * coax_t851;
   int64_t * coax_t852;
   int64_t * coax_t853;
-  if (((l_id == INT64_C(0)) || (!((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87579))).alive)) || (!coax_p_CF_ok(l_f)))
+  if (((l_id == INT64_C(0)) || (!((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87626))).alive)) || (!coax_p_CF_ok(l_f)))
   {
     return;
   }
-  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_id, 87579));
+  coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_id, 87626));
   if ((!coax_p_RF_tick((l_f).flow)) || (!coax_p_CK_enter((l_f).c, (l_n).loc)))
   {
     return;
   }
   if ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(40)))
   {
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87581))).depth = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87581))).depth, INT64_C(1), 87581);
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87628))).depth = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87628))).depth, INT64_C(1), 87628);
     int64_t l_at = (l_n).head;
-    while (((l_at != INT64_C(0)) && ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87581))).alive) && coax_p_CF_ok(l_f))
+    while (((l_at != INT64_C(0)) && ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87628))).alive) && coax_p_CF_ok(l_f))
     {
       coax_p_CF_stmt(l_f, l_at);
-      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87581))).next;
+      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87628))).next;
     }
-    if (((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87582))).alive)
+    if (((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87629))).alive)
     {
-      coax_p_CF_exit(l_f, ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87582))).depth, (l_n).loc);
+      coax_p_CF_exit(l_f, ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87629))).depth, (l_n).loc);
     }
     {
       int64_t coax_lo848 = INT64_C(0);
       int64_t coax_hi848 = ((l_f).flow).count;
       for (int64_t l_i = coax_lo848; l_i < coax_hi848; l_i++)
       {
-        if (coax_t849 = coax_p_RF_scope((l_f).flow, l_i), coax_t850 = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87583))).depth, (coax_t849 == coax_t850))
+        if (coax_t849 = coax_p_RF_scope((l_f).flow, l_i), coax_t850 = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87630))).depth, (coax_t849 == coax_t850))
         {
           _Bool l_ignored = coax_p_RF_set((l_f).flow, l_i, INT64_C(0));
         }
       }
     }
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87583))).depth = coax_sub_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87583))).depth, INT64_C(1), 87583);
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87630))).depth = coax_sub_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87630))).depth, INT64_C(1), 87630);
     coax_p_CK_leave((l_f).c);
     return;
   }
@@ -18210,9 +18226,9 @@ static void coax_p_CF_stmt(coax_t_CF_Context l_f, int64_t l_id) {
   }
   if ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(44)))
   {
-    coax_p_CF_expr(l_f, (l_n).a, coax_p_CF_result((l_f).c, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, (l_n).a, 87587))).type));
+    coax_p_CF_expr(l_f, (l_n).a, coax_p_CF_result((l_f).c, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, (l_n).a, 87634))).type));
     coax_p_CF_exit(l_f, INT64_C(0), (l_n).loc);
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87587))).alive = 0;
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87634))).alive = 0;
     coax_p_CK_leave((l_f).c);
     return;
   }
@@ -18230,7 +18246,7 @@ static void coax_p_CF_stmt(coax_t_CF_Context l_f, int64_t l_id) {
       coax_t_CK_Loc l_join_loc = (l_n).loc;
       if ((l_n).next != INT64_C(0))
       {
-        l_join_loc = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, (l_n).next, 87589))).loc;
+        l_join_loc = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, (l_n).next, 87636))).loc;
       }
       coax_p_CF_choice(l_f, (l_n).c, (l_n).d, ((coax_t_CF_Mode)UINT64_C(2)), l_join_loc);
     }
@@ -18239,7 +18255,7 @@ static void coax_p_CF_stmt(coax_t_CF_Context l_f, int64_t l_id) {
   }
   if ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(53)))
   {
-    coax_p_CF_expr(l_f, (l_n).a, coax_p_CF_result((l_f).c, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, (l_n).a, 87591))).type));
+    coax_p_CF_expr(l_f, (l_n).a, coax_p_CF_result((l_f).c, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, (l_n).a, 87638))).type));
     if (!coax_p_CF_ok(l_f))
     {
       coax_p_CK_leave((l_f).c);
@@ -18251,9 +18267,9 @@ static void coax_p_CF_stmt(coax_t_CF_Context l_f, int64_t l_id) {
     while ((l_at != INT64_C(0)) && coax_p_CF_ok(l_f))
     {
       _Bool l_ignored = coax_p_RF_restore((l_f).flow, l_base);
-      ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87592))).alive = 1;
-      coax_p_CF_stmt(l_f, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87592))).b);
-      if (((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87592))).alive && coax_p_CF_ok(l_f))
+      ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87639))).alive = 1;
+      coax_p_CF_stmt(l_f, ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87639))).b);
+      if (((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87639))).alive && coax_p_CF_ok(l_f))
       {
         if (l_joined < INT64_C(0))
         {
@@ -18264,9 +18280,9 @@ static void coax_p_CF_stmt(coax_t_CF_Context l_f, int64_t l_id) {
           coax_p_CF_join(l_f, l_joined, (l_n).loc);
         }
       }
-      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87592))).next;
+      l_at = ((*coax_elem_v_t_CK_Node(((l_f).c).nodes, l_at, 87639))).next;
     }
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87593))).alive = (l_joined >= INT64_C(0));
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87640))).alive = (l_joined >= INT64_C(0));
     if (l_joined >= INT64_C(0))
     {
       _Bool l_ignored = coax_p_RF_restore((l_f).flow, l_joined);
@@ -18277,17 +18293,17 @@ static void coax_p_CF_stmt(coax_t_CF_Context l_f, int64_t l_id) {
   }
   if ((((l_n).kind == ((coax_t_CK_Tag)UINT64_C(46))) || ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(47)))) || ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(48))))
   {
-    int64_t l_saved = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87596))).loop_scope;
+    int64_t l_saved = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87643))).loop_scope;
     if ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(46)))
     {
-      coax_t851 = &(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87596))).loop_scope);
-      *coax_t851 = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87596))).depth, INT64_C(1), 87596);
+      coax_t851 = &(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87643))).loop_scope);
+      *coax_t851 = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87643))).depth, INT64_C(1), 87643);
     }
     coax_p_CF_read(l_f, (l_n).a);
     coax_p_CF_read(l_f, (l_n).b);
     if ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(46)))
     {
-      ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87596))).loop_scope = l_saved;
+      ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87643))).loop_scope = l_saved;
     }
     if (!coax_p_CF_ok(l_f))
     {
@@ -18295,30 +18311,30 @@ static void coax_p_CF_stmt(coax_t_CF_Context l_f, int64_t l_id) {
       return;
     }
     int64_t l_base = coax_p_RF_save((l_f).flow);
-    coax_t852 = &(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87597))).loop_scope);
-    *coax_t852 = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87597))).depth, INT64_C(1), 87597);
+    coax_t852 = &(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87644))).loop_scope);
+    *coax_t852 = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87644))).depth, INT64_C(1), 87644);
     coax_p_CF_stmt(l_f, (l_n).c);
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87597))).loop_scope = l_saved;
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87644))).loop_scope = l_saved;
     _Bool l_ignored = coax_p_RF_restore((l_f).flow, l_base);
     l_ignored = coax_p_RF_drop((l_f).flow, l_base);
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87598))).alive = 1;
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87645))).alive = 1;
     coax_p_CK_leave((l_f).c);
     return;
   }
   if (((l_n).kind == ((coax_t_CK_Tag)UINT64_C(49))) || ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(50))))
   {
-    coax_p_CF_exit(l_f, ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87600))).loop_scope, (l_n).loc);
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87600))).alive = 0;
+    coax_p_CF_exit(l_f, ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87647))).loop_scope, (l_n).loc);
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87647))).alive = 0;
     coax_p_CK_leave((l_f).c);
     return;
   }
   if ((l_n).kind == ((coax_t_CK_Tag)UINT64_C(51)))
   {
-    int64_t l_saved = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87601))).defer_scope;
-    coax_t853 = &(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87601))).defer_scope);
-    *coax_t853 = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87601))).depth, INT64_C(1), 87601);
+    int64_t l_saved = ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87648))).defer_scope;
+    coax_t853 = &(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87648))).defer_scope);
+    *coax_t853 = coax_add_s64(((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87648))).depth, INT64_C(1), 87648);
     coax_p_CF_stmt(l_f, (l_n).c);
-    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87601))).defer_scope = l_saved;
+    ((*coax_elem_v_t_CF_State((l_f).state, INT64_C(0), 87648))).defer_scope = l_saved;
   }
   coax_p_CK_leave((l_f).c);
 }
@@ -18328,45 +18344,45 @@ static void coax_p_CK_result_proc(coax_t_CK_Context l_c, int64_t l_proc) {
   coax_v_t_CF_State coax_t855;
   coax_a1_t_RF_State l_rs = ((coax_a1_t_RF_State){0});
   coax_a1_t_CF_State l_state = coax_init_a1_t_CF_State();
-  coax_t_CF_Context l_f = (coax_t854 = ((coax_t_RF_Context){.words = (l_c).result_work, .state = coax_mkview_v_t_RF_State((l_rs).e, 1, 0, 1, 87604)}), coax_t855 = coax_mkview_v_t_CF_State((l_state).e, 1, 0, 1, 87604), ((coax_t_CF_Context){.c = l_c, .flow = coax_t854, .state = coax_t855}));
-  coax_t_CK_Node l_p = (*coax_elem_v_t_CK_Node((l_c).nodes, l_proc, 87604));
+  coax_t_CF_Context l_f = (coax_t854 = ((coax_t_RF_Context){.words = (l_c).result_work, .state = coax_mkview_v_t_RF_State((l_rs).e, 1, 0, 1, 87651)}), coax_t855 = coax_mkview_v_t_CF_State((l_state).e, 1, 0, 1, 87651), ((coax_t_CF_Context){.c = l_c, .flow = coax_t854, .state = coax_t855}));
+  coax_t_CK_Node l_p = (*coax_elem_v_t_CK_Node((l_c).nodes, l_proc, 87651));
   int64_t l_at = (l_p).head;
   while (l_at != INT64_C(0))
   {
-    if (coax_p_CF_result(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87605))).type))
+    if (coax_p_CF_result(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87652))).type))
     {
-      ((l_state).e[coax_index(INT64_C(0), 1, 87605)]).collected = coax_add_s64(((l_state).e[coax_index(INT64_C(0), 1, 87605)]).collected, INT64_C(1), 87605);
+      ((l_state).e[coax_index(INT64_C(0), 1, 87652)]).collected = coax_add_s64(((l_state).e[coax_index(INT64_C(0), 1, 87652)]).collected, INT64_C(1), 87652);
     }
-    l_at = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87605))).next;
+    l_at = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87652))).next;
   }
   coax_p_CF_collect(l_f, (l_p).b, INT64_C(0));
-  int64_t l_count = ((l_state).e[coax_index(INT64_C(0), 1, 87605)]).collected;
+  int64_t l_count = ((l_state).e[coax_index(INT64_C(0), 1, 87652)]).collected;
   ((l_f).flow).count = l_count;
   if (!coax_p_RF_init((l_f).flow))
   {
     coax_p_CK_resource(l_c, (l_p).loc);
     return;
   }
-  ((l_state).e[coax_index(INT64_C(0), 1, 87606)]).collected = INT64_C(0);
+  ((l_state).e[coax_index(INT64_C(0), 1, 87653)]).collected = INT64_C(0);
   l_at = (l_p).head;
   while (l_at != INT64_C(0))
   {
-    if (coax_p_CF_result(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87607))).type))
+    if (coax_p_CF_result(l_c, ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87654))).type))
     {
-      int64_t l_index = ((l_state).e[coax_index(INT64_C(0), 1, 87607)]).collected;
+      int64_t l_index = ((l_state).e[coax_index(INT64_C(0), 1, 87654)]).collected;
       _Bool l_ignored = coax_p_RF_register((l_f).flow, l_index, l_at, INT64_C(0));
       l_ignored = coax_p_RF_set((l_f).flow, l_index, INT64_C(1));
-      ((l_state).e[coax_index(INT64_C(0), 1, 87607)]).collected = coax_add_s64(((l_state).e[coax_index(INT64_C(0), 1, 87607)]).collected, INT64_C(1), 87607);
+      ((l_state).e[coax_index(INT64_C(0), 1, 87654)]).collected = coax_add_s64(((l_state).e[coax_index(INT64_C(0), 1, 87654)]).collected, INT64_C(1), 87654);
     }
-    l_at = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87607))).next;
+    l_at = ((*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87654))).next;
   }
   coax_p_CF_collect(l_f, (l_p).b, INT64_C(0));
   coax_p_CF_stmt(l_f, (l_p).b);
-  if (((l_state).e[coax_index(INT64_C(0), 1, 87608)]).alive)
+  if (((l_state).e[coax_index(INT64_C(0), 1, 87655)]).alive)
   {
     coax_p_CF_exit(l_f, INT64_C(0), (l_p).loc);
   }
-  if ((((l_rs).e[coax_index(INT64_C(0), 1, 87608)]).reason != ((coax_t_RF_Reason)UINT64_C(0))) && (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87608))).error_count == INT64_C(0)))
+  if ((((l_rs).e[coax_index(INT64_C(0), 1, 87655)]).reason != ((coax_t_RF_Reason)UINT64_C(0))) && (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87655))).error_count == INT64_C(0)))
   {
     coax_p_CK_resource(l_c, (l_p).loc);
   }
@@ -18377,10 +18393,10 @@ static void coax_p_CK_results(coax_t_CK_Context l_c) {
   {
     return;
   }
-  int64_t l_at = ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 87612))).head;
-  while (((l_at != INT64_C(0)) && (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87612))).error_count == INT64_C(0))) && (!((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87612))).fatal))
+  int64_t l_at = ((*coax_elem_v_t_CK_Node((l_c).nodes, INT64_C(1), 87659))).head;
+  while (((l_at != INT64_C(0)) && (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87659))).error_count == INT64_C(0))) && (!((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87659))).fatal))
   {
-    coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87612));
+    coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87659));
     if ((((l_n).kind == ((coax_t_CK_Tag)UINT64_C(64))) && (!(l_n).generic)) && (!(l_n).flag2))
     {
       coax_p_CK_result_proc(l_c, l_at);
@@ -18391,10 +18407,10 @@ static void coax_p_CK_results(coax_t_CK_Context l_c) {
     }
     l_at = (l_n).next;
   }
-  l_at = ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87613))).instances;
-  while (((l_at != INT64_C(0)) && (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87613))).error_count == INT64_C(0))) && (!((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87613))).fatal))
+  l_at = ((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87660))).instances;
+  while (((l_at != INT64_C(0)) && (((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87660))).error_count == INT64_C(0))) && (!((*coax_elem_v_t_CK_State((l_c).state, INT64_C(0), 87660))).fatal))
   {
-    coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87613));
+    coax_t_CK_Node l_n = (*coax_elem_v_t_CK_Node((l_c).nodes, l_at, 87660));
     if ((((l_n).kind == ((coax_t_CK_Tag)UINT64_C(64))) && (!(l_n).generic)) && (!(l_n).flag2))
     {
       coax_p_CK_result_proc(l_c, l_at);
@@ -18404,23 +18420,23 @@ static void coax_p_CK_results(coax_t_CK_Context l_c) {
 }
 
 static _Bool coax_p_RF_fail(coax_t_RF_Context l_c, coax_t_RF_Reason l_reason) {
-  if ((((l_c).state).count == INT64_C(1)) && (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87773))).reason == ((coax_t_RF_Reason)UINT64_C(0))))
+  if ((((l_c).state).count == INT64_C(1)) && (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87820))).reason == ((coax_t_RF_Reason)UINT64_C(0))))
   {
-    ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87773))).reason = l_reason;
+    ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87820))).reason = l_reason;
   }
   return 0;
 }
 
 static _Bool coax_p_RF_tick(coax_t_RF_Context l_c) {
-  if ((((l_c).state).count != INT64_C(1)) || (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87786))).reason != ((coax_t_RF_Reason)UINT64_C(0))))
+  if ((((l_c).state).count != INT64_C(1)) || (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87833))).reason != ((coax_t_RF_Reason)UINT64_C(0))))
   {
     return 0;
   }
-  if (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87787))).work >= INT64_C(1048576))
+  if (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87834))).work >= INT64_C(1048576))
   {
     return coax_p_RF_fail(l_c, ((coax_t_RF_Reason)UINT64_C(3)));
   }
-  ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87787))).work = coax_add_s64(((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87787))).work, INT64_C(1), 87787);
+  ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87834))).work = coax_add_s64(((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87834))).work, INT64_C(1), 87834);
   return 1;
 }
 
@@ -18430,21 +18446,21 @@ static _Bool coax_p_RF_init(coax_t_RF_Context l_c) {
   {
     return 0;
   }
-  (*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87790)) = ((coax_t_RF_State){0});
-  if (((l_c).count < INT64_C(0)) || ((l_c).count > coax_div_s64(((l_c).words).count, INT64_C(3), 87791)))
+  (*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87837)) = ((coax_t_RF_State){0});
+  if (((l_c).count < INT64_C(0)) || ((l_c).count > coax_div_s64(((l_c).words).count, INT64_C(3), 87838)))
   {
     return coax_p_RF_fail(l_c, ((coax_t_RF_Reason)UINT64_C(2)));
   }
   {
     int64_t coax_lo856 = INT64_C(0);
-    int64_t coax_hi856 = coax_mul_s64((l_c).count, INT64_C(3), 87792);
+    int64_t coax_hi856 = coax_mul_s64((l_c).count, INT64_C(3), 87839);
     for (int64_t l_i = coax_lo856; l_i < coax_hi856; l_i++)
     {
-      (*coax_elem_v_s64((l_c).words, l_i, 87792)) = INT64_C(0);
+      (*coax_elem_v_s64((l_c).words, l_i, 87839)) = INT64_C(0);
     }
   }
-  coax_t857 = &(((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87792))).top);
-  *coax_t857 = coax_mul_s64((l_c).count, INT64_C(3), 87792);
+  coax_t857 = &(((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87839))).top);
+  *coax_t857 = coax_mul_s64((l_c).count, INT64_C(3), 87839);
   return 1;
 }
 
@@ -18461,7 +18477,7 @@ static _Bool coax_p_RF_register(coax_t_RF_Context l_c, int64_t l_index, int64_t 
   {
     return 0;
   }
-  if (((l_id < INT64_C(2)) || (l_scope < INT64_C(0))) || ((*coax_elem_v_s64((l_c).words, coax_mul_s64(l_index, INT64_C(3), 87796), 87796)) != INT64_C(0)))
+  if (((l_id < INT64_C(2)) || (l_scope < INT64_C(0))) || ((*coax_elem_v_s64((l_c).words, coax_mul_s64(l_index, INT64_C(3), 87843), 87843)) != INT64_C(0)))
   {
     return coax_p_RF_fail(l_c, ((coax_t_RF_Reason)UINT64_C(1)));
   }
@@ -18470,14 +18486,14 @@ static _Bool coax_p_RF_register(coax_t_RF_Context l_c, int64_t l_index, int64_t 
     int64_t coax_hi858 = (l_c).count;
     for (int64_t l_i = coax_lo858; l_i < coax_hi858; l_i++)
     {
-      if ((*coax_elem_v_s64((l_c).words, coax_mul_s64(l_i, INT64_C(3), 87797), 87797)) == l_id)
+      if ((*coax_elem_v_s64((l_c).words, coax_mul_s64(l_i, INT64_C(3), 87844), 87844)) == l_id)
       {
         return coax_p_RF_fail(l_c, ((coax_t_RF_Reason)UINT64_C(1)));
       }
     }
   }
-  (*coax_elem_v_s64((l_c).words, coax_mul_s64(l_index, INT64_C(3), 87798), 87798)) = l_id;
-  (*coax_elem_v_s64((l_c).words, coax_add_s64(coax_mul_s64(l_index, INT64_C(3), 87798), INT64_C(2), 87798), 87798)) = l_scope;
+  (*coax_elem_v_s64((l_c).words, coax_mul_s64(l_index, INT64_C(3), 87845), 87845)) = l_id;
+  (*coax_elem_v_s64((l_c).words, coax_add_s64(coax_mul_s64(l_index, INT64_C(3), 87845), INT64_C(2), 87845), 87845)) = l_scope;
   return 1;
 }
 
@@ -18491,7 +18507,7 @@ static int64_t coax_p_RF_find(coax_t_RF_Context l_c, int64_t l_id) {
       {
         return INT64_C(-1);
       }
-      if ((*coax_elem_v_s64((l_c).words, coax_mul_s64(l_i, INT64_C(3), 87800), 87800)) == l_id)
+      if ((*coax_elem_v_s64((l_c).words, coax_mul_s64(l_i, INT64_C(3), 87847), 87847)) == l_id)
       {
         return l_i;
       }
@@ -18505,7 +18521,7 @@ static int64_t coax_p_RF_get(coax_t_RF_Context l_c, int64_t l_index) {
   {
     return INT64_C(0);
   }
-  int64_t l_v = (*coax_elem_v_s64((l_c).words, coax_add_s64(coax_mul_s64(l_index, INT64_C(3), 87801), INT64_C(1), 87801), 87801));
+  int64_t l_v = (*coax_elem_v_s64((l_c).words, coax_add_s64(coax_mul_s64(l_index, INT64_C(3), 87848), INT64_C(1), 87848), 87848));
   if ((l_v < INT64_C(0)) || (l_v > INT64_C(2)))
   {
     _Bool l_ignored = coax_p_RF_fail(l_c, ((coax_t_RF_Reason)UINT64_C(1)));
@@ -18519,7 +18535,7 @@ static int64_t coax_p_RF_scope(coax_t_RF_Context l_c, int64_t l_index) {
   {
     return INT64_C(0);
   }
-  return (*coax_elem_v_s64((l_c).words, coax_add_s64(coax_mul_s64(l_index, INT64_C(3), 87802), INT64_C(2), 87802), 87802));
+  return (*coax_elem_v_s64((l_c).words, coax_add_s64(coax_mul_s64(l_index, INT64_C(3), 87849), INT64_C(2), 87849), 87849));
 }
 
 static _Bool coax_p_RF_set(coax_t_RF_Context l_c, int64_t l_index, int64_t l_value) {
@@ -18531,7 +18547,7 @@ static _Bool coax_p_RF_set(coax_t_RF_Context l_c, int64_t l_index, int64_t l_val
   {
     return coax_p_RF_fail(l_c, ((coax_t_RF_Reason)UINT64_C(1)));
   }
-  (*coax_elem_v_s64((l_c).words, coax_add_s64(coax_mul_s64(l_index, INT64_C(3), 87803), INT64_C(1), 87803), 87803)) = l_value;
+  (*coax_elem_v_s64((l_c).words, coax_add_s64(coax_mul_s64(l_index, INT64_C(3), 87850), INT64_C(1), 87850), 87850)) = l_value;
   return 1;
 }
 
@@ -18541,8 +18557,8 @@ static int64_t coax_p_RF_save(coax_t_RF_Context l_c) {
   {
     return INT64_C(-1);
   }
-  int64_t l_base = ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87805))).top;
-  if ((l_base < INT64_C(0)) || ((l_c).count > coax_sub_s64(((l_c).words).count, l_base, 87805)))
+  int64_t l_base = ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87852))).top;
+  if ((l_base < INT64_C(0)) || ((l_c).count > coax_sub_s64(((l_c).words).count, l_base, 87852)))
   {
     _Bool l_ignored = coax_p_RF_fail(l_c, ((coax_t_RF_Reason)UINT64_C(2)));
     return INT64_C(-1);
@@ -18553,15 +18569,15 @@ static int64_t coax_p_RF_save(coax_t_RF_Context l_c) {
     for (int64_t l_i = coax_lo860; l_i < coax_hi860; l_i++)
     {
       int64_t l_v = coax_p_RF_get(l_c, l_i);
-      if (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87806))).reason != ((coax_t_RF_Reason)UINT64_C(0)))
+      if (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87853))).reason != ((coax_t_RF_Reason)UINT64_C(0)))
       {
         return INT64_C(-1);
       }
-      (*coax_elem_v_s64((l_c).words, coax_add_s64(l_base, l_i, 87806), 87806)) = l_v;
+      (*coax_elem_v_s64((l_c).words, coax_add_s64(l_base, l_i, 87853), 87853)) = l_v;
     }
   }
-  coax_t861 = &(((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87806))).top);
-  *coax_t861 = coax_add_s64(l_base, (l_c).count, 87806);
+  coax_t861 = &(((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87853))).top);
+  *coax_t861 = coax_add_s64(l_base, (l_c).count, 87853);
   return l_base;
 }
 
@@ -18570,7 +18586,7 @@ static _Bool coax_p_RF_snapshot(coax_t_RF_Context l_c, int64_t l_base) {
   {
     return 0;
   }
-  if (((l_base < coax_mul_s64((l_c).count, INT64_C(3), 87808)) || (l_base > ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87808))).top)) || ((l_c).count > coax_sub_s64(((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87808))).top, l_base, 87808)))
+  if (((l_base < coax_mul_s64((l_c).count, INT64_C(3), 87855)) || (l_base > ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87855))).top)) || ((l_c).count > coax_sub_s64(((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87855))).top, l_base, 87855)))
   {
     return coax_p_RF_fail(l_c, ((coax_t_RF_Reason)UINT64_C(1)));
   }
@@ -18587,7 +18603,7 @@ static _Bool coax_p_RF_restore(coax_t_RF_Context l_c, int64_t l_base) {
     int64_t coax_hi862 = (l_c).count;
     for (int64_t l_i = coax_lo862; l_i < coax_hi862; l_i++)
     {
-      if (!coax_p_RF_set(l_c, l_i, (*coax_elem_v_s64((l_c).words, coax_add_s64(l_base, l_i, 87809), 87809))))
+      if (!coax_p_RF_set(l_c, l_i, (*coax_elem_v_s64((l_c).words, coax_add_s64(l_base, l_i, 87856), 87856))))
       {
         return 0;
       }
@@ -18608,13 +18624,13 @@ static _Bool coax_p_RF_equal(coax_t_RF_Context l_c, int64_t l_base) {
     int64_t coax_hi863 = (l_c).count;
     for (int64_t l_i = coax_lo863; l_i < coax_hi863; l_i++)
     {
-      if (coax_t864 = coax_p_RF_get(l_c, l_i), coax_t865 = (*coax_elem_v_s64((l_c).words, coax_add_s64(l_base, l_i, 87810), 87810)), (coax_t864 != coax_t865))
+      if (coax_t864 = coax_p_RF_get(l_c, l_i), coax_t865 = (*coax_elem_v_s64((l_c).words, coax_add_s64(l_base, l_i, 87857), 87857)), (coax_t864 != coax_t865))
       {
         return 0;
       }
     }
   }
-  return (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87810))).reason == ((coax_t_RF_Reason)UINT64_C(0)));
+  return (((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87857))).reason == ((coax_t_RF_Reason)UINT64_C(0)));
 }
 
 static _Bool coax_p_RF_drop(coax_t_RF_Context l_c, int64_t l_base) {
@@ -18622,7 +18638,7 @@ static _Bool coax_p_RF_drop(coax_t_RF_Context l_c, int64_t l_base) {
   {
     return 0;
   }
-  ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87811))).top = l_base;
+  ((*coax_elem_v_t_RF_State((l_c).state, INT64_C(0), 87858))).top = l_base;
   return 1;
 }
 
@@ -18631,7 +18647,7 @@ coax_t_RP_Status RP_bounds(int64_t l_source_count, int64_t l_destination_count, 
   {
     return ((coax_t_RP_Status)UINT64_C(1));
   }
-  if (coax_mul_s64(l_source_count, l_destination_count, 87931) > INT64_C(128))
+  if (coax_mul_s64(l_source_count, l_destination_count, 87978) > INT64_C(128))
   {
     return ((coax_t_RP_Status)UINT64_C(3));
   }
@@ -18658,7 +18674,7 @@ static _Bool coax_p_rp_address_valid(coax_t_RP_Address l_address, int64_t l_fram
       int64_t coax_hi866 = ((((l_address).storage).origin).path).count;
       for (int64_t l_i = coax_lo866; l_i < coax_hi866; l_i++)
       {
-        if (((((((l_address).storage).origin).path).steps).e[coax_index(l_i, 24, 87942)]).kind == ((uint8_t)UINT64_C(3)))
+        if (((((((l_address).storage).origin).path).steps).e[coax_index(l_i, 24, 87989)]).kind == ((uint8_t)UINT64_C(3)))
         {
           return 1;
         }
@@ -18694,7 +18710,7 @@ static int64_t coax_p_rp_insert(coax_v_t_RP_Obligation l_staging, int64_t l_used
     int64_t coax_hi867 = l_used;
     for (int64_t l_i = coax_lo867; l_i < coax_hi867; l_i++)
     {
-      int64_t l_comparison = coax_p_rp_compare((*coax_elem_v_t_RP_Obligation(l_staging, l_i, 87962)), l_value);
+      int64_t l_comparison = coax_p_rp_compare((*coax_elem_v_t_RP_Obligation(l_staging, l_i, 88009)), l_value);
       if (l_comparison < INT64_C(0))
       {
         continue;
@@ -18714,12 +18730,12 @@ static int64_t coax_p_rp_insert(coax_v_t_RP_Obligation l_staging, int64_t l_used
   int64_t l_i = l_used;
   while (l_i > l_at)
   {
-    coax_t868 = &((*coax_elem_v_t_RP_Obligation(l_staging, l_i, 87968)));
-    *coax_t868 = (*coax_elem_v_t_RP_Obligation(l_staging, coax_sub_s64(l_i, INT64_C(1), 87968), 87968));
-    l_i = coax_sub_s64(l_i, INT64_C(1), 87968);
+    coax_t868 = &((*coax_elem_v_t_RP_Obligation(l_staging, l_i, 88015)));
+    *coax_t868 = (*coax_elem_v_t_RP_Obligation(l_staging, coax_sub_s64(l_i, INT64_C(1), 88015), 88015));
+    l_i = coax_sub_s64(l_i, INT64_C(1), 88015);
   }
-  (*coax_elem_v_t_RP_Obligation(l_staging, l_at, 87969)) = l_value;
-  return coax_add_s64(l_used, INT64_C(1), 87970);
+  (*coax_elem_v_t_RP_Obligation(l_staging, l_at, 88016)) = l_value;
+  return coax_add_s64(l_used, INT64_C(1), 88017);
 }
 
 coax_t_RP_Result RP_check(int64_t l_frame, int64_t l_value_type, coax_v_t_RP_Term l_sources, _Bool l_source_complete, coax_v_t_RP_Address l_destinations, _Bool l_destination_complete, coax_v_t_RP_Obligation l_out) {
@@ -18763,13 +18779,13 @@ coax_t_RP_Result RP_check(int64_t l_frame, int64_t l_value_type, coax_v_t_RP_Ter
     int64_t coax_hi871 = (l_sources).count;
     for (int64_t l_i = coax_lo871; l_i < coax_hi871; l_i++)
     {
-      coax_t_RP_Term l_source = (*coax_elem_v_t_RP_Term(l_sources, l_i, 87985));
+      coax_t_RP_Term l_source = (*coax_elem_v_t_RP_Term(l_sources, l_i, 88032));
       {
         int64_t coax_lo872 = INT64_C(0);
         int64_t coax_hi872 = (l_destinations).count;
         for (int64_t l_j = coax_lo872; l_j < coax_hi872; l_j++)
         {
-          coax_t_RP_Address l_address = (*coax_elem_v_t_RP_Address(l_destinations, l_j, 87987));
+          coax_t_RP_Address l_address = (*coax_elem_v_t_RP_Address(l_destinations, l_j, 88034));
           if (coax_p_rp_external(l_address))
           {
             if (coax_p_rp_local_source(l_source))
@@ -18786,7 +18802,7 @@ coax_t_RP_Result RP_check(int64_t l_frame, int64_t l_value_type, coax_v_t_RP_Ter
             {
               (l_result).relation_complete = 0;
               coax_t_RP_Obligation l_pending = ((coax_t_RP_Obligation){.source = l_source, .destination = l_address});
-              int64_t l_inserted = coax_p_rp_insert(coax_mkview_v_t_RP_Obligation((l_staging).e, 64, 0, 64, 87995), l_used, l_pending);
+              int64_t l_inserted = coax_p_rp_insert(coax_mkview_v_t_RP_Obligation((l_staging).e, 64, 0, 64, 88042), l_used, l_pending);
               if (l_inserted == INT64_C(-1))
               {
                 return ((coax_t_RP_Result){.status = ((coax_t_RP_Status)UINT64_C(2)), .bad_source = INT64_C(-1), .bad_destination = INT64_C(-1)});
@@ -18812,8 +18828,8 @@ coax_t_RP_Result RP_check(int64_t l_frame, int64_t l_value_type, coax_v_t_RP_Ter
     int64_t coax_hi873 = l_used;
     for (int64_t l_i = coax_lo873; l_i < coax_hi873; l_i++)
     {
-      coax_t874 = &((*coax_elem_v_t_RP_Obligation(l_out, l_i, 88003)));
-      *coax_t874 = (l_staging).e[coax_index(l_i, 64, 88003)];
+      coax_t874 = &((*coax_elem_v_t_RP_Obligation(l_out, l_i, 88050)));
+      *coax_t874 = (l_staging).e[coax_index(l_i, 64, 88050)];
     }
   }
   (l_result).obligation_count = l_used;
@@ -18833,18 +18849,18 @@ coax_t_Q_Conversion Q_conversion(coax_t_Q_Unit l_source, coax_t_Q_Unit l_target)
   {
     return ((coax_t_Q_Conversion){.status = ((coax_t_Q_Status)UINT64_C(2))});
   }
-  int64_t l_numerator = coax_mul_s64((l_source).numerator, (l_target).denominator, 88081);
-  int64_t l_denominator = coax_mul_s64((l_source).denominator, (l_target).numerator, 88081);
+  int64_t l_numerator = coax_mul_s64((l_source).numerator, (l_target).denominator, 88128);
+  int64_t l_denominator = coax_mul_s64((l_source).denominator, (l_target).numerator, 88128);
   int64_t l_exponent = INT64_C(0);
-  while (coax_mod_s64(l_numerator, INT64_C(2), 88082) == INT64_C(0))
+  while (coax_mod_s64(l_numerator, INT64_C(2), 88129) == INT64_C(0))
   {
-    l_numerator = coax_div_s64(l_numerator, INT64_C(2), 88082);
-    l_exponent = coax_add_s64(l_exponent, INT64_C(1), 88082);
+    l_numerator = coax_div_s64(l_numerator, INT64_C(2), 88129);
+    l_exponent = coax_add_s64(l_exponent, INT64_C(1), 88129);
   }
-  while (coax_mod_s64(l_denominator, INT64_C(2), 88083) == INT64_C(0))
+  while (coax_mod_s64(l_denominator, INT64_C(2), 88130) == INT64_C(0))
   {
-    l_denominator = coax_div_s64(l_denominator, INT64_C(2), 88083);
-    l_exponent = coax_sub_s64(l_exponent, INT64_C(1), 88083);
+    l_denominator = coax_div_s64(l_denominator, INT64_C(2), 88130);
+    l_exponent = coax_sub_s64(l_exponent, INT64_C(1), 88130);
   }
   if (l_numerator != l_denominator)
   {
@@ -18877,7 +18893,7 @@ static int64_t coax_p_UA_gcd(int64_t l_a, int64_t l_b) {
   int64_t l_y = l_b;
   while (l_y != INT64_C(0))
   {
-    int64_t l_remainder = coax_mod_s64(l_x, l_y, 88201);
+    int64_t l_remainder = coax_mod_s64(l_x, l_y, 88248);
     l_x = l_y;
     l_y = l_remainder;
   }
@@ -18890,8 +18906,8 @@ static coax_t_UA_Result coax_p_UA_finish(coax_t_Q_Unit l_dimensions, int64_t l_n
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(2))});
   }
   int64_t l_divisor = coax_p_UA_gcd(l_numerator, l_denominator);
-  int64_t l_n = coax_div_s64(l_numerator, l_divisor, 88211);
-  int64_t l_d = coax_div_s64(l_denominator, l_divisor, 88211);
+  int64_t l_n = coax_div_s64(l_numerator, l_divisor, 88258);
+  int64_t l_d = coax_div_s64(l_denominator, l_divisor, 88258);
   if ((l_n > INT64_C(1048576)) || (l_d > INT64_C(1048576)))
   {
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(3))});
@@ -18921,8 +18937,8 @@ coax_t_UA_Result UA_product(coax_t_Q_Unit l_a, coax_t_Q_Unit l_b) {
   {
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(1))});
   }
-  coax_t_Q_Unit l_dimensions = (coax_t875 = coax_add_s64((l_a).mass, (l_b).mass, 88222), coax_t876 = coax_add_s64((l_a).length, (l_b).length, 88222), coax_t877 = coax_add_s64((l_a).time, (l_b).time, 88222), coax_t878 = coax_add_s64((l_a).angle, (l_b).angle, 88222), ((coax_t_Q_Unit){.mass = coax_t875, .length = coax_t876, .time = coax_t877, .angle = coax_t878}));
-  return (coax_t879 = coax_mul_s64((l_a).numerator, (l_b).numerator, 88223), coax_t880 = coax_mul_s64((l_a).denominator, (l_b).denominator, 88223), coax_p_UA_finish(l_dimensions, coax_t879, coax_t880));
+  coax_t_Q_Unit l_dimensions = (coax_t875 = coax_add_s64((l_a).mass, (l_b).mass, 88269), coax_t876 = coax_add_s64((l_a).length, (l_b).length, 88269), coax_t877 = coax_add_s64((l_a).time, (l_b).time, 88269), coax_t878 = coax_add_s64((l_a).angle, (l_b).angle, 88269), ((coax_t_Q_Unit){.mass = coax_t875, .length = coax_t876, .time = coax_t877, .angle = coax_t878}));
+  return (coax_t879 = coax_mul_s64((l_a).numerator, (l_b).numerator, 88270), coax_t880 = coax_mul_s64((l_a).denominator, (l_b).denominator, 88270), coax_p_UA_finish(l_dimensions, coax_t879, coax_t880));
 }
 
 coax_t_UA_Result UA_quotient(coax_t_Q_Unit l_a, coax_t_Q_Unit l_b) {
@@ -18936,8 +18952,8 @@ coax_t_UA_Result UA_quotient(coax_t_Q_Unit l_a, coax_t_Q_Unit l_b) {
   {
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(1))});
   }
-  coax_t_Q_Unit l_dimensions = (coax_t881 = coax_sub_s64((l_a).mass, (l_b).mass, 88227), coax_t882 = coax_sub_s64((l_a).length, (l_b).length, 88227), coax_t883 = coax_sub_s64((l_a).time, (l_b).time, 88227), coax_t884 = coax_sub_s64((l_a).angle, (l_b).angle, 88227), ((coax_t_Q_Unit){.mass = coax_t881, .length = coax_t882, .time = coax_t883, .angle = coax_t884}));
-  return (coax_t885 = coax_mul_s64((l_a).numerator, (l_b).denominator, 88228), coax_t886 = coax_mul_s64((l_a).denominator, (l_b).numerator, 88228), coax_p_UA_finish(l_dimensions, coax_t885, coax_t886));
+  coax_t_Q_Unit l_dimensions = (coax_t881 = coax_sub_s64((l_a).mass, (l_b).mass, 88274), coax_t882 = coax_sub_s64((l_a).length, (l_b).length, 88274), coax_t883 = coax_sub_s64((l_a).time, (l_b).time, 88274), coax_t884 = coax_sub_s64((l_a).angle, (l_b).angle, 88274), ((coax_t_Q_Unit){.mass = coax_t881, .length = coax_t882, .time = coax_t883, .angle = coax_t884}));
+  return (coax_t885 = coax_mul_s64((l_a).numerator, (l_b).denominator, 88275), coax_t886 = coax_mul_s64((l_a).denominator, (l_b).numerator, 88275), coax_p_UA_finish(l_dimensions, coax_t885, coax_t886));
 }
 
 coax_t_UA_Result UA_ratio(coax_t_Q_Unit l_source, coax_t_Q_Unit l_target) {
@@ -18952,7 +18968,7 @@ coax_t_UA_Result UA_ratio(coax_t_Q_Unit l_source, coax_t_Q_Unit l_target) {
   {
     return ((coax_t_UA_Result){.status = ((coax_t_Q_Status)UINT64_C(2))});
   }
-  return (coax_t887 = ((coax_t_Q_Unit){0}), coax_t888 = coax_mul_s64((l_source).numerator, (l_target).denominator, 88235), coax_t889 = coax_mul_s64((l_source).denominator, (l_target).numerator, 88235), coax_p_UA_finish(coax_t887, coax_t888, coax_t889));
+  return (coax_t887 = ((coax_t_Q_Unit){0}), coax_t888 = coax_mul_s64((l_source).numerator, (l_target).denominator, 88282), coax_t889 = coax_mul_s64((l_source).denominator, (l_target).numerator, 88282), coax_p_UA_finish(coax_t887, coax_t888, coax_t889));
 }
 
 _Bool UF_valid(coax_t_UF_Form l_form) {
@@ -18968,14 +18984,14 @@ _Bool UF_valid(coax_t_UF_Form l_form) {
     {
       if (l_i < (l_form).count)
       {
-        if (((((((l_form).atoms).e[coax_index(l_i, 8, 88327)] <= l_previous) || (((l_form).atoms).e[coax_index(l_i, 8, 88327)] > INT64_C(2147483647))) || (((l_form).powers).e[coax_index(l_i, 8, 88327)] == INT64_C(0))) || (((l_form).powers).e[coax_index(l_i, 8, 88327)] < INT64_C(-2147483647))) || (((l_form).powers).e[coax_index(l_i, 8, 88327)] > INT64_C(2147483647)))
+        if (((((((l_form).atoms).e[coax_index(l_i, 8, 88374)] <= l_previous) || (((l_form).atoms).e[coax_index(l_i, 8, 88374)] > INT64_C(2147483647))) || (((l_form).powers).e[coax_index(l_i, 8, 88374)] == INT64_C(0))) || (((l_form).powers).e[coax_index(l_i, 8, 88374)] < INT64_C(-2147483647))) || (((l_form).powers).e[coax_index(l_i, 8, 88374)] > INT64_C(2147483647)))
         {
           return 0;
         }
-        l_previous = ((l_form).atoms).e[coax_index(l_i, 8, 88328)];
+        l_previous = ((l_form).atoms).e[coax_index(l_i, 8, 88375)];
       }
       else
-      if ((((l_form).atoms).e[coax_index(l_i, 8, 88329)] != INT64_C(0)) || (((l_form).powers).e[coax_index(l_i, 8, 88329)] != INT64_C(0)))
+      if ((((l_form).atoms).e[coax_index(l_i, 8, 88376)] != INT64_C(0)) || (((l_form).powers).e[coax_index(l_i, 8, 88376)] != INT64_C(0)))
       {
         return 0;
       }
@@ -18990,8 +19006,8 @@ coax_t_UF_Form UF_one(void) {
 
 coax_t_UF_Result UF_atom(int64_t l_atom) {
   coax_t_UF_Form l_form = ((coax_t_UF_Form){.count = INT64_C(1)});
-  ((l_form).atoms).e[coax_index(INT64_C(0), 8, 88335)] = l_atom;
-  ((l_form).powers).e[coax_index(INT64_C(0), 8, 88335)] = INT64_C(1);
+  ((l_form).atoms).e[coax_index(INT64_C(0), 8, 88382)] = l_atom;
+  ((l_form).powers).e[coax_index(INT64_C(0), 8, 88382)] = INT64_C(1);
   if (!UF_valid(l_form))
   {
     return ((coax_t_UF_Result){.status = ((coax_t_UF_Status)UINT64_C(1))});
@@ -19017,7 +19033,7 @@ _Bool UF_equal(coax_t_UF_Form l_a, coax_t_UF_Form l_b) {
     int64_t coax_hi891 = (l_a).count;
     for (int64_t l_i = coax_lo891; l_i < coax_hi891; l_i++)
     {
-      if ((coax_t892 = ((l_a).atoms).e[coax_index(l_i, 8, 88341)], coax_t893 = ((l_b).atoms).e[coax_index(l_i, 8, 88341)], (coax_t892 != coax_t893)) || (coax_t894 = ((l_a).powers).e[coax_index(l_i, 8, 88341)], coax_t895 = ((l_b).powers).e[coax_index(l_i, 8, 88341)], (coax_t894 != coax_t895)))
+      if ((coax_t892 = ((l_a).atoms).e[coax_index(l_i, 8, 88388)], coax_t893 = ((l_b).atoms).e[coax_index(l_i, 8, 88388)], (coax_t892 != coax_t893)) || (coax_t894 = ((l_a).powers).e[coax_index(l_i, 8, 88388)], coax_t895 = ((l_b).powers).e[coax_index(l_i, 8, 88388)], (coax_t894 != coax_t895)))
       {
         return 0;
       }
@@ -19043,34 +19059,34 @@ static coax_t_UF_Result coax_p_UF_merge(coax_t_UF_Form l_a, coax_t_UF_Form l_b, 
   {
     int64_t l_atom = ((int64_t)0);
     int64_t l_power = ((int64_t)0);
-    if ((l_j == (l_b).count) || ((l_i < (l_a).count) && (coax_t896 = ((l_a).atoms).e[coax_index(l_i, 8, 88349)], coax_t897 = ((l_b).atoms).e[coax_index(l_j, 8, 88349)], (coax_t896 < coax_t897))))
+    if ((l_j == (l_b).count) || ((l_i < (l_a).count) && (coax_t896 = ((l_a).atoms).e[coax_index(l_i, 8, 88396)], coax_t897 = ((l_b).atoms).e[coax_index(l_j, 8, 88396)], (coax_t896 < coax_t897))))
     {
-      l_atom = ((l_a).atoms).e[coax_index(l_i, 8, 88349)];
-      l_power = ((l_a).powers).e[coax_index(l_i, 8, 88349)];
-      l_i = coax_add_s64(l_i, INT64_C(1), 88349);
+      l_atom = ((l_a).atoms).e[coax_index(l_i, 8, 88396)];
+      l_power = ((l_a).powers).e[coax_index(l_i, 8, 88396)];
+      l_i = coax_add_s64(l_i, INT64_C(1), 88396);
     }
     else
-    if ((l_i == (l_a).count) || (coax_t898 = ((l_b).atoms).e[coax_index(l_j, 8, 88350)], coax_t899 = ((l_a).atoms).e[coax_index(l_i, 8, 88350)], (coax_t898 < coax_t899)))
+    if ((l_i == (l_a).count) || (coax_t898 = ((l_b).atoms).e[coax_index(l_j, 8, 88397)], coax_t899 = ((l_a).atoms).e[coax_index(l_i, 8, 88397)], (coax_t898 < coax_t899)))
     {
-      l_atom = ((l_b).atoms).e[coax_index(l_j, 8, 88350)];
-      l_power = ((l_b).powers).e[coax_index(l_j, 8, 88350)];
+      l_atom = ((l_b).atoms).e[coax_index(l_j, 8, 88397)];
+      l_power = ((l_b).powers).e[coax_index(l_j, 8, 88397)];
       if (l_division)
       {
-        l_power = coax_neg_s64(l_power, 88350);
+        l_power = coax_neg_s64(l_power, 88397);
       }
-      l_j = coax_add_s64(l_j, INT64_C(1), 88350);
+      l_j = coax_add_s64(l_j, INT64_C(1), 88397);
     }
     else
     {
-      l_atom = ((l_a).atoms).e[coax_index(l_i, 8, 88351)];
-      l_power = ((l_b).powers).e[coax_index(l_j, 8, 88351)];
+      l_atom = ((l_a).atoms).e[coax_index(l_i, 8, 88398)];
+      l_power = ((l_b).powers).e[coax_index(l_j, 8, 88398)];
       if (l_division)
       {
-        l_power = coax_neg_s64(l_power, 88351);
+        l_power = coax_neg_s64(l_power, 88398);
       }
-      l_power = coax_add_s64(l_power, ((l_a).powers).e[coax_index(l_i, 8, 88351)], 88351);
-      l_i = coax_add_s64(l_i, INT64_C(1), 88351);
-      l_j = coax_add_s64(l_j, INT64_C(1), 88351);
+      l_power = coax_add_s64(l_power, ((l_a).powers).e[coax_index(l_i, 8, 88398)], 88398);
+      l_i = coax_add_s64(l_i, INT64_C(1), 88398);
+      l_j = coax_add_s64(l_j, INT64_C(1), 88398);
     }
     if ((l_power < INT64_C(-2147483647)) || (l_power > INT64_C(2147483647)))
     {
@@ -19080,10 +19096,10 @@ static coax_t_UF_Result coax_p_UF_merge(coax_t_UF_Form l_a, coax_t_UF_Form l_b, 
     {
       if (l_count < INT64_C(8))
       {
-        ((l_staged).atoms).e[coax_index(l_count, 8, 88353)] = l_atom;
-        ((l_staged).powers).e[coax_index(l_count, 8, 88353)] = l_power;
+        ((l_staged).atoms).e[coax_index(l_count, 8, 88400)] = l_atom;
+        ((l_staged).powers).e[coax_index(l_count, 8, 88400)] = l_power;
       }
-      l_count = coax_add_s64(l_count, INT64_C(1), 88353);
+      l_count = coax_add_s64(l_count, INT64_C(1), 88400);
     }
   }
   if (l_count > INT64_C(8))
@@ -19254,9 +19270,9 @@ coax_t_SP_Op SOM_pair(coax_t_SP_Op l_operation) {
     int64_t coax_hi900 = INT64_C(4);
     for (int64_t l_i = coax_lo900; l_i < coax_hi900; l_i++)
     {
-      if (l_operation == (l_from).e[coax_index(l_i, 4, 88537)])
+      if (l_operation == (l_from).e[coax_index(l_i, 4, 88584)])
       {
-        return (l_to).e[coax_index(l_i, 4, 88537)];
+        return (l_to).e[coax_index(l_i, 4, 88584)];
       }
     }
   }

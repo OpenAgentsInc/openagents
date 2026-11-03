@@ -337,6 +337,9 @@ actual checked calls project only their referenced source and destination
 fields, with a violated obligation diagnosed at the original call. Locally
 copied inline storage is distinct from crossing a contained view. Earlier
 bad may-stores survive later safe writes and unknown alternatives.
+Callee summaries are built callees first by a walk over the call graph that
+uses no native recursion and has no depth limit: a call chain is bounded only
+by the program's procedures and the shared retained work counter (#12681).
 
 This remains a bounded diagnostic, not general lifetime safety. Recursive
 queries and unsupported helper-write-to-return composition retain an explicit
