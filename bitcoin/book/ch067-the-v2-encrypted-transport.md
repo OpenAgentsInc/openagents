@@ -29,7 +29,7 @@ and its terminator, and the short message IDs.
 
 | Where | What it uses | Chapter |
 | --- | --- | --- |
-| The handshake | the keys, the garbage scan and the version packet, over a socket | 68 |
+| The handshake | the keys, the garbage scan, the v1 check and the version packet | 68 |
 | Connections | v2 first when a peer advertises `NODE_P2P_V2`, v1 as the fallback | 70 |
 | Denial-of-service limits | the 4,000,013-byte packet limit and the 4,095-byte garbage limit | 71 |
 | Fuzzing | every reader here | 119 |
@@ -798,7 +798,7 @@ reads the pinned `packet_encoding_test_vectors.csv` into
 
 ## What this chapter leaves out
 
-- Sockets, timeouts and the receive state machine: chapter 68.
+- The receive state machine and timeouts: chapter 68. Sockets: chapter 70.
 - Choosing v2 or v1 for a connection, and retrying in v1: chapters 68
   and 70.
 - When to send decoys and how much garbage, which BIP-324 leaves to the

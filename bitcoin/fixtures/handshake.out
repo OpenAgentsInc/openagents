@@ -1,0 +1,102 @@
+v1: outbound A, inbound B
+  B <- version, 121 bytes: done; sends version wtxidrelay sendaddrv2 verack
+  A <- version, 121 bytes: done; sends wtxidrelay sendaddrv2 verack getaddr
+  A <- wtxidrelay, 24 bytes: done
+  A <- sendaddrv2, 24 bytes: done
+  A <- verack, 24 bytes: done; sends sendcmpct
+  B <- wtxidrelay, 24 bytes: done
+  B <- sendaddrv2, 24 bytes: done
+  B <- verack, 24 bytes: done; sends sendcmpct
+  B <- getaddr, 24 bytes: deliver
+  B <- sendcmpct, 33 bytes: done
+  A <- sendcmpct, 33 bytes: done
+  A: connected true, common version 70017, wtxidrelay true, addrv2 true, compact blocks true (high bandwidth false), 226 bytes received
+  B: connected true, common version 70017, wtxidrelay true, addrv2 true, compact blocks true (high bandwidth false), 250 bytes received
+v2: both sides speak BIP-324
+  A sends its key and 5 bytes of garbage: 69 bytes
+  B: not a v1 version; sends its key and garbage: 67 bytes
+  B: has the peer's key; sends its terminator and version packet: 36 bytes
+  A: has the peer's key; sends its terminator and version packet: 36 bytes
+  A: the peer's version packet, after its garbage: v2 is up
+  B: the peer's version packet, after its garbage: v2 is up
+  B <- version, 130 bytes: done; sends version wtxidrelay sendaddrv2 verack
+  A <- version, 130 bytes: done; sends wtxidrelay sendaddrv2 verack getaddr
+  A <- wtxidrelay, 33 bytes: done
+  A <- sendaddrv2, 33 bytes: done
+  A <- verack, 33 bytes: done; sends sendcmpct
+  B <- wtxidrelay, 33 bytes: done
+  B <- sendaddrv2, 33 bytes: done
+  B <- verack, 33 bytes: done; sends sendcmpct
+  B <- getaddr, 33 bytes: deliver
+  B <- sendcmpct, 30 bytes: done
+  A <- sendcmpct, 30 bytes: done
+  A: connected true, common version 70017, wtxidrelay true, addrv2 true, compact blocks true (high bandwidth false), 362 bytes received
+  B: connected true, common version 70017, wtxidrelay true, addrv2 true, compact blocks true (high bandwidth false), 397 bytes received
+  session id 1d4d114f7ded609f67be356e5bc8f18f4aa864871fd7f66ec72713ad86bf453c, the same on both sides: true
+v1 A, v2 B: B detects v1
+  B: the first 16 bytes are a v1 version, so v1 it is
+  B <- version, 121 bytes: done; sends version wtxidrelay sendaddrv2 verack
+  A <- version, 121 bytes: done; sends wtxidrelay sendaddrv2 verack getaddr
+  A <- wtxidrelay, 24 bytes: done
+  A <- sendaddrv2, 24 bytes: done
+  A <- verack, 24 bytes: done; sends sendcmpct
+  B <- wtxidrelay, 24 bytes: done
+  B <- sendaddrv2, 24 bytes: done
+  B <- verack, 24 bytes: done; sends sendcmpct
+  B <- getaddr, 24 bytes: deliver
+  B <- sendcmpct, 33 bytes: done
+  A <- sendcmpct, 33 bytes: done
+  A: connected true, common version 70017, wtxidrelay true, addrv2 true, compact blocks true (high bandwidth false), 226 bytes received
+  B: connected true, common version 70017, wtxidrelay true, addrv2 true, compact blocks true (high bandwidth false), 250 bytes received
+v2 A, v1-only B: A reconnects in v1
+  A sends its key and 5 bytes of garbage: 69 bytes
+  B: disconnects (bad magic)
+  A sent 69, received 0: reconnect in v1 true
+  B <- version, 121 bytes: done; sends version wtxidrelay sendaddrv2 verack
+  A <- version, 121 bytes: done; sends wtxidrelay sendaddrv2 verack getaddr
+  A <- wtxidrelay, 24 bytes: done
+  A <- sendaddrv2, 24 bytes: done
+  A <- verack, 24 bytes: done; sends sendcmpct
+  B <- wtxidrelay, 24 bytes: done
+  B <- sendaddrv2, 24 bytes: done
+  B <- verack, 24 bytes: done; sends sendcmpct
+  B <- getaddr, 24 bytes: deliver
+  B <- sendcmpct, 33 bytes: done
+  A <- sendcmpct, 33 bytes: done
+  A: connected true, common version 70017, wtxidrelay true, addrv2 true, compact blocks true (high bandwidth false), 226 bytes received
+  B: connected true, common version 70017, wtxidrelay true, addrv2 true, compact blocks true (high bandwidth false), 250 bytes received
+the version checks, in Core's order
+  outbound, 70017, NETWORK|WITNESS: done; sends wtxidrelay sendaddrv2 verack getaddr
+  outbound, 70017, NETWORK only: disconnect (no expected services)
+  outbound, 31799, NETWORK|WITNESS: disconnect (obsolete version)
+  outbound, 31799, NETWORK only: disconnect (no expected services)
+  outbound, 70017, NETWORK_LIMITED|WITNESS: done; sends wtxidrelay sendaddrv2 verack getaddr
+  inbound, 70017, no services: done; sends version wtxidrelay sendaddrv2 verack
+  block-relay-only, 70017, NETWORK|WITNESS: done; sends wtxidrelay sendaddrv2 verack
+  feeler, 70017, NETWORK|WITNESS: disconnect (feeler done); sends wtxidrelay sendaddrv2 verack
+  manual, 70015: done; sends verack getaddr
+  manual, 70012: done; sends verack getaddr alert
+  inbound, carrying our pending nonce: disconnect (connected to self)
+messages around verack
+  ping with no version yet: ignored (no version yet)
+  ping before verack: ignored (before verack)
+  ping after verack: done; sends pong
+  wtxidrelay before verack: done
+  wtxidrelay after verack: disconnect (after verack)
+  sendaddrv2 after verack: disconnect (after verack)
+  sendheaders before verack: done
+  sendcmpct 1, version 2, after verack: done
+  sendcmpct 1, version 1: ignored (not version 2)
+  sendcmpct 2, version 2: disconnect (bad announce field)
+  feature "test" before verack: ignored (unknown feature)
+  feature "test" after verack: disconnect (after verack)
+  sendtxrcncl before verack: ignored (reconciliation off)
+  headers after verack: deliver
+  version again: ignored (redundant version)
+timeouts
+  nothing received, at 60 s: done
+  nothing received, at 61 s: disconnect (no message in 60 s)
+  version only, at 61 s: disconnect (version handshake timeout)
+  connected, at 61 s: done
+  connected, at 1201 s: done
+  connected, at 1202 s: disconnect (send timeout)

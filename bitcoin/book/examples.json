@@ -538,6 +538,17 @@
         "release"
       ],
       "timeout": 480
+    },
+    {
+      "source": "bitcoin/examples/handshake.coax",
+      "chapter": "bitcoin/book/ch068-the-handshake-and-feature-negotiation.md",
+      "stdout": "bitcoin/fixtures/handshake.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
     }
   ]
 }

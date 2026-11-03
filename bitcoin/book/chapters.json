@@ -1387,15 +1387,21 @@
   {
    "number": 68,
    "title": "The handshake and feature negotiation",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch068-the-handshake-and-feature-negotiation.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     65,
     67
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/handshake.coax",
+    "bitcoin/examples/handshake.coax",
+    "bitcoin/examples/checks/handshake.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

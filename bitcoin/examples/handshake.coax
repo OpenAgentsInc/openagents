@@ -1,0 +1,213 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/handshake.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+show :: (b: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+VERDICTS :: [4] string.["done", "ignored", "disconnect", "deliver"];
+REASONS :: [25] string.["", "no expected services", "obsolete version", "connected to self",
+  "redundant version", "no version yet", "redundant verack", "payload doesn't read", "after verack",
+  "bad announce field", "not version 2", "old common version", "duplicate", "before verack",
+  "feeler done", "no message in 60 s", "send timeout", "receive timeout", "version handshake timeout",
+  "V2 handshake timeout", "feature before version 70017", "bad feature payload", "unknown feature",
+  "reconciliation off", "fee out of range"];
+P2P_CODES :: [9] string.["ok", "truncated", "bad magic", "oversize", "bad checksum", "bad command", "bad payload", "too many", "capacity"];
+V2_CODES :: [8] string.["ok", "truncated", "no terminator", "too large", "bad tag", "bad type", "capacity", "keys"];
+MAINNET :: [4] u8.[0xf9, 0xbe, 0xb4, 0xd9];
+
+// One node's end of an in-memory connection: its handshake, its wire,
+// the bytes it has received and not yet used, and messages waiting for
+// the v2 keys.
+Side :: struct {
+  name: string; peer: [1] HsPeer; wire: [1] HsWire;
+  inbox: [2048] u8; have: int; got: int;
+  queued: HsStep; closed: bool;
+}
+config :: (conn: int, nonce: u64, services: u64) -> HsConfig {
+  return HsConfig.{conn = conn, services = services, peer_services = ifx conn == HS_INBOUND then cast(u64) 0 else HS_NODE_NETWORK | HS_NODE_WITNESS,
+    nonce = nonce, agent = "/Coax:0.68/", height = 900000};
+}
+// A opens to B. v2 sides use keys 1 and 2 and a little garbage.
+open :: (a: [] Side, b: [] Side, a_v2: bool, b_v2: bool) {
+  a[0] = Side.{name = "A"}; b[0] = Side.{name = "B"};
+  ka: [32] u8; ka[31] = 1; kb: [32] u8; kb[31] = 2; ra: [32] u8; rb: [32] u8;
+  for i: 0..<32 { ra[i] = cast(u8) i; rb[i] = cast(u8) (32 + i); }
+  ga := [5] u8.['h', 'e', 'l', 'l', 'o']; gb := [3] u8.[1, 2, 3];
+  ok := hs_wire_init(a[0].wire[..], true, a_v2, MAINNET, ka[..], ra[..], ga[..]) && hs_wire_init(b[0].wire[..], false, b_v2, MAINNET, kb[..], rb[..], gb[..]);
+  sb := hs_open(b[0].peer[..], config(HS_INBOUND, 0x1112131415161718, HS_NODE_NETWORK | HS_NODE_WITNESS | HS_NODE_P2P_V2), 1000);
+  if a_v2 {
+    n := hs_wire_key_write_vartime(a[0].wire[..], b[0].inbox[..]); b[0].have = n; b[0].got = n;
+    print("  A sends its key and % bytes of garbage: % bytes\n", ga.count, n);
+  }
+  send(a, b, hs_open(a[0].peer[..], config(HS_OUTBOUND, 0x0102030405060708, HS_NODE_NETWORK | HS_NODE_WITNESS | HS_NODE_P2P_V2), 1000));
+}
+// Messages from one side to the other, or queued until the v2 keys.
+send :: (from: [] Side, to: [] Side, s: HsStep) {
+  w := from[0].wire[0].state;
+  if w != HS_W_V1 && w < HS_W_GARBAGE {
+    for i: 0..<s.n { from[0].queued.sends[from[0].queued.n] = s.sends[i]; from[0].queued.n += 1; }
+    return;
+  }
+  for i: 0..<s.n {
+    payload: [256] u8;
+    n := hs_payload_write_vartime(from[0].peer[..], s.sends[i], payload[..]);
+    m := hs_wire_write_vartime(from[0].wire[..], HS_COMMANDS[s.sends[i]], payload[0..<n], to[0].inbox[to[0].have..<2048]);
+    to[0].have += m; to[0].got += m;
+  }
+}
+names :: (s: HsStep) {
+  if s.n == 0 { return; }
+  print("; sends");
+  for i: 0..<s.n { print(" %", HS_COMMANDS[s.sends[i]]); }
+}
+// Everything me can make of its received bytes. Returns whether it did anything.
+pump :: (me: [] Side, them: [] Side, now: int) -> bool {
+  progress := false; none: [1] u64;
+  while !me[0].closed {
+    r := hs_wire_read_vartime(me[0].wire[..], me[0].inbox[0..<me[0].have]);
+    if r.event == HS_EV_WAIT { break; }
+    progress = true;
+    if r.event == HS_EV_V1 { print("  %: the first 16 bytes are a v1 version, so v1 it is\n", me[0].name); }
+    else if r.event == HS_EV_SEND_KEY {
+      n := hs_wire_key_write_vartime(me[0].wire[..], them[0].inbox[them[0].have..<2048]);
+      them[0].have += n; them[0].got += n;
+      print("  %: not a v1 version; sends its key and garbage: % bytes\n", me[0].name, n);
+    } else if r.event == HS_EV_KEYS {
+      n := hs_wire_ready_write_vartime(me[0].wire[..], them[0].inbox[them[0].have..<2048]);
+      them[0].have += n; them[0].got += n;
+      print("  %: has the peer's key; sends its terminator and version packet: % bytes\n", me[0].name, n);
+      q := me[0].queued; me[0].queued = HsStep.{};
+      send(me, them, q);
+    } else if r.event == HS_EV_DECOY { print("  %: a decoy\n", me[0].name); }
+    else if r.event == HS_EV_READY { print("  %: the peer's version packet, after its garbage: v2 is up\n", me[0].name); }
+    else if r.event == HS_EV_MESSAGE {
+      s := hs_receive_vartime(me[0].peer[..], r.command, me[0].inbox[r.payload..<r.payload + r.n], now, none[0..<0]);
+      print("  % <- %, % bytes: %", me[0].name, r.command, r.used, VERDICTS[s.verdict]);
+      names(s); print("\n");
+      send(me, them, s);
+      if s.verdict == HS_DISCONNECT { me[0].closed = true; }
+    } else {
+      why := ifx me[0].wire[0].state == HS_W_V1 then P2P_CODES[r.code] else V2_CODES[r.code];
+      print("  %: % (%)\n", me[0].name, ifx r.event == HS_EV_REFUSE then "disconnects" else "drops a message", why);
+      if r.event == HS_EV_REFUSE { me[0].closed = true; }
+    }
+    for i: r.used..<me[0].have { me[0].inbox[i - r.used] = me[0].inbox[i]; }
+    me[0].have -= r.used;
+  }
+  return progress;
+}
+run :: (a: [] Side, b: [] Side) {
+  for round: 0..<20 {
+    x := pump(b, a, 1001); y := pump(a, b, 1001);
+    if !x && !y { break; }
+  }
+}
+summary :: (s: [] Side) {
+  p := s[0].peer[0];
+  print("  %: connected %, common version %, wtxidrelay %, addrv2 %, compact blocks % (high bandwidth %), % bytes received\n",
+    s[0].name, p.connected, p.common, p.wtxid_relay, p.wants_addrv2, p.provides_cmpct, p.cmpct_high, s[0].got);
+}
+// One version message from a peer of version and services, to a new
+// connection of type conn.
+check :: (label: string, conn: int, version: int, services: u64) {
+  p: [1] HsPeer; b: [256] u8; none: [1] u64;
+  cfg := config(conn, 1, HS_NODE_NETWORK | HS_NODE_WITNESS);
+  o := hs_open(p[..], cfg, 1000);
+  s := hs_receive_vartime(p[..], "version", hs_their_version(version, services, b[..]), 1001, none[0..<0]);
+  print("  %: %", label, VERDICTS[s.verdict]);
+  if s.reason != HS_R_NONE { print(" (%)", REASONS[s.reason]); }
+  names(s); print("\n");
+}
+// A message to a peer that has the version but not yet a verack (or, with
+// after, has both).
+after :: (label: string, verack: bool, command: string, payload: [] u8) {
+  p: [1] HsPeer; b: [256] u8; e: [1] u8; none: [1] u64;
+  o := hs_open(p[..], config(HS_OUTBOUND, 1, HS_NODE_NETWORK | HS_NODE_WITNESS), 1000);
+  s := hs_receive_vartime(p[..], "version", hs_their_version(70017, HS_NODE_NETWORK | HS_NODE_WITNESS, b[..]), 1001, none[0..<0]);
+  if verack { s = hs_receive_vartime(p[..], "verack", e[0..<0], 1001, none[0..<0]); }
+  s = hs_receive_vartime(p[..], command, payload, 1002, none[0..<0]);
+  print("  %: %", label, VERDICTS[s.verdict]);
+  if s.reason != HS_R_NONE { print(" (%)", REASONS[s.reason]); }
+  names(s); print("\n");
+}
+
+main :: () {
+  a: [1] Side; b: [1] Side; e: [1] u8;
+  print("v1: outbound A, inbound B\n");
+  open(a[..], b[..], false, false); run(a[..], b[..]); summary(a[..]); summary(b[..]);
+
+  print("v2: both sides speak BIP-324\n");
+  open(a[..], b[..], true, true); run(a[..], b[..]); summary(a[..]); summary(b[..]);
+  print("  session id "); show(a[0].wire[0].cipher[0].session_id[..]);
+  print(", the same on both sides: %\n", p2p_same(a[0].wire[0].cipher[0].session_id[..], b[0].wire[0].cipher[0].session_id[..]));
+
+  print("v1 A, v2 B: B detects v1\n");
+  open(a[..], b[..], false, true); run(a[..], b[..]); summary(a[..]); summary(b[..]);
+
+  print("v2 A, v1-only B: A reconnects in v1\n");
+  open(a[..], b[..], true, false); run(a[..], b[..]);
+  print("  A sent %, received %: reconnect in v1 %\n", a[0].wire[0].sent, a[0].got, hs_wire_reconnect_v1(a[0].wire[..], a[0].got));
+  open(a[..], b[..], false, false); run(a[..], b[..]); summary(a[..]); summary(b[..]);
+
+  print("the version checks, in Core's order\n");
+  check("outbound, 70017, NETWORK|WITNESS", HS_OUTBOUND, 70017, HS_NODE_NETWORK | HS_NODE_WITNESS);
+  check("outbound, 70017, NETWORK only", HS_OUTBOUND, 70017, HS_NODE_NETWORK);
+  check("outbound, 31799, NETWORK|WITNESS", HS_OUTBOUND, 31799, HS_NODE_NETWORK | HS_NODE_WITNESS);
+  check("outbound, 31799, NETWORK only", HS_OUTBOUND, 31799, HS_NODE_NETWORK);
+  check("outbound, 70017, NETWORK_LIMITED|WITNESS", HS_OUTBOUND, 70017, HS_NODE_NETWORK_LIMITED | HS_NODE_WITNESS);
+  check("inbound, 70017, no services", HS_INBOUND, 70017, 0);
+  check("block-relay-only, 70017, NETWORK|WITNESS", HS_BLOCK_RELAY, 70017, HS_NODE_NETWORK | HS_NODE_WITNESS);
+  check("feeler, 70017, NETWORK|WITNESS", HS_FEELER, 70017, HS_NODE_NETWORK | HS_NODE_WITNESS);
+  check("manual, 70015", HS_MANUAL, 70015, 0);
+  check("manual, 70012", HS_MANUAL, 70012, 0);
+  // Self-connection: A's version arrives at A's own listening socket.
+  p: [1] HsPeer; v: [256] u8; none: [1] u64;
+  pending := [1] u64.[0x0102030405060708];
+  o := hs_open(a[0].peer[..], config(HS_OUTBOUND, pending[0], HS_NODE_NETWORK | HS_NODE_WITNESS), 1000);
+  n := hs_payload_write_vartime(a[0].peer[..], HS_SEND_VERSION, v[..]);
+  o = hs_open(p[..], config(HS_INBOUND, 99, HS_NODE_NETWORK | HS_NODE_WITNESS), 1000);
+  s := hs_receive_vartime(p[..], "version", v[0..<n], 1001, pending[..]);
+  print("  inbound, carrying our pending nonce: % (%)\n", VERDICTS[s.verdict], REASONS[s.reason]);
+
+  print("messages around verack\n");
+  q: [1] HsPeer; o = hs_open(q[..], config(HS_OUTBOUND, 1, 0), 1000);
+  s = hs_receive_vartime(q[..], "ping", v[0..<8], 1001, none[0..<0]);
+  print("  ping with no version yet: % (%)\n", VERDICTS[s.verdict], REASONS[s.reason]);
+  after("ping before verack", false, "ping", v[0..<8]);
+  after("ping after verack", true, "ping", v[0..<8]);
+  after("wtxidrelay before verack", false, "wtxidrelay", e[0..<0]);
+  after("wtxidrelay after verack", true, "wtxidrelay", e[0..<0]);
+  after("sendaddrv2 after verack", true, "sendaddrv2", e[0..<0]);
+  after("sendheaders before verack", false, "sendheaders", e[0..<0]);
+  cmpct := [9] u8.[1, 2, 0, 0, 0, 0, 0, 0, 0];
+  after("sendcmpct 1, version 2, after verack", true, "sendcmpct", cmpct[..]);
+  cmpct[1] = 1; after("sendcmpct 1, version 1", true, "sendcmpct", cmpct[..]);
+  cmpct[0] = 2; cmpct[1] = 2; after("sendcmpct 2, version 2", true, "sendcmpct", cmpct[..]);
+  feature := [7] u8.[4, 't', 'e', 's', 't', 1, 0];
+  after("feature \"test\" before verack", false, "feature", feature[..]);
+  after("feature \"test\" after verack", true, "feature", feature[..]);
+  after("sendtxrcncl before verack", false, "sendtxrcncl", v[0..<12]);
+  after("headers after verack", true, "headers", e[0..<0]);
+  after("version again", true, "version", hs_their_version(70017, HS_NODE_NETWORK | HS_NODE_WITNESS, v[..]));
+
+  print("timeouts\n");
+  // The connection opens at 1000 s; the peer's messages come at 1001 s.
+  times := [6] int.[1060, 1061, 1061, 1061, 2201, 2202];
+  stages := [6] int.[0, 0, 1, 2, 2, 2];
+  STAGES := [3] string.["nothing received", "version only", "connected"];
+  for k: 0..<6 {
+    w: [1] HsPeer; x: [256] u8;
+    o = hs_open(w[..], config(HS_OUTBOUND, 1, 0), 1000);
+    if stages[k] >= 1 { s = hs_receive_vartime(w[..], "version", hs_their_version(70017, HS_NODE_NETWORK | HS_NODE_WITNESS, x[..]), 1001, none[0..<0]); }
+    if stages[k] >= 2 { s = hs_receive_vartime(w[..], "verack", e[0..<0], 1001, none[0..<0]); }
+    t := hs_tick(w[..], times[k], false);
+    print("  %, at % s: %", STAGES[stages[k]], times[k] - 1000, VERDICTS[t.verdict]);
+    if t.reason != HS_R_NONE { print(" (%)", REASONS[t.reason]); }
+    print("\n");
+  }
+}
+// book:end example

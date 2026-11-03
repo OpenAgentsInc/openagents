@@ -5,7 +5,7 @@
 // The structure follows Bitcoin Core's BIP324Cipher (bip324.cpp) and
 // V2Transport (net.cpp); the ciphers follow BIP-324's reference.py. As in
 // chapter 65, this is pure encoding: no socket and no connection state
-// beyond the two ciphers. Chapter 68 drives the handshake over a socket.
+// beyond the two ciphers. Chapter 68 drives the handshake.
 //
 // Packets are encrypted and decrypted in place. The caller writes the
 // contents where the packet carries them, and the cipher turns those bytes

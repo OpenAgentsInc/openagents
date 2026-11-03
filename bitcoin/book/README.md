@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 50 are implemented and 74 are planned. The 50 implemented
+Of the 124 chapters, 51 are implemented and 73 are planned. The 51 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 50, 51, 65, 66 and 67 are new.
+39, 40, 41, 42, 43, 46, 47, 48, 50, 51, 65, 66, 67 and 68 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -240,7 +240,7 @@ P2P messages, BIP-324 encrypted transport, the handshake, peer discovery and con
 | [65. P2P messages and checksums](ch065-p2p-messages-and-checksums.md) | Runnable: native C | The 24-byte v1 header with Core's checks in Core's order (message start, a length of at most 4,000,000, checksum, command padding), and the payloads of `version`, `ping`/`pong`, `inv`/`getdata` with the witness flag, `getheaders`/`headers` with the block locator, `addr` and `addrv2` (BIP-155), `feefilter`, `sendcmpct`, `wtxidrelay` and `sendaddrv2`. The developer reference's samples round-trip, and every line agrees with Bitcoin Core's `messages.py`. |
 | [66. ElligatorSwift](ch066-elligatorswift.md) | Runnable: native C | BIP-324's `XSwiftEC` decoder, its eight-case inverse, an encoder that draws from caller randomness, and the hashed x-only ECDH. All 76 decoding vectors, all 256 inversion cases and the key exchange of all 7 packet vectors pass, and every line agrees with BIP-324's `reference.py`. |
 | [67. The v2 encrypted transport](ch067-the-v2-encrypted-transport.md) | Runnable: native C | BIP-324's key derivation, FSChaCha20 and FSChaCha20Poly1305 with rekeying every 224 uses, packets sealed and opened in place with the ignore bit, the garbage and its terminator, and the short message IDs. All 7 packet vectors pass from the private key, and every line agrees with BIP-324's `reference.py` and Core's `net.cpp`. |
-| 68. The handshake and feature negotiation | Planned | The node completes `version` and `verack` with Bitcoin Core over the v1 and v2 transports and negotiates `wtxidrelay`, `sendaddrv2`, `sendheaders`, `sendcmpct` and `feefilter`. A feature message after `verack` is handled as Core handles it. |
+| [68. The handshake and feature negotiation](ch068-the-handshake-and-feature-negotiation.md) | Runnable: native C | The `version` and `verack` exchange as a pure state machine with Core's checks in Core's order (services, minimum version, the payload's tail, self-connection by nonce), `wtxidrelay`, `sendaddrv2` and `feature` before `verack`, `sendheaders`, `sendcmpct`, `ping` and `feefilter`, the inactivity timeouts, and the transport underneath: v1 frames, the v2 handshake, v1 detection by a v2 responder and the retry in v1. Every line agrees with Core's transliterated `ProcessMessage`, `messages.py` and BIP-324's `reference.py`. |
 | 69. Addresses and the address manager | Planned | `addr` and `addrv2` messages round-trip for every network BIP-155 names. The address manager's buckets keep one source from filling its tables, and the eclipse cases ported from Bitcoin Core's address-manager tests pass. DNS seeds are queried only when the manager has no usable address. |
 | 70. Connections: outbound, block-relay-only, feelers and eviction | Planned | The node keeps 8 full-relay and 2 block-relay-only outbound connections and makes feeler connections. With its inbound slots full it evicts by Bitcoin Core's protected-peer rules, and Core's eviction cases pass. |
 | 71. Misbehavior, limits and denial of service | Planned | Each message limit (size, `inv` and `addr` counts and rates, unconnecting headers and the low-work headers presync) refuses its oversized case. A peer that sends an invalid block is disconnected, and memory per peer stays under its stated bound under a flood. |

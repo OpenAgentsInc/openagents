@@ -1,0 +1,74 @@
+// The checks of handshake.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/handshake.coax
+#load "../handshake.coax";
+
+// book:begin check
+// The example's pump without its printing: every event of me's bytes.
+quiet :: (me: [] Side, them: [] Side) -> bool {
+  progress := false; none: [1] u64;
+  while !me[0].closed {
+    r := hs_wire_read_vartime(me[0].wire[..], me[0].inbox[0..<me[0].have]);
+    if r.event == HS_EV_WAIT { break; }
+    progress = true;
+    if r.event == HS_EV_MESSAGE {
+      s := hs_receive_vartime(me[0].peer[..], r.command, me[0].inbox[r.payload..<r.payload + r.n], 1001, none[0..<0]);
+      send(me, them, s);
+      if s.verdict == HS_DISCONNECT { me[0].closed = true; }
+    } else if r.event != HS_EV_V1 { me[0].closed = true; }
+    for i: r.used..<me[0].have { me[0].inbox[i - r.used] = me[0].inbox[i]; }
+    me[0].have -= r.used;
+  }
+  return progress;
+}
+// v1, and a v1 initiator at a v2 responder, finish with both sides
+// connected and every feature negotiated. (The example opens quietly
+// when A speaks v1.)
+#forall "v1 and the fallback finish the handshake" k: 0..<2 #steps 400000000 {
+  a: [1] Side; b: [1] Side;
+  open(a[..], b[..], false, false);
+  if k == 1 { b[0].wire[0].state = HS_W_DETECT; }
+  for round: 0..<20 { x := quiet(b[..], a[..]); y := quiet(a[..], b[..]); if !x && !y { break; } }
+  for s: [2] HsPeer.[a[0].peer[0], b[0].peer[0]] {
+    #assert s.connected && s.common == HS_PROTOCOL_VERSION && s.wtxid_relay && s.wants_addrv2 && s.provides_cmpct && !s.cmpct_high;
+  }
+  #assert !a[0].closed && !b[0].closed && a[0].have == 0 && b[0].have == 0;
+}
+// A version frame read from every prefix of itself: nothing until the
+// last byte, then the whole message.
+#forall "a frame waits for its last byte" cut: 0..<121 #steps 400000000 {
+  w: [1] HsWire; p: [1] HsPeer; e: [1] u8; k: [32] u8; m: [256] u8; v: [256] u8;
+  #assert hs_wire_init(w[..], false, false, MAINNET, k[..], k[..], e[0..<0]);
+  o := hs_open(p[..], config(HS_OUTBOUND, 1, HS_NODE_NETWORK), 1000);
+  n := hs_payload_write_vartime(p[..], HS_SEND_VERSION, v[..]);
+  f := hs_wire_write_vartime(w[..], "version", v[0..<n], m[..]);
+  #assert f == 121 && hs_wire_read_vartime(w[..], m[0..<cut]).event == HS_EV_WAIT;
+  r := hs_wire_read_vartime(w[..], m[0..<f]);
+  #assert r.event == HS_EV_MESSAGE && r.command == "version" && r.n == n && r.used == f;
+}
+// A v1 version is told from v2 by its first 16 bytes: any shorter prefix
+// waits, and any one changed byte among them means v2.
+#forall "the v1 prefix decides at 16 bytes" at: 0..<16 {
+  w: [1] HsWire; e: [1] u8; k: [32] u8; k[31] = 2; m: [64] u8;
+  head := [16] u8.[0xf9, 0xbe, 0xb4, 0xd9, 'v', 'e', 'r', 's', 'i', 'o', 'n', 0, 0, 0, 0, 0];
+  for i: 0..<16 { m[i] = head[i]; }
+  #assert hs_wire_init(w[..], false, false, MAINNET, k[..], k[..], e[0..<0]);
+  w[0].state = HS_W_DETECT;                       // a v2 responder, without its key
+  #assert hs_wire_read_vartime(w[..], m[0..<at]).event == HS_EV_WAIT;
+  m[at] ^= 0x01;
+  #assert hs_wire_read_vartime(w[..], m[0..<16]).event == HS_EV_SEND_KEY && w[0].state == HS_W_KEY;
+}
+// After verack, each of the three negotiation messages disconnects; before
+// it, none does.
+#forall "negotiation only before verack" k: 0..<3 {
+  names := [3] string.["wtxidrelay", "sendaddrv2", "feature"];
+  p: [1] HsPeer; b: [256] u8; e: [1] u8; none: [1] u64; f := [6] u8.[4, 't', 'e', 's', 't', 0];
+  o := hs_open(p[..], config(HS_MANUAL, 1, 0), 1000);
+  s := hs_receive_vartime(p[..], "version", hs_their_version(70017, 0, b[..]), 1001, none[0..<0]);
+  payload := ifx k == 2 then f[..] else e[0..<0];
+  #assert hs_receive_vartime(p[..], names[k], payload, 1001, none[0..<0]).verdict != HS_DISCONNECT;
+  s = hs_receive_vartime(p[..], "verack", e[0..<0], 1001, none[0..<0]);
+  s = hs_receive_vartime(p[..], names[k], payload, 1001, none[0..<0]);
+  #assert s.verdict == HS_DISCONNECT && s.reason == HS_R_AFTER_VERACK;
+}
+// book:end check

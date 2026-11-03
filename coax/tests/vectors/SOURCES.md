@@ -316,6 +316,15 @@ that a maliciously replaced manifest is authentic.
   Speedy Trial deployment. The `.headers` files are mempool.space's
   80-byte headers of mainnet blocks 840,102 to 840,113 and of testnet4's
   genesis and blocks 2,005 to 2,016, in a row, retrieved 2026-11-03.
+- **The handshake (Bitcoin chapter 68):** Bitcoin Core's
+  `node/protocol_version.h` at revision `ddea9196` gives the protocol
+  versions. `net_processing.cpp` (`ProcessMessage`, `PushNodeVersion`,
+  `GetDesirableServiceFlags`, the final alert), `net.cpp`
+  (`CheckIncomingNonce`, `InactivityCheck`, `V2Transport`), `net.h`,
+  `protocol.h` and `messages.py`, pinned above, give the rules, limits and
+  payloads. `make_handshake_vectors.py` writes Core's payload bytes, and
+  `handshake.py` transliterates the rules and runs BIP-324's `reference.py`
+  as the cross-check's oracle.
 - **Chain parameters (Bitcoin chapter 50):** Bitcoin Core's
   `kernel/chainparams.cpp` (every network's class), `kernel/signet.h`
   (`SIGNET_DEFAULT_CHALLENGE`, `GetSignetMessageStart`), `signet.cpp`
@@ -540,4 +549,5 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bip324/reference.py`](upstream/bip324/reference.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bips/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0324/reference.py) | `cb074b4e64bcb096ff4a2f1ee3a0580c383bb1d02662b7dccdd4968bc6b7af4f` |
 | [`upstream/bitcoin-core/bip324.cpp`](upstream/bitcoin-core/bip324.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/bip324.cpp) | `58aaf7d2a2ab98679bbb1e1d4c40d0c3e4021822fd1f628099c1a178e4494685` |
 | [`upstream/bitcoin-core/script.py`](upstream/bitcoin-core/script.py) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/script.py) | `82e250fadd393b972ae9d5d508f458fc872ea0dd947ca162693a006c3e488bbf` |
+| [`upstream/bitcoin-core/protocol_version.h`](upstream/bitcoin-core/protocol_version.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/protocol_version.h) | `ce87f506fc0db48f9cdb74e58a7ee396261b543fe9a7f423ec8eab1f2f82aa7a` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

@@ -1883,7 +1883,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-p2p",
-        "bitcoin-v2-transport"
+        "bitcoin-v2-transport",
+        "bitcoin-handshake"
       ],
       "retrieved": "2026-11-03",
       "sha256": "92d6290df90eaea49b4a110b518ff34be914666471a5dee7e5eaa26832986738",
@@ -1910,7 +1911,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-p2p",
-        "bitcoin-v2-transport"
+        "bitcoin-v2-transport",
+        "bitcoin-handshake"
       ],
       "retrieved": "2026-11-03",
       "sha256": "c268325ae03f4f80e8427af80eb794265b08e3686923b7a5a8b850416bed213b",
@@ -1924,7 +1926,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-p2p",
-        "bitcoin-v2-transport"
+        "bitcoin-v2-transport",
+        "bitcoin-handshake"
       ],
       "retrieved": "2026-11-03",
       "sha256": "05e8ce20762e9c23e060d428fb5218cb32fea599afbd40b2417b9bd2a236d7a6",
@@ -1937,7 +1940,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-p2p"
+        "bitcoin-p2p",
+        "bitcoin-handshake"
       ],
       "retrieved": "2026-11-03",
       "sha256": "bcd69aba37869cd68dfe03cce37b1400d1488b59ef1faafdc319ddcb51ebea36",
@@ -1976,7 +1980,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-p2p"
+        "bitcoin-p2p",
+        "bitcoin-handshake"
       ],
       "retrieved": "2026-11-03",
       "sha256": "44e3b8c702916c8ab7820db65cf38af801dd5b5a457e91cabdff95eba5d412a5",
@@ -2286,6 +2291,19 @@
           "sha256": "b5f89374e4e1dbdee7881e8573b4313b6a89430a9c8d518471599ae0660cf0e2"
         }
       ]
+    },
+    {
+      "path": "upstream/bitcoin-core/protocol_version.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/protocol_version.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-handshake"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "ce87f506fc0db48f9cdb74e58a7ee396261b543fe9a7f423ec8eab1f2f82aa7a",
+      "bytes": 1525
     }
   ]
 }
