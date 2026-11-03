@@ -6,7 +6,13 @@
 // and layers on the GPU), from two stores: the frame's instances (fivelab-bodies.coax bd_build)
 // and the clips baked once (bd_bake); fx_fs the strokes lab_frame writes, and fivelab-fx.wgsl the
 // glade's effects (puffs), drawn after the figures, depth-tested.
+// Player mode walks your hero on Everglade's controller, as everglade-face.c does: everglade-step.coax
+// (aethyr/walk.coax, with player.coax's verse_player_*) steps your body on the keys and a phone's
+// thumbs (aethyr/sticks.coax) among the figures round you (lab_move_world), and the Lab says where
+// it may stand (lab_keep) and draws it (lab_you).
 #include "fivelab.h"
+#include "Everglade-step.h"
+#include "Sticks.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -22,6 +28,11 @@ static float bake[544440];        // fivelab-bodies.coax BD_BAKE_FLOATS
 static uint32_t baked;            // the bake's generation: 1 once baked
 static uint32_t frames;
 static int64_t draw_n;
+static coax_t_Player player;   // your body in Player mode (aethyr/walk.coax)
+static coax_t_Sticks sticks;   // a phone's thumbs
+static float width, height, dpr;
+static double now;
+static bool touched;
 
 static coax_t_Lab *lab_at(uint32_t state) { return (coax_t_Lab *)(uintptr_t)state; }
 static coax_v_t_Lab at(uint32_t state) { return (coax_v_t_Lab){lab_at(state), 1}; }
@@ -42,6 +53,30 @@ EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   lab_golden(at(state), golden);
+  width = w; height = h; dpr = scale; now += dt;
+  // Player mode: your body's step on Everglade's controller, in everglade-face.c's order
+  coax_t_LabWalk walk = lab_walk(at(state));
+  if (walk.put) player = verse_player_place(walk.x, 0, walk.z, walk.face);
+  if (walk.on) {
+    float frame = dt;
+    float step = verse_player_counts(player, frame);
+    lab_look(at(state), sticks.dyaw, sticks.dpitch, sticks.zoom);
+    coax_t_EgMoveIn input = lab_move_in(at(state));
+    input.pad_x = sticks.pad_x; input.pad_y = sticks.pad_y;
+    input.run = verse_runs(input.run, sticks.run, sticks.pad_x, sticks.pad_y);
+    input.jump = input.jump || sticks.jump;
+    coax_t_EgMoveWorld mw = lab_move_world(at(state), player.pos.x, player.pos.z);
+    player = eg_step_begin(player, input, mw, step);
+    coax_v_f32 near = lab_move_bodies(at(state));
+    player = eg_step_advance(player, mw, (coax_v_f32){near.data, mw.bodies * 7}, (coax_v_f32){0, 0}, (coax_v_f32){0, 0}, frame);
+    coax_t_P3 kept = lab_keep(at(state), player.pos.x, player.pos.z);
+    if (kept.x != player.pos.x || kept.z != player.pos.z) player = verse_player_constrain(player, kept.x, kept.z);
+    coax_t_Vec3 feet = verse_player_feet(player);
+    lab_you(at(state), feet.x, feet.y, feet.z, verse_player_face(player), touched, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+  } else {
+    sticks = verse_sticks_reset();
+  }
+  sticks = verse_sticks_used(sticks);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_lab_max_vertices() * coaxial_lab_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_lab_uniform_floats()};
   int64_t n = lab_frame(at(state), out, u, w, h, scale, dt, still != 0);
@@ -84,9 +119,12 @@ EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, i
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { return lab_key(at(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, int32_t mods) { return lab_key_up(at(state), key, mods) ? 1u : 0u; }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { lab_blur(at(state)); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { lab_blur(at(state)); sticks = verse_sticks_reset(); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
-  return lab_pointer(at(state), x, y, phase, kind, id) ? 1u : 0u;
+  if (lab_pointer(at(state), x, y, phase, kind, id)) return 1u;
+  // a finger the Lab left (Player mode, off its buttons) is a thumb's: the stick, the look, a tap's jump
+  if (kind != 0 && lab_at(state)->player) { touched = true; sticks = verse_sticks_world_touch(sticks, id, phase, x, y, width, height, dpr, now); return 1u; }
+  return 0u;
 }
 EXPORT("coaxial_wheel") uint32_t coaxial_wheel(uint32_t state, float dy) { return lab_wheel(at(state), dy) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)lab_cursor(at(state)); }

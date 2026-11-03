@@ -139,7 +139,9 @@ stair=$!
 "$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/watchtower-face.c" "$here/build/watchtower.wasm" &
 watchtower=$!
 # /worlds/5e-lab (unlisted): druids play the SRD 5e rules on a bare grid (aethyr/rules/srd, docs/dnd).
-"$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" &
+# Player mode walks you on Everglade's controller (everglade-step.coax) and a phone's thumbs (aethyr/sticks.coax).
+"$here/../../coax/web/wasm.sh" "$here/fivelab.coax" "$here/fivelab-face.c" "$here/build/fivelab.wasm" \
+  "$here/everglade-step.coax" "$a/sticks.coax" &
 fivelab=$!
 # /worlds/metahuman-lab (unlisted): one figure on the CC0 people rig's skeleton and clips (docs/verse/metahuman-support.md).
 "$here/../../coax/web/wasm.sh" "$here/metahumanlab.coax" "$here/metahumanlab-face.c" "$here/build/metahumanlab.wasm" &
