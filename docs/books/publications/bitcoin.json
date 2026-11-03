@@ -4,36 +4,36 @@
   "book": "bitcoin",
   "space_id": "wmf6C6tD4ovtQQqoeMmP",
   "public_url": "https://openagents.gitbook.io/bitcoin-from-scratch",
-  "published_at": "2026-11-02T20:04:39Z",
+  "published_at": "2026-11-03T15:35:40Z",
   "source": {
-    "commit": "c466f49635001e4ff3b0c353fe32f7004baae98f",
+    "commit": "74cdf1166270bb016659a7cfbffb10c449fbdcdd",
     "directory": "bitcoin/book",
     "summary": {
       "path": "bitcoin/book/SUMMARY.md",
-      "bytes": 1585,
-      "sha256": "c3af7e6c7773cd26c17b7d25359ae76a473c4dc032ee034253861b744e8764c5"
+      "bytes": 8324,
+      "sha256": "23277390487c2fe8d3db0158391d8098a7296f6df39d0c3ccdd57780cd3c1945"
     },
     "pages": [
       {
         "path": "bitcoin/book/README.md",
-        "bytes": 21832,
-        "sha256": "b3cf5c2106e2738d091789b2fd85869f841bebda54456dec4e682ef49d0a1cd9",
+        "bytes": 63584,
+        "sha256": "5a9fb382747564dc336ede8de44443b2a79a9b5b8ea8ce314e5ef7569290019a",
         "file": "README.md",
         "title": "Introduction",
         "group": null
       },
       {
         "path": "bitcoin/book/PLAN.md",
-        "bytes": 21189,
-        "sha256": "6b965230908735a0bb4876c07edd90b441ddd3b48c913fc60941e0fe807da3b3",
+        "bytes": 53238,
+        "sha256": "63df9af7c42d91e86bb8fbc8a7f06e7858152ea5c1b0e587c9b1ed125e6a759a",
         "file": "PLAN.md",
         "title": "Plan and prerequisites",
         "group": null
       },
       {
         "path": "bitcoin/book/ch001-bytes-hex-and-base64.md",
-        "bytes": 12820,
-        "sha256": "fa9876d356715061f63e726a5a82694ba58b8f93c30c46d2a06b899591dcc525",
+        "bytes": 12922,
+        "sha256": "f2857023a8dbf96d637b66738e82cd00c3ac9196e83c9cc45b5d2c0ce8be3d92",
         "file": "ch001-bytes-hex-and-base64.md",
         "title": "1. Bytes, hex and base64",
         "group": "I. Foundations"
@@ -56,16 +56,16 @@
       },
       {
         "path": "bitcoin/book/ch004-sha-256.md",
-        "bytes": 26507,
-        "sha256": "c273bc8568f1013d8de3336880838743e4480499bbd9c35016b9ea3fb481ce60",
+        "bytes": 26506,
+        "sha256": "c40bb0dfa0bf9183b2c6d38d8700f05047878a0cba22f9307b2bf3ea03309d75",
         "file": "ch004-sha-256.md",
         "title": "4. SHA-256",
         "group": "II. Hashes, MACs and ciphers"
       },
       {
         "path": "bitcoin/book/ch005-sha-256d-and-tagged-hashes.md",
-        "bytes": 31516,
-        "sha256": "184fa59754a5a0c4e260e7e7b1d1f006cb888f34bb992d52fa9c8760429126bb",
+        "bytes": 31625,
+        "sha256": "1913c4cc164bac989722fdeb3020ebcb79eb9a05f57d53b3e3a5b5c78bcd213f",
         "file": "ch005-sha-256d-and-tagged-hashes.md",
         "title": "5. SHA-256d and tagged hashes",
         "group": "II. Hashes, MACs and ciphers"
@@ -80,34 +80,50 @@
       },
       {
         "path": "bitcoin/book/ch007-sha-512.md",
-        "bytes": 33755,
-        "sha256": "7ebd93c18734e0579200c18ac9031c71e7f4adf5fb9150216efab0790fbca26d",
+        "bytes": 33764,
+        "sha256": "e16653fbadf0c7c77fee2bf764b081ef6e141e6173abdfebb0b9bec460660bc5",
         "file": "ch007-sha-512.md",
         "title": "7. SHA-512",
         "group": "II. Hashes, MACs and ciphers"
       },
       {
         "path": "bitcoin/book/ch008-hmac-sha256.md",
-        "bytes": 14416,
-        "sha256": "0f648cb5ff174f943778a2e4b8cb8a99eab818994df7b45ba5413b5f16e70c98",
+        "bytes": 14585,
+        "sha256": "1873a6c57b89e09c70f992baf4a82188434cd7177bd6e24c38e905e56c99738a",
         "file": "ch008-hmac-sha256.md",
         "title": "8. HMAC-SHA256",
         "group": "II. Hashes, MACs and ciphers"
       },
       {
         "path": "bitcoin/book/ch009-hkdf.md",
-        "bytes": 16175,
-        "sha256": "473313ad6a07b0ecb353d0ba2ca34f9bb7be7d2ecd454a037336fdcc12ccb248",
+        "bytes": 16481,
+        "sha256": "f02fe67344217fc5ab7f535f77e95387b66e1cdd7de34aceb4d59f0d486e93a0",
         "file": "ch009-hkdf.md",
         "title": "9. HKDF",
         "group": "II. Hashes, MACs and ciphers"
       },
       {
+        "path": "bitcoin/book/ch010-siphash-2-4.md",
+        "bytes": 23492,
+        "sha256": "492aca52a97aff9cba4cab6a38752cae20292c6e0f48409e2e39ba1420d240eb",
+        "file": "ch010-siphash-2-4.md",
+        "title": "10. SipHash-2-4",
+        "group": "II. Hashes, MACs and ciphers"
+      },
+      {
         "path": "bitcoin/book/ch011-chacha20.md",
-        "bytes": 30708,
-        "sha256": "e54c3f2b3f15717f9f269331b0751c5363c31920288a5cb59d9d7a5d80b2f4e6",
+        "bytes": 30583,
+        "sha256": "e53f221c18114b5babe3f22c2ec67d55fbf696a9942d0e18790481a83d1c3c05",
         "file": "ch011-chacha20.md",
         "title": "11. ChaCha20",
+        "group": "II. Hashes, MACs and ciphers"
+      },
+      {
+        "path": "bitcoin/book/ch012-poly1305-and-chacha20-poly1305.md",
+        "bytes": 52003,
+        "sha256": "195f39e1ac5aa620b24d723e937e33a8a1f8374153f74593871dfff3615830e0",
+        "file": "ch012-poly1305-and-chacha20-poly1305.md",
+        "title": "12. Poly1305 and ChaCha20-Poly1305",
         "group": "II. Hashes, MACs and ciphers"
       },
       {
@@ -128,77 +144,653 @@
       },
       {
         "path": "bitcoin/book/ch015-the-secp256k1-group-law.md",
-        "bytes": 23447,
-        "sha256": "5d0149c2257fcd07429b8ff38bc8a362affe8388ff89b6d33aaa3c4543a10373",
+        "bytes": 23493,
+        "sha256": "195b61c99f749f2ce338a3fc2cd5973c648966f2ebf31dc72c5d02efd23353ea",
         "file": "ch015-the-secp256k1-group-law.md",
         "title": "15. The secp256k1 group law",
         "group": "III. secp256k1"
       },
       {
         "path": "bitcoin/book/ch016-scalar-multiplication.md",
-        "bytes": 25026,
-        "sha256": "2787b2ba00151dd40f2b4004d57d409de7f141019bb71f831fca2dfe530c8efa",
+        "bytes": 25066,
+        "sha256": "060f4bfddd17c0a5a07b224eb1a6d9e12a3fa315248068f3bdd9051cedd26c3b",
         "file": "ch016-scalar-multiplication.md",
         "title": "16. Scalar multiplication",
         "group": "III. secp256k1"
       },
       {
+        "path": "bitcoin/book/ch017-point-encodings-compressed-uncompressed-and-x-only.md",
+        "bytes": 28443,
+        "sha256": "c54acfe09dc28e0de6313315f93f7a0d65713ccb384d6f13a9d646a723793807",
+        "file": "ch017-point-encodings-compressed-uncompressed-and-x-only.md",
+        "title": "17. Point encodings: compressed, uncompressed and x-only",
+        "group": "III. secp256k1"
+      },
+      {
         "path": "bitcoin/book/ch018-keys-and-randomness.md",
-        "bytes": 34663,
-        "sha256": "7637d4116eeaad325a6d2254e7ed6953f643217e0dd71f6ac4d0081fc34315f4",
+        "bytes": 34829,
+        "sha256": "f5f962cfb87f95c03f21cf3fa63b9e7f5ecddad2167d1b6916b71290d27ef8f7",
         "file": "ch018-keys-and-randomness.md",
         "title": "18. Keys and randomness",
         "group": "III. secp256k1"
       },
       {
+        "path": "bitcoin/book/ch019-verify-ecdsa.md",
+        "bytes": 40007,
+        "sha256": "c47482cf6056da3751fb5532bc391cd31c4c6515b31e2499d707bfd6addc2e3b",
+        "file": "ch019-verify-ecdsa.md",
+        "title": "19. Verify ECDSA",
+        "group": "IV. Signatures"
+      },
+      {
+        "path": "bitcoin/book/ch020-sign-with-ecdsa.md",
+        "bytes": 45853,
+        "sha256": "1a33c63a1f9a3f488ac2f1df813c8fe67fd25ec0f20a515b6560e7c6b1ed220f",
+        "file": "ch020-sign-with-ecdsa.md",
+        "title": "20. Sign with ECDSA",
+        "group": "IV. Signatures"
+      },
+      {
+        "path": "bitcoin/book/ch021-strict-der.md",
+        "bytes": 51849,
+        "sha256": "1311b10d73b1f4e7be678aeeabb05355e786b7e95c2234489034e0d9594c43e6",
+        "file": "ch021-strict-der.md",
+        "title": "21. Strict DER",
+        "group": "IV. Signatures"
+      },
+      {
+        "path": "bitcoin/book/ch022-public-key-recovery-and-signed-messages.md",
+        "bytes": 54059,
+        "sha256": "0f57e6a1f049cde36a4d4df87e80e95e27b50c0335323ff7fa4fedf3f2a30dbf",
+        "file": "ch022-public-key-recovery-and-signed-messages.md",
+        "title": "22. Public key recovery and signed messages",
+        "group": "IV. Signatures"
+      },
+      {
         "path": "bitcoin/book/ch023-verify-a-schnorr-signature.md",
-        "bytes": 28292,
-        "sha256": "8e4d2e0e381f26f6bed700cf4bd7c0c01b3330af714cf2753dd4093f55a06643",
+        "bytes": 28645,
+        "sha256": "959b588939bbd934331c9423455339dc3426e25a57f7b5d20f054f104e81d2ff",
         "file": "ch023-verify-a-schnorr-signature.md",
         "title": "23. Verify a Schnorr signature",
         "group": "IV. Signatures"
       },
       {
         "path": "bitcoin/book/ch024-sign-with-schnorr.md",
-        "bytes": 35426,
-        "sha256": "8f00fa5688be4bc5e499cc35447290179864af459b1a6bb3e11b9339491ea0bb",
+        "bytes": 35363,
+        "sha256": "2362c0f212f100227872e5702063949821070a2d893153eb4aefa736723e37f0",
         "file": "ch024-sign-with-schnorr.md",
         "title": "24. Sign with Schnorr",
         "group": "IV. Signatures"
       },
       {
+        "path": "bitcoin/book/ch025-batch-verification.md",
+        "bytes": 33725,
+        "sha256": "71918c55158850ac47fa618dd0938fb2a45f42be10e7e141fdea32561f5852a6",
+        "file": "ch025-batch-verification.md",
+        "title": "25. Batch verification",
+        "group": "IV. Signatures"
+      },
+      {
+        "path": "bitcoin/book/ch026-base58check.md",
+        "bytes": 48425,
+        "sha256": "5e1cea6d60919ea83bd43b74c408a17f964582129eb2fd452b93ff64a8c8b413",
+        "file": "ch026-base58check.md",
+        "title": "26. Base58Check",
+        "group": "V. Encodings and addresses"
+      },
+      {
         "path": "bitcoin/book/ch027-bech32.md",
-        "bytes": 25146,
-        "sha256": "7c8497a41544287bfaec0fe1ac83d63b5ac508c37dc141fb17de27213776892e",
+        "bytes": 26106,
+        "sha256": "41b77d0c52e3215cc59bd07254cafd393afbe5eb092efef48a66ba99fd171af7",
         "file": "ch027-bech32.md",
         "title": "27. Bech32",
         "group": "V. Encodings and addresses"
+      },
+      {
+        "path": "bitcoin/book/ch028-bech32m.md",
+        "bytes": 39553,
+        "sha256": "65eb5203608936b82178cadd668928453c5c69b2f64676407ade58e27d4af79e",
+        "file": "ch028-bech32m.md",
+        "title": "28. Bech32m",
+        "group": "V. Encodings and addresses"
+      },
+      {
+        "path": "bitcoin/book/ch029-addresses.md",
+        "bytes": 51169,
+        "sha256": "79fb1beb37f3a58f2d177b634e7a471a5218ea4391987ec95dce2fd0e65cdde3",
+        "file": "ch029-addresses.md",
+        "title": "29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR",
+        "group": "V. Encodings and addresses"
+      },
+      {
+        "path": "bitcoin/book/ch030-output-descriptors-and-their-checksum.md",
+        "bytes": 55598,
+        "sha256": "7af4c064809915706725fd22ce87fa145cd9e010d3ea0ed9999ba1cc13ecf39f",
+        "file": "ch030-output-descriptors-and-their-checksum.md",
+        "title": "30. Output descriptors and their checksum",
+        "group": "V. Encodings and addresses"
+      },
+      {
+        "path": "bitcoin/book/ch031-seed-phrases.md",
+        "bytes": 51949,
+        "sha256": "48d918564b519ce52ee386421291cb93cc4e1c0c5cd9a10afb23cfeae1f4d1f9",
+        "file": "ch031-seed-phrases.md",
+        "title": "31. Seed phrases",
+        "group": "VI. Keys from words"
+      },
+      {
+        "path": "bitcoin/book/ch032-hierarchical-deterministic-keys.md",
+        "bytes": 66981,
+        "sha256": "133e09725ae4daea9bccae1cb6fd806e30e57be86401b85e3fd0c774343aeb08",
+        "file": "ch032-hierarchical-deterministic-keys.md",
+        "title": "32. Hierarchical deterministic keys",
+        "group": "VI. Keys from words"
+      },
+      {
+        "path": "bitcoin/book/ch033-derivation-paths.md",
+        "bytes": 42603,
+        "sha256": "0b6f3363deed15cbc6dfc4e910c3eaabd8f5e987acd68e004441cf433e39d108",
+        "file": "ch033-derivation-paths.md",
+        "title": "33. Derivation paths",
+        "group": "VI. Keys from words"
+      },
+      {
+        "path": "bitcoin/book/ch034-transactions-and-their-serialization.md",
+        "bytes": 58652,
+        "sha256": "5bc068f2fba31f54cadaa17c99569cc905f5c441c2b6f9ab9b5cdfa2e855e645",
+        "file": "ch034-transactions-and-their-serialization.md",
+        "title": "34. Transactions and their serialization",
+        "group": "VII. Transactions and script"
+      },
+      {
+        "path": "bitcoin/book/ch035-txids-wtxids-and-malleability.md",
+        "bytes": 37801,
+        "sha256": "8797eab8979cec858db23f76104e32421fac77a883f1065b341104a382a6430d",
+        "file": "ch035-txids-wtxids-and-malleability.md",
+        "title": "35. Txids, wtxids and malleability",
+        "group": "VII. Transactions and script"
+      },
+      {
+        "path": "bitcoin/book/ch036-the-script-interpreter.md",
+        "bytes": 81908,
+        "sha256": "6416e80e154a18a781f7836cc8edd2bc7fa1ef2a00b74ad9286549947a6d32c2",
+        "file": "ch036-the-script-interpreter.md",
+        "title": "36. The script interpreter",
+        "group": "VII. Transactions and script"
+      },
+      {
+        "path": "bitcoin/book/ch037-legacy-signature-hashes.md",
+        "bytes": 35148,
+        "sha256": "f4b53908b70223214952cd705ff08c1b47e0be0373209ed62945aca2a0d4d993",
+        "file": "ch037-legacy-signature-hashes.md",
+        "title": "37. Legacy signature hashes",
+        "group": "VII. Transactions and script"
+      },
+      {
+        "path": "bitcoin/book/ch038-segwit-v0-signature-hashes.md",
+        "bytes": 41364,
+        "sha256": "5f707424b6bffbbbeab89666fb7c530c13157ff1cccd112b0f90541af87ab0b8",
+        "file": "ch038-segwit-v0-signature-hashes.md",
+        "title": "38. Segwit v0 signature hashes",
+        "group": "VII. Transactions and script"
+      },
+      {
+        "path": "bitcoin/book/ch039-timelocks.md",
+        "bytes": 43125,
+        "sha256": "579d2cc19c2d470c94a414682f62cb5e8b3b35b9db7f5a2356e699e5d8c493d8",
+        "file": "ch039-timelocks.md",
+        "title": "39. Timelocks",
+        "group": "VII. Transactions and script"
+      },
+      {
+        "path": "bitcoin/book/ch040-weight-vsize-and-fees.md",
+        "bytes": 27867,
+        "sha256": "683bb41bececdf64dc4b4c3d4d396283bad5db2fa33634bce123cad1c4657bb4",
+        "file": "ch040-weight-vsize-and-fees.md",
+        "title": "40. Weight, vsize and fees",
+        "group": "VII. Transactions and script"
+      },
+      {
+        "path": "bitcoin/book/ch041-the-key-tweak-and-the-key-path.md",
+        "bytes": 31963,
+        "sha256": "e4a39fb2d8950558e2427b32d7356af36abca47151b5652b67af246ec36c059e",
+        "file": "ch041-the-key-tweak-and-the-key-path.md",
+        "title": "41. The key tweak and the key path",
+        "group": "VIII. Taproot"
+      },
+      {
+        "path": "bitcoin/book/ch042-script-trees-tapleaves-and-tapbranches.md",
+        "bytes": 27822,
+        "sha256": "257563cef1964d78e043e4b7ee2012e08de866900bf163180ebe12a302396c79",
+        "file": "ch042-script-trees-tapleaves-and-tapbranches.md",
+        "title": "42. Script trees: tapleaves and tapbranches",
+        "group": "VIII. Taproot"
+      },
+      {
+        "path": "bitcoin/book/ch043-taproot-signature-hashes.md",
+        "bytes": 31087,
+        "sha256": "385b4d47576ab00da2cb5936918f9c2063a1da5a605db9864aede95976d59833",
+        "file": "ch043-taproot-signature-hashes.md",
+        "title": "43. Taproot signature hashes",
+        "group": "VIII. Taproot"
+      },
+      {
+        "path": "bitcoin/book/ch044-tapscript.md",
+        "bytes": 38928,
+        "sha256": "5a94aba9dcc870f01d48d3b838fc160ce4dd02b811bfba74b8368ffb6d3ab079",
+        "file": "ch044-tapscript.md",
+        "title": "44. Tapscript",
+        "group": "VIII. Taproot"
+      },
+      {
+        "path": "bitcoin/book/ch045-control-blocks-and-script-path-spends.md",
+        "bytes": 33693,
+        "sha256": "91493c2522ee120c41ffcc19ef14e451daacccda833dcd4a797c3ba379b7a1db",
+        "file": "ch045-control-blocks-and-script-path-spends.md",
+        "title": "45. Control blocks and script-path spends",
+        "group": "VIII. Taproot"
+      },
+      {
+        "path": "bitcoin/book/ch046-merkle-trees-and-the-duplicate-leaf-flaw.md",
+        "bytes": 60686,
+        "sha256": "fcb98e704377559d1bdab935905b74335ec949c10e2354b4b640581361966b15",
+        "file": "ch046-merkle-trees-and-the-duplicate-leaf-flaw.md",
+        "title": "46. Merkle trees and the duplicate-leaf flaw",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch047-block-headers-and-proof-of-work.md",
+        "bytes": 55199,
+        "sha256": "fb7361f885a7ab2750a78a1e143c1900aa31aac7ef74e12baab36a8a1c661018",
+        "file": "ch047-block-headers-and-proof-of-work.md",
+        "title": "47. Block headers and proof of work",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch048-compact-targets-retargeting-and-chainwork.md",
+        "bytes": 55258,
+        "sha256": "7b3d85c9534c2e50addfb48f74d973aee268bdd65fe81a7acf36a5faa94d2f1b",
+        "file": "ch048-compact-targets-retargeting-and-chainwork.md",
+        "title": "48. Compact targets, retargeting and chainwork",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch049-the-witness-commitment.md",
+        "bytes": 34865,
+        "sha256": "5484b8e92d41c3ef8e4ae2bd371b5ceda54ee1308a8d9d59bfa159492bc43cf9",
+        "file": "ch049-the-witness-commitment.md",
+        "title": "49. The witness commitment",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md",
+        "bytes": 62827,
+        "sha256": "b067bf6e733fe5eab09b573c389b972d7ae4c015c73d3506bc386ffd487741fc",
+        "file": "ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md",
+        "title": "50. Chain parameters: mainnet, testnet4, signet and regtest",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch051-header-rules-time-versions-and-deployments.md",
+        "bytes": 38497,
+        "sha256": "24f4d6cb4e5f343ca01a76dc925307eded9ee6bb86544290993a60f8c796693e",
+        "file": "ch051-header-rules-time-versions-and-deployments.md",
+        "title": "51. Header rules: time, versions and deployments",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch052-transaction-checks-outside-script.md",
+        "bytes": 27426,
+        "sha256": "93bdc431d3efecaf025947698fc50eea8cbacde4b59d515ee6cca302cf09b48e",
+        "file": "ch052-transaction-checks-outside-script.md",
+        "title": "52. Transaction checks outside script",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch053-sigops-weight-and-block-limits.md",
+        "bytes": 37846,
+        "sha256": "2fe40be1e1b7c0e4fb80ad5720315fc18fd48a489bcf3fb3b7062e2f197fcc10",
+        "file": "ch053-sigops-weight-and-block-limits.md",
+        "title": "53. Sigops, weight and block limits",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch054-the-subsidy-and-the-coinbase.md",
+        "bytes": 27695,
+        "sha256": "6462490298da52b02efbb5e1056a4c5578fafaafa372bc07a1e5fc3dd038a938",
+        "file": "ch054-the-subsidy-and-the-coinbase.md",
+        "title": "54. The subsidy and the coinbase",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch056-the-utxo-set-and-muhash3072.md",
+        "bytes": 54611,
+        "sha256": "1210197e7c7ce9001e410a45912d93a865981af1bda38809d1b57faf2b04185e",
+        "file": "ch056-the-utxo-set-and-muhash3072.md",
+        "title": "56. The UTXO set and MuHash3072",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch059-the-block-index-and-the-most-work-chain.md",
+        "bytes": 55044,
+        "sha256": "c6333bb2a921d88c0eb51a1ed4f02b360d7b83b21434e668c9d4dad2f7b734d1",
+        "file": "ch059-the-block-index-and-the-most-work-chain.md",
+        "title": "59. The block index and the most-work chain",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch062-a-key-value-store-for-the-chainstate.md",
+        "bytes": 41056,
+        "sha256": "310b62cc885b072eb3e2810d03f16d505cf501453904d99bf5ea31f235af17eb",
+        "file": "ch062-a-key-value-store-for-the-chainstate.md",
+        "title": "62. A key-value store for the chainstate",
+        "group": "IX. Blocks and consensus"
+      },
+      {
+        "path": "bitcoin/book/ch065-p2p-messages-and-checksums.md",
+        "bytes": 50669,
+        "sha256": "5409c99eb25e3b244ce4cab7219d3d0452ee9b424141d3e850887fccadae4178",
+        "file": "ch065-p2p-messages-and-checksums.md",
+        "title": "65. P2P messages and checksums",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch066-elligatorswift.md",
+        "bytes": 32300,
+        "sha256": "b01eece52ff3ffad7cc8b83577bbeb3d9e23a407668bc34a052e5f5ff6cb8452",
+        "file": "ch066-elligatorswift.md",
+        "title": "66. ElligatorSwift",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch067-the-v2-encrypted-transport.md",
+        "bytes": 42853,
+        "sha256": "b6530e72548e3adaa8358974b8b555d27a51387dc3565061b0f63c840e300950",
+        "file": "ch067-the-v2-encrypted-transport.md",
+        "title": "67. The v2 encrypted transport",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch068-the-handshake-and-feature-negotiation.md",
+        "bytes": 63700,
+        "sha256": "d53ebdbd82783ac619d72d961b63fb2f8d1b951343b4e68f544ec170d36cecaf",
+        "file": "ch068-the-handshake-and-feature-negotiation.md",
+        "title": "68. The handshake and feature negotiation",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch069-addresses-and-the-address-manager.md",
+        "bytes": 96475,
+        "sha256": "9700dac0e8f8a807824b8fb2c49050ee4448222d41d2f147ab550102fd91e1ee",
+        "file": "ch069-addresses-and-the-address-manager.md",
+        "title": "69. Addresses and the address manager",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch070-connections-outbound-block-relay-only-feelers-and-eviction.md",
+        "bytes": 53118,
+        "sha256": "ca31f6411372416c7ff4549ad45646f7ea4971ea0dc8d4a746af53b934f82f83",
+        "file": "ch070-connections-outbound-block-relay-only-feelers-and-eviction.md",
+        "title": "70. Connections: outbound, block-relay-only, feelers and eviction",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch071-misbehavior-limits-and-denial-of-service.md",
+        "bytes": 41408,
+        "sha256": "1350d7b2edd8dc1380b694a1b713dbb537b86db2cf47504fb3aa3681675a3e88",
+        "file": "ch071-misbehavior-limits-and-denial-of-service.md",
+        "title": "71. Misbehavior, limits and denial of service",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch073-compact-blocks.md",
+        "bytes": 59602,
+        "sha256": "1b6d3c4845f1028659dd9afee8155dbcaa4b48a331e747d5ab575e4ce25fc95c",
+        "file": "ch073-compact-blocks.md",
+        "title": "73. Compact blocks",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch074-compact-block-filters.md",
+        "bytes": 31903,
+        "sha256": "c5044b732a911cc137ab61f924d2df2beeea25e1cb0a85ebd10224621f54d3ae",
+        "file": "ch074-compact-block-filters.md",
+        "title": "74. Compact block filters",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch075-proxies-tor-and-i2p.md",
+        "bytes": 71169,
+        "sha256": "15289089b121bcf503a4d5848234272a445ffea8c7099e8f787a8c4380cbfd26",
+        "file": "ch075-proxies-tor-and-i2p.md",
+        "title": "75. Proxies, Tor and I2P",
+        "group": "XI. The network"
+      },
+      {
+        "path": "bitcoin/book/ch077-faster-verification-the-glv-endomorphism.md",
+        "bytes": 29468,
+        "sha256": "e4aef287f71544a8f4af29afdfad782e3d7fb4ca1b007fe43a2a7d5d8eba5781",
+        "file": "ch077-faster-verification-the-glv-endomorphism.md",
+        "title": "77. Faster verification: the GLV endomorphism",
+        "group": "XII. Initial block download"
+      },
+      {
+        "path": "bitcoin/book/ch081-policy-is-not-consensus-standardness.md",
+        "bytes": 51484,
+        "sha256": "28bedc93c066c5068ac92fd532492d4b3106a3d1726dcf2c40c6d0e46eeb8ab7",
+        "file": "ch081-policy-is-not-consensus-standardness.md",
+        "title": "81. Policy is not consensus: standardness",
+        "group": "XIII. The mempool and policy"
+      },
+      {
+        "path": "bitcoin/book/ch094-psbt.md",
+        "bytes": 59135,
+        "sha256": "3c7c3d294a44530dd04bb1ba7d737a2e5d67de1cf7a246d8d9a7082c856330b3",
+        "file": "ch094-psbt.md",
+        "title": "94. PSBT",
+        "group": "XV. Wallets"
+      },
+      {
+        "path": "bitcoin/book/ch095-coin-selection-and-change.md",
+        "bytes": 52974,
+        "sha256": "4330c941fcd83c2832cbbd8232071b68d7817bc8755d6318624be1f1755300e9",
+        "file": "ch095-coin-selection-and-change.md",
+        "title": "95. Coin selection and change",
+        "group": "XV. Wallets"
+      },
+      {
+        "path": "bitcoin/book/ch096-message-signing.md",
+        "bytes": 48605,
+        "sha256": "8d931b2899083241f2228996a2d8b3b4368abdd4385449eba55dfb434175dcb4",
+        "file": "ch096-message-signing.md",
+        "title": "96. Message signing",
+        "group": "XV. Wallets"
+      },
+      {
+        "path": "bitcoin/book/ch097-silent-payments.md",
+        "bytes": 55023,
+        "sha256": "bfd4ab14d8cb1ae87757ea69f6f4fc0709a5207e4ad1fddfc6933e252f703fbf",
+        "file": "ch097-silent-payments.md",
+        "title": "97. Silent payments",
+        "group": "XV. Wallets"
+      },
+      {
+        "path": "bitcoin/book/ch100-multisig.md",
+        "bytes": 39357,
+        "sha256": "b91345dd06228ba2e01497bff0f6089d45bb811f45c5a2ee7e7c53e5b24eabd9",
+        "file": "ch100-multisig.md",
+        "title": "100. Multisig",
+        "group": "XVI. Many signers"
+      },
+      {
+        "path": "bitcoin/book/ch101-musig2.md",
+        "bytes": 64454,
+        "sha256": "60d66a4f05653406e00024682750eec37ac4d5313f81544018fa9519f2dc3b5c",
+        "file": "ch101-musig2.md",
+        "title": "101. MuSig2",
+        "group": "XVI. Many signers"
+      },
+      {
+        "path": "bitcoin/book/ch102-frost-threshold-signatures.md",
+        "bytes": 77388,
+        "sha256": "23482d4dad283f3a792d2e72501404b391f178f7fbd10c01e38d79700e802c91",
+        "file": "ch102-frost-threshold-signatures.md",
+        "title": "102. FROST threshold signatures",
+        "group": "XVI. Many signers"
+      },
+      {
+        "path": "bitcoin/book/ch103-adaptor-signatures.md",
+        "bytes": 28524,
+        "sha256": "bce3eafe818de30debe4982c7233f295e4bd418dd21f903b9348c325fc31b42d",
+        "file": "ch103-adaptor-signatures.md",
+        "title": "103. Adaptor signatures",
+        "group": "XVI. Many signers"
+      },
+      {
+        "path": "bitcoin/book/ch104-messages-and-tlvs.md",
+        "bytes": 40036,
+        "sha256": "17092271a73153aa4c9f48481453916b93bb06713b52d5d4a6a1d6f6576df5c8",
+        "file": "ch104-messages-and-tlvs.md",
+        "title": "104. Messages and TLVs",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch105-the-noise-handshake.md",
+        "bytes": 38836,
+        "sha256": "f1b057cb869e6c926a1018384d908e3823de81709a1d86e7a1197acfc2f02a9e",
+        "file": "ch105-the-noise-handshake.md",
+        "title": "105. The Noise handshake",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch106-commitment-keys-and-revocation.md",
+        "bytes": 23990,
+        "sha256": "bbe1feb020619d5243ec84ce35c45aa079a9581645fbf96880ced835c6e697dc",
+        "file": "ch106-commitment-keys-and-revocation.md",
+        "title": "106. Commitment keys and revocation",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch107-shachain.md",
+        "bytes": 22702,
+        "sha256": "03305d2a91429bb958417cb47ffd4f695d4dc3f493848ccf85cd517cad3a7a55",
+        "file": "ch107-shachain.md",
+        "title": "107. Shachain",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch108-commitment-and-htlc-transactions.md",
+        "bytes": 52264,
+        "sha256": "8231e9a60cf9cc60745d19e5fe6abbb73ffba27a9c2cba278f13a3602d0a889b",
+        "file": "ch108-commitment-and-htlc-transactions.md",
+        "title": "108. Commitment and HTLC transactions",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch109-open-update-and-close-a-channel.md",
+        "bytes": 91081,
+        "sha256": "275d64591d229632b4e2c93484a8bec3481a80ea156f3ff6752334536bb0f60d",
+        "file": "ch109-open-update-and-close-a-channel.md",
+        "title": "109. Open, update and close a channel",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch111-onion-routing-and-blinded-paths.md",
+        "bytes": 49368,
+        "sha256": "afffc7ddbf10082792737fb0df41b7e7e6c346765c5e491888d912627fdda359",
+        "file": "ch111-onion-routing-and-blinded-paths.md",
+        "title": "111. Onion routing and blinded paths",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch112-gossip-and-the-channel-graph.md",
+        "bytes": 66107,
+        "sha256": "aad36ace5d5bd0bc11231b18a6d59a32814126137e74c95bc5752b1e59fb5126",
+        "file": "ch112-gossip-and-the-channel-graph.md",
+        "title": "112. Gossip and the channel graph",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch113-find-a-route-and-pay.md",
+        "bytes": 73987,
+        "sha256": "fde45e4ece7dad92ca6968c6637b9139d6399218fc9f2f3646e4ba87d31fa49c",
+        "file": "ch113-find-a-route-and-pay.md",
+        "title": "113. Find a route and pay",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch114-invoices.md",
+        "bytes": 49864,
+        "sha256": "b94920a5ca0101284cd59919e633fb8aeefed04f7675489b2dae13a5013e2b9d",
+        "file": "ch114-invoices.md",
+        "title": "114. Invoices",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch115-offers.md",
+        "bytes": 78683,
+        "sha256": "d4fc0aaf3e9f48bd041eaf5bae1f9e1e947dbb550f0a06d75f73b72691a8a015",
+        "file": "ch115-offers.md",
+        "title": "115. Offers",
+        "group": "XVII. Lightning"
+      },
+      {
+        "path": "bitcoin/book/ch116-test-vectors-and-their-provenance.md",
+        "bytes": 26875,
+        "sha256": "161237b8d07526a3f3bda465a6e430f9bbd76e21a403a7bcdccaaa34cc884a77",
+        "file": "ch116-test-vectors-and-their-provenance.md",
+        "title": "116. Test vectors and their provenance",
+        "group": "XVIII. Interop and verification"
+      },
+      {
+        "path": "bitcoin/book/ch119-fuzzing.md",
+        "bytes": 21745,
+        "sha256": "1f050872515b95674a3268789b980e19fd0e9582379c3c4c484a21ebcf265aa2",
+        "file": "ch119-fuzzing.md",
+        "title": "119. Fuzzing",
+        "group": "XVIII. Interop and verification"
+      },
+      {
+        "path": "bitcoin/book/ch121-one-seed-for-nostr-and-bitcoin.md",
+        "bytes": 40120,
+        "sha256": "b7b0be9624a29ae2d7a54f53419f68ccb40dce2bc128982d53658789c899a4ca",
+        "file": "ch121-one-seed-for-nostr-and-bitcoin.md",
+        "title": "121. One seed for Nostr and Bitcoin",
+        "group": "XIX. Bitcoin in OpenAgents"
+      },
+      {
+        "path": "bitcoin/book/ch122-agent-treasuries.md",
+        "bytes": 48041,
+        "sha256": "90150eda5f07485fea93cf58fb9ea95a341a08623954910863027f2b119949ae",
+        "file": "ch122-agent-treasuries.md",
+        "title": "122. Agent treasuries",
+        "group": "XIX. Bitcoin in OpenAgents"
       }
     ],
-    "sha256": "4438fa3fcbf40bc826957f2289d6b706955a75b1067e97dfb536688c91764044"
+    "sha256": "66a1d6356533ba3e1fe401e09aa3861b8f1ff5b27b427083f9a5483b738f8532"
   },
-  "change_request": "i2hLUl6e3iwBG1KuwlkZ",
+  "change_request": "MW1ZLEj6lFvYdwQAL6w1",
   "submitted_markdown": [
     {
       "path": "README.md",
-      "bytes": 22405,
-      "sha256": "e6af92f897423e00e02db11d5746746dc60ffa611477cad0dd676630a86b243f",
+      "bytes": 63679,
+      "sha256": "8d171fff6c882626fdece5224564eca8e27c9e33170c3c6bc05378ae5b0d1d76",
       "file": "README.md",
       "page_id": "besin3huF9gZExKRhXRI",
       "title": "Introduction"
     },
     {
       "path": "PLAN.md",
-      "bytes": 21245,
-      "sha256": "df987ab72e60d830cec68a3336d7a7cc17807ed2ab6ae7a7a75a0b4f34fbbf4c",
+      "bytes": 52796,
+      "sha256": "e63edccf39e94f9f889fa0688b40118b0b137074ff94cf6fd171b3f4b62a0e43",
       "file": "PLAN.md",
       "page_id": "DZPfGx9df4B3Up0QXp4C",
       "title": "Plan and prerequisites"
     },
     {
       "path": "ch001-bytes-hex-and-base64.md",
-      "bytes": 13990,
-      "sha256": "97d018ef9378fef99dc5c161c5ff7148994ad7496a9354b55a73584bbfb6beec",
+      "bytes": 14092,
+      "sha256": "e378f8e00ee893447edc4eca340b624e037f00a8ab4dbf584f519470d4de1edf",
       "file": "ch001-bytes-hex-and-base64.md",
       "page_id": "oI5FR70Ss9ZrRjz7xvrv",
       "title": "1. Bytes, hex and base64"
@@ -206,7 +798,7 @@
     {
       "path": "ch002-big-integers-in-fixed-limbs.md",
       "bytes": 17410,
-      "sha256": "82220e3eabfc0cf097a7f2361239b205913dbecc69362424b4cc3e228c062b4a",
+      "sha256": "9894589431bfa198270ffc9299e736051d9edc671ebb6baf05c3e1842e564a9b",
       "file": "ch002-big-integers-in-fixed-limbs.md",
       "page_id": "tMEU5eWcPSxTqqv6cDH9",
       "title": "2. Big integers in fixed limbs"
@@ -214,23 +806,23 @@
     {
       "path": "ch003-constant-time-rules.md",
       "bytes": 18619,
-      "sha256": "e61edfc15476d98e7139963a75f243642f402b1fb23cc323d8bb87baa49d4379",
+      "sha256": "e15fc4cdffe1f89b7dd73559176b258725a0d2c46919df9f06207922a3825aa6",
       "file": "ch003-constant-time-rules.md",
       "page_id": "X9jOjlQ7dLiKrcH6Qtwj",
       "title": "3. Constant-time rules and secrets"
     },
     {
       "path": "ch004-sha-256.md",
-      "bytes": 27269,
-      "sha256": "c4bf2ccccd5ffa2820a10d04ddfc49ba42fa62c0417de8950789e9caf13ae2d4",
+      "bytes": 27268,
+      "sha256": "518486e252920b7e0992fdaa1a3ea9c9a3ce37fb8997bd8c392774efd732e008",
       "file": "ch004-sha-256.md",
       "page_id": "PBcXHtN1BUmDQKsdID1r",
       "title": "4. SHA-256"
     },
     {
       "path": "ch005-sha-256d-and-tagged-hashes.md",
-      "bytes": 32315,
-      "sha256": "5ec6457444fadeda7db178e7faede85b973642c9dc7fa0c92ec5da2fdf93ac87",
+      "bytes": 32424,
+      "sha256": "d288999d88f610e3c9c8419556a9a138144c5a11b8ce4ff471427b09cd9a0095",
       "file": "ch005-sha-256d-and-tagged-hashes.md",
       "page_id": "PWvqwAQhbhcGReCirbL9",
       "title": "5. SHA-256d and tagged hashes"
@@ -238,47 +830,63 @@
     {
       "path": "ch006-ripemd-160-and-hash160.md",
       "bytes": 31381,
-      "sha256": "b9b4de3e8267f5899e91da381e7186de2997abcd82161e8d4987232f62881b44",
+      "sha256": "192605bb54f9db6236b287f75f1075a92410564b0323cf805fa89ce6f028e521",
       "file": "ch006-ripemd-160-and-hash160.md",
       "page_id": "zK8h2RlWud7iNhkuSTJZ",
       "title": "6. RIPEMD-160 and HASH160"
     },
     {
       "path": "ch007-sha-512.md",
-      "bytes": 34444,
-      "sha256": "f0513d11b43b93d1e731582abe00b4d07713368fc44312b5cb975b3af0cc50ce",
+      "bytes": 34453,
+      "sha256": "0186cc4c5dae5d8bfb0a35c2e00f56aad92c77934e6d9a0d84f0ccaa48bd0b5e",
       "file": "ch007-sha-512.md",
       "page_id": "ZVHvuyuODYObL0DuZrGo",
       "title": "7. SHA-512"
     },
     {
       "path": "ch008-hmac-sha256.md",
-      "bytes": 15103,
-      "sha256": "9ce7e0ab37f65c203fa47957b92357857aede5a07ec3f9664e41d3c04e73f684",
+      "bytes": 15272,
+      "sha256": "6c2d66903b5d207fd6e689bab7174d3289a8a524667f23c724d4f360f39a22c2",
       "file": "ch008-hmac-sha256.md",
       "page_id": "pfh2c7ZTr5vc83OKUhGs",
       "title": "8. HMAC-SHA256"
     },
     {
       "path": "ch009-hkdf.md",
-      "bytes": 16949,
-      "sha256": "bc56bbd35b25c641bc309e00da8ef1d0c9a85aee4588d1fd977828bef0887bdc",
+      "bytes": 17255,
+      "sha256": "91d33dd3f5af08fa3507c86b5270f131b8fd7adc8759bd99f21e57feb5d89f99",
       "file": "ch009-hkdf.md",
       "page_id": "elBPoAhfRkdVL1YOMWDI",
       "title": "9. HKDF"
     },
     {
+      "path": "ch010-siphash-2-4.md",
+      "bytes": 24167,
+      "sha256": "c0183e47d0fc3c63f2e3acbf721fa1a7131360498e3d69e55f5b05a4a0255cf7",
+      "file": "ch010-siphash-2-4.md",
+      "page_id": "FWzmE66wntV0jUiDfBsd",
+      "title": "10. SipHash-2-4"
+    },
+    {
       "path": "ch011-chacha20.md",
-      "bytes": 31899,
-      "sha256": "1dc4edb5da948ee8c3f2595532b2e4b949eafeeb2c517fa7316a01d2720d5f35",
+      "bytes": 31690,
+      "sha256": "5ca5c08f7d6551eac262affb658dcad57c89f5b236fcf11aec3ca6e76a5616f2",
       "file": "ch011-chacha20.md",
       "page_id": "LJRGwU5TqQpMbkFVlrw5",
       "title": "11. ChaCha20"
     },
     {
+      "path": "ch012-poly1305-and-chacha20-poly1305.md",
+      "bytes": 52931,
+      "sha256": "79522c2d53716e37d6fd1f507fe917b90d60b1dff819078a126cecea99142857",
+      "file": "ch012-poly1305-and-chacha20-poly1305.md",
+      "page_id": "EsmP2Jnx9UPOohQi2cvy",
+      "title": "12. Poly1305 and ChaCha20-Poly1305"
+    },
+    {
       "path": "ch013-field-arithmetic-mod-p.md",
       "bytes": 21836,
-      "sha256": "0d30e23ded6ef175c16400e4135f3c573b549419c22742dc5869bb83af5e0ac0",
+      "sha256": "f15b3bbaaaf9a513e671b77a3b8a644e2a5639bf8e401c2b4a8e6a49228e9065",
       "file": "ch013-field-arithmetic-mod-p.md",
       "page_id": "uc1wu2poRB3mjZZcki32",
       "title": "13. Field arithmetic mod p"
@@ -286,63 +894,639 @@
     {
       "path": "ch014-scalars-mod-n.md",
       "bytes": 15625,
-      "sha256": "bdd2f8922aaff545197a083c6fe06d14ebdf6a127538b062cbbc5b164f45312c",
+      "sha256": "a630f57b896ab450c12c94c4d48e6c2133463f2fe33f237b6bd3581a7168a6b8",
       "file": "ch014-scalars-mod-n.md",
       "page_id": "8YATOHqP4qiZRFXiZbto",
       "title": "14. Scalars mod n"
     },
     {
       "path": "ch015-the-secp256k1-group-law.md",
-      "bytes": 24022,
-      "sha256": "57a4903cbffd8bb685fb944ea51aba2a42b4e0feb2cc5a86cbace482da95fee1",
+      "bytes": 24068,
+      "sha256": "1bdd43bd4c2c862cf2468b529230908c447eced52576967e6eada1219852c773",
       "file": "ch015-the-secp256k1-group-law.md",
       "page_id": "Drk6DUUnSIZ0LqhIiFtd",
       "title": "15. The secp256k1 group law"
     },
     {
       "path": "ch016-scalar-multiplication.md",
-      "bytes": 26625,
-      "sha256": "824b3d2e2a1f657b5156f8d7c31156e334a49be8bd14954b598fae650486e25c",
+      "bytes": 26559,
+      "sha256": "dae522fd718a268765fbd0d075356cad9bea09f4078fdb512947a6b42df2bb2b",
       "file": "ch016-scalar-multiplication.md",
       "page_id": "zsvbqeINypFqWc1UuzXf",
       "title": "16. Scalar multiplication"
     },
     {
+      "path": "ch017-point-encodings-compressed-uncompressed-and-x-only.md",
+      "bytes": 28984,
+      "sha256": "0692cd20f039887c74e07e76cd507902ea8918eebeefdb776ce648e6fca08d57",
+      "file": "ch017-point-encodings-compressed-uncompressed-and-x-only.md",
+      "page_id": "3lQDVb9UxLtfc7HJzevm",
+      "title": "17. Point encodings: compressed, uncompressed and x-only"
+    },
+    {
       "path": "ch018-keys-and-randomness.md",
-      "bytes": 36364,
-      "sha256": "043b82b204e86bdc694e45fbf4680cec9c64ac0f05bdb57113dae9173859f2a2",
+      "bytes": 36443,
+      "sha256": "c44db6396e9dc1feca3791ca9b47a335a30f22ca3a9522089181679b8cc40f6a",
       "file": "ch018-keys-and-randomness.md",
       "page_id": "g3xOwvFhvloULuNsweFK",
       "title": "18. Keys and randomness"
     },
     {
+      "path": "ch019-verify-ecdsa.md",
+      "bytes": 40990,
+      "sha256": "184c4c3d2e05d621cd6e337c2f38b0d2a32a01b9d1d1e769332f50c4e86ae1f4",
+      "file": "ch019-verify-ecdsa.md",
+      "page_id": "OUY54iqUzzgOqHrs0YFM",
+      "title": "19. Verify ECDSA"
+    },
+    {
+      "path": "ch020-sign-with-ecdsa.md",
+      "bytes": 47197,
+      "sha256": "bd5d1a3df694e19b542f6e48a88ce87518f0c37b3997d060649f242d52c8c649",
+      "file": "ch020-sign-with-ecdsa.md",
+      "page_id": "nV6j0TxEIrYtNVfvUMqt",
+      "title": "20. Sign with ECDSA"
+    },
+    {
+      "path": "ch021-strict-der.md",
+      "bytes": 53048,
+      "sha256": "4cc14f91b8176e84a6c70e0f1869ed2128fd2bed5adb4fddb2102477e1778245",
+      "file": "ch021-strict-der.md",
+      "page_id": "VznQh3vMoZaH4GLU6LOP",
+      "title": "21. Strict DER"
+    },
+    {
+      "path": "ch022-public-key-recovery-and-signed-messages.md",
+      "bytes": 55283,
+      "sha256": "ff5aafbd43f38b7684c1606093f7e0e660bc6f6618ddcbccfd47d4ce31d81902",
+      "file": "ch022-public-key-recovery-and-signed-messages.md",
+      "page_id": "Uhw4Gnm7xLtEyerbdIAA",
+      "title": "22. Public key recovery and signed messages"
+    },
+    {
       "path": "ch023-verify-a-schnorr-signature.md",
-      "bytes": 29984,
-      "sha256": "34fd257c4f7cd494b6e3c6bf7066db716e3a74812a54177a2fb4e632f6166e31",
+      "bytes": 30253,
+      "sha256": "07a61bcbb4d077e8e331bf76d54f380408ccc15067351cdb65c26cbdb7ae611f",
       "file": "ch023-verify-a-schnorr-signature.md",
       "page_id": "kjsZpoSUh4NdmLIHwNlN",
       "title": "23. Verify a Schnorr signature"
     },
     {
       "path": "ch024-sign-with-schnorr.md",
-      "bytes": 37608,
-      "sha256": "a788049f9ba253638729ddc01a980d958122cd2e691aa9c5754a97620b578f7d",
+      "bytes": 37461,
+      "sha256": "9f9772dbef5b6d8c7ac5068742a74b68cf1097184078f6b0d599bfcafef3cf0f",
       "file": "ch024-sign-with-schnorr.md",
       "page_id": "n5He1MU2puawbZX2dfVM",
       "title": "24. Sign with Schnorr"
     },
     {
+      "path": "ch025-batch-verification.md",
+      "bytes": 34962,
+      "sha256": "4b4b3401fa70dd4e63e99bb65c2eecaf5e021ef55770c862fdebbc5f2de58956",
+      "file": "ch025-batch-verification.md",
+      "page_id": "AIx4pQ90nTmwYPzV6Y7p",
+      "title": "25. Batch verification"
+    },
+    {
+      "path": "ch026-base58check.md",
+      "bytes": 49607,
+      "sha256": "cde1b51dde4e186a415beae8ea564e6aa3d97f56f2d480932e26473df3bc3fbb",
+      "file": "ch026-base58check.md",
+      "page_id": "1wlCcjZBrTiApBjFavb0",
+      "title": "26. Base58Check"
+    },
+    {
       "path": "ch027-bech32.md",
-      "bytes": 26171,
-      "sha256": "2d17dba2fd56cb8b2e0c063ed2b71270f2624c2346a7207580efa6033383bfb7",
+      "bytes": 27153,
+      "sha256": "788211923887f05be67f800acf783fb60a333e24f074a16387765ecc9ceca484",
       "file": "ch027-bech32.md",
       "page_id": "jph6n4hzR37G6fZzvz25",
       "title": "27. Bech32"
+    },
+    {
+      "path": "ch028-bech32m.md",
+      "bytes": 40587,
+      "sha256": "a65de4ea8240d89f04920654ee09cfae1f0272d67a5137cee9dc74cf8c12d605",
+      "file": "ch028-bech32m.md",
+      "page_id": "KRdpAkQXbZTg0TdMbsR6",
+      "title": "28. Bech32m"
+    },
+    {
+      "path": "ch029-addresses.md",
+      "bytes": 52401,
+      "sha256": "b67105c19b588f07cbcee1527f7c8eb3df291ce40dec7fc38a5ff04cc8997eee",
+      "file": "ch029-addresses.md",
+      "page_id": "LRnQiMcZ2zRXDNlDMWpf",
+      "title": "29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR"
+    },
+    {
+      "path": "ch030-output-descriptors-and-their-checksum.md",
+      "bytes": 56425,
+      "sha256": "d4bacd2a292b82513c13248ad4f3ca32cc124ee8eb5235906024b65654a0b57f",
+      "file": "ch030-output-descriptors-and-their-checksum.md",
+      "page_id": "XGga733JkSvZqAQCYz9m",
+      "title": "30. Output descriptors and their checksum"
+    },
+    {
+      "path": "ch031-seed-phrases.md",
+      "bytes": 52914,
+      "sha256": "815f2163d664599f355d9f07fa6142297346a31119c30022d1f147df00358a05",
+      "file": "ch031-seed-phrases.md",
+      "page_id": "HQrsktCEcFaPCvUVBnZU",
+      "title": "31. Seed phrases"
+    },
+    {
+      "path": "ch032-hierarchical-deterministic-keys.md",
+      "bytes": 68142,
+      "sha256": "4503c8370e6777ff83bb8a106bcfb2d1cca25705ccc05fa526d2679e72c1a501",
+      "file": "ch032-hierarchical-deterministic-keys.md",
+      "page_id": "Q4a3Fs6duo2W54JWhmvC",
+      "title": "32. Hierarchical deterministic keys"
+    },
+    {
+      "path": "ch033-derivation-paths.md",
+      "bytes": 43521,
+      "sha256": "6171c5d99c32581b7f47e7b638b8a439e6fc79e306f6df45a655c3ebb3be5133",
+      "file": "ch033-derivation-paths.md",
+      "page_id": "8YWUZ8ZSf8hIaG2Aik5r",
+      "title": "33. Derivation paths"
+    },
+    {
+      "path": "ch034-transactions-and-their-serialization.md",
+      "bytes": 59722,
+      "sha256": "a28fd0f54d17954a0d70d70389a48ca35d4a562835c5daa8887fb6db9992d0c8",
+      "file": "ch034-transactions-and-their-serialization.md",
+      "page_id": "4qIrKd75aTvsEeSotcw5",
+      "title": "34. Transactions and their serialization"
+    },
+    {
+      "path": "ch035-txids-wtxids-and-malleability.md",
+      "bytes": 39049,
+      "sha256": "6f154f42f8973e0fd2dd36ed2e5694aca91a62332c9dfb6ee6744f370cc0b1dc",
+      "file": "ch035-txids-wtxids-and-malleability.md",
+      "page_id": "WCFzGNQf7YIamvBFpH43",
+      "title": "35. Txids, wtxids and malleability"
+    },
+    {
+      "path": "ch036-the-script-interpreter.md",
+      "bytes": 83187,
+      "sha256": "fd43ee4f40033bbe460bc76e6799d3e08313fcaf9ee9ba1879b107c0432efc40",
+      "file": "ch036-the-script-interpreter.md",
+      "page_id": "DLC7w5rZfKRDWOBCyGS5",
+      "title": "36. The script interpreter"
+    },
+    {
+      "path": "ch037-legacy-signature-hashes.md",
+      "bytes": 36052,
+      "sha256": "1f1f46401c4d0aaf1c8caaffac4a43592c915cb661a43959c493d0cd1a0a8ddf",
+      "file": "ch037-legacy-signature-hashes.md",
+      "page_id": "w9PE9ETs4HPdLwitxrGw",
+      "title": "37. Legacy signature hashes"
+    },
+    {
+      "path": "ch038-segwit-v0-signature-hashes.md",
+      "bytes": 42341,
+      "sha256": "eab8857292671fbaa3561c037e16018e86c26635890113eb2c4e2304bf7d23a3",
+      "file": "ch038-segwit-v0-signature-hashes.md",
+      "page_id": "nNyHb03SO9X8MjH3zrsE",
+      "title": "38. Segwit v0 signature hashes"
+    },
+    {
+      "path": "ch039-timelocks.md",
+      "bytes": 44229,
+      "sha256": "4f9a0f8a26e722d07c55386c59cacaf813e008fac6266ac4cf40ec632e4c1149",
+      "file": "ch039-timelocks.md",
+      "page_id": "xz4nHXRtup5Dpcdonst8",
+      "title": "39. Timelocks"
+    },
+    {
+      "path": "ch040-weight-vsize-and-fees.md",
+      "bytes": 28776,
+      "sha256": "1ae9d8eccca947d7e38fddbb4aadc890156fe41de2f32c7cba215ad48f696392",
+      "file": "ch040-weight-vsize-and-fees.md",
+      "page_id": "FBKBqOLZmKb3okn7KBG4",
+      "title": "40. Weight, vsize and fees"
+    },
+    {
+      "path": "ch041-the-key-tweak-and-the-key-path.md",
+      "bytes": 33043,
+      "sha256": "78e8a2ede5b9c2588d27a7623b34f83f41b6de1781d5dde5fc4b795fcdc4d3e7",
+      "file": "ch041-the-key-tweak-and-the-key-path.md",
+      "page_id": "ZGFhtHe8YGCZvla9XJQB",
+      "title": "41. The key tweak and the key path"
+    },
+    {
+      "path": "ch042-script-trees-tapleaves-and-tapbranches.md",
+      "bytes": 28720,
+      "sha256": "cc604418021e43b26a812750a21c0157cbf82bf4978884ae21fcd845bedaa7b7",
+      "file": "ch042-script-trees-tapleaves-and-tapbranches.md",
+      "page_id": "uKtvHVDB62l1UIy2p3qd",
+      "title": "42. Script trees: tapleaves and tapbranches"
+    },
+    {
+      "path": "ch043-taproot-signature-hashes.md",
+      "bytes": 32150,
+      "sha256": "3b9087736154e8882331dce22afbaa7a1ef9d10f43ba712c861bc76cba791428",
+      "file": "ch043-taproot-signature-hashes.md",
+      "page_id": "klQei4DiWBrnCKkAURwh",
+      "title": "43. Taproot signature hashes"
+    },
+    {
+      "path": "ch044-tapscript.md",
+      "bytes": 39918,
+      "sha256": "7cbffbefb9024cf6e6dfc4ee778b61eeb783adbf5ed89f016a5192336bae0c40",
+      "file": "ch044-tapscript.md",
+      "page_id": "EtWbc2YwP3NYZNLFRsv6",
+      "title": "44. Tapscript"
+    },
+    {
+      "path": "ch045-control-blocks-and-script-path-spends.md",
+      "bytes": 34751,
+      "sha256": "02e1b9847f6f907f1d96dadfdd9b997f1358bc92fee9ae20e6fdb608cb4d1bb2",
+      "file": "ch045-control-blocks-and-script-path-spends.md",
+      "page_id": "RIcOsSc2Xre7YCi86XvZ",
+      "title": "45. Control blocks and script-path spends"
+    },
+    {
+      "path": "ch046-merkle-trees-and-the-duplicate-leaf-flaw.md",
+      "bytes": 62156,
+      "sha256": "b26b1a72aa364a366585a87fd36ea33d7673de5544971bcad5adb4ed3ccc54e4",
+      "file": "ch046-merkle-trees-and-the-duplicate-leaf-flaw.md",
+      "page_id": "BFGFwiRk1d9TrwyxInm1",
+      "title": "46. Merkle trees and the duplicate-leaf flaw"
+    },
+    {
+      "path": "ch047-block-headers-and-proof-of-work.md",
+      "bytes": 56351,
+      "sha256": "f211f7b755e89c1ab99b461754593798dd4a8c00ea03d41b84ecf878b8786412",
+      "file": "ch047-block-headers-and-proof-of-work.md",
+      "page_id": "jh6XK5njzxboBgaGfntp",
+      "title": "47. Block headers and proof of work"
+    },
+    {
+      "path": "ch048-compact-targets-retargeting-and-chainwork.md",
+      "bytes": 56404,
+      "sha256": "c714b5eb9a265bafeea6ded065d596408a47643dc3688103fc9ee65ac890e6e5",
+      "file": "ch048-compact-targets-retargeting-and-chainwork.md",
+      "page_id": "vPytYgQwCxoRikH5E7Fk",
+      "title": "48. Compact targets, retargeting and chainwork"
+    },
+    {
+      "path": "ch049-the-witness-commitment.md",
+      "bytes": 35926,
+      "sha256": "c3b4ad313ac69e4301b28be2fb9ae64de2ce6a77d91cca190e6d84033701d560",
+      "file": "ch049-the-witness-commitment.md",
+      "page_id": "xKtnbWPiIIB59FbdBDBq",
+      "title": "49. The witness commitment"
+    },
+    {
+      "path": "ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md",
+      "bytes": 63925,
+      "sha256": "d3cf2adee3876eeab69ebe0ae8717f05b307d0ec617a0a0c1e7277e95fc46f7e",
+      "file": "ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md",
+      "page_id": "kxvw6jMY1QxgOqibcdlI",
+      "title": "50. Chain parameters: mainnet, testnet4, signet and regtest"
+    },
+    {
+      "path": "ch051-header-rules-time-versions-and-deployments.md",
+      "bytes": 39593,
+      "sha256": "a576be9fa456cd962990ce5860cfff2af57d8e7a4dc82829a3eadaced488b4a5",
+      "file": "ch051-header-rules-time-versions-and-deployments.md",
+      "page_id": "KTVNvTaXZO7CjbwAxPo0",
+      "title": "51. Header rules: time, versions and deployments"
+    },
+    {
+      "path": "ch052-transaction-checks-outside-script.md",
+      "bytes": 28403,
+      "sha256": "43c66799009f4032471f8ff4a7b9c8f118579ad08f5f0c7b60fd95189ef5e05f",
+      "file": "ch052-transaction-checks-outside-script.md",
+      "page_id": "bLCzl8iUu1parzgJYDC0",
+      "title": "52. Transaction checks outside script"
+    },
+    {
+      "path": "ch053-sigops-weight-and-block-limits.md",
+      "bytes": 38841,
+      "sha256": "309d0f5da55597b932d3ecac905d691b54e9eedfdb35f05148273b74090cfd58",
+      "file": "ch053-sigops-weight-and-block-limits.md",
+      "page_id": "NhpFqLVJk0j3RNxSoqK8",
+      "title": "53. Sigops, weight and block limits"
+    },
+    {
+      "path": "ch054-the-subsidy-and-the-coinbase.md",
+      "bytes": 28648,
+      "sha256": "9c2685a877f56f0404378774b6c8890bdacc5cf774cb94999bb6446468a524a1",
+      "file": "ch054-the-subsidy-and-the-coinbase.md",
+      "page_id": "uV2JwfCqG1QOtynF8leY",
+      "title": "54. The subsidy and the coinbase"
+    },
+    {
+      "path": "ch056-the-utxo-set-and-muhash3072.md",
+      "bytes": 55663,
+      "sha256": "1005a3e557fae2bf4452d22872117b8c3cb01493f616949e5005385f3783579c",
+      "file": "ch056-the-utxo-set-and-muhash3072.md",
+      "page_id": "JXtgzNy5UVnNFyj66nV9",
+      "title": "56. The UTXO set and MuHash3072"
+    },
+    {
+      "path": "ch059-the-block-index-and-the-most-work-chain.md",
+      "bytes": 55896,
+      "sha256": "62be41b03dc7823c06b5eb60ae024f3d509b8de93fa31d4fd93dadafe727f4c9",
+      "file": "ch059-the-block-index-and-the-most-work-chain.md",
+      "page_id": "QxmpbVXAXTx9n9ygWYWa",
+      "title": "59. The block index and the most-work chain"
+    },
+    {
+      "path": "ch062-a-key-value-store-for-the-chainstate.md",
+      "bytes": 41791,
+      "sha256": "eca58627f34befc3ae29bcef24c58eaa0d71b8d491e6597d2738a4bf9e280ec0",
+      "file": "ch062-a-key-value-store-for-the-chainstate.md",
+      "page_id": "E1UDUwwUmtjbp2DwaYYD",
+      "title": "62. A key-value store for the chainstate"
+    },
+    {
+      "path": "ch065-p2p-messages-and-checksums.md",
+      "bytes": 51902,
+      "sha256": "93f79d19cd3541b06fe444898cce6318dd596a86a443ae88bc99e49ce6cc364f",
+      "file": "ch065-p2p-messages-and-checksums.md",
+      "page_id": "nP2lkbIcF5EWi5wm6lDp",
+      "title": "65. P2P messages and checksums"
+    },
+    {
+      "path": "ch066-elligatorswift.md",
+      "bytes": 33267,
+      "sha256": "eb91ad00a034fc74f8303c8ffc23ac3ee9ee8361eebf006e2bcf6ed9c03aee5c",
+      "file": "ch066-elligatorswift.md",
+      "page_id": "QT9OiCoGba1vjKPaNAVE",
+      "title": "66. ElligatorSwift"
+    },
+    {
+      "path": "ch067-the-v2-encrypted-transport.md",
+      "bytes": 44026,
+      "sha256": "64b36b8235fcaaa6ddc9ba67f2a029698fcae342b32d5e223b78e4fee79bd0ca",
+      "file": "ch067-the-v2-encrypted-transport.md",
+      "page_id": "EnuNv0HBxdYrw5DQNEp5",
+      "title": "67. The v2 encrypted transport"
+    },
+    {
+      "path": "ch068-the-handshake-and-feature-negotiation.md",
+      "bytes": 64764,
+      "sha256": "1c10a075d3bcd71b0a052719e15493341dd537a7e1e0d8f9b9aadb8f0735ea84",
+      "file": "ch068-the-handshake-and-feature-negotiation.md",
+      "page_id": "8nZ6FqB0fLtbXhKWztmN",
+      "title": "68. The handshake and feature negotiation"
+    },
+    {
+      "path": "ch069-addresses-and-the-address-manager.md",
+      "bytes": 97279,
+      "sha256": "70af04e4fdf9878d13f249d8bf300dc43ef21e8de2c6389ebbbcb51e2cc7302c",
+      "file": "ch069-addresses-and-the-address-manager.md",
+      "page_id": "KenW3Kzq45L1kBcfMXG1",
+      "title": "69. Addresses and the address manager"
+    },
+    {
+      "path": "ch070-connections-outbound-block-relay-only-feelers-and-eviction.md",
+      "bytes": 53804,
+      "sha256": "48f08522186a899e519e13eebd35460e9f35591c08bdc47925137ee13852258e",
+      "file": "ch070-connections-outbound-block-relay-only-feelers-and-eviction.md",
+      "page_id": "bj16i1938KCBHCo7xTte",
+      "title": "70. Connections: outbound, block-relay-only, feelers and eviction"
+    },
+    {
+      "path": "ch071-misbehavior-limits-and-denial-of-service.md",
+      "bytes": 42173,
+      "sha256": "da828a6faa4682ae75d1f60a1a45bab5f57e02a6a7181c24e507a6812c20fa91",
+      "file": "ch071-misbehavior-limits-and-denial-of-service.md",
+      "page_id": "jbpFjTPylKyVumMel80j",
+      "title": "71. Misbehavior, limits and denial of service"
+    },
+    {
+      "path": "ch073-compact-blocks.md",
+      "bytes": 60658,
+      "sha256": "f781d2a410891b7626199bec140985fb653d0301c7b093151bcfedbf5a94c0be",
+      "file": "ch073-compact-blocks.md",
+      "page_id": "CJ6zZ71Dsx6gi3611oT9",
+      "title": "73. Compact blocks"
+    },
+    {
+      "path": "ch074-compact-block-filters.md",
+      "bytes": 32816,
+      "sha256": "611ac0b13a86a2c30a4cd26b22b11951f85549240083dcad2cf77bf0dc3e067e",
+      "file": "ch074-compact-block-filters.md",
+      "page_id": "6OiO7bf3CZUMbz1ZfiZs",
+      "title": "74. Compact block filters"
+    },
+    {
+      "path": "ch075-proxies-tor-and-i2p.md",
+      "bytes": 72207,
+      "sha256": "50896e8a634133e33f2fdd065a305b5e645b8222b0d4b4f461125f99802f415a",
+      "file": "ch075-proxies-tor-and-i2p.md",
+      "page_id": "8HOP0HWKcLIaSbNQcc8B",
+      "title": "75. Proxies, Tor and I2P"
+    },
+    {
+      "path": "ch077-faster-verification-the-glv-endomorphism.md",
+      "bytes": 30360,
+      "sha256": "4323e1f263758ac3b7feeb61e773522c2da337c84da84293e27631dbb466f520",
+      "file": "ch077-faster-verification-the-glv-endomorphism.md",
+      "page_id": "KGvlExpm3TM8XyoxKaV6",
+      "title": "77. Faster verification: the GLV endomorphism"
+    },
+    {
+      "path": "ch081-policy-is-not-consensus-standardness.md",
+      "bytes": 52282,
+      "sha256": "f15f2d8ff061f3b1e67d44a094bed83897bb0d488251472936da97702c62b08d",
+      "file": "ch081-policy-is-not-consensus-standardness.md",
+      "page_id": "qiHik4KhOicsQ0lFVmjT",
+      "title": "81. Policy is not consensus: standardness"
+    },
+    {
+      "path": "ch094-psbt.md",
+      "bytes": 60373,
+      "sha256": "fce8454315b6cc4293f43c9d9d6d9c7830c8e0a3245a7cce21db4f86ae03426a",
+      "file": "ch094-psbt.md",
+      "page_id": "xWFutJntEHY7xa5bRZv5",
+      "title": "94. PSBT"
+    },
+    {
+      "path": "ch095-coin-selection-and-change.md",
+      "bytes": 53809,
+      "sha256": "f6d004876eb3c7915f2928971930888ddc8d8118fcda0d759ce8f78eadebe073",
+      "file": "ch095-coin-selection-and-change.md",
+      "page_id": "IriJgpjt3epgFP5b6AeI",
+      "title": "95. Coin selection and change"
+    },
+    {
+      "path": "ch096-message-signing.md",
+      "bytes": 49668,
+      "sha256": "1aa49aef4515fbfce8a3dfad47597a0f8b292262411cfc85121aee958923be83",
+      "file": "ch096-message-signing.md",
+      "page_id": "2jZPCaqgTEZGKkKTzLNn",
+      "title": "96. Message signing"
+    },
+    {
+      "path": "ch097-silent-payments.md",
+      "bytes": 56023,
+      "sha256": "38cd9f9896e37086ca41d1881902ccb7c05d5dbec00e083c0af050c950832a1b",
+      "file": "ch097-silent-payments.md",
+      "page_id": "kMV7zIBk6EP89Ra0Hf8P",
+      "title": "97. Silent payments"
+    },
+    {
+      "path": "ch100-multisig.md",
+      "bytes": 40339,
+      "sha256": "e7986d062908c08670b9ee3e9447e7272fc73022ebe5e8d5ec06b017e2045e21",
+      "file": "ch100-multisig.md",
+      "page_id": "tSTqFarxXAHNBA1Wax7d",
+      "title": "100. Multisig"
+    },
+    {
+      "path": "ch101-musig2.md",
+      "bytes": 65125,
+      "sha256": "c18ece7a11a5bd02815963704d136e3c00a889feb4949df2dd7614db57401fae",
+      "file": "ch101-musig2.md",
+      "page_id": "xl4c6vjP1xCRLqNdymQK",
+      "title": "101. MuSig2"
+    },
+    {
+      "path": "ch102-frost-threshold-signatures.md",
+      "bytes": 78070,
+      "sha256": "4cca0e84551f7e9a0bd31a6c0251e134a77b2256cf99df074b1774f0cb2a6643",
+      "file": "ch102-frost-threshold-signatures.md",
+      "page_id": "11C4rkQTlI5spW8Jwt4u",
+      "title": "102. FROST threshold signatures"
+    },
+    {
+      "path": "ch103-adaptor-signatures.md",
+      "bytes": 29459,
+      "sha256": "5b1b066cc7ef1996aa9ab1be8b3d2b7962fdaf177c297cfc89146f3c6319ff68",
+      "file": "ch103-adaptor-signatures.md",
+      "page_id": "8CYwlWtqivjG1nkVVU3L",
+      "title": "103. Adaptor signatures"
+    },
+    {
+      "path": "ch104-messages-and-tlvs.md",
+      "bytes": 40881,
+      "sha256": "14847dc8f6b8026555297c916b1d17eb4ea486bc8f088a988f1d394aaed1a55d",
+      "file": "ch104-messages-and-tlvs.md",
+      "page_id": "J5HX2SXFPEZQhR11jI5I",
+      "title": "104. Messages and TLVs"
+    },
+    {
+      "path": "ch105-the-noise-handshake.md",
+      "bytes": 40016,
+      "sha256": "92f9fa58625b7c7d5f2c10f9829e7ae00e47851e0db81e37f91313b1d894d6c4",
+      "file": "ch105-the-noise-handshake.md",
+      "page_id": "SdzOxKKRbbNTDPnrFK0W",
+      "title": "105. The Noise handshake"
+    },
+    {
+      "path": "ch106-commitment-keys-and-revocation.md",
+      "bytes": 25168,
+      "sha256": "5f20d30732110fff6458216777d7b39c8be6b0e0257c8fa777d310438df215d3",
+      "file": "ch106-commitment-keys-and-revocation.md",
+      "page_id": "ijmUoQUvzdEHn68leUTz",
+      "title": "106. Commitment keys and revocation"
+    },
+    {
+      "path": "ch107-shachain.md",
+      "bytes": 23569,
+      "sha256": "30e18d81817f32fde21a5fd28c6fda01978671a2d3efd276e5d44465acf7e290",
+      "file": "ch107-shachain.md",
+      "page_id": "4m7LtQZlZV6X0AB5XPfT",
+      "title": "107. Shachain"
+    },
+    {
+      "path": "ch108-commitment-and-htlc-transactions.md",
+      "bytes": 53422,
+      "sha256": "df6803fc975d46030b2431bf9f13713eb0566b5eafb261bf41acdb94571f7650",
+      "file": "ch108-commitment-and-htlc-transactions.md",
+      "page_id": "WJg1bqvCcBg1Fh0lt2X9",
+      "title": "108. Commitment and HTLC transactions"
+    },
+    {
+      "path": "ch109-open-update-and-close-a-channel.md",
+      "bytes": 92066,
+      "sha256": "2850b6e7d4476e425a57f60a162dd3b2553a93f8e3183e92ba5d476deb70a432",
+      "file": "ch109-open-update-and-close-a-channel.md",
+      "page_id": "SXmbqa3gz12vIL4WBQTl",
+      "title": "109. Open, update and close a channel"
+    },
+    {
+      "path": "ch111-onion-routing-and-blinded-paths.md",
+      "bytes": 50719,
+      "sha256": "fb8422f3eefaec363e176e469e644318a10a08eb764edb929faa576f2983bbd3",
+      "file": "ch111-onion-routing-and-blinded-paths.md",
+      "page_id": "b0408cmeoS6Rn9Kmih31",
+      "title": "111. Onion routing and blinded paths"
+    },
+    {
+      "path": "ch112-gossip-and-the-channel-graph.md",
+      "bytes": 67365,
+      "sha256": "e01064be461788b9f7c700ccea0fb32815b4400104f06ca2c99f87b24f62cc85",
+      "file": "ch112-gossip-and-the-channel-graph.md",
+      "page_id": "lwafiPLx4x4Auwe0XKTD",
+      "title": "112. Gossip and the channel graph"
+    },
+    {
+      "path": "ch113-find-a-route-and-pay.md",
+      "bytes": 75141,
+      "sha256": "c75a8fb1af1f51cee294c3e5fca84b57ea056db1810b1a69e8bfdf83207066bf",
+      "file": "ch113-find-a-route-and-pay.md",
+      "page_id": "BEuzhmiCVQfRAp55xCTj",
+      "title": "113. Find a route and pay"
+    },
+    {
+      "path": "ch114-invoices.md",
+      "bytes": 51215,
+      "sha256": "b3429ffb95e1d107df0b8f1c65c87fd7f1b89b124bb97cf1c6735bcc4ec512fd",
+      "file": "ch114-invoices.md",
+      "page_id": "VlDuQlRnczgBgRquXlte",
+      "title": "114. Invoices"
+    },
+    {
+      "path": "ch115-offers.md",
+      "bytes": 79942,
+      "sha256": "7da02c71a9e65671d6718f4b42704cc65136a9bde74a8be508a8c73fc867e53e",
+      "file": "ch115-offers.md",
+      "page_id": "TDsMdyLDfzzNpntZnQI9",
+      "title": "115. Offers"
+    },
+    {
+      "path": "ch116-test-vectors-and-their-provenance.md",
+      "bytes": 28954,
+      "sha256": "e87008651f32bfed3c92d90e1f6f073de9de982ac7a6eb34d1ddb877db4d5746",
+      "file": "ch116-test-vectors-and-their-provenance.md",
+      "page_id": "hYjmnUfG2Dye5bJ8sam0",
+      "title": "116. Test vectors and their provenance"
+    },
+    {
+      "path": "ch119-fuzzing.md",
+      "bytes": 23253,
+      "sha256": "741a53992e7b1fa0199f6d12948dbb0525dd31ab356eff4840ca7d17f5c3b224",
+      "file": "ch119-fuzzing.md",
+      "page_id": "NiNlhTAIxKV07ghjVH3v",
+      "title": "119. Fuzzing"
+    },
+    {
+      "path": "ch121-one-seed-for-nostr-and-bitcoin.md",
+      "bytes": 41552,
+      "sha256": "707e60cc88ea0568ecfc1d0b57ca81875a7132979768303ba8c2870b6152081c",
+      "file": "ch121-one-seed-for-nostr-and-bitcoin.md",
+      "page_id": "Ud1bwuI4HTG3LFwY10Sa",
+      "title": "121. One seed for Nostr and Bitcoin"
+    },
+    {
+      "path": "ch122-agent-treasuries.md",
+      "bytes": 49236,
+      "sha256": "829f53d28832b8afa607e08829a29fb985938373c199289b8ae2d5dbf2a66178",
+      "file": "ch122-agent-treasuries.md",
+      "page_id": "0FGiNdkg9yC3KPxeABuC",
+      "title": "122. Agent treasuries"
     }
   ],
-  "submitted_markdown_sha256": "8454a006363f2d003ed272d1652505af8ed21cb2fb596f7d84ae4688000c1447",
+  "submitted_markdown_sha256": "73172ca5cb32210467f1a46f3cc1de90f6d9bb4a2005cbbfe936cd8e77b45609",
   "verified_live": {
-    "revision": "C1Bx3kAsAbgsP22Bo87e",
+    "revision": "w39eMfp9wDlN8H0xETRV",
     "inventory": [
       {
         "id": "besin3huF9gZExKRhXRI",
@@ -423,9 +1607,21 @@
             "pages": []
           },
           {
+            "id": "FWzmE66wntV0jUiDfBsd",
+            "title": "10. SipHash-2-4",
+            "path": "ii.-hashes-macs-and-ciphers/ch010-siphash-2-4",
+            "pages": []
+          },
+          {
             "id": "LJRGwU5TqQpMbkFVlrw5",
             "title": "11. ChaCha20",
             "path": "ii.-hashes-macs-and-ciphers/ch011-chacha20",
+            "pages": []
+          },
+          {
+            "id": "EsmP2Jnx9UPOohQi2cvy",
+            "title": "12. Poly1305 and ChaCha20-Poly1305",
+            "path": "ii.-hashes-macs-and-ciphers/ch012-poly1305-and-chacha20-poly1305",
             "pages": []
           }
         ]
@@ -460,6 +1656,12 @@
             "pages": []
           },
           {
+            "id": "3lQDVb9UxLtfc7HJzevm",
+            "title": "17. Point encodings: compressed, uncompressed and x-only",
+            "path": "iii.-secp256k1/ch017-point-encodings-compressed-uncompressed-and-x-only",
+            "pages": []
+          },
+          {
             "id": "g3xOwvFhvloULuNsweFK",
             "title": "18. Keys and randomness",
             "path": "iii.-secp256k1/ch018-keys-and-randomness",
@@ -473,6 +1675,30 @@
         "path": "iv.-signatures",
         "pages": [
           {
+            "id": "OUY54iqUzzgOqHrs0YFM",
+            "title": "19. Verify ECDSA",
+            "path": "iv.-signatures/ch019-verify-ecdsa",
+            "pages": []
+          },
+          {
+            "id": "nV6j0TxEIrYtNVfvUMqt",
+            "title": "20. Sign with ECDSA",
+            "path": "iv.-signatures/ch020-sign-with-ecdsa",
+            "pages": []
+          },
+          {
+            "id": "VznQh3vMoZaH4GLU6LOP",
+            "title": "21. Strict DER",
+            "path": "iv.-signatures/ch021-strict-der",
+            "pages": []
+          },
+          {
+            "id": "Uhw4Gnm7xLtEyerbdIAA",
+            "title": "22. Public key recovery and signed messages",
+            "path": "iv.-signatures/ch022-public-key-recovery-and-signed-messages",
+            "pages": []
+          },
+          {
             "id": "kjsZpoSUh4NdmLIHwNlN",
             "title": "23. Verify a Schnorr signature",
             "path": "iv.-signatures/ch023-verify-a-schnorr-signature",
@@ -483,6 +1709,12 @@
             "title": "24. Sign with Schnorr",
             "path": "iv.-signatures/ch024-sign-with-schnorr",
             "pages": []
+          },
+          {
+            "id": "AIx4pQ90nTmwYPzV6Y7p",
+            "title": "25. Batch verification",
+            "path": "iv.-signatures/ch025-batch-verification",
+            "pages": []
           }
         ]
       },
@@ -492,15 +1724,495 @@
         "path": "v.-encodings-and-addresses",
         "pages": [
           {
+            "id": "1wlCcjZBrTiApBjFavb0",
+            "title": "26. Base58Check",
+            "path": "v.-encodings-and-addresses/ch026-base58check",
+            "pages": []
+          },
+          {
             "id": "jph6n4hzR37G6fZzvz25",
             "title": "27. Bech32",
             "path": "v.-encodings-and-addresses/ch027-bech32",
+            "pages": []
+          },
+          {
+            "id": "KRdpAkQXbZTg0TdMbsR6",
+            "title": "28. Bech32m",
+            "path": "v.-encodings-and-addresses/ch028-bech32m",
+            "pages": []
+          },
+          {
+            "id": "LRnQiMcZ2zRXDNlDMWpf",
+            "title": "29. Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR",
+            "path": "v.-encodings-and-addresses/ch029-addresses",
+            "pages": []
+          },
+          {
+            "id": "XGga733JkSvZqAQCYz9m",
+            "title": "30. Output descriptors and their checksum",
+            "path": "v.-encodings-and-addresses/ch030-output-descriptors-and-their-checksum",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "TxFIU8nkDJvqKt59uzJ0",
+        "title": "VI. Keys from words",
+        "path": "vi.-keys-from-words",
+        "pages": [
+          {
+            "id": "HQrsktCEcFaPCvUVBnZU",
+            "title": "31. Seed phrases",
+            "path": "vi.-keys-from-words/ch031-seed-phrases",
+            "pages": []
+          },
+          {
+            "id": "Q4a3Fs6duo2W54JWhmvC",
+            "title": "32. Hierarchical deterministic keys",
+            "path": "vi.-keys-from-words/ch032-hierarchical-deterministic-keys",
+            "pages": []
+          },
+          {
+            "id": "8YWUZ8ZSf8hIaG2Aik5r",
+            "title": "33. Derivation paths",
+            "path": "vi.-keys-from-words/ch033-derivation-paths",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "RL8DX5ILMPBPuuhz0dC8",
+        "title": "VII. Transactions and script",
+        "path": "vii.-transactions-and-script",
+        "pages": [
+          {
+            "id": "4qIrKd75aTvsEeSotcw5",
+            "title": "34. Transactions and their serialization",
+            "path": "vii.-transactions-and-script/ch034-transactions-and-their-serialization",
+            "pages": []
+          },
+          {
+            "id": "WCFzGNQf7YIamvBFpH43",
+            "title": "35. Txids, wtxids and malleability",
+            "path": "vii.-transactions-and-script/ch035-txids-wtxids-and-malleability",
+            "pages": []
+          },
+          {
+            "id": "DLC7w5rZfKRDWOBCyGS5",
+            "title": "36. The script interpreter",
+            "path": "vii.-transactions-and-script/ch036-the-script-interpreter",
+            "pages": []
+          },
+          {
+            "id": "w9PE9ETs4HPdLwitxrGw",
+            "title": "37. Legacy signature hashes",
+            "path": "vii.-transactions-and-script/ch037-legacy-signature-hashes",
+            "pages": []
+          },
+          {
+            "id": "nNyHb03SO9X8MjH3zrsE",
+            "title": "38. Segwit v0 signature hashes",
+            "path": "vii.-transactions-and-script/ch038-segwit-v0-signature-hashes",
+            "pages": []
+          },
+          {
+            "id": "xz4nHXRtup5Dpcdonst8",
+            "title": "39. Timelocks",
+            "path": "vii.-transactions-and-script/ch039-timelocks",
+            "pages": []
+          },
+          {
+            "id": "FBKBqOLZmKb3okn7KBG4",
+            "title": "40. Weight, vsize and fees",
+            "path": "vii.-transactions-and-script/ch040-weight-vsize-and-fees",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "wOkl26ralKjaIuzQd47x",
+        "title": "VIII. Taproot",
+        "path": "viii.-taproot",
+        "pages": [
+          {
+            "id": "ZGFhtHe8YGCZvla9XJQB",
+            "title": "41. The key tweak and the key path",
+            "path": "viii.-taproot/ch041-the-key-tweak-and-the-key-path",
+            "pages": []
+          },
+          {
+            "id": "uKtvHVDB62l1UIy2p3qd",
+            "title": "42. Script trees: tapleaves and tapbranches",
+            "path": "viii.-taproot/ch042-script-trees-tapleaves-and-tapbranches",
+            "pages": []
+          },
+          {
+            "id": "klQei4DiWBrnCKkAURwh",
+            "title": "43. Taproot signature hashes",
+            "path": "viii.-taproot/ch043-taproot-signature-hashes",
+            "pages": []
+          },
+          {
+            "id": "EtWbc2YwP3NYZNLFRsv6",
+            "title": "44. Tapscript",
+            "path": "viii.-taproot/ch044-tapscript",
+            "pages": []
+          },
+          {
+            "id": "RIcOsSc2Xre7YCi86XvZ",
+            "title": "45. Control blocks and script-path spends",
+            "path": "viii.-taproot/ch045-control-blocks-and-script-path-spends",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "twrEB5YcaF14do2UkuVT",
+        "title": "IX. Blocks and consensus",
+        "path": "ix.-blocks-and-consensus",
+        "pages": [
+          {
+            "id": "BFGFwiRk1d9TrwyxInm1",
+            "title": "46. Merkle trees and the duplicate-leaf flaw",
+            "path": "ix.-blocks-and-consensus/ch046-merkle-trees-and-the-duplicate-leaf-flaw",
+            "pages": []
+          },
+          {
+            "id": "jh6XK5njzxboBgaGfntp",
+            "title": "47. Block headers and proof of work",
+            "path": "ix.-blocks-and-consensus/ch047-block-headers-and-proof-of-work",
+            "pages": []
+          },
+          {
+            "id": "vPytYgQwCxoRikH5E7Fk",
+            "title": "48. Compact targets, retargeting and chainwork",
+            "path": "ix.-blocks-and-consensus/ch048-compact-targets-retargeting-and-chainwork",
+            "pages": []
+          },
+          {
+            "id": "xKtnbWPiIIB59FbdBDBq",
+            "title": "49. The witness commitment",
+            "path": "ix.-blocks-and-consensus/ch049-the-witness-commitment",
+            "pages": []
+          },
+          {
+            "id": "kxvw6jMY1QxgOqibcdlI",
+            "title": "50. Chain parameters: mainnet, testnet4, signet and regtest",
+            "path": "ix.-blocks-and-consensus/ch050-chain-parameters-mainnet-testnet4-signet-and-regtest",
+            "pages": []
+          },
+          {
+            "id": "KTVNvTaXZO7CjbwAxPo0",
+            "title": "51. Header rules: time, versions and deployments",
+            "path": "ix.-blocks-and-consensus/ch051-header-rules-time-versions-and-deployments",
+            "pages": []
+          },
+          {
+            "id": "bLCzl8iUu1parzgJYDC0",
+            "title": "52. Transaction checks outside script",
+            "path": "ix.-blocks-and-consensus/ch052-transaction-checks-outside-script",
+            "pages": []
+          },
+          {
+            "id": "NhpFqLVJk0j3RNxSoqK8",
+            "title": "53. Sigops, weight and block limits",
+            "path": "ix.-blocks-and-consensus/ch053-sigops-weight-and-block-limits",
+            "pages": []
+          },
+          {
+            "id": "uV2JwfCqG1QOtynF8leY",
+            "title": "54. The subsidy and the coinbase",
+            "path": "ix.-blocks-and-consensus/ch054-the-subsidy-and-the-coinbase",
+            "pages": []
+          },
+          {
+            "id": "JXtgzNy5UVnNFyj66nV9",
+            "title": "56. The UTXO set and MuHash3072",
+            "path": "ix.-blocks-and-consensus/ch056-the-utxo-set-and-muhash3072",
+            "pages": []
+          },
+          {
+            "id": "QxmpbVXAXTx9n9ygWYWa",
+            "title": "59. The block index and the most-work chain",
+            "path": "ix.-blocks-and-consensus/ch059-the-block-index-and-the-most-work-chain",
+            "pages": []
+          },
+          {
+            "id": "E1UDUwwUmtjbp2DwaYYD",
+            "title": "62. A key-value store for the chainstate",
+            "path": "ix.-blocks-and-consensus/ch062-a-key-value-store-for-the-chainstate",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "bV68TeN8eSAaC5rjywBu",
+        "title": "XI. The network",
+        "path": "xi.-the-network",
+        "pages": [
+          {
+            "id": "nP2lkbIcF5EWi5wm6lDp",
+            "title": "65. P2P messages and checksums",
+            "path": "xi.-the-network/ch065-p2p-messages-and-checksums",
+            "pages": []
+          },
+          {
+            "id": "QT9OiCoGba1vjKPaNAVE",
+            "title": "66. ElligatorSwift",
+            "path": "xi.-the-network/ch066-elligatorswift",
+            "pages": []
+          },
+          {
+            "id": "EnuNv0HBxdYrw5DQNEp5",
+            "title": "67. The v2 encrypted transport",
+            "path": "xi.-the-network/ch067-the-v2-encrypted-transport",
+            "pages": []
+          },
+          {
+            "id": "8nZ6FqB0fLtbXhKWztmN",
+            "title": "68. The handshake and feature negotiation",
+            "path": "xi.-the-network/ch068-the-handshake-and-feature-negotiation",
+            "pages": []
+          },
+          {
+            "id": "KenW3Kzq45L1kBcfMXG1",
+            "title": "69. Addresses and the address manager",
+            "path": "xi.-the-network/ch069-addresses-and-the-address-manager",
+            "pages": []
+          },
+          {
+            "id": "bj16i1938KCBHCo7xTte",
+            "title": "70. Connections: outbound, block-relay-only, feelers and eviction",
+            "path": "xi.-the-network/ch070-connections-outbound-block-relay-only-feelers-and-eviction",
+            "pages": []
+          },
+          {
+            "id": "jbpFjTPylKyVumMel80j",
+            "title": "71. Misbehavior, limits and denial of service",
+            "path": "xi.-the-network/ch071-misbehavior-limits-and-denial-of-service",
+            "pages": []
+          },
+          {
+            "id": "CJ6zZ71Dsx6gi3611oT9",
+            "title": "73. Compact blocks",
+            "path": "xi.-the-network/ch073-compact-blocks",
+            "pages": []
+          },
+          {
+            "id": "6OiO7bf3CZUMbz1ZfiZs",
+            "title": "74. Compact block filters",
+            "path": "xi.-the-network/ch074-compact-block-filters",
+            "pages": []
+          },
+          {
+            "id": "8HOP0HWKcLIaSbNQcc8B",
+            "title": "75. Proxies, Tor and I2P",
+            "path": "xi.-the-network/ch075-proxies-tor-and-i2p",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "v4oCuqFfcputLpZSUd8c",
+        "title": "XII. Initial block download",
+        "path": "xii.-initial-block-download",
+        "pages": [
+          {
+            "id": "KGvlExpm3TM8XyoxKaV6",
+            "title": "77. Faster verification: the GLV endomorphism",
+            "path": "xii.-initial-block-download/ch077-faster-verification-the-glv-endomorphism",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "n2rPlvUFgidtITwoPQm1",
+        "title": "XIII. The mempool and policy",
+        "path": "xiii.-the-mempool-and-policy",
+        "pages": [
+          {
+            "id": "qiHik4KhOicsQ0lFVmjT",
+            "title": "81. Policy is not consensus: standardness",
+            "path": "xiii.-the-mempool-and-policy/ch081-policy-is-not-consensus-standardness",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "aVAjGNBHf4BXwJxXgnuj",
+        "title": "XV. Wallets",
+        "path": "xv.-wallets",
+        "pages": [
+          {
+            "id": "xWFutJntEHY7xa5bRZv5",
+            "title": "94. PSBT",
+            "path": "xv.-wallets/ch094-psbt",
+            "pages": []
+          },
+          {
+            "id": "IriJgpjt3epgFP5b6AeI",
+            "title": "95. Coin selection and change",
+            "path": "xv.-wallets/ch095-coin-selection-and-change",
+            "pages": []
+          },
+          {
+            "id": "2jZPCaqgTEZGKkKTzLNn",
+            "title": "96. Message signing",
+            "path": "xv.-wallets/ch096-message-signing",
+            "pages": []
+          },
+          {
+            "id": "kMV7zIBk6EP89Ra0Hf8P",
+            "title": "97. Silent payments",
+            "path": "xv.-wallets/ch097-silent-payments",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "mOabppWx6MI3mXW8Bsxq",
+        "title": "XVI. Many signers",
+        "path": "xvi.-many-signers",
+        "pages": [
+          {
+            "id": "tSTqFarxXAHNBA1Wax7d",
+            "title": "100. Multisig",
+            "path": "xvi.-many-signers/ch100-multisig",
+            "pages": []
+          },
+          {
+            "id": "xl4c6vjP1xCRLqNdymQK",
+            "title": "101. MuSig2",
+            "path": "xvi.-many-signers/ch101-musig2",
+            "pages": []
+          },
+          {
+            "id": "11C4rkQTlI5spW8Jwt4u",
+            "title": "102. FROST threshold signatures",
+            "path": "xvi.-many-signers/ch102-frost-threshold-signatures",
+            "pages": []
+          },
+          {
+            "id": "8CYwlWtqivjG1nkVVU3L",
+            "title": "103. Adaptor signatures",
+            "path": "xvi.-many-signers/ch103-adaptor-signatures",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "3BLGWtilXUUxqYX7e8hG",
+        "title": "XVII. Lightning",
+        "path": "xvii.-lightning",
+        "pages": [
+          {
+            "id": "J5HX2SXFPEZQhR11jI5I",
+            "title": "104. Messages and TLVs",
+            "path": "xvii.-lightning/ch104-messages-and-tlvs",
+            "pages": []
+          },
+          {
+            "id": "SdzOxKKRbbNTDPnrFK0W",
+            "title": "105. The Noise handshake",
+            "path": "xvii.-lightning/ch105-the-noise-handshake",
+            "pages": []
+          },
+          {
+            "id": "ijmUoQUvzdEHn68leUTz",
+            "title": "106. Commitment keys and revocation",
+            "path": "xvii.-lightning/ch106-commitment-keys-and-revocation",
+            "pages": []
+          },
+          {
+            "id": "4m7LtQZlZV6X0AB5XPfT",
+            "title": "107. Shachain",
+            "path": "xvii.-lightning/ch107-shachain",
+            "pages": []
+          },
+          {
+            "id": "WJg1bqvCcBg1Fh0lt2X9",
+            "title": "108. Commitment and HTLC transactions",
+            "path": "xvii.-lightning/ch108-commitment-and-htlc-transactions",
+            "pages": []
+          },
+          {
+            "id": "SXmbqa3gz12vIL4WBQTl",
+            "title": "109. Open, update and close a channel",
+            "path": "xvii.-lightning/ch109-open-update-and-close-a-channel",
+            "pages": []
+          },
+          {
+            "id": "b0408cmeoS6Rn9Kmih31",
+            "title": "111. Onion routing and blinded paths",
+            "path": "xvii.-lightning/ch111-onion-routing-and-blinded-paths",
+            "pages": []
+          },
+          {
+            "id": "lwafiPLx4x4Auwe0XKTD",
+            "title": "112. Gossip and the channel graph",
+            "path": "xvii.-lightning/ch112-gossip-and-the-channel-graph",
+            "pages": []
+          },
+          {
+            "id": "BEuzhmiCVQfRAp55xCTj",
+            "title": "113. Find a route and pay",
+            "path": "xvii.-lightning/ch113-find-a-route-and-pay",
+            "pages": []
+          },
+          {
+            "id": "VlDuQlRnczgBgRquXlte",
+            "title": "114. Invoices",
+            "path": "xvii.-lightning/ch114-invoices",
+            "pages": []
+          },
+          {
+            "id": "TDsMdyLDfzzNpntZnQI9",
+            "title": "115. Offers",
+            "path": "xvii.-lightning/ch115-offers",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "Qt7u8u8aOtM8enWlbJKy",
+        "title": "XVIII. Interop and verification",
+        "path": "xviii.-interop-and-verification",
+        "pages": [
+          {
+            "id": "hYjmnUfG2Dye5bJ8sam0",
+            "title": "116. Test vectors and their provenance",
+            "path": "xviii.-interop-and-verification/ch116-test-vectors-and-their-provenance",
+            "pages": []
+          },
+          {
+            "id": "NiNlhTAIxKV07ghjVH3v",
+            "title": "119. Fuzzing",
+            "path": "xviii.-interop-and-verification/ch119-fuzzing",
+            "pages": []
+          }
+        ]
+      },
+      {
+        "id": "Z9QNOoZOYlohN08okgLk",
+        "title": "XIX. Bitcoin in OpenAgents",
+        "path": "xix.-bitcoin-in-openagents",
+        "pages": [
+          {
+            "id": "Ud1bwuI4HTG3LFwY10Sa",
+            "title": "121. One seed for Nostr and Bitcoin",
+            "path": "xix.-bitcoin-in-openagents/ch121-one-seed-for-nostr-and-bitcoin",
+            "pages": []
+          },
+          {
+            "id": "0FGiNdkg9yC3KPxeABuC",
+            "title": "122. Agent treasuries",
+            "path": "xix.-bitcoin-in-openagents/ch122-agent-treasuries",
             "pages": []
           }
         ]
       }
     ],
-    "sha256": "5f4efcde8f4010388bc096f132d6de25b584203cc2f33bada8fe0d714ea8095d"
+    "sha256": "58c69b9f5b6e8589732b3dae030140a3cfa3d67563d2078b14bd6f85d4123998"
   },
   "verification_scope": "Source and submitted-markdown hashes record publication provenance; live revision and page inventory were checked, not live document-body parity."
 }
