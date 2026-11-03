@@ -67,7 +67,8 @@ FAST :: 4.0;
 // companies of 48, each side's 24 two of every class, and the dead fill the rest.
 SIDE :: 24; HEROES :: 48; SKELETONS :: 160; CASTERS :: 12; TEAMS :: 3;
 HEROES_MAX :: 1024; SKELETONS_MAX :: 1024;   // together battle.coax's RS_MAX
-HORDE_MAX :: 20000;   // the dead the Horde can send in after its first wave
+HORDE_MAX :: 20000;
+LABELS_ALL :: 400; NAMES_ALL :: 96;   // past these, labels only near the camera (draw_sliders says so)   // the dead the Horde can send in after its first wave
 LEVEL :: 6;
 // The twelve SRD 5e classes as they stand: the casters' two back files, then the front two; each
 // side fields every class twice.
@@ -137,6 +138,7 @@ Lab :: struct {
   // the army-size sliders: their tracks, the one being dragged (-1 none) and the numbers it shows
   // while dragged; the battle starts again at the new sizes when it lets go
   sliders: [3] Rect; sliding: int = -1; want: [3] int;
+  asked: [3] int;   // a number asked past a slider's most (the address or a key), shown in red; 0 none
   ms: f32;   // the frame's time, milliseconds, averaged with the frames a second
   shown_n: int;   // the creatures the figures showed last frame (the slots past them are clear)
   pressing: int;
@@ -1935,7 +1937,7 @@ draw_fx :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
 // heroes, the names of the near ones; past 400 creatures, only the near ones' at all).
 draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
   n := at; b := bt(s);
-  crowd := b[0].n > 400;
+  crowd := b[0].n > LABELS_ALL;
   for i: 0..<b[0].n {
     cr := b[0].c[i..<i + 1];   // in place, not a copy
     x := wx(s, s[0].dx[i]); z := wz(s, s[0].dy[i]);
@@ -1947,7 +1949,7 @@ draw_labels3 :: (s: [] Lab, out: [] f32, at: int, k: f32, t: f32) -> int {
     col := ifx cr[0].dead then FAINT else ifx cr[0].hp == 0 then DIM else TEAM_COL[cr[0].team];
     if cr[0].klass == RS_MONSTER && cr[0].dead { continue; }
     nm := cast(string) cr[0].name[0..<cr[0].name_n];
-    if cr[0].klass != RS_MONSTER && (s[0].heroes <= 96 || p.z < 16) { n = say_mid(out, n, nm, p.x, p.y - 8 * k, 10 * k, ink(k, 0.95, col)); }
+    if cr[0].klass != RS_MONSTER && (s[0].heroes <= NAMES_ALL || p.z < 16) { n = say_mid(out, n, nm, p.x, p.y - 8 * k, 10 * k, ink(k, 0.95, col)); }
     if cr[0].dead { continue; }
     bw := ifx cr[0].klass == RS_MONSTER then 26 * k else 46 * k; by := p.y;
     share := f32(cr[0].hp) / f32(rs_max(cr[0].hp_max, 1));
@@ -2369,6 +2371,10 @@ sl_at :: (k: int, t: f32) -> int {
 sl_count :: (s: [] Lab) -> int { return ifx s[0].horde then 3 else 2; }
 // New sizes: the battle starts again at them (and says so); false when nothing changed.
 set_sizes :: (s: [] Lab, heroes: int, skeletons: int, stream: int) -> bool {
+  // past a slider's most: say so (no cap is silent), and field the most
+  s[0].asked[SL_HEROES] = ifx heroes > HEROES_MAX then heroes else 0;
+  s[0].asked[SL_SKELETONS] = ifx skeletons > SKELETONS_MAX then skeletons else 0;
+  s[0].asked[SL_STREAM] = ifx stream > HORDE_MAX then stream else 0;
   h := rs_max(1, rs_min(HEROES_MAX, heroes)); sk := rs_max(0, rs_min(SKELETONS_MAX, skeletons)); st := rs_max(0, rs_min(HORDE_MAX, stream));
   if h == s[0].heroes && sk == s[0].skeletons && st == s[0].stream { return false; }
   s[0].heroes = h; s[0].skeletons = sk; s[0].stream = st;
@@ -2377,7 +2383,8 @@ set_sizes :: (s: [] Lab, heroes: int, skeletons: int, stream: int) -> bool {
   return true;
 }
 set_slider :: (s: [] Lab, k: int, v: int) -> bool {
-  h := s[0].heroes; sk := s[0].skeletons; st := s[0].stream;
+  // the others keep what they asked
+  h := rs_max(s[0].heroes, s[0].asked[SL_HEROES]); sk := rs_max(s[0].skeletons, s[0].asked[SL_SKELETONS]); st := rs_max(s[0].stream, s[0].asked[SL_STREAM]);
   if k == SL_HEROES { h = v; } else if k == SL_SKELETONS { sk = v; } else { st = v; }
   return set_sizes(s, h, sk, st);
 }
@@ -2385,7 +2392,7 @@ set_slider :: (s: [] Lab, k: int, v: int) -> bool {
 nudge :: (s: [] Lab, k: int, up: bool) -> bool {
   v := sl_value(s, k);
   w := ifx up then rs_max(v + 1, (v * 5 + 3) / 4) else rs_min(v - 1, (v * 4) / 5);
-  return set_slider(s, k, rs_max(sl_least(k), rs_min(sl_most(k), w)));
+  return set_slider(s, k, rs_max(sl_least(k), w));   // past the most: set_sizes says so
 }
 // The sliders' tracks, in the scene's top-left corner (under the class picker in Player mode).
 layout_sliders :: (s: [] Lab, k: f32, x0: f32, x1: f32, y0: f32) {
@@ -2426,11 +2433,23 @@ draw_sliders :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     n = ring(out, n, px, y, 6 * k, 1.8 * k, ifx on then 1 else 0.8, ifx on then GOLD else WHITE);
     l: [16] u8; m := put_int(l[..], 0, v);
     n = say_at(out, n, cast(string) l[0..<m], t.x1 + 12 * k, y + 4.5 * k, 10 * k, ink(k, 0.95, ifx on then GOLD else WHITE));
+    // the scale's ends: the least and the most it can field
+    e: [16] u8; em := put_int(e[..], 0, sl_most(r));
+    n = say_right(out, n, cast(string) e[0..<em], t.x1, y + 12 * k, 6.5 * k, ink(k, 0.7, WHITE));
+    if s[0].asked[r] > 0 {
+      a: [64] u8; am := put_int(a[..], 0, s[0].asked[r]); am = put(a[..], am, " ASKED, ");
+      am = put_int(a[..], am, sl_most(r)); am = put(a[..], am, " IS THE MOST");
+      n = say_at(out, n, cast(string) a[0..<am], t.x1 + 62 * k, y + 4 * k, 7.5 * k, ink(k, 1, RED));
+    }
   }
   t0 := s[0].sliders[0];
   if t0.x1 > t0.x0 {
     hint := ifx s[0].horde then "DRAG, OR Z X  Q E  K L" else "DRAG, OR Z X  Q E";
-    n = say_at(out, n, hint, t0.x0, t0.y0 + f32(sl_count(s)) * 24 * k + 6 * k, 7 * k, ink(k, 0.45, FAINT));
+    hy := t0.y0 + f32(sl_count(s)) * 24 * k + 6 * k;
+    n = say_at(out, n, hint, t0.x0, hy, 7 * k, ink(k, 0.45, FAINT));
+    // the labels' own limits, said: past them the far ones go unlabelled
+    if bt(s)[0].n > LABELS_ALL { n = say_at(out, n, "PAST 400 FIGURES: BARS ONLY WITHIN 24 M", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); hy += 11 * k; }
+    if s[0].heroes > NAMES_ALL { n = say_at(out, n, "PAST 96 HEROES: NAMES ONLY WITHIN 16 M", t0.x0, hy + 11 * k, 7 * k, ink(k, 0.8, GOLD)); }
   }
   return n;
 }
@@ -3013,4 +3032,10 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   #assert url_number("?heroes=7&xheroes=9", "heroes") == 7 && url_number("?xheroes=9", "heroes") == -1 && url_number("?skeletons=99999", "skeletons") == 99999;
   lab_message(s[..], HOST_PAGE, "url=http://x/worlds/5e-lab?skeletons=5000&heroes=0");
   #assert s[0].skeletons == SKELETONS_MAX && s[0].heroes == 1;
+  // past the most: said, in red, until a number under it is chosen; a key past the most says so too
+  #assert s[0].asked[SL_SKELETONS] == 5000 && s[0].asked[SL_HEROES] == 0;
+  ok = lab_key(s[..], 'x', 0); #assert s[0].heroes == 2 && s[0].asked[SL_SKELETONS] == 5000;
+  ok = lab_key(s[..], 'q', 0); #assert s[0].skeletons < SKELETONS_MAX && s[0].asked[SL_SKELETONS] == 0;
+  lab_message(s[..], HOST_PAGE, "url=http://x/worlds/5e-lab?skeletons=1024");
+  ok = lab_key(s[..], 'e', 0); #assert s[0].skeletons == SKELETONS_MAX && s[0].asked[SL_SKELETONS] == (SKELETONS_MAX * 5 + 3) / 4;
 }
