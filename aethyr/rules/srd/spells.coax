@@ -40,6 +40,12 @@ RS_S_ENFEEBLE :: 15;  // Ray of Enfeeblement: on a failed save, weakened for the
 RS_S_REPEAT :: 16;    // the program runs again for each ray or beam: a of them, b more for each slot level above the
                       // spell's, times the Cantrip Upgrade's tier when c is 1 (its damage dice then don't grow)
 RS_S_HEX :: 17;       // Hex: the curse, with Disadvantage on checks of ability a
+RS_S_EXPOSE :: 18;    // the next attack roll against the target before the end of the caster's next turn has Advantage
+RS_S_MOCK :: 19;      // on a failed save, Disadvantage on the next attack roll the target makes before the end of its next turn
+RS_S_SMITE :: 20;     // part of the caster's melee weapon hit on the target this turn (its Critical Hit doubles the dice);
+                      // a more dice of b sides when the target is a Fiend or an Undead
+RS_S_MARK :: 21;      // Hunter's Mark: 1d6 Force more whenever the caster hits the target with an attack roll
+RS_S_WARD :: 22;      // +a AC until the start of the caster's next turn, against the triggering attack too (Shield)
 RS_ON_SAVE_HALF :: 1; RS_ON_SAVE_NONE :: 0;
 
 RsStep :: struct { kind: int; a: int; b: int; c: int; d: int; }
@@ -64,7 +70,9 @@ SP_PRODUCE_FLAME :: 0; SP_FLAME_HURL :: 1; SP_STARRY_WISP :: 2; SP_POISON_SPRAY 
 SP_CURE_WOUNDS :: 4; SP_HEALING_WORD :: 5; SP_THUNDERWAVE :: 6; SP_ENTANGLE :: 7; SP_FAERIE_FIRE :: 8;
 SP_CHILL_TOUCH :: 9; SP_RAY_OF_SICKNESS :: 10; SP_FALSE_LIFE :: 11; SP_RAY_OF_ENFEEBLEMENT :: 12; SP_BLINDNESS :: 13;
 SP_ELDRITCH_BLAST :: 14; SP_HEX :: 15; SP_HOLD_PERSON :: 16; SP_SCORCHING_RAY :: 17;
-RS_SPELLS :: 18;
+SP_VICIOUS_MOCKERY :: 18; SP_SACRED_FLAME :: 19; SP_GUIDING_BOLT :: 20; SP_DIVINE_SMITE :: 21;
+SP_HUNTERS_MARK :: 22; SP_FIRE_BOLT :: 23; SP_SHIELD :: 24;
+RS_SPELLS :: 25;
 
 rs_step :: (kind: int, a: int, b: int, c: int, d: int) -> RsStep { return RsStep.{kind = kind, a = a, b = b, c = c, d = d}; }
 
@@ -190,6 +198,51 @@ rs_spell :: (i: int) -> RsSpell {
                  concentration = true, area = RS_A_CUBE, area_ft = 20, part_of = -1, page = 130,
                  text = "Objects in a 20-foot Cube within range are outlined in blue, green, or violet light (your choice). Each creature in the Cube is also outlined if it fails a Dexterity saving throw. For the duration, objects and affected creatures shed Dim Light in a 10-foot radius and can't benefit from the Invisible condition. Attack rolls against an affected creature or object have Advantage if the attacker can see it."};
     s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_OUTLINE, 10, 0, 0, 0); s.step_n = 2;
+  } else if i == SP_VICIOUS_MOCKERY {
+    s = RsSpell.{id = "vicious-mockery", name = "Vicious Mockery", level = 0, school = "Enchantment", classes = "Bard",
+                 cast_time = RS_T_ACTION, range_ft = 60, components = "V", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 171,
+                 text = "You unleash a string of insults laced with subtle enchantments at one creature you can see or hear within range. The target must succeed on a Wisdom saving throw or take 1d6 Psychic damage and have Disadvantage on the next attack roll it makes before the end of its next turn. Cantrip Upgrade. The damage increases by 1d6 when you reach levels 5 (2d6), 11 (3d6), and 17 (4d6)."};
+    s.steps[0] = rs_step(RS_S_SAVE, RS_WIS, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 6, RS_PSYCHIC, 0);
+    s.steps[2] = rs_step(RS_S_MOCK, 0, 0, 0, 0); s.step_n = 3;
+  } else if i == SP_SACRED_FLAME {
+    s = RsSpell.{id = "sacred-flame", name = "Sacred Flame", level = 0, school = "Evocation", classes = "Cleric",
+                 cast_time = RS_T_ACTION, range_ft = 60, components = "V, S", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 159,
+                 text = "Flame-like radiance descends on a creature that you can see within range. The target must succeed on a Dexterity saving throw or take 1d8 Radiant damage. The target gains no benefit from Half Cover or Three-Quarters Cover for this save. Cantrip Upgrade. The damage increases by 1d8 when you reach levels 5 (2d8), 11 (3d8), and 17 (4d8)."};
+    s.steps[0] = rs_step(RS_S_SAVE, RS_DEX, RS_ON_SAVE_NONE, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 8, RS_RADIANT, 0); s.step_n = 2;
+  } else if i == SP_GUIDING_BOLT {
+    s = RsSpell.{id = "guiding-bolt", name = "Guiding Bolt", level = 1, school = "Evocation", classes = "Cleric",
+                 cast_time = RS_T_ACTION, range_ft = 120, components = "V, S", duration = "1 round", duration_s = 6,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 138,
+                 text = "You hurl a bolt of light toward a creature within range. Make a ranged spell attack against the target. On a hit, it takes 4d6 Radiant damage, and the next attack roll made against it before the end of your next turn has Advantage. Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 1."};
+    s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 4, 6, RS_RADIANT, 1);
+    s.steps[2] = rs_step(RS_S_EXPOSE, 0, 0, 0, 0); s.step_n = 3;
+  } else if i == SP_DIVINE_SMITE {
+    s = RsSpell.{id = "divine-smite", name = "Divine Smite", level = 1, school = "Evocation", classes = "Paladin",
+                 cast_time = RS_T_BONUS, range_ft = 0, components = "V", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 125,
+                 text = "The target takes an extra 2d8 Radiant damage from the attack. The damage increases by 1d8 if the target is a Fiend or an Undead. Using a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 1."};
+    s.steps[0] = rs_step(RS_S_SMITE, 1, 8, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 2, 8, RS_RADIANT, 1); s.step_n = 2;
+  } else if i == SP_HUNTERS_MARK {
+    s = RsSpell.{id = "hunters-mark", name = "Hunter's Mark", level = 1, school = "Divination", classes = "Ranger",
+                 cast_time = RS_T_BONUS, range_ft = 90, components = "V", duration = "Concentration, up to 1 hour", duration_s = 3600,
+                 concentration = true, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 141,
+                 text = "You magically mark one creature you can see within range as your quarry. Until the spell ends, you deal an extra 1d6 Force damage to the target whenever you hit it with an attack roll. You also have Advantage on any Wisdom (Perception or Survival) check you make to find it. If the target drops to 0 Hit Points before this spell ends, you can take a Bonus Action to move the mark to a new creature you can see within range. Using a Higher-Level Spell Slot. Your Concentration can last longer with a spell slot of level 3–4 (up to 8 hours) or 5+ (up to 24 hours)."};
+    s.steps[0] = rs_step(RS_S_MARK, 0, 0, 0, 0); s.step_n = 1;
+  } else if i == SP_FIRE_BOLT {
+    s = RsSpell.{id = "fire-bolt", name = "Fire Bolt", level = 0, school = "Evocation", classes = "Sorcerer, Wizard",
+                 cast_time = RS_T_ACTION, range_ft = 120, components = "V, S", duration = "Instantaneous", duration_s = 0,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 132,
+                 text = "You hurl a mote of fire at a creature or an object within range. Make a ranged spell attack against the target. On a hit, the target takes 1d10 Fire damage. A flammable object hit by this spell starts burning if it isn't being worn or carried. Cantrip Upgrade. The damage increases by 1d10 when you reach levels 5 (2d10), 11 (3d10), and 17 (4d10)."};
+    s.steps[0] = rs_step(RS_S_ATTACK, 0, 0, 0, 0); s.steps[1] = rs_step(RS_S_DAMAGE, 1, 10, RS_FIRE, 0); s.step_n = 2;
+  } else if i == SP_SHIELD {
+    // Cast by the battle as a Reaction to a hit (rs_shield), not through rs_cast.
+    s = RsSpell.{id = "shield", name = "Shield", level = 1, school = "Abjuration", classes = "Sorcerer, Wizard",
+                 cast_time = RS_T_REACTION, range_ft = 0, components = "V, S", duration = "1 round", duration_s = 6,
+                 concentration = false, area = RS_A_NONE, area_ft = 0, part_of = -1, page = 161,
+                 text = "An imperceptible barrier of magical force protects you. Until the start of your next turn, you have a +5 bonus to AC, including against the triggering attack, and you take no damage from Magic Missile."};
+    s.steps[0] = rs_step(RS_S_WARD, 5, 0, 0, 0); s.step_n = 1;
   }
   return s;
 }
@@ -218,5 +271,12 @@ rs_cantrip_tier :: (level: int) -> int {
   hx := rs_spell(SP_HEX); #assert hx.cast_time == RS_T_BONUS && hx.range_ft == 90 && hx.concentration && hx.level == 1;
   hp := rs_spell(SP_HOLD_PERSON); #assert hp.level == 2 && hp.concentration && hp.steps[0].a == RS_WIS && hp.steps[1].a == RS_PARALYZED && hp.steps[1].c == RS_WIS;
   sr := rs_spell(SP_SCORCHING_RAY); #assert sr.steps[0].a == 3 && sr.steps[0].b == 1 && sr.steps[2].a == 2 && sr.steps[2].b == 6;
+  vm := rs_spell(SP_VICIOUS_MOCKERY); #assert vm.steps[0].a == RS_WIS && vm.steps[1].b == 6 && vm.steps[1].c == RS_PSYCHIC && vm.steps[2].kind == RS_S_MOCK;
+  sf := rs_spell(SP_SACRED_FLAME); #assert sf.steps[0].a == RS_DEX && sf.steps[1].b == 8 && sf.steps[1].c == RS_RADIANT;
+  gb := rs_spell(SP_GUIDING_BOLT); #assert gb.level == 1 && gb.range_ft == 120 && gb.steps[1].a == 4 && gb.steps[1].b == 6 && gb.steps[1].d == 1;
+  ds := rs_spell(SP_DIVINE_SMITE); #assert ds.cast_time == RS_T_BONUS && ds.steps[0].a == 1 && ds.steps[1].a == 2 && ds.steps[1].b == 8 && ds.steps[1].d == 1;
+  hm := rs_spell(SP_HUNTERS_MARK); #assert hm.concentration && hm.range_ft == 90 && hm.cast_time == RS_T_BONUS;
+  fb := rs_spell(SP_FIRE_BOLT); #assert fb.range_ft == 120 && fb.steps[1].b == 10 && fb.steps[1].c == RS_FIRE;
+  sh := rs_spell(SP_SHIELD); #assert sh.cast_time == RS_T_REACTION && sh.steps[0].a == 5;
   #assert rs_cantrip_tier(1) == 1 && rs_cantrip_tier(5) == 2 && rs_cantrip_tier(11) == 3 && rs_cantrip_tier(17) == 4;
 }

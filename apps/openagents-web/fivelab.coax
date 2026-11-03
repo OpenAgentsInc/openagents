@@ -1,10 +1,10 @@
 // 5E Lab, openagents.com/worlds/5e-lab (unlisted): a bare grid of 5-foot squares where
 // characters play the SRD 5e rules against each other, so the shared engine
-// (aethyr/rules/srd/, docs/dnd/README.md) can be watched at work. Two circles of
-// level 3 druids cast the engine's spells at each other on the real-time clock:
-// every creature's turn comes round every 6 seconds, staggered by initiative,
-// and the log shows each roll. The druids decide with a small routine here; the
-// rules are all the engine's.
+// (aethyr/rules/srd/, docs/dnd/README.md) can be watched at work. Two sides, each
+// with two of every one of the twelve SRD 5e classes at level 3, and an army of
+// Skeletons fight on the real-time clock: every creature's turn comes round on
+// the beat, staggered by initiative, and the log shows each roll. Each class
+// decides with a small routine here; the rules are all the engine's.
 //
 // Two views, V switches them. The glade (the default): gpu/fivelab.coax's bg_fs traces the
 // battle in 3D in Everglade's painterly look, the druids standing on their squares in a
@@ -50,11 +50,15 @@ KEY_SHIFT :: -13; KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :
 
 COLS :: 40; ROWS :: 20;
 FAST :: 4.0;
-// Three sides. Twelve a side, all level 3, and an army of 160 Skeletons (the SRD's stat block) in
-// the middle from the start as the Restless Dead, against everyone: five Druids and seven Berserker Barbarians (the Circle of Moss)
-// against five Fiend Warlocks (Armor of Shadows, Agonizing Blast and Repelling Blast for Eldritch
-// Blast) and seven Open Hand Monks (the Ember Pact).
-SIDE :: 24; HEROES :: 48; SKELETONS :: 160; PEOPLE :: 208; CASTERS :: 10; TEAMS :: 3;
+// Three sides. Twenty-four a side, all level 3, two of each of the twelve SRD 5e classes (the Circle
+// of Moss against the Ember Pact), and an army of 160 Skeletons (the SRD's stat block) in the middle
+// from the start as the Restless Dead, against everyone.
+SIDE :: 24; HEROES :: 48; SKELETONS :: 160; PEOPLE :: 208; CASTERS :: 12; TEAMS :: 3;
+LEVEL :: 3;
+// The twelve SRD 5e classes as they stand: the casters' two back files, then the front two; each
+// side fields every class twice.
+ROSTER :: [12] int.[RS_DRUID, RS_WIZARD, RS_WARLOCK, RS_SORCERER, RS_BARD, RS_CLERIC,
+                    RS_FIGHTER, RS_PALADIN, RS_BARBARIAN, RS_MONK, RS_ROGUE, RS_RANGER];
 ARMY_X :: 12; ARMY_Y :: 5; ARMY_COLS :: 16;   // the Restless Dead stand sixteen wide, ten deep, mid-glade
 TEAM_NAME :: [3] string.["CIRCLE OF MOSS", "THE EMBER PACT", "THE RESTLESS DEAD"];
 NAMES :: [48] string.["Rowan", "Briar", "Fern", "Hazel", "Alder", "Willow", "Sorrel", "Linden", "Moss", "Ivy", "Sen", "Lio",
@@ -131,6 +135,22 @@ put_int :: (buf: [] u8, at: int, v: int) -> int { return rs_put_int(buf, at, v);
 bt :: (s: [] Lab) -> [] RsBattle { return s[0].battle[..]; }
 dice :: (s: [] Lab) -> [] RsDice { return s[0].battle[0].dice[..]; }
 
+// A figure's look in the glade (gpu/fivelab.coax): its class's, plus 16 for each team past the first.
+look_of :: (klass: int) -> int {
+  if klass == RS_WARLOCK { return 1; }
+  if klass == RS_BARBARIAN { return 2; }
+  if klass == RS_MONK { return 3; }
+  if klass == RS_MONSTER { return 4; }
+  if klass == RS_WIZARD { return 5; }
+  if klass == RS_BARD { return 6; }
+  if klass == RS_CLERIC { return 7; }
+  if klass == RS_FIGHTER { return 8; }
+  if klass == RS_PALADIN { return 9; }
+  if klass == RS_RANGER { return 10; }
+  if klass == RS_ROGUE { return 11; }
+  if klass == RS_SORCERER { return 12; }
+  return 0;
+}
 spell_col :: (sp: int) -> Col {
   if sp == SP_PRODUCE_FLAME || sp == SP_FLAME_HURL { return Col.{r = 1.0, g = 0.55, b = 0.15}; }
   if sp == SP_STARRY_WISP { return Col.{r = 1.0, g = 0.95, b = 0.6}; }
@@ -148,6 +168,14 @@ spell_col :: (sp: int) -> Col {
   if sp == SP_HEX { return Col.{r = 0.55, g = 0.2, b = 0.75}; }
   if sp == SP_HOLD_PERSON { return GOLD; }
   if sp == SP_SCORCHING_RAY { return Col.{r = 1.0, g = 0.4, b = 0.12}; }
+  if sp == SP_VICIOUS_MOCKERY { return Col.{r = 1.0, g = 0.5, b = 0.8}; }
+  if sp == SP_SACRED_FLAME { return Col.{r = 1.0, g = 0.92, b = 0.6}; }
+  if sp == SP_GUIDING_BOLT { return Col.{r = 0.95, g = 0.95, b = 1.0}; }
+  if sp == SP_DIVINE_SMITE { return Col.{r = 1.0, g = 0.85, b = 0.4}; }
+  if sp == SP_HUNTERS_MARK { return Col.{r = 0.55, g = 0.95, b = 0.35}; }
+  if sp == SP_FIRE_BOLT { return Col.{r = 1.0, g = 0.48, b = 0.1}; }
+  if sp == SP_SHIELD { return CYAN; }
+  if sp < 0 { return Col.{r = 0.5, g = 0.9, b = 0.4}; }
   return WHITE;
 }
 
@@ -234,11 +262,11 @@ new_battle :: (s: [] Lab) {
       continue;
     }
     k := i % SIDE; team := i / SIDE;
-    who := ifx k >= CASTERS then (ifx team == 0 then rs_monk(NAMES[i], 0, 3) else rs_barbarian(NAMES[i], 1, 3))
-           else (ifx team == 0 then rs_druid(NAMES[i], 0, 3) else rs_warlock(NAMES[i], 1, 3, SP_ELDRITCH_BLAST));
-    // casters in two files at the back, the rest two files in front of them; the Pact on the far edge
+    who := hero_for(ROSTER[(k / CASTERS) * 6 + k % 6], NAMES[i], team, LEVEL);
+    // the six casting classes in two files at the back, the rest two files in front of them; the
+    // Pact on the far edge
     sx := ifx k < CASTERS then 1 + k % 2 else 4 + k % 2;
-    sy := ifx k < CASTERS then 1 + k * 2 else 1 + (k - CASTERS) * (ROWS - 3) / (SIDE - CASTERS - 1);
+    sy := 1 + (k % CASTERS) * (ROWS - 3) / (CASTERS - 1);
     if team == 1 { sx = COLS - 1 - sx; }
     j := rs_add(bt(s), who, sx, sy);
     s[0].dx[i] = f32(sx); s[0].dy[i] = f32(sy); s[0].acted[i] = -10;
@@ -254,7 +282,8 @@ new_battle :: (s: [] Lab) {
   n := put(l[..], 0, "Battle ");
   n = put_int(l[..], n, s[0].round);
   n = put(l[..], n, ifx s[0].mode == MODE_ACTION then ", action combat" else ", SRD rounds");
-  n = put(l[..], n, ": druids and monks, warlocks and barbarians, and an army of 160 skeletons.");
+  n = put(l[..], n, ": two of each SRD 5e class a side, and ");
+  n = put_int(l[..], n, s[0].skeletons); n = put(l[..], n, " skeletons.");
   add_line(s, cast(string) l[0..<n], GOLD);
   // six to a line
   for row: 0..<(HEROES / 6) {
@@ -266,6 +295,20 @@ new_battle :: (s: [] Lab) {
     }
     add_line(s, cast(string) l[0..<m], TEAM_COL[(row * 6) / SIDE]);
   }
+}
+hero_for :: (klass: int, name: string, team: int, level: int) -> RsCreature {
+  if klass == RS_WIZARD { return rs_wizard(name, team, level); }
+  if klass == RS_WARLOCK { return rs_warlock(name, team, level, SP_ELDRITCH_BLAST); }
+  if klass == RS_BARBARIAN { return rs_barbarian(name, team, level); }
+  if klass == RS_MONK { return rs_monk(name, team, level); }
+  if klass == RS_BARD { return rs_bard(name, team, level); }
+  if klass == RS_CLERIC { return rs_cleric(name, team, level); }
+  if klass == RS_FIGHTER { return rs_fighter(name, team, level); }
+  if klass == RS_PALADIN { return rs_paladin(name, team, level); }
+  if klass == RS_RANGER { return rs_ranger(name, team, level); }
+  if klass == RS_ROGUE { return rs_rogue(name, team, level); }
+  if klass == RS_SORCERER { return rs_sorcerer(name, team, level); }
+  return rs_druid(name, team, level);
 }
 lab_start :: (s: [] Lab) {
   if s[0].started { return; }
@@ -494,20 +537,250 @@ skeleton_turn :: (s: [] Lab, i: int) {
   if foe >= 0 && rs_feet_to(b, i, foe) <= 80 { ok := rs_shoot(b, i, foe); }
 }
 
-lab_turn :: (s: [] Lab, i: int) {
+// The quarry for a striker: the nearest caster within `feet`, else the nearest foe.
+quarry :: (s: [] Lab, i: int, feet: int) -> int {
   b := bt(s);
-  rs_start_turn(b, i);
-  if rs_can_act(b[0].c[i]) && b[0].c[i].klass != RS_DRUID {
-    s[0].acted[i] = b[0].clock;
-    if b[0].c[i].klass == RS_BARBARIAN { barbarian_turn(s, i); }
-    else if b[0].c[i].klass == RS_MONSTER { skeleton_turn(s, i); }
-    else if b[0].c[i].klass == RS_MONK { monk_turn(s, i); }
-    else { pact_turn(s, i); }
-    rs_end_turn(b, i);
+  foe := nearest_foe(s, i);
+  bd := 100000;
+  for j: 0..<b[0].n {
+    c := b[0].c[j];
+    if c.team == b[0].c[i].team || !rs_up(c) || c.spell_ability < 0 || c.klass == RS_MONSTER { continue; }
+    d := rs_feet_to(b, i, j);
+    if d <= feet && d < bd { bd = d; foe = j; }
+  }
+  return foe;
+}
+// Walk to 5 feet of the foe, then Dash when it still falls short.
+close_in :: (s: [] Lab, i: int, foe: int) {
+  b := bt(s);
+  if foe_at_hand(s, i, -1) >= 0 || rs_has(b[0].c[i], RS_RESTRAINED) { return; }
+  walk(s, i, foe, 0, 5);
+  if rs_feet_to(b, i, foe) > 5 && !b[0].turn.action { ok := rs_dash(b, i); walk(s, i, foe, 0, 5); }
+}
+// The friend most hurt within `feet` (itself too), below `share` of its Hit Points, or -1.
+most_hurt :: (s: [] Lab, i: int, feet: int, share: f32) -> int {
+  b := bt(s);
+  best := -1; bv := share;
+  for j: 0..<b[0].n {
+    c := b[0].c[j];
+    if c.team != b[0].c[i].team || c.dead || c.stable || rs_feet_to(b, i, j) > feet { continue; }
+    v := f32(c.hp) / f32(rs_max(c.hp_max, 1));
+    if v < bv { bv = v; best = j; }
+  }
+  return best;
+}
+// The foe that i's effect of `kind` is on, within `feet`, or -1.
+marked_by :: (s: [] Lab, i: int, kind: int, feet: int) -> int {
+  b := bt(s);
+  for j: 0..<b[0].n {
+    if !rs_up(b[0].c[j]) || rs_feet_to(b, i, j) > feet { continue; }
+    for k: 0..<RS_EFFECTS { if b[0].c[j].eff[k].kind == kind && b[0].c[j].eff[k].by == i { return j; } }
+  }
+  return -1;
+}
+// A foe in i's face: Thunderwave, a 15-foot cube from it, with its lowest free slot.
+thunder_back :: (s: [] Lab, i: int, foe: int, chance: f32) {
+  b := bt(s);
+  if foe < 0 || rs_feet_to(b, i, foe) > 5 || b[0].turn.action || b[0].turn.slot_spent { return; }
+  sl := free_slot(s, i, 1);
+  if sl > 0 && rs_unit(dice(s)) < chance { ok := rs_cast(b, i, SP_THUNDERWAVE, sl, b[0].c[foe].x, b[0].c[foe].y, -1); }
+}
+// Hold Person with a 2nd-level slot on a humanoid foe within 60 feet, when i holds no spell.
+hold_one :: (s: [] Lab, i: int, foe: int, chance: f32) {
+  b := bt(s);
+  if foe < 0 || b[0].turn.action || b[0].turn.slot_spent || b[0].c[i].conc >= 0 || b[0].c[i].slots[2] <= 0 { return; }
+  if !b[0].c[foe].humanoid || rs_has(b[0].c[foe], RS_PARALYZED) || rs_feet_to(b, i, foe) > 60 { return; }
+  if rs_unit(dice(s)) < chance { ok := rs_cast(b, i, SP_HOLD_PERSON, 2, 0, 0, foe); }
+}
+
+// A Fighter's turn: Second Wind when Bloodied, close in on the casters, the Greatsword (Graze on a
+// miss), then Action Surge for a second Attack action while a foe still stands beside it.
+fighter_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) { ok := rs_escape(b, i); }
+  if b[0].c[i].hp * 2 < b[0].c[i].hp_max { ok := rs_second_wind(b, i); }
+  foe := quarry(s, i, 40);
+  if foe < 0 { return; }
+  close_in(s, i, foe);
+  j := foe_at_hand(s, i, -1);
+  if j < 0 { return; }
+  ok := rs_attack(b, i, j, false, -1);
+  j = foe_at_hand(s, i, -1);
+  if j >= 0 && rs_action_surge(b, i) { ok = rs_attack(b, i, j, false, -1); }
+}
+// A Paladin's turn: Lay On Hands on the worst hurt beside it, close in, Sacred Weapon with the first
+// attack, the Longsword (Sap), and Divine Smite on a hit: without a slot first, then with one on a
+// caster or a foe with Hit Points to spare. Sacred Flame (Blessed Warrior) at a foe it can't reach.
+paladin_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) { ok := rs_escape(b, i); }
+  w := most_hurt(s, i, 5, 0.35);
+  if w >= 0 { ok := rs_lay_on_hands(b, i, w, ifx b[0].c[w].hp == 0 then 5 else 10); }
+  foe := quarry(s, i, 30);
+  if foe < 0 { return; }
+  close_in(s, i, foe);
+  j := foe_at_hand(s, i, -1);
+  if j < 0 {
+    foe = nearest_foe(s, i);
+    if foe >= 0 && !b[0].turn.action { ok := rs_cast(b, i, SP_SACRED_FLAME, 0, 0, 0, foe); }
     return;
   }
-  s[0].acted[i] = b[0].clock;
-  if !rs_can_act(b[0].c[i]) { rs_end_turn(b, i); return; }
+  ok := rs_sacred_weapon(b, i);
+  ok = rs_attack(b, i, j, false, -1);
+  if b[0].turn.last_hit == j + 1 && rs_up(b[0].c[j]) {
+    if !rs_cast(b, i, SP_DIVINE_SMITE, 0, 0, 0, j) {
+      sl := free_slot(s, i, 1);
+      if sl > 0 && (b[0].c[j].spell_ability >= 0 || b[0].c[j].hp > 12) && rs_unit(dice(s)) < 0.5 { ok = rs_cast(b, i, SP_DIVINE_SMITE, sl, 0, 0, j); }
+    }
+  }
+}
+// A Ranger's turn: Hunter's Mark (without a slot while Favored Enemy lasts, then with one), moved
+// on when its quarry drops; the Shortsword at a foe beside it, else back to 30 feet or more and the
+// Longbow, at the marked foe first.
+ranger_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) { ok := rs_escape(b, i); }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  if b[0].c[i].conc == SP_HUNTERS_MARK && b[0].c[i].hex_free { ok := rs_hex_move(b, i, foe); }
+  if b[0].c[i].conc < 0 && rs_feet_to(b, i, foe) <= 90 {
+    if !rs_cast(b, i, SP_HUNTERS_MARK, 0, 0, 0, foe) {
+      sl := free_slot(s, i, 1);
+      if sl > 0 { ok := rs_cast(b, i, SP_HUNTERS_MARK, sl, 0, 0, foe); }
+    }
+  }
+  j := foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 30, 90); }
+  j = foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  m := marked_by(s, i, EF_MARK, 150);
+  foe = ifx m >= 0 then m else nearest_foe(s, i);
+  if foe >= 0 { ok := rs_shoot(b, i, foe); }
+}
+// A Rogue's turn: the Shortsword at a foe beside it; else, in bow range and not yet moved, Steady
+// Aim and the Shortbow with Advantage (and Sneak Attack); else a walk, Cunning Action's Dash when
+// still out of range, and the bow.
+rogue_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) { ok := rs_escape(b, i); }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  j := foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  d := rs_feet_to(b, i, foe);
+  if d >= 15 && d <= 80 { ok := rs_steady_aim(b, i); }
+  if !b[0].turn.anchored && !rs_has(b[0].c[i], RS_RESTRAINED) {
+    walk(s, i, foe, 30, 70);
+    if rs_feet_to(b, i, foe) > 80 { ok := rs_cunning_dash(b, i); walk(s, i, foe, 30, 70); }
+  }
+  j = foe_at_hand(s, i, -1);
+  if j >= 0 { ok := rs_attack(b, i, j, false, -1); return; }
+  foe = nearest_foe(s, i);
+  if foe >= 0 { ok := rs_shoot(b, i, foe); }
+}
+// A Cleric's turn: Turn Undead when three of the dead stand within 30 feet, Preserve Life when two
+// friends near it are Bloodied, Healing Word on the worst hurt; the Mace at a foe beside it, else
+// Guiding Bolt or Sacred Flame from 15 to 45 feet off.
+cleric_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
+  undead_near := 0; bloodied := 0;
+  for j: 0..<b[0].n {
+    c := b[0].c[j];
+    if rs_feet_to(b, i, j) > 30 { continue; }
+    if c.undead && rs_up(c) && c.team != b[0].c[i].team && rs_turned_by(c) < 0 { undead_near += 1; }
+    if c.team == b[0].c[i].team && !c.dead && c.hp < c.hp_max / 2 { bloodied += 1; }
+  }
+  if undead_near >= 3 { ok := rs_turn_undead(b, i); }
+  if bloodied >= 2 { ok := rs_preserve_life(b, i); }
+  w := most_hurt(s, i, 60, 0.4);
+  if w >= 0 && !b[0].turn.slot_spent {
+    sl := free_slot(s, i, 1);
+    if sl > 0 { ok := rs_cast(b, i, SP_HEALING_WORD, sl, 0, 0, w); }
+  }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  j := foe_at_hand(s, i, -1);
+  if j >= 0 && !b[0].turn.action { ok := rs_attack(b, i, j, false, -1); return; }
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 15, 45); }
+  foe = nearest_foe(s, i);
+  if foe < 0 { return; }
+  if !b[0].turn.action && !b[0].turn.slot_spent && rs_unit(dice(s)) < 0.5 {
+    sl := free_slot(s, i, 1);
+    if sl > 0 { ok := rs_cast(b, i, SP_GUIDING_BOLT, sl, 0, 0, foe); }
+  }
+  if !b[0].turn.action { ok := rs_cast(b, i, SP_SACRED_FLAME, 0, 0, 0, foe); }
+}
+// A Bard's turn: Healing Word on a friend near the end, Bardic Inspiration to a friend with a foe
+// near it; Thunderwave at a foe in its face; then from 20 to 50 feet, Hold Person on a humanoid or
+// Vicious Mockery. Cutting Words comes on its own, as a Reaction.
+bard_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
+  w := most_hurt(s, i, 60, 0.3);
+  if w >= 0 {
+    sl := free_slot(s, i, 1);
+    if sl > 0 { ok := rs_cast(b, i, SP_HEALING_WORD, sl, 0, 0, w); }
+  }
+  pick := -1; pd := 100000;
+  for j: 0..<b[0].n {
+    c := b[0].c[j];
+    if j == i || c.team != b[0].c[i].team || !rs_up(c) || c.inspired > 0 || c.klass == RS_MONSTER { continue; }
+    d := rs_feet_to(b, i, j);
+    if d <= 60 && d < pd && foes_near(s, i, c.x, c.y, 10) > 0 { pd = d; pick = j; }
+  }
+  if pick >= 0 { ok := rs_inspire(b, i, pick); }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  thunder_back(s, i, foe, 0.6);
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 20, 50); }
+  foe = nearest_foe(s, i);
+  if foe < 0 { return; }
+  hold_one(s, i, foe, 0.3);
+  if !b[0].turn.action { ok := rs_cast(b, i, SP_VICIOUS_MOCKERY, 0, 0, 0, foe); }
+}
+// A Draconic Sorcerer's turn: Innate Sorcery as the fight opens, Thunderwave at a foe in its face,
+// then from 25 to 60 feet Scorching Ray with a 2nd-level slot or Fire Bolt, and a second Fire Bolt
+// Quickened (2 Sorcery Points) when no slot spell went this turn. Shield and Seeking Spell come on
+// their own.
+sorcerer_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  if rs_feet_to(b, i, foe) <= 120 { ok := rs_innate_sorcery(b, i); }
+  thunder_back(s, i, foe, 0.6);
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 25, 60); }
+  foe = nearest_foe(s, i);
+  if foe < 0 { return; }
+  if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[2] > 0 && rs_unit(dice(s)) < 0.55 { ok := rs_cast(b, i, SP_SCORCHING_RAY, 2, 0, 0, foe); }
+  if !b[0].turn.action { ok := rs_cast(b, i, SP_FIRE_BOLT, 0, 0, 0, foe); }
+  foe = nearest_foe(s, i);
+  if foe >= 0 && rs_unit(dice(s)) < 0.5 { ok := rs_cast_quick(b, i, SP_FIRE_BOLT, 0, 0, 0, foe); }
+}
+// An Evoker Wizard's turn: Thunderwave at a foe in its face; from 25 to 60 feet, Hold Person on a
+// humanoid, Scorching Ray with a 2nd-level slot, or Fire Bolt (Potent Cantrip: half on a miss).
+// Shield comes on its own.
+wizard_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  if rs_has(b[0].c[i], RS_RESTRAINED) && rs_unit(dice(s)) < 0.5 { ok := rs_escape(b, i); }
+  foe := nearest_foe(s, i);
+  if foe < 0 { return; }
+  thunder_back(s, i, foe, 0.7);
+  if !rs_has(b[0].c[i], RS_RESTRAINED) { walk(s, i, foe, 25, 60); }
+  foe = nearest_foe(s, i);
+  if foe < 0 { return; }
+  hold_one(s, i, foe, 0.25);
+  if !b[0].turn.action && !b[0].turn.slot_spent && b[0].c[i].slots[2] > 0 && rs_unit(dice(s)) < 0.5 { ok := rs_cast(b, i, SP_SCORCHING_RAY, 2, 0, 0, foe); }
+  if !b[0].turn.action { ok := rs_cast(b, i, SP_FIRE_BOLT, 0, 0, 0, foe); }
+}
+
+// A Circle of the Land Druid's turn: Healing Word on a friend near the end, Thunderwave at a foe in
+// its face, Land's Aid where foes bunch, Hold Person (a polar land's spell), Entangle or Faerie Fire,
+// then a cantrip; Cure Wounds on a friend at hand.
+druid_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
   roll := rs_unit(dice(s));
   // held by plants: strain against them half the time, else cast from where it stands
   if rs_has(b[0].c[i], RS_RESTRAINED) && roll < 0.5 { ok := rs_escape(b, i); }
@@ -524,7 +797,7 @@ lab_turn :: (s: [] Lab, i: int) {
     if slot > 0 && rs_feet_to(b, i, worst) <= 60 { ok := rs_cast(b, i, SP_HEALING_WORD, slot, 0, 0, worst); }
   }
   foe := nearest_foe(s, i);
-  if foe < 0 { rs_end_turn(b, i); return; }
+  if foe < 0 { return; }
   conc := b[0].c[i].conc >= 0;
   slot := ifx b[0].turn.slot_spent then 0 else free_slot(s, i, 1);
   // a foe in its face: Thunderwave, or step back
@@ -536,10 +809,23 @@ lab_turn :: (s: [] Lab, i: int) {
     walk(s, i, foe, 15, want);
   }
   foe = nearest_foe(s, i);
-  if foe < 0 { rs_end_turn(b, i); return; }
+  if foe < 0 { return; }
   d := rs_feet_to(b, i, foe);
   fx := b[0].c[foe].x; fy := b[0].c[foe].y;
   slot = ifx b[0].turn.slot_spent then 0 else free_slot(s, i, 1);
+  // Land's Aid where two foes or more stand within 10 feet of the nearest, healing the friend there most hurt
+  if !b[0].turn.action && d <= 60 && b[0].c[i].uses[RS_USE_WILD] > 0 && foes_near(s, i, fx, fy, 10) >= 2 {
+    heal := -1; hv: f32 = 0.7;
+    for j: 0..<b[0].n {
+      c := b[0].c[j];
+      if c.team != b[0].c[i].team || c.dead || rs_feet(fx, fy, c.x, c.y) > 10 { continue; }
+      v := f32(c.hp) / f32(rs_max(c.hp_max, 1));
+      if v < hv { hv = v; heal = j; }
+    }
+    ok := rs_lands_aid(b, i, fx, fy, heal);
+  }
+  hold_one(s, i, foe, 0.25);
+  conc = b[0].c[i].conc >= 0;
   if !b[0].turn.action && !conc && slot > 0 && rs_unit(dice(s)) < 0.45 {
     // an area spell where it catches foes and spares friends
     if friends_near(s, i, fx, fy, 15) == 0 {
@@ -560,6 +846,31 @@ lab_turn :: (s: [] Lab, i: int) {
   if !b[0].turn.action && worst >= 0 && wv < 0.5 && rs_feet_to(b, i, worst) <= 5 {
     cs := free_slot(s, i, 1);
     if cs > 0 { ok := rs_cast(b, i, SP_CURE_WOUNDS, cs, 0, 0, worst); }
+  }
+}
+
+lab_turn :: (s: [] Lab, i: int) {
+  b := bt(s);
+  rs_start_turn(b, i);
+  s[0].acted[i] = b[0].clock;
+  kl := b[0].c[i].klass;
+  // a turned Skeleton spends its turn moving away from the Cleric who turned it
+  holy := rs_turned_by(b[0].c[i]);
+  if holy >= 0 && rs_can_move(b[0].c[i]) { walk(s, i, holy, 300, 400); }
+  if rs_can_act(b[0].c[i]) {
+    if kl == RS_BARBARIAN { barbarian_turn(s, i); }
+    else if kl == RS_MONSTER { skeleton_turn(s, i); }
+    else if kl == RS_MONK { monk_turn(s, i); }
+    else if kl == RS_WARLOCK { pact_turn(s, i); }
+    else if kl == RS_FIGHTER { fighter_turn(s, i); }
+    else if kl == RS_PALADIN { paladin_turn(s, i); }
+    else if kl == RS_RANGER { ranger_turn(s, i); }
+    else if kl == RS_ROGUE { rogue_turn(s, i); }
+    else if kl == RS_CLERIC { cleric_turn(s, i); }
+    else if kl == RS_BARD { bard_turn(s, i); }
+    else if kl == RS_SORCERER { sorcerer_turn(s, i); }
+    else if kl == RS_WIZARD { wizard_turn(s, i); }
+    else { druid_turn(s, i); }
   }
   rs_end_turn(b, i);
 }
@@ -959,9 +1270,21 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
     m = put_int(l[..], m, cr.hp); m = put(l[..], m, "/"); m = put_int(l[..], m, cr.hp_max);
     if cr.temp > 0 { m = put(l[..], m, " +"); m = put_int(l[..], m, cr.temp); }
     m = put(l[..], m, "  AC "); m = put_int(l[..], m, cr.ac);
-    if cr.klass == RS_BARBARIAN { m = put(l[..], m, "  RAGES "); m = put_int(l[..], m, cr.rages); }
-    else if cr.klass == RS_MONK { m = put(l[..], m, "  FOCUS "); m = put_int(l[..], m, cr.focus); }
+    kl := cr.klass;
+    if kl == RS_BARBARIAN { m = put(l[..], m, "  RAGES "); m = put_int(l[..], m, cr.rages); }
+    else if kl == RS_MONK { m = put(l[..], m, "  FOCUS "); m = put_int(l[..], m, cr.focus); }
+    else if kl == RS_FIGHTER {
+      m = put(l[..], m, "  SECOND WIND "); m = put_int(l[..], m, cr.uses[RS_USE_WIND]);
+      m = put(l[..], m, "  SURGE "); m = put_int(l[..], m, cr.uses[RS_USE_SURGE]);
+    }
+    else if kl == RS_ROGUE { m = put(l[..], m, "  SNEAK "); m = put_int(l[..], m, cr.sneak_dice); m = put(l[..], m, "D6"); }
     else { m = put(l[..], m, "  SLOTS "); m = put_int(l[..], m, cr.slots[1]); m = put(l[..], m, "+"); m = put_int(l[..], m, cr.slots[2]); }
+    if kl == RS_DRUID { m = put(l[..], m, "  LAND'S AID "); m = put_int(l[..], m, cr.uses[RS_USE_WILD]); }
+    if kl == RS_BARD { m = put(l[..], m, "  INSP "); m = put_int(l[..], m, cr.uses[RS_USE_INSPIRE]); }
+    if kl == RS_CLERIC || kl == RS_PALADIN { m = put(l[..], m, "  CHANNEL "); m = put_int(l[..], m, cr.uses[RS_USE_CHANNEL]); }
+    if kl == RS_PALADIN { m = put(l[..], m, "  LAY ON HANDS "); m = put_int(l[..], m, cr.uses[RS_USE_LAY]); }
+    if kl == RS_RANGER { m = put(l[..], m, "  MARKS "); m = put_int(l[..], m, cr.uses[RS_USE_FREE]); }
+    if kl == RS_SORCERER { m = put(l[..], m, "  SORCERY "); m = put_int(l[..], m, cr.uses[RS_USE_SORCERY]); }
     if cr.dead { m = put(l[..], 0, "DEAD"); }
     else if cr.hp == 0 { m = put(l[..], m, cast(string) (ifx cr.stable then "  STABLE" else "  DYING")); }
     else {
@@ -973,6 +1296,13 @@ draw_panel :: (s: [] Lab, out: [] f32, at: int, k: f32) -> int {
       if rs_has(cr, RS_PARALYZED) { m = put(l[..], m, "  PARALYZED"); }
       if rs_effect(cr, EF_HEX) { m = put(l[..], m, "  HEXED"); }
       if rs_has(cr, RS_PRONE) { m = put(l[..], m, "  PRONE"); }
+      if rs_effect(cr, EF_MARK) { m = put(l[..], m, "  MARKED"); }
+      if rs_effect(cr, EF_EXPOSED) { m = put(l[..], m, "  LIT"); }
+      if cr.slowed_until > b.clock { m = put(l[..], m, "  SLOWED"); }
+      if cr.inspired > 0 { m = put(l[..], m, "  INSPIRED"); }
+      if cr.innate_until > b.clock { m = put(l[..], m, "  INNATE SORCERY"); }
+      if cr.shield_until > b.clock { m = put(l[..], m, "  SHIELD"); }
+      if cr.sacred_until > b.clock { m = put(l[..], m, "  SACRED WEAPON"); }
       if cr.raging { m = put(l[..], m, "  RAGING"); }
       if cr.reckless_until > b.clock { m = put(l[..], m, "  RECKLESS"); }
       if cr.dodge_until > b.clock { m = put(l[..], m, "  DODGING"); }
@@ -1104,7 +1434,7 @@ lab_frame :: (s: [] Lab, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f
     u[o + 2] = -1;
     if i >= b.n { continue; }
     cr := b.c[i];
-    look := ifx cr.klass == RS_WARLOCK then 1 else ifx cr.klass == RS_BARBARIAN then 2 else ifx cr.klass == RS_MONK then 3 else ifx cr.klass == RS_MONSTER then 4 else 0;
+    look := look_of(cr.klass) + 16 * cr.team;
     u[o] = wx(s[0].dx[i]); u[o + 1] = wz(s[0].dy[i]); u[o + 2] = f32(look);
     u[o + 3] = f32(cr.hp) / f32(rs_max(cr.hp_max, 1));
     u[o + 4] = ifx cr.dead then 2 else ifx cr.hp == 0 then 1 else 0;
@@ -1311,13 +1641,46 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   s: [1] Lab; s[0].skeletons = 0;
   lab_start(s[..]);
   dropped := 0;
+  // a bit for each class once one of its people has spent a slot, a use, a Rage or a Focus Point,
+  // or (a Rogue, who spends nothing) taken its turn
+  spent := 0;
   for i: 0..<1500 {
     step(s[..], f32(STEP));
+    if i % 10 == 0 {
+      for h: 0..<HEROES {
+        c := s[0].battle[0].c[h];
+        any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.rages < c.rages_max || c.focus < c.focus_max;
+        for u: 0..<RS_USES { if c.uses[u] < c.uses_max[u] { any = true; } }
+        if c.klass == RS_ROGUE && s[0].acted[h] > 0 { any = true; }
+        if any { spent = spent | (1 << c.klass); }
+      }
+    }
     if s[0].over { break; }
   }
+  for r: 0..<12 { #assert (spent & (1 << ROSTER[r])) != 0; }
   for i: 0..<s[0].battle[0].n { if s[0].battle[0].c[i].hp < s[0].battle[0].c[i].hp_max { dropped += 1; } }
   #assert dropped > 0;
   #assert s[0].line_n > 10;
+}
+
+#test "each side fields two of every SRD 5e class at level 3, the casters behind" #steps 2000000000 {
+  s: [1] Lab; s[0].skeletons = 0;
+  lab_start(s[..]);
+  for team: 0..<2 {
+    for r: 0..<12 {
+      n := 0;
+      for k: 0..<SIDE {
+        c := s[0].battle[0].c[team * SIDE + k];
+        #assert c.team == team && c.level == LEVEL;
+        if c.klass == ROSTER[r] { n += 1; }
+        // the casting classes at the back, each side on its own edge
+        back := ifx team == 0 then c.x < 3 else c.x > COLS - 4;
+        if c.klass == RS_DRUID || c.klass == RS_WIZARD || c.klass == RS_WARLOCK || c.klass == RS_SORCERER || c.klass == RS_BARD || c.klass == RS_CLERIC { #assert back; }
+      }
+      #assert n == 2;
+    }
+  }
+  #assert look_of(RS_DRUID) == 0 && look_of(RS_SORCERER) == 12 && look_of(RS_MONSTER) == 4;
 }
 
 #test "a frame draws the grid, the tokens and the log on a desktop and on a 390 px phone" #steps 2000000000 {

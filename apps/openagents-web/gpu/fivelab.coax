@@ -22,8 +22,10 @@
 //   right 24: right xyz, the image centre's y (px)
 //   up 28: up xyz, 0
 //   sun 32: toward the sun xyz, 0
-//   tokens 36: two hundred and eight, two vec4s each: (x, z m, look (0 druid, 1 warlock, 2 barbarian, 3 monk,
-//              4 skeleton; 0 and 3 the Circle of Moss, 1 and 2 the Ember Pact) or -1 for none, hit point share),
+//   tokens 36: two hundred and eight, two vec4s each: (x, z m, look (its class: 0 druid, 1 warlock,
+//              2 barbarian, 3 monk, 4 skeleton, 5 wizard, 6 bard, 7 cleric, 8 fighter, 9 paladin,
+//              10 ranger, 11 rogue, 12 sorcerer; plus 16 times its team: 0 the Circle of Moss, 1 the
+//              Ember Pact, 2 the Restless Dead) or -1 for none, hit point share),
 //              (0 standing, 1 down, 2 dead; outlined; marks, a bit each: Restrained 1, Poisoned 2,
 //              Blinded 4, enfeebled 8, Temporary Hit Points 16,
 //              Paralyzed 32, hexed 64; whose turn just ran 0..1)
@@ -122,18 +124,29 @@ fivelab_tree :: (i:int,u:[]f32)->V4 {
   size:f32=0.8f32+(0.45f32*verse_style_hash(fi,11.0f32));
   return v4(cos(a)*rx,0.0f32,sin(a)*rz,size);
 }
-// A druid's parts: body (robe), head and staff, standing, or lying when down.
-FivelabBody :: struct {a:V3; b:V3; r:f32; head:V3; hr:f32; sa:V3; sb:V3; }
+// A look's class (its look less 16 for each team), and its team.
+fivelab_kind :: (look:f32)->f32 { return look-(16.0f32*floor((look+0.5f32)/16.0f32)); }
+fivelab_team :: (look:f32)->f32 { return floor((look+0.5f32)/16.0f32); }
+fivelab_is :: (kind:f32,k:f32)->bool { return abs(kind-k)<0.5f32; }
+// A figure's parts: body (robe, mail or bones), head, and what it carries (a staff, a rod, an axe, a
+// lute, a mace, a greatsword, a shield, a bow, a blade or an orb, `sr` its radius), standing, or
+// lying when down. Everything stays inside the 1.5 m sphere round (x, 0.95, z) fivelab_trace tests.
+FivelabBody :: struct {a:V3; b:V3; r:f32; head:V3; hr:f32; sa:V3; sb:V3; sr:f32; }
 fivelab_body :: (u:[]f32,i:int)->FivelabBody {
   t:V4=wg_at4(u,36+(i*8));
   s:V4=wg_at4(u,40+(i*8));
   o:FivelabBody;
-  // a barbarian is broader; a monk carries nothing (its staff is put out of reach underground)
+  kd:f32=fivelab_kind(t.z);
+  // a barbarian is broader, a fighter and a paladin in armour a little, a rogue slighter; a monk and a
+  // sorcerer carry nothing in the hand (the third part is put out of reach underground)
   big:f32=1.0f32;
-  if (abs(t.z-2.0f32)<0.5f32) { big=1.22f32; }
-  monk:bool=abs(t.z-3.0f32)<0.5f32;
-  bones:bool=t.z>3.5f32;
+  if (fivelab_is(kd,2.0f32)) { big=1.22f32; }
+  if (fivelab_is(kd,8.0f32)||fivelab_is(kd,9.0f32)) { big=1.1f32; }
+  if (fivelab_is(kd,11.0f32)) { big=0.94f32; }
+  monk:bool=fivelab_is(kd,3.0f32);
+  bones:bool=fivelab_is(kd,4.0f32);
   if (bones) { big=0.62f32; }
+  o.sr=0.04f32;
   if (s.x>0.5f32) {
     o.a=v3(t.x-0.55f32,0.24f32,t.y);
     o.b=v3(t.x+0.45f32,0.24f32,t.y);
@@ -142,7 +155,7 @@ fivelab_body :: (u:[]f32,i:int)->FivelabBody {
     o.hr=0.19f32;
     o.sa=v3(t.x-0.3f32,0.04f32,t.y+0.42f32);
     o.sb=v3(t.x+1.0f32,0.04f32,t.y+0.55f32);
-    if (monk) { o.sa=v3(t.x,-9.0f32,t.y); o.sb=v3(t.x,-8.0f32,t.y); }
+    if (monk||fivelab_is(kd,12.0f32)) { o.sa=v3(t.x,-9.0f32,t.y); o.sb=v3(t.x,-8.0f32,t.y); }
     return o;
   }
   o.a=v3(t.x,0.32f32,t.y);
@@ -155,6 +168,20 @@ fivelab_body :: (u:[]f32,i:int)->FivelabBody {
   if (monk) { o.sa=v3(t.x,-9.0f32,t.y); o.sb=v3(t.x,-8.0f32,t.y); }
   // a skeleton's shortsword, held out at the hip
   if (bones) { o.b=v3(t.x,1.12f32,t.y); o.head=v3(t.x,1.5f32,t.y); o.hr=0.17f32; o.sa=v3(t.x+0.3f32,0.75f32,t.y+0.1f32); o.sb=v3(t.x+0.45f32,1.4f32,t.y+0.22f32); }
+  // a bard's lute across the body
+  if (fivelab_is(kd,6.0f32)) { o.sa=v3(t.x-0.1f32,0.84f32,t.y+0.3f32); o.sb=v3(t.x+0.3f32,1.18f32,t.y+0.3f32); o.sr=0.1f32; }
+  // a cleric's mace, held at the side
+  if (fivelab_is(kd,7.0f32)) { o.sa=v3(t.x+0.4f32,0.6f32,t.y+0.1f32); o.sb=v3(t.x+0.4f32,1.12f32,t.y+0.1f32); o.sr=0.065f32; }
+  // a fighter's greatsword, point up
+  if (fivelab_is(kd,8.0f32)) { o.sa=v3(t.x+0.42f32,0.35f32,t.y+0.12f32); o.sb=v3(t.x+0.42f32,2.0f32,t.y+0.12f32); o.sr=0.05f32; }
+  // a paladin's shield, on the other arm
+  if (fivelab_is(kd,9.0f32)) { o.sa=v3(t.x-0.44f32,0.78f32,t.y+0.12f32); o.sb=v3(t.x-0.44f32,1.18f32,t.y+0.12f32); o.sr=0.25f32; }
+  // a ranger's longbow, a little aslant
+  if (fivelab_is(kd,10.0f32)) { o.sa=v3(t.x+0.42f32,0.38f32,t.y); o.sb=v3(t.x+0.5f32,1.82f32,t.y+0.12f32); o.sr=0.035f32; }
+  // a rogue's shortsword, held low
+  if (fivelab_is(kd,11.0f32)) { o.sa=v3(t.x+0.34f32,0.62f32,t.y+0.18f32); o.sb=v3(t.x+0.5f32,1.04f32,t.y+0.32f32); o.sr=0.035f32; }
+  // a sorcerer's flame, an orb over the open hand
+  if (fivelab_is(kd,12.0f32)) { o.sa=v3(t.x+0.46f32,1.3f32,t.y+0.12f32); o.sb=o.sa; o.sr=0.12f32; }
   return o;
 }
 // What a ray hits first: t (or 1e9), its normal, the material (0 ground, 1 trunk, 2 leaves,
@@ -211,7 +238,7 @@ fivelab_trace :: (ro:V3,rd:V3,u:[]f32,shadow:bool)->FivelabHit {
         if ((t1>0.0f32)&&(t1<h.t)) { h.t=t1; h.n=fivelab_capsule_n(add3(ro,scale3(rd,t1)),bd.a,bd.b); h.m=3.0f32; h.who=cast(f32)i; }
         t2:f32=fivelab_sphere(ro,rd,bd.head,bd.hr);
         if ((t2>0.0f32)&&(t2<h.t)) { h.t=t2; h.n=normalize3(sub3(add3(ro,scale3(rd,t2)),bd.head)); h.m=4.0f32; h.who=cast(f32)i; }
-        t3:f32=fivelab_capsule(ro,rd,bd.sa,bd.sb,0.04f32);
+        t3:f32=fivelab_capsule(ro,rd,bd.sa,bd.sb,bd.sr);
         if ((t3>0.0f32)&&(t3<h.t)) { h.t=t3; h.n=fivelab_capsule_n(add3(ro,scale3(rd,t3)),bd.sa,bd.sb); h.m=5.0f32; h.who=cast(f32)i; }
       }
       i+=1;
@@ -314,9 +341,11 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
           d:f32=wg_length2(v2(pos.x-tk.x,pos.z-tk.y));
           albedo=scale3(albedo,0.55f32+(0.45f32*smoothstep(0.15f32,0.7f32,d)));
           ring:f32=1.0f32-smoothstep(0.03f32,0.08f32,abs(d-0.68f32));
+          // the ring in its team's colour
+          tm:f32=fivelab_team(tk.z);
           tc:V3=v3(0.35f32,0.95f32,0.45f32);
-          if ((abs(tk.z-1.0f32)<0.5f32)||(abs(tk.z-2.0f32)<0.5f32)) { tc=v3(0.55f32,0.85f32,1.0f32); }
-          if (tk.z>3.5f32) { tc=v3(0.9f32,0.86f32,0.74f32); }
+          if (tm>0.5f32) { tc=v3(0.55f32,0.85f32,1.0f32); }
+          if (tm>1.5f32) { tc=v3(0.9f32,0.86f32,0.74f32); }
           if (ts.y<1.5f32) { glow=add3(glow,scale3(tc,ring*(0.25f32+(ts.w*1.6f32)))); }
         }
         i+=1;
@@ -334,10 +363,21 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
     who:int=cast(int)h.who;
     tk:V4=wg_at4(u,36+(who*8));
     ts:V4=wg_at4(u,40+(who*8));
-    pact:bool=abs(tk.z-1.0f32)<0.5f32;
-    barb:bool=abs(tk.z-2.0f32)<0.5f32;
-    monk:bool=abs(tk.z-3.0f32)<0.5f32;
-    bones:bool=tk.z>3.5f32;
+    kd:f32=fivelab_kind(tk.z);
+    tm:f32=fivelab_team(tk.z);
+    druid:bool=fivelab_is(kd,0.0f32);
+    pact:bool=fivelab_is(kd,1.0f32);
+    barb:bool=fivelab_is(kd,2.0f32);
+    monk:bool=fivelab_is(kd,3.0f32);
+    bones:bool=fivelab_is(kd,4.0f32);
+    wiz:bool=fivelab_is(kd,5.0f32);
+    bard:bool=fivelab_is(kd,6.0f32);
+    cler:bool=fivelab_is(kd,7.0f32);
+    figh:bool=fivelab_is(kd,8.0f32);
+    pal:bool=fivelab_is(kd,9.0f32);
+    rang:bool=fivelab_is(kd,10.0f32);
+    rog:bool=fivelab_is(kd,11.0f32);
+    sorc:bool=fivelab_is(kd,12.0f32);
     if (h.m<3.5f32) {
       albedo=v3(0.2f32,0.42f32,0.16f32);
       // a Fiend warlock's robe: ember crimson, with a gold hem and collar
@@ -360,8 +400,48 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
         if ((pos.y>0.72f32)&&(pos.y<1.08f32)&&(fract(pos.y*14.0f32)<0.45f32)) { albedo=v3(0.12f32,0.1f32,0.09f32); }
         if ((pos.y>0.45f32)&&(pos.y<0.62f32)) { albedo=v3(0.25f32,0.22f32,0.18f32); }
       }
-      // a belt
-      if (abs(pos.y-0.82f32)<0.05f32) { albedo=v3(0.35f32,0.24f32,0.1f32); if (pact) { albedo=v3(0.08f32,0.05f32,0.04f32); } if (barb) { albedo=v3(0.2f32,0.12f32,0.06f32); } if (monk) { albedo=v3(0.35f32,0.1f32,0.06f32); } }
+      // an Evoker's deep blue robe, silver at the hem
+      if (wiz) {
+        albedo=v3(0.12f32,0.17f32,0.45f32);
+        if (pos.y<0.42f32) { albedo=v3(0.7f32,0.72f32,0.8f32); }
+      }
+      // a bard's plum doublet with a gold sash across it
+      if (bard) {
+        albedo=v3(0.5f32,0.13f32,0.38f32);
+        if (abs(fract(((pos.y+(pos.x-tk.x))*2.2f32))-0.5f32)<0.07f32) { albedo=v3(0.9f32,0.72f32,0.25f32); }
+      }
+      // a Life cleric's white vestment with a gold band
+      if (cler) {
+        albedo=v3(0.88f32,0.86f32,0.8f32);
+        if (abs(pos.y-1.02f32)<0.05f32) { albedo=v3(0.9f32,0.72f32,0.25f32); }
+      }
+      // a fighter's chain mail over leather
+      if (figh) {
+        albedo=scale3(v3(0.5f32,0.52f32,0.56f32),0.75f32+(0.5f32*verse_style_noise(pos.y*40.0f32,wg_atan2(pos.z-tk.y,pos.x-tk.x)*9.0f32)));
+        if (pos.y<0.62f32) { albedo=v3(0.3f32,0.22f32,0.14f32); }
+      }
+      // a paladin's bright plate, gold at the shoulders
+      if (pal) {
+        albedo=v3(0.8f32,0.82f32,0.88f32);
+        if (pos.y>1.22f32) { albedo=v3(0.88f32,0.7f32,0.28f32); }
+      }
+      // a ranger's leathers under a forest cloak
+      if (rang) {
+        albedo=v3(0.33f32,0.26f32,0.15f32);
+        if (pos.y>1.0f32) { albedo=v3(0.17f32,0.27f32,0.12f32); }
+      }
+      // a rogue's black leather
+      if (rog) { albedo=v3(0.09f32,0.09f32,0.11f32); }
+      // a draconic sorcerer's copper scales
+      if (sorc) {
+        albedo=v3(0.66f32,0.3f32,0.1f32);
+        if (fract((pos.y*12.0f32)+(0.5f32*fract(wg_atan2(pos.z-tk.y,pos.x-tk.x)*1.6f32)))<0.25f32) { albedo=v3(0.35f32,0.13f32,0.05f32); }
+      }
+      // a belt in its side's colours
+      if ((abs(pos.y-0.82f32)<0.05f32)&&(!bones)) {
+        albedo=v3(0.2f32,0.62f32,0.26f32);
+        if (tm>0.5f32) { albedo=v3(0.28f32,0.5f32,0.86f32); }
+      }
       if (fivelab_mark(ts.z,0.0f32)) {
         vine:f32=fract((pos.y*7.0f32)+(wg_atan2(pos.z-tk.y,pos.x-tk.x)*1.2f32));
         if ((pos.y<0.9f32)&&(vine<0.3f32)) { albedo=v3(0.08f32,0.32f32,0.05f32); }
@@ -377,6 +457,17 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
       }
       // a barbarian's wild hair
       if (barb && (pos.y>1.66f32)) { albedo=v3(0.55f32,0.25f32,0.08f32); }
+      // hats, helms and hoods on the crown
+      if (n.y>0.3f32) {
+        if (wiz) { albedo=v3(0.12f32,0.17f32,0.45f32); }
+        if (bard) { albedo=v3(0.5f32,0.13f32,0.38f32); }
+        if (figh) { albedo=v3(0.55f32,0.57f32,0.62f32); }
+        if (pal) { albedo=v3(0.82f32,0.84f32,0.9f32); }
+        if (rang) { albedo=v3(0.17f32,0.27f32,0.12f32); }
+        if (rog) { albedo=v3(0.07f32,0.07f32,0.09f32); }
+        if (sorc) { albedo=v3(0.72f32,0.3f32,0.08f32); }
+      }
+      if (rog && (n.y>(-0.2f32))&&(n.y<0.3f32)&&(abs(fract((wg_atan2(n.z,n.x)*3.0f32)/6.2831853f32)-0.5f32)>0.2f32)) { albedo=v3(0.07f32,0.07f32,0.09f32); }
       if (pact) {
         // under a crimson hood
         if (pos.y>1.6f32) { albedo=v3(0.26f32,0.03f32,0.04f32); }
@@ -386,8 +477,21 @@ fivelab_glade :: (p:V2,u:[]f32)->V3 {
     } else {
       albedo=v3(0.4f32,0.28f32,0.14f32);
       if (pos.y>1.75f32) {
-        if (pact) { glow=add3(glow,v3(0.85f32,0.35f32,1.0f32)); } else if (!barb) { glow=add3(glow,v3(0.6f32,0.9f32,0.5f32)); }
+        if (pact) { glow=add3(glow,v3(0.85f32,0.35f32,1.0f32)); }
+        if (druid) { glow=add3(glow,v3(0.6f32,0.9f32,0.5f32)); }
+        if (wiz) { glow=add3(glow,v3(0.6f32,0.8f32,1.0f32)); }
       }
+      if (bard) { albedo=v3(0.62f32,0.38f32,0.16f32); }
+      if (cler) { albedo=v3(0.35f32,0.24f32,0.12f32); if (pos.y>0.98f32) { albedo=v3(0.72f32,0.74f32,0.78f32); } }
+      if (figh) { albedo=v3(0.76f32,0.78f32,0.84f32); if (pos.y<0.72f32) { albedo=v3(0.15f32,0.1f32,0.06f32); } if (abs(pos.y-0.74f32)<0.03f32) { albedo=v3(0.8f32,0.62f32,0.22f32); } }
+      if (pal) {
+        albedo=v3(0.14f32,0.24f32,0.62f32);
+        if ((abs(pos.y-0.98f32)<0.045f32)||(abs(pos.z-(tk.y+0.12f32))<0.045f32)) { albedo=v3(0.92f32,0.9f32,0.84f32); }
+        if ((pos.y>1.3f32)||(pos.y<0.62f32)) { albedo=v3(0.88f32,0.7f32,0.28f32); }
+      }
+      if (rang) { albedo=v3(0.25f32,0.16f32,0.08f32); }
+      if (rog) { albedo=v3(0.7f32,0.72f32,0.76f32); }
+      if (sorc) { albedo=v3(1.0f32,0.6f32,0.25f32); glow=add3(glow,v3(1.0f32,0.42f32,0.12f32)); }
       // a black iron rod, the pact's focus
       if (pact) { albedo=v3(0.06f32,0.05f32,0.06f32); }
       if (bones) { albedo=v3(0.62f32,0.64f32,0.68f32); }

@@ -116,17 +116,34 @@ RS_CONDITION :: [15] string.["Blinded", "Charmed", "Deafened", "Exhaustion", "Fr
 // checks with the ability in `cond`). Each
 // ends at `until` on the world's clock, or when the creature succeeds on the save it repeats at
 // the end of each of its turns (`save`, an ability, against `dc`; -1 for none).
+// Also: Turn Undead's hold (EF_TURNED: Frightened and Incapacitated, ending when it takes damage),
+// Hunter's Mark (EF_MARK: 1d6 Force more whenever its caster hits it with an attack roll), Guiding
+// Bolt's light (EF_EXPOSED: the next attack roll against it has Advantage), and on an attacker the
+// Vex mastery (EF_VEX: Advantage on its next attack roll against creature `cond`).
 EF_NONE :: 0; EF_COND :: 1; EF_ENFEEBLED :: 2; EF_WEAK :: 3; EF_NOHEAL :: 4; EF_HEX :: 5;
+EF_TURNED :: 6; EF_MARK :: 7; EF_EXPOSED :: 8; EF_VEX :: 9;
 
 // The classes a creature can be built as (-1 for a stat block).
 RS_DRUID :: 0; RS_WIZARD :: 1; RS_WARLOCK :: 2; RS_BARBARIAN :: 3; RS_MONK :: 4; RS_MONSTER :: 5;
-RS_CLASS :: [6] string.["Druid", "Wizard", "Warlock", "Barbarian", "Monk", "Monster"];
+RS_BARD :: 6; RS_CLERIC :: 7; RS_FIGHTER :: 8; RS_PALADIN :: 9; RS_RANGER :: 10; RS_ROGUE :: 11; RS_SORCERER :: 12;
+RS_CLASSES :: 13;
+RS_CLASS :: [13] string.["Druid", "Wizard", "Warlock", "Barbarian", "Monk", "Monster",
+                         "Bard", "Cleric", "Fighter", "Paladin", "Ranger", "Rogue", "Sorcerer"];
+
+// A class's limited uses, a counter each: Channel Divinity, Bardic Inspiration, Second Wind, Action
+// Surge, free casts of one spell (Paladin's Smite, Favored Enemy), Sorcery Points, Innate Sorcery,
+// Wild Shape (spent on Land's Aid), and the Lay On Hands pool (Hit Points).
+RS_USE_CHANNEL :: 0; RS_USE_INSPIRE :: 1; RS_USE_WIND :: 2; RS_USE_SURGE :: 3; RS_USE_FREE :: 4;
+RS_USE_SORCERY :: 5; RS_USE_INNATE :: 6; RS_USE_WILD :: 7; RS_USE_LAY :: 8;
+RS_USES :: 9;
 
 // Weapons a creature attacks with: the SRD's weapon table (p. 90) and Unarmed Strike. A Monk's
 // Unarmed Strike rolls its Martial Arts die in place of the 1 + Strength of anyone else's.
 RsWeapon :: struct { id: string; name: string; dice: int; sides: int; damage: int; finesse: bool; mastery: int; range_ft: int; long_ft: int; }
 W_UNARMED :: 0; W_GREATAXE :: 1; W_SHORTSWORD :: 2; W_SHORTBOW :: 3;
-M_NONE :: 0; M_CLEAVE :: 1;
+W_GREATSWORD :: 4; W_LONGSWORD :: 5; W_MACE :: 6; W_LONGBOW :: 7; W_DAGGER :: 8;
+// mastery properties (p. 90-91)
+M_NONE :: 0; M_CLEAVE :: 1; M_GRAZE :: 2; M_SAP :: 3; M_VEX :: 4; M_SLOW :: 5; M_NICK :: 6;
 RS_EFFECTS :: 6;
 RsEffect :: struct { kind: int; cond: int; by: int; spell: int; until: f32; save: int; dc: int; }
 
@@ -174,6 +191,26 @@ RsCreature :: struct {
   // Monk: the Martial Arts die, Focus Points, Deflect Attacks, the Open Hand's techniques
   martial_die: int; focus: int; focus_max: int;
   deflect: bool; open_hand: bool;
+  // the other classes' limited uses (RS_USE_*), and the spell that RS_USE_FREE casts without a slot
+  uses: [RS_USES] int; uses_max: [RS_USES] int; uses_back: [RS_USES] f32;
+  free_spell: int;
+  undead: bool;             // its creature type is Undead (Turn Undead, Divine Smite)
+  // Bard: the Bardic Inspiration die it gives, the one it holds (0 none), the College of Lore's Cutting Words
+  insp_die: int; inspired: int; cutting: bool;
+  // Cleric: Life Domain's Turn Undead (Channel Divinity), Preserve Life and Disciple of Life
+  turn_undead: bool; preserve_life: bool; disciple: bool;
+  // Fighter: the Champion's Improved Critical (crit_range: a Critical Hit on 20 - crit_range or
+  // higher) and Remarkable Athlete; the Archery fighting style (+2 to ranged weapon attack rolls)
+  crit_range: int; athlete: bool; archery: bool;
+  // Paladin: Sacred Weapon (Channel Divinity) until; Ranger: the Hunter's Colossus Slayer
+  sacred_until: f32; colossus: bool;
+  // Rogue: Sneak Attack dice (d6s), Cunning Action, Steady Aim
+  sneak_dice: int; cunning: bool; steady_aim: bool;
+  // Sorcerer: Innate Sorcery until, the Metamagic it knows; Wizard and Sorcerer: Shield; the
+  // Evoker's Potent Cantrip; the Circle of the Land's Land's Aid
+  innate_until: f32; quickened: bool; seeking: bool; shield_spell: bool; shield_until: f32;
+  potent: bool; lands_aid: bool;
+  slowed_until: f32;        // the Slow mastery: 10 feet less Speed until then
   // the action adapter (RsBattle.recharge > 0): when the next spent slot of each level, Rage or
   // Focus Point comes back, and when its next 6-second round begins
   slot_back: [10] f32; rage_back: f32; focus_back: f32;
@@ -229,7 +266,11 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
   if level >= 5 { c[0].slots_max[3] = 2; }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  // Wild Shape's two uses from level 2 (p. 42), spent here on the Circle of the Land's Land's Aid at 3
+  // (p. 46); polar land, so Hold Person is among its circle spells
+  if level >= 2 { rs_use_set(c[..], RS_USE_WILD, 2); }
+  c[0].lands_aid = level >= 3;
   return c[0];
 }
 
@@ -257,7 +298,9 @@ rs_wizard :: (name: string, team: int, level: int) -> RsCreature {
   if level >= 5 { c[0].slots_max[3] = 2; }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].slots[1] -= 1;   // Mage Armor
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  // Shield prepared (p. 161), and the Evoker's Potent Cantrip at level 3 (p. 82)
+  c[0].shield_spell = true; c[0].potent = level >= 3; c[0].weapon = W_DAGGER;
   return c[0];
 }
 
@@ -286,7 +329,7 @@ rs_warlock :: (name: string, team: int, level: int, blast: int) -> RsCreature {
   l := rs_min(rs_max(level, 1), 5);
   c[0].slots_max[at[l]] = count[l];
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1;
   c[0].agonizing = -1; c[0].repelling = -1;
   if level >= 2 { c[0].agonizing = blast; c[0].repelling = blast; }
   c[0].dark_blessing = level >= 3;
@@ -315,7 +358,7 @@ rs_barbarian :: (name: string, team: int, level: int) -> RsCreature {
   c[0].rages = rages[rs_min(rs_max(level, 1), 20)]; c[0].rages_max = c[0].rages;
   c[0].rage_bonus = ifx level >= 16 then 4 else ifx level >= 9 then 3 else 2;
   c[0].danger_sense = level >= 2; c[0].frenzy = level >= 3;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 
@@ -340,7 +383,7 @@ rs_monk :: (name: string, team: int, level: int) -> RsCreature {
   c[0].martial_die = ifx level >= 17 then 12 else ifx level >= 11 then 10 else ifx level >= 5 then 8 else 6;
   c[0].focus_max = ifx level >= 2 then level else 0; c[0].focus = c[0].focus_max;
   c[0].deflect = level >= 3; c[0].open_hand = level >= 3;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 
@@ -357,15 +400,21 @@ rs_skeleton :: (name: string, team: int) -> RsCreature {
   c[0].hp_max = 13; c[0].hp = 13; c[0].ac = 14; c[0].speed = 30;
   c[0].spell_ability = -1;
   c[0].weapon = W_SHORTSWORD; c[0].ranged = W_SHORTBOW;
+  c[0].undead = true;
   c[0].vulnerable = 1 << RS_BLUDGEONING; c[0].immune = 1 << RS_POISON; c[0].immune_cond = RS_POISONED | RS_EXHAUSTION;
-  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
   return c[0];
 }
 
 rs_weapon :: (w: int) -> RsWeapon {
   if w == W_GREATAXE { return RsWeapon.{id = "greataxe", name = "Greataxe", dice = 1, sides = 12, damage = RS_SLASHING, finesse = false, mastery = M_CLEAVE, range_ft = 5, long_ft = 5}; }
-  if w == W_SHORTSWORD { return RsWeapon.{id = "shortsword", name = "Shortsword", dice = 1, sides = 6, damage = RS_PIERCING, finesse = true, mastery = M_NONE, range_ft = 5, long_ft = 5}; }
-  if w == W_SHORTBOW { return RsWeapon.{id = "shortbow", name = "Shortbow", dice = 1, sides = 6, damage = RS_PIERCING, finesse = false, mastery = M_NONE, range_ft = 80, long_ft = 320}; }
+  if w == W_SHORTSWORD { return RsWeapon.{id = "shortsword", name = "Shortsword", dice = 1, sides = 6, damage = RS_PIERCING, finesse = true, mastery = M_VEX, range_ft = 5, long_ft = 5}; }
+  if w == W_SHORTBOW { return RsWeapon.{id = "shortbow", name = "Shortbow", dice = 1, sides = 6, damage = RS_PIERCING, finesse = false, mastery = M_VEX, range_ft = 80, long_ft = 320}; }
+  if w == W_GREATSWORD { return RsWeapon.{id = "greatsword", name = "Greatsword", dice = 2, sides = 6, damage = RS_SLASHING, finesse = false, mastery = M_GRAZE, range_ft = 5, long_ft = 5}; }
+  if w == W_LONGSWORD { return RsWeapon.{id = "longsword", name = "Longsword", dice = 1, sides = 8, damage = RS_SLASHING, finesse = false, mastery = M_SAP, range_ft = 5, long_ft = 5}; }
+  if w == W_MACE { return RsWeapon.{id = "mace", name = "Mace", dice = 1, sides = 6, damage = RS_BLUDGEONING, finesse = false, mastery = M_SAP, range_ft = 5, long_ft = 5}; }
+  if w == W_LONGBOW { return RsWeapon.{id = "longbow", name = "Longbow", dice = 1, sides = 8, damage = RS_PIERCING, finesse = false, mastery = M_SLOW, range_ft = 150, long_ft = 600}; }
+  if w == W_DAGGER { return RsWeapon.{id = "dagger", name = "Dagger", dice = 1, sides = 4, damage = RS_PIERCING, finesse = true, mastery = M_NICK, range_ft = 5, long_ft = 5}; }
   return RsWeapon.{id = "unarmed-strike", name = "Unarmed Strike", dice = 0, sides = 0, damage = RS_BLUDGEONING, finesse = false, mastery = M_NONE, range_ft = 5, long_ft = 5};
 }
 // The ability an attack with weapon w uses: Strength, or Dexterity for a Finesse weapon or a Monk's
@@ -377,7 +426,147 @@ rs_attack_ability :: (c: RsCreature, w: int) -> int {
   if dex_ok && c.score[RS_DEX] > c.score[RS_STR] { return RS_DEX; }
   return RS_STR;
 }
-rs_weapon_attack :: (c: RsCreature, w: int) -> int { return rs_proficiency(c.level) + rs_mod(c.score[rs_attack_ability(c, w)]); }
+// The Archery fighting style (p. 88): +2 to attack rolls with Ranged weapons.
+rs_weapon_attack :: (c: RsCreature, w: int) -> int {
+  far := ifx c.archery && rs_weapon(w).range_ft > 5 then 2 else 0;
+  return rs_proficiency(c.level) + rs_mod(c.score[rs_attack_ability(c, w)]) + far;
+}
+// A limited use: its count now and its most.
+rs_use_set :: (c: [] RsCreature, u: int, n: int) { c[0].uses[u] = n; c[0].uses_max[u] = n; }
+// A creature built from a class: name, team, level, scores, the two saves, its hit die (the fixed
+// value after level 1) and its Constitution modifier's hit points.
+rs_hero :: (name: string, team: int, level: int, klass: int, score: [6] int, save_a: int, save_b: int, die: int) -> RsCreature {
+  c: [1] RsCreature;
+  rs_set_name(c[..], name);
+  c[0].team = team; c[0].level = level; c[0].klass = klass; c[0].humanoid = true; c[0].ranged = -1;
+  c[0].score = score;
+  c[0].save_prof[save_a] = true; c[0].save_prof[save_b] = true;
+  con := rs_mod(score[RS_CON]);
+  c[0].hp_max = die + con + (level - 1) * (die / 2 + 1 + con);
+  c[0].hp = c[0].hp_max;
+  c[0].speed = 30;
+  c[0].spell_ability = -1;
+  c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  return c[0];
+}
+// Full casters' slots by level (Bard, Cleric, Sorcerer: 2, 3, then 4 1st and 2 2nd at 3); half
+// casters' (Paladin, Ranger: 2, 2, 3 1st-level slots; 4 and 2 at 5).
+rs_full_slots :: (c: [] RsCreature, level: int) {
+  slots1 := [5] int.[0, 2, 3, 4, 4];
+  slots2 := [5] int.[0, 0, 0, 2, 3];
+  l := rs_min(rs_max(level, 1), 4);
+  c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
+  if level >= 5 { c[0].slots_max[3] = 2; }
+  for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
+}
+rs_half_slots :: (c: [] RsCreature, level: int) {
+  slots1 := [5] int.[0, 2, 2, 3, 3];
+  c[0].slots_max[1] = slots1[rs_min(rs_max(level, 1), 4)];
+  if level >= 5 { c[0].slots_max[1] = 4; c[0].slots_max[2] = 2; }
+  for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
+}
+
+// The SRD 5.2.1 Bard (p. 31-35): Charisma casting, Dexterity and Charisma saves, a d8 hit die, in
+// Leather Armor (AC 11 + Dex) with a Dagger. Bardic Inspiration: a d6, Charisma modifier uses; the
+// College of Lore's Cutting Words at level 3. Its scores are the standard array, Charisma first.
+rs_bard :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_hero(name, team, level, RS_BARD, [6] int.[8, 14, 13, 10, 12, 16], RS_DEX, RS_CHA, 8);
+  c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]);
+  c[0].spell_ability = RS_CHA; c[0].weapon = W_DAGGER;
+  rs_full_slots(c[..], level);
+  rs_use_set(c[..], RS_USE_INSPIRE, rs_max(rs_mod(c[0].score[RS_CHA]), 1));
+  c[0].insp_die = ifx level >= 15 then 12 else ifx level >= 10 then 10 else ifx level >= 5 then 8 else 6;
+  c[0].cutting = level >= 3;
+  return c[0];
+}
+// The SRD 5.2.1 Cleric (p. 36-40): Wisdom casting, Wisdom and Charisma saves, a d8 hit die, its
+// starting Chain Shirt (13 + Dex, max 2), Shield and Mace. Channel Divinity twice from level 2 (Turn
+// Undead), and the Life Domain's Disciple of Life and Preserve Life at 3. Wisdom first.
+rs_cleric :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_hero(name, team, level, RS_CLERIC, [6] int.[14, 12, 13, 10, 16, 8], RS_WIS, RS_CHA, 8);
+  c[0].ac = 13 + rs_min(rs_mod(c[0].score[RS_DEX]), 2) + 2;
+  c[0].spell_ability = RS_WIS; c[0].weapon = W_MACE;
+  rs_full_slots(c[..], level);
+  if level >= 2 { rs_use_set(c[..], RS_USE_CHANNEL, ifx level >= 18 then 4 else ifx level >= 6 then 3 else 2); }
+  c[0].turn_undead = level >= 2; c[0].disciple = level >= 3; c[0].preserve_life = level >= 3;
+  return c[0];
+}
+// The SRD 5.2.1 Fighter (p. 47-49): Strength and Constitution saves, a d10 hit die, Chain Mail (AC
+// 16) with the Defense fighting style (+1), a Greatsword and its Graze mastery. Second Wind (two
+// uses, 1d10 + level), Action Surge from level 2, and the Champion's Improved Critical and
+// Remarkable Athlete at 3. Strength first.
+rs_fighter :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_hero(name, team, level, RS_FIGHTER, [6] int.[16, 13, 14, 8, 12, 10], RS_STR, RS_CON, 10);
+  c[0].ac = 16 + 1;
+  c[0].weapon = W_GREATSWORD; c[0].masteries = 1 << M_GRAZE;
+  rs_use_set(c[..], RS_USE_WIND, ifx level >= 10 then 4 else ifx level >= 4 then 3 else 2);
+  if level >= 2 { rs_use_set(c[..], RS_USE_SURGE, ifx level >= 17 then 2 else 1); }
+  c[0].crit_range = ifx level >= 15 then 2 else ifx level >= 3 then 1 else 0;
+  c[0].athlete = level >= 3;
+  return c[0];
+}
+// The SRD 5.2.1 Paladin (p. 53-56): Charisma casting, Wisdom and Charisma saves, a d10 hit die,
+// Chain Mail and a Shield (AC 18) with a Longsword and its Sap mastery. Lay On Hands (a pool of five
+// times its level), Paladin's Smite (Divine Smite once without a slot) and the Blessed Warrior style
+// (Sacred Flame) from level 2, Channel Divinity twice at 3 and the Oath of Devotion's Sacred Weapon.
+rs_paladin :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_hero(name, team, level, RS_PALADIN, [6] int.[16, 10, 13, 8, 12, 14], RS_WIS, RS_CHA, 10);
+  c[0].ac = 16 + 2;
+  c[0].spell_ability = RS_CHA; c[0].weapon = W_LONGSWORD; c[0].masteries = 1 << M_SAP;
+  rs_half_slots(c[..], level);
+  rs_use_set(c[..], RS_USE_LAY, 5 * level);
+  if level >= 2 { c[0].free_spell = SP_DIVINE_SMITE; rs_use_set(c[..], RS_USE_FREE, 1); }
+  if level >= 3 { rs_use_set(c[..], RS_USE_CHANNEL, ifx level >= 11 then 3 else 2); }
+  return c[0];
+}
+// The SRD 5.2.1 Ranger (p. 57-61): Wisdom casting, Strength and Dexterity saves, a d10 hit die,
+// Studded Leather (12 + Dex), a Longbow (Slow) and a Shortsword (Vex). Favored Enemy (Hunter's Mark
+// twice without a slot), the Archery fighting style from level 2, and the Hunter's Colossus Slayer
+// at 3. Dexterity first.
+rs_ranger :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_hero(name, team, level, RS_RANGER, [6] int.[12, 16, 13, 10, 14, 8], RS_STR, RS_DEX, 10);
+  c[0].ac = 12 + rs_mod(c[0].score[RS_DEX]);
+  c[0].spell_ability = RS_WIS; c[0].weapon = W_SHORTSWORD; c[0].ranged = W_LONGBOW;
+  c[0].masteries = (1 << M_SLOW) | (1 << M_VEX);
+  rs_half_slots(c[..], level);
+  c[0].free_spell = SP_HUNTERS_MARK;
+  rs_use_set(c[..], RS_USE_FREE, ifx level >= 17 then 6 else ifx level >= 13 then 5 else ifx level >= 9 then 4 else ifx level >= 5 then 3 else 2);
+  c[0].archery = level >= 2; c[0].colossus = level >= 3;
+  return c[0];
+}
+// The SRD 5.2.1 Rogue (p. 61-64): Dexterity and Intelligence saves, a d8 hit die, Leather Armor, a
+// Shortsword and a Shortbow (both Vex). Sneak Attack (1d6, 2d6 at level 3), Cunning Action from 2,
+// Steady Aim at 3; a Thief. Dexterity first.
+rs_rogue :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_hero(name, team, level, RS_ROGUE, [6] int.[8, 16, 14, 13, 12, 10], RS_DEX, RS_INT, 8);
+  c[0].ac = 11 + rs_mod(c[0].score[RS_DEX]);
+  c[0].weapon = W_SHORTSWORD; c[0].ranged = W_SHORTBOW; c[0].masteries = 1 << M_VEX;
+  c[0].sneak_dice = (level + 1) / 2;
+  c[0].cunning = level >= 2; c[0].steady_aim = level >= 3;
+  return c[0];
+}
+// The SRD 5.2.1 Sorcerer (p. 64-70): Charisma casting, Constitution and Charisma saves, a d6 hit
+// die. Innate Sorcery (twice), Font of Magic (Sorcery Points equal to its level from 2) and two
+// Metamagic options, Quickened Spell and Seeking Spell; Draconic Sorcery at 3: Draconic Resilience
+// (3 more Hit Points and 1 a level after, AC 10 + Dex + Cha unarmored). Shield prepared. Charisma first.
+rs_sorcerer :: (name: string, team: int, level: int) -> RsCreature {
+  c: [1] RsCreature;
+  c[0] = rs_hero(name, team, level, RS_SORCERER, [6] int.[8, 14, 13, 10, 12, 16], RS_CON, RS_CHA, 6);
+  c[0].ac = 10 + rs_mod(c[0].score[RS_DEX]);
+  if level >= 3 { c[0].hp_max += 3 + (level - 3); c[0].hp = c[0].hp_max; c[0].ac += rs_mod(c[0].score[RS_CHA]); }
+  c[0].spell_ability = RS_CHA; c[0].weapon = W_DAGGER;
+  rs_full_slots(c[..], level);
+  rs_use_set(c[..], RS_USE_INNATE, 2);
+  if level >= 2 { rs_use_set(c[..], RS_USE_SORCERY, level); c[0].quickened = true; c[0].seeking = true; }
+  c[0].shield_spell = true;
+  return c[0];
+}
 // A creature's Wisdom-based Monk save DC (8 + Wis + Proficiency).
 rs_focus_dc :: (c: RsCreature) -> int { return 8 + rs_proficiency(c.level) + rs_mod(c.score[RS_WIS]); }
 
@@ -393,14 +582,14 @@ rs_effect_add :: (c: [] RsCreature, e: RsEffect) {
   for k: 0..<RS_EFFECTS { if at < 0 && c[0].eff[k].kind == EF_NONE { at = k; } }
   if at < 0 { at = 0; }
   c[0].eff[at] = e;
-  if e.kind == EF_COND { c[0].cond = c[0].cond | e.cond; }
+  if e.kind == EF_COND || e.kind == EF_TURNED { c[0].cond = c[0].cond | e.cond; }
 }
 // Ends effect k on c; a condition it imposed goes unless another effect still imposes it.
 rs_effect_end :: (c: [] RsCreature, k: int) {
   e := c[0].eff[k];
   c[0].eff[k].kind = EF_NONE;
-  if e.kind != EF_COND { return; }
-  for j: 0..<RS_EFFECTS { if c[0].eff[j].kind == EF_COND && (c[0].eff[j].cond & e.cond) != 0 { return; } }
+  if e.kind != EF_COND && e.kind != EF_TURNED { return; }
+  for j: 0..<RS_EFFECTS { if (c[0].eff[j].kind == EF_COND || c[0].eff[j].kind == EF_TURNED) && (c[0].eff[j].cond & e.cond) != 0 { return; } }
   c[0].cond = rs_clear(c[0].cond, e.cond);
 }
 // The name of a condition bit.
@@ -545,6 +734,25 @@ rs_death_save :: (d: [] RsDice, c: [] RsCreature) -> int {
   c := rs_monk("Sen", 1, 3);
   #assert c.hp_max == 21 && c.ac == 15 && rs_weapon_attack(c, W_UNARMED) == 5 && c.martial_die == 6 && c.focus == 3 && c.speed == 40;
   #assert rs_focus_dc(c) == 12 && c.deflect && c.open_hand;
+}
+#test "the new classes at level 3 follow their class tables" {
+  bd := rs_bard("Lark", 0, 3);
+  #assert bd.hp_max == 21 && bd.ac == 13 && rs_spell_dc(bd) == 13 && bd.slots[1] == 4 && bd.slots[2] == 2 && bd.uses[RS_USE_INSPIRE] == 3 && bd.insp_die == 6 && bd.cutting;
+  cl := rs_cleric("Aster", 0, 3);
+  #assert cl.hp_max == 21 && cl.ac == 16 && rs_spell_dc(cl) == 13 && cl.uses[RS_USE_CHANNEL] == 2 && cl.turn_undead && cl.disciple && cl.preserve_life && rs_weapon(cl.weapon).name == "Mace";
+  fi := rs_fighter("Garr", 0, 3);
+  #assert fi.hp_max == 10 + 2 + 2 * (6 + 2) && fi.ac == 17 && rs_weapon_attack(fi, W_GREATSWORD) == 5 && fi.uses[RS_USE_WIND] == 2 && fi.uses[RS_USE_SURGE] == 1 && fi.crit_range == 1;
+  pa := rs_paladin("Oriel", 0, 3);
+  #assert pa.hp_max == 10 + 1 + 2 * (6 + 1) && pa.ac == 18 && pa.slots[1] == 3 && pa.uses[RS_USE_LAY] == 15 && pa.uses[RS_USE_CHANNEL] == 2 && pa.free_spell == SP_DIVINE_SMITE && rs_spell_dc(pa) == 12;
+  ra := rs_ranger("Wren", 0, 3);
+  #assert ra.hp_max == 25 && ra.ac == 15 && ra.slots[1] == 3 && rs_weapon_attack(ra, W_LONGBOW) == 7 && rs_weapon_attack(ra, W_SHORTSWORD) == 5 && ra.uses[RS_USE_FREE] == 2 && ra.colossus;
+  ro := rs_rogue("Nim", 0, 3);
+  #assert ro.hp_max == 8 + 2 + 2 * (5 + 2) && ro.ac == 14 && ro.sneak_dice == 2 && rs_weapon_attack(ro, W_SHORTSWORD) == 5 && ro.save_prof[RS_INT];
+  so := rs_sorcerer("Ember", 0, 3);
+  #assert so.hp_max == 6 + 1 + 2 * (4 + 1) + 3 && so.ac == 15 && so.uses[RS_USE_SORCERY] == 3 && so.uses[RS_USE_INNATE] == 2 && so.quickened && so.seeking && so.save_prof[RS_CON];
+  dr := rs_druid("Rowan", 0, 3); #assert dr.lands_aid && dr.uses[RS_USE_WILD] == 2;
+  wzd := rs_wizard("Mordra", 1, 3); #assert wzd.potent && wzd.shield_spell;
+  #assert rs_weapon(W_GREATSWORD).mastery == M_GRAZE && rs_weapon(W_LONGBOW).long_ft == 600 && rs_weapon(W_SHORTSWORD).mastery == M_VEX;
 }
 #test "the Skeleton's stat block: AC 14, 13 HP, Shortsword and Shortbow at +5, Bludgeoning vulnerable, Poison immune" {
   c := rs_skeleton("Skeleton", 2);
