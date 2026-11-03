@@ -124,9 +124,11 @@ in `packages/jobs/`.
   Coder's loop uses the same definition: a turn closes when nothing is owed,
   and a failed step still records the tool results it owes.
 - **Model-visible means logged** ([chapter 2](ch002-model-visible-means-logged.md)).
-  Coder rebuilds every request from its log byte for byte. From this
-  revision Coder also takes immutable generations: a log format change writes
-  a new file and never rewrites an old one.
+  The bounded experiment rebuilds its token requests byte for byte; live
+  Coder rebuilds submitted engine-turn inputs, not opaque engine-internal
+  model history. Immutable generations are a proposed migration design:
+  a format change would write a new file beside the old one. They are not
+  yet qualified by chapter 2's live JSONL implementation.
 - **Metadata outside the prefix** ([chapter 3](ch003-keep-the-prefix-stable.md)).
   Coder keeps identity, timing and engine metadata out of the model input, so
   appending a turn never changes earlier bytes.
@@ -146,15 +148,17 @@ in `packages/jobs/`.
   Codex client already does (it removes `OPENAI_API_KEY` and
   `CODEX_API_KEY`; `coax/lib/agent/codex/PARITY.md`).
 - **Format status as a record**: Coder's log format and the version that has
-  shipped are written down separately, as `docs/session-format-status.md`
-  does.
+  shipped should be written down separately, as
+  `docs/session-format-status.md` does. This is proposed compatibility work.
 
 ## What Coder leaves, and why
 
 - **The default session log upload.** `dsh_session_log` is on by default and
-  sends session content to the model provider. Coder sends no session content
-  anywhere without a per-session, revocable opt-in
-  ([chapter 18](ch018-consent-before-sharing.md)).
+  sends session content to the model provider. Coder's intended policy
+  distinguishes authorized inference from optional log upload. Chapter 18
+  currently gates remembered facts and secondary System One calls, not
+  every conversation byte. See the [outbound inventory](CONTRACT.md#outbound-authorization-and-current-enforcement)
+  for the implemented coverage and remaining integration.
 - **Extension points everywhere.** `dsh` exposes waterfall events at the
   request, stream and every tool phase (`docs/architecture.md`, "Turn
   flow"). Coder starts from one loop and keeps an addition only with a
@@ -173,7 +177,7 @@ in `packages/jobs/`.
 - **A plugin inventory on the wire.** Coder does not tell a model provider
   which plugins a person runs.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - Prefix stability: [chapter 3](ch003-keep-the-prefix-stable.md) checks that
   appends never change earlier bytes; Psionic measures the cache hits on the

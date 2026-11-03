@@ -15,6 +15,10 @@
 > approvals from a person through a client, and policies and answers as
 > messages in `proto/`.
 
+See [policy and actual confinement](CONTRACT.md#plugin-and-tool-trust) for
+the live engine boundaries and defaults. The three-room experiment below
+checks admission decisions; it does not confine native processes.
+
 Chapter4's grant answers whether a tool may be called in a turn. It does
 not say which parts of the world the tool may touch, how much a session may
 spend, or what happens when a call is risky but not forbidden. This chapter

@@ -156,10 +156,11 @@ hosted VMs (`docs/content/docs/host-functions.mdx`).
 ## What Coder takes
 
 **Exactly one terminal outcome per accepted task.** Coder chapter 20 states
-the contract in Flue's words: once a Worker accepts a task, the log owes it
-one settled record, finished, failed or stopped, across any number of
-restarts. Chapter 23's `coder status ID` reads that record, and a task with
-none is still in progress or still owed recovery.
+the intended direction: once a Worker accepts a task, the log owes it one
+settled record, finished, failed or stopped, across restarts. Extending
+that guarantee to every accepted task and crash point is proposed work;
+chapter 20 currently checks specific Router launch/delivery boundaries.
+Chapter 23's `coder status ID` reports the evidence it holds.
 
 **Recover from the log, by evidence kind.** Flue's recovery table fits
 chapter 2's log directly, because Coder's log already records each step's
@@ -169,10 +170,10 @@ from what the log holds, never from what the process remembers.
 
 **Never re-run a call whose outcome is unknown.** A tool call that was
 running when the process died may have taken effect. Flue settles it with an
-unknown-outcome error and lets the model decide. Chapter 4's tools carry an
-effect level already; a call with an effect that was not recorded as done
-settles as unknown in chapter 20, and only tools that declare themselves
-safe to repeat run again.
+unknown-outcome error and lets the model decide. This is the recovery
+contract Coder should implement, not a guarantee already established for
+every driven-engine call. Chapter 2 explicitly documents effects that can
+precede their Coder log record. See [recovery coverage](CONTRACT.md#recovery-and-interrupted-effects).
 
 **Checkpoints are caches.** A folded state stored at an offset speeds up
 loading, and a bad one falls back to replay. Chapter 2's verifier already
@@ -205,8 +206,10 @@ processes, files and network ([plan rules](PLAN.md#rules-for-every-chapter)).
 **Workers and Durable Objects as the home of the session.** Flue's
 Cloudflare target, like chapter 34's control plane, puts each conversation in
 a Durable Object. Coder's session is a log on the person's machine or on
-OpenAgents' own machines (chapter 20), and nothing leaves a machine without
-chapter 18's opt-in.
+OpenAgents' own machines (chapter 20). Local storage is distinct from
+ordinary authorized inference and optional exports. Chapter 18 gates
+selected paths; [the outbound inventory](CONTRACT.md#outbound-authorization-and-current-enforcement)
+describes the remaining coverage.
 
 **Default retry budgets and timeouts.** Flue settles a submission after 10
 attempts or one hour by default. Coder adds no step or time limit of its own
@@ -230,7 +233,7 @@ sandbox mount when a workload needs a full Linux OS.
 Rivet Cloud or a self-hosted Rivet deployment (`README.md`, "Quickstart").
 Coder runs on the person's machines and OpenAgents' own.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - The accepted-work contract and recovery table: chapter 20 kills a Worker
   at each step of a recorded task and checks that every accepted task settles

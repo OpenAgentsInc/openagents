@@ -19,6 +19,11 @@
 > export, and labels for [chapter 2](ch002-model-visible-means-logged.md)'s
 > log events.
 
+The [outbound inventory](CONTRACT.md#outbound-authorization-and-current-enforcement)
+states the authorization boundary and current enforcement for inference,
+fallback, embeddings, handoff, tools and export. This chapter's ledger
+guards selected paths, not every byte of ordinary engine inference.
+
 Session content is private by default. A harness sends bytes outward in
 many ways: a call to a remote tool, a task handed to another agent, work
 sent to a mesh peer, a training row exported for later learning. Each of

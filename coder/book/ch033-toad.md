@@ -121,19 +121,19 @@ is a new process, so a `cd` does not carry over and an interactive program
 cannot run. Microcoder's commands work the same way, with a 30-second limit
 and the head and tail of the output kept (`coax/lib/microcoder/tools.coax`).
 
-Coder drives its engines through each engine's own protocol, not ACP: Claude
-Code through `coax/lib/agent/claude/` and Codex through
-`coax/lib/agent/codex/`. Chapter 16 lists ACP for editors as not yet built.
+Coder drives its engines through each engine's own protocol: Claude Code
+through `coax/lib/agent/claude/` and Codex through `coax/lib/agent/codex/`.
+Chapter 16 implements an ACP server for editor clients and checks it with
+an editor-shaped smoke; qualification with a real named editor remains.
 
 ## What Coder takes
 
 **A persistent shell per conversation, in a pseudo-terminal.** Toad's
-argument is right for a coding agent too: a test run that needs a virtual
-environment, a `cd` into a subproject, or a prompt from `git rebase` all need
-a shell that lasts. Coder chapter 37 builds this: one shell in a
-pseudo-terminal per conversation, its output fed to the Coax terminal
-emulator, and the screen read as text by both the person's view and the
-agent. The `$ ` command path in `coder/tui/coder.coax` moves onto that shell.
+design supports interactive state such as a changed directory or exported
+variable. This is a proposed optional capability to compare with independent
+commands, not a replacement already qualified for Coder's baseline.
+Chapter 37 implements a PTY per `$ ` command and agent terminal tools;
+one persistent shell across commands is a further step.
 
 **The working directory reported in band.** Appending a `printf` of an OSC
 sequence with the working directory is a small, shell-neutral way to learn
@@ -184,7 +184,7 @@ for decisions and keeps lists like Toad's for display only.
 from the published standards and checked against libghostty as an oracle
 (chapter 37); it does not read Toad's parser as a source.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - The persistent shell, the OSC marker and echo hiding: chapter 37's checks,
   which compare the Coax emulator's screen with libghostty's on recorded

@@ -153,9 +153,10 @@ skills and automatic compaction are all turned off.
 ## What Coder takes
 
 - **One API, generated clients** ([chapter 23](ch023-openagents-coder.md)).
-  `openagents coder` verbs, their `--json` output and the MCP tools share
-  one definition in `proto/`, and a check fails when generated code drifts,
-  as `check:generated` does.
+  The proposed Coder contract puts verbs, `--json` output and MCP tools in
+  one definition in `proto/`, with a drift check as `check:generated` does.
+  Chapter 23's shared-catalog work remains open; the existing MCP dispatch
+  running CLI verbs is not that generated definition.
 - **Admission before execution** ([chapter 2](ch002-model-visible-means-logged.md),
   [chapter 20](ch020-an-agent-that-stays-online.md)). A message to Coder is
   logged as admitted before any model work, with an ID that makes a retry
@@ -212,7 +213,7 @@ skills and automatic compaction are all turned off.
   Coder's terminal emulator is Coax and uses libghostty only as an oracle in
   tests ([chapter 37](ch037-a-terminal-inside-the-agent.md)).
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - Narrow retries and one overflow compaction: [chapter 21](ch021-measure-the-harness.md)
   compares completion and cost against the simplest loop's retry rule.

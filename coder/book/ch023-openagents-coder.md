@@ -12,6 +12,12 @@
 > starts queued jobs within its grant. Still to come: a live `--on cloud`,
 > which waits on a pool host that can bootstrap current main.
 
+The [offline repository journey](../../docs/coder/repository-pilot.md) now
+checks the CLI through visible failure, edit, fork, input verification,
+stop, continuation and a reviewed local diff. The delivery sink is local;
+it does not qualify automatic live branch/PR delivery. See the
+[shared guarantees](CONTRACT.md) for what each engine exposes.
+
 Every chapter in this book ends in a verb. This chapter puts them into the
 `coder` domain of the `openagents` binary.
 
@@ -28,7 +34,7 @@ Every chapter in this book ends in a verb. This chapter puts them into the
   | `coder attach ID` | follow a running task and send it messages |
   | `coder stop ID` | stop a task and its tools |
   | `coder fork ID [--at TURN]` | start a new task from a turn boundary |
-  | `coder replay ID` | rebuild every request from the log and compare bytes |
+  | `coder replay ID` | rebuild each submitted engine-turn input and compare its recorded digest; no model or tool rerun |
   | `coder watch THREAD` | subscribe Coder to a Thread such as `github:owner/repo#123` |
   | `coder policy list\|add\|rm` | the trigger policies for acting without being asked |
   | `coder daemon` | attach this machine as an execution environment |
@@ -111,6 +117,7 @@ passed and how long it took. Each report is kept in
 | `harness` | Chapter 21's measurement: tasks through the harness with seeds, verdicts and a receipt chain |
 | `checks` | `coax test coder/tui/coder.coax` |
 | `smoke` | The offline smoke: the terminal UI in a pseudo-terminal, then every verb |
+| `journey` | The offline repository task: visible failure, edit, fork, replay, stop, continuation and a reviewed local diff |
 
 ```json
 {"suite":"checks","passed":true,"ms":5022,"at_us":1793605778040508,"last":"233 checks, 233 passed, 0 failed"}
@@ -238,9 +245,11 @@ such session, 130 stopped.
 - [x] `coder daemon` attaches this machine as an execution environment
   (chapter 20's machine daemons), with `queue` and `jobs`; checked by the
   smoke.
-- [ ] Each verb exists in the command table with `--json` and the spec's exit
-  codes, and a `coder-journey` check runs `run`, `log`, `fork`, `stop` and
-  `replay` on a fixture repository.
+- [x] The offline repository journey runs `run`, `log`, `fork`, `stop`,
+  `status` and `replay` on a fixture repository and checks a local reviewed
+  diff. See [the journey](../../docs/coder/repository-pilot.md).
+- [ ] Each verb exists in the shared command table with `--json` and the
+  spec's exit codes; the journey does not establish that catalog work.
 
 ## Sources
 

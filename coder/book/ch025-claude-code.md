@@ -174,9 +174,11 @@ are the frames Coder's client classifies and answers
 ## What Coder leaves, and why
 
 - **Hooks as shell commands with the agent's authority.** A hook runs any
-  program on matching events. Coder exposes the same moments as typed events
-  in its log and lets a plugin act on them only through Wasm with admitted
-  capabilities ([chapter 15](ch015-plugins-with-owned-lifecycles.md)).
+  program on matching events. Coder currently supports trusted local shell
+  commands/hooks as well as bounded Wasm plugins with admitted imports
+  ([chapter 15](ch015-plugins-with-owned-lifecycles.md)). Wasm containment
+  does not apply to the shell form. Restricting third-party execution to
+  Wasm is a design direction, not a statement about every installed plugin.
 - **Eight rule sources.** Coder keeps three: the machine, the repository and
   the session. Each extra source is another place a person must look to know
   why a call ran.
@@ -191,7 +193,7 @@ are the frames Coder's client classifies and answers
 - **Plugin marketplaces.** Coder's third-party plugins are signed Nostr
   events, not installs from a marketplace repository.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - Parallel batches of read-only calls: [chapter 21](ch021-measure-the-harness.md)
   compares wall time and outcomes with and without batching.

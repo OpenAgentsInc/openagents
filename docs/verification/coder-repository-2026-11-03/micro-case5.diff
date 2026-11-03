@@ -1,0 +1,15 @@
+diff --git a/helper.coax b/helper.coax
+index bb8340f..bc3add0 100644
+--- a/helper.coax
++++ b/helper.coax
+@@ -1 +1 @@
+-rate :: ()->int {return 3;}
++rate :: ()->int {return 2;}
+diff --git a/src.coax b/src.coax
+index 5befcdc..2a9bdfd 100644
+--- a/src.coax
++++ b/src.coax
+@@ -1,2 +1,2 @@
+ #load "helper.coax";
+-f :: (x:int)->int {return rate()*x;}
++f :: (x:int)->int {return rate()*x + 3;}

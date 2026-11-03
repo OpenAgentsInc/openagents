@@ -14,6 +14,10 @@
 > token measured on a named host rather than modeled. Microcoder already
 > prunes by rule (see [In Coder](#in-coder)).
 
+The [coverage matrix](CONTRACT.md#coverage-by-execution-path) separates the
+logged experimental view below, Microcoder's currently unlogged state
+pruning, and compaction owned by Claude Code or Codex.
+
 A long session fills the model's context. When the next request would not
 fit, the harness has to send less: it replaces older history with a short
 summary. Doing that quietly would break two promises the earlier chapters

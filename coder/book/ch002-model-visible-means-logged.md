@@ -13,6 +13,11 @@
 > is on storage before it is printed (see [In Coder](#in-coder)); this
 > chapter's hash-chained log does neither yet.
 
+The [coverage matrix and replay definitions](CONTRACT.md) distinguish this
+experiment's token log from Coder's live engine-input log. Driven engines
+own their internal model requests; syncing a reported result does not prove
+that Coder recorded intent before the effect.
+
 The model sees only what the harness sends it. Chapter1's loop already
 keeps that small: step `k`'s request is a prefix of one token array. This
 chapter makes the array itself a record. The harness writes an append-only

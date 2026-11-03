@@ -24,6 +24,11 @@
 > or are sent when the source says so. Still open: following a project's
 > own templates.
 
+The [recovery contract](CONTRACT.md#recovery-and-interrupted-effects)
+limits the claims below to their checked boundaries. Router launch and
+delivery recovery do not establish exactly-once arbitrary engine tool
+effects; an unrecorded completion can have an unknown outcome.
+
 Chapter17's agent is only useful if it keeps working while a laptop sleeps,
 answers while a long build runs, talks the way each channel expects and
 recovers from failures without a person watching. This chapter covers the
@@ -73,10 +78,13 @@ DeepSeek Harness team's Super-agent article
   reaches hold private code and credentials:
   - A daemon admits only commands within its machine's grant, so a
     compromised loop cannot take every attached machine.
-  - Credentials are used through capability handles the daemon resolves. The
-    secret never enters model context or the log.
-  - No session content leaves the person's machines without chapter18's
-    opt-in.
+  - Credentials are named through handles in queued work. A job's process
+    environment can still expose a value if a command prints it; display/log
+    redaction occurs too late to prevent that engine from seeing it. The
+    credential section below states the current boundary.
+  - Outbound content follows the [authorization contract](CONTRACT.md).
+    Chapter 18 gates selected secondary calls and remembered facts; it does
+    not yet gate every byte of ordinary engine inference.
 - **Open problems kept open.** When to shard the Router and how finely, when
   Workers should talk to each other directly, memory over months (chapter
   214), how tasks appear to a person once a conversation is no longer one

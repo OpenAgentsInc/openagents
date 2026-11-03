@@ -1,0 +1,292 @@
+// Repository pilot v1 and offline CLI journey. Run through coax/web/tool.sh.
+// One live case per invocation keeps every command below 15 minutes.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/json.coax";
+#load "../../coax/lib/crypto/sha256-memory.coax";
+cxterm_write :: (s: [] u8) -> int #foreign;
+
+PILOT :: "coder-repository-pilot-v1";
+SPECS :: [10] string.[
+ "Return the absolute value of integer x.",
+ "Clamp integer x to the inclusive interval 0 through 10.",
+ "Return ceiling(x/2) for nonnegative integer x.",
+ "Return the residue of integer x modulo 5 in the interval 0 through 4, including negative x.",
+ "Return the sum of integers from 0 through nonnegative x, inclusive.",
+ "Return a quote of 2*x+3 for nonnegative x. The rate() helper in helper.coax must return 2 and the base fee is 3. Fix both modules.",
+ "Return 1 when integer temperature x is at least 100, otherwise 0.",
+ "Count the even integers in the inclusive interval 0 through nonnegative x (zero counts).",
+ "Return the number of capacity-six batches needed for nonnegative x items. capacity() in helper.coax must return 6; zero items need zero batches. Fix both modules.",
+ "Return the next weekday for x in 0 through 6, wrapping 6 to 0." ];
+BAD :: [10] string.[
+ "f :: (x:int)->int {return x;}\n",
+ "f :: (x:int)->int {return x;}\n",
+ "f :: (x:int)->int {return x/2;}\n",
+ "f :: (x:int)->int {return x%5;}\n",
+ "f :: (x:int)->int {return x*(x-1)/2;}\n",
+ "#load \"helper.coax\";\nf :: (x:int)->int {return rate()*x;}\n",
+ "f :: (x:int)->int {return ifx x>100 then 1 else 0;}\n",
+ "f :: (x:int)->int {return x/2;}\n",
+ "#load \"helper.coax\";\nf :: (x:int)->int {return x/capacity();}\n",
+ "f :: (x:int)->int {return x+1;}\n" ];
+FIX :: [10] string.[
+ "f :: (x:int)->int {return ifx x<0 then -x else x;}\n",
+ "f :: (x:int)->int {return ifx x<0 then 0 else ifx x>10 then 10 else x;}\n",
+ "f :: (x:int)->int {return (x+1)/2;}\n",
+ "f :: (x:int)->int {return (x%5+5)%5;}\n",
+ "f :: (x:int)->int {return x*(x+1)/2;}\n",
+ "#load \"helper.coax\";\nf :: (x:int)->int {return rate()*x+3;}\n",
+ "f :: (x:int)->int {return ifx x>=100 then 1 else 0;}\n",
+ "f :: (x:int)->int {return x/2+1;}\n",
+ "#load \"helper.coax\";\nf :: (x:int)->int {return (x+capacity()-1)/capacity();}\n",
+ "f :: (x:int)->int {return (x+1)%7;}\n" ];
+
+#test "repository cases cover negative boundaries, zero, wrapping and two modules" {
+ #assert pe_want(0,-7)==7 && pe_want(0,0)==0;
+ #assert pe_want(1,-1)==0 && pe_want(1,10)==10 && pe_want(1,11)==10;
+ #assert pe_want(2,0)==0 && pe_want(2,3)==2;
+ #assert pe_want(3,-6)==4 && pe_want(3,-5)==0;
+ #assert pe_want(4,4)==10 && pe_want(5,4)==11;
+ #assert pe_want(6,99)==0 && pe_want(6,100)==1;
+ #assert pe_want(7,0)==1 && pe_want(7,5)==3;
+ #assert pe_want(8,0)==0 && pe_want(8,6)==1 && pe_want(8,7)==2;
+ #assert pe_want(9,6)==0 && pe_multi(5) && pe_multi(8) && !pe_multi(4);
+}
+#test "receipt classification distinguishes provider, task and harness failures" {
+ #assert pe_outcome(true,true,false,false,0)=="passed";
+ #assert pe_outcome(false,true,false,false,0)=="task_failed";
+ #assert pe_outcome(true,false,false,false,0)=="regression";
+ #assert pe_outcome(false,true,true,false,1)=="provider_unavailable";
+ #assert pe_outcome(false,true,false,true,124)=="budget_exhausted";
+ #assert pe_outcome(false,true,false,false,2)=="harness_failed";
+ #assert pe_outcome(false,true,false,false,1)=="task_failed";
+}
+#test "JSONL event parsing accepts partial evidence without inventing usage" {
+ ev:[1] PeEvents;
+ pe_events("{\"kind\":\"session\",\"id\":\"abc\",\"engine\":\"claude\"}\n{\"kind\":\"tool\",\"label\":\"Read(src.coax)\"}\n{\"kind\":\"result\",\"error\":true}\n{\"kind\":\"end\",\"ending\":\"failed\",\"cause\":\"provider\"}",ev[..]);
+ #assert ev[0].tools==1 && ev[0].errors==1 && ev[0].provider && ev[0].ended;
+ #assert cast(string)ev[0].id[0..<ev[0].nid]=="abc";
+ ev2:[1] PeEvents; pe_events("not json\n{\"kind\":\"tool\"}",ev2[..]);
+ #assert ev2[0].invalid==1 && !ev2[0].ended;
+}
+
+pe_multi :: (k:int)->bool {return k==5 || k==8;}
+pe_want :: (k:int,x:int)->int {
+ if k==0 {return ifx x<0 then -x else x;}
+ if k==1 {return ifx x<0 then 0 else ifx x>10 then 10 else x;}
+ if k==2 {return x/2+x%2;}
+ if k==3 {v:=x;while v<0 {v+=5;}while v>=5 {v-=5;}return v;}
+ if k==4 {v:=0;for i:0..<x+1 {v+=i;}return v;}
+ if k==5 {return x+x+3;}
+ if k==6 {return ifx x<100 then 0 else 1;}
+ if k==7 {v:=0;for i:0..<x+1 {if i%2==0 {v+=1;}}return v;}
+ if k==8 {v:=0;left:=x;while left>0 {v+=1;left-=6;}return v;}
+ return ifx x==6 then 0 else x+1;
+}
+pe_outcome :: (accepted:bool,protected:bool,provider:bool,expired:bool,status:int)->string {
+ if provider {return "provider_unavailable";}
+ if expired {return "budget_exhausted";}
+ if status==2 || status<0 {return "harness_failed";}
+ if !protected {return "regression";}
+ return ifx accepted && status==0 then "passed" else "task_failed";
+}
+pe_put :: (s:string) {b:[65536]u8;if s.count>b.count {tool_errln("output too large");return;}for c,i:s {b[i]=c;}r:=cxterm_write(b[0..<s.count]);}
+pe_cat :: (b:[]u8,n:int,s:string)->int {return json_raw(b,n,s);}
+pe_num :: (x:int,b:[]u8)->string {n:=json_write_int(b,0,x);return cast(string)b[0..<n];}
+pe_join :: (a:string,b:string,out:[]u8)->string {return fs_join(a,b,out);}
+pe_has :: (s:string,p:string)->bool {if p.count>s.count {return false;}for i:0..<s.count-p.count+1 {if s[i..<i+p.count]==p {return true;}}return false;}
+pe_sha :: (s:string,out:[]u8)->string {
+ b:[131072]u8;if s.count>b.count {return "";}for c,i:s {b[i]=c;}d:[32]u8;r:=sha256_hash_checked(b[0..<s.count],d[..],false);
+ if r!=0 {return "";}hex:="0123456789abcdef";for i:0..<32 {out[i*2]=hex[cast(int)(d[i]>>4)];out[i*2+1]=hex[cast(int)(d[i]&15)];}return cast(string)out[0..<64];
+}
+PeRun :: struct {text:[262144]u8;n:int;status:int=-1;cut:bool;timeout:bool;ms:int;}
+PeEnv :: struct {repo:string;coder:string;coax:string;home:string;cwd:string;}
+// Arguments are passed as argv, never interpolated into a shell.
+pe_run :: (env:PeEnv,argv:[]string,ms:int,r:[]PeRun) {
+ r[0]=PeRun.{};h:=proc_new();if h<0 {return;}
+ ok:=proc_cwd(h,env.cwd);for a:argv {ok=ok && proc_arg(h,a);}
+ eb:[4096]u8;
+ n:=pe_cat(eb[..],0,"CODER_HOME=");n=pe_cat(eb[..],n,env.home);ok=ok && proc_env(h,cast(string)eb[0..<n]);
+ n=pe_cat(eb[..],0,"COAX=");n=pe_cat(eb[..],n,env.coax);ok=ok && proc_env(h,cast(string)eb[0..<n]);
+ n=pe_cat(eb[..],0,"CODER_REPO=");n=pe_cat(eb[..],n,env.repo);ok=ok && proc_env(h,cast(string)eb[0..<n]);
+ n=pe_cat(eb[..],0,"PWD=");n=pe_cat(eb[..],n,env.cwd);ok=ok && proc_env(h,cast(string)eb[0..<n]);
+ ok=ok && proc_env(h,"BROWSER=/usr/bin/true") && proc_env(h,"CODER_USAGE=0") && proc_env(h,"CODER_RECAPS=0");
+ // Inherited test playback must never silently turn a live measurement offline.
+ ok=ok && proc_unset(h,"GW_REPLAY") && proc_unset(h,"GW_RECORD") && proc_unset(h,"CODER_ROUTER_FAULT");
+ if !ok || proc_start(h)!=0 {done:=proc_release(h);return;}
+ close:=proc_close_stdin(h);t:=proc_now_ms();line:[65536]u8;
+ while true {
+  left:=ms-(proc_now_ms()-t);if left<=0 {r[0].timeout=true;break;}
+  nline:=proc_line(h,ifx left>1000 then 1000 else left,line[..]);
+  if nline==PROC_EOF {break;}if nline==PROC_TIMEOUT {continue;}if nline<0 {r[0].cut=true;if nline==PROC_ERROR {break;}continue;}
+  if r[0].n+nline+1>r[0].text.count {r[0].cut=true;continue;}
+  for i:0..<nline {r[0].text[r[0].n]=line[i];r[0].n+=1;}r[0].text[r[0].n]=10;r[0].n+=1;
+ }
+ if r[0].timeout {kill:=proc_kill(h,9);}
+ r[0].status=proc_wait(h,2000);if r[0].status==PROC_RUNNING {kill:=proc_kill(h,9);r[0].status=proc_wait(h,2000);r[0].timeout=true;}
+ r[0].ms=proc_now_ms()-t;done:=proc_release(h);
+}
+pe_text :: (r:[]PeRun)->string {return cast(string)r[0].text[0..<r[0].n];}
+pe_cmd :: (e:PeEnv,a:[]string,r:[]PeRun) {pe_run(e,a,30000,r);}
+PeEvents :: struct {id:[128]u8;nid:int;engine:[32]u8;ne:int;tools:int;errors:int;invalid:int;ended:bool;provider:bool;route:bool;route_ms:int;}
+pe_events :: (s:string,v:[]PeEvents) {
+ at:=0;
+ while at<s.count {end:=at;while end<s.count && s[end]!=10 {end+=1;}nodes:[4096]JvNode;d:[1]Jv;
+  if end>at && jv_parse(d[..],s[at..<end],nodes[..]) {
+   b:[128]u8;nk:=jv_str(d[0],jv_get(d[0],0,"kind"),b[..]);kind:=ifx nk<0 then "" else cast(string)b[0..<nk];
+   if kind=="session" {v[0].nid=jv_str(d[0],jv_get(d[0],0,"id"),v[0].id[..]);v[0].ne=jv_str(d[0],jv_get(d[0],0,"engine"),v[0].engine[..]);}
+   if kind=="tool" {v[0].tools+=1;}
+   if kind=="result" && jv_kind(d[0],jv_get(d[0],0,"error"))==JV_TRUE {v[0].errors+=1;}
+   if kind=="route" {v[0].route=jv_kind(d[0],jv_get(d[0],0,"ok"))==JV_TRUE;}
+   if kind=="end" {v[0].ended=true;nb:=jv_str(d[0],jv_get(d[0],0,"cause"),b[..]);v[0].provider=nb==8 && cast(string)b[0..<8]=="provider";}
+  } else if end>at {v[0].invalid+=1;}
+  at=end+1;
+ }
+}
+pe_file :: (dir:string,name:string,text:string)->bool {b:[4096]u8;return fs_write(pe_join(dir,name,b[..]),text);}
+pe_helper :: (k:int,fixed:bool)->string {
+ if k==5 {return ifx fixed then "rate :: ()->int {return 2;}\n" else "rate :: ()->int {return 3;}\n";}
+ return ifx fixed then "capacity :: ()->int {return 6;}\n" else "capacity :: ()->int {return 5;}\n";
+}
+pe_checks :: (k:int,source:string,hidden:bool,b:[]u8)->string {
+ n:=pe_cat(b,0,"#load \"");n=pe_cat(b,n,source);n=pe_cat(b,n,"\";\nmain :: () {}\n#test \"repository acceptance\" {\n");tmp:[32]u8;
+ lo:=ifx k==0 || k==1 || k==3 then -20 else ifx k==6 then 80 else 0;
+ hi:=ifx k==9 then 7 else ifx k==6 then 121 else 31;
+ for x:lo..<hi {if !hidden && x!=lo && x!=hi-1 && x!=(lo+hi)/2 {continue;}
+  n=pe_cat(b,n,"#assert f(");n=pe_cat(b,n,pe_num(x,tmp[..]));n=pe_cat(b,n,")==");n=pe_cat(b,n,pe_num(pe_want(k,x),tmp[..]));n=pe_cat(b,n,";\n");}
+ if k==5 {n=pe_cat(b,n,"#assert rate()==2;\n");}if k==8 {n=pe_cat(b,n,"#assert capacity()==6;\n");}
+ n=pe_cat(b,n,"}\n");return cast(string)b[0..<n];
+}
+pe_setup :: (e:PeEnv,k:int,r:[]PeRun)->bool {
+ specs:=SPECS;bad:=BAD;b:[8192]u8;
+ ok:=pe_file(e.cwd,"src.coax",bad[k]) && pe_file(e.cwd,"checks.coax",pe_checks(k,"src.coax",false,b[..]));
+ ok=ok && pe_file(e.cwd,"UNRELATED.txt","keep this file byte for byte\n");
+ ok=ok && pe_file(e.cwd,"AGENTS.md","Fix only src.coax and helper.coax when present. Do not change checks.coax, AGENTS.md or UNRELATED.txt. Do not commit or fetch the network. Run the visible checks.\n");
+ if pe_multi(k) {ok=ok && pe_file(e.cwd,"helper.coax",pe_helper(k,false));}
+ a:=[3]string.["git","init","-q"];pe_cmd(e,a[..],r);ok=ok && r[0].status==0;
+ a2:=[3]string.["git","add","."];pe_cmd(e,a2[..],r);ok=ok && r[0].status==0;
+ a3:=[9]string.["git","-c","user.name=Coder fixture","-c","user.email=fixture@example.invalid","commit","-qm","fixture baseline","--no-gpg-sign"];pe_cmd(e,a3[..],r);return ok && r[0].status==0;
+}
+pe_accept :: (e:PeEnv,k:int,dir:string,r:[]PeRun)->bool {
+ sb:[4096]u8;path:=pe_join(e.cwd,"src.coax",sb[..]);cb:[8192]u8;text:=pe_checks(k,path,true,cb[..]);
+ if !pe_file(dir,"accept.coax",text) {return false;}
+ pb:[4096]u8;p:=pe_join(dir,"accept.coax",pb[..]);a:=[3]string.[e.coax,"test",p];pe_cmd(e,a[..],r);return r[0].status==0 && !r[0].cut && !r[0].timeout;
+}
+pe_protected :: (e:PeEnv,r:[]PeRun)->bool {
+ a:=[7]string.["git","diff","--exit-code","HEAD","--","checks.coax","AGENTS.md"];pe_cmd(e,a[..],r);if r[0].status!=0 {return false;}
+ b:[128]u8;p:[4096]u8;n:=fs_read(pe_join(e.cwd,"UNRELATED.txt",p[..]),b[..]);if n!=29 || cast(string)b[0..<n]!="keep this file byte for byte\n" {return false;}
+ // New files and attempts to commit must not conceal regressions.
+ a2:=[4]string.["git","rev-list","--count","HEAD"];pe_cmd(e,a2[..],r);if pe_text(r)!="1\n" {return false;}
+ a3:=[4]string.["git","status","--porcelain","--untracked-files=all"];pe_cmd(e,a3[..],r);
+ s:=pe_text(r);at:=0;while at<s.count {end:=at;while end<s.count && s[end]!=10 {end+=1;}line:=s[at..<end];
+ if line.count>0 && line!=" M src.coax" && line!=" M helper.coax" {return false;}at=end+1;}
+ return r[0].status==0 && !r[0].cut;
+}
+pe_coder :: (e:PeEnv,verb:string,task:string,engine:string,id:string,r:[]PeRun) {
+ a:[20]string;n:=0;a[n]=e.coder;n+=1;a[n]=verb;n+=1;
+ if id.count>0 {a[n]=id;n+=1;}a[n]=task;n+=1;
+ a[n]="--engine";a[n+1]=engine;n+=2;a[n]="--json";n+=1;a[n]="--no-memory";n+=1;
+ a[n]="--deadline";a[n+1]="120";n+=2;a[n]="--cwd";a[n+1]=e.cwd;n+=2;
+ pe_run(e,a[0..<n],135000,r);
+}
+pe_prompt :: (k:int,coax:string,b:[]u8)->string {
+ specs:=SPECS;n:=pe_cat(b,0,"Fix this Coax repository. ");n=pe_cat(b,n,specs[k]);
+ n=pe_cat(b,n," Implement f(x:int)->int in src.coax. Read AGENTS.md. Change only src.coax and helper.coax when it exists. Run '");n=pe_cat(b,n,coax);n=pe_cat(b,n," test checks.coax'. Do not commit. State what changed and what passed.");return cast(string)b[0..<n];
+}
+pe_check :: (ok:bool,what:string)->int {pe_put(ifx ok then "ok " else "FAIL ");pe_put(what);pe_put("\n");return ifx ok then 0 else 1;}
+
+// Full offline journey through the installed CLI boundary. Echo runs explicit
+// commands, not a pretend model; the separate live mode measures model behavior.
+pe_offline :: (e:PeEnv,root:string)->int {
+ r:[1]PeRun;fails:=0;
+ // Every published task starts broken, and an independently scored repair passes.
+ for k:0..<10 {b:[32]u8;name:=pe_num(k,b[..]);p:[4096]u8;dir:=pe_join(root,name,p[..]);ok:=fs_mkdir(dir);homeb:[4096]u8;home:=pe_join(dir,"home",homeb[..]);ok=ok && fs_mkdir(home);
+  rb:[4096]u8;repo:=pe_join(dir,"repo",rb[..]);ok=ok && fs_mkdir(repo);env:=e;env.cwd=repo;env.home=home;
+  ok=ok && pe_setup(env,k,r[..]);broken:=pe_accept(env,k,dir,r[..]);fix:=FIX;
+  ok=ok && pe_file(repo,"src.coax",fix[k]);if pe_multi(k) {ok=ok && pe_file(repo,"helper.coax",pe_helper(k,true));}
+  accepted:=pe_accept(env,k,dir,r[..]);safe:=pe_protected(env,r[..]);fails+=pe_check(ok && !broken && accepted && safe,"fixture baseline fails and repaired source passes external acceptance");
+ }
+ // A separate fresh case demonstrates visible failure, commands, logs, fork,
+ // replay, interrupted work and reviewed diff without model credentials.
+ pb:[4096]u8;repo:=pe_join(root,"journey",pb[..]);ok:=fs_mkdir(repo);env:=e;env.cwd=repo;
+ hb:[4096]u8;env.home=pe_join(root,"journey-home",hb[..]);ok=ok && fs_mkdir(env.home);ok=ok && pe_setup(env,0,r[..]);
+ taskb:[8192]u8;n:=pe_cat(taskb[..],0,"$ ");n=pe_cat(taskb[..],n,env.coax);n=pe_cat(taskb[..],n," test checks.coax");
+ pe_coder(env,"run",cast(string)taskb[0..<n],"echo","",r[..]);ev:[1]PeEvents;pe_events(pe_text(r[..]),ev[..]);idb:[128]u8;for i:0..<ev[0].nid {idb[i]=ev[0].id[i];}id:=cast(string)idb[0..<ev[0].nid];
+ fails+=pe_check(ok && ev[0].errors>0 && ev[0].ended && id.count>0,"CLI records failing visible check");
+ // The command edits the same source the model edits in live mode.
+ task:="$ printf 'f :: (x:int)->int {return ifx x<0 then -x else x;}\\n' > src.coax";
+ pe_coder(env,"fork",task,"echo",id,r[..]);ev2:[1]PeEvents;pe_events(pe_text(r[..]),ev2[..]);id2b:[128]u8;for i:0..<ev2[0].nid {id2b[i]=ev2[0].id[i];}id2:=cast(string)id2b[0..<ev2[0].nid];
+ fails+=pe_check(r[0].status==0 && ev2[0].ended && pe_accept(env,0,root,r[..]),"fork carries diagnosis and repairs the repository");
+ a:=[4]string.[env.coder,"replay",id2,"--json"];pe_cmd(env,a[..],r[..]);fails+=pe_check(r[0].status==0,"replay verifies fork input without rerunning its edit");
+ a2:=[4]string.[env.coder,"log",id2,"--json"];pe_cmd(env,a2[..],r[..]);fails+=pe_check(r[0].status==0 && pe_has(pe_text(r[..]),"src.coax"),"log retains edit evidence");
+ a3:=[11]string.[env.coder,"run","$ sleep 30; touch SHOULD_NOT_EXIST","--engine","echo","--detach","--cwd",repo,"--deadline","60","--no-memory"];pe_cmd(env,a3[..],r[..]);
+ stopidb:[128]u8;ns:=0;for c:pe_text(r[..]) {if c!=10 && c!=13 && ns<stopidb.count {stopidb[ns]=c;ns+=1;}}sid:=cast(string)stopidb[0..<ns];
+ // Give the detached process a bounded chance to publish its log.
+ proc_sleep(500);stop:=[3]string.[env.coder,"stop",sid];pe_run(env,stop[..],15000,r[..]);stopped:=r[0].status==0;
+ status:=[4]string.[env.coder,"status",sid,"--json"];pe_cmd(env,status[..],r[..]);
+ marker:[4096]u8;fails+=pe_check(stopped && pe_has(pe_text(r[..]),"stopped") && !fs_exists(pe_join(repo,"SHOULD_NOT_EXIST",marker[..])),"stop interrupts the detached command before its effect");
+ pe_coder(env,"fork","$ echo continued-after-stop","echo",sid,r[..]);fails+=pe_check(r[0].status==0 && pe_has(pe_text(r[..]),"continued-after-stop"),"continuation after interruption completes");
+ diff:=[4]string.["git","diff","HEAD","--"];pe_cmd(env,diff[..],r[..]);saved:=pe_file(root,"reviewed.diff",pe_text(r[..]));
+ fails+=pe_check(saved && pe_has(pe_text(r[..]),"-f ::") && pe_has(pe_text(r[..]),"+f ::") && pe_protected(env,r[..]),"reviewed diff changes source only and stays in local delivery sink");
+ pe_put("journey artifacts: ");pe_put(root);pe_put("\n");return ifx fails==0 then 0 else 1;
+}
+
+pe_live :: (e:PeEnv,root:string,k:int,engine:string,out:string)->int {
+ r:[1]PeRun;ok:=pe_setup(e,k,r[..]);if !ok {tool_errln("fixture setup failed");return 2;}
+ // Authorize this synthetic task text for automatic routing only. No memories
+ // or private project content are present in this fresh CODER_HOME.
+ if engine=="auto" {grant:=[7]string.[e.coder,"consent","grant","system-one","--classes","session","--json"];pe_cmd(e,grant[..],r[..]);if r[0].status!=0 {return 2;}}
+ baseline_bad:=!pe_accept(e,k,root,r[..]);pb:[8192]u8;prompt:=pe_prompt(k,e.coax,pb[..]);
+ ph:[64]u8;prompt_sha:=pe_sha(prompt,ph[..]);
+ // Case 9 qualifies actual cross-turn continuation. Every engine gets the same
+ // diagnostic turn, followed by a fork whose task asks for the repair.
+ start:=proc_now_ms();
+ if k==9 {pe_coder(e,"run","Read AGENTS.md and src.coax. Diagnose the weekday wrapping bug; do not edit yet.",engine,"",r[..]);}
+ previous:[1]PeEvents;if k==9 {pe_events(pe_text(r[..]),previous[..]);}
+ if !previous[0].provider {
+  if k==9 && previous[0].nid>0 {pe_coder(e,"fork",prompt,engine,cast(string)previous[0].id[0..<previous[0].nid],r[..]);}
+  else {pe_coder(e,"run",prompt,engine,"",r[..]);}
+ }
+ elapsed:=proc_now_ms()-start;status:=r[0].status;cut:=r[0].cut;expired:=r[0].timeout || status==124;
+ ev:[1]PeEvents;pe_events(pe_text(r[..]),ev[..]);saved:=pe_file(root,"events.jsonl",pe_text(r[..]));
+ accepted:=pe_accept(e,k,root,r[..]);safe:=pe_protected(e,r[..]);
+ outcome:=pe_outcome(accepted && baseline_bad,safe,ev[0].provider || previous[0].provider,expired,status);
+ if cut || ev[0].invalid>0 || !ev[0].ended {if !expired && !ev[0].provider {outcome="harness_failed";}}
+ diff:=[4]string.["git","diff","HEAD","--"];pe_cmd(e,diff[..],r[..]);saved=saved && pe_file(root,"patch.diff",pe_text(r[..]));
+ specs:=SPECS;bad:=BAD;fix:=FIX;sb:[65536]u8;sn:=0;for i:0..<10 {sn=pe_cat(sb[..],sn,specs[i]);sn=pe_cat(sb[..],sn,bad[i]);sn=pe_cat(sb[..],sn,fix[i]);if pe_multi(i) {sn=pe_cat(sb[..],sn,pe_helper(i,false));sn=pe_cat(sb[..],sn,pe_helper(i,true));}cb:[8192]u8;sn=pe_cat(sb[..],sn,pe_checks(i,"src.coax",true,cb[..]));}sh:[64]u8;suite_sha:=pe_sha(cast(string)sb[0..<sn],sh[..]);
+ rev:=[3]string.["git","rev-parse","HEAD"];re:=e;re.cwd=e.repo;pe_cmd(re,rev[..],r[..]);revb:[128]u8;nr:=0;for c:pe_text(r[..]) {if c!=10 && nr<revb.count {revb[nr]=c;nr+=1;}}
+ actual:=ifx ev[0].ne>0 then cast(string)ev[0].engine[0..<ev[0].ne] else "unknown";
+ identity:=[2]string.[ifx actual=="codex" then "codex" else "claude","--version"];pe_cmd(e,identity[..],r[..]);vb:[256]u8;nv:=0;if actual=="codex" || actual=="claude" {for c:pe_text(r[..]) {if c!=10 && nv<vb.count {vb[nv]=c;nv+=1;}}}
+ harnessb:[65536]u8;hp:[4096]u8;nh:=fs_read(pe_join(e.repo,"coder/tests/repository.coax",hp[..]),harnessb[..]);hh:[64]u8;harness_sha:=ifx nh<0 then "" else pe_sha(cast(string)harnessb[0..<nh],hh[..]);
+ ca:=[3]string.["shasum","-a","256"];cargv:=[4]string.[ca[0],ca[1],ca[2],e.coax];pe_cmd(e,cargv[..],r[..]);ch:[64]u8;if r[0].status!=0 || r[0].n<64 {return 2;}for i:0..<64 {ch[i]=r[0].text[i];}
+ receipt:[8192]u8;n:=json_raw(receipt[..],0,"{\"suite\":");n=json_write_string(receipt[..],n,PILOT);
+ n=json_raw(receipt[..],n,",\"suite_sha256\":");n=json_write_string(receipt[..],n,suite_sha);
+ n=json_raw(receipt[..],n,",\"revision\":");n=json_write_string(receipt[..],n,cast(string)revb[0..<nr]);
+ n=json_raw(receipt[..],n,",\"harness_sha256\":");n=json_write_string(receipt[..],n,harness_sha);
+ n=json_raw(receipt[..],n,",\"compiler_sha256\":");n=json_write_string(receipt[..],n,cast(string)ch[..]);
+ n=json_raw(receipt[..],n,",\"case\":");n=json_write_int(receipt[..],n,k);n=json_raw(receipt[..],n,",\"split\":");n=json_write_string(receipt[..],n,ifx k%2==0 then "development" else "held");
+ n=json_raw(receipt[..],n,",\"requested_engine\":");n=json_write_string(receipt[..],n,engine);n=json_raw(receipt[..],n,",\"engine\":");n=json_write_string(receipt[..],n,ifx ev[0].ne>0 then cast(string)ev[0].engine[0..<ev[0].ne] else "unknown");
+ n=json_raw(receipt[..],n,",\"engine_version\":");n=json_write_string(receipt[..],n,cast(string)vb[0..<nv]);
+ n=json_raw(receipt[..],n,",\"model\":null,\"effort\":\"engine-or-router-default\",\"prompt_sha256\":");n=json_write_string(receipt[..],n,prompt_sha);
+ n=json_raw(receipt[..],n,",\"outcome\":");n=json_write_string(receipt[..],n,outcome);n=json_raw(receipt[..],n,",\"ms\":");n=json_write_int(receipt[..],n,elapsed);
+ n=json_raw(receipt[..],n,",\"tool_calls\":");n=json_write_int(receipt[..],n,ev[0].tools+previous[0].tools);n=json_raw(receipt[..],n,",\"tool_errors\":");n=json_write_int(receipt[..],n,ev[0].errors+previous[0].errors);
+ n=json_raw(receipt[..],n,",\"interventions\":0,\"tokens\":null,\"cached_tokens\":null,\"price\":null,\"route_answered\":");n=json_raw(receipt[..],n,ifx ev[0].route then "true" else "false");
+ n=json_raw(receipt[..],n,",\"exit\":");n=json_write_int(receipt[..],n,status);n=json_raw(receipt[..],n,",\"artifacts_saved\":");n=json_raw(receipt[..],n,ifx saved then "true" else "false");n=json_raw(receipt[..],n,"}\n");
+ if n<0 || !saved || !fs_append(out,cast(string)receipt[0..<n]) {tool_errln("receipt write failed");return 2;}pe_put(cast(string)receipt[0..<n]);
+ return 0; // a measured task failure is data, not a harness invocation error
+}
+
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) {return 2;}mode:=args_at(a[..],0);
+ if mode!="offline" && mode!="run" {tool_errln("usage: repository.coax offline | run --engine claude|codex|micro|psionic|auto --case 0..9 --out FILE");return 2;}
+ rb:[4096]u8;repo:=fs_cwd(rb[..]);coaxb:[4096]u8;coax:=proc_getenv("COAX",coaxb[..]);if coax.count==0 {tool_errln("set COAX to the absolute qualified compiler path");return 2;}
+ cb:[4096]u8;coder:=pe_join(repo,"coder/tui/coder.sh",cb[..]);tb:[4096]u8;root:=fs_temp("coder-repository-",tb[..]);if root.count==0 {return 2;}
+ hb:[4096]u8;home:=pe_join(root,"home",hb[..]);wb:[4096]u8;cwd:=pe_join(root,"repo",wb[..]);ok:=fs_mkdir(home) && fs_mkdir(cwd);if !ok {return 2;}e:=PeEnv.{repo=repo,coder=coder,coax=coax,home=home,cwd=cwd};
+ if mode=="offline" {return pe_offline(e,root);}
+ engine:=args_value(a[..],"--engine","");if engine!="claude" && engine!="codex" && engine!="micro" && engine!="psionic" && engine!="auto" {return 2;}
+ ks:=args_value(a[..],"--case","");if ks.count!=1 || ks[0]<'0' || ks[0]>'9' {return 2;}k:=cast(int)(ks[0]-'0');out:=args_value(a[..],"--out","");if out.count==0 || out[0]!='/' {tool_errln("--out must be an absolute receipt path");return 2;}
+ return pe_live(e,root,k,engine,out);
+}

@@ -10,6 +10,12 @@
 > API (Clef first) instead of straight to Baseten. That API isn't serving
 > yet; see [The Decisions API](#the-decisions-api).
 
+The labelled accuracy below measures agreement with a routing policy, not
+which engine produces the best patch. The [repository pilot](../../docs/coder/repository-pilot.md)
+compares fixed engines and automatic routing on the same tasks, with
+provider failures separate from coding failures. A returned probability is
+a model score; calibration is not established by 22 correct labels.
+
 Coder picks an engine, a model and an effort for each task. The choice is a
 typed decision from System One, not a keyword rule.
 

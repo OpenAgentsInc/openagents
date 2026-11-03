@@ -18,13 +18,22 @@ tool calls (Part I). It then adds engines: Coder's own Microcoder loop, models
 that [Psionic](../../psionic/book/README.md) serves, and the Claude Code or
 Codex a person already uses (Part II). Parts III and IV turn one session into
 one agent across many tasks and channels that stays online, following the
-DeepSeek Harness team's Super-agent design. Part V measures each addition
-against the simplest loop, and Part VI collects everything into the
+DeepSeek Harness team's Super-agent design. Part V builds measurement
+machinery and a live repository pilot; comparative ablations of many
+additions remain. Part VI collects the implemented paths into the
 `openagents coder` command line. Part VII reads other coding agents' source,
 one agent per chapter, and records what Coder takes from each.
 
-Every chapter ends at an `openagents coder` verb that does what the chapter
-built. The [plan](PLAN.md#the-cli-is-the-spine) lists them.
+The chapters target `openagents coder` verbs as their product interface.
+The [plan](PLAN.md#the-cli-is-the-spine) lists those targets; chapter status
+and the coverage matrix distinguish experimental components from live verbs.
+
+Start with [guarantees and authorization](CONTRACT.md) for the distinction
+between bounded experiments, live Coder behavior and engine-owned state.
+For a practical path, run the [repository journey and coding pilot](../../docs/coder/repository-pilot.md),
+then read chapters 1, 2, 9–11, 14 and 23. For the full architecture, follow
+the numbered chapters and use chapter 21 to distinguish implementation
+checks from measurements of real coding outcomes.
 
 ## Status
 
@@ -66,9 +75,9 @@ names it.
 | [18. Consent before sharing](ch018-consent-before-sharing.md) | Partly implemented: cs-consent-v1 hash-chained ledger; `coder consent` gates remembered facts to every engine, and Worker logs, routing and Router decisions to System One |
 | [19. Remember a fact, then revise it](ch019-remember-a-fact-then-revise-it.md) | Partly implemented: mm-memory-v1 hash-chained memory events; `coder remember`/`revise`/`forget`/`recall` on disk, ranked by Vertex embeddings, checked against the session line they came from |
 | [20. An agent that stays online](ch020-an-agent-that-stays-online.md) | Partly implemented: a resumable loop, a watchdog with provider rechecks, machine daemons, credential handles, a read ceiling for unnamed authors (checked live against chapter 6's attacks), channel rules and mail replies as Gmail drafts |
-| [21. Measure the harness](ch021-measure-the-harness.md) | Partly implemented: cpu-harness-bench-v1, bounded CPU |
+| [21. Measure the harness](ch021-measure-the-harness.md) | Partly implemented: cpu-harness-bench-v1 plus coder-repository-pilot-v1; live engine bundles on macOS arm64 |
 | [22. Generate candidates, then check them](ch022-generate-candidates-then-check-them.md) | Partly implemented: cpu-int-candidates-v1, bounded CPU |
-| [23. `openagents coder`](ch023-openagents-coder.md) | Partly implemented: every verb, `--on ssh:DEST`, `coder daemon`; `--on cloud` not live |
+| [23. `openagents coder`](ch023-openagents-coder.md) | Partly implemented: every verb, `--on ssh:DEST`, `coder daemon`, offline bench journey; `--on cloud` not live |
 | [24. DeepSeek Harness](ch024-deepseek-harness.md) | Written: deepseek-ai/deepseek-harness@ce7073d |
 | [25. Claude Code](ch025-claude-code.md) | Written: AtlantisPleb/cc@abcc009 |
 | [26. Codex](ch026-codex.md) | Written: openai/codex@a098129 |

@@ -152,8 +152,8 @@ and cost per run. This chapter did not rerun these numbers.
   in-process extensions for what needs the agent's own state.
 - **A check before an extension runs.** Goose refuses known-malicious packages
   before start. Chapter 15 signs third-party plugins and runs them in bounded
-  Wasm; Coder adds a check of the same kind before any package-based MCP server
-  starts, and records the result.
+  Wasm. A recorded package-malware check before a package-based MCP server
+  starts is proposed work, not a guarantee of the current finite MCP adapter.
 - **Recipes as tasks with a definition of done.** `RetryConfig.checks` is a
   shell-checkable success condition attached to a task. This fits
   [chapter 22](ch022-generate-candidates-then-check-them.md)'s generate, run
@@ -172,9 +172,10 @@ and cost per run. This chapter did not rerun these numbers.
 ## What Coder leaves, and why
 
 - **An agent-wide mode that approves everything.** Goose's default mode is
-  `auto`. Coder's approvals are per tool and per policy
-  ([chapter 5](ch005-a-sandbox-and-approvals.md)), with confinement first, so
-  it does not take a single switch that turns approval off.
+  `auto`. Coder's configured policy can decide per tool, but its current
+  local Claude Code and Codex defaults bypass permission prompts unless
+  policy or asking options select another mode (chapters 10 and 11).
+  The policy design in chapter 5 is not evidence that defaults are confined.
 - **A model as the read-only judge.** `smart_approve` asks a model whether a
   call is sensitive. Coder decides by meaning through a typed System One
   decision with a labelled set ([chapter 13](ch013-choose-an-engine.md) shows
@@ -182,8 +183,9 @@ and cost per run. This chapter did not rerun these numbers.
   judgment.
 - **JavaScript as the program language.** Code mode runs JavaScript in Boa.
   Coder's programs as tool calls ([chapter 8](ch008-programs-as-tool-calls.md))
-  run Coax against bound host functions, so the program and the harness share
-  one language and one checker.
+  currently use a small bounded tool-call language interpreted in Coax,
+  with variables, a condition and fixed loops. That experiment is not an
+  implementation of arbitrary Coax programs as tool calls.
 - **A self-test run by the agent under test.** `goose-self-test.yaml` asks the
   model to judge its own features. Coder keeps acceptance in deterministic
   checks and scripted models, and uses model runs for measurement, not as the
@@ -192,7 +194,7 @@ and cost per run. This chapter did not rerun these numbers.
   ([chapter 36](ch036-a-terminal-ui.md), [`coder/tui/`](../tui/coder.coax)) and
   the OpenAgents apps; there is no separate Coder desktop shell to test.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - **Code mode.** Goose's own numbers show code mode ahead of stock Goose on
   terminal-bench 2 (57.3% against 50.6%, `evals/harbor/README.md`).

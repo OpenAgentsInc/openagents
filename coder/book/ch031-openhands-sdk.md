@@ -207,7 +207,7 @@ pull request starts an evaluation of that many instances
   silently grows resources would change the cost of a result. A retry runs with
   the same resources, and the receipt records it.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - **Condensing.** [Chapter 7](ch007-condense-the-history.md) measures condensing
   schedules and their prefill cost. OpenHands' defaults (condense past 240

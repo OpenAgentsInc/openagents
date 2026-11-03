@@ -224,7 +224,7 @@ grader that only wants a patch.
   Prompts are fixed strings in the loop, such as `MC_SYSTEM`, so a request is
   reproducible from the log without a template engine.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - **The baseline itself:** [chapter 21](ch021-measure-the-harness.md) runs
   end-to-end suites one change at a time against [chapter 1](ch001-the-simplest-loop.md)'s

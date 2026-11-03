@@ -532,6 +532,15 @@ dependencies, not reasons to postpone accurate documentation.
 
 ## Execution and completion policy
 
+The [repository journey and coding pilot](repository-pilot.md) implements
+the three initial priorities from this review: a shared per-engine contract
+and corrected survey claims (R01–R04), the offline repository journey (R05),
+and a real-task pilot comparing fixed configurations with routing (R11–R12).
+See [the recorded results](../verification/coder-repository-2026-11-03/README.md).
+These deliver a pilot, not every stronger runtime guarantee proposed by the
+roadmap: complete native request recording, universal outbound gates and
+broader statistical qualification remain open.
+
 Start with R01–R05. They establish accurate language and a reviewable
 workflow without requiring a new model-serving platform. R06–R10 close
 specific recording, authority and recovery boundaries. R11 can begin once

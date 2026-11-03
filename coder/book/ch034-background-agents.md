@@ -147,7 +147,10 @@ Coder treats that as a defect to avoid, not a property to copy.
 session, named from the session ID, keeps concurrent runs apart and makes the
 branch findable from the session and the reverse. Opening the pull request
 with the person's own token keeps review honest: the person who asked cannot
-approve their own agent's change. `coder run` (chapter 23) does both.
+approve their own agent's change. Automatic branch/PR delivery from
+`coder run` is a proposed design here; chapter 23's complete repository
+journey was still open at this survey's revision. The offline journey now
+captures the reviewed diff locally, without claiming live PR delivery.
 
 **Review comments as a Thread.** Autofix is chapter 17's Thread subscription
 for one source: the pull request is the Thread, and the Worker that opened it
@@ -169,9 +172,10 @@ fields such as repository IDs and allowlists.
 
 **Single-tenant trust.** Open-Inspect is built for one organization whose
 members all trust each other (`README.md`, "Security Model"). Coder runs for
-many people on shared infrastructure, so access checks happen at session
-creation and chapter 18's consent rule covers every byte that leaves a
-machine.
+many people on shared infrastructure. Access checks and consent therefore
+need explicit scope; chapter 18 does not yet gate every byte leaving a
+machine. The [shared contract](CONTRACT.md) lists current enforcement and
+remaining outbound paths.
 
 **Rented sandbox vendors.** Open-Inspect runs on Modal, Daytona, Vercel, E2B
 or Boat. Coder runs on the person's own machine or on OpenAgents' own cloud
@@ -188,7 +192,7 @@ minutes by default. Coder adds no time limit of its own to a task; limits are
 the person's to set. A watchdog that detects a dead daemon by missing
 heartbeats is a different thing, and Coder keeps that.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - Boot phases, heartbeats and no-snapshot-on-failure: chapter 20's watchdog
   checks, with a daemon killed at each phase.

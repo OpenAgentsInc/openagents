@@ -107,7 +107,7 @@ grow together:
 
 | Chapter | What we build and check |
 | --- | --- |
-| [21. Measure the harness](ch021-measure-the-harness.md) — partly implemented | Harness benchmarks and end-to-end suites, one change at a time against the simplest loop. |
+| [21. Measure the harness](ch021-measure-the-harness.md) — partly implemented | Bounded harness benchmarks plus the ten-task repository pilot comparing live engine bundles and routing. Comparative ablations remain. |
 | [22. Generate candidates, then check them](ch022-generate-candidates-then-check-them.md) — partly implemented | One candidate, several with selection, and generate-run-repair under one budget. |
 
 ## VI. The command line
@@ -163,8 +163,15 @@ served model in tokens. Those chapters link here for the harness itself.
   ([tools in Coax](../../coax/tools-in-coax.md)).
 - The default is the simplest loop that works. An addition stays only with a
   measured gain in chapter 21 on tasks it was not built from.
-- No session content leaves the person's machines without chapter 18's
-  opt-in. Money is Bitcoin-only.
+- Correctness, authority and privacy boundaries are requirements regardless
+  of task-success gains. The comparison above applies to optional complexity.
+- [Guarantees and authorization](CONTRACT.md) distinguishes intended policy,
+  bounded experiments and live per-engine enforcement. Ordinary inference
+  for an authorized task is distinct from optional telemetry/training export.
+- Outbound content follows the [authorization contract](CONTRACT.md):
+  ordinary authorized inference is distinct from optional telemetry/export.
+  Chapter 18 records the subset currently enforced by its ledger. Money is
+  Bitcoin-only.
 - Routing and filtering by meaning go through a typed decision (System One),
   never keyword matching. Code may check bounded fields such as IDs, sources
   and allowlists.

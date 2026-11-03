@@ -1,0 +1,84 @@
+// Summarize recorded pilot receipts without inference or replaying commands.
+// coax/web/tool.sh coder/tests/repository-summary.coax FILE.jsonl [FILE...] > summary.json
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/json.coax";
+cxterm_write :: (s: [] u8) -> int #foreign;
+PS_NAMES :: [5]string.["claude","codex","micro","auto","psionic"];
+PsRow :: struct {seen:bool;passed:bool;provider:bool;harness:bool;ms:int;tools:int;errors:int;route:bool;}
+PsData :: struct {rows:[50]PsRow;suite:[64]u8;ns:int;compiler:[64]u8;nc:int;harness:[64]u8;nh:int;prompts:[10][64]u8;np:[10]int;}
+
+#test "pilot receipts reject duplicates and cross-suite comparisons" {
+ d:[1]PsData;
+ row:="{\"suite\":\"coder-repository-pilot-v1\",\"suite_sha256\":\"abc\",\"compiler_sha256\":\"compiler\",\"harness_sha256\":\"harness\",\"prompt_sha256\":\"prompt\",\"requested_engine\":\"micro\",\"case\":0,\"outcome\":\"passed\",\"ms\":20,\"tool_calls\":2,\"tool_errors\":0,\"route_answered\":false}";
+ #assert ps_read(row,d[..]) && !ps_read(row,d[..]);
+ #assert d[0].rows[20].seen && d[0].rows[20].passed && d[0].rows[20].ms==20;
+ #assert !ps_read("{\"suite\":\"other\"}",d[..]) && !ps_read("garbage",d[..]);
+ #assert ps_engine("micro")==2 && ps_engine("auto")==3 && ps_engine("bad")==-1;
+}
+#test "availability failure is not a coding failure and missing cases are not passes" {
+ r:=PsRow.{seen=true,provider=true};#assert !ps_eligible(r);
+ r=PsRow.{seen=true};#assert ps_eligible(r) && !r.passed;
+ #assert !ps_eligible(PsRow.{}) && !ps_eligible(PsRow.{seen=true,harness=true});
+}
+#test "summary reports paired routing misses without counting provider failure as quality" {
+ p:PsData;p.ns=1;p.suite[0]='x';
+ p.rows[20]=PsRow.{seen=true,passed=true,ms=10};p.rows[21]=PsRow.{seen=true,passed=true,ms=30};
+ p.rows[30]=PsRow.{seen=true,provider=true,ms=2};p.rows[31]=PsRow.{seen=true,ms=50};
+ b:[16384]u8;n:=ps_summary(p,b[..]);d:[1]Jv;nodes:[2048]JvNode;#assert n>0 && jv_parse(d[..],cast(string)b[0..<n],nodes[..]);
+ #assert jv_int(d[0],jv_get(d[0],0,"paired_routing_cases"),-1)==2;
+ #assert jv_int(d[0],jv_get(d[0],0,"automatic_opportunity_misses"),-1)==2;
+ #assert jv_int(d[0],jv_get(d[0],0,"automatic_quality_misses"),-1)==1;
+ engines:=jv_get(d[0],0,"engines");micro:=jv_at(d[0],engines,2);
+ #assert jv_int(d[0],jv_get(d[0],micro,"missing"),-1)==8 && jv_int(d[0],jv_get(d[0],micro,"held_passed"),-1)==1;
+ #assert jv_int(d[0],jv_get(d[0],micro,"p50_ms"),-1)==10 && jv_int(d[0],jv_get(d[0],micro,"p95_ms"),-1)==30;
+}
+ps_engine :: (s:string)->int {names:=PS_NAMES;for name,i:names {if name==s {return i;}}return -1;}
+ps_eligible :: (r:PsRow)->bool {return r.seen && !r.provider && !r.harness;}
+ps_string :: (d:Jv,key:string,b:[]u8)->string {n:=jv_str(d,jv_get(d,0,key),b);return ifx n<0 then "" else cast(string)b[0..<n];}
+ps_read :: (line:string,p:[]PsData)->bool {
+ nodes:[512]JvNode;d:[1]Jv;if !jv_parse(d[..],line,nodes[..]) {return false;}
+ b:[128]u8;if ps_string(d[0],"suite",b[..])!="coder-repository-pilot-v1" {return false;}
+ engine:=ps_engine(ps_string(d[0],"requested_engine",b[..]));k:=jv_int(d[0],jv_get(d[0],0,"case"),-1);
+ if engine<0 || k<0 || k>=10 || p[0].rows[engine*10+k].seen {return false;}
+ suiteb:[64]u8;suite:=ps_string(d[0],"suite_sha256",suiteb[..]);compb:[64]u8;compiler:=ps_string(d[0],"compiler_sha256",compb[..]);hb:[64]u8;harness:=ps_string(d[0],"harness_sha256",hb[..]);pb:[64]u8;prompt:=ps_string(d[0],"prompt_sha256",pb[..]);
+ if suite.count==0 || compiler.count==0 || harness.count==0 || prompt.count==0 {return false;}
+ if p[0].ns>0 && suite!=cast(string)p[0].suite[0..<p[0].ns] {return false;}
+ if p[0].nc>0 && compiler!=cast(string)p[0].compiler[0..<p[0].nc] {return false;}
+ if p[0].nh>0 && harness!=cast(string)p[0].harness[0..<p[0].nh] {return false;}
+ if p[0].np[k]>0 && prompt!=cast(string)p[0].prompts[k][0..<p[0].np[k]] {return false;}
+ outcome:=ps_string(d[0],"outcome",b[..]);
+ if outcome!="passed" && outcome!="task_failed" && outcome!="regression" && outcome!="provider_unavailable" && outcome!="budget_exhausted" && outcome!="harness_failed" {return false;}
+ ms:=jv_int(d[0],jv_get(d[0],0,"ms"),-1);tools:=jv_int(d[0],jv_get(d[0],0,"tool_calls"),-1);errors:=jv_int(d[0],jv_get(d[0],0,"tool_errors"),-1);if ms<0 || tools<0 || errors<0 {return false;}
+ // Publish only after validating the entire row.
+ for c,i:suite {p[0].suite[i]=c;}p[0].ns=suite.count;
+ for c,i:compiler {p[0].compiler[i]=c;}p[0].nc=compiler.count;
+ for c,i:harness {p[0].harness[i]=c;}p[0].nh=harness.count;
+ for c,i:prompt {p[0].prompts[k][i]=c;}p[0].np[k]=prompt.count;
+ p[0].rows[engine*10+k]=PsRow.{seen=true,passed=outcome=="passed",provider=outcome=="provider_unavailable",harness=outcome=="harness_failed",ms=ms,tools=tools,errors=errors,route=jv_kind(d[0],jv_get(d[0],0,"route_answered"))==JV_TRUE};return true;
+}
+ps_summary :: (input:PsData,b:[]u8)->int {
+ p:=input;
+ n:=json_raw(b,0,"{\"suite\":\"coder-repository-pilot-v1\",\"suite_sha256\":");n=json_write_string(b,n,cast(string)p.suite[0..<p.ns]);n=json_raw(b,n,",\"engines\":[");names:=PS_NAMES;
+ for e:0..<5 {if e>0 {n=json_raw(b,n,",");}seen:=0;passed:=0;held:=0;held_pass:=0;provider:=0;harness:=0;eligible:=0;total:=0;tools:=0;errors:=0;routes:=0;times:[10]int;nt:=0;
+  for k:0..<10 {r:=p.rows[e*10+k];if !r.seen {continue;}seen+=1;total+=r.ms;tools+=r.tools;errors+=r.errors;if r.route {routes+=1;}if r.passed {passed+=1;}if r.provider {provider+=1;}if r.harness {harness+=1;}if ps_eligible(r) {eligible+=1;times[nt]=r.ms;nt+=1;if k%2==1 {held+=1;if r.passed {held_pass+=1;}}}}
+  for i:0..<nt {for j:i+1..<nt {if times[j]<times[i] {v:=times[i];times[i]=times[j];times[j]=v;}}}
+  n=json_raw(b,n,"{\"engine\":");n=json_write_string(b,n,names[e]);n=json_raw(b,n,",\"observed\":");n=json_write_int(b,n,seen);n=json_raw(b,n,",\"missing\":");n=json_write_int(b,n,10-seen);
+  n=json_raw(b,n,",\"passed\":");n=json_write_int(b,n,passed);n=json_raw(b,n,",\"eligible\":");n=json_write_int(b,n,eligible);n=json_raw(b,n,",\"held_eligible\":");n=json_write_int(b,n,held);n=json_raw(b,n,",\"held_passed\":");n=json_write_int(b,n,held_pass);
+  n=json_raw(b,n,",\"provider_unavailable\":");n=json_write_int(b,n,provider);n=json_raw(b,n,",\"harness_failed\":");n=json_write_int(b,n,harness);n=json_raw(b,n,",\"total_ms\":");n=json_write_int(b,n,total);
+  n=json_raw(b,n,",\"p50_ms\":");n=ifx nt==0 then json_raw(b,n,"null") else json_write_int(b,n,times[(nt-1)/2]);n=json_raw(b,n,",\"p95_ms\":");n=ifx nt==0 then json_raw(b,n,"null") else json_write_int(b,n,times[nt-1]);
+  n=json_raw(b,n,",\"tool_calls\":");n=json_write_int(b,n,tools);n=json_raw(b,n,",\"tool_errors\":");n=json_write_int(b,n,errors);n=json_raw(b,n,",\"routing_answers\":");n=json_write_int(b,n,routes);n=json_raw(b,n,"}");
+ }
+ n=json_raw(b,n,"],\"paired_routing_cases\":");paired:=0;misses:=0;quality:=0;
+ for k:0..<10 {a:=p.rows[30+k];if !a.seen {continue;}any:=false;for e:0..<3 {if p.rows[e*10+k].seen && p.rows[e*10+k].passed {any=true;}}
+  if any {paired+=1;if !a.passed {misses+=1;if ps_eligible(a) {quality+=1;}}}}
+ n=json_write_int(b,n,paired);n=json_raw(b,n,",\"automatic_opportunity_misses\":");n=json_write_int(b,n,misses);n=json_raw(b,n,",\"automatic_quality_misses\":");n=json_write_int(b,n,quality);
+ return json_raw(b,n,",\"tokens\":null,\"cached_tokens\":null,\"price\":null,\"inference_repeated\":false}\n");
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])==0 {tool_errln("usage: repository-summary.coax FILE.jsonl [FILE...]");return 2;}p:[1]PsData;
+ for i:0..<args_count(a[..]) {data:[1048576]u8;n:=fs_read(args_at(a[..],i),data[..]);if n<0 {return 2;}at:=0;while at<n {end:=at;while end<n && data[end]!=10 {end+=1;}if end>at && !ps_read(cast(string)data[at..<end],p[..]) {tool_errln("invalid, duplicate or incompatible receipt; no summary published");return 2;}at=end+1;}}
+ if p[0].ns==0 {return 2;}b:[16384]u8;n:=ps_summary(p[0],b[..]);if n<0 {return 2;}r:=cxterm_write(b[0..<n]);return ifx r==n then 0 else 2;
+}

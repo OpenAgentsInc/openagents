@@ -1,0 +1,7 @@
+diff --git a/src.coax b/src.coax
+index 78600fc..ff13ee4 100644
+--- a/src.coax
++++ b/src.coax
+@@ -1 +1 @@
+-f :: (x:int)->int {return x;}
++f :: (x:int)->int {return ifx x<0 then -x else x;}

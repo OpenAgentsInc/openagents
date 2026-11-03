@@ -199,12 +199,14 @@ against the grant and its worst-case cost before anything runs, and stops at
 the exact statement that asks or fails. Coder keeps that check.
 
 **Trajectory export by default.** Hermes writes trajectories to the working
-directory as a matter of course. Coder sends no session content anywhere
-without chapter 18's per-session, revocable opt-in, and its log already
-rebuilds every request, so an export is a view of the log, not a second
-format.
+directory as a matter of course. Local trajectory storage is not outbound
+sharing. Coder also stores local session logs. An optional remote export
+needs its own purpose and destination authorization; chapter 18's current
+gate coverage is narrower than every outbound path. Coder reconstructs its
+submitted engine inputs, not every internal model request made by a driven
+engine. See [the shared contract](CONTRACT.md).
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - The frozen snapshot: chapter 3 measures prefix stability across a session
   with memory writes; the server-side cache numbers stay in Psionic.

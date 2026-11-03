@@ -174,8 +174,9 @@ directory, concatenates them in that order, and does not walk past the root
   a live client still streams.
 - **A protocol with generated schemas** ([chapter 23](ch023-openagents-coder.md)).
   `openagents coder` exposes its verbs with `--json` and as MCP tools. Its
-  message types live in `proto/`, and the JSON Schema is generated from
-  them, as Codex generates its own.
+  proposed shared message types belong in `proto/`, with generated JSON
+  Schema as Codex provides for its own protocol. Chapter 23 still leaves
+  the single shared command catalog open; this is proposed contract work.
 - **`exec` as the shape of `coder run --json`**: one JSONL event per line,
   a final answer that can be constrained by a schema, and an ephemeral flag
   for runs that keep no log. The ephemeral flag still obeys chapter 18:
@@ -195,16 +196,16 @@ directory, concatenates them in that order, and does not walk past the root
 - **The default engine settings in the TUI.** The `codex` engine runs with
   approval policy `never` and full access unless `--ask` is passed
   (`coder/tui/codex.coax`). That suits a person at their own terminal.
-  [Chapter 11](ch011-drive-codex.md) replaces it with chapter 5's policy, so
-  an unattended Coder run starts at `workspace-write` with approvals
-  answered by the policy.
+  [Chapter 11](ch011-drive-codex.md) selects `workspace-write` and policy
+  answers when approval/policy options are supplied. Being unattended by
+  itself does not change the documented full-access default.
 - **Codex's patch format as Coder's edit tool.** Microcoder edits through
   commands so every write shows in the transcript
   (`coax/lib/microcoder/tools.coax`). The `apply_patch` grammar
   (`codex-rs/apply-patch/src/parser.rs`) is a candidate edit tool, kept only
   if it wins in chapter 21.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - Sandbox modes and approval answers: [chapter 5](ch005-a-sandbox-and-approvals.md)
   checks that every outcome is logged and that approval never passes the

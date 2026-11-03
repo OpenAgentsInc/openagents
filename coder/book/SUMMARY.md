@@ -2,6 +2,8 @@
 
 - [Introduction](README.md)
 - [Plan](PLAN.md)
+- [Guarantees and authorization](CONTRACT.md)
+- [Repository journey and coding pilot](../../docs/coder/repository-pilot.md)
 
 ## I. The loop
 

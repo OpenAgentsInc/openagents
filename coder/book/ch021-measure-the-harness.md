@@ -7,6 +7,12 @@
 > time on a named host, real models and cache hits remain; see
 > [What remains](#what-remains).
 
+The [repository journey and coding pilot](../../docs/coder/repository-pilot.md)
+add an offline CLI journey and real-model repository tasks alongside this
+scripted measurement tutorial. The two answer different questions: checks
+establish behavior; live trials measure task outcomes. Correctness, consent
+and authority boundaries remain requirements even when they reduce success.
+
 Every addition to the harness has to earn its place. An addition earns it
 by doing better than the harness without it, on the same tasks, seeds and
 model, by more than the runs move by themselves. This chapter builds the
@@ -601,6 +607,8 @@ own refusal; and pinned digests fix the run, receipt and suite encodings.
   host. Nothing here measures seconds.
 - **A real model.** The stand-in is scripted. Running the suite with a
   model behind chapter1's loop, with real token counts, remains.
+  The separate repository pilot now measures installed engines on source
+  repairs; it does not turn this calculator experiment into a live run.
 - **Cache hits and money.** Cost is tokens drawn and time is logical clock
   ticks, with no cache and no price.
 - **More additions under test.** Prompt assembly from

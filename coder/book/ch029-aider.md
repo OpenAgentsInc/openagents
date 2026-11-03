@@ -188,7 +188,7 @@ format, commit, command and all of those counters, over 225 test cases
   decision ([chapter 13](ch013-choose-an-engine.md)), and whether summaries help
   at all is [chapter 7](ch007-condense-the-history.md)'s measurement.
 
-## Where a borrowed design is measured
+## Where to measure a borrowed design
 
 - **A repository outline.** Microcoder today sees the environment, the task and
   its last 12 actions; it finds files with commands. Chapter 21 can measure one

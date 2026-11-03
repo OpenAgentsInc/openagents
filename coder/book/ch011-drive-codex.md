@@ -9,6 +9,12 @@
 > approvals. Still to come: a live run against a current Codex release
 > (chapter 26 found `main` well past 0.163.0).
 
+The [2026-11-03 repository pilot](../../docs/verification/coder-repository-2026-11-03/README.md)
+completed ten actual CLI repair tasks on codex-cli 0.163.0, including a
+diagnostic turn and repair fork. The earlier quota failure below is a dated
+observation, not a claim that this later run remained blocked. Qualification
+against a newer release and the interactive UI smoke remain separate work.
+
 Codex is the other engine many people have. Coder drives it through
 `codex app-server`, the Codex CLI's JSON-RPC 2.0 server over stdio.
 

@@ -10,6 +10,10 @@
 > a logical clock, and cancellation that interrupts a running model stream
 > and running tools instead of acting between steps.
 
+For the same loop applied to a failing repository check, an edit and
+continuation, start with the [offline repository journey](../../docs/coder/repository-pilot.md).
+The calculator below keeps the budget arithmetic small enough to work by hand.
+
 A harness turns a model into an agent. It sends the model a request, reads
 the reply, runs the tool the reply asks for, appends the tool's output and
 asks again. It also decides when to stop: when the model gives a final

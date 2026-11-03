@@ -8,6 +8,11 @@
 > recorded live replay through the loop with no credentials, the same each
 > time, and replayed responses reach each ending through `coder run`.
 
+The [repository pilot](../../docs/coder/repository-pilot.md) exercises this
+engine on actual edits and external acceptance checks. Gateway playback
+below still executes returned commands; it is different from
+[`coder replay` input verification](CONTRACT.md#what-replay-means).
+
 Microcoder is Coder's own engine: a small loop that runs on any model we can
 reach and needs no other agent installed. It is the engine for plain
 questions, small jobs and machines without Claude Code or Codex.
