@@ -1958,7 +1958,8 @@
         "bitcoin-handshake",
         "bitcoin-addrman",
         "bitcoin-connman",
-        "bitcoin-dos"
+        "bitcoin-dos",
+        "bitcoin-proxy"
       ],
       "retrieved": "2026-11-03",
       "sha256": "05e8ce20762e9c23e060d428fb5218cb32fea599afbd40b2417b9bd2a236d7a6",
@@ -1990,7 +1991,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-p2p",
-        "bitcoin-addrman"
+        "bitcoin-addrman",
+        "bitcoin-proxy"
       ],
       "retrieved": "2026-11-03",
       "sha256": "4590086cfafa37ec56949b59cab8c151fb0fac91161186f985d5048c0e0d83e4",
@@ -2004,7 +2006,8 @@
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
         "bitcoin-p2p",
-        "bitcoin-addrman"
+        "bitcoin-addrman",
+        "bitcoin-proxy"
       ],
       "retrieved": "2026-11-03",
       "sha256": "d8714d78569b92e8ce49b8cf845f8e3008ed739e20e44b025526e0ef92ae7c34",
@@ -2033,7 +2036,8 @@
       "revision": "git:927b6de9915c9262615a6399de51b200f81e5aa4",
       "license": "BSD-2-Clause",
       "covers": [
-        "bitcoin-p2p"
+        "bitcoin-p2p",
+        "bitcoin-proxy"
       ],
       "retrieved": "2026-11-03",
       "sha256": "acf8a589041612260ec073dd7d74e4842928cb78204c4a9c8656e1b0618cf174",
@@ -3343,7 +3347,8 @@
       "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
       "license": "MIT (Bitcoin Core COPYING)",
       "covers": [
-        "bitcoin-connman"
+        "bitcoin-connman",
+        "bitcoin-proxy"
       ],
       "retrieved": "2026-11-03",
       "sha256": "2cf9b0a0f94e8632fa585927c16e6714352770d31affe6ce986c19ad468146d4",
@@ -4402,6 +4407,162 @@
       "retrieved": "2026-11-03",
       "sha256": "3aeccf814f0bd67cdfb0791a6bf054b367c580942acd44942fdf505e5a1af707",
       "bytes": 645
+    },
+    {
+      "path": "upstream/bitcoin-core/i2p.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/i2p.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "d9fb0da10062f999a370284934392c582cac74f21e3ae7749948d5fde9174928",
+      "bytes": 15592
+    },
+    {
+      "path": "upstream/bitcoin-core/i2p.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/i2p.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "8689289b9bb7cf4547323643039b2bc3ddf1e92d57a22c1ec4a2bd2d05b7b5be",
+      "bytes": 9424
+    },
+    {
+      "path": "upstream/bitcoin-core/netbase.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netbase.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "23acbc41f27d481230fc592407620413bc28b1fd5f60e3474d3a0639e084c1de",
+      "bytes": 13321
+    },
+    {
+      "path": "upstream/bitcoin-core/init.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/init.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "7239f34d6bc53719414536c523e592658cdecf74f639f8c228c7cf9133696353",
+      "bytes": 139724
+    },
+    {
+      "path": "upstream/bitcoin-core/net_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/net_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "861a675ea6e6aaede170d51074b16115224db5f3e1a2699ccedb73d1410720cb",
+      "bytes": 76704
+    },
+    {
+      "path": "upstream/bitcoin-core/i2p_tests.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/i2p_tests.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "3755b2cd6e7c1bca8c81bba5cd1ae06096a779a5be1604ae45b65aa4b243cee6",
+      "bytes": 8546
+    },
+    {
+      "path": "upstream/bitcoin-core/strencodings.cpp",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/strencodings.cpp",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "875fd8255220058433211a43e1c0b12474f9fb0c9ca2ab7d6eac68947f29bae2",
+      "bytes": 14836
+    },
+    {
+      "path": "upstream/bitcoin-core/torcontrol.h",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/torcontrol.h",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "5fe70fdb9ef39cfd6a4cf0773dd9d684b4899457a57119813dc6e78ad0c8aa48",
+      "bytes": 5404
+    },
+    {
+      "path": "upstream/tor/encoding-onion-addresses.md",
+      "kind": "upstream",
+      "url": "https://gitlab.torproject.org/tpo/core/torspec/-/raw/7391a5fb1824839ed363b5df70696f749e292f19/spec/rend-spec/encoding-onion-addresses.md",
+      "revision": "git:7391a5fb1824839ed363b5df70696f749e292f19",
+      "license": "CC-BY-4.0 (torspec LICENSE at the same revision)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "5f749fd9bf947cba8480533e6d5138118b259834f68be6ba5d4652337237dc37",
+      "bytes": 1108
+    },
+    {
+      "path": "upstream/i2p/samv3.html",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/i2p/i2p.www/3afd7340f51d53e407986e2d2ca9cf004b708b35/i2p2www/pages/site/docs/api/samv3.html",
+      "revision": "git:3afd7340f51d53e407986e2d2ca9cf004b708b35",
+      "license": "i2p.www LICENSE.txt (public domain and licensed parts)",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "027523dabc63d7f8e1e839945ff8f5a3b33a04dfbc3ceb69bf46d6cf46c58551",
+      "bytes": 74550
+    },
+    {
+      "path": "upstream/rfc/rfc1928.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc1928.txt",
+      "revision": "RFC 1928",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "ddc2916419a52bedae0fc7d0c051ea513e88c2b930dda27128982fb0c1d6fe2a",
+      "bytes": 19741
+    },
+    {
+      "path": "upstream/rfc/rfc1929.txt",
+      "kind": "upstream",
+      "url": "https://www.rfc-editor.org/rfc/rfc1929.txt",
+      "revision": "RFC 1929",
+      "license": "IETF Trust Legal Provisions; notices retained in full RFC",
+      "covers": [
+        "bitcoin-proxy"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "b023357f33b42ba1f3ae10b45ebfcc6dd7b6b13eba0743052b08ae3f7ae3581b",
+      "bytes": 3568
     }
   ]
 }

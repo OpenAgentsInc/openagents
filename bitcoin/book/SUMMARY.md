@@ -98,6 +98,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 - [71. Misbehavior, limits and denial of service](ch071-misbehavior-limits-and-denial-of-service.md) — implemented
 - [73. Compact blocks](ch073-compact-blocks.md) — implemented
 - [74. Compact block filters](ch074-compact-block-filters.md) — implemented
+- [75. Proxies, Tor and I2P](ch075-proxies-tor-and-i2p.md) — implemented
 
 **XII. Initial block download**
 

@@ -1,0 +1,106 @@
+// SHA3-256 (FIPS 202), one-shot over a bounded byte view. Its only
+// consumer is the checksum of a Tor v3 onion address (Bitcoin chapter 75),
+// so inputs are capped at 4096 bytes. Everything it hashes is public: an
+// onion service's public key and a fixed prefix.
+#authority;
+SHA3_MAX_INPUT :: 4096;
+SHA3_RATE :: 136;          // 1600 - 2 * 256 bits, in bytes
+
+#test "NIST's SHA3-256 examples: the empty message, \"abc\" and 448 bits" {
+  out: [32] u8;
+  #assert sha3_256("", out[..]);
+  #assert sha3_same(out[..], "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a");
+  #assert sha3_256("abc", out[..]);
+  #assert sha3_same(out[..], "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532");
+  #assert sha3_256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", out[..]);
+  #assert sha3_same(out[..], "41c0dba2a9d6240849100376a8235e2c82e1b9998a999e21db32dd97496d3376");
+}
+#test "padding boundaries agree with independent python hashlib values" {
+  // python3 -c 'import hashlib;print(hashlib.sha3_256(bytes(i % 256 for i in range(n))).hexdigest())'
+  lengths := [6] int.[135, 136, 137, 200, 271, 272];
+  expected := [6] string.[
+    "fded8fd9d6551c601eeb3b7c6bc5e5cfd8aad1d015b7e9aaa9c9b9475231d5e2",
+    "cf3ccff92480a29160c2d38317c430e14749bfee1788106957dfe73f8c4930e5",
+    "ce9d7dc90913ee5d92745019479a5352c6d6279bef18ed07dc0a83ee8084daca",
+    "5f728f63bf5ee48c77f453c0490398fa645b8d4c4e56be9a41cfec344d6ca899",
+    "d409bcbb54825556454a757a1f629135ba49c0467dcf6b4e0aa69e9718dd31e6",
+    "0b21ec4a8eff6d179e09ba9fe0ab08515b24e0923fbf419f5c30a38e64577db5"];
+  input: [272] u8; for i: 0..<272 { input[i] = cast,trunc(u8) i; }
+  out: [32] u8;
+  for k: 0..<6 {
+    #assert sha3_256(cast(string) input[0..<lengths[k]], out[..]);
+    #assert sha3_same(out[..], expected[k]);
+  }
+}
+#test "refusals: a short output or an oversized input" {
+  out: [32] u8; big: [SHA3_MAX_INPUT + 1] u8;
+  #assert !sha3_256("abc", out[0..<31]);
+  #assert sha3_256(cast(string) big[0..<SHA3_MAX_INPUT], out[..]);
+  #assert !sha3_256(cast(string) big[..], out[..]);
+}
+
+// book:begin keccak
+SHA3_RC :: [24] u64.[
+  0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
+  0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
+  0x000000000000008a, 0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
+  0x000000008000808b, 0x800000000000008b, 0x8000000000008089, 0x8000000000008003,
+  0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
+  0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008];
+// The rotation of lane x + 5y in the rho step.
+SHA3_RHO :: [25] int.[0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14];
+sha3_rotl :: (x: u64, n: int) -> u64 {
+  if n == 0 { return x; }
+  return (x << n) | (x >> (64 - n));
+}
+// Keccak-f[1600]: 24 rounds of theta, rho, pi, chi and iota.
+sha3_permute :: (a: [] u64) {
+  c: [5] u64; b: [25] u64;
+  for round: 0..<24 {
+    for x: 0..<5 { c[x] = a[x] ^ a[x + 5] ^ a[x + 10] ^ a[x + 15] ^ a[x + 20]; }
+    for x: 0..<5 {
+      d := c[(x + 4) % 5] ^ sha3_rotl(c[(x + 1) % 5], 1);
+      for y: 0..<5 { a[x + 5 * y] ^= d; }
+    }
+    for x: 0..<5 { for y: 0..<5 { b[y + 5 * ((2 * x + 3 * y) % 5)] = sha3_rotl(a[x + 5 * y], SHA3_RHO[x + 5 * y]); } }
+    for x: 0..<5 { for y: 0..<5 {
+      a[x + 5 * y] = b[x + 5 * y] ^ ((b[(x + 1) % 5 + 5 * y] ^ 0xffffffffffffffff) & b[(x + 2) % 5 + 5 * y]);
+    } }
+    a[0] ^= SHA3_RC[round];
+  }
+}
+// The padded message's byte at: SHA-3's domain bits 01, then pad10*1.
+sha3_padded :: (input: string, at: int, total: int) -> u8 {
+  if at < input.count { return input[at]; }
+  v: u8 = 0;
+  if at == input.count { v = 0x06; }
+  if at == total - 1 { v |= 0x80; }
+  return v;
+}
+// SHA3-256 of input into out[0..<32]; false (out untouched) when input is
+// over SHA3_MAX_INPUT or out is shorter than 32.
+sha3_256 :: (input: string, out: [] u8) -> bool #export_c {
+  if input.count > SHA3_MAX_INPUT || out.count < 32 { return false; }
+  total := (input.count / SHA3_RATE + 1) * SHA3_RATE;
+  a: [25] u64;
+  at := 0;
+  while at < total {
+    for i: 0..<SHA3_RATE / 8 {
+      lane: u64 = 0;
+      for j: 0..<8 { lane |= cast(u64) sha3_padded(input, at + 8 * i + j, total) << (8 * j); }
+      a[i] ^= lane;
+    }
+    sha3_permute(a[..]);
+    at += SHA3_RATE;
+  }
+  for i: 0..<32 { out[i] = cast,trunc(u8) (a[i / 8] >> (8 * (i % 8))); }
+  return true;
+}
+// book:end keccak
+sha3_same :: (d: [] u8, hex: string) -> bool {
+  digits := "0123456789abcdef";
+  for i: 0..<32 {
+    if hex[2 * i] != digits[cast(int) (d[i] >> 4)] || hex[2 * i + 1] != digits[cast(int) (d[i] & 15)] { return false; }
+  }
+  return true;
+}

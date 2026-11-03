@@ -466,6 +466,21 @@ that a maliciously replaced manifest is authentic.
   `net_processing.cpp`, `chainparams.cpp`, `chain.h`, `serialize.h`,
   `script.h` and `test/hash_tests.cpp`, pinned above, give the rest.
   `dos.py` transliterates them as the cross-check's oracle.
+- **Proxies, Tor and I2P (Bitcoin chapter 75):** Tor's rend-spec
+  "Encoding onion addresses" (`spec/rend-spec/encoding-onion-addresses.md`,
+  rend-spec-v3 section 6) at torspec revision `7391a5fb`, whose three
+  example addresses the library reads and prints; I2P's SAM v3
+  specification (`samv3.html`) at i2p.www revision `3afd7340`; RFC 1928
+  (SOCKS5) and RFC 1929 (username/password); and Bitcoin Core's `i2p.cpp`
+  and `i2p.h` (`i2p::sam::Session`), `netbase.h` (`ReachableNets`),
+  `init.cpp` (`-onlynet`, `-proxy`, `-onion`, `-i2psam`),
+  `torcontrol.h` (`DEFAULT_TOR_SOCKS_PORT`), `util/strencodings.cpp`
+  (`EncodeBase32`, `DecodeBase32`), and `test/net_tests.cpp` and
+  `test/i2p_tests.cpp`, the cases the library ports, all at revision
+  `ddea9196`. `netbase.cpp` (`Socks5`, the stream isolation generator),
+  `netaddress.cpp` (`SetTor`, `SetI2P`, `OnionToString`), `net.cpp`
+  (`ConnectNode`) and BIP-155, pinned above, give the rest. `proxy.py`
+  transliterates them as the cross-check's oracle.
 - **Standardness (Bitcoin chapter 81):** Bitcoin Core's
   `policy/policy.cpp` and `policy/policy.h` (`IsStandardTx`,
   `GetDustThreshold`, `ValidateInputsStandardness`, `IsWitnessStandard`
@@ -1094,6 +1109,18 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bitcoin-core/bloom_tests.cpp`](upstream/bitcoin-core/bloom_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/bloom_tests.cpp) | `12ddab254a360858cb4f567bd2c5f1ef735464d6292eec5b9b6b7b5686a330b1` |
 | [`upstream/bitcoin-core/fastrange.h`](upstream/bitcoin-core/fastrange.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/fastrange.h) | `01d238a309b0a7737f72549785da0a90088068a462539f36e920f70764fe144a` |
 | [`upstream/bitcoin-core/txdownloadman_impl.cpp`](upstream/bitcoin-core/txdownloadman_impl.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/txdownloadman_impl.cpp) | `bd44b0074d6f271312a2de14697f28871087531b06c49d801ebbd988f65809c7` |
+| [`upstream/bitcoin-core/i2p.cpp`](upstream/bitcoin-core/i2p.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/i2p.cpp) | `d9fb0da10062f999a370284934392c582cac74f21e3ae7749948d5fde9174928` |
+| [`upstream/bitcoin-core/i2p.h`](upstream/bitcoin-core/i2p.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/i2p.h) | `8689289b9bb7cf4547323643039b2bc3ddf1e92d57a22c1ec4a2bd2d05b7b5be` |
+| [`upstream/bitcoin-core/netbase.h`](upstream/bitcoin-core/netbase.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/netbase.h) | `23acbc41f27d481230fc592407620413bc28b1fd5f60e3474d3a0639e084c1de` |
+| [`upstream/bitcoin-core/init.cpp`](upstream/bitcoin-core/init.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/init.cpp) | `7239f34d6bc53719414536c523e592658cdecf74f639f8c228c7cf9133696353` |
+| [`upstream/bitcoin-core/net_tests.cpp`](upstream/bitcoin-core/net_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/net_tests.cpp) | `861a675ea6e6aaede170d51074b16115224db5f3e1a2699ccedb73d1410720cb` |
+| [`upstream/bitcoin-core/i2p_tests.cpp`](upstream/bitcoin-core/i2p_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/i2p_tests.cpp) | `3755b2cd6e7c1bca8c81bba5cd1ae06096a779a5be1604ae45b65aa4b243cee6` |
+| [`upstream/bitcoin-core/strencodings.cpp`](upstream/bitcoin-core/strencodings.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/util/strencodings.cpp) | `875fd8255220058433211a43e1c0b12474f9fb0c9ca2ab7d6eac68947f29bae2` |
+| [`upstream/bitcoin-core/torcontrol.h`](upstream/bitcoin-core/torcontrol.h) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/torcontrol.h) | `5fe70fdb9ef39cfd6a4cf0773dd9d684b4899457a57119813dc6e78ad0c8aa48` |
+| [`upstream/tor/encoding-onion-addresses.md`](upstream/tor/encoding-onion-addresses.md) | [pinned source](https://gitlab.torproject.org/tpo/core/torspec/-/raw/7391a5fb1824839ed363b5df70696f749e292f19/spec/rend-spec/encoding-onion-addresses.md) | `5f749fd9bf947cba8480533e6d5138118b259834f68be6ba5d4652337237dc37` |
+| [`upstream/i2p/samv3.html`](upstream/i2p/samv3.html) | [pinned source](https://raw.githubusercontent.com/i2p/i2p.www/3afd7340f51d53e407986e2d2ca9cf004b708b35/i2p2www/pages/site/docs/api/samv3.html) | `027523dabc63d7f8e1e839945ff8f5a3b33a04dfbc3ceb69bf46d6cf46c58551` |
+| [`upstream/rfc/rfc1928.txt`](upstream/rfc/rfc1928.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc1928.txt) | `ddc2916419a52bedae0fc7d0c051ea513e88c2b930dda27128982fb0c1d6fe2a` |
+| [`upstream/rfc/rfc1929.txt`](upstream/rfc/rfc1929.txt) | [pinned source](https://www.rfc-editor.org/rfc/rfc1929.txt) | `b023357f33b42ba1f3ae10b45ebfcc6dd7b6b13eba0743052b08ae3f7ae3581b` |
 | [`upstream/bitcoin-core/blockstorage.cpp`](upstream/bitcoin-core/blockstorage.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/node/blockstorage.cpp) | `5063ae02875b3370cb0d1ca4ec41003853d102ba74ab7354a342bc3cb8dc8d6f` |
 | [`upstream/bitcoin-core/skiplist_tests.cpp`](upstream/bitcoin-core/skiplist_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/skiplist_tests.cpp) | `9eec53e04cf2a5a6a4269687da834bb0c61b52396212ef1b902df22e3a46c588` |
 | [`upstream/bitcoin-core/blockchain_tests.cpp`](upstream/bitcoin-core/blockchain_tests.cpp) | [pinned source](https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/src/test/blockchain_tests.cpp) | `613c4f9158dfddb5b6cbdbc07d71f2043d8295eec18869591ea5550b0aea1e25` |

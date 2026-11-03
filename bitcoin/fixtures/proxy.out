@@ -1,0 +1,77 @@
+Tor v3 onion addresses (rend-spec-v3)
+  pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion
+    key 79bcc625184b05194975c28b66b66b0469f7f6556fb1ac3189a79b40dda32f1f
+    checksum 2147, version 3
+    addrv2 042079bcc625184b05194975c28b66b66b0469f7f6556fb1ac3189a79b40dda32f1f
+  sp3k262uwy4r2k3ycr5awluarykdpag6a7y33jxop4cs2lu5uz5sseqd.onion
+    key 93f6ad7b54b6391d2b78147a0b2e808e143780de07f1bda6ee7f052d2e9da67b
+    checksum 2912, version 3
+    addrv2 042093f6ad7b54b6391d2b78147a0b2e808e143780de07f1bda6ee7f052d2e9da67b
+  xa4r2iadxm55fbnqgwwi5mymqdcofiu3w6rpbtqn7b2dyn7mgwj64jyd.onion
+    key b8391d2003bb3bd285b035ac8eb30c80c4e2a29bb7a2f0ce0df8743c37ec3593
+    checksum ee27, version 3
+    addrv2 0420b8391d2003bb3bd285b035ac8eb30c80c4e2a29bb7a2f0ce0df8743c37ec3593
+  pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscsad.onion (wrong checksum): refused
+  pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscrye.onion (wrong version): refused
+  6hzph5hv6337r6p2.onion (Tor v2): refused
+  PG6MMJIYJMCRSSLVYKFWNNTLARU7P5SVN6Y2YMMJU6NUBXNDF4PSCRYD.onion (upper case): read
+  pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.ONION (upper-case suffix): refused
+I2P addresses
+  destination: 391 bytes, certificate type 5 of 4 bytes
+  private key: 679 bytes, of which the first 391 are the destination
+  address lwqtpjmazikszhrxpofaisknphjs4iusdwgekbk77jtvsth6jpya.b32.i2p
+    SHA-256 of the destination 5da137a580ca152c9e377b8a04494d79d32e22921d8c45055ffa67594cfe4bf0
+    addrv2 05205da137a580ca152c9e377b8a04494d79d32e22921d8c45055ffa67594cfe4bf0
+  UDHDrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.I2P reads as udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.i2p
+  56-character name: refused
+SOCKS5 to Tor, with stream isolation
+  greeting 05020002
+  pg6mmjiyjmcr...:8333 as 9f310c5ea247d108-0: connected, circuit 1
+  sp3k262uwy4r...:8333 as 9f310c5ea247d108-1: connected, circuit 2
+  xa4r2iadxm55...:8333 as 9f310c5ea247d108-2: failed, onion service descriptor can not be found (0xf0)
+  pg6mmjiyjmcr...:8333 as 9f310c5ea247d108-3: connected, circuit 3
+  without isolation the greeting is 050100
+  1.2.3.4:8333: connected, credentials sent: 0
+I2P through the SAM bridge
+  > HELLO VERSION MIN=3.1 MAX=3.1
+  < HELLO REPLY RESULT=OK VERSION=3.1
+  > SESSION CREATE STYLE=STREAM ID=2b7c0e91a4 DESTINATION=TRANSI...
+  < SESSION STATUS RESULT=OK DESTINATION=WnGOLXRBqHQhdVjFlWqRxJw...
+  session created, our address lwqtpjmazikszhrxpofaisknphjs4iusdwgekbk77jtvsth6jpya.b32.i2p:0
+  > NAMING LOOKUP NAME=vnygdvwd2l4tnpadlxytduukgilihhd6gg7habmxi...
+  < NAMING REPLY RESULT=OK NAME=vnygdvwd2l4tnpadlxytduukgilihhd6...
+  > STREAM CONNECT ID=2b7c0e91a4 DESTINATION=IchV608baDoXbqzQKSq...
+  < STREAM STATUS RESULT=OK
+  connected
+  > NAMING LOOKUP NAME=vnygdvwd2l4tnpadlxytduukgilihhd6gg7habmxi...
+  < NAMING REPLY RESULT=OK NAME=vnygdvwd2l4tnpadlxytduukgilihhd6...
+  > STREAM CONNECT ID=2b7c0e91a4 DESTINATION=IchV608baDoXbqzQKSq...
+  < STREAM STATUS RESULT=CANT_REACH_PEER
+  failed; the proxy is to blame: no
+  > STREAM ACCEPT ID=2b7c0e91a4 SILENT=false
+  accepted a peer at vnygdvwd2l4tnpadlxytduukgilihhd6gg7habmxivedou7gb2qa.b32.i2p:0
+  a closed session: make it again: yes
+Reachable networks
+  no options
+    reachable: ipv4 ipv6; DNS seeds on; onion may come from -listenonion
+    1.2.3.4: direct, onion: unreachable, i2p: unreachable
+  -proxy=127.0.0.1:9050
+    reachable: ipv4(proxy) ipv6(proxy) onion(proxy); DNS seeds on
+    1.2.3.4: proxy, onion: proxy, i2p: unreachable
+  -onion=127.0.0.1:9050 -i2psam=127.0.0.1:7656
+    reachable: ipv4 ipv6 onion(proxy) i2p(SAM); DNS seeds on
+    1.2.3.4: direct, onion: proxy, i2p: SAM
+  -onlynet=onion -onlynet=i2p -proxy=127.0.0.1:9050 -i2psam=127.0.0.1:7656
+    reachable: onion(proxy) i2p(SAM); DNS seeds off
+    1.2.3.4: unreachable, onion: proxy, i2p: SAM
+  -onlynet=onion -listenonion=0
+    error: Outbound connections restricted to Tor (-onlynet=onion) but the proxy for reaching the Tor network is not provided: none of -proxy, -onion or -listenonion is given
+  -onlynet=onion -onion=0
+    error: Outbound connections restricted to Tor (-onlynet=onion) but the proxy for reaching the Tor network is explicitly forbidden: -onion=0
+  -onlynet=onion -proxy=127.0.0.1:9050 -dnsseed=1
+    error: Incompatible options: -dnsseed=1 was explicitly specified, but -onlynet forbids connections to IPv4/IPv6
+  -onlynet=i2p
+    error: Outbound connections restricted to i2p (-onlynet=i2p) but -i2psam is not provided
+  -onlynet=ipv4 -onion=127.0.0.1:9050
+    reachable: ipv4; DNS seeds on
+    1.2.3.4: direct, onion: unreachable, i2p: unreachable

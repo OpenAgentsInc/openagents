@@ -1595,15 +1595,22 @@
   {
    "number": 75,
    "title": "Proxies, Tor and I2P",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch075-proxies-tor-and-i2p.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     68,
     70
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/bitcoin/proxy.coax",
+    "coax/lib/crypto/sha3.coax",
+    "bitcoin/examples/proxy.coax",
+    "bitcoin/examples/checks/proxy.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

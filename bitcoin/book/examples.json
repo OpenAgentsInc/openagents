@@ -859,6 +859,18 @@
       "timeout": 600
     },
     {
+      "source": "bitcoin/examples/proxy.coax",
+      "chapter": "bitcoin/book/ch075-proxies-tor-and-i2p.md",
+      "stdout": "bitcoin/fixtures/proxy.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 600
+    },
+    {
       "source": "bitcoin/examples/lightning-pay.coax",
       "chapter": "bitcoin/book/ch113-find-a-route-and-pay.md",
       "stdout": "bitcoin/fixtures/lightning-pay.out",

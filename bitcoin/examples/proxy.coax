@@ -1,0 +1,172 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/proxy.coax";
+#import "Basic";
+
+hex :: (b: [] u8) { for x: b { print("%", "0123456789abcdef"[cast(int) (x >> 4)..<cast(int) (x >> 4) + 1]); print("%", "0123456789abcdef"[cast(int) (x & 15)..<cast(int) (x & 15) + 1]); } }
+name :: (a: AmAddr) { t: [80] u8; n := px_addr_text(a, t[..]); print("%", cast(string) t[0..<n]); }
+// A long line, as its first 60 characters.
+short :: (s: string) { if s.count <= 60 { print("%", s); } else { print("%...", s[0..<60]); } }
+yes :: (b: bool) -> string { return ifx b then "yes" else "no"; }
+
+onions :: () {
+  print("Tor v3 onion addresses (rend-spec-v3)\n");
+  names := [3] string.["pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion",
+                       "sp3k262uwy4r2k3ycr5awluarykdpag6a7y33jxop4cs2lu5uz5sseqd.onion",
+                       "xa4r2iadxm55fbnqgwwi5mymqdcofiu3w6rpbtqn7b2dyn7mgwj64jyd.onion"];
+  for s: names {
+    x := px_set_special(s);
+    ip := x.addr.ip; c: [2] u8; px_onion_checksum(ip[0..<32], c[..]);
+    wire: [40] u8; n := am_put_net(wire[..], 0, x.addr);
+    print("  %\n    key ", s); hex(ip[0..<32]); print("\n    checksum "); hex(c[..]); print(", version 3\n    addrv2 "); hex(wire[0..<n]); print("\n");
+  }
+  bad := [5] string.["pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscsad.onion",
+                     "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscrye.onion",
+                     "6hzph5hv6337r6p2.onion", "PG6MMJIYJMCRSSLVYKFWNNTLARU7P5SVN6Y2YMMJU6NUBXNDF4PSCRYD.onion",
+                     "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.ONION"];
+  why := [5] string.["wrong checksum", "wrong version", "Tor v2", "upper case", "upper-case suffix"];
+  for k: 0..<5 { print("  % (%): %\n", bad[k], why[k], ifx px_set_special(bad[k]).ok then "read" else "refused"); }
+}
+
+i2p :: () {
+  print("I2P addresses\n");
+  pub: [1024] u8; priv: [1024] u8;
+  n := px_i2p_decode(I2P_TEST_PUB, pub[..]);
+  m := px_i2p_decode(I2P_TEST_PRIV, priv[..]);
+  d := px_i2p_dest_len(priv[0..<m]);
+  a := px_i2p_addr(pub[0..<n]);
+  print("  destination: % bytes, certificate type % of % bytes\n", n, pub[384], (cast(int) pub[385] << 8) | cast(int) pub[386]);
+  print("  private key: % bytes, of which the first % are the destination\n", m, d);
+  print("  address "); name(a); print("\n    SHA-256 of the destination "); hex(a.ip[0..<32]); print("\n");
+  wire: [40] u8; w := am_put_net(wire[..], 0, a);
+  print("    addrv2 "); hex(wire[0..<w]); print("\n");
+  back := px_set_special("UDHDrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.I2P");
+  print("  UDHDrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.I2P reads as "); name(back.addr); print("\n");
+  print("  56-character name: %\n", ifx px_set_special("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscsad.b32.i2p").ok then "read" else "refused");
+}
+
+// A proxy that gives each distinct set of credentials its own circuit, as
+// Tor does with IsolateSOCKSAuth.
+Circuits :: struct { user: [8] [40] u8; user_n: [8] int; n: int; }
+circuit :: (c: [] Circuits, p: PxProxy) -> int {
+  for i: 0..<c[0].n {
+    if c[0].user_n[i] == p.user_n {
+      same := true;
+      for j: 0..<p.user_n { if c[0].user[i][j] != p.user[j] { same = false; } }
+      if same { return i + 1; }
+    }
+  }
+  for j: 0..<p.user_n { c[0].user[c[0].n][j] = p.user[j]; }
+  c[0].user_n[c[0].n] = p.user_n; c[0].n += 1;
+  return c[0].n;
+}
+socks :: () {
+  print("SOCKS5 to Tor, with stream isolation\n");
+  prefix := [8] u8.[0x9f, 0x31, 0x0c, 0x5e, 0xa2, 0x47, 0xd1, 0x08];
+  dest := [4] string.["pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion",
+                      "sp3k262uwy4r2k3ycr5awluarykdpag6a7y33jxop4cs2lu5uz5sseqd.onion",
+                      "xa4r2iadxm55fbnqgwwi5mymqdcofiu3w6rpbtqn7b2dyn7mgwj64jyd.onion",
+                      "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion"];
+  answer := [4] int.[0, 0, 0xf0, 0];
+  c: [1] Circuits;
+  for k: 0..<4 {
+    cred: [40] u8; cn := px_isolation(prefix[..], k, cred[..]);
+    s: [1] PxSocks; p: [1] PxProxy; out: [600] u8;
+    st := px_socks_begin(s[..], dest[k], 8333, cast(string) cred[0..<cn], cast(string) cred[0..<cn], true, out[..]);
+    if k == 0 { print("  greeting "); hex(out[0..<st.send]); print("\n"); }
+    r := px_socks_pump(s[..], p[..], out[0..<st.send], answer[k]);
+    print("  %...:8333 as %: ", dest[k][0..<12], cast(string) cred[0..<cn]);
+    if r == PX_S_DONE { print("connected, circuit %\n", circuit(c[..], p[0])); }
+    else { h: [1] u8; h[0] = cast,trunc(u8) s[0].reply; print("failed, % (0x", px_socks_reply_text(s[0].reply)); hex(h[..]); print(")\n"); }
+  }
+  // -proxyrandomize=0: no credentials, so one circuit for everything.
+  s: [1] PxSocks; p: [1] PxProxy; out: [600] u8;
+  st := px_socks_begin(s[..], "1.2.3.4", 8333, "", "", false, out[..]);
+  print("  without isolation the greeting is "); hex(out[0..<st.send]); print("\n");
+  r := px_socks_pump(s[..], p[..], out[0..<st.send], 0);
+  print("  1.2.3.4:8333: %, credentials sent: %\n", ifx r == PX_S_DONE then "connected" else "failed", p[0].user_n);
+}
+
+sam :: () {
+  print("I2P through the SAM bridge\n");
+  q: [1] PxSam; out: [4096] u8; line: [2048] u8;
+  q[0].transient = true; for i: 0..<10 { q[0].id[i] = "2b7c0e91a4"[i]; }
+  st := px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  print("  > "); short(cast(string) out[0..<st.send - 1]); print("\n");
+  reply := "HELLO REPLY RESULT=OK VERSION=3.1";
+  print("  < %\n", reply);
+  st = px_sam_read(q[..], reply, out[..]);
+  print("  > "); short(cast(string) out[0..<st.send - 1]); print("\n");
+  at := px_put(line[..], 0, "SESSION STATUS RESULT=OK DESTINATION="); at = px_put(line[..], at, I2P_TEST_PRIV);
+  print("  < "); short(cast(string) line[0..<at]); print("\n");
+  st = px_sam_read(q[..], cast(string) line[0..<at], out[..]);
+  print("  session %, our address ", ifx st.state == PX_Q_DONE then "created" else "failed"); name(q[0].me); print(":0\n");
+  // Connect to the peer of SAM's accept example by its name.
+  peer: [1024] u8; pn := px_i2p_decode(I2P_TEST_PEER, peer[..]);
+  q[0].peer = px_i2p_addr(peer[0..<pn]);
+  results := [2] string.["STREAM STATUS RESULT=OK", "STREAM STATUS RESULT=CANT_REACH_PEER"];
+  for k: 0..<2 {
+    st = px_sam_begin(q[..], PX_SAM_CONNECT, out[..]);
+    st = px_sam_read(q[..], reply, out[..]);
+    print("  > "); short(cast(string) out[0..<st.send - 1]); print("\n");
+    at = px_put(line[..], 0, "NAMING REPLY RESULT=OK NAME="); at += px_addr_text(q[0].peer, line[at..<2048]);
+    at = px_put(line[..], at, " VALUE="); at = px_put(line[..], at, I2P_TEST_PEER);
+    print("  < "); short(cast(string) line[0..<at]); print("\n");
+    st = px_sam_read(q[..], cast(string) line[0..<at], out[..]);
+    print("  > "); short(cast(string) out[0..<st.send - 1]); print("\n");
+    print("  < %\n", results[k]);
+    st = px_sam_read(q[..], results[k], out[..]);
+    if st.state == PX_Q_DONE { print("  connected\n"); }
+    else { print("  failed; the proxy is to blame: %\n", yes(q[0].proxy_error)); }
+  }
+  // Accept: the peer's destination arrives on the accepted socket.
+  st = px_sam_begin(q[..], PX_SAM_ACCEPT, out[..]);
+  st = px_sam_read(q[..], reply, out[..]);
+  print("  > "); short(cast(string) out[0..<st.send - 1]); print("\n");
+  st = px_sam_read(q[..], "STREAM STATUS RESULT=OK", out[..]);
+  st = px_sam_read(q[..], I2P_TEST_PEER, out[..]);
+  print("  accepted a peer at "); name(q[0].peer); print(":0\n");
+  st = px_sam_begin(q[..], PX_SAM_ACCEPT, out[..]);
+  st = px_sam_read(q[..], reply, out[..]);
+  st = px_sam_read(q[..], "STREAM STATUS RESULT=OK", out[..]);
+  st = px_sam_read(q[..], "STREAM STATUS RESULT=I2P_ERROR MESSAGE=\"Session was closed\"", out[..]);
+  print("  a closed session: make it again: %\n", yes(q[0].disconnect));
+}
+
+NET_NAMES :: [7] string.["unroutable", "ipv4", "ipv6", "onion", "i2p", "cjdns", "internal"];
+ROUTES :: [4] string.["unreachable", "direct", "proxy", "SAM"];
+show :: (label: string, onlynet: [] string, proxies: [] string, onion: string, listenonion: bool, i2psam: bool, dnsseed: int) {
+  print("  %\n", label);
+  n := px_configure(onlynet, proxies, onion, listenonion, i2psam, false, dnsseed);
+  if n.code != PX_C_OK { print("    error: %\n", px_configure_text(n.code)); return; }
+  print("    reachable:");
+  for i: 1..<6 { if n.reachable[i] { print(" %", NET_NAMES[i]); if n.proxy[i] { print("%", ifx i == AM_NET_I2P then "(SAM)" else "(proxy)"); } } }
+  print("; DNS seeds %", ifx n.dnsseed then "on" else "off");
+  if n.onion_later { print("; onion may come from -listenonion"); }
+  print("\n    1.2.3.4: %, onion: %, i2p: %\n", ROUTES[px_route(n, am_v4(1, 2, 3, 4, 8333))],
+        ROUTES[px_route(n, px_set_special("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion").addr)],
+        ROUTES[px_route(n, px_set_special("ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p").addr)]);
+}
+networks :: () {
+  print("Reachable networks\n");
+  empty: [1] string; none := empty[0..<0];
+  tor := [1] string.["127.0.0.1:9050"]; only_onion := [1] string.["onion"];
+  both := [2] string.["onion", "i2p"]; v4 := [1] string.["ipv4"];
+  show("no options", none, none, "", true, false, -1);
+  show("-proxy=127.0.0.1:9050", none, tor[..], "", true, false, -1);
+  show("-onion=127.0.0.1:9050 -i2psam=127.0.0.1:7656", none, none, "127.0.0.1:9050", true, true, -1);
+  show("-onlynet=onion -onlynet=i2p -proxy=127.0.0.1:9050 -i2psam=127.0.0.1:7656", both[..], tor[..], "", true, true, -1);
+  show("-onlynet=onion -listenonion=0", only_onion[..], none, "", false, false, -1);
+  show("-onlynet=onion -onion=0", only_onion[..], tor[..], "0", true, false, -1);
+  show("-onlynet=onion -proxy=127.0.0.1:9050 -dnsseed=1", only_onion[..], tor[..], "", true, false, 1);
+  show("-onlynet=i2p", both[1..<2], none, "", true, false, -1);
+  show("-onlynet=ipv4 -onion=127.0.0.1:9050", v4[..], none, "127.0.0.1:9050", true, false, -1);
+}
+
+main :: () {
+  onions();
+  i2p();
+  socks();
+  sam();
+  networks();
+}
+// book:end example

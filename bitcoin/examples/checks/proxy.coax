@@ -1,0 +1,68 @@
+// The checks of proxy.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/proxy.coax
+#load "../proxy.coax";
+
+// book:begin check
+// Any key's onion name reads back to the key, and changing any one of its
+// 56 characters to another is refused: the checksum or the version
+// catches it.
+#forall "an onion name round-trips, and one changed character is refused" k: 0..<8 #steps 2000000000 {
+  seed := [1] u8.[cast,trunc(u8) k]; key: [32] u8;
+  #assert sha256_hash_checked(seed[..], key[..], false) == 0;
+  t: [80] u8; n := px_onion_text(key[..], t[..]);
+  x := px_set_special(cast(string) t[0..<n]);
+  #assert n == PX_ONION_TEXT && x.ok && x.addr.net == AM_NET_ONION;
+  for i: 0..<32 { #assert x.addr.ip[i] == key[i]; }
+  for i: 0..<56 {
+    keep := t[i];
+    t[i] = ifx keep == 'a' then 'b' else 'a';
+    #assert !px_set_special(cast(string) t[0..<n]).ok;
+    t[i] = keep;
+  }
+}
+// Any 32-byte hash is an I2P name of 52 characters that reads back to it,
+// in either case.
+#forall "an I2P name round-trips in either case" k: 0..<64 {
+  seed := [1] u8.[cast,trunc(u8) k]; h: [32] u8;
+  #assert sha256_hash_checked(seed[..], h[..], false) == 0;
+  a := am_bytes(AM_NET_I2P, h[..], 0);
+  t: [80] u8; n := px_addr_text(a, t[..]);
+  #assert n == PX_I2P_TEXT && am_same(px_set_special(cast(string) t[0..<n]).addr, a);
+  for i: 0..<n { if t[i] >= 'a' && t[i] <= 'z' { t[i] -= 32; } }
+  #assert am_same(px_set_special(cast(string) t[0..<n]).addr, a);
+}
+// The client and the proxy agree for every name length SOCKS5 allows,
+// with and without credentials, and the client stops at a refusal.
+#forall "SOCKS5: every name length, with and without credentials" k: 0..<256 {
+  name: [255] u8; for i: 0..<k { name[i] = cast,trunc(u8) (97 + i % 26); }
+  for auth: 0..<2 {
+    s: [1] PxSocks; p: [1] PxProxy; out: [600] u8;
+    user := ifx auth == 1 then "0011223344556677-9" else "";
+    st := px_socks_begin(s[..], cast(string) name[0..<k], 65535 - k, user, user, auth == 1, out[..]);
+    rep := ifx k % 17 == 0 then 0 else ifx k % 2 == 0 then 0xf0 + k % 8 else k % 9;
+    r := px_socks_pump(s[..], p[..], out[0..<st.send], rep);
+    #assert p[0].dest_n == k && p[0].port == 65535 - k && p[0].user_n == user.count && p[0].pass_n == user.count;
+    for i: 0..<k { #assert p[0].dest[i] == name[i]; }
+    if rep == 0 { #assert r == PX_S_DONE; } else { #assert r == PX_S_FAILED && s[0].error == PX_E_CONNECT && s[0].reply == rep; }
+  }
+}
+// For every -onlynet set, with or without a proxy and a SAM bridge, a
+// network not named is never reached, and a named one is reached unless
+// Core refused the options.
+#forall "-onlynet: unnamed networks are never reached" k: 0..<64 {
+  names := [4] string.["ipv4", "ipv6", "onion", "i2p"]; nets := [4] int.[AM_NET_IPV4, AM_NET_IPV6, AM_NET_ONION, AM_NET_I2P];
+  only: [4] string; m := 0;
+  for b: 0..<4 { if (k >> b) & 1 == 1 { only[m] = names[b]; m += 1; } }
+  proxies := [1] string.["127.0.0.1:9050"]; empty: [1] string;
+  n := px_configure(only[0..<m], ifx (k >> 4) & 1 == 1 then proxies[..] else empty[0..<0], "", true, (k >> 5) & 1 == 1, false, -1);
+  for b: 0..<4 {
+    named := m == 0 || (k >> b) & 1 == 1;
+    if n.code == PX_C_OK && !named { #assert !n.reachable[nets[b]]; }
+    if n.code == PX_C_OK && named && b < 2 { #assert n.reachable[nets[b]]; }
+  }
+  if n.code == PX_C_OK && ((k >> 2) & 1 == 1 || m == 0) { #assert n.reachable[AM_NET_ONION] == ((k >> 4) & 1 == 1); }
+  if n.code == PX_C_OK { #assert n.reachable[AM_NET_I2P] == ((k >> 5) & 1 == 1 && (m == 0 || (k >> 3) & 1 == 1)); }
+  if n.code != PX_C_OK { #assert m > 0 && ((k >> 3) & 1 == 1 && (k >> 5) & 1 == 0); }
+}
+// book:end check

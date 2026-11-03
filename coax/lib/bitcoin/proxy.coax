@@ -1,0 +1,1101 @@
+// Bitcoin chapter 75: proxies, Tor and I2P. Bitcoin Core's ways of
+// reaching peers that it doesn't dial directly, as pure procedures: the
+// text forms of Tor v3 onion and I2P addresses (netaddress.cpp, Core's
+// base32 in util/strencodings.cpp), the SOCKS5 client Core speaks to a
+// proxy such as Tor (RFC 1928 and RFC 1929, Socks5 in netbase.cpp) with
+// the credentials that isolate each connection on its own circuit, a
+// SOCKS5 proxy to test it against, the SAM v3.1 commands Core sends an
+// I2P router and what it does with the replies (i2p.cpp), and which
+// networks are reachable and through which proxy after -onlynet, -proxy,
+// -onion and -i2psam (init.cpp, net.cpp). Nothing opens a socket: the
+// caller passes each reply as bytes or as a line, and gets back what to
+// send next.
+#load "addrman.coax";
+#load "../crypto/sha3.coax";
+#load "../nostr/base64.coax";
+#authority;
+
+// book:begin constants
+PX_SOCKS5 :: 0x05;           // SOCKSVersion::SOCKS5
+PX_NOAUTH :: 0x00;           // SOCKS5Method::NOAUTH
+PX_USER_PASS :: 0x02;        // SOCKS5Method::USER_PASS (RFC 1929)
+PX_NO_ACCEPTABLE :: 0xff;    // SOCKS5Method::NO_ACCEPTABLE
+PX_CONNECT :: 0x01;          // SOCKS5Command::CONNECT
+PX_ATYP_IPV4 :: 0x01; PX_ATYP_DOMAIN :: 0x03; PX_ATYP_IPV6 :: 0x04;
+PX_MAX_NAME :: 255;          // a SOCKS5 host name, user name or password
+PX_TOR_SOCKS_PORT :: 9050;   // DEFAULT_TOR_SOCKS_PORT (torcontrol.h)
+PX_SAM_PORT :: 7656;         // -i2psam's default port (init.cpp)
+PX_I2P_PORT :: 0;            // I2P_SAM31_PORT: SAM 3.1 streams have no ports
+PX_PREFIX_BYTES :: 8;        // TorStreamIsolationCredentialsGenerator::PREFIX_BYTE_LENGTH
+PX_ONION_CHECKSUM :: 2;      // torv3::CHECKSUM_LEN
+PX_ONION_VERSION :: 3;       // torv3::VERSION
+PX_ONION_TEXT :: 62;         // 56 base32 characters and ".onion"
+PX_I2P_TEXT :: 60;           // 52 base32 characters and ".b32.i2p"
+PX_DEST_BASE :: 387;         // MyDestination: DEST_LEN_BASE ...
+PX_CERT_LEN_AT :: 385;       // ... and CERT_LEN_POS
+PX_B64_MAX :: 2048;          // the longest I2P base64 these procedures take
+PX_SAM_KEYS :: 16;           // the most key=value pairs read from one reply
+// book:end constants
+
+// ---- writing text into a byte buffer. Each returns the next position,
+// or -1 once anything has not fitted.
+px_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+px_put_byte :: (out: [] u8, at: int, b: int) -> int {
+  if at < 0 || at >= out.count { return -1; }
+  out[at] = cast,trunc(u8) b;
+  return at + 1;
+}
+px_put_int :: (out: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; n := 0; x := v;
+  while true { digits[n] = cast,trunc(u8) (48 + x % 10); n += 1; x /= 10; if x == 0 { break; } }
+  p := at;
+  while n > 0 { n -= 1; p = px_put_byte(out, p, cast(int) digits[n]); }
+  return p;
+}
+px_put_hex :: (out: [] u8, at: int, b: [] u8) -> int {
+  p := at;
+  for x: b { p = px_put(out, p, "0123456789abcdef"[cast(int) (x >> 4)..<cast(int) (x >> 4) + 1]); p = px_put(out, p, "0123456789abcdef"[cast(int) (x & 15)..<cast(int) (x & 15) + 1]); }
+  return p;
+}
+
+// book:begin base32
+// Core's base32 (RFC 4648's alphabet in lower case). EncodeBase32 pads
+// with '=' to a multiple of 8 characters unless told not to.
+px_b32_encode :: (input: [] u8, pad: bool, out: [] u8) -> int {
+  alphabet := "abcdefghijklmnopqrstuvwxyz234567";
+  acc := 0; bits := 0; n := 0;
+  for b: input {
+    acc = ((acc << 8) | cast(int) b) & 0xfff; bits += 8;
+    while bits >= 5 { bits -= 5; n = px_put_byte(out, n, cast(int) alphabet[(acc >> bits) & 31]); }
+  }
+  if bits > 0 { n = px_put_byte(out, n, cast(int) alphabet[(acc << (5 - bits)) & 31]); }
+  while pad && n >= 0 && n % 8 != 0 { n = px_put_byte(out, n, '='); }
+  return n;
+}
+// decode32_table: either case decodes.
+px_b32_digit :: (c: u8) -> int {
+  if c >= 'a' && c <= 'z' { return cast(int) (c - 'a'); }
+  if c >= 'A' && c <= 'Z' { return cast(int) (c - 'A'); }
+  if c >= '2' && c <= '7' { return cast(int) (c - '2') + 26; }
+  return -1;
+}
+// DecodeBase32: a multiple of 8 characters, of which 1, 3, 4 or 6 at the
+// end may be '='. ConvertBits<5, 8, false> then refuses any other
+// character, 5 or more bits left over, or left-over bits that aren't 0.
+// Returns the number of bytes, or -1.
+px_b32_decode :: (text: string, out: [] u8) -> int {
+  if text.count % 8 != 0 { return -1; }
+  n := text.count;
+  if n >= 1 && text[n - 1] == '=' { n -= 1; }
+  if n >= 2 && text[n - 2] == '=' && text[n - 1] == '=' { n -= 2; }
+  if n >= 1 && text[n - 1] == '=' { n -= 1; }
+  if n >= 2 && text[n - 2] == '=' && text[n - 1] == '=' { n -= 2; }
+  acc := 0; bits := 0; w := 0;
+  for i: 0..<n {
+    v := px_b32_digit(text[i]);
+    if v < 0 { return -1; }
+    acc = ((acc << 5) | v) & 0xfff; bits += 5;
+    if bits >= 8 { bits -= 8; w = px_put_byte(out, w, (acc >> bits) & 255); if w < 0 { return -1; } }
+  }
+  if bits >= 5 || ((acc << (8 - bits)) & 255) != 0 { return -1; }
+  return w;
+}
+// book:end base32
+
+// book:begin onion
+// torv3::Checksum: the first two bytes of
+// SHA3-256(".onion checksum" | PUBKEY | VERSION).
+px_onion_checksum :: (pubkey: [] u8, out: [] u8) {
+  m: [48] u8;
+  at := px_put(m[..], 0, ".onion checksum");
+  for i: 0..<32 { m[at + i] = pubkey[i]; }
+  m[47] = PX_ONION_VERSION;
+  d: [32] u8;
+  #assert sha3_256(cast(string) m[..], d[..]);
+  out[0] = d[0]; out[1] = d[1];
+}
+// OnionToString: base32(PUBKEY | CHECKSUM | VERSION) + ".onion", 62
+// characters.
+px_onion_text :: (pubkey: [] u8, out: [] u8) -> int {
+  b: [35] u8;
+  for i: 0..<32 { b[i] = pubkey[i]; }
+  px_onion_checksum(pubkey, b[32..<34]);
+  b[34] = PX_ONION_VERSION;
+  return px_put(out, px_b32_encode(b[..], true, out), ".onion");
+}
+// book:end onion
+
+// book:begin special
+// What CNetAddr::SetSpecial made of a name: ok, and the address with port 0.
+PxName :: struct { ok: bool; addr: AmAddr; }
+px_ends :: (s: string, suffix: string, fold: bool) -> bool {
+  if s.count < suffix.count { return false; }
+  for i: 0..<suffix.count {
+    c := s[s.count - suffix.count + i];
+    if fold && c >= 'A' && c <= 'Z' { c += 32; }
+    if c != suffix[i] { return false; }
+  }
+  return true;
+}
+// SetTor: 35 bytes of base32 before ".onion", version 3 and the right
+// checksum. Core no longer reads Tor v2's 16-character names.
+px_set_tor :: (s: string) -> PxName {
+  if !px_ends(s, ".onion", false) { return PxName.{}; }
+  b: [64] u8;
+  n := px_b32_decode(s[0..<s.count - 6], b[..]);
+  if n != 35 || b[34] != PX_ONION_VERSION { return PxName.{}; }
+  c: [2] u8; px_onion_checksum(b[0..<32], c[..]);
+  if c[0] != b[32] || c[1] != b[33] { return PxName.{}; }
+  return PxName.{ok=true, addr=am_bytes(AM_NET_ONION, b[0..<32], 0)};
+}
+// SetI2P: exactly 52 base32 characters, then ".b32.i2p" in any case. The
+// 56-character names of encrypted lease sets are refused.
+px_set_i2p :: (s: string) -> PxName {
+  if s.count != PX_I2P_TEXT || !px_ends(s, ".b32.i2p", true) { return PxName.{}; }
+  t: [56] u8;
+  for i: 0..<52 { t[i] = s[i]; }
+  for i: 52..<56 { t[i] = '='; }
+  b: [40] u8;
+  if px_b32_decode(cast(string) t[..], b[..]) != 32 { return PxName.{}; }
+  return PxName.{ok=true, addr=am_bytes(AM_NET_I2P, b[0..<32], 0)};
+}
+// SetSpecial: a name with a NUL in it is refused before either.
+px_set_special :: (s: string) -> PxName {
+  for c: s { if c == 0 { return PxName.{}; } }
+  t := px_set_tor(s);
+  if t.ok { return t; }
+  return px_set_i2p(s);
+}
+// ToStringAddr for the networks a proxy carries: Tor, I2P and IPv4.
+// Returns the length, or -1 for another network.
+px_addr_text :: (a: AmAddr, out: [] u8) -> int {
+  ip := a.ip;
+  if a.net == AM_NET_ONION { return px_onion_text(ip[0..<32], out); }
+  if a.net == AM_NET_I2P { return px_put(out, px_b32_encode(ip[0..<32], false, out), ".b32.i2p"); }
+  if a.net != AM_NET_IPV4 { return -1; }
+  at := 0;
+  for i: 0..<4 { if i > 0 { at = px_put(out, at, "."); } at = px_put_int(out, at, cast(int) a.ip[i]); }
+  return at;
+}
+// book:end special
+
+// book:begin socks
+// The SOCKS5 client in Socks5 (netbase.cpp). Each reply is read in pieces
+// of known size: need says how many bytes the next read takes.
+PX_S_GREET :: 1; PX_S_AUTH :: 2; PX_S_REPLY :: 3; PX_S_ADDR_LEN :: 4; PX_S_ADDR :: 5; PX_S_DONE :: 6; PX_S_FAILED :: 7;
+// How a SOCKS5 exchange failed, with Core's log message.
+PX_E_NAME :: 1;          // "Hostname too long for SOCKS5 proxying"
+PX_E_INIT :: 2;          // "SOCKS5 Proxy failed to initialize"
+PX_E_CREDENTIALS :: 3;   // "SOCKS5 Proxy username or password too long"
+PX_E_AUTH :: 4;          // "SOCKS5 Proxy authentication unsuccessful"
+PX_E_METHOD :: 5;        // "SOCKS5 Proxy requested wrong authentication method"
+PX_E_ACCEPT :: 6;        // "SOCKS5 Proxy failed to accept request"
+PX_E_CONNECT :: 7;       // "connect to ... failed:" and the reply's meaning
+PX_E_MALFORMED :: 8;     // "malformed SOCKS5 proxy response"
+PxSocks :: struct {
+  state: int; need: int; error: int; reply: int;
+  auth: bool; user: [255] u8; user_n: int; pass: [255] u8; pass_n: int;
+  dest: [255] u8; dest_n: int; port: int;
+}
+// What a step leaves the caller to do: send out[0..<send], then read
+// s.need more bytes, until state is done or failed.
+PxStep :: struct { state: int; send: int; }
+px_socks_fail :: (s: [] PxSocks, e: int) -> PxStep {
+  s[0].state = PX_S_FAILED; s[0].error = e; s[0].need = 0;
+  return PxStep.{state=PX_S_FAILED};
+}
+// The method selection message: SOCKS5 with no authentication, and with
+// username/password too when the caller has credentials.
+px_socks_begin :: (s: [] PxSocks, dest: string, port: int, user: string, pass: string, auth: bool, out: [] u8) -> PxStep {
+  s[0] = PxSocks.{auth=auth, port=port};
+  if dest.count > PX_MAX_NAME { return px_socks_fail(s, PX_E_NAME); }
+  for i: 0..<dest.count { s[0].dest[i] = dest[i]; } s[0].dest_n = dest.count;
+  s[0].user_n = user.count; s[0].pass_n = pass.count;
+  if user.count <= PX_MAX_NAME { for i: 0..<user.count { s[0].user[i] = user[i]; } }
+  if pass.count <= PX_MAX_NAME { for i: 0..<pass.count { s[0].pass[i] = pass[i]; } }
+  at := px_put_byte(out, 0, PX_SOCKS5);
+  if auth { at = px_put_byte(out, at, 2); at = px_put_byte(out, at, PX_NOAUTH); at = px_put_byte(out, at, PX_USER_PASS); }
+  else { at = px_put_byte(out, at, 1); at = px_put_byte(out, at, PX_NOAUTH); }
+  s[0].state = PX_S_GREET; s[0].need = 2;
+  return PxStep.{state=PX_S_GREET, send=at};
+}
+// CONNECT to a host name: Core always sends the name, never an address,
+// so the proxy resolves it and a .onion name works.
+px_socks_request :: (s: [] PxSocks, out: [] u8) -> PxStep {
+  at := px_put_byte(out, 0, PX_SOCKS5); at = px_put_byte(out, at, PX_CONNECT); at = px_put_byte(out, at, 0);
+  at = px_put_byte(out, at, PX_ATYP_DOMAIN); at = px_put_byte(out, at, s[0].dest_n);
+  for i: 0..<s[0].dest_n { at = px_put_byte(out, at, cast(int) s[0].dest[i]); }
+  at = px_put_byte(out, at, s[0].port >> 8); at = px_put_byte(out, at, s[0].port & 255);
+  s[0].state = PX_S_REPLY; s[0].need = 4;
+  return PxStep.{state=PX_S_REPLY, send=at};
+}
+// The next s.need bytes from the proxy.
+px_socks_read :: (s: [] PxSocks, in: [] u8, out: [] u8) -> PxStep {
+  st := s[0].state;
+  if in.count != s[0].need || st == PX_S_DONE || st == PX_S_FAILED { return px_socks_fail(s, PX_E_MALFORMED); }
+  if st == PX_S_GREET {
+    if in[0] != PX_SOCKS5 { return px_socks_fail(s, PX_E_INIT); }
+    if in[1] == PX_USER_PASS && s[0].auth {
+      if s[0].user_n > PX_MAX_NAME || s[0].pass_n > PX_MAX_NAME { return px_socks_fail(s, PX_E_CREDENTIALS); }
+      // RFC 1929: version 1, then each field after its length.
+      at := px_put_byte(out, 0, 1); at = px_put_byte(out, at, s[0].user_n);
+      for i: 0..<s[0].user_n { at = px_put_byte(out, at, cast(int) s[0].user[i]); }
+      at = px_put_byte(out, at, s[0].pass_n);
+      for i: 0..<s[0].pass_n { at = px_put_byte(out, at, cast(int) s[0].pass[i]); }
+      s[0].state = PX_S_AUTH; s[0].need = 2;
+      return PxStep.{state=PX_S_AUTH, send=at};
+    }
+    if in[1] == PX_NOAUTH { return px_socks_request(s, out); }
+    return px_socks_fail(s, PX_E_METHOD);
+  }
+  if st == PX_S_AUTH {
+    if in[0] != 0x01 || in[1] != 0x00 { return px_socks_fail(s, PX_E_AUTH); }
+    return px_socks_request(s, out);
+  }
+  if st == PX_S_REPLY {
+    if in[0] != PX_SOCKS5 { return px_socks_fail(s, PX_E_ACCEPT); }
+    if in[1] != 0 { s[0].reply = cast(int) in[1]; return px_socks_fail(s, PX_E_CONNECT); }
+    if in[2] != 0 { return px_socks_fail(s, PX_E_MALFORMED); }
+    // The address the proxy bound, then its port; Core reads and drops them.
+    if in[3] == PX_ATYP_IPV4 { s[0].state = PX_S_ADDR; s[0].need = 4 + 2; }
+    else if in[3] == PX_ATYP_IPV6 { s[0].state = PX_S_ADDR; s[0].need = 16 + 2; }
+    else if in[3] == PX_ATYP_DOMAIN { s[0].state = PX_S_ADDR_LEN; s[0].need = 1; }
+    else { return px_socks_fail(s, PX_E_MALFORMED); }
+    return PxStep.{state=s[0].state};
+  }
+  if st == PX_S_ADDR_LEN { s[0].state = PX_S_ADDR; s[0].need = cast(int) in[0] + 2; return PxStep.{state=PX_S_ADDR}; }
+  s[0].state = PX_S_DONE; s[0].need = 0;
+  return PxStep.{state=PX_S_DONE};
+}
+// Socks5ErrorString: RFC 1928's replies and Tor's onion service ones.
+px_socks_reply_text :: (rep: int) -> string {
+  if rep == 0x01 { return "general failure"; }
+  if rep == 0x02 { return "connection not allowed"; }
+  if rep == 0x03 { return "network unreachable"; }
+  if rep == 0x04 { return "host unreachable"; }
+  if rep == 0x05 { return "connection refused"; }
+  if rep == 0x06 { return "TTL expired"; }
+  if rep == 0x07 { return "protocol error"; }
+  if rep == 0x08 { return "address type not supported"; }
+  if rep == 0xf0 { return "onion service descriptor can not be found"; }
+  if rep == 0xf1 { return "onion service descriptor is invalid"; }
+  if rep == 0xf2 { return "onion service introduction failed"; }
+  if rep == 0xf3 { return "onion service rendezvous failed"; }
+  if rep == 0xf4 { return "onion service missing client authorization"; }
+  if rep == 0xf5 { return "onion service wrong client authorization"; }
+  if rep == 0xf6 { return "onion service invalid address"; }
+  if rep == 0xf7 { return "onion service introduction timed out"; }
+  return "unknown";
+}
+// TorStreamIsolationCredentialsGenerator: the user name and password of
+// connection number counter, hex(8 random bytes) + "-" + counter. Tor
+// puts streams with different credentials on different circuits.
+px_isolation :: (prefix: [] u8, counter: int, out: [] u8) -> int {
+  if prefix.count != PX_PREFIX_BYTES { return -1; }
+  return px_put_int(out, px_put(out, px_put_hex(out, 0, prefix), "-"), counter);
+}
+// book:end socks
+
+// book:begin proxy
+// A SOCKS5 proxy, to test the client against: it reads each message
+// whole, prefers username/password when offered, as Tor does, and leaves
+// the reply to a CONNECT to its caller.
+PX_P_GREET :: 1; PX_P_AUTH :: 2; PX_P_REQUEST :: 3; PX_P_CONNECTING :: 4; PX_P_CLOSED :: 5;
+PxProxy :: struct {
+  state: int = PX_P_GREET;
+  user: [255] u8; user_n: int; pass: [255] u8; pass_n: int;
+  dest: [255] u8; dest_n: int; port: int;
+}
+px_proxy_close :: (p: [] PxProxy) -> int { p[0].state = PX_P_CLOSED; return 0; }
+// One message from the client; returns how many bytes of reply it wrote
+// to out, 0 when the proxy waits for px_proxy_answer, or -1 when it closes.
+px_proxy_read :: (p: [] PxProxy, in: [] u8, out: [] u8) -> int {
+  st := p[0].state;
+  if st == PX_P_GREET {
+    if in.count < 2 || in[0] != PX_SOCKS5 || in.count != 2 + cast(int) in[1] { return px_proxy_close(p) - 1; }
+    method := PX_NO_ACCEPTABLE;
+    for i: 2..<in.count { if in[i] == PX_NOAUTH && method == PX_NO_ACCEPTABLE { method = PX_NOAUTH; } }
+    for i: 2..<in.count { if in[i] == PX_USER_PASS { method = PX_USER_PASS; } }
+    at := px_put_byte(out, px_put_byte(out, 0, PX_SOCKS5), method);
+    p[0].state = ifx method == PX_USER_PASS then PX_P_AUTH else ifx method == PX_NOAUTH then PX_P_REQUEST else PX_P_CLOSED;
+    return at;
+  }
+  if st == PX_P_AUTH {
+    if in.count < 2 || in[0] != 1 { return px_proxy_close(p) - 1; }
+    u := cast(int) in[1];
+    if in.count < 3 + u || in.count != 3 + u + cast(int) in[2 + u] { return px_proxy_close(p) - 1; }
+    for i: 0..<u { p[0].user[i] = in[2 + i]; } p[0].user_n = u;
+    w := cast(int) in[2 + u];
+    for i: 0..<w { p[0].pass[i] = in[3 + u + i]; } p[0].pass_n = w;
+    p[0].state = PX_P_REQUEST;
+    return px_put_byte(out, px_put_byte(out, 0, 1), 0);
+  }
+  if st == PX_P_REQUEST {
+    if in.count < 5 || in[0] != PX_SOCKS5 || in[1] != PX_CONNECT || in[2] != 0 || in[3] != PX_ATYP_DOMAIN { return px_proxy_close(p) - 1; }
+    n := cast(int) in[4];
+    if in.count != 7 + n { return px_proxy_close(p) - 1; }
+    for i: 0..<n { p[0].dest[i] = in[5 + i]; } p[0].dest_n = n;
+    p[0].port = (cast(int) in[5 + n] << 8) | cast(int) in[6 + n];
+    p[0].state = PX_P_CONNECTING;
+    return 0;
+  }
+  return px_proxy_close(p) - 1;
+}
+// The reply to the CONNECT: rep, and Tor's bound address 0.0.0.0:0.
+px_proxy_answer :: (p: [] PxProxy, rep: int, out: [] u8) -> int {
+  at := px_put_byte(out, 0, PX_SOCKS5); at = px_put_byte(out, at, rep); at = px_put_byte(out, at, 0); at = px_put_byte(out, at, PX_ATYP_IPV4);
+  for i: 0..<6 { at = px_put_byte(out, at, 0); }
+  p[0].state = ifx rep == 0 then PX_P_CONNECTING else PX_P_CLOSED;
+  return at;
+}
+// The client and the proxy talk until the client is done or either gives
+// up. first is what px_socks_begin wrote; rep is the proxy's answer to
+// the CONNECT. Returns the client's state.
+px_socks_pump :: (s: [] PxSocks, p: [] PxProxy, first: [] u8, rep: int) -> int {
+  a: [600] u8; b: [600] u8;
+  for i: 0..<first.count { b[i] = first[i]; }
+  pending := first.count;
+  while s[0].state != PX_S_DONE && s[0].state != PX_S_FAILED {
+    reply := px_proxy_read(p, b[0..<pending], a[..]);
+    if reply < 0 { return px_socks_fail(s, PX_E_MALFORMED).state; }
+    if reply == 0 && p[0].state == PX_P_CONNECTING { reply = px_proxy_answer(p, rep, a[..]); }
+    // The client reads the reply in the pieces it asks for.
+    at := 0; pending = 0;
+    while at < reply && s[0].state != PX_S_DONE && s[0].state != PX_S_FAILED {
+      need := s[0].need;
+      if at + need > reply { return px_socks_fail(s, PX_E_MALFORMED).state; }
+      step := px_socks_read(s, a[at..<at + need], b[..]);
+      at += need;
+      if step.send > 0 { pending = step.send; }
+    }
+    if pending == 0 && s[0].state != PX_S_DONE && s[0].state != PX_S_FAILED { return px_socks_fail(s, PX_E_MALFORMED).state; }
+  }
+  return s[0].state;
+}
+// book:end proxy
+
+// book:begin i2p
+// SwapBase64: I2P's base64 uses '-' and '~' where the standard one uses
+// '+' and '/'. The swap goes both ways.
+px_i2p_swap :: (c: u8) -> u8 {
+  if c == '-' { return '+'; }
+  if c == '~' { return '/'; }
+  if c == '+' { return '-'; }
+  if c == '/' { return '~'; }
+  return c;
+}
+// DecodeI2PBase64: the bytes, or -1.
+px_i2p_decode :: (text: string, out: [] u8) -> int {
+  if text.count > PX_B64_MAX { return -1; }
+  t: [PX_B64_MAX] u8;
+  for i: 0..<text.count { t[i] = px_i2p_swap(text[i]); }
+  r := base64_decode_checked(cast(string) t[0..<text.count], out, false);
+  return ifx r.error == NC_OK then r.written else -1;
+}
+// EncodeBase64, then SwapBase64.
+px_i2p_encode :: (bin: [] u8, out: [] u8) -> int {
+  r := base64_encode_checked(cast(string) bin, out, false);
+  if r.error != NC_OK { return -1; }
+  for i: 0..<r.written { out[i] = px_i2p_swap(out[i]); }
+  return r.written;
+}
+// MyDestination: a private key starts with the destination, 387 bytes and
+// the certificate whose big-endian length is at bytes 385 and 386.
+px_i2p_dest_len :: (key: [] u8) -> int {
+  if key.count < PX_CERT_LEN_AT + 2 { return -1; }
+  n := PX_DEST_BASE + ((cast(int) key[PX_CERT_LEN_AT] << 8) | cast(int) key[PX_CERT_LEN_AT + 1]);
+  return ifx n > key.count then -1 else n;
+}
+// DestBinToAddr: an I2P address is the SHA-256 of the destination, and its
+// name is that hash in unpadded base32 + ".b32.i2p".
+px_i2p_addr :: (dest: [] u8) -> AmAddr {
+  h: [32] u8;
+  #assert sha256_hash_checked(dest, h[..], false) == 0;
+  return am_bytes(AM_NET_I2P, h[..], PX_I2P_PORT);
+}
+// book:end i2p
+
+// book:begin sam
+// A SAM reply line: Core splits it at each space and reads each word as
+// key=value, or as a key alone. The first of two equal keys counts.
+PxReply :: struct { n: int; key: [PX_SAM_KEYS] int; key_n: [PX_SAM_KEYS] int; val: [PX_SAM_KEYS] int; val_n: [PX_SAM_KEYS] int; }
+px_sam_find :: (line: string, r: PxReply, key: string) -> int {
+  for i: 0..<r.n {
+    if r.key_n[i] == key.count && line[r.key[i]..<r.key[i] + r.key_n[i]] == key { return i; }
+  }
+  return -1;
+}
+px_sam_parse :: (line: string) -> PxReply {
+  r: PxReply;
+  start := 0;
+  for i: 0..<line.count + 1 {
+    if i < line.count && line[i] != ' ' { continue; }
+    eq := start; while eq < i && line[eq] != '=' { eq += 1; }
+    if r.n < PX_SAM_KEYS && px_sam_find(line, r, line[start..<eq]) < 0 {
+      r.key[r.n] = start; r.key_n[r.n] = eq - start;
+      r.val[r.n] = ifx eq < i then eq + 1 else -1; r.val_n[r.n] = ifx eq < i then i - eq - 1 else 0;
+      r.n += 1;
+    }
+    start = i + 1;
+  }
+  return r;
+}
+// Reply::Get: the value of key, or "" with ok false when it is missing.
+PxValue :: struct { ok: bool; text: string; }
+px_sam_get :: (line: string, key: string) -> PxValue {
+  r := px_sam_parse(line);
+  i := px_sam_find(line, r, key);
+  if i < 0 || r.val[i] < 0 { return PxValue.{}; }
+  return PxValue.{ok=true, text=line[r.val[i]..<r.val[i] + r.val_n[i]]};
+}
+px_sam_ok :: (line: string) -> bool {
+  v := px_sam_get(line, "RESULT");
+  return v.ok && v.text == "OK";
+}
+
+// i2p::sam::Session as three exchanges with the SAM bridge. Each starts
+// with HELLO on a new socket: creating the session (and the private key
+// for a persistent one), connecting a stream to a peer, and accepting
+// one from a peer.
+PX_SAM_CREATE :: 1; PX_SAM_CONNECT :: 2; PX_SAM_ACCEPT :: 3;
+PX_Q_HELLO :: 1; PX_Q_GENERATE :: 2; PX_Q_SESSION :: 3; PX_Q_LOOKUP :: 4; PX_Q_STREAM :: 5; PX_Q_WAIT :: 6; PX_Q_DONE :: 7; PX_Q_FAILED :: 8;
+// Why an exchange failed.
+PX_SAM_E_RESULT :: 1;     // a RESULT other than OK
+PX_SAM_E_MISSING :: 2;    // "Missing ...= in the reply"
+PX_SAM_E_KEY :: 3;        // a private key or destination that doesn't decode
+PX_SAM_E_PORT :: 4;       // a peer with a port other than 0
+PX_SAM_E_PEER :: 5;       // CANT_REACH_PEER or TIMEOUT: the peer, not the proxy
+PX_SAM_E_ID :: 6;         // INVALID_ID: the session is gone
+PX_SAM_E_CLOSED :: 7;     // RESULT=I2P_ERROR where a peer was expected
+PxSam :: struct {
+  kind: int; state: int; error: int;
+  transient: bool; generated: bool;
+  id: [10] u8;
+  key: [1024] u8; key_n: int;  // the private key, destination first
+  me: AmAddr; peer: AmAddr;
+  proxy_error: bool;           // Connect's proxy_error: retry another way
+  disconnect: bool;            // the session must be made again
+}
+px_sam_fail :: (q: [] PxSam, e: int) -> PxStep { q[0].state = PX_Q_FAILED; q[0].error = e; return PxStep.{state=PX_Q_FAILED}; }
+px_sam_hello :: (out: [] u8) -> int { return px_put(out, 0, "HELLO VERSION MIN=3.1 MAX=3.1\n"); }
+// Begin an exchange: HELLO. A connection to a peer needs its port to be 0.
+px_sam_begin :: (q: [] PxSam, kind: int, out: [] u8) -> PxStep {
+  q[0].kind = kind; q[0].error = 0; q[0].disconnect = false;
+  if kind == PX_SAM_CONNECT {
+    q[0].proxy_error = q[0].peer.port == PX_I2P_PORT;
+    if q[0].peer.port != PX_I2P_PORT { return px_sam_fail(q, PX_SAM_E_PORT); }
+  }
+  q[0].state = PX_Q_HELLO;
+  return PxStep.{state=PX_Q_HELLO, send=px_sam_hello(out)};
+}
+px_sam_create :: (q: [] PxSam, out: [] u8) -> PxStep {
+  at := px_put(out, 0, "SESSION CREATE STYLE=STREAM ID=");
+  at = px_put(out, at, cast(string) q[0].id[..]);
+  if q[0].transient {
+    at = px_put(out, at, " DESTINATION=TRANSIENT SIGNATURE_TYPE=7 i2cp.leaseSetEncType=6,4 inbound.quantity=1 outbound.quantity=1\n");
+  } else {
+    at = px_put(out, at, " DESTINATION=");
+    if at >= 0 {
+      n := px_i2p_encode(q[0].key[0..<q[0].key_n], out[at..<out.count]);
+      at = ifx n < 0 then -1 else at + n;
+    }
+    at = px_put(out, at, " i2cp.leaseSetEncType=6,4 inbound.quantity=3 outbound.quantity=3\n");
+  }
+  q[0].state = PX_Q_SESSION;
+  return PxStep.{state=PX_Q_SESSION, send=at};
+}
+// The session's own address, from the destination at the start of its key.
+px_sam_me :: (q: [] PxSam) -> PxStep {
+  n := px_i2p_dest_len(q[0].key[0..<q[0].key_n]);
+  if n < 0 { return px_sam_fail(q, PX_SAM_E_KEY); }
+  q[0].me = px_i2p_addr(q[0].key[0..<n]);
+  q[0].state = PX_Q_DONE;
+  return PxStep.{state=PX_Q_DONE};
+}
+// One reply line, without its '\n'.
+px_sam_read :: (q: [] PxSam, line: string, out: [] u8) -> PxStep {
+  st := q[0].state;
+  if st == PX_Q_HELLO {
+    if !px_sam_ok(line) { return px_sam_fail(q, PX_SAM_E_RESULT); }
+    if q[0].kind == PX_SAM_CREATE {
+      if q[0].transient || q[0].key_n > 0 { return px_sam_create(q, out); }
+      q[0].state = PX_Q_GENERATE;
+      return PxStep.{state=PX_Q_GENERATE, send=px_put(out, 0, "DEST GENERATE SIGNATURE_TYPE=7\n")};
+    }
+    if q[0].kind == PX_SAM_CONNECT {
+      at := px_put(out, 0, "NAMING LOOKUP NAME=");
+      at = px_put(out, at + px_addr_text(q[0].peer, out[at..<out.count]), "\n");
+      q[0].state = PX_Q_LOOKUP;
+      return PxStep.{state=PX_Q_LOOKUP, send=at};
+    }
+    at := px_put(out, 0, "STREAM ACCEPT ID=");
+    at = px_put(out, at, cast(string) q[0].id[..]);
+    at = px_put(out, at, " SILENT=false\n");
+    q[0].state = PX_Q_STREAM;
+    return PxStep.{state=PX_Q_STREAM, send=at};
+  }
+  if st == PX_Q_GENERATE {
+    // DEST GENERATE's RESULT isn't checked; its PRIV is the new key, which
+    // the caller saves before the session is created with it.
+    v := px_sam_get(line, "PRIV");
+    if !v.ok { return px_sam_fail(q, PX_SAM_E_MISSING); }
+    n := px_i2p_decode(v.text, q[0].key[..]);
+    if n < 0 { return px_sam_fail(q, PX_SAM_E_KEY); }
+    q[0].key_n = n; q[0].generated = true;
+    return px_sam_create(q, out);
+  }
+  if st == PX_Q_SESSION {
+    if !px_sam_ok(line) { return px_sam_fail(q, PX_SAM_E_RESULT); }
+    if q[0].transient {
+      v := px_sam_get(line, "DESTINATION");
+      if !v.ok { return px_sam_fail(q, PX_SAM_E_MISSING); }
+      n := px_i2p_decode(v.text, q[0].key[..]);
+      if n < 0 { return px_sam_fail(q, PX_SAM_E_KEY); }
+      q[0].key_n = n;
+    }
+    return px_sam_me(q);
+  }
+  if st == PX_Q_LOOKUP {
+    if !px_sam_ok(line) { return px_sam_fail(q, PX_SAM_E_RESULT); }
+    v := px_sam_get(line, "VALUE");
+    if !v.ok { return px_sam_fail(q, PX_SAM_E_MISSING); }
+    at := px_put(out, 0, "STREAM CONNECT ID=");
+    at = px_put(out, at, cast(string) q[0].id[..]);
+    at = px_put(out, px_put(out, px_put(out, at, " DESTINATION="), v.text), " SILENT=false\n");
+    q[0].state = PX_Q_STREAM;
+    return PxStep.{state=PX_Q_STREAM, send=at};
+  }
+  if st == PX_Q_STREAM {
+    v := px_sam_get(line, "RESULT");
+    if !v.ok { return px_sam_fail(q, PX_SAM_E_MISSING); }
+    if q[0].kind == PX_SAM_ACCEPT {
+      if v.text != "OK" { return px_sam_fail(q, PX_SAM_E_RESULT); }
+      q[0].state = PX_Q_WAIT;
+      return PxStep.{state=PX_Q_WAIT};
+    }
+    if v.text == "OK" { q[0].state = PX_Q_DONE; return PxStep.{state=PX_Q_DONE}; }
+    if v.text == "INVALID_ID" { q[0].disconnect = true; return px_sam_fail(q, PX_SAM_E_ID); }
+    if v.text == "CANT_REACH_PEER" || v.text == "TIMEOUT" { q[0].proxy_error = false; return px_sam_fail(q, PX_SAM_E_PEER); }
+    return px_sam_fail(q, PX_SAM_E_RESULT);
+  }
+  if st == PX_Q_WAIT {
+    // Accept: the first line on the accepted socket is the peer's
+    // destination. A RESULT=I2P_ERROR there means the session is gone.
+    d: [1024] u8;
+    n := px_i2p_decode(line, d[..]);
+    if n < 0 {
+      for i: 0..<line.count {
+        if i + 16 <= line.count && line[i..<i + 16] == "RESULT=I2P_ERROR" { q[0].disconnect = true; return px_sam_fail(q, PX_SAM_E_CLOSED); }
+      }
+      return px_sam_fail(q, PX_SAM_E_KEY);
+    }
+    q[0].peer = px_i2p_addr(d[0..<n]);
+    q[0].state = PX_Q_DONE;
+    return PxStep.{state=PX_Q_DONE};
+  }
+  return px_sam_fail(q, PX_SAM_E_RESULT);
+}
+// book:end sam
+
+// book:begin reach
+// Which networks a node reaches and how, after AppInitMain reads
+// -onlynet, -cjdnsreachable, -dnsseed, -proxy, -onion, -listenonion and
+// -i2psam, in Core's order. code names the first InitError, if any.
+PX_C_OK :: 0;
+PX_C_UNKNOWN_NET :: 1;       // "Unknown network specified in -onlynet"
+PX_C_CJDNS :: 2;             // "-onlynet=cjdns but -cjdnsreachable is not provided"
+PX_C_DNSSEED :: 3;           // "-dnsseed=1 ... but -onlynet forbids connections to IPv4/IPv6"
+PX_C_PROXY_EQ :: 4;          // "Invalid -proxy address or hostname, ends with '='"
+PX_C_PROXY_NET :: 5;         // "Unrecognized network in -proxy"
+PX_C_ONION_FORBIDDEN :: 6;   // "-onlynet=onion but ... explicitly forbidden: -onion=0"
+PX_C_ONION_MISSING :: 7;     // "-onlynet=onion but ... none of -proxy, -onion or -listenonion"
+PX_C_I2P_MISSING :: 8;       // "-onlynet=i2p but -i2psam is not provided"
+PxNet :: struct {
+  code: int;
+  reachable: [7] bool;       // by Core's Network: g_reachable_nets
+  proxy: [7] bool;           // SetProxy(net): -proxy, -onion, or the SAM bridge for I2P
+  name_proxy: bool;          // SetNameProxy: names are resolved by the proxy
+  dnsseed: bool;
+  onion_later: bool;         // -listenonion may still make Tor reachable through the control port
+}
+// ParseNetwork: a name in any case, or NET_UNROUTABLE.
+px_parse_network :: (s: string) -> int {
+  t: [8] u8;
+  if s.count > 8 { return AM_NET_UNROUTABLE; }
+  for i: 0..<s.count { c := s[i]; if c >= 'A' && c <= 'Z' { c += 32; } t[i] = c; }
+  low := cast(string) t[0..<s.count];
+  if low == "ipv4" { return AM_NET_IPV4; }
+  if low == "ipv6" { return AM_NET_IPV6; }
+  if low == "onion" { return AM_NET_ONION; }
+  if low == "i2p" { return AM_NET_I2P; }
+  if low == "cjdns" { return AM_NET_CJDNS; }
+  return AM_NET_UNROUTABLE;
+}
+// Core's InitError for each code.
+px_configure_text :: (code: int) -> string {
+  if code == PX_C_UNKNOWN_NET { return "Unknown network specified in -onlynet"; }
+  if code == PX_C_CJDNS { return "Outbound connections restricted to CJDNS (-onlynet=cjdns) but -cjdnsreachable is not provided"; }
+  if code == PX_C_DNSSEED { return "Incompatible options: -dnsseed=1 was explicitly specified, but -onlynet forbids connections to IPv4/IPv6"; }
+  if code == PX_C_PROXY_EQ { return "Invalid -proxy address or hostname, ends with '='"; }
+  if code == PX_C_PROXY_NET { return "Unrecognized network in -proxy"; }
+  if code == PX_C_ONION_FORBIDDEN { return "Outbound connections restricted to Tor (-onlynet=onion) but the proxy for reaching the Tor network is explicitly forbidden: -onion=0"; }
+  if code == PX_C_ONION_MISSING { return "Outbound connections restricted to Tor (-onlynet=onion) but the proxy for reaching the Tor network is not provided: none of -proxy, -onion or -listenonion is given"; }
+  if code == PX_C_I2P_MISSING { return "Outbound connections restricted to i2p (-onlynet=i2p) but -i2psam is not provided"; }
+  return "";
+}
+// dnsseed is -1 when not given, else 0 or 1. onion is "" when not given.
+px_configure :: (onlynet: [] string, proxies: [] string, onion: string, listenonion: bool, i2psam: bool, cjdns: bool, dnsseed: int) -> PxNet {
+  n: PxNet;
+  for i: 0..<7 { n.reachable[i] = true; }
+  if onlynet.count > 0 {
+    for i: 0..<7 { n.reachable[i] = false; }
+    for s: onlynet {
+      net := px_parse_network(s);
+      if net == AM_NET_UNROUTABLE { n.code = PX_C_UNKNOWN_NET; return n; }
+      n.reachable[net] = true;
+    }
+  }
+  if !cjdns {
+    if onlynet.count > 0 && n.reachable[AM_NET_CJDNS] { n.code = PX_C_CJDNS; return n; }
+    n.reachable[AM_NET_CJDNS] = false;
+  }
+  // An -onlynet without IPv4 or IPv6 turns DNS seeds off, unless -dnsseed=1
+  // was given, which is then an error.
+  clearnet := onlynet.count == 0 || n.reachable[AM_NET_IPV4] || n.reachable[AM_NET_IPV6];
+  n.dnsseed = ifx dnsseed < 0 then clearnet else dnsseed == 1;
+  if dnsseed == 1 && !n.reachable[AM_NET_IPV4] && !n.reachable[AM_NET_IPV6] { n.code = PX_C_DNSSEED; return n; }
+  // Each -proxy, for every network or, after '=', for one.
+  v4 := false; v6 := false; tor := false; name := false; cj := false;
+  for s: proxies {
+    eq := s.count - 1; while eq >= 0 && s[eq] != '=' { eq -= 1; }
+    if eq == s.count - 1 && eq >= 0 { n.code = PX_C_PROXY_EQ; return n; }
+    value := ifx eq < 0 then s else s[0..<eq];
+    set := value.count > 0 && value != "0";
+    if eq < 0 { v4 = set; v6 = set; name = set; cj = set; tor = set; continue; }
+    net := px_parse_network(s[eq + 1..<s.count]);
+    if net == AM_NET_IPV4 { v4 = set; name = set; }
+    else if net == AM_NET_IPV6 { v6 = set; name = set; }
+    else if net == AM_NET_ONION { tor = set; }
+    else if net == AM_NET_CJDNS { cj = set; }
+    else { n.code = PX_C_PROXY_NET; return n; }
+  }
+  n.proxy[AM_NET_IPV4] = v4; n.proxy[AM_NET_IPV6] = v6; n.proxy[AM_NET_CJDNS] = cj; n.name_proxy = name;
+  // -onion sets or overrides the proxy for .onion; -onion=0 forbids it.
+  onion_only := onlynet.count > 0 && n.reachable[AM_NET_ONION];
+  if onion == "0" {
+    tor = false;
+    if onion_only { n.code = PX_C_ONION_FORBIDDEN; return n; }
+  } else if onion.count > 0 { tor = true; }
+  if tor { n.proxy[AM_NET_ONION] = true; }
+  else {
+    if onion_only && !listenonion { n.code = PX_C_ONION_MISSING; return n; }
+    n.reachable[AM_NET_ONION] = false;
+    n.onion_later = listenonion && (onlynet.count == 0 || onion_only);
+  }
+  if i2psam { n.proxy[AM_NET_I2P] = true; }
+  else {
+    if onlynet.count > 0 && n.reachable[AM_NET_I2P] { n.code = PX_C_I2P_MISSING; return n; }
+    n.reachable[AM_NET_I2P] = false;
+  }
+  return n;
+}
+// How CConnman::ConnectNode reaches an address: not at all if its network
+// isn't reachable, through the SAM bridge for I2P, through the network's
+// proxy if it has one, else directly.
+PX_R_UNREACHABLE :: 0; PX_R_DIRECT :: 1; PX_R_PROXY :: 2; PX_R_SAM :: 3;
+px_route :: (n: PxNet, a: AmAddr) -> int {
+  net := am_network(a);
+  if !n.reachable[net] { return PX_R_UNREACHABLE; }
+  if a.net == AM_NET_I2P && n.proxy[AM_NET_I2P] { return PX_R_SAM; }
+  if n.proxy[net] { return PX_R_PROXY; }
+  return PX_R_DIRECT;
+}
+// book:end reach
+
+// ---- checks
+px_test_unhex :: (s: string, out: [] u8) -> [] u8 {
+  n := s.count / 2;
+  for i: 0..<n {
+    hi := px_b32_hexval(s[2 * i]); lo := px_b32_hexval(s[2 * i + 1]);
+    out[i] = cast,trunc(u8) (hi * 16 + lo);
+  }
+  return out[0..<n];
+}
+px_b32_hexval :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+px_test_text :: (a: AmAddr, want: string) -> bool {
+  t: [80] u8; n := px_addr_text(a, t[..]);
+  return n == want.count && cast(string) t[0..<n] == want;
+}
+
+#test "Core's base32: RFC 4648's examples, padding and refusals" {
+  plain := [7] string.["", "f", "fo", "foo", "foob", "fooba", "foobar"];
+  coded := [7] string.["", "my======", "mzxq====", "mzxw6===", "mzxw6yq=", "mzxw6ytb", "mzxw6ytboi======"];
+  for i: 0..<7 {
+    t: [16] u8; b: [8] u8;
+    p: [8] u8; for j: 0..<plain[i].count { p[j] = plain[i][j]; }
+    n := px_b32_encode(p[0..<plain[i].count], true, t[..]);
+    #assert n == coded[i].count && cast(string) t[0..<n] == coded[i];
+    m := px_b32_decode(coded[i], b[..]);
+    #assert m == plain[i].count && cast(string) b[0..<m] == plain[i];
+  }
+  t: [16] u8;
+  f := [6] u8.['f', 'o', 'o', 'b', 'a', 'r'];
+  #assert px_b32_encode(f[0..<1], false, t[..]) == 2;
+  b: [16] u8;
+  #assert px_b32_decode("MZXW6YQ=", b[..]) == 4;            // upper case decodes
+  #assert px_b32_decode("mzxw6yq", b[..]) == -1;            // not a multiple of 8
+  #assert px_b32_decode("mzxw6yr=", b[..]) == -1;           // left-over bits not 0
+  #assert px_b32_decode("mzx=====", b[..]) == -1;           // five '=': one is left over, and isn't base32
+  #assert px_b32_decode("mzxw6y1=", b[..]) == -1;           // '1' isn't base32
+  #assert px_b32_decode("my=a====", b[..]) == -1;           // '=' inside
+  #assert px_b32_encode(f[..], true, t[0..<15]) == -1;
+}
+#test "SHA3-256's onion checksum, as Tor defines it" {
+  pub: [32] u8; c: [2] u8; m: [48] u8;
+  for i: 0..<32 { pub[i] = cast,trunc(u8) (7 * i + 1); }
+  px_onion_checksum(pub[..], c[..]);
+  at := px_put(m[..], 0, ".onion checksum");
+  for i: 0..<32 { m[at + i] = pub[i]; }
+  m[47] = 3;
+  d: [32] u8; #assert sha3_256(cast(string) m[..], d[..]);
+  #assert c[0] == d[0] && c[1] == d[1];
+}
+// The three examples of rend-spec-v3's "Encoding onion addresses", and
+// Core's cases in net_tests.cpp.
+#test "rend-spec-v3's onion addresses read, and print back the same" {
+  names := [3] string.["pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion",
+                       "sp3k262uwy4r2k3ycr5awluarykdpag6a7y33jxop4cs2lu5uz5sseqd.onion",
+                       "xa4r2iadxm55fbnqgwwi5mymqdcofiu3w6rpbtqn7b2dyn7mgwj64jyd.onion"];
+  for s: names {
+    x := px_set_special(s);
+    #assert x.ok && x.addr.net == AM_NET_ONION && x.addr.n == 32 && x.addr.port == 0;
+    #assert px_test_text(x.addr, s);
+    #assert am_routable(x.addr) && am_network(x.addr) == AM_NET_ONION;
+  }
+  #assert !px_set_special("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscsad.onion").ok;   // checksum
+  #assert !px_set_special("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscrye.onion").ok;   // version
+  nul: [66] u8; good := "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd";
+  for i: 0..<56 { nul[i] = good[i]; } nul[56] = 0; at := px_put(nul[..], 57, "wtf.onion");
+  #assert at == 66 && !px_set_special(cast(string) nul[..]).ok;
+  #assert !px_set_special("6hzph5hv6337r6p2.onion").ok;     // Tor v2
+  #assert !px_set_special("mfrggzak.onion").ok;             // 5 bytes
+  #assert !px_set_special("mf*g zak.onion").ok;
+  #assert !px_set_special("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.ONION").ok;
+}
+#test "I2P names: 52 characters and .b32.i2p in any case" {
+  x := px_set_special("UDHDrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.I2P");
+  #assert x.ok && x.addr.net == AM_NET_I2P && px_test_text(x.addr, "udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna.b32.i2p");
+  #assert !px_set_special("udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jn=.b32.i2p").ok;
+  #assert !px_set_special("udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v4jna=.b32.i2p").ok;
+  #assert !px_set_special("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscsad.b32.i2p").ok;
+  #assert !px_set_special("tp*szydbh4dp.b32.i2p").ok;
+  nul: [60] u8; good := "udhdrtrcetjm5sxzskjyr5ztpeszydbh4dpl3pl4utgqqw2v";
+  for i: 0..<48 { nul[i] = good[i]; } nul[48] = 0; at := px_put(nul[..], 49, "wtf.b32.i2p");
+  #assert at == 60 && !px_set_special(cast(string) nul[..]).ok;
+  #assert px_addr_text(am_none(), nul[..]) == -1;
+  #assert px_test_text(am_v4(1, 2, 3, 4, 8333), "1.2.3.4");
+}
+// BIP-155 carries both as network ID, length 32 and the 32 bytes: Core's
+// cases in net_tests.cpp, written with chapter 69's am_put_net and read
+// with its am_bip155.
+#test "BIP-155: Tor v3 is network 4 and I2P network 5, each 32 bytes" {
+  wire: [40] u8; raw: [40] u8;
+  t := px_set_special("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion");
+  #assert am_put_net(wire[..], 0, t.addr) == 34;
+  want := px_test_unhex("042079bcc625184b05194975c28b66b66b0469f7f6556fb1ac3189a79b40dda32f1f", raw[..]);
+  for k: 0..<34 { #assert wire[k] == want[k]; }
+  #assert am_same(am_bip155(P2P_NET_TORV3, wire[2..<34], 0), t.addr);
+  i := px_set_special("ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p");
+  #assert am_put_net(wire[..], 0, i.addr) == 34 && wire[0] == 5 && wire[1] == 32;
+  want = px_test_unhex("a2894dabaec08c0051a481a6dac88b64f98232ae42d4b6fd2fa81952dfe36a87", raw[..]);
+  for k: 0..<32 { #assert wire[2 + k] == want[k]; }
+  // A wrong length isn't Tor v3 or I2P.
+  #assert !am_valid(am_bip155(P2P_NET_TORV3, wire[2..<3], 0)) && !am_valid(am_bip155(P2P_NET_I2P, wire[2..<5], 0));
+}
+#test "SOCKS5 without credentials: method, CONNECT to a name, the bound address" {
+  s: [1] PxSocks; out: [600] u8;
+  st := px_socks_begin(s[..], "example.com", 8333, "", "", false, out[..]);
+  #assert st.send == 3 && out[0] == 5 && out[1] == 1 && out[2] == 0;
+  r1 := [2] u8.[5, 0];
+  st = px_socks_read(s[..], r1[..], out[..]);
+  #assert st.state == PX_S_REPLY && st.send == 7 + 11 && out[3] == PX_ATYP_DOMAIN && out[4] == 11 && out[16] == 0x20 && out[17] == 0x8d;
+  r2 := [4] u8.[5, 0, 0, PX_ATYP_DOMAIN];
+  st = px_socks_read(s[..], r2[..], out[..]); #assert st.state == PX_S_ADDR_LEN && s[0].need == 1;
+  r3 := [1] u8.[3];
+  st = px_socks_read(s[..], r3[..], out[..]); #assert st.state == PX_S_ADDR && s[0].need == 5;
+  r4 := [5] u8.[97, 98, 99, 0, 1];
+  st = px_socks_read(s[..], r4[..], out[..]); #assert st.state == PX_S_DONE;
+  #assert px_socks_read(s[..], r4[0..<0], out[..]).state == PX_S_FAILED;
+  // An IPv6 bound address takes 18 bytes.
+  st = px_socks_begin(s[..], "a", 1, "", "", false, out[..]);
+  st = px_socks_read(s[..], r1[..], out[..]);
+  r6 := [4] u8.[5, 0, 0, PX_ATYP_IPV6];
+  st = px_socks_read(s[..], r6[..], out[..]); #assert st.state == PX_S_ADDR && s[0].need == 18;
+}
+#test "SOCKS5's refusals, each with Core's reason" {
+  s: [1] PxSocks; out: [600] u8; long: [256] u8;
+  for i: 0..<256 { long[i] = 'a'; }
+  #assert px_socks_begin(s[..], cast(string) long[..], 1, "", "", false, out[..]).state == PX_S_FAILED && s[0].error == PX_E_NAME;
+  #assert px_socks_begin(s[..], cast(string) long[0..<255], 1, "", "", false, out[..]).state == PX_S_GREET;
+  bad := [10] u8.[4, 0, 5, 0xff, 5, 2, 5, 1, 5, 0];
+  want := [4] int.[PX_E_INIT, PX_E_METHOD, PX_E_METHOD, PX_E_METHOD];
+  for k: 0..<4 {
+    st := px_socks_begin(s[..], "a", 1, "", "", false, out[..]);
+    #assert px_socks_read(s[..], bad[2 * k..<2 * k + 2], out[..]).state == PX_S_FAILED && s[0].error == want[k];
+  }
+  // With credentials: too long, then refused.
+  st := px_socks_begin(s[..], "a", 1, cast(string) long[..], "p", true, out[..]);
+  #assert st.send == 4 && out[1] == 2 && out[3] == PX_USER_PASS;
+  #assert px_socks_read(s[..], bad[4..<6], out[..]).state == PX_S_FAILED && s[0].error == PX_E_CREDENTIALS;
+  st = px_socks_begin(s[..], "a", 1, "u", "p", true, out[..]);
+  st = px_socks_read(s[..], bad[4..<6], out[..]);
+  #assert st.state == PX_S_AUTH && st.send == 5 && out[0] == 1 && out[1] == 1 && out[2] == 'u' && out[3] == 1 && out[4] == 'p';
+  no := [2] u8.[1, 1];
+  #assert px_socks_read(s[..], no[..], out[..]).state == PX_S_FAILED && s[0].error == PX_E_AUTH;
+  // The reply to CONNECT.
+  replies := [16] u8.[4, 0, 0, 1, 5, 0xf0, 0, 1, 5, 0, 1, 1, 5, 0, 0, 2];
+  errors := [4] int.[PX_E_ACCEPT, PX_E_CONNECT, PX_E_MALFORMED, PX_E_MALFORMED];
+  for k: 0..<4 {
+    st = px_socks_begin(s[..], "a", 1, "", "", false, out[..]);
+    st = px_socks_read(s[..], bad[8..<10], out[..]);
+    #assert px_socks_read(s[..], replies[4 * k..<4 * k + 4], out[..]).state == PX_S_FAILED && s[0].error == errors[k];
+  }
+  #assert s[0].error == PX_E_MALFORMED;
+  codes := [17] int.[1, 2, 3, 4, 5, 6, 7, 8, 0xf0, 0xf1, 0xf2, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 9];
+  for c: codes { #assert px_socks_reply_text(c).count > 0; }
+  #assert px_socks_reply_text(0xf0) == "onion service descriptor can not be found" && px_socks_reply_text(9) == "unknown";
+}
+#test "stream isolation: each connection's credentials differ" {
+  prefix := [8] u8.[0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3];
+  a: [40] u8; b: [40] u8;
+  n := px_isolation(prefix[..], 0, a[..]); m := px_isolation(prefix[..], 10, b[..]);
+  #assert cast(string) a[0..<n] == "deadbeef00010203-0" && cast(string) b[0..<m] == "deadbeef00010203-10";
+  #assert px_isolation(prefix[0..<7], 0, a[..]) == -1;
+}
+#test "the client against the proxy: isolation, success and Tor's onion errors" {
+  s: [1] PxSocks; p: [1] PxProxy; out: [600] u8;
+  st := px_socks_begin(s[..], "pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion", 8333, "u-0", "u-0", true, out[..]);
+  #assert px_socks_pump(s[..], p[..], out[0..<st.send], 0) == PX_S_DONE;
+  #assert p[0].user_n == 3 && p[0].dest_n == 62 && p[0].port == 8333 && p[0].state == PX_P_CONNECTING;
+  p[0] = PxProxy.{};
+  st = px_socks_begin(s[..], "xa4r2iadxm55fbnqgwwi5mymqdcofiu3w6rpbtqn7b2dyn7mgwj64jyd.onion", 8333, "", "", false, out[..]);
+  #assert px_socks_pump(s[..], p[..], out[0..<st.send], 0xf0) == PX_S_FAILED && s[0].error == PX_E_CONNECT && s[0].reply == 0xf0;
+  #assert p[0].user_n == 0 && p[0].state == PX_P_CLOSED;
+  // A proxy refuses what isn't SOCKS5, a bad login or another command.
+  q: [1] PxProxy;
+  m4 := [3] u8.[4, 1, 0];
+  #assert px_proxy_read(q[..], m4[..], out[..]) == -1 && q[0].state == PX_P_CLOSED;
+  q[0] = PxProxy.{}; g := [3] u8.[5, 1, 1];
+  #assert px_proxy_read(q[..], g[..], out[..]) == 2 && out[1] == PX_NO_ACCEPTABLE && q[0].state == PX_P_CLOSED;
+  #assert px_proxy_read(q[..], g[..], out[..]) == -1;
+  q[0] = PxProxy.{state=PX_P_AUTH}; l := [4] u8.[1, 5, 0, 0];
+  #assert px_proxy_read(q[..], l[..], out[..]) == -1;
+  q[0] = PxProxy.{state=PX_P_AUTH}; l2 := [3] u8.[2, 0, 0];
+  #assert px_proxy_read(q[..], l2[..], out[..]) == -1;
+  q[0] = PxProxy.{state=PX_P_REQUEST}; r := [7] u8.[5, 2, 0, 3, 0, 0, 1];
+  #assert px_proxy_read(q[..], r[..], out[..]) == -1;
+  q[0] = PxProxy.{state=PX_P_REQUEST}; r2 := [7] u8.[5, 1, 0, 3, 1, 0, 1];
+  #assert px_proxy_read(q[..], r2[..], out[..]) == -1;
+  // A proxy that closes mid-exchange fails the client.
+  s2: [1] PxSocks; p2: [1] PxProxy; o2: [600] u8;
+  st = px_socks_begin(s2[..], "a", 1, "", "", false, o2[..]);
+  p2[0] = PxProxy.{state=PX_P_CLOSED};
+  #assert px_socks_pump(s2[..], p2[..], o2[0..<st.send], 0) == PX_S_FAILED;
+  // One that answers with nothing.
+  p2[0] = PxProxy.{state=PX_P_CONNECTING};
+  st = px_socks_begin(s2[..], "a", 1, "", "", false, o2[..]);
+  #assert px_socks_pump(s2[..], p2[..], o2[0..<st.send], 0) == PX_S_FAILED;
+}
+// Core's i2p_tests.cpp: the reply to DEST GENERATE, and the peer
+// destination of SAM v3's accept example.
+I2P_TEST_PUB :: "WnGOLXRBqHQhdVjFlWqRxJwz9hxx~2~wGc2Vplta1KhacY4tdEGodCF1WMWVapHEnDP2HHH~b~AZzZWmW1rUqFpxji10Qah0IXVYxZVqkcScM~Yccf9v8BnNlaZbWtSoWnGOLXRBqHQhdVjFlWqRxJwz9hxx~2~wGc2Vplta1KhacY4tdEGodCF1WMWVapHEnDP2HHH~b~AZzZWmW1rUqFpxji10Qah0IXVYxZVqkcScM~Yccf9v8BnNlaZbWtSoWnGOLXRBqHQhdVjFlWqRxJwz9hxx~2~wGc2Vplta1KhacY4tdEGodCF1WMWVapHEnDP2HHH~b~AZzZWmW1rUqFpxji10Qah0IXVYxZVqkcScM~Yccf9v8BnNlaZbWtSoWnGOLXRBqHQhdVjFlWqRxJwz9hxx~2~wGc2Vplta1KhacY4tdEGodCF1WMWVapHEnDP2HHH~b~AZzZWmW1rUqLE4SD-yjT48UNI7qiTUfIPiDitCoiTTz2cr4QGfw89rBQAEAAcAAA==";
+I2P_TEST_PRIV :: "WnGOLXRBqHQhdVjFlWqRxJwz9hxx~2~wGc2Vplta1KhacY4tdEGodCF1WMWVapHEnDP2HHH~b~AZzZWmW1rUqFpxji10Qah0IXVYxZVqkcScM~Yccf9v8BnNlaZbWtSoWnGOLXRBqHQhdVjFlWqRxJwz9hxx~2~wGc2Vplta1KhacY4tdEGodCF1WMWVapHEnDP2HHH~b~AZzZWmW1rUqFpxji10Qah0IXVYxZVqkcScM~Yccf9v8BnNlaZbWtSoWnGOLXRBqHQhdVjFlWqRxJwz9hxx~2~wGc2Vplta1KhacY4tdEGodCF1WMWVapHEnDP2HHH~b~AZzZWmW1rUqFpxji10Qah0IXVYxZVqkcScM~Yccf9v8BnNlaZbWtSoWnGOLXRBqHQhdVjFlWqRxJwz9hxx~2~wGc2Vplta1KhacY4tdEGodCF1WMWVapHEnDP2HHH~b~AZzZWmW1rUqLE4SD-yjT48UNI7qiTUfIPiDitCoiTTz2cr4QGfw89rBQAEAAcAAOvuCIKTyv5f~1QgGq7XQl-IqBULTB5WzB3gw5yGPtd1p0AeoADrq1ccZggLPQ4ZLUsGK-HVw373rcTfvxrcuwenqVjiN4tbbYLWtP7xXGWj6fM6HyORhU63GphrjEePpMUHDHXd3o7pWGM-ieVVQSK~1MzF9P93pQWI3Do52EeNAayz4HbpPjNhVBzG1hUEFwznfPmUZBPuaOR4-uBm1NEWEuONlNOCctE4-U0Ukh94z-Qb55U5vXjR5G4apmBblr68t6Wm1TKlzpgFHzSqLryh3stWqrOKY1H0z9eZ2z1EkHFOpD5LyF6nf51e-lV7HLMl44TYzoEHK8RRVodtLcW9lacVdBpv~tOzlZERIiDziZODPETENZMz5oy9DQ7UUw==";
+I2P_TEST_PEER :: "IchV608baDoXbqzQKSqFDmTXPVgoDbPAhZJvNRXXxi4hyFXrTxtoOhdurNApKoUOZNc9WCgNs8CFkm81FdfGLiHIVetPG2g6F26s0CkqhQ5k1z1YKA2zwIWSbzUV18YuIchV608baDoXbqzQKSqFDmTXPVgoDbPAhZJvNRXXxi4hyFXrTxtoOhdurNApKoUOZNc9WCgNs8CFkm81FdfGLiHIVetPG2g6F26s0CkqhQ5k1z1YKA2zwIWSbzUV18YuIchV608baDoXbqzQKSqFDmTXPVgoDbPAhZJvNRXXxi4hyFXrTxtoOhdurNApKoUOZNc9WCgNs8CFkm81FdfGLiHIVetPG2g6F26s0CkqhQ5k1z1YKA2zwIWSbzUV18YuIchV608baDoXbqzQKSqFDmTXPVgoDbPAhZJvNRXXxi4hyFXrTxtoOhdurNApKoUOZNc9WCgNs8CFkm81FdfGLlSreVaCuCS5sdb-8ToWULWP7kt~lRPDeUNxQMq3cRSBBQAEAAcAAA==";
+#test "I2P's base64, the destination inside a private key, and its address" {
+  pub: [1024] u8; priv: [1024] u8; again: [2048] u8;
+  n := px_i2p_decode(I2P_TEST_PUB, pub[..]);
+  m := px_i2p_decode(I2P_TEST_PRIV, priv[..]);
+  #assert n == 391 && m > n && px_i2p_dest_len(priv[0..<m]) == n;
+  for i: 0..<n { #assert pub[i] == priv[i]; }
+  e := px_i2p_encode(pub[0..<n], again[..]);
+  #assert e == I2P_TEST_PUB.count && cast(string) again[0..<e] == I2P_TEST_PUB;
+  a := px_i2p_addr(pub[0..<n]);
+  #assert a.net == AM_NET_I2P && a.port == 0 && am_routable(a);
+  #assert px_i2p_dest_len(priv[0..<386]) == -1 && px_i2p_dest_len(priv[0..<390]) == -1;
+  #assert px_i2p_decode("a+bc", pub[..]) == -1 && px_i2p_decode("abc", pub[..]) == -1;
+  big: [PX_B64_MAX + 4] u8; for i: 0..<big.count { big[i] = 'A'; }
+  #assert px_i2p_decode(cast(string) big[..], pub[..]) == -1;
+  #assert px_i2p_encode(pub[0..<n], again[0..<10]) == -1;
+  #assert px_i2p_swap('-') == '+' && px_i2p_swap('~') == '/' && px_i2p_swap('+') == '-' && px_i2p_swap('/') == '~' && px_i2p_swap('A') == 'A';
+}
+#test "SAM replies: words, key=value, the first of a repeated key" {
+  line := "HELLO REPLY RESULT=OK VERSION=3.1 RESULT=NO  X=";
+  r := px_sam_parse(line);
+  #assert r.n == 6 && px_sam_ok(line);
+  v := px_sam_get(line, "VERSION"); #assert v.ok && v.text == "3.1";
+  #assert !px_sam_get(line, "HELLO").ok && !px_sam_get(line, "NONE").ok;
+  x := px_sam_get(line, "X"); #assert x.ok && x.text == "";
+  #assert !px_sam_ok("HELLO REPLY RESULT=NOVERSION") && !px_sam_ok("HELLO REPLY");
+}
+#test "a transient SAM session, a connection and an accepted peer" {
+  q: [1] PxSam; out: [4096] u8;
+  q[0].transient = true; for i: 0..<10 { q[0].id[i] = "0123456789"[i]; }
+  st := px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  #assert cast(string) out[0..<st.send] == "HELLO VERSION MIN=3.1 MAX=3.1\n";
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert st.state == PX_Q_SESSION && cast(string) out[0..<st.send] == "SESSION CREATE STYLE=STREAM ID=0123456789 DESTINATION=TRANSIENT SIGNATURE_TYPE=7 i2cp.leaseSetEncType=6,4 inbound.quantity=1 outbound.quantity=1\n";
+  line: [2048] u8;
+  at := px_put(line[..], 0, "SESSION STATUS RESULT=OK DESTINATION=");
+  at = px_put(line[..], at, I2P_TEST_PRIV);
+  st = px_sam_read(q[..], cast(string) line[0..<at], out[..]);
+  pub: [1024] u8; n := px_i2p_decode(I2P_TEST_PUB, pub[..]);
+  #assert st.state == PX_Q_DONE && am_same(q[0].me, px_i2p_addr(pub[0..<n]));
+  // Connect: look the name up, then open the stream.
+  q[0].peer = q[0].me;
+  st = px_sam_begin(q[..], PX_SAM_CONNECT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  t: [80] u8; tn := px_addr_text(q[0].me, t[..]);
+  #assert st.state == PX_Q_LOOKUP && st.send == 19 + tn + 1 && cast(string) out[19..<19 + tn] == cast(string) t[0..<tn];
+  st = px_sam_read(q[..], "NAMING REPLY RESULT=OK NAME=x VALUE=AAAA", out[..]);
+  #assert st.state == PX_Q_STREAM && cast(string) out[0..<st.send] == "STREAM CONNECT ID=0123456789 DESTINATION=AAAA SILENT=false\n";
+  #assert px_sam_read(q[..], "STREAM STATUS RESULT=OK", out[..]).state == PX_Q_DONE;
+  // Accept: STREAM ACCEPT, then the peer's destination on its own line.
+  st = px_sam_begin(q[..], PX_SAM_ACCEPT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert cast(string) out[0..<st.send] == "STREAM ACCEPT ID=0123456789 SILENT=false\n";
+  #assert px_sam_read(q[..], "STREAM STATUS RESULT=OK", out[..]).state == PX_Q_WAIT;
+  peer: [1024] u8; pn := px_i2p_decode(I2P_TEST_PEER, peer[..]);
+  #assert px_sam_read(q[..], I2P_TEST_PEER, out[..]).state == PX_Q_DONE && am_same(q[0].peer, px_i2p_addr(peer[0..<pn]));
+  st = px_sam_begin(q[..], PX_SAM_ACCEPT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  st = px_sam_read(q[..], "STREAM STATUS RESULT=OK", out[..]);
+  #assert px_sam_read(q[..], "STREAM STATUS RESULT=I2P_ERROR MESSAGE=\"Session was closed\"", out[..]).state == PX_Q_FAILED && q[0].disconnect && q[0].error == PX_SAM_E_CLOSED;
+  st = px_sam_begin(q[..], PX_SAM_ACCEPT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  st = px_sam_read(q[..], "STREAM STATUS RESULT=OK", out[..]);
+  #assert px_sam_read(q[..], "garbage!", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_KEY && !q[0].disconnect;
+  st = px_sam_begin(q[..], PX_SAM_ACCEPT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "STREAM STATUS RESULT=I2P_ERROR", out[..]).state == PX_Q_FAILED;
+}
+#test "a persistent session: DEST GENERATE, then SESSION CREATE with the key" {
+  q: [1] PxSam; out: [4096] u8; line: [2048] u8;
+  for i: 0..<10 { q[0].id[i] = 'a'; }
+  st := px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert st.state == PX_Q_GENERATE && cast(string) out[0..<st.send] == "DEST GENERATE SIGNATURE_TYPE=7\n";
+  at := px_put(line[..], 0, "DEST REPLY PUB="); at = px_put(line[..], at, I2P_TEST_PUB);
+  at = px_put(line[..], at, " PRIV="); at = px_put(line[..], at, I2P_TEST_PRIV);
+  st = px_sam_read(q[..], cast(string) line[0..<at], out[..]);
+  want := "SESSION CREATE STYLE=STREAM ID=aaaaaaaaaa DESTINATION=";
+  #assert st.state == PX_Q_SESSION && q[0].generated && cast(string) out[0..<want.count] == want;
+  #assert cast(string) out[want.count..<want.count + I2P_TEST_PRIV.count] == I2P_TEST_PRIV;
+  #assert cast(string) out[want.count + I2P_TEST_PRIV.count..<st.send] == " i2cp.leaseSetEncType=6,4 inbound.quantity=3 outbound.quantity=3\n";
+  #assert px_sam_read(q[..], "SESSION STATUS RESULT=OK", out[..]).state == PX_Q_DONE;
+  // With a saved key there is no DEST GENERATE.
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  #assert px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]).state == PX_Q_SESSION;
+  #assert px_sam_read(q[..], "SESSION STATUS RESULT=DUPLICATED_ID", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_RESULT;
+  // A damaged key: too short for its certificate.
+  q[0].key_n = 390;
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "SESSION STATUS RESULT=OK", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_KEY;
+  // Missing or bad PRIV, a transient reply without DESTINATION.
+  q[0].key_n = 0;
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]); st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "DEST REPLY PUB=x", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_MISSING;
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]); st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "DEST REPLY PRIV=x", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_KEY;
+  q[0].transient = true;
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]); st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "SESSION STATUS RESULT=OK DESTINATION=", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_KEY;
+  st = px_sam_begin(q[..], PX_SAM_CREATE, out[..]); st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "SESSION STATUS RESULT=OK", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_MISSING;
+  #assert px_sam_begin(q[..], PX_SAM_CREATE, out[..]).state == PX_Q_HELLO;
+  #assert px_sam_read(q[..], "HELLO REPLY RESULT=NOVERSION", out[..]).state == PX_Q_FAILED;
+  q[0].state = PX_Q_DONE;
+  #assert px_sam_read(q[..], "anything", out[..]).state == PX_Q_FAILED;
+}
+#test "Connect's outcomes: a peer error, a lost session, a proxy error, a port" {
+  q: [1] PxSam; out: [4096] u8;
+  for i: 0..<10 { q[0].id[i] = 'b'; }
+  q[0].peer = px_set_special("ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p").addr;
+  results := [5] string.["STREAM STATUS RESULT=CANT_REACH_PEER", "STREAM STATUS RESULT=TIMEOUT", "STREAM STATUS RESULT=INVALID_ID", "STREAM STATUS RESULT=I2P_ERROR", "STREAM STATUS"];
+  errors := [5] int.[PX_SAM_E_PEER, PX_SAM_E_PEER, PX_SAM_E_ID, PX_SAM_E_RESULT, PX_SAM_E_MISSING];
+  proxy := [5] bool.[false, false, true, true, true];
+  for k: 0..<5 {
+    st := px_sam_begin(q[..], PX_SAM_CONNECT, out[..]);
+    st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+    st = px_sam_read(q[..], "NAMING REPLY RESULT=OK NAME=x VALUE=AAAA", out[..]);
+    #assert px_sam_read(q[..], results[k], out[..]).state == PX_Q_FAILED && q[0].error == errors[k] && q[0].proxy_error == proxy[k];
+    #assert q[0].disconnect == (k == 2);
+  }
+  st := px_sam_begin(q[..], PX_SAM_CONNECT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "NAMING REPLY RESULT=KEY_NOT_FOUND NAME=x", out[..]).state == PX_Q_FAILED;
+  st = px_sam_begin(q[..], PX_SAM_CONNECT, out[..]);
+  st = px_sam_read(q[..], "HELLO REPLY RESULT=OK VERSION=3.1", out[..]);
+  #assert px_sam_read(q[..], "NAMING REPLY RESULT=OK NAME=x", out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_MISSING;
+  q[0].peer.port = 8333;
+  #assert px_sam_begin(q[..], PX_SAM_CONNECT, out[..]).state == PX_Q_FAILED && q[0].error == PX_SAM_E_PORT && !q[0].proxy_error;
+}
+#test "-onlynet, -proxy, -onion and -i2psam, and the errors Core reports" {
+  empty: [1] string; none := empty[0..<0];
+  n := px_configure(none, none, "", true, false, false, -1);
+  #assert n.code == PX_C_OK && n.reachable[AM_NET_IPV4] && n.reachable[AM_NET_IPV6] && !n.reachable[AM_NET_ONION] && !n.reachable[AM_NET_I2P] && !n.reachable[AM_NET_CJDNS] && n.dnsseed && n.onion_later;
+  onion := [1] string.["onion"];
+  n = px_configure(onion[..], none, "127.0.0.1:9050", true, false, false, -1);
+  #assert n.code == PX_C_OK && n.reachable[AM_NET_ONION] && !n.reachable[AM_NET_IPV4] && !n.dnsseed && n.proxy[AM_NET_ONION] && !n.proxy[AM_NET_IPV4];
+  #assert px_configure(onion[..], none, "0", true, false, false, -1).code == PX_C_ONION_FORBIDDEN;
+  #assert px_configure(onion[..], none, "", false, false, false, -1).code == PX_C_ONION_MISSING;
+  n = px_configure(onion[..], none, "", true, false, false, -1);
+  #assert n.code == PX_C_OK && !n.reachable[AM_NET_ONION] && n.onion_later;
+  #assert px_configure(onion[..], none, "x", true, false, false, 1).code == PX_C_DNSSEED;
+  i2p := [1] string.["I2P"];
+  #assert px_configure(i2p[..], none, "", true, false, false, -1).code == PX_C_I2P_MISSING;
+  n = px_configure(i2p[..], none, "", true, true, false, -1);
+  #assert n.code == PX_C_OK && n.reachable[AM_NET_I2P] && n.proxy[AM_NET_I2P] && !n.onion_later;
+  cj := [1] string.["cjdns"];
+  #assert px_configure(cj[..], none, "", true, false, false, -1).code == PX_C_CJDNS;
+  #assert px_configure(cj[..], none, "", true, false, true, -1).reachable[AM_NET_CJDNS];
+  bad := [1] string.["tor"];
+  #assert px_configure(bad[..], none, "", true, false, false, -1).code == PX_C_UNKNOWN_NET;
+  // -proxy for every network, for one, cleared, and refused.
+  all := [1] string.["127.0.0.1:9050"];
+  n = px_configure(none, all[..], "", true, false, false, -1);
+  #assert n.proxy[AM_NET_IPV4] && n.proxy[AM_NET_IPV6] && n.proxy[AM_NET_ONION] && n.proxy[AM_NET_CJDNS] && n.name_proxy && n.reachable[AM_NET_ONION] && !n.proxy[AM_NET_I2P];
+  per := [3] string.["127.0.0.1:9050=ipv6", "127.0.0.1:9051=onion", "1.2.3.4:1080=cjdns"];
+  n = px_configure(none, per[..], "", true, false, false, -1);
+  #assert !n.proxy[AM_NET_IPV4] && n.proxy[AM_NET_IPV6] && n.proxy[AM_NET_ONION] && n.proxy[AM_NET_CJDNS] && n.name_proxy;
+  clear := [2] string.["127.0.0.1:9050", "0"];
+  n = px_configure(none, clear[..], "", true, false, false, -1);
+  #assert !n.proxy[AM_NET_IPV4] && !n.proxy[AM_NET_ONION] && !n.reachable[AM_NET_ONION];
+  v4 := [1] string.["127.0.0.1:9050=ipv4"];
+  n = px_configure(none, v4[..], "0", true, false, false, -1);
+  #assert n.proxy[AM_NET_IPV4] && n.name_proxy && !n.proxy[AM_NET_ONION] && !n.reachable[AM_NET_ONION];
+  eq := [1] string.["127.0.0.1:9050="];
+  #assert px_configure(none, eq[..], "", true, false, false, -1).code == PX_C_PROXY_EQ;
+  i2pproxy := [1] string.["127.0.0.1:9050=i2p"];
+  #assert px_configure(none, i2pproxy[..], "", true, false, false, -1).code == PX_C_PROXY_NET;
+  for c: 0..<9 { #assert (px_configure_text(c).count > 0) == (c > 0); }
+  #assert px_parse_network("IPv6") == AM_NET_IPV6 && px_parse_network("internal") == AM_NET_UNROUTABLE && px_parse_network("not_publicly_routable") == AM_NET_UNROUTABLE;
+}
+#test "ConnectNode's route for each network" {
+  empty: [1] string; none := empty[0..<0]; all := [1] string.["127.0.0.1:9050"];
+  onion := px_set_special("pg6mmjiyjmcrsslvykfwnntlaru7p5svn6y2ymmju6nubxndf4pscryd.onion").addr;
+  i2p := px_set_special("ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p").addr;
+  v4 := am_v4(1, 2, 3, 4, 8333);
+  n := px_configure(none, none, "", true, false, false, -1);
+  #assert px_route(n, v4) == PX_R_DIRECT && px_route(n, onion) == PX_R_UNREACHABLE && px_route(n, i2p) == PX_R_UNREACHABLE;
+  n = px_configure(none, all[..], "", true, true, false, -1);
+  #assert px_route(n, v4) == PX_R_PROXY && px_route(n, onion) == PX_R_PROXY && px_route(n, i2p) == PX_R_SAM;
+  only := [1] string.["onion"];
+  n = px_configure(only[..], all[..], "", true, true, false, -1);
+  #assert px_route(n, v4) == PX_R_UNREACHABLE && px_route(n, onion) == PX_R_PROXY && px_route(n, i2p) == PX_R_UNREACHABLE;
+  #assert px_route(n, am_v4(10, 0, 0, 1, 8333)) == PX_R_UNREACHABLE;
+}
