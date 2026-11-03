@@ -296,6 +296,9 @@ vs_run :: (dir: string, realm: string, leave_to: string, state: string, go: stri
   else { ok = ok && proc_arg(h, "--leave-to") && proc_arg(h, leave_to); }
   ok = ok && proc_arg(h, "--activity") && proc_arg(h, cast(string) py[0].activity[0..<py[0].activity_n]);
   ok = ok && proc_arg(h, "--agents") && proc_arg(h, cast(string) py[0].agents[0..<py[0].agents_n]);
+  // the desk (V3): Linux programs on a panel, F9 and F10, when the install has its compositor
+  dk: [4096] u8; dc: [4096] u8; desk := fs_join(dir, "desk", dk[..]);
+  if fs_exists(fs_join(desk, "compositor", dc[..])) { ok = ok && proc_arg(h, "--desk") && proc_arg(h, desk); }
   ok = ok && proc_arg(h, "--seconds");
   sb: [24] u8; ok = ok && proc_arg(h, vs_num(VS_FOREVER, sb[..]));
   if state.count > 0 { ok = ok && proc_arg(h, "--net") && proc_arg(h, state); }

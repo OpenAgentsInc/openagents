@@ -26,7 +26,8 @@ typedef struct {
   void (*pointer)(void *user, float x, float y, int phase);  // 0 down, 1 move while down, 2 up
   void (*wheel)(void *user, float dy);                        // CSS pixels, 100 a notch
   void *user;
-  void (*moved)(void *user);                                  // any motion: the person is there
+  void (*moved)(void *user, float x, float y);                // any motion, where it is: the person is there
+  int (*key)(int code, int pressed);                          // a key before the realm's mapping: 1 takes it
 } VkwTo;
 
 typedef struct {
@@ -88,6 +89,7 @@ static void vkw_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t ti
   if (code > KEY_MAX) return;
   int pressed = state == WL_KEYBOARD_KEY_STATE_PRESSED;
   if (code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT) vkw_->shift += pressed ? 1 : (vkw_->shift > 0 ? -1 : 0);
+  if (vkw_->to.key && !vkw_->keys_down[code] && vkw_->to.key((int)code, pressed)) return;
   int r = pressed ? realm_key_shifted((int)code, vkw_->shift > 0) : vkw_->keys_down[code];
   if (!r) return;
   if (pressed) { vkw_->keys_down[code] = r; realm_key(NULL, r); }
@@ -113,7 +115,7 @@ static void vkw_pt_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed
   vkw_->x = (float)wl_fixed_to_double(x);
   vkw_->y = (float)wl_fixed_to_double(y);
   if (vkw_->down && vkw_->to.pointer) vkw_->to.pointer(vkw_->to.user, vkw_->x, vkw_->y, 1);
-  if (vkw_->to.moved) vkw_->to.moved(vkw_->to.user);
+  if (vkw_->to.moved) vkw_->to.moved(vkw_->to.user, vkw_->x, vkw_->y);
 }
 static void vkw_pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
   (void)d; (void)p; (void)serial; (void)time;

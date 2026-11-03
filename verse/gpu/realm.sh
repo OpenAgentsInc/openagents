@@ -136,7 +136,9 @@ for realm in "${realms[@]}"; do
     printf '.\n' > "$ship/drawdir"
   else printf 'spec\n' > "$ship/drawdir"; fi
   cp "$here"/vk-realm.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h \
-     "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$here"/vkw.h "$ship/"
+     "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$here"/vkw.h "$here"/vkdesk.h "$ship/"
+  # the desk panel's policy (os/verse-panel.coax), linked into vk-realm
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c os/verse-panel.coax --library --header "$ship/verse-panel.h") > "$ship/verse-panel.c"
   # the kms headers apart: a module has a realm.h of its own (the realm module's), and keys.h finds its sibling first
   mkdir -p "$ship/kms" && cp "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$ship/kms/"
   [[ "$realm" == everglade ]] && cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$ship/"
@@ -159,6 +161,11 @@ coax="${COAX:-$root/coax/bin/coax}"
 (cd "$root" && "$coax" c coax/lib/crypto/entropy.coax --library --header "$work/ship/net-src/entropy-policy.h") > "$work/ship/net-src/entropy.c"
 (cd "$root" && "$coax" c verse/native/net.coax --library) > "$work/ship/net-src/net.c"
 (cd "$root" && "$coax" c os/verse-session.coax --library) > "$work/ship/net-src/verse-session.c"
+# the desk: the Coax compositor (os/compositor.coax), headless, which vk-realm --desk runs
+mkdir -p "$work/ship/desk"
+(cd "$root" && "$coax" c os/compositor.coax --library) > "$work/ship/desk/compositor.c"
+cp "$root/os/compositor-us.xkb" "$work/ship/desk/"
+for f in wayland-native screen-native; do cp "$root/coax/platform/$f.c" "$root/coax/platform/$f.h" "$work/ship/net-src/"; done
 for f in tool-native process-native store-file-native read-file-native socket-native tls-native entropy-native entropy-foreign; do
   cp "$root/coax/platform/$f.c" "$root/coax/platform/$f.h" "$work/ship/net-src/"
 done
@@ -187,7 +194,9 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
   (cd net-src && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. net.c tool-native.c process-native.c store-file-native.c socket-native.c \
      tls-native.c entropy-native.c entropy-foreign.c entropy.c \$(pkg-config --cflags --libs openssl) -lpthread -lm -o ../net
    gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-session.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
-     entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session)
+     entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session
+   gcc -std=c11 -O2 -D_DEFAULT_SOURCE -w -I. \$(pkg-config --cflags libdrm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
+     socket-native.c entropy-native.c entropy-foreign.c entropy.c wayland-native.c screen-native.c \$(pkg-config --libs libdrm) -lpthread -lm -o ../desk/compositor)
   # each realm as realm-run builds it: no PIE (its pointers fit 32 bits), no contraction
   flags=\"-std=gnu11 -O2 -no-pie -ffp-contract=off -fno-fast-math -w -I.\"
   # the math of the wasm (musl, verse/native/musl-math.sh) ahead of glibc, as realm-run links it
@@ -202,7 +211,7 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
        flags=\"\$flags -ffunction-sections -fdata-sections\"; link_flags=(-Wl,--gc-sections)
      fi
      pids=()
-     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
+     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
      for pid in \"\${pids[@]}\"; do wait \$pid; done
      gcc \$flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o && gcc \$flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
      gcc \$flags \"\${link_flags[@]}\" -Ikms -I../wl \$(pkg-config --cflags libdrm wayland-client) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm wayland-client) -lvulkan -lm -o vk-realm
@@ -265,11 +274,14 @@ if [ $mode = install ]; then
   # the built realms, kept: DIR.new filled, then swapped in for DIR
   dest=$dest; mkdir -p \$(dirname \$dest); rm -rf \$dest.new \$dest.old
   mkdir \$dest.new && cp -a \$here/. \$dest.new/ && rm -rf \$dest.new/net-src \$dest.new/ship 2>/dev/null
+  # the desk's launchers (os/compositor.coax runs LAUNCH/NAME): a terminal to start with, and on Super+Return
+  mkdir -p \$dest.new/desk/launch
+  for n in start coder pane; do printf \"#!/bin/sh\\nexec foot\\n\" > \$dest.new/desk/launch/\$n; chmod +x \$dest.new/desk/launch/\$n; done
   { [ ! -e \$dest ] || mv \$dest \$dest.old; } && mv \$dest.new \$dest && rm -rf \$dest.old
   # the store paths the programs link (Vulkan, libdrm, wayland, OpenSSL: nix-shell's), kept from
   # the garbage collector while this directory holds them
   mkdir -p \$dest/.gcroots
-  for p in \$(LD_LIBRARY_PATH=\$LD_LIBRARY_PATH ldd \$dest/*/vk-realm \$dest/net \$dest/verse-session 2>/dev/null | grep -o \"/nix/store/[^/ ]*\" | sort -u); do
+  for p in \$(LD_LIBRARY_PATH=\$LD_LIBRARY_PATH ldd \$dest/*/vk-realm \$dest/net \$dest/verse-session \$dest/desk/compositor 2>/dev/null | grep -o \"/nix/store/[^/ ]*\" | sort -u); do
     nix-store --add-root \$dest/.gcroots/\$(basename \$p) -r \$p > /dev/null
   done
   echo \"realm.sh: installed \$(cat \$dest/realms) in \$dest\"

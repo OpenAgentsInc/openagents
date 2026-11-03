@@ -119,6 +119,7 @@ static int frame(Vkc *v, Vkp *p, void (*record)(VkCommandBuffer, void *), void *
   vkCmdBlitImage(cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, filter);
   if (layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
     barrier(cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, layout, VK_ACCESS_TRANSFER_READ_BIT, access, VK_PIPELINE_STAGE_TRANSFER_BIT, stage);
+  if (p->overlay) p->overlay(cmd, dst, p->w, p->h, p->overlay_user);
   VkImageLayout last = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
   VkAccessFlags last_access = VK_ACCESS_TRANSFER_WRITE_BIT;
   if (p->shoot == 1 && p->shot.buf) {

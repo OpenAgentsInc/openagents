@@ -24,6 +24,9 @@ typedef struct {
   VkcBuffer shot;       // w*h*4 bytes once shot_ready
   int shot_ready;
   double waited, acquiring;  // the last frame's fence wait and acquire, in seconds
+  // drawn over the frame after its blit, into the swapchain image (in TRANSFER_DST): the desk panel
+  void (*overlay)(VkCommandBuffer cmd, VkImage dst, uint32_t w, uint32_t h, void *user);
+  void *overlay_user;
 } Vkp;
 
 // A swapchain on the surface, sized by the surface or else w by h.

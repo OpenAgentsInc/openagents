@@ -48,6 +48,9 @@ static void keyboards_open(void) {
 static int keyboards_shift;
 static int keyboards_down[KEY_MAX + 1];
 static double keyboards_hold_to_leave, keyboards_escape_since;
+// A key's evdev code before the realm's mapping (press 1, release 0): returning 1 takes it, so the
+// realm never sees it (vk-realm's desk panel, verse/gpu/vkdesk.h). Null: every key is the realm's.
+static int (*keyboards_hook)(int code, int pressed);
 static double keyboards_now(void) {
   struct timespec t;
   clock_gettime(CLOCK_MONOTONIC, &t);
@@ -63,6 +66,7 @@ static int keyboards_read(void *state) {
         if (ev[j].type != EV_KEY || ev[j].value == 2 || ev[j].code > KEY_MAX) continue;
         int code = ev[j].code;
         if (code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT) keyboards_shift += ev[j].value == 1 ? 1 : (keyboards_shift > 0 ? -1 : 0);
+        if (keyboards_hook && !keyboards_down[code] && keyboards_hook(code, ev[j].value == 1)) continue;
         int k = ev[j].value == 1 ? realm_key_shifted(code, keyboards_shift > 0) : keyboards_down[code];
         if (!k) continue;
         if (ev[j].value == 1) { keyboards_down[code] = k; realm_key(state, k); }

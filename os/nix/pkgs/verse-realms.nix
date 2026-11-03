@@ -6,7 +6,7 @@
 # transcendental math ahead of glibc's so a realm computes what its wasm computes) and installs the
 # tree to $out/share/verse-os, the directory verse-session runs (`--dir`). Nothing here is Coax: the
 # Coax compiler already ran, on the machine that shipped `src`.
-{ lib, stdenv, pkg-config, libdrm, vulkan-headers, vulkan-loader, wayland, wayland-scanner, wayland-protocols, openssl, musl, src }:
+{ lib, stdenv, pkg-config, libdrm, vulkan-headers, vulkan-loader, wayland, wayland-scanner, wayland-protocols, openssl, musl, foot, src }:
 
 stdenv.mkDerivation {
   pname = "verse-realms";
@@ -30,7 +30,10 @@ stdenv.mkDerivation {
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. net.c tool-native.c process-native.c store-file-native.c socket-native.c \
        tls-native.c entropy-native.c entropy-foreign.c entropy.c $(pkg-config --cflags --libs openssl) -lpthread -lm -o ../net
      gcc -std=c11 -O2 -D_DEFAULT_SOURCE -I. verse-session.c tool-native.c process-native.c store-file-native.c read-file-native.c socket-native.c \
-       entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session)
+       entropy-native.c entropy-foreign.c entropy.c -lpthread -lm -o ../verse-session
+     # the desk's headless compositor (os/compositor.coax), which vk-realm --desk runs
+     gcc -std=c11 -O2 -D_DEFAULT_SOURCE -w -I. $(pkg-config --cflags libdrm) ../desk/compositor.c tool-native.c process-native.c store-file-native.c read-file-native.c \
+       socket-native.c entropy-native.c entropy-foreign.c entropy.c wayland-native.c screen-native.c $(pkg-config --libs libdrm) -lpthread -lm -o ../desk/compositor)
     # musl's math (verse/native/musl-math.sh), taken from its libc.a
     mkdir musl-math
     names=""
@@ -47,7 +50,7 @@ stdenv.mkDerivation {
          units=(render-host.c render-realm.c render-media.c render-textures.c RenderTexture.c)
          flags="$flags -ffunction-sections -fdata-sections"; link=(-Wl,--gc-sections)
        fi
-       for s in "''${sources[@]}" "''${units[@]}" realm-host.c; do gcc $flags -c $s -o ''${s%.c}.o; done
+       for s in "''${sources[@]}" "''${units[@]}" realm-host.c verse-panel.c; do gcc $flags -c $s -o ''${s%.c}.o; done
        gcc $flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o
        gcc $flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
        gcc $flags "''${link[@]}" -Ikms -I../wl $(pkg-config --cflags libdrm wayland-client) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o $math \
@@ -62,6 +65,9 @@ stdenv.mkDerivation {
     mkdir -p $out/share/verse-os $out/bin
     for r in $(cat realms); do cp -a $r $out/share/verse-os/; rm -f $out/share/verse-os/$r/*.o; done
     cp net verse-session realms travel $out/share/verse-os/
+    mkdir -p $out/share/verse-os/desk/launch
+    cp desk/compositor desk/compositor-us.xkb $out/share/verse-os/desk/
+    for n in start coder pane; do printf '#!/bin/sh\nexec ${foot}/bin/foot\n' > $out/share/verse-os/desk/launch/$n; chmod +x $out/share/verse-os/desk/launch/$n; done
     ln -s $out/share/verse-os/verse-session $out/bin/verse-session
     runHook postInstall
   '';

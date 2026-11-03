@@ -39,6 +39,7 @@
 #endif
 #include "vkd.h"
 #include "vkw.h"
+#include "vkdesk.h"
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -196,12 +197,23 @@ static const void *file(void *user, const char *name, size_t *size, size_t *cap)
 // place in the stroke, its shape, tint and bar; a stroke of length 0 is a round glow).
 static void to_pointer(void *user, float x, float y, int phase) { (void)user; touched = 1; coaxial_pointer(H.state, x, y, phase, 0, 1); }
 static void to_wheel(void *user, float dy) { (void)user; touched = 1; coaxial_wheel(H.state, dy); }
-static void to_moved(void *user) { (void)user; touched = 1; }
 static Mice mice;
 static int cursor;
 static Vkp *window_p;          // the window's presenter (--window): its size, to scale the pointer
 static float draw_w, draw_h;   // what the realm draws at
+static VkDesk desk;            // --desk: Linux programs on a panel over the realm (vkdesk.h)
+// The pointer to the desk first, in the screen's pixels: 1 when the desk took it.
+static int pointer_to_desk(float sx, float sy, int phase) { return vkdesk_pointer(sx, sy, phase == 0 ? 1 : phase == 2 ? 0 : -1); }
+static void to_moved(void *user, float x, float y) { (void)user; touched = 1; vkdesk_pointer(x, y, -1); }
+// the bare screen's mice are in the realm's draw pixels; the desk's panel is in the screen's
+static Vkp *screen_p;
+static void to_pointer_screen(void *user, float x, float y, int phase) {
+  float sx = screen_p && draw_w > 0 ? x * (float)screen_p->w / draw_w : x, sy = screen_p && draw_h > 0 ? y * (float)screen_p->h / draw_h : y;
+  if (pointer_to_desk(sx, sy, phase)) { touched = 1; return; }
+  to_pointer(user, x, y, phase);
+}
 static void to_pointer_window(void *user, float x, float y, int phase) {
+  if (pointer_to_desk(x, y, phase)) { touched = 1; return; }
   float sx = window_p && window_p->w ? draw_w / (float)window_p->w : 1, sy = window_p && window_p->h ? draw_h / (float)window_p->h : 1;
   mice.x = x * sx; mice.y = y * sy; mice.down = phase != 2;
   to_pointer(user, mice.x, mice.y, phase);
@@ -319,7 +331,7 @@ static void press_keys(const char *keys, int frame) {
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: vk-realm DIR PACK [--facts FILE] [--extra N,...] [--size WxH] [--scale K] [--golden] [--seconds N] [--demo] [--shot OUT.ppm] [--net DIR] [--origin HOST[:PORT]] [--name NAME] "
-                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT] [--facts-once FILE] [--activity FILE] [--agents FILE]\n");
+                    "[--shot-at S] [--headless FRAMES] [--out OUT.f32] [--page N] [--go FILE] [--keys F:KEY:DOWN,...] [--window] [--fullscreen] [--leave-to VT] [--facts-once FILE] [--activity FILE] [--agents FILE] [--desk DIR [--desk-size WxH]]\n");
     return 2;
   }
   const char *dir = argv[1], *pack = argv[2], *facts = NULL, *extra = "", *shot = NULL, *out = NULL,*raw_out=NULL;
@@ -327,6 +339,7 @@ int main(int argc, char **argv) {
   float scale = 1;
   uint32_t w = 0, h = 0;
   int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0, facts_once = 0;
+  const char *desk_dir = NULL, *desk_size = NULL, *desk_mode = NULL;
   const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
   int page = 0;
   for (int i = 3; i < argc; i++) {
@@ -353,7 +366,10 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--page")) page = atoi(val), i++;
     else if (!strcmp(a, "--leave-to")) leave_to = atoi(val), i++;
     else if (!strcmp(a, "--activity")) activity = val, touched = 1, i++;   // the person present: this file's time
-    else if (!strcmp(a, "--agents")) agents_file = val, i++;                // the machine's agents, sent as they change  // the boot session: hold this VT, show VT N on leaving
+    else if (!strcmp(a, "--agents")) agents_file = val, i++;                // the machine's agents, sent as they change
+    else if (!strcmp(a, "--desk")) desk_dir = val, i++;                     // Linux programs on a panel (vkdesk.h)
+    else if (!strcmp(a, "--desk-size")) desk_size = val, i++;
+    else if (!strcmp(a, "--desk-mode")) desk_mode = val, i++;              // how the desk starts: docked or flat (default closed)  // the boot session: hold this VT, show VT N on leaving
     else if (!strcmp(a, "--go")) go = val, i++;      // travel: another realm's slug written here, and it leaves (status 3)
     else if (!strcmp(a, "--keys")) keys = val, i++;  // headless: realm-run's F:KEY:DOWN, a key held or let go at frame F
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
@@ -424,7 +440,7 @@ int main(int argc, char **argv) {
   if (headless) vkc_open(&v);
   else if (windowed) {
     // the window's size, or the draw size, or 1600x900; the realm draws at the window's first size
-    VkwTo wto = {to_pointer_window, to_wheel, NULL, to_moved};
+    VkwTo wto = {to_pointer_window, to_wheel, NULL, to_moved, vkdesk_key};
     vkw_open(&v, &win, "Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
     screen.period = win.period;
     vkp_open(&v, &p, win.vk_surface, (uint32_t)win.want_w, (uint32_t)win.want_h);
@@ -517,7 +533,17 @@ int main(int argc, char **argv) {
     mice_open(&mice, (float)w, (float)h);
     cursor = mice.count > 0;
     }
-    MiceTo to = {to_pointer, to_wheel, NULL};
+    MiceTo to = {to_pointer_screen, to_wheel, NULL};
+    if (!windowed) { screen_p = &p; draw_w = (float)w; draw_h = (float)h; keyboards_hook = vkdesk_key; }
+    if (desk_dir) {
+      uint32_t ddw = 1280, ddh = 720;
+      if (desk_size) sscanf(desk_size, "%ux%u", &ddw, &ddh);
+      if (!vkdesk_open(&v, &desk, desk_dir, ddw, ddh)) {
+        // a start in a mode is the toggle's own key pressed once (os/verse-panel.coax decides)
+        if (desk_mode && !strcmp(desk_mode, "docked")) desk.mode = verse_panel_next(desk.mode, 67);
+        if (desk_mode && !strcmp(desk_mode, "flat")) desk.mode = verse_panel_next(desk.mode, 68);
+        p.overlay = vkdesk_overlay; p.overlay_user = &desk; fprintf(stderr, "vk-realm: the desk is up (%ux%u); F9 shows it, F10 is flat mode\n", ddw, ddh); }
+    }
     if (windowed) fprintf(stderr, "vk-realm: in a %ux%u window%s at %.3f Hz, drawn at %ux%u; closing the window or %.0f s ends it\n", p.w, p.h, fullscreen ? " (full screen)" : "", 1 / screen.period, w, h, seconds);
     else fprintf(stderr, "vk-realm: on %ux%u at %.3f Hz, %d keyboards, %d mice; Escape held a second or %.0f s returns the screen\n", p.w, p.h, 1 / screen.period, keyboard_count,
             mice.count, seconds);
@@ -547,6 +573,7 @@ int main(int argc, char **argv) {
       t = now_s();
       touch_activity(t);
       agents_poll(t);
+      vkdesk_pump(&desk, t);
       double dt = t - prev;
       prev = t;
       if (dt > 0.1) dt = 0.1;
@@ -621,6 +648,7 @@ int main(int argc, char **argv) {
   if (headless) vkc_close(&v);
   else {
     vkp_close(&v, &p);
+    vkdesk_close(&v, &desk);
     if (windowed) vkw_close(&v, &win);
     else {
       vkd_close(&v, &screen);
