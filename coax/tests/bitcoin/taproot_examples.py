@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # Firm reason: 3 (recomputes the Taproot examples' output with BIP-340's and BIP-341's own reference code, outside Coax)
 """Checks the Taproot examples of Bitcoin chapters 41-43 against
-taproot_reference.py, which runs BIP-340's reference.py and the Python in
-BIP-341 itself, and shares no code with Coax.
+taproot_reference.py, which runs BIP-340's reference.py, the Python in
+BIP-341 itself and Bitcoin Core's TaprootSignatureMsg, and shares no code
+with Coax.
 
   python3 coax/tests/bitcoin/taproot_examples.py key-path bitcoin/fixtures/taproot-key-path.out
   python3 coax/tests/bitcoin/taproot_examples.py script-trees bitcoin/fixtures/taproot-script-trees.out
+  python3 coax/tests/bitcoin/taproot_examples.py sighash bitcoin/fixtures/taproot-sighash.out
 
 Each mode writes the whole output the example should print, from the
 reference, and compares it with the fixture line by line."""
@@ -235,7 +237,94 @@ def script_trees():
     return lines
 
 
-MODES = {"script-trees": script_trees, "key-path": key_path}
+HASH_NAMES = {0: "DEFAULT", 1: "ALL", 2: "NONE", 3: "SINGLE", 0x81: "ALL|ANYONECANPAY",
+              0x82: "NONE|ANYONECANPAY", 0x83: "SINGLE|ANYONECANPAY"}
+
+
+def core_msg(index, hash_type, annex=None, leaf=None, codesep=0xffffffff):
+    """Core's message, or None where BIP-341 refuses: a hash type it doesn't
+    define, SIGHASH_SINGLE with no output at the input's index, an annex
+    without 0x50 first, or a codesep past 4 bytes. (Core's test framework
+    signs SINGLE past the outputs with zeros, for tests that expect the
+    signature to fail; consensus fails it.)"""
+    if hash_type not in HASH_NAMES or (hash_type & 3 == 3 and index >= len(T.TX.vout)):
+        return None
+    if (annex is not None and annex[:1] != b"\x50") or not 0 <= codesep <= 0xffffffff:
+        return None
+    return T.sigmsg(index, hash_type, annex=annex, leaf_script=leaf, codesep=codesep)
+
+
+def sighash():
+    same = lambda ok: "matches" if ok else "differs"
+    lines = ["BIP-341's key-path signature messages"]
+    for i in KEY_PATH["inputSpending"]:
+        g, im = i["given"], i["intermediary"]
+        m = core_msg(g["txinIndex"], g["hashType"])
+        h = R.tagged_hash("TapSighash", m)
+        lines.append(f"  input {g['txinIndex']} (0x{g['hashType']:02x} {HASH_NAMES[g['hashType']]}): {len(m)} bytes, "
+                     f"message {same(m.hex() == im['sigMsg'])}, sighash {same(h.hex() == im['sigHash'])}")
+
+    lines.append("input 1 with SIGHASH_DEFAULT, field by field")
+    m = core_msg(1, 0)
+    for name, a, b in (("epoch", 0, 1), ("hash_type", 1, 2), ("nVersion", 2, 6), ("nLockTime", 6, 10),
+                       ("sha_prevouts", 10, 42), ("sha_amounts", 42, 74), ("sha_scriptpubkeys", 74, 106),
+                       ("sha_sequences", 106, 138), ("sha_outputs", 138, 170), ("spend_type", 170, 171),
+                       ("input_index", 171, 175)):
+        lines.append(f"  {name}: {m[a:b].hex()}")
+    lines.append(f"  {len(m)} bytes")
+
+    lines.append("SIGHASH_DEFAULT and SIGHASH_ALL at input 1")
+    d, a = core_msg(1, 0), core_msg(1, 1)
+    diff = [k for k in range(len(d)) if d[k] != a[k]]
+    lines.append(f"  {len(d)} and {len(a)} bytes, {len(diff)} byte differs, at offset {diff[-1]}")
+    lines.append(f"  DEFAULT sighash: {R.tagged_hash('TapSighash', d).hex()}")
+    lines.append(f"  ALL sighash: {R.tagged_hash('TapSighash', a).hex()}")
+
+    lines.append("input 1, SIGHASH_DEFAULT, four spend types")
+    annex = bytes([0x50]) + bytes(range(1, 32))
+    leaf_script = bytes.fromhex(T.VECTORS["scriptPubKey"][1]["given"]["scriptTree"]["script"])
+    labels = ["key path", "key path with an annex", "script path", "script path with an annex"]
+    for s in range(4):
+        m = core_msg(1, 0, annex if s & 1 else None, leaf_script if s >= 2 else None)
+        lines.append(f"  {labels[s]}: spend_type {m[170]}, {len(m)} bytes")
+        lines.append(f"    sighash: {R.tagged_hash('TapSighash', m).hex()}")
+    lines.append("the script path's extension, after the annex's hash")
+    lines.append(f"  annex: {annex.hex()}")
+    lines.append(f"  sha_annex: {m[175:207].hex()}")
+    lines.append(f"  tapleaf_hash: {m[207:239].hex()}")
+    lines.append(f"  key_version: {m[239:240].hex()}")
+    lines.append(f"  codesep_pos: {m[240:244].hex()}")
+    m = core_msg(1, 0, None, leaf_script, 3)
+    lines.append(f"  codesep_pos after an OP_CODESEPARATOR at opcode 3: {m[-4:].hex()}")
+
+    lines.append("input 1, script path with an annex, every hash type")
+    for ht in (0, 1, 2, 3, 0x81, 0x82, 0x83):
+        lines.append(f"  0x{ht:02x} {HASH_NAMES[ht]}: {len(core_msg(1, ht, annex, leaf_script))} bytes")
+
+    # The generated cases, read back from the .coax file and recomputed.
+    import re
+    rows = re.findall(r'TrExt\.\{index=(\d+),hashtype=(\d+),annex="([0-9a-f]*)",script="([0-9a-f]*)",codesep=(\d+),msg="([0-9a-f]*)"',
+                      HERE.joinpath("taproot_sighash_vectors.coax").read_text())
+    ok = 0
+    for index, ht, an, sc, cs, msg in rows:
+        m = core_msg(int(index), int(ht), bytes.fromhex(an) if an else None, bytes.fromhex(sc) if sc else None, int(cs))
+        ok += m is not None and m.hex() == msg
+    lines.append(f"Bitcoin Core's TaprootSignatureMsg: {ok} of {len(rows)} annex and script-path messages match")
+
+    lines.append("refusals")
+    lines.append(f"  hash types that sign: {sum(core_msg(0, ht) is not None for ht in range(256))} of 256")
+    word = lambda m: "refused" if m is None else "signed"
+    lines.append(f"  0x80, ANYONECANPAY alone: {word(core_msg(0, 0x80))}")
+    lines.append(f"  SINGLE at input 2, with 2 outputs: {word(core_msg(2, 3))}")
+    lines.append(f"  an annex that starts with 0x51: {word(core_msg(0, 0, bytes([0x51]) + annex[1:]))}")
+    # Core's function takes the leaf script and hashes it, so a leaf hash
+    # of the wrong length can't reach it: BIP-341 defines tapleaf_hash as 32 bytes.
+    lines.append("  a 31-byte leaf hash: refused")
+    lines.append(f"  codesep_pos 2^32: {word(core_msg(0, 0, None, leaf_script, 0x100000000))}")
+    return lines
+
+
+MODES = {"sighash": sighash, "script-trees": script_trees, "key-path": key_path}
 
 if __name__ == "__main__":
     mode, fixture = sys.argv[1], Path(sys.argv[2])

@@ -409,6 +409,18 @@
       "timeout": 600
     },
     {
+      "source": "bitcoin/examples/taproot-sighash.coax",
+      "chapter": "bitcoin/book/ch043-taproot-signature-hashes.md",
+      "stdout": "bitcoin/fixtures/taproot-sighash.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 600
+    },
+    {
       "source": "bitcoin/examples/timelocks.coax",
       "chapter": "bitcoin/book/ch039-timelocks.md",
       "stdout": "bitcoin/fixtures/timelocks.out",

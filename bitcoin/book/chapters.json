@@ -956,15 +956,22 @@
   {
    "number": 43,
    "title": "Taproot signature hashes",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch043-taproot-signature-hashes.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     34,
     41
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "bitcoin/examples/taproot-sighash.coax",
+    "bitcoin/examples/checks/taproot-sighash.coax",
+    "coax/lib/bitcoin/sighash.coax",
+    "coax/lib/bitcoin/taproot.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

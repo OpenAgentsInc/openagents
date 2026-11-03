@@ -4,8 +4,9 @@
 // - an unsigned transaction reader (version, inputs, outputs, locktime),
 //   over Bitcoin chapter 34's tx.coax;
 // - the BIP-143 segwit v0 signature hash, every hash type;
-// - the BIP-341 Taproot key-path signature hash (SIGHASH_DEFAULT and every
-//   other hash type; no annex, no script path);
+// - the BIP-341 Taproot signature hash, every hash type, with or without
+//   an annex, for the key path and for BIP-342's script path (Bitcoin
+//   chapter 43);
 // - the BIP-341 key tweak and a key-path Schnorr signature, through
 //   Bitcoin chapter 24's schnorr_sign.coax.
 //
@@ -144,6 +145,30 @@ BtTapWork :: struct {key:[1]SignScalar;point:[1]SignPoint;internal:[32]u8;tweake
   amounts[4]=0;#assert bt_sighash_taproot(s,t,0,amounts[..],spk[..],0,h[0..<32]);
   amounts[4]=-1;#assert !bt_sighash_taproot(s,t,0,amounts[..],spk[..],0,h[0..<32]);
 }
+#test "BIP-341 with an annex and the script path: sha_annex, spend_type and the extension" #steps 50000000 {
+  b:[BT_TX]u8;s:=bt_unhex(BT_V341_TX,b[..]);t:=bt_tx_read(s);
+  amounts:=BT_V341_AMOUNT;spk:[9]BtScript;for k:0..<9 {spk[k]=bt_script(BT_V341_SPK[k]);}
+  m:[BT_SIGMSG]u8;an:[3]u8;an[0]=0x50;an[1]=1;an[2]=2;leaf:[32]u8;for i:0..<32 {leaf[i]=7;}
+  // SINGLE|ANYONECANPAY at input 1: 1 + 174 - 49 + 32 + 37 bytes.
+  n:=bt_sigmsg_taproot(s,t,1,amounts[..],spk[..],0x83,an[..],leaf[..],5,m[..]);
+  #assert n==195 && m[0]==0 && m[1]==0x83 && m[10]==3;
+  // After spend_type: the outpoint, amount, scriptPubKey and sequence (83
+  // bytes), sha_annex, then the output's hash, then the extension.
+  c:[4]u8;c[0]=3;c[1]=0x50;c[2]=1;c[3]=2;e:[32]u8;bt_sha(c[..],e[..]);
+  #assert bt_same(m[94..<126],e[..]) && bt_same(m[158..<190],leaf[..]) && m[190]==0 && m[191]==5 && m[192]==0 && m[194]==0;
+  h:[32]u8;bt_tagged(BH_TAPSIGHASH,m[0..<n],e[..]);
+  #assert bt_sighash_taproot_ext(s,t,1,amounts[..],spk[..],0x83,an[..],leaf[..],5,h[..]) && bt_same(h[..],e[..]);
+  #assert bt_sigmsg_taproot(s,t,1,amounts[..],spk[..],0x83,an[..],leaf[..],5,m[0..<194])==-1;
+  #assert !bt_sighash_taproot_ext(s,t,1,amounts[..],spk[..],0x84,an[..],leaf[..],5,h[..]);
+}
+#test "sha_annex of an annex longer than one update and 0xffff bytes" #steps 200000000 {
+  a:[70000]u8;c:[70005]u8;a[0]=0x50;for i:1..<70000 {a[i]=cast(u8)(i&255);}
+  c[0]=0xfe;c[1]=0x70;c[2]=0x11;c[3]=1;for i:0..<70000 {c[5+i]=a[i];}
+  h:[32]u8;e:[32]u8;bt_annex_hash(a[..],h[..]);bt_sha(c[..],e[..]);
+  #assert bt_same(h[..],e[..]);
+  bt_annex_hash(a[0..<1],h[..]);
+  d:[2]u8;d[0]=1;d[1]=0x50;bt_sha(d[..],e[..]);#assert bt_same(h[..],e[..]);
+}
 #test "taproot signing refuses a zero key and bad views, and clears" #steps 2000000000 {
   k:[32]u8;m:[33]u8;h:[32]u8;aux:[32]u8;w:[1]BtTapWork;sig:[65]u8;sig[0]=7;
   #assert !bt_taproot_sign(k[..],m[0..<0],h[..],aux[..],w[..],sig[0..<64],false) && sig[0]==7 && w[0].tweaked[0]==0;
@@ -240,32 +265,69 @@ bt_tap_hashes :: (b:[]u8,tp:BtTx,amounts:[]int,spk:[]BtScript,h:[][32]u8)->bool 
   return true;
 }
 // book:begin bip341
-// The BIP-341 key-path signature hash of input index (no annex), given
-// every spent output's amount and scriptPubKey, into out. Hash types 0
-// (SIGHASH_DEFAULT), 1, 2, 3 and 0x81 to 0x83; SIGHASH_SINGLE needs an
-// output at index.
-bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,out:[]u8)->bool {t:=tp;
-  base:=hashtype&0x7f;anyone:=(hashtype&BT_ANYONE)!=0;
-  if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) {return false;}
-  if !t.ok || index<0 || index>=t.nin || amounts.count!=t.nin || spk.count!=t.nin || out.count!=32 {return false;}
-  if base==BT_SINGLE && index>=t.nout {return false;}
-  h:[5][32]u8;if !bt_tap_hashes(b,t,amounts,spk,h[..]) {return false;}
-  m:[256]u8;m[1]=cast(u8)hashtype;                           // m[0]: epoch 0
-  n:=bt_put(m[..],2,t.version[..]);n=bt_put(m[..],n,t.locktime[..]);
-  if !anyone {for k:0..<4 {n=bt_put(m[..],n,h[k][..]);}}
-  if base!=BT_SINGLE && base!=BT_NONE {n=bt_put(m[..],n,h[4][..]);}
-  n+=1;                                                       // spend type 0: key path, no annex
-  if anyone {
-    n=bt_put(m[..],n,t.inputs[index].prev[..]);n=bt_le(m[..],n,amounts[index],8);
-    n=bt_var_put(m[..],n,spk[index].n);n=bt_put(m[..],n,spk[index].b[0..<spk[index].n]);
-    n=bt_put(m[..],n,t.inputs[index].seq[..]);
-  } else {n=bt_le(m[..],n,index,4);}
-  if base==BT_SINGLE {
-    o:[32]u8;bt_sha(b[t.out_at[index]..<t.out_at[index]+t.out_n[index]],o[..]);
-    n=bt_put(m[..],n,o[..]);
+BT_SIGMSG :: 244;            // the longest message: epoch 0, 206 bytes of SigMsg, 37 of extension
+BT_NO_CODESEP :: 0xffffffff; // codesep when no OP_CODESEPARATOR has run
+BT_ANNEX_TAG :: 0x50;        // an annex's first byte
+
+// sha_annex: SHA-256 of the annex with its CompactSize length, fed in
+// pieces so that an annex of any length hashes.
+bt_annex_hash :: (annex:[]u8,out:[]u8) {
+  st:[SHA_STATE_BYTES]u8;c:[9]u8;
+  #assert sha256_init(st[..])==SHA_OK && sha256_update_checked(st[..],c[0..<bt_var_put(c[..],0,annex.count)],false)==SHA_OK;
+  at:=0;
+  while at<annex.count {
+    end:=at+65536;if end>annex.count {end=annex.count;}
+    #assert sha256_update_checked(st[..],annex[at..<end],false)==SHA_OK;
+    at=end;
   }
+  #assert sha256_final_checked(st[..],out,false)==SHA_OK;
+}
+// The epoch byte 0 then BIP-341's SigMsg for input index, into m
+// (BT_SIGMSG bytes or more), given every spent output's amount and
+// scriptPubKey; returns the length written,
+// or -1 on a refusal. annex is empty when the witness has none, else the
+// whole annex, 0x50 first. leaf is empty for a key-path spend; for a
+// script-path spend it is the TapLeaf hash of the script being run, and
+// BIP-342's extension follows: leaf, key_version 0, and codesep, the
+// position of the last OP_CODESEPARATOR run (BT_NO_CODESEP for none). Hash
+// types 0 (SIGHASH_DEFAULT), 1, 2, 3 and 0x81 to 0x83; SIGHASH_SINGLE
+// needs an output at index.
+bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int {t:=tp;
+  base:=hashtype&3;anyone:=(hashtype&BT_ANYONE)!=0;
+  if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) {return -1;}
+  if !t.ok || index<0 || index>=t.nin || amounts.count!=t.nin || spk.count!=t.nin || m.count<BT_SIGMSG {return -1;}
+  if base==BT_SINGLE && index>=t.nout {return -1;}
+  if (annex.count>0 && annex[0]!=BT_ANNEX_TAG) || (leaf.count!=0 && leaf.count!=32) || codesep<0 || codesep>BT_NO_CODESEP {return -1;}
+  h:[5][32]u8;if !bt_tap_hashes(b,t,amounts,spk,h[..]) {return -1;}
+  m[0]=0;m[1]=cast(u8)hashtype;                               // epoch 0, then hash_type
+  n:=bt_put(m,2,t.version[..]);n=bt_put(m,n,t.locktime[..]);
+  if !anyone {for k:0..<4 {n=bt_put(m,n,h[k][..]);}}          // sha_prevouts to sha_sequences
+  if base!=BT_SINGLE && base!=BT_NONE {n=bt_put(m,n,h[4][..]);} // sha_outputs: ALL and DEFAULT
+  ext:=0;if leaf.count==32 {ext=1;}
+  present:=0;if annex.count>0 {present=1;}
+  m[n]=cast(u8)(ext*2+present);n+=1;                          // spend_type
+  if anyone {
+    n=bt_put(m,n,t.inputs[index].prev[..]);n=bt_le(m,n,amounts[index],8);
+    n=bt_var_put(m,n,spk[index].n);n=bt_put(m,n,spk[index].b[0..<spk[index].n]);
+    n=bt_put(m,n,t.inputs[index].seq[..]);
+  } else {n=bt_le(m,n,index,4);}
+  if present==1 {bt_annex_hash(annex,m[n..<n+32]);n+=32;}      // sha_annex
+  if base==BT_SINGLE {bt_sha(b[t.out_at[index]..<t.out_at[index]+t.out_n[index]],m[n..<n+32]);n+=32;}
+  if ext==1 {n=bt_put(m,n,leaf);m[n]=0;n+=1;n=bt_le(m,n,codesep,4);}
+  return n;
+}
+// The signature hash hash_TapSighash(0x00 || SigMsg), into out (32
+// bytes); false when the message refuses.
+bt_sighash_taproot_ext :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,out:[]u8)->bool {
+  if out.count!=32 {return false;}
+  m:[BT_SIGMSG]u8;n:=bt_sigmsg_taproot(b,tp,index,amounts,spk,hashtype,annex,leaf,codesep,m[..]);
+  if n<0 {return false;}
   bt_tagged(BH_TAPSIGHASH,m[0..<n],out);
   return true;
+}
+// The key-path signature hash with no annex.
+bt_sighash_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,out:[]u8)->bool {
+  return bt_sighash_taproot_ext(b,tp,index,amounts,spk,hashtype,b[0..<0],b[0..<0],BT_NO_CODESEP,out);
 }
 // book:end bip341
 

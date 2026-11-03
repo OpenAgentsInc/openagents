@@ -70,6 +70,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [41. The key tweak and the key path](ch041-the-key-tweak-and-the-key-path.md) — implemented
 - [42. Script trees: tapleaves and tapbranches](ch042-script-trees-tapleaves-and-tapbranches.md) — implemented
+- [43. Taproot signature hashes](ch043-taproot-signature-hashes.md) — implemented
 
 **IX. Blocks and consensus**
 

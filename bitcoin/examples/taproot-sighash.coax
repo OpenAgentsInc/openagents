@@ -1,0 +1,138 @@
+// book:begin example
+#load "../../coax/lib/bitcoin/taproot.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [512] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// One byte as two hex digits.
+hex_byte :: (v: int) {
+  b: [1] u8; text: [2] u8; b[0] = cast(u8) v;
+  r := hex_encode_checked(cast(string) b[..], text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+// A hash type's name.
+hashtype_name :: (ht: int) -> string {
+  names := [4] string.["DEFAULT", "ALL", "NONE", "SINGLE"];
+  anyone := [4] string.["?", "ALL|ANYONECANPAY", "NONE|ANYONECANPAY", "SINGLE|ANYONECANPAY"];
+  if ht >= 0 && ht <= 3 { return names[ht]; }
+  if ht >= 0x81 && ht <= 0x83 { return anyone[ht & 3]; }
+  return "?";
+}
+// "matches" or "differs".
+same :: (ok: bool) -> string { return ifx ok then "matches" else "differs"; }
+// The byte offset of spend_type in a message of this hash type.
+spend_at :: (ht: int) -> int {
+  at := 2 + 8;
+  if (ht & BT_ANYONE) == 0 { at += 128; }
+  if (ht & 3) != BT_NONE && (ht & 3) != BT_SINGLE { at += 32; }
+  return at;
+}
+
+main :: () {
+  tx: [BT_TX] u8; spk: [9] BtScript; m: [BT_SIGMSG] u8; e: [BT_SIGMSG] u8; h: [32] u8;
+  raw := bt_unhex(BT_V341_TX, tx[..]); t := bt_tx_read(raw);
+  amounts := BT_V341_AMOUNT;
+  for k: 0..<9 { spk[k] = bt_script(BT_V341_SPK[k]); }
+  none := m[0..<0];
+
+  // BIP-341's seven key-path inputs: the message and its hash.
+  print("BIP-341's key-path signature messages\n");
+  for i: 0..<BT_V341.count {
+    v := BT_V341[i];
+    n := bt_sigmsg_taproot(raw, t, v.index, amounts[..], spk[..], v.hashtype, none, none, BT_NO_CODESEP, m[..]);
+    #assert n > 0 && bt_sighash_taproot(raw, t, v.index, amounts[..], spk[..], v.hashtype, h[..]);
+    print("  input % (0x", v.index); hex_byte(v.hashtype);
+    print(" %): % bytes, message %, sighash %\n", hashtype_name(v.hashtype), n,
+          same(bt_same(m[0..<n], bt_unhex(TR_SIGMSG[i], e[..]))), same(bt_hex_is(h[..], v.sighash)));
+  }
+
+  // One message, field by field.
+  print("input 1 with SIGHASH_DEFAULT, field by field\n");
+  n := bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], BT_DEFAULT, none, none, BT_NO_CODESEP, m[..]);
+  show("  epoch", m[0..<1]); show("  hash_type", m[1..<2]);
+  show("  nVersion", m[2..<6]); show("  nLockTime", m[6..<10]);
+  show("  sha_prevouts", m[10..<42]); show("  sha_amounts", m[42..<74]);
+  show("  sha_scriptpubkeys", m[74..<106]); show("  sha_sequences", m[106..<138]);
+  show("  sha_outputs", m[138..<170]); show("  spend_type", m[170..<171]);
+  show("  input_index", m[171..<175]);
+  print("  % bytes\n", n);
+
+  // DEFAULT and ALL commit to the same fields; only the hash type byte differs.
+  print("SIGHASH_DEFAULT and SIGHASH_ALL at input 1\n");
+  d: [BT_SIGMSG] u8; hd: [32] u8;
+  nd := bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], BT_DEFAULT, none, none, BT_NO_CODESEP, d[..]);
+  na := bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], BT_ALL, none, none, BT_NO_CODESEP, m[..]);
+  differ := 0; at := -1;
+  for k: 0..<nd { if d[k] != m[k] { differ += 1; at = k; } }
+  print("  % and % bytes, % byte differs, at offset %\n", nd, na, differ, at);
+  #assert bt_sighash_taproot(raw, t, 1, amounts[..], spk[..], BT_DEFAULT, hd[..]) && bt_sighash_taproot(raw, t, 1, amounts[..], spk[..], BT_ALL, h[..]);
+  show("  DEFAULT sighash", hd[..]); show("  ALL sighash", h[..]);
+
+  // The four spend types: an annex adds sha_annex, the script path adds
+  // BIP-342's extension.
+  print("input 1, SIGHASH_DEFAULT, four spend types\n");
+  an: [32] u8; an[0] = BT_ANNEX_TAG; for k: 1..<32 { an[k] = cast(u8) k; }
+  sc: [64] u8; leaf: [32] u8;
+  script := bt_unhex(TR_LEAVES[0].script, sc[..]);
+  #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, script, leaf[..]) == TR_OK;
+  labels := [4] string.["key path", "key path with an annex", "script path", "script path with an annex"];
+  for s: 0..<4 {
+    annex := ifx (s & 1) == 1 then an[..] else none;
+    lh := ifx s >= 2 then leaf[..] else none;
+    n = bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], BT_DEFAULT, annex, lh, BT_NO_CODESEP, m[..]);
+    #assert bt_sighash_taproot_ext(raw, t, 1, amounts[..], spk[..], BT_DEFAULT, annex, lh, BT_NO_CODESEP, h[..]);
+    print("  %: spend_type %, % bytes\n", labels[s], m[spend_at(BT_DEFAULT)], n);
+    show("    sighash", h[..]);
+  }
+  print("the script path's extension, after the annex's hash\n");
+  show("  annex", an[..]);
+  show("  sha_annex", m[175..<207]);
+  show("  tapleaf_hash", m[207..<239]); show("  key_version", m[239..<240]);
+  show("  codesep_pos", m[240..<244]);
+  n = bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], BT_DEFAULT, none, leaf[..], 3, m[..]);
+  show("  codesep_pos after an OP_CODESEPARATOR at opcode 3", m[n - 4..<n]);
+
+  // Every hash type, script path with an annex: which fields each keeps.
+  print("input 1, script path with an annex, every hash type\n");
+  types := [7] int.[0, 1, 2, 3, 0x81, 0x82, 0x83];
+  for ht: types {
+    n = bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], ht, an[..], leaf[..], BT_NO_CODESEP, m[..]);
+    print("  0x"); hex_byte(ht);
+    print(" %: % bytes\n", hashtype_name(ht), n);
+  }
+
+  // Bitcoin Core's TaprootSignatureMsg, on the annex and script-path cases.
+  matched := 0;
+  for i: 0..<TR_EXT.count {
+    v := TR_EXT[i]; a2: [300] u8; s2: [64] u8; l2: [32] u8;
+    annex := bt_unhex(v.annex, a2[..]); sct := bt_unhex(v.script, s2[..]);
+    lh := l2[0..<0];
+    if sct.count > 0 { #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, sct, l2[..]) == TR_OK; lh = l2[..]; }
+    n = bt_sigmsg_taproot(raw, t, v.index, amounts[..], spk[..], v.hashtype, annex, lh, v.codesep, m[..]);
+    if n > 0 && bt_same(m[0..<n], bt_unhex(v.msg, e[..])) { matched += 1; }
+  }
+  print("Bitcoin Core's TaprootSignatureMsg: % of % annex and script-path messages match\n", matched, TR_EXT.count);
+
+  // What BIP-341 refuses.
+  print("refusals\n");
+  signs := 0;
+  for ht: 0..<256 { if bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], ht, none, none, BT_NO_CODESEP, m[..]) > 0 { signs += 1; } }
+  print("  hash types that sign: % of 256\n", signs);
+  r := bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], 0x80, none, none, BT_NO_CODESEP, m[..]);
+  print("  0x80, ANYONECANPAY alone: %\n", ifx r < 0 then "refused" else "signed");
+  r = bt_sigmsg_taproot(raw, t, 2, amounts[..], spk[..], BT_SINGLE, none, none, BT_NO_CODESEP, m[..]);
+  print("  SINGLE at input 2, with 2 outputs: %\n", ifx r < 0 then "refused" else "signed");
+  an[0] = 0x51;
+  r = bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], BT_DEFAULT, an[..], none, BT_NO_CODESEP, m[..]);
+  print("  an annex that starts with 0x51: %\n", ifx r < 0 then "refused" else "signed");
+  r = bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], BT_DEFAULT, none, leaf[0..<31], BT_NO_CODESEP, m[..]);
+  print("  a 31-byte leaf hash: %\n", ifx r < 0 then "refused" else "signed");
+  r = bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], BT_DEFAULT, none, leaf[..], BT_NO_CODESEP + 1, m[..]);
+  print("  codesep_pos 2^32: %\n", ifx r < 0 then "refused" else "signed");
+}
+// book:end example

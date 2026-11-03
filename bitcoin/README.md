@@ -14,7 +14,7 @@ Nostr's cryptography is Bitcoin's, so the chapters that built it (Nostr
 chapters 1–13, 15 and 18) moved here on 2026-11-02, and the Nostr book starts
 after this book's Parts I–V.
 
-48 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
+49 of the book's 124 chapters are implemented; the [status table](book/README.md#status) lists them.
 
 The code the book teaches lives in the Coax library:
 [`coax/lib/crypto/`](../coax/lib/crypto/) and
@@ -29,7 +29,9 @@ makes the standard BIP-44, 49, 84 and 86 addresses, and chapter 30's
 descriptors to the scripts a wallet watches. Chapter 41's
 [`taproot.coax`](../coax/lib/bitcoin/taproot.coax) holds Taproot: the key
 tweak and the key path, then script trees and control blocks (chapter
-42). Chapter 65's
+42); chapter 43's Taproot signature hash, with the annex and the script
+path's extension, is in [`sighash.coax`](../coax/lib/bitcoin/sighash.coax).
+Chapter 65's
 [`p2p.coax`](../coax/lib/bitcoin/p2p.coax) reads and writes the peer-to-peer
 messages: the 24-byte header and the payloads a node exchanges. Chapter
 66's [`ellswift.coax`](../coax/lib/bitcoin/ellswift.coax) encodes keys as
@@ -78,7 +80,8 @@ chapter 34's.
 ## Cryptography still to build
 
 Everything Nostr used is built, and so are the five address types and the
-Taproot key tweak, key path and script trees (chapters 41 and 42). Bitcoin
+Taproot key tweak, key path, script trees and signature hashes (chapters
+41 to 43). Bitcoin
 and Lightning also need:
 
 - Batch Schnorr verification and tapscript.

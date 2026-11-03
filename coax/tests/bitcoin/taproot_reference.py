@@ -10,8 +10,11 @@ chapters (Bitcoin chapters 41-43). It shares no code with Coax.
   taproot_output_script, taproot_sign_key and taproot_sign_script. They are
   read out of the BIP's <source lang="python"> blocks and run as written.
 - sipa/bech32's segwit_addr.py (pinned) gives Bech32m addresses.
+- Bitcoin Core's test_framework/script.py (pinned) gives SigMsg with the
+  annex and the script-path extension: TaprootSignatureMsg and the
+  BIP341_sha_* functions, read out of the file and run as written.
 
-Both files are loaded with their SHA-256 checked first, so a changed pin
+Every file is loaded with its SHA-256 checked first, so a changed pin
 refuses. Run this file to check the reference against BIP-341's wallet
 test vectors."""
 import hashlib
@@ -165,5 +168,117 @@ def _tree_helper(script_tree):
 R.taproot_tree_helper = _tree_helper
 
 
+# ---- Bitcoin Core's SigMsg (Bitcoin chapter 43)
+CORE_SCRIPT = "bitcoin-core/script.py"
+PINS[CORE_SCRIPT] = "82e250fadd393b972ae9d5d508f458fc872ea0dd947ca162693a006c3e488bbf"
+CORE_NAMES = ("BIP341_sha_prevouts", "BIP341_sha_amounts", "BIP341_sha_scriptpubkeys",
+              "BIP341_sha_sequences", "BIP341_sha_outputs", "TaprootSignatureMsg")
+
+
+def load_core():
+    """Bitcoin Core's TaprootSignatureMsg and the BIP341_sha_* functions it
+    calls, read out of test_framework/script.py with the constants they use
+    and run as written. script.py's own imports (the rest of Core's test
+    framework) are not loaded; the four names it needs from them are given
+    here: sha256, ser_string, TaggedHash and assert_equal."""
+    import ast
+    text = read(CORE_SCRIPT).decode()
+    tree = ast.parse(text)
+    keep = []
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in CORE_NAMES:
+            keep.append(node)
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) \
+                and (node.targets[0].id.startswith("SIGHASH_") or node.targets[0].id == "LEAF_VERSION_TAPSCRIPT"):
+            keep.append(node)
+    names = {n.name for n in keep if isinstance(n, ast.FunctionDef)}
+    assert names == set(CORE_NAMES), names
+    ns = {"sha256": lambda b: hashlib.sha256(b).digest(), "ser_string": ser_script,
+          "TaggedHash": R.tagged_hash, "assert_equal": _assert_equal}
+    exec(compile(ast.Module(body=keep, type_ignores=[]), "script.py", "exec"), ns)
+    return types.SimpleNamespace(**ns)
+
+
+def _assert_equal(a, b):
+    assert a == b, (a, b)
+
+
+class _Out:
+    def __init__(self, raw):
+        self.raw = raw
+
+    def serialize(self):
+        return self.raw
+
+
+class _In:
+    def __init__(self, prevout, sequence):
+        self.prevout = _Out(prevout)
+        self.nSequence = sequence
+
+
+class _Utxo:
+    def __init__(self, value, spk):
+        self.nValue = value
+        self.scriptPubKey = spk
+
+
+def compact(b, at):
+    n = b[at]
+    if n < 0xfd:
+        return n, at + 1
+    size = {0xfd: 2, 0xfe: 4, 0xff: 8}[n]
+    return int.from_bytes(b[at + 1:at + 1 + size], "little"), at + 1 + size
+
+
+def parse_tx(raw):
+    """An unsigned transaction (no witness) as the objects Core's
+    TaprootSignatureMsg reads: version, nLockTime, vin and vout."""
+    tx = types.SimpleNamespace(version=int.from_bytes(raw[0:4], "little"), vin=[], vout=[])
+    n, at = compact(raw, 4)
+    for _ in range(n):
+        prevout = raw[at:at + 36]
+        size, at = compact(raw, at + 36)
+        at += size
+        tx.vin.append(_In(prevout, int.from_bytes(raw[at:at + 4], "little")))
+        at += 4
+    n, at = compact(raw, at)
+    for _ in range(n):
+        start = at
+        size, at = compact(raw, at + 8)
+        at += size
+        tx.vout.append(_Out(raw[start:at]))
+    tx.nLockTime = int.from_bytes(raw[at:at + 4], "little")
+    assert at + 4 == len(raw)
+    return tx
+
+
+CORE = load_core()
+SPEND = VECTORS["keyPathSpending"][0]
+TX = parse_tx(bytes.fromhex(SPEND["given"]["rawUnsignedTx"]))
+UTXOS = [_Utxo(u["amountSats"], bytes.fromhex(u["scriptPubKey"])) for u in SPEND["given"]["utxosSpent"]]
+
+
+def sigmsg(index, hash_type, annex=None, leaf_script=None, codesep=0xffffffff):
+    """Core's SigMsg for an input of BIP-341's transaction; a leaf script
+    makes it a script-path message (leaf version 0xc0)."""
+    if leaf_script is None:
+        return CORE.TaprootSignatureMsg(TX, UTXOS, hash_type, index, annex=annex)
+    return CORE.TaprootSignatureMsg(TX, UTXOS, hash_type, index, scriptpath=True, leaf_script=leaf_script,
+                                    codeseparator_pos=codesep, annex=annex)
+
+
+def check_core():
+    """Core's SigMsg gives BIP-341's seven published key-path messages and
+    signature hashes."""
+    for i in SPEND["inputSpending"]:
+        g, im = i["given"], i["intermediary"]
+        m = sigmsg(g["txinIndex"], g["hashType"])
+        assert m.hex() == im["sigMsg"], g["txinIndex"]
+        assert R.tagged_hash("TapSighash", m).hex() == im["sigHash"]
+    return len(SPEND["inputSpending"])
+
+
 if __name__ == "__main__":
     print(f"BIP-341's reference code gives {check_vectors()} wallet test vectors' values")
+    print(f"Bitcoin Core's TaprootSignatureMsg gives {check_core()} published key-path signature messages")

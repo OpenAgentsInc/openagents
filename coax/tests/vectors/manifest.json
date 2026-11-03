@@ -2194,6 +2194,20 @@
       "retrieved": "2026-11-03",
       "sha256": "58aaf7d2a2ab98679bbb1e1d4c40d0c3e4021822fd1f628099c1a178e4494685",
       "bytes": 4548
+    },
+    {
+      "path": "upstream/bitcoin-core/script.py",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/bitcoin/bitcoin/ddea9196493d3b8fd841a36a6c53efd85dac7a05/test/functional/test_framework/script.py",
+      "revision": "git:ddea9196493d3b8fd841a36a6c53efd85dac7a05",
+      "license": "MIT (Bitcoin Core COPYING)",
+      "covers": [
+        "bip341-sighash",
+        "bip342-sighash-extension"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "82e250fadd393b972ae9d5d508f458fc872ea0dd947ca162693a006c3e488bbf",
+      "bytes": 32800
     }
   ]
 }

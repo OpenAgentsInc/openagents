@@ -9,6 +9,9 @@
 //   and each leaf's path from leaves listed with their depths, control
 //   blocks, and the check that a control block and a script commit to an
 //   output key.
+// - Chapter 43, signature hashes: bt_sigmsg_taproot and
+//   bt_sighash_taproot_ext in sighash.coax; this file checks them against
+//   BIP-341's published messages and Bitcoin Core's TaprootSignatureMsg.
 //
 // Keys, scripts, signatures and hashes here are public, so the procedures
 // run in variable time and end in _vartime (chapter 3). The secret half of
@@ -17,6 +20,7 @@
 #load "sighash.coax";
 #load "../crypto/schnorr.coax";
 #load "../../tests/bitcoin/taproot_vectors.coax";
+#load "../../tests/bitcoin/taproot_sighash_vectors.coax";
 #authority;
 
 // ---- checks
@@ -292,3 +296,84 @@ taproot_commitment_vartime :: (control: [] u8, script: [] u8, program: [] u8) ->
   return TR_OK;
 }
 // book:end control
+
+// ---- chapter 43: signature hashes
+// The length BIP-341 gives for SigMsg, with the epoch byte and BIP-342's
+// 37-byte extension added.
+tr_msg_length :: (hashtype: int, annex: bool, ext: bool) -> int {
+  n := 1 + 174;
+  if (hashtype & BT_ANYONE) != 0 { n -= 49; }
+  if (hashtype & 3) == BT_NONE { n -= 32; }
+  if annex { n += 32; }
+  if ext { n += 37; }
+  return n;
+}
+// BIP-341's transaction, read, with its spent outputs.
+tr_v341 :: (b: [] u8, spk: [] BtScript) -> BtTx {
+  for k: 0..<9 { spk[k] = bt_script(BT_V341_SPK[k]); }
+  return bt_tx_read(bt_unhex(BT_V341_TX, b));
+}
+#forall "BIP-341's published key-path signature messages" i: 0..<7 #steps 100000000 {
+  v := BT_V341[i]; b: [BT_TX] u8; spk: [9] BtScript; m: [BT_SIGMSG] u8; e: [BT_SIGMSG] u8; h: [32] u8;
+  t := tr_v341(b[..], spk[..]); amounts := BT_V341_AMOUNT;
+  n := bt_sigmsg_taproot(b[0..<BT_V341_TX.count / 2], t, v.index, amounts[..], spk[..], v.hashtype, m[0..<0], m[0..<0], BT_NO_CODESEP, m[..]);
+  #assert n == tr_msg_length(v.hashtype, false, false) && bt_same(m[0..<n], bt_unhex(TR_SIGMSG[i], e[..]));
+  #assert bitcoin_tagged_checked(BH_TAPSIGHASH, m[0..<n], h[..], false) == SHA_OK && bt_hex_is(h[..], v.sighash);
+}
+#forall "annex and script-path messages match Bitcoin Core's TaprootSignatureMsg" i: 0..<30 #steps 200000000 {
+  v := TR_EXT[i]; b: [BT_TX] u8; spk: [9] BtScript; m: [BT_SIGMSG] u8; e: [BT_SIGMSG] u8; h: [32] u8;
+  an: [300] u8; sc: [64] u8; leaf: [32] u8;
+  t := tr_v341(b[..], spk[..]); amounts := BT_V341_AMOUNT; raw := b[0..<BT_V341_TX.count / 2];
+  annex := bt_unhex(v.annex, an[..]); script := bt_unhex(v.script, sc[..]);
+  lh := leaf[0..<0];
+  if script.count > 0 { #assert taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, script, leaf[..]) == TR_OK; lh = leaf[..]; }
+  n := bt_sigmsg_taproot(raw, t, v.index, amounts[..], spk[..], v.hashtype, annex, lh, v.codesep, m[..]);
+  #assert n == tr_msg_length(v.hashtype, annex.count > 0, script.count > 0) && bt_same(m[0..<n], bt_unhex(v.msg, e[..]));
+  #assert bt_sighash_taproot_ext(raw, t, v.index, amounts[..], spk[..], v.hashtype, annex, lh, v.codesep, h[..]) && bt_hex_is(h[..], v.sighash);
+  // spend_type is ext_flag * 2 + annex_present, after the hash type's fields.
+  at := 2 + 8;
+  if (v.hashtype & BT_ANYONE) == 0 { at += 128; }
+  if (v.hashtype & 3) != BT_NONE && (v.hashtype & 3) != BT_SINGLE { at += 32; }
+  #assert cast(int) m[at] == 2 * (ifx script.count > 0 then 1 else 0) + (ifx annex.count > 0 then 1 else 0);
+}
+#test "SIGHASH_DEFAULT and SIGHASH_ALL sign the same fields under different hash types" #steps 50000000 {
+  b: [BT_TX] u8; spk: [9] BtScript; d: [BT_SIGMSG] u8; a: [BT_SIGMSG] u8; hd: [32] u8; ha: [32] u8;
+  t := tr_v341(b[..], spk[..]); amounts := BT_V341_AMOUNT; raw := b[0..<BT_V341_TX.count / 2];
+  nd := bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], BT_DEFAULT, d[0..<0], d[0..<0], BT_NO_CODESEP, d[..]);
+  na := bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], BT_ALL, a[0..<0], a[0..<0], BT_NO_CODESEP, a[..]);
+  #assert nd == na && d[1] == 0 && a[1] == 1;
+  a[1] = 0; #assert bt_same(d[0..<nd], a[0..<na]);
+  #assert bt_sighash_taproot(raw, t, 1, amounts[..], spk[..], BT_DEFAULT, hd[..]) && bt_sighash_taproot(raw, t, 1, amounts[..], spk[..], BT_ALL, ha[..]);
+  #assert !bt_same(hd[..], ha[..]);
+}
+#test "signature message refusals" #steps 100000000 {
+  b: [BT_TX] u8; spk: [9] BtScript; m: [BT_SIGMSG] u8; x: [33] u8; h: [32] u8;
+  t := tr_v341(b[..], spk[..]); amounts := BT_V341_AMOUNT; raw := b[0..<BT_V341_TX.count / 2];
+  none := m[0..<0];
+  // Hash types: 0 to 3 and 0x81 to 0x83; 0x80 alone is not one.
+  count := 0;
+  for ht: 0..<256 { if bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], ht, none, none, BT_NO_CODESEP, m[..]) > 0 { count += 1; } }
+  #assert count == 7 && bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], 0x80, none, none, BT_NO_CODESEP, m[..]) == -1;
+  // SIGHASH_SINGLE with no output at the input's index.
+  #assert bt_sigmsg_taproot(raw, t, 2, amounts[..], spk[..], 3, none, none, BT_NO_CODESEP, m[..]) == -1;
+  #assert bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], 0x83, none, none, BT_NO_CODESEP, m[..]) > 0;
+  // An annex must start with 0x50; a leaf hash is 32 bytes; codesep fits 4 bytes.
+  x[0] = 0x51; #assert bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], 0, x[0..<1], none, BT_NO_CODESEP, m[..]) == -1;
+  x[0] = 0x50; #assert bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], 0, x[0..<1], none, BT_NO_CODESEP, m[..]) == 1 + 174 + 32;
+  #assert bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], 0, none, x[0..<31], BT_NO_CODESEP, m[..]) == -1;
+  #assert bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], 0, none, x[0..<33], BT_NO_CODESEP, m[..]) == -1;
+  #assert bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], 0, none, x[0..<32], -1, m[..]) == -1;
+  #assert bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], 0, none, x[0..<32], BT_NO_CODESEP + 1, m[..]) == -1;
+  #assert bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], 0, none, x[0..<32], 0, m[..]) == 1 + 174 + 37;
+  // The longest message fits BT_SIGMSG exactly; one byte less refuses.
+  #assert bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], 3, x[0..<1], x[0..<32], 0, m[..]) == BT_SIGMSG;
+  #assert bt_sigmsg_taproot(raw, t, 1, amounts[..], spk[..], 3, x[0..<1], x[0..<32], 0, m[0..<BT_SIGMSG - 1]) == -1;
+  #assert !bt_sighash_taproot_ext(raw, t, 0, amounts[..], spk[..], 0, none, none, BT_NO_CODESEP, h[0..<31]);
+  // The annex, the leaf and codesep are committed: one bit of any changes the hash.
+  h2: [32] u8; an: [2] u8; lf: [32] u8; an[0] = 0x50;
+  #assert bt_sighash_taproot_ext(raw, t, 0, amounts[..], spk[..], 0, an[..], lf[..], 0, h[..]);
+  an[1] ^= 1; #assert bt_sighash_taproot_ext(raw, t, 0, amounts[..], spk[..], 0, an[..], lf[..], 0, h2[..]) && !bt_same(h[..], h2[..]);
+  an[1] ^= 1; lf[31] ^= 1; #assert bt_sighash_taproot_ext(raw, t, 0, amounts[..], spk[..], 0, an[..], lf[..], 0, h2[..]) && !bt_same(h[..], h2[..]);
+  lf[31] ^= 1; #assert bt_sighash_taproot_ext(raw, t, 0, amounts[..], spk[..], 0, an[..], lf[..], 1, h2[..]) && !bt_same(h[..], h2[..]);
+  #assert bt_sighash_taproot_ext(raw, t, 0, amounts[..], spk[..], 0, an[..], lf[..], 0, h2[..]) && bt_same(h[..], h2[..]);
+}

@@ -1,0 +1,47 @@
+// The checks of taproot-sighash.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test bitcoin/examples/checks/taproot-sighash.coax --only sighash:
+#load "../taproot-sighash.coax";
+
+// book:begin check
+// What each hash type leaves out can change without changing the hash:
+// ANYONECANPAY drops the other inputs, NONE drops every output, SINGLE
+// keeps only the output at the input's index.
+#test "sighash: what a hash type leaves out can change" #steps 50000000 {
+  b: [BT_TX] u8; spk: [9] BtScript; h: [7][32] u8; g: [32] u8;
+  raw := bt_unhex(BT_V341_TX, b[..]); t := bt_tx_read(raw);
+  amounts := BT_V341_AMOUNT; for k: 0..<9 { spk[k] = bt_script(BT_V341_SPK[k]); }
+  types := [7] int.[0, 1, 2, 3, 0x81, 0x82, 0x83];
+  for k: 0..<7 { #assert bt_sighash_taproot(raw, t, 1, amounts[..], spk[..], types[k], h[k][..]); }
+  // Another input's amount: only the ANYONECANPAY types keep their hash.
+  amounts[0] += 1;
+  for k: 0..<7 {
+    #assert bt_sighash_taproot(raw, t, 1, amounts[..], spk[..], types[k], g[..]);
+    #assert bt_same(g[..], h[k][..]) == ((types[k] & BT_ANYONE) != 0);
+  }
+  amounts[0] -= 1;
+  // Output 0's value: NONE keeps its hash, and so does SINGLE at input 1.
+  b[t.out_at[0]] ^= 1;
+  for k: 0..<7 {
+    #assert bt_sighash_taproot(raw, t, 1, amounts[..], spk[..], types[k], g[..]);
+    #assert bt_same(g[..], h[k][..]) == ((types[k] & 3) == BT_NONE || (types[k] & 3) == BT_SINGLE);
+  }
+}
+// The length BIP-341 gives, 174 - 49 for ANYONECANPAY - 32 for NONE + 32
+// for an annex, plus the epoch byte and BIP-342's 37 bytes, for every hash
+// type and spend type.
+#test "sighash: every message has BIP-341's length" #steps 50000000 {
+  b: [BT_TX] u8; spk: [9] BtScript; m: [BT_SIGMSG] u8; an: [1] u8; leaf: [32] u8; an[0] = 0x50;
+  raw := bt_unhex(BT_V341_TX, b[..]); t := bt_tx_read(raw);
+  amounts := BT_V341_AMOUNT; for k: 0..<9 { spk[k] = bt_script(BT_V341_SPK[k]); }
+  types := [7] int.[0, 1, 2, 3, 0x81, 0x82, 0x83];
+  for ht: types { for s: 0..<4 {
+    annex := an[0..<s & 1]; lh := leaf[0..<ifx s >= 2 then 32 else 0];
+    n := bt_sigmsg_taproot(raw, t, 0, amounts[..], spk[..], ht, annex, lh, BT_NO_CODESEP, m[..]);
+    want := 1 + 174 + 32 * (s & 1) + 37 * (s >> 1);
+    if (ht & BT_ANYONE) != 0 { want -= 49; }
+    if (ht & 3) == BT_NONE { want -= 32; }
+    #assert n == want && cast(int) m[spend_at(ht)] == s;
+  } }
+}
+// book:end check

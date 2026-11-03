@@ -43,11 +43,11 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 48 are implemented and 76 are planned. The 48 implemented
+Of the 124 chapters, 49 are implemented and 75 are planned. The 49 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 46, 47, 48, 50, 65, 66 and 67 are new.
+39, 40, 41, 42, 43, 46, 47, 48, 50, 65, 66 and 67 are new.
 
 The code is under `coax/lib/crypto/` and `coax/lib/bitcoin/`, with examples in
 `bitcoin/examples/` and their expected output in `bitcoin/fixtures/`. Code
@@ -194,7 +194,7 @@ The key tweak, script trees, the Taproot signature hash and tapscript.
 | --- | --- | --- |
 | [41. The key tweak and the key path](ch041-the-key-tweak-and-the-key-path.md) | Runnable: native C | BIP-341's tweak on both sides: the output key Q = P + H_TapTweak(P ‖ root)G with its parity, and the tweaked secret key (d or n − d, plus t). All seven scriptPubKey vectors give their key, scriptPubKey and address, and all seven key-path inputs give their tweaked key and published witness, which verifies against Q and not P. t ≥ n and Q at infinity refuse, and the example's 46 lines agree with BIP-341's own Python, pinned. |
 | [42. Script trees: tapleaves and tapbranches](ch042-script-trees-tapleaves-and-tapbranches.md) | Runnable: native C | TapLeaf and TapBranch hashes, a tree's root and each leaf's path built from leaves with their depths, control blocks of 33 + 32m bytes, and BIP-341's commitment check. All six script trees in BIP-341's vectors give every leaf hash, root and control block, and every control block commits to its output key; a flipped parity bit, path bit, leaf version or script bit, a reordered or shortened path and a bad size refuse. The example's 48 lines agree with BIP-341's own Python, pinned. |
-| 43. Taproot signature hashes | Planned | Every BIP-341 key-path and script-path signature hash vector matches, for every hash type. |
+| [43. Taproot signature hashes](ch043-taproot-signature-hashes.md) | Runnable: native C | BIP-341's signature message in full: every hash type, the annex, and BIP-342's script-path extension. BIP-341's seven key-path messages and hashes match byte for byte, and 30 annex and script-path messages match Bitcoin Core's TaprootSignatureMsg, pinned; 0x80, the other undefined hash types and SINGLE past the outputs refuse. The example's 57 lines agree with Core's Python. |
 | 44. Tapscript | Planned | Bitcoin Core's Taproot script tests (`script_assets_test.json`) give their expected results. |
 | 45. Control blocks and script-path spends | Planned | Script-path spends from BIP-341's vectors verify. A control block with the wrong parity or path refuses. |
 

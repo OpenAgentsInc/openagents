@@ -1,0 +1,57 @@
+BIP-341's key-path signature messages
+  input 0 (0x03 SINGLE): 175 bytes, message matches, sighash matches
+  input 1 (0x83 SINGLE|ANYONECANPAY): 126 bytes, message matches, sighash matches
+  input 3 (0x01 ALL): 175 bytes, message matches, sighash matches
+  input 4 (0x00 DEFAULT): 175 bytes, message matches, sighash matches
+  input 6 (0x02 NONE): 143 bytes, message matches, sighash matches
+  input 7 (0x82 NONE|ANYONECANPAY): 94 bytes, message matches, sighash matches
+  input 8 (0x81 ALL|ANYONECANPAY): 126 bytes, message matches, sighash matches
+input 1 with SIGHASH_DEFAULT, field by field
+  epoch: 00
+  hash_type: 00
+  nVersion: 02000000
+  nLockTime: 0065cd1d
+  sha_prevouts: e3b33bb4ef3a52ad1fffb555c0d82828eb22737036eaeb02a235d82b909c4c3f
+  sha_amounts: 58a6964a4f5f8f0b642ded0a8a553be7622a719da71d1f5befcefcdee8e0fde6
+  sha_scriptpubkeys: 23ad0f61ad2bca5ba6a7693f50fce988e17c3780bf2b1e720cfbb38fbdd52e21
+  sha_sequences: 18959c7221ab5ce9e26c3cd67b22c24f8baa54bac281d8e6b05e400e6c3a957e
+  sha_outputs: a2e6dab7c1f0dcd297c8d61647fd17d821541ea69c3cc37dcbad7f90d4eb4bc5
+  spend_type: 00
+  input_index: 01000000
+  175 bytes
+SIGHASH_DEFAULT and SIGHASH_ALL at input 1
+  175 and 175 bytes, 1 byte differs, at offset 1
+  DEFAULT sighash: fac9b8d698672e521b61aa35991571e304fca66c308faa33ee061779a2f4c88f
+  ALL sighash: 8efb150df36b7b9e7b0e8c610819f73615f62c284273bf3dfb7720b4f4e07671
+input 1, SIGHASH_DEFAULT, four spend types
+  key path: spend_type 0, 175 bytes
+    sighash: fac9b8d698672e521b61aa35991571e304fca66c308faa33ee061779a2f4c88f
+  key path with an annex: spend_type 1, 207 bytes
+    sighash: 008220b1967361bd387950cb536fb50e2d8b6ee6f209a8273f03dda93b47ede9
+  script path: spend_type 2, 212 bytes
+    sighash: c6c88b99952a1da24f5efe63b6da76032667e88e0caeb2059bdb64ebfce0fcbe
+  script path with an annex: spend_type 3, 244 bytes
+    sighash: d2be8edbd2bbba7c9e1988dad9c9eb2816516355ea061d6e11fa6c769384a9ef
+the script path's extension, after the annex's hash
+  annex: 500102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+  sha_annex: 1f8a963682305474b8236bfea00a8a326948c1e24634f51d2adc1ed835737479
+  tapleaf_hash: 5b75adecf53548f3ec6ad7d78383bf84cc57b55a3127c72b9a2481752dd88b21
+  key_version: 00
+  codesep_pos: ffffffff
+  codesep_pos after an OP_CODESEPARATOR at opcode 3: 03000000
+input 1, script path with an annex, every hash type
+  0x00 DEFAULT: 244 bytes
+  0x01 ALL: 244 bytes
+  0x02 NONE: 212 bytes
+  0x03 SINGLE: 244 bytes
+  0x81 ALL|ANYONECANPAY: 195 bytes
+  0x82 NONE|ANYONECANPAY: 163 bytes
+  0x83 SINGLE|ANYONECANPAY: 195 bytes
+Bitcoin Core's TaprootSignatureMsg: 30 of 30 annex and script-path messages match
+refusals
+  hash types that sign: 7 of 256
+  0x80, ANYONECANPAY alone: refused
+  SINGLE at input 2, with 2 outputs: refused
+  an annex that starts with 0x51: refused
+  a 31-byte leaf hash: refused
+  codesep_pos 2^32: refused
