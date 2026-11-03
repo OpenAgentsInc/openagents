@@ -166,13 +166,17 @@ static void everglade_town(int k) {
 // Room k's hotbar abilities the world runs (room-abilities.coax, everglade-room-abilities.coax; #12718):
 // the casts and ends since into it, its step, then what it holds up and the falls' damage back.
 static void everglade_abilities(int k) {
-  float c[WORLD_CAST], rg[WORLD_RG], h[3]; coax_v_f32 cv = {c, WORLD_CAST};
+  float c[WORLD_CAST], l[WORLD_LIFE] = {0}, h[3]; coax_v_f32 cv = {c, WORLD_CAST};
   int64_t n = rm_ra_casts(view(), k);
   for (int64_t q = 0; q < n; q++) { rm_ra_cast(view(), k, q, cv); world_ability(k, c); }
   rm_ra_heard(view(), k);
   world_abilities(k, 1.0f / WORLD_HZ);
-  bool on = world_rg(k, rg);
-  rm_ra_rg(view(), k, on, on ? (int64_t)rg[5] : -1, rg[1], rg[2], rg[3]);
+  /* every seat's abilities up, each its own entity */
+  for (int s = 0; s < WORLD_SEATS; s++)
+    for (int ab = 0; ab < WORLD_ABS; ab++) {
+      bool on = world_life(k, s, ab, l);
+      rm_ra_live(view(), k, s, ab, on, l[1], l[2], l[3], l[4], (int64_t)l[5]);
+    }
   for (int i = 0; i < WORLD_FOLK; i++) rm_ra_air(view(), k, i, world_air(k, i));
   int hn = world_hurts(k);
   for (int q = 0; q < hn; q++) if (world_hurt(k, q, h)) rm_ra_hurt(view(), k, (int64_t)h[0], (int64_t)h[1], (int64_t)h[2]);

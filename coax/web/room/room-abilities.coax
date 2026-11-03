@@ -1,32 +1,47 @@
-// The everglade rooms' hotbar abilities on the server (GitHub #12718): the casts room-everglade.coax
-// takes (C) and the ends (E) of the abilities whose effect is the world's, handed to the host's world
-// (room-world.c world_ability: apps/openagents-web/everglade-room-abilities.coax runs the page's own
-// ability code there), and what that world holds up heard by every seat as server entities and entries:
-//   c EID 24 X Y Z 0 -1 1 OWNER 0 R   Reverse Gravity's cylinder (WK_ZONE, P1 AB_REVERSE 0, P2 its radius, cm)
-//   a I CM                            townsperson I is CM over their feet (0: on their feet again)
-// The damage the world's falls dealt goes to the room's rules (e5rr_hurt), which say it (e hit).
+// The everglade rooms' hotbar abilities on the server (GitHub #12718, #12733): the casts room-everglade.coax
+// takes (C) and the ends (E) of the abilities the world runs, handed to the host's world (room-world.c
+// world_ability: apps/openagents-web/everglade-room-abilities.coax runs each seat's own copy of the
+// page's ability code there), and what every seat's copy holds up heard by every seat as server
+// entities and entries:
+//   c EID 24 X Y Z YAW -1 1 OWNER AB R   seat OWNER's ability AB (WK_ZONE): where its last cast was (the
+//                                       caster's feet, or the aim) and its facing; R Reverse Gravity's radius, cm
+//   a I CM                              townsperson I is CM over their feet (0: on their feet again)
+// Each seat's are its own: as many as it casts stand at once, as offline. A new cast of one is a new
+// entity. The rules still roll each spell's SRD record (everglade5e-room-rules.coax) but Reverse
+// Gravity's, which the world runs whole; the damage the world's falls dealt goes to the rules (e5rr_hurt).
 // The host, each tick before the town: rm_ra_casts / rm_ra_cast / rm_ra_heard into world_ability, then
-// world_abilities, then rm_ra_rg, rm_ra_air for each person and rm_ra_hurt for what the falls dealt.
+// world_abilities, then rm_ra_live for each seat's every ability, rm_ra_air for each person and
+// rm_ra_hurt for what the falls dealt.
 
-RA_CASTS :: 16;
-RA_CAST_FLOATS :: 8;            // BY AB X Y Z YAW ON (and a spare)
+RA_CASTS :: 32;
+RA_CAST_FLOATS :: 11;           // BY AB X Y Z YAW ON AX AY AZ (and a spare)
 RA_ID0 :: 900000;               // the abilities' entity ids, past the rules' zones and creatures
+RA_ABS :: 48;                   // abilities a seat, room for everglade-abilities.coax AB_N
+RA_AB_N :: 43;                  // its AB_N: bar slots 4 to 46 (47 and 48 are Rebuild and the row switcher, 64 on the Warlock's)
 RA_REVERSE :: 0;                // everglade-abilities.coax AB_REVERSE (bar slot EG_SP_SLOTS + it, fivebar.coax)
 RA_RG_R_CM :: 1524;             // its 50-foot radius (AB_RG_R)
 RA_AIR_CM :: 10;                // a person's height heard again once it changes this much
 
-RaCast :: struct { by: int; ab: int; x: f32; y: f32; z: f32; yaw: f32; on: bool; }
+RaCast :: struct { by: int; ab: int; x: f32; y: f32; z: f32; yaw: f32; on: bool; ax: f32; ay: f32; az: f32; }
+RaLive :: struct { on: bool; id: int; epoch: int; x: f32; y: f32; z: f32; yaw: f32; }
 RaRoom :: struct {
   q: [RA_CASTS] RaCast; q_n: int;
-  rg_on: bool; rg_id: int; rg_by: int = -1; rg_x: f32; rg_y: f32; rg_z: f32;
+  live: [EG_SEATS * RA_ABS] RaLive;            // each seat's abilities up
   next_id: int;
   air: [E5R_FOLK] int;                          // cm
-  heard_rg: [EG_SEATS] int;                     // the cylinder's id each seat last heard (0 none)
+  heard: [EG_SEATS * EG_SEATS * RA_ABS] int;    // the entity each seat last heard of each seat's each ability (0 none)
   heard_a: [EG_SEATS * E5R_FOLK] int;           // each person's height each seat last heard, cm + 1 (0 none)
 }
 
-// Whether bar slot `slot` is an ability the world runs.
-ra_world_slot :: (slot: int) -> bool { return slot - EG_SP_SLOTS == RA_REVERSE; }
+// Whether bar slot `slot` is an ability the world runs (everglade-room-abilities.coax eg_ra_world: the
+// pages run Levitate, Feather Fall, Water Walk, Water Breathing, Shapechange and Speak with Animals
+// themselves and never send them; Conjure Animals' and Polymorph's creatures are the rules').
+ra_world_slot :: (slot: int) -> bool {
+  ab := slot - EG_SP_SLOTS;
+  return ab >= 0 && ab < RA_AB_N && ab != 28 && ab != 29;
+}
+// Whether the world runs it whole: the rules roll nothing for it (Reverse Gravity has no roll).
+ra_whole :: (slot: int) -> bool { return slot - EG_SP_SLOTS == RA_REVERSE; }
 
 ra_fresh :: (v: [] RmServer, k: int) {
   if k < 0 || k >= EG_ROOMS { return; }
@@ -39,23 +54,19 @@ ra_queue :: (v: [] RmServer, k: int, c: RaCast) -> bool {
   r[0].q[r[0].q_n] = c; r[0].q_n += 1;
   return true;
 }
-// A cast of bar slot `slot` from seat `seat` standing at `me` (room-everglade.coax eg_heard_cast, once
-// it is checked): an ability the world runs goes to it. Pressed again while it holds one up, it ends.
-// True when the world runs it whole (the rules roll nothing for it).
-ra_cast :: (v: [] RmServer, k: int, seat: int, slot: int, me: EgPose) -> bool {
+// A cast of bar slot `slot` from seat `seat` standing at `me`, at the aim (room-everglade.coax
+// eg_heard_cast, once it is checked): an ability the world runs goes to it (pressed again, one that
+// toggles ends: the world's copy decides, as a page's does). Whether it went.
+ra_cast :: (v: [] RmServer, k: int, seat: int, slot: int, me: EgPose, ax: f32, ay: f32, az: f32) -> bool {
   if !ra_world_slot(slot) { return false; }
-  ab := slot - EG_SP_SLOTS;
-  on := !(ab == RA_REVERSE && v[0].ab[k].rg_on && v[0].ab[k].rg_by == seat);
-  _ := ra_queue(v, k, RaCast.{by = seat, ab = ab, x = me.x, y = me.y, z = me.z, yaw = me.yaw, on = on});
-  return ab == RA_REVERSE;
+  return ra_queue(v, k, RaCast.{by = seat, ab = slot - EG_SP_SLOTS, x = me.x, y = me.y, z = me.z, yaw = me.yaw, on = true, ax = ax, ay = ay, az = az});
 }
-// E: seat `seat` ends what bar slot `slot` holds up. True when it was the world's to end.
+// E: seat `seat` ends what bar slot `slot` holds up in the world. Whether it held one up (as the
+// world said last tick: rm_ra_live).
 ra_end :: (v: [] RmServer, k: int, seat: int, slot: int) -> bool {
-  if !ra_world_slot(slot) { return false; }
-  ab := slot - EG_SP_SLOTS;
-  if ab == RA_REVERSE && !(v[0].ab[k].rg_on && v[0].ab[k].rg_by == seat) { return false; }
-  _ := ra_queue(v, k, RaCast.{by = seat, ab = ab, on = false});
-  return true;
+  if !ra_world_slot(slot) || !v[0].ab[k].live[seat * RA_ABS + slot - EG_SP_SLOTS].on { return false; }
+  me := v[0].eg[k].seat[seat].pose;
+  return ra_queue(v, k, RaCast.{by = seat, ab = slot - EG_SP_SLOTS, x = me.x, y = me.y, z = me.z, yaw = me.yaw, on = false, ax = me.x, ay = me.y, az = me.z});
 }
 
 // ---- the host
@@ -64,19 +75,25 @@ rm_ra_casts :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live
 rm_ra_cast :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
   if !rm_eg_live(v, k) || q < 0 || q >= v[0].ab[k].q_n || out.count < RA_CAST_FLOATS { return; }
   c := v[0].ab[k].q[q];
-  out[0] = f32(c.by); out[1] = f32(c.ab); out[2] = c.x; out[3] = c.y; out[4] = c.z; out[5] = c.yaw; out[6] = ifx c.on then 1.0f32 else 0.0f32; out[7] = 0;
+  out[0] = f32(c.by); out[1] = f32(c.ab); out[2] = c.x; out[3] = c.y; out[4] = c.z; out[5] = c.yaw; out[6] = ifx c.on then 1.0f32 else 0.0f32;
+  out[7] = c.ax; out[8] = c.ay; out[9] = c.az; out[10] = 0;
 }
 rm_ra_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].ab[k].q_n = 0; } }
-// The world's cylinder now: on, whose, where its floor is.
-rm_ra_rg :: (v: [] RmServer, k: int, on: bool, by: int, x: f32, y: f32, z: f32) #export_c {
-  if !rm_eg_live(v, k) { return; }
+// Seat s's ability ab now: up or not, where its last cast was, its facing, and its casts (`epoch`: a
+// new one is a new entity, every page casts it again).
+rm_ra_live :: (v: [] RmServer, k: int, s: int, ab: int, on: bool, x: f32, y: f32, z: f32, yaw: f32, epoch: int) #export_c {
+  if !rm_eg_live(v, k) || s < 0 || s >= EG_SEATS || ab < 0 || ab >= RA_ABS { return; }
   r := v[0].ab[k..<k + 1];
-  // a new one (or one moved) is a new entity: every page starts it again
-  dx := r[0].rg_x - x; dz := r[0].rg_z - z;
-  moved := r[0].rg_on && (dx * dx + dz * dz > 0.0025 || r[0].rg_by != by);
-  if on && (!r[0].rg_on || moved) { r[0].rg_id = RA_ID0 + r[0].next_id; r[0].next_id += 1; }
-  r[0].rg_on = on; r[0].rg_by = ifx on then by else -1; r[0].rg_x = x; r[0].rg_y = y; r[0].rg_z = z;
-  if !on { r[0].rg_id = 0; }
+  l := r[0].live[s * RA_ABS + ab..<s * RA_ABS + ab + 1];
+  if !on { l[0] = RaLive.{}; return; }
+  if !l[0].on || l[0].epoch != epoch { l[0].id = RA_ID0 + r[0].next_id; r[0].next_id += 1; }
+  l[0].on = true; l[0].epoch = epoch; l[0].x = x; l[0].y = y; l[0].z = z; l[0].yaw = yaw;
+}
+// The world's cylinder for seat `by` (rm_ra_live of its Reverse Gravity).
+rm_ra_rg :: (v: [] RmServer, k: int, on: bool, by: int, x: f32, y: f32, z: f32) #export_c {
+  if !rm_eg_live(v, k) || by < 0 || by >= EG_SEATS { return; }
+  l := v[0].ab[k].live[by * RA_ABS + RA_REVERSE];
+  rm_ra_live(v, k, by, RA_REVERSE, on, x, y, z, 0, ifx on && !l.on then l.epoch + 1 else l.epoch);
 }
 // Person j is `m` metres over their feet.
 rm_ra_air :: (v: [] RmServer, k: int, j: int, m: f32) #export_c {
@@ -96,21 +113,27 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
   me := v[0].eg[k].seat[s].pose;
   e: [128] u8;
   if full {
-    r[0].heard_rg[s] = 0;
+    for q: 0..<EG_SEATS * RA_ABS { r[0].heard[s * EG_SEATS * RA_ABS + q] = 0; }
     for j: 0..<E5R_FOLK { r[0].heard_a[s * E5R_FOLK + j] = 0; }
   }
   f := ifx full then 1 else 0;
-  seen := r[0].rg_on && eg_near(me, r[0].rg_x, r[0].rg_z);
-  was := r[0].heard_rg[s];
-  if was != 0 && (was != r[0].rg_id || !seen) {
-    n := wire_put_x(e[..], 0, WireX.{k = 'c', id = was}); eg_out_entry(o, v, k, s, f, cast(string) e[0..<n]);
-    r[0].heard_rg[s] = 0;
-  }
-  if seen && r[0].heard_rg[s] != r[0].rg_id {
-    n := wire_put_c(e[..], 0, WireC.{eid = r[0].rg_id, kind = WK_ZONE, x = r[0].rg_x, y = r[0].rg_y, z = r[0].rg_z, hp = -1, f = 1,
-                                     owner = r[0].rg_by, p1 = RA_REVERSE, p2 = RA_RG_R_CM});
-    eg_out_entry(o, v, k, s, f, cast(string) e[0..<n]);
-    r[0].heard_rg[s] = r[0].rg_id;
+  // every seat's abilities up near you: a new one heard, one gone (or cast again) heard go
+  for q: 0..<EG_SEATS * RA_ABS {
+    l := r[0].live[q];
+    h := s * EG_SEATS * RA_ABS + q;
+    seen := l.on && eg_near(me, l.x, l.z);
+    was := r[0].heard[h];
+    if was != 0 && (was != l.id || !seen) {
+      n := wire_put_x(e[..], 0, WireX.{k = 'c', id = was}); eg_out_entry(o, v, k, s, f, cast(string) e[0..<n]);
+      r[0].heard[h] = 0;
+    }
+    if seen && r[0].heard[h] != l.id {
+      ab := q % RA_ABS;
+      n := wire_put_c(e[..], 0, WireC.{eid = l.id, kind = WK_ZONE, x = l.x, y = l.y, z = l.z, yaw = l.yaw, hp = -1, f = 1,
+                                       owner = q / RA_ABS, p1 = ab, p2 = ifx ab == RA_REVERSE then RA_RG_R_CM else 0});
+      eg_out_entry(o, v, k, s, f, cast(string) e[0..<n]);
+      r[0].heard[h] = l.id;
+    }
   }
   // the townsfolk off their feet, near you: on a change of RA_AIR_CM, and once when they land
   for j: 0..<E5R_FOLK {
@@ -127,7 +150,7 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
   }
 }
 
-#test "everglade room abilities: Reverse Gravity's cast goes to the world, its cylinder is an entity both seats hear, its caster's press again ends it" #steps 2000000000 {
+#test "everglade room abilities: each seat's abilities go to the world and come back as their own entities, two seats' cylinders at once" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);
   rm_clock(v[..], 0, 1762190000000);
@@ -137,50 +160,53 @@ ra_send :: (v: [] RmServer, k: int, s: int, full: bool, o: [] EgOut) {
   k := eg_room_at(v[..], v[0].conns[0].relay);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
-  // seat 0 (at x 0) casts slot 4: the world is handed it, where seat 0 stands
+  // seat 0 casts Reverse Gravity (slot 4): the world is handed it with its aim, the rules roll nothing
   rm_heard(v[..], 0, "C 1 4 0 0 200 -1");
   #assert rm_ra_casts(v[..], k) == 1;
   c: [RA_CAST_FLOATS] f32;
   rm_ra_cast(v[..], k, 0, c[..]);
-  #assert c[0] == 0 && c[1] == f32(RA_REVERSE) && c[6] == 1;
-  // (the rules roll nothing for it)
+  #assert c[0] == 0 && c[1] == f32(RA_REVERSE) && c[6] == 1 && c[9] == 2;
   any := false; for q: 0..<EG_CASTS { if v[0].eg[k].casts[q].on { any = true; } }
   #assert !any;
+  // seat 1 casts Wind Wall (slot 5): the rules roll it and the world runs it too
+  rm_heard(v[..], 1, "C 1 5 0 0 200 -1");
+  #assert rm_ra_casts(v[..], k) == 2;
+  rm_ra_cast(v[..], k, 1, c[..]);
+  #assert c[0] == 1 && c[1] == 1 && c[6] == 1;
   rm_ra_heard(v[..], k);
-  // the world says its cylinder stands there: both seats hear it, owned by seat 0
-  rm_ra_rg(v[..], k, true, 0, 0, 0, 0);
+  // the world says what each seat holds up: both cylinders (seat 1 cast one too) and seat 1's wall
+  rm_ra_live(v[..], k, 0, RA_REVERSE, true, 0, 0, 0, 0, 1);
+  rm_ra_live(v[..], k, 1, RA_REVERSE, true, 3, 0, 0, 0, 1);
+  rm_ra_live(v[..], k, 1, 1, true, 0, 0, 0, 1.5, 1);
   rm_ra_air(v[..], k, 3, 2.5);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 0); b := eg_test_of(box[..], 1);
   #assert eg_test_has(a, "c 900001 24 0 0 0 0 -1 1 0 0 1524") && eg_test_has(b, "c 900001 24 0 0 0 0 -1 1 0 0 1524");
-  #assert eg_test_has(a, "e cast 0 4 ") && eg_test_has(b, "e cast 0 4 ");
+  #assert eg_test_has(a, "c 900002 24 300 0 0 0 -1 1 1 0 1524") && eg_test_has(b, "c 900003 24 0 0 0 150 -1 1 1 1 0");
+  #assert eg_test_has(a, "e cast 0 4 ") && eg_test_has(b, "e cast 1 5 ");
   #assert eg_test_has(b, ";a 3 250");
   // not again while nothing changed
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
-  #assert !eg_test_has(eg_test_of(box[..], 1), "c 900001") && !eg_test_has(eg_test_of(box[..], 1), "a 3");
-  // a joiner's snapshot has it
+  #assert !eg_test_has(eg_test_of(box[..], 1), "c 9000") && !eg_test_has(eg_test_of(box[..], 1), "a 3");
+  // a joiner's snapshot has all three
   #assert rm_join(v[..], 2, ev) == 2;
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 2), "c 900001 24 ") && eg_test_has(eg_test_of(box[..], 2), "a 3 250");
-  // the other seat's E for it isn't the world's; its caster's E and press again both end it
-  #assert !ra_end(v[..], k, 1, 4);
+  j := eg_test_of(box[..], 2);
+  #assert eg_test_has(j, "c 900001 24 ") && eg_test_has(j, "c 900002 24 ") && eg_test_has(j, "c 900003 24 ") && eg_test_has(j, "a 3 250");
+  // seat 0's E goes to the world (its copy ends its own); seat 1's wall cast again is a new entity
   rm_heard(v[..], 0, "E 2 5 4");
   #assert rm_ra_casts(v[..], k) == 1;
   rm_ra_cast(v[..], k, 0, c[..]);
-  #assert c[6] == 0;
+  #assert c[0] == 0 && c[6] == 0;
   rm_ra_heard(v[..], k);
-  for q: 0..<8 { eg_test_tick(v[..], k); }
-  rm_heard(v[..], 0, "C 3 4 0 0 200 -1");
-  rm_ra_cast(v[..], k, 0, c[..]);
-  #assert c[6] == 0;   // (the world's cylinder is still seat 0's: pressing again ends it)
-  rm_ra_heard(v[..], k);
-  // gone: everyone hears it go, and the person land
-  rm_ra_rg(v[..], k, false, -1, 0, 0, 0);
+  rm_ra_live(v[..], k, 0, RA_REVERSE, false, 0, 0, 0, 0, 1);
+  rm_ra_live(v[..], k, 1, 1, true, 0, 0, 0, 1.5, 2);
   rm_ra_air(v[..], k, 3, 0);
   for q: 0..<10 { eg_test_tick(v[..], k); }
   eg_test_drain(v[..], box[..]);
-  #assert eg_test_has(eg_test_of(box[..], 1), "x c 900001") && eg_test_has(eg_test_of(box[..], 1), "a 3 0");
+  b = eg_test_of(box[..], 1);
+  #assert eg_test_has(b, "x c 900001") && !eg_test_has(b, "x c 900002") && eg_test_has(b, "x c 900003") && eg_test_has(b, "c 900004 24 ") && eg_test_has(b, "a 3 0");
 }

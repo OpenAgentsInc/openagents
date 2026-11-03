@@ -1,7 +1,8 @@
 // The everglade rooms' abilities check (room-abilities.coax, #12733): two sockets in one world. A casts
 // Reverse Gravity (bar slot 4) where it stands: both hear the cast (e cast), both get the server's
-// cylinder (c, kind 24, an id from 900000), and the server lifts A: A's own state (p) and the state B
-// hears of A have A over 3 m up within 3 s. A casts it again: both hear it go (x c) and A comes down.
+// cylinder (c, kind 24, an id from 900000, A's), and the server lifts A: A's own state (p) and the state
+// B hears of A have A over 3 m up within 3 s. B casts its own: both hear both cylinders, one each. A
+// casts again: both hear A's go (x c) and B's stay; B's E ends B's, and A comes down.
 //   coax/web/tool.sh coax/web/room/abilities-check.coax [ws://localhost:8830]
 // Prints one JSON line, then "lifts" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
@@ -10,7 +11,8 @@ AC_SEATS :: 2;
 AcHeard :: struct {
   me_x: f32; me_z: f32; me_y: f32; me_y0: f32; me_top: f32; me_seen: bool;    // its own player's height
   other_y: f32; other_top: f32; other_seen: bool;       // the other's
-  cast4: bool; rg: int; rg_gone: bool;                  // e cast of slot 4; the cylinder's id; its x c
+  cast4: bool; rg: int; rg_gone: bool;                  // e cast of slot 4; A's cylinder's id; its x c
+  rg_b: int; rg_b_gone: bool;                           // B's
 }
 ac_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
 ac_entry :: (h: [] AcHeard, me: int, t: string) {
@@ -27,8 +29,17 @@ ac_entry :: (h: [] AcHeard, me: int, t: string) {
     }
     return;
   }
-  if k == "c" && rs_num(rs_field(t, 2)) == 24 && rs_num(rs_field(t, 1)) >= 900000 { h[0].rg = rs_num(rs_field(t, 1)); h[0].rg_gone = false; return; }
-  if k == "x" && rs_field(t, 1) == "c" && h[0].rg > 0 && rs_num(rs_field(t, 2)) == h[0].rg { h[0].rg_gone = true; return; }
+  if k == "c" && rs_num(rs_field(t, 2)) == 24 && rs_num(rs_field(t, 1)) >= 900000 && rs_num(rs_field(t, 10)) == 0 {
+    // whose: field 9, the owner (A is seat 0, B seat 1)
+    if rs_num(rs_field(t, 9)) == 0 { h[0].rg = rs_num(rs_field(t, 1)); h[0].rg_gone = false; } else { h[0].rg_b = rs_num(rs_field(t, 1)); h[0].rg_b_gone = false; }
+    return;
+  }
+  if k == "x" && rs_field(t, 1) == "c" {
+    id := rs_num(rs_field(t, 2));
+    if h[0].rg > 0 && id == h[0].rg { h[0].rg_gone = true; }
+    if h[0].rg_b > 0 && id == h[0].rg_b { h[0].rg_b_gone = true; }
+    return;
+  }
   if k == "e" && rs_field(t, 1) == "cast" && rs_num(rs_field(t, 3)) == 4 { h[0].cast4 = true; }
 }
 // A frame: D's entries (after its header), split on ';'.
@@ -101,12 +112,22 @@ tool_main :: () -> int #export_c {
   }
   cyl_a := h[0].rg; cyl_b := h[1].rg;
   top_a := h[0].me_top; top_b := h[1].other_top;
-  // again: it ends, and A falls back down
+  // B casts its own: both hear two, one each
+  sent = ac_cast(c[..], h[..], seq[..], 1, 4) && sent;
+  sent = ac_steps(c[..], h[..], seq[..], 1000) && sent;
+  two := h[0].rg_b > 0 && h[0].rg_b == h[1].rg_b && h[0].rg_b != h[0].rg && !h[0].rg_gone && !h[1].rg_gone;
+  // A again: A's ends, B's stays; then B's E ends B's, and A falls back down
   sent = ac_cast(c[..], h[..], seq[..], 0, 4) && sent;
+  sent = ac_steps(c[..], h[..], seq[..], 1000) && sent;
+  kept := h[0].rg_gone && h[1].rg_gone && !h[0].rg_b_gone && !h[1].rg_b_gone;
+  seq[1] += 1;
+  m: [64] u8;
+  n := rs_int(m[..], rs_put(m[..], 0, "E "), seq[1]); n = rs_put(m[..], n, " 5 4");
+  sent = relay_conn_send(c[1..<2], cast(string) m[0..<n]) && sent;
   sent = ac_steps(c[..], h[..], seq[..], 4500) && sent;
   down := h[0].me_y < y0 + 0.5 && h[1].other_y < y0 + 0.5;
   _ := relay_conn_close(c[0..<1], 1000); _ = relay_conn_close(c[1..<2], 1000);
-  ok := sent && h[0].cast4 && h[1].cast4 && cyl_a > 0 && cyl_a == cyl_b && lift_ms >= 0 && h[0].rg_gone && h[1].rg_gone && down;
+  ok := sent && h[0].cast4 && h[1].cast4 && cyl_a > 0 && cyl_a == cyl_b && lift_ms >= 0 && two && kept && h[0].rg_b_gone && h[1].rg_b_gone && down;
   out: [1024] u8; o: [1] Jo;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -117,7 +138,10 @@ tool_main :: () -> int #export_c {
   jo_key(o[..], "cylinder_a"); jo_int(o[..], cyl_a);
   jo_key(o[..], "cylinder_b"); jo_int(o[..], cyl_b);
   jo_key(o[..], "cast_heard"); jo_bool(o[..], h[0].cast4 && h[1].cast4);
-  jo_key(o[..], "ended"); jo_bool(o[..], h[0].rg_gone && h[1].rg_gone);
+  jo_key(o[..], "b_cylinder"); jo_int(o[..], h[0].rg_b);
+  jo_key(o[..], "two_at_once"); jo_bool(o[..], two);
+  jo_key(o[..], "a_ended_b_kept"); jo_bool(o[..], kept);
+  jo_key(o[..], "b_ended"); jo_bool(o[..], h[0].rg_b_gone && h[1].rg_b_gone);
   jo_key(o[..], "a_y_after_cm"); jo_int(o[..], cast(int) (h[0].me_y * 100));
   jo_key(o[..], "b_saw_a_after_cm"); jo_int(o[..], cast(int) (h[1].other_y * 100));
   jo_end(o[..]);

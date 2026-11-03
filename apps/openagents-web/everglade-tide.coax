@@ -74,7 +74,9 @@ td_in_cube :: (d: [] Tide, x: f32, z: f32) -> bool {
 // Whether (x, z) is in the open trench: its water stands aside (everglade-face.c: you walk its bed).
 everglade_parted :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c {
   if !sp_on(s) { return false; }
-  d := td_of(s);
+  return td_parted_in(td_of(s), x, z) || eg_ra_parted(s, x, z);   // (and every seat's in a room)
+}
+td_parted_in :: (d: [] Tide, x: f32, z: f32) -> bool {
   w := td_trench_half(d);
   if w <= 0 { return false; }
   return td_off_segment(d[0].part_a, d[0].part_b, x, z) <= w;

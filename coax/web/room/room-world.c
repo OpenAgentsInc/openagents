@@ -177,10 +177,18 @@ void world_fresh(int k) { if (world_of(k)) everglade_room_fresh(at(k)); }
 void world_rebuild(int k) { if (world_of(k)) everglade_room_rebuild(at(k)); }
 
 void world_ability(int k, const float c[WORLD_CAST]) {
-  if (world_of(k)) everglade_room_ability(at(k), (int)c[0], (int)c[1], c[2], c[3], c[4], c[5], c[6] > 0.5f);
+  if (world_of(k)) everglade_room_ability(at(k), (int)c[0], (int)c[1], c[2], c[3], c[4], c[5], c[6] > 0.5f, c[7], c[8], c[9]);
 }
-void world_abilities(int k, float dt) { if (world_of(k)) everglade_room_abilities(at(k), dt); }
-bool world_rg(int k, float out[WORLD_RG]) { return world_of(k) && everglade_room_rg(at(k), (coax_v_f32){out, WORLD_RG}); }
+void world_abilities(int k, float dt) {
+  if (!world_of(k)) return;
+  /* each seat's copy runs where the seat stands */
+  for (int s = 0; s < WORLD_SEATS; s++) {
+    coax_t_Player p = seat_p[k][s];
+    everglade_room_ab_pose(at(k), s, p.pos.x, p.pos.y, p.pos.z, verse_player_face(p));
+  }
+  everglade_room_abilities(at(k), dt);
+}
+bool world_life(int k, int s, int ab, float out[WORLD_LIFE]) { return world_of(k) && everglade_room_life(at(k), s, ab, (coax_v_f32){out, WORLD_LIFE}); }
 float world_air(int k, int i) { return world_of(k) ? everglade_room_air(at(k), i) : 0.0f; }
 int world_hurts(int k) { return world_of(k) ? (int)everglade_room_hurts(at(k)) : 0; }
 bool world_hurt(int k, int q, float out[3]) { return world_of(k) && everglade_room_hurt(at(k), q, (coax_v_f32){out, 3}); }

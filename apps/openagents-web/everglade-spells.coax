@@ -1136,6 +1136,7 @@ sp_put :: (out: [] u8, at: int, text: string) -> int {
   return n;
 }
 sp_say :: (s: [] Everglade, text: string, count: int, what: string) {
+  if eg_ra_copying(s) { return; }   // a seat's copy in a room says nothing on your page
   n := sp_put(s[0].sp.news[..], 0, text);
   if count >= 0 {
     n = sp_put(s[0].sp.news[..], n, " · ");
@@ -1283,7 +1284,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   }
   sp_strikes(s, dt);
   // the abilities' fields over the debris, the people they have up, you (everglade-abilities.coax)
-  if s[0].sp.on { ab_frame(s, dt); } else { w[0].field_n = 0; }
+  if s[0].sp.on { ab_frame(s, dt); eg_ra_frames(s, dt); } else { w[0].field_n = 0; }   // (and every seat's copy in a room)
   // the debris (verse/demolish.coax), its dust, and what grows back
   demo_step_wet(w, everglade_ground(), s[0].heights[..], s[0].water_grid[..], dt);
   if s[0].sp.on { ab_after_step(s); }
@@ -1309,7 +1310,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     if p.state == DP_STANDING && p.hp < p.max_hp { sp_tint(s, i, 0.3 + 0.7 * f32(p.hp) / f32(hi_int(p.max_hp, 1))); }
   }
   sp_draw(s, dt);
-  if s[0].sp.on { ab_draw(s); net_draw(s); }   // and what others' spells left (everglade-net.coax)
+  if s[0].sp.on { ab_draw(s); eg_ra_draws(s); net_draw(s); }   // and what others' spells left (everglade-net.coax)
   watch_on_you_draw(s);   // what holds you (everglade-watch.coax): Hold Person's rings, Earthbind's tendrils, frost
   chimney_smoke(s, s[0].smoke_still);   // the town's wood smoke (everglade-dress.coax)
   wl_draw(s);   // the Warlock's spells' looks (everglade-warlock.coax, aethyr/fx/warlock.coax)

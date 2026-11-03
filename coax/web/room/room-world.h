@@ -41,14 +41,16 @@ void world_strike(int k, int by, int slot, const float from[3], const float to[3
 int world_spells(int k, float dt);
 bool world_event(int k, int q, float out[WORLD_EVENT]);
 void world_rebuild(int k);
-/* The hotbar abilities the world runs (apps/openagents-web/everglade-room-abilities.coax, #12718): a cast
-   or an end, BY AB X Y Z YAW ON (room-abilities.coax rm_ra_cast); a step; Reverse Gravity's cylinder ON
-   X Y Z T BY; how high person i is; the falls' damage, q's PERSON AMOUNT SEAT. */
-#define WORLD_CAST 8
-#define WORLD_RG 6
+/* The hotbar abilities the world runs (apps/openagents-web/everglade-room-abilities.coax, #12718, #12733),
+   each seat its own copy: a cast or an end, BY AB X Y Z YAW ON AX AY AZ (room-abilities.coax rm_ra_cast);
+   a step (every seat's copy where the seat stands); seat s's ability ab, ON X Y Z YAW EPOCH; how high
+   person i is; the falls' damage, q's PERSON AMOUNT SEAT. */
+#define WORLD_CAST 11
+#define WORLD_LIFE 6
+#define WORLD_ABS 48
 void world_ability(int k, const float c[WORLD_CAST]);
 void world_abilities(int k, float dt);
-bool world_rg(int k, float out[WORLD_RG]);
+bool world_life(int k, int s, int ab, float out[WORLD_LIFE]);
 float world_air(int k, int i);
 int world_hurts(int k);
 bool world_hurt(int k, int q, float out[3]);

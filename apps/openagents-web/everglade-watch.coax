@@ -999,6 +999,7 @@ EG_ROOM_EV_FLOATS :: 5;   // KIND PIECE A B C: KIND 1 a break (A B C its throw, 
 everglade_room_spells_start :: (s: [] Everglade, dm: [] DemoWorld, catalog: string) #export_c {
   if !s[0].started { everglade_start(s); }
   s[0].sp.on = true; s[0].wv.net = true;
+  eg_ra_server_start(s);
   everglade_attach_demolish(s, dm);
   spells_catalog(s, catalog);
   eg_room_known(s);

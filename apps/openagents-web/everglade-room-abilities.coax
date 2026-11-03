@@ -1,24 +1,47 @@
-// The room server's hotbar abilities (GitHub #12718; spec docs/verse/2026-11-03-everglade-multiplayer-spec.md
-// section 3.1): the server's headless Everglade (coax/web/room/room-world.c) runs an ability's effect
-// with the page's own code (everglade-abilities.coax), as a page runs it offline, at the caster's place:
-// the seats' steps (everglade-move.coax everglade_move_after, everglade_lift) and the town's people feel
-// it here, and every page hears it as a server entity (coax/web/room/room-abilities.coax) and draws it.
+// The room's hotbar abilities (GitHub #12718, #12733; spec docs/verse/2026-11-03-everglade-multiplayer-spec.md
+// section 3.1). Every seat casts with its own copy of the abilities' state (EgRaSeat: Reverse Gravity,
+// the walls, Gust, Telekinesis, the tentacles, frost, tide, the grove's and the circle's spells), run
+// by the page's own code (everglade-abilities.coax and the files it loads) with that seat as "you", as
+// a page runs its own offline. So each caster has their own cylinder, walls and fields, as many as
+// they would offline, and several seats' stand at once.
 //
-// Reverse Gravity: one cylinder a room (the last cast's; its caster's press ends it). The server rolls
-// each townsperson's save, lifts them, lets them fall and deals the fall's damage (through the room's
-// rules, EG_RA_HURTS); the crimes are the caster's. Pages draw the cylinder and its motes from the
-// entity, lift their own debris in it and predict your lift with the same everglade_lift.
-// Loose props stay standing on the server (its pieces don't fly; a page's own debris does).
+// The server (coax/web/room/room-world.c): its headless Everglade runs each seat's copy at the seat's
+// place. The seats' steps (everglade_lift, the stone panels' bodies, parted water) feel every copy;
+// the town's people too. The room's rules roll each spell's SRD damage (everglade5e-room-rules.coax),
+// so the copies' harm is held back (EG_RA_PAD) except the falls their lifts cause, which go to the
+// rules (everglade_room_hurt). Every copy's live abilities are entities every page hears
+// (coax/web/room/room-abilities.coax).
+//
+// A page in a room: the same copies, one a seat, played from the server's casts (e cast, at the time
+// its caster is drawn) and kept to the server's entities: one the page lacks is cast (a late joiner),
+// one gone is ended, one far from where the server has it is cast again there. They draw, lift your
+// step and move the page's debris as the server's; the saves, lifts and harm are the server's.
 
 EG_RA_HURTS :: 16;
-EG_RA_PAD :: 1000000;     // Hit Points the watch's people hold while the world's abilities harm them (the rules deal it)
-EG_RA_STATE :: 6;          // ON X Y Z T BY: the cylinder for the room (everglade_room_rg)
-EG_RA_LATER :: 16;         // strikes waiting on their cast bars
+EG_RA_PAD :: 1000000;     // Hit Points the watch's people hold while a copy runs (the rules deal the harm)
+EG_RA_LATER :: 16;        // strikes waiting on their cast bars
+EG_RA_SEATS :: 16;        // a copy a seat (room-everglade.coax EG_SEATS)
+EG_RA_LIFE :: 6;          // a live ability's ON X Y Z YAW EPOCH (everglade_room_life)
+EG_RA_REST :: 30.0;       // s after its last cast with nothing up that a copy stops running
+EG_RA_MOVED :: 1.0;       // m between the page's cast and the server's that casts it again
 EgRaStrike :: struct { by: int; slot: int; from: Point; at: Point; seed: int; t: f32; }
+EgRaSeat :: struct {
+  used: bool; quiet: f32;                   // started; s since its last cast with nothing up
+  ab: [1] Abilities; fr: [1] Frost; td: [1] Tide; gv: [1] Grove; wd: [1] Wild; ci: [1] Circle; st: [1] Storm; po: [1] Polar; rb: [1] Rubble;
+  armed: int = -1; aim: Point; aim_n: Point; aim_ok: bool;
+  at: Point; face: f32; posed: bool;        // where it stands now (the server's, or as the page draws it)
+  live: [AB_N] bool;                        // what each ability holds up
+  cast_at: [AB_N] Point; cast_face: [AB_N] f32;   // where each last cast was (the caster, or the aim)
+  epoch: [AB_N] int;                        // each one's casts (a new one is a new entity)
+  heard: [AB_N] int;                        // a page's: the entity it was kept to (0 none)
+}
 EgRoomAb :: struct {
   later: [EG_RA_LATER] EgRaStrike; later_n: int;   // Everglade's four's strikes, each its cast bar's time to go
-  rg_by: int = -1;         // the seat whose cylinder it is
   hurt_i: [EG_RA_HURTS] int; hurt_n_: [EG_RA_HURTS] int; hurt_by: [EG_RA_HURTS] int; hurts: int;
+  seat: [EG_RA_SEATS] EgRaSeat;
+  in_copy: int;            // the seat whose copy is in the Everglade now, + 1 (0 none: a host's zeroed Everglade is none)
+  server: bool;            // the room server's world
+  people_apart: bool;      // ab_frame leaves ab_people to the caller (the server keeps the falls' harm)
 }
 
 // A strike of one of Everglade's four (everglade-watch.coax everglade_room_strike) that falls in t s.
@@ -41,91 +64,233 @@ eg_ra_strikes_due :: (s: [] Everglade, dt: f32) {
   }
 }
 
-// Run f as seat `by` standing at (x, y, z) facing yaw: the world's "you" and the watch's player are theirs.
-EgRaYou :: struct { feet: Point; face: f32; me: int; }
-eg_ra_as :: (s: [] Everglade, by: int, x: f32, y: f32, z: f32, yaw: f32) -> EgRaYou {
-  was := EgRaYou.{feet = s[0].feet, face = s[0].face, me = s[0].wt[0].me};
-  s[0].feet = v3(x, y - walk_at(s, x, z), z); s[0].face = yaw;
-  s[0].wt[0].me = clamp_w(by, 0, WATCH_YOUS - 1);
+// ---- which abilities the copies run
+
+// Every ability a page sends the server (everglade-net.coax net_shared), but Conjure Animals and
+// Polymorph: their creatures are the rules' (the room's battle).
+eg_ra_world :: (k: int) -> bool { return k >= 0 && k < AB_N && !net_self_ability(k) && k != AB_CONJURE && k != AB_POLYMORPH; }
+eg_ra_copying :: (s: [] Everglade) -> bool { return s[0].sp.room_ab[0].in_copy > 0; }
+
+// The seat's facing toward the aim (a press goes out aimed 2 m ahead of you), else `face`.
+eg_ra_facing :: (at: Point, aim: Point, face: f32) -> f32 {
+  dx := aim.x - at.x; dz := aim.z - at.z;
+  return ifx dx * dx + dz * dz > 0.25 then atan2(dx, dz) else face;
+}
+
+// ---- a seat's copy in and out of the Everglade
+
+eg_ra_swap :: (s: [] Everglade, q: int) {
+  c := s[0].sp.room_ab[0].seat[q..<q + 1];
+  ab := s[0].sp.ab[0]; s[0].sp.ab[0] = c[0].ab[0]; c[0].ab[0] = ab;
+  fr := s[0].sp.fr[0]; s[0].sp.fr[0] = c[0].fr[0]; c[0].fr[0] = fr;
+  td := s[0].sp.td[0]; s[0].sp.td[0] = c[0].td[0]; c[0].td[0] = td;
+  gv := s[0].sp.gv[0]; s[0].sp.gv[0] = c[0].gv[0]; c[0].gv[0] = gv;
+  wd := s[0].sp.wd[0]; s[0].sp.wd[0] = c[0].wd[0]; c[0].wd[0] = wd;
+  ci := s[0].sp.ci[0]; s[0].sp.ci[0] = c[0].ci[0]; c[0].ci[0] = ci;
+  st := s[0].sp.st[0]; s[0].sp.st[0] = c[0].st[0]; c[0].st[0] = st;
+  po := s[0].sp.po[0]; s[0].sp.po[0] = c[0].po[0]; c[0].po[0] = po;
+  rb := s[0].sp.rb[0]; s[0].sp.rb[0] = c[0].rb[0]; c[0].rb[0] = rb;
+  armed := s[0].sp.armed; s[0].sp.armed = c[0].armed; c[0].armed = armed;
+  aim := s[0].sp.aim; s[0].sp.aim = c[0].aim; c[0].aim = aim;
+  aim_n := s[0].sp.aim_n; s[0].sp.aim_n = c[0].aim_n; c[0].aim_n = aim_n;
+  aim_ok := s[0].sp.aim_ok; s[0].sp.aim_ok = c[0].aim_ok; c[0].aim_ok = aim_ok;
+}
+EgRaYou :: struct { feet: Point; face: f32; me: int; ok: bool; }
+// Seat q's copy in the Everglade, standing at (world) `at` facing `face`: it is "you" and the watch's player.
+eg_ra_in :: (s: [] Everglade, q: int, at: Point, face: f32) -> EgRaYou {
+  r := s[0].sp.room_ab[..];
+  if q < 0 || q >= EG_RA_SEATS || r[0].in_copy > 0 || !finite(at.x) || !finite(at.z) { return EgRaYou.{}; }
+  was := EgRaYou.{feet = s[0].feet, face = s[0].face, me = s[0].wt[0].me, ok = true};
+  eg_ra_swap(s, q);
+  r[0].in_copy = q + 1;
+  s[0].feet = v3(at.x, at.y - walk_at(s, at.x, at.z), at.z); s[0].face = face;
+  s[0].wt[0].me = clamp_w(q, 0, WATCH_YOUS - 1);
+  if !r[0].seat[q].used { ab_start(s); s[0].sp.armed = -1; r[0].seat[q].used = true; }
   return was;
 }
-eg_ra_back :: (s: [] Everglade, was: EgRaYou) { s[0].feet = was.feet; s[0].face = was.face; s[0].wt[0].me = was.me; }
-
-// Seat `by` casts ability k (AB_*) standing at (x, y, z) facing yaw, or (on false) ends what it holds up.
-everglade_room_ability :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: f32, yaw: f32, on: bool) #export_c {
-  if !sp_on(s) || !finite(x) || !finite(z) { return; }
-  a := ab_of(s);
+eg_ra_out :: (s: [] Everglade, q: int, was: EgRaYou) {
+  if !was.ok { return; }
   r := s[0].sp.room_ab[..];
-  if k == AB_REVERSE {
-    if !on {
-      if a[0].rg_on && r[0].rg_by == by { a[0].rg_on = false; ab_fall_all(s); r[0].rg_by = -1; }
-      return;
-    }
-    was := eg_ra_as(s, by, x, y, z, yaw);
-    if a[0].rg_on { a[0].rg_on = false; }   // one a room: the new one takes its place
-    _ := ab_rg_open(s, false);
-    r[0].rg_by = by;
-    lifted := ab_rg_entries(s);
-    if lifted > 0 && watch_on(s) {
-      _ = watch_crime(watch_w(s), a[0].rg_at, f32(AB_HEAR_RG), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]);
-    }
-    eg_ra_back(s, was);
-    return;
+  for k: 0..<AB_N { r[0].seat[q].live[k] = eg_ra_world(k) && eg_ra_holds(s, k); }
+  s[0].feet = was.feet; s[0].face = was.face; s[0].wt[0].me = was.me;
+  eg_ra_swap(s, q);
+  r[0].in_copy = 0;
+}
+
+// What ability k holds up in the Everglade's state now (a copy in it).
+eg_ra_holds :: (s: [] Everglade, k: int) -> bool {
+  a := ab_of(s); fr := fr_of(s); td := td_of(s); gv := gv_of(s);
+  wd := s[0].sp.wd[..]; ci := s[0].sp.ci[..]; st := s[0].sp.st[..]; po := s[0].sp.po[..];
+  if k == AB_REVERSE { return a[0].rg_on; }
+  if k == AB_WIND { for q: 0..<AB_WALLS { if a[0].walls[q].live { return true; } } return false; }
+  if k == AB_GUST { return a[0].gust_on; }
+  if k == AB_STONE { for q: 0..<AB_STONES { if a[0].stones[q].live { return true; } } return false; }
+  if k == AB_TK { return a[0].tk_kind != AB_TK_NONE; }
+  if k == AB_TENTACLES { return a[0].bt_on; }
+  if k == AB_STORM { return fr[0].storm_on; }
+  if k == AB_SLEET { return fr[0].sleet_on; }
+  if k == AB_CONTROL { return td[0].on; }
+  if k == AB_CREATE { return td[0].rain_on || td[0].vapor_on; }
+  if k == AB_MOON { return gv[0].mb_on; }
+  if k == AB_FLAME { return gv[0].pf_on; }
+  if k == AB_SHILLELAGH { return gv[0].sh_on; }
+  if k == AB_ENTANGLE { return gv[0].en_on; }
+  if k == AB_FAERIE { return wd[0].ff_on; }
+  if k == AB_SPIKE { return wd[0].sg_on; }
+  if k == AB_CALL { return wd[0].cl_on; }
+  if k == AB_WALLFIRE { return wd[0].wf_on; }
+  if k == AB_SUNBEAM { return ci[0].sb_on; }
+  if k == AB_THORNS { return ci[0].wt_on; }
+  if k == AB_VENGEANCE { return st[0].sv_on; }
+  if k == AB_FOG { return po[0].fog_on; }
+  if k == AB_HOLD { return po[0].hp_on; }
+  return false;
+}
+// Ends what ability k holds up (its caster's E, or its entity gone from a page).
+eg_ra_drop :: (s: [] Everglade, k: int) {
+  if !eg_ra_holds(s, k) { return; }
+  a := ab_of(s);
+  if k == AB_REVERSE { a[0].rg_on = false; ab_fall_all(s); return; }
+  if k == AB_WIND { for q: 0..<AB_WALLS { a[0].walls[q].live = false; } return; }
+  if k == AB_GUST { a[0].gust_on = false; return; }
+  if k == AB_STONE { for q: 0..<AB_STONES { a[0].stones[q].live = false; } return; }
+  if k == AB_TK { ab_tk_release(s); return; }
+  if k == AB_TENTACLES { ab_bt_end(s); return; }
+  if k == AB_STORM { fr_of(s)[0].storm_on = false; return; }
+  if k == AB_SLEET { fr_sleet_end(s); return; }
+  if k == AB_CONTROL { td_control_end(s); return; }
+  if k == AB_CREATE { td_of(s)[0].rain_on = false; td_of(s)[0].vapor_on = false; return; }
+  if k == AB_MOON { gv_mb_end(s); return; }
+  if k == AB_FLAME { gv_of(s)[0].pf_on = false; return; }
+  if k == AB_SHILLELAGH { gv_of(s)[0].sh_on = false; return; }
+  if k == AB_ENTANGLE { gv_en_end(s); return; }
+  if k == AB_FAERIE { wd_ff_end(s); return; }
+  if k == AB_SPIKE { s[0].sp.wd[0].sg_on = false; return; }
+  if k == AB_CALL { s[0].sp.wd[0].cl_on = false; return; }
+  if k == AB_WALLFIRE { s[0].sp.wd[0].wf_on = false; return; }
+  if k == AB_SUNBEAM { s[0].sp.ci[0].sb_on = false; return; }
+  if k == AB_THORNS { s[0].sp.ci[0].wt_on = false; return; }
+  if k == AB_VENGEANCE { st_sv_end(s); return; }
+  if k == AB_FOG { s[0].sp.po[0].fog_on = false; return; }
+  if k == AB_HOLD { po_hp_end(s); return; }
+}
+// A cast of ability k in the Everglade (a copy in it), as its slot's press does on a page: one you
+// point with is picked (its press, as the page's was) and cast at `aim`; any other is pressed.
+eg_ra_use :: (s: [] Everglade, k: int, aim: Point) {
+  b := SP_SLOTS + k;
+  if !ab_aimed(k) { s[0].sp.armed = -1; ab_press(s, k); return; }
+  if s[0].sp.armed != b { ab_press(s, k); s[0].sp.armed = b; }
+  s[0].sp.aim = aim; s[0].sp.aim_n = v3(0, 1, 0); s[0].sp.aim_ok = true;
+  ab_cast(s, k);
+}
+
+// The watch's people's Hit Points through a copy's step: held far over 0 (the watch kills no one), and
+// what it took is put back, the rules' to deal; with `keep`, what each lost is kept as a hurt of seat q.
+EgRaHp :: struct { hp: [WATCH_ACTORS] int; }
+eg_ra_hp_pad :: (s: [] Everglade) -> EgRaHp {
+  h: EgRaHp;
+  if !watch_on(s) { return h; }
+  w := watch_w(s);
+  for i: 0..<WATCH_ACTORS { if w[0].actors[i].mode != WM_DEAD { w[0].actors[i].hp += EG_RA_PAD; } h.hp[i] = w[0].actors[i].hp; }
+  return h;
+}
+eg_ra_hp_back :: (s: [] Everglade, h: EgRaHp, keep: bool, q: int) {
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  r := s[0].sp.room_ab[..];
+  for i: 0..<WATCH_ACTORS {
+    lost := h.hp[i] - w[0].actors[i].hp;
+    if w[0].actors[i].mode != WM_DEAD { w[0].actors[i].hp = h.hp[i] - EG_RA_PAD; }
+    if !keep || lost <= 0 || r[0].hurts >= EG_RA_HURTS { continue; }
+    n := r[0].hurts;
+    r[0].hurt_i[n] = i; r[0].hurt_n_[n] = lost; r[0].hurt_by[n] = q; r[0].hurts = n + 1;
   }
 }
 
-// The abilities for dt: the cylinder's minute, the saves of whoever walks in, the people it has up
-// (and the damage they take landing, for the rules: everglade_room_hurt).
+// ---- the server
+
+// The server's world (everglade-watch.coax everglade_room_spells_start).
+eg_ra_server_start :: (s: [] Everglade) { s[0].sp.room_ab[0].server = true; }
+// Seat `by` stands at (x, y, z) facing yaw (world feet), each tick before everglade_room_abilities.
+everglade_room_ab_pose :: (s: [] Everglade, by: int, x: f32, y: f32, z: f32, yaw: f32) #export_c {
+  if by < 0 || by >= EG_RA_SEATS || !finite(x) || !finite(y) || !finite(z) { return; }
+  c := s[0].sp.room_ab[0].seat[by..<by + 1];
+  c[0].at = v3(x, y, z); c[0].face = yaw; c[0].posed = true;
+}
+// Seat `by` casts ability k (AB_*) standing at (x, y, z) facing yaw at the aim (ax, ay, az), or (on
+// false) ends what it holds up.
+everglade_room_ability :: (s: [] Everglade, by: int, k: int, x: f32, y: f32, z: f32, yaw: f32, on: bool, ax: f32, ay: f32, az: f32) #export_c {
+  if !sp_on(s) || !eg_ra_world(k) || by < 0 || by >= EG_RA_SEATS || !finite(x) || !finite(z) { return; }
+  r := s[0].sp.room_ab[..];
+  aim := v3(ax, ay, az);
+  if !finite(ax) || !finite(az) { aim = v3(x, y, z); }
+  at := v3(x, y, z);
+  face := eg_ra_facing(at, aim, yaw);
+  r[0].seat[by].at = at; r[0].seat[by].face = face; r[0].seat[by].posed = true;
+  was := eg_ra_in(s, by, at, face);
+  if !was.ok { return; }
+  h := eg_ra_hp_pad(s);
+  if on {
+    eg_ra_use(s, k, aim);
+    c := r[0].seat[by..<by + 1];
+    c[0].cast_at[k] = ifx ab_aimed(k) then aim else at; c[0].cast_face[k] = face; c[0].epoch[k] += 1; c[0].quiet = 0;
+  } else {
+    eg_ra_drop(s, k);
+  }
+  eg_ra_hp_back(s, h, false, by);
+  eg_ra_out(s, by, was);
+}
+// Whether seat q's copy still runs: something up, someone off their feet, or a cast in the last EG_RA_REST s.
+eg_ra_busy :: (c: [] EgRaSeat) -> bool {
+  if !c[0].used { return false; }
+  for k: 0..<AB_N { if c[0].live[k] { return true; } }
+  for i: 0..<WATCH_ACTORS { if c[0].ab[0].up[i] { return true; } }
+  return c[0].quiet < f32(EG_RA_REST);
+}
+// The abilities for dt: every seat's copy at its seat's place, the falls' harm kept for the rules.
 everglade_room_abilities :: (s: [] Everglade, dt: f32) #export_c {
   if !sp_on(s) || !(dt > 0) { return; }
-  a := ab_of(s);
   r := s[0].sp.room_ab[..];
   r[0].hurts = 0;
-  if a[0].rg_on {
-    a[0].rg_t += dt;
-    if a[0].rg_t >= f32(AB_RG_LIFE) { a[0].rg_on = false; ab_fall_all(s); }
-  }
-  by := ifx r[0].rg_by >= 0 then r[0].rg_by else 0;
-  was := eg_ra_as(s, by, s[0].feet.x, s[0].feet.y + walk_at(s, s[0].feet.x, s[0].feet.z), s[0].feet.z, s[0].face);
-  if a[0].rg_on && cast(int) (a[0].rg_t * 4) != cast(int) ((a[0].rg_t - dt) * 4) {
-    n := ab_rg_entries(s);
-    if n > 0 && watch_on(s) { _ := watch_crime(watch_w(s), a[0].rg_at, f32(AB_HEAR_RG), a[0].rg_at, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
-  }
-  // the falls' damage: the watch's Hit Points are the rules' (everglade_room_folk_hp), so what a landing
-  // took goes to the rules and back
-  if watch_on(s) {
-    w := watch_w(s);
-    // (held far over 0 while they land, so the watch kills no one: the rules decide)
-    for i: 0..<WATCH_ACTORS { if w[0].actors[i].mode != WM_DEAD { w[0].actors[i].hp += EG_RA_PAD; } }
-    before: [WATCH_ACTORS] int;
-    for i: 0..<WATCH_ACTORS { before[i] = w[0].actors[i].hp; }
+  for q: 0..<EG_RA_SEATS {
+    c := r[0].seat[q..<q + 1];
+    if !eg_ra_busy(c) { continue; }
+    c[0].quiet += dt;
+    was := eg_ra_in(s, q, c[0].at, c[0].face);
+    if !was.ok { continue; }
+    h := eg_ra_hp_pad(s);
+    r[0].people_apart = true;
+    ab_frame(s, dt);
+    r[0].people_apart = false;
+    eg_ra_hp_back(s, h, false, q);
+    // the people its lifts have up, and the falls' damage (the rules deal it)
+    h = eg_ra_hp_pad(s);
     ab_people(s, dt);
-    for i: 0..<WATCH_ACTORS {
-      lost := before[i] - w[0].actors[i].hp;
-      if w[0].actors[i].mode != WM_DEAD { w[0].actors[i].hp = before[i] - EG_RA_PAD; }
-      if lost <= 0 || r[0].hurts >= EG_RA_HURTS { continue; }
-      q := r[0].hurts;
-      r[0].hurt_i[q] = i; r[0].hurt_n_[q] = lost; r[0].hurt_by[q] = by; r[0].hurts = q + 1;
-    }
+    eg_ra_hp_back(s, h, true, q);
+    eg_ra_out(s, q, was);
   }
-  eg_ra_back(s, was);
-  if !a[0].rg_on { r[0].rg_by = -1; }
 }
-// The cylinder: ON X Y Z T BY (EG_RA_STATE).
-everglade_room_rg :: (s: [] Everglade, out: [] f32) -> bool #export_c {
-  if out.count < EG_RA_STATE || !sp_on(s) { return false; }
-  a := ab_of(s);
-  out[0] = ifx a[0].rg_on then 1.0f32 else 0.0f32;
-  out[1] = a[0].rg_at.x; out[2] = a[0].rg_at.y; out[3] = a[0].rg_at.z; out[4] = a[0].rg_t; out[5] = f32(s[0].sp.room_ab[0].rg_by);
-  return a[0].rg_on;
+// Seat q's ability k: ON X Y Z YAW EPOCH (where its last cast was: the caster, or the aim). Whether it is up.
+everglade_room_life :: (s: [] Everglade, q: int, k: int, out: [] f32) -> bool #export_c {
+  if !sp_on(s) || q < 0 || q >= EG_RA_SEATS || k < 0 || k >= AB_N || out.count < EG_RA_LIFE { return false; }
+  c := s[0].sp.room_ab[0].seat[q];
+  on := c.used && c.live[k];
+  out[0] = ifx on then 1.0f32 else 0.0f32;
+  p := c.cast_at[k];
+  out[1] = p.x; out[2] = p.y; out[3] = p.z; out[4] = c.cast_face[k]; out[5] = f32(c.epoch[k]);
+  return on;
 }
-// How high over their feet person i is (m): off their feet, or 0.
+// How high over their feet person i is (m), the highest any copy has them, or 0.
 everglade_room_air :: (s: [] Everglade, i: int) -> f32 #export_c {
   if !sp_on(s) || i < 0 || i >= WATCH_ACTORS { return 0; }
-  a := ab_of(s);
-  return ifx a[0].up[i] then a[0].air[i] else 0.0f32;
+  top := 0.0f32;
+  for q: 0..<EG_RA_SEATS {
+    c := s[0].sp.room_ab[0].seat[q..<q + 1];
+    if c[0].used && c[0].ab[0].up[i] { top = hi(top, c[0].ab[0].air[i]); }
+  }
+  return top;
 }
-// The damage the abilities dealt this step, q's PERSON AMOUNT SEAT, while q < the count.
+// The damage the falls dealt this step, q's PERSON AMOUNT SEAT, while q < the count.
 everglade_room_hurts :: (s: [] Everglade) -> int #export_c { return ifx sp_on(s) then s[0].sp.room_ab[0].hurts else 0; }
 everglade_room_hurt :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c {
   r := s[0].sp.room_ab[..];
@@ -134,48 +299,209 @@ everglade_room_hurt :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c 
   return true;
 }
 
-// ---- a page in a room: the server's Reverse Gravity is drawn and felt here as on the server
+// ---- what every copy does to a step (everglade-abilities.coax everglade_lift, ab_stone_bodies, everglade-tide.coax everglade_parted)
 
-// The server's cylinder (its entity, everglade-net.coax), or none: this page's own cylinder follows it,
-// without the saves, lifts and crimes, which are the server's. Its debris rises in it.
-ab_rg_follow :: (s: [] Everglade, on: bool, at: Point, age: f32) {
-  a := ab_of(s);
-  if !on {
-    if a[0].rg_on { a[0].rg_on = false; ab_fall_all(s); }
-    return;
+// The first copy whose field moves a step at (x, z) (the moving seat's own Levitate and Feather Fall
+// with it), else none. Off while a copy is in the Everglade (its own is the Everglade's then).
+eg_ra_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, vy1: f32, dt: f32) -> SpLift {
+  out := SpLift.{on = false, y = y1, vy = vy1, dx = 0, dz = 0};
+  r := s[0].sp.room_ab[..];
+  if r[0].in_copy > 0 { return out; }
+  for q: 0..<EG_RA_SEATS {
+    if !r[0].seat[q].used { continue; }
+    l := ab_lift_of(s, r[0].seat[q].ab[..], x, z, y0, vy0, y1, vy1, dt, r[0].server && q == s[0].wt[0].me);
+    if l.on { return l; }
   }
-  moved := !a[0].rg_on || abs(a[0].rg_at.x - at.x) + abs(a[0].rg_at.z - at.z) > 0.05;
-  if moved {
-    was := s[0].feet;
-    s[0].feet = v3(at.x, at.y - walk_at(s, at.x, at.z), at.z);
-    _ := ab_rg_open(s, true);
-    s[0].feet = was;
-  }
-  // its minute is the server's: never ended here
-  a[0].rg_t = lo(hi(age, 0), f32(AB_RG_LIFE) - 0.5);
+  return out;
+}
+eg_ra_stone_bodies :: (s: [] Everglade, out: [] f32, at: int) -> int {
+  r := s[0].sp.room_ab[..];
+  if r[0].in_copy > 0 { return 0; }
+  n := 0;
+  for q: 0..<EG_RA_SEATS { if r[0].seat[q].used { n += ab_stone_bodies_of(r[0].seat[q].ab[..], out, at + n); } }
+  return n;
+}
+eg_ra_parted :: (s: [] Everglade, x: f32, z: f32) -> bool {
+  r := s[0].sp.room_ab[..];
+  if r[0].in_copy > 0 { return false; }
+  for q: 0..<EG_RA_SEATS { if r[0].seat[q].used && td_parted_in(r[0].seat[q].td[..], x, z) { return true; } }
+  return false;
 }
 
-#test "room abilities: a seat's Reverse Gravity lifts the seat stepped in it and the townsfolk, and pressing again ends it" #steps 3000000000 {
+// ---- a page in a room
+
+// Seat q's copy plays the server's cast of ability k (e cast, everglade-net.coax), the seat standing at
+// `at` facing `face`, aimed at `aim`.
+eg_ra_play :: (s: [] Everglade, q: int, k: int, at: Point, face: f32, aim: Point) {
+  if !eg_ra_world(k) { return; }
+  was := eg_ra_in(s, q, at, face);
+  if !was.ok { return; }
+  eg_ra_use(s, k, aim);
+  c := s[0].sp.room_ab[0].seat[q..<q + 1];
+  c[0].cast_at[k] = ifx ab_aimed(k) then aim else at; c[0].cast_face[k] = face; c[0].quiet = 0;
+  eg_ra_out(s, q, was);
+}
+// Seat q's ability k as the server has it: up at `p` facing `face` (entity `id`), or not (id 0). One
+// up there the page lacks (or has more than EG_RA_MOVED off) is cast there; one not up there is ended.
+eg_ra_keep :: (s: [] Everglade, q: int, k: int, id: int, p: Point, face: f32, at: Point, at_face: f32) {
+  if q < 0 || q >= EG_RA_SEATS || !eg_ra_world(k) { return; }
+  c := s[0].sp.room_ab[0].seat[q..<q + 1];
+  if id == 0 {
+    if c[0].heard[k] != 0 && c[0].used && c[0].live[k] {
+      was := eg_ra_in(s, q, at, at_face);
+      if was.ok { eg_ra_drop(s, k); eg_ra_out(s, q, was); }
+    }
+    c[0].heard[k] = 0;
+    return;
+  }
+  if c[0].heard[k] == id { return; }
+  c[0].heard[k] = id;
+  off := flat_gap(c[0].cast_at[k], p);
+  if c[0].used && c[0].live[k] && off <= f32(EG_RA_MOVED) { return; }
+  if c[0].used && c[0].live[k] {
+    was := eg_ra_in(s, q, at, at_face);
+    if was.ok { eg_ra_drop(s, k); eg_ra_out(s, q, was); }
+  }
+  if ab_aimed(k) { eg_ra_play(s, q, k, at, eg_ra_facing(at, p, face), p); }
+  else { eg_ra_play(s, q, k, p, face, add(p, times(v3(sin(face), 0, cos(face)), 2))); }
+}
+// Each frame (everglade-spells.coax, after your own ab_frame): every seat's copy for dt where its seat
+// is drawn, its fields over the page's debris with yours.
+eg_ra_frames :: (s: [] Everglade, dt: f32) {
+  r := s[0].sp.room_ab[..];
+  if r[0].server || !net_live(s) { return; }
+  w := sp_dm(s);
+  fields: [DEMO_FIELDS] DemoField; fn := w[0].field_n;
+  for f: 0..<fn { fields[f] = w[0].fields[f]; }
+  for q: 0..<EG_RA_SEATS {
+    c := r[0].seat[q..<q + 1];
+    if !eg_ra_busy(c) { continue; }
+    c[0].quiet += dt;
+    pose: [4] f32;
+    if net_seat_pose(s, q, pose[..]) { c[0].at = v3(pose[0], pose[1], pose[2]); c[0].face = pose[3]; }
+    was := eg_ra_in(s, q, c[0].at, c[0].face);
+    if !was.ok { continue; }
+    ab_frame(s, dt);
+    for f: 0..<w[0].field_n { if fn < DEMO_FIELDS { fields[fn] = w[0].fields[f]; fn += 1; } }
+    eg_ra_out(s, q, was);
+  }
+  for f: 0..<fn { w[0].fields[f] = fields[f]; }
+  w[0].field_n = fn;
+}
+// Each frame's drawing (after your own ab_draw): every seat's copy.
+eg_ra_draws :: (s: [] Everglade) {
+  r := s[0].sp.room_ab[..];
+  if r[0].server || !net_live(s) { return; }
+  for q: 0..<EG_RA_SEATS {
+    c := r[0].seat[q..<q + 1];
+    if !c[0].used { continue; }
+    was := eg_ra_in(s, q, c[0].at, c[0].face);
+    if !was.ok { continue; }
+    s[0].sp.armed = -1;   // (its picked square is its own page's)
+    ab_draw(s);
+    eg_ra_out(s, q, was);
+  }
+}
+// Whether seat q's copy draws ability k now (the server's zone or entity for it then isn't drawn).
+eg_ra_drawn :: (s: [] Everglade, q: int, k: int) -> bool {
+  if q < 0 || q >= EG_RA_SEATS || k < 0 || k >= AB_N { return false; }
+  c := s[0].sp.room_ab[0].seat[q];
+  return c.used && c.live[k];
+}
+
+#test "room abilities: two seats' Reverse Gravity stand at once, each lifts what is in it, each caster's press ends only theirs" #steps 3000000000 {
   s: [1] Everglade;
   dm: [1] DemoWorld;
   everglade_room_spells_start(s[..], dm[..], "");
-  a := ab_of(s[..]);
   g := walk_at(s[..], 4, 4);
-  everglade_room_ability(s[..], 2, AB_REVERSE, 4, g, 4, 0, true);
-  st: [EG_RA_STATE] f32;
-  #assert everglade_room_rg(s[..], st[..]) && st[5] == 2 && abs(st[1] - 4) < 0.01;
-  // a seat's step there rises (everglade_lift on the world's cylinder), one 30 m off doesn't
-  up := everglade_lift(s[..], 5, 4, 0, 0, 0, 0, 1.0 / 30);
-  #assert up.on && up.vy > 0;
-  far := everglade_lift(s[..], 40, 4, 0, 0, 0, 0, 1.0 / 30);
-  #assert !far.on;
+  h := walk_at(s[..], 60, 4);
+  everglade_room_ab_pose(s[..], 2, 4, g, 4, 0);
+  everglade_room_ab_pose(s[..], 5, 60, h, 4, 0);
+  everglade_room_ability(s[..], 2, AB_REVERSE, 4, g, 4, 0, true, 4, g, 6);
+  everglade_room_ability(s[..], 5, AB_REVERSE, 60, h, 4, 0, true, 60, h, 6);
+  st: [EG_RA_LIFE] f32;
+  #assert everglade_room_life(s[..], 2, AB_REVERSE, st[..]) && abs(st[1] - 4) < 0.01;
+  #assert everglade_room_life(s[..], 5, AB_REVERSE, st[..]) && abs(st[1] - 60) < 0.01;
+  // a seat's step in either rises (everglade_lift on every copy), one between them doesn't
+  #assert everglade_lift(s[..], 5, 4, 0, 0, 0, 0, 1.0 / 30).on && everglade_lift(s[..], 61, 4, 0, 0, 0, 0, 1.0 / 30).on;
+  #assert !everglade_lift(s[..], 32, 4, 0, 0, 0, 0, 1.0 / 30).on;
   for k: 0..<30 { everglade_room_abilities(s[..], 1.0 / 30); }
-  #assert a[0].rg_on && a[0].rg_t > 0.9;
-  // another seat's end does nothing; its caster's ends it
-  everglade_room_ability(s[..], 1, AB_REVERSE, 0, 0, 0, 0, false);
-  #assert a[0].rg_on;
-  everglade_room_ability(s[..], 2, AB_REVERSE, 0, 0, 0, 0, false);
-  #assert !a[0].rg_on && !everglade_room_rg(s[..], st[..]);
+  #assert everglade_room_life(s[..], 2, AB_REVERSE, st[..]) && everglade_room_life(s[..], 5, AB_REVERSE, st[..]);
+  // seat 2 presses again: its own ends, seat 5's stands
+  everglade_room_ability(s[..], 2, AB_REVERSE, 4, g, 4, 0, true, 4, g, 6);
+  #assert !everglade_room_life(s[..], 2, AB_REVERSE, st[..]) && everglade_room_life(s[..], 5, AB_REVERSE, st[..]);
+  #assert !everglade_lift(s[..], 5, 4, 0, 0, 0, 0, 1.0 / 30).on && everglade_lift(s[..], 61, 4, 0, 0, 0, 0, 1.0 / 30).on;
+  // seat 5's E ends its own; the Everglade's own state was never a copy's
+  everglade_room_ability(s[..], 5, AB_REVERSE, 60, h, 4, 0, false, 0, 0, 0);
+  #assert !everglade_room_life(s[..], 5, AB_REVERSE, st[..]) && !ab_of(s[..])[0].rg_on && s[0].sp.room_ab[0].in_copy == 0;
+}
+
+#test "room abilities: walls and stones stack, a caster's every Wind Wall lifts and every Wall of Stone blocks, two seats' at once" #steps 3000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  everglade_room_spells_start(s[..], dm[..], "");
+  g := walk_at(s[..], 0, -30);
+  everglade_room_ab_pose(s[..], 0, 0, g, -30, 0);
+  everglade_room_ability(s[..], 0, AB_WIND, 0, g, -30, 0, true, 0, g, -28);
+  everglade_room_ability(s[..], 0, AB_WIND, 0, g, -30, 0, true, 0, g, -28);
+  walls := 0;
+  for q: 0..<AB_WALLS { if s[0].sp.room_ab[0].seat[0].ab[0].walls[q].live { walls += 1; } }
+  #assert walls == 2;
+  st: [EG_RA_LIFE] f32;
+  #assert everglade_room_life(s[..], 0, AB_WIND, st[..]) && st[5] == 2;
+  // a step in the wall rises
+  wl := s[0].sp.room_ab[0].seat[0].ab[0].walls[0];
+  mx := (wl.ax + wl.bx) * 0.5; mz := (wl.az + wl.bz) * 0.5;
+  #assert everglade_lift(s[..], mx, mz, 0, 0, 0, 0, 1.0 / 30).on;
+  // seat 3's Wall of Stone and seat 0's (where seat 0 stands too) both block: the bodies are every copy's
+  everglade_room_ab_pose(s[..], 3, 0, g, -30, 0);
+  everglade_room_ability(s[..], 3, AB_STONE, 0, g, -30, 0, true, 0, g, -28);
+  everglade_room_ability(s[..], 0, AB_STONE, 0, g, -30, 0, true, 0, g, -28);
+  out: [7 * 64] f32;
+  #assert ab_stone_bodies(s[..], out[..], 0) >= 2 * 2 * AB_ST_BODIES;
+  // E takes down every wall of the caster's
+  everglade_room_ability(s[..], 0, AB_WIND, 0, g, -30, 0, false, 0, 0, 0);
+  #assert !everglade_room_life(s[..], 0, AB_WIND, st[..]) && everglade_room_life(s[..], 3, AB_STONE, st[..]);
+}
+
+#test "room abilities: Gust follows its caster, Thunderwave plays once, the tentacles hold where they were cast, each its seat's" #steps 3000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  everglade_room_spells_start(s[..], dm[..], "");
+  g := walk_at(s[..], 0, -30);
+  everglade_room_ab_pose(s[..], 1, 0, g, -30, 0);
+  everglade_room_ability(s[..], 1, AB_GUST, 0, g, -30, 0, true, 0, g, -28);
+  st: [EG_RA_LIFE] f32;
+  #assert everglade_room_life(s[..], 1, AB_GUST, st[..]);
+  everglade_room_ab_pose(s[..], 1, 6, g, -30, 1.5);
+  for k: 0..<6 { everglade_room_abilities(s[..], 1.0 / 30); }
+  #assert abs(s[0].sp.room_ab[0].seat[1].ab[0].gust_at.x - 6) < 0.01;   // where its caster stands now
+  everglade_room_ability(s[..], 1, AB_THUNDER, 6, g, -30, 1.5, true, 8, g, -30);
+  #assert s[0].sp.room_ab[0].seat[1].ab[0].tw_t < 0.01 && !everglade_room_life(s[..], 1, AB_THUNDER, st[..]);
+  everglade_room_ab_pose(s[..], 4, 0, g, -40, 0);
+  everglade_room_ability(s[..], 4, AB_TENTACLES, 0, g, -40, 0, true, 0, walk_at(s[..], 0, -34), -34);
+  #assert everglade_room_life(s[..], 4, AB_TENTACLES, st[..]) && abs(st[3] + 34) < 0.01;
+  everglade_room_ability(s[..], 4, AB_TENTACLES, 0, g, -40, 0, false, 0, 0, 0);
+  #assert !everglade_room_life(s[..], 4, AB_TENTACLES, st[..]) && everglade_room_life(s[..], 1, AB_GUST, st[..]);
+  #assert s[0].sp.room_ab[0].in_copy == 0 && !ab_of(s[..])[0].gust_on;
+}
+
+#test "room abilities: frost, grove, wild and polar spells run in their caster's copy: Sleet Storm, Moonbeam, Entangle, Spike Growth, Fog Cloud, Call Lightning" #steps 4000000000 {
+  s: [1] Everglade;
+  dm: [1] DemoWorld;
+  everglade_room_spells_start(s[..], dm[..], "");
+  g := walk_at(s[..], 0, -30);
+  st: [EG_RA_LIFE] f32;
+  ks := [6] int.[AB_SLEET, AB_MOON, AB_ENTANGLE, AB_SPIKE, AB_FOG, AB_CALL];
+  for j: 0..<6 {
+    q := j;
+    everglade_room_ab_pose(s[..], q, f32(j * 12), g, -30, 0);
+    everglade_room_ability(s[..], q, ks[j], f32(j * 12), g, -30, 0, true, f32(j * 12), walk_at(s[..], f32(j * 12), -24), -24);
+    #assert everglade_room_life(s[..], q, ks[j], st[..]);
+  }
+  for k: 0..<30 { everglade_room_abilities(s[..], 1.0 / 30); }
+  for j: 0..<6 { #assert everglade_room_life(s[..], j, ks[j], st[..]); }
+  for j: 0..<6 { everglade_room_ability(s[..], j, ks[j], 0, 0, 0, 0, false, 0, 0, 0); #assert !everglade_room_life(s[..], j, ks[j], st[..]); }
 }
 
 #test "room abilities: Everglade's four strike the server's town when the cast bar is done, not at the press" #steps 3000000000 {

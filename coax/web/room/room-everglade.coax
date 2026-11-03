@@ -236,8 +236,9 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
     if !rd[0].ok || eg_fields(text) != 4 { return; }
     // talking, doors, boats and boards are the world's, not yet the server's: only ending a slot is
     if u.kind != WE_END { eg_refuse(v, k, seat, u.seq, "unbuilt"); return; }
-    if ra_end(v, k, seat, u.id) { return; }   // the world's (room-abilities.coax)
-    if !e5rr_end(v[0].eg[k].rules[..], seat, u.id) { eg_refuse(v, k, seat, u.seq, "nothing"); }
+    world := ra_end(v, k, seat, u.id);   // the world's (room-abilities.coax), and the rules' concentration
+    if ra_whole(u.id) { return; }
+    if !e5rr_end(v[0].eg[k].rules[..], seat, u.id) && !world { eg_refuse(v, k, seat, u.seq, "nothing"); }
     return;
   }
   if c == 'R' {
@@ -342,10 +343,11 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
     if dx * dx + dz * dz > reach * reach { eg_refuse(v, k, seat, seq, "range"); return; }
   }
   // an ability the world runs (room-abilities.coax): one it runs whole has no roll of the rules'
-  if ra_cast(v, k, seat, slot, me) {
+  if ra_whole(slot) {
+    if !ra_cast(v, k, seat, slot, me, ax, ay, az) { eg_refuse(v, k, seat, seq, "busy"); return; }
     st[0].last_cast = v[0].eg[k].tick;
     eb: [128] u8;
-    en := wire_put_cast_e(eb[..], 0, WireCastE.{ss = seat, slot = slot, ax = me.x, ay = me.y, az = me.z, seed = 1});
+    en := wire_put_cast_e(eb[..], 0, WireCastE.{ss = seat, slot = slot, ax = ax, ay = ay, az = az, seed = 1});
     eg_event(v, k, cast(string) eb[0..<en], me.x, me.z, false);
     return;
   }
@@ -367,6 +369,7 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
     v[0].eg[k].broke_at = v[0].eg[k].tick;
   }
   eg_event(v, k, cast(string) b[0..<n], ax, az, false);
+  _ := ra_cast(v, k, seat, slot, me, ax, ay, az);   // and its effect, the world's (room-abilities.coax)
 }
 
 // ---- the tick. The host, EG_HZ times a second for each live room: rm_eg_begin; for each seat

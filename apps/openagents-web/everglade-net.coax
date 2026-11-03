@@ -791,7 +791,17 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
     }
     // the Warlock's (everglade-warlock.coax): its look, from the caster's hand
     if fx.slot >= WL_SLOT0 { wl_play(s, fx.slot - WL_SLOT0, ifx fx.caster == n[0].seat then wl_hand(s) else sub(from, v3(0, 0.15, 0)), fx.at, fx.seed, fx.caster == n[0].seat); n[0].played += 1; continue; }
-    if fx.slot >= SP_SLOTS { net_flash(s, fx.slot - SP_SLOTS, fx.at); n[0].played += 1; continue; }
+    if fx.slot >= SP_SLOTS {
+      // an ability the server runs in its caster's copy: this page's copy of the caster plays it,
+      // where the caster is drawn now (everglade-room-abilities.coax)
+      ak := fx.slot - SP_SLOTS;
+      pose: [4] f32;
+      if eg_ra_world(ak) && net_seat_pose(s, fx.caster, pose[..]) {
+        c := v3(pose[0], pose[1], pose[2]);
+        eg_ra_play(s, fx.caster, ak, c, eg_ra_facing(c, fx.at, pose[3]), fx.at);
+      } else { net_flash(s, ak, fx.at); }
+      n[0].played += 1; continue;
+    }
     net_play(s, fx.slot, from, fx.at, fx.seed);
     n[0].played += 1;
   }
@@ -864,13 +874,15 @@ net_holds :: (s: [] Everglade, k: int) -> bool {
 net_self_ability :: (k: int) -> bool {
   return k == AB_LEVITATE || k == AB_FEATHER || k == AB_WWALK || k == AB_BREATH || k == AB_SHAPECHANGE || k == AB_SPEAK;
 }
-net_shared :: (s: [] Everglade, k: int) -> bool { return net_live(s) && !net_self_ability(k); }
+net_stacks :: (k: int) -> bool { return k == AB_WIND || k == AB_STONE; }
+net_shared :: (s: [] Everglade, k: int) -> bool { return net_live(s) && !net_self_ability(k) && !eg_ra_copying(s); }   // (a seat's copy casts its own: everglade-room-abilities.coax)
 // A press on a shared ability's slot (everglade-abilities.coax ab_press) with a room to send it to:
 // what it holds up ends (E); one you point with is picked or put away; any other goes out as a cast
 // where you stand, facing as you face.
 net_press :: (s: [] Everglade, k: int) {
   b := SP_SLOTS + k;
-  if net_holds(s, k) && (s[0].sp.armed == b || !ab_aimed(k)) {
+  // (a Wind Wall or a Wall of Stone pressed again raises another, as offline: they stack, and fall at their time)
+  if net_holds(s, k) && !net_stacks(k) && (s[0].sp.armed == b || !ab_aimed(k)) {
     _ := net_end(s, b);
     s[0].sp.armed = -1;
     return;
@@ -886,13 +898,39 @@ net_press :: (s: [] Everglade, k: int) {
 // room-abilities.coax): Reverse Gravity's cylinder, from its entity. Its saves, lifts and crimes stay
 // the server's; your movement predicts its lift (everglade_lift), its debris rises here.
 net_follow :: (s: [] Everglade, n: [] EgNet, now: int) {
-  on := false; at := v3(0, 0, 0); age := 0.0f32;
+  // each seat's abilities as the server's entities have them (room-abilities.coax ra_send: the
+  // caster's place, or the aim, and its facing): this page's copies kept to them
+  id: [EG_RA_SEATS * AB_N] int; at: [EG_RA_SEATS * AB_N] Point; face: [EG_RA_SEATS * AB_N] f32;
   for e: 0..<NET_ENTS {
     en := n[0].ents[e];
-    if !en.live || en.ring_n == 0 || en.kind != WK_ZONE || en.p1 != AB_REVERSE { continue; }
-    on = true; at = v3(en.shown.x, en.shown.y, en.shown.z); age = f32(now - en.born) / 1000;
+    if !en.live || en.ring_n == 0 || en.kind != WK_ZONE || en.eid - NET_MADE_ID < NET_ABILITY_ID { continue; }
+    if en.owner < 0 || en.owner >= EG_RA_SEATS || en.p1 < 0 || en.p1 >= AB_N { continue; }
+    q := en.owner * AB_N + en.p1;
+    id[q] = en.eid; at[q] = v3(en.shown.x, en.shown.y, en.shown.z); face[q] = en.shown.yaw;
   }
-  ab_rg_follow(s, on, at, age);
+  pose: [4] f32;
+  for o: 0..<EG_RA_SEATS {
+    seated := net_seat_pose(s, o, pose[..]);
+    for k: 0..<AB_N {
+      q := o * AB_N + k;
+      if id[q] == 0 && s[0].sp.room_ab[0].seat[o].heard[k] == 0 { continue; }
+      // the caster where this page draws them, else where the server has the cast
+      c := ifx seated then v3(pose[0], pose[1], pose[2]) else at[q];
+      eg_ra_keep(s, o, k, id[q], at[q], face[q], c, ifx seated then pose[3] else face[q]);
+    }
+  }
+}
+NET_ABILITY_ID :: 900000;   // the seats' abilities' entities' ids, from (room-abilities.coax RA_ID0)
+// Where seat q stands (world feet) and faces, as this page draws it: X Y Z YAW. Yours is where you are.
+net_seat_pose :: (s: [] Everglade, q: int, out: [] f32) -> bool {
+  if !net_live(s) || out.count < 4 || q < 0 { return false; }
+  n := net_of(s);
+  if q == n[0].seat { y := ab_you(s); out[0] = y.x; out[1] = y.y; out[2] = y.z; out[3] = s[0].face; return true; }
+  k := net_ent(n, q, false);
+  if k < 0 || n[0].ents[k].ring_n == 0 { return false; }
+  p := n[0].ents[k].shown;
+  out[0] = p.x; out[1] = p.y; out[2] = p.z; out[3] = p.yaw;
+  return true;
 }
 // How high over their feet the server has townsperson i (Reverse Gravity's lift), m.
 net_air :: (s: [] Everglade, i: int) -> f32 { return ifx net_town(s) && i >= 0 && i < WATCH_ACTORS then net_of(s)[0].air[i] else 0.0f32; }
@@ -941,11 +979,13 @@ net_draw :: (s: [] Everglade) {
     en := n[0].ents[e];
     if !en.live || en.ring_n == 0 { continue; }
     age := f32(now - en.born) / 1000;
+    // what a seat's copy draws its own way (everglade-room-abilities.coax eg_ra_draws)
+    if eg_ra_drawn(s, en.owner, net_ability_of(en)) || (en.kind == WK_ZONE && en.eid - NET_MADE_ID >= NET_ABILITY_ID) { continue; }
     if en.kind == WK_PACK { net_draw_pack(s, en, age); }
     else if en.kind == WK_STONE { net_draw_stone(s, en, age); }
     else if en.kind == WK_TENTACLES { net_draw_tentacles(s, en, age); }
     else if en.kind == WK_THORNS { net_draw_thorns(s, en, age, few); }
-    else if en.kind == WK_ZONE && en.p1 != AB_REVERSE { net_draw_zone(s, en, age); }   // (Reverse Gravity's is ab_draw's: net_follow)
+    else if en.kind == WK_ZONE { net_draw_zone(s, en, age); }
     else if en.kind == WK_LINE { net_draw_line(s, en, age); }
     // a summoned creature is a beast of flesh now (the room's battle has its stat block), not a spirit
     else if en.kind == WK_BEAST && en.p1 == WL_FORM_ZOMBIE { wl_zombie(s, en.eid, v3(en.shown.x, en.shown.y, en.shown.z), en.shown.yaw, en.run, ifx abs(en.shown.vx) + abs(en.shown.vz) > 0.2 then 1.0f32 else 0.0f32, clamp(age / 1.2, 0, 1)); }
@@ -1681,6 +1721,44 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
     #assert !a[0].sp.meteors[q].live;   // nothing of this page's own
   }
   #assert live == SP_METEORS;
+}
+#test "net: each seat's abilities are their own on every page: two cylinders from the server's entities, each lifts, one gone ends only its own (#12733)" #steps 3000000000 {
+  a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet;
+  dma: [1] DemoWorld; dmb: [1] DemoWorld;
+  everglade_start(a[..]); a[0].sp.on = true; a[0].sp.ready = true; a[0].sp.dm = dma[..];
+  everglade_start(b[..]); b[0].sp.on = true; b[0].sp.ready = true; b[0].sp.dm = dmb[..];
+  room: [1] NetTestRoom;
+  #assert net_test_pair(a[..], na[..], b[..], nb[..], room[..]);
+  // the server has seat 0's cylinder at (4, 4) and seat 1's at (60, 4)
+  ga := walk_at(a[..], 4, 4); gb := walk_at(a[..], 60, 4);
+  net_test_tick(room[..], 6, 0);
+  net_test_c(room[..], WireC.{eid = 900001, kind = WK_ZONE, x = 4, y = ga, z = 4, yaw = 0, hp = -1, f = 1, owner = 0, p1 = AB_REVERSE, p2 = 1524});
+  net_test_c(room[..], WireC.{eid = 900002, kind = WK_ZONE, x = 60, y = gb, z = 4, yaw = 0, hp = -1, f = 1, owner = 1, p1 = AB_REVERSE, p2 = 1524});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  for t: 0..<4 {
+    net_step(a[..], 300 + NET_HIGH + t * 33, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+    net_step(b[..], 300 + NET_HIGH + t * 33, 3, 0, 9, 0, 0, 0, false, 0, false, 0);
+  }
+  for p: 0..<2 {
+    g := ifx p == 0 then a[..] else b[..];
+    #assert eg_ra_drawn(g, 0, AB_REVERSE) && eg_ra_drawn(g, 1, AB_REVERSE) && !ab_of(g)[0].rg_on;
+    // your step in either rises on this page as on the server's (everglade_lift), between them it doesn't
+    #assert everglade_lift(g, 5, 4, 0, 0, 0, 0, 1.0 / 30).on && everglade_lift(g, 61, 4, 0, 0, 0, 0, 1.0 / 30).on;
+    #assert !everglade_lift(g, 32, 4, 0, 0, 0, 0, 1.0 / 30).on;
+  }
+  // seat 0's goes: only its own ends, on both pages
+  net_test_tick(room[..], 8, 0);
+  net_test_x(room[..], WireX.{k = 'c', id = 900001});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..])) && net_test_hear(b[..], 1, net_test_frame(room[..]));
+  for t: 0..<4 {
+    net_step(a[..], 500 + NET_HIGH + t * 33, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
+    net_step(b[..], 500 + NET_HIGH + t * 33, 3, 0, 9, 0, 0, 0, false, 0, false, 0);
+  }
+  for p: 0..<2 {
+    g := ifx p == 0 then a[..] else b[..];
+    #assert !eg_ra_drawn(g, 0, AB_REVERSE) && eg_ra_drawn(g, 1, AB_REVERSE);
+    #assert !everglade_lift(g, 5, 4, 0, 0, 0, 0, 1.0 / 30).on && everglade_lift(g, 61, 4, 0, 0, 0, 0, 1.0 / 30).on;
+  }
 }
 #test "net: the time of day and the weather are the server's: two pages 4 s apart on their own clocks draw the same sky" {
   a: [1] Everglade; na: [1] EgNet; b: [1] Everglade; nb: [1] EgNet;

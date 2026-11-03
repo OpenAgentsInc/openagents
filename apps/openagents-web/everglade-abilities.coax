@@ -304,7 +304,7 @@ ab_reverse :: (s: [] Everglade) {
   a := ab_of(s);
   if a[0].rg_on { a[0].rg_on = false; sp_say(s, "REVERSE GRAVITY ENDS", -1, ""); ab_fall_all(s); return; }
   you := ab_you(s);
-  loosened := ab_rg_open(s, true);
+  loosened := ab_rg_open(s, !s[0].sp.room_ab[0].server);   // (the room server's pieces don't fly)
   c := a[0].rg_at;
   lifted := ab_rg_entries(s);
   if (loosened > 0 || lifted > 0) && watch_on(s) {
@@ -479,7 +479,10 @@ ab_stone :: (s: [] Everglade) {
 // page's own at `at` in `out`; how many.
 ab_stone_bodies :: (s: [] Everglade, out: [] f32, at: int) -> int {
   if !sp_on(s) { return 0; }
-  a := ab_of(s);
+  n := ab_stone_bodies_of(ab_of(s), out, at);
+  return n + eg_ra_stone_bodies(s, out, at + n);   // and every seat's in a room
+}
+ab_stone_bodies_of :: (a: [] Abilities, out: [] f32, at: int) -> int {
   n := 0;
   for k: 0..<AB_STONES {
     if !a[0].stones[k].live { continue; }
@@ -1304,12 +1307,12 @@ ab_frame :: (s: [] Everglade, dt: f32) {
   }
   ab_frame_more(s, dt);
   w[0].field_n = ab_fields(s, w[0].fields[..]);
-  // whoever walks into the cylinder makes their save (in a room the server's: net_follow)
+  // whoever walks into the cylinder makes their save (in a room the server's: everglade-room-abilities.coax)
   if a[0].rg_on && !net_live(s) && cast(int) (a[0].rg_t * 4) != cast(int) ((a[0].rg_t - dt) * 4) {
     n := ab_rg_entries(s);
     if n > 0 && watch_on(s) { _ := watch_crime(watch_w(s), a[0].rg_at, f32(AB_HEAR_RG), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
   }
-  ab_people(s, dt);
+  if !s[0].sp.room_ab[0].people_apart { ab_people(s, dt); }   // (the room server's keeps their falls' harm: everglade-room-abilities.coax)
   // the walls keep the smoke away: it is blown up and out of them
   for q: 0..<AB_WALLS {
     wl := a[0].walls[q];
@@ -1484,10 +1487,17 @@ ab_perch :: (s: [] Everglade, i: int) {
 // roof over you and the floor under you); walking into a Wind Wall throws you up and keeps you
 // rising. y and vy are over the floor you walk on, as the player's are.
 SpLift :: struct { on: bool; y: f32; vy: f32; dx: f32; dz: f32; }
+// Every seat's copy in a room lifts it too (everglade-room-abilities.coax eg_ra_lift).
 everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, vy1: f32, dt: f32) -> SpLift #export_c {
   out := SpLift.{on = false, y = y1, vy = vy1, dx = 0, dz = 0};
   if !sp_on(s) || !(dt > 0) || !finite(y0) || !finite(y1) { return out; }
-  a := ab_of(s);
+  out = ab_lift_of(s, ab_of(s), x, z, y0, vy0, y1, vy1, dt, true);
+  if out.on { return out; }
+  return eg_ra_lift(s, x, z, y0, vy0, y1, vy1, dt);
+}
+// What abilities `a` do to a step at (x, z); `mine`: their Levitate and Feather Fall are the stepper's.
+ab_lift_of :: (s: [] Everglade, a: [] Abilities, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, vy1: f32, dt: f32, mine: bool) -> SpLift {
+  out := SpLift.{on = false, y = y1, vy = vy1, dx = 0, dz = 0};
   floor_y := walk_at(s, x, z);
   // what you come down onto over that ground: a roof, the rubble (everglade-stand.coax)
   fl := everglade_stand_lift(s, x, z, y0);
@@ -1506,7 +1516,7 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
       return out;
     }
   }
-  if a[0].lev_on {
+  if mine && a[0].lev_on {
     // Levitate: up while held, down while X is, else held at its height; never over 18 m
     v := 0.0f32;
     if a[0].lev_up && a[0].lev_click > 0 {
@@ -1536,7 +1546,7 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
     out.on = true; out.vy = v; out.y = y1 + (v - vy1) * dt;
     return out;
   }
-  if a[0].ff_on {
+  if mine && a[0].ff_on {
     // Feather Fall: no faster than 60 feet a round, and it ends when you land
     if y0 > fl + 0.3 { a[0].ff_air = true; }
     if vy1 < -f32(AB_FF_SPEED) && y1 > fl { out.on = true; out.vy = -f32(AB_FF_SPEED); out.y = hi(y0 - f32(AB_FF_SPEED) * dt, fl); return out; }
