@@ -3,16 +3,21 @@
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "adoption.coax";
+RENDER_WEB_SHARED :: false;
 tool_main :: () -> int #export_c {
   args: [1] Args;
   if !args_load(args[..]) || args_count(args[..]) != 2 { return 2; }
   route := render_adoption(args_at(args[..], 0), args_at(args[..], 1));
-  if route.shared {
+  // Web pages keep the existing renderer for now: with data-render the host fetches the catalogue's
+  // raw asset paths (/realms/SLUG/assets/...), which deploy doesn't upload (it content-names
+  // data-assets under /build/), so every world 404'd on staging (2026-11-02). Set this when the
+  // host or deploy maps the catalogue's URLs to the staged files.
+  if route.shared && RENDER_WEB_SHARED {
     p := render_catalog(route.profile);
     print(" data-render=\"/build/render/%/render.json\" data-render-profile=\"%\"", p.slug, route.profile);
     return 0;
   }
-  if route.tracked_legacy { return 0; }
+  if route.shared || route.tracked_legacy { return 0; }
   tool_errln("realm has no reviewed shared or legacy renderer adoption");
   return 2;
 }

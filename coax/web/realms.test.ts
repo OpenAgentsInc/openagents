@@ -42,16 +42,20 @@ test("manifest realms preserve reviewed shared and legacy renderer adoption", ()
       expect(page(world.realm)).not.toContain('data-render=')
       continue
     }
-    expect(page(world.realm)).toContain(`data-render="/build/render/${world.realm.slug}/render.json"`)
-    expect(page(world.realm)).toContain(`data-render-profile="${renderProfile(world.realm.slug)}"`)
+    // shared adoption, but web pages keep the existing renderer until its assets are staged
+    // (aethyr/render/page-render.coax RENDER_WEB_SHARED)
+    expect(page(world.realm)).not.toContain('data-render=')
   }
 }, 30000)
 test("an unknown or mismatched realm cannot acquire a fallback renderer", () => {
   expect(() => renderAttributes("future-realm", "animelab")).toThrow()
   expect(() => renderAttributes("the-grid", "animelab")).toThrow()
 })
-test("direct Garden and retained Galaxy bind the compiled base renderer profile", () => {
-  for (const [slug, path] of [["garden", "realms/garden"], ["galaxy", "render-fixtures/galaxy"]]) {
+test("the Garden keeps the existing renderer on the web (page-render.coax RENDER_WEB_SHARED)", () => {
+  expect(readFileSync(join(SITE, "realms/garden/index.html"), "utf8")).not.toContain("data-render=")
+})
+test("the retained Galaxy fixture binds the compiled base renderer profile", () => {
+  for (const [slug, path] of [["galaxy", "render-fixtures/galaxy"]]) {
     const html = readFileSync(join(SITE, path, "index.html"), "utf8")
     expect(html).toContain(`data-render="/build/render/${slug}/render.json"`)
     expect(html).toContain(`data-render-profile="${renderProfile(slug)}"`)
