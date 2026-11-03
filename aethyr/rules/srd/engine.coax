@@ -219,6 +219,7 @@ RsCreature :: struct {
   explorer: bool; lore: bool; swim: int;   // the Ranger's Deft Explorer, Hunter's Lore (record), a swim Speed
   ritual: bool; arcane_recovery: bool; scholar: bool; savant: bool; memorize: bool;   // the Wizard's, out of a battle's reach
   sculpt: bool;                    // Sculpt Spells (Evoker)
+  companion: bool; resurgence: bool; resurged_slot: bool;   // Wild Companion (a familiar, not modeled), Wild Resurgence and its once-a-rest slot
   sear: bool; blessed_healer: bool;   // Sear Undead (Cleric), Blessed Healer (Life Domain)
   restoration: bool; affinity: int;   // Sorcerous Restoration (a rest), Elemental Affinity's damage type (Draconic)
   guard_slot: int; guard_turn: int;   // Spirit Guardians: the slot it was cast with; the turn this creature last saved against one
@@ -274,6 +275,8 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   c[0].team = team; c[0].level = level;
   c[0].klass = RS_DRUID; c[0].humanoid = true; c[0].ranged = -1;
   c[0].score = [6] int.[10, 14, 13, 12, 16, 8];
+  // an Ability Score Improvement at 4 (the feat, p. 87): Wisdom +2
+  if level >= 4 { c[0].score[RS_WIS] = rs_min(c[0].score[RS_WIS] + 2, 20); }
   c[0].save_prof[RS_INT] = true; c[0].save_prof[RS_WIS] = true;
   con := rs_mod(c[0].score[RS_CON]);
   c[0].hp_max = 8 + con + (level - 1) * (5 + con);
@@ -286,12 +289,17 @@ rs_druid :: (name: string, team: int, level: int) -> RsCreature {
   slots2 := [5] int.[0, 0, 0, 2, 3];
   l := rs_min(level, 4);
   c[0].slots_max[1] = slots1[l]; c[0].slots_max[2] = slots2[l];
-  if level >= 5 { c[0].slots_max[3] = 2; }
+  if level >= 5 { c[0].slots_max[3] = ifx level >= 6 then 3 else 2; }
   for i: 0..<10 { c[0].slots[i] = c[0].slots_max[i]; }
   c[0].conc = -1; c[0].restrained_by = -1; c[0].outlined_by = -1; c[0].free_spell = -1; c[0].agonizing = -1; c[0].repelling = -1;
+  // Wild Companion at 2 (p. 43), Wild Resurgence at 5 (p. 43), Call Lightning with its 3rd-level
+  // slots; Natural Recovery at 6 (p. 46): one circle spell (Hold Person) without a slot. Its level 5
+  // polar circle spells (Sleet Storm, Slow) aren't records yet.
+  c[0].companion = level >= 2; c[0].resurgence = level >= 5;
+  if level >= 6 { c[0].free_spell = SP_HOLD_PERSON; rs_use_set(c[..], RS_USE_FREE, 1); }
   // Wild Shape's two uses from level 2 (p. 42), spent here on the Circle of the Land's Land's Aid at 3
   // (p. 46); polar land, so Hold Person is among its circle spells
-  if level >= 2 { rs_use_set(c[..], RS_USE_WILD, 2); }
+  if level >= 2 { rs_use_set(c[..], RS_USE_WILD, ifx level >= 17 then 4 else ifx level >= 6 then 3 else 2); }
   c[0].lands_aid = level >= 3;
   return c[0];
 }
@@ -721,6 +729,12 @@ rs_recent :: (book: RsLog, i: int) -> RsEvent {
   e: RsEvent;
   if i < 0 || i >= book.count { return e; }
   return book.ev[(book.head + book.count - 1 - i) % RS_EVENTS];
+}
+// The same, read in place, without copying the whole log.
+rs_recent_at :: (book: [] RsLog, i: int) -> RsEvent {
+  e: RsEvent;
+  if i < 0 || i >= book[0].count { return e; }
+  return book[0].ev[(book[0].head + book[0].count - 1 - i) % RS_EVENTS];
 }
 
 // ---- hit points

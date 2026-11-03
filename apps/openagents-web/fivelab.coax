@@ -207,12 +207,12 @@ add_fx :: (s: [] Lab, f: Fx) {
 // What the battle told since the last look: into the log, and into effects on the grid.
 take_events :: (s: [] Lab) {
   if s[0].battle[0].book[0].seq == s[0].seen { return; }
-  book := s[0].battle[0].book[0];
-  fresh := rs_min(book.seq - s[0].seen, book.count);
-  s[0].seen = book.seq;
+  book := s[0].battle[0].book[..];
+  fresh := rs_min(book[0].seq - s[0].seen, book[0].count);
+  s[0].seen = book[0].seq;
   k := fresh - 1;
   while k >= 0 {
-    e := rs_recent(book, k);
+    e := rs_recent_at(book, k);
     k -= 1;
     t := cast(string) e.text[0..<e.text_n];
     c := DIM;
@@ -929,6 +929,13 @@ druid_turn :: (s: [] Lab, i: int) {
   fx := b[0].c[foe].x; fy := b[0].c[foe].y;
   slot = ifx b[0].turn.slot_spent then 0 else free_slot(s, i, 1);
   // Land's Aid where two foes or more stand within 10 feet of the nearest, healing the friend there most hurt
+  // Call Lightning (from level 5) where its bolt catches two foes, and the later bolts while it lasts
+  if !b[0].turn.action && d <= 120 {
+    cl := burst_at(s, i, 120, 5, false, 2);
+    if cl >= 0 && b[0].c[i].conc == SP_CALL_LIGHTNING { ok := rs_cast(b, i, SP_CALL_BOLT, 0, b[0].c[cl].x, b[0].c[cl].y, -1); }
+    else if cl >= 0 && !b[0].turn.slot_spent && b[0].c[i].slots[3] > 0 && b[0].c[i].conc < 0 { ok := rs_cast(b, i, SP_CALL_LIGHTNING, 3, b[0].c[cl].x, b[0].c[cl].y, -1); }
+  }
+  if foes_near(s, i, fx, fy, 10) >= 2 { ok := rs_wild_resurgence(b, i); }
   if !b[0].turn.action && d <= 60 && b[0].c[i].uses[RS_USE_WILD] > 0 && foes_near(s, i, fx, fy, 10) >= 2 {
     heal := -1; hv: f32 = 0.7;
     for j: 0..<b[0].n {

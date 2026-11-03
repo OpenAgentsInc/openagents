@@ -21,7 +21,7 @@ RsZone :: struct { on: bool; spell: int; by: int; x0: int; y0: int; x1: int; y1:
 // Colossus Slayer, leveled (a level 1+ spell cast) and quickened (Quickened Spell used).
 RsTurn :: struct { action: bool; bonus: bool; slot_spent: bool; move_left: int; cleaved: bool; frenzied: bool; struck: bool; new_round: bool;
                    moved: bool; aimed: bool; anchored: bool; last_hit: int; last_crit: bool; sneaked: bool; colossus: bool;
-                   leveled: bool; quickened: bool; stunned: bool; }
+                   leveled: bool; quickened: bool; stunned: bool; resurged: bool; }
 RsBattle :: struct {
   c: [RS_MAX] RsCreature; n: int;
   zone: [RS_ZONES] RsZone;
@@ -1560,6 +1560,25 @@ rs_innate_sorcery :: (b: [] RsBattle, i: int) -> bool {
   return true;
 }
 
+// Wild Resurgence (p. 43): once a turn, with no Wild Shape use left, its lowest slot for one (no
+// action); and once a Long Rest, a Wild Shape use for a 1st-level slot (rs_resurge_slot).
+rs_wild_resurgence :: (b: [] RsBattle, i: int) -> bool {
+  if b[0].who != i || !b[0].c[i].resurgence || b[0].turn.resurged || b[0].c[i].uses[RS_USE_WILD] > 0 { return false; }
+  for l: 1..<10 {
+    if b[0].c[i].slots[l] > 0 {
+      b[0].c[i].slots[l] -= 1; b[0].c[i].uses[RS_USE_WILD] = 1; b[0].turn.resurged = true;
+      rs_say(b, RS_EV_CONDITION, i, i, 0, ": Wild Resurgence, a spell slot for a Wild Shape use");
+      return true;
+    }
+  }
+  return false;
+}
+rs_resurge_slot :: (b: [] RsBattle, i: int) -> bool {
+  if b[0].who != i || !b[0].c[i].resurgence || b[0].c[i].resurged_slot || b[0].c[i].uses[RS_USE_WILD] <= 0 { return false; }
+  b[0].c[i].uses[RS_USE_WILD] -= 1; b[0].c[i].slots[1] += 1; b[0].c[i].resurged_slot = true;
+  rs_say(b, RS_EV_CONDITION, i, i, 0, ": Wild Resurgence, a Wild Shape use for a 1st-level slot");
+  return true;
+}
 // Land's Aid (Circle of the Land, p. 46): a Magic action and a Wild Shape use, a point within 60
 // feet: each foe in the 10-foot-radius Sphere makes a Con save, 2d6 Necrotic or half; one creature
 // there (`heal`, -1 none) regains 2d6 Hit Points.
@@ -2631,4 +2650,20 @@ rs_fresh :: (b: [] RsBattle, i: int) { b[0].who = i; b[0].turn = RsTurn.{move_le
   b[0].c[f].hp = 5; b[0].c[k].hp = 10;
   rs_fresh(b[..], k);
   #assert rs_cast(b[..], k, SP_HEALING_WORD, 1, 0, 0, f) && b[0].c[k].hp == 13 && b[0].c[f].hp > 5;
+}
+
+#test "a level 6 Land Druid: Wisdom 18, three Wild Shape uses, Wild Resurgence both ways, Natural Recovery's free Hold Person, Call Lightning's slots" {
+  c := rs_druid("Rowan", 0, 6);
+  #assert c.score[RS_WIS] == 18 && rs_spell_dc(c) == 15 && c.uses_max[RS_USE_WILD] == 3 && c.slots_max[3] == 3 && c.companion && c.resurgence;
+  #assert c.free_spell == SP_HOLD_PERSON && c.uses_max[RS_USE_FREE] == 1;
+  b: [1] RsBattle; b[0].w = 20; b[0].h = 8; b[0].dice[0].state = 37;
+  d := rs_add(b[..], c, 2, 3);
+  t := rs_add(b[..], rs_fighter("Garr", 1, 3), 8, 3);
+  rs_fresh(b[..], d);
+  #assert !rs_wild_resurgence(b[..], d);   // it still has uses
+  #assert rs_resurge_slot(b[..], d) && b[0].c[d].slots[1] == 5 && b[0].c[d].uses[RS_USE_WILD] == 2 && !rs_resurge_slot(b[..], d);
+  b[0].c[d].uses[RS_USE_WILD] = 0;
+  #assert rs_wild_resurgence(b[..], d) && b[0].c[d].uses[RS_USE_WILD] == 1 && b[0].c[d].slots[1] == 4 && !rs_wild_resurgence(b[..], d);
+  // Natural Recovery: Hold Person without a slot, once
+  #assert rs_cast(b[..], d, SP_HOLD_PERSON, 0, 0, 0, t) && b[0].c[d].slots[2] == 3 && b[0].c[d].uses[RS_USE_FREE] == 0;
 }
