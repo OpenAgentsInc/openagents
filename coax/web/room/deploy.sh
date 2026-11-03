@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Deploys the room server (Orbit League's rooms, ol-room, and the relay any game's rooms use,
-# room-relay.coax) to Cloud Run as oa-room and
+# Deploys the room server (Orbit League's rooms, ol-room, the relay any game's rooms use,
+# room-relay.coax, and the everglade rooms' world, room-everglade.coax with room-world.c) to Cloud Run as oa-room and
 # routes /api/room/ and /api/playtest/rooms/ (the everglade instances, room-relay.coax rm_rooms)
 # on openagents.com and staging.openagents.com to it, ahead of the API's /api/ rule.
 # Then it runs, through the site's address, the load test (load.coax: four players,
 # 60 Hz each, the same ball), the relay's check, its slow-socket check, and the
-# everglade load test (64 players in 16s, 20 s; spec section 11.3).
+# everglade check (two players share one world: sim-check.coax) and load test (64 players in 16s,
+# 20 s; spec section 11.3).
 #   coax/web/room/deploy.sh
 #
 # One instance at most, so a room is one room: its rooms live in memory. None
@@ -20,8 +21,14 @@ project=openagentsgemini region=us-central1 service=oa-room map=coaxial-openagen
 g() { gcloud "$@" --project "$project" --quiet; }
 stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/src"
-"${COAX:-coax/bin/coax}" c "$here/room.coax" --library --header "$stage/src/room.h" > "$stage/src/room.c"
-cp "$here/room-host.c" verse/voice-host/ws.c verse/voice-host/ws.h "$stage/src/"
+coax="${COAX:-coax/bin/coax}"
+"$coax" c coax/web/room/room.coax --library --header "$stage/src/room.h" > "$stage/src/room.c"
+# the everglade rooms' world (room-world.c): the city's units, as build.sh links them
+for u in apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax; do
+  n="$(basename "$u" .coax)"
+  "$coax" c "$u" --library --header "$stage/src/$n.h" > "$stage/src/$n.c"
+done
+cp "$here/room-host.c" "$here/room-world.c" "$here/room-world.h" verse/voice-host/ws.c verse/voice-host/ws.h "$stage/src/"
 cp "$here/Dockerfile" "$stage/"
 image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/$service:$(git rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
 gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$image" --quiet \
@@ -76,7 +83,7 @@ g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR"
 # Through the site's address (the rule takes a minute or two to reach every edge).
 for try in 1 2 3 4 5 6 7 8 9 10; do
   "$here/../tool.sh" "$here/load.coax" wss://openagents.com 4 10 && "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com &&
-    "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com slow && "$here/../tool.sh" "$here/load.coax" everglade wss://openagents.com 64 20 &&
+    "$here/../tool.sh" "$here/relay-check.coax" wss://openagents.com slow && "$here/../tool.sh" "$here/sim-check.coax" wss://openagents.com && "$here/../tool.sh" "$here/load.coax" everglade wss://openagents.com 64 20 &&
     [[ "$(curl -s -m 20 https://openagents.com/api/playtest/rooms/everglade)" == '{"realm":"everglade"'* ]] &&
     curl -s -m 20 https://openagents.com/api/room/health | tee /dev/stderr | awk '{ for (i = 1; i <= NF; i++) if ($i == "p95") v = $(i + 1) } END { exit !(v != "" && v >= 0 && v < 50000) }' && { echo "room: deployed $image behind wss://openagents.com/api/room/"; exit 0; }
   sleep 30

@@ -858,11 +858,11 @@ room host, no caster replication). Status as of the last edit of this file.
 | --- | --- | --- | --- |
 | 1 | Relay: 16 decimal seats, the clock in `y`, 512 connections, queue 1024, per-socket output buffers, rate limits, `t` pings (3.3) | `coax/web/room/` | **Built and deployed** (#12705), `oa-room` concurrency 1000, 512 MiB |
 | 2 | `GET /api/playtest/rooms/SLUG` and instance joining (3.4) | `room-relay.coax` `rm_rooms`, load balancer rule | **Built and deployed** (#12705) |
-| 3 | The 64-player load test (11.3) | `load.coax everglade` | **Built**; passes locally and through `wss://openagents.com` on rates and gaps (below) |
-| 4 | `everglade-move.coax`: the controller and the face's movement glue in Coax, shared by page and server | `apps/openagents-web/` | Not built |
-| 5 | Everglade's headless world step for N players (town, watch, spells, creatures, zones, fire, destruction, rebuild) | extracted from `everglade.coax` and modules | Not built |
-| 6 | `everglade5e-rules.coax` for 16 seats | `apps/openagents-web/` | Not built |
-| 7 | The room simulation: 30 Hz tick, intents, snapshot and deltas, interest (3.1, 3.6) | `coax/web/room/everglade-room-sim.coax` | Not built |
+| 3 | The 64-player load test (11.3) | `load.coax everglade` | **Built**; since the server became the world it sends inputs (I at 30 Hz, a cast every 5 s) and checks the state frames (D at 15 Hz), every seat seen, the ACKs and the input-to-ACK time |
+| 4 | The shared movement step: the controller and the face's movement glue in Coax, shared by page and server | `everglade-move.coax`, `everglade-step.coax` (#12706) | **Built** (0c52335252); the server runs it for every seat in `room-world.c` |
+| 5 | Everglade's headless world step for N players (town, watch, spells, creatures, zones, fire, destruction, rebuild) | `everglade.coax` linked headless in `oa-room` (`room-world.c`) | **Partly built**: each simulated room has its own headless Everglade (the city's ground, walls, bodies and floors; 2 MB, 0.2 s to build), and the seats walk in it. Not yet the server's: the river (a seat walks its bed where a page swims), the townsfolk and the watch (each page still runs its own), fire and destruction, and the per-player states the step reads (a blast's throw, held, slowed, the ice) |
+| 6 | `everglade5e-rules.coax` for 16 seats | `everglade5e-room-rules.coax` | **Built** (d2852ee336): one battle, each seat its own caster and turn, zones with ids, PvP off |
+| 7 | The room simulation: 30 Hz tick, intents, snapshot and deltas, interest (3.1, 3.6) | `coax/web/room/room-everglade.coax` | **Built**: wire v2 (`everglade-wire.coax`), 16 rooms of 16, inputs stepped one a step with at most 4 owed, casts checked and rolled, players, names, creatures and zones within 120 m, events, snapshots; `sim-check.coax` checks two sockets sharing one world |
 | 8 | Tickets: signed seat identity (4.4, 3.3 item 8) | API and `room` | Not built |
 | 9 | The page as a viewer plus its predicted movement (3.8, 3.9) | `everglade-net.coax` (#12706, #12708) | In progress elsewhere |
 | 10 | Remote players as skinned Rangers (section 5) | #12707 | In progress elsewhere |

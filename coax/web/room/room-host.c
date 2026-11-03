@@ -11,6 +11,7 @@
    one whose waiting bytes pass OUT_MAX is closed. */
 #define _POSIX_C_SOURCE 200809L
 #include "room.h"
+#include "room-world.h"
 #include "ws.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -108,6 +109,26 @@ static void relay_flush(void) {
     size_t k = ws_build(out, sizeof out, WS_TEXT, server->rout.e, (size_t)len, false);
     if (!k) continue;
     for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws && rm_relay_to(view(), j)) put_out(j, out, k);
+  }
+}
+// The everglade rooms' tick (room-everglade.coax, 30 Hz: every other host tick): each seat at the
+// gate when it sits, then its queued inputs through the movement step in its room's world
+// (room-world.c), then the rolls and every seat's state, out at once.
+static void everglade_tick(void) {
+  int64_t in[WORLD_IN]; float pose[WORLD_POSE];
+  coax_v_s64 inv = {in, WORLD_IN};
+  for (int k = 0; k < WORLD_ROOMS; k++) {
+    if (!rm_eg_begin(view(), k)) continue;
+    for (int s = 0; s < WORLD_SEATS; s++) {
+      if (rm_eg_unplaced(view(), k, s) && world_place(k, s, pose))
+        rm_eg_moved(view(), k, s, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
+      while (rm_eg_input(view(), k, s, inv)) {
+        if (!world_step(k, s, in, pose)) break;
+        rm_eg_moved(view(), k, s, in[0], pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
+      }
+    }
+    rm_eg_end(view(), k);
+    relay_flush();
   }
 }
 static void reap(void);
@@ -255,7 +276,9 @@ int main(int argc, char **argv) {
     for (int i = 0; i < CONNS; i++) if (conns[i].fd >= 0 && now - conns[i].heard > 20000) conns[i].doomed = true;
     reap();
     if ((double)now >= next) {
+      clock_in();
       rm_tick(view());
+      if (ticks % 2 == 0) everglade_tick();
       for (int i = 0; i < CONNS; i++) {
         if (conns[i].fd < 0 || !conns[i].ws) continue;
         int64_t len = rm_state(view(), i);

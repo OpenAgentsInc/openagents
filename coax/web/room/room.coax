@@ -17,6 +17,7 @@
 #load "../../../apps/openagents-web/orbitleague.coax";
 #load "room-relay.coax";
 #load "../../../apps/openagents-web/everglade5e-room-rules.coax";
+#load "../../../apps/openagents-web/everglade-wire.coax";
 #load "room-everglade.coax";
 
 ROOMS :: 8;

@@ -1,12 +1,19 @@
-# The Orbit League room server on Cloud Run (coax/web/room/deploy.sh stages
-# src/: room.c and room.h, the Coax room already turned into C, with
-# room-host.c and verse/voice-host/ws.c and ws.h).
+# The room server on Cloud Run (coax/web/room/deploy.sh stages src/: the Coax units already turned
+# into C, room.c and the everglade world's (everglade.c, everglade-step.c, grid.c, river.c,
+# guard-guide-policy.c), with room-host.c, room-world.c and verse/voice-host/ws.c).
 FROM debian:bookworm-slim AS build
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev binutils && rm -rf /var/lib/apt/lists/*
 COPY src/ /src/
 WORKDIR /src
+# The room's unit and the city's both carry analytics.coax's exports: the room's copies are made local.
 RUN gcc -std=c11 -O2 -w -c room.c -o room.o \
- && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -Wall -I. -o /room room-host.c ws.c room.o -lm
+ && for n in everglade everglade-step grid river guard-guide-policy; do gcc -std=c11 -O1 -w -c $n.c -o $n.o & done; wait \
+ && nm -g --defined-only room.o | awk '{print $3}' | sort > room.syms \
+ && nm -g --defined-only everglade.o | awk '{print $3}' | sort > city.syms \
+ && comm -12 room.syms city.syms > both.syms \
+ && objcopy --localize-symbols=both.syms room.o room-own.o \
+ && gcc -std=c11 -O2 -w -I. -c room-world.c -o room-world.o \
+ && gcc -std=c11 -O2 -D_DEFAULT_SOURCE -Wall -I. -o /room room-host.c ws.c room-world.o room-own.o everglade.o everglade-step.o grid.o river.o guard-guide-policy.o -lm
 
 FROM debian:bookworm-slim
 COPY --from=build /room /usr/local/bin/room

@@ -9,8 +9,38 @@ out="${1:-$here/bin/room}"
 mkdir -p "$(dirname "$out")"
 work="$(mktemp -d "${TMPDIR:-/tmp}/coax-room-build.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
-"${COAX:-$root/coax/bin/coax}" c "$here/room.coax" --library --header "$work/room.h" > "$work/room.c"
-cc -std=c11 -O2 -w -c "$work/room.c" -o "$work/room.o"
-cc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE -I"$work" -I"$root/verse/voice-host" "$here/room-host.c" "$root/verse/voice-host/ws.c" \
-  "$work/room.o" -lm -o "$out"
+coax="${COAX:-$root/coax/bin/coax}"
+"$coax" c "$here/room.coax" --library --header "$work/room.h" > "$work/room.c"
+# Everglade's headless world for the everglade rooms (room-world.c): the city's unit (everglade.coax,
+# nothing drawn), the controller's (everglade-step.coax, with aethyr/player.coax) and the units the
+# city links beside them, as apps/openagents-web/build.sh links the page's.
+units=(apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax)
+for u in "${units[@]}"; do
+  n="$(basename "$u" .coax)"
+  (cd "$root" && "$coax" c "$u" --library --header "$work/$n.h" > "$work/$n.c")
+done
+objs=("$work/room.o")
+cc -std=c11 -O2 -w -c "$work/room.c" -o "$work/room.o" &
+for u in "${units[@]}"; do
+  n="$(basename "$u" .coax)"
+  cc -std=c11 -O1 -w -c "$work/$n.c" -o "$work/$n.o" &
+  objs+=("$work/$n.o")
+done
+wait
+# The room's unit and the city's both carry apps/openagents-web/analytics.coax's exports (Orbit League
+# loads it too): the room's copies become local to it, so the city's are the program's.
+nm -g --defined-only "$work/room.o" | awk '{print $3}' | sort > "$work/room.syms"
+nm -g --defined-only "$work/everglade.o" | awk '{print $3}' | sort > "$work/city.syms"
+comm -12 "$work/room.syms" "$work/city.syms" > "$work/both.syms"
+if [[ -s "$work/both.syms" ]]; then
+  if [[ "$(uname)" == Darwin ]]; then
+    ld -r "$work/room.o" -o "$work/room-own.o" -unexported_symbols_list "$work/both.syms"
+  else
+    objcopy --localize-symbols="$work/both.syms" "$work/room.o" "$work/room-own.o"
+  fi
+  objs[0]="$work/room-own.o"
+fi
+cc -std=c11 -O2 -w -I"$work" -c "$here/room-world.c" -o "$work/room-world.o"
+cc -std=c11 -O2 -Wall -Wextra -D_DEFAULT_SOURCE -I"$work" -I"$here" -I"$root/verse/voice-host" "$here/room-host.c" "$root/verse/voice-host/ws.c" \
+  "$work/room-world.o" "${objs[@]}" -lm -o "$out"
 echo "built $out"

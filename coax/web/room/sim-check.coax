@@ -1,0 +1,129 @@
+// The everglade rooms' check (room-everglade.coax, room-world.c): two sockets share one world.
+// A says who it is and walks ahead for two seconds at 30 inputs a second; B stands. Each hears the
+// world's header (W), state at about 15 Hz (D), its own player with its ACK, and the other by name.
+// A conjures a pack 3 m off: both hear the cast (e cast) and the pack (c, kind 10). A leaves: B
+// hears A and the pack gone (x p 0, x c).
+//   coax/web/tool.sh coax/web/room/sim-check.coax [ws://localhost:8830]
+//   (deploy.sh runs it through wss://openagents.com)
+// Prints one JSON line, then "shares" and exits 0, or "fails" and 1.
+#load "room-socket.coax";
+
+SC_SEATS :: 2;
+// What one socket heard.
+ScHeard :: struct {
+  w: bool; d: int; snap: bool; ack: int;
+  me_x: f32; me_z: f32; me_z0: f32; me_seen: bool;          // its own player
+  other_seen: bool; other_z0: f32; other_z: f32; other_named: bool;
+  cast_seen: bool; pack: int; pack_gone: bool; other_gone: bool;
+  bad: int;
+}
+sc_cm :: (t: string) -> f32 { return f32(rs_num(t)) / 100.0; }
+// One D entry: "p SS X Y Z ...", "n SS ...", "c EID KIND ...", "x K ID", "e cast SS ...".
+sc_entry :: (h: [] ScHeard, me: int, t: string) {
+  k := rs_field(t, 0);
+  if k == "p" {
+    s := rs_num(rs_field(t, 1)); z := sc_cm(rs_field(t, 4));
+    if s == me { h[0].me_x = sc_cm(rs_field(t, 2)); h[0].me_z = z; if !h[0].me_seen { h[0].me_z0 = z; } h[0].me_seen = true; }
+    else { if !h[0].other_seen { h[0].other_z0 = z; } h[0].other_z = z; h[0].other_seen = true; }
+    if rs_field(t, 16).count == 0 || rs_field(t, 17).count > 0 { h[0].bad += 1; }   // p and its 16 fields
+    return;
+  }
+  if k == "n" { if rs_num(rs_field(t, 1)) != me && rs_ends(t, " Sim A") { h[0].other_named = true; } return; }
+  if k == "c" { if rs_num(rs_field(t, 2)) == 10 { h[0].pack = rs_num(rs_field(t, 1)); } return; }
+  if k == "x" {
+    if rs_field(t, 1) == "c" && h[0].pack > 0 && rs_num(rs_field(t, 2)) == h[0].pack { h[0].pack_gone = true; }
+    if rs_field(t, 1) == "p" && rs_num(rs_field(t, 2)) != me { h[0].other_gone = true; }
+    return;
+  }
+  if k == "e" && rs_field(t, 1) == "cast" && rs_field(t, 3) == "32" { h[0].cast_seen = true; }
+}
+sc_hear :: (h: [] ScHeard, me: int, t: string) {
+  if rs_starts(t, "W ") { h[0].w = true; return; }
+  if !rs_starts(t, "D ") { return; }
+  h[0].d += 1;
+  h[0].ack = rs_num(rs_field(t, 2));
+  if rs_field(t, 3) == "1" { h[0].snap = true; }
+  // the entries after "D TICK ACK F "
+  at := 0; sp := 0;
+  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != ';' { e += 1; }
+    sc_entry(h, me, t[at..<e]);
+    at = e + 1;
+  }
+}
+rs_ends :: (t: string, end: string) -> bool { return t.count >= end.count && t[t.count - end.count..<t.count] == end; }
+sc_drain :: (c: [] RelayConn, h: [] ScHeard) {
+  for i: 0..<SC_SEATS {
+    if c[i].h < 0 { continue; }
+    while relay_conn_poll(c[i..<i + 1], 0) == RC_TEXT { sc_hear(h[i..<i + 1], i, cast(string) c[i].text[0..<c[i].text_n]); }
+  }
+}
+// Both send an input each 1/30 s for ms: A ahead (ky 100) when walk, else both still.
+sc_steps :: (c: [] RelayConn, h: [] ScHeard, seq: [] int, ms: int, walk: bool) -> bool {
+  ok := true;
+  t0 := rs_now(); n := 0;
+  while rs_now() - t0 < ms {
+    for i: 0..<SC_SEATS {
+      if c[i].h < 0 { continue; }
+      seq[i] += 1;
+      m: [96] u8;
+      k := rs_int(m[..], rs_put(m[..], 0, "I "), seq[i]);
+      k = rs_put(m[..], k, ifx walk && i == 0 then " 0 100 0 0 0 0" else " 0 0 0 0 0 0");
+      if !relay_conn_send(c[i..<i + 1], cast(string) m[0..<k]) { ok = false; }
+    }
+    n += 1;
+    while rs_now() - t0 < n * 33 { sc_drain(c, h); proc_sleep(2); }
+  }
+  return ok;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("sim-check: bad arguments"); return 2; }
+  b: [512] u8;
+  base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://localhost:8830", b[..]);
+  u: [1024] u8;
+  url := rs_url(u[..], base, "/api/room/relay/everglade/", "pair-sim-", rs_stamp());
+  c: [SC_SEATS] RelayConn; h: [SC_SEATS] ScHeard; seq: [SC_SEATS] int;
+  if url.count == 0 || !relay_conn_open(c[0..<1], url) || !relay_conn_open(c[1..<2], url) { tool_err("sim-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
+  sent := relay_conn_send(c[0..<1], "H 1 ranger.2.1.0 druid 0 Sim A") && relay_conn_send(c[1..<2], "H 1 ranger.0.0.0 druid 0 Sim B");
+  t0 := rs_now();
+  sent = sc_steps(c[..], h[..], seq[..], 2000, true) && sent;
+  walked := h[0].me_z - h[0].me_z0;
+  seen_walk := h[1].other_z - h[1].other_z0;
+  // A conjures a pack 3 m ahead of where it stands
+  m: [128] u8;
+  k := rs_int(m[..], rs_put(m[..], 0, "C "), seq[0] + 1);
+  seq[0] += 1;
+  k = rs_put(m[..], k, " 32 "); k = rs_int(m[..], k, cast(int) (h[0].me_x * 100));
+  k = rs_put(m[..], k, " 0 "); k = rs_int(m[..], k, cast(int) ((h[0].me_z + 3) * 100)); k = rs_put(m[..], k, " -1");
+  sent = relay_conn_send(c[0..<1], cast(string) m[0..<k]) && sent;
+  sent = sc_steps(c[..], h[..], seq[..], 800, false) && sent;
+  closed := relay_conn_close(c[0..<1], 1000);
+  c[0].h = -1;
+  sent = sc_steps(c[..], h[..], seq[..], 800, false) && sent;
+  ms := rs_now() - t0;
+  rate := f32(h[1].d) / (f32(ms) / 1000.0);
+  ok := sent && h[0].w && h[1].w && h[0].snap && h[1].snap && h[0].ack > 30 && abs(walked) > 3 && abs(seen_walk - walked) < 1.5 && h[1].other_named &&
+        h[0].cast_seen && h[1].cast_seen && h[0].pack > 0 && h[1].pack > 0 && h[1].pack_gone && h[1].other_gone && rate > 12 && h[0].bad + h[1].bad == 0;
+  out: [1024] u8; o: [1] Jo;
+  jo_start(o[..], out[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "a_walked_cm"); jo_int(o[..], cast(int) (walked * 100));
+  jo_key(o[..], "b_saw_walk_cm"); jo_int(o[..], cast(int) (seen_walk * 100));
+  jo_key(o[..], "a_ack"); jo_int(o[..], h[0].ack);
+  jo_key(o[..], "b_d_frames"); jo_int(o[..], h[1].d);
+  jo_key(o[..], "b_d_hz10"); jo_int(o[..], cast(int) (rate * 10));
+  jo_key(o[..], "named"); jo_bool(o[..], h[1].other_named);
+  jo_key(o[..], "pack_a"); jo_int(o[..], h[0].pack);
+  jo_key(o[..], "pack_b"); jo_int(o[..], h[1].pack);
+  jo_key(o[..], "gone"); jo_bool(o[..], h[1].pack_gone && h[1].other_gone);
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  print("%\n", ifx ok then "shares" else "fails");
+  _ := closed;
+  r := relay_conn_close(c[1..<2], 1000);
+  return ifx ok then 0 else 1;
+}

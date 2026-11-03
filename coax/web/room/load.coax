@@ -6,15 +6,13 @@
 //   coax/web/tool.sh coax/web/room/load.coax [ws://localhost:8830] [players=4] [seconds=10]
 // Prints one JSON line, then "holds" and exits 0, or "fails" and 1.
 //
-// The everglade mode (spec section 11.3): PLAYERS sockets (default 64, up to 256) join the relay's
-// everglade rooms pair-load-STAMP-K in 16s, each sends P at 15 Hz (a random walk), a C every 5 s,
-// an S and D pair every 20 s and a clock ping a second. Passes when every socket opened, no P is
-// missing (each P's SEQ follows the last), every player hears >= 14 P a second from every other
-// seat in its room, and the relay's fan-out time is under 50 ms at the 95th percentile (each P
-// carries its send time; fan-out = the P's time across the relay less the median ping round trip).
-// Through wss:// (the load balancer) the timing it passes on is the spec's goal 3 instead, a P on
-// another screen within 250 ms at the 95th percentile; deploy.sh reads the relay's own fan-out time
-// from /api/room/health.
+// The everglade mode (spec section 11.3): PLAYERS sockets (default 64, up to 256) join the server's
+// everglade rooms pair-load-STAMP-K in 16s (room-everglade.coax: the server's world), each sends its
+// hello, an input every 1/30 s (I, a walk that turns), a cast every 5 s (C, Thunderbolt 5 m ahead)
+// and a clock ping a second. Passes when every socket opened, every player hears >= 14 state frames
+// (D) a second, sees every other seat's player, its ACK never goes back and in the end is its last
+// input, and an input is acknowledged within 120 ms at the 95th percentile on this machine (a tick
+// and a state frame's wait) or, through wss:// (the load balancer), within 250 ms (the spec's goal 3).
 //   coax/web/tool.sh coax/web/room/load.coax everglade [ws://localhost:8830] [players=64] [seconds=20]
 #load "room-socket.coax";
 
@@ -156,13 +154,14 @@ tool_main :: () -> int #export_c {
 EG_MAX :: 256;
 EG_SEATS :: 16;
 EG_HIST :: 2001;              // ms buckets, the last one "2 s or more"
+EG_RING :: 128;               // inputs' send times kept, by SEQ
 EgPlayer :: struct {
-  seat: int = -1; seq: int;
-  last: [EG_SEATS] int;       // the last P SEQ heard from each seat (0: none yet)
-  counted: [EG_SEATS] int;    // P heard from each seat, sent inside the measured window
-  gaps: int; others: int; other_frames: int;
-  next_p: int; next_c: int; next_s: int; next_t: int; s_live: bool;
-  x: int; z: int;
+  seat: int = -1; seq: int; ack: int; back: int;
+  sent: [EG_RING] int;        // when input SEQ % EG_RING went out
+  seen: [EG_SEATS] bool;      // the seats whose player it has heard
+  d: int; d_counted: int;     // D frames, and those inside the measured window
+  next_i: int; next_c: int; next_t: int;
+  x: f32; z: f32;             // where the server has it
 }
 EgRun :: struct { lat: [EG_HIST] int; rtt: [EG_HIST] int; m0: int; m1: int; }
 
@@ -185,16 +184,31 @@ eg_hist_at :: (h: [] int, q: int) -> int {
 
 eg_hear :: (p: [] EgPlayer, r: [] EgRun, t: string, now: int) {
   k := rs_field(t, 0);
-  if k == "y" { p[0].seat = rs_num(rs_field(t, 1)); p[0].others = rs_num(rs_field(t, 2)); return; }
+  if k == "y" { p[0].seat = rs_num(rs_field(t, 1)); return; }
   if k == "t" { eg_hist_add(r[0].rtt[..], now - rs_num(rs_field(t, 1))); return; }
-  if k != "m" { return; }
-  from := rs_num(rs_field(t, 1));
-  if from < 0 || from >= EG_SEATS { return; }
-  if rs_field(t, 2) != "P" { p[0].other_frames += 1; return; }
-  seq := rs_num(rs_field(t, 3)); sent := rs_num(rs_field(t, 4));
-  if p[0].last[from] != 0 && seq != p[0].last[from] + 1 { p[0].gaps += 1; }
-  p[0].last[from] = seq;
-  if sent >= r[0].m0 && sent < r[0].m1 { p[0].counted[from] += 1; eg_hist_add(r[0].lat[..], now - sent); }
+  if k != "D" { return; }
+  p[0].d += 1;
+  if now >= r[0].m0 && now < r[0].m1 { p[0].d_counted += 1; }
+  ack := rs_num(rs_field(t, 2));
+  if ack < p[0].ack { p[0].back += 1; }
+  if ack > p[0].ack {
+    if ack > p[0].seq - EG_RING && now >= r[0].m0 && now < r[0].m1 { eg_hist_add(r[0].lat[..], now - p[0].sent[ack % EG_RING]); }
+    p[0].ack = ack;
+  }
+  // the players in it: "p SS X Y Z ..." after "D TICK ACK F ", then after each ';'
+  at := 0; sp := 0;
+  while at < t.count && sp < 4 { if t[at] == ' ' { sp += 1; } at += 1; }
+  while at < t.count {
+    e := at;
+    while e < t.count && t[e] != ';' { e += 1; }
+    en := t[at..<e];
+    if rs_starts(en, "p ") {
+      ss := rs_num(rs_field(en, 1));
+      if ss >= 0 && ss < EG_SEATS { p[0].seen[ss] = true; }
+      if ss == p[0].seat { p[0].x = f32(rs_num(rs_field(en, 2))) / 100; p[0].z = f32(rs_num(rs_field(en, 4))) / 100; }
+    }
+    at = e + 1;
+  }
 }
 // A step of the random walk, from the run's clock and the player (no shared state).
 eg_rand :: (i: int, t: int) -> int { x := (i * 7919 + t * 104729) % 2003; return x - 1001; }
@@ -264,38 +278,35 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int) -> 
   // the measured window: from 1 s in to 1 s before the end (what was sent inside it)
   run[0].m0 = t0 + 1000; run[0].m1 = t0 + seconds * 1000 - 1000;
   until := t0 + seconds * 1000;
+  msg0: [96] u8; hello_failed := 0;
   for i: 0..<players {
-    p[i].next_p = t0 + (i * 67) % 67; p[i].next_c = t0 + 500 + (i * 211) % 5000; p[i].next_s = t0 + 700 + (i * 997) % 20000; p[i].next_t = t0 + (i * 31) % 1000;
+    p[i].next_i = t0 + (i * 7) % 33; p[i].next_c = t0 + 500 + (i * 211) % 5000; p[i].next_t = t0 + (i * 31) % 1000;
+    k := rs_put(msg0[..], 0, "H 1 ranger.0.0.0 druid 0 Load "); k = rs_int(msg0[..], k, i);
+    if c[i].h >= 0 && !relay_conn_send(c[i..<i + 1], cast(string) msg0[0..<k]) { hello_failed += 1; }
   }
   msg: [256] u8;
-  sends_failed := 0;
+  sends_failed := hello_failed;
   while true {
     now := rs_now();
     if now >= until + 500 { break; }
     if now < until {
       for i: 0..<players {
         if c[i].h < 0 { continue; }
-        if now >= p[i].next_p {
-          p[i].seq += 1; p[i].x += eg_rand(i, p[i].seq) / 20; p[i].z += eg_rand(i + 1, p[i].seq) / 20;
-          k := rs_put(msg[..], 0, "P "); k = rs_int(msg[..], k, p[i].seq); k = rs_put(msg[..], k, " "); k = rs_int(msg[..], k, now);
-          k = rs_put(msg[..], k, " "); k = rs_int(msg[..], k, p[i].x); k = rs_put(msg[..], k, " 120 "); k = rs_int(msg[..], k, p[i].z);
-          k = rs_put(msg[..], k, " 314 50 -20 0 1");
+        if now >= p[i].next_i {
+          // a walk that turns: ahead, with the camera's yaw going round once in 20 s
+          p[i].seq += 1; p[i].sent[p[i].seq % EG_RING] = now;
+          k := rs_put(msg[..], 0, "I "); k = rs_int(msg[..], k, p[i].seq);
+          k = rs_put(msg[..], k, " 0 100 0 0 "); k = rs_int(msg[..], k, ((now - t0) * 628 / 20000 + i * 40) % 628 - 314);
+          k = rs_put(msg[..], k, ifx p[i].seq % 90 < 45 then " 1" else " 0");
           if !relay_conn_send(c[i..<i + 1], cast(string) msg[0..<k]) { sends_failed += 1; }
-          p[i].next_p += 67;
+          p[i].next_i += 33;
         }
         if now >= p[i].next_c {
-          k := rs_put(msg[..], 0, "C "); k = rs_int(msg[..], k, p[i].seq); k = rs_put(msg[..], k, " 2 100 0 400 "); k = rs_int(msg[..], k, now % 100000); k = rs_put(msg[..], k, " -1");
+          p[i].seq += 1; p[i].sent[p[i].seq % EG_RING] = now;
+          k := rs_put(msg[..], 0, "C "); k = rs_int(msg[..], k, p[i].seq); k = rs_put(msg[..], k, " 1 ");
+          k = rs_int(msg[..], k, cast(int) (p[i].x * 100) + 500); k = rs_put(msg[..], k, " 0 "); k = rs_int(msg[..], k, cast(int) (p[i].z * 100)); k = rs_put(msg[..], k, " -1");
           if !relay_conn_send(c[i..<i + 1], cast(string) msg[0..<k]) { sends_failed += 1; }
           p[i].next_c += 5000;
-        }
-        if now >= p[i].next_s {
-          eid := p[i].seat * 256 + 1;
-          k := ifx p[i].s_live then rs_put(msg[..], 0, "D ") else rs_put(msg[..], 0, "S ");
-          k = rs_int(msg[..], k, eid);
-          if !p[i].s_live { k = rs_put(msg[..], k, " 3 100 200 0 30 0"); }
-          if !relay_conn_send(c[i..<i + 1], cast(string) msg[0..<k]) { sends_failed += 1; }
-          p[i].s_live = !p[i].s_live;
-          p[i].next_s += ifx p[i].s_live then 2000 else 18000;
         }
         if now >= p[i].next_t {
           k := rs_put(msg[..], 0, "t "); k = rs_int(msg[..], k, now);
@@ -311,20 +322,19 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int) -> 
     }
     if !got { proc_sleep(1); }
   }
-  // each player's slowest other seat, in tenths of a P a second
+  // each player's state rate in tenths of a frame a second; who saw everyone; the ACKs
   window := run[0].m1 - run[0].m0;
-  slowest := 1000000; gaps := 0; alive := 0;
+  slowest := 1000000; alive := 0; blind := 0; back := 0; behind := 0;
   for i: 0..<players {
     if c[i].h >= 0 { alive += 1; }
-    gaps += p[i].gaps;
-    for j: 0..<players {
-      if j == i || p[j].seat < 0 { continue; }
-      r := p[i].counted[p[j].seat] * 10000 / window;
-      if r < slowest { slowest = r; }
-    }
+    r := p[i].d_counted * 10000 / window;
+    if r < slowest { slowest = r; }
+    back += p[i].back;
+    // the last input was a step (I) or a cast (C): either way the ACK is the last I stepped, at most 1 short
+    if p[i].ack < p[i].seq - 1 { behind += 1; }
+    for j: 0..<players { if p[j].seat >= 0 && !p[i].seen[p[j].seat] { blind += 1; } }
   }
   p95 := eg_hist_at(run[0].lat[..], 950); p50 := eg_hist_at(run[0].lat[..], 500); rtt := eg_hist_at(run[0].rtt[..], 500);
-  fanout := ifx p95 < 0 || rtt < 0 then -1 else p95 - rtt;
   out: [4096] u8; o: [1] Jo; tx: [32] u8;
   jo_start(o[..], out[..]);
   jo_obj(o[..]);
@@ -334,20 +344,20 @@ eg_room :: (base: string, players: int, seconds: int, stamp: int, room: int) -> 
   jo_key(o[..], "open_ms"); jo_int(o[..], open_ms);
   jo_key(o[..], "still_open"); jo_int(o[..], alive);
   jo_key(o[..], "sends_failed"); jo_int(o[..], sends_failed);
-  jo_key(o[..], "gaps"); jo_int(o[..], gaps);
-  jo_key(o[..], "slowest_seat_hz"); jo_raw(o[..], ld_tenths(tx[..], slowest));
-  jo_key(o[..], "latency_p50_ms"); jo_int(o[..], p50);
-  jo_key(o[..], "latency_p95_ms"); jo_int(o[..], p95);
+  jo_key(o[..], "blind"); jo_int(o[..], blind);
+  jo_key(o[..], "ack_back"); jo_int(o[..], back);
+  jo_key(o[..], "ack_behind"); jo_int(o[..], behind);
+  jo_key(o[..], "slowest_d_hz"); jo_raw(o[..], ld_tenths(tx[..], slowest));
+  jo_key(o[..], "ack_p50_ms"); jo_int(o[..], p50);
+  jo_key(o[..], "ack_p95_ms"); jo_int(o[..], p95);
   jo_key(o[..], "ping_rtt_ms"); jo_int(o[..], rtt);
-  jo_key(o[..], "fanout_p95_ms"); jo_int(o[..], fanout);
   jo_end(o[..]);
   print("%\n", jo_text(o[..]));
-  // on this machine the client's view is the relay's own; through the load balancer the round trip's
-  // tail is the network's, so there it is the spec's goal 3 (another screen within 250 ms at the 95th
-  // percentile) and the relay's own fan-out time is read from /api/room/health (deploy.sh)
+  // on this machine an input waits a tick and a state frame at most; through the load balancer the
+  // round trip's tail is the network's, so there it is the spec's goal 3 (250 ms at the 95th percentile)
   local := rs_starts(base, "ws://localhost");
-  timely := ifx local then fanout >= 0 && fanout < 50 else p95 >= 0 && p95 < 250;
-  ok := open == players && alive == players && sends_failed == 0 && gaps == 0 && slowest >= 140 && timely;
+  timely := ifx local then p95 >= 0 && p95 < 120 else p95 >= 0 && p95 < 250;
+  ok := open == players && alive == players && sends_failed == 0 && blind == 0 && back == 0 && behind == 0 && slowest >= 140 && timely;
   print("%\n", ifx ok then "holds" else "fails");
   for i: 0..<players { if c[i].h >= 0 { r := relay_conn_close(c[i..<i + 1], 200); } }
   return ifx ok then 0 else 1;
