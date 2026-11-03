@@ -95,7 +95,7 @@ AB_WIND_LIFT :: 11.0;      // m/s up it throws you (spells.rs WIND_LIFT)
 AB_HEAR_WW :: 30.0;
 AB_RADIUS :: 0.3; AB_HEIGHT :: 1.8;   // your capsule (aethyr/player.coax)
 // Levitate: the old bar's 18 m (spells.rs LEVITATE_HEIGHT), rising and sinking as it did.
-AB_LEV_TOP :: 18.0; AB_LEV_RISE :: 4.0; AB_LEV_SINK :: 3.0; AB_LEV_LIFE :: 600.0;
+AB_LEV_TOP :: 18.0; AB_LEV_CLICK :: 0.5; AB_LEV_RISE :: 4.0; AB_LEV_SINK :: 3.0; AB_LEV_LIFE :: 600.0;
 // Feather Fall: 60 feet a round, 60 feet's reach, a minute.
 AB_FF_SPEED :: 3.048; AB_FF_REACH :: 18.288; AB_FF_LIFE :: 60.0;
 // Gust of Wind: a 60 by 10 foot line, 15 feet a push, a save every round, a minute.
@@ -133,7 +133,7 @@ Abilities :: struct {
   perch: [WATCH_ACTORS] f32;   // on their feet, how high over the ground what they stand on is (a roof they came down on)
   t: f32;
   keys: [AB_N] bool;         // the abilities' keys held (a held key's repeats press nothing)
-  lev_on: bool; lev_up: bool; lev_sink: bool; lev_hold: f32; lev_t: f32;   // lev_hold: the height you hover at, world
+  lev_on: bool; lev_up: bool; lev_sink: bool; lev_hold: f32; lev_t: f32; lev_click: f32;   // lev_click: a click's rise left, s (a key rises while held)   // lev_hold: the height you hover at, world
   ff_on: bool; ff_t: f32; ff_air: bool; feather: [WATCH_ACTORS] bool;
   gust_on: bool; gust_t: f32; gust_at: Point; gust_dir: Point; gust_in: [WATCH_ACTORS] bool; gust_next: [WATCH_ACTORS] f32;
   tw_t: f32; tw_at: Point; tw_dir: Point;   // the last Thunderwave: since when, from where, which way
@@ -1081,6 +1081,8 @@ ab_levitate :: (s: [] Everglade) {
   if a[0].lev_on && !a[0].lev_up { a[0].lev_on = false; a[0].lev_sink = false; sp_say(s, "LEVITATE ENDS", -1, ""); return; }
   if s[0].wv.started && watch_bound(watch_w(s)) { sp_say(s, "EARTHBOUND", -1, ""); return; }
   a[0].lev_on = true; a[0].lev_up = true; a[0].lev_sink = false; a[0].lev_t = 0; a[0].lev_hold = ab_you(s).y;
+  // a click or a tap (no key held to let go) lifts you half a second, 2 m, then you hover
+  a[0].lev_click = ifx a[0].keys[AB_LEVITATE] then 0.0f32 else f32(AB_LEV_CLICK);
   sp_say(s, "LEVITATE", -1, "");
 }
 ab_feather :: (s: [] Everglade) {
@@ -1482,6 +1484,10 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
   if a[0].lev_on {
     // Levitate: up while held, down while X is, else held at its height; never over 18 m
     v := 0.0f32;
+    if a[0].lev_up && a[0].lev_click > 0 {
+      a[0].lev_click -= dt;
+      if a[0].lev_click <= 0 { a[0].lev_click = 0; a[0].lev_up = false; a[0].lev_hold = floor_y + y0; }
+    }
     if a[0].lev_up { v = f32(AB_LEV_RISE); }
     else if a[0].lev_sink { v = -f32(AB_LEV_SINK); }
     else { v = clamp((a[0].lev_hold - (floor_y + y0)) * 1.5, -2, 2); }
@@ -1856,6 +1862,19 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert l.on && near(l.vy, -f32(AB_FF_SPEED), 0.001) && l.y > 4.9;
   last := everglade_lift(g[..], 0, -30, 0.01, -3, 0, 0, 1.0 / 60);
   #assert !a[0].ff_on;
+}
+
+#test "abilities: Levitate clicked on the hotbar (no key held) lifts you 2 m and hovers there, never all the way up" #steps 441000000 {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].feet = v3(0, 0, -30);
+  a := ab_of(g[..]);
+  sp_press(g[..], SP_SLOTS + AB_LEVITATE);
+  #assert a[0].lev_on && a[0].lev_up;
+  y := 0.0f32; v := 0.0f32;
+  for k: 0..<300 { l := everglade_lift(g[..], 0, -30, y, v, y + v / 60 - 0.007, v - 0.4, 1.0 / 60); #assert l.on; y = l.y; v = l.vy; }
+  #assert !a[0].lev_up && near(y, f32(AB_LEV_CLICK) * f32(AB_LEV_RISE), 0.25);
 }
 
 #test "abilities: Levitate cast above 18 m (Reverse Gravity threw you up) hovers where you are, never pulls you down" #steps 441000000 {
