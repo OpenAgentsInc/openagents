@@ -313,6 +313,28 @@ through it yet: that is the asset path of
 links it beside another library that loads `sha256-kernel.coax` gets
 `S_hash` and `S_hex` twice (see 691c76ee7f).
 
+## Flight on the fixed step (`aethyr/flight.coax`)
+
+A realm that flies declares a `FlightProfile`, looked up by the same realm
+name as its collision profile; Fairy Forest's is on and every other realm's
+is off. In the air, after gravity, each 1/64 s step hands its vertical speed
+to `flight_vertical`: a jump press taken in the air is a wing beat (5.2 m/s
+up, or half a rise plus 5.2), the jump held climbs at 3.2 m/s, between beats
+you glide at 1.5 m/s, a rise stops past 40 m, and the dive held falls at
+7 m/s. The face hands the walker the presses, taps, whether you have wings
+(the realm's settings, not in water) and the dive held
+(`verse_player_input_flying`), and only draws the wings. It replaced
+`fairy-face.c`'s once-a-frame flight, which flew higher or lower at
+different frame rates. Checks: `aethyr/flight.coax` (mutation 0 survivors)
+and `aethyr/walk.coax` ("a flight of beats, climbs, glides and a dive has
+the same states at 30, 60, 120 and 144 FPS and on uneven frames").
+
+Hecate's Cemetery's free orbit, the camera its flight in hands back to,
+eases a fixed step at a time from each step's feet
+(`apps/openagents-web/villa.coax` `camera_steps`) and is drawn between the
+last two steps; a look turns it at once. Check: "Hecate's camera eases on
+the fixed step ...".
+
 ## Cross-realm checks (`aethyr/tests/cross-realm.coax`, `cross-realm-floor.coax`)
 
 Every walking realm steps one controller (`aethyr/walk.coax`) with its own

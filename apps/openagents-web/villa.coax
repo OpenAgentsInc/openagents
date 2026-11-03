@@ -147,6 +147,9 @@ Villa :: struct {
   fl_t: f32;                // seconds since it started
   skip_ask: bool;           // a key or a press asked to skip it; the face takes it
   live: Shot;               // the camera you have, which the flight hands back to
+  // The camera eases a fixed step at a time (aethyr/loop.coax's 1/64 s, the player's step):
+  // the orbit before the last step, the orbit the last frame left, and whether they are set.
+  orbit_prev: Orbit; orbit_seen: Orbit; orbit_clocked: bool;
   skip: Box;                // the SKIP button while it flies
   // The figures the face posed this frame: bones, how many, a bound each.
   bones: [FIGS * FIG_BONES * BONE_FLOATS] f32;
@@ -439,6 +442,7 @@ villa_place_camera :: (s: [] Villa, p: Place) #export_c {
   s[0].follower_cursor = follow.FrameCursor.{};
   s[0].follower_previous = follow.fetch_pose(s[0].fetch);
   s[0].follower_alpha = 0; s[0].follower_steps = 0;
+  s[0].orbit_clocked = false;   // the camera starts again where you are put
 }
 villa_spawn :: (s: [] Villa) -> Point #export_c { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
 
@@ -620,7 +624,7 @@ villa_step_in :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, ac
   s[0].feet = shown; s[0].face = face; s[0].act = act;
   speed := sqrt(vx * vx + vz * vz);
   s[0].speed = ifx finite(speed) then speed else 0.0f32;
-  s[0].live = camera_frame(s, shown, vx, vz, t);
+  s[0].live = ifx fixed then camera_steps(s, targets) else camera_frame(s, shown, vx, vz, t);
   if !s[0].flight_begun {
     s[0].flight_begun = true;
     s[0].flight = verse_flight_start(flight_keys(), s[0].time, !villa_fly_wanted(s));
@@ -703,13 +707,45 @@ ground_room :: (s: [] Villa, r: OrbitRay) -> f32 {
 }
 
 camera_frame :: (s: [] Villa, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
+  camera_ease(s, feet, vx, vz, dt);
+  return verse_orbit_shot(s[0].orbit);
+}
+camera_ease :: (s: [] Villa, feet: Point, vx: f32, vz: f32, dt: f32) {
   speed := sqrt(vx * vx + vz * vz);
   o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
   room := verse_orbit_room(o, s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6]);
   room = lo(room, ground_room(s, verse_orbit_ray(o)));
   o = verse_orbit_limit(o, room, dt);
   s[0].orbit = o;
-  return verse_orbit_shot(o);
+}
+
+// The camera on the fixed step: it eases once for each step the player ran, from that step's
+// feet and speed, with the step's time, so it eases the same at any frame rate; the frame
+// draws the point between the last two steps' orbits. What the look and keys turned since the
+// last frame turns both, so a look shows at once.
+VILLA_STEP :: 0.015625;   // aethyr/loop.coax's LOOP_STEP_NS, in seconds
+camera_steps :: (s: [] Villa, targets: [] walk_frame.StepTarget) -> Shot {
+  if !s[0].orbit_clocked { s[0].orbit_prev = s[0].orbit; s[0].orbit_seen = s[0].orbit; s[0].orbit_clocked = true; }
+  s[0].orbit_prev.yaw = wrap_angle(s[0].orbit_prev.yaw + wrap_angle(s[0].orbit.yaw - s[0].orbit_seen.yaw));
+  s[0].orbit_prev.pitch += s[0].orbit.pitch - s[0].orbit_seen.pitch;
+  for i: 0..<s[0].follower_steps {
+    a := targets[i];
+    flat := v3(a.feet.x, a.feet.y, a.feet.z);
+    s[0].orbit_prev = s[0].orbit;
+    camera_ease(s, feet_in_world(flat, ground_at(s, flat.x, flat.z)), a.velocity.x, a.velocity.z, f32(VILLA_STEP));
+  }
+  s[0].orbit_seen = s[0].orbit;
+  return verse_orbit_shot(orbit_between(s[0].orbit_prev, s[0].orbit, s[0].follower_alpha));
+}
+// Partway from one orbit to the next: the turn the short way, the rest straight.
+orbit_between :: (a: Orbit, b: Orbit, t: f32) -> Orbit {
+  o := b;
+  o.yaw = wrap_angle(a.yaw + wrap_angle(b.yaw - a.yaw) * t);
+  o.pitch = lerp(a.pitch, b.pitch, t);
+  o.zoom = lerp(a.zoom, b.zoom, t);
+  o.shown = lerp(a.shown, b.shown, t);
+  o.pivot = mix(a.pivot, b.pivot, t);
+  return o;
 }
 
 // Where the face poses the figures: 0 you, 1 your dog.
@@ -2018,4 +2054,91 @@ VILLA_BUDGET :: FrameBudget.{steps = 8, vertices = 1000, draws = DRAWS, bytes = 
   va_clock = realm_loop.loop_frame(va_clock, 0.015625).clock;
   villa_step_on_clock(va_s[..], va_clock, va_targets[..], 30, 0, 30, 0, 0, 0, 0);
   #assert va_s[0].pet[0].doing == -1 && va_s[0].fetch.ball.held == -1 && va_s[0].fetch.ball.thrown && va_s[0].pet[0].ev_n == va_events + 1;
+}
+
+// ---- the camera on the fixed step: the same walk at any frame rate
+
+// Step i of a walk out of the south gate: north along the path, then a turn east.
+hc_target :: (i: int) -> walk_frame.StepTarget {
+  t: walk_frame.StepTarget;
+  north := ifx i < HC_TURN then i else HC_TURN;
+  east := ifx i < HC_TURN then 0 else i - HC_TURN;
+  t.feet.x = f32(SPAWN_X) + f32(east) * 0.06; t.feet.y = 0; t.feet.z = f32(SPAWN_Z) + f32(north) * 0.08;
+  t.velocity.x = ifx i < HC_TURN then 0.0f32 else 3.84; t.velocity.z = ifx i < HC_TURN then 5.12f32 else 0;
+  t.face = ifx i < HC_TURN then 0.0f32 else f32(PI) / 2;
+  return t;
+}
+HC_STEPS :: 96;
+HC_TURN :: 48;
+same_orbit :: (a: Orbit, b: Orbit) -> bool {
+  return a.yaw == b.yaw && a.pitch == b.pitch && a.want == b.want && a.zoom == b.zoom && a.shown == b.shown
+    && a.pivot.x == b.pivot.x && a.pivot.y == b.pivot.y && a.pivot.z == b.pivot.z && a.idle == b.idle && a.push == b.push;
+}
+// A frame of `frame` seconds: the clock runs its steps, the villa takes their targets.
+hc_frame :: (s: [] Villa, clock: realm_loop.FrameClock, frame: f32, path: [] walk_frame.StepTarget) -> realm_loop.FrameClock {
+  from := clock.ticks;
+  next := realm_loop.loop_frame(clock, f64(frame)).clock;
+  last := path[ifx next.ticks > 0 then next.ticks - 1 else 0];
+  villa_step_on_clock(s, next, path[from..<next.ticks], last.feet.x, last.feet.y, last.feet.z, last.face, 0, last.velocity.x, last.velocity.z);
+  return next;
+}
+hc_uneven :: (f: int) -> f32 {
+  parts := [5] f32.[4.0 / 120.0, 1.0 / 120.0, 2.0 / 120.0, 5.0 / 120.0, 8.0 / 120.0];
+  return parts[f % 5];
+}
+
+#forall "Hecate's camera eases on the fixed step: a walk has the same camera at 30, 60, 120 and 144 FPS and on uneven frames" r: 0..<5 #steps 900000000 {
+  path: [HC_STEPS + 8] walk_frame.StepTarget;
+  for i: 0..<path.count { path[i] = hc_target(i); }
+  // the reference: one step a frame
+  ref: [HC_STEPS] Orbit;
+  a: [1] Villa; villa_start(a[..]); villa_on_realm_clock(a[..]);
+  ac: realm_loop.FrameClock;
+  for i: 0..<HC_STEPS {
+    ac = hc_frame(a[..], ac, f32(VILLA_STEP), path[..]);
+    #assert ac.ticks == i + 1;
+    ref[i] = a[0].orbit;
+  }
+  // it followed: the pivot came along the path, and walking east swung the camera round
+  #assert ref[HC_STEPS - 1].pivot.x > f32(SPAWN_X) + 2 && ref[HC_STEPS - 1].pivot.z > f32(SPAWN_Z) + 3;
+  #assert ref[HC_STEPS - 1].yaw != ref[HC_TURN - 1].yaw;
+  fps := ifx r == 0 then 30 else ifx r == 1 then 60 else ifx r == 2 then 120 else 144;
+  b: [1] Villa; villa_start(b[..]); villa_on_realm_clock(b[..]);
+  bc: realm_loop.FrameClock;
+  f := 0; between := 0;
+  while bc.ticks < HC_STEPS {
+    frame := ifx r == 4 then hc_uneven(f) else cast(f32) (1.0 / cast(f64) fps);
+    bc = hc_frame(b[..], bc, frame, path[..]);
+    f += 1;
+    if bc.ticks > 0 && bc.ticks <= HC_STEPS { #assert same_orbit(b[0].orbit, ref[bc.ticks - 1]); }
+    // what is drawn lies between the last two steps' cameras
+    if bc.ticks > 1 && bc.ticks <= HC_STEPS {
+      e0 := verse_orbit_shot(ref[bc.ticks - 2]).eye.z; e1 := verse_orbit_shot(ref[bc.ticks - 1]).eye.z;
+      ez := b[0].live.eye.z;
+      #assert ez >= lo(e0, e1) - 0.0001 && ez <= hi(e0, e1) + 0.0001;
+      if ez != e1 { between += 1; }
+    }
+  }
+  #assert between > 0 || r == 0;
+}
+
+#test "a look turns the camera drawn at once, between steps too" #steps 200000000 {
+  s: [1] Villa; villa_start(s[..]); villa_on_realm_clock(s[..]); s[0].still = true;   // no flight in: the look is yours
+  path: [16] walk_frame.StepTarget;
+  for i: 0..<16 { path[i] = hc_target(i); }
+  c: realm_loop.FrameClock;
+  c = hc_frame(s[..], c, 0.02, path[..]);
+  c = hc_frame(s[..], c, 0.02, path[..]);
+  yaw := s[0].orbit.yaw;
+  s[0].look_yaw = 0.5;
+  villa_controls(s[..], 0, 0, 0);
+  c = hc_frame(s[..], c, 0.001, path[..]);    // no step runs: the look still shows
+  #assert c.ran == 0 && s[0].orbit.yaw == wrap_angle(yaw + 0.5);
+  turned := verse_orbit_shot(s[0].orbit);
+  #assert abs(s[0].live.eye.x - turned.eye.x) < 0.05 && abs(s[0].live.eye.z - turned.eye.z) < 0.05;
+  // put somewhere else, the camera starts there: nothing is drawn between the old place and the new
+  villa_place_camera(s[..], verse_place(30, 0, 30, 0, 0, 0.3, 5, 0, -1, 1000));
+  c = realm_loop.FrameClock.{};
+  c = hc_frame(s[..], c, 0.001, path[..]);
+  #assert same_orbit(s[0].orbit_prev, s[0].orbit) && s[0].live.eye.x == verse_orbit_shot(s[0].orbit).eye.x;
 }
