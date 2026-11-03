@@ -558,7 +558,7 @@
 }
 
 #forall "return borrow workspace scalar admission keeps exact extents and refuses malformed counts" sample:0..<14 {
- queries:=[14]int.[128,16384,127,16385,-1,0,128,128,128,128,128,128,16384,129];origins:=[14]int.[1024,65536,1024,1024,1024,1024,1023,65537,-1,0,65536,1024,1024,1025];want:=[14]bool.[true,true,false,false,false,false,false,false,false,false,true,true,true,true];#assert CB_workspace_admitted(queries[sample],origins[sample])==want[sample];
+ queries:=[14]int.[128,268435455,127,268435456,-1,0,128,128,128,128,128,128,16385,129];origins:=[14]int.[1024,536870911,1024,1024,1024,1024,1023,536870912,-1,0,65537,1024,1024,1025];want:=[14]bool.[true,true,false,false,false,false,false,false,false,false,true,true,true,true];#assert CB_workspace_admitted(queries[sample],origins[sample])==want[sample];
 }
 #test "return borrow actual workspace views retain wiring at the minimum extents" {
  nodes:[4]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=1,type_count=16}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};nodes[1].kind=CK_Tag.file;
@@ -1212,7 +1212,8 @@
 }
 
 #forall "return borrow workspace capacities preserve the exact bounded profile" sample:0..<13 {
- sizes:=[13]int.[-1,0,1,127,128,255,256,257,16383,16384,16385,2147483646,2147483647];queries:=[13]int.[0,0,128,128,128,255,256,257,16383,16384,16384,16384,0];origins:=[13]int.[0,0,1024,1024,1024,1024,1024,1028,65532,65536,65536,65536,0];r:=CK_borrow_caps(sizes[sample]);
+ sizes:=[13]int.[-1,0,1,127,128,255,256,257,16383,131072,131080,262148,2147483646];queries:=[13]int.[0,0,128,128,128,255,256,257,16383,16384,16385,32768,268435455];origins:=[13]int.[0,0,1024,1024,1024,1024,1024,1028,65532,65536,65536,65537,536870911];r:=CK_borrow_caps(sizes[sample]);
+ #assert CK_borrow_caps(16384).queries==16384 && CK_borrow_caps(131079).queries==16384 && CK_borrow_caps(262147).origins==65536 && CK_borrow_caps(2147483647).queries==0;
  #assert r.queries==queries[sample] && r.origins==origins[sample] && r.work==(ifx queries[sample]==0 then 0 else 2097152);
 }
 

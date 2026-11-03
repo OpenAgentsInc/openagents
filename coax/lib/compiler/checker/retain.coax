@@ -302,9 +302,10 @@ CR_summary :: (r:CR_Context,root:int) {
 CR_walk :: (r:CR_Context,head:int,instances:bool,seed:bool) {
  b:=r.b;if b.c.state[0].error_count>0 {return;}id:=head;
  while id!=0 {
-  if id<2 || id>b.c.state[0].used || !CB_tick(b,CK_Loc.{}) {CK_resource(b.c,b.state[0].loc);return;}n:=b.c.nodes[id];owner:=ifx n.kind==CK_Tag.check then n.a else id;
+  if id<2 || id>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return;}n:=b.c.nodes[id];owner:=ifx n.kind==CK_Tag.check then n.a else id;
+  b.state[0].unit=owner;if !CB_tick(b,CK_Loc.{}) {return;}
   if n.kind==CK_Tag.proc || n.kind==CK_Tag.check {if seed {CR_seed(r,owner);}else {CR_summary(r,owner);}}
-  if b.c.state[0].fatal || b.c.state[0].error_count>0 {return;}id=ifx instances then n.chain else n.next;
+  if b.c.state[0].fatal || b.c.state[0].error_count>0 {return;}CB_close(b);id=ifx instances then n.chain else n.next;
  }
 }
 CR_workspace_admitted :: (effect_count:int,report_count:int)->bool {return effect_count>=128 && effect_count<=16384 && report_count>=0 && report_count<=16384;}
@@ -313,7 +314,7 @@ CR_execute :: (b:CB_Context,effects:[]CK_RetainEffect) {
  state:[1]CR_State;r:=CR_Context.{b=b,effects=effects,reports=c.retain_reports,state=state[..]};
  // Every eligible concrete body is eagerly seeded with relation=true before use.
  // Excluded generic/bodyless declarations publish no retained summary.
- for id:2..<c.state[0].used+1 {if c.nodes[id].kind==CK_Tag.proc {if !CB_tick(b,c.nodes[id].loc) {return;}c.nodes[id].retain_head=0;c.nodes[id].retain_count=0;c.nodes[id].retain_mark=CR_Phase.fresh;c.nodes[id].retain_incomplete=false;}}
+ for id:2..<c.state[0].used+1 {if c.nodes[id].kind==CK_Tag.proc {if !CB_tick(b,c.nodes[id].loc) {return;}c.nodes[id].retain_head=0;c.nodes[id].retain_count=0;c.nodes[id].retain_mark=CR_Phase.fresh;c.nodes[id].retain_incomplete=false;CB_close(b);}}
  CR_walk(r,c.nodes[1].head,false,true);CR_walk(r,c.state[0].instances,true,true);
  // Summary walk entries stop on diagnostics; their tick barrier stops fatal-only states.
  // The final post-summary guard below still blocks public report publication.
@@ -322,7 +323,7 @@ CR_execute :: (b:CB_Context,effects:[]CK_RetainEffect) {
 CR_run :: (b:CB_Context) {
  b.c.state[0].retain_report_count=0;raw:=b;raw.retain_classes=false;
  // Reset only the committed type prefix; the type graph is frozen for this run.
- for type:1..<b.c.state[0].type_count {if !CB_tick(b,b.state[0].loc) {return;}b.c.types[type].retain_presence=0;b.c.types[type].retain_mutable=0;b.c.types[type].retain_join=0;b.c.types[type].retain_fields=0;}
+ for type:1..<b.c.state[0].type_count {if !CB_tick(b,b.state[0].loc) {return;}b.c.types[type].retain_presence=0;b.c.types[type].retain_mutable=0;b.c.types[type].retain_join=0;b.c.types[type].retain_fields=0;CB_close(b);}
  raw.retain_fields=true;
  if b.c.retain_effects.count==0 {effects:[128]CK_RetainEffect;CR_execute(raw,effects[..]);}
  else {CR_execute(raw,b.c.retain_effects);}

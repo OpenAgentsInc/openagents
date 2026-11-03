@@ -130,7 +130,7 @@ const ErrorInfo ERRORS[] = {
     {"E0379", "#forall domain cannot be enumerated", "A #forall binding must be nonempty: bool, a nonempty enum, an integer of at most 16 bits, or an increasing lo..<hi range of int constants. Test a wider type on a small instance: write the code so a smaller type or range exercises the same paths."},
     {"E0380", "procedure not exercised by a check", "Every procedure except main and #foreign imports must actually execute during an #authority check. Dead branches and pre-folded #run results do not count. Execution coverage is not a proof of the assertions."},
 
-    {"E0381", "type checker resource limit", "The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree. A build above 192 entries gets a near-limit note."},
+    {"E0381", "type checker resource limit", "The Coax checker needs its caller-owned graph, type, local, diagnostic and text capacities and at most 256 active semantic entries. Reduce nesting or use CK_caps. Failed checking never admits a partial typed tree. A build above 192 entries gets a near-limit note. Borrow analysis gives each declaration 2097152 steps in each pass and names the one that runs out; split it into smaller procedures. A declaration above three quarters of that gets a near-limit note."},
 
     {"E0382", "invalid reflection category", "field_info takes a struct type and enum_info an enum type. The type must have a field or member to select. Use type_info for scalar, array or view layout."},
 

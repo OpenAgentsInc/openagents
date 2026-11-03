@@ -390,6 +390,28 @@ class CapacityTests(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertIn('error[E0400]', r.stderr)
 
+    def test_borrow_analysis_per_declaration(self):
+        # Each declaration's borrow analysis has its own 2097152-step budget
+        # (#12644): the three that used the most are reported by name, and the
+        # whole run against the sum of every declaration's budget. The 3/4 and
+        # limit boundaries are checked in checker/budget-checks.coax.
+        body = ''.join(f'    if n == {i} {{ return a[{i}..<{i + 1}]; }}\n' for i in range(40))
+        source = ('pick :: (a: [] int, n: int) -> [] int {\n' + body + '    return a[0..<1];\n}\n'
+                  'first :: (a: [] int) -> [] int { return a[0..<1]; }\n'
+                  'main :: () { b: [64] int; v := pick(b[..], 3); w := first(b[..]); }\n')
+        r, rows = self.capacities(source)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        named = {k: v for k, v in rows.items() if k.startswith('borrow analysis of ')}
+        self.assertTrue(1 <= len(named) <= 3, rows)
+        for row in named.values():
+            self.assertEqual((row['limit'], row['code'], row['near']), (2097152, 'E0381', False))
+        self.assertIn('borrow analysis of pick', named)
+        self.assertGreater(named['borrow analysis of pick']['used'], named.get('borrow analysis of first', {'used': 0})['used'])
+        total = rows['borrow analysis, all declarations']
+        self.assertEqual((total['code'], total['near'], total['limit'] % 2097152), ('E0381', False, 0))
+        self.assertGreaterEqual(total['limit'], 2097152 * len(named))
+        self.assertGreaterEqual(total['used'], sum(row['used'] for row in named.values()))
+
     def test_one_line_json_and_quiet_limits_print_no_notes(self):
         source = 'main :: () { x := 1' + '+1' * 200 + '; }\n'
         self.path.write_text(source)

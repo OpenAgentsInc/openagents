@@ -211,6 +211,14 @@ bool check(Arena *arena,File *file,bool mutation_lowering){
   capacity_use("checker node store","E0381",(uint64_t)state.used+1,(uint64_t)(original.empty()?first:CK_node_bound(first)));
   capacity_use("generic instances","E0339",(uint64_t)state.instance_count,(uint64_t)std::max<int64_t>(state.instance_limit,0));
   capacity_use("checker nesting","E0381",(uint64_t)state.peak_depth,(uint64_t)CK_depth_limit());
+  // Borrow analysis: each declaration's own budget (the three that used the
+  // most), and the whole run against the sum of those budgets (#12644).
+  const uint64_t borrow_limit=(uint64_t)CK_borrow_unit_limit();
+  for(int i=0;i<3;i++){const int64_t unit=state.borrow_worst_unit.e[i];if(unit<2 || unit>state.used)continue;
+    capacity_use(("borrow analysis of "+checked_text(input->nodes[(size_t)unit].name)).c_str(),"E0381",(uint64_t)state.borrow_worst.e[i],borrow_limit);}
+  capacity_use("borrow query memos","E0381",(uint64_t)state.borrow_queries,(uint64_t)borrow_queries.size());
+  capacity_use("borrow origins","E0381",(uint64_t)state.borrow_origins,(uint64_t)borrow_origins.size());
+  capacity_use("borrow analysis, all declarations","E0381",(uint64_t)state.borrow_work,borrow_limit*(uint64_t)std::max<int64_t>(state.borrow_units,1));
   laps.lap("check.checker");
   if(ok && mutation_lowering){ok=CK_prepare_spatial_mutations(context);laps.lap("check.mutation_lowering");}
   if(ok){CK_lower_effects(context);laps.lap("check.effects");}

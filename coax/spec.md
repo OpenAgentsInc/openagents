@@ -1631,6 +1631,26 @@ the input or fixed with a stated memory bound:
 | Compile-time call and dependency depth | 64 each | E0403 | native stack, within the compiler's baseline |
 | Compile-time steps | 100,000 by default, up to 250,000,000 | E0400 | chosen by `#run_steps` or `--run-steps` |
 | Compile-time storage | 1,572,864 value slots, 131,072 arrays and structs, 64 MiB of live strings, 134,217,728 traversal | E0400 | the stated values (`budget.coax`) |
+| Borrow analysis work | 2,097,152 steps per declaration in each pass | E0381 | no allocation |
+| Borrow memo pools | queries: one per syntax node from 128 to 16,384, then one per 8 nodes; origins: four per node from 1,024 to 65,536, then one per 4 nodes | E0381 | sized from the input (`CK_borrow_caps`): past 131,072 nodes, 163 bytes a node, under a tenth of the checker's node store |
+
+Borrow analysis (return borrows, then retained stores) has no whole-compile
+counter. Each top-level declaration or generic instance has its own budget of
+2,097,152 steps in each of its three passes (`CB_walk`, then `CR_walk`'s seed
+and summary passes), charged with the callee summaries it is first to need. A
+declaration that runs out is refused with E0381, "borrow analysis of NAME needs
+more than 2097152 steps". The passes that reset memo heads and type facts
+charge one step per record and close it, so the node and type stores bound
+them. A compile of D declarations and instances therefore takes at most
+3 x D x 2,097,152 analysis steps plus one step per node, type and query, and
+the work counter itself takes no memory. The near-limit report names the three
+declarations that used the most (`borrow analysis of NAME`) and the whole run
+(`borrow analysis, all declarations`, against the sum of the budgets it used),
+and the memo pools' use (`borrow query memos`, `borrow origins`). The pools
+are shared by the whole compile because summaries are memoized across
+declarations; they grow with the program instead of stopping at a fixed size
+(the compiler's own build used 15,570 of the former fixed 16,384 queries, and
+17,033 with the checks that came with this change).
 
 The stack bounds were measured with `ulimit -s` on Linux x86-64: `coax check`
 of an empty program needs about 640 KiB of stack (910 KiB with a `#run`), 128

@@ -1,0 +1,71 @@
+// Checks: the borrow analysis budget belongs to each declaration (#12644). A
+// part of the checker: lib/compiler/checker.coax loads it.
+#authority;
+#test "the borrow budget per declaration and its near-limit boundaries are exact" {
+ #assert CK_borrow_unit_limit()==2097152 && CK_borrow_caps(1).work==CK_borrow_unit_limit();
+ // The near-limit report (CB_near: 4u > 3l) starts one step past three quarters.
+ #assert CK_borrow_unit_limit()*3==1572864*4;
+}
+#test "a unit's work folds into the run's total and its three largest declarations" {
+ nodes:[4]CK_Node;errors:[1]CK_Error;state:=[1]CK_State.[CK_State.{used=3}];work:[1]CB_State;c:=CK_Context.{nodes=nodes[..],errors=errors[..],state=state[..]};b:=CB_Context.{c=c,state=work[..]};
+ units:=[16]int.[2,3,4,5,2,3,4,6,7,0,1,4,3,3,9,8];spent:=[16]int.[5,9,7,1,8,4,10,8,9,100,50,11,12,12,1,0];
+ worst:=[48]int.[5,0,0, 9,5,0, 9,7,5, 9,7,5, 9,8,7, 9,8,7, 10,9,8, 10,9,8, 10,9,9, 10,9,9, 10,9,9, 11,9,9, 12,11,9, 12,11,9, 12,11,9, 12,11,9];
+ owner:=[48]int.[2,0,0, 3,2,0, 3,4,2, 3,4,2, 3,2,4, 3,2,4, 4,3,2, 4,3,2, 4,3,7, 4,3,7, 4,3,7, 4,3,7, 3,4,7, 3,4,7, 3,4,7, 3,4,7];
+ counted:=[16]int.[1,2,3,4,5,6,7,8,9,9,9,10,11,12,13,14];total:=0;
+ for i:0..<16 {
+  work[0].work=spent[i];work[0].unit=units[i];work[0].queries=i*3+1;work[0].origins=i*5+2;CB_record(b);total+=spent[i];
+  #assert state[0].borrow_queries==i*3+1 && state[0].borrow_origins==i*5+2 && state[0].borrow_work==total && state[0].borrow_units==counted[i] && work[0].work==spent[i] && work[0].unit==units[i];
+  for k:0..<3 {#assert state[0].borrow_worst[k]==worst[i*3+k] && state[0].borrow_worst_unit[k]==owner[i*3+k];}
+ }
+ work[0].work=6;work[0].unit=5;CB_close(b);#assert work[0].work==0 && work[0].unit==0 && state[0].borrow_work==total+6 && state[0].borrow_units==15;
+}
+#forall "an exhausted unit is refused naming its declaration when its name fits" mode:0..<8 {
+ nodes:[6]CK_Node;errors:[2]CK_Error;bytes:[96]u8;state:=[1]CK_State.[CK_State.{used=3}];work:=[1]CB_State.[CB_State.{work=2097152,unit=3,loc=CK_Loc.{line=7,column=2}}];
+ c:=CK_Context.{nodes=nodes[..],errors=errors[..],bytes=bytes[..],state=state[..]};nodes[3]=CK_Node.{kind=CK_Tag.proc,name="hot_loop"};nodes[5]=CK_Node.{kind=CK_Tag.proc,name="far"};
+ if mode==1 {state[0].byte_count=96-57;}if mode==2 {state[0].byte_count=96-56;}if mode==3 {work[0].unit=0;}if mode==4 {work[0].unit=5;}if mode==5 {nodes[3].name="";}if mode==6 {state[0].error_count=2;}if mode==7 {work[0].unit=1;nodes[1].name="file";}
+ b:=CB_Context.{c=c,state=work[..]};#assert !CB_tick(b,CK_Loc.{line=0,column=9});
+ #assert state[0].fatal && work[0].work==2097153 && state[0].borrow_work==2097153 && state[0].borrow_units==(ifx mode==3 || mode==7 then 0 else 1);
+ if mode==6 {#assert state[0].error_count==2;return;}
+ #assert state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==7 && errors[0].loc.column==2;
+ if mode<2 {#assert errors[0].message=="borrow analysis of hot_loop needs more than 2097152 steps" && errors[0].fix=="split the procedure: each one's borrow analysis may take 2097152 steps" && state[0].byte_count==(ifx mode==0 then 57 else 96);}
+ else {#assert errors[0].message=="type checker storage or nesting budget exceeded" && errors[0].fix=="" && state[0].byte_count==(ifx mode==2 then 40 else 0);}
+ // A located tick keeps its own location.
+ state[0]=CK_State.{used=3};work[0]=CB_State.{work=2097152,unit=3,loc=CK_Loc.{line=7,column=2}};#assert !CB_tick(b,CK_Loc.{line=11,column=4}) && errors[0].loc.line==11 && errors[0].loc.column==4;
+}
+#forall "each top-level declaration starts its own budget in every pass" pass:0..<3, full:bool {
+ nodes:[8]CK_Node;types:[16]CK_Type;errors:[4]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{used=6,type_count=16}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1,name="first",next=3,loc=CK_Loc.{line=3,column=1}};nodes[3]=CK_Node.{kind=CK_Tag.proc,type=1,name="second",loc=CK_Loc.{line=9,column=1}};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};
+ // Round 0 measures each declaration's work from none. Round 1 starts the first
+ // where it finishes at its limit (or one step past it); the second starts again from none.
+ first:=0;second:=0;
+ for round:0..<2 {
+  if round==1 {first=state[0].borrow_worst[0];second=state[0].borrow_worst[1];state[0]=CK_State.{used=6,type_count=16};work[0]=CB_State.{work=2097152-first+(ifx full then 1 else 0)};}
+  if pass==0 {CB_walk(b,2,false);}
+  else {effects:[128]CK_RetainEffect;rs:[1]CR_State;r:=CR_Context.{b=b,effects=effects[..],reports=c.retain_reports,state=rs[..]};CR_walk(r,2,false,pass==1);}
+ }
+ #assert first>=1 && second>=1;
+ if full {#assert state[0].fatal && state[0].error_count==1 && errors[0].message=="borrow analysis of first needs more than 2097152 steps" && state[0].borrow_worst_unit[0]==2 && state[0].borrow_worst[0]==2097153 && state[0].borrow_units==1;return;}
+ #assert !state[0].fatal && state[0].error_count==0 && work[0].work==0 && work[0].unit==0 && state[0].borrow_units==2;
+ #assert state[0].borrow_worst_unit[0]==2 && state[0].borrow_worst[0]==2097152 && state[0].borrow_worst_unit[1]==3 && state[0].borrow_worst[1]==second && state[0].borrow_work==2097152+second;
+}
+#forall "setup passes close after each record, so their stores bound them" pass:0..<3 {
+ nodes:[8]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=6,type_count=18}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.array,elem=11,length=1};types[17]=types[16];
+ nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.proc,type=1};nodes[3]=CK_Node.{kind=CK_Tag.param,type=11};nodes[4]=CK_Node.{kind=CK_Tag.proc,type=1};nodes[5]=CK_Node.{kind=CK_Tag.stmt_var,type=11};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};work[0].work=2097151;
+ // Every record here is one step: without the closes the second step would run out.
+ if pass==0 {#assert CB_reset_heads(b);#assert state[0].borrow_work==2097155;}
+ else if pass==1 {CR_run(b);#assert state[0].borrow_work==2097170;}
+ else {effects:[128]CK_RetainEffect;CR_execute(b,effects[..]);#assert state[0].borrow_work==2097153;}
+ #assert !state[0].fatal && state[0].error_count==0 && state[0].borrow_units==0 && work[0].work==0 && work[0].unit==0;
+}
+#forall "a declaration with nothing to analyze is one step of its own" pass:0..<3 {
+ nodes:[4]CK_Node;types:[16]CK_Type;errors:[2]CK_Error;state:=[1]CK_State.[CK_State.{used=3,type_count=16}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="S"};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};
+ if pass==0 {CB_walk(b,2,false);}
+ else {effects:[128]CK_RetainEffect;rs:[1]CR_State;r:=CR_Context.{b=b,effects=effects[..],reports=c.retain_reports,state=rs[..]};CR_walk(r,2,false,pass==1);}
+ #assert !state[0].fatal && state[0].borrow_work==1 && state[0].borrow_units==1 && state[0].borrow_worst[0]==1 && state[0].borrow_worst_unit[0]==2 && work[0].work==0;
+}

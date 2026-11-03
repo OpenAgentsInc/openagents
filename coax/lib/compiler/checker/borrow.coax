@@ -4,17 +4,46 @@
 // Return-origin lower bounds and a separate sticky incompleteness bit. This
 // diagnostic pass grants no lifetime/retention permission to incomplete paths.
 CB_Result :: struct {count:int;incomplete:bool;}
-CB_State :: struct {literal_current:CB_LiteralBlock;literal_previous:CB_LiteralBlock;queries:int;origins:int;work:int;depth:int;loc:CK_Loc;field_type:int;field_block:int;field_head:int;field_row:int;projections:[2]CB_QueryProjection;projection_next:bool;}
+CB_State :: struct {literal_current:CB_LiteralBlock;literal_previous:CB_LiteralBlock;queries:int;origins:int;work:int;depth:int;loc:CK_Loc;field_type:int;field_block:int;field_head:int;field_row:int;projections:[2]CB_QueryProjection;projection_next:bool;unit:int;}
 CB_Context :: struct {c:CK_Context;queries:[]CK_BorrowQuery;origins:[]BS_Origin;state:[]CB_State;retain_classes:bool;retain_fields:bool;literal_cache:bool;query_index:bool;}
 CB_Place :: struct {decl:int;path:BS_Path;}
 CK_borrow_caps :: (nodes:int)->CK_BorrowCaps #export_c {
  if nodes<1 || nodes>2147483646 {return CK_BorrowCaps.{};}
  delta:=nodes-128;queries:=128+(delta & ((delta>>63)^ -1));delta=16384-queries;queries=16384-(delta & ((delta>>63)^ -1));
  delta=nodes*4-1024;origins:=1024+(delta & ((delta>>63)^ -1));delta=65536-origins;origins=65536-(delta & ((delta>>63)^ -1));
+ // Past 131072 syntax nodes the memo pools grow with the program (#12644):
+ // a query per 8 nodes and an origin per 4, at most 163 bytes a node, under a
+ // tenth of the checker's own node store (3 records of 584 bytes a node).
+ delta=nodes/8-queries;queries+=delta & ((delta>>63)^ -1);delta=nodes/4-origins;origins+=delta & ((delta>>63)^ -1);
  return CK_BorrowCaps.{queries=queries,origins=origins,work=2097152};
 }
+// Each unit of borrow analysis has its own budget of CB_UNIT_STEPS (#12644):
+// one top-level declaration or instance in one pass (CB_walk, then CR_walk's
+// seed and summary passes), charged with the callee summaries it computes
+// first. A setup pass over the node or type store closes after each record,
+// so its work is bounded by that store, not by this budget.
+CB_UNIT_STEPS :: 2097152;
 CB_tick :: (b:CB_Context,loc:CK_Loc)->bool {
- if b.c.state[0].fatal {return false;}b.state[0].work+=1;if b.state[0].work>2097152 {where:=loc;if where.line==0 {where=b.state[0].loc;}CK_resource(b.c,where);return false;}return true;
+ if b.c.state[0].fatal {return false;}b.state[0].work+=1;if b.state[0].work>CB_UNIT_STEPS {where:=loc;if where.line==0 {where=b.state[0].loc;}CB_exhausted(b,where);return false;}return true;
+}
+CK_borrow_unit_limit :: ()->int #export_c {return CB_UNIT_STEPS;}
+// Fold the open unit's work into the run's totals and its three largest units.
+CB_record :: (b:CB_Context) {
+ s:=b.c.state;work:=b.state[0].work;unit:=b.state[0].unit;s[0].borrow_work+=work;s[0].borrow_queries=b.state[0].queries;s[0].borrow_origins=b.state[0].origins;if unit<2 {return;}s[0].borrow_units+=1;
+ // A declaration already listed moves up from its own slot; another one replaces the smallest.
+ i:=2;if s[0].borrow_worst_unit[0]==unit {i=0;}if s[0].borrow_worst_unit[1]==unit {i=1;}
+ if work<=s[0].borrow_worst[i] {return;}
+ while i>0 && s[0].borrow_worst[i-1]<work {s[0].borrow_worst[i]=s[0].borrow_worst[i-1];s[0].borrow_worst_unit[i]=s[0].borrow_worst_unit[i-1];i-=1;}
+ s[0].borrow_worst[i]=work;s[0].borrow_worst_unit[i]=unit;
+}
+// End the open unit: the next one starts with no work and no owner.
+CB_close :: (b:CB_Context) {CB_record(b);b.state[0].work=0;b.state[0].unit=0;}
+// A unit that runs out is refused with E0381 naming its declaration.
+CB_exhausted :: (b:CB_Context,loc:CK_Loc) {
+ c:=b.c;CB_record(b);unit:=b.state[0].unit;name:="";if unit>=2 && unit<=c.state[0].used {name=c.nodes[unit].name;}
+ if name.count==0 || c.state[0].error_count>=c.errors.count || name.count+49>c.bytes.count-c.state[0].byte_count {CK_resource(c,loc);return;}
+ message:=CK_join3(c,"borrow analysis of ",name," needs more than 2097152 steps");
+ c.state[0].fatal=true;c.errors[c.state[0].error_count]=CK_Error.{loc=loc,code="E0381",message=message,fix="split the procedure: each one's borrow analysis may take 2097152 steps"};c.state[0].error_count+=1;
 }
 #forall "return borrow sixteen projections preserve parameter and local escape witnesses" local:bool,too_deep:bool {
  nodes:[160]CK_Node;types:[64]CK_Type;errors:[4]CK_Error;state:=[1]CK_State.[CK_State.{used=159,type_count=ifx too_deep then 43 else 34}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;for i:0..<16 {types[i]=CK_builtin(i);}layers:=ifx too_deep then 25 else 16;view:=16+layers;array:=view+1;types[view]=CK_Type.{kind=CK_Kind.view,elem=12};types[array]=CK_Type.{kind=CK_Kind.array,elem=12,length=2};
@@ -461,17 +490,17 @@ CB_leaves :: (b:CB_Context,proc:int,type:int,path:BS_Path,leaves:[]int)->bool {
 }
 CB_walk :: (b:CB_Context,head:int,instances:bool) {
  c:=b.c;id:=head;
- while id!=0 {if id<2 || id>c.state[0].used {CK_resource(c,CK_Loc.{line=1,column=1});return;}n:=c.nodes[id];b.state[0].loc=n.loc;if !CB_tick(b,n.loc) {return;}
+ while id!=0 {if id<2 || id>c.state[0].used {CK_resource(c,CK_Loc.{line=1,column=1});return;}n:=c.nodes[id];b.state[0].loc=n.loc;b.state[0].unit=id;if !CB_tick(b,n.loc) {return;}
   if n.kind==CK_Tag.proc && !n.generic && !n.flag2 {if CB_has_borrow(b,n.type,0) {leaves:[1]int;known:=CB_leaves(b,id,n.type,BS_Path.{},leaves[..]);c.nodes[id].borrow_status=ifx known then cast(u8)1 else cast(u8)2;}}
-  if c.state[0].fatal || c.state[0].error_count>0 {return;}id=ifx instances then n.chain else n.next;
+  if c.state[0].fatal || c.state[0].error_count>0 {return;}CB_close(b);id=ifx instances then n.chain else n.next;
  }
 }
-CB_workspace_admitted :: (query_count:int,origin_count:int)->bool {return query_count>=128 && query_count<=16384 && origin_count>=1024 && origin_count<=65536;}
+CB_workspace_admitted :: (query_count:int,origin_count:int)->bool {return query_count>=128 && query_count<=268435455 && origin_count>=1024 && origin_count<=536870911;}
 CB_reset_heads :: (b:CB_Context)->bool {
  c:=b.c;if c.state[0].used<1 || c.state[0].used>=c.nodes.count {CK_resource(c,CK_Loc.{line=1,column=1});return false;}
  // Only declarations can own memo chains; expression scanning spends no query work.
  // All concrete cloning is over, and these heads live for this invocation only.
- for id:2..<c.state[0].used+1 {tag:=c.nodes[id].kind;if tag==CK_Tag.proc || tag==CK_Tag.param || tag==CK_Tag.stmt_var || tag==CK_Tag.stmt_each || tag==CK_Tag.case_binding {if !CB_tick(b,c.nodes[id].loc) {return false;}c.nodes[id].borrow_query=0;}}
+ for id:2..<c.state[0].used+1 {tag:=c.nodes[id].kind;if tag==CK_Tag.proc || tag==CK_Tag.param || tag==CK_Tag.stmt_var || tag==CK_Tag.stmt_each || tag==CK_Tag.case_binding {if !CB_tick(b,c.nodes[id].loc) {return false;}c.nodes[id].borrow_query=0;CB_close(b);}}
  return true;
 }
 CB_run :: (c:CK_Context,queries:[]CK_BorrowQuery,origins:[]BS_Origin) {state:[1]CB_State;CB_run_with(c,queries,origins,state[..]);}

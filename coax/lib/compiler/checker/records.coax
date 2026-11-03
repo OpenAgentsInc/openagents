@@ -28,7 +28,7 @@ CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
 // Where a type is being resolved, for $T: which procedure owns the type
 // parameters in scope (generic) and whether this position may bind one (site).
 CK_Site :: enum u8 {none;param;result;body;field;}
-CK_State :: struct {used:int;type_count:int;composite_count:int;local_count:int;byte_count:int;error_count:int;current:int;constant_depth:int;loop_depth:int;defer_depth:int;unevaluated:int;basic:bool;depth:int;fatal:bool;metal_depth:int;clashes:int;generic:int;site:CK_Site;instances:int;instance_tail:int;instance_count:int;quantity_device:bool;unit_units:int;spatial_types:int;spatial_helpers:int;retain_report_count:int;names:int;instance_limit:int;peak_depth:int;}
+CK_State :: struct {used:int;type_count:int;composite_count:int;local_count:int;byte_count:int;error_count:int;current:int;constant_depth:int;loop_depth:int;defer_depth:int;unevaluated:int;basic:bool;depth:int;fatal:bool;metal_depth:int;clashes:int;generic:int;site:CK_Site;instances:int;instance_tail:int;instance_count:int;quantity_device:bool;unit_units:int;spatial_types:int;spatial_helpers:int;retain_report_count:int;names:int;instance_limit:int;peak_depth:int;borrow_units:int;borrow_work:int;borrow_worst:[3]int;borrow_worst_unit:[3]int;borrow_queries:int;borrow_origins:int;}
 // Logical module scopes: a node's scope indexes modules (0 is the unowned
 // program); an alias names a target scope from within one scope.
 CK_Alias :: struct {scope:int;name:string;target:int;}

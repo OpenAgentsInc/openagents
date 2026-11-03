@@ -519,9 +519,11 @@ or host has stopped retaining borrowed buffers.
 By-value carriers containing mutable views, unmodeled addressed getters,
 completion/cancellation ownership, general context lifetimes, recursive fixed
 points and shorter nested-block regions remain manual. Analysis uses
-twenty-four-step paths, depth 32 and a shared 2,097,152-work-step cap
-(owner-approved 2026-11-02 for the full desktop app). Exhaustion still
-refuses E0381. The
+twenty-four-step paths, depth 32 and a 2,097,152-step budget for each
+declaration in each pass (owner-approved 2026-11-02 for the full desktop app;
+per declaration since #12644, so a bigger program does not run out of a
+shared counter). Exhaustion refuses E0381 naming the declaration, and a build
+above three quarters of the budget gets a near-limit note. The
 [recorded return-summary boundary](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-return-borrows.md)
 and [retained-store boundary](https://github.com/OpenAgentsInc/openagents/blob/main/coax/verification-retained-stores.md) do not claim
 general lifetime safety. The

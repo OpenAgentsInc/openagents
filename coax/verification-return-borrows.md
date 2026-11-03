@@ -136,11 +136,12 @@ clearing and charging only declarations that can own queries. Inapplicable
 expression nodes create no memo work.
 These memo links and workspace tails are internal scratch, not a published
 summary format. The query and origin limits are unchanged; the owner-approved
-2026-11-02 shared work cap is 2,097,152. Historical receipts keep their
+2026-11-02 work cap is 2,097,152, per declaration in each pass since #12644
+(spec 16.2). Historical receipts keep their
 original 1,048,576-work profile.
 
 Helper-write descent shares the existing depth-32 guard, twenty-four-step paths,
-64-origin sets and the shared 2,097,152 work counter. Calls and arguments stay
+64-origin sets and the 2,097,152-step budget of the declaration being analyzed. Calls and arguments stay
 within the checked graph's admitted used prefixes. No parser allocation ordering is
 assumed. Resource exhaustion remains E0381, with no public summary ABI change.
 
