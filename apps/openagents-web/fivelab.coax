@@ -1758,7 +1758,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   spent := 0;
   for i: 0..<1500 {
     step(s[..], f32(STEP));
-    if i % 10 == 0 {
+    if i % 30 == 0 {
       for h: 0..<HEROES {
         c := s[0].battle[0].c[h];
         any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.rages < c.rages_max || c.focus < c.focus_max;
@@ -1781,7 +1781,7 @@ frame_at :: (s: [] Lab, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   spent := 0;
   for i: 0..<700 {
     step(s[..], f32(STEP));
-    if i % 10 == 0 {
+    if i % 30 == 0 {
       for h: 0..<HEROES {
         c := s[0].battle[0].c[h];
         any := c.slots[1] < c.slots_max[1] || c.slots[2] < c.slots_max[2] || c.rages < c.rages_max || c.focus < c.focus_max;
