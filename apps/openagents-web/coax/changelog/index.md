@@ -13,6 +13,193 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.48.0 — Tagged Results and Cleanup — 2026-11-02
+
+Commit: [`1a11ccb6801a146741a7403e906489eeafb63ab1`](https://github.com/OpenAgentsInc/openagents/commit/1a11ccb6801a146741a7403e906489eeafb63ab1)
+
+- Add compiler-owned `Result(T,E)`, nominal tagged unions, nested `T?`
+  optionals and exhaustive selection. Keep valid active-tag construction and
+  explicit payload binding; refuse hidden Result containment in this first
+  handling profile.
+- Check direct Result obligations through transfers, branch joins, normal
+  exits and implicit propagation. Preserve left-to-right evaluation, lazy
+  fallback, assignment-place order and reverse lexical cleanup on recoverable
+  returns. Loop/defer restrictions remain explicit.
+- Track active success/error payload borrows through construction, selection,
+  propagation and checked helpers. Preserve B2's bounded raw helper-write
+  composition, its manual fallback and all existing resource limits. Mutable
+  view carriers in sums keep the same explicit manual boundary as aggregates.
+- Emit checked LP64 tagged C layouts and composed sum-capable header identities;
+  validate tags before selection/extraction. Preserve published legacy
+  inspection schemas and refuse unsupported inventories explicitly.
+- Use typed errors in a real bounded-file adapter and the WGSL tool, preserving
+  POSIX codes and one close attempt on each ordinary acquired-descriptor exit.
+  `#pure` and `#effects` remain refused until separate effect admission lands.
+- Add a generation-fenced System One owner, typed asynchronous outcomes and
+  real Lab adoption. Snapshots copy before wire reuse; stale tickets cannot
+  cancel a newer request. This is a serialized canonical-owner protocol,
+  not general linear ownership or remote exactly-once effects. Join chapters
+  6, 7, 15, 20 and 24 through the actual adapters and offline native checks.
+
+## 0.47.0 — Versioned Shader Operations — 2026-11-01
+
+Commit: [`aabbf0d5189a7b26002114733cff0de77c7d9283`](https://github.com/OpenAgentsInc/openagents/commit/aabbf0d5189a7b26002114733cff0de77c7d9283)
+
+- Preserve checked shader tree2 and its GPU operation registry. Emit tree3
+  when a reachable procedure uses explicit fine derivatives or helper
+  conversion; both lowerers refuse those operations under tree2.
+- Add `gpu_dpdx_fine`, `gpu_dpdy_fine`, `gpu_fwidth_fine` and
+  `gpu_demote_helper`. Generic derivatives, legacy discard and scalar CPU
+  compatibility bodies keep their meanings. Native helper conversion declares
+  its SPIR-V extension and requires the matching enabled device feature.
+- Append rich reflection2 for actual checked binding layouts, stage visibility,
+  vertex inputs, fragment outputs and derivative/control requirements. Preserve
+  the original binding report lines for trusted legacy tools.
+- Add typed array-image dimension aliases `gpu_layer_width` and
+  `gpu_layer_height` to the existing image-query operations10/11. Programs
+  using these aliases select tree3 and query an array image's three-component
+  size. Tree2 retains its existing array-query refusal.
+- Declare and reuse an implicit float vec3 for array sample coordinates when
+  the reachable source declares only vec2 and vec4. Preserve an existing
+  declared vec3 and the existing sample operations in both tree versions.
+- Follow-up 2026-11-01: a result or store holding more than 64 borrowed
+  strings no longer stops with E0381. The returned-borrow leaves (0.46) and
+  the retained-store leaves (#3696) gave every array element its own leaf,
+  so `psionic/lib/mesh/totals.coax`, whose result holds 224 strings, ran
+  past the 64-leaf budget and then past the shared work. An array whose
+  elements would not all fit the remaining 64 leaves is now one leaf, the
+  unknown element, whose origins are every element's. A record with more
+  than 64 distinct borrowed fields is still E0381.
+- Follow-up 2026-11-01: `cast(string)` borrows in the compile-time evaluator
+  too, as the spec and emitted C have it, so `coax test` and `#run` see a
+  later write through the array. Before, the evaluator copied the bytes and a
+  check could pass that the native program fails. A string frozen into a
+  constant still takes one owned snapshot, under the same live-byte and work
+  limits; a cast copies nothing.
+
+## 0.46.0 — Returned Borrow Summaries — 2026-10-31
+
+Commit: [`9e29938427cba24fd4fa6778812c216f2f3ad1f5`](https://github.com/OpenAgentsInc/openagents/commit/9e29938427cba24fd4fa6778812c216f2f3ad1f5)
+
+- Extend local-borrow diagnostics through resolved helper calls and aggregate return projections, preserving caller-owned descriptors and explicit manual scope for recursive/helper-store paths; qualify real caller-buffer return APIs.
+- Visit each query expression once per owner, honor `--library`, and bind
+  cached indexes to their complete payload and front-end profile/library mode.
+  Damaged or old private indexes rebuild; the public `coax.query.v1` schema
+  stays unchanged.
+- Apply each check's `#steps` during ABI2 domain preparation; insufficient
+  fuel refuses before emitting verification C.
+- Follow-up (`ax-library-check-cache`): a compile checks each loaded unit
+  once, on its own, and caches the result in `~/.cache/coax-check/` under
+  the compiler's SHA-256, the checking options and every unit in the
+  unit's closure. A unit that checks on its own is a library: its `#test`
+  and `#forall` declarations leave the consumer's input, so the consumer
+  doesn't check them again. A part that uses its loader's names, a unit
+  whose closure has an `#authority` unit or `#import_proto`, and the entry
+  file keep their checks. `--timings` reports `library_checks` (cached and
+  checked). C now holds only the generic instances that emitted code calls
+  and the print and enum-conversion helpers it uses, and the parser and
+  checker no longer touch the capacity they reserve but don't use.
+  `psionic/lib/shadow.coax --library` emits 89,083 bytes of C (was
+  140,348), and compiling the Fairy Forest page peaks at 376 MB (was 630
+  MB). The bootstrap seeds lose their unused helpers; `coax test` and
+  `coax mutate` still run every check.
+- Follow-up (#12611): a call reads a view argument for its storage when the
+  helper's result is a slice of an array in that argument's pointee, so
+  `ft(field(u))` compiles and `ft(field(a[..]))` on a local array is E0383.
+  Before, the first was E0381, which stopped the myrealm, realm, Fairy and
+  Everglade pages, and the second was accepted. A constant is one static
+  origin, and static origins that alone overflow a set collapse to one per
+  type.
+- Follow-up (`ax-library-check-cache`): `coax mutate --diagnostics json`
+  prints each surviving mutant as an `E0414` `coax.diagnostic.v1` object at
+  the mutated token, and each procedure no check reaches as `E0415` at its
+  name. The summary line stays on stdout, and the text output is unchanged.
+- Follow-up 2026-11-01: check descriptor stores in concrete bodies, including
+  void and uncalled procedures, and project helper outlives obligations at
+  actual callers. Known callee-local backing retained in caller/static
+  storage is E0383 at the original RHS or call; unknown and unsupported
+  relations remain manual. Local-carrier return composition and request
+  completion/cancellation ownership remain separate work.
+
+## 0.45.0 — Bounded Storage Library — 2026-10-31
+
+Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgentsInc/openagents/commit/1f9d64a193fcd45d08ff775fbc7f034d2ead84ba)
+
+- A generic struct's length argument may be a named integer constant as well
+  as a literal: `Box(f64, CAP)`, `Box(u8, lib.CAP)`, `CAP :: 2 * 8`. The
+  value is folded while checking, must be 1 to 1073741824 (E0357, also for a
+  non-integer or not-yet-known constant), and names the same instance as the
+  literal it equals. A name that is neither a constant nor a type is still
+  E0368.
+- `coax/lib/bounded.coax` (`coax.bounded`): `Bounded($T, $N)`, fixed-capacity
+  storage the caller owns, with `bounded_push`, `bounded_pop`, `bounded_get`,
+  `bounded_set`, `bounded_clear`, `bounded_view` and `bounded_full`. A full or
+  empty store and a slot that isn't live are refused with `false` and no
+  change. Psionic's model registry (`psionic/lib/shadow.coax`) and the fairy
+  forest's blooms (`verse/fairy-forest/forest.coax`) use it, with their
+  fixtures' outputs unchanged.
+- Programs that compiled before emit identical C.
+- Follow-up (build, `ax-build-cache`): a warm `coax/build.sh` installs the
+  cached checked build before it validates the release documents, so it no
+  longer compiles a temporary stage0 first. The bootstrap keeps each passing
+  stage0 test and mutation gate in `~/.cache/coax-gates/`, keyed by stage0's
+  inputs, the command and the gate's source closure, and reuses it on an exact
+  match. The build log prints each gate's time or `reused`.
+- Follow-up (build, `ax-release-gate`): a bootstrap mutation gate stops on
+  a surviving mutant only when it is on a line changed since a base:
+  `origin/main` for `coax/build.sh`, production's release commit for
+  `coax/web/release.sh`. Other survivors are listed in
+  `coax/bin/mutation-survivors` and `releases/<time>/MUTATION`.
+  `COAX_MUTATION_FULL=1 coax/build.sh` is the full check, which gates on
+  every survivor. A survivor also stops the build when the change removed or
+  edited a check in its file or in the file its gate mutates, and untracked
+  `.coax` files count as changed.
+- Follow-up (`ax-stale-compiler`): `coax source-digest ROOT` prints one hash
+  of the compiler sources under `ROOT/coax`, and `coax/build.sh` writes it to
+  `coax/bin/source-digest`. A failing command run from `ROOT/coax/bin/coax`
+  whose checkout's sources differ from that digest adds a note that the
+  compiler is out of date and that `ROOT/coax/build.sh` rebuilds it.
+- Follow-up (`ax-state-construction`): a `--library` unit defines, and its
+  header declares, `void coax_default_T(T *p)` for each header struct or fixed
+  array with a declared default. It writes zeros and then the defaults in
+  place, so a host's state gets the same bytes as `s: [1] T` natively. The
+  definition is weak, because every unit that uses the type defines it.
+  Browser faces call it from `coaxial_state_init` and for their globals, and
+  `coax/web/defaults.py`, which patched the generated C, is deleted. Library
+  C and headers gain only these functions; programs emit identical C.
+- Follow-up (`ax-diagnostics-json`): `--diagnostics json` prints each
+  diagnostic as one `coax.diagnostic.v1` JSON object a line on stderr, with
+  its code, severity, message, span (file, line, column, byte offset and
+  length), notes (a failing check's name and counterexample) and fixes, with
+  replacement edits for "add 'X'" fixes. `coax c`, `check`, `test` and
+  `mutate` take it. Without it the text output is byte-identical. `coax
+  explain` now explains E0706.
+- Follow-up (`ax-code-index`): `coax query FILE defines NAME`, `uses NAME`
+  and `exports [MODULE]` answer from the checked program through every
+  `#load`, with file, line and column, as text or with `--json` as one
+  `coax.query.v1` object. Uses include untyped constants (also where the
+  checker folded them), checks, top-level asserts and generic bodies, and
+  never a comment or a string. The index is cached in `~/.cache/coax-query/`
+  and used only while every source unit's SHA-256 matches: a warm query over
+  the compiler's sources takes under 0.1 s, a cold one about 6 s.
+- Follow-up (`ax-step-budgets`): `#steps N` after a check's name or
+  bindings gives that check its own step budget, which replaces the file's
+  in `coax test`, `#authority` compiles and `coax mutate` (a mutant never
+  gets more than its check's own budget). A check out of steps says so on
+  its `FAIL` line with its steps and budget, and its E0400 message names the
+  budget and whether it is the check's own or the file's. `coax test FILE
+  --profile steps` lists, after each check, the eight procedures that used
+  the most of its steps, with own steps, share, steps with calls and calls.
+  The Fairy Forest page's 36 checks that ran out of steps each rebuild the
+  whole world (about 114 million steps in `fairy_start`); they now carry
+  their own budgets, and all 156 of its checks pass.
+
+## 0.44.0 — Native Semantic Checks — 2026-10-31
+
+Commit: [`d93b9cbcefc22c83c061438fc078ec23c8d0a060`](https://github.com/OpenAgentsInc/openagents/commit/d93b9cbcefc22c83c061438fc078ec23c8d0a060)
+
+- Qualify original checked values, guarded writes and reverse cleanup against independent expectations; add verification-only structured trap observations and bounded artifact-only seeded-defect tuple replay, without promoting failed evaluator baselines.
+
 ## 0.43.0 — Generic Literal Inference — 2026-10-31
 
 Commit: [`baca83b6844126d77059469177b16271b4a40ed7`](https://github.com/OpenAgentsInc/openagents/commit/baca83b6844126d77059469177b16271b4a40ed7)
