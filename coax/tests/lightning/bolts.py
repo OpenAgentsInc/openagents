@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: reads the BOLTs' published test vectors outside Coax)
-"""The pinned BOLT texts for Bitcoin chapters 104 to 108, 111, 114 and 115, read and checked.
+"""The pinned BOLT texts for Bitcoin chapters 104 to 108, 111, 112, 114 and 115, read and checked.
 
 The BOLTs at lightning/bolts revision 19146282 are pinned in
 coax/tests/vectors/upstream/bolts/. Every read checks the file's SHA-256
@@ -22,6 +22,8 @@ PINS = {
     'bolt04/onion-error-test.json': '374800b8d0dd21920299f4a998c4278f9d66f3a00b5e7b396765d38a50f2ea11',
     'bolt04/onion-test.json': 'bff01ffc728c3fecbee133eedfdaf39a26984f35cf7e76ed80f14d6e78cb8d56',
     'bolt04/route-blinding-test.json': 'd2c32e0260e6cb189246ec93bfc606459ef7c8abcad666fab4c496fe9644ef66',
+    '07-routing-gossip.md': '4b7cb122c9ba5c065d779671b52b9d2ec6be18cf34dddd046a8714a12af4a5c8',
+    'bolt07/extended-queries.json': '9927ae2c9e1a68ad0f99830f2e1c318a50ff1b17d51e37eb0111cdc56ba16f79',
     '08-transport.md': '85a1d6402adb653416c5a48f3b4c8eac2d8964621c41cb1bb6e09b8e06fbde46',
     '09-features.md': '39ead9fa5743104a3e66e0f6c342e34d64966dc943dcbcc337969e543e3e3cbe',
     '11-payment-encoding.md': 'c659da1bc08091f7fe691cd4ce661e578dfbe1f77a0b9cd9c53d1839010ae029',
@@ -355,3 +357,19 @@ def anchors():
     """Appendix F's tests, as BOLT 3 lists them in JSON."""
     body = section(text('03-transactions.md'), '# Appendix F', '# Appendix G')
     return json.loads(re.search(r'```yaml\n(.*?)\n```', body, re.S).group(1))
+
+
+# ---- BOLT 7
+
+def bolt7_aliases():
+    """The node_announcement test vectors: aliases with forbidden
+    characters, signed with the key 0x11...11."""
+    body = section(text('07-routing-gossip.md'), '### Test vectors', '## The `channel_update` Message')
+    key = re.search(r'priv=0x([0-9a-f]{64})', body).group(1)
+    rows = json.loads(re.search(r'```json\n(.*?)\n```', body, re.S).group(1))
+    return int(key, 16), rows
+
+
+def bolt7_queries():
+    """bolt07/extended-queries.json: query and reply messages."""
+    return json.loads(text('bolt07/extended-queries.json'))

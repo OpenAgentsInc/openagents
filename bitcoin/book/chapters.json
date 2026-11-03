@@ -2195,15 +2195,21 @@
   {
    "number": 112,
    "title": "Gossip and the channel graph",
-   "file": null,
-   "status": "planned",
-   "profile": null,
+   "file": "ch112-gossip-and-the-channel-graph.md",
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     19,
     104
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/lightning/gossip.coax",
+    "bitcoin/examples/lightning-gossip.coax",
+    "bitcoin/examples/checks/lightning-gossip.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

@@ -1,0 +1,99 @@
+// The checks of lightning-gossip.coax. They live apart so that running
+// the example doesn't also run them. The example reads BOLT 7's vectors
+// and builds a three-node graph; these check the properties around it.
+// Checks: coax test bitcoin/examples/checks/lightning-gossip.coax --run-steps 250000000
+#load "../lightning-gossip.coax";
+
+// book:begin check
+// One signed update, made once for the checks below.
+update :: (out: [] u8) -> int {
+  key := secret(3, 1); chain := QUERY_CHAIN_BYTES;
+  return gossip_update_write_vartime(key[..], chain[..], gossip_scid(105, 1, 0), 1762156800, 0, 40, 1000, 1000, 1, 990000000, out);
+}
+// A changed byte anywhere in what the signature covers, or in the
+// signature, refuses: one byte of each 8-byte stretch of the update.
+#forall "one changed byte of an update refuses" k: 0..<17 #steps 4000000000 {
+  u: [GSP_UPDATE_SIZE] u8; n := update(u[..]);
+  key := secret(3, 1); id := gsp_public(key[..]);
+  at := 2 + 8 * k + (k % 8);
+  u[at] ^= 0x40;
+  r := gossip_update_read_vartime(u[0..<n]);
+  #assert r.code != GSP_OK || !gossip_update_verify_vartime(u[0..<n], r, id[..]);
+}
+// Every message cut short refuses.
+#forall "a cut update refuses" cut: 0..<138 #steps 2000000000 {
+  u: [GSP_UPDATE_SIZE] u8; n := update(u[..]);
+  #assert gossip_read_vartime(u[0..<cut]) == GSP_TRUNCATED;
+}
+#forall "a cut filter, end or range query refuses" cut: 0..<42 {
+  chain := QUERY_CHAIN_BYTES; m: [64] u8;
+  n := gossip_filter_write_vartime(chain[..], 5, 6, m[..]);
+  #assert gossip_read_vartime(m[0..<cut]) == GSP_TRUNCATED;
+  n = gossip_query_range_write_vartime(chain[..], 5, 6, -1, m[..]);
+  #assert gossip_read_vartime(m[0..<cut]) == GSP_TRUNCATED && gossip_read_vartime(m[0..<n]) == GSP_OK;
+}
+// Short channel IDs survive their text, at the edges of each field.
+#forall "short channel ID text round-trips" k: 0..<27 {
+  h := ifx k % 3 == 0 then 0 else ifx k % 3 == 1 then 1 else 16777215;
+  t := ifx (k / 3) % 3 == 0 then 0 else ifx (k / 3) % 3 == 1 then 845 else 16777215;
+  o := ifx k / 9 == 0 then 0 else ifx k / 9 == 1 then 1 else 65535;
+  v := gossip_scid(cast(u64) h, cast(u64) t, cast(u64) o);
+  text: [23] u8; n := gossip_scid_text(v, text[..]);
+  back := gossip_scid_parse_vartime(cast(string) text[0..<n]);
+  #assert back.code == GSP_OK && back.value == v && gossip_scid_height(v) == cast(u64) h;
+}
+// An update's checksum is CRC32C of the update without its signature and
+// timestamp, whatever its fees.
+#forall "the checksum leaves out the signature and timestamp" fee: 0..<8 #steps 2000000000 {
+  key := secret(3, 1); chain := QUERY_CHAIN_BYTES;
+  u: [GSP_UPDATE_SIZE] u8; v: [GSP_UPDATE_SIZE] u8;
+  n := gossip_update_write_vartime(key[..], chain[..], 7, 1000, 0, 40, 1, cast(u64) fee, 1, 2, u[..]);
+  m := gossip_update_write_vartime(key[..], chain[..], 7, 2000 + cast(u64) fee, 0, 40, 1, cast(u64) fee, 1, 2, v[..]);
+  joined: [68] u8;
+  for i: 0..<40 { joined[i] = u[66 + i]; }
+  for i: 0..<28 { joined[40 + i] = u[110 + i]; }
+  a := gossip_update_read_vartime(u[0..<n]); b := gossip_update_read_vartime(v[0..<m]);
+  #assert a.checksum == gossip_crc32c(joined[..]) && a.checksum == b.checksum;
+}
+// The filter passes exactly first <= t < first + range, even where the
+// sum passes 2^32.
+#forall "the timestamp filter's bounds" k: 0..<64 {
+  first: u64 = ifx k < 32 then 100 else 0xfffffff0;
+  f := GspFilter.{first = first, range = cast(u64) (k % 8)};
+  for d: 0..<12 {
+    t := first - 2 + cast(u64) d;
+    #assert gossip_filter_passes(f, t) == (t >= first && t - first < cast(u64) (k % 8));
+  }
+}
+// A reply holds exactly the graph's channels in the range, ascending.
+#forall "a range reply holds the channels in its blocks" first: 0..<12 {
+  chain := QUERY_CHAIN_BYTES;
+  g: [1] GspGraph; gossip_graph_begin(g[..], chain[..]);
+  heights := [6] u64.[7, 3, 9, 3, 1, 5];
+  for i: 0..<6 { g[0].channels[i].scid = gossip_scid(heights[i], cast(u64) i, 0); }
+  g[0].count = 6;
+  out: [256] u8;
+  n := gossip_reply_range_vartime(g[..], cast(u64) first, 4, 3, out[..]);
+  r := gossip_reply_range_read_vartime(out[0..<n]);
+  want := 0;
+  for i: 0..<6 { if heights[i] >= cast(u64) first && heights[i] < cast(u64) first + 4 { want += 1; } }
+  #assert r.code == GSP_OK && r.scids.count == want;
+  for i: 0..<r.scids.count {
+    h := gossip_scid_height(gossip_scid_at(out[0..<n], r.scids, i));
+    #assert h >= cast(u64) first && h < cast(u64) first + 4;
+  }
+}
+// Query flags come back one per ID, and any other count refuses.
+#forall "query flags come back" n: 1..<8 {
+  chain := QUERY_CHAIN_BYTES;
+  ids: [8] u64; flags: [8] u8;
+  for i: 0..<n { ids[i] = gossip_scid(100 + cast(u64) i, 0, 0); flags[i] = cast(u8) ((i * 5) % 32); }
+  out: [128] u8;
+  m := gossip_query_scids_write_vartime(chain[..], ids[0..<n], flags[0..<n], out[..]);
+  q := gossip_query_scids_read_vartime(out[0..<m]);
+  #assert q.code == GSP_OK && q.scids.count == n;
+  for i: 0..<n { #assert gossip_query_flag(out[0..<m], q, i) == cast(u64) flags[i] && gossip_scid_at(out[0..<m], q.scids, i) == ids[i]; }
+  m = gossip_query_scids_write_vartime(chain[..], ids[0..<n], flags[0..<n - 1], out[..]);
+  #assert n == 1 || gossip_read_vartime(out[0..<m]) == GSP_BAD_COUNT;
+}
+// book:end check

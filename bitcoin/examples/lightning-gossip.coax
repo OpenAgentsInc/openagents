@@ -1,0 +1,180 @@
+// book:begin example
+#load "../../coax/lib/lightning/gossip.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Bytes as lowercase hex.
+show :: (b: [] u8) {
+  text: [600] u8;
+  r := hex_encode_checked(cast(string) b, text[..], false);
+  print("%", cast(string) text[0..<r.written]);
+}
+CODES :: [20] string.["OK", "TRUNCATED", "WRONG_TYPE", "BAD_POINT", "KEY_ORDER", "NOT_MINIMAL", "BAD_SIGNATURE",
+                      "BAD_ALIAS", "BAD_ADDRESS", "BAD_ENCODING", "BAD_LENGTH", "ORDER", "UNKNOWN_EVEN", "BAD_COUNT",
+                      "UNKNOWN_CHAIN", "UNKNOWN_CHANNEL", "UNKNOWN_NODE", "STALE", "BAD_TEXT", "CAPACITY"];
+// A secret of 32 bytes made from two small numbers, for the example.
+secret :: (k: int, c: int) -> [32] u8 {
+  out: [32] u8;
+  for i: 0..<32 { out[i] = cast(u8) ((k * i + c) & 255); }
+  return out;
+}
+scid_show :: (v: u64) { t: [23] u8; print("%", cast(string) t[0..<gossip_scid_text(v, t[..])]); }
+// The curve's order n, big-endian, to turn s into n - s.
+ORDER :: [32] u8.[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe,
+                  0xba, 0xae, 0xdc, 0xe6, 0xaf, 0x48, 0xa0, 0x3b, 0xbf, 0xd2, 0x5e, 0x8c, 0xd0, 0x36, 0x41, 0x41];
+negate_s :: (s: [] u8) {
+  borrow := 0;
+  for k: 0..<32 {
+    i := 31 - k;
+    d := cast(int) ORDER[i] - cast(int) s[i] - borrow;
+    borrow = ifx d < 0 then 1 else 0;
+    s[i] = cast(u8) ((d + 256) & 255);
+  }
+}
+// Each channel's ends, as the graph holds them.
+policies :: (g: [] GspGraph) {
+  for c: 0..<g[0].count {
+    for d: 0..<2 {
+      p := g[0].channels[c].policy[d];
+      if !p.present { continue; }
+      print("  "); scid_show(g[0].channels[c].scid);
+      print(" direction %: % msat + % ppm, cltv delta %, htlcs % to % msat%\n", d, p.fee_base, p.fee_ppm, p.cltv,
+            p.htlc_min, p.htlc_max, ifx (p.channel_flags & 2) != 0 then ", disabled" else "");
+    }
+  }
+}
+
+main :: () {
+  print("BOLT 7's vectors\n");
+  m: [512] u8;
+  verified := 0;
+  print("  node announcements:");
+  for row: ALIAS_ROWS {
+    b := ln_unhex(row.announcement, m[..]);
+    n: [1] GspNode;
+    code := gossip_node_read_vartime(b, n[..]);
+    print(" %", CODES[code]);
+    digest: [32] u8; gossip_hash(b[66..<b.count], digest[..]);
+    if gossip_verify_vartime(digest[..], b[n[0].node..<n[0].node + 33], b[2..<66]) { verified += 1; }
+  }
+  print("\n  % of 6 signatures verify under ", verified); print("%\n", ALIAS_NODE_ID);
+  print("  extended queries:");
+  for row: QUERY_ROWS { print(" %", CODES[gossip_read_vartime(ln_unhex(row.hex, m[..]))]); }
+  print("\n");
+
+  print("short channel IDs\n");
+  v := gossip_scid_parse_vartime("539268x845x1").value;
+  print("  539268x845x1 is block %, transaction %, output %: ", gossip_scid_height(v), gossip_scid_tx(v), gossip_scid_output(v));
+  e: [8] u8; gsp_put64(e[..], 0, v); show(e[..]); print("\n");
+
+  chain := QUERY_CHAIN_BYTES;
+  alice := secret(3, 1); bob := secret(5, 2); carol := secret(7, 3); dave := secret(9, 4);
+  ids := [4] [33] u8.[gsp_public(alice[..]), gsp_public(bob[..]), gsp_public(carol[..]), gsp_public(dave[..])];
+  names := [4] string.["Alice", "Bob", "Carol", "Dave"];
+  for k: 0..<3 { print("  % ", names[k]); show(ids[k][..]); print("\n"); }
+
+  print("two channels\n");
+  g: [1] GspGraph; gossip_graph_begin(g[..], chain[..]);
+  ab: [512] u8; bc: [512] u8;
+  fa := secret(11, 4); fb := secret(13, 5); fb2 := secret(17, 6); fc := secret(19, 7);
+  s1 := gossip_scid(105, 1, 0); s2 := gossip_scid(106, 2, 1);
+  n1 := gossip_announcement_write_vartime(chain[..], s1, alice[..], bob[..], fa[..], fb[..], chain[0..<0], ab[..]);
+  n2 := gossip_announcement_write_vartime(chain[..], s2, bob[..], carol[..], fb2[..], fc[..], chain[0..<0], bc[..]);
+  pairs := [2] string.["Alice and Bob", "Bob and Carol"];
+  for c: 0..<2 {
+    msg := ifx c == 0 then ab[0..<n1] else bc[0..<n2];
+    a := gossip_announcement_read_vartime(msg);
+    print("  % ", pairs[c]); scid_show(a.scid); print(": % bytes, %\n", msg.count, CODES[a.code]);
+    first := 0; for k: 0..<4 { if cast(string) msg[a.node1..<a.node1 + 33] == cast(string) ids[k][..] { first = k; } }
+    print("    node_id_1 is %, the lesser key; signed hash ", names[first]); show(a.hash[..]); print("\n");
+    print("    added to the graph: %\n", CODES[gossip_graph_add_vartime(g[..], msg)]);
+  }
+
+  print("channel updates\n");
+  u: [GSP_UPDATE_SIZE] u8;
+  // Alice is node_id_1 of 105x1x0 (direction 0) when her key is the lesser.
+  a1 := gossip_announcement_read_vartime(ab[0..<n1]);
+  alice_one := cast(string) ab[a1.node1..<a1.node1 + 33] == cast(string) ids[0][..];
+  a2 := gossip_announcement_read_vartime(bc[0..<n2]);
+  bob_one := cast(string) bc[a2.node1..<a2.node1 + 33] == cast(string) ids[1][..];
+  da := ifx alice_one then 0 else 1; db1 := 1 - da;
+  db2 := ifx bob_one then 0 else 1; dc := 1 - db2;
+  updates := [4] int.[0, 1, 1, 2];   // who signs: Alice, Bob, Bob, Carol
+  secrets := [4] [32] u8.[alice, bob, bob, carol];
+  scids := [4] u64.[s1, s1, s2, s2];
+  directions := [4] int.[da, db1, db2, dc];
+  fees := [4] u64.[1000, 0, 500, 2000];
+  for k: 0..<4 {
+    n := gossip_update_write_vartime(secrets[k][..], chain[..], scids[k], 1762156800 + cast(u64) k, directions[k],
+                                     40 + 10 * k, 1000, fees[k], 1 + cast(u64) k, 990000000, u[..]);
+    r := gossip_update_read_vartime(u[0..<n]);
+    print("  % for ", names[updates[k]]); scid_show(scids[k]);
+    print(", direction %: %, checksum %\n", r.direction, CODES[gossip_graph_add_vartime(g[..], u[0..<n])], r.checksum);
+  }
+  policies(g[..]);
+
+  print("node announcements\n");
+  addrs := [7] u8.[1, 127, 0, 0, 1, 0x26, 0x07];    // ipv4 127.0.0.1, port 9735
+  na: [256] u8;
+  for k: 0..<4 {
+    key := ifx k == 0 then alice else ifx k == 1 then bob else ifx k == 2 then carol else dave;
+    rgb := [3] u8.[cast(u8) (60 * k), 0x80, 0xff];
+    n := gossip_node_write_vartime(key[..], 1762156800, rgb[..], names[k], addrs[..], chain[0..<0], na[..]);
+    nn: [1] GspNode;
+    code := gossip_node_read_vartime(na[0..<n], nn[..]);
+    print("  %: % bytes, %, % address, added: %\n", names[k], n, CODES[code], nn[0].address_count,
+          CODES[gossip_graph_add_vartime(g[..], na[0..<n])]);
+  }
+
+  print("changing them\n");
+  ab[296] ^= 1;
+  print("  one byte of a channel announcement changed: %\n", CODES[gossip_announcement_read_vartime(ab[0..<n1]).code]);
+  ab[296] ^= 1;
+  swapped: [512] u8; for i: 0..<n1 { swapped[i] = ab[i]; }
+  for i: 0..<33 { swapped[a1.node1 + i] = ab[a1.node2 + i]; swapped[a1.node2 + i] = ab[a1.node1 + i]; }
+  print("  its node IDs swapped: %\n", CODES[gossip_announcement_read_vartime(swapped[0..<n1]).code]);
+  mainnet: [1] GspGraph; other := secret(0, 0x6f); gossip_graph_begin(mainnet[..], other[..]);
+  print("  added to a graph that follows another chain: %\n", CODES[gossip_graph_add_vartime(mainnet[..], ab[0..<n1])]);
+  n := gossip_update_write_vartime(alice[..], chain[..], s1, 1762160400, db1, 40, 1000, 0, 1, 990000000, u[..]);
+  print("  Alice signs Bob's direction: %\n", CODES[gossip_graph_add_vartime(g[..], u[0..<n])]);
+  n = gossip_update_write_vartime(alice[..], chain[..], s1, 1762156800, da, 40, 1000, 1000, 1, 990000000, u[..]);
+  print("  Alice's first update again: %\n", CODES[gossip_graph_add_vartime(g[..], u[0..<n])]);
+  negate_s(u[34..<66]);
+  r := gossip_update_read_vartime(u[0..<n]);
+  print("  with n - s for s: verifies %, added: %\n", gossip_update_verify_vartime(u[0..<n], r, ids[0][..]),
+        CODES[gossip_graph_add_vartime(g[..], u[0..<n])]);
+  n = gossip_update_write_vartime(alice[..], chain[..], s1, 1762160400, da + 2, 40, 1000, 1000, 1, 990000000, u[..]);
+  print("  Alice disables 105x1x0 an hour later: %\n", CODES[gossip_graph_add_vartime(g[..], u[0..<n])]);
+  n = gossip_update_write_vartime(carol[..], chain[..], gossip_scid(107, 1, 0), 1762160400, 0, 40, 1000, 1000, 1, 990000000, u[..]);
+  print("  an update for 107x1x0: %\n", CODES[gossip_graph_add_vartime(g[..], u[0..<n])]);
+  policies(g[..]);
+
+  print("catching up\n");
+  f: [64] u8;
+  n = gossip_filter_write_vartime(chain[..], 1762156801, 2, f[..]);
+  filter := gossip_filter_read_vartime(f[0..<n]);
+  print("  gossip_timestamp_filter from % for %: updates at", filter.first, filter.range);
+  for k: 0..<4 { t := 1762156800 + cast(u64) k; if gossip_filter_passes(filter, t) { print(" %", t); } }
+  print(" pass\n");
+  q: [64] u8;
+  n = gossip_query_range_write_vartime(chain[..], 100, 10, 3, q[..]);
+  qr := gossip_query_range_read_vartime(q[0..<n]);
+  print("  query_channel_range blocks % to %, options %: % bytes\n", qr.first, qr.first + qr.number - 1, qr.options, n);
+  reply: [256] u8;
+  n = gossip_reply_range_vartime(g[..], qr.first, qr.number, qr.options, reply[..]);
+  rr := gossip_reply_range_read_vartime(reply[0..<n]);
+  print("  reply_channel_range: % bytes, %, sync_complete %\n", n, CODES[rr.code], rr.complete);
+  for i: 0..<rr.scids.count {
+    print("    "); scid_show(gossip_scid_at(reply[0..<n], rr.scids, i));
+    print(" timestamps % %, checksums % %\n", gsp_u32(reply[..], rr.timestamps + 8 * i), gsp_u32(reply[..], rr.timestamps + 8 * i + 4),
+          gsp_u32(reply[..], rr.checksums + 8 * i), gsp_u32(reply[..], rr.checksums + 8 * i + 4));
+  }
+  want := [2] u64.[s1, s2]; flags := [2] u8.[1, 6];
+  n = gossip_query_scids_write_vartime(chain[..], want[..], flags[..], q[..]);
+  qs := gossip_query_scids_read_vartime(q[0..<n]);
+  print("  query_short_channel_ids: % bytes, %, flags % %\n", n, CODES[qs.code],
+        gossip_query_flag(q[0..<n], qs, 0), gossip_query_flag(q[0..<n], qs, 1));
+  q[36] = 1;
+  print("  the same with encoding 1, zlib: %\n", CODES[gossip_read_vartime(q[0..<n])]);
+}
+// book:end example

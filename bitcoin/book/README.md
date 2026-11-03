@@ -43,12 +43,12 @@ specifications. The [contents](SUMMARY.md) list the written chapters.
 
 ## Status
 
-Of the 124 chapters, 74 are implemented and 50 are planned. The 74 implemented
+Of the 124 chapters, 75 are implemented and 49 are planned. The 75 implemented
 chapters have runnable examples, qualified on native CPU, and 32 of them on
 Wasm. Fifteen of them are the cryptography Nostr already used; chapters 5, 6,
 7, 10, 12, 17, 19, 20, 21, 22, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66,
-67, 68, 69, 70, 71, 73, 74, 94, 100, 101, 104, 105, 106, 107, 108, 111, 114
+39, 40, 41, 42, 43, 46, 47, 48, 49, 50, 51, 52, 53, 54, 56, 59, 62, 65, 66, 67,
+68, 69, 70, 71, 73, 74, 94, 100, 101, 104, 105, 106, 107, 108, 111, 112, 114
 and 115 are new.
 
 The code is under `coax/lib/crypto/`, `coax/lib/bitcoin/` and
@@ -328,7 +328,7 @@ Lightning built in Coax on our node: messages, the Noise handshake, channels, on
 | 109. Open, update and close a channel | Planned | Two Coax nodes open, update and close a channel on regtest. The state machine refuses every out-of-order message BOLT 2 names. |
 | 110. Watch the chain | Planned | A revoked commitment broadcast on regtest is swept by the penalty transaction, and an expired HTLC times out, with our node as the only chain source. |
 | [111. Onion routing and blinded paths](ch111-onion-routing-and-blinded-paths.md) | Runnable: native C | BOLT 4's Sphinx packet: shared secrets, blinding factors, the rho, mu, um, pad and ammag keys, the ChaCha20 stream, the filler and the HMAC chain over 1,300 bytes of TLV hop payloads; error onions and their decryption by the payer; and route blinding with `encrypted_recipient_data` and path keys. Every BOLT 4 onion, error and blinded-path vector gives its result, and every line agrees with an independent Python Sphinx. |
-| 112. Gossip and the channel graph | Planned | Announcements from a pinned gossip snapshot verify. An announcement with a bad signature refuses. |
+| [112. Gossip and the channel graph](ch112-gossip-and-the-channel-graph.md) | Runnable: native C | BOLT 7's gossip: short channel IDs, `channel_announcement` with four signatures over the double SHA-256 after them, `node_announcement` with BOLT 1's restricted UTF-8 alias and address descriptors, `channel_update` with its direction and disable bits, timestamps, fees, CLTV delta and CRC32C checksum, the query messages in the plain encoding with zlib refused, and a channel graph that keeps only what checks. BOLT 7's vectors give their stated results, and every line agrees with an independent Python reader and writer. |
 | 113. Find a route and pay | Planned | A payment routes over a three-node regtest network and settles. A failure returns its error to the sender. |
 | [114. Invoices](ch114-invoices.md) | Runnable: native C | BOLT 11's invoices: the human-readable part with the currency and an amount with its multiplier, the 5-bit tagged fields `p`, `s`, `d`, `h`, `n`, `x`, `c`, `f`, `r`, `9` and `m` with their rules, and the recoverable signature that names the payee or verifies under `n` with a low S; a writer that reproduces BOLT 11's examples. All 31 BOLT 11 examples give their stated result, and every line agrees with an independent Python reader and writer. |
 | [115. Offers](ch115-offers.md) | Runnable: native C | BOLT 12's offers, invoice requests, invoices and payer proofs: text with no checksum and `+` joins, the TLV ranges of each kind, the Merkle tree of `LnLeaf`, `LnNonce` and `LnBranch` tagged hashes signed with BIP-340, `offer_issuer_id` versus blinded paths, the request and invoice rules, and payer proofs with marker numbers and missing hashes; a writer for each step. Every BOLT 12 vector gives its stated result, and every line agrees with an independent Python reader and writer. |

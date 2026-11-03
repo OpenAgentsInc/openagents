@@ -1,0 +1,51 @@
+BOLT 7's vectors
+  node announcements: BAD_ALIAS BAD_ALIAS BAD_ALIAS BAD_ALIAS BAD_ALIAS BAD_ALIAS
+  6 of 6 signatures verify under 034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa
+  extended queries: OK OK OK BAD_ENCODING OK BAD_ENCODING OK BAD_ENCODING BAD_ENCODING BAD_ENCODING
+short channel IDs
+  539268x845x1 is block 539268, transaction 845, output 1: 083a8400034d0001
+  Alice 021379cc96aa0aa0f16d54bacc78dca79c4ef9cbb1d898f0f1a2eea3521c7ec38a
+  Bob 03b5cd2183c7ae0aff0a9526a1faa97ab6b441bbb2b57e2442a9827b6b0d8e4dda
+  Carol 03f324133f92f203537cd7f9c4f1cf1078020159111a18457809ce3c11950d87eb
+two channels
+  Alice and Bob 105x1x0: 432 bytes, OK
+    node_id_1 is Alice, the lesser key; signed hash aa454a79cd58a6dbac0e42860e34b1e2da83c1b12e949b597b5e02621ddf75e9
+    added to the graph: OK
+  Bob and Carol 106x2x1: 432 bytes, OK
+    node_id_1 is Bob, the lesser key; signed hash 8f2735f2bd174f6a4eecf2fa05a454aa12696ea81e28f19fb9f44ffdd806e609
+    added to the graph: OK
+channel updates
+  Alice for 105x1x0, direction 0: OK, checksum 274220191
+  Bob for 105x1x0, direction 1: OK, checksum 4206943366
+  Bob for 106x2x1, direction 0: OK, checksum 3146641915
+  Carol for 106x2x1, direction 1: OK, checksum 2723939177
+  105x1x0 direction 0: 1000 msat + 1 ppm, cltv delta 40, htlcs 1000 to 990000000 msat
+  105x1x0 direction 1: 0 msat + 2 ppm, cltv delta 50, htlcs 1000 to 990000000 msat
+  106x2x1 direction 0: 500 msat + 3 ppm, cltv delta 60, htlcs 1000 to 990000000 msat
+  106x2x1 direction 1: 2000 msat + 4 ppm, cltv delta 70, htlcs 1000 to 990000000 msat
+node announcements
+  Alice: 149 bytes, OK, 1 address, added: OK
+  Bob: 149 bytes, OK, 1 address, added: OK
+  Carol: 149 bytes, OK, 1 address, added: OK
+  Dave: 149 bytes, OK, 1 address, added: UNKNOWN_NODE
+changing them
+  one byte of a channel announcement changed: BAD_SIGNATURE
+  its node IDs swapped: KEY_ORDER
+  added to a graph that follows another chain: UNKNOWN_CHAIN
+  Alice signs Bob's direction: BAD_SIGNATURE
+  Alice's first update again: STALE
+  with n - s for s: verifies true, added: STALE
+  Alice disables 105x1x0 an hour later: OK
+  an update for 107x1x0: UNKNOWN_CHANNEL
+  105x1x0 direction 0: 1000 msat + 1 ppm, cltv delta 40, htlcs 1000 to 990000000 msat, disabled
+  105x1x0 direction 1: 0 msat + 2 ppm, cltv delta 50, htlcs 1000 to 990000000 msat
+  106x2x1 direction 0: 500 msat + 3 ppm, cltv delta 60, htlcs 1000 to 990000000 msat
+  106x2x1 direction 1: 2000 msat + 4 ppm, cltv delta 70, htlcs 1000 to 990000000 msat
+catching up
+  gossip_timestamp_filter from 1762156801 for 2: updates at 1762156801 1762156802 pass
+  query_channel_range blocks 100 to 109, options 3: 45 bytes
+  reply_channel_range: 99 bytes, OK, sync_complete 1
+    105x1x0 timestamps 1762160400 1762156801, checksums 2888131039 4206943366
+    106x2x1 timestamps 1762156802 1762156803, checksums 3146641915 2723939177
+  query_short_channel_ids: 58 bytes, OK, flags 1 6
+  the same with encoding 1, zlib: BAD_ENCODING

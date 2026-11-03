@@ -541,6 +541,18 @@ that a maliciously replaced manifest is authentic.
   them into `coax/tests/lightning/onion_vectors.coax`, and
   `coax/tests/lightning/onion.py` runs them and the example on
   `coax/tests/lightning/sphinx.py`, the independent Sphinx.
+- **Gossip (Bitcoin chapter 112):** BOLT 7 (`07-routing-gossip.md`) and
+  `bolt07/extended-queries.json` at the same lightning/bolts revision,
+  CC-BY-4.0, retrieved 2026-11-03. BOLT 7's "Test vectors" give six
+  `node_announcement`s signed with the key 0x11...11, each with a
+  forbidden alias; the JSON file gives ten query and reply messages, five
+  of them in zlib, which BOLT 7 now forbids. BOLT 7 has no
+  `channel_announcement` or `channel_update` vectors; the chapter's
+  example signs its own with generated keys.
+  `coax/tests/lightning/make_gossip_vectors.py` reads the vectors into
+  `coax/tests/lightning/gossip_vectors.coax`, and
+  `coax/tests/lightning/gossip.py` runs them and the example on
+  `coax/tests/lightning/bolt7.py`, the independent reader and writer.
 - **Invoices (Bitcoin chapter 114):** BOLT 11 (`11-payment-encoding.md`)
   and `bolt11/invoice-test.json` at the same lightning/bolts revision,
   CC-BY-4.0, retrieved 2026-11-03. The JSON file gives 31 invoices, 16
@@ -893,4 +905,6 @@ The complete revision/license/archive fields are in `manifest.json`.
 | [`upstream/bolts/bolt12/offers-test.json`](upstream/bolts/bolt12/offers-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/offers-test.json) | `d30991bbd31105f87b583e1d4168a9beb8b7f9cf2b23c729597428e0dce832c7` |
 | [`upstream/bolts/bolt12/payer-proof-test.json`](upstream/bolts/bolt12/payer-proof-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/payer-proof-test.json) | `bad5f365f02c3bd82fcb5d600ba941592b211e715103b134f4deed599a650ad9` |
 | [`upstream/bolts/bolt12/signature-test.json`](upstream/bolts/bolt12/signature-test.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt12/signature-test.json) | `03ddd14f5593bea0a97e5b3cbe3af9fe215d38443ae192a01bb72a840858d6a4` |
+| [`upstream/bolts/07-routing-gossip.md`](upstream/bolts/07-routing-gossip.md) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/07-routing-gossip.md) | `4b7cb122c9ba5c065d779671b52b9d2ec6be18cf34dddd046a8714a12af4a5c8` |
+| [`upstream/bolts/bolt07/extended-queries.json`](upstream/bolts/bolt07/extended-queries.json) | [pinned source](https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt07/extended-queries.json) | `9927ae2c9e1a68ad0f99830f2e1c318a50ff1b17d51e37eb0111cdc56ba16f79` |
 | [`derived/catalog.json`](derived/catalog.json) | `make_catalog.py` (derived) | `eb5be14f52c41f115153b3d9d4189b30c1c984e62ddc1278793eef6b80321d27` |

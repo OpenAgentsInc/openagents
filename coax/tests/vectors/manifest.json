@@ -3828,6 +3828,32 @@
       "retrieved": "2026-11-03",
       "sha256": "a938d6efa4a87e3cb4e14f4868f46a59e7c8119db9a3ee50a16be2c09e0218b8",
       "bytes": 464817
+    },
+    {
+      "path": "upstream/bolts/07-routing-gossip.md",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/07-routing-gossip.md",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "112"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "4b7cb122c9ba5c065d779671b52b9d2ec6be18cf34dddd046a8714a12af4a5c8",
+      "bytes": 59313
+    },
+    {
+      "path": "upstream/bolts/bolt07/extended-queries.json",
+      "kind": "upstream",
+      "url": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt07/extended-queries.json",
+      "revision": "git:191462825ae341f0a27098765c075f01ca9bc6c2",
+      "license": "CC-BY-4.0 (declared in source)",
+      "covers": [
+        "112"
+      ],
+      "retrieved": "2026-11-03",
+      "sha256": "9927ae2c9e1a68ad0f99830f2e1c318a50ff1b17d51e37eb0111cdc56ba16f79",
+      "bytes": 9266
     }
   ]
 }
